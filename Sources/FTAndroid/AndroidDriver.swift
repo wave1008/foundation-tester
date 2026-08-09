@@ -565,7 +565,36 @@ public final class AndroidDriver: AppDriver {
 
     /// インストール済みのユーザーアプリ(third-party)のパッケージ名一覧。
     public func listInstalledPackages() throws -> [String] {
-        let result = try adb(["shell", "pm", "list", "packages", "-3"])
+        try packageIDs(scope: "-3")
+    }
+
+    public struct InstalledPackage: Sendable, Equatable {
+        public let id: String
+        public let isUser: Bool
+
+        public init(id: String, isUser: Bool) {
+            self.id = id
+            self.isUser = isUser
+        }
+    }
+
+    /// **system も引けるようにする**(2026-08-09): 端末に載っている地図・ブラウザ等は
+    /// system 扱いで `-3` には1つも出ず、MCP から探しようが無かった(実測: Pixel の AVD で
+    /// `com.google.android.apps.maps` が出ず adb へ落ちた)。`pm` は `-3` か `-s` の
+    /// どちらかしか出せないので2回撃つ。**system アプリに更新が当たると `-s` 側にだけ出る**ので、
+    /// 同じ id が両方に出たときは user を採る(利用者から見て「自分で入れた物」に近い)
+    public func listPackages(includeSystem: Bool) throws -> [InstalledPackage] {
+        let user = try packageIDs(scope: "-3").map { InstalledPackage(id: $0, isUser: true) }
+        guard includeSystem else { return user }
+        let userIDs = Set(user.map(\.id))
+        let system = try packageIDs(scope: "-s")
+            .filter { !userIDs.contains($0) }
+            .map { InstalledPackage(id: $0, isUser: false) }
+        return (user + system).sorted { $0.id < $1.id }
+    }
+
+    private func packageIDs(scope: String) throws -> [String] {
+        let result = try adb(["shell", "pm", "list", "packages", scope])
         return result.output.split(separator: "\n")
             .compactMap { line in
                 let trimmed = line.trimmingCharacters(in: .whitespaces)

@@ -529,6 +529,39 @@ final class MCPRefGuardTests: XCTestCase {
             screen([element(ref: 1, id: "btn_ok", label: "OK", x: 0, y: 0)])), "")
     }
 
+    // MARK: - ft_drag を ref から始める(2026-08-09)
+
+    /// **半開きシートを広げる操作**が座標の手計算になっていた(実測: `#Card grabber` の
+    /// frame を読んで `ft_drag (200,664) → (200,120)` を人が組んだ)。ref と dy で書けること
+    func testDragStartsFromARefAndMovesByDelta() async throws {
+        driver.snapshotResponse = screen([
+            element(ref: 1, type: "Button", id: "Card grabber", label: "カードコントローラ",
+                    x: 150, y: 650, w: 100, h: 24),
+        ])
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        let text = Self.text(try await server.call(tool: "ft_drag", args: ["fromRef": 1, "dy": -540.0]))
+        XCTAssertTrue(actions.contains("drag(200.0,662.0->200.0,122.0,duration:1.5)"),
+                      "ref の中心から dy だけ動かしていない: \(actions)")
+        XCTAssertTrue(text.contains("sent"), text)
+    }
+
+    /// 座標形は従来どおり(既存のシナリオ・呼び出しを壊さない)
+    func testDragStillAcceptsPlainCoordinates() async throws {
+        _ = try await server.call(tool: "ft_drag",
+                                  args: ["fromX": 10.0, "fromY": 20.0, "toX": 30.0, "toY": 40.0])
+        XCTAssertTrue(actions.contains("drag(10.0,20.0->30.0,40.0,duration:1.5)"), "\(actions)")
+    }
+
+    /// **動かないドラッグは撃たない**(0px のドラッグを成功と記録すると書き間違いに気付けない)
+    func testDragWithoutAnyTravelIsRefused() async throws {
+        do {
+            _ = try await server.call(tool: "ft_drag", args: ["fromX": 10.0, "fromY": 20.0])
+            XCTFail("移動量ゼロのドラッグが通った")
+        } catch {
+            XCTAssertTrue("\(error)".contains("does not move"), "\(error)")
+        }
+    }
+
     func testSnapshotSurfacesUnlabeledClickables() async throws {
         driver.snapshotResponse = screen([
             element(ref: 1, type: "Clickable", id: nil, label: nil, x: 10, y: 10, w: 40, h: 40),
@@ -539,19 +572,45 @@ final class MCPRefGuardTests: XCTestCase {
 
     // MARK: - 欠陥⑩: 曖昧なラベルの要約注記
 
-    /// 3件以上の同一ラベルは素のラベルでは一意に指せない。実測: 経路検索の候補一覧で
+    /// 同一ラベルが複数あると素のラベルでは一意に指せない。実測: 経路検索の候補一覧で
     /// 「東京駅」が9件一致した。id の重複は別パッケージの `×N` が扱うので、ここはラベルだけ
     func testAmbiguousLabelsNoteSummarizesRepeatedLabels() {
         var elements = (1...9).map { element(ref: $0, id: nil, label: "東京駅", x: 0, y: Double($0)) }
         elements.append(element(ref: 10, id: "btn_ok", label: "OK", x: 0, y: 100))
         let note = MCPServer.ambiguousLabelsNote(screen(elements))
         XCTAssertTrue(note.contains("\"東京駅\" ×9"), note)
-        XCTAssertFalse(note.contains("\"OK\""), "3件未満のラベルは対象外: \(note)")
+        XCTAssertFalse(note.contains("\"OK\""), "1件だけのラベルは対象外: \(note)")
     }
 
-    func testAmbiguousLabelsNoteStaysQuietBelowThreshold() {
-        let elements = (1...2).map { element(ref: $0, id: nil, label: "重複", x: 0, y: Double($0)) }
-        XCTAssertEqual(MCPServer.ambiguousLabelsNote(screen(elements)), "")
+    /// **2件でも報告する**(2026-08-09 に下限を3から2へ)。実測(Google マップの検索結果)では
+    /// 別 frame の `"他のフィルタ"` が2件あるのに黙っており、`tap("他のフィルタ")` が
+    /// 一意に選べないことに気付けなかった
+    func testAmbiguousLabelsNoteReportsExactlyTwoDistinctElements() {
+        let elements = [element(ref: 1, id: nil, label: "他のフィルタ", x: 0, y: 10),
+                        element(ref: 2, id: nil, label: "他のフィルタ", x: 200, y: 10)]
+        XCTAssertTrue(MCPServer.ambiguousLabelsNote(screen(elements)).contains("\"他のフィルタ\" ×2"))
+    }
+
+    /// **容器とその中身が同じラベルを名乗る形は曖昧ではない**(どちらを掴んでも同じもの)。
+    /// 下限を2へ下げたときにラッパー対が全部鳴らないようにする除外
+    func testAmbiguousLabelsNoteIgnoresAWrapperChain() {
+        let outer = element(ref: 1, type: "Button", id: "tile", label: "自宅、追加",
+                            x: 0, y: 10, w: 80, h: 80, depth: 2)
+        let inner = element(ref: 2, type: "StaticText", id: nil, label: "自宅、追加",
+                            x: 0, y: 10, w: 80, h: 80, depth: 3)
+        XCTAssertEqual(MCPServer.ambiguousLabelsNote(screen([outer, inner])), "")
+    }
+
+    /// **ゼロ幅文字は落としてから数えて表示する**(2026-08-09)。一覧の行は除去済みの形で
+    /// 出るので、生ラベルのまま注記に出すと同じラベルが1応答の中で2表記になる
+    /// (実測: Google マップの `"​​埼京線​"`)
+    func testAmbiguousLabelsNoteStripsZeroWidthCharacters() {
+        let elements = [element(ref: 1, id: nil, label: "\u{200B}埼京線", x: 0, y: 10),
+                        element(ref: 2, id: nil, label: "埼京線\u{FEFF}", x: 200, y: 10)]
+        let note = MCPServer.ambiguousLabelsNote(screen(elements))
+        XCTAssertTrue(note.contains("\"埼京線\" ×2"), note)
+        XCTAssertFalse(note.contains("\u{200B}"), note)
+        XCTAssertFalse(note.contains("\u{FEFF}"), note)
     }
 
     func testSnapshotSurfacesAmbiguousLabels() async throws {

@@ -322,7 +322,7 @@ enum RefGuard {
         if let id = element.identifier, !id.isEmpty { return "#\(id)" }
         // ゼロ幅文字を落とす(visibleLabelsHint と同じ理由。describe は tap の警告・
         // goneMessage・遮蔽/ghost の警告が全部通る口なので、ここが最後の砦)
-        if let label = element.label.map(FlowMatchMode.stripZeroWidthCharacters), !label.isEmpty {
+        if let label = element.label.map(FlowMatchMode.normalizeInvisibleCharacters), !label.isEmpty {
             return "\(element.type) \"\(label)\""
         }
         return element.type

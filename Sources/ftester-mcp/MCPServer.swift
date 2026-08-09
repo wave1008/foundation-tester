@@ -29,6 +29,8 @@ final class MCPServer {
     /// drivers と同じキーで「実際に主となったエンジン」を覚える。iosEngineHint がこれで
     /// 助言を出し分ける(引数からは決まらない: profile 無しでも in-app を掴めば hybrid)
     var engines: [String: String] = [:]
+    /// 探索中の操作列(ft_draft_scenario の材料。InteractionLog 参照)
+    var interactions = InteractionLog()
     /// drivers と同じキーで**直前にエージェントへ返した木**を覚える。ref を撃つ直前に
     /// 撮り直して同じ要素を引き直すための起点(RefGuard 参照)。
     /// **ref はスナップショットごとに振り直される**ので、番号ではなく要素の同一性で照合する
@@ -60,13 +62,19 @@ final class MCPServer {
     private let recordSnapshot: (_ snapshot: SnapshotResponse, _ platform: String,
                                  _ args: [String: Any]) -> Void
 
+    /// 差し替えドライバの経路でも版ズレのゲートを通すか(テスト用。既定 off。
+    /// 実運用の経路は常に通る。理由は driver(_:) のコメント)
+    private let checksVersionOnInjectedDriver: Bool
+
     init(write: @escaping (Data) -> Void = { FileHandle.standardOutput.write($0) },
          makeDriver: ((_ args: [String: Any]) async throws -> AppDriver)? = nil,
          recordSnapshot: ((_ snapshot: SnapshotResponse, _ platform: String,
-                           _ args: [String: Any]) -> Void)? = nil) {
+                           _ args: [String: Any]) -> Void)? = nil,
+         checksVersionOnInjectedDriver: Bool = false) {
         self.write = write
         self.makeDriver = makeDriver
         self.recordSnapshot = recordSnapshot ?? MCPServer.recordSelectors
+        self.checksVersionOnInjectedDriver = checksVersionOnInjectedDriver
     }
 
     // MARK: - メインループ(stdio: 改行区切り JSON-RPC)
@@ -111,8 +119,12 @@ final class MCPServer {
                 let content = try await call(tool: name, args: args)
                 reply(id: id, result: ["content": content, "isError": false])
             } catch {
+                // FTCore 由来の文には CLI のフラグ(`--project`)が書いてある。MCP の読み手が
+                // 渡せるのは同名の**引数**なので、ここで一度だけ言い換える(MCPMessageText)
                 reply(id: id, result: [
-                    "content": [["type": "text", "text": "Error: \(error.localizedDescription)"]],
+                    "content": [["type": "text",
+                                 "text": "Error: "
+                                    + MCPMessageText.forMCP(error.localizedDescription)]],
                     "isError": true,
                 ])
             }
@@ -149,7 +161,15 @@ final class MCPServer {
             if engines[key] == nil {
                 engines[key] = (args["platform"] as? String) == "android" ? "android" : "xcuitest"
             }
-            return try await makeDriver(args)
+            let driver = try await makeDriver(args)
+            // **差し替え経路でもゲートを通せるようにする**(G): 素通しにすると拒否そのものが
+            // 一度も実行されず、文言だけ検証して安心する形になる。ただし既定は off ——
+            // 版照合は status() を1回撃つので、呼び出し列を固定している既存テストが軒並みずれる。
+            // 実運用(makeDriver 無し)の経路は下で**常に**通る
+            if checksVersionOnInjectedDriver {
+                try await enforceVersion(driver: driver, key: key, args: args)
+            }
+            return driver
         }
         if let profileName = args["profile"] as? String {
             let key = Self.driverCacheKey(profile: profileName, project: args["project"] as? String,
@@ -199,18 +219,25 @@ final class MCPServer {
             case .android(let serial, let deviceName):
                 "\(deviceName) serial \(serial)"
             }
+            // **profile 経由もゲートを通す**(G-2 の「全操作系」): BridgeProvisioner が版で
+            // 再利用可否を決めるので普段はここで落ちないが、**落ちないことと検査しないことは別**
+            // —— 供給の判断とホストの期待がズレた回に、黙って旧ブリッジを操作させない
+            try await enforceVersion(driver: created, key: key, args: args)
             return created
         }
 
         let platform = (args["platform"] as? String)
             ?? ProcessInfo.processInfo.environment["FTESTER_PLATFORM"]
             ?? "ios"
-        let key = Self.driverCacheKey(platform: platform, port: args["port"] as? Int, serial: args["serial"] as? String)
+        // **udid → port の解決はここ1箇所**(H-2)。port は残す(既存の呼び出しを壊さない)
+        let explicitPort = try await Self.portForIOS(args)
+        let key = Self.driverCacheKey(platform: platform, port: explicitPort.map(Int.init),
+                                      serial: args["serial"] as? String)
         if let cached = drivers[key] { return cached }
         let created: AppDriver
         switch platform {
         case "ios":
-            let port = try await Self.resolveIOSPort(explicit: (args["port"] as? Int).map(UInt16.init))
+            let port = try await Self.resolveIOSPort(explicit: explicitPort)
             let resolved = await ExploreDriverResolver.resolve(
                 preferred: port, repoRoot: try? RepoRoot.find(),
                 logger: { Self.logStderr($0) })
@@ -224,9 +251,7 @@ final class MCPServer {
             // 実害: ブリッジ側の修正2件を入れて版も上げたのに、ft_snapshot は直る前の木を
             // 返し続け、`bridge down && bridge up` するまで「直っていない」に見えた。
             // Android は AndroidBridge が expectedBridgeVersionCode で入れ替えるのでこの穴が無い
-            if let note = await Self.staleBridgeWarning(driver: created) {
-                pendingWarnings[key, default: []].append(note)
-            }
+            try await enforceVersion(driver: created, key: key, args: args)
         case "android":
             let serial = try Self.resolveAndroidSerial(explicit: args["serial"] as? String)
             created = try AndroidDriver(serial: serial)
@@ -239,24 +264,101 @@ final class MCPServer {
         return created
     }
 
-    /// 繋いだブリッジが古い版なら警告文、そうでなければ nil。
+    /// 版ズレを既定で拒否する(G)。押し通しは `allowVersionSkew: true` で、その場合は
+    /// **毎回の応答に警告が付き続ける**(1度言って黙らない)。
+    /// 拒否したときは覚えたドライバを捨てる —— 建て直した後に古い判定が残らないように
+    func enforceVersion(driver: AppDriver, key: String, args: [String: Any]) async throws {
+        guard let skew = await Self.bridgeVersionSkew(driver: driver) else {
+            versionSkew[key] = nil
+            return
+        }
+        versionSkew[key] = skew
+        guard args["allowVersionSkew"] as? Bool == true else {
+            drivers[key] = nil
+            throw MCPError(skew)
+        }
+        pendingWarnings[key, default: []].append(Self.skewOverrideWarning(skew))
+    }
+
+    /// 繋いだブリッジの版が食い違っているときの文。一致・判定不能なら nil。
     ///
-    /// **止めはしない**: 利用者が意図して古いブリッジを使っていることはあるし、ここで throw
-    /// するとセッションごと止まる。害は「直したはずの挙動が黙って旧版のまま」なので、
-    /// 気付けさえすればよい。**判定できないときも nil**(旧ブリッジは版を返さない = nil で、
-    /// それを「古い」と断じると常時警告になる)
-    static func staleBridgeWarning(driver: AppDriver) async -> String? {
+    /// **既定は拒否**(G。2026-08-09 に方針を反転した): 以前は警告だけで通していたが、
+    /// MCP の出力はシナリオへ書く文字列を供給するためにあるので、**古いブリッジの出す古い注記から
+    /// 誤ったセレクタが書き込まれる**ほうが「セッションが止まる」より高くつく。
+    /// アドホック探索なら警告で足りるが、生成が目的だとそうではない。
+    ///
+    /// **どちらが新しいかを明示する**(G-4): 対処が変わる ——
+    /// ブリッジが古い = 建て直す / ホストが古い = こちらを建て直す(or pull)。
+    /// **判定できないときは黙る**(旧ブリッジは版を返さない = nil。それを「古い」と断じると常時警告)
+    static func bridgeVersionSkew(driver: AppDriver) async -> String? {
         guard let running = try? await driver.status().protocolVersion,
               running != BridgeAPI.bridgeProtocolVersion else { return nil }
-        return "⚠️ The bridge you are connected to is v\(running) but this build expects"
-            + " v\(BridgeAPI.bridgeProtocolVersion): snapshots and gestures still behave the way"
-            + " the older bridge did. Restart it with `ftester bridge down && ftester bridge up`"
+        let expected = BridgeAPI.bridgeProtocolVersion
+        let side = running > expected
+            ? "the bridge is NEWER than this build (v\(running) > v\(expected)) —"
+                + " your ftester-mcp binary is stale, so rebuild it"
+                + " (swift build --product ftester-mcp) or pull"
+            : "the bridge is OLDER than this build (v\(running) < v\(expected)) —"
+                + " restart it with `ftester bridge down --all && ftester bridge up`"
+        return "bridge protocol mismatch: \(side)."
+            + " Refusing to operate: a stale bridge answers with the behaviour and the notes of"
+            + " its own version, and selectors written from those notes are silently wrong."
+            + " Pass allowVersionSkew: true to proceed anyway."
+    }
+
+    /// 版ズレのまま押し通されたときに毎回付ける警告(G-3)。**1度言って黙らない** ——
+    /// 押し通した事実は、その後の全応答の信頼度に掛かり続ける
+    static func skewOverrideWarning(_ skew: String) -> String {
+        "⚠️ allowVersionSkew: proceeding despite a bridge/host mismatch. \(skew)"
     }
 
     /// 接続先の宛先(ft_status が見せる)。**#2/#5 の取り違えは「今どこに繋がっているか」が
     /// 見えないまま起きる** —— 既定 8123 が死んでいても、はぐれエミュレータを掴んでいても、
     /// 応答だけ見ると正常に見える
     var connections: [String: String] = [:]
+
+    /// 版ズレの内容(engineKey ごと)。ft_status が「失敗するが理由を返す」ために覚えておく
+    var versionSkew: [String: String] = [:]
+
+    /// `udid` / `port` から iOS の宛先ポートを決める(H-2)。**両方渡されたら port を優先**し、
+    /// **食い違うなら明示的に失敗する** —— 黙ってどちらかを採ると、読み手は指したつもりの
+    /// デバイスと別の機を操作したことに最後まで気付けない。
+    /// どちらも無ければ nil(従来どおり resolveIOSPort が既定ポート → 探索の順で決める)
+    static func portForIOS(_ args: [String: Any]) async throws -> UInt16? {
+        let port = (args["port"] as? Int).map(UInt16.init)
+        guard let udid = (args["udid"] as? String).flatMap({ $0.isEmpty ? nil : $0 }) else {
+            return port
+        }
+        return try reconcilePort(port, udid: udid, udidPort: await bridgePort(forUDID: udid))
+    }
+
+    /// `port` と `udid` の突き合わせ。**走査から切り離した純粋関数** —— 実ブリッジが要ると
+    /// 「食い違い」の枝がテストで一度も実行されず、判定を壊しても素通しする
+    /// (2026-08-09 の変異テストで実際に素通しした)
+    static func reconcilePort(_ port: UInt16?, udid: String, udidPort: UInt16?) throws -> UInt16? {
+        guard let udidPort else {
+            throw MCPError("no running bridge is on udid \(udid)."
+                + " ft_list_devices shows which devices have one; start it with"
+                + " `ftester bridge up` (a device without a bridge cannot be driven from MCP)")
+        }
+        guard let port else { return udidPort }
+        guard port == udidPort else {
+            throw MCPError("port \(port) and udid \(udid) point at different devices"
+                + " (that udid is on port \(udidPort)). Pass only one of them")
+        }
+        return port
+    }
+
+    /// udid を申告している稼働中ブリッジのポート。**申告が無いブリッジ(旧版)は素通し** ——
+    /// 「見つからない」と「そのブリッジは答えられない」を混ぜないため、見つからなければ nil
+    static func bridgePort(forUDID udid: String) async -> UInt16? {
+        for found in await BridgeDiscovery.scan(excluding: 0, repoRoot: try? RepoRoot.find()) {
+            guard let client = try? BridgeClient(port: found.port),
+                  let status = try? await client.status(), status.udid == udid else { continue }
+            return found.port
+        }
+        return nil
+    }
 
     /// profile 無しの iOS 宛先。**明示 port は探索しない**(利用者が宛先を決めている)。
     /// 既定ポートが死んでいるのは珍しくない —— `bridge up` は稼働中ブリッジの再利用や
@@ -553,6 +655,56 @@ final class MCPServer {
         return snapshot
     }
 
+    /// スナップショット本文(注記一式 + 木)。ft_snapshot と `snapshotAfter` が共有する ——
+    /// **2つ目の組み立てを作らない**(注記を1つ足したときに片方だけ出る事故を防ぐ)。
+    /// `extraNote` は ft_snapshot の waitFor 用(すり替わりの直後・他の注記より前に置く)
+    private func snapshotBody(_ snapshot: SnapshotResponse, driver: AppDriver,
+                              args: [String: Any], extraNote: String = "") async -> String {
+        // **背面のアプリのツリーを「今の画面」として返さない**: XCUITest の snapshot は
+        // セッションのアプリに閉じているので、**別のアプリが前面に来ても同じ木を返し続ける**。
+        // 実測(2026-08-05・シミュレータで確定。症状の初出は iPhone 実機):
+        // ステータスバーの「◀ 元のアプリへ」を踏んだタップで前面が別アプリに替わったのに、
+        // snapshot は元アプリの画面を返し、エージェントからは「タップが効かない」に見えた
+        let backgroundNote = await Self.backgroundedSessionNote(snapshot, driver: driver)
+        // **すり替わりを先頭に置く**: これが起きているとき、以下の一覧は丸ごと別アプリのもので、
+        // ghost 注記も scrollFrame 候補も読む意味が無い
+        let switchedNote = Self.switchedAppNote(
+            launched: launchedBundleIDs[Self.engineKey(args)], snapshot: snapshot)
+        return switchedNote + extraNote + backgroundNote + Self.ghostNote(snapshot)
+            + (ScrollFrameCandidates.note(snapshot) ?? "")
+            + Self.truncationNote(snapshot) + Self.bulkExemptNote(snapshot)
+            + Self.unlabeledClickablesNote(snapshot) + Self.ambiguousLabelsNote(snapshot)
+            + Self.keyboardCoverageNote(snapshot) + Self.sliverNote(snapshot)
+            + (SnapshotRenderer.truncatedLabelNote(snapshot) ?? "")
+            + SnapshotRenderer.render(snapshot, flagging: Self.ghostFlags(snapshot),
+                                      collapsingBulk: args["expandBulk"] as? Bool != true,
+                                      interactiveOnly: args["interactiveOnly"] as? Bool == true)
+    }
+
+    /// 操作系ツールが `snapshotAfter: true` で返す「操作の直後の画面」。
+    ///
+    /// **往復を半分にするためにある**: tap/type/drag は「変わったかもしれない」で終わるので、
+    /// 読み手はほぼ必ず ft_snapshot を続けて撃つ。実測(2026-08-09 のマップ探索1セッション)では
+    /// 46 回の呼び出しのうち 21 回が**この確認だけの snapshot** だった。
+    ///
+    /// **撮るのは操作の直後**(整定は待たない)。アニメーション中の木が返ることがあるので、
+    /// 期待する要素が居ないときは ft_snapshot の waitFor で待ち直す —— それはツール説明に書く。
+    /// **失敗しても throw しない**: 操作自体は成功しているので、ここで throw すると
+    /// 「タップは効いたのにエラーが返る」になり、読み手が操作を撃ち直して二重操作になる
+    private func snapshotAfterBody(_ args: [String: Any]) async -> String {
+        guard args["snapshotAfter"] as? Bool == true else { return "" }
+        do {
+            let snapshotDriver = try await driver(args)
+            let snapshot = try await freshSnapshot(snapshotDriver, args: args)
+            recordSnapshot(snapshot, snapshotDriver is AndroidDriver ? "android" : "ios", args)
+            return "\n\n" + (await snapshotBody(snapshot, driver: snapshotDriver, args: args))
+        } catch {
+            return "\n\n(snapshotAfter could not read the screen:"
+                + " \(error.localizedDescription) — the action above still went through;"
+                + " take an ft_snapshot yourself)"
+        }
+    }
+
     /// ref を撃つ直前の照合。**撮り直した木から同じ要素を引き直して、その新しい ref を返す**。
     /// 引けない(消えた・ghost)なら撃たずに throw する —— 沈黙した誤操作を作らないため。
     ///
@@ -649,9 +801,28 @@ final class MCPServer {
         let executor = StepExecutor(driver: scrollDriver,
                                     releasesScrollTouch: !isAndroid,
                                     uiFramework: uiFrameworkHint)
-        let outcome = await executor.execute(step)
+        var outcome = await executor.execute(step)
         // **探索でツリーは必ず動く**ので、覚えている木を捨てて撮り直す(古い ref を残さない)
-        let after = try await freshSnapshot(scrollDriver, args: args)
+        var after = try await freshSnapshot(scrollDriver, args: args)
+        // **半開きシートは自分で広げて1度だけやり直す**(2026-08-09)。この形は失敗文で
+        // 「グラバーを上へ引け」と案内済みだったが、**案内できるなら自分でできる** ——
+        // 実測(Apple マップの経路詳細)では、案内どおり ft_drag してから同じ ft_scroll_to を
+        // 撃ち直すだけで通り、2往復を人手で払っていた。
+        // 条件は StepExecutor と共有(StepNote.sheetCollapsed)。**グラバーを名前で特定できる
+        // ときだけ**動かす —— 当てずっぽうのドラッグは地図やリストを勝手に動かす
+        var sheetNote = ""
+        if case .passed = outcome.status {} else if outcome.notes.contains(.sheetCollapsed),
+           let grabber = Self.sheetGrabber(in: after) {
+            let toY = after.screen.height * Self.expandedSheetTopRatio
+            try await scrollDriver.drag(fromX: grabber.frame.centerX, fromY: grabber.frame.centerY,
+                                        toX: grabber.frame.centerX, toY: toY,
+                                        pressSeconds: 0.05, durationSeconds: 0.5)
+            outcome = await executor.execute(step)
+            after = try await freshSnapshot(scrollDriver, args: args)
+            sheetNote = "note: the list had stopped moving inside a partially open sheet, so"
+                + " [\(grabber.ref)] \(RefGuard.describe(grabber)) was dragged up to expand it and"
+                + " the search was retried once.\n"
+        }
         guard case .passed = outcome.status else {
             // **fail-fast(scrollFrame 未解決)は別の文で伝える**: 通常の「did not reach the
             // element」はスワイプを何本か送った前提の文言で、fail-fast は1本も送っていないので
@@ -667,7 +838,10 @@ final class MCPServer {
             // 「届かなかった」だけだと ft_snapshot の往復が要るうえ、**記法の誤りに気づけない**
             // —— 素のラベルは完全一致なので、「端末情報」は「端末情報を表示」に当たらない。
             // 候補を見せれば、綴り違いなのか記法(`*…*`)不足なのかがその場で分かる
-            throw MCPError("scrollTo \"\(selectorText)\" did not reach the element"
+            // **やり直し済みなら先に言う**: 言わないと読み手は失敗文のシート展開ヒントを
+            // 読んで**もう一度同じことを手で試す**(そのぶん往復が増える)
+            throw MCPError(sheetNote
+                + "scrollTo \"\(selectorText)\" did not reach the element"
                 + " (\(outcome.status))\(Self.truncationHint(after)). \(Self.visibleLabelsHint(after))"
                 + Self.notationHint(selectorText, in: after)
                 + Self.scrollAreaHint(beforeScroll ?? after, args: args))
@@ -698,14 +872,39 @@ final class MCPServer {
         // scrollFrame を渡すべき当人なので、複数領域の注記もここに出す(欠陥⑪)
         let scrollAreaNote = args["scrollFrame"] == nil ? (ScrollFrameCandidates.note(after) ?? "")
             : Self.lineNote(Self.scrollAreaHint(beforeScroll ?? after, args: args))
-        return text(switched + "scrolled to \"\(selectorText)\"\(landed)."
+        // **利用者が渡した式をそのまま残す**(F): 探索はセレクタで書くのが DSL の形なので、
+        // ここだけは解決後の要素ではなく渡された式が正しい下書きになる
+        var scrollStep = FlowStep(action: "scrollTo", locator: selector.primary)
+        scrollStep.direction = direction.swipe.rawValue
+        if args["scrollFrame"] != nil { scrollStep.note = "scrollFrame was used during exploration" }
+        interactions.record(InteractionLog.Entry(step: scrollStep, unresolved: nil))
+        return text(switched + sheetNote + "scrolled to \"\(selectorText)\"\(landed)."
             + " The refs below are fresh\n" + scrollAreaNote + Self.ghostNote(after)
+            + Self.truncationNote(after)
             + Self.keyboardCoverageNote(after) + Self.sliverNote(after)
             + (SnapshotRenderer.truncatedLabelNote(after) ?? "")
             // **ここは常に畳む**: ft_scroll_to の答えは「探した1つがどこに居るか」なので、
             // 地図のピンが数十行並ぶ意味がない(戻したいときは ft_snapshot の expandBulk)
             + SnapshotRenderer.render(after, flagging: Self.ghostFlags(after),
                                       collapsingBulk: true))
+    }
+
+    /// シートを広げたときにグラバーを運ぶ先(画面高に対する比)。**上端そのものにはしない** ——
+    /// ステータスバーへ届かせても得は無く、行き過ぎたドラッグはシートを閉じる実装がある
+    static let expandedSheetTopRatio = 0.12
+
+    /// 半開きシートのグラバー。**名前で特定できるときだけ**返す(当てずっぽうのドラッグは
+    /// 地図やリストを勝手に動かすので、確信が無いなら何もしないほうが良い)。
+    /// UIKit/SwiftUI のシートは `Card grabber` のような id/ラベルを出す(実測: Apple マップ)。
+    ///
+    /// 下半分に居るものだけを対象にする —— 既に上まで開いているグラバーを更に引いても
+    /// 広がらず、実装によっては閉じる
+    static func sheetGrabber(in snapshot: SnapshotResponse) -> ElementInfo? {
+        snapshot.elements.first { element in
+            let name = ((element.identifier ?? "") + " " + (element.label ?? "")).lowercased()
+            guard name.contains("grabber") else { return false }
+            return element.frame.centerY > snapshot.screen.height * 0.3
+        }
     }
 
     /// 「session のアプリが今も前面か」。判定できないドライバでは黙る(嘘を足さない)
@@ -749,7 +948,7 @@ final class MCPServer {
             // **ゼロ幅文字を落としてから出す**: ここから写したラベルは**見た目が正しいのに
             // 完全一致しない**(2026-08-07 実測。Google マップの発車案内で U+200B が21個
             // 漏れていた。木の描画側は除去済みで、ヒストだけ素通しだった)
-            let cleaned = e.label.map(FlowMatchMode.stripZeroWidthCharacters)
+            let cleaned = e.label.map(FlowMatchMode.normalizeInvisibleCharacters)
             let name = (e.identifier?.isEmpty == false) ? "#\(e.identifier!)"
                 : (cleaned?.isEmpty == false) ? "\"\(cleaned!)\"" : ""
             guard !name.isEmpty, seen.insert(name).inserted else { continue }
@@ -787,23 +986,51 @@ final class MCPServer {
     /// 積み重なり(`stackedRefs`)にも同じ印を付ける —— 利用者から見ると原因は同じ
     /// 「スクロールの残骸がそこに描かれていない」で、対処(`ft_scroll_to` で出してから撮り直す)
     /// も同じ。**印を2種類に割らない**(見分けても打ち手が変わらないものを増やさない)
+    static let leftoverMark = "⚠️scroll-leftover"
+    /// 単に画面の外に居るだけの行。**危険度が違うので印を割る**(2026-08-09)。
+    /// 上の `ghostFlags` の設計方針は「打ち手が変わらないものは割らない」だが、ここは
+    /// **打ち手ではなく危険度**が違う —— leftover は「撃つと別の物に当たる」(沈黙した誤操作)、
+    /// offscreen は「今そこに無い」だけ。実測(Apple マップの経路詳細)では、シートを広げた後に
+    /// `y=-59` の行まで「別の物に当たるかも」と警告され、本物の leftover と同じ重さで並んでいた
+    static let offscreenMark = "⚠️offscreen"
+
     static func ghostFlags(_ snapshot: SnapshotResponse) -> [Int: String] {
         let refs = Set(ghostRefs(snapshot)).union(RefGuard.stackedRefs(snapshot.elements))
-        return Dictionary(uniqueKeysWithValues: refs.map { ($0, "⚠️scroll-leftover") })
+        var flags: [Int: String] = [:]
+        for element in snapshot.elements where refs.contains(element.ref) {
+            // 画面外判定は DSL と共有(TapTargetGeometry)。2つ目の実装を作らない
+            flags[element.ref] = TapTargetGeometry.offscreenAdvisory(
+                for: element, screen: snapshot.screen) != nil ? offscreenMark : leftoverMark
+        }
+        return flags
     }
 
     static func ghostNote(_ snapshot: SnapshotResponse) -> String {
         let flagged = ghostFlags(snapshot)
-        let ghosts = snapshot.elements.filter { flagged[$0.ref] != nil }
-        guard !ghosts.isEmpty else { return "" }
-        let listed = ghosts.prefix(8).map { "[\($0.ref)] \(RefGuard.describe($0))" }
+        let leftovers = snapshot.elements.filter { flagged[$0.ref] == leftoverMark }
+        let offscreens = snapshot.elements.filter { flagged[$0.ref] == offscreenMark }
+        var note = ""
+        if !leftovers.isEmpty {
+            note += "note: the \(leftoverMark) rows below are not drawn where their frames say"
+                + " (outside their scroll container, or clamped onto another row's frame),"
+                + " so tapping them may hit something else:"
+                + " \(listRefs(leftovers)). Bring them into view with ft_scroll_to first,"
+                + " or verify with ft_screenshot\n"
+        }
+        if !offscreens.isEmpty {
+            note += "note: the \(offscreenMark) rows below are simply off the screen"
+                + " (scrolled past), so they are listed but not visible:"
+                + " \(listRefs(offscreens)). Bring them into view with ft_scroll_to before"
+                + " using them\n"
+        }
+        return note
+    }
+
+    /// 注記に並べる ref の列挙。**8件で打ち切る**(全部出すと注記だけで木より長くなる)
+    private static func listRefs(_ elements: [ElementInfo]) -> String {
+        let listed = elements.prefix(8).map { "[\($0.ref)] \(RefGuard.describe($0))" }
             .joined(separator: " ")
-        let more = ghosts.count > 8 ? " (+\(ghosts.count - 8) more)" : ""
-        return "note: the ⚠️scroll-leftover rows below are not drawn where their frames say"
-            + " (outside their scroll container, or clamped onto another row's frame),"
-            + " so tapping them may hit something else:"
-            + " \(listed)\(more). Bring them into view with ft_scroll_to first,"
-            + " or verify with ft_screenshot\n"
+        return listed + (elements.count > 8 ? " (+\(elements.count - 8) more)" : "")
     }
 
     /// **scrollFrame を渡すべき当人**である ft_scroll_to にだけ出す、複数スクロール領域の注記
@@ -908,11 +1135,175 @@ final class MCPServer {
             $0.type == "clickable" && ($0.identifier ?? "").isEmpty && ($0.label ?? "").isEmpty
         }
         guard !unlabeled.isEmpty else { return "" }
-        let listed = unlabeled.prefix(8).map { "[\($0.ref)]" }.joined(separator: " ")
+        let listed = unlabeled.prefix(8).map { element -> String in
+            scopedSelector(for: element, in: snapshot).map { "[\(element.ref)] = \($0)" }
+                ?? "[\(element.ref)]"
+        }.joined(separator: " ")
         let more = unlabeled.count > 8 ? " (+\(unlabeled.count - 8) more)" : ""
+        // **「セレクタを書けない」は嘘だった**(2026-08-09): id を持つ祖先があれば
+        // `#container >> .clickable[n]` で書ける(スコープ記法。docs/commands.md)。
+        // 実測(Google マップの移動手段タブ)では id もラベルも無い clickable が
+        // `#directions_mode_tabs` の中に居り、この形で一意に指せた。
+        // 祖先も名無しのときだけ「ref か座標しかない」が正しい
+        let writable = unlabeled.contains { scopedSelector(for: $0, in: snapshot) != nil }
+        let advice = writable
+            ? " — a plain label/#id selector cannot pick them, but the ones shown with"
+                + " \"= …\" sit inside a container that has an id, so a scenario can select them"
+                + " with that scoped selector. The rest can only be targeted by ref or coordinates."
+            : " — they can only be targeted by ref or coordinates,"
+                + " so a scenario cannot select them with a stable selector."
         return "note: \(unlabeled.count) clickable element(s) have neither a label nor an id"
-            + " (\(listed)\(more)) — they can only be targeted by ref or coordinates,"
-            + " so a scenario cannot select them with a stable selector.\n"
+            + " (\(listed)\(more))\(advice)\n"
+    }
+
+    /// **シナリオにそのまま書けるセレクタ**を1つ決める。書けないときは nil ——
+    /// 「無い」を黙らず言うのが要点で、ref はセッション限りの番号なのでシナリオには書けない。
+    ///
+    /// 優先順(B-1・E-1 で共有。**2つ目の実装を作らない**):
+    ///   1. 画面で一意な `#id` —— いちばん短く、他の画面でも通りやすい
+    ///   2. 画面で一意なラベル —— id を持たない要素でも書ける
+    ///   3. スコープ記法 `#容器 >> .型[n]` —— id を持つ一意な祖先があるときだけ
+    ///   4. それ以外は nil
+    ///
+    /// **一意性は「今撮った画面の中で」**。他の画面まで保証はできないので、そこは
+    /// ft_dry_run(SelectorInventory の突き合わせ)と実行に委ねる
+    struct SelectorNaming {
+        private let idCounts: [String: Int]
+        private let labelCounts: [String: Int]
+
+        init(_ snapshot: SnapshotResponse) {
+            var ids: [String: Int] = [:]
+            var labels: [String: Int] = [:]
+            for e in snapshot.elements {
+                if let id = e.identifier, !id.isEmpty { ids[id, default: 0] += 1 }
+                let label = FlowMatchMode.normalizeInvisibleCharacters(e.label ?? "")
+                if !label.isEmpty { labels[label, default: 0] += 1 }
+            }
+            idCounts = ids
+            labelCounts = labels
+        }
+
+        /// **勧める前に自分で引いてみる**(2026-08-09。実アプリ 18 枚へ当てて発覚): 候補を
+        /// 組み立てただけでは書けているか分からない —— ラベルを `"…"` で囲んで出していた版は
+        /// 引用符ごと literal になって**1件も当たらなかった**。記法の綴じ(先頭が `#`/`.`、
+        /// `>>` や `||` を含む等)は場合分けで潰しきれないので、DSL 本体で解決して
+        /// **当人が返ることを確かめてから**返す
+        func selector(for element: ElementInfo, in snapshot: SnapshotResponse) -> String? {
+            candidates(for: element, in: snapshot).first {
+                MCPServer.picksExactly(element, with: $0, in: snapshot)
+            }
+        }
+
+        /// 優先順に並べた候補(採否は selector(for:in:) が実際に引いて決める)
+        private func candidates(for element: ElementInfo,
+                                in snapshot: SnapshotResponse) -> [String] {
+            var out: [String] = []
+            if let id = element.identifier, !id.isEmpty, idCounts[id] == 1 { out.append("#\(id)") }
+            // **切り詰め表示になるラベルは候補にしない**: 40字超は一覧に "…" 付きで出るので、
+            // 読み手が写した完全一致は必ず外れる(SnapshotRenderer.truncatedLabelNote と同じ理由)
+            let label = FlowMatchMode.normalizeInvisibleCharacters(element.label ?? "")
+            if !label.isEmpty, labelCounts[label] == 1,
+               label.count <= SnapshotRenderer.labelDisplayLimit {
+                // 素のラベルが記法と衝突する形(`#` や `.` 始まり)には `=` 逃がしがある
+                out.append(label)
+                out.append("=\(label)")
+            }
+            if let scoped = MCPServer.scopedSelector(for: element, in: snapshot) {
+                out.append(scoped)
+            }
+            return out
+        }
+    }
+
+    /// このセレクタが**その要素ただ1つ**を選ぶか。判定は DSL 本体(`matchDetailed`)に委ねる ——
+    /// `resolvedCandidates` は `[n]` を適用する前の候補列なので、ここで使うと
+    /// 添字付きのスコープ記法を「曖昧」と誤判定する。
+    /// フォールバック(`a||b`)を含む式は「1つを選ぶ」と言えないので採らない
+    static func picksExactly(_ element: ElementInfo, with selector: String,
+                             in snapshot: SnapshotResponse) -> Bool {
+        let parsed = FTSelector.parse(selector)
+        guard parsed.fallbacks.isEmpty else { return false }
+        return StepExecutor.matchDetailed(parsed.primary,
+                                          elements: snapshot.elements)?.0.ref == element.ref
+    }
+
+    /// `#container >> .type[n]` を組み立てる。**書けないときは nil**(嘘の助言を出さない)。
+    ///
+    /// 条件は2つ: ① id を持つ祖先が居る ② **その id が画面で一意**(重複していると
+    /// スコープ自体が曖昧になり、`#recycler_view` のように4つある画面で別の容器を掴む)。
+    /// 添字はスコープ内・同じ型の中での順番で、記法は **1 オリジン**(FlowLocator.index の規約)
+    static func scopedSelector(for element: ElementInfo, in snapshot: SnapshotResponse) -> String? {
+        var idCounts: [String: Int] = [:]
+        for e in snapshot.elements {
+            guard let id = e.identifier, !id.isEmpty else { continue }
+            idCounts[id, default: 0] += 1
+        }
+        let ancestors = TapTargetGeometry.ancestors(of: element, in: snapshot.elements)
+        guard let scope = ancestors.first(where: { ancestor in
+            guard let id = ancestor.identifier, !id.isEmpty else { return false }
+            return idCounts[id] == 1
+        }), let scopeID = scope.identifier else { return nil }
+        let siblings = StepExecutor.descendants(of: scope, in: snapshot.elements)
+            .filter { $0.type == element.type }
+        guard let position = siblings.firstIndex(where: { $0.ref == element.ref }) else { return nil }
+        return "#\(scopeID) >> .\(element.type)[\(position + 1)]"
+    }
+
+    /// **打ち切りは先頭でも言う**(2026-08-09)。`(+91 elements truncated)` は render の末尾に
+    /// 1行出るだけで、120 行の一覧のいちばん下にあった —— 実測(Apple マップの経路プランナー)で
+    /// **候補 211 件中 91 件が木から落ちて**いたのに、いちばん重い事実がいちばん読まれない位置に
+    /// あった。打ち切りは描画の省略ではなく配列からの脱落なので、`waitFor` も `scrollTo` も
+    /// 落ちた要素を一生探し続ける。
+    ///
+    /// **何が落ちたかはブリッジしか知らない**ので、申告があるときだけ内訳を添える
+    /// (`SnapshotResponse.truncatedTiers`。無い = 旧ブリッジなら件数だけ)
+    static func truncationNote(_ snapshot: SnapshotResponse) -> String {
+        guard snapshot.truncatedCount > 0 else { return "" }
+        let breakdown = snapshot.truncatedTiers.map { tiers -> String in
+            let parts = SnapshotResponse.truncatedTierOrder.compactMap { tier -> String? in
+                guard let count = tiers[tier.key], count > 0 else { return nil }
+                return "\(count) \(tier.label)"
+            }
+            return parts.isEmpty ? "" : " (\(parts.joined(separator: ", ")))"
+        } ?? ""
+        return "note: \(snapshot.truncatedCount) element(s) were dropped by the snapshot limit"
+            + "\(breakdown) — they are gone from the tree, not just hidden, so waitFor/ft_scroll_to"
+            + " will never find them. Narrow the screen (close a sheet, scroll a big list away)"
+            + " or work from what is listed.\(capHogNote(snapshot))\n"
+    }
+
+    /// 上限の外で bulk を送ったときの注記(61)。
+    ///
+    /// **「一覧が上限を超えているのは異常ではない」と言うためにある**: 読み手は
+    /// `maxSnapshotElements` を知らないので、120 を超える一覧を見て木が壊れていると読む余地がある。
+    /// 同時に「畳まれた群は枠を食っていない」= 打ち切りの原因ではないことも伝わる。
+    /// **申告が無いブリッジ(旧版・Android)では黙る** —— 嘘の安心を出さない
+    static func bulkExemptNote(_ snapshot: SnapshotResponse) -> String {
+        guard let count = snapshot.bulkExemptCount, count > 0 else { return "" }
+        return "note: \(count) element(s) of large same-id group(s) are listed outside the"
+            + " element limit, so they did not push anything else out. They behave like any"
+            + " other row (tap by ref, expandBulk to see them all).\n"
+    }
+
+    /// 打ち切ったときだけ添える「枠を食っている当人」。
+    ///
+    /// **間引きの方針では直せないから、代わりに名指しする**(2026-08-09): 同一 id の地図 POI が
+    /// 上限の過半を占めることは実際にある(実測: Apple マップの経路プランナーで 77/120)が、
+    /// 「大きな同一 id 群を先に捨てる」は**リストの行にも同じだけ当たる**ので採れない
+    /// (BridgeSnapshotThinning.bulkGroupMinimum の却下理由)。読み手にできる手は
+    /// 「その群が出ない画面にする」= 地図を畳む・シートを閉じるなので、**どれが原因かだけ**言う
+    static func capHogNote(_ snapshot: SnapshotResponse) -> String {
+        var counts: [String: Int] = [:]
+        for e in snapshot.elements {
+            guard let id = e.identifier, !id.isEmpty else { continue }
+            counts[id, default: 0] += 1
+        }
+        guard let (id, count) = counts.max(by: { $0.value < $1.value }),
+              count >= SnapshotRenderer.bulkGroupMinimum else { return "" }
+        let share = count * 100 / max(1, snapshot.elements.count)
+        return " #\(id) alone accounts for \(count) of the \(snapshot.elements.count) kept"
+            + " element(s) (\(share)%) — collapsing whatever draws it (a map, a long list)"
+            + " frees the most room."
     }
 
     /// キーボード下に隠れた操作対象。木からは判定できない(キーボードはスナップショットの対象外)
@@ -948,21 +1339,67 @@ final class MCPServer {
             + " or just narrow by design: \(listed)\(more)\n"
     }
 
-    /// 同一ラベルが3件以上に一致するときの要約注記(欠陥⑩)。id の重複は別パッケージが
+    /// 曖昧と呼ぶ下限。**2**(2026-08-09 に3から下げた): 2件でも `tap("他のフィルタ")` は
+    /// 一意に選べず、危険度は3件と変わらない。実測(Google マップの検索結果)では
+    /// `"他のフィルタ"` が別 frame の2件あるのに黙っていた。
+    /// 雑音は「入れ子の一本鎖」を除外して抑える(下記)
+    static let ambiguousLabelMinimum = 2
+
+    /// 同一ラベルが複数に一致するときの要約注記(欠陥⑩)。id の重複は別パッケージが
     /// 行内に `×N` として個別に出すので、こちらは**ラベルだけ**を扱う。
     /// 実測: 経路検索の候補一覧で「東京駅」が9件一致し、素のラベルでは一意に指せなかった
     static func ambiguousLabelsNote(_ snapshot: SnapshotResponse) -> String {
-        var counts: [String: Int] = [:]
+        var groups: [String: [ElementInfo]] = [:]
         for e in snapshot.elements {
-            guard let label = e.label, !label.isEmpty else { continue }
-            counts[label, default: 0] += 1
+            // **ゼロ幅文字を落としてから数える**(2026-08-09)。一覧の行は
+            // `SnapshotRenderer.renderElement` が除去済みの形で出すので、生ラベルのまま
+            // 注記に出すと**同じラベルが1つの応答の中で2表記**になる(実測: Google マップの
+            // `"​​埼京線​"`)。読み手はこれを別物と読む。数える側も揃える —— ゼロ幅の有無だけが
+            // 違う2件は `FlowMatchMode.matches` では区別できず、実際に曖昧だから
+            let label = FlowMatchMode.normalizeInvisibleCharacters(e.label ?? "")
+            guard !label.isEmpty else { continue }
+            groups[label, default: []].append(e)
         }
-        let ambiguous = counts.filter { $0.value >= 3 }.sorted { $0.value > $1.value }
+        let ambiguous = groups
+            .filter { $0.value.count >= ambiguousLabelMinimum && !isSingleChain($0.value, in: snapshot) }
+            .sorted { $0.value.count > $1.value.count }
         guard !ambiguous.isEmpty else { return "" }
-        let listed = ambiguous.prefix(5).map { "\"\($0.key)\" ×\($0.value)" }.joined(separator: " ")
-        let more = ambiguous.count > 5 ? " (+\(ambiguous.count - 5) more)" : ""
-        return "note: these labels match multiple elements, so a plain label selector cannot"
-            + " pick one uniquely: \(listed)\(more).\n"
+        // **「一意に指せない」で終わらせない**(2026-08-09): MCP の出力はシナリオへ書く文字列を
+        // 供給するためにあるので、代わりに書ける形まで出す。機構は `writableSelector` =
+        // ft_tap の推奨セレクタ(E)と同じ実装
+        let naming = SelectorNaming(snapshot)
+        var lines: [String] = ["note: these labels match multiple elements, so a plain label"
+            + " selector cannot pick one uniquely. Write one of these instead"
+            + " (\"—\" = this element has no stable selector; use a labelled ancestor or"
+            + " a coordinate):"]
+        for (label, matches) in ambiguous.prefix(ambiguousLabelsShown) {
+            let shown = matches.prefix(ambiguousMatchesShown).map { element -> String in
+                "[\(element.ref)] " + (naming.selector(for: element, in: snapshot) ?? "—")
+            }.joined(separator: " / ")
+            let cut = matches.count > ambiguousMatchesShown
+                ? " (+\(matches.count - ambiguousMatchesShown) more matches not shown)" : ""
+            lines.append("  \"\(label)\" ×\(matches.count): \(shown)\(cut)")
+        }
+        if ambiguous.count > ambiguousLabelsShown {
+            lines.append("  (+\(ambiguous.count - ambiguousLabelsShown) more ambiguous label(s)"
+                + " not shown — ft_snapshot again after narrowing the screen to see them)")
+        }
+        return lines.joined(separator: "\n") + "\n"
+    }
+
+    /// 曖昧ラベル注記に並べる上限。**打ち切ったことは必ず言う**(黙って切ると
+    /// 「これで全部」と読まれる)
+    static let ambiguousLabelsShown = 5
+    static let ambiguousMatchesShown = 6
+
+    /// 同じラベルの群が**入れ子の一本鎖**か(容器とその中身が同じラベルを名乗る形)。
+    /// 下限を2へ下げると、`button "自宅、追加"` とその子 `#IconImage-TitleLabel-SubtitleLabel`
+    /// のようなラッパー対が全部鳴る —— どちらを掴んでも同じものなので曖昧ではない。
+    /// `RefGuard.stackedRefs` が同じ理由で使っている除外と同型
+    static func isSingleChain(_ group: [ElementInfo], in snapshot: SnapshotResponse) -> Bool {
+        guard let first = group.first else { return true }
+        let chain = TapTargetGeometry.lineage(of: first, in: snapshot.elements)
+        return group.allSatisfy { chain.contains($0.ref) }
     }
 
     /// 座標ピンチの既定の半径 = 画面の短辺のこの割合。**画面相対**なのは、座標系が
@@ -1121,13 +1558,35 @@ final class MCPServer {
     /// **同一シミュレータに2本目のランナーが立った**こと(全ポート共通 bundle id のため
     /// 先代が蹴り出される。FTester.swift の bridge up 参照)。素のメッセージからは追えない
     func call(tool: String, args: [String: Any]) async throws -> [[String: Any]] {
+        let clock = ContinuousClock()
+        let start = clock.now
         do {
-            return try await dispatch(tool: tool, args: args)
+            return Self.withElapsed(try await dispatch(tool: tool, args: args),
+                                    since: start, clock: clock)
         } catch {
             let hint = await connectionLostHint(error, args: args)
             guard !hint.isEmpty else { throw error }
             throw MCPError(error.localizedDescription + hint)
         }
+    }
+
+    /// **デバイス側に何秒かかったかを毎回返す**(2026-08-09)。読み手はこれが無いと、自分の
+    /// 思考時間まで含んだ壁時計しか測れない —— 実測を頼まれたときに `date` をシェルで撃つ
+    /// 往復が発生していた。
+    ///
+    /// **末尾に独立した content ブロックとして足す**(本文へ混ぜない): 本文を読む側は
+    /// `content[0].text` を見るので、混ぜると所要時間が結果の文字列の一部になって
+    /// 照合や引用を汚す。画像を返す ft_screenshot でも同じ形で足せる
+    static func withElapsed(_ content: [[String: Any]], since start: ContinuousClock.Instant,
+                            clock: ContinuousClock) -> [[String: Any]] {
+        let ms = (clock.now - start) / .milliseconds(1)
+        return content + [["type": "text", "text": "⏱ \(Self.elapsedText(milliseconds: ms))"]]
+    }
+
+    /// 1秒未満はミリ秒・以上は小数1桁の秒(読み手が桁を数えなくて済む形)
+    static func elapsedText(milliseconds: Double) -> String {
+        milliseconds < 1000 ? "\(Int(milliseconds.rounded()))ms"
+            : String(format: "%.1fs", milliseconds / 1000)
     }
 
     func connectionLostHint(_ error: Error, args: [String: Any]) async -> String {
@@ -1193,16 +1652,25 @@ final class MCPServer {
             // driver() を先に通す: profile 指定の解決(provision)と udids の記録がここで済み、
             // 直指定でも同じ宛先選択規則に乗る
             let appsDriver = try await driver(args)
+            let appsFilter = (args["filter"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            // **filter を渡したら既定で system も探す**: 絞り込む唯一の動機は「あのアプリを
+            // 見つける」ことで、端末に載っている地図・ブラウザは system 側に居る。既定のままだと
+            // 「入っていない」という誤った空振りになる(2026-08-09 に実測して adb へ落ちた)。
+            // 明示の includeSystem: false は尊重する
+            let includeSystem = args["includeSystem"] as? Bool ?? (appsFilter != nil)
             if Self.platformName(args) == "android" {
                 guard let android = appsDriver as? AndroidDriver else {
                     throw MCPError("this Android connection cannot list packages")
                 }
-                return text(DeviceInventory.appsText(packages: try android.listInstalledPackages()))
+                return text(DeviceInventory.appsText(
+                    packages: try android.listPackages(includeSystem: includeSystem),
+                    includeSystem: includeSystem, filter: appsFilter))
             }
             let deviceName = try await appsDriver.status().device
             let udid = try udids[Self.engineKey(args)].flatMap { $0 }
                 ?? SimulatorAppCatalog.bootedSimulatorUDID(named: deviceName)
-            return text(DeviceInventory.appsText(apps: try SimulatorAppCatalog.apps(udid: udid)))
+            return text(DeviceInventory.appsText(apps: try SimulatorAppCatalog.apps(udid: udid),
+                                                 includeSystem: includeSystem, filter: appsFilter))
 
         case "ft_logs":
             let logBundleID = args["bundleId"] as? String ?? lastLaunchedBundleID(args)
@@ -1231,6 +1699,10 @@ final class MCPServer {
             try await launchDriver.launch(bundleID: bundleID)
             // 以後の snapshot は「これの木か」を突き合わせられる(switchedAppNote)
             launchedBundleIDs[Self.engineKey(args)] = bundleID
+            // 下書きの起点(F-3 の既定範囲は「直近の ft_launch 以降」)。@TestClass(app:) にも使う
+            interactions.record(InteractionLog.Entry(
+                step: nil, unresolved: nil, isLaunch: true, bundleID: bundleID,
+                platform: Self.platformName(args)))
             return text("Launched: \(bundleID)")
 
         case "ft_open_url":
@@ -1241,6 +1713,9 @@ final class MCPServer {
             // ルーティングで、installedState が守っている XCUIApplication.launch() のランナー死
             // (ft_launch のコメント参照)とは経路が別
             try await openURLDriver.openURL(url, bundleID: openURLBundleID)
+            var openStep = FlowStep(action: "openURL")
+            openStep.text = url
+            interactions.record(InteractionLog.Entry(step: openStep, unresolved: nil))
             return text("Delivered \(url)"
                 + (openURLBundleID.map { " to \($0)" } ?? "") + "."
                 + " Delivery is asynchronous (the app has to receive and handle it) — if a"
@@ -1278,24 +1753,9 @@ final class MCPServer {
             // **プラットフォームはドライバの実体から採る**(profile 指定時は args["platform"] が
             // 空でもプロファイル側で解決済みなので、args を見ると取り違える)
             recordSnapshot(snapshot, snapshotDriver is AndroidDriver ? "android" : "ios", args)
-            // **背面のアプリのツリーを「今の画面」として返さない**: XCUITest の snapshot は
-            // セッションのアプリに閉じているので、**別のアプリが前面に来ても同じ木を返し続ける**。
-            // 実測(2026-08-05・シミュレータで確定。症状の初出は iPhone 実機):
-            // ステータスバーの「◀ 元のアプリへ」を踏んだタップで前面が別アプリに替わったのに、
-            // snapshot は元アプリの画面を返し、エージェントからは「タップが効かない」に見えた
-            let backgroundNote = await Self.backgroundedSessionNote(snapshot, driver: snapshotDriver)
-            // **すり替わりを先頭に置く**: これが起きているとき、以下の一覧は丸ごと別アプリのもので、
-            // ghost 注記も scrollFrame 候補も読む意味が無い
-            let switchedNote = Self.switchedAppNote(
-                launched: launchedBundleIDs[Self.engineKey(args)], snapshot: snapshot)
             return text(withPendingWarnings(
-                switchedNote + waitNote + backgroundNote + Self.ghostNote(snapshot)
-                + (ScrollFrameCandidates.note(snapshot) ?? "")
-                + Self.unlabeledClickablesNote(snapshot) + Self.ambiguousLabelsNote(snapshot)
-                + Self.keyboardCoverageNote(snapshot) + Self.sliverNote(snapshot)
-                + (SnapshotRenderer.truncatedLabelNote(snapshot) ?? "")
-                + SnapshotRenderer.render(snapshot, flagging: Self.ghostFlags(snapshot),
-                                          collapsingBulk: args["expandBulk"] as? Bool != true),
+                await snapshotBody(snapshot, driver: snapshotDriver, args: args,
+                                   extraNote: waitNote),
                 args: args))
 
         case "ft_tap":
@@ -1303,12 +1763,16 @@ final class MCPServer {
             if let ref = args["ref"] as? Int {
                 let target = try await verifiedRef(ref, driver: d, args: args)
                 try await d.tap(ref: target.ref)
+                recordInteraction(action: "tap", resolvedRef: target.ref, args: args)
                 return text("tap [\(ref)] done.\(target.note)"
-                    + " The screen may have changed — take a fresh ft_snapshot")
+                    + reproductionNote(resolvedRef: target.ref, args: args)
+                    + Self.changedHint(args) + (await snapshotAfterBody(args)))
             }
             if let x = args["x"] as? Double, let y = args["y"] as? Double {
                 try await d.tap(x: x, y: y)
-                return text("tap (\(x), \(y)) done")
+                recordInteraction(action: "tap", resolvedRef: nil, args: args, coordinate: (x, y))
+                return text("tap (\(x), \(y)) done" + Self.coordinateReproductionNote
+                    + (await snapshotAfterBody(args)))
             }
             throw MCPError("ref or x/y is required")
 
@@ -1364,16 +1828,28 @@ final class MCPServer {
                 try await typeDriver.tap(ref: ref)
                 note += await awaitFocus(ref: ref, driver: typeDriver, args: args)
             }
-            guard wantsEnter else { return text("Typed: \"\(content ?? "")\"\(note)") }
+            // 入力欄も**セレクタで再現できないと書けない**(E)。ref を渡さない
+            // (フォーカス任せの)呼び方では対象が確定しないので黙る
+            let typedSelector = targetRef.map { reproductionNote(resolvedRef: $0, args: args) } ?? ""
+            if let content, !content.isEmpty {
+                recordInteraction(action: "type", resolvedRef: targetRef, args: args, text: content)
+            }
+            if wantsEnter { recordInteraction(action: "pressEnter", resolvedRef: nil, args: args) }
+            guard wantsEnter else {
+                return text("Typed: \"\(content ?? "")\"\(note)\(typedSelector)"
+                    + (await snapshotAfterBody(args)))
+            }
             try await typeDriver.pressEnter()
             return text((content.map { "Typed: \"\($0)\" and pressed Enter" } ?? "Pressed Enter")
-                + note)
+                + note + typedSelector + (await snapshotAfterBody(args)))
 
         case "ft_swipe":
             guard let direction = FTSwipeDirection(rawValue: args["direction"] as? String ?? "") else {
                 throw MCPError("direction must be one of up/down/left/right")
             }
             try await driver(args).swipe(direction)
+            recordInteraction(action: "swipe", resolvedRef: nil, args: args,
+                              direction: direction.rawValue)
             // **「動いた」と断言しない**(back と同じ理由。2026-08-06)。スワイプは端に着いていれば
             // 1px も動かないし、スクロールできない画面では何も起きない
             return text("swipe \(direction.rawValue) sent."
@@ -1395,6 +1871,7 @@ final class MCPServer {
             case "appSwitcher": try await navigation.openAppSwitcher()
             default: throw MCPError("target must be one of back/home/appSwitcher")
             }
+            recordInteraction(action: target, resolvedRef: nil, args: args)
             // **「画面が変わった」と断言しない**(2026-08-06 の探索で外した): iOS の back は
             // 端の swipe なので、自前ナビの画面(`#btn_back` を持つ SwiftUI 等)では
             // **何も起きない**。back でアプリ自体を出てしまうこともあり、どちらも
@@ -1420,7 +1897,12 @@ final class MCPServer {
                 clearNote = verified.note
             }
             try await clearDriver.clearInput(ref: clearRef)
-            return text("cleared\(clearNote)")
+            recordInteraction(action: "clearInput", resolvedRef: clearRef, args: args)
+            return text("cleared\(clearNote)"
+                + (clearRef.map { reproductionNote(resolvedRef: $0, args: args) } ?? ""))
+
+        case "ft_draft_scenario":
+            return text(draftScenario(args))
 
         case "ft_dsl_commands":
             return dslCommands(args)
@@ -1434,6 +1916,7 @@ final class MCPServer {
             // (`[17]` と返す)と食い違って読み手が取り違える(2026-08-07 の棚卸し)
             var doubleTapWhat: String
             var doubleTapNote = ""
+            var doubleTapSelector = ""
             if let ref = args["ref"] as? Int {
                 let element = try await verifiedElement(ref, driver: doubleTapDriver, args: args)
                 doubleTapPoint = (element.frame.centerX, element.frame.centerY)
@@ -1447,30 +1930,59 @@ final class MCPServer {
                     + RefGuard.overlapWarning(found: element, in: lastSnapshots[Self.engineKey(args)]?
                         .elements ?? [], screen: lastSnapshots[Self.engineKey(args)]?.screen
                         ?? FTRect(x: 0, y: 0, width: 0, height: 0))
+                doubleTapSelector = reproductionNote(resolvedRef: element.ref, args: args)
             } else if let x = args["x"] as? Double, let y = args["y"] as? Double {
                 doubleTapPoint = (x, y)
                 doubleTapWhat = "(\(x), \(y))"
+                doubleTapSelector = Self.coordinateReproductionNote
             } else {
                 throw MCPError("ref or x/y is required")
             }
             try await doubleTapDriver.doubleTap(x: doubleTapPoint.x, y: doubleTapPoint.y)
-            return text("double tap \(doubleTapWhat) done.\(doubleTapNote)"
+            return text("double tap \(doubleTapWhat) done.\(doubleTapNote)\(doubleTapSelector)"
                 + " The screen may have changed — take a fresh ft_snapshot."
                 + iosEngineHint("Compose Multiplatform", "double tap", args: args))
 
         case "ft_drag":
-            guard let fromX = args["fromX"] as? Double, let fromY = args["fromY"] as? Double,
-                  let toX = args["toX"] as? Double, let toY = args["toY"] as? Double else {
-                throw MCPError("fromX/fromY/toX/toY are required")
+            let dragDriver = try await driver(args)
+            // **掴む側を ref で指せる**(2026-08-09): 半開きのシートを広げる操作は
+            // 「グラバーを上へ引く」だけなのに、座標しか受けないせいで
+            // `#Card grabber` の frame を人が読んで手で計算する必要があった(実測)。
+            // 終点は「そこまで運ぶ距離」なので dy/dx でも書ける
+            var fromPoint: (x: Double, y: Double)?
+            var dragSelector = Self.coordinateReproductionNote
+            if let ref = args["fromRef"] as? Int {
+                // **撮り直した木の frame を使う**(verifiedElement)。覚えていた frame から
+                // 座標を作ると、この修正が防ごうとしている「古い座標を撃つ」に自分で落ちる
+                let element = try await verifiedElement(ref, driver: dragDriver, args: args)
+                fromPoint = (element.frame.centerX, element.frame.centerY)
+                dragSelector = reproductionNote(resolvedRef: element.ref, args: args)
+            } else if let x = args["fromX"] as? Double, let y = args["fromY"] as? Double {
+                fromPoint = (x, y)
             }
-            try await driver(args).drag(fromX: fromX, fromY: fromY, toX: toX, toY: toY,
-                                        pressSeconds: 0.05,
-                                        durationSeconds: args["durationSeconds"] as? Double ?? 1.5)
+            guard let from = fromPoint else {
+                throw MCPError("fromRef or fromX/fromY is required")
+            }
+            // 終点は絶対座標か相対移動のどちらか(相対は「グラバーを 400 上へ」を素直に書ける)
+            let toX = args["toX"] as? Double ?? (from.x + (args["dx"] as? Double ?? 0))
+            let toY = args["toY"] as? Double ?? (from.y + (args["dy"] as? Double ?? 0))
+            guard toX != from.x || toY != from.y else {
+                throw MCPError("the drag does not move: pass toX/toY, or dx/dy")
+            }
+            let fromX = from.x
+            let fromY = from.y
+            try await dragDriver.drag(fromX: fromX, fromY: fromY, toX: toX, toY: toY,
+                                      pressSeconds: 0.05,
+                                      durationSeconds: args["durationSeconds"] as? Double ?? 1.5)
             // **無検証であることを言う**(swipe / pinch は言っているのに drag / press だけ
             // 「done」で言い切っていた。同じ無検証なのに信頼度が違って見える)
-            return text("drag (\(fromX), \(fromY)) → (\(toX), \(toY)) sent."
-                + " Nothing about the result is checked — if it should have moved something,"
-                + " confirm with ft_snapshot/ft_screenshot")
+            return text("drag (\(fromX), \(fromY)) → (\(toX), \(toY)) sent.\(dragSelector)"
+                + (args["snapshotAfter"] as? Bool == true
+                   ? " Nothing about the result is checked — read the tree below to confirm"
+                     + " it moved what you meant."
+                   : " Nothing about the result is checked — if it should have moved something,"
+                     + " confirm with ft_snapshot/ft_screenshot")
+                + (await snapshotAfterBody(args)))
 
         case "ft_pinch":
             let scale = args["scale"] as? Double ?? 2.0
@@ -1484,10 +1996,12 @@ final class MCPServer {
             var identifier: String?
             var whole = false
             var areaIgnored = false
+            var pinchSelector = ""
             if let ref = args["ref"] as? Int {
                 let element = try await verifiedElement(ref, driver: pinchDriver, args: args)
                 frame = element.frame
                 identifier = element.identifier
+                pinchSelector = reproductionNote(resolvedRef: element.ref, args: args)
             } else if let x = args["x"] as? Double, let y = args["y"] as? Double {
                 // **地図・キャンバスには ref が無い**(2026-08-09 実測): Apple マップの場所カードを
                 // 半分出したまま ref 無しで撃つと、指が画面全体に開くのでシートが掴まれ、
@@ -1505,7 +2019,7 @@ final class MCPServer {
             }
             try await pinchDriver.pinch(frame: frame, identifier: identifier, scale: scale,
                                         durationSeconds: args["durationSeconds"] as? Double ?? 0.5)
-            return text("pinch x\(scale) done."
+            return text("pinch x\(scale) done.\(pinchSelector)"
                 // **「小さくなる」とだけ言わない**(2026-08-06 実測): 指が対象の内側に収まる分だけ
                 // 小さくなることもあれば、慣性で大きくもなる(scale 2.0 の要求で累積 3.9 倍)
                 + " The actual zoom can differ from what you asked for in either direction"
@@ -1529,7 +2043,9 @@ final class MCPServer {
             if let ref = args["ref"] as? Int {
                 let pressTarget = try await verifiedRef(ref, driver: pressDriver, args: args)
                 try await pressDriver.press(ref: pressTarget.ref, duration: pressDuration)
+                recordInteraction(action: "press", resolvedRef: pressTarget.ref, args: args)
                 return text("press [\(ref)] done\(pressTarget.note)."
+                    + reproductionNote(resolvedRef: pressTarget.ref, args: args)
                     + " The screen may have changed — take a fresh ft_snapshot")
             }
             // **座標形は ft_tap と揃える**: ドライバは press(x:y:duration:) を要件として持つのに
@@ -1537,7 +2053,8 @@ final class MCPServer {
             // 長押しする操作(ピンを落とす・住所を出す)が一切書けない状態だった(2026-08-07)
             if let x = args["x"] as? Double, let y = args["y"] as? Double {
                 try await pressDriver.press(x: x, y: y, duration: pressDuration)
-                return text("press (\(x), \(y)) done."
+                recordInteraction(action: "press", resolvedRef: nil, args: args, coordinate: (x, y))
+                return text("press (\(x), \(y)) done." + Self.coordinateReproductionNote
                     + " The screen may have changed — take a fresh ft_snapshot")
             }
             throw MCPError("ref or x/y is required")
@@ -1589,6 +2106,125 @@ final class MCPServer {
 
     private func text(_ string: String) -> [[String: Any]] {
         [["type": "text", "text": string]]
+    }
+
+    /// 探索の操作列から Swift シナリオの**下書き**を組む(F)。
+    ///
+    /// **ファイルには書かない**(F-2): 置き場所と命名はスキルの仕事で、MCP は文字列を返すだけ。
+    /// 生成そのものは `ScenarioCodeGen.render` に委ねる —— 記録機能(`ftester api gen-scenario`)と
+    /// 同じ生成器を通すので、CAE の形も DSL の綴りも1箇所で決まる(2つ目の実装を作らない)。
+    ///
+    /// **アサーションは推測で作らない**(F-5): expectation は空の骨格で出し、
+    /// ft_dry_run の「アサーションの無い expectation ブロック」検出に埋めさせる。
+    /// **セレクタを解決できなかった手は TODO で残す**(F-4) —— 消すと手順と食い違う
+    func draftScenario(_ args: [String: Any]) -> String {
+        let scope = (args["all"] as? Bool == true)
+            ? interactions.entries : interactions.sinceLastLaunch
+        guard !scope.isEmpty else {
+            return "No interactions recorded yet. Drive the app with ft_launch / ft_tap / ft_type"
+                + " / ft_scroll_to first — this tool turns that sequence into a scenario draft."
+        }
+        let target = interactions.target(in: scope)
+        let unresolved = scope.compactMap(\.unresolved)
+        let steps = scope.compactMap(\.step)
+        let flow = Flow(name: args["title"] as? String ?? "explored with ft_* (draft)",
+                        app: target.app, platform: target.platform,
+                        goal: nil, generatedBy: Self.draftGeneratedBy, steps: steps)
+        let className = (args["className"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            ?? "DraftedScenario"
+        var code = ScenarioCodeGen.render(flow: flow, className: className,
+                                          generatedBy: Self.draftGeneratedBy,
+                                          emptyExpectation: true)
+        if !unresolved.isEmpty {
+            // **本文の中へ入れる**: ヘッダのコメントだと、書き写すときに落ちる
+            let todos = unresolved.map {
+                "            // TODO: no stable selector — \($0)"
+            }.joined(separator: "\n")
+            code = code.replacingOccurrences(
+                of: "        scenario {",
+                with: "        // \(unresolved.count) step(s) below could not be written as a"
+                    + " selector and are listed here so the draft still matches what you did:\n"
+                    + todos + "\n        scenario {")
+        }
+        var header = "Draft for \(target.app.isEmpty ? "(unknown app)" : target.app)"
+            + " from \(scope.count) recorded interaction(s)"
+            + (unresolved.isEmpty ? "" : ", \(unresolved.count) of which have no stable selector")
+            + ".\nWrite it under TestProjects/<project>/scenarios/ and run ft_dry_run."
+            + " **The expectation block is intentionally empty** — dry-run will report it,"
+            + " and that is the signal to fill in what this scenario proves.\n"
+        if interactions.droppedFromFront > 0 {
+            header += "note: the \(interactions.droppedFromFront) oldest interaction(s) were"
+                + " dropped from the log (it keeps the most recent"
+                + " \(InteractionLog.maximumEntries)).\n"
+        }
+        return header + "\n" + code
+    }
+
+    static let draftGeneratedBy = "ftester MCP exploration (ft_draft_scenario)"
+
+    /// 「撮り直せ」の案内。**snapshotAfter を渡されているときは黙る** —— 木がその下に続くのに
+    /// 撮り直しを勧めると、往復を減らすために足した機能が往復を増やす助言と矛盾する
+    static func changedHint(_ args: [String: Any]) -> String {
+        args["snapshotAfter"] as? Bool == true ? ""
+            : " The screen may have changed — take a fresh ft_snapshot"
+    }
+
+    /// 操作した要素を**シナリオで再現するためのセレクタ**(E)。
+    ///
+    /// ref はセッション限りの番号なのでシナリオには書けない。探索の目的が「操作しながら
+    /// 実セレクタを採る」ことである以上、ここで返すべきは ref ではなく**その操作を再現する
+    /// 文字列**である。判定は B(曖昧ラベル注記)と同じ `SelectorNaming` を通す。
+    ///
+    /// **書けないときも黙らない** —— 「安定セレクタが無い」と言われて初めて、読み手は
+    /// 祖先を掴むなり id を足すなりの次の手を選べる。
+    /// `resolvedRef` は verifiedRef が撮り直した木での ref(掴み直しで動いていることがある)
+    func reproductionNote(resolvedRef: Int, args: [String: Any]) -> String {
+        guard let snapshot = lastSnapshots[Self.engineKey(args)],
+              let element = snapshot.elements.first(where: { $0.ref == resolvedRef })
+        else { return "" }
+        if let selector = Self.SelectorNaming(snapshot).selector(for: element, in: snapshot) {
+            return " (selector: \(selector))"
+        }
+        return " — no stable selector for this element, so a scenario cannot reproduce this"
+            + " by selector; use a labelled ancestor, or have the app expose an id"
+    }
+
+    /// 座標で撃ったときの断り(E-4)。**推測のセレクタを出さない** —— 座標には
+    /// 「その点に何があったか」以上の根拠が無い
+    static let coordinateReproductionNote =
+        " (coordinates cannot be reproduced by selector — a scenario written from this"
+        + " will break as soon as the layout moves)"
+
+    /// 操作を1手ぶん記録する(F)。**E と同じ `SelectorNaming` でセレクタを決める** ——
+    /// 戻り値に出したセレクタと、下書きに書かれるセレクタが食い違わないようにするため。
+    ///
+    /// セレクタを解決できなかった手も**捨てずに**残す(`unresolved`)。落とすと、
+    /// 出来上がったシナリオが実際の手順と食い違う(F-4)
+    func recordInteraction(action: String, resolvedRef: Int?, args: [String: Any],
+                           text: String? = nil, direction: String? = nil,
+                           coordinate: (x: Double, y: Double)? = nil) {
+        var selector: String?
+        var described = "\(action)"
+        if let resolvedRef,
+           let snapshot = lastSnapshots[Self.engineKey(args)],
+           let element = snapshot.elements.first(where: { $0.ref == resolvedRef }) {
+            selector = Self.SelectorNaming(snapshot).selector(for: element, in: snapshot)
+            described = "\(action) ref \(resolvedRef) — \(RefGuard.describe(element))"
+        } else if let coordinate {
+            described = "\(action) at (\(coordinate.x), \(coordinate.y))"
+        }
+        // ロケータ不要の手(swipe / フォーカス任せの type)はセレクタが無くても行にできる
+        let needsLocator = !["swipe", "type", "pressEnter", "back", "home", "appSwitcher"]
+            .contains(action) || (resolvedRef != nil || coordinate != nil)
+        if selector == nil, needsLocator, action != "swipe" {
+            interactions.record(InteractionLog.Entry(step: nil, unresolved: described))
+            return
+        }
+        var step = FlowStep(action: action)
+        if let selector { step.locator = FTSelector.parse(selector).primary }
+        step.text = text
+        step.direction = direction
+        interactions.record(InteractionLog.Entry(step: step, unresolved: nil))
     }
 
     /// 溜まっているプロファイル警告を先頭に付けて1度だけ吐き出す
@@ -1795,6 +2431,22 @@ final class MCPServer {
     static let projectProperty: [String: Any] = [
         "type": "string", "description": "Test project name",
     ]
+    /// iOS の宛先を udid で指す(H)。ft_list_devices が出す udid をそのまま渡せる
+    static let udidProperty: [String: Any] = [
+        "type": "string",
+        "description": "iOS simulator UDID to drive (as printed by ft_list_devices). Resolved to "
+            + "the port of the bridge running on it — a device with no bridge cannot be driven, "
+            + "and says so. If you also pass port, the two must agree.",
+    ]
+    /// 操作系ツールの「結果の木も一緒に返す」スイッチ。**説明で撮り直しを不要にする**まで書く ——
+    /// 書かないと、読み手は木を受け取ったうえで習慣的に ft_snapshot を撃つ
+    static let snapshotAfterProperty: [String: Any] = [
+        "type": "boolean",
+        "description": "Append the element list of the resulting screen, exactly as ft_snapshot "
+            + "would return it — saves the follow-up ft_snapshot call. It is read immediately "
+            + "after the action with no settling wait, so if an animation is still running use "
+            + "ft_snapshot with waitFor instead of repeating the action",
+    ]
     /// 全ツール共通のデバイス選択プロパティ。tool() が無条件で足す
     static let commonDeviceProperties: [(String, [String: Any])] = [
         ("platform", platformProperty),
@@ -1802,6 +2454,18 @@ final class MCPServer {
         ("serial", serialProperty),
         ("profile", profileProperty),
         ("project", projectProperty),
+        ("allowVersionSkew", allowVersionSkewProperty),
+        ("udid", udidProperty),
+    ]
+
+    /// 版ズレの押し通し(G-3)。**押し通した回の応答には毎回警告が付く**ことまで書く ——
+    /// 「一度断られたから付けておく」という使い方をされると、拒否そのものが無意味になる
+    static let allowVersionSkewProperty: [String: Any] = [
+        "type": "boolean",
+        "description": "Operate even when the bridge's protocol version differs from this build's. "
+            + "Off by default because a stale bridge answers with its own version's behaviour and "
+            + "notes, and selectors written from those notes are silently wrong. Every response "
+            + "then carries a warning.",
     ]
 
     /// ft_screenshot の既定。**費用は画素数で決まる**(バイト数ではない) —— 平坦な UI では
@@ -1820,8 +2484,17 @@ final class MCPServer {
                          "description": "Only this platform (default: both)"],
             "profile": profileProperty,
         ], scope: .project),
-        tool("ft_list_apps", "List the apps installed on the device, user apps first. Use it to find "
-            + "the bundle ID (iOS) / package name (Android) that ft_launch takes", [:]),
+        tool("ft_list_apps", "List the apps installed on the device. Use it to find the bundle ID "
+            + "(iOS) / package name (Android) that ft_launch takes. By default it lists user apps "
+            + "only — the maps, browser and other preinstalled apps are system apps, so reach for "
+            + "filter or includeSystem when the app you want is not in the list", [
+            "filter": ["type": "string", "description": "Only apps whose bundle ID or display name "
+                + "contains this (case-insensitive). Passing it searches system apps too, unless "
+                + "you also pass includeSystem: false"],
+            "includeSystem": ["type": "boolean", "description": "List system apps as well, marked "
+                + "[system]. Display names are iOS-only — Android's package manager reports "
+                + "package names only"],
+        ]),
         tool("ft_logs", "Read why the app died. iOS returns the crash report summary and the .ips "
             + "path for a simulator — there is no runtime log on iOS, so a running app yields "
             + "nothing here; Android returns recent logcat lines. It never goes through the bridge, "
@@ -1859,6 +2532,11 @@ final class MCPServer {
                 + "same-id group individually. By default 20+ non-interactive leaves sharing one "
                 + "id (map pins and the like) are folded into one line plus a label/ref index; "
                 + "turn this on when you need their frames"],
+            "interactiveOnly": ["type": "boolean", "description": "Hide layout-only lines "
+                + "(elements with no label/value that are neither operable nor scroll containers) "
+                + "— typically half to two thirds of a dense screen. Refs and frames of the "
+                + "remaining lines are unchanged, and a hidden element can still be tapped by ref; "
+                + "the notes above the tree are computed from the full tree either way"],
         ]),
         tool("ft_tap", "Tap an element (ref) or a coordinate (x,y). x/y match the ft_snapshot frames (iOS=pt / Android=px), not screenshot pixels. "
             + "A ref is re-checked against a fresh tree before the tap, so a ref that moved is retargeted and "
@@ -1867,6 +2545,7 @@ final class MCPServer {
             "ref": ["type": "integer", "description": "Reference number from ft_snapshot"],
             "x": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
             "y": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
+            "snapshotAfter": snapshotAfterProperty,
         ]),
         tool("ft_type", "Type text (with ref, taps that field first and waits for it to take focus). "
             + "It APPENDS to whatever the field already holds — call ft_clear_input first to replace. "
@@ -1877,6 +2556,7 @@ final class MCPServer {
             "text": ["type": "string", "description": "Omit it to fire Enter only"],
             "pressEnter": ["type": "boolean", "description": "Fire Enter/IME action (search, submit)"],
             "ref": ["type": "integer", "description": "Reference number of the input field (defaults to the focused element)"],
+            "snapshotAfter": snapshotAfterProperty,
         ]),
         tool("ft_swipe", "Swipe one screenful (up = scroll down the content). To reach a specific element use "
             + "ft_scroll_to instead — it stops on the element and hands back fresh refs", [
@@ -1905,6 +2585,19 @@ final class MCPServer {
         tool("ft_clear_input", "Empty an input field (ft_type appends, so clear first to replace)", [
             "ref": ["type": "integer", "description": "Reference number of the field (default: the focused one)"],
         ]),
+        tool("ft_draft_scenario", "Turn the operations you just performed with ft_* into a Swift "
+            + "scenario draft and return it as text (it writes no file — place it yourself under "
+            + "TestProjects/<project>/scenarios/). Every step is written with the selector this "
+            + "server recommended at the time; a step that had no stable selector is kept as a TODO "
+            + "comment so the draft still matches what you did. The expectation block comes back "
+            + "EMPTY on purpose — assertions are never guessed, and ft_dry_run reports the empty "
+            + "block so it cannot be forgotten", [
+            "all": ["type": "boolean", "description": "Draft from every recorded interaction "
+                + "instead of only those since the last ft_launch (the default)"],
+            "className": ["type": "string", "description": "Name of the generated class "
+                + "(default: DraftedScenario)"],
+            "title": ["type": "string", "description": "Text put in @Test(...)"],
+        ], scope: .none),
         tool("ft_dsl_commands", "List the Swift DSL commands with their signatures — the source of truth for "
             + "writing scenarios. Call it before writing code so you do not invent commands. "
             + "Without arguments it returns names and signatures only", [
@@ -1919,17 +2612,24 @@ final class MCPServer {
             "x": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
             "y": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
         ]),
-        tool("ft_drag", "Drag between two coordinates — the only way to pan diagonally (set both axes). "
+        tool("ft_drag", "Drag from a point to a point — the only way to pan diagonally (set both axes), "
+            + "and the way to expand a half-open bottom sheet (drag its grabber upward). "
+            + "Start from fromRef (an element, re-checked against a fresh tree) or fromX/fromY; "
+            + "end at toX/toY, or dx/dy to move by that much. "
             + "Coordinates use the same system as the ft_snapshot frames (iOS=pt / Android=px). "
             + "A long durationSeconds drags slowly and leaves no inertia; a short one flicks. "
             + coordinateCaveat, [
+            "fromRef": ["type": "integer", "description": "Reference number to start the drag from (its centre). Use it for a sheet grabber instead of reading its frame yourself"],
             "fromX": ["type": "number"],
             "fromY": ["type": "number"],
             "toX": ["type": "number"],
             "toY": ["type": "number"],
+            "dx": ["type": "number", "description": "Horizontal travel from the start point (ignored when toX is given)"],
+            "dy": ["type": "number", "description": "Vertical travel from the start point — negative moves up (ignored when toY is given)"],
             "durationSeconds": ["type": "number", "description": "Travel time in seconds (default 1.5)"],
-        ], required: ["fromX", "fromY", "toX", "toY"]),
-        tool("ft_pinch", "Pinch to zoom. scale > 1 zooms in, 0 < scale < 1 zooms out. Target it with ref, "
+            "snapshotAfter": snapshotAfterProperty,
+        ]),
+        tool("ft_pinch","Pinch to zoom. scale > 1 zooms in, 0 < scale < 1 zooms out. Target it with ref, "
             + "or with x/y on a map or canvas that has no element of its own — without either, the fingers "
             + "span the whole screen, so a bottom sheet on top of it may take the gesture instead. "
             + "The actual zoom can be smaller than requested (fingers stay inside the target). "
@@ -2006,7 +2706,7 @@ final class MCPServer {
                 + " — tap the field by ref first)"
         }
         let name = RefGuard.describe(field)
-        guard let value = field.value.map(FlowMatchMode.stripZeroWidthCharacters), !value.isEmpty
+        guard let value = field.value.map(FlowMatchMode.normalizeInvisibleCharacters), !value.isEmpty
         else { return " (into \(name); its value could not be read back)" }
         guard let expected, !value.contains(expected) else {
             return " (into \(name), which now reads \"\(SnapshotRenderer.truncate(value, 40))\")"

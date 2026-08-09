@@ -149,23 +149,59 @@ final class DeviceInventoryTests: XCTestCase {
 
     // MARK: - renderAppLines (純粋関数)
 
+    private static let rows = [
+        DeviceInventory.AppRow(id: "com.example.one", name: "One", isUser: true),
+        DeviceInventory.AppRow(id: "com.example.two", name: "Two", isUser: true),
+        DeviceInventory.AppRow(id: "com.apple.Maps", name: "マップ", isUser: false),
+    ]
+
     func testRenderAppLinesReportsZeroExplicitly() {
-        let text = DeviceInventory.renderAppLines(userApps: [], systemCount: 12)
-        XCTAssertTrue(text.contains("0 user apps installed"), text)
+        let text = DeviceInventory.renderAppLines([], includeSystem: false, filter: nil)
+        XCTAssertTrue(text.contains("0 app(s) installed"), text)
     }
 
-    func testRenderAppLinesListsUserAppsAndOmittedSystemCount() {
-        let text = DeviceInventory.renderAppLines(
-            userApps: ["com.example.one  One", "com.example.two  Two"], systemCount: 40)
-        XCTAssertTrue(text.contains("2 user app(s):"), text)
+    func testRenderAppLinesListsUserAppsAndPointsAtTheHiddenSystemOnes() {
+        let text = DeviceInventory.renderAppLines(Self.rows, includeSystem: false, filter: nil)
+        XCTAssertTrue(text.contains("2 app(s):"), text)
         XCTAssertTrue(text.contains("com.example.one  One"), text)
-        XCTAssertTrue(text.contains("40 system app(s) omitted"), text)
+        XCTAssertFalse(text.contains("com.apple.Maps"), text)
+        // **「system は見ていない」を必ず言う**(これが無いと空振りが「入っていない」に見える)
+        XCTAssertTrue(text.contains("1 system app(s) not listed — pass includeSystem: true"), text)
     }
 
-    /// Android は user のみ列挙(pm list packages -3)で system 件数の概念が無い —
-    /// nil のときは省略行を出さない
-    func testRenderAppLinesOmitsSystemLineWhenCountIsNil() {
-        let text = DeviceInventory.renderAppLines(userApps: ["com.example.one"], systemCount: nil)
-        XCTAssertFalse(text.contains("system app"), text)
+    func testRenderAppLinesIncludesSystemAppsMarked() {
+        let text = DeviceInventory.renderAppLines(Self.rows, includeSystem: true, filter: nil)
+        XCTAssertTrue(text.contains("com.apple.Maps  マップ  [system]"), text)
+        XCTAssertFalse(text.contains("not listed"), text)
+    }
+
+    /// filter は id と表示名の両方に当たり、大小を無視する
+    func testRenderAppLinesFiltersByIDAndName() {
+        let byID = DeviceInventory.renderAppLines(Self.rows, includeSystem: true, filter: "maps")
+        XCTAssertTrue(byID.contains("com.apple.Maps"), byID)
+        XCTAssertFalse(byID.contains("com.example.one"), byID)
+        let byName = DeviceInventory.renderAppLines(Self.rows, includeSystem: true, filter: "マップ")
+        XCTAssertTrue(byName.contains("com.apple.Maps"), byName)
+    }
+
+    /// **Android のように system の件数が数えられない面でも案内は出す**(2026-08-09 の実地確認)。
+    /// `pm list packages -3` は端末側で絞り込むので rows に system が1件も来ない ——
+    /// 件数で分岐すると、いちばん詰まりやすい面でだけ逃げ道が消える
+    func testRenderAppLinesStillPointsAtSystemAppsWhenTheyCannotBeCounted() {
+        let userOnly = Self.rows.filter(\.isUser)
+        let text = DeviceInventory.renderAppLines(userOnly, includeSystem: false, filter: nil,
+                                                  systemAppsCounted: false)
+        XCTAssertTrue(text.contains("system apps are not listed — pass includeSystem: true"), text)
+        // 数えられる面では件数を出す(こちらは従来どおり)
+        let counted = DeviceInventory.renderAppLines(Self.rows, includeSystem: false, filter: nil,
+                                                     systemAppsCounted: true)
+        XCTAssertTrue(counted.contains("1 system app(s) not listed"), counted)
+    }
+
+    /// 空振りは「探した範囲」を添えて言う(system を見ていないなら、そのことも)
+    func testRenderAppLinesExplainsAnEmptyFilterResult() {
+        let text = DeviceInventory.renderAppLines(Self.rows, includeSystem: false, filter: "maps")
+        XCTAssertTrue(text.contains("no app matches \"maps\" among the 2 listed"), text)
+        XCTAssertTrue(text.contains("pass includeSystem: true"), text)
     }
 }

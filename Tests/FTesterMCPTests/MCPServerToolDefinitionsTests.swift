@@ -15,6 +15,8 @@ final class MCPServerToolDefinitionsTests: XCTestCase {
     private static let deviceFreeTools: [String: Set<String>] = [
         "ft_list_scenarios": [], "ft_dry_run": [], "ft_list_projects": [], "ft_doctor": [],
         "ft_dsl_commands": [],
+        // 記録済みの操作列から下書きを組むだけ = デバイスに触らない
+        "ft_draft_scenario": [],
         "ft_list_devices": ["platform", "profile"],
         "ft_logs": ["platform", "serial"],
     ]

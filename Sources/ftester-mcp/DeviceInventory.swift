@@ -78,6 +78,11 @@ enum DeviceInventory {
         }
         if let port = row.port {
             parts.append("bridge port \(port)")
+        } else if row.running, row.platform == "ios" {
+            // **「動いているのに MCP からは触れない」を行から読めるようにする**(H-3。2026-08-09)。
+            // iOS の操作系はブリッジ越しなので、ブリッジが無い機は udid を渡しても port を渡しても
+            // 動かない。行の見た目は他と同じなので、書かないと利用者は「なぜか効かない」を踏む
+            parts.append("no bridge — not drivable from MCP until `ftester bridge up`")
         }
         return "- \(row.name) (\(parts.joined(separator: ", ")))"
     }
@@ -118,9 +123,11 @@ enum DeviceInventory {
         return .resolved(ResolvedMachine(name: machine.name, profile: decoded))
     }
 
+    /// **CLI のフラグ表記のまま出さない**: この文は FTCore(CLI 向け)から来るので
+    /// 「Pick one with --project」と書いてあるが、MCP の読み手が渡せるのは `project:` 引数
     private static func describe(_ error: Error) -> String {
-        ((error as? LocalizedError)?.errorDescription ?? "\(error)")
-            .replacingOccurrences(of: "\n", with: " ")
+        MCPMessageText.forMCP(((error as? LocalizedError)?.errorDescription ?? "\(error)")
+            .replacingOccurrences(of: "\n", with: " "))
     }
 
     // MARK: - iOS
@@ -216,31 +223,77 @@ enum DeviceInventory {
 
     // MARK: - ft_list_apps
 
+    /// 整形前の1アプリ分。`name` はブリッジ/OS が表示名を出せるときだけ(iOS は
+    /// `CFBundleDisplayName`、Android の `pm list packages` は id しか出さない)
+    struct AppRow: Equatable {
+        let id: String
+        let name: String?
+        let isUser: Bool
+    }
+
     /// **宛先の解決はしない** —— どのデバイスを見るかは MCPServer の driver(_:) が一手に決める
     /// (ここで BridgeClient を建て直すと profile 指定が既定ポートへ逸れる)
-    static func appsText(apps: [SimulatorAppCatalog.App]) -> String {
-        let userApps = apps.filter(\.isUser)
-        return renderAppLines(userApps: userApps.map { "\($0.id)  \($0.name)" },
-                              systemCount: apps.count - userApps.count)
+    /// simctl は system も込みで返すので、除外した件数を数えられる
+    static func appsText(apps: [SimulatorAppCatalog.App], includeSystem: Bool,
+                         filter: String?) -> String {
+        renderAppLines(apps.map { AppRow(id: $0.id, name: $0.name, isUser: $0.isUser) },
+                       includeSystem: includeSystem, filter: filter, systemAppsCounted: true)
     }
 
-    /// `pm list packages -3` は端末側で既に user アプリ(third-party)へ絞られているので
-    /// system の総数は分からない
-    static func appsText(packages: [String]) -> String {
-        renderAppLines(userApps: packages, systemCount: nil)
+    /// `pm list packages -3` は端末側で既に third-party へ絞られているので、
+    /// **除外した system の件数は分からない**(数えるにはもう1回 adb を撃つことになる)
+    static func appsText(packages: [AndroidDriver.InstalledPackage], includeSystem: Bool,
+                         filter: String?) -> String {
+        renderAppLines(packages.map { AppRow(id: $0.id, name: nil, isUser: $0.isUser) },
+                       includeSystem: includeSystem, filter: filter, systemAppsCounted: false)
     }
 
-    /// 純粋関数(テスト用): user アプリの行 + system 件数を本文へ組む
-    static func renderAppLines(userApps: [String], systemCount: Int?) -> String {
-        var lines: [String]
-        if userApps.isEmpty {
-            lines = ["0 user apps installed."]
+    /// 純粋関数(テスト用)。
+    ///
+    /// **「system を見ていない」ことは必ず書く**(2026-08-09 の実測が動機): 既定は user だけで、
+    /// 端末に載っている地図・ブラウザは system 側に居る。黙って空を返すと読み手は
+    /// 「入っていない」と読み、MCP の外(adb / simctl)へ逃げることになる。
+    /// `filter` を渡したときに system まで見るのは MCPServer 側の既定(そちらのコメント参照)
+    /// `systemAppsCounted` = 渡された rows が system も含んでいるか。**false のときも案内は出す** ——
+    /// 件数が分からないことと「system が無いこと」は別で、Android は前者。ここを黙ると
+    /// Android でだけ案内が消え、いちばん詰まりやすい面(表示名が無く id を当てにいく面)で
+    /// 逃げ道が見えなくなる(2026-08-09 の実地確認で発覚)
+    static func renderAppLines(_ rows: [AppRow], includeSystem: Bool, filter: String?,
+                               systemAppsCounted: Bool = true) -> String {
+        let scoped = includeSystem ? rows : rows.filter(\.isUser)
+        let omittedSystem = includeSystem ? 0 : rows.count - scoped.count
+        let shown = filter.map { needle in scoped.filter { matches($0, needle: needle) } } ?? scoped
+        let systemNote: String?
+        if includeSystem {
+            systemNote = nil
+        } else if systemAppsCounted {
+            systemNote = omittedSystem > 0
+                ? "(\(omittedSystem) system app(s) not listed — pass includeSystem: true)" : nil
         } else {
-            lines = ["\(userApps.count) user app(s):"] + userApps
+            systemNote = "(system apps are not listed — pass includeSystem: true, or filter:"
+                + " to search them too)"
         }
-        if let systemCount, systemCount > 0 {
-            lines.append("(\(systemCount) system app(s) omitted)")
+
+        guard !shown.isEmpty else {
+            let head = filter.map { "no app matches \"\($0)\" among the \(scoped.count) listed." }
+                ?? "0 app(s) installed."
+            return ([head] + [systemNote].compactMap { $0 }).joined(separator: "\n")
         }
-        return lines.joined(separator: "\n")
+        let head = filter.map { "\(shown.count) app(s) matching \"\($0)\" (of \(scoped.count)):" }
+            ?? "\(shown.count) app(s):"
+        return ([head] + shown.map(line) + [systemNote].compactMap { $0 })
+            .joined(separator: "\n")
+    }
+
+    /// id と表示名の**部分一致・大小無視**。読み手は "maps" のような当てずっぽうで撃つので
+    /// 完全一致にはしない
+    static func matches(_ row: AppRow, needle: String) -> Bool {
+        let target = (row.id + " " + (row.name ?? "")).lowercased()
+        return target.contains(needle.lowercased())
+    }
+
+    private static func line(_ row: AppRow) -> String {
+        let name = row.name.map { "  \($0)" } ?? ""
+        return row.id + name + (row.isUser ? "" : "  [system]")
     }
 }

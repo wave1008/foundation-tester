@@ -206,10 +206,27 @@ final class MCPGuidanceTests: XCTestCase {
             ready: true, device: "iPhone 17", osVersion: "27.0",
             sessionBundleID: "com.example.app",
             protocolVersion: BridgeAPI.bridgeProtocolVersion - 1)
-        let note = await MCPServer.staleBridgeWarning(driver: driver)
-        let text = try XCTUnwrap(note)
+        let skew = await MCPServer.bridgeVersionSkew(driver: driver)
+        let text = try XCTUnwrap(skew)
         XCTAssertTrue(text.contains("bridge down"), text)
         XCTAssertTrue(text.contains("v\(BridgeAPI.bridgeProtocolVersion)"), text)
+        // **どちらが新しいかを言う**(G-4): 対処が変わる
+        XCTAssertTrue(text.contains("OLDER than this build"), text)
+    }
+
+    /// ブリッジのほうが新しいときは**ホストを建て直せ**と言う(逆を勧めると直らない)。
+    /// 実際に起きた形(2026-08-09): 版を上げた作業中にビルドされたランナーが生き残り、
+    /// 撤回後のホストより新しい版を名乗っていた
+    func testANewerBridgeTellsYouToRebuildTheHost() async throws {
+        let driver = FakeDriver()
+        driver.statusResponse = StatusResponse(
+            ready: true, device: "iPhone 17", osVersion: "27.0",
+            sessionBundleID: "com.example.app",
+            protocolVersion: BridgeAPI.bridgeProtocolVersion + 1)
+        let skew = await MCPServer.bridgeVersionSkew(driver: driver)
+        let text = try XCTUnwrap(skew)
+        XCTAssertTrue(text.contains("NEWER than this build"), text)
+        XCTAssertTrue(text.contains("swift build --product ftester-mcp"), text)
     }
 
     /// 版が合っていれば黙る。**返さないブリッジ(nil)も黙る** —— 旧ブリッジは版を返さないので、
@@ -220,13 +237,13 @@ final class MCPGuidanceTests: XCTestCase {
             ready: true, device: "iPhone 17", osVersion: "27.0",
             sessionBundleID: "com.example.app",
             protocolVersion: BridgeAPI.bridgeProtocolVersion)
-        var note = await MCPServer.staleBridgeWarning(driver: driver)
-        XCTAssertNil(note)
+        let matching = await MCPServer.bridgeVersionSkew(driver: driver)
+        XCTAssertNil(matching)
         driver.statusResponse = StatusResponse(
             ready: true, device: "iPhone 17", osVersion: "27.0",
             sessionBundleID: "com.example.app", protocolVersion: nil)
-        note = await MCPServer.staleBridgeWarning(driver: driver)
-        XCTAssertNil(note)
+        let unknown = await MCPServer.bridgeVersionSkew(driver: driver)
+        XCTAssertNil(unknown)
     }
 
     /// エンジン切替の案内には**アプリが起動し直る**ことまで書く。書かないと、案内に従った
