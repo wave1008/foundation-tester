@@ -458,4 +458,68 @@ public enum ProfileWorkerFactory {
             InstalledAppCheck.recordInstalled(udid: udid, bundleID: bundleID, appPath: appPath)
         }
     }
+
+    /// 凍結したシミュレータを **shutdown → boot** で戻し、**ブリッジを張り直した**
+    /// ワーカー一覧を返す(BlankWorkerTriage の `recover:` にそのまま渡せる形)。
+    ///
+    /// シミュレータを落とすとブリッジも死ぬので、回復と張り直しは1セット。張り直しは
+    /// `buildIOSWorkers` を呼び直すだけでよい —— 生きているブリッジは再利用されるので、
+    /// 実際に建て直るのは落とした機だけ。
+    ///
+    /// **2台ずつ**戻す: 一斉 boot は凍結の相関要因そのもので、device-up の「同時2台」と同じ理屈。
+    /// udid はワーカーの connection から採る(label は表示用で simctl には渡せない)。
+    ///
+    /// **iOS ワーカーの供給口は3つある**(ProfileRunner の遅延合流 / ApiRunCommand の遅延合流 /
+    /// ApiRunCommand の直接供給)。**片方だけに入れない** —— 過去に同じ型の穴を空けている
+    public static func recoverFrozenIOSWorkers(
+        labels: [String], workers: [RunWorker], resolved: ResolvedProfile, repoRoot: URL,
+        apps: [String: ResolvedAppTarget], log: @escaping @Sendable (String) -> Void
+    ) async -> [RunWorker]? {
+        let targets = frozenIOSTargets(labels: labels, workers: workers)
+        guard !targets.isEmpty else {
+            log("⚠️ frozen devices have no iOS simulator udid — cannot reboot them")
+            return nil
+        }
+        for pair in stride(from: 0, to: targets.count, by: 2) {
+            let slice = Array(targets[pair..<Swift.min(pair + 2, targets.count)])
+            await withTaskGroup(of: Void.self) { group in
+                for (label, udid) in slice {
+                    group.addTask {
+                        log("→ \(label): rebooting the simulator (shutdown → boot)")
+                        _ = try? Shell.run(["xcrun", "simctl", "shutdown", udid])
+                        _ = try? Shell.run(["xcrun", "simctl", "boot", udid])
+                        // boot 完了まで待つ(待たずに注入すると launch が失敗する)
+                        _ = try? Shell.run(["xcrun", "simctl", "bootstatus", udid, "-b"])
+                        log("✅ \(label): simulator is back")
+                    }
+                }
+            }
+        }
+        guard var rebuilt = try? await buildIOSWorkers(resolved: resolved, repoRoot: repoRoot,
+                                                       log: log) else { return nil }
+        rebuilt = (try? await installIfNeeded(apps: apps, workers: rebuilt,
+                                              forceAndroidInstall: false, log: log)) ?? rebuilt
+        return mergeRecoveredIOS(into: workers, rebuiltIOS: rebuilt)
+    }
+
+    /// 再起動をかける対象。**iOS だけ**を採る —— 呼び出し元の一覧は Android と混ざっている
+    /// ことがあり(ApiRunCommand の直接供給)、Android の凍結機はここへ来る前に別経路
+    /// (`excludeOrRepairBlankScreenWorkers`)が修復済み。simctl は udid でしか撃てないので
+    /// udid の無い個体も落とす
+    static func frozenIOSTargets(labels: [String],
+                                 workers: [RunWorker]) -> [(label: String, udid: String)] {
+        workers.filter { labels.contains($0.label) && $0.platform == "ios" }
+            .compactMap { worker in
+                guard let udid = worker.connection.udid else { return nil }
+                return (worker.label, udid)
+            }
+    }
+
+    /// **非 iOS は元のまま残す** —— `buildIOSWorkers` は iOS しか作らないので、混在一覧を
+    /// 返り値でそのまま置き換えると Android のレーンが消える
+    static func mergeRecoveredIOS(into original: [RunWorker],
+                                  rebuiltIOS: [RunWorker]) -> [RunWorker] {
+        original.filter { $0.platform != "ios" } + rebuiltIOS
+    }
+
 }

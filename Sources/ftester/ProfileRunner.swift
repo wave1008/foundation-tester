@@ -213,9 +213,20 @@ enum ProfileRunner {
                     ws = (try? await ProfileWorkerFactory.installIfNeeded(
                         apps: resolved.apps, workers: ws, forceAndroidInstall: false) { print($0) }) ?? ws
                     PhaseLog.mark("ios-workers-installed")
-                    // 画面だけ死んだシミュレータを**投入前に**弾く(BlankWorkerTriage 参照)。
-                    // Android は buildAndroidWorkers 直後に同等の処理(修復つき)を通している
-                    ws = await BlankWorkerTriage.excludeBlankScreenWorkers(ws) { print($0) }.workers
+                    // 画面だけ死んだシミュレータを**投入前に回復させる**(BlankWorkerTriage 参照)。
+                    // 回復は simctl shutdown→boot で、**ブリッジごと死ぬ**ので張り直しまでが1セット。
+                    // 張り直しは buildIOSWorkers を呼び直すだけでよい(生きているブリッジは
+                    // 再利用されるので、実際に建て直るのは落とした機だけ)。
+                    // レーンに凍結機を残さないための処理で、戻らなかった個体だけが除外される
+                    let recovered = try? await BlankWorkerTriage.excludeBlankScreenWorkers(
+                        ws,
+                        recover: { @Sendable frozen in
+                            await ProfileWorkerFactory.recoverFrozenIOSWorkers(
+                                labels: frozen, workers: ws, resolved: resolved,
+                                repoRoot: repoRoot, apps: resolved.apps) { print($0) }
+                        },
+                        log: { print($0) }).workers
+                    ws = recovered ?? ws
                     print("🚀 \(ws.count) iOS worker(s) joined")
                     return ws
                 } catch {
@@ -308,4 +319,5 @@ enum ProfileRunner {
                 + " (self-healing and triage stay enabled)")
         }
     }
+
 }

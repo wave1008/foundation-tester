@@ -7,8 +7,14 @@
 // 状態になったとき、9/9 の失敗が**無警告でテストの失敗として記録された**(docs/verification.md
 // 「iOS シミュレータも『画面だけ死ぬ』」)。失敗して初めて分かるのでは遅い。
 //
-// **修復は持たない**(iOS で確認できている回復手段は `simctl shutdown`→`boot` だけで、
-// ブリッジごと作り直しになるため run 前トリアージの範囲を超える)。弾いて、直し方をログに出す。
+// **修復そのものはここに持たない**(iOS で確認できている回復手段は `simctl shutdown`→`boot`
+// だけで、ブリッジごと作り直しになる)。代わりに**回復を呼び出し側から注入できる**ようにしてある
+// (`recover:`)。ブリッジを張り直せるのは供給を持っている側(ProfileRunner)だけなので、
+// 判定はここ・回復はあちら、と役割を割る。
+//
+// **レーンに凍結機を残さない**(2026-08-09 のユーザー決定): 検出したら回復を試み、
+// 回復できたものはレーンに戻し、**どうしても回復できないものだけ外す**。
+// 回復を注入しない呼び出し(`recover` 省略)は従来どおり「弾いて直し方を出す」だけ。
 
 import Foundation
 
@@ -62,15 +68,12 @@ public enum BlankWorkerTriage {
         return true
     }
 
-    /// run 開始前のトリアージ本体。対象ワーカーを**並列に**判定して blank を除外する。
-    /// 健全機は1サンプルで即返るので、正常時の固定費はスクショ1枚ぶん
-    public static func excludeBlankScreenWorkers(
-        _ workers: [RunWorker], log: @Sendable (String) -> Void
-    ) async -> Result {
+    /// 凍結したワーカーの label 一覧(並列判定)。健全機は1サンプルで即返るので、
+    /// 正常時の固定費はスクショ1枚ぶん
+    public static func frozenLabels(_ workers: [RunWorker]) async -> [String] {
         let candidates = workers.filter(isCandidate)
-        guard !candidates.isEmpty else { return Result(workers: workers, excluded: []) }
-
-        let blankLabels = await withTaskGroup(of: String?.self, returning: [String].self) { group in
+        guard !candidates.isEmpty else { return [] }
+        return await withTaskGroup(of: String?.self, returning: [String].self) { group in
             for worker in candidates {
                 group.addTask {
                     let blank = await isPersistentlyBlank(screenshot: {
@@ -83,16 +86,52 @@ public enum BlankWorkerTriage {
             for await label in group { if let label { found.append(label) } }
             return found
         }
-        guard !blankLabels.isEmpty else { return Result(workers: workers, excluded: []) }
+    }
+
+    /// 回復を試みる回数の上限。**2回**: 1回で戻らない個体はもう1回でも戻らないことが多く、
+    /// run の立ち上がりを何分も伸ばすほうが害になる(戻らなければ外して先へ進む)
+    public static let recoveryAttempts = 2
+
+    /// run 開始前のトリアージ本体。
+    ///
+    /// `recover` を渡すと、凍結を見つけたときに**回復を試み、戻ったものはレーンに残す**。
+    /// 戻り値は回復後に作り直したワーカー一覧で、呼び出し側はそれを使う。回復できなかった
+    /// ものだけを外すので、**レーンに凍結機が残らない**。省略時は従来どおり弾くだけ。
+    ///
+    /// `recover` の契約: 渡された label 群のデバイスを回復し、**ブリッジを張り直した**
+    /// ワーカー一覧を返す。回復手段が無い/失敗したら nil(即座に除外へ進む)
+    public static func excludeBlankScreenWorkers(
+        _ workers: [RunWorker],
+        recover: (@Sendable ([String]) async -> [RunWorker]?)? = nil,
+        log: @Sendable (String) -> Void
+    ) async -> Result {
+        var current = workers
+        var blankLabels = await frozenLabels(current)
+        guard !blankLabels.isEmpty else { return Result(workers: current, excluded: []) }
+
+        if let recover {
+            for attempt in 1...recoveryAttempts {
+                log("⚠️ \(blankLabels.count) device(s) have a frozen screen"
+                    + " (\(blankLabels.joined(separator: ", "))) — recovering before the run starts"
+                    + " (attempt \(attempt)/\(recoveryAttempts))")
+                guard let rebuilt = await recover(blankLabels) else { break }
+                current = rebuilt
+                blankLabels = await frozenLabels(current)
+                if blankLabels.isEmpty {
+                    log("✅ every frozen device recovered — starting with all lanes")
+                    return Result(workers: current, excluded: [])
+                }
+            }
+        }
 
         for label in blankLabels {
             // **直し方まで書く**。iOS には自動修復が無いので、ここで手順が出ないと
             // 「弾かれた」だけが残って次の run でも同じ個体が死んでいる
             log("⚠️ \(label): the screen is frozen (a11y still responds but nothing renders and taps"
-                + " do not land) — excluding it from dispatch."
+                + " do not land) — could not recover it, so it is excluded from dispatch."
                 + " Recover it with: xcrun simctl shutdown <udid> && xcrun simctl boot <udid>")
         }
-        return exclude(workers, blankByLabel: Dictionary(
+        return exclude(current, blankByLabel: Dictionary(
             uniqueKeysWithValues: blankLabels.map { ($0, true) }))
     }
 }

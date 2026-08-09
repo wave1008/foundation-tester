@@ -213,8 +213,15 @@ struct ApiRunCommand: AsyncParsableCommand {
                             forceAndroidInstall: false) { logStderr($0) }) ?? workers
                         // 画面だけ死んだシミュレータを**投入前に**弾く(BlankWorkerTriage 参照)。
                         // Android は buildAndroidWorkers 直後に同等の処理(修復つき)を通している
+                        let repoRoot = try RepoRoot.find()
                         workers = await BlankWorkerTriage.excludeBlankScreenWorkers(
-                            workers) { logStderr($0) }.workers
+                            workers,
+                            recover: { @Sendable frozen in
+                                await ProfileWorkerFactory.recoverFrozenIOSWorkers(
+                                    labels: frozen, workers: workers, resolved: resolved,
+                                    repoRoot: repoRoot, apps: resolved.apps) { logStderr($0) }
+                            },
+                            log: { logStderr($0) }).workers
                         logStderr("🚀 \(workers.count) iOS worker(s) joined")
                         return workers
                     } catch {
@@ -388,9 +395,19 @@ struct ApiRunCommand: AsyncParsableCommand {
             // android は修復→guest reboot 待ちで本 run に復帰・それでも駄目な個体のみ除外
             let triage = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(workers) { logStderr($0) }
             workers = triage.workers
-            // iOS は修復手段が無いので除外だけ(BlankWorkerTriage 参照)。**この経路にも通すこと** ——
+            // iOS も **shutdown → boot → ブリッジ張り直し**で回復を試み、駄目な個体だけ除外する
+            // (BlankWorkerTriage 参照)。**この経路にも通すこと** ——
             // iOS ワーカーの供給口は「遅延合流(lateWorkers)」とここの2つで、片方だけだと穴が空く
-            let iosTriage = await BlankWorkerTriage.excludeBlankScreenWorkers(workers) { logStderr($0) }
+            let iosRepoRoot = try RepoRoot.find()
+            let iosWorkers = workers
+            let iosTriage = await BlankWorkerTriage.excludeBlankScreenWorkers(
+                workers,
+                recover: { @Sendable frozen in
+                    await ProfileWorkerFactory.recoverFrozenIOSWorkers(
+                        labels: frozen, workers: iosWorkers, resolved: resolved,
+                        repoRoot: iosRepoRoot, apps: resolved.apps) { logStderr($0) }
+                },
+                log: { logStderr($0) })
             workers = iosTriage.workers
             blankTriage = (triage.repaired, triage.excluded + iosTriage.excluded)
             workers = try await ProfileWorkerFactory.installIfNeeded(

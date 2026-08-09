@@ -1273,9 +1273,27 @@ Android エミュレータの表示凍結([[emulator-display-freeze-wedge]])と*
 2. **run 前のトリアージ**: `BlankWorkerTriage.excludeBlankScreenWorkers` を iOS ワーカーの
    合流直後に通す(Android の `excludeOrRepairBlankScreenWorkers` と同じ位置づけ)。
    恒常 blank(1.5s 間隔で2連続)なら**投入前に除外**し、復旧コマンドをログに出す。
-   健全機は**1サンプルで返る**ので正常時の固定費はスクショ1枚。
-   **iOS には修復手段を持たない** —— 確認できている回復手段が `simctl shutdown`→`boot` だけで、
-   ブリッジごと作り直しになる(Android の sleep/wake に当たる軽い手が無い)。弾いて手順を出す
+   健全機は**1サンプルで返る**ので正常時の固定費はスクショ1枚
+
+**iOS も回復させてから始める(2026-08-09 ユーザー指示・上の 2 を置き換え)**。
+弾くだけだと、凍結が多発した run はレーンが半分になって走る。
+`excludeBlankScreenWorkers` に `recover:` を渡し、**全機が戻るまで開始しない**:
+
+- 回復の実体は `ProfileWorkerFactory.recoverFrozenIOSWorkers` = **`simctl shutdown` → `boot` →
+  `bootstatus -b`**。**2台ずつ**戻す(一斉 boot は凍結の相関要因そのもので、device-up の
+  「同時2台」と同じ理屈)
+- **シミュレータを落とすとブリッジも死ぬ**ので、回復と `buildIOSWorkers` での張り直しは1セット。
+  生きているブリッジは再利用されるため、実際に建て直るのは落とした機だけ
+- 混在一覧(Android + iOS)を受けても **iOS だけ入れ替える**。素直に返り値で置き換えると
+  `buildIOSWorkers` は iOS しか作らないので **Android のレーンが消える**
+- `recoveryAttempts` = 2 まで試し、**戻らない個体だけレーンから外す**(「レーン上に凍結機を
+  残さない」が要件)。全機戻れば除外0で開始する
+- **iOS ワーカーの供給口は3つある**(`ProfileRunner` の遅延合流 / `ApiRunCommand` の遅延合流 /
+  `ApiRunCommand` の直接供給)。**片方だけに入れない** —— 2026-08-09 に1箇所だけ入れて、
+  `api run` 経由(拡張のモニターから走る経路)に穴を空けた。`BlankWorkerRecoveryWiringTests` が
+  「呼び出し数と `recover:` の数が一致するか」を数えて検出する
+- **コストは大きい**: 2026-08-09 の実測で、5台凍結した E2E-CMP/ios-inapp は供給に約 620 秒
+  (凍結ゼロの同プロファイルは約 41 秒)。**弾くより遅いが、レーンは減らない**
 
 **誤検知が狭い理由**: ブリッジのスクショは `XCUIScreen.main.screenshot()` = **画面全体**なので、
 健全ならステータスバー(時計・電波)が写って一様にならない。誤検知するにはアプリが
