@@ -30,5 +30,5 @@ protoc \
   --grpc-swift-2_out=Client=True,Server=False,Visibility=Public:Sources/FTEmulatorGrpc/Generated \
   -I third_party/emulator-proto emulator_controller.proto
 
-swift build --build-tests && swift test
+swift test --parallel
 ```
