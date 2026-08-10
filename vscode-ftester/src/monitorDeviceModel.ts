@@ -76,6 +76,10 @@ export interface MonitorDevice {
    * が合成した起動中デバイス(未登録)。欠落・非 bool は true に正規化する(旧 CLI 互換。
    * kind と同じ「欠落は従来どおりの表示に寄せる」方針)。 */
   readonly registered?: boolean;
+  /** 画面が凍結しているか(一様フレームが2サイクル連続。ApiMonitorCommand の MonitorFrozenDebounce)。
+   * **1サイクル遅れる**(devices イベントはフレーム取得より前に出る)。欠落・非 bool は false
+   * に正規化する(旧 CLI 互換)。ヘッダの Frozen カウンタとタイルのバッジが消費する。 */
+  readonly frozen?: boolean;
 }
 
 /** `ftester api monitor` の NDJSON 1行分のイベント(kind で判別)。 */
@@ -137,6 +141,10 @@ function isMonitorDevice(value: unknown): value is MonitorDevice {
     // マシンプロファイル記載のみだった挙動を保つ)。
     value.registered = true;
   }
+  if (value.frozen !== true && value.frozen !== false) {
+    // 欠落/null/型不正を「凍結していない」に寄せる(旧 CLI は frozen を送らない)。
+    value.frozen = false;
+  }
   return (
     typeof value.id === "string" &&
     typeof value.name === "string" &&
@@ -152,7 +160,8 @@ function isMonitorDevice(value: unknown): value is MonitorDevice {
     (value.renderMode === undefined || value.renderMode === "gpu" || value.renderMode === "cpu") &&
     typeof value.inRun === "boolean" &&
     typeof value.recording === "boolean" &&
-    typeof value.registered === "boolean"
+    typeof value.registered === "boolean" &&
+    typeof value.frozen === "boolean"
   );
 }
 
@@ -224,4 +233,11 @@ export function filterMonitorDevices(
   return filter === "running"
     ? devices.filter((device) => device.state !== "offline" && !iosPhysicalWithoutBridge(device))
     : devices.filter((device) => device.registered !== false);
+}
+
+/** 画面が凍結しているデバイスの件数(モニターのヘッダに出す "Frozen: N")。
+ * **接続中のものだけ数える** —— 落ちている機は凍結ではないし、Swift 側も接続断で記憶を捨てる。
+ * 表示中のフィルタに関わらず全デバイスを数える(絞り込みで凍結が視界から消えても件数は出す)。 */
+export function countFrozenDevices(devices: readonly MonitorDevice[]): number {
+  return devices.filter((device) => device.frozen === true && device.state === "connected").length;
 }

@@ -237,6 +237,20 @@ export function applyHostMetrics(message) {
   }
 }
 
+// 凍結台数。**供給元が違う** —— hostMetrics ストリームではなく monitorDevices(サイクル毎)で、
+// スパークラインも持たない(件数の推移より「今いくつ死んでいるか」だけが要る)。
+// 呼び出しは deviceTiles.js の applyDevices。判定は ApiMonitorCommand の MonitorFrozenDebounce。
+const hmFrozenEl = document.getElementById('hm-frozen');
+const hmFrozenValue = hmFrozenEl ? hmFrozenEl.querySelector('.hm-value') : null;
+
+/** 凍結台数を出す。0 は既定色、1台以上は警告色(FM 全滅と同じ「見逃すと調査が狂う」情報)。 */
+export function renderFrozenCount(count) {
+  if (!hmFrozenValue || !hmFrozenEl) { return; }
+  hmFrozenValue.textContent = String(count);
+  hmFrozenEl.classList.toggle('hm-frozen-warn', count > 0);
+  hmFrozenEl.title = t('wvMonitor2.hostCharts.frozenTitle', { count: String(count) });
+}
+
 // テーマ切替(body の class に vscode-light 等が付け外しされる)を検知して全グラフを再描画する。
 new MutationObserver(() => {
   for (const entry of HM_ALL_ENTRIES) {

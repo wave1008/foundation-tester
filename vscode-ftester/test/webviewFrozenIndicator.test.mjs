@@ -1,0 +1,123 @@
+// 凍結表示(ヘッダの "Frozen: N" とタイルのバッジ)の DOM テスト。
+// 実 HTML + 実バンドルを jsdom で動かす方式は webviewTileRelayout.test.mjs と同じ。
+//
+// 判定そのもの(一様フレームが2サイクル連続)は Swift 側(MonitorFrozenDebounce)の担当で、
+// ここが守るのは**受け取った frozen を落とさずに出すこと**だけ。
+// 凍結はタイルの絵を見ても分からない(凍結中も最後のフレームが残る)ので、この表示が
+// 消えると「モニターを見ていたのに気付かなかった」が起きる。
+
+import assert from "node:assert/strict";
+import { createRequire } from "node:module";
+import path from "node:path";
+import { before, test } from "node:test";
+import * as esbuild from "esbuild";
+import { JSDOM } from "jsdom";
+
+const require2 = createRequire(import.meta.url);
+
+let panelHtml;
+let webviewBundle;
+
+before(async () => {
+  const htmlBuild = await esbuild.build({
+    entryPoints: [path.resolve("src/monitorHtml.ts")],
+    bundle: true,
+    platform: "node",
+    format: "cjs",
+    target: "node18",
+    write: false,
+    external: ["vscode"],
+    logLevel: "silent",
+  });
+  const vscodeStub = { Uri: { joinPath: (_base, ...segs) => ({ path: `/${segs.join("/")}` }) } };
+  const patchedRequire = (id) => (id === "vscode" ? vscodeStub : require2(id));
+  const mod = { exports: {} };
+  new Function("module", "exports", "require", htmlBuild.outputFiles[0].text)(mod, mod.exports, patchedRequire);
+  const webviewStub = { asWebviewUri: (uri) => `https://localhost${uri.path}`, cspSource: "https://localhost" };
+  panelHtml = mod.exports.renderHtml(webviewStub, { path: "" });
+
+  const mainBuild = await esbuild.build({
+    entryPoints: [path.resolve("src/webview/monitor/main.js")],
+    bundle: true,
+    platform: "browser",
+    format: "iife",
+    target: "es2022",
+    write: false,
+    logLevel: "silent",
+  });
+  webviewBundle = mainBuild.outputFiles[0].text;
+});
+
+/** window.close() を忘れると main.js の setInterval が残ってプロセスが終わらない */
+function createWebview() {
+  const dom = new JSDOM(panelHtml, { runScripts: "outside-only", pretendToBeVisual: true, url: "https://localhost/" });
+  const { window } = dom;
+  window.acquireVsCodeApi = () => ({ postMessage: () => {}, setState: () => {}, getState: () => undefined });
+  window.HTMLElement.prototype.scrollIntoView = () => {};
+  window.eval(webviewBundle);
+  return { window, document: window.document };
+}
+
+/** devices の指定: [{ frozen, state }] を並べる */
+function sendDevices(window, specs) {
+  const devices = specs.map((spec, i) => ({
+    id: `d${i}`, name: `Dev ${i}`, platform: "ios", state: spec.state ?? "connected",
+    detail: "", kind: "virtual", udid: `UDID-${i}`, recording: false, registered: true,
+    frozen: spec.frozen === true,
+  }));
+  window.dispatchEvent(new window.MessageEvent("message", { data: { type: "devices", devices } }));
+}
+
+const frozenValue = (document) => document.querySelector("#hm-frozen .hm-value").textContent;
+const frozenWarned = (document) => document.getElementById("hm-frozen").classList.contains("hm-frozen-warn");
+const visibleFrozenBadges = (document) =>
+  [...document.querySelectorAll("#grid .badge-frozen")].filter((el) => el.style.display !== "none").length;
+
+test("凍結ゼロなら 0 のまま・警告色を付けない(通常時にノイズを出さない)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, [{}, {}]);
+  assert.equal(frozenValue(document), "0");
+  assert.equal(frozenWarned(document), false);
+  assert.equal(visibleFrozenBadges(document), 0);
+});
+
+test("凍結した台数がヘッダに出て、そのタイルにバッジが付く", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, [{ frozen: true }, {}, { frozen: true }]);
+  assert.equal(frozenValue(document), "2");
+  assert.equal(frozenWarned(document), true, "1台以上は目立たせる");
+  assert.equal(visibleFrozenBadges(document), 2, "凍結した台にだけバッジを出すこと");
+});
+
+test("凍結が解けたら件数もバッジも戻る(出しっぱなしにしない)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, [{ frozen: true }, { frozen: true }]);
+  assert.equal(frozenValue(document), "2");
+  sendDevices(window, [{}, {}]);
+  assert.equal(frozenValue(document), "0");
+  assert.equal(frozenWarned(document), false);
+  assert.equal(visibleFrozenBadges(document), 0);
+});
+
+test("未接続の台は凍結として数えない(落ちている機は凍結ではない)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, [{ frozen: true, state: "booted" }, { frozen: true, state: "offline" }]);
+  assert.equal(frozenValue(document), "0");
+  assert.equal(visibleFrozenBadges(document), 0);
+});
+
+test("frozen を送らない旧 CLI でも壊れない(0 のまま)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  const devices = [{
+    id: "d0", name: "Dev 0", platform: "ios", state: "connected", detail: "",
+    kind: "virtual", udid: "UDID-0", recording: false, registered: true,
+  }];
+  window.dispatchEvent(new window.MessageEvent("message", { data: { type: "devices", devices } }));
+  assert.equal(frozenValue(document), "0");
+  assert.equal(visibleFrozenBadges(document), 0);
+});

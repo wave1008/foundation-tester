@@ -223,6 +223,13 @@ button.secondary:hover:not(:disabled) {
 .host-metric.hm-fm-warn .hm-value {
   color: var(--vscode-editorWarning-foreground, #e6a700);
 }
+/* 凍結台数(1台以上のときだけ目立たせる。0 は既定色のまま=通常時の視覚ノイズを増やさない)。
+   スパークラインを持たないぶん幅が余るので、ラベルと値の間隔だけ他指標と揃える。 */
+.host-metric.hm-frozen-warn .hm-label,
+.host-metric.hm-frozen-warn .hm-value {
+  color: var(--vscode-errorForeground);
+  font-weight: 600;
+}
 select {
   font-family: inherit;
   font-size: inherit;
@@ -349,7 +356,8 @@ select:disabled { opacity: 0.5; cursor: default; }
    (line-height 明示で文字種による差も殺す)。表示切替は laneLog.js/deviceTiles.js。 */
 .badge-running,
 .badge-queued,
-.badge-recording {
+.badge-recording,
+.badge-frozen {
   display: none;
   flex: 0 0 auto;
   font-size: 9px;
@@ -378,6 +386,12 @@ select:disabled { opacity: 0.5; cursor: default; }
 .badge-recording {
   background-color: var(--vscode-errorForeground, #f14c4c);
   color: #ffffff;
+}
+/* 凍結バッジ。device.frozen の間だけ表示(deviceTiles.js renderMeta)。録画(赤)・実行中(青)と
+   取り違えないよう寒色。寸法は .badge-running との共通ルール側(高さ合わせ)。 */
+.badge-frozen {
+  background-color: var(--vscode-charts-purple, #b180d7);
+  color: #1e1e1e;
 }
 .render-cpu {
   background-color: var(--vscode-charts-orange, #cc6633);

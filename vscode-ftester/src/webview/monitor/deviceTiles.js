@@ -12,6 +12,8 @@ import { updateLaneVisibility, syncLanesToDevices, runningWorkers } from './lane
 import { createH264Renderer } from './h264Decoder.js';
 import { clampMenuPosition } from './menu.js';
 import { setHoverTip } from './hoverTip.js';
+import { renderFrozenCount } from './hostCharts.js';
+import { countFrozenDevices } from '../../monitorDeviceModel';
 
 // bridgeWatch(拡張ホストの自動修復ウォッチドッグ、契約は main.js の 'bridgeWatch' ケース参照)の
 // phase→footer表示。'ok'はここに含めず通常表示へフォールバックさせる。
@@ -177,6 +179,13 @@ function createTile(device) {
   const recordingBadge = document.createElement('span');
   recordingBadge.className = 'badge badge-recording';
   recordingBadge.textContent = t('recordings.deviceBadge');
+  // 凍結バッジ。device.frozen(一様フレームが2サイクル連続)の間だけ表示(renderMeta が切替)。
+  // **タイルの絵だけでは分からない** —— 凍結時も最後のフレームが残るので、白/黒ベタでなければ
+  // 「普通の画面」に見える。ヘッダの Frozen カウンタと同じ判定(ApiMonitorCommand)
+  const frozenBadge = document.createElement('span');
+  frozenBadge.className = 'badge badge-frozen';
+  frozenBadge.textContent = t('wvMonitor.tile.frozen');
+  frozenBadge.title = t('wvMonitor.tile.frozenTitle');
   // 未登録(マシンプロファイル未記載の合成デバイス)バッジ。device.state に関わらず常時対象なので
   // kindBadge と同じくヘッダーに置く(renderMode==='cpu' バッジは state==='connected' 限定だが
   // 表示切替の実装パターン=専用要素+専用 render 関数+style.display 切替は揃える)。
@@ -216,7 +225,7 @@ function createTile(device) {
   error.className = 'tile-error';
   // renderBadge はフッター末尾に置く。tile-error が flex:1 で伸びるため自動的に右端(=タイル右下)に寄る。
   // 実行中/キュー待ち/録画中のバッジはタイル左下(フッター先頭)。録画は実行中の右(ユーザー指定)。
-  footer.append(runningBadge, recordingBadge, queuedBadge, stateBadge, error, renderBadge);
+  footer.append(runningBadge, recordingBadge, frozenBadge, queuedBadge, stateBadge, error, renderBadge);
 
   tile.append(header, frameWrap, footer);
   grid.appendChild(tile);
@@ -232,6 +241,7 @@ function createTile(device) {
     runningBadgeEl: runningBadge,
     queuedBadgeEl: queuedBadge,
     recordingBadgeEl: recordingBadge,
+    frozenBadgeEl: frozenBadge,
     renderBadgeEl: renderBadge,
     kindBadgeEl: kindBadge,
     unregisteredBadgeEl: unregisteredBadge,
@@ -373,6 +383,9 @@ function renderMeta(entry) {
   entry.nameEl.className = 'tile-name tile-name-' + entry.device.platform;
   setHoverTip(entry.nameEl, entry.device.name + ' (' + entry.device.platform + ')');
   entry.recordingBadgeEl.style.display = entry.device.recording ? 'inline-block' : 'none';
+  // 接続中のときだけ出す(未接続の機は「凍結」ではない。Swift 側も接続断で記憶を捨てる)
+  entry.frozenBadgeEl.style.display =
+    entry.device.frozen && entry.device.state === 'connected' ? 'inline-block' : 'none';
   // 実機は署名・接続の前提がシミュレータ/エミュレータと違うので取り違えないよう明示する
   entry.kindBadgeEl.style.display = entry.device.kind === 'physical' ? 'inline-block' : 'none';
   // マシンプロファイル未記載の合成デバイス(「(起動中のデバイス)」フィルタでのみ現れる)。
@@ -574,6 +587,8 @@ function clearTileError(entry) {
 }
 
 export function applyDevices(devices) {
+  // **絞り込みで凍結が視界から消えても件数は出す**ので、タイルではなく devices 全件から数える
+  renderFrozenCount(countFrozenDevices(devices));
   const previousTileCount = tiles.size;
   const seen = new Set();
   for (const device of devices) {

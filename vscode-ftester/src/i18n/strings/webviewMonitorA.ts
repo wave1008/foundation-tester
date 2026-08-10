@@ -42,6 +42,11 @@ export const webviewMonitorAStrings = {
     ja: "実機(シミュレータ/エミュレータではありません)。起動・停止は行いません",
     en: "Physical device (not a simulator/emulator). It is never started or stopped.",
   },
+  "wvMonitor.tile.frozen": { ja: "凍結", en: "Frozen" },
+  "wvMonitor.tile.frozenTitle": {
+    ja: "画面が凍結しています(一様フレームが2サイクル連続)。a11y は応答してもタップが届きません。復旧: シミュレータは shutdown → boot、エミュレータは sleep/wake かゲスト再起動",
+    en: "The screen is frozen (uniform frame for 2 consecutive cycles). Accessibility still responds but taps do not land. Recovery: shutdown → boot for a simulator, sleep/wake or a guest restart for an emulator",
+  },
   "wvMonitor.tile.unregistered": { ja: "未登録", en: "Unregistered" },
   "wvMonitor.tile.unregisteredTitle": {
     ja: "マシンプロファイル未記載の起動中デバイスです。起動は行えません(停止・ライブ操作は可能です)",

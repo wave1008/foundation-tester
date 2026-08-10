@@ -57,6 +57,10 @@ export const panelsStrings = {
   "panels.hostMetrics.cpuTitle": { ja: "CPU負荷", en: "CPU load" },
   "panels.hostMetrics.gpuTitle": { ja: "GPU負荷", en: "GPU load" },
   "panels.hostMetrics.fmTitle": { ja: "FM 呼び出し回数", en: "FM call count" },
+  "panels.hostMetrics.frozenTitle": {
+    ja: "画面が凍結しているデバイスの台数",
+    en: "Number of devices with a frozen screen",
+  },
 
   "panels.devices.emptyMessage": {
     ja: "デバイス情報を待機しています(ポーリング形式のため反映まで数十秒かかることがあります)...",

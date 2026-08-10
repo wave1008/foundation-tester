@@ -119,6 +119,8 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         // (healthProbeIntervalSeconds 未満はプローブせず直近の確定値を使い回す)
         var lastHealthProbeAt: [String: Date] = [:]
         var healthDebounce = AndroidHealthDebounce(confirmThreshold: 2)
+        // 画面凍結(一様フレーム)の確定。判定材料はこのループが毎サイクル撮っている PNG
+        var frozenDebounce = MonitorFrozenDebounce(confirmThreshold: 2)
         // GPU/CPU 判定はブート時固定のため接続毎に1回のみ検出しキャッシュする(健全性プローブとは
         // 別間隔。再接続=リブートで変わりうるため切断時に破棄する)
         var renderModeCache: [String: String] = [:]
@@ -217,7 +219,8 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                     : nil
                 return state.info(health: confirmedIssues.isEmpty ? nil : confirmedIssues,
                                    renderMode: state.androidSerial.flatMap { renderModeCache[$0] },
-                                   inRun: inRun, recording: recording, host: bridgeHost)
+                                   inRun: inRun, recording: recording, host: bridgeHost,
+                                   frozen: frozenDebounce.isFrozen(id: state.target.id))
             }))
 
             for state in states {
@@ -226,6 +229,8 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                     // 接続が切れたら次回同じエラーが起きても「状態変化」として扱えるよう記憶を消す
                     lastErrorMessage[state.target.id] = nil
                     loggedFetchFailure.remove(state.target.id)
+                    // 落ちている機は凍結として数えない(復帰したら撮り直して判定し直す)
+                    frozenDebounce.forget(id: state.target.id)
                     continue
                 }
                 // 拡張のデバイスタイルがストリーミング表示中のデバイスはスクショ取得側で
@@ -251,6 +256,10 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                     continue
                 }
                 loggedFetchFailure.remove(state.target.id)
+                // **縮小前の PNG で判定する**(JPEG 化は非可逆で、縮小も一様性を薄める方向に働く)。
+                // 撮れなかったサイクル(上の continue)では記録しない = 直前の確定を保つ
+                frozenDebounce.record(uniformBlank: BlankFrameDetector.isUniformBlank(pngData: png),
+                                      id: state.target.id)
 
                 do {
                     let jpeg = try MonitorImage.downscaledJPEG(pngData: png, maxWidth: maxWidth)
@@ -741,16 +750,61 @@ struct DeviceRuntimeState {
 
     /// fileprivate: 戻り値の型 ApiMonitorDeviceInfo がファイル限定の private 型のため
     /// (list-devices は同じ情報を ApiDeviceEntry として別途組み立てる)。
-    /// health・renderMode・inRun・recording は monitor ループだけが知る状態のため引数で受け取る
+    /// health・renderMode・inRun・recording・frozen は monitor ループだけが知る状態のため引数で受け取る
     fileprivate func info(health: [String]?, renderMode: String?, inRun: Bool,
-                          recording: Bool, host: String? = nil) -> ApiMonitorDeviceInfo {
+                          recording: Bool, host: String? = nil,
+                          frozen: Bool = false) -> ApiMonitorDeviceInfo {
         ApiMonitorDeviceInfo(id: target.id, name: target.name,
                              platform: target.platform, state: state, detail: detail,
                              udid: iosUdid, serial: androidSerial, health: health, renderMode: renderMode,
                              inRun: inRun,
                              kind: target.spec.isPhysical ? "physical" : "virtual",
                              host: host, port: iosPort,
-                             recording: recording, registered: target.registered)
+                             recording: recording, registered: target.registered, frozen: frozen)
+    }
+}
+
+/// 画面凍結(一様フレーム)の確定判定。**1サンプルでは凍結と言わない** ——
+/// 起動直後・遷移中・全面が一色の画面は一瞬だけ一様になるので、`confirmThreshold` 回連続で
+/// 一様だったときにだけ確定する(run 前トリアージの `BlankWorkerTriage` が 1.5s 間隔で
+/// 2連続を要求するのと同じ規律。あちらは専用サンプリング、こちらは監視サイクルが間隔になる)。
+/// 一様でないフレームを1枚見たら即クリアする(復帰を遅らせない)。
+///
+/// internal: 判定は純粋なのでここだけで単体テストする(ApiMonitorFrozenDebounceTests)。
+struct MonitorFrozenDebounce {
+    private let confirmThreshold: Int
+    private var streaks: [String: Int] = [:]
+    private var confirmedIDs: Set<String> = []
+
+    init(confirmThreshold: Int = 2) {
+        self.confirmThreshold = max(1, confirmThreshold)
+    }
+
+    /// このサイクルのフレーム1枚を記録する。戻り値 = 記録後の確定状態
+    @discardableResult
+    mutating func record(uniformBlank: Bool, id: String) -> Bool {
+        guard uniformBlank else {
+            streaks[id] = 0
+            confirmedIDs.remove(id)
+            return false
+        }
+        let streak = (streaks[id] ?? 0) + 1
+        streaks[id] = streak
+        if streak >= confirmThreshold { confirmedIDs.insert(id) }
+        return confirmedIDs.contains(id)
+    }
+
+    /// 現在の確定状態(記録の無いデバイスは false)
+    func isFrozen(id: String) -> Bool { confirmedIDs.contains(id) }
+
+    /// 確定済みの件数(モニターのヘッダに出す「Frozen: N」)
+    var frozenCount: Int { confirmedIDs.count }
+
+    /// デバイスの記憶を破棄(接続断・デバイス消滅のとき呼ぶ)。
+    /// **接続が切れたら忘れる** —— 落ちている機を凍結として数え続けない
+    mutating func forget(id: String) {
+        streaks.removeValue(forKey: id)
+        confirmedIDs.remove(id)
     }
 }
 
@@ -909,6 +963,12 @@ private struct ApiMonitorDeviceInfo: Encodable {
     /// 起動中デバイス(未登録)。追加フィールドのみで後方互換のため ProtocolVersion は不変
     /// (契約は vscode-ftester/src/monitorDeviceModel.ts の MonitorDevice.registered)
     let registered: Bool
+    /// 画面が凍結している(一様フレームが2サイクル連続)。**この値は1サイクル遅れる** ——
+    /// devices イベントはフレーム取得より前に出るため、判定に使うのは前サイクルの PNG。
+    /// スクショを撮らないデバイス(未接続・タイルがストリーミング中で frame 抑止・
+    /// ブリッジ不在)は最後の確定値を保つ(黙って false に戻すと凍結が画面から消える)。
+    /// 契約は vscode-ftester/src/monitorDeviceModel.ts の MonitorDevice.frozen
+    let frozen: Bool
 }
 
 /// monitorFrame イベント: state == connected のデバイスのみ、スクリーンショットを添えて出す
