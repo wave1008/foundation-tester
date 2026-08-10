@@ -4024,7 +4024,9 @@ final class MCPServer {
             + "Each step is one line of DSL — write it exactly as you would in a scenario "
             + "(e.g. tap(\"#id\"), scrollTo(\"#id\", direction: .down)), so a batch that passes "
             + "can be pasted in as-is; argument names are whatever ft_dsl_commands prints for "
-            + "that command's signature. Only operation and scroll commands are accepted (tap, "
+            + "that command's signature. Single-quoted strings are accepted as equivalent "
+            + "(tap('#id')) to avoid JSON escaping — Swift itself needs double quotes, so switch "
+            + "them when pasting into a scenario. Only operation and scroll commands are accepted (tap, "
             + "type, scrollTo, swipeBy, pinchOut, …) — app lifecycle/data-wiping commands "
             + "(launchApp, clearAppData, …) and assertions are rejected with the tool to call "
             + "instead. Steps target elements by selector, not ref — a ref is only valid against "
@@ -4032,9 +4034,11 @@ final class MCPServer {
             + "ref would silently hit a stale element.", [
             "steps": ["type": "array", "maxItems": batchStepLimit,
                       "items": ["type": "string"],
-                      "description": "Up to \(batchStepLimit) DSL lines, e.g. "
-                        + "[\"tap(\\\"#nav_input\\\")\", \"type(\\\"#field\\\", \\\"batch\\\")\", "
-                        + "\"scrollTo(\\\"#btn_submit\\\", direction: .down)\"]. An element with "
+                      "description": "Up to \(batchStepLimit) DSL lines. Strings may be "
+                        + "single-quoted — 'x' and \"x\" are equivalent — so the whole batch "
+                        + "can be one newline-separated element with no JSON escaping: "
+                        + "[\"tap('#nav_input')\\ntype('#field', 'batch')\\n"
+                        + "scrollTo('#btn_submit', direction: .down)\"]. An element with "
                         + "a newline in it is split into multiple steps"],
             "expandBulk": expandBulkProperty,
             "interactiveOnly": interactiveOnlyProperty,

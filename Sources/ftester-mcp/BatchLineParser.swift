@@ -3,7 +3,7 @@
 //   line   := name [ "(" args ")" ]
 //   args   := arg ("," arg)*
 //   arg    := [ label ":" ] value
-//   value  := string | number | bool | "." ident
+//   value  := string | number | bool | "." ident      (string は "…" と '…' を等価に受ける)
 //
 // Swift 全体は解釈しない —— 入れ子呼び出し・配列・演算子・クロージャは構文的に受け付けず、
 // 明確なエラーにする(価は BatchLineParserTests)。
@@ -155,13 +155,17 @@ enum BatchLineParser {
         }
         guard let c = peek() else { throw fail("expected a value") }
 
-        if c == "\"" {
+        // '…' も "…" と等価に受ける(MCP の引数は JSON 文字列なので、" は \" の二重エスケープに
+        // なり生産性が低い)。DSL(Swift)には無い形なので、シナリオへ貼る形は " が正 ——
+        // draft への記録は FlowStep から再生成されるため、ここで ' を受けても契約は崩れない
+        if c == "\"" || c == "'" {
+            let quote = c
             i += 1
             var s = ""
             while true {
                 guard i < chars.count else { throw fail("unterminated string") }
                 let ch = chars[i]
-                if ch == "\"" { i += 1; break }
+                if ch == quote { i += 1; break }
                 if ch == "\\" {
                     i += 1
                     guard i < chars.count else { throw fail("unterminated string") }

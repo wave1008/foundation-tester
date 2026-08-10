@@ -25,6 +25,26 @@ final class BatchLineParserTests: XCTestCase {
         XCTAssertEqual(parsed.args.last?.value, .string("say \"hi\" \\ ok"))
     }
 
+    // '…' は "…" と等価(MCP の引数は JSON 文字列で、" の二重エスケープを避けるため)
+
+    func testSingleQuotedStringEqualsDoubleQuoted() throws {
+        XCTAssertEqual(try BatchLineParser.parse("type('#field', 'ログイン')"),
+                       try BatchLineParser.parse("type(\"#field\", \"ログイン\")"))
+    }
+
+    func testSingleQuotedStringMayContainDoubleQuoteAndViceVersa() throws {
+        XCTAssertEqual(try BatchLineParser.parse("type('#f', 'say \"hi\"')").args.last?.value,
+                       .string("say \"hi\""))
+        XCTAssertEqual(try BatchLineParser.parse("type(\"#f\", \"it's\")").args.last?.value,
+                       .string("it's"))
+    }
+
+    func testMismatchedQuotesAreUnterminated() {
+        XCTAssertThrowsError(try BatchLineParser.parse("tap('#a\")")) { error in
+            XCTAssertTrue((error as? BatchLineSyntaxError)?.reason.contains("unterminated") == true)
+        }
+    }
+
     // MARK: - 位置引数とラベル付き引数の混在
 
     func testPositionalAndLabeledArgsMixed() throws {
