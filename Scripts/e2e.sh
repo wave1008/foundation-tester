@@ -11,13 +11,20 @@
 #   rn             E2EAppRN/       React Native            → TestProjects/E2E-RN      (ios + android)
 #
 # 使い方:
-#   Scripts/e2e.sh                 # 全 SUT・全プロファイル(鮮度を見て必要なら SUT を再ビルド)
+#   Scripts/e2e.sh                 # 全 SUT・全プロファイル(鮮度を見て必要なら SUT を再ビルド)。
+#                                   # **iOS は in-app エンジン** = 利用者の既定(hybrid)の経路
 #   Scripts/e2e.sh --cmp           # SUT を絞る(--ios-native / --android-native / --flutter / --rn も同様。併記可)
 #   Scripts/e2e.sh --ios           # OS を絞る(--android も同様)
-#   Scripts/e2e.sh --ios-inapp     # iOS を in-app エンジン(ios-inapp プロファイル)で回す。
-#                                   # 既定は ios-xcuitest だけなので、**利用者の既定エンジン
-#                                   # (hybrid = in-app 優先)の経路はこれを付けないと1本も通らない**。
-#                                   # 入力・スナップショット・型写像など in-app ブリッジを触ったら必須
+#   Scripts/e2e.sh --ios-xcuitest  # **iOS だけ**を XCUITest エンジン(ios-xcuitest プロファイル)で回す。
+#                                   # **既定は in-app** —— 利用者の既定エンジンは hybrid
+#                                   # (in-app 優先)なので、既定スイートが見るのはそちらの経路。
+#                                   # XCUITest ブリッジ(ランナー・スナップショット・型写像)を
+#                                   # 触ったらこれを追加で回す。
+#                                   # **Android は回さない** —— Android にエンジンの選択肢は無く
+#                                   # (iosInappEngine は iOS 専用)、既定スイートと1バイトも違わない実行を
+#                                   # もう一度回すことになる(2026-08-11 実測で 244 秒の純粋な重複)。
+#                                   # Android だけ回したいときは --android
+#   Scripts/e2e.sh --ios-inapp     # **iOS だけ**を in-app エンジン(= 既定と同じ)で回す
 #   Scripts/e2e.sh --rebuild       # SUT を必ず再ビルドしてから実行
 #   Scripts/e2e.sh --record        # 各プロファイルの一時コピー(<名前>-record-tmp.json。実行後に削除)に
 #                                   # record:true を付けて実行し、録画パイプラインの整合を
@@ -39,22 +46,37 @@ FORCE_REBUILD=0
 RUN_IOS=1
 RUN_ANDROID=1
 RECORD=0
+# エンジンを明示した(--ios-inapp / --ios-xcuitest)= iOS のエンジン検証が目的。Android は回さない
+IOS_ENGINE_ONLY=0
 SUTS=""
-# iOS の実行プロファイル。--ios-inapp で in-app エンジン側へ切り替える(E2E-Android には無い)
-IOS_PROFILE="ios-xcuitest"
+# iOS の実行プロファイル。**既定は in-app**(利用者の既定エンジン hybrid = in-app 優先に合わせる)。
+# --ios-xcuitest で XCUITest 側へ切り替える(E2E-Android には iOS プロファイルが無い)
+IOS_PROFILE="ios-inapp"
 
 for arg in "$@"; do
   case "$arg" in
     --rebuild) FORCE_REBUILD=1 ;;
     --ios) RUN_ANDROID=0 ;;
     --android) RUN_IOS=0 ;;
-    --ios-inapp) IOS_PROFILE="ios-inapp" ;;
+    --ios-inapp) IOS_PROFILE="ios-inapp"; IOS_ENGINE_ONLY=1 ;;
+    --ios-xcuitest) IOS_PROFILE="ios-xcuitest"; IOS_ENGINE_ONLY=1 ;;
     --record) RECORD=1 ;;
     --cmp|--ios-native|--android-native|--flutter|--rn) SUTS="$SUTS ${arg#--}" ;;
     *) echo "不明な引数: $arg" >&2; exit 2 ;;
   esac
 done
 [ -n "$SUTS" ] || SUTS="cmp ios-native android-native flutter rn"
+
+# **エンジンの指定は iOS だけを回す**。Android にエンジンの選択肢は無い(iosInappEngine は iOS 専用)ので、
+# エンジンを明示した実行で Android まで回すと既定スイートと同一の実行を二度払うだけになる
+# (2026-08-11 実測 244 秒)。Android だけ回したいときは --android
+if [ "$IOS_ENGINE_ONLY" = 1 ] && [ "$RUN_IOS" = 1 ]; then
+  RUN_ANDROID=0
+fi
+if [ "$IOS_ENGINE_ONLY" = 1 ] && [ "$RUN_IOS" = 0 ]; then
+  echo "❌ --ios-inapp / --ios-xcuitest と --android は併記できません(前者は iOS だけを回します)" >&2
+  exit 2
+fi
 
 [ -x "$FTESTER" ] || { echo "❌ $FTESTER がありません(swift build --product ftester)" >&2; exit 1; }
 if [ "$RECORD" = 1 ]; then
@@ -70,23 +92,26 @@ needs_rebuild() {  # $1 = 成果物パス, $2.. = 監視するソースディレ
   [ -n "$(find "$@" -type f -newer "$artifact" 2>/dev/null | head -1)" ]
 }
 
-# in-app ブリッジの入力が「最後に --ios-inapp を通した状態」から動いているか。
-# **既定スイートは iOS を xcuitest でしか回さない**のに、利用者の既定エンジンは hybrid
-# (in-app 優先)なので、放っておくと in-app 側は何回変えても1度も動かないまま緑になる
-# (2026-08-09 に実際に起きた: スナップショット生成を in-app/xcuitest 両方変えた回の
-# E2E 254 本が全部 engine=xcuitest だった)。
+# **回さなかった側のエンジン**の入力が、最後にそれを全部通した状態から動いていないか。
+# 1回の実行が見るのは iOS の2エンジンのうち片方だけなので、放っておくともう片方は
+# 何回変えても1度も動かないまま緑になる(2026-08-09 に実際に起きた: スナップショット生成を
+# in-app/xcuitest 両方変えた回の E2E 254 本が全部 engine=xcuitest だった)。
 # **警告だけで落とさない** —— 検知は警告から始める、が本リポジトリの方針。
 # 一覧の定義元は Sources/FTCore/BridgeSourceSet.swift(ここに二重に書かない)
-INAPP_MARKER="$ROOT/.ftester/inapp-e2e-verified"
-inapp_digest() { "$FTESTER" api bridge-sources --set inapp --digest 2>/dev/null; }
-INAPP_STALE=""
-if [ "$RUN_IOS" = 1 ] && [ "$IOS_PROFILE" != "ios-inapp" ]; then
-  CURRENT_DIGEST="$(inapp_digest)"
-  if [ -n "$CURRENT_DIGEST" ] && [ "$CURRENT_DIGEST" != "$(cat "$INAPP_MARKER" 2>/dev/null)" ]; then
-    INAPP_STALE=1
-    echo "⚠️ in-app ブリッジの入力が、最後に --ios-inapp を通した状態から変わっています。"
-    echo "   このスイートは iOS を xcuitest でしか回さないので、in-app 経路は検証されません。"
-    echo "   → Scripts/e2e.sh --ios-inapp を回してください(1 SUT だけでも可)"
+engine_digest() { "$FTESTER" api bridge-sources --set "$1" --digest 2>/dev/null; }
+engine_marker() { echo "$ROOT/.ftester/$1-e2e-verified"; }
+# このスイートが回す iOS エンジンと、回さない側
+RUN_ENGINE=inapp; SKIP_ENGINE=xcuitest
+# **`[ … ] && { … }` の形にしない**(偽のとき終了ステータス 1 を残す。末尾の exit の項も参照)
+if [ "$IOS_PROFILE" = "ios-xcuitest" ]; then RUN_ENGINE=xcuitest; SKIP_ENGINE=inapp; fi
+ENGINE_STALE=""
+if [ "$RUN_IOS" = 1 ]; then
+  CURRENT_DIGEST="$(engine_digest "$SKIP_ENGINE")"
+  if [ -n "$CURRENT_DIGEST" ] && [ "$CURRENT_DIGEST" != "$(cat "$(engine_marker "$SKIP_ENGINE")" 2>/dev/null)" ]; then
+    ENGINE_STALE=1
+    echo "⚠️ $SKIP_ENGINE ブリッジの入力が、最後にそれを通した状態から変わっています。"
+    echo "   この実行は iOS を $RUN_ENGINE でしか回さないので、$SKIP_ENGINE 経路は検証されません。"
+    echo "   → Scripts/e2e.sh --ios-$SKIP_ENGINE を回してください(1 SUT だけでも可)"
   fi
 fi
 
@@ -190,16 +215,17 @@ fi
 
 # **通した状態を覚えるのは全部成功したときだけ** —— 失敗したまま印を更新すると、
 # 次回から「検証済み」と言い張る装置になる
-if [ "$FAILED" = 0 ] && [ "$RUN_IOS" = 1 ] && [ "$IOS_PROFILE" = "ios-inapp" ]; then
-  mkdir -p "$(dirname "$INAPP_MARKER")"
-  inapp_digest > "$INAPP_MARKER"
-  echo "→ in-app 経路を検証済みとして記録しました($INAPP_MARKER)"
+if [ "$FAILED" = 0 ] && [ "$RUN_IOS" = 1 ]; then
+  MARKER="$(engine_marker "$RUN_ENGINE")"
+  mkdir -p "$(dirname "$MARKER")"
+  engine_digest "$RUN_ENGINE" > "$MARKER"
+  echo "→ $RUN_ENGINE 経路を検証済みとして記録しました($MARKER)"
 fi
 # 最後にもう一度言う: 冒頭の1行は数分のログに流されて読まれない。
 # **`[ … ] && echo` の形にしない** —— 偽のとき終了ステータス 1 を残すので、
 # 直後の `exit "$FAILED"` を誰かが消した瞬間に「成功したのに失敗扱い」へ化ける
-if [ -n "$INAPP_STALE" ]; then
-  echo "⚠️ in-app 経路は未検証のままです(Scripts/e2e.sh --ios-inapp)"
+if [ -n "$ENGINE_STALE" ]; then
+  echo "⚠️ $SKIP_ENGINE 経路は未検証のままです(Scripts/e2e.sh --ios-$SKIP_ENGINE)"
 fi
 
 exit "$FAILED"

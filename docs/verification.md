@@ -44,12 +44,21 @@ MCP の **profile 無しの iOS 経路**(`ft_snapshot` 等を `platform: ios` �
   → デバイスで確かめる。**down/up を省くと必ず旧版を測る**。iOS のシミュレータはブリッジを
   建て直すと**アプリが消えていることがある**ので、`ft_install` からやり直す
 
-## in-app エンジンは `--ios-inapp` を付けないと1本も回らない
+## 1回の実行が見るのは iOS の2エンジンのうち片方だけ
 
-`Scripts/e2e.sh` の iOS は既定で **`ios-xcuitest` プロファイルだけ**を回す。一方
+`Scripts/e2e.sh` の iOS は **既定が `ios-inapp` プロファイル**(2026-08-11 に xcuitest から反転)。
 **利用者の既定エンジンは hybrid(in-app 優先)**(`RunProfile` の `iosInappEngine ?? true`)なので、
-既定の E2E は「利用者が普段通らない経路」しか見ていない。in-app ブリッジ(入力・スナップショット・
-型写像・ジェスチャ申告)を触ったら **`Scripts/e2e.sh --ios-inapp`** を追加で回すこと。
+既定スイートが見るべきは in-app 側。**XCUITest ブリッジ**(ランナー・スナップショット・型写像・
+ジェスチャ申告)を触ったら **`Scripts/e2e.sh --ios-xcuitest`** を追加で回すこと。
+逆に in-app だけを回したいときは `--ios-inapp`(既定と同じエンジンで iOS のみ)。
+
+**エンジン指定は iOS だけを回す**(2026-08-11)。Android にエンジンの選択肢は無く
+(`iosInappEngine` は iOS 専用)、一緒に回すと既定スイートと1バイトも違わない実行をもう一度
+払うだけになる(実測 244 秒 = このスイートの重複分)。OS の絞り込みは `--ios` / `--android`。
+
+**印は回さなかった側に付く**: e2e.sh は `BridgeSourceSet` の digest を
+`.ftester/<engine>-e2e-verified` に記録し(**全部成功したときだけ**)、次の実行で
+**回さない側**のエンジンの入力が動いていれば開始時と終了時に警告する。落とさず警告だけ。
 
 ## 入力・キー系は Compose だけで検証しない(フレームワークで経路が割れる)
 
@@ -1316,6 +1325,12 @@ Android エミュレータの表示凍結([[emulator-display-freeze-wedge]])と*
   「同時2台」と同じ理屈)
 - **シミュレータを落とすとブリッジも死ぬ**ので、回復と `buildIOSWorkers` での張り直しは1セット。
   生きているブリッジは再利用されるため、実際に建て直るのは落とした機だけ
+- **落とす前にその機のブリッジを止める**(2026-08-11。`BridgeLauncher.stopMatching(udid:)`)。
+  掴んだまま `simctl shutdown` すると XCUITest ランナーの teardown を待って **約50秒**かかり
+  (止めてからなら約5秒)、生き残ったランナーが再ブート後に再接続してくるので張り直しも遅い。
+  **A/B 実測(3周とも一致)**: 現行 98.6 / 96.5 / 96.3s → 先に止める 34.6 / 34.6 / 33.9s = **−62s/回**。
+  止めるのは**その udid のブリッジだけ**(他機・他セッションを巻き込まない)。
+  順序は `FrozenIOSRecoveryTests` がソース走査で固定する
 - 混在一覧(Android + iOS)を受けても **iOS だけ入れ替える**。素直に返り値で置き換えると
   `buildIOSWorkers` は iOS しか作らないので **Android のレーンが消える**
 - `recoveryAttempts` = 2 まで試し、**戻らない個体だけレーンから外す**(「レーン上に凍結機を
@@ -1592,7 +1607,8 @@ E2E-iOS を回すまで気付かなかった)。**距離を伸ばしても・画
 
 - SUT(`E2EAppCMP/` 他)の鮮度を見て必要なら再ビルドし、各プロファイルを順に回す。オプション:
   `--rebuild` / `--ios` / `--android` / `--cmp` / `--ios-native` / `--android-native` / `--flutter` / `--rn` /
-  `--ios-inapp`(iOS を in-app エンジンで回す。上記「in-app エンジンは…」節) /
+  `--ios-xcuitest`(iOS を XCUITest エンジンで回す。既定は in-app。上記「1回の実行が見るのは…」節) /
+  `--ios-inapp`(既定と同じエンジンで iOS のみ) /
   `--record`(録画パイプラインの整合チェック付き。詳細は下記「録画」節)
 - **両OSを1プロファイルにまとめない**: platform 未指定シナリオは既定 platform のキューにしか入らず
   他方のワーカーが空回りする(design.md §11.4)。SUT はネットワーク依存ゼロなのでバックエンド死活の
@@ -2207,9 +2223,10 @@ devicepoll の要点:
 
 ### WebView を触ったときの検証
 
-- **`--ios-inapp` を必ず回す**。利用者の既定エンジンは hybrid = in-app 優先で、WebView の中身は
-  in-app だけ **DOM 経路**(`InAppWebViewDOM`)を通る。既定の e2e.sh は iOS を xcuitest でしか
-  回さないため、この経路が丸ごと未検証のまま緑になる。
+- **DOM 経路は in-app だけ**(`InAppWebViewDOM`)。利用者の既定エンジンは hybrid = in-app 優先で、
+  既定の e2e.sh も iOS を in-app で回すので既定スイートに入る(2026-08-11 の反転前は
+  xcuitest 既定で、この経路が丸ごと未検証のまま緑になっていた)。**`--ios-xcuitest` 側も回す** ——
+  WebView は xcuitest では a11y 経路になるため、両方通さないと片側の退行が残る。
 - **SUT を絞らない**。WebView の埋め込み方がフレームワークごとに違い、退行が SUT を跨がないと出ない:
   ネイティブ(WKWebView 直)/ CMP(UIKitView interop)/ Flutter(platform view)。
   実例: CMP と Flutter は interop が合成タッチと `insertText` を横取りするため DOM 経路を使わない
