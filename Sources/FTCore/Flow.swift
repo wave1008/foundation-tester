@@ -106,6 +106,11 @@ public struct FlowStep: Codable, Sendable {
     /// 非 nil のときだけホストが座標を計算してブリッジへ渡す(`ScrollGeometry`)。
     /// **解決できなかったときも従来経路へ落とす**(Shirates も見つからなければ次の候補へ落ちる)
     public var scrollFrame: FlowLocator?
+    /// スクロール対象の領域を矩形で直接指定する(MCP 専用。DSL は使わない)。非 nil なら
+    /// `scrollFrame`(セレクタ)より優先し、**常に解決済み扱い**(`scrollFrameUnresolved` の
+    /// fail-fast は掛からない)。**なぜ rect か**: id が重複・欠落した容器は一意なセレクタで
+    /// 指せないため、`MCPServer` が撮り直した木からその場で ref → frame を引いて渡す
+    public var scrollFrameRect: FTRect?
     /// 指を置く側 / 離す側の余白比(領域の高さ・幅に対する比)。nil = `FTScrollDefaults` の用途別既定。
     /// **`scrollFrame` が nil のときは無視される**(全画面固定のままスパンを広げると始点が
     /// スクロール領域の外に出て 1 ミリも動かない。docs/performance-tuning.md §3.16)
@@ -128,6 +133,7 @@ public struct FlowStep: Codable, Sendable {
                 note: String? = nil, occlusionGuard: Bool? = nil,
                 containerInference: Bool? = nil,
                 scrollFrame: FlowLocator? = nil,
+                scrollFrameRect: FTRect? = nil,
                 startMarginRatio: Double? = nil, endMarginRatio: Double? = nil,
                 intervalSeconds: Double? = nil,
                 scale: Double? = nil, dxRatio: Double? = nil, dyRatio: Double? = nil) {
@@ -135,6 +141,7 @@ public struct FlowStep: Codable, Sendable {
         self.dxRatio = dxRatio
         self.dyRatio = dyRatio
         self.scrollFrame = scrollFrame
+        self.scrollFrameRect = scrollFrameRect
         self.startMarginRatio = startMarginRatio
         self.endMarginRatio = endMarginRatio
         self.intervalSeconds = intervalSeconds

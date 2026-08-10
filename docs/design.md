@@ -351,9 +351,15 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
     1画面は `id=VKPointFeature` が 42〜67 件あり、**一覧の 47〜58% がこれ**で、本物の UI が
     毎回下半分へ押し込まれていた。そこで**描画側でも畳む**:
     `SnapshotRenderer.render(collapsingBulk:)` が「同一 id が `bulkGroupMinimum`(=20。
-    ブリッジの bulk tier と同じ値)以上・すべて `other` の葉・非スクロール・印が付いていない」
-    群を**見出し1行 + 「ラベル[ref]」の索引**に畳む。**frame は落とすが ref は全件残す**
+    ブリッジの bulk tier と同じ値)以上・すべて `other` の葉・非スクロール」群を
+    **見出し1行 + 「ラベル[ref]」の索引**に畳む。**frame は落とすが ref は全件残す**
     —— 実測で `#VKPointFeature` の ref タップは場所カードを開くので、消してはいけない。
+    **印(⚠️scroll-leftover 等)が付いた要素も畳む**(2026-08-10): タップ時に RefGuard が
+    改めて警告するので、snapshot 時点の個別列挙は冗長 —— 地図 POI 231件中40件が印付きという
+    だけで出力の半分を個別行が占めていた。見出しに旗ごとの件数を添える
+    (`38 ⚠️scroll-leftover, 1 ⚠️offscreen among them`)。`ghostNote` の先頭注記も畳まれた ref を
+    個別列挙せず、`(+N folded into the ×M id=… line below)` で件数だけ言う(判定は render と
+    同じ `SnapshotRenderer.foldedGroups` を共有し、二重実装を避ける)。
     `ft_snapshot` は既定で畳み `expandBulk: true` で全行に戻す。`ft_scroll_to` は常に畳む
     (答えは「探した1つがどこに居るか」なので大群を並べる意味が無い)。**間引き(ブリッジ)と
     畳み(描画)は別物** —— 前者は配列から消し、後者は見せ方を変えるだけ
@@ -425,7 +431,10 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
   **添字付きにだけ印を付ける**(一覧は `~`・単発の戻り値は但し書き・下書きは行末コメント)。
   判定は**綴りだけ**で決める(`>>` と `[` の両方がある = 添字付き)—— 要素側の事情を
   持ち込むと、同じセレクタに対して注記と戻り値で言うことが割れる。
-  **安定側には何も付けない**: 全行にコメントが付くと読み飛ばされ、危ない行が埋もれる
+  **安定側には何も付けない**: 全行にコメントが付くと読み飛ばされ、危ない行が埋もれる。
+  **単発の戻り値の但し書きは初回だけ満額**(`reproductionNote` の `once("indexedSelectorCaution", …)`。
+  2026-08-10)。id の薄いアプリ(地図等)ではタップのたび同じ index-based 注意が繰り返され、
+  id を足せない他社アプリ相手ではノイズになる。**セレクタ自体は毎回出す**(縮むのは但し書きだけ)
 - **下書きは刈り込める**(`InteractionLog.prune`。2026-08-10)。記録は「やったこと」であって
   「意図」ではないので、行き止まりのタップも試し打ちも同じ忠実さで載る。どちらも成功した操作なので
   自動では見分けられず、**番号を見せて選ばせる**(`drop:` / `lastN:`)。
@@ -2170,7 +2179,14 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
     **動いていれば新しい ref へ撃ち直す/消えていれば撃たずに理由を返す**。
     identifier を持つ要素がその identifier で引けないときは**ラベルへ落ちない**(別要素を掴む)。
     ghost 判定は `StepExecutor.isOutsideContainer` を共有する(MCP 側に別の閾値を置くと
-    DSL と「ghost の定義」が割れる)。**ghost は撃つが黙っては撃たない**(下記)
+    DSL と「ghost の定義」が割れる)。**ghost は撃つが黙っては撃たない**(下記)。
+    **identifier で引き直したらラベルの変化も見る**(`RefGuard.labelChangeNote`。2026-08-10)。
+    identifier だけで引き直すと、検索候補が更新された画面では**同じ id・別の行**を掴むことがある
+    (実測: 「立川駅、最近表示した項目」を狙ったタップが「立川駅 南口、立川市」に化けた)。
+    動いた距離とは無関係に出す(位置が同じでもラベルだけ変わった形は同じ危険)。
+    再ターゲット後に実際に操作を撃つ経路(`verifiedRef` / double_tap・pinch・drag(fromRef) が
+    通る `verifiedElement`)には同じ警告を入れ、存在確認だけの経路(スクロール探索の着地表示・
+    フォーカス待ち)には入れない
   - **`ft_scroll_to` は DSL と同じ `StepExecutor` に委ねる**(2026-08-06)。整定待ち・キャッシュ回避・
     容器基準の刻み・ghost の掴み直し・飛び越しの拾い直し・打ち切りは全部あちらに入っており、
     **同じ知見の2つ目の実装を作ると必ず割れる**。MCP は FlowStep を1つ組んで投げるだけ =
@@ -2188,7 +2204,12 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
     埋もれる(実測: Apple マップの経路詳細で、シートを広げた後の `y=-59` の行まで
     「別の物に当たるかも」と警告されていた)。判定は `TapTargetGeometry.offscreenAdvisory`
     (中心が画面の外)で、**画面外を先に見る** = `RefGuard.preTapWarnings` の優先順位と同じ。
-    揃えるのは、同じ要素について**ツールごとに言うことが変わらない**ようにするため
+    揃えるのは、同じ要素について**ツールごとに言うことが変わらない**ようにするため。
+    **`⚠️offscreen` の一覧注記は方向まで言う**(2026-08-10。`MCPServer.offscreenDirection`):
+    中心のはみ出し量が大きい軸(below/above/right/left)で方向グループに分け、
+    `ft_scroll_to` の `direction:` へそのまま渡せる語(down/up/right/left)を添える。
+    旧文言「scrolled past」は削除した —— 実測(Apple マップの経路候補・横ページャ)で、
+    一度も表示していない右隣ページの要素に「スクロールで通り過ぎた」は不正確だった
 
     当てる相手は `RefGuard.occluder`(中心を覆う別要素)。**遮蔽と数えないものが7つ**ある:
 
@@ -2389,10 +2410,17 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
   - **スクロール容器は行に `scroll` を出し、2つ以上あるときだけ先頭で名指しする**
     (`ScrollFrameCandidates`。2026-08-06)。**id を持たない ScrollView/Table/CollectionView も
     版58から木に出る**(xcuitest の `isEligible` が容器型を id 必須から免除。in-app は
-    版57で対応済み。id が無い容器は矩形で名指しされる)。`scrollFrame:` は**ref でなくセレクタ文字列**を取るのに、
-    一覧はどれが容器かを言っていなかった —— `ft_scroll_to` の引数説明が「複数あるときに渡せ」と
-    言うだけで、**渡す値の探し方が無かった**。専用ツールを足さないのは、欲しくなるのが常に
-    snapshot の直後(データは既に届いている)で、ツールは説明文が毎リクエストに乗るため。
+    版57で対応済み。id が無い容器は矩形で名指しされる)。当初 `ft_scroll_to` の `scrollFrame:` は
+    セレクタ文字列しか取らないのに、一覧はどれが容器かを言っていなかった —— 引数説明が
+    「複数あるときに渡せ」と言うだけで、**渡す値の探し方が無かった**。専用ツールを足さないのは、
+    欲しくなるのが常に snapshot の直後(データは既に届いている)で、ツールは説明文が毎リクエストに乗るため。
+    **`scrollFrame:` は ref(整数)も受ける**(2026-08-10。MCP 専用 — DSL の `scrollFrame:` は
+    従来どおり文字列のみで、この決定に触れない): id が重複・欠落した容器はセレクタで一意に
+    指せないため、`ft_snapshot`/`ft_scroll_to` が返した ref をそのまま渡せば `MCPServer.scrollTo`
+    が既存の stale-ref 再照合(`resolveSessionRef` → `RefGuard.relocate`)を通したうえで frame を
+    `FlowStep.scrollFrameRect` に入れる(`StepExecutor.scrollContainer` が locator より rect を
+    優先し、rect は常に解決済み扱いなので scrollFrame の fail-fast には掛からない)。
+    `ScrollFrameCandidates.note` は id が重複・欠落した候補を含む画面でだけこの逃げ道を一言添える。
     規律は `scrollFrameNote` と同じ **true を見つけたときだけ喋る** —— Compose/Flutter の in-app は
     申告できないので、そこで「容器なし」と言うと嘘になる。名指しは **id → ラベル(40字以内)**の順で、
     どちらも無ければ矩形を出して「書けない」ことを明示する(存在しないセレクタを勧めない)。

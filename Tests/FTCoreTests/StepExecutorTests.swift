@@ -2309,6 +2309,56 @@ final class StepExecutorTests: XCTestCase {
                        "scrollFrame が解決できないなら1本も振らないこと")
     }
 
+    // MARK: - scrollFrameRect(MCP の ref 経由スクロール容器。2026-08-10)
+    //
+    // id の重複・欠落でセレクタが書けない容器のため、MCPServer が ref から起こした矩形を
+    // そのまま渡す経路。DSL は使わない(scrollFrame は文字列のまま)。
+
+    /// **rect は locator を経ずにそのまま容器になる**
+    func testScrollContainerReturnsScrollFrameRectDirectly() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
+        let executor = StepExecutor(driver: primary)
+        var step = FlowStep(action: "scrollTo", locator: FlowLocator(id: "target"))
+        let rect = FTRect(x: 10, y: 20, width: 300, height: 400)
+        step.scrollFrameRect = rect
+        let snapshot = SnapshotResponse(sessionBundleID: nil,
+                                        screen: FTRect(x: 0, y: 0, width: 400, height: 800),
+                                        elements: [], truncatedCount: 0)
+        XCTAssertEqual(executor.scrollContainer(step: step, in: snapshot, vertical: true), rect)
+    }
+
+    /// **rect があれば scrollFrame(セレクタ)の解決失敗を無視する** —— rect は「常に解決済み」
+    /// 扱いなので、id が重複・欠落した容器を指すための逃げ道が fail-fast に巻き込まれない
+    func testScrollContainerPrefersRectEvenWhenTheLocatorCannotResolve() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
+        let executor = StepExecutor(driver: primary)
+        var step = FlowStep(action: "scrollTo", locator: FlowLocator(id: "target"))
+        step.scrollFrame = FlowLocator(id: "no_such_container")
+        let rect = FTRect(x: 10, y: 20, width: 300, height: 400)
+        step.scrollFrameRect = rect
+        let snapshot = SnapshotResponse(sessionBundleID: nil,
+                                        screen: FTRect(x: 0, y: 0, width: 400, height: 800),
+                                        elements: [], truncatedCount: 0)
+        XCTAssertEqual(executor.scrollContainer(step: step, in: snapshot, vertical: true), rect)
+    }
+
+    /// rect だけを指定した(scrollFrame セレクタ無しの)`scrollTo` は、対象が最初から画面に
+    /// 居るとき fail-fast にも掛からず素直に成功すること(rect 経路の配線確認)
+    func testScrollToSucceedsWithScrollFrameRectAndNoLocator() async throws {
+        let log = CallLog()
+        let row = framed(ref: 1, id: "row_40", x: 16, y: 100, width: 370, height: 40)
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[row]])
+        let executor = StepExecutor(driver: primary)
+        var step = FlowStep(action: "scrollTo", locator: FlowLocator(id: "row_40"), direction: "up")
+        step.scrollFrameRect = FTRect(x: 0, y: 0, width: 400, height: 800)
+
+        guard case .passed = await executor.execute(step).status else {
+            XCTFail("画面に既に居るので見つかるはず"); return
+        }
+    }
+
     // MARK: - notExist(scroll:) の内蔵探索(exist(scroll:) の裏返し)
 
     /// スクロール探索を尽くしても見つからなければ、現在のビューポート(最終フレーム)でも
@@ -2656,6 +2706,62 @@ final class StepExecutorTests: XCTestCase {
     }
 
     // MARK: - 機械可読な注記(StepNote)
+
+    // MARK: - 半開きシートの逆走査の後回し(defersPartialSheetRecovery)
+
+    /// 半開きシート(部分高の容器)で停滞する台本。1周目だけ動かして scrolledContainer を
+    /// 立て、以後は同一ツリー(最後の要素が繰り返される規約で停滞になる)
+    private func partialSheetStallScript() -> [[ElementInfo]] {
+        func tree(offset: Double) -> [ElementInfo] {
+            // 移動後も**2つ以上の行が容器の中に残る**こと(clippingContainer の推測条件)。
+            // 残りが1つだと容器が特定できず、逆走査の前段で黙って諦めてしまい台本にならない
+            [ElementInfo(ref: 1, type: "scrollView", identifier: "sheet_list", label: nil,
+                         value: nil, placeholder: nil, enabled: true,
+                         frame: FTRect(x: 0, y: 500, width: 400, height: 250), depth: 0,
+                         scrollable: true),
+             framed(ref: 2, id: "row_a", x: 16, y: 520 - offset, width: 368, height: 40, depth: 1),
+             framed(ref: 3, id: "row_b", x: 16, y: 590 - offset, width: 368, height: 40, depth: 1),
+             framed(ref: 4, id: "row_c", x: 16, y: 660 - offset, width: 368, height: 40, depth: 1)]
+        }
+        return [tree(offset: 0), tree(offset: 0), tree(offset: 60)]
+    }
+
+    /// defersPartialSheetRecovery=true(MCP の1回目)は、半開きシートの停滞で
+    /// **逆走査を掛けずに** sheetCollapsed で即返すこと(実測 7.8s の丸損を払わない。
+    /// 救済は呼び手の「展開して再試行」側の全画面高の逆走査が引き継ぐ)
+    func testPartialSheetStallSkipsReverseSweepWhenDeferred() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: partialSheetStallScript())
+        let executor = StepExecutor(driver: primary, defersPartialSheetRecovery: true)
+        let step = FlowStep(action: "scrollTo", locator: FlowLocator(id: "row_target"),
+                            maxSwipes: 6)
+
+        let outcome = await executor.execute(step)
+
+        guard case .failed = outcome.status else { XCTFail("見つからないので failed のはず"); return }
+        XCTAssertTrue(executor.noteCodesThisStep.contains(.sheetCollapsed),
+                      "シート展開の合図は従来どおり出すこと")
+        XCTAssertTrue(primary.dragCalls.isEmpty,
+                      "後回し指定では逆走査のドラッグを撃たないこと: \(primary.dragCalls)")
+    }
+
+    /// 既定(DSL・MCP の再試行)は従来どおり逆走査で拾い直しに行くこと。
+    /// 上のテストと対(「常に逆走査を切る」変異はこちらが落とす)
+    func testPartialSheetStallStillReverseSweepsByDefault() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: partialSheetStallScript())
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(action: "scrollTo", locator: FlowLocator(id: "row_target"),
+                            maxSwipes: 6)
+
+        let outcome = await executor.execute(step)
+
+        guard case .failed = outcome.status else { XCTFail("見つからないので failed のはず"); return }
+        XCTAssertFalse(primary.dragCalls.isEmpty,
+                       "既定では逆走査のドラッグで拾い直しに行くこと(DSL の唯一の救済)")
+    }
 
     /// 探索の打ち切りは文言が別(「after the search」)でも同じコードで数えること
     func testScrollSearchNoteRecordsTheSameCode() {

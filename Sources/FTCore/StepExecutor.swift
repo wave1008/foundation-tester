@@ -299,6 +299,13 @@ public final class StepExecutor {
     /// **`execute` の入口でステップへ畳む**ので、下流(解決・探索・タップ)はステップだけ見ればよい
     let containerInference: Bool
 
+    /// **半開きシート内で停滞したら、逆走査(飛び越しの拾い直し)を掛けずに即返す**(既定 false)。
+    /// true にしてよいのは「呼び手がシートを展開して再試行する」場合だけ —— 展開後の再試行は
+    /// 全画面高の容器で同じ逆走査を持つので救済は落ちない(MCP の ft_scroll_to の1回目が使う。
+    /// 実測: 畳まれた Apple マップの経路カードで逆走査 7.8s が丸損だった)。
+    /// **DSL には展開する者がいない**ので false のまま = 逆走査が唯一の救済として残る
+    let defersPartialSheetRecovery: Bool
+
     /// 画面が変わり得る操作の直後に呼び、スクショ再利用キャッシュを捨てる(performCustom から呼ぶ)。
     public func invalidateScreenshotCache() { cachedScreenshot = nil }
 
@@ -325,10 +332,12 @@ public final class StepExecutor {
                 occlusionGuardEnabled: Bool = true, screenIsEnabled: Bool = true,
                 releasesScrollTouch: Bool = false,
                 uiFramework: String? = nil,
-                containerInference: Bool = true) {
+                containerInference: Bool = true,
+                defersPartialSheetRecovery: Bool = false) {
         self.releasesScrollTouch = releasesScrollTouch
         self.uiFramework = uiFramework
         self.containerInference = containerInference
+        self.defersPartialSheetRecovery = defersPartialSheetRecovery
         self.driver = driver
         self.fallbackDriver = fallbackDriver
         self.typeDriver = typeDriver
@@ -1143,6 +1152,9 @@ public final class StepExecutor {
                                                         swipes: swipes, stoppedUnmoving: true,
                                                         containerIsPartialHeight: containerIsPartialHeight)
                         guard recoverOnMiss, step.containerInference ?? true,
+                              // 半開きシートで呼び手が展開・再試行するなら、逆走査はそちらの
+                              // 再試行(全画面高)に譲る(defersPartialSheetRecovery の宣言参照)
+                              !(defersPartialSheetRecovery && containerIsPartialHeight),
                               let container = (scrolledContainer
                                                ?? Self.overflowingContainer(in: snapshot))
                                   .flatMap({ ScrollGeometry.intersection($0, snapshot.screen) })
@@ -1345,13 +1357,16 @@ public final class StepExecutor {
             if Self.coordinateScrollEnabled {
                 let snapshot = try await snapshotForScrollFrame(phase: &phase)
                 let container: FTRect?
-                if let locator = step.scrollFrame {
+                if let rect = step.scrollFrameRect {
+                    container = rect
+                } else if let locator = step.scrollFrame {
                     container = Self.match(locator, in: snapshot)?.frame
                 } else {
                     container = snapshot.screen
                 }
                 // **明示 scrollFrame が解決できないなら、ここで打ち切る(1本も振らない)**。
-                // 黙って全画面スワイプへ退化させない(scroll/scrollToEdge と同じ理由。2026-08-08)
+                // 黙って全画面スワイプへ退化させない(scroll/scrollToEdge と同じ理由。2026-08-08)。
+                // rect は常に解決済みなのでこの分岐に来ない
                 if step.scrollFrame != nil, container == nil {
                     noteCodesThisStep.insert(.scrollFrameMissing)
                     return StepOutcome(status: .failed(
@@ -1364,7 +1379,7 @@ public final class StepExecutor {
                             ?? FTScrollDefaults.startMarginRatio(intent: .gesture, vertical: kind.isVertical))
                     // **容器は解決したが動かせる幅が無い**(margin で潰れた等)。黙って全画面へ
                     // 落ちると理由が読めなくなる(scrollPath と同じ注記。2026-08-08)
-                    if path == nil, step.scrollFrame != nil {
+                    if path == nil, step.scrollFrame != nil || step.scrollFrameRect != nil {
                         pendingScrollFrameNote = "the specified scrollFrame resolved but leaves"
                             + " nothing to move, so the whole screen was swiped"
                     }
@@ -2991,7 +3006,8 @@ public final class StepExecutor {
         // **容器は解決したのに動かせる幅が無い**(margin で潰れた・画面と交差しない等)。
         // fail-fast はここを通らない(容器自体は見つかっている)ので、黙って全画面へ落ちる前に
         // 理由を残す(2026-08-08。1ステップにつき1回 = pendingScrollFrameNote の空きで判定)
-        if path == nil, step.scrollFrame != nil, pendingScrollFrameNote == nil {
+        if path == nil, step.scrollFrame != nil || step.scrollFrameRect != nil,
+           pendingScrollFrameNote == nil {
             pendingScrollFrameNote = "the specified scrollFrame resolved but leaves nothing to move,"
                 + " so the whole screen was swiped"
         }
@@ -3007,6 +3023,10 @@ public final class StepExecutor {
     func scrollContainer(step: FlowStep, in snapshot: SnapshotResponse,
                          vertical: Bool) -> FTRect? {
         guard Self.coordinateScrollEnabled else { return nil }
+        // **rect は常に解決済み**(MCP が ref から起こした矩形。id の重複・欠落で
+        // セレクタが書けない容器のための経路): scrollFrameUnresolved は locator しか見ないので、
+        // これを先に返すだけで fail-fast を素通りできる — 別途の分岐は要らない
+        if let rect = step.scrollFrameRect { return rect }
         if let locator = step.scrollFrame {
             guard let element = Self.match(locator, in: snapshot) else {
                 // **未解決は呼び手(runScrollSearch / scroll・scrollToEdge・flick アクション)が

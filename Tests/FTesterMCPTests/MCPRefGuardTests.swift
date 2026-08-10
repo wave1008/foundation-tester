@@ -81,6 +81,54 @@ final class MCPRefGuardTests: XCTestCase {
         XCTAssertTrue(Self.text(result).contains("had moved"), "動いたことを応答に載せること")
     }
 
+    // MARK: - 再ターゲット時のラベル変化(2026-08-10 の実アプリ監査)
+
+    /// **同一 id で再ターゲットしたら、ラベルが変わっていないかも見る**。identifier だけで
+    /// 引き直すと、検索候補が更新された画面では同じ id・別の行を掴むことがある
+    /// (実測: 「立川駅、最近表示した項目」を狙ったタップが「立川駅 南口、立川市」に化けた)
+    func testTapWarnsWhenTheRetargetedElementHasADifferentLabel() async throws {
+        driver.snapshotResponse = screen([
+            element(ref: 1, id: "row", label: "立川駅、最近表示した項目", x: 10, y: 100),
+        ])
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        driver.snapshotResponse = screen([
+            element(ref: 1, id: "row", label: "立川駅 南口、立川市", x: 10, y: 200),
+        ])
+        let text = Self.text(try await server.call(tool: "ft_tap", args: ["ref": 1]))
+        XCTAssertTrue(text.contains("label has changed"), text)
+        XCTAssertTrue(text.contains("立川駅、最近表示した項目"), text)
+        XCTAssertTrue(text.contains("立川駅 南口、立川市"), text)
+    }
+
+    /// ラベルが同じままなら何も言わない(誤検知を増やさない)
+    func testTapStaysQuietWhenTheRetargetedElementHasTheSameLabel() async throws {
+        driver.snapshotResponse = screen([element(ref: 1, id: "row", label: "行 01", x: 10, y: 100)])
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        driver.snapshotResponse = screen([element(ref: 1, id: "row", label: "行 01", x: 10, y: 200)])
+        let text = Self.text(try await server.call(tool: "ft_tap", args: ["ref": 1]))
+        XCTAssertFalse(text.contains("label has changed"), text)
+    }
+
+    /// **動いていなくても出す**: ラベルだけ変わって位置が同じ形も同じ危険
+    func testTapWarnsOnLabelChangeEvenWithoutMovement() async throws {
+        driver.snapshotResponse = screen([element(ref: 1, id: "row", label: "行 01", x: 10, y: 100)])
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        driver.snapshotResponse = screen([element(ref: 1, id: "row", label: "行 99", x: 10, y: 100)])
+        let text = Self.text(try await server.call(tool: "ft_tap", args: ["ref": 1]))
+        XCTAssertTrue(text.contains("label has changed"), text)
+        XCTAssertFalse(text.contains("had moved"), text)
+    }
+
+    /// **同型の掃討**: double_tap/pinch/drag(fromRef) も再ターゲットして実際に操作を撃つ経路
+    /// なので、同じ警告が要る(verifiedElement 経由)
+    func testDoubleTapWarnsWhenTheRetargetedElementHasADifferentLabel() async throws {
+        driver.snapshotResponse = screen([element(ref: 1, id: "row", label: "行 01", x: 10, y: 100)])
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        driver.snapshotResponse = screen([element(ref: 1, id: "row", label: "行 99", x: 10, y: 100)])
+        let text = Self.text(try await server.call(tool: "ft_double_tap", args: ["ref": 1]))
+        XCTAssertTrue(text.contains("label has changed"), text)
+    }
+
     /// 消えた要素は**撃たずに**理由を返す(黙って別の要素を叩かない)
     func testTapRefusesWhenTheElementIsGone() async throws {
         driver.snapshotResponse = screen([element(ref: 1, id: "row_01", label: "行 01", x: 10, y: 100)])
@@ -301,6 +349,31 @@ final class MCPRefGuardTests: XCTestCase {
         }
     }
 
+    /// **同一 id の複数候補は「元の frame に最も近い」ほうを採る**(隣の行へ化けない)。
+    /// `RefGuard.match` は identifier 一致の候補から nearest(frame 中心距離)を選ぶ ——
+    /// index ではないので、同じ操作(画面の微小な再構成)で両方向とも自分の行へ戻ることを固定する
+    /// (2026-08-10。RefGuard.match/nearest の調査結果を固定するリグレッションテスト)
+    func testRelocateWithDuplicateIdPicksTheNearestFrameNotTheOtherRow() {
+        let originTarget = element(ref: 1, id: "route_candidate", label: "経路A", x: 10, y: 100)
+        let destinationTarget = element(ref: 2, id: "route_candidate", label: "経路B", x: 10, y: 300)
+        // 画面再構成で両行とも少しだけ動く(+5pt)。元の位置に近いほうを採ること
+        let fresh = [
+            element(ref: 10, id: "route_candidate", label: "経路A", x: 10, y: 105),
+            element(ref: 11, id: "route_candidate", label: "経路B", x: 10, y: 305),
+        ]
+        let testScreen = FTRect(x: 0, y: 0, width: 390, height: 844)
+        guard case .found(let hitFromOrigin, _) = RefGuard.relocate(
+            originTarget, in: fresh, screen: testScreen) else {
+            return XCTFail("引き直せるはず")
+        }
+        XCTAssertEqual(hitFromOrigin.ref, 10, "旧 frame(y=100)に近い上の行に着地すること")
+        guard case .found(let hitFromDestination, _) = RefGuard.relocate(
+            destinationTarget, in: fresh, screen: testScreen) else {
+            return XCTFail("引き直せるはず")
+        }
+        XCTAssertEqual(hitFromDestination.ref, 11, "旧 frame(y=300)に近い下の行に着地すること")
+    }
+
     // MARK: - 応答に載せる助言(外部フィードバック 2026-08-06)
 
     /// **残像の行そのものに印**が要る。先頭の注記だけだと、一覧から ref をコピーする動作に届かない
@@ -318,6 +391,66 @@ final class MCPRefGuardTests: XCTestCase {
         XCTAssertEqual(Set(flags.keys), [4], "容器の外の1件だけに印が付くこと")
         XCTAssertTrue(SnapshotRenderer.render(snapshot, flagging: flags)
             .contains("id=row_09 (10,700 370x40) ⚠️scroll-leftover"))
+    }
+
+    // MARK: - offscreen 注記の方向分け(2026-08-10)
+
+    /// 主方向は**はみ出し量が大きい軸**で決まる(斜めにはみ出す要素も1方向へ丸める)
+    func testOffscreenDirectionPicksTheAxisWithTheLargerOverflow() {
+        let screen = FTRect(x: 0, y: 0, width: 400, height: 800)
+        XCTAssertEqual(MCPServer.offscreenDirection(
+            of: element(ref: 1, x: 100, y: 850, w: 10, h: 10), screen: screen), .below)
+        XCTAssertEqual(MCPServer.offscreenDirection(
+            of: element(ref: 2, x: 100, y: -60, w: 10, h: 10), screen: screen), .above)
+        XCTAssertEqual(MCPServer.offscreenDirection(
+            of: element(ref: 3, x: 401, y: 100, w: 10, h: 10), screen: screen), .right)
+        XCTAssertEqual(MCPServer.offscreenDirection(
+            of: element(ref: 4, x: -60, y: 100, w: 10, h: 10), screen: screen), .left)
+        // 斜め: 右への超過(centre 405-400=5)より下への超過(centre 830-800=30)のほうが大きい
+        XCTAssertEqual(MCPServer.offscreenDirection(
+            of: element(ref: 5, x: 400, y: 825, w: 10, h: 10), screen: screen), .below)
+    }
+
+    /// スクロール容器を明示宣言した矩形(`outsideDeclaredScroller` が拾う形。ghostFlags が
+    /// 印を付けるにはまず ghost/容器外と判定される必要があり、単に画面外というだけでは
+    /// 印が付かない — 既存の testScrolledOutRowsAreFlaggedInTheListing と同じ組み方)
+    private func scroller(ref: Int, frame: FTRect, depth: Int = 1) -> ElementInfo {
+        ElementInfo(ref: ref, type: "Other", identifier: "scroller", label: nil, value: nil,
+                    placeholder: nil, enabled: true, frame: frame, depth: depth, scrollable: true)
+    }
+
+    /// 実例(Apple マップの経路候補・横ページャ): 第2候補は一度も表示していないのに
+    /// 旧文言「scrolled past」は不正確だった。方向見出しを出し、その語は使わない
+    func testGhostNoteOffscreenSectionNamesTheDirectionInsteadOfScrolledPast() {
+        let snapshot = screen([
+            scroller(ref: 1, frame: FTRect(x: 0, y: 100, width: 390, height: 600)),
+            element(ref: 2, id: "row_a", label: "行A", x: 10, y: 110),
+            element(ref: 3, id: "row_b", label: "行B", x: 10, y: 160),
+            // 右隣ページ(横ページャ)。scroller と交差しない(x が重ならない)= 容器の外、
+            // かつ画面の外(x=401 > 画面幅390)
+            element(ref: 4, id: "route_b", label: "経路B", x: 401, y: 110),
+        ])
+        let note = MCPServer.ghostNote(snapshot)
+        XCTAssertFalse(note.contains("scrolled past"), note)
+        XCTAssertTrue(note.contains("to the right:"), note)
+        XCTAssertTrue(note.contains("direction: right"), note)
+        XCTAssertTrue(note.contains("[4] #route_b"), note)
+    }
+
+    /// 複数方向にはみ出す画面では方向ごとに列挙し、direction もその集合だけ出す
+    func testGhostNoteOffscreenSectionGroupsMultipleDirections() {
+        let snapshot = screen([
+            scroller(ref: 1, frame: FTRect(x: 0, y: 100, width: 390, height: 600)),
+            element(ref: 2, id: "row_a", label: "行A", x: 10, y: 110),
+            element(ref: 3, id: "row_b", label: "行B", x: 10, y: 160),
+            element(ref: 4, id: "below_a", label: "下A", x: 10, y: 900),
+            element(ref: 5, id: "below_b", label: "下B", x: 10, y: 950),
+            element(ref: 6, id: "right_a", label: "右A", x: 401, y: 110),
+        ])
+        let note = MCPServer.ghostNote(snapshot)
+        XCTAssertTrue(note.contains("below: [4] #below_a [5] #below_b"), note)
+        XCTAssertTrue(note.contains("to the right: [6] #right_a"), note)
+        XCTAssertTrue(note.contains("direction: down / right"), note)
     }
 
     // MARK: - 探索そのものが画面を変えたら成功と言わない
@@ -493,6 +626,26 @@ final class MCPRefGuardTests: XCTestCase {
         XCTAssertTrue(text.contains("truncated"), text)
     }
 
+    /// 実例: 経路ボタンを `waitFor "経路"` と推測したが実ラベルは「計画」だった。
+    /// 空振りの応答に近いラベルを添えること(2026-08-10)
+    func testWaitForFailureMentionsASimilarLabel() async throws {
+        driver.snapshotResponse = screen([element(ref: 1, id: "btn_plan", label: "計画", x: 0, y: 0)])
+        let text = Self.text(try await server.call(
+            tool: "ft_snapshot", args: ["waitFor": "経路", "timeout": 0.3]))
+        XCTAssertTrue(text.contains("did not appear"), text)
+        XCTAssertTrue(text.contains("similar labels on screen"), text)
+        XCTAssertTrue(text.contains("計画"), text)
+    }
+
+    /// 似た物が無い画面では何も足さない
+    func testWaitForFailureStaysQuietWithoutASimilarLabel() async throws {
+        driver.snapshotResponse = screen([element(ref: 1, id: "btn_settings", label: "設定確認画面", x: 0, y: 0)])
+        let text = Self.text(try await server.call(
+            tool: "ft_snapshot", args: ["waitFor": "経路", "timeout": 0.3]))
+        XCTAssertTrue(text.contains("did not appear"), text)
+        XCTAssertFalse(text.contains("similar labels"), text)
+    }
+
     /// scrollTo の「届かなかった」失敗にも打ち切りを明記すること
     func testScrollToFailureMentionsTruncationWhenTreeWasTruncated() async throws {
         var truncated = screen([element(ref: 1, id: "other_row", label: "他の要素", x: 0, y: 0)])
@@ -591,6 +744,54 @@ final class MCPRefGuardTests: XCTestCase {
         XCTAssertTrue(MCPServer.ambiguousLabelsNote(screen(elements)).contains("\"他のフィルタ\" ×2"))
     }
 
+    // MARK: - sliver 注記は操作可能型に限る
+
+    /// 縁で細帯に切れた**操作可能要素**は従来どおり列挙する(2026-08-08 の初出事例:
+    /// 右端で 9x137 に切れたタブ)
+    func testSliverNoteListsAnOperableSliver() {
+        let tab = element(ref: 1, type: "tab", id: nil, label: "サンライズ瀬戸",
+                          x: 393, y: 100, w: 9, h: 137)
+        let note = MCPServer.sliverNote(screen([tab]))
+        XCTAssertTrue(note.contains("[1]"), note)
+        XCTAssertTrue(note.contains("extremely thin"), note)
+    }
+
+    /// タップ対象にならない型(image 等)は細くても列挙しない(2026-08-10 実測: 画面下端で
+    /// 84x9 に切れた「IC 運賃」アイコンに「タップに失敗するかも」が出て空振りの注意になった)
+    func testSliverNoteSkipsANonOperableSliver() {
+        let icon = element(ref: 1, type: "image", id: nil, label: "IC 運賃",
+                           x: 852, y: 2415, w: 84, h: 9)
+        XCTAssertEqual(MCPServer.sliverNote(screen([icon])), "")
+    }
+
+    /// **全員が飾りの葉(型なし・操作不能・中身なし)の群は列挙しない**(2026-08-10)。
+    /// 実測: 地図 POI の「東武鉄道 TJの路線」×3(全員 #VKPointFeature の other)が
+    /// セレクタの書き先にならないのに注記の行を占めていた
+    func testAmbiguousLabelsNoteSkipsAGroupOfOnlyDecorativeLeaves() {
+        let elements = [
+            element(ref: 1, type: "other", id: "VKPointFeature", label: "東武鉄道 TJの路線",
+                    x: 10, y: 10, w: 30, h: 30),
+            element(ref: 2, type: "other", id: "VKPointFeature", label: "東武鉄道 TJの路線",
+                    x: 100, y: 10, w: 30, h: 30),
+            element(ref: 3, type: "other", id: "VKPointFeature", label: "東武鉄道 TJの路線",
+                    x: 200, y: 10, w: 30, h: 30),
+            element(ref: 4, id: "btn_ok", label: "OK", x: 0, y: 200),
+        ]
+        XCTAssertEqual(MCPServer.ambiguousLabelsNote(screen(elements)), "")
+    }
+
+    /// 1件でも操作対象・型付きが混じる群は従来どおり**全員**出す(片側だけ隠すと
+    /// ×N の数と明細が食い違う)
+    func testAmbiguousLabelsNoteKeepsAMixedGroupIntact() {
+        let elements = [
+            element(ref: 1, type: "other", id: "VKPointFeature", label: "立川駅",
+                    x: 10, y: 10, w: 30, h: 30),
+            element(ref: 2, type: "Button", id: nil, label: "立川駅", x: 100, y: 200),
+        ]
+        let note = MCPServer.ambiguousLabelsNote(screen(elements))
+        XCTAssertTrue(note.contains("\"立川駅\" ×2"), note)
+    }
+
     /// **容器とその中身が同じラベルを名乗る形は曖昧ではない**(どちらを掴んでも同じもの)。
     /// 下限を2へ下げたときにラッパー対が全部鳴らないようにする除外
     func testAmbiguousLabelsNoteIgnoresAWrapperChain() {
@@ -666,6 +867,70 @@ final class MCPRefGuardTests: XCTestCase {
         XCTAssertFalse(text.contains("scroll areas"), text)
     }
 
+    // MARK: - scrollFrame に ref(整数)を渡せる(2026-08-10)
+    //
+    // id が重複・欠落した容器はセレクタで一意に指せない。ft_snapshot が返した ref を
+    // そのまま scrollFrame へ渡せる逃げ道(既存の stale-ref 再照合を通す)
+
+    /// id もラベルも無い容器でも ref なら渡せて、探索は成立すること
+    func testScrollToAcceptsARefAsScrollFrame() async throws {
+        driver.snapshotResponse = SnapshotResponse(
+            sessionBundleID: "com.example.app",
+            screen: FTRect(x: 0, y: 0, width: 390, height: 844),
+            elements: [
+                ElementInfo(ref: 1, type: "ScrollView", identifier: nil, label: nil,
+                            value: nil, placeholder: nil, enabled: true,
+                            frame: FTRect(x: 0, y: 120, width: 390, height: 600), depth: 1,
+                            scrollable: true),
+                element(ref: 2, id: "row_40", label: "行 40", x: 16, y: 100),
+            ],
+            truncatedCount: 0)
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        let text = Self.text(try await server.call(
+            tool: "ft_scroll_to", args: ["selector": "#row_40", "scrollFrame": 1]))
+        XCTAssertTrue(text.contains("#row_40"), text)
+    }
+
+    /// 過去5世代にも無い ref は明確に拒否する(黙って全画面へ退化しない)
+    func testScrollToRefusesAnUnknownScrollFrameRef() async throws {
+        driver.snapshotResponse = screen([element(ref: 1, id: "row_40", label: "行 40", x: 16, y: 100)])
+        do {
+            _ = try await server.call(
+                tool: "ft_scroll_to", args: ["selector": "#row_40", "scrollFrame": 999])
+            XCTFail("未知の ref は拒否するはず")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("scrollFrame ref"),
+                          error.localizedDescription)
+        }
+    }
+
+    /// 撮った時点から容器が消えていれば、古い座標を黙って使わず拒否する
+    /// (verifiedRef と同じ stale-ref 再照合の規律)
+    func testScrollToRefusesAScrollFrameRefThatDisappeared() async throws {
+        driver.snapshotResponse = SnapshotResponse(
+            sessionBundleID: "com.example.app",
+            screen: FTRect(x: 0, y: 0, width: 390, height: 844),
+            elements: [
+                ElementInfo(ref: 1, type: "ScrollView", identifier: nil, label: nil,
+                            value: nil, placeholder: nil, enabled: true,
+                            frame: FTRect(x: 0, y: 120, width: 390, height: 600), depth: 1,
+                            scrollable: true),
+                element(ref: 2, id: "row_40", label: "行 40", x: 16, y: 100),
+            ],
+            truncatedCount: 0)
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        // 容器が消えた木(row_40 だけが残る)
+        driver.snapshotResponse = screen([element(ref: 1, id: "row_40", label: "行 40", x: 16, y: 100)])
+        do {
+            _ = try await server.call(
+                tool: "ft_scroll_to", args: ["selector": "#row_40", "scrollFrame": 1])
+            XCTFail("消えた ref は拒否するはず")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("no longer in the tree"),
+                          error.localizedDescription)
+        }
+    }
+
     // MARK: - キーボード被覆(2026-08-08)
 
     /// **中心がソフトキーボードの下にある要素へのタップは警告する**(拒否はしない)。
@@ -732,5 +997,38 @@ final class MCPRefGuardTests: XCTestCase {
         XCTAssertFalse(text.contains("collapsed"), "expandBulk で畳まないこと: \(text)")
         XCTAssertEqual(text.components(separatedBy: "id=poi").count - 1, 20,
                        "20件すべてを個別行で出すこと: \(text)")
+    }
+
+    // MARK: - ghostNote と render の畳みを揃える(2026-08-10。地図 POI の洪水対策)
+
+    private func poiSnapshotWithAStackedCluster() -> SnapshotResponse {
+        var elements = (0..<20).map { i in
+            element(ref: i + 1, type: "other", id: "poi", label: "POI\(i)",
+                    x: Double(i), y: 10, w: 30, h: 30, depth: 1)
+        }
+        // 同じ矩形に5個スタック = stackedRefs が leftover として印を付ける対象
+        for j in 0..<5 {
+            elements.append(element(ref: 21 + j, type: "other", id: "poi", label: "STACK\(j)",
+                                    x: 300, y: 300, w: 30, h: 30, depth: 1))
+        }
+        return screen(elements)
+    }
+
+    /// **警告付きも畳んだ ×M 行の中に入り、注記では個別列挙せず件数だけ言う**。
+    /// 地図 POI 231件中40件が警告付きというだけで、注記の個別列挙が出力の半分を占めていた実害
+    func testGhostNoteFoldsWarnedMembersIntoTheBulkLine() async throws {
+        driver.snapshotResponse = poiSnapshotWithAStackedCluster()
+        let text = Self.text(try await server.call(tool: "ft_snapshot", args: [:]))
+        XCTAssertTrue(text.contains("id=poi ×25 collapsed"), text)
+        XCTAssertTrue(text.contains("folded into the ×25 id=poi line below"), text)
+        XCTAssertFalse(text.contains("[21] #poi"), "畳まれた ref を注記で個別列挙しないこと: \(text)")
+    }
+
+    /// expandBulk: true では従来どおり全件を個別列挙する(collapsingBulk off)
+    func testGhostNoteListsIndividuallyWhenBulkIsExpanded() async throws {
+        driver.snapshotResponse = poiSnapshotWithAStackedCluster()
+        let text = Self.text(try await server.call(tool: "ft_snapshot", args: ["expandBulk": true]))
+        XCTAssertFalse(text.contains("folded into the"), text)
+        XCTAssertTrue(text.contains("[21] #poi"), text)
     }
 }

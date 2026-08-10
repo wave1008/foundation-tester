@@ -471,6 +471,22 @@ enum RefGuard {
             + " retargeted to where it is now\(cause))"
     }
 
+    /// **同一 identifier で再ターゲットしたら、ラベルが変わっていないかも見る**(2026-08-10 の
+    /// 実アプリ監査)。`match(_:in:)` は identifier があればそれだけで引き直すので、検索候補が
+    /// 更新された画面では**同じ id・違う行**を掴むことがある。実測: 「立川駅、最近表示した項目」を
+    /// 狙ったタップが「立川駅 南口、立川市」に化けたが、位置の話(movedNote)しかしていなかった。
+    /// **動いていなくても出す**(ラベルだけ変わって位置が同じ形も同じ危険)
+    static func labelChangeNote(old: String?, new: String?) -> String? {
+        guard let old = old?.trimmingCharacters(in: .whitespacesAndNewlines), !old.isEmpty,
+              let new = new?.trimmingCharacters(in: .whitespacesAndNewlines), !new.isEmpty,
+              old != new else { return nil }
+        return "; caution: its label has changed from"
+            + " \"\(SnapshotRenderer.truncate(old, SnapshotRenderer.labelDisplayLimit))\" to"
+            + " \"\(SnapshotRenderer.truncate(new, SnapshotRenderer.labelDisplayLimit))\""
+            + " since the snapshot — the list may have refreshed and this can be a different row;"
+            + " verify the outcome"
+    }
+
     /// **原因は断定できないが、範囲は言える**: 同じ分だけ動いた要素が他にもあるなら
     /// スクロール等の画面全体の移動、その要素だけならレイアウト変化。
     /// 「なぜ動いたか」の手掛かりが欲しいという要望(2026-08-06)への、嘘をつかない答え

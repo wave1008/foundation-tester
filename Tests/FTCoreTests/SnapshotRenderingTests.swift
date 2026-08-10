@@ -77,6 +77,60 @@ final class SnapshotRenderingTests: XCTestCase {
         XCTAssertTrue(text.contains("id=title (0,200"))
         XCTAssertFalse(text.contains("id=title ×"))
     }
+
+    /// **ラベルで一意に特定できる行では ×N を省く**(2026-08-10): id の共有件数は「ラベルだけで
+    /// 指せるか」には無関係。実測(iOS の検索候補): セル id が10行で共有され、全行に無意味な
+    /// ×10 が付いていた
+    func testRenderOmitsTheCountWhenEachSharedIdHasAUniqueLabel() {
+        let snapshot = SnapshotResponse(
+            sessionBundleID: nil,
+            screen: FTRect(x: 0, y: 0, width: 400, height: 800),
+            elements: [
+                ElementInfo(ref: 1, type: "cell", identifier: "row", label: "立川駅",
+                            value: nil, placeholder: nil, enabled: true,
+                            frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 1),
+                ElementInfo(ref: 2, type: "cell", identifier: "row", label: "東京駅",
+                            value: nil, placeholder: nil, enabled: true,
+                            frame: FTRect(x: 0, y: 100, width: 10, height: 10), depth: 1),
+            ], truncatedCount: 0)
+        let text = SnapshotRenderer.render(snapshot)
+        XCTAssertFalse(text.contains("×2"), text)
+        XCTAssertTrue(text.contains("id=row (0,0"), text)
+        XCTAssertTrue(text.contains("id=row (0,100"), text)
+    }
+
+    /// 同じ id・同じラベルが並ぶ形は引き続き ×N を出す(ラベルだけでは指せない)
+    func testRenderKeepsTheCountWhenTheSharedIdAlsoSharesTheLabel() {
+        let snapshot = SnapshotResponse(
+            sessionBundleID: nil,
+            screen: FTRect(x: 0, y: 0, width: 400, height: 800),
+            elements: [
+                ElementInfo(ref: 1, type: "cell", identifier: "row", label: "候補",
+                            value: nil, placeholder: nil, enabled: true,
+                            frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 1),
+                ElementInfo(ref: 2, type: "cell", identifier: "row", label: "候補",
+                            value: nil, placeholder: nil, enabled: true,
+                            frame: FTRect(x: 0, y: 100, width: 10, height: 10), depth: 1),
+            ], truncatedCount: 0)
+        let text = SnapshotRenderer.render(snapshot)
+        XCTAssertTrue(text.contains("id=row ×2"), text)
+    }
+
+    /// ラベルの無い要素では従来どおり id の件数で判断する(空ラベルは「一意」と数えない)
+    func testRenderKeepsTheCountWhenLabelsAreEmpty() {
+        let snapshot = SnapshotResponse(
+            sessionBundleID: nil,
+            screen: FTRect(x: 0, y: 0, width: 400, height: 800),
+            elements: [
+                ElementInfo(ref: 1, type: "button", identifier: "fab_icon", label: nil,
+                            value: nil, placeholder: nil, enabled: true,
+                            frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 1),
+                ElementInfo(ref: 2, type: "button", identifier: "fab_icon", label: nil,
+                            value: nil, placeholder: nil, enabled: true,
+                            frame: FTRect(x: 0, y: 100, width: 10, height: 10), depth: 1),
+            ], truncatedCount: 0)
+        XCTAssertTrue(SnapshotRenderer.render(snapshot).contains("id=fab_icon ×2"))
+    }
     /// **値だけでは意味が決まらない**ので範囲も出す。実測(2026-08-07): 同じ SUT の同じ
     /// スライダーが iOS では `value="50%"`、Android では**値すら無い**状態だった
     /// (`getRangeInfo` を採っていなかった)。パーセントへ正規化せず生値+範囲で出す決定
@@ -160,8 +214,11 @@ final class SnapshotRenderingTests: XCTestCase {
     func testBulkGroupIsNotCollapsedByDefault() {
         let text = SnapshotRenderer.render(bulkSnapshot(count: 25))
         XCTAssertFalse(text.contains("collapsed"), text)
-        XCTAssertTrue(text.contains("[1] other \"POI0\" id=VKPointFeature ×25 (0,10 30x30)"), text)
-        XCTAssertTrue(text.contains("[25] other \"POI24\" id=VKPointFeature ×25 (24,10 30x30)"), text)
+        // **ラベルがそれぞれ一意なので ×25 は出ない**(2026-08-10・Fix4): id の共有件数は
+        // ラベルだけで指せるかとは無関係。id そのものは残る(scrollFrame 等に使える)
+        XCTAssertTrue(text.contains("[1] other \"POI0\" id=VKPointFeature (0,10 30x30)"), text)
+        XCTAssertTrue(text.contains("[25] other \"POI24\" id=VKPointFeature (24,10 30x30)"), text)
+        XCTAssertFalse(text.contains("×25"), text)
     }
 
     /// 下限未満は畳まない(検索候補の `#TitleLabel ×10` のような**中身の一覧**を守る)
@@ -177,7 +234,9 @@ final class SnapshotRenderingTests: XCTestCase {
     func testHandfulOfSameIdElementsStaysExpanded() {
         let text = SnapshotRenderer.render(bulkSnapshot(count: 5), collapsingBulk: true)
         XCTAssertFalse(text.contains("collapsed"), text)
-        XCTAssertTrue(text.contains("[1] other \"POI0\" id=VKPointFeature ×5 (0,10 30x30)"), text)
+        // ラベルが一意なので ×5 は出ない(2026-08-10・Fix4)
+        XCTAssertTrue(text.contains("[1] other \"POI0\" id=VKPointFeature (0,10 30x30)"), text)
+        XCTAssertFalse(text.contains("×5"), text)
     }
 
     /// **`other` の葉だけ**。型が付いている一覧(staticText の行など)は中身なので畳まない
@@ -194,16 +253,17 @@ final class SnapshotRenderingTests: XCTestCase {
         XCTAssertFalse(text.contains("collapsed"), text)
     }
 
-    /// 印(⚠️scroll-leftover)が付いた要素は**その1件だけ**畳まない —— 印は行ごとに
-    /// 読ませるためにある。**群ごと畳むのをやめない**(2026-08-09 に all-or-nothing を撤回。
-    /// 実機では 158 件中1件の巻き添えで全部が個別列挙になっていた。PartialBulkCollapseTests)
-    func testFlaggedMemberIsExcludedButTheGroupStillCollapses() {
+    /// **印(⚠️scroll-leftover)が付いた要素も畳む**(2026-08-10・Fix2): タップ時に RefGuard が
+    /// 改めて警告するので(testTapWarnsInsteadOfRefusingForAScrollLeftover)、snapshot 時点の
+    /// 個別列挙は冗長 —— 地図 POI 231件中40件が印付きというだけで出力の半分を占めていた実害。
+    /// 群に何件混じっているかは見出しの内訳(flagSummary)が言う
+    func testFlaggedMemberIsIncludedInTheFoldWithAFlagCount() {
         let text = SnapshotRenderer.render(bulkSnapshot(count: 25),
                                            flagging: [7: "⚠️scroll-leftover"],
                                            collapsingBulk: true)
-        XCTAssertTrue(text.contains("id=VKPointFeature ×24 collapsed"), text)
-        XCTAssertTrue(text.contains("⚠️scroll-leftover"), text)
-        XCTAssertTrue(text.contains("1 more with this id are listed separately below"), text)
+        XCTAssertTrue(text.contains("id=VKPointFeature ×25 collapsed"), text)
+        XCTAssertTrue(text.contains("1 ⚠️scroll-leftover among them"), text)
+        XCTAssertFalse(text.contains("listed separately below"), text)
     }
 
     /// 子を持つ要素は畳まない(畳むと子の行だけが親を失って残る)
@@ -392,21 +452,41 @@ final class PartialBulkCollapseTests: XCTestCase {
         XCTAssertTrue(text.contains("1 more with this id are listed separately below"), text)
     }
 
-    /// 印の付いた要素も同じ扱い(印は行ごとに読ませるので畳まない・残りは畳む)
-    func testFlaggedMemberIsLeftOutButTheRestCollapse() {
+    /// 印の付いた要素も畳む(2026-08-10・Fix2。件数は見出しの内訳が言う)
+    func testFlaggedMemberIsIncludedInTheFoldWithAFlagCount() {
         let snap = snapshot(poi: 25, outlierIsDeepNext: false)
         let text = SnapshotRenderer.render(snap, flagging: [7: "⚠️scroll-leftover"],
                                            collapsingBulk: true)
-        XCTAssertTrue(text.contains("id=VKPointFeature ×24 collapsed"), text)
-        XCTAssertTrue(text.contains("⚠️scroll-leftover"), text)
+        XCTAssertTrue(text.contains("id=VKPointFeature ×25 collapsed"), text)
+        XCTAssertTrue(text.contains("1 ⚠️scroll-leftover among them"), text)
     }
 
-    /// **畳める分が下限に届かないなら畳まない**(数件を畳んでも読む量は減らない)
-    func testTooFewQualifyingMembersMeansNoFold() {
+    /// interactiveOnly の見出しでは旗の内訳を「leaves」の直後に置く(interactiveOnly の節へ
+    /// 挟むと em-dash 節が連なって読めない)
+    func testInteractiveOnlyHeadlinePutsFlagCountsRightAfterLeaves() {
         let snap = snapshot(poi: 25, outlierIsDeepNext: false)
-        var flags: [Int: String] = [:]
-        for ref in 1...10 { flags[ref] = "⚠️offscreen" }   // 残り15件 < 20
-        let text = SnapshotRenderer.render(snap, flagging: flags, collapsingBulk: true)
+        let text = SnapshotRenderer.render(snap, flagging: [7: "⚠️scroll-leftover"],
+                                           collapsingBulk: true, interactiveOnly: true)
+        XCTAssertTrue(text.contains(
+            "non-interactive leaves — 1 ⚠️scroll-leftover among them; index hidden"), text)
+    }
+
+    /// **畳める分が下限に届かないなら畳まない**(数件を畳んでも読む量は減らない)。
+    /// disqualify する条件は type にする —— 印はもう disqualify 要因ではない(Fix2)ので、
+    /// 印だけでは 20 件の下限を割り込ませられない
+    func testTooFewQualifyingMembersMeansNoFold() {
+        var elements: [ElementInfo] = []
+        for i in 0..<25 {
+            elements.append(ElementInfo(ref: i + 1, type: i < 10 ? "button" : "other",
+                                        identifier: "VKPointFeature", label: "POI\(i)", value: nil,
+                                        placeholder: nil, enabled: true,
+                                        frame: FTRect(x: Double(i), y: 10, width: 30, height: 30),
+                                        depth: 8))
+        }
+        let snap = SnapshotResponse(sessionBundleID: nil,
+                                    screen: FTRect(x: 0, y: 0, width: 402, height: 874),
+                                    elements: elements, truncatedCount: 0)
+        let text = SnapshotRenderer.render(snap, collapsingBulk: true)
         XCTAssertFalse(text.contains("collapsed"), text)
     }
 

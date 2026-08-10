@@ -75,6 +75,57 @@ final class MCPRoundTripTests: XCTestCase {
         XCTAssertTrue(failed.contains("snapshotAfter could not read the screen"), failed)
     }
 
+    // MARK: - snapshotAfter は interactiveOnly/expandBulk も透過する(2026-08-10)
+    //
+    // `snapshotAfterBody` は元から `snapshotBody(args:)` を経由しており、`args["interactiveOnly"]`/
+    // `args["expandBulk"]` はそこで読まれていた —— **機能はすでに透過していた**。欠けていたのは
+    // ft_tap/ft_type/ft_drag のツールスキーマ宣言だけ(MCP クライアントは宣言されていない引数を
+    // 送る術が無い)。ここでは実際に折りたたみ・展開が効くことを確かめる
+
+    func testTapSnapshotAfterHonoursInteractiveOnly() async throws {
+        driver.snapshotResponse = SnapshotResponse(
+            sessionBundleID: "com.example.app",
+            screen: FTRect(x: 0, y: 0, width: 390, height: 844),
+            elements: [
+                ElementInfo(ref: 1, type: "Button", identifier: "login_btn", label: "ログイン",
+                            value: nil, placeholder: nil, enabled: true,
+                            frame: FTRect(x: 10, y: 20, width: 100, height: 40), depth: 1),
+                // ラベル・値の無い other = interactiveOnly が隠す「レイアウト専用行」
+                ElementInfo(ref: 2, type: "other", identifier: "spacer", label: nil,
+                            value: nil, placeholder: nil, enabled: true,
+                            frame: FTRect(x: 0, y: 70, width: 390, height: 20), depth: 1),
+            ],
+            truncatedCount: 0)
+        let full = bodyText(try await server.call(
+            tool: "ft_tap", args: ["ref": 1, "snapshotAfter": true]))
+        XCTAssertTrue(full.contains("id=spacer"), full)
+        let filtered = bodyText(try await server.call(
+            tool: "ft_tap", args: ["ref": 1, "snapshotAfter": true, "interactiveOnly": true]))
+        XCTAssertFalse(filtered.contains("id=spacer"), filtered)
+        XCTAssertTrue(filtered.contains("interactiveOnly: 1 layout-only line(s) hidden"), filtered)
+    }
+
+    /// expandBulk も同様に効くこと(20+ 同一 id の非対話葉が個別列挙に戻る)
+    func testDragSnapshotAfterHonoursExpandBulk() async throws {
+        let pins = (1...25).map { i in
+            ElementInfo(ref: i, type: "other", identifier: "poi", label: nil,
+                        value: nil, placeholder: nil, enabled: true,
+                        frame: FTRect(x: Double(i), y: 100, width: 4, height: 4), depth: 1)
+        }
+        driver.snapshotResponse = SnapshotResponse(
+            sessionBundleID: "com.example.app",
+            screen: FTRect(x: 0, y: 0, width: 390, height: 844),
+            elements: pins, truncatedCount: 0)
+        let folded = bodyText(try await server.call(
+            tool: "ft_drag", args: ["fromX": 10.0, "fromY": 20.0, "dy": -100.0, "snapshotAfter": true]))
+        XCTAssertTrue(folded.contains("id=poi ×25 collapsed"), folded)
+        let expanded = bodyText(try await server.call(
+            tool: "ft_drag", args: ["fromX": 10.0, "fromY": 20.0, "dy": -100.0,
+                                    "snapshotAfter": true, "expandBulk": true]))
+        XCTAssertFalse(expanded.contains("×25 collapsed"), expanded)
+        XCTAssertEqual(expanded.components(separatedBy: "id=poi").count - 1, 25, expanded)
+    }
+
     // MARK: - elapsedMs(所要時間を毎回返す)
 
     func testEveryCallReportsItsElapsedTime() async throws {

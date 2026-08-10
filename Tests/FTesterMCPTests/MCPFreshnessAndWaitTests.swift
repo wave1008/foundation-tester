@@ -250,3 +250,88 @@ final class MCPPartialMatchFormHintTests: XCTestCase {
             FTSelector.parse("武蔵野線").primary, in: snapshot.elements))
     }
 }
+
+// MARK: - 変更5: waitFor 空振り時の近傍ラベルのヒント(2026-08-10)
+
+final class MCPSimilarLabelsHintTests: XCTestCase {
+
+    /// 実例: 経路ボタンを `waitFor "経路"` と推測したら実ラベルは「計画」だった
+    /// (どちらも部分文字列関係は無いが、短い語同士で編集距離2)
+    func testSimilarLabelsHintNamesANearbyLabel() {
+        let snapshot = testSnapshot([testElement(identifier: nil, label: "計画")])
+        let hint = MCPServer.similarLabelsHint("経路", in: snapshot)
+        XCTAssertTrue(hint.contains("similar labels on screen"), hint)
+        XCTAssertTrue(hint.contains("\"計画\""), hint)
+    }
+
+    /// 部分文字列関係(大文字小文字無視)でも拾う
+    func testSimilarLabelsHintCatchesASubstringRelationship() {
+        let snapshot = testSnapshot([testElement(identifier: nil, label: "Sign In Button")])
+        let hint = MCPServer.similarLabelsHint("sign in", in: snapshot)
+        XCTAssertTrue(hint.contains("\"Sign In Button\""), hint)
+    }
+
+    /// id も候補にする(# 付きで示す)
+    func testSimilarLabelsHintAlsoConsidersIdentifiers() {
+        let snapshot = testSnapshot([testElement(identifier: "btn_keikaku", label: nil)])
+        let hint = MCPServer.similarLabelsHint("keikaku", in: snapshot)
+        XCTAssertTrue(hint.contains("#btn_keikaku"), hint)
+    }
+
+    /// 似た物が何も無ければ黙る(断定的な誤誘導を避ける)。
+    /// **2文字同士は避ける**: 全く違う2文字語でも編集距離は高々2になり(2文字とも置換すれば
+    /// 済むため)、どの組でも「近い」判定に入ってしまう —— これは仕様どおりの挙動
+    /// (「経路」/「計画」の実例がまさにこの境界)なので、無関係の確認には十分に離れた語を使う
+    func testSimilarLabelsHintStaysQuietWithNoCandidate() {
+        let snapshot = testSnapshot([testElement(identifier: nil, label: "設定確認画面")])
+        XCTAssertEqual(MCPServer.similarLabelsHint("経路", in: snapshot), "")
+    }
+
+    /// 完全一致なら「似ている」ではなく本人 —— 空振りの原因はここではないので黙る
+    /// (waitFor 自体は先に一致判定で成功しているはずだが、関数単体としても壊れないこと)
+    func testSimilarLabelsHintIgnoresAnExactMatch() {
+        let snapshot = testSnapshot([testElement(identifier: nil, label: "経路")])
+        XCTAssertEqual(MCPServer.similarLabelsHint("経路", in: snapshot), "")
+    }
+
+    /// 最大3件までに切る
+    func testSimilarLabelsHintCapsAtThreeCandidates() {
+        let snapshot = testSnapshot(
+            ["計画", "経画", "経路A", "経路B"].enumerated().map { index, label in
+                testElement(ref: index + 1, identifier: nil, label: label)
+            })
+        let hint = MCPServer.similarLabelsHint("経路", in: snapshot)
+        XCTAssertEqual(hint.components(separatedBy: "\"").count - 1, 6, hint) // 3件 ×2引用符
+    }
+
+    // MARK: - isSimilarText / editDistance(純粋関数)
+
+    func testIsSimilarTextMatchesSubstringEitherDirection() {
+        XCTAssertTrue(MCPServer.isSimilarText("sign in", "Sign In Button"))
+        XCTAssertTrue(MCPServer.isSimilarText("Sign In Button", "sign in"))
+    }
+
+    func testIsSimilarTextMatchesShortEditDistance() {
+        XCTAssertTrue(MCPServer.isSimilarText("経路", "計画"))
+        // **2文字同士は避ける**: 全く違う2文字語でも編集距離は高々2(両方置換すれば済む)なので
+        // どの組でも真になる —— それ自体が「経路」/「計画」の実例が成立する理由でもある。
+        // 無関係の確認には長さの違う語を使う(編集距離が6まで開く)
+        XCTAssertFalse(MCPServer.isSimilarText("経路", "設定確認画面"))
+    }
+
+    /// 6文字を超える語は編集距離では拾わない(部分文字列関係が無い限り無関係とみなす)
+    func testIsSimilarTextDoesNotApplyEditDistanceToLongStrings() {
+        XCTAssertFalse(MCPServer.isSimilarText("abcdefg", "abcdefx"))
+    }
+
+    func testIsSimilarTextRejectsIdenticalStrings() {
+        XCTAssertFalse(MCPServer.isSimilarText("経路", "経路"))
+    }
+
+    func testEditDistanceKnownValues() {
+        XCTAssertEqual(MCPServer.editDistance("kitten", "sitting"), 3)
+        XCTAssertEqual(MCPServer.editDistance("", "abc"), 3)
+        XCTAssertEqual(MCPServer.editDistance("abc", ""), 3)
+        XCTAssertEqual(MCPServer.editDistance("abc", "abc"), 0)
+    }
+}

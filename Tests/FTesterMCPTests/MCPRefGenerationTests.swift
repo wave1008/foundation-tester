@@ -93,6 +93,11 @@ final class MCPRefGenerationTests: XCTestCase {
         let result = try await server.call(tool: "ft_tap", args: ["ref": 1])
         let text = Self.text(result)
         XCTAssertTrue(text.contains("older snapshot"), text)
+        // **"done." と注記の間に区切りがあること**(2026-08-10): staleNote が裸の "note:" で
+        // 始まると "done.note:" と密着し、末尾の余白は次の " (selector:" と二重空白になる
+        XCTAssertTrue(text.contains("done. note:"), text)
+        XCTAssertFalse(text.contains("done.note:"), text)
+        XCTAssertFalse(text.contains("  ("), "二重空白: \(text)")
         XCTAssertTrue(text.contains("#btn_back"), text)
         XCTAssertTrue(actions.contains("tap(ref:1)"),
                       "ブリッジ native の正しい番号(1)で撃つこと(セッション ref を送ってはいけない): \(actions)")

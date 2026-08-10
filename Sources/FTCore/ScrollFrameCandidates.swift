@@ -65,12 +65,22 @@ public enum ScrollFrameCandidates {
         let listed = found.prefix(4)
             .map { describe($0, in: snapshot) }.joined(separator: " / ")
         let more = found.count > 4 ? " (+\(found.count - 4) more)" : ""
-        // **1つも名指しできない**(id もラベルも無い = Compose の素の容器)なら scrollFrame を
-        // 勧めない —— 渡せる書き方が無い。矩形は出ているので ft_drag で領域内を掴む案内にする
-        let advice = found.contains(where: { $0.selector != nil })
-            ? " Pass scrollFrame: to ft_scroll_to to search inside one of them."
-            : " None of them has an id, so scrollFrame: cannot name them —"
-                + " scroll a specific one by dragging inside its frame (ft_drag)."
+        // **id が重複・欠落した容器はセレクタで一意に指せない**(2026-08-10): その画面でだけ、
+        // MCP の ft_snapshot ref を scrollFrame へ直接渡せる逃げ道を添える(MCPServer.scrollTo が
+        // 整数を受けて frame へ解決する)。毎回は出さない — 大半の画面は id で足りるので、
+        // 出しっぱなしだと「渡せる書き方が無い」画面と区別が付かなくなる
+        let hasUnresolvable = found.contains { $0.selector == nil }
+            || found.contains { isAmbiguous($0, among: found) }
+        let advice: String
+        if found.contains(where: { $0.selector != nil }) {
+            advice = " Pass scrollFrame: to ft_scroll_to to search inside one of them."
+                + (hasUnresolvable
+                    ? " A container without a unique id can be passed to scrollFrame by its ref instead."
+                    : "")
+        } else {
+            advice = " None of them has an id, so scrollFrame: cannot name them by selector —"
+                + " pass its ref instead (from this list), or drag inside its frame (ft_drag)."
+        }
         return "note: \(found.count) scroll areas on screen: \(listed)\(more).\(advice)\n"
     }
 

@@ -1,8 +1,10 @@
 // once() による繰り返し注記の縮約(2026-08-10)。セッション(プロセス)を通じて生きる
 // 1つの MCPServer インスタンスが同じ長文の注記を毎回満額で返すと、繰り返す呼び出しのぶん
-// 文脈を食う。初回だけ満額、以後は短縮形にする対象は5つ(truncatedLabelNote /
+// 文脈を食う。初回だけ満額、以後は短縮形にする対象は7つ(truncatedLabelNote /
 // coordinateReproductionNote / indexedSelectorNote / unlabeledClickablesNote /
-// ambiguousLabelsNote)。後2つは onceNonEmpty 経由(注記が空の画面ではキーを消費しない)。
+// ambiguousLabelsNote / snapshotAfterImmediateNote / indexedSelectorCaution)。
+// unlabeledClickablesNote と ambiguousLabelsNote は onceNonEmpty 経由(注記が空の画面では
+// キーを消費しない)。
 
 import XCTest
 import FTCore
@@ -183,5 +185,106 @@ final class MCPRepeatedUnlabeledAndAmbiguousNoteTests: XCTestCase {
         let first = try await server.call(tool: "ft_snapshot", args: [:])
         let firstText = try XCTUnwrap(first.first?["text"] as? String)
         XCTAssertTrue(firstText.contains("cannot pick one uniquely"), firstText)
+    }
+}
+
+/// snapshotAfter の「整定を待たない即時読み」注意(2026-08-10・Fix3)。実測: ft_type の
+/// snapshotAfter がネットワーク由来の候補リストの前の木を返し、waitFor 付きの ft_snapshot なら
+/// 出るものが「候補なし」に見えた
+final class MCPRepeatedSnapshotAfterNoteTests: XCTestCase {
+    private var driver: FakeDriver!
+    private var server: MCPServer!
+
+    override func setUp() {
+        super.setUp()
+        driver = FakeDriver()
+        let fake = driver!
+        server = MCPServer(write: { _ in }, makeDriver: { _ in fake }, recordSnapshot: { _, _, _ in })
+    }
+
+    func testImmediateReadNoteShortensOnTheSecondSnapshotAfter() async throws {
+        let first = try await server.call(tool: "ft_tap", args: ["ref": 1, "snapshotAfter": true])
+        let firstText = try XCTUnwrap(first.first?["text"] as? String)
+        XCTAssertTrue(firstText.contains("read immediately after the action"), firstText)
+        XCTAssertTrue(firstText.contains("ft_snapshot waitFor"), firstText)
+
+        let second = try await server.call(tool: "ft_tap", args: ["ref": 1, "snapshotAfter": true])
+        let secondText = try XCTUnwrap(second.first?["text"] as? String)
+        XCTAssertFalse(secondText.contains("read immediately after the action"), secondText)
+        XCTAssertTrue(secondText.contains("see the first snapshotAfter note"), secondText)
+    }
+
+    /// snapshotAfter を使わない呼び出しはキーを消費しない(空の note を先に見せない)
+    func testPlainTapDoesNotConsumeTheOnceSlot() async throws {
+        _ = try await server.call(tool: "ft_tap", args: ["ref": 1])
+        let first = try await server.call(tool: "ft_tap", args: ["ref": 1, "snapshotAfter": true])
+        let firstText = try XCTUnwrap(first.first?["text"] as? String)
+        XCTAssertTrue(firstText.contains("read immediately after the action"), firstText)
+    }
+}
+
+/// index-based selector の但し書きは初回だけ満額、以後は短縮形(2026-08-10・Fix5)。
+/// id の薄いアプリではタップのたび同じ長文が繰り返され、id を足せない他社アプリ相手ではノイズ
+final class MCPRepeatedIndexedSelectorCautionTests: XCTestCase {
+    private var driver: FakeDriver!
+    private var server: MCPServer!
+
+    override func setUp() {
+        super.setUp()
+        driver = FakeDriver()
+        let fake = driver!
+        server = MCPServer(write: { _ in }, makeDriver: { _ in fake }, recordSnapshot: { _, _, _ in })
+    }
+
+    /// id を持つ祖先(`#tabs`)+ id もラベルも無い `clickable` 2つ = スコープ記法
+    /// (`#tabs >> .clickable[n]`)でしか書けない(MCPWritableSelectorTests.testScopedNotationIsTheLastResort
+    /// と同じ形)。ラベル/id が一意な要素は候補にすら挙がらないので、これで indexed を確実に踏む
+    private func indexedSelectorSnapshot() -> SnapshotResponse {
+        SnapshotResponse(
+            sessionBundleID: "com.example.app",
+            screen: FTRect(x: 0, y: 0, width: 390, height: 844),
+            elements: [
+                ElementInfo(ref: 1, type: "other", identifier: "tabs", label: nil,
+                           value: nil, placeholder: nil, enabled: true,
+                           frame: FTRect(x: 0, y: 0, width: 390, height: 60), depth: 1),
+                ElementInfo(ref: 2, type: "clickable", identifier: nil, label: nil,
+                           value: nil, placeholder: nil, enabled: true,
+                           frame: FTRect(x: 10, y: 20, width: 80, height: 30), depth: 2),
+                ElementInfo(ref: 3, type: "clickable", identifier: nil, label: nil,
+                           value: nil, placeholder: nil, enabled: true,
+                           frame: FTRect(x: 100, y: 20, width: 80, height: 30), depth: 2),
+            ],
+            truncatedCount: 0)
+    }
+
+    func testIndexedSelectorCautionShortensOnTheSecondTap() async throws {
+        driver.snapshotResponse = indexedSelectorSnapshot()
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+
+        let first = try await server.call(tool: "ft_tap", args: ["ref": 2])
+        let firstText = try XCTUnwrap(first.first?["text"] as? String)
+        XCTAssertTrue(firstText.contains("index-based, so it breaks"), firstText)
+
+        let second = try await server.call(tool: "ft_tap", args: ["ref": 3])
+        let secondText = try XCTUnwrap(second.first?["text"] as? String)
+        XCTAssertFalse(secondText.contains("index-based, so it breaks"), secondText)
+        XCTAssertTrue(secondText.contains("index-based (see the first note)"), secondText)
+        // セレクタ自体は毎回出す(但し書きだけが縮む)
+        XCTAssertTrue(secondText.contains("selector:"), secondText)
+    }
+
+    /// 安定なセレクタでは何も付かない(既存 testMarkAndCautionOnlyOnIndexed が単体で守る契約の配線確認)
+    func testStableSelectorNeverGetsACaution() async throws {
+        driver.snapshotResponse = SnapshotResponse(
+            sessionBundleID: "com.example.app",
+            screen: FTRect(x: 0, y: 0, width: 390, height: 844),
+            elements: [ElementInfo(ref: 1, type: "button", identifier: "btn_ok", label: "OK",
+                                   value: nil, placeholder: nil, enabled: true,
+                                   frame: FTRect(x: 10, y: 20, width: 80, height: 30), depth: 1)],
+            truncatedCount: 0)
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        let result = try await server.call(tool: "ft_tap", args: ["ref": 1])
+        let text = try XCTUnwrap(result.first?["text"] as? String)
+        XCTAssertFalse(text.contains("index-based"), text)
     }
 }

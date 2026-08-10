@@ -856,7 +856,11 @@ final class MCPServer {
         // ghost 注記も scrollFrame 候補も読む意味が無い
         let switchedNote = Self.switchedAppNote(
             launched: launchedBundleIDs[Self.engineKey(args)], snapshot: snapshot)
-        return switchedNote + extraNote + backgroundNote + Self.ghostNote(snapshot)
+        // **ghostNote と render で畳みの有無を揃える**: 片方だけ expandBulk を無視すると、
+        // 注記は「畳んだ」と言うのに木は個別列挙、という食い違いになる
+        let collapsingBulk = args["expandBulk"] as? Bool != true
+        return switchedNote + extraNote + backgroundNote
+            + Self.ghostNote(snapshot, collapsingBulk: collapsingBulk)
             + (ScrollFrameCandidates.note(snapshot) ?? "")
             + Self.truncationNote(snapshot) + Self.bulkExemptNote(snapshot)
             + onceNonEmpty("unlabeledClickablesNote", full: Self.unlabeledClickablesNote(snapshot),
@@ -866,7 +870,7 @@ final class MCPServer {
             + Self.keyboardCoverageNote(snapshot) + Self.sliverNote(snapshot)
             + truncatedLabelNote(snapshot)
             + SnapshotRenderer.render(snapshot, flagging: Self.ghostFlags(snapshot),
-                                      collapsingBulk: args["expandBulk"] as? Bool != true,
+                                      collapsingBulk: collapsingBulk,
                                       interactiveOnly: args["interactiveOnly"] as? Bool == true)
     }
 
@@ -877,6 +881,18 @@ final class MCPServer {
                     full: SnapshotRenderer.truncatedLabelNote(snapshot) ?? "",
                     short: "note: long labels are shown cut off with \"…\" — match with"
                         + " \"*prefix*\" (see the first snapshot's note).\n")
+    }
+
+    /// `snapshotAfter` が読む木は整定を待たない、という注意を初回だけ満額で出す(2026-08-10)。
+    /// 実測: ft_type の直後は候補リストがまだネットワーク待ちで、waitFor 付きの ft_snapshot なら
+    /// 出るものが「候補なし」に見えた
+    private func immediateReadNote() -> String {
+        once("snapshotAfterImmediateNote",
+            full: "note: this tree was read immediately after the action, with no settling wait —"
+                + " a dynamic list (search suggestions, network results) may not have populated"
+                + " yet; if something you expect is missing, confirm with ft_snapshot waitFor"
+                + " before concluding it is absent.\n",
+            short: "(immediate read — see the first snapshotAfter note)\n")
     }
 
     /// 操作系ツールが `snapshotAfter: true` で返す「操作の直後の画面」。
@@ -895,7 +911,8 @@ final class MCPServer {
             let snapshotDriver = try await driver(args)
             let snapshot = try await freshSnapshot(snapshotDriver, args: args)
             recordSnapshot(snapshot, snapshotDriver is AndroidDriver ? "android" : "ios", args)
-            return "\n\n" + (await snapshotBody(snapshot, driver: snapshotDriver, args: args))
+            return "\n\n" + immediateReadNote()
+                + (await snapshotBody(snapshot, driver: snapshotDriver, args: args))
         } catch {
             return "\n\n(snapshotAfter could not read the screen:"
                 + " \(error.localizedDescription) — the action above still went through;"
@@ -922,10 +939,12 @@ final class MCPServer {
         }
         let target = resolved.element
         // **isStale の注記を先頭に置く**: 何に当たったかの前に、番号の出所が古いことを言う
+        // **先頭は空白・末尾に余白を残さない**(RefGuard の警告群と同じ形。ここだけ裸の
+        // "note:" で始まると "done.note:" と密着し、末尾空白は次の " (selector:" と二重になる)
         let staleNote = resolved.isStale
-            ? "note: [\(ref)] is from an older snapshot (refs have been renumbered since)."
+            ? " note: [\(ref)] is from an older snapshot (refs have been renumbered since)."
                 + " It was matched as \(RefGuard.describe(target)) and re-located in the current"
-                + " tree — prefer refs from the latest snapshot. "
+                + " tree — prefer refs from the latest snapshot."
             : ""
         let lastRendered = generationSnapshot(containing: ref, args: args)?.elements ?? []
         let fresh = try await freshSnapshot(driver, args: args)
@@ -940,18 +959,21 @@ final class MCPServer {
             return (found.ref, staleNote + RefGuard.preTapWarnings(found, keyboardFrame: fresh.keyboardFrame)
                 + RefGuard.ghostWarning(found: found, in: fresh.elements, screen: fresh.screen))
         case .found(let found, let moved):
+            // **ラベルが変わっていないかも見る**(2026-08-10)。moved の大小とは無関係に出す ——
+            // 動かずにラベルだけ変わった行も同じ危険(RefGuard.labelChangeNote 参照)
+            let labelNote = RefGuard.labelChangeNote(old: target.label, new: found.label) ?? ""
             // **ghost でなくても別の物に当たり得る**2形(上に描かれた overlay / 同一矩形への
             // 積み重なり)。どちらも容器の内側なので RefGuard.relocate では .found になる
             let overlap = staleNote + RefGuard.preTapWarnings(found, keyboardFrame: fresh.keyboardFrame)
                 + RefGuard.overlapWarning(found: found, in: fresh.elements, screen: fresh.screen)
-            guard moved >= RefGuard.movedThreshold else { return (found.ref, overlap) }
+            guard moved >= RefGuard.movedThreshold else { return (found.ref, overlap + labelNote) }
             // **原因までは断定できない**が、「他も同じだけ動いたか」は手元の2枚から言える。
             // 揃って動いていればスクロール等の画面全体の移動、その要素だけならレイアウト変化。
             // 切り分けの手掛かりとして出す(外部フィードバック 2026-08-06。severity は低いとのこと)
             let cause = RefGuard.movedTogether(target, found,
                                                before: lastRendered, after: fresh.elements)
             return (found.ref, staleNote + RefGuard.preTapWarnings(found, keyboardFrame: fresh.keyboardFrame)
-                + RefGuard.movedNote(found: found, moved: moved, cause: cause))
+                + RefGuard.movedNote(found: found, moved: moved, cause: cause) + labelNote)
         }
     }
 
@@ -961,6 +983,44 @@ final class MCPServer {
     /// ghost の掴み直し・飛び越しの拾い直し・打ち切りは全部 StepExecutor に入っており、
     /// **同じ知見の2つ目の実装を作ると必ず割れる**(docs/design.md の「契約は1箇所」)。
     /// ここは FlowStep を1つ組んで投げるだけにする = MCP で届く要素はシナリオでも届く。
+    /// `scrollFrame` 引数の解決結果。**ref(整数)は rect へ、文字列は従来どおり locator へ**
+    /// (FlowStep.scrollFrameRect 参照)。`original` は ref 経由のときだけ埋まり、
+    /// シート展開後に同じ要素を撮り直した木から再照合して rect を作り直すのに使う
+    private struct ScrollFrameArg {
+        var locator: FlowLocator?
+        var rect: FTRect?
+        var original: ElementInfo?
+        var note: String = ""
+    }
+
+    /// **ref はセレクタが書けない容器のための逃げ道**(id の重複・欠落。2026-08-10)。
+    /// 既存の stale-ref 再照合(resolveSessionRef → RefGuard.relocate)を通してから frame を取る ——
+    /// verifiedRef と同じ規律で、撮った時点から動いていても黙って古い座標を使わない
+    private func resolveScrollFrameArg(_ args: [String: Any], driver: AppDriver) async throws
+        -> ScrollFrameArg {
+        if let ref = args["scrollFrame"] as? Int {
+            guard let resolved = resolveSessionRef(ref, args: args) else {
+                throw MCPError("scrollFrame ref [\(ref)] is unknown — it is not from any recent"
+                    + " snapshot (refs are per-snapshot; the last 5 snapshots were checked)."
+                    + " Take a fresh ft_snapshot")
+            }
+            let target = resolved.element
+            let fresh = try await freshSnapshot(driver, args: args)
+            switch RefGuard.relocate(target, in: fresh.elements, screen: fresh.screen) {
+            case .gone:
+                throw MCPError(RefGuard.goneMessage(ref: ref, target: target,
+                                                    truncatedCount: fresh.truncatedCount))
+            case .ghost(let found), .found(let found, _):
+                let note = RefGuard.labelChangeNote(old: target.label, new: found.label) ?? ""
+                return ScrollFrameArg(rect: found.frame, original: target, note: note)
+            }
+        }
+        if let text = args["scrollFrame"] as? String {
+            return ScrollFrameArg(locator: FTSelector.parse(text).primary)
+        }
+        return ScrollFrameArg()
+    }
+
     private func scrollTo(_ args: [String: Any]) async throws -> [[String: Any]] {
         guard let selectorText = args["selector"] as? String, !selectorText.isEmpty else {
             throw MCPError("selector is required (same syntax as the DSL: #id, a label, .type, a||b)")
@@ -974,12 +1034,16 @@ final class MCPServer {
         // (2026-08-07 実測。Google マップは探索スワイプのたびに結果を組み直す)
         let beforeScroll = lastSnapshots[Self.engineKey(args)]
         let selector = FTSelector.parse(selectorText)
-        let step = FlowStep(
+        let scrollFrameArg = try await resolveScrollFrameArg(args, driver: scrollDriver)
+        var step = FlowStep(
             action: "scrollTo", locator: selector.primary,
             fallbacks: selector.fallbacks.isEmpty ? nil : selector.fallbacks,
             direction: direction.swipe.rawValue,
             maxSwipes: args["maxSwipes"] as? Int ?? FlowStep.defaultMaxSwipes,
-            scrollFrame: (args["scrollFrame"] as? String).map { FTSelector.parse($0).primary })
+            scrollFrame: scrollFrameArg.locator,
+            scrollFrameRect: scrollFrameArg.rect)
+        let scrollFrameLabelNote = scrollFrameArg.note.isEmpty ? ""
+            : "note: the scrollFrame ref was re-checked against the current tree\(scrollFrameArg.note).\n"
         // releasesScrollTouch は **iOS だけ true**(Android では 2pt のドラッグがクリックとして
         // 発火する。StepExecutor の宣言参照)。ここを取り違えると探索直後に行が勝手に選択される
         // uiFramework ヒント: xcuitest は profile 経由ならドライバ生成時にバンドルマーカーで
@@ -1010,9 +1074,13 @@ final class MCPServer {
             uiFrameworkHint = (try? await scrollDriver.status())?.uiFramework
             if let hint = uiFrameworkHint { uiFrameworkHints[Self.engineKey(args)] = hint }
         }
+        // **1回目だけ半開きシートの逆走査を後回しにする**(defersPartialSheetRecovery の宣言参照):
+        // sheetCollapsed なら下でシートを展開して再試行し、その再試行が全画面高で同じ救済を
+        // 持つので、畳まれた視界での逆走査(実測 7.8s)は丸損になる
         let executor = StepExecutor(driver: scrollDriver,
                                     releasesScrollTouch: !isAndroid,
-                                    uiFramework: uiFrameworkHint)
+                                    uiFramework: uiFrameworkHint,
+                                    defersPartialSheetRecovery: true)
         var outcome = await executor.execute(step)
         // **探索でツリーは必ず動く**ので、覚えている木を捨てて撮り直す(古い ref を残さない)
         var after = try await freshSnapshot(scrollDriver, args: args)
@@ -1029,7 +1097,22 @@ final class MCPServer {
             try await scrollDriver.drag(fromX: grabber.frame.centerX, fromY: grabber.frame.centerY,
                                         toX: grabber.frame.centerX, toY: toY,
                                         pressSeconds: 0.05, durationSeconds: 0.5)
-            outcome = await executor.execute(step)
+            // **rect は展開後の木で作り直す**: シートが伸びると scrollFrameRect の元になった
+            // 容器の frame も変わるので、展開前の rect のまま撃つと広がった分を探索できない。
+            // 同じ要素を撮り直した木から再照合し、取れなければ従来の rect のまま(2026-08-10)
+            if let original = scrollFrameArg.original {
+                let expanded = try await freshSnapshot(scrollDriver, args: args)
+                if case .found(let found, _) = RefGuard.relocate(
+                    original, in: expanded.elements, screen: expanded.screen) {
+                    step.scrollFrameRect = found.frame
+                }
+            }
+            // **再試行は逆走査つき**(defers... を外した別 executor)。展開後も稀に部分高のまま
+            // のことがあり、そこで再び後回しにすると救済がどこにも無くなる
+            let retryExecutor = StepExecutor(driver: scrollDriver,
+                                             releasesScrollTouch: !isAndroid,
+                                             uiFramework: uiFrameworkHint)
+            outcome = await retryExecutor.execute(step)
             after = try await freshSnapshot(scrollDriver, args: args)
             sheetNote = "note: the list had stopped moving inside a partially open sheet, so"
                 + " [\(grabber.ref)] \(RefGuard.describe(grabber)) was dragged up to expand it and"
@@ -1043,7 +1126,7 @@ final class MCPServer {
                 let reason: String
                 if case .failed(let message) = outcome.status { reason = message }
                 else { reason = "\(outcome.status)" }
-                throw MCPError("scrollTo \"\(selectorText)\": \(reason)"
+                throw MCPError(scrollFrameLabelNote + "scrollTo \"\(selectorText)\": \(reason)"
                     + Self.scrollAlternativesHint(beforeScroll ?? after))
             }
             // **止まった時点で見えているものを一緒に返す**(外部フィードバック 2026-08-06)。
@@ -1052,7 +1135,7 @@ final class MCPServer {
             // 候補を見せれば、綴り違いなのか記法(`*…*`)不足なのかがその場で分かる
             // **やり直し済みなら先に言う**: 言わないと読み手は失敗文のシート展開ヒントを
             // 読んで**もう一度同じことを手で試す**(そのぶん往復が増える)
-            throw MCPError(sheetNote
+            throw MCPError(scrollFrameLabelNote + sheetNote
                 + "scrollTo \"\(selectorText)\" did not reach the element"
                 + " (\(outcome.status))\(Self.truncationHint(after)). \(Self.visibleLabelsHint(after))"
                 + Self.notationHint(selectorText, in: after)
@@ -1105,8 +1188,11 @@ final class MCPServer {
         // 逆向きの語を出すと `drop:` の選択を誤らせる
         interactions.record(InteractionLog.Entry(
             step: scrollStep, unresolved: nil, summary: "scrollTo \"\(selectorText)\""))
-        return text(switched + sheetNote + "scrolled to \"\(selectorText)\"\(landed)."
-            + " The refs below are fresh\n" + scrollAreaNote + Self.ghostNote(after)
+        // **ghostNote と render で畳みの有無を揃える**(ft_snapshot と同じ理由)
+        let collapsingBulk = args["expandBulk"] as? Bool != true
+        return text(switched + scrollFrameLabelNote + sheetNote + "scrolled to \"\(selectorText)\"\(landed)."
+            + " The refs below are fresh\n" + scrollAreaNote
+            + Self.ghostNote(after, collapsingBulk: collapsingBulk)
             + Self.truncationNote(after)
             + Self.keyboardCoverageNote(after) + Self.sliverNote(after)
             + truncatedLabelNote(after)
@@ -1114,7 +1200,7 @@ final class MCPServer {
             // なので、地図のピンが数十行並ぶ意味は薄い。ft_snapshot と同じ規則にする
             // (2026-08-10 まではここだけ interactiveOnly を無視して常に全行を出していた)
             + SnapshotRenderer.render(after, flagging: Self.ghostFlags(after),
-                                      collapsingBulk: args["expandBulk"] as? Bool != true,
+                                      collapsingBulk: collapsingBulk,
                                       interactiveOnly: args["interactiveOnly"] as? Bool == true))
     }
 
@@ -1234,8 +1320,49 @@ final class MCPServer {
         return flags
     }
 
-    static func ghostNote(_ snapshot: SnapshotResponse) -> String {
+    /// offscreen 行がどちら側にはみ出しているか(ft_scroll_to の direction 選び用)。
+    /// **はみ出し量が大きい軸を主方向にする** —— 斜めにはみ出す要素も1方向へ丸める
+    /// (「7px 下 + 400px 右」のような行を両方の見出しへ重複させない)。
+    /// `rawValue` はそのまま注記の見出し語、`scrollDirection` は ft_scroll_to の `direction:` の語彙
+    /// (指の向きではなく「読み進める内容方向」— below な行は下方向へ読み進めると出てくる = down)
+    enum OffscreenDirection: String, CaseIterable {
+        case below, above
+        case right = "to the right"
+        case left = "to the left"
+
+        var scrollDirection: String {
+            switch self {
+            case .below: return "down"
+            case .above: return "up"
+            case .right: return "right"
+            case .left: return "left"
+            }
+        }
+    }
+
+    /// 実測(Apple マップの経路候補・横ページャ): 第2候補は x=401(画面幅402 の右隣ページ)に居て、
+    /// 一度も表示していないのに旧文言「scrolled past」は不正確だった(2026-08-10)。
+    /// 中心がどちらの縁をどれだけ超えているかを4方向とも計算し、いちばん超過が大きい方を返す
+    static func offscreenDirection(of element: ElementInfo, screen: FTRect) -> OffscreenDirection {
+        let cx = element.frame.centerX, cy = element.frame.centerY
+        let overflows: [(OffscreenDirection, Double)] = [
+            (.below, cy - (screen.y + screen.height)),
+            (.above, screen.y - cy),
+            (.right, cx - (screen.x + screen.width)),
+            (.left, screen.x - cx),
+        ]
+        // 全方向が非正(=画面内)になることは呼び出し元の条件(offscreenMark 済み)上ないが、
+        // 万一そろっても below を既定にして必ず1方向を返す
+        return overflows.max { $0.1 < $1.1 }?.0 ?? .below
+    }
+
+    /// **collapsingBulk は render() と揃える**(2026-08-10): 畳まれる ref をここでも個別に
+    /// 列挙すると、地図 POI のような大量群で出力の半分がこの注記に化ける。
+    /// どの ref が畳まれるかは `SnapshotRenderer.foldedGroups` — render 本体と同じ関数 — で決める
+    static func ghostNote(_ snapshot: SnapshotResponse, collapsingBulk: Bool = true) -> String {
         let flagged = ghostFlags(snapshot)
+        let folded = SnapshotRenderer.foldedGroups(snapshot, flagging: flagged,
+                                                   collapsingBulk: collapsingBulk)
         let leftovers = snapshot.elements.filter { flagged[$0.ref] == leftoverMark }
         let offscreens = snapshot.elements.filter { flagged[$0.ref] == offscreenMark }
         var note = ""
@@ -1243,23 +1370,53 @@ final class MCPServer {
             note += "note: the \(leftoverMark) rows below are not drawn where their frames say"
                 + " (outside their scroll container, or clamped onto another row's frame),"
                 + " so tapping them may hit something else:"
-                + " \(listRefs(leftovers)). Bring them into view with ft_scroll_to first,"
+                + " \(listRefs(leftovers, folded: folded)). Bring them into view with ft_scroll_to first,"
                 + " or verify with ft_screenshot\n"
         }
         if !offscreens.isEmpty {
-            note += "note: the \(offscreenMark) rows below are simply off the screen"
-                + " (scrolled past), so they are listed but not visible:"
-                + " \(listRefs(offscreens)). Bring them into view with ft_scroll_to before"
-                + " using them\n"
+            let byDirection = Dictionary(grouping: offscreens) {
+                Self.offscreenDirection(of: $0, screen: snapshot.screen)
+            }
+            var groups: [String] = []
+            var directions: [String] = []
+            for direction in OffscreenDirection.allCases {
+                guard let elements = byDirection[direction], !elements.isEmpty else { continue }
+                groups.append("\(direction.rawValue): \(listRefs(elements, folded: folded))")
+                directions.append(direction.scrollDirection)
+            }
+            note += "note: the \(offscreenMark) rows below are off the screen, so they are listed"
+                + " but not visible — \(groups.joined(separator: " / "))."
+                + " Reach them with ft_scroll_to (direction: \(directions.joined(separator: " / ")))"
+                + " before using them\n"
         }
         return note
     }
 
-    /// 注記に並べる ref の列挙。**8件で打ち切る**(全部出すと注記だけで木より長くなる)
-    private static func listRefs(_ elements: [ElementInfo]) -> String {
-        let listed = elements.prefix(8).map { "[\($0.ref)] \(RefGuard.describe($0))" }
-            .joined(separator: " ")
-        return listed + (elements.count > 8 ? " (+\(elements.count - 8) more)" : "")
+    /// 注記に並べる ref の列挙。**8件で打ち切る**(全部出すと注記だけで木より長くなる)。
+    /// **畳まれた ref は個別に出さず、件数だけ言う**(render 側で ×M の1行に既に畳まれているので、
+    /// ここでも列挙すると二重に情報過多になる)
+    private static func listRefs(_ elements: [ElementInfo], folded: [String: Set<Int>]) -> String {
+        let visible = elements.filter { e in
+            guard let id = e.identifier else { return true }
+            return !(folded[id]?.contains(e.ref) ?? false)
+        }
+        var parts: [String] = []
+        if !visible.isEmpty {
+            let listed = visible.prefix(8).map { "[\($0.ref)] \(RefGuard.describe($0))" }
+                .joined(separator: " ")
+            parts.append(listed + (visible.count > 8 ? " (+\(visible.count - 8) more)" : ""))
+        }
+        var byID: [String: Int] = [:]
+        var order: [String] = []
+        for e in elements {
+            guard let id = e.identifier, let group = folded[id], group.contains(e.ref) else { continue }
+            if byID[id] == nil { order.append(id) }
+            byID[id, default: 0] += 1
+        }
+        parts.append(contentsOf: order.map {
+            "(+\(byID[$0]!) folded into the ×\(folded[$0]!.count) id=\($0) line below)"
+        })
+        return parts.joined(separator: " ")
     }
 
     /// **scrollFrame を渡すべき当人**である ft_scroll_to にだけ出す、複数スクロール領域の注記
@@ -1287,6 +1444,10 @@ final class MCPServer {
         // preorder 先頭(たいてい横カルーセル)を掴んだまま「見つからない」で終わる。
         // 実測(2026-08-07・Google マップ Android): `#recycler_view` は1画面に4つあり、
         // 注記どおり渡すと高さ126pxのチップ行が選ばれて結果リストは1pxも動かなかった。
+        // **ref 指定は曖昧さが無い**(id の重複・欠落を避けるための逃げ道そのものなので、
+        // 「他にも当たる」という注記自体が成立しない)。resolveScrollFrameArg 側で
+        // 解決済みなのでここでは何も言わない
+        if args["scrollFrame"] is Int { return "" }
         // **StepExecutor 側の申告は当てにしない** —— あちらの `pendingScrollFrameNote` は
         // 探索ループの条件分岐の中でしか埋まらず、空振りのまま失敗する回では nil のままになる
         if let frame = args["scrollFrame"] as? String {
@@ -1324,6 +1485,63 @@ final class MCPServer {
         }
         guard let note = ScrollFrameCandidates.note(snapshot) else { return "" }
         return " " + note.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// waitFor が空振りしたとき、画面に**近い**ラベル/id を最大3件挙げる(2026-08-10)。
+    /// 実測: 経路ボタンを `waitFor "経路"` と推測したら実ラベルは「計画」で5秒空振りした。
+    /// **断定しない**(「これのことでは」とは書かない) —— 似ているというだけで、
+    /// 別物を待っていた可能性を否定できる材料は無い
+    static func similarLabelsHint(_ selectorText: String, in snapshot: SnapshotResponse) -> String {
+        let locator = FTSelector.parse(selectorText).primary
+        guard let raw = locator.label ?? locator.id,
+              !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return "" }
+        let target = FlowMatchMode.normalizeInvisibleCharacters(raw)
+        var seen: Set<String> = [target]
+        var matches: [String] = []
+        for element in snapshot.elements where matches.count < 3 {
+            if let label = element.label {
+                let candidate = FlowMatchMode.normalizeInvisibleCharacters(label)
+                if !candidate.isEmpty, Self.isSimilarText(target, candidate),
+                   seen.insert(candidate).inserted {
+                    matches.append("\"\(candidate)\"")
+                }
+            }
+            guard matches.count < 3, let id = element.identifier, !id.isEmpty else { continue }
+            if Self.isSimilarText(target, id), seen.insert("#" + id).inserted {
+                matches.append("#\(id)")
+            }
+        }
+        guard !matches.isEmpty else { return "" }
+        return " note: similar labels on screen: \(matches.joined(separator: ", "))."
+    }
+
+    /// 「近い」の判定: ①どちらかがどちらかを部分文字列として含む(大文字小文字無視)
+    /// ②短い文字列同士(6文字以下)なら編集距離2以下。②が無いと「経路」/「計画」のような
+    /// 部分文字列関係の無い短い語の書き間違いを拾えない
+    static func isSimilarText(_ a: String, _ b: String) -> Bool {
+        let la = a.lowercased(), lb = b.lowercased()
+        guard la != lb else { return false }
+        if la.contains(lb) || lb.contains(la) { return true }
+        guard la.count <= 6, lb.count <= 6 else { return false }
+        return Self.editDistance(la, lb) <= 2
+    }
+
+    /// 素朴な編集距離(挿入・削除・置換を1コストずつ)。短い文字列(≤6)にしか使わない前提の
+    /// O(n*m) 実装で十分 — 長い文字列にまで広げるならもっと速いものへ替える
+    static func editDistance(_ a: String, _ b: String) -> Int {
+        let x = Array(a), y = Array(b)
+        if x.isEmpty { return y.count }
+        if y.isEmpty { return x.count }
+        var previous = Array(0...y.count)
+        for i in 1...x.count {
+            var current = [i]
+            for j in 1...y.count {
+                current.append(x[i - 1] == y[j - 1] ? previous[j - 1]
+                    : 1 + min(previous[j - 1], previous[j], current[j - 1]))
+            }
+            previous = current
+        }
+        return previous.last ?? 0
     }
 
     /// セレクタの**記法**が原因で外れたときだけ出す助言。無条件に「\* で囲め」と言っていた版は
@@ -1651,9 +1869,15 @@ final class MCPServer {
 
     /// ラベル付きだが極端に細い要素(掴めないほど狭い可能性)。
     /// 判定は RefGuard.isClippedSliver = DSL(TapTargetGeometry)と共有。
-    /// 判定は要素自身の細さだけ(縁で切れたかは見ない)
+    /// 判定は要素自身の細さだけ(縁で切れたかは見ない)。
+    /// **列挙は操作可能型(operableTypes)に限る**(2026-08-10): 文言が「タップに失敗するかも」
+    /// なので、タップ対象にならない image/staticText に出すと空振りの注意になる(実測:
+    /// 画面下端で 84x9 に切れた「IC 運賃」アイコン)。判定自体は共有のまま型を問わない
     static func sliverNote(_ snapshot: SnapshotResponse) -> String {
-        let slivers = snapshot.elements.filter { RefGuard.isClippedSliver($0) }
+        let slivers = snapshot.elements.filter {
+            RefGuard.isClippedSliver($0)
+                && BridgeSnapshotThinning.operableTypes.contains($0.type)
+        }
         guard !slivers.isEmpty else { return "" }
         let listed = slivers.prefix(8).map { "[\($0.ref)] \(RefGuard.describe($0))" }
             .joined(separator: " ")
@@ -1689,6 +1913,11 @@ final class MCPServer {
         }
         let ambiguous = groups
             .filter { $0.value.count >= ambiguousLabelMinimum && !isSingleChain($0.value, in: snapshot) }
+            // **全員が飾りの葉なら列挙しない**(2026-08-10 の実アプリ監査): 地図 POI の
+            // 「〜の路線」×3 のような群はセレクタの書き先にならないのに行を占めていた。
+            // 1件でも操作対象・型付きが混じる群は従来どおり全員出す(片側だけ隠すと
+            // ×N の数と明細が食い違う)。判定は bulk fold と同じ SnapshotRenderer.isDecorativeLeaf
+            .filter { !$0.value.allSatisfy { SnapshotRenderer.isDecorativeLeaf($0, in: snapshot.elements) } }
             .sorted { $0.value.count > $1.value.count }
         guard !ambiguous.isEmpty else { return "" }
         // **「一意に指せない」で終わらせない**(2026-08-09): MCP の出力はシナリオへ書く文字列を
@@ -1790,16 +2019,16 @@ final class MCPServer {
     /// ref を撃つ直前に照合したうえで**要素そのもの**を返す(ft_double_tap / ft_pinch / ft_drag
     /// fromRef 用。いずれも ref ではなく座標・identifier で撃つため要素が要る)。
     ///
-    /// **isStale の警告は呼び手に返していない**(verifiedRef と違って戻り値が ElementInfo だけの
-    /// 単純な形なので、note を足すには全呼び手のシグネチャ変更が要る。見送り —— 座標系の
-    /// ジェスチャは verifiedRef ほど頻繁に古い ref を渡される想定がなく、対象が消えていれば
-    /// 下の `.gone` が捕まえる)
+    /// **isStale の警告は呼び手に返していない**(座標系のジェスチャは verifiedRef ほど頻繁に
+    /// 古い ref を渡される想定がなく、対象が消えていれば下の `.gone` が捕まえる)。
+    /// **ラベル変化だけは note で返す**(2026-08-10) —— これは double_tap/drag/pinch が
+    /// 再ターゲットした要素へ実際に操作を撃つ経路なので、verifiedRef と同じ危険がある
+    /// (RefGuard.labelChangeNote 参照。.found のときだけ = verifiedRef と条件を揃える)
     private func verifiedElement(_ ref: Int, driver: AppDriver,
-                                 args: [String: Any]) async throws -> ElementInfo {
+                                 args: [String: Any]) async throws -> (element: ElementInfo, note: String) {
         let resolved = resolveSessionRef(ref, args: args)
         // stderr のみ・応答には何も足さない。警告を付けるかは実運用の頻度を見て決める
-        // (2026-08-10・依頼側と合意した観測。verifiedRef と違ってここは戻り値が ElementInfo
-        // だけなので note を足すには全呼び手のシグネチャ変更が要る)
+        // (2026-08-10・依頼側と合意した観測)
         if resolved?.isStale == true {
             Self.logStderr("verifiedElement: stale ref [\(ref)] passed to a"
                 + " double_tap/pinch/drag path — no warning is attached here; counting"
@@ -1821,14 +2050,16 @@ final class MCPServer {
             guard let element = fresh.elements.first(where: { $0.ref == ref }) else {
                 throw MCPError("unknown ref [\(ref)]. Take an ft_snapshot first")
             }
-            return element
+            return (element, "")
         }
         switch RefGuard.relocate(target, in: fresh.elements, screen: fresh.screen) {
         case .gone:
             throw MCPError(RefGuard.goneMessage(ref: ref, target: target,
                                                 truncatedCount: fresh.truncatedCount))
-        case .ghost(let found), .found(let found, _):
-            return found
+        case .ghost(let found):
+            return (found, "")
+        case .found(let found, _):
+            return (found, RefGuard.labelChangeNote(old: target.label, new: found.label) ?? "")
         }
     }
 
@@ -2146,7 +2377,10 @@ final class MCPServer {
                         // **記法の助言はここにも要る**: 切り詰めラベルをそのまま渡した waitFor は
                         // 外れるのに、返す木には**同じ文字列が印字されている**ので照合のバグに見える
                         // (2026-08-07 実測)。scrollTo だけに出していて届いていなかった
-                        } ?? Self.notationHint(waitFor, in: snapshot)) + "\n"
+                        } ?? (Self.notationHint(waitFor, in: snapshot)
+                              // **部分一致が出ていたときは出さない**: そちらのほうが具体的な
+                              // ヒントなので、的の外れた推測を並べて紛らわせない(2026-08-10)
+                              + Self.similarLabelsHint(waitFor, in: snapshot))) + "\n"
                 }
             }
             // **プラットフォームはドライバの実体から採る**(profile 指定時は args["platform"] が
@@ -2349,7 +2583,7 @@ final class MCPServer {
             var doubleTapNote = ""
             var doubleTapSelector = ""
             if let ref = args["ref"] as? Int {
-                let element = try await verifiedElement(ref, driver: doubleTapDriver, args: args)
+                let (element, labelNote) = try await verifiedElement(ref, driver: doubleTapDriver, args: args)
                 doubleTapPoint = (element.frame.centerX, element.frame.centerY)
                 doubleTapWhat = "[\(ref)]"
                 // **ft_tap と同じ被覆にする**(ft_tap は verifiedRef 経由で遮蔽・残像・
@@ -2360,7 +2594,7 @@ final class MCPServer {
                     element, keyboardFrame: lastSnapshots[Self.engineKey(args)]?.keyboardFrame)
                     + RefGuard.overlapWarning(found: element, in: lastSnapshots[Self.engineKey(args)]?
                         .elements ?? [], screen: lastSnapshots[Self.engineKey(args)]?.screen
-                        ?? FTRect(x: 0, y: 0, width: 0, height: 0))
+                        ?? FTRect(x: 0, y: 0, width: 0, height: 0)) + labelNote
                 doubleTapSelector = reproductionNote(resolvedRef: element.ref, args: args)
             } else if let x = args["x"] as? Double, let y = args["y"] as? Double {
                 doubleTapPoint = (x, y)
@@ -2389,9 +2623,9 @@ final class MCPServer {
             if let ref = args["fromRef"] as? Int {
                 // **撮り直した木の frame を使う**(verifiedElement)。覚えていた frame から
                 // 座標を作ると、この修正が防ごうとしている「古い座標を撃つ」に自分で落ちる
-                let element = try await verifiedElement(ref, driver: dragDriver, args: args)
+                let (element, labelNote) = try await verifiedElement(ref, driver: dragDriver, args: args)
                 fromPoint = (element.frame.centerX, element.frame.centerY)
-                dragSelector = reproductionNote(resolvedRef: element.ref, args: args)
+                dragSelector = reproductionNote(resolvedRef: element.ref, args: args) + labelNote
             } else if let x = args["fromX"] as? Double, let y = args["fromY"] as? Double {
                 fromPoint = (x, y)
                 dragSelector = once("coordinateReproductionNote",
@@ -2436,10 +2670,10 @@ final class MCPServer {
             var areaIgnored = false
             var pinchSelector = ""
             if let ref = args["ref"] as? Int {
-                let element = try await verifiedElement(ref, driver: pinchDriver, args: args)
+                let (element, labelNote) = try await verifiedElement(ref, driver: pinchDriver, args: args)
                 frame = element.frame
                 identifier = element.identifier
-                pinchSelector = reproductionNote(resolvedRef: element.ref, args: args)
+                pinchSelector = reproductionNote(resolvedRef: element.ref, args: args) + labelNote
             } else if let x = args["x"] as? Double, let y = args["y"] as? Double {
                 // **地図・キャンバスには ref が無い**(2026-08-09 実測): Apple マップの場所カードを
                 // 半分出したまま ref 無しで撃つと、指が画面全体に開くのでシートが掴まれ、
@@ -2484,7 +2718,7 @@ final class MCPServer {
                 try await pressDriver.press(ref: nativeRef(pressTarget.ref, args: args),
                                             duration: pressDuration)
                 recordInteraction(action: "press", resolvedRef: pressTarget.ref, args: args)
-                return text("press [\(ref)] done\(pressTarget.note)."
+                return text("press [\(ref)] done.\(pressTarget.note)"
                     + reproductionNote(resolvedRef: pressTarget.ref, args: args)
                     + " The screen may have changed — take a fresh ft_snapshot")
             }
@@ -2714,7 +2948,15 @@ final class MCPServer {
               let element = snapshot.elements.first(where: { $0.ref == resolvedRef })
         else { return "" }
         if let graded = Self.SelectorNaming(snapshot).graded(for: element, in: snapshot) {
-            return " (selector: \(graded.selector)\(graded.durability.caution))"
+            // **セレクタ自体は毎回出すが、但し書きは初回だけ満額**(2026-08-10): id の薄いアプリ
+            // (地図等)ではタップのたび同じ index-based 注意が繰り返され、id を足せない他社
+            // アプリ相手ではノイズになる。indexedSelectorNote(下書き用・L2677/L2771)とは
+            // 文言が違うので鍵を共有しない
+            let caution = graded.durability == .indexed
+                ? once("indexedSelectorCaution", full: graded.durability.caution,
+                      short: " — index-based (see the first note)")
+                : ""
+            return " (selector: \(graded.selector)\(caution))"
         }
         return " — no stable selector for this element, so a scenario cannot reproduce this"
             + " by selector; use a labelled ancestor, or have the app expose an id"
@@ -3121,6 +3363,8 @@ final class MCPServer {
             "x": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
             "y": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
             "snapshotAfter": snapshotAfterProperty,
+            "expandBulk": expandBulkProperty,
+            "interactiveOnly": interactiveOnlyProperty,
         ]),
         tool("ft_type", "Type text (with ref, taps that field first and waits for it to take focus). "
             + "It APPENDS to whatever the field already holds — call ft_clear_input first to replace. "
@@ -3132,6 +3376,8 @@ final class MCPServer {
             "pressEnter": ["type": "boolean", "description": "Fire Enter/IME action (search, submit)"],
             "ref": ["type": "integer", "description": "Reference number of the input field (defaults to the focused element)"],
             "snapshotAfter": snapshotAfterProperty,
+            "expandBulk": expandBulkProperty,
+            "interactiveOnly": interactiveOnlyProperty,
         ]),
         tool("ft_swipe", "Swipe one screenful (up = scroll down the content). To reach a specific element use "
             + "ft_scroll_to instead — it stops on the element and hands back fresh refs", [
@@ -3144,10 +3390,12 @@ final class MCPServer {
             "selector": ["type": "string", "description": "Same syntax as the DSL: #id, a label, .type, a||b"],
             "direction": ["type": "string", "enum": ["down", "up", "right", "left"],
                           "description": "Content direction to read towards (default down)"],
-            "scrollFrame": ["type": "string",
-                            "description": "Selector of the scrolling container to search inside (e.g. #list_rows). "
-                                + "Pass it when the screen has more than one scrollable area — ft_snapshot marks "
-                                + "those lines scroll and says so at the top"],
+            "scrollFrame": ["type": ["string", "integer"],
+                            "description": "Selector of the scrolling container to search inside (e.g. #list_rows), "
+                                + "or its ft_snapshot ref (an integer) when the container has no unique id — "
+                                + "a duplicated or missing id makes a selector unusable. Pass it when the screen "
+                                + "has more than one scrollable area — ft_snapshot marks those lines scroll and "
+                                + "says so at the top"],
             "maxSwipes": ["type": "integer", "description": "Swipe limit (default 8, same as the DSL)"],
             "expandBulk": expandBulkProperty,
             "interactiveOnly": interactiveOnlyProperty,
@@ -3219,6 +3467,8 @@ final class MCPServer {
             "dy": ["type": "number", "description": "Vertical travel from the start point — negative moves up (ignored when toY is given)"],
             "durationSeconds": ["type": "number", "description": "Travel time in seconds (default 1.5)"],
             "snapshotAfter": snapshotAfterProperty,
+            "expandBulk": expandBulkProperty,
+            "interactiveOnly": interactiveOnlyProperty,
         ]),
         tool("ft_pinch","Pinch to zoom. scale > 1 zooms in, 0 < scale < 1 zooms out. Target it with ref, "
             + "or with x/y on a map or canvas that has no element of its own — without either, the fingers "

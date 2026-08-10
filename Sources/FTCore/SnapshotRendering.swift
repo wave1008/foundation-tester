@@ -20,10 +20,16 @@ public enum SnapshotRenderer {
         lines.append("screen: \(Int(s.width))x\(Int(s.height))")
         // 同じ id が2つ以上ある要素は、生成側へ「単独では曖昧」と伝えるため件数を付す
         var idCounts: [String: Int] = [:]
+        // **ラベルが木の中で一意な要素は ×N を省く**(2026-08-10): id 共有件数は「この行を
+        // ラベルだけで指せるか」には無関係で、検索候補のように全行が同じ id を共有する画面では
+        // 一意なラベルを持つ行にまで無意味な ×10 が付いていた
+        var labelCounts: [String: Int] = [:]
         for e in snapshot.elements {
             if let id = e.identifier, !id.isEmpty {
                 idCounts[id, default: 0] += 1
             }
+            let label = e.label.map(FlowMatchMode.normalizeInvisibleCharacters) ?? ""
+            if !label.isEmpty { labelCounts[label, default: 0] += 1 }
         }
         // **数えるのは描く前**: 畳んだ群の中で隠した分まで足すと二重に数える
         let hidden = interactiveOnly
@@ -47,16 +53,20 @@ public enum SnapshotRenderer {
                 // は表示を削るだけで、expandBulk: true / interactiveOnly なしで元の索引に戻れる
                 if interactiveOnly {
                     lines.append(bulkHeadlineOnly(id: id, group: group,
-                                                  totalWithSameID: idCounts[id] ?? group.count))
+                                                  totalWithSameID: idCounts[id] ?? group.count,
+                                                  flagging: flagging))
                 } else {
                     lines.append(contentsOf: bulkLines(id: id, group: group,
-                                                       totalWithSameID: idCounts[id] ?? group.count))
+                                                       totalWithSameID: idCounts[id] ?? group.count,
+                                                       flagging: flagging))
                 }
                 continue
             }
             if interactiveOnly, !isSubstantive(e, flagging: flagging) { continue }
             let flag = flagging[e.ref].map { " \($0)" } ?? ""
-            let idCount = e.identifier.flatMap { idCounts[$0] }.flatMap { $0 >= 2 ? $0 : nil }
+            var idCount = e.identifier.flatMap { idCounts[$0] }.flatMap { $0 >= 2 ? $0 : nil }
+            let label = e.label.map(FlowMatchMode.normalizeInvisibleCharacters) ?? ""
+            if !label.isEmpty, labelCounts[label] == 1 { idCount = nil }
             lines.append(renderElement(e, idCount: idCount) + flag)
         }
         if snapshot.truncatedCount > 0 {
@@ -97,7 +107,8 @@ public enum SnapshotRenderer {
     /// - `other` = ブリッジが「型が付かなかったもの」に使う型で、シナリオの対象になるのは
     ///   地図のピンのような座標付きの飾りだけ。`staticText` や `button` の一覧は中身なので畳まない
     /// - 葉に限るのは、子を持つ要素を畳むと**子の行だけが親を失って残る**ため
-    /// - 印(⚠️scroll-leftover 等)が付いた要素は畳まない —— 印は行ごとに読ませるためにある
+    /// - **印(⚠️scroll-leftover 等)が付いた要素も畳む**(2026-08-10): タップ時に RefGuard が
+    ///   改めて警告するので、snapshot 時点の個別列挙は冗長。件数は見出し側の flagSummary が言う
     ///
     /// **群まるごとの all-or-nothing にしない**(D-2。2026-08-09 に実機で確定): 条件を外した
     /// 1件の巻き添えで群全体が個別列挙になっていた。実測(Apple マップの経路一覧)では
@@ -108,6 +119,16 @@ public enum SnapshotRenderer {
     ///
     /// 畳んでも **ref では撃てる**(ラベルと ref の索引を必ず出す)。実測で
     /// `ft_tap` の対象になり得ることを確認しているので、消してはいけない
+    /// 「型が付かず・操作できず・中身も持たない葉」= 地図のピンのような飾り。
+    /// bulk fold の畳み対象と、曖昧ラベル注記の除外対象(MCPServer.ambiguousLabelsNote)が
+    /// **同じ判定を使う** —— 別々に書くと「畳むのに曖昧としては列挙する」の食い違いになる
+    public static func isDecorativeLeaf(_ e: ElementInfo, in elements: [ElementInfo]) -> Bool {
+        e.type == "other" && e.enabled && e.scrollable != true && e.checked != true
+            && (e.value ?? "").isEmpty && (e.placeholder ?? "").isEmpty
+            && (e.range ?? "").isEmpty
+            && TapTargetGeometry.isLeaf(e, in: elements)
+    }
+
     static func bulkGroups(_ snapshot: SnapshotResponse,
                            flagging: [Int: String]) -> [String: [ElementInfo]] {
         var byID: [String: [ElementInfo]] = [:]
@@ -117,13 +138,11 @@ public enum SnapshotRenderer {
         }
         var folded: [String: [ElementInfo]] = [:]
         for (id, group) in byID where group.count >= bulkGroupMinimum {
-            let qualifying = group.filter { e in
-                e.type == "other" && e.enabled && e.scrollable != true && e.checked != true
-                    && (e.value ?? "").isEmpty && (e.placeholder ?? "").isEmpty
-                    && (e.range ?? "").isEmpty
-                    && flagging[e.ref] == nil
-                    && TapTargetGeometry.isLeaf(e, in: snapshot.elements)
-            }
+            // **警告付きも畳む**(2026-08-10): タップ時に RefGuard が改めて警告するので
+            // (testTapWarnsInsteadOfRefusingForAScrollLeftover)、snapshot 時点の個別列挙は
+            // 冗長 —— 地図 POI 231件中40件が印付きというだけで出力の半分を個別行が占めていた。
+            // 畳んだ群に何件混じっているかは見出し側(bulkHeadline の flagSummary)が言う
+            let qualifying = group.filter { isDecorativeLeaf($0, in: snapshot.elements) }
             // **畳める分が下限に届かないなら畳まない**(数件を畳んでも読む量は減らず、
             // 「一部だけ畳まれた」形が読み手を混乱させるだけ)
             guard qualifying.count >= bulkGroupMinimum else { continue }
@@ -132,22 +151,46 @@ public enum SnapshotRenderer {
         return folded
     }
 
-    /// 畳んだ見出しの共通部分(span・×件数・「別に出ている分」の注記)。索引ありの
+    /// **ghostNote と render は同じ判定を使う**(2026-08-10): 別実装だと「畳まれた ref」の範囲が
+    /// ずれ、片方は個別列挙・もう片方は畳んだままという食い違いが起きる
+    public static func foldedGroups(_ snapshot: SnapshotResponse, flagging: [Int: String],
+                                    collapsingBulk: Bool) -> [String: Set<Int>] {
+        guard collapsingBulk else { return [:] }
+        return bulkGroups(snapshot, flagging: flagging).mapValues { Set($0.map(\.ref)) }
+    }
+
+    /// 畳んだ見出しの共通部分(span・×件数・旗の内訳・「別に出ている分」の注記)。索引ありの
     /// `bulkLines` と索引なしの `bulkHeadlineOnly` の両方から使う —— 別々に持つと
     /// 同じ群で span や件数の言い方が食い違いかねない
-    private static func bulkHeadline(group: [ElementInfo],
-                                     totalWithSameID: Int?) -> (span: String, separately: String) {
+    private static func bulkHeadline(group: [ElementInfo], totalWithSameID: Int?,
+                                     flagging: [Int: String])
+        -> (span: String, separately: String, flags: String) {
         let refs = group.map(\.ref).sorted()
         // **range を書けるのは連番のときだけ**。飛び飛びの群で `[2-43]` と書くと、
         // 間に挟まった別要素まで畳んだように読める(索引には全 ref が出るので情報は落ちない)
         let contiguous = refs.count >= 2 && refs.last! - refs.first! == refs.count - 1
         let span = contiguous ? "[\(refs.first!)-\(refs.last!)]" : "[\(refs.first ?? 0)…]"
         let apart = (totalWithSameID ?? group.count) - group.count
+        // **「警告付き」は理由から外れる**(2026-08-10): 旗付きも畳むようになったので、
+        // ここに残るのは葉でない・スクロール可能等、qualifying から漏れた分だけ
         let separately = apart > 0
-            ? " \(apart) more with this id are listed separately below (they are not plain leaves,"
-                + " or carry a warning), so this fold is not the whole group."
+            ? " \(apart) more with this id are listed separately below (not plain leaves),"
+                + " so this fold is not the whole group."
             : ""
-        return (span, separately)
+        return (span, separately, flagSummary(group, flagging: flagging))
+    }
+
+    /// 畳んだ群のうち旗が付いている件数の内訳。例: `" — 38 ⚠️scroll-leftover, 1 ⚠️offscreen among them"`
+    private static func flagSummary(_ group: [ElementInfo], flagging: [Int: String]) -> String {
+        var counts: [String: Int] = [:]
+        var order: [String] = []
+        for e in group {
+            guard let flag = flagging[e.ref] else { continue }
+            if counts[flag] == nil { order.append(flag) }
+            counts[flag, default: 0] += 1
+        }
+        guard !order.isEmpty else { return "" }
+        return " — " + order.map { "\(counts[$0]!) \($0)" }.joined(separator: ", ") + " among them"
     }
 
     /// 索引に個別行で出す先頭件数(tree 順)。**なぜ12か**: 型と命名規則が読み取れる
@@ -161,10 +204,11 @@ public enum SnapshotRenderer {
     /// **別に出ていることを言う**(D-2 で群の一部だけを畳むようになったため。
     /// 言わないと、読み手は同じ id が2箇所に出ている理由が分からない)
     static func bulkLines(id: String, group: [ElementInfo],
-                          totalWithSameID: Int? = nil) -> [String] {
-        let (span, separately) = bulkHeadline(group: group, totalWithSameID: totalWithSameID)
+                          totalWithSameID: Int? = nil, flagging: [Int: String] = [:]) -> [String] {
+        let (span, separately, flags) = bulkHeadline(group: group, totalWithSameID: totalWithSameID,
+                                                      flagging: flagging)
         var lines = ["\(span) other id=\(id) ×\(group.count) collapsed"
-            + " (non-interactive leaves with the same id; frames omitted).\(separately)"
+            + " (non-interactive leaves with the same id; frames omitted\(flags)).\(separately)"
             + " Tap one by its ref — pass expandBulk: true (ft_snapshot and ft_scroll_to both"
             + " take it) to list them in full:"]
         var current = "   "
@@ -191,10 +235,12 @@ public enum SnapshotRenderer {
     /// interactiveOnly 用: 索引を出さず見出し1行だけ。**間引きや ref の振り直しはしない**
     /// (isSubstantive/hidden カウントは変えない。隠すのは描画のこの1行の中身だけ)
     static func bulkHeadlineOnly(id: String, group: [ElementInfo],
-                                 totalWithSameID: Int? = nil) -> String {
-        let (span, separately) = bulkHeadline(group: group, totalWithSameID: totalWithSameID)
+                                 totalWithSameID: Int? = nil, flagging: [Int: String] = [:]) -> String {
+        let (span, separately, flags) = bulkHeadline(group: group, totalWithSameID: totalWithSameID,
+                                                      flagging: flagging)
+        // 旗の内訳は「leaves」の直後(interactiveOnly の節に挟むと em-dash 節が連なって読めない)
         return "\(span) other id=\(id) ×\(group.count) collapsed"
-            + " (non-interactive leaves; index hidden by interactiveOnly — call without"
+            + " (non-interactive leaves\(flags); index hidden by interactiveOnly — call without"
             + " interactiveOnly for the label/ref index, or with expandBulk: true for full"
             + " lines)\(separately)"
     }

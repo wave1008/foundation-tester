@@ -117,6 +117,31 @@ final class ScrollFrameCandidatesTests: XCTestCase {
         XCTAssertFalse(text.contains("Pass scrollFrame:"), text)
     }
 
+    /// **id が無い/重複する容器が混じる画面だけ** ref の逃げ道を添える(2026-08-10。
+    /// MCPServer.scrollTo が整数を frame へ解決する)。id で足りる画面では出さない
+    func testNoteMentionsTheRefEscapeHatchOnlyWhenACandidateCannotBeNamedBySelector() {
+        let namedOnly = snapshot([
+            element(1, id: "chips", frame: FTRect(x: 0, y: 60, width: 400, height: 60),
+                    scrollable: true),
+            element(2, id: "list_rows", frame: FTRect(x: 0, y: 120, width: 400, height: 500),
+                    scrollable: true),
+        ])
+        XCTAssertFalse((ScrollFrameCandidates.note(namedOnly) ?? "").contains("by its ref"))
+
+        let mixed = snapshot([
+            element(1, id: "chips", frame: FTRect(x: 0, y: 60, width: 400, height: 60),
+                    scrollable: true),
+            element(2, frame: FTRect(x: 0, y: 120, width: 400, height: 500), scrollable: true),
+        ])
+        XCTAssertTrue((ScrollFrameCandidates.note(mixed) ?? "").contains("by its ref"))
+
+        let unnamedOnly = snapshot([
+            element(1, frame: FTRect(x: 0, y: 60, width: 400, height: 60), scrollable: true),
+            element(2, frame: FTRect(x: 0, y: 120, width: 400, height: 500), scrollable: true),
+        ])
+        XCTAssertTrue((ScrollFrameCandidates.note(unnamedOnly) ?? "").contains("pass its ref instead"))
+    }
+
     /// **同名 id が並ぶ画面では添字と矩形と軸まで出す**。実測(2026-08-07・Google マップ Android):
     /// `#recycler_view / #search_list_layout / #recycler_view / #recycler_view` と並べていたので、
     /// 「どれか1つを渡せ」と言いながら渡せる書き方が無かった。
