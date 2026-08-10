@@ -366,7 +366,8 @@ public struct ResolvedProfile: Sendable {
     public let appName: String
     /// platform("ios"/"android")→ アプリ情報(デバイスがある platform のみ)
     public let apps: [String: ResolvedAppTarget]
-    public let devices: [ResolvedDevice]
+    /// 実行に使うデバイス。**limitingDevices が本数に合わせて絞る**ので var
+    public var devices: [ResolvedDevice]
     /// FM 機能の実効設定(RunProfileDocument の fm/heal/falsePositiveCheck/screenIs を合成)
     public let fm: FMConfig
     /// FM によるロケータ自己修復を許可するか(fm.heal のエイリアス。既存呼び出し互換のため維持)
@@ -404,6 +405,31 @@ public struct ResolvedProfile: Sendable {
 
     public var iosDevices: [ResolvedDevice] { devices.filter { $0.platform == "ios" } }
     public var androidDevices: [ResolvedDevice] { devices.filter { $0.platform == "android" } }
+
+    /// **回す本数を超える台数を用意しない**。1本のシナリオを回すのに 10 台ぶんのブリッジ供給と
+    /// アプリ版チェックを払うのは丸損で、実測では iOS の固定費 14.8s のほとんどがこれだった
+    /// (合計 21.8s のうちテスト実行は 7.0s)。
+    ///
+    /// **予備を1台残す**(`+ 1`): 用意した台が blank/frozen で triage に弾かれると
+    /// 「使えるワーカーが無い」で run ごと落ちる。10 台あった頃はその余裕が偶然あった。
+    /// 台数が上限以下、または本数が 0(= platform 不明で絞れない)のときは何もしない
+    /// 用意する台数。**判断はここだけ**(テストはこの純粋関数を直接叩く)。
+    /// `scenarios == 0` は「判断材料が無い」= 絞らない
+    public static func deviceKeepCount(available: Int, scenarios: Int) -> Int {
+        guard scenarios > 0 else { return available }
+        return min(available, scenarios + 1)
+    }
+
+    public func limitingDevices(iosScenarios: Int, androidScenarios: Int) -> ResolvedProfile {
+        func keep(_ list: [ResolvedDevice], _ count: Int) -> [ResolvedDevice] {
+            Array(list.prefix(Self.deviceKeepCount(available: list.count, scenarios: count)))
+        }
+        let kept = Set(keep(iosDevices, iosScenarios) + keep(androidDevices, androidScenarios))
+        guard kept.count < devices.count else { return self }
+        var trimmed = self
+        trimmed.devices = devices.filter { kept.contains($0) }
+        return trimmed
+    }
 }
 
 /// プロファイルファイルの種別(profiles/ 配下のサブディレクトリと対応)

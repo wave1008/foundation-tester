@@ -32,8 +32,18 @@ enum ProfileRunner {
         if machine.auto {
             print("→ Using machine profile \(machine.name) automatically (it is the only one in machines/)")
         }
-        let resolved = try ProfileResolver.resolve(
+        let full = try ProfileResolver.resolve(
             project: project, runName: profileName, machineName: machine.name)
+        // **回す本数を超える台数を用意しない**(ResolvedProfile.limitingDevices の宣言参照)。
+        // 本数はここで確定している(items は呼び出し側で解決済み)ので、ブリッジ供給・アプリ版チェック・
+        // blank triage が丸ごと縮む。platform 未指定のシナリオは**両方**に数える(どちらでも走りうる)
+        let iosCount = items.filter { $0.info.platform != "android" }.count
+        let androidCount = items.filter { $0.info.platform != "ios" }.count
+        let resolved = full.limitingDevices(iosScenarios: iosCount, androidScenarios: androidCount)
+        if resolved.devices.count < full.devices.count {
+            print("→ Using \(resolved.devices.count) of \(full.devices.count) device(s)"
+                + " for \(items.count) scenario(s)")
+        }
         for warning in resolved.warnings { print("⚠️ \(warning)") }
 
         // CLI の --heal override は master(fm.enabled)が有効な場合のみ heal を ON にする。
