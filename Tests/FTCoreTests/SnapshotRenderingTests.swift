@@ -119,25 +119,49 @@ final class SnapshotRenderingTests: XCTestCase {
                                 elements: elements, truncatedCount: 0)
     }
 
-    /// 畳んでも **ref では撃てる**(索引にラベルと ref が全件残る)のが条件。
-    /// 実測で `#VKPointFeature` の ref タップは場所カードを開くので、消してはいけない
+    /// 畳んでも **ref では撃てる**(索引の先頭サンプルにラベルと ref が残る)のが条件。
+    /// 実測で `#VKPointFeature` の ref タップは場所カードを開くので、消してはいけない。
+    /// **索引の全件は出さない**(2026-08-10): 235件級の実測で索引の全件印字が出力の7割を
+    /// 占めていたため、先頭 `bulkIndexSampleCount` 件だけに削る(件数の検証は
+    /// testBulkIndexIsTruncatedToASampleWithACountOfTheRest)
     func testBulkGroupCollapsesIntoOneLineWithARefIndex() {
         let text = SnapshotRenderer.render(bulkSnapshot(count: 25), collapsingBulk: true)
         XCTAssertTrue(text.contains("[1-25] other id=VKPointFeature ×25 collapsed"), text)
-        // **逃げ道はツール名まで書く**: この行は ft_scroll_to の結果にも出るが、
-        // あちらは expandBulk を受け取らない
-        XCTAssertTrue(text.contains("call ft_snapshot with expandBulk: true"), text)
+        // **逃げ道はツール名まで書く**: この行は ft_scroll_to の結果にも出る。両方が
+        // expandBulk を受け取る(2026-08-10 に ft_scroll_to も対応)
+        XCTAssertTrue(text.contains(
+            "pass expandBulk: true (ft_snapshot and ft_scroll_to both take it) to list them in full"),
+            text)
         XCTAssertTrue(text.contains("POI0[1]"), text)
-        XCTAssertTrue(text.contains("POI24[25]"), text)
+        // 索引はサンプルのみ(25件のうち先頭12件)なので、末尾の POI24 はここには出ない
+        XCTAssertFalse(text.contains("POI24[25]"), text)
         // 畳んだ行の frame は出さない / 畳んでいない要素は従来どおり
         XCTAssertFalse(text.contains("(0,10 30x30)"), text)
         XCTAssertTrue(text.contains("[26] button \"検索\" id=search (0,500 100x40)"), text)
     }
 
+    /// **索引は先頭 `bulkIndexSampleCount` 件だけ + 残りは件数のみの1行**
+    /// (2026-08-10。Apple マップ #VKPointFeature ×235 の実測で索引の全件印字が
+    /// 出力の7割前後を占めていた対策)
+    func testBulkIndexIsTruncatedToASampleWithACountOfTheRest() {
+        let text = SnapshotRenderer.render(bulkSnapshot(count: 25), collapsingBulk: true)
+        XCTAssertEqual(SnapshotRenderer.bulkIndexSampleCount, 12)
+        XCTAssertTrue(text.contains("POI0[1]"), text)
+        XCTAssertTrue(text.contains("POI11[12]"), text)
+        // 13件目以降は索引に出ない
+        XCTAssertFalse(text.contains("POI12[13]"), text)
+        XCTAssertFalse(text.contains("POI24[25]"), text)
+        // 残り13件(25-12)は件数だけの1行にまとまる
+        XCTAssertTrue(text.contains("(+13 more — expandBulk: true lists them all)"), text)
+    }
+
+    /// expandBulk 相当(collapsingBulk: false)では索引ではなく個別行がそのまま全件出る
+    /// (索引のサンプリングは畳んだときだけの話で、こちらには影響しない)
     func testBulkGroupIsNotCollapsedByDefault() {
         let text = SnapshotRenderer.render(bulkSnapshot(count: 25))
         XCTAssertFalse(text.contains("collapsed"), text)
         XCTAssertTrue(text.contains("[1] other \"POI0\" id=VKPointFeature ×25 (0,10 30x30)"), text)
+        XCTAssertTrue(text.contains("[25] other \"POI24\" id=VKPointFeature ×25 (24,10 30x30)"), text)
     }
 
     /// 下限未満は畳まない(検索候補の `#TitleLabel ×10` のような**中身の一覧**を守る)
@@ -252,6 +276,80 @@ final class SnapshotRenderingTests: XCTestCase {
         let text = SnapshotRenderer.render(mixedSnapshot())
         XCTAssertTrue(text.contains("icon_container"), text)
         XCTAssertFalse(text.contains("layout-only"), text)
+    }
+
+    // MARK: - interactiveOnly + bulk 群(2026-08-10。索引を隠すのは interactiveOnly の趣旨と一致)
+
+    /// bulk 群の要素はラベルを持つので isSubstantive=true —— interactiveOnly でも
+    /// **群そのものは消えない**(見出し1行に畳まれるだけ)。索引(ラベル+ref)は1件も出ない
+    func testInteractiveOnlyCollapsesBulkGroupToHeadlineOnly() {
+        let text = SnapshotRenderer.render(bulkSnapshot(count: 25), collapsingBulk: true,
+                                           interactiveOnly: true)
+        XCTAssertTrue(text.contains("[1-25] other id=VKPointFeature ×25 collapsed"), text)
+        XCTAssertTrue(text.contains("index hidden by interactiveOnly"), text)
+        XCTAssertTrue(text.contains(
+            "call without interactiveOnly for the label/ref index, or with expandBulk: true"),
+            text)
+        XCTAssertFalse(text.contains("POI0[1]"), text)
+        XCTAssertFalse(text.contains("POI24[25]"), text)
+        // 通常どおり畳んでいない要素は残る
+        XCTAssertTrue(text.contains("[26] button \"検索\" id=search (0,500 100x40)"), text)
+    }
+
+    /// **隠すのは描画だけ**: interactiveOnly の有無で同じスナップショットを描いても、
+    /// bulk 見出しの span(=先頭/末尾 ref を含む)は変わらない —— ref/frame の間引きや
+    /// 振り直しはしていないことの確認
+    func testInteractiveOnlyDoesNotChangeTheBulkHeadlineSpan() {
+        let withIndex = SnapshotRenderer.render(bulkSnapshot(count: 25), collapsingBulk: true)
+        let headlineOnly = SnapshotRenderer.render(bulkSnapshot(count: 25), collapsingBulk: true,
+                                                   interactiveOnly: true)
+        XCTAssertTrue(withIndex.contains("[1-25] other id=VKPointFeature ×25 collapsed"),
+                      withIndex)
+        XCTAssertTrue(headlineOnly.contains("[1-25] other id=VKPointFeature ×25 collapsed"),
+                      headlineOnly)
+    }
+
+    // MARK: - 切り詰めラベル注記の例(2026-08-10。「, 」を含む例が複数要素の列挙に読める事故対策)
+
+    private func snapshotWithOneLabel(_ label: String) -> SnapshotResponse {
+        SnapshotResponse(
+            sessionBundleID: nil,
+            screen: FTRect(x: 0, y: 0, width: 402, height: 874),
+            elements: [ElementInfo(ref: 1, type: "staticText", identifier: nil, label: label,
+                                   value: nil, placeholder: nil, enabled: true,
+                                   frame: FTRect(x: 0, y: 0, width: 300, height: 40), depth: 1)],
+            truncatedCount: 0)
+    }
+
+    /// **実害の再現**(2026-08-06): 先頭12文字の中に「, 」があると `(e.g. *新宿, JR JA*)` の
+    /// ように複数要素の列挙に読め、endsWith セレクタを渡して7スクロール空振りした。
+    /// 区切りの手前で止め、かつ引用符で1つの文字列だと分かる形にする
+    func testTruncatedLabelNoteCutsExampleAtDelimiterAndQuotesIt() {
+        let label = "新宿, JR JA, " + String(repeating: "X", count: 30)
+        let note = SnapshotRenderer.truncatedLabelNote(snapshotWithOneLabel(label))
+        XCTAssertTrue(note?.contains("(e.g. \"*新宿*\" — the *text* form matches anywhere") == true,
+                      note ?? "<nil>")
+        // 区切りの手前で止めるので、後半の「JR JA」は例に含まれない
+        XCTAssertFalse(note?.contains("JR JA") ?? false, note ?? "<nil>")
+        XCTAssertTrue(note?.contains("Use a partial match built from the start of the label"
+            ) == true, note ?? "<nil>")
+    }
+
+    /// 区切りが先頭12文字の先頭にあり、そこで切ると空文字列になるケースだけ
+    /// 従来どおり先頭12文字をそのまま使う(空の例より12文字の方がまだ手掛かりになる)
+    func testTruncatedLabelNoteFallsBackToTwelveCharsWhenCuttingWouldBeEmpty() {
+        let label = ", " + String(repeating: "A", count: 50)
+        let note = SnapshotRenderer.truncatedLabelNote(snapshotWithOneLabel(label))
+        XCTAssertTrue(note?.contains("(e.g. \"*, AAAAAAAAAA*\"") == true, note ?? "<nil>")
+    }
+
+    /// truncatedSelectorHint の例も同じ形(引用符つき)で出す
+    func testTruncatedSelectorHintQuotesItsExample() {
+        let label = "新宿, JR JA, " + String(repeating: "X", count: 30)
+        let snap = snapshotWithOneLabel(label)
+        let asPrinted = String(label.prefix(SnapshotRenderer.labelDisplayLimit)) + "…"
+        let hint = SnapshotRenderer.truncatedSelectorHint(asPrinted, in: snap)
+        XCTAssertTrue(hint?.contains("(e.g. \"*新宿*\").") == true, hint ?? "<nil>")
     }
 }
 

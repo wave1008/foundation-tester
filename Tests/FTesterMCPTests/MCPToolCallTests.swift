@@ -235,6 +235,49 @@ final class MCPToolCallTests: XCTestCase {
         XCTAssertEqual(driver.calls, [])
     }
 
+    /// **覚えている木が無ければチェック自体をしない**(照合の起点が無いのに撃つのは
+    /// 余計な往復を増やすだけ)。ft_snapshot を挟んでいない = lastSnapshots が空
+    func testBackWithoutAPriorSnapshotSkipsTheIneffectivenessCheck() async throws {
+        let content = try await server.call(tool: "ft_navigate", args: ["target": "back"])
+        let text = try XCTUnwrap(content.first?["text"] as? String)
+        XCTAssertFalse(text.contains("no effect on this screen"), text)
+        XCTAssertEqual(driver.calls, ["back"], "覚えている木が無ければ撮り直さないこと")
+    }
+
+    /// back を送っても木の指紋が最後まで一致したままなら「効かなかった」を名指しする
+    /// (自前ナビの画面はシステムの戻るを無視することがある)
+    func testBackWithNoTreeChangeIsNamedAsIneffective() async throws {
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        // 台本を用意しない = 撮り直すたびに同じ木が返り続ける
+        let content = try await server.call(tool: "ft_navigate", args: ["target": "back"])
+        let text = try XCTUnwrap(content.first?["text"] as? String)
+        XCTAssertTrue(text.contains("no effect on this screen"), text)
+    }
+
+    /// 途中で木が変われば「効かなかった」とは言わない。**1回だけの撮り直しでは判定しない**
+    /// (アニメーション途中の1枚だけを「変わっていない」と誤読しないためポーリングする)
+    func testBackWithATreeChangeIsNotFlaggedAsIneffective() async throws {
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        driver.scriptedSnapshots = [
+            SnapshotResponse(sessionBundleID: "com.example.app",
+                             screen: FTRect(x: 0, y: 0, width: 390, height: 844),
+                             elements: [], truncatedCount: 0),
+        ]
+        let content = try await server.call(tool: "ft_navigate", args: ["target": "back"])
+        let text = try XCTUnwrap(content.first?["text"] as? String)
+        XCTAssertFalse(text.contains("no effect on this screen"), text)
+    }
+
+    /// home/appSwitcher は対象外(back だけの検知)
+    func testHomeAndAppSwitcherAreNeverFlaggedAsIneffective() async throws {
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        for target in ["home", "appSwitcher"] {
+            let content = try await server.call(tool: "ft_navigate", args: ["target": target])
+            let text = try XCTUnwrap(content.first?["text"] as? String)
+            XCTAssertFalse(text.contains("no effect on this screen"), "\(target): \(text)")
+        }
+    }
+
     /// ref 省略はフォーカス中の欄(DSL の clearInput() と同じ)
     func testClearInputPassesTheRefOrNil() async throws {
         _ = try await server.call(tool: "ft_clear_input", args: ["ref": 2])

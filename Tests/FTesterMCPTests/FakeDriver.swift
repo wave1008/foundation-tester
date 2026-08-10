@@ -139,8 +139,16 @@ final class FakeDriver: AppDriver, @unchecked Sendable {
 
     func screenshot() async throws -> Data {
         try record("screenshot", "screenshot")
+        // 台本があれば呼ばれた順に返す(ft_screenshot の imageHash×treeFingerprint 判定を
+        // 「同じバイト列を2回」「別バイト列」で作り分けるため。空 = screenshotData を返し続ける
+        if !scriptedScreenshots.isEmpty {
+            return scriptedScreenshots.removeFirst()
+        }
         return screenshotData
     }
+
+    /// screenshot が順に返す台本。scriptedSnapshots と対になる(FakeDriver.snapshot 参照)
+    var scriptedScreenshots: [Data] = []
 
     func terminate() async throws {
         try record("terminate", "terminate")

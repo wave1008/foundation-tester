@@ -42,8 +42,16 @@ public enum SnapshotRenderer {
         for e in snapshot.elements {
             if let id = e.identifier, let group = bulk[id], foldedRefs.contains(e.ref) {
                 guard emitted.insert(id).inserted else { continue }
-                lines.append(contentsOf: bulkLines(id: id, group: group,
-                                                   totalWithSameID: idCounts[id] ?? group.count))
+                // interactiveOnly は「次の一手に使えないものを隠す」趣旨なので、bulk の
+                // 索引(ラベル+ref)も同じ扱いにする。ref/frame は動かさない——headline-only
+                // は表示を削るだけで、expandBulk: true / interactiveOnly なしで元の索引に戻れる
+                if interactiveOnly {
+                    lines.append(bulkHeadlineOnly(id: id, group: group,
+                                                  totalWithSameID: idCounts[id] ?? group.count))
+                } else {
+                    lines.append(contentsOf: bulkLines(id: id, group: group,
+                                                       totalWithSameID: idCounts[id] ?? group.count))
+                }
                 continue
             }
             if interactiveOnly, !isSubstantive(e, flagging: flagging) { continue }
@@ -124,30 +132,44 @@ public enum SnapshotRenderer {
         return folded
     }
 
-    /// 畳んだ群の描画。見出し1行 +「ラベル[ref]」の索引(折り返し)。
+    /// 畳んだ見出しの共通部分(span・×件数・「別に出ている分」の注記)。索引ありの
+    /// `bulkLines` と索引なしの `bulkHeadlineOnly` の両方から使う —— 別々に持つと
+    /// 同じ群で span や件数の言い方が食い違いかねない
+    private static func bulkHeadline(group: [ElementInfo],
+                                     totalWithSameID: Int?) -> (span: String, separately: String) {
+        let refs = group.map(\.ref).sorted()
+        // **range を書けるのは連番のときだけ**。飛び飛びの群で `[2-43]` と書くと、
+        // 間に挟まった別要素まで畳んだように読める(索引には全 ref が出るので情報は落ちない)
+        let contiguous = refs.count >= 2 && refs.last! - refs.first! == refs.count - 1
+        let span = contiguous ? "[\(refs.first!)-\(refs.last!)]" : "[\(refs.first ?? 0)…]"
+        let apart = (totalWithSameID ?? group.count) - group.count
+        let separately = apart > 0
+            ? " \(apart) more with this id are listed separately below (they are not plain leaves,"
+                + " or carry a warning), so this fold is not the whole group."
+            : ""
+        return (span, separately)
+    }
+
+    /// 索引に個別行で出す先頭件数(tree 順)。**なぜ12か**: 型と命名規則が読み取れる
+    /// 代表として最小限の数。235件級の実測(Apple マップの `#VKPointFeature`)では
+    /// 索引の全件印字だけで出力の7割前後を占めていた
+    static let bulkIndexSampleCount = 12
+
+    /// 畳んだ群の描画。見出し1行 +「ラベル[ref]」の索引(先頭 `bulkIndexSampleCount` 件・折り返し)。
     /// **frame は落とす** —— 座標で撃ちたいなら expandBulk で全行に戻せる
     /// `totalWithSameID` = 同じ id を持つ要素の総数。畳んだ数と食い違うときは
     /// **別に出ていることを言う**(D-2 で群の一部だけを畳むようになったため。
     /// 言わないと、読み手は同じ id が2箇所に出ている理由が分からない)
     static func bulkLines(id: String, group: [ElementInfo],
                           totalWithSameID: Int? = nil) -> [String] {
-        let refs = group.map(\.ref).sorted()
-        // **range を書けるのは連番のときだけ**。飛び飛びの群で `[2-43]` と書くと、
-        // 間に挟まった別要素まで畳んだように読める(索引には全 ref が出るので情報は落ちない)
-        let contiguous = refs.count >= 2 && refs.last! - refs.first! == refs.count - 1
-        let span = contiguous ? "[\(refs.first!)-\(refs.last!)]" : "[\(refs.first ?? 0)…]"
-        // **逃げ道はツールごと名指しする**: `ft_scroll_to` の結果にもこの行は出るが、
-        // あちらは expandBulk を受け取らない。「どこで渡せるか」を書かないと空振りする
-        let apart = (totalWithSameID ?? group.count) - group.count
-        let separately = apart > 0
-            ? " \(apart) more with this id are listed separately below (they are not plain leaves,"
-                + " or carry a warning), so this fold is not the whole group."
-            : ""
+        let (span, separately) = bulkHeadline(group: group, totalWithSameID: totalWithSameID)
         var lines = ["\(span) other id=\(id) ×\(group.count) collapsed"
             + " (non-interactive leaves with the same id; frames omitted).\(separately)"
-            + " Tap one by its ref — call ft_snapshot with expandBulk: true to list them in full:"]
+            + " Tap one by its ref — pass expandBulk: true (ft_snapshot and ft_scroll_to both"
+            + " take it) to list them in full:"]
         var current = "   "
-        for e in group {
+        let sample = group.prefix(bulkIndexSampleCount)
+        for e in sample {
             let label = e.label.map(FlowMatchMode.normalizeInvisibleCharacters) ?? ""
             let text = label.isEmpty
                 ? "(no label)[\(e.ref)]"
@@ -159,7 +181,22 @@ public enum SnapshotRenderer {
             current += " " + text
         }
         if !current.trimmingCharacters(in: .whitespaces).isEmpty { lines.append(current) }
+        let remaining = group.count - sample.count
+        if remaining > 0 {
+            lines.append("   (+\(remaining) more — expandBulk: true lists them all)")
+        }
         return lines
+    }
+
+    /// interactiveOnly 用: 索引を出さず見出し1行だけ。**間引きや ref の振り直しはしない**
+    /// (isSubstantive/hidden カウントは変えない。隠すのは描画のこの1行の中身だけ)
+    static func bulkHeadlineOnly(id: String, group: [ElementInfo],
+                                 totalWithSameID: Int? = nil) -> String {
+        let (span, separately) = bulkHeadline(group: group, totalWithSameID: totalWithSameID)
+        return "\(span) other id=\(id) ×\(group.count) collapsed"
+            + " (non-interactive leaves; index hidden by interactiveOnly — call without"
+            + " interactiveOnly for the label/ref index, or with expandBulk: true for full"
+            + " lines)\(separately)"
     }
 
     /// 索引の折り返し幅。読み手はターミナル幅ではなくトークンで読むので、
@@ -225,6 +262,21 @@ public enum SnapshotRenderer {
     public static let labelDisplayLimit = 40
     public static let valueDisplayLimit = 30
 
+    /// 切り詰め注記の例(`"*text*"`)を組む。**渡された先頭12文字をそのまま使わず、
+    /// 区切り文字(", " / "、")があればその手前で止める** —— 素直に先頭12文字を出すと
+    /// `*新宿, JR JA*` のように「, 」を含み、複数要素の列挙に読める。実際に読み違えて
+    /// endsWith セレクタを渡し7スクロール空振りした事故がある(2026-08-10)。
+    /// **切った結果が空になるとき(区切りが先頭にある等)だけ元の文字列をそのまま使う**
+    /// (何も出さないよりは元の12文字の方がまだ手掛かりになる)
+    private static func quotedPartialMatchExample(_ prefix: String) -> String {
+        let cutIndex = [", ", "、"]
+            .compactMap { prefix.range(of: $0)?.lowerBound }
+            .filter { $0 > prefix.startIndex }
+            .min()
+        let text = cutIndex.map { String(prefix[..<$0]) } ?? prefix
+        return "\"*\(text)*\""
+    }
+
     /// 切り詰めたラベルがあるときだけ出す注記。**印字された文字列は完全一致では当たらない** ——
     /// 読み手は木に出ている文字列をそのままセレクタへ写すので、これが無いと
     /// 「木に居るのに waitFor が当たらない」= 照合のバグに見える(2026-08-07 に実アプリで実測。
@@ -237,10 +289,11 @@ public enum SnapshotRenderer {
             .filter { $0.count > labelDisplayLimit }
             .max(by: { $0.count < $1.count })
         guard let longest else { return nil }
-        let example = String(longest.prefix(min(12, labelDisplayLimit)))
+        let example = quotedPartialMatchExample(String(longest.prefix(min(12, labelDisplayLimit))))
         return "note: labels longer than \(labelDisplayLimit) characters are shown cut off with"
             + " \"…\" — that \"…\" is display only, so copying the printed text into a selector"
-            + " will never match. Use a prefix partial match instead (e.g. *\(example)*).\n"
+            + " will never match. Use a partial match built from the start of the label instead"
+            + " (e.g. \(example) — the *text* form matches anywhere in the label).\n"
     }
 
     /// 渡されたセレクタが**この画面のどれかのラベルの切り詰め表示**そのものか。
@@ -255,10 +308,10 @@ public enum SnapshotRenderer {
             .compactMap { $0.label.map(FlowMatchMode.normalizeInvisibleCharacters) }
             .first { $0.hasPrefix(prefix) && $0.count > prefix.count }
         guard full != nil else { return nil }
-        let example = String(prefix.prefix(min(12, prefix.count)))
+        let example = quotedPartialMatchExample(String(prefix.prefix(min(12, prefix.count))))
         return " The text you passed ends with \"…\", which is how a label longer than"
             + " \(labelDisplayLimit) characters is *displayed* — it is not part of the label,"
-            + " so an exact match cannot succeed. Use a prefix instead (e.g. *\(example)*)."
+            + " so an exact match cannot succeed. Use a prefix instead (e.g. \(example))."
     }
 
     public static let textInputTypes: Set<String> = [

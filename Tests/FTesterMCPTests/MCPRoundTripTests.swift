@@ -227,7 +227,10 @@ final class MCPDraftAndBulkTests: XCTestCase {
             elements: [], truncatedCount: 0, bulkExemptCount: 87)
         let note = MCPServer.bulkExemptNote(snapshot)
         XCTAssertTrue(note.contains("87 element(s)"), note)
-        XCTAssertTrue(note.contains("did not push anything else out"), note)
+        // **「無害」と読ませない**(2026-08-10): 要素上限は守れているが、この出力の分量には
+        // 効いていることまで言う
+        XCTAssertTrue(note.contains("did not crowd other elements out of the tree"), note)
+        XCTAssertTrue(note.contains("add to this output"), note)
     }
 
     /// **申告が無いブリッジ(旧版・Android)では黙る**: 嘘の安心を出さない

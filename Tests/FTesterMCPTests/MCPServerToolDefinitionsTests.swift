@@ -45,6 +45,34 @@ final class MCPServerToolDefinitionsTests: XCTestCase {
     func testToolDefinitionsIsNonEmpty() {
         XCTAssertFalse(MCPServer.toolDefinitions.isEmpty)
     }
+
+    /// **実挙動と食い違わない**(2026-08-10): iOS の system app(Maps 等)は前回のUI状態を
+    /// 復元して起動することがあるので、「1画面目から再開する」と言い切らない
+    func testLaunchDescriptionDoesNotPromiseTheFirstScreen() {
+        let description = MCPServer.toolDefinitions
+            .first { $0["name"] as? String == "ft_launch" }?["description"] as? String
+        XCTAssertNotNil(description)
+        XCTAssertFalse(description?.contains("restarts from the first screen") ?? true,
+                       description ?? "")
+        XCTAssertTrue(description?.contains("ft_snapshot") ?? false, description ?? "")
+    }
+
+    /// **ft_scroll_to は ft_snapshot と同じ畳み方の引数を持つ**(2026-08-10): 最後の render
+    /// 呼び出しだけが collapsingBulk: true 固定で interactiveOnly を渡していなかった —— スキーマに
+    /// 無ければ MCP クライアントから渡す術が無いので、まずここで漏れを防ぐ
+    func testScrollToDeclaresTheSameFoldingPropertiesAsSnapshot() {
+        func properties(_ name: String) -> [String: Any] {
+            let definition = MCPServer.toolDefinitions.first { $0["name"] as? String == name }
+            let schema = definition?["inputSchema"] as? [String: Any]
+            return schema?["properties"] as? [String: Any] ?? [:]
+        }
+        let snapshotProps = properties("ft_snapshot")
+        let scrollToProps = properties("ft_scroll_to")
+        for key in ["expandBulk", "interactiveOnly"] {
+            XCTAssertNotNil(scrollToProps[key], "ft_scroll_to に \(key) が無い")
+            XCTAssertNotNil(snapshotProps[key], "ft_snapshot に \(key) が無い")
+        }
+    }
 }
 
 final class MCPServerDriverCacheKeyTests: XCTestCase {

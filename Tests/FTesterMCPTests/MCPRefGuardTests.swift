@@ -688,4 +688,49 @@ final class MCPRefGuardTests: XCTestCase {
     private static func text(_ content: [[String: Any]]) -> String {
         content.compactMap { $0["text"] as? String }.joined(separator: "\n")
     }
+
+    // MARK: - ft_scroll_to の畳み方は ft_snapshot と同じ規則(2026-08-10)
+
+    /// **既定**(引数無し)は今までどおり: layout-only の行も出るし、bulk 群は畳まれる
+    /// (この形が変わらないことが受け入れ条件)
+    func testScrollToDefaultRenderingIsUnchanged() async throws {
+        var elements = [element(ref: 1, type: "Button", id: "row_40", label: "行 40", x: 16, y: 100)]
+        elements.append(element(ref: 2, type: "Other", id: "deco_1", label: nil,
+                                x: 200, y: 100, w: 4, h: 4, depth: 1))
+        for i in 0..<20 {
+            elements.append(element(ref: 100 + i, type: "Other", id: "poi", label: nil,
+                                    x: Double(i), y: 300, w: 4, h: 4, depth: 1))
+        }
+        driver.snapshotResponse = screen(elements)
+        let text = Self.text(try await server.call(tool: "ft_scroll_to", args: ["selector": "#row_40"]))
+        XCTAssertTrue(text.contains("deco_1"), "layout-only の行は既定で出ること: \(text)")
+        XCTAssertTrue(text.contains("collapsed"), "bulk 群は既定で畳まれること: \(text)")
+    }
+
+    /// interactiveOnly は ft_snapshot と同じ意味で layout-only の行を隠す
+    func testScrollToInteractiveOnlyHidesLayoutOnlyLines() async throws {
+        var elements = [element(ref: 1, type: "Button", id: "row_40", label: "行 40", x: 16, y: 100)]
+        elements.append(element(ref: 2, type: "Other", id: "deco_1", label: nil,
+                                x: 200, y: 100, w: 4, h: 4, depth: 1))
+        driver.snapshotResponse = screen(elements)
+        let text = Self.text(try await server.call(
+            tool: "ft_scroll_to", args: ["selector": "#row_40", "interactiveOnly": true]))
+        XCTAssertFalse(text.contains("deco_1"), "interactiveOnly で隠れること: \(text)")
+        XCTAssertTrue(text.contains("row_40"), text)
+    }
+
+    /// expandBulk は ft_snapshot と同じ意味で bulk 群を個別行に展開する
+    func testScrollToExpandBulkListsTheGroupInFull() async throws {
+        var elements = [element(ref: 1, type: "Button", id: "row_40", label: "行 40", x: 16, y: 100)]
+        for i in 0..<20 {
+            elements.append(element(ref: 100 + i, type: "Other", id: "poi", label: nil,
+                                    x: Double(i), y: 300, w: 4, h: 4, depth: 1))
+        }
+        driver.snapshotResponse = screen(elements)
+        let text = Self.text(try await server.call(
+            tool: "ft_scroll_to", args: ["selector": "#row_40", "expandBulk": true]))
+        XCTAssertFalse(text.contains("collapsed"), "expandBulk で畳まないこと: \(text)")
+        XCTAssertEqual(text.components(separatedBy: "id=poi").count - 1, 20,
+                       "20件すべてを個別行で出すこと: \(text)")
+    }
 }
