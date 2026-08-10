@@ -625,7 +625,7 @@ final class MCPToolCallTests: XCTestCase {
     /// 起こし、ft_doctor は実 FM を叩くため(数秒〜分・環境依存)。そちらは名前の集合で担保する
     private static let driverBackedTools: Set<String> = [
         "ft_status", "ft_install", "ft_launch", "ft_snapshot", "ft_tap", "ft_type",
-        "ft_swipe", "ft_scroll_to", "ft_press", "ft_screenshot", "ft_terminate",
+        "ft_swipe", "ft_scroll_to", "ft_batch", "ft_press", "ft_screenshot", "ft_terminate",
         "ft_double_tap", "ft_pinch", "ft_drag",
         "ft_navigate", "ft_clear_input", "ft_clear_app_data", "ft_open_url",
         "ft_list_apps",

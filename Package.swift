@@ -238,10 +238,12 @@ let package = Package(
             swiftSettings: swift5Mode
         ),
         // ftester-mcp は executableTarget だが @testable import 可能(モジュール名は c99name の
-        // ftester_mcp)。toolDefinitions のスキーマ宣言と drivers キャッシュキーの純関数のみ対象
+        // ftester_mcp)。toolDefinitions のスキーマ宣言と drivers キャッシュキーの純関数のみ対象。
+        // FTDSL は ft_batch の往復テスト用(@testable import FTDSL で ScenarioCodeGen.command(for:)
+        // を直接叩き、「ft_draft_scenario が描く行を ft_batch のパーサへ戻せるか」を検証する)
         .testTarget(
             name: "FTesterMCPTests",
-            dependencies: ["ftester-mcp"],
+            dependencies: ["ftester-mcp", "FTDSL"],
             swiftSettings: swift5Mode
         ),
         // CLI 本体(executableTarget)の純粋ロジック。FTesterMCPTests と同じく @testable import で

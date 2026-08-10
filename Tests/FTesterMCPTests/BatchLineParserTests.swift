@@ -1,0 +1,249 @@
+// ft_batch のステップ文法(BatchLineParser / BatchArgSpecTable / BatchStepResolver)専用のテスト。
+// MCPBatchTests.swift はツール全体(server.call 経由)の契約を見るのに対し、こちらは
+// パーサ・引数の妥当性判定を単体で見る(デバイス・MCPServer の状態には一切触れない)。
+
+import XCTest
+import FTCore
+@testable import FTDSL
+@testable import ftester_mcp
+
+final class BatchLineParserTests: XCTestCase {
+
+    // MARK: - 引用符つき文字列・日本語・エスケープ
+
+    func testQuotedStringWithJapanese() throws {
+        let parsed = try BatchLineParser.parse("type(\"#field\", \"ログイン\")")
+        XCTAssertEqual(parsed.name, "type")
+        XCTAssertEqual(parsed.args, [
+            BatchLineArg(label: nil, value: .string("#field")),
+            BatchLineArg(label: nil, value: .string("ログイン")),
+        ])
+    }
+
+    func testEscapedQuoteAndBackslash() throws {
+        let parsed = try BatchLineParser.parse("type(\"#f\", \"say \\\"hi\\\" \\\\ ok\")")
+        XCTAssertEqual(parsed.args.last?.value, .string("say \"hi\" \\ ok"))
+    }
+
+    // MARK: - 位置引数とラベル付き引数の混在
+
+    func testPositionalAndLabeledArgsMixed() throws {
+        let parsed = try BatchLineParser.parse("tap(\"#a\", holdSeconds: 1.5, timeout: 2)")
+        XCTAssertEqual(parsed.args, [
+            BatchLineArg(label: nil, value: .string("#a")),
+            BatchLineArg(label: "holdSeconds", value: .number(1.5)),
+            BatchLineArg(label: "timeout", value: .number(2)),
+        ])
+    }
+
+    // MARK: - ドット形
+
+    func testDotIdentifierValue() throws {
+        let parsed = try BatchLineParser.parse("swipe(.down)")
+        XCTAssertEqual(parsed.args, [BatchLineArg(label: nil, value: .dotIdent("down"))])
+    }
+
+    func testDotIdentifierAsLabeledValue() throws {
+        let parsed = try BatchLineParser.parse("scrollTo(\"#a\", direction: .up)")
+        XCTAssertEqual(parsed.args.last, BatchLineArg(label: "direction", value: .dotIdent("up")))
+    }
+
+    // MARK: - 括弧の省略可否
+
+    func testBareNameWithoutParens() throws {
+        let parsed = try BatchLineParser.parse("pressEnter")
+        XCTAssertEqual(parsed, BatchParsedLine(name: "pressEnter", args: []))
+    }
+
+    func testEmptyParens() throws {
+        let parsed = try BatchLineParser.parse("pressEnter()")
+        XCTAssertEqual(parsed, BatchParsedLine(name: "pressEnter", args: []))
+    }
+
+    // MARK: - 行末 `;`・余分な空白
+
+    func testTrailingSemicolonAndWhitespaceAreStripped() throws {
+        let parsed = try BatchLineParser.parse("   tap(\"#a\")  ;  ")
+        XCTAssertEqual(parsed, BatchParsedLine(name: "tap",
+                                               args: [BatchLineArg(label: nil, value: .string("#a"))]))
+    }
+
+    // MARK: - 空行・改行分割(MCPServer.flattenBatchLines)
+
+    func testFlattenDropsBlankLinesAndSemicolons() {
+        let lines = MCPServer.flattenBatchLines(["  ", "tap(\"#a\");", "\n", "swipe(.up)"])
+        XCTAssertEqual(lines, ["tap(\"#a\")", "swipe(.up)"])
+    }
+
+    func testFlattenSplitsAnElementContainingNewlines() {
+        let lines = MCPServer.flattenBatchLines(["tap(\"#a\")\nswipe(.up)\n\ntap(\"#b\")"])
+        XCTAssertEqual(lines, ["tap(\"#a\")", "swipe(.up)", "tap(\"#b\")"])
+    }
+
+    // MARK: - 入れ子呼び出し・配列・演算子・クロージャを弾く
+
+    func testNestedCallIsRejected() {
+        XCTAssertThrowsError(try BatchLineParser.parse("tap(foo(\"x\"))")) { error in
+            guard let syntax = error as? BatchLineSyntaxError else {
+                return XCTFail("\(error)")
+            }
+            XCTAssertTrue(syntax.reason.contains("nested calls"), syntax.reason)
+        }
+    }
+
+    func testArrayLiteralIsRejected() {
+        XCTAssertThrowsError(try BatchLineParser.parse("tap([\"#a\", \"#b\"])")) { error in
+            guard let syntax = error as? BatchLineSyntaxError else {
+                return XCTFail("\(error)")
+            }
+            XCTAssertTrue(syntax.reason.contains("arrays"), syntax.reason)
+        }
+    }
+
+    func testClosureIsRejected() {
+        XCTAssertThrowsError(try BatchLineParser.parse("withScrollDown { tap(\"#a\") }")) { error in
+            XCTAssertTrue(error is BatchLineSyntaxError, "\(error)")
+        }
+    }
+
+    // MARK: - 未知の名前でも構文レベルでは name が読める(呼び出し側がシグネチャの有無を判定する)
+
+    func testSyntaxErrorStillCapturesTheCommandNameWhenReadable() {
+        XCTAssertThrowsError(try BatchLineParser.parse("tap #a")) { error in
+            guard let syntax = error as? BatchLineSyntaxError else {
+                return XCTFail("\(error)")
+            }
+            XCTAssertEqual(syntax.commandName, "tap")
+        }
+    }
+
+    // MARK: - 引数の数が合わない場合を弾く(BatchStepResolver)
+
+    func testTooManyPositionalArgumentsIsRejected() {
+        // pressEnter() はシグネチャに引数が無い
+        XCTAssertThrowsError(try resolve(command: "pressEnter", line: "pressEnter(\"#a\")")) { error in
+            let message = (error as? BatchStepResolver.ResolveError)?.message ?? "\(error)"
+            XCTAssertTrue(message.contains("does not take"), message)
+        }
+    }
+
+    // MARK: - 未対応ラベルを名指しで弾く
+
+    func testUnsupportedLabelNamesItselfAndListsWhatIsSupported() {
+        XCTAssertThrowsError(
+            try resolve(command: "tap", line: "tap(\"#a\", containerInference: true)")
+        ) { error in
+            let message = (error as? BatchStepResolver.ResolveError)?.message ?? "\(error)"
+            XCTAssertTrue(message.contains("\"containerInference:\""), message)
+            XCTAssertTrue(message.contains("does not support"), message)
+            XCTAssertTrue(message.contains("selector, holdSeconds, timeout"), message)
+        }
+    }
+
+    // MARK: - 未知のラベル(シグネチャにも無い)は別の文言で弾く
+
+    func testUnknownLabelIsRejectedWithADifferentMessage() {
+        XCTAssertThrowsError(try resolve(command: "tap", line: "tap(\"#a\", bogus: 1)")) { error in
+            let message = (error as? BatchStepResolver.ResolveError)?.message ?? "\(error)"
+            XCTAssertTrue(message.contains("\"bogus:\""), message)
+            XCTAssertTrue(message.contains("has no"), message)
+            XCTAssertFalse(message.contains("does not support"), message)
+        }
+    }
+
+    // MARK: - coverage: ビルダを持つ全コマンドが「シグネチャから導出できる」か「明示表にある」
+
+    func testEveryBatchBuilderCommandHasAResolvableArgSpec() {
+        for command in MCPServer.batchStepBuilders.keys.sorted() {
+            guard let info = DSLCommandIndex.all.first(where: { $0.name == command }) else {
+                return XCTFail("\(command) はビルダを持つのに DSLCommandIndex に無い")
+            }
+            let forms = BatchArgSpecTable.forms(for: command, signature: info.signature)
+            XCTAssertFalse(forms.isEmpty,
+                           "\(command) はシグネチャ \"\(info.signature)\" から引数の形を導出できず、"
+                            + "positionalOverrides にも無い — 明示表へ追加すること")
+        }
+    }
+
+    /// 導出した位置引数(エイリアス適用後)は、必ずそのビルダの宣言キーに含まれる ——
+    /// 名前が食い違うと「解決はできるが辞書キーが違ってビルダに無視される」という
+    /// 一番気付きにくい壊れ方をする
+    func testDerivedPositionalNamesAreAlwaysAmongTheBuilderDeclaredKeys() {
+        for (command, builder) in MCPServer.batchStepBuilders {
+            guard let info = DSLCommandIndex.all.first(where: { $0.name == command }) else { continue }
+            for form in BatchArgSpecTable.forms(for: command, signature: info.signature) {
+                for name in form.positional {
+                    let dictKey = BatchArgSpecTable.dictKeyAliases[name] ?? name
+                    XCTAssertTrue(builder.keys.contains(dictKey),
+                                  "\(command): 位置引数 \"\(name)\" (dict key \"\(dictKey)\") が"
+                                    + " 宣言キー \(builder.keys) に無い")
+                }
+            }
+        }
+    }
+
+    // MARK: - 往復: ScenarioCodeGen が描く行をパーサへ戻し、同じ行が再び出ること
+
+    func testRoundTripThroughScenarioCodeGen() throws {
+        let selA = FTSelector.parse("#a")
+        let selB = FTSelector.parse("#b")
+        func fallbacks(_ sel: FTSelector) -> [FlowLocator]? {
+            sel.fallbacks.isEmpty ? nil : sel.fallbacks
+        }
+
+        let fixtures: [FlowStep] = [
+            FlowStep(action: "tap", locator: selA.primary, fallbacks: fallbacks(selA)),
+            FlowStep(action: "tap", locator: selA.primary, fallbacks: fallbacks(selA), duration: 1.5),
+            FlowStep(action: "select", locator: selA.primary, fallbacks: fallbacks(selA)),
+            FlowStep(action: "type", locator: selA.primary, fallbacks: fallbacks(selA), text: "hello"),
+            FlowStep(action: "type", locator: nil, text: "hello"),  // フォーカス中の要素へ(セレクタ省略)
+            FlowStep(action: "pressEnter"),
+            FlowStep(action: "hideKeyboard"),
+            FlowStep(action: "clearInput", locator: selA.primary, fallbacks: fallbacks(selA)),
+            FlowStep(action: "clearInput", locator: nil),
+            FlowStep(action: "swipe", direction: "up"),
+            FlowStep(action: "swipe", direction: "left"),
+            FlowStep(action: "doubleTap", locator: selA.primary, fallbacks: fallbacks(selA)),
+            FlowStep(action: "doubleTap", locator: nil),
+            FlowStep(action: "pinchOut", locator: selA.primary, fallbacks: fallbacks(selA),
+                    duration: 1.0, scale: 3.0),
+            FlowStep(action: "pinchIn", locator: nil, scale: 0.3),
+            FlowStep(action: "swipeBy", locator: selA.primary, fallbacks: fallbacks(selA),
+                    duration: 2.0, dxRatio: 0.5, dyRatio: -0.2),
+            FlowStep(action: "swipeElementToElement", locator: selA.primary,
+                    fallbacks: fallbacks(selA), endLocator: selB.primary),
+            FlowStep(action: "scrollTo", locator: selA.primary, fallbacks: fallbacks(selA),
+                    direction: "down", maxSwipes: 3,
+                    scrollFrame: FTSelector.parse("#list").primary),
+            FlowStep(action: "scrollTo", locator: selA.primary, fallbacks: fallbacks(selA)),
+        ]
+
+        for step in fixtures {
+            guard let line = ScenarioCodeGen.command(for: step) else {
+                return XCTFail("ScenarioCodeGen が \(step) を描けなかった(fixture 側の不備)")
+            }
+            let parsed = try BatchLineParser.parse(line)
+            guard let info = DSLCommandIndex.all.first(where: { $0.name == parsed.name }) else {
+                return XCTFail("\(line): \(parsed.name) が DSLCommandIndex に無い")
+            }
+            guard let builder = MCPServer.batchStepBuilders[parsed.name] else {
+                return XCTFail("\(line): \(parsed.name) にビルダが無い")
+            }
+            let raw = try BatchStepResolver.resolve(command: parsed.name, signature: info.signature,
+                                                    args: parsed.args, declaredKeys: builder.keys)
+            let (rebuilt, _) = try builder.build(raw)
+            let roundTripLine = ScenarioCodeGen.command(for: rebuilt)
+            XCTAssertEqual(line, roundTripLine, "round trip mismatch for \(line)")
+        }
+    }
+
+    // MARK: - helper
+
+    private func resolve(command: String, line: String) throws -> [String: Any] {
+        let parsed = try BatchLineParser.parse(line)
+        let info = DSLCommandIndex.all.first(where: { $0.name == command })!
+        let builder = MCPServer.batchStepBuilders[command]!
+        return try BatchStepResolver.resolve(command: command, signature: info.signature,
+                                             args: parsed.args, declaredKeys: builder.keys)
+    }
+}
