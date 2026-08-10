@@ -136,6 +136,7 @@ final class MCPServer {
                 "protocolVersion": (message["params"] as? [String: Any])?["protocolVersion"] ?? "2024-11-05",
                 "capabilities": ["tools": [String: Any]()],
                 "serverInfo": ["name": "ftester", "version": "0.1.0"],
+                "instructions": Self.serverInstructions,
             ])
         case "ping":
             reply(id: id, result: [String: Any]())
@@ -1597,7 +1598,10 @@ final class MCPServer {
             var message = error.baseMessage
             if let name = error.commandName,
                let info = DSLCommandIndex.all.first(where: { $0.name == name }) {
-                message += " Signature: \(info.signature)."
+                // シグネチャは正形(括弧+カンマ)で書かれている —— そのまま写すと今度は
+                // 括弧の拒否を踏むので、バッチでの書き方を毎回添える
+                message += " Signature: \(info.signature) — in ft_batch, write it without"
+                    + " parentheses/commas (single-quoted, space-separated)."
             }
             message += " See ft_dsl_commands."
             throw MCPError(message)
@@ -1633,6 +1637,9 @@ final class MCPServer {
     /// steps の文字列を手に分割する(`;` と改行が区切り。引用符の中は区切らない ——
     /// 規則は `BatchLineParser.splitSteps`)。前後の空白は `BatchLineParser.normalize` と同じ規則で
     /// 落とし、空行は無視する。**上限は分割後の手数で数える**(CLAUDE.md)
+    static let batchStepsUsage = "steps is required — DSL lines in one string, e.g."
+        + " \"tap '#id'; swipe .up\""
+
     static func flattenBatchLines(_ raw: String) -> [String] {
         BatchLineParser.splitSteps(raw)
             .map(BatchLineParser.normalize)
@@ -1652,13 +1659,11 @@ final class MCPServer {
                 throw MCPError("steps is one string, not an array — separate steps with ';':"
                     + " \"tap '#id'; swipe .up\"")
             }
-            throw MCPError("steps is required — DSL lines in one string, e.g."
-                + " \"tap '#id'; swipe .up\"")
+            throw MCPError(Self.batchStepsUsage)
         }
         let dslLines = Self.flattenBatchLines(joined)
         guard !dslLines.isEmpty else {
-            throw MCPError("steps is required — DSL lines in one string, e.g."
-                + " \"tap '#id'; swipe .up\"")
+            throw MCPError(Self.batchStepsUsage)
         }
         guard dslLines.count <= Self.batchStepLimit else {
             throw MCPError("steps has \(dslLines.count) entries — ft_batch allows at most"
@@ -1671,7 +1676,16 @@ final class MCPServer {
             do {
                 plans.append(try Self.planBatchStep(line))
             } catch {
-                throw MCPError("step \(index + 1): \(error.localizedDescription)")
+                var message = "step \(index + 1): \(error.localizedDescription)"
+                // 閉じ忘れの引用符は後続の手をこの手に呑み込む(splitSteps は引用符の中の `;` で
+                // 区切らないため)。呑み込んだ行を黙って見せると、書いた覚えのない step 1 を
+                // 延々と直すことになる —— 実際の誤りは引用符のほう
+                if line.contains(";") || line.contains("\n") {
+                    message += " (this step contains a ';' or a newline — if you did not write"
+                        + " them in one step, an unbalanced quote merged the following steps"
+                        + " into this one; escape apostrophes as \\' inside '…', or use \"…\")"
+                }
+                throw MCPError(message)
             }
         }
 
@@ -3091,8 +3105,9 @@ final class MCPServer {
             // **「動いた」と断言しない**(back と同じ理由。2026-08-06)。スワイプは端に着いていれば
             // 1px も動かないし、スクロールできない画面では何も起きない
             return text("swipe \(direction.rawValue) sent."
-                + " If anything moved, the old refs are stale — take a fresh ft_snapshot"
-                + " before using any ref")
+                + Self.changedHint(args, otherwise: " If anything moved, the old refs are stale"
+                    + " — take a fresh ft_snapshot before using any ref")
+                + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
 
         case "ft_scroll_to":
             return try await scrollTo(args)
@@ -3185,10 +3200,12 @@ final class MCPServer {
             var doubleTapWhat: String
             var doubleTapNote = ""
             var doubleTapSelector = ""
+            var doubleTapResolvedRef: Int?
             if let ref = args["ref"] as? Int {
                 let (element, labelNote) = try await verifiedElement(ref, driver: doubleTapDriver, args: args)
                 doubleTapPoint = (element.frame.centerX, element.frame.centerY)
                 doubleTapWhat = "[\(ref)]"
+                doubleTapResolvedRef = element.ref
                 // **ft_tap と同じ被覆にする**(ft_tap は verifiedRef 経由で遮蔽・残像・
                 // 中身外し・キーボード被覆も見ている)。ここだけ見落とすと、同じ要素に対して
                 // ツールごとに言うことが変わる(2026-08-08 のレビュー)。
@@ -3209,9 +3226,12 @@ final class MCPServer {
                 throw MCPError("ref or x/y is required")
             }
             try await doubleTapDriver.doubleTap(x: doubleTapPoint.x, y: doubleTapPoint.y)
+            recordInteraction(action: "doubleTap", resolvedRef: doubleTapResolvedRef, args: args,
+                              coordinate: doubleTapResolvedRef == nil ? doubleTapPoint : nil)
             return text("double tap \(doubleTapWhat) done.\(doubleTapNote)\(doubleTapSelector)"
-                + " The screen may have changed — take a fresh ft_snapshot."
-                + iosEngineHint("Compose Multiplatform", "double tap", args: args))
+                + Self.changedHint(args)
+                + iosEngineHint("Compose Multiplatform", "double tap", args: args)
+                + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
 
         case "ft_drag":
             let dragDriver = try await driver(args)
@@ -3249,6 +3269,10 @@ final class MCPServer {
             try await dragDriver.drag(fromX: fromX, fromY: fromY, toX: toX, toY: toY,
                                       pressSeconds: 0.05,
                                       durationSeconds: args["durationSeconds"] as? Double ?? 1.5)
+            // DSL に drag の対応コマンドが無いので、下書きには TODO 行として残す
+            // (座標タップと同じ扱い。黙って消すと探索の再現が途中から辻褄が合わなくなる)
+            recordInteraction(action: "drag", resolvedRef: nil, args: args,
+                              coordinate: (fromX, fromY))
             // **無検証であることを言う**(swipe / pinch は言っているのに drag / press だけ
             // 「done」で言い切っていた。同じ無検証なのに信頼度が違って見える)
             return text("drag (\(fromX), \(fromY)) → (\(toX), \(toY)) sent.\(dragSelector)"
@@ -3257,7 +3281,7 @@ final class MCPServer {
                      + " it moved what you meant."
                    : " Nothing about the result is checked — if it should have moved something,"
                      + " confirm with ft_snapshot/ft_screenshot")
-                + (await snapshotAfterBody(args)))
+                + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
 
         case "ft_pinch":
             let scale = args["scale"] as? Double ?? 2.0
@@ -3272,16 +3296,20 @@ final class MCPServer {
             var whole = false
             var areaIgnored = false
             var pinchSelector = ""
+            var pinchResolvedRef: Int?
+            var pinchCoordinate: (x: Double, y: Double)?
             if let ref = args["ref"] as? Int {
                 let (element, labelNote) = try await verifiedElement(ref, driver: pinchDriver, args: args)
                 frame = element.frame
                 identifier = element.identifier
+                pinchResolvedRef = element.ref
                 pinchSelector = reproductionNote(resolvedRef: element.ref, args: args) + labelNote
             } else if let x = args["x"] as? Double, let y = args["y"] as? Double {
                 // **地図・キャンバスには ref が無い**(2026-08-09 実測): Apple マップの場所カードを
                 // 半分出したまま ref 無しで撃つと、指が画面全体に開くのでシートが掴まれ、
                 // **地図は 1px も動かずシートが全画面に展開した**。逃げ道が無かったので、
                 // ft_tap / ft_press / ft_drag と同じく座標を受ける
+                pinchCoordinate = (x, y)
                 frame = Self.pinchArea(x: x, y: y, radius: args["radius"] as? Double,
                                        screen: lastSnapshots[Self.engineKey(args)]?.screen)
                 // **XCUITest は領域を受け取れない**(`PinchRequest.frame` を読むのは Android と
@@ -3292,8 +3320,14 @@ final class MCPServer {
             } else {
                 whole = true
             }
+            let pinchDuration = args["durationSeconds"] as? Double ?? 0.5
             try await pinchDriver.pinch(frame: frame, identifier: identifier, scale: scale,
-                                        durationSeconds: args["durationSeconds"] as? Double ?? 0.5)
+                                        durationSeconds: pinchDuration)
+            // 記録は DSL の語彙(pinchOut/pinchIn)で。既定の 0.5s は落とす(codegen が省くため)
+            recordInteraction(action: scale > 1 ? "pinchOut" : "pinchIn",
+                              resolvedRef: pinchResolvedRef, args: args,
+                              coordinate: pinchCoordinate,
+                              duration: pinchDuration == 0.5 ? nil : pinchDuration, scale: scale)
             return text("pinch x\(scale) done.\(pinchSelector)"
                 // **「小さくなる」とだけ言わない**(2026-08-06 実測): 指が対象の内側に収まる分だけ
                 // 小さくなることもあれば、慣性で大きくもなる(scale 2.0 の要求で累積 3.9 倍)
@@ -3310,31 +3344,43 @@ final class MCPServer {
                 // **同じ逃げ道を2度書かない**(2026-08-08 に長文の苦情があった箇所)。
                 // 領域が無視されたときの文は engine も remedy も言い切っているので、
                 // 汎用の Flutter 助言はそこでは畳む
-                + (areaIgnored ? "" : iosEngineHint("Flutter", "pinch", args: args)))
+                + (areaIgnored ? "" : iosEngineHint("Flutter", "pinch", args: args))
+                + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
 
         case "ft_press":
+            // 引数名は DSL の tap(holdSeconds:) と同語彙(2026-08-10 の語彙統一)。
+            // 旧名は黙って既定値に落とさない(1.0s の長押しに化けて沈黙した誤りになる)。
+            // **引数だけで弾ける検証はドライバ取得より前に**(コールドスタートは分単位かかりうる)
+            guard args["duration"] == nil else {
+                throw MCPError("duration was renamed to holdSeconds (same vocabulary as the"
+                    + " DSL's tap(holdSeconds:)) — pass holdSeconds instead")
+            }
             let pressDriver = try await driver(args)
-            let pressDuration = args["duration"] as? Double ?? 1.0
+            let pressDuration = args["holdSeconds"] as? Double ?? 1.0
             if let ref = args["ref"] as? Int {
                 let pressTarget = try await verifiedRef(ref, driver: pressDriver, args: args)
                 // pressTarget.ref はセッション ref。ブリッジへ渡す直前にだけ native へ戻す
                 try await pressDriver.press(ref: nativeRef(pressTarget.ref, args: args),
                                             duration: pressDuration)
-                recordInteraction(action: "press", resolvedRef: pressTarget.ref, args: args)
+                recordInteraction(action: "press", resolvedRef: pressTarget.ref, args: args,
+                                  duration: pressDuration)
                 return text("press [\(ref)] done.\(pressTarget.note)"
                     + reproductionNote(resolvedRef: pressTarget.ref, args: args)
-                    + " The screen may have changed — take a fresh ft_snapshot")
+                    + Self.changedHint(args)
+                    + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
             }
             // **座標形は ft_tap と揃える**: ドライバは press(x:y:duration:) を要件として持つのに
             // MCP からは ref でしか呼べなかった。地図・キャンバスのように a11y 要素が無い点を
             // 長押しする操作(ピンを落とす・住所を出す)が一切書けない状態だった(2026-08-07)
             if let x = args["x"] as? Double, let y = args["y"] as? Double {
                 try await pressDriver.press(x: x, y: y, duration: pressDuration)
-                recordInteraction(action: "press", resolvedRef: nil, args: args, coordinate: (x, y))
+                recordInteraction(action: "press", resolvedRef: nil, args: args, coordinate: (x, y),
+                                  duration: pressDuration)
                 return text("press (\(x), \(y)) done." + once("coordinateReproductionNote",
                     full: Self.coordinateReproductionNote,
                     short: Self.coordinateReproductionNoteShort)
-                    + " The screen may have changed — take a fresh ft_snapshot")
+                    + Self.changedHint(args)
+                    + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
             }
             throw MCPError("ref or x/y is required")
 
@@ -3532,9 +3578,13 @@ final class MCPServer {
 
     /// 「撮り直せ」の案内。**snapshotAfter を渡されているときは黙る** —— 木がその下に続くのに
     /// 撮り直しを勧めると、往復を減らすために足した機能が往復を増やす助言と矛盾する
-    static func changedHint(_ args: [String: Any]) -> String {
-        args["snapshotAfter"] as? Bool == true ? ""
-            : " The screen may have changed — take a fresh ft_snapshot"
+    /// snapshotAfter で木を返すときは「撮り直せ」を畳む(返した木の直上で撮り直しを勧める矛盾を
+    /// 作らない)。文言をツール固有にしたいときも**この関数を通す** —— 条件を手元で再導出すると
+    /// 抑止の方針変更が各ハンドラへ散る
+    static func changedHint(_ args: [String: Any],
+                            otherwise message: String = " The screen may have changed —"
+                                + " take a fresh ft_snapshot") -> String {
+        args["snapshotAfter"] as? Bool == true ? "" : message
     }
 
     /// 操作した要素を**シナリオで再現するためのセレクタ**(E)。
@@ -3581,7 +3631,8 @@ final class MCPServer {
     /// 出来上がったシナリオが実際の手順と食い違う(F-4)
     func recordInteraction(action: String, resolvedRef: Int?, args: [String: Any],
                            text: String? = nil, direction: String? = nil,
-                           coordinate: (x: Double, y: Double)? = nil) {
+                           coordinate: (x: Double, y: Double)? = nil,
+                           duration: Double? = nil, scale: Double? = nil) {
         var selector: String?
         var durability: Durability = .stable
         var described = "\(action)"
@@ -3595,8 +3646,9 @@ final class MCPServer {
         } else if let coordinate {
             described = "\(action) at (\(coordinate.x), \(coordinate.y))"
         }
-        // ロケータ不要の手(swipe / フォーカス任せの type)はセレクタが無くても行にできる
-        let needsLocator = !["swipe", "type", "pressEnter", "back", "home", "appSwitcher"]
+        // ロケータ不要の手(swipe / フォーカス任せの type / 全画面ピンチ)はセレクタが無くても行にできる
+        let needsLocator = !["swipe", "type", "pressEnter", "back", "home", "appSwitcher",
+                             "pinchOut", "pinchIn"]
             .contains(action) || (resolvedRef != nil || coordinate != nil)
         if selector == nil, needsLocator, action != "swipe" {
             interactions.record(InteractionLog.Entry(step: nil, unresolved: described,
@@ -3607,6 +3659,10 @@ final class MCPServer {
         if let selector { step.locator = FTSelector.parse(selector).primary }
         step.text = text
         step.direction = direction
+        // 実際に撃った値を残す(落とすと draft が既定値で再生成され、3秒の長押しが
+        // 1秒に化けたシナリオが黙って出る)
+        step.duration = duration
+        step.scale = scale
         // **下書きの本文にも格付けを残す**(2026-08-10 の掃討): 注記と ft_tap の戻り値だけに
         // 印を出しても、その場で読まれなければ意味が無い —— 添字付きのセレクタは
         // シナリオに書かれた後で静かに壊れるので、コードの側に理由を残す。
@@ -3842,52 +3898,71 @@ final class MCPServer {
         "type": "string", "description": "Test project name",
     ]
     /// iOS の宛先を udid で指す(H)。ft_list_devices が出す udid をそのまま渡せる
+    // **繰り返し載る説明は短文+詳細は serverInstructions**(2026-08-10 のスキーマ痩身)。
+    // ここを長くすると全ツールに複製されて毎セッションのコンテキスト費用になる —— ニュアンスを
+    // 足したくなったら serverInstructions 側へ(initialize で1回だけ渡る)
     static let udidProperty: [String: Any] = [
         "type": "string",
-        "description": "iOS simulator UDID to drive (as printed by ft_list_devices). Resolved to "
-            + "the port of the bridge running on it — a device with no bridge cannot be driven, "
-            + "and says so. If you also pass port, the two must agree.",
+        "description": "iOS simulator UDID to drive (as printed by ft_list_devices)",
     ]
-    /// 操作系ツールの「結果の木も一緒に返す」スイッチ。**説明で撮り直しを不要にする**まで書く ——
-    /// 書かないと、読み手は木を受け取ったうえで習慣的に ft_snapshot を撃つ
+    /// 操作系ツールの「結果の木も一緒に返す」スイッチ。**撮り直し不要と言い切る**(言わないと
+    /// 読み手は木を受け取ったうえで習慣的に ft_snapshot を撃つ)
     static let snapshotAfterProperty: [String: Any] = [
         "type": "boolean",
-        "description": "Append the element list of the resulting screen, exactly as ft_snapshot "
-            + "would return it — saves the follow-up ft_snapshot call. It is read right after the "
-            + "action; if the tree looks identical to the one before the action (a likely sign a "
-            + "screen transition has not finished), it is re-read once after a short wait. If an "
-            + "animation is still running after that, use waitFor (below) instead of repeating the "
-            + "action. It also inherits interactiveOnly/expandBulk from your last "
-            + "ft_snapshot call unless you pass them explicitly here",
+        "description": "Append the resulting screen's element list (as ft_snapshot would) — "
+            + "saves the follow-up ft_snapshot call",
     ]
-    /// ft_tap/ft_type が共有する waitFor/timeout(ft_snapshot と同じ待ちのロジックを流用。
+    /// 操作系ツールが共有する waitFor/timeout(ft_snapshot と同じ待ちのロジックを流用。
     /// snapshotAfterBody 参照)。**snapshotAfter: true と併用が前提** — 無いときは操作は
     /// 実行したうえで note だけ返す(throw しない。操作自体は成功しているため)
     static let snapshotAfterWaitForProperty: [String: Any] = [
         "type": "string",
-        "description": "Requires snapshotAfter: true. Wait for this selector to appear on the "
-            + "resulting screen before returning the tree, instead of the default settle-lite "
-            + "re-read. Same syntax as ft_snapshot's waitFor: #id, a label, .type, a||b",
+        "description": "Requires snapshotAfter: true. Wait for this selector on the resulting "
+            + "screen (syntax: #id, a label, .type, a||b)",
     ]
     static let snapshotAfterTimeoutProperty: [String: Any] = [
         "type": "number",
         "description": "Seconds to wait for waitFor (default 5, same as ft_snapshot)",
     ]
-    /// ft_snapshot と ft_scroll_to が共有する木の畳み方(2つ目の定義を作らない)。
-    /// 両ツールとも既定は畳む・隠さないなので、説明文もそのまま両方で通用する
+    /// ft_snapshot と操作系が共有する木の畳み方(2つ目の定義を作らない)。
+    /// どのツールでも既定は畳む・隠さないなので、説明文もそのまま通用する
     static let expandBulkProperty: [String: Any] = [
-        "type": "boolean", "description": "List every element of a large "
-            + "same-id group individually. By default 20+ non-interactive leaves sharing one "
-            + "id (map pins and the like) are folded into one line plus a label/ref index; "
-            + "turn this on when you need their frames",
+        "type": "boolean", "description": "List every element of a large same-id group "
+            + "individually (default: 20+ folded into one line)",
     ]
     static let interactiveOnlyProperty: [String: Any] = [
-        "type": "boolean", "description": "Hide layout-only lines "
-            + "(elements with no label/value that are neither operable nor scroll containers) "
-            + "— typically half to two thirds of a dense screen. Refs and frames of the "
-            + "remaining lines are unchanged, and a hidden element can still be tapped by ref; "
-            + "the notes above the tree are computed from the full tree either way",
+        "type": "boolean", "description": "Hide layout-only lines — refs/frames unchanged, "
+            + "and a hidden element can still be tapped by ref",
     ]
+    /// 共通引数の詳細。**各ツールのプロパティ説明は短文に留め、ニュアンスはここに1本化する**
+    /// (initialize の instructions で1回だけ渡る。プロパティ側に書くと全ツールへ複製され、
+    /// 毎セッションのコンテキスト費用になる —— 2026-08-10 のスキーマ痩身)
+    static let serverInstructions = """
+        Common arguments accepted by every ft_* device tool: platform (default ios) / project / \
+        profile (profiles/runs/<name>; same device and engine as ft_run_scenario) / \
+        udid (iOS simulator, as printed by ft_list_devices — resolved to the bridge running on \
+        it; a device with no bridge cannot be driven and says so; if port is also given the two \
+        must agree) / serial (Android device) / port (iOS bridge port; default: the running \
+        bridge) / allowVersionSkew (off by default: a stale bridge answers with its own \
+        version's behaviour and notes, so selectors written from them are silently wrong; every \
+        skewed response carries a warning).
+
+        Tree options on tools that return an element list: expandBulk unfolds groups of 20+ \
+        non-interactive leaves sharing one id (map pins and the like) that are folded into one \
+        line plus a label/ref index by default — turn it on when you need their frames. \
+        interactiveOnly hides layout-only lines (no label/value, neither operable nor a scroll \
+        container) — typically half to two thirds of a dense screen; refs and frames of the \
+        remaining lines are unchanged, and the notes above the tree are computed from the full \
+        tree either way.
+
+        Operation tools take snapshotAfter to append the resulting screen's tree: it is read \
+        right after the action, and if it looks identical to the tree before the action (a \
+        likely sign a transition has not finished) it is re-read once after a short wait. If an \
+        animation is still running after that, pass waitFor (a selector to wait for on the \
+        resulting screen) instead of repeating the action. snapshotAfter inherits \
+        interactiveOnly/expandBulk from your last ft_snapshot call unless passed explicitly.
+        """
+
     /// 全ツール共通のデバイス選択プロパティ。tool() が無条件で足す
     static let commonDeviceProperties: [(String, [String: Any])] = [
         ("platform", platformProperty),
@@ -3903,10 +3978,8 @@ final class MCPServer {
     /// 「一度断られたから付けておく」という使い方をされると、拒否そのものが無意味になる
     static let allowVersionSkewProperty: [String: Any] = [
         "type": "boolean",
-        "description": "Operate even when the bridge's protocol version differs from this build's. "
-            + "Off by default because a stale bridge answers with its own version's behaviour and "
-            + "notes, and selectors written from those notes are silently wrong. Every response "
-            + "then carries a warning.",
+        "description": "Operate despite a bridge protocol version mismatch — every such "
+            + "response carries a warning",
     ]
 
     /// ft_screenshot の既定。**費用は画素数で決まる**(バイト数ではない) —— 平坦な UI では
@@ -4004,7 +4077,13 @@ final class MCPServer {
         ]),
         tool("ft_swipe", "Swipe one screenful (up = scroll down the content). To reach a specific element use "
             + "ft_scroll_to instead — it stops on the element and hands back fresh refs", [
-            "direction": ["type": "string", "enum": ["up", "down", "left", "right"]],
+            "direction": ["type": "string", "enum": ["up", "down", "left", "right"],
+                          "description": "Finger direction (same vocabulary as the DSL's swipe)"],
+            "snapshotAfter": snapshotAfterProperty,
+            "waitFor": snapshotAfterWaitForProperty,
+            "timeout": snapshotAfterTimeoutProperty,
+            "expandBulk": expandBulkProperty,
+            "interactiveOnly": interactiveOnlyProperty,
         ], required: ["direction"]),
         tool("ft_scroll_to", "Scroll until a selector is on screen, then return the fresh element list. "
             + "Use this instead of repeating ft_swipe + ft_snapshot: it runs the same search the DSL's "
@@ -4092,6 +4171,11 @@ final class MCPServer {
             "ref": ["type": "integer", "description": "Reference number from ft_snapshot"],
             "x": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
             "y": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
+            "snapshotAfter": snapshotAfterProperty,
+            "waitFor": snapshotAfterWaitForProperty,
+            "timeout": snapshotAfterTimeoutProperty,
+            "expandBulk": expandBulkProperty,
+            "interactiveOnly": interactiveOnlyProperty,
         ]),
         tool("ft_drag", "Drag from a point to a point — the only way to pan diagonally (set both axes), "
             + "and the way to expand a half-open bottom sheet (drag its grabber upward). "
@@ -4109,6 +4193,8 @@ final class MCPServer {
             "dy": ["type": "number", "description": "Vertical travel from the start point — negative moves up (ignored when toY is given)"],
             "durationSeconds": ["type": "number", "description": "Travel time in seconds (default 1.5)"],
             "snapshotAfter": snapshotAfterProperty,
+            "waitFor": snapshotAfterWaitForProperty,
+            "timeout": snapshotAfterTimeoutProperty,
             "expandBulk": expandBulkProperty,
             "interactiveOnly": interactiveOnlyProperty,
         ]),
@@ -4125,13 +4211,24 @@ final class MCPServer {
                 + "(default: 22% of the screen's short side, clamped to stay on screen)"],
             "scale": ["type": "number", "description": "Zoom factor (default 2.0)"],
             "durationSeconds": ["type": "number", "description": "Gesture duration in seconds (default 0.5)"],
+            "snapshotAfter": snapshotAfterProperty,
+            "waitFor": snapshotAfterWaitForProperty,
+            "timeout": snapshotAfterTimeoutProperty,
+            "expandBulk": expandBulkProperty,
+            "interactiveOnly": interactiveOnlyProperty,
         ]),
         tool("ft_press", "Long-press an element (ref) or a coordinate (x,y). Use x/y on a map or "
             + "canvas, where the point you want has no element of its own. " + coordinateCaveat, [
             "ref": ["type": "integer", "description": "Reference number from ft_snapshot"],
             "x": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
             "y": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
-            "duration": ["type": "number", "description": "Seconds (default 1.0)"],
+            "holdSeconds": ["type": "number", "description": "Hold time in seconds (default 1.0; "
+                + "same vocabulary as the DSL's tap(holdSeconds:))"],
+            "snapshotAfter": snapshotAfterProperty,
+            "waitFor": snapshotAfterWaitForProperty,
+            "timeout": snapshotAfterTimeoutProperty,
+            "expandBulk": expandBulkProperty,
+            "interactiveOnly": interactiveOnlyProperty,
         ]),
         tool("ft_screenshot", "Take a screenshot (returns an image). Use it for visual verification. "
             + "It comes back downscaled — the pixels are NOT the coordinate system, so read x/y off "

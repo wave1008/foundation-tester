@@ -78,12 +78,26 @@ final class BatchLineParserTests: XCTestCase {
         XCTAssertEqual(parsed, BatchParsedLine(name: "pressEnter", args: []))
     }
 
-    // MARK: - 行末 `;`・余分な空白
+    // MARK: - 行末 `;`・余分な空白(`;` は splitSteps が消す — normalize は trim だけ)
 
-    func testTrailingSemicolonAndWhitespaceAreStripped() throws {
-        let parsed = try BatchLineParser.parse("   tap '#a'  ;  ")
-        XCTAssertEqual(parsed, BatchParsedLine(name: "tap",
-                                               args: [BatchLineArg(label: nil, value: .string("#a"))]))
+    func testTrailingSemicolonAndWhitespaceAreStripped() {
+        XCTAssertEqual(MCPServer.flattenBatchLines("   tap '#a'  ;  "), ["tap '#a'"])
+    }
+
+    // MARK: - 引数の区切りは空白だけ(黙って連結を2引数に読まない)
+
+    func testMissingSpaceBetweenArgumentsIsRejected() {
+        XCTAssertThrowsError(try BatchLineParser.parse("type '#field''abc'")) { error in
+            guard let syntax = error as? BatchLineSyntaxError else { return XCTFail("\(error)") }
+            XCTAssertTrue(syntax.reason.contains("space between arguments"), syntax.reason)
+        }
+    }
+
+    func testStrayClosingParenIsNamed() {
+        XCTAssertThrowsError(try BatchLineParser.parse("tap '#a')")) { error in
+            guard let syntax = error as? BatchLineSyntaxError else { return XCTFail("\(error)") }
+            XCTAssertTrue(syntax.reason.contains("stray \")\""), syntax.reason)
+        }
     }
 
     // MARK: - 廃止した表記(正形の括弧・カンマ)は書き換え方を添えて拒む

@@ -1,4 +1,4 @@
-// ft_batch のステップ文法: 「DSL の呼び出し1行」だけを解釈する限定パーサ。
+// ft_batch のステップ文法(最小記述の1形だけ)を解釈する限定パーサ。
 //
 //   line   := name arg*                               (括弧・カンマは使わない: type '#f' 'abc')
 //   arg    := [ label ":" ] value
@@ -6,12 +6,10 @@
 //
 // 手の区切りは ";" と改行(splitSteps。引用符の中では区切らない)。
 //
-// **構文は1つだけ**(2026-08-10 ユーザー決定)。当初は Swift の正形(括弧+カンマ)を受け、その後
-// 緩い綴りを等価に足したが、併存をやめ最小記述の1形に絞った。正形で書かれた行(`tap("#id")`・
-// 引数カンマ)と配列 steps は**書き換え方を添えて拒否**する —— 黙って受けると表記が再び分裂する。
-// **文字列の引用符だけは両方受ける**(同日の追決定 —— JSON の `\"` 経由で `"…"` が届くのは
-// 自然な書き方なので拒まない。案内する推奨は JSON エスケープが要らない `'…'`)。
-// シナリオへの変換は ft_draft_scenario(FlowStep から正形を再生成)が担う。
+// **構文は1つだけ**(2026-08-10 ユーザー決定。経緯は docs/design.md §ft_batch)。正形で書かれた
+// 行(`tap("#id")`・引数カンマ)と配列 steps は**書き換え方を添えて拒否**する —— 黙って受けると
+// 表記が再び分裂する。引用符は `'…'` と `"…"` を等価に受ける(JSON の `\"` 経由は自然な書き方。
+// 推奨は `'…'`)。シナリオへの変換は ft_draft_scenario(FlowStep から正形を再生成)が担う。
 //
 // Swift 全体は解釈しない —— 入れ子呼び出し・配列・演算子・クロージャは構文的に受け付けず、
 // 明確なエラーにする(価は BatchLineParserTests)。
@@ -89,14 +87,10 @@ enum BatchLineParser {
         return parts
     }
 
-    /// 前後の空白と行末の `;` を落とす(手の分割は `splitSteps` の役目 —— このパーサは
-    /// 1行だけを見る)
+    /// 前後の空白を落とす。`;` の扱いは `splitSteps` だけが持つ(区切り規則の持ち主を
+    /// 2箇所にしない —— splitSteps が全ての最上位 `;` を消すので、ここに届く行には残らない)
     static func normalize(_ rawLine: String) -> String {
-        var line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
-        if line.hasSuffix(";") {
-            line = String(line.dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        return line
+        rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     static func parse(_ rawLine: String) throws -> BatchParsedLine {
@@ -120,7 +114,8 @@ enum BatchLineParser {
         // 廃止した表記は黙って受けず、書き換え方を添えて拒む(表記の再分裂を防ぐ)
         if peek() == "(" {
             throw fail("parentheses are not part of the batch syntax — write arguments after the"
-                + " name, single-quoted and space-separated: \(name) '#id'", name: name)
+                + " name, single-quoted and space-separated (\(name) '#id' …), or just the bare"
+                + " name if it takes none", name: name)
         }
         var args: [BatchLineArg] = []
         while peek() != nil {
@@ -130,10 +125,17 @@ enum BatchLineParser {
             }
             let arg = try parseArg(chars, &i, rawLine: rawLine, name: name)
             args.append(arg)
+            // **区切りは空白だけ**を実際に強制する(`'#a''#b'` を黙って2引数に読むと、
+            // 打ち落とした空白や貼り残しの `)` が沈黙した別解釈になる)。カンマは次周の
+            // 頭で専用の文言に落とす
+            if let c = peek(), c != " ", c != "\t", c != "," {
+                if c == "(" || c == ")" {
+                    throw fail("stray \"\(c)\" — parentheses are not part of the batch syntax,"
+                        + " remove it", name: name)
+                }
+                throw fail("expected a space between arguments", name: name)
+            }
             skipSpaces()
-        }
-        guard i == chars.count else {
-            throw fail("unexpected text after the call: \"\(String(chars[i...]))\"", name: name)
         }
         return BatchParsedLine(name: name, args: args)
     }

@@ -494,8 +494,8 @@ final class MCPToolCallTests: XCTestCase {
         XCTAssertEqual(driver.calls, ["press(ref:4,duration:1.0)"])
     }
 
-    func testPressPassesExplicitDuration() async throws {
-        _ = try await server.call(tool: "ft_press", args: ["ref": 4, "duration": 2.5])
+    func testPressPassesExplicitHoldSeconds() async throws {
+        _ = try await server.call(tool: "ft_press", args: ["ref": 4, "holdSeconds": 2.5])
         XCTAssertEqual(driver.calls, ["press(ref:4,duration:2.5)"])
     }
 

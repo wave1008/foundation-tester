@@ -185,6 +185,20 @@ final class MCPBatchTests: XCTestCase {
         XCTAssertEqual(driver.calls, [])
     }
 
+    /// 閉じ忘れ・アポストロフィの再オープンは後続の手を1手に呑み込む(splitSteps は引用符の
+    /// 中の `;` で区切らない)。呑み込んだ行をそのまま見せるだけでは実際の誤り(引用符)に
+    /// 辿り着けないので、可能性を名指しする
+    func testUnbalancedQuoteHintNamesTheMerge() async {
+        do {
+            _ = try await server.call(tool: "ft_batch",
+                                      args: steps("type '#f' 'it's'; swipe .up"))
+            XCTFail("引用符が壊れた steps が通った")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("unbalanced quote"),
+                          error.localizedDescription)
+        }
+    }
+
     // MARK: - 空/欠落した steps
 
     func testEmptyStepsIsRejected() async {

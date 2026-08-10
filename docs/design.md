@@ -2503,6 +2503,14 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
     **検証は実行より前に全手へ通す**(途中で弾くと前半の手だけがデバイスに残る)。
     最初の失敗で止め、**木は最後に1回だけ**返す(毎手の木を積むとバッチにした意味が消える)。
     その最後の木だけは MCP の描画経路を通すので、遮蔽・ghost 等の MCP 固有の注記は付く
+  - **引数語彙は操作系の全ツールで揃える**(2026-08-10 の見直し): 長押しは `holdSeconds`
+    (DSL の `tap(holdSeconds:)` と同語彙。旧 `duration` は黙って既定値へ落とさず改名を案内して拒否)、
+    `snapshotAfter`/`waitFor`/`timeout`/`expandBulk`/`interactiveOnly` は操作系7ツール
+    (tap/type/drag/swipe/double_tap/press/pinch)全部に載せる(無いツールだけ毎回 ft_snapshot の
+    1往復=承認1回を余計に払っていた)。集合は `MCPServerToolDefinitionsTests` が守る。
+    **繰り返し載るプロパティ説明は短文に留め、ニュアンスは initialize の instructions へ1本化**
+    (`MCPServer.serverInstructions`。プロパティ側に書くと全ツールへ複製され毎セッションの
+    コンテキスト費用になる —— udid/allowVersionSkew の長文複製だけで約9k文字あった)
   - **ref の再ターゲットは「なぜ動いたか」の手掛かりまで返す**。原因は断定できないが、
     **同じ深さの兄弟が同じ分だけ動いたか**は手元の2枚から言える(揃っていれば容器のスクロール、
     その要素だけならレイアウト変化)。**画面全体で数えてはいけない** —— 固定ヘッダやタブが

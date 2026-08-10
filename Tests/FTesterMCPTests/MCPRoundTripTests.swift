@@ -126,6 +126,42 @@ final class MCPRoundTripTests: XCTestCase {
         XCTAssertEqual(expanded.components(separatedBy: "id=poi").count - 1, 25, expanded)
     }
 
+    // MARK: - 撃った値・撃った手が draft に残る(2026-08-10 レビュー: 3秒の長押しが
+    // 1秒に化ける / doubleTap・pinch が下書きから消える、の両方を塞ぐ)
+
+    func testPressHoldSecondsReachesTheDraft() async throws {
+        _ = try await server.call(tool: "ft_snapshot", args: [:])  // ref の台帳を作る(実フローと同順)
+        _ = try await server.call(tool: "ft_press", args: ["ref": 1, "holdSeconds": 3.0])
+        let draft = bodyText(try await server.call(tool: "ft_draft_scenario", args: ["all": true]))
+        XCTAssertTrue(draft.contains("holdSeconds: 3"), draft)
+    }
+
+    func testDoubleTapAndPinchAreRecordedForTheDraft() async throws {
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        _ = try await server.call(tool: "ft_double_tap", args: ["ref": 1])
+        _ = try await server.call(tool: "ft_pinch", args: ["ref": 1, "scale": 3.0])
+        let draft = bodyText(try await server.call(tool: "ft_draft_scenario", args: ["all": true]))
+        XCTAssertTrue(draft.contains("doubleTap(\"#login_btn\")"), draft)
+        XCTAssertTrue(draft.contains("pinchOut(\"#login_btn\", scale: 3)"), draft)
+    }
+
+    /// drag は DSL に対応コマンドが無いが、探索の再現性のため TODO 行として下書きに残る
+    func testDragIsRecordedAsATodoLine() async throws {
+        _ = try await server.call(tool: "ft_drag",
+                                  args: ["fromX": 10.0, "fromY": 20.0, "dy": -100.0])
+        let draft = bodyText(try await server.call(tool: "ft_draft_scenario", args: ["all": true]))
+        XCTAssertTrue(draft.contains("drag at (10.0, 20.0)"), draft)
+    }
+
+    /// ft_drag もスキーマに waitFor を持つ以上、snapshotAfter 無しで渡されたら
+    /// 「待たなかった」と言う(他の操作系と同じ note。黙って落とすと待ったつもりで読まれる)
+    func testDragWaitForWithoutSnapshotAfterSaysItWasIgnored() async throws {
+        let text = bodyText(try await server.call(
+            tool: "ft_drag", args: ["fromX": 10.0, "fromY": 20.0, "dy": -100.0,
+                                    "waitFor": "#sheet_title"]))
+        XCTAssertTrue(text.contains("waitFor requires snapshotAfter: true"), text)
+    }
+
     // MARK: - elapsedMs(所要時間を毎回返す)
 
     func testEveryCallReportsItsElapsedTime() async throws {

@@ -100,4 +100,37 @@ final class MCPActionWaitForTests: XCTestCase {
         XCTAssertTrue(text.contains("waitFor \"#result_row\" appeared"), text)
         XCTAssertTrue(text.contains("id=result_row"), text)
     }
+
+    // MARK: - 語彙統一(2026-08-10): snapshotAfter は操作系の全ツールに揃える
+
+    /// 代表として ft_swipe(従来は snapshotAfter が無く、毎回 ft_snapshot の1往復を払っていた)
+    func testFtSwipeSupportsSnapshotAfter() async throws {
+        let text = bodyText(try await server.call(
+            tool: "ft_swipe", args: ["direction": "up", "snapshotAfter": true]))
+        let screenLines = text.components(separatedBy: "\n").filter { $0.hasPrefix("screen:") }
+        XCTAssertEqual(screenLines.count, 1, text)
+        // 木を返したのに「撮り直せ」と言わない(snapshotAfter 有りでは stale ヒントを畳む)
+        XCTAssertFalse(text.contains("take a fresh ft_snapshot"), text)
+    }
+
+    func testFtPressSupportsSnapshotAfterAndHoldSeconds() async throws {
+        driver.snapshotResponse = waitSnapshot([waitElement(ref: 1, id: "row")])
+        let text = bodyText(try await server.call(
+            tool: "ft_press", args: ["ref": 1, "holdSeconds": 2.0, "snapshotAfter": true]))
+        XCTAssertTrue(text.contains("press [1] done"), text)
+        XCTAssertEqual(text.components(separatedBy: "\n").filter { $0.hasPrefix("screen:") }.count,
+                       1, text)
+    }
+
+    /// 旧名 duration は黙って既定値へ落とさない(1.0s の長押しに化けると沈黙した誤りになる)
+    func testFtPressRejectsTheOldDurationName() async {
+        do {
+            _ = try await server.call(tool: "ft_press",
+                                      args: ["x": 10.0, "y": 20.0, "duration": 2.0])
+            XCTFail("旧名 duration が通った")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("holdSeconds"),
+                          error.localizedDescription)
+        }
+    }
 }

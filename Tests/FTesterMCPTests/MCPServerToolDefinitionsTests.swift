@@ -49,8 +49,9 @@ final class MCPServerToolDefinitionsTests: XCTestCase {
     /// **snapshotAfter を持つツールは interactiveOnly/expandBulk も持つ**(2026-08-10):
     /// `snapshotAfterBody` は `snapshotBody` を経由するので、args を渡せば元々効いていた
     /// (`snapshotBody` が `args["interactiveOnly"]`/`args["expandBulk"]` を読む) —— スキーマに
-    /// 無いだけで MCP クライアントから渡す術が無かった。ft_tap/ft_type/ft_drag の3つが対象
-    /// (snapshotAfter を持つツールはこの3つだけ。ft_scroll_to/ft_snapshot は別途宣言済み)
+    /// 無いだけで MCP クライアントから渡す術が無かった。2026-08-10 の語彙統一で
+    /// 操作系の全ツール(tap/type/drag/swipe/double_tap/press/pinch)が対象
+    /// (ft_scroll_to/ft_snapshot は別途宣言済み)
     func testSnapshotAfterToolsDeclareTheSameFoldingPropertiesAsSnapshot() {
         func properties(_ name: String) -> [String: Any] {
             let definition = MCPServer.toolDefinitions.first { $0["name"] as? String == name }
@@ -61,7 +62,9 @@ final class MCPServerToolDefinitionsTests: XCTestCase {
             ($0["inputSchema"] as? [String: Any])
                 .flatMap { $0["properties"] as? [String: Any] }?["snapshotAfter"] != nil
         }.compactMap { $0["name"] as? String }
-        XCTAssertEqual(Set(snapshotToolNames), ["ft_tap", "ft_type", "ft_drag"],
+        XCTAssertEqual(Set(snapshotToolNames),
+                       ["ft_tap", "ft_type", "ft_drag", "ft_swipe", "ft_double_tap",
+                        "ft_press", "ft_pinch"],
                        "snapshotAfter を持つツールの集合が変わった場合はこのテストごと見直すこと")
         for name in snapshotToolNames {
             let props = properties(name)
