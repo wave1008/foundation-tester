@@ -131,8 +131,19 @@ struct ApiRunCommand: AsyncParsableCommand {
             if machine.auto {
                 logStderr("→ Using machine profile \(machine.name) automatically (it is the only one in machines/)")
             }
-            let resolved = try ProfileResolver.resolve(
+            let full = try ProfileResolver.resolve(
                 project: testProject, runName: profile, machineName: machine.name)
+            // **回す本数を超える台数を用意しない**(ResolvedProfile.limitingDevices)。
+            // ここではシナリオ一覧がまだ無い(ビルドと並行に解決するため。下の先行構築のコメント参照)
+            // ので、**確定している情報だけ**で絞る —— 明示 ID(`Class.method`)だけの指定なら
+            // 1つの ID は高々1本なので本数が決まる。クラス名指定・全件は絞らない
+            // (そこは並列度が要る場面で、絞ると遅くなる)。platform はまだ分からないので両方に同じ数を使う
+            let exactCount = ApiRun.exactScenarioCount(scenarios)
+            let resolved = full.limitingDevices(iosScenarios: exactCount, androidScenarios: exactCount)
+            if resolved.devices.count < full.devices.count {
+                logStderr("→ Using \(resolved.devices.count) of \(full.devices.count) device(s)"
+                    + " for \(scenarios.count) scenario(s)")
+            }
             for warning in resolved.warnings { logStderr("⚠️ \(warning)") }
             if resolved.iosFastInput { setenv("FT_FAST_INPUT", "1", 1) }  // BridgeClient.fastInput 参照
             // 未指定でも必ず書く(既定の "0" を明示し、前段の値を残さない)。環境変数側で
@@ -1110,4 +1121,16 @@ struct ScenarioTimingTracker {
     }
 
     var scenarioTotalSeconds: Double? { hasScenario ? scenarioTotal : nil }
+}
+
+/// `api run` が台数を決めるための本数の読み方(判断はここだけ。ApiRunExactScenarioCountTests)。
+/// この経路はシナリオ一覧をビルドと並行に解決するので、台数を決める時点では一覧が無い ——
+/// 確定しているのは `--scenario` の指定文字列だけ。**明示 ID(`Class.method`)は1つにつき高々1本**
+/// なので合計を上限に使える。クラス名指定や全件は本数が分からないので **0 = 絞らない**
+/// (そこは並列度が要る場面で、絞ると遅くなる)
+enum ApiRun {
+    static func exactScenarioCount(_ selectors: [String]) -> Int {
+        guard !selectors.isEmpty, selectors.allSatisfy({ $0.contains(".") }) else { return 0 }
+        return selectors.count
+    }
 }
