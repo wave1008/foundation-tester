@@ -77,6 +77,10 @@ public enum DSLCommandIndex {
               "Empties an input field. type appends, so clear first to replace."),
         .init("swipe", "operation", "swipe(.up / .down / .left / .right)",
               "Swipes the whole screen. The direction is the finger motion, unlike the scroll commands."),
+        .init("rotateTo", "operation",
+              "rotateTo(.portrait / .landscape)",
+              "Rotates the app UI to that orientation. Reverted automatically to "
+                  + "the original orientation at the end of the scenario."),
         .init("swipePointToPoint", "operation",
               "swipePointToPoint(startX:startY:endX:endY:durationSeconds:)",
               "Drags between two coordinates (iOS = pt / Android = px)."),

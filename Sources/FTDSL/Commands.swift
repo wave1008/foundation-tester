@@ -275,6 +275,16 @@ public func swipe(_ direction: FTSwipeDirection,
         .perform(step: step, description: "swipe \(direction.rawValue)", file: file, line: line)
 }
 
+/// Rotates the app UI to the given orientation (`.portrait` / `.landscape` — the contract is what
+/// the app ends up in, not how the device is tilted; see `FTOrientation`). The original orientation
+/// (captured on the first call in this scenario) is restored automatically when the scenario ends.
+public func rotateTo(_ orientation: FTOrientation,
+                     file: StaticString = #filePath, line: UInt = #line) {
+    let step = FlowStep(action: "rotateTo", direction: orientation.rawValue)
+    FTRuntime.requireCore(command: "rotateTo")
+        .perform(step: step, description: "rotateTo \(orientation.rawValue)", file: file, line: line)
+}
+
 /// 2点間ドラッグ(座標は snapshot の screen と同じ座標系。iOS = pt / Android = px)。
 /// スライダー・並べ替え等、要素ではなく座標で操作したいときに使う。既定 1.5 秒は
 /// Shirates(shirates-core Const.SWIPE_DURATION_SECONDS)準拠

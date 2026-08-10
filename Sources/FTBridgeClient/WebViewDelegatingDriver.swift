@@ -311,6 +311,13 @@ public final class WebViewDelegatingDriver: AppDriver {
         try await primary.isAppForeground(bundleID: bundleID)
     }
     public func foregroundAppID() async throws -> String? { try await primary.foregroundAppID() }
+    // Unrelated to WebView delegation mode, same as status()/isAppForeground — primary 固定
+    public func rotate(to orientation: FTOrientation) async throws -> FTOrientation {
+        try await primary.rotate(to: orientation)
+    }
+    public func restoreOrientationIfNeeded() async throws {
+        try await primary.restoreOrientationIfNeeded()
+    }
     /// 画面を離れる操作。in-app は 501 を返すので XCUITest 側で行う(委譲状態は畳む)
     public func home() async throws {
         resetDelegation()

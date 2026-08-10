@@ -481,6 +481,60 @@ public final class AndroidDriver: AppDriver {
         }
     }
 
+    // MARK: - Rotation (host-side adb; no bridge route — adb already does this without one)
+
+    /// Captured only on this driver instance's first `rotate(to:)` call (nil = not used yet, or
+    /// already restored). Auto-rotate must be off for `user_rotation` to stick, so both settings
+    /// are captured/restored together, user_rotation before accelerometer_rotation (writing
+    /// accelerometer back to auto=1 first would let physical/simulated tilt override the angle).
+    private var originalRotationSettings: (userRotation: Int, accelerometerRotation: Int)?
+
+    /// Android Surface.ROTATION_*。**どちらの landscape でもよい**(契約は「アプリの UI が
+    /// 横になること」で、物理方向はテストから観測できないので約束しない。FTOrientation の宣言を参照)
+    private static func androidRotation(for orientation: FTOrientation) -> Int {
+        switch orientation {
+        case .portrait: return 0
+        case .landscape: return 1
+        }
+    }
+
+    private func currentRotationSettings() throws -> (userRotation: Int, accelerometerRotation: Int) {
+        let userRotation = Int((try adb(["shell", "settings", "get", "system", "user_rotation"])
+            .output).trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+        let accel = Int((try adb(["shell", "settings", "get", "system", "accelerometer_rotation"])
+            .output).trimmingCharacters(in: .whitespacesAndNewlines)) ?? 1
+        return (userRotation, accel)
+    }
+
+    private static let rotationDeadlineSeconds: Double = 5.0
+
+    public func rotate(to orientation: FTOrientation) async throws -> FTOrientation {
+        if originalRotationSettings == nil {
+            originalRotationSettings = try currentRotationSettings()
+        }
+        _ = try adb(["shell", "settings", "put", "system", "user_rotation",
+                     String(Self.androidRotation(for: orientation))])
+        _ = try adb(["shell", "settings", "put", "system", "accelerometer_rotation", "0"])
+        let wantsLandscape = orientation != .portrait
+        let deadline = Date().addingTimeInterval(Self.rotationDeadlineSeconds)
+        while Date() < deadline {
+            let screen = try await snapshot(bypassingCache: true).screen
+            if (screen.width > screen.height) == wantsLandscape { return orientation }
+            try await Task.sleep(nanoseconds: 300_000_000)
+        }
+        throw DriverError.badResponse(status: 422, body: "orientation did not settle to "
+            + "\(orientation.rawValue) within \(Self.rotationDeadlineSeconds)s")
+    }
+
+    public func restoreOrientationIfNeeded() async throws {
+        guard let original = originalRotationSettings else { return }
+        originalRotationSettings = nil
+        _ = try adb(["shell", "settings", "put", "system", "user_rotation",
+                     String(original.userRotation)])
+        _ = try adb(["shell", "settings", "put", "system", "accelerometer_rotation",
+                     String(original.accelerometerRotation)])
+    }
+
     /// 2点間ドラッグ。ブリッジ経由ではなく gRPC タッチ合成(down→補間 move→up)優先・
     /// adb input swipe フォールバック(どちらも snapshot と同じピクセル座標)。
     /// gRPC はゲスト内 app_process 起動(~300ms/回)が無くステップ列が高速。

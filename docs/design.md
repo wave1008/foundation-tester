@@ -235,13 +235,29 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
 
 | ブリッジ | 共通コアへの追加 | 計 |
 |---|---|---|
-| XCUITest(Runner/) | `POST /drag`・`POST /appswitcher`・`POST /home`・`POST /hidekeyboard`・`POST /appstate` | 18 |
+| XCUITest(Runner/) | `POST /drag`・`POST /appswitcher`・`POST /home`・`POST /hidekeyboard`・`POST /appstate`・`POST /rotate` | 19 |
 | Android(AndroidRunner/) | `POST /locale`・`POST /settle`(§4.5) | 15 |
-| InApp | `POST /hidekeyboard`・`POST /appstate` | 15 |
+| InApp | `POST /hidekeyboard`・`POST /appstate`・`POST /rotate` | 16 |
 
 `/hidekeyboard` は iOS の2実装だけが持つが、**中身は 501 を返すだけ**(iOS に実装手段が無い。
 §10「キーボードの観測と `hideKeyboard`」)。Android は `hideKeyboard` をホスト側の
 戻るキーで実現するのでルートを持たない。
+
+`POST /rotate` は iOS の2実装だけが持つ(`{orientation}` → 整定後の実際の向き、整定しなければ
+`422`)。Android は adb(`AndroidDriver`)で直接行うためルートを持たない。
+
+**回転の契約は「アプリの UI がその向きになること」**(2026-08-10 ユーザー決定)。デバイスがどう
+傾いているかではない —— テストが観測できる frame と画面サイズは、iOS も Android も、
+Compose / SwiftUI / View-XML / Flutter / React Native のどれでも**アプリ座標系**で返る
+(PoC で全部実測)。跨いで同じ意味を持つのはここまでなので、**語彙は portrait / landscape の2値**に
+限る。`landscapeLeft` / `landscapeRight` は**置かない** —— 物理的な左右はテストから観測できず、
+どう定義しても検証できない。実際、置いていた間は **iOS が厳密に一致を求める一方 Android は
+「窓が横長か」しか見ておらず、同じ `.landscapeRight` の要求が Android では左横向きでも成功していた**。
+検証できない区別を語彙に置かない。
+実装上の帰結: 各ブリッジは**要求をどちらか一方の landscape へ写し、読みでは左右をまとめる**
+(片側しか landscape と認めないと、OS がもう一方を選んだ回に整定が永久に一致せず 422 になる)。
+Android の整定判定は**スナップショットの画面サイズ**で行う = 表示だけ回ってアプリが縦のままの形を
+成功にしない。
 
 **エラーの status はホスト側の分岐に使われる契約**(ブリッジ実装とホストで同期が必要。
 `DriverError.isEngineIncapable` / `AppAttachDriver` / `SessionRecoveryDriver`):

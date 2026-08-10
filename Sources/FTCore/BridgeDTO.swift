@@ -154,7 +154,11 @@ public enum BridgeAPI {
     /// expandBulk の展開は従来どおり(「大きな同一 id 群を先に捨てる」案は却下済み。
     /// bulkGroupMinimum のコメント参照)。件数は `SnapshotResponse.bulkExemptCount` で申告する。
     /// 旧ランナー/dylib が再利用されると、地図系の画面で操作要素が従来どおり押し出されたままになる
-    public static let bridgeProtocolVersion = 61
+    /// 62: Added POST /rotate (device orientation; DSL `rotateTo`/MCP `ft_rotate`) to the in-app
+    /// and XCUITest bridges, and GET /status now reports `orientation` on those two. Not added to
+    /// Android (host-side adb instead — see AndroidDriver). Old bridges 404 "not found:" on
+    /// /rotate, so the host must not reuse a stale bridge for scenarios that rotate.
+    public static let bridgeProtocolVersion = 62
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の
@@ -460,13 +464,19 @@ public struct StatusResponse: Codable, Sendable {
     /// **起動時にしか切り替わらない**ので、ホストは希望状態と食い違うときブリッジを起動し直す
     /// (Android: AndroidBridge.startBridge)。返さない実装は nil(=off とみなす)
     public var timingEnabled: Bool?
+    /// Current device orientation. **Only the 2 iOS bridges populate this** (used by the host to
+    /// capture the pre-rotation orientation before the first rotate, for scenario-end restore).
+    /// Android's orientation is read via adb host-side (AndroidDriver), not through this field.
+    /// Omitted by old bridges and by bridges that can't currently determine it → nil = unknown.
+    public var orientation: FTOrientation?
 
     public init(ready: Bool, device: String, osVersion: String, sessionBundleID: String?,
                 engine: String? = nil, protocolVersion: Int? = nil, applicationState: String? = nil,
                 uiFramework: String? = nil, bridgeVersionCode: Int? = nil,
                 fastInputAvailable: Bool? = nil, unsupportedActions: [String]? = nil,
                 ownerRepo: String? = nil, ownerPid: Int? = nil, idleSeconds: Double? = nil,
-                timingEnabled: Bool? = nil, udid: String? = nil) {
+                timingEnabled: Bool? = nil, udid: String? = nil,
+                orientation: FTOrientation? = nil) {
         self.ready = ready
         self.device = device
         self.osVersion = osVersion
@@ -483,6 +493,7 @@ public struct StatusResponse: Codable, Sendable {
         self.idleSeconds = idleSeconds
         self.timingEnabled = timingEnabled
         self.udid = udid
+        self.orientation = orientation
     }
 }
 
@@ -767,6 +778,46 @@ public enum FTSwipeIntent: String, Codable, CaseIterable {
 /// **ジェスチャの向き**(指の動き)。ブリッジの /swipe はこれを受ける
 public enum FTSwipeDirection: String, Codable, CaseIterable {
     case up, down, left, right
+}
+
+/// Device orientation for the `rotateTo` DSL command / `ft_rotate` MCP tool / POST /rotate.
+/// The contract is **the orientation the app's UI ends up in** — not how the device is tilted.
+/// Everything a test can observe (frames, screen size) is already in the app's coordinate space,
+/// so that is the only definition that means the same thing on iOS and Android and across
+/// Compose / SwiftUI / View-XML / Flutter / React Native (all verified to relayout identically).
+///
+/// **Two values on purpose** (2026-08-10 decision). landscapeLeft/Right were dropped:
+/// the physical direction they name is *not observable from a test* (both platforms report the
+/// tree in the app's frame either way), so no definition of them could be verified — and the
+/// Android side was in fact accepting either landscape as success while iOS enforced the exact
+/// one. A distinction that cannot be checked does not belong in the vocabulary.
+public enum FTOrientation: String, Codable, CaseIterable, Sendable {
+    case portrait, landscape
+
+    /// Parses a user-facing orientation string (MCP tool args / ft_batch).
+    /// Swift DSL callers pass `FTOrientation` directly and never come through here
+    public static func parse(_ raw: String) -> FTOrientation? {
+        FTOrientation(rawValue: raw)
+    }
+}
+
+public struct RotateRequest: Codable {
+    public var orientation: FTOrientation
+    public init(orientation: FTOrientation) { self.orientation = orientation }
+}
+
+/// Response to POST /rotate. Only sent on success (settled within budget) — `orientation` always
+/// equals the requested one. Timeout is a 422 ErrorResponse instead (never a silent partial success).
+public struct RotateResponse: Codable {
+    public var orientation: FTOrientation
+    public init(orientation: FTOrientation) { self.orientation = orientation }
+}
+
+/// Settle-poll budget shared by the in-app and XCUITest bridges' POST /rotate (Android is
+/// host-side adb, see AndroidDriver — no bridge route, so no shared constant needed there).
+public enum RotationSettle {
+    public static let deadlineSeconds: Double = 3.0
+    public static let pollIntervalSeconds: Double = 0.1
 }
 
 /// **スクロールの向き**(コンテンツ基準。標準用語どおり `.down` = 下に読み進める)。

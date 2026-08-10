@@ -65,6 +65,11 @@ final class CommandDispatchTests: XCTestCase {
         func type(ref: Int?, text: String) async throws {}
         func pressEnter() async throws { pressEnterCount += 1 }
         func swipe(_ direction: FTSwipeDirection) async throws {}
+        private(set) var rotatedTo: [FTOrientation] = []
+        func rotate(to orientation: FTOrientation) async throws -> FTOrientation {
+            rotatedTo.append(orientation)
+            return orientation
+        }
         /// flick/swipePointToPoint 系の到達点記録用(AppDriver の既定実装は 501 を投げるだけなので上書きする)
         private(set) var dragCalls: [(fromX: Double, fromY: Double, toX: Double, toY: Double,
                                       pressSeconds: Double, durationSeconds: Double)] = []
@@ -213,6 +218,27 @@ final class CommandDispatchTests: XCTestCase {
 
         XCTAssertEqual(driver.pressEnterCount, 1)
         XCTAssertEqual(core.finalRecord.scenes.flatMap(\.steps).map(\.description), ["pressEnter"])
+        XCTAssertTrue(core.finalRecord.passed)
+    }
+
+    /// rotateTo(.landscape) が FlowStep.direction を経由して driver.rotate(to: .landscape) まで
+    /// 届くこと(`.landscape` エイリアスがコンパイル時に解決され、生の "landscape" 文字列が
+    /// FlowStep へ残らないことの確認を兼ねる)
+    func testRotateToReachesDriverWithLandscapeAliasResolved() {
+        let driver = RecordingDriver()
+        let core = makeCore(driver: driver)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "s") {
+                action { rotateTo(.landscape) }
+            }
+        }
+
+        XCTAssertEqual(driver.rotatedTo, [.landscape])
+        XCTAssertEqual(core.finalRecord.scenes.flatMap(\.steps).map(\.description),
+                       ["rotateTo landscape"])
         XCTAssertTrue(core.finalRecord.passed)
     }
 

@@ -164,6 +164,8 @@ public enum StepDescription {
             return isJapanese(rest) ? "\(rest)のアプリデータを消去する" : "clear app data for \(rest)"
         case "swipe":
             return swipePhrase(direction: rest)
+        case "rotateTo":
+            return rotateToPhrase(orientation: rest)
         case "wait":
             guard rest.hasSuffix("s"), let seconds = Double(rest.dropLast()) else { return nil }
             return "wait \(formatSeconds(seconds))s"
@@ -202,6 +204,8 @@ public enum StepDescription {
                     : "type \"\(input)\" into \"\(obj)\""
             case "swipe":
                 return swipePhrase(direction: step.direction ?? "up")
+            case "rotateTo":
+                return rotateToPhrase(orientation: step.direction ?? "landscape")
             case "pressEnter":
                 return "press the Enter key"
             case "hideKeyboard":
@@ -322,6 +326,11 @@ public enum StepDescription {
         case "up", "down", "left", "right": return "swipe \(direction)"
         default: return nil
         }
+    }
+
+    private static func rotateToPhrase(orientation: String) -> String? {
+        // 内容を持たないので常に英語(定型文)
+        FTOrientation(rawValue: orientation) != nil ? "rotate to \(orientation)" : nil
     }
 
     /// `"S"` → S(クォート囲みでなければ nil)

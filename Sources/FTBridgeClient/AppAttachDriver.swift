@@ -210,6 +210,24 @@ public final class AppAttachDriver: AppDriver {
         }
     }
 
+    /// rotate も ref を使わないので pinch と同じ回復を入れる(上の pinch のコメント参照)
+    public func rotate(to orientation: FTOrientation) async throws -> FTOrientation {
+        try await ensureAttached()
+        do {
+            return try await client.rotate(to: orientation)
+        } catch {
+            guard Self.isRecoverableSession(error) else { throw error }
+            try await client.activate(bundleID: bundleID)
+            return try await client.rotate(to: orientation)
+        }
+    }
+
+    /// client 側の originalOrientation が nil(未 rotate)なら no-op で返る。rotate 済みなら
+    /// そのとき既に attach 済みなので、ここで追加の ensureAttached は不要
+    public func restoreOrientationIfNeeded() async throws {
+        try await client.restoreOrientationIfNeeded()
+    }
+
     /// home / appSwitcher は XCUITest ブリッジ側が**セッション不要**で処理する
     /// (XCUIDevice / springboard 座標。Runner の BridgeRouter.handleHome / handleAppSwitcher)。
     /// activate を挟まない = 対象アプリを前面に戻してしまわない

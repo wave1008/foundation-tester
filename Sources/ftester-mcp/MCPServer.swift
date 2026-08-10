@@ -1380,6 +1380,15 @@ final class MCPServer {
             return (step, "type\(target) \"\(text)\"")
         },
         "pressEnter": BatchStepBuilder(keys: []) { _ in (FlowStep(action: "pressEnter"), "pressEnter") },
+        "rotateTo": BatchStepBuilder(keys: ["orientation"]) { raw in
+            guard let text = raw["orientation"] as? String,
+                  let orientation = FTOrientation.parse(text) else {
+                throw MCPError("rotateTo takes .portrait or .landscape")
+            }
+            var step = FlowStep(action: "rotateTo")
+            step.direction = orientation.rawValue
+            return (step, "rotateTo .\(orientation.rawValue)")
+        },
         "hideKeyboard": BatchStepBuilder(keys: []) { _ in
             (FlowStep(action: "hideKeyboard"), "hideKeyboard")
         },
@@ -3115,6 +3124,24 @@ final class MCPServer {
         case "ft_batch":
             return try await batch(args)
 
+        case "ft_rotate":
+            guard let raw = args["orientation"] as? String,
+                  let orientation = FTOrientation.parse(raw) else {
+                throw MCPError("orientation must be \"portrait\" or \"landscape\"")
+            }
+            let settled = try await driver(args).rotate(to: orientation)
+            var rotateStep = FlowStep(action: "rotateTo")
+            rotateStep.direction = settled.rawValue
+            interactions.record(InteractionLog.Entry(step: rotateStep, unresolved: nil,
+                                                     summary: "rotateTo .\(settled.rawValue)"))
+            // **回転はツリーの座標系ごと変える**ので、覚えている木は必ず捨てる
+            // (古い ref を残すと、次のタップが回転前の座標で撃たれる)
+            let rotated = try await freshSnapshot(try await driver(args), args: args)
+            recordSnapshot(rotated, Self.platformName(args), args)
+            return text("Rotated to \(settled.rawValue). The frames below are in the new"
+                + " coordinate system — refs taken before the rotation are gone.\n\n"
+                + (await snapshotBody(rotated, driver: try await driver(args), args: args)))
+
         case "ft_navigate":
             // **3つを1ツールに束ねる**: back/home/appSwitcher を個別ツールにすると定義が3倍になり、
             // 似た選択肢が並んでエージェントの選択が揺れる(docs/shirates-parity.md の
@@ -4121,6 +4148,17 @@ final class MCPServer {
             "expandBulk": expandBulkProperty,
             "interactiveOnly": interactiveOnlyProperty,
         ], required: ["steps"]),
+        tool("ft_rotate", "Rotate the device and return the screen in the new orientation. "
+            + "It waits for the rotation to settle, so the tree that comes back is already "
+            + "relaid out — every frame is in the new coordinate system and refs taken before "
+            + "the rotation no longer resolve. A scenario written with rotateTo() restores the "
+            + "original orientation when it ends; this tool does not, so rotate back yourself "
+            + "before leaving the device to the next task. On Android it also turns auto-rotate "
+            + "off (otherwise the angle does not stick) and leaves it off — rotating back to "
+            + "portrait does not turn it on again", [
+            "orientation": ["type": "string",
+                            "enum": ["portrait", "landscape"]],
+        ], required: ["orientation"]),
         tool("ft_navigate", "Go back / to the home screen / to the app switcher", [
             "target": ["type": "string", "enum": ["back", "home", "appSwitcher"]],
         ], required: ["target"]),

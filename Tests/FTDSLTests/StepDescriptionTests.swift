@@ -77,6 +77,14 @@ final class StepDescriptionTests: XCTestCase {
         XCTAssertNil(StepDescription.describe(command: "swipe diagonal"))
     }
 
+    func testRotateToAllOrientations() {
+        XCTAssertEqual(StepDescription.describe(command: "rotateTo portrait"), "rotate to portrait")
+        XCTAssertEqual(StepDescription.describe(command: "rotateTo landscape"), "rotate to landscape")
+        // 廃止した左右は語彙に無い = 説明も作らない(黙って通さない)
+        XCTAssertNil(StepDescription.describe(command: "rotateTo landscapeLeft"))
+        XCTAssertNil(StepDescription.describe(command: "rotateTo sideways"))
+    }
+
     func testScrollTo() {
         XCTAssertEqual(StepDescription.describe(command: "scrollTo \"設定\""),
                        "\"設定\"が表示されるまでスクロールする")
@@ -205,6 +213,9 @@ final class StepDescriptionTests: XCTestCase {
 
         // 未知の action は nil
         XCTAssertNil(StepDescription.describe(step: FlowStep(action: "unknown")))
+
+        let rotate = FlowStep(action: "rotateTo", direction: "landscape")
+        XCTAssertEqual(StepDescription.describe(step: rotate), "rotate to landscape")
     }
 
     // MARK: - codegen の行末コメント(FM の note のみ。機械的な説明=StepDescription は付けない)

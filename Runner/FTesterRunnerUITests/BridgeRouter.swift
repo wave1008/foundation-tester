@@ -77,6 +77,7 @@ final class BridgeRouter {
             case ("POST", "/drag"): response = try handleDrag(request.body)
             case ("POST", "/doubletap"): response = try handleDoubleTap(request.body)
             case ("POST", "/pinch"): response = try handlePinch(request.body)
+            case ("POST", "/rotate"): response = try handleRotate(request.body)
             case ("POST", "/press"): response = try handlePress(request.body)
             case ("GET", "/screenshot"): response = handleScreenshot()
             case ("POST", "/appswitcher"): response = try handleAppSwitcher()
@@ -115,7 +116,8 @@ final class BridgeRouter {
             idleSeconds: idleSecondsProvider.map { $0() },
             // 載っているシミュレータの UDID(H)。ホストが port ではなく udid で宛先を
             // 指せるようにするための申告。実機には SIMULATOR_UDID が無いので nil
-            udid: ProcessInfo.processInfo.environment["SIMULATOR_UDID"]))
+            udid: ProcessInfo.processInfo.environment["SIMULATOR_UDID"],
+            orientation: XCUIDevice.shared.orientation.ftOrientation))
     }
 
     private func handleLaunch(_ body: Data) throws -> BridgeHTTPServer.Response {
@@ -664,6 +666,32 @@ final class BridgeRouter {
         return .json(OKResponse(note: note))
     }
 
+    /// POST /rotate. See InAppBridge.handleRotate for why this polls (XCUIDevice's readback is
+    /// immediate per PoC, but the shared budget/behavior stays symmetric across both iOS bridges).
+    /// **No requireApp()**: rotation is device-level, not app-session-scoped (same as handleAppState).
+    private func handleRotate(_ body: Data) throws -> BridgeHTTPServer.Response {
+        let req = try decode(RotateRequest.self, body)
+        // 契約は「アプリの UI が横になること」で物理方向は約束しない(FTOrientation の宣言を参照)
+        // ので、`UIDeviceOrientation` と `UIInterfaceOrientation` の左右が逆であることは問題に
+        // ならない —— どちらの landscape でも成功とする(読み側も左右をまとめている)
+        let target: UIDeviceOrientation
+        switch req.orientation {
+        case .portrait: target = .portrait
+        case .landscape: target = .landscapeLeft
+        }
+        XCUIDevice.shared.orientation = target
+        let deadline = Date().addingTimeInterval(RotationSettle.deadlineSeconds)
+        while Date() < deadline {
+            if XCUIDevice.shared.orientation.ftOrientation == req.orientation {
+                return .json(RotateResponse(orientation: req.orientation))
+            }
+            Thread.sleep(forTimeInterval: RotationSettle.pollIntervalSeconds)
+        }
+        let observed = XCUIDevice.shared.orientation.ftOrientation
+        throw BridgeError(422, "orientation did not settle to \(req.orientation.rawValue) within "
+            + "\(RotationSettle.deadlineSeconds)s (observed: \(observed?.rawValue ?? "unknown"))")
+    }
+
     private func handlePress(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(PressRequest.self, body)
         let app = try requireLiveApp()
@@ -1044,6 +1072,17 @@ final class BridgeRouter {
             return try decoder.decode(type, from: body)
         } catch {
             throw BridgeError(400, "リクエストボディの JSON が不正です: \(error)")
+        }
+    }
+}
+
+private extension UIDeviceOrientation {
+    var ftOrientation: FTOrientation? {
+        switch self {
+        case .portrait: return .portrait
+        // 左右どちらも landscape として読む(要求と同じ側かは問わない = 契約どおり)
+        case .landscapeLeft, .landscapeRight: return .landscape
+        default: return nil   // upsideDown/faceUp/faceDown/unknown — not part of FTOrientation
         }
     }
 }

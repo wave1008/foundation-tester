@@ -90,6 +90,15 @@ public protocol AppDriver {
     /// 理由は BridgeDTO の PinchRequest 参照。**プロトコル要件として宣言すること**
     func pinch(frame: FTRect?, identifier: String?, scale: Double,
                durationSeconds: Double) async throws
+    /// Rotates the device and waits for it to settle, returning the actual settled orientation
+    /// (always equals the request — the driver throws instead of returning a mismatch; see
+    /// DriverError 422 usage). **Protocol requirement** (same reasoning as doubleTap/pinch above:
+    /// existential calls fall back to static dispatch on the default otherwise).
+    func rotate(to orientation: FTOrientation) async throws -> FTOrientation
+    /// Restores the orientation captured by this driver's first `rotate(to:)` call in the current
+    /// scenario, if any (no-op — no round trip — if rotate was never called). Called unconditionally
+    /// at scenario end. **Protocol requirement** (same reasoning as above).
+    func restoreOrientationIfNeeded() async throws
     func press(ref: Int, duration: Double) async throws
     /// 座標指定のロングプレス(座標は snapshot の screen と同じ座標系)。
     func press(x: Double, y: Double, duration: Double) async throws
@@ -248,6 +257,12 @@ public extension AppDriver {
                durationSeconds: Double) async throws {
         throw DriverError.badResponse(status: 501, body: "This driver does not support pinch")
     }
+
+    func rotate(to orientation: FTOrientation) async throws -> FTOrientation {
+        throw DriverError.badResponse(status: 501, body: "This driver does not support rotation")
+    }
+
+    func restoreOrientationIfNeeded() async throws {}
 
     func pressEnter() async throws {
         throw DriverError.badResponse(status: 501, body: "This driver does not support pressing the Enter key")

@@ -39,18 +39,20 @@ final class BridgeContractTests: XCTestCase {
     //   /appstate  … iOS の2実装だけ
     //   /pinch・/doubletap … 3実装とも持つ(in-app は 2026-08-04 に追加。合成タッチの間隔と
     //                 指の距離を自分で決められるぶん XCTest より正確な場面がある)
+    //   /rotate    … iOS の2実装だけ(62)。Android は host-side adb(AndroidDriver)で行うため持たない
     static let inAppRoutes: Set<String> = [
         "GET /screenshot", "GET /snapshot", "GET /status",
         "POST /appstate", "POST /clear", "POST /doubletap", "POST /hidekeyboard", "POST /pinch",
-        "POST /press", "POST /pressEnter", "POST /session", "POST /swipe", "POST /tap",
-        "POST /terminate", "POST /type",
+        "POST /press", "POST /pressEnter", "POST /rotate", "POST /session", "POST /swipe",
+        "POST /tap", "POST /terminate", "POST /type",
     ]
 
     static let xcuiTestRoutes: Set<String> = [
         "GET /screenshot", "GET /snapshot", "GET /status",
         "POST /appstate", "POST /appswitcher", "POST /clear", "POST /doubletap", "POST /drag",
         "POST /hidekeyboard", "POST /home", "POST /pinch", "POST /press", "POST /pressEnter",
-        "POST /session", "POST /swipe", "POST /tap", "POST /terminate", "POST /type",
+        "POST /rotate", "POST /session", "POST /swipe", "POST /tap", "POST /terminate",
+        "POST /type",
     ]
 
     static let androidRoutes: Set<String> = [
@@ -101,7 +103,7 @@ final class BridgeContractTests: XCTestCase {
     private static let expectedFingerprints: [BridgeSourceSet: [String: String]] = [
         .inApp: [
             "InAppBridge/Sources/Bridging.h": "08799e6d190f958eed7c6bb4406f1cbbfea1bed1d252ce4572636273c65a5aad",
-            "InAppBridge/Sources/InAppBridge.swift": "8419a345c317cc303183b0aba98227d9ed127fad5bd2e6e69b75211f6c6133d6",
+            "InAppBridge/Sources/InAppBridge.swift": "18e4ae8a2682feb7eba9197df343774a9c6ad2a261ef33e2f3df7eb7b1a5116d",
             "InAppBridge/Sources/InAppHTTPServer.swift": "1d987f76a251ab475b632f24df272b000bb433054c7607e38f0447b6181e58bb",
             "InAppBridge/Sources/InAppInput.h": "cb980dcf8b80c38a97a841946354460ce6fd960baf53ada67aa939e16e373a65",
             "InAppBridge/Sources/InAppInput.m": "ea5a619f2b945e078af3bea394cb6d73a7e405c7509586389e427951d9b2f601",
@@ -110,18 +112,18 @@ final class BridgeContractTests: XCTestCase {
             "InAppBridge/Sources/InAppWebViewDOM.swift": "91add4d32dfd9db8ece05ea026b64de2c90227c1ceec1acc5005da0381796afb",
             "InAppBridge/Sources/boot.m": "b23fc93fbc99ce2579c9fd8ae75a6f9bbfd0ec6122bec60eb6cd00775dd635ef",
             "InAppBridge/build.sh": "afc02d752c97a009dd48aa6cf18934af0c6f8be662d75af37cdc8c4affbc454d",
-            "Sources/FTCore/BridgeDTO.swift": "c27d2f1e923dd748017d858cc9b06db7e6ee83bfb9beae8c80879337d828be64",
+            "Sources/FTCore/BridgeDTO.swift": "e212edf04b09680d0a3dc41b7830fb7b34a4942015b118e094394ca03b79e426",
             "Sources/FTCore/WebViewDOMSnapshot.swift": "4c10c6a84b96c6d1760c1b5a2e9b7005cca221d77dc2d4acda7109817637d41b",
         ],
         .xcuitest: [
             "Runner/FTesterRunnerUITests/BridgeHTTPServer.swift": "2659f97c1116efd8beaa6d7c0d74a205f307436f1e8d0869a73c81bc96033e5c",
-            "Runner/FTesterRunnerUITests/BridgeRouter.swift": "b2d33f979a5ce998bb967c2f4924960e9d641314b950ff82c2db1850efdd4529",
+            "Runner/FTesterRunnerUITests/BridgeRouter.swift": "03023b7bee49b152e38bbba16d7e743db752e67018db363029c6b3a495722af8",
             "Runner/FTesterRunnerUITests/BridgingHeader.h": "f7ff424d9283644d0e7a0c6e202911ecbf2d9c12d469eea330d91471c4788272",
             "Runner/FTesterRunnerUITests/FTesterBridgeTests.swift": "5a3521fc332ff690cfa4a105ab8486c612814b05b637451401244e632e7c6e9e",
             "Runner/FTesterRunnerUITests/FastInput.swift": "18b54340c404eac53736675763fad8e291b08e2f1f1ba96d696172698aa83bc1",
             "Runner/FTesterRunnerUITests/ObjCExceptionCatcher.h": "5a98cdbeefb031137a985b2f4430a5e12fec447a492599f8f4da1bd2c7101edc",
             "Runner/FTesterRunnerUITests/ObjCExceptionCatcher.m": "8b41a8a81bc8199bca13a364717614684f8003999c7675d9a63242c8e74c26be",
-            "Sources/FTCore/BridgeDTO.swift": "c27d2f1e923dd748017d858cc9b06db7e6ee83bfb9beae8c80879337d828be64",
+            "Sources/FTCore/BridgeDTO.swift": "e212edf04b09680d0a3dc41b7830fb7b34a4942015b118e094394ca03b79e426",
             "Sources/FTCore/SnapshotDedupe.swift": "01912610b9bbf66f1fcf6cecc8c3d51d3fedc836c24d1a9ba8689a2538227b17",
             "Sources/FTCore/TypeReadback.swift": "8238adeb5146ee2441478a94bf6e2aabb85e6c88c38538ed8df74b2e025bf8ca",
         ],

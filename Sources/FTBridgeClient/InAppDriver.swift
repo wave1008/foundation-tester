@@ -179,6 +179,12 @@ public final class InAppDriver: AppDriver {
                                    durationSeconds: durationSeconds)
         }
     }
+    public func rotate(to orientation: FTOrientation) async throws -> FTOrientation {
+        try await withCrashContext { try await client.rotate(to: orientation) }
+    }
+    public func restoreOrientationIfNeeded() async throws {
+        try await withCrashContext { try await client.restoreOrientationIfNeeded() }
+    }
     // in-app では原理的に実行できない操作(自プロセス外・座標ジェスチャ)。hybrid では StepExecutor /
     // FTDriveCore が XCUITest 側へ回すのでここへは来ない。engine=inapp 単独だけがここに到達するため、
     // 既定実装の汎用メッセージではなく構成の直し方を示す(501 = このエンジンでは未対応)

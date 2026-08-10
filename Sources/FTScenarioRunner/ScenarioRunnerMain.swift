@@ -429,6 +429,16 @@ struct RunScenario: AsyncParsableCommand {
         }
         FTRuntime.tearDown()
 
+        // Unconditional call, but cheap when unused: each leaf driver's rotate(to:) only captures
+        // the original orientation on its first call in this scenario, so this is a true no-op
+        // (no adb/HTTP round trip) for scenarios that never called rotateTo. Best-effort — a
+        // failure here is cleanup, not a scenario assertion, so it doesn't fail the run.
+        do {
+            try await core.restoreOrientationIfNeeded()
+        } catch {
+            FileHandle.standardError.write(Data("⚠️ failed to restore original orientation: \(error)\n".utf8))
+        }
+
         // 「否定側でしか使われず一度も解決できなかった #id」「最後まで不成立の ifCanSelect」
         // 「アサーションが1本も無い」を修正提案として残す(いずれも緑のまま腐る経路。docs/design.md §10)
         core.warnAboutNeverResolvedIDs()

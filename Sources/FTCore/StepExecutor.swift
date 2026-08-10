@@ -1247,6 +1247,19 @@ public final class StepExecutor {
                                driverFallback: notes.isEmpty ? nil : notes.joined(separator: " / "))
         }
 
+        // Device-level, no locator. Per policy this does NOT fall back to typeDriver on failure —
+        // rotation uses whichever engine this connection already runs. The driver throws (never
+        // returns a mismatched orientation) if it didn't settle, so no post-hoc mismatch check needed.
+        if action == "rotateTo" {
+            guard let raw = step.direction, let orientation = FTOrientation(rawValue: raw) else {
+                return StepOutcome(status: .failed("rotateTo requires an orientation"))
+            }
+            let start = clock.now
+            _ = try await driver.rotate(to: orientation)
+            phase.actionMs += Self.ms(clock.now - start)
+            return StepOutcome(status: .passed)
+        }
+
         // スクロールだけ行う(Shirates の scrollDown 等)。maxSwipes を繰り返し回数として使う
         if action == "scroll" {
             let direction = FTSwipeDirection(rawValue: step.direction ?? "") ?? .up

@@ -143,6 +143,8 @@ public enum ScenarioCodeGen {
                 return "type(\(literal(selector)), \(literal(step.text ?? "")))"
             case "swipe":
                 return "swipe(.\(step.direction ?? "up"))"
+            case "rotateTo":
+                return "rotateTo(.\(step.direction ?? "landscape"))"
             case "home":
                 return "home()"
             case "back":

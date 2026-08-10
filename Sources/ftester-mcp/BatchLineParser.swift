@@ -258,9 +258,12 @@ struct BatchArgForm: Equatable {
 /// どちらも1件ずつしか無い(coverage テストが将来の増加を検出する)
 enum BatchArgSpecTable {
 
-    /// `swipe(.up / .down / .left / .right)` は1引数がまるごと enum の選択肢で、
-    /// 通常の識別子リストとして解釈できない
-    static let positionalOverrides: [String: [String]] = ["swipe": ["direction"]]
+    /// `swipe(.up / .down / .left / .right)` と `rotateTo(.portrait / .landscape / …)` は
+    /// 1引数がまるごと enum の選択肢で、通常の識別子リストとして解釈できない
+    static let positionalOverrides: [String: [String]] = [
+        "swipe": ["direction"],
+        "rotateTo": ["orientation"],
+    ]
 
     /// バッチの辞書キー語彙は要素ロケータを常に "selector" と呼ぶが、
     /// `swipeElementToElement(from, to, durationSeconds:)` の DSL 自身は始点を "from" と呼ぶ。
@@ -418,9 +421,12 @@ enum BatchStepResolver {
 
     // このバッチ辞書語彙で使われている全キーの型。3集合はどれとも重ならない
     // (現状 Bool 型のキーは無い —— containerInference/requireVisible/scroll は未対応のため)
-    private static let stringKeys: Set<String> = ["selector", "text", "direction", "to", "scrollFrame"]
-    private static let intKeys: Set<String> = ["maxSwipes", "repeat"]
-    private static let doubleKeys: Set<String> = [
+    /// ビルダが宣言するキーは必ずこの3表のどれか1つに載る(載せ忘れると、その引数を書いた行が
+    /// 「does not accept」で弾かれる。`SharedKeyTypeCoverageTests` が漏れを検出する)
+    static let stringKeys: Set<String> = ["selector", "text", "direction", "to", "scrollFrame",
+                                          "orientation"]
+    static let intKeys: Set<String> = ["maxSwipes", "repeat"]
+    static let doubleKeys: Set<String> = [
         "holdSeconds", "timeout", "scale", "durationSeconds", "dxRatio", "dyRatio",
     ]
 

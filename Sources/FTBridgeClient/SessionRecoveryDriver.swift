@@ -183,6 +183,14 @@ public final class SessionRecoveryDriver: AppDriver {
         }
     }
 
+    public func rotate(to orientation: FTOrientation) async throws -> FTOrientation {
+        try await withRecovery { try await base.rotate(to: orientation) }
+    }
+
+    public func restoreOrientationIfNeeded() async throws {
+        try await withRecovery { try await base.restoreOrientationIfNeeded() }
+    }
+
     public func screenshot() async throws -> Data {
         try await withAccessibilityRetry { try await self.withRecovery { try await self.base.screenshot() } }
     }

@@ -438,6 +438,7 @@ public extension FlowStep {
                     ? "type \"\(text ?? "")\""
                     : "type \(locatorSummary) \"\(text ?? "")\""
             case "swipe": return "swipe \(direction ?? "up")"
+            case "rotateTo": return "rotateTo \(direction ?? "landscape")"
             case "scrollTo": return "scrollTo \(locatorSummary)"
             // 対象なし(画面全体)を取り得るアクションは locatorSummary の "(no locator)" を出さない
             case "pinchOut", "pinchIn", "doubleTap", "swipeBy":

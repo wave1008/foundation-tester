@@ -57,6 +57,10 @@ public final class SystemUIDriver: AppDriver {
         try await client.press(x: x, y: y, duration: duration)
     }
     public func doubleTap(x: Double, y: Double) async throws { try await client.doubleTap(x: x, y: y) }
+    public func rotate(to orientation: FTOrientation) async throws -> FTOrientation {
+        try await client.rotate(to: orientation)
+    }
+    public func restoreOrientationIfNeeded() async throws { try await client.restoreOrientationIfNeeded() }
     public func pinch(frame: FTRect?, identifier: String?, scale: Double,
                       durationSeconds: Double) async throws {
         try await client.pinch(frame: frame, identifier: identifier, scale: scale,

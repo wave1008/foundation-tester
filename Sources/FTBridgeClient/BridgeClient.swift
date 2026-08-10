@@ -565,6 +565,28 @@ public final class BridgeClient: AppDriver {
             frame: frame, identifier: identifier), timeout: interactionTimeout)
     }
 
+    /// Captured only on this client's first `rotate(to:)` call in the current scenario (nil = not
+    /// used yet, or already restored). Read from the bridge (GET /status) rather than assumed,
+    /// since the bridge is the source of truth for its own orientation.
+    private var originalOrientation: FTOrientation?
+
+    public func rotate(to orientation: FTOrientation) async throws -> FTOrientation {
+        if originalOrientation == nil {
+            let current: StatusResponse = try await status()
+            originalOrientation = current.orientation ?? .portrait
+        }
+        let response: RotateResponse = try await post(
+            "/rotate", body: RotateRequest(orientation: orientation), timeout: interactionTimeout)
+        return response.orientation
+    }
+
+    public func restoreOrientationIfNeeded() async throws {
+        guard let original = originalOrientation else { return }
+        originalOrientation = nil
+        let _: RotateResponse = try await post(
+            "/rotate", body: RotateRequest(orientation: original), timeout: interactionTimeout)
+    }
+
     public func press(ref: Int, duration: Double) async throws {
         let _: OKResponse = try await post("/press", body: PressRequest(ref: ref, duration: duration,
                                                                         fast: fastFlag),

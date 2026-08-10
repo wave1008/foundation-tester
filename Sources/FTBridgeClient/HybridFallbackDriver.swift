@@ -103,6 +103,14 @@ public final class HybridFallbackDriver: AppDriver {
         }
     }
 
+    public func rotate(to orientation: FTOrientation) async throws -> FTOrientation {
+        try await withFallback { try await $0.rotate(to: orientation) }
+    }
+
+    public func restoreOrientationIfNeeded() async throws {
+        try await withFallback { try await $0.restoreOrientationIfNeeded() }
+    }
+
     public func press(x: Double, y: Double, duration: Double) async throws {
         try await withFallback { try await $0.press(x: x, y: y, duration: duration) }
     }

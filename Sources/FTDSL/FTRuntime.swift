@@ -784,6 +784,13 @@ public final class FTDriveCore {
         branchOutcomes[selector] = (branchOutcomes[selector] ?? false) || met
     }
 
+    /// `driver` は internal なので、ScenarioRunnerMain(別モジュール)からのシナリオ終端の
+    /// リストア呼び出し用に forward するだけの公開口。呼ぶだけで安価
+    /// (rotate(to:) を一度も呼んでいなければ AppDriver 側で no-op)
+    public func restoreOrientationIfNeeded() async throws {
+        try await driver.restoreOrientationIfNeeded()
+    }
+
     /// **シナリオ全体でアサーションが1本も無い**ときの警告。expectation 単位の警告
     /// (runSection)より重い症状 —— 操作しただけで何も確かめておらず、**アプリがどう壊れても緑**。
     /// dry-run でも成立する静的な判定なので、生成直後の検証ループで拾える。

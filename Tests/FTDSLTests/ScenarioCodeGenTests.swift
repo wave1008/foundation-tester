@@ -55,6 +55,14 @@ final class ScenarioCodeGenTests: XCTestCase {
         XCTAssertTrue(pan.contains("swipeBy(dxRatio: -0.4, dyRatio: 0.4)"), pan)
     }
 
+    func testRotateToEmitsTheOrientation() {
+        let landscapeLeft = render([FlowStep(action: "rotateTo", direction: "landscape")])
+        XCTAssertTrue(landscapeLeft.contains("rotateTo(.landscape)"), landscapeLeft)
+
+        let portrait = render([FlowStep(action: "rotateTo", direction: "portrait")])
+        XCTAssertTrue(portrait.contains("rotateTo(.portrait)"), portrait)
+    }
+
     func testExistEmitsFractionalTimeoutAndOmitsTheDefault() {
         let fractional = render([
             FlowStep(assert: "exists", locator: FlowLocator(id: "msg"), timeout: 1.2),

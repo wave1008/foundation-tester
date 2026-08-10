@@ -88,6 +88,7 @@ final class FTInAppBridge {
             case ("POST", "/swipe"): return try handleSwipe(req.body)
             case ("POST", "/doubletap"): return try handleDoubleTap(req.body)
             case ("POST", "/pinch"): return try handlePinch(req.body)
+            case ("POST", "/rotate"): return try handleRotate(req.body)
             case ("POST", "/press"): return try handlePress(req.body)
             case ("GET", "/screenshot"): return try handleScreenshot()
             case ("POST", "/session"):
@@ -150,7 +151,8 @@ final class FTInAppBridge {
                 ownerRepo: ProcessInfo.processInfo.environment["FT_OWNER_REPO"],
                 // 載っているシミュレータの UDID(H)。ホストが port ではなく udid で宛先を
                 // 指せるようにするための申告。実機には SIMULATOR_UDID が無いので nil
-                udid: ProcessInfo.processInfo.environment["SIMULATOR_UDID"]))
+                udid: ProcessInfo.processInfo.environment["SIMULATOR_UDID"],
+                orientation: self.keyWindow()?.windowScene?.interfaceOrientation.ftOrientation))
         }
     }
 
@@ -958,6 +960,35 @@ final class FTInAppBridge {
         return ok()
     }
 
+    /// POST /rotate. `requestGeometryUpdate` is async — the readback right after the request can
+    /// still be the pre-rotation value — so poll until it matches or the deadline passes; never
+    /// answer 200 with a value that isn't what was requested (RotationSettle.deadlineSeconds).
+    private func handleRotate(_ body: Data) throws -> InAppHTTPServer.Response {
+        let req = try decode(RotateRequest.self, body)
+        let mask: UIInterfaceOrientationMask
+        switch req.orientation {
+        case .portrait: mask = .portrait
+        // **どちらの landscape でもよい**(契約は「アプリの UI が横になること」で、物理方向は
+        // テストから観測できないので約束しない。FTOrientation の宣言を参照)
+        case .landscape: mask = .landscapeLeft
+        }
+        try mainSync {
+            guard let scene = self.keyWindow()?.windowScene else {
+                throw InAppError(409, "no window scene")
+            }
+            scene.requestGeometryUpdate(.iOS(interfaceOrientations: mask)) { _ in }
+        }
+        let deadline = Date().addingTimeInterval(RotationSettle.deadlineSeconds)
+        while Date() < deadline {
+            let current: FTOrientation? = mainSync { self.keyWindow()?.windowScene?.interfaceOrientation.ftOrientation }
+            if current == req.orientation { return .json(RotateResponse(orientation: req.orientation)) }
+            Thread.sleep(forTimeInterval: RotationSettle.pollIntervalSeconds)
+        }
+        let observed: FTOrientation? = mainSync { self.keyWindow()?.windowScene?.interfaceOrientation.ftOrientation }
+        throw InAppError(422, "orientation did not settle to \(req.orientation.rawValue) within "
+            + "\(RotationSettle.deadlineSeconds)s (observed: \(observed?.rawValue ?? "unknown"))")
+    }
+
     private func handlePress(_ body: Data) throws -> InAppHTTPServer.Response {
         throw InAppError(501, "press (long-press) does not work via the in-app engine"
             + " (gesture recognizers do not accept a held synthetic touch)."
@@ -1055,5 +1086,16 @@ struct InAppError: Error {
     init(_ status: Int, _ message: String) {
         self.status = status
         self.message = message
+    }
+}
+
+private extension UIInterfaceOrientation {
+    var ftOrientation: FTOrientation? {
+        switch self {
+        case .portrait: return .portrait
+        // 左右どちらも landscape として読む(要求と同じ側かは問わない = 契約どおり)
+        case .landscapeLeft, .landscapeRight: return .landscape
+        default: return nil   // portraitUpsideDown/unknown — not part of FTOrientation
+        }
     }
 }
