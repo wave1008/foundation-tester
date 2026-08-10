@@ -1,9 +1,17 @@
 // ft_batch のステップ文法: 「DSL の呼び出し1行」だけを解釈する限定パーサ。
 //
-//   line   := name [ "(" args ")" ]
-//   args   := arg ("," arg)*
+//   line   := name arg*                               (括弧・カンマは使わない: type '#f' 'abc')
 //   arg    := [ label ":" ] value
-//   value  := string | number | bool | "." ident      (string は "…" と '…' を等価に受ける)
+//   value  := string | number | bool | "." ident      (string は '…' と "…" が等価)
+//
+// 手の区切りは ";" と改行(splitSteps。引用符の中では区切らない)。
+//
+// **構文は1つだけ**(2026-08-10 ユーザー決定)。当初は Swift の正形(括弧+カンマ)を受け、その後
+// 緩い綴りを等価に足したが、併存をやめ最小記述の1形に絞った。正形で書かれた行(`tap("#id")`・
+// 引数カンマ)と配列 steps は**書き換え方を添えて拒否**する —— 黙って受けると表記が再び分裂する。
+// **文字列の引用符だけは両方受ける**(同日の追決定 —— JSON の `\"` 経由で `"…"` が届くのは
+// 自然な書き方なので拒まない。案内する推奨は JSON エスケープが要らない `'…'`)。
+// シナリオへの変換は ft_draft_scenario(FlowStep から正形を再生成)が担う。
 //
 // Swift 全体は解釈しない —— 入れ子呼び出し・配列・演算子・クロージャは構文的に受け付けず、
 // 明確なエラーにする(価は BatchLineParserTests)。
@@ -49,7 +57,7 @@ struct BatchLineSyntaxError: Error, Equatable {
     /// シグネチャ・`ft_dsl_commands` への案内を含まない土台部分。呼び出し側
     /// (`MCPServer.planBatchStep`)が `commandName` を使って肉付けする
     var baseMessage: String {
-        "could not parse \"\(rawLine)\" — \(reason). Each step is one DSL call, e.g. tap(\"#id\")."
+        "could not parse \"\(rawLine)\" — \(reason). Each step is one DSL call, e.g. tap '#id'."
     }
 }
 
@@ -57,7 +65,31 @@ struct BatchLineSyntaxError: Error, Equatable {
 
 enum BatchLineParser {
 
-    /// 前後の空白と行末の `;` を落とす(改行分割は呼び出し側 `MCPServer` の役目 —— このパーサは
+    /// steps の文字列を手に分割する: `;` と改行が区切り。**引用符(`'` / `"`)の中では区切らない**
+    /// (type の text に `;` や改行が入り得る)。閉じ忘れの引用符は残り全部を1手として返し、
+    /// エラーは `parse` の unterminated string に言わせる。空要素の除去は呼び出し側
+    /// (`MCPServer.flattenBatchLines`)の役目
+    static func splitSteps(_ raw: String) -> [String] {
+        var parts: [String] = []
+        var current = ""
+        var quote: Character?
+        var escaped = false
+        for ch in raw {
+            if let q = quote {
+                current.append(ch)
+                if escaped { escaped = false } else if ch == "\\" { escaped = true }
+                else if ch == q { quote = nil }
+                continue
+            }
+            if ch == "'" || ch == "\"" { quote = ch; current.append(ch); continue }
+            if ch == ";" || ch == "\n" { parts.append(current); current = ""; continue }
+            current.append(ch)
+        }
+        parts.append(current)
+        return parts
+    }
+
+    /// 前後の空白と行末の `;` を落とす(手の分割は `splitSteps` の役目 —— このパーサは
     /// 1行だけを見る)
     static func normalize(_ rawLine: String) -> String {
         var line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -85,23 +117,19 @@ enum BatchLineParser {
         let name = String(chars[nameStart..<i])
         skipSpaces()
 
-        var args: [BatchLineArg] = []
+        // 廃止した表記は黙って受けず、書き換え方を添えて拒む(表記の再分裂を防ぐ)
         if peek() == "(" {
-            i += 1
-            skipSpaces()
-            if peek() == ")" {
-                i += 1
-            } else {
-                while true {
-                    let arg = try parseArg(chars, &i, rawLine: rawLine, name: name)
-                    args.append(arg)
-                    skipSpaces()
-                    guard let c = peek() else { throw fail("missing closing \")\"", name: name) }
-                    if c == "," { i += 1; skipSpaces(); continue }
-                    if c == ")" { i += 1; break }
-                    throw fail("expected \",\" or \")\"", name: name)
-                }
+            throw fail("parentheses are not part of the batch syntax — write arguments after the"
+                + " name, single-quoted and space-separated: \(name) '#id'", name: name)
+        }
+        var args: [BatchLineArg] = []
+        while peek() != nil {
+            if peek() == "," {
+                throw fail("separate arguments with spaces, not commas: \(name) '#id' 'text'",
+                           name: name)
             }
+            let arg = try parseArg(chars, &i, rawLine: rawLine, name: name)
+            args.append(arg)
             skipSpaces()
         }
         guard i == chars.count else {
@@ -155,10 +183,8 @@ enum BatchLineParser {
         }
         guard let c = peek() else { throw fail("expected a value") }
 
-        // '…' も "…" と等価に受ける(MCP の引数は JSON 文字列なので、" は \" の二重エスケープに
-        // なり生産性が低い)。DSL(Swift)には無い形なので、シナリオへ貼る形は " が正 ——
-        // draft への記録は FlowStep から再生成されるため、ここで ' を受けても契約は崩れない
-        if c == "\"" || c == "'" {
+        // 文字列は '…' と "…" が等価(推奨は JSON エスケープの要らない '…')
+        if c == "'" || c == "\"" {
             let quote = c
             i += 1
             var s = ""
@@ -169,7 +195,7 @@ enum BatchLineParser {
                 if ch == "\\" {
                     i += 1
                     guard i < chars.count else { throw fail("unterminated string") }
-                    s.append(chars[i])  // \" と \\ を解く。それ以外はバックスラッシュを落として通す
+                    s.append(chars[i])  // \' \" \\ を解く。それ以外はバックスラッシュを落として通す
                     i += 1
                     continue
                 }
@@ -373,7 +399,7 @@ enum BatchStepResolver {
                     throw ResolveError(message: "ft_batch steps take a selector, not a ref — a ref"
                         + " is only valid against the snapshot it came from, and each step can"
                         + " change the tree, so a later step's ref would silently hit a different"
-                        + " element. Write \(command)(\"#id\") (or a label / .type) instead;"
+                        + " element. Write \(command) '#id' (or a label / .type) instead;"
                         + " ft_snapshot prints the id next to each ref.")
                 }
                 throw ResolveError(message: "\(command) has no \"\(label):\" parameter —"

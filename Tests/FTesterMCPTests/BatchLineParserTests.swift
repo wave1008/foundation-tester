@@ -9,10 +9,10 @@ import FTCore
 
 final class BatchLineParserTests: XCTestCase {
 
-    // MARK: - 引用符つき文字列・日本語・エスケープ
+    // MARK: - 文字列・日本語・エスケープ('…' のみ)
 
     func testQuotedStringWithJapanese() throws {
-        let parsed = try BatchLineParser.parse("type(\"#field\", \"ログイン\")")
+        let parsed = try BatchLineParser.parse("type '#field' 'ログイン'")
         XCTAssertEqual(parsed.name, "type")
         XCTAssertEqual(parsed.args, [
             BatchLineArg(label: nil, value: .string("#field")),
@@ -21,34 +21,37 @@ final class BatchLineParserTests: XCTestCase {
     }
 
     func testEscapedQuoteAndBackslash() throws {
-        let parsed = try BatchLineParser.parse("type(\"#f\", \"say \\\"hi\\\" \\\\ ok\")")
-        XCTAssertEqual(parsed.args.last?.value, .string("say \"hi\" \\ ok"))
+        let parsed = try BatchLineParser.parse("type '#f' 'say \\'hi\\' \\\\ ok'")
+        XCTAssertEqual(parsed.args.last?.value, .string("say 'hi' \\ ok"))
     }
 
-    // '…' は "…" と等価(MCP の引数は JSON 文字列で、" の二重エスケープを避けるため)
+    // "…" は '…' と等価(JSON の \" 経由で届く自然な書き方を拒まない。推奨は '…')
 
-    func testSingleQuotedStringEqualsDoubleQuoted() throws {
-        XCTAssertEqual(try BatchLineParser.parse("type('#field', 'ログイン')"),
-                       try BatchLineParser.parse("type(\"#field\", \"ログイン\")"))
+    func testDoubleQuotedStringEqualsSingleQuoted() throws {
+        XCTAssertEqual(try BatchLineParser.parse("type \"#field\" \"ログイン\""),
+                       try BatchLineParser.parse("type '#field' 'ログイン'"))
     }
 
-    func testSingleQuotedStringMayContainDoubleQuoteAndViceVersa() throws {
-        XCTAssertEqual(try BatchLineParser.parse("type('#f', 'say \"hi\"')").args.last?.value,
+    func testEachQuoteStyleMayContainTheOtherQuote() throws {
+        XCTAssertEqual(try BatchLineParser.parse("type '#f' 'say \"hi\"'").args.last?.value,
                        .string("say \"hi\""))
-        XCTAssertEqual(try BatchLineParser.parse("type(\"#f\", \"it's\")").args.last?.value,
+        XCTAssertEqual(try BatchLineParser.parse("type \"#f\" \"it's\"").args.last?.value,
                        .string("it's"))
     }
 
-    func testMismatchedQuotesAreUnterminated() {
-        XCTAssertThrowsError(try BatchLineParser.parse("tap('#a\")")) { error in
-            XCTAssertTrue((error as? BatchLineSyntaxError)?.reason.contains("unterminated") == true)
+    func testUnterminatedStringIsRejected() {
+        for line in ["tap '#a", "tap \"#a", "tap '#a\""] {  // 3本目は引用符の混在(閉じ違い)
+            XCTAssertThrowsError(try BatchLineParser.parse(line), line) { error in
+                XCTAssertTrue((error as? BatchLineSyntaxError)?.reason.contains("unterminated") == true,
+                              "\(error)")
+            }
         }
     }
 
     // MARK: - 位置引数とラベル付き引数の混在
 
     func testPositionalAndLabeledArgsMixed() throws {
-        let parsed = try BatchLineParser.parse("tap(\"#a\", holdSeconds: 1.5, timeout: 2)")
+        let parsed = try BatchLineParser.parse("tap '#a' holdSeconds: 1.5 timeout: 2")
         XCTAssertEqual(parsed.args, [
             BatchLineArg(label: nil, value: .string("#a")),
             BatchLineArg(label: "holdSeconds", value: .number(1.5)),
@@ -59,51 +62,84 @@ final class BatchLineParserTests: XCTestCase {
     // MARK: - ドット形
 
     func testDotIdentifierValue() throws {
-        let parsed = try BatchLineParser.parse("swipe(.down)")
+        let parsed = try BatchLineParser.parse("swipe .down")
         XCTAssertEqual(parsed.args, [BatchLineArg(label: nil, value: .dotIdent("down"))])
     }
 
     func testDotIdentifierAsLabeledValue() throws {
-        let parsed = try BatchLineParser.parse("scrollTo(\"#a\", direction: .up)")
+        let parsed = try BatchLineParser.parse("scrollTo '#a' direction: .up")
         XCTAssertEqual(parsed.args.last, BatchLineArg(label: "direction", value: .dotIdent("up")))
     }
 
-    // MARK: - 括弧の省略可否
+    // MARK: - 引数なしは名前だけ
 
-    func testBareNameWithoutParens() throws {
+    func testBareNameWithoutArgs() throws {
         let parsed = try BatchLineParser.parse("pressEnter")
-        XCTAssertEqual(parsed, BatchParsedLine(name: "pressEnter", args: []))
-    }
-
-    func testEmptyParens() throws {
-        let parsed = try BatchLineParser.parse("pressEnter()")
         XCTAssertEqual(parsed, BatchParsedLine(name: "pressEnter", args: []))
     }
 
     // MARK: - 行末 `;`・余分な空白
 
     func testTrailingSemicolonAndWhitespaceAreStripped() throws {
-        let parsed = try BatchLineParser.parse("   tap(\"#a\")  ;  ")
+        let parsed = try BatchLineParser.parse("   tap '#a'  ;  ")
         XCTAssertEqual(parsed, BatchParsedLine(name: "tap",
                                                args: [BatchLineArg(label: nil, value: .string("#a"))]))
+    }
+
+    // MARK: - 廃止した表記(正形の括弧・カンマ)は書き換え方を添えて拒む
+
+    func testParenthesizedCallIsRejectedWithTheRewrite() {
+        XCTAssertThrowsError(try BatchLineParser.parse("type(\"#field\", \"abc\")")) { error in
+            guard let syntax = error as? BatchLineSyntaxError else { return XCTFail("\(error)") }
+            XCTAssertTrue(syntax.reason.contains("parentheses"), syntax.reason)
+            XCTAssertTrue(syntax.reason.contains("type '#id'"), syntax.reason)
+        }
+    }
+
+    func testCommaBetweenArgsIsRejectedWithTheRewrite() {
+        for line in ["type '#f', 'abc'", "type '#f' , 'abc'", "type '#f' 'a',"] {
+            XCTAssertThrowsError(try BatchLineParser.parse(line), line) { error in
+                guard let syntax = error as? BatchLineSyntaxError else { return XCTFail("\(error)") }
+                XCTAssertTrue(syntax.reason.contains("spaces, not commas"), syntax.reason)
+            }
+        }
+    }
+
+    // MARK: - 手の分割(splitSteps: ";" と改行。引用符の中は区切らない)
+
+    func testSplitStepsOnSemicolonWithAndWithoutSpaces() {
+        for element in [
+            "type '#f' 'abc';scrollTo '#item' direction: .down",
+            "type '#f' 'abc'; scrollTo '#item' direction: .down",
+            "type '#f' 'abc' ;scrollTo '#item' direction: .down",
+        ] {
+            XCTAssertEqual(MCPServer.flattenBatchLines(element),
+                           ["type '#f' 'abc'", "scrollTo '#item' direction: .down"], element)
+        }
+    }
+
+    func testSplitStepsDoesNotSplitInsideQuotes() {
+        XCTAssertEqual(BatchLineParser.splitSteps("type '#f' 'a;b'"), ["type '#f' 'a;b'"])
+        XCTAssertEqual(BatchLineParser.splitSteps("type \"#f\" \"a;b\";swipe .up"),
+                       ["type \"#f\" \"a;b\"", "swipe .up"])
     }
 
     // MARK: - 空行・改行分割(MCPServer.flattenBatchLines)
 
     func testFlattenDropsBlankLinesAndSemicolons() {
-        let lines = MCPServer.flattenBatchLines(["  ", "tap(\"#a\");", "\n", "swipe(.up)"])
-        XCTAssertEqual(lines, ["tap(\"#a\")", "swipe(.up)"])
+        let lines = MCPServer.flattenBatchLines("  ; tap '#a'; \n ;swipe .up")
+        XCTAssertEqual(lines, ["tap '#a'", "swipe .up"])
     }
 
-    func testFlattenSplitsAnElementContainingNewlines() {
-        let lines = MCPServer.flattenBatchLines(["tap(\"#a\")\nswipe(.up)\n\ntap(\"#b\")"])
-        XCTAssertEqual(lines, ["tap(\"#a\")", "swipe(.up)", "tap(\"#b\")"])
+    func testFlattenSplitsOnNewlines() {
+        let lines = MCPServer.flattenBatchLines("tap '#a'\nswipe .up\n\ntap '#b'")
+        XCTAssertEqual(lines, ["tap '#a'", "swipe .up", "tap '#b'"])
     }
 
     // MARK: - 入れ子呼び出し・配列・演算子・クロージャを弾く
 
     func testNestedCallIsRejected() {
-        XCTAssertThrowsError(try BatchLineParser.parse("tap(foo(\"x\"))")) { error in
+        XCTAssertThrowsError(try BatchLineParser.parse("tap foo('x')")) { error in
             guard let syntax = error as? BatchLineSyntaxError else {
                 return XCTFail("\(error)")
             }
@@ -112,7 +148,7 @@ final class BatchLineParserTests: XCTestCase {
     }
 
     func testArrayLiteralIsRejected() {
-        XCTAssertThrowsError(try BatchLineParser.parse("tap([\"#a\", \"#b\"])")) { error in
+        XCTAssertThrowsError(try BatchLineParser.parse("tap ['#a' '#b']")) { error in
             guard let syntax = error as? BatchLineSyntaxError else {
                 return XCTFail("\(error)")
             }
@@ -121,7 +157,7 @@ final class BatchLineParserTests: XCTestCase {
     }
 
     func testClosureIsRejected() {
-        XCTAssertThrowsError(try BatchLineParser.parse("withScrollDown { tap(\"#a\") }")) { error in
+        XCTAssertThrowsError(try BatchLineParser.parse("withScrollDown { tap '#a' }")) { error in
             XCTAssertTrue(error is BatchLineSyntaxError, "\(error)")
         }
     }
@@ -140,8 +176,8 @@ final class BatchLineParserTests: XCTestCase {
     // MARK: - 引数の数が合わない場合を弾く(BatchStepResolver)
 
     func testTooManyPositionalArgumentsIsRejected() {
-        // pressEnter() はシグネチャに引数が無い
-        XCTAssertThrowsError(try resolve(command: "pressEnter", line: "pressEnter(\"#a\")")) { error in
+        // pressEnter はシグネチャに引数が無い
+        XCTAssertThrowsError(try resolve(command: "pressEnter", line: "pressEnter '#a'")) { error in
             let message = (error as? BatchStepResolver.ResolveError)?.message ?? "\(error)"
             XCTAssertTrue(message.contains("does not take"), message)
         }
@@ -151,7 +187,7 @@ final class BatchLineParserTests: XCTestCase {
 
     func testUnsupportedLabelNamesItselfAndListsWhatIsSupported() {
         XCTAssertThrowsError(
-            try resolve(command: "tap", line: "tap(\"#a\", containerInference: true)")
+            try resolve(command: "tap", line: "tap '#a' containerInference: true")
         ) { error in
             let message = (error as? BatchStepResolver.ResolveError)?.message ?? "\(error)"
             XCTAssertTrue(message.contains("\"containerInference:\""), message)
@@ -163,7 +199,7 @@ final class BatchLineParserTests: XCTestCase {
     // MARK: - 未知のラベル(シグネチャにも無い)は別の文言で弾く
 
     func testUnknownLabelIsRejectedWithADifferentMessage() {
-        XCTAssertThrowsError(try resolve(command: "tap", line: "tap(\"#a\", bogus: 1)")) { error in
+        XCTAssertThrowsError(try resolve(command: "tap", line: "tap '#a' bogus: 1")) { error in
             let message = (error as? BatchStepResolver.ResolveError)?.message ?? "\(error)"
             XCTAssertTrue(message.contains("\"bogus:\""), message)
             XCTAssertTrue(message.contains("has no"), message)
@@ -202,7 +238,33 @@ final class BatchLineParserTests: XCTestCase {
         }
     }
 
-    // MARK: - 往復: ScenarioCodeGen が描く行をパーサへ戻し、同じ行が再び出ること
+    // MARK: - 往復: ScenarioCodeGen が描く行(正形)を最小形へ変換してパーサへ戻し、同じ正形が再び出ること
+    //
+    // バッチ文法は最小形のみ(正形は受けない)なので、正形→最小形の機械変換を挟む。
+    // このゲートが守るのは「executor/codegen が表せる全ステップがバッチ文法でも表せる」こと
+
+    /// 正形 `tap("#a", holdSeconds: 1.5)` → 最小形 `tap '#a' holdSeconds: 1.5`。
+    /// 引用符の中を守りながら、トップレベルの `(` `)` `,` を空白に・`"` を `'` に置き換える
+    private func minimalForm(of canonical: String) -> String {
+        var out = ""
+        var inQuote = false
+        var escaped = false
+        for ch in canonical {
+            if inQuote {
+                if escaped { escaped = false; out.append(ch); continue }
+                if ch == "\\" { escaped = true; out.append(ch); continue }
+                if ch == "\"" { inQuote = false; out.append("'"); continue }
+                out.append(ch)
+                continue
+            }
+            switch ch {
+            case "\"": inQuote = true; out.append("'")
+            case "(", ")", ",": out.append(" ")
+            default: out.append(ch)
+            }
+        }
+        return out.trimmingCharacters(in: .whitespaces)
+    }
 
     func testRoundTripThroughScenarioCodeGen() throws {
         let selA = FTSelector.parse("#a")
@@ -242,7 +304,7 @@ final class BatchLineParserTests: XCTestCase {
             guard let line = ScenarioCodeGen.command(for: step) else {
                 return XCTFail("ScenarioCodeGen が \(step) を描けなかった(fixture 側の不備)")
             }
-            let parsed = try BatchLineParser.parse(line)
+            let parsed = try BatchLineParser.parse(minimalForm(of: line))
             guard let info = DSLCommandIndex.all.first(where: { $0.name == parsed.name }) else {
                 return XCTFail("\(line): \(parsed.name) が DSLCommandIndex に無い")
             }

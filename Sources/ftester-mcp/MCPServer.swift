@@ -1630,11 +1630,11 @@ final class MCPServer {
         return try builder.build(raw)
     }
 
-    /// `steps` の1要素に改行が入っていたら複数手として分割する(改行区切りで丸ごと貼れるように)。
-    /// 行末の `;`・前後の空白は `BatchLineParser.normalize` と同じ規則で落とし、空行は無視する。
-    /// **上限は分割後の手数で数える**(CLAUDE.md)
-    static func flattenBatchLines(_ rawSteps: [String]) -> [String] {
-        rawSteps.flatMap { $0.components(separatedBy: "\n") }
+    /// steps の文字列を手に分割する(`;` と改行が区切り。引用符の中は区切らない ——
+    /// 規則は `BatchLineParser.splitSteps`)。前後の空白は `BatchLineParser.normalize` と同じ規則で
+    /// 落とし、空行は無視する。**上限は分割後の手数で数える**(CLAUDE.md)
+    static func flattenBatchLines(_ raw: String) -> [String] {
+        BatchLineParser.splitSteps(raw)
             .map(BatchLineParser.normalize)
             .filter { !$0.isEmpty }
     }
@@ -1645,14 +1645,20 @@ final class MCPServer {
     /// (`snapshotBody`) so it carries the same MCP-only notes (ghost/occlusion/offscreen) that
     /// ft_snapshot does. Per-step output is folded to one line each — only the last screen gets a tree
     private func batch(_ args: [String: Any]) async throws -> [[String: Any]] {
-        guard let rawSteps = args["steps"] as? [String], !rawSteps.isEmpty else {
-            throw MCPError("steps is required (a non-empty array of DSL lines, e.g."
-                + " [\"tap(\\\"#id\\\")\"])")
+        // steps は文字列1本だけ(2026-08-10 ユーザー決定・表記は1つ。配列形は廃止)。
+        // MCP の arguments はオブジェクト必須なのでキー自体は消せず、これが最小の形
+        guard let joined = args["steps"] as? String else {
+            if args["steps"] is [Any] {
+                throw MCPError("steps is one string, not an array — separate steps with ';':"
+                    + " \"tap '#id'; swipe .up\"")
+            }
+            throw MCPError("steps is required — DSL lines in one string, e.g."
+                + " \"tap '#id'; swipe .up\"")
         }
-        let dslLines = Self.flattenBatchLines(rawSteps)
+        let dslLines = Self.flattenBatchLines(joined)
         guard !dslLines.isEmpty else {
-            throw MCPError("steps is required (a non-empty array of DSL lines, e.g."
-                + " [\"tap(\\\"#id\\\")\"])")
+            throw MCPError("steps is required — DSL lines in one string, e.g."
+                + " \"tap '#id'; swipe .up\"")
         }
         guard dslLines.count <= Self.batchStepLimit else {
             throw MCPError("steps has \(dslLines.count) entries — ft_batch allows at most"
@@ -4017,29 +4023,22 @@ final class MCPServer {
             "expandBulk": expandBulkProperty,
             "interactiveOnly": interactiveOnlyProperty,
         ], required: ["selector"]),
-        tool("ft_batch", "Run several operation/scroll steps in one approval — the exploration "
-            + "loop of ft_snapshot -> ft_tap -> ft_snapshot -> ... costs one round trip per step; "
-            + "this collapses a run of them into one. Stops at the first failure and returns the "
-            + "screen where it stopped; on success it returns the screen after the last step. "
-            + "Each step is one line of DSL — write it exactly as you would in a scenario "
-            + "(e.g. tap(\"#id\"), scrollTo(\"#id\", direction: .down)), so a batch that passes "
-            + "can be pasted in as-is; argument names are whatever ft_dsl_commands prints for "
-            + "that command's signature. Single-quoted strings are accepted as equivalent "
-            + "(tap('#id')) to avoid JSON escaping — Swift itself needs double quotes, so switch "
-            + "them when pasting into a scenario. Only operation and scroll commands are accepted (tap, "
-            + "type, scrollTo, swipeBy, pinchOut, …) — app lifecycle/data-wiping commands "
-            + "(launchApp, clearAppData, …) and assertions are rejected with the tool to call "
-            + "instead. Steps target elements by selector, not ref — a ref is only valid against "
-            + "the snapshot it came from, and each step can change the tree, so a later step's "
-            + "ref would silently hit a stale element.", [
-            "steps": ["type": "array", "maxItems": batchStepLimit,
-                      "items": ["type": "string"],
-                      "description": "Up to \(batchStepLimit) DSL lines. Strings may be "
-                        + "single-quoted — 'x' and \"x\" are equivalent — so the whole batch "
-                        + "can be one newline-separated element with no JSON escaping: "
-                        + "[\"tap('#nav_input')\\ntype('#field', 'batch')\\n"
-                        + "scrollTo('#btn_submit', direction: .down)\"]. An element with "
-                        + "a newline in it is split into multiple steps"],
+        tool("ft_batch", "Run several operation/scroll DSL steps in one approval, stopping at "
+            + "the first failure; the reply shows the screen after the last executed step. "
+            + "Steps are DSL lines in one string, separated by ';' (or newlines); arguments "
+            + "are quoted ('x' and \"x\" are equivalent) and space-separated — no parentheses "
+            + "or commas: type '#field' 'abc'; scrollTo '#item' direction: .down. "
+            + "Argument names are whatever ft_dsl_commands prints. "
+            + "A passing batch converts 1:1 into scenario lines (Swift needs parentheses "
+            + "and commas). Only operation/scroll commands run — lifecycle/data-wiping "
+            + "commands (launchApp, clearAppData, …) and assertions are rejected with the tool "
+            + "to call instead. Target elements by selector, not ref (refs go stale between "
+            + "steps).", [
+            "steps": ["type": "string",
+                      "description": "Up to \(batchStepLimit) DSL lines in one string, e.g. "
+                        + "\"tap '#nav_input'; type '#field' 'batch'; "
+                        + "scrollTo '#btn_submit' direction: .down\" — ';' and newlines "
+                        + "(outside quotes) separate steps"],
             "expandBulk": expandBulkProperty,
             "interactiveOnly": interactiveOnlyProperty,
         ], required: ["steps"]),

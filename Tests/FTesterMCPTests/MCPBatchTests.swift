@@ -26,15 +26,15 @@ final class MCPBatchTests: XCTestCase {
         content.compactMap { $0["text"] as? String }.joined(separator: "\n")
     }
 
-    private func steps(_ lines: [String]) -> [String: Any] {
-        ["steps": lines]
+    private func steps(_ dsl: String) -> [String: Any] {
+        ["steps": dsl]
     }
 
     // MARK: - (a) 操作系でないコマンドは弾かれ、代わりの呼び方が本文に出る
 
     func testAppLifecycleCommandIsRejectedWithTheToolToCallInstead() async {
         do {
-            _ = try await server.call(tool: "ft_batch", args: steps(["launchApp()"]))
+            _ = try await server.call(tool: "ft_batch", args: steps("launchApp"))
             XCTFail("launchApp がバッチで通った")
         } catch {
             let message = error.localizedDescription
@@ -48,10 +48,8 @@ final class MCPBatchTests: XCTestCase {
     /// 二重に押されるし、探索の前提も崩れる)。ここでは有効な手の後ろに不正な手を置く
     func testAnInvalidLaterStepStopsTheWholeBatchBeforeAnythingRuns() async {
         do {
-            _ = try await server.call(tool: "ft_batch", args: steps([
-                "tap(\"#login_btn\")",
-                "launchApp()",
-            ]))
+            _ = try await server.call(tool: "ft_batch",
+                                      args: steps("tap '#login_btn'; launchApp"))
             XCTFail("2手目が不正なのにバッチが走った")
         } catch {
             XCTAssertTrue(error.localizedDescription.contains("step 2"),
@@ -65,7 +63,7 @@ final class MCPBatchTests: XCTestCase {
         do {
             _ = try await server.call(
                 tool: "ft_batch",
-                args: steps(["clearAppData(\"com.example.app\")"]))
+                args: steps("clearAppData 'com.example.app'"))
             XCTFail("clearAppData がバッチで通った")
         } catch {
             let message = error.localizedDescription
@@ -79,7 +77,7 @@ final class MCPBatchTests: XCTestCase {
         do {
             _ = try await server.call(
                 tool: "ft_batch",
-                args: steps(["exist(\"#login_btn\")"]))
+                args: steps("exist '#login_btn'"))
             XCTFail("exist がバッチで通った")
         } catch {
             let message = error.localizedDescription
@@ -92,7 +90,7 @@ final class MCPBatchTests: XCTestCase {
 
     func testUnknownCommandNameIsRejectedAndPointsToDslCommands() async {
         do {
-            _ = try await server.call(tool: "ft_batch", args: steps(["tapAndHold()"]))
+            _ = try await server.call(tool: "ft_batch", args: steps("tapAndHold"))
             XCTFail("未知のコマンドが通った")
         } catch {
             let message = error.localizedDescription
@@ -105,11 +103,8 @@ final class MCPBatchTests: XCTestCase {
 
     func testStopsAtTheFirstFailureAndDoesNotRunLaterSteps() async {
         do {
-            _ = try await server.call(tool: "ft_batch", args: steps([
-                "tap(\"#login_btn\")",
-                "tap(\"#does_not_exist\", timeout: 0.0)",
-                "tap(\"#login_btn\")",
-            ]))
+            _ = try await server.call(tool: "ft_batch", args: steps(
+                "tap '#login_btn'; tap '#does_not_exist' timeout: 0.0; tap '#login_btn'"))
             XCTFail("見つからないセレクタを含むバッチが成功した")
         } catch {
             let message = error.localizedDescription
@@ -125,10 +120,8 @@ final class MCPBatchTests: XCTestCase {
     // MARK: - (d) 成功時にツリーが1回だけ返る
 
     func testSuccessfulBatchReturnsExactlyOneTree() async throws {
-        let text = body(try await server.call(tool: "ft_batch", args: steps([
-            "tap(\"#login_btn\")",
-            "swipe(.up)",
-        ])))
+        let text = body(try await server.call(tool: "ft_batch",
+                                              args: steps("tap '#login_btn'; swipe .up")))
         XCTAssertTrue(text.contains("All 2 step(s) passed"), text)
         // 木は render 経由で1回だけ描かれる(screen: が1回)
         let screenLines = text.components(separatedBy: "\n").filter { $0.hasPrefix("screen:") }
@@ -136,14 +129,26 @@ final class MCPBatchTests: XCTestCase {
         XCTAssertTrue(text.contains("id=login_btn"), text)
     }
 
-    // MARK: - (e) 実行した各手が InteractionLog に1手ずつ入り、下書きに出る
+    /// 配列形の steps は廃止(2026-08-10 ユーザー決定・表記は1つ)。書き換え方を添えて弾く
+    func testArrayStepsIsRejectedWithTheRewrite() async {
+        do {
+            _ = try await server.call(tool: "ft_batch",
+                                      args: ["steps": ["tap '#login_btn'", "swipe .up"]])
+            XCTFail("配列形の steps が通った")
+        } catch {
+            let message = error.localizedDescription
+            XCTAssertTrue(message.contains("not an array"), message)
+            XCTAssertTrue(message.contains(";"), message)
+        }
+        XCTAssertEqual(driver.calls, [])
+    }
+
+    // MARK: - (e) 実行した各手が InteractionLog に1手ずつ入り、下書きは正形で出る
 
     func testExecutedStepsAreRecordedForTheDraft() async throws {
         _ = try await server.call(tool: "ft_launch", args: ["bundleId": "com.example.app"])
-        _ = try await server.call(tool: "ft_batch", args: steps([
-            "tap(\"#login_btn\")",
-            "type(\"#login_btn\", \"abc\")",
-        ]))
+        _ = try await server.call(tool: "ft_batch",
+                                  args: steps("tap '#login_btn'; type '#login_btn' 'abc'"))
         let draft = body(try await server.call(tool: "ft_draft_scenario", args: [:]))
         XCTAssertTrue(draft.contains("tap(\"#login_btn\")"), draft)
         XCTAssertTrue(draft.contains("type(\"#login_btn\", \"abc\")"), draft)
@@ -152,7 +157,8 @@ final class MCPBatchTests: XCTestCase {
     // MARK: - (f) ステップ数の上限を超えたら実行前に弾く
 
     func testTooManyStepsIsRejectedBeforeTouchingTheDriver() async {
-        let many = (0..<(MCPServer.batchStepLimit + 1)).map { _ in "tap(\"#login_btn\")" }
+        let many = Array(repeating: "tap '#login_btn'", count: MCPServer.batchStepLimit + 1)
+            .joined(separator: "; ")
         do {
             _ = try await server.call(tool: "ft_batch", args: steps(many))
             XCTFail("上限超えのバッチが通った")
@@ -163,32 +169,18 @@ final class MCPBatchTests: XCTestCase {
         XCTAssertEqual(driver.calls, [], "上限超えはドライバに一度も触れないこと")
     }
 
-    /// 分割後の手数で数える —— 1要素に改行を3つ埋めても4手として上限に数えられる
-    func testStepLimitCountsFlattenedLinesNotArrayElements() async {
-        let joined = Array(repeating: "tap(\"#login_btn\")", count: MCPServer.batchStepLimit + 1)
-            .joined(separator: "\n")
-        do {
-            _ = try await server.call(tool: "ft_batch", args: steps([joined]))
-            XCTFail("改行分割後に上限を超えるバッチが通った")
-        } catch {
-            XCTAssertTrue(error.localizedDescription.contains("\(MCPServer.batchStepLimit)"),
-                          error.localizedDescription)
-        }
-        XCTAssertEqual(driver.calls, [])
-    }
-
     // MARK: - (g) ref は行の文法で書けない(未対応ラベルの拒否経路が自動的に拒む)
 
     func testRefIsNotAccepted() async {
         do {
-            _ = try await server.call(tool: "ft_batch", args: steps(["tap(ref: 1)"]))
+            _ = try await server.call(tool: "ft_batch", args: steps("tap ref: 1"))
             XCTFail("ref 付きのステップが通った")
         } catch {
             // **理由と書き換え方まで返す**: 「そんな引数は無い」で終えると、渡し方を探して
             // もう1往復する(2026-08-10 のデバイス確認で実際に読みにくかった)
             let message = error.localizedDescription
             XCTAssertTrue(message.contains("selector, not a ref"), message)
-            XCTAssertTrue(message.contains("tap(\"#id\")"), message)
+            XCTAssertTrue(message.contains("tap '#id'"), message)
         }
         XCTAssertEqual(driver.calls, [])
     }
@@ -197,7 +189,7 @@ final class MCPBatchTests: XCTestCase {
 
     func testEmptyStepsIsRejected() async {
         do {
-            _ = try await server.call(tool: "ft_batch", args: steps([]))
+            _ = try await server.call(tool: "ft_batch", args: steps(""))
             XCTFail("空の steps が通った")
         } catch {
             XCTAssertTrue(error.localizedDescription.contains("steps"), error.localizedDescription)
@@ -213,10 +205,10 @@ final class MCPBatchTests: XCTestCase {
         }
     }
 
-    /// 空白のみの要素・空行は無視される(steps 全体が空扱いになるケースも含む)
+    /// 空白・空行・`;` だけの steps は空扱いで弾く
     func testBlankLinesAreIgnored() async {
         do {
-            _ = try await server.call(tool: "ft_batch", args: steps(["   ", "\n"]))
+            _ = try await server.call(tool: "ft_batch", args: steps("   ; \n ; "))
             XCTFail("空行だけの steps が通った")
         } catch {
             XCTAssertTrue(error.localizedDescription.contains("steps"), error.localizedDescription)
@@ -228,7 +220,7 @@ final class MCPBatchTests: XCTestCase {
     func testUnsupportedLabelIsRejectedByName() async {
         do {
             _ = try await server.call(tool: "ft_batch",
-                                      args: steps(["tap(\"#a\", containerInference: true)"]))
+                                      args: steps("tap '#a' containerInference: true"))
             XCTFail("未対応ラベルが通った")
         } catch {
             let message = error.localizedDescription
@@ -239,12 +231,24 @@ final class MCPBatchTests: XCTestCase {
         XCTAssertEqual(driver.calls, [])
     }
 
-    // MARK: - 1要素に改行が入っている入力は複数手に分割される
+    // MARK: - 改行も手の区切りとして働く(`;` と同義。上限は分割後の手数で数える)
 
-    func testMultilineElementSplitsIntoMultipleSteps() async throws {
-        let text = body(try await server.call(tool: "ft_batch", args: steps([
-            "tap(\"#login_btn\")\nswipe(.up)",
-        ])))
+    func testNewlineSplitsIntoMultipleSteps() async throws {
+        let text = body(try await server.call(tool: "ft_batch",
+                                              args: steps("tap '#login_btn'\nswipe .up")))
         XCTAssertTrue(text.contains("All 2 step(s) passed"), text)
+    }
+
+    func testStepLimitCountsSplitLines() async {
+        let joined = Array(repeating: "tap '#login_btn'", count: MCPServer.batchStepLimit + 1)
+            .joined(separator: "\n")
+        do {
+            _ = try await server.call(tool: "ft_batch", args: steps(joined))
+            XCTFail("改行分割後に上限を超えるバッチが通った")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("\(MCPServer.batchStepLimit)"),
+                          error.localizedDescription)
+        }
+        XCTAssertEqual(driver.calls, [])
     }
 }
