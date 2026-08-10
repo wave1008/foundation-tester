@@ -462,9 +462,9 @@ public enum ProfileWorkerFactory {
     /// 凍結したシミュレータを **shutdown → boot** で戻し、**ブリッジを張り直した**
     /// ワーカー一覧を返す(BlankWorkerTriage の `recover:` にそのまま渡せる形)。
     ///
-    /// シミュレータを落とすとブリッジも死ぬので、回復と張り直しは1セット。張り直しは
-    /// `buildIOSWorkers` を呼び直すだけでよい —— 生きているブリッジは再利用されるので、
-    /// 実際に建て直るのは落とした機だけ。
+    /// シミュレータを落とす前に**その機のブリッジを止める**(掴んだままだと shutdown が約50秒
+    /// かかる。下の実測コメント)。張り直しは `buildIOSWorkers` を呼び直すだけでよい ——
+    /// 生きているブリッジは再利用されるので、実際に建て直るのは落とした機だけ。
     ///
     /// **2台ずつ**戻す: 一斉 boot は凍結の相関要因そのもので、device-up の「同時2台」と同じ理屈。
     /// udid はワーカーの connection から採る(label は表示用で simctl には渡せない)。
@@ -486,6 +486,12 @@ public enum ProfileWorkerFactory {
                 for (label, udid) in slice {
                     group.addTask {
                         log("→ \(label): rebooting the simulator (shutdown → boot)")
+                        // **先にこの機のブリッジを止める**。掴んだまま落とすと `simctl shutdown` が
+                        // XCUITest ランナーの teardown を待って **約50秒**かかり(止めてからなら約5秒)、
+                        // 生き残ったランナーが再ブート後に再接続してくるので張り直しも遅い
+                        // (2026-08-11 実測・3周とも一致: 96.5s → 34.6s)。
+                        // 止めるのは**この udid のブリッジだけ**(他機・他セッションは巻き込まない)
+                        _ = BridgeLauncher.stopMatching(udid: udid, repoRoot: repoRoot)
                         _ = try? Shell.run(["xcrun", "simctl", "shutdown", udid])
                         _ = try? Shell.run(["xcrun", "simctl", "boot", udid])
                         // boot 完了まで待つ(待たずに注入すると launch が失敗する)

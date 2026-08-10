@@ -99,4 +99,41 @@ final class FrozenIOSRecoveryTests: XCTestCase {
                                                             rebuiltIOS: [])
         XCTAssertEqual(merged.map(\.label), ["c"])
     }
+
+    // MARK: - 落とす順序(実測で 62 秒差)
+
+    /// **ブリッジを止めてから shutdown する**。掴んだまま落とすと XCUITest ランナーの
+    /// teardown を待って `simctl shutdown` が約50秒かかり、生き残ったランナーが再ブート後に
+    /// 再接続してくるぶん張り直しも遅い(2026-08-11 実測3周: 96.5s → 34.6s)。
+    /// 本体は simctl を撃つので実行では通せない。**順序だけ**をソース走査で固定する
+    func testBridgeIsStoppedBeforeShuttingTheSimulatorDown() throws {
+        let source = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()   // FTAndroidTests
+            .deletingLastPathComponent()   // Tests
+            .deletingLastPathComponent()   // リポジトリルート
+            .appendingPathComponent("Sources/FTAndroid/ProfileWorkerFactory.swift")
+        let text = try String(contentsOf: source, encoding: .utf8)
+        guard let body = text.range(of: "public static func recoverFrozenIOSWorkers") else {
+            return XCTFail("recoverFrozenIOSWorkers が見つからない(改名したらこのテストも直す)")
+        }
+        let tail = String(text[body.lowerBound...])
+        guard let stop = tail.range(of: "BridgeLauncher.stopMatching(udid: udid"),
+              let shutdown = tail.range(of: #""shutdown", udid"#) else {
+            return XCTFail("回復の本体に stopMatching か simctl shutdown が無い")
+        }
+        XCTAssertLessThan(stop.lowerBound, shutdown.lowerBound,
+                          "shutdown より後でブリッジを止めている(50秒待たされる順序)")
+    }
+
+    /// **止めるのはその1台だけ**。全停止に置き換えると他機・他セッションのブリッジまで落ちる
+    /// (`bridge down --all` 相当のコストを毎回の凍結復旧で払うことになる)
+    func testRecoveryNeverStopsEveryBridge() throws {
+        let source = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Sources/FTAndroid/ProfileWorkerFactory.swift")
+        let text = try String(contentsOf: source, encoding: .utf8)
+        XCTAssertFalse(text.contains("BridgeLauncher.stopAll"),
+                       "凍結復旧が全ブリッジを落としている")
+    }
 }
