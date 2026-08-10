@@ -453,6 +453,58 @@ final class MCPRefGuardTests: XCTestCase {
         XCTAssertTrue(note.contains("direction: down / right"), note)
     }
 
+    /// pageIndicator を模す要素(型は `#id` を持たない前提と揃え、value を「n of m」表示に見立てる)
+    private func pager(value: String, ref: Int = 10) -> ElementInfo {
+        ElementInfo(ref: ref, type: "pageIndicator", identifier: nil, label: nil, value: value,
+                    placeholder: nil, enabled: true,
+                    frame: FTRect(x: 150, y: 780, width: 90, height: 20), depth: 1)
+    }
+
+    /// 横ページャの誘導(2026-08-10)。実例(Apple マップの経路候補・横ページャ): 右隣ページの行は
+    /// 「消えた」のではなく他のページに居るだけで、pageIndicator が実在するときだけ言い換えを添える
+    func testGhostNoteOffscreenSectionMentionsAPageIndicatorForARightOffscreenRow() {
+        let snapshot = screen([
+            scroller(ref: 1, frame: FTRect(x: 0, y: 100, width: 390, height: 600)),
+            element(ref: 2, id: "row_a", label: "行A", x: 10, y: 110),
+            element(ref: 3, id: "row_b", label: "行B", x: 10, y: 160),
+            element(ref: 4, id: "route_b", label: "経路B", x: 401, y: 110),
+            pager(value: "2 of 5"),
+        ])
+        let note = MCPServer.ghostNote(snapshot)
+        XCTAssertTrue(note.contains("horizontal pager"), note)
+        XCTAssertTrue(note.contains("\"2 of 5\""), note)
+        XCTAssertTrue(note.contains("ft_scroll_to (direction: right)"), note)
+    }
+
+    /// pageIndicator が無い画面では言い換えを足さない(断定材料が無い)
+    func testGhostNoteOffscreenSectionStaysQuietWithoutAPageIndicator() {
+        let snapshot = screen([
+            scroller(ref: 1, frame: FTRect(x: 0, y: 100, width: 390, height: 600)),
+            element(ref: 2, id: "row_a", label: "行A", x: 10, y: 110),
+            element(ref: 3, id: "row_b", label: "行B", x: 10, y: 160),
+            element(ref: 4, id: "route_b", label: "経路B", x: 401, y: 110),
+        ])
+        let note = MCPServer.ghostNote(snapshot)
+        XCTAssertFalse(note.contains("horizontal pager"), note)
+    }
+
+    /// below だけの offscreen(縦方向)では、pageIndicator が居ても足さない —— 横ページャの話とは無関係
+    func testGhostNoteOffscreenSectionIgnoresAPageIndicatorForVerticalOnlyOffscreen() {
+        // outsideDeclaredScroller は「容器の中に同じ depth の兄弟が2件以上」を要求する
+        // (hasSiblingsInside)。row_a 単独では below_a がそもそも ghost 判定されないので、
+        // 既存の testGhostNoteOffscreenSectionGroupsMultipleDirections と同じく row_b も置く
+        let snapshot = screen([
+            scroller(ref: 1, frame: FTRect(x: 0, y: 100, width: 390, height: 600)),
+            element(ref: 2, id: "row_a", label: "行A", x: 10, y: 110),
+            element(ref: 3, id: "row_b", label: "行B", x: 10, y: 160),
+            element(ref: 4, id: "below_a", label: "下A", x: 10, y: 900),
+            pager(value: "2 of 5"),
+        ])
+        let note = MCPServer.ghostNote(snapshot)
+        XCTAssertTrue(note.contains("below:"), note) // 前提: below の offscreen 自体は出ている
+        XCTAssertFalse(note.contains("horizontal pager"), note)
+    }
+
     // MARK: - 探索そのものが画面を変えたら成功と言わない
 
     /// 探索のスワイプは**タップ可能な行を発火させることがある**(SwiftUI の SUT で実測)。

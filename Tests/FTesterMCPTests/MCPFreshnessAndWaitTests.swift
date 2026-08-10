@@ -304,6 +304,35 @@ final class MCPSimilarLabelsHintTests: XCTestCase {
         XCTAssertEqual(hint.components(separatedBy: "\"").count - 1, 6, hint) // 3件 ×2引用符
     }
 
+    // MARK: - 候補プールの品質(2026-08-10): 装飾葉を除外し、スコア順に選ぶ
+
+    /// 実例(Apple マップ): waitFor "経路" が地図 POI の装飾葉(type "other" の葉)にしか
+    /// 当たらなかったとき、それらは isDecorativeLeaf(bulk fold と同じ判定)で候補から除かれ、
+    /// 何も出ない(断定的な誤誘導になる代物を出さないほうがまし)
+    func testDecorativeLeavesAreExcludedFromCandidates() {
+        let snapshot = testSnapshot([
+            // "計画" は "経路" と編集距離2(既存の isSimilarText テストと同じ組)。
+            // type "other" の葉 = bulk fold の畳み対象と同じ「装飾要素」
+            testElement(ref: 1, type: "other", identifier: nil, label: "計画"),
+        ])
+        XCTAssertEqual(MCPServer.similarLabelsHint("経路", in: snapshot), "")
+    }
+
+    /// 実例そのもの(Apple マップの経路詳細): 装飾葉の POI(「南口」「北口」「1」)が文書順で
+    /// 先に並んでいても、後方の操作可能ボタン(「計画」)を優先して出す
+    func testOperableCandidateIsPreferredOverEarlierDecorativeLeaves() {
+        let snapshot = testSnapshot([
+            testElement(ref: 1, type: "other", identifier: nil, label: "南口"),
+            testElement(ref: 2, type: "other", identifier: nil, label: "北口"),
+            testElement(ref: 3, type: "other", identifier: nil, label: "1"),
+            testElement(ref: 4, type: "button", identifier: nil, label: "計画"),
+        ])
+        let hint = MCPServer.similarLabelsHint("経路", in: snapshot)
+        XCTAssertTrue(hint.contains("\"計画\""), hint)
+        XCTAssertFalse(hint.contains("南口"), hint)
+        XCTAssertFalse(hint.contains("北口"), hint)
+    }
+
     // MARK: - isSimilarText / editDistance(純粋関数)
 
     func testIsSimilarTextMatchesSubstringEitherDirection() {

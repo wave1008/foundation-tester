@@ -2209,7 +2209,11 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
     中心のはみ出し量が大きい軸(below/above/right/left)で方向グループに分け、
     `ft_scroll_to` の `direction:` へそのまま渡せる語(down/up/right/left)を添える。
     旧文言「scrolled past」は削除した —— 実測(Apple マップの経路候補・横ページャ)で、
-    一度も表示していない右隣ページの要素に「スクロールで通り過ぎた」は不正確だった
+    一度も表示していない右隣ページの要素に「スクロールで通り過ぎた」は不正確だった。
+    **左右方向の `⚠️offscreen` があり、かつ画面に `pageIndicator` が居るときだけ**、
+    横ページャが1ページずつしか描画しないこと・`ft_scroll_to` で届くことを1文添える
+    (`MCPServer.ghostNote` の `pageIndicatorHint`)。縦方向だけの offscreen やページャの無い画面では
+    何も足さない
 
     当てる相手は `RefGuard.occluder`(中心を覆う別要素)。**遮蔽と数えないものが7つ**ある:
 

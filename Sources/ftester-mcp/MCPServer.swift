@@ -68,6 +68,10 @@ final class MCPServer {
     /// 「木は変わったのに絵が前回と同一 = 古いフレームを返し続けている」と言える(treeFingerprint の
     /// 前後比較単独では拾えなかった動機の事象: 木は新しいのに絵だけ古い)
     var lastScreenshots: [String: (imageHash: Int, treeFingerprint: Int)] = [:]
+    /// ft_snapshot で**明示された** interactiveOnly/expandBulk(engineKey ごと)。呼ばれるたびに
+    /// 丸ごと置き換える(省略されたキーは記憶から消える)。snapshotAfterBody が、呼び出し側の
+    /// args に無いキーだけこれで補う — 明示した値が常に優先(snapshotAfterBody 参照)
+    var rememberedSnapshotFilters: [String: [String: Bool]] = [:]
     /// プロファイル解決で出た警告(未解決のデバイス名など)。**次に返す応答へ1度だけ**混ぜる。
     /// stderr だけに出していたときは MCP クライアントに一切届かなかった
     var pendingWarnings: [String: [String]] = [:]
@@ -87,6 +91,10 @@ final class MCPServer {
     /// 差し替えドライバの経路でも版ズレのゲートを通すか(テスト用。既定 off。
     /// 実運用の経路は常に通る。理由は driver(_:) のコメント)
     private let checksVersionOnInjectedDriver: Bool
+
+    /// snapshotAfter の settle-lite が挟む待ち(秒)。**テストは 0 にする**
+    /// (snapshotAfterBody 参照。既定 0.4 は実測に基づく調整値ではなく、1回だけの短い猶予)
+    var settleWaitSeconds: Double = 0.4
 
     init(write: @escaping (Data) -> Void = { FileHandle.standardOutput.write($0) },
          makeDriver: ((_ args: [String: Any]) async throws -> AppDriver)? = nil,
@@ -883,16 +891,33 @@ final class MCPServer {
                         + " \"*prefix*\" (see the first snapshot's note).\n")
     }
 
-    /// `snapshotAfter` が読む木は整定を待たない、という注意を初回だけ満額で出す(2026-08-10)。
+    /// `snapshotAfter` が読む木は基本的に整定を待たないという注意を初回だけ満額で出す
+    /// (2026-08-10。settle-lite 追加後も「基本的に」待たない: 直後の木が操作前と見分けが
+    /// 付かないときだけ、snapshotAfterBody が1回だけ短い待ちを挟んで撮り直す)。
     /// 実測: ft_type の直後は候補リストがまだネットワーク待ちで、waitFor 付きの ft_snapshot なら
     /// 出るものが「候補なし」に見えた
     private func immediateReadNote() -> String {
         once("snapshotAfterImmediateNote",
-            full: "note: this tree was read immediately after the action, with no settling wait —"
-                + " a dynamic list (search suggestions, network results) may not have populated"
-                + " yet; if something you expect is missing, confirm with ft_snapshot waitFor"
-                + " before concluding it is absent.\n",
+            full: "note: this tree was read immediately after the action; if it looked unchanged"
+                + " right after, it was re-read once after a short wait (see the note above if that"
+                + " happened) — a dynamic list (search suggestions, network results) may still not"
+                + " have populated yet; if something you expect is missing, confirm with"
+                + " ft_snapshot waitFor before concluding it is absent.\n",
             short: "(immediate read — see the first snapshotAfter note)\n")
+    }
+
+    /// 直後の木が操作前と区別できないときだけ挟む、1回きりの短い再読(settle-lite。2026-08-10)。
+    /// **value と frame を比較に含めるのが要点**: ft_type 直後は value が変わるので「変化あり」に
+    /// なり無駄な待ちが入らない/ スクロールを伴うタップは frame が動くので同じ理由で入らない。
+    /// **push 遷移が主目的**: 操作直後の木が古いまま返り、snapshotAfter が空振りして
+    /// 別途 ft_snapshot を要求される実測から
+    private static func looksUnchanged(_ before: SnapshotResponse, _ after: SnapshotResponse) -> Bool {
+        guard before.elements.count == after.elements.count else { return false }
+        return zip(before.elements, after.elements).allSatisfy { a, b in
+            a.ref == b.ref && a.type == b.type && a.identifier == b.identifier
+                && a.label == b.label && a.value == b.value && a.checked == b.checked
+                && a.frame == b.frame
+        }
     }
 
     /// 操作系ツールが `snapshotAfter: true` で返す「操作の直後の画面」。
@@ -901,18 +926,50 @@ final class MCPServer {
     /// 読み手はほぼ必ず ft_snapshot を続けて撃つ。実測(2026-08-09 のマップ探索1セッション)では
     /// 46 回の呼び出しのうち 21 回が**この確認だけの snapshot** だった。
     ///
-    /// **撮るのは操作の直後**(整定は待たない)。アニメーション中の木が返ることがあるので、
-    /// 期待する要素が居ないときは ft_snapshot の waitFor で待ち直す —— それはツール説明に書く。
+    /// **撮るのは操作の直後**。木が操作前(`lastSnapshots`)と見分けが付かないときだけ、
+    /// `settleWaitSeconds` だけ待って1回だけ撮り直す(settle-lite。looksUnchanged 参照) ——
+    /// 撮り直しても同一なら「変わっていないかもしれない」と言うだけで、それ以上は待たない。
+    /// 操作前の木を知らない(`lastSnapshots` が無い)ときは何もしない。
     /// **失敗しても throw しない**: 操作自体は成功しているので、ここで throw すると
     /// 「タップは効いたのにエラーが返る」になり、読み手が操作を撃ち直して二重操作になる
     private func snapshotAfterBody(_ args: [String: Any]) async -> String {
         guard args["snapshotAfter"] as? Bool == true else { return "" }
         do {
             let snapshotDriver = try await driver(args)
-            let snapshot = try await freshSnapshot(snapshotDriver, args: args)
+            let key = Self.engineKey(args)
+            let beforeAction = lastSnapshots[key]
+
+            // **明示された値が常に優先**: args に無いキーだけ記憶で補う。補った値が true の
+            // ときだけ宣言する(false を補っても render の既定と同じなので出力は変わらない)
+            var effectiveArgs = args
+            var inheritedNote = ""
+            for filterKey in ["interactiveOnly", "expandBulk"] {
+                guard !(args[filterKey] is Bool),
+                      let remembered = rememberedSnapshotFilters[key]?[filterKey] else { continue }
+                effectiveArgs[filterKey] = remembered
+                if remembered {
+                    inheritedNote += "(\(filterKey): true inherited from your last ft_snapshot —"
+                        + " pass \(filterKey): false to override)\n"
+                }
+            }
+
+            var snapshot = try await freshSnapshot(snapshotDriver, args: args)
+            var settleNote = ""
+            if let beforeAction, Self.looksUnchanged(beforeAction, snapshot) {
+                try await Task.sleep(nanoseconds: UInt64(max(0, settleWaitSeconds) * 1_000_000_000))
+                let reread = try await freshSnapshot(snapshotDriver, args: args)
+                if Self.looksUnchanged(snapshot, reread) {
+                    settleNote = "note: the tree still looked unchanged after a short re-read"
+                        + " wait — the action may not have changed the screen.\n"
+                } else {
+                    settleNote = "note: the tree looked unchanged right after the action, so it"
+                        + " was re-read once after a short wait — the tree below is the re-read.\n"
+                }
+                snapshot = reread
+            }
             recordSnapshot(snapshot, snapshotDriver is AndroidDriver ? "android" : "ios", args)
-            return "\n\n" + immediateReadNote()
-                + (await snapshotBody(snapshot, driver: snapshotDriver, args: args))
+            return "\n\n" + inheritedNote + settleNote + immediateReadNote()
+                + (await snapshotBody(snapshot, driver: snapshotDriver, args: effectiveArgs))
         } catch {
             return "\n\n(snapshotAfter could not read the screen:"
                 + " \(error.localizedDescription) — the action above still went through;"
@@ -1387,9 +1444,28 @@ final class MCPServer {
             note += "note: the \(offscreenMark) rows below are off the screen, so they are listed"
                 + " but not visible — \(groups.joined(separator: " / "))."
                 + " Reach them with ft_scroll_to (direction: \(directions.joined(separator: " / ")))"
-                + " before using them\n"
+                + " before using them"
+                + Self.pageIndicatorHint(byDirection: byDirection, snapshot: snapshot) + "\n"
         }
         return note
+    }
+
+    /// 横ページャ(`pageIndicator`)が居るときだけ、左右の offscreen 行への言い換えを添える
+    /// (実測: Apple マップの経路候補・横ページャで、右隣ページの行が「消えた」ように見えた)。
+    /// 縦方向(below/above)だけの offscreen では出さない —— 縦スクロールは既に案内済みで、
+    /// pageIndicator の有無とは無関係
+    private static func pageIndicatorHint(byDirection: [OffscreenDirection: [ElementInfo]],
+                                          snapshot: SnapshotResponse) -> String {
+        let horizontal = [OffscreenDirection.right, .left]
+            .filter { byDirection[$0]?.isEmpty == false }
+        guard !horizontal.isEmpty,
+              let pager = snapshot.elements.first(where: { $0.type == "pageIndicator" })
+        else { return "" }
+        let quoted = (pager.value ?? pager.label).map { " \"\($0)\"" } ?? ""
+        let dirs = horizontal.map(\.scrollDirection).joined(separator: "/")
+        return " A horizontal pager\(quoted) is on screen — it renders one page at a time, so the"
+            + " \(dirs) rows above are likely just on another page; ft_scroll_to"
+            + " (direction: \(dirs)) should reach them."
     }
 
     /// 注記に並べる ref の列挙。**8件で打ち切る**(全部出すと注記だけで木より長くなる)。
@@ -1487,43 +1563,82 @@ final class MCPServer {
         return " " + note.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// waitFor が空振りしたとき、画面に**近い**ラベル/id を最大3件挙げる(2026-08-10)。
-    /// 実測: 経路ボタンを `waitFor "経路"` と推測したら実ラベルは「計画」で5秒空振りした。
-    /// **断定しない**(「これのことでは」とは書かない) —— 似ているというだけで、
-    /// 別物を待っていた可能性を否定できる材料は無い
-    static func similarLabelsHint(_ selectorText: String, in snapshot: SnapshotResponse) -> String {
-        let locator = FTSelector.parse(selectorText).primary
-        guard let raw = locator.label ?? locator.id,
-              !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return "" }
-        let target = FlowMatchMode.normalizeInvisibleCharacters(raw)
-        var seen: Set<String> = [target]
-        var matches: [String] = []
-        for element in snapshot.elements where matches.count < 3 {
-            if let label = element.label {
-                let candidate = FlowMatchMode.normalizeInvisibleCharacters(label)
-                if !candidate.isEmpty, Self.isSimilarText(target, candidate),
-                   seen.insert(candidate).inserted {
-                    matches.append("\"\(candidate)\"")
-                }
-            }
-            guard matches.count < 3, let id = element.identifier, !id.isEmpty else { continue }
-            if Self.isSimilarText(target, id), seen.insert("#" + id).inserted {
-                matches.append("#\(id)")
-            }
-        }
-        guard !matches.isEmpty else { return "" }
-        return " note: similar labels on screen: \(matches.joined(separator: ", "))."
+    /// 「近い」の強さ。**部分文字列関係(どちらかがどちらかを含む・大文字小文字無視)が強、
+    /// 編集距離だけの一致(短い語同士・6文字以下・距離2以下)が弱**。isSimilarText と
+    /// similarLabelsHint の両方がここを唯一の判定源にする(2つ目の実装を作らない)
+    enum SimilarityStrength { case strong, weak }
+
+    static func similarityStrength(_ a: String, _ b: String) -> SimilarityStrength? {
+        let la = a.lowercased(), lb = b.lowercased()
+        guard la != lb else { return nil }
+        if la.contains(lb) || lb.contains(la) { return .strong }
+        guard la.count <= 6, lb.count <= 6 else { return nil }
+        return Self.editDistance(la, lb) <= 2 ? .weak : nil
     }
 
     /// 「近い」の判定: ①どちらかがどちらかを部分文字列として含む(大文字小文字無視)
     /// ②短い文字列同士(6文字以下)なら編集距離2以下。②が無いと「経路」/「計画」のような
     /// 部分文字列関係の無い短い語の書き間違いを拾えない
     static func isSimilarText(_ a: String, _ b: String) -> Bool {
-        let la = a.lowercased(), lb = b.lowercased()
-        guard la != lb else { return false }
-        if la.contains(lb) || lb.contains(la) { return true }
-        guard la.count <= 6, lb.count <= 6 else { return false }
-        return Self.editDistance(la, lb) <= 2
+        Self.similarityStrength(a, b) != nil
+    }
+
+    /// waitFor が空振りしたとき、画面に**近い**ラベル/id を最大3件挙げる(2026-08-10)。
+    /// 実測: 経路ボタンを `waitFor "経路"` と推測したら実ラベルは「計画」で5秒空振りした。
+    /// **断定しない**(「これのことでは」とは書かない) —— 似ているというだけで、
+    /// 別物を待っていた可能性を否定できる材料は無い
+    ///
+    /// **候補は全要素を見てからスコアで選ぶ**(2026-08-10 改訂)。旧版は文書順の先着3件を
+    /// 返していたため、地図 POI のような装飾要素が短い CJK 語の緩い編集距離一致で枠を埋め、
+    /// 実在した操作ボタンを1件も出せなかった(実測: 「南口」「北口」「1」が出て「計画」が出ない)。
+    /// **装飾葉(bulk fold と同じ isDecorativeLeaf 判定)は候補プールから除く** —— 2つ目の
+    /// 判定を書くと畳みと矛盾しかねない。残った候補は「強い一致 > 操作可能要素 > 文書順」で並べる
+    static func similarLabelsHint(_ selectorText: String, in snapshot: SnapshotResponse) -> String {
+        let locator = FTSelector.parse(selectorText).primary
+        guard let raw = locator.label ?? locator.id,
+              !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return "" }
+        let target = FlowMatchMode.normalizeInvisibleCharacters(raw)
+
+        struct Candidate {
+            let display: String
+            let strength: SimilarityStrength
+            let operable: Bool
+            let order: Int
+        }
+        func isBetter(_ a: Candidate, _ b: Candidate) -> Bool {
+            if (a.strength == .strong) != (b.strength == .strong) { return a.strength == .strong }
+            if a.operable != b.operable { return a.operable }
+            return a.order < b.order
+        }
+        var best: [String: Candidate] = [:]
+        func consider(key: String, display: String, strength: SimilarityStrength,
+                      operable: Bool, order: Int) {
+            let candidate = Candidate(display: display, strength: strength,
+                                      operable: operable, order: order)
+            if let existing = best[key], !isBetter(candidate, existing) { return }
+            best[key] = candidate
+        }
+
+        for (order, element) in snapshot.elements.enumerated() {
+            guard !SnapshotRenderer.isDecorativeLeaf(element, in: snapshot.elements) else { continue }
+            let operable = BridgeSnapshotThinning.operableTypes.contains(element.type)
+                || SnapshotRenderer.textInputTypes.contains(element.type)
+            if let label = element.label {
+                let candidate = FlowMatchMode.normalizeInvisibleCharacters(label)
+                if !candidate.isEmpty, let strength = Self.similarityStrength(target, candidate) {
+                    consider(key: candidate, display: "\"\(candidate)\"", strength: strength,
+                            operable: operable, order: order)
+                }
+            }
+            if let id = element.identifier, !id.isEmpty,
+               let strength = Self.similarityStrength(target, id) {
+                consider(key: "#" + id, display: "#\(id)", strength: strength,
+                        operable: operable, order: order)
+            }
+        }
+        let top = best.values.sorted(by: isBetter).prefix(3)
+        guard !top.isEmpty else { return "" }
+        return " note: similar labels on screen: \(top.map(\.display).joined(separator: ", "))."
     }
 
     /// 素朴な編集距離(挿入・削除・置換を1コストずつ)。短い文字列(≤6)にしか使わない前提の
@@ -2151,7 +2266,8 @@ final class MCPServer {
         // ドライバを引くのに、`engineKey` は生の引数しか見ないので、udid で指した機は
         // すべて port=nil の同じキーに落ちていた。engineKey が引く記憶は
         // lastSnapshots / launchedBundleIDs / uiFrameworkHints / connections /
-        // pendingWarnings / udids / engines の7つで、**2台を udid で操作すると混ざる**
+        // pendingWarnings / udids / engines / rememberedSnapshotFilters の8つで、
+        // **2台を udid で操作すると混ざる**
         // (実測: 機A に Preferences・機B に Maps を launch した後、機A への
         //  ft_open_url が com.apple.Maps へ配ると申告した。Android では intent の
         //  宛先そのものなので、同じ機の中で別アプリへ実際に配送される)。
@@ -2343,6 +2459,12 @@ final class MCPServer {
                 + " ft_snapshot right after still shows the old screen, wait and snapshot again")
 
         case "ft_snapshot":
+            // **明示分だけ・丸ごと置き換え**(snapshotAfterBody が読む記憶)。省略したキーは
+            // ここで記憶から消える — 次の snapshotAfter は「今の申告」だけを見て継承の可否を決める
+            var explicitFilters: [String: Bool] = [:]
+            if let v = args["interactiveOnly"] as? Bool { explicitFilters["interactiveOnly"] = v }
+            if let v = args["expandBulk"] as? Bool { explicitFilters["expandBulk"] = v }
+            rememberedSnapshotFilters[Self.engineKey(args)] = explicitFilters
             let snapshotDriver = try await driver(args)
             var snapshot: SnapshotResponse
             do {
@@ -3250,9 +3372,12 @@ final class MCPServer {
     static let snapshotAfterProperty: [String: Any] = [
         "type": "boolean",
         "description": "Append the element list of the resulting screen, exactly as ft_snapshot "
-            + "would return it — saves the follow-up ft_snapshot call. It is read immediately "
-            + "after the action with no settling wait, so if an animation is still running use "
-            + "ft_snapshot with waitFor instead of repeating the action",
+            + "would return it — saves the follow-up ft_snapshot call. It is read right after the "
+            + "action; if the tree looks identical to the one before the action (a likely sign a "
+            + "screen transition has not finished), it is re-read once after a short wait. If an "
+            + "animation is still running after that, use ft_snapshot with waitFor instead of "
+            + "repeating the action. It also inherits interactiveOnly/expandBulk from your last "
+            + "ft_snapshot call unless you pass them explicitly here",
     ]
     /// ft_snapshot と ft_scroll_to が共有する木の畳み方(2つ目の定義を作らない)。
     /// 両ツールとも既定は畳む・隠さないなので、説明文もそのまま両方で通用する
