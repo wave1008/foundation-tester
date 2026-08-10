@@ -9,6 +9,13 @@ tag 定数は `Sources/Tags.swift` に集約する(値は共通契約の表と b
 - `#txt_about_app` は `app=com.ftester.e2e.ios`
 - シナリオ: `TestProjects/E2E-iOS/scenarios/`
 
+## 画面回転(この SUT 固有の罠)
+
+**横向きにすると `#txt_screen_title` が画面外へ出る画面がある**(2026-08-11 実測。テキスト入力画面で
+確認)。SwiftUI のレイアウトが縦に詰めるため、タイトルが可視領域の上へ追い出される。
+**回転を含むシナリオで着地判定にタイトルを使わない** —— その画面の本体の要素
+(例: `#field_single`)を見ること。共通契約は E2EAppCMP/docs/ui-contract.md §画面回転。
+
 ## 実装方式(どの画面が SwiftUI で、どこが UIKit か)
 
 型語彙のカバレッジを稼ぐため、次の2画面だけ UIKit を混ぜる。他は SwiftUI。

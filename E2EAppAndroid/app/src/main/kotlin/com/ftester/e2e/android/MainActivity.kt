@@ -22,12 +22,29 @@ class MainActivity : AppCompatActivity() {
     private lateinit var title: TextView
     private lateinit var back: Button
 
+    /// 回転(構成変更)だけを跨いで運ぶナビゲーション状態。**プロセスが変われば消える**のが要点
+    private class NavState(val tab: Tab, val homeChild: Screen?)
+
+    // **構成変更のときだけ**引き継ぐ。savedInstanceState と違いプロセス死を跨がないので、
+    // 「起動時は必ずホームのルート」契約(onCreate のコメント)と両立する
+    override fun onRetainCustomNonConfigurationInstance(): Any = NavState(tab, homeChild)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // savedInstanceState を捨てる: 「プロセス起動時は必ずホームタブのルート」契約を守るため。
         // super に渡すと Android が View 階層の状態(EditText の文字列など)まで復元してしまい、
         // relaunchApp 後の初期状態が前回実行に汚染される。
+        //
+        // **回転は別扱い**(2026-08-11): Activity が作り直されるだけでプロセスは同じなので、
+        // ここで何もしないと**回転のたびにホームへ落ちる**。他の SUT(Compose / Flutter / RN)は
+        // 画面を保持するため、Android だけ挙動が割れていた。構成変更専用の引き継ぎ口
+        // (onRetainCustomNonConfigurationInstance)でタブと子画面だけを運ぶ ——
+        // View 階層の状態は運ばないので、起動時リセットの契約は変わらない。
         super.onCreate(null)
         setContentView(R.layout.activity_main)
+        (lastCustomNonConfigurationInstance as? NavState)?.let {
+            tab = it.tab
+            homeChild = it.homeChild
+        }
 
         container = findViewById(R.id.container)
         title = findViewById(R.id.txt_screen_title)

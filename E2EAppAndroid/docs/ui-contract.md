@@ -132,6 +132,15 @@ API 30 未満のときだけ `keyevent 66` に落ちる。`OnEditorActionListene
   `textIs` だけ古い値で落ちる)。ブリッジが WebView 内ノードを `refresh()` してから読むことで
   1 秒未満に短縮している(コストは snapshot 1 回あたり +20ms)。
 
+## 画面回転
+
+**回転しても画面は保たれる**(2026-08-11)。Android は回転で Activity を作り直すため、素のままだと
+ホームへ落ちていた(他の SUT は保つので、この SUT だけ挙動が割れていた)。
+`onRetainCustomNonConfigurationInstance` でタブと子画面だけを引き継いでいる ——
+**構成変更専用でプロセス死を跨がない**ので、「起動時は必ずホームのルート」契約
+(`MainActivity.onCreate` が `savedInstanceState` を捨てる理由)はそのまま。
+View 階層の状態(EditText の文字列など)は引き継がない。
+
 ## ビルド
 
 ```sh

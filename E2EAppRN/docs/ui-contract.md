@@ -147,6 +147,14 @@ Flutter(in-app では `other`)とも違い、新しい型分岐をホスト側�
 - Android/iOS とも `#id` が効かない・`.link` と `.staticText` が分かれて出る等の**規約は
   `E2EAppCMP/docs/ui-contract.md` の WebView 節と共通**(RN 固有の追加規約は無い)
 
+## 画面回転
+
+**iPhone でも横向きを許可している**(`Info.plist` の `UISupportedInterfaceOrientations` に
+`LandscapeLeft` / `LandscapeRight` を追加。2026-08-11)。他の SUT と揃えて回転のシナリオを
+両 OS で回すため —— 追加前は iOS だけ縦向き専用で、`rotateTo(.landscape)` が 422 になっていた
+(ftester 側の不具合ではない)。**Info.plist を変えたらアプリを作り直すこと**
+(`scripts/build-ios.sh` → `dist/ios-simulator/`)。
+
 ## ビルド
 
 ```sh

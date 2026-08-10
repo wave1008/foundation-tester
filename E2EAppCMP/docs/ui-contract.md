@@ -71,6 +71,23 @@ tag 定数は `composeApp/src/commonMain/kotlin/com/ftester/e2e/Tags.kt` に集�
 
 タブ切替は各タブのルートへ着地する(スタックを持ち越さない)。
 
+## 画面回転(全 SUT 共通契約)
+
+**5 SUT すべてが縦・横の両方を許可し、回転しても今いる画面を保つ**(2026-08-11)。
+`rotateTo(.landscape)` / `rotateTo(.portrait)` のシナリオを 5 SUT で同じ形に書くための前提。
+
+- **横向きの許可**: iOS は `Info.plist` の `UISupportedInterfaceOrientations` に
+  Portrait / LandscapeLeft / LandscapeRight。宣言していない向きへは**何をしても回らない**
+  (ftester は 422 で落ちる = 不具合ではない)
+- **画面の保持**: 回転を跨いで同じ画面に居続ける。**Android は Activity が作り直される**ので
+  構成変更専用の引き継ぎが要る(E2EAppAndroid/docs/ui-contract.md)。Compose / Flutter / RN は
+  フレームワーク側が保つ
+- **横向きで見えなくなる要素がある**: `#txt_screen_title` は SwiftUI SUT の一部画面で画面外へ出る
+  (実測)。回転のシナリオで着地判定に使うなら、その画面の**本体の要素**(例: テキスト入力画面の
+  `#field_single`)を見ること
+- 回した向きは**シナリオ終了時に自動で戻る**(Android は自動回転の設定も)。MCP の `ft_rotate` は
+  戻さないので、探索の後は自分で戻す
+
 ## ディープリンク(全 SUT 共通契約・SUT ごとに固有の URL スキーム)
 
 **URL スキームは SUT ごとに固有のものを登録する**(iOS = `Info.plist` の `CFBundleURLTypes`、
