@@ -125,27 +125,49 @@ final class TapTargetAdvisoryTests: XCTestCase {
     func testThinVerticalSliverWithLabelIsClipped() {
         var e = element(1, "tab_sunrise_seto", "tab", 1071, 100, 9, 137)
         e.label = "サンライズ瀬戸"
-        XCTAssertTrue(TapTargetGeometry.isClippedSliver(e))
+        XCTAssertTrue(TapTargetGeometry.isClippedSliver(e, screen: screen))
     }
 
     /// アイコン(9x13)は縦横比条件で除外される(ラベルを付けても偽)
     func testSmallIconIsNotASliver() {
         var e = element(1, "icon_close", "image", 1071, 100, 9, 13)
         e.label = "閉じる"
-        XCTAssertFalse(TapTargetGeometry.isClippedSliver(e))
+        XCTAssertFalse(TapTargetGeometry.isClippedSliver(e, screen: screen))
     }
 
     /// ラベル無しの細帯は「読めるテキストが切れた」ことを示せないので偽
     func testThinSliverWithoutALabelIsNotFlagged() {
         let e = element(1, "tab_unlabeled", "tab", 1071, 100, 9, 137)
-        XCTAssertFalse(TapTargetGeometry.isClippedSliver(e))
+        XCTAssertFalse(TapTargetGeometry.isClippedSliver(e, screen: screen))
     }
 
     /// 横帯(height<=10, width>=30)も同じ判定を通る
     func testThinHorizontalSliverWithLabelIsClipped() {
         var e = element(1, "banner_clipped", "staticText", 0, 866, 300, 8)
         e.label = "ライブ配信中"
-        XCTAssertTrue(TapTargetGeometry.isClippedSliver(e))
+        XCTAssertTrue(TapTargetGeometry.isClippedSliver(e, screen: screen))
+    }
+
+    /// 実害形: 画面端に接した幅12px(素の閾値10は取りこぼす。実測: Google マップの
+    /// モードタブ「2 時間 26」(1068,449 12x59)、画面幅1080)
+    func testEdgeFlushWidth12IsClipped() {
+        var e = element(1, "mode_tab", "tab", 1068, 449, 12, 59)
+        e.label = "2 時間 26"
+        XCTAssertTrue(TapTargetGeometry.isClippedSliver(e, screen: screen))
+    }
+
+    /// 同じ幅12でも画面端に接していなければ「デザイン上細いだけ」の可能性を排せないので偽
+    func testWidth12NotAtEdgeIsNotFlagged() {
+        var e = element(1, "mode_tab", "tab", 500, 449, 12, 59)
+        e.label = "2 時間 26"
+        XCTAssertFalse(TapTargetGeometry.isClippedSliver(e, screen: screen))
+    }
+
+    /// 画面端でも edgeSliverThinDimension(14)を超える幅20は誤検知を避けるため偽
+    func testEdgeFlushWidth20IsNotFlagged() {
+        var e = element(1, "mode_tab", "tab", 1060, 449, 20, 59)
+        e.label = "2 時間 26"
+        XCTAssertFalse(TapTargetGeometry.isClippedSliver(e, screen: screen))
     }
 }
 

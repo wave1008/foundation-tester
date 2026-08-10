@@ -273,12 +273,30 @@ public enum TapTargetGeometry {
     public static let sliverThinDimension: Double = 10
     public static let sliverLongDimension: Double = 30
 
-    public static func isClippedSliver(_ element: ElementInfo) -> Bool {
+    /// **画面端に接した**細い帯の閾値。sliverThinDimension(10)より緩めるが、
+    /// デザイン上ただ細いだけの要素(端に接していない)を巻き込まないよう画面端接触を必須にする
+    /// (2026-08-10。実測: Google マップのモードタブ「2 時間 26」が (1068,449 12x59)・画面幅1080で
+    /// 幅12px、素の閾値10を取りこぼした)
+    public static let edgeSliverThinDimension: Double = 14
+    /// 画面端とみなす許容誤差(pt/px)。縁の丸め差を「接していない」と誤判定しないための猶予
+    public static let edgeSliverTolerance: Double = 1
+
+    public static func isClippedSliver(_ element: ElementInfo, screen: FTRect) -> Bool {
         let label = FlowMatchMode.normalizeInvisibleCharacters(element.label ?? "")
         guard label.count >= 2 else { return false }
         let w = element.frame.width
         let h = element.frame.height
-        return (w <= sliverThinDimension && h >= sliverLongDimension)
-            || (h <= sliverThinDimension && w >= sliverLongDimension)
+        if (w <= sliverThinDimension && h >= sliverLongDimension)
+            || (h <= sliverThinDimension && w >= sliverLongDimension) {
+            return true
+        }
+        guard screen.width > 0 else { return false }
+        let tol = edgeSliverTolerance
+        let atLeftOrRight = element.frame.x <= screen.x + tol
+            || element.frame.x + element.frame.width >= screen.x + screen.width - tol
+        guard atLeftOrRight, w <= edgeSliverThinDimension, h >= sliverLongDimension else {
+            return false
+        }
+        return true
     }
 }

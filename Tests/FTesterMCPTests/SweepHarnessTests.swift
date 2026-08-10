@@ -166,7 +166,7 @@ final class SweepHarnessTests: XCTestCase {
                RefGuard.keyboardWarning(e, keyboardFrame: snap.keyboardFrame) != nil {
                 c.keyboard += 1
             }
-            if RefGuard.isClippedSliver(e) { c.sliver += 1 }
+            if RefGuard.isClippedSliver(e, screen: snap.screen) { c.sliver += 1 }
         }
         return c
     }
@@ -255,7 +255,7 @@ final class SweepHarnessTests: XCTestCase {
                    RefGuard.keyboardWarning(e, keyboardFrame: snap.keyboardFrame) != nil {
                     print("   DETAIL \(name) keyboard \(who)")
                 }
-                if RefGuard.isClippedSliver(e) {
+                if RefGuard.isClippedSliver(e, screen: snap.screen) {
                     let f = e.frame
                     print("   DETAIL \(name) sliver   \(who) \(Int(f.width))x\(Int(f.height))")
                 }

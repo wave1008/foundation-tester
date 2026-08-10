@@ -920,6 +920,14 @@ final class MCPServer {
         }
     }
 
+    /// waitFor は snapshotAfter の待ち方の指定であって独立の引数ではない。
+    /// snapshotAfter なしで渡されたら黙って無視せず気付かせる —— **throw はしない**
+    /// (操作そのものは既に実行済みなので、ここで落とすと二重操作を誘う)
+    private func waitForWithoutSnapshotAfterNote(_ args: [String: Any]) -> String {
+        guard args["waitFor"] != nil, args["snapshotAfter"] as? Bool != true else { return "" }
+        return " (note: waitFor requires snapshotAfter: true — it was ignored)"
+    }
+
     /// 操作系ツールが `snapshotAfter: true` で返す「操作の直後の画面」。
     ///
     /// **往復を半分にするためにある**: tap/type/drag は「変わったかもしれない」で終わるので、
@@ -931,7 +939,8 @@ final class MCPServer {
     /// 撮り直しても同一なら「変わっていないかもしれない」と言うだけで、それ以上は待たない。
     /// 操作前の木を知らない(`lastSnapshots` が無い)ときは何もしない。
     /// **失敗しても throw しない**: 操作自体は成功しているので、ここで throw すると
-    /// 「タップは効いたのにエラーが返る」になり、読み手が操作を撃ち直して二重操作になる
+    /// 「タップは効いたのにエラーが返る」になり、読み手が操作を撃ち直して二重操作になる。
+    /// **waitFor があれば settle-lite の代わりにそちらを使う**(両方は走らせない)
     private func snapshotAfterBody(_ args: [String: Any]) async -> String {
         guard args["snapshotAfter"] as? Bool == true else { return "" }
         do {
@@ -955,7 +964,25 @@ final class MCPServer {
 
             var snapshot = try await freshSnapshot(snapshotDriver, args: args)
             var settleNote = ""
-            if let beforeAction, Self.looksUnchanged(beforeAction, snapshot) {
+            var waitNote = ""
+            // **waitFor は settle-lite の代わり**(併用しない): 待つ理由が同じ(木がまだ
+            // 追いついていない)なので、両方は二重に待つだけ。パターンは ft_snapshot の
+            // waitFor 分岐と同じ(refetched の扱いも含め)
+            if let waitFor = args["waitFor"] as? String {
+                let seconds = args["timeout"] as? Double ?? Self.defaultWaitSeconds
+                let waited = try await Self.waitFor(waitFor, driver: snapshotDriver,
+                                                    first: snapshot, seconds: seconds)
+                snapshot = waited.refetched ? adoptSnapshot(waited.snapshot, args: args) : waited.snapshot
+                waitNote = waited.found ? "waitFor \"\(waitFor)\" appeared.\n"
+                    : "waitFor \"\(waitFor)\" did not appear within \(seconds)s"
+                        + " — this is the screen as it is now\(Self.truncationHint(snapshot))"
+                        + (waited.partialSeenAfter.map { seenAfter in
+                            " — a partial match was already on screen \(Int(seenAfter.rounded()))s"
+                                + " into the wait:\(waited.partialHint) The exact form never"
+                                + " appeared, so the wait ran to the deadline"
+                        } ?? (Self.notationHint(waitFor, in: snapshot)
+                              + Self.similarLabelsHint(waitFor, in: snapshot))) + "\n"
+            } else if let beforeAction, Self.looksUnchanged(beforeAction, snapshot) {
                 try await Task.sleep(nanoseconds: UInt64(max(0, settleWaitSeconds) * 1_000_000_000))
                 let reread = try await freshSnapshot(snapshotDriver, args: args)
                 if Self.looksUnchanged(snapshot, reread) {
@@ -968,7 +995,9 @@ final class MCPServer {
                 snapshot = reread
             }
             recordSnapshot(snapshot, snapshotDriver is AndroidDriver ? "android" : "ios", args)
-            return "\n\n" + inheritedNote + settleNote + immediateReadNote()
+            // waitFor 済みなら「待たずに読んだ」前提の immediateReadNote は誤解を招くので出さない
+            let readNote = waitNote.isEmpty ? immediateReadNote() : ""
+            return "\n\n" + inheritedNote + waitNote + settleNote + readNote
                 + (await snapshotBody(snapshot, driver: snapshotDriver, args: effectiveArgs))
         } catch {
             return "\n\n(snapshotAfter could not read the screen:"
@@ -1148,7 +1177,7 @@ final class MCPServer {
         // 条件は StepExecutor と共有(StepNote.sheetCollapsed)。**グラバーを名前で特定できる
         // ときだけ**動かす —— 当てずっぽうのドラッグは地図やリストを勝手に動かす
         var sheetNote = ""
-        if case .passed = outcome.status {} else if outcome.notes.contains(.sheetCollapsed),
+        if StepExecutor.isSuccess(outcome.status) {} else if outcome.notes.contains(.sheetCollapsed),
            let grabber = Self.sheetGrabber(in: after) {
             let toY = after.screen.height * Self.expandedSheetTopRatio
             try await scrollDriver.drag(fromX: grabber.frame.centerX, fromY: grabber.frame.centerY,
@@ -1175,14 +1204,22 @@ final class MCPServer {
                 + " [\(grabber.ref)] \(RefGuard.describe(grabber)) was dragged up to expand it and"
                 + " the search was retried once.\n"
         }
-        guard case .passed = outcome.status else {
+        // **成功は .passed/.passedViaFallback/.healed の3形**(StepExecutor.isSuccess の定義)。
+        // fallback 一致も探索としては成功であり、失敗文を投げると内部 enum(FlowLocator ダンプ)が
+        // そのまま利用者に見える(2026-08-10 実害)
+        guard StepExecutor.isSuccess(outcome.status) else {
+            // ここに来る時点で outcome.status は failed/skipped/inconclusive のいずれか
+            let reason: String
+            switch outcome.status {
+            case .failed(let message), .skipped(let message), .inconclusive(let message):
+                reason = message
+            case .passed, .passedViaFallback, .healed:
+                reason = "could not confirm the result"
+            }
             // **fail-fast(scrollFrame 未解決)は別の文で伝える**: 通常の「did not reach the
             // element」はスワイプを何本か送った前提の文言で、fail-fast は1本も送っていないので
             // そのままでは誤解を招く(2026-08-08。StepNote.scrollFrameMissing = DSL と共有した判定)
             if outcome.notes.contains(.scrollFrameMissing) {
-                let reason: String
-                if case .failed(let message) = outcome.status { reason = message }
-                else { reason = "\(outcome.status)" }
                 throw MCPError(scrollFrameLabelNote + "scrollTo \"\(selectorText)\": \(reason)"
                     + Self.scrollAlternativesHint(beforeScroll ?? after))
             }
@@ -1194,8 +1231,9 @@ final class MCPServer {
             // 読んで**もう一度同じことを手で試す**(そのぶん往復が増える)
             throw MCPError(scrollFrameLabelNote + sheetNote
                 + "scrollTo \"\(selectorText)\" did not reach the element"
-                + " (\(outcome.status))\(Self.truncationHint(after)). \(Self.visibleLabelsHint(after))"
+                + " (\(reason))\(Self.truncationHint(after)). \(Self.visibleLabelsHint(after))"
                 + Self.notationHint(selectorText, in: after)
+                + Self.similarLabelsHint(selectorText, in: after)
                 + Self.scrollAreaHint(beforeScroll ?? after, args: args))
         }
         // **成功と言う前に、返す木にそれが居ることを確かめる**(2026-08-06 の探索で外した)。
@@ -1214,6 +1252,12 @@ final class MCPServer {
                 + " Go back to the screen that has it and retry;"
                 + " scrollFrame: <container> keeps the swipes inside the list."
                 + Self.scrollAreaHint(after, args: args))
+        }
+        // fallback 一致は成功だが、利用者が書いた式では見つからなかったことを伝える
+        // (primary が空振りする式は将来また空振りしうる)
+        var fallbackNote = ""
+        if case .passedViaFallback(let locator) = outcome.status {
+            fallbackNote = " (matched via the fallback \(locator.summary))"
         }
         // outcome.resolvedElement は StepExecutor が内部で撮った木の native ref を持っている
         // (MCP の ref 世代管理を経由していない)。表示するのは `after`(adoptSnapshot 済み =
@@ -1247,7 +1291,7 @@ final class MCPServer {
             step: scrollStep, unresolved: nil, summary: "scrollTo \"\(selectorText)\""))
         // **ghostNote と render で畳みの有無を揃える**(ft_snapshot と同じ理由)
         let collapsingBulk = args["expandBulk"] as? Bool != true
-        return text(switched + scrollFrameLabelNote + sheetNote + "scrolled to \"\(selectorText)\"\(landed)."
+        return text(switched + scrollFrameLabelNote + sheetNote + "scrolled to \"\(selectorText)\"\(landed)\(fallbackNote)."
             + " The refs below are fresh\n" + scrollAreaNote
             + Self.ghostNote(after, collapsingBulk: collapsingBulk)
             + Self.truncationNote(after)
@@ -1311,7 +1355,8 @@ final class MCPServer {
         return lines.joined(separator: "\n")
     }
 
-    /// 探索が止まった画面で「実際に引けるもの」を列挙する。id を優先し、無ければラベル。
+    /// 探索が止まった画面で「実際に引けるもの」を列挙する。id とラベルが両方あれば
+    /// 両方出す(id だけだと、同じ id を複数のラベルが共有する画面で見分けが付かない)。
     /// **多すぎると読めない**ので上限を切る(足りなければ ft_snapshot を撮ればよい)
     static func visibleLabelsHint(_ snapshot: SnapshotResponse) -> String {
         var seen = Set<String>()
@@ -1321,8 +1366,9 @@ final class MCPServer {
             // 完全一致しない**(2026-08-07 実測。Google マップの発車案内で U+200B が21個
             // 漏れていた。木の描画側は除去済みで、ヒストだけ素通しだった)
             let cleaned = e.label.map(FlowMatchMode.normalizeInvisibleCharacters)
-            let name = (e.identifier?.isEmpty == false) ? "#\(e.identifier!)"
-                : (cleaned?.isEmpty == false) ? "\"\(cleaned!)\"" : ""
+            let id = (e.identifier?.isEmpty == false) ? "#\(e.identifier!)" : nil
+            let label = (cleaned?.isEmpty == false) ? "\"\(cleaned!)\"" : nil
+            let name = [id, label].compactMap { $0 }.joined(separator: " ")
             guard !name.isEmpty, seen.insert(name).inserted else { continue }
             shown.append(name)
             if shown.count >= 20 { break }
@@ -1990,7 +2036,7 @@ final class MCPServer {
     /// 画面下端で 84x9 に切れた「IC 運賃」アイコン)。判定自体は共有のまま型を問わない
     static func sliverNote(_ snapshot: SnapshotResponse) -> String {
         let slivers = snapshot.elements.filter {
-            RefGuard.isClippedSliver($0)
+            RefGuard.isClippedSliver($0, screen: snapshot.screen)
                 && BridgeSnapshotThinning.operableTypes.contains($0.type)
         }
         guard !slivers.isEmpty else { return "" }
@@ -1998,7 +2044,8 @@ final class MCPServer {
             .joined(separator: " ")
         let more = slivers.count > 8 ? " (+\(slivers.count - 8) more)" : ""
         return "note: \(slivers.count) element(s) are extremely thin with a label"
-            + " (≤10 wide/tall) — the strip may be too thin to tap, whether clipped at an edge"
+            + " (≤10 wide/tall, or ≤14 wide/tall and flush against the screen edge)"
+            + " — the strip may be too thin to tap, whether clipped at an edge"
             + " or just narrow by design: \(listed)\(more)\n"
     }
 
@@ -2117,7 +2164,12 @@ final class MCPServer {
         guard let target = resolveSessionRef(ref, args: args)?.element else { return "" }
         let deadline = Date().addingTimeInterval(Self.focusWaitSeconds)
         while true {
-            guard let fresh = try? await freshSnapshot(driver, args: args) else { return "" }
+            // **生読み**: この polling read は tap の後に走り、この直後 ft_type は
+            // pressEnter → snapshotAfterBody を呼ぶ。freshSnapshot(adoptSnapshot 経由)だと
+            // lastSnapshots[key] を tap 後の状態で上書きし、settle-lite の基準が
+            // pressEnter 前の状態にずれる(typedIntoNote と同じ理由。2026-08-10)
+            guard let fresh = try? await driver.snapshot(bypassingCache: driver.supportsCacheBypass)
+            else { return "" }
             if case .found(let found, _) = RefGuard.relocate(target, in: fresh.elements, screen: fresh.screen),
                found.focused == true { return "" }
             // 誰も focused を名乗らない = 報告しない経路。待っても永遠に立たない
@@ -2523,7 +2575,8 @@ final class MCPServer {
                 recordInteraction(action: "tap", resolvedRef: target.ref, args: args)
                 return text("tap [\(ref)] done.\(target.note)"
                     + reproductionNote(resolvedRef: target.ref, args: args)
-                    + Self.changedHint(args) + (await snapshotAfterBody(args)))
+                    + Self.changedHint(args) + waitForWithoutSnapshotAfterNote(args)
+                    + (await snapshotAfterBody(args)))
             }
             if let x = args["x"] as? Double, let y = args["y"] as? Double {
                 try await d.tap(x: x, y: y)
@@ -2531,6 +2584,7 @@ final class MCPServer {
                 return text("tap (\(x), \(y)) done" + once("coordinateReproductionNote",
                     full: Self.coordinateReproductionNote,
                     short: Self.coordinateReproductionNoteShort)
+                    + waitForWithoutSnapshotAfterNote(args)
                     + (await snapshotAfterBody(args)))
             }
             throw MCPError("ref or x/y is required")
@@ -2570,9 +2624,15 @@ final class MCPServer {
                     // **注意書きで済ませず、ここで確かめる**: iOS の XCUITest ランナーは ref から
                     // 対象を引けたときだけ TypeReadback を回すので、ref なしは無検証で OK が返る。
                     // 木は `focused` を持っているのだから、撮り直して**どこへ入ったか**を名指しできる
-                    // (Android は焦点ノードを読み返すのでこの1枚は払わない)
+                    // (Android は焦点ノードを読み返すのでこの1枚は払わない)。
+                    // **生読み(adoptSnapshot を通さない)**: この読みは入力という操作の**後**に
+                    // 撮っているので、freshSnapshot 経由だと lastSnapshots[key] を上書きし、
+                    // 続く snapshotAfterBody の settle-lite 基準(操作前の木のつもり)が
+                    // 操作後の木になってしまい「変化なし」と誤報する(2026-08-10)
+                    let rawAfterType = try? await typeDriver.snapshot(
+                        bypassingCache: typeDriver.supportsCacheBypass)
                     note += await Self.typedIntoNote(driver: typeDriver, expected: content,
-                                                     snapshot: try? freshSnapshot(typeDriver, args: args))
+                                                     snapshot: rawAfterType)
                 }
                 if let prior = priorValue, !prior.isEmpty {
                     note += " (the field already held \"\(SnapshotRenderer.truncate(prior, 30))\";"
@@ -2597,11 +2657,12 @@ final class MCPServer {
             if wantsEnter { recordInteraction(action: "pressEnter", resolvedRef: nil, args: args) }
             guard wantsEnter else {
                 return text("Typed: \"\(content ?? "")\"\(note)\(typedSelector)"
-                    + (await snapshotAfterBody(args)))
+                    + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
             }
             try await typeDriver.pressEnter()
             return text((content.map { "Typed: \"\($0)\" and pressed Enter" } ?? "Pressed Enter")
-                + note + typedSelector + (await snapshotAfterBody(args)))
+                + note + typedSelector + waitForWithoutSnapshotAfterNote(args)
+                + (await snapshotAfterBody(args)))
 
         case "ft_swipe":
             guard let direction = FTSwipeDirection(rawValue: args["direction"] as? String ?? "") else {
@@ -3375,9 +3436,22 @@ final class MCPServer {
             + "would return it — saves the follow-up ft_snapshot call. It is read right after the "
             + "action; if the tree looks identical to the one before the action (a likely sign a "
             + "screen transition has not finished), it is re-read once after a short wait. If an "
-            + "animation is still running after that, use ft_snapshot with waitFor instead of "
-            + "repeating the action. It also inherits interactiveOnly/expandBulk from your last "
+            + "animation is still running after that, use waitFor (below) instead of repeating the "
+            + "action. It also inherits interactiveOnly/expandBulk from your last "
             + "ft_snapshot call unless you pass them explicitly here",
+    ]
+    /// ft_tap/ft_type が共有する waitFor/timeout(ft_snapshot と同じ待ちのロジックを流用。
+    /// snapshotAfterBody 参照)。**snapshotAfter: true と併用が前提** — 無いときは操作は
+    /// 実行したうえで note だけ返す(throw しない。操作自体は成功しているため)
+    static let snapshotAfterWaitForProperty: [String: Any] = [
+        "type": "string",
+        "description": "Requires snapshotAfter: true. Wait for this selector to appear on the "
+            + "resulting screen before returning the tree, instead of the default settle-lite "
+            + "re-read. Same syntax as ft_snapshot's waitFor: #id, a label, .type, a||b",
+    ]
+    static let snapshotAfterTimeoutProperty: [String: Any] = [
+        "type": "number",
+        "description": "Seconds to wait for waitFor (default 5, same as ft_snapshot)",
     ]
     /// ft_snapshot と ft_scroll_to が共有する木の畳み方(2つ目の定義を作らない)。
     /// 両ツールとも既定は畳む・隠さないなので、説明文もそのまま両方で通用する
@@ -3488,6 +3562,8 @@ final class MCPServer {
             "x": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
             "y": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
             "snapshotAfter": snapshotAfterProperty,
+            "waitFor": snapshotAfterWaitForProperty,
+            "timeout": snapshotAfterTimeoutProperty,
             "expandBulk": expandBulkProperty,
             "interactiveOnly": interactiveOnlyProperty,
         ]),
@@ -3501,6 +3577,8 @@ final class MCPServer {
             "pressEnter": ["type": "boolean", "description": "Fire Enter/IME action (search, submit)"],
             "ref": ["type": "integer", "description": "Reference number of the input field (defaults to the focused element)"],
             "snapshotAfter": snapshotAfterProperty,
+            "waitFor": snapshotAfterWaitForProperty,
+            "timeout": snapshotAfterTimeoutProperty,
             "expandBulk": expandBulkProperty,
             "interactiveOnly": interactiveOnlyProperty,
         ]),

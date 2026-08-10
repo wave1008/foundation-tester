@@ -644,6 +644,16 @@ final class MCPRefGuardTests: XCTestCase {
         XCTAssertFalse(hint.contains("()"), "名前を持たない要素は載せない")
     }
 
+    /// id とラベルが両方ある要素は両方出す(id だけだと、同じ id を複数のラベルが共有する
+    /// 画面で見分けが付かない。2026-08-10)
+    func testVisibleLabelsHintCombinesIdAndLabelWhenBothArePresent() {
+        let snapshot = screen([
+            element(ref: 1, id: "btn_action", label: "削除", x: 0, y: 0),
+        ])
+        let hint = MCPServer.visibleLabelsHint(snapshot)
+        XCTAssertTrue(hint.contains("#btn_action \"削除\""), hint)
+    }
+
     /// 20 件で打ち切る(全部並べると読めない。足りなければ ft_snapshot を撮ればよい)
     func testVisibleLabelsHintIsCapped() {
         let many = (1...40).map { element(ref: $0, id: "id_\($0)", label: nil, x: 0, y: Double($0)) }

@@ -147,3 +147,51 @@ final class MCPSnapshotAfterSettleLiteTests: XCTestCase {
         XCTAssertFalse(text.contains("tree below is the re-read"), text)
     }
 }
+
+// MARK: - ft_type(ref なし)の typedIntoNote が settle-lite の基準を汚さない(2026-08-10)
+//
+// typedIntoNote は「どこへ入ったか」を確かめるため、type アクションの**後**に木を読む。
+// この読みを adoptSnapshot(lastSnapshots を更新する経路)に通すと、続く snapshotAfterBody の
+// `beforeAction` が「操作前」ではなく「操作後」になり、実際は候補一覧が増えて画面が変わって
+// いるのに「変化なし」と誤報する。生読み(adoptSnapshot を通さない)に直したことを確認する
+
+final class MCPTypeSettleLiteInheritanceTests: XCTestCase {
+    private var driver: FakeDriver!
+    private var server: MCPServer!
+
+    override func setUp() {
+        super.setUp()
+        driver = FakeDriver()
+        driver.supportsCacheBypass = true
+        let fake = driver!
+        server = MCPServer(write: { _ in }, makeDriver: { _ in fake }, recordSnapshot: { _, _, _ in })
+        server.settleWaitSeconds = 0
+    }
+
+    /// 入力で候補一覧が実際に増えたのに「still looked unchanged」が出ない(実害の再現)。
+    /// **中間読みと snapshotAfterBody の読みは同じ木にする**(実害の形): 候補は typedIntoNote の
+    /// 読みの時点で既に出ている。汚染すると beforeAction がこの木になり「変化なし」と誤報する —
+    /// 別々の木にすると汚染しても counts が違って settle 分岐に入らず、変異を素通しする
+    func testTypeThatVisiblyChangesTheTreeDoesNotFalselyReportUnchanged() async throws {
+        let baseline = settleSnapshot([
+            settleElement(ref: 1, type: "textField", id: "search_field"),
+        ])
+        var focusedAfterType = settleElement(ref: 1, type: "textField", id: "search_field",
+                                             value: "query")
+        focusedAfterType.focused = true
+        let candidateRow = settleElement(ref: 2, type: "staticText", id: "candidate_row",
+                                         label: "Query suggestion 1", x: 10, y: 70)
+        let afterWithCandidates = settleSnapshot([focusedAfterType, candidateRow])
+        driver.scriptedSnapshots = [baseline, afterWithCandidates, afterWithCandidates,
+                                    afterWithCandidates]
+
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        let text = bodyText(try await server.call(
+            tool: "ft_type", args: ["text": "query", "snapshotAfter": true]))
+
+        XCTAssertTrue(text.contains("into #search_field"), text)
+        XCTAssertFalse(text.contains("still looked unchanged"), text)
+        XCTAssertFalse(text.contains("tree below is the re-read"), text)
+        XCTAssertTrue(text.contains("id=candidate_row"), text)
+    }
+}

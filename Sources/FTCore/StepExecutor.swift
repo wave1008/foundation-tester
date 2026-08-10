@@ -467,8 +467,9 @@ public final class StepExecutor {
         parts.append(code.text)
     }
 
-    /// 「掴めた」と言い切れる状態か(StepOutcome.resolvedElement を載せてよいかの判定)
-    static func isSuccess(_ status: StepResult.Status) -> Bool {
+    /// 「掴めた」と言い切れる状態か(StepOutcome.resolvedElement を載せてよいかの判定)。
+    /// **public**: MCP(ftester-mcp)の ft_scroll_to も同じ判定を使う(2つ目の実装を作らない)
+    public static func isSuccess(_ status: StepResult.Status) -> Bool {
         switch status {
         case .passed, .passedViaFallback, .healed: return true
         case .failed, .skipped, .inconclusive: return false

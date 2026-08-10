@@ -40,8 +40,8 @@ enum RefGuard {
         TapTargetGeometry.missesItsOwnContent(element, in: elements, screen: screen)
     }
 
-    static func isClippedSliver(_ element: ElementInfo) -> Bool {
-        TapTargetGeometry.isClippedSliver(element)
+    static func isClippedSliver(_ element: ElementInfo, screen: FTRect) -> Bool {
+        TapTargetGeometry.isClippedSliver(element, screen: screen)
     }
 
     static func nestedActionCoveringCentre(_ element: ElementInfo,
