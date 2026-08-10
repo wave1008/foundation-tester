@@ -151,13 +151,31 @@ final class LPTOrderingTests: XCTestCase {
         XCTAssertTrue(logs[0].contains("1/2"), "android の実績があるのは1件: \(logs[0])")
     }
 
-    func testOnlyTheNewestRunsAreScanned() throws {
-        // 結果 JSON は run × シナリオ数で増え続ける(実測で 1 プロジェクト 3,500〜4,500 件)。
-        // 毎 run 全件読むと run の固定費になるので新しい方から上限件数だけ読む。
-        // 「古い run にしか実績が無いシナリオ」は実績なし扱いになることで上限が効いていると分かる。
-        try writeRecord(scenarioID: "古いだけ", durationMs: 1_000,
-                        runID: "20260701-000000Z-TEST-0000")
+    /// 窓は**シナリオごとの観測数**なので、他のシナリオだけを含む run が何本挟まっても
+    /// 実績は残る。**これが 2026-08-11 に直した実害** —— 調査中の1シナリオ実行を数本走らせただけで、
+    /// 直前のフル run の実績が全部消えていた(フル E2E で iOS 側が軒並み `1/N with history`)
+    func testHistorySurvivesRunsThatContainOtherScenariosOnly() throws {
+        try writeRecord(scenarioID: "たまにしか回らない", durationMs: 1_000,
+                        runID: "20260729-000000Z-TEST-0000")
         for i in 1...25 {
+            try writeRecord(scenarioID: "毎回", durationMs: 5_000,
+                            runID: String(format: "20260729-%06dZ-TEST-%04d", i, i))
+        }
+
+        let (result, logs) = apply([item("毎回"), item("たまにしか回らない")])
+        XCTAssertEqual(ids(result), ["毎回", "たまにしか回らない"], "実績どおり長い方が先")
+        XCTAssertTrue(logs[0].contains("2/2"), "両方に実績があること: \(logs[0])")
+    }
+
+    /// 遡りは無制限ではない。結果 JSON は run × シナリオ数で増え続ける(実測で 1 プロジェクト
+    /// 3,500〜4,500 件)ので、走査する run ディレクトリ数に上限を置く
+    /// (`RunResultsStore.observationScanLimitFactor` 倍)。上限の外にしか実績が無いものは
+    /// 「実績なし」= 先頭へ
+    func testScanBacksOffAtTheDirectoryLimit() throws {
+        try writeRecord(scenarioID: "古いだけ", durationMs: 1_000,
+                        runID: "20260729-000000Z-TEST-0000")
+        let beyondLimit = LPTOrdering.defaultHistoryRuns * RunResultsStore.observationScanLimitFactor + 5
+        for i in 1...beyondLimit {
             try writeRecord(scenarioID: "毎回", durationMs: 5_000,
                             runID: String(format: "20260729-%06dZ-TEST-%04d", i, i))
         }

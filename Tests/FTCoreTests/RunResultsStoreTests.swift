@@ -82,6 +82,80 @@ final class RunResultsStoreTests: XCTestCase {
                       "android の実績を含む run を2件ぶん探すので窓に入る")
     }
 
+    // MARK: - 観測数で数える窓(LPT の実績読み込み)
+
+    /// 記録を1件書く(runID は新しいほど辞書順で大きい = 走査順の「新しい方」)
+    private func write(scenario: String, runID: String, platform: String = "ios",
+                       durationMs: Int = 100) {
+        let runDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: runID)
+        var record = makeScenarioRecord(scenarioID: scenario, runID: runID)
+        record.platform = platform
+        record.durationMs = durationMs
+        RunResultsStore.writeScenario(record, runDir: runDir, fileName: scenario)
+    }
+
+    /// **今日の実害そのもの**: 1シナリオだけの run を数本挟むと、run 数で数える窓は
+    /// それだけで埋まり、直前のフル run の実績が丸ごと消える(2026-08-11 のフル E2E で
+    /// iOS 側が軒並み `1/N with history` に落ちた)。観測数で数えれば残る
+    func testSingleScenarioRunsDoNotEvictTheFullRunHistory() {
+        // 古い方にフル run(A/B/C)、新しい方に「A だけ」の run を5本
+        for s in ["A", "B", "C"] { write(scenario: s, runID: "20260101-000000Z-mach-0001") }
+        for i in 1...5 { write(scenario: "A", runID: String(format: "202601%02d-000000Z-mach-900%d", i + 1, i)) }
+
+        let byRuns = RunResultsStore.scanRecords(resultsDir: resultsDir, maxRuns: 5,
+                                                 countingPlatform: "ios")
+        XCTAssertFalse(byRuns.contains { $0.scenarioID == "B" },
+                       "run 数で数えると B は窓の外(この前提が崩れたらテストの意味が無い)")
+
+        let byObservations = RunResultsStore.scanRecords(resultsDir: resultsDir,
+                                                        maxObservationsPerScenario: 5)
+        XCTAssertTrue(byObservations.contains { $0.scenarioID == "B" },
+                      "B の観測が5件に満たないので、遡ってフル run まで読むこと")
+        XCTAssertTrue(byObservations.contains { $0.scenarioID == "C" })
+    }
+
+    /// 上限は**シナリオごと**に効く(1本ばかり読み続けない)
+    func testObservationsAreCappedPerScenario() {
+        for i in 1...9 { write(scenario: "A", runID: String(format: "202601%02d-000000Z-mach-800%d", i, i)) }
+        let records = RunResultsStore.scanRecords(resultsDir: resultsDir,
+                                                  maxObservationsPerScenario: 3)
+        XCTAssertEqual(records.filter { $0.scenarioID == "A" }.count, 3)
+    }
+
+    /// **新しい方から**採る(古い実績で中央値を作らない)
+    func testObservationsComeFromTheNewestRuns() {
+        write(scenario: "A", runID: "20260101-000000Z-mach-0001", durationMs: 1000)
+        write(scenario: "A", runID: "20260102-000000Z-mach-0002", durationMs: 2000)
+        let records = RunResultsStore.scanRecords(resultsDir: resultsDir,
+                                                  maxObservationsPerScenario: 1)
+        XCTAssertEqual(records.map(\.durationMs), [2000])
+    }
+
+    /// platform ごとに別々に数える(混在プロジェクトで片方に窓を食われない)
+    func testObservationsAreCountedPerPlatform() {
+        for i in 1...5 { write(scenario: "A", runID: String(format: "202601%02d-000000Z-mach-700%d", i + 1, i)) }
+        write(scenario: "A", runID: "20260101-000000Z-mach-0001", platform: "android")
+        let records = RunResultsStore.scanRecords(resultsDir: resultsDir,
+                                                  maxObservationsPerScenario: 5)
+        XCTAssertTrue(records.contains { $0.platform == "android" },
+                      "iOS の観測で枠が尽きて android が読めていない")
+    }
+
+    /// 遡りには上限がある(結果 JSON 全件を毎 run 読まない)。
+    /// 満たされないシナリオが1本でもあると遡り続けるので、ここが唯一の歯止め
+    func testScanStopsAtTheDirectoryLimit() {
+        let limit = 3 * RunResultsStore.observationScanLimitFactor
+        // 「B」は最古の1件しか無いので、上限が無ければ全件を読みに行く
+        for i in 1...(limit + 5) {
+            write(scenario: "A", runID: String(format: "2026%04d-000000Z-mach-600%d", 1000 + i, i))
+        }
+        write(scenario: "B", runID: "20260101-000000Z-mach-0001")
+        let records = RunResultsStore.scanRecords(resultsDir: resultsDir,
+                                                  maxObservationsPerScenario: 3)
+        XCTAssertFalse(records.contains { $0.scenarioID == "B" },
+                       "打ち切りが効いていない(全 run を読んでいる)")
+    }
+
     func testSchemaVersionTooNewIsSkipped() {
         let runID = "20260101-000000Z-mach-0002"
         let runDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: runID)

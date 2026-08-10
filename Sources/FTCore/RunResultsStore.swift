@@ -174,9 +174,21 @@ public enum RunResultsStore {
     ///   が窓から押し出されて実績ゼロになる(実害: E2E-Flutter/android の投入順が崩れ壁時計 +10s。
     ///   docs/performance-tuning.md §3.7)。返すレコード自体は絞らない(呼び出し側が platform 別に
     ///   集計するので、混在 run の他 platform 分は無害)。
+    /// `maxObservationsPerScenario` で遡る run ディレクトリ数の上限(観測数の何倍まで見るか)。
+    /// 8 = 上限 5 なら 40 run。プロファイルを交互に回しても直前のフル run 群には十分届き、
+    /// 結果 JSON 全件(1 プロジェクト 3,500〜4,500 件)を毎 run 読む事故は防げる
+    public static let observationScanLimitFactor = 8
+
+    /// - maxObservationsPerScenario: 指定すると窓を **run 数ではなく (scenarioID, platform) ごとの
+    ///   観測数**で決める(maxRuns / countingPlatform とは併用しない)。run 数で数えると
+    ///   **1シナリオだけの run**(調査中のピンポイント実行)が窓を食い潰し、直前のフル run の実績が
+    ///   丸ごと消える —— 2026-08-11 のフル E2E で iOS 側が軒並み `1/N with history` に落ちていた。
+    ///   遡る run ディレクトリ数は `observationScanLimitFactor` 倍で頭打ち(I/O の上限)。
+    ///   打ち切っても集まった分だけで並べる = 従来と同じ安全側。
     public static func scanRecords(resultsDir: URL, since: Date? = nil, until: Date? = nil,
                                    maxRuns: Int? = nil,
-                                   countingPlatform: String? = nil) -> [ScenarioRunRecord] {
+                                   countingPlatform: String? = nil,
+                                   maxObservationsPerScenario: Int? = nil) -> [ScenarioRunRecord] {
         let decoder = JSONDecoder()
         let formatter = ISO8601DateFormatter()
         var results: [ScenarioRunRecord] = []
@@ -185,7 +197,7 @@ public enum RunResultsStore {
         for monthDir in relevantMonthDirs(resultsDir: resultsDir, since: since, until: until) {
             targetRunDirs += runDirs(in: monthDir)
         }
-        if maxRuns != nil {
+        if maxRuns != nil || maxObservationsPerScenario != nil {
             // 新しい順に見て「レコードが取れた run」を数える。実行中の run 自身のディレクトリは
             // scanRecords の時点でまだ空(RunRecorder.begin が先に作る)なので、単純に先頭 N 件を
             // 取ると枠を1つ食われる(maxRuns=1 だと実績ゼロになり LPT が丸ごと効かなくなる)。
@@ -194,8 +206,15 @@ public enum RunResultsStore {
         }
         var runsWithRecords = 0
         var runDirsInspected = 0
+        /// (scenarioID, platform) ごとに集めた観測数(maxObservationsPerScenario 指定時のみ)
+        var observations: [String: Int] = [:]
         for runDir in targetRunDirs {
             if let maxRuns, runsWithRecords >= maxRuns { break }
+            // 歯止めは走査した run ディレクトリ数だけ。**「見えている分が満たされたら止める」に
+            // しない** —— 新しい run が1シナリオしか含まないと、そのシナリオが満たされた時点で
+            // 止まり、他のシナリオの実績を1件も読まないまま抜ける(2026-08-11 に実装して踏んだ)
+            if let cap = maxObservationsPerScenario,
+               runDirsInspected >= cap * observationScanLimitFactor { break }
             // countingPlatform 指定時は枠が埋まるまで遡るため、対象 platform が長く走っていないと
             // 窓の全 run を読みかねない。maxRuns の 8 倍で打ち切る(3 プロファイル交互でも
             // 5 枠は 15 run 程で埋まる)。打ち切った場合は集まった分だけで並べる = 従来と同じ安全側。
@@ -223,6 +242,12 @@ public enum RunResultsStore {
                 }
                 if let until, let started = formatter.date(from: record.startedAt), started > until {
                     continue
+                }
+                if let cap = maxObservationsPerScenario {
+                    let key = "\(record.scenarioID)\u{1}\(record.platform)"
+                    let seen = observations[key] ?? 0
+                    if seen >= cap { continue }
+                    observations[key] = seen + 1
                 }
                 results.append(record)
             }
