@@ -45,6 +45,12 @@ let package = Package(
         .target(
             name: "FTCoreSimShim"
         ),
+        // テスト専用の資源ロック(SharedResource)。依存ゼロ・products に出さない
+        // (受け手のパッケージへ公開しない)。使うテストターゲットだけが dependencies に足す
+        .target(
+            name: "FTTestSupport",
+            swiftSettings: swift5Mode
+        ),
         // XCUITestランナー(ブリッジ)へのHTTPクライアントと起動管理
         .target(
             name: "FTBridgeClient",
@@ -224,7 +230,7 @@ let package = Package(
         ),
         .testTarget(
             name: "FTBridgeClientTests",
-            dependencies: ["FTBridgeClient", "FTCore"],
+            dependencies: ["FTBridgeClient", "FTCore", "FTTestSupport"],
             swiftSettings: swift5Mode
         ),
         .testTarget(
@@ -234,7 +240,12 @@ let package = Package(
         ),
         .testTarget(
             name: "FTAndroidTests",
-            dependencies: ["FTAndroid", "FTCore", "FTBridgeClient"],
+            dependencies: ["FTAndroid", "FTCore", "FTBridgeClient", "FTTestSupport"],
+            swiftSettings: swift5Mode
+        ),
+        .testTarget(
+            name: "FTTestSupportTests",
+            dependencies: ["FTTestSupport"],
             swiftSettings: swift5Mode
         ),
         // ftester-mcp は executableTarget だが @testable import 可能(モジュール名は c99name の

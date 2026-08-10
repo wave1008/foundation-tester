@@ -4,6 +4,7 @@
 import XCTest
 import FTEmulatorGrpc
 @testable import FTAndroid
+import FTTestSupport
 
 final class EmulatorEndpointsTests: XCTestCase {
 
@@ -60,25 +61,28 @@ final class EmulatorEndpointsTests: XCTestCase {
         XCTAssertNil(EmulatorEndpoints.endpoint(serial: "emulator-9999", directory: dir))
     }
 
-    /// 稼働フリートに対する実 gRPC スモーク(FT_LIVE_EMULATOR=1 のときのみ。CI では走らない)
+    /// 稼働フリートに対する実 gRPC スモーク(FT_LIVE_EMULATOR=1 のときのみ。CI では走らない)。
+    /// XCTSkipUnless はロックの外・以降はホストの Emulator を触るので androidEmulatorHost で直列化
     func testLiveGrpcSmoke() async throws {
         try XCTSkipUnless(ProcessInfo.processInfo.environment["FT_LIVE_EMULATOR"] == "1",
                           "FT_LIVE_EMULATOR=1 のときのみ")
-        let endpoints = EmulatorEndpoints.all()
-        try XCTSkipIf(endpoints.isEmpty, "稼働中エミュレータなし")
-        let ep = endpoints[0]
-        let booted = try await EmulatorGrpcSession.statusBooted(endpoint: ep)
-        XCTAssertTrue(booted, "稼働中エミュレータの booted は true のはず(\(ep.serial))")
-        let png = try await EmulatorGrpcSession.screenshotPNG(endpoint: ep)
-        XCTAssertGreaterThan(png.count, 1000, "PNG が空(\(ep.serial))")
-        // EmulatorControl 経由(ポリシー層)でも同じ結果になること
-        let viaControl = await EmulatorControl.screenshotPNG(serial: ep.serial)
-        XCTAssertNotNil(viaControl)
-        // PNG デコード→一様判定: 健全機の実画面は非一様(blank 誤検知しない)
-        let rgba = AndroidHealthProbe.decodeRGBA(png: png)
-        XCTAssertNotNil(rgba, "PNG デコード失敗(\(ep.serial))")
-        XCTAssertFalse(AndroidHealthProbe.uniformFrame(rgba: rgba ?? Data()),
-                       "健全画面が一様判定された(\(ep.serial))")
+        try await SharedResource.androidEmulatorHost.locked {
+            let endpoints = EmulatorEndpoints.all()
+            try XCTSkipIf(endpoints.isEmpty, "稼働中エミュレータなし")
+            let ep = endpoints[0]
+            let booted = try await EmulatorGrpcSession.statusBooted(endpoint: ep)
+            XCTAssertTrue(booted, "稼働中エミュレータの booted は true のはず(\(ep.serial))")
+            let png = try await EmulatorGrpcSession.screenshotPNG(endpoint: ep)
+            XCTAssertGreaterThan(png.count, 1000, "PNG が空(\(ep.serial))")
+            // EmulatorControl 経由(ポリシー層)でも同じ結果になること
+            let viaControl = await EmulatorControl.screenshotPNG(serial: ep.serial)
+            XCTAssertNotNil(viaControl)
+            // PNG デコード→一様判定: 健全機の実画面は非一様(blank 誤検知しない)
+            let rgba = AndroidHealthProbe.decodeRGBA(png: png)
+            XCTAssertNotNil(rgba, "PNG デコード失敗(\(ep.serial))")
+            XCTAssertFalse(AndroidHealthProbe.uniformFrame(rgba: rgba ?? Data()),
+                           "健全画面が一様判定された(\(ep.serial))")
+        }
     }
 
     /// uniformFrame: 一様=blank / 非一様=健全 の純粋判定
@@ -178,20 +182,22 @@ final class EmulatorEndpointsTests: XCTestCase {
     func testLiveMetalErrorIssue() async throws {
         try XCTSkipUnless(ProcessInfo.processInfo.environment["FT_LIVE_EMULATOR"] == "1",
                           "FT_LIVE_EMULATOR=1 のときのみ")
-        let endpoints = EmulatorEndpoints.all()
-        try XCTSkipIf(endpoints.isEmpty, "稼働中エミュレータなし")
-        let ep = endpoints[0]
-        let log = EmulatorLog.url(avdID: ep.avdID)
-        try XCTSkipUnless(FileManager.default.fileExists(atPath: log.path),
-                          "emulator ログ無し(ログ保存実装前のブート)")
-        let original = try Data(contentsOf: log)
-        defer { try? original.write(to: log) }
-        let fake = String(repeating: "GLDRendererMetal command buffer completion error: fake\n",
-                          count: AndroidHealthProbe.metalErrorWarnThreshold)
-        try (original + Data(fake.utf8)).write(to: log)
-        let issues = await AndroidHealthProbe.observeIssues(serial: ep.serial)
-        XCTAssertTrue(issues.contains(AndroidHealthProbe.issueMetalErrors),
-                      "metal-errors が立たない(\(ep.serial)): \(issues)")
+        try await SharedResource.androidEmulatorHost.locked {
+            let endpoints = EmulatorEndpoints.all()
+            try XCTSkipIf(endpoints.isEmpty, "稼働中エミュレータなし")
+            let ep = endpoints[0]
+            let log = EmulatorLog.url(avdID: ep.avdID)
+            try XCTSkipUnless(FileManager.default.fileExists(atPath: log.path),
+                              "emulator ログ無し(ログ保存実装前のブート)")
+            let original = try Data(contentsOf: log)
+            defer { try? original.write(to: log) }
+            let fake = String(repeating: "GLDRendererMetal command buffer completion error: fake\n",
+                              count: AndroidHealthProbe.metalErrorWarnThreshold)
+            try (original + Data(fake.utf8)).write(to: log)
+            let issues = await AndroidHealthProbe.observeIssues(serial: ep.serial)
+            XCTAssertTrue(issues.contains(AndroidHealthProbe.issueMetalErrors),
+                          "metal-errors が立たない(\(ep.serial)): \(issues)")
+        }
     }
 
     /// 入力系(named key / touch 合成)実発射のスモーク(対象機の画面を操作するため
@@ -199,32 +205,36 @@ final class EmulatorEndpointsTests: XCTestCase {
     func testLiveInputSmoke() async throws {
         try XCTSkipUnless(ProcessInfo.processInfo.environment["FT_LIVE_EMULATOR_INPUT"] == "1",
                           "FT_LIVE_EMULATOR_INPUT=1 のときのみ(対象機のホーム画面を操作する)")
-        let endpoints = EmulatorEndpoints.all()
-        try XCTSkipIf(endpoints.isEmpty, "稼働中エミュレータなし")
-        let serial = endpoints[0].serial
-        let home = await EmulatorControl.namedKeypress(serial: serial, key: "GoHome")
-        XCTAssertTrue(home, "GoHome 送出失敗(\(serial))")
-        let dragged = await EmulatorControl.drag(serial: serial, fromX: 540, fromY: 1200,
-                                                 toX: 540, toY: 800, durationMs: 300)
-        XCTAssertTrue(dragged, "drag 送出失敗(\(serial))")
-        let pressed = await EmulatorControl.longPress(serial: serial, x: 540, y: 1200, durationMs: 400)
-        XCTAssertTrue(pressed, "longPress 送出失敗(\(serial))")
+        try await SharedResource.androidEmulatorHost.locked {
+            let endpoints = EmulatorEndpoints.all()
+            try XCTSkipIf(endpoints.isEmpty, "稼働中エミュレータなし")
+            let serial = endpoints[0].serial
+            let home = await EmulatorControl.namedKeypress(serial: serial, key: "GoHome")
+            XCTAssertTrue(home, "GoHome 送出失敗(\(serial))")
+            let dragged = await EmulatorControl.drag(serial: serial, fromX: 540, fromY: 1200,
+                                                     toX: 540, toY: 800, durationMs: 300)
+            XCTAssertTrue(dragged, "drag 送出失敗(\(serial))")
+            let pressed = await EmulatorControl.longPress(serial: serial, x: 540, y: 1200, durationMs: 400)
+            XCTAssertTrue(pressed, "longPress 送出失敗(\(serial))")
+        }
     }
 
     /// sleep/wake 実発射のスモーク(画面を数秒消灯するため FT_LIVE_EMULATOR_REPAIR=1 でのみ実行)
     func testLiveSleepWakeSmoke() async throws {
         try XCTSkipUnless(ProcessInfo.processInfo.environment["FT_LIVE_EMULATOR_REPAIR"] == "1",
                           "FT_LIVE_EMULATOR_REPAIR=1 のときのみ(対象機の画面を一瞬消灯する)")
-        let endpoints = EmulatorEndpoints.all()
-        try XCTSkipIf(endpoints.isEmpty, "稼働中エミュレータなし")
-        let serial = endpoints[0].serial
-        let ok = await EmulatorControl.sleepWake(serial: serial, dwellNs: 1_500_000_000)
-        XCTAssertTrue(ok, "gRPC sleep/wake が失敗(\(serial))")
-        // wake 後に非 blank へ戻ること(健全機なら repairBlankDisplay 相当の後段プローブが通る)
-        try await Task.sleep(nanoseconds: 2_000_000_000)
-        let png = await EmulatorControl.screenshotPNG(serial: serial)
-        XCTAssertNotNil(png)
-        XCTAssertGreaterThan(png?.count ?? 0, AndroidHealthProbe.blankScreenMaxPNGBytes,
-                             "wake 後も blank のまま(\(serial))")
+        try await SharedResource.androidEmulatorHost.locked {
+            let endpoints = EmulatorEndpoints.all()
+            try XCTSkipIf(endpoints.isEmpty, "稼働中エミュレータなし")
+            let serial = endpoints[0].serial
+            let ok = await EmulatorControl.sleepWake(serial: serial, dwellNs: 1_500_000_000)
+            XCTAssertTrue(ok, "gRPC sleep/wake が失敗(\(serial))")
+            // wake 後に非 blank へ戻ること(健全機なら repairBlankDisplay 相当の後段プローブが通る)
+            try await Task.sleep(nanoseconds: 2_000_000_000)
+            let png = await EmulatorControl.screenshotPNG(serial: serial)
+            XCTAssertNotNil(png)
+            XCTAssertGreaterThan(png?.count ?? 0, AndroidHealthProbe.blankScreenMaxPNGBytes,
+                                 "wake 後も blank のまま(\(serial))")
+        }
     }
 }

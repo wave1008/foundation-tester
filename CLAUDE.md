@@ -131,7 +131,15 @@
   **package.json だけ手で書き換えない** — lock も version を内包しており、放置すると受け手の
   `npm install` が lock を書き換えてクローンが dirty になり、**次の更新が pull ガードで止まる**
   (実害。`packageLockSync.test.mjs` が検出。既にズレたら `npm install --package-lock-only`)
-- Swift: `swift build --build-tests` / `swift test`。**合否は exit code で見る**(パイプすると grep 等の exit code に化けて失敗を握りつぶす実害)
+- Swift: `swift build --build-tests` / **`swift test --parallel`**(実測 127s → 34s。直列も緑のままだが、
+  毎回の待ちが4倍違う)。**合否は exit code で見る**(パイプすると grep 等の exit code に化けて失敗を握りつぶす実害)。
+  **並列はテストプロセスを分けるので、ホストの共有資源に触るテストは自分で隔離する** ——
+  既定のパスを直接見に行くと、無関係なテストの後始末と競合して落ちる(2026-08-10 に `FMBreaker` で実際に発生。
+  状態ファイルがホスト単位なのは仕様なので、**テスト側が差し替え口でプロセスごとの一時パスへ逃がす**。
+  「どこに置くか」は I/O 抜きで別に表明する)。同型は `.ftester/` の台帳・`DiagnosticReports` の走査・simctl/adb
+  を呼ぶテスト。**隔離できないホストの実体**(simctl/adb・起動中の Simulator/Emulator・固定パス)は
+  `Sources/FTTestSupport/SharedResource.swift` の `SharedResource.<key>.locked { }` で資源キーごとに
+  直列化する(隔離が使えないときの下位の手段。詳細は docs/verification.md)
 - **長時間ジョブ(E2E 等)の完了を「プロセスの生死」で待たない**(2026-08-09 の実害)。
   `pgrep -f <文字列>` は自分自身こそ除外するが、**同じ文字列を含む他のシェルは拾う** ——
   待機コマンド自身のコマンドラインにその文字列が載るので、待機を2つ以上同時に走らせると

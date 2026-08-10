@@ -5,6 +5,7 @@
 import XCTest
 @testable import FTBridgeClient
 import FTCore
+import FTTestSupport
 
 final class CoreSimAppControlTests: XCTestCase {
 
@@ -20,9 +21,9 @@ final class CoreSimAppControlTests: XCTestCase {
         return udid
     }
 
+    /// FT_LIVE_SIM ゲートは各テストメソッド側(ロックの外)で見る。ここは既にゲートを
+    /// 通った後のホスト問い合わせだけ
     private func requireShim() throws -> String {
-        try XCTSkipUnless(ProcessInfo.processInfo.environment["FT_LIVE_SIM"] == "1",
-                          "FT_LIVE_SIM=1 のときのみ")
         let udid = try bootedUDID()
         guard CoreSimAppControl.isInstalled(udid: udid, bundleID: Self.installedBundleID) != nil else {
             throw XCTSkip("CoreSimulator シム利用不能(この環境では simctl フォールバックのみ)")
@@ -36,33 +37,47 @@ final class CoreSimAppControlTests: XCTestCase {
             && !result.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    private func requireLiveSim() throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["FT_LIVE_SIM"] == "1",
+                          "FT_LIVE_SIM=1 のときのみ")
+    }
+
     func testInstalledAppMatchesSimctl() throws {
-        let udid = try requireShim()
-        let viaShim = CoreSimAppControl.isInstalled(udid: udid, bundleID: Self.installedBundleID)
-        let viaSimctl = try isInstalledViaSimctl(udid: udid, bundleID: Self.installedBundleID)
-        XCTAssertEqual(viaShim, viaSimctl)
-        XCTAssertEqual(viaShim, true)
+        try requireLiveSim()
+        try SharedResource.iosSimulatorHost.locked {
+            let udid = try requireShim()
+            let viaShim = CoreSimAppControl.isInstalled(udid: udid, bundleID: Self.installedBundleID)
+            let viaSimctl = try isInstalledViaSimctl(udid: udid, bundleID: Self.installedBundleID)
+            XCTAssertEqual(viaShim, viaSimctl)
+            XCTAssertEqual(viaShim, true)
+        }
     }
 
     func testMissingAppMatchesSimctl() throws {
-        let udid = try requireShim()
-        let viaShim = CoreSimAppControl.isInstalled(udid: udid, bundleID: Self.missingBundleID)
-        let viaSimctl = try isInstalledViaSimctl(udid: udid, bundleID: Self.missingBundleID)
-        XCTAssertEqual(viaShim, viaSimctl)
-        XCTAssertEqual(viaShim, false)
+        try requireLiveSim()
+        try SharedResource.iosSimulatorHost.locked {
+            let udid = try requireShim()
+            let viaShim = CoreSimAppControl.isInstalled(udid: udid, bundleID: Self.missingBundleID)
+            let viaSimctl = try isInstalledViaSimctl(udid: udid, bundleID: Self.missingBundleID)
+            XCTAssertEqual(viaShim, viaSimctl)
+            XCTAssertEqual(viaShim, false)
+        }
     }
 
     /// 2回目以降の確認が simctl より速いこと(初回は dlopen+ctx 初期化を含むため除外)
     func testCoreSimIsFasterThanSimctl() throws {
-        let udid = try requireShim()
-        _ = CoreSimAppControl.isInstalled(udid: udid, bundleID: Self.installedBundleID)
-        let t0 = Date()
-        _ = CoreSimAppControl.isInstalled(udid: udid, bundleID: Self.installedBundleID)
-        let shimSec = Date().timeIntervalSince(t0)
-        let t1 = Date()
-        _ = try isInstalledViaSimctl(udid: udid, bundleID: Self.installedBundleID)
-        let simctlSec = Date().timeIntervalSince(t1)
-        XCTAssertLessThan(shimSec, simctlSec,
-                          "shim \(shimSec * 1000)ms >= simctl \(simctlSec * 1000)ms")
+        try requireLiveSim()
+        try SharedResource.iosSimulatorHost.locked {
+            let udid = try requireShim()
+            _ = CoreSimAppControl.isInstalled(udid: udid, bundleID: Self.installedBundleID)
+            let t0 = Date()
+            _ = CoreSimAppControl.isInstalled(udid: udid, bundleID: Self.installedBundleID)
+            let shimSec = Date().timeIntervalSince(t0)
+            let t1 = Date()
+            _ = try isInstalledViaSimctl(udid: udid, bundleID: Self.installedBundleID)
+            let simctlSec = Date().timeIntervalSince(t1)
+            XCTAssertLessThan(shimSec, simctlSec,
+                              "shim \(shimSec * 1000)ms >= simctl \(simctlSec * 1000)ms")
+        }
     }
 }
