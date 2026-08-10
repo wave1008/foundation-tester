@@ -546,6 +546,18 @@ final class BridgeRouter {
     /// **iOS ではキーボードを閉じられない**(docs/design.md に不採用の記録)。Esc は不発で、
     /// app.keyboards は別プロセス扱いでタイムアウトする(handleType のコメント参照)。
     /// **嘘の成功を返さない**ため 501 を返す
+    /// アプリの窓の縦横から読む向き(デバイスの向きではない。handleRotate のコメント参照)。
+    /// **`snapshot()` ではなく `frame` を読む** —— 回転中の snapshot は高コストで失敗もし、
+    /// nil が返り続けると「回っていない」と誤判定して 3 秒待ち切る(2026-08-10 実測)。
+    /// セッションが無いときは窓で判定できないのでデバイスの向きに落ちる
+    /// (その場合だけは縦専用アプリを見抜けないが、/rotate をセッション無しで撃つ経路は無い)
+    private func appOrientation() -> FTOrientation? {
+        guard let app else { return XCUIDevice.shared.orientation.ftOrientation }
+        let frame = app.frame
+        guard frame.width > 0, frame.height > 0 else { return nil }
+        return frame.width > frame.height ? .landscape : .portrait
+    }
+
     private func handleHideKeyboard() throws -> BridgeHTTPServer.Response {
         .error("hideKeyboard は iOS では未対応(Android のみ)。閉じたい場合は pressEnter を使う", status: 501)
     }
@@ -680,16 +692,22 @@ final class BridgeRouter {
         case .landscape: target = .landscapeLeft
         }
         XCUIDevice.shared.orientation = target
+        // **アプリの窓で判定する**(デバイスの向きではない)。契約は「アプリの UI がその向きに
+        // なること」で、**縦向き専用のアプリはデバイスを回しても縦のまま** —— XCUIDevice の
+        // 向きだけを見ると、そういうアプリで**成功を返してしまう**
+        // (2026-08-10 実測: 縦専用の React Native SUT が xcuitest では成功・in-app では 422 と
+        // 食い違った)。Android の判定(スナップショットの画面サイズ)と同じ基準に揃える
         let deadline = Date().addingTimeInterval(RotationSettle.deadlineSeconds)
         while Date() < deadline {
-            if XCUIDevice.shared.orientation.ftOrientation == req.orientation {
+            if appOrientation() == req.orientation {
                 return .json(RotateResponse(orientation: req.orientation))
             }
             Thread.sleep(forTimeInterval: RotationSettle.pollIntervalSeconds)
         }
-        let observed = XCUIDevice.shared.orientation.ftOrientation
         throw BridgeError(422, "orientation did not settle to \(req.orientation.rawValue) within "
-            + "\(RotationSettle.deadlineSeconds)s (observed: \(observed?.rawValue ?? "unknown"))")
+            + "\(RotationSettle.deadlineSeconds)s (the app stayed "
+            + "\(appOrientation()?.rawValue ?? "unknown") — an app that does not declare that "
+            + "orientation in UISupportedInterfaceOrientations cannot rotate)")
     }
 
     private func handlePress(_ body: Data) throws -> BridgeHTTPServer.Response {

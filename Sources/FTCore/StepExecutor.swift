@@ -1257,6 +1257,12 @@ public final class StepExecutor {
             let start = clock.now
             _ = try await driver.rotate(to: orientation)
             phase.actionMs += Self.ms(clock.now - start)
+            // **向きが変わっただけでは終わりではない**: ドライバは「向きが要求と一致したか」までしか
+            // 見ておらず、その時点でレイアウトはまだ動いている。直後のタップは動く前の座標を撃つ
+            // (2026-08-10 実測: 回転直後の `#tab_home` が (-6,45) 動いた後の位置に当たらず、
+            // 別の要素を押していた)。スクロール後の静止をホスト側が担うのと同じ規律で、
+            // 木が2回続けて同じ署名になるまで待つ
+            _ = try? await settledSignature(phase: &phase)
             return StepOutcome(status: .passed)
         }
 

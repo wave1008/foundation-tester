@@ -158,7 +158,7 @@ public enum BridgeAPI {
     /// and XCUITest bridges, and GET /status now reports `orientation` on those two. Not added to
     /// Android (host-side adb instead — see AndroidDriver). Old bridges 404 "not found:" on
     /// /rotate, so the host must not reuse a stale bridge for scenarios that rotate.
-    public static let bridgeProtocolVersion = 62
+    public static let bridgeProtocolVersion = 63
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の

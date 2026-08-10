@@ -46,11 +46,21 @@ final class RotationOrientationSemanticsTests: XCTestCase {
         }
     }
 
-    /// Android の判定は「窓が横長か」。これは契約(アプリの向き)そのもので、
-    /// `dumpsys display` の角度ではない —— 表示だけ回ってアプリが縦のままの形を成功にしない
-    func testAndroidSettlesOnTheAppWindowNotTheDisplayAngle() throws {
-        let driver = try source("Sources/FTAndroid/AndroidDriver.swift")
-        XCTAssertTrue(driver.contains("(screen.width > screen.height) == wantsLandscape"),
-                      "Android の整定はスナップショットの画面サイズで判定すること")
+    /// **3実装とも「アプリの窓」で判定する**。表示やデバイスの向きで判定すると、
+    /// 縦向き専用のアプリで**回っていないのに成功を返す**(2026-08-10 に xcuitest で実測)
+    func testEveryImplementationSettlesOnTheAppWindow() throws {
+        let android = try source("Sources/FTAndroid/AndroidDriver.swift")
+        XCTAssertTrue(android.contains("(screen.width > screen.height) == wantsLandscape"),
+                      "Android はスナップショットの画面サイズで判定すること")
+
+        let runner = try source("Runner/FTesterRunnerUITests/BridgeRouter.swift")
+        XCTAssertTrue(runner.contains("if appOrientation() == req.orientation"),
+                      "XCUITest はアプリの窓で判定すること(XCUIDevice の向きではない)")
+        XCTAssertFalse(runner.contains("if XCUIDevice.shared.orientation.ftOrientation == req.orientation"),
+                       "デバイスの向きでの判定に戻っている(縦専用アプリで偽の成功になる)")
+
+        let inApp = try source("InAppBridge/Sources/InAppBridge.swift")
+        XCTAssertTrue(inApp.contains("interfaceOrientation.ftOrientation"),
+                      "in-app はシーンの interfaceOrientation(= アプリの向き)で判定すること")
     }
 }
