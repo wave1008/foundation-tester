@@ -286,16 +286,55 @@ extension MCPServer {
                     let seconds = args["timeout"] as? Double ?? Self.defaultWaitSeconds
                     let deadline = Date().addingTimeInterval(max(0, seconds))
                     var changed = !Self.looksUnchanged(beforeAction, snapshot)
+                    let changedOnFirstRead = changed
                     while !changed, Date() < deadline {
                         try await Task.sleep(for: .seconds(Self.waitPollSeconds))
                         snapshot = try await freshSnapshot(snapshotDriver, args: args)
                         changed = !Self.looksUnchanged(beforeAction, snapshot)
                     }
-                    settleNote = changed
-                        ? "waitForChange: the tree differs from the one before the action.\n"
-                        : "note: waitForChange timed out after \(seconds)s — the tree still matches"
-                            + " the one before the action, so the action may not have changed the"
-                            + " screen.\n"
+                    if changed {
+                        // **「変わった」は「終わった」ではない**: 最初に差が出た木が遷移途中の
+                        // こともある(2026-08-12 の実測: 検索結果がまだネットワーク待ちの
+                        // 「候補なし」中間状態で確定を返した)。直前の読みと一致するまで
+                        // 少数回だけ読み直して採り直す。timeout には縛らない(settle-lite と
+                        // 同じく操作後の固定小コストであって、待ち時間の指定ではない)
+                        var churn = 0
+                        var stable = false
+                        for _ in 0..<Self.changeSettleRereads {
+                            try await Task.sleep(
+                                nanoseconds: UInt64(max(0, settleWaitSeconds) * 1_000_000_000))
+                            let reread = try await freshSnapshot(snapshotDriver, args: args)
+                            if Self.looksUnchanged(snapshot, reread) { stable = true; break }
+                            snapshot = reread
+                            churn += 1
+                        }
+                        settleNote = "waitForChange: the tree differs from the one before the"
+                            + " action.\n"
+                        if !stable {
+                            settleNote += "note: the tree was still changing between re-reads —"
+                                + " it may not have settled; re-check (ft_snapshot, optionally"
+                                + " waitFor) before relying on it.\n"
+                        } else if churn > 0 {
+                            settleNote += "note: it kept changing after the first difference —"
+                                + " the tree below is the latest read.\n"
+                        } else if changedOnFirstRead {
+                            // 安定確認は「中間状態がそれ自体しばらく静止している」場合を
+                            // 見抜けない —— 遷移を1度も観測していないことだけは言える
+                            settleNote += once("waitForChangeFirstReadNote",
+                                full: "note: the difference was already present on the first"
+                                    + " read, so no transition was actually observed — a screen"
+                                    + " that populates asynchronously (search results, network"
+                                    + " content) may still be showing a loading or empty"
+                                    + " intermediate state; if you expect specific content,"
+                                    + " confirm it is present before relying on this tree.\n",
+                                short: "(already differed on the first read — see the earlier"
+                                    + " waitForChange note)\n")
+                        }
+                    } else {
+                        settleNote = "note: waitForChange timed out after \(seconds)s — the tree"
+                            + " still matches the one before the action, so the action may not"
+                            + " have changed the screen.\n"
+                    }
                 } else {
                     settleNote = "note: waitForChange had no earlier tree to compare with"
                         + " (nothing was read on this device yet), so it did not wait.\n"

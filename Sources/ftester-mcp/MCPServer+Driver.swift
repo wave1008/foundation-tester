@@ -222,7 +222,9 @@ extension MCPServer {
             // /status に答えず走査から消える(実測: Maps を launch した後の RN の in-app)
             throw MCPError("port \(port) is not a bridge answering on udid \(udid)"
                 + " — it is another device's bridge, or a bridge that stopped answering"
-                + " (an in-app bridge suspends with its app). Answering bridge(s) on that udid:"
+                + " (an in-app bridge suspends when its app leaves the foreground, so it cannot"
+                + " drive other apps — use the device's xcuitest port for those)."
+                + " Answering bridge(s) on that udid:"
                 + " port \(list). Pass only one of port/udid, or use one of those ports")
         }
         return port
@@ -441,6 +443,11 @@ extension MCPServer {
     /// ポーリング間隔(秒)。短くしても律速は snapshot 自体(iOS in-app で約 0.12s)。
     /// waitFor と waitForChange(snapshotAfterBody)が共有する
     static let waitPollSeconds: Double = 0.3
+
+    /// waitForChange が「変わった」後に安定(直前の読みと一致)を確かめる再読の上限。
+    /// 1回で一致するのが普通で、上限まで揺れ続けたら採り直しをやめて still-changing を注記する
+    /// —— timeout を食い潰さない固定小コストに抑えるための蓋(settleWaitSeconds × この回数)
+    static let changeSettleRereads = 3
 
     /// selector が出るまで snapshot を撃ち直す。**照合は DSL と同じ**(FTSelector →
     /// StepExecutor)なので、ここで書ける式はそのままシナリオへ持ち込める。

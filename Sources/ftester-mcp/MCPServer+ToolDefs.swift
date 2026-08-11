@@ -85,7 +85,9 @@ extension MCPServer {
         udid (iOS simulator, as printed by ft_list_devices — resolved to the bridge running on \
         it; a device with no bridge cannot be driven and says so; if port is also given the two \
         must agree) / serial (Android device) / port (iOS bridge port; default: the running \
-        bridge) / allowVersionSkew (off by default: a stale bridge answers with its own \
+        bridge. An in-app bridge answers only while the app it is injected into is frontmost — \
+        driving another app, or a system app such as Maps, needs the device's xcuitest bridge \
+        port) / allowVersionSkew (off by default: a stale bridge answers with its own \
         version's behaviour and notes, so selectors written from them are silently wrong; every \
         skewed response carries a warning).
 
@@ -103,7 +105,11 @@ extension MCPServer {
         animation is still running after that, pass waitFor (a selector to wait for on the \
         resulting screen) instead of repeating the action. On a screen that refreshes in place \
         (a re-run search, a pull-to-refresh) waitFor matches the OLD content immediately and does \
-        not wait — pass waitForChange: true there instead. snapshotAfter inherits \
+        not wait — pass waitForChange: true there instead. waitForChange means "something \
+        changed", not "the final content arrived": a screen that first shows a loading or empty \
+        intermediate (a search still fetching) satisfies it early — the response notes when the \
+        difference was already on the first read, and only checking for the expected content \
+        guarantees it is there. snapshotAfter inherits \
         interactiveOnly/expandBulk from your last ft_snapshot call unless passed explicitly.
         """
 
