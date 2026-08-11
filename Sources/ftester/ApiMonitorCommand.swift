@@ -225,7 +225,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 let frozenVerdict = Self.frozenVerdict(
                     id: state.target.id, key: leaseKey,
                     debounce: frozenDebounce, stateDir: leaseStateDir,
-                    displayIdleSeconds: state.displayIdleSeconds)
+                    displayIdleSeconds: state.displayIdleSeconds, inRun: inRun)
                 return state.info(health: confirmedIssues.isEmpty ? nil : confirmedIssues,
                                    renderMode: state.androidSerial.flatMap { renderModeCache[$0] },
                                    inRun: inRun, recording: recording, host: bridgeHost,
@@ -299,9 +299,20 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                         androidIdleCache[state.target.id] = (now, idle)
                     }
                 }
-                frozenDebounce.record(
-                    uniformBlank: Self.isFrozenSample(uniformBlank: uniform, displayIdleSeconds: idle),
-                    id: state.target.id)
+                // **run 中は streak を積まず忘れる**(frozenVerdict の inRun と対)。記録だけ続けて
+                // 判定側で無視すると、run 終了の瞬間に run 中の黒で確定済みの ❄️ が出る —— 終了後の
+                // 黒は2回の新規確認からやり直す
+                let captureLeaseKey = state.iosUdid ?? state.androidSerial
+                let captureInRun = leaseStateDir.flatMap { dir in
+                    captureLeaseKey.map { RunLease.isFresh(stateDir: dir, key: $0) }
+                } ?? false
+                if captureInRun {
+                    frozenDebounce.forget(id: state.target.id)
+                } else {
+                    frozenDebounce.record(
+                        uniformBlank: Self.isFrozenSample(uniformBlank: uniform, displayIdleSeconds: idle),
+                        id: state.target.id)
+                }
 
                 // ---- 配信段: ここから先だけが抑制の対象
                 guard deliverIDs.contains(state.target.id) else { continue }
@@ -528,6 +539,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                               debounce: MonitorFrozenDebounce,
                               stateDir: URL?,
                               displayIdleSeconds: Double? = nil,
+                              inRun: Bool = false,
                               environment: [String: String] = ProcessInfo.processInfo.environment,
                               now: Date = Date()) -> FrozenVerdict {
         let published = stateDir.flatMap { dir in
@@ -539,8 +551,13 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         // 申告の無いブリッジ(旧版・計器なし)は nil = 根拠にしない
         let present: FrozenVerdict = (displayIdleSeconds ?? 0) > displayIdleFrozenThreshold
             ? FrozenVerdict([.noPresent]) : .healthy
-        return debounce.verdict(id: id)
-            .merged(with: published).merged(with: injected).merged(with: present)
+        // **run 中は自前の受動観測を確定に使わない**: run はアプリを terminate→relaunch し続けるので
+        // 合間の一様(真っ黒)フレームは正常に出るし、黒画面の2種(描画要求なし/本物の wedge)は
+        // 受動観測では分けられない(docs/verification.md)。run 中に本物が起きれば
+        // run 側の能動プローブが published(DeviceFrozenStore)経由でここへ届く。
+        // 注入(陽性対照)と published は run 中も残す
+        let own = inRun ? .healthy : debounce.verdict(id: id)
+        return own.merged(with: published).merged(with: injected).merged(with: present)
     }
 
     /// pause したまま resume が来ない場合に自動的に resume 扱いにするまでの秒数(安全弁)

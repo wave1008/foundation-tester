@@ -200,4 +200,44 @@ final class MonitorFrozenWiringTests: XCTestCase {
         XCTAssertFalse(ApiMonitorCommand.isFrozenSample(uniformBlank: false, displayIdleSeconds: nil))
         XCTAssertFalse(ApiMonitorCommand.isFrozenSample(uniformBlank: false, displayIdleSeconds: 0.01))
     }
+
+    // MARK: - ④ run 中は自前の受動観測を確定に使わない
+
+    /// **run 中の一様フレームで ❄️ を出さない**: run はアプリを terminate→relaunch し続けるので
+    /// 合間の真っ黒は正常に出る。黒画面の2種(描画要求なし/本物の wedge)は受動観測では分けられない
+    func testOwnUniformBlankIsSuppressedWhileInRun() throws {
+        let dir = try makeStateDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        var debounce = MonitorFrozenDebounce(confirmThreshold: 2)
+        _ = debounce.record(uniformBlank: true, id: "tile-a")
+        _ = debounce.record(uniformBlank: true, id: "tile-a")
+        let verdict = ApiMonitorCommand.frozenVerdict(
+            id: "tile-a", key: "udid-a", debounce: debounce, stateDir: dir,
+            inRun: true, environment: [:])
+        XCTAssertFalse(verdict.isFrozen, "run がステップを進められている機は凍結していない")
+    }
+
+    /// run 中でも **run が公表した凍結**は表示する(run 側の能動プローブが本物を見分ける)
+    func testPublishedVerdictStillSurfacesWhileInRun() throws {
+        let dir = try makeStateDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        DeviceFrozenStore.publish(stateDir: dir, key: "udid-a",
+                                  verdict: FrozenVerdict([.uniformBlank]))
+        let verdict = ApiMonitorCommand.frozenVerdict(
+            id: "tile-a", key: "udid-a", debounce: MonitorFrozenDebounce(confirmThreshold: 2),
+            stateDir: dir, inRun: true, environment: [:])
+        XCTAssertTrue(verdict.isFrozen, "run 自身が見つけた凍結までモニターが黙ると回復が見えない")
+    }
+
+    /// run 中でも**注入**は表示する(陽性対照は run の有無に関わらず経路を通せること)
+    func testInjectionStillSurfacesWhileInRun() throws {
+        let dir = try makeStateDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let verdict = ApiMonitorCommand.frozenVerdict(
+            id: "tile-a", key: "udid-a", debounce: MonitorFrozenDebounce(confirmThreshold: 2),
+            stateDir: dir, inRun: true,
+            environment: [FrozenInjection.environmentKey: "udid-a"])
+        XCTAssertTrue(verdict.isFrozen)
+        XCTAssertEqual(verdict.evidence, [.injected])
+    }
 }
