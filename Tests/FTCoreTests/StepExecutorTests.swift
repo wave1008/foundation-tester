@@ -1424,10 +1424,14 @@ final class StepExecutorTests: XCTestCase {
     }
 
     // MARK: - pressEnter(ロケータ無し。type(ref: nil) と同じくロケータ解決を挟まない経路)
+    // 以下は焦点待ち(awaitFocusBeforePressEnter)を通るので、409/typeDriver 切替の検証は
+    // primary 側に focused 要素を用意して即進行させる(待ち自体は下の MARK で別途検証する)
 
-    func testPressEnterCallsDriverDirectlyWithoutSnapshot() async throws {
+    /// 1枚目から focused な要素があれば、焦点確認は1回で足りすぐ実行すること
+    func testPressEnterWithImmediateFocusChecksOnceThenExecutes() async throws {
         let log = CallLog()
-        let primary = FakeAppDriver(name: "primary", log: log)
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[inputField(ref: 1, id: "field", focused: true)]])
         let executor = StepExecutor(driver: primary)
         let step = FlowStep(action: "pressEnter")
 
@@ -1437,14 +1441,17 @@ final class StepExecutorTests: XCTestCase {
             XCTFail("pressEnter の passed を期待したが \(outcome.status) だった")
             return
         }
-        XCTAssertEqual(log.entries, ["primary.pressEnter"], "ロケータ解決(snapshot)を挟んではいけない")
+        XCTAssertNil(outcome.driverFallback, "既に焦点があるので注記は付かない")
+        XCTAssertEqual(log.entries, ["primary.snapshot", "primary.pressEnter"],
+                       "焦点確認は1回で足りること")
     }
 
     /// 409(inapp が Compose 以外の入力欄/フォーカス無しで返す)はリアクティブに typeDriver へ
     /// 切り替えること(type の 409 フォールバックと同じ形)
     func testPressEnter409FallsBackToTypeDriverReactively() async throws {
         let log = CallLog()
-        let primary = FakeAppDriver(name: "primary", log: log)
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[inputField(ref: 1, id: "field", focused: true)]])
         primary.pressEnterError = DriverError.badResponse(status: 409, body: "not compose")
         let typeDriver = FakeAppDriver(name: "typedriver", log: log)
         let executor = StepExecutor(driver: primary, typeDriver: typeDriver)
@@ -1457,13 +1464,15 @@ final class StepExecutorTests: XCTestCase {
             return
         }
         XCTAssertEqual(outcome.driverFallback, "fell back to XCUITest")
-        XCTAssertEqual(log.entries, ["primary.pressEnter(throws)", "typedriver.pressEnter"])
+        XCTAssertEqual(log.entries,
+                       ["primary.snapshot", "primary.pressEnter(throws)", "typedriver.pressEnter"])
     }
 
     /// 409 以外のエラーは typeDriver へ切り替えず、そのまま失敗させること
     func testPressEnterNon409DoesNotUseTypeDriver() async throws {
         let log = CallLog()
-        let primary = FakeAppDriver(name: "primary", log: log)
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[inputField(ref: 1, id: "field", focused: true)]])
         primary.pressEnterError = DriverError.badResponse(status: 500, body: "server error")
         let typeDriver = FakeAppDriver(name: "typedriver", log: log)
         let executor = StepExecutor(driver: primary, typeDriver: typeDriver)
@@ -1482,7 +1491,8 @@ final class StepExecutorTests: XCTestCase {
     /// typeDriver が無い場合、409 はそのまま伝播して失敗させること
     func testPressEnter409WithoutTypeDriverPropagates() async throws {
         let log = CallLog()
-        let primary = FakeAppDriver(name: "primary", log: log)
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[inputField(ref: 1, id: "field", focused: true)]])
         primary.pressEnterError = DriverError.badResponse(status: 409, body: "not compose")
         let executor = StepExecutor(driver: primary)
         let step = FlowStep(action: "pressEnter")
@@ -1493,6 +1503,50 @@ final class StepExecutorTests: XCTestCase {
             XCTFail("typeDriver 無しでの 409 失敗を期待したが \(outcome.status) だった")
             return
         }
+    }
+
+    // MARK: - pressEnter の焦点待ち(awaitFocusBeforePressEnter。MCP の awaitFocus と値を共有)
+
+    /// 1枚目は focused なし・2枚目で focused あり → 実行され、snapshot は2回以上呼ばれ、警告なし
+    func testPressEnterWaitsForFocusThenExecutesWithoutWarning() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(
+            name: "primary", log: log,
+            snapshotElements: [[inputField(ref: 1, id: "field", focused: false)],
+                              [inputField(ref: 1, id: "field", focused: true)]])
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(action: "pressEnter")
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("pressEnter の passed を期待したが \(outcome.status) だった")
+            return
+        }
+        XCTAssertNil(outcome.driverFallback, "焦点が立ったので注記は付かない")
+        XCTAssertGreaterThanOrEqual(log.entries.filter { $0 == "primary.snapshot" }.count, 2)
+        XCTAssertEqual(log.entries.last, "primary.pressEnter")
+    }
+
+    /// **どこにも** focused == true が立たないまま(pressEnter に特定の対象は無いので、
+    /// 判定は「木のどこかが focused か」— DSL の awaitFocusBeforePressEnter 参照)→
+    /// タイムアウト後に実行され、警告注記が driverFallback に載る。実時間 waitSeconds(1.5s)を払う
+    func testPressEnterTimesOutWithWarningWhenFocusNeverArrives() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(
+            name: "primary", log: log,
+            snapshotElements: [[inputField(ref: 1, id: "field", focused: false)]])
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(action: "pressEnter")
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("タイムアウトしても拒否せず実行されることを期待したが \(outcome.status) だった")
+            return
+        }
+        XCTAssertEqual(outcome.driverFallback?.contains("took focus"), true, "\(outcome.driverFallback ?? "nil")")
+        XCTAssertEqual(log.entries.last, "primary.pressEnter", "拒否せず実行まで進むこと")
     }
 
     // MARK: - hideKeyboard(ロケータ無し。pressEnter と同じくロケータ解決を挟まない経路)

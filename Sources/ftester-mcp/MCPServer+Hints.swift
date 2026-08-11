@@ -850,7 +850,7 @@ extension MCPServer {
         return FTRect(x: x - r, y: y - r, width: r * 2, height: r * 2)
     }
 
-    /// フォーカス待ちの上限。**短い**のは、報告しないフレームワークで毎回これを丸ごと待つため
-    static let focusWaitSeconds: Double = 1.5
-    static let focusPollSeconds: Double = 0.15
+    /// DSL の pressEnter(StepExecutor+Actions.swift)と値を共有 — FTCore.FocusWait が唯一の定義元
+    static let focusWaitSeconds = FocusWait.waitSeconds
+    static let focusPollSeconds = FocusWait.pollSeconds
 }

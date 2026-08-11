@@ -53,7 +53,9 @@ final class CommandDispatchTests: XCTestCase {
                 screen: FTRect(x: 0, y: 0, width: 400, height: 800),
                 elements: [ElementInfo(ref: 1, type: "button", identifier: "cleanup", label: "片付け",
                                        value: "1200", placeholder: nil, enabled: true,
-                                       frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 0),
+                                       frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 0,
+                                       // pressEnter の焦点待ち(StepExecutor+Actions)が即進行するための印
+                                       focused: true),
                            // label を持たない要素(isEmpty が .text の有無と別物であることの検証用)
                            ElementInfo(ref: 2, type: "other", identifier: "nolabel", label: nil,
                                        value: nil, placeholder: nil, enabled: true,

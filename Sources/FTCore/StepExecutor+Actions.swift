@@ -264,6 +264,7 @@ extension StepExecutor {
         // 出す。InAppBridge.handlePressEnter 参照)は type のロケータ版と同じ形で
         // typeDriver(xcuitest)へフォールバックする
         if action == "pressEnter" {
+            let focusNote = try await awaitFocusBeforePressEnter(phase: &phase)
             let start = clock.now
             do {
                 try await driver.pressEnter()
@@ -272,10 +273,11 @@ extension StepExecutor {
                       let td = typeDriver else { throw error }
                 try await td.pressEnter()
                 phase.actionMs += Self.ms(clock.now - start)
-                return StepOutcome(status: .passed, driverFallback: "fell back to XCUITest")
+                return StepOutcome(status: .passed,
+                                   driverFallback: Self.joinNotes(focusNote, "fell back to XCUITest"))
             }
             phase.actionMs += Self.ms(clock.now - start)
-            return StepOutcome(status: .passed)
+            return StepOutcome(status: .passed, driverFallback: focusNote)
         }
 
         // hideKeyboard もロケータを持たない(フォーカス中の入力欄からファーストレスポンダを外す)。
@@ -852,6 +854,39 @@ extension StepExecutor {
         return StepOutcome(status: status, healedStep: healedStep, healedByCache: healedByCache,
                            driverFallback: Self.joinNotes(Self.joinNotes(driverFallback, ghostNote),
                                                           straddleNote))
+    }
+
+    /// pressEnter 直前の焦点待ち(MCP の awaitFocus と同じレース対策: タップ直後、対象欄へ
+    /// フォーカスが立つ前の Enter は前の欄へ飛ぶ)。pressEnter はロケータを持たないので特定の
+    /// 要素は狙わず、**木のどこかが focused を申告する / キーボードが出ている**のどちらかを
+    /// 合図として待つ。値は FTCore.FocusWait(MCP と共有)。
+    ///
+    /// **keyboardShown はプラットフォーム分岐せず毎回確かめる**: xcuitest/in-app は
+    /// snapshot のたびに申告するが、Android は captureKeyboardStateOnNextSnapshot() を
+    /// 撮る前に立てないと申告されない(executeAssertKeyboardShown と同じ制約)ので、
+    /// 毎周回立て直す(iOS では no-op)。focused だけでは Compose iOS(in-app は
+    /// UIResponder でない a11y 要素の focused を申告しない)を待ち続けてしまうので、
+    /// keyboardShown を第二の合図として持つ。
+    ///
+    /// 合図が出ないまま waitSeconds 経過したら拒否せず注記を返す(呼び出し側で driverFallback へ合流)
+    private func awaitFocusBeforePressEnter(phase: inout PhaseAccumulator) async throws -> String? {
+        let clock = ContinuousClock()
+        let deadline = Date().addingTimeInterval(FocusWait.waitSeconds)
+        while true {
+            driver.captureKeyboardStateOnNextSnapshot()
+            let start = clock.now
+            let snapshot = try await driver.snapshot(bypassingCache: driver.supportsCacheBypass)
+            phase.snapshotMs += Self.ms(clock.now - start)
+            if snapshot.elements.contains(where: { $0.focused == true })
+                || snapshot.keyboardShown == true { return nil }
+            guard Date() < deadline else {
+                return "no field ever took focus within \(FocusWait.waitSeconds)s before pressEnter"
+                    + " — the Enter may have gone to whichever field still had it"
+            }
+            let waitStart = clock.now
+            try? await Task.sleep(for: .seconds(FocusWait.pollSeconds))
+            phase.waitMs += Self.ms(clock.now - waitStart)
+        }
     }
 
     /// typeDriver で type を試みる。ref はブリッジごとに別名前空間なので typeDriver 側 snapshot で
