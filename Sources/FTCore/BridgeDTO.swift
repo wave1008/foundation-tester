@@ -158,7 +158,12 @@ public enum BridgeAPI {
     /// and XCUITest bridges, and GET /status now reports `orientation` on those two. Not added to
     /// Android (host-side adb instead — see AndroidDriver). Old bridges 404 "not found:" on
     /// /rotate, so the host must not reuse a stale bridge for scenarios that rotate.
-    public static let bridgeProtocolVersion = 63
+    /// 64: both iOS bridges now run a display heartbeat (CADisplayLink) and report
+    /// `displayIdleSeconds` on GET /status — the signal that separates "a still screen" from
+    /// "a wedged display" without looking at pixels (DisplayHeartbeat.swift in each bridge).
+    /// The field is optional, but the bridge **behaviour** changed, so a stale bridge would keep
+    /// reporting nothing and the host would silently lose the evidence → bump.
+    public static let bridgeProtocolVersion = 64
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の
@@ -440,6 +445,14 @@ public struct StatusResponse: Codable, Sendable {
     /// inapp ブリッジが自己申告する UI フレームワーク("compose"/"uikit")。判定は InAppBridge の
     /// compose-resources 実在チェック。xcuitest/Android ブリッジは返さない → nil 許容。
     public var uiFramework: String?
+    /// **最後に画面が進んでからの秒数**(iOS=CADisplayLink / Android=Choreographer の tick)。
+    /// 凍結を「絵が一様か」という代理指標ではなく直接測るための信号で、vsync 由来なので
+    /// **静止画面でも tick する** = 静止と wedge を画像なしで分離できる。
+    /// ホストは `FrozenEvidence.noPresent` の材料に使うが、**単独では確定させない**
+    /// (この wedge で本当に止まるかが未検証のため。docs/verification.md)。
+    /// 計器を持たないブリッジ・旧ブリッジは返さない → nil 許容(=不明・根拠にしない)。
+    /// 通信の `idleSeconds`(下)とは別物 —— あちらは「無通信秒数」で画面とは無関係
+    public var displayIdleSeconds: Double?
     /// Android ブリッジ APK の versionCode(BridgeRouter.java handleStatus)。稼働中の旧ブリッジを
     /// probe 時に検知して自動更新するために使う。iOS ブリッジ・旧 Android ブリッジは返さない → nil 許容。
     public var bridgeVersionCode: Int?
@@ -472,7 +485,8 @@ public struct StatusResponse: Codable, Sendable {
 
     public init(ready: Bool, device: String, osVersion: String, sessionBundleID: String?,
                 engine: String? = nil, protocolVersion: Int? = nil, applicationState: String? = nil,
-                uiFramework: String? = nil, bridgeVersionCode: Int? = nil,
+                uiFramework: String? = nil, displayIdleSeconds: Double? = nil,
+                bridgeVersionCode: Int? = nil,
                 fastInputAvailable: Bool? = nil, unsupportedActions: [String]? = nil,
                 ownerRepo: String? = nil, ownerPid: Int? = nil, idleSeconds: Double? = nil,
                 timingEnabled: Bool? = nil, udid: String? = nil,
@@ -485,6 +499,7 @@ public struct StatusResponse: Codable, Sendable {
         self.protocolVersion = protocolVersion
         self.applicationState = applicationState
         self.uiFramework = uiFramework
+        self.displayIdleSeconds = displayIdleSeconds
         self.bridgeVersionCode = bridgeVersionCode
         self.fastInputAvailable = fastInputAvailable
         self.unsupportedActions = unsupportedActions

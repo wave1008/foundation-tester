@@ -26,6 +26,7 @@ SWIFT_SOURCES=(
   Sources/InAppWebViewDOM.swift
   Sources/InAppSnapshot.swift
   Sources/InAppSettle.swift
+  Sources/DisplayHeartbeat.swift
   Sources/InAppBridge.swift
 )
 

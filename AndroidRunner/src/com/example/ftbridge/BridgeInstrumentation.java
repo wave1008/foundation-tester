@@ -56,6 +56,9 @@ public class BridgeInstrumentation extends Instrumentation {
     public void onStart() {
         Log.i(TAG, "bridge starting on 127.0.0.1:" + port
                 + " ttl=" + (ttlSeconds > 0 ? ttlSeconds + "s" : "off"));
+        // 画面が進んでいるかの計器(/status の displayIdleSeconds)。**HTTP ループへ入る前に**
+        // 載せる(run() はこのスレッドを占有して戻らない)。実体はメインルーパー上で回る
+        DisplayHeartbeat.start();
         BridgeRouter router = new BridgeRouter(this);
         // iOS ランナーと同じく逐次処理(1接続ずつ)。UI 操作が自然に直列化される。
         // finish() は呼ばない = 常駐(停止は am force-stop com.example.ftbridge、

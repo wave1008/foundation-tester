@@ -167,6 +167,9 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         // 起動元の自己申告(doctor の診断用。BridgeDTO.StatusResponse の同名フィールド参照)
         if (BridgeInstrumentation.ownerRepo != null) o.put("ownerRepo", BridgeInstrumentation.ownerRepo);
         o.put("idleSeconds", BridgeHttpServer.lastIdleSeconds);
+        // 画面が進んでいるかの計器(DisplayHeartbeat 参照)。負値 = 計器が動いていない = 申告しない
+        double displayIdle = DisplayHeartbeat.idleSeconds();
+        if (displayIdle >= 0) o.put("displayIdleSeconds", displayIdle);
         // 所要内訳ログの状態。起動時にしか切り替わらないので、ホストは希望と違えば起動し直す
         // (同期相手: Sources/FTAndroid/AndroidBridge.swift の startBridge)
         if (BridgeInstrumentation.timingEnabled) o.put("timingEnabled", true);

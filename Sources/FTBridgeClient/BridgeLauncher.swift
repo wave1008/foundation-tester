@@ -56,16 +56,25 @@ public struct BridgeLauncher {
         }
     }
 
-    /// project.yml が .xcodeproj より新しいか(取得できなければ「古くない」= 再生成しない)
+    /// project.yml **またはランナーのソース**が .xcodeproj より新しいか
+    /// (取得できなければ「古くない」= 再生成しない)。
+    ///
+    /// **ソース側も見るのが要点**(2026-08-11 に踏んだ): project.yml はディレクトリを指すので、
+    /// ランナーへファイルを1本足しても manifest の mtime は動かない。manifest だけを見ていると
+    /// **新しいファイルがターゲットに入らないまま**ビルドが走り、`cannot find X in scope` で
+    /// 落ちる(原因が project 生成側にあると気付きにくい)
     private func isStale(manifest: URL) -> Bool {
         func modified(_ url: URL) -> Date? {
             (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
         }
-        guard let manifestDate = modified(manifest),
-              let projectDate = modified(projectPath.appendingPathComponent("project.pbxproj")) else {
+        guard let projectDate = modified(projectPath.appendingPathComponent("project.pbxproj")) else {
             return false
         }
-        return manifestDate > projectDate
+        if let manifestDate = modified(manifest), manifestDate > projectDate { return true }
+        let sourceDir = repoRoot.appendingPathComponent("Runner/FTesterRunnerUITests")
+        let contents = (try? FileManager.default.contentsOfDirectory(
+            at: sourceDir, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        return contents.contains { (modified($0) ?? .distantPast) > projectDate }
     }
 
     public func buildForTesting() throws {

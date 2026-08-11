@@ -28,6 +28,10 @@ final class FTesterBridgeTests: XCTestCase {
         NSLog("[ftester] bridge listening on %@:%d ttl=%@", bindHost, Int(port),
               ttl > 0 ? "\(ttl)s" : "off")
 
+        // 画面が進んでいるかの計器(/status の displayIdleSeconds)。**RunLoop を回し始める前に**
+        // 載せる —— 下のループが回り出さないと CADisplayLink は tick しない
+        DisplayHeartbeat.shared.start()
+
         // 接続処理は accept スレッドで行われる。ここでは RunLoop を回し続けて
         // テストを終わらせない(イベント合成等が必要とするランループも回る)。
         while server.isRunning {

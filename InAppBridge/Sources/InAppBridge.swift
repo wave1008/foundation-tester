@@ -53,6 +53,9 @@ final class FTInAppBridge {
         // UIInputSetHostView のクラス名走査は iOS 27 で不発を実測)。ブリッジ起動前に
         // 開いていたキーボードは最初の変化まで不明のまま = keyboardFrame なし
         DispatchQueue.main.async { Self.observeKeyboardFrame() }
+        // 画面が進んでいるかの計器(/status の displayIdleSeconds)。凍結を「絵の一様さ」ではなく
+        // 直接測るための信号 —— DisplayHeartbeat の説明を参照
+        DisplayHeartbeat.shared.start()
         do {
             try server.start()
             self.server = server
@@ -136,6 +139,7 @@ final class FTInAppBridge {
                 protocolVersion: BridgeAPI.bridgeProtocolVersion,
                 applicationState: state,
                 uiFramework: self.uiFramework,
+                displayIdleSeconds: DisplayHeartbeat.shared.idleSeconds,
                 // 合成タッチは「時間・移動を伴うジェスチャ」を駆動できない。これは Compose 固有ではなく
                 // SwiftUI/UIKit でも同じ(2026-07-23 に TestProjects/E2E-iOS で実測)ので press は常に申告する。
                 //

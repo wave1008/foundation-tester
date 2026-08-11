@@ -109,6 +109,8 @@ final class BridgeRouter {
             sessionBundleID: sessionBundleID,
             engine: "xcuitest",
             protocolVersion: BridgeAPI.bridgeProtocolVersion,
+            // 画面が進んでいるかの計器(DisplayHeartbeat 参照)。凍結を絵の一様さではなく直接測る
+            displayIdleSeconds: DisplayHeartbeat.shared.idleSeconds,
             fastInputAvailable: FastInput.available,
             // 起動元の自己申告(doctor の刈り取り判定が依存。BridgeDTO の各フィールド参照)
             ownerRepo: ProcessInfo.processInfo.environment["FT_OWNER_REPO"],
