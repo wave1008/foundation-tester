@@ -1,10 +1,11 @@
-// 凍結表示(ヘッダの "Frozen: N" とタイルのバッジ)の DOM テスト。
+// 凍結表示(タイルの ❄️ バッジ)の DOM テスト。
 // 実 HTML + 実バンドルを jsdom で動かす方式は webviewTileRelayout.test.mjs と同じ。
 //
-// 判定そのもの(一様フレームが2サイクル連続)は Swift 側(MonitorFrozenDebounce)の担当で、
+// 判定そのもの(一様フレームの連続)は Swift 側(MonitorFrozenDebounce)の担当で、
 // ここが守るのは**受け取った frozen を落とさずに出すこと**だけ。
 // 凍結はタイルの絵を見ても分からない(凍結中も最後のフレームが残る)ので、この表示が
 // 消えると「モニターを見ていたのに気付かなかった」が起きる。
+// ヘッダの件数カウンタ(❄️ N)は撤去済み(ユーザー指示)。表示はタイルのバッジのみ。
 
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -68,49 +69,40 @@ function sendDevices(window, specs) {
   window.dispatchEvent(new window.MessageEvent("message", { data: { type: "devices", devices } }));
 }
 
-const frozenValue = (document) => document.querySelector("#hm-frozen .hm-value").textContent;
-const frozenWarned = (document) => document.getElementById("hm-frozen").classList.contains("hm-frozen-warn");
 const visibleFrozenBadges = (document) =>
   [...document.querySelectorAll("#grid .badge-frozen")].filter((el) => el.style.display !== "none").length;
 
-test("凍結ゼロなら 0 のまま・警告色を付けない(通常時にノイズを出さない)", (t) => {
+test("凍結ゼロならバッジを出さない(通常時にノイズを出さない)", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   sendDevices(window, [{}, {}]);
-  assert.equal(frozenValue(document), "0");
-  assert.equal(frozenWarned(document), false);
   assert.equal(visibleFrozenBadges(document), 0);
 });
 
-test("凍結した台数がヘッダに出て、そのタイルにバッジが付く", (t) => {
+test("凍結した台にだけバッジが付く", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   sendDevices(window, [{ frozen: true }, {}, { frozen: true }]);
-  assert.equal(frozenValue(document), "2");
-  assert.equal(frozenWarned(document), true, "1台以上は目立たせる");
   assert.equal(visibleFrozenBadges(document), 2, "凍結した台にだけバッジを出すこと");
 });
 
-test("凍結が解けたら件数もバッジも戻る(出しっぱなしにしない)", (t) => {
+test("凍結が解けたらバッジも戻る(出しっぱなしにしない)", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   sendDevices(window, [{ frozen: true }, { frozen: true }]);
-  assert.equal(frozenValue(document), "2");
+  assert.equal(visibleFrozenBadges(document), 2);
   sendDevices(window, [{}, {}]);
-  assert.equal(frozenValue(document), "0");
-  assert.equal(frozenWarned(document), false);
   assert.equal(visibleFrozenBadges(document), 0);
 });
 
-test("未接続の台は凍結として数えない(落ちている機は凍結ではない)", (t) => {
+test("未接続の台にはバッジを出さない(落ちている機は凍結ではない)", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   sendDevices(window, [{ frozen: true, state: "booted" }, { frozen: true, state: "offline" }]);
-  assert.equal(frozenValue(document), "0");
   assert.equal(visibleFrozenBadges(document), 0);
 });
 
-test("frozen を送らない旧 CLI でも壊れない(0 のまま)", (t) => {
+test("frozen を送らない旧 CLI でも壊れない(バッジなし)", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   const devices = [{
@@ -118,7 +110,6 @@ test("frozen を送らない旧 CLI でも壊れない(0 のまま)", (t) => {
     kind: "virtual", udid: "UDID-0", recording: false, registered: true,
   }];
   window.dispatchEvent(new window.MessageEvent("message", { data: { type: "devices", devices } }));
-  assert.equal(frozenValue(document), "0");
   assert.equal(visibleFrozenBadges(document), 0);
 });
 
@@ -147,24 +138,4 @@ test("タイルのバッジは ❄️ で、ホバーすると説明が出る", 
   assert.equal(tip.style.display, "block");
   assert.equal(tip.textContent, "デバイス凍結中");
   assert.equal(badge.title, "", "ネイティブ title が残ると同じ説明が二重に出る");
-});
-
-test("ヘッダの凍結カウンタは ❄️ で、ホバーすると説明が出る", async (t) => {
-  const { window, document } = createWebview();
-  t.after(() => window.close());
-  const el = document.getElementById("hm-frozen");
-  assert.equal(el.querySelector(".hm-label").textContent, "❄️", "ラベルは絵文字1文字");
-
-  const tip = await hoverTip(window, el);
-  assert.ok(tip, "ホバーしても説明が出ていない");
-  assert.equal(tip.style.display, "block");
-  assert.equal(tip.textContent, "画面が凍結しているデバイスの数");
-  assert.equal(el.title, "", "ネイティブ title が残ると同じ説明が二重に出る");
-
-  // 件数が変わっても説明は変わらない(台数はカウンタの数字が出している)
-  sendDevices(window, [{ frozen: true }]);
-  assert.equal(frozenValue(document), "1");
-  el.dispatchEvent(new window.MouseEvent("mouseout", { bubbles: true }));
-  const after = await hoverTip(window, el);
-  assert.equal(after.textContent, "画面が凍結しているデバイスの数");
 });

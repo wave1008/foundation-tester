@@ -12,8 +12,6 @@ import { updateLaneVisibility, syncLanesToDevices, runningWorkers } from './lane
 import { createH264Renderer } from './h264Decoder.js';
 import { clampMenuPosition } from './menu.js';
 import { setHoverTip } from './hoverTip.js';
-import { renderFrozenCount } from './hostCharts.js';
-import { countFrozenDevices } from '../../monitorDeviceModel';
 
 // bridgeWatch(拡張ホストの自動修復ウォッチドッグ、契約は main.js の 'bridgeWatch' ケース参照)の
 // phase→footer表示。'ok'はここに含めず通常表示へフォールバックさせる。
@@ -589,8 +587,6 @@ function clearTileError(entry) {
 }
 
 export function applyDevices(devices) {
-  // **絞り込みで凍結が視界から消えても件数は出す**ので、タイルではなく devices 全件から数える
-  renderFrozenCount(countFrozenDevices(devices));
   const previousTileCount = tiles.size;
   const seen = new Set();
   for (const device of devices) {

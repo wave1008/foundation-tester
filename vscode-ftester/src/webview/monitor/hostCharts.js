@@ -8,7 +8,6 @@
 // 他系列と時間軸を揃えるため、値は hostMetrics の tick ごとに「前tickからの増分」を積む。
 
 import { t } from '../i18n.js';
-import { setHoverTip } from './hoverTip.js';
 
 const HM_MAX_SAMPLES = 60;
 // バリデータ検証済みパレット(ダーク/ライトで系列色を切り替える。グリッド・軸は描かない)。
@@ -236,26 +235,6 @@ export function applyHostMetrics(message) {
   for (const entry of HM_ALL_ENTRIES) {
     hmDraw(entry);
   }
-}
-
-// 凍結台数。**供給元が違う** —— hostMetrics ストリームではなく monitorDevices(サイクル毎)で、
-// スパークラインも持たない(件数の推移より「今いくつ死んでいるか」だけが要る)。
-// 呼び出しは deviceTiles.js の applyDevices。判定は ApiMonitorCommand の MonitorFrozenDebounce。
-const hmFrozenEl = document.getElementById('hm-frozen');
-const hmFrozenValue = hmFrozenEl ? hmFrozenEl.querySelector('.hm-value') : null;
-
-// ラベルが ❄️(絵文字1文字)なので、**意味はホバーの説明でしか読めない**。
-// ネイティブ `title` は表示まで約1秒かかり、他のホバー説明(0.2秒の hoverTip)と体感が違うため
-// 「出ない」と受け取られる。**タイル側と同じ自前ツールチップに合わせる**。
-// 説明は件数に依らない一文なので**初期化時に1回だけ**設定する(台数は数字が出している)
-if (hmFrozenEl) { setHoverTip(hmFrozenEl, hmFrozenEl.title); }
-
-
-/** 凍結台数を出す。0 は既定色、1台以上は警告色(FM 全滅と同じ「見逃すと調査が狂う」情報)。 */
-export function renderFrozenCount(count) {
-  if (!hmFrozenValue || !hmFrozenEl) { return; }
-  hmFrozenValue.textContent = String(count);
-  hmFrozenEl.classList.toggle('hm-frozen-warn', count > 0);
 }
 
 // テーマ切替(body の class に vscode-light 等が付け外しされる)を検知して全グラフを再描画する。

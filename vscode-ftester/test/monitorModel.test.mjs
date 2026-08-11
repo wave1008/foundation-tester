@@ -16,7 +16,6 @@ import {
   addDevicesToMachineProfile,
   buildRunProfileTemplate,
   bulkLifecycleOp,
-  countFrozenDevices,
   createDeviceLifecycleQueueState,
   finishDeviceLifecycleJob,
   deviceLifecycleJobNeedsMonitorPause,
@@ -170,19 +169,6 @@ test("isMonitorEvent: monitorDevices の frozen は欠落・非boolean値を fal
     assert.equal(isMonitorEvent(value), true);
     assert.equal(value.devices[0].frozen, false, `frozen=${JSON.stringify(raw)}`);
   }
-});
-
-test("countFrozenDevices: frozen かつ connected のものだけ数える", () => {
-  const devices = [
-    { id: "a", name: "a", platform: "ios", state: "connected", detail: "", frozen: true },
-    { id: "b", name: "b", platform: "ios", state: "connected", detail: "", frozen: true },
-    // 未接続は凍結として数えない(Swift 側も接続断で記憶を捨てる)
-    { id: "c", name: "c", platform: "ios", state: "booted", detail: "", frozen: true },
-    { id: "d", name: "d", platform: "android", state: "connected", detail: "", frozen: false },
-    { id: "e", name: "e", platform: "android", state: "connected", detail: "" },
-  ];
-  assert.equal(countFrozenDevices(devices), 2);
-  assert.equal(countFrozenDevices([]), 0);
 });
 
 test("isMonitorEvent: monitorDevices の recording は true/false をそのまま保持する", () => {

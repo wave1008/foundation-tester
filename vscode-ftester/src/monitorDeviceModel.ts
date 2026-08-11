@@ -234,10 +234,3 @@ export function filterMonitorDevices(
     ? devices.filter((device) => device.state !== "offline" && !iosPhysicalWithoutBridge(device))
     : devices.filter((device) => device.registered !== false);
 }
-
-/** 画面が凍結しているデバイスの件数(モニターのヘッダに出す "Frozen: N")。
- * **接続中のものだけ数える** —— 落ちている機は凍結ではないし、Swift 側も接続断で記憶を捨てる。
- * 表示中のフィルタに関わらず全デバイスを数える(絞り込みで凍結が視界から消えても件数は出す)。 */
-export function countFrozenDevices(devices: readonly MonitorDevice[]): number {
-  return devices.filter((device) => device.frozen === true && device.state === "connected").length;
-}

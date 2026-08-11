@@ -94,9 +94,6 @@ function renderDevicesPanel(): string {
         <span class="host-metric" id="hm-cpu" title="${t("panels.hostMetrics.cpuTitle")}"><span class="hm-label">CPU</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
         <span class="host-metric" id="hm-gpu" title="${t("panels.hostMetrics.gpuTitle")}"><span class="hm-label">GPU</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
         <span class="host-metric" id="hm-fm" title="${t("panels.hostMetrics.fmTitle")}"><span class="hm-label">FM</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
-        <!-- 凍結台数。他の指標と違い hostMetrics ではなく devices(monitorDevices)由来なので
-             スパークラインは持たない(canvas 無し。更新は deviceTiles.js applyDevices)。 -->
-        <span class="host-metric" id="hm-frozen" title="${t("panels.hostMetrics.frozenTitle")}"><span class="hm-label">❄️</span><span class="hm-value">0</span></span>
       </div>
       <!-- グラフの右・ツールバー右端。ON の間、タイル高さを「全デバイスが横幅にちょうど収まる」
            高さへ自動調整する(状態と再計算契機は splitter.js)。左右の縁へ向かう両矢印の自作SVG。 -->

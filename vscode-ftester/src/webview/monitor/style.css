@@ -198,10 +198,6 @@ button.secondary:hover:not(:disabled) {
   font-size: 11px;
   color: var(--vscode-descriptionForeground);
 }
-/* 凍結だけラベルが絵文字(他は MEM/CPU/GPU/FM の文字)。11px では判別しづらいので上げる */
-#hm-frozen .hm-label {
-  font-size: 13px;
-}
 .hm-canvas {
   /* 実ピクセル数は devicePixelRatio に応じて JS(hmSetupCanvas)が上書きするが、
      CSS 表示サイズは常にここの 72x22px に固定する。 */
@@ -226,16 +222,6 @@ button.secondary:hover:not(:disabled) {
 }
 .host-metric.hm-fm-warn .hm-value {
   color: var(--vscode-editorWarning-foreground, #e6a700);
-}
-/* 凍結台数(1台以上のときだけ目立たせる。0 は既定色のまま=通常時の視覚ノイズを増やさない)。
-   **赤(errorForeground)は使わない**: 赤は FM 全滅と同じ「壊れている」の色で、凍結は自動回復が
-   走る事象なので意味が強すぎる。❄️ と揃う寒色にして、色だけで別の事象だと分かるようにする。
-   charts-* はライト/ダーク双方で可読性が担保されたテーマ変数(自前の色はテーマで潰れる)。
-   .badge-running も charts-blue だが、あちらはピルの**背景色**なので文字色と紛れない。 */
-.host-metric.hm-frozen-warn .hm-label,
-.host-metric.hm-frozen-warn .hm-value {
-  color: var(--vscode-charts-blue, #4fc1ff);
-  font-weight: 600;
 }
 select {
   font-family: inherit;
