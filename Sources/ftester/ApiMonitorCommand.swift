@@ -121,6 +121,8 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         var healthDebounce = AndroidHealthDebounce(confirmThreshold: 2)
         // 画面凍結(一様フレーム)の確定。判定材料はこのループが毎サイクル撮っている PNG
         var frozenDebounce = MonitorFrozenDebounce(confirmThreshold: 2)
+        // 配信を抑制中のデバイスを最後に「観測のためだけに」撮った時刻(capturePlan が更新する)
+        var lastFrozenProbeAt: [String: Date] = [:]
         // GPU/CPU 判定はブート時固定のため接続毎に1回のみ検出しキャッシュする(健全性プローブとは
         // 別間隔。再接続=リブートで変わりうるため切断時に破棄する)
         var renderModeCache: [String: String] = [:]
@@ -217,29 +219,41 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                         monitorRepoRoot.map { BridgeEndpoint.load(port: port, repoRoot: $0).host }
                       }
                     : nil
+                let frozenVerdict = Self.frozenVerdict(
+                    id: state.target.id, key: leaseKey,
+                    debounce: frozenDebounce, stateDir: leaseStateDir,
+                    displayIdleSeconds: state.displayIdleSeconds)
                 return state.info(health: confirmedIssues.isEmpty ? nil : confirmedIssues,
                                    renderMode: state.androidSerial.flatMap { renderModeCache[$0] },
                                    inRun: inRun, recording: recording, host: bridgeHost,
-                                   frozen: frozenDebounce.isFrozen(id: state.target.id))
+                                   frozen: frozenVerdict.isFrozen)
             }))
 
-            for state in states {
+            // 接続が切れた機の記憶を落とす(次回同じエラーが起きても「状態変化」として扱えるように。
+            // 凍結は**落ちている機を数え続けない**ので確定も捨てる)
+            for state in states where state.state != "connected" {
+                lastErrorMessage[state.target.id] = nil
+                loggedFetchFailure.remove(state.target.id)
+                frozenDebounce.forget(id: state.target.id)
+                lastFrozenProbeAt.removeValue(forKey: state.target.id)
+            }
+
+            // 未登録 iOS シミュレータはブリッジが無い(iosPort == nil のまま connected にするため。
+            // unregisteredStates 参照)。表示は拡張の simstream helper が udid だけで担うので
+            // fetchScreenshot(ブリッジ /screenshot 前提)は毎サイクル失敗するだけ
+            let eligible = states.filter { state in
+                state.state == "connected" && (state.target.platform != "ios" || state.iosPort != nil)
+            }
+            // **観測段と配信段の分かれ目はここだけ**。抑制(拡張のタイルがストリーミング表示中)は
+            // `deliver` にしか効かない —— 観測まで止めると凍結判定が丸ごと死ぬ(2026-08-11 の実害)
+            let plan = Self.capturePlan(ids: eligible.map(\.target.id),
+                                        suppressed: { control.isFrameSuppressed($0) },
+                                        lastProbeAt: &lastFrozenProbeAt)
+            let deliverIDs = Set(plan.filter(\.deliver).map(\.id))
+            let plannedIDs = Set(plan.map(\.id))
+
+            for state in eligible where plannedIDs.contains(state.target.id) {
                 guard !stop.isSet else { break }
-                guard state.state == "connected" else {
-                    // 接続が切れたら次回同じエラーが起きても「状態変化」として扱えるよう記憶を消す
-                    lastErrorMessage[state.target.id] = nil
-                    loggedFetchFailure.remove(state.target.id)
-                    // 落ちている機は凍結として数えない(復帰したら撮り直して判定し直す)
-                    frozenDebounce.forget(id: state.target.id)
-                    continue
-                }
-                // 拡張のデバイスタイルがストリーミング表示中のデバイスはスクショ取得側で
-                // 二重生成しない(拡張側は monitorFrame を受信しても捨てるだけになるため)
-                guard !control.isFrameSuppressed(state.target.id) else { continue }
-                // 未登録 iOS シミュレータはブリッジが無い(iosPort == nil のまま connected にする
-                // ため。unregisteredStates 参照)。表示は拡張の simstream helper が udid だけで担うので
-                // fetchScreenshot(ブリッジ /screenshot 前提)は毎サイクル失敗するだけ
-                guard state.target.platform != "ios" || state.iosPort != nil else { continue }
 
                 let png: Data
                 do {
@@ -256,11 +270,13 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                     continue
                 }
                 loggedFetchFailure.remove(state.target.id)
-                // **縮小前の PNG で判定する**(JPEG 化は非可逆で、縮小も一様性を薄める方向に働く)。
-                // 撮れなかったサイクル(上の continue)では記録しない = 直前の確定を保つ
+                // ---- 観測段: **縮小前の PNG で判定する**(JPEG 化は非可逆で、縮小も一様性を
+                // 薄める方向に働く)。撮れなかったサイクル(上の continue)では記録しない = 直前の確定を保つ
                 frozenDebounce.record(uniformBlank: BlankFrameDetector.isUniformBlank(pngData: png),
                                       id: state.target.id)
 
+                // ---- 配信段: ここから先だけが抑制の対象
+                guard deliverIDs.contains(state.target.id) else { continue }
                 do {
                     let jpeg = try MonitorImage.downscaledJPEG(pngData: png, maxWidth: maxWidth)
                     emitLine(ApiMonitorFrameEvent(
@@ -425,6 +441,80 @@ struct ApiMonitorCommand: AsyncParsableCommand {
     /// 高いため低頻度化する
     private static let healthProbeIntervalSeconds: TimeInterval = 30
 
+    /// **配信を抑制中のデバイスでも凍結判定のために撮る**間隔(秒)。
+    ///
+    /// タイルをストリーミング表示しているデバイスは `suppressFrames` でフレーム配信を止めるが、
+    /// **観測まで止めてはいけない** —— 2026-08-11 に、抑制のガードが凍結判定より手前にあったため
+    /// 実運用の全デバイス(iOS 10 + Android 8)が判定対象から外れ、`Frozen:` が恒久的に 0 になった。
+    /// 配信しないぶん cadence だけ落とす(2連続で確定なので最悪 12 秒で出る。凍結は分単位)
+    static let frozenProbeIntervalSeconds: TimeInterval = 6
+
+    /// 1サイクルぶんの「撮る/配る」判断。
+    /// **純粋関数として切り出してある**のは、「配信を抑制しても観測は続く」という不変条件を
+    /// 単体テストで固定するため(MonitorCapturePlanTests)。この不変条件が壊れたのが
+    /// 2026-08-11 の凍結カウンタ恒久 0 で、当時は判断がループ本体に埋まっていて誰も試せなかった
+    struct CaptureDecision: Equatable {
+        let id: String
+        /// webview へフレームを配るか。**撮るかどうかとは独立**
+        let deliver: Bool
+    }
+
+    /// - 非抑制: 毎サイクル撮って配る
+    /// - 抑制中: `probeInterval` 間隔で**撮るだけ**(配らない)
+    ///
+    /// `lastProbeAt` は「撮ると決めた」デバイスだけ更新する(撮らなかった回で時計を進めると
+    /// 間隔が延び続ける)
+    static func capturePlan(ids: [String],
+                            suppressed: (String) -> Bool,
+                            lastProbeAt: inout [String: Date],
+                            probeInterval: TimeInterval = frozenProbeIntervalSeconds,
+                            now: Date = Date()) -> [CaptureDecision] {
+        var plan: [CaptureDecision] = []
+        for id in ids {
+            guard suppressed(id) else {
+                lastProbeAt[id] = now
+                plan.append(CaptureDecision(id: id, deliver: true))
+                continue
+            }
+            if let last = lastProbeAt[id], now.timeIntervalSince(last) < probeInterval { continue }
+            lastProbeAt[id] = now
+            plan.append(CaptureDecision(id: id, deliver: false))
+        }
+        return plan
+    }
+
+    /// モニターが配る凍結判定。**3つの根拠を合流させる**:
+    ///   ① 自前の観測(一様フレーム。`MonitorFrozenDebounce`)
+    ///   ② run が公表した判定(`DeviceFrozenStore`。run 前トリアージが書く)
+    ///   ③ 陽性対照の注入(`FrozenInjection`)
+    ///
+    /// ②を見るのが要点 —— 2026-08-11 に run は9台の凍結を見つけて回復まで走っていたのに、
+    /// モニターは自前の観測しか持たず `Frozen: 0` を出し続けた。純粋関数にしてあるのは、
+    /// この「run が知っていることをモニターが知る」経路を陽性対照で毎回通すため
+    /// 「描画が止まった」と見なす拍動の空き(秒)。
+    /// ブリッジのメインスレッドは操作(タップの整定待ち等)で数百 ms 〜 1秒ほど専有されるので、
+    /// **通常の操作でまたがない幅**に置く。凍結は分単位なので緩くて構わない
+    static let displayIdleFrozenThreshold: Double = 3.0
+
+    static func frozenVerdict(id: String, key: String?,
+                              debounce: MonitorFrozenDebounce,
+                              stateDir: URL?,
+                              displayIdleSeconds: Double? = nil,
+                              environment: [String: String] = ProcessInfo.processInfo.environment,
+                              now: Date = Date()) -> FrozenVerdict {
+        let published = stateDir.flatMap { dir in
+            key.flatMap { DeviceFrozenStore.current(stateDir: dir, key: $0, now: now) }
+        } ?? .healthy
+        let injected = FrozenInjection.isInjected(key: key, environment: environment)
+            ? FrozenVerdict([.injected]) : .healthy
+        // 拍動は**単独では確定させない**(FrozenEvidence.noPresent.isConclusive == false)。
+        // 申告の無いブリッジ(旧版・計器なし)は nil = 根拠にしない
+        let present: FrozenVerdict = (displayIdleSeconds ?? 0) > displayIdleFrozenThreshold
+            ? FrozenVerdict([.noPresent]) : .healthy
+        return debounce.verdict(id: id)
+            .merged(with: published).merged(with: injected).merged(with: present)
+    }
+
     /// pause したまま resume が来ない場合に自動的に resume 扱いにするまでの秒数(安全弁)
     private static let pauseSafetyValveSeconds: TimeInterval = 120
     /// pause 中、resume(または安全弁)を検知するためのポーリング間隔(秒)
@@ -499,7 +589,8 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             if let port = ports.first(where: { bridgeStatuses[$0] != nil }) {
                 return DeviceRuntimeState(target: target, state: "connected",
                                           detail: "port \(port)", iosPort: port,
-                                          androidSerial: nil, iosUdid: sim.udid)
+                                          androidSerial: nil, iosUdid: sim.udid,
+                                          displayIdleSeconds: bridgeStatuses[port]?.displayIdleSeconds)
             }
             return DeviceRuntimeState(target: target, state: "booted",
                                       detail: "\(sim.name) \(sim.os)",
@@ -522,7 +613,8 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         if let port {
             return DeviceRuntimeState(target: target, state: "connected",
                                       detail: "port \(port)", iosPort: port, androidSerial: nil,
-                                      iosUdid: sim.udid)
+                                      iosUdid: sim.udid,
+                                      displayIdleSeconds: bridgeStatuses[port]?.displayIdleSeconds)
         }
         if sim.booted {
             return DeviceRuntimeState(target: target, state: "booted",
@@ -737,15 +829,21 @@ struct DeviceRuntimeState {
     /// iOS で SimulatorCatalog.resolve が成功した場合(state に関わらず)設定。list-devices が
     /// ブリッジ自動起動(ApiLiveCommand --udid)のために公開する。resolve 失敗時は nil のまま
     let iosUdid: String?
+    /// ブリッジが申告する「最後に画面が進んでからの秒数」(BridgeDTO.StatusResponse 参照)。
+    /// **維持(debounce)中は運ばない** —— 古い拍動を根拠にすると、通信が一瞬切れただけで
+    /// 「描画が止まった」と言い出す。不明(nil)は根拠なしに倒す
+    let displayIdleSeconds: Double?
 
     init(target: MonitorTarget, state: String, detail: String,
-        iosPort: UInt16?, androidSerial: String?, iosUdid: String? = nil) {
+        iosPort: UInt16?, androidSerial: String?, iosUdid: String? = nil,
+        displayIdleSeconds: Double? = nil) {
         self.target = target
         self.state = state
         self.detail = detail
         self.iosPort = iosPort
         self.androidSerial = androidSerial
         self.iosUdid = iosUdid
+        self.displayIdleSeconds = displayIdleSeconds
     }
 
     /// fileprivate: 戻り値の型 ApiMonitorDeviceInfo がファイル限定の private 型のため
@@ -796,6 +894,12 @@ struct MonitorFrozenDebounce {
 
     /// 現在の確定状態(記録の無いデバイスは false)
     func isFrozen(id: String) -> Bool { confirmedIDs.contains(id) }
+
+    /// 確定状態を**根拠つき**で返す。真偽値ではなく FTCore.FrozenVerdict を配ることで、
+    /// run 側の判定(DeviceFrozenStore)と同じ型で合流できる
+    func verdict(id: String) -> FrozenVerdict {
+        confirmedIDs.contains(id) ? FrozenVerdict([.uniformBlank]) : .healthy
+    }
 
     /// 確定済みの件数(モニターのヘッダに出す「Frozen: N」)
     var frozenCount: Int { confirmedIDs.count }

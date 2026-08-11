@@ -271,7 +271,21 @@
 - **判定は MCP と DSL で共有する**(2026-08-07)。「手前かどうか」は `FTCore.PaintOrder`、
   「撃つと別の物に当たるか」は `FTCore.TapTargetGeometry` の1箇所だけに置き、
   `RefGuard` は転送する。別々に持つと**同じ画面で MCP と DSL の判断が食い違う**。
-  移設したときは**掃討ゲート(`SweepHarnessTests`)が実アプリのコーパスで等価性を検証する**
+  移設したときは**掃討ゲート(`SweepHarnessTests`)が実アプリのコーパスで等価性を検証する**。
+  **デバイスの健康状態も同じ**(2026-08-11): 「画面が凍結しているか」は `FTCore.FrozenVerdict`
+  が唯一の定義元で、run 前トリアージとモニターは**根拠(`FrozenEvidence`)を束ねた同じ型**を配る。
+  プロセスを跨ぐ受け渡しは `FTCore.DeviceFrozenStore`(`.ftester/frozen-<key>.json`。RunLease と
+  同じ pid 生存 + mtime)。**新しい根拠は `isConclusive=false`(警告)から入れる**
+- **「観測」と「配信(表示の最適化)」を同じループに書かない**(2026-08-11 の実害)。
+  モニターは配信中のタイルのフレーム生成を止める(`suppressFrames`)が、そのガードが**観測より
+  手前**にあったため、実運用の全デバイス(iOS 10 + Android 8 = 全部ストリーミング対象)が
+  判定対象から外れ、凍結カウンタが**恒久的に 0** になっていた。抑制は配信段だけに効かせ、
+  観測は cadence を落として続ける(`ApiMonitorCommand.capturePlan` = 純粋関数・不変条件はテストで固定)
+- **凍結・a11y 異常など「意図的に起こせない事象」の検知には注入口を用意する**
+  (`FrozenInjection` / `FT_FAKE_FROZEN_KEYS`)。**陰性(誤検知0)の確認は「常に false を返す検出器」と
+  区別できない** —— 実際 2026-08-11 の凍結カウンタは「10台すべてに frozen が乗り誤検知0」を
+  根拠にマージされ、恒久 false のまま入った。注入は**観測と公表の経路だけ**を通し、
+  回復・除外のような**デバイスを触る動作は撃たない**(`FrozenVerdict.isInjectedOnly`)
 - **MCP(`ft_*`)は DSL と別経路なので、鮮度・防御を DSL 側に入れただけでは届かない**。
   `StepExecutor` が持つ知見(キャッシュを捨てた snapshot・ghost の掴み直し・整定)を足したら、
   **MCP にも同じものが要るかを必ず見る**(2026-08-06 に3件まとめて踏んだ: スクロール後の古い木・

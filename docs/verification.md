@@ -790,6 +790,45 @@ a11y trait も Compose の役割マーカーもヘッダに無く、**推測で�
 Compose の役割マーカーは画面端で**親と別の幅にクリップされる**(親 93px / 子 51px)。
 どちらも推測では出せず、条件を1回で確定できた。
 
+## 検知の「誤検知0」は、常に false を返す検出器と区別できない(2026-08-11)
+
+モニターの凍結カウンタ(`Frozen: N`)は、**実運用で一度も 1 以上にならない**まま入っていた。
+当時の検証は3層あって、どれもこの欠陥を見られない構造だった:
+
+| 検証 | 見ていたもの | なぜ通ったか |
+|---|---|---|
+| `MonitorFrozenDebounceTests` + 変異 4/4 | 判定構造体(純粋ロジック) | **呼び出し側が本番で到達しない**ことは範囲外 |
+| 実デバイスで「10台すべてに frozen が乗り、60フレームで誤検知 0」 | NDJSON にフィールドが出ること | フィールドは判定器の出力と無関係に出る = **恒久 false の観測と同一** |
+| `webviewFrozenIndicator.test.mjs` | `frozen:true` を与えたときの UI | 生成側を通らない |
+
+真因は「配信を抑制中(タイルがストリーミング表示中)のデバイスはスクショ取得ごと飛ばす」ガードが
+観測より手前にあったこと。実運用では**全デバイスが抑制対象**(iOS 10 + Android 8)なので、
+検知は構造的に一度も走らない。
+
+**規律**:
+- **陰性側だけの確認で検知を入れない**。「誤検知0」は「検知が死んでいる」と同じ観測になる
+- **意図的に起こせない事象には注入口を作る**(`FT_FAKE_FROZEN_KEYS` → `FrozenInjection`)。
+  注入は**観測と公表の経路だけ**を通し、回復・除外のようなデバイスを触る動作は撃たない
+- **陽性対照を常設テストにする**(`FrozenPositiveControlTests`: 注入 → run 前トリアージが
+  `DeviceFrozenStore` へ公表 → モニターが凍結と言う → 注入を外すと消える)
+- **呼び出し側の不変条件も純粋関数にして固定する**(`ApiMonitorCommand.capturePlan` =
+  「抑制中でも観測は続く」。`MonitorFrozenWiringTests`)
+
+実デバイスでの確認手順(この3つを通して初めて「動いた」と言える):
+
+```bash
+# ① 注入 → モニターがその機だけ frozen と言う
+sleep 12 | FT_FAKE_FROZEN_KEYS=<UDID> .build/debug/ftester api monitor \
+  --project <p> --profile <run profile> --interval 2 | tail -1
+# ② run が公表する(.ftester/frozen-<UDID>.json に evidence:["injected"])
+FT_FAKE_FROZEN_KEYS=<UDID> .build/debug/ftester run --project <p> --profile <r> --scenario <s>
+# ③ 公表だけを根拠にモニターが frozen と言う(注入なしでモニターを回す)
+```
+
+**モニターを `kill` で止めない**: NDJSON はブロックバッファリングされるので、SIGTERM で
+落とすと**観測が丸ごと空になる**(実際に踏んだ)。`sleep N | ftester api monitor …` にすると
+**stdin EOF が終了指示**になり、自分で片付けて終わるのでバッファが flush される。
+
 ## めったに撃たない経路は、緑を重ねても検証されない(2026-08-02)
 
 「期限切れ直前だけ」「失敗したときだけ」しか通らない経路は、**フル E2E を何周回しても

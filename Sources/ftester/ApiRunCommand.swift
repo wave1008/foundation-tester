@@ -232,6 +232,9 @@ struct ApiRunCommand: AsyncParsableCommand {
                                     labels: frozen, workers: workers, resolved: resolved,
                                     repoRoot: repoRoot, apps: resolved.apps) { logStderr($0) }
                             },
+                            // 判定をモニターへ配る(DeviceFrozenStore)。run が知っている凍結を
+                            // モニターが知らない状態を作らないための唯一の口
+                            stateDir: repoRoot.appendingPathComponent(".ftester"),
                             log: { logStderr($0) }).workers
                         logStderr("🚀 \(workers.count) iOS worker(s) joined")
                         return workers
@@ -418,6 +421,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                         labels: frozen, workers: iosWorkers, resolved: resolved,
                         repoRoot: iosRepoRoot, apps: resolved.apps) { logStderr($0) }
                 },
+                stateDir: iosRepoRoot.appendingPathComponent(".ftester"),
                 log: { logStderr($0) })
             workers = iosTriage.workers
             blankTriage = (triage.repaired, triage.excluded + iosTriage.excluded)

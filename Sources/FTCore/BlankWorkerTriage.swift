@@ -68,24 +68,70 @@ public enum BlankWorkerTriage {
         return true
     }
 
-    /// 凍結したワーカーの label 一覧(並列判定)。健全機は1サンプルで即返るので、
+    /// 共有ストア・注入と揃えるためのデバイスキー(iOS=UDID / Android=serial)。
+    /// `RunLease` / `DeviceFrozenStore` と**同じキー体系**でなければモニターと突き合わない
+    public static func deviceKey(_ worker: RunWorker) -> String? {
+        worker.connection.udid ?? worker.connection.serial
+    }
+
+    /// 1台ぶんの判定。**根拠を返す**ので、呼び出し側は真偽値を自前で持たない。
+    /// 注入(陽性対照)はスクショより先に見る —— 実デバイスを凍らせずに検知経路を通すための口で、
+    /// ここを通さないと run 側とモニター側で注入の効き方がズレる
+    /// 「描画が止まった」と見なす拍動の空き(秒)。モニター側(ApiMonitorCommand)と同じ値を使う。
+    /// **片方だけ変えない** —— run とモニターでしきい値が割れると同じ機の判定が食い違う
+    public static let displayIdleFrozenThreshold: Double = 3.0
+
+    public static func observedVerdict(
+        key: String?,
+        screenshot: () async -> Data?,
+        displayIdleSeconds: Double? = nil,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) async -> FrozenVerdict {
+        if FrozenInjection.isInjected(key: key, environment: environment) {
+            return FrozenVerdict([.injected])
+        }
+        // 拍動は単独では確定しない(FrozenEvidence.noPresent)。申告の無いブリッジは nil = 根拠なし
+        let present: FrozenVerdict = (displayIdleSeconds ?? 0) > displayIdleFrozenThreshold
+            ? FrozenVerdict([.noPresent]) : .healthy
+        let blank: FrozenVerdict = await isPersistentlyBlank(screenshot: screenshot)
+            ? FrozenVerdict([.uniformBlank]) : .healthy
+        return blank.merged(with: present)
+    }
+
+    /// 凍結したワーカーの label と根拠(並列判定)。健全機は1サンプルで即返るので、
     /// 正常時の固定費はスクショ1枚ぶん
-    public static func frozenLabels(_ workers: [RunWorker]) async -> [String] {
+    public static func frozenVerdicts(
+        _ workers: [RunWorker],
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) async -> [String: FrozenVerdict] {
         let candidates = workers.filter(isCandidate)
-        guard !candidates.isEmpty else { return [] }
-        return await withTaskGroup(of: String?.self, returning: [String].self) { group in
+        guard !candidates.isEmpty else { return [:] }
+        return await withTaskGroup(of: (String, FrozenVerdict).self,
+                                   returning: [String: FrozenVerdict].self) { group in
             for worker in candidates {
                 group.addTask {
-                    let blank = await isPersistentlyBlank(screenshot: {
-                        try? await worker.driver.screenshot()
-                    })
-                    return blank ? worker.label : nil
+                    // 拍動の申告はブリッジの /status から採る(計器を持たない版は nil = 根拠にしない)
+                    let displayIdle = try? await worker.driver.status().displayIdleSeconds
+                    let verdict = await observedVerdict(key: deviceKey(worker),
+                                                        screenshot: { try? await worker.driver.screenshot() },
+                                                        displayIdleSeconds: displayIdle ?? nil,
+                                                        environment: environment)
+                    return (worker.label, verdict)
                 }
             }
-            var found: [String] = []
-            for await label in group { if let label { found.append(label) } }
+            // **確定していない根拠も返す**(呼び出し側が警告として出す)。
+            // ここで isFrozen だけに絞ると、警告から始める運用そのものができなくなる
+            var found: [String: FrozenVerdict] = [:]
+            for await (label, verdict) in group where verdict.isSuspected || verdict.isFrozen {
+                found[label] = verdict
+            }
             return found
         }
+    }
+
+    /// **確定した**凍結ワーカーの label 一覧(疑いだけの機は含めない)
+    public static func frozenLabels(_ workers: [RunWorker]) async -> [String] {
+        await frozenVerdicts(workers).filter { $0.value.isFrozen }.map(\.key)
     }
 
     /// 回復を試みる回数の上限。**2回**: 1回で戻らない個体はもう1回でも戻らないことが多く、
@@ -100,23 +146,66 @@ public enum BlankWorkerTriage {
     ///
     /// `recover` の契約: 渡された label 群のデバイスを回復し、**ブリッジを張り直した**
     /// ワーカー一覧を返す。回復手段が無い/失敗したら nil(即座に除外へ進む)
+    /// 判定を共有ストアへ反映する(`stateDir` 省略時は何もしない)。
+    /// **自分が書いた分を消してから公表し直す**ので、回復した機の消し込みが自動で揃う
+    /// (「回復したら clear する」を別に書くと必ず片方だけ直る)。
+    private static func syncStore(_ verdicts: [String: FrozenVerdict],
+                                  of workers: [RunWorker], stateDir: URL?) {
+        guard let stateDir else { return }
+        DeviceFrozenStore.clearAll(stateDir: stateDir)
+        var keysByLabel: [String: String] = [:]
+        for worker in workers { keysByLabel[worker.label] = deviceKey(worker) }
+        for (label, verdict) in verdicts {
+            guard let key = keysByLabel[label] else { continue }
+            DeviceFrozenStore.publish(stateDir: stateDir, key: key, verdict: verdict)
+        }
+    }
+
+    /// ログ用。根拠が既定(一様 blank)だけのときは従来どおり label だけを並べ、
+    /// それ以外(注入・拍動)が混じるときだけ根拠を添える
+    private static func describe(_ verdicts: [String: FrozenVerdict]) -> String {
+        verdicts.keys.sorted().map { label in
+            let verdict = verdicts[label] ?? .healthy
+            guard verdict.evidence != [.uniformBlank] else { return label }
+            return "\(label) [\(verdict.summary)]"
+        }.joined(separator: ", ")
+    }
+
     public static func excludeBlankScreenWorkers(
         _ workers: [RunWorker],
         recover: (@Sendable ([String]) async -> [RunWorker]?)? = nil,
+        stateDir: URL? = nil,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
         log: @Sendable (String) -> Void
     ) async -> Result {
         var current = workers
-        var blankLabels = await frozenLabels(current)
+        var verdicts = await frozenVerdicts(current, environment: environment)
+        // **判定した時点で公表する**(回復は数分かかりうるので、終わってから配るとモニターは
+        // その間ずっと「異常なし」を出す = 見えるようにした意味が無い)
+        syncStore(verdicts, of: current, stateDir: stateDir)
+        // **確定していない根拠は警告だけ**(新しい検知は拒否でなく警告から始める規律)
+        for (label, verdict) in verdicts.filter({ $0.value.isSuspected }).sorted(by: { $0.key < $1.key }) {
+            log("⚠️ \(label): the display may have stopped advancing [\(verdict.summary)]"
+                + " — not treating it as frozen (this signal is not confirmed yet)")
+        }
+        // **注入(陽性対照)は公表だけで、回復も除外もしない** —— 実体は健全なので
+        // simctl shutdown/boot を撃つと対照実験のたびにフリートを再起動することになる
+        var blankLabels = verdicts
+            .filter { $0.value.isFrozen && !$0.value.isInjectedOnly }.keys.sorted()
         guard !blankLabels.isEmpty else { return Result(workers: current, excluded: []) }
 
         if let recover {
             for attempt in 1...recoveryAttempts {
                 log("⚠️ \(blankLabels.count) device(s) have a frozen screen"
-                    + " (\(blankLabels.joined(separator: ", "))) — recovering before the run starts"
+                    + " (\(describe(verdicts.filter { $0.value.isFrozen && !$0.value.isInjectedOnly })))"
+                    + " — recovering before the run starts"
                     + " (attempt \(attempt)/\(recoveryAttempts))")
                 guard let rebuilt = await recover(blankLabels) else { break }
                 current = rebuilt
-                blankLabels = await frozenLabels(current)
+                verdicts = await frozenVerdicts(current, environment: environment)
+                syncStore(verdicts, of: current, stateDir: stateDir)
+                blankLabels = verdicts
+                    .filter { $0.value.isFrozen && !$0.value.isInjectedOnly }.keys.sorted()
                 if blankLabels.isEmpty {
                     log("✅ every frozen device recovered — starting with all lanes")
                     return Result(workers: current, excluded: [])

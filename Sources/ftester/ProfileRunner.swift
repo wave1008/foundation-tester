@@ -235,6 +235,7 @@ enum ProfileRunner {
                                 labels: frozen, workers: ws, resolved: resolved,
                                 repoRoot: repoRoot, apps: resolved.apps) { print($0) }
                         },
+                        stateDir: repoRoot.appendingPathComponent(".ftester"),
                         log: { print($0) }).workers
                     ws = recovered ?? ws
                     print("🚀 \(ws.count) iOS worker(s) joined")
