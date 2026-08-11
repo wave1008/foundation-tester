@@ -146,6 +146,7 @@ test("タイルのバッジは ❄️ で、ホバーすると説明が出る", 
   assert.ok(tip, "ホバーしても説明が出ていない");
   assert.equal(tip.style.display, "block");
   assert.equal(tip.textContent, "デバイス凍結中");
+  assert.equal(badge.title, "", "ネイティブ title が残ると同じ説明が二重に出る");
 });
 
 test("ヘッダの凍結カウンタは ❄️ で、ホバーすると説明が出る", async (t) => {
@@ -158,6 +159,7 @@ test("ヘッダの凍結カウンタは ❄️ で、ホバーすると説明が
   assert.ok(tip, "ホバーしても説明が出ていない");
   assert.equal(tip.style.display, "block");
   assert.equal(tip.textContent, "画面が凍結しているデバイスの数");
+  assert.equal(el.title, "", "ネイティブ title が残ると同じ説明が二重に出る");
 
   // 件数が変わっても説明は変わらない(台数はカウンタの数字が出している)
   sendDevices(window, [{ frozen: true }]);

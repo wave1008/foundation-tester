@@ -372,11 +372,16 @@ select:disabled { opacity: 0.5; cursor: default; }
   padding: 1px 6px;
   margin-right: 4px;
 }
-/* 凍結バッジは絵文字1文字。9px だと何の絵か判別できないので少しだけ大きくし、
-   横パディングを詰めて他のバッジを押し出さないようにする(高さは line-height で揃ったまま) */
+/* 凍結だけは**絵文字を裸で置く**(ピルの背景・角丸・パディングを持たない)。
+   他のバッジは文字なので下地が要るが、❄️ は絵文字自体が図形なので下地を敷くと二重になる。
+   .badge / 上のまとめ指定が付ける装飾をここで打ち消す(font-size は判別できる大きさへ) */
 .badge-frozen {
-  font-size: 11px;
-  padding: 1px 4px;
+  font-size: 13px;
+  line-height: 14px;
+  padding: 0;
+  background: none;
+  border-radius: 0;
+  color: inherit;
 }
 .badge-running {
   background-color: var(--vscode-charts-blue, #0078d4);
@@ -400,12 +405,8 @@ select:disabled { opacity: 0.5; cursor: default; }
   background-color: var(--vscode-errorForeground, #f14c4c);
   color: #ffffff;
 }
-/* 凍結バッジ。device.frozen の間だけ表示(deviceTiles.js renderMeta)。録画(赤)・実行中(青)と
-   取り違えないよう寒色。寸法は .badge-running との共通ルール側(高さ合わせ)。 */
-.badge-frozen {
-  background-color: var(--vscode-charts-purple, #b180d7);
-  color: #1e1e1e;
-}
+/* 凍結バッジの色指定は持たない —— ❄️ の絵文字だけを裸で置くため(上の .badge-frozen 参照)。
+   他のバッジ(実行中・録画中)は文字なので下地の色で区別するが、ここは絵で区別が付く。 */
 .render-cpu {
   background-color: var(--vscode-charts-orange, #cc6633);
   color: #ffffff;

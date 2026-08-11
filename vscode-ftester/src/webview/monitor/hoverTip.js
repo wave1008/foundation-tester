@@ -19,8 +19,11 @@ export function setHoverTip(el, text) {
   if (!el) { return; }
   if (text) {
     el.setAttribute(ATTR, text);
-    // 祖先の title が遅れて二重に出るのを防ぐ(title="" は祖先探索を打ち切る)
-    if (!el.title) { el.title = ''; }
+    // **ネイティブ title は必ず空にする**。自前ツールチップを付けた要素に title が残っていると、
+    // 0.2 秒でこちらが出た約1秒後にネイティブも出て**同じ説明が二重に見える**(実害)。
+    // 元は `if (!el.title)` だったが、それは「title を持つ要素」= 二重になる当の条件を素通しする。
+    // title="" は祖先探索も打ち切るので、祖先(タイル等)由来の重複も同時に止まる
+    el.title = '';
   } else {
     el.removeAttribute(ATTR);
     if (current === el) { hide(); }
