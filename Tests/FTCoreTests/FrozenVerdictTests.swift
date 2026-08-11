@@ -143,3 +143,50 @@ final class FrozenVerdictTests: XCTestCase {
         XCTAssertFalse(FrozenVerdict.countsAsFrozen(uniformBlank: false, displayIdleSeconds: 30))
     }
 }
+
+/// 共有ストアの消し込み。**回復したら公表を消す**が守られているかを固定する。
+/// 2026-08-11 の実害: Android の回復は sleep/wake と guest restart の2段だが、
+/// 消し込みが sleep/wake の分岐にしか無く、guest restart で戻った機は run の間ずっと
+/// ❄️ のままだった(モニターは公表を無条件に取り込む)。
+final class DeviceFrozenStoreClearTests: XCTestCase {
+
+    private func makeStateDir() -> URL {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("ft-store-\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    func testPublishThenClearRemovesTheVerdict() {
+        let dir = makeStateDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        DeviceFrozenStore.publish(stateDir: dir, key: "emulator-5554",
+                                  verdict: FrozenVerdict([.uniformBlank]))
+        XCTAssertEqual(DeviceFrozenStore.current(stateDir: dir, key: "emulator-5554"),
+                       FrozenVerdict([.uniformBlank]))
+        DeviceFrozenStore.clear(stateDir: dir, key: "emulator-5554")
+        XCTAssertNil(DeviceFrozenStore.current(stateDir: dir, key: "emulator-5554"),
+                     "回復したのに公表が残ると、描画している機に ❄️ が出続ける")
+    }
+
+    /// **死んだプロセスの公表は採らない**(run が落ちても ❄️ が残り続けない)
+    func testVerdictFromADeadProcessIsIgnored() {
+        let dir = makeStateDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        DeviceFrozenStore.publish(stateDir: dir, key: "udid-a",
+                                  verdict: FrozenVerdict([.uniformBlank]), pid: 999_999)
+        XCTAssertNil(DeviceFrozenStore.current(stateDir: dir, key: "udid-a"))
+    }
+
+    /// 消し込みは対象キーだけに効く(他機の公表を巻き添えにしない)
+    func testClearOnlyAffectsTheGivenKey() {
+        let dir = makeStateDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        DeviceFrozenStore.publish(stateDir: dir, key: "a", verdict: FrozenVerdict([.uniformBlank]))
+        DeviceFrozenStore.publish(stateDir: dir, key: "b", verdict: FrozenVerdict([.uniformBlank]))
+        DeviceFrozenStore.clear(stateDir: dir, key: "a")
+        XCTAssertNil(DeviceFrozenStore.current(stateDir: dir, key: "a"))
+        XCTAssertNotNil(DeviceFrozenStore.current(stateDir: dir, key: "b"))
+    }
+}
+

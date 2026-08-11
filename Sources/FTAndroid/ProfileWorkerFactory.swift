@@ -196,6 +196,19 @@ public enum ProfileWorkerFactory {
         }
 
         // タスクは (index, repaired) を返す: nil=健全 / repaired=true は修復済み(除外しない)
+        // **回復したら公表を消す**(2026-08-11 の実害)。以前は回復の分岐ごとに `clear` を書いており、
+        // **guest restart の分岐だけ落ちていた**ため、戻った機が run の間ずっと ❄️ のままになった
+        // (モニターは公表を無条件に取り込む)。
+        // **label と serial を1つの記録にまとめてある**のが要点 —— 回復の分岐を足すときに
+        // 「レーンに残す」だけ書いて「公表を消す」を忘れる、が**型の上で起きない**
+        var repairedDevices: [(label: String, serial: String)] = []
+        defer {
+            if let stateDir {
+                for device in repairedDevices {
+                    DeviceFrozenStore.clear(stateDir: stateDir, key: device.serial)
+                }
+            }
+        }
         let outcomes = await withTaskGroup(of: (index: Int, repaired: Bool)?.self,
                                            returning: [(index: Int, repaired: Bool)].self) { group in
             for (index, worker) in candidates {
@@ -222,7 +235,6 @@ public enum ProfileWorkerFactory {
                                                   verdict: FrozenVerdict([.uniformBlank]))
                     }
                     let repaired = await AndroidHealthProbe.repairBlankDisplay(serial: serial)
-                    if repaired, let stateDir { DeviceFrozenStore.clear(stateDir: stateDir, key: serial) }
                     return (index, repaired)
                 }
             }
@@ -232,14 +244,18 @@ public enum ProfileWorkerFactory {
             }
             return result
         }
-        var repairedLabels = outcomes.sorted(by: { $0.index < $1.index })
-            .filter(\.repaired).map { workers[$0.index].label }
-        for label in repairedLabels {
-            log("🔧 \(label): recovered a frozen (blank) screen with sleep/wake")
+        repairedDevices = outcomes.sorted(by: { $0.index < $1.index }).filter(\.repaired)
+            .compactMap { outcome in
+                let worker = workers[outcome.index]
+                guard let serial = worker.connection.serial else { return nil }
+                return (worker.label, serial)
+            }
+        for device in repairedDevices {
+            log("🔧 \(device.label): recovered a frozen (blank) screen with sleep/wake")
         }
         let stubbornIndices = outcomes.filter { !$0.repaired }.map(\.index).sorted()
         guard !stubbornIndices.isEmpty else {
-            return BlankScreenTriage(workers: workers, repaired: repairedLabels, excluded: [])
+            return BlankScreenTriage(workers: workers, repaired: repairedDevices.map(\.label), excluded: [])
         }
 
         // sleep/wake 不発の難治型を guest reboot で本 run 内に復帰させる。1台ずつ直列に処理する
@@ -267,7 +283,7 @@ public enum ProfileWorkerFactory {
             }
             if await !AndroidHealthProbe.isPersistentlyBlank(serial: serial, samples: 2,
                                                              intervalMs: 1_500) {
-                repairedLabels.append(worker.label)
+                repairedDevices.append((worker.label, serial))
                 log("✅ \(worker.label): the guest restart cleared the frozen screen (using it in this run)")
                 continue
             }
@@ -275,11 +291,11 @@ public enum ProfileWorkerFactory {
             log("⚠️ \(worker.label): the screen is still blank after a guest restart — excluding it from dispatch")
         }
         guard !excludedIndices.isEmpty else {
-            return BlankScreenTriage(workers: workers, repaired: repairedLabels, excluded: [])
+            return BlankScreenTriage(workers: workers, repaired: repairedDevices.map(\.label), excluded: [])
         }
         return BlankScreenTriage(
             workers: workers.enumerated().filter { !excludedIndices.contains($0.offset) }.map(\.element),
-            repaired: repairedLabels,
+            repaired: repairedDevices.map(\.label),
             excluded: excludedIndices.sorted().map { workers[$0].label })
     }
 

@@ -66,5 +66,6 @@
   "fm": true,
   "falsePositiveCheck": false,
   "screenIs": true,
-  "containerInference": true
+  "containerInference": true,
+  "homeOnStart": true
 }
