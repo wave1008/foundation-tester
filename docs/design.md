@@ -1926,18 +1926,37 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   黙って落ちる。縁の丸め誤差(実測 0.3pt)を拾わないよう猶予 2pt を置く)。
   **失敗にはしない** —— 無効な要素をわざと叩いて反応しないことを確かめる書き方は正当で
   `enabledIsFalse` もある。注記なら後段の失敗から原因へ辿れる。
-  重なるときは「そもそも無効」→「画面外」→「中身外し」の順に強い方だけを言う。
-  **関数は分けてある**(2026-08-08): `disabledAdvisory` は**撃つ座標に依らない**ので
-  どの経路でも言えるが、`offscreenAdvisory` と `missedContentAdvisory` は
+  座標に依る警告は MCP(`RefGuard.overlapWarning`)と同じ優先順の1チェーン
+  `TapTargetGeometry.occlusionAdvisory` に集約し、強い事実から**最初の1件だけ**言う:
+  zero-frame → 画面外 → 申告 scroller 外の残像 → 中心を覆う最前面
+  (`OcclusionGeometry.overlayCovering`)→ 中身外し → 内側の別アクション → クランプ残骸
+  (`stackedRefs`)→ 細帯(sliver)。
+  **関数は分けてある**(2026-08-08): `keyboardCoveredAdvisory`/`disabledAdvisory` は
+  **撃つ座標に依らない**のでどの経路でも言えるが、チェーンの残りは
   **frame の中心を撃つときにしか言えない** ——
   `visibleTapRect` が見えている部分へ寄せる経路では「背後へ抜けた」が嘘になる。
   載せる経路は tap(寄せない側)・長押し(`press(ref:)` は frame 中心)・doubleTap の3つで、
   **pinch / swipeBy は対象外**(掴んで動かす形なので無効でも意味がある)
-- **「誰が覆っているか」は最前面を名指しする**(2026-08-08。MCP `RefGuard.occluder` と
-  DSL `OcclusionSuspicion.covering` の両方)。配列順で最初を返すと中間層(包んでいるシート)を
-  名指しし、**実際にタップを受け取る最前面**を素通しする。実データでは
+- **「誰が覆っているか」は最前面を名指しする**(2026-08-08。`OcclusionGeometry.occluder`
+  [実体。`RefGuard` は転送]と DSL `OcclusionSuspicion.covering` の両方)。配列順で最初を返すと
+  中間層(包んでいるシート)を名指しし、**実際にタップを受け取る最前面**を素通しする。実データでは
   `#place_page_tabs_container` ではなく**タップを受け取った広告行**が答えになった。
   **掃討ゲートは件数しか見ない**ので、この種の変更は明細(`FT_SWEEP_BASELINE=1`)で1件ずつ確かめる
+- **occlusion-guard は絵の鮮度を確かめてから FM を呼ぶ**(`StaleFrameDetector`。MCP の
+  ft_screenshot と同じ判定を共有)。「木は変わったのに絵が前回とバイト同一 = 凍結した古いフレーム」
+  なら1回だけ撮り直し、なお stale なら**偽陽性反転を宣言せず素通り**する(`StepNote.staleScreenshot`)。
+  **判定は新規撮影のときだけ**(`guardScreenshot` の 200ms キャッシュ供給は同一 Data を返すため、
+  比較すると木の揺れで必ず偽 stale になる)。`FrozenVerdict` には接続しない(凍結判定の定義元は
+  あちらのまま。これはスクショ経路のローカルな鮮度確認)
+- **pressEnter は焦点の合図を待ってから撃つ**(`FocusWait` を MCP `awaitFocus` と共有)。
+  木のどこかの `focused` 申告か `keyboardShown` を合図に最大 1.5s。合図が無ければ警告注記+実行
+  (拒否しない)。keyboardShown を第二の合図に持つのは Compose iOS(in-app は UIResponder でない
+  要素の focused を申告しない)対策
+- **type は「200 = 入った」を信じない**(`AppDriver.verifiesTypedText`)。xcuitest ランナーと
+  Android 注入器は内部で読み返すので true、in-app は false で `StepExecutor.verifyTypedText` が
+  ホスト側で読み返す(期待値 = 撃つ前の値 + 入力・前方一致は追送・超過は clearInput + 全文打ち直し・
+  マスク欄は検証不能として受理・停滞は**失敗**)。値そのものは失敗文言に出さない。
+  ラッパードライバは実行側の値へ転送する(既定 false は安全側だが二重読み返しの固定費が乗る)
 - **run の開始前に「画面だけ死んだ」仮想デバイスを弾く**(2026-08-05。`BlankWorkerTriage`)。
   Android は `ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers` が同じ位置で**修復まで**行うが、
   **iOS には軽い修復手段が無い**(確認できているのは `simctl shutdown`→`boot` だけ)ので
@@ -2230,7 +2249,8 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
     (`MCPServer.ghostNote` の `pageIndicatorHint`)。縦方向だけの offscreen やページャの無い画面では
     何も足さない
 
-    当てる相手は `RefGuard.occluder`(中心を覆う別要素)。**遮蔽と数えないものが7つ**ある:
+    当てる相手は `OcclusionGeometry.occluder`(中心を覆う別要素。実体は FTCore で DSL の
+    タップ前警告と共有・`RefGuard` は転送)。**遮蔽と数えないものが7つ**ある:
 
     | 除外 | 理由 | 外すと起きること(すべて実報告) |
     |---|---|---|
@@ -2563,7 +2583,8 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
     Enter が**前の欄**へ飛んで黙って何も起きない(Android で観測)。
     **報告しないフレームワークで待ち続けない**のが要点 —— Compose iOS の a11y 要素は UIResponder では
     ないので in-app は `focused` を一度も返さない。「木の中に誰も `focused` を名乗らない」を
-    報告しない経路と読んで即座に諦める
+    報告しない経路と読んで即座に諦める。DSL の pressEnter も同じ待ちを持つ(定数は
+    `FTCore.FocusWait` で共有。あちらはロケータが無いので「どこかの focused / keyboardShown」を合図にする)
   - この追従によって、**マップ系ジェスチャの MCP と実行の食い違いが消えた**(2026-08-04)。
     `profile` 付きなら iOS の Compose でもダブルタップが、Flutter でもピンチが効く。
     `profile` 無しは XCUITest 経路のままなのでこの2つが効かず、応答テキストに切り分けを添える

@@ -269,9 +269,14 @@
   (`InAppLauncher` の dylib 再ビルド判定も同じ一覧を使う。片方だけ変えない)。
   指紋の性質(コメント編集でも落ちる理由)・保留中の代替案は docs/verification.md
 - **判定は MCP と DSL で共有する**(2026-08-07)。「手前かどうか」は `FTCore.PaintOrder`、
-  「撃つと別の物に当たるか」は `FTCore.TapTargetGeometry` の1箇所だけに置き、
-  `RefGuard` は転送する。別々に持つと**同じ画面で MCP と DSL の判断が食い違う**。
+  「撃つと別の物に当たるか」は `FTCore.TapTargetGeometry`(合成チェーンは `occlusionAdvisory`)と
+  `FTCore.OcclusionGeometry`(中心を覆う最前面の名指し。`OcclusionSuspicion.covering` とは
+  判定軸が別=面積比 vs 中心点。統合しない理由は両型の doc)、「絵が古いか」は
+  `FTCore.StaleFrameDetector`、焦点待ちの定数は `FTCore.FocusWait` の1箇所だけに置き、
+  `RefGuard`/MCP は転送する。別々に持つと**同じ画面で MCP と DSL の判断が食い違う**。
   移設したときは**掃討ゲート(`SweepHarnessTests`)が実アプリのコーパスで等価性を検証する**。
+  **type の読み返しの有無はドライバの能力**(`AppDriver.verifiesTypedText`。xcuitest ランナー/
+  Android 注入器=true・in-app=false で、false のときだけ `StepExecutor` がホスト側で読み返す)。
   **デバイスの健康状態も同じ**(2026-08-11): 「画面が凍結しているか」は `FTCore.FrozenVerdict`
   が唯一の定義元で、run 前トリアージとモニターは**根拠(`FrozenEvidence`)を束ねた同じ型**を配る。
   プロセスを跨ぐ受け渡しは `FTCore.DeviceFrozenStore`(`.ftester/frozen-<key>.json`。RunLease と
