@@ -94,7 +94,8 @@ enum ProfileRunner {
         var workers = try ProfileWorkerFactory.buildAndroidWorkers(resolved: resolved) { print($0) }
         supplyLease?.hold(keys: workers.compactMap { $0.connection.serial ?? $0.connection.udid })
         let beforeBlankCheck = workers.count
-        let triage = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(workers) { print($0) }
+        let triage = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(
+                workers, stateDir: (try? RepoRoot.find())?.appendingPathComponent(".ftester")) { print($0) }
         workers = triage.workers
         if workers.isEmpty && beforeBlankCheck > 0 {
             throw ProfileWorkerFactory.InstallError(
@@ -230,9 +231,9 @@ enum ProfileRunner {
                     // レーンに凍結機を残さないための処理で、戻らなかった個体だけが除外される
                     let recovered = try? await BlankWorkerTriage.excludeBlankScreenWorkers(
                         ws,
-                        recover: { @Sendable frozen in
+                        recover: { @Sendable frozen, currentWorkers in
                             await ProfileWorkerFactory.recoverFrozenIOSWorkers(
-                                labels: frozen, workers: ws, resolved: resolved,
+                                labels: frozen, workers: currentWorkers, resolved: resolved,
                                 repoRoot: repoRoot, apps: resolved.apps) { print($0) }
                         },
                         stateDir: repoRoot.appendingPathComponent(".ftester"),

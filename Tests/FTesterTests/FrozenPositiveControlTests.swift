@@ -77,7 +77,7 @@ final class FrozenPositiveControlTests: XCTestCase {
         let recovered = RecordingBox()
         _ = await BlankWorkerTriage.excludeBlankScreenWorkers(
             [worker()],
-            recover: { @Sendable labels in
+            recover: { @Sendable labels, _ in
                 recovered.record(labels)
                 return nil
             },

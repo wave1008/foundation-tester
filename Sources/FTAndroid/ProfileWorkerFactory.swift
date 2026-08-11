@@ -109,8 +109,12 @@ public enum ProfileWorkerFactory {
     /// 事後の凍結判定(isBlankObserved・実行中の flap 検知)は別物。非 android ワーカーはそのまま
     /// 通し、元 workers の順序を維持する。
     /// 全除外で空になっても throw しない(混在プロファイルの iOS 合流を殺さない。呼び出し側が判断)
+    /// `stateDir` を渡すと判定を共有ストア(`DeviceFrozenStore`)へ公表する。**iOS 側と同じ口**で、
+    /// これが無いと「run は凍結を知っているのにモニターの ❄️ に出ない」非対称が残る(2026-08-11)
     public static func excludeOrRepairBlankScreenWorkers(
-        _ workers: [RunWorker], log: (String) -> Void) async -> BlankScreenTriage {
+        _ workers: [RunWorker], stateDir: URL? = nil,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        log: (String) -> Void) async -> BlankScreenTriage {
         // 実機は対象外。blank 判定(blankScreenMaxPNGBytes=30KB)は 1080x2424 エミュレータ較正で
         // 解像度の違う実機では当てにならず、誤判定すると健全な実機に adb reboot を撃ってしまう。
         // そもそも blank-screen はエミュレータの GPU 合成バッファ固着という固有の病理
@@ -128,9 +132,28 @@ public enum ProfileWorkerFactory {
             for (index, worker) in candidates {
                 group.addTask {
                     guard let serial = worker.connection.serial else { return nil }
+                    // 陽性対照の注入は**公表だけ**通す(実体は健全なので sleep/wake も撃たない)。
+                    // iOS 側(BlankWorkerTriage.observedVerdict)と同じ規律
+                    if FrozenInjection.isInjected(key: serial, environment: environment) {
+                        if let stateDir {
+                            DeviceFrozenStore.publish(stateDir: stateDir, key: serial,
+                                                      verdict: FrozenVerdict([.injected]))
+                        }
+                        return nil
+                    }
                     guard await AndroidHealthProbe.isPersistentlyBlank(
-                        serial: serial, samples: 2, intervalMs: 1_500) else { return nil }
+                        serial: serial, samples: 2, intervalMs: 1_500) else {
+                        if let stateDir { DeviceFrozenStore.clear(stateDir: stateDir, key: serial) }
+                        return nil
+                    }
+                    // **修復の前に公表する**(sleep/wake → guest reboot は分単位になりうる。
+                    // 終わってから配るとモニターはその間ずっと「異常なし」を出す)
+                    if let stateDir {
+                        DeviceFrozenStore.publish(stateDir: stateDir, key: serial,
+                                                  verdict: FrozenVerdict([.uniformBlank]))
+                    }
                     let repaired = await AndroidHealthProbe.repairBlankDisplay(serial: serial)
+                    if repaired, let stateDir { DeviceFrozenStore.clear(stateDir: stateDir, key: serial) }
                     return (index, repaired)
                 }
             }

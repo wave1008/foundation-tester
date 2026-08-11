@@ -200,7 +200,7 @@ final class BlankWorkerRecoveryTests: XCTestCase {
         var recoverCalls = 0
         let result = await BlankWorkerTriage.excludeBlankScreenWorkers(
             frozen,
-            recover: { _ in
+            recover: { _, _ in
                 recoverCalls += 1
                 // 回復 = ブリッジを張り直した健全なワーカー一覧を返す
                 return [self.worker("a", frozen: false), self.worker("b", frozen: false)]
@@ -216,7 +216,7 @@ final class BlankWorkerRecoveryTests: XCTestCase {
         var recoverCalls = 0
         let result = await BlankWorkerTriage.excludeBlankScreenWorkers(
             [worker("dead", frozen: true), worker("ok", frozen: false)],
-            recover: { _ in
+            recover: { _, _ in
                 recoverCalls += 1
                 return [self.worker("dead", frozen: true), self.worker("ok", frozen: false)]
             },
@@ -235,7 +235,7 @@ final class BlankWorkerRecoveryTests: XCTestCase {
         var recoverCalls = 0
         let result = await BlankWorkerTriage.excludeBlankScreenWorkers(
             [worker("dead", frozen: true)],
-            recover: { _ in recoverCalls += 1; return nil },
+            recover: { _, _ in recoverCalls += 1; return nil },
             log: { _ in })
         XCTAssertEqual(recoverCalls, 1)
         XCTAssertEqual(result.excluded, ["dead"])
@@ -246,10 +246,31 @@ final class BlankWorkerRecoveryTests: XCTestCase {
         var recoverCalls = 0
         let result = await BlankWorkerTriage.excludeBlankScreenWorkers(
             [worker("a", frozen: false)],
-            recover: { _ in recoverCalls += 1; return nil },
+            recover: { _, _ in recoverCalls += 1; return nil },
             log: { _ in })
         XCTAssertEqual(recoverCalls, 0)
         XCTAssertTrue(result.excluded.isEmpty)
+    }
+
+    /// **回復には「今の」ワーカー一覧が渡る**(2026-08-11 の実害)。
+    /// 回復するとブリッジを張り直すので label(ポート)が変わる。呼び出し側が最初の一覧を
+    /// 捕まえたままだと、2回目の試行で新しい label を引けず udid が取れずに必ず失敗する
+    /// (`frozen devices have no iOS simulator udid`)。
+    func testRecoveryReceivesTheCurrentWorkers() async {
+        var seen: [[String]] = []
+        var attempt = 0
+        _ = await BlankWorkerTriage.excludeBlankScreenWorkers(
+            [worker("dead(ios:8100)", frozen: true)],
+            recover: { _, current in
+                seen.append(current.map(\.label))
+                attempt += 1
+                // 1回目の回復でポートが変わる(= label が変わる)。2回目もまだ凍結のまま
+                return [self.worker("dead(ios:82\(attempt)0)", frozen: true)]
+            },
+            log: { _ in })
+        XCTAssertEqual(seen.first, ["dead(ios:8100)"], "1回目は元の一覧")
+        XCTAssertEqual(seen.dropFirst().first, ["dead(ios:8210)"],
+                       "2回目は**張り直し後**の一覧でなければ label を引けない")
     }
 
     /// 回復を渡さない呼び出しは**従来どおり弾くだけ**(既存の呼び出し元を壊さない)
@@ -294,7 +315,7 @@ final class BlankWorkerRecoveryWiringTests: XCTestCase {
             let calls = occurrences("excludeBlankScreenWorkers(", in: text)
             XCTAssertEqual(calls, expectedCalls,
                            "\(path): iOS トリアージの呼び出し数が変わった。増えたなら回復も渡すこと")
-            XCTAssertEqual(occurrences("recover: { @Sendable frozen in", in: text), calls,
+            XCTAssertEqual(occurrences("recover: { @Sendable frozen", in: text), calls,
                            "\(path): recover: を渡していない呼び出しがある(その経路だけ凍結機が残る)")
         }
     }

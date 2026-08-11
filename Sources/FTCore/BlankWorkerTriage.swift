@@ -145,7 +145,12 @@ public enum BlankWorkerTriage {
     /// ものだけを外すので、**レーンに凍結機が残らない**。省略時は従来どおり弾くだけ。
     ///
     /// `recover` の契約: 渡された label 群のデバイスを回復し、**ブリッジを張り直した**
-    /// ワーカー一覧を返す。回復手段が無い/失敗したら nil(即座に除外へ進む)
+    /// ワーカー一覧を返す。回復手段が無い/失敗したら nil(即座に除外へ進む)。
+    ///
+    /// **第2引数で「今の」ワーカー一覧を渡す**のが要点(2026-08-11 の実害)。回復すると
+    /// ブリッジを張り直すのでポート = label が変わる。呼び出し側が最初の一覧を捕まえたままだと、
+    /// 2回目の試行で渡される新しい label を引けず udid が取れない
+    /// (`frozen devices have no iOS simulator udid` で回復が必ず失敗する)
     /// 判定を共有ストアへ反映する(`stateDir` 省略時は何もしない)。
     /// **自分が書いた分を消してから公表し直す**ので、回復した機の消し込みが自動で揃う
     /// (「回復したら clear する」を別に書くと必ず片方だけ直る)。
@@ -173,7 +178,7 @@ public enum BlankWorkerTriage {
 
     public static func excludeBlankScreenWorkers(
         _ workers: [RunWorker],
-        recover: (@Sendable ([String]) async -> [RunWorker]?)? = nil,
+        recover: (@Sendable ([String], [RunWorker]) async -> [RunWorker]?)? = nil,
         stateDir: URL? = nil,
         environment: [String: String] = ProcessInfo.processInfo.environment,
         log: @Sendable (String) -> Void
@@ -200,7 +205,7 @@ public enum BlankWorkerTriage {
                     + " (\(describe(verdicts.filter { $0.value.isFrozen && !$0.value.isInjectedOnly })))"
                     + " — recovering before the run starts"
                     + " (attempt \(attempt)/\(recoveryAttempts))")
-                guard let rebuilt = await recover(blankLabels) else { break }
+                guard let rebuilt = await recover(blankLabels, current) else { break }
                 current = rebuilt
                 verdicts = await frozenVerdicts(current, environment: environment)
                 syncStore(verdicts, of: current, stateDir: stateDir)

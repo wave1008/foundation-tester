@@ -299,27 +299,47 @@ public struct BridgeProvisioner {
             return results
         }
 
-        // 7. 元のデバイス順に集約。appNotInstalled はそのデバイスだけ離脱して続行。
-        // それ以外のエラーは全タスク完走後にデバイス順で最初の1つを throw(直列版は途中 throw で
-        // 後続が未着手だったが、並列版は起動済みブリッジが常駐資産として残るだけなので完走待ちでよい)
-        var provisioned: [ProvisionedIOSDevice] = []
-        var firstError: Error?
-        for plan in plans {
-            guard let outcome = outcomes[plan.index] else { continue }
-            switch outcome {
-            case .success(let device):
-                provisioned.append(device)
-            case .failure(let error):
-                if case BridgeProvisionerError.appNotInstalled = error {
-                    // installIfNeeded の「失敗ワーカーは離脱し残りが続行」と同じ思想
-                    safeLog("❌ \(plan.name): \(error.localizedDescription)")
-                } else if firstError == nil {
-                    firstError = error
-                }
+        // 7. 元のデバイス順に集約。**供給できなかった機はその機だけ離脱させ、残りで走る**。
+        //
+        // 以前は appNotInstalled 以外を throw していたが、それは**健全な機を道連れにする**:
+        // 2026-08-11 のフル E2E では 10台中8台が ready だったのに、残り2台の期限切れで
+        // iOS ワーカーが丸ごと失われ、Flutter/RN の 51 本が1本も走らなかった。
+        // 「凍結機はレーンから外して残りで走る」(BlankWorkerTriage)と同じ思想へ揃える。
+        //
+        // **全滅のときだけ throw する**(呼び出し側が run 全体の失敗として扱えるように)。
+        let resolved = try Self.resolveOutcomes(plans.compactMap { plan in
+            outcomes[plan.index].map { (name: plan.name, result: $0) }
+        })
+        for failure in resolved.failures {
+            safeLog("❌ \(failure.name): \(failure.error.localizedDescription)")
+        }
+        if !resolved.failures.isEmpty {
+            // 何台落ちたかを1行で残す(個々の理由は上で出ている)。台数が減ったことは
+            // レーン稼働率にも出るので、run の遅さを供給失敗と取り違えないための手掛かり
+            safeLog("⚠️ \(resolved.failures.count) device(s) could not be provisioned"
+                + " — continuing with \(resolved.devices.count) device(s)")
+        }
+        return resolved.devices
+    }
+
+    /// 供給結果の集約規則。**デバイス不要の純粋ロジック**として切り出してある
+    /// (実機/シミュレータが要る部分と分けて単体テストで固めるため。ジェネリックなのは
+    /// テストがデバイス型を用意せずに規則そのものを試せるようにするため)。
+    ///
+    /// 規則は1つ: **1台でも供給できたら残りで走る**。全滅のときだけ最初のエラーを投げる。
+    static func resolveOutcomes<T>(
+        _ outcomes: [(name: String, result: Result<T, Error>)]
+    ) throws -> (devices: [T], failures: [(name: String, error: Error)]) {
+        var devices: [T] = []
+        var failures: [(name: String, error: Error)] = []
+        for outcome in outcomes {
+            switch outcome.result {
+            case .success(let device): devices.append(device)
+            case .failure(let error): failures.append((outcome.name, error))
             }
         }
-        if let firstError { throw firstError }
-        return provisioned
+        if devices.isEmpty, let first = failures.first { throw first.error }
+        return (devices, failures)
     }
 
     /// autoInstall 付き inapp/hybrid の「インストール済みアプリが最新か」を並列評価(UDID → 最新か)。

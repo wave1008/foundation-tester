@@ -201,7 +201,8 @@ struct ApiRunCommand: AsyncParsableCommand {
                 // 凍結機は修復→不発なら guest reboot 待ちで本 run に復帰・それでも駄目な個体のみ除外
                 // (CLI の ProfileRunner と同じ。全滅しても throw せず
                 // 空で返す=iOS の合流を殺さない。android シナリオはワーカー不在ドレインで失敗確定)
-                let triage = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(workers) { logStderr($0) }
+                let triage = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(
+                workers, stateDir: (try? RepoRoot.find())?.appendingPathComponent(".ftester")) { logStderr($0) }
                 workers = triage.workers
                 triageBox.set(repaired: triage.repaired, excluded: triage.excluded)
                 workers = try await ProfileWorkerFactory.installIfNeeded(
@@ -227,9 +228,9 @@ struct ApiRunCommand: AsyncParsableCommand {
                         let repoRoot = try RepoRoot.find()
                         workers = await BlankWorkerTriage.excludeBlankScreenWorkers(
                             workers,
-                            recover: { @Sendable frozen in
+                            recover: { @Sendable frozen, currentWorkers in
                                 await ProfileWorkerFactory.recoverFrozenIOSWorkers(
-                                    labels: frozen, workers: workers, resolved: resolved,
+                                    labels: frozen, workers: currentWorkers, resolved: resolved,
                                     repoRoot: repoRoot, apps: resolved.apps) { logStderr($0) }
                             },
                             // 判定をモニターへ配る(DeviceFrozenStore)。run が知っている凍結を
@@ -407,7 +408,8 @@ struct ApiRunCommand: AsyncParsableCommand {
             supplyLease?.hold(
                 keys: workers.compactMap { $0.connection.serial ?? $0.connection.udid })
             // android は修復→guest reboot 待ちで本 run に復帰・それでも駄目な個体のみ除外
-            let triage = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(workers) { logStderr($0) }
+            let triage = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(
+                workers, stateDir: (try? RepoRoot.find())?.appendingPathComponent(".ftester")) { logStderr($0) }
             workers = triage.workers
             // iOS も **shutdown → boot → ブリッジ張り直し**で回復を試み、駄目な個体だけ除外する
             // (BlankWorkerTriage 参照)。**この経路にも通すこと** ——
@@ -416,9 +418,9 @@ struct ApiRunCommand: AsyncParsableCommand {
             let iosWorkers = workers
             let iosTriage = await BlankWorkerTriage.excludeBlankScreenWorkers(
                 workers,
-                recover: { @Sendable frozen in
+                recover: { @Sendable frozen, currentWorkers in
                     await ProfileWorkerFactory.recoverFrozenIOSWorkers(
-                        labels: frozen, workers: iosWorkers, resolved: resolved,
+                        labels: frozen, workers: currentWorkers, resolved: resolved,
                         repoRoot: iosRepoRoot, apps: resolved.apps) { logStderr($0) }
                 },
                 stateDir: iosRepoRoot.appendingPathComponent(".ftester"),

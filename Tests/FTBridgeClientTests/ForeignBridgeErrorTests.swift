@@ -42,6 +42,12 @@ final class ForeignBridgeErrorTests: XCTestCase {
     /// 文言テストだけだと「プローブを呼ばない」退行を見逃す(実際に変異テストで素通りした)。
     func testStopReportsForeignBridgeWhenPortAnswers() throws {
         let port: UInt16 = 8191
+        // **固定ポートなので、実物のブリッジが先に居ることがある**(ブリッジのポート帯と重なる。
+        // 2026-08-11 に手動プローブのブリッジが 8191 に居て、このテストがその実物の
+        // device/version を読んで落ちた)。自前サーバは bind に失敗しても probe は成功するので、
+        // **先に誰も居ないことを確かめてから**始める(居るなら skip = 誤った失敗を出さない)
+        try XCTSkipUnless(BridgeLauncher.probeForeignBridge(port: port, timeout: 0.3) == nil,
+                          "port \(port) に別のブリッジが応答しています(このテストは固定ポートを使う)")
         let server = Process()
         server.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         server.arguments = ["python3", "-c", """
