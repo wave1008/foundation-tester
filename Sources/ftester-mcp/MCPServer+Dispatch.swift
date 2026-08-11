@@ -830,10 +830,9 @@ extension MCPServer {
 
         case "ft_screenshot":
             let screenshotDriver = try await driver(args)
-            // **鮮度チェックは画像ハッシュ×木指紋の前回比較**(2026-08-10、前後2枚方式から置き換え)。
-            // 静止画面の2連続 ft_screenshot は PNG がバイト単位で同一と実測済み(lastScreenshots
-            // 宣言参照)——だから「木は前回と変わったのに画像はバイト同一」を古いフレームの証拠に
-            // 使える。撮影前の snapshot は取らない(往復は screenshot 1回 + snapshot 1回の計2回)。
+            // 鮮度判定は StaleFrameDetector.judge(FTCore。DSL の occlusion-guard と共有・
+            // 契約はそちらのコメント参照)。撮影前の snapshot は取らない
+            // (往復は screenshot 1回 + snapshot 1回の計2回)。
             // **限界**: 木の変化が画素に出ない変化(a11y のみ)は偽陽性になり得るが、指紋は
             // type/id/label/frame なので実害は薄い
             let png = try await screenshotDriver.screenshot()
@@ -841,10 +840,9 @@ extension MCPServer {
             // 木の取得に失敗したら判定せず、記録も汚さない(前回の記録を残す)
             if let after = try? await freshSnapshot(screenshotDriver, args: args) {
                 let key = Self.engineKey(args)
-                let imageHash = Self.hashBytes(png)
-                let fingerprint = Self.treeFingerprint(after)
-                if let previous = lastScreenshots[key],
-                   previous.imageHash == imageHash, previous.treeFingerprint != fingerprint {
+                let (record, isStale) = StaleFrameDetector.judge(
+                    png: png, elements: after.elements, previous: lastScreenshots[key])
+                if isStale {
                     staleNote = [["type": "text", "text":
                         "note: the element tree has changed since the previous ft_screenshot, but"
                         + " this image is byte-identical to that previous one — the frame is likely"
@@ -852,10 +850,7 @@ extension MCPServer {
                         + " results off this image; trust ft_snapshot, and re-take the screenshot"
                         + " after interacting with the screen."]]
                 }
-                // **同じ凍結フレームへの注記は最初の1回だけ**: ここで指紋を新しい木へ更新するため、
-                // 以後は「画像同一・木も同一」になり静止画面と区別できない(意図した設計。
-                // 記録を更新しない案は、静止画面の連写で木の自然な揺れを拾い偽陽性を積む)
-                lastScreenshots[key] = (imageHash: imageHash, treeFingerprint: fingerprint)
+                lastScreenshots[key] = record
             }
             guard (args["fullSize"] as? Bool) != true else {
                 return staleNote

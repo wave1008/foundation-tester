@@ -51,7 +51,33 @@ extension StepExecutor {
         guard OcclusionEligibility.eligible(type: element.type, label: expectedText,
                                             isUserText: expectedIsUserText).ok else { return nil }
         // 操作を挟まない連続ガードでは直近スクショを再利用(~125ms 削減)。
-        let screenshot = try await guardScreenshot(phase: &phase)
+        let captured = try await guardScreenshot(phase: &phase)
+        var screenshot = captured.data
+        // [StaleFrameDetector] キャッシュ供給(同一 Data 使い回し)は判定しない —— 供給元が
+        // guardScreenshot 自身なので比較すると木のわずかな揺れで必ず偽 stale になる(guardScreenshot 参照)。
+        // 新規撮影のときだけ「木は変わったのに絵が前回とバイト同一」を確認し、疑いなら1回だけ撮り直す。
+        // それでも stale なら古い絵を根拠に偽陽性反転を宣言せず素通りする(flip しない)。
+        if captured.freshlyCaptured {
+            // **両方の判定を同じ元の baseline に対して行う**(2回目の判定を1回目の record に対して
+            // 行うと、elements はこの呼び出し内で不変なので treeFingerprint が必ず一致し
+            // 「撮り直しても stale のまま」が原理的に起こり得なくなる)。
+            let baseline = lastGuardFrameRecord
+            let (record, isStale) = StaleFrameDetector.judge(
+                png: screenshot, elements: elements, previous: baseline)
+            lastGuardFrameRecord = record
+            if isStale {
+                invalidateScreenshotCache()
+                let retaken = try await guardScreenshot(phase: &phase)
+                let (record2, stillStale) = StaleFrameDetector.judge(
+                    png: retaken.data, elements: elements, previous: baseline)
+                lastGuardFrameRecord = record2
+                if stillStale {
+                    noteCodesThisStep.insert(.staleScreenshot)
+                    return nil
+                }
+                screenshot = retaken.data
+            }
+        }
         // Tier-0 幾何(ツリーのみ)で疑わしければインク量に関わらず FM へ(部分覆いの取りこぼし対策)。
         let geo = OcclusionSuspicion.geometric(element: element, in: elements, screen: screen,
                                                looseMatch: looseMatch)

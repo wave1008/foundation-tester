@@ -469,34 +469,16 @@ extension MCPServer {
         }
     }
 
-    /// 要素木の軽量指紋(ft_navigate の back 判定・ft_screenshot の鮮度判定で使う)。要素数 +
-    /// 各要素の (type, identifier, label, frame の整数丸め)を畳む。
-    /// **ref は含めない**(2026-08-10): MCP 層が ref にオフセットを掛けて世代管理するため
-    /// (adoptSnapshot 参照)、同じ木でも取得経路(native のまま/セッション ref に振り直し済み)で
-    /// 番号が変わり得る。含めると同じ木を「別物」と誤検知して鮮度警告が偽陽性になる。
-    /// **単独では「木が安定したまま絵だけ古い」形を拾えない**(木を比べる方法の限界)。
-    /// ft_screenshot はこれを画像ハッシュとの併用(lastScreenshots 参照)で補う
+    /// 要素木の軽量指紋(ft_navigate の back 判定・ft_screenshot の鮮度判定で使う)。
+    /// **定義元は FTCore.StaleFrameDetector.treeFingerprint**(DSL の occlusion-guard と共有)。
+    /// ref を含めない理由・単独では拾えない限界はそちらのコメント参照
     static func treeFingerprint(_ snapshot: SnapshotResponse) -> Int {
-        var hasher = Hasher()
-        hasher.combine(snapshot.elements.count)
-        for element in snapshot.elements {
-            hasher.combine(element.type)
-            hasher.combine(element.identifier)
-            hasher.combine(element.label)
-            hasher.combine(Int(element.frame.x.rounded()))
-            hasher.combine(Int(element.frame.y.rounded()))
-            hasher.combine(Int(element.frame.width.rounded()))
-            hasher.combine(Int(element.frame.height.rounded()))
-        }
-        return hasher.finalize()
+        StaleFrameDetector.treeFingerprint(of: snapshot.elements)
     }
 
-    /// PNG 生バイトのハッシュ(ft_screenshot の鮮度判定用)。**縮小前のバイト列**を渡すこと ——
-    /// JPEG 再エンコードは決定的でない可能性があるため、比較は常に生 PNG で行う
+    /// PNG 生バイトのハッシュ(ft_screenshot の鮮度判定用)。定義元は FTCore.StaleFrameDetector.hashBytes
     static func hashBytes(_ data: Data) -> Int {
-        var hasher = Hasher()
-        hasher.combine(data)
-        return hasher.finalize()
+        StaleFrameDetector.hashBytes(data)
     }
 
     /// セッションのアプリが前面に居ないときの注記(居るとき・判定できないときは空)。

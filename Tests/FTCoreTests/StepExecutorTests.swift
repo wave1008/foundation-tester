@@ -440,6 +440,64 @@ final class StepExecutorTests: XCTestCase {
         XCTAssertEqual(primary.screenshotCallCount, 2, "操作を挟んだら取り直すはず")
     }
 
+    /// [StaleFrameDetector] 新規撮影のスクショが「木は変わったのに画像はバイト同一」を示したら
+    /// 1回だけ撮り直す。撮り直しで画像が変われば(=もう凍結していない)通常どおり判定を続ける
+    func testStaleScreenshotRetriesOnceThenProceedsWithFreshCapture() async throws {
+        let log = CallLog()
+        let stuckPNG = Data([0x01])
+        let freshPNG = Data([0x02])
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[textElement(id: "msg", label: "A")],
+                                                       [textElement(id: "msg", label: "B")]],
+                                    screenshots: [stuckPNG, stuckPNG, freshPNG])
+        let delegate = FakeVisibilityDelegate(visible: true)
+        let executor = StepExecutor(driver: primary, delegate: delegate)
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                            timeout: 1, occlusionGuard: true)
+
+        _ = await executor.execute(step)   // baseline: 木 "A"・画像 stuckPNG
+        _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "msg")))
+        let outcome = await executor.execute(step)   // 木 "B"(変化)・初回捕捉は stuckPNG のまま → stale → 撮り直し → freshPNG
+
+        guard case .passed = outcome.status else {
+            XCTFail("撮り直しで凍結が解消されたので通常どおり pass するはず: \(outcome.status)"); return
+        }
+        XCTAssertEqual(primary.screenshotCallCount, 3, "2回目の assert は初回捕捉+撮り直しの2回スクショを払うはず")
+        // baseline(1回目の assert)自体も stale ではないので通常どおり FM を呼ぶ+今回の撮り直し後
+        // の1回 = 計2回
+        XCTAssertEqual(delegate.visibleCalls, 2, "baseline 1回+撮り直した新しい画像で1回、計2回 FM 照合するはず")
+        XCTAssertFalse(outcome.notes.contains(.staleScreenshot), "凍結は解消されたので stale 注記は付かないはず")
+    }
+
+    /// 撮り直してもなお画像がバイト同一(=木は変わったのに絵が固まったまま)なら、
+    /// 古い絵を根拠に偽陽性反転を宣言せず flip しない。FM も呼ばない。
+    /// **delegate は visible:true**(false にすると baseline 自体が本物の occlusion で
+    /// timeout まで poll してしまい、その間の追加 snapshot/screenshot 呼び出しが
+    /// スクリプトした木/画像の対応関係を狂わせる —— stale 判定だけを切り分けるため)
+    func testStaleScreenshotSkipsFlipWhenRetakeStillStale() async throws {
+        let log = CallLog()
+        let stuckPNG = Data([0x01])
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[textElement(id: "msg", label: "A")],
+                                                       [textElement(id: "msg", label: "B")]],
+                                    screenshots: [stuckPNG])
+        let delegate = FakeVisibilityDelegate(visible: true)
+        let executor = StepExecutor(driver: primary, delegate: delegate)
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                            timeout: 1, occlusionGuard: true)
+
+        _ = await executor.execute(step)   // baseline: not stale → 通常どおり FM を1回呼んで pass
+        _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "msg")))
+        let callsBeforeStep2 = delegate.visibleCalls
+        let outcome = await executor.execute(step)   // 木は変わったが、画像は撮り直しても不変のまま
+
+        guard case .passed = outcome.status else {
+            XCTFail("flip しないのでツリー一致のまま pass するはず: \(outcome.status)"); return
+        }
+        XCTAssertEqual(delegate.visibleCalls, callsBeforeStep2, "stale が解消しないうちは FM を呼ばないはず")
+        XCTAssertTrue(outcome.notes.contains(.staleScreenshot), "stale-screenshot 注記が付くはず: \(outcome.notes)")
+    }
+
     /// #2 修正: textEquals の期待値(ユーザーリテラル)は結合 `, ` 規則を外す(句読点入りテキストを守る)
     func testEligibilityAllowsCommaInUserText() {
         // 実 label(exist)では `, ` を結合セマンティクスとして除外

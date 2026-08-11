@@ -67,7 +67,7 @@ final class MCPServer {
     /// バイト単位で同一**(2026-08-10 実測: Android 83,028B×2 / iOS 95,076B×2)—— これが成り立つから
     /// 「木は変わったのに絵が前回と同一 = 古いフレームを返し続けている」と言える(treeFingerprint の
     /// 前後比較単独では拾えなかった動機の事象: 木は新しいのに絵だけ古い)
-    var lastScreenshots: [String: (imageHash: Int, treeFingerprint: Int)] = [:]
+    var lastScreenshots: [String: StaleFrameDetector.Record] = [:]
     /// ft_snapshot で**明示された** interactiveOnly/expandBulk(engineKey ごと)。呼ばれるたびに
     /// 丸ごと置き換える(省略されたキーは記憶から消える)。snapshotAfterBody が、呼び出し側の
     /// args に無いキーだけこれで補う — 明示した値が常に優先(snapshotAfterBody 参照)

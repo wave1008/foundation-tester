@@ -38,6 +38,11 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// 文字列一致で分岐すると、文言を書き換えた瞬間に静かに効かなくなる(このファイル冒頭の理由)
     case sheetCollapsed = "sheet-collapsed"
 
+    /// occlusion-guard のスクショが凍結フレーム疑い(StaleFrameDetector.judge)で、撮り直しても
+    /// なお木指紋と食い違わなかった。古い絵を根拠に FM の偽陽性反転を宣言しないための素通り
+    /// (StepExecutor+Assert.swift の occlusionFlip)
+    case staleScreenshot = "stale-screenshot"
+
     /// 人間向けの文言(FTRuntime がステップ説明へ括弧書きで付ける)
     public var text: String {
         switch self {
@@ -45,6 +50,7 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
         case .heldValue: return "from the grabbed value"
         case .scrollFrameMissing: return "the scrollFrame did not resolve, so the search stopped early"
         case .sheetCollapsed: return "the list stopped moving inside a partially open sheet"
+        case .staleScreenshot: return "the occlusion-guard screenshot looked stale, so the check was skipped"
         }
     }
 }

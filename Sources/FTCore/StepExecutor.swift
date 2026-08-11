@@ -252,6 +252,10 @@ public final class StepExecutor {
     /// (private のままだと拡張ファイルからの `cachedScreenshot = nil` がコンパイルできない)。
     var cachedScreenshot: Data?
     private var cachedShotAt: ContinuousClock.Instant?
+    /// [occlusion-guard] StaleFrameDetector の前回観測(凍結フレーム検知用)。cachedScreenshot と
+    /// 同じくエンジン1本につき1系列(StepExecutor はエンジンごとに1インスタンス)。
+    /// **cache 供給(同一 Data 使い回し)のときは更新しない** —— guardScreenshot 参照
+    var lastGuardFrameRecord: StaleFrameDetector.Record?
     /// 白フレーム確定時に呼ぶ。FTDriveCore が凍結中断+deviceFrozen emit を行う
     public var onDeviceFrozen: (@Sendable () -> Void)?
     /// 割り込みハンドラ(アプリ内メッセージ・自前のお知らせダイアログ用)。
@@ -311,17 +315,20 @@ public final class StepExecutor {
 
     /// occlusion-guard 用スクショ。直近(200ms 以内・無効化なし)なら再利用、無ければ取得してキャッシュ。
     /// StepExecutor+Assert.swift の occlusionFlip から呼ばれるため internal。
-    func guardScreenshot(phase: inout PhaseAccumulator) async throws -> Data {
+    /// **freshlyCaptured** = キャッシュ供給ではなく今回 driver.screenshot() を呼んだか。
+    /// キャッシュ供給は同一 Data オブジェクトを返すため、StaleFrameDetector の判定に使うと
+    /// 「画像同一・木は微変化」で必ず偽 stale になる —— 呼び出し側はこれが false のとき判定しない
+    func guardScreenshot(phase: inout PhaseAccumulator) async throws -> (data: Data, freshlyCaptured: Bool) {
         let clock = ContinuousClock()
         if let shot = cachedScreenshot, let at = cachedShotAt, clock.now - at < .milliseconds(200) {
-            return shot
+            return (shot, false)
         }
         let start = clock.now
         let shot = try await driver.screenshot()
         phase.actionMs += Self.ms(clock.now - start)
         cachedScreenshot = shot
         cachedShotAt = clock.now
-        return shot
+        return (shot, true)
     }
 
     public init(driver: AppDriver, fallbackDriver: AppDriver? = nil,
