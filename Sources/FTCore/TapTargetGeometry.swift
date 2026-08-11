@@ -253,7 +253,7 @@ public enum TapTargetGeometry {
     ///
     /// 実測(2026-08-08・iOS): キーボード下の候補行 ref タップが警告なしで顔文字キーに当たった。
     /// ツリー内の inputView は子孫が全部除外された空葉になり、既存の空葉コンテナ除外
-    /// (`RefGuard.isBlankLeafContainer`。誤検知対策)で遮蔽候補から外れる —— だからツリー由来の
+    /// (`OcclusionGeometry.isBlankLeafContainer`。誤検知対策)で遮蔽候補から外れる —— だからツリー由来の
     /// 遮蔽判定では原理的に拾えない
     public static func keyboardCoveredAdvisory(_ element: ElementInfo,
                                                keyboardFrame: FTRect?) -> String? {
