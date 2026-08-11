@@ -88,6 +88,75 @@ final class MCPWritableSelectorTests: XCTestCase {
         XCTAssertNil(MCPServer.SelectorNaming(snap).selector(for: snap.elements[0], in: snap))
     }
 
+    // MARK: - 索引に落ちる前に絞る(2026-08-12 の実アプリ監査)
+
+    /// **ラベルが重複していても、型で1つに絞れるなら索引形にしない**。
+    /// 実測(Google マップの検索候補)では `#typed_suggest_container >> .clickable[3]` しか
+    /// 書けず、候補の件数が変わると別の駅を選んでいた
+    func testTypeNarrowsADuplicatedLabelBeforeFallingBackToAnIndex() throws {
+        let snap = snapshot([
+            element(1, type: "other", id: "suggest", depth: 1),
+            element(2, type: "clickable", label: "東京駅", depth: 2, y: 100),
+            element(3, type: "staticText", label: "東京駅", depth: 3, y: 100),
+        ])
+        let naming = MCPServer.SelectorNaming(snap)
+        XCTAssertEqual(naming.selector(for: snap.elements[1], in: snap), ".clickable&&東京駅")
+        XCTAssertEqual(naming.graded(for: snap.elements[1], in: snap)?.durability, .stable)
+        XCTAssertEqual(resolvedRef(".clickable&&東京駅", in: snap), 2)
+    }
+
+    /// 型でも絞れないならスコープで絞る。**位置に依存しないので stable**
+    func testScopeNarrowsWhenTheTypeCannot() throws {
+        let snap = snapshot([
+            element(1, type: "other", id: "row_a", depth: 1),
+            element(2, type: "button", label: "お気に入りに追加", depth: 2, y: 100),
+            element(3, type: "other", id: "row_b", depth: 1),
+            element(4, type: "button", label: "お気に入りに追加", depth: 2, y: 200),
+        ])
+        let naming = MCPServer.SelectorNaming(snap)
+        let graded = try XCTUnwrap(naming.graded(for: snap.elements[1], in: snap))
+        XCTAssertEqual(graded.selector, "#row_a >> お気に入りに追加")
+        XCTAssertEqual(graded.durability, .stable, "兄弟の増減では別物を指さないので stable")
+        XCTAssertEqual(resolvedRef("#row_a >> お気に入りに追加", in: snap), 2)
+    }
+
+    /// **絞れないものを絞れたことにしない**: 同じ型・同じラベルが2つあり、スコープにできる
+    /// 祖先も無いなら「書けない」。`picksExactly` は先頭一致を見るだけなので、
+    /// これを `picksOnlyOne` で塞がないと**群の1件目にだけ**嘘の助言が出る
+    func testAmbiguousTypeAndLabelIsNotSuggestedForTheFirstOfTheGroup() throws {
+        let snap = snapshot([element(1, type: "clickable", label: "経路", depth: 1, y: 100),
+                             element(2, type: "clickable", label: "経路", depth: 1, y: 200)])
+        let naming = MCPServer.SelectorNaming(snap)
+        XCTAssertNil(naming.selector(for: snap.elements[0], in: snap),
+                     "先頭だからといって .clickable&&経路 を勧めてはいけない")
+        XCTAssertNil(naming.selector(for: snap.elements[1], in: snap))
+    }
+
+    /// **スコープにする id は画面で一意でなければならない**。重複した id を容器に使うと
+    /// `#row >> 追加` は「**最初の** #row の中の追加」になり、この木ではたまたま当人へ
+    /// 解決する —— 検証(`picksOnlyOne`)を通ってしまうので、**引く前の規則で弾く**必要がある。
+    /// (`uniqueScopeID` の id 一意チェックを外すと、ここだけが落ちる)
+    func testDuplicatedContainerIDIsNeverUsedAsAScope() throws {
+        let snap = snapshot([
+            element(1, type: "other", id: "row", depth: 1, y: 0),
+            element(2, type: "button", label: "追加", depth: 2, y: 10),
+            element(3, type: "other", id: "row", depth: 1, y: 200),
+            element(4, type: "button", label: "追加", depth: 2, y: 210),
+        ])
+        XCTAssertNil(MCPServer.uniqueScopeID(for: snap.elements[1], in: snap))
+        XCTAssertNil(MCPServer.SelectorNaming(snap).selector(for: snap.elements[1], in: snap),
+                     "重複 id をスコープにした式を勧めてはいけない")
+    }
+
+    /// **既存の提案を動かさない**: `#id` と一意ラベルは新しい形より優先されたまま
+    func testNarrowingFormsDoNotOutrankIDsOrUniqueLabels() throws {
+        let snap = snapshot([element(1, id: "login", label: "OK"), element(2, label: "OK"),
+                             element(3, label: "送信")])
+        let naming = MCPServer.SelectorNaming(snap)
+        XCTAssertEqual(naming.selector(for: snap.elements[0], in: snap), "#login")
+        XCTAssertEqual(naming.selector(for: snap.elements[2], in: snap), "送信")
+    }
+
     func testScopedNotationIsTheLastResort() throws {
         let snap = snapshot([
             element(1, type: "other", id: "tabs", depth: 1),

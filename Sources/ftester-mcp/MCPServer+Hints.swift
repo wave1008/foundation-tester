@@ -602,14 +602,23 @@ extension MCPServer {
         /// 別要素を指す**ので、シナリオに書くと静かに壊れる
         func graded(for element: ElementInfo,
                     in snapshot: SnapshotResponse) -> (selector: String, durability: Durability)? {
+            // **検査は耐久性で選ぶ**: `.stable` は「位置に依存しない」という意味なので、
+            // 候補が2件以上あってはならない(先頭一致で通してしまうと、群の1件目にだけ
+            // 嘘の助言が出る)。`.indexed` は添字で1つに絞る式なので `picksExactly` が正しい
+            // —— `resolvedCandidates` は添字を適用する前の列で、必ず複数になる
+            func holds(_ selector: String, _ durability: Durability) -> Bool {
+                durability == .indexed
+                    ? MCPServer.picksExactly(element, with: selector, in: snapshot)
+                    : MCPServer.picksOnlyOne(element, with: selector, in: snapshot)
+            }
             for candidate in candidates(for: element, in: snapshot)
-            where MCPServer.picksExactly(element, with: candidate.selector, in: snapshot) {
+            where holds(candidate.selector, candidate.durability) {
                 // **勧める形と書かれる形を揃える**(2026-08-10): 下書きは locator を
                 // `FTSelector.serialize` で書き戻すので、`[1]` のような冗長な節はそこで落ちる。
                 // 勧めた文字列をそのまま出すと「注記は `.clickable[1]`、コードは `.clickable`」
                 // という食い違いになり、1箇所で決める意味が無くなる
                 let written = MCPServer.asWritten(candidate.selector)
-                let agreed = MCPServer.picksExactly(element, with: written, in: snapshot)
+                let agreed = holds(written, candidate.durability)
                 return (agreed ? written : candidate.selector, candidate.durability)
             }
             return nil
@@ -627,11 +636,26 @@ extension MCPServer {
             // **切り詰め表示になるラベルは候補にしない**: 40字超は一覧に "…" 付きで出るので、
             // 読み手が写した完全一致は必ず外れる(SnapshotRenderer.truncatedLabelNote と同じ理由)
             let label = FlowMatchMode.normalizeInvisibleCharacters(element.label ?? "")
-            if !label.isEmpty, labelCounts[label] == 1,
-               label.count <= SnapshotRenderer.labelDisplayLimit {
+            let writableLabel = !label.isEmpty && label.count <= SnapshotRenderer.labelDisplayLimit
+            if writableLabel, labelCounts[label] == 1 {
                 // 素のラベルが記法と衝突する形(`#` や `.` 始まり)には `=` 逃がしがある
                 out.append((label, .stable))
                 out.append(("=\(label)", .stable))
+            }
+            // **ラベルが重複していても、まず絞ってから索引に落とす**(2026-08-12 の実アプリ監査)。
+            // ここが無かった版は「一意な id も一意なラベルも無い」を即 `#容器 >> .型[n]` に
+            // 落としていた —— 実測(Google マップの検索候補)では `#typed_suggest_container >>
+            // .clickable[3]` しか書けず、**候補の件数が変わると別の駅を選ぶ**。
+            // `&&`(AND 合成)と `>>`(スコープ)は DSL の記法にあり、どちらも位置に依存しない。
+            // **既存の提案は動かさない** —— 上の `#id` / 一意ラベルより後、索引形より前に置く
+            if writableLabel {
+                out.append((".\(element.type)&&\(label)", .stable))
+                out.append((".\(element.type)&&=\(label)", .stable))
+                if let scope = MCPServer.uniqueScopeID(for: element, in: snapshot) {
+                    out.append(("#\(scope) >> \(label)", .stable))
+                    out.append(("#\(scope) >> =\(label)", .stable))
+                    out.append(("#\(scope) >> .\(element.type)&&\(label)", .stable))
+                }
             }
             if let scoped = MCPServer.scopedSelector(for: element, in: snapshot) {
                 out.append((scoped, .indexed))
@@ -652,22 +676,45 @@ extension MCPServer {
                                           elements: snapshot.elements)?.0.ref == element.ref
     }
 
+    /// **その要素**を選び、かつ**候補が1件しかない**か。`picksExactly` は `matchDetailed` の
+    /// 先頭一致を見るだけなので、**曖昧な式でも先頭の要素に対しては true を返す** ——
+    /// 添字なしの式(`.型&&ラベル` など)をそれだけで採ると、群の1件目にだけ
+    /// 「一意に指せる」と嘘の助言を出す(2026-08-12 に `MCPWritableSelectorTests` が捕まえた)。
+    /// **`[n]` を含む式には使わない**: `resolvedCandidates` は添字を適用する前の候補列なので、
+    /// 添字付きのスコープ記法を「曖昧」と誤判定する(`picksExactly` のコメント参照)
+    static func picksOnlyOne(_ element: ElementInfo, with selector: String,
+                             in snapshot: SnapshotResponse) -> Bool {
+        guard picksExactly(element, with: selector, in: snapshot) else { return false }
+        let parsed = FTSelector.parse(selector)
+        return StepExecutor.resolvedCandidates(parsed.primary, elements: snapshot.elements)?.count == 1
+    }
+
+    /// スコープに使える最も近い祖先の id。**条件は2つ**: ① id を持つ祖先が居る
+    /// ② **その id が画面で一意**(重複していると `#recycler_view` のように4つある画面で
+    /// 別の容器を掴む)。`#容器 >> …` を組む者はすべてここを通す —— スコープの規則を
+    /// 2箇所に持つと、`.型[n]` 版とラベル版で別の容器を指しはじめる
+    static func uniqueScopeID(for element: ElementInfo, in snapshot: SnapshotResponse) -> String? {
+        var idCounts: [String: Int] = [:]
+        for e in snapshot.elements {
+            guard let id = e.identifier, !id.isEmpty else { continue }
+            idCounts[id, default: 0] += 1
+        }
+        return TapTargetGeometry.ancestors(of: element, in: snapshot.elements)
+            .first { ancestor in
+                guard let id = ancestor.identifier, !id.isEmpty else { return false }
+                return idCounts[id] == 1
+            }?.identifier
+    }
+
     /// `#container >> .type[n]` を組み立てる。**書けないときは nil**(嘘の助言を出さない)。
     ///
     /// 条件は2つ: ① id を持つ祖先が居る ② **その id が画面で一意**(重複していると
     /// スコープ自体が曖昧になり、`#recycler_view` のように4つある画面で別の容器を掴む)。
     /// 添字はスコープ内・同じ型の中での順番で、記法は **1 オリジン**(FlowLocator.index の規約)
     static func scopedSelector(for element: ElementInfo, in snapshot: SnapshotResponse) -> String? {
-        var idCounts: [String: Int] = [:]
-        for e in snapshot.elements {
-            guard let id = e.identifier, !id.isEmpty else { continue }
-            idCounts[id, default: 0] += 1
-        }
-        let ancestors = TapTargetGeometry.ancestors(of: element, in: snapshot.elements)
-        guard let scope = ancestors.first(where: { ancestor in
-            guard let id = ancestor.identifier, !id.isEmpty else { return false }
-            return idCounts[id] == 1
-        }), let scopeID = scope.identifier else { return nil }
+        guard let scopeID = uniqueScopeID(for: element, in: snapshot),
+              let scope = snapshot.elements.first(where: { $0.identifier == scopeID })
+        else { return nil }
         let siblings = StepExecutor.descendants(of: scope, in: snapshot.elements)
             .filter { $0.type == element.type }
         guard let position = siblings.firstIndex(where: { $0.ref == element.ref }) else { return nil }

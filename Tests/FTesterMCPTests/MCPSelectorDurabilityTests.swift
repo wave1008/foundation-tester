@@ -42,24 +42,52 @@ final class MCPSelectorDurabilityTests: XCTestCase {
 
     // MARK: - 実アプリのコーパス全数
 
-    /// スコープ記法から採った式は**綴りに `[n]` が出なくても** indexed であること。
+    /// `scopedSelector`(`#容器 >> .型[n]`)から採った式は**綴りに `[n]` が出なくても** indexed。
     /// `#容器 >> .clickable` は「容器の中の最初の clickable」で、位置依存は消えていない ——
-    /// 綴りで判定していた版はこの形だけを取りこぼして無印にしていた(2026-08-10)
-    func testScopedSelectorStaysIndexedEvenWhenTheIndexIsNotSpelledOut() throws {
+    /// 綴りで判定していた版はこの形だけを取りこぼして無印にしていた(2026-08-10)。
+    ///
+    /// **判定は綴りではなく出所**(2026-08-12): `>>` を含むかで見ていた版は、
+    /// 位置に依存しない `#容器 >> ラベル`(スコープ内で一意なラベル)まで indexed だと
+    /// 言い張った —— 同じ「綴りで判定するな」の失敗を裏側から踏んでいた
+    func testScopedIndexSelectorStaysIndexedEvenWhenTheIndexIsNotSpelledOut() throws {
         var checkedFirstSibling = false
         for name in try fixtureNames() {
             let snapshot = try fixture(name)
             let naming = MCPServer.SelectorNaming(snapshot)
             for element in snapshot.elements {
                 guard let graded = naming.graded(for: element, in: snapshot),
-                      graded.selector.contains(">>") else { continue }
+                      let scoped = MCPServer.scopedSelector(for: element, in: snapshot),
+                      graded.selector == scoped || graded.selector == MCPServer.asWritten(scoped)
+                else { continue }
                 XCTAssertEqual(graded.durability, .indexed,
-                               "\(name): \(graded.selector) がスコープ記法なのに stable")
+                               "\(name): \(graded.selector) は添字形なのに stable")
                 if !graded.selector.contains("[") { checkedFirstSibling = true }
             }
         }
         XCTAssertTrue(checkedFirstSibling,
                       "添字の出ないスコープ記法がコーパスに1件も無く、この回帰を検証できていない")
+    }
+
+    /// **位置に依存しない式は `>>` を含んでも stable**(2026-08-12)。`#容器 >> ラベル` は
+    /// 「容器の中のそのラベル」で、兄弟の増減では別物を指さない。
+    /// **stable を名乗る式は候補が1件しかないこと**まで確かめる —— `picksExactly` は
+    /// 先頭一致を見るだけなので、これが無いと群の1件目にだけ嘘の助言が出る
+    func testStableSelectorsAreAlwaysUnambiguous() throws {
+        var checkedScopedLabel = false
+        for name in try fixtureNames() {
+            let snapshot = try fixture(name)
+            let naming = MCPServer.SelectorNaming(snapshot)
+            for element in snapshot.elements {
+                guard let graded = naming.graded(for: element, in: snapshot),
+                      graded.durability == .stable else { continue }
+                XCTAssertTrue(
+                    MCPServer.picksOnlyOne(element, with: graded.selector, in: snapshot),
+                    "\(name): \(graded.selector) は stable なのに候補が1件ではない")
+                if graded.selector.contains(">>") { checkedScopedLabel = true }
+            }
+        }
+        XCTAssertTrue(checkedScopedLabel,
+                      "位置に依存しないスコープ式がコーパスに1件も無く、この回帰を検証できていない")
     }
 
     /// **勧める形と、下書きに実際に書かれる形が一致する**こと。
