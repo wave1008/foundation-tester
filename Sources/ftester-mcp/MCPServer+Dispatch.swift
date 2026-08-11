@@ -183,7 +183,7 @@ extension MCPServer {
         // 入口で畳めば 35 箇所の呼び出しを触らずに全部が揃う
         let resolved: [String: Any]
         do {
-            resolved = try await Self.foldingUDIDIntoPort(args)
+            resolved = Self.strippingSelectorQuotes(try await Self.foldingUDIDIntoPort(args))
         } catch {
             let hint = await connectionLostHint(error, args: args)
             throw hint.isEmpty ? error : MCPError(error.localizedDescription + hint)
@@ -211,6 +211,30 @@ extension MCPServer {
         return " Some widgets refuse ACTION_SET_TEXT outright (Android's NumberPicker among them)."
             + " Tap the field with ft_tap first, then call ft_type WITHOUT ref — that path types"
             + " into the focused field through the keyboard instead of setting its text."
+    }
+
+    /// セレクタ引数の両端の引用符を入口で剥がす(2026-08-12 の実アプリ監査)。
+    /// DSL は Swift の文字列リテラルが引用符を剥がすが、MCP は生文字列で受けるので、
+    /// `"*立川*"` は**引用符ごと完全一致ラベル**になり黙って一致しない(先頭が `"` なので
+    /// `*` 記法も展開されない)。ft_batch は逆に引用符必須なので、跨いで使うと必ず混入する。
+    /// 両端が同じ引用符で**中にその引用符が無い**ときだけ剥がす(`"a"||"b"` を壊さない)。
+    /// 引用符そのものを含むラベルは `=` エスケープ(`="…"`)で従来どおり書ける
+    static func strippingSelectorQuotes(_ args: [String: Any]) -> [String: Any] {
+        var out = args
+        for key in ["selector", "waitFor", "scrollFrame"] {
+            guard let text = args[key] as? String else { continue }
+            out[key] = strippedQuotes(text)
+        }
+        return out
+    }
+
+    static func strippedQuotes(_ text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        guard trimmed.count >= 2, let first = trimmed.first, first == "\"" || first == "'",
+              trimmed.last == first else { return text }
+        let inner = String(trimmed.dropFirst().dropLast())
+        guard !inner.contains(first) else { return text }
+        return inner
     }
 
     /// `udid` を解決して `port` として畳んだ引数。**udid が無いときは触らない**

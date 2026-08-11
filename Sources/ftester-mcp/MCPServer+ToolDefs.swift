@@ -236,7 +236,7 @@ extension MCPServer {
             + "Use this instead of repeating ft_swipe + ft_snapshot: it runs the same search the DSL's "
             + "scrollTo does (settling, container-sized steps, overshoot recovery) and the refs it returns "
             + "are taken after the scroll", [
-            "selector": ["type": "string", "description": "Same syntax as the DSL: #id, a label, .type, a||b"],
+            "selector": ["type": "string", "description": "Same syntax as the DSL: #id, a label, .type, a||b (a plain label is written bare — quotes wrapped around the whole selector are stripped)"],
             "direction": ["type": "string", "enum": ["down", "up", "right", "left"],
                           "description": "Content direction to read towards (default down)"],
             "scrollFrame": ["type": ["string", "integer"],

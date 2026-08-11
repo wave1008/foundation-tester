@@ -246,6 +246,43 @@ final class MCPRoundTripTests: XCTestCase {
         let elements = (1...5).map { element($0, id: "row", y: 100) }
         XCTAssertEqual(MCPServer.capHogNote(snapshot(elements)), "")
     }
+
+    // MARK: - セレクタ引数の引用符剥がし(2026-08-12)
+    //
+    // DSL は Swift の文字列リテラルが引用符を剥がすが、MCP は生文字列で受ける。
+    // `"*立川*"` が引用符ごと完全一致ラベルになり、スクロール探索が実在の要素へ
+    // 永遠に届かなかった(実アプリで再現)。ft_batch は引用符必須なので混入は構造的に起きる
+
+    func testQuotedSelectorArgumentsAreStripped() {
+        XCTAssertEqual(MCPServer.strippedQuotes("\"*立川*\""), "*立川*")
+        XCTAssertEqual(MCPServer.strippedQuotes("'#details_cardlist'"), "#details_cardlist")
+        XCTAssertEqual(MCPServer.strippedQuotes("\"到着\""), "到着")
+        // 剥がさない形: 引用符なし / 対でない / 中に同じ引用符(`"a"||"b"` を壊さない)
+        XCTAssertEqual(MCPServer.strippedQuotes("*立川*"), "*立川*")
+        XCTAssertEqual(MCPServer.strippedQuotes("\"開きっぱなし"), "\"開きっぱなし")
+        XCTAssertEqual(MCPServer.strippedQuotes("\"a\"||\"b\""), "\"a\"||\"b\"")
+        // `=` エスケープは先頭が引用符でないので素通り = 引用符を含むラベルの逃げ道は残る
+        XCTAssertEqual(MCPServer.strippedQuotes("=\"引用ラベル\""), "=\"引用ラベル\"")
+    }
+
+    func testStrippingTouchesOnlySelectorKeys() {
+        let out = MCPServer.strippingSelectorQuotes(
+            ["selector": "\"到着\"", "waitFor": "'x'", "scrollFrame": 5, "text": "\"literal\""])
+        XCTAssertEqual(out["selector"] as? String, "到着")
+        XCTAssertEqual(out["waitFor"] as? String, "x")
+        XCTAssertEqual(out["scrollFrame"] as? Int, 5)
+        // type の text は入力そのもの(引用符を打ちたい利用者の意図を壊さない)
+        XCTAssertEqual(out["text"] as? String, "\"literal\"")
+    }
+
+    /// **入口(call)に配線されていること**: 純粋関数が正しくても、呼ばれなければ従来どおり
+    /// 引用符ごと照合されて waitFor が満了まで待つ
+    func testQuotedWaitForMatchesThroughTheCallPath() async throws {
+        let text = bodyText(try await server.call(
+            tool: "ft_snapshot", args: ["waitFor": "\"ログイン\"", "timeout": 0.2]))
+        XCTAssertFalse(text.contains("did not appear"), text)
+        XCTAssertTrue(text.contains("id=login_btn"), text)
+    }
 }
 
 /// CLI のフラグ表記を MCP の引数名へ言い換える(MCPMessageText)。
@@ -488,25 +525,41 @@ final class MCPVersionGateTests: XCTestCase {
     /// **走査から切り離した純粋関数で見る** —— 実ブリッジ前提だと「見つからない」枝で
     /// 早期に落ちて、食い違いの判定が一度も実行されない
     func testUDIDAndPortMustAgree() throws {
-        XCTAssertThrowsError(try MCPServer.reconcilePort(8123, udid: "U1", udidPort: 8124)) {
-            XCTAssertTrue($0.localizedDescription.contains("different devices"),
+        XCTAssertThrowsError(try MCPServer.reconcilePort(8123, udid: "U1", udidPorts: [8124])) {
+            XCTAssertTrue($0.localizedDescription.contains("is not a bridge answering on udid"),
                           $0.localizedDescription)
         }
     }
 
     /// 一致していれば port を採る(食い違い判定が常時発火していないこと)
     func testUDIDAndPortAgreeing() throws {
-        XCTAssertEqual(try MCPServer.reconcilePort(8123, udid: "U1", udidPort: 8123), 8123)
+        XCTAssertEqual(try MCPServer.reconcilePort(8123, udid: "U1", udidPorts: [8123]), 8123)
+    }
+
+    /// **同じ端末に in-app / XCUITest の2本が立っているとき、どちらの port を併記しても通る**
+    /// (2026-08-12 の実アプリ監査: 先頭の1本とだけ比べていて、in-app port の併記が
+    /// 「別デバイス」で誤拒否された)
+    func testUDIDWithTwoBridgesAcceptsEitherPort() throws {
+        XCTAssertEqual(try MCPServer.reconcilePort(8126, udid: "U1", udidPorts: [8128, 8126]), 8126)
+        XCTAssertEqual(try MCPServer.reconcilePort(8128, udid: "U1", udidPorts: [8128, 8126]), 8128)
+    }
+
+    /// 食い違いの失敗文は**その udid の全ポート**を挙げる(1本だけ名指しすると、読み手が
+    /// 「その port へ変えれば直る」と誤読して別エンジンのブリッジへ移ってしまう)
+    func testUDIDPortMismatchListsAllPorts() throws {
+        XCTAssertThrowsError(try MCPServer.reconcilePort(9999, udid: "U1", udidPorts: [8128, 8126])) {
+            XCTAssertTrue($0.localizedDescription.contains("8128, 8126"), $0.localizedDescription)
+        }
     }
 
     /// udid だけならその port を採る
     func testUDIDAloneResolvesToItsPort() throws {
-        XCTAssertEqual(try MCPServer.reconcilePort(nil, udid: "U1", udidPort: 8130), 8130)
+        XCTAssertEqual(try MCPServer.reconcilePort(nil, udid: "U1", udidPorts: [8130]), 8130)
     }
 
     /// ブリッジが無い udid は**理由を言って失敗する**(黙って既定ポートへ逸れない)
     func testUDIDWithoutABridgeFails() {
-        XCTAssertThrowsError(try MCPServer.reconcilePort(nil, udid: "U1", udidPort: nil)) {
+        XCTAssertThrowsError(try MCPServer.reconcilePort(nil, udid: "U1", udidPorts: [])) {
             XCTAssertTrue($0.localizedDescription.contains("no running bridge is on udid"),
                           $0.localizedDescription)
         }

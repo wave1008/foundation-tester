@@ -199,35 +199,45 @@ extension MCPServer {
         guard let udid = (args["udid"] as? String).flatMap({ $0.isEmpty ? nil : $0 }) else {
             return port
         }
-        return try reconcilePort(port, udid: udid, udidPort: await bridgePort(forUDID: udid))
+        return try reconcilePort(port, udid: udid, udidPorts: await bridgePorts(forUDID: udid))
     }
 
     /// `port` と `udid` の突き合わせ。**走査から切り離した純粋関数** —— 実ブリッジが要ると
     /// 「食い違い」の枝がテストで一度も実行されず、判定を壊しても素通しする
-    /// (2026-08-09 の変異テストで実際に素通しした)
-    static func reconcilePort(_ port: UInt16?, udid: String, udidPort: UInt16?) throws -> UInt16? {
-        guard let udidPort else {
+    /// (2026-08-09 の変異テストで実際に素通しした)。
+    /// **udid 側は複数ポートを許す**(2026-08-12): 同じシミュレータに in-app / XCUITest の
+    /// 2本が立つのが常態で、先頭の1本とだけ比べると正しい併記(udid + その in-app port)を
+    /// 「別デバイス」と誤って拒否する(実端末で 3/3 再現)
+    static func reconcilePort(_ port: UInt16?, udid: String, udidPorts: [UInt16]) throws -> UInt16? {
+        guard !udidPorts.isEmpty else {
             throw MCPError("no running bridge is on udid \(udid)."
                 + " ft_list_devices shows which devices have one; start it with"
                 + " `ftester bridge up` (a device without a bridge cannot be driven from MCP)")
         }
-        guard let port else { return udidPort }
-        guard port == udidPort else {
-            throw MCPError("port \(port) and udid \(udid) point at different devices"
-                + " (that udid is on port \(udidPort)). Pass only one of them")
+        guard let port else { return udidPorts.first }
+        guard udidPorts.contains(port) else {
+            let list = udidPorts.map(String.init).joined(separator: ", ")
+            // **「別デバイス」と断定しない**: この分岐は「その port が udid の走査結果に無い」
+            // だけで、別デバイスの port とは限らない —— 背面化した in-app ブリッジは
+            // /status に答えず走査から消える(実測: Maps を launch した後の RN の in-app)
+            throw MCPError("port \(port) is not a bridge answering on udid \(udid)"
+                + " — it is another device's bridge, or a bridge that stopped answering"
+                + " (an in-app bridge suspends with its app). Answering bridge(s) on that udid:"
+                + " port \(list). Pass only one of port/udid, or use one of those ports")
         }
         return port
     }
 
-    /// udid を申告している稼働中ブリッジのポート。**申告が無いブリッジ(旧版)は素通し** ——
-    /// 「見つからない」と「そのブリッジは答えられない」を混ぜないため、見つからなければ nil
-    static func bridgePort(forUDID udid: String) async -> UInt16? {
+    /// udid を申告している稼働中ブリッジのポート(走査順・全部)。**申告が無いブリッジ(旧版)は
+    /// 素通し** —— 「見つからない」と「そのブリッジは答えられない」を混ぜないため
+    static func bridgePorts(forUDID udid: String) async -> [UInt16] {
+        var ports: [UInt16] = []
         for found in await BridgeDiscovery.scan(excluding: 0, repoRoot: try? RepoRoot.find()) {
             guard let client = try? BridgeClient(port: found.port),
                   let status = try? await client.status(), status.udid == udid else { continue }
-            return found.port
+            ports.append(found.port)
         }
-        return nil
+        return ports
     }
 
     /// profile 無しの iOS 宛先。**明示 port は探索しない**(利用者が宛先を決めている)。
