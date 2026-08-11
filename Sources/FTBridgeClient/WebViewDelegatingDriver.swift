@@ -66,6 +66,13 @@ public final class WebViewDelegatingDriver: AppDriver {
     public var supportsCacheBypass: Bool {
         mode == .delegated ? delegated.supportsCacheBypass : primary.supportsCacheBypass
     }
+    /// domInterop はここでも primary(false)扱いにする: この区間の type() は「値が変わっていない」
+    /// ときだけ1回張り直す簡易チェックしか持たず(下の type() 参照)、TypeReadback.plan の
+    /// resend/deleteExcess 相当は持たない。StepExecutor の読み返しを重ねても安全側(検証不能なら
+    /// 受理するだけ)なので、無理に true を申告しない
+    public var verifiesTypedText: Bool {
+        mode == .delegated ? delegated.verifiesTypedText : primary.verifiesTypedText
+    }
 
     /// **モード判定は必ずこちらに置く** —— snapshot() を素通し側にすると片方だけ mode/domFrames を
     /// 更新せず、ref の名前空間の不変条件(冒頭注記)が崩れる。

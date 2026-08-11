@@ -31,6 +31,7 @@ public final class SystemUIDriver: AppDriver {
         return try await client.snapshot(bypassingCache: bypassingCache)
     }
     public var supportsCacheBypass: Bool { client.supportsCacheBypass }
+    public var verifiesTypedText: Bool { client.verifiesTypedText }
 
     public func tap(ref: Int) async throws { try await client.tap(ref: ref) }
     public func type(ref: Int?, text: String) async throws { try await client.type(ref: ref, text: text) }

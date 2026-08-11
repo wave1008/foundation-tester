@@ -85,6 +85,15 @@ private final class FakeAppDriver: AppDriver {
         return try await snapshot()
     }
 
+    /// **既定 true**(AppDriver の既定 false とは逆)。type 読み返しテスト以外の全既存テストは
+    /// 読み返しの発動を意図していないので、明示的に false へ落とすテストだけが対象になる
+    var verifiesTypedText = true
+    /// type(ref:text:)/clearInput(ref:) が呼ばれるたびに実行するフック。読み返し検証の
+    /// resend/deleteExcess 経路で「訂正が実際に効いた」ことを、次の snapshot() 呼び出し以降に
+    /// snapshotElements へ追記して表現するために使う(呼び出し時点までの列は変えず追記するだけなので、
+    /// まだ訂正前の周回が読む値には影響しない)
+    var onMutatingCall: (() -> Void)?
+
     func tap(ref: Int) async throws {
         log.entries.append("\(name).tap(ref:\(ref))")
     }
@@ -97,6 +106,7 @@ private final class FakeAppDriver: AppDriver {
             throw typeError
         }
         log.entries.append("\(name).type(ref:\(ref.map(String.init) ?? "nil"))")
+        onMutatingCall?()
     }
 
     func swipe(_ direction: FTSwipeDirection) async throws {
@@ -195,6 +205,7 @@ private final class FakeAppDriver: AppDriver {
             throw clearInputError
         }
         log.entries.append("\(name).clearInput(ref:\(ref.map(String.init) ?? "nil"))")
+        onMutatingCall?()
     }
 
     func back() async throws {
@@ -1216,6 +1227,152 @@ final class StepExecutorTests: XCTestCase {
         XCTAssertTrue(log.entries.contains("typedriver.type(ref:2)"))
         XCTAssertFalse(log.entries.contains { $0.hasPrefix("primary.type") },
                        "文中の \\n でも typeDriver へ回すべき(末尾限定ではない): \(log.entries)")
+    }
+
+    // MARK: - type の読み返し検証(verifiesTypedText == false のドライバだけ発動)
+
+    /// verifiesTypedText == true(xcuitest/Android 相当)では読み返しスナップショットを増やさないこと
+    func testTypeSkipsReadbackWhenDriverAlreadyVerifies() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[inputField(ref: 1, id: "field")]])
+        // verifiesTypedText は既定 true(FakeAppDriver の既定。AppDriver 既定の false とは逆)
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(action: "type", locator: FlowLocator(id: "field"), text: "hi")
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("passed を期待したが \(outcome.status) だった")
+            return
+        }
+        XCTAssertEqual(primary.snapshotCallCount, 1,
+                       "検証済みドライバでは読み返しの追加 snapshot を撮らないこと")
+    }
+
+    /// 一発で期待どおりに入る場合: 追加 snapshot 1枚だけで成功し、注記は付かない
+    func testTypeVerifiesReadbackOnFirstTry() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(
+            name: "primary", log: log,
+            snapshotElements: [[inputField(ref: 1, id: "field", value: nil)],
+                              [inputField(ref: 1, id: "field", value: "hi")]])
+        primary.verifiesTypedText = false
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(action: "type", locator: FlowLocator(id: "field"), text: "hi")
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("一致した読み返しでは passed を期待したが \(outcome.status) だった")
+            return
+        }
+        XCTAssertNil(outcome.driverFallback)
+        XCTAssertEqual(primary.snapshotCallCount, 2, "読み返しは追加 snapshot 1枚で足りること")
+        XCTAssertEqual(log.entries.filter { $0.hasPrefix("primary.type(ref:1)") }.count, 1,
+                       "一発で一致すれば追送/削除は要らない")
+    }
+
+    /// 1回目の読みが前方一致で止まる(取りこぼし)場合: 足りない分だけ追送して成功すること
+    func testTypeResendsMissingCharactersOnPartialCommit() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(
+            name: "primary", log: log,
+            snapshotElements: [[inputField(ref: 1, id: "field", value: nil)],
+                              [inputField(ref: 1, id: "field", value: "h")]])
+        primary.verifiesTypedText = false
+        // 1回目の type(hi そのもの)では値遷移させない —— このフックは全 type/clearInput 呼び出しで
+        // 発火するので、追送(2回目以降)のときだけ「値が hi に落ち着いた」を表現する
+        var mutations = 0
+        primary.onMutatingCall = {
+            mutations += 1
+            guard mutations > 1 else { return }
+            primary.snapshotElements.append([self.inputField(ref: 1, id: "field", value: "hi")])
+        }
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(action: "type", locator: FlowLocator(id: "field"), text: "hi")
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("追送後に一致すれば passed を期待したが \(outcome.status) だった")
+            return
+        }
+        XCTAssertEqual(log.entries.filter { $0.hasPrefix("primary.type(ref:1)") }.count, 2,
+                       "取りこぼした分を1回だけ追送すること: \(log.entries)")
+    }
+
+    /// 読みが期待値を超えて長い(二重入力)場合: clearInput してから全文を打ち直して成功すること
+    func testTypeDeletesExcessAndRetypesOnDoubleCommit() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(
+            name: "primary", log: log,
+            snapshotElements: [[inputField(ref: 1, id: "field", value: nil)],
+                              [inputField(ref: 1, id: "field", value: "hihi")]])
+        primary.verifiesTypedText = false
+        // 1回目の type(hi そのもの)では値遷移させない(resend テストと同じ理由)。
+        // clearInput+再送の2回(mutations 2,3回目)が終わってから hi に落ち着かせる
+        var mutations = 0
+        primary.onMutatingCall = {
+            mutations += 1
+            guard mutations > 2 else { return }
+            primary.snapshotElements.append([self.inputField(ref: 1, id: "field", value: "hi")])
+        }
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(action: "type", locator: FlowLocator(id: "field"), text: "hi")
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("削除+再送後に一致すれば passed を期待したが \(outcome.status) だった")
+            return
+        }
+        XCTAssertTrue(log.entries.contains("primary.clearInput(ref:1)"),
+                      "過剰入力は clearInput で削ること: \(log.entries)")
+        XCTAssertEqual(log.entries.filter { $0.hasPrefix("primary.type(ref:1)") }.count, 2,
+                       "削除後に全文を再送すること: \(log.entries)")
+    }
+
+    /// マスク欄など加工された値(前方一致でも超過でもない)は検証不能として受理すること
+    /// (パスワード欄の伏せ字が典型)
+    func testTypeAcceptsUnverifiableValueWithoutRetry() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(
+            name: "primary", log: log,
+            snapshotElements: [[inputField(ref: 1, id: "field", value: nil)],
+                              [inputField(ref: 1, id: "field", value: "••")]])
+        primary.verifiesTypedText = false
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(action: "type", locator: FlowLocator(id: "field"), text: "hi")
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("検証不能な値は受理して passed を期待したが \(outcome.status) だった")
+            return
+        }
+        XCTAssertEqual(log.entries.filter { $0.hasPrefix("primary.type(ref:1)") }.count, 1,
+                       "検証不能なら追送しないこと: \(log.entries)")
+    }
+
+    /// 値が停滞したまま収束しない場合: ステップを失敗させ、失敗理由に入力値そのものを含めないこと
+    func testTypeFailsWhenValueNeverSettles() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(
+            name: "primary", log: log,
+            snapshotElements: [[inputField(ref: 1, id: "field", value: nil)],
+                              [inputField(ref: 1, id: "field", value: "h")]])
+        primary.verifiesTypedText = false
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(action: "type", locator: FlowLocator(id: "field"), text: "hi")
+
+        let outcome = await executor.execute(step)
+
+        guard case .failed(let reason) = outcome.status else {
+            XCTFail("値が収束しなければ failed を期待したが \(outcome.status) だった")
+            return
+        }
+        XCTAssertFalse(reason.contains("hi"), "失敗理由に入力値そのものを含めないこと: \(reason)")
     }
 
     // MARK: - ジェスチャのドライバフォールバック(Compose)

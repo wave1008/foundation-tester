@@ -301,6 +301,9 @@ private final class AdvisoryProbeDriver: AppDriver {
         self.secure = secure
     }
     var lastActionNote: String? { driverNote }
+    /// このフェイクは T7(既存値注記)の配線だけを見る。snapshot() が固定値を返すので、
+    /// 既定 false のままだと type 読み返しが「値が変わらない」と誤認して 8s 後に失敗する
+    var verifiesTypedText: Bool { true }
 
     func status() async throws -> StatusResponse {
         StatusResponse(ready: true, device: "fake", osVersion: "-", sessionBundleID: nil)

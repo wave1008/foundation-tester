@@ -58,6 +58,7 @@ public final class AppAttachDriver: AppDriver {
         return response
     }
     public var supportsCacheBypass: Bool { client.supportsCacheBypass }
+    public var verifiesTypedText: Bool { client.verifiesTypedText }
 
     public func tap(ref: Int) async throws { try await client.tap(ref: ref) }
     /// ref 無し(フォーカス中要素への入力)は swipe と同じ回復を入れる(下の swipe のコメント参照)。

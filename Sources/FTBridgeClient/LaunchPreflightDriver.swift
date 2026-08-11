@@ -94,6 +94,7 @@ public final class LaunchPreflightDriver: AppDriver {
         try await base.snapshot(bypassingCache: bypassingCache)
     }
     public var supportsCacheBypass: Bool { base.supportsCacheBypass }
+    public var verifiesTypedText: Bool { base.verifiesTypedText }
     public func tap(ref: Int) async throws { try await base.tap(ref: ref) }
     public func tap(x: Double, y: Double) async throws { try await base.tap(x: x, y: y) }
     public func type(ref: Int?, text: String) async throws { try await base.type(ref: ref, text: text) }

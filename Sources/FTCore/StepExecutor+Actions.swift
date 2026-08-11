@@ -754,6 +754,16 @@ extension StepExecutor {
                 try await actingDriver.type(ref: element.ref, text: step.text ?? "")
                 phase.actionMs += Self.ms(clock.now - start)
                 driverFallback = Self.joinNotes(driverFallback, existingValueNote)
+                // in-app は「200 が返った = 入った」を保証しない(insertText の成否しか見ていない)。
+                // xcuitest ランナー/Android 注入器は自前で読み返し済みなので二重にしない
+                // (verifiesTypedText == true のドライバはここへ来ない)
+                if !actingDriver.verifiesTypedText, TypeReadback.isTextInput(element) {
+                    if let failure = try await verifyTypedText(actingDriver, element: element,
+                                                                expected: existingValue + text,
+                                                                phase: &phase) {
+                        return StepOutcome(status: .failed(failure))
+                    }
+                }
             } catch {
                 // 409 = inapp が非 UIKit 入力欄で first responder を張れない兆候。type は要素個別の
                 // フォーカス有無に依存する一時的競合なので、press/swipe と違い 501 化しない。
@@ -761,6 +771,7 @@ extension StepExecutor {
                       let td = typeDriver else { throw error }
                 guard try await typeViaTypeDriver(td, step: step, phase: &phase) else { throw error }
                 // セレクタは正しくドライバが変わっただけ = .passedViaFallback(ロケータ用)は立てない
+                // (typeDriver = xcuitest が自前で読み返し済みなので、ここでも読み返さない)
                 driverFallback = Self.joinNotes("fell back to XCUITest", existingValueNote)
             }
         case "clearInput":
@@ -903,6 +914,88 @@ extension StepExecutor {
         phase.actionMs += Self.ms(clock.now - start)
         return true
     }
+
+    /// in-app 経由の type 読み返し(AppDriver.verifiesTypedText == false のときだけ呼ばれる)。
+    /// BridgeRouter.handleType/awaitCommit(Runner ターゲット。TypeReadback 以外を import できず
+    /// 共有できないので独立実装。値は同期: 8s/4周/安定1.5s)と同じ規律 —— 期待値どおりになるまで
+    /// 待ち、前方一致で止まっていれば追送、超過していれば削除して全文を打ち直す。
+    /// expected は**撃つ前**の値から呼び出し側が組む(読み直した値から作り直すとマスク欄の
+    /// 伏せ字を書き込む)。戻り値: nil = 検証済み(一致・検証不能とも受理)/ 非nil = 失敗理由
+    /// (値そのものは含めない。パスワード欄も通る経路)
+    private func verifyTypedText(_ driver: AppDriver, element: ElementInfo, expected: String,
+                                 phase: inout PhaseAccumulator) async throws -> String? {
+        let clock = ContinuousClock()
+        let deadline = Date().addingTimeInterval(Self.typeVerifyBudgetSeconds)
+        var rounds = 0
+        var stagnantRounds = 0
+        var previous: String?
+
+        while true {
+            rounds += 1
+            guard let actual = try await awaitTypeCommit(driver, element: element, expected: expected,
+                                                          deadline: deadline, phase: &phase) else {
+                return nil   // 読めない/曖昧 = 検証不能なので受理する(TypeReadback.value 参照)
+            }
+            switch TypeReadback.plan(expected: expected, actual: actual) {
+            case .done, .unverifiable:
+                return nil
+            case .resend(let missing):
+                let start = clock.now
+                try await driver.type(ref: element.ref, text: missing)
+                phase.actionMs += Self.ms(clock.now - start)
+            case .deleteExcess:
+                // in-app はバックスペースを送れないので、丸ごとクリアしてから全文を打ち直す
+                // (handleClear と同じ 422 系の判断。clearInput のケースの既存実装と同じ API 形)
+                let start = clock.now
+                try await driver.clearInput(ref: element.ref)
+                try await driver.type(ref: element.ref, text: expected)
+                phase.actionMs += Self.ms(clock.now - start)
+            }
+            stagnantRounds = (actual == previous) ? stagnantRounds + 1 : 0
+            previous = actual
+            if stagnantRounds >= Self.typeVerifyMaxStagnantRounds || Date() >= deadline {
+                return "type reported success but the value did not settle after \(rounds) round(s)"
+                    + " of readback (expected \(expected.count) character(s))"
+            }
+        }
+    }
+
+    /// 値が期待値になる/変わらなくなる(stableSeconds)/期限切れ、のいずれかまで snapshot を撮り直して
+    /// 読む。awaitCommit(BridgeRouter)と同じ二重終了条件だが、取得手段がスナップショット1枚
+    /// (0.3〜0.6s)なのでポーリング間隔は typePollSeconds(0.05s)より粗い typeVerifyPollSeconds を使う。
+    /// 戻り値 nil = 読めない/複数候補(検証不能。TypeReadback.value 参照)
+    private func awaitTypeCommit(_ driver: AppDriver, element: ElementInfo, expected: String,
+                                 deadline: Date, phase: inout PhaseAccumulator) async throws -> String? {
+        let clock = ContinuousClock()
+        func read() async throws -> String? {
+            let start = clock.now
+            let snap = try await driver.snapshot()
+            phase.snapshotMs += Self.ms(clock.now - start)
+            return TypeReadback.value(of: element, in: snap.elements)
+        }
+        guard var lastValue = try await read() else { return nil }
+        var lastChange = Date()
+        while true {
+            if lastValue == expected { return lastValue }
+            if Date() >= deadline { return lastValue }
+            if Date().timeIntervalSince(lastChange) >= Self.typeVerifyStableSeconds { return lastValue }
+            let waitStart = clock.now
+            try? await Task.sleep(for: .seconds(Self.typeVerifyPollSeconds))
+            phase.waitMs += Self.ms(clock.now - waitStart)
+            guard let current = try await read() else { return nil }
+            if current != lastValue { lastChange = Date(); lastValue = current }
+        }
+    }
+
+    /// 読み返しの打ち切り時間・停滞許容周回数・安定待ち。BridgeRouter.handleType の
+    /// typeBudgetSeconds/typeMaxStagnantRounds/typeStableSeconds と値を揃える(Runner は
+    /// SPM ターゲットではなく TypeReadback 以外を共有 import できないため定数は独立管理)
+    private static let typeVerifyBudgetSeconds: TimeInterval = 8
+    private static let typeVerifyMaxStagnantRounds = 4
+    private static let typeVerifyStableSeconds: TimeInterval = 1.5
+    /// ポーリング間隔。BridgeRouter の typePollSeconds(0.05s)より粗い(取得がスナップショット
+    /// 1枚 0.3〜0.6s かかるため、それより細かく刻んでも意味がない)
+    private static let typeVerifyPollSeconds: TimeInterval = 0.3
 
     /// typeDriver で press を試みる。ref はブリッジごとに別名前空間なので typeDriver 側 snapshot で
     /// 取り直す(typeViaTypeDriver と同じ理由)。解決できなければ false(呼び出し側で再スロー)。

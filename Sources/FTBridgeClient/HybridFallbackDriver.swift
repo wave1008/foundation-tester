@@ -179,6 +179,7 @@ public final class HybridFallbackDriver: AppDriver {
         try await active.snapshot(bypassingCache: bypassingCache)
     }
     public var supportsCacheBypass: Bool { active.supportsCacheBypass }
+    public var verifiesTypedText: Bool { active.verifiesTypedText }
     public func status() async throws -> StatusResponse { try await active.status() }
     public func screenshot() async throws -> Data { try await active.screenshot() }
     /// 起動系は**必ず primary**(in-app は dylib 注入を伴う再起動で、XCUITest の launch では

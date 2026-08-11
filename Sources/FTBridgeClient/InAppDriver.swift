@@ -139,6 +139,10 @@ public final class InAppDriver: AppDriver {
         return response
     }
     public var supportsCacheBypass: Bool { client.supportsCacheBypass }
+    /// **client.verifiesTypedText を転送しない**: client(BridgeClient)は XCUITest ランナー向けの
+    /// 既定 true を持つが、ここでは同じ HTTP プロトコルで in-app ブリッジ(読み返し無し)を話している。
+    /// 固定 false で StepExecutor 側の読み返しを常に働かせる
+    public var verifiesTypedText: Bool { false }
     public func tap(ref: Int) async throws { try await withCrashContext { try await client.tap(ref: ref) } }
     public func tap(x: Double, y: Double) async throws {
         try await withCrashContext { try await client.tap(x: x, y: y) }

@@ -124,6 +124,14 @@ public protocol AppDriver {
     /// キャッシュを捨てた snapshot(`snapshot(bypassingCache: true)`)が意味を持つか。
     /// **ラッパードライバは base の値を透過すること**(false 固定にすると最内の Android へ届かない)
     var supportsCacheBypass: Bool { get }
+    /// type(ref:text:) を自前で読み返して検証済みか(xcuitest ランナー・Android 注入器は内部で
+    /// 読み返す。iOS in-app ブリッジは読み返さない=false)。false のときだけ StepExecutor が
+    /// 読み返しを行う(TypeReadback.swift 参照)。**プロトコル要件として宣言すること**
+    /// (install(packagePath:) と同じ理由。存在型越しの呼び出しは要件でなければ静的ディスパッチで
+    /// 既定実装に落ち、実装したドライバが無視される)。
+    /// **ラッパードライバは実際に type を実行する側の値へ転送すること**(既定 false に落とすと
+    /// 無害だが、既に検証済みの経路にも二重読み返しの固定費が乗る)
+    var verifiesTypedText: Bool { get }
 }
 
 public enum DriverError: Error, LocalizedError {
@@ -198,6 +206,9 @@ public extension AppDriver {
 
     /// false のドライバでは検証側が取り直しの周回そのものを行わない(無駄な1周を増やさない)
     var supportsCacheBypass: Bool { false }
+
+    /// 既定は未検証(false)= StepExecutor 側の読み返しが働く安全側。検証済みドライバだけが true を宣言する
+    var verifiesTypedText: Bool { false }
 
     func activate(bundleID: String) async throws {
         try await launch(bundleID: bundleID)

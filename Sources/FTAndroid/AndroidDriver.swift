@@ -291,6 +291,9 @@ public final class AndroidDriver: AppDriver {
 
     public var supportsCacheBypass: Bool { true }
 
+    /// InputInjector が ACTION_SET_TEXT のたび自前で読み返す(docs/design.md §Android のテキスト注入の規律)
+    public var verifiesTypedText: Bool { true }
+
     public func snapshot() async throws -> SnapshotResponse {
         try await snapshot(bypassingCache: false)
     }

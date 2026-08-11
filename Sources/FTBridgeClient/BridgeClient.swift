@@ -28,6 +28,11 @@ public final class BridgeClient: AppDriver {
     /// tap(ref:) 呼び出しの冒頭で必ずクリアする(残ると別ステップに誤って付く)。
     public private(set) var lastActionNote: String?
 
+    /// **前提: この接続先は XCUITest ランナー**(BridgeRouter.handleType が読み返し済み)。
+    /// **InAppDriver は同じ HTTP プロトコルを in-app ブリッジへ話すのに使うため、この既定 true を
+    /// そのまま転送しない**(InAppDriver.verifiesTypedText は固定 false で上書きする)
+    public var verifiesTypedText: Bool { true }
+
     /// per-endpoint の壁時計上限(秒)の既定値。init の 120 は未指定エンドポイントのフォールバック。
     /// URLRequest.timeoutInterval で config の既定を1リクエスト単位に上書きする
     enum Timeout {
