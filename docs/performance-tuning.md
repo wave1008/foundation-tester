@@ -800,7 +800,7 @@ WebView のヒント跳躍(`offscreenJump` / `dragGesture` / `hintDrag`)と、�
 画面外の座標を撃つ**(WebView が画面より高いときに起き得た)。交差を取れば scrollFrame 側と
 規則が揃い、容器が画面内に収まる通常ケースでは**挙動は変わらない**(no-op)。単体テストつき。
 
-### 3.20 フル E2E の定常値(2026-08-04 実測・M2 Ultra・8 レーン)
+### 3.21 フル E2E の定常値(2026-08-04 実測・M2 Ultra・8 レーン)
 
 **450 シナリオ / 両スイート 9分37秒**(既定 409s + `--ios-inapp` 168s)。全プロファイル緑。
 
@@ -958,9 +958,9 @@ python3 Scripts/stream_vs_poll_bench.py --boot-ios-name シミュ1 --boot-androi
   (モニタの支配的状態)で圧倒的。**
 - **H.264+WebCodecs 化後の実測(2026-07-14。上記は MJPEG 経路の値)**: helper モーション時
   Android **5.2%→1.0%**(パススルー化)・iOS **1.5%→0.9%**(VT HWエンコード)、4台デモ65秒平均で
-  webview Renderer **8.4%**(MJPEG 時代は瞬時 30-65%)・拡張ホスト 1.4%。このスクリプト自体は
-  MJPEG 経路(`--codec` 省略)を測る。h264 の helper 単体は `--codec h264` を付けて同手法で測れるが、
-  復号を担う消費側(webview Renderer)は本番パネルでの cputime デルタでしか測れない
+  webview Renderer **8.4%**(MJPEG 時代は瞬時 30-65%)・拡張ホスト 1.4%。このスクリプトが測るのは
+  **MJPEG 経路だけ**(コーデック切替のフラグは無い)。h264 側(helper と、復号を担う
+  webview Renderer)は本番パネルでの cputime デルタでしか測れない
 - **計測の罠(スクリプト冒頭 docstring に全掲)**:
   - `host-metrics`/`simstream`/`androidstream` は **stdin EOF で即終了**する常駐 CLI。Popen は
     `stdin=PIPE` を開いたまま保持必須(未保持=/dev/null 継承で即死→0 サンプル/0 フレーム。静止 0 と誤診しやすい)
@@ -1039,10 +1039,10 @@ ftester results insights --project <name>     # 🟡 unsettledSteps の行を見
 | `RETARGET_EXCLUDED_PACKAGES` | AndroidRunner/…/QuietWaiter.java | {com.android.systemui} | クロスパッケージ遷移時、静穏対象パッケージの追従(TYPE_WINDOW_STATE_CHANGED 検知時に静穏対象を送信元パッケージへ切替)から除外するパッケージ。追従してしまうと遷移先アプリ本体ではなく付随ウィンドウの静穏を待つことになるため |
 | `PollBackoff` | Sources/FTCore/PollBackoff.swift | 100→200→400→800→上限1000ms | exist/textIs/ロケータ解決リトライの共通バックオフ。5s timeout での snapshot 回数は旧5回→新8回(許容済み) |
 | `defaultTimeout` | FTRuntime(runs プロファイルで上書き可) | 5s | 検証系の待ち上限。失敗するテストの所要を支配 |
-| `timeout:`(tap/type/select) | DSL 引数(FTDSL/Commands.swift) | nil | アクションのロケータ解決待ち上限秒。nil=従来の3回リトライ(計700ms)、**0=リトライなし(出るか不定の要素を見るときの空振り ~750ms→数十msに短縮する opt-in ノブ)**。遅れて出る要素を拾えなくなるので `ifCanSelect` / `select` の空振り短縮以外では基本使わない |
-| fallback 照会の間引き | StepExecutor.swift(executeAssert) | primary 2回目以降・偶数回ミスのみ | hybrid の SystemUIDriver 照会(springboard 再session+XCUITest snapshot=数百ms)の頻度。実在するシステムUI要素の検知遅れは最大バックオフ1段+1周期 |
+| `timeout:`(tap/type/select) | DSL 引数(FTDSL/Commands.swift・select は CommandsVerify.swift) | nil | アクションのロケータ解決待ち上限秒。nil=従来の3回リトライ(計700ms)、**0=リトライなし(出るか不定の要素を見るときの空振り ~750ms→数十msに短縮する opt-in ノブ)**。遅れて出る要素を拾えなくなるので `ifCanSelect` / `select` の空振り短縮以外では基本使わない |
+| fallback 照会の間引き | StepExecutor+Assert.swift(executeAssert) | primary 2回目以降・偶数回ミスのみ | hybrid の SystemUIDriver 照会(springboard 再session+XCUITest snapshot=数百ms)の頻度。実在するシステムUI要素の検知遅れは最大バックオフ1段+1周期 |
 | LPT 投入順 | `ftester.lptScheduling` / `--no-lpt` | ON | 過去実績の長い順に投入する(§3.7)。OFF でシナリオ ID 順。レーン数とシナリオ長のばらつきが無いと効かない |
-| LPT の実績 run 数 | `ftester.lptHistoryRuns` / `--lpt-history-runs` | 5 | 実績として読む run の件数(新しい方から)。増やすと代表値は安定するが毎 run の読み込みファイルが増える。実測で 1 プロジェクト 3,500〜4,500 件の結果 JSON があるため全件走査はしない |
+| LPT の実績の読む件数 | `ftester.lptHistoryRuns` / `--lpt-history-runs` | 5 | **シナリオ1本あたり**読み込む実績の観測数(新しい方から。`RunResultsStore.scanRecords(maxObservationsPerScenario:)`。§3.7)。増やすと代表値は安定するが毎 run の読み込みファイルが増える。実測で 1 プロジェクト 3,500〜4,500 件の結果 JSON があるため全件走査はしない |
 | 操作直後の整定(Android) | ブリッジ `/settle`(QuietWaiter) | QUIET_MS=200ms | ブリッジを経由しない経路(activate/home/appSwitcher/pressEnter フォールバック)の整定(§3.9)。旧実装は固定 800ms。ブリッジ不達時のみ 800ms へフォールバック |
 | 操作直後の整定(iOS) | `BridgeRouter.captureSettled` の minSettle / budget | 0.12s / 0.35s | ツリーが連続2回一致するまで撮り直す(§3.8)。minSettle は早抜け防止の床、budget は収束しない画面の打ち切り。budget を上げるとスクロール慣性で待ち切ってしまい旧実装より遅くなる(0.8s で実測 0.72〜0.83s) |
 | ビルドスキップ判定 | FTCore/BuildFingerprint.swift | mtime+size+toolchain | §3.2。強制再ビルドは `.ftester/build-fingerprint-*.txt` を削除 |
@@ -1054,8 +1054,8 @@ ftester results insights --project <name>     # 🟡 unsettledSteps の行を見
 | ワーカー参加の CPU 上限(`FT_WORKER_START_CPU_MAX`) | Sources/FTCore/WorkerStartGate.swift(`WorkerStagger.cpuCeiling`) | 1.0 = 100%(`1` 以下は割合・超えたらパーセント) | **これ未満になるまで次のワーカーを起こさない**。間隔は時間の当て推量で、ホストが実際に空いたことを見ていない —— 供給が長引いた run では飽和したまま次を起こす。**先頭2本もこの門は通る**(間隔だけが先頭免除)。**30 秒(`cpuWaitCap`)空かなければ諦めて素通しし、以降その run では CPU を見ない**(飽和の理由がテストと無関係なとき立ち上がりが際限なく延びるため。諦めは1回だけ警告)。`CPUSampler` は連続呼び出しだと差分が取れず nil を返すので、**1窓(0.5s)以内の測定値は使い回す**(これが無いと先頭2本が測定窓のぶん離れ「間隔0」が崩れる)。コストは通常設定で最初の1窓=約 0.5 秒 |
 | `maxConcurrent`(bootAll 引数) | Sources/FTAndroid/DeviceBooter.swift | 2(固定。ユーザー決定 2026-07-16) | devices up の同時進行数(1台=ブート→iOS ブリッジ供給まで)。上限がブートストーム防止を兼ねる(旧 CPU 負荷ゲートは廃止済み。§3.3)。上げると速いがタイルの進行表示も増える |
 | GPU 描画モード / 凍結時 CPU フォールバック | DeviceBooter.startEmulator(gpuMode) / ApiDeviceUp `--gpu` / ApiDevicesUp `--cpu-render` / monitorHealthWatchdog | 既定 host / 凍結個体のみ swiftshader_indirect | `-gpu host` は速い(モーション時 約1コア/台)が**画面凍結の主因**(§7)。swiftshader は免疫だが 約3コア/台。全機 swiftshader ではなく、凍結が displayRepair/streamRepair で治らない個体だけ per-device で swiftshader 再起動(セッション中維持。bulk devices-up も `--cpu-render <論理名>` で維持される。host への意図的復帰は devices-restart) |
-| 探索の打ち切り(`unmovedRoundsToStopSearch`) | Sources/FTCore/StepExecutor.swift | 2 周連続で木が不変なら打ち切り | 端に着いた後も上限まで振り続けるのをやめる。**見つからない探索が 7.40s → 2.05s**(実測 2026-08-06)。1 にすると遅れて描画される行を取りこぼす |
-| 逆走査(`reverseSweepSpanRatio` / `MaxSwipes` / `DragSpeed`) | Sources/FTCore/StepExecutor.swift | 容器の 0.5 ぶん / 8 本 / 120px/s | 端に着いても見つからないときだけ、逆向きに細刻みで戻って拾い直す。**失敗が確定してからしか撃たない**ので通常経路のコストは 0。速度を上げるとフリングになって反対の端まで走る(実測: 189px 指定が約 700px 走った)。**MCP の ft_scroll_to の1回目だけは半開きシートの停滞で逆走査を撃たない**(`defersPartialSheetRecovery`。シートを展開して再試行する側の逆走査が救済を引き継ぐ。実測: 畳まれた経路カードで 7.8s の丸損 → 同一シナリオ 21s → 10.7s。2026-08-10) |
+| 探索の打ち切り(`unmovedRoundsToStopSearch`) | Sources/FTCore/StepExecutor+ScrollFrame.swift | 2 周連続で木が不変なら打ち切り | 端に着いた後も上限まで振り続けるのをやめる。**見つからない探索が 7.40s → 2.05s**(実測 2026-08-06)。1 にすると遅れて描画される行を取りこぼす |
+| 逆走査(`reverseSweepSpanRatio` / `MaxSwipes` / `DragSpeed`) | Sources/FTCore/StepExecutor+ScrollFrame.swift | 容器の 0.5 ぶん / 8 本 / 120px/s | 端に着いても見つからないときだけ、逆向きに細刻みで戻って拾い直す。**失敗が確定してからしか撃たない**ので通常経路のコストは 0。速度を上げるとフリングになって反対の端まで走る(実測: 189px 指定が約 700px 走った)。**MCP の ft_scroll_to の1回目だけは半開きシートの停滞で逆走査を撃たない**(`defersPartialSheetRecovery`。シートを展開して再試行する側の逆走査が救済を引き継ぐ。実測: 畳まれた経路カードで 7.8s の丸損 → 同一シナリオ 21s → 10.7s。2026-08-10) |
 | `FT_CONTAINER_INFERENCE` | 環境変数(`StepExecutor.containerInferenceEnabled`) | 既定 on / `off` で無効 | **容器をツリーから推測して行う補正の殺しスイッチ**。見切れ判定・ghost の掴み直し・救済ドラッグ・座標補正(見えている部分を撃つ)・壊れた座標の候補除外が**まとめて止まり**、推測を持たなかった頃の挙動へ戻る。容器は「pre-order で直前の depth の小さい要素 + 同 depth の兄弟が2つ以上中に居る」という推測なので、**想定外のツリーでは外れ得る**(外れると別の場所を叩く・明後日へ送る・正当な要素が消える)。E2E は 4 SUT しか見ていないので利用者の逃げ道として置く。**run 全体を殺す最上位のスイッチ**で、より細かい単位は実行プロファイルの `containerInference` と DSL の `tap(containerInference:)` / `withoutContainerInference { }`(docs/commands.md) |
 
 window/transition/animator の `*_scale` はチューニングノブではなく常時 0 固定で、
@@ -1073,7 +1073,7 @@ window/transition/animator の `*_scale` はチューニングノブではなく
 |---|---|---|
 | ホスト ANE 負荷率の計測(IOReport `DIE_n_ANE0` の ACT/INACT residency) | 2026-07-22 実測で**電源状態の1ビットしか返さないと確定**し、指標ごと廃止(IOReport 私有API 依存 約200行も削除)。実推論レートを 8→175 回/秒(22倍)振っても全水準で正確に 1.00、アイドルのみ 0.00。**推論0件で失敗した実行でも 1.00 になる**(モデルをロードして電源が入っただけで立つ)。代替候補も全滅: PMP の `0%..100%` バケットは負荷時も常時オール0、DVFS residency(`ANEn-{SLOW,FAST}-*`)は SLOW/FAST クロックドメイン間を仕事が移動するため非単調、`ANEn RD+WR`(帯域)だけは単調だが GB/s であって利用率ではなく分母が定義できない。Energy Model グループは SIGSEGV、powermetrics は root 必須。**FM のコストは ANE ではなく呼び出し回数とレイテンシで測る**(§4.2) | Apple が ANE の利用率を公開 API で出したら、または powermetrics 相当を非 root で取れるようになったら |
 | ランナー常駐化(stdin でシナリオ逐次投入) | 残存コスト ~0.2s/本(全体の1〜6%)に対し、プロトコル+クラッシュ隔離の複雑さが見合わない | ヒール多用ワークロード(FM 3B モデルのプロセス毎再ロードが効く)か、1 バッチ数十本規模 |
-| シナリオ毎の CoreSimulator 初期化(約 360ms)の排除 = ホストへ委譲 or プロセス再利用(2026-08-02 調査) | 得られるのは壁時計 **1.8s/プロファイル(3.4%)**。代償はクラッシュ隔離・確実な kill・状態の初期化(§16.4 / ScenarioHost 冒頭)で、失敗モードが「遅い」から「デッドロック」「別シナリオの状態漏れ」へ変わる。**安い入口も無い**: `serviceContextForDeveloperDir:connectionType:` は type=0 が同等、type=1 は deviceSet が 6.4s、`standaloneConnectionWithError:` は context として使えない。`xcode-select` の 65ms だけは `DEVELOPER_DIR` 受け渡しで削除済み | 初期化が数倍に伸びるか、1プロセスあたりのシナリオ数を増やす別の動機(隔離を捨ててよい理由)が先に出たとき |
+| シナリオ毎の CoreSimulator 初期化(約 360ms)の排除 = ホストへ委譲 or プロセス再利用(2026-08-02 調査) | 得られるのは壁時計 **1.8s/プロファイル(3.4%)**。代償はクラッシュ隔離・確実な kill・状態の初期化(design.md §16.4 / ScenarioHost 冒頭)で、失敗モードが「遅い」から「デッドロック」「別シナリオの状態漏れ」へ変わる。**安い入口も無い**: `serviceContextForDeveloperDir:connectionType:` は type=0 が同等、type=1 は deviceSet が 6.4s、`standaloneConnectionWithError:` は context として使えない。`xcode-select` の 65ms だけは `DEVELOPER_DIR` 受け渡しで削除済み | 初期化が数倍に伸びるか、1プロセスあたりのシナリオ数を増やす別の動機(隔離を捨ててよい理由)が先に出たとき |
 | エミュレータ黒画面対策としての Wipe Data / キャッシュ削除の自動化(2026-07-17 精査)→ **同日ユーザー決定で実行プロファイルのオプションとして実装済み** | 精査結論: Wipe Data が効くのは「ブート時黒画面」(Quickboot スナップショット破損・userdata 破損)。本フリートの症状は正常ブート後数分の表示パイプライン凍結で adb reboot で一旦回復する=userdata 破損型と不一致(guest cache.img は 66MB で削除効果なし)。コールドブート保証(`-no-snapshot`。ロード+セーブ無効)を DeviceBooter に実装。**別発見: フリート AVD の userdata-qemu.img.qcow2 が 6〜12GB に肥大**(qcow2 差分は縮まない)。この肥大解消のため、ユーザー決定で実行プロファイルに `wipeDataOnBloat`(既定 true)/`wipeDataThresholdGB`(既定 8。wipe 直後の再構築だけで 2〜4GB になるため 4GB 以下はスラッシング)を追加し、実行開始時に超過 AVD を Wipe Data する(AndroidDataWiper.swift)。**Wipe はゲストを初期化するが、アプリは appPath があれば強制再インストール、ロケールは実行プロファイル `locale`(既定 ja_JP)が再ブート後にブリッジ /locale で自動適用される**(design.md §11.2) | **真因は切り分け済み(2026-07-17): `-gpu host`(§7)。Wipe は凍結には無効で確定** |
 | エミュレータ凍結対策としての swangle_indirect(ANGLE/Metal)描画 | 2026-07-17 実測。headless で `screencap -p` が終始 0B(フレームバッファを読めない=証跡取得不能)。GPU アクセラを保ったまま凍結を避ける狙いだったが使い物にならない | emulator が headless での swangle スクショ取得に対応したら |
 | iOS ブリッジの実行前プレフライト(シナリオごとの /status 疎通確認) | 2026-07-18 に2実装とも撤去(ユーザー決定)。①「item を取ってから 5s×2 判定→振り直し+離脱」は 10台同時の AX スパイク(一過性の遅さ)で9台一斉離脱・freeze-retry 上限到達の失敗まで発生。②「取る前に 2s 即断+60s 回復待ち」も負荷時の誤判定が残った。**一過性の遅さと本物のウェッジは短い期限では区別できない**。検知は失敗後の事後チェック(bridgeUnreachable 等→振り直し)のみとし、ウェッジ機上の1件が scenarioTimeout(90s)を失うのは許容コスト | XCUITest ランナーが main queue 非依存で /status を返せるようになったら、または iOS 並列度削減で AX スパイク自体が消えたら |

@@ -115,7 +115,7 @@ public func tapOn(_ selector: String) { fatalError() }
 @available(*, unavailable, message: "ftester spells this tap(selector, holdSeconds: 1.0)")
 public func longPress(_ selector: String) { fatalError() }
 
-@available(*, unavailable, message: "To read the content of an element, write select(selector).text (or .value / .id). To assert it, write textIs(selector, expected)")
+@available(*, unavailable, message: "To read the content of an element, write select(selector).text (or .value / .id). To assert it, write select(selector).textIs(expected)")
 public func getText(_ selector: String) -> String { fatalError() }
 
 @available(*, unavailable, message: "ftester spells this scrollTo(selector, direction: .down)")

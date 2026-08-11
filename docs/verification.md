@@ -38,8 +38,11 @@ MCP の **profile 無しの iOS 経路**(`ft_snapshot` 等を `platform: ios` �
 - 実害: ランナー側の修正2件を入れ、`bridgeProtocolVersion` も上げ、`swift test` も緑にした状態で
   デバイスで確認したところ、**snapshot は直る前の木を返し続けた**。原因は稼働中の旧ランナー(v52)の
   再利用で、`ftester bridge down && ftester bridge up` するまで「直っていない」ように見えた
-- 対処は**繋いだ直後に1度だけ /status の版を照合して警告する**(`MCPServer.staleBridgeWarning`)。
-  止めはしない —— 意図して古いブリッジを使うことはあるし、throw はセッションごと止める
+- 対処は**繋ぐたびに /status の版を照合し、ズレていれば既定で拒否する**
+  (`MCPServer+Driver.swift` の `enforceVersion` / `bridgeVersionSkew`。2026-08-09 に警告のみから反転)。
+  古いブリッジは自分の版の挙動・注記で答え、そこから書かれたセレクタは黙って誤るため
+  "Refusing to operate…" を throw して応答を信用しない。意図して古いブリッジを使うときは
+  `allowVersionSkew: true` で押し通せるが、**その間は毎回の応答に警告が付く**
 - **ブリッジを直したときの検証手順**: 版を上げる → `ftester bridge down && ftester bridge up`
   → デバイスで確かめる。**down/up を省くと必ず旧版を測る**。iOS のシミュレータはブリッジを
   建て直すと**アプリが消えていることがある**ので、`ft_install` からやり直す
@@ -1201,7 +1204,7 @@ Compose のダブルタップと Flutter のピンチだけ「MCP では無反�
 同じ穴があった(こちらは呼ばれていなかったので誰も気付いていなかった)。
 **新しい操作を足したときの掃討は「今足したもの」だけでは足りない** ——
 同じ性質(座標で完結する = 誰が受けても同じ)の**既存メソッドが全部揃っているか**まで見る。
-再発は `CoordinateOperationForwardingTests`(ソース走査)が落とす。
+再発は `DefaultImplementationForwardingTests`(ソース走査)が落とす。
 
 ## 「このフレームワークでは無理」は経路ごとに測り直す(2026-08-04)
 
@@ -2232,7 +2235,7 @@ devicepoll の要点:
   実例: CMP と Flutter は interop が合成タッチと `insertText` を横取りするため DOM 経路を使わない
   (uikit ホストのみ有効)。この分岐は E2E でしか壊れているとわからない。
 - **効果測定は `FT_WEBVIEW_DOM=off` との A/B** で取る。比較は
-  `TestProjects/E2E-iOS/results/runs/<run>/scenarios/WebViewの中身を操作できること.S0010.json` の
+  `TestProjects/E2E-iOS/results/runs/<YYYY-MM>/<run>/scenarios/WebViewの中身を操作できること.S0010.json` の
   `timeline`(scene 2 以降の exist/textIs の中央値)と `scenes[0].durationMs`。
 - **ブリッジ版を上げ忘れない**。iOS = `bridgeProtocolVersion`、Android = `VERSION_CODE` +
   `expectedBridgeVersionCode`。上げないと稼働中の旧ブリッジが再利用され、**変更が入っていないのに緑**になる。

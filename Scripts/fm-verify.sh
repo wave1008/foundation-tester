@@ -20,7 +20,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
 FTESTER="$ROOT/.build/debug/ftester"
-PROJECT="E2E"
+PROJECT="E2E-CMP"
 PROFILE="ios-fm"
 
 while [ $# -gt 0 ]; do

@@ -4,7 +4,7 @@ Foundation Models framework(オンデバイス 3B モデル。macOS 26+、視覚
 iOS / Android 両対応のアプリ E2E テストツール。iOS を先行実装し、Android は同じ
 `AppDriver` 抽象の上に後続実装した(経緯・時系列は §7, §8 参照)。
 
-- 作成日: 2026-07-07 / 最終更新: 2026-08-04
+- 作成日: 2026-07-07 / 最終更新: 2026-08-11
 - ステータス: iOS / Android とも実装済み・運用中(GUI 入口は VSCode 拡張に一本化)
 - 決定事項: ハイブリッド型 / 自作 XCUITest ブリッジ+自作 Android ブリッジ / シミュレータ優先 / Swift + FoundationModels
 
@@ -72,8 +72,8 @@ iOS / Android 両対応のアプリ E2E テストツール。iOS を先行実装
 ┌─ macOS ホスト ────────────────────────────────────────────────────┐
 │  ftester CLI / MCP サーバ / VSCode 拡張(共通で ftester api を呼ぶ) │
 │  ├─ FTAgent        : FoundationModels エージェント層               │
-│  │   ├─ VerifierProfile   (マルチモーダル画面検証)                 │
-│  │   └─ TriagerProfile    (失敗トリアージ・自己修復)               │
+│  │   ├─ ReplayAssist      (ロケータ修復・画面検証・トリアージ)     │
+│  │   └─ OcclusionVerifier / FMDoctor / ScenarioNamer / TestbaseDrafter │
 │  ├─ FTDSL          : Swift DSL(§10)/ セレクタ式 / ヒールキャッシュ │
 │  ├─ FTCore          : AppDriver プロトコル / StepExecutor(実行機) │
 │  ├─ FTBridgeClient  : iOS ブリッジへの HTTP クライアント・起動管理  │
@@ -93,32 +93,30 @@ iOS / Android 両対応のアプリ E2E テストツール。iOS を先行実装
 ```
 
 **`AppDriver` プロトコル**が唯一のプラットフォーム境界。iOS ブリッジ(Runner/)・Android
-ブリッジ(AndroidRunner/)・InApp ブリッジは共通コア 11 エンドポイント(status/session/
-snapshot/tap/type/clear/pressEnter/swipe/press/screenshot/terminate)を共有しつつ、iOS は
-drag/appswitcher/home/hidekeyboard/appstate を追加した16、Android は locale/settle を
-追加した13、InApp は hidekeyboard/appstate を追加した13という差分があるため、
+ブリッジ(AndroidRunner/)・InApp ブリッジは共通コア 13 エンドポイント(status/session/
+snapshot/tap/type/clear/pressEnter/swipe/press/doubletap/pinch/screenshot/terminate)を
+共有しつつ、XCUITest は drag/appswitcher/home/hidekeyboard/appstate/rotate を追加した19、
+Android は locale/settle を追加した15、InApp は hidekeyboard/appstate/rotate を追加した16
+という差分がある(唯一の正は §4.3 の表 = `Tests/FTCoreTests/BridgeContractTests.swift`)。
 `FTAgent` / `FTCore` / `FTDSL` はプラットフォーム非依存のまま両OSで動く
 (ブリッジ設計の詳細は §4、Swift DSL の詳細は §10)。
 
 ```swift
+// 抜粋(全定義は Sources/FTCore/AppDriver.swift)
 protocol AppDriver {
     func status() async throws -> StatusResponse
-    func install(packagePath: String) async throws      // .app / .apk
+    func install(packagePath: String) async throws       // .app / .apk
     func launch(bundleID: String) async throws
-    func activate(bundleID: String) async throws         // 状態保持のまま前面化(未起動なら launch)
-    func openAppSwitcher() async throws
-    func home() async throws
     func snapshot() async throws -> SnapshotResponse     // 圧縮済みツリー
     func tap(ref: Int) async throws
     func tap(x: Double, y: Double) async throws
     func type(ref: Int?, text: String) async throws
     func swipe(_ direction: FTSwipeDirection) async throws
-    func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
-              pressSeconds: Double, durationSeconds: Double) async throws
-    func press(ref: Int, duration: Double) async throws
-    func press(x: Double, y: Double, duration: Double) async throws  // 座標指定ロングプレス
     func screenshot() async throws -> Data               // PNG
     func terminate() async throws
+    // ほかに uninstall / activate / openAppSwitcher / home / back / clearInput /
+    // hideKeyboard / clearAppData / openURL / pressEnter / drag / press /
+    // doubleTap / pinch / rotate / snapshot(bypassingCache:) / isAppForeground 等
 }
 ```
 
@@ -604,9 +602,10 @@ iOS ブリッジと区別なく扱える。
 - **常駐 instrumentation**: `am instrument -w` でデバイス内にバックグラウンド常駐させ、
   HTTP サーバ(BridgeInstrumentation)を内蔵する。`AndroidBridge.swift` が初回操作時に
   自動インストール・自動起動するためセットアップ手順は不要
-- **共通コア11 + locale/settle の13エンドポイント**: §4.3 の共通コア(status/session/snapshot/
-  tap/type/clear/pressEnter/swipe/press/screenshot/terminate)に `POST /locale`・`POST /settle` を
-  加えた13エンドポイントを話す(iOS 固有の drag/appswitcher/home/hidekeyboard/appstate は未実装)
+- **共通コア13 + locale/settle の15エンドポイント**: §4.3 の共通コア(status/session/snapshot/
+  tap/type/clear/pressEnter/swipe/press/doubletap/pinch/screenshot/terminate)に `POST /locale`・
+  `POST /settle` を加えた15エンドポイントを話す(iOS 固有の drag/appswitcher/home/hidekeyboard/
+  appstate/rotate は未実装)
   ため、共通コア部分はホスト側の `FTBridgeClient` 相当のクライアントコードを流用できる
 - **操作応答 = a11y 静穏後**: 各操作 API は注入後、対象パッケージの a11y イベントが
   一定時間静まるまで応答を保留する(QuietWaiter)。固定 sleep をやめてイベント駆動にした
@@ -674,33 +673,33 @@ inapp の ref タップも座標フォールバックに落ち、同じ壊れた
 ### 5.2 主要な @Generable 型
 
 ```swift
+// Sources/FTAgent/ReplayAssist.swift(抜粋。@Guide の全文はソース参照)
 @Generable
-struct LocatorRepair {           // 自己修復: 壊れたロケータの代替案
-    var newLocator: FlowLocator
-    var confidence: ConfidenceLevel   // high / medium / low
+struct LocatorRepairSuggestion {   // 自己修復: 壊れたロケータの代替案
+    var elementText: String        // 現在の要素一覧から label か id= 値を逐語コピー
+    var confidence: RepairConfidence  // high / medium / low
+    var rationale: String          // 英語1文
 }
 
 @Generable
-struct TriageReport {            // 失敗トリアージ
+struct TriageSuggestion {          // 失敗トリアージ
     var failureClass: FailureClass    // appBug, flakiness, locatorDrift, envIssue
-    var summary: String               // 日本語1〜2文
-    var suggestedFix: String
+    var summary: String               // 英語1〜2文
+    var suggestedFix: String          // 英語1文
 }
 ```
 
-### 5.3 プロファイル(Dynamic Profiles で切替)
+### 5.3 実装(Sources/FTAgent/ の5ファイル)
 
-| プロファイル | 入力 | 出力 | 備考 |
-|---|---|---|---|
-| **Verifier** | スクリーンショット画像 + 期待状態の記述 | `Verdict(pass/fail + 理由)` | **マルチモーダル**。視覚的アサーション |
-| **Triager** | 失敗ステップ + ツリー差分 + スクリーンショット | `TriageReport` / `LocatorRepair` | 失敗時のみ起動 |
+| 実装 | 役割 |
+|---|---|
+| `ReplayAssist.swift`(`FMReplayDelegate`) | 再生失敗時のみ呼ばれるフック群: ロケータ自己修復(`LocatorRepairSuggestion`)・スクリーンショットの画面検証(`ScreenVerdict`。**マルチモーダル**)・失敗トリアージ(`TriageSuggestion`) |
+| `OcclusionVerifier.swift` | アサーションがツリー通過した直後の遮蔽偽陽性の排除(マルチモーダル。要素 frame にクロップして渡す) |
+| `FMDoctor.swift` | FM 可用性判定。`check()` は同期・可否を保証しない / `checkLive()` は実際に1回推論する(§1.1 の罠) |
+| `ScenarioNamer.swift` | 記録操作(ライブ操作タブ)からのシナリオ名生成 |
+| `TestbaseDrafter.swift` | テスト設計資料 → シナリオ下書き(§17)。FM 不可用時は決定的パーサへ落ちる |
 
-- ツール(`Tool` プロトコル)は補助用途に限定: `InspectElementTool`(ref 指定で
-  子要素詳細を取得)など、スナップショット切り詰めで失われた情報のオンデマンド取得。
-- **エスケープハッチ**: `LanguageModel` プロトコル経由で PCC(32K)や Claude に
-  差し替え可能な設計にしておく(`--model pcc|claude` フラグ)。既定はオンデバイス。
-- 起動時に `SystemLanguageModel.default.availability` を確認し、Apple Intelligence
-  無効時は明確なエラーメッセージを出す(`ftester doctor` コマンド)。
+- 全 FM 呼び出しは `FMGate.enter()` を通す(§1.1)。出力の実例・運用知見は §8.6。
 
 ---
 
@@ -2103,7 +2102,7 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
      XCUITest の両ブリッジを張るので、起動時プローブの **`/status.unsupportedActions`**
      (ブリッジが「この対象アプリでは実行できない」アクション名を申告する)に該当し typeDriver
      ありなら**最初から** typeDriver(`AppAttachDriver`)へ回す
-     (`StepExecutor.gesturesViaTypeDriver`)。409 の往復はゼロ。
+     (`StepExecutor.typeDriverGestures`)。409 の往復はゼロ。
      **申告は現在 `["press"]` だけ**(以前は Compose/Flutter で `["swipe","press"]`)。
      swipe を外したのは、可否が**目的と画面で割れる**ようになり「一律不可」では表現できない
      ため。swipe の可否判定は `handleSwipe` に一本化してある
@@ -2414,11 +2413,15 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
     back でアプリを出ると session ごと別アプリへ移り、`backgroundedSessionNote` は
     **構造上まったく発火しない**。4 SUT は id・ラベルが共通契約なので木を見ても気付けない。
     ホスト側で最後の `ft_launch` を覚えるのが唯一の検知経路(詳細は docs/verification.md)。
-  - **繋いだブリッジの版を1度だけ照合する**(`MCPServer.staleBridgeWarning`。2026-08-06)。
+  - **繋いだブリッジの版を照合し、ズレは既定で拒否する**(`MCPServer+Driver.swift` の
+    `enforceVersion` / `bridgeVersionSkew`。2026-08-06 導入・2026-08-09 に警告から拒否へ反転)。
     profile 無しの iOS 経路は `ExploreDriverResolver` が**生きているポートへ素で繋ぐ**だけで
     provision を通らないため、`bridgeProtocolVersion` を上げても旧ランナーが使われ続ける
     (実害: ランナー側の修正2件が `bridge down && bridge up` まで反映されなかった)。
-    **止めはしない**(意図して古いブリッジを使うことはある)。版を返さない旧ブリッジ(nil)も黙る。
+    MCP の出力はシナリオへ書く文字列の供給源なので、古いブリッジの注記から誤ったセレクタが
+    書き込まれるほうが「セッションが止まる」より高くつく("Refusing to operate…" を throw)。
+    押し通すには `allowVersionSkew: true` で、その場合は**毎回の応答に警告が付き続ける**
+    (1度言って黙らない)。版を返さない旧ブリッジ(nil)は判定できないので黙る。
   - **`ft_navigate back` は「画面が変わった」と断言しない**(2026-08-06)。iOS の back は端の swipe で、
     自前ナビの画面(`#btn_back` を持つ SwiftUI 等)では**1px も動かない**(E2E-iOS で2回とも不変)。
     アプリの外へ出ることもあるので、両方を注記に書く。
@@ -2865,7 +2868,7 @@ DeviceBooter.defaultLocale(実行プロファイルの locale が届くのは wi
      platform 非依存に書いたシナリオを両OSで回すなら `--profile ios` と `--profile android` を
      別々に実行する。シナリオ数や負荷には依存しない決定的な挙動(2026-07-22 実測)
 6. `defaultTimeout` はランナーの `--default-timeout` → FTDriveCore に渡り、
-   exist/textIs/valueIs の `timeout: Int? = nil` の既定値になる
+   exist/textIs/valueIs の `timeout: Double? = nil` の既定値になる
 7. ワーカー構築(供給+インストール)は ProfileWorkerFactory(FTAndroid)に共通化され、
    CLI(ProfileRunner)と `ftester api run`(VSCode 拡張など UI 入口向けの共通経路)が共用する
 
@@ -2973,7 +2976,7 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
   a11y は生きたまま画面だけ死ぬ症状で、guest 再起動でのみ回復)を実行。2回連続観測で確定・
   正常1回で即クリア(AndroidHealthDebounce)。確定異常は monitorDevices の
   `health: ["wifi-disabled"|"clock-skew"|"blank-screen"|"metal-errors"]` で拡張へ伝搬
-  (契約は `vscode-ftester/src/monitorModel.ts` 冒頭。拡張は未知の種別も再起動修復に倒す)。
+  (契約は `vscode-ftester/src/monitorDeviceModel.ts` 冒頭。拡張は未知の種別も再起動修復に倒す)。
   **`metal-errors` だけは拡張側で落とす**(表示も修復もしない。`monitorHealthWatchdog` の
   actionable フィルタ。ホスト GPU ドライバ由来で全機に同時に出る背景現象で個体の異常を表さない=
   タイルに出すのが不適切。フリート全数検証の実データは performance-tuning.md §7。
@@ -3086,7 +3089,7 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
   無駄な再供給を防ぐ。動的タスク追加はせず withTaskGroup 構造は不変(=安全)。FTCore→FTAndroid 循環回避のため
   再供給は注入(既存 isDeviceFrozen 等と同じ)。**注**: 実行開始時の接続失敗も retired 扱いのため、開始時から不在の
   デバイスは最大 MAX_WORKER_REVIVES×REVIVE_TIMEOUT 分ポーリングする(他ワーカーと並行なので run はブロックしない)
-- **個別デバイス操作の2台並行**(`monitorModel.ts` スケジューラ化。2026-07-18): 右クリック起動/停止の
+- **個別デバイス操作の2台並行**(`monitorDeviceLifecycle.ts` のスケジューラ。2026-07-18): 右クリック起動/停止の
   ライフサイクルキューを完全直列から「running(実行中)+jobs(FIFO 待機列)」のスケジューラに変更。
   device ジョブは `DEVICE_LIFECYCLE_MAX_CONCURRENT`(=2)まで同時実行、bulk/restartBatch は単独占有
   (内部で2台並行するため重ねると全体上限2を超える)。追い越しはしない(先頭が開始できない間は後続も

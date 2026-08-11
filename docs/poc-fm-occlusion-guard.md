@@ -5,7 +5,7 @@
 ## 1. 背景と課題
 
 `exists` / `textEquals` / `valueEquals` の判定は、スナップショット(アクセシビリティツリー)上に
-要素が存在するかだけを見る([StepExecutor.matchDetailed](../Sources/FTCore/StepExecutor.swift))。
+要素が存在するかだけを見る([StepExecutor.matchDetailed](../Sources/FTCore/StepExecutor+Resolve.swift))。
 可視性フィルタは「hidden・サイズ0・画面外」しか落とさず、**別要素に覆われている(occlusion)/
 減光されている/切れている**要素はツリーに残るため、**視覚的に見えていないのにアサーションが成功する
 偽陽性**が起こり得る。`hittable` は本来この検知に使えるが、①現行 wire DTO(`ElementInfo`)に
@@ -21,7 +21,7 @@ hittable は無く、②Compose iOS では `isHittable` 自体が壊れている
 |---|---|---|
 | `OcclusionVerifier` | [Sources/FTAgent/OcclusionVerifier.swift](../Sources/FTAgent/OcclusionVerifier.swift) | FM 視覚照合器。`@Generable VisibilityVerdict{ visible, state, observedText, reason }` を greedy で生成 |
 | `ReplayDelegate.verifyElementVisible` | [Sources/FTCore/StepExecutor.swift](../Sources/FTCore/StepExecutor.swift) | FM 非依存の delegate フック(既定実装 nil)。FTCore を FM から切り離したまま結線 |
-| `StepExecutor.occlusionGuard` + `occlusionFlip()` | 同上 | ノブ。exists/textEquals がツリー一致した**一点で1回だけ** FM 照合し、`visible==false` なら `.failed("偽陽性(occlusion)…")` へ反転 |
+| `StepExecutor.occlusionGuard` + `occlusionFlip()` | ノブは同上。`occlusionFlip` の現在の実体は [Sources/FTCore/StepExecutor+Assert.swift](../Sources/FTCore/StepExecutor+Assert.swift) | ノブ。exists/textEquals がツリー一致した**一点で1回だけ** FM 照合し、`visible==false` なら `.failed("偽陽性(occlusion)…")` へ反転 |
 | 計測ハーネス | `ftester-poc-occlusion`(PoC ブランチ履歴・§8) | 正解ラベル付き合成フィクスチャで正確性・速度を計測 |
 
 検証器は 2 アームを実装して比較した:
@@ -100,7 +100,7 @@ hittable は無く、②Compose iOS では `isHittable` 自体が壊れている
 - **Tier-1 ピクセル**([RegionInk.swift](../Sources/FTCore/RegionInk.swift)・スクショのみ・FM不要):
   対象 frame 領域の輝度 stddev。テキストがあれば中〜高、覆い/空/減光では低い。
 
-ゲート規則([StepExecutor.occlusionFlip](../Sources/FTCore/StepExecutor.swift)):
+ゲート規則([StepExecutor.occlusionFlip](../Sources/FTCore/StepExecutor+Assert.swift)):
 **Tier-0 で疑い、または Tier-1 の stddev が閾値未満**のときだけ FM(cropped)へ。両方無罪なら FM 省略で pass。
 
 ### 事前フィルタの分離性(実測 stddev)
@@ -241,7 +241,7 @@ select("#sw").valueIs("1")                   // 同上(既定ガード)
   (足切り→低インク/幾何→FM→visible)。覆われ/切れ/不在なら偽陽性として失敗に反転。
 - **`requireVisible: false`**: occlusion 確認を省く(FM を一切呼ばない・ツリー一致のみ)。
 - **配線**: `FlowStep.occlusionGuard: Bool?`([Flow.swift](../Sources/FTCore/Flow.swift))を DSL 引数が true/false で
-  立て、[StepExecutor.occlusionFlip](../Sources/FTCore/StepExecutor.swift) が `step.occlusionGuard ?? executor 既定`
+  立て、[StepExecutor.occlusionFlip](../Sources/FTCore/StepExecutor+Assert.swift) が `step.occlusionGuard ?? executor 既定`
   で判定。executor 既定は false のまま(api/record 経路や raw FlowStep=nil は非ガード)。
 - **安全策**: FM 未配線(不可)時は guard も素通り(pass)= `requireVisible: false` と同一挙動。足切りで
   非テキスト型(アイコン/画像/絵文字)は自動除外、高インク領域は FM を呼ばない(コスト最小化)。
@@ -283,7 +283,7 @@ OcclusionVerifier)がデバイス上で機能することを確認**。これで
 当初は「pass 確定の一点で1回」ガードを実行し、その瞬間に覆われていると即失敗していた。これは
 **ローディング表示・スナックバー・遷移アニメ等の過渡的オーバーレイ**で誤失敗を招く(消えるはずの覆いで落ちる)。
 `exists`/`textEquals` の poll ループを、要素が見つかっても覆われている間は即失敗せず、既存の
-「出現待ち」意味論と同様に **timeout まで可視化を待つ**よう変更([StepExecutor.swift](../Sources/FTCore/StepExecutor.swift))。
+「出現待ち」意味論と同様に **timeout まで可視化を待つ**よう変更([StepExecutor+Assert.swift](../Sources/FTCore/StepExecutor+Assert.swift))。
 
 - 覆い判定は `lastOcclusion` に保持し、可視化されれば pass、timeout まで覆われ続ければ occlusion 失敗を返す。
 - コストは足切り+低インクゲートで従来どおり抑制(可視な高インク領域は FM を呼ばず即通過)。覆われ続ける
@@ -306,7 +306,7 @@ OcclusionVerifier)がデバイス上で機能することを確認**。これで
   (StepCommandParamsTests)を検証(全 green)。
 
 これで存在系(`exist`)・一致系(`textIs`/`valueIs`)とも既定で「見えていること」を確認する。
-`present` は存在系のツリーのみ版、テキスト系は `occlusionGuard: false` がオプトアウト。
+オプトアウトは全コマンド共通の `requireVisible: false`(`present` は削除済み。§5.10 の命名の経緯を参照)。
 
 ## 5.14 スクショ再利用: 操作を挟まない連続ガードで往復(~125ms)を回避(2026-07-22)
 
@@ -364,7 +364,7 @@ performance-tuning.md §6)。
 ## 6. 既知の限界
 
 1. **合成フィクスチャでの計測**。実アプリのスクショ(半透明シート、影、アンチエイリアス、動的コンテンツ)は
-   未検証。次段で sut-ec-mobile の実オーバーレイ画面で再計測すべき。
+   未検証。次段で sut-ec-mobile の実オーバーレイ画面で再計測すべき。→ §5.7〜5.9 の実 UI 計測で解消済み。
 2. **Compose iOS の frame クランプ画面では無力**。クロップ先の frame 自体が嘘([compose-ios-ax-frame-clamp])
    なので、退化 frame は `occlusionFlip` がスキップする実装にした(素通り=従来動作)。この画面群は
    本ガードの対象外と割り切る。
@@ -372,6 +372,7 @@ performance-tuning.md §6)。
 4. **coveredPartial の閾値は主観**。65% 覆いを「見えない」と定義。どこまでを許容するかは要件次第。
 5. **poll 挙動**。現状は「ツリー一致の一点で1回照合し、不可視なら即失敗」。過渡的オーバーレイ
    (スピナー等)を待ちたいなら「可視になるまで poll、timeout で失敗」に変える余地(FM コール増)。
+   → §5.12 の poll-until-visible で解消済み。
 
 ## 7. 推奨(実 UI 計測を踏まえ改訂)
 
@@ -380,7 +381,9 @@ performance-tuning.md §6)。
 
 1. **unconditional FM は不可**。全 assert 通過で FM を呼ぶ運用は実 UI で誤反転が多すぎる。
 2. **FM は必ずゲート越し**。`occlusionInkThreshold`(既定 12)未満の低インク領域だけ FM に回す。
-   これで実運用の誤反転をほぼ 0 にできる(デバイス上で確認)。`occlusionGuard` 既定 OFF、限定 ON を推奨。
+   これで実運用の誤反転をほぼ 0 にできる(デバイス上で確認)。当初はここで既定 OFF・限定 ON を
+   推奨したが、三段ゲート+スクショ再利用でコストが抑えられたため**既定 ON が確定**
+   (2026-07-22 ユーザー決定・§5.15 #3。オプトアウトは `requireVisible: false`)。
 3. **FM に回す前に要素種別・省略で足切りする**(次段の必須タスク):
    - 対象は「label が verbatim 描画されるテキスト要素」に限定。**アイコン/画像/結合セマンティクス
      (label に区切りの `, ` を含む合成ノード)/絵文字単体は除外**。
@@ -401,10 +404,11 @@ performance-tuning.md §6)。
 
 残タスクは **①高インク下の部分覆いの取りこぼし**(Tier-0 幾何で一部補完・原理的限界あり)、
 **②snapshot/screenshot の非原子性**(アニメ中は整定後に実行・§5.9 の罠)。
-**③DSL 露出は実装済み**(§5.10 `visible()`)。これらを踏まえれば実採用の目処は立った。
+**③DSL 露出は実装済み**(§5.10 の `requireVisible` 引数。`visible()` は削除済み)。これらを踏まえれば実採用の目処は立った。
 単体の FM を無差別に当てる案は引き続き非推奨。
 
-**採用形の推奨まとめ**: `occlusionGuard` をノブ提供(既定 OFF・画面/シナリオ限定 ON)、判定は
+**採用形のまとめ(確定)**: DSL の `requireVisible` 引数で露出し**既定 ON**(2026-07-22 ユーザー決定・
+§5.15 #3。オプトアウトは `requireVisible: false`)、判定は
 `eligible(足切り) → 低インク or Tier-0幾何(疑い) → FM(cropped・省略許容) → visible判定`の順。
 整定後の assert 一点で1回だけ実行。state は診断ログのみ。
 
