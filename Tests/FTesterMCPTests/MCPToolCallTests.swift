@@ -451,6 +451,41 @@ final class MCPToolCallTests: XCTestCase {
         XCTAssertEqual(driver.calls, ["type(ref:nil,text:hello)", "snapshot"])
     }
 
+    /// replace: true は type の前に clearInput(ft_clear_input と同じ呼び出し形)を挟む
+    func testTypeReplaceClearsBeforeTyping() async throws {
+        _ = try await server.call(tool: "ft_type", args: ["text": "あいう", "ref": 2, "replace": true])
+        XCTAssertEqual(driver.calls, ["clearInput(ref:2)", "type(ref:2,text:あいう)"])
+    }
+
+    /// replace: false(既定と同じ)は今までどおり追記のみで、clearInput は呼ばない
+    func testTypeReplaceFalseStillAppends() async throws {
+        _ = try await server.call(tool: "ft_type", args: ["text": "あいう", "ref": 2, "replace": false])
+        XCTAssertEqual(driver.calls, ["type(ref:2,text:あいう)"])
+    }
+
+    /// replace: true のときは「追記」警告(the field already held ...)を出さず、
+    /// 置換した旨の短い注記に差し替わる
+    func testTypeReplaceSkipsTheAppendWarning() async throws {
+        driver.snapshotResponse = SnapshotResponse(
+            sessionBundleID: "com.example.app",
+            screen: FTRect(x: 0, y: 0, width: 390, height: 844),
+            elements: [ElementInfo(ref: 1, type: "textField", identifier: "search",
+                                   label: nil, value: "hello", placeholder: nil, enabled: true,
+                                   frame: FTRect(x: 0, y: 0, width: 200, height: 40), depth: 2,
+                                   focused: true)],
+            truncatedCount: 0)
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+
+        let appended = Self.responseText(try await server.call(
+            tool: "ft_type", args: ["text": "world", "ref": 1]))
+        XCTAssertTrue(appended.contains("the field already held"), appended)
+
+        let replaced = Self.responseText(try await server.call(
+            tool: "ft_type", args: ["text": "world", "ref": 1, "replace": true]))
+        XCTAssertFalse(replaced.contains("the field already held"), replaced)
+        XCTAssertTrue(replaced.contains("replaced the field's prior content"), replaced)
+    }
+
     private static func responseText(_ content: [[String: Any]]) -> String {
         content.compactMap { $0["text"] as? String }.joined()
     }

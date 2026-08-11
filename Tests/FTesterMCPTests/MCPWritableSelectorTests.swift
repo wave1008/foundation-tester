@@ -244,6 +244,51 @@ final class MCPWritableSelectorTests: XCTestCase {
         let note = MCPServer.ambiguousLabelsNote(snapshot(elements))
         XCTAssertTrue(note.contains("more matches not shown"), note)
     }
+
+    /// 群のどの候補も安定したセレクタを書けないとき、その事実を明示する
+    /// (index-based の "~" と「そもそも書けない」の両方を「安定は無い」として拾う)
+    func testAmbiguousNoteSaysWhenNoCandidateHasAStableSelector() throws {
+        let snap = snapshot([element(1, type: "clickable", label: "経路", depth: 1),
+                             element(2, type: "clickable", label: "経路", depth: 1)])
+        let note = MCPServer.ambiguousLabelsNote(snap)
+        XCTAssertTrue(note.contains(
+            "none of the above have a stable selector on this screen —"
+                + " prefer tapping by ref for these."), note)
+    }
+
+    /// 群の中に安定セレクタを持つ候補が1件でもあれば、上の明示は出さない
+    func testAmbiguousNoteOmitsTheNoStableSelectorLineWhenACandidateIsStable() throws {
+        let snap = snapshot([
+            element(1, id: "home_tab", label: "経路", y: 10),
+            element(2, id: "route_tab", label: "経路", y: 60),
+        ])
+        let note = MCPServer.ambiguousLabelsNote(snap)
+        XCTAssertFalse(note.contains("prefer tapping by ref for these."), note)
+    }
+
+    // MARK: - C: 重複 id 注記の「安定なし」明示
+
+    /// duplicateIDsNote 版: どの候補も安定したセレクタを書けないとき明示する
+    func testDuplicateIDsNoteSaysWhenNoCandidateHasAStableSelector() throws {
+        let snap = snapshot([
+            element(1, type: "textField", id: "numberpicker_input", depth: 1),
+            element(2, type: "textField", id: "numberpicker_input", depth: 1),
+        ])
+        let note = MCPServer.duplicateIDsNote(snap)
+        XCTAssertTrue(note.contains(
+            "none of the above have a stable selector on this screen —"
+                + " prefer tapping by ref for these."), note)
+    }
+
+    /// duplicateIDsNote 版: 各要素が別々の一意ラベルを持ち、それぞれ安定に書けるなら明示しない
+    func testDuplicateIDsNoteOmitsTheNoStableSelectorLineWhenACandidateIsStable() throws {
+        let snap = snapshot([
+            element(1, type: "textField", id: "numberpicker_input", label: "時", depth: 1),
+            element(2, type: "textField", id: "numberpicker_input", label: "分", depth: 1),
+        ])
+        let note = MCPServer.duplicateIDsNote(snap)
+        XCTAssertFalse(note.contains("prefer tapping by ref for these."), note)
+    }
 }
 
 /// E: 操作系の戻り値に「その操作を再現するセレクタ」が必ず入ること。

@@ -975,11 +975,13 @@ extension MCPServer {
                 + " (\"—\" = this element has no stable selector; use a labelled ancestor or"
                 + " a coordinate. \"~\" = index-based, so it breaks if the number of same-type"
                 + " siblings changes — usable, but the weakest of the three):"]
+        var anyStable = false
         for (label, matches) in ambiguous.prefix(ambiguousLabelsShown) {
             let shown = matches.prefix(ambiguousMatchesShown).map { element -> String in
                 guard let graded = naming.graded(for: element, in: snapshot) else {
                     return "[\(element.ref)] —"
                 }
+                if graded.durability == .stable { anyStable = true }
                 return "[\(element.ref)] \(graded.selector)\(graded.durability.mark)"
             }.joined(separator: " / ")
             let cut = matches.count > ambiguousMatchesShown
@@ -989,6 +991,10 @@ extension MCPServer {
         if ambiguous.count > ambiguousLabelsShown {
             lines.append("  (+\(ambiguous.count - ambiguousLabelsShown) more ambiguous label(s)"
                 + " not shown — ft_snapshot again after narrowing the screen to see them)")
+        }
+        if !anyStable {
+            lines.append("  none of the above have a stable selector on this screen —"
+                + " prefer tapping by ref for these.")
         }
         return lines.joined(separator: "\n") + "\n"
     }
@@ -1027,11 +1033,13 @@ extension MCPServer {
                 + " (\"—\" = this element has no stable selector; use a labelled ancestor or"
                 + " a coordinate. \"~\" = index-based, so it breaks if the number of same-type"
                 + " siblings changes — usable, but the weakest of the three):"]
+        var anyStable = false
         for (id, matches) in duplicated.prefix(ambiguousLabelsShown) {
             let shown = matches.prefix(ambiguousMatchesShown).map { element -> String in
                 guard let graded = naming.graded(for: element, in: snapshot) else {
                     return "[\(element.ref)] —"
                 }
+                if graded.durability == .stable { anyStable = true }
                 return "[\(element.ref)] \(graded.selector)\(graded.durability.mark)"
             }.joined(separator: " / ")
             let cut = matches.count > ambiguousMatchesShown
@@ -1041,6 +1049,10 @@ extension MCPServer {
         if duplicated.count > ambiguousLabelsShown {
             lines.append("  (+\(duplicated.count - ambiguousLabelsShown) more duplicate id(s)"
                 + " not shown — ft_snapshot again after narrowing the screen to see them)")
+        }
+        if !anyStable {
+            lines.append("  none of the above have a stable selector on this screen —"
+                + " prefer tapping by ref for these.")
         }
         return lines.joined(separator: "\n") + "\n"
     }

@@ -190,6 +190,14 @@ final class MCPServer {
 
     /// 版ズレの内容(engineKey ごと)。ft_status が「失敗するが理由を返す」ために覚えておく
     var versionSkew: [String: String] = [:]
+
+    /// このプロセスの寿命だけ生きる、最後に**明示**された iOS 宛先(port + udid)。
+    /// **更新は udid/port のどちらかが引数にあった呼び出しの、解決成功後だけ**
+    /// (自動解決の結果は混ぜない)。**使用は udid/port が両方とも無かった呼び出しだけ**
+    /// (driver(_:) 参照。純粋な判定は iosExplicitWithMemory/iosMemoryAfterResolve)
+    var lastExplicitIOSTarget: (port: UInt16, udid: String?)?
+    /// Android 版の同じ記憶。同じ規律(androidExplicitWithMemory/androidMemoryAfterResolve)
+    var lastExplicitAndroidSerial: String?
 }
 
 struct MCPError: Error, LocalizedError {

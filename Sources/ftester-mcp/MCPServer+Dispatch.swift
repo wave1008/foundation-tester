@@ -573,6 +573,7 @@ extension MCPServer {
             // docs/commands.md)。そのため text は「pressEnter だけを撃つとき」は省略できる
             let wantsEnter = args["pressEnter"] as? Bool == true
             let content = args["text"] as? String
+            let wantsReplace = args["replace"] as? Bool == true
             guard content != nil || wantsEnter else {
                 throw MCPError("text is required (or pass pressEnter: true to fire Enter only)")
             }
@@ -592,6 +593,9 @@ extension MCPServer {
                     .elements.first { $0.ref == verified.ref }?.value
             }
             if let content, !content.isEmpty {
+                if wantsReplace {
+                    try await typeDriver.clearInput(ref: targetRef.map { nativeRef($0, args: args) })
+                }
                 // targetRef はセッション ref。ブリッジへ渡す直前にだけ native へ戻す
                 try await typeDriver.type(ref: targetRef.map { nativeRef($0, args: args) }, text: content)
                 // **ref を渡したときだけ読み返しで検証される**。iOS の XCUITest ランナーは
@@ -612,7 +616,9 @@ extension MCPServer {
                     note += await Self.typedIntoNote(driver: typeDriver, expected: content,
                                                      snapshot: rawAfterType)
                 }
-                if let prior = priorValue, !prior.isEmpty {
+                if wantsReplace {
+                    note += " (replaced the field's prior content)"
+                } else if let prior = priorValue, !prior.isEmpty {
                     note += " (the field already held \"\(SnapshotRenderer.truncate(prior, 30))\";"
                         + " ft_type appends, so it now reads"
                         + " \"\(SnapshotRenderer.truncate(prior + content, 60))\"."

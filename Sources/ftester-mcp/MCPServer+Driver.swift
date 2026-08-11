@@ -100,7 +100,16 @@ extension MCPServer {
         let created: AppDriver
         switch platform {
         case "ios":
-            let port = try await Self.resolveIOSPort(explicit: explicitPort)
+            let argsHadIOSTarget = args["udid"] != nil || args["port"] != nil
+            let (portToResolve, usedMemory) = Self.iosExplicitWithMemory(
+                fromArgs: explicitPort, argsOmittedTarget: !argsHadIOSTarget,
+                remembered: lastExplicitIOSTarget)
+            if let usedMemory {
+                Self.logStderr("no udid/port given — reusing this session's earlier target"
+                    + " (port \(usedMemory.port), udid \(usedMemory.udid ?? "unknown"));"
+                    + " pass port/udid to use a different device")
+            }
+            let port = try await Self.resolveIOSPort(explicit: portToResolve)
             let resolved = await ExploreDriverResolver.resolve(
                 preferred: port, repoRoot: try? RepoRoot.find(),
                 logger: { Self.logStderr($0) })
@@ -113,6 +122,10 @@ extension MCPServer {
             // その port が今どの機かを確かめる手段が無かった
             connections[key] = Self.connectionLabel(port: port, udid: resolved.udid)
             connectedPorts[key] = port
+            if let remembered = Self.iosMemoryAfterResolve(
+                argsHadExplicitTarget: argsHadIOSTarget, resolvedPort: port, resolvedUDID: resolved.udid) {
+                lastExplicitIOSTarget = remembered
+            }
             // **稼働中のブリッジが古いままではないか**を1度だけ確かめる(2026-08-06 に踏んだ)。
             // profile 経由は BridgeProvisioner が版で再利用可否を決めるが、**この経路は
             // 生きているポートへ素で繋ぐだけ**なので、版を上げても旧ランナーが使われ続ける。
@@ -121,10 +134,21 @@ extension MCPServer {
             // Android は AndroidBridge が expectedBridgeVersionCode で入れ替えるのでこの穴が無い
             try await enforceVersion(driver: created, key: key, args: args)
         case "android":
-            let serial = try Self.resolveAndroidSerial(explicit: args["serial"] as? String)
+            let explicitSerial = args["serial"] as? String
+            let (serialToResolve, usedSerialMemory) = Self.androidExplicitWithMemory(
+                fromArgs: explicitSerial, remembered: lastExplicitAndroidSerial)
+            if let usedSerialMemory {
+                Self.logStderr("no serial given — reusing this session's earlier Android target"
+                    + " (serial \(usedSerialMemory)); pass serial to use a different device")
+            }
+            let serial = try Self.resolveAndroidSerial(explicit: serialToResolve)
             created = try AndroidDriver(serial: serial)
             engines[key] = "android"
             connections[key] = "serial \(serial)"
+            if let remembered = Self.androidMemoryAfterResolve(
+                fromArgs: explicitSerial, resolvedSerial: serial) {
+                lastExplicitAndroidSerial = remembered
+            }
         default:
             throw MCPError("platform must be ios or android: \(platform)")
         }
@@ -240,6 +264,41 @@ extension MCPServer {
             ports.append(found.port)
         }
         return ports
+    }
+
+    /// **セッション記憶(iOS)を resolveIOSPort へ渡すかどうかの純粋関数**。走査から切り離してある
+    /// (reconcilePort と同じ理由: 実ブリッジ無しでテストできないと、条件を壊しても素通しする)。
+    /// 記憶を差すのは `argsOmittedTarget`(この呼び出しの生 args に udid も port も無かった)の
+    /// ときだけ。`usedMemory` が non-nil のときだけ呼び手は stderr へ告知する
+    static func iosExplicitWithMemory(
+        fromArgs: UInt16?, argsOmittedTarget: Bool, remembered: (port: UInt16, udid: String?)?
+    ) -> (explicit: UInt16?, usedMemory: (port: UInt16, udid: String?)?) {
+        guard fromArgs == nil, argsOmittedTarget, let remembered else { return (fromArgs, nil) }
+        return (remembered.port, remembered)
+    }
+
+    /// 解決成功後にセッション記憶(iOS)を更新すべき値。**この呼び出しの生 args に udid/port の
+    /// どちらかがあったときだけ**上書きする — 自動解決の結果を記憶に混ぜると、次に無指定で
+    /// 呼んだときに「利用者が選んだのではない機」を黙って踏襲することになる
+    static func iosMemoryAfterResolve(
+        argsHadExplicitTarget: Bool, resolvedPort: UInt16, resolvedUDID: String?
+    ) -> (port: UInt16, udid: String?)? {
+        argsHadExplicitTarget ? (resolvedPort, resolvedUDID) : nil
+    }
+
+    /// iOS と同じ規律の Android 版。serial は空文字列も「無指定」として扱う(resolveAndroidSerial
+    /// と揃える)
+    static func androidExplicitWithMemory(
+        fromArgs: String?, remembered: String?
+    ) -> (explicit: String?, usedMemory: String?) {
+        let argsGaveSerial = fromArgs?.isEmpty == false
+        guard !argsGaveSerial, let remembered, !remembered.isEmpty else { return (fromArgs, nil) }
+        return (remembered, remembered)
+    }
+
+    static func androidMemoryAfterResolve(fromArgs: String?, resolvedSerial: String) -> String? {
+        guard let fromArgs, !fromArgs.isEmpty else { return nil }
+        return resolvedSerial
     }
 
     /// profile 無しの iOS 宛先。**明示 port は探索しない**(利用者が宛先を決めている)。

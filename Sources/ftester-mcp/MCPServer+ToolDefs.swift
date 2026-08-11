@@ -89,7 +89,10 @@ extension MCPServer {
         driving another app, or a system app such as Maps, needs the device's xcuitest bridge \
         port) / allowVersionSkew (off by default: a stale bridge answers with its own \
         version's behaviour and notes, so selectors written from them are silently wrong; every \
-        skewed response carries a warning).
+        skewed response carries a warning). Once a call explicitly gives udid/port (iOS) or \
+        serial (Android), this server process remembers it for its lifetime: a later call that \
+        omits udid, port, AND serial entirely defaults to that same device. Giving udid/port or \
+        serial again on a later call overrides the memory for that call and replaces it.
 
         Tree options on tools that return an element list: expandBulk unfolds groups of 20+ \
         non-interactive leaves sharing one id (map pins and the like) that are folded into one \
@@ -212,7 +215,8 @@ extension MCPServer {
             "interactiveOnly": interactiveOnlyProperty,
         ]),
         tool("ft_type", "Type text (with ref, taps that field first and waits for it to take focus). "
-            + "It APPENDS to whatever the field already holds — call ft_clear_input first to replace. "
+            + "It APPENDS to whatever the field already holds by default — pass replace: true to clear it "
+            + "first, or call ft_clear_input yourself. "
             + "text is required unless pressEnter is true — pressEnter alone fires the Enter/IME action. "
             + "Typing itself never closes the soft keyboard. pressEnter fires the Enter/IME action — on "
             + "UIKit/SwiftUI the return key usually closes the keyboard as a side effect; Compose and Flutter "
@@ -220,6 +224,7 @@ extension MCPServer {
             "text": ["type": "string", "description": "Omit it to fire Enter only"],
             "pressEnter": ["type": "boolean", "description": "Fire Enter/IME action (search, submit)"],
             "ref": ["type": "integer", "description": "Reference number of the input field (defaults to the focused element)"],
+            "replace": ["type": "boolean", "description": "Clear the field before typing, instead of appending"],
             "snapshotAfter": snapshotAfterProperty,
             "waitForChange": snapshotAfterWaitForChangeProperty,
             "waitFor": snapshotAfterWaitForProperty,
