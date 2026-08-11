@@ -1826,8 +1826,14 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   片側の上限は `FTScrollDefaults.maxMarginRatio` = 0.45(= スパンの最小 0.1)。
   **未指定は従来どおりブリッジ側の軸別既定**(縦 0.4 / 横 0.6 の全画面固定)—— 全画面固定のまま
   スパンを変えると始点がスクロール領域の外に出て 1 ミリも動かない(performance-tuning §3.16 の実害)。
-  解決できない・削りすぎて動かせないときも従来経路へ落ちる(Shirates も明示 scrollFrame は
-  **矩形の供給元**であって、スクロール可能かの判定はしない)。
+  **画面に1件も無い scrollFrame は従来経路へ落とさず失敗させる**(2026-08-08。
+  `StepExecutor.scrollFrameUnresolved` の fail-fast。1本も振らないので `scrollFrameFailFastMessage`
+  は「送られなかった」と言い、送信中に容器が消えた場合だけ文言を差し替える。黙って全画面スワイプへ
+  退化させていた頃はカード上のボタンを発火させる実害があった。`select` 系だけは空要素を返す契約が
+  優先し skipped)。**容器は解決したが margin で動かせる幅が潰れたときだけ従来経路へ落ちる** ——
+  こちらは容器自体が見つかっているので fail-fast を通らず、`resolved but leaves nothing to move`
+  の注記を残して全画面スワイプになる(Shirates も明示 scrollFrame は**矩形の供給元**であって、
+  スクロール可能かの判定はしない)。
   **in-app は座標を「対象 + 移動量」として読む**(始点で UIScrollView を特定し、始点と終点の差を
   contentOffset へ)ので**マージンも効く**。ただし **Compose/Flutter は 501 で XCUITest へ回す** ——
   自前描画では hitTest も AX も領域を絞れず、指定領域の外を指しても画面本体が動いてしまう
@@ -2773,7 +2779,7 @@ platform フィールドは持たず、**iOS/Android のデバイス名を混在
 ```json
 { "app": "sampleapp",
   "devices": [ { "name": "simulator1" }, { "name": "simulator2" }, { "name": "emulator1" } ],
-  "fm": true, "heal": false, "reportDir": "reports", "defaultTimeout": 5,
+  "fm": true, "heal": true, "reportDir": "reports", "defaultTimeout": 5,
   "wipeDataOnBloat": true, "wipeDataThresholdGB": 8 }
 ```
 
@@ -2814,6 +2820,19 @@ run 開始が約1分延びる(ゲスト再起動では戻らない)。戻した�
 Android 実機はグローバル設定が**永続的に**書き換わるので、現在値を読んで差分があるときだけ書き、
 そのときだけ1行知らせる(エミュレータ/シミュレータは無条件・無言)。iOS 実機はホストから
 アクセシビリティ設定を変更できないため対象外(端末側で手動設定する)。
+
+`homeOnStart`(**既定 true**)は run 開始時に各デバイスへ `home()` を1回撃つ
+(`ProfileWorkerFactory.pressHomeOnStart`)。一斉に launch した直後の端末は「描画要求が無いだけ」で
+画面が黒いまま止まることがあり、そのままだと凍結と見分けが付かない(2026-08-11 実測: 黒かった5台の
+うち4台は入力で戻った)。予防として1回だけ入力を入れる。**デバイスあたり1回**なので実行時間への
+影響はほぼゼロ。UI はデバイスタブの実行プロファイル設定。
+
+`iosFastInput`(既定 false)を true にすると **iOS xcuitest ブリッジの入力で quiescence 待ちを
+飛ばす**(`FT_FAST_INPUT=1` を実行環境へ注入し、`BridgeClient.fastInput` が受ける。CLI は
+`ftester run --fast-input`)。動きの激しい画面では整定前タップのフレークリスクを伴うので
+オプトイン。計測値は docs/performance-tuning.md。**効くのは XCUITest ランナーだけ**
+(`Runner/FTesterRunnerUITests/FastInput.swift`。`fast` は in-app ブリッジにも送られるが
+あちらは解釈しない = quiescence の概念が無いため)。
 
 `record`(既定 false)を true にすると、各ワーカー(デバイス)で run 全体を録画し続けつつ
 (iOS: `simctl io recordVideo` の .mov / Android: `screenrecord` の 180 秒セグメント群)、

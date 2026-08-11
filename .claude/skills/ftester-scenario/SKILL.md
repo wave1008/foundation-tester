@@ -178,7 +178,7 @@ scene・**アサーションが0個の expectation** を落とす(どれもコ�
 「なぜか緑」になって気付けない類)。
 
 - MCP: `ft_dry_run`(id=`クラス名.S0010`, project 指定)
-- CLI: `ftester api run --project <proj> --dry-run --scenario <クラス名.S0010>`
+- CLI: `ftester run --project <proj> --dry-run --scenario <クラス名.S0010>`
 
 ⚠️ 行が出たら直してから次へ進む:
 

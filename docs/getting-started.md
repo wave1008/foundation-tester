@@ -83,7 +83,7 @@ claude plugin marketplace update foundation-tester
 claude plugin update ftester@foundation-tester
 ```
 
-2. Claude Codeの新しいセッションを開始し、 `/ftester-update` を実行します
+2. Claude Codeの新しいセッションを開始し、 `/ftester:ftester-update` を実行します
 
 Claude Code を使わない場合は `bash <TOOL_ROOT>/Scripts/update.sh`(pull・ビルド・拡張・
 プラグイン更新までを1コマンドで行います)。更新が無ければ何もせず終わります（前回が途中で

@@ -146,7 +146,7 @@ swift run ftester run --profile ios           # 実行プロファイル(ブリ�
 |---|---|
 | `doctor` | FM・Xcode・シミュレータ・adb の事前診断 |
 | `bridge up / down / status` | iOS ブリッジ(常駐 XCUITest ランナー)の管理 |
-| `run [--scenario <id>...]` | シナリオの決定的実行(`--project`、`--profile` プロファイル実行、`--folder` フォルダ指定、`--failed` 失敗のみ、`--heal` 自己修復、`--report-dir`、`--ports` 並列、`--skip-build`、`--no-lpt` 投入順を ID 順に固定、`--lpt-history-runs` 実績を読む run 数) |
+| `run [--scenario <id>...]` | シナリオの決定的実行(`--project`、`--profile` プロファイル実行、`--folder` フォルダ指定、`--failed` 失敗のみ、`--heal` 自己修復、`--report-dir`、`--ports` 並列、`--skip-build`、`--no-lpt` 投入順を ID 順に固定、`--lpt-history-runs` 実績を読む run 数、`--quiet`/`--junit` CI 向け出力、`--enable-animations` アプリのアニメーションを残す、`--fast-input` iOS xcuitest の quiescence 待ちを飛ばす)。**`--dry-run` はデバイスに触れずステップを列挙・検証する**(下記「dry-run」) |
 | `run-file <path.swift>...` | Package.swift に**登録していない** .swift をそのまま実行(プロファイル・レポート・自己修復は `--project` のものを借りる。`--profile`、`--scenario`、`--heal`、`--ports`) |
 | `project create / list / sync` | テストプロジェクトの作成・一覧・Package.swift 再整合 |
 | `devices up / down` | 実行プロファイルのデバイスを一括起動・停止(ブリッジ供給込み) |
@@ -405,14 +405,21 @@ condition {
   ブロック内の生 Swift コードはスキップされないため、失敗後に走らせたくない処理は `procedure { }` に包む
 - レポートは成否問わず `TestProjects/<name>/reports/scenario-*.md` に出力(scene → CAE → ステップ階層、
   トリアージ、失敗スクリーンショット、**修正提案**)
-- **自己修復とヒールキャッシュ**: 自己修復が有効な実行(実行プロファイルの `heal`。既定 ON、
-  CLI は `--heal` で上書き)では、壊れたセレクタは FM が修復して続行し、
+- **自己修復とヒールキャッシュ**: 自己修復が有効な実行(**`--profile` 実行では実行プロファイルの
+  `heal` が既定 ON** / **プロファイルを使わない `ftester run` は既定 OFF**。CLI からは
+  `--heal` で ON・`--no-heal` で OFF に上書きできる。両方の同時指定はエラー)では、
+  壊れたセレクタは FM が修復して続行し、
   結果は `TestProjects/<name>/.ftester/heal-cache.json` に保存される。**2回目以降は FM なしで決定的に通過**し、
   レポートに「`TestProjects/SampleApp/scenarios/LoginTest.swift:17` — セレクタ "#email_input" を
   "#email||.textField[0]" に変更してください」のようなソース位置付き修正提案を出し続ける
   (ソースの自動書換はしない。人がソースを直すとキー不一致でキャッシュは自然に無効化される)
-- **dry-run**: `swift run ftester-scenarios-<プロジェクト名> run --scenario <id> --dry-run` で
-  デバイスに触れずステップ列挙だけ行える(Shirates の No-Load-Run 相当。レビュー・生成コードの確認用)
+- **dry-run**: `ftester run --dry-run`(Shirates の No-Load-Run 相当)。**デバイスにも FM にも
+  触れず**、セレクタの構文誤り・到達しない scene・アサーション0の `expectation`・
+  **撮った画面に実在しない `#id`** を数秒で落とす(実測: 76 シナリオで 3.4 秒)。
+  `--scenario` / `--folder` / `--project` / `--quiet` はそのまま効き、**失敗があれば exit code 1**。
+  デバイスを1台も使わないので `--profile` は使われない(`--platform` だけが
+  `ios { }` / `android { }` の分岐を決める)。レポートは書かず、`--failed` の判断材料にもならない。
+  MCP は `ft_dry_run`、VSCode 拡張は `ftester api run --dry-run` 経由で同じ検証を行う
 
 ## UI(VSCode 拡張)
 

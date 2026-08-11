@@ -1216,7 +1216,9 @@ extension MCPServer {
         let passed = await ScenarioHost.run(
             project: project, scenarioID: info.id,
             connection: DriverConnection(platform: info.platform ?? "ios"),
-            fm: FMConfig(heal: false), reportDir: tempDir.path,
+            // **`enabled: false`(= 子へ --no-fm)**。heal だけ切ると失敗のたびに triage が走り、
+            // デバイスも画面も無いのに FM の直列化待ちを数秒払う(2026-08-12 実測)
+            fm: FMConfig(enabled: false, heal: false), reportDir: tempDir.path,
             dryRun: true) { event in
                 lines.append(contentsOf: ScenarioLogFormatter.lines(for: event))
             }

@@ -1,7 +1,7 @@
 # DSL コマンドリファレンス
 
-シナリオ(`TestProjects/<name>/scenarios/*.swift`)で使える全コマンドの説明。読者は**シナリオを書く利用者**。
-シナリオの構造(`@TestClass` / `@Test` / `scene` / condition-action-expectation)と**セレクタ記法**
+シナリオ(`TestProjects/<name>/scenarios/*.swift`)で使える**操作・検証コマンド**の説明。読者は**シナリオを書く利用者**。
+**構造コマンド**(`scenario` / `scene` / `condition` / `action` / `expectation`)と**セレクタ記法**
 (`#id` `ラベル` `*部分一致*` `.型[n]` `&&` `||` `(a|b)` `!` `>>` `:rightSwitch` など)は
 README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirates(Classic) に準拠している。
 
@@ -174,7 +174,7 @@ Shirates 準拠のコマンド名(`flick*`)。**画面(または `scrollFrame`)�
 | コマンド | 説明 |
 |---|---|
 | `exist(sel, timeout:requireVisible:scroll:maxSwipes:)` | 存在検証。偽陽性検証を有効にした run(実行プロファイル `falsePositiveCheck: true`)では**実際に見えていること**も確認する。戻り値にチェーン可(後述) |
-| `waitForDisplay(sel, waitSeconds: 15)` | 要素が表示されるまで待つ(**スクロールしない**)。戻り値は `FTElement`(`exist` と同様チェーン可)。見つからなければ失敗しシナリオ中断 |
+| `waitForDisplay(sel, waitSeconds: 15)` | 要素が表示されるまで待つ(**スクロールしない**)。戻り値は `FTElement`(`exist` と同様チェーン可)。見つからなければ失敗しシナリオ中断。**判定は `exist` と同じ可視性込み**(コマンド名 displayed の意味に沿わせている)で、**`exist` の `requireVisible: false` に当たる逃げ道は無い** — 覆われ検出を外したいなら `exist(sel, requireVisible: false, timeout: 15)` を使う |
 | `waitForClose(sel, waitSeconds: 15)` | 要素が消えるまで待つ(**スクロールしない**)。`sel` は省略不可(Shirates の直前セレクタ再利用の省略形は無い。`lastElement` はあるが、待ち対象がソース上で読めなくなるため引数は必須のまま) |
 | `notExist(sel, timeout:scroll:maxSwipes:)` | **消えるまで待つ**(初回で不在なら即成功)。ダイアログ・ローディングが閉じた確認に。`scroll:` 指定時は**その方向へスクロールしながら探し、見つかった時点で不在検証を失敗させる**(`exist(scroll:)` の裏返し。見つからなければ従来どおり現在のビューポートでの消滅待ちに進む) |
 | `countIs(sel, 個数, timeout:)` | 候補の個数。**ツリー上の件数**で可視性は見ない。`\|\|` は和集合の総数(重複は 1 度だけ)。**ラベルで数えるときは型で絞る**(`.button&&項目` — ボタンと内側のラベルは別要素として両方載るため) |
@@ -377,7 +377,7 @@ let 合計 = try await fetchTotal()        // procedure { } 内で取得した�
 - **`ios { }` / `android { }` / `ifCanSelect { }` の中身が実行されなかった**ときは警告しません
   (中に何が書かれているかは実行しないと分からないため。`expectation { android { notExist(…) } }`
   を iOS で回しても黙ります)
-- **`ftester api run --dry-run`(MCP は `ft_dry_run`)ならデバイス無しで判定できます**。
+- **`ftester run --dry-run`(MCP は `ft_dry_run`)ならデバイス無しで判定できます**。
   デバイスを触る前にここで落とすのが安上がりです
 
 ## セレクタの綴り誤りの検知(dry-run)

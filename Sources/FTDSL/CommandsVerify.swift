@@ -682,7 +682,7 @@ private func waitForDisplayImpl(_ selector: FTSelector, waitSeconds: Double,
 }
 
 /// 要素が消えるまで待つ(スクロールしない)。expression 省略(直前セレクタ再利用)は実装しない
-/// (ftester に lastElement 概念が無いため)
+/// (`lastElement` はあるが、待ち対象がソース上で読めなくなるため待ち系には省略形を置かない)
 public func waitForClose(_ expression: String, waitSeconds: Double = FlowStep.defaultIsScreenWaitSeconds,
                          file: StaticString = #filePath, line: UInt = #line) {
     waitForCloseImpl(FTSelector.parse(expression), waitSeconds: waitSeconds, file: file, line: line)

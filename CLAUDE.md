@@ -308,9 +308,10 @@
   容器外 ghost への座標タップ・pressEnter の焦点待ち。いずれも DSL 側では対処済みだった)。
   **ただし同じ判定をそのまま強い挙動へ流用しない** —— DSL の「掴み直して送り直す」合図を
   MCP で**タップ拒否**に格上げしたら、実アプリで誤検知が5形出て警告へ後退した
-  (docs/design.md の ghost の節)。**新しい検知はまず警告から**入れる。
+  (docs/design.md §10「実装で得た知見」の `RefGuard.ghostWarning` の項)。**新しい検知はまず警告から**入れる。
   探索ロジックは**MCP に2つ目の実装を書かず `StepExecutor` へ委ねる**(`ft_scroll_to`)
-- **エラーの status はホストの分岐契約**(表は docs/design.md §「エラーの status」)。
+- **エラーの status はホストの分岐契約**(表は docs/design.md §4.3 の
+  「エラーの status はホスト側の分岐に使われる契約」)。
   とくに **XCUITest ランナーの 409 は `requireApp()` の1箇所だけ** — ホストはこの経路の 409 を
   無条件に「セッション消失」と読んで activate を撃つ。「セッションはあるが今は無理」は **422**
   を使う(`BridgeRouterStatusContractTests` が 409/503/501 の本数を数えて守る)。

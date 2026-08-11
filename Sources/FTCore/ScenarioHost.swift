@@ -464,7 +464,9 @@ public enum ScenarioHost {
         // dry-run は NullDriver 固定のため接続情報は使われない(platform はダミー)
         let passed = await run(project: project, scenarioID: scenarioID,
                                connection: DriverConnection(platform: "ios"),
-                               fm: FMConfig(heal: false), reportDir: tempDir.path,
+                               // **`enabled: false`**(heal だけ切ると失敗のたびに triage が走り、
+                               // デバイスも画面も無いのに FM の直列化待ちを数秒払う。2026-08-12 実測)
+                               fm: FMConfig(enabled: false, heal: false), reportDir: tempDir.path,
                                dryRun: true) { events.append($0) }
         guard passed else {
             throw ScenarioHostError.dryRunFailed(dryRunFailureDetail(events))

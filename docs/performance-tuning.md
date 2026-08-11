@@ -1383,6 +1383,9 @@ window/transition/animator の `*_scale` はチューニングノブではなく
        launch を XCUIApplication.launch()(実測 4.6〜5.4s)から simctl terminate+launch+
        activate 接続(≈2.4s)へ置換。シナリオ wall −14〜19%。復帰用のエスケープハッチは
        `FT_NO_FAST_LAUNCH=1`。attachOnly 化の不採用理由は §6 参照。
+       **マージ後に同一バイナリ A/B(`FT_NO_FAST_LAUNCH` の on/off)で再計測した記録**は
+       [driver-improvements-verification.md](driver-improvements-verification.md)
+       (シナリオ4本 × 36ラン・改良効果 −14〜21% を再現。既定 on になった今は取り直せない対照)。
      - ✅ **autoInstall 差分判定の指紋キャッシュ**(採用 2026-07-21): `InstalledAppCheck` の
        バンドル深比較(40MB で 0.86s/ラン)を、検証済みソース指紋(相対パス+サイズ+mtime の
        SHA256、.ftester/install-check/)のヒット時にスキップ。0.86→0.41s(残りは列挙+

@@ -104,7 +104,8 @@ public struct FlowStep: Codable, Sendable {
 
     /// スクロール対象の領域(Shirates の `scrollFrame`)。**nil = 従来の全画面固定**。
     /// 非 nil のときだけホストが座標を計算してブリッジへ渡す(`ScrollGeometry`)。
-    /// **解決できなかったときも従来経路へ落とす**(Shirates も見つからなければ次の候補へ落ちる)
+    /// **解決できなければ全画面スワイプへ退化させず失敗させる**(`scrollFrameUnresolved` の
+    /// fail-fast。2026-08-08。黙って退化するとカード上のボタンを発火させる実害があった)
     public var scrollFrame: FlowLocator?
     /// スクロール対象の領域を矩形で直接指定する(MCP 専用。DSL は使わない)。非 nil なら
     /// `scrollFrame`(セレクタ)より優先し、**常に解決済み扱い**(`scrollFrameUnresolved` の

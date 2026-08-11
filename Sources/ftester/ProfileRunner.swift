@@ -14,6 +14,16 @@ enum ProfileRunner {
     /// ワーカー復帰待ちの上限。監視側の再起動やデバイス自己回復を待つ
     private static let REVIVE_TIMEOUT: TimeInterval = 90
 
+    /// CLI の `--heal` / `--no-heal` → `run(healOverride:)`。**nil = 実行プロファイルの値をそのまま使う**
+    /// (プロファイル実行の heal 既定は true)。両立指定は `RunScenarios.validate()` が弾くので、
+    /// ここに来る組み合わせは3通りだけ。**デバイスが要る run から切り出した純粋関数**なので
+    /// `ProfileRunnerHealOverrideTests` が全組み合わせを固定する
+    static func healOverride(heal: Bool, noHeal: Bool) -> Bool? {
+        if heal { return true }
+        if noHeal { return false }
+        return nil
+    }
+
     /// 戻り値: 実行サマリ(失敗数+劣化ワーカー)
     /// - lpt: LPT 投入順を使うか。並べ替えは defaultPlatform が確定してからでないと
     ///   別 platform の実績で並べてしまうため、この関数の中で行う(呼び出し側では順序を触らない)。
