@@ -185,7 +185,9 @@ function createTile(device) {
   const frozenBadge = document.createElement('span');
   frozenBadge.className = 'badge badge-frozen';
   frozenBadge.textContent = t('wvMonitor.tile.frozen');
-  frozenBadge.title = t('wvMonitor.tile.frozenTitle');
+  // バッジも絵文字1文字なので説明はホバーが唯一の手段。ネイティブ title(約1秒)ではなく
+  // タイルの他の説明と同じ自前ツールチップ(0.2秒)に揃える
+  setHoverTip(frozenBadge, t('wvMonitor.tile.frozenTitle'));
   // 未登録(マシンプロファイル未記載の合成デバイス)バッジ。device.state に関わらず常時対象なので
   // kindBadge と同じくヘッダーに置く(renderMode==='cpu' バッジは state==='connected' 限定だが
   // 表示切替の実装パターン=専用要素+専用 render 関数+style.display 切替は揃える)。

@@ -138,10 +138,6 @@ export const webviewMonitorBStrings = {
   // hostCharts.js
   "wvMonitor2.hostCharts.cpuTitle": { ja: "CPU負荷 {value}", en: "CPU load {value}" },
   "wvMonitor2.hostCharts.gpuTitle": { ja: "GPU負荷 {value}", en: "GPU load {value}" },
-  "wvMonitor2.hostCharts.frozenTitle": {
-    ja: "画面が凍結しているデバイス {count} 台(一様フレームが2サイクル連続)",
-    en: "{count} device(s) with a frozen screen (uniform frame for 2 consecutive cycles)",
-  },
   "wvMonitor2.hostCharts.fmTitle": {
     ja: "FM 呼び出し {total}回 / 計{totalSec}秒(直近1秒 {delta}回)",
     en: "FM calls {total} / {totalSec}s total (last 1s: {delta})",

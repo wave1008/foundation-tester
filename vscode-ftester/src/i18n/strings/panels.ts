@@ -57,8 +57,10 @@ export const panelsStrings = {
   "panels.hostMetrics.cpuTitle": { ja: "CPU負荷", en: "CPU load" },
   "panels.hostMetrics.gpuTitle": { ja: "GPU負荷", en: "GPU load" },
   "panels.hostMetrics.fmTitle": { ja: "FM 呼び出し回数", en: "FM call count" },
+  // ❄️ カウンタの説明(hoverTip)。**件数に依らない一文**なので webview 側で上書きしない
+  // (台数はカウンタの数字そのものが出している)
   "panels.hostMetrics.frozenTitle": {
-    ja: "画面が凍結しているデバイスの台数",
+    ja: "画面が凍結しているデバイスの数",
     en: "Number of devices with a frozen screen",
   },
 

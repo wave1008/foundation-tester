@@ -121,3 +121,48 @@ test("frozen を送らない旧 CLI でも壊れない(0 のまま)", (t) => {
   assert.equal(frozenValue(document), "0");
   assert.equal(visibleFrozenBadges(document), 0);
 });
+
+// ---- 表示は絵文字1文字・意味はホバーの説明 ------------------------------------------
+// 文字(「凍結」/ "Frozen")をやめて ❄️ にしたので、**説明はホバーでしか読めない**。
+// ネイティブ `title` は表示まで約1秒かかり、モニターの他の説明(hoverTip = 0.2秒)と体感が
+// 違うため「出ない」と受け取られる(実際に指摘された)。**実際にホバーして出ることまで**見る。
+
+/** 対象へ mouseover を送り、hoverTip の遅延ぶん待って出たツールチップを返す */
+async function hoverTip(window, el) {
+  el.dispatchEvent(new window.MouseEvent("mouseover", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 260));
+  return window.document.querySelector(".hover-tip");
+}
+
+test("タイルのバッジは ❄️ で、ホバーすると説明が出る", async (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, [{ frozen: true }]);
+  const badge = [...document.querySelectorAll("#grid .badge-frozen")]
+    .find((el) => el.style.display !== "none");
+  assert.ok(badge, "凍結した台にバッジが出ていること");
+  assert.equal(badge.textContent, "❄️", "バッジは絵文字1文字");
+  const tip = await hoverTip(window, badge);
+  assert.ok(tip, "ホバーしても説明が出ていない");
+  assert.equal(tip.style.display, "block");
+  assert.equal(tip.textContent, "デバイス凍結中");
+});
+
+test("ヘッダの凍結カウンタは ❄️ で、ホバーすると説明が出る", async (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  const el = document.getElementById("hm-frozen");
+  assert.equal(el.querySelector(".hm-label").textContent, "❄️", "ラベルは絵文字1文字");
+
+  const tip = await hoverTip(window, el);
+  assert.ok(tip, "ホバーしても説明が出ていない");
+  assert.equal(tip.style.display, "block");
+  assert.equal(tip.textContent, "画面が凍結しているデバイスの数");
+
+  // 件数が変わっても説明は変わらない(台数はカウンタの数字が出している)
+  sendDevices(window, [{ frozen: true }]);
+  assert.equal(frozenValue(document), "1");
+  el.dispatchEvent(new window.MouseEvent("mouseout", { bubbles: true }));
+  const after = await hoverTip(window, el);
+  assert.equal(after.textContent, "画面が凍結しているデバイスの数");
+});
