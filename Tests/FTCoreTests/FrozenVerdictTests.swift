@@ -17,18 +17,6 @@ final class FrozenVerdictTests: XCTestCase {
         XCTAssertFalse(verdict.isSuspected)
     }
 
-    /// 拍動の停止は単独では確定させない(表示の停止とアプリのハングを分けられない)
-    func testNoPresentAloneIsSuspectedOnly() {
-        let verdict = FrozenVerdict([.noPresent])
-        XCTAssertFalse(verdict.isFrozen)
-        XCTAssertTrue(verdict.isSuspected)
-    }
-
-    /// 弱い根拠は強い根拠と併せれば確定する(合流の意味)
-    func testNoPresentWithBlankIsConfirmed() {
-        XCTAssertTrue(FrozenVerdict([.noPresent, .uniformBlank]).isFrozen)
-    }
-
     func testInjectedOnlyIsFrozenButNotActionable() {
         let verdict = FrozenVerdict([.injected])
         XCTAssertTrue(verdict.isFrozen, "表示はする")
@@ -59,7 +47,7 @@ final class FrozenVerdictTests: XCTestCase {
     }
 
     func testCodableRoundTrip() throws {
-        let verdict = FrozenVerdict([.uniformBlank, .noPresent])
+        let verdict = FrozenVerdict([.uniformBlank, .injected])
         let data = try JSONEncoder().encode(verdict)
         XCTAssertEqual(try JSONDecoder().decode(FrozenVerdict.self, from: data), verdict)
     }
@@ -91,34 +79,6 @@ final class FrozenVerdictTests: XCTestCase {
 
     // MARK: - 観測から判定を組み立てる(run とモニターの共通規則)
 
-    /// **拍動が生きていても凍結でありうる**(2026-08-11 の実験で反証)。本物の wedge を
-    /// 故意に起こしたところ、画面が完全に固まっていても拍動は 0.001〜0.016s で回っていた。
-    /// 一度これを否定材料に使ったが、それでは本物を1件も検出できない
-    func testLiveHeartbeatDoesNotDenyAFreeze() {
-        let verdict = FrozenVerdict.observe(uniformBlank: true, displayIdleSeconds: 0.005)
-        XCTAssertTrue(verdict.isFrozen, "拍動を否定材料にすると本物の wedge を取り逃がす")
-        XCTAssertEqual(verdict.evidence, [.uniformBlank])
-    }
-
-    /// 一様 + 拍動も停止なら根拠が2つ揃う
-    func testUniformFrameWithStalledDisplayIsFrozen() {
-        let verdict = FrozenVerdict.observe(uniformBlank: true, displayIdleSeconds: 30)
-        XCTAssertTrue(verdict.isFrozen)
-        XCTAssertEqual(verdict.evidence, [.uniformBlank, .noPresent])
-    }
-
-    /// 申告が無くても一様なら凍結(拍動はあってもなくても判定を変えない)
-    func testUniformFrameWithoutHeartbeatStaysFrozen() {
-        XCTAssertTrue(FrozenVerdict.observe(uniformBlank: true, displayIdleSeconds: nil).isFrozen)
-    }
-
-    /// 拍動が止まっているだけ(画面は一様でない)は疑いどまり
-    func testStalledDisplayAloneIsSuspected() {
-        let verdict = FrozenVerdict.observe(uniformBlank: false, displayIdleSeconds: 30)
-        XCTAssertFalse(verdict.isFrozen)
-        XCTAssertTrue(verdict.isSuspected)
-    }
-
     /// **観測窓が偽陽性と本物を分ける**(拍動ではない)。窓は約10秒に延ばしてある
     func testObservationWindowIsLongEnoughToOutlastFirstPaint() {
         let spanMs = BlankWorkerTriage.intervalMs * (BlankWorkerTriage.samples - 1)
@@ -128,19 +88,22 @@ final class FrozenVerdictTests: XCTestCase {
 
     /// 健全(一様でない)
     func testHealthyObservation() {
-        XCTAssertEqual(FrozenVerdict.observe(uniformBlank: false, displayIdleSeconds: 0.05), .healthy)
+        XCTAssertEqual(FrozenVerdict.observe(uniformBlank: false), .healthy)
+    }
+
+    /// 一様なら凍結
+    func testUniformObservationIsFrozen() {
+        XCTAssertEqual(FrozenVerdict.observe(uniformBlank: true).evidence, [.uniformBlank])
     }
 
     /// 注入は観測に優先する(陽性対照が他の根拠に埋もれない)
     func testInjectionWins() {
-        XCTAssertEqual(FrozenVerdict.observe(uniformBlank: false, displayIdleSeconds: 0.05,
-                                             injected: true).evidence, [.injected])
+        XCTAssertEqual(FrozenVerdict.observe(uniformBlank: false, injected: true).evidence, [.injected])
     }
 
-    /// 一様でなければ凍結ではない(拍動の値に関わらず)
-    func testNonUniformIsNotFrozenRegardlessOfHeartbeat() {
-        XCTAssertFalse(FrozenVerdict.countsAsFrozen(uniformBlank: false, displayIdleSeconds: 0.01))
-        XCTAssertFalse(FrozenVerdict.countsAsFrozen(uniformBlank: false, displayIdleSeconds: 30))
+    /// 一様でなければ凍結ではない
+    func testNonUniformIsNotFrozen() {
+        XCTAssertFalse(FrozenVerdict.countsAsFrozen(uniformBlank: false))
     }
 }
 
@@ -187,6 +150,21 @@ final class DeviceFrozenStoreClearTests: XCTestCase {
         DeviceFrozenStore.clear(stateDir: dir, key: "a")
         XCTAssertNil(DeviceFrozenStore.current(stateDir: dir, key: "a"))
         XCTAssertNotNil(DeviceFrozenStore.current(stateDir: dir, key: "b"))
+    }
+
+    /// 撤去済みの根拠(`noPresent`。rawValue はケース名そのままなので旧ファイルは "noPresent")を
+    /// 含む旧版のファイルは decode に失敗し、**健全(nil)側へ倒れる**こと(誤って凍結扱いにしない)
+    func testLegacyNoPresentEvidenceDecodesAsHealthy() throws {
+        let dir = makeStateDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let key = "legacy-device"
+        let legacy = """
+        {"pid":\(ProcessInfo.processInfo.processIdentifier),"at":\(Date().timeIntervalSince1970),\
+        "verdict":{"evidence":["noPresent"]}}
+        """
+        try legacy.data(using: .utf8)!.write(to: DeviceFrozenStore.entryURL(stateDir: dir, key: key))
+        XCTAssertNil(DeviceFrozenStore.current(stateDir: dir, key: key),
+                     "撤去済み根拠を含む旧JSONは decode 失敗→healthy に倒れること")
     }
 }
 

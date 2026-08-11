@@ -83,10 +83,6 @@ public enum BlankWorkerTriage {
     /// 1台ぶんの判定。**根拠を返す**ので、呼び出し側は真偽値を自前で持たない。
     /// 注入(陽性対照)はスクショより先に見る —— 実デバイスを凍らせずに検知経路を通すための口で、
     /// ここを通さないと run 側とモニター側で注入の効き方がズレる
-    /// しきい値の定義元は `FrozenVerdict`(run とモニターで1つ)。ここは別名
-    public static var displayIdleFrozenThreshold: Double { FrozenVerdict.displayIdleFrozenThreshold }
-
-    /// 1台ぶんの判定。
     ///
     /// `nudge` は**画面を必ず変える無害な入力を送り、その後のフレームを返す**クロージャ。
     /// 一様が続いた機にだけ撃つ。**受動観測では原理的に区別できない**2つの状態を分けるため:
@@ -98,21 +94,20 @@ public enum BlankWorkerTriage {
         key: String?,
         screenshot: () async -> Data?,
         nudge: (() async -> Data?)? = nil,
-        displayIdleSeconds: Double? = nil,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) async -> FrozenVerdict {
         if FrozenInjection.isInjected(key: key, environment: environment) {
             return FrozenVerdict([.injected])
         }
         guard await isPersistentlyBlank(screenshot: screenshot) else {
-            return FrozenVerdict.observe(uniformBlank: false, displayIdleSeconds: displayIdleSeconds)
+            return FrozenVerdict.observe(uniformBlank: false)
         }
         if let nudge, let after = await nudge(),
            !BlankFrameDetector.isUniformBlank(pngData: after) {
             // 入力で描画が戻った = 凍結ではない(拍動では区別できなかった側)
-            return FrozenVerdict.observe(uniformBlank: false, displayIdleSeconds: displayIdleSeconds)
+            return FrozenVerdict.observe(uniformBlank: false)
         }
-        return FrozenVerdict.observe(uniformBlank: true, displayIdleSeconds: displayIdleSeconds)
+        return FrozenVerdict.observe(uniformBlank: true)
     }
 
     /// 凍結したワーカーの label と根拠(並列判定)。健全機は1サンプルで即返るので、
@@ -120,8 +115,7 @@ public enum BlankWorkerTriage {
     public static func frozenVerdicts(
         _ workers: [RunWorker],
         environment: [String: String] = ProcessInfo.processInfo.environment,
-        nudge: (@Sendable (RunWorker) async -> Data?)? = nil,
-        log: (@Sendable (String) -> Void)? = nil
+        nudge: (@Sendable (RunWorker) async -> Data?)? = nil
     ) async -> [String: FrozenVerdict] {
         let candidates = workers.filter(isCandidate)
         guard !candidates.isEmpty else { return [:] }
@@ -129,13 +123,10 @@ public enum BlankWorkerTriage {
                                    returning: [String: FrozenVerdict].self) { group in
             for worker in candidates {
                 group.addTask {
-                    // 拍動の申告はブリッジの /status から採る(計器を持たない版は nil = 根拠にしない)
-                    let displayIdle = try? await worker.driver.status().displayIdleSeconds
                     let verdict = await observedVerdict(
                         key: deviceKey(worker),
                         screenshot: { try? await worker.driver.screenshot() },
                         nudge: nudge.map { probe in { await probe(worker) } },
-                        displayIdleSeconds: displayIdle ?? nil,
                         environment: environment)
                     return (worker.label, verdict)
                 }
@@ -188,7 +179,7 @@ public enum BlankWorkerTriage {
     }
 
     /// ログ用。根拠が既定(一様 blank)だけのときは従来どおり label だけを並べ、
-    /// それ以外(注入・拍動)が混じるときだけ根拠を添える
+    /// それ以外(注入等)が混じるときだけ根拠を添える
     private static func describe(_ verdicts: [String: FrozenVerdict]) -> String {
         verdicts.keys.sorted().map { label in
             let verdict = verdicts[label] ?? .healthy
@@ -206,13 +197,13 @@ public enum BlankWorkerTriage {
         log: @escaping @Sendable (String) -> Void
     ) async -> Result {
         var current = workers
-        var verdicts = await frozenVerdicts(current, environment: environment, nudge: nudge, log: log)
+        var verdicts = await frozenVerdicts(current, environment: environment, nudge: nudge)
         // **判定した時点で公表する**(回復は数分かかりうるので、終わってから配るとモニターは
         // その間ずっと「異常なし」を出す = 見えるようにした意味が無い)
         syncStore(verdicts, of: current, stateDir: stateDir)
         // **確定していない根拠は警告だけ**(新しい検知は拒否でなく警告から始める規律)
         for (label, verdict) in verdicts.filter({ $0.value.isSuspected }).sorted(by: { $0.key < $1.key }) {
-            log("⚠️ \(label): the display may have stopped advancing [\(verdict.summary)]"
+            log("⚠️ \(label): a frozen-screen signal fired [\(verdict.summary)]"
                 + " — not treating it as frozen (this signal is not confirmed yet)")
         }
         // **注入(陽性対照)は公表だけで、回復も除外もしない** —— 実体は健全なので
@@ -229,7 +220,7 @@ public enum BlankWorkerTriage {
                     + " (attempt \(attempt)/\(recoveryAttempts))")
                 guard let rebuilt = await recover(blankLabels, current) else { break }
                 current = rebuilt
-                verdicts = await frozenVerdicts(current, environment: environment, nudge: nudge, log: log)
+                verdicts = await frozenVerdicts(current, environment: environment, nudge: nudge)
                 syncStore(verdicts, of: current, stateDir: stateDir)
                 blankLabels = verdicts
                     .filter { $0.value.isFrozen && !$0.value.isInjectedOnly }.keys.sorted()

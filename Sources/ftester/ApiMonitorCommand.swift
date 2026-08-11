@@ -123,9 +123,6 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         var frozenDebounce = MonitorFrozenDebounce(confirmThreshold: 2)
         // 配信を抑制中のデバイスを最後に「観測のためだけに」撮った時刻(capturePlan が更新する)
         var lastFrozenProbeAt: [String: Date] = [:]
-        // Android の拍動(/status)の直近値。**毎サイクル全機に問い合わせるとサイクルが半減する**
-        // (実測: 16秒で 7〜8 回 → 4 回)。iOS は状態取得のついでに手元にあるので対象外
-        var androidIdleCache: [String: (at: Date, value: Double?)] = [:]
         // GPU/CPU 判定はブート時固定のため接続毎に1回のみ検出しキャッシュする(健全性プローブとは
         // 別間隔。再接続=リブートで変わりうるため切断時に破棄する)
         var renderModeCache: [String: String] = [:]
@@ -224,8 +221,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                     : nil
                 let frozenVerdict = Self.frozenVerdict(
                     id: state.target.id, key: leaseKey,
-                    debounce: frozenDebounce, stateDir: leaseStateDir,
-                    displayIdleSeconds: state.displayIdleSeconds, inRun: inRun)
+                    debounce: frozenDebounce, stateDir: leaseStateDir, inRun: inRun)
                 return state.info(health: confirmedIssues.isEmpty ? nil : confirmedIssues,
                                    renderMode: state.androidSerial.flatMap { renderModeCache[$0] },
                                    inRun: inRun, recording: recording, host: bridgeHost,
@@ -275,30 +271,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 loggedFetchFailure.remove(state.target.id)
                 // ---- 観測段: **縮小前の PNG で判定する**(JPEG 化は非可逆で、縮小も一様性を
                 // 薄める方向に働く)。撮れなかったサイクル(上の continue)では記録しない = 直前の確定を保つ
-                //
-                // **一様でも「描画が進んでいる」なら凍結ではない**(2026-08-11 の誤検知)。
-                // run のあと SUT が真っ白な画面で放置されると一様フレームになり、誰も触らないので
-                // 確定が永久に解けなかった。拍動(displayIdleSeconds)が生きていれば単に
-                // 「真っ白な画面を出している」だけと分かる。**一様のときだけ問い合わせる**
-                // (固定費を増やさない)。申告の無いブリッジは nil = 従来どおり一様なら凍結扱い
                 let uniform = BlankFrameDetector.isUniformBlank(pngData: png)
-                // **一様かどうかに関わらず拍動を採る**: 固着型(最後のフレームが残る)は非一様なので、
-                // 一様のときだけ問い合わせると原理的に捕まらない。
-                // Android はブリッジへの往復なので直近値を使い回す(凍結は分単位・判定は2連続なので
-                // この粒度で足りる)。iOS は状態取得のついでに手元にある = 無料
-                var idle: Double?
-                if state.target.platform == "ios" {
-                    idle = state.displayIdleSeconds
-                } else if let serial = state.androidSerial {
-                    let now = Date()
-                    if let cached = androidIdleCache[state.target.id],
-                       now.timeIntervalSince(cached.at) < Self.displayIdleProbeIntervalSeconds {
-                        idle = cached.value
-                    } else {
-                        idle = (try? await AndroidDriver(serial: serial).status().displayIdleSeconds) ?? nil
-                        androidIdleCache[state.target.id] = (now, idle)
-                    }
-                }
                 // **run 中は streak を積まず忘れる**(frozenVerdict の inRun と対)。記録だけ続けて
                 // 判定側で無視すると、run 終了の瞬間に run 中の黒で確定済みの ❄️ が出る —— 終了後の
                 // 黒は2回の新規確認からやり直す
@@ -309,9 +282,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 if captureInRun {
                     frozenDebounce.forget(id: state.target.id)
                 } else {
-                    frozenDebounce.record(
-                        uniformBlank: Self.isFrozenSample(uniformBlank: uniform, displayIdleSeconds: idle),
-                        id: state.target.id)
+                    frozenDebounce.record(uniformBlank: uniform, id: state.target.id)
                 }
 
                 // ---- 配信段: ここから先だけが抑制の対象
@@ -530,15 +501,9 @@ struct ApiMonitorCommand: AsyncParsableCommand {
     /// ②を見るのが要点 —— 2026-08-11 に run は9台の凍結を見つけて回復まで走っていたのに、
     /// モニターは自前の観測しか持たず `Frozen: 0` を出し続けた。純粋関数にしてあるのは、
     /// この「run が知っていることをモニターが知る」経路を陽性対照で毎回通すため
-    /// 「描画が止まった」と見なす拍動の空き(秒)。
-    /// ブリッジのメインスレッドは操作(タップの整定待ち等)で数百 ms 〜 1秒ほど専有されるので、
-    /// **通常の操作でまたがない幅**に置く。凍結は分単位なので緩くて構わない
-    static var displayIdleFrozenThreshold: Double { FrozenVerdict.displayIdleFrozenThreshold }
-
     static func frozenVerdict(id: String, key: String?,
                               debounce: MonitorFrozenDebounce,
                               stateDir: URL?,
-                              displayIdleSeconds: Double? = nil,
                               inRun: Bool = false,
                               environment: [String: String] = ProcessInfo.processInfo.environment,
                               now: Date = Date()) -> FrozenVerdict {
@@ -547,17 +512,13 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         } ?? .healthy
         let injected = FrozenInjection.isInjected(key: key, environment: environment)
             ? FrozenVerdict([.injected]) : .healthy
-        // 拍動は**単独では確定させない**(FrozenEvidence.noPresent.isConclusive == false)。
-        // 申告の無いブリッジ(旧版・計器なし)は nil = 根拠にしない
-        let present: FrozenVerdict = (displayIdleSeconds ?? 0) > displayIdleFrozenThreshold
-            ? FrozenVerdict([.noPresent]) : .healthy
         // **run 中は自前の受動観測を確定に使わない**: run はアプリを terminate→relaunch し続けるので
         // 合間の一様(真っ黒)フレームは正常に出るし、黒画面の2種(描画要求なし/本物の wedge)は
         // 受動観測では分けられない(docs/verification.md)。run 中に本物が起きれば
         // run 側の能動プローブが published(DeviceFrozenStore)経由でここへ届く。
         // 注入(陽性対照)と published は run 中も残す
         let own = inRun ? .healthy : debounce.verdict(id: id)
-        return own.merged(with: published).merged(with: injected).merged(with: present)
+        return own.merged(with: published).merged(with: injected)
     }
 
     /// pause したまま resume が来ない場合に自動的に resume 扱いにするまでの秒数(安全弁)
@@ -634,8 +595,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             if let port = ports.first(where: { bridgeStatuses[$0] != nil }) {
                 return DeviceRuntimeState(target: target, state: "connected",
                                           detail: "port \(port)", iosPort: port,
-                                          androidSerial: nil, iosUdid: sim.udid,
-                                          displayIdleSeconds: bridgeStatuses[port]?.displayIdleSeconds)
+                                          androidSerial: nil, iosUdid: sim.udid)
             }
             return DeviceRuntimeState(target: target, state: "booted",
                                       detail: "\(sim.name) \(sim.os)",
@@ -658,8 +618,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         if let port {
             return DeviceRuntimeState(target: target, state: "connected",
                                       detail: "port \(port)", iosPort: port, androidSerial: nil,
-                                      iosUdid: sim.udid,
-                                      displayIdleSeconds: bridgeStatuses[port]?.displayIdleSeconds)
+                                      iosUdid: sim.udid)
         }
         if sim.booted {
             return DeviceRuntimeState(target: target, state: "booted",
@@ -758,32 +717,6 @@ struct ApiMonitorCommand: AsyncParsableCommand {
     }
 
     /// state==connected のデバイスのスクリーンショットを取得する(PNG。JPEG 変換は呼び出し側)
-    /// 一様フレームを凍結の材料として数えるか。**純粋関数**(判定規則をテストで固定するため)。
-    ///
-    /// **拍動が生きているなら一様でも凍結ではない**(2026-08-11 の誤検知): run のあと SUT が
-    /// 真っ白な画面で放置されると一様フレームになり、誰も触らないので確定が永久に解けなかった。
-    /// 実測では HOME を押しただけでスクショが 24KB → 1.4MB になり、描画は生きていた。
-    /// 拍動の申告が無い(nil = 旧ブリッジ・ブリッジ無し)ときは**従来どおり**一様を材料にする
-    /// (判断材料が無いのに保護を外さない)。
-    static func isFrozenSample(uniformBlank: Bool, displayIdleSeconds: Double?,
-                               threshold: Double = FrozenVerdict.displayIdleFrozenThreshold) -> Bool {
-        FrozenVerdict.countsAsFrozen(uniformBlank: uniformBlank,
-                                     displayIdleSeconds: displayIdleSeconds, threshold: threshold)
-    }
-
-    /// Android の拍動を問い合わせ直す間隔(秒)。ブリッジへの往復なので毎サイクルは払わない
-    static let displayIdleProbeIntervalSeconds: TimeInterval = 6
-
-    /// ブリッジが申告する「最後に画面が進んでからの秒数」。
-    /// iOS は毎サイクルの /status 一括取得で既に手元にある(DeviceRuntimeState)。
-    /// **Android はモニターがブリッジを叩いていない**(スクショは adb 経由)ので、
-    /// 必要になった時だけ問い合わせる。ブリッジが無い/古い場合は nil = 判断材料にしない
-    private static func displayIdleSeconds(state: DeviceRuntimeState) async -> Double? {
-        if state.target.platform == "ios" { return state.displayIdleSeconds }
-        guard let serial = state.androidSerial else { return nil }
-        return try? await AndroidDriver(serial: serial).status().displayIdleSeconds
-    }
-
     private static func fetchScreenshot(state: DeviceRuntimeState) async throws -> Data {
         if state.target.platform == "ios" {
             guard let port = state.iosPort else { throw MonitorError.noConnection }
@@ -900,21 +833,15 @@ struct DeviceRuntimeState {
     /// iOS で SimulatorCatalog.resolve が成功した場合(state に関わらず)設定。list-devices が
     /// ブリッジ自動起動(ApiLiveCommand --udid)のために公開する。resolve 失敗時は nil のまま
     let iosUdid: String?
-    /// ブリッジが申告する「最後に画面が進んでからの秒数」(BridgeDTO.StatusResponse 参照)。
-    /// **維持(debounce)中は運ばない** —— 古い拍動を根拠にすると、通信が一瞬切れただけで
-    /// 「描画が止まった」と言い出す。不明(nil)は根拠なしに倒す
-    let displayIdleSeconds: Double?
 
     init(target: MonitorTarget, state: String, detail: String,
-        iosPort: UInt16?, androidSerial: String?, iosUdid: String? = nil,
-        displayIdleSeconds: Double? = nil) {
+        iosPort: UInt16?, androidSerial: String?, iosUdid: String? = nil) {
         self.target = target
         self.state = state
         self.detail = detail
         self.iosPort = iosPort
         self.androidSerial = androidSerial
         self.iosUdid = iosUdid
-        self.displayIdleSeconds = displayIdleSeconds
     }
 
     /// fileprivate: 戻り値の型 ApiMonitorDeviceInfo がファイル限定の private 型のため
@@ -935,9 +862,10 @@ struct DeviceRuntimeState {
 
 /// 画面凍結(一様フレーム)の確定判定。**1サンプルでは凍結と言わない** ——
 /// 起動直後・遷移中・全面が一色の画面は一瞬だけ一様になるので、`confirmThreshold` 回連続で
-/// 一様だったときにだけ確定する(run 前トリアージの `BlankWorkerTriage` が 1.5s 間隔で
-/// 2連続を要求するのと同じ規律。あちらは専用サンプリング、こちらは監視サイクルが間隔になる)。
-/// 一様でないフレームを1枚見たら即クリアする(復帰を遅らせない)。
+/// 一様だったときにだけ確定する(監視サイクルの間隔ぶんデバウンスする受動観測)。
+/// **run 前トリアージ(`BlankWorkerTriage`)とは別物**: あちらは 2.5s × 5 サンプルの専用窓 +
+/// 能動プローブ(`nudge`)で確定させる。ここは受動観測のみ(run 中は使わない。`frozenVerdict`
+/// の `inRun` 参照)。一様でないフレームを1枚見たら即クリアする(復帰を遅らせない)。
 ///
 /// internal: 判定は純粋なのでここだけで単体テストする(ApiMonitorFrozenDebounceTests)。
 struct MonitorFrozenDebounce {
@@ -971,9 +899,6 @@ struct MonitorFrozenDebounce {
     func verdict(id: String) -> FrozenVerdict {
         confirmedIDs.contains(id) ? FrozenVerdict([.uniformBlank]) : .healthy
     }
-
-    /// 確定済みの件数(モニターのヘッダに出す「Frozen: N」)
-    var frozenCount: Int { confirmedIDs.count }
 
     /// デバイスの記憶を破棄(接続断・デバイス消滅のとき呼ぶ)。
     /// **接続が切れたら忘れる** —— 落ちている機を凍結として数え続けない

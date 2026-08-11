@@ -1960,7 +1960,10 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
 - **run の開始前に「画面だけ死んだ」仮想デバイスを弾く**(2026-08-05。`BlankWorkerTriage`)。
   Android は `ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers` が同じ位置で**修復まで**行うが、
   **iOS には軽い修復手段が無い**(確認できているのは `simctl shutdown`→`boot` だけ)ので
-  除外して復旧コマンドをログに出す。判定は恒常 blank(1.5s 間隔で2連続)で、
+  除外して復旧コマンドをログに出す。判定は恒常 blank(2.5s 間隔で5連続。約10秒の観測窓)に加え、
+  一様が続いた機だけ画面を必ず変える入力を送る能動プローブ(`nudge`)で仕分ける ——
+  「描画要求が無いだけの黒画面」(入力で戻る)と「本物の wedge」(戻らない)は受動観測では
+  原理的に区別できない(2026-08-11。拍動では分けられなかった)。
   健全機は1サンプルで返る = 正常時の固定費はスクショ1枚。**実機は対象外**(消灯を凍結と誤断する)
 - **容器の推測に依存する補正は3層で止められる**(上位から `FT_CONTAINER_INFERENCE=off` の殺しスイッチ /
   実行プロファイルの `containerInference` / DSL の `tap(containerInference:)`・`withoutContainerInference { }`。

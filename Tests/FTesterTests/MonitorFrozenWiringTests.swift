@@ -181,26 +181,6 @@ final class MonitorFrozenWiringTests: XCTestCase {
         XCTAssertFalse(verdict.isFrozen)
     }
 
-    // MARK: - ③ 一様でも「描画が進んでいる」なら凍結ではない
-
-    /// **拍動を否定材料に使わない**(2026-08-11 の実験で反証。本物の wedge でも拍動は回る)
-    func testLiveHeartbeatDoesNotDenyAFreeze() {
-        XCTAssertTrue(ApiMonitorCommand.isFrozenSample(uniformBlank: true, displayIdleSeconds: 0.005),
-                      "拍動が生きていても凍結でありうる")
-    }
-
-    /// 申告の有無で判定は変わらない
-    func testHeartbeatPresenceDoesNotChangeTheSample() {
-        XCTAssertTrue(ApiMonitorCommand.isFrozenSample(uniformBlank: true, displayIdleSeconds: nil))
-        XCTAssertTrue(ApiMonitorCommand.isFrozenSample(uniformBlank: true, displayIdleSeconds: 30))
-    }
-
-    /// 一様でなければ凍結ではない
-    func testNonUniformIsNotFrozen() {
-        XCTAssertFalse(ApiMonitorCommand.isFrozenSample(uniformBlank: false, displayIdleSeconds: nil))
-        XCTAssertFalse(ApiMonitorCommand.isFrozenSample(uniformBlank: false, displayIdleSeconds: 0.01))
-    }
-
     // MARK: - ④ run 中は自前の受動観測を確定に使わない
 
     /// **run 中の一様フレームで ❄️ を出さない**: run はアプリを terminate→relaunch し続けるので

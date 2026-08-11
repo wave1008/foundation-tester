@@ -13,7 +13,6 @@ final class MonitorFrozenDebounceTests: XCTestCase {
         var debounce = MonitorFrozenDebounce(confirmThreshold: 2)
         XCTAssertFalse(debounce.record(uniformBlank: true, id: "ios:01"))
         XCTAssertFalse(debounce.isFrozen(id: "ios:01"))
-        XCTAssertEqual(debounce.frozenCount, 0)
     }
 
     func testTwoConsecutiveBlankFramesConfirmFrozen() {
@@ -21,7 +20,6 @@ final class MonitorFrozenDebounceTests: XCTestCase {
         debounce.record(uniformBlank: true, id: "ios:01")
         XCTAssertTrue(debounce.record(uniformBlank: true, id: "ios:01"))
         XCTAssertTrue(debounce.isFrozen(id: "ios:01"))
-        XCTAssertEqual(debounce.frozenCount, 1)
     }
 
     /// **連続していなければ確定しない**(1枚おきに一様になる画面を凍結と呼ばない)
@@ -39,7 +37,7 @@ final class MonitorFrozenDebounceTests: XCTestCase {
         debounce.record(uniformBlank: true, id: "ios:01")
         debounce.record(uniformBlank: true, id: "ios:01")
         XCTAssertFalse(debounce.record(uniformBlank: false, id: "ios:01"))
-        XCTAssertEqual(debounce.frozenCount, 0)
+        XCTAssertFalse(debounce.isFrozen(id: "ios:01"))
     }
 
     /// デバイスごとに独立(1台の凍結が他台の判定を汚さない)
@@ -50,7 +48,6 @@ final class MonitorFrozenDebounceTests: XCTestCase {
         debounce.record(uniformBlank: true, id: "ios:01")
         XCTAssertTrue(debounce.isFrozen(id: "ios:01"))
         XCTAssertFalse(debounce.isFrozen(id: "ios:02"), "02 はまだ1枚目")
-        XCTAssertEqual(debounce.frozenCount, 1)
     }
 
     /// **接続が切れたら忘れる** —— 落ちている機を凍結として数え続けない
@@ -60,7 +57,6 @@ final class MonitorFrozenDebounceTests: XCTestCase {
         debounce.record(uniformBlank: true, id: "ios:01")
         debounce.forget(id: "ios:01")
         XCTAssertFalse(debounce.isFrozen(id: "ios:01"))
-        XCTAssertEqual(debounce.frozenCount, 0)
         // 忘れた後は数え直し(1枚では確定しない)
         XCTAssertFalse(debounce.record(uniformBlank: true, id: "ios:01"))
     }
