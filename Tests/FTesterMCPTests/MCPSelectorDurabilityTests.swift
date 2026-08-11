@@ -115,6 +115,30 @@ final class MCPSelectorDurabilityTests: XCTestCase {
         XCTAssertGreaterThan(checked, 0)
     }
 
+    /// **絞り込みの取り分を守る**(2026-08-12)。`.型&&ラベル` / `#容器 >> ラベル` を足す前は
+    /// コーパス 975 要素のうち **indexed 326 / 書けない 38** で、足した後は **157 / 18**。
+    /// 上限はその実測値に余裕を持たせた値 —— **上げるときは増えた分を1件ずつ見てから**
+    /// (黙って上げるとこの砦は現状の追認装置になる。SweepHarnessTests の基準値と同じ規律)。
+    /// 候補の事前ゲート(数え上げ)はコストだけを下げるもので、**この数を1件も動かさない**
+    func testNarrowingKeepsIndexedAndUnwritableLow() throws {
+        var indexed = 0, unwritable = 0, total = 0
+        for name in try fixtureNames() {
+            let snapshot = try fixture(name)
+            let naming = MCPServer.SelectorNaming(snapshot)
+            for element in snapshot.elements {
+                total += 1
+                switch naming.graded(for: element, in: snapshot)?.durability {
+                case .some(.indexed): indexed += 1
+                case .none: unwritable += 1
+                case .some(.stable): break
+                }
+            }
+        }
+        XCTAssertGreaterThan(total, 900, "コーパスが縮んでいる = この砦は何も見ていない")
+        XCTAssertLessThanOrEqual(indexed, 200, "索引セレクタが増えている(実測 157)")
+        XCTAssertLessThanOrEqual(unwritable, 30, "書けない要素が増えている(実測 18)")
+    }
+
     /// コーパスに両方の格付けが出ていること(片側しか見ていない状態を防ぐ)
     func testCorpusExercisesBothGrades() throws {
         var stable = 0, indexed = 0

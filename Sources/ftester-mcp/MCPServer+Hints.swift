@@ -574,17 +574,69 @@ extension MCPServer {
     struct SelectorNaming {
         private let idCounts: [String: Int]
         private let labelCounts: [String: Int]
+        /// 「型 × ラベル」の出現数。**候補を組む前のゲート**で、これが 1 のときだけ
+        /// `.型&&ラベル` を試す —— 数え上げは木1周(O(N))で済むのに対し、候補の検証は
+        /// `matchDetailed` + `resolvedCandidates` の2周を候補ごとに払う。
+        /// 入れ忘れると注記1本の生成が実アプリ画面で 29ms → 116ms になる(2026-08-12 に実測)
+        private let typeLabelCounts: [String: Int]
 
         init(_ snapshot: SnapshotResponse) {
             var ids: [String: Int] = [:]
             var labels: [String: Int] = [:]
+            var typeLabels: [String: Int] = [:]
             for e in snapshot.elements {
                 if let id = e.identifier, !id.isEmpty { ids[id, default: 0] += 1 }
                 let label = FlowMatchMode.normalizeInvisibleCharacters(e.label ?? "")
-                if !label.isEmpty { labels[label, default: 0] += 1 }
+                if !label.isEmpty {
+                    labels[label, default: 0] += 1
+                    typeLabels[Self.typeLabelKey(e.type, label), default: 0] += 1
+                }
             }
             idCounts = ids
             labelCounts = labels
+            typeLabelCounts = typeLabels
+        }
+
+        /// 型名とラベルの区切りは**要素の文字に現れない値**を使う(型名に混ざると別の組を
+        /// 同一視する)
+        static func typeLabelKey(_ type: String, _ label: String) -> String {
+            "\(type)\u{0}\(label)"
+        }
+
+        /// スコープの中でそのラベル(と 型×ラベル)が何件あるか。**スコープを跨いで数えない**
+        /// のがここの要点 —— 画面全体では重複するラベルでも、容器の中では一意なことが多い。
+        /// 走査は候補を組む直前の1回だけで、`uniqueScopeID` が nil を返す要素では走らない
+        static func labelCountsInScope(_ scopeID: String, of element: ElementInfo,
+                                       in snapshot: SnapshotResponse,
+                                       label: String) -> (plain: Int, typed: Int)? {
+            guard let scope = snapshot.elements.first(where: { $0.identifier == scopeID })
+            else { return nil }
+            var plain = 0, typed = 0
+            for e in StepExecutor.descendants(of: scope, in: snapshot.elements)
+            where FlowMatchMode.normalizeInvisibleCharacters(e.label ?? "") == label {
+                plain += 1
+                if e.type == element.type { typed += 1 }
+            }
+            return (plain, typed)
+        }
+
+        /// ラベルを素で書くと記法として読まれてしまう形か。`=` 逃がしはこのときだけ足す ——
+        /// 常に両方を候補に入れると、**当たる方が先に通るので結果は同じなのに検証を2倍払う**
+        /// 判定は2種類ある。**片方だけでは足りない**:
+        /// ① 意味が変わる形(`#`/`.` 始まり・演算子)—— 往復はするが別のフィルタとして読まれる
+        /// ② 綴りが往復しない形(前後の空白など)—— 意味は同じだが印字とコードが食い違う
+        ///    (実測: `and-place_expanded` にラベルが空白2文字だけの要素がある)
+        static func needsEscaping(_ label: String) -> Bool {
+            guard let first = label.first else { return false }
+            if "#.=!*".contains(first) { return true }
+            if ["&&", ">>", "||", "[", "]", "(", ")", "|"].contains(where: label.contains) {
+                return true
+            }
+            // **`asWritten` は使わない**: あれは空になったとき元の文字列へ落とすので、
+            // 「空へ潰れる = いちばん往復しない形」を素通りさせる(実測: ラベルが
+            // `" · "` や空白だけの要素)。ここは素の往復をそのまま見る
+            let parsed = FTSelector.parse(label)
+            return FTSelector.serialize(primary: parsed.primary, fallbacks: parsed.fallbacks) != label
         }
 
         /// **勧める前に自分で引いてみる**(2026-08-09。実アプリ 18 枚へ当てて発覚): 候補を
@@ -637,10 +689,14 @@ extension MCPServer {
             // 読み手が写した完全一致は必ず外れる(SnapshotRenderer.truncatedLabelNote と同じ理由)
             let label = FlowMatchMode.normalizeInvisibleCharacters(element.label ?? "")
             let writableLabel = !label.isEmpty && label.count <= SnapshotRenderer.labelDisplayLimit
+            // **素の形を先に置く**(順序を入れ替えない): `asWritten` は逃がしを外した形を返すので、
+            // 逃がし形を先に採ると「勧めた文字列」と「下書きに書かれる文字列」が食い違う
+            // (実測: ラベル `" ·"` で `= ·` を先に置いたら、注記は `" ·"`・コードは `"·"` になった)。
+            // 逃がしは**素で書けない形のときだけ**後ろに足す —— 常に両方入れると、
+            // 当たる方が先に通るので結果は同じなのに候補の検証を2倍払う
+            let labelForms = Self.needsEscaping(label) ? [label, "=\(label)"] : [label]
             if writableLabel, labelCounts[label] == 1 {
-                // 素のラベルが記法と衝突する形(`#` や `.` 始まり)には `=` 逃がしがある
-                out.append((label, .stable))
-                out.append(("=\(label)", .stable))
+                out += labelForms.map { ($0, .stable) }
             }
             // **ラベルが重複していても、まず絞ってから索引に落とす**(2026-08-12 の実アプリ監査)。
             // ここが無かった版は「一意な id も一意なラベルも無い」を即 `#容器 >> .型[n]` に
@@ -648,13 +704,21 @@ extension MCPServer {
             // .clickable[3]` しか書けず、**候補の件数が変わると別の駅を選ぶ**。
             // `&&`(AND 合成)と `>>`(スコープ)は DSL の記法にあり、どちらも位置に依存しない。
             // **既存の提案は動かさない** —— 上の `#id` / 一意ラベルより後、索引形より前に置く
+            // **数え上げで足切りしてから検証する**: 候補1つの検証は木2周(`matchDetailed` と
+            // `resolvedCandidates`)で、当たらない候補まで並べると注記の生成が実アプリ画面で
+            // 4倍になる(2026-08-12 に実測して入れ直した)。数え上げは init の1周で済む
             if writableLabel {
-                out.append((".\(element.type)&&\(label)", .stable))
-                out.append((".\(element.type)&&=\(label)", .stable))
-                if let scope = MCPServer.uniqueScopeID(for: element, in: snapshot) {
-                    out.append(("#\(scope) >> \(label)", .stable))
-                    out.append(("#\(scope) >> =\(label)", .stable))
-                    out.append(("#\(scope) >> .\(element.type)&&\(label)", .stable))
+                if typeLabelCounts[Self.typeLabelKey(element.type, label)] == 1 {
+                    out += labelForms.map { (".\(element.type)&&\($0)", .stable) }
+                }
+                if let scope = MCPServer.uniqueScopeID(for: element, in: snapshot),
+                   let inScope = Self.labelCountsInScope(scope, of: element, in: snapshot, label: label) {
+                    if inScope.plain == 1 {
+                        out += labelForms.map { ("#\(scope) >> \($0)", .stable) }
+                    }
+                    if inScope.typed == 1 {
+                        out += labelForms.map { ("#\(scope) >> .\(element.type)&&\($0)", .stable) }
+                    }
                 }
             }
             if let scoped = MCPServer.scopedSelector(for: element, in: snapshot) {

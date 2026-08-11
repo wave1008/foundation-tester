@@ -148,6 +148,18 @@ final class MCPWritableSelectorTests: XCTestCase {
                      "重複 id をスコープにした式を勧めてはいけない")
     }
 
+    /// **記法として読まれてしまうラベルには `=` 逃がしを使う**。`#` 始まりのラベルを素で書くと
+    /// id フィルタとして解釈され、当たらないか別の要素に当たる。
+    /// (実アプリのコーパスにこの形が1つも無いので、合成の木でだけ通る経路)
+    func testLabelThatLooksLikeNotationFallsBackToTheEscapedForm() throws {
+        let snap = snapshot([element(1, label: "#hashtag"), element(2, label: "ほか")])
+        let naming = MCPServer.SelectorNaming(snap)
+        XCTAssertEqual(naming.selector(for: snap.elements[0], in: snap), "=#hashtag")
+        XCTAssertEqual(resolvedRef("=#hashtag", in: snap), 1)
+        // 素の形は id として読まれるので、この木では誰にも当たらない
+        XCTAssertNil(resolvedRef("#hashtag", in: snap))
+    }
+
     /// **既存の提案を動かさない**: `#id` と一意ラベルは新しい形より優先されたまま
     func testNarrowingFormsDoNotOutrankIDsOrUniqueLabels() throws {
         let snap = snapshot([element(1, id: "login", label: "OK"), element(2, label: "OK"),
