@@ -77,9 +77,8 @@ public enum BlankWorkerTriage {
     /// 1台ぶんの判定。**根拠を返す**ので、呼び出し側は真偽値を自前で持たない。
     /// 注入(陽性対照)はスクショより先に見る —— 実デバイスを凍らせずに検知経路を通すための口で、
     /// ここを通さないと run 側とモニター側で注入の効き方がズレる
-    /// 「描画が止まった」と見なす拍動の空き(秒)。モニター側(ApiMonitorCommand)と同じ値を使う。
-    /// **片方だけ変えない** —— run とモニターでしきい値が割れると同じ機の判定が食い違う
-    public static let displayIdleFrozenThreshold: Double = 3.0
+    /// しきい値の定義元は `FrozenVerdict`(run とモニターで1つ)。ここは別名
+    public static var displayIdleFrozenThreshold: Double { FrozenVerdict.displayIdleFrozenThreshold }
 
     public static func observedVerdict(
         key: String?,
@@ -90,12 +89,10 @@ public enum BlankWorkerTriage {
         if FrozenInjection.isInjected(key: key, environment: environment) {
             return FrozenVerdict([.injected])
         }
-        // 拍動は単独では確定しない(FrozenEvidence.noPresent)。申告の無いブリッジは nil = 根拠なし
-        let present: FrozenVerdict = (displayIdleSeconds ?? 0) > displayIdleFrozenThreshold
-            ? FrozenVerdict([.noPresent]) : .healthy
-        let blank: FrozenVerdict = await isPersistentlyBlank(screenshot: screenshot)
-            ? FrozenVerdict([.uniformBlank]) : .healthy
-        return blank.merged(with: present)
+        // **判定規則はモニターと共通**(FrozenVerdict.observe)。一様でも拍動が生きていれば
+        // 凍結としない = アプリの初回描画待ちでフリートを再起動しない
+        return FrozenVerdict.observe(uniformBlank: await isPersistentlyBlank(screenshot: screenshot),
+                                     displayIdleSeconds: displayIdleSeconds)
     }
 
     /// 凍結したワーカーの label と根拠(並列判定)。健全機は1サンプルで即返るので、
@@ -117,15 +114,14 @@ public enum BlankWorkerTriage {
                                                         screenshot: { try? await worker.driver.screenshot() },
                                                         displayIdleSeconds: displayIdle ?? nil,
                                                         environment: environment)
-                    // **矛盾を記録する**(2026-08-11): 一様なのに拍動が生きている = 「真っ白な画面を
-                    // 出しているだけ」かもしれない。モニター側はこれを凍結と言わないようにしたが、
-                    // run 側は**保護を優先して従来どおり凍結として扱う**(拍動が wedge で止まるかは
-                    // 未検証で、外すと本物の凍結を取り逃がす)。どれだけ起きるかを測るためのログ
-                    if verdict.evidence.contains(.uniformBlank),
-                       let idle = displayIdle ?? nil, idle <= displayIdleFrozenThreshold {
-                        log?("⚠️ \(worker.label): the frame is uniform but the display is still"
-                            + " advancing (idle \(String(format: "%.2f", idle))s) — treating it as frozen"
-                            + " (it may just be showing a blank screen)")
+                    // **見送ったことを残す**(2026-08-11 の実測): 一様なのに拍動が生きている機は
+                    // 凍結として扱わない。これを黙って捨てると「なぜ回復しなかったのか」が
+                    // 追えなくなる(逆に、本物の凍結を取り逃がしたときの手掛かりにもなる)
+                    if !verdict.isFrozen, let idle = displayIdle ?? nil,
+                       idle <= displayIdleFrozenThreshold {
+                        log?("ℹ️ \(worker.label): the frame is uniform but the display is still"
+                            + " advancing (idle \(String(format: "%.2f", idle))s)"
+                            + " — not treating it as frozen (the app is probably still painting)")
                     }
                     return (worker.label, verdict)
                 }

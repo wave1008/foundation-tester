@@ -503,7 +503,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
     /// 「描画が止まった」と見なす拍動の空き(秒)。
     /// ブリッジのメインスレッドは操作(タップの整定待ち等)で数百 ms 〜 1秒ほど専有されるので、
     /// **通常の操作でまたがない幅**に置く。凍結は分単位なので緩くて構わない
-    static let displayIdleFrozenThreshold: Double = 3.0
+    static var displayIdleFrozenThreshold: Double { FrozenVerdict.displayIdleFrozenThreshold }
 
     static func frozenVerdict(id: String, key: String?,
                               debounce: MonitorFrozenDebounce,
@@ -730,10 +730,9 @@ struct ApiMonitorCommand: AsyncParsableCommand {
     /// 拍動の申告が無い(nil = 旧ブリッジ・ブリッジ無し)ときは**従来どおり**一様を材料にする
     /// (判断材料が無いのに保護を外さない)。
     static func isFrozenSample(uniformBlank: Bool, displayIdleSeconds: Double?,
-                               threshold: Double = displayIdleFrozenThreshold) -> Bool {
-        guard uniformBlank else { return false }
-        guard let idle = displayIdleSeconds else { return true }
-        return idle > threshold
+                               threshold: Double = FrozenVerdict.displayIdleFrozenThreshold) -> Bool {
+        FrozenVerdict.countsAsFrozen(uniformBlank: uniformBlank,
+                                     displayIdleSeconds: displayIdleSeconds, threshold: threshold)
     }
 
     /// ブリッジが申告する「最後に画面が進んでからの秒数」。

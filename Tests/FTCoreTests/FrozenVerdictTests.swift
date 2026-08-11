@@ -89,4 +89,52 @@ final class FrozenVerdictTests: XCTestCase {
         XCTAssertTrue(FrozenInjection.keys(environment: [:]).isEmpty)
         XCTAssertFalse(FrozenInjection.isInjected(key: "udid-a", environment: [:]))
     }
+
+    // MARK: - 観測から判定を組み立てる(run とモニターの共通規則)
+
+    /// **本丸**(2026-08-11 の実測): 一様でも拍動が生きていれば凍結ではない。
+    /// フル E2E で凍結と判定された 13台は 13台とも拍動が生きており、台数は描画の重さに
+    /// 比例した(Flutter 10 / Compose 3 / SwiftUI・RN 0)= アプリの初回描画待ちだった
+    func testUniformFrameWithLiveDisplayIsNotFrozen() {
+        let verdict = FrozenVerdict.observe(uniformBlank: true, displayIdleSeconds: 0.05)
+        XCTAssertFalse(verdict.isFrozen, "初回描画待ちでフリートを再起動してはいけない")
+        XCTAssertTrue(verdict.evidence.isEmpty)
+    }
+
+    /// 拍動が止まっていれば従来どおり凍結(根拠は2つ揃う)
+    func testUniformFrameWithStalledDisplayIsFrozen() {
+        let verdict = FrozenVerdict.observe(uniformBlank: true, displayIdleSeconds: 30)
+        XCTAssertTrue(verdict.isFrozen)
+        XCTAssertEqual(verdict.evidence, [.uniformBlank, .noPresent])
+    }
+
+    /// **申告が無いときは保護を外さない**(旧ブリッジ・ブリッジ無しの機を見逃さない)
+    func testUniformFrameWithoutHeartbeatStaysFrozen() {
+        XCTAssertTrue(FrozenVerdict.observe(uniformBlank: true, displayIdleSeconds: nil).isFrozen)
+    }
+
+    /// 一様でなく拍動だけ止まっているのは**疑いどまり**(単独では確定させない)
+    func testStalledDisplayAloneIsOnlySuspected() {
+        let verdict = FrozenVerdict.observe(uniformBlank: false, displayIdleSeconds: 30)
+        XCTAssertFalse(verdict.isFrozen)
+        XCTAssertTrue(verdict.isSuspected)
+    }
+
+    /// 健全(一様でない・拍動も生きている)
+    func testHealthyObservation() {
+        XCTAssertEqual(FrozenVerdict.observe(uniformBlank: false, displayIdleSeconds: 0.05), .healthy)
+    }
+
+    /// 注入は観測に優先する(陽性対照が他の根拠に埋もれない)
+    func testInjectionWins() {
+        XCTAssertEqual(FrozenVerdict.observe(uniformBlank: false, displayIdleSeconds: 0.05,
+                                             injected: true).evidence, [.injected])
+    }
+
+    /// しきい値の境界(ちょうどは「生きている」側)
+    func testCountsAsFrozenBoundary() {
+        let t = FrozenVerdict.displayIdleFrozenThreshold
+        XCTAssertFalse(FrozenVerdict.countsAsFrozen(uniformBlank: true, displayIdleSeconds: t))
+        XCTAssertTrue(FrozenVerdict.countsAsFrozen(uniformBlank: true, displayIdleSeconds: t + 0.01))
+    }
 }

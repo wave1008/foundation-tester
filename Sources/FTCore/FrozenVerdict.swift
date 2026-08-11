@@ -78,6 +78,43 @@ public struct FrozenVerdict: Codable, Sendable, Equatable {
     public var summary: String {
         evidence.map(\.label).joined(separator: ", ")
     }
+
+    // MARK: - 観測から判定を組み立てる(run 前トリアージとモニターの共通規則)
+
+    /// 「描画が止まった」と見なす拍動の空き(秒)。**この1箇所だけが定義元**
+    /// (run とモニターで別々に持つと、同じ機の判定が食い違う)
+    public static let displayIdleFrozenThreshold: Double = 3.0
+
+    /// 一様フレームを凍結の根拠として採ってよいか。
+    ///
+    /// **拍動が生きているなら採らない**(2026-08-11 の実測): 一様フレームは「描画が死んでいる」
+    /// だけでなく「真っ白な画面を出している」でも起きる。フル E2E で凍結と判定された 13台は
+    /// **13台とも拍動が生きており**、しかも台数は描画の重さに比例した(Flutter 10 / Compose 3 /
+    /// SwiftUI・RN 0)。本物の wedge が重いアプリのときだけ全機同時に起きることは説明できない
+    /// —— 実体は**アプリの初回描画待ち**で、これを凍結と誤認して毎回フリートを再起動していた
+    /// (1回のフルで約8分)。
+    ///
+    /// **申告が無い(nil)ときは従来どおり採る**。旧ブリッジ・ブリッジ無しの機で保護を外さない。
+    public static func countsAsFrozen(uniformBlank: Bool, displayIdleSeconds: Double?,
+                                      threshold: Double = displayIdleFrozenThreshold) -> Bool {
+        guard uniformBlank else { return false }
+        guard let idle = displayIdleSeconds else { return true }
+        return idle > threshold
+    }
+
+    /// 1台ぶんの観測から判定を組み立てる。**run 前トリアージもモニターもここを通す**
+    public static func observe(uniformBlank: Bool, displayIdleSeconds: Double?,
+                               injected: Bool = false,
+                               threshold: Double = displayIdleFrozenThreshold) -> FrozenVerdict {
+        if injected { return FrozenVerdict([.injected]) }
+        var evidence: [FrozenEvidence] = []
+        if countsAsFrozen(uniformBlank: uniformBlank, displayIdleSeconds: displayIdleSeconds,
+                          threshold: threshold) {
+            evidence.append(.uniformBlank)
+        }
+        if let idle = displayIdleSeconds, idle > threshold { evidence.append(.noPresent) }
+        return FrozenVerdict(evidence)
+    }
 }
 
 /// **陽性対照の注入口**。
