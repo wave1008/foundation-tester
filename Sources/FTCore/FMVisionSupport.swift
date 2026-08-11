@@ -5,7 +5,7 @@
 // macOS 26 でも動くため、**視覚系だけ**を実行時に落とす。
 //
 // 同期相手(ここが false のときに素通り/skip する側):
-//   - FTCore/StepExecutor.swift: occlusionFlip・screenMatches
+//   - FTCore/StepExecutor+Assert.swift: occlusionFlip・screenMatches
 //   - FTAgent/OcclusionVerifier.swift・ReplayAssist.swift(#available で実 API を分岐)
 
 import Foundation

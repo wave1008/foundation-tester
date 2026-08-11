@@ -54,12 +54,20 @@ final class SelOverloadParityTests: XCTestCase {
     /// 行頭 `public func` から行頭 `}` までを1宣言として切り出す(FTElement 等のメンバは
     /// インデントされているので拾わない = トップレベルの自由関数だけが対象)
     private func declarations() throws -> [Declaration] {
-        let url = URL(fileURLWithPath: #filePath)
+        let dir = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()   // FTDSLTests
             .deletingLastPathComponent()   // Tests
             .deletingLastPathComponent()   // リポジトリルート
-            .appendingPathComponent("Sources/FTDSL/Commands.swift")
-        let source = try String(contentsOf: url, encoding: .utf8)
+            .appendingPathComponent("Sources/FTDSL")
+        // コマンド定義は `Commands*.swift` に分割されている。名前を列挙せず接頭辞で拾う
+        // (再分割で増えたファイルの String 版コマンドが黙って対象から漏れないため)
+        let names = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+            .filter { $0.hasPrefix("Commands") && $0.hasSuffix(".swift") }
+            .sorted()
+        XCTAssertGreaterThanOrEqual(names.count, 3, "コマンド定義ファイルの発見が壊れている: \(names)")
+        let source = try names
+            .map { try String(contentsOf: dir.appendingPathComponent($0), encoding: .utf8) }
+            .joined(separator: "\n")
 
         var found: [Declaration] = []
         var current: [String]?

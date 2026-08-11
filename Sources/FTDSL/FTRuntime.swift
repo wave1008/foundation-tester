@@ -778,7 +778,7 @@ public final class FTDriveCore {
     /// dry-run 判定(repeatWhileCanSelect が空回りしないよう1周で切るために参照する)
     public var isDryRun: Bool { dryRun }
 
-    /// ifCanSelect の成否を記録する(Commands.swift から呼ぶ)。同じセレクタが
+    /// ifCanSelect の成否を記録する(CommandsAppControl.swift から呼ぶ)。同じセレクタが
     /// 一度でも成立していれば警告しない = 「出ることも出ないこともある」正しい用途を潰さない
     func noteBranchOutcome(selector: String, met: Bool) {
         branchOutcomes[selector] = (branchOutcomes[selector] ?? false) || met

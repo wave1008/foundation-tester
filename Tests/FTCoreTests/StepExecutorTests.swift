@@ -819,7 +819,7 @@ final class StepExecutorTests: XCTestCase {
     }
 
     /// exists のフォールバック照会は 2・4・6…回目の primary ミスでのみ発生する(間引き契約。
-    /// StepExecutor.swift executeAssert "exists" 参照)
+    /// StepExecutor+Assert.swift executeAssert "exists" 参照)
     func testExistsThrottlesFallbackQuery() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])

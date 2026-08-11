@@ -1,4 +1,4 @@
-// ft_list_devices / ft_list_apps の本文を組み立てる材料。MCPServer.swift(配線は別担当)から呼ぶ。
+// ft_list_devices / ft_list_apps の本文を組み立てる材料。MCPServer+Dispatch.swift(配線は別担当)から呼ぶ。
 //
 // **マシンプロファイルを前提にできない**: .claude/skills/ftester-mcp/SKILL.md の導線(MCP だけ
 // 入れる受け手)は machines/ を一つも持たない。devicesText はプロファイルが解決できないときも

@@ -1,7 +1,7 @@
 // AppIconLocator.swift
 // tapAppIcon(Shirates 準拠)専用の純粋ロジック。ホーム画面/ドロワー/ページ送り探索の
 // 「一致判定」「変化検知」「打ち切り判定」だけを切り出す(実機なしで単体テストできる部分)。
-// ドライバ呼び出し(home/snapshot/drag/tap)は FTDSL/Commands.swift の tapAppIcon 実装が持つ。
+// ドライバ呼び出し(home/snapshot/drag/tap)は FTDSL/CommandsAppControl.swift の tapAppIcon 実装が持つ。
 
 /// アイコン探索の純粋ロジック。
 public enum AppIconLocator {

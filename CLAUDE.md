@@ -84,7 +84,7 @@
 - DSL コマンドリファレンス(全コマンドの引数・挙動。利用者向け): docs/commands.md。
   **機械可読な索引は `Sources/FTDSL/CommandIndex.swift`**(`ftester api dsl-commands` が出す。
   読者はコードを生成する側で、名前の存在確認に使う)。**コマンドを足す/消す/改名したら索引も直す**
-  (`CommandIndexSyncTests` が Commands.swift / ValueAssertions.swift / FTElement と突き合わせる)。
+  (`CommandIndexSyncTests` が Commands.swift / CommandsVerify.swift / CommandsAppControl.swift / ValueAssertions.swift / FTElement と突き合わせる)。
   **置いていない名前は `Sources/FTDSL/UnavailableCommands.swift` で受け止める**(他ツールの名前・
   対称性から実在すると誤解される別名。`cannot find in scope` の代わりに正しい書き方を出す)
 - Shirates(Classic)との対応表(何が揃っていて何を持たないか・意図的に持たないものの理由・

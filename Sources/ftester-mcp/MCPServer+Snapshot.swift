@@ -1,0 +1,595 @@
+// MCPServer+Snapshot.swift
+// snapshot の取得と ref 世代管理・snapshotAfter・ft_scroll_to。本体は MCPServer.swift(instance 状態はそちらに置く)
+
+import Foundation
+import FTAgent
+import FTAndroid
+import FTBridgeClient
+import FTCore
+import FTDSL
+
+extension MCPServer {
+
+    /// 木を撮り直す。**MCP は必ずキャッシュを捨てて撮る**(driver が対応していれば)。
+    ///
+    /// Android の a11y ノードはキャッシュ供給で、**Compose のスクロール後は木が古いまま固まる**
+    /// (2026-08-06 に決定的再現。撮り直しても数分待っても直らない)。ブリッジ側の既定が
+    /// 「WebView 内だけ refresh」なのは**シナリオ実行**の実測(全ノード refresh で
+    /// snapshot +65ms・E2E-Android の sum +43%)に基づくもので、MCP はエージェントが
+    /// 1手ずつ撃つ経路なので往復のほうが桁で大きく、この上乗せは見えない。
+    /// **常時オンにする**(「ジェスチャの後だけ」のフラグ運用は、フラグを立て忘れたツールが
+    /// 1つでもあると黙って古い木に戻る)。
+    ///
+    /// 取得直後に `adoptSnapshot` を通す — ブリッジ由来の native ref をセッション ref へ
+    /// 振り直すのはここが唯一の入口(waitFor 経路だけ例外。呼び出し側で個別に通す)
+    func freshSnapshot(_ driver: AppDriver, args: [String: Any]) async throws
+        -> SnapshotResponse {
+        let native = try await driver.snapshot(bypassingCache: driver.supportsCacheBypass)
+        return adoptSnapshot(native, args: args)
+    }
+
+    /// ref 同一性の比較キー。(ref, type, identifier, label) — 値/frame/focused の変化では
+    /// 世代を進めない(adoptSnapshot 参照)ので、この4つだけを見る
+    private struct RefIdentity: Hashable {
+        let ref: Int
+        let type: String
+        let identifier: String?
+        let label: String?
+    }
+
+    private static func identity(_ element: ElementInfo, base: Int) -> RefIdentity {
+        RefIdentity(ref: element.ref - base, type: element.type,
+                   identifier: element.identifier, label: element.label)
+    }
+
+    /// `element` の ref だけ差し替えたコピー(ElementInfo は struct。他フィールドは素通し)
+    private static func withRef(_ element: ElementInfo, _ ref: Int) -> ElementInfo {
+        ElementInfo(ref: ref, type: element.type, identifier: element.identifier,
+                   label: element.label, value: element.value, placeholder: element.placeholder,
+                   enabled: element.enabled, frame: element.frame, depth: element.depth,
+                   checked: element.checked, web: element.web, focused: element.focused,
+                   scrollable: element.scrollable, z: element.z, range: element.range)
+    }
+
+    /// `snapshot.elements` の ref に一律 `base` を足したコピー。offscreen の ref は触らない
+    /// (ブリッジは常に 0 を送るスクロールヒントで、要素解決には使われない — BridgeDTO 参照)
+    private static func remapped(_ snapshot: SnapshotResponse, base: Int) -> SnapshotResponse {
+        guard base != 0 else { return snapshot }
+        var copy = snapshot
+        copy.elements = snapshot.elements.map { withRef($0, $0.ref + base) }
+        return copy
+    }
+
+    /// **ref の世代管理の本体**。ブリッジから来た native な snapshot を受け取り、セッション内で
+    /// 一意な ref を持つ snapshot へ変換して返す。ブリッジは撮るたびに ref を振り直すので、
+    /// 何もしないと「1つ前の木」より前の snapshot の ref を撃たれたとき、たまたま同じ番号を
+    /// 持つ別要素へ黙って当たる(冒頭のコメント参照)。
+    ///
+    /// **同一性が変わらなければ base を使い回す**: 画面が動いていないのに ref を変えると、
+    /// 撮り直すたびに番号が変わってエージェントを混乱させる。ラベルが1つでも変われば
+    /// (時計等)世代は進むが、それ自体は無害 —— stale 判定は「受領時点で最新だったか」で行う
+    /// (resolveSessionRef 参照)ので、無関係な世代の増加が誤警告を増やすことはない。
+    /// **最初の世代は base 0**(= 従来の ref とビット単位で同じ)なので、世代が1本の間は
+    /// 応答が今までと完全に一致する。
+    func adoptSnapshot(_ native: SnapshotResponse, args: [String: Any]) -> SnapshotResponse {
+        let key = Self.engineKey(args)
+        if var generations = refGenerations[key], let last = generations.last {
+            let nativeIdentity = Set(native.elements.map { Self.identity($0, base: 0) })
+            let lastIdentity = Set(last.snapshot.elements.map { Self.identity($0, base: last.base) })
+            if nativeIdentity == lastIdentity {
+                // 同じ木 — base を使い回し、最新世代の内容だけ最新化する(frame/value/focused 等)
+                let remapped = Self.remapped(native, base: last.base)
+                generations[generations.count - 1] = (base: last.base, snapshot: remapped)
+                refGenerations[key] = generations
+                lastSnapshots[key] = remapped
+                return remapped
+            }
+        }
+        let base = nextRefBase[key] ?? 0
+        let remapped = Self.remapped(native, base: base)
+        var generations = refGenerations[key] ?? []
+        generations.append((base: base, snapshot: remapped))
+        if generations.count > Self.maxRefGenerations {
+            generations.removeFirst(generations.count - Self.maxRefGenerations)
+        }
+        refGenerations[key] = generations
+        let maxNativeRef = native.elements.map(\.ref).max() ?? -1
+        nextRefBase[key] = base + maxNativeRef + 1
+        lastSnapshots[key] = remapped
+        return remapped
+    }
+
+    /// セッション ref から要素を引く。世代を新しい順に探し、最初に見つかった世代の要素を返す。
+    /// `isStale` = 最新世代以外で見つかった(= 撮り直した後にもっと新しい木が出ている)。
+    ///
+    /// **stale 判定はこの呼び出し時点の最新世代とだけ比べる**: 呼び手(verifiedRef 等)が
+    /// この後で自分で撮り直して世代を進めても、それはエージェントが ref を送った**後**の話なので
+    /// stale 扱いにしない。ここを先に評価してから撮り直すという順序を崩すと、時計のラベル変化
+    /// だけで世代が進むたびに全タップへ偽の「older snapshot」警告が付く
+    func resolveSessionRef(_ ref: Int, args: [String: Any])
+        -> (element: ElementInfo, isStale: Bool)? {
+        guard let generations = refGenerations[Self.engineKey(args)] else { return nil }
+        for (offset, generation) in generations.enumerated().reversed() {
+            if let element = generation.snapshot.elements.first(where: { $0.ref == ref }) {
+                return (element, offset != generations.count - 1)
+            }
+        }
+        return nil
+    }
+
+    /// `ref` を含む世代の snapshot 全体(movedTogether の兄弟比較に使う「同じ世代の他の要素」用。
+    /// resolveSessionRef と同じ探索だが、要素1件ではなく世代の全体が要る)
+    func generationSnapshot(containing ref: Int, args: [String: Any]) -> SnapshotResponse? {
+        refGenerations[Self.engineKey(args)]?.reversed()
+            .first { $0.snapshot.elements.contains { $0.ref == ref } }?.snapshot
+    }
+
+    /// セッション ref → native ref(ブリッジへ渡す番号)。**最新世代の base を引くことでしか
+    /// 正しく戻せない** —— 渡してよいのは verifiedRef/verifiedElement が返した「撮り直した後の」
+    /// ref だけという規約(古い世代の ref を渡すと、その世代の base を引いても、ブリッジは
+    /// とうにその番号を再利用しているので無効)。世代が無ければ素通し(従来どおり)
+    func nativeRef(_ sessionRef: Int, args: [String: Any]) -> Int {
+        guard let last = refGenerations[Self.engineKey(args)]?.last else { return sessionRef }
+        return sessionRef - last.base
+    }
+
+    /// スナップショット本文(注記一式 + 木)。ft_snapshot と `snapshotAfter` が共有する ——
+    /// **2つ目の組み立てを作らない**(注記を1つ足したときに片方だけ出る事故を防ぐ)。
+    /// `extraNote` は ft_snapshot の waitFor 用(すり替わりの直後・他の注記より前に置く)
+    func snapshotBody(_ snapshot: SnapshotResponse, driver: AppDriver,
+                              args: [String: Any], extraNote: String = "") async -> String {
+        // **背面のアプリのツリーを「今の画面」として返さない**: XCUITest の snapshot は
+        // セッションのアプリに閉じているので、**別のアプリが前面に来ても同じ木を返し続ける**。
+        // 実測(2026-08-05・シミュレータで確定。症状の初出は iPhone 実機):
+        // ステータスバーの「◀ 元のアプリへ」を踏んだタップで前面が別アプリに替わったのに、
+        // snapshot は元アプリの画面を返し、エージェントからは「タップが効かない」に見えた
+        let backgroundNote = await Self.backgroundedSessionNote(snapshot, driver: driver)
+        // **すり替わりを先頭に置く**: これが起きているとき、以下の一覧は丸ごと別アプリのもので、
+        // ghost 注記も scrollFrame 候補も読む意味が無い
+        let switchedNote = Self.switchedAppNote(
+            launched: launchedBundleIDs[Self.engineKey(args)], snapshot: snapshot)
+        // **ghostNote と render で畳みの有無を揃える**: 片方だけ expandBulk を無視すると、
+        // 注記は「畳んだ」と言うのに木は個別列挙、という食い違いになる
+        let collapsingBulk = args["expandBulk"] as? Bool != true
+        return switchedNote + extraNote + backgroundNote
+            + Self.ghostNote(snapshot, collapsingBulk: collapsingBulk)
+            + (ScrollFrameCandidates.note(snapshot) ?? "")
+            + Self.truncationNote(snapshot) + Self.bulkExemptNote(snapshot)
+            + onceNonEmpty("unlabeledClickablesNote", full: Self.unlabeledClickablesNote(snapshot),
+                          short: Self.unlabeledClickablesNote(snapshot, abbreviated: true))
+            + onceNonEmpty("ambiguousLabelsNote", full: Self.ambiguousLabelsNote(snapshot),
+                          short: Self.ambiguousLabelsNote(snapshot, abbreviated: true))
+            + Self.keyboardCoverageNote(snapshot) + Self.sliverNote(snapshot)
+            + truncatedLabelNote(snapshot)
+            + SnapshotRenderer.render(snapshot, flagging: Self.ghostFlags(snapshot),
+                                      collapsingBulk: collapsingBulk,
+                                      interactiveOnly: args["interactiveOnly"] as? Bool == true)
+    }
+
+    /// `SnapshotRenderer.truncatedLabelNote` を `once` で包む(F-6)。ft_snapshot と
+    /// ft_scroll_to の両方が呼ぶので**鍵はここに1つだけ**にする(2つ目の呼び口を作らない)
+    private func truncatedLabelNote(_ snapshot: SnapshotResponse) -> String {
+        onceNonEmpty("truncatedLabelNote",
+                    full: SnapshotRenderer.truncatedLabelNote(snapshot) ?? "",
+                    short: "note: long labels are shown cut off with \"…\" — match with"
+                        + " \"*prefix*\" (see the first snapshot's note).\n")
+    }
+
+    /// `snapshotAfter` が読む木は基本的に整定を待たないという注意を初回だけ満額で出す
+    /// (2026-08-10。settle-lite 追加後も「基本的に」待たない: 直後の木が操作前と見分けが
+    /// 付かないときだけ、snapshotAfterBody が1回だけ短い待ちを挟んで撮り直す)。
+    /// 実測: ft_type の直後は候補リストがまだネットワーク待ちで、waitFor 付きの ft_snapshot なら
+    /// 出るものが「候補なし」に見えた
+    private func immediateReadNote() -> String {
+        once("snapshotAfterImmediateNote",
+            full: "note: this tree was read immediately after the action; if it looked unchanged"
+                + " right after, it was re-read once after a short wait (see the note above if that"
+                + " happened) — a dynamic list (search suggestions, network results) may still not"
+                + " have populated yet; if something you expect is missing, confirm with"
+                + " ft_snapshot waitFor before concluding it is absent.\n",
+            short: "(immediate read — see the first snapshotAfter note)\n")
+    }
+
+    /// 直後の木が操作前と区別できないときだけ挟む、1回きりの短い再読(settle-lite。2026-08-10)。
+    /// **value と frame を比較に含めるのが要点**: ft_type 直後は value が変わるので「変化あり」に
+    /// なり無駄な待ちが入らない/ スクロールを伴うタップは frame が動くので同じ理由で入らない。
+    /// **push 遷移が主目的**: 操作直後の木が古いまま返り、snapshotAfter が空振りして
+    /// 別途 ft_snapshot を要求される実測から
+    private static func looksUnchanged(_ before: SnapshotResponse, _ after: SnapshotResponse) -> Bool {
+        guard before.elements.count == after.elements.count else { return false }
+        return zip(before.elements, after.elements).allSatisfy { a, b in
+            a.ref == b.ref && a.type == b.type && a.identifier == b.identifier
+                && a.label == b.label && a.value == b.value && a.checked == b.checked
+                && a.frame == b.frame
+        }
+    }
+
+    /// waitFor は snapshotAfter の待ち方の指定であって独立の引数ではない。
+    /// snapshotAfter なしで渡されたら黙って無視せず気付かせる —— **throw はしない**
+    /// (操作そのものは既に実行済みなので、ここで落とすと二重操作を誘う)
+    func waitForWithoutSnapshotAfterNote(_ args: [String: Any]) -> String {
+        guard args["waitFor"] != nil, args["snapshotAfter"] as? Bool != true else { return "" }
+        return " (note: waitFor requires snapshotAfter: true — it was ignored)"
+    }
+
+    /// 操作系ツールが `snapshotAfter: true` で返す「操作の直後の画面」。
+    ///
+    /// **往復を半分にするためにある**: tap/type/drag は「変わったかもしれない」で終わるので、
+    /// 読み手はほぼ必ず ft_snapshot を続けて撃つ。実測(2026-08-09 のマップ探索1セッション)では
+    /// 46 回の呼び出しのうち 21 回が**この確認だけの snapshot** だった。
+    ///
+    /// **撮るのは操作の直後**。木が操作前(`lastSnapshots`)と見分けが付かないときだけ、
+    /// `settleWaitSeconds` だけ待って1回だけ撮り直す(settle-lite。looksUnchanged 参照) ——
+    /// 撮り直しても同一なら「変わっていないかもしれない」と言うだけで、それ以上は待たない。
+    /// 操作前の木を知らない(`lastSnapshots` が無い)ときは何もしない。
+    /// **失敗しても throw しない**: 操作自体は成功しているので、ここで throw すると
+    /// 「タップは効いたのにエラーが返る」になり、読み手が操作を撃ち直して二重操作になる。
+    /// **waitFor があれば settle-lite の代わりにそちらを使う**(両方は走らせない)
+    func snapshotAfterBody(_ args: [String: Any]) async -> String {
+        guard args["snapshotAfter"] as? Bool == true else { return "" }
+        do {
+            let snapshotDriver = try await driver(args)
+            let key = Self.engineKey(args)
+            let beforeAction = lastSnapshots[key]
+
+            // **明示された値が常に優先**: args に無いキーだけ記憶で補う。補った値が true の
+            // ときだけ宣言する(false を補っても render の既定と同じなので出力は変わらない)
+            var effectiveArgs = args
+            var inheritedNote = ""
+            for filterKey in ["interactiveOnly", "expandBulk"] {
+                guard !(args[filterKey] is Bool),
+                      let remembered = rememberedSnapshotFilters[key]?[filterKey] else { continue }
+                effectiveArgs[filterKey] = remembered
+                if remembered {
+                    inheritedNote += "(\(filterKey): true inherited from your last ft_snapshot —"
+                        + " pass \(filterKey): false to override)\n"
+                }
+            }
+
+            var snapshot = try await freshSnapshot(snapshotDriver, args: args)
+            var settleNote = ""
+            var waitNote = ""
+            // **waitFor は settle-lite の代わり**(併用しない): 待つ理由が同じ(木がまだ
+            // 追いついていない)なので、両方は二重に待つだけ。パターンは ft_snapshot の
+            // waitFor 分岐と同じ(refetched の扱いも含め)
+            if let waitFor = args["waitFor"] as? String {
+                let seconds = args["timeout"] as? Double ?? Self.defaultWaitSeconds
+                let waited = try await Self.waitFor(waitFor, driver: snapshotDriver,
+                                                    first: snapshot, seconds: seconds)
+                snapshot = waited.refetched ? adoptSnapshot(waited.snapshot, args: args) : waited.snapshot
+                waitNote = waited.found ? "waitFor \"\(waitFor)\" appeared.\n"
+                    : "waitFor \"\(waitFor)\" did not appear within \(seconds)s"
+                        + " — this is the screen as it is now\(Self.truncationHint(snapshot))"
+                        + (waited.partialSeenAfter.map { seenAfter in
+                            " — a partial match was already on screen \(Int(seenAfter.rounded()))s"
+                                + " into the wait:\(waited.partialHint) The exact form never"
+                                + " appeared, so the wait ran to the deadline"
+                        } ?? (Self.notationHint(waitFor, in: snapshot)
+                              + Self.similarLabelsHint(waitFor, in: snapshot))) + "\n"
+            } else if let beforeAction, Self.looksUnchanged(beforeAction, snapshot) {
+                try await Task.sleep(nanoseconds: UInt64(max(0, settleWaitSeconds) * 1_000_000_000))
+                let reread = try await freshSnapshot(snapshotDriver, args: args)
+                if Self.looksUnchanged(snapshot, reread) {
+                    settleNote = "note: the tree still looked unchanged after a short re-read"
+                        + " wait — the action may not have changed the screen.\n"
+                } else {
+                    settleNote = "note: the tree looked unchanged right after the action, so it"
+                        + " was re-read once after a short wait — the tree below is the re-read.\n"
+                }
+                snapshot = reread
+            }
+            recordSnapshot(snapshot, snapshotDriver is AndroidDriver ? "android" : "ios", args)
+            // waitFor 済みなら「待たずに読んだ」前提の immediateReadNote は誤解を招くので出さない
+            let readNote = waitNote.isEmpty ? immediateReadNote() : ""
+            return "\n\n" + inheritedNote + waitNote + settleNote + readNote
+                + (await snapshotBody(snapshot, driver: snapshotDriver, args: effectiveArgs))
+        } catch {
+            return "\n\n(snapshotAfter could not read the screen:"
+                + " \(error.localizedDescription) — the action above still went through;"
+                + " take an ft_snapshot yourself)"
+        }
+    }
+
+    /// ref を撃つ直前の照合。**撮り直した木から同じ要素を引き直して、その新しい ref を返す**。
+    /// 引けない(消えた・ghost)なら撃たずに throw する —— 沈黙した誤操作を作らないため。
+    ///
+    /// 直前の木を覚えていないとき(ft_snapshot を挟まずに ref を撃たれたとき)は素通しする:
+    /// 照合の起点が無いので嘘の判断をするより、ブリッジの 404 に任せるほうが正しい。
+    /// **どの世代にも無い ref**(何か撮った後で、それでも一致しない番号)は素通しせず throw する
+    /// —— セッション内で ref は一意なので、世代があるのに見つからないのは番号の書き間違いか、
+    /// 直近5世代より前の snapshot からコピーしてきた番号のどちらか(2026-08-10)。
+    /// 返す ref は**セッション ref**(ブリッジへ渡す前に呼び手が `nativeRef` を通すこと)
+    func verifiedRef(_ ref: Int, driver: AppDriver,
+                             args: [String: Any]) async throws -> (ref: Int, note: String) {
+        guard let resolved = resolveSessionRef(ref, args: args) else {
+            guard !(refGenerations[Self.engineKey(args)]?.isEmpty ?? true) else { return (ref, "") }
+            throw MCPError("unknown ref [\(ref)] — it is not from any recent snapshot"
+                + " (refs are per-snapshot; the last 5 snapshots were checked)."
+                + " Take a fresh ft_snapshot")
+        }
+        let target = resolved.element
+        // **isStale の注記を先頭に置く**: 何に当たったかの前に、番号の出所が古いことを言う
+        // **先頭は空白・末尾に余白を残さない**(RefGuard の警告群と同じ形。ここだけ裸の
+        // "note:" で始まると "done.note:" と密着し、末尾空白は次の " (selector:" と二重になる)
+        let staleNote = resolved.isStale
+            ? " note: [\(ref)] is from an older snapshot (refs have been renumbered since)."
+                + " It was matched as \(RefGuard.describe(target)) and re-located in the current"
+                + " tree — prefer refs from the latest snapshot."
+            : ""
+        let lastRendered = generationSnapshot(containing: ref, args: args)?.elements ?? []
+        let fresh = try await freshSnapshot(driver, args: args)
+        switch RefGuard.relocate(target, in: fresh.elements, screen: fresh.screen) {
+        case .gone:
+            throw MCPError(RefGuard.goneMessage(ref: ref, target: target,
+                                                truncatedCount: fresh.truncatedCount))
+        case .ghost(let found):
+            // **拒否せず警告して撃つ**(2026-08-06 に方針を後退させた。理由は RefGuard の宣言)。
+            // **キーボード被覆は先に言う**(木の遮蔽判定では原理的に拾えない事実なので、
+            // 座標由来の他の警告より確度が高い)
+            return (found.ref, staleNote + RefGuard.preTapWarnings(found, keyboardFrame: fresh.keyboardFrame)
+                + RefGuard.ghostWarning(found: found, in: fresh.elements, screen: fresh.screen))
+        case .found(let found, let moved):
+            // **ラベルが変わっていないかも見る**(2026-08-10)。moved の大小とは無関係に出す ——
+            // 動かずにラベルだけ変わった行も同じ危険(RefGuard.labelChangeNote 参照)
+            let labelNote = RefGuard.labelChangeNote(old: target.label, new: found.label) ?? ""
+            // **ghost でなくても別の物に当たり得る**2形(上に描かれた overlay / 同一矩形への
+            // 積み重なり)。どちらも容器の内側なので RefGuard.relocate では .found になる
+            let overlap = staleNote + RefGuard.preTapWarnings(found, keyboardFrame: fresh.keyboardFrame)
+                + RefGuard.overlapWarning(found: found, in: fresh.elements, screen: fresh.screen)
+            guard moved >= RefGuard.movedThreshold else { return (found.ref, overlap + labelNote) }
+            // **原因までは断定できない**が、「他も同じだけ動いたか」は手元の2枚から言える。
+            // 揃って動いていればスクロール等の画面全体の移動、その要素だけならレイアウト変化。
+            // 切り分けの手掛かりとして出す(外部フィードバック 2026-08-06。severity は低いとのこと)
+            let cause = RefGuard.movedTogether(target, found,
+                                               before: lastRendered, after: fresh.elements)
+            return (found.ref, staleNote + RefGuard.preTapWarnings(found, keyboardFrame: fresh.keyboardFrame)
+                + RefGuard.movedNote(found: found, moved: moved, cause: cause) + labelNote)
+        }
+    }
+
+    /// 要素が出るまでスクロールして探す。**探索そのものは DSL と同じ StepExecutor に委ねる**。
+    ///
+    /// 自前でスワイプのループを書かない理由: 整定待ち・キャッシュ回避・容器基準の刻み・
+    /// ghost の掴み直し・飛び越しの拾い直し・打ち切りは全部 StepExecutor に入っており、
+    /// **同じ知見の2つ目の実装を作ると必ず割れる**(docs/design.md の「契約は1箇所」)。
+    /// ここは FlowStep を1つ組んで投げるだけにする = MCP で届く要素はシナリオでも届く。
+    /// `scrollFrame` 引数の解決結果。**ref(整数)は rect へ、文字列は従来どおり locator へ**
+    /// (FlowStep.scrollFrameRect 参照)。`original` は ref 経由のときだけ埋まり、
+    /// シート展開後に同じ要素を撮り直した木から再照合して rect を作り直すのに使う
+    private struct ScrollFrameArg {
+        var locator: FlowLocator?
+        var rect: FTRect?
+        var original: ElementInfo?
+        var note: String = ""
+    }
+
+    /// **ref はセレクタが書けない容器のための逃げ道**(id の重複・欠落。2026-08-10)。
+    /// 既存の stale-ref 再照合(resolveSessionRef → RefGuard.relocate)を通してから frame を取る ——
+    /// verifiedRef と同じ規律で、撮った時点から動いていても黙って古い座標を使わない
+    private func resolveScrollFrameArg(_ args: [String: Any], driver: AppDriver) async throws
+        -> ScrollFrameArg {
+        if let ref = args["scrollFrame"] as? Int {
+            guard let resolved = resolveSessionRef(ref, args: args) else {
+                throw MCPError("scrollFrame ref [\(ref)] is unknown — it is not from any recent"
+                    + " snapshot (refs are per-snapshot; the last 5 snapshots were checked)."
+                    + " Take a fresh ft_snapshot")
+            }
+            let target = resolved.element
+            let fresh = try await freshSnapshot(driver, args: args)
+            switch RefGuard.relocate(target, in: fresh.elements, screen: fresh.screen) {
+            case .gone:
+                throw MCPError(RefGuard.goneMessage(ref: ref, target: target,
+                                                    truncatedCount: fresh.truncatedCount))
+            case .ghost(let found), .found(let found, _):
+                let note = RefGuard.labelChangeNote(old: target.label, new: found.label) ?? ""
+                return ScrollFrameArg(rect: found.frame, original: target, note: note)
+            }
+        }
+        if let text = args["scrollFrame"] as? String {
+            return ScrollFrameArg(locator: FTSelector.parse(text).primary)
+        }
+        return ScrollFrameArg()
+    }
+
+    /// `StepExecutor` を組むための2つの入力(releasesScrollTouch の反転元 / 空打ちゲート用
+    /// uiFramework)。**scrollTo と ft_batch が共有する**(2つ目の判定を作らない) ——
+    /// releasesScrollTouch は **iOS だけ true**(Android では 2pt のドラッグがクリックとして
+    /// 発火する。StepExecutor の宣言参照)。ここを取り違えると探索直後に行が勝手に選択される。
+    /// uiFramework ヒント: xcuitest は profile 経由ならドライバ生成時にバンドルマーカーで
+    /// 判定済み(uiFrameworkHints)。in-app/hybrid は自己申告(status)を engineKey ごとに
+    /// 1回だけ取得して使い回す。Android は releasesScrollTouch=false で無関係。
+    /// **残穴は profile 無しの xcuitest だけ**(任意の前面アプリを駆動するため対象 bundleID が
+    /// 無くマーカー判定もできない → nil = 空打ちは従来どおり打たれる)
+    func resolveExecutorHints(_ driver: AppDriver, args: [String: Any]) async
+        -> (isAndroid: Bool, uiFrameworkHint: String?) {
+        let key = Self.engineKey(args)
+        let engineForKey = engines[key]
+        let isAndroid = engineForKey == "android" || driver is AndroidDriver
+        guard !isAndroid else { return (true, nil) }
+        if let cached = uiFrameworkHints[key] { return (false, cached) }
+        if engineForKey == "xcuitest" {
+            // profile 無しでも、resolver が udid を特定できていれば、attach 中のアプリ
+            // (status.sessionBundleID)のバンドルマーカーで判定できる(成功だけ記憶)
+            if let udid = udids[key] ?? nil,
+               let bundleID = (try? await driver.status())?.sessionBundleID,
+               let hint = AppBundleInspector.detect(udid: udid, bundleID: bundleID,
+                                                    physical: false) {
+                uiFrameworkHints[key] = hint
+                return (false, hint)
+            }
+            return (false, nil)
+        }
+        let hint = (try? await driver.status())?.uiFramework
+        if let hint { uiFrameworkHints[key] = hint }
+        return (false, hint)
+    }
+
+    func scrollTo(_ args: [String: Any]) async throws -> [[String: Any]] {
+        guard let selectorText = args["selector"] as? String, !selectorText.isEmpty else {
+            throw MCPError("selector is required (same syntax as the DSL: #id, a label, .type, a||b)")
+        }
+        guard let direction = FTScrollDirection(rawValue: args["direction"] as? String ?? "down") else {
+            throw MCPError("direction must be one of down/up/right/left (content direction)")
+        }
+        let scrollDriver = try await driver(args)
+        // **曖昧さは「渡す前に見えていた画面」で判定する**: 探索後の木で数えると、リストが
+        // 読み込み直しに入っている回に同名の容器が1つしか残らず黙ってしまう
+        // (2026-08-07 実測。Google マップは探索スワイプのたびに結果を組み直す)
+        let beforeScroll = lastSnapshots[Self.engineKey(args)]
+        let selector = FTSelector.parse(selectorText)
+        let scrollFrameArg = try await resolveScrollFrameArg(args, driver: scrollDriver)
+        var step = FlowStep(
+            action: "scrollTo", locator: selector.primary,
+            fallbacks: selector.fallbacks.isEmpty ? nil : selector.fallbacks,
+            direction: direction.swipe.rawValue,
+            maxSwipes: args["maxSwipes"] as? Int ?? FlowStep.defaultMaxSwipes,
+            scrollFrame: scrollFrameArg.locator,
+            scrollFrameRect: scrollFrameArg.rect)
+        let scrollFrameLabelNote = scrollFrameArg.note.isEmpty ? ""
+            : "note: the scrollFrame ref was re-checked against the current tree\(scrollFrameArg.note).\n"
+        let (isAndroid, uiFrameworkHint) = await resolveExecutorHints(scrollDriver, args: args)
+        // **1回目だけ半開きシートの逆走査を後回しにする**(defersPartialSheetRecovery の宣言参照):
+        // sheetCollapsed なら下でシートを展開して再試行し、その再試行が全画面高で同じ救済を
+        // 持つので、畳まれた視界での逆走査(実測 7.8s)は丸損になる
+        let executor = StepExecutor(driver: scrollDriver,
+                                    releasesScrollTouch: !isAndroid,
+                                    uiFramework: uiFrameworkHint,
+                                    defersPartialSheetRecovery: true)
+        var outcome = await executor.execute(step)
+        // **探索でツリーは必ず動く**ので、覚えている木を捨てて撮り直す(古い ref を残さない)
+        var after = try await freshSnapshot(scrollDriver, args: args)
+        // **半開きシートは自分で広げて1度だけやり直す**(2026-08-09)。この形は失敗文で
+        // 「グラバーを上へ引け」と案内済みだったが、**案内できるなら自分でできる** ——
+        // 実測(Apple マップの経路詳細)では、案内どおり ft_drag してから同じ ft_scroll_to を
+        // 撃ち直すだけで通り、2往復を人手で払っていた。
+        // 条件は StepExecutor と共有(StepNote.sheetCollapsed)。**グラバーを名前で特定できる
+        // ときだけ**動かす —— 当てずっぽうのドラッグは地図やリストを勝手に動かす
+        var sheetNote = ""
+        if StepExecutor.isSuccess(outcome.status) {} else if outcome.notes.contains(.sheetCollapsed),
+           let grabber = Self.sheetGrabber(in: after) {
+            let toY = after.screen.height * Self.expandedSheetTopRatio
+            try await scrollDriver.drag(fromX: grabber.frame.centerX, fromY: grabber.frame.centerY,
+                                        toX: grabber.frame.centerX, toY: toY,
+                                        pressSeconds: 0.05, durationSeconds: 0.5)
+            // **rect は展開後の木で作り直す**: シートが伸びると scrollFrameRect の元になった
+            // 容器の frame も変わるので、展開前の rect のまま撃つと広がった分を探索できない。
+            // 同じ要素を撮り直した木から再照合し、取れなければ従来の rect のまま(2026-08-10)
+            if let original = scrollFrameArg.original {
+                let expanded = try await freshSnapshot(scrollDriver, args: args)
+                if case .found(let found, _) = RefGuard.relocate(
+                    original, in: expanded.elements, screen: expanded.screen) {
+                    step.scrollFrameRect = found.frame
+                }
+            }
+            // **再試行は逆走査つき**(defers... を外した別 executor)。展開後も稀に部分高のまま
+            // のことがあり、そこで再び後回しにすると救済がどこにも無くなる
+            let retryExecutor = StepExecutor(driver: scrollDriver,
+                                             releasesScrollTouch: !isAndroid,
+                                             uiFramework: uiFrameworkHint)
+            outcome = await retryExecutor.execute(step)
+            after = try await freshSnapshot(scrollDriver, args: args)
+            sheetNote = "note: the list had stopped moving inside a partially open sheet, so"
+                + " [\(grabber.ref)] \(RefGuard.describe(grabber)) was dragged up to expand it and"
+                + " the search was retried once.\n"
+        }
+        // **成功は .passed/.passedViaFallback/.healed の3形**(StepExecutor.isSuccess の定義)。
+        // fallback 一致も探索としては成功であり、失敗文を投げると内部 enum(FlowLocator ダンプ)が
+        // そのまま利用者に見える(2026-08-10 実害)
+        guard StepExecutor.isSuccess(outcome.status) else {
+            // ここに来る時点で outcome.status は failed/skipped/inconclusive のいずれか
+            let reason: String
+            switch outcome.status {
+            case .failed(let message), .skipped(let message), .inconclusive(let message):
+                reason = message
+            case .passed, .passedViaFallback, .healed:
+                reason = "could not confirm the result"
+            }
+            // **fail-fast(scrollFrame 未解決)は別の文で伝える**: 通常の「did not reach the
+            // element」はスワイプを何本か送った前提の文言で、fail-fast は1本も送っていないので
+            // そのままでは誤解を招く(2026-08-08。StepNote.scrollFrameMissing = DSL と共有した判定)
+            if outcome.notes.contains(.scrollFrameMissing) {
+                throw MCPError(scrollFrameLabelNote + "scrollTo \"\(selectorText)\": \(reason)"
+                    + Self.scrollAlternativesHint(beforeScroll ?? after))
+            }
+            // **止まった時点で見えているものを一緒に返す**(外部フィードバック 2026-08-06)。
+            // 「届かなかった」だけだと ft_snapshot の往復が要るうえ、**記法の誤りに気づけない**
+            // —— 素のラベルは完全一致なので、「端末情報」は「端末情報を表示」に当たらない。
+            // 候補を見せれば、綴り違いなのか記法(`*…*`)不足なのかがその場で分かる
+            // **やり直し済みなら先に言う**: 言わないと読み手は失敗文のシート展開ヒントを
+            // 読んで**もう一度同じことを手で試す**(そのぶん往復が増える)
+            throw MCPError(scrollFrameLabelNote + sheetNote
+                + "scrollTo \"\(selectorText)\" did not reach the element"
+                + " (\(reason))\(Self.truncationHint(after)). \(Self.visibleLabelsHint(after))"
+                + Self.notationHint(selectorText, in: after)
+                + Self.similarLabelsHint(selectorText, in: after)
+                + Self.scrollAreaHint(beforeScroll ?? after, args: args))
+        }
+        // **成功と言う前に、返す木にそれが居ることを確かめる**(2026-08-06 の探索で外した)。
+        // 探索のスワイプは**ボタンを発火させることがある**(SwiftUI の SUT で実測)。
+        // その場合 executor は途中の観測で passed のまま、撮り直した木は**別画面**になり、
+        // 「scrolled to #nav_diagnostics」+ `#nav_diagnostics` が居ない木、が返っていた。
+        // 決定的再現: E2E-iOS のホームで `#nav_diagnostics`(下部タブの下にある行)
+        // **照合は selector で行う**: `scrollTo` は `resolvedElement` を載せない
+        // (StepExecutor の scrollTo 経路は要素を掴んでも記録しない)ので、それを当てにすると
+        // この検査は一度も走らない。`matches` は waitFor と同じ = DSL と同じ照合
+        if !Self.matches(selectorText, in: after) {
+            throw MCPError("scrollTo \"\(selectorText)\" reached the element, but it is gone from"
+                + " the screen now — the search itself changed the screen"
+                + " (a swipe over a tappable row can fire it)\(Self.truncationHint(after))."
+                + " \(Self.visibleLabelsHint(after))"
+                + " Go back to the screen that has it and retry;"
+                + " scrollFrame: <container> keeps the swipes inside the list."
+                + Self.scrollAreaHint(after, args: args))
+        }
+        // fallback 一致は成功だが、利用者が書いた式では見つからなかったことを伝える
+        // (primary が空振りする式は将来また空振りしうる)
+        var fallbackNote = ""
+        if case .passedViaFallback(let locator) = outcome.status {
+            fallbackNote = " (matched via the fallback \(locator.summary))"
+        }
+        // outcome.resolvedElement は StepExecutor が内部で撮った木の native ref を持っている
+        // (MCP の ref 世代管理を経由していない)。表示するのは `after`(adoptSnapshot 済み =
+        // セッション ref)の番号でなければ tap に使えないので、同一性で引き直す
+        var landed = ""
+        if let resolved = outcome.resolvedElement {
+            switch RefGuard.relocate(resolved, in: after.elements, screen: after.screen) {
+            case .found(let found, _), .ghost(let found):
+                landed = " → [\(found.ref)] \(RefGuard.describe(found))"
+            case .gone:
+                landed = ""
+            }
+        }
+        // **木を返す口はすべて名指しする**(2026-08-06 の掃討で漏れを見つけた)。上の再確認は
+        // 「セレクタが居るか」しか見ないので、**別アプリに同じ id がある**と素通しする ——
+        // E2E の 4 SUT は id・ラベルが共通契約なので、これは現に起こり得る形
+        let switched = Self.switchedAppNote(
+            launched: launchedBundleIDs[Self.engineKey(args)], snapshot: after)
+        // scrollFrame を渡すべき当人なので、複数領域の注記もここに出す(欠陥⑪)
+        let scrollAreaNote = args["scrollFrame"] == nil ? (ScrollFrameCandidates.note(after) ?? "")
+            : Self.lineNote(Self.scrollAreaHint(beforeScroll ?? after, args: args))
+        // **利用者が渡した式をそのまま残す**(F): 探索はセレクタで書くのが DSL の形なので、
+        // ここだけは解決後の要素ではなく渡された式が正しい下書きになる
+        var scrollStep = FlowStep(action: "scrollTo", locator: selector.primary)
+        scrollStep.direction = direction.swipe.rawValue
+        if args["scrollFrame"] != nil { scrollStep.note = "scrollFrame was used during exploration" }
+        // 一覧に**スワイプ方向を出さない**: `direction.swipe` は指の動き(下を読むなら up)で、
+        // 読み手が指定した意味方向とは逆になる。一覧は「どの手か」を見分けるためのものなので、
+        // 逆向きの語を出すと `drop:` の選択を誤らせる
+        interactions.record(InteractionLog.Entry(
+            step: scrollStep, unresolved: nil, summary: "scrollTo \"\(selectorText)\""))
+        // **ghostNote と render で畳みの有無を揃える**(ft_snapshot と同じ理由)
+        let collapsingBulk = args["expandBulk"] as? Bool != true
+        return text(switched + scrollFrameLabelNote + sheetNote + "scrolled to \"\(selectorText)\"\(landed)\(fallbackNote)."
+            + " The refs below are fresh\n" + scrollAreaNote
+            + Self.ghostNote(after, collapsingBulk: collapsingBulk)
+            + Self.truncationNote(after)
+            + Self.keyboardCoverageNote(after) + Self.sliverNote(after)
+            + truncatedLabelNote(after)
+            // **既定で畳む**(expandBulk で戻せる): ft_scroll_to の答えは「探した1つがどこに居るか」
+            // なので、地図のピンが数十行並ぶ意味は薄い。ft_snapshot と同じ規則にする
+            // (2026-08-10 まではここだけ interactiveOnly を無視して常に全行を出していた)
+            + SnapshotRenderer.render(after, flagging: Self.ghostFlags(after),
+                                      collapsingBulk: collapsingBulk,
+                                      interactiveOnly: args["interactiveOnly"] as? Bool == true))
+    }
+}

@@ -18,7 +18,7 @@ final class SystemUIDriverHomeForwardingTests: XCTestCase {
             .deletingLastPathComponent()   // リポジトリルート
             .appendingPathComponent("Sources/FTBridgeClient/SystemUIDriver.swift")
         let source = try String(contentsOf: file, encoding: .utf8)
-        // tapAppIcon が homeScreenDriver に対して呼ぶもの(Commands.swift の tapAppIcon 参照)
+        // tapAppIcon が homeScreenDriver に対して呼ぶもの(CommandsAppControl.swift の tapAppIcon 参照)
         for needle in ["func home()", "func snapshot(", "func drag(", "func tap(ref:", "func swipe("] {
             XCTAssertTrue(source.contains(needle),
                           "SystemUIDriver が \(needle) を素通ししていない。既定実装(501)に落ちて "

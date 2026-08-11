@@ -1,5 +1,5 @@
 // 検証コマンドの「3つの書き方」の同期検査(2026-08-04)。
-// 契約(Sources/FTDSL/Commands.swift): 検証の対象は**直前に掴んだ要素**で、次の3つは同義。
+// 契約(Sources/FTDSL/CommandsVerify.swift): 検証の対象は**直前に掴んだ要素**で、次の3つは同義。
 //
 //     select("#x").textIs("OK")            // FTElement のメソッド(判定の実体はここ1か所)
 //     select("#x"); lastElement.textIs("OK")
@@ -12,14 +12,21 @@
 // process.cwd() は npm test 実行時に vscode-ftester ルート(protocolVersion.test.mjs と同じ前提)。
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 
-const COMMANDS = path.join(process.cwd(), "..", "Sources/FTDSL/Commands.swift");
+// コマンド定義は `Commands*.swift` に分割されている(CommandIndexSyncTests と同じ接頭辞規則)。
+// FTElement と検証コマンドは CommandsVerify.swift だが、名前を列挙せず接頭辞で拾い
+// 再分割で増えたファイルも対象から漏れないようにする
+const DSL_DIR = path.join(process.cwd(), "..", "Sources/FTDSL");
 
 function readSource() {
-  return readFileSync(COMMANDS, "utf8");
+  const names = readdirSync(DSL_DIR)
+    .filter((name) => name.startsWith("Commands") && name.endsWith(".swift"))
+    .sort();
+  assert.ok(names.length >= 3, `コマンド定義ファイルの発見が壊れている: ${names}`);
+  return names.map((name) => readFileSync(path.join(DSL_DIR, name), "utf8")).join("\n");
 }
 
 /// FTElement のメソッド名(判定の実体)。**構造体の終端(行頭 })で切る** —— 切らないと

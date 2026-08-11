@@ -19,24 +19,43 @@ final class PostSwipeSnapshotFreshnessTests: XCTestCase {
     /// 本文に素の `driver.snapshot()` を置いてはいけない関数(すべて「スワイプ後に読む」経路)
     private static let mustBypass = [
         "func runScrollSearch(",
-        "private func settledSignature(",
-        "private func settleAfterScroll(",
+        "func settledSignature(",
+        "func settleAfterScroll(",
     ]
 
-    private static func source() throws -> String {
+    /// StepExecutor は StepExecutor*.swift に分割されている(+ScrollSearch/+Actions/+Settle 等)。
+    /// 走査対象の関数がどのファイルへ移っても追えるよう、全ファイルを対象にする
+    private static func sources() throws -> [String] {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()   // FTCoreTests
             .deletingLastPathComponent()   // Tests
             .deletingLastPathComponent()   // リポジトリルート
-        return try String(contentsOf: root.appendingPathComponent("Sources/FTCore/StepExecutor.swift"),
-                          encoding: .utf8)
+        let dir = root.appendingPathComponent("Sources/FTCore")
+        let names = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+            .filter { $0.hasPrefix("StepExecutor") && $0.hasSuffix(".swift") }
+            .sorted()
+        return try names.map {
+            try String(contentsOf: dir.appendingPathComponent($0), encoding: .utf8)
+        }
     }
 
     /// 宣言行から**次のメンバ宣言(インデント4の func)まで**を本文とみなす。
-    /// 完全なパーサではないが、この検査には十分(取りこぼすと関数が見つからず失敗する)
-    private static func body(of signature: String, in source: String) -> [String]? {
-        let lines = source.components(separatedBy: "\n")
-        guard let start = lines.firstIndex(where: { $0.contains(signature) }) else { return nil }
+    /// 完全なパーサではないが、この検査には十分(取りこぼすと関数が見つからず失敗する)。
+    /// **宣言行はコメント行を除いて全ファイルで一意であること** —— 別ファイルのコメントが
+    /// シグネチャに言及しただけで先勝ちすると、偽の「本文」を走査して黙って素通しする
+    private static func body(of signature: String, in sources: [String]) -> [String]? {
+        let hits: [(lines: [String], start: Int)] = sources.compactMap { source in
+            let lines = source.components(separatedBy: "\n")
+            let starts = lines.indices.filter { index in
+                lines[index].contains(signature)
+                    && !lines[index].trimmingCharacters(in: .whitespaces).hasPrefix("//")
+            }
+            guard let start = starts.first else { return nil }
+            guard starts.count == 1 else { return (lines, -1) }   // ファイル内重複 = 曖昧
+            return (lines, start)
+        }
+        guard hits.count == 1, let hit = hits.first, hit.start >= 0 else { return nil }
+        let (lines, start) = hit
         var end = lines.count
         for index in (start + 1)..<lines.count {
             let line = lines[index]
@@ -50,10 +69,10 @@ final class PostSwipeSnapshotFreshnessTests: XCTestCase {
     }
 
     func testPostSwipeReadsBypassTheSnapshotCache() throws {
-        let source = try Self.source()
+        let sources = try Self.sources()
         for signature in Self.mustBypass {
-            guard let body = Self.body(of: signature, in: source) else {
-                XCTFail("走査対象が見つからない = 関数名かシグネチャの書式が変わった: \(signature)")
+            guard let body = Self.body(of: signature, in: sources) else {
+                XCTFail("走査対象が一意に見つからない = 書式が変わったか、他ファイルの非コメント行がシグネチャに触れている: \(signature)")
                 continue
             }
             let bare = body.filter { $0.contains("driver.snapshot()") }
@@ -69,9 +88,9 @@ final class PostSwipeSnapshotFreshnessTests: XCTestCase {
     /// 初回だけ迂回して再試行を素取得に戻すと、古い木は撮り直しても同じものが返るので
     /// **再試行の予算をまるごと空振りに使う**
     func testResolutionAfterScrollSearchBypassesOnEveryRetry() throws {
-        let source = try Self.source()
-        guard let body = Self.body(of: "private func executeAction(", in: source) else {
-            return XCTFail("走査対象が見つからない = executeAction のシグネチャが変わった")
+        let sources = try Self.sources()
+        guard let body = Self.body(of: "func executeAction(", in: sources) else {
+            return XCTFail("走査対象が一意に見つからない = executeAction の書式が変わったか、他ファイルの非コメント行がシグネチャに触れている")
         }
         // **`swiped:` の実引数まで見る**: `.afterSearch(swiped: false)` に固定されると
         // 理由は書かれたまま迂回が消えるので、語彙の存在だけでは検出できない
