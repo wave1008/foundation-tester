@@ -1130,6 +1130,7 @@ const VALID_RUN_PROFILE_SAVE = {
     containerInference: true,
     iosInappEngine: true,
     iosFastInput: false,
+    homeOnStart: true,
     enableAnimations: false,
     reportDir: "reports",
     defaultTimeout: "10",
@@ -1176,6 +1177,7 @@ test("isMonitorFromWebviewMessage: runProfileSave は profile 非空・fields21�
         containerInference: false,
         iosInappEngine: false,
         iosFastInput: true,
+        homeOnStart: true,
         enableAnimations: true,
         reportDir: "",
         defaultTimeout: "",
@@ -1997,6 +1999,7 @@ test("parseRunProfileForForm: 正常な値は21フィールドをそのまま読
     containerInference: false,
     iosInappEngine: false,
     iosFastInput: true,
+    homeOnStart: true,
     enableAnimations: true,
     reportDir: "reports",
     defaultTimeout: 10,
@@ -2020,6 +2023,7 @@ test("parseRunProfileForForm: 正常な値は21フィールドをそのまま読
     containerInference: false,
     iosInappEngine: false,
     iosFastInput: true,
+    homeOnStart: true,
     enableAnimations: true,
     reportDir: "reports",
     defaultTimeout: "10",
@@ -2047,6 +2051,7 @@ test("parseRunProfileForForm: 欠落キーは既定値(machine/app/reportDir/loc
     containerInference: true,
     iosInappEngine: true,
     iosFastInput: false,
+    homeOnStart: true,
     enableAnimations: false,
     reportDir: "",
     defaultTimeout: "",
@@ -2095,6 +2100,7 @@ test("parseRunProfileForForm: 型不正のキーは既定値扱い(machine が�
     containerInference: true,
     iosInappEngine: true,
     iosFastInput: false,
+    homeOnStart: true,
     enableAnimations: false,
     reportDir: "",
     defaultTimeout: "",
@@ -2123,6 +2129,13 @@ test("parseRunProfileForForm: falsePositiveCheck は boolean ならそのまま�
   assert.equal(parseRunProfileForForm({ falsePositiveCheck: false }).falsePositiveCheck, false);
   assert.equal(parseRunProfileForForm({}).falsePositiveCheck, false);
   assert.equal(parseRunProfileForForm({ falsePositiveCheck: "true" }).falsePositiveCheck, false);
+});
+
+test("parseRunProfileForForm: homeOnStart は boolean ならそのまま返し、欠落/非 boolean は既定値 true(= 撃つ)", () => {
+  assert.equal(parseRunProfileForForm({ homeOnStart: false }).homeOnStart, false);
+  assert.equal(parseRunProfileForForm({ homeOnStart: true }).homeOnStart, true);
+  assert.equal(parseRunProfileForForm({}).homeOnStart, true, "欠落なら撃つ(凍結対策は既定 ON)");
+  assert.equal(parseRunProfileForForm({ homeOnStart: "yes" }).homeOnStart, true);
 });
 
 test("parseRunProfileForForm: enableAnimations は boolean ならそのまま返し、欠落/非 boolean は既定値 false(= アニメーション無効化)", () => {
@@ -2269,6 +2282,7 @@ const BASE_RUN_PROFILE_FIELDS = {
   containerInference: true,
   iosInappEngine: true,
   iosFastInput: false,
+  homeOnStart: true,
   enableAnimations: false,
   reportDir: "reports",
   defaultTimeout: "10",

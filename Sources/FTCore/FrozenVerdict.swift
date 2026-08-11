@@ -6,9 +6,10 @@
 // run は「9台が凍結」と言って回復まで実行したのに、モニターの `Frozen:` は 0 のままだった。
 // 判定の共有は docs/design.md の「判定は MCP と DSL で共有する」と同じ規律。
 //
-// **判定の主は拍動(noPresent)で、画像(uniformBlank)は拍動を申告しないブリッジ向けの予備**。
-// 画像は2方向に外す —— 「真っ白な画面」を凍結と誤認し(実測 13/13)、最後のフレームが残る
-// 固着型は非一様なので取り逃がす。根拠を列挙して束ねる形なので、証拠の追加は enum の1ケースで済む。
+// **判定材料は一様フレーム(uniformBlank)**。拍動(noPresent)は付随する根拠にとどめる ——
+// 本物の wedge でも拍動は回り続けることを実験で確かめた(2026-08-11)ので、**否定材料には
+// 使えない**。偽陽性(アプリの初回描画待ち)との区別は**観測窓の長さ**で行う。
+// 根拠を列挙して束ねる形なので、証拠の追加は enum の1ケースで済む。
 
 import Foundation
 
@@ -17,22 +18,21 @@ public enum FrozenEvidence: String, Codable, Sendable, CaseIterable {
     /// 画面が一様(白/黒ベタ)。iOS・Android とも実測済みの型
     case uniformBlank
     /// 描画拍動(iOS=CADisplayLink / Android=Choreographer)の tick が止まっている。
-    /// **主たる根拠**(2026-08-11 に格上げ)。vsync 由来の直接の量なので、静止画面と凍結を
-    /// 画像なしで分離でき、固着型(最後のフレームが残る)も捕まえられる
+    /// **これは「表示が進んだか」ではない**(2026-08-11 に実験で反証): 本物の wedge を故意に
+    /// 起こして観測したところ、画面が完全に固まっていても拍動は 0.001〜0.016s で回り続けた。
+    /// 測っているのは「アプリが vsync を要求し続けているか」で、コンポジタが wedge しても
+    /// コールバックは来る。**凍結の否定には使えない**(生きていても凍結でありうる)。
+    /// 止まっている場合は異常だが、それが表示の停止かアプリのハングかは分けられないので
+    /// 単独では確定させない
     case noPresent
     /// 入力が届かない。能動プローブなので受動監視では撃てず、run 前トリアージ専用
     case inputNotLanding
     /// 陽性対照の注入(`FrozenInjection`)。検知経路を端から端まで通すためだけに使う
     case injected
 
-    /// **単独で凍結と断じてよい根拠か**。
-    ///
-    /// `noPresent` は 2026-08-11 に**主たる根拠へ格上げした**。画像(一様フレーム)は
-    /// 「描画が死んでいる」と「真っ白な画面を出している」を区別できず、実測で 13/13 の
-    /// 誤検知を出した(docs/verification.md)。拍動は vsync 由来の**直接の量**なので、
-    /// 申告がある限りこちらを主にする。**残る留保**: 本物の wedge で tick が止まる観測は
-    /// まだ採れていない(この期間に本物が1件も無かった)。採れたらこのコメントを更新する
-    public var isConclusive: Bool { true }
+    /// **単独で凍結と断じてよい根拠か**。`noPresent` だけ false
+    /// (拍動の停止は異常だが、表示の停止とアプリのハングを分けられない)
+    public var isConclusive: Bool { self != .noPresent }
 
     /// ログ・UI に出す短い語(rawValue はケース名なので人が読む面には出さない)
     public var label: String {
@@ -94,31 +94,30 @@ public struct FrozenVerdict: Codable, Sendable, Equatable {
     /// 5秒を超えるのは通常の処理では起きない
     public static let displayIdleFrozenThreshold: Double = 5.0
 
-    /// 凍結と数えるか。**拍動があるなら拍動だけで決め、画像は見ない**。
+    /// 凍結と数えるか。
     ///
-    /// 画像(一様フレーム)は非決定的で、しかも2方向に外す:
-    ///   - 偽陽性: 「真っ白な画面を出している」を凍結と誤認する(実測 13/13。1回のフルで約8分の
-    ///     不要な再起動)
-    ///   - **偽陰性**: 最後のフレームが残る固着型は非一様なので**原理的に捕まらない**
-    /// 拍動は vsync 由来の直接の量なので、申告がある限りこちらだけで判定する。
+    /// **拍動を否定材料に使ってはいけない**(2026-08-11 の実験で反証): 本物の wedge でも
+    /// 拍動は回り続ける(実測 0.001〜0.016s)。一度は「拍動が生きていれば凍結ではない」と
+    /// したが、それでは**本物を1件も検出できない**。
     ///
-    /// **申告が無い(nil)ときだけ画像に頼る**(旧ブリッジ・ブリッジ無し)。保護を外さないための予備。
-    public static func countsAsFrozen(uniformBlank: Bool, displayIdleSeconds: Double?,
+    /// 偽陽性(アプリの初回描画待ち)と本物の違いは**時間**にある —— 描画待ちは数秒で解消し、
+    /// wedge はいつまでも解消しない。判定材料は一様フレームのままにして、
+    /// **観測窓を延ばす**ことで分ける(`BlankWorkerTriage.samples` / `intervalMs`)。
+    public static func countsAsFrozen(uniformBlank: Bool, displayIdleSeconds: Double? = nil,
                                       threshold: Double = displayIdleFrozenThreshold) -> Bool {
-        guard let idle = displayIdleSeconds else { return uniformBlank }
-        return idle > threshold
+        uniformBlank
     }
 
-    /// 1台ぶんの観測から判定を組み立てる。**run 前トリアージもモニターもここを通す**
+    /// 1台ぶんの観測から判定を組み立てる。**run 前トリアージもモニターもここを通す**。
+    /// 拍動の停止は付随する根拠として残す(単独では確定しない)
     public static func observe(uniformBlank: Bool, displayIdleSeconds: Double?,
                                injected: Bool = false,
                                threshold: Double = displayIdleFrozenThreshold) -> FrozenVerdict {
         if injected { return FrozenVerdict([.injected]) }
-        guard countsAsFrozen(uniformBlank: uniformBlank, displayIdleSeconds: displayIdleSeconds,
-                             threshold: threshold) else { return .healthy }
-        guard displayIdleSeconds != nil else { return FrozenVerdict([.uniformBlank]) }
-        // 拍動で決めた。画像も一様なら根拠として併記する(2つ揃ったことが後で効く)
-        return FrozenVerdict(uniformBlank ? [.uniformBlank, .noPresent] : [.noPresent])
+        var evidence: [FrozenEvidence] = []
+        if uniformBlank { evidence.append(.uniformBlank) }
+        if let idle = displayIdleSeconds, idle > threshold { evidence.append(.noPresent) }
+        return FrozenVerdict(evidence)
     }
 }
 

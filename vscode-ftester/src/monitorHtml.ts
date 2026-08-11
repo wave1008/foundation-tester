@@ -233,6 +233,10 @@ function renderRunProfileSection(): string {
           <div class="run-profile-section-group">
             <div class="run-profile-section-title">${t("panels.runProfile.miscSectionTitle")}</div>
             <div class="modal-row profile-checkbox-row">
+              <input type="checkbox" id="run-profile-home-on-start">
+              <label for="run-profile-home-on-start">${t("panels.runProfile.homeOnStartLabel")}</label>
+            </div>
+            <div class="modal-row profile-checkbox-row">
               <input type="checkbox" id="run-profile-enable-animations">
               <label for="run-profile-enable-animations">${t("panels.runProfile.enableAnimationsLabel")}</label>
             </div>

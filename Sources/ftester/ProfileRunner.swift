@@ -104,6 +104,8 @@ enum ProfileRunner {
         workers = try await ProfileWorkerFactory.installIfNeeded(
             apps: resolved.apps, workers: workers,
             forceAndroidInstall: !wipedAndroid.isEmpty) { print($0) }
+        // 一斉 launch 直後の黒画面を作らないための予防(ProfileWorkerFactory.pressHomeOnStart)
+        await ProfileWorkerFactory.pressHomeOnStart(workers, enabled: resolved.homeOnStart) { print($0) }
         let hasLateIOS = !resolved.iosDevices.isEmpty
 
         // 3. 両OS同時並列実行(platform 別キューは RunOrchestrator がそのまま担う)
@@ -237,8 +239,11 @@ enum ProfileRunner {
                                 repoRoot: repoRoot, apps: resolved.apps) { print($0) }
                         },
                         stateDir: repoRoot.appendingPathComponent(".ftester"),
+                            nudge: { @Sendable [bundleID = ProfileWorkerFactory.iosBundleID(apps: resolved.apps)] in
+                                await ProfileWorkerFactory.nudgeIOSScreen(worker: $0, restoring: bundleID) },
                         log: { print($0) }).workers
                     ws = recovered ?? ws
+                    await ProfileWorkerFactory.pressHomeOnStart(ws, enabled: resolved.homeOnStart) { print($0) }
                     print("🚀 \(ws.count) iOS worker(s) joined")
                     return ws
                 } catch {

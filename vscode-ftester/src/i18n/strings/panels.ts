@@ -107,6 +107,11 @@ export const panelsStrings = {
   },
   "panels.runProfile.recordSectionTitle": { ja: "録画", en: "Recording" },
   "panels.runProfile.miscSectionTitle": { ja: "misc", en: "misc" },
+  // 一斉 launch 直後の黒画面(描画要求が無いだけ)を避けるための予防措置。既定 ON
+  "panels.runProfile.homeOnStartLabel": {
+    ja: "テスト開始時にhome()を実行する(デバイス凍結対策)",
+    en: "Run home() when the test starts (guards against a frozen screen)",
+  },
   "panels.runProfile.enableAnimationsLabel": {
     ja: "アニメーションを有効にする(既定は無効。有効にすると整定待ちが伸び、テストが不安定になることがあります)",
     en: "Keep app animations (off by default; keeping them lengthens settling waits and can make tests unstable)",

@@ -43,6 +43,75 @@ public enum ProfileWorkerFactory {
         return provisioned.map { makeIOSWorker(device: $0, iosApp: iosApp) }
     }
 
+    /// run 開始時に各デバイスへ `home()` を1回撃つ(実行プロファイルの `homeOnStart`。既定 true)。
+    ///
+    /// **予防措置**(2026-08-11 の実測): 一斉に launch した直後の端末は「描画要求が無いだけ」で
+    /// 画面が黒いまま止まることがある(黒かった5台のうち4台は HOME を押した瞬間に 15KB → 1.4MB へ
+    /// 戻った)。この状態は本物の凍結と受動観測では見分けが付かないので、**先に1回入力を入れて
+    /// 描画を動かしておく**。デバイスあたり1回なので実行時間への影響はほぼ無い。
+    ///
+    /// `engine=inapp` 単独のデバイスだけは撃てない(in-app ドライバは自プロセス外を操作できず 501)。
+    /// **実行プロファイルからは到達しない構成**なので代替は用意しない —— `iosInappEngine` は
+    /// true→hybrid / false→xcuitest のどちらかで、両方とも home() が通る。
+    ///
+    /// **結果は正直に出す**(2026-08-11): 最初の実装は `try?` で握り潰して台数だけログしており、
+    /// **1台も撃てていないのに成功したように見えていた**。
+    public static func pressHomeOnStart(_ workers: [RunWorker], enabled: Bool,
+                                        log: @escaping @Sendable (String) -> Void) async {
+        guard enabled, !workers.isEmpty else { return }
+        let results = await withTaskGroup(of: Bool.self, returning: [Bool].self) { group in
+            for worker in workers {
+                group.addTask { (try? await worker.driver.home()) != nil }
+            }
+            var out: [Bool] = []
+            for await ok in group { out.append(ok) }
+            return out
+        }
+        let done = results.filter { $0 }.count
+        if done == results.count {
+            log("🏠 pressed home on \(done) device(s) (homeOnStart)")
+        } else {
+            log("🏠 pressed home on \(done)/\(results.count) device(s) (homeOnStart)"
+                + " — the rest do not support it (an iOS device pinned to engine=inapp cannot press"
+                + " home; hybrid and xcuitest can)")
+        }
+    }
+
+    /// **画面を必ず変える無害な入力**を送り、その後のフレームを返す(iOS シミュレータ)。
+    /// `BlankWorkerTriage` の能動プローブ用。
+    ///
+    /// なぜ要るか(2026-08-11 の実測): 一斉に force-stop / launch した直後の黒画面は、
+    /// **描画要求が無いだけ**で死んでいないことが多い(黒かった5台のうち本物の wedge は1台。
+    /// 残り4台は HOME を押した瞬間に 15KB → 1.4MB へ戻った)。受動観測ではこの2つを区別できない。
+    ///
+    /// 実装の要点3つ:
+    /// - 入力は**別アプリを前面に出す**(simctl に「ホームへ戻る」操作が無いため)
+    /// - 撮影は **simctl**。in-app ブリッジは背面化で suspend するのでブリッジ経由では撮れない
+    /// - **撃ったら SUT を前面へ戻す**。戻さないとブリッジが suspend したままになり、
+    ///   ワーカーが `cannot connect (no response to status)` で離脱する
+    ///   (フル E2E で10件発生。うち9件は Flutter iOS = プローブが最も発火するプロファイル)。
+    ///   シナリオ側の `launchApp()` が起動し直すまでの窓を、ここで閉じる
+    public static func nudgeIOSScreen(worker: RunWorker, restoring bundleID: String?) async -> Data? {
+        guard let udid = worker.connection.udid else { return nil }
+        _ = try? Shell.run(["xcrun", "simctl", "launch", udid, "com.apple.Preferences"], timeout: 20)
+        try? await Task.sleep(nanoseconds: 3_000_000_000)
+        let path = NSTemporaryDirectory() + "ft-nudge-\(udid).png"
+        defer {
+            try? FileManager.default.removeItem(atPath: path)
+            if let bundleID {
+                _ = try? Shell.run(["xcrun", "simctl", "launch", udid, bundleID], timeout: 20)
+            }
+        }
+        guard let result = try? Shell.run(["xcrun", "simctl", "io", udid, "screenshot", path],
+                                          timeout: 25), result.status == 0 else { return nil }
+        return try? Data(contentsOf: URL(fileURLWithPath: path))
+    }
+
+    /// 実行プロファイルから iOS の SUT の bundle ID を採る(プローブ後に前面へ戻すため)
+    public static func iosBundleID(apps: [String: ResolvedAppTarget]) -> String? {
+        apps["ios"]?.bundleID
+    }
+
     /// run 開始時に Android 端末のアニメーション設定をプロファイルの enableAnimations へ合わせる。
     /// **ブリッジのコールド起動時の適用(AndroidBridge)だけでは足りない** — ブリッジは run を
     /// またいで再利用されるため、前の run が残した状態がそのまま残る。

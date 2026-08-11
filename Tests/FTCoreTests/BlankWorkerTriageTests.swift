@@ -65,8 +65,9 @@ final class BlankWorkerTriageTests: XCTestCase {
         XCTAssertFalse(blank, "2枚目が非一様なら健全")
     }
 
+    /// **サンプル数は定数から採る**(窓を延ばしたときにテストが嘘にならないように)
     func testConsecutiveBlankFramesAreBlank() async {
-        var frames = [Self.blankPNG, Self.blankPNG]
+        var frames = Array(repeating: Self.blankPNG, count: BlankWorkerTriage.samples)
         let blank = await BlankWorkerTriage.isPersistentlyBlank(
             screenshot: { frames.isEmpty ? nil : frames.removeFirst() }, sleep: { _ in })
         XCTAssertTrue(blank)
@@ -148,6 +149,55 @@ final class BlankWorkerTriageTests: XCTestCase {
         CGImageDestinationAddImage(destination, image, nil)
         guard CGImageDestinationFinalize(destination) else { fatalError("テスト用 PNG 書き出しに失敗") }
         return output as Data
+    }
+
+    // MARK: - 能動プローブ(2026-08-11)
+    //
+    // 受動観測では**原理的に区別できない**2つの状態がある:
+    //   「描画要求が無いだけの黒画面」= 入力すると描画が戻る(実測: HOME で 15KB → 1.4MB)
+    //   「本物の wedge」= 入力しても戻らない
+    // 一斉に force-stop/launch した直後に黒かった5台のうち、本物は1台だけだった。
+    // 拍動(displayIdleSeconds)では分けられない(本物でも回り続ける)。この判別だけが全問正解した。
+
+    /// **本丸**: 一様が続いても、入力で描画が戻るなら凍結ではない
+    func testNudgeThatRestoresPaintingMeansHealthy() async {
+        let verdict = await BlankWorkerTriage.observedVerdict(
+            key: "udid-a", screenshot: { Self.blankPNG },
+            nudge: { Self.contentPNG }, environment: [:])
+        XCTAssertFalse(verdict.isFrozen, "入力で描画が戻る機を再起動してはいけない")
+    }
+
+    /// 入力しても一様のままなら**本物の wedge**
+    func testNudgeThatChangesNothingMeansFrozen() async {
+        let verdict = await BlankWorkerTriage.observedVerdict(
+            key: "udid-a", screenshot: { Self.blankPNG },
+            nudge: { Self.blankPNG }, environment: [:])
+        XCTAssertTrue(verdict.isFrozen)
+        XCTAssertEqual(verdict.evidence, [.uniformBlank])
+    }
+
+    /// プローブが撮れなかった(nil)ときは保護側に倒す
+    func testNudgeFailureFallsBackToFrozen() async {
+        let verdict = await BlankWorkerTriage.observedVerdict(
+            key: "udid-a", screenshot: { Self.blankPNG }, nudge: { nil }, environment: [:])
+        XCTAssertTrue(verdict.isFrozen)
+    }
+
+    /// **健全機にはプローブを撃たない**(正常時に全機の前面を変えない)
+    func testHealthyDeviceIsNeverNudged() async {
+        var nudged = false
+        let verdict = await BlankWorkerTriage.observedVerdict(
+            key: "udid-a", screenshot: { Self.contentPNG },
+            nudge: { nudged = true; return Self.contentPNG }, environment: [:])
+        XCTAssertFalse(verdict.isFrozen)
+        XCTAssertFalse(nudged, "一様でない機に撃つと毎 run 全機の前面が変わる")
+    }
+
+    /// プローブを渡さない呼び出しは従来どおり
+    func testWithoutNudgeUniformIsStillFrozen() async {
+        let verdict = await BlankWorkerTriage.observedVerdict(
+            key: "udid-a", screenshot: { Self.blankPNG }, environment: [:])
+        XCTAssertTrue(verdict.isFrozen)
     }
 }
 

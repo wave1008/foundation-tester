@@ -31,9 +31,15 @@ public enum BlankWorkerTriage {
     }
 
     /// blank を確定させるサンプル数と間隔。**単発のフレームでは決めない**
-    /// (アプリ起動直後の白/黒フレームを凍結と誤断する)。Android 側の run 前トリアージと同じ規約
-    public static let samples = 2
-    public static let intervalMs = 1_500
+    /// (アプリ起動直後の白/黒フレームを凍結と誤断する)。
+    ///
+    /// **窓は約10秒**(2026-08-11 に 1.5秒から延ばした)。1.5秒では**アプリが最初のフレームを
+    /// 描き終える前に判定**しており、フル E2E のたびに 5〜10台を誤って再起動していた
+    /// (Flutter 10 / Compose 3 / SwiftUI・RN 0 と、描画の重さに比例した)。
+    /// 本物の wedge は時間が経っても解消しないので、窓を延ばすだけで分けられる。
+    /// **コストは一様に見えた機だけが払う**(健全機は1サンプルで抜ける)
+    public static let samples = 5
+    public static let intervalMs = 2_500
 
     /// **どのワーカーを弾くかの判定だけ**を切り出した純粋ロジック(デバイス不要 = 単体テストで固める)。
     /// `blankByLabel` は「そのワーカーが恒常 blank か」。元の順序を保ったまま除外する
@@ -80,19 +86,33 @@ public enum BlankWorkerTriage {
     /// しきい値の定義元は `FrozenVerdict`(run とモニターで1つ)。ここは別名
     public static var displayIdleFrozenThreshold: Double { FrozenVerdict.displayIdleFrozenThreshold }
 
+    /// 1台ぶんの判定。
+    ///
+    /// `nudge` は**画面を必ず変える無害な入力を送り、その後のフレームを返す**クロージャ。
+    /// 一様が続いた機にだけ撃つ。**受動観測では原理的に区別できない**2つの状態を分けるため:
+    ///   - 「描画要求が無いだけの黒画面」= 入力すると描画が戻る(実測: HOME で 15KB → 1.4MB)
+    ///   - 「本物の wedge」= 入力しても戻らない
+    /// 2026-08-11 の実測では、黒かった5台のうち本物は1台だけだった。この判別だけが全問正解した。
+    /// `nudge` を渡さない呼び出しは従来どおり(一様が続けば凍結)。
     public static func observedVerdict(
         key: String?,
         screenshot: () async -> Data?,
+        nudge: (() async -> Data?)? = nil,
         displayIdleSeconds: Double? = nil,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) async -> FrozenVerdict {
         if FrozenInjection.isInjected(key: key, environment: environment) {
             return FrozenVerdict([.injected])
         }
-        // **判定規則はモニターと共通**(FrozenVerdict.observe)。一様でも拍動が生きていれば
-        // 凍結としない = アプリの初回描画待ちでフリートを再起動しない
-        return FrozenVerdict.observe(uniformBlank: await isPersistentlyBlank(screenshot: screenshot),
-                                     displayIdleSeconds: displayIdleSeconds)
+        guard await isPersistentlyBlank(screenshot: screenshot) else {
+            return FrozenVerdict.observe(uniformBlank: false, displayIdleSeconds: displayIdleSeconds)
+        }
+        if let nudge, let after = await nudge(),
+           !BlankFrameDetector.isUniformBlank(pngData: after) {
+            // 入力で描画が戻った = 凍結ではない(拍動では区別できなかった側)
+            return FrozenVerdict.observe(uniformBlank: false, displayIdleSeconds: displayIdleSeconds)
+        }
+        return FrozenVerdict.observe(uniformBlank: true, displayIdleSeconds: displayIdleSeconds)
     }
 
     /// 凍結したワーカーの label と根拠(並列判定)。健全機は1サンプルで即返るので、
@@ -100,6 +120,7 @@ public enum BlankWorkerTriage {
     public static func frozenVerdicts(
         _ workers: [RunWorker],
         environment: [String: String] = ProcessInfo.processInfo.environment,
+        nudge: (@Sendable (RunWorker) async -> Data?)? = nil,
         log: (@Sendable (String) -> Void)? = nil
     ) async -> [String: FrozenVerdict] {
         let candidates = workers.filter(isCandidate)
@@ -110,19 +131,12 @@ public enum BlankWorkerTriage {
                 group.addTask {
                     // 拍動の申告はブリッジの /status から採る(計器を持たない版は nil = 根拠にしない)
                     let displayIdle = try? await worker.driver.status().displayIdleSeconds
-                    let verdict = await observedVerdict(key: deviceKey(worker),
-                                                        screenshot: { try? await worker.driver.screenshot() },
-                                                        displayIdleSeconds: displayIdle ?? nil,
-                                                        environment: environment)
-                    // **見送ったことを残す**(2026-08-11 の実測): 一様なのに拍動が生きている機は
-                    // 凍結として扱わない。これを黙って捨てると「なぜ回復しなかったのか」が
-                    // 追えなくなる(逆に、本物の凍結を取り逃がしたときの手掛かりにもなる)
-                    if !verdict.isFrozen, let idle = displayIdle ?? nil,
-                       idle <= displayIdleFrozenThreshold {
-                        log?("ℹ️ \(worker.label): the frame is uniform but the display is still"
-                            + " advancing (idle \(String(format: "%.2f", idle))s)"
-                            + " — not treating it as frozen (the app is probably still painting)")
-                    }
+                    let verdict = await observedVerdict(
+                        key: deviceKey(worker),
+                        screenshot: { try? await worker.driver.screenshot() },
+                        nudge: nudge.map { probe in { await probe(worker) } },
+                        displayIdleSeconds: displayIdle ?? nil,
+                        environment: environment)
                     return (worker.label, verdict)
                 }
             }
@@ -188,10 +202,11 @@ public enum BlankWorkerTriage {
         recover: (@Sendable ([String], [RunWorker]) async -> [RunWorker]?)? = nil,
         stateDir: URL? = nil,
         environment: [String: String] = ProcessInfo.processInfo.environment,
+        nudge: (@Sendable (RunWorker) async -> Data?)? = nil,
         log: @escaping @Sendable (String) -> Void
     ) async -> Result {
         var current = workers
-        var verdicts = await frozenVerdicts(current, environment: environment, log: log)
+        var verdicts = await frozenVerdicts(current, environment: environment, nudge: nudge, log: log)
         // **判定した時点で公表する**(回復は数分かかりうるので、終わってから配るとモニターは
         // その間ずっと「異常なし」を出す = 見えるようにした意味が無い)
         syncStore(verdicts, of: current, stateDir: stateDir)
@@ -214,7 +229,7 @@ public enum BlankWorkerTriage {
                     + " (attempt \(attempt)/\(recoveryAttempts))")
                 guard let rebuilt = await recover(blankLabels, current) else { break }
                 current = rebuilt
-                verdicts = await frozenVerdicts(current, environment: environment, log: log)
+                verdicts = await frozenVerdicts(current, environment: environment, nudge: nudge, log: log)
                 syncStore(verdicts, of: current, stateDir: stateDir)
                 blankLabels = verdicts
                     .filter { $0.value.isFrozen && !$0.value.isInjectedOnly }.keys.sorted()

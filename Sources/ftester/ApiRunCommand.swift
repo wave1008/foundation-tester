@@ -236,7 +236,11 @@ struct ApiRunCommand: AsyncParsableCommand {
                             // 判定をモニターへ配る(DeviceFrozenStore)。run が知っている凍結を
                             // モニターが知らない状態を作らないための唯一の口
                             stateDir: repoRoot.appendingPathComponent(".ftester"),
+                            nudge: { @Sendable [bundleID = ProfileWorkerFactory.iosBundleID(apps: resolved.apps)] in
+                                await ProfileWorkerFactory.nudgeIOSScreen(worker: $0, restoring: bundleID) },
                             log: { logStderr($0) }).workers
+                        await ProfileWorkerFactory.pressHomeOnStart(
+                            workers, enabled: resolved.homeOnStart) { logStderr($0) }
                         logStderr("🚀 \(workers.count) iOS worker(s) joined")
                         return workers
                     } catch {
@@ -424,8 +428,12 @@ struct ApiRunCommand: AsyncParsableCommand {
                         repoRoot: iosRepoRoot, apps: resolved.apps) { logStderr($0) }
                 },
                 stateDir: iosRepoRoot.appendingPathComponent(".ftester"),
+                            nudge: { @Sendable [bundleID = ProfileWorkerFactory.iosBundleID(apps: resolved.apps)] in
+                                await ProfileWorkerFactory.nudgeIOSScreen(worker: $0, restoring: bundleID) },
                 log: { logStderr($0) })
             workers = iosTriage.workers
+            await ProfileWorkerFactory.pressHomeOnStart(
+                workers, enabled: resolved.homeOnStart) { logStderr($0) }
             blankTriage = (triage.repaired, triage.excluded + iosTriage.excluded)
             workers = try await ProfileWorkerFactory.installIfNeeded(
                 apps: resolved.apps, workers: workers,

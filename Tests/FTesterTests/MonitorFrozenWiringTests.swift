@@ -183,37 +183,21 @@ final class MonitorFrozenWiringTests: XCTestCase {
 
     // MARK: - ③ 一様でも「描画が進んでいる」なら凍結ではない
 
-    /// **本丸**: run のあと真っ白な画面で放置された機を凍結と言わない(2026-08-11 の誤検知)。
-    /// 実測では ❄️ が付いた4台とも、HOME を押しただけでスクショが 24KB → 1.4MB になった
-    func testUniformFrameWithLiveDisplayIsNotFrozen() {
-        XCTAssertFalse(ApiMonitorCommand.isFrozenSample(uniformBlank: true, displayIdleSeconds: 0.1),
-                       "拍動が生きている = 真っ白な画面を出しているだけ")
+    /// **拍動を否定材料に使わない**(2026-08-11 の実験で反証。本物の wedge でも拍動は回る)
+    func testLiveHeartbeatDoesNotDenyAFreeze() {
+        XCTAssertTrue(ApiMonitorCommand.isFrozenSample(uniformBlank: true, displayIdleSeconds: 0.005),
+                      "拍動が生きていても凍結でありうる")
     }
 
-    /// 拍動が止まっていれば従来どおり凍結の材料
-    func testUniformFrameWithStalledDisplayIsFrozen() {
+    /// 申告の有無で判定は変わらない
+    func testHeartbeatPresenceDoesNotChangeTheSample() {
+        XCTAssertTrue(ApiMonitorCommand.isFrozenSample(uniformBlank: true, displayIdleSeconds: nil))
         XCTAssertTrue(ApiMonitorCommand.isFrozenSample(uniformBlank: true, displayIdleSeconds: 30))
     }
 
-    /// **申告が無いときは保護を外さない**(旧ブリッジ・ブリッジ無しの機を見逃さない)
-    func testUniformFrameWithoutHeartbeatKeepsTheOldBehaviour() {
-        XCTAssertTrue(ApiMonitorCommand.isFrozenSample(uniformBlank: true, displayIdleSeconds: nil))
-    }
-
-    /// **固着型**(非一様のまま止まる)も拍動で捕まえる。画像だけでは原理的に取り逃がしていた
-    func testNonUniformButStalledIsFrozen() {
-        XCTAssertTrue(ApiMonitorCommand.isFrozenSample(uniformBlank: false, displayIdleSeconds: 30))
-    }
-
-    /// 申告が無く一様でもなければ凍結ではない(予備の画像判定も否定側)
-    func testNonUniformWithoutHeartbeatIsNotFrozen() {
+    /// 一様でなければ凍結ではない
+    func testNonUniformIsNotFrozen() {
         XCTAssertFalse(ApiMonitorCommand.isFrozenSample(uniformBlank: false, displayIdleSeconds: nil))
-    }
-
-    /// しきい値の境界(ちょうどは「生きている」側 = 凍結にしない)
-    func testThresholdBoundary() {
-        let t = ApiMonitorCommand.displayIdleFrozenThreshold
-        XCTAssertFalse(ApiMonitorCommand.isFrozenSample(uniformBlank: true, displayIdleSeconds: t))
-        XCTAssertTrue(ApiMonitorCommand.isFrozenSample(uniformBlank: true, displayIdleSeconds: t + 0.01))
+        XCTAssertFalse(ApiMonitorCommand.isFrozenSample(uniformBlank: false, displayIdleSeconds: 0.01))
     }
 }

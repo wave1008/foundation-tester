@@ -264,6 +264,12 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// 同期相手: vscode-ftester/schemas/run-profile.schema.json と
     /// src/monitorProfileForms.ts の RunProfileFormFields
     public var enableAnimations: Bool?
+    /// run 開始時に各デバイスへ home() を1回撃つか(**既定 true**)。
+    /// 一斉に launch した直後の端末は「描画要求が無いだけ」で画面が黒いまま止まることがあり、
+    /// そのままだと凍結と見分けが付かない(2026-08-11 の実測: 黒かった5台のうち4台は入力で戻った)。
+    /// 予防として1回だけ入力を入れる。**デバイスあたり1回**なので実行時間への影響はほぼゼロ。
+    /// 同期相手: vscode-ftester/schemas/run-profile.schema.json と RunProfileFormFields
+    public var homeOnStart: Bool?
     /// 並列実行の各ワーカー(デバイス)ごとに run 全体を録画し、テスト関数(シナリオ)ごとに
     /// 1本の mp4 へ切り出すか(既定 false)。実体は RunOrchestrator への VideoRecordingConfig 注入
     /// (VideoRecordingCoordinator.swift)。録画失敗は run を失敗させない(警告ログのみ)
@@ -286,7 +292,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
                 recoverCpuFallbackToGpu: Bool? = nil,
                 locale: String? = nil, iosFastInput: Bool? = nil,
                 containerInference: Bool? = nil,
-                enableAnimations: Bool? = nil, record: Bool? = nil,
+                enableAnimations: Bool? = nil, homeOnStart: Bool? = nil, record: Bool? = nil,
                 recordFailuresOnly: Bool? = nil, recordBitrateKbps: Int? = nil,
                 recordFullResolution: Bool? = nil) {
         self.app = app
@@ -307,6 +313,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         self.iosFastInput = iosFastInput
         self.containerInference = containerInference
         self.enableAnimations = enableAnimations
+        self.homeOnStart = homeOnStart
         self.record = record
         self.recordFailuresOnly = recordFailuresOnly
         self.recordBitrateKbps = recordBitrateKbps
@@ -318,7 +325,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         "reportDir", "defaultTimeout", "scenarioTimeout",
         "machine", "iosInappEngine", "wipeDataOnBloat", "wipeDataThresholdGB",
         "recoverCpuFallbackToGpu", "locale",
-        "iosFastInput", "enableAnimations", "containerInference",
+        "iosFastInput", "enableAnimations", "homeOnStart", "containerInference",
         "record", "recordFailuresOnly", "recordBitrateKbps", "recordFullResolution",
     ]
 }
@@ -392,6 +399,8 @@ public struct ResolvedProfile: Sendable {
     public let containerInference: Bool
     /// アプリのアニメーションを残すか(RunProfileDocument.enableAnimations。既定 false=無効化)
     public let enableAnimations: Bool
+    /// run 開始時に各デバイスへ home() を撃つか(RunProfileDocument.homeOnStart。**既定 true**)
+    public let homeOnStart: Bool
     /// 各ワーカーを run 全体で録画し、シナリオごとに切り出すか(RunProfileDocument.record。既定 false)
     public let record: Bool
     /// 成功したシナリオのクリップを保存しないか(RunProfileDocument.recordFailuresOnly。既定 false)
@@ -770,6 +779,7 @@ public enum ProfileResolver {
             iosFastInput: runDoc.iosFastInput ?? false,
             containerInference: runDoc.containerInference ?? true,
             enableAnimations: runDoc.enableAnimations ?? false,
+            homeOnStart: runDoc.homeOnStart ?? true,
             record: runDoc.record ?? false,
             recordFailuresOnly: runDoc.recordFailuresOnly ?? false,
             // 0 以下は無意味な指定なので既定にフォールバック(run を止めるほどの問題ではない)

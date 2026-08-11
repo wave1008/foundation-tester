@@ -29,6 +29,7 @@ const runProfileScreenIs = document.getElementById('run-profile-screen-is');
 const runProfileContainerInference = document.getElementById('run-profile-container-inference');
 const runProfileIosInappEngine = document.getElementById('run-profile-ios-inapp-engine');
 const runProfileIosFastInput = document.getElementById('run-profile-ios-fast-input');
+const runProfileHomeOnStart = document.getElementById('run-profile-home-on-start');
 const runProfileEnableAnimations = document.getElementById('run-profile-enable-animations');
 const runProfileWipeDataOnBloat = document.getElementById('run-profile-wipe-data-on-bloat');
 const runProfileRecoverCpuFallback = document.getElementById('run-profile-recover-cpu-fallback');
@@ -215,6 +216,7 @@ function renderRunProfileEditor(fields) {
   updateFmOptionsVisibility();
   runProfileIosInappEngine.checked = fields.iosInappEngine;
   runProfileIosFastInput.checked = fields.iosFastInput;
+  runProfileHomeOnStart.checked = fields.homeOnStart;
   runProfileEnableAnimations.checked = fields.enableAnimations;
   runProfileContainerInference.checked = fields.containerInference;
   runProfileWipeDataOnBloat.checked = fields.wipeDataOnBloat;
@@ -409,6 +411,7 @@ function runProfileValuesEqual(fields) {
     runProfileScreenIs.checked === fields.screenIs &&
     runProfileIosInappEngine.checked === fields.iosInappEngine &&
     runProfileIosFastInput.checked === fields.iosFastInput &&
+    runProfileHomeOnStart.checked === fields.homeOnStart &&
     runProfileEnableAnimations.checked === fields.enableAnimations &&
     runProfileContainerInference.checked === fields.containerInference &&
     runProfileWipeDataOnBloat.checked === fields.wipeDataOnBloat &&
@@ -519,6 +522,7 @@ runProfileConfirm.addEventListener('click', () => {
       screenIs: runProfileScreenIs.checked,
       iosInappEngine: runProfileIosInappEngine.checked,
       iosFastInput: runProfileIosFastInput.checked,
+      homeOnStart: runProfileHomeOnStart.checked,
       enableAnimations: runProfileEnableAnimations.checked,
       containerInference: runProfileContainerInference.checked,
       wipeDataOnBloat: runProfileWipeDataOnBloat.checked,

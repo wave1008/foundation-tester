@@ -117,6 +117,8 @@ export interface RunProfileFormFields {
   readonly containerInference: boolean;
   readonly iosInappEngine: boolean;
   readonly iosFastInput: boolean;
+  /// **既定 true**。一斉 launch 直後の黒画面(描画要求が無いだけ)を避ける予防措置
+  readonly homeOnStart: boolean;
   readonly enableAnimations: boolean;
   readonly reportDir: string;
   readonly defaultTimeout: string;
@@ -137,7 +139,7 @@ export interface RunProfileFormFields {
  * defaultTimeout/wipeDataThresholdGB/recordBitrateKbps は number ならそのまま String() 化する
  * (0.5 のようなスキーマ違反値もそのまま表示し、整数化はしない)。record/recordFailuresOnly/
  * recordFullResolution/iosFastInput/enableAnimations は既定 false、recordBitrateKbps は既定 ""(未設定=CLI側既定1500)。
- * fm/heal/screenIs/containerInference はスキーマ既定と合わせ既定 true、falsePositiveCheck は既定 false。
+ * fm/heal/screenIs/containerInference/homeOnStart はスキーマ既定と合わせ既定 true、falsePositiveCheck は既定 false。
  */
 export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFields | null {
   // 配列も typeof "object" だが、トップレベルとしては不正なので弾く(他の同様関数と同じ判定)。
@@ -156,6 +158,7 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
   const containerInference = typeof source.containerInference === "boolean" ? source.containerInference : true;
   const iosInappEngine = typeof source.iosInappEngine === "boolean" ? source.iosInappEngine : true;
   const iosFastInput = typeof source.iosFastInput === "boolean" ? source.iosFastInput : false;
+  const homeOnStart = typeof source.homeOnStart === "boolean" ? source.homeOnStart : true;
   const enableAnimations = typeof source.enableAnimations === "boolean" ? source.enableAnimations : false;
   const wipeDataOnBloat = typeof source.wipeDataOnBloat === "boolean" ? source.wipeDataOnBloat : true;
   const recoverCpuFallbackToGpu =
@@ -188,6 +191,7 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
     containerInference,
     iosInappEngine,
     iosFastInput,
+    homeOnStart,
     enableAnimations,
     reportDir,
     defaultTimeout,
@@ -245,6 +249,8 @@ export function updateRunProfileInObject(
   result.containerInference = fields.containerInference;
   result.iosInappEngine = fields.iosInappEngine;
   result.wipeDataOnBloat = fields.wipeDataOnBloat;
+  // 既定 true 側なので containerInference と同じく常に書く(false を落とすと既定へ戻ってしまう)
+  result.homeOnStart = fields.homeOnStart;
   for (const key of [
     "record", "recordFailuresOnly", "recordFullResolution", "iosFastInput", "recoverCpuFallbackToGpu",
     "enableAnimations",

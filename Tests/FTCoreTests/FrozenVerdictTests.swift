@@ -17,12 +17,11 @@ final class FrozenVerdictTests: XCTestCase {
         XCTAssertFalse(verdict.isSuspected)
     }
 
-    /// **拍動の停止は単独で確定させる**(2026-08-11 に格上げ)。画像は非決定的で、
-    /// 「真っ白な画面」を凍結と誤認し(実測 13/13)、固着型は取り逃がす
-    func testNoPresentAloneIsConclusive() {
+    /// 拍動の停止は単独では確定させない(表示の停止とアプリのハングを分けられない)
+    func testNoPresentAloneIsSuspectedOnly() {
         let verdict = FrozenVerdict([.noPresent])
-        XCTAssertTrue(verdict.isFrozen)
-        XCTAssertFalse(verdict.isSuspected)
+        XCTAssertFalse(verdict.isFrozen)
+        XCTAssertTrue(verdict.isSuspected)
     }
 
     /// 弱い根拠は強い根拠と併せれば確定する(合流の意味)
@@ -92,41 +91,42 @@ final class FrozenVerdictTests: XCTestCase {
 
     // MARK: - 観測から判定を組み立てる(run とモニターの共通規則)
 
-    /// **本丸**(2026-08-11 の実測): 一様でも拍動が生きていれば凍結ではない。
-    /// フル E2E で凍結と判定された 13台は 13台とも拍動が生きており、台数は描画の重さに
-    /// 比例した(Flutter 10 / Compose 3 / SwiftUI・RN 0)= アプリの初回描画待ちだった
-    func testUniformFrameWithLiveDisplayIsNotFrozen() {
-        let verdict = FrozenVerdict.observe(uniformBlank: true, displayIdleSeconds: 0.05)
-        XCTAssertFalse(verdict.isFrozen, "初回描画待ちでフリートを再起動してはいけない")
-        XCTAssertTrue(verdict.evidence.isEmpty)
+    /// **拍動が生きていても凍結でありうる**(2026-08-11 の実験で反証)。本物の wedge を
+    /// 故意に起こしたところ、画面が完全に固まっていても拍動は 0.001〜0.016s で回っていた。
+    /// 一度これを否定材料に使ったが、それでは本物を1件も検出できない
+    func testLiveHeartbeatDoesNotDenyAFreeze() {
+        let verdict = FrozenVerdict.observe(uniformBlank: true, displayIdleSeconds: 0.005)
+        XCTAssertTrue(verdict.isFrozen, "拍動を否定材料にすると本物の wedge を取り逃がす")
+        XCTAssertEqual(verdict.evidence, [.uniformBlank])
     }
 
-    /// 拍動が止まっていれば従来どおり凍結(根拠は2つ揃う)
+    /// 一様 + 拍動も停止なら根拠が2つ揃う
     func testUniformFrameWithStalledDisplayIsFrozen() {
         let verdict = FrozenVerdict.observe(uniformBlank: true, displayIdleSeconds: 30)
         XCTAssertTrue(verdict.isFrozen)
         XCTAssertEqual(verdict.evidence, [.uniformBlank, .noPresent])
     }
 
-    /// **申告が無いときは保護を外さない**(旧ブリッジ・ブリッジ無しの機を見逃さない)
+    /// 申告が無くても一様なら凍結(拍動はあってもなくても判定を変えない)
     func testUniformFrameWithoutHeartbeatStaysFrozen() {
         XCTAssertTrue(FrozenVerdict.observe(uniformBlank: true, displayIdleSeconds: nil).isFrozen)
     }
 
-    /// **固着型**(最後のフレームが残る = 非一様)も捕まえる。画像だけの判定では原理的に無理だった
-    func testStalledDisplayWithNonUniformFrameIsFrozen() {
+    /// 拍動が止まっているだけ(画面は一様でない)は疑いどまり
+    func testStalledDisplayAloneIsSuspected() {
         let verdict = FrozenVerdict.observe(uniformBlank: false, displayIdleSeconds: 30)
-        XCTAssertTrue(verdict.isFrozen, "固着型を取り逃がしている")
-        XCTAssertEqual(verdict.evidence, [.noPresent])
+        XCTAssertFalse(verdict.isFrozen)
+        XCTAssertTrue(verdict.isSuspected)
     }
 
-    /// **拍動があるなら画像は見ない**(判定が非決定的な材料に依存しない)
-    func testHeartbeatWinsOverTheImage() {
-        XCTAssertFalse(FrozenVerdict.countsAsFrozen(uniformBlank: true, displayIdleSeconds: 0.05))
-        XCTAssertTrue(FrozenVerdict.countsAsFrozen(uniformBlank: false, displayIdleSeconds: 30))
+    /// **観測窓が偽陽性と本物を分ける**(拍動ではない)。窓は約10秒に延ばしてある
+    func testObservationWindowIsLongEnoughToOutlastFirstPaint() {
+        let spanMs = BlankWorkerTriage.intervalMs * (BlankWorkerTriage.samples - 1)
+        XCTAssertGreaterThanOrEqual(spanMs, 8_000,
+                                    "窓が短いとアプリの初回描画待ちを凍結と誤断する(実測 13/13)")
     }
 
-    /// 健全(一様でない・拍動も生きている)
+    /// 健全(一様でない)
     func testHealthyObservation() {
         XCTAssertEqual(FrozenVerdict.observe(uniformBlank: false, displayIdleSeconds: 0.05), .healthy)
     }
@@ -137,10 +137,9 @@ final class FrozenVerdictTests: XCTestCase {
                                              injected: true).evidence, [.injected])
     }
 
-    /// しきい値の境界(ちょうどは「生きている」側)
-    func testCountsAsFrozenBoundary() {
-        let t = FrozenVerdict.displayIdleFrozenThreshold
-        XCTAssertFalse(FrozenVerdict.countsAsFrozen(uniformBlank: true, displayIdleSeconds: t))
-        XCTAssertTrue(FrozenVerdict.countsAsFrozen(uniformBlank: true, displayIdleSeconds: t + 0.01))
+    /// 一様でなければ凍結ではない(拍動の値に関わらず)
+    func testNonUniformIsNotFrozenRegardlessOfHeartbeat() {
+        XCTAssertFalse(FrozenVerdict.countsAsFrozen(uniformBlank: false, displayIdleSeconds: 0.01))
+        XCTAssertFalse(FrozenVerdict.countsAsFrozen(uniformBlank: false, displayIdleSeconds: 30))
     }
 }
