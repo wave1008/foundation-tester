@@ -193,9 +193,24 @@ extension MCPServer {
                                     since: start, clock: clock)
         } catch {
             let hint = await connectionLostHint(error, args: resolved)
+                + Self.setTextRefusedHint(tool: tool, args: resolved,
+                                          message: error.localizedDescription)
             guard !hint.isEmpty else { throw error }
             throw MCPError(error.localizedDescription + hint)
         }
+    }
+
+    /// `ft_type(ref:)` が Android の注入器に断られたときの回避策。**挙動は変えない** ——
+    /// ACTION_SET_TEXT を受け付けない widget(NumberPicker など)が実在し、その欄でも
+    /// **フォーカス済みの欄へキーで撃つ経路(ref なし)は通る**(2026-08-12 にエミュレータで実測)。
+    /// 失敗文に書かないと、読み手は「この欄には入力できない」と読んで諦める。
+    /// 走査から切り離した純粋関数(実デバイスが要ると、この枝はテストで一度も実行されない)
+    static func setTextRefusedHint(tool: String, args: [String: Any], message: String) -> String {
+        guard tool == "ft_type", args["ref"] != nil,
+              message.contains("cannot type into the field that was tapped") else { return "" }
+        return " Some widgets refuse ACTION_SET_TEXT outright (Android's NumberPicker among them)."
+            + " Tap the field with ft_tap first, then call ft_type WITHOUT ref — that path types"
+            + " into the focused field through the keyboard instead of setting its text."
     }
 
     /// `udid` を解決して `port` として畳んだ引数。**udid が無いときは触らない**
@@ -244,7 +259,8 @@ extension MCPServer {
             // 接続拒否は「誰も待受していない」が確定しているので、走査は今の状況を添えるだけ
             forgetConnection(key)
             let running = await BridgeDiscovery.scan(excluding: 0, repoRoot: try? RepoRoot.find())
-            return Self.connectionLostMessage(connection: connection, running: running)
+            return Self.connectionLostMessage(connection: connection, running: running,
+                                              sameDevice: Self.deviceName(forUDID: udids[key].flatMap { $0 }))
         case DriverError.bridgeUnreachable:
             // **タイムアウトは死を意味しない**(2026-08-12 の実アプリ監査で踏んだ): 素の文言は
             // 「未起動 / 遅い / suspend」の3択を並べるだけで、直後に ft_status を撃つと
@@ -256,10 +272,19 @@ extension MCPServer {
             let running = await BridgeDiscovery.scan(excluding: 0, repoRoot: try? RepoRoot.find())
             guard Self.bridgeVanished(port: port, running: running) else { return "" }
             forgetConnection(key)
-            return Self.connectionLostMessage(connection: connection, running: running)
+            return Self.connectionLostMessage(connection: connection, running: running,
+                                              sameDevice: Self.deviceName(forUDID: udids[key].flatMap { $0 }))
         default:
             return ""
         }
+    }
+
+    /// 死んだ接続の udid を、稼働中カタログの端末名へ引き直す(best-effort)。
+    /// 失敗しても黙る —— `connectionLostMessage` の「同じ端末を先に」が効かず、
+    /// 通し番号での畳み方に落ちるだけ
+    static func deviceName(forUDID udid: String?) -> String? {
+        guard let udid else { return nil }
+        return (try? SimulatorCatalog.devices())?.first { $0.udid == udid }?.name
     }
 
     /// タイムアウトのとき「そのブリッジは消えた」と言い切ってよいか。**走査から切り離した
@@ -276,15 +301,40 @@ extension MCPServer {
         connectedPorts[key] = nil
     }
 
-    static func connectionLostMessage(connection: String,
-                                      running: [BridgeDiscovery.Found]) -> String {
+    /// 名指しする上限本数(2026-08-12): 実測で17本が1行に並び、読み手が要るのは
+    /// 「今この端末で使えるポート」だけだった。残りは件数へ畳む(runningBridgesSummary)
+    static let connectionLostShownCap = 3
+
+    static func connectionLostMessage(connection: String, running: [BridgeDiscovery.Found],
+                                      sameDevice: String? = nil) -> String {
         let now = running.isEmpty
             ? "no iOS bridge is running now"
-            : "running bridges now: \(running.map(\.label).joined(separator: ", "))"
+            : "running bridges now: \(Self.runningBridgesSummary(running, sameDevice: sameDevice))"
         return "\nThe XCUITest runner behind \(connection) exited — a second runner on the same"
             + " simulator kicks out the first, and the app under test crashing takes an in-app"
             + " bridge with it. \(now). Start one with `ftester bridge up`; the session does not"
             + " survive, so ft_launch your app again."
+    }
+
+    /// **同じ端末を先に、残りは件数へ畳む**(純粋関数)。`sameDevice` が分かるとき(死んだ接続の
+    /// udid をカタログへ引き直せたとき)はそれを優先して並べる —— `connection`(port/udid)と
+    /// `Found`(端末名)は互いに引けないことが多いので、分からないときは並び替えず先頭
+    /// `connectionLostShownCap` 本だけを名指しする(嘘のグルーピングは作らない。
+    /// 「on other devices」も sameDevice が分かっているときだけ言う)
+    static func runningBridgesSummary(_ running: [BridgeDiscovery.Found],
+                                      sameDevice: String?) -> String {
+        let sorted = running.sorted { $0.port < $1.port }
+        let ordered: [BridgeDiscovery.Found]
+        if let sameDevice {
+            ordered = sorted.filter { $0.device == sameDevice } + sorted.filter { $0.device != sameDevice }
+        } else {
+            ordered = sorted
+        }
+        let shown = ordered.prefix(connectionLostShownCap)
+        let remaining = ordered.count - shown.count
+        let suffix = remaining <= 0 ? ""
+            : sameDevice != nil ? " (+\(remaining) more on other devices)" : " (+\(remaining) more)"
+        return shown.map(\.label).joined(separator: ", ") + suffix
     }
 
     func dispatch(tool: String, args: [String: Any]) async throws -> [[String: Any]] {
@@ -304,7 +354,14 @@ extension MCPServer {
             // **宛先とセッションの意味まで出す**: 「どこに繋がっているか」が見えないと、
             // 既定ポートの死・はぐれデバイスの誤掴み・ブリッジ再起動によるセッション消失が
             // どれも「応答はしているのに操作できない」に見える(2026-08-06 フィードバック #2/#8)
-            let endpoint = connections[Self.engineKey(args)].map { " @ \($0)" } ?? ""
+            let statusKey = Self.engineKey(args)
+            // **同じシミュレータに in-app / XCUITest が同時に立つのが常態**(2026-08-12 の実アプリ
+            // 監査: 10台に対し稼働ブリッジ17本)。どちらに繋がっているかで scrollable 検知・
+            // キーボード遮蔽・型語彙・読み返しの有無が変わるので、宛先と一緒に出す。
+            // **走査は増やさない** — driver(args) が解決時に埋めた engines[key] を読むだけ
+            // (android は platform で既に分かっているので冗長・出さない)
+            let engineSuffix = engines[statusKey].flatMap { $0 == "android" ? nil : " engine: \($0)" } ?? ""
+            let endpoint = connections[statusKey].map { " @ \($0)\(engineSuffix)" } ?? ""
             let session = status.sessionBundleID
                 ?? "none (no app attached — ft_launch <bundleId> first;"
                     + " a bridge restart clears the session)"
@@ -607,7 +664,8 @@ extension MCPServer {
             let navigation = try await driver(args)
             // **back が無効だったかは木の指紋で見る**(home/appSwitcher は対象外)。
             // 覚えている木が無ければチェック自体をしない(照合の起点が無いのに撃つのは
-            // 余計な往復を増やすだけ)
+            // 余計な往復を増やすだけ)。指紋は記憶から読むだけなので往復は増えない
+            let wantsSnapshotAfter = args["snapshotAfter"] as? Bool == true
             let beforeBackFingerprint = target == "back"
                 ? lastSnapshots[Self.engineKey(args)].map(Self.treeFingerprint) : nil
             switch target {
@@ -617,6 +675,12 @@ extension MCPServer {
             default: throw MCPError("target must be one of back/home/appSwitcher")
             }
             recordInteraction(action: target, resolvedRef: nil, args: args)
+            // **snapshotAfter を渡されたら木はそちらが撮る**。ここで撮り直すと同じ木を2回
+            // 取りに行くだけになるので、**先に本文を組み立ててから**その結果で無効を判定する
+            // (`snapshotAfterBody` は adoptSnapshot 経由で `lastSnapshots` を更新するので、
+            // 撮った木は指紋で読み返せる)。無効の注記自体は snapshotAfter の有無で消さない ——
+            // 木が付いていても「前と同一」は読み手には分からない
+            let afterBody = wantsSnapshotAfter ? await snapshotAfterBody(args) : ""
             var backIneffectiveNote = ""
             if let before = beforeBackFingerprint {
                 // **1回の撮り直しでは判定しない**(ポーリング): アニメーション途中の木を
@@ -624,11 +688,19 @@ extension MCPServer {
                 // (成功した観測が1つも無ければ「変わっていない」と断言する材料が無い)
                 var sawChange = false
                 var sawAnySnapshot = false
-                for _ in 0..<4 {
-                    try? await Task.sleep(for: .seconds(0.3))
-                    guard let after = try? await freshSnapshot(navigation, args: args) else { continue }
-                    sawAnySnapshot = true
-                    if Self.treeFingerprint(after) != before { sawChange = true; break }
+                if wantsSnapshotAfter {
+                    // 撮り直しは snapshotAfterBody が済ませている(settle-lite も込み)
+                    if let after = lastSnapshots[Self.engineKey(args)] {
+                        sawAnySnapshot = true
+                        sawChange = Self.treeFingerprint(after) != before
+                    }
+                } else {
+                    for _ in 0..<4 {
+                        try? await Task.sleep(for: .seconds(0.3))
+                        guard let after = try? await freshSnapshot(navigation, args: args) else { continue }
+                        sawAnySnapshot = true
+                        if Self.treeFingerprint(after) != before { sawChange = true; break }
+                    }
                 }
                 if sawAnySnapshot, !sawChange {
                     backIneffectiveNote = ". note: the tree is identical to the one before back —"
@@ -641,11 +713,13 @@ extension MCPServer {
             // 端の swipe なので、自前ナビの画面(`#btn_back` を持つ SwiftUI 等)では
             // **何も起きない**。back でアプリ自体を出てしまうこともあり、どちらも
             // 「変わった」と言い切ると誤操作の起点になる
-            return text("\(target) sent. Take a fresh ft_snapshot to see the result"
+            return text("\(target) sent"
+                + Self.changedHint(args, otherwise: ". Take a fresh ft_snapshot to see the result")
                 + Self.backNoOpNote(target: target, engine: engines[Self.engineKey(args)])
                 + backIneffectiveNote
                 + Self.backgroundedAppNote(target: target, engine: engines[Self.engineKey(args)])
-                + Self.homeScreenReadNote(target: target, engine: engines[Self.engineKey(args)]))
+                + Self.homeScreenReadNote(target: target, engine: engines[Self.engineKey(args)])
+                + waitForWithoutSnapshotAfterNote(args) + afterBody)
 
         case "ft_clear_app_data":
             guard let bundleID = args["bundleId"] as? String else { throw MCPError("bundleId is required") }

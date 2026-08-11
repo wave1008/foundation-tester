@@ -428,8 +428,9 @@ extension MCPServer {
     /// 「MCP では出たのにシナリオでは間に合わない」が起きる
     static let defaultWaitSeconds: Double = 5
 
-    /// ポーリング間隔(秒)。短くしても律速は snapshot 自体(iOS in-app で約 0.12s)
-    private static let waitPollSeconds: Double = 0.3
+    /// ポーリング間隔(秒)。短くしても律速は snapshot 自体(iOS in-app で約 0.12s)。
+    /// waitFor と waitForChange(snapshotAfterBody)が共有する
+    static let waitPollSeconds: Double = 0.3
 
     /// selector が出るまで snapshot を撃ち直す。**照合は DSL と同じ**(FTSelector →
     /// StepExecutor)なので、ここで書ける式はそのままシナリオへ持ち込める。

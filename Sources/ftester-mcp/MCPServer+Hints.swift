@@ -212,9 +212,38 @@ extension MCPServer {
         else { return "" }
         let quoted = (pager.value ?? pager.label).map { " \"\($0)\"" } ?? ""
         let dirs = horizontal.map(\.scrollDirection).joined(separator: "/")
+        let rows = horizontal.flatMap { byDirection[$0] ?? [] }
         return " A horizontal pager\(quoted) is on screen — it renders one page at a time, so the"
             + " \(dirs) rows above are likely just on another page; ft_scroll_to"
             + " (direction: \(dirs)) should reach them."
+            + Self.pagerScrollFrameHint(for: rows, in: snapshot)
+    }
+
+    /// **特定できたときだけ**足す一文。実測(Apple マップの経路候補・横ページャ): 上の案内どおり
+    /// scrollFrame: 無しで撃つと 24.6 秒かけて1ページも動かず、既定の全画面スワイプに落ちて
+    /// 地図そのものがパンされた。scrollFrame: に容器を渡すと 3.1 秒で届いた。
+    /// 容器は offscreen 行の scrollable な祖先(`TapTargetGeometry.ancestors`)から採る ——
+    /// 祖先が1つに決まらない/scrollable な祖先が無い木では黙る(嘘の助言を出さない)
+    private static func pagerScrollFrameHint(for rows: [ElementInfo],
+                                             in snapshot: SnapshotResponse) -> String {
+        var scrollers = Set<Int>()
+        for row in rows {
+            if let scroller = TapTargetGeometry.ancestors(of: row, in: snapshot.elements)
+                .first(where: { $0.scrollable == true }) {
+                scrollers.insert(scroller.ref)
+            }
+        }
+        guard scrollers.count == 1, let ref = scrollers.first,
+              let container = snapshot.elements.first(where: { $0.ref == ref })
+        else { return "" }
+        // **id が画面で一意なら #id、でなければ ref**(uniqueScopeID と同じ数え方を使い回す)。
+        // 実測: この容器とページャ自身が同じ id を名乗っており(×2)、#id では指せなかった
+        let id = container.identifier.flatMap { $0.isEmpty ? nil : $0 }
+        let pass = (id.map { Self.idCounts(in: snapshot)[$0] == 1 } ?? false)
+            ? "scrollFrame: #\(id!)"
+            : "scrollFrame: \(ref) (its ft_snapshot ref — #id here is not unique)"
+        return " Pass \(pass) to ft_scroll_to — without it, the default full-screen swipe may pan"
+            + " something else (like the map behind it) instead of the pager."
     }
 
     /// 同じ印の付いた行のうち**最外のものだけ**を残す(2026-08-12 の実アプリ監査)。
@@ -753,27 +782,38 @@ extension MCPServer {
         return StepExecutor.resolvedCandidates(parsed.primary, elements: snapshot.elements)?.count == 1
     }
 
-    /// スコープに使える最も近い祖先の id。**条件は2つ**: ① id を持つ祖先が居る
-    /// ② **その id が画面で一意**(重複していると `#recycler_view` のように4つある画面で
-    /// 別の容器を掴む)。`#容器 >> …` を組む者はすべてここを通す —— スコープの規則を
-    /// 2箇所に持つと、`.型[n]` 版とラベル版で別の容器を指しはじめる
-    static func uniqueScopeID(for element: ElementInfo, in snapshot: SnapshotResponse) -> String? {
-        var idCounts: [String: Int] = [:]
+    /// 画面内の id 出現回数。**uniqueScopeID とページャ案内(pagerScrollFrameHint)が共有する
+    /// 唯一の数え方** —— 別々に書くと「一意」の定義がずれる
+    static func idCounts(in snapshot: SnapshotResponse) -> [String: Int] {
+        var counts: [String: Int] = [:]
         for e in snapshot.elements {
             guard let id = e.identifier, !id.isEmpty else { continue }
-            idCounts[id, default: 0] += 1
+            counts[id, default: 0] += 1
         }
+        return counts
+    }
+
+    /// スコープに使える最も近い祖先の id。**条件は3つ**: ① id を持つ祖先が居る
+    /// ② **その id が画面で一意**(重複していると `#recycler_view` のように4つある画面で
+    /// 別の容器を掴む) ③ **その祖先の frame が対象を包含する**。`TapTargetGeometry.ancestors` は
+    /// preorder+depth だけから祖先を再構成し frame も親ポインタも見ないので、木が間引かれると
+    /// 実際の親より手前に並ぶ叔父を祖先と誤認しうる(実測: Google マップの時刻ピッカーで、
+    /// 分の入力欄の祖先として無関係な `#divider`(「:」1文字)が選ばれた)。
+    /// `#容器 >> …` を組む者はすべてここを通す —— スコープの規則を2箇所に持つと、
+    /// `.型[n]` 版とラベル版で別の容器を指しはじめる
+    static func uniqueScopeID(for element: ElementInfo, in snapshot: SnapshotResponse) -> String? {
+        let counts = idCounts(in: snapshot)
         return TapTargetGeometry.ancestors(of: element, in: snapshot.elements)
             .first { ancestor in
-                guard let id = ancestor.identifier, !id.isEmpty else { return false }
-                return idCounts[id] == 1
+                guard let id = ancestor.identifier, !id.isEmpty, counts[id] == 1,
+                      ancestor.frame.width > 0, ancestor.frame.height > 0 else { return false }
+                return TapTargetGeometry.contains(ancestor.frame, element.frame)
             }?.identifier
     }
 
     /// `#container >> .type[n]` を組み立てる。**書けないときは nil**(嘘の助言を出さない)。
     ///
-    /// 条件は2つ: ① id を持つ祖先が居る ② **その id が画面で一意**(重複していると
-    /// スコープ自体が曖昧になり、`#recycler_view` のように4つある画面で別の容器を掴む)。
+    /// 条件は `uniqueScopeID` に委ねる(id の一意性・frame の包含)。
     /// 添字はスコープ内・同じ型の中での順番で、記法は **1 オリジン**(FlowLocator.index の規約)
     static func scopedSelector(for element: ElementInfo, in snapshot: SnapshotResponse) -> String? {
         guard let scopeID = uniqueScopeID(for: element, in: snapshot),
@@ -948,6 +988,58 @@ extension MCPServer {
         }
         if ambiguous.count > ambiguousLabelsShown {
             lines.append("  (+\(ambiguous.count - ambiguousLabelsShown) more ambiguous label(s)"
+                + " not shown — ft_snapshot again after narrowing the screen to see them)")
+        }
+        return lines.joined(separator: "\n") + "\n"
+    }
+
+    /// 重複 id の要約注記。`#id` はこのツールが最も推奨するセレクタなので、行末の `×N` だけ
+    /// では足りない —— 実測: 時刻ピッカーの「時」「分」が両方 `id=numberpicker_input` で、
+    /// 読み手はどちらも `#numberpicker_input` で指せると誤読し、別の欄が操作された。
+    /// 除外(isSingleChain)・上限・代替セレクタの出し方は ambiguousLabelsNote と**まったく同じ
+    /// 仕組み**(SelectorNaming.graded)を使い回す —— 採番規則を2つ持たない。
+    /// `abbreviated` はラベル版と同じ意味(F-6)
+    static func duplicateIDsNote(_ snapshot: SnapshotResponse, abbreviated: Bool = false) -> String {
+        var groups: [String: [ElementInfo]] = [:]
+        for e in snapshot.elements {
+            guard let id = e.identifier, !id.isEmpty else { continue }
+            groups[id, default: []].append(e)
+        }
+        let bulkFolded = SnapshotRenderer.foldedGroups(snapshot, flagging: ghostFlags(snapshot),
+                                                       collapsingBulk: true)
+        let duplicated = groups
+            .filter { $0.value.count >= ambiguousLabelMinimum && !isSingleChain($0.value, in: snapshot) }
+            // **畳まれる群は列挙しない**。実測(Apple マップの経路プランナー): 地図ピンの
+            // `#VKPointFeature ×165` が注記の先頭を占めていた —— 木では1行 + ラベル索引に
+            // 畳まれている群で、`#id` の書き先にもならない。判定は render と同じ
+            // `SnapshotRenderer.foldedGroups`(2つ目の「畳まれるか」を作らない)。
+            // **expandBulk の値では切り替えない**: 個別列挙させたい回でも、165 行ぶんの
+            // 「一意でない」は読み手の役に立たない
+            .filter { bulkFolded[$0.key] == nil }
+            .sorted { $0.value.count > $1.value.count }
+        guard !duplicated.isEmpty else { return "" }
+        let naming = SelectorNaming(snapshot)
+        var lines: [String] = [abbreviated
+            ? "note: duplicate ids — write one of these instead (legend in the first"
+                + " snapshot's note):"
+            : "note: these ids are shared by multiple elements, so a plain #id"
+                + " selector cannot pick one uniquely. Write one of these instead"
+                + " (\"—\" = this element has no stable selector; use a labelled ancestor or"
+                + " a coordinate. \"~\" = index-based, so it breaks if the number of same-type"
+                + " siblings changes — usable, but the weakest of the three):"]
+        for (id, matches) in duplicated.prefix(ambiguousLabelsShown) {
+            let shown = matches.prefix(ambiguousMatchesShown).map { element -> String in
+                guard let graded = naming.graded(for: element, in: snapshot) else {
+                    return "[\(element.ref)] —"
+                }
+                return "[\(element.ref)] \(graded.selector)\(graded.durability.mark)"
+            }.joined(separator: " / ")
+            let cut = matches.count > ambiguousMatchesShown
+                ? " (+\(matches.count - ambiguousMatchesShown) more matches not shown)" : ""
+            lines.append("  #\(id) ×\(matches.count): \(shown)\(cut)")
+        }
+        if duplicated.count > ambiguousLabelsShown {
+            lines.append("  (+\(duplicated.count - ambiguousLabelsShown) more duplicate id(s)"
                 + " not shown — ft_snapshot again after narrowing the screen to see them)")
         }
         return lines.joined(separator: "\n") + "\n"

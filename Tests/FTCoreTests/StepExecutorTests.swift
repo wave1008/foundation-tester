@@ -2165,7 +2165,9 @@ final class StepExecutorTests: XCTestCase {
                        "掴み直したことを注記に残すこと: \(outcome.driverFallback ?? "nil") 呼び出し=\(log.entries)")
     }
 
-    /// 掴み直しても ghost のままなら**注記を残す**(黙ってタップして飲まれるのが最悪)
+    /// 掴み直しても ghost のままなら**注記を残す**(黙ってタップして飲まれるのが最悪)。
+    /// **ghost の中心は画面内に置くこと**: 容器の外(= ghost)であることがこの経路の条件で、
+    /// 中心まで画面外に出すと探索側のゲートが先に「届いていない」で落とし、この注記まで来ない
     func testTapAfterSearchNotesWhenTheGhostPersists() async throws {
         let log = CallLog()
         let container = framed(ref: 100, id: "list_rows", x: 16, y: 230, width: 370, height: 462,
@@ -2173,7 +2175,8 @@ final class StepExecutorTests: XCTestCase {
         let inside1 = framed(ref: 1, id: "row_28", x: 16, y: 300, width: 370, height: 56, depth: 2)
         let inside2 = framed(ref: 2, id: "row_29", x: 16, y: 360, width: 370, height: 56, depth: 2)
         let target = framed(ref: 3, id: "row_30", x: 16, y: 420, width: 370, height: 56, depth: 2)
-        let ghost = framed(ref: 4, id: "row_30", x: 16, y: 783, width: 370, height: 56, depth: 2)
+        // 容器(230..692)の外・画面(高さ800)の中心内: 740..796 → 中心 768
+        let ghost = framed(ref: 4, id: "row_30", x: 16, y: 740, width: 370, height: 56, depth: 2)
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [
             [container, inside1, inside2, target],
             [container, inside1, inside2, ghost],    // 以降ずっと ghost(尽きたら最後を繰り返す)

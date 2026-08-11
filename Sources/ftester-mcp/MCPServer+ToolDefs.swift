@@ -57,6 +57,15 @@ extension MCPServer {
         "type": "number",
         "description": "Seconds to wait for waitFor (default 5, same as ft_snapshot)",
     ]
+    /// **「何かが変わる」を待つ**: 再検索のように**同じセレクタのまま中身だけ入れ替わる**画面では
+    /// waitFor が古い結果に即マッチして待ちにならない(実測: Google マップの経路再検索で
+    /// `waitFor "*IC 運賃*"` が旧結果へ当たった)。waitFor とは排他(待つ理由が違う)
+    static let snapshotAfterWaitForChangeProperty: [String: Any] = [
+        "type": "boolean",
+        "description": "Requires snapshotAfter: true, and not with waitFor. Poll until the tree "
+            + "differs from the one before the action (for screens that refresh in place, where a "
+            + "selector you would wait for is already on the old content)",
+    ]
     /// ft_snapshot と操作系が共有する木の畳み方(2つ目の定義を作らない)。
     /// どのツールでも既定は畳む・隠さないなので、説明文もそのまま通用する
     static let expandBulkProperty: [String: Any] = [
@@ -92,7 +101,9 @@ extension MCPServer {
         right after the action, and if it looks identical to the tree before the action (a \
         likely sign a transition has not finished) it is re-read once after a short wait. If an \
         animation is still running after that, pass waitFor (a selector to wait for on the \
-        resulting screen) instead of repeating the action. snapshotAfter inherits \
+        resulting screen) instead of repeating the action. On a screen that refreshes in place \
+        (a re-run search, a pull-to-refresh) waitFor matches the OLD content immediately and does \
+        not wait — pass waitForChange: true there instead. snapshotAfter inherits \
         interactiveOnly/expandBulk from your last ft_snapshot call unless passed explicitly.
         """
 
@@ -188,6 +199,7 @@ extension MCPServer {
             "x": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
             "y": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
             "snapshotAfter": snapshotAfterProperty,
+            "waitForChange": snapshotAfterWaitForChangeProperty,
             "waitFor": snapshotAfterWaitForProperty,
             "timeout": snapshotAfterTimeoutProperty,
             "expandBulk": expandBulkProperty,
@@ -203,6 +215,7 @@ extension MCPServer {
             "pressEnter": ["type": "boolean", "description": "Fire Enter/IME action (search, submit)"],
             "ref": ["type": "integer", "description": "Reference number of the input field (defaults to the focused element)"],
             "snapshotAfter": snapshotAfterProperty,
+            "waitForChange": snapshotAfterWaitForChangeProperty,
             "waitFor": snapshotAfterWaitForProperty,
             "timeout": snapshotAfterTimeoutProperty,
             "expandBulk": expandBulkProperty,
@@ -213,6 +226,7 @@ extension MCPServer {
             "direction": ["type": "string", "enum": ["up", "down", "left", "right"],
                           "description": "Finger direction (same vocabulary as the DSL's swipe)"],
             "snapshotAfter": snapshotAfterProperty,
+            "waitForChange": snapshotAfterWaitForChangeProperty,
             "waitFor": snapshotAfterWaitForProperty,
             "timeout": snapshotAfterTimeoutProperty,
             "expandBulk": expandBulkProperty,
@@ -267,6 +281,12 @@ extension MCPServer {
         ], required: ["orientation"]),
         tool("ft_navigate", "Go back / to the home screen / to the app switcher", [
             "target": ["type": "string", "enum": ["back", "home", "appSwitcher"]],
+            "snapshotAfter": snapshotAfterProperty,
+            "waitForChange": snapshotAfterWaitForChangeProperty,
+            "waitFor": snapshotAfterWaitForProperty,
+            "timeout": snapshotAfterTimeoutProperty,
+            "expandBulk": expandBulkProperty,
+            "interactiveOnly": interactiveOnlyProperty,
         ], required: ["target"]),
         tool("ft_clear_app_data", "Wipe the app's data and permissions, keeping it installed (iOS: simulator only). "
             + "Stops the app, so ft_launch after it. Scenarios start from clearAppData(), so explore from that same state", [
@@ -316,6 +336,7 @@ extension MCPServer {
             "x": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
             "y": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
             "snapshotAfter": snapshotAfterProperty,
+            "waitForChange": snapshotAfterWaitForChangeProperty,
             "waitFor": snapshotAfterWaitForProperty,
             "timeout": snapshotAfterTimeoutProperty,
             "expandBulk": expandBulkProperty,
@@ -337,6 +358,7 @@ extension MCPServer {
             "dy": ["type": "number", "description": "Vertical travel from the start point — negative moves up (ignored when toY is given)"],
             "durationSeconds": ["type": "number", "description": "Travel time in seconds (default 1.5)"],
             "snapshotAfter": snapshotAfterProperty,
+            "waitForChange": snapshotAfterWaitForChangeProperty,
             "waitFor": snapshotAfterWaitForProperty,
             "timeout": snapshotAfterTimeoutProperty,
             "expandBulk": expandBulkProperty,
@@ -356,6 +378,7 @@ extension MCPServer {
             "scale": ["type": "number", "description": "Zoom factor (default 2.0)"],
             "durationSeconds": ["type": "number", "description": "Gesture duration in seconds (default 0.5)"],
             "snapshotAfter": snapshotAfterProperty,
+            "waitForChange": snapshotAfterWaitForChangeProperty,
             "waitFor": snapshotAfterWaitForProperty,
             "timeout": snapshotAfterTimeoutProperty,
             "expandBulk": expandBulkProperty,
@@ -369,6 +392,7 @@ extension MCPServer {
             "holdSeconds": ["type": "number", "description": "Hold time in seconds (default 1.0; "
                 + "same vocabulary as the DSL's tap(holdSeconds:))"],
             "snapshotAfter": snapshotAfterProperty,
+            "waitForChange": snapshotAfterWaitForChangeProperty,
             "waitFor": snapshotAfterWaitForProperty,
             "timeout": snapshotAfterTimeoutProperty,
             "expandBulk": expandBulkProperty,

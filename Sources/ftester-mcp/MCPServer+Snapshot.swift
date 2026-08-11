@@ -159,6 +159,9 @@ extension MCPServer {
                           short: Self.unlabeledClickablesNote(snapshot, abbreviated: true))
             + onceNonEmpty("ambiguousLabelsNote", full: Self.ambiguousLabelsNote(snapshot),
                           short: Self.ambiguousLabelsNote(snapshot, abbreviated: true))
+            // ラベル版の直後に置く(読み手はどちらも「一意に指せるか」を見に来る)
+            + onceNonEmpty("duplicateIDsNote", full: Self.duplicateIDsNote(snapshot),
+                          short: Self.duplicateIDsNote(snapshot, abbreviated: true))
             + Self.keyboardCoverageNote(snapshot) + Self.sliverNote(snapshot)
             + truncatedLabelNote(snapshot)
             + SnapshotRenderer.render(snapshot, flagging: Self.ghostFlags(snapshot),
@@ -208,8 +211,17 @@ extension MCPServer {
     /// snapshotAfter なしで渡されたら黙って無視せず気付かせる —— **throw はしない**
     /// (操作そのものは既に実行済みなので、ここで落とすと二重操作を誘う)
     func waitForWithoutSnapshotAfterNote(_ args: [String: Any]) -> String {
-        guard args["waitFor"] != nil, args["snapshotAfter"] as? Bool != true else { return "" }
-        return " (note: waitFor requires snapshotAfter: true — it was ignored)"
+        guard args["snapshotAfter"] as? Bool != true else {
+            // **併用は黙って waitFor が勝つ形にしない**: 待つ理由が違う(選択子の出現 対
+            // 木の変化)ので、片方が無視されたことは言う
+            guard args["waitFor"] != nil, args["waitForChange"] as? Bool == true else { return "" }
+            return " (note: waitForChange was ignored — waitFor was given and takes precedence)"
+        }
+        let given = [args["waitFor"] != nil ? "waitFor" : nil,
+                     args["waitForChange"] as? Bool == true ? "waitForChange" : nil].compactMap { $0 }
+        guard !given.isEmpty else { return "" }
+        return " (note: \(given.joined(separator: "/")) requires snapshotAfter: true —"
+            + " it was ignored)"
     }
 
     /// 操作系ツールが `snapshotAfter: true` で返す「操作の直後の画面」。
@@ -266,6 +278,28 @@ extension MCPServer {
                                 + " appeared, so the wait ran to the deadline"
                         } ?? (Self.notationHint(waitFor, in: snapshot)
                               + Self.similarLabelsHint(waitFor, in: snapshot))) + "\n"
+            } else if args["waitForChange"] as? Bool == true {
+                // **「何かが変わる」を待つ**: 再検索のように同じセレクタのまま中身だけ入れ替わる
+                // 画面では waitFor が旧結果へ即マッチして待ちにならない。基準の木が無いときは
+                // 「変わった」と言う材料が無いので待たない(嘘の待機時間を払わない)
+                if let beforeAction {
+                    let seconds = args["timeout"] as? Double ?? Self.defaultWaitSeconds
+                    let deadline = Date().addingTimeInterval(max(0, seconds))
+                    var changed = !Self.looksUnchanged(beforeAction, snapshot)
+                    while !changed, Date() < deadline {
+                        try await Task.sleep(for: .seconds(Self.waitPollSeconds))
+                        snapshot = try await freshSnapshot(snapshotDriver, args: args)
+                        changed = !Self.looksUnchanged(beforeAction, snapshot)
+                    }
+                    settleNote = changed
+                        ? "waitForChange: the tree differs from the one before the action.\n"
+                        : "note: waitForChange timed out after \(seconds)s — the tree still matches"
+                            + " the one before the action, so the action may not have changed the"
+                            + " screen.\n"
+                } else {
+                    settleNote = "note: waitForChange had no earlier tree to compare with"
+                        + " (nothing was read on this device yet), so it did not wait.\n"
+                }
             } else if let beforeAction, Self.looksUnchanged(beforeAction, snapshot) {
                 try await Task.sleep(nanoseconds: UInt64(max(0, settleWaitSeconds) * 1_000_000_000))
                 let reread = try await freshSnapshot(snapshotDriver, args: args)
@@ -424,6 +458,16 @@ extension MCPServer {
         return (false, hint)
     }
 
+    /// `Self.matches`(MCPServer+Driver.swift)と同じセレクタ解決だが、当たった要素そのものを
+    /// 返す(scrollTo の画面外再確認用)。2つ目の照合ロジックを作らないよう
+    /// `StepExecutor.resolvedCandidates` をそのまま使う(`matches` の内側と同一)
+    static func matchedElements(_ selectorText: String, in snapshot: SnapshotResponse) -> [ElementInfo] {
+        let parsed = FTSelector.parse(selectorText)
+        return ([parsed.primary] + parsed.fallbacks).flatMap {
+            StepExecutor.resolvedCandidates($0, elements: snapshot.elements) ?? []
+        }
+    }
+
     func scrollTo(_ args: [String: Any]) async throws -> [[String: Any]] {
         guard let selectorText = args["selector"] as? String, !selectorText.isEmpty else {
             throw MCPError("selector is required (same syntax as the DSL: #id, a label, .type, a||b)")
@@ -540,6 +584,22 @@ extension MCPServer {
                 + " Go back to the screen that has it and retry;"
                 + " scrollFrame: <container> keeps the swipes inside the list."
                 + Self.scrollAreaHint(after, args: args))
+        }
+        // **木に居ること ≠ 画面に居ること**: FTCore 側のゲート(runScrollSearch)を通っても、
+        // ここは独立した砦として残す。当たった要素が**すべて**中心画面外なら、探索は届いていない
+        // (弾切れで振り出しへ戻っただけ)。判定は ⚠️offscreen と共有(TapTargetGeometry.offscreenAdvisory。
+        // 上の「画面が変わった」エラーとは原因が別なので文も分ける)
+        let matchedInTree = Self.matchedElements(selectorText, in: after)
+        if !matchedInTree.isEmpty,
+           matchedInTree.allSatisfy({
+               TapTargetGeometry.offscreenAdvisory(for: $0, screen: after.screen) != nil
+           }) {
+            throw MCPError("scrollTo \"\(selectorText)\" is in the tree but its centre is still off"
+                + " screen (⚠️offscreen) — the search ran out of swipes without actually reaching it"
+                + "\(Self.truncationHint(after)). \(Self.visibleLabelsHint(after))"
+                + " Pass scrollFrame: <container> to keep the swipes inside the right scroll area"
+                + " instead of falling back to a whole-screen swipe."
+                + Self.scrollAreaHint(beforeScroll ?? after, args: args))
         }
         // fallback 一致は成功だが、利用者が書いた式では見つからなかったことを伝える
         // (primary が空振りする式は将来また空振りしうる)

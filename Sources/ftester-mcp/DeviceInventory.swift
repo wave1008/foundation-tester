@@ -24,7 +24,23 @@ enum DeviceInventory {
         let running: Bool
         let physical: Bool
         let registered: Bool
-        let port: UInt16?      // 稼働中の iOS ブリッジのポート(判明時のみ)
+        let port: UInt16?      // 稼働中の iOS ブリッジの代表ポート(判明時のみ)
+        /// 代表ポートのエンジン(inapp/xcuitest)。判別できないときは nil のまま(嘘を書かない)。
+        /// **`let ... = nil` にしない** —— 初期値を持つ `let` は memberwise init から外れる
+        var engine: String? = nil
+        /// **同じ端末に in-app と XCUITest が同時に立つのが常態**(実測: 10台に稼働ブリッジ17本)。
+        /// port/engine が代表(1本目)、それ以外はここへ積む — line(_:) が両方まとめて畳んで出す
+        var otherBridges: [Bridge] = []
+
+        struct Bridge: Equatable {
+            let port: UInt16
+            let engine: String?
+        }
+
+        /// 代表(port/engine)+ otherBridges をまとめた全ブリッジ
+        var bridges: [Bridge] {
+            (port.map { [Bridge(port: $0, engine: engine)] } ?? []) + otherBridges
+        }
     }
 
     struct ResolvedMachine {
@@ -89,8 +105,10 @@ enum DeviceInventory {
         if let identifier = row.identifier {
             parts.append((row.platform == "ios" ? "udid " : "serial ") + identifier)
         }
-        if let port = row.port {
-            parts.append("bridge port \(port)")
+        if !row.bridges.isEmpty {
+            // **1端末に複数エンジンが同時に立つのが常態**(in-app + XCUITest)。1行に畳んで
+            // 両方出す — 片方しか出さないと「動いているのにもう一方が見えない」になる
+            parts.append("bridge " + row.bridges.map(bridgeLabel).joined(separator: ", "))
         } else if row.running, row.platform == "ios" {
             // **「動いているのに MCP からは触れない」を行から読めるようにする**(H-3。2026-08-09)。
             // iOS の操作系はブリッジ越しなので、ブリッジが無い機は udid を渡しても port を渡しても
@@ -98,6 +116,11 @@ enum DeviceInventory {
             parts.append("no bridge — not drivable from MCP until `ftester bridge up`")
         }
         return "- \(row.name) (\(parts.joined(separator: ", ")))"
+    }
+
+    /// エンジンが分かるときだけ括弧で添える(分からないときに書かない = 嘘を書かない)
+    private static func bridgeLabel(_ bridge: Row.Bridge) -> String {
+        "port \(bridge.port)" + (bridge.engine.map { " (\($0))" } ?? "")
     }
 
     /// 受け付ける platform。**devicesText の門番と、呼び出し側の「見出しが出るか」判定で
@@ -159,22 +182,29 @@ enum DeviceInventory {
         let simDevices = (try? SimulatorCatalog.devices()) ?? []
         let physicalDevices = specs.contains(where: \.isPhysical)
             ? ((try? IOSPhysicalDeviceCatalog.devices()) ?? []) : []
-        let livePorts = await liveIOSBridgePorts()
+        let live = await liveIOSBridges()
         return specs.map { iosRow(spec: $0, simDevices: simDevices, physicalDevices: physicalDevices,
-                                  livePorts: livePorts) }
+                                  livePorts: live.ports, liveEngines: live.engines,
+                                  otherLiveBridges: live.others) }
     }
 
-    /// 純粋関数(テスト用): spec と実測カタログから 1 行分を組む
+    /// 純粋関数(テスト用): spec と実測カタログから 1 行分を組む。
+    /// `liveEngines`/`otherLiveBridges` は同じ端末名で `livePorts` と対になる(省略時は代表ポートのみ)
     static func iosRow(spec: DeviceSpec, simDevices: [SimDeviceInfo],
                        physicalDevices: [IOSPhysicalDeviceInfo],
-                       livePorts: [String: UInt16]) -> Row {
+                       livePorts: [String: UInt16],
+                       liveEngines: [String: String] = [:],
+                       otherLiveBridges: [String: [Row.Bridge]] = [:]) -> Row {
         if spec.isPhysical {
             let udid = spec.udid ?? ""
             let match = physicalDevices.first { $0.udid == udid || $0.deviceCtlIdentifier == udid }
             let running = match?.connected ?? false
+            let key = match?.name ?? spec.name
             return Row(name: spec.name, platform: "ios", identifier: spec.udid ?? match?.udid,
                       running: running, physical: true, registered: true,
-                      port: running ? livePorts[match?.name ?? spec.name] : nil)
+                      port: running ? livePorts[key] : nil,
+                      engine: running ? liveEngines[key] : nil,
+                      otherBridges: running ? (otherLiveBridges[key] ?? []) : [])
         }
         let match: SimDeviceInfo?
         if let udid = spec.udid, !udid.isEmpty {
@@ -185,28 +215,45 @@ enum DeviceInventory {
             match = simDevices.first { $0.name == name && (os == nil || $0.os == os) }
         }
         let running = match?.booted ?? false
+        let key = match?.name ?? spec.name
         return Row(name: spec.name, platform: "ios", identifier: match?.udid ?? spec.udid,
                   running: running, physical: false, registered: true,
-                  port: running ? livePorts[match?.name ?? spec.name] : nil)
+                  port: running ? livePorts[key] : nil,
+                  engine: running ? liveEngines[key] : nil,
+                  otherBridges: running ? (otherLiveBridges[key] ?? []) : [])
     }
 
     private static func iosFallbackRows() async -> [Row] {
         let booted = ((try? SimulatorCatalog.devices()) ?? []).filter(\.booted)
         guard !booted.isEmpty else { return [] }
-        let livePorts = await liveIOSBridgePorts()
+        let live = await liveIOSBridges()
         return booted.map { device in
             Row(name: device.name, platform: "ios", identifier: device.udid, running: true,
-               physical: false, registered: false, port: livePorts[device.name])
+               physical: false, registered: false, port: live.ports[device.name],
+               engine: live.engines[device.name], otherBridges: live.others[device.name] ?? [])
         }
     }
 
-    /// 生きている iOS ブリッジのポートをシミュレータ名で引けるようにする。1 台への疎通失敗は
-    /// BridgeDiscovery.scan が内部で握って次へ進む(呼び出し側は空 dict を受け取るだけ)
-    private static func liveIOSBridgePorts() async -> [String: UInt16] {
+    /// 生きている iOS ブリッジを端末名で引けるようにする。**同じ端末に in-app と XCUITest が
+    /// 同時に立つのが常態**(実測: 10台に稼働ブリッジ17本)なので、代表(port/engine の1本目)と
+    /// 残り(otherBridges 用)を分けて返す。1 台への疎通失敗は BridgeDiscovery.scan が
+    /// 内部で握って次へ進む(呼び出し側は空を受け取るだけ)
+    private static func liveIOSBridges() async
+        -> (ports: [String: UInt16], engines: [String: String], others: [String: [Row.Bridge]]) {
         let found = await BridgeDiscovery.scan(excluding: 0, repoRoot: nil)
-        var result: [String: UInt16] = [:]
-        for entry in found { result[entry.device] = entry.port }
-        return result
+        var byDevice: [String: [BridgeDiscovery.Found]] = [:]
+        for entry in found { byDevice[entry.device, default: []].append(entry) }
+        var ports: [String: UInt16] = [:]
+        var engines: [String: String] = [:]
+        var others: [String: [Row.Bridge]] = [:]
+        for (device, entries) in byDevice {
+            let sorted = entries.sorted { $0.port < $1.port }
+            guard let primary = sorted.first else { continue }
+            ports[device] = primary.port
+            engines[device] = primary.engine
+            others[device] = sorted.dropFirst().map { Row.Bridge(port: $0.port, engine: $0.engine) }
+        }
+        return (ports, engines, others)
     }
 
     // MARK: - Android

@@ -410,14 +410,25 @@ extension StepExecutor {
                                                    phase: &phase) { viaXCUITest = true }
                     continue
                 }
-                // **スワイプしたなら静止を待つ**(空打ち→静止待ちの順。settleAfterFind 参照)。
-                // スワイプしていない周回(attempt == 0)は静止しているので追加コストを払わない
-                if attempt > 0 {
-                    settleCapped = try await settleAfterFind(step: step, element: element,
-                                                             snapshot: snapshot, phase: &phase)
+                // **木に居ること ≠ 画面に居ること**: 中心が**画面**の外なら「見つかった」に
+                // しない(下の未検出経路へ合流)。**効くのは弾切れの周回だけ** —— それ以外は上の
+                // isClippedByViewport が先に寄せに行く。
+                // **基準は viewport(容器)ではなく screen**: 容器の外だが画面には映っている
+                // ghost は、掴み直し + `RefGuard` の警告つきタップという既存の設計で扱う
+                // (ここで failed にすると、その警告が拒否へ格上げされて
+                // `testTapAfterSearchNotesWhenTheGhostPersists` の経路ごと消える)。
+                // 見切れ(中心は画面内)も同じ理由で found のまま —— タップは通る。
+                // 判定は MCP の ⚠️offscreen と共有(TapTargetGeometry.offscreenAdvisory)
+                if TapTargetGeometry.offscreenAdvisory(for: element, screen: snapshot.screen) == nil {
+                    // **スワイプしたなら静止を待つ**(空打ち→静止待ちの順。settleAfterFind 参照)。
+                    // スワイプしていない周回(attempt == 0)は静止しているので追加コストを払わない
+                    if attempt > 0 {
+                        settleCapped = try await settleAfterFind(step: step, element: element,
+                                                                 snapshot: snapshot, phase: &phase)
+                    }
+                    return ScrollSearchResult(found: true, fallback: fallback, viaXCUITest: viaXCUITest,
+                                              hintJumps: hintJumps, settleCapped: settleCapped)
                 }
-                return ScrollSearchResult(found: true, fallback: fallback, viaXCUITest: viaXCUITest,
-                                          hintJumps: hintJumps, settleCapped: settleCapped)
             }
             if attempt < maxSwipes {
                 // **明示 scrollFrame が解決できないなら、ここで打ち切る(1本も振らない)**。
