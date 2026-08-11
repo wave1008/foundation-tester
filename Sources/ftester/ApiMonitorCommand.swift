@@ -123,6 +123,9 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         var frozenDebounce = MonitorFrozenDebounce(confirmThreshold: 2)
         // 配信を抑制中のデバイスを最後に「観測のためだけに」撮った時刻(capturePlan が更新する)
         var lastFrozenProbeAt: [String: Date] = [:]
+        // Android の拍動(/status)の直近値。**毎サイクル全機に問い合わせるとサイクルが半減する**
+        // (実測: 16秒で 7〜8 回 → 4 回)。iOS は状態取得のついでに手元にあるので対象外
+        var androidIdleCache: [String: (at: Date, value: Double?)] = [:]
         // GPU/CPU 判定はブート時固定のため接続毎に1回のみ検出しキャッシュする(健全性プローブとは
         // 別間隔。再接続=リブートで変わりうるため切断時に破棄する)
         var renderModeCache: [String: String] = [:]
@@ -279,7 +282,23 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 // 「真っ白な画面を出している」だけと分かる。**一様のときだけ問い合わせる**
                 // (固定費を増やさない)。申告の無いブリッジは nil = 従来どおり一様なら凍結扱い
                 let uniform = BlankFrameDetector.isUniformBlank(pngData: png)
-                let idle = uniform ? await Self.displayIdleSeconds(state: state) : nil
+                // **一様かどうかに関わらず拍動を採る**: 固着型(最後のフレームが残る)は非一様なので、
+                // 一様のときだけ問い合わせると原理的に捕まらない。
+                // Android はブリッジへの往復なので直近値を使い回す(凍結は分単位・判定は2連続なので
+                // この粒度で足りる)。iOS は状態取得のついでに手元にある = 無料
+                var idle: Double?
+                if state.target.platform == "ios" {
+                    idle = state.displayIdleSeconds
+                } else if let serial = state.androidSerial {
+                    let now = Date()
+                    if let cached = androidIdleCache[state.target.id],
+                       now.timeIntervalSince(cached.at) < Self.displayIdleProbeIntervalSeconds {
+                        idle = cached.value
+                    } else {
+                        idle = (try? await AndroidDriver(serial: serial).status().displayIdleSeconds) ?? nil
+                        androidIdleCache[state.target.id] = (now, idle)
+                    }
+                }
                 frozenDebounce.record(
                     uniformBlank: Self.isFrozenSample(uniformBlank: uniform, displayIdleSeconds: idle),
                     id: state.target.id)
@@ -734,6 +753,9 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         FrozenVerdict.countsAsFrozen(uniformBlank: uniformBlank,
                                      displayIdleSeconds: displayIdleSeconds, threshold: threshold)
     }
+
+    /// Android の拍動を問い合わせ直す間隔(秒)。ブリッジへの往復なので毎サイクルは払わない
+    static let displayIdleProbeIntervalSeconds: TimeInterval = 6
 
     /// ブリッジが申告する「最後に画面が進んでからの秒数」。
     /// iOS は毎サイクルの /status 一括取得で既に手元にある(DeviceRuntimeState)。

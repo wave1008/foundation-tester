@@ -17,12 +17,12 @@ final class FrozenVerdictTests: XCTestCase {
         XCTAssertFalse(verdict.isSuspected)
     }
 
-    /// **未検証の根拠は単独で確定させない**(警告から始める規律)。
-    /// 実デバイスで「凍結時に拍動が止まる」を確認したら isConclusive を true にする
-    func testNoPresentAloneIsSuspectedButNotConfirmed() {
+    /// **拍動の停止は単独で確定させる**(2026-08-11 に格上げ)。画像は非決定的で、
+    /// 「真っ白な画面」を凍結と誤認し(実測 13/13)、固着型は取り逃がす
+    func testNoPresentAloneIsConclusive() {
         let verdict = FrozenVerdict([.noPresent])
-        XCTAssertFalse(verdict.isFrozen, "拍動だけで凍結と断じてはいけない")
-        XCTAssertTrue(verdict.isSuspected)
+        XCTAssertTrue(verdict.isFrozen)
+        XCTAssertFalse(verdict.isSuspected)
     }
 
     /// 弱い根拠は強い根拠と併せれば確定する(合流の意味)
@@ -113,11 +113,17 @@ final class FrozenVerdictTests: XCTestCase {
         XCTAssertTrue(FrozenVerdict.observe(uniformBlank: true, displayIdleSeconds: nil).isFrozen)
     }
 
-    /// 一様でなく拍動だけ止まっているのは**疑いどまり**(単独では確定させない)
-    func testStalledDisplayAloneIsOnlySuspected() {
+    /// **固着型**(最後のフレームが残る = 非一様)も捕まえる。画像だけの判定では原理的に無理だった
+    func testStalledDisplayWithNonUniformFrameIsFrozen() {
         let verdict = FrozenVerdict.observe(uniformBlank: false, displayIdleSeconds: 30)
-        XCTAssertFalse(verdict.isFrozen)
-        XCTAssertTrue(verdict.isSuspected)
+        XCTAssertTrue(verdict.isFrozen, "固着型を取り逃がしている")
+        XCTAssertEqual(verdict.evidence, [.noPresent])
+    }
+
+    /// **拍動があるなら画像は見ない**(判定が非決定的な材料に依存しない)
+    func testHeartbeatWinsOverTheImage() {
+        XCTAssertFalse(FrozenVerdict.countsAsFrozen(uniformBlank: true, displayIdleSeconds: 0.05))
+        XCTAssertTrue(FrozenVerdict.countsAsFrozen(uniformBlank: false, displayIdleSeconds: 30))
     }
 
     /// 健全(一様でない・拍動も生きている)

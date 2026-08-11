@@ -200,9 +200,13 @@ final class MonitorFrozenWiringTests: XCTestCase {
         XCTAssertTrue(ApiMonitorCommand.isFrozenSample(uniformBlank: true, displayIdleSeconds: nil))
     }
 
-    /// 一様でなければ拍動に関わらず凍結ではない
-    func testNonUniformFrameIsNeverFrozen() {
-        XCTAssertFalse(ApiMonitorCommand.isFrozenSample(uniformBlank: false, displayIdleSeconds: 30))
+    /// **固着型**(非一様のまま止まる)も拍動で捕まえる。画像だけでは原理的に取り逃がしていた
+    func testNonUniformButStalledIsFrozen() {
+        XCTAssertTrue(ApiMonitorCommand.isFrozenSample(uniformBlank: false, displayIdleSeconds: 30))
+    }
+
+    /// 申告が無く一様でもなければ凍結ではない(予備の画像判定も否定側)
+    func testNonUniformWithoutHeartbeatIsNotFrozen() {
         XCTAssertFalse(ApiMonitorCommand.isFrozenSample(uniformBlank: false, displayIdleSeconds: nil))
     }
 
