@@ -7,8 +7,8 @@
 // 判定の共有は docs/design.md の「判定は MCP と DSL で共有する」と同じ規律。
 //
 // **判定材料は一様フレーム(uniformBlank)**。拍動は判定材料に使わない ——
-// 本物の wedge でも拍動は回り続けることを実験で確かめた(2026-08-11。旧根拠 `noPresent` は
-// これを受けて撤去済み)。偽陽性(アプリの初回描画待ち)との区別は**観測窓の長さ**で行う。
+// 本物の wedge でも拍動は回り続ける(実験記録は docs/verification.md)。偽陽性(アプリの
+// 初回描画待ち)との区別は**観測窓の長さ**で行う(`BlankWorkerTriage.samples` / `intervalMs`)。
 // 根拠を列挙して束ねる形なので、証拠の追加は enum の1ケースで済む。
 
 import Foundation
@@ -22,9 +22,15 @@ public enum FrozenEvidence: String, Codable, Sendable, CaseIterable {
     /// 陽性対照の注入(`FrozenInjection`)。検知経路を端から端まで通すためだけに使う
     case injected
 
-    /// **単独で凍結と断じてよい根拠か**。現存する根拠は全部 true(拍動=`noPresent` は
-    /// 実験で反証され撤去済み)。**新しい根拠を警告から入れるときの分岐点はここ**
-    public var isConclusive: Bool { true }
+    /// **単独で凍結と断じてよい根拠か**。**新しい根拠を警告から入れるときの分岐点はここ** ——
+    /// false にすると `isSuspected` 経由の警告(BlankWorkerTriage のログ)だけが出て、
+    /// 除外・回復は撃たれない。網羅 switch にしてあるのは、ケース追加時に必ずここで
+    /// 判断を迫るため(定数 true だと未検証の新根拠が黙って確定扱いになる)
+    public var isConclusive: Bool {
+        switch self {
+        case .uniformBlank, .inputNotLanding, .injected: return true
+        }
+    }
 
     /// ログ・UI に出す短い語(rawValue はケース名なので人が読む面には出さない)
     public var label: String {
@@ -47,6 +53,18 @@ public struct FrozenVerdict: Codable, Sendable, Equatable {
         // CaseIterable の宣言順で整列する(rawValue の辞書順ではない = 追加時に並びが動かない)
         let unique = Set(evidence)
         self.evidence = FrozenEvidence.allCases.filter(unique.contains)
+    }
+
+    private enum CodingKeys: String, CodingKey { case evidence }
+
+    /// **未知の根拠は捨てて decode する**。DeviceFrozenStore はプロセスも版も跨ぐので、
+    /// 旧版が書いた(あるいは新版が先に書いた)根拠が混ざり得る。厳格 decode だと未知ケース
+    /// 1つで Entry 全体が落ち、混在した**本物の凍結公表が healthy に化ける**。
+    /// 既知分だけに縮退すれば凍結は凍結のまま残る
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let raw = try container.decode([String].self, forKey: .evidence)
+        self.init(raw.compactMap(FrozenEvidence.init(rawValue:)))
     }
 
     /// 根拠なし = 健全
@@ -76,18 +94,8 @@ public struct FrozenVerdict: Codable, Sendable, Equatable {
 
     // MARK: - 観測から判定を組み立てる(run 前トリアージとモニターの共通規則)
 
-    /// 凍結と数えるか。
-    ///
-    /// **拍動は判定材料にしない**(2026-08-11 の実験で反証): 本物の wedge でも拍動は回り続ける
-    /// (実測 0.001〜0.016s)ので否定材料として使えない。偽陽性(アプリの初回描画待ち)と本物の
-    /// 違いは**時間**にある —— 描画待ちは数秒で解消し、wedge はいつまでも解消しない。
-    /// 判定材料は一様フレームのままにして、**観測窓を延ばす**ことで分ける
-    /// (`BlankWorkerTriage.samples` / `intervalMs`)。
-    public static func countsAsFrozen(uniformBlank: Bool) -> Bool {
-        uniformBlank
-    }
-
-    /// 1台ぶんの観測から判定を組み立てる。**run 前トリアージもモニターもここを通す**
+    /// 1台ぶんの観測から判定を組み立てる。**run 前トリアージもモニターもここを通す**。
+    /// 判定材料を足したくなったらファイル冒頭の罠(拍動は使えない)を先に読むこと
     public static func observe(uniformBlank: Bool, injected: Bool = false) -> FrozenVerdict {
         if injected { return FrozenVerdict([.injected]) }
         return FrozenVerdict(uniformBlank ? [.uniformBlank] : [])

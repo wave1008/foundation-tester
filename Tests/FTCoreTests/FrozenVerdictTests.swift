@@ -103,7 +103,7 @@ final class FrozenVerdictTests: XCTestCase {
 
     /// 一様でなければ凍結ではない
     func testNonUniformIsNotFrozen() {
-        XCTAssertFalse(FrozenVerdict.countsAsFrozen(uniformBlank: false))
+        XCTAssertFalse(FrozenVerdict.observe(uniformBlank: false).isFrozen)
     }
 }
 
@@ -154,17 +154,33 @@ final class DeviceFrozenStoreClearTests: XCTestCase {
 
     /// 撤去済みの根拠(`noPresent`。rawValue はケース名そのままなので旧ファイルは "noPresent")を
     /// 含む旧版のファイルは decode に失敗し、**健全(nil)側へ倒れる**こと(誤って凍結扱いにしない)
-    func testLegacyNoPresentEvidenceDecodesAsHealthy() throws {
+    /// 旧版が書いたファイルの未知根拠は**既知分に縮退**して読む(全体を落とすと、混在した
+    /// 本物の凍結公表が healthy に化けて「run は知っているのにモニターが知らない」が再発する)
+    func testLegacyEvidenceDecodesLeniently() throws {
         let dir = makeStateDir()
         defer { try? FileManager.default.removeItem(at: dir) }
-        let key = "legacy-device"
-        let legacy = """
-        {"pid":\(ProcessInfo.processInfo.processIdentifier),"at":\(Date().timeIntervalSince1970),\
-        "verdict":{"evidence":["noPresent"]}}
-        """
-        try legacy.data(using: .utf8)!.write(to: DeviceFrozenStore.entryURL(stateDir: dir, key: key))
-        XCTAssertNil(DeviceFrozenStore.current(stateDir: dir, key: key),
-                     "撤去済み根拠を含む旧JSONは decode 失敗→healthy に倒れること")
+        func write(_ key: String, evidence: String) throws {
+            let json = """
+            {"pid":\(ProcessInfo.processInfo.processIdentifier),"at":\(Date().timeIntervalSince1970),\
+            "verdict":{"evidence":[\(evidence)]}}
+            """
+            try json.data(using: .utf8)!.write(to: DeviceFrozenStore.entryURL(stateDir: dir, key: key))
+        }
+
+        // 陽性対照: 既知根拠だけの同形 JSON が読めること(これが無いと下の判定が
+        // 「ファイルが見つからない」等の別原因と区別できない)
+        try write("known", evidence: "\"uniformBlank\"")
+        XCTAssertEqual(DeviceFrozenStore.current(stateDir: dir, key: "known")?.isFrozen, true)
+
+        // 混在: 未知根拠を捨てて凍結は凍結のまま
+        try write("mixed", evidence: "\"uniformBlank\",\"noPresent\"")
+        let mixed = DeviceFrozenStore.current(stateDir: dir, key: "mixed")
+        XCTAssertEqual(mixed?.evidence, [.uniformBlank], "未知根拠だけを捨て、凍結を保つこと")
+
+        // 未知根拠のみ: 根拠なしへ縮退(凍結扱いにしない)
+        try write("unknown-only", evidence: "\"noPresent\"")
+        let unknownOnly = DeviceFrozenStore.current(stateDir: dir, key: "unknown-only")
+        XCTAssertEqual(unknownOnly?.isFrozen ?? false, false)
     }
 }
 

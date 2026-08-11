@@ -181,7 +181,7 @@ final class MonitorFrozenWiringTests: XCTestCase {
         XCTAssertFalse(verdict.isFrozen)
     }
 
-    // MARK: - ④ run 中は自前の受動観測を確定に使わない
+    // MARK: - ③ run 中は自前の受動観測を確定に使わない
 
     /// **run 中の一様フレームで ❄️ を出さない**: run はアプリを terminate→relaunch し続けるので
     /// 合間の真っ黒は正常に出る。黒画面の2種(描画要求なし/本物の wedge)は受動観測では分けられない

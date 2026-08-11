@@ -891,11 +891,8 @@ struct MonitorFrozenDebounce {
         return confirmedIDs.contains(id)
     }
 
-    /// 現在の確定状態(記録の無いデバイスは false)
-    func isFrozen(id: String) -> Bool { confirmedIDs.contains(id) }
-
-    /// 確定状態を**根拠つき**で返す。真偽値ではなく FTCore.FrozenVerdict を配ることで、
-    /// run 側の判定(DeviceFrozenStore)と同じ型で合流できる
+    /// 確定状態を**根拠つき**で返す(唯一の読み口)。真偽値ではなく FTCore.FrozenVerdict を
+    /// 配ることで、run 側の判定(DeviceFrozenStore)と同じ型で合流できる
     func verdict(id: String) -> FrozenVerdict {
         confirmedIDs.contains(id) ? FrozenVerdict([.uniformBlank]) : .healthy
     }
