@@ -102,7 +102,8 @@ public enum BlankWorkerTriage {
     /// 正常時の固定費はスクショ1枚ぶん
     public static func frozenVerdicts(
         _ workers: [RunWorker],
-        environment: [String: String] = ProcessInfo.processInfo.environment
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        log: (@Sendable (String) -> Void)? = nil
     ) async -> [String: FrozenVerdict] {
         let candidates = workers.filter(isCandidate)
         guard !candidates.isEmpty else { return [:] }
@@ -116,6 +117,16 @@ public enum BlankWorkerTriage {
                                                         screenshot: { try? await worker.driver.screenshot() },
                                                         displayIdleSeconds: displayIdle ?? nil,
                                                         environment: environment)
+                    // **矛盾を記録する**(2026-08-11): 一様なのに拍動が生きている = 「真っ白な画面を
+                    // 出しているだけ」かもしれない。モニター側はこれを凍結と言わないようにしたが、
+                    // run 側は**保護を優先して従来どおり凍結として扱う**(拍動が wedge で止まるかは
+                    // 未検証で、外すと本物の凍結を取り逃がす)。どれだけ起きるかを測るためのログ
+                    if verdict.evidence.contains(.uniformBlank),
+                       let idle = displayIdle ?? nil, idle <= displayIdleFrozenThreshold {
+                        log?("⚠️ \(worker.label): the frame is uniform but the display is still"
+                            + " advancing (idle \(String(format: "%.2f", idle))s) — treating it as frozen"
+                            + " (it may just be showing a blank screen)")
+                    }
                     return (worker.label, verdict)
                 }
             }
@@ -181,10 +192,10 @@ public enum BlankWorkerTriage {
         recover: (@Sendable ([String], [RunWorker]) async -> [RunWorker]?)? = nil,
         stateDir: URL? = nil,
         environment: [String: String] = ProcessInfo.processInfo.environment,
-        log: @Sendable (String) -> Void
+        log: @escaping @Sendable (String) -> Void
     ) async -> Result {
         var current = workers
-        var verdicts = await frozenVerdicts(current, environment: environment)
+        var verdicts = await frozenVerdicts(current, environment: environment, log: log)
         // **判定した時点で公表する**(回復は数分かかりうるので、終わってから配るとモニターは
         // その間ずっと「異常なし」を出す = 見えるようにした意味が無い)
         syncStore(verdicts, of: current, stateDir: stateDir)
@@ -207,7 +218,7 @@ public enum BlankWorkerTriage {
                     + " (attempt \(attempt)/\(recoveryAttempts))")
                 guard let rebuilt = await recover(blankLabels, current) else { break }
                 current = rebuilt
-                verdicts = await frozenVerdicts(current, environment: environment)
+                verdicts = await frozenVerdicts(current, environment: environment, log: log)
                 syncStore(verdicts, of: current, stateDir: stateDir)
                 blankLabels = verdicts
                     .filter { $0.value.isFrozen && !$0.value.isInjectedOnly }.keys.sorted()

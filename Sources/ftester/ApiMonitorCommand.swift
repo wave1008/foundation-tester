@@ -272,8 +272,17 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 loggedFetchFailure.remove(state.target.id)
                 // ---- 観測段: **縮小前の PNG で判定する**(JPEG 化は非可逆で、縮小も一様性を
                 // 薄める方向に働く)。撮れなかったサイクル(上の continue)では記録しない = 直前の確定を保つ
-                frozenDebounce.record(uniformBlank: BlankFrameDetector.isUniformBlank(pngData: png),
-                                      id: state.target.id)
+                //
+                // **一様でも「描画が進んでいる」なら凍結ではない**(2026-08-11 の誤検知)。
+                // run のあと SUT が真っ白な画面で放置されると一様フレームになり、誰も触らないので
+                // 確定が永久に解けなかった。拍動(displayIdleSeconds)が生きていれば単に
+                // 「真っ白な画面を出している」だけと分かる。**一様のときだけ問い合わせる**
+                // (固定費を増やさない)。申告の無いブリッジは nil = 従来どおり一様なら凍結扱い
+                let uniform = BlankFrameDetector.isUniformBlank(pngData: png)
+                let idle = uniform ? await Self.displayIdleSeconds(state: state) : nil
+                frozenDebounce.record(
+                    uniformBlank: Self.isFrozenSample(uniformBlank: uniform, displayIdleSeconds: idle),
+                    id: state.target.id)
 
                 // ---- 配信段: ここから先だけが抑制の対象
                 guard deliverIDs.contains(state.target.id) else { continue }
@@ -713,6 +722,30 @@ struct ApiMonitorCommand: AsyncParsableCommand {
     }
 
     /// state==connected のデバイスのスクリーンショットを取得する(PNG。JPEG 変換は呼び出し側)
+    /// 一様フレームを凍結の材料として数えるか。**純粋関数**(判定規則をテストで固定するため)。
+    ///
+    /// **拍動が生きているなら一様でも凍結ではない**(2026-08-11 の誤検知): run のあと SUT が
+    /// 真っ白な画面で放置されると一様フレームになり、誰も触らないので確定が永久に解けなかった。
+    /// 実測では HOME を押しただけでスクショが 24KB → 1.4MB になり、描画は生きていた。
+    /// 拍動の申告が無い(nil = 旧ブリッジ・ブリッジ無し)ときは**従来どおり**一様を材料にする
+    /// (判断材料が無いのに保護を外さない)。
+    static func isFrozenSample(uniformBlank: Bool, displayIdleSeconds: Double?,
+                               threshold: Double = displayIdleFrozenThreshold) -> Bool {
+        guard uniformBlank else { return false }
+        guard let idle = displayIdleSeconds else { return true }
+        return idle > threshold
+    }
+
+    /// ブリッジが申告する「最後に画面が進んでからの秒数」。
+    /// iOS は毎サイクルの /status 一括取得で既に手元にある(DeviceRuntimeState)。
+    /// **Android はモニターがブリッジを叩いていない**(スクショは adb 経由)ので、
+    /// 必要になった時だけ問い合わせる。ブリッジが無い/古い場合は nil = 判断材料にしない
+    private static func displayIdleSeconds(state: DeviceRuntimeState) async -> Double? {
+        if state.target.platform == "ios" { return state.displayIdleSeconds }
+        guard let serial = state.androidSerial else { return nil }
+        return try? await AndroidDriver(serial: serial).status().displayIdleSeconds
+    }
+
     private static func fetchScreenshot(state: DeviceRuntimeState) async throws -> Data {
         if state.target.platform == "ios" {
             guard let port = state.iosPort else { throw MonitorError.noConnection }

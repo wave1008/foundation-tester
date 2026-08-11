@@ -180,4 +180,36 @@ final class MonitorFrozenWiringTests: XCTestCase {
             stateDir: dir, environment: [FrozenInjection.environmentKey: "udid-a"])
         XCTAssertFalse(verdict.isFrozen)
     }
+
+    // MARK: - ③ 一様でも「描画が進んでいる」なら凍結ではない
+
+    /// **本丸**: run のあと真っ白な画面で放置された機を凍結と言わない(2026-08-11 の誤検知)。
+    /// 実測では ❄️ が付いた4台とも、HOME を押しただけでスクショが 24KB → 1.4MB になった
+    func testUniformFrameWithLiveDisplayIsNotFrozen() {
+        XCTAssertFalse(ApiMonitorCommand.isFrozenSample(uniformBlank: true, displayIdleSeconds: 0.1),
+                       "拍動が生きている = 真っ白な画面を出しているだけ")
+    }
+
+    /// 拍動が止まっていれば従来どおり凍結の材料
+    func testUniformFrameWithStalledDisplayIsFrozen() {
+        XCTAssertTrue(ApiMonitorCommand.isFrozenSample(uniformBlank: true, displayIdleSeconds: 30))
+    }
+
+    /// **申告が無いときは保護を外さない**(旧ブリッジ・ブリッジ無しの機を見逃さない)
+    func testUniformFrameWithoutHeartbeatKeepsTheOldBehaviour() {
+        XCTAssertTrue(ApiMonitorCommand.isFrozenSample(uniformBlank: true, displayIdleSeconds: nil))
+    }
+
+    /// 一様でなければ拍動に関わらず凍結ではない
+    func testNonUniformFrameIsNeverFrozen() {
+        XCTAssertFalse(ApiMonitorCommand.isFrozenSample(uniformBlank: false, displayIdleSeconds: 30))
+        XCTAssertFalse(ApiMonitorCommand.isFrozenSample(uniformBlank: false, displayIdleSeconds: nil))
+    }
+
+    /// しきい値の境界(ちょうどは「生きている」側 = 凍結にしない)
+    func testThresholdBoundary() {
+        let t = ApiMonitorCommand.displayIdleFrozenThreshold
+        XCTAssertFalse(ApiMonitorCommand.isFrozenSample(uniformBlank: true, displayIdleSeconds: t))
+        XCTAssertTrue(ApiMonitorCommand.isFrozenSample(uniformBlank: true, displayIdleSeconds: t + 0.01))
+    }
 }
