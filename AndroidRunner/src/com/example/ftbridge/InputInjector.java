@@ -157,7 +157,7 @@ final class InputInjector {
             }
             if (SystemClock.uptimeMillis() >= deadline) {
                 throw new BridgeRouter.BridgeException(500,
-                        "cannot type into the field that was tapped (" + lastState + "、"
+                        "cannot type into the field that was tapped (" + lastState + ", "
                         + timeoutMs + "ms waited; giving up rather than typing into the wrong field)");
             }
             SystemClock.sleep(20);
@@ -221,30 +221,62 @@ final class InputInjector {
         return masked && current.length() == combined.length();
     }
 
-    /** resource-id(短縮形)優先でノードを探す。id が無い/見つからないときだけ点で探す */
+    /**
+     * resource-id(短縮形)優先でノードを探す。**id は画面内で一意とは限らない**
+     * (Google マップの時刻ピッカーで時/分の EditText が同じ id を持つ)ので、一致が
+     * 複数あるときは**先頭を採らず ref の座標で選び分ける**。1件目を採ると ref で指した欄と
+     * 別の欄を操作する(実測: 分を clear したら時が消えた)。
+     * 選び分けは「点を含む → 中心が最も近い」の順: **座標そのものへは落とさない** ——
+     * IME の開閉でダイアログが数百 px 動くので、点一致だけだと "target node not found" になる。
+     * setTextAppendingAt/clearTextAt の両方がここを通るので分岐を2箇所に書かない。
+     */
     private static AccessibilityNodeInfo findEditable(AccessibilityNodeInfo root, String shortId,
                                                       int x, int y, Rect tmp) {
         if (shortId != null) {
-            AccessibilityNodeInfo byId = editableById(root, shortId);
-            if (byId != null) return byId;
+            java.util.List<AccessibilityNodeInfo> matches = new java.util.ArrayList<>();
+            collectEditableById(root, shortId, matches);
+            if (matches.size() == 1) return matches.get(0);
+            if (matches.size() > 1) return nearest(matches, x, y, tmp);
         }
         return editableAt(root, x, y, tmp);
     }
 
-    /** 短縮 resource-id が一致する editable ノード(SnapshotBuilder.shortResourceId と同じ規則) */
-    private static AccessibilityNodeInfo editableById(AccessibilityNodeInfo node, String shortId) {
-        if (node == null) return null;
+    /** 同じ id の候補から ref の点で選ぶ: 含むものを優先し、無ければ中心が最も近いもの */
+    private static AccessibilityNodeInfo nearest(java.util.List<AccessibilityNodeInfo> matches,
+                                                 int x, int y, Rect tmp) {
+        AccessibilityNodeInfo best = null;
+        double bestDistance = Double.MAX_VALUE;
+        for (AccessibilityNodeInfo node : matches) {
+            node.getBoundsInScreen(tmp);
+            if (tmp.contains(x, y)) return node;
+            double dx = tmp.centerX() - x;
+            double dy = tmp.centerY() - y;
+            double distance = dx * dx + dy * dy;
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                best = node;
+            }
+        }
+        return best;
+    }
+
+    /**
+     * 短縮 resource-id が一致する editable ノードを集める(SnapshotBuilder.shortResourceId
+     * と同じ規則)。**打ち切りは 8 件**: 一意性の判定だけなら2件で足りるが、複数一致のときは
+     * 座標で選び分けるので候補が要る(それ以上並ぶ画面では点を含むものが先に返る)。
+     */
+    private static void collectEditableById(AccessibilityNodeInfo node, String shortId,
+                                            java.util.List<AccessibilityNodeInfo> matches) {
+        if (node == null || matches.size() >= 8) return;
         String id = node.getViewIdResourceName();
         if (id != null && node.isEditable()) {
             int idx = id.indexOf("id/");
             String shortened = idx >= 0 ? id.substring(idx + 3) : id;
-            if (shortId.equals(shortened)) return node;
+            if (shortId.equals(shortened)) matches.add(node);
         }
-        for (int i = 0; i < node.getChildCount(); i++) {
-            AccessibilityNodeInfo found = editableById(node.getChild(i), shortId);
-            if (found != null) return found;
+        for (int i = 0; i < node.getChildCount() && matches.size() < 8; i++) {
+            collectEditableById(node.getChild(i), shortId, matches);
         }
-        return null;
     }
 
     /**
@@ -317,7 +349,7 @@ final class InputInjector {
             }
             if (SystemClock.uptimeMillis() >= deadline) {
                 throw new BridgeRouter.BridgeException(409,
-                        "cannot clear the field that was tapped (" + lastState + "、"
+                        "cannot clear the field that was tapped (" + lastState + ", "
                         + timeoutMs + "ms waited)");
             }
             SystemClock.sleep(20);
