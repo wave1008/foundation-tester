@@ -672,14 +672,12 @@ extension StepExecutor {
             // フォールバックする経路も長押し側だけが必要
             let hold = step.duration ?? FlowStep.defaultTapHoldSeconds
             if hold > 0 {
-                // 長押しは press(ref:) = ブリッジが frame の中心へ解決するので、
-                // 画面外の中心・中身外しが言える(重なったら強い方 = 画面外だけ)。
-                // **keyboard/disabled はここでは足さない**(上ですでに1回付けている。
-                // ここで足すと同文が2回付く)
+                // 長押しは press(ref:) = ブリッジが frame の中心へ解決するので、座標に依る
+                // チェーン(画面外・遮蔽・中身外し等)が言える。**keyboard/disabled はここでは
+                // 足さない**(上ですでに1回付けている。ここで足すと同文が2回付く)
                 driverFallback = Self.joinNotes(driverFallback,
-                    TapTargetGeometry.offscreenAdvisory(for: element, screen: snapshot.screen)
-                        ?? TapTargetGeometry.missedContentAdvisory(
-                            for: element, in: snapshot.elements, screen: snapshot.screen))
+                    TapTargetGeometry.occlusionAdvisory(
+                        for: element, in: snapshot.elements, screen: snapshot.screen))
                 if typeDriverGestures.contains("press") || gestureFallbackLatched, let td = typeDriver,
                    try await pressViaTypeDriver(td, step: step, phase: &phase) {
                     return StepOutcome(status: .passed, healedStep: healedStep,
@@ -711,13 +709,12 @@ extension StepExecutor {
                 driverFallback = Self.joinNotes(driverFallback,
                     "tapped the visible part (the reported frame's centre falls outside its container)")
             } else {
-                // 寄せずに frame の中心を撃つ = 画面外の中心・中身外しの注記が言える経路
-                // (重なったら強い方 = 画面外だけ)。**keyboard/disabled はここでは足さない**
-                // (上ですでに1回付けている。ここで足すと同文が2回付く)
+                // 寄せずに frame の中心を撃つ = 座標に依るチェーンが言える経路。
+                // **keyboard/disabled はここでは足さない**(上ですでに1回付けている。
+                // ここで足すと同文が2回付く)
                 driverFallback = Self.joinNotes(driverFallback,
-                    TapTargetGeometry.offscreenAdvisory(for: element, screen: snapshot.screen)
-                        ?? TapTargetGeometry.missedContentAdvisory(
-                            for: element, in: snapshot.elements, screen: snapshot.screen))
+                    TapTargetGeometry.occlusionAdvisory(
+                        for: element, in: snapshot.elements, screen: snapshot.screen))
                 try await actingDriver.tap(ref: element.ref)
             }
             phase.actionMs += Self.ms(clock.now - start)
@@ -733,14 +730,28 @@ extension StepExecutor {
             // フレームワーク任せで揃わない。"\n" を含まない入力は両経路で結果が同じなので、この
             // 振り分けはエンジン間の観測可能な挙動差を生まない。
             let text = step.text ?? ""
+            // **既存値の連結警告**(MCP の同名警告と揃える)。追加のデバイス往復はしない —
+            // 撃つ前に解決済みの `element.value` だけを見る。secureTextField は値を伏せる
+            // (マスク欄の実値をログへ出さない)
+            let existingValue = TypeReadback.normalizedValue(of: element)
+            let existingValueNote: String? = existingValue.isEmpty ? nil
+                : element.type == "secureTextField"
+                    ? "the field already holds a value; type appends, so the result will not"
+                        + " simply be what you typed. Call clearInput first if you meant to replace it"
+                    : "the field already held \"\(SnapshotRenderer.truncate(existingValue, 30))\";"
+                        + " type appends, so it will read"
+                        + " \"\(SnapshotRenderer.truncate(existingValue + text, 60))\" after this."
+                        + " Call clearInput first if you meant to replace it"
             if let td = typeDriver, preferTypeDriver || text.contains("\n"),
                try await typeViaTypeDriver(td, step: step, phase: &phase) {
-                return StepOutcome(status: .passed, healedStep: healedStep, healedByCache: healedByCache)
+                return StepOutcome(status: .passed, healedStep: healedStep, healedByCache: healedByCache,
+                                   driverFallback: existingValueNote)
             }
             do {
                 start = clock.now
                 try await actingDriver.type(ref: element.ref, text: step.text ?? "")
                 phase.actionMs += Self.ms(clock.now - start)
+                driverFallback = Self.joinNotes(driverFallback, existingValueNote)
             } catch {
                 // 409 = inapp が非 UIKit 入力欄で first responder を張れない兆候。type は要素個別の
                 // フォーカス有無に依存する一時的競合なので、press/swipe と違い 501 化しない。
@@ -748,7 +759,7 @@ extension StepExecutor {
                       let td = typeDriver else { throw error }
                 guard try await typeViaTypeDriver(td, step: step, phase: &phase) else { throw error }
                 // セレクタは正しくドライバが変わっただけ = .passedViaFallback(ロケータ用)は立てない
-                driverFallback = "fell back to XCUITest"
+                driverFallback = Self.joinNotes("fell back to XCUITest", existingValueNote)
             }
         case "clearInput":
             if let td = typeDriver, preferTypeDriver,

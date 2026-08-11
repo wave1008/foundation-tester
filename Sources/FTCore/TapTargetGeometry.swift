@@ -190,18 +190,62 @@ public enum TapTargetGeometry {
     /// DSL は**ステップ注記**に混ぜる(失敗にはしない): 無効な要素をわざと叩いて
     /// 「反応しないこと」を確かめる書き方は正当で、`enabledIsFalse` も用意されている。
     ///
-    /// 2つとも実測に基づく(2026-08-07):
-    /// - `disabled`: 木には印字しているのに操作経路が `enabled` を一度も見ておらず、
-    ///   E2E-CMP の契約上「押しても何も起きない」ボタンへ tap/press/doubleTap の3つとも
-    ///   無警告で成功を返していた
-    /// - 中身外し: `#layers_fab_button`(全幅・中身は右端の FAB だけ)を叩くと、
-    ///   中心が地図の上にあるので**海上の座標にピンが落ちて place page が開いた**
+    /// keyboard/disabled は座標に依らず言えるので先頭に残す。座標に依る残り(zero-frame〜sliver)は
+    /// `occlusionAdvisory` へ委ねる(実測は各判定関数の doc を参照)
     public static func advisory(for element: ElementInfo, in elements: [ElementInfo],
                                 screen: FTRect, keyboardFrame: FTRect? = nil) -> String? {
         keyboardCoveredAdvisory(element, keyboardFrame: keyboardFrame)
             ?? disabledAdvisory(for: element)
-            ?? offscreenAdvisory(for: element, screen: screen)
-            ?? missedContentAdvisory(for: element, in: elements, screen: screen)
+            ?? occlusionAdvisory(for: element, in: elements, screen: screen)
+    }
+
+    /// **座標に依る警告の優先順チェーン**(強い事実から先に、最初の1件だけ)。
+    /// MCP(`RefGuard.overlapWarning`)と同じ優先順 —— offscreen → scrolledOut →
+    /// overlayCovering → missedContent → nested → stacked → sliver。zero-frame はここにしか無い
+    /// (退化 frame は MCP 側では未検知)。**frame の中心を撃つ経路でしか言えない**
+    /// (`StepExecutor.visibleTapRect` で寄せた場合は呼ばない —— 撃つ点が変わるので嘘になる)
+    public static func occlusionAdvisory(for element: ElementInfo, in elements: [ElementInfo],
+                                         screen: FTRect) -> String? {
+        if element.frame.width <= 0 || element.frame.height <= 0 {
+            return "its reported frame has zero width/height — the tap may land on whatever"
+                + " is at that point"
+        }
+        if let off = offscreenAdvisory(for: element, screen: screen) { return off }
+        if let scroller = outsideDeclaredScroller(element, in: elements) {
+            return "the target is reported entirely outside \(describe(scroller)), the scroll"
+                + " container it belongs to — it is a leftover from scrolling, not what is"
+                + " currently drawn there"
+        }
+        if let over = OcclusionGeometry.overlayCovering(element, in: elements, screen: screen) {
+            return "the target's centre is covered by \(describe(over)), so this may have hit"
+                + " \(describe(over)) instead"
+        }
+        if let missed = missedContentAdvisory(for: element, in: elements, screen: screen) {
+            return missed
+        }
+        if let nested = nestedActionCoveringCentre(element, in: elements) {
+            return "\(describe(nested)) sits inside the target and covers its centre, so this"
+                + " may have triggered \(describe(nested)) instead"
+        }
+        if OcclusionGeometry.stackedRefs(elements).contains(element.ref) {
+            return "the target shares its exact frame with other elements, so at most one of"
+                + " them is really drawn there — the rest are clamped leftovers"
+        }
+        if isClippedSliver(element, screen: screen) {
+            return "the target is clipped to a thin sliver at the edge of its container —"
+                + " it is narrower than it looks and the tap may miss"
+        }
+        return nil
+    }
+
+    /// 人が読める名指し(`#id` があればそれ、無ければ型 + ラベル)。MCP(`RefGuard.describe`)は
+    /// ここへの転送。ラベルはゼロ幅文字を除いて比較と揃える
+    public static func describe(_ element: ElementInfo) -> String {
+        if let id = element.identifier, !id.isEmpty { return "#\(id)" }
+        if let label = element.label.map(FlowMatchMode.normalizeInvisibleCharacters), !label.isEmpty {
+            return "\(element.type) \"\(label)\""
+        }
+        return element.type
     }
 
     /// 「そもそも無効」。**撃つ座標に依らない**ので、どの経路でも同じことが言える

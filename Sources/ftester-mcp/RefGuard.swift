@@ -153,14 +153,10 @@ enum RefGuard {
     }
 
     /// 失敗メッセージ用の人が読める識別(`#id` があればそれ、無ければ型とラベル)
+    // ゼロ幅文字を落とす理由(visibleLabelsHint と同じ)ごと実体は FTCore 側。describe は
+    // tap の警告・goneMessage・遮蔽/ghost の警告が全部通る口なので、ここが最後の砦
     static func describe(_ element: ElementInfo) -> String {
-        if let id = element.identifier, !id.isEmpty { return "#\(id)" }
-        // ゼロ幅文字を落とす(visibleLabelsHint と同じ理由。describe は tap の警告・
-        // goneMessage・遮蔽/ghost の警告が全部通る口なので、ここが最後の砦)
-        if let label = element.label.map(FlowMatchMode.normalizeInvisibleCharacters), !label.isEmpty {
-            return "\(element.type) \"\(label)\""
-        }
-        return element.type
+        TapTargetGeometry.describe(element)
     }
 
     /// **打ち切りも「消えた」の原因になる**(欠陥①と同型): 画面が密になるとブリッジの

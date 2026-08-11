@@ -1,5 +1,5 @@
 // tap-target occlusion 判定(中心点内包で「撃つと何に当たるか」を名指しする)。
-// MCP(`RefGuard`。転送のみ)と将来の DSL が共有する。
+// MCP(`RefGuard`。転送のみ)と DSL(`TapTargetGeometry.occlusionAdvisory`)が共有する。
 // `OcclusionSuspicion.covering` とは別軸(面積重なり率0.4・FM を呼ぶかの前段) —— 統合しない
 // 理由はそちらの型 doc を参照。塗り順の実体は `PaintOrder`、包含/系譜の実体は `TapTargetGeometry`。
 

@@ -80,6 +80,110 @@ final class TapTargetAdvisoryTests: XCTestCase {
             for: e, screen: FTRect(x: 0, y: 0, width: 0, height: 0)))
     }
 
+    // MARK: - occlusionAdvisory(座標に依るチェーン。MCP の RefGuard.overlapWarning と同じ優先順)
+
+    func testZeroWidthFrameIsCalledOutByChain() {
+        let e = element(1, "z", "button", 100, 100, 0, 40)
+        let note = TapTargetGeometry.occlusionAdvisory(for: e, in: [e], screen: screen)
+        XCTAssertTrue(note?.contains("zero width/height") == true, note ?? "")
+    }
+
+    func testZeroHeightFrameIsCalledOutByChain() {
+        let e = element(1, "z", "button", 100, 100, 40, 0)
+        let note = TapTargetGeometry.occlusionAdvisory(for: e, in: [e], screen: screen)
+        XCTAssertTrue(note?.contains("zero width/height") == true, note ?? "")
+    }
+
+    /// 実測形と同じ nav_heal / tab_controls(OcclusionGeometry.overlayCovering の doc 参照)
+    func testOverlayCoveringIsCalledOutByChain() {
+        let target = ElementInfo(ref: 1, type: "clickable", identifier: "nav_heal", label: nil,
+                                 value: nil, placeholder: nil, enabled: true,
+                                 frame: FTRect(x: 16, y: 788, width: 370, height: 62), depth: 2)
+        let overlay = ElementInfo(ref: 2, type: "clickable", identifier: "tab_controls", label: nil,
+                                  value: nil, placeholder: nil, enabled: true,
+                                  frame: FTRect(x: 134, y: 778, width: 134, height: 62), depth: 2)
+        let note = TapTargetGeometry.occlusionAdvisory(for: target, in: [target, overlay], screen: screen)
+        XCTAssertTrue(note?.contains("#tab_controls") == true, note ?? "")
+        XCTAssertTrue(note?.contains("instead") == true, note ?? "")
+    }
+
+    /// 対話的な親の子孫が中心を横取りする形(`nestedActionCoveringCentre` の doc 参照)
+    func testNestedActionIsCalledOutByChain() {
+        let parent = ElementInfo(ref: 1, type: "cell", identifier: "row", label: nil, value: nil,
+                                 placeholder: nil, enabled: true,
+                                 frame: FTRect(x: 0, y: 0, width: 100, height: 100), depth: 2)
+        let child = ElementInfo(ref: 2, type: "button", identifier: "chip", label: nil, value: nil,
+                                placeholder: nil, enabled: true,
+                                frame: FTRect(x: 40, y: 40, width: 20, height: 20), depth: 3)
+        let note = TapTargetGeometry.occlusionAdvisory(for: parent, in: [parent, child], screen: screen)
+        XCTAssertTrue(note?.contains("#chip") == true, note ?? "")
+        XCTAssertTrue(note?.contains("instead") == true, note ?? "")
+    }
+
+    /// 同一矩形に3件以上積まれた要素(`OcclusionGeometry.stackedRefs` の doc 参照)。
+    /// 「other」型で子孫を持たないので missedContent/nested には掛からず、stacked だけが発火する
+    func testStackedFramesAreCalledOutByChain() {
+        func stacked(_ ref: Int, _ label: String) -> ElementInfo {
+            ElementInfo(ref: ref, type: "other", identifier: "poi", label: label, value: nil,
+                        placeholder: nil, enabled: true,
+                        frame: FTRect(x: 300, y: 300, width: 30, height: 30), depth: 1)
+        }
+        let elements = (0..<3).map { stacked($0 + 1, "STACK\($0)") }
+        let note = TapTargetGeometry.occlusionAdvisory(for: elements[0], in: elements, screen: screen)
+        XCTAssertTrue(note?.contains("clamped leftovers") == true, note ?? "")
+    }
+
+    /// 実害形と同じ細帯(`isClippedSliver` のテスト群と同じ要素)がチェーン経由でも出る
+    func testSliverIsCalledOutByChain() {
+        var e = element(1, "tab_sunrise_seto", "tab", 1071, 100, 9, 137)
+        e.label = "サンライズ瀬戸"
+        let note = TapTargetGeometry.occlusionAdvisory(for: e, in: [e], screen: screen)
+        XCTAssertTrue(note?.contains("sliver") == true, note ?? "")
+    }
+
+    /// **優先順**: 画面外と遮蔽が両方成り立つ形で、画面外(強い事実)だけが出る
+    func testOffscreenBeatsOverlayInThePriorityChain() {
+        let target = ElementInfo(ref: 1, type: "clickable", identifier: "target", label: nil,
+                                 value: nil, placeholder: nil, enabled: true,
+                                 frame: FTRect(x: 0, y: -46, width: 402, height: 56), depth: 2)
+        // 中心 (201, -18) を覆う候補(画面外チェックより先に評価されたら誤って発火する)
+        let overlay = ElementInfo(ref: 2, type: "clickable", identifier: "overlay", label: nil,
+                                  value: nil, placeholder: nil, enabled: true,
+                                  frame: FTRect(x: 0, y: -60, width: 250, height: 80), depth: 2)
+        let smallScreen = FTRect(x: 0, y: 0, width: 402, height: 874)
+        let note = TapTargetGeometry.occlusionAdvisory(
+            for: target, in: [target, overlay], screen: smallScreen)
+        XCTAssertTrue(note?.contains("outside the visible screen") == true, note ?? "")
+        XCTAssertFalse(note?.contains("covered by") == true, note ?? "")
+    }
+
+    /// **優先順**: 容器外送出と遮蔽が両方成り立つ形で、容器外(frame が古い = 遮蔽の名指しも
+    /// 嘘になる)だけが出る
+    func testScrolledOutBeatsOverlayInThePriorityChain() {
+        let smallScreen = FTRect(x: 0, y: 0, width: 402, height: 874)
+        let scroller = ElementInfo(ref: 1, type: "other", identifier: "scroller", label: nil,
+                                   value: nil, placeholder: nil, enabled: true,
+                                   frame: FTRect(x: 0, y: 100, width: 402, height: 600), depth: 1,
+                                   scrollable: true)
+        let rowA = ElementInfo(ref: 2, type: "clickable", identifier: "row_a", label: "行A",
+                               value: nil, placeholder: nil, enabled: true,
+                               frame: FTRect(x: 10, y: 110, width: 370, height: 20), depth: 2)
+        let rowB = ElementInfo(ref: 3, type: "clickable", identifier: "row_b", label: "行B",
+                               value: nil, placeholder: nil, enabled: true,
+                               frame: FTRect(x: 10, y: 160, width: 370, height: 20), depth: 2)
+        let target = ElementInfo(ref: 4, type: "clickable", identifier: "target", label: nil,
+                                 value: nil, placeholder: nil, enabled: true,
+                                 frame: FTRect(x: 10, y: 750, width: 370, height: 20), depth: 2)
+        // 中心 (195, 760) を覆う候補(容器外チェックより先に評価されたら誤って発火する)
+        let overlay = ElementInfo(ref: 5, type: "clickable", identifier: "overlay", label: nil,
+                                  value: nil, placeholder: nil, enabled: true,
+                                  frame: FTRect(x: 0, y: 740, width: 300, height: 60), depth: 2)
+        let elements = [scroller, rowA, rowB, target, overlay]
+        let note = TapTargetGeometry.occlusionAdvisory(for: target, in: elements, screen: smallScreen)
+        XCTAssertTrue(note?.contains("leftover from scrolling") == true, note ?? "")
+        XCTAssertFalse(note?.contains("covered by") == true, note ?? "")
+    }
+
     /// **disabled が優先**: 両方に当てはまるときは「そもそも無効」を先に言う
     func testDisabledWinsOverTheGeometricAdvice() {
         let elements = [
@@ -182,13 +286,19 @@ private final class AdvisoryProbeDriver: AppDriver {
     let offscreen: Bool
     /// ドライバ自身が申告する注記(InAppBridge の「activate 不発→合成タッチ」に相当)
     let driverNote: String?
+    /// T7: type の既存値注記テスト用。非 nil なら `#target` の value に載せる
+    /// (secure=true なら型を secureTextField にして伏せ字経路を通す)
+    let existingValue: String?
+    let secure: Bool
     private(set) var taps = 0
     init(disabled: Bool, missesContent: Bool = false, offscreen: Bool = false,
-         driverNote: String? = nil) {
+         driverNote: String? = nil, existingValue: String? = nil, secure: Bool = false) {
         self.disabled = disabled
         self.missesContent = missesContent
         self.offscreen = offscreen
         self.driverNote = driverNote
+        self.existingValue = existingValue
+        self.secure = secure
     }
     var lastActionNote: String? { driverNote }
 
@@ -245,12 +355,44 @@ private final class AdvisoryProbeDriver: AppDriver {
         return SnapshotResponse(
             sessionBundleID: nil, screen: screen,
             elements: [
-                ElementInfo(ref: 1, type: "clickable", identifier: "target", label: "対象",
-                            value: nil, placeholder: nil, enabled: !disabled,
+                ElementInfo(ref: 1,
+                            type: secure ? "secureTextField" : (existingValue != nil ? "textField" : "clickable"),
+                            identifier: "target", label: "対象",
+                            value: existingValue, placeholder: nil, enabled: !disabled,
                             frame: FTRect(x: 16, y: 410, width: 370, height: 56), depth: 2),
             ],
             truncatedCount: 0)
     }
+}
+
+/// **新チェーンの配線テスト専用ドライバ**: 固定の SnapshotResponse をそのまま返すだけ
+/// (AdvisoryProbeDriver の分岐では表現しにくい複数要素の木を組むため)
+private final class FixedSnapshotDriver: AppDriver {
+    let response: SnapshotResponse
+    private(set) var taps = 0
+    private(set) var presses = 0
+    private(set) var doubleTaps = 0
+    init(_ response: SnapshotResponse) { self.response = response }
+    var lastActionNote: String? { nil }
+
+    func status() async throws -> StatusResponse {
+        StatusResponse(ready: true, device: "fake", osVersion: "-", sessionBundleID: nil)
+    }
+    func install(packagePath: String) async throws {}
+    func uninstall(bundleID: String) async throws {}
+    func launch(bundleID: String) async throws {}
+    func isAppForeground(bundleID: String) async throws -> Bool { true }
+    func foregroundAppID() async throws -> String? { nil }
+    func terminate() async throws {}
+    func screenshot() async throws -> Data { Data() }
+    func type(ref: Int?, text: String) async throws {}
+    func tap(ref: Int) async throws { taps += 1 }
+    func tap(x: Double, y: Double) async throws { taps += 1 }
+    func press(ref: Int, duration: Double) async throws { presses += 1 }
+    func swipe(_ direction: FTSwipeDirection) async throws {}
+    func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent, path: FTSwipePath?) async throws {}
+    func doubleTap(x: Double, y: Double) async throws { doubleTaps += 1 }
+    func snapshot() async throws -> SnapshotResponse { response }
 }
 
 final class TapAdvisoryWiringTests: XCTestCase {
@@ -342,5 +484,144 @@ final class TapAdvisoryWiringTests: XCTestCase {
         let note = outcome.driverFallback ?? ""
         XCTAssertTrue(note.contains("#inner"), "中身外しの注記が出ていない: \(note)")
         XCTAssertTrue(note.contains("behind it"), note)
+    }
+
+    // MARK: - 新チェーン(occlusionAdvisory)の配線: tap / 長押し / doubleTap
+
+    private func overlayCoveringSnapshot() -> SnapshotResponse {
+        let screen = FTRect(x: 0, y: 0, width: 402, height: 874)
+        let target = ElementInfo(ref: 1, type: "clickable", identifier: "target", label: nil,
+                                 value: nil, placeholder: nil, enabled: true,
+                                 frame: FTRect(x: 16, y: 788, width: 370, height: 62), depth: 2)
+        let overlay = ElementInfo(ref: 2, type: "clickable", identifier: "overlay", label: nil,
+                                  value: nil, placeholder: nil, enabled: true,
+                                  frame: FTRect(x: 134, y: 778, width: 134, height: 62), depth: 2)
+        return SnapshotResponse(sessionBundleID: nil, screen: screen,
+                                elements: [target, overlay], truncatedCount: 0)
+    }
+
+    private func scrolledOutSnapshot() -> SnapshotResponse {
+        let screen = FTRect(x: 0, y: 0, width: 402, height: 874)
+        let scroller = ElementInfo(ref: 1, type: "other", identifier: "scroller", label: nil,
+                                   value: nil, placeholder: nil, enabled: true,
+                                   frame: FTRect(x: 0, y: 100, width: 402, height: 600), depth: 1,
+                                   scrollable: true)
+        let rowA = ElementInfo(ref: 2, type: "clickable", identifier: "row_a", label: "行A",
+                               value: nil, placeholder: nil, enabled: true,
+                               frame: FTRect(x: 10, y: 110, width: 370, height: 20), depth: 2)
+        let rowB = ElementInfo(ref: 3, type: "clickable", identifier: "row_b", label: "行B",
+                               value: nil, placeholder: nil, enabled: true,
+                               frame: FTRect(x: 10, y: 160, width: 370, height: 20), depth: 2)
+        let target = ElementInfo(ref: 4, type: "clickable", identifier: "target", label: nil,
+                                 value: nil, placeholder: nil, enabled: true,
+                                 frame: FTRect(x: 10, y: 750, width: 370, height: 20), depth: 2)
+        return SnapshotResponse(sessionBundleID: nil, screen: screen,
+                                elements: [scroller, rowA, rowB, target], truncatedCount: 0)
+    }
+
+    /// **視界の縁に半分だけ乗った要素**(visibleTapRect 経路。ClampedCoordinateTests の
+    /// `testThinSliverIsNotTapped` の「real」形と同じ構成)。`phantom` は raw frame の中心を覆う
+    /// 候補で、もし新チェーンが呼ばれてしまえば overlayCovering として発火するはずの罠
+    private func clippedStraddleSnapshot() -> SnapshotResponse {
+        let screen = FTRect(x: 0, y: 0, width: 402, height: 874)
+        let container = ElementInfo(ref: 1, type: "other", identifier: "list", label: nil,
+                                    value: nil, placeholder: nil, enabled: true,
+                                    frame: FTRect(x: 16, y: 230, width: 370, height: 462), depth: 11)
+        let target = ElementInfo(ref: 2, type: "clickable", identifier: "target", label: "行",
+                                 value: nil, placeholder: nil, enabled: true,
+                                 frame: FTRect(x: 16, y: 206, width: 370, height: 38), depth: 12)
+        let inside1 = ElementInfo(ref: 3, type: "clickable", identifier: "row3", label: "行",
+                                  value: nil, placeholder: nil, enabled: true,
+                                  frame: FTRect(x: 16, y: 300, width: 370, height: 56), depth: 12)
+        let inside2 = ElementInfo(ref: 4, type: "clickable", identifier: "row4", label: "行",
+                                  value: nil, placeholder: nil, enabled: true,
+                                  frame: FTRect(x: 16, y: 360, width: 370, height: 56), depth: 12)
+        let phantom = ElementInfo(ref: 5, type: "clickable", identifier: "phantom", label: nil,
+                                  value: nil, placeholder: nil, enabled: true,
+                                  frame: FTRect(x: 100, y: 200, width: 200, height: 50), depth: 12)
+        return SnapshotResponse(sessionBundleID: nil, screen: screen,
+                                elements: [container, target, inside1, inside2, phantom],
+                                truncatedCount: 0)
+    }
+
+    /// 素の tap で overlayCovering が注記に出る
+    func testTapCarriesOverlayCoveringAdvisory() async throws {
+        let driver = FixedSnapshotDriver(overlayCoveringSnapshot())
+        let outcome = await StepExecutor(driver: driver)
+            .execute(FlowStep(action: "tap", locator: FlowLocator(id: "target")))
+        let note = outcome.driverFallback ?? ""
+        XCTAssertTrue(note.contains("#overlay"), "overlayCovering の注記が出ていない: \(note)")
+        XCTAssertTrue(note.contains("instead"), note)
+    }
+
+    /// 素の tap で scrolledOut が注記に出る
+    func testTapCarriesScrolledOutAdvisory() async throws {
+        let driver = FixedSnapshotDriver(scrolledOutSnapshot())
+        let outcome = await StepExecutor(driver: driver)
+            .execute(FlowStep(action: "tap", locator: FlowLocator(id: "target")))
+        let note = outcome.driverFallback ?? ""
+        XCTAssertTrue(note.contains("#scroller"), "scrolledOut の注記が出ていない: \(note)")
+        XCTAssertTrue(note.contains("leftover from scrolling"), note)
+    }
+
+    /// 長押し(hold>0 = press(ref:) 経路)でも新チェーンが出る
+    func testLongPressCarriesOverlayCoveringAdvisory() async throws {
+        let driver = FixedSnapshotDriver(overlayCoveringSnapshot())
+        let outcome = await StepExecutor(driver: driver)
+            .execute(FlowStep(action: "tap", locator: FlowLocator(id: "target"), duration: 0.5))
+        XCTAssertEqual(driver.presses, 1, "長押しは press(ref:) 経路を通るはず")
+        let note = outcome.driverFallback ?? ""
+        XCTAssertTrue(note.contains("#overlay"), "長押しで overlayCovering の注記が出ていない: \(note)")
+    }
+
+    /// doubleTap(advisory() 経由)でも scrolledOut が出る
+    func testDoubleTapCarriesScrolledOutAdvisory() async throws {
+        let driver = FixedSnapshotDriver(scrolledOutSnapshot())
+        let outcome = await StepExecutor(driver: driver)
+            .execute(FlowStep(action: "doubleTap", locator: FlowLocator(id: "target")))
+        let note = outcome.driverFallback ?? ""
+        XCTAssertTrue(note.contains("#scroller"), "doubleTap で scrolledOut の注記が出ていない: \(note)")
+    }
+
+    /// **visibleTapRect で寄せた経路では新チェーンを出さない**(撃つ点が変わるので、
+    /// raw frame の中心を前提にした遮蔽の名指しは嘘になる)
+    func testVisibleTapRectPathDoesNotCarryTheChain() async throws {
+        let driver = FixedSnapshotDriver(clippedStraddleSnapshot())
+        let outcome = await StepExecutor(driver: driver)
+            .execute(FlowStep(action: "tap", locator: FlowLocator(id: "target")))
+        let note = outcome.driverFallback ?? ""
+        XCTAssertTrue(note.contains("tapped the visible part"), "寄せた注記が出ていない: \(note)")
+        XCTAssertFalse(note.contains("covered by"), "寄せた経路で新チェーンが出てはいけない: \(note)")
+        XCTAssertFalse(note.contains("outside the visible screen"), note)
+    }
+
+    // MARK: - T7: type の既存値注記
+
+    /// 通常欄: 既存値と、連結後の結果値の両方をエコーする
+    func testTypeEchoesExistingValueInTheNote() async throws {
+        let driver = AdvisoryProbeDriver(disabled: false, existingValue: "東京タワー")
+        let outcome = await StepExecutor(driver: driver)
+            .execute(FlowStep(action: "type", locator: FlowLocator(id: "target"), text: "レストラン"))
+        let note = outcome.driverFallback ?? ""
+        XCTAssertTrue(note.contains("東京タワー"), note)
+        XCTAssertTrue(note.contains("東京タワーレストラン"), note)
+    }
+
+    /// secureTextField: 既存値の中身は出さず、あることだけを言う
+    func testTypeMasksExistingValueForSecureField() async throws {
+        let driver = AdvisoryProbeDriver(disabled: false, existingValue: "s3cr3t", secure: true)
+        let outcome = await StepExecutor(driver: driver)
+            .execute(FlowStep(action: "type", locator: FlowLocator(id: "target"), text: "more"))
+        let note = outcome.driverFallback ?? ""
+        XCTAssertTrue(note.contains("already holds a value"), note)
+        XCTAssertFalse(note.contains("s3cr3t"), "秘匿欄の実値が漏れている: \(note)")
+    }
+
+    /// 空値なら注記を足さない(毎回付くと意味を失う)
+    func testTypeWithNoExistingValueAddsNoNote() async throws {
+        let driver = AdvisoryProbeDriver(disabled: false)
+        let outcome = await StepExecutor(driver: driver)
+            .execute(FlowStep(action: "type", locator: FlowLocator(id: "target"), text: "hello"))
+        XCTAssertNil(outcome.driverFallback, "空値なのに注記が付いた: \(outcome.driverFallback ?? "")")
     }
 }
