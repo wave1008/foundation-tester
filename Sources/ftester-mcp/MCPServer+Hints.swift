@@ -174,7 +174,8 @@ extension MCPServer {
             note += "note: the \(leftoverMark) rows below are not drawn where their frames say"
                 + " (outside their scroll container, or clamped onto another row's frame),"
                 + " so tapping them may hit something else:"
-                + " \(listRefs(leftovers, folded: folded)). Bring them into view with ft_scroll_to first,"
+                + " \(listRefs(leftovers, folded: folded, in: snapshot.elements))."
+                + " Bring them into view with ft_scroll_to first,"
                 + " or verify with ft_screenshot\n"
         }
         if !offscreens.isEmpty {
@@ -185,7 +186,8 @@ extension MCPServer {
             var directions: [String] = []
             for direction in OffscreenDirection.allCases {
                 guard let elements = byDirection[direction], !elements.isEmpty else { continue }
-                groups.append("\(direction.rawValue): \(listRefs(elements, folded: folded))")
+                groups.append("\(direction.rawValue):"
+                    + " \(listRefs(elements, folded: folded, in: snapshot.elements))")
                 directions.append(direction.scrollDirection)
             }
             note += "note: the \(offscreenMark) rows below are off the screen, so they are listed"
@@ -215,11 +217,27 @@ extension MCPServer {
             + " (direction: \(dirs)) should reach them."
     }
 
+    /// 同じ印の付いた行のうち**最外のものだけ**を残す(2026-08-12 の実アプリ監査)。
+    /// 実測(Apple マップの経路詳細)では leftover 8 件のうち 7 件が先頭行の子孫で、
+    /// **1つのはみ出しを 8 回読ませて**いた。子孫を撃つときは祖先も必ず同じ状態なので、
+    /// 最外だけ名指しても安全上の情報は減らない(行そのものに付く ⚠️ 印は従来どおり全行に出る)。
+    /// 返り値の第2要素は落とした件数 —— **黙って消さない**(件数は注記に出す)
+    static func outermost(_ elements: [ElementInfo],
+                          in all: [ElementInfo]) -> (outer: [ElementInfo], dropped: Int) {
+        let refs = Set(elements.map(\.ref))
+        let outer = elements.filter { e in
+            !TapTargetGeometry.ancestors(of: e, in: all).contains { refs.contains($0.ref) }
+        }
+        return (outer, elements.count - outer.count)
+    }
+
     /// 注記に並べる ref の列挙。**8件で打ち切る**(全部出すと注記だけで木より長くなる)。
     /// **畳まれた ref は個別に出さず、件数だけ言う**(render 側で ×M の1行に既に畳まれているので、
     /// ここでも列挙すると二重に情報過多になる)
-    private static func listRefs(_ elements: [ElementInfo], folded: [String: Set<Int>]) -> String {
-        let visible = elements.filter { e in
+    private static func listRefs(_ elements: [ElementInfo], folded: [String: Set<Int>],
+                                 in all: [ElementInfo]) -> String {
+        let (outer, descendants) = outermost(elements, in: all)
+        let visible = outer.filter { e in
             guard let id = e.identifier else { return true }
             return !(folded[id]?.contains(e.ref) ?? false)
         }
@@ -229,9 +247,14 @@ extension MCPServer {
                 .joined(separator: " ")
             parts.append(listed + (visible.count > 8 ? " (+\(visible.count - 8) more)" : ""))
         }
+        if descendants > 0 {
+            parts.append("(+\(descendants) descendant row(s) of these, same flag)")
+        }
         var byID: [String: Int] = [:]
         var order: [String] = []
-        for e in elements {
+        // **畳みの集計も outer で数える**: descendants に数えた行をここでも数えると、
+        // 同じ1行が「子孫」と「畳まれた」の両方に乗って合計が実際の件数を超える
+        for e in outer {
             guard let id = e.identifier, let group = folded[id], group.contains(e.ref) else { continue }
             if byID[id] == nil { order.append(id) }
             byID[id, default: 0] += 1
@@ -781,6 +804,12 @@ extension MCPServer {
             // 1件でも操作対象・型付きが混じる群は従来どおり全員出す(片側だけ隠すと
             // ×N の数と明細が食い違う)。判定は bulk fold と同じ SnapshotRenderer.isDecorativeLeaf
             .filter { !$0.value.allSatisfy { SnapshotRenderer.isDecorativeLeaf($0, in: snapshot.elements) } }
+            // **セレクタとして誰も書かないラベルは列挙しない**(2026-08-12 の実アプリ監査):
+            // Google マップの経路詳細では区切りの `" · "` ×3 が代替セレクタ付きで注記の上位を
+            // 占めていた。飾り葉フィルタ(上)は `type == "other"` 限定なので staticText の
+            // 区切りは素通りする —— **あちらを広げない**(staticText を飾り扱いにすると
+            // 見出しや値という正当なセレクタ対象まで消える)。ここで語の有無だけを見る
+            .filter { !isSymbolOnlyLabel($0.key) }
             .sorted { $0.value.count > $1.value.count }
         guard !ambiguous.isEmpty else { return "" }
         // **「一意に指せない」で終わらせない**(2026-08-09): MCP の出力はシナリオへ書く文字列を
@@ -826,6 +855,13 @@ extension MCPServer {
         guard let first = group.first else { return true }
         let chain = TapTargetGeometry.lineage(of: first, in: snapshot.elements)
         return group.allSatisfy { chain.contains($0.ref) }
+    }
+
+    /// 語を1文字も含まないラベル(記号・約物・空白だけ)。曖昧ラベル一覧の唯一の除外判定。
+    /// 判定は Unicode の英数字(L\* / N\*)で、仮名・漢字・ハングルも「語」に含まれる ——
+    /// 日本語アプリのラベルを丸ごと落とさないため、`isLetter` ではなく alphanumerics を使う
+    static func isSymbolOnlyLabel(_ label: String) -> Bool {
+        !label.unicodeScalars.contains { CharacterSet.alphanumerics.contains($0) }
     }
 
     /// 座標ピンチの既定の半径 = 画面の短辺のこの割合。**画面相対**なのは、座標系が

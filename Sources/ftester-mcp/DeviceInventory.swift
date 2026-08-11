@@ -34,8 +34,12 @@ enum DeviceInventory {
 
     // MARK: - ft_list_devices
 
-    static func devicesText(project: String?, profile: String?, platform: String?) async -> String {
-        guard platform == nil || platform == "ios" || platform == "android" else {
+    /// `abbreviatedFallbackHeader`: マシンプロファイルを使えない見出しを短縮形で出す
+    /// (2回目以降。理由の全文は初回に出ている)。**呼び出し側が鍵を握る** —— 一覧を
+    /// 組み立てるここは「初回かどうか」を知らない
+    static func devicesText(project: String?, profile: String?, platform: String?,
+                            abbreviatedFallbackHeader: Bool = false) async -> String {
+        guard isSupportedPlatform(platform) else {
             return "unknown platform: \(platform ?? "") (expected \"ios\" or \"android\")"
         }
         let wantsIOS = platform == nil || platform == "ios"
@@ -55,7 +59,7 @@ enum DeviceInventory {
         var rows: [Row] = []
         if wantsIOS { rows += await iosFallbackRows() }
         if wantsAndroid { rows += androidFallbackRows() }
-        let header = fallbackHeader(reason: lookup.reason)
+        let header = fallbackHeader(reason: lookup.reason, abbreviated: abbreviatedFallbackHeader)
         guard !rows.isEmpty else { return header + "\nNone found." }
         return ([header] + rows.map(line)).joined(separator: "\n")
     }
@@ -63,8 +67,17 @@ enum DeviceInventory {
     /// マシンプロファイルを使えないときの見出し(純粋関数・テスト用)。
     /// **理由を必ず載せる** —— 設定の壊れ(登録マシン名とプロファイル名の不一致など)を黙って
     /// フォールバックで隠すと、受け手は自分の profiles/ が死んでいることに気づけない
-    static func fallbackHeader(reason: String) -> String {
-        "Not using a machine profile (\(reason))."
+    ///
+    /// **2回目以降は理由を畳む**(2026-08-12 の実アプリ監査): 理由は候補プロジェクトを
+    /// 全部並べるので長く(実測 8 件)、探索中に ft_list_devices を繰り返すと同じ数行を
+    /// 毎回読まされる。初回は従来どおり満額 —— **短縮形でも「使っていない」事実は残す**
+    /// (ここを消すと受け手は自分の profiles/ が死んでいることに永久に気づけない)
+    static func fallbackHeader(reason: String, abbreviated: Bool = false) -> String {
+        guard !abbreviated else {
+            return "Not using a machine profile (reason given in the first ft_list_devices)."
+                + " Currently booted/connected:"
+        }
+        return "Not using a machine profile (\(reason))."
             + " Listing devices that are currently booted/connected instead:"
     }
 
@@ -87,6 +100,12 @@ enum DeviceInventory {
         return "- \(row.name) (\(parts.joined(separator: ", ")))"
     }
 
+    /// 受け付ける platform。**devicesText の門番と、呼び出し側の「見出しが出るか」判定で
+    /// 同じ関数を使う** —— 片方だけ増やすと、弾かれる platform で注記の鍵だけ消費される
+    static func isSupportedPlatform(_ platform: String?) -> Bool {
+        platform == nil || platform == "ios" || platform == "android"
+    }
+
     enum MachineLookup {
         case resolved(ResolvedMachine)
         case unavailable(String)
@@ -97,7 +116,10 @@ enum DeviceInventory {
         }
     }
 
-    private static func resolveMachine(project: String?, profile: String?) -> MachineLookup {
+    /// **呼び出し側も引ける**(internal): ft_list_devices は「フォールバック見出しが出るか」を
+    /// 先に知る必要があり(注記の鍵を実際に出る回だけ消費するため)、判定を2つ持たないよう
+    /// 同じ関数を引く。走査は伴わない(プロファイルの読み直しだけ)ので二度引いても安い
+    static func resolveMachine(project: String?, profile: String?) -> MachineLookup {
         let testProject: TestProject
         do {
             testProject = try ScenarioHost.project(named: project)

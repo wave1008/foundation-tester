@@ -107,7 +107,12 @@ extension MCPServer {
             created = resolved.driver
             engines[key] = resolved.engine
             udids[key] = resolved.udid
-            connections[key] = "port \(port)"
+            // **宛先は port だけでなく udid まで書く**(2026-08-12 の実アプリ監査): ブリッジは
+            // 落ちても monitor が別ポートで建て直すので、**同じセッション中にポートが動く**
+            // (実測: -03 が 8128→8126、-07 が 8136→8147)。port だけを覚えて使い回す読み手は、
+            // その port が今どの機かを確かめる手段が無かった
+            connections[key] = Self.connectionLabel(port: port, udid: resolved.udid)
+            connectedPorts[key] = port
             // **稼働中のブリッジが古いままではないか**を1度だけ確かめる(2026-08-06 に踏んだ)。
             // profile 経由は BridgeProvisioner が版で再利用可否を決めるが、**この経路は
             // 生きているポートへ素で繋ぐだけ**なので、版を上げても旧ランナーが使われ続ける。
@@ -175,6 +180,15 @@ extension MCPServer {
         "⚠️ allowVersionSkew: proceeding despite a bridge/host mismatch. \(skew)"
     }
 
+
+    /// ft_status の `@ …` に出す宛先の表記(純粋関数・テスト用)。**udid が分からないブリッジ
+    /// (申告しない旧版)では port だけ** —— 「不明」と書くより短く、嘘も混ざらない。
+    /// `connectionLostHint` は `hasPrefix("port")` で iOS 経路を判別するので、**先頭は必ず
+    /// `port ` のまま**にすること
+    static func connectionLabel(port: UInt16, udid: String?) -> String {
+        guard let udid, !udid.isEmpty else { return "port \(port)" }
+        return "port \(port) (udid \(udid))"
+    }
 
     /// `udid` / `port` から iOS の宛先ポートを決める(H-2)。**両方渡されたら port を優先**し、
     /// **食い違うなら明示的に失敗する** —— 黙ってどちらかを採ると、読み手は指したつもりの

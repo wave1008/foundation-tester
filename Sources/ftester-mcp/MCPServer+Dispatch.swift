@@ -236,14 +236,44 @@ extension MCPServer {
 
     func connectionLostHint(_ error: Error, args: [String: Any]) async -> String {
         // 差し替えドライバ(テスト)では走査しない = 実ポートを叩かない
-        guard makeDriver == nil, case DriverError.bridgeConnectionRefused = error else { return "" }
+        guard makeDriver == nil else { return "" }
         let key = Self.engineKey(args)
         guard let connection = connections[key], connection.hasPrefix("port") else { return "" }
-        // 掴んでいたドライバは死んでいる。次の呼び出しで解決し直させる
+        switch error {
+        case DriverError.bridgeConnectionRefused:
+            // 接続拒否は「誰も待受していない」が確定しているので、走査は今の状況を添えるだけ
+            forgetConnection(key)
+            let running = await BridgeDiscovery.scan(excluding: 0, repoRoot: try? RepoRoot.find())
+            return Self.connectionLostMessage(connection: connection, running: running)
+        case DriverError.bridgeUnreachable:
+            // **タイムアウトは死を意味しない**(2026-08-12 の実アプリ監査で踏んだ): 素の文言は
+            // 「未起動 / 遅い / suspend」の3択を並べるだけで、直後に ft_status を撃つと
+            // 「そのポートにブリッジが無い」と一意に答えられた —— 判定材料はあるのに
+            // 操作系が使っていなかった。**確かめてから断定する**: 走査してポートが消えていれば
+            // 死亡と言い切り、生きていれば何も足さない(遅い/suspend の可能性が残るため、
+            // 素の3択メッセージのままにする)
+            guard let port = connectedPorts[key] else { return "" }
+            let running = await BridgeDiscovery.scan(excluding: 0, repoRoot: try? RepoRoot.find())
+            guard Self.bridgeVanished(port: port, running: running) else { return "" }
+            forgetConnection(key)
+            return Self.connectionLostMessage(connection: connection, running: running)
+        default:
+            return ""
+        }
+    }
+
+    /// タイムアウトのとき「そのブリッジは消えた」と言い切ってよいか。**走査から切り離した
+    /// 純粋関数** —— 実ブリッジが要ると、この枝はテストで一度も実行されず、判定を壊しても
+    /// 素通しする(`reconcilePort` が 2026-08-09 の変異テストで実際に踏んだのと同じ型)
+    static func bridgeVanished(port: UInt16, running: [BridgeDiscovery.Found]) -> Bool {
+        !running.contains { $0.port == port }
+    }
+
+    /// 掴んでいたドライバは死んでいる。次の呼び出しで解決し直させる
+    private func forgetConnection(_ key: String) {
         drivers[key] = nil
         connections[key] = nil
-        let running = await BridgeDiscovery.scan(excluding: 0, repoRoot: try? RepoRoot.find())
-        return Self.connectionLostMessage(connection: connection, running: running)
+        connectedPorts[key] = nil
     }
 
     static func connectionLostMessage(connection: String,
@@ -288,10 +318,20 @@ extension MCPServer {
                 + " / session: \(session)\(foreground)", args: args))
 
         case "ft_list_devices":
+            let listProject = args["project"] as? String
+            let listProfile = args["profile"] as? String
+            let listPlatform = args["platform"] as? String
+            // **鍵は見出しが実際に出る回だけ消費する**(onceNonEmpty と同じ理由): プロファイルが
+            // 解決できた回や platform が不正な回で消費すると、本当の初出が短縮形になる
+            var abbreviatedFallback = false
+            if DeviceInventory.isSupportedPlatform(listPlatform),
+               case .unavailable = DeviceInventory.resolveMachine(project: listProject,
+                                                                  profile: listProfile) {
+                abbreviatedFallback = !firstTime("machineProfileFallback")
+            }
             return text(await DeviceInventory.devicesText(
-                project: args["project"] as? String,
-                profile: args["profile"] as? String,
-                platform: args["platform"] as? String))
+                project: listProject, profile: listProfile, platform: listPlatform,
+                abbreviatedFallbackHeader: abbreviatedFallback))
 
         case "ft_list_apps":
             // driver() を先に通す: profile 指定の解決(provision)と udids の記録がここで済み、
@@ -1130,6 +1170,12 @@ extension MCPServer {
     /// (テストの独立性を保つ: 同じ static 関数を単体で呼ぶテストは常に満額の文を見る)
     func once(_ key: String, full: String, short: String) -> String {
         explainedNotes.insert(key).inserted ? full : short
+    }
+
+    /// 「この鍵は初出か」だけを返す `once` の同型。本文の2形を持たない注記
+    /// (見出しそのものを短縮する類)が使う。**鍵の名前空間は `once` と共有**
+    func firstTime(_ key: String) -> Bool {
+        explainedNotes.insert(key).inserted
     }
 
     /// `once` を「注記が空のときはキーを消費しない」形にした版。full が空の画面で先に呼ぶと、

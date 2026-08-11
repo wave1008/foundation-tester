@@ -183,6 +183,10 @@ final class MCPServer {
     /// 見えないまま起きる** —— 既定 8123 が死んでいても、はぐれエミュレータを掴んでいても、
     /// 応答だけ見ると正常に見える
     var connections: [String: String] = [:]
+    /// 掴んでいる iOS ブリッジのポート(engineKey ごと)。**`connections` の文字列から読み解かない**
+    /// —— 表示用の文と機械判定を同じ文字列に相乗りさせると、表記を整えるたびに判定が壊れる。
+    /// タイムアウト時にそのポートがまだ生きているかを確かめる `connectionLostHint` が使う
+    var connectedPorts: [String: UInt16] = [:]
 
     /// 版ズレの内容(engineKey ごと)。ft_status が「失敗するが理由を返す」ために覚えておく
     var versionSkew: [String: String] = [:]
