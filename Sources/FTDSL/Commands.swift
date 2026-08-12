@@ -184,11 +184,13 @@ private func tapImpl(_ selector: FTSelector, holdSeconds: Double, timeout: Doubl
 /// フォーカス中の要素にテキストを送信する(直前の tap でフォーカスした欄など。ロケータ指定なし)。
 /// ref なし = ブリッジがフォーカス中要素へ入力する(StepExecutor がロケータ解決を挟まず driver.type(ref: nil) を呼ぶ)。
 /// **セレクタを渡す引数落としは実行前に落とす**(FTSelector.selectorLikeInputError)
-public func type(_ text: String,
+public func type(_ text: String, replace: Bool = false,
                  file: StaticString = #filePath, line: UInt = #line) {
-    let step = FlowStep(action: "type", text: text)
+    var step = FlowStep(action: "type", text: text)
+    step.replace = replace ? true : nil
+    let suffix = replace ? " (replace)" : ""
     FTRuntime.requireCore(command: "type")
-        .perform(step: step, description: "type \"\(text)\"",
+        .perform(step: step, description: "type \"\(text)\"\(suffix)",
                  commandError: FTSelector.selectorLikeInputError(text),
                  file: file, line: line)
 }
@@ -209,32 +211,34 @@ public func clearInput(file: StaticString = #filePath, line: UInt = #line) {
 }
 
 /// timeout: 要素解決を待つ上限秒(0 = 初回スナップショットのみ)。省略時は既定の再試行(約0.7秒)
-public func type(_ selector: String, _ text: String, timeout: Double? = nil,
+public func type(_ selector: String, _ text: String, replace: Bool = false, timeout: Double? = nil,
                  scroll: FTScrollDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
                  file: StaticString = #filePath, line: UInt = #line) {
-    typeImpl(FTSelector.parse(selector), text, timeout: timeout,
+    typeImpl(FTSelector.parse(selector), text, replace: replace, timeout: timeout,
              scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
 }
 
-public func type(_ selector: Sel, _ text: String, timeout: Double? = nil,
+public func type(_ selector: Sel, _ text: String, replace: Bool = false, timeout: Double? = nil,
                  scroll: FTScrollDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
                  file: StaticString = #filePath, line: UInt = #line) {
-    typeImpl(selector.ftSelector, text, timeout: timeout,
+    typeImpl(selector.ftSelector, text, replace: replace, timeout: timeout,
              scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
 }
 
-private func typeImpl(_ selector: FTSelector, _ text: String, timeout: Double?,
+private func typeImpl(_ selector: FTSelector, _ text: String, replace: Bool, timeout: Double?,
                       scroll: FTScrollDirection?, maxSwipes: Int,
                       file: StaticString, line: UInt) {
     let core = FTRuntime.requireCore(command: "type")
     let scroll = core.effectiveScroll(scroll)
-    let step = FlowStep(action: "type", locator: selector.primary,
+    var step = FlowStep(action: "type", locator: selector.primary,
                         fallbacks: selector.stepFallbacks,
                         text: text, direction: scroll?.swipe.rawValue, timeout: timeout,
                         maxSwipes: scroll == nil ? nil : maxSwipes,
                         scrollFrame: contextScrollFrame(core, scrolling: scroll != nil))
+    step.replace = replace ? true : nil
+    let suffix = replace ? " (replace)" : ""
     perform("type", selector, step: step,
-            description: "type \"\(selector.text)\" \"\(text)\"", file: file, line: line)
+            description: "type \"\(selector.text)\" \"\(text)\"\(suffix)", file: file, line: line)
 }
 
 /// timeout: 要素解決を待つ上限秒(0 = 初回スナップショットのみ)。省略時は既定の再試行(約0.7秒)

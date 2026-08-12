@@ -1541,6 +1541,9 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
 **pressEnter と違い clear は xcuitest フォールバックが届く**(ref 有/無とも実測。1.1〜2.2s)ので
 機能は成立する。**再提案しない**(やるなら Flutter engine 側の公開経路が増えたとき)。
 
+`type(sel, "…", replace: true)` はこの3層をそのまま使う(`StepExecutor` の `performClearInput`/
+`performClearInputFocused` を type の前処理としても呼ぶだけ)。clear が失敗すれば type は撃たない。
+
 ### キーボードの観測と `hideKeyboard`(2026-07-30。keyboardFrame は 2026-08-08)
 
 **観測(`keyboardIsShown` / `keyboardIsNotShown`)は3経路すべてで動く**が、取得元が OS で違う:

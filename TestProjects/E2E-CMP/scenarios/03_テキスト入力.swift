@@ -108,6 +108,35 @@ class テキスト入力が正しくechoされること {
         }
     }
 
+    @Test("type(replace:) が既存値を置き換える")
+    func S0040() {
+        scenario {
+            scene(1, "セレクタ指定の type(replace:) は追記せず置き換える") {
+                condition {
+                    launchApp()
+                }.action {
+                    tap("#nav_input")
+                    tap("#field_single")
+                    type("#field_single", "abc")
+                    type("#field_single", "xyz", replace: true)
+                }.expectation {
+                    // 追記なら single=abcxyz / len=6 になる
+                    select("#txt_echo_single").textIs("single=xyz")
+                    select("#txt_echo_length").textIs("len=3")
+                }
+            }
+            scene(2, "ロケータなしの type(replace:) はフォーカス中の入力欄を置き換える") {
+                action {
+                    tap("#field_password")
+                    type("#field_password", "secret42")
+                    type("plain9", replace: true)
+                }.expectation {
+                    select("#txt_echo_password").textIs("password=plain9")
+                }
+            }
+        }
+    }
+
     @Test("キーボードの表示状態を検証できる")
     func S0030() {
         scenario {

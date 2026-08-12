@@ -55,7 +55,7 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 
 | Shirates | ftester | |
 |---|---|---|
-| `sendKeys` | `type("…")` / `type(sel, "…")` | 🟡 |
+| `sendKeys` | `type("…")` / `type(sel, "…")` | 🟡 **承認済み差分**: Shirates は `sendKeys` と `clearInput` が別コマンドで結合形を持たないが、ftester は `type(sel, "…", replace: true)` でクリア+入力を1コマンドに畳める(セレクタ解決も1回で済む) |
 | `pressEnter` | 同名 | ✅ |
 | `clearInput` | 同名(`clearInput()` / `clearInput(sel, …)`) | ✅ |
 | `hideKeyboard` | 同名だが **Android のみ**(iOS は 501) | 🟡 iOS は実装手段が無い(下記) |

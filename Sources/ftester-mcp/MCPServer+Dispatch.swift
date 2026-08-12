@@ -895,7 +895,8 @@ extension MCPServer {
             // (フォーカス任せの)呼び方では対象が確定しないので黙る
             let typedSelector = targetRef.map { reproductionNote(resolvedRef: $0, args: args) } ?? ""
             if let content, !content.isEmpty {
-                recordInteraction(action: "type", resolvedRef: targetRef, args: args, text: content)
+                recordInteraction(action: "type", resolvedRef: targetRef, args: args, text: content,
+                                  replace: wantsReplace)
             }
             if wantsEnter { recordInteraction(action: "pressEnter", resolvedRef: nil, args: args) }
             guard wantsEnter else {
@@ -1490,7 +1491,8 @@ extension MCPServer {
     func recordInteraction(action: String, resolvedRef: Int?, args: [String: Any],
                            text: String? = nil, direction: String? = nil,
                            coordinate: (x: Double, y: Double)? = nil,
-                           duration: Double? = nil, scale: Double? = nil) {
+                           duration: Double? = nil, scale: Double? = nil,
+                           replace: Bool = false) {
         var selector: String?
         var durability: Durability = .stable
         var described = "\(action)"
@@ -1521,6 +1523,7 @@ extension MCPServer {
         // 1秒に化けたシナリオが黙って出る)
         step.duration = duration
         step.scale = scale
+        step.replace = replace ? true : nil
         // **下書きの本文にも格付けを残す**(2026-08-10 の掃討): 注記と ft_tap の戻り値だけに
         // 印を出しても、その場で読まれなければ意味が無い —— 添字付きのセレクタは
         // シナリオに書かれた後で静かに壊れるので、コードの側に理由を残す。

@@ -67,6 +67,8 @@ public struct FlowStep: Codable, Sendable {
     /// 見えている部分を撃つ座標補正・壊れた座標の候補除外)。nil = 実行プロファイルの既定に従う。
     /// 想定外のツリーで補正が裏目に出る画面だけ、利用者が1コマンド単位で切れるようにするためのもの
     public var containerInference: Bool?
+    /// type のとき: 撃つ前に同じ要素を空にする(clearInput 相当)。既定(nil/false)は追記のまま
+    public var replace: Bool?
 
     /// `tap(holdSeconds:)` の既定。**0 = 通常タップ**(Shirates の `tapHoldSeconds` 準拠)。
     /// 0 より大きいときだけ長押しとしてブリッジの /press へ回す(StepExecutor)
@@ -133,6 +135,7 @@ public struct FlowStep: Codable, Sendable {
                 expectedCount: Int? = nil,
                 note: String? = nil, occlusionGuard: Bool? = nil,
                 containerInference: Bool? = nil,
+                replace: Bool? = nil,
                 scrollFrame: FlowLocator? = nil,
                 scrollFrameRect: FTRect? = nil,
                 startMarginRatio: Double? = nil, endMarginRatio: Double? = nil,
@@ -161,6 +164,7 @@ public struct FlowStep: Codable, Sendable {
         self.note = note
         self.occlusionGuard = occlusionGuard
         self.containerInference = containerInference
+        self.replace = replace
     }
 }
 

@@ -136,11 +136,12 @@ public enum ScenarioCodeGen {
                 let hold = step.duration.map { ", holdSeconds: \(FTSeconds.format($0))" } ?? ""
                 return "tap(\(literal(selector))\(hold))"
             case "type":
+                let replaceArg = step.replace == true ? ", replace: true" : ""
                 // ロケータなし = フォーカス中要素へ入力(直前の tap 前提)。type("text") を出す。
                 if step.locator == nil {
-                    return "type(\(literal(step.text ?? "")))"
+                    return "type(\(literal(step.text ?? ""))\(replaceArg))"
                 }
-                return "type(\(literal(selector)), \(literal(step.text ?? "")))"
+                return "type(\(literal(selector)), \(literal(step.text ?? ""))\(replaceArg))"
             case "swipe":
                 return "swipe(.\(step.direction ?? "up"))"
             case "rotateTo":

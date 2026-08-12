@@ -246,6 +246,17 @@ extension StepExecutor {
         // ロケータ指定のない type はフォーカス中の要素へ送る(直前の tap でフォーカスした欄など)。
         // ref: nil = ブリッジがフォーカス中要素へ入力(iOS/Android とも)。ロケータ解決を挟まない。
         if action == "type", step.locator == nil, step.fallbacks?.isEmpty ?? true {
+            // **replace はここでも型の有無に関わらず効かせる**(下の clearInput ロケータなし版と
+            // 同じヘルパを通す)。ここで見落とすと `type(text, replace: true)` だけ無言で追記に戻る
+            var replaceFallbackNote: String?
+            if step.replace == true {
+                switch try await performClearInputFocused(phase: &phase) {
+                case .cleared(let fallback):
+                    replaceFallbackNote = fallback
+                case .failed(let message):
+                    return StepOutcome(status: .failed(message))
+                }
+            }
             let start = clock.now
             let text = step.text ?? ""
             // ロケータ有り type(下記 case "type")と同じ規則: "\n" を含むときだけ
@@ -256,7 +267,7 @@ extension StepExecutor {
                 try await driver.type(ref: nil, text: text)
             }
             phase.actionMs += Self.ms(clock.now - start)
-            return StepOutcome(status: .passed)
+            return StepOutcome(status: .passed, driverFallback: replaceFallbackNote)
         }
 
         // pressEnter もロケータを持たない(フォーカス中の入力欄への Enter 押下)ので、type(ref: nil)
@@ -302,52 +313,12 @@ extension StepExecutor {
         // 挟まない)。対象なし(409)またはこのエンジンでは未対応(isEngineIncapable)なら
         // typeDriver(xcuitest)へフォールバックする
         if action == "clearInput", step.locator == nil, step.fallbacks?.isEmpty ?? true {
-            // 事後検証(ブリッジが 200 を返しても実際に消えていない「嘘の成功」を潰す)の下ごしらえ。
-            // ref が無いので、クリア前にフォーカス要素を覚えておき、クリア後の突き合わせは
-            // identifier/frame で行う(residualClearValue(of:in:) 参照)。見つからなければ検証不能として
-            // 後段をスキップする(検証できないことを失敗にしない)。追加 snapshot は clearInput の
-            // ときだけなので他コマンドの固定費は増えない
-            var snapStart = clock.now
-            let beforeSnapshot = try await driver.snapshot()
-            phase.snapshotMs += Self.ms(clock.now - snapStart)
-            let focusedBefore = beforeSnapshot.elements.first { $0.focused == true }
-
-            let start = clock.now
-            do {
-                try await driver.clearInput(ref: nil)
-            } catch {
-                guard Self.isClearInputFallback(error), let td = typeDriver else { throw error }
-                try await td.clearInput(ref: nil)
-                phase.actionMs += Self.ms(clock.now - start)
-                // フォールバック経路も同じ事後検証を通す(検証されるパスに例外を作らない)
-                if let focusedBefore,
-                   let residual = try await residualClearValue(td, focusedBefore: focusedBefore,
-                                                               phase: &phase) {
-                    return StepOutcome(status: .failed(
-                        "clearInput reported success but the value remained: \"\(residual)\""))
-                }
-                return StepOutcome(status: .passed, driverFallback: "fell back to XCUITest")
+            switch try await performClearInputFocused(phase: &phase) {
+            case .cleared(let fallback):
+                return StepOutcome(status: .passed, driverFallback: fallback)
+            case .failed(let message):
+                return StepOutcome(status: .failed(message))
             }
-            phase.actionMs += Self.ms(clock.now - start)
-
-            if let focusedBefore,
-               let residual = try await residualClearValue(driver, focusedBefore: focusedBefore,
-                                                           phase: &phase) {
-                guard let td = typeDriver else {
-                    return StepOutcome(status: .failed(
-                        "clearInput reported success but the value remained: \"\(residual)\""))
-                }
-                let retryStart = clock.now
-                try await td.clearInput(ref: nil)
-                phase.actionMs += Self.ms(clock.now - retryStart)
-                if let residual2 = try await residualClearValue(td, focusedBefore: focusedBefore,
-                                                                phase: &phase) {
-                    return StepOutcome(status: .failed(
-                        "clearInput reported success but the value remained: \"\(residual2)\""))
-                }
-                return StepOutcome(status: .passed, driverFallback: "fell back to XCUITest")
-            }
-            return StepOutcome(status: .passed)
         }
 
         // `tap(scroll:)` 等の内蔵スクロール探索。**別ステップにしない**のは
@@ -732,28 +703,44 @@ extension StepExecutor {
             // フレームワーク任せで揃わない。"\n" を含まない入力は両経路で結果が同じなので、この
             // 振り分けはエンジン間の観測可能な挙動差を生まない。
             let text = step.text ?? ""
+            // **replace は3経路(typeDriver優先/通常/409フォールバック)より前に1回だけクリアする**。
+            // 空にできていないのに書き足すと検証対象と違う値になるので、clear が失敗したら
+            // type を撃たずこのステップを失敗させる
+            var replaceFallbackNote: String?
+            if step.replace == true {
+                switch try await performClearInput(element: element, step: step,
+                                                   actingDriver: actingDriver, phase: &phase) {
+                case .cleared(let fallback):
+                    replaceFallbackNote = fallback
+                case .failed(let message):
+                    return StepOutcome(status: .failed(message))
+                }
+            }
             // **既存値の連結警告**(MCP の同名警告と揃える)。追加のデバイス往復はしない —
             // 撃つ前に解決済みの `element.value` だけを見る。secureTextField は値を伏せる
-            // (マスク欄の実値をログへ出さない)
-            let existingValue = TypeReadback.normalizedValue(of: element)
-            let existingValueNote: String? = existingValue.isEmpty ? nil
-                : element.type == "secureTextField"
-                    ? "the field already holds a value; type appends, so the result will not"
-                        + " simply be what you typed. Call clearInput first if you meant to replace it"
-                    : "the field already held \"\(SnapshotRenderer.truncate(existingValue, 30))\";"
-                        + " type appends, so it will read"
-                        + " \"\(SnapshotRenderer.truncate(existingValue + text, 60))\" after this."
-                        + " Call clearInput first if you meant to replace it"
+            // (マスク欄の実値をログへ出さない)。**replace は clear 済みなので空として扱う**
+            let priorValue = TypeReadback.normalizedValue(of: element)
+            let existingValue = step.replace == true ? "" : priorValue
+            let existingValueNote: String? = step.replace == true
+                ? (priorValue.isEmpty ? nil : "replaced the field's prior content")
+                : (priorValue.isEmpty ? nil
+                    : element.type == "secureTextField"
+                        ? "the field already holds a value; type appends, so the result will not"
+                            + " simply be what you typed. Call clearInput first if you meant to replace it"
+                        : "the field already held \"\(SnapshotRenderer.truncate(priorValue, 30))\";"
+                            + " type appends, so it will read"
+                            + " \"\(SnapshotRenderer.truncate(priorValue + text, 60))\" after this."
+                            + " Call clearInput first if you meant to replace it")
             if let td = typeDriver, preferTypeDriver || text.contains("\n"),
                try await typeViaTypeDriver(td, step: step, phase: &phase) {
                 return StepOutcome(status: .passed, healedStep: healedStep, healedByCache: healedByCache,
-                                   driverFallback: existingValueNote)
+                                   driverFallback: Self.joinNotes(replaceFallbackNote, existingValueNote))
             }
             do {
                 start = clock.now
                 try await actingDriver.type(ref: element.ref, text: step.text ?? "")
                 phase.actionMs += Self.ms(clock.now - start)
-                driverFallback = Self.joinNotes(driverFallback, existingValueNote)
+                driverFallback = Self.joinNotes(driverFallback, replaceFallbackNote, existingValueNote)
                 // in-app は「200 が返った = 入った」を保証しない(insertText の成否しか見ていない)。
                 // xcuitest ランナー/Android 注入器は自前で読み返し済みなので二重にしない
                 // (verifiesTypedText == true のドライバはここへ来ない)
@@ -772,45 +759,19 @@ extension StepExecutor {
                 guard try await typeViaTypeDriver(td, step: step, phase: &phase) else { throw error }
                 // セレクタは正しくドライバが変わっただけ = .passedViaFallback(ロケータ用)は立てない
                 // (typeDriver = xcuitest が自前で読み返し済みなので、ここでも読み返さない)
-                driverFallback = Self.joinNotes("fell back to XCUITest", existingValueNote)
+                driverFallback = Self.joinNotes("fell back to XCUITest", replaceFallbackNote, existingValueNote)
             }
         case "clearInput":
             if let td = typeDriver, preferTypeDriver,
                try await clearViaTypeDriver(td, step: step, phase: &phase) {
                 return StepOutcome(status: .passed, healedStep: healedStep, healedByCache: healedByCache)
             }
-            do {
-                start = clock.now
-                try await actingDriver.clearInput(ref: element.ref)
-                phase.actionMs += Self.ms(clock.now - start)
-                // 事後検証: ブリッジが 200 を返しても実際に消えていない(嘘の成功)場合の保険。
-                // 同じ driver で snapshot を撮り直し、同じ locator を再解決して value を見る
-                if let residual = try await residualClearValue(actingDriver, step: step,
-                                                              before: element.value, phase: &phase) {
-                    guard let td = typeDriver,
-                          try await clearViaTypeDriver(td, step: step, phase: &phase) else {
-                        return StepOutcome(status: .failed(
-                            "clearInput reported success but the value remained: \"\(residual)\""))
-                    }
-                    if let residual2 = try await residualClearValue(td, step: step,
-                                                                   before: element.value,
-                                                                   phase: &phase) {
-                        return StepOutcome(status: .failed(
-                            "clearInput reported success but the value remained: \"\(residual2)\""))
-                    }
-                    driverFallback = "fell back to XCUITest"
-                }
-            } catch {
-                guard Self.isClearInputFallback(error), let td = typeDriver else { throw error }
-                guard try await clearViaTypeDriver(td, step: step, phase: &phase) else { throw error }
-                // フォールバック経路も同じ事後検証を通す(**どのパスなら検証されるかに例外を作らない**。
-                // 規則が無いと将来の変更で無検証の穴が復活する)
-                if let residual = try await residualClearValue(td, step: step,
-                                                              before: element.value, phase: &phase) {
-                    return StepOutcome(status: .failed(
-                        "clearInput reported success but the value remained: \"\(residual)\""))
-                }
-                driverFallback = "fell back to XCUITest"
+            switch try await performClearInput(element: element, step: step,
+                                               actingDriver: actingDriver, phase: &phase) {
+            case .cleared(let fallback):
+                driverFallback = fallback
+            case .failed(let message):
+                return StepOutcome(status: .failed(message))
             }
         case "pinchOut", "pinchIn", "doubleTap", "swipeBy":
             // 対象を指定した版。要素の frame(Android のピンチ中心・swipeBy の基準領域)と
@@ -1038,6 +999,95 @@ extension StepExecutor {
         try await td.clearInput(ref: resolved.element.ref)
         phase.actionMs += Self.ms(clock.now - start)
         return true
+    }
+
+    enum ClearOutcome {
+        case cleared(driverFallback: String?)
+        case failed(String)
+    }
+
+    /// clearInput(ref なし = フォーカス中要素)の本体。**ロケータ有り版(performClearInput)とは
+    /// 別実装**: 対象を再解決できないので、クリア前に覚えたフォーカス要素を identifier/frame で
+    /// 事後突き合わせる(residualClearValue(of:in:) 参照)。ロケータ無し `clearInput()` と
+    /// `type(text, replace: true)` の両方がここを通る
+    private func performClearInputFocused(phase: inout PhaseAccumulator) async throws -> ClearOutcome {
+        let clock = ContinuousClock()
+        let snapStart = clock.now
+        let beforeSnapshot = try await driver.snapshot()
+        phase.snapshotMs += Self.ms(clock.now - snapStart)
+        let focusedBefore = beforeSnapshot.elements.first { $0.focused == true }
+
+        let start = clock.now
+        do {
+            try await driver.clearInput(ref: nil)
+        } catch {
+            guard Self.isClearInputFallback(error), let td = typeDriver else { throw error }
+            try await td.clearInput(ref: nil)
+            phase.actionMs += Self.ms(clock.now - start)
+            if let focusedBefore,
+               let residual = try await residualClearValue(td, focusedBefore: focusedBefore,
+                                                           phase: &phase) {
+                return .failed("clearInput reported success but the value remained: \"\(residual)\"")
+            }
+            return .cleared(driverFallback: "fell back to XCUITest")
+        }
+        phase.actionMs += Self.ms(clock.now - start)
+
+        if let focusedBefore,
+           let residual = try await residualClearValue(driver, focusedBefore: focusedBefore,
+                                                       phase: &phase) {
+            guard let td = typeDriver else {
+                return .failed("clearInput reported success but the value remained: \"\(residual)\"")
+            }
+            let retryStart = clock.now
+            try await td.clearInput(ref: nil)
+            phase.actionMs += Self.ms(clock.now - retryStart)
+            if let residual2 = try await residualClearValue(td, focusedBefore: focusedBefore,
+                                                            phase: &phase) {
+                return .failed("clearInput reported success but the value remained: \"\(residual2)\"")
+            }
+            return .cleared(driverFallback: "fell back to XCUITest")
+        }
+        return .cleared(driverFallback: nil)
+    }
+
+    /// clearInput の本体(driver.clearInput → 事後検証 → typeDriver フォールバック → 再検証)。
+    /// **clearInput ケースと type の replace 前処理の両方がここを通る**(どのパスなら検証されるかに
+    /// 例外を作らない、という既存の規律を replace 経路にも効かせるため)
+    private func performClearInput(element: ElementInfo, step: FlowStep, actingDriver: AppDriver,
+                                   phase: inout PhaseAccumulator) async throws -> ClearOutcome {
+        let clock = ContinuousClock()
+        do {
+            let start = clock.now
+            try await actingDriver.clearInput(ref: element.ref)
+            phase.actionMs += Self.ms(clock.now - start)
+            // 事後検証: ブリッジが 200 を返しても実際に消えていない(嘘の成功)場合の保険。
+            // 同じ driver で snapshot を撮り直し、同じ locator を再解決して value を見る
+            if let residual = try await residualClearValue(actingDriver, step: step,
+                                                          before: element.value, phase: &phase) {
+                guard let td = typeDriver,
+                      try await clearViaTypeDriver(td, step: step, phase: &phase) else {
+                    return .failed("clearInput reported success but the value remained: \"\(residual)\"")
+                }
+                if let residual2 = try await residualClearValue(td, step: step,
+                                                               before: element.value,
+                                                               phase: &phase) {
+                    return .failed("clearInput reported success but the value remained: \"\(residual2)\"")
+                }
+                return .cleared(driverFallback: "fell back to XCUITest")
+            }
+            return .cleared(driverFallback: nil)
+        } catch {
+            guard Self.isClearInputFallback(error), let td = typeDriver else { throw error }
+            guard try await clearViaTypeDriver(td, step: step, phase: &phase) else { throw error }
+            // フォールバック経路も同じ事後検証を通す(**どのパスなら検証されるかに例外を作らない**。
+            // 規則が無いと将来の変更で無検証の穴が復活する)
+            if let residual = try await residualClearValue(td, step: step,
+                                                          before: element.value, phase: &phase) {
+                return .failed("clearInput reported success but the value remained: \"\(residual)\"")
+            }
+            return .cleared(driverFallback: "fell back to XCUITest")
+        }
     }
 
     /// clearInput 事後検証: 残っている値(nil = 消えている/判定不能)。

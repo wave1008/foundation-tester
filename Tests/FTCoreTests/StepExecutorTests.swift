@@ -1375,6 +1375,145 @@ final class StepExecutorTests: XCTestCase {
         XCTAssertFalse(reason.contains("hi"), "失敗理由に入力値そのものを含めないこと: \(reason)")
     }
 
+    // MARK: - type(replace:)(2026-08-12)
+
+    /// replace: true は type の前に clearInput を1回だけ呼ぶこと(retype ではなく置換)
+    func testTypeWithReplaceClearsBeforeTyping() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(
+            name: "primary", log: log,
+            snapshotElements: [[inputField(ref: 1, id: "field", value: "old")],
+                              [inputField(ref: 1, id: "field", value: nil)]])
+        // verifiesTypedText 既定 true(呼び出し順だけを見るテストなので読み返しは起こさない)
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(action: "type", locator: FlowLocator(id: "field"), text: "new", replace: true)
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("passed を期待したが \(outcome.status) だった"); return
+        }
+        let clearIndex = log.entries.firstIndex(of: "primary.clearInput(ref:1)")
+        let typeIndex = log.entries.firstIndex { $0.hasPrefix("primary.type(ref:1)") }
+        XCTAssertNotNil(clearIndex, "replace は type の前に clearInput を呼ぶこと: \(log.entries)")
+        XCTAssertNotNil(typeIndex)
+        if let clearIndex, let typeIndex {
+            XCTAssertLessThan(clearIndex, typeIndex, "clearInput は type より前であること: \(log.entries)")
+        }
+        XCTAssertEqual(log.entries.filter { $0.hasPrefix("primary.clearInput(ref:1)") }.count, 1,
+                       "clearInput は1回だけであること: \(log.entries)")
+    }
+
+    /// clear 後も残存値が消えない(typeDriver も無い)場合は type を撃たずに失敗させること。
+    /// 空にできていないのに書き足すと、検証したのと違う値になるため
+    func testTypeWithReplaceFailsWithoutTypingWhenClearLeavesResidualValue() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(
+            name: "primary", log: log,
+            snapshotElements: [[inputField(ref: 1, id: "field", value: "still there")]])
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(action: "type", locator: FlowLocator(id: "field"), text: "new", replace: true)
+
+        let outcome = await executor.execute(step)
+
+        guard case .failed(let message) = outcome.status else {
+            XCTFail("clear が効かなければ type を撃たず failed を期待したが \(outcome.status) だった"); return
+        }
+        XCTAssertTrue(message.contains("still there"), "残った値をメッセージに含めるべき: \(message)")
+        XCTAssertFalse(log.entries.contains { $0.hasPrefix("primary.type(ref:") },
+                       "clear に失敗したら type を撃ってはいけない: \(log.entries)")
+    }
+
+    /// **ロケータなし `type(text, replace: true)` も clear を通ること**。この形は
+    /// ロケータ有りとは別の分岐(フォーカス中要素へ ref: nil で撃つ経路)を通るので、
+    /// ここを覆わないと片方だけ無言で追記に戻る
+    func testTypeWithoutLocatorWithReplaceClearsFocusedElementFirst() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log)
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(action: "type", text: "new", replace: true)
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("passed を期待したが \(outcome.status) だった"); return
+        }
+        // pre-snapshot はフォーカス要素の有無を見るための下ごしらえ(clearInput ロケータなし版と同じ)
+        XCTAssertEqual(log.entries,
+                       ["primary.snapshot", "primary.clearInput(ref:nil)", "primary.type(ref:nil)"],
+                       "ロケータなしの replace も clear → type の順で撃つこと: \(log.entries)")
+    }
+
+    /// ロケータなしで replace を指定しなければ clearInput を呼ばないこと(上の裏側)
+    func testTypeWithoutLocatorWithoutReplaceNeverClears() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log)
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(action: "type", text: "new")
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("passed を期待したが \(outcome.status) だった"); return
+        }
+        XCTAssertEqual(log.entries, ["primary.type(ref:nil)"],
+                       "replace 未指定では clear もその下ごしらえの snapshot も撃たないこと: \(log.entries)")
+    }
+
+    /// replace: false(既定・未指定)は今までどおり clearInput を一切呼ばないこと(退行防止)
+    func testTypeWithoutReplaceNeverCallsClearInput() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[inputField(ref: 1, id: "field", value: "old")]])
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(action: "type", locator: FlowLocator(id: "field"), text: "new")
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("passed を期待したが \(outcome.status) だった"); return
+        }
+        XCTAssertFalse(log.entries.contains { $0.hasPrefix("primary.clearInput(") },
+                       "replace 未指定では clearInput を呼んではいけない(退行防止): \(log.entries)")
+    }
+
+    /// **replace の読み返し期待値は `text` だけ**(既存値を連結しない)。ここが誤って
+    /// `existingValue + text` のままだと、前方一致の取りこぼし("ne")は expected("oldnew")との
+    /// prefix 関係を持たないため TypeReadback.plan が `.unverifiable` と判定し、追送せず黙って
+    /// 受理してしまう(取りこぼしたまま成功したことになる)。expected が正しく "new" であれば
+    /// "ne" は前方一致として認識され、追送("w")を経て "new" に収束する ―― この追送が
+    /// **実際に起きること**(type 呼び出しが2回になること)で expected の値を間接的に確かめる
+    func testTypeWithReplaceVerifiesAgainstTextAloneNotPriorPlusText() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(
+            name: "primary", log: log,
+            snapshotElements: [
+                [inputField(ref: 1, id: "field", value: "old")],   // 解決(クリア前の値)
+                [inputField(ref: 1, id: "field", value: nil)],     // clear 事後検証: 消えている
+                [inputField(ref: 1, id: "field", value: "ne")],    // type 直後の読み返し: 取りこぼし
+            ])
+        primary.verifiesTypedText = false
+        var mutations = 0
+        primary.onMutatingCall = {
+            mutations += 1
+            // clearInput(1回目)・初回 type(2回目)では値を進めない。追送(3回目)で "new" に収束させる
+            guard mutations > 2 else { return }
+            primary.snapshotElements.append([self.inputField(ref: 1, id: "field", value: "new")])
+        }
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(action: "type", locator: FlowLocator(id: "field"), text: "new", replace: true)
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("追送→収束で passed を期待したが \(outcome.status) だった"); return
+        }
+        XCTAssertEqual(log.entries.filter { $0.hasPrefix("primary.type(ref:1)") }.count, 2,
+                       "expected が \"new\" でなければ「ne」は検証不能として即受理され、追送は"
+                           + "起きないはず(expected が誤って \"oldnew\" だとここが1のまま): \(log.entries)")
+        XCTAssertEqual(log.entries.filter { $0.hasPrefix("primary.clearInput(ref:1)") }.count, 1)
+    }
+
     // MARK: - ジェスチャのドライバフォールバック(Compose)
 
     /// 501(このエンジンでは未対応)なら swipe を typeDriver へ切り替え、driverFallback を記録すること

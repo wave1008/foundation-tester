@@ -67,8 +67,9 @@ public enum DSLCommandIndex {
               "Grabs an element without touching the device. Returns an empty element instead of failing."),
         .init("lastElement", "operation", "lastElement",
               "The element the last single-element command grabbed. Values are frozen at grab time and cleared between scenes."),
-        .init("type", "operation", "type(selector, text) / type(text)",
-              "Types text. The single-argument form targets the focused element and takes text, not a selector."),
+        .init("type", "operation", "type(selector, text, replace:) / type(text, replace:)",
+              "Types text. replace: true clears the field first (like clearInput) instead of appending."
+                  + " The single-argument form targets the focused element and takes text, not a selector."),
         .init("pressEnter", "operation", "pressEnter()",
               "Fires the Enter/IME action on the focused input."),
         .init("hideKeyboard", "operation", "hideKeyboard()",

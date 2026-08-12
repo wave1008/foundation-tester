@@ -114,6 +114,29 @@ final class ScenarioCodeGenTests: XCTestCase {
         XCTAssertFalse(plain.contains("MarginRatio:"), plain)
     }
 
+    /// replace: true のステップだけ `replace: true` を出し、未指定/false は既定ケースとして
+    /// 引数ごと出さない(両方向を確認: 出すべき/出してはいけない)
+    func testTypeEmitsReplaceOnlyWhenTrue() {
+        let withSelector = render([
+            FlowStep(action: "type", locator: FlowLocator(id: "field"), text: "new", replace: true),
+        ])
+        XCTAssertTrue(withSelector.contains("type(\"#field\", \"new\", replace: true)"), withSelector)
+
+        let withoutLocator = render([FlowStep(action: "type", text: "new", replace: true)])
+        XCTAssertTrue(withoutLocator.contains("type(\"new\", replace: true)"), withoutLocator)
+
+        let unspecified = render([
+            FlowStep(action: "type", locator: FlowLocator(id: "field"), text: "new"),
+        ])
+        XCTAssertTrue(unspecified.contains("type(\"#field\", \"new\")"), unspecified)
+        XCTAssertFalse(unspecified.contains("replace:"), unspecified)
+
+        let explicitFalse = render([
+            FlowStep(action: "type", locator: FlowLocator(id: "field"), text: "new", replace: false),
+        ])
+        XCTAssertFalse(explicitFalse.contains("replace:"), explicitFalse)
+    }
+
     /// notExist(scroll:) も同じ規則(scroll 引数を再構成する唯一のもう1箇所)
     func testNotExistWithScrollEmitsScrollFrame() {
         let code = render([

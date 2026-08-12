@@ -208,6 +208,17 @@ final class StepDescriptionTests: XCTestCase {
         XCTAssertEqual(StepDescription.describe(step: FlowStep(action: "type", text: "あいう")),
                        "フォーカス中の要素に\"あいう\"を入力する")
 
+        // replace: true は「空にしてから入力する」に言い換える(セレクタあり/なしとも)。
+        // 言語は元の type と同じ判定(obj/input 由来)に従う ―― この2件はラテン文字のみなので英語
+        var replaceType = type
+        replaceType.replace = true
+        XCTAssertEqual(StepDescription.describe(step: replaceType),
+                       "clear \"#email\", then type \"a@b.c\" into it")
+        var replaceNoLocator = FlowStep(action: "type", text: "あいう")
+        replaceNoLocator.replace = true
+        XCTAssertEqual(StepDescription.describe(step: replaceNoLocator),
+                       "フォーカス中の要素を空にしてから\"あいう\"を入力する")
+
         let screen = FlowStep(assert: "screenMatches", expected: "設定画面")
         XCTAssertEqual(StepDescription.describe(step: screen), "画面が\"設定画面\"であること")
 

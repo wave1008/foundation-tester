@@ -194,13 +194,20 @@ public enum StepDescription {
                     : "scroll until \"\(obj)\" is visible"
             case "type":
                 let input = step.text ?? ""
+                let replace = step.replace == true
                 if step.locator == nil {
-                    return isJapanese(input)
-                        ? "フォーカス中の要素に\"\(input)\"を入力する"
+                    if isJapanese(input) {
+                        return replace ? "フォーカス中の要素を空にしてから\"\(input)\"を入力する"
+                            : "フォーカス中の要素に\"\(input)\"を入力する"
+                    }
+                    return replace ? "clear the focused element, then type \"\(input)\" into it"
                         : "type \"\(input)\" into the focused element"
                 }
-                return isJapanese(obj, input)
-                    ? "\"\(obj)\"に\"\(input)\"を入力する"
+                if isJapanese(obj, input) {
+                    return replace ? "\"\(obj)\"を空にしてから\"\(input)\"を入力する"
+                        : "\"\(obj)\"に\"\(input)\"を入力する"
+                }
+                return replace ? "clear \"\(obj)\", then type \"\(input)\" into it"
                     : "type \"\(input)\" into \"\(obj)\""
             case "swipe":
                 return swipePhrase(direction: step.direction ?? "up")

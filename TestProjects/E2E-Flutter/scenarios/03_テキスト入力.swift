@@ -245,6 +245,24 @@ class テキスト入力が正しくechoされること {
                     tap("#tab_home")
                 }
             }
+            scene(16, "type(replace:) が追記せず置き換える") {
+                condition {
+                    tap("#nav_input")
+                    tap("#btn_input_clear")
+                }.action {
+                    tap("#field_single")
+                    type("#field_single", "abc")
+                    // Flutter の iOS は clear が in-app では効かず XCUITest 経路へ落ちる
+                    // (docs/shirates-parity.md の clearInput 行)。replace もその経路を通る
+                    type("#field_single", "xyz", replace: true)
+                }.expectation {
+                    // 追記なら single=abcxyz / len=6 になる
+                    select("#txt_echo_single").textIs("single=xyz")
+                    select("#txt_echo_length").textIs("len=3")
+                }
+                // **末尾にタブ操作を置かない**: 末尾改行の無い type はキーボードを開いたままにするので、
+                // Android では InputMethod ウィンドウが下端のタブを覆って解決できない
+            }
         }
     }
 }
