@@ -90,6 +90,11 @@
 - Shirates(Classic)との対応表(何が揃っていて何を持たないか・意図的に持たないものの理由・
   OS で挙動が割れるもの・足す価値がある残り): docs/shirates-parity.md。
   **コマンドを足す/名前を変えるときは必ずここも更新する**(準拠漏れの一覧を含む)
+- MCP 監査ラウンドの回し方(**1ラウンド = 初見のアプリ1本**・拾ったものをバグと言い回しに
+  分ける規律・停止規則・**監査済み/未着手の台帳**): docs/mcp-audit-rounds.md。
+  **地図(Google/Apple マップ)の反復監査は 2026-08-12 に閉じた**
+- MCP の使い勝手の計測(**まっさらなエージェントがタスクを終えられたか・何手かかったか**。
+  注記の A/B の回し方と判定の規律): Bench/README.md(`Scripts/mcp-bench.sh`)
 - CI 連携(`ftester run --junit` の JUnit 出力・GitHub Actions 例・flaky 方針): docs/ci.md
 - リリース(git タグ発行と版ピンの関係。配布はソースビルド前提): docs/releasing.md(`Scripts/release.sh`)
 - 設計書(アーキテクチャ・Swift DSL 仕様・セレクタ記法・プロファイル): docs/design.md
@@ -310,6 +315,25 @@
   MCP で**タップ拒否**に格上げしたら、実アプリで誤検知が5形出て警告へ後退した
   (docs/design.md §10「実装で得た知見」の `RefGuard.ghostWarning` の項)。**新しい検知はまず警告から**入れる。
   探索ロジックは**MCP に2つ目の実装を書かず `StepExecutor` へ委ねる**(`ft_scroll_to`)
+- **木だけから決まる注記は `Sources/ftester-mcp/NoteCatalog.swift` が唯一の定義元**
+  (応答の組み立て側へ直に書かない。`NoteCoverageTests` のソース走査が検出)。目録にすると
+  3つ手に入る: **発火の全数計測**(どの注記がどの画面で出るか)/ **鍵ごとの黙らせ**
+  (`FT_MCP_NOTES_OFF=<鍵,…|all>`。起動時に stderr で名乗る = A/B の陽性対照)/
+  **出力バイトの回帰ゲート**。**注記を足すか消すかは読んだ印象で決めない** ——
+  `Scripts/mcp-bench.sh` で「まっさらなエージェントの手数」が動いたかで決める
+  (バグは有限なので監査を重ねれば減衰するが、**「もっと分かりやすく言えたはず」は無限に出る**
+  ので、印象で決める限り注記は単調に増える。実際そうなった)。
+  **「出ない」を削除の根拠にする前に、必ずアーキタイプを足して測り直す**(2026-08-12 に実証)——
+  19 枚(地図 14)の時点で「地図でしか出ない」と見えていた5本のうち、設定/チャット/WebView 等を
+  6枚足したら**3本は他アーキタイプでも出た**(`unlabeledClickablesNote` は settings、
+  `keyboardCoverageNote`/`scrollFrameCandidates` は chat)。削っていたら効いている注記を消していた。
+  **フィクスチャの分類の正は `NoteCoverageTests.archetypes`**(接頭辞は OS を表すだけ)。
+  残る `truncationNote`/`ghostNote` は 25 枚でも各1画面のみ、`bulkExemptNote`/`sliverNote` は
+  0 枚(理由を確かめて `knownSilent` に登録済み。等号照合なので新しい死に注記は落ちる)。
+  同じ6枚は幾何判定にも当たり、**実 web ページで overlay の誤検知が 10 件**出た
+  (折り返す inline テキストの矩形が重なる形。詳細は docs/verification.md)。
+  **1つのアーキタイプがコーパスの 60% を超えないこと**(`testNoArchetypeDominatesTheCorpus`)——
+  深く掘るほど1アプリが増え、**掘るほど汎用性の判定が悪くなる**逆向きの力が働くので機械で止める
 - **エラーの status はホストの分岐契約**(表は docs/design.md §4.3 の
   「エラーの status はホスト側の分岐に使われる契約」)。
   とくに **XCUITest ランナーの 409 は `requireApp()` の1箇所だけ** — ホストはこの経路の 409 を
