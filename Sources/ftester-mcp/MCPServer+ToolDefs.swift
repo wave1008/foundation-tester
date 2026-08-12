@@ -102,7 +102,11 @@ extension MCPServer {
         skewed response carries a warning). Once a call explicitly gives udid/port (iOS) or \
         serial (Android), this server process remembers it for its lifetime: a later call that \
         omits udid, port, AND serial entirely defaults to that same device. Giving udid/port or \
-        serial again on a later call overrides the memory for that call and replaces it.
+        serial again on a later call overrides the memory for that call and replaces it. \
+        That default only applies while the target is unambiguous: once this session has driven \
+        a second device (or both platforms, with platform omitted too), a call that names no \
+        target is refused with the candidates listed instead of being sent to the most recent \
+        one — running against the wrong device changes its real state, which no retry undoes.
 
         Tree options on tools that return an element list: expandBulk unfolds groups of 20+ \
         non-interactive leaves sharing one id (map pins and the like) that are folded into one \

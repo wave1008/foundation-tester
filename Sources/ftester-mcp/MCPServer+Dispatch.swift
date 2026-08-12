@@ -190,20 +190,29 @@ extension MCPServer {
         //  ft_open_url が com.apple.Maps へ配ると申告した。Android では intent の
         //  宛先そのものなので、同じ機の中で別アプリへ実際に配送される)。
         // 入口で畳めば 35 箇所の呼び出しを触らずに全部が揃う
-        let resolved: [String: Any]
-        let rememberedNote: String
+        let folded: [String: Any]
         do {
-            let folded = Self.strippingSelectorQuotes(try await Self.foldingUDIDIntoPort(args))
-            // **セッション記憶の適用も同じ入口で畳む**: driver(_:) の内部(キャッシュ参照・
-            // engineKey 計算より後)で適用すると、省略呼び出しは常に `direct:ios:0:` の生キーで
-            // キャッシュ/ref 世代/engineKey を引き、明示切替後も旧デバイスのキャッシュ済み
-            // ドライバや ref 世代が返る。ここで args へ埋めてしまえば、明示指定と省略呼び出しが
-            // 完全に同じキーへ揃う
-            (resolved, rememberedNote) = Self.toolAcceptsDeviceTarget(tool)
-                ? foldInRememberedDevice(folded) : (folded, "")
+            folded = Self.strippingSelectorQuotes(try await Self.foldingUDIDIntoPort(args))
         } catch {
             let hint = await connectionLostHint(error, args: args)
             throw hint.isEmpty ? error : MCPError(error.localizedDescription + hint)
+        }
+        // **セッション記憶の適用も同じ入口で畳む**: driver(_:) の内部(キャッシュ参照・
+        // engineKey 計算より後)で適用すると、省略呼び出しは常に `direct:ios:0:` の生キーで
+        // キャッシュ/ref 世代/engineKey を引き、明示切替後も旧デバイスのキャッシュ済み
+        // ドライバや ref 世代が返る。ここで args へ埋めてしまえば、明示指定と省略呼び出しが
+        // 完全に同じキーへ揃う。
+        // **拒否はこの do/catch の外で投げる**: connectionLostHint はデバイスを走査するので、
+        // 「宛先が決まらない」という引数だけで決まる失敗に数秒とブリッジ一覧を足してしまう
+        let resolved: [String: Any]
+        let rememberedNote: String
+        switch Self.toolAcceptsDeviceTarget(tool) ? foldInRememberedDevice(folded) : .unchanged {
+        case .unchanged:
+            (resolved, rememberedNote) = (folded, "")
+        case .applied(let foldedArgs, let note):
+            (resolved, rememberedNote) = (foldedArgs, note)
+        case .ambiguous(let message):
+            throw MCPError(message)
         }
         do {
             var content = try await dispatch(tool: tool, args: resolved)
@@ -251,8 +260,8 @@ extension MCPServer {
     /// 注入した呼び出しには `deviceFromMemoryKey` を立てる —— driver() 側の
     /// recordsIOSMemory/recordsAndroidMemory がこれを見て、自動注入を「利用者が選んだ」として
     /// 記憶を上書きしない(port 再利用で別デバイスに化けたときに記憶が黙って乗り換わるのを防ぐ)
-    func foldInRememberedDevice(_ args: [String: Any]) -> (args: [String: Any], note: String) {
-        guard args["profile"] == nil else { return (args, "") }
+    func foldInRememberedDevice(_ args: [String: Any]) -> RememberedDeviceFold {
+        guard args["profile"] == nil else { return .unchanged }
         let explicitPlatform = args["platform"] as? String
         let platform: String
         if let explicitPlatform {
@@ -268,7 +277,7 @@ extension MCPServer {
         case "ios":
             guard let remembered = Self.iosExplicitWithMemory(
                 argsGaveTarget: Self.argsGaveIOSTarget(args), remembered: lastExplicitIOSTarget)
-            else { return (args, "") }
+            else { return .unchanged }
             var out = args
             out["port"] = Int(remembered.port)
             if explicitPlatform == nil { out["platform"] = "ios" }
@@ -284,7 +293,7 @@ extension MCPServer {
         case "android":
             guard let remembered = Self.androidExplicitWithMemory(
                 argsGaveTarget: Self.argsGaveAndroidTarget(args), remembered: lastExplicitAndroidSerial)
-            else { return (args, "") }
+            else { return .unchanged }
             var out = args
             out["serial"] = remembered
             if explicitPlatform == nil { out["platform"] = "android" }
@@ -298,8 +307,22 @@ extension MCPServer {
                                       noteKey: "rememberedDevice:android:\(remembered)",
                                       firstTime: firstTime)
         default:
-            return (args, "")
+            return .unchanged
         }
+    }
+
+    /// `foldInRememberedDevice` の結果。**曖昧なら適用せず拒否する**(2026-08-13)。
+    /// 以前は「2台以上を触っていたら毎回注記しつつ直近の1台へ流す」だったが、
+    /// **注記は事故を1件も止めなかった** —— 監査19(serial だけの呼び出しが黙って iOS へ)・
+    /// 監査20(キャッシュ命中で記憶が更新されない)・udid 2台の記憶混線は**3件とも
+    /// 「2台以上を触ったセッション」でだけ起きている**。逆に1台しか触っていないセッションは
+    /// 原理的に外しようがないので、そこは従来どおり黙って適用してよい。
+    /// 「記憶が安全なのは、それが一意なときちょうど」が規則の本体
+    enum RememberedDeviceFold {
+        case unchanged
+        case applied(args: [String: Any], note: String)
+        /// 宛先が一意に決まらない省略呼び出し。**推測せず call() が MCPError にする**
+        case ambiguous(message: String)
     }
 
     /// ios/android 分岐の共通尾部(2026-08-12 の掃討・2026-08-12 曖昧化対応で拡張):
@@ -307,20 +330,53 @@ extension MCPServer {
     /// `firstTime` はキー消費(explainedNotes への insert)を伴うので呼び手のクロージャで渡す
     /// (このメソッドを static のままにするため — instance メソッド化すると呼び出し側で
     /// `Self.` と裸の呼び出しが混在して読みにくくなる)。
-    /// **曖昧なとき(allSeenLabels が2件以上)は鍵を消費しない**: 消費してしまうと、後で
-    /// forgetConnection が候補を1件まで減らして非曖昧に戻ったとき、この宛先はまだ一度も
-    /// 「初回の満額注記」を受け取っていないのに firstTime が false になり黙ってしまう
+    /// **曖昧なときは鍵を消費しない**: 消費してしまうと、後で forgetConnection が候補を
+    /// 1件まで減らして非曖昧に戻ったとき、この宛先はまだ一度も「初回の満額注記」を
+    /// 受け取っていないのに firstTime が false になり黙ってしまう
     private static func finishingFold(
         _ args: [String: Any], chosen: String, allSeenLabels: [String], deviceNoun: String,
         unitNoun: String, otherPlatform: String?, noteKey: String, firstTime: (String) -> Bool
-    ) -> (args: [String: Any], note: String) {
+    ) -> RememberedDeviceFold {
+        guard !isAmbiguousMemory(allSeenLabels: allSeenLabels, otherPlatform: otherPlatform) else {
+            return .ambiguous(message: rememberedDeviceRefusal(
+                allSeenLabels: allSeenLabels, deviceNoun: deviceNoun, unitNoun: unitNoun,
+                otherPlatform: otherPlatform))
+        }
         var out = args
         out[deviceFromMemoryKey] = true
-        let isAmbiguous = allSeenLabels.count >= 2 || otherPlatform != nil
-        let note = rememberedDeviceNote(
-            chosen: chosen, allSeenLabels: allSeenLabels, deviceNoun: deviceNoun, unitNoun: unitNoun,
-            otherPlatform: otherPlatform, firstTime: isAmbiguous ? false : firstTime(noteKey))
-        return (out, note)
+        return .applied(args: out,
+                        note: rememberedDeviceNote(chosen: chosen, firstTime: firstTime(noteKey)))
+    }
+
+    /// 記憶した宛先が一意でないか。**判定はここ1箇所**(注記側と拒否側で条件がずれると、
+    /// 「注記は出さないが拒否はする」のような食い違いが生まれる)
+    static func isAmbiguousMemory(allSeenLabels: [String], otherPlatform: String?) -> Bool {
+        allSeenLabels.count >= 2 || otherPlatform != nil
+    }
+
+    /// 曖昧な省略呼び出しを断る文(純粋関数。デバイスも走査も要らない)。
+    /// **候補を名指しする** —— 断るだけだと読み手は何を渡せばよいか分からず、
+    /// 総当たりで udid を試して結局どれかの機を操作することになる。
+    /// 上限は `rememberedDeviceListCap`(注記側と同じ。超えたら件数だけ)
+    static func rememberedDeviceRefusal(
+        allSeenLabels: [String], deviceNoun: String, unitNoun: String, otherPlatform: String?
+    ) -> String {
+        let sorted = allSeenLabels.sorted()
+        var driven = ""
+        if sorted.count >= 2 {
+            let list = sorted.count > rememberedDeviceListCap
+                ? "\(sorted.count) \(unitNoun)"
+                : "\(unitNoun) \(sorted.joined(separator: ", "))"
+            driven = " This session has driven \(sorted.count) \(deviceNoun) (\(list))."
+        }
+        let crossed = otherPlatform.map {
+            " This session has also driven \($0), and no platform was given either."
+        } ?? ""
+        return "no udid/port/serial given, and the target is not unique.\(driven)\(crossed)"
+            + " Refusing to guess: picking the most recently used device silently would run this"
+            + " on the wrong one, and unlike a bad answer that is not something you can take back."
+            + " Pass udid or port (iOS) / serial (Android) to say which."
+            + " (While only one device had been targeted, it was reused automatically.)"
     }
 
     /// **platform 自体が推測されたか**(= 呼び出しが platform も宛先も1つも渡していない)。
@@ -336,42 +392,15 @@ extension MCPServer {
     static let rememberedDeviceListCap = 6
 
     /// 省略呼び出しへ記憶した宛先を注入したときの注記の本文(純粋関数。デバイスも走査も要らない)。
+    /// **ここへ来るのは宛先が一意なときだけ** —— 曖昧な形は `rememberedDeviceRefusal` が
+    /// 断るので、この文が「どちらへ行ったか分からない」状況を説明することはもう無い。
     ///
     /// - `chosen`: 実際に注入した宛先の表示形("port 8123" / "serial emulator-5554")
-    /// - `allSeenLabels`: このセッションで明示された同 platform の宛先の表示形(例 "8123")。
-    ///   **順序は問わない — ここで並べ直す**: 供給元は `Set` で、反復順はプロセスごとに変わる。
-    ///   呼び手ごとにソートを重複させないよう、決定的な順序はここ1箇所で保証する
-    /// - `otherPlatform`: **platform を跨いだ曖昧さ**。呼び出しが platform も宛先も渡さず、
-    ///   かつ**もう一方の platform も同じセッションで明示されている**ときだけ、その名前
-    ///   ("Android" / "iOS")。この形は `lastExplicitPlatform` に落ちるので、同 platform 内が
-    ///   1台でも行き先は自明ではない —— 実アプリ監査で踏んだのはまさにこれ(iOS 1台 +
-    ///   Android 1台の並行運転)。同 platform 内の曖昧さだけを見ていると素通しする
-    /// - `firstTime`: **曖昧でないときだけ効く**。曖昧なら firstTime の値によらず毎回出す —
-    ///   2台以上を触った後の省略呼び出しは、黙って直近の1台へ行くだけでは読み手にとって
-    ///   どちらへ行くか自明ではない(実アプリ監査での事故)
-    static func rememberedDeviceNote(
-        chosen: String, allSeenLabels: [String], deviceNoun: String, unitNoun: String,
-        otherPlatform: String? = nil, firstTime: Bool
-    ) -> String {
-        guard allSeenLabels.count >= 2 || otherPlatform != nil else {
-            guard firstTime else { return "" }
-            return "(reusing this session's earlier device: \(chosen)"
-                + " — pass udid/port/serial to target another)\n"
-        }
-        let sorted = allSeenLabels.sorted()
-        var driven = ""
-        if sorted.count >= 2 {
-            let list = sorted.count > rememberedDeviceListCap
-                ? "\(sorted.count) \(unitNoun)"
-                : "\(unitNoun) \(sorted.joined(separator: ", "))"
-            driven = " This session has driven \(sorted.count) \(deviceNoun) (\(list))."
-        }
-        let crossed = otherPlatform.map {
-            " This session has also driven \($0) — with no platform given, the call went to"
-                + " whichever platform was targeted most recently."
-        } ?? ""
-        return "(no udid/port/serial given — using the most recent target: \(chosen).\(driven)"
-            + "\(crossed) Pass udid/port/serial to be explicit.)\n"
+    /// - `firstTime`: セッションで初回だけ出す(同じ1台を使い続ける間、毎回言う価値は無い)
+    static func rememberedDeviceNote(chosen: String, firstTime: Bool) -> String {
+        guard firstTime else { return "" }
+        return "(reusing this session's earlier device: \(chosen)"
+            + " — pass udid/port/serial to target another)\n"
     }
 
     /// `ft_type(ref:)` が Android の注入器に断られたときの助言。**この 500 が返る時点で
@@ -621,9 +650,45 @@ extension MCPServer {
             if lastExplicitAndroidSerial == serial { lastExplicitAndroidSerial = nil }
             seenExplicitAndroidSerials.remove(serial)
         }
+        forgetDeviceState(key)
+    }
+
+    /// engineKey に紐づく状態を**全部**捨てる(2026-08-13)。
+    ///
+    /// **なぜ「ドライバだけ」では足りないか**: engineKey は `direct:ios:<port>:<serial>` で、
+    /// iOS のポートは**同じセッション中に動く**(監視が別ポートで建て直す。実測: -03 が
+    /// 8128→8126、-07 が 8136→8147)。つまり**一度死んだポートが後で別のシミュレータに
+    /// 再利用され得る**。`forgetConnection` が drivers/connections/connectedPorts しか
+    /// 消していなかったので、そのとき `lastSnapshots` と `refGenerations` は**前の機の木**、
+    /// `launchedBundleIDs` は**前の機で起動したアプリ**のまま生き残っていた ——
+    /// 古い ref が別の機の木を起点に解決され、`ft_open_url` が前の機のアプリへ配送する。
+    /// 出力がずれるだけの記憶(注記・フィルタ)と違い、**これは操作が別物へ届く型**なので
+    /// 「キーが指す機が変わったら全部捨てる」を1箇所に固める。
+    ///
+    /// **`nextRefBase` だけは残す**(単調増加の不変条件)。ここで 0 へ戻すと、捨てた世代と
+    /// 同じ base が新しい世代へ再配布され、セッション内で ref が一意という保証が壊れる ——
+    /// 世代管理そのものが防いでいる「番号は同じだが別要素」を、後始末の側から作ってしまう。
+    ///
+    /// **engineKey で引く記憶を新設したらここへ足す**。足し忘れは
+    /// `DeviceStateInvalidationTests.testEveryEngineKeyedMemoIsAccountedForHere` が検出する
+    /// (`MCPServer.swift` の `[String: …]` を走査して、この関数か `deliberatelyKept` の
+    /// どちらにも現れない名前を落とす)—— この後始末は網羅が本体なので、1つ漏れると
+    /// 「ほとんど捨てたが1つだけ前の機のまま」という最も分かりにくい形になる
+    func forgetDeviceState(_ key: String) {
         drivers[key] = nil
         connections[key] = nil
         connectedPorts[key] = nil
+        engines[key] = nil
+        udids[key] = nil
+        versionSkew[key] = nil
+        lastSnapshots[key] = nil
+        refGenerations[key] = nil
+        launchedBundleIDs[key] = nil
+        uiFrameworkHints[key] = nil
+        lastScreenshots[key] = nil
+        rememberedSnapshotFilters[key] = nil
+        sheetRescueFutile[key] = nil
+        pendingWarnings[key] = nil
     }
 
     /// 名指しする上限本数(2026-08-12): 実測で17本が1行に並び、読み手が要るのは
@@ -770,7 +835,8 @@ extension MCPServer {
         case "ft_open_url":
             guard let url = args["url"] as? String else { throw MCPError("url is required") }
             let openURLDriver = try await driver(args)
-            let openURLBundleID = args["bundleId"] as? String ?? launchedBundleIDs[Self.engineKey(args)]
+            let explicitBundleID = args["bundleId"] as? String
+            let openURLBundleID = explicitBundleID ?? launchedBundleIDs[Self.engineKey(args)]
             // installedState は撃たない: simctl openurl/devicectl openURL・am start は OS の URL
             // ルーティングで、installedState が守っている XCUIApplication.launch() のランナー死
             // (ft_launch のコメント参照)とは経路が別
@@ -780,6 +846,7 @@ extension MCPServer {
             interactions.record(InteractionLog.Entry(step: openStep, unresolved: nil,
                                                      summary: "openURL \"\(url)\""))
             return text(Self.openURLSummary(url: url, bundleID: openURLBundleID,
+                                            bundleIDWasRemembered: explicitBundleID == nil,
                                             snapshotAfter: args["snapshotAfter"] as? Bool == true)
                 + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
 
@@ -1591,8 +1658,22 @@ extension MCPServer {
     /// **配送が非同期であることは黙らない** —— settle-lite は**操作前の木を覚えているときしか
     /// 走らない**ので、`ft_launch` 直後(記憶が無い)の `snapshotAfter` は遷移前の画面を
     /// 何の断りもなく返し得る(2026-08-12 のレビュー指摘)
-    static func openURLSummary(url: String, bundleID: String?, snapshotAfter: Bool) -> String {
-        let delivered = "Delivered \(url)" + (bundleID.map { " to \($0)" } ?? "") + "."
+    /// **推測した宛先は推測と分かる形で言う**(2026-08-13): `bundleId` を省くと
+    /// 「このセッションで最後に ft_launch したアプリ」が既定になるが、素の
+    /// "Delivered <url> to <bundleID>." は**利用者が渡した宛先の確認**と字面が同じで、
+    /// 読み手は自分が指定していないことに気付けない(実際の探索で気付かなかった)。
+    /// しかも Android では bundleID が intent の宛先そのものなので、その間に別アプリへ
+    /// 移っていれば**裏に居るアプリが叩き起こされる**。断らずに済ませる代わりに、
+    /// 何を根拠に選んだかを必ず添える
+    static func openURLSummary(url: String, bundleID: String?, bundleIDWasRemembered: Bool,
+                               snapshotAfter: Bool) -> String {
+        let target = bundleID.map {
+            " to \($0)" + (bundleIDWasRemembered
+                ? " (not given — this session's last ft_launch on this device;"
+                    + " pass bundleId if the foreground app has changed since)"
+                : "")
+        } ?? ""
+        let delivered = "Delivered \(url)" + target + "."
         let asynchronous = " Delivery is asynchronous (the app has to receive and handle it)"
         guard !snapshotAfter else {
             return delivered + asynchronous + " — the tree below was read right after delivery, so"

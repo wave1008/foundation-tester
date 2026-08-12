@@ -47,7 +47,10 @@ extension AndroidDriver {
         case .active(let client):
             return client
         case .unavailable(let retryAfter, let detail):
-            guard Date() >= retryAfter else { throw Self.unreachableError(detail: detail) }
+            guard Date() >= retryAfter else {
+                throw Self.unreachableError(detail: detail,
+                                            cachedSecondsRemaining: retryAfter.timeIntervalSinceNow)
+            }
             // 期限切れ → 下の再セットアップへ
         case nil:
             break
@@ -99,10 +102,23 @@ extension AndroidDriver {
         bridgeLock.lock(); bridgeSetup[key] = nil; bridgeLock.unlock()
     }
 
-    private static func unreachableError(detail: String?) -> DriverError {
+    /// - `cachedSecondsRemaining`: 失敗キャッシュ(`.unavailable`)を再生しているときだけ非 nil。
+    ///   **キャッシュだと名乗らせる**(2026-08-13): 再生された文はライブの失敗と1バイトも
+    ///   違わなかったので、読み手は「今まさに adb forward が落ちた」と読む。実際、手で
+    ///   `adb forward` を打って成功し `ftester bridge status` も通るのに MCP だけが同じ文言を
+    ///   返し続ける状況で、原因をブリッジ側だと誤認して調査に数分溶かした(2026-08-13 に実際に踏んだ)。
+    ///   嵐防止としてのキャッシュ自体は残す価値がある(失敗1回は probe 2s + 起動待ち最大 10s)
+    ///   ので、消さずに**残り時間と抜け道**を添える
+    static func unreachableError(detail: String?,
+                                 cachedSecondsRemaining: TimeInterval? = nil) -> DriverError {
         let base = "cannot reach the Android bridge. Check the environment with `ftester doctor`, "
             + "or try `ftester bridge up --platform android`"
-        return .bridgeUnreachable(detail.map { "\(base)(\($0))" } ?? base)
+        let cached = cachedSecondsRemaining.map {
+            " [cached: this is the FIRST failure replayed, not a fresh attempt —"
+                + " the next try in \(max(1, Int($0.rounded(.up))))s will actually re-probe."
+                + " `ftester bridge up --platform android` retries immediately]"
+        } ?? ""
+        return .bridgeUnreachable((detail.map { "\(base)(\($0))" } ?? base) + cached)
     }
 
     /// bridgeConnectionRefused(リクエストが届いていないと確実な場合)だけレジストリを無効化して

@@ -189,7 +189,9 @@ final class MCPAuditFixes20260812Round17Tests: XCTestCase {
         server.lastExplicitAndroidSerial = "emulator-5554"
         server.lastExplicitPlatform = "android"
         XCTAssertTrue(MCPServer.toolAcceptsDeviceTarget("ft_logs"))
-        let (folded, note) = server.foldInRememberedDevice([:])
+        guard case .applied(let folded, let note) = server.foldInRememberedDevice([:]) else {
+            return XCTFail("1台しか触っていないのに記憶が適用されなかった")
+        }
         XCTAssertEqual(folded["serial"] as? String, "emulator-5554")
         XCTAssertTrue(note.contains("reusing this session's earlier device"), note)
     }

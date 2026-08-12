@@ -120,6 +120,20 @@ extension MCPServer {
             let resolved = await ExploreDriverResolver.resolve(
                 preferred: port, repoRoot: try? RepoRoot.find(),
                 logger: { Self.logStderr($0) })
+            // **このキーが前と別の機を指し始めていたら、キーの記憶を全部捨てる**(2026-08-13)。
+            // ドライバを作り直す経路は forgetConnection(ここは既に forgetDeviceState 済み)
+            // だけではない —— 版ズレ拒否(enforceVersion)も drivers[key] だけを nil にするので、
+            // そちらを通った後は木・ref 世代・起動アプリが前の機のまま残る。
+            // 判定は port ではなく **udid**(キーに入っている port は再利用され得るが、
+            // udid は機そのもの)。**どちらかが不明なときは何もしない** —— 「分からない」を
+            // 「変わった」と読むと、udid を採れない構成で毎回記憶が飛ぶ
+            if let previousUDID = Self.keyChangedDevice(previous: udids[key] ?? nil,
+                                                        now: resolved.udid) {
+                forgetDeviceState(key)
+                pendingWarnings[key, default: []].append(
+                    Self.reusedPortWarning(port: port, previousUDID: previousUDID,
+                                           nowUDID: resolved.udid ?? ""))
+            }
             created = resolved.driver
             engines[key] = resolved.engine
             udids[key] = resolved.udid
@@ -285,6 +299,23 @@ extension MCPServer {
 
     static func injectedFromMemory(_ args: [String: Any]) -> Bool {
         args[deviceFromMemoryKey] as? Bool == true
+    }
+
+    /// **同じ engineKey が別の機を指し始めたか**(非 nil = 前の udid。走査から切り離した純粋関数)。
+    /// 判定は port ではなく **udid** —— キーに入っている port は再利用され得るが、udid は機そのもの。
+    /// **どちらかが不明なら nil**(何もしない): 「分からない」を「変わった」と読むと、
+    /// udid を採れない構成(xcuitest 以外・実機)で毎回記憶が飛ぶ
+    static func keyChangedDevice(previous: String?, now: String?) -> String? {
+        guard let previous, let now, previous != now else { return nil }
+        return previous
+    }
+
+    /// ポートが別のシミュレータへ移っていたときの警告。**捨てたものを名指しする** ——
+    /// 「何かが消えた」だけだと、読み手は手元の ref をそのまま撃ち続ける
+    static func reusedPortWarning(port: UInt16, previousUDID: String, nowUDID: String) -> String {
+        "⚠️ port \(port) now belongs to a different simulator (was \(previousUDID), now \(nowUDID))"
+            + " — refs, the remembered launched app and this session's notes for it were dropped."
+            + " Take a fresh ft_snapshot before using any ref."
     }
 
     /// **セッション記憶(iOS)を使うかどうかの純粋関数**。走査から切り離してある(reconcilePort と

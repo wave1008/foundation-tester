@@ -9,6 +9,7 @@ import XCTest
 final class MCPOpenURLSummaryTests: XCTestCase {
     func testWithoutSnapshotAfterMentionsAsynchronousDeliveryAndSnapshotAdvice() {
         let summary = MCPServer.openURLSummary(url: "myapp://item/1", bundleID: "com.example.app",
+                                               bundleIDWasRemembered: false,
                                                snapshotAfter: false)
         XCTAssertTrue(summary.hasPrefix("Delivered myapp://item/1 to com.example.app."), summary)
         XCTAssertTrue(summary.contains("asynchronous"), summary)
@@ -21,6 +22,7 @@ final class MCPOpenURLSummaryTests: XCTestCase {
     /// 遷移前の画面を返し得る。撮り直しの代わりに waitFor を案内する(2026-08-12 のレビュー)
     func testWithSnapshotAfterSwapsTheAdviceForWaitForButKeepsTheAsyncCaveat() {
         let summary = MCPServer.openURLSummary(url: "myapp://item/1", bundleID: "com.example.app",
+                                               bundleIDWasRemembered: false,
                                                snapshotAfter: true)
         XCTAssertTrue(summary.hasPrefix("Delivered myapp://item/1 to com.example.app."), summary)
         XCTAssertFalse(summary.contains("ft_snapshot"), summary)
@@ -31,6 +33,7 @@ final class MCPOpenURLSummaryTests: XCTestCase {
     func testBundleIDIsOptionalInBothForms() {
         for snapshotAfter in [true, false] {
             let summary = MCPServer.openURLSummary(url: "myapp://x", bundleID: nil,
+                                                   bundleIDWasRemembered: false,
                                                    snapshotAfter: snapshotAfter)
             // bundleID があれば "Delivered <url> to <bundle>." になるので、接頭辞だけで足りる
             XCTAssertTrue(summary.hasPrefix("Delivered myapp://x. "), summary)
