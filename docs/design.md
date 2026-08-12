@@ -2367,6 +2367,16 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
       直上の空き ÷ **行間の中央値**が `gridHeaderRoomRatio`(2.0)以上のときだけ言う
       (実測比: 誤検知 1.16 / 0.54 に対し真陽性 4.4)。中央値なのは、実測の格子が途中に
       別セクションを挟んで間隔を飛ばすため(平均だと1本の飛びで閾値が跳ね上がる)
+    - **webView ノードごと無い形は別の注記が要る**(2026-08-13。`missingPageContentNote`)。
+      `webViewGapNote` は `type == "webView"` の**中**しか測れず、`emptyTreeNote` は
+      `elements.isEmpty` **ちょうど**が条件なので、**Chrome が自分の chrome しか公開しない**
+      画面では両方が黙る —— **状況が悪化したほうが黙る**逆転になっていた(直前の読みでは
+      webView ノードがあり `webViewGapNote` が出ていた。実測 = 画面は表で埋まっているのに
+      木は19要素、のち1要素)。判定は幾何のまま**画面全体**へ広げ、
+      `unrepresentedScreenFraction`(どの要素とも交わらない最大の帯 ÷ 画面高)が 0.5 以上・
+      URL バー在り・webView 無しの3条件。**URL バーを条件に入れるのは必須** ——
+      オーバーレイが背景を落とす形(`and-overflow` 56.4%)は正常なので、これが無いと誤検知する
+      (コーパス実測: witness 88.6% / URL バー有り webView 無しの次点 `and-browser_urlmenu` 5.9%)
   - **注記が載る応答は目録の `contexts` で決める**(`NoteCatalog.Context`)。**`ft_scroll_to` には
     「この一覧をそのまま報告してよいか / この行を指せるか」を言う注記を載せる**
     (`urlishLabelsNote` / `ambiguousLabelsNote` / `duplicateIDsNote` / `emptyTreeNote` ほか。
@@ -2375,6 +2385,30 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
     「千代田区」)を無警告で返し、同じ画面を `ft_snapshot` で撮り直して初めて出た。
     手数が増えるだけの注記(`unlabeledClickablesNote`)やスクロールで変わらないもの
     (`addressBarNote`)は載せない。**増やすときは Scripts/mcp-bench.sh の手数で決める**
+  - **横スクロールの残骸は「同じ y・違う x で繰り返す区間」で言う**(2026-08-13。
+    `duplicateRegionNote`)。WebView の表を横へ送ると、**スクロール前の行が古い x のまま木に残り、
+    新しい行が並んで入る** —— 実測(気象庁)は同じ y の行が 200pt ずれて二重に並び、左端は
+    x=0 へクランプされ、**約55行のうち印が付いたのは4行**だけだった。既存の3経路はどれも
+    構造上当たらない: `outsideDeclaredScroller` / `isUntappableGhost` は「容器と**交差ゼロ**」が
+    条件で x=0 は容器の**内側**、`stackedRefs` は「**同一矩形が3個以上**」が条件で複製は2個。
+    しかも **WebKit の横スクロール div は `scrollable` を申告しない**(iOS の `scrollableTypes` は
+    scrollView/table/collectionView のみ)ので、内側の容器そのものが木から見えない。
+    **幾何条件を落とさないこと** —— 素の「最長反復区間」にすると、**1ページ内の2つの表が
+    同じ見出し行を共有しているだけ**の形を掴む(実測で11行。設計中に気付いて足した)。
+    実測は witness 10 に対し他フィクスチャ最大3。
+    `StepExecutor.hasClampedCoordinates` は流用できない(あちらは**同一矩形・同深さ3個以上**が
+    条件で、ここは矩形が違い x だけ揃う形)
+  - **「変わっていない」の判定は木の**外**の数字も見る**(2026-08-13。`looksUnchanged`)。
+    `SnapshotResponse.elements` は**ブリッジが上限で切った後**の列で、落とした数は
+    `truncatedCount` に別で載る。要素だけを比べていたため、**上限より下だけが変わった操作**を
+    「変化なし」と報告していた(実測: 表を横送りするタップで113要素増えたのに、上限120の内側が
+    バイト一致で `waitForChange` が空振り)。**呼び手は回避できない** ——
+    `maxElements` は `ft_snapshot` にしか無く、待ちの中の `freshSnapshot` は常に既定値で走る。
+    併せて、**木が空同然の画面では「変化なし」が常に真になる**(空の木は空の木と一致する)ので、
+    `unrepresentedScreenFraction` が 0.5 以上のときは判定に
+    「『動かなかった』と『公開されていない』を区別できない」但し書きを付ける
+    (実測: `scrollDown ×4` が実際に数画面送ったのに `ft_batch` が「どのステップも画面を
+    変えていないかもしれない」と言った)。**判定はこの1本のまま**(2つ目を書かない)
   - **スクロール残像(ghost)は拒否せず、警告して撃つ**(`RefGuard.ghostWarning`)。
     Compose iOS は容器の外へ出た行をフルフレームで木に残し、`ios-xcuitest` はそれを座標で叩く
     (実測では下部タブへ遷移して "tap done" を返した。`ios-inapp` は要素起動なので当たる =
