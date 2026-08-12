@@ -281,15 +281,20 @@ extension MCPServer {
             var out = args
             out["port"] = Int(remembered.port)
             if explicitPlatform == nil { out["platform"] = "ios" }
-            Self.logStderr("no udid/port given — reusing this session's earlier target"
-                + " (port \(remembered.port), udid \(remembered.udid ?? "unknown"))")
-            return Self.finishingFold(out, chosen: "port \(remembered.port)",
+            // **ログは適用が決まってから**(2026-08-13 のレビュー指摘): 先に出すと、
+            // 曖昧で拒否した呼び出しまで「その機へ行った」と読める痕跡を stderr に残す
+            let iosFold = Self.finishingFold(out, chosen: "port \(remembered.port)",
                                       allSeenLabels: seenExplicitIOSPorts.map(String.init),
                                       deviceNoun: "iOS devices", unitNoun: "ports",
                                       otherPlatform: Self.platformWasInferred(args)
                                           && !seenExplicitAndroidSerials.isEmpty ? "Android" : nil,
                                       noteKey: "rememberedDevice:ios:\(remembered.port)",
                                       firstTime: firstTime)
+            if case .applied = iosFold {
+                Self.logStderr("no udid/port given — reusing this session's earlier target"
+                    + " (port \(remembered.port), udid \(remembered.udid ?? "unknown"))")
+            }
+            return iosFold
         case "android":
             guard let remembered = Self.androidExplicitWithMemory(
                 argsGaveTarget: Self.argsGaveAndroidTarget(args), remembered: lastExplicitAndroidSerial)
@@ -297,15 +302,18 @@ extension MCPServer {
             var out = args
             out["serial"] = remembered
             if explicitPlatform == nil { out["platform"] = "android" }
-            Self.logStderr("no serial given — reusing this session's earlier Android target"
-                + " (serial \(remembered))")
-            return Self.finishingFold(out, chosen: "serial \(remembered)",
+            let androidFold = Self.finishingFold(out, chosen: "serial \(remembered)",
                                       allSeenLabels: Array(seenExplicitAndroidSerials),
                                       deviceNoun: "Android devices", unitNoun: "serials",
                                       otherPlatform: Self.platformWasInferred(args)
                                           && !seenExplicitIOSPorts.isEmpty ? "iOS" : nil,
                                       noteKey: "rememberedDevice:android:\(remembered)",
                                       firstTime: firstTime)
+            if case .applied = androidFold {
+                Self.logStderr("no serial given — reusing this session's earlier Android target"
+                    + " (serial \(remembered))")
+            }
+            return androidFold
         default:
             return .unchanged
         }
@@ -550,9 +558,13 @@ extension MCPServer {
     /// 捨てて、今の状況を添えたメッセージを組む
     func connectionLostAndForget(key: String, connection: String,
                                  running: [BridgeDiscovery.Found]) -> String {
+        // **udid は忘れる前に読む**(2026-08-13 のレビュー指摘)。`forgetConnection` は
+        // `forgetDeviceState` 経由で `udids[key]` も消すようになったので、後から読むと
+        // 常に nil = 「同じ機のブリッジを先に挙げる」案内が**黙って死んでいた**
+        let udid = udids[key].flatMap { $0 }
         forgetConnection(key)
         return Self.connectionLostMessage(connection: connection, running: running,
-            sameDevice: Self.deviceName(forUDID: udids[key].flatMap { $0 }, in: running))
+            sameDevice: Self.deviceName(forUDID: udid, in: running))
     }
 
     /// Android(serial 経由のブリッジ)の死活。**iOS のような安価な「待受しているか」判定が無い**

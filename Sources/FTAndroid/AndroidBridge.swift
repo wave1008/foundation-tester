@@ -113,10 +113,15 @@ extension AndroidDriver {
                                  cachedSecondsRemaining: TimeInterval? = nil) -> DriverError {
         let base = "cannot reach the Android bridge. Check the environment with `ftester doctor`, "
             + "or try `ftester bridge up --platform android`"
+        // **他プロセスで直しても、この文が消えるのは期限後**(2026-08-13 のレビュー指摘):
+        // `.unavailable` はプロセスごとの static なので、CLI の `bridge up` が成功しても
+        // **この長寿命プロセス(ftester-mcp / monitor)の記憶は消えない**。
+        // 「すぐ再試行できる」と書くと、直したのに同じ文が返る次の混乱を作る
         let cached = cachedSecondsRemaining.map {
             " [cached: this is the FIRST failure replayed, not a fresh attempt —"
                 + " the next try in \(max(1, Int($0.rounded(.up))))s will actually re-probe."
-                + " `ftester bridge up --platform android` retries immediately]"
+                + " Fixing the device now (e.g. `ftester bridge up --platform android`) does NOT"
+                + " clear this: the cache is per-process, so this same text replays until then]"
         } ?? ""
         return .bridgeUnreachable((detail.map { "\(base)(\($0))" } ?? base) + cached)
     }

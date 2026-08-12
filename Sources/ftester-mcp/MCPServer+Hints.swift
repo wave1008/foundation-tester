@@ -486,7 +486,12 @@ extension MCPServer {
                 guard extendsRun(i - 1, j - 1) else { continue }
                 let length = previous[j - 1] + 1
                 current[j] = length
-                if length > bestLength {
+                // **2つの区間が重なっていないこと**(2026-08-13 のレビュー指摘)。この制約が無いと、
+                // **同じ行に同種・同ラベルのセルが並んでいるだけ**で自分自身と一致する
+                // (`minimumRun=6` なので7個並べば発火する。無ラベルのセル・ページ送りのドット等)。
+                // 言いたいのは「同じ領域が2回出ている」なので、重なる区間は候補にしない。
+                // **採用時に弾く**(最後に弾くと、重なる長い一致が本物の短い一致を隠して黙る)
+                if length > bestLength, j - i >= length {
                     bestLength = length
                     bestI = i - length
                     bestJ = j - length

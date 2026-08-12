@@ -57,9 +57,11 @@ extension MCPServer {
             // 設定ミスが**実行するまで表に出なかった**。次の応答に1度だけ載せる
             pendingWarnings[key] = prologue.filter { $0.hasPrefix("⚠️") }
             let created: AppDriver
+            var probePort: UInt16?
             switch target {
             case .ios(let provisioned, let iosApp):
-                created = try await Self.iosDriver(provisioned: provisioned, bundleID: iosApp?.bundleID)
+                (created, probePort) = try await Self.iosDriver(
+                    provisioned: provisioned, bundleID: iosApp?.bundleID)
             case .android(let serial, _):
                 created = try AndroidDriver(serial: serial)
             }
@@ -70,10 +72,13 @@ extension MCPServer {
             }()
             // **udid と port を両方記録する**(port は 2026-08-13 に追加)。`deviceIdentityChanged`
             // はこの2つが揃っているときだけ動くので、**port を書かないとガードが黙って no-op になる**
-            // (直接ポート経路で実際に踏んだ形。DeviceStateInvalidationTests が両方を守る)
+            // (直接ポート経路で実際に踏んだ形。DeviceStateInvalidationTests が両方を守る)。
+            // **記録するのは `provisioned.port` ではなく実際に繋いだ loopback ポート**
+            // (`iosDriver` の probePort。理由はあちらの doc)—— 誤ったポートを記録すると
+            // ガードが無関係な機のブリッジを読み、正しい呼び出しを拒否して記憶まで捨てる
             if case .ios(let provisioned, _) = target {
                 udids[key] = provisioned.udid
-                connectedPorts[key] = provisioned.port
+                connectedPorts[key] = probePort
             }
             // engine=xcuitest はブリッジが uiFramework を申告しないが、profile 経由なら
             // 対象 bundleID が分かるのでバンドルのマーカーで判定して覚える(scroll_to の
@@ -329,8 +334,14 @@ extension MCPServer {
     /// 別物へ届く」——  ref は世代から引き、`bundleId` 省略の `ft_open_url` は記憶した起動アプリへ配る。
     /// 座標タップや素の ft_snapshot は記憶を使わないので、確認の往復を払う価値が無い。
     /// **`ft_batch` は先頭ステップだけ ref を受ける**ので steps も見る
+    /// **ref を受ける引数名は `ref` だけではない**(2026-08-13 のレビュー指摘): `ft_drag` は
+    /// `fromRef` で受け、`verifiedElement` 経由で同じ世代から引く。名前を1つ見落とすと
+    /// **その1ツールだけ穴が開いたまま**になるので、`refBearingKeys` を唯一の定義元にして
+    /// `MCPServerToolDefinitionsTests` がスキーマ側と突き合わせる
+    static let refBearingKeys = ["ref", "fromRef"]
+
     static func usesRememberedDeviceState(_ args: [String: Any]) -> Bool {
-        if args["ref"] != nil { return true }
+        if Self.refBearingKeys.contains(where: { args[$0] != nil }) { return true }
         if let steps = args["steps"] as? String, steps.contains("ref:") { return true }
         if args["url"] != nil, args["bundleId"] == nil { return true }
         return false
@@ -519,7 +530,14 @@ extension MCPServer {
     /// 合成は実行側(ScenarioRunnerMain)と同じ形:
     ///   in-app(注入) → WebView 画面だけ XCUITest へ委譲 → 不可な操作だけ XCUITest へ回す
     /// **hybrid でないとき(inapp 単独・xcuitest・実機)は素の1本**にする
-    static func iosDriver(provisioned: ProvisionedIOSDevice, bundleID: String?) async throws -> AppDriver {
+    /// **`probePort` は「同一性を確かめに行ってよい loopback のポート」**(2026-08-13)。
+    /// `provisioned.port` を外から使ってはいけない —— xcuitest 分岐は `XCUIBridgeResolver` が
+    /// **接続先を振り替える**ことがあり、実機は loopback ですらない。誤ったポートを
+    /// `connectedPorts` に記録すると、`deviceIdentityChanged` が**無関係な機のブリッジを読んで
+    /// 正しい呼び出しを拒否し、記憶まで捨てる**(穴を塞ぐより悪い)。
+    /// **確かめられないときは nil**(ガードは何もしない = 従来どおり)
+    static func iosDriver(provisioned: ProvisionedIOSDevice,
+                          bundleID: String?) async throws -> (driver: AppDriver, probePort: UInt16?) {
         guard !provisioned.physical, provisioned.engine == "inapp" || provisioned.engine == "hybrid" else {
             // xcuitest(と実機)は従来どおり。resolve は接続先が in-app だったときの振り替えも担う
             let resolution = await XCUIBridgeResolver.resolve(
@@ -528,22 +546,28 @@ extension MCPServer {
             // **実機は UDID を渡す**: install/uninstall は simctl ではなく devicectl が要り、
             // clearAppData は「実機では不可」と即答できる(渡さないとデバイス名で simctl を
             // 撃つことになり、的外れな失敗になる)
-            return SessionRecoveryDriver(base: BridgeClient(
+            let driver = SessionRecoveryDriver(base: BridgeClient(
                 port: resolution.endpoint.port, host: resolution.endpoint.host,
                 physicalUDID: provisioned.physical ? provisioned.udid : nil))
+            // **実際に繋いだポート**を返す(preferred ではない)。実機は loopback ではないので nil
+            let probe = (provisioned.physical || resolution.endpoint.host != BridgeEndpoint.loopbackHost)
+                ? nil : resolution.endpoint.port
+            return (driver, probe)
         }
         let inapp = InAppDriver(repoRoot: try RepoRoot.find(), udid: provisioned.udid,
                                 port: provisioned.port)
         guard provisioned.engine == "hybrid", let xcuiPort = provisioned.xcuiPort,
               let bundleID else {
-            return inapp
+            return (inapp, provisioned.port)
         }
         // attach は**同じインスタンス**を委譲とフォールバックの両方に使う(実行側と同じ理由:
         // activate/attached 状態を1本にしないと余計な activate が挟まる)
         let attach = AppAttachDriver(port: xcuiPort, bundleID: bundleID)
-        return HybridFallbackDriver(primary: WebViewDelegatingDriver(primary: inapp, delegated: attach),
-                                    fallback: attach, primaryBundleID: bundleID,
-                                    foreignApp: SessionRecoveryDriver(base: BridgeClient(port: xcuiPort)))
+        // hybrid の主は in-app(provisioned.port)。同一性はそちらへ問う
+        return (HybridFallbackDriver(primary: WebViewDelegatingDriver(primary: inapp, delegated: attach),
+                                     fallback: attach, primaryBundleID: bundleID,
+                                     foreignApp: SessionRecoveryDriver(base: BridgeClient(port: xcuiPort))),
+                provisioned.port)
     }
 
     /// **実際に主となったエンジンが XCUITest のときだけ**添える切り分け。XCUITest では

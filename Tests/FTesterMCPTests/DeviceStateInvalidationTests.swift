@@ -234,8 +234,14 @@ final class DeviceStateInvalidationTests: XCTestCase {
     /// 片方を書き忘れると**確認を呼んでいるのに黙って no-op** になる(今日踏んだ形)
     func testBothPathsRecordWhatTheIdentityGuardNeeds() throws {
         let source = try String(contentsOf: Self.driverSourceURL(), encoding: .utf8)
-        XCTAssertTrue(source.contains("connectedPorts[key] = provisioned.port"),
+        XCTAssertTrue(source.contains("connectedPorts[key] = probePort"),
                       "profile 経路が connectedPorts を記録していない —— ガードが常に no-op になる")
+        // **`provisioned.port` を記録し直さないこと**(2026-08-13 のレビュー指摘): xcuitest は
+        // XCUIBridgeResolver が接続先を振り替えるので、preferred を記録すると
+        // **無関係な機のブリッジを読んで正しい呼び出しを拒否し、記憶まで捨てる**
+        XCTAssertFalse(source.contains("connectedPorts[key] = provisioned.port"),
+                       "希望ポートを記録している —— 実際に繋いだポート(probePort)でなければ"
+                       + "ガードが別の機を読む")
         XCTAssertTrue(source.contains("udids[key] = provisioned.udid"),
                       "profile 経路が udid を記録していない")
         XCTAssertTrue(source.contains("connectedPorts[key] = port"),
@@ -258,5 +264,32 @@ final class DeviceStateInvalidationTests: XCTestCase {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Sources/ftester-mcp/MCPServer+Driver.swift")
+    }
+
+    /// **ref を受ける引数名を1つでも見落とすと、そのツールだけ穴が開く**(2026-08-13 のレビュー指摘)。
+    /// `ft_drag` は `fromRef` で受けており、`ref` だけを見ていた最初の実装は素通しだった。
+    /// スキーマ側(toolDefinitions)で「整数の ref 系」を名乗る引数の集合と突き合わせる
+    func testEveryRefBearingSchemaArgumentIsCoveredByTheGuard() {
+        var declared: Set<String> = []
+        for definition in MCPServer.toolDefinitions {
+            guard let schema = definition["inputSchema"] as? [String: Any],
+                  let props = schema["properties"] as? [String: Any] else { continue }
+            for (name, spec) in props {
+                guard let spec = spec as? [String: Any], spec["type"] as? String == "integer",
+                      name.lowercased().hasSuffix("ref") else { continue }
+                declared.insert(name)
+            }
+        }
+        XCTAssertFalse(declared.isEmpty, "スキーマ走査が空振りしている(穴を検出できない)")
+        XCTAssertEqual(declared, Set(MCPServer.refBearingKeys),
+                       "ref を受ける引数とガードの一覧が食い違っている"
+                       + "(スキーマにあってガードに無い: \(declared.subtracting(MCPServer.refBearingKeys).sorted()) /"
+                       + " ガードにあってスキーマに無い: \(Set(MCPServer.refBearingKeys).subtracting(declared).sorted()))。"
+                       + "見落とすと、そのツールだけ機が変わっても古い ref が通る")
+    }
+
+    /// 実際にガードが `fromRef` を拾うこと(一覧の突き合わせだけだと配線漏れを見逃す)
+    func testDragFromRefIsTreatedAsRememberedState() {
+        XCTAssertTrue(MCPServer.usesRememberedDeviceState(["fromRef": 4]))
     }
 }

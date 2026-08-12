@@ -55,12 +55,18 @@ final class AndroidBridgeFailureCacheMessageTests: XCTestCase {
         XCTAssertFalse(text.contains("0s"), text)
     }
 
-    /// 待たずに抜ける手段を**断りの中に**添える(残り時間だけ言われても打つ手が無い)
-    func testCachedReplayNamesTheImmediateWayOut() {
+    /// **「今すぐ直せる」と言わない**(2026-08-13 のレビュー指摘)。`.unavailable` はプロセスごとの
+    /// static なので、CLI の `bridge up` が成功しても**この長寿命プロセスの記憶は消えない**。
+    /// 「すぐ再試行できる」と書くと、直したのに同じ文が返る次の混乱を作る
+    func testCachedReplaySaysFixingTheDeviceDoesNotClearIt() {
         let text = message(AndroidDriver.unreachableError(detail: nil, cachedSecondsRemaining: 5))
         guard let clause = cachedClause(text) else {
             return XCTFail("キャッシュの断りが出ていない: \(text)")
         }
-        XCTAssertTrue(clause.contains("ftester bridge up --platform android"), clause)
+        XCTAssertTrue(clause.contains("does NOT"),
+                      "他プロセスで直しても消えないことを言っていない: \(clause)")
+        XCTAssertTrue(clause.contains("per-process"), clause)
+        XCTAssertFalse(clause.contains("retries immediately"),
+                       "この文言はプロセスを跨いで効くと誤読させる: \(clause)")
     }
 }

@@ -179,4 +179,20 @@ final class DuplicateRegionNoteTests: XCTestCase {
         let screen = FTRect(x: 0, y: 0, width: 400, height: 0)
         XCTAssertEqual(MCPServer.unrepresentedScreenFraction(tree([], screen: screen)), 0)
     }
+
+    /// **同じ行に同種・同ラベルのセルが並んでいるだけでは発火しない**(2026-08-13 のレビュー指摘)。
+    /// 区間の重なりを禁じていなかったため、`minimumRun=6` に対して7個並ぶと
+    /// **自分自身と一致して**「同じ要素が2回出ている」と言っていた
+    func testARowOfIdenticalCellsDoesNotMatchItself() {
+        let row = (0..<8).map {
+            ElementInfo(ref: $0 + 1, type: "staticText", identifier: nil, label: "",
+                        value: nil, placeholder: nil, enabled: true,
+                        frame: FTRect(x: Double($0) * 40, y: 100, width: 36, height: 20), depth: 1)
+        }
+        let note = MCPServer.duplicateRegionNote(
+            SnapshotResponse(sessionBundleID: "com.example.app",
+                             screen: FTRect(x: 0, y: 0, width: 402, height: 874),
+                             elements: row, truncatedCount: 0))
+        XCTAssertEqual(note, "", "1行の並びを『2回出ている』と誤検知した: \(note)")
+    }
 }
