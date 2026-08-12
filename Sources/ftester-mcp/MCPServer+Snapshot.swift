@@ -310,7 +310,15 @@ extension MCPServer {
                                 + " into the wait:\(waited.partialHint) The exact form never"
                                 + " appeared, so the wait ran to the deadline"
                         } ?? (Self.notationHint(waitFor, in: snapshot)
-                              + Self.similarLabelsHint(waitFor, in: snapshot))) + "\n"
+                              + Self.similarLabelsHint(waitFor, in: snapshot)))
+                        + Self.waitForScrollHint(in: snapshot)
+                        // **操作の効果も疑う**(2026-08-12 監査): waitFor はここでしか「操作前の木」
+                        // を持たない(ft_snapshot 単独には操作前が無い)。判定は settle-lite/
+                        // waitForChange と同じ looksUnchanged を再利用する(2つ目の同一性判定を書かない)
+                        + (beforeAction.map { Self.looksUnchanged($0, snapshot) } == true
+                           ? " the tree is also identical to the one before the action, so the"
+                             + " action itself may not have taken effect."
+                           : "") + "\n"
             } else if args["waitForChange"] as? Bool == true {
                 let result = try await waitForChangeBody(beforeAction: beforeAction,
                                                          snapshot: snapshot,
@@ -581,6 +589,14 @@ extension MCPServer {
         return ([parsed.primary] + parsed.fallbacks).flatMap {
             StepExecutor.resolvedCandidates($0, elements: snapshot.elements) ?? []
         }
+    }
+
+    /// `ft_scroll_to` 成功文に添える多重ヒットの注記(2026-08-12 監査)。**セレクタ依存の本文**
+    /// であって木だけから決まる注記ではないので NoteCatalog には登録しない
+    /// (NoteCoverageTests のソース走査対象は木由来の注記だけ)
+    static func multiMatchHint(_ matched: [ElementInfo]) -> String {
+        guard matched.count >= 2 else { return "" }
+        return " (\(matched.count) elements match this selector; the first in tree order was used)"
     }
 
     /// 「この画面ではシート展開救済が効かない」の記録(`sheetRescueKey` 参照)。
@@ -874,6 +890,11 @@ extension MCPServer {
                 landed = ""
             }
         }
+        // **多重ヒットは黙らない**(2026-08-12 監査): 木順の先頭を掴むのは既定挙動のままだが、
+        // 他にも当たりがあったことを言わないと「別の意図しない要素に静かに命中した成功」を
+        // 見分けられない(実測: tenki.jp で "*週間*" がタブ「2週間」に当たり、週間予報の行は
+        // 無視された)。件数は `matchedInTree` で計算済み = 追加コストは無い
+        landed += Self.multiMatchHint(matchedInTree)
         // **木を返す口はすべて名指しする**(2026-08-06 の掃討で漏れを見つけた)。上の再確認は
         // 「セレクタが居るか」しか見ないので、**別アプリに同じ id がある**と素通しする ——
         // E2E の 4 SUT は id・ラベルが共通契約なので、これは現に起こり得る形

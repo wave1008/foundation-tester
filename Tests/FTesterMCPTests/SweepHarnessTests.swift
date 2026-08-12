@@ -182,6 +182,42 @@ final class SweepHarnessTests: XCTestCase {
                                offscreen: 0, warnedTappable: 1),
         "sutec-home": Counts(ghost: 0, overlay: 0, stacked: 0, misses: 0, disabled: 0,
                              offscreen: 1, warnedTappable: 0),
+        // 2026-08-12 採取。**ブラウザ**(実 web ページ + ブラウザ自身の操作面)。
+        // 件数がコーパス中で突出して多いが、明細は全件検分済みで**発生源は3つだけ**:
+        //   ①ページ内広告バナー(`【公式】…` / `23秒` の帯)が下の地図リンク群を覆う
+        //   ②Safari の下部ツールバー(#TabBarItemTitle / #ReloadButton / #BackButton)が
+        //     ページ末尾の行を覆う ③HTML の入れ子リンク(`<a>13<br>(木)</a>` の中の `<a>13</a>`)が
+        //     外側の中心を横取りする = nested 13。いずれも実描画どおりで、撃てば内側/手前に当たる。
+        // **web ページは「画面の下 1/4 がブラウザ chrome と広告」が常態**なので密度が高くなる
+        // (testWarningDensityStaysLow の免除表を参照)
+        "ios-browser_nationwide": Counts(ghost: 0, overlay: 22, stacked: 0, misses: 0, disabled: 0,
+                                         offscreen: 3, warnedTappable: 35, keyboard: 0, sliver: 0,
+                                         nested: 13, scrolledOut: 0),
+        // 同上 + **スタートページのオーバーレイが背後の WebView 本文を覆う**形。
+        // overlay 64 のうち 55 はカード群(#favoritesItemIdentifierContent 33 /
+        // #resumeBrowsingItemIdentifierContent 9 / onboarding 6 / #reading-list 3 ほか)で、
+        // **背後の要素は木に残ったまま**タップできない = 真陽性。keyboard 55 も同じ背後の本文。
+        // ghost 2(ページ冒頭の button 2つ)も同じ被覆によるもの。
+        // **この画面は「オーバーレイ配下を1件ずつしか言えない」ことの witness**でもある
+        // (まとめて1行で言う要約は未実装。docs/mcp-audit-rounds.md の台帳を参照)
+        "ios-browser_startpage": Counts(ghost: 2, overlay: 64, stacked: 0, misses: 0, disabled: 1,
+                                        offscreen: 4, warnedTappable: 67, keyboard: 55, sliver: 0,
+                                        nested: 13, scrolledOut: 0),
+        // Android の web は検知がほとんど出ない(a11y 木が浅く、覆う要素が申告されない)。
+        // overlay 1 = `button "さらに表示" ← link "13106"` は **確認済みの誤検知**:
+        // スクリーンショットでは「さらに表示」の白いピルが手前に描かれているが、申告された
+        // 塗り順は button z=21 / link z=60 で逆。Chrome の WebView が web の要素へ渡す z は
+        // 描画順ではなく文書順に見える。**ios-safari_article の折り返し inline テキスト 10 件と
+        // 同じ既知の型**(挙動の現状固定であって真陽性の追認ではない)
+        "and-browser_weather": Counts(ghost: 0, overlay: 1, stacked: 0, misses: 0, disabled: 0,
+                                      offscreen: 0, warnedTappable: 1, keyboard: 0, sliver: 0,
+                                      nested: 0, scrolledOut: 0),
+        // overlay 1(clickable ← #omnibox_suggestions_dropdown)は真陽性 —— URL バーの
+        // ポップアップが背後を覆う。**Android は背景を木から落とす**ので残骸が 1 件で済む
+        // (iOS の ios-browser_startpage が 64 件出るのと対の陰性対照)
+        "and-browser_urlmenu": Counts(ghost: 0, overlay: 1, stacked: 0, misses: 0, disabled: 0,
+                                      offscreen: 0, warnedTappable: 1, keyboard: 0, sliver: 0,
+                                      nested: 0, scrolledOut: 0),
     ]
 
     private static var fixtureDirectory: URL {
@@ -230,6 +266,23 @@ final class SweepHarnessTests: XCTestCase {
         return c
     }
 
+    /// 採り直しの出力口。**`print` だけに頼らない** —— コーパスが 30 枚に増えたら
+    /// XCTest の stdout 取り込みが**中央の連続する4枚ぶんを丸ごと落とした**(2026-08-12 に実測。
+    /// 再実行しても同じ4枚が消える = 決定的)。基準値を上げる前の検分がこの出力に依存している
+    /// ので、落ちると砦が黙って追認装置になる。`FT_SWEEP_OUT=<path>` を渡すとそこへ追記する
+    private static let sweepOut = ProcessInfo.processInfo.environment["FT_SWEEP_OUT"]
+
+    private func emit(_ line: String) {
+        guard let path = Self.sweepOut else { return print(line) }
+        if let handle = FileHandle(forWritingAtPath: path) {
+            handle.seekToEndOfFile()
+            handle.write(Data((line + "\n").utf8))
+            try? handle.close()
+        } else {
+            try? (line + "\n").write(toFile: path, atomically: true, encoding: .utf8)
+        }
+    }
+
     private func load(_ url: URL) throws -> SnapshotResponse {
         try JSONDecoder().decode(SnapshotResponse.self, from: try Data(contentsOf: url))
     }
@@ -263,6 +316,18 @@ final class SweepHarnessTests: XCTestCase {
     /// 「一画面の三分の一がスクロールで視界の外」という正当な状態が 20% を超えるので、
     /// **検知の質ではなく画面の状態**で落ちていた。件数そのものの砦は
     /// testDetectionCountsMatchTheBaseline 側で、こちらは粗い臭い取りに留める
+    /// **上限を上げずに画面ごとに免除する**(2026-08-12)。全体の上限を 63% まで上げると
+    /// この砦は何も見なくなる。免除は**明細を1件ずつ検分した画面だけ**に、実測値ちょうどで置く
+    /// (`>=` ではなく等号照合なので、減っても増えても落ちる = 追認装置にならない)。
+    /// web ページは「画面の下 1/4 がブラウザ chrome と広告」「オーバーレイが背後の本文を
+    /// 覆ったまま木に残る」が常態で、**画面が本当に大半塞がっている** —— 検知の質の問題ではない
+    static let densityExemptions: [String: Int] = [
+        // 内訳は baselines の当該コメント(広告帯・Safari ツールバー・HTML 入れ子リンク)
+        "ios-browser_nationwide.json": 39,
+        // 内訳は同上 + スタートページのカードが背後の WebView 本文を覆う
+        "ios-browser_startpage.json": 63,
+    ]
+
     func testWarningDensityStaysLow() throws {
         let dir = Self.fixtureDirectory
         for file in try FileManager.default.contentsOfDirectory(atPath: dir.path)
@@ -272,6 +337,12 @@ final class SweepHarnessTests: XCTestCase {
             guard !tappable.isEmpty else { continue }
             let warned = Self.counts(snap).warnedTappable
             let percent = warned * 100 / tappable.count
+            if let exempt = Self.densityExemptions[file] {
+                XCTAssertEqual(percent, exempt,
+                               "\(file): 免除した画面の密度が動いた(免除は検分済みの実測値ちょうど"
+                               + "で置いてある)。明細を採り直して検分し直すこと")
+                continue
+            }
             XCTAssertLessThanOrEqual(percent, 30,
                                      "\(file): タップ対象の \(percent)% に警告が付いている"
                                      + " —— 検知ではなく雑音になっていないか見ること")
@@ -288,7 +359,7 @@ final class SweepHarnessTests: XCTestCase {
             let snap = try load(dir.appendingPathComponent(file))
             let c = Self.counts(snap)
             let name = String(file.dropLast(".json".count))
-            print("BASELINE \"\(name)\": Counts(ghost: \(c.ghost), overlay: \(c.overlay),"
+            emit("BASELINE \"\(name)\": Counts(ghost: \(c.ghost), overlay: \(c.overlay),"
                 + " stacked: \(c.stacked), misses: \(c.misses), disabled: \(c.disabled),"
                 + " offscreen: \(c.offscreen), warnedTappable: \(c.warnedTappable),"
                 + " keyboard: \(c.keyboard), sliver: \(c.sliver), nested: \(c.nested),"
@@ -297,32 +368,32 @@ final class SweepHarnessTests: XCTestCase {
             for e in els {
                 let who = RefGuard.describe(e)
                 if let hit = RefGuard.overlayCovering(e, in: els, screen: snap.screen) {
-                    print("   DETAIL \(name) overlay  \(who) ← \(RefGuard.describe(hit))")
+                    emit("   DETAIL \(name) overlay  \(who) ← \(RefGuard.describe(hit))")
                 }
                 if let inner = RefGuard.missesItsOwnContent(e, in: els, screen: snap.screen) {
-                    print("   DETAIL \(name) misses   \(who) → \(RefGuard.describe(inner))")
+                    emit("   DETAIL \(name) misses   \(who) → \(RefGuard.describe(inner))")
                 }
                 if RefGuard.isUntappableGhost(e, in: els, screen: snap.screen) {
-                    print("   DETAIL \(name) ghost    \(who)")
+                    emit("   DETAIL \(name) ghost    \(who)")
                 }
                 if !RefGuard.offscreenWarning(e, screen: snap.screen).isEmpty {
                     let f = e.frame
-                    print("   DETAIL \(name) offscreen \(who) centre=(\(Int(f.x + f.width / 2)),"
+                    emit("   DETAIL \(name) offscreen \(who) centre=(\(Int(f.x + f.width / 2)),"
                         + "\(Int(f.y + f.height / 2)))")
                 }
                 if RefGuard.interactiveTypes.contains(e.type),
                    RefGuard.keyboardWarning(e, keyboardFrame: snap.keyboardFrame) != nil {
-                    print("   DETAIL \(name) keyboard \(who)")
+                    emit("   DETAIL \(name) keyboard \(who)")
                 }
                 if RefGuard.isClippedSliver(e, screen: snap.screen) {
                     let f = e.frame
-                    print("   DETAIL \(name) sliver   \(who) \(Int(f.width))x\(Int(f.height))")
+                    emit("   DETAIL \(name) sliver   \(who) \(Int(f.width))x\(Int(f.height))")
                 }
                 if let nested = RefGuard.nestedActionCoveringCentre(e, in: els) {
-                    print("   DETAIL \(name) nested   \(who) ← \(RefGuard.describe(nested))")
+                    emit("   DETAIL \(name) nested   \(who) ← \(RefGuard.describe(nested))")
                 }
                 if let scroller = RefGuard.outsideDeclaredScroller(e, in: els) {
-                    print("   DETAIL \(name) scrolled \(who) outside \(RefGuard.describe(scroller))")
+                    emit("   DETAIL \(name) scrolled \(who) outside \(RefGuard.describe(scroller))")
                 }
             }
         }

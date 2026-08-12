@@ -190,7 +190,7 @@ extension MCPServer {
             // **ゼロ幅文字を落としてから出す**: ここから写したラベルは**見た目が正しいのに
             // 完全一致しない**(2026-08-07 実測。Google マップの発車案内で U+200B が21個
             // 漏れていた。木の描画側は除去済みで、ヒストだけ素通しだった)
-            let cleaned = e.label.map(FlowMatchMode.normalizeInvisibleCharacters)
+            let cleaned = e.label.map(SnapshotRenderer.displayText)
             let id = (e.identifier?.isEmpty == false) ? "#\(e.identifier!)" : nil
             let label = (cleaned?.isEmpty == false) ? "\"\(cleaned!)\"" : nil
             let name = [id, label].compactMap { $0 }.joined(separator: " ")
@@ -344,7 +344,7 @@ extension MCPServer {
         guard !horizontal.isEmpty,
               let pager = snapshot.elements.first(where: { $0.type == "pageIndicator" })
         else { return "" }
-        let quoted = (pager.value ?? pager.label).map { " \"\($0)\"" } ?? ""
+        let quoted = (pager.value ?? pager.label).map { " \"\(SnapshotRenderer.displayText($0))\"" } ?? ""
         let dirs = horizontal.map(\.scrollDirection).joined(separator: "/")
         let rows = horizontal.flatMap { byDirection[$0] ?? [] }
         return " A horizontal pager\(quoted) is on screen — it renders one page at a time, so the"
@@ -557,7 +557,7 @@ extension MCPServer {
             let operable = BridgeSnapshotThinning.operableTypes.contains(element.type)
                 || SnapshotRenderer.textInputTypes.contains(element.type)
             if let label = element.label {
-                let candidate = FlowMatchMode.normalizeInvisibleCharacters(label)
+                let candidate = SnapshotRenderer.displayText(label)
                 if !candidate.isEmpty, let strength = Self.similarityStrength(target, candidate) {
                     consider(key: candidate, display: "\"\(candidate)\"", strength: strength,
                             operable: operable, order: order)
@@ -657,6 +657,18 @@ extension MCPServer {
         return " (the tree was truncated at \(snapshot.elements.count) elements;"
             + " \(snapshot.truncatedCount) more were omitted — the element you are looking for"
             + " may be among them)"
+    }
+
+    /// waitFor タイムアウト文の共通末尾(2026-08-12 監査)。waitFor はレンダリング済みの木しか
+    /// 見ないので、探した相手がスクロール圏外にいると満額(既定5秒〜)を空費する
+    /// (実測: 週間予報表が初期表示の下にあり、25秒2回=52秒を空費した。正解は ft_scroll_to)。
+    /// **ft_snapshot(MCPServer+Dispatch.swift)と snapshotAfter(MCPServer+Snapshot.swift)の
+    /// 両方が呼ぶ唯一の定義元**(片方だけ変わる事故を防ぐ)。スクロール容器が1つも申告されて
+    /// いない画面ではスクロールが答えになり得ないので黙る
+    static func waitForScrollHint(in snapshot: SnapshotResponse) -> String {
+        guard !ScrollFrameCandidates.candidates(in: snapshot).isEmpty else { return "" }
+        return " waitFor only looks at what is currently rendered — if the target is further down,"
+            + " use ft_scroll_to (it searches by scrolling)."
     }
 
     /// **ラベルも id も無い clickable**の注記(欠陥⑨)。座標か ref でしか指定できず、
@@ -812,7 +824,7 @@ extension MCPServer {
             var typeLabels: [String: Int] = [:]
             for e in snapshot.elements {
                 if let id = e.identifier, !id.isEmpty { ids[id, default: 0] += 1 }
-                let label = FlowMatchMode.normalizeInvisibleCharacters(e.label ?? "")
+                let label = SnapshotRenderer.displayText(e.label ?? "")
                 if !label.isEmpty {
                     labels[label, default: 0] += 1
                     typeLabels[Self.typeLabelKey(e.type, label), default: 0] += 1
@@ -840,7 +852,7 @@ extension MCPServer {
                                        label: String) -> (plain: Int, typed: Int) {
             var plain = 0, typed = 0
             for e in StepExecutor.descendants(of: scope, in: snapshot.elements)
-            where FlowMatchMode.normalizeInvisibleCharacters(e.label ?? "") == label {
+            where SnapshotRenderer.displayText(e.label ?? "") == label {
                 plain += 1
                 if e.type == element.type { typed += 1 }
             }
@@ -941,8 +953,11 @@ extension MCPServer {
                 out.append(("#\(id)", .stable))
             }
             // **切り詰め表示になるラベルは候補にしない**: 40字超は一覧に "…" 付きで出るので、
-            // 読み手が写した完全一致は必ず外れる(SnapshotRenderer.truncatedLabelNote と同じ理由)
-            let label = FlowMatchMode.normalizeInvisibleCharacters(element.label ?? "")
+            // 読み手が写した完全一致は必ず外れる(SnapshotRenderer.truncatedLabelNote と同じ理由)。
+            // **改行を空白へ畳んでから使う**(2026-08-12): 改行入り a11y ラベル(実測: Safari の
+            // 広告リンク)を素で勧めると Swift の1行文字列リテラルに書けない。畳んだ文字列は
+            // `.selector` 照合(空白を種類問わず畳んで比較)で元のラベルに一致し続けるので安全
+            let label = SnapshotRenderer.displayText(element.label ?? "")
             let writableLabel = !label.isEmpty && label.count <= SnapshotRenderer.labelDisplayLimit
             // **素の形を先に置く**(順序を入れ替えない): `asWritten` は逃がしを外した形を返すので、
             // 逃がし形を先に採ると「勧めた文字列」と「下書きに書かれる文字列」が食い違う
@@ -1301,7 +1316,7 @@ extension MCPServer {
             // 注記に出すと**同じラベルが1つの応答の中で2表記**になる(実測: Google マップの
             // `"​​埼京線​"`)。読み手はこれを別物と読む。数える側も揃える —— ゼロ幅の有無だけが
             // 違う2件は `FlowMatchMode.matches` では区別できず、実際に曖昧だから
-            let label = FlowMatchMode.normalizeInvisibleCharacters(e.label ?? "")
+            let label = SnapshotRenderer.displayText(e.label ?? "")
             guard !label.isEmpty else { continue }
             groups[label, default: []].append(e)
         }

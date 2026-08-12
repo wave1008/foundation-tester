@@ -33,11 +33,13 @@ public enum SnapshotRenderer {
         }
         // **数えるのは描く前**: 畳んだ群の中で隠した分まで足すと二重に数える
         let hidden = interactiveOnly
-            ? snapshot.elements.filter { !isSubstantive($0, flagging: flagging) }.count : 0
+            ? snapshot.elements.filter {
+                isHiddenByInteractiveOnly($0, in: snapshot.elements, flagging: flagging)
+            }.count : 0
         if hidden > 0 {
-            lines.append("(interactiveOnly: \(hidden) layout-only line(s) hidden —"
-                + " refs and frames of the rest are unchanged; call again without it for the"
-                + " full tree)")
+            lines.append("(interactiveOnly: \(hidden) layout-only or duplicate-content line(s)"
+                + " hidden — refs and frames of the rest are unchanged; call again without it"
+                + " for the full tree)")
         }
         let bulk = collapsingBulk ? bulkGroups(snapshot, flagging: flagging) : [:]
         // **畳むのは群の一部でありうる**(D-2)ので、判定は id ではなく ref 単位で持つ。
@@ -62,7 +64,9 @@ public enum SnapshotRenderer {
                 }
                 continue
             }
-            if interactiveOnly, !isSubstantive(e, flagging: flagging) { continue }
+            if interactiveOnly, isHiddenByInteractiveOnly(e, in: snapshot.elements, flagging: flagging) {
+                continue
+            }
             let flag = flagging[e.ref].map { " \($0)" } ?? ""
             var idCount = e.identifier.flatMap { idCounts[$0] }.flatMap { $0 >= 2 ? $0 : nil }
             let label = e.label.map(FlowMatchMode.normalizeInvisibleCharacters) ?? ""
@@ -94,6 +98,42 @@ public enum SnapshotRenderer {
         if textInputTypes.contains(e.type) { return true }
         let text = (e.label ?? "") + (e.value ?? "") + (e.placeholder ?? "")
         return !FlowMatchMode.normalizeInvisibleCharacters(text).isEmpty
+    }
+
+    /// 操作可能な型か(operableTypes ∪ textInputTypes)。isSubstantive と
+    /// isRedundantWithOperableAncestor が同じ「操作可能」の定義を共有するための1箇所
+    private static func isOperableType(_ type: String) -> Bool {
+        BridgeSnapshotThinning.operableTypes.contains(type) || textInputTypes.contains(type)
+    }
+
+    /// interactiveOnly だけで効くもう1つの間引き: web ページの `link > staticText` のように、
+    /// 操作可能な祖先の行にまったく同じ文字が同じ矩形でもう1行出ている行を隠す
+    /// (実測: Yahoo 天気の Safari 表示で link/staticText の対がひたすら並び、interactiveOnly の
+    /// 削減がほぼ効かなかった)。**警告付きの行は絶対に隠さない**(isSubstantive と同じ最優先規則)。
+    /// 隠すのは描画だけ —— ref も frame も動かさないので ft_tap は変わらず撃てる
+    static func isRedundantWithOperableAncestor(_ e: ElementInfo, in elements: [ElementInfo],
+                                                flagging: [Int: String]) -> Bool {
+        if flagging[e.ref] != nil { return false }
+        if e.scrollable == true { return false }
+        if isOperableType(e.type) { return false }
+        let ownLabel = e.label.map(FlowMatchMode.normalizeInvisibleCharacters) ?? ""
+        let ownValue = e.value.map(FlowMatchMode.normalizeInvisibleCharacters) ?? ""
+        let ownText = ownLabel.isEmpty ? ownValue : ownLabel
+        guard !ownText.isEmpty else { return false }
+        return TapTargetGeometry.ancestors(of: e, in: elements).contains { ancestor in
+            isOperableType(ancestor.type)
+                && (ancestor.label.map(FlowMatchMode.normalizeInvisibleCharacters) ?? "")
+                    .contains(ownText)
+                && TapTargetGeometry.contains(ancestor.frame, e.frame)
+        }
+    }
+
+    /// interactiveOnly の事前カウント(L35 付近)と行スキップ(render 内)が**同じ述語**を通すための束ね。
+    /// 別々に判定を書くと、宣言する隠した件数と実際に消えた行数が食い違いかねない
+    static func isHiddenByInteractiveOnly(_ e: ElementInfo, in elements: [ElementInfo],
+                                          flagging: [Int: String]) -> Bool {
+        !isSubstantive(e, flagging: flagging)
+            || isRedundantWithOperableAncestor(e, in: elements, flagging: flagging)
     }
 
     /// 1行に畳む最小の群サイズ。**20** はブリッジ側の bulk tier(同一 id ×20 以上を
@@ -214,10 +254,10 @@ public enum SnapshotRenderer {
         var current = "   "
         let sample = group.prefix(bulkIndexSampleCount)
         for e in sample {
-            let label = e.label.map(FlowMatchMode.normalizeInvisibleCharacters) ?? ""
+            let label = e.label.map(Self.displayText) ?? ""
             let text = label.isEmpty
                 ? "(no label)[\(e.ref)]"
-                : "\(truncate(label, labelDisplayLimit))[\(e.ref)]"
+                : "\(displayTruncate(label, labelDisplayLimit))[\(e.ref)]"
             if current.count + text.count + 1 > bulkIndexLineWidth {
                 lines.append(current)
                 current = "   "
@@ -249,23 +289,56 @@ public enum SnapshotRenderer {
     /// 「1行が長すぎて grep しにくい」を避けるだけの値
     static let bulkIndexLineWidth = 110
 
+    /// 行区切り文字(`\n` `\r` `\r\n` U+2028 U+2029 タブ・垂直タブ・改頁)を空白1つへ畳む。
+    /// **実データの罠**(2026-08-12・Yahoo!天気 Safari 表示): 複数テキストノードを改行で
+    /// 連結した a11y ラベルが実在し、素通しすると「1要素1行」の出力契約が壊れる。
+    /// 通常の空白・全角空白(U+3000)は見た目が違うので畳まない(`TextNormalization.text` と同じ意図)。
+    /// 連続する行区切りは1つに畳む。**`.selector` 照合は空白を種類問わず畳んで比較する**ので、
+    /// 畳んだ文字列は元の(改行入りの)ラベルに一致し続ける。**実体はここ1箇所**——他は呼ぶだけ
+    private static let lineBreakingScalars: Set<Unicode.Scalar> = [
+        "\n", "\r", "\u{2028}", "\u{2029}", "\t", "\u{0B}", "\u{0C}",
+    ]
+    public static func foldLineBreaks(_ s: String) -> String {
+        var out = ""
+        out.reserveCapacity(s.count)
+        var previousWasBreak = false
+        for scalar in s.unicodeScalars {
+            if lineBreakingScalars.contains(scalar) {
+                if !previousWasBreak { out.unicodeScalars.append(" ") }
+                previousWasBreak = true
+            } else {
+                out.unicodeScalars.append(scalar)
+                previousWasBreak = false
+            }
+        }
+        return out
+    }
+
+    /// 印字用の正規化: 行区切りを畳んでから不可視文字を正規化する。**この順で固定**——
+    /// 逆にしても `.text` 側は改行を素通しするので結果は変わらないが、「形(改行)を先に
+    /// 畳んでから中身(NBSP 等)を正規化する」と読める順に揃えておく
+    public static func displayText(_ s: String) -> String {
+        FlowMatchMode.normalizeInvisibleCharacters(foldLineBreaks(s))
+    }
+
     static func renderElement(_ e: ElementInfo, idCount: Int? = nil) -> String {
         var parts: [String] = ["[\(e.ref)]", e.type]
-        // 不可視文字は truncate の前に正規化する(ゼロ幅は除去・NBSP 等は通常空白へ)。
-        // **照合側と同じ1関数を通す**ので、ここから写した文字列は FlowMatchMode.matches と必ず一致する
-        let label = e.label.map(FlowMatchMode.normalizeInvisibleCharacters)
+        // 不可視文字・改行は truncate の前に正規化する(ゼロ幅は除去・NBSP 等は通常空白へ・
+        // 改行類は空白へ畳む)。**照合側と同じ1関数を通す**ので、ここから写した文字列は
+        // FlowMatchMode.matches(.selector 正規化)と必ず一致する
+        let label = e.label.map(Self.displayText)
         if let label, !label.isEmpty {
-            parts.append("\"\(truncate(label, labelDisplayLimit))\"")
+            parts.append("\"\(displayTruncate(label, labelDisplayLimit))\"")
         }
         if let id = e.identifier, !id.isEmpty {
             let suffix = idCount.map { " ×\($0)" } ?? ""
             parts.append("id=\(id)\(suffix)")
         }
-        let value = e.value.map(FlowMatchMode.normalizeInvisibleCharacters)
+        let value = e.value.map(Self.displayText)
         if let value, !value.isEmpty {
-            parts.append("value=\"\(truncate(value, valueDisplayLimit))\"")
+            parts.append("value=\"\(displayTruncate(value, valueDisplayLimit))\"")
         }
-        let placeholder = e.placeholder.map(FlowMatchMode.normalizeInvisibleCharacters)
+        let placeholder = e.placeholder.map(Self.displayText)
         if let placeholder, !placeholder.isEmpty, placeholder != label {
             parts.append("ph=\"\(truncate(placeholder, valueDisplayLimit))\"")
         }
@@ -303,6 +376,47 @@ public enum SnapshotRenderer {
         s.count <= max ? s : String(s.prefix(max)) + "…"
     }
 
+    /// URL らしい文字列か(`scheme://…` またはスキーム省略形 `host.tld/…`)。true のときだけ
+    /// 中略切り詰めへ回す —— URL は末尾ほど固有なので、先頭だけを残す通常の切り詰めだと
+    /// 「どのページに居るか」が分からなくなる(実測: `tenki.jp/lite/forecast/3/16/44…` に
+    /// リダイレクトされたことに2往復気付けなかった)。正規表現は使わず素の文字列操作で書く
+    static func isURLLike(_ s: String) -> Bool {
+        if s.contains("://") { return true }
+        func isHostChar(_ c: Character) -> Bool {
+            c.isASCII && (c.isLetter || c.isNumber || c == "." || c == "-")
+        }
+        guard let first = s.first, first.isASCII, first.isLetter || first.isNumber else {
+            return false
+        }
+        var idx = s.startIndex
+        while idx < s.endIndex, isHostChar(s[idx]) {
+            idx = s.index(after: idx)
+        }
+        let host = s[s.startIndex..<idx]
+        guard let lastDot = host.lastIndex(of: "."), lastDot > host.startIndex else { return false }
+        let tld = host[host.index(after: lastDot)...]
+        guard tld.count >= 2, tld.allSatisfy({ $0.isASCII && $0.isLetter }) else { return false }
+        guard idx < s.endIndex else { return true }
+        return s[idx] == "/" || s[idx] == "?"
+    }
+
+    /// 中略切り詰め: 先頭+"…"+末尾で合計を上限ちょうどにする。先頭を末尾より1文字だけ多く配分
+    /// (上限30なら先頭15・末尾14)。配分できないほど上限が小さいときは通常の先頭切りに委ねる
+    static func truncateMiddle(_ s: String, _ max: Int) -> String {
+        guard s.count > max else { return s }
+        let budget = max - 1
+        guard budget >= 2 else { return truncate(s, max) }
+        let headLen = (budget + 1) / 2
+        let tailLen = budget - headLen
+        return String(s.prefix(headLen)) + "…" + String(s.suffix(tailLen))
+    }
+
+    /// label/value の描画から呼ぶ切り詰めの入口。URL らしい文字列だけ中略、それ以外は
+    /// 従来どおり先頭切り(placeholder は対象外 — URL であることはまず無く判定コストだけ増える)
+    static func displayTruncate(_ s: String, _ max: Int) -> String {
+        isURLLike(s) ? truncateMiddle(s, max) : truncate(s, max)
+    }
+
     /// 描画で切り詰める上限。**セレクタに使えるかを決める値**なので注記側と共有する
     /// (片方だけ変えると「切り詰めた」と言いながら実は完全な文字列、が起きる)
     public static let labelDisplayLimit = 40
@@ -313,13 +427,17 @@ public enum SnapshotRenderer {
     /// `*新宿, JR JA*` のように「, 」を含み、複数要素の列挙に読める。実際に読み違えて
     /// endsWith セレクタを渡し7スクロール空振りした事故がある(2026-08-10)。
     /// **切った結果が空になるとき(区切りが先頭にある等)だけ元の文字列をそのまま使う**
-    /// (何も出さないよりは元の12文字の方がまだ手掛かりになる)
-    private static func quotedPartialMatchExample(_ prefix: String) -> String {
+    /// (何も出さないよりは元の12文字の方がまだ手掛かりになる)。
+    /// **渡された断片に "…" が混じっていても例には含めない**(呼び出し元が中略済みの
+    /// 表示文字列を誤って渡しても、絶対に一致しない例を出さないための保険)
+    static func quotedPartialMatchExample(_ rawFragment: String) -> String {
+        let fragment = rawFragment.range(of: "…")
+            .map { String(rawFragment[..<$0.lowerBound]) } ?? rawFragment
         let cutIndex = [", ", "、"]
-            .compactMap { prefix.range(of: $0)?.lowerBound }
-            .filter { $0 > prefix.startIndex }
+            .compactMap { fragment.range(of: $0)?.lowerBound }
+            .filter { $0 > fragment.startIndex }
             .min()
-        let text = cutIndex.map { String(prefix[..<$0]) } ?? prefix
+        let text = cutIndex.map { String(fragment[..<$0]) } ?? fragment
         return "\"*\(text)*\""
     }
 
@@ -327,14 +445,22 @@ public enum SnapshotRenderer {
     /// 読み手は木に出ている文字列をそのままセレクタへ写すので、これが無いと
     /// 「木に居るのに waitFor が当たらない」= 照合のバグに見える(2026-08-07 に実アプリで実測。
     /// Google マップの1画面に40字超が3件あり、そのまま渡した waitFor が外れた)。
-    /// 例に出す前方一致は**実際に当たる形**を組む(切り詰めた文字列の `…` を落とすだけでは
-    /// 末尾が語の途中で切れていても当たるので、そのまま `*…*` で包める)
+    /// **URL らしいラベルは中略表示**(先頭も末尾も生きている)なので、その旨と末尾側の
+    /// 例も出す —— 先頭一致しか案内しないと、URL では最も固有な末尾側を見落とす
     public static func truncatedLabelNote(_ snapshot: SnapshotResponse) -> String? {
         let longest = snapshot.elements
-            .compactMap { $0.label.map(FlowMatchMode.normalizeInvisibleCharacters) }
+            .compactMap { $0.label.map(Self.displayText) }
             .filter { $0.count > labelDisplayLimit }
             .max(by: { $0.count < $1.count })
         guard let longest else { return nil }
+        if isURLLike(longest) {
+            let example = quotedPartialMatchExample(String(longest.suffix(min(12, labelDisplayLimit))))
+            return "note: URL/path-like labels longer than \(labelDisplayLimit) characters are"
+                + " shown abridged as \"start…end\" — that \"…\" is display only, so copying the"
+                + " printed text into a selector will never match. Use a partial match from"
+                + " either end instead (e.g. \(example) — the *text* form matches anywhere in"
+                + " the label).\n"
+        }
         let example = quotedPartialMatchExample(String(longest.prefix(min(12, labelDisplayLimit))))
         return "note: labels longer than \(labelDisplayLimit) characters are shown cut off with"
             + " \"…\" — that \"…\" is display only, so copying the printed text into a selector"
@@ -342,22 +468,52 @@ public enum SnapshotRenderer {
             + " (e.g. \(example) — the *text* form matches anywhere in the label).\n"
     }
 
-    /// 渡されたセレクタが**この画面のどれかのラベルの切り詰め表示**そのものか。
-    /// `waitFor`/`scrollTo` が外れた理由がこれなら、綴りでも待ち時間でもないと名指しできる
-    public static func truncatedSelectorHint(_ selectorText: String,
-                                             in snapshot: SnapshotResponse) -> String? {
-        let bare = selectorText.trimmingCharacters(in: CharacterSet(charactersIn: "*"))
-        guard bare.hasSuffix("…") else { return nil }
+    /// 末尾 "…" = 通常の先頭切り。貼られた文字列がどれかのラベルの先頭一致なら、
+    /// それは表示専用の切り詰めそのものと確定できる
+    private static func prefixTruncationHint(_ bare: String, in snapshot: SnapshotResponse) -> String? {
         let prefix = String(bare.dropLast())
         guard !prefix.isEmpty else { return nil }
         let full = snapshot.elements
-            .compactMap { $0.label.map(FlowMatchMode.normalizeInvisibleCharacters) }
+            .compactMap { $0.label.map(Self.displayText) }
             .first { $0.hasPrefix(prefix) && $0.count > prefix.count }
         guard full != nil else { return nil }
         let example = quotedPartialMatchExample(String(prefix.prefix(min(12, prefix.count))))
         return " The text you passed ends with \"…\", which is how a label longer than"
             + " \(labelDisplayLimit) characters is *displayed* — it is not part of the label,"
             + " so an exact match cannot succeed. Use a prefix instead (e.g. \(example))."
+    }
+
+    /// 中間の "…" = URL/パスの中略表示そのものを貼られたか。label/value の両方を対象にする
+    /// (実測でいちばん貼られやすいのはアドレスバーの value)。displayTruncate した結果と
+    /// 実際に一致するときだけ確定として扱う(似た文字列を誤検知しない)
+    private static func middleTruncationHint(_ bare: String, in snapshot: SnapshotResponse) -> String? {
+        guard let ellipsis = bare.range(of: "…"), ellipsis.lowerBound > bare.startIndex,
+              ellipsis.upperBound < bare.endIndex else { return nil }
+        let head = String(bare[..<ellipsis.lowerBound])
+        let matches = snapshot.elements.contains { e in
+            let label = e.label.map(Self.displayText)
+            let value = e.value.map(Self.displayText)
+            return (label.map { isURLLike($0) && displayTruncate($0, labelDisplayLimit) == bare } ?? false)
+                || (value.map { isURLLike($0) && displayTruncate($0, valueDisplayLimit) == bare } ?? false)
+        }
+        guard matches else { return nil }
+        let example = quotedPartialMatchExample(head)
+        return " The text you passed contains \"…\" in the middle, which is how a URL/path-like"
+            + " value longer than the display limit is *abridged* — it is not part of the value,"
+            + " so an exact match cannot succeed. Use a partial match from either end instead"
+            + " (e.g. \(example))."
+    }
+
+    /// 渡されたセレクタが**この画面のどれかのラベル/値の切り詰め表示**そのものか。
+    /// `waitFor`/`scrollTo` が外れた理由がこれなら、綴りでも待ち時間でもないと名指しできる。
+    /// 末尾 "…"(通常切り詰め)と中間 "…"(URL の中略)の両方を検出する
+    public static func truncatedSelectorHint(_ selectorText: String,
+                                             in snapshot: SnapshotResponse) -> String? {
+        let bare = selectorText.trimmingCharacters(in: CharacterSet(charactersIn: "*"))
+        if bare.hasSuffix("…") {
+            return prefixTruncationHint(bare, in: snapshot)
+        }
+        return middleTruncationHint(bare, in: snapshot)
     }
 
     public static let textInputTypes: Set<String> = [

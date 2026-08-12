@@ -102,7 +102,9 @@ final class MCPRoundTripTests: XCTestCase {
         let filtered = bodyText(try await server.call(
             tool: "ft_tap", args: ["ref": 1, "snapshotAfter": true, "interactiveOnly": true]))
         XCTAssertFalse(filtered.contains("id=spacer"), filtered)
-        XCTAssertTrue(filtered.contains("interactiveOnly: 1 layout-only line(s) hidden"), filtered)
+        XCTAssertTrue(
+            filtered.contains("interactiveOnly: 1 layout-only or duplicate-content line(s) hidden"),
+            filtered)
     }
 
     /// expandBulk も同様に効くこと(20+ 同一 id の非対話葉が個別列挙に戻る)

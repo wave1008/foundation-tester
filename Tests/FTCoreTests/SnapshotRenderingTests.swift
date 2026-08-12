@@ -312,7 +312,7 @@ final class SnapshotRenderingTests: XCTestCase {
     func testInteractiveOnlyHidesLayoutContainers() {
         let text = SnapshotRenderer.render(mixedSnapshot(), interactiveOnly: true)
         XCTAssertFalse(text.contains("icon_container"), text)
-        XCTAssertTrue(text.contains("2 layout-only line(s) hidden"), text)
+        XCTAssertTrue(text.contains("2 layout-only or duplicate-content line(s) hidden"), text)
     }
 
     /// 操作できる型・文字を持つもの・スクロール容器は残す(`scrollFrame:` に渡せなくなるため)

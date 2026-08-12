@@ -230,7 +230,7 @@ final class MCPAuditFixes20260812Round13Tests: XCTestCase {
             message: "The driver returned an error (500): cannot type into the field that was"
                 + " tapped (ACTION_SET_TEXT refused, 4000ms waited)")
         XCTAssertTrue(hint.contains("WITHOUT ref"), hint)
-        XCTAssertTrue(hint.contains("ft_tap"), hint)
+        XCTAssertTrue(hint.contains("already tapped"), hint)
     }
 
     /// **陰性**: 関係のない失敗・関係のないツール・ref なしの呼び方には出さない

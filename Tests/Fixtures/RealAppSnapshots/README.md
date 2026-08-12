@@ -35,6 +35,16 @@
 |---|---|---|---|
 | `ios-maps_route_options` | picker | Apple マップの経路オプション | **`pickerWheel` が入れ物を上下にはみ出して申告する形**。`datePicker` (41,246.7 320x216) の中のホイール3本が (y 209.2・高さ 291) で、その上のセグメンテッドコントロールの中心を覆っていると判定していた(**overlay 10→4 の誤検知6件**。`OcclusionGeometry.reportsContentExtent` で解消)。残る overlay 4 は「シート下端に貼り付く `Reset` が料金セクションの行を覆う」= スクリーンショットで実描画を確認した真陽性 |
 
+**2026-08-12 に足した4枚**(ブラウザ = 初見のアーキタイプ。`webview` の1枚は「記事の a11y 木」だけで、
+アドレスバー・オーバーレイ・広告で動くレイアウトを代表しない):
+
+| ファイル | アーキタイプ | 由来 | 何を代表するか |
+|---|---|---|---|
+| `ios-browser_nationwide` | browser | Safari / Yahoo!天気「全国の天気」 | **実 web ページの高密度**(120件 + 38件が上限で脱落)。`link` とその子 `staticText` が**同じラベル・同じ frame で並ぶ**形 = `interactiveOnly` が効かない witness。無名 `link` が多数 |
+| `ios-browser_startpage` | browser | Safari / アドレスバーをタップした状態 | **オーバーレイ配下が木に残る**形。スタートページ + `keyboardFrame` が出ているのに、**背後の WebView 本文がそのまま列挙される**(`ios-browser_nationwide` の続きの状態) |
+| `and-browser_weather` | browser | Chrome / Yahoo!天気(同一ページの Android 版) | **同じページで OS によりラベルが別物**になる witness —— 市区町村リンクが `13101`/`13102`(内部コード。iOS は `千代田区`)、天気概況の `img alt` はツリーに出ない。下端に貼り付く広告あり |
+| `and-browser_urlmenu` | browser | Chrome / URL バーのポップアップ | **背景を木から落とす**オーバーレイ(21要素・`keyboardFrame` あり)。`ios-browser_startpage` と**対の陰性対照**(iOS は落とさない) |
+
 **採り直すとき**は基準値も一緒に更新する(`SweepHarnessTests.baselines`)。件数が増えたら
 まず誤検知を疑い、真陽性だと確かめてから基準値を上げること —— 黙って上げると、
 この砦は「現状を追認するだけ」になる。

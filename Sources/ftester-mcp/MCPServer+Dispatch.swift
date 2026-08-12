@@ -374,17 +374,22 @@ extension MCPServer {
             + "\(crossed) Pass udid/port/serial to be explicit.)\n"
     }
 
-    /// `ft_type(ref:)` が Android の注入器に断られたときの回避策。**挙動は変えない** ——
-    /// ACTION_SET_TEXT を受け付けない widget(NumberPicker など)が実在し、その欄でも
-    /// **フォーカス済みの欄へキーで撃つ経路(ref なし)は通る**(2026-08-12 にエミュレータで実測)。
-    /// 失敗文に書かないと、読み手は「この欄には入力できない」と読んで諦める。
+    /// `ft_type(ref:)` が Android の注入器に断られたときの助言。**この 500 が返る時点で
+    /// ブリッジは既に tap を撃ち終えている**(BridgeRouter.handleType が tap → type の順で動き、
+    /// tap 後に断られる)ので、「まず tap しろ」と言うと二度撃ちになるうえ、擬似検索ボックスが
+    /// 実入力欄へ差し替わる画面(ブラウザの新規タブなど)では**渡した ref がもう木に無い**ため
+    /// 再タップ自体が別の失敗を返す(2026-08-12 実測)。正解は ref なしで撃ち直すこと
+    /// (フォーカス済みの欄へキーで撃つ経路は通る)。
     /// 走査から切り離した純粋関数(デバイスが要ると、この枝はテストで一度も実行されない)
     static func setTextRefusedHint(tool: String, args: [String: Any], message: String) -> String {
         guard tool == "ft_type", args["ref"] != nil,
               message.contains(setTextRefusalMarker) else { return "" }
-        return " Some widgets refuse ACTION_SET_TEXT outright (Android's NumberPicker among them)."
-            + " Tap the field with ft_tap first, then call ft_type WITHOUT ref — that path types"
-            + " into the focused field through the keyboard instead of setting its text."
+        return " This call already tapped the field before typing into it — that tap may have"
+            + " switched focus to a different field (a search box that hands off to a real input,"
+            + " common in browsers). Do not re-tap the ref you passed (it is likely no longer in"
+            + " the tree); retry ft_type WITHOUT ref first (it types into whichever field is now"
+            + " focused, through the keyboard). If that still fails, take a fresh ft_snapshot."
+            + " Some widgets refuse ACTION_SET_TEXT outright (Android's NumberPicker among them)."
     }
 
     /// InputInjector.java(AndroidRunner/src/com/example/ftbridge/)がこの文言を変えると、
@@ -823,7 +828,8 @@ extension MCPServer {
                         } ?? (Self.notationHint(waitFor, in: snapshot)
                               // **部分一致が出ていたときは出さない**: そちらのほうが具体的な
                               // ヒントなので、的の外れた推測を並べて紛らわせない(2026-08-10)
-                              + Self.similarLabelsHint(waitFor, in: snapshot))) + "\n"
+                              + Self.similarLabelsHint(waitFor, in: snapshot)))
+                        + Self.waitForScrollHint(in: snapshot) + "\n"
                 }
             }
             // **プラットフォームはドライバの実体から採る**(profile 指定時は args["platform"] が

@@ -134,6 +134,13 @@ final class MCPSelectorDurabilityTests: XCTestCase {
     /// `#dialpad_key_layout`/`#dialpad_key_number` ×12)で、**ラベルもテキストも無いので
     /// 絞り込みようがない = indexed が正しい格付け**。絞り込みの退行ではなく、
     /// コーパスがその形を含むようになっただけ
+    ///
+    /// **2026-08-12 にブラウザ4枚を足して 254 → 316 / 1,320 → 1,624 要素**(19% で据え置き)。
+    /// 増分 62 と書けない側の増分 24 は**4枚に閉じている**(nationwide 32/6・startpage 30/8・
+    /// and-browser_weather 0/9・urlmenu 0/1)。理由は構造的で、**web ページには id が1つも無い**
+    /// —— 日本地図の地域リンクや `#favoritesItemIdentifierContent ×8` のようにラベルすら無い
+    /// 同型要素が並ぶので、indexed / 書けない が正しい格付けになる。
+    /// **割合(19% / 3%)は動いていない** = 絞り込みの退行ではない
     func testNarrowingKeepsIndexedAndUnwritableLow() throws {
         var indexed = 0, unwritable = 0, total = 0
         for name in try fixtureNames() {
@@ -148,12 +155,16 @@ final class MCPSelectorDurabilityTests: XCTestCase {
                 }
             }
         }
-        XCTAssertGreaterThan(total, 1200, "コーパスが縮んでいる = この砦は何も見ていない")
-        XCTAssertLessThanOrEqual(indexed, 260, "索引セレクタが増えている(実測 229)")
+        XCTAssertGreaterThan(total, 1500, "コーパスが縮んでいる = この砦は何も見ていない")
+        XCTAssertLessThanOrEqual(indexed, 330, "索引セレクタが増えている(実測 316)")
         XCTAssertLessThanOrEqual(indexed * 100 / max(1, total), 20,
-                                 "索引セレクタの割合が増えている(実測 18%)"
+                                 "索引セレクタの割合が増えている(実測 19%)"
                                  + " —— 画面を足しただけでは上がらない指標なので、絞り込みの退行を疑う")
-        XCTAssertLessThanOrEqual(unwritable, 35, "書けない要素が増えている(実測 28)")
+        XCTAssertLessThanOrEqual(unwritable, 55, "書けない要素が増えている(実測 52)")
+        // **書けない側にも割合ゲートを置く**(2026-08-12)。絶対数だけだと、コーパスを
+        // 広げるたびに上限を上げる儀式になる(索引側で既に踏んだ轍)
+        XCTAssertLessThanOrEqual(unwritable * 100 / max(1, total), 4,
+                                 "書けない要素の割合が増えている(実測 3%)")
     }
 
     /// コーパスに両方の格付けが出ていること(片側しか見ていない状態を防ぐ)
