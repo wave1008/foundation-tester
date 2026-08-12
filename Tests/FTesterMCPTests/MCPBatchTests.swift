@@ -2,8 +2,10 @@
 //
 // 実行は StepExecutor に委ねる(ft_scroll_to と同じ driver/ヒント解決を共有 —
 // MCPServer.resolveExecutorHints)。ここで固定するのは MCP 側の契約だけ:
-// 受け付けるコマンドの絞り込み(DSLCommandIndex 由来)・ref 拒否・上限・最初の失敗で停止・
-// 木は最後に1回だけ・実行した手が InteractionLog に残ること。
+// 受け付けるコマンドの絞り込み(DSLCommandIndex 由来)・セレクタを取らないコマンドでの ref 拒否・
+// 上限・最初の失敗で停止・木は最後に1回だけ・実行した手が InteractionLog に残ること。
+// **1手目に限る ref の受理・解決・2手目以降の拒否は MCPBatchFirstStepRefTests が見る**
+// (2026-08-12)。
 
 import XCTest
 import FTCore
@@ -169,18 +171,20 @@ final class MCPBatchTests: XCTestCase {
         XCTAssertEqual(driver.calls, [], "上限超えはドライバに一度も触れないこと")
     }
 
-    // MARK: - (g) ref は行の文法で書けない(未対応ラベルの拒否経路が自動的に拒む)
+    // MARK: - (g) ref は2手目以降で書けない(1手目だけの例外は MCPBatchFirstStepRefTests)
 
-    func testRefIsNotAccepted() async {
+    /// **2026-08-12 に契約が変わった**: 1手目に限り ref を受け付けるようになったので、
+    /// このケース(1手目の ref・直前に ft_snapshot を撮っていない)はもう構文レベルでは拒否
+    /// されない — 解決しようとして「直近の snapshot に無い」で止まる。1手目の受理・解決・
+    /// 2手目以降の拒否は MCPBatchFirstStepRefTests が見る。ここでは
+    /// 「セレクタを取らないコマンドは今も無条件で拒否される」ことだけ固定する
+    func testRefOnANonSelectorCommandIsStillRejected() async {
         do {
-            _ = try await server.call(tool: "ft_batch", args: steps("tap ref: 1"))
-            XCTFail("ref 付きのステップが通った")
+            _ = try await server.call(tool: "ft_batch", args: steps("swipe ref: 1"))
+            XCTFail("swipe に ref 付きのステップが通った")
         } catch {
-            // **理由と書き換え方まで返す**: 「そんな引数は無い」で終えると、渡し方を探して
-            // もう1往復する(2026-08-10 のデバイス確認で実際に読みにくかった)
             let message = error.localizedDescription
-            XCTAssertTrue(message.contains("selector, not a ref"), message)
-            XCTAssertTrue(message.contains("tap '#id'"), message)
+            XCTAssertTrue(message.contains("has no \"ref:\" parameter"), message)
         }
         XCTAssertEqual(driver.calls, [])
     }

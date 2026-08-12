@@ -269,15 +269,25 @@ extension MCPServer {
             + "or commas: type '#field' 'abc'; scrollTo '#item' direction: .down. "
             + "Argument names are whatever ft_dsl_commands prints. "
             + "A passing batch converts 1:1 into scenario lines (Swift needs parentheses "
-            + "and commas). Only operation/scroll commands run — lifecycle/data-wiping "
-            + "commands (launchApp, clearAppData, …) and assertions are rejected with the tool "
-            + "to call instead. Target elements by selector, not ref (refs go stale between "
-            + "steps).", [
+            + "and commas) — steps that used ref are converted using the selector they were "
+            + "resolved to, not the ref. Only operation/scroll commands run — lifecycle/"
+            + "data-wiping commands (launchApp, clearAppData, …) and assertions are rejected "
+            + "with the tool to call instead. Target elements by selector, not ref, except on "
+            + "the FIRST step: ref (from ft_snapshot/ft_tap/ft_scroll_to) is accepted there "
+            + "because nothing has run yet to make it stale; every later step needs a selector, "
+            + "since a step can change the tree and a ref taken before it would silently hit a "
+            + "different element by then. A first-step ref is re-checked against a fresh "
+            + "snapshot and converted to the selector it resolves to (reported in the reply) "
+            + "before anything runs; a ref with no selector that would pick it out uniquely is "
+            + "rejected — call ft_tap with that ref instead, then batch the rest.", [
             "steps": ["type": "string",
                       "description": "Up to \(batchStepLimit) DSL lines in one string, e.g. "
                         + "\"tap '#nav_input'; type '#field' 'batch'; "
                         + "scrollTo '#btn_submit' direction: .down\" — ';' and newlines "
-                        + "(outside quotes) separate steps"],
+                        + "(outside quotes) separate steps. The first step may target its "
+                        + "element with ref: N (an ft_snapshot ref) instead of a selector — "
+                        + "e.g. \"tap ref: 12; type '#field' 'batch'\" — every step after the "
+                        + "first must use a selector"],
             "expandBulk": expandBulkProperty,
             "interactiveOnly": interactiveOnlyProperty,
         ], required: ["steps"]),

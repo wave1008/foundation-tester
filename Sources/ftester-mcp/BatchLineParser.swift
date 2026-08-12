@@ -366,8 +366,12 @@ enum BatchStepResolver {
         var errorDescription: String? { message }
     }
 
+    /// `stepIndex` は0始まり(0 = その呼び出しの1手目)。**ref はステップ0でだけ**、かつ
+    /// `declaredKeys` に "selector" があるコマンドでだけ受け付ける ——
+    /// 1手目はまだどの手も画面を変えていないので、ref が撮られたスナップショットと
+    /// このステップの間に自分自身が挟まらない(2手目以降は違う: 前の手が木を変え得る)
     static func resolve(command: String, signature: String, args: [BatchLineArg],
-                        declaredKeys: [String]) throws -> [String: Any] {
+                        declaredKeys: [String], stepIndex: Int = 0) throws -> [String: Any] {
         let forms = BatchArgSpecTable.forms(for: command, signature: signature)
         let positionalArgs = args.filter { $0.label == nil }
         let labeledArgs = args.filter { $0.label != nil }
@@ -392,20 +396,26 @@ enum BatchStepResolver {
         for arg in labeledArgs {
             let label = arg.label!
             let dictKey = BatchArgSpecTable.dictKeyAliases[label] ?? label
+            // **ref は declaredKeys に載らない**(セレクタを取るビルダも "ref" を宣言しない —
+            // それを読むのは MCPServer+Batch.swift 側の1手目だけの解決経路で、通常のビルダは
+            // 常に "selector" しか読まない)。ここでだけ特別扱いし、条件を満たさなければ
+            // 他の未知ラベルと同じ「そんな引数は無い」に合流させる
+            if label == "ref", declaredKeys.contains("selector") {
+                guard stepIndex == 0 else {
+                    throw ResolveError(message: Self.refOnlyOnFirstStepMessage(command))
+                }
+                guard raw["ref"] == nil else {
+                    throw ResolveError(message: "\(command) got \"ref:\" more than once.")
+                }
+                try assign(&raw, dictKey: "ref", value: arg.value, command: command,
+                          displayName: "ref")
+                continue
+            }
             guard declaredKeys.contains(dictKey) else {
                 if universe.contains(label) {
                     throw ResolveError(message: "\(command) does not support \"\(label):\" in"
                         + " ft_batch — supported here: \(declaredKeys.joined(separator: ", "))."
                         + " Write the full form in the scenario instead.")
-                }
-                // **ref だけは理由まで返す**: 「そんな引数は無い」で終えると、渡し方を探して
-                // もう1往復する。ref は DSL に存在しない概念なので、代わりに何を書くかまで言う
-                if label == "ref" {
-                    throw ResolveError(message: "ft_batch steps take a selector, not a ref — a ref"
-                        + " is only valid against the snapshot it came from, and each step can"
-                        + " change the tree, so a later step's ref would silently hit a different"
-                        + " element. Write \(command) '#id' (or a label / .type) instead;"
-                        + " ft_snapshot prints the id next to each ref.")
                 }
                 throw ResolveError(message: "\(command) has no \"\(label):\" parameter —"
                     + " signature: \(signature). See ft_dsl_commands.")
@@ -416,7 +426,23 @@ enum BatchStepResolver {
             try assign(&raw, dictKey: dictKey, value: arg.value, command: command,
                       displayName: label)
         }
+        // **selector と ref を両方書いたら拒否**(順序に関係なく検出するため両ループの後で見る):
+        // どちらを使うか曖昧になる
+        if raw["selector"] != nil, raw["ref"] != nil {
+            throw ResolveError(message: "\(command) got both a selector and \"ref:\" — write one"
+                + " or the other, not both.")
+        }
         return raw
+    }
+
+    /// 2手目以降に ref が来たときの拒否文言。1手目でだけ使える理由(なぜ2手目以降は信用できないか)
+    /// まで言う —— 「そんな引数は無い」で終えると、渡し方を探してもう1往復する
+    private static func refOnlyOnFirstStepMessage(_ command: String) -> String {
+        "ft_batch steps take a selector, not a ref — except on the very first step, a ref is only"
+            + " valid against the snapshot it came from, and each step can change the tree, so a"
+            + " later step's ref would silently hit a different element. Write \(command) '#id'"
+            + " (or a label / .type) instead, or move this step to be first;"
+            + " ft_snapshot prints the id next to each ref."
     }
 
     // このバッチ辞書語彙で使われている全キーの型。3集合はどれとも重ならない
@@ -425,7 +451,7 @@ enum BatchStepResolver {
     /// 「does not accept」で弾かれる。`SharedKeyTypeCoverageTests` が漏れを検出する)
     static let stringKeys: Set<String> = ["selector", "text", "direction", "to", "scrollFrame",
                                           "orientation"]
-    static let intKeys: Set<String> = ["maxSwipes", "repeat"]
+    static let intKeys: Set<String> = ["maxSwipes", "repeat", "ref"]
     static let doubleKeys: Set<String> = [
         "holdSeconds", "timeout", "scale", "durationSeconds", "dxRatio", "dyRatio",
     ]

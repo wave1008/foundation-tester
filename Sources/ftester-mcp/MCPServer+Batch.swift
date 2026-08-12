@@ -289,17 +289,34 @@ extension MCPServer {
         return "call ft_dsl_commands name: \(command) to see what it does."
     }
 
+    /// 1手ぶんの計画。**1手目に限り ref を持てる**(`pendingRef` が非 nil)。ref をセレクタへ
+    /// 解決するには生きたスナップショットが要る(RefGuard の再照合 + SelectorNaming の一意性検査)
+    /// ので、その解決だけは実行ループの直前(driver 取得後)まで持ち越す —— `step`/`summary` は
+    /// その間ダミー(実行はされない。`resolvePendingRef` が上書きしてから使う)
+    struct BatchPlannedStep {
+        var step: FlowStep
+        var summary: String
+        var pendingRef: PendingBatchRef?
+    }
+
+    /// 1手目の ref を解決するのに要る材料。`raw` は selector 抜き(解決後にそこへ差し込んで
+    /// 同じ builder へ通す —— セレクタが書ける手なら builder の組み立てロジックを2つ持たない)
+    struct PendingBatchRef {
+        let ref: Int
+        let raw: [String: Any]
+        let builder: BatchStepBuilder
+    }
+
     /// 1手(DSL の呼び出し1行)の検証(**デバイスに触らない**。実行前に全行へ通す)。
     /// 構文は `BatchLineParser`(純粋関数)、引数の妥当性は `BatchStepResolver` に委ね、ここは
     /// 「コマンド名は実在するか」「カテゴリは operation/scroll か」「1ステップへ翻訳できるか」の
     /// 3段だけを見る(既存の拒否経路。名前・カテゴリのメッセージは変えない)。
     ///
-    /// **ref は書けない**: 行の文法にはセレクタと数値・文字列リテラルしか無く、`ref: 5` のような
-    /// ラベルは(どのコマンドの signature にも無いので)`BatchStepResolver` の「そのラベルは存在
-    /// しない」経路が自動的に拒む。以前あった専用の ref チェックは、この経路が無かった旧オブジェクト
-    /// 形(`{"ref": 5}` を直接渡せた)のためのもので、行形式では素通りする余地が無くなったため削除した
-    /// (`testRefIsNotAccepted` を新形式へ書き換えて確認)
-    private static func planBatchStep(_ line: String) throws -> (step: FlowStep, summary: String) {
+    /// **ref はステップ0(1手目)でだけ、セレクタを取るコマンドでだけ書ける**
+    /// (`BatchStepResolver.resolve` が stepIndex とセレクタの有無で判定する)。通った場合、
+    /// `raw["ref"]` に整数が入り、`builder.build` はまだ呼ばない(セレクタが無いので呼べない)
+    /// —— `pendingRef` に包んで返し、解決は `batch(_:)` 側(driver 取得後)に委ねる
+    private static func planBatchStep(_ line: String, stepIndex: Int) throws -> BatchPlannedStep {
         let parsed: BatchParsedLine
         do {
             parsed = try BatchLineParser.parse(line)
@@ -336,11 +353,59 @@ extension MCPServer {
         let raw: [String: Any]
         do {
             raw = try BatchStepResolver.resolve(command: command, signature: info.signature,
-                                                args: parsed.args, declaredKeys: builder.keys)
+                                                args: parsed.args, declaredKeys: builder.keys,
+                                                stepIndex: stepIndex)
         } catch let error as BatchStepResolver.ResolveError {
             throw MCPError(error.message)
         }
-        return try builder.build(raw)
+        if let ref = raw["ref"] as? Int {
+            var withoutRef = raw
+            withoutRef["ref"] = nil
+            return BatchPlannedStep(step: FlowStep(action: command), summary: "\(command) ref \(ref)",
+                                    pendingRef: PendingBatchRef(ref: ref, raw: withoutRef, builder: builder))
+        }
+        let (step, summary) = try builder.build(raw)
+        return BatchPlannedStep(step: step, summary: summary, pendingRef: nil)
+    }
+
+    /// 1手目の ref をセレクタへ解決する。**ft_tap と同じ経路を通す**(2つ目の実装を作らない):
+    /// `verifiedRef` が RefGuard で再照合する(gone は throw・ghost/moved は警告付きで進む —
+    /// ft_tap の扱いと食い違わせない)。掴めた要素からステップを組む純粋な部分は
+    /// `buildResolvedRefStep` に切り出してある(デバイスへ触れないのでテストしやすい)
+    private func resolvePendingBatchRef(_ pending: PendingBatchRef, driver: AppDriver,
+                                        args: [String: Any]) async throws
+        -> (step: FlowStep, summary: String, note: String) {
+        let (resolvedRef, refNote) = try await verifiedRef(pending.ref, driver: driver, args: args)
+        guard let snapshot = lastSnapshots[Self.engineKey(args)],
+              let element = snapshot.elements.first(where: { $0.ref == resolvedRef }) else {
+            // verifiedRef が撮り直した木に無いことは実際には起きない(見つからなければ .gone で
+            // 既に throw している)が、将来ここが緩んでも黙って落ちないよう明示する
+            throw MCPError("ref [\(pending.ref)] could not be re-read after resolving —"
+                + " take a fresh ft_snapshot and try again")
+        }
+        return try Self.buildResolvedRefStep(pending, element: element, snapshot: snapshot,
+                                             refNote: refNote)
+    }
+
+    /// **純粋な部分**: 掴めた要素(`element`)から、ft_batch がそのまま実行できるステップを組む。
+    /// `SelectorNaming.graded` が「そのまま書けるセレクタ」を作る(ft_tap の推奨セレクタと同じ
+    /// 実装)。**graded が nil(セレクタが作れない)のときだけここで拒否する** —— RefGuard は
+    /// 「叩けるか」しか見ないので、「シナリオへ書けるセレクタがあるか」は別の関門
+    static func buildResolvedRefStep(_ pending: PendingBatchRef, element: ElementInfo,
+                                     snapshot: SnapshotResponse, refNote: String) throws
+        -> (step: FlowStep, summary: String, note: String) {
+        guard let graded = Self.SelectorNaming(snapshot).graded(for: element, in: snapshot) else {
+            throw MCPError("[\(pending.ref)] \(RefGuard.describe(element)) has no selector that"
+                + " picks it out uniquely on this screen, so ft_batch cannot target it (a batch"
+                + " step must be reproducible as a selector). Call ft_tap ref: \(pending.ref)"
+                + " instead, then run the rest as a separate ft_batch.")
+        }
+        var raw = pending.raw
+        raw["selector"] = graded.selector
+        let (step, summary) = try pending.builder.build(raw)
+        let caution = graded.durability == .indexed ? graded.durability.caution : ""
+        let note = " (ref \(pending.ref) resolved to this selector\(caution))" + refNote
+        return (step, summary, note)
     }
 
     /// steps の文字列を手に分割する(`;` と改行が区切り。引用符の中は区切らない ——
@@ -380,10 +445,10 @@ extension MCPServer {
         }
         // **全手を実行前に検証する**: 途中の手が弾かれると分かっているのに、それより前の手を
         // デバイスへ通すと、失敗前提の状態変化だけを残すことになる
-        var plans: [(step: FlowStep, summary: String)] = []
+        var plans: [BatchPlannedStep] = []
         for (index, line) in dslLines.enumerated() {
             do {
-                plans.append(try Self.planBatchStep(line))
+                plans.append(try Self.planBatchStep(line, stepIndex: index))
             } catch {
                 var message = "step \(index + 1): \(error.localizedDescription)"
                 // 閉じ忘れの引用符は後続の手をこの手に呑み込む(splitSteps は引用符の中の `;` で
@@ -404,16 +469,31 @@ extension MCPServer {
                                     uiFramework: uiFrameworkHint)
         let clock = ContinuousClock()
 
+        // **1手目の ref はここで初めて解決する**(driver が要る: RefGuard の再照合と
+        // SelectorNaming の一意性検査)。それでも実行ループの前 —— 「全手を実行前に検証する」を
+        // 崩さない。パーサが ref を1手目にしか通さないので、plans[1...] は pendingRef を持たない
+        var refResolutionNote: String?
+        if let pending = plans[0].pendingRef {
+            let resolved = try await resolvePendingBatchRef(pending, driver: batchDriver, args: args)
+            plans[0].step = resolved.step
+            plans[0].summary = resolved.summary
+            plans[0].pendingRef = nil
+            refResolutionNote = resolved.note
+        }
+
         var lines: [String] = []
         for (index, plan) in plans.enumerated() {
             let start = clock.now
             let outcome = await executor.execute(plan.step)
             let ms = Int((clock.now - start) / .milliseconds(1))
             // **実行した手はそのまま記録する**(利用者が書いた式のまま — 解決後の要素ではない。
-            // scrollTo の記録と同じ理由)。失敗した手も記録する: draft には失敗が残っていたほうが
-            // 「何を試して止まったか」が追える(InteractionLog は成否を持たず落とさない)
+            // scrollTo の記録と同じ理由)。ただし ref だった1手目は上で既にセレクタへ差し替え済み
+            // なので、記録されるのも解決後のセレクタを持つ step(ref は下書きに書けない)。
+            // 失敗した手も記録する: draft には失敗が残っていたほうが「何を試して止まったか」が
+            // 追える(InteractionLog は成否を持たず落とさない)
             interactions.record(InteractionLog.Entry(step: plan.step, unresolved: nil,
                                                      summary: plan.summary))
+            let refNote = index == 0 ? (refResolutionNote ?? "") : ""
             guard StepExecutor.isSuccess(outcome.status) else {
                 let reason: String
                 switch outcome.status {
@@ -422,7 +502,7 @@ extension MCPServer {
                 case .passed, .passedViaFallback, .healed:
                     reason = "could not confirm the result"
                 }
-                lines.append("\(index + 1). \(plan.summary) — FAILED (\(ms)ms): \(reason)")
+                lines.append("\(index + 1). \(plan.summary) — FAILED (\(ms)ms): \(reason)" + refNote)
                 // **止まった位置と、そこで見えている画面を一緒に返す**(scrollTo の failure と
                 // 同じ形: throw で isError にする — 呼び手が要求した手が最後まで実行されなかった
                 // という点で、要素へ届かなかった scrollTo と同種の失敗)
@@ -437,6 +517,7 @@ extension MCPServer {
                 okLine += " (matched via the fallback \(locator.summary))"
             }
             if let fallback = outcome.driverFallback { okLine += " (\(fallback))" }
+            okLine += refNote
             lines.append(okLine)
         }
         let final = try await freshSnapshot(batchDriver, args: args)
