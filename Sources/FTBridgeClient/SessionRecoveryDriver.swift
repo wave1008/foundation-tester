@@ -148,6 +148,10 @@ public final class SessionRecoveryDriver: AppDriver {
         response.elements = SnapshotDedupe.wrapperScrollMerge(response.elements)
         return response
     }
+    /// **転送必須**(既定実装に任せると最内のブリッジ接続へ届かず、上げたつもりで 120 のまま)
+    public func raiseElementLimitOnNextSnapshot(_ max: Int?) {
+        base.raiseElementLimitOnNextSnapshot(max)
+    }
     public var supportsCacheBypass: Bool { base.supportsCacheBypass }
     public var verifiesTypedText: Bool { base.verifiesTypedText }
     public func tap(x: Double, y: Double) async throws { try await withRecovery { try await base.tap(x: x, y: y) } }

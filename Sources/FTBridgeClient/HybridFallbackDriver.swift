@@ -178,6 +178,10 @@ public final class HybridFallbackDriver: AppDriver {
     public func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {
         try await active.snapshot(bypassingCache: bypassingCache)
     }
+    /// **転送必須**(既定実装に任せると最内のブリッジ接続へ届かず、上げたつもりで 120 のまま)
+    public func raiseElementLimitOnNextSnapshot(_ max: Int?) {
+        active.raiseElementLimitOnNextSnapshot(max)
+    }
     public var supportsCacheBypass: Bool { active.supportsCacheBypass }
     public var verifiesTypedText: Bool { active.verifiesTypedText }
     public func status() async throws -> StatusResponse { try await active.status() }

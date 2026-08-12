@@ -302,6 +302,21 @@ Android の整定判定は**スナップショットの画面サイズ**で行�
   超過分は `(+12 elements truncated)` と件数だけ出す。**打ち切りは描画の省略ではなく
   配列そのものからの脱落**なので、`waitFor` も `scrollTo` も打ち切り後しか見ない
   (だから MCP の失敗文は打ち切りを名指しする。`MCPServer.truncationHint`)。
+- **呼び手が1回だけ上限を引き上げられる**(版 65。`GET /snapshot?max=<n>` / MCP は
+  `ft_snapshot maxElements:`。天井 `BridgeAPI.maxSnapshotElementsCeiling`=400、
+  解釈は `resolvedSnapshotElementLimit` の1箇所 = ホスト・3ブリッジで同じ規則)。
+  **一発限り**にするのは、上げたままだと以後の整定ループ・探索の各周回まで重い木を引くため
+  (`AppDriver.raiseElementLimitOnNextSnapshot`。**ラッパードライバは転送必須**)。
+  なぜ要るか(2026-08-12・ブラウザ監査の実測): web ページは広告リンクだけで tier0 が枠を埋め、
+  間引きは tier1(ラベル付きの本文)から捨てるので、**画面に写っている表の行が丸ごと消える**。
+  tenki.jp の2週間天気では 248 候補中 128 件が脱落し、**その全部が labelled** ——
+  `ft_scroll_to` が落ちた行を探して2回で 101 秒を空費した(`maxElements: 400` なら1回で全行入る)。
+  **間引きの優先度そのものは変えない**(同じ規則がネイティブのリスト行にも当たるため。
+  却下履歴は `BridgeSnapshotThinning.bulkGroupMinimum` のコメントと同型)。
+- **探索中の打ち切りは最終木からは分からない**: 目的の行が画面に入っていた周回で上限に
+  当たっていても、通り過ぎた先の最終画面が上限内なら注記は黙る。`ScrollSearchResult.
+  maxTruncatedDuringSearch` が周回ごとに記録し、失敗した探索だけ `StepNote.truncatedDuringSearch`
+  として運ぶ(MCP はこれで「不在の証拠にするな」と言う)。
 - **間引きは優先度順**(2026-08-07。ここは長く「hittable 優先」と書いてあったが、実装は
   両 OS とも先着順だった)。低い帯から順に、**同じ帯の中では preorder の後ろから**捨てる。
   **並べ替えはしない** —— `RefGuard.lineage` が preorder+depth でツリーを復元し、

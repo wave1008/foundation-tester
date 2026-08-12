@@ -66,6 +66,15 @@ public final class WebViewDelegatingDriver: AppDriver {
     public var supportsCacheBypass: Bool {
         mode == .delegated ? delegated.supportsCacheBypass : primary.supportsCacheBypass
     }
+
+    /// **両方へ立てる**(supportsCacheBypass と違い、こちらは撮る前に決める必要がある):
+    /// mode は「直前の snapshot」が決めた値で、次の1回がどちらから読まれるかは
+    /// 委譲判定を通るまで分からない。片方だけに立てると、委譲へ落ちた回で黙って 120 に戻る。
+    /// 立てたまま使われなかった側は次の snapshot で消費されるだけ(無害)
+    public func raiseElementLimitOnNextSnapshot(_ max: Int?) {
+        primary.raiseElementLimitOnNextSnapshot(max)
+        delegated.raiseElementLimitOnNextSnapshot(max)
+    }
     /// domInterop はここでも primary(false)扱いにする: この区間の type() は「値が変わっていない」
     /// ときだけ1回張り直す簡易チェックしか持たず(下の type() 参照)、TypeReadback.plan の
     /// resend/deleteExcess 相当は持たない。StepExecutor の読み返しを重ねても安全側(検証不能なら

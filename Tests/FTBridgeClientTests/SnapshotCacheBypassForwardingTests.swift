@@ -32,6 +32,7 @@ final class SnapshotCacheBypassForwardingTests: XCTestCase {
             .deletingLastPathComponent()   // リポジトリルート
         var missingBypass: [String] = []
         var missingSupports: [String] = []
+        var missingElementLimit: [String] = []
         var checked = 0
         for dir in ["Sources/FTBridgeClient", "Sources/FTAndroid", "Sources/FTCore"] {
             let base = root.appendingPathComponent(dir)
@@ -48,6 +49,11 @@ final class SnapshotCacheBypassForwardingTests: XCTestCase {
                 if !source.contains("var supportsCacheBypass: Bool") {
                     missingSupports.append(file.lastPathComponent)
                 }
+                // 同型の3本目(2026-08-12): 1回限りの要素上限も**包む側が転送しないと
+                // 最内のブリッジ接続へ届かず**、上げたつもりで 120 のまま黙って返る
+                if !source.contains("func raiseElementLimitOnNextSnapshot(_ max: Int?)") {
+                    missingElementLimit.append(file.lastPathComponent)
+                }
             }
         }
         XCTAssertGreaterThan(checked, 3, "走査対象が見つからない = パスかシグネチャの書式が変わった")
@@ -57,5 +63,8 @@ final class SnapshotCacheBypassForwardingTests: XCTestCase {
         XCTAssertTrue(missingSupports.isEmpty,
                       "同じ型は supportsCacheBypass も base の値を透過すること"
                       + "(既定の false 固定だと検証側が取り直しの周回自体を行わない): \(missingSupports)")
+        XCTAssertTrue(missingElementLimit.isEmpty,
+                      "同じ型は raiseElementLimitOnNextSnapshot も base へ素通しすること"
+                      + "(既定の no-op に落ちると maxElements が黙って効かない): \(missingElementLimit)")
     }
 }

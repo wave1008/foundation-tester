@@ -652,11 +652,14 @@ extension MCPServer {
     /// 「element not found」としか言わず、存在しない要素を探し続けることになっていた。
     /// FTCore 側に同趣旨(`StepExecutor+Assert.truncationHint`)があるが internal で呼べないため、
     /// 文言だけ揃えてこちらに複製する
+    /// **逃げ道まで書く**: 「落ちた中に居るかもしれない」で止めると、読み手は同じ探索を
+    /// 撃ち直す(2026-08-12 のブラウザ監査で 45.3s + 56.1s を空費した)
     static func truncationHint(_ snapshot: SnapshotResponse) -> String {
         guard snapshot.truncatedCount > 0 else { return "" }
         return " (the tree was truncated at \(snapshot.elements.count) elements;"
             + " \(snapshot.truncatedCount) more were omitted — the element you are looking for"
-            + " may be among them)"
+            + " may be among them; scrolling will not bring them back, read again with"
+            + " ft_snapshot maxElements: \(suggestedElementLimit(snapshot)))"
     }
 
     /// waitFor タイムアウト文の共通末尾(2026-08-12 監査)。waitFor はレンダリング済みの木しか
@@ -677,6 +680,140 @@ extension MCPServer {
     /// `abbreviated`(F-6 の対象拡大・2026-08-10): 明細(`listed`)は既定と同じまま、
     /// 冒頭の長い advice だけ「初出の注記を見よ」に圧縮する。呼び手は once 経由(instance の
     /// `unlabeledClickablesNote(_:)` ラッパ)で使い分ける
+    /// WebView の中に**要素が1つも無い縦帯**がある = 木がその部分を落としている疑い。
+    ///
+    /// なぜ要るか(2026-08-12・Android の Chrome で実測): Chrome は web コンテンツの
+    /// a11y ノードを**部分的にしか公開しない**。同じ URL を iOS Safari で読むと全部出るのに、
+    /// Android では画面に描かれている「曇一時雨」「時間/降水」の表・「風/波」の行が
+    /// **フルツリーにも1つも無い**(スクリーンショットで実在を確認済み)。
+    /// 木だけを読む読み手は、そこに何も無いと結論して**黙って誤答する**。
+    ///
+    /// 判定は幾何だけ: WebView の可視部分を 60 分割し、**内側**(上端・下端に接しない)で
+    /// どの葉の矩形とも交わらない連続帯を測る。**端の帯は数えない** —— 容器自身の余白は
+    /// どのページにもあり、これを数えると健全な木まで疑う。
+    ///
+    /// 閾値は固定コーパスの実測から置いた(2026-08-12・webView を持つ4画面):
+    /// 取りこぼしのある Chrome の1枚が **258px(容器の 11.7%)**、
+    /// 取りこぼしの無い iOS Safari の3枚が **0/14/29px(0〜3.3%)**。8% はその間。
+    /// 画面比の下限も併せて要求する(小さな容器の中の小さな穴で騒がない)。
+    /// **「不完全だ」とは断定しない**(新しい検知は警告から始める)。
+    /// **落とすのはあくまで読み手の判断**なので、確かめる手段(ft_screenshot)まで書く
+    static func webViewGapNote(_ snapshot: SnapshotResponse) -> String {
+        let screen = snapshot.screen
+        guard screen.height > 0 else { return "" }
+        for container in snapshot.elements where container.type == "webView" {
+            guard let band = largestEmptyBand(inside: container, of: snapshot) else { continue }
+            let visible = min(container.frame.y + container.frame.height, screen.y + screen.height)
+                - max(container.frame.y, screen.y)
+            guard visible > 0, band.height >= visible * 0.08,
+                  band.height >= screen.height * 0.05 else { continue }
+            return "note: inside \(RefGuard.describe(container)) nothing is listed between y="
+                + "\(Int(band.y)) and y=\(Int(band.y + band.height)) — a band \(Int(band.height))"
+                + " tall with no element at all. A browser can publish only part of a page to the"
+                + " accessibility tree (Android's Chrome does this), so text that IS on screen can"
+                + " be missing from this list. Check that band with ft_screenshot before concluding"
+                + " the content is not there; elements missing from the tree cannot be waited for,"
+                + " scrolled to, or tapped by selector.\n"
+        }
+        return ""
+    }
+
+    /// WebView の可視部分のうち、**内側でどの葉とも交わらない最大の連続帯**。
+    /// 走査は 60 分割の格子(木のサイズに比例した O(n) で、応答ごとに払える)。
+    ///
+    /// **上端・下端に接する帯は返さない**: 容器の余白はどのページにもあるので、
+    /// 数えると健全な木も疑うことになる(実測: iOS Safari の3枚はいずれも先頭の 58px が空)
+    private static func largestEmptyBand(inside container: ElementInfo,
+                                         of snapshot: SnapshotResponse) -> FTRect? {
+        let screen = snapshot.screen
+        let top = max(container.frame.y, screen.y)
+        let bottom = min(container.frame.y + container.frame.height, screen.y + screen.height)
+        guard bottom - top > 0 else { return nil }
+        let slices = 60
+        let sliceHeight = (bottom - top) / Double(slices)
+        guard sliceHeight > 0 else { return nil }
+        // **葉だけを数える**: 容器(webView・scrollView)は帯を丸ごと覆うので、含めると
+        // どんな木でも「埋まっている」に見える
+        let leaves = snapshot.elements.filter {
+            $0.ref != container.ref && $0.scrollable != true && $0.type != "webView"
+                && $0.frame.height < (bottom - top)
+        }
+        var bestStart = 0, bestCount = 0, runStart = 0, run = 0
+        for slice in 0..<slices {
+            let y0 = top + Double(slice) * sliceHeight
+            let covered = leaves.contains {
+                $0.frame.y < (y0 + sliceHeight) && ($0.frame.y + $0.frame.height) > y0
+            }
+            if covered {
+                // 内側で閉じた帯だけを候補にする(runStart > 0 = 上端に接していない)
+                if run > 0, runStart > 0, run > bestCount { bestCount = run; bestStart = runStart }
+                run = 0
+            } else {
+                if run == 0 { runStart = slice }
+                run += 1
+            }
+        }
+        // 末尾で終わった帯(下端に接する)は候補にしない = ここでは拾わない
+        guard bestCount > 0 else { return nil }
+        return FTRect(x: container.frame.x, y: top + Double(bestStart) * sliceHeight,
+                      width: container.frame.width, height: Double(bestCount) * sliceHeight)
+    }
+
+    /// ラベルが**見えている文字ではなく URL の断片**になっているリンク。
+    ///
+    /// なぜ要るか(2026-08-12・Android の Chrome で実測): アクセシブルな名前を持たないリンクに
+    /// Chrome は URL を入れる。実物は `"13101"`(市区町村リンク=画面には「千代田区」と描画)・
+    /// `"dc2557a17fdf039c74261b0b5da109ec"`・`"details%3Fid%3Dcom…"`(400字超)。
+    /// **黙っていると読み手はこれを画面の文字だと読む** —— 同じ画面を iOS Safari で読むと
+    /// ちゃんと「千代田区」なので、OS 差が「アプリの差」に見える。
+    ///
+    /// **数字だけの形は判定に入れない**(`13101`): 本文の数値(気温・件数)と区別が付かず、
+    /// 誤検知のほうが害になる。ここで名指しできるのは「人が書いた文には出ない綴り」だけ
+    static func urlishLabelsNote(_ snapshot: SnapshotResponse, abbreviated: Bool = false) -> String {
+        let urlish = snapshot.elements.filter { looksLikeURLFragment($0.label) }
+        guard !urlish.isEmpty else { return "" }
+        guard !abbreviated else {
+            return "note: \(urlish.count) link label(s) are URL fragments, not on-screen text"
+                + " (see the first snapshot's note).\n"
+        }
+        let listed = urlish.prefix(4).map { "[\($0.ref)]" }.joined(separator: " ")
+        let more = urlish.count > 4 ? " (+\(urlish.count - 4) more)" : ""
+        return "note: the label of \(listed)\(more) is a URL fragment, not the text drawn on"
+            + " screen — the browser fell back to the link target because the link has no"
+            + " accessible name. Do not report these as page content, and do not build a selector"
+            + " from them; read what they say with ft_screenshot and tap them by ref.\n"
+    }
+
+    /// URL 断片らしさ。**人が書いた文には出ない綴りだけ**を見る(百分率エンコード・
+    /// クエリ文字列・スキーム・長い16進トークン)
+    static func looksLikeURLFragment(_ label: String?) -> Bool {
+        guard let label, label.count >= 8 else { return false }
+        if label.contains("://") { return true }
+        // %XX が2つ以上(1つだけなら「50%OFF%」のような本文と紛れる)
+        var percent = 0
+        var index = label.startIndex
+        while let found = label[index...].firstIndex(of: "%") {
+            let after = label.index(after: found)
+            guard let second = label.index(after, offsetBy: 1, limitedBy: label.endIndex),
+                  second < label.endIndex,
+                  label[after].isHexDigit, label[second].isHexDigit else {
+                index = after
+                if index >= label.endIndex { break }
+                continue
+            }
+            percent += 1
+            if percent >= 2 { return true }
+            index = label.index(after: second)
+            if index >= label.endIndex { break }
+        }
+        // `a=b&c=d` 形のクエリ(= と & が両方あり、空白を含まない)
+        if label.contains("="), label.contains("&"), !label.contains(" ") { return true }
+        // 24 文字以上の16進トークン(広告 ID・ハッシュ)
+        let hex = label.filter { $0.isHexDigit }
+        if hex.count >= 24, hex.count == label.count { return true }
+        return false
+    }
+
     static func unlabeledClickablesNote(_ snapshot: SnapshotResponse, abbreviated: Bool = false)
         -> String {
         let unlabeled = snapshot.elements.filter {
@@ -1110,10 +1247,16 @@ extension MCPServer {
             }
             return parts.isEmpty ? "" : " (\(parts.joined(separator: ", ")))"
         } ?? ""
+        // **逃げ道を必ず添える**(2026-08-12 のブラウザ監査): 従来の助言は「画面を狭くする」
+        // だけで、web ページでは実行できない(シートも大きなリストも無い ——
+        // 1ドキュメントぶんの要素が最初から全部載っている)。実測では tenki.jp の2週間天気で
+        // **落ちた 179 件が全部 labelled = 表の本文**で、`ft_scroll_to` が2回で 101 秒を捨てた。
+        // 順序は「上限を上げる」が先: 落ちた行がまさに読みたい物である確率が高い
         return "note: \(snapshot.truncatedCount) element(s) were dropped by the snapshot limit"
             + "\(breakdown) — they are gone from the tree, not just hidden, so waitFor/ft_scroll_to"
-            + " will never find them. Narrow the screen (close a sheet, scroll a big list away)"
-            + " or work from what is listed.\(capHogNote(snapshot))\n"
+            + " will never find them. Read again with ft_snapshot maxElements:"
+            + " \(suggestedElementLimit(snapshot)) to get them, or narrow the screen (close a"
+            + " sheet, scroll a big list away).\(capHogNote(snapshot))\n"
     }
 
     /// 上限の外で bulk を送ったときの注記(61)。
@@ -1136,6 +1279,14 @@ extension MCPServer {
         return "note: \(count) element(s) of large same-id group(s) are listed outside the"
             + " element limit — they did not crowd other elements out of the tree, but they do"
             + " add to this output; the rendering folds them (expandBulk lists them in full).\n"
+    }
+
+    /// 打ち切られた木に対して勧める `maxElements`。**落ちた分がちょうど入る値**を出す
+    /// (天井で丸める)。刻みの良い値へ切り上げるのは、次の1回で足りずにもう一度払うのを避けるため
+    static func suggestedElementLimit(_ snapshot: SnapshotResponse) -> Int {
+        let needed = snapshot.elements.count + snapshot.truncatedCount
+        let rounded = (needed + 49) / 50 * 50
+        return min(max(rounded, BridgeAPI.maxSnapshotElements), BridgeAPI.maxSnapshotElementsCeiling)
     }
 
     /// 打ち切ったときだけ添える「枠を食っている当人」。

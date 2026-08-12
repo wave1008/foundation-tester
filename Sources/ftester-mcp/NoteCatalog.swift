@@ -73,8 +73,15 @@ enum NoteCatalog {
         Entry(key: "bulkExemptNote", contexts: [.snapshot], abbreviates: true) { input, abbreviated in
             MCPServer.bulkExemptNote(input.snapshot, abbreviated: abbreviated)
         },
+        // 「この一覧は画面の全部か」を問う注記なので、遮蔽・打ち切りの隣(上流)に置く
+        Entry(key: "webViewGapNote", contexts: [.snapshot, .scrollTo], abbreviates: false) { input, _ in
+            MCPServer.webViewGapNote(input.snapshot)
+        },
         Entry(key: "unlabeledClickablesNote", contexts: [.snapshot], abbreviates: true) { input, abbreviated in
             MCPServer.unlabeledClickablesNote(input.snapshot, abbreviated: abbreviated)
+        },
+        Entry(key: "urlishLabelsNote", contexts: [.snapshot], abbreviates: true) { input, abbreviated in
+            MCPServer.urlishLabelsNote(input.snapshot, abbreviated: abbreviated)
         },
         Entry(key: "ambiguousLabelsNote", contexts: [.snapshot], abbreviates: true) { input, abbreviated in
             MCPServer.ambiguousLabelsNote(input.snapshot, abbreviated: abbreviated, cache: input.cache)

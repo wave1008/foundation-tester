@@ -43,6 +43,12 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// (StepExecutor+Assert.swift の occlusionFlip)
     case staleScreenshot = "stale-screenshot"
 
+    /// 探索のどこか1周で木が**要素上限で打ち切られていた**。実在する行が候補から
+    /// 落ちていた可能性があるので、「見つからない」を不在の証拠にしてはいけない。
+    /// **最終木では消えている情報**(ScrollSearchResult.maxTruncatedDuringSearch 参照)なので
+    /// 注記として運ぶ。MCP はこのコードで上限引き上げの案内を足す
+    case truncatedDuringSearch = "truncated-during-search"
+
     /// 人間向けの文言(FTRuntime がステップ説明へ括弧書きで付ける)
     public var text: String {
         switch self {
@@ -51,6 +57,8 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
         case .scrollFrameMissing: return "the scrollFrame did not resolve, so the search stopped early"
         case .sheetCollapsed: return "the list stopped moving inside a partially open sheet"
         case .staleScreenshot: return "the occlusion-guard screenshot looked stale, so the check was skipped"
+        case .truncatedDuringSearch:
+            return "the tree hit the element limit during the search, so the target may have been dropped from it"
         }
     }
 }

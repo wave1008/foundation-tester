@@ -81,6 +81,10 @@ public final class FastLaunchDriver: AppDriver {
     public func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {
         try await base.snapshot(bypassingCache: bypassingCache)
     }
+    /// **転送必須**(既定実装に任せると最内のブリッジ接続へ届かず、上げたつもりで 120 のまま)
+    public func raiseElementLimitOnNextSnapshot(_ max: Int?) {
+        base.raiseElementLimitOnNextSnapshot(max)
+    }
     public var supportsCacheBypass: Bool { base.supportsCacheBypass }
     public var verifiesTypedText: Bool { base.verifiesTypedText }
     public func tap(ref: Int) async throws { try await base.tap(ref: ref) }

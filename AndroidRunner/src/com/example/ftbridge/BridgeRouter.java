@@ -193,15 +193,20 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         // クエリ `refresh=1`(または `true`)は「タイムアウト直前の1回だけ全ノード refresh() する」
         // 契約(ホスト側と同期。SnapshotBuilder.collect のコメント参照)。無指定は従来どおり false
         boolean forceRefresh = isTruthy(queryParam(request.query, "refresh"));
+        // クエリ `max=<n>` は「この1回だけ要素上限を引き上げる」契約(ホスト側 BridgeAPI の
+        // resolvedSnapshotElementLimit と同じ規則: 0以下・非整数=既定、天井超え=天井へ丸める)。
+        // web ページのように候補が数百ある画面で、間引きが本文テキストを丸ごと落とすのを
+        // 呼び手が回避するためのもの
+        int maxElements = SnapshotBuilder.resolveElementLimit(queryParam(request.query, "max"));
         SnapshotBuilder.Result result;
         try {
-            result = SnapshotBuilder.build(ua(), instrumentation.getContext(), forceRefresh);
+            result = SnapshotBuilder.build(ua(), instrumentation.getContext(), forceRefresh, maxElements);
         } catch (IllegalStateException e) {
             // root=null が waitForRoot の 2s を超えて続く一時ストール(高負荷時の画面消灯/描画停止で
             // 実測。黒スクショと対の症状)。WAKEUP 注入で display を起こしてから1回だけ再試行する
             shell("input keyevent KEYCODE_WAKEUP");
             SystemClock.sleep(500);
-            result = SnapshotBuilder.build(ua(), instrumentation.getContext(), forceRefresh);
+            result = SnapshotBuilder.build(ua(), instrumentation.getContext(), forceRefresh, maxElements);
         }
         refCenters = result.refCenters;
         refIds = result.refIds;

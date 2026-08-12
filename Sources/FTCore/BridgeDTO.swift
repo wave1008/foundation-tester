@@ -9,6 +9,25 @@ public enum BridgeAPI {
     public static let defaultPort: UInt16 = 8123
     /// 1回のスナップショットで返す要素数の上限(4Kトークン対策の第一段)
     public static let maxSnapshotElements = 120
+
+    /// `GET /snapshot?max=<n>` で引き上げられる上限の天井。
+    ///
+    /// **既定を上げるのではなく、呼び手が1回だけ上げる**(2026-08-12・ブラウザ監査): web ページは
+    /// 広告リンクだけで tier0 が枠を埋め、間引きは tier1(ラベル付きの本文)から捨てるので、
+    /// **画面に写っている表の行が丸ごと消える**。実測(tenki.jp の2週間天気)では 299 候補中
+    /// 179 件が脱落し、その **全部が labelled** —— 落ちた行を `ft_scroll_to` が探し続けて
+    /// 2回で 101 秒を捨てた。間引きの優先度を変える案は採らない(同じ規則がネイティブの
+    /// リスト行にも当たる。BridgeSnapshotThinning の却下履歴と同型)。
+    /// 天井の根拠: 出力は要素あたり約1行なので、これ以上は読み手側が読み切れない
+    public static let maxSnapshotElementsCeiling = 400
+
+    /// `max=` クエリの唯一の解釈者(ホスト・3ブリッジで同じ規則)。
+    /// nil・0以下・非整数 = 既定、天井超え = 天井へ丸める。**呼び手の指定を黙って捨てない**
+    /// ためにホスト側でも同じ関数を通す(丸めた事実は MCP が応答で名乗る)
+    public static func resolvedSnapshotElementLimit(_ raw: Int?) -> Int {
+        guard let raw, raw > 0 else { return maxSnapshotElements }
+        return min(raw, maxSnapshotElementsCeiling)
+    }
     /// ブリッジ HTTP API のプロトコルバージョン。エンドポイントやリクエスト/レスポンスの形を
     /// 変えたら必ず +1 する。/status で返され、旧ビルドのランナーの自動再起動判定に使う
     /// (nil = この定数導入前のビルド = 旧版扱い)。
@@ -163,7 +182,10 @@ public enum BridgeAPI {
     /// "a wedged display" without looking at pixels (DisplayHeartbeat.swift in each bridge).
     /// The field is optional, but the bridge **behaviour** changed, so a stale bridge would keep
     /// reporting nothing and the host would silently lose the evidence → bump.
-    public static let bridgeProtocolVersion = 64
+    /// 65: GET /snapshot accepts `max=<n>` (the per-request element limit; `maxSnapshotElements`
+    /// stays the default). A stale bridge ignores the parameter and answers with 120 elements
+    /// **without saying so**, so the reader would conclude the dropped rows do not exist → bump.
+    public static let bridgeProtocolVersion = 65
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の

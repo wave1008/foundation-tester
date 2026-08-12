@@ -31,7 +31,8 @@ enum InAppSnapshot {
 
     /// **2パス**: 集めるときは上限で打ち切らず、超過したときだけ優先度順に間引いて ref を振る
     /// (規則と根拠は BridgeSnapshotThinning。XCUITest 版 BridgeRouter.collect と同じ形)
-    static func capture(window: UIWindow) -> Result {
+    /// `max` は要求ごとの要素上限(既定 BridgeAPI.maxSnapshotElements。`?max=` で引き上げる)
+    static func capture(window: UIWindow, max limit: Int = BridgeAPI.maxSnapshotElements) -> Result {
         let screen = window.bounds
         // 同じオブジェクトが2経路から届くことがある(Compose iOS の interop は WKWebView を
         // accessibilityElements と subviews の両方から見せ、同じ WebView が2度出た。2026-07-29 実測)。
@@ -43,11 +44,11 @@ enum InAppSnapshot {
         let keptIndices: [Int]
         var truncatedTiers: [String: Int] = [:]
         var bulkExempt = 0
-        if gathered.count <= BridgeAPI.maxSnapshotElements {
+        if gathered.count <= limit {
             keptIndices = Array(gathered.indices)
         } else {
             let candidates = gathered.map { BridgeSnapshotThinning.Candidate(info: $0.info) }
-            keptIndices = BridgeSnapshotThinning.indicesToKeep(candidates, max: BridgeAPI.maxSnapshotElements)
+            keptIndices = BridgeSnapshotThinning.indicesToKeep(candidates, max: limit)
             // **落とした本人しか内訳を知らない**(ホストへ届くのは残った側だけ)
             truncatedTiers = BridgeSnapshotThinning.droppedByTier(candidates, kept: keptIndices)
             // 上限の外で送った bulk の件数(61)。ホストが「超過は異常ではない」と言うために要る

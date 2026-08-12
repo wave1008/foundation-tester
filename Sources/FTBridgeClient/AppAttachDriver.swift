@@ -57,6 +57,10 @@ public final class AppAttachDriver: AppDriver {
         response.elements = SnapshotDedupe.wrapperScrollMerge(response.elements)
         return response
     }
+    /// **転送必須**(既定実装に任せると最内のブリッジ接続へ届かず、上げたつもりで 120 のまま)
+    public func raiseElementLimitOnNextSnapshot(_ max: Int?) {
+        client.raiseElementLimitOnNextSnapshot(max)
+    }
     public var supportsCacheBypass: Bool { client.supportsCacheBypass }
     public var verifiesTypedText: Bool { client.verifiesTypedText }
 

@@ -65,6 +65,12 @@ public protocol AppDriver {
     /// (iOS はツリー走査中に常に判定できるため不要)。Android は dumpsys 呼び出しが固定費なので、
     /// 必要な snapshot でだけ払うためのフラグ(AndroidDriver 参照)
     func captureKeyboardStateOnNextSnapshot()
+    /// 次の snapshot() 1回だけ要素上限を引き上げる(nil = 既定へ戻す)。
+    /// **一発限りにする理由**: 上げたままだと以後の応答が全部膨らみ、上げた当人以外
+    /// (整定ループ・探索の各周回)が黙って重い木を引く。`captureKeyboardStateOnNextSnapshot`
+    /// と同じ形。**プロトコル要件として宣言すること**(既定実装だけに置くと存在型越しの
+    /// 呼び出しが静的ディスパッチで no-op に落ち、ブリッジまで届かない)
+    func raiseElementLimitOnNextSnapshot(_ max: Int?)
     /// フォーカス中の入力欄で Enter を押す(ref なし。Shirates pressEnter 相当)。
     /// iOS はソフトキー tap ができない(キーボード要素を snapshot から除外しているため)代替経路を
     /// ドライバごとに持つ: xcuitest は typeText("\n")、inapp は Compose 入力欄への insertText("\n")
@@ -247,6 +253,10 @@ public extension AppDriver {
     func acknowledgeOpenURLConsentIfPresent(bundleID: String) async {}
 
     func captureKeyboardStateOnNextSnapshot() {}
+
+    /// 既定は no-op(上限を持たないドライバ = 上げようがない)。ブリッジ接続を持つ
+    /// ドライバとラッパーだけが実装する
+    func raiseElementLimitOnNextSnapshot(_ max: Int?) {}
 
     func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
               pressSeconds: Double, durationSeconds: Double) async throws {

@@ -24,6 +24,11 @@ extension MCPServer {
     /// 振り直すのはここが唯一の入口(waitFor 経路だけ例外。呼び出し側で個別に通す)
     func freshSnapshot(_ driver: AppDriver, args: [String: Any]) async throws
         -> SnapshotResponse {
+        // `maxElements` は**この1回だけ**の上限(ブリッジの `?max=`)。既定へ戻す必要は無い ——
+        // ドライバ側が1回で消費する契約なので、次の呼び出しは黙って 120 に戻る
+        if let requested = args["maxElements"] as? Int {
+            driver.raiseElementLimitOnNextSnapshot(requested)
+        }
         let native = try await driver.snapshot(bypassingCache: driver.supportsCacheBypass)
         return adoptSnapshot(native, args: args)
     }
@@ -826,7 +831,19 @@ extension MCPServer {
             let manualExpand = sheetNote.contains("ft_drag fromRef:") ? ""
                 : ((outcome.notes.contains(.sheetCollapsed) || !sheetNote.isEmpty)
                    ? Self.sheetManualExpandHint(after) : "")
+            // **探索中の打ち切りは最終木からは分からない**(2026-08-12 のブラウザ監査):
+            // 目的の行が画面に入っていた周回で上限に当たっていても、通り過ぎた先の最終画面が
+            // 上限内なら `truncationHint(after)` は黙る。実測の2回のうち1回がこれで、
+            // 「見つからない」だけを読んだ結果、同じ探索をもう一度撃って 45 秒を捨てた
+            let truncatedDuringSearch = outcome.notes.contains(.truncatedDuringSearch)
+                && after.truncatedCount == 0
+                ? " note: the tree hit the element limit at some point during this search, so the"
+                    + " target may have been dropped from the candidates rather than absent —"
+                    + " read the screen it should be on with ft_snapshot maxElements:"
+                    + " \(BridgeAPI.maxSnapshotElementsCeiling) before concluding it is not there.\n"
+                : ""
             throw MCPError(scrollFrameLabelNote + sheetNote + containerGoneNote
+                + truncatedDuringSearch
                 + Self.scrollTimingNote(totalMs: Int((timingClock.now - timingStart)
                                                      / .milliseconds(1)),
                                         swipes: outcome.scrollSwipes, rescueMs: rescueMs)

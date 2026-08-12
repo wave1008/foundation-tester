@@ -27,6 +27,9 @@ public final class AndroidDriver: AppDriver {
     /// 直前に立てたときだけ払う(snapshot() 側で読み捨てる)
     private var captureKeyboardOnNextSnapshot = false
 
+    /// raiseElementLimitOnNextSnapshot() が立てる1回限りの要素上限(nil = 既定)
+    private var pendingElementLimit: Int?
+
     private struct PersistedState: Codable {
         var centers: [Int: [Double]]
         var screen: FTRect
@@ -302,7 +305,15 @@ public final class AndroidDriver: AppDriver {
     /// 約 +65ms 掛かるので、検証が期限切れで失敗と決まる直前の1回にだけ使う(AppDriver の宣言参照)
     public func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {
         restoreStateIfNeeded()  // 別プロセス実行時に refCenters 等を引き継ぐ(persistState で消さないため)
-        var snapshot = try await withBridge { try await $0.snapshot(bypassingCache: bypassingCache) }
+        // **上限の指定はここで消費する**(クライアントに持たせない): withBridge が返す
+        // BridgeClient は接続拒否のたびに作り直されるので、あちら側に立てた1回限りのフラグは
+        // 再接続で黙って消える
+        let limit = pendingElementLimit
+        pendingElementLimit = nil
+        var snapshot = try await withBridge {
+            $0.raiseElementLimitOnNextSnapshot(limit)
+            return try await $0.snapshot(bypassingCache: bypassingCache)
+        }
         // RN の button 内側 Text 双子を畳む(SnapshotDedupe の宣言コメント参照)。
         // syncLocalState より前 = 下流(DSL/MCP)は正規化後の木だけを見る
         snapshot.elements = SnapshotDedupe.dropLabelTwinsInsideButtons(snapshot.elements)
@@ -322,6 +333,10 @@ public final class AndroidDriver: AppDriver {
 
     public func captureKeyboardStateOnNextSnapshot() {
         captureKeyboardOnNextSnapshot = true
+    }
+
+    public func raiseElementLimitOnNextSnapshot(_ max: Int?) {
+        pendingElementLimit = max
     }
 
     /// システムロケールの永続変更(ブリッジ /locale。ブート完了後に呼ぶこと)。

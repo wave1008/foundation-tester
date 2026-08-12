@@ -138,6 +138,10 @@ public final class InAppDriver: AppDriver {
         }
         return response
     }
+    /// **転送必須**(既定実装に任せると最内のブリッジ接続へ届かず、上げたつもりで 120 のまま)
+    public func raiseElementLimitOnNextSnapshot(_ max: Int?) {
+        client.raiseElementLimitOnNextSnapshot(max)
+    }
     public var supportsCacheBypass: Bool { client.supportsCacheBypass }
     /// **client.verifiesTypedText を転送しない**: client(BridgeClient)は XCUITest ランナー向けの
     /// 既定 true を持つが、ここでは同じ HTTP プロトコルで in-app ブリッジ(読み返し無し)を話している。

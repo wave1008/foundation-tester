@@ -30,6 +30,10 @@ public final class SystemUIDriver: AppDriver {
         try await client.launch(bundleID: "com.apple.springboard")
         return try await client.snapshot(bypassingCache: bypassingCache)
     }
+    /// **転送必須**(既定実装に任せると最内のブリッジ接続へ届かず、上げたつもりで 120 のまま)
+    public func raiseElementLimitOnNextSnapshot(_ max: Int?) {
+        client.raiseElementLimitOnNextSnapshot(max)
+    }
     public var supportsCacheBypass: Bool { client.supportsCacheBypass }
     public var verifiesTypedText: Bool { client.verifiesTypedText }
 

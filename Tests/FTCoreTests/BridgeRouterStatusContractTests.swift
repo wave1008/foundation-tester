@@ -47,7 +47,9 @@ final class BridgeRouterStatusContractTests: XCTestCase {
                        "XCUITest ランナーの 409 は requireApp() の1箇所だけ。"
                        + "「セッションはあるが実行できない」は 422 を使うこと"
                        + "(SessionRecoveryDriver がセッション消失と誤断定し activate を撃つ)")
-        XCTAssertTrue(source.contains("ランナーにセッションがありません"),
+        // 文言は英語(ブリッジのメッセージはホストへ素通しするため。CLAUDE.md の方針)。
+        // **目印は経路の意味**なので、言い回しを変えるときはここも直す
+        XCTAssertTrue(source.contains("the XCUITest runner has no session"),
                       "409 の1箇所はセッション消失の requireApp() であること")
     }
 
@@ -70,7 +72,7 @@ final class BridgeRouterStatusContractTests: XCTestCase {
         XCTAssertEqual(try throwSites(status: 501, in: source), 1,
                        "XCUITest ランナーの 501 は hideKeyboard の1箇所だけ。"
                        + "増やすとフォールバック先が自分自身になる")
-        XCTAssertTrue(source.contains("hideKeyboard は iOS では未対応"),
+        XCTAssertTrue(source.contains("hideKeyboard is Android-only"),
                       "501 の1箇所は hideKeyboard であること")
     }
 }

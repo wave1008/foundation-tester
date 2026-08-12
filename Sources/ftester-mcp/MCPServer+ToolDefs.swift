@@ -77,6 +77,15 @@ extension MCPServer {
         "type": "boolean", "description": "Hide layout-only lines — refs/frames unchanged, "
             + "and a hidden element can still be tapped by ref",
     ]
+    /// **ft_snapshot にだけ置く**(操作系や scroll_to は木を何度も撮るので、1回限りの指定が
+    /// どの取得に効いたのか読み手に説明できない)。上限に当たった応答の注記がこの引数を名指しする
+    static let maxElementsProperty: [String: Any] = [
+        "type": "integer",
+        "description": "Element limit for THIS read only (default \(BridgeAPI.maxSnapshotElements),"
+            + " max \(BridgeAPI.maxSnapshotElementsCeiling)). Raise it when a note says elements"
+            + " were dropped by the limit — on a dense web page the dropped ones are the body text,"
+            + " and scrolling will never bring them back",
+    ]
     /// 共通引数の詳細。**各ツールのプロパティ説明は短文に留め、ニュアンスはここに1本化する**
     /// (initialize の instructions で1回だけ渡る。プロパティ側に書くと全ツールへ複製され、
     /// 毎セッションのコンテキスト費用になる —— 2026-08-10 のスキーマ痩身)
@@ -200,6 +209,7 @@ extension MCPServer {
             "timeout": ["type": "number", "description": "Seconds to wait for waitFor (default 5, same as the DSL)"],
             "expandBulk": expandBulkProperty,
             "interactiveOnly": interactiveOnlyProperty,
+            "maxElements": maxElementsProperty,
         ]),
         tool("ft_tap", "Tap an element (ref) or a coordinate (x,y). x/y match the ft_snapshot frames (iOS=pt / Android=px), not screenshot pixels. "
             + "A ref is re-checked against a fresh tree before the tap, so a ref that moved is retargeted and "

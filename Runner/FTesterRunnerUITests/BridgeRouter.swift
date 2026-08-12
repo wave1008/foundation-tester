@@ -35,6 +35,10 @@ final class BridgeRouter {
     // 書いていたのは **350ms ガード込みの値を素のコストと取り違えた誤り**だった。
     private var settlePending = false
 
+    /// この snapshot 1回に適用する要素上限(`?max=`)。**要求ごとに handleSnapshot が入れ直す**
+    /// ので持ち越しは起きない(接続は1本ずつ順に処理される = 別要求と混ざらない)
+    private var snapshotElementLimit = BridgeAPI.maxSnapshotElements
+
     /// /status の idleSeconds 申告用(FTesterBridgeTests がサーバ生成後に配線する。
     /// サーバ⇔ルーターの生成順の都合でコンストラクタ注入にしない)
     var idleSecondsProvider: (() -> TimeInterval)?
@@ -67,7 +71,7 @@ final class BridgeRouter {
             switch (request.method, request.path) {
             case ("GET", "/status"): response = handleStatus()
             case ("POST", "/session"): response = try handleLaunch(request.body)
-            case ("GET", "/snapshot"): response = try handleSnapshot()
+            case ("GET", "/snapshot"): response = try handleSnapshot(request)
             case ("POST", "/tap"): response = try handleTap(request.body)
             case ("POST", "/type"): response = try handleType(request.body)
             case ("POST", "/clear"): response = try handleClear(request.body)
@@ -139,8 +143,8 @@ final class BridgeRouter {
             // 前面到達の確認だけ行う=未起動なら即エラーで呼び出し側が診断できる)
             guard target.state == .runningForeground
                 || target.wait(for: .runningForeground, timeout: 5) else {
-                throw BridgeError(500, "attach 対象アプリが前面にありません: \(req.bundleID)"
-                    + "(simctl launch の成否を確認してください)")
+                throw BridgeError(500, "the app to attach to is not in the foreground:"
+                    + " \(req.bundleID) (check whether simctl launch succeeded)")
             }
         } else if req.activate == true {
             target.activate()
@@ -148,7 +152,7 @@ final class BridgeRouter {
             target.launch()
         }
         guard target.state == .runningForeground || target.wait(for: .runningForeground, timeout: 10) else {
-            throw BridgeError(500, "アプリを起動できませんでした: \(req.bundleID)(インストール済みか確認してください)")
+            throw BridgeError(500, "could not launch \(req.bundleID) — check that it is installed")
         }
         app = target
         sessionBundleID = req.bundleID
@@ -181,7 +185,12 @@ final class BridgeRouter {
         let offscreen: [ElementInfo]
     }
 
-    private func handleSnapshot() throws -> BridgeHTTPServer.Response {
+    private func handleSnapshot(_ request: BridgeHTTPServer.Request) throws
+        -> BridgeHTTPServer.Response {
+        // `max=<n>` は呼び手が1回だけ上限を引き上げるためのもの(BridgeAPI.maxSnapshotElementsCeiling)。
+        // 解釈は resolvedSnapshotElementLimit の1箇所 = ホスト・3ブリッジで同じ規則
+        snapshotElementLimit = BridgeAPI.resolvedSnapshotElementLimit(
+            request.queryValue("max").flatMap { Int($0) })
         let app = try requireApp()
         // 操作直後のみ整定してから取得する(captureSettled)。XCUITest の tap quiescence は
         // 非同期 push 遷移の完了前に返るため、直後の素取得は遷移前ツリーを返す(実測 50%)。
@@ -402,8 +411,9 @@ final class BridgeRouter {
             if stagnantRounds >= Self.typeMaxStagnantRounds || Date() >= deadline {
                 // 残った値そのものは出さない(パスワード欄も通る経路)。長さと周回数だけ出す。
                 // **409 ではなく 422**(理由は handleClear のコメント)
-                throw BridgeError(422, "入力が期待した値になりませんでした"
-                    + "(\(rounds) 周打っても \(expected.count) 文字に対して \(actual.count) 文字)")
+                throw BridgeError(422, "the field did not end up holding the expected text"
+                    + " (\(rounds) round(s) of keystrokes left \(actual.count) character(s)"
+                    + " against the expected \(expected.count))")
             }
         }
         // 本文を入れ切ってから発火する(app 全体へ送るのは従来どおり。要素への typeText は
@@ -487,8 +497,13 @@ final class BridgeRouter {
         let focused = app.descendants(matching: .any)
             .matching(NSPredicate(format: "hasKeyboardFocus == true")).firstMatch
         guard focused.exists else {
-            throw BridgeError(422, "フォーカスされた入力欄がありません(hasKeyboardFocus な要素が"
-                + "見つかりません)。対象を先に tap するか ref を指定してください")
+            // **原因を名指しする**(2026-08-12 のブラウザ監査): 「ref を指定してください」だけだと
+            // ref を渡した呼び手が読む先を失う —— 実際に起きるのは「渡した ref が入力欄ではなく、
+            // タップしても焦点が立たない容器だった」形(Safari の畳んだアドレスバー等)
+            throw BridgeError(422, "nothing has keyboard focus, so there is no field to clear."
+                + " If you passed a ref, it is probably not the input element itself — tapping a"
+                + " container does not move focus. Tap the field (or pass the ref of the element"
+                + " whose type is a text field) and try again")
         }
         let deadline = Date().addingTimeInterval(Self.clearBudgetSeconds)
         var previous: String?
@@ -506,8 +521,8 @@ final class BridgeRouter {
         }
         if let residual = Self.remainingText(of: focused) {
             // 残った値そのものは出さない(パスワード欄も通る経路)。長さと周回数だけ出す
-            throw BridgeError(422, "入力欄をクリアしきれませんでした"
-                + "(\(rounds) 周叩いても \(residual.count) 文字残っています)")
+            throw BridgeError(422, "could not empty the field"
+                + " (\(residual.count) character(s) still there after \(rounds) round(s))")
         }
         return .json(OKResponse())
     }
@@ -561,7 +576,8 @@ final class BridgeRouter {
     }
 
     private func handleHideKeyboard() throws -> BridgeHTTPServer.Response {
-        .error("hideKeyboard は iOS では未対応(Android のみ)。閉じたい場合は pressEnter を使う", status: 501)
+        .error("hideKeyboard is Android-only; on iOS use pressEnter to dismiss the keyboard",
+               status: 501)
     }
 
     private func handleSwipe(_ body: Data) throws -> BridgeHTTPServer.Response {
@@ -659,7 +675,7 @@ final class BridgeRouter {
         let req = try decode(PinchRequest.self, body)
         let app = try requireLiveApp()
         guard req.scale > 0, req.scale != 1, req.scale.isFinite else {
-            throw BridgeError(400, "scale は正で 1 以外である必要があります(受領: \(req.scale))")
+            throw BridgeError(400, "scale must be positive, finite and not 1 (got \(req.scale))")
         }
         var target: XCUIElement = app
         var note: String?
@@ -770,7 +786,7 @@ final class BridgeRouter {
         // チェック〜呼び出し間のレースで投げられた「is not running」だけは握り潰して冪等にする。
         if app.state != .notRunning && app.state != .unknown {
             if let ex = FTCatchObjCException({ app.terminate() }), !ex.contains("is not running") {
-                throw BridgeError(500, "アプリの終了に失敗しました: \(ex)")
+                throw BridgeError(500, "could not terminate the app: \(ex)")
             }
         }
         self.app = nil
@@ -825,11 +841,11 @@ final class BridgeRouter {
         }
 
         let keptIndices: [Int]
-        if deduped.count <= BridgeAPI.maxSnapshotElements {
+        if deduped.count <= snapshotElementLimit {
             keptIndices = Array(deduped.indices)
         } else {
             let candidates = deduped.map { BridgeSnapshotThinning.Candidate(info: $0.info) }
-            keptIndices = BridgeSnapshotThinning.indicesToKeep(candidates, max: BridgeAPI.maxSnapshotElements)
+            keptIndices = BridgeSnapshotThinning.indicesToKeep(candidates, max: snapshotElementLimit)
             // **落とした本人しか内訳を知らない**(ホストへ届くのは残った側だけ)
             for (key, count) in BridgeSnapshotThinning.droppedByTier(candidates, kept: keptIndices) {
                 truncatedTiers[key, default: 0] += count
@@ -1053,8 +1069,9 @@ final class BridgeRouter {
     private func requireLiveApp() throws -> XCUIApplication {
         let app = try requireApp()
         guard app.state != .notRunning, app.state != .unknown else {
-            throw BridgeError(503, "対象アプリ(\(sessionBundleID ?? "?"))が起動していないため操作できません"
-                + "(前のステップで終了/クラッシュした可能性。ホストは /session で起動し直してください)")
+            throw BridgeError(503, "the target app (\(sessionBundleID ?? "?")) is not running, so"
+                + " it cannot be driven (it may have exited or crashed in an earlier step; the host"
+                + " relaunches it with /session)")
         }
         return app
     }
@@ -1063,8 +1080,8 @@ final class BridgeRouter {
         guard let app else {
             // status は 409 のまま変えないこと(ホスト側 SessionRecoveryDriver がこの1箇所の
             // 409 だけを「セッション消失」と断定して判定に使う)
-            throw BridgeError(409, "XCUITest ランナーにセッションがありません"
-                + "(ランナー再起動でセッションが失われた可能性)。ホストが /session で張り直します")
+            throw BridgeError(409, "the XCUITest runner has no session (it may have been lost to a"
+                + " runner restart); the host re-establishes it with /session")
         }
         return app
     }
@@ -1072,14 +1089,14 @@ final class BridgeRouter {
     private func resolvePoint(ref: Int?, x: Double?, y: Double?) throws -> CGPoint {
         if let ref {
             guard let frame = refFrames[ref] else {
-                throw BridgeError(404, "参照番号 [\(ref)] は未知です。先に GET /snapshot を実行してください")
+                throw BridgeError(404, "unknown reference number [\(ref)] — run GET /snapshot first")
             }
             return CGPoint(x: frame.midX, y: frame.midY)
         }
         if let x, let y {
             return CGPoint(x: x, y: y)
         }
-        throw BridgeError(400, "ref または x/y が必要です")
+        throw BridgeError(400, "either ref or x/y is required")
     }
 
     private func coordinate(_ app: XCUIApplication, _ point: CGPoint) -> XCUICoordinate {
@@ -1091,7 +1108,7 @@ final class BridgeRouter {
         do {
             return try decoder.decode(type, from: body)
         } catch {
-            throw BridgeError(400, "リクエストボディの JSON が不正です: \(error)")
+            throw BridgeError(400, "malformed JSON in the request body: \(error)")
         }
     }
 }

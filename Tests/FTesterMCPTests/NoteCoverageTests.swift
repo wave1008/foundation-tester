@@ -84,7 +84,12 @@ final class NoteCoverageTests: XCTestCase {
     static let baseline: [String: Coverage] = [
         "ghostNote": Coverage(fixtures: ["ios-browser_startpage", "ios-place_guides_scrolled"], bytes: 588),
         "scrollFrameCandidates": Coverage(fixtures: ["and-place_expanded", "and-results", "ios-browser_startpage", "ios-maps_route_options", "ios-maps_station", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-messages_keyboard", "ios-place_guides_scrolled"], bytes: 2317),
-        "truncationNote": Coverage(fixtures: ["ios-browser_nationwide", "ios-browser_startpage", "ios-maps_station"], bytes: 913),
+        "truncationNote": Coverage(fixtures: ["ios-browser_nationwide", "ios-browser_startpage", "ios-maps_station"], bytes: 1012),
+        // 取りこぼしのある Chrome の1枚だけで発火し、取りこぼしの無い iOS Safari の3枚では
+        // 出ない(閾値の根拠は MCPServer.webViewGapNote のコメント)。browser 限定なのは
+        // **webView を持つフィクスチャがブラウザ4枚しか無い**ためで、対象はアプリ内 WebView も含む
+        "webViewGapNote": Coverage(fixtures: ["and-browser_weather"], bytes: 485),
+        "urlishLabelsNote": Coverage(fixtures: ["and-browser_weather"], bytes: 298),
         "unlabeledClickablesNote": Coverage(fixtures: ["and-browser_urlmenu", "and-directions_tabs", "and-home", "and-place", "and-place_expanded", "and-results", "ios-home", "ios-maps_route_options", "ios-profile", "ios-settings_root"], bytes: 5105),
         "ambiguousLabelsNote": Coverage(fixtures: ["and-browser_weather", "and-home", "and-maps_suggest_ime", "and-place", "and-place_expanded", "and-results", "ios-browser_nationwide", "ios-browser_startpage", "ios-home", "ios-maps_station", "ios-maps_suggest_keyboard", "ios-messages_keyboard", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-safari_article", "ios-settings_root", "sut-cmp_controls", "sut-cmp_home", "sutec-detail", "sutec-home"], bytes: 11616),
         "duplicateIDsNote": Coverage(fixtures: ["and-dialer_keypad", "and-home", "and-overflow", "and-place_expanded", "and-results", "and-settings_root", "ios-browser_startpage", "ios-home", "ios-maps_route_options", "ios-maps_station", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-photos_grid", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-settings_root", "sutec-home"], bytes: 16450),

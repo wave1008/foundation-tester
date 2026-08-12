@@ -32,6 +32,14 @@ extension StepExecutor {
         /// `stoppedUnmoving` の時点で、明示 scrollFrame が画面高の80%未満しかない(半開シート等)。
         /// シート展開ヒント(scrollNotFoundMessage)を**全画面リストの末尾到達**にまで出さないためのゲート
         var containerIsPartialHeight: Bool = false
+        /// 探索の**どこか1周でも**木が要素上限で打ち切られていた件数の最大。
+        ///
+        /// **最終木だけを見ても分からない**(2026-08-12 のブラウザ監査): 目的の行が画面に
+        /// 入っていた周回では打ち切られていても、探索が通り過ぎた先の最終画面は上限に
+        /// 当たらないことがある。そのとき失敗文は「見つからない」としか言わず、
+        /// **実在する行を探し続ける**。最終木だけで判定していたため、実測の2回のうち
+        /// 1回はこの警告が出ないままだった
+        var maxTruncatedDuringSearch: Int = 0
     }
 
     /// 探索の注記を組み立てつつ、**機械可読コードを今のステップへ記録する**。
@@ -46,6 +54,11 @@ extension StepExecutor {
         // 片方だけ変えない —— MCP はこのコードで自動展開へ分岐する
         if result.stoppedUnmoving, result.containerIsPartialHeight {
             noteCodesThisStep.insert(.sheetCollapsed)
+        }
+        // **見つかった回には出さない**: 打ち切りが害になるのは「不在」と読まれる回だけで、
+        // 成功した探索にまで付けると毎回出る注記になる(StepNote の採用基準に反する)
+        if !result.found, result.maxTruncatedDuringSearch > 0 {
+            noteCodesThisStep.insert(.truncatedDuringSearch)
         }
         return Self.scrollSearchNote(result, scrollFrameNote: scrollFrameNote)
     }
@@ -311,6 +324,7 @@ extension StepExecutor {
         // (1周で切らないのは、遅れて描画される行を「動かなかった」と誤断しないため)
         var swipes = 0
         var unmovedRounds = 0
+        var truncatedDuringSearch = 0
         // スクロールした容器(中身が入れ替わった領域)。逆走査の刻みの基準
         var scrolledContainer: FTRect?
         for attempt in 0...maxSwipes {
@@ -336,6 +350,8 @@ extension StepExecutor {
                 phase.snapshotMs += Self.ms(clock.now - start)
             }
             try await dismissInterruption(in: &snapshot, phase: &phase)
+            // **周回ごとに記録する**(最終木では消えている情報。ScrollSearchResult の宣言参照)
+            truncatedDuringSearch = max(truncatedDuringSearch, snapshot.truncatedCount)
             if let previousSnapshot {
                 scrolledContainer = Self.changedContentContainer(before: previousSnapshot,
                                                                  after: snapshot)
@@ -436,7 +452,8 @@ extension StepExecutor {
                     // 「何本振って辿り着いたか」が常に 0 と報告されるようになった
                     return ScrollSearchResult(found: true, fallback: fallback, viaXCUITest: viaXCUITest,
                                               hintJumps: hintJumps, settleCapped: settleCapped,
-                                              swipes: swipes)
+                                              swipes: swipes,
+                                              maxTruncatedDuringSearch: truncatedDuringSearch)
                 }
             }
             if attempt < maxSwipes {
@@ -452,7 +469,8 @@ extension StepExecutor {
                 if Self.scrollFrameUnresolved(step, in: snapshot) {
                     return ScrollSearchResult(found: false, fallback: nil, viaXCUITest: viaXCUITest,
                                               hintJumps: hintJumps, swipes: swipes,
-                                              scrollFrameMissing: true)
+                                              scrollFrameMissing: true,
+                                              maxTruncatedDuringSearch: truncatedDuringSearch)
                 }
                 if let earlier = previousSnapshot,
                    Self.contentSignature(earlier.elements)
@@ -487,7 +505,8 @@ extension StepExecutor {
                                                         viaXCUITest: viaXCUITest,
                                                         hintJumps: hintJumps,
                                                         swipes: swipes, stoppedUnmoving: true,
-                                                        containerIsPartialHeight: containerIsPartialHeight)
+                                                        containerIsPartialHeight: containerIsPartialHeight,
+                                                        maxTruncatedDuringSearch: truncatedDuringSearch)
                         guard recoverOnMiss, step.containerInference ?? true,
                               // 半開きシートで呼び手が展開・再試行するなら、逆走査はそちらの
                               // 再試行(全画面高)に譲る(defersPartialSheetRecovery の宣言参照)
@@ -548,13 +567,15 @@ extension StepExecutor {
                                                   searching: direction, phase: &phase) {
             var result = ScrollSearchResult(found: true, fallback: recovered,
                                             viaXCUITest: viaXCUITest,
-                                            hintJumps: hintJumps, swipes: swipes)
+                                            hintJumps: hintJumps, swipes: swipes,
+                                            maxTruncatedDuringSearch: truncatedDuringSearch)
             result.reverseSweeps = 1
             result.suggestedScrollFrame = ScrollFrameCandidates.selector(matching: container,
                                                                          in: latest)
             return result
         }
         return ScrollSearchResult(found: false, fallback: nil, viaXCUITest: viaXCUITest,
-                                  hintJumps: hintJumps, swipes: swipes)
+                                  hintJumps: hintJumps, swipes: swipes,
+                                  maxTruncatedDuringSearch: truncatedDuringSearch)
     }
 }

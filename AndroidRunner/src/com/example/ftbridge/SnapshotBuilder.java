@@ -29,6 +29,25 @@ final class SnapshotBuilder {
     /** BridgeAPI.maxSnapshotElements と同期(4Kトークン対策) */
     static final int MAX_ELEMENTS = 120;
 
+    /** BridgeAPI.maxSnapshotElementsCeiling と同期(`?max=` で引き上げられる天井) */
+    static final int MAX_ELEMENTS_CEILING = 400;
+
+    /**
+     * `?max=` の解釈。**規則は BridgeAPI.resolvedSnapshotElementLimit と同じ**
+     * (null・非整数・0以下 = 既定、天井超え = 天井へ丸める)。片方だけ変えないこと
+     */
+    static int resolveElementLimit(String raw) {
+        if (raw == null || raw.isEmpty()) return MAX_ELEMENTS;
+        int value;
+        try {
+            value = Integer.parseInt(raw);
+        } catch (NumberFormatException e) {
+            return MAX_ELEMENTS;
+        }
+        if (value <= 0) return MAX_ELEMENTS;
+        return Math.min(value, MAX_ELEMENTS_CEILING);
+    }
+
     static final class Result {
         final String json;
         final Map<Integer, double[]> refCenters;  // ref → {centerX, centerY}
@@ -151,7 +170,8 @@ final class SnapshotBuilder {
 
     /** forceRefresh: WebView 外のノードも refresh() してから読むか(既定は false。collect 参照)。
      *  context: displayBounds の WindowManager 取得用(null 可・その場合はウィンドウの根へ落ちる) */
-    static Result build(UiAutomation ua, Context context, boolean forceRefresh) throws JSONException {
+    static Result build(UiAutomation ua, Context context, boolean forceRefresh, int maxElements)
+            throws JSONException {
         AccessibilityNodeInfo root = waitForRoot(ua, 2000);
         if (root == null) {
             throw new IllegalStateException("cannot read the UI tree of the active window");
@@ -193,8 +213,8 @@ final class SnapshotBuilder {
         for (UINode node : nodes) {
             if (shouldInclude(node, window)) included.add(node);
         }
-        List<UINode> kept = included.size() <= MAX_ELEMENTS
-                ? included : selectByPriority(included, MAX_ELEMENTS);
+        List<UINode> kept = included.size() <= maxElements
+                ? included : selectByPriority(included, maxElements);
         int truncated = included.size() - kept.size();
 
         JSONArray elements = new JSONArray();

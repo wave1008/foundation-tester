@@ -82,7 +82,7 @@ final class FTInAppBridge {
         do {
             switch (req.method, req.path) {
             case ("GET", "/status"): return handleStatus()
-            case ("GET", "/snapshot"): return try handleSnapshot()
+            case ("GET", "/snapshot"): return try handleSnapshot(req)
             case ("POST", "/tap"): return try handleTap(req.body)
             case ("POST", "/type"): return try handleType(req.body)
             case ("POST", "/clear"): return try handleClear(req.body)
@@ -174,7 +174,11 @@ final class FTInAppBridge {
         }
     }
 
-    private func handleSnapshot() throws -> InAppHTTPServer.Response {
+    private func handleSnapshot(_ req: InAppHTTPServer.Request) throws -> InAppHTTPServer.Response {
+        // `max=<n>`: 呼び手が1回だけ引き上げる要素上限(解釈は resolvedSnapshotElementLimit の
+        // 1箇所 = ホスト・3ブリッジで同じ規則)。DOM マージ側の上限にも同じ値を使う
+        let limit = BridgeAPI.resolvedSnapshotElementLimit(
+            req.queryValue("max").flatMap { Int($0) })
         let base: InAppSnapshot.Result = try mainSync {
             guard let window = self.keyWindow() else {
                 throw InAppError(409, "no key window")
@@ -183,7 +187,7 @@ final class FTInAppBridge {
             // 0 要素になる(_AXSSetAutomationEnabled は Flutter engine に効かない)。冪等・非 Flutter は no-op。
             // 起動直後は FlutterViewController が未生成のことがあるため boot 時でなく snapshot ごとに呼ぶ
             FTEnsureFlutterSemantics()
-            return InAppSnapshot.capture(window: window)
+            return InAppSnapshot.capture(window: window, max: limit)
         }
         // **キーボードはキーウィンドウの外**(UITextEffectsWindow)に載るため、AX ツリー走査
         // (InAppSnapshot の sawKeyboard)では見つからない。表示中かと実矩形を同一時点で読むため
@@ -194,7 +198,7 @@ final class FTInAppBridge {
 
         // **mainSync の外で行う**: WKWebView の DOM 読みは evaluateJavaScript の完了を待つが、
         // その完了はメインキューへ配送されるため、メインを保持したまま待つとデッドロックする
-        let merged = mergeWebViewDOM(into: base)
+        let merged = mergeWebViewDOM(into: base, max: limit)
 
         mainSync {
             self.frames = merged.frames
@@ -307,7 +311,8 @@ final class FTInAppBridge {
     /// これを見て ref を座標へ解決し XCUITest の実タッチへ回す**(ここでは判定だけ、実際の
     /// ルーティングはブリッジの責務外)。DOM が全く読めなかった WebView は素通し = 従来どおり
     /// コンテナだけが出て、ホストは画面ごと XCUITest へ委譲する。
-    private func mergeWebViewDOM(into base: InAppSnapshot.Result) -> MergedSnapshot {
+    private func mergeWebViewDOM(into base: InAppSnapshot.Result, max limit: Int)
+        -> MergedSnapshot {
         let containers = base.elements.filter { $0.type == "webView" }
         guard !containers.isEmpty else {
             return MergedSnapshot(elements: base.elements, frames: base.frames,
@@ -343,12 +348,12 @@ final class FTInAppBridge {
         // (ネイティブ1段目の間引きと同じ優先度規則)
         let domElements = domByRef.mapValues(\.elements)
         let (kept, dropped) = BridgeSnapshotThinning.mergedSlots(
-            base: base.elements, dom: domElements, max: BridgeAPI.maxSnapshotElements)
+            base: base.elements, dom: domElements, max: limit)
         // 1段目(ネイティブ)と2段目(DOM マージ)は別々に捨てるので**両方を足す**
         var truncatedTiers = base.truncatedTiers
         if dropped > 0 {
             for (key, count) in BridgeSnapshotThinning.mergedDroppedByTier(
-                base: base.elements, dom: domElements, max: BridgeAPI.maxSnapshotElements) {
+                base: base.elements, dom: domElements, max: limit) {
                 truncatedTiers[key, default: 0] += count
             }
         }

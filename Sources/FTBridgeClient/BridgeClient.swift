@@ -409,6 +409,14 @@ public final class BridgeClient: AppDriver {
         try await snapshot(query: nil)
     }
 
+    /// 次の1回だけ効く要素上限(AppDriver.raiseElementLimitOnNextSnapshot)。
+    /// **消費は snapshot(query:) の1箇所**(取りこぼすと以後の木が全部膨らむ)
+    private var pendingElementLimit: Int?
+
+    public func raiseElementLimitOnNextSnapshot(_ max: Int?) {
+        pendingElementLimit = max
+    }
+
     /// `refresh=1` は Android ブリッジとの契約(AndroidRunner の BridgeRouter.handleSnapshot)。
     /// **iOS ブリッジへ送ってはいけない** —— クエリ付きは別ルート扱いで
     /// `404 not found: GET /snapshot?refresh=1` になる(2026-08-03 に実測。
@@ -419,7 +427,14 @@ public final class BridgeClient: AppDriver {
     }
 
     private func snapshot(query: String?) async throws -> SnapshotResponse {
-        let response: SnapshotResponse = try await get("/snapshot", query: query,
+        // 上限の指定は**消費してから**送る(送信に失敗しても次の呼び出しへ持ち越さない ——
+        // 持ち越すと「1回だけ」の契約が壊れ、以後の整定ループまで重い木を引く)
+        let limit = pendingElementLimit
+        pendingElementLimit = nil
+        let merged = [query, limit.map { "max=\(BridgeAPI.resolvedSnapshotElementLimit($0))" }]
+            .compactMap { $0 }.joined(separator: "&")
+        let response: SnapshotResponse = try await get("/snapshot",
+                                                       query: merged.isEmpty ? nil : merged,
                                                        timeout: sessionTimeout)
         // 取りこぼしの申告(クロスオリジン iframe 等)は記録に載せる。
         // **無申告なら触らない**: 直前アクションの note を消してしまわないため
