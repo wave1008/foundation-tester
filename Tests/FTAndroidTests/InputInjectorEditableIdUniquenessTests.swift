@@ -44,17 +44,25 @@ final class InputInjectorEditableIdUniquenessTests: XCTestCase {
         return bodies
     }
 
-    /// id 一致経路(editableById 相当)は「一致件数を数えて一意でなければ座標へ落とす」形で
-    /// なければならない。**最初の一致で return する**旧実装(バグ)に戻ったら落ちる。
+    /// id 一致経路(collectEditableById 相当)は「点 (x,y) を含む一致だけ走査中に確定し、
+    /// それ以外は候補を集めて座標で選び分ける」形でなければならない。
+    /// **包含判定を伴わずに最初の一致で return する**旧実装(バグ)に戻ったら落ちる。
     func testIdMatchingWalkDoesNotReturnOnFirstHit() throws {
         let source = try inputInjectorSource()
         let bodies = classLevelBlockBodies(source)
         guard let idWalkBody = bodies.first(where: { $0.contains("getViewIdResourceName(") }) else {
             return XCTFail("resource-id を読む走査本体が見つからない(getViewIdResourceName 呼び出し)")
         }
-        // 旧バグの構造: マッチしたら node を即 return する。復活したらここで検出する。
-        XCTAssertFalse(idWalkBody.contains("return node;"),
-                       "id 一致の走査が最初の一致で即 return している(一意性を見ない旧実装に戻っている)")
+        // 走査中の `return node;` は包含判定 contains(x, y) の同行〜直前2行に限る。
+        // ガード無しの return が現れたら「一意性を見ない旧実装」への退行。
+        let lines = idWalkBody.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        for (i, line) in lines.enumerated() where line.contains("return node;") {
+            let guardWindow = lines[max(0, i - 2)...i].joined(separator: "\n")
+            XCTAssertTrue(guardWindow.contains("contains(x, y)"),
+                          "包含判定を伴わない return node; がある(最初の一致で即 return する旧実装): \(line)")
+        }
+        XCTAssertTrue(idWalkBody.contains("contains(x, y)"),
+                      "走査が ref の点を見ていない(包含での確定が消えている)")
         XCTAssertTrue(idWalkBody.range(of: #"\.add\(\s*node\s*\)"#, options: .regularExpression) != nil,
                       "id 一致の走査が候補を集める形になっていない(matches への追加が見当たらない)")
     }

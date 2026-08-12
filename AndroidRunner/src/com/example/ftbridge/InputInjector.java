@@ -234,21 +234,25 @@ final class InputInjector {
                                                       int x, int y, Rect tmp) {
         if (shortId != null) {
             java.util.List<AccessibilityNodeInfo> matches = new java.util.ArrayList<>();
-            collectEditableById(root, shortId, matches);
+            AccessibilityNodeInfo containing = collectEditableById(root, shortId, x, y, tmp, matches);
+            if (containing != null) return containing;
             if (matches.size() == 1) return matches.get(0);
             if (matches.size() > 1) return nearest(matches, x, y, tmp);
         }
         return editableAt(root, x, y, tmp);
     }
 
-    /** 同じ id の候補から ref の点で選ぶ: 含むものを優先し、無ければ中心が最も近いもの */
+    /**
+     * 同じ id の候補から ref の点で中心が最も近いものを選ぶ。**包含一致は collectEditableById
+     * が走査中に確定して返す**ので、ここに来る候補はいずれも点を含まない(判定軸はここでは
+     * 中心距離だけ)。
+     */
     private static AccessibilityNodeInfo nearest(java.util.List<AccessibilityNodeInfo> matches,
                                                  int x, int y, Rect tmp) {
         AccessibilityNodeInfo best = null;
         double bestDistance = Double.MAX_VALUE;
         for (AccessibilityNodeInfo node : matches) {
             node.getBoundsInScreen(tmp);
-            if (tmp.contains(x, y)) return node;
             double dx = tmp.centerX() - x;
             double dy = tmp.centerY() - y;
             double distance = dx * dx + dy * dy;
@@ -262,21 +266,30 @@ final class InputInjector {
 
     /**
      * 短縮 resource-id が一致する editable ノードを集める(SnapshotBuilder.shortResourceId
-     * と同じ規則)。**打ち切りは 8 件**: 一意性の判定だけなら2件で足りるが、複数一致のときは
-     * 座標で選び分けるので候補が要る(それ以上並ぶ画面では点を含むものが先に返る)。
+     * と同じ規則)。**点 (x,y) を含む一致は走査中に確定してその場で返す**(件数上限と無関係。
+     * 一致が何件並んでいても対象は必ず見つかる)。含む一致が最後まで無かったときは
+     * nearest() が matches 全件から中心距離で選ぶので、**matches の収集数に上限を付けない**
+     * ——IME の開閉でダイアログが数百 px 動き点がどの欄にも乗らないケースがあり、上限を切ると
+     * 対象が上限より後ろにあるとき別の欄を選んでしまう。
      */
-    private static void collectEditableById(AccessibilityNodeInfo node, String shortId,
-                                            java.util.List<AccessibilityNodeInfo> matches) {
-        if (node == null || matches.size() >= 8) return;
+    private static AccessibilityNodeInfo collectEditableById(AccessibilityNodeInfo node, String shortId,
+                                            int x, int y, Rect tmp, java.util.List<AccessibilityNodeInfo> matches) {
+        if (node == null) return null;
         String id = node.getViewIdResourceName();
         if (id != null && node.isEditable()) {
             int idx = id.indexOf("id/");
             String shortened = idx >= 0 ? id.substring(idx + 3) : id;
-            if (shortId.equals(shortened)) matches.add(node);
+            if (shortId.equals(shortened)) {
+                node.getBoundsInScreen(tmp);
+                if (tmp.contains(x, y)) return node;
+                matches.add(node);
+            }
         }
-        for (int i = 0; i < node.getChildCount() && matches.size() < 8; i++) {
-            collectEditableById(node.getChild(i), shortId, matches);
+        for (int i = 0; i < node.getChildCount(); i++) {
+            AccessibilityNodeInfo found = collectEditableById(node.getChild(i), shortId, x, y, tmp, matches);
+            if (found != null) return found;
         }
+        return null;
     }
 
     /**
