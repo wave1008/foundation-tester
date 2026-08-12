@@ -132,4 +132,61 @@ final class MCPRefGenerationTests: XCTestCase {
         _ = try await server.call(tool: "ft_tap", args: ["ref": 42])
         XCTAssertEqual(actions, ["tap(ref:42)"])
     }
+
+    // MARK: - 機を跨いだ ref の衝突(2026-08-13・軸②「2台以上」の監査で実機再現)
+
+    /// **本命**: 2台を触ったセッションで、機A の ref を機B へ撃っても当たらないこと。
+    ///
+    /// base を engineKey ごとに 0 から始めていたため、**両機の ref 番号が衝突**していた。
+    /// 実機実測(E2EAppCMP・iOS 2台): 機A の ref 10 は `#row_30`、機B の ref 10 は
+    /// `#btn_item_1`。機A の木を見て採った `ft_tap ref: 10` を port だけ機B にして撃つと、
+    /// **警告も拒否も無く成功して**機B のボタンを叩き、状態が変わった
+    /// (`result=item3` → `result=item1`)。どちらも button なので**もっともらしく成功する**。
+    /// 採番をセッション共通にすると、他機の ref は世代のどこにも無いので `.gone` で断られる
+    func testARefTakenOnOneDeviceDoesNotHitAnotherDevice() async throws {
+        driver.snapshotResponse = screen([element(ref: 1, id: "row_30", label: "行 30")])
+        let a = Self.text(try await server.call(tool: "ft_snapshot", args: ["port": 8123]))
+        let refA = Self.firstRef(in: a)
+
+        driver.snapshotResponse = screen([element(ref: 1, id: "btn_item_1", label: "項目")])
+        let b = Self.text(try await server.call(tool: "ft_snapshot", args: ["port": 8124]))
+        let refB = Self.firstRef(in: b)
+
+        XCTAssertNotEqual(refA, refB,
+                          "2台で同じ ref 番号が振られている — 片方の木を見て採った ref が"
+                          + "もう片方の別要素へ黙って当たる(実機で再現済み)")
+
+        // 機A の ref を機B へ撃つ: 当たってはいけない
+        do {
+            _ = try await server.call(tool: "ft_tap", args: ["port": 8124, "ref": refA])
+            XCTFail("機A の ref \(refA) が機B で解決されて成功した(黙って別要素を叩いている)")
+        } catch {
+            XCTAssertFalse(driver.calls.contains { $0.hasPrefix("tap") },
+                           "拒否したはずなのに tap が発射されている: \(driver.calls)")
+        }
+    }
+
+    /// 採番はセッションに1つ(機を跨いでも単調増加)。上のテストが「たまたま番号がずれた」で
+    /// 通ることを防ぐ —— 2台目の base が1台目の消費ぶんだけ進んでいることを直接見る
+    func testRefBaseIsSharedAcrossDevicesAndOnlyGrows() async throws {
+        driver.snapshotResponse = screen([element(ref: 1), element(ref: 2)])
+        _ = try await server.call(tool: "ft_snapshot", args: ["port": 8123])
+        let afterA = server.nextRefBase
+        XCTAssertGreaterThan(afterA, 0)
+
+        _ = try await server.call(tool: "ft_snapshot", args: ["port": 8124])
+        XCTAssertGreaterThan(server.nextRefBase, afterA,
+                             "2台目が1台目と同じ base を使い回している")
+    }
+
+    /// 一覧の1行目の ref を抜く(`[12] button …` の 12)
+    private static func firstRef(in text: String) -> Int {
+        for line in text.split(separator: "\n") where line.hasPrefix("[") {
+            if let close = line.firstIndex(of: "]"),
+               let value = Int(line[line.index(after: line.startIndex)..<close]) {
+                return value
+            }
+        }
+        return -1
+    }
 }

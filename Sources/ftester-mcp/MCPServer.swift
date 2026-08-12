@@ -42,9 +42,18 @@ final class MCPServer {
     /// MCP 層で ref にオフセット(`base`)を掛け、セッション内で全世代の ref を一意にする ——
     /// ブリッジには一切触らない。古い順に並び、**直近5世代だけ**保持する(adoptSnapshot 参照)
     var refGenerations: [String: [(base: Int, snapshot: SnapshotResponse)]] = [:]
-    /// 次の新しい世代に割り当てる base(engineKey ごと)。**単調増加のみ**(世代を跨いで再利用しない
-    /// ことで、セッションを通じて ref が一度も衝突しないことを保証する)
-    var nextRefBase: [String: Int] = [:]
+    /// 次の新しい世代に割り当てる base。**セッションに1つ**(engineKey ごとではない)・**単調増加のみ**。
+    ///
+    /// **機ごとに持ってはいけない**(2026-08-13 に実機で踏んだ): engineKey ごとに 0 から始めると
+    /// **2台を触ったセッションで ref 番号が両機で衝突する**。実測(E2EAppCMP・iOS 2台)——
+    /// 機A の ref 10 は `#row_30`、機B の ref 10 は `#btn_item_1` で、機A の木を見て採った
+    /// `ft_tap ref: 10` を `port:` だけ機B にして撃つと、**警告も拒否も無く成功して**
+    /// 機B の `#btn_item_1` を叩き、状態が `result=item3` → `result=item1` に変わった。
+    /// どちらも button なので**もっともらしく成功する**のが最悪の形。
+    /// セッション全体で単調増加にすれば、他機の ref は世代のどこにも無いので
+    /// `RefGuard` が `.gone` で断る(番号が衝突しない = 黙って別物に当たれない)。
+    /// **`forgetDeviceState` はこれを消さない** —— 捨てた番号を再配布しないため
+    var nextRefBase = 0
     /// 保持する世代数の上限。**5**: 「1つ前の木」しか見ない従来より十分に厚いが、
     /// 無制限にするとセッションが長引くほど探索コストと保持量が線形に増える
     static let maxRefGenerations = 5

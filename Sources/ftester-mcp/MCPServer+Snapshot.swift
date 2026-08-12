@@ -90,7 +90,7 @@ extension MCPServer {
                 return remapped
             }
         }
-        let base = nextRefBase[key] ?? 0
+        let base = nextRefBase
         let remapped = Self.remapped(native, base: base)
         var generations = refGenerations[key] ?? []
         generations.append((base: base, snapshot: remapped))
@@ -99,7 +99,8 @@ extension MCPServer {
         }
         refGenerations[key] = generations
         let maxNativeRef = native.elements.map(\.ref).max() ?? -1
-        nextRefBase[key] = base + maxNativeRef + 1
+        // **セッション共通の採番**(engineKey ごとではない。宣言のコメント参照)
+        nextRefBase = base + maxNativeRef + 1
         lastSnapshots[key] = remapped
         return remapped
     }

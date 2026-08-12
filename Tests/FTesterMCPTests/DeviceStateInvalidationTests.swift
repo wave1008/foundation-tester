@@ -35,7 +35,7 @@ final class DeviceStateInvalidationTests: XCTestCase {
         server.versionSkew[key] = "mismatch"
         server.lastSnapshots[key] = snapshot
         server.refGenerations[key] = [(base: 100, snapshot: snapshot)]
-        server.nextRefBase[key] = 200
+        server.nextRefBase = 200
         server.launchedBundleIDs[key] = "com.example.old"
         server.uiFrameworkHints[key] = "compose"
         server.lastScreenshots[key] = StaleFrameDetector.Record(imageHash: 1, treeFingerprint: 2)
@@ -76,7 +76,7 @@ final class DeviceStateInvalidationTests: XCTestCase {
 
         server.forgetDeviceState(key)
 
-        XCTAssertEqual(server.nextRefBase[key], 200,
+        XCTAssertEqual(server.nextRefBase, 200,
                        "nextRefBase が巻き戻された — 捨てた世代の ref 番号が再配布される")
     }
 
@@ -113,7 +113,9 @@ final class DeviceStateInvalidationTests: XCTestCase {
     /// 最も分かりにくい形になるので、人の注意力ではなくソース走査で守る。
     /// `nextRefBase` だけは**意図して残す**ので、ここに理由付きで明記する
     func testEveryEngineKeyedMemoIsAccountedForHere() throws {
-        let deliberatelyKept = ["nextRefBase"]  // 単調増加の不変条件(ref 番号を再配布しない)
+        // 空でよい: `nextRefBase` は 2026-08-13 にセッション共通のスカラーへ変えたので、
+        // engineKey で引く記憶ではなくなり、この走査(`[String: …]` 宣言)には掛からない
+        let deliberatelyKept: [String] = []
 
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
