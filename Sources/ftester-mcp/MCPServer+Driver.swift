@@ -37,7 +37,13 @@ extension MCPServer {
         if let profileName = args["profile"] as? String {
             let key = Self.driverCacheKey(profile: profileName, project: args["project"] as? String,
                                           platform: args["platform"] as? String)
-            if let cached = drivers[key] { return cached }
+            // **直接ポート経路と同じ確認を通す**(2026-08-13 の掃討)。profile 経由でもブリッジは
+            // 建て直され、そのとき同じ profile キーが別の機を指し得る —— 片方だけ守ると
+            // 「profile を使う利用者にだけ穴が残る」形になる
+            if let cached = drivers[key] {
+                if let moved = await deviceIdentityChanged(key, args: args) { throw MCPError(moved) }
+                return cached
+            }
             let project = try ScenarioHost.project(named: args["project"] as? String)
             var prologue: [String] = []
             // profile 指定の初回はブリッジ provision を伴い、コールドスタートは分単位かかりうる
@@ -62,7 +68,13 @@ extension MCPServer {
                 if case .ios(let provisioned, _) = target { provisioned.physical ? "xcuitest" : provisioned.engine }
                 else { "android" }
             }()
-            if case .ios(let provisioned, _) = target { udids[key] = provisioned.udid }
+            // **udid と port を両方記録する**(port は 2026-08-13 に追加)。`deviceIdentityChanged`
+            // はこの2つが揃っているときだけ動くので、**port を書かないとガードが黙って no-op になる**
+            // (直接ポート経路で実際に踏んだ形。DeviceStateInvalidationTests が両方を守る)
+            if case .ios(let provisioned, _) = target {
+                udids[key] = provisioned.udid
+                connectedPorts[key] = provisioned.port
+            }
             // engine=xcuitest はブリッジが uiFramework を申告しないが、profile 経由なら
             // 対象 bundleID が分かるのでバンドルのマーカーで判定して覚える(scroll_to の
             // 空打ちゲート用。DSL の xcuitest 経路と同じ判定 = AppBundleInspector)
@@ -107,7 +119,7 @@ extension MCPServer {
             // 生成時の `keyChangedDevice` では防げない —— この間セッションは1回も呼んでおらず
             // `forgetConnection` が走らないので、**ドライバはキャッシュ命中し生成が起きない**。
             // 「死んだブリッジなら失敗経路が拾う」も誤り: 新しいブリッジは正常に応答する。
-            if let moved = await deviceIdentityChanged(key, args: args, platform: platform) {
+            if let moved = await deviceIdentityChanged(key, args: args) {
                 throw MCPError(moved)
             }
             // **キャッシュ命中でも記憶を更新する**(2026-08-12 の実アプリ監査で踏んだ)。
@@ -339,8 +351,12 @@ extension MCPServer {
     /// まだセッションを持たない**ので `status()` が 409 で落ちる。`try?` で握ると
     /// **機が変わったときにちょうどガードが黙る** —— 陰性が「常に false を返す検出器」と
     /// 区別できない形そのものだった(実機の陽性対照で発覚)。ポートへ直に `/status` を撃つ
-    func deviceIdentityChanged(_ key: String, args: [String: Any], platform: String) async -> String? {
-        guard platform == "ios", Self.usesRememberedDeviceState(args),
+    /// **platform は引数で取らない**(2026-08-13 の掃討): 必要な2つ(`udids` と
+    /// `connectedPorts`)は **iOS でしか埋まらない**ので、前提のほうが platform 判定より強い。
+    /// profile 経路は解決前に platform 文字列を持たないため、引数で取ると呼び手ごとに
+    /// 合成することになり、そこで取り違える余地が生まれる
+    func deviceIdentityChanged(_ key: String, args: [String: Any]) async -> String? {
+        guard Self.usesRememberedDeviceState(args),
               let recorded = udids[key] ?? nil, let port = connectedPorts[key],
               let now = try? await BridgeClient(port: port, timeoutSeconds: 5).status().udid,
               let moved = Self.keyChangedDevice(previous: recorded, now: now) else { return nil }

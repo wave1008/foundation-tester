@@ -207,4 +207,56 @@ final class DeviceStateInvalidationTests: XCTestCase {
         XCTAssertFalse(message.contains("port "), message)
         XCTAssertTrue(message.contains("AAA"), message)
     }
+
+    // MARK: - 掃討の網羅(2026-08-13): 片方の経路にだけ確認を入れると、その経路の利用者にだけ穴が残る
+
+    /// **ドライバのキャッシュ命中は2箇所ある**(profile 経路と直接ポート経路)。
+    /// 2026-08-13 に直接ポート側だけへ確認を入れ、**profile 側を取りこぼした**。
+    /// 新しいキャッシュ命中を足したときも落ちるよう、ソース走査で網羅を守る
+    func testEveryDriverCacheHitVerifiesDeviceIdentity() throws {
+        let source = try String(contentsOf: Self.driverSourceURL(), encoding: .utf8)
+        let lines = source.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        var hits = 0
+        for (index, line) in lines.enumerated() where line.contains("if let cached = drivers[key]") {
+            hits += 1
+            // 命中ブロックの中(次の 12 行以内)で確認を呼んでいること
+            let window = lines[index..<min(index + 12, lines.count)].joined(separator: "\n")
+            XCTAssertTrue(window.contains("deviceIdentityChanged"),
+                          "\(index + 1) 行目のキャッシュ命中が同一性を確かめていない —— "
+                          + "この経路の利用者にだけ、機が変わっても古い ref が通る穴が残る")
+        }
+        XCTAssertEqual(hits, 2,
+                       "キャッシュ命中の箇所数が変わった(実測 \(hits))。増えたなら確認も入れる")
+    }
+
+    /// **ガードが動くのに必要な材料を、両経路とも記録していること**。
+    /// `deviceIdentityChanged` は `udids` と `connectedPorts` が揃ったときだけ動くので、
+    /// 片方を書き忘れると**確認を呼んでいるのに黙って no-op** になる(今日踏んだ形)
+    func testBothPathsRecordWhatTheIdentityGuardNeeds() throws {
+        let source = try String(contentsOf: Self.driverSourceURL(), encoding: .utf8)
+        XCTAssertTrue(source.contains("connectedPorts[key] = provisioned.port"),
+                      "profile 経路が connectedPorts を記録していない —— ガードが常に no-op になる")
+        XCTAssertTrue(source.contains("udids[key] = provisioned.udid"),
+                      "profile 経路が udid を記録していない")
+        XCTAssertTrue(source.contains("connectedPorts[key] = port"),
+                      "直接ポート経路が connectedPorts を記録していない")
+    }
+
+    /// 材料が欠けているときは**何もしない**(誤って毎回記憶を捨てない)。
+    /// no-op であること自体は正しいので、上の2本と対で意味を持つ
+    func testIdentityGuardDoesNothingWithoutTheRecordedPort() async {
+        let server = serverWithFullStateForKey()
+        server.connectedPorts[key] = nil
+
+        let verdict = await server.deviceIdentityChanged(key, args: ["ref": 1])
+
+        XCTAssertNil(verdict)
+        XCTAssertNotNil(server.refGenerations[key], "材料が無いのに記憶を捨てた")
+    }
+
+    private static func driverSourceURL() -> URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/ftester-mcp/MCPServer+Driver.swift")
+    }
 }
