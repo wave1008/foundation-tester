@@ -542,7 +542,9 @@ extension MCPServer {
     /// それでも同一なら「どの手も画面を変えなかったかもしれない」と言うだけで断定しない
     /// (縁で止まっているだけの正当なケースがあるため)。撮り直したら、以後の表示・記録は
     /// **撮り直したほうの木**を使う(snapshotAfterBodyWithStatus と同じ)。
-    /// `beforeBatch` が nil(起点を知らない)なら比較対象が無いので何もしない
+    /// `beforeBatch` が nil(起点を知らない)なら比較対象が無いので何もしない。
+    /// **木がほぼ空の画面には `unrepresentedScreenCaveat` を添える**(2026-08-13 監査。
+    /// MCPServer+Snapshot.swift 参照) —— 空の木は必ず「変化なし」に一致するため
     static func batchUnchangedNote(beforeBatch: SnapshotResponse?, final: SnapshotResponse,
                                    stepCount: Int,
                                    reread: () async throws -> SnapshotResponse) async rethrows
@@ -554,7 +556,8 @@ extension MCPServer {
                 + " still identical to the one before the batch started, even after a short"
                 + " re-read wait — none of the steps may have actually changed the screen. It can"
                 + " also be legitimate: the screen was already at the target state, or the steps"
-                + " went somewhere and came back.\n", rereadSnapshot)
+                + " went somewhere and came back."
+                + Self.unrepresentedScreenCaveat(rereadSnapshot) + "\n", rereadSnapshot)
         }
         return ("note: the tree looked unchanged right after the last step, so it was re-read once"
             + " after a short wait — the tree below is the re-read, not the tree right after the"

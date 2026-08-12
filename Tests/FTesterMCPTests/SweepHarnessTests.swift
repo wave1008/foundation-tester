@@ -254,6 +254,21 @@ final class SweepHarnessTests: XCTestCase {
         "and-browser_weather_weekly": Counts(ghost: 1, overlay: 14, stacked: 0, misses: 0,
                                              disabled: 0, offscreen: 0, warnedTappable: 2,
                                              keyboard: 0, sliver: 0, nested: 0, scrolledOut: 0),
+        // 2026-08-13 採取(監査ラウンド5・jma.go.jp)。missingPageContentNote /
+        // duplicateRegionNote の witness 対(NoteCoverageTests.baseline 参照)。
+        // **ios-browser_jma_hscroll の 33 件は全数検分済み**(2026-08-13)。監査24で web ページに
+        // 出た「折り返す inline テキスト」型の誤検知は1件も無く、原因は2つだけ:
+        // ⑴ **Safari の浮動下部バーが本文を実際に覆う**(15件。occluder は #CapsuleNavigationBar /
+        //    #BackButton / #MoreMenuButton。ft_screenshot で実描画を確認)
+        // ⑵ **この木が持つ前後コピーの重なりそのもの**(18件。旧コピー x=349 と実体 x=359 のような
+        //    ずれた二重、および x=0 へクランプされたセル同士の積み上がり)。
+        //    duplicateRegionNote が名指しするのと同じ欠陥を、幾何側から数えている
+        // ghost=4 は ⚠️scroll-leftover の4行 / offscreen=5 は y<0 の行 /
+        // disabled=1・warnedTappable=1 はどちらも履歴なしの「戻る」
+        "and-browser_jma_notree": Counts(),
+        "ios-browser_jma_hscroll": Counts(ghost: 4, overlay: 33, stacked: 0, misses: 0,
+                                          disabled: 1, offscreen: 5, warnedTappable: 1,
+                                          keyboard: 0, sliver: 0, nested: 0, scrolledOut: 0),
     ]
 
     private static var fixtureDirectory: URL {

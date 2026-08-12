@@ -158,6 +158,20 @@ final class MCPSelectorDurabilityTests: XCTestCase {
     /// unwritable になる。**割合は 19.1% → 19.4% / 4.75% → 4.88%** で、どちらも上限の内側に
     /// 留まった = 絞り込みの退行ではない。**書けない側は上限 5% まであと 0.12 ポイント** ——
     /// 次に Android の web ページを足すと今度は割合ゲートのほうが落ちる
+    /// **2026-08-13(監査ラウンド5)に索引側の割合ゲートが初めて落ちた**(386 → 566 /
+    /// 1,986 → 2,238 要素)。検分の結論は**退行ではない**: 新しい2枚を外すと既存の基準値
+    /// (386 / 19.4% / 97)のまま緑に戻り、増分は `ios-browser_jma_hscroll` 180/16 ・
+    /// `and-browser_jma_notree` 0/0 = 索引 +180・書けない +16 が総差分と**完全に一致**する
+    /// (他の35枚は不動)。**ただし今回は割合が 19.4% → 25.2% と一段で 5.8 ポイント動いた** ——
+    /// これまでの増分(0.3ポイント級)とは桁が違うので理由を明記する:
+    /// この木は**横スクロール後の前後コピーを両方含む**(duplicateRegionNote の witness)ため、
+    /// **構造上ほぼ全てのラベルが2回以上出る** = 一意に名指せる要素が原理的に存在しない。
+    /// 233要素中180(77%)が indexed になるのはこの1枚に固有の事情で、
+    /// **コーパス全体の索引率のうち 180/566 = 32% をこの1枚が占める**。
+    /// **上流(WebKit)が複製を出さなくなったらこの枚を採り直し、ゲートも締め直すこと** ——
+    /// このまま据えると「1枚の病理が全体の基準」になる
+    /// **書けない側の割合は 4.88% → 5.04%**(千分率の切り捨てで 50。上限 50 にちょうど乗った)。
+    /// 次の1枚で必ず落ちるので、そのときは緩める前にここと同じ除外実験をやること
     func testNarrowingKeepsIndexedAndUnwritableLow() throws {
         var indexed = 0, unwritable = 0, total = 0
         for name in try fixtureNames() {
@@ -173,14 +187,14 @@ final class MCPSelectorDurabilityTests: XCTestCase {
             }
         }
         XCTAssertGreaterThan(total, 1500, "コーパスが縮んでいる = この砦は何も見ていない")
-        XCTAssertLessThanOrEqual(indexed, 390, "索引セレクタが増えている(実測 386)")
+        XCTAssertLessThanOrEqual(indexed, 570, "索引セレクタが増えている(実測 566)")
         // **割合は千分率で見る**(2026-08-12 のレビュー指摘)。百分率の整数除算だと
         // 「4%以下」が実際には 4.99% まで通り、宣言した上限より1ポイント緩い砦になる
         // (実測 4.75% が「4」に切り捨てられて素通りしていた)
-        XCTAssertLessThanOrEqual(indexed * 1000 / max(1, total), 200,
-                                 "索引セレクタの割合が増えている(実測 19.4%)"
+        XCTAssertLessThanOrEqual(indexed * 1000 / max(1, total), 255,
+                                 "索引セレクタの割合が増えている(実測 25.2%)"
                                  + " —— 画面を足しただけでは上がらない指標なので、絞り込みの退行を疑う")
-        XCTAssertLessThanOrEqual(unwritable, 100, "書けない要素が増えている(実測 97)")
+        XCTAssertLessThanOrEqual(unwritable, 115, "書けない要素が増えている(実測 113)")
         // **書けない側にも割合ゲートを置く**(2026-08-12)。絶対数だけだと、コーパスを
         // 広げるたびに上限を上げる儀式になる(索引側で既に踏んだ轍)
         XCTAssertLessThanOrEqual(unwritable * 1000 / max(1, total), 50,

@@ -62,10 +62,20 @@ enum NoteCatalog {
         Entry(key: "emptyTreeNote", contexts: [.snapshot, .scrollTo], abbreviates: false) { input, _ in
             MCPServer.emptyTreeNote(input.snapshot)
         },
+        // emptyTreeNote の一段下(要素はあるが、それが全部ブラウザ chrome でページ本体が無い形)。
+        // どちらも「この応答は画面の全部を代表していない」という同じ性質の注記なので隣に置く
+        Entry(key: "missingPageContentNote", contexts: [.snapshot, .scrollTo], abbreviates: false) { input, _ in
+            MCPServer.missingPageContentNote(input.snapshot)
+        },
         // 遮蔽・ghost は「下の一覧をそのまま信じてよいか」なので最初に置く
         Entry(key: "ghostNote", contexts: [.snapshot, .scrollTo], abbreviates: false) { input, _ in
             MCPServer.ghostNote(input.snapshot, collapsingBulk: input.collapsingBulk,
                                 cache: input.cache)
+        },
+        // ghostNote と同じ「一覧の中の ref が信用できるか」の系統なので直後に置く
+        // (こちらは残像ではなく重複コピー —— 横スクロールで前のコピーが残る形)
+        Entry(key: "duplicateRegionNote", contexts: [.snapshot, .scrollTo], abbreviates: false) { input, _ in
+            MCPServer.duplicateRegionNote(input.snapshot)
         },
         // scrollFrame 候補は ft_scroll_to では別に組み立てる(渡された引数で文面が変わるため)
         Entry(key: "scrollFrameCandidates", contexts: [.snapshot], abbreviates: false) { input, _ in

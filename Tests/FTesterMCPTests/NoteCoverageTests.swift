@@ -66,6 +66,9 @@ final class NoteCoverageTests: XCTestCase {
         // **閾値超えの空白帯が2本ある**形で、最大の1本だけを返していた頃は
         // 週間表の見出しが落ちている側が黙って捨てられていた
         "and-browser_weather_weekly": "browser", "ios-browser_weather_weekly": "browser",
+        // 2026-08-13 の監査ラウンド5(jma.go.jp)で足した対。missingPageContentNote /
+        // duplicateRegionNote の witness(NoteCoverageTests.baseline の当該コメント参照)
+        "and-browser_jma_notree": "browser", "ios-browser_jma_hscroll": "browser",
         "ios-maps_route_options": "picker",
         // 自前 SUT(盤面が契約で固定されている対照)
         "sutec-calendar_day": "ec", "sutec-detail": "ec", "sutec-home": "ec",
@@ -92,7 +95,17 @@ final class NoteCoverageTests: XCTestCase {
     /// 量の主因は `duplicateIDsNote`(15.1KB)と `ambiguousLabelsNote`(10.0KB)で変わらず、
     /// この2本は 5〜6/8 アーキタイプで発火する = 汎用の側。**削るなら文面であって対象ではない**
     static let baseline: [String: Coverage] = [
-        "ghostNote": Coverage(fixtures: ["and-browser_weather_weekly", "ios-browser_startpage", "ios-place_guides_scrolled"], bytes: 888),
+        // 監査ラウンド5(2026-08-13・jma.go.jp)の2本。**要素が全部ブラウザ chrome でページ本体が
+        // 木に無い**形の witness(and-browser_jma_notree。unrepresentedScreenFraction 0.886)。
+        // 陰性対照は and-browser_urlmenu(URL バーはあるが webView も無い画面。0.059)と
+        // and-overflow(0.564 まで達するが URL バーが無いので黙る=browser 限定の理由)
+        "missingPageContentNote": Coverage(fixtures: ["and-browser_jma_notree"], bytes: 303),
+        "ghostNote": Coverage(fixtures: ["and-browser_weather_weekly", "ios-browser_jma_hscroll", "ios-browser_startpage", "ios-place_guides_scrolled"], bytes: 1271),
+        // 横スクロール後の前後コピーが両方木に残る形の witness(ios-browser_jma_hscroll。
+        // refs 72-81 vs 158-167 = 同じ行で x が定数200ptずれた10ペア)。他の全画面は最大3
+        // (and-home)で、単純なキーだけの一致では別々の表の同名見出しに誤発火するため
+        // y/x の幾何制約を必須にした(MCPServer.duplicateRegionNote の当該コメント参照)
+        "duplicateRegionNote": Coverage(fixtures: ["ios-browser_jma_hscroll"], bytes: 391),
         "scrollFrameCandidates": Coverage(fixtures: ["and-place_expanded", "and-results", "ios-browser_startpage", "ios-maps_route_options", "ios-maps_station", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-messages_keyboard", "ios-place_guides_scrolled"], bytes: 2317),
         "truncationNote": Coverage(fixtures: ["ios-browser_nationwide", "ios-browser_startpage", "ios-maps_station"], bytes: 1012),
         // 取りこぼしのある Chrome の3枚(2026-08-13 に and-browser_weather_weekly を追加)で発火し、
@@ -115,11 +128,11 @@ final class NoteCoverageTests: XCTestCase {
         // アドレス欄要素が無い(または値が空)ので黙る。**「値が URL らしい textField」の
         // フォールバックは置かない** —— メール欄・住所欄を誤って名乗る形がコーパスに無く、
         // 誤検知0の確認が効かないため(AddressBarNoteTests の当該テスト)
-        "addressBarNote": Coverage(fixtures: ["and-browser_weektable", "ios-browser_nationwide", "ios-browser_startpage", "ios-browser_weather_weekly", "ios-browser_weektable", "ios-safari_article"], bytes: 1592),
+        "addressBarNote": Coverage(fixtures: ["and-browser_weektable", "ios-browser_jma_hscroll", "ios-browser_nationwide", "ios-browser_startpage", "ios-browser_weather_weekly", "ios-browser_weektable", "ios-safari_article"], bytes: 1846),
         "unlabeledClickablesNote": Coverage(fixtures: ["and-browser_urlmenu", "and-directions_tabs", "and-home", "and-place", "and-place_expanded", "and-results", "ios-home", "ios-maps_route_options", "ios-profile", "ios-settings_root"], bytes: 5105),
         // **格子は曖昧ラベルの塊**(2026-08-12): 週間表の2枚が入って +2,049 バイト。
         // 同じ数値(`29/24`・`90%`)が行と列に何度も出るので、増分は形そのもの
-        "ambiguousLabelsNote": Coverage(fixtures: ["and-browser_weather", "and-browser_weather_weekly", "and-browser_weektable", "and-home", "and-maps_suggest_ime", "and-place", "and-place_expanded", "and-results", "ios-browser_nationwide", "ios-browser_startpage", "ios-browser_weather_weekly", "ios-browser_weektable", "ios-home", "ios-maps_station", "ios-maps_suggest_keyboard", "ios-messages_keyboard", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-safari_article", "ios-settings_root", "sut-cmp_controls", "sut-cmp_home", "sutec-detail", "sutec-home"], bytes: 15291),
+        "ambiguousLabelsNote": Coverage(fixtures: ["and-browser_weather", "and-browser_weather_weekly", "and-browser_weektable", "and-home", "and-maps_suggest_ime", "and-place", "and-place_expanded", "and-results", "ios-browser_jma_hscroll", "ios-browser_nationwide", "ios-browser_startpage", "ios-browser_weather_weekly", "ios-browser_weektable", "ios-home", "ios-maps_station", "ios-maps_suggest_keyboard", "ios-messages_keyboard", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-safari_article", "ios-settings_root", "sut-cmp_controls", "sut-cmp_home", "sutec-detail", "sutec-home"], bytes: 16490),
         "duplicateIDsNote": Coverage(fixtures: ["and-dialer_keypad", "and-home", "and-overflow", "and-place_expanded", "and-results", "and-settings_root", "ios-browser_startpage", "ios-home", "ios-maps_route_options", "ios-maps_station", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-photos_grid", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-settings_root", "sutec-home"], bytes: 16450),
         "keyboardCoverageNote": Coverage(fixtures: ["and-browser_urlmenu", "and-maps_suggest_ime", "ios-browser_startpage", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-messages_keyboard"], bytes: 1088),
         "truncatedLabelNote": Coverage(fixtures: ["and-browser_urlmenu", "and-browser_weather", "and-browser_weather_weekly", "and-place_expanded", "ios-browser_weektable", "ios-photos_grid", "ios-place_guides_scrolled", "ios-safari_article", "ios-settings_root", "sutec-detail", "sutec-home"], bytes: 3362),
@@ -295,9 +308,10 @@ final class NoteCoverageTests: XCTestCase {
     /// 増やすときは Scripts/mcp-bench.sh の手数で決めること
     func testScrollToCarriesTheReadingIntegrityNotes() {
         XCTAssertEqual(Set(NoteCatalog.entries(for: .scrollTo).map(\.key)), [
-            "emptyTreeNote", "ghostNote", "truncationNote", "webViewGapNote",
-            "gridWithoutHeaderNote", "urlishLabelsNote", "ambiguousLabelsNote",
-            "duplicateIDsNote", "keyboardCoverageNote", "sliverNote", "truncatedLabelNote",
+            "emptyTreeNote", "missingPageContentNote", "ghostNote", "duplicateRegionNote",
+            "truncationNote", "webViewGapNote", "gridWithoutHeaderNote", "urlishLabelsNote",
+            "ambiguousLabelsNote", "duplicateIDsNote", "keyboardCoverageNote", "sliverNote",
+            "truncatedLabelNote",
         ])
     }
 

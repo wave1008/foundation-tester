@@ -428,6 +428,83 @@ extension MCPServer {
         return parts.joined(separator: " ")
     }
 
+    /// 木の中に**同じ連続領域が2回**現れる形の検知(監査ラウンド5・2026-08-13・
+    /// jma.go.jp を横スクロールした後の iOS Safari で実測)。横スクロールで前後のコピーが
+    /// 両方残ると、片方は既にスクロールで動いた実座標を持たないまま木に残る = 読み手が
+    /// コピーした ref が古い側かもしれない。
+    ///
+    /// **単純な「(type,label,value) の最長共通連続列」では誤検知する**(2026-08-13 に実装して
+    /// すぐ撤回): witness フィクスチャの最長一致(11)の正体は、**別々の2つの表が同じ8列の
+    /// 日付見出し行を共有している**形だった(「東京地方」の見出し y=463 と「伊豆諸島」の見出し
+    /// y=722 —— どちらも `["日付","今夜 12日(水)", …]` を名乗る、正当なページ構造)。
+    /// **同じ行(y がほぼ同じ)で x だけがずれた一致だけを候補にする**ことでこれを機械的に除く
+    /// —— 横スクロールの残骸は同じ行のまま x だけ動くが、別の表の同名見出しは y ごと違う位置に
+    /// 出るので、この制約だけで両者を分けられる。**この y/x 制約を外して「キーだけの一致」へ
+    /// 単純化しないこと**(上の誤検知が戻る)。
+    ///
+    /// witness(2026-08-13・ios-browser_jma_hscroll、refs 72-81 vs 158-167。全10ペアとも
+    /// 同じ y・x が定数200ptずれる。最左列は 0 にクランプされる):
+    ///   東京(x=25,y=629 / x=0,y=629)・最高(x=70,y=627 / x=0,y=627)・
+    ///   29(x=220,y=627 / x=20,y=627)・(28～32)(x=277,y=638 / x=77,y=638)
+    ///
+    /// **`StepExecutor.hasClampedCoordinates` は使えない**(≥3要素が**同じ深さで同一 frame**を
+    /// 共有することを要求する。ここでの重複行は frame が違う(x だけ違う)ので、2つ目の判定を
+    /// 書かず流用しようとしても発火し得ない)。
+    ///
+    /// アルゴリズムは longest-repeated-substring の変形(2行だけ持つ DP。O(n²)・n≦400程度なら
+    /// 十分安い)。`extendsRun(a,b)` は (a,b) が「同じキー・同じ行(y 差 ≤2pt)・違う列(x 差 >2pt)」
+    /// を満たすときだけ true。dp[i][j] は extendsRun(i-1,j-1) のときだけ previous[j-1]+1、
+    /// でなければ0。i<j だけを見る(a↔b は対称なので片側で足りる)
+    ///
+    /// 実測(2026-08-13・37枚のコーパス。y/x 制約を入れた後の閾値): ios-browser_jma_hscroll = 10。
+    /// 他の全画面は最大3(and-home。それ以外は 0〜2)。閾値 6 はその倍近く上に置いてある
+    static let duplicateRegionMinimumRun = 6
+
+    static func duplicateRegionNote(_ snapshot: SnapshotResponse) -> String {
+        let elements = snapshot.elements
+        let n = elements.count
+        guard n >= 2 else { return "" }
+        struct Key: Equatable { let type: String; let label: String; let value: String }
+        let keys = elements.map { Key(type: $0.type, label: $0.label ?? "", value: $0.value ?? "") }
+
+        // **O(n²) だが最適化しない**(2026-08-13 に実測してから決めた)。debug ビルドでの実測は
+        // n=233 で 8.5ms・n=120 で 2.2ms、**同じ木の全注記の合計に対して 1〜5%** に過ぎない
+        // (合計は n=233 で 750ms・n=120 で 40〜100ms)。キーを Int へ畳んで String 比較を
+        // 無くす案は試して 8.6 → 7.8ms にしかならず、**主因は比較ではなく反復そのもの**だった。
+        // ここを速くしても体感は動かない —— 効くのは合計のほう(監査17)
+        func extendsRun(_ a: Int, _ b: Int) -> Bool {
+            guard keys[a] == keys[b] else { return false }
+            let fa = elements[a].frame, fb = elements[b].frame
+            return abs(fa.y - fb.y) <= 2 && abs(fa.x - fb.x) > 2
+        }
+
+        var bestLength = 0, bestI = 0, bestJ = 0
+        var previous = [Int](repeating: 0, count: n + 1)
+        for i in 1...n {
+            var current = [Int](repeating: 0, count: n + 1)
+            for j in 1...n where i < j {
+                guard extendsRun(i - 1, j - 1) else { continue }
+                let length = previous[j - 1] + 1
+                current[j] = length
+                if length > bestLength {
+                    bestLength = length
+                    bestI = i - length
+                    bestJ = j - length
+                }
+            }
+            previous = current
+        }
+        guard bestLength >= duplicateRegionMinimumRun else { return "" }
+        let firstRef = elements[bestI].ref
+        let secondRef = elements[bestJ].ref
+        return "note: the tree appears to list the same \(bestLength) elements twice — starting at"
+            + " [\(firstRef)] and again at [\(secondRef)] (same type/label/value, same row,"
+            + " shifted x). This happens when a scrollable region moved (e.g. a"
+            + " horizontally-scrolled table) but the tree still reports the previous rows"
+            + " alongside the new ones — refs from one copy may be stale. Check ft_screenshot to"
+            + " see which copy is actually on screen.\n"
+    }
+
     /// **scrollFrame を渡すべき当人**である ft_scroll_to にだけ出す、複数スクロール領域の注記
     /// (欠陥⑪)。`ScrollFrameCandidates.note` は ft_snapshot でしか呼ばれておらず、一番効く場所
     /// (scrollFrame: を渡すべき本人の失敗文・成功文)に届いていなかった。
@@ -806,6 +883,62 @@ extension MCPServer {
         }
     }
 
+    /// **画面全体**のうち、どの要素の frame とも縦に交わらない最大の帯の割合(0〜1)。
+    /// `emptyBands(inside:of:)` の画面全体版 —— あちらは webView 容器の**内側**しか測れない
+    /// (`for container in snapshot.elements where container.type == "webView"`)ので、
+    /// webView 要素そのものが1つも無い画面(`missingPageContentNote`)には使えない。
+    /// **`emptyBands`/`webViewGapNote` は変えない**(既存の閾値・回帰ゲートに触れない)。
+    ///
+    /// 判定は縦だけ: 各要素の frame を画面の上下端で切り、縦の重なりが無い要素は無視する
+    /// (横方向は見ない = emptyBands と違って容器の x 範囲を持たないため)。
+    /// 残った区間を昇順に流し、隙間の最大値を返す。screen.height <= 0 では測れないので 0
+    static func unrepresentedScreenFraction(_ snapshot: SnapshotResponse) -> Double {
+        let screen = snapshot.screen
+        guard screen.height > 0 else { return 0 }
+        let top = screen.y, bottom = screen.y + screen.height
+        let intervals = snapshot.elements.compactMap { element -> (Double, Double)? in
+            let y0 = max(element.frame.y, top)
+            let y1 = min(element.frame.y + element.frame.height, bottom)
+            return y1 > y0 ? (y0, y1) : nil
+        }.sorted { $0.0 < $1.0 }
+        var cursor = top
+        var largest = 0.0
+        for (y0, y1) in intervals {
+            if y0 > cursor { largest = max(largest, y0 - cursor) }
+            cursor = max(cursor, y1)
+        }
+        if bottom > cursor { largest = max(largest, bottom - cursor) }
+        return largest / screen.height
+    }
+
+    /// **アドレス欄はあるのに webView 要素そのものが1つも無い**形の検知
+    /// (監査ラウンド5・2026-08-13・jma.go.jp を Android Chrome で実測)。
+    ///
+    /// なぜ要るか: `webViewGapNote` は webView 容器の**内側**しか測れず、`emptyTreeNote` は
+    /// `elements.isEmpty` の完全一致でしか発火しない。Chrome が自分の chrome(ツールバー・
+    /// アドレス欄)しか公開せず、ページ本体を一切木に出さない画面は、この2本のどちらの網にも
+    /// 掛からずに黙って通り抜ける —— 実測(and-browser_jma_notree)は要素19件が全部ブラウザ
+    /// chrome で、画面の 88.6%(unrepresentedScreenFraction)が空白のまま報告されていた。
+    ///
+    /// **ブラウザにだけ絞る**(条件2・アドレス欄の存在が要る理由): 空白の割合だけで判定すると
+    /// ネイティブ画面まで拾う —— `and-overflow`(地図)は unrepresentedScreenFraction が
+    /// 0.564 まで達するが、アドレス欄が無い=ブラウザではないので黙るべき。アドレス欄はあるが
+    /// webView が無い他の witness は `and-browser_urlmenu`(0.059)だけで、これは閾値未満のまま
+    /// 黙る。判定に使う「アドレス欄の在り処」は addressBarNote と同じ `addressBarCandidate`
+    /// (identifier のリテラルを2箇所に持たない)
+    static let missingPageContentFractionThreshold = 0.5
+
+    static func missingPageContentNote(_ snapshot: SnapshotResponse) -> String {
+        guard !snapshot.elements.contains(where: { $0.type == "webView" }),
+              addressBarCandidate(in: snapshot) != nil,
+              unrepresentedScreenFraction(snapshot) >= missingPageContentFractionThreshold
+        else { return "" }
+        return "note: the browser published no page content to the accessibility tree at all —"
+            + " not even a webView container, only its own chrome (address bar, toolbar, tabs)."
+            + " Elements missing from the tree cannot be waited for, scrolled to, or tapped by"
+            + " selector. Check what is actually on screen with ft_screenshot.\n"
+    }
+
     /// センターX が近い(=セルが中央揃えで縦に並ぶ)ことを列とみなす許容誤差。**容器幅の比率**
     /// (iOS=pt/Android=px の桁違いを吸収する)。実測(2026-08-12・tenki.jp 2週間天気)では
     /// 同じ日付列内の要素(天気アイコン・気温・降水確率)の centerX 差は 2px 未満だった
@@ -1035,11 +1168,19 @@ extension MCPServer {
     /// 名前の分かるブラウザだけを名指しし、知らないブラウザについては黙る
     static let addressBarIdentifiers: Set<String> = ["url_bar", "TabBarItemTitle", "URL"]
 
-    private static func addressBarElement(in snapshot: SnapshotResponse) -> ElementInfo? {
-        guard snapshot.elements.contains(where: { $0.type == "webView" }) else { return nil }
-        return snapshot.elements.first {
+    /// アドレス欄になり得る要素の生の探索(**webView の有無を問わない**)。
+    /// 2つの呼び手が逆の前提で使う: `addressBarElement` は webView が居るときだけ通す
+    /// (addressBarNote)/ `missingPageContentNote` は逆に webView が**居ない**ことを条件にする
+    /// (下記)。identifier のリテラルはここ1箇所にしか置かない
+    private static func addressBarCandidate(in snapshot: SnapshotResponse) -> ElementInfo? {
+        snapshot.elements.first {
             addressBarIdentifiers.contains($0.identifier ?? "") && !($0.value ?? "").isEmpty
         }
+    }
+
+    private static func addressBarElement(in snapshot: SnapshotResponse) -> ElementInfo? {
+        guard snapshot.elements.contains(where: { $0.type == "webView" }) else { return nil }
+        return addressBarCandidate(in: snapshot)
     }
 
     /// ブラウザのアドレス欄を名指しする注記。**木だけで判定**(driver・セッション状態は使わない)。

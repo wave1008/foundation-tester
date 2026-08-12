@@ -195,13 +195,43 @@ extension MCPServer {
     /// label/frame までで、value/checked の変化には反応しない(あちらはスクリーンショットの
     /// 鮮度判定用で、ここが要る「入力しただけの変化」を感知できない)
     /// **同一性判定はこの1本だけ**(ft_batch も跨いで呼ぶ。2つ目を書かない)
+    /// **truncatedCount も見る**(2026-08-13 監査): `elements` はブリッジ側で既に
+    /// maxSnapshotElements(既定120)へ切り詰め済みなので、変化が切り詰められた側だけに
+    /// 起きると `elements` は同一のまま検知できない(実測: iOS Safari の横スクロール表で
+    /// タップ後に +113 件がすべて cutoff の下に並び、生存 120 行はバイト同一だった)。
+    /// **bulkExemptCount は見ない**: bulk 群(BridgeSnapshotThinning)は cap の外でも常に
+    /// `elements` へ送られる(捨てられない)ので、その増減は既に `elements` の差分に現れており、
+    /// 二重に見る意味が無い
     static func looksUnchanged(_ before: SnapshotResponse, _ after: SnapshotResponse) -> Bool {
-        guard before.elements.count == after.elements.count else { return false }
+        guard before.elements.count == after.elements.count,
+              before.truncatedCount == after.truncatedCount else { return false }
         return zip(before.elements, after.elements).allSatisfy { a, b in
             a.ref == b.ref && a.type == b.type && a.identifier == b.identifier
                 && a.label == b.label && a.value == b.value && a.checked == b.checked
                 && a.frame == b.frame
         }
+    }
+
+    /// **画面のどれだけが木に一つも表れていないか**(0〜1、画面高比)。空/ほぼ空の木は
+    /// 「空 == 空」で必ず `looksUnchanged` に一致するため、この比率が高いときは
+    /// 「unchanged」系の注記に「そもそも公開されていないだけかもしれない」ことを言い添える
+    /// (unrepresentedScreenCaveat 参照)。**算出は `unrepresentedScreenFraction`
+    /// (MCPServer+Hints.swift)に委ねる**(2つ目の計算を作らない)
+    static let unrepresentedScreenCaveatThreshold = 0.5
+
+    /// `looksUnchanged` 系の verdict(waitForChange タイムアウト・settle-lite・waitFor の
+    /// 「action itself may not have taken effect」・ft_batch の「still identical」)へ共通で足す
+    /// 注意書き。実測(Android Chrome): 木がブラウザ chrome の19要素(後に1要素)だけのまま、
+    /// ft_batch の scrollDown ×4 が画面を実際に数スクロール分動かしたのに「変化なし」と返った ——
+    /// ページの中身がそもそも a11y tree に載っていなかった。
+    /// **失敗にはしない**(既存の note を補足するだけ)。返り値は先頭にスペース1つを含む断片
+    /// (呼び手の文へそのまま連結する。独立行にするときは呼び手側で `\n` を足す)
+    static func unrepresentedScreenCaveat(_ snapshot: SnapshotResponse) -> String {
+        let fraction = unrepresentedScreenFraction(snapshot)
+        guard fraction >= unrepresentedScreenCaveatThreshold else { return "" }
+        return " (note: \(Int((fraction * 100).rounded()))% of the screen has no element in the"
+            + " tree at all, so \"unchanged\" cannot tell \"nothing moved\" from \"nothing was"
+            + " published\" — use ft_screenshot to see what is actually on screen.)"
     }
 
     /// **中身が1つも入っていない大きなスクロール容器**の名前(無ければ nil)。
@@ -324,6 +354,7 @@ extension MCPServer {
                         + (beforeAction.map { Self.looksUnchanged($0, snapshot) } == true
                            ? " the tree is also identical to the one before the action, so the"
                              + " action itself may not have taken effect."
+                             + Self.unrepresentedScreenCaveat(snapshot)
                            : "") + "\n"
             } else if args["waitForChange"] as? Bool == true {
                 let result = try await waitForChangeBody(beforeAction: beforeAction,
@@ -336,7 +367,8 @@ extension MCPServer {
                 let reread = try await freshSnapshot(snapshotDriver, args: args)
                 if Self.looksUnchanged(snapshot, reread) {
                     settleNote = "note: the tree still looked unchanged after a short re-read"
-                        + " wait — the action may not have changed the screen.\n"
+                        + " wait — the action may not have changed the screen."
+                        + Self.unrepresentedScreenCaveat(reread) + "\n"
                 } else {
                     settleNote = "note: the tree looked unchanged right after the action, so it"
                         + " was re-read once after a short wait — the tree below is the re-read.\n"
@@ -398,7 +430,8 @@ extension MCPServer {
         guard changed else {
             return (snapshot, "note: waitForChange timed out after \(seconds)s — the tree"
                 + " still matches the one before the action, so the action may not"
-                + " have changed the screen.\n")
+                + " have changed the screen."
+                + Self.unrepresentedScreenCaveat(snapshot) + "\n")
         }
         // **「変わった」は「終わった」ではない**: 最初に差が出た木が遷移途中のこともある
         // (2026-08-12 の実測: 検索結果がまだネットワーク待ちの「候補なし」中間状態で確定を
