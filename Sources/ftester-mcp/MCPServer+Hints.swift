@@ -693,8 +693,10 @@ extension MCPServer {
     /// どのページにもあり、これを数えると健全な木まで疑う。
     ///
     /// 閾値は固定コーパスの実測から置いた(2026-08-12・webView を持つ4画面):
-    /// 取りこぼしのある Chrome の1枚が **258px(容器の 11.7%)**、
+    /// 取りこぼしのある Chrome の1枚が **実測 302px(容器の 13.6%)**、
     /// 取りこぼしの無い iOS Safari の3枚が **0/14/29px(0〜3.3%)**。8% はその間。
+    /// 帯の高さは**実要素の縁まで測る**(60分割スライスの量子化ではない。largestEmptyBand の
+    /// doc 参照 —— スライス丸めのままだと実効閾値が最大 11.3% まで縮み、砦の余裕が薄かった)。
     /// 画面比の下限も併せて要求する(小さな容器の中の小さな穴で騒がない)。
     /// **「不完全だ」とは断定しない**(新しい検知は警告から始める)。
     /// **落とすのはあくまで読み手の判断**なので、確かめる手段(ft_screenshot)まで書く
@@ -719,7 +721,18 @@ extension MCPServer {
     }
 
     /// WebView の可視部分のうち、**内側でどの葉とも交わらない最大の連続帯**。
-    /// 走査は 60 分割の格子(木のサイズに比例した O(n) で、応答ごとに払える)。
+    /// 走査は 60 分割の格子(木のサイズに比例した O(n) で、応答ごとに払える)で**候補の位置だけ**
+    /// 決める —— 高さそのものはスライスの量子化を使わず、実要素の縁まで伸ばして返す
+    /// (2026-08-12): スライス境界で丸めたままだと、帯の両端にあるスライス(境界要素とわずかに
+    /// 交わるだけのスライス)が丸ごと落ちる。実測(60分割・容器高2153px→1スライス35.9px)では
+    /// 最大2スライス(≒3.3ポイント)を失い、`webViewGapNote` の実効閾値が宣言上の8%ではなく
+    /// 最大11.3%になっていた。
+    ///
+    /// **不変条件**: 選んだスライス列(`bestStart`..`bestStart+bestCount`)はどのスライスも
+    /// 被覆されていない(=列の中でどの葉とも交わらない)ので、**すべての葉は「下端が列の開始 y
+    /// 以下」か「上端が列の終了 y 以上」のどちらかを満たす**(列に少しでも交わる葉があれば、
+    /// その葉は列内の少なくとも1スライスを被覆し、連続した空き列にならない)。
+    /// この不変条件により、列の外側にある最も近い葉の縁までは安全に伸ばせる。
     ///
     /// **上端・下端に接する帯は返さない**: 容器の余白はどのページにもあるので、
     /// 数えると健全な木も疑うことになる(実測: iOS Safari の3枚はいずれも先頭の 58px が空)
@@ -755,8 +768,230 @@ extension MCPServer {
         }
         // 末尾で終わった帯(下端に接する)は候補にしない = ここでは拾わない
         guard bestCount > 0 else { return nil }
-        return FTRect(x: container.frame.x, y: top + Double(bestStart) * sliceHeight,
-                      width: container.frame.width, height: Double(bestCount) * sliceHeight)
+        let columnStart = top + Double(bestStart) * sliceHeight
+        let columnEnd = top + Double(bestStart + bestCount) * sliceHeight
+        let trueTop = leaves.filter { $0.frame.y + $0.frame.height <= columnStart }
+            .map { $0.frame.y + $0.frame.height }.max() ?? columnStart
+        let trueBottom = leaves.filter { $0.frame.y >= columnEnd }
+            .map(\.frame.y).min() ?? columnEnd
+        return FTRect(x: container.frame.x, y: trueTop,
+                      width: container.frame.width, height: trueBottom - trueTop)
+    }
+
+    /// センターX が近い(=セルが中央揃えで縦に並ぶ)ことを列とみなす許容誤差。**容器幅の比率**
+    /// (iOS=pt/Android=px の桁違いを吸収する)。実測(2026-08-12・tenki.jp 2週間天気)では
+    /// 同じ日付列内の要素(天気アイコン・気温・降水確率)の centerX 差は 2px 未満だった
+    static let gridColumnCenterToleranceRatio = 0.02
+    /// 同じ行とみなす y 区間の重なり(Jaccard = 交差 / 和集合)。幅ベースの overlap/min(width) は
+    /// 不採用(2026-08-12実測): ナビの全幅リンクのような大きな要素に、無関係な小要素が
+    /// 「収まっている」というだけで同じ列に巻き込まれた(実際に3件の誤検知を作った)
+    static let gridRowOverlapRatio = 0.6
+    static let gridMinColumns = 3
+    static let gridMinRows = 2
+
+    /// 値のセル(格子)はツリーにあるのに、その真上の見出し行(列ヘッダ)が無い形の検知。
+    /// `webViewGapNote` は「どこかに空白がある」としか言わないので、格子であることと
+    /// 見出しが無いことを名指しする。
+    ///
+    /// なぜ要るか(2026-08-12・Android の Chrome で実測): tenki.jp の2週間天気で、
+    /// 日付ヘッダ行(「日付 / 12日(水) / 13日(木) / …」)がツリーから丸ごと欠落しているのに、
+    /// 値のセル(天気・気温・降水確率)は木にある。読み手は列と日付を取り違えて
+    /// **警告なしに誤答**しうる。
+    ///
+    /// **対象は webView の中だけ**(webViewGapNote と同じ前提: ブラウザだけが a11y ツリーを
+    /// 部分的にしか出さない)。ネイティブ UI のボタン格子(電話キーパッド等)は同じ理由で
+    /// 見出しを持たないことが多く、webView に絞らずに実装した初版では実測で5件の誤検知が
+    /// 出た(ダイヤルパッドの数字キー・URL バーのツールバーアイコン等)。webView に絞ると
+    /// 固定コーパス30枚のうち0件に減った
+    static func gridWithoutHeaderNote(_ snapshot: SnapshotResponse, abbreviated: Bool = false) -> String {
+        for container in snapshot.elements where container.type == "webView" {
+            guard let grid = gridHeaderGap(in: container, of: snapshot) else { continue }
+            guard !abbreviated else {
+                return "note: a value grid's header row may be missing from the tree"
+                    + " (see the first snapshot's note).\n"
+            }
+            return "note: inside \(RefGuard.describe(container)), a \(grid.columns)x\(grid.rows)"
+                + " grid of values starts at y=\(Int(grid.band.y + grid.band.height)), but nothing"
+                + " is listed in the band right above it (y=\(Int(grid.band.y))-"
+                + "\(Int(grid.band.y + grid.band.height))) — its header row (e.g. column labels)"
+                + " may be missing from the accessibility tree; a browser can publish only part of"
+                + " a page (Android's Chrome does this). Read the header with ft_screenshot before"
+                + " matching values to it, and match cells by x position, not tree order — the"
+                + " tree can list one column's rows before the next column starts.\n"
+        }
+        return ""
+    }
+
+    /// 隣接する2行の間で、centerX が最も近い要素どうしを対応付ける(貪欲最近傍・1対1)。
+    /// 呼び出し順(rowA の並び)に依らず結果は幾何だけで決まる
+    private static func matchAdjacentColumns(_ rowA: [ElementInfo], _ rowB: [ElementInfo],
+                                             tolerance: Double) -> [(ElementInfo, ElementInfo)] {
+        var used = Set<Int>()
+        var matches: [(ElementInfo, ElementInfo)] = []
+        for a in rowA {
+            var best: ElementInfo?
+            var bestDistance = tolerance + 1
+            for b in rowB where !used.contains(b.ref) {
+                let distance = abs(a.frame.centerX - b.frame.centerX)
+                if distance <= tolerance, distance < bestDistance {
+                    best = b
+                    bestDistance = distance
+                }
+            }
+            if let best {
+                used.insert(best.ref)
+                matches.append((a, best))
+            }
+        }
+        return matches
+    }
+
+    private static func yJaccard(_ a: ElementInfo, _ b: ElementInfo) -> Double {
+        let aTop = a.frame.y, aBottom = a.frame.y + a.frame.height
+        let bTop = b.frame.y, bBottom = b.frame.y + b.frame.height
+        let overlap = min(aBottom, bBottom) - max(aTop, bTop)
+        guard overlap > 0 else { return 0 }
+        let union = max(aBottom, bBottom) - min(aTop, bTop)
+        return union > 0 ? overlap / union : 0
+    }
+
+    /// y の Jaccard が閾値以上の要素どうしを推移閉包で同じ行にまとめ、平均 y の昇順で返す
+    private static func rowBands(_ leaves: [ElementInfo]) -> [[ElementInfo]] {
+        var parent = Array(0..<leaves.count)
+        func find(_ x: Int) -> Int {
+            var x = x
+            while parent[x] != x { parent[x] = parent[parent[x]]; x = parent[x] }
+            return x
+        }
+        func union(_ a: Int, _ b: Int) {
+            let ra = find(a), rb = find(b)
+            if ra != rb { parent[ra] = rb }
+        }
+        for i in 0..<leaves.count {
+            for j in (i + 1)..<leaves.count
+            where yJaccard(leaves[i], leaves[j]) >= gridRowOverlapRatio {
+                union(i, j)
+            }
+        }
+        var groups: [Int: [ElementInfo]] = [:]
+        for i in 0..<leaves.count { groups[find(i), default: []].append(leaves[i]) }
+        // **並びは全順序にする**: Dictionary の列挙順はプロセスごとに変わるので、平均 y が
+        // 同値の帯を y だけで並べると発火が run ごとに揺れる(発火集合を等号で固定している
+        // GridWithoutHeaderNoteTests が偶に落ちる形)。同値は最小 ref で決める
+        return groups.values.sorted {
+            (averageY($0), $0.map(\.ref).min() ?? 0) < (averageY($1), $1.map(\.ref).min() ?? 0)
+        }
+    }
+
+    private static func averageY(_ elements: [ElementInfo]) -> Double {
+        elements.isEmpty ? 0 : elements.map(\.frame.y).reduce(0, +) / Double(elements.count)
+    }
+
+    /// 帯の中に何か描かれているか。**葉限定にしない**(largestEmptyBand と同じ判断): 実測した
+    /// フィクスチャの depth 列には「兄弟が祖先に見える」欠けがあり(TapTargetGeometry.ancestors
+    /// の doc 参照)、見出しの一部(例: `(水)`)が isLeaf 判定から漏れて「空」に見えることがあった。
+    /// 容器サイズ未満という緩い条件に寄せ、ラベルの有無を問わず何か描かれていれば止める
+    /// (誤検知を出さない側に倒す)
+    private static func gridBandHasContent(_ band: FTRect, in container: ElementInfo,
+                                           of snapshot: SnapshotResponse) -> Bool {
+        StepExecutor.descendants(of: container, in: snapshot.elements).contains { element in
+            element.scrollable != true && element.frame.height < container.frame.height
+                && element.frame.x < band.x + band.width && element.frame.x + element.frame.width > band.x
+                && element.frame.y < band.y + band.height && element.frame.y + element.frame.height > band.y
+        }
+    }
+
+    /// webView 1つぶんの格子探索。**列は「隣接する行どうしが centerX で揃う」連鎖でだけ決める**
+    /// (2026-08-12): 幅の重なり(overlap/min-width)や全画面での列クラスタリングは、無関係な
+    /// 要素(ナビの並び・ツールバーのアイコン)を座標の偶然一致で同じ列/行へ巻き込み、実測で
+    /// 複数の誤検知を作った。隣接行だけを見る連鎖にすると、そもそも隣り合わない要素同士が
+    /// 結び付くことがない。連鎖で残った列は**構造上つねに全セル埋まる**ので、
+    /// 「格子の充填率 0.7 以上」という要件は連鎖の成立条件そのものに埋め込まれている
+    /// (別途しきい値を持たない)
+    private static func gridHeaderGap(in container: ElementInfo, of snapshot: SnapshotResponse)
+        -> (columns: Int, rows: Int, band: FTRect)? {
+        let leaves = StepExecutor.descendants(of: container, in: snapshot.elements).filter { element in
+            guard element.scrollable != true,
+                  TapTargetGeometry.isLeaf(element, in: snapshot.elements) else { return false }
+            let label = (element.label ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let value = (element.value ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            return !label.isEmpty || !value.isEmpty
+        }
+        guard leaves.count >= 6 else { return nil }
+        let tolerance = container.frame.width * gridColumnCenterToleranceRatio
+        let bands = rowBands(leaves)
+        var index = 0
+        while index < bands.count - 1 {
+            var run = [bands[index]]
+            var cursor = index
+            while cursor + 1 < bands.count {
+                let matched = matchAdjacentColumns(run[run.count - 1], bands[cursor + 1],
+                                                    tolerance: tolerance)
+                guard matched.count >= gridMinColumns else { break }
+                run.append(bands[cursor + 1])
+                cursor += 1
+            }
+            defer { index = cursor > index ? cursor : index + 1 }
+            guard run.count >= gridMinRows else { continue }
+            // 連鎖を通して残る列だけを数える(先頭行の各要素を起点に、隣接行との対応が
+            // 最後まで続くもの。実測: 「日付ラベル」列は温度・降水確率の行には対応が無く
+            // 自然に脱落する)
+            var chains: [[ElementInfo]] = run[0].map { [$0] }
+            for row in run.dropFirst() {
+                let previous = chains.map { $0[$0.count - 1] }
+                let matched = Dictionary(uniqueKeysWithValues:
+                    matchAdjacentColumns(previous, row, tolerance: tolerance).map { ($0.0.ref, $0.1) })
+                chains = chains.compactMap { chain in matched[chain[chain.count - 1].ref].map { chain + [$0] } }
+            }
+            guard chains.count >= gridMinColumns else { continue }
+            let topMembers = chains.map { $0[0] }
+            guard let gridMinX = topMembers.map(\.frame.x).min(),
+                  let gridMaxX = topMembers.map({ $0.frame.x + $0.frame.width }).max(),
+                  let gridTop = topMembers.map(\.frame.y).min() else { continue }
+            let rowHeight = topMembers.map(\.frame.height).reduce(0, +) / Double(topMembers.count)
+            let bandTop = max(gridTop - rowHeight, snapshot.screen.y, container.frame.y)
+            guard gridTop - bandTop > 0 else { continue }
+            let band = FTRect(x: gridMinX, y: bandTop, width: gridMaxX - gridMinX,
+                              height: gridTop - bandTop)
+            guard !gridBandHasContent(band, in: container, of: snapshot) else { continue }
+            return (chains.count, run.count, band)
+        }
+        return nil
+    }
+
+    /// アドレス欄の identifier 既知集合(実測 2026-08-12)。Android Chrome = `url_bar` /
+    /// iOS Safari = `TabBarItemTitle`(通常時)・`URL`(アドレス欄をタップした状態)。
+    ///
+    /// **「値が URL らしい textField」というフォールバックは置かない**(2026-08-12 に実装して撤回)。
+    /// ドットを含む値は住所欄でもメール欄でも普通に出るので、**WebView を載せたアプリの
+    /// 入力画面で誤って「アドレス欄」と名乗る** —— そしてその形は固定コーパス(ブラウザ6枚は
+    /// すべて既知 identifier を持つ)には1枚も無いので、「誤検知0」の確認が効かない。
+    /// 名前の分かるブラウザだけを名指しし、知らないブラウザについては黙る
+    static let addressBarIdentifiers: Set<String> = ["url_bar", "TabBarItemTitle", "URL"]
+
+    private static func addressBarElement(in snapshot: SnapshotResponse) -> ElementInfo? {
+        guard snapshot.elements.contains(where: { $0.type == "webView" }) else { return nil }
+        return snapshot.elements.first {
+            addressBarIdentifiers.contains($0.identifier ?? "") && !($0.value ?? "").isEmpty
+        }
+    }
+
+    /// ブラウザのアドレス欄を名指しする注記。**木だけで判定**(driver・セッション状態は使わない)。
+    ///
+    /// なぜ要るか(2026-08-12実測): `ft_open_url` に同じ URL を渡しても、iOS Safari はフル版、
+    /// Android Chrome は `/lite/` へリダイレクトされた別のページを表示していた。ツリーの中身も
+    /// 別物になるが、応答のどこにもそのことに気付く手掛かりが無かった
+    static func addressBarNote(_ snapshot: SnapshotResponse, abbreviated: Bool = false) -> String {
+        guard let bar = addressBarElement(in: snapshot),
+              let raw = bar.value, !raw.isEmpty else { return "" }
+        let value = SnapshotRenderer.displayText(raw)
+        guard !abbreviated else {
+            return "note: the address bar shows \"\(value)\" (see the first snapshot's note).\n"
+        }
+        return "note: the address bar shows \"\(value)\" — a browser can silently redirect to a"
+            + " different page (mobile/lite version) than the one requested, and this value may"
+            + " itself be shortened by the browser. Check the exact page with ft_screenshot if"
+            + " that matters.\n"
     }
 
     /// ラベルが**見えている文字ではなく URL の断片**になっているリンク。

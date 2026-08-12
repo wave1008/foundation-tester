@@ -218,6 +218,21 @@ final class SweepHarnessTests: XCTestCase {
         "and-browser_urlmenu": Counts(ghost: 0, overlay: 1, stacked: 0, misses: 0, disabled: 0,
                                       offscreen: 0, warnedTappable: 1, keyboard: 0, sliver: 0,
                                       nested: 0, scrolledOut: 0),
+        // 2026-08-12 採取。gridWithoutHeaderNote / addressBarNote の witness 対(作業1〜3)。
+        // Android 側は and-browser_weather と同型の浅い a11y 木で、全項目0
+        "and-browser_weektable": Counts(),
+        // 同じページを iOS Safari で採取した陰性対照(見出し行がツリーにある)。**全件検分済み**:
+        // overlay 6 のうち4件(ref67/68/82/83「30/22」「10%」「29/24」「60%」 ← #MoreMenuButton /
+        // #TabBarItemTitle / #CapsuleNavigationBar)は ios-safari_article と**同一の型**
+        // (Safari 下部ツールバーがスクロール先の本文を覆う。あちらのコメント参照)。
+        // 残り2件(ref19/20「Image for Taboola Advertising Unit」← ref21 の折り返した広告リンク)は
+        // ios-safari_article の「折り返す inline テキスト」と同型(iOS に z が無い既知の限界)。
+        // offscreen 4 は screen 高さ 874 を超えて報告される週間天気アイコン(y=862+31=893>874)= 真陽性。
+        // disabled 1 は履歴が無いときの「戻る」(#BackButton)= ios-safari_article と同型の真陽性。
+        // 新しい形は1件も無い(挙動の現状固定であって真陽性の追認ではない)
+        "ios-browser_weektable": Counts(ghost: 0, overlay: 6, stacked: 0, misses: 0, disabled: 1,
+                                        offscreen: 4, warnedTappable: 2, keyboard: 0, sliver: 0,
+                                        nested: 0, scrolledOut: 0),
     ]
 
     private static var fixtureDirectory: URL {

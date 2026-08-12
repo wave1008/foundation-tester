@@ -77,6 +77,14 @@ enum NoteCatalog {
         Entry(key: "webViewGapNote", contexts: [.snapshot, .scrollTo], abbreviates: false) { input, _ in
             MCPServer.webViewGapNote(input.snapshot)
         },
+        // webViewGapNote は「どこかに空白がある」としか言わないので、格子の形と見出し欠落を
+        // 名指しするこちらを直後に置く
+        Entry(key: "gridWithoutHeaderNote", contexts: [.snapshot, .scrollTo], abbreviates: true) { input, abbreviated in
+            MCPServer.gridWithoutHeaderNote(input.snapshot, abbreviated: abbreviated)
+        },
+        Entry(key: "addressBarNote", contexts: [.snapshot], abbreviates: true) { input, abbreviated in
+            MCPServer.addressBarNote(input.snapshot, abbreviated: abbreviated)
+        },
         Entry(key: "unlabeledClickablesNote", contexts: [.snapshot], abbreviates: true) { input, abbreviated in
             MCPServer.unlabeledClickablesNote(input.snapshot, abbreviated: abbreviated)
         },

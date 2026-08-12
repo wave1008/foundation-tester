@@ -56,6 +56,10 @@ final class NoteCoverageTests: XCTestCase {
         // 広告で動くレイアウトを代表しない
         "ios-browser_nationwide": "browser", "ios-browser_startpage": "browser",
         "and-browser_weather": "browser", "and-browser_urlmenu": "browser",
+        // gridWithoutHeaderNote / addressBarNote の witness 対(2026-08-12・同じ tenki.jp
+        // 2週間天気ページを Android Chrome / iOS Safari で採取。iOS 側は見出し行がツリーにある
+        // 陰性対照)
+        "and-browser_weektable": "browser", "ios-browser_weektable": "browser",
         "ios-maps_route_options": "picker",
         // 自前 SUT(盤面が契約で固定されている対照)
         "sutec-calendar_day": "ec", "sutec-detail": "ec", "sutec-home": "ec",
@@ -85,16 +89,31 @@ final class NoteCoverageTests: XCTestCase {
         "ghostNote": Coverage(fixtures: ["ios-browser_startpage", "ios-place_guides_scrolled"], bytes: 588),
         "scrollFrameCandidates": Coverage(fixtures: ["and-place_expanded", "and-results", "ios-browser_startpage", "ios-maps_route_options", "ios-maps_station", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-messages_keyboard", "ios-place_guides_scrolled"], bytes: 2317),
         "truncationNote": Coverage(fixtures: ["ios-browser_nationwide", "ios-browser_startpage", "ios-maps_station"], bytes: 1012),
-        // 取りこぼしのある Chrome の1枚だけで発火し、取りこぼしの無い iOS Safari の3枚では
-        // 出ない(閾値の根拠は MCPServer.webViewGapNote のコメント)。browser 限定なのは
-        // **webView を持つフィクスチャがブラウザ4枚しか無い**ためで、対象はアプリ内 WebView も含む
-        "webViewGapNote": Coverage(fixtures: ["and-browser_weather"], bytes: 485),
+        // 取りこぼしのある Chrome の2枚(2026-08-12 に and-browser_weektable を追加)で発火し、
+        // 取りこぼしの無い iOS Safari の3枚(ios-browser_weektable 含む)では出ない
+        // (閾値の根拠は MCPServer.webViewGapNote のコメント)。browser 限定なのは
+        // **webView を持つフィクスチャがブラウザ6枚しか無い**ためで、対象はアプリ内 WebView も含む
+        "webViewGapNote": Coverage(fixtures: ["and-browser_weather", "and-browser_weektable"], bytes: 973),
+        // 値の格子はあるのに列見出しがツリーに無い形(2026-08-12・作業2の witness)。
+        // 陰性対照の ios-browser_weektable(見出しがツリーにある)では出ない。
+        // 誤検知ゼロの根拠は GridWithoutHeaderNoteTests.testFiresOnlyOnTheAndroidWeektableWitness
+        "gridWithoutHeaderNote": Coverage(fixtures: ["and-browser_weektable"], bytes: 520),
         "urlishLabelsNote": Coverage(fixtures: ["and-browser_weather"], bytes: 298),
+        // アドレス欄の値を名指しする(2026-08-12)。**既知 identifier だけで拾う**
+        // (url_bar = Android Chrome / TabBarItemTitle = iOS Safari 通常時 /
+        // URL = iOS Safari のアドレス欄タップ中 = ios-browser_startpage)。
+        // 同じ webView を持つ and-browser_weather / and-browser_urlmenu は、捕った時点で
+        // アドレス欄要素が無い(または値が空)ので黙る。**「値が URL らしい textField」の
+        // フォールバックは置かない** —— メール欄・住所欄を誤って名乗る形がコーパスに無く、
+        // 誤検知0の確認が効かないため(AddressBarNoteTests の当該テスト)
+        "addressBarNote": Coverage(fixtures: ["and-browser_weektable", "ios-browser_nationwide", "ios-browser_startpage", "ios-browser_weektable", "ios-safari_article"], bytes: 1328),
         "unlabeledClickablesNote": Coverage(fixtures: ["and-browser_urlmenu", "and-directions_tabs", "and-home", "and-place", "and-place_expanded", "and-results", "ios-home", "ios-maps_route_options", "ios-profile", "ios-settings_root"], bytes: 5105),
-        "ambiguousLabelsNote": Coverage(fixtures: ["and-browser_weather", "and-home", "and-maps_suggest_ime", "and-place", "and-place_expanded", "and-results", "ios-browser_nationwide", "ios-browser_startpage", "ios-home", "ios-maps_station", "ios-maps_suggest_keyboard", "ios-messages_keyboard", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-safari_article", "ios-settings_root", "sut-cmp_controls", "sut-cmp_home", "sutec-detail", "sutec-home"], bytes: 11616),
+        // **格子は曖昧ラベルの塊**(2026-08-12): 週間表の2枚が入って +2,049 バイト。
+        // 同じ数値(`29/24`・`90%`)が行と列に何度も出るので、増分は形そのもの
+        "ambiguousLabelsNote": Coverage(fixtures: ["and-browser_weather", "and-browser_weektable", "and-home", "and-maps_suggest_ime", "and-place", "and-place_expanded", "and-results", "ios-browser_nationwide", "ios-browser_startpage", "ios-browser_weektable", "ios-home", "ios-maps_station", "ios-maps_suggest_keyboard", "ios-messages_keyboard", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-safari_article", "ios-settings_root", "sut-cmp_controls", "sut-cmp_home", "sutec-detail", "sutec-home"], bytes: 13665),
         "duplicateIDsNote": Coverage(fixtures: ["and-dialer_keypad", "and-home", "and-overflow", "and-place_expanded", "and-results", "and-settings_root", "ios-browser_startpage", "ios-home", "ios-maps_route_options", "ios-maps_station", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-photos_grid", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-settings_root", "sutec-home"], bytes: 16450),
         "keyboardCoverageNote": Coverage(fixtures: ["and-browser_urlmenu", "and-maps_suggest_ime", "ios-browser_startpage", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-messages_keyboard"], bytes: 1088),
-        "truncatedLabelNote": Coverage(fixtures: ["and-browser_urlmenu", "and-browser_weather", "and-place_expanded", "ios-photos_grid", "ios-place_guides_scrolled", "ios-safari_article", "ios-settings_root", "sutec-detail", "sutec-home"], bytes: 2740),
+        "truncatedLabelNote": Coverage(fixtures: ["and-browser_urlmenu", "and-browser_weather", "and-place_expanded", "ios-browser_weektable", "ios-photos_grid", "ios-place_guides_scrolled", "ios-safari_article", "ios-settings_root", "sutec-detail", "sutec-home"], bytes: 3063),
     ]
 
     /// **コーパスでは構造上発火し得ないと確かめた注記**。ここに載せるには理由が要る ——
