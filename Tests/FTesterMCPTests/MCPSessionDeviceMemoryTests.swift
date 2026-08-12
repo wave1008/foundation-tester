@@ -8,31 +8,51 @@ import XCTest
 
 final class MCPSessionDeviceMemoryTests: XCTestCase {
 
+    // MARK: - iOS: 明示ターゲット述語(argsGaveIOSTarget/argsGaveAndroidTarget)
+
+    /// **udid:"" は「無指定」**(2026-08-12): キー存在(`args["udid"] != nil`)で判定すると
+    /// 空文字列を「指定あり」と誤読する非対称が生まれる。Android の serial は元から
+    /// isEmpty で見ているので、iOS もこれで揃える
+    func testArgsGaveIOSTargetTreatsEmptyUDIDAsOmitted() {
+        XCTAssertFalse(MCPServer.argsGaveIOSTarget(["udid": ""]))
+        XCTAssertFalse(MCPServer.argsGaveIOSTarget([:]))
+        XCTAssertTrue(MCPServer.argsGaveIOSTarget(["udid": "ABC-123"]))
+        XCTAssertTrue(MCPServer.argsGaveIOSTarget(["port": 8123]))
+    }
+
+    /// port が Int 以外(型崩れ)なら明示扱いしない
+    func testArgsGaveIOSTargetIgnoresNonIntPort() {
+        XCTAssertFalse(MCPServer.argsGaveIOSTarget(["port": "8123"]))
+    }
+
+    func testArgsGaveAndroidTargetTreatsEmptySerialAsOmitted() {
+        XCTAssertFalse(MCPServer.argsGaveAndroidTarget(["serial": ""]))
+        XCTAssertFalse(MCPServer.argsGaveAndroidTarget([:]))
+        XCTAssertTrue(MCPServer.argsGaveAndroidTarget(["serial": "emulator-5554"]))
+    }
+
     // MARK: - iOS: 使用側(iosExplicitWithMemory)
 
-    /// 記憶が無ければ何も差し込まない(1: 初回・無指定は既定挙動のまま)
+    /// 記憶が無ければ何も返さない(1: 初回・無指定は既定挙動のまま)
     func testIOSNoMemoryYetPassesThroughUnchanged() {
-        let (explicit, used) = MCPServer.iosExplicitWithMemory(
-            fromArgs: nil, argsOmittedTarget: true, remembered: nil)
-        XCTAssertNil(explicit)
-        XCTAssertNil(used)
+        XCTAssertNil(MCPServer.iosExplicitWithMemory(argsGaveTarget: true, remembered: nil))
+        XCTAssertNil(MCPServer.iosExplicitWithMemory(argsGaveTarget: false, remembered: nil))
     }
 
     /// 記憶があり、この呼び出しが完全に無指定なら記憶を使う(2)
     func testIOSFallsBackToRememberedTargetWhenFullyOmitted() {
-        let (explicit, used) = MCPServer.iosExplicitWithMemory(
-            fromArgs: nil, argsOmittedTarget: true, remembered: (port: 8123, udid: "AAA"))
-        XCTAssertEqual(explicit, 8123)
+        let used = MCPServer.iosExplicitWithMemory(
+            argsGaveTarget: false, remembered: (port: 8123, udid: "AAA"))
         XCTAssertEqual(used?.port, 8123)
         XCTAssertEqual(used?.udid, "AAA")
     }
 
     /// この呼び出しが udid/port のどちらかを持っていれば記憶を割り込ませない
-    /// (fromArgs が非 nil のとき。argsOmittedTarget が偽でも同じく通す)
+    /// (argsGaveTarget: true — 明示 Int port の流れは不変。旧シグネチャの
+    /// `fromArgs: 9999, argsOmittedTarget: false` に相当)
     func testIOSDoesNotOverrideAnExplicitCall() {
-        let (explicit, used) = MCPServer.iosExplicitWithMemory(
-            fromArgs: 9999, argsOmittedTarget: false, remembered: (port: 8123, udid: "AAA"))
-        XCTAssertEqual(explicit, 9999)
+        let used = MCPServer.iosExplicitWithMemory(
+            argsGaveTarget: true, remembered: (port: 8123, udid: "AAA"))
         XCTAssertNil(used)
     }
 
@@ -70,39 +90,30 @@ final class MCPSessionDeviceMemoryTests: XCTestCase {
         XCTAssertEqual(memory?.udid, "BBB")
 
         // 呼び出し3: 完全に無指定 — 直近(呼び出し2)の記憶にフォールバックする。1回目ではない
-        let (explicit, used) = MCPServer.iosExplicitWithMemory(
-            fromArgs: nil, argsOmittedTarget: true, remembered: memory)
-        XCTAssertEqual(explicit, 8124)
+        let used = MCPServer.iosExplicitWithMemory(argsGaveTarget: false, remembered: memory)
+        XCTAssertEqual(used?.port, 8124)
         XCTAssertEqual(used?.udid, "BBB")
     }
 
     // MARK: - Android: 使用側(androidExplicitWithMemory)
 
+    /// **iosExplicitWithMemory と同形**(2026-08-12): argsGaveTarget: を取り、使わない tuple 要素
+    /// (explicit)は持たない。明示判定(空文字列は無指定)は argsGaveAndroidTarget に一本化してある
+    /// (testArgsGaveAndroidTargetTreatsEmptySerialAsOmitted が別途固定する)
     func testAndroidNoMemoryYetPassesThroughUnchanged() {
-        let (explicit, used) = MCPServer.androidExplicitWithMemory(fromArgs: nil, remembered: nil)
-        XCTAssertNil(explicit)
-        XCTAssertNil(used)
+        XCTAssertNil(MCPServer.androidExplicitWithMemory(argsGaveTarget: true, remembered: nil))
+        XCTAssertNil(MCPServer.androidExplicitWithMemory(argsGaveTarget: false, remembered: nil))
     }
 
     func testAndroidFallsBackToRememberedSerialWhenOmitted() {
-        let (explicit, used) = MCPServer.androidExplicitWithMemory(
-            fromArgs: nil, remembered: "emulator-5554")
-        XCTAssertEqual(explicit, "emulator-5554")
-        XCTAssertEqual(used, "emulator-5554")
-    }
-
-    /// 空文字列も「無指定」として扱う(resolveAndroidSerial と揃える)
-    func testAndroidTreatsEmptySerialAsOmitted() {
-        let (explicit, used) = MCPServer.androidExplicitWithMemory(
-            fromArgs: "", remembered: "emulator-5554")
-        XCTAssertEqual(explicit, "emulator-5554")
+        let used = MCPServer.androidExplicitWithMemory(
+            argsGaveTarget: false, remembered: "emulator-5554")
         XCTAssertEqual(used, "emulator-5554")
     }
 
     func testAndroidDoesNotOverrideAnExplicitSerial() {
-        let (explicit, used) = MCPServer.androidExplicitWithMemory(
-            fromArgs: "emulator-5556", remembered: "emulator-5554")
-        XCTAssertEqual(explicit, "emulator-5556")
+        let used = MCPServer.androidExplicitWithMemory(
+            argsGaveTarget: true, remembered: "emulator-5554")
         XCTAssertNil(used)
     }
 
@@ -134,8 +145,7 @@ final class MCPSessionDeviceMemoryTests: XCTestCase {
             fromArgs: "emulator-5556", resolvedSerial: "emulator-5556")
         XCTAssertEqual(memory, "emulator-5556")
 
-        let (explicit, used) = MCPServer.androidExplicitWithMemory(fromArgs: nil, remembered: memory)
-        XCTAssertEqual(explicit, "emulator-5556")
+        let used = MCPServer.androidExplicitWithMemory(argsGaveTarget: false, remembered: memory)
         XCTAssertEqual(used, "emulator-5556")
     }
 }

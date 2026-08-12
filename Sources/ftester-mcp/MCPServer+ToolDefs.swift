@@ -51,7 +51,8 @@ extension MCPServer {
     static let snapshotAfterWaitForProperty: [String: Any] = [
         "type": "string",
         "description": "Requires snapshotAfter: true. Wait for this selector on the resulting "
-            + "screen (syntax: #id, a label, .type, a||b)",
+            + "screen (syntax: #id, a label, .type, a||b — quotes wrapped around the whole "
+            + "selector are stripped)",
     ]
     static let snapshotAfterTimeoutProperty: [String: Any] = [
         "type": "number",
@@ -195,7 +196,7 @@ extension MCPServer {
         tool("ft_snapshot", "Get the element list of the current screen. Each line: [ref] Type \"label\" id=... (x,y WxH). "
             + "A line marked scroll is a scrolling container you can pass as scrollFrame. "
             + "Use these refs for tap/type. With waitFor it polls for you instead of you calling this again", [
-            "waitFor": ["type": "string", "description": "Wait until this selector is on screen. Same syntax as the DSL: #id, a label, .type, a||b"],
+            "waitFor": ["type": "string", "description": "Wait until this selector is on screen. Same syntax as the DSL: #id, a label, .type, a||b (quotes wrapped around the whole selector are stripped)"],
             "timeout": ["type": "number", "description": "Seconds to wait for waitFor (default 5, same as the DSL)"],
             "expandBulk": expandBulkProperty,
             "interactiveOnly": interactiveOnlyProperty,
@@ -255,7 +256,8 @@ extension MCPServer {
                                 + "or its ft_snapshot ref (an integer) when the container has no unique id — "
                                 + "a duplicated or missing id makes a selector unusable. Pass it when the screen "
                                 + "has more than one scrollable area — ft_snapshot marks those lines scroll and "
-                                + "says so at the top"],
+                                + "says so at the top. When passing a selector: same syntax as the DSL: #id, "
+                                + "a label, .type, a||b (quotes wrapped around the whole value are stripped)"],
             "maxSwipes": ["type": "integer", "description": "Swipe limit (default 8, same as the DSL)"],
             "expandBulk": expandBulkProperty,
             "interactiveOnly": interactiveOnlyProperty,
@@ -472,6 +474,71 @@ extension MCPServer {
         }
         return " (warning: it went into \(name), but that field reads"
             + " \"\(SnapshotRenderer.truncate(value, 40))\" — the text may not have landed)"
+    }
+
+    /// `ft_type(replace: true)` 後の読み返し(2026-08-12)。**無条件の「replaced」を断言しない** ——
+    /// in-app iOS の UIKit 経路は clearInput の成否を検証なしで YES と返すので、旧値が残ったまま
+    /// 新しい文字が連結されても黙って「replaced」と言ってしまう(実害の型は typedIntoNote と同じ)。
+    /// `target` は clear 前の要素(ref 指定時)—— RefGuard.relocate で同一性追跡する。
+    /// ref 無指定(フォーカス任せ)のときは nil を渡し、focused な要素を見る(typedIntoNote と同じ規約)。
+    /// `expected` が空文字なら **clear-only**({replace:true, text:"" or 省略})の検証 ——
+    /// 一致すれば "(cleared the field)"、残存していれば警告にする(2026-08-12)
+    static func replaceVerificationNote(target: ElementInfo?, expected: String,
+                                        fresh: SnapshotResponse?) -> String {
+        guard let fresh else {
+            return " (replace requested; the field could not be read back)"
+        }
+        let found: ElementInfo?
+        if let target {
+            switch RefGuard.relocate(target, in: fresh.elements, screen: fresh.screen) {
+            case .found(let f, _), .ghost(let f): found = f
+            case .gone: found = nil
+            }
+        } else {
+            found = fresh.elements.first { $0.focused == true }
+        }
+        guard let found else {
+            return target == nil
+                ? " (warning: nothing has input focus now, so the text may have gone nowhere"
+                    + " — tap the field by ref first)"
+                : " (replace requested; the field could not be read back)"
+        }
+        guard let rawValue = found.value else {
+            return " (replace requested; its value could not be read back)"
+        }
+        // **正規化してから比較する**(2026-08-12): typedIntoNote と同じゼロ幅文字の扱いを
+        // expected 側にもかける —— これが無いと、両辺が実質同じ文字列でも不一致の警告が出る
+        let value = FlowMatchMode.normalizeInvisibleCharacters(rawValue)
+        let normalizedExpected = FlowMatchMode.normalizeInvisibleCharacters(expected)
+        let clearOnly = normalizedExpected.isEmpty
+        if value == normalizedExpected {
+            return clearOnly ? " (cleared the field)" : " (replaced the field's prior content)"
+        }
+        // **マスク欄は偽警告にしない**(2026-08-12): パスワード欄の読み返しは伏せ字(•/●/*…)なので、
+        // 期待値自体がマスク文字でない限り不一致は「違う」ではなく「確かめようがない」
+        if Self.looksMasked(value), !Self.looksMasked(normalizedExpected) {
+            return " (replace requested; the field reads back masked, so the result could not be"
+                + " verified)"
+        }
+        if clearOnly {
+            return " (warning: replace was requested to clear the field, but it still reads"
+                + " \"\(SnapshotRenderer.truncate(value, 40))\" — the clear may not have taken)"
+        }
+        if value.hasSuffix(normalizedExpected) {
+            return " (warning: the field now reads \"\(SnapshotRenderer.truncate(value, 40))\""
+                + " — the old content does not look cleared, so this may have appended instead"
+                + " of replacing it. Call ft_clear_input and retry if so)"
+        }
+        return " (warning: replace was requested, but the field now reads"
+            + " \"\(SnapshotRenderer.truncate(value, 40))\" — this does not match what was typed)"
+    }
+
+    /// パスワード欄などの読み返しが伏せ字だけで構成されているか。**1文字でも非マスクなら false**
+    /// —— 実データが読めている可能性を残し、誤って中立扱いにしない
+    private static func looksMasked(_ value: String) -> Bool {
+        guard !value.isEmpty else { return false }
+        let maskCharacters: Set<Character> = ["•", "●", "*"]
+        return value.allSatisfy { maskCharacters.contains($0) }
     }
 
     /// 座標形は ref の安全網(遮蔽・残像・中身外し)を1つも通らない。**設計上そうなる**が、

@@ -503,7 +503,24 @@ Android の整定判定は**スナップショットの画面サイズ**で行�
   警告が出ない / 機A に Preferences・機B に Maps を launch した後、機A への ft_open_url が
   com.apple.Maps へ配ると申告する(Android では intent の宛先なので実際に誤配送する)。
   **新しい宛先の指し方を足すときは、ここで畳めているかを必ず見る** ——
-  ドライバのキャッシュだけ直しても記憶の側は揃わない
+  ドライバのキャッシュだけ直しても記憶の側は揃わない。
+  **セッション内デバイス記憶も同じ入口で畳む**(`MCPServer.foldInRememberedDevice`。2026-08-12)——
+  当初 `driver(_:)` 内で適用していたが、キャッシュキーと `engineKey` が生の引数を見るため
+  「明示切替後の省略呼び出しが旧デバイスのキャッシュ済みドライバを引く」
+  「明示 port で採った ref が省略呼び出しから見えない」の2症状を生んだ(上と同根)。
+  適用条件は「udid/port/serial のどれも有効値で来ていない、かつ profile なし」で、
+  判定は Android と同じ空文字規則(`argsGaveIOSTarget` / `argsGaveAndroidTarget`。
+  `udid: ""` は省略扱い —— キー存在で見ると自動解決の結果を「利用者が選んだ」として記憶してしまう)。
+  規律は4つ: **① iOS は port だけ注入する**(udid まで注入すると毎呼び出しに全ポート走査 +
+  `reconcilePort` が走り、ブリッジが busy(quiescence 中は /status 無応答)なだけで hard fail する)/
+  **② 注入した呼び出しは記憶を再記録しない**(`deviceFromMemoryKey` マーカー。再記録すると
+  ポート再利用で別の機に化けたとき記憶が黙って乗り換わる)/ **③ platform も記憶する**
+  (`lastExplicitPlatform`。platform 省略の既定は ios なので、これが無いと直前まで Android を
+  driving していても省略呼び出しが iOS へ行く)/ **④ 注入は応答へも注記する**(ターゲットごとに
+  初回だけ。stderr は MCP クライアントに見えない)。
+  `forgetConnection` は一致する記憶も消す —— 消さないと、死んで別ポートに建ち直った
+  ブリッジへ省略呼び出しが永久に再ダイヤルする。Android の死亡判定は
+  `AndroidSerialResolver.connectedSerials()` の再照会(`androidSerialVanished` = 純粋関数)
 - **版ズレは既定で拒否**(2026-08-09 に警告から格上げ)。MCP の出力はシナリオへ書く文字列を
   供給するためにあるので、**古いブリッジの出す古い注記から誤ったセレクタが書き込まれる**ほうが
   「セッションが止まる」より高くつく。ゲートは `driver(_:)` の1箇所(`enforceVersion`)なので
@@ -2228,8 +2245,16 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
     接続拒否(`bridgeConnectionRefused`)は「誰も待受していない」が確定なので従来どおり即断するが、
     タイムアウト(`bridgeUnreachable`)の素の文言は「未起動 / 遅い / suspend」の**3択を並べるだけ**
     だった —— 実アプリ監査で ft_type がこれで落ち、直後の ft_status は「そのポートにブリッジが無い」と
-    一意に答えられた(判定材料はあるのに操作系が使っていなかった)。**走査してポートが消えていれば
-    死亡と言い切り、生きていれば何も足さない**(遅い/suspend の可能性が残るので素の3択のまま)。
+    一意に答えられた(判定材料はあるのに操作系が使っていなかった)。判定の順序が要:
+    **先に当のポートを `BridgeDiscovery.isBound` で見る**。bound のときの言い分は**エンジンで分ける**
+    (`bridgeBusyHint(connection:engine:)`)—— xcuitest は busy(整定待ちは実測 33.7s /status 無応答 >
+    interaction timeout 20s)なので「まだ繋がっている・リトライせよ」だが、**in-app は suspend でも
+    kernel が handshake を返すので bound のまま** = リトライは永遠に当たらない助言になる。
+    こちらは「ft_launch で前面へ戻すか、その機の xcuitest ポートを使え」。どちらも
+    **forgetConnection はしない**。bound でないときだけ全ポートを走査し、消えていれば死亡と言い切って
+    忘れる —— 走査を先にすると busy なブリッジは /status に出ないため「exited」と誤診し、
+    健全なブリッジの再構築へ誘導してしまう(`bridgeUnreachableVerdict` = 唯一の判定点・純粋関数・
+    テストで固定)。
     掴んでいるポートは `connectedPorts` に持つ —— **表示用の `connections` の文字列から読み解かない**
     (表記を整えるたびに判定が壊れる)
   - **宛先は port だけでなく udid まで書く**(`MCPServer.connectionLabel`。2026-08-12)。

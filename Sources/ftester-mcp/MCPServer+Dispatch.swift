@@ -182,15 +182,26 @@ extension MCPServer {
         //  宛先そのものなので、同じ機の中で別アプリへ実際に配送される)。
         // 入口で畳めば 35 箇所の呼び出しを触らずに全部が揃う
         let resolved: [String: Any]
+        let rememberedNote: String
         do {
-            resolved = Self.strippingSelectorQuotes(try await Self.foldingUDIDIntoPort(args))
+            let folded = Self.strippingSelectorQuotes(try await Self.foldingUDIDIntoPort(args))
+            // **セッション記憶の適用も同じ入口で畳む**: driver(_:) の内部(キャッシュ参照・
+            // engineKey 計算より後)で適用すると、省略呼び出しは常に `direct:ios:0:` の生キーで
+            // キャッシュ/ref 世代/engineKey を引き、明示切替後も旧デバイスのキャッシュ済み
+            // ドライバや ref 世代が返る。ここで args へ埋めてしまえば、明示指定と省略呼び出しが
+            // 完全に同じキーへ揃う
+            (resolved, rememberedNote) = Self.toolAcceptsDeviceTarget(tool)
+                ? foldInRememberedDevice(folded) : (folded, "")
         } catch {
             let hint = await connectionLostHint(error, args: args)
             throw hint.isEmpty ? error : MCPError(error.localizedDescription + hint)
         }
         do {
-            return Self.withElapsed(try await dispatch(tool: tool, args: resolved),
-                                    since: start, clock: clock)
+            var content = try await dispatch(tool: tool, args: resolved)
+            if !rememberedNote.isEmpty {
+                content = [["type": "text", "text": rememberedNote]] + content
+            }
+            return Self.withElapsed(content, since: start, clock: clock)
         } catch {
             let hint = await connectionLostHint(error, args: resolved)
                 + Self.setTextRefusedHint(tool: tool, args: resolved,
@@ -200,18 +211,113 @@ extension MCPServer {
         }
     }
 
+    /// **ツールが device ターゲット(port/serial/udid)を受けるか**。schema 駆動(port または serial
+    /// プロパティの有無)にしてあるので、ツール一覧を追加でメンテしなくても toolDefinitions と
+    /// 自動的に揃う。**port だけでは見ない**(2026-08-12): scope: .none で serial だけを個別宣言する
+    /// ツール(ft_logs)が port を持たないため、port 単独判定だと fold から漏れて記憶が効かなかった。
+    /// device を受けないツール(ft_doctor 等)へ記憶を適用すると、宛先と無関係な応答に
+    /// 「この機を使い回しています」という誤解を招く注記が付く
+    static func toolAcceptsDeviceTarget(_ tool: String) -> Bool {
+        guard let definition = toolDefinitions.first(where: { $0["name"] as? String == tool }),
+              let schema = definition["inputSchema"] as? [String: Any],
+              let props = schema["properties"] as? [String: Any] else { return false }
+        return props["port"] != nil || props["serial"] != nil
+    }
+
+    /// **省略呼び出しへ記憶した宛先を注入する**(dispatch 入口。call() 参照)。
+    /// 条件は明示ターゲット述語(argsGaveIOSTarget/argsGaveAndroidTarget)と1本化してある ——
+    /// ここだけ udid:"" を「指定あり」と誤読すると、記憶の適用だけが抑止されて記録は素通しする
+    /// 非対称に戻る。**profile 指定時は触らない**(宛先はプロファイルが決める)。
+    ///
+    /// platform の決め方(2026-08-12・4欠陥修正): **udid/port か serial のどちらかが明示されて
+    /// いれば、その platform だけを見る**(serial 明示に iOS の記憶を注入しない/逆も同じ)。
+    /// **どちらも無ければ platform 引数 → 直近に明示された platform(lastExplicitPlatform)→
+    /// 既定(ios)の順**で決める —— 契約は「udid, port, AND serial を全部省略したら同じデバイスへ」
+    /// なので、Android を明示した直後の全省略呼び出しは Android の記憶へ行かなければならない
+    /// (既定 "ios" に負けて iOS 分岐へ迷い込んでいた)。
+    /// iOS 側は **port だけ注入し udid は注入しない**(2026-08-12): udid を注入すると
+    /// driver() の portForIOS → bridgePorts(forUDID:) が毎回 BridgeDiscovery.scan を強いられ、
+    /// XCUITest quiescence(実測33.7秒)で busy なブリッジが scan に載らず reconcilePort が
+    /// throw する(isBound による busy 救済が効くのは connectionLostHint の経路だけ)。
+    /// 注入した呼び出しには `deviceFromMemoryKey` を立てる —— driver() 側の
+    /// recordsIOSMemory/recordsAndroidMemory がこれを見て、自動注入を「利用者が選んだ」として
+    /// 記憶を上書きしない(port 再利用で別デバイスに化けたときに記憶が黙って乗り換わるのを防ぐ)
+    func foldInRememberedDevice(_ args: [String: Any]) -> (args: [String: Any], note: String) {
+        guard args["profile"] == nil else { return (args, "") }
+        let explicitPlatform = args["platform"] as? String
+        let platform: String
+        if let explicitPlatform {
+            platform = explicitPlatform
+        } else if Self.argsGaveAndroidTarget(args) {
+            platform = "android"
+        } else if Self.argsGaveIOSTarget(args) {
+            platform = "ios"
+        } else {
+            platform = lastExplicitPlatform ?? Self.platformName(args)
+        }
+        switch platform {
+        case "ios":
+            guard let remembered = Self.iosExplicitWithMemory(
+                argsGaveTarget: Self.argsGaveIOSTarget(args), remembered: lastExplicitIOSTarget)
+            else { return (args, "") }
+            var out = args
+            out["port"] = Int(remembered.port)
+            if explicitPlatform == nil { out["platform"] = "ios" }
+            Self.logStderr("no udid/port given — reusing this session's earlier target"
+                + " (port \(remembered.port), udid \(remembered.udid ?? "unknown"))")
+            return Self.finishingFold(out, deviceLabel: "port \(remembered.port)",
+                                      noteKey: "rememberedDevice:ios:\(remembered.port)",
+                                      firstTime: firstTime)
+        case "android":
+            guard let remembered = Self.androidExplicitWithMemory(
+                argsGaveTarget: Self.argsGaveAndroidTarget(args), remembered: lastExplicitAndroidSerial)
+            else { return (args, "") }
+            var out = args
+            out["serial"] = remembered
+            if explicitPlatform == nil { out["platform"] = "android" }
+            Self.logStderr("no serial given — reusing this session's earlier Android target"
+                + " (serial \(remembered))")
+            return Self.finishingFold(out, deviceLabel: "serial \(remembered)",
+                                      noteKey: "rememberedDevice:android:\(remembered)",
+                                      firstTime: firstTime)
+        default:
+            return (args, "")
+        }
+    }
+
+    /// ios/android 分岐の共通尾部(2026-08-12 の掃討): マーカーを立て、初回だけ注記を返す。
+    /// `firstTime` はキー消費(explainedNotes への insert)を伴うので呼び手のクロージャで渡す
+    /// (このメソッドを static のままにするため — instance メソッド化すると呼び出し側で
+    /// `Self.` と裸の呼び出しが混在して読みにくくなる)
+    private static func finishingFold(
+        _ args: [String: Any], deviceLabel: String, noteKey: String, firstTime: (String) -> Bool
+    ) -> (args: [String: Any], note: String) {
+        var out = args
+        out[deviceFromMemoryKey] = true
+        let note = firstTime(noteKey)
+            ? "(reusing this session's earlier device: \(deviceLabel)"
+                + " — pass udid/port/serial to target another)\n"
+            : ""
+        return (out, note)
+    }
+
     /// `ft_type(ref:)` が Android の注入器に断られたときの回避策。**挙動は変えない** ——
     /// ACTION_SET_TEXT を受け付けない widget(NumberPicker など)が実在し、その欄でも
     /// **フォーカス済みの欄へキーで撃つ経路(ref なし)は通る**(2026-08-12 にエミュレータで実測)。
     /// 失敗文に書かないと、読み手は「この欄には入力できない」と読んで諦める。
-    /// 走査から切り離した純粋関数(実デバイスが要ると、この枝はテストで一度も実行されない)
+    /// 走査から切り離した純粋関数(デバイスが要ると、この枝はテストで一度も実行されない)
     static func setTextRefusedHint(tool: String, args: [String: Any], message: String) -> String {
         guard tool == "ft_type", args["ref"] != nil,
-              message.contains("cannot type into the field that was tapped") else { return "" }
+              message.contains(setTextRefusalMarker) else { return "" }
         return " Some widgets refuse ACTION_SET_TEXT outright (Android's NumberPicker among them)."
             + " Tap the field with ft_tap first, then call ft_type WITHOUT ref — that path types"
             + " into the focused field through the keyboard instead of setting its text."
     }
+
+    /// InputInjector.java(AndroidRunner/src/com/example/ftbridge/)がこの文言を変えると、
+    /// 上のガードが二度と当たらなくなる。`SetTextRefusedHintJavaSyncTests` がこの定数の値が
+    /// Java 側のソースに実在するかを機械確認する(Java 側は編集しない)
+    static let setTextRefusalMarker = "cannot type into the field that was tapped"
 
     /// セレクタ引数の両端の引用符を入口で剥がす(2026-08-12 の実アプリ監査)。
     /// DSL は Swift の文字列リテラルが引用符を剥がすが、MCP は生文字列で受けるので、
@@ -219,9 +325,14 @@ extension MCPServer {
     /// `*` 記法も展開されない)。ft_batch は逆に引用符必須なので、跨いで使うと必ず混入する。
     /// 両端が同じ引用符で**中にその引用符が無い**ときだけ剥がす(`"a"||"b"` を壊さない)。
     /// 引用符そのものを含むラベルは `=` エスケープ(`="…"`)で従来どおり書ける
+    /// 引用符剥がしの対象キー。**ToolDefs のスキーマ記述と同期を取る**
+    /// (`MCPServerToolDefinitionsTests.testSelectorSyntaxMarkedPropertiesAreAllQuoteStripped`) ——
+    /// セレクタ構文を受ける引数を新設したら、ここへ足し忘れないとテストが落ちる
+    static let selectorQuoteStrippedKeys = ["selector", "waitFor", "scrollFrame"]
+
     static func strippingSelectorQuotes(_ args: [String: Any]) -> [String: Any] {
         var out = args
-        for key in ["selector", "waitFor", "scrollFrame"] {
+        for key in selectorQuoteStrippedKeys {
             guard let text = args[key] as? String else { continue }
             out[key] = strippedQuotes(text)
         }
@@ -277,14 +388,24 @@ extension MCPServer {
         // 差し替えドライバ(テスト)では走査しない = 実ポートを叩かない
         guard makeDriver == nil else { return "" }
         let key = Self.engineKey(args)
-        guard let connection = connections[key], connection.hasPrefix("port") else { return "" }
+        guard let connection = connections[key] else { return "" }
+        if connection.hasPrefix("port") {
+            return await iosConnectionLostHint(error, key: key, connection: connection)
+        }
+        if connection.hasPrefix("serial ") {
+            return await androidConnectionLostHint(error, key: key, connection: connection)
+        }
+        return ""
+    }
+
+    /// iOS(port 経由のブリッジ)の死活。Android には無い判定材料(BridgeDiscovery.isBound/scan)を
+    /// 使うので、判定そのものを共有しない(androidConnectionLostHint 参照)
+    func iosConnectionLostHint(_ error: Error, key: String, connection: String) async -> String {
         switch error {
         case DriverError.bridgeConnectionRefused:
             // 接続拒否は「誰も待受していない」が確定しているので、走査は今の状況を添えるだけ
-            forgetConnection(key)
             let running = await BridgeDiscovery.scan(excluding: 0, repoRoot: try? RepoRoot.find())
-            return Self.connectionLostMessage(connection: connection, running: running,
-                                              sameDevice: Self.deviceName(forUDID: udids[key].flatMap { $0 }))
+            return connectionLostAndForget(key: key, connection: connection, running: running)
         case DriverError.bridgeUnreachable:
             // **タイムアウトは死を意味しない**(2026-08-12 の実アプリ監査で踏んだ): 素の文言は
             // 「未起動 / 遅い / suspend」の3択を並べるだけで、直後に ft_status を撃つと
@@ -293,22 +414,109 @@ extension MCPServer {
             // 死亡と言い切り、生きていれば何も足さない(遅い/suspend の可能性が残るため、
             // 素の3択メッセージのままにする)
             guard let port = connectedPorts[key] else { return "" }
-            let running = await BridgeDiscovery.scan(excluding: 0, repoRoot: try? RepoRoot.find())
-            guard Self.bridgeVanished(port: port, running: running) else { return "" }
-            forgetConnection(key)
-            return Self.connectionLostMessage(connection: connection, running: running,
-                                              sameDevice: Self.deviceName(forUDID: udids[key].flatMap { $0 }))
+            let repoRoot = try? RepoRoot.find()
+            // **応答なしを死と読まない**(2026-08-12 の別監査で踏んだ、同じ勘違いの再発): scan は
+            // 応答しないブリッジを「消えた」と数えるが、busy なブリッジ(XCUITest quiescence は
+            // 実測33.7秒 /status 無応答・tap 等の interaction timeout は20秒)は生きたまま scan にも
+            // 載らない。**bound(誰かが listen しているか)を verdict へそのまま渡し、production の
+            // 判定点を bridgeUnreachableVerdict の1箇所に一本化する**(手前で `if bound { return }`
+            // すると verdict の .busy 枝が production から一度も通らず、テストでしか確認できない
+            // 判定になる)。bound なら vanished によらず .busy が確定するので、bound のときは
+            // 走査を省ける(busy なブリッジは scan に載らず判定に使われない)
+            let bound = BridgeDiscovery.isBound(port: port, repoRoot: repoRoot)
+            let running = bound ? [] : await BridgeDiscovery.scan(excluding: 0, repoRoot: repoRoot)
+            switch Self.bridgeUnreachableVerdict(
+                bound: bound, vanished: Self.bridgeVanished(port: port, running: running)) {
+            case .busy:
+                return Self.bridgeBusyHint(connection: connection, engine: engines[key])
+            case .stillUnclear:
+                return ""
+            case .vanished:
+                return connectionLostAndForget(key: key, connection: connection, running: running)
+            }
         default:
             return ""
         }
     }
 
-    /// 死んだ接続の udid を、稼働中カタログの端末名へ引き直す(best-effort)。
+    /// iOS の2分岐(bridgeConnectionRefused/.vanished)の共通尾部(2026-08-12 の掃討): 記憶を
+    /// 捨てて、今の状況を添えたメッセージを組む
+    func connectionLostAndForget(key: String, connection: String,
+                                 running: [BridgeDiscovery.Found]) -> String {
+        forgetConnection(key)
+        return Self.connectionLostMessage(connection: connection, running: running,
+            sameDevice: Self.deviceName(forUDID: udids[key].flatMap { $0 }, in: running))
+    }
+
+    /// Android(serial 経由のブリッジ)の死活。**iOS のような安価な「待受しているか」判定が無い**
+    /// ので、`AndroidSerialResolver.connectedSerials()`(`adb devices`)への再照会そのものを
+    /// 識別材料にする —— adb の失敗文言は経路(clear/install/forward…)ごとに違って狭く確実な
+    /// 部分文字列が取れないので、文字列ではなく probe で確かめる。
+    /// **forgetConnection の Android 分岐(lastExplicitAndroidSerial の消去)はここが唯一の呼び手**
+    /// (2026-08-12 まで到達不能だった —— 死んだ serial への省略呼び出しがセッション中ずっと
+    /// 同じ死んだ serial へ再ダイヤルされ続けていた)
+    func androidConnectionLostHint(_ error: Error, key: String, connection: String) async -> String {
+        switch error {
+        case DriverError.bridgeUnreachable, DriverError.bridgeConnectionRefused, DriverError.badResponse:
+            break
+        default:
+            return ""
+        }
+        guard connection.hasPrefix("serial ") else { return "" }
+        let serial = String(connection.dropFirst("serial ".count))
+        // 端末がまだ adb につながっているなら、今回の失敗は別の理由(アプリ側のエラー等)。
+        // probe だけで判定するので、広めに構えても実害は「adb devices を1回余計に撃つ」だけ
+        guard Self.androidSerialVanished(serial, connected: AndroidSerialResolver.connectedSerials())
+        else { return "" }
+        forgetConnection(key)
+        return "\nThe Android device behind \(connection) is no longer connected (adb devices"
+            + " does not list it — unplugged, or the emulator was shut down). Reconnect it, then"
+            + " target it again with serial: (or omit it once only one device is connected)."
+    }
+
+    /// probe(`adb devices` 相当の一覧)から見てこの serial は消えたか。**走査から切り離した
+    /// 純粋関数**(bridgeVanished と同じ理由: 実 adb が要るとテストで判定を壊しても素通しする)
+    static func androidSerialVanished(_ serial: String, connected: [String]) -> Bool {
+        !connected.contains(serial)
+    }
+
+    /// bridgeUnreachable の3択。**走査から切り離した純粋関数**(reconcilePort/bridgeVanished と
+    /// 同じ理由: 実ブリッジが要るとこの判定はテストで一度も両方向を通らず、壊しても素通しする)。
+    /// bound(誰かが listen している)は vanished より優先する —— busy なブリッジは scan にも
+    /// 載らない(bridgeVanished は true になる)ので、bound を見ずに vanished だけで決めると
+    /// busy を死と誤判定する
+    enum BridgeUnreachableVerdict: Equatable { case busy, vanished, stillUnclear }
+
+    static func bridgeUnreachableVerdict(bound: Bool, vanished: Bool) -> BridgeUnreachableVerdict {
+        if bound { return .busy }
+        return vanished ? .vanished : .stillUnclear
+    }
+
+    /// bound(誰かが listen している)なポートへ「exited」と言わないための正直な文言。
+    /// **forgetConnection も呼ばない**呼び手側の判断とセットで使う(iosConnectionLostHint 参照)。
+    /// **エンジンで文面を出し分ける**(2026-08-12): in-app/hybrid ブリッジは対象アプリが
+    /// 前面のときしか応答しない(kernel が handshake を返すので isBound は true のまま)ので、
+    /// XCUITest 向けの「busy・リトライせよ」は永遠に的外れな助言になる
+    static func bridgeBusyHint(connection: String, engine: String?) -> String {
+        guard engine == "inapp" || engine == "hybrid" else {
+            return "\nThe XCUITest runner behind \(connection) did not answer in time, but the"
+                + " port is still bound — likely busy (a long-running operation, such as waiting"
+                + " for the screen to settle, can block the bridge for tens of seconds). Retry the"
+                + " call; the connection was not dropped."
+        }
+        return "\nThe in-app bridge behind \(connection) is not answering — it only answers while"
+            + " the app it is injected into is in the foreground. Bring it back with ft_launch,"
+            + " or use this device's xcuitest bridge port instead."
+    }
+
+    /// 死んだ接続の udid を、**手元にある scan 結果**から端末名へ引き直す(best-effort)。
     /// 失敗しても黙る —— `connectionLostMessage` の「同じ端末を先に」が効かず、
-    /// 通し番号での畳み方に落ちるだけ
-    static func deviceName(forUDID udid: String?) -> String? {
+    /// 通し番号での畳み方に落ちるだけ。
+    /// **SimulatorCatalog を再照会しない**(2026-08-12): 呼び手は既に `running`(BridgeDiscovery.scan
+    /// の結果)を持っており、カタログ名とブリッジ申告名がズレると「同じ機を先頭に」が壊れる
+    static func deviceName(forUDID udid: String?, in running: [BridgeDiscovery.Found]) -> String? {
         guard let udid else { return nil }
-        return (try? SimulatorCatalog.devices())?.first { $0.udid == udid }?.name
+        return running.first { $0.udid == udid }?.device
     }
 
     /// タイムアウトのとき「そのブリッジは消えた」と言い切ってよいか。**走査から切り離した
@@ -318,8 +526,19 @@ extension MCPServer {
         !running.contains { $0.port == port }
     }
 
-    /// 掴んでいたドライバは死んでいる。次の呼び出しで解決し直させる
-    private func forgetConnection(_ key: String) {
+    /// 掴んでいたドライバは死んでいる。次の呼び出しで解決し直させる。
+    /// **記憶(lastExplicitIOSTarget/lastExplicitAndroidSerial)も一致すれば一緒に忘れる**
+    /// (2026-08-12): resolveIOSPort/resolveAndroidSerial は記憶されたポート/serial を生存確認
+    /// なしで返す(driver() 参照)ので、ここで消さないと、死んだ接続の後の省略呼び出しが
+    /// 同じ死んだポート/serial へ永久に再ダイヤルし続ける。**internal**(テストが直接呼ぶ)
+    func forgetConnection(_ key: String) {
+        if let port = connectedPorts[key], lastExplicitIOSTarget?.port == port {
+            lastExplicitIOSTarget = nil
+        }
+        if let connection = connections[key], connection.hasPrefix("serial "),
+           lastExplicitAndroidSerial == String(connection.dropFirst("serial ".count)) {
+            lastExplicitAndroidSerial = nil
+        }
         drivers[key] = nil
         connections[key] = nil
         connectedPorts[key] = nil
@@ -402,17 +621,12 @@ extension MCPServer {
             let listProject = args["project"] as? String
             let listProfile = args["profile"] as? String
             let listPlatform = args["platform"] as? String
-            // **鍵は見出しが実際に出る回だけ消費する**(onceNonEmpty と同じ理由): プロファイルが
-            // 解決できた回や platform が不正な回で消費すると、本当の初出が短縮形になる
-            var abbreviatedFallback = false
-            if DeviceInventory.isSupportedPlatform(listPlatform),
-               case .unavailable = DeviceInventory.resolveMachine(project: listProject,
-                                                                  profile: listProfile) {
-                abbreviatedFallback = !firstTime("machineProfileFallback")
-            }
+            // **鍵は見出しが実際に組まれる回だけ消費する**(onceNonEmpty と同じ理由)。
+            // devicesText 側の `abbreviated` クロージャに遅延評価させる — ここで同じ判定を
+            // 先読みすると、once 系の鍵をここでも消費する二重実装になる
             return text(await DeviceInventory.devicesText(
                 project: listProject, profile: listProfile, platform: listPlatform,
-                abbreviatedFallbackHeader: abbreviatedFallback))
+                abbreviated: { !self.firstTime("machineProfileFallback") }))
 
         case "ft_list_apps":
             // driver() を先に通す: profile 指定の解決(provision)と udids の記録がここで済み、
@@ -585,24 +799,54 @@ extension MCPServer {
             // **沈黙した誤りになる**(2026-08-07 に Google マップで `レストラン東京タワー` を実測)。
             // 撃つ前の値は verifiedRef が撮り直した木から引く(追加の snapshot を払わない)
             var priorValue: String?
+            var priorElement: ElementInfo?
             if let ref = targetRef {
                 let verified = try await verifiedRef(ref, driver: typeDriver, args: args)
                 targetRef = verified.ref
                 note = verified.note
-                priorValue = lastSnapshots[Self.engineKey(args)]?
-                    .elements.first { $0.ref == verified.ref }?.value
+                priorElement = lastSnapshots[Self.engineKey(args)]?
+                    .elements.first { $0.ref == verified.ref }
+                priorValue = priorElement?.value
+            }
+            // **replace は文字が空でも clear する**(2026-08-12): {replace:true, text:""} や
+            // {replace:true, pressEnter:true} は「クリアだけ」「クリア+Enter」を成立させるための
+            // 書き方で、スキーマも "Clear the field before typing" と約束している。下の入力分岐
+            // (文字が非空のときだけ通る)の内側に置くと、空文字はそこへ一度も入らず黙って
+            // 何もしない(スキーマの約束を破る)
+            if wantsReplace {
+                try await typeDriver.clearInput(ref: targetRef.map { nativeRef($0, args: args) })
+            }
+            // **replace + snapshotAfter(Enter を伴わない形)は同じ木を2回読まない**(2026-08-12):
+            // この組み合わせでは検証が読みたい瞬間(clear/type 直後)と snapshotAfter が読みたい
+            // 瞬間が同じなので、snapshotAfterBodyWithStatus を先に1回だけ実行し、成功していれば
+            // その木(lastSnapshots)を検証にも使う。失敗時だけ生読みへフォールバックする。
+            // **pressEnter を伴う形は対象外**: Enter の前後で状態が変わるので、検証は Enter 前に
+            // 読む必要があり(下の呼び出し位置のまま)、最終的に返す木は Enter 後でなければならない
+            // —— そもそも2回読む理由がある(この最適化を適用すると Enter 前の古い木を返す)
+            let mergesSnapshotAfterIntoVerification =
+                wantsReplace && !wantsEnter && args["snapshotAfter"] as? Bool == true
+            var precomputedAfterBody: String?
+            func verificationSnapshot() async -> SnapshotResponse? {
+                guard mergesSnapshotAfterIntoVerification else {
+                    return try? await typeDriver.snapshot(bypassingCache: typeDriver.supportsCacheBypass)
+                }
+                let result = await snapshotAfterBodyWithStatus(args)
+                precomputedAfterBody = result.text
+                guard result.succeeded else {
+                    return try? await typeDriver.snapshot(bypassingCache: typeDriver.supportsCacheBypass)
+                }
+                return lastSnapshots[Self.engineKey(args)]
             }
             if let content, !content.isEmpty {
-                if wantsReplace {
-                    try await typeDriver.clearInput(ref: targetRef.map { nativeRef($0, args: args) })
-                }
                 // targetRef はセッション ref。ブリッジへ渡す直前にだけ native へ戻す
                 try await typeDriver.type(ref: targetRef.map { nativeRef($0, args: args) }, text: content)
                 // **ref を渡したときだけ読み返しで検証される**。iOS の XCUITest ランナーは
                 // ref から対象を引けたときだけ TypeReadback の resend/deleteExcess を回し、
                 // 引けない(= ref なし)ときは無検証の `typeText` へ落ちて OK を返す。
-                // Android は焦点ノードを読み返すので ref なしでも検証される
-                if targetRef == nil, !(typeDriver is AndroidDriver) {
+                // Android は焦点ノードを読み返すので ref なしでも検証される。
+                // **replace のときはここでは読み返さない** —— 下の replaceVerificationNote が
+                // 同じ理由(生読み・settle-lite 基準を壊さない)で改めて読むので、二重に払わない
+                if targetRef == nil, !(typeDriver is AndroidDriver), !wantsReplace {
                     // **注意書きで済ませず、ここで確かめる**: iOS の XCUITest ランナーは ref から
                     // 対象を引けたときだけ TypeReadback を回すので、ref なしは無検証で OK が返る。
                     // 木は `focused` を持っているのだから、撮り直して**どこへ入ったか**を名指しできる
@@ -617,20 +861,35 @@ extension MCPServer {
                                                      snapshot: rawAfterType)
                 }
                 if wantsReplace {
-                    note += " (replaced the field's prior content)"
+                    // **無条件の「replaced」を断言しない**(2026-08-12): clearInput → type の後、
+                    // 読み返しなしで無条件に付けていた。in-app iOS の UIKit 経路は検証なしで YES を
+                    // 返すので、clear が効いていなくても(旧値の後ろに新しい文字が連結されても)
+                    // 「replaced」と嘘をつく。読み返して期待どおり/マスクで検証不能/旧値残存/
+                    // 読めないの4形に分ける(replaceVerificationNote)
+                    note += Self.replaceVerificationNote(
+                        target: priorElement, expected: content, fresh: await verificationSnapshot())
                 } else if let prior = priorValue, !prior.isEmpty {
                     note += " (the field already held \"\(SnapshotRenderer.truncate(prior, 30))\";"
                         + " ft_type appends, so it now reads"
                         + " \"\(SnapshotRenderer.truncate(prior + content, 60))\"."
                         + " Call ft_clear_input first if you meant to replace it)"
                 }
-            } else if let ref = targetRef {
-                // 入力せず Enter だけ撃つときも、対象が指定されていればフォーカスを立ててから。
-                // **タップの直後に撃たない**(下の awaitFocus): 直前に別の欄へ入力していると
-                // フォーカスの移動が間に合わず、Enter が**前の欄**へ飛んで黙って何も起きない
-                // (2026-08-06 に Android で観測。ime カウンタが増えなかった)
-                try await typeDriver.tap(ref: nativeRef(ref, args: args))
-                note += await awaitFocus(ref: ref, driver: typeDriver, args: args)
+            } else {
+                // **clear-only({replace:true, text:"" or 省略})も無条件に「cleared」と断言しない**
+                // (2026-08-12): 読み返して期待どおり(空)/マスク/残存の3形に分ける
+                // (replaceVerificationNote は expected 空でこの3形を返す)
+                if wantsReplace {
+                    note += Self.replaceVerificationNote(
+                        target: priorElement, expected: "", fresh: await verificationSnapshot())
+                }
+                if let ref = targetRef {
+                    // 入力せず Enter だけ撃つときも、対象が指定されていればフォーカスを立ててから。
+                    // **タップの直後に撃たない**(下の awaitFocus): 直前に別の欄へ入力していると
+                    // フォーカスの移動が間に合わず、Enter が**前の欄**へ飛んで黙って何も起きない
+                    // (2026-08-06 に Android で観測。ime カウンタが増えなかった)
+                    try await typeDriver.tap(ref: nativeRef(ref, args: args))
+                    note += await awaitFocus(ref: ref, driver: typeDriver, args: args)
+                }
             }
             // 入力欄も**セレクタで再現できないと書けない**(E)。ref を渡さない
             // (フォーカス任せの)呼び方では対象が確定しないので黙る
@@ -640,8 +899,15 @@ extension MCPServer {
             }
             if wantsEnter { recordInteraction(action: "pressEnter", resolvedRef: nil, args: args) }
             guard wantsEnter else {
+                let afterBody: String
+                if let precomputedAfterBody {
+                    afterBody = precomputedAfterBody
+                } else {
+                    afterBody = await snapshotAfterBody(args)
+                }
                 return text("Typed: \"\(content ?? "")\"\(note)\(typedSelector)"
-                    + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
+                    + waitForWithoutSnapshotAfterNote(args)
+                    + afterBody)
             }
             try await typeDriver.pressEnter()
             return text((content.map { "Typed: \"\($0)\" and pressed Enter" } ?? "Pressed Enter")
@@ -710,7 +976,13 @@ extension MCPServer {
             // (`snapshotAfterBody` は adoptSnapshot 経由で `lastSnapshots` を更新するので、
             // 撮った木は指紋で読み返せる)。無効の注記自体は snapshotAfter の有無で消さない ——
             // 木が付いていても「前と同一」は読み手には分からない
-            let afterBody = wantsSnapshotAfter ? await snapshotAfterBody(args) : ""
+            var afterBody = ""
+            var snapshotAfterSucceeded = false
+            if wantsSnapshotAfter {
+                let result = await snapshotAfterBodyWithStatus(args)
+                afterBody = result.text
+                snapshotAfterSucceeded = result.succeeded
+            }
             var backIneffectiveNote = ""
             if let before = beforeBackFingerprint {
                 // **1回の撮り直しでは判定しない**(ポーリング): アニメーション途中の木を
@@ -719,8 +991,11 @@ extension MCPServer {
                 var sawChange = false
                 var sawAnySnapshot = false
                 if wantsSnapshotAfter {
-                    // 撮り直しは snapshotAfterBody が済ませている(settle-lite も込み)
-                    if let after = lastSnapshots[Self.engineKey(args)] {
+                    // **撮り直しに成功した回だけ判定する**(2026-08-12): snapshotAfterBody が
+                    // 読みに失敗すると lastSnapshots は back 前の木のまま残り、succeeded を見ずに
+                    // 読むと指紋が自明に一致して「back は効かなかった」と誤読する(catch した回の
+                    // 謝罪文の横に、矛盾する偽の注記が並ぶ)
+                    if snapshotAfterSucceeded, let after = lastSnapshots[Self.engineKey(args)] {
                         sawAnySnapshot = true
                         sawChange = Self.treeFingerprint(after) != before
                     }
@@ -1271,9 +1546,12 @@ extension MCPServer {
 
     /// 繰り返し出る注記を初回だけ満額にする(F-6・2026-08-10)。**通すのは dispatch 経由の
     /// 応答組み立てだけ**にすること — static 関数そのものは short/full を知らないまま変えない
-    /// (テストの独立性を保つ: 同じ static 関数を単体で呼ぶテストは常に満額の文を見る)
-    func once(_ key: String, full: String, short: String) -> String {
-        explainedNotes.insert(key).inserted ? full : short
+    /// (テストの独立性を保つ: 同じ static 関数を単体で呼ぶテストは常に満額の文を見る)。
+    /// **full/short は @autoclosure**(2026-08-12): 呼び出し側は素の式を渡すだけでよく、
+    /// 選ばれなかった側は評価されない(full/short とも重い計算のことがある —— 実測
+    /// unlabeledClickablesNote 等で1本 29〜116ms)
+    func once(_ key: String, full: @autoclosure () -> String, short: @autoclosure () -> String) -> String {
+        explainedNotes.insert(key).inserted ? full() : short()
     }
 
     /// 「この鍵は初出か」だけを返す `once` の同型。本文の2形を持たない注記
@@ -1284,10 +1562,21 @@ extension MCPServer {
 
     /// `once` を「注記が空のときはキーを消費しない」形にした版。full が空の画面で先に呼ぶと、
     /// その画面には何も出ないのにキーだけ記録され、次に本当に出た画面(初出のはず)が
-    /// 短縮形になってしまう。truncatedLabelNote/unlabeledClickablesNote/ambiguousLabelsNote が共有する
-    func onceNonEmpty(_ key: String, full: String, short: String) -> String {
-        guard !full.isEmpty else { return "" }
-        return once(key, full: full, short: short)
+    /// 短縮形になってしまう。truncatedLabelNote/unlabeledClickablesNote/ambiguousLabelsNote/
+    /// duplicateIDsNote が共有する。
+    ///
+    /// **closure 形**(2026-08-12): 呼び手はどちらを出すかだけを決める1つの render を渡し、
+    /// これが**1回だけ**評価される —— 旧実装(full:/short: の2引数)は空判定のため full を
+    /// 必ず評価し、初出でないときは short も評価していた(定常状態で二重評価。full/short とも
+    /// 重い計算のことがある)。空判定は「実際に表示する側」の結果で行う: これらの note 関数は
+    /// いずれも `guard !xxx.isEmpty else { return "" }` を abbreviated 分岐より手前に持つので、
+    /// 空かどうかは abbreviated の値に依らない
+    func onceNonEmpty(_ key: String, render: (_ abbreviated: Bool) -> String) -> String {
+        let abbreviated = explainedNotes.contains(key)
+        let rendered = render(abbreviated)
+        guard !rendered.isEmpty else { return "" }
+        if !abbreviated { explainedNotes.insert(key) }
+        return rendered
     }
 
     /// 撮ったスナップショットの `#id` をプロジェクトの台帳へ足す(ft_dry_run が綴り誤りの照合に使う。

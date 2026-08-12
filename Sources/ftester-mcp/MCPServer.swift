@@ -198,6 +198,13 @@ final class MCPServer {
     var lastExplicitIOSTarget: (port: UInt16, udid: String?)?
     /// Android 版の同じ記憶。同じ規律(androidExplicitWithMemory/androidMemoryAfterResolve)
     var lastExplicitAndroidSerial: String?
+    /// **udid/port/serial を全部省略した呼び出しがどちらの platform の記憶を見るか**
+    /// (2026-08-12)。lastExplicitIOSTarget/lastExplicitAndroidSerial は platform ごとに
+    /// 分かれているだけで「どちらが最後に明示されたか」を持たないため、Android を明示した
+    /// 直後に platform も省略した呼び出しが(既定の "ios" に負けて)iOS の記憶へ迷い込んでいた。
+    /// 更新は iOS/Android どちらかの記憶が実際に更新された(= 利用者が明示した)ときだけ
+    /// (foldInRememberedDevice が platform 明示時はこれを読まない)
+    var lastExplicitPlatform: String?
 }
 
 struct MCPError: Error, LocalizedError {

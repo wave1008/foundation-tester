@@ -451,10 +451,11 @@ final class MCPToolCallTests: XCTestCase {
         XCTAssertEqual(driver.calls, ["type(ref:nil,text:hello)", "snapshot"])
     }
 
-    /// replace: true は type の前に clearInput(ft_clear_input と同じ呼び出し形)を挟む
+    /// replace: true は type の前に clearInput(ft_clear_input と同じ呼び出し形)を挟み、
+    /// 最後に読み返し用の snapshot を1回だけ払う(clear の嘘 200 を検出するため)
     func testTypeReplaceClearsBeforeTyping() async throws {
         _ = try await server.call(tool: "ft_type", args: ["text": "あいう", "ref": 2, "replace": true])
-        XCTAssertEqual(driver.calls, ["clearInput(ref:2)", "type(ref:2,text:あいう)"])
+        XCTAssertEqual(driver.calls, ["clearInput(ref:2)", "type(ref:2,text:あいう)", "snapshot"])
     }
 
     /// replace: false(既定と同じ)は今までどおり追記のみで、clearInput は呼ばない
@@ -480,6 +481,16 @@ final class MCPToolCallTests: XCTestCase {
             tool: "ft_type", args: ["text": "world", "ref": 1]))
         XCTAssertTrue(appended.contains("the field already held"), appended)
 
+        // 読み返しが「入力どおり」を確認できたときだけ置換の注記が付く(clear の嘘 200 対策)。
+        // 偽ドライバは type で値を書き換えないので、読み返し用の木を入力後の値に差し替える
+        driver.snapshotResponse = SnapshotResponse(
+            sessionBundleID: "com.example.app",
+            screen: FTRect(x: 0, y: 0, width: 390, height: 844),
+            elements: [ElementInfo(ref: 1, type: "textField", identifier: "search",
+                                   label: nil, value: "world", placeholder: nil, enabled: true,
+                                   frame: FTRect(x: 0, y: 0, width: 200, height: 40), depth: 2,
+                                   focused: true)],
+            truncatedCount: 0)
         let replaced = Self.responseText(try await server.call(
             tool: "ft_type", args: ["text": "world", "ref": 1, "replace": true]))
         XCTAssertFalse(replaced.contains("the field already held"), replaced)

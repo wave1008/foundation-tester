@@ -44,7 +44,8 @@ final class DeviceInventoryTests: XCTestCase {
 
     func testLineIncludesAllFieldsWhenPresent() {
         let row = DeviceInventory.Row(name: "iPhone 17 Pro", platform: "ios", identifier: "ABCD-1234",
-                                      running: true, physical: false, registered: true, port: 8123)
+                                      running: true, physical: false, registered: true,
+                                      bridges: [DeviceInventory.Row.Bridge(port: 8123, engine: nil)])
         let text = DeviceInventory.line(row)
         XCTAssertTrue(text.contains("iPhone 17 Pro"), text)
         XCTAssertTrue(text.contains("ios"), text)
@@ -57,7 +58,7 @@ final class DeviceInventoryTests: XCTestCase {
 
     func testLineOmitsIdentifierAndPortWhenUnknown() {
         let row = DeviceInventory.Row(name: "Pixel 8", platform: "android", identifier: nil,
-                                      running: false, physical: true, registered: false, port: nil)
+                                      running: false, physical: true, registered: false, bridges: [])
         let text = DeviceInventory.line(row)
         XCTAssertTrue(text.contains("Pixel 8"), text)
         XCTAssertTrue(text.contains("android"), text)
@@ -81,10 +82,10 @@ final class DeviceInventoryTests: XCTestCase {
         let row = DeviceInventory.iosRow(
             spec: spec(name: "primary", simulator: "iPhone 17 Pro"),
             simDevices: [device], physicalDevices: [],
-            livePorts: ["iPhone 17 Pro": 8124])
+            liveBridges: ["iPhone 17 Pro": [DeviceInventory.Row.Bridge(port: 8124, engine: nil)]])
         XCTAssertTrue(row.running)
         XCTAssertEqual(row.identifier, "SIM-1")
-        XCTAssertEqual(row.port, 8124)
+        XCTAssertEqual(row.bridges.first?.port, 8124)
         XCTAssertFalse(row.physical)
         XCTAssertTrue(row.registered)
     }
@@ -92,10 +93,10 @@ final class DeviceInventoryTests: XCTestCase {
     func testIOSRowWithNoMatchIsNotRunningAndKeepsSpecUDID() {
         let row = DeviceInventory.iosRow(
             spec: spec(name: "stale", simulator: "iPad Pro", udid: "GHOST-UDID"),
-            simDevices: [], physicalDevices: [], livePorts: [:])
+            simDevices: [], physicalDevices: [])
         XCTAssertFalse(row.running)
         XCTAssertEqual(row.identifier, "GHOST-UDID")
-        XCTAssertNil(row.port)
+        XCTAssertNil(row.bridges.first?.port)
     }
 
     func testIOSRowPhysicalUsesConnectedFlagFromCatalog() {
@@ -103,7 +104,7 @@ final class DeviceInventoryTests: XCTestCase {
                                               connected: true, transport: "wired")
         let row = DeviceInventory.iosRow(
             spec: spec(name: "my-phone", kind: .physical, udid: "PHYS-1"),
-            simDevices: [], physicalDevices: [connected], livePorts: [:])
+            simDevices: [], physicalDevices: [connected])
         XCTAssertTrue(row.running)
         XCTAssertTrue(row.physical)
         XCTAssertEqual(row.identifier, "PHYS-1")
@@ -114,7 +115,7 @@ final class DeviceInventoryTests: XCTestCase {
                                                   connected: false, transport: "wired")
         let row = DeviceInventory.iosRow(
             spec: spec(name: "old-phone", kind: .physical, udid: "PHYS-2"),
-            simDevices: [], physicalDevices: [disconnected], livePorts: [:])
+            simDevices: [], physicalDevices: [disconnected])
         XCTAssertFalse(row.running)
     }
 

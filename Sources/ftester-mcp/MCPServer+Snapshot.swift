@@ -155,13 +155,10 @@ extension MCPServer {
             + Self.ghostNote(snapshot, collapsingBulk: collapsingBulk)
             + (ScrollFrameCandidates.note(snapshot) ?? "")
             + Self.truncationNote(snapshot) + Self.bulkExemptNote(snapshot)
-            + onceNonEmpty("unlabeledClickablesNote", full: Self.unlabeledClickablesNote(snapshot),
-                          short: Self.unlabeledClickablesNote(snapshot, abbreviated: true))
-            + onceNonEmpty("ambiguousLabelsNote", full: Self.ambiguousLabelsNote(snapshot),
-                          short: Self.ambiguousLabelsNote(snapshot, abbreviated: true))
+            + onceNonEmpty("unlabeledClickablesNote") { Self.unlabeledClickablesNote(snapshot, abbreviated: $0) }
+            + onceNonEmpty("ambiguousLabelsNote") { Self.ambiguousLabelsNote(snapshot, abbreviated: $0) }
             // ラベル版の直後に置く(読み手はどちらも「一意に指せるか」を見に来る)
-            + onceNonEmpty("duplicateIDsNote", full: Self.duplicateIDsNote(snapshot),
-                          short: Self.duplicateIDsNote(snapshot, abbreviated: true))
+            + onceNonEmpty("duplicateIDsNote") { Self.duplicateIDsNote(snapshot, abbreviated: $0) }
             + Self.keyboardCoverageNote(snapshot) + Self.sliverNote(snapshot)
             + truncatedLabelNote(snapshot)
             + SnapshotRenderer.render(snapshot, flagging: Self.ghostFlags(snapshot),
@@ -172,10 +169,12 @@ extension MCPServer {
     /// `SnapshotRenderer.truncatedLabelNote` を `once` で包む(F-6)。ft_snapshot と
     /// ft_scroll_to の両方が呼ぶので**鍵はここに1つだけ**にする(2つ目の呼び口を作らない)
     private func truncatedLabelNote(_ snapshot: SnapshotResponse) -> String {
-        onceNonEmpty("truncatedLabelNote",
-                    full: SnapshotRenderer.truncatedLabelNote(snapshot) ?? "",
-                    short: "note: long labels are shown cut off with \"…\" — match with"
-                        + " \"*prefix*\" (see the first snapshot's note).\n")
+        onceNonEmpty("truncatedLabelNote") { abbreviated in
+            abbreviated
+                ? "note: long labels are shown cut off with \"…\" — match with"
+                    + " \"*prefix*\" (see the first snapshot's note).\n"
+                : SnapshotRenderer.truncatedLabelNote(snapshot) ?? ""
+        }
     }
 
     /// `snapshotAfter` が読む木は基本的に整定を待たないという注意を初回だけ満額で出す
@@ -197,7 +196,10 @@ extension MCPServer {
     /// **value と frame を比較に含めるのが要点**: ft_type 直後は value が変わるので「変化あり」に
     /// なり無駄な待ちが入らない/ スクロールを伴うタップは frame が動くので同じ理由で入らない。
     /// **push 遷移が主目的**: 操作直後の木が古いまま返り、snapshotAfter が空振りして
-    /// 別途 ft_snapshot を要求される実測から
+    /// 別途 ft_snapshot を要求される実測から。
+    /// **FTCore.StaleFrameDetector へ寄せない**(2026-08-12): あちらの指紋は ref/type/identifier/
+    /// label/frame までで、value/checked の変化には反応しない(あちらはスクリーンショットの
+    /// 鮮度判定用で、ここが要る「入力しただけの変化」を感知できない)
     private static func looksUnchanged(_ before: SnapshotResponse, _ after: SnapshotResponse) -> Bool {
         guard before.elements.count == after.elements.count else { return false }
         return zip(before.elements, after.elements).allSatisfy { a, b in
@@ -238,7 +240,16 @@ extension MCPServer {
     /// 「タップは効いたのにエラーが返る」になり、読み手が操作を撃ち直して二重操作になる。
     /// **waitFor があれば settle-lite の代わりにそちらを使う**(両方は走らせない)
     func snapshotAfterBody(_ args: [String: Any]) async -> String {
-        guard args["snapshotAfter"] as? Bool == true else { return "" }
+        await snapshotAfterBodyWithStatus(args).text
+    }
+
+    /// `snapshotAfterBody` 本体。**back の無効判定(ft_navigate)が succeeded を見る**
+    /// (2026-08-12): catch した回(読みに失敗した回)は `lastSnapshots` が back 前の木のまま
+    /// 残るため、`succeeded` を返さずに「今の lastSnapshots」だけを見ると back 前の木と
+    /// 指紋が自明に一致し、謝罪文の横に「back は効かなかった」という偽の注記が並ぶ
+    /// (2026-08-12 実測)。他の呼び出し口は text だけを使い、この差は見ない
+    func snapshotAfterBodyWithStatus(_ args: [String: Any]) async -> (text: String, succeeded: Bool) {
+        guard args["snapshotAfter"] as? Bool == true else { return ("", false) }
         do {
             let snapshotDriver = try await driver(args)
             let key = Self.engineKey(args)
@@ -279,66 +290,11 @@ extension MCPServer {
                         } ?? (Self.notationHint(waitFor, in: snapshot)
                               + Self.similarLabelsHint(waitFor, in: snapshot))) + "\n"
             } else if args["waitForChange"] as? Bool == true {
-                // **「何かが変わる」を待つ**: 再検索のように同じセレクタのまま中身だけ入れ替わる
-                // 画面では waitFor が旧結果へ即マッチして待ちにならない。基準の木が無いときは
-                // 「変わった」と言う材料が無いので待たない(嘘の待機時間を払わない)
-                if let beforeAction {
-                    let seconds = args["timeout"] as? Double ?? Self.defaultWaitSeconds
-                    let deadline = Date().addingTimeInterval(max(0, seconds))
-                    var changed = !Self.looksUnchanged(beforeAction, snapshot)
-                    let changedOnFirstRead = changed
-                    while !changed, Date() < deadline {
-                        try await Task.sleep(for: .seconds(Self.waitPollSeconds))
-                        snapshot = try await freshSnapshot(snapshotDriver, args: args)
-                        changed = !Self.looksUnchanged(beforeAction, snapshot)
-                    }
-                    if changed {
-                        // **「変わった」は「終わった」ではない**: 最初に差が出た木が遷移途中の
-                        // こともある(2026-08-12 の実測: 検索結果がまだネットワーク待ちの
-                        // 「候補なし」中間状態で確定を返した)。直前の読みと一致するまで
-                        // 少数回だけ読み直して採り直す。timeout には縛らない(settle-lite と
-                        // 同じく操作後の固定小コストであって、待ち時間の指定ではない)
-                        var churn = 0
-                        var stable = false
-                        for _ in 0..<Self.changeSettleRereads {
-                            try await Task.sleep(
-                                nanoseconds: UInt64(max(0, settleWaitSeconds) * 1_000_000_000))
-                            let reread = try await freshSnapshot(snapshotDriver, args: args)
-                            if Self.looksUnchanged(snapshot, reread) { stable = true; break }
-                            snapshot = reread
-                            churn += 1
-                        }
-                        settleNote = "waitForChange: the tree differs from the one before the"
-                            + " action.\n"
-                        if !stable {
-                            settleNote += "note: the tree was still changing between re-reads —"
-                                + " it may not have settled; re-check (ft_snapshot, optionally"
-                                + " waitFor) before relying on it.\n"
-                        } else if churn > 0 {
-                            settleNote += "note: it kept changing after the first difference —"
-                                + " the tree below is the latest read.\n"
-                        } else if changedOnFirstRead {
-                            // 安定確認は「中間状態がそれ自体しばらく静止している」場合を
-                            // 見抜けない —— 遷移を1度も観測していないことだけは言える
-                            settleNote += once("waitForChangeFirstReadNote",
-                                full: "note: the difference was already present on the first"
-                                    + " read, so no transition was actually observed — a screen"
-                                    + " that populates asynchronously (search results, network"
-                                    + " content) may still be showing a loading or empty"
-                                    + " intermediate state; if you expect specific content,"
-                                    + " confirm it is present before relying on this tree.\n",
-                                short: "(already differed on the first read — see the earlier"
-                                    + " waitForChange note)\n")
-                        }
-                    } else {
-                        settleNote = "note: waitForChange timed out after \(seconds)s — the tree"
-                            + " still matches the one before the action, so the action may not"
-                            + " have changed the screen.\n"
-                    }
-                } else {
-                    settleNote = "note: waitForChange had no earlier tree to compare with"
-                        + " (nothing was read on this device yet), so it did not wait.\n"
-                }
+                let result = try await waitForChangeBody(beforeAction: beforeAction,
+                                                         snapshot: snapshot,
+                                                         driver: snapshotDriver, args: args)
+                snapshot = result.snapshot
+                settleNote = result.note
             } else if let beforeAction, Self.looksUnchanged(beforeAction, snapshot) {
                 try await Task.sleep(nanoseconds: UInt64(max(0, settleWaitSeconds) * 1_000_000_000))
                 let reread = try await freshSnapshot(snapshotDriver, args: args)
@@ -354,13 +310,77 @@ extension MCPServer {
             recordSnapshot(snapshot, snapshotDriver is AndroidDriver ? "android" : "ios", args)
             // waitFor 済みなら「待たずに読んだ」前提の immediateReadNote は誤解を招くので出さない
             let readNote = waitNote.isEmpty ? immediateReadNote() : ""
-            return "\n\n" + inheritedNote + waitNote + settleNote + readNote
+            let body = "\n\n" + inheritedNote + waitNote + settleNote + readNote
                 + (await snapshotBody(snapshot, driver: snapshotDriver, args: effectiveArgs))
+            return (body, true)
         } catch {
-            return "\n\n(snapshotAfter could not read the screen:"
+            let body = "\n\n(snapshotAfter could not read the screen:"
                 + " \(error.localizedDescription) — the action above still went through;"
                 + " take an ft_snapshot yourself)"
+            return (body, false)
         }
+    }
+
+    /// `snapshotAfterBodyWithStatus` の waitForChange 分岐(waitFor の隣の抽出。2026-08-12)。
+    /// **beforeAction が無ければ待たない**(比較対象が無いので「変わった」と言う材料が無い)。
+    /// 戻り値の snapshot は撮り直した最新の木(呼び手はこれで自分の `snapshot` を置き換える)
+    func waitForChangeBody(beforeAction: SnapshotResponse?, snapshot initial: SnapshotResponse,
+                           driver: AppDriver, args: [String: Any]) async throws
+        -> (snapshot: SnapshotResponse, note: String) {
+        guard let beforeAction else {
+            return (initial, "note: waitForChange had no earlier tree to compare with"
+                + " (nothing was read on this device yet), so it did not wait.\n")
+        }
+        var snapshot = initial
+        let seconds = args["timeout"] as? Double ?? Self.defaultWaitSeconds
+        let deadline = Date().addingTimeInterval(max(0, seconds))
+        var changed = !Self.looksUnchanged(beforeAction, snapshot)
+        let changedOnFirstRead = changed
+        while !changed, Date() < deadline {
+            try await Task.sleep(for: .seconds(Self.waitPollSeconds))
+            snapshot = try await freshSnapshot(driver, args: args)
+            changed = !Self.looksUnchanged(beforeAction, snapshot)
+        }
+        guard changed else {
+            return (snapshot, "note: waitForChange timed out after \(seconds)s — the tree"
+                + " still matches the one before the action, so the action may not"
+                + " have changed the screen.\n")
+        }
+        // **「変わった」は「終わった」ではない**: 最初に差が出た木が遷移途中のこともある
+        // (2026-08-12 の実測: 検索結果がまだネットワーク待ちの「候補なし」中間状態で確定を
+        // 返した)。直前の読みと一致するまで少数回だけ読み直して採り直す。timeout には縛らない
+        // (settle-lite と同じく操作後の固定小コストであって、待ち時間の指定ではない)
+        var churn = 0
+        var stable = false
+        for _ in 0..<Self.changeSettleRereads {
+            try await Task.sleep(nanoseconds: UInt64(max(0, settleWaitSeconds) * 1_000_000_000))
+            let reread = try await freshSnapshot(driver, args: args)
+            if Self.looksUnchanged(snapshot, reread) { stable = true; break }
+            snapshot = reread
+            churn += 1
+        }
+        var note = "waitForChange: the tree differs from the one before the action.\n"
+        if !stable {
+            note += "note: the tree was still changing between re-reads —"
+                + " it may not have settled; re-check (ft_snapshot, optionally"
+                + " waitFor) before relying on it.\n"
+        } else if churn > 0 {
+            note += "note: it kept changing after the first difference —"
+                + " the tree below is the latest read.\n"
+        } else if changedOnFirstRead {
+            // 安定確認は「中間状態がそれ自体しばらく静止している」場合を
+            // 見抜けない —— 遷移を1度も観測していないことだけは言える
+            note += once("waitForChangeFirstReadNote",
+                full: "note: the difference was already present on the first"
+                    + " read, so no transition was actually observed — a screen"
+                    + " that populates asynchronously (search results, network"
+                    + " content) may still be showing a loading or empty"
+                    + " intermediate state; if you expect specific content,"
+                    + " confirm it is present before relying on this tree.\n",
+                short: "(already differed on the first read — see the earlier"
+                    + " waitForChange note)\n")
+        }
+        return (snapshot, note)
     }
 
     /// ref を撃つ直前の照合。**撮り直した木から同じ要素を引き直して、その新しい ref を返す**。
@@ -497,9 +517,10 @@ extension MCPServer {
         return (false, hint)
     }
 
-    /// `Self.matches`(MCPServer+Driver.swift)と同じセレクタ解決だが、当たった要素そのものを
-    /// 返す(scrollTo の画面外再確認用)。2つ目の照合ロジックを作らないよう
-    /// `StepExecutor.resolvedCandidates` をそのまま使う(`matches` の内側と同一)
+    /// **セレクタ解決の唯一の実装**(FTSelector.parse → [primary]+fallbacks →
+    /// StepExecutor.resolvedCandidates)。`matches`(MCPServer+Driver.swift)はこの結果が
+    /// 空かどうかを見るだけの薄いラッパー — 2つ目の照合ロジックを作らない。ここは当たった
+    /// 要素そのものが要る呼び手(scrollTo の画面外再確認)用
     static func matchedElements(_ selectorText: String, in snapshot: SnapshotResponse) -> [ElementInfo] {
         let parsed = FTSelector.parse(selectorText)
         return ([parsed.primary] + parsed.fallbacks).flatMap {
@@ -626,12 +647,14 @@ extension MCPServer {
         }
         // **木に居ること ≠ 画面に居ること**: FTCore 側のゲート(runScrollSearch)を通っても、
         // ここは独立した砦として残す。当たった要素が**すべて**中心画面外なら、探索は届いていない
-        // (弾切れで振り出しへ戻っただけ)。判定は ⚠️offscreen と共有(TapTargetGeometry.offscreenAdvisory。
-        // 上の「画面が変わった」エラーとは原因が別なので文も分ける)
+        // (弾切れで振り出しへ戻っただけ)。**executor と同じサイズ免除付きゲートを使う**
+        // (TapTargetGeometry.offscreenScrollGateAdvisory) —— 素の offscreenAdvisory のままだと、
+        // ビューポートより大きい要素で executor 側は成功しているのにここだけ hard fail する
+        // 不整合になる(上の「画面が変わった」エラーとは原因が別なので文も分ける)
         let matchedInTree = Self.matchedElements(selectorText, in: after)
         if !matchedInTree.isEmpty,
            matchedInTree.allSatisfy({
-               TapTargetGeometry.offscreenAdvisory(for: $0, screen: after.screen) != nil
+               TapTargetGeometry.offscreenScrollGateAdvisory(for: $0, screen: after.screen) != nil
            }) {
             throw MCPError("scrollTo \"\(selectorText)\" is in the tree but its centre is still off"
                 + " screen (⚠️offscreen) — the search ran out of swipes without actually reaching it"

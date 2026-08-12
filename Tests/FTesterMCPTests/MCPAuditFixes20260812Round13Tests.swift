@@ -68,8 +68,9 @@ final class MCPAuditFixes20260812Round13Tests: XCTestCase {
     func testLineListsEveryEngineOnTheSameDevice() {
         let row = DeviceInventory.Row(
             name: "iPhone 17 Pro", platform: "ios", identifier: "SIM-1",
-            running: true, physical: false, registered: true, port: 8143,
-            engine: "inapp", otherBridges: [DeviceInventory.Row.Bridge(port: 8124, engine: "xcuitest")])
+            running: true, physical: false, registered: true,
+            bridges: [DeviceInventory.Row.Bridge(port: 8143, engine: "inapp"),
+                     DeviceInventory.Row.Bridge(port: 8124, engine: "xcuitest")])
         let text = DeviceInventory.line(row)
         XCTAssertTrue(text.contains("port 8143 (inapp)"), text)
         XCTAssertTrue(text.contains("port 8124 (xcuitest)"), text)
@@ -79,7 +80,8 @@ final class MCPAuditFixes20260812Round13Tests: XCTestCase {
     func testLineOmitsEngineWhenUnknown() {
         let row = DeviceInventory.Row(
             name: "iPhone 17 Pro", platform: "ios", identifier: "SIM-1",
-            running: true, physical: false, registered: true, port: 8143)
+            running: true, physical: false, registered: true,
+            bridges: [DeviceInventory.Row.Bridge(port: 8143, engine: nil)])
         let text = DeviceInventory.line(row)
         XCTAssertTrue(text.contains("bridge port 8143"), text)
         // 行全体は外側の括弧で包まれる("- name (ios, ..., bridge port N)") ので、
@@ -87,16 +89,14 @@ final class MCPAuditFixes20260812Round13Tests: XCTestCase {
         XCTAssertFalse(text.contains("8143 ("), text)
     }
 
-    /// iosRow: 稼働中カタログに複数ブリッジがあれば、代表(port/engine)と残り(otherBridges)へ
-    /// 正しく分かれること
+    /// iosRow: 稼働中カタログに複数ブリッジがあれば、liveBridges の並びがそのまま row.bridges へ通ること
     func testIOSRowCarriesEveryLiveBridgeForTheMatchedDevice() {
         let device = SimDeviceInfo(udid: "SIM-1", name: "iPhone 17 Pro", os: "iOS 26.0", booted: true)
         let row = DeviceInventory.iosRow(
             spec: DeviceSpec(name: "primary", simulator: "iPhone 17 Pro"),
             simDevices: [device], physicalDevices: [],
-            livePorts: ["iPhone 17 Pro": 8143],
-            liveEngines: ["iPhone 17 Pro": "inapp"],
-            otherLiveBridges: ["iPhone 17 Pro": [DeviceInventory.Row.Bridge(port: 8124, engine: "xcuitest")]])
+            liveBridges: ["iPhone 17 Pro": [DeviceInventory.Row.Bridge(port: 8143, engine: "inapp"),
+                                            DeviceInventory.Row.Bridge(port: 8124, engine: "xcuitest")]])
         XCTAssertEqual(row.bridges,
                        [DeviceInventory.Row.Bridge(port: 8143, engine: "inapp"),
                         DeviceInventory.Row.Bridge(port: 8124, engine: "xcuitest")])
@@ -108,7 +108,7 @@ final class MCPAuditFixes20260812Round13Tests: XCTestCase {
         let row = DeviceInventory.iosRow(
             spec: DeviceSpec(name: "stopped", simulator: "iPad Pro"),
             simDevices: [], physicalDevices: [],
-            livePorts: ["iPad Pro": 8143], liveEngines: ["iPad Pro": "inapp"])
+            liveBridges: ["iPad Pro": [DeviceInventory.Row.Bridge(port: 8143, engine: "inapp")]])
         XCTAssertFalse(row.running)
         XCTAssertTrue(row.bridges.isEmpty)
     }

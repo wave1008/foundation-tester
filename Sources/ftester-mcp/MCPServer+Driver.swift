@@ -100,16 +100,12 @@ extension MCPServer {
         let created: AppDriver
         switch platform {
         case "ios":
-            let argsHadIOSTarget = args["udid"] != nil || args["port"] != nil
-            let (portToResolve, usedMemory) = Self.iosExplicitWithMemory(
-                fromArgs: explicitPort, argsOmittedTarget: !argsHadIOSTarget,
-                remembered: lastExplicitIOSTarget)
-            if let usedMemory {
-                Self.logStderr("no udid/port given — reusing this session's earlier target"
-                    + " (port \(usedMemory.port), udid \(usedMemory.udid ?? "unknown"));"
-                    + " pass port/udid to use a different device")
-            }
-            let port = try await Self.resolveIOSPort(explicit: portToResolve)
+            // **記憶の適用はここでは行わない**(2026-08-12): dispatch 入口(call() の
+            // foldInRememberedDevice)が省略呼び出しへ既に port/udid を差し込んでいるので、
+            // ここに来る時点で args は明示指定と区別が付かない。ここでは解決後の値を
+            // 「記録」するだけにする(iosMemoryAfterResolve) —— 適用と記録を二重に持たない
+            let argsHadIOSTarget = Self.recordsIOSMemory(args)
+            let port = try await Self.resolveIOSPort(explicit: explicitPort)
             let resolved = await ExploreDriverResolver.resolve(
                 preferred: port, repoRoot: try? RepoRoot.find(),
                 logger: { Self.logStderr($0) })
@@ -125,6 +121,7 @@ extension MCPServer {
             if let remembered = Self.iosMemoryAfterResolve(
                 argsHadExplicitTarget: argsHadIOSTarget, resolvedPort: port, resolvedUDID: resolved.udid) {
                 lastExplicitIOSTarget = remembered
+                lastExplicitPlatform = "ios"
             }
             // **稼働中のブリッジが古いままではないか**を1度だけ確かめる(2026-08-06 に踏んだ)。
             // profile 経由は BridgeProvisioner が版で再利用可否を決めるが、**この経路は
@@ -134,20 +131,17 @@ extension MCPServer {
             // Android は AndroidBridge が expectedBridgeVersionCode で入れ替えるのでこの穴が無い
             try await enforceVersion(driver: created, key: key, args: args)
         case "android":
+            // iOS と同じ理由で記憶の「適用」は入口(foldInRememberedDevice)側だけに置く
             let explicitSerial = args["serial"] as? String
-            let (serialToResolve, usedSerialMemory) = Self.androidExplicitWithMemory(
-                fromArgs: explicitSerial, remembered: lastExplicitAndroidSerial)
-            if let usedSerialMemory {
-                Self.logStderr("no serial given — reusing this session's earlier Android target"
-                    + " (serial \(usedSerialMemory)); pass serial to use a different device")
-            }
-            let serial = try Self.resolveAndroidSerial(explicit: serialToResolve)
+            let serial = try Self.resolveAndroidSerial(explicit: explicitSerial)
             created = try AndroidDriver(serial: serial)
             engines[key] = "android"
             connections[key] = "serial \(serial)"
             if let remembered = Self.androidMemoryAfterResolve(
-                fromArgs: explicitSerial, resolvedSerial: serial) {
+                fromArgs: Self.recordsAndroidMemory(args, explicitSerial: explicitSerial),
+                resolvedSerial: serial) {
                 lastExplicitAndroidSerial = remembered
+                lastExplicitPlatform = "android"
             }
         default:
             throw MCPError("platform must be ios or android: \(platform)")
@@ -231,7 +225,7 @@ extension MCPServer {
     /// (2026-08-09 の変異テストで実際に素通しした)。
     /// **udid 側は複数ポートを許す**(2026-08-12): 同じシミュレータに in-app / XCUITest の
     /// 2本が立つのが常態で、先頭の1本とだけ比べると正しい併記(udid + その in-app port)を
-    /// 「別デバイス」と誤って拒否する(実端末で 3/3 再現)
+    /// 「別デバイス」と誤って拒否する(Simulator で 3/3 再現)
     static func reconcilePort(_ port: UInt16?, udid: String, udidPorts: [UInt16]) throws -> UInt16? {
         guard !udidPorts.isEmpty else {
             throw MCPError("no running bridge is on udid \(udid)."
@@ -255,29 +249,51 @@ extension MCPServer {
     }
 
     /// udid を申告している稼働中ブリッジのポート(走査順・全部)。**申告が無いブリッジ(旧版)は
-    /// 素通し** —— 「見つからない」と「そのブリッジは答えられない」を混ぜないため
+    /// 素通し** —— 「見つからない」と「そのブリッジは答えられない」を混ぜないため。
+    /// **scan の応答をそのまま濾すだけ**(2026-08-12): scan は全ポートへ並列 timeout 2s で
+    /// 既に status を撃っており、その StatusResponse は udid を含む(BridgeDTO.swift)
     static func bridgePorts(forUDID udid: String) async -> [UInt16] {
-        var ports: [UInt16] = []
-        for found in await BridgeDiscovery.scan(excluding: 0, repoRoot: try? RepoRoot.find()) {
-            guard let client = try? BridgeClient(port: found.port),
-                  let status = try? await client.status(), status.udid == udid else { continue }
-            ports.append(found.port)
-        }
-        return ports
+        await BridgeDiscovery.scan(excluding: 0, repoRoot: try? RepoRoot.find())
+            .filter { $0.udid == udid }.map(\.port)
     }
 
-    /// **セッション記憶(iOS)を resolveIOSPort へ渡すかどうかの純粋関数**。走査から切り離してある
-    /// (reconcilePort と同じ理由: 実ブリッジ無しでテストできないと、条件を壊しても素通しする)。
-    /// 記憶を差すのは `argsOmittedTarget`(この呼び出しの生 args に udid も port も無かった)の
-    /// ときだけ。`usedMemory` が non-nil のときだけ呼び手は stderr へ告知する
+    /// **iOS の明示ターゲット述語**。args に有効な udid(非空文字列)または port(Int)があるか。
+    /// **キーの存在ではなく値を見る**(2026-08-12): `args["udid"] != nil` は `udid: ""` を
+    /// 「指定あり」と誤読する非対称を生む(Android の serial は元から isEmpty で見ている)。
+    /// **driver() のキャッシュキー判定・記憶の適用可否(foldInRememberedDevice)・
+    /// 記憶の記録可否(iosMemoryAfterResolve 呼び出し側)はすべてこの1つを通す**
+    static func argsGaveIOSTarget(_ args: [String: Any]) -> Bool {
+        let udid = (args["udid"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        return udid != nil || args["port"] is Int
+    }
+
+    /// Android 版の同じ述語(serial)
+    static func argsGaveAndroidTarget(_ args: [String: Any]) -> Bool {
+        (args["serial"] as? String).flatMap { $0.isEmpty ? nil : $0 } != nil
+    }
+
+    /// **fold が注入した呼び出しかどうかの目印**(2026-08-12)。foldInRememberedDevice が
+    /// 省略呼び出しへ port/serial を差し込むとき一緒に立てる —— スキーマ検証後にしか付かず、
+    /// engineKey(platform/port/serial/profile しか見ない)にも影響せず、ブリッジへ渡る辞書にも
+    /// 漏れない(ドライバの各メソッドは args から個別の値を取り出すだけで、辞書ごとは渡さない)。
+    /// **記憶の記録可否だけに使う** —— recordsIOSMemory/recordsAndroidMemory 参照
+    static let deviceFromMemoryKey = "_deviceFromMemory"
+
+    static func injectedFromMemory(_ args: [String: Any]) -> Bool {
+        args[deviceFromMemoryKey] as? Bool == true
+    }
+
+    /// **セッション記憶(iOS)を使うかどうかの純粋関数**。走査から切り離してある(reconcilePort と
+    /// 同じ理由: 実ブリッジ無しでテストできないと、条件を壊しても素通しする)。
+    /// **適用は dispatch 入口(foldInRememberedDevice)だけが呼ぶ** —— driver() 側では
+    /// 入口が既に args へ port/udid を埋めているので、ここを二度通す必要は無い
     static func iosExplicitWithMemory(
-        fromArgs: UInt16?, argsOmittedTarget: Bool, remembered: (port: UInt16, udid: String?)?
-    ) -> (explicit: UInt16?, usedMemory: (port: UInt16, udid: String?)?) {
-        guard fromArgs == nil, argsOmittedTarget, let remembered else { return (fromArgs, nil) }
-        return (remembered.port, remembered)
+        argsGaveTarget: Bool, remembered: (port: UInt16, udid: String?)?
+    ) -> (port: UInt16, udid: String?)? {
+        argsGaveTarget ? nil : remembered
     }
 
-    /// 解決成功後にセッション記憶(iOS)を更新すべき値。**この呼び出しの生 args に udid/port の
+    /// 解決成功後にセッション記憶(iOS)を更新すべき値。**この呼び出しの args に udid/port の
     /// どちらかがあったときだけ**上書きする — 自動解決の結果を記憶に混ぜると、次に無指定で
     /// 呼んだときに「利用者が選んだのではない機」を黙って踏襲することになる
     static func iosMemoryAfterResolve(
@@ -286,19 +302,31 @@ extension MCPServer {
         argsHadExplicitTarget ? (resolvedPort, resolvedUDID) : nil
     }
 
+    /// driver() が iOS 記憶を更新してよいかの判定(2026-08-12)。fold が注入した呼び出し
+    /// (deviceFromMemoryKey 付き)は port/udid を持っていても**明示扱いしない** —— さもないと
+    /// この直後の iosMemoryAfterResolve が「利用者が選んだ」として記憶を上書きし、ポート再利用で
+    /// 別デバイスに化けたときに記憶が黙って乗り換わる
+    static func recordsIOSMemory(_ args: [String: Any]) -> Bool {
+        argsGaveIOSTarget(args) && !injectedFromMemory(args)
+    }
+
     /// iOS と同じ規律の Android 版。serial は空文字列も「無指定」として扱う(resolveAndroidSerial
-    /// と揃える)
-    static func androidExplicitWithMemory(
-        fromArgs: String?, remembered: String?
-    ) -> (explicit: String?, usedMemory: String?) {
-        let argsGaveSerial = fromArgs?.isEmpty == false
-        guard !argsGaveSerial, let remembered, !remembered.isEmpty else { return (fromArgs, nil) }
-        return (remembered, remembered)
+    /// と揃える)。**適用は foldInRememberedDevice だけが呼ぶ**(iOS 側と同じ理由)。
+    /// **iosExplicitWithMemory と同形**(2026-08-12): 使わない tuple 要素(explicit)は持たない —
+    /// 明示判定は argsGaveAndroidTarget に一本化してある
+    static func androidExplicitWithMemory(argsGaveTarget: Bool, remembered: String?) -> String? {
+        guard !argsGaveTarget, let remembered, !remembered.isEmpty else { return nil }
+        return remembered
     }
 
     static func androidMemoryAfterResolve(fromArgs: String?, resolvedSerial: String) -> String? {
         guard let fromArgs, !fromArgs.isEmpty else { return nil }
         return resolvedSerial
+    }
+
+    /// recordsIOSMemory の Android 版。fold が注入した serial は記憶の記録に使わない
+    static func recordsAndroidMemory(_ args: [String: Any], explicitSerial: String?) -> String? {
+        injectedFromMemory(args) ? nil : explicitSerial
     }
 
     /// profile 無しの iOS 宛先。**明示 port は探索しない**(利用者が宛先を決めている)。
@@ -552,12 +580,11 @@ extension MCPServer {
         return (false, latest, partialSeenAfter, partialHint, refetched)
     }
 
-    /// セレクタ式(`#id` / ラベル / `.type` / `||` 等)がこの画面に1つでも当たるか
+    /// セレクタ式(`#id` / ラベル / `.type` / `||` 等)がこの画面に1つでも当たるか。
+    /// **解決ロジックは `matchedElements`(MCPServer+Snapshot.swift)そのもの** —— 2つ目の
+    /// セレクタ解決を作らない
     static func matches(_ selector: String, in snapshot: SnapshotResponse) -> Bool {
-        let parsed = FTSelector.parse(selector)
-        return ([parsed.primary] + parsed.fallbacks).contains { locator in
-            !(StepExecutor.resolvedCandidates(locator, elements: snapshot.elements) ?? []).isEmpty
-        }
+        !matchedElements(selector, in: snapshot).isEmpty
     }
 
     /// 要素木の軽量指紋(ft_navigate の back 判定・ft_screenshot の鮮度判定で使う)。

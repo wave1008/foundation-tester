@@ -100,6 +100,47 @@ final class MCPServerToolDefinitionsTests: XCTestCase {
             XCTAssertNotNil(snapshotProps[key], "ft_snapshot に \(key) が無い")
         }
     }
+
+    // MARK: - 引用符剥がし対象キーの同期(2026-08-12)
+
+    /// スキーマ全体を走査し、「a||b」(DSL のセレクタ構文表記に必ず出る記号)を含む説明文を持つ
+    /// string 系プロパティのキー集合を返す。**マーカーはこの記号1つだけ** —— 現状のスキーマでは
+    /// selector/waitFor/scrollFrame の3キーの説明文だけがこれを含む
+    private func selectorSyntaxMarkedKeys(in definitions: [[String: Any]]) -> Set<String> {
+        var keys: Set<String> = []
+        for definition in definitions {
+            guard let schema = definition["inputSchema"] as? [String: Any],
+                  let properties = schema["properties"] as? [String: Any] else { continue }
+            for (key, value) in properties {
+                guard let property = value as? [String: Any],
+                      let description = property["description"] as? String,
+                      description.contains("a||b") else { continue }
+                keys.insert(key)
+            }
+        }
+        return keys
+    }
+
+    /// **現3キーで通ること**: セレクタ構文を謳う引数は必ず引用符剥がし
+    /// (`MCPServer.selectorQuoteStrippedKeys`)の対象に含まれる。将来セレクタ引数を追加して
+    /// 説明文に同じ表記を書いたのに剥がしリストへ足し忘れたら、ここが検出する
+    func testSelectorSyntaxMarkedPropertiesAreAllQuoteStripped() {
+        let marked = selectorSyntaxMarkedKeys(in: MCPServer.toolDefinitions)
+        XCTAssertEqual(marked, Set(MCPServer.selectorQuoteStrippedKeys),
+                       "selector syntax marker (a||b) is on \(marked.sorted()), but the quote-"
+                        + "stripping list is \(MCPServer.selectorQuoteStrippedKeys.sorted())"
+                        + " — keep them in sync")
+    }
+
+    /// **リストから1つ消すと落ちること**(陰性対照): 「常に一致する」変異(比較そのものを
+    /// 無力化する類)ではないことを、実際に1本欠けたリストで不一致になることで確かめる
+    func testSelectorSyntaxMarkerCatchesAKeyMissingFromTheStripList() {
+        let marked = selectorSyntaxMarkedKeys(in: MCPServer.toolDefinitions)
+        let missingOne = Set(MCPServer.selectorQuoteStrippedKeys.dropFirst())
+        XCTAssertNotEqual(marked, missingOne,
+                          "この対照は剥がしリストが1本欠けても検出できることを示すためのもの —"
+                            + " marked と missingOne が一致してしまうなら本検査は無力")
+    }
 }
 
 final class MCPServerDriverCacheKeyTests: XCTestCase {

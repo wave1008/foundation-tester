@@ -57,6 +57,25 @@ final class MCPAuditFixes20260812Tests: XCTestCase {
         XCTAssertFalse(note.contains(" · "), "記号だけのラベルは列挙しないこと: \(note)")
     }
 
+    /// **記号だけラベルでも操作可能要素が混じれば残す**(コードレビュー確定分①)。
+    /// isSymbolOnlyLabel フィルタは装飾葉フィルタ(1行上)と対称な「1件でも実対象が混じれば
+    /// 全員出す」規律を欠いており、'+'/'−' のような記号だけラベルの操作可能ボタン群まで
+    /// 曖昧ラベル注記から消していた。**両方向**を固定する: 操作可能群は残り、非操作の
+    /// 区切り群は引き続き落ちる
+    func testAmbiguousLabelsNoteKeepsSymbolOnlyLabelsWhenOperable() {
+        let plusButtons = (0..<2).map { i in
+            element(ref: 30 + i, type: "button", label: "+",
+                    frame: FTRect(x: 100, y: Double(100 + i * 40), width: 30, height: 30), depth: 2)
+        }
+        let separators = (0..<3).map { i in
+            element(ref: 40 + i, type: "staticText", label: " · ",
+                    frame: FTRect(x: 200, y: Double(100 + i * 40), width: 20, height: 20), depth: 2)
+        }
+        let note = MCPServer.ambiguousLabelsNote(snapshot(plusButtons + separators))
+        XCTAssertTrue(note.contains("\"+\" ×2"), "操作可能なボタン群は記号だけラベルでも残すこと: \(note)")
+        XCTAssertFalse(note.contains(" · "), "非操作の記号だけラベルは引き続き落とすこと: \(note)")
+    }
+
     // MARK: - #4 最外の行だけ名指す
 
     /// 祖先と子孫がまとめて同じ印を持つとき、名指すのは最外の1行だけ。
@@ -112,14 +131,10 @@ final class MCPAuditFixes20260812Tests: XCTestCase {
         XCTAssertLessThan(short.count, full.count)
     }
 
-    /// 門番は devicesText と呼び出し側で共有する(片方だけ増えると鍵だけ消費される)
-    func testSupportedPlatformGate() {
-        XCTAssertTrue(DeviceInventory.isSupportedPlatform(nil))
-        XCTAssertTrue(DeviceInventory.isSupportedPlatform("ios"))
-        XCTAssertTrue(DeviceInventory.isSupportedPlatform("android"))
-        XCTAssertFalse(DeviceInventory.isSupportedPlatform("web"))
-        XCTAssertFalse(DeviceInventory.isSupportedPlatform(""))
-    }
+    // platform の門番(旧 isSupportedPlatform)は devicesText 内部へ private で畳んだ
+    // (2026-08-12。呼び出し側の先読みを撤去したので二重の判定が無くなった) ——
+    // 挙動は DeviceInventoryTests.testDevicesTextReportsUnknownPlatformWithoutTouchingDevices
+    // が devicesText 経由で確認する
 
     // MARK: - #2 タイムアウトは確かめてから断定する
 
@@ -147,5 +162,31 @@ final class MCPAuditFixes20260812Tests: XCTestCase {
         // udid を申告しない旧ブリッジでは port だけ(「不明」と書くより短く、嘘も混ざらない)
         XCTAssertEqual(MCPServer.connectionLabel(port: 8123, udid: nil), "port 8123")
         XCTAssertEqual(MCPServer.connectionLabel(port: 8123, udid: ""), "port 8123")
+    }
+
+    // MARK: - uniqueScopeID/scopedSelector の idCounts 共有(コードレビュー確定分③)
+
+    /// `idCounts:` を渡しても渡さなくても結果は同じ(呼び出し元の再計算を省くための
+    /// 引数であって、判定を変えるものではない)。`SelectorNaming` が保持済みの数え上げを
+    /// 渡す経路(candidates())と、渡さず自前で数え直す経路(unlabeledClickablesNote 等)が
+    /// 食い違わないことを固定する
+    func testScopedSelectorAgreesWhetherOrNotIdCountsIsPrecomputed() {
+        let snap = snapshot([
+            element(ref: 1, type: "other", id: "container",
+                    frame: FTRect(x: 0, y: 0, width: 300, height: 200), depth: 1),
+            element(ref: 2, type: "button", label: "A",
+                    frame: FTRect(x: 10, y: 10, width: 50, height: 30), depth: 2),
+            element(ref: 3, type: "button", label: "B",
+                    frame: FTRect(x: 10, y: 60, width: 50, height: 30), depth: 2),
+        ])
+        let target = snap.elements[2]
+        let precomputed = MCPServer.idCounts(in: snap)
+
+        XCTAssertEqual(MCPServer.uniqueScopeID(for: target, in: snap),
+                       MCPServer.uniqueScopeID(for: target, in: snap, idCounts: precomputed))
+        let withoutPrecomputed = MCPServer.scopedSelector(for: target, in: snap)
+        let withPrecomputed = MCPServer.scopedSelector(for: target, in: snap, idCounts: precomputed)
+        XCTAssertEqual(withoutPrecomputed, withPrecomputed)
+        XCTAssertEqual(withoutPrecomputed, "#container >> .button[2]")
     }
 }

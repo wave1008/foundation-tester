@@ -634,12 +634,13 @@ extension MCPServer {
 
         /// スコープの中でそのラベル(と 型×ラベル)が何件あるか。**スコープを跨いで数えない**
         /// のがここの要点 —— 画面全体では重複するラベルでも、容器の中では一意なことが多い。
-        /// 走査は候補を組む直前の1回だけで、`uniqueScopeID` が nil を返す要素では走らない
-        static func labelCountsInScope(_ scopeID: String, of element: ElementInfo,
+        /// 走査は候補を組む直前の1回だけで、`uniqueScopeElement` が nil を返す要素では走らない。
+        /// **scope 要素は呼び出し元(candidates)がそのまま渡す** —— id 文字列で受けて
+        /// ここで `first(where:)` に掛け直すと、`uniqueScopeElement` が既に歩いた祖先探索を
+        /// もう一度 O(N) で歩き直すことになる
+        static func labelCountsInScope(_ scope: ElementInfo, of element: ElementInfo,
                                        in snapshot: SnapshotResponse,
-                                       label: String) -> (plain: Int, typed: Int)? {
-            guard let scope = snapshot.elements.first(where: { $0.identifier == scopeID })
-            else { return nil }
+                                       label: String) -> (plain: Int, typed: Int) {
             var plain = 0, typed = 0
             for e in StepExecutor.descendants(of: scope, in: snapshot.elements)
             where FlowMatchMode.normalizeInvisibleCharacters(e.label ?? "") == label {
@@ -736,22 +737,26 @@ extension MCPServer {
             // **数え上げで足切りしてから検証する**: 候補1つの検証は木2周(`matchDetailed` と
             // `resolvedCandidates`)で、当たらない候補まで並べると注記の生成が実アプリ画面で
             // 4倍になる(2026-08-12 に実測して入れ直した)。数え上げは init の1周で済む
-            if writableLabel {
-                if typeLabelCounts[Self.typeLabelKey(element.type, label)] == 1 {
-                    out += labelForms.map { (".\(element.type)&&\($0)", .stable) }
+            if writableLabel, typeLabelCounts[Self.typeLabelKey(element.type, label)] == 1 {
+                out += labelForms.map { (".\(element.type)&&\($0)", .stable) }
+            }
+            // 祖先の walk は1回だけ払い、得た scope 要素をラベル系候補と indexed 候補の
+            // 両方へ使い回す(public な `uniqueScopeID`/`scopedSelector` は他ファイル・テストが
+            // 呼ぶのでシグネチャ不変)
+            let scopeElement = MCPServer.uniqueScopeElement(for: element, in: snapshot, idCounts: idCounts)
+            if writableLabel, let scopeElement, let scope = scopeElement.identifier {
+                let inScope = Self.labelCountsInScope(scopeElement, of: element, in: snapshot, label: label)
+                if inScope.plain == 1 {
+                    out += labelForms.map { ("#\(scope) >> \($0)", .stable) }
                 }
-                if let scope = MCPServer.uniqueScopeID(for: element, in: snapshot),
-                   let inScope = Self.labelCountsInScope(scope, of: element, in: snapshot, label: label) {
-                    if inScope.plain == 1 {
-                        out += labelForms.map { ("#\(scope) >> \($0)", .stable) }
-                    }
-                    if inScope.typed == 1 {
-                        out += labelForms.map { ("#\(scope) >> .\(element.type)&&\($0)", .stable) }
-                    }
+                if inScope.typed == 1 {
+                    out += labelForms.map { ("#\(scope) >> .\(element.type)&&\($0)", .stable) }
                 }
             }
-            if let scoped = MCPServer.scopedSelector(for: element, in: snapshot) {
-                out.append((scoped, .indexed))
+            // indexed は最後の砦なので writableLabel を問わず試す
+            if let scopeElement,
+               let indexed = MCPServer.scopedSelector(scope: scopeElement, for: element, in: snapshot) {
+                out.append((indexed, .indexed))
             }
             return out
         }
@@ -793,6 +798,22 @@ extension MCPServer {
         return counts
     }
 
+    /// `uniqueScopeID` / `scopedSelector` が共有する探索本体。**要素そのものを返す**のは
+    /// `scopedSelector` 側の `snapshot.elements.first(where:)` 再検索(2つ目の O(N))を
+    /// 無くすため —— 見つけた祖先を id 経由で index-of-id 検索し直す必要が無くなる。
+    /// `idCounts` を呼び出し元(`SelectorNaming`)から受け取れるときは渡す ——
+    /// 渡さなければ従来どおりその場で数え直す(2引数のみの外部呼び出しと出力互換)
+    private static func uniqueScopeElement(for element: ElementInfo, in snapshot: SnapshotResponse,
+                                           idCounts precomputed: [String: Int]? = nil) -> ElementInfo? {
+        let counts = precomputed ?? idCounts(in: snapshot)
+        return TapTargetGeometry.ancestors(of: element, in: snapshot.elements)
+            .first { ancestor in
+                guard let id = ancestor.identifier, !id.isEmpty, counts[id] == 1,
+                      ancestor.frame.width > 0, ancestor.frame.height > 0 else { return false }
+                return TapTargetGeometry.contains(ancestor.frame, element.frame)
+            }
+    }
+
     /// スコープに使える最も近い祖先の id。**条件は3つ**: ① id を持つ祖先が居る
     /// ② **その id が画面で一意**(重複していると `#recycler_view` のように4つある画面で
     /// 別の容器を掴む) ③ **その祖先の frame が対象を包含する**。`TapTargetGeometry.ancestors` は
@@ -800,25 +821,32 @@ extension MCPServer {
     /// 実際の親より手前に並ぶ叔父を祖先と誤認しうる(実測: Google マップの時刻ピッカーで、
     /// 分の入力欄の祖先として無関係な `#divider`(「:」1文字)が選ばれた)。
     /// `#容器 >> …` を組む者はすべてここを通す —— スコープの規則を2箇所に持つと、
-    /// `.型[n]` 版とラベル版で別の容器を指しはじめる
-    static func uniqueScopeID(for element: ElementInfo, in snapshot: SnapshotResponse) -> String? {
-        let counts = idCounts(in: snapshot)
-        return TapTargetGeometry.ancestors(of: element, in: snapshot.elements)
-            .first { ancestor in
-                guard let id = ancestor.identifier, !id.isEmpty, counts[id] == 1,
-                      ancestor.frame.width > 0, ancestor.frame.height > 0 else { return false }
-                return TapTargetGeometry.contains(ancestor.frame, element.frame)
-            }?.identifier
+    /// `.型[n]` 版とラベル版で別の容器を指しはじめる。
+    /// `idCounts:` は `SelectorNaming` が保持済みの数え上げを渡すための省略可能引数
+    /// (省略時は従来どおりその場で数え直す。graded 1要素あたり最大2回この経路が呼ばれるため、
+    /// 2回目以降の再計算を避けたい呼び出し元だけが渡す)
+    static func uniqueScopeID(for element: ElementInfo, in snapshot: SnapshotResponse,
+                              idCounts precomputed: [String: Int]? = nil) -> String? {
+        uniqueScopeElement(for: element, in: snapshot, idCounts: precomputed)?.identifier
     }
 
     /// `#container >> .type[n]` を組み立てる。**書けないときは nil**(嘘の助言を出さない)。
     ///
-    /// 条件は `uniqueScopeID` に委ねる(id の一意性・frame の包含)。
-    /// 添字はスコープ内・同じ型の中での順番で、記法は **1 オリジン**(FlowLocator.index の規約)
-    static func scopedSelector(for element: ElementInfo, in snapshot: SnapshotResponse) -> String? {
-        guard let scopeID = uniqueScopeID(for: element, in: snapshot),
-              let scope = snapshot.elements.first(where: { $0.identifier == scopeID })
+    /// 条件は `uniqueScopeElement` に委ねる(id の一意性・frame の包含)。
+    /// 添字はスコープ内・同じ型の中での順番で、記法は **1 オリジン**(FlowLocator.index の規約)。
+    /// `idCounts:` は `uniqueScopeID` と同じ省略可能引数(意味・省略時の挙動も同じ)
+    static func scopedSelector(for element: ElementInfo, in snapshot: SnapshotResponse,
+                               idCounts precomputed: [String: Int]? = nil) -> String? {
+        guard let scope = uniqueScopeElement(for: element, in: snapshot, idCounts: precomputed)
         else { return nil }
+        return scopedSelector(scope: scope, for: element, in: snapshot)
+    }
+
+    /// scope 解決済みの呼び手用(`SelectorNaming.candidates` が walk を1回で済ませる入口)。
+    /// 組み立てはここだけに置く —— 2箇所に持つと添字規則がズレて別の要素を指しはじめる
+    static func scopedSelector(scope: ElementInfo, for element: ElementInfo,
+                               in snapshot: SnapshotResponse) -> String? {
+        guard let scopeID = scope.identifier else { return nil }
         let siblings = StepExecutor.descendants(of: scope, in: snapshot.elements)
             .filter { $0.type == element.type }
         guard let position = siblings.firstIndex(where: { $0.ref == element.ref }) else { return nil }
@@ -930,6 +958,40 @@ extension MCPServer {
     /// 雑音は「入れ子の一本鎖」を除外して抑える(下記)
     static let ambiguousLabelMinimum = 2
 
+    /// `ambiguousLabelsNote` と `duplicateIDsNote` が共有する描画本体。差分はグループ化キー
+    /// (呼び出し側で `label` に整形済み — `"\"foo\""` か `"#foo"`)と3つの文言だけなので、
+    /// ここは凡例ヘッダ・グループごとの明細・打ち切り行・`anyStable` フッタだけを持つ。
+    /// **グループ化とフィルタは呼び出し側の責務のまま**(ここへ寄せない)
+    private static func renderGroups(_ sortedGroups: [(label: String, matches: [ElementInfo])],
+                                     naming: SelectorNaming, in snapshot: SnapshotResponse,
+                                     fullHeader: String, shortHeader: String,
+                                     overflowNoun: String, abbreviated: Bool) -> String {
+        guard !sortedGroups.isEmpty else { return "" }
+        var lines: [String] = [abbreviated ? shortHeader : fullHeader]
+        var anyStable = false
+        for (label, matches) in sortedGroups.prefix(ambiguousLabelsShown) {
+            let shown = matches.prefix(ambiguousMatchesShown).map { element -> String in
+                guard let graded = naming.graded(for: element, in: snapshot) else {
+                    return "[\(element.ref)] —"
+                }
+                if graded.durability == .stable { anyStable = true }
+                return "[\(element.ref)] \(graded.selector)\(graded.durability.mark)"
+            }.joined(separator: " / ")
+            let cut = matches.count > ambiguousMatchesShown
+                ? " (+\(matches.count - ambiguousMatchesShown) more matches not shown)" : ""
+            lines.append("  \(label) ×\(matches.count): \(shown)\(cut)")
+        }
+        if sortedGroups.count > ambiguousLabelsShown {
+            lines.append("  (+\(sortedGroups.count - ambiguousLabelsShown) more \(overflowNoun)(s)"
+                + " not shown — ft_snapshot again after narrowing the screen to see them)")
+        }
+        if !anyStable {
+            lines.append("  none of the above have a stable selector on this screen —"
+                + " prefer tapping by ref for these.")
+        }
+        return lines.joined(separator: "\n") + "\n"
+    }
+
     /// 同一ラベルが複数に一致するときの要約注記(欠陥⑩)。id の重複は別パッケージが
     /// 行内に `×N` として個別に出すので、こちらは**ラベルだけ**を扱う。
     /// 実測: 経路検索の候補一覧で「東京駅」が9件一致し、素のラベルでは一意に指せなかった
@@ -959,44 +1021,29 @@ extension MCPServer {
             // Google マップの経路詳細では区切りの `" · "` ×3 が代替セレクタ付きで注記の上位を
             // 占めていた。飾り葉フィルタ(上)は `type == "other"` 限定なので staticText の
             // 区切りは素通りする —— **あちらを広げない**(staticText を飾り扱いにすると
-            // 見出しや値という正当なセレクタ対象まで消える)。ここで語の有無だけを見る
-            .filter { !isSymbolOnlyLabel($0.key) }
+            // 見出しや値という正当なセレクタ対象まで消える)。ここで語の有無だけを見る。
+            // **ただし操作可能要素が1つでも混じる群は残す**(上の飾り葉フィルタと同じ
+            // 「1件でも実対象が混じれば全員出す」規律): '+'/'−' のような記号だけラベルの
+            // ボタン群が丸ごと注記から消えていた
+            .filter { !isSymbolOnlyLabel($0.key)
+                || $0.value.contains { BridgeSnapshotThinning.operableTypes.contains($0.type) } }
             .sorted { $0.value.count > $1.value.count }
         guard !ambiguous.isEmpty else { return "" }
         // **「一意に指せない」で終わらせない**(2026-08-09): MCP の出力はシナリオへ書く文字列を
         // 供給するためにあるので、代わりに書ける形まで出す。機構は `writableSelector` =
         // ft_tap の推奨セレクタ(E)と同じ実装
         let naming = SelectorNaming(snapshot)
-        var lines: [String] = [abbreviated
-            ? "note: ambiguous labels — write one of these instead (legend in the first"
-                + " snapshot's note):"
-            : "note: these labels match multiple elements, so a plain label"
-                + " selector cannot pick one uniquely. Write one of these instead"
-                + " (\"—\" = this element has no stable selector; use a labelled ancestor or"
-                + " a coordinate. \"~\" = index-based, so it breaks if the number of same-type"
-                + " siblings changes — usable, but the weakest of the three):"]
-        var anyStable = false
-        for (label, matches) in ambiguous.prefix(ambiguousLabelsShown) {
-            let shown = matches.prefix(ambiguousMatchesShown).map { element -> String in
-                guard let graded = naming.graded(for: element, in: snapshot) else {
-                    return "[\(element.ref)] —"
-                }
-                if graded.durability == .stable { anyStable = true }
-                return "[\(element.ref)] \(graded.selector)\(graded.durability.mark)"
-            }.joined(separator: " / ")
-            let cut = matches.count > ambiguousMatchesShown
-                ? " (+\(matches.count - ambiguousMatchesShown) more matches not shown)" : ""
-            lines.append("  \"\(label)\" ×\(matches.count): \(shown)\(cut)")
-        }
-        if ambiguous.count > ambiguousLabelsShown {
-            lines.append("  (+\(ambiguous.count - ambiguousLabelsShown) more ambiguous label(s)"
-                + " not shown — ft_snapshot again after narrowing the screen to see them)")
-        }
-        if !anyStable {
-            lines.append("  none of the above have a stable selector on this screen —"
-                + " prefer tapping by ref for these.")
-        }
-        return lines.joined(separator: "\n") + "\n"
+        return renderGroups(ambiguous.map { (label: "\"\($0.key)\"", matches: $0.value) },
+                            naming: naming, in: snapshot,
+                            fullHeader: "note: these labels match multiple elements, so a plain label"
+                                + " selector cannot pick one uniquely. Write one of these instead"
+                                + " (\"—\" = this element has no stable selector; use a labelled"
+                                + " ancestor or a coordinate. \"~\" = index-based, so it breaks if"
+                                + " the number of same-type siblings changes — usable, but the"
+                                + " weakest of the three):",
+                            shortHeader: "note: ambiguous labels — write one of these instead"
+                                + " (legend in the first snapshot's note):",
+                            overflowNoun: "ambiguous label", abbreviated: abbreviated)
     }
 
     /// 重複 id の要約注記。`#id` はこのツールが最も推奨するセレクタなので、行末の `×N` だけ
@@ -1025,36 +1072,17 @@ extension MCPServer {
             .sorted { $0.value.count > $1.value.count }
         guard !duplicated.isEmpty else { return "" }
         let naming = SelectorNaming(snapshot)
-        var lines: [String] = [abbreviated
-            ? "note: duplicate ids — write one of these instead (legend in the first"
-                + " snapshot's note):"
-            : "note: these ids are shared by multiple elements, so a plain #id"
-                + " selector cannot pick one uniquely. Write one of these instead"
-                + " (\"—\" = this element has no stable selector; use a labelled ancestor or"
-                + " a coordinate. \"~\" = index-based, so it breaks if the number of same-type"
-                + " siblings changes — usable, but the weakest of the three):"]
-        var anyStable = false
-        for (id, matches) in duplicated.prefix(ambiguousLabelsShown) {
-            let shown = matches.prefix(ambiguousMatchesShown).map { element -> String in
-                guard let graded = naming.graded(for: element, in: snapshot) else {
-                    return "[\(element.ref)] —"
-                }
-                if graded.durability == .stable { anyStable = true }
-                return "[\(element.ref)] \(graded.selector)\(graded.durability.mark)"
-            }.joined(separator: " / ")
-            let cut = matches.count > ambiguousMatchesShown
-                ? " (+\(matches.count - ambiguousMatchesShown) more matches not shown)" : ""
-            lines.append("  #\(id) ×\(matches.count): \(shown)\(cut)")
-        }
-        if duplicated.count > ambiguousLabelsShown {
-            lines.append("  (+\(duplicated.count - ambiguousLabelsShown) more duplicate id(s)"
-                + " not shown — ft_snapshot again after narrowing the screen to see them)")
-        }
-        if !anyStable {
-            lines.append("  none of the above have a stable selector on this screen —"
-                + " prefer tapping by ref for these.")
-        }
-        return lines.joined(separator: "\n") + "\n"
+        return renderGroups(duplicated.map { (label: "#\($0.key)", matches: $0.value) },
+                            naming: naming, in: snapshot,
+                            fullHeader: "note: these ids are shared by multiple elements, so a plain"
+                                + " #id selector cannot pick one uniquely. Write one of these instead"
+                                + " (\"—\" = this element has no stable selector; use a labelled"
+                                + " ancestor or a coordinate. \"~\" = index-based, so it breaks if"
+                                + " the number of same-type siblings changes — usable, but the"
+                                + " weakest of the three):",
+                            shortHeader: "note: duplicate ids — write one of these instead"
+                                + " (legend in the first snapshot's note):",
+                            overflowNoun: "duplicate id", abbreviated: abbreviated)
     }
 
     /// 曖昧ラベル注記に並べる上限。**打ち切ったことは必ず言う**(黙って切ると

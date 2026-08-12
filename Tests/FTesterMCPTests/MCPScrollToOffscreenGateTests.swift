@@ -65,4 +65,18 @@ final class MCPScrollToOffscreenGateTests: XCTestCase {
                                               args: ["selector": "#route2", "maxSwipes": 0]))
         XCTAssertTrue(text.contains("scrolled to"), text)
     }
+
+    /// **回帰(2026-08-12)**: ビューポートより大きい要素(縦3000pt、画面高874)は中心が
+    /// 常に画面外になる。FTCore 側の探索ゲート(offscreenScrollGateAdvisory)は既にこの形を
+    /// 免除しており executor は成功で返すのに、ここが素の offscreenAdvisory のままだと
+    /// 直後に hard fail していた不整合を固定する
+    func testHugeElementLargerThanTheViewportIsNotRejectedAsOffscreen() async throws {
+        let huge = snapshot(frame: FTRect(x: 0, y: -2500, width: 402, height: 3000))
+        driver.scriptedSnapshots = Array(repeating: huge, count: 5)
+
+        let text = body(try await server.call(tool: "ft_scroll_to",
+                                              args: ["selector": "#route2", "maxSwipes": 0]))
+        XCTAssertTrue(text.contains("scrolled to"), text)
+        XCTAssertFalse(text.contains("off screen"), text)
+    }
 }

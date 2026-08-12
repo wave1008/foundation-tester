@@ -24,22 +24,13 @@ enum DeviceInventory {
         let running: Bool
         let physical: Bool
         let registered: Bool
-        let port: UInt16?      // 稼働中の iOS ブリッジの代表ポート(判明時のみ)
-        /// 代表ポートのエンジン(inapp/xcuitest)。判別できないときは nil のまま(嘘を書かない)。
-        /// **`let ... = nil` にしない** —— 初期値を持つ `let` は memberwise init から外れる
-        var engine: String? = nil
         /// **同じ端末に in-app と XCUITest が同時に立つのが常態**(実測: 10台に稼働ブリッジ17本)。
-        /// port/engine が代表(1本目)、それ以外はここへ積む — line(_:) が両方まとめて畳んで出す
-        var otherBridges: [Bridge] = []
+        /// port 昇順。line(_:) がまとめて畳んで出す
+        let bridges: [Bridge]
 
         struct Bridge: Equatable {
             let port: UInt16
             let engine: String?
-        }
-
-        /// 代表(port/engine)+ otherBridges をまとめた全ブリッジ
-        var bridges: [Bridge] {
-            (port.map { [Bridge(port: $0, engine: engine)] } ?? []) + otherBridges
         }
     }
 
@@ -50,11 +41,12 @@ enum DeviceInventory {
 
     // MARK: - ft_list_devices
 
-    /// `abbreviatedFallbackHeader`: マシンプロファイルを使えない見出しを短縮形で出す
-    /// (2回目以降。理由の全文は初回に出ている)。**呼び出し側が鍵を握る** —— 一覧を
-    /// 組み立てるここは「初回かどうか」を知らない
+    /// `abbreviated`: マシンプロファイルを使えない見出しを短縮形で出すか判定するクロージャ。
+    /// **見出しが実際に組まれる回だけ評価する**(2026-08-12) —— プロファイルが解決できた回や
+    /// platform が不正な回で先に評価すると、呼び出し側の once 系の鍵をここで消費してしまい、
+    /// 本当の初出が短縮形になる
     static func devicesText(project: String?, profile: String?, platform: String?,
-                            abbreviatedFallbackHeader: Bool = false) async -> String {
+                            abbreviated: () -> Bool = { false }) async -> String {
         guard isSupportedPlatform(platform) else {
             return "unknown platform: \(platform ?? "") (expected \"ios\" or \"android\")"
         }
@@ -75,7 +67,7 @@ enum DeviceInventory {
         var rows: [Row] = []
         if wantsIOS { rows += await iosFallbackRows() }
         if wantsAndroid { rows += androidFallbackRows() }
-        let header = fallbackHeader(reason: lookup.reason, abbreviated: abbreviatedFallbackHeader)
+        let header = fallbackHeader(reason: lookup.reason, abbreviated: abbreviated())
         guard !rows.isEmpty else { return header + "\nNone found." }
         return ([header] + rows.map(line)).joined(separator: "\n")
     }
@@ -123,9 +115,9 @@ enum DeviceInventory {
         "port \(bridge.port)" + (bridge.engine.map { " (\($0))" } ?? "")
     }
 
-    /// 受け付ける platform。**devicesText の門番と、呼び出し側の「見出しが出るか」判定で
-    /// 同じ関数を使う** —— 片方だけ増やすと、弾かれる platform で注記の鍵だけ消費される
-    static func isSupportedPlatform(_ platform: String?) -> Bool {
+    /// 受け付ける platform。**devicesText の門番**(private) —— `abbreviated` クロージャ経由の
+    /// 遅延評価で、呼び出し側が同じ判定を先読みする必要は無くなった(2026-08-12)
+    private static func isSupportedPlatform(_ platform: String?) -> Bool {
         platform == nil || platform == "ios" || platform == "android"
     }
 
@@ -139,10 +131,8 @@ enum DeviceInventory {
         }
     }
 
-    /// **呼び出し側も引ける**(internal): ft_list_devices は「フォールバック見出しが出るか」を
-    /// 先に知る必要があり(注記の鍵を実際に出る回だけ消費するため)、判定を2つ持たないよう
-    /// 同じ関数を引く。走査は伴わない(プロファイルの読み直しだけ)ので二度引いても安い
-    static func resolveMachine(project: String?, profile: String?) -> MachineLookup {
+    /// machine profile の解決(private・2026-08-12)。走査は伴わない(プロファイルの読み直しだけ)
+    private static func resolveMachine(project: String?, profile: String?) -> MachineLookup {
         let testProject: TestProject
         do {
             testProject = try ScenarioHost.project(named: project)
@@ -184,17 +174,14 @@ enum DeviceInventory {
             ? ((try? IOSPhysicalDeviceCatalog.devices()) ?? []) : []
         let live = await liveIOSBridges()
         return specs.map { iosRow(spec: $0, simDevices: simDevices, physicalDevices: physicalDevices,
-                                  livePorts: live.ports, liveEngines: live.engines,
-                                  otherLiveBridges: live.others) }
+                                  liveBridges: live) }
     }
 
-    /// 純粋関数(テスト用): spec と実測カタログから 1 行分を組む。
-    /// `liveEngines`/`otherLiveBridges` は同じ端末名で `livePorts` と対になる(省略時は代表ポートのみ)
+    /// 純粋関数(テスト用): spec と実測カタログから 1 行分を組む。`liveBridges` は端末名で引く
+    /// (省略時はブリッジなし)
     static func iosRow(spec: DeviceSpec, simDevices: [SimDeviceInfo],
                        physicalDevices: [IOSPhysicalDeviceInfo],
-                       livePorts: [String: UInt16],
-                       liveEngines: [String: String] = [:],
-                       otherLiveBridges: [String: [Row.Bridge]] = [:]) -> Row {
+                       liveBridges: [String: [Row.Bridge]] = [:]) -> Row {
         if spec.isPhysical {
             let udid = spec.udid ?? ""
             let match = physicalDevices.first { $0.udid == udid || $0.deviceCtlIdentifier == udid }
@@ -202,9 +189,7 @@ enum DeviceInventory {
             let key = match?.name ?? spec.name
             return Row(name: spec.name, platform: "ios", identifier: spec.udid ?? match?.udid,
                       running: running, physical: true, registered: true,
-                      port: running ? livePorts[key] : nil,
-                      engine: running ? liveEngines[key] : nil,
-                      otherBridges: running ? (otherLiveBridges[key] ?? []) : [])
+                      bridges: running ? (liveBridges[key] ?? []) : [])
         }
         let match: SimDeviceInfo?
         if let udid = spec.udid, !udid.isEmpty {
@@ -218,9 +203,7 @@ enum DeviceInventory {
         let key = match?.name ?? spec.name
         return Row(name: spec.name, platform: "ios", identifier: match?.udid ?? spec.udid,
                   running: running, physical: false, registered: true,
-                  port: running ? livePorts[key] : nil,
-                  engine: running ? liveEngines[key] : nil,
-                  otherBridges: running ? (otherLiveBridges[key] ?? []) : [])
+                  bridges: running ? (liveBridges[key] ?? []) : [])
     }
 
     private static func iosFallbackRows() async -> [Row] {
@@ -229,31 +212,19 @@ enum DeviceInventory {
         let live = await liveIOSBridges()
         return booted.map { device in
             Row(name: device.name, platform: "ios", identifier: device.udid, running: true,
-               physical: false, registered: false, port: live.ports[device.name],
-               engine: live.engines[device.name], otherBridges: live.others[device.name] ?? [])
+               physical: false, registered: false, bridges: live[device.name] ?? [])
         }
     }
 
-    /// 生きている iOS ブリッジを端末名で引けるようにする。**同じ端末に in-app と XCUITest が
-    /// 同時に立つのが常態**(実測: 10台に稼働ブリッジ17本)なので、代表(port/engine の1本目)と
-    /// 残り(otherBridges 用)を分けて返す。1 台への疎通失敗は BridgeDiscovery.scan が
-    /// 内部で握って次へ進む(呼び出し側は空を受け取るだけ)
-    private static func liveIOSBridges() async
-        -> (ports: [String: UInt16], engines: [String: String], others: [String: [Row.Bridge]]) {
+    /// 生きている iOS ブリッジを端末名で引けるようにする(port 昇順)。1 台への疎通失敗は
+    /// BridgeDiscovery.scan が内部で握って次へ進む(呼び出し側は空を受け取るだけ)
+    private static func liveIOSBridges() async -> [String: [Row.Bridge]] {
         let found = await BridgeDiscovery.scan(excluding: 0, repoRoot: nil)
         var byDevice: [String: [BridgeDiscovery.Found]] = [:]
         for entry in found { byDevice[entry.device, default: []].append(entry) }
-        var ports: [String: UInt16] = [:]
-        var engines: [String: String] = [:]
-        var others: [String: [Row.Bridge]] = [:]
-        for (device, entries) in byDevice {
-            let sorted = entries.sorted { $0.port < $1.port }
-            guard let primary = sorted.first else { continue }
-            ports[device] = primary.port
-            engines[device] = primary.engine
-            others[device] = sorted.dropFirst().map { Row.Bridge(port: $0.port, engine: $0.engine) }
+        return byDevice.mapValues { entries in
+            entries.sorted { $0.port < $1.port }.map { Row.Bridge(port: $0.port, engine: $0.engine) }
         }
-        return (ports, engines, others)
     }
 
     // MARK: - Android
@@ -271,14 +242,14 @@ enum DeviceInventory {
             let serial = spec.serial ?? ""
             let running = connectedDevices.contains { $0.serial == serial }
             return Row(name: spec.name, platform: "android", identifier: serial.isEmpty ? nil : serial,
-                      running: running, physical: true, registered: true, port: nil)
+                      running: running, physical: true, registered: true, bridges: [])
         }
         if let avd = spec.avd, let match = connectedDevices.first(where: { $0.avd == avd }) {
             return Row(name: spec.name, platform: "android", identifier: match.serial, running: true,
-                      physical: false, registered: true, port: nil)
+                      physical: false, registered: true, bridges: [])
         }
         return Row(name: spec.name, platform: "android", identifier: nil, running: false,
-                  physical: false, registered: true, port: nil)
+                  physical: false, registered: true, bridges: [])
     }
 
     private static func androidFallbackRows() -> [Row] {
@@ -286,7 +257,7 @@ enum DeviceInventory {
         guard !serials.isEmpty else { return [] }
         return AndroidSerialResolver.describe(serials: serials).map { device in
             Row(name: device.avd ?? device.serial, platform: "android", identifier: device.serial,
-               running: true, physical: device.avd == nil, registered: false, port: nil)
+               running: true, physical: device.avd == nil, registered: false, bridges: [])
         }
     }
 

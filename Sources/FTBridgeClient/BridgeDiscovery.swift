@@ -18,11 +18,14 @@ public enum BridgeDiscovery {
         public let port: UInt16
         public let device: String
         public let engine: String
+        /// `StatusResponse.udid`(申告しない旧ブリッジは nil)。**scan が status から埋める**
+        public let udid: String?
 
-        public init(port: UInt16, device: String, engine: String) {
+        public init(port: UInt16, device: String, engine: String, udid: String? = nil) {
             self.port = port
             self.device = device
             self.engine = engine
+            self.udid = udid
         }
 
         public var label: String { "port \(port) (\(device), \(engine))" }
@@ -112,7 +115,7 @@ public enum BridgeDiscovery {
                         port: endpoint.port, timeoutSeconds: 2, host: endpoint.host).status(timeout: 2),
                         status.ready else { return nil }
                     return Found(port: port, device: status.device,
-                                 engine: status.engine ?? "xcuitest")
+                                 engine: status.engine ?? "xcuitest", udid: status.udid)
                 }
             }
             var result: [Found] = []

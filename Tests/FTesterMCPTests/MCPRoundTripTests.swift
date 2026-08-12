@@ -581,11 +581,12 @@ final class MCPVersionGateTests: XCTestCase {
     func testDeviceRowSaysWhenThereIsNoBridge() {
         let row = DeviceInventory.Row(name: "iPhone 17 Pro", platform: "ios",
                                       identifier: "UDID-1", running: true, physical: false,
-                                      registered: false, port: nil)
+                                      registered: false, bridges: [])
         XCTAssertTrue(DeviceInventory.line(row).contains("no bridge"), DeviceInventory.line(row))
         let withBridge = DeviceInventory.Row(name: "iPhone 17 Pro", platform: "ios",
                                              identifier: "UDID-1", running: true, physical: false,
-                                             registered: false, port: 8123)
+                                             registered: false,
+                                             bridges: [DeviceInventory.Row.Bridge(port: 8123, engine: nil)])
         XCTAssertTrue(DeviceInventory.line(withBridge).contains("bridge port 8123"))
         XCTAssertFalse(DeviceInventory.line(withBridge).contains("no bridge"))
     }
