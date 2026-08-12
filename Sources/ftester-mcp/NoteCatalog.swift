@@ -100,7 +100,8 @@ enum NoteCatalog {
             MCPServer.addressBarNote(input.snapshot, abbreviated: abbreviated)
         },
         Entry(key: "unlabeledClickablesNote", contexts: [.snapshot], abbreviates: true) { input, abbreviated in
-            MCPServer.unlabeledClickablesNote(input.snapshot, abbreviated: abbreviated)
+            MCPServer.unlabeledClickablesNote(input.snapshot, abbreviated: abbreviated,
+                                             cache: input.cache)
         },
         // **この3本は scrollTo にも載せる**(2026-08-13): どれも「この一覧の行をそのまま
         // 報告してよいか / この行をセレクタで指せるか」を言う注記で、外すと**誤った出力**に

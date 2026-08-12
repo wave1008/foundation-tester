@@ -1261,13 +1261,19 @@ extension MCPServer {
         return false
     }
 
-    static func unlabeledClickablesNote(_ snapshot: SnapshotResponse, abbreviated: Bool = false)
-        -> String {
-        // **同じ矩形に「書けるセレクタ」を持つ要素が居るものは外す**(selectableFrameKeys の doc)
-        let selectable = stableSelectorFrameKeys(snapshot)
-        let unlabeled = snapshot.elements.filter {
+    static func unlabeledClickablesNote(_ snapshot: SnapshotResponse, abbreviated: Bool = false,
+                                        cache: SnapshotAnnotationCache? = nil) -> String {
+        // **候補を先に絞ってから grade する**(2026-08-13 のレビュー指摘)。木の全要素を
+        // 無条件に grade すると、**注記が1バイトも出ない画面で最も高くつく** ——
+        // 実測(debug・固定コーパス)で 233 要素の画面が 3497ms、120 要素で 1208ms。
+        // ft_snapshot 全体が 203 要素で 1.2 秒(監査17)なので、桁で効いてしまう。
+        // grade するのは**候補と同じ矩形の要素だけ**にする
+        let candidates = snapshot.elements.filter {
             $0.type == "clickable" && ($0.identifier ?? "").isEmpty && ($0.label ?? "").isEmpty
-                && !selectable.contains(frameKey($0.frame))
+        }
+        guard !candidates.isEmpty else { return "" }
+        let unlabeled = candidates.filter {
+            !stableTwinFrames(candidates, in: snapshot, cache: cache).contains(frameKey($0.frame))
         }
         guard !unlabeled.isEmpty else { return "" }
         let listed = unlabeled.prefix(8).map { element -> String in
@@ -1317,13 +1323,21 @@ extension MCPServer {
     /// 自分自身を twin として黙る**(コーパスで ios-home / ios-maps_route_options の
     /// 真陽性まで消えた)。注記の趣旨は「索引記法より良い、位置に依存しない書き方がある」
     /// なので、`.indexed` は代替として数えない
-    static func stableSelectorFrameKeys(_ snapshot: SnapshotResponse) -> Set<String> {
-        let naming = SelectorNaming(snapshot)
+    /// **`cache` を必ず通す**(2026-08-13 のレビュー指摘): 自前で `SelectorNaming` を作ると、
+    /// 曖昧ラベル・重複 id のある画面で**同じ応答の中で二度 grade する**。しかも
+    /// `MCPAnnotationCacheTests` の計数は共有インスタンスしか見ないので、
+    /// **二重計算がテストから見えない**(キャッシュの doc が warn している盲点そのもの)
+    static func stableTwinFrames(_ candidates: [ElementInfo], in snapshot: SnapshotResponse,
+                                 cache: SnapshotAnnotationCache?) -> Set<String> {
+        let candidateFrames = Set(candidates.map { frameKey($0.frame) })
+        let naming = cache?.selectorNaming(snapshot) ?? SelectorNaming(snapshot)
         var keys: Set<String> = []
         for element in snapshot.elements {
-            guard let graded = naming.graded(for: element, in: snapshot),
+            let key = frameKey(element.frame)
+            guard candidateFrames.contains(key), !keys.contains(key),
+                  let graded = naming.graded(for: element, in: snapshot),
                   graded.durability == .stable else { continue }
-            keys.insert(frameKey(element.frame))
+            keys.insert(key)
         }
         return keys
     }

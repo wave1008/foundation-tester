@@ -86,7 +86,7 @@ final class NoteCoverageTests: XCTestCase {
     ///
     /// | 注記 | 19枚のとき | 25枚のとき |
     /// |---|---|---|
-    /// | `unlabeledClickablesNote` | map のみ | map + **settings** (2026-08-13 に settings は誤検知と判明し除外 → map + home) |
+    /// | `unlabeledClickablesNote` | map のみ | map + **browser** (2026-08-13: settings は同一矩形の #id を見落とした誤検知と判明して除外) |
     /// | `keyboardCoverageNote` | map のみ | map + **chat** |
     /// | `scrollFrameCandidates` | map のみ | map + **chat** |
     /// | `ghostNote` / `truncationNote` | map のみ | **map のみのまま**(各1画面) |
