@@ -88,6 +88,21 @@ final class SweepHarnessTests: XCTestCase {
         // 中心は、その中の `#PinnedTile` の上にある。帯を撃つと1枚のタイルが開く
         "ios-home": Counts(ghost: 0, overlay: 1, stacked: 0, misses: 0, disabled: 0,
                            warnedTappable: 1, nested: 1),
+        // 2026-08-12 採取。**ホイールピッカー**の witness(コーパス初)。Apple マップの
+        // 経路オプション。`pickerWheel` 3本が入れ物の `datePicker` (41,246.7 320x216) を
+        // 上下へ約38pt はみ出して申告する(y 209.2・高さ 291)形を含む。
+        // **この修正の前は overlay 3**(3本のホイールが、その上のセグメンテッドコントロール
+        // 「今すぐ出発 / 出発時刻 / 到着時刻」の中心をそれぞれ覆っていると報告)で、
+        // 実際のタップは3つとも正常に通る = 純粋な誤検知だった(reportsContentExtent で解消)。
+        // **修正前 overlay 10 / warnedTappable 7 → 修正後 4 / 4**。残る4件は全部
+        // 「`Reset`(36,786 330x52)が料金セクションの行を覆う」形で、**スクリーンショットで
+        // 実描画を確認済みの真陽性**(シート下端に貼り付く Reset が `交通系ICカード運賃` の
+        // 行の上に重なって描かれている)。nested 1 も真陽性(セグメント行 clickable
+        // (16,194 370x52) の中心 (201,220) が中の `出発時刻` (142,204 117x32) の上)。
+        // disabled 1 は入力前で押せない「完了」
+        "ios-maps_route_options": Counts(ghost: 0, overlay: 4, stacked: 0, misses: 0, disabled: 1,
+                                         offscreen: 0, warnedTappable: 4, keyboard: 0, sliver: 0,
+                                         nested: 1, scrolledOut: 0),
         // 2026-08-08 採取(v58 = 間引きの bulk 拡張後)。東京駅カード + 地図 POI 67個の木。
         // overlay 17 の内訳: POI 同士の重なり14(駅構内の高密度で実描画どおり・非操作)/
         // カード見出し系3。misses 2 は見出し容器。すべて非操作なので warnedTappable 0

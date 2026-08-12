@@ -51,6 +51,7 @@ final class NoteCoverageTests: XCTestCase {
         "ios-photos_grid": "media",
         "ios-safari_article": "webview",
         "and-dialer_keypad": "keypad",
+        "ios-maps_route_options": "picker",
         // 自前 SUT(盤面が契約で固定されている対照)
         "sutec-calendar_day": "ec", "sutec-detail": "ec", "sutec-home": "ec",
         "sut-cmp_controls": "sut", "sut-cmp_home": "sut",
@@ -77,11 +78,11 @@ final class NoteCoverageTests: XCTestCase {
     /// この2本は 5〜6/8 アーキタイプで発火する = 汎用の側。**削るなら文面であって対象ではない**
     static let baseline: [String: Coverage] = [
         "ghostNote": Coverage(fixtures: ["ios-place_guides_scrolled"], bytes: 236),
-        "scrollFrameCandidates": Coverage(fixtures: ["and-place_expanded", "and-results", "ios-maps_station", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-messages_keyboard", "ios-place_guides_scrolled"], bytes: 1852),
+        "scrollFrameCandidates": Coverage(fixtures: ["and-place_expanded", "and-results", "ios-maps_route_options", "ios-maps_station", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-messages_keyboard", "ios-place_guides_scrolled"], bytes: 2087),
         "truncationNote": Coverage(fixtures: ["ios-maps_station"], bytes: 383),
-        "unlabeledClickablesNote": Coverage(fixtures: ["and-directions_tabs", "and-home", "and-place", "and-place_expanded", "and-results", "ios-home", "ios-profile", "ios-settings_root"], bytes: 4031),
+        "unlabeledClickablesNote": Coverage(fixtures: ["and-directions_tabs", "and-home", "and-place", "and-place_expanded", "and-results", "ios-home", "ios-maps_route_options", "ios-profile", "ios-settings_root"], bytes: 4929),
         "ambiguousLabelsNote": Coverage(fixtures: ["and-home", "and-maps_suggest_ime", "and-place", "and-place_expanded", "and-results", "ios-home", "ios-maps_station", "ios-maps_suggest_keyboard", "ios-messages_keyboard", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-safari_article", "ios-settings_root", "sut-cmp_controls", "sut-cmp_home", "sutec-detail", "sutec-home"], bytes: 10015),
-        "duplicateIDsNote": Coverage(fixtures: ["and-dialer_keypad", "and-home", "and-overflow", "and-place_expanded", "and-results", "and-settings_root", "ios-home", "ios-maps_station", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-photos_grid", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-settings_root", "sutec-home"], bytes: 15057),
+        "duplicateIDsNote": Coverage(fixtures: ["and-dialer_keypad", "and-home", "and-overflow", "and-place_expanded", "and-results", "and-settings_root", "ios-home", "ios-maps_route_options", "ios-maps_station", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-photos_grid", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-settings_root", "sutec-home"], bytes: 15960),
         "keyboardCoverageNote": Coverage(fixtures: ["and-maps_suggest_ime", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-messages_keyboard"], bytes: 703),
         "truncatedLabelNote": Coverage(fixtures: ["and-place_expanded", "ios-photos_grid", "ios-place_guides_scrolled", "ios-safari_article", "ios-settings_root", "sutec-detail", "sutec-home"], bytes: 2139),
     ]

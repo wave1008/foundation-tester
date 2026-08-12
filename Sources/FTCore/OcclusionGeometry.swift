@@ -26,6 +26,7 @@ public enum OcclusionGeometry {
                   other.frame.y <= cy, cy <= other.frame.y + other.frame.height
             else { return false }
             if isBlankLeafContainer(other, in: elements) { return false }
+            if reportsContentExtent(other) { return false }
             // **描かれていないものは何も覆えない**(2026-08-06 の外部フィードバック2件目)。
             // 相手自身がスクロール容器の外に出ている(= 残像)なら、矩形が重なっていても
             // 実際にはそこに無い。実例: 設定アプリの検索で「閉じる」を弾いていた
@@ -170,6 +171,25 @@ public enum OcclusionGeometry {
         guard let index = elements.firstIndex(where: { $0.ref == element.ref }) else { return true }
         let next = elements.index(after: index)
         return next >= elements.endIndex || elements[next].depth <= element.depth
+    }
+
+    /// **描かれる範囲ではなく「中身の全長」を frame に申告する型**。遮蔽候補から外す。
+    ///
+    /// `pickerWheel`(XCUITest)は回転ドラムの content 全長を出すので、**自分の入れ物を
+    /// 上下にはみ出す**。実測(2026-08-12・Apple マップの経路オプション画面):
+    /// `datePicker` (41,246.7 320x216) の中の pickerWheel 3本はいずれも
+    /// (y 209.2, 高さ 291) —— 上へ 37.5pt・下へ 37.8pt はみ出し、**その上に並ぶ
+    /// セグメンテッドコントロール「今すぐ出発」(26,204.3 116x32)の中心 (84,220.3) を
+    /// 覆っている**と判定していた。タップは正常に通る(同日 ft_batch で実測)ので純粋な誤検知。
+    ///
+    /// **入れ物ごと外すのではない**のが要点 —— `datePicker` やシート自体は候補に残るので、
+    /// 「ピッカーが下の入力欄を覆っている」本物の形は取りこぼさない。
+    ///
+    /// 「親をはみ出したら中身の全長」という一般則にはしていない: この木は中間ノードが
+    /// フィルタで落ちており、depth からの親復元が当てにならない(`enclosesAnInnerWrapper` の
+    /// doc と同じ理由)。当てにならない親で clip すると、本物の遮蔽を黙って消す側へ倒れる
+    private static func reportsContentExtent(_ element: ElementInfo) -> Bool {
+        element.type == "pickerWheel"
     }
 
     /// `candidate` と `element` の**間に**もう1枚、element を包む小さい入れ物があるか。

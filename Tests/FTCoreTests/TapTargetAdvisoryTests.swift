@@ -24,6 +24,42 @@ final class TapTargetAdvisoryTests: XCTestCase {
         XCTAssertEqual(note, "the target is disabled, so this almost certainly did nothing")
     }
 
+    /// **ホイールピッカーは何も覆わない**(2026-08-12 の実アプリ監査)。`pickerWheel` は
+    /// 回転ドラムの content 全長を frame に出すので入れ物を上下にはみ出す ——
+    /// 実測(Apple マップの経路オプション・iOS 27 Simulator): `datePicker`
+    /// (41,246.7 320x216) の中のホイールが (81,209.2 133x291) で、その上に並ぶ
+    /// セグメント「今すぐ出発」(26,204.3 116x32) の中心 (84,220.3) を覆っていた。
+    /// 実際のタップは通る(同日 ft_batch で実測)ので純粋な誤検知。
+    ///
+    /// **並び順はフィクスチャ ios-maps_route_options のまま**にしてある —— ホイールを
+    /// セグメントの直後に置くと `lineage` が子孫として除外してしまい、
+    /// 「修正が効いた」のか「候補にすら上がらなかった」のか区別できないテストになる
+    func testPickerWheelDoesNotOccludeTheSegmentAboveIt() {
+        let segment = element(13, "OptionLabel", "button", 26, 204.33, 116, 32, depth: 17)
+        let elements = [
+            segment,
+            element(14, "OptionLabel", "button", 142, 204.33, 117, 32, depth: 17),
+            element(16, "", "clickable", 16, 246.67, 370, 216, depth: 11),
+            element(18, "", "datePicker", 41, 246.67, 320, 216, depth: 16),
+            element(19, "", "pickerWheel", 81, 209.17, 133, 291, depth: 18),
+        ]
+        XCTAssertNil(OcclusionGeometry.overlayCovering(segment, in: elements, screen: screen),
+                     "ホイールの申告 frame は描画範囲ではないので遮蔽と言わないこと")
+        XCTAssertNil(TapTargetGeometry.advisory(for: segment, in: elements, screen: screen))
+    }
+
+    /// **入れ物ごと外したのではない**ことの対照: ピッカーの器そのものが中心を覆うなら
+    /// 従来どおり名指しする。これが黙ると「ピッカーが下の入力欄を覆っている」本物の形を落とす
+    func testTheEnclosingPickerContainerStillOccludes() {
+        let field = element(13, "field", "button", 60, 300, 116, 32, depth: 17)
+        let elements = [
+            field,
+            element(18, "", "datePicker", 41, 246.67, 320, 216, depth: 17),
+        ]
+        let hit = OcclusionGeometry.overlayCovering(field, in: elements, screen: screen)
+        XCTAssertEqual(hit?.ref, 18, "ホイールでなく器が覆っているなら名指しすること")
+    }
+
     /// 有効な要素では黙る(毎回付くと注記が意味を失う)
     func testEnabledPlainTargetIsSilent() {
         let on = element(1, "btn", "button", 0, 0, 100, 40)

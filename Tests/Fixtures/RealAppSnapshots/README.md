@@ -29,6 +29,12 @@
 | `ios-safari_article` | webview | Safari(Wikipedia) | 実 web ページの a11y 木。**実アプリで初めて `disabled` が出た**(履歴なしの「戻る」)。**overlay 14 件のうち 10 件は「折り返す inline テキスト」の誤検知**(SweepHarnessTests の当該コメント参照) |
 | `and-dialer_keypad` | keypad | Android 電話 | 12 キーの格子。`nested`(容器の中心がキーに乗る)と `disabled`(空入力時の Backspace)の実アプリ witness |
 
+**2026-08-12 に足した1枚**(ホイールピッカーの witness):
+
+| ファイル | アーキタイプ | 由来 | 何を代表するか |
+|---|---|---|---|
+| `ios-maps_route_options` | picker | Apple マップの経路オプション | **`pickerWheel` が入れ物を上下にはみ出して申告する形**。`datePicker` (41,246.7 320x216) の中のホイール3本が (y 209.2・高さ 291) で、その上のセグメンテッドコントロールの中心を覆っていると判定していた(**overlay 10→4 の誤検知6件**。`OcclusionGeometry.reportsContentExtent` で解消)。残る overlay 4 は「シート下端に貼り付く `Reset` が料金セクションの行を覆う」= スクリーンショットで実描画を確認した真陽性 |
+
 **採り直すとき**は基準値も一緒に更新する(`SweepHarnessTests.baselines`)。件数が増えたら
 まず誤検知を疑い、真陽性だと確かめてから基準値を上げること —— 黙って上げると、
 この砦は「現状を追認するだけ」になる。
