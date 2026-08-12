@@ -97,15 +97,25 @@ extension MCPServer {
         let explicitPort = try await Self.portForIOS(args)
         let key = Self.driverCacheKey(platform: platform, port: explicitPort.map(Int.init),
                                       serial: args["serial"] as? String)
-        if let cached = drivers[key] { return cached }
+        if let cached = drivers[key] {
+            // **キャッシュ命中でも記憶を更新する**(2026-08-12 の実アプリ監査で踏んだ)。
+            // 記録を「ドライバを生成したとき」に紐付けると、2度目に同じ機を明示した呼び出しは
+            // ここで返って記憶を動かさず、**A→B→A のあとの省略呼び出しが B へ行く**。
+            // 実害: iOS を明示 launch した直後の無指定 ft_snapshot が Android のツリーを返し、
+            // 注記は「最も新しいターゲット = <Android>」と名乗った(直前の明示は iOS なので嘘)。
+            // 失敗モードが沈黙(黙って別 OS の機を操作する)なので、生成の有無に依らせない
+            rememberResolvedTarget(platform: platform, args: args,
+                                   iosPort: connectedPorts[key] ?? explicitPort, iosUDID: udids[key] ?? nil,
+                                   androidSerial: args["serial"] as? String)
+            return cached
+        }
         let created: AppDriver
         switch platform {
         case "ios":
             // **記憶の適用はここでは行わない**(2026-08-12): dispatch 入口(call() の
             // foldInRememberedDevice)が省略呼び出しへ既に port/udid を差し込んでいるので、
             // ここに来る時点で args は明示指定と区別が付かない。ここでは解決後の値を
-            // 「記録」するだけにする(iosMemoryAfterResolve) —— 適用と記録を二重に持たない
-            let argsHadIOSTarget = Self.recordsIOSMemory(args)
+            // 「記録」するだけにする(rememberResolvedTarget) —— 適用と記録を二重に持たない
             let port = try await Self.resolveIOSPort(explicit: explicitPort)
             let resolved = await ExploreDriverResolver.resolve(
                 preferred: port, repoRoot: try? RepoRoot.find(),
@@ -119,12 +129,8 @@ extension MCPServer {
             // その port が今どの機かを確かめる手段が無かった
             connections[key] = Self.connectionLabel(port: port, udid: resolved.udid)
             connectedPorts[key] = port
-            if let remembered = Self.iosMemoryAfterResolve(
-                argsHadExplicitTarget: argsHadIOSTarget, resolvedPort: port, resolvedUDID: resolved.udid) {
-                lastExplicitIOSTarget = remembered
-                lastExplicitPlatform = "ios"
-                seenExplicitIOSPorts.insert(remembered.port)
-            }
+            rememberResolvedTarget(platform: "ios", args: args,
+                                   iosPort: port, iosUDID: resolved.udid, androidSerial: nil)
             // **稼働中のブリッジが古いままではないか**を1度だけ確かめる(2026-08-06 に踏んだ)。
             // profile 経由は BridgeProvisioner が版で再利用可否を決めるが、**この経路は
             // 生きているポートへ素で繋ぐだけ**なので、版を上げても旧ランナーが使われ続ける。
@@ -139,13 +145,8 @@ extension MCPServer {
             created = try AndroidDriver(serial: serial)
             engines[key] = "android"
             connections[key] = "serial \(serial)"
-            if let remembered = Self.androidMemoryAfterResolve(
-                fromArgs: Self.recordsAndroidMemory(args, explicitSerial: explicitSerial),
-                resolvedSerial: serial) {
-                lastExplicitAndroidSerial = remembered
-                lastExplicitPlatform = "android"
-                seenExplicitAndroidSerials.insert(remembered)
-            }
+            rememberResolvedTarget(platform: "android", args: args,
+                                   iosPort: nil, iosUDID: nil, androidSerial: serial)
         default:
             throw MCPError("platform must be ios or android: \(platform)")
         }
@@ -330,6 +331,34 @@ extension MCPServer {
     /// recordsIOSMemory の Android 版。fold が注入した serial は記憶の記録に使わない
     static func recordsAndroidMemory(_ args: [String: Any], explicitSerial: String?) -> String? {
         injectedFromMemory(args) ? nil : explicitSerial
+    }
+
+    /// 解決済みの宛先をセッション記憶へ記録する。**driver() の2経路(新規生成・キャッシュ命中)が
+    /// 共に呼ぶ唯一の記録点** —— 片方だけに置くと、2度目に同じ機を明示した呼び出しが記憶を
+    /// 動かさず、省略呼び出しが黙って別の機(別 OS のことすらある)へ行く。
+    /// 何を記録するかの判定は recordsIOSMemory / recordsAndroidMemory が持つ(明示指定でなければ
+    /// 記録しない・fold が注入した宛先も記録しない)ので、ここは配線だけ
+    func rememberResolvedTarget(
+        platform: String, args: [String: Any],
+        iosPort: UInt16?, iosUDID: String?, androidSerial: String?
+    ) {
+        switch platform {
+        case "ios":
+            guard let iosPort, let remembered = Self.iosMemoryAfterResolve(
+                argsHadExplicitTarget: Self.recordsIOSMemory(args),
+                resolvedPort: iosPort, resolvedUDID: iosUDID) else { return }
+            lastExplicitIOSTarget = remembered
+            lastExplicitPlatform = "ios"
+            seenExplicitIOSPorts.insert(remembered.port)
+        case "android":
+            guard let androidSerial, let remembered = Self.androidMemoryAfterResolve(
+                fromArgs: Self.recordsAndroidMemory(args, explicitSerial: args["serial"] as? String),
+                resolvedSerial: androidSerial) else { return }
+            lastExplicitAndroidSerial = remembered
+            lastExplicitPlatform = "android"
+            seenExplicitAndroidSerials.insert(remembered)
+        default: break
+        }
     }
 
     /// profile 無しの iOS 宛先。**明示 port は探索しない**(利用者が宛先を決めている)。
