@@ -1,0 +1,161 @@
+#!/usr/bin/env bash
+# MCP の使い勝手を「まっさらなエージェントがタスクを終えられるか・何手かかったか」で測る。
+#
+# **なぜ要るか**(2026-08-12): これまでの評価者は「フルコンテキストの私が応答を読んで
+# 違和感があるか」だった。バグは有限なので減衰するが、「もっと分かりやすく言えたはず」は
+# 無限に出るので、その評価では注記も分岐も単調に増え続ける(実際そうなった)。
+# **注記を1本足すか消すかは、ここで測る手数が動いたかどうかで決める**。
+#
+# 使い方:
+#   Scripts/mcp-bench.sh --list
+#   Scripts/mcp-bench.sh --task e2e-cmp-find --repeat 3
+#   Scripts/mcp-bench.sh --task maps-route --variant full= --variant no-dupids=duplicateIDsNote
+#
+# variant は `<名前>=<FT_MCP_NOTES_OFF に渡す鍵>`(空 = 全部出す既定)。鍵は NoteCatalog の
+# 鍵と同じで、`all` で全注記を落とす。**綴りを間違えた鍵はサーバが stderr で名指しする**
+# (落ちていない注記を「落とした」と誤解したまま結論を出さないため)。
+#
+# 前提: `claude` CLI と、タスクが要求するデバイス/アプリ。デバイスは各タスクの
+# `requires` に書いてあるものを**先に用意しておくこと**(この台本は用意しない ——
+# 用意まで抱えると、失敗したときに「エージェントが下手だった」のか「盤面が違った」のかが
+# 分からなくなる)。
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TASK_DIR="$ROOT/Bench/tasks"
+REPEAT=3
+DRY_RUN=0
+LIST=0
+MODEL=""
+OUT=""
+TASKS=()
+VARIANT_NAMES=()
+VARIANT_SPECS=()
+
+die() { echo "error: $*" >&2; exit 1; }
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --task) TASKS+=("$2"); shift 2 ;;
+    --repeat) REPEAT="$2"; shift 2 ;;
+    --variant)
+      case "$2" in
+        *=*) VARIANT_NAMES+=("${2%%=*}"); VARIANT_SPECS+=("${2#*=}") ;;
+        *) die "--variant は <名前>=<鍵,…> の形("$2")" ;;
+      esac
+      shift 2 ;;
+    --out) OUT="$2"; shift 2 ;;
+    --model) MODEL="$2"; shift 2 ;;
+    --list) LIST=1; shift ;;
+    --dry-run) DRY_RUN=1; shift ;;
+    -h|--help) sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) die "不明なオプション: $1" ;;
+  esac
+done
+
+command -v node >/dev/null || die "node が要る(集計に使う)"
+[ -d "$TASK_DIR" ] || die "タスクが無い: $TASK_DIR"
+
+task_field() { node -e '
+  const t = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))
+  const v = t[process.argv[2]]
+  process.stdout.write(v == null ? "" : String(v))
+' "$1" "$2"; }
+
+if [ ${#TASKS[@]} -eq 0 ]; then
+  for f in "$TASK_DIR"/*.json; do TASKS+=("$(basename "$f" .json)"); done
+fi
+
+if [ "$LIST" = 1 ]; then
+  printf '%-22s %-14s %s\n' "id" "archetype" "requires"
+  for id in "${TASKS[@]}"; do
+    f="$TASK_DIR/$id.json"
+    printf '%-22s %-14s %s\n' "$id" "$(task_field "$f" archetype)" "$(task_field "$f" requires)"
+  done
+  exit 0
+fi
+
+# 既定は「全部出す」1本だけ。A/B は --variant を2つ以上渡したときに成立する
+if [ ${#VARIANT_NAMES[@]} -eq 0 ]; then VARIANT_NAMES=(full); VARIANT_SPECS=(""); fi
+
+STAMP="$(date +%Y%m%d-%H%M%S)"
+[ -n "$OUT" ] || OUT="$ROOT/.ftester/bench/$STAMP"
+mkdir -p "$OUT"
+LOG="$OUT/bench.log"
+
+say() { echo "$*" | tee -a "$LOG"; }
+
+# **測る対象は「今のソースで建てた」サーバ**(古いバイナリを測ると、直したはずの注記が
+# 反映されないまま結論が出る)
+say "==> ftester-mcp を建てる"
+if [ "$DRY_RUN" = 0 ]; then
+  (cd "$ROOT" && swift build --product ftester-mcp) >>"$LOG" 2>&1 \
+    || die "ビルドに失敗($LOG)"
+fi
+BIN="$ROOT/.build/debug/ftester-mcp"
+[ "$DRY_RUN" = 1 ] || [ -x "$BIN" ] || die "実行ファイルが無い: $BIN"
+
+# **CLAUDE.md の無い作業ディレクトリで走らせる**: 保守者向けの指示を読んだエージェントは
+# 「まっさらな読み手」ではない(このリポジトリの事情を知っている)
+CWD="$OUT/cwd"
+mkdir -p "$CWD"
+
+INDEX="$OUT/index.json"
+echo '{"baseVariant":"'"${VARIANT_NAMES[0]}"'","runs":[' > "$INDEX"
+first_entry=1
+
+for vi in "${!VARIANT_NAMES[@]}"; do
+  variant="${VARIANT_NAMES[$vi]}"
+  spec="${VARIANT_SPECS[$vi]}"
+  vdir="$OUT/$variant"
+  mkdir -p "$vdir"
+  cat > "$vdir/mcp.json" <<JSON
+{"mcpServers":{"ftester":{"command":"$BIN","env":{"FT_MCP_NOTES_OFF":"$spec"}}}}
+JSON
+  say "==> variant $variant (FT_MCP_NOTES_OFF='$spec')"
+
+  for id in "${TASKS[@]}"; do
+    f="$TASK_DIR/$id.json"
+    [ -f "$f" ] || die "タスクが無い: $f"
+    prompt="$(task_field "$f" prompt)"
+    expect="$(task_field "$f" expect)"
+    max_turns="$(task_field "$f" maxTurns)"; [ -n "$max_turns" ] || max_turns=60
+
+    for n in $(seq 1 "$REPEAT"); do
+      transcript="$vdir/$id-$n.jsonl"
+      set -- claude -p "$prompt" \
+        --output-format stream-json --verbose \
+        --mcp-config "$vdir/mcp.json" --strict-mcp-config \
+        --allowedTools mcp__ftester \
+        --max-turns "$max_turns"
+      [ -z "$MODEL" ] || set -- "$@" --model "$MODEL"
+      if [ "$DRY_RUN" = 1 ]; then
+        say "    (dry-run) $id #$n → $transcript"
+      else
+        # **1本の失敗で全体を止めない**(残りの盤面は生きている)。失敗は空の記録として
+        # 残り、集計では未完了として数えられる
+        (cd "$CWD" && "$@") > "$transcript" 2>>"$LOG" || true
+        lines="$(wc -l < "$transcript" | tr -d ' ')"
+        say "    $id #$n → $lines events"
+      fi
+      [ "$first_entry" = 1 ] || echo ',' >> "$INDEX"
+      first_entry=0
+      printf '{"variant":"%s","task":"%s","expect":%s,"transcript":"%s"}' \
+        "$variant" "$id" "$(node -e 'process.stdout.write(JSON.stringify(process.argv[1]||null))' "$expect")" \
+        "$transcript" >> "$INDEX"
+    done
+  done
+done
+
+echo ']}' >> "$INDEX"
+
+if [ "$DRY_RUN" = 1 ]; then
+  say "==> dry-run。実行はしていない($INDEX に予定だけ書いた)"
+  exit 0
+fi
+
+say "==> 集計"
+node "$ROOT/Scripts/bench-summary.mjs" "$INDEX" --json "$OUT/summary.json" | tee -a "$LOG"
+say ""
+say "記録: $OUT"

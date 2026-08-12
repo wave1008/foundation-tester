@@ -1,0 +1,8 @@
+{
+  "id": "maps-route",
+  "archetype": "map",
+  "requires": "iOS シミュレータ1台に xcuitest ブリッジ(システムアプリを触るので in-app では不可)+ Apple マップ",
+  "maxTurns": 80,
+  "expect": "立川",
+  "prompt": "ftester の MCP ツール(ft_*)だけを使って、iOS シミュレータ上の Apple マップ(com.apple.Maps)を操作してください。\n\nゴール: 赤羽駅から立川駅までの経路を検索し、公共交通機関での所要時間を読み取ること。\n\n手順や使うツールは自分で決めてください。デバイスは ft_list_devices で選びます(システムアプリなので xcuitest ブリッジのポートが要ります)。\n\n最後に必ず1行だけ次の形式で出力してください: RESULT: 赤羽→立川 <所要時間>\n読み取れなかった場合は RESULT: unknown と出力してください。"
+}
