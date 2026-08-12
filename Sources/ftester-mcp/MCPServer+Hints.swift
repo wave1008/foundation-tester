@@ -49,6 +49,28 @@ extension MCPServer {
         return expandedHeight > beforeHeight + 1
     }
 
+    /// シートを広げただけで目標が画面に出たか。出ていれば**再スワイプはしない**
+    /// (呼び手の doc 参照 —— この画面ではスワイプがシートの折りたたみに化けるので、
+    /// 出した行を自分で引っ込めることになる)。
+    ///
+    /// **容器で絞らない**のが要点: 探索が `scrollFrame` の中を歩くのは「まだ見えていない行を
+    /// 出すため」であって、`scrollTo` が約束しているのは**画面に出ていること**。展開で
+    /// シートの見出しごと出てきた場合(実測: `*立川*` は展開後のシート見出し `立川駅` にも当たる)、
+    /// 容器の外だからと無視して再スワイプに入るのは、約束を満たしているのに壊しに行く動き。
+    ///
+    /// 画面内判定は `TapTargetGeometry.offscreenAdvisory`(nil = 画面の中)に委ねる ——
+    /// **ここに2つ目の「見えているか」の定義を置かない**。ただし退化 frame(幅か高さ 0)だけは
+    /// 手前で落とす: offscreenAdvisory は画面の内側にある 0x0 を「画面内」と答えるので
+    /// (2026-08-12 に外して実測)、これが無いと**描かれていない一致で救済を打ち切る**
+    static func visibleAfterExpansion(step: FlowStep, in snapshot: SnapshotResponse) -> ElementInfo? {
+        guard let locator = step.locator,
+              let hit = StepExecutor.match(locator, in: snapshot),
+              hit.frame.width > 0, hit.frame.height > 0,
+              TapTargetGeometry.offscreenAdvisory(for: hit, screen: snapshot.screen) == nil
+        else { return nil }
+        return hit
+    }
+
     /// **救済が効かないと分かった画面で、手で開く手順を名指しする**(2026-08-12 の監査)。
     /// 救済が「もう一度やっても同じ」で終わったとき、読み手に残る手は
     /// **グラバーを全開まで引いてから素の ft_snapshot を撮る**(探索が届かなくても、

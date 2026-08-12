@@ -690,6 +690,22 @@ extension MCPServer {
                     + " \(Int(expandedHeight))pt after) — the sheet cannot be expanded this way,"
                     + " so the search was not retried."
                     + Self.sheetManualExpandHint(after) + "\n"
+            } else if let alreadyThere = Self.visibleAfterExpansion(step: step, in: expanded) {
+                // **展開しただけで出ていたら、そこで終わり**(2026-08-12 の実アプリ監査)。
+                // シートを広げる目的は「隠れていた行を出すこと」なので、出た時点で探索の
+                // 目的は達成されている。ここで素通しして再スワイプに入ると、**この画面では
+                // リスト内のスワイプが外側シートの折りたたみに化ける**ため、せっかく出した行を
+                // 自分で引っ込めて「見つからない」で終わる —— 実測(Apple マップの乗換案内・
+                // iOS 27 Simulator): 展開後に同じ探索を手で撃つと 0 スワイプ・512ms で成功するのに、
+                // 救済の再試行は 16.9〜20.7 秒かけて失敗していた
+                rescueMs = Int((timingClock.now - rescueStart) / .milliseconds(1))
+                outcome = StepOutcome(status: .passed, notes: outcome.notes,
+                                      resolvedElement: alreadyThere,
+                                      scrollSwipes: outcome.scrollSwipes)
+                sheetNote = "note: the list had stopped moving inside a partially open sheet, so"
+                    + " [\(grabber.ref)] \(RefGuard.describe(grabber)) was dragged up to expand it,"
+                    + " which revealed the target — the search was NOT retried."
+                    + Self.sheetExpansionLayoutNote(before: beforeExpansion, after: after) + "\n"
             } else {
                 // **再試行は逆走査つき**(defers... を外した別 executor)。展開後も稀に部分高の
                 // ままのことがあり、そこで再び後回しにすると救済がどこにも無くなる
