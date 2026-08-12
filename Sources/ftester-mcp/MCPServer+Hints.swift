@@ -49,6 +49,32 @@ extension MCPServer {
         return expandedHeight > beforeHeight + 1
     }
 
+    /// **救済が効かないと分かった画面で、手で開く手順を名指しする**(2026-08-12 の監査)。
+    /// 救済が「もう一度やっても同じ」で終わったとき、読み手に残る手は
+    /// **グラバーを全開まで引いてから素の ft_snapshot を撮る**(探索が届かなくても、
+    /// 展開後の木には行が載る。実測でこれだけが通った)。文言だけの案内では毎回
+    /// 座標ドラッグを組み立てさせることになるので、**ref と目標 y まで出す** ——
+    /// `ft_drag` は fromRef を取れるので、これはシナリオにも書ける形になる。
+    /// グラバーを名指しできない画面では黙る(当てずっぽうの座標は勧めない)
+    static func sheetManualExpandHint(_ snapshot: SnapshotResponse) -> String {
+        guard let grabber = sheetGrabber(in: snapshot) else { return "" }
+        let toY = Int((snapshot.screen.height * expandedSheetTopRatio).rounded())
+        return " To open the sheet by hand: ft_drag fromRef: \(grabber.ref) toY: \(toY)"
+            + " (that is [\(grabber.ref)] \(RefGuard.describe(grabber))), then read the rows with a"
+            + " plain ft_snapshot — a fully expanded sheet lists them even when the scroll search"
+            + " cannot walk to them."
+    }
+
+    /// 救済(シート展開 + 再試行)が**この画面では効かない**と分かったことを覚える鍵。
+    /// **木の指紋そのもの**にする(2026-08-12): 同じ画面で ft_scroll_to を撃ち直すと、
+    /// 実測で救済だけに 21.2 秒を再び払っていた —— 1回目の結末は「3回目も同じ」と
+    /// 明言しているのに、機械側は次の呼び出しで何も覚えていなかった。
+    /// **セレクタごとには割らない**: 効かない理由は画面の性質(リスト内のドラッグが外側シートの
+    /// 折りたたみに化ける)であって、何を探しているかではない
+    static func sheetRescueKey(_ snapshot: SnapshotResponse) -> String {
+        "\(treeFingerprint(snapshot))"
+    }
+
     /// 再試行後の scrollFrame 容器の姿(リスト端でのスワイプが外側シートの折りたたみ/閉鎖に
     /// 化ける画面の検出)。救済前に測れていた容器が再試行後の木から消えていたら `gone`
     /// (2026-08-12実測: Apple マップの乗換案内は再試行のスワイプでシートごと閉じ、
@@ -115,10 +141,30 @@ extension MCPServer {
     /// 探索が止まった画面で「実際に引けるもの」を列挙する。id とラベルが両方あれば
     /// 両方出す(id だけだと、同じ id を複数のラベルが共有する画面で見分けが付かない)。
     /// **多すぎると読めない**ので上限を切る(足りなければ ft_snapshot を撮ればよい)
+    /// **飾りの葉を後回しにする**(2026-08-12 の監査)。実測(Apple マップ・経路詳細で探索が
+    /// 止まった回)では、この一覧の 20 枠が地図ピン(`#VKPointFeature "セブン‐イレブン"` 等)で
+    /// 埋まり、探していたリストの行が1つも出なかった —— 読み手にとって情報量ゼロの 20 語。
+    /// **落とすのではなく順序を落とす**: 枠が余れば従来どおり出す(地図の POI を探している
+    /// 回もあるので、消してしまうと逆の実害が出る)。判定は bulk fold・曖昧ラベル注記と同じ
+    /// `SnapshotRenderer.isDecorativeLeaf`(2つ目の「飾りか」を作らない)
+    static func actionableFirst(_ elements: [ElementInfo],
+                                in snapshot: SnapshotResponse) -> [ElementInfo] {
+        var actionable: [ElementInfo] = []
+        var decorative: [ElementInfo] = []
+        for e in elements {
+            if SnapshotRenderer.isDecorativeLeaf(e, in: snapshot.elements) {
+                decorative.append(e)
+            } else {
+                actionable.append(e)
+            }
+        }
+        return actionable + decorative
+    }
+
     static func visibleLabelsHint(_ snapshot: SnapshotResponse) -> String {
         var seen = Set<String>()
         var shown: [String] = []
-        for e in snapshot.elements {
+        for e in Self.actionableFirst(snapshot.elements, in: snapshot) {
             // **ゼロ幅文字を落としてから出す**: ここから写したラベルは**見た目が正しいのに
             // 完全一致しない**(2026-08-07 実測。Google マップの発車案内で U+200B が21個
             // 漏れていた。木の描画側は除去済みで、ヒストだけ素通しだった)
@@ -1039,10 +1085,17 @@ extension MCPServer {
     /// `maxSnapshotElements` を知らないので、120 を超える一覧を見て木が壊れていると読む余地がある。
     /// 同時に「畳まれた群は枠を食っていない」= 打ち切りの原因ではないことも伝わる。
     /// **申告が無いブリッジ(旧版・Android)では黙る** —— 嘘の安心を出さない
-    static func bulkExemptNote(_ snapshot: SnapshotResponse) -> String {
+    static func bulkExemptNote(_ snapshot: SnapshotResponse, abbreviated: Bool = false) -> String {
         guard let count = snapshot.bulkExemptCount, count > 0 else { return "" }
         // **「無害」と読ませない**(2026-08-10): 元の文言は要素上限を守っていることしか言わず、
-        // これらの行がコンテキストを消費している事実が伝わらなかった
+        // これらの行がコンテキストを消費している事実が伝わらなかった。
+        // **満額は初回だけ**(2026-08-12 の監査。`abbreviated` は他の注記と同じ F-6 の仕組み):
+        // 実体は木の1行に畳まれているのに、注記のほうが長いという逆転が毎回の応答で起きていた。
+        // 伝えたい2点(枠を食っていない/出力は食う)は一度読めば足りる
+        guard !abbreviated else {
+            return "note: \(count) element(s) in folded same-id group(s)"
+                + " (see the first snapshot's note).\n"
+        }
         return "note: \(count) element(s) of large same-id group(s) are listed outside the"
             + " element limit — they did not crowd other elements out of the tree, but they do"
             + " add to this output; the rendering folds them (expandBulk lists them in full).\n"
@@ -1176,6 +1229,10 @@ extension MCPServer {
         guard !sortedGroups.isEmpty else { return "" }
         var lines: [String] = [abbreviated ? shortHeader : fullHeader]
         var anyStable = false
+        // **畳んだ行は既に「tap by ref instead」と言っている**(compactGroupLine)。全部が
+        // 畳まれた回に末尾の総括まで出すと、同じ助言が N+1 回並ぶ(2026-08-12 の監査で実測:
+        // Google マップの経路一覧で5群すべてが畳まれ、その下にもう一度同じ文が出ていた)
+        var allCompact = true
         for (label, matches) in sortedGroups.prefix(ambiguousLabelsShown) {
             // **採番は1要素につき1回**: 畳めるかの判定と明細描画で二度引かない(compactGroupLine の doc)
             let gradedShown = matches.prefix(ambiguousMatchesShown)
@@ -1186,6 +1243,7 @@ extension MCPServer {
                 lines.append(compact)
                 continue
             }
+            allCompact = false
             let shown = zip(matches.prefix(ambiguousMatchesShown), gradedShown)
                 .map { element, graded -> String in
                     guard let graded else { return "[\(element.ref)] —" }
@@ -1200,7 +1258,7 @@ extension MCPServer {
             lines.append("  (+\(sortedGroups.count - ambiguousLabelsShown) more \(overflowNoun)(s)"
                 + " not shown — ft_snapshot again after narrowing the screen to see them)")
         }
-        if !anyStable {
+        if !anyStable, !allCompact {
             lines.append("  none of the above have a stable selector on this screen —"
                 + " prefer tapping by ref for these.")
         }

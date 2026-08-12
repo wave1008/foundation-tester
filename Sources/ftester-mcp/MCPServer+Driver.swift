@@ -89,9 +89,10 @@ extension MCPServer {
             return created
         }
 
-        let platform = (args["platform"] as? String)
-            ?? ProcessInfo.processInfo.environment["FTESTER_PLATFORM"]
-            ?? "ios"
+        // **engineKey と同じ解決を使う**(Self.platformName): ここに2つ目の既定を書くと、
+        // 「どのドライバを作るか」と「どの鍵で覚えるか」が食い違う。実際 serial だけの
+        // 呼び出しは、記憶側が Android と読むのにドライバは iOS を作っていた
+        let platform = Self.platformName(args)
         // **udid → port の解決はここ1箇所**(H-2)。port は残す(既存の呼び出しを壊さない)
         let explicitPort = try await Self.portForIOS(args)
         let key = Self.driverCacheKey(platform: platform, port: explicitPort.map(Int.init),

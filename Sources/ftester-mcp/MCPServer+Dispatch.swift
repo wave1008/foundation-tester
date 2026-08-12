@@ -99,8 +99,17 @@ extension MCPServer {
 
     /// 引数から見た宛先プラットフォーム。**既定は iOS**(FTESTER_PLATFORM で上書き)
     static func platformName(_ args: [String: Any]) -> String {
-        (args["platform"] as? String)
-            ?? ProcessInfo.processInfo.environment["FTESTER_PLATFORM"] ?? "ios"
+        if let explicit = args["platform"] as? String { return explicit }
+        // **宛先そのものが platform を名乗っている**(2026-08-12 に実機で踏んだ):
+        // `serial` は Android のもの・`udid`/`port` は iOS のものなので、platform を省いた
+        // `{"serial": "emulator-5554"}` が既定の "ios" に落ちて**黙って iOS の画面を返していた**
+        // (エラーにもならず、返ってくる木が別プラットフォームというだけ)。記憶の適用
+        // (foldInRememberedDevice)は既にこの推論をしているのに、**ドライバ選択だけが
+        // していなかった** —— 判定はここ1箇所に寄せて両者を必ず揃える。
+        // 述語は明示ターゲットの唯一の定義元(argsGaveIOSTarget/argsGaveAndroidTarget)
+        if argsGaveAndroidTarget(args) { return "android" }
+        if argsGaveIOSTarget(args) { return "ios" }
+        return ProcessInfo.processInfo.environment["FTESTER_PLATFORM"] ?? "ios"
     }
 
     /// ft_logs の bundleId 既定。ログはブリッジを通らないので engineKey が launch 時と

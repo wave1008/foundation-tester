@@ -72,6 +72,9 @@ final class MCPServer {
     /// 丸ごと置き換える(省略されたキーは記憶から消える)。snapshotAfterBody が、呼び出し側の
     /// args に無いキーだけこれで補う — 明示した値が常に優先(snapshotAfterBody 参照)
     var rememberedSnapshotFilters: [String: [String: Bool]] = [:]
+    /// **シート展開救済が効かないと分かった画面**(engineKey ごと・木の指紋の集合。
+    /// `sheetRescueKey` 参照)。同じ画面での2回目以降の ft_scroll_to は救済を撃たずに即返す
+    var sheetRescueFutile: [String: Set<String>] = [:]
     /// プロファイル解決で出た警告(未解決のデバイス名など)。**次に返す応答へ1度だけ**混ぜる。
     /// stderr だけに出していたときは MCP クライアントに一切届かなかった
     var pendingWarnings: [String: [String]] = [:]

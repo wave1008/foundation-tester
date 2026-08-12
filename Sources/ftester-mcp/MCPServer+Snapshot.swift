@@ -158,7 +158,8 @@ extension MCPServer {
         return switchedNote + extraNote + backgroundNote
             + Self.ghostNote(snapshot, collapsingBulk: collapsingBulk, cache: cache)
             + (ScrollFrameCandidates.note(snapshot) ?? "")
-            + Self.truncationNote(snapshot) + Self.bulkExemptNote(snapshot)
+            + Self.truncationNote(snapshot)
+            + onceNonEmpty("bulkExemptNote") { Self.bulkExemptNote(snapshot, abbreviated: $0) }
             + onceNonEmpty("unlabeledClickablesNote") { Self.unlabeledClickablesNote(snapshot, abbreviated: $0) }
             + onceNonEmpty("ambiguousLabelsNote") { Self.ambiguousLabelsNote(snapshot, abbreviated: $0, cache: cache) }
             // ラベル版の直後に置く(読み手はどちらも「一意に指せるか」を見に来る)
@@ -212,6 +213,39 @@ extension MCPServer {
                 && a.frame == b.frame
         }
     }
+
+    /// **中身が1つも入っていない大きなスクロール容器**の名前(無ければ nil)。
+    ///
+    /// `looksUnchanged` では拾えない「まだ読み込み中」の形を1つだけ足す(2026-08-12 の監査)。
+    /// 実測(Google マップ・経路検索): 出発地/目的地を確定した直後の snapshotAfter は
+    /// `#expandingscrollview_container` が**子ゼロ**のまま返り、経路一覧は次の ft_snapshot で
+    /// 初めて出た —— 木そのものは前の画面から大きく変わっているので、既存の settle-lite
+    /// (操作前と見分けが付かないときだけ待つ)は構造上まったく発火しない。
+    ///
+    /// **誤発火を避けるための3条件**:
+    /// - `scrollable` 申告がある容器だけ(true を見つけたときだけ使ってよい。ElementInfo の宣言参照)
+    /// - **画面の3割以上の高さ**を占める容器だけ(小さな横カルーセルの空は正常なことがある)
+    /// - 子が**1つも無い**(preorder で depth が大きい後続要素が0件)—— 1件でも入っていれば
+    ///   「描画は始まっている」ので待たない
+    ///
+    /// 空のリストは正当にも存在する(検索結果0件)ので、**これを根拠に throw も再試行もしない** ——
+    /// 呼び手が払うのは settle-lite と同じ1回きりの短い待ちだけ
+    static func emptyLoadingScroller(in snapshot: SnapshotResponse) -> ElementInfo? {
+        let screenHeight = snapshot.screen.height
+        guard screenHeight > 0 else { return nil }
+        let elements = snapshot.elements
+        for (index, element) in elements.enumerated() {
+            guard element.scrollable == true,
+                  element.frame.height >= screenHeight * emptyScrollerScreenRatio else { continue }
+            let hasChild = elements[(index + 1)...].prefix { $0.depth > element.depth }.isEmpty == false
+            if !hasChild { return element }
+        }
+        return nil
+    }
+
+    /// `emptyLoadingScroller` が見る容器の最小の高さ(画面比)。小さな帯(フィルタの横並び等)の
+    /// 空は正常なので、**画面の主役になる大きさ**だけを読み込み中の候補にする
+    static let emptyScrollerScreenRatio = 0.3
 
     /// waitFor は snapshotAfter の待ち方の指定であって独立の引数ではない。
     /// snapshotAfter なしで渡されたら黙って無視せず気付かせる —— **throw はしない**
@@ -310,6 +344,24 @@ extension MCPServer {
                         + " was re-read once after a short wait — the tree below is the re-read.\n"
                 }
                 snapshot = reread
+            } else if let empty = Self.emptyLoadingScroller(in: snapshot) {
+                // **木は変わったのに中身がまだ来ていない**形(emptyLoadingScroller 参照)。
+                // 待ちも回数も settle-lite と同じ = 1回きりの短い猶予しか払わない
+                try await Task.sleep(nanoseconds: UInt64(max(0, settleWaitSeconds) * 1_000_000_000))
+                let reread = try await freshSnapshot(snapshotDriver, args: args)
+                let name = RefGuard.describe(empty)
+                if Self.emptyLoadingScroller(in: reread) == nil {
+                    settleNote = "note: \(name) was still empty right after the action, so the tree"
+                        + " was re-read once after a short wait — the tree below is the re-read.\n"
+                    snapshot = reread
+                } else {
+                    // **埋まらなかったら黙らない**: 正当に空(検索結果0件)のこともあるので、
+                    // 断定はせず「空のまま」だとだけ言う。読み手はここで waitFor を選べる
+                    settleNote = "note: \(name) is still empty after a short re-read wait — it may"
+                        + " be genuinely empty, or still loading; use ft_snapshot waitFor if you"
+                        + " expect content in it.\n"
+                    snapshot = reread
+                }
             }
             recordSnapshot(snapshot, snapshotDriver is AndroidDriver ? "android" : "ios", args)
             // waitFor 済みなら「待たずに読んだ」前提の immediateReadNote は誤解を招くので出さない
@@ -547,6 +599,19 @@ extension MCPServer {
         }
     }
 
+    /// 「この画面ではシート展開救済が効かない」の記録(`sheetRescueKey` 参照)。
+    /// **上限を切る**: セッションが長いほど画面の数だけ指紋が溜まるので、古いものから捨てる
+    /// (救済が効かない画面は数個で、10 も覚えれば往復は止まる)
+    func rememberFutileSheetRescue(_ snapshot: SnapshotResponse, args: [String: Any]) {
+        let key = Self.engineKey(args)
+        var keys = sheetRescueFutile[key] ?? []
+        if keys.count >= Self.sheetRescueMemoryCap { keys.removeFirst() }
+        keys.insert(Self.sheetRescueKey(snapshot))
+        sheetRescueFutile[key] = keys
+    }
+
+    static let sheetRescueMemoryCap = 10
+
     func scrollTo(_ args: [String: Any]) async throws -> [[String: Any]] {
         guard let selectorText = args["selector"] as? String, !selectorText.isEmpty else {
             throw MCPError("selector is required (same syntax as the DSL: #id, a label, .type, a||b)")
@@ -593,7 +658,19 @@ extension MCPServer {
         // ときだけ**動かす —— 当てずっぽうのドラッグは地図やリストを勝手に動かす
         var sheetNote = ""
         var rescueMs: Int?
-        if StepExecutor.isSuccess(outcome.status) {} else if outcome.notes.contains(.sheetCollapsed),
+        // **同じ画面で2度は撃たない**(2026-08-12 の監査): 救済は実測 21.2 秒かかるのに、
+        // 1回目が「3回目も同じ」と結論した画面で ft_scroll_to を撃ち直すと全額を再び払っていた。
+        // 鍵は木の指紋(sheetRescueKey)—— 画面が変われば指紋も変わるので、記憶は自然に失効する
+        let rescueKey = Self.sheetRescueKey(after)
+        let rescueKnownFutile = sheetRescueFutile[Self.engineKey(args)]?.contains(rescueKey) == true
+        if StepExecutor.isSuccess(outcome.status) {
+            // 成功。救済は要らない
+        } else if outcome.notes.contains(.sheetCollapsed), rescueKnownFutile {
+            sheetNote = "note: the list stopped moving inside a partially open sheet again."
+                + " Expanding the sheet was already tried on this exact screen earlier in this"
+                + " session and did not help, so it was NOT retried this time (that rescue costs"
+                + " seconds)." + Self.sheetManualExpandHint(after) + "\n"
+        } else if outcome.notes.contains(.sheetCollapsed),
            let grabber = Self.sheetGrabber(in: after) {
             let rescueStart = timingClock.now
             let beforeExpansion = after
@@ -620,11 +697,15 @@ extension MCPServer {
                 let beforeHeight = beforeHeight ?? 0
                 let expandedHeight = expandedHeight ?? 0
                 rescueMs = Int((timingClock.now - rescueStart) / .milliseconds(1))
+                // **効かなかったことを覚える**(sheetRescueKey 参照)。鍵は救済**前**の木 ——
+                // これが次の呼び出しの1回目の探索が行き着く画面だから
+                rememberFutileSheetRescue(beforeExpansion, args: args)
                 sheetNote = "note: the list had stopped moving inside a partially open sheet, so"
                     + " [\(grabber.ref)] \(RefGuard.describe(grabber)) was dragged up to expand it,"
                     + " but its height did not increase (\(Int(beforeHeight))pt before,"
                     + " \(Int(expandedHeight))pt after) — the sheet cannot be expanded this way,"
-                    + " so the search was not retried.\n"
+                    + " so the search was not retried."
+                    + Self.sheetManualExpandHint(after) + "\n"
             } else {
                 // **再試行は逆走査つき**(defers... を外した別 executor)。展開後も稀に部分高の
                 // ままのことがあり、そこで再び後回しにすると救済がどこにも無くなる
@@ -644,11 +725,13 @@ extension MCPServer {
                 // 3回目を撃つ)。高さ比較(shrunk)より直接的な証拠なのでこちらを優先する
                 if !StepExecutor.isSuccess(outcome.status),
                    outcome.notes.contains(.sheetCollapsed) {
+                    rememberFutileSheetRescue(beforeExpansion, args: args)
                     shrunkNote = " The retry ended the same way (the sheet collapsed again) —"
                         + " on this screen drags inside the list collapse the outer sheet instead"
                         + " of scrolling it, so a third attempt will not do better. Read the rows"
                         + " already listed (the ⚠️offscreen ones included), or use the app's own"
                         + " controls to reveal the content."
+                        + Self.sheetManualExpandHint(after)
                 } else {
                     // **基準は「救済前」or「展開直後」の測れたほう**: 最初の探索のスワイプが
                     // シートを畳んでいると救済前の木に容器が居ない(実測)。展開で容器が
@@ -660,11 +743,13 @@ extension MCPServer {
                     if !StepExecutor.isSuccess(outcome.status),
                        Self.sheetRetryContainerState(beforeHeight: referenceHeight,
                                                      finalHeight: finalHeight) == .shrunk {
+                        rememberFutileSheetRescue(beforeExpansion, args: args)
                         shrunkNote = " The scroll container ended up SHORTER than before the rescue"
                             + " (\(Int(referenceHeight ?? 0))pt → \(Int(finalHeight ?? 0))pt) — on"
                             + " this screen a swipe at the list's edge collapses the outer sheet"
                             + " instead of scrolling, so repeating the search will not help; read"
                             + " the visible rows or navigate another way."
+                            + Self.sheetManualExpandHint(after)
                     }
                 }
                 sheetNote = "note: the list had stopped moving inside a partially open sheet, so"
@@ -672,6 +757,9 @@ extension MCPServer {
                     + " the search was retried once."
                     + Self.sheetExpansionLayoutNote(before: beforeExpansion, after: after)
                     + shrunkNote + "\n"
+                // **最終木も同じ鍵で覚える**: 次の呼び出しの1回目の探索は、この画面から始まって
+                // ここへ戻ってくる。救済前・救済後のどちらの指紋で来ても弾けるようにする
+                if !shrunkNote.isEmpty { rememberFutileSheetRescue(after, args: args) }
             }
         }
         // **成功は .passed/.passedViaFallback/.healed の3形**(StepExecutor.isSuccess の定義)。
@@ -715,12 +803,20 @@ extension MCPServer {
             // 読んで**もう一度同じことを手で試す**(そのぶん往復が増える)
             // **内訳は失敗側にも出す**: 実測で 7.8 秒かけて届かなかった回に何も出ず、
             // 何本振ったのかも分からなかった —— 遅さの説明が最も要るのはこちら
+            // **シートが原因の失敗には必ず具体手順を添える**(2026-08-12 の監査)。救済を
+            // 撃たなかった/撃てなかった回(グラバーは居るのに `.sheetCollapsed` が立たない、
+            // 記憶で省いた等)は、FTCore 側の総称ヒント「drag its grabber upward」で終わっており、
+            // 読み手は毎回 ref と目標 y を自分で組み立てていた。**sheetNote が既に出していたら足さない**
+            let manualExpand = sheetNote.contains("ft_drag fromRef:") ? ""
+                : ((outcome.notes.contains(.sheetCollapsed) || !sheetNote.isEmpty)
+                   ? Self.sheetManualExpandHint(after) : "")
             throw MCPError(scrollFrameLabelNote + sheetNote + containerGoneNote
                 + Self.scrollTimingNote(totalMs: Int((timingClock.now - timingStart)
                                                      / .milliseconds(1)),
                                         swipes: outcome.scrollSwipes, rescueMs: rescueMs)
                 + "scrollTo \"\(selectorText)\" did not reach the element"
-                + " (\(reason))\(Self.truncationHint(after)). \(Self.visibleLabelsHint(after))"
+                + " (\(reason))\(manualExpand)\(Self.truncationHint(after))."
+                + " \(Self.visibleLabelsHint(after))"
                 + Self.notationHint(selectorText, in: after)
                 + Self.similarLabelsHint(selectorText, in: after)
                 + Self.scrollAreaHint(beforeScroll ?? after, args: args))

@@ -250,14 +250,38 @@ final class MCPWritableSelectorTests: XCTestCase {
     }
 
     /// 群のどの候補も安定したセレクタを書けないとき、その事実を明示する
-    /// (index-based の "~" と「そもそも書けない」の両方を「安定は無い」として拾う)
+    /// (index-based の "~" と「そもそも書けない」の両方を「安定は無い」として拾う)。
+    /// **1度だけ言う**(2026-08-12): 群が畳まれた行(compactGroupLine)は既に
+    /// 「tap by ref instead」と言うので、その回に末尾の総括まで出すと同じ助言が2回並ぶ
     func testAmbiguousNoteSaysWhenNoCandidateHasAStableSelector() throws {
         let snap = snapshot([element(1, type: "clickable", label: "経路", depth: 1),
                              element(2, type: "clickable", label: "経路", depth: 1)])
         let note = MCPServer.ambiguousLabelsNote(snap)
-        XCTAssertTrue(note.contains(
-            "none of the above have a stable selector on this screen —"
-                + " prefer tapping by ref for these."), note)
+        XCTAssertTrue(note.contains("tap by ref instead"), note)
+        XCTAssertEqual(note.components(separatedBy: "tap by ref").count - 1, 1, note)
+        XCTAssertFalse(note.contains("none of the above have a stable selector"), note)
+    }
+
+    /// 畳めない群(index-based だが**スコープが複数**にまたがる)では、末尾の総括が要る ——
+    /// 明細行は各候補に "~" を付けるだけで、「どれも安定でない」とは言わないため。
+    /// 形: 同じラベルの行が2つの容器に2件ずつ = どの候補も `#pane_x >> .clickable[n]~`
+    func testAmbiguousNoteKeepsTheFooterWhenAGroupIsNotCompacted() throws {
+        func box(_ ref: Int, id: String?, label: String?, x: Double, y: Double,
+                 w: Double, h: Double, depth: Int) -> ElementInfo {
+            ElementInfo(ref: ref, type: id == nil ? "clickable" : "other", identifier: id,
+                        label: label, value: nil, placeholder: nil, enabled: true,
+                        frame: FTRect(x: x, y: y, width: w, height: h), depth: depth)
+        }
+        let snap = snapshot([
+            box(1, id: "pane_a", label: nil, x: 0, y: 0, w: 400, h: 300, depth: 1),
+            box(2, id: nil, label: "経路", x: 10, y: 10, w: 100, h: 40, depth: 2),
+            box(3, id: nil, label: "経路", x: 10, y: 60, w: 100, h: 40, depth: 2),
+            box(4, id: "pane_b", label: nil, x: 0, y: 400, w: 400, h: 300, depth: 1),
+            box(5, id: nil, label: "経路", x: 10, y: 410, w: 100, h: 40, depth: 2),
+            box(6, id: nil, label: "経路", x: 10, y: 460, w: 100, h: 40, depth: 2),
+        ])
+        let note = MCPServer.ambiguousLabelsNote(snap)
+        XCTAssertTrue(note.contains("none of the above have a stable selector"), note)
     }
 
     /// 群の中に安定セレクタを持つ候補が1件でもあれば、上の明示は出さない
@@ -272,16 +296,17 @@ final class MCPWritableSelectorTests: XCTestCase {
 
     // MARK: - C: 重複 id 注記の「安定なし」明示
 
-    /// duplicateIDsNote 版: どの候補も安定したセレクタを書けないとき明示する
+    /// duplicateIDsNote 版: どの候補も安定したセレクタを書けないとき明示する。
+    /// ラベル版と同じく**1度だけ**(畳んだ行が既に言っているので総括は重ねない)
     func testDuplicateIDsNoteSaysWhenNoCandidateHasAStableSelector() throws {
         let snap = snapshot([
             element(1, type: "textField", id: "numberpicker_input", depth: 1),
             element(2, type: "textField", id: "numberpicker_input", depth: 1),
         ])
         let note = MCPServer.duplicateIDsNote(snap)
-        XCTAssertTrue(note.contains(
-            "none of the above have a stable selector on this screen —"
-                + " prefer tapping by ref for these."), note)
+        XCTAssertTrue(note.contains("tap by ref instead"), note)
+        XCTAssertEqual(note.components(separatedBy: "tap by ref").count - 1, 1, note)
+        XCTAssertFalse(note.contains("none of the above have a stable selector"), note)
     }
 
     /// duplicateIDsNote 版: 各要素が別々の一意ラベルを持ち、それぞれ安定に書けるなら明示しない
