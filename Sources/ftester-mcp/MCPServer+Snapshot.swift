@@ -135,9 +135,13 @@ extension MCPServer {
 
     /// スナップショット本文(注記一式 + 木)。ft_snapshot と `snapshotAfter` が共有する ——
     /// **2つ目の組み立てを作らない**(注記を1つ足したときに片方だけ出る事故を防ぐ)。
-    /// `extraNote` は ft_snapshot の waitFor 用(すり替わりの直後・他の注記より前に置く)
+    /// `extraNote` は ft_snapshot の waitFor 用(すり替わりの直後・他の注記より前に置く)。
+    /// `cache` は計測用の注入口(既定 nil = 呼ぶたびに新しく作る、production の全経路がこちら)。
+    /// **snapshot を跨いで渡さない**——SnapshotAnnotationCache のコメント参照
     func snapshotBody(_ snapshot: SnapshotResponse, driver: AppDriver,
-                              args: [String: Any], extraNote: String = "") async -> String {
+                              args: [String: Any], extraNote: String = "",
+                              cache: SnapshotAnnotationCache? = nil) async -> String {
+        let cache = cache ?? SnapshotAnnotationCache()
         // **背面のアプリのツリーを「今の画面」として返さない**: XCUITest の snapshot は
         // セッションのアプリに閉じているので、**別のアプリが前面に来ても同じ木を返し続ける**。
         // 実測(2026-08-05・シミュレータで確定。症状の初出は iPhone 実機):
@@ -152,16 +156,16 @@ extension MCPServer {
         // 注記は「畳んだ」と言うのに木は個別列挙、という食い違いになる
         let collapsingBulk = args["expandBulk"] as? Bool != true
         return switchedNote + extraNote + backgroundNote
-            + Self.ghostNote(snapshot, collapsingBulk: collapsingBulk)
+            + Self.ghostNote(snapshot, collapsingBulk: collapsingBulk, cache: cache)
             + (ScrollFrameCandidates.note(snapshot) ?? "")
             + Self.truncationNote(snapshot) + Self.bulkExemptNote(snapshot)
             + onceNonEmpty("unlabeledClickablesNote") { Self.unlabeledClickablesNote(snapshot, abbreviated: $0) }
-            + onceNonEmpty("ambiguousLabelsNote") { Self.ambiguousLabelsNote(snapshot, abbreviated: $0) }
+            + onceNonEmpty("ambiguousLabelsNote") { Self.ambiguousLabelsNote(snapshot, abbreviated: $0, cache: cache) }
             // ラベル版の直後に置く(読み手はどちらも「一意に指せるか」を見に来る)
-            + onceNonEmpty("duplicateIDsNote") { Self.duplicateIDsNote(snapshot, abbreviated: $0) }
+            + onceNonEmpty("duplicateIDsNote") { Self.duplicateIDsNote(snapshot, abbreviated: $0, cache: cache) }
             + Self.keyboardCoverageNote(snapshot) + Self.sliverNote(snapshot)
             + truncatedLabelNote(snapshot)
-            + SnapshotRenderer.render(snapshot, flagging: Self.ghostFlags(snapshot),
+            + SnapshotRenderer.render(snapshot, flagging: cache.ghostFlags(snapshot),
                                       collapsingBulk: collapsingBulk,
                                       interactiveOnly: args["interactiveOnly"] as? Bool == true)
     }
@@ -559,6 +563,10 @@ extension MCPServer {
                                     releasesScrollTouch: !isAndroid,
                                     uiFramework: uiFrameworkHint,
                                     defersPartialSheetRecovery: true)
+        // **所要時間の内訳の起点**(2026-08-12): (a) 1回目の探索 + (b) シート展開救済だけを測る
+        // (driver 解決・scrollFrame 解決は上ですでに終わっている)。成功応答だけに載せる
+        let timingClock = ContinuousClock()
+        let timingStart = timingClock.now
         var outcome = await executor.execute(step)
         // **探索でツリーは必ず動く**ので、覚えている木を捨てて撮り直す(古い ref を残さない)
         var after = try await freshSnapshot(scrollDriver, args: args)
@@ -569,8 +577,11 @@ extension MCPServer {
         // 条件は StepExecutor と共有(StepNote.sheetCollapsed)。**グラバーを名前で特定できる
         // ときだけ**動かす —— 当てずっぽうのドラッグは地図やリストを勝手に動かす
         var sheetNote = ""
+        var rescueMs: Int?
         if StepExecutor.isSuccess(outcome.status) {} else if outcome.notes.contains(.sheetCollapsed),
            let grabber = Self.sheetGrabber(in: after) {
+            let rescueStart = timingClock.now
+            let beforeExpansion = after
             let toY = after.screen.height * Self.expandedSheetTopRatio
             try await scrollDriver.drag(fromX: grabber.frame.centerX, fromY: grabber.frame.centerY,
                                         toX: grabber.frame.centerX, toY: toY,
@@ -592,9 +603,11 @@ extension MCPServer {
                                              uiFramework: uiFrameworkHint)
             outcome = await retryExecutor.execute(step)
             after = try await freshSnapshot(scrollDriver, args: args)
+            rescueMs = Int((timingClock.now - rescueStart) / .milliseconds(1))
             sheetNote = "note: the list had stopped moving inside a partially open sheet, so"
                 + " [\(grabber.ref)] \(RefGuard.describe(grabber)) was dragged up to expand it and"
-                + " the search was retried once.\n"
+                + " the search was retried once."
+                + Self.sheetExpansionLayoutNote(before: beforeExpansion, after: after) + "\n"
         }
         // **成功は .passed/.passedViaFallback/.healed の3形**(StepExecutor.isSuccess の定義)。
         // fallback 一致も探索としては成功であり、失敗文を投げると内部 enum(FlowLocator ダンプ)が
@@ -621,7 +634,12 @@ extension MCPServer {
             // 候補を見せれば、綴り違いなのか記法(`*…*`)不足なのかがその場で分かる
             // **やり直し済みなら先に言う**: 言わないと読み手は失敗文のシート展開ヒントを
             // 読んで**もう一度同じことを手で試す**(そのぶん往復が増える)
+            // **内訳は失敗側にも出す**: 実測で 7.8 秒かけて届かなかった回に何も出ず、
+            // 何本振ったのかも分からなかった —— 遅さの説明が最も要るのはこちら
             throw MCPError(scrollFrameLabelNote + sheetNote
+                + Self.scrollTimingNote(totalMs: Int((timingClock.now - timingStart)
+                                                     / .milliseconds(1)),
+                                        swipes: outcome.scrollSwipes, rescueMs: rescueMs)
                 + "scrollTo \"\(selectorText)\" did not reach the element"
                 + " (\(reason))\(Self.truncationHint(after)). \(Self.visibleLabelsHint(after))"
                 + Self.notationHint(selectorText, in: after)
@@ -701,16 +719,23 @@ extension MCPServer {
             step: scrollStep, unresolved: nil, summary: "scrollTo \"\(selectorText)\""))
         // **ghostNote と render で畳みの有無を揃える**(ft_snapshot と同じ理由)
         let collapsingBulk = args["expandBulk"] as? Bool != true
-        return text(switched + scrollFrameLabelNote + sheetNote + "scrolled to \"\(selectorText)\"\(landed)\(fallbackNote)."
+        let totalMs = Int((timingClock.now - timingStart) / .milliseconds(1))
+        let timingNote = Self.scrollTimingNote(totalMs: totalMs, swipes: outcome.scrollSwipes,
+                                               rescueMs: rescueMs)
+        // **ghostNote と render で ghostFlags を共有**(2026-08-12): 同じ `after` に対する
+        // 応答1回ぶんのキャッシュ。SnapshotAnnotationCache のコメント参照(寿命はこの呼び出しだけ)
+        let cache = SnapshotAnnotationCache()
+        return text(switched + scrollFrameLabelNote + sheetNote + timingNote
+            + "scrolled to \"\(selectorText)\"\(landed)\(fallbackNote)."
             + " The refs below are fresh\n" + scrollAreaNote
-            + Self.ghostNote(after, collapsingBulk: collapsingBulk)
+            + Self.ghostNote(after, collapsingBulk: collapsingBulk, cache: cache)
             + Self.truncationNote(after)
             + Self.keyboardCoverageNote(after) + Self.sliverNote(after)
             + truncatedLabelNote(after)
             // **既定で畳む**(expandBulk で戻せる): ft_scroll_to の答えは「探した1つがどこに居るか」
             // なので、地図のピンが数十行並ぶ意味は薄い。ft_snapshot と同じ規則にする
             // (2026-08-10 まではここだけ interactiveOnly を無視して常に全行を出していた)
-            + SnapshotRenderer.render(after, flagging: Self.ghostFlags(after),
+            + SnapshotRenderer.render(after, flagging: cache.ghostFlags(after),
                                       collapsingBulk: collapsingBulk,
                                       interactiveOnly: args["interactiveOnly"] as? Bool == true))
     }

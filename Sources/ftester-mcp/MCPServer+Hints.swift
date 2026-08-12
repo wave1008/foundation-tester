@@ -24,6 +24,39 @@ extension MCPServer {
         }
     }
 
+    /// 救済(半開きシートを広げての再試行)がレイアウトを変えた可能性を伝える。
+    /// **検出できるものは名指しする**: 救済前に横ページャ(`pageIndicator`)があり救済後に
+    /// 消えていれば、`direction` がもうページ送りの意味を持たないことまで言う
+    /// (2026-08-12実測: Apple マップの経路一覧が横ページャ→縦リストに化けた回。直前の
+    /// ft_snapshot の「direction: right で届く」という案内と実際の結果が食い違っていた)。
+    /// 消えていない/両方に無いときは汎用の一文のみ(それ以上の推測はしない=誤検知回避)
+    static func sheetExpansionLayoutNote(before: SnapshotResponse, after: SnapshotResponse) -> String {
+        let generic = " Expanding the sheet may have changed the layout."
+        let hadPager = before.elements.contains { $0.type == "pageIndicator" }
+        let stillHasPager = after.elements.contains { $0.type == "pageIndicator" }
+        guard hadPager, !stillHasPager else { return generic }
+        return generic + " The paged layout (pageIndicator) is gone — it looks like the sheet became"
+            + " a single vertical list, so `direction` no longer selects which page to advance."
+    }
+
+    /// この長さ未満(ms)の探索は、救済(シート展開)が無ければ内訳を出さない —— 短い探索まで
+    /// 毎回「何本振ったか」を出すと、実際に遅い回(2026-08-12実測 9.8/12.8/15.6s)の内訳が
+    /// 埋もれる。救済ありは長さに関わらず出す(遅さの主因を切り分けたい回だから)
+    static let scrollTimingNoteThresholdMs = 2000
+
+    /// ft_scroll_to の所要時間の内訳(成功時のみ)。**純粋関数**にして計測点(ContinuousClock)と
+    /// 切り離す。swipes が nil(runScrollSearch を経由しなかった)でも壊れない
+    static func scrollTimingNote(totalMs: Int, swipes: Int?, rescueMs: Int?) -> String {
+        guard totalMs >= scrollTimingNoteThresholdMs || rescueMs != nil else { return "" }
+        var parts: [String] = []
+        if let swipes { parts.append("\(swipes) swipe(s)") }
+        if let rescueMs {
+            parts.append("sheet-expand rescue +\(Self.elapsedText(milliseconds: Double(rescueMs)))")
+        }
+        let detail = parts.isEmpty ? "" : " (\(parts.joined(separator: "; ")))"
+        return "note: search took \(Self.elapsedText(milliseconds: Double(totalMs)))\(detail).\n"
+    }
+
     /// 「session のアプリが今も前面か」。判定できないドライバでは黙る(嘘を足さない)
     static func foregroundNote(_ sessionBundleID: String?, driver: AppDriver) async -> String {
         guard let bundleID = sessionBundleID else { return "" }
@@ -113,7 +146,15 @@ extension MCPServer {
     /// `y=-59` の行まで「別の物に当たるかも」と警告され、本物の leftover と同じ重さで並んでいた
     static let offscreenMark = "⚠️offscreen"
 
+    /// **実計算の回数**(観測用。production の分岐には使わない)。`SnapshotAnnotationCache` 側の
+    /// カウンタと違い、**キャッシュを迂回した呼び出しも数える** —— あちらだけを数えると、
+    /// 「cache を渡し忘れた呼び出しが1つある」形をテストが素通しする(実際に変異2件が生き延びた)。
+    /// 読むテストは直前に 0 を入れて直後に読む: `swift test --parallel` はテストごとに
+    /// プロセスを分け、直列実行なら順に走るので、どちらでも他のテストと混ざらない
+    static var ghostFlagsComputations = 0
+
     static func ghostFlags(_ snapshot: SnapshotResponse) -> [Int: String] {
+        ghostFlagsComputations += 1
         let refs = Set(ghostRefs(snapshot)).union(RefGuard.stackedRefs(snapshot.elements))
         var flags: [Int: String] = [:]
         for element in snapshot.elements where refs.contains(element.ref) {
@@ -163,10 +204,12 @@ extension MCPServer {
     /// **collapsingBulk は render() と揃える**(2026-08-10): 畳まれる ref をここでも個別に
     /// 列挙すると、地図 POI のような大量群で出力の半分がこの注記に化ける。
     /// どの ref が畳まれるかは `SnapshotRenderer.foldedGroups` — render 本体と同じ関数 — で決める
-    static func ghostNote(_ snapshot: SnapshotResponse, collapsingBulk: Bool = true) -> String {
-        let flagged = ghostFlags(snapshot)
-        let folded = SnapshotRenderer.foldedGroups(snapshot, flagging: flagged,
-                                                   collapsingBulk: collapsingBulk)
+    static func ghostNote(_ snapshot: SnapshotResponse, collapsingBulk: Bool = true,
+                          cache: SnapshotAnnotationCache? = nil) -> String {
+        let flagged = cache?.ghostFlags(snapshot) ?? ghostFlags(snapshot)
+        let folded = cache?.foldedGroups(snapshot, flagging: flagged, collapsingBulk: collapsingBulk)
+            ?? SnapshotRenderer.foldedGroups(snapshot, flagging: flagged,
+                                             collapsingBulk: collapsingBulk)
         let leftovers = snapshot.elements.filter { flagged[$0.ref] == leftoverMark }
         let offscreens = snapshot.elements.filter { flagged[$0.ref] == offscreenMark }
         var note = ""
@@ -600,6 +643,69 @@ extension MCPServer {
         }
     }
 
+    /// 1回の応答組み立て(snapshotBody / scrollTo)に**閉じた**計算の使い回し。
+    /// **寿命は呼び出し元のローカル変数だけ**——インスタンスをまたいで保持すると、木が変わった後の
+    /// 応答が古い ghost/graded を返す事故になるので、MCPServer の instance state
+    /// (refGenerations 等)には絶対に置かない。呼び出し元は snapshot を撮り直すたびに
+    /// 新しいインスタンスを作ること(このクラス自身は「同じ snapshot 値に対して同じ答えを返す」
+    /// こと以上は保証しない)。
+    ///
+    /// 実測(2026-08-12・実アプリ 203 要素画面): 素の呼び出しは同じ木に対して ghostFlags を
+    /// 3回・foldedGroups を2回払い、ambiguousLabelsNote と duplicateIDsNote は別々の
+    /// SelectorNaming を作るので、両方の群に出る要素の graded が二重に走ることがあった。
+    final class SnapshotAnnotationCache {
+        private var ghostFlagsResult: [Int: String]?
+        /// collapsingBulk の値で結果が変わる(duplicateIDsNote は常に true で引く一方、
+        /// ghostNote/render は expandBulk 引数由来の値)ので bool をキーにする
+        private var foldedGroupsResults: [Bool: [String: Set<Int>]] = [:]
+        private var namingInstance: SelectorNaming?
+
+        /// テストが「1応答で1回だけ計算したか」を確かめるための実計算回数(キャッシュヒットは
+        /// 数えない)。production の分岐には使わない——観測用のカウンタを増やすだけ
+        private(set) var ghostFlagsComputeCount = 0
+        private(set) var foldedGroupsComputeCount = 0
+        /// `SelectorNaming.gradedComputeCount` への転送(naming が未生成なら 0)
+        var gradedComputeCount: Int { namingInstance?.gradedComputeCount ?? 0 }
+
+        func ghostFlags(_ snapshot: SnapshotResponse) -> [Int: String] {
+            if let ghostFlagsResult { return ghostFlagsResult }
+            ghostFlagsComputeCount += 1
+            let result = MCPServer.ghostFlags(snapshot)
+            ghostFlagsResult = result
+            return result
+        }
+
+        /// **テスト専用の注入口**。呼び出し回数のカウンタは「cache を経由した呼び出し」しか
+        /// 数えられないので、ある呼び手が cache 引数を丸ごと渡し忘れて生の関数を直呼びしても、
+        /// 別の呼び手が後から同じ cache を正しく使えばカウンタは辻褄が合ってしまう
+        /// (2026-08-12 に mutation-check で実際に2件すり抜けた)。**値の出所**を追う ——
+        /// ここで明らかに間違った値を仕込み、応答にその値が現れるかで「本当にこのインスタンスを
+        /// 読んだか」を確かめる。production コードはこのメソッドを呼ばない
+        func primeGhostFlagsForTesting(_ value: [Int: String]) {
+            ghostFlagsResult = value
+        }
+
+        func foldedGroups(_ snapshot: SnapshotResponse, flagging: [Int: String],
+                          collapsingBulk: Bool) -> [String: Set<Int>] {
+            if let cached = foldedGroupsResults[collapsingBulk] { return cached }
+            foldedGroupsComputeCount += 1
+            let result = SnapshotRenderer.foldedGroups(snapshot, flagging: flagging,
+                                                       collapsingBulk: collapsingBulk)
+            foldedGroupsResults[collapsingBulk] = result
+            return result
+        }
+
+        /// `ambiguousLabelsNote` と `duplicateIDsNote` が**同じ**インスタンス(=同じ graded メモ)
+        /// を共有するための入口。**snapshot はここに渡した1つに固定する**呼び出し規約
+        /// (SelectorNaming.graded と同じ規約 — 別の木を渡すと ref が衝突する)
+        func selectorNaming(_ snapshot: SnapshotResponse) -> SelectorNaming {
+            if let namingInstance { return namingInstance }
+            let created = SelectorNaming(snapshot)
+            namingInstance = created
+            return created
+        }
+    }
+
     struct SelectorNaming {
         private let idCounts: [String: Int]
         private let labelCounts: [String: Int]
@@ -678,11 +784,39 @@ extension MCPServer {
             graded(for: element, in: snapshot)?.selector
         }
 
+        /// `graded(for:in:)` のメモ化。**キーは ref**——この SelectorNaming は init に渡した
+        /// 1つの snapshot に閉じている前提なので ref だけで一意に定まる(呼び出し規約:
+        /// graded(for:in:) に渡す snapshot は必ず init と同じ木。既存の呼び出し元は全てこの
+        /// 規約を守っている——別の木を渡すと ref が衝突し別要素の答えを返す)。
+        /// class にして struct 自体は値型のまま(let で受けられる)保つ——`mutating` にすると
+        /// 既存の `let naming = SelectorNaming(...)` 呼び出し元が軒並みコンパイルエラーになる
+        private final class GradedCache {
+            var storage: [Int: (selector: String, durability: Durability)?] = [:]
+            /// テスト用: 実際に計算した回数(キャッシュヒットは数えない)
+            var computeCount = 0
+        }
+        private let gradedCache = GradedCache()
+
+        /// テスト用: このインスタンスで graded が実際に計算された回数
+        var gradedComputeCount: Int { gradedCache.computeCount }
+
         /// セレクタと**その耐久性**。「書ける」と「壊れにくい」は別物で、同じ一覧に混ぜると
         /// 生成器は先頭を採るだけになる(2026-08-10)。`#id` と一意ラベルは木が変わっても
         /// 指し続けるが、`#container >> .type[n]` の `[n]` は**同じ型の兄弟が1つ増減しただけで
-        /// 別要素を指す**ので、シナリオに書くと静かに壊れる
+        /// 別要素を指す**ので、シナリオに書くと静かに壊れる。
+        /// **同じ要素は木の中で1回しか採番しない**(2026-08-12): 曖昧ラベルと重複 id の両方の
+        /// 群に出る要素(実測: `#TitleLabel` ×3 と `"経路"` ×3 が要素を共有)を、呼び出し元が
+        /// 同じインスタンスを使い回せば二重に検証しない
         func graded(for element: ElementInfo,
+                    in snapshot: SnapshotResponse) -> (selector: String, durability: Durability)? {
+            if let cached = gradedCache.storage[element.ref] { return cached }
+            gradedCache.computeCount += 1
+            let result = computeGraded(for: element, in: snapshot)
+            gradedCache.storage[element.ref] = result
+            return result
+        }
+
+        private func computeGraded(for element: ElementInfo,
                     in snapshot: SnapshotResponse) -> (selector: String, durability: Durability)? {
             // **検査は耐久性で選ぶ**: `.stable` は「位置に依存しない」という意味なので、
             // 候補が2件以上あってはならない(先頭一致で通してしまうと、群の1件目にだけ
@@ -958,6 +1092,56 @@ extension MCPServer {
     /// 雑音は「入れ子の一本鎖」を除外して抑える(下記)
     static let ambiguousLabelMinimum = 2
 
+    /// 群の全メンバーが index-based(`.indexed`)か「そもそも書けない」(`graded` が nil)で、
+    /// かつ index-based なメンバーが**全員同じスコープ接頭辞**(`graded.selector` の最後の
+    /// `" >> "` より前。無ければ空文字)を持つときだけ、代替セレクタの列挙を ref の列へ畳む。
+    /// 1件でも `.stable` があれば nil(呼び手は従来の列挙描画へ落ちる)。
+    /// **判定・整形の両方をここに閉じる**(呼び手が条件を自前で再実装しない)。
+    /// 実測(2026-08-12 の Apple マップ監査): 同じ容器に並ぶ同型セルが10件あると、
+    /// index 違いだけの代替セレクタ6行が並び、注記が本文より長くなっていた
+    ///
+    /// `gradedShown` は**明細描画と共有する**先頭 `ambiguousMatchesShown` 件の採番結果。
+    /// 同じ要素を二度 `graded` に掛けない —— 実アプリ画面では1件の採番が候補の検証2周
+    /// (`picksExactly`/`picksOnlyOne`)を払う(`SelectorNaming.typeLabelCounts` の doc 参照)。
+    /// 打ち切りの外側は畳めるかの判定にしか使わないので、そこだけ遅延で引く。
+    /// 空で呼べば全件を自分で引く(結果は同じ。共有しないぶん遅いだけ)
+    static func compactGroupLine(label: String, matches: [ElementInfo],
+                                 gradedShown: [(selector: String, durability: Durability)?] = [],
+                                 naming: SelectorNaming, in snapshot: SnapshotResponse) -> String? {
+        var scope: String?
+        var anyIndexed = false
+        for (offset, element) in matches.enumerated() {
+            let cached = offset < gradedShown.count
+                ? gradedShown[offset] : naming.graded(for: element, in: snapshot)
+            guard let graded = cached else { continue }
+            guard graded.durability == .indexed else { return nil }
+            anyIndexed = true
+            let prefix: String
+            if let range = graded.selector.range(of: " >> ", options: .backwards) {
+                prefix = String(graded.selector[..<range.lowerBound])
+            } else {
+                prefix = ""
+            }
+            if let existing = scope {
+                guard existing == prefix else { return nil }
+            } else {
+                scope = prefix
+            }
+        }
+        let shownRefs = matches.prefix(ambiguousMatchesShown).map { "[\($0.ref)]" }
+            .joined(separator: " ")
+        let cut = matches.count > ambiguousMatchesShown
+            ? " (+\(matches.count - ambiguousMatchesShown) more matches not shown)" : ""
+        let reason: String
+        if anyIndexed {
+            let scopeClause = (scope?.isEmpty == false) ? "repeats inside \(scope!); " : ""
+            reason = "\(scopeClause)every alternative is index-based, so tap by ref instead."
+        } else {
+            reason = "none of these have a selector on this screen; tap by ref instead."
+        }
+        return "  \(label) ×\(matches.count): \(shownRefs)\(cut) — \(reason)"
+    }
+
     /// `ambiguousLabelsNote` と `duplicateIDsNote` が共有する描画本体。差分はグループ化キー
     /// (呼び出し側で `label` に整形済み — `"\"foo\""` か `"#foo"`)と3つの文言だけなので、
     /// ここは凡例ヘッダ・グループごとの明細・打ち切り行・`anyStable` フッタだけを持つ。
@@ -970,13 +1154,21 @@ extension MCPServer {
         var lines: [String] = [abbreviated ? shortHeader : fullHeader]
         var anyStable = false
         for (label, matches) in sortedGroups.prefix(ambiguousLabelsShown) {
-            let shown = matches.prefix(ambiguousMatchesShown).map { element -> String in
-                guard let graded = naming.graded(for: element, in: snapshot) else {
-                    return "[\(element.ref)] —"
-                }
-                if graded.durability == .stable { anyStable = true }
-                return "[\(element.ref)] \(graded.selector)\(graded.durability.mark)"
-            }.joined(separator: " / ")
+            // **採番は1要素につき1回**: 畳めるかの判定と明細描画で二度引かない(compactGroupLine の doc)
+            let gradedShown = matches.prefix(ambiguousMatchesShown)
+                .map { naming.graded(for: $0, in: snapshot) }
+            if let compact = compactGroupLine(label: label, matches: matches,
+                                              gradedShown: gradedShown, naming: naming,
+                                              in: snapshot) {
+                lines.append(compact)
+                continue
+            }
+            let shown = zip(matches.prefix(ambiguousMatchesShown), gradedShown)
+                .map { element, graded -> String in
+                    guard let graded else { return "[\(element.ref)] —" }
+                    if graded.durability == .stable { anyStable = true }
+                    return "[\(element.ref)] \(graded.selector)\(graded.durability.mark)"
+                }.joined(separator: " / ")
             let cut = matches.count > ambiguousMatchesShown
                 ? " (+\(matches.count - ambiguousMatchesShown) more matches not shown)" : ""
             lines.append("  \(label) ×\(matches.count): \(shown)\(cut)")
@@ -997,8 +1189,8 @@ extension MCPServer {
     /// 実測: 経路検索の候補一覧で「東京駅」が9件一致し、素のラベルでは一意に指せなかった
     /// `abbreviated`(F-6 の対象拡大・2026-08-10): 明細行(ラベルごとの候補列挙)と末尾の
     /// 「+N more」は既定と同じまま、ヘッダの凡例だけ「初出の注記を見よ」に圧縮する
-    static func ambiguousLabelsNote(_ snapshot: SnapshotResponse, abbreviated: Bool = false)
-        -> String {
+    static func ambiguousLabelsNote(_ snapshot: SnapshotResponse, abbreviated: Bool = false,
+                                    cache: SnapshotAnnotationCache? = nil) -> String {
         var groups: [String: [ElementInfo]] = [:]
         for e in snapshot.elements {
             // **ゼロ幅文字を落としてから数える**(2026-08-09)。一覧の行は
@@ -1027,12 +1219,15 @@ extension MCPServer {
             // ボタン群が丸ごと注記から消えていた
             .filter { !isSymbolOnlyLabel($0.key)
                 || $0.value.contains { BridgeSnapshotThinning.operableTypes.contains($0.type) } }
-            .sorted { $0.value.count > $1.value.count }
+            .sorted { groupPrecedes(key: $0.key, count: $0.value.count,
+                                    otherKey: $1.key, otherCount: $1.value.count) }
         guard !ambiguous.isEmpty else { return "" }
         // **「一意に指せない」で終わらせない**(2026-08-09): MCP の出力はシナリオへ書く文字列を
         // 供給するためにあるので、代わりに書ける形まで出す。機構は `writableSelector` =
         // ft_tap の推奨セレクタ(E)と同じ実装
-        let naming = SelectorNaming(snapshot)
+        // **cache 経由なら duplicateIDsNote と同じ SelectorNaming を共有する**(2026-08-12):
+        // 両方の群に出る要素の graded を二重に検証しない
+        let naming = cache?.selectorNaming(snapshot) ?? SelectorNaming(snapshot)
         return renderGroups(ambiguous.map { (label: "\"\($0.key)\"", matches: $0.value) },
                             naming: naming, in: snapshot,
                             fullHeader: "note: these labels match multiple elements, so a plain label"
@@ -1052,14 +1247,16 @@ extension MCPServer {
     /// 除外(isSingleChain)・上限・代替セレクタの出し方は ambiguousLabelsNote と**まったく同じ
     /// 仕組み**(SelectorNaming.graded)を使い回す —— 採番規則を2つ持たない。
     /// `abbreviated` はラベル版と同じ意味(F-6)
-    static func duplicateIDsNote(_ snapshot: SnapshotResponse, abbreviated: Bool = false) -> String {
+    static func duplicateIDsNote(_ snapshot: SnapshotResponse, abbreviated: Bool = false,
+                                 cache: SnapshotAnnotationCache? = nil) -> String {
         var groups: [String: [ElementInfo]] = [:]
         for e in snapshot.elements {
             guard let id = e.identifier, !id.isEmpty else { continue }
             groups[id, default: []].append(e)
         }
-        let bulkFolded = SnapshotRenderer.foldedGroups(snapshot, flagging: ghostFlags(snapshot),
-                                                       collapsingBulk: true)
+        let flags = cache?.ghostFlags(snapshot) ?? ghostFlags(snapshot)
+        let bulkFolded = cache?.foldedGroups(snapshot, flagging: flags, collapsingBulk: true)
+            ?? SnapshotRenderer.foldedGroups(snapshot, flagging: flags, collapsingBulk: true)
         let duplicated = groups
             .filter { $0.value.count >= ambiguousLabelMinimum && !isSingleChain($0.value, in: snapshot) }
             // **畳まれる群は列挙しない**。実測(Apple マップの経路プランナー): 地図ピンの
@@ -1069,9 +1266,10 @@ extension MCPServer {
             // **expandBulk の値では切り替えない**: 個別列挙させたい回でも、165 行ぶんの
             // 「一意でない」は読み手の役に立たない
             .filter { bulkFolded[$0.key] == nil }
-            .sorted { $0.value.count > $1.value.count }
+            .sorted { groupPrecedes(key: $0.key, count: $0.value.count,
+                                    otherKey: $1.key, otherCount: $1.value.count) }
         guard !duplicated.isEmpty else { return "" }
-        let naming = SelectorNaming(snapshot)
+        let naming = cache?.selectorNaming(snapshot) ?? SelectorNaming(snapshot)
         return renderGroups(duplicated.map { (label: "#\($0.key)", matches: $0.value) },
                             naming: naming, in: snapshot,
                             fullHeader: "note: these ids are shared by multiple elements, so a plain"
@@ -1083,6 +1281,15 @@ extension MCPServer {
                             shortHeader: "note: duplicate ids — write one of these instead"
                                 + " (legend in the first snapshot's note):",
                             overflowNoun: "duplicate id", abbreviated: abbreviated)
+    }
+
+    /// 注記に並べる群の順序。件数の多い順で、**同数タイは key の昇順**。
+    /// タイを決めないと順序が Dictionary の反復順(プロセスごとに変わる)に委ねられ、
+    /// 同じ木でも実行ごとに並びが入れ替わる —— `ambiguousLabelsShown` で打ち切るので
+    /// **どの群が出るか**まで変わる。**同一プロセス内では再現しない**ので、テストは
+    /// この比較関数を直接固定する(注記の文字列を2回比べても差は出ない)
+    static func groupPrecedes(key: String, count: Int, otherKey: String, otherCount: Int) -> Bool {
+        count == otherCount ? key < otherKey : count > otherCount
     }
 
     /// 曖昧ラベル注記に並べる上限。**打ち切ったことは必ず言う**(黙って切ると

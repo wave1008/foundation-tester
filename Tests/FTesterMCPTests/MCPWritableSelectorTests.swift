@@ -205,13 +205,17 @@ final class MCPWritableSelectorTests: XCTestCase {
         XCTAssertTrue(note.contains("[2] #route_tab"), note)
     }
 
-    /// **無言のケースを作らない**: 書けない要素は「—」で明示する
+    /// **無言のケースを作らない**: 書けない要素は明示する。
+    /// **群の全員が「そもそも書けない」なら圧縮形になる**(compactGroupLine の条件1。
+    /// 2026-08-12 に追加): 個別の「—」ではなく、ref を並べて理由をひと言にまとめる
     func testAmbiguousNoteMarksElementsThatHaveNoSelector() throws {
         let snap = snapshot([element(1, type: "clickable", label: "経路", depth: 1),
                              element(2, type: "clickable", label: "経路", depth: 1)])
         let note = MCPServer.ambiguousLabelsNote(snap)
-        XCTAssertTrue(note.contains("[1] —"), note)
-        XCTAssertTrue(note.contains("[2] —"), note)
+        XCTAssertTrue(note.contains("[1]"), note)
+        XCTAssertTrue(note.contains("[2]"), note)
+        XCTAssertTrue(note.contains("none of these have a selector on this screen"), note)
+        XCTAssertFalse(note.contains("[1] —"), "全員が書けないので個別の「—」ではなく圧縮形のはず: \(note)")
     }
 
     /// B-3: 入れ子の一本鎖(容器とその中身が同じラベル)は曖昧ではないので鳴らさない
