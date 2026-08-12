@@ -2530,12 +2530,38 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
     - **容器は解決したが動かせる幅が無い**(margin で潰れた等)場合は従来どおり全画面へ
       落ちるが、注記(`resolved but leaves nothing to move`)で申告する
     - scrollFrame 未指定の全画面スワイプは従来どおり(正当な既定)。
+  - **`ft_swipe` にも `scrollFrame` を置き、実装は `StepExecutor` へ委ねる**(2026-08-12)。
+    動機は実機観測: web ページの中の**横スクロールする表**を動かす手段が無く、`ft_scroll_to` も
+    使えなかった(狙う見出しがそもそも木に無い)。**FlowStep(action: "scroll") を組んで投げるだけ**に
+    する —— DSL の `scrollDown/scrollUp/scrollLeft/scrollRight(scrollFrame:)` と同じ形で、
+    `ScrollGeometry` の呼び出し・マージン定数・容器解決・fail-fast は全部あちらに1本化されている。
+    **直に `driver.swipe(_:intent:path:)` を叩いてはいけない**: in-app ブリッジは Compose/Flutter で
+    領域指定つきスクロールを 501 で拒否する設計で、その 501→XCUITest フォールバックは
+    `StepExecutor.swipeWithFallback` にしか無い(直叩きだと in-app 単独エンジンで 501 のまま終わる)。
+    **`direction` は指の向きのまま渡す**(action `"scroll"` は指の向きとして読む。逆写像は不要)。
+    - **`scroll` アクションは `scrollFrameRect` を見ていなかった**(2026-08-12 に発見・修正)。
+      `flick`/`scrollTo` は rect を先に見るのに `scroll` だけが locator しか見ず、木を撮る条件も
+      locator の有無で決めていたため、**ref 形の scrollFrame が黙って全画面スワイプへ退化**していた
+      (`scrollContainer` は rect を先に返すが、木が無いと viewport が無く path ごと nil になる)。
+    - **効くのは「木に出ている容器」だけ**。web ページの入れ子 `overflow-x` のように容器が
+      木に現れない相手には効かない(実測: ページ全体を渡すと中心線が表の外を通り、`ok` を返して
+      1px も動かない)。**その場合の逃げ道は `ft_drag` の座標指定**で、これは実測で動いた。
+      ツール定義にもこの2点を書いてある
   - **`ft_scroll_to` は「返す木にそれが居るか」を確かめてから成功と言う**(2026-08-06)。
     探索のスワイプは**タップ可能な行を発火させることがある**(SwiftUI の SUT で実測)。
     そのとき executor は途中の観測で passed のまま、撮り直した木は別画面になり、
     「scrolled to "#nav_diagnostics"」+ **その id が居ない診断画面の木**が返っていた
     (E2E-iOS のホームで決定的に再現)。照合は `matches`(waitFor と同じ = DSL と同じ)で行う ——
     `scrollTo` は `StepOutcome.resolvedElement` を載せないので、そちらを当てにすると一度も走らない。
+    - **この撮り直しは節約の対象ではない**(2026-08-12 に最適化を実装して**撤回**)。
+      iOS の `ft_scroll_to` は対象が既に画面内(0スワイプ)でも 5.35s かかり、内訳は
+      **探索 2.0s + この撮り直し 2.0s**(注記の生成は主因ではない —— `FT_MCP_NOTES_OFF=all`
+      でも差が出ない)。executor が解決に使った木を持ち帰って撮り直しを省く実装を入れたところ、
+      **既存の回帰テスト2本が落ちて構造的な穴が見えた**: 撮り直しを省くと、この照合と
+      「中心が画面外へ動いた」ゲート(`MCPScrollToOffscreenGateTests`)が**どちらも定義上通る**
+      ようになる(返す木 = 照合した木なので必ず一致する)。後者は **0スワイプの witness を持つ**
+      (Apple マップの経路ページャは読み取りの合間に自分で動く)ので、スワイプ数では守れない。
+      **2枚目を読むこと自体が砦**なので、速さと引き換えにしない。
   - **木が「起動したアプリのもの」かを突き合わせる**(`MCPServer.switchedAppNote`。2026-08-06)。
     Android のブリッジは session を**前面ウィンドウ**から採る(`root.getPackageName()`)ので、
     back でアプリを出ると session ごと別アプリへ移り、`backgroundedSessionNote` は
@@ -2659,11 +2685,26 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
     **検証は実行より前に全手へ通す**(途中で弾くと前半の手だけがデバイスに残る)。
     最初の失敗で止め、**木は最後に1回だけ**返す(毎手の木を積むとバッチにした意味が消える)。
     その最後の木だけは MCP の描画経路を通すので、遮蔽・ghost 等の MCP 固有の注記は付く
+    - **「全部通ったのに画面が1ピクセルも変わっていない」を言う**(2026-08-12)。最後の木を
+      `snapshotBody` へ直接渡していたため、操作系ツールの settle-lite(`snapshotAfterBody`)を
+      通らず、**空振りしたバッチが無条件に成功と表示されていた**(実測: iOS Safari の横スクロール表で
+      `swipeBy` が `ok` を返し、木は操作前とバイト一致。同じジェスチャを `ft_swipe` で撃つと
+      ちゃんと警告が出る = ツールによって同じ空振りが見えたり見えなかったりしていた)。
+      判定は `MCPServer.looksUnchanged` を再利用し(2つ目を書かない)、起点はループより前で
+      捕まえる(`recordSnapshot` が上書きするため)。**断定はしない** —— 縁に着いていて
+      正当に動かない回がある
+    - **`scroll` は codegen が書き戻せなかった**(2026-08-12 に発見・修正)。`ft_batch` は
+      `scrollDown/Up/Left/Right` を実行できる(カテゴリ `scroll` は許可済み)のに
+      `ScenarioCodeGen` に `case "scroll"` が無く、`// (unsupported step: …)` に落ちていた ——
+      **「通ったバッチは 1:1 でシナリオ行になる」という契約が破れていた**
   - **引数語彙は操作系の全ツールで揃える**(2026-08-10 の見直し): 長押しは `holdSeconds`
     (DSL の `tap(holdSeconds:)` と同語彙。旧 `duration` は黙って既定値へ落とさず改名を案内して拒否)、
-    `snapshotAfter`/`waitFor`/`timeout`/`expandBulk`/`interactiveOnly` は操作系7ツール
-    (tap/type/drag/swipe/double_tap/press/pinch)全部に載せる(無いツールだけ毎回 ft_snapshot の
-    1往復=承認1回を余計に払っていた)。集合は `MCPServerToolDefinitionsTests` が守る。
+    `snapshotAfter`/`waitFor`/`timeout`/`expandBulk`/`interactiveOnly` は操作系ツール
+    (tap/type/drag/swipe/double_tap/press/pinch/navigate/**open_url**)全部に載せる(無いツールだけ
+    毎回 ft_snapshot の1往復=承認1回を余計に払っていた。`ft_open_url` は 2026-08-12 に追加 ——
+    URL を開くのは開いた先を見るためなので、往復が必ず1回増えていた。**1行目の文面は
+    `snapshotAfter` の有無で出し分ける**: 木を返すのに「後で撮り直せ」と言うのは矛盾する)。
+    集合は `MCPServerToolDefinitionsTests` が守る。
     **繰り返し載るプロパティ説明は短文に留め、ニュアンスは initialize の instructions へ1本化**
     (`MCPServer.serverInstructions`。プロパティ側に書くと全ツールへ複製され毎セッションの
     コンテキスト費用になる —— udid/allowVersionSkew の長文複製だけで約9k文字あった)

@@ -655,7 +655,12 @@ extension MCPServer {
         let timingClock = ContinuousClock()
         let timingStart = timingClock.now
         var outcome = await executor.execute(step)
-        // **探索でツリーは必ず動く**ので、覚えている木を捨てて撮り直す(古い ref を残さない)
+        // **必ず撮り直す**(0スワイプで見つかった回も)。executor が解決に使った木を再利用して
+        // 1枚ぶん(iOS 実測 2.0s)節約する案は 2026-08-12 に実装して**撤回**した ——
+        // 撮り直しは節約ではなく**独立した砦**で、これを省くと「対象が返す木から消えている」
+        // (MCPRefGuardTests)と「中心が画面外へ動いた」(MCPScrollToOffscreenGateTests)の
+        // 2つのゲートが構造的に無効になる。後者は **0スワイプの witness を持つ**
+        // (Apple マップの経路ページャが読み取りの合間に自分で動く)ので、スワイプ数では守れない
         var after = try await freshSnapshot(scrollDriver, args: args)
         // **半開きシートは自分で広げて1度だけやり直す**(2026-08-09)。この形は失敗文で
         // 「グラバーを上へ引け」と案内済みだったが、**案内できるなら自分でできる** ——
