@@ -39,6 +39,7 @@ extension StepExecutor {
     /// 集計側の関心は「動いている画面のまま進んだか」で、どの経路で起きたかではない
     func recordedScrollSearchNote(_ result: ScrollSearchResult,
                                   scrollFrameNote: String? = nil) -> String? {
+        scrollSwipesThisStep = result.swipes
         if result.settleCapped { noteCodesThisStep.insert(.settleCapped) }
         if result.scrollFrameMissing { noteCodesThisStep.insert(.scrollFrameMissing) }
         // 文言側のシート展開ヒント(scrollNotFoundMessage)と**同じ条件**を機械可読で出す。
@@ -430,8 +431,12 @@ extension StepExecutor {
                         settleCapped = try await settleAfterFind(step: step, element: element,
                                                                  snapshot: snapshot, phase: &phase)
                     }
+                    // **成功時も swipes を載せる**: 失敗文にしか使わなかった頃は既定の 0 で
+                    // 害が無かったが、MCP の ft_scroll_to が所要時間の内訳へ出すようになり、
+                    // 「何本振って辿り着いたか」が常に 0 と報告されるようになった
                     return ScrollSearchResult(found: true, fallback: fallback, viaXCUITest: viaXCUITest,
-                                              hintJumps: hintJumps, settleCapped: settleCapped)
+                                              hintJumps: hintJumps, settleCapped: settleCapped,
+                                              swipes: swipes)
                 }
             }
             if attempt < maxSwipes {

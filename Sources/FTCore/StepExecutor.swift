@@ -164,14 +164,19 @@ public struct StepOutcome: Sendable {
     /// 要素)。失敗時は常に nil(掴めなかったのに値が読める状態を作らない)。notExists/count/
     /// screenMatches のように要素が1つに定まらない assert も nil のまま
     public let resolvedElement: ElementInfo?
+    /// スクロール探索で実際に撃ったスワイプ数(runScrollSearch を経由したときだけ非nil。
+    /// scrollSwipesThisStep と同じ受け渡し形)。MCP の ft_scroll_to が所要時間の内訳に使う
+    public let scrollSwipes: Int?
 
     public init(status: StepResult.Status, healedStep: FlowStep? = nil, healedByCache: Bool = false,
                timing: StepTiming? = nil, driverFallback: String? = nil,
                notes: [StepNote] = [],
                observedChecked: Bool? = nil, resolvedElement: ElementInfo? = nil,
+               scrollSwipes: Int? = nil,
                at: String = ISO8601Millis.string(from: Date())) {
         self.observedChecked = observedChecked
         self.resolvedElement = resolvedElement
+        self.scrollSwipes = scrollSwipes
         self.status = status
         self.healedStep = healedStep
         self.healedByCache = healedByCache
@@ -372,6 +377,7 @@ public final class StepExecutor {
         interruptNote = nil   // 「1ステップにつき1回だけ」の起点(dismissInterruption が見る)
         observedCheckedThisStep = nil
         resolvedElementThisStep = nil
+        scrollSwipesThisStep = nil
         noteCodesThisStep = []
         do {
             if let action = step.action {
@@ -386,7 +392,8 @@ public final class StepExecutor {
                                    // アクションは**解決した時点**で立てる(操作の成否より前)ため、
                                    // 失敗した操作の要素を持ち帰らないようここで落とす
                                    resolvedElement: Self.isSuccess(outcome.status)
-                                       ? resolvedElementThisStep : nil)
+                                       ? resolvedElementThisStep : nil,
+                                   scrollSwipes: scrollSwipesThisStep)
             }
             if let assert = step.assert {
                 let status = try await executeAssert(assert, step: step, phase: &phase)
@@ -397,7 +404,8 @@ public final class StepExecutor {
                                    driverFallback: noteWithInterrupt(nil),
                                    notes: collectedNotes(),
                                    observedChecked: observedCheckedThisStep,
-                                   resolvedElement: resolvedElementThisStep)
+                                   resolvedElement: resolvedElementThisStep,
+                                   scrollSwipes: scrollSwipesThisStep)
             }
             return StepOutcome(status: .skipped("step has neither an action nor an assertion"))
         } catch {
@@ -405,7 +413,8 @@ public final class StepExecutor {
                                timing: StepTiming(durationMs: Self.ms(clock.now - start),
                                                   snapshotMs: phase.snapshotMs,
                                                   actionMs: phase.actionMs, waitMs: phase.waitMs),
-                               notes: collectedNotes())
+                               notes: collectedNotes(),
+                               scrollSwipes: scrollSwipesThisStep)
         }
     }
 
@@ -461,6 +470,10 @@ public final class StepExecutor {
     /// (execute が StepOutcome.resolvedElement に載せる)。observedCheckedThisStep と同じ受け渡し形
     /// (StepExecutor+Assert.swift の各 executeAssert* から書くため internal)。失敗時は立てない。
     var resolvedElementThisStep: ElementInfo?
+    /// スクロール探索が実際に撃ったスワイプ数(execute が StepOutcome.scrollSwipes に載せる)。
+    /// recordedScrollSearchNote(StepExecutor+ScrollSearch.swift)が書く。
+    /// resolvedElementThisStep と同じ受け渡し形
+    var scrollSwipesThisStep: Int?
     /// このステップで立った機械可読な注記(execute が StepOutcome.notes に載せる)。
     /// アクション/検証のどの return 経路から立てても拾えるようインスタンスで持つ
     /// (scrollSearchNote / observedCheckedThisStep と同じ受け渡し形)。
