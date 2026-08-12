@@ -198,6 +198,15 @@ final class MCPServer {
     var lastExplicitIOSTarget: (port: UInt16, udid: String?)?
     /// Android 版の同じ記憶。同じ規律(androidExplicitWithMemory/androidMemoryAfterResolve)
     var lastExplicitAndroidSerial: String?
+    /// このセッションで明示解決された iOS 宛先(port)の**延べ集合**(2026-08-12)。
+    /// **lastExplicitIOSTarget との違い**: あちらは「省略呼び出しが実際にどこへ行くか」に使う
+    /// 直近1件、こちらは「省略呼び出しが曖昧かどうか」の判定材料(2件以上あれば
+    /// finishingFold が毎回注記する。1台しか触っていなければ従来どおり初回だけ)。
+    /// 更新は lastExplicitIOSTarget と同じ箇所・同じ条件(driver(_:) 参照)。
+    /// forgetConnection が死んだポートを取り除く(消えた機は候補として名乗る意味が無い)
+    var seenExplicitIOSPorts: Set<UInt16> = []
+    /// Android 版の同じ延べ集合(serial)
+    var seenExplicitAndroidSerials: Set<String> = []
     /// **udid/port/serial を全部省略した呼び出しがどちらの platform の記憶を見るか**
     /// (2026-08-12)。lastExplicitIOSTarget/lastExplicitAndroidSerial は platform ごとに
     /// 分かれているだけで「どちらが最後に明示されたか」を持たないため、Android を明示した

@@ -122,6 +122,7 @@ extension MCPServer {
                 argsHadExplicitTarget: argsHadIOSTarget, resolvedPort: port, resolvedUDID: resolved.udid) {
                 lastExplicitIOSTarget = remembered
                 lastExplicitPlatform = "ios"
+                seenExplicitIOSPorts.insert(remembered.port)
             }
             // **稼働中のブリッジが古いままではないか**を1度だけ確かめる(2026-08-06 に踏んだ)。
             // profile 経由は BridgeProvisioner が版で再利用可否を決めるが、**この経路は
@@ -142,6 +143,7 @@ extension MCPServer {
                 resolvedSerial: serial) {
                 lastExplicitAndroidSerial = remembered
                 lastExplicitPlatform = "android"
+                seenExplicitAndroidSerials.insert(remembered)
             }
         default:
             throw MCPError("platform must be ios or android: \(platform)")

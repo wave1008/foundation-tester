@@ -265,7 +265,11 @@ extension MCPServer {
             if explicitPlatform == nil { out["platform"] = "ios" }
             Self.logStderr("no udid/port given — reusing this session's earlier target"
                 + " (port \(remembered.port), udid \(remembered.udid ?? "unknown"))")
-            return Self.finishingFold(out, deviceLabel: "port \(remembered.port)",
+            return Self.finishingFold(out, chosen: "port \(remembered.port)",
+                                      allSeenLabels: seenExplicitIOSPorts.map(String.init),
+                                      deviceNoun: "iOS devices", unitNoun: "ports",
+                                      otherPlatform: Self.platformWasInferred(args)
+                                          && !seenExplicitAndroidSerials.isEmpty ? "Android" : nil,
                                       noteKey: "rememberedDevice:ios:\(remembered.port)",
                                       firstTime: firstTime)
         case "android":
@@ -277,7 +281,11 @@ extension MCPServer {
             if explicitPlatform == nil { out["platform"] = "android" }
             Self.logStderr("no serial given — reusing this session's earlier Android target"
                 + " (serial \(remembered))")
-            return Self.finishingFold(out, deviceLabel: "serial \(remembered)",
+            return Self.finishingFold(out, chosen: "serial \(remembered)",
+                                      allSeenLabels: Array(seenExplicitAndroidSerials),
+                                      deviceNoun: "Android devices", unitNoun: "serials",
+                                      otherPlatform: Self.platformWasInferred(args)
+                                          && !seenExplicitIOSPorts.isEmpty ? "iOS" : nil,
                                       noteKey: "rememberedDevice:android:\(remembered)",
                                       firstTime: firstTime)
         default:
@@ -285,20 +293,76 @@ extension MCPServer {
         }
     }
 
-    /// ios/android 分岐の共通尾部(2026-08-12 の掃討): マーカーを立て、初回だけ注記を返す。
+    /// ios/android 分岐の共通尾部(2026-08-12 の掃討・2026-08-12 曖昧化対応で拡張):
+    /// マーカーを立て、注記を組む(rememberedDeviceNote 参照)。
     /// `firstTime` はキー消費(explainedNotes への insert)を伴うので呼び手のクロージャで渡す
     /// (このメソッドを static のままにするため — instance メソッド化すると呼び出し側で
-    /// `Self.` と裸の呼び出しが混在して読みにくくなる)
+    /// `Self.` と裸の呼び出しが混在して読みにくくなる)。
+    /// **曖昧なとき(allSeenLabels が2件以上)は鍵を消費しない**: 消費してしまうと、後で
+    /// forgetConnection が候補を1件まで減らして非曖昧に戻ったとき、この宛先はまだ一度も
+    /// 「初回の満額注記」を受け取っていないのに firstTime が false になり黙ってしまう
     private static func finishingFold(
-        _ args: [String: Any], deviceLabel: String, noteKey: String, firstTime: (String) -> Bool
+        _ args: [String: Any], chosen: String, allSeenLabels: [String], deviceNoun: String,
+        unitNoun: String, otherPlatform: String?, noteKey: String, firstTime: (String) -> Bool
     ) -> (args: [String: Any], note: String) {
         var out = args
         out[deviceFromMemoryKey] = true
-        let note = firstTime(noteKey)
-            ? "(reusing this session's earlier device: \(deviceLabel)"
-                + " — pass udid/port/serial to target another)\n"
-            : ""
+        let isAmbiguous = allSeenLabels.count >= 2 || otherPlatform != nil
+        let note = rememberedDeviceNote(
+            chosen: chosen, allSeenLabels: allSeenLabels, deviceNoun: deviceNoun, unitNoun: unitNoun,
+            otherPlatform: otherPlatform, firstTime: isAmbiguous ? false : firstTime(noteKey))
         return (out, note)
+    }
+
+    /// **platform 自体が推測されたか**(= 呼び出しが platform も宛先も1つも渡していない)。
+    /// この形だけが `lastExplicitPlatform` に落ちるので、両 platform を触っていれば
+    /// 「どちらの機へ行くか」自体が曖昧になる。platform か宛先のどちらかが明示されていれば
+    /// 行き先の platform は確定しているので、跨ぎの曖昧さは無い
+    static func platformWasInferred(_ args: [String: Any]) -> Bool {
+        args["platform"] as? String == nil
+            && !argsGaveAndroidTarget(args) && !argsGaveIOSTarget(args)
+    }
+
+    /// 名指しする候補の上限本数。超えたら一覧を並べず件数だけ言う(rememberedDeviceNote)
+    static let rememberedDeviceListCap = 6
+
+    /// 省略呼び出しへ記憶した宛先を注入したときの注記の本文(純粋関数。デバイスも走査も要らない)。
+    ///
+    /// - `chosen`: 実際に注入した宛先の表示形("port 8123" / "serial emulator-5554")
+    /// - `allSeenLabels`: このセッションで明示された同 platform の宛先の表示形(例 "8123")。
+    ///   **順序は問わない — ここで並べ直す**: 供給元は `Set` で、反復順はプロセスごとに変わる。
+    ///   呼び手ごとにソートを重複させないよう、決定的な順序はここ1箇所で保証する
+    /// - `otherPlatform`: **platform を跨いだ曖昧さ**。呼び出しが platform も宛先も渡さず、
+    ///   かつ**もう一方の platform も同じセッションで明示されている**ときだけ、その名前
+    ///   ("Android" / "iOS")。この形は `lastExplicitPlatform` に落ちるので、同 platform 内が
+    ///   1台でも行き先は自明ではない —— 実アプリ監査で踏んだのはまさにこれ(iOS 1台 +
+    ///   Android 1台の並行運転)。同 platform 内の曖昧さだけを見ていると素通しする
+    /// - `firstTime`: **曖昧でないときだけ効く**。曖昧なら firstTime の値によらず毎回出す —
+    ///   2台以上を触った後の省略呼び出しは、黙って直近の1台へ行くだけでは読み手にとって
+    ///   どちらへ行くか自明ではない(実アプリ監査での事故)
+    static func rememberedDeviceNote(
+        chosen: String, allSeenLabels: [String], deviceNoun: String, unitNoun: String,
+        otherPlatform: String? = nil, firstTime: Bool
+    ) -> String {
+        guard allSeenLabels.count >= 2 || otherPlatform != nil else {
+            guard firstTime else { return "" }
+            return "(reusing this session's earlier device: \(chosen)"
+                + " — pass udid/port/serial to target another)\n"
+        }
+        let sorted = allSeenLabels.sorted()
+        var driven = ""
+        if sorted.count >= 2 {
+            let list = sorted.count > rememberedDeviceListCap
+                ? "\(sorted.count) \(unitNoun)"
+                : "\(unitNoun) \(sorted.joined(separator: ", "))"
+            driven = " This session has driven \(sorted.count) \(deviceNoun) (\(list))."
+        }
+        let crossed = otherPlatform.map {
+            " This session has also driven \($0) — with no platform given, the call went to"
+                + " whichever platform was targeted most recently."
+        } ?? ""
+        return "(no udid/port/serial given — using the most recent target: \(chosen).\(driven)"
+            + "\(crossed) Pass udid/port/serial to be explicit.)\n"
     }
 
     /// `ft_type(ref:)` が Android の注入器に断られたときの回避策。**挙動は変えない** ——
@@ -532,12 +596,16 @@ extension MCPServer {
     /// なしで返す(driver() 参照)ので、ここで消さないと、死んだ接続の後の省略呼び出しが
     /// 同じ死んだポート/serial へ永久に再ダイヤルし続ける。**internal**(テストが直接呼ぶ)
     func forgetConnection(_ key: String) {
-        if let port = connectedPorts[key], lastExplicitIOSTarget?.port == port {
-            lastExplicitIOSTarget = nil
+        if let port = connectedPorts[key] {
+            if lastExplicitIOSTarget?.port == port { lastExplicitIOSTarget = nil }
+            // 消えたポートは「このセッションで触った他の候補」として名乗る意味が無い
+            // (rememberedDeviceNote が曖昧さの判定に使う集合。生きているものだけ残す)
+            seenExplicitIOSPorts.remove(port)
         }
-        if let connection = connections[key], connection.hasPrefix("serial "),
-           lastExplicitAndroidSerial == String(connection.dropFirst("serial ".count)) {
-            lastExplicitAndroidSerial = nil
+        if let connection = connections[key], connection.hasPrefix("serial ") {
+            let serial = String(connection.dropFirst("serial ".count))
+            if lastExplicitAndroidSerial == serial { lastExplicitAndroidSerial = nil }
+            seenExplicitAndroidSerials.remove(serial)
         }
         drivers[key] = nil
         connections[key] = nil
