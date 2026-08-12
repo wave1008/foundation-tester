@@ -280,14 +280,15 @@ final class BatchLineParserTests: XCTestCase {
         return out.trimmingCharacters(in: .whitespaces)
     }
 
-    func testRoundTripThroughScenarioCodeGen() throws {
+    /// 往復の見本。**`testEveryBatchExecutableCommandRoundTrips` が「ft_batch が実行できる
+    /// コマンドを全部覆っているか」を等号で見る**ので、ビルダを足したらここへも1本足すこと
+    private static func roundTripFixtures() -> [FlowStep] {
         let selA = FTSelector.parse("#a")
         let selB = FTSelector.parse("#b")
         func fallbacks(_ sel: FTSelector) -> [FlowLocator]? {
             sel.fallbacks.isEmpty ? nil : sel.fallbacks
         }
-
-        let fixtures: [FlowStep] = [
+        return [
             FlowStep(action: "tap", locator: selA.primary, fallbacks: fallbacks(selA)),
             FlowStep(action: "tap", locator: selA.primary, fallbacks: fallbacks(selA), duration: 1.5),
             FlowStep(action: "select", locator: selA.primary, fallbacks: fallbacks(selA)),
@@ -312,9 +313,37 @@ final class BatchLineParserTests: XCTestCase {
                     direction: "down", maxSwipes: 3,
                     scrollFrame: FTSelector.parse("#list").primary),
             FlowStep(action: "scrollTo", locator: selA.primary, fallbacks: fallbacks(selA)),
+            FlowStep(action: "rotateTo", direction: "landscape"),
+            // scroll / scrollToEdge は**向きごとに DSL 名が違う**(scrollDown … scrollToLeftEdge)。
+            // 名前の写像も往復で確かめたいので4方向とも置く
+            FlowStep(action: "scroll", direction: "up",
+                     scrollFrame: FTSelector.parse("#list").primary),
+            FlowStep(action: "scroll", direction: "down", maxSwipes: 3),
+            FlowStep(action: "scroll", direction: "left"),
+            FlowStep(action: "scroll", direction: "right"),
+            FlowStep(action: "scrollToEdge", direction: "up", maxSwipes: 12,
+                     scrollFrame: FTSelector.parse("#list").primary),
+            FlowStep(action: "scrollToEdge", direction: "down"),
+            FlowStep(action: "scrollToEdge", direction: "left"),
+            FlowStep(action: "scrollToEdge", direction: "right"),
         ]
+    }
 
-        for step in fixtures {
+    /// **ft_batch が実行できるコマンドは全部シナリオ行へ書き戻せること**(2026-08-12)。
+    /// 見本を並べるだけの往復テストでは、**ビルダを足しても見本を足さなければ黙って穴が空く**
+    /// —— 実際 `scrollDown/Up/Left/Right` は実行できるのに codegen に `case "scroll"` が無く、
+    /// `// (unsupported step: …)` へ落ちていた(2026-08-12 に発見)。等号で照合して、
+    /// ビルダを足した人が見本も足さざるを得ないようにする
+    func testEveryBatchExecutableCommandRoundTrips() {
+        let rendered = Self.roundTripFixtures().compactMap { ScenarioCodeGen.command(for: $0) }
+        let covered = Set(rendered.map { String($0.prefix(while: { $0 != "(" })) })
+        XCTAssertEqual(covered, Set(MCPServer.batchStepBuilders.keys),
+                       "ft_batch が実行できるコマンドと、往復の見本が食い違っている"
+                       + "(見本を足すか、ScenarioCodeGen に描き方を足すこと)")
+    }
+
+    func testRoundTripThroughScenarioCodeGen() throws {
+        for step in Self.roundTripFixtures() {
             guard let line = ScenarioCodeGen.command(for: step) else {
                 return XCTFail("ScenarioCodeGen が \(step) を描けなかった(fixture 側の不備)")
             }

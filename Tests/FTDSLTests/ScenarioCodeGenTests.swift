@@ -114,6 +114,31 @@ final class ScenarioCodeGenTests: XCTestCase {
         XCTAssertFalse(plain.contains("MarginRatio:"), plain)
     }
 
+    /// **`scroll` は書き戻せなければならない**: ft_batch は scrollDown/Up/Left/Right を実行できる
+    /// (カテゴリ scroll は許可済み)ので、ここが無いと「通ったバッチは 1:1 でシナリオ行になる」
+    /// という ft_batch の契約が破れる(2026-08-12 まで `// (unsupported step: …)` に落ちていた)。
+    /// **FlowStep.direction は指の動き / DSL 名はコンテンツ基準**なので写像も一緒に固定する
+    /// (逆向きに書き換える変異はここで落ちる)
+    func testScrollEmitsTheContentDirectionalCommand() {
+        let up = render([FlowStep(action: "scroll", direction: "up",
+                                  scrollFrame: FlowLocator(id: "list_rows"))])
+        XCTAssertTrue(up.contains("scrollDown(scrollFrame: \"#list_rows\")"), up)
+
+        // 指が下 = コンテンツは上 / 指が右 = コンテンツは左
+        XCTAssertTrue(render([FlowStep(action: "scroll", direction: "down")])
+            .contains("scrollUp()"))
+        XCTAssertTrue(render([FlowStep(action: "scroll", direction: "right")])
+            .contains("scrollLeft()"))
+        XCTAssertTrue(render([FlowStep(action: "scroll", direction: "left")])
+            .contains("scrollRight()"))
+
+        // maxSwipes は繰り返し回数。既定の 1 は書かない
+        XCTAssertTrue(render([FlowStep(action: "scroll", direction: "up", maxSwipes: 3)])
+            .contains("repeat: 3"))
+        XCTAssertFalse(render([FlowStep(action: "scroll", direction: "up", maxSwipes: 1)])
+            .contains("repeat:"))
+    }
+
     /// replace: true のステップだけ `replace: true` を出し、未指定/false は既定ケースとして
     /// 引数ごと出さない(両方向を確認: 出すべき/出してはいけない)
     func testTypeEmitsReplaceOnlyWhenTrue() {

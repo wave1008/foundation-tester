@@ -198,6 +198,31 @@ public enum ScenarioCodeGen {
                     args.append("durationSeconds: \(FTSeconds.format(duration))")
                 }
                 return "swipeElementToElement(\(args.joined(separator: ", ")))"
+            case "scroll":
+                // ft_batch の scrollDown/Up/Left/Right と ft_swipe(scrollFrame 指定)の下書き用。
+                // **これが無いと「通ったバッチは1:1でシナリオ行になる」という ft_batch の契約が破れる**
+                // (scroll カテゴリは実行できるのに書き戻せない状態だった)。
+                // FlowStep.direction は**指の動き**、DSL 名はコンテンツ基準なので写像して出す
+                let finger = step.direction.flatMap(FTSwipeDirection.init(rawValue:)) ?? .up
+                let content = FTScrollDirection.allCases.first { $0.swipe == finger } ?? .down
+                var args = scrollFrameArgs(step)
+                // maxSwipes は scroll では「繰り返し回数」(scrollImpl 参照)。既定 1 は書かない
+                if let times = step.maxSwipes, times > 1 { args.append("repeat: \(times)") }
+                return "scroll\(content.rawValue.capitalized)(\(args.joined(separator: ", ")))"
+            case "scrollToEdge":
+                // 名前はコンテンツ基準(scrollToEdgeImpl の表と同じ写像。片方だけ変えない)
+                let finger = step.direction.flatMap(FTSwipeDirection.init(rawValue:)) ?? .up
+                let content = FTScrollDirection.allCases.first { $0.swipe == finger } ?? .down
+                let names: [FTScrollDirection: String] = [
+                    .down: "scrollToBottom", .up: "scrollToTop",
+                    .right: "scrollToRightEdge", .left: "scrollToLeftEdge",
+                ]
+                var args = scrollFrameArgs(step)
+                // scrollToEdge の maxSwipes は暴走止めの上限。既定は書かない
+                if let maxSwipes = step.maxSwipes, maxSwipes != FlowStep.defaultMaxEdgeSwipes {
+                    args.append("maxSwipes: \(maxSwipes)")
+                }
+                return "\(names[content] ?? "scrollToBottom")(\(args.joined(separator: ", ")))"
             case "scrollTo":
                 var args = [literal(selector)]
                 // FlowStep.direction は**ジェスチャ(指の動き)**。DSL はコンテンツ基準なので写像して出す
