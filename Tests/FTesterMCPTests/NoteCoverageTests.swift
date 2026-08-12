@@ -86,7 +86,7 @@ final class NoteCoverageTests: XCTestCase {
     ///
     /// | 注記 | 19枚のとき | 25枚のとき |
     /// |---|---|---|
-    /// | `unlabeledClickablesNote` | map のみ | map + **settings** |
+    /// | `unlabeledClickablesNote` | map のみ | map + **settings** (2026-08-13 に settings は誤検知と判明し除外 → map + home) |
     /// | `keyboardCoverageNote` | map のみ | map + **chat** |
     /// | `scrollFrameCandidates` | map のみ | map + **chat** |
     /// | `ghostNote` / `truncationNote` | map のみ | **map のみのまま**(各1画面) |
@@ -129,7 +129,7 @@ final class NoteCoverageTests: XCTestCase {
         // フォールバックは置かない** —— メール欄・住所欄を誤って名乗る形がコーパスに無く、
         // 誤検知0の確認が効かないため(AddressBarNoteTests の当該テスト)
         "addressBarNote": Coverage(fixtures: ["and-browser_weektable", "ios-browser_jma_hscroll", "ios-browser_nationwide", "ios-browser_startpage", "ios-browser_weather_weekly", "ios-browser_weektable", "ios-safari_article"], bytes: 1846),
-        "unlabeledClickablesNote": Coverage(fixtures: ["and-browser_urlmenu", "and-directions_tabs", "and-home", "and-place", "and-place_expanded", "and-results", "ios-home", "ios-maps_route_options", "ios-profile", "ios-settings_root"], bytes: 5105),
+        "unlabeledClickablesNote": Coverage(fixtures: ["and-browser_urlmenu", "and-directions_tabs", "and-home", "and-place", "and-place_expanded", "and-results", "ios-home", "ios-maps_route_options"], bytes: 3150),
         // **格子は曖昧ラベルの塊**(2026-08-12): 週間表の2枚が入って +2,049 バイト。
         // 同じ数値(`29/24`・`90%`)が行と列に何度も出るので、増分は形そのもの
         "ambiguousLabelsNote": Coverage(fixtures: ["and-browser_weather", "and-browser_weather_weekly", "and-browser_weektable", "and-home", "and-maps_suggest_ime", "and-place", "and-place_expanded", "and-results", "ios-browser_jma_hscroll", "ios-browser_nationwide", "ios-browser_startpage", "ios-browser_weather_weekly", "ios-browser_weektable", "ios-home", "ios-maps_station", "ios-maps_suggest_keyboard", "ios-messages_keyboard", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-safari_article", "ios-settings_root", "sut-cmp_controls", "sut-cmp_home", "sutec-detail", "sutec-home"], bytes: 16490),

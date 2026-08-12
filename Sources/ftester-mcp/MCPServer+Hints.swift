@@ -1263,8 +1263,11 @@ extension MCPServer {
 
     static func unlabeledClickablesNote(_ snapshot: SnapshotResponse, abbreviated: Bool = false)
         -> String {
+        // **同じ矩形に「書けるセレクタ」を持つ要素が居るものは外す**(selectableFrameKeys の doc)
+        let selectable = stableSelectorFrameKeys(snapshot)
         let unlabeled = snapshot.elements.filter {
             $0.type == "clickable" && ($0.identifier ?? "").isEmpty && ($0.label ?? "").isEmpty
+                && !selectable.contains(frameKey($0.frame))
         }
         guard !unlabeled.isEmpty else { return "" }
         let listed = unlabeled.prefix(8).map { element -> String in
@@ -1294,6 +1297,39 @@ extension MCPServer {
         }
         return "note: \(unlabeled.count) clickable element(s) have neither a label nor an id"
             + " (\(listed)\(more))\(advice)\n"
+    }
+
+    /// **同じ矩形に、書けるセレクタを持つ要素が居るか**(2026-08-13・設定アプリの監査)。
+    ///
+    /// iOS の設定アプリは行を `clickable` の容器で包み、**その中に同じ矩形の
+    /// `button` + `#id`** を置く。素の判定では容器のほうが「ラベルも id も無い」に該当し、
+    /// **ホーム画面で 11 件・一般で 20 件**が「安定したセレクタで指せない」と報告されていた。
+    /// しかし実際には `#com.apple.settings.general` が**同じ矩形にある**ので、
+    /// 注記が勧める索引付きスコープ記法(`#…collectionView >> .clickable[3]`・兄弟の数で壊れる)
+    /// より**明らかに良い書き方が存在する**。注記の前提(「書けない」)自体が偽だった。
+    ///
+    /// 判定は**矩形の一致**だけにする(祖先・子孫の関係は見ない) —— 同じ場所を撃つなら
+    /// タップ結果は同じで、木の形は OS ごとに違うため。**一致は丸めた完全一致**(近似にしない)
+    /// —— 緩めるほど「隣の行のセレクタで代用できる」と誤って黙る側へ倒れるので、
+    /// 観測した形(容器と中身が同一矩形)にだけ効かせる
+    /// **`.stable` の要素だけを数える**(2026-08-13 に自分で踏んだ): `selector(for:)` は索引付きの
+    /// スコープ記法も返すので、素で使うと**無ラベル clickable 自身が「書ける」に該当し、
+    /// 自分自身を twin として黙る**(コーパスで ios-home / ios-maps_route_options の
+    /// 真陽性まで消えた)。注記の趣旨は「索引記法より良い、位置に依存しない書き方がある」
+    /// なので、`.indexed` は代替として数えない
+    static func stableSelectorFrameKeys(_ snapshot: SnapshotResponse) -> Set<String> {
+        let naming = SelectorNaming(snapshot)
+        var keys: Set<String> = []
+        for element in snapshot.elements {
+            guard let graded = naming.graded(for: element, in: snapshot),
+                  graded.durability == .stable else { continue }
+            keys.insert(frameKey(element.frame))
+        }
+        return keys
+    }
+
+    static func frameKey(_ frame: FTRect) -> String {
+        "\(frame.x.rounded()),\(frame.y.rounded()),\(frame.width.rounded()),\(frame.height.rounded())"
     }
 
     /// **シナリオにそのまま書けるセレクタ**を1つ決める。書けないときは nil ——
