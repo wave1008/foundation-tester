@@ -57,7 +57,11 @@ extension StepExecutor {
             var viaXCUITest = false
             var unsettled = false
             var sentSwipes = 0
-            var latest = step.scrollFrame == nil ? nil : try await snapshotForScrollFrame(phase: &phase)
+            // **rect だけの指定でも撮る**: scrollContainer は rect を先に返すが、scrollPath には
+            // viewport(snapshot.screen)が要るので、木が無いと path ごと nil になり
+            // 黙って全画面スワイプへ退化する(scrollToEdge/flick は rect を見ている。2026-08-12)
+            var latest = (step.scrollFrame == nil && step.scrollFrameRect == nil)
+                ? nil : try await snapshotForScrollFrame(phase: &phase)
             for index in 0..<times {
                 // **明示 scrollFrame が解決できないなら、ここで打ち切る(1本も振らない)**。
                 // 黙って全画面スワイプへ退化させない(runScrollSearch の fail-fast と同じ理由。2026-08-08)
@@ -76,7 +80,7 @@ extension StepExecutor {
                 // 直後に tap する書き方をここで支える(index 条件を外した理由)
                 let settled = try await settledSignature(phase: &phase)
                 if !settled.settled { unsettled = true }
-                if step.scrollFrame != nil { latest = settled.snapshot }
+                if step.scrollFrame != nil || step.scrollFrameRect != nil { latest = settled.snapshot }
             }
             var notes: [String] = []
             if viaXCUITest { notes.append("fell back to XCUITest") }

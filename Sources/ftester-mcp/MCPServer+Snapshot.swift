@@ -503,7 +503,8 @@ extension MCPServer {
     /// `scrollFrame` 引数の解決結果。**ref(整数)は rect へ、文字列は従来どおり locator へ**
     /// (FlowStep.scrollFrameRect 参照)。`original` は ref 経由のときだけ埋まり、
     /// シート展開後に同じ要素を撮り直した木から再照合して rect を作り直すのに使う
-    private struct ScrollFrameArg {
+    /// **ft_scroll_to と ft_swipe が共有する**(解決の2つ目の実装を作らない)
+    struct ScrollFrameArg {
         var locator: FlowLocator?
         var rect: FTRect?
         var original: ElementInfo?
@@ -513,7 +514,7 @@ extension MCPServer {
     /// **ref はセレクタが書けない容器のための逃げ道**(id の重複・欠落。2026-08-10)。
     /// 既存の stale-ref 再照合(resolveSessionRef → RefGuard.relocate)を通してから frame を取る ——
     /// verifiedRef と同じ規律で、撮った時点から動いていても黙って古い座標を使わない
-    private func resolveScrollFrameArg(_ args: [String: Any], driver: AppDriver) async throws
+    func resolveScrollFrameArg(_ args: [String: Any], driver: AppDriver) async throws
         -> ScrollFrameArg {
         if let ref = args["scrollFrame"] as? Int {
             guard let resolved = resolveSessionRef(ref, args: args) else {

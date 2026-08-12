@@ -201,6 +201,12 @@ extension MCPServer {
             "url": ["type": "string", "description": "The URL/deep link to deliver"],
             "bundleId": ["type": "string", "description": "bundle ID (iOS) / package name — the Android "
                 + "intent target. Defaults to the bundle ID of the last ft_launch"],
+            "snapshotAfter": snapshotAfterProperty,
+            "waitForChange": snapshotAfterWaitForChangeProperty,
+            "waitFor": snapshotAfterWaitForProperty,
+            "timeout": snapshotAfterTimeoutProperty,
+            "expandBulk": expandBulkProperty,
+            "interactiveOnly": interactiveOnlyProperty,
         ], required: ["url"]),
         tool("ft_snapshot", "Get the element list of the current screen. Each line: [ref] Type \"label\" id=... (x,y WxH). "
             + "A line marked scroll is a scrolling container you can pass as scrollFrame. "
@@ -247,6 +253,19 @@ extension MCPServer {
             + "ft_scroll_to instead — it stops on the element and hands back fresh refs", [
             "direction": ["type": "string", "enum": ["up", "down", "left", "right"],
                           "description": "Finger direction (same vocabulary as the DSL's swipe)"],
+            "scrollFrame": ["type": ["string", "integer"],
+                            "description": "Swipe inside this scrolling container only, instead of the "
+                                + "whole screen — selector of the container (e.g. #list_rows), or its "
+                                + "ft_snapshot ref (an integer) when it has no unique id. Use this when "
+                                + "the thing you want to move has no selector to search for with "
+                                + "ft_scroll_to (e.g. a horizontally-scrolling table), or the screen has "
+                                + "more than one scrollable area. Same syntax as the DSL: #id, a label, "
+                                + ".type, a||b (quotes wrapped around the whole value are stripped). Only "
+                                + "a container that appears in the tree works (a line ft_snapshot marks "
+                                + "scroll) — if the area you want is not one (e.g. a web page's inner "
+                                + "overflow scroller, where only the whole page is a container), the "
+                                + "finger passes outside it and nothing moves; use ft_drag with "
+                                + "coordinates instead"],
             "snapshotAfter": snapshotAfterProperty,
             "waitForChange": snapshotAfterWaitForChangeProperty,
             "waitFor": snapshotAfterWaitForProperty,

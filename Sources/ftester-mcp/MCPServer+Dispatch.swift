@@ -779,10 +779,9 @@ extension MCPServer {
             openStep.text = url
             interactions.record(InteractionLog.Entry(step: openStep, unresolved: nil,
                                                      summary: "openURL \"\(url)\""))
-            return text("Delivered \(url)"
-                + (openURLBundleID.map { " to \($0)" } ?? "") + "."
-                + " Delivery is asynchronous (the app has to receive and handle it) — if a"
-                + " ft_snapshot right after still shows the old screen, wait and snapshot again")
+            return text(Self.openURLSummary(url: url, bundleID: openURLBundleID,
+                                            snapshotAfter: args["snapshotAfter"] as? Bool == true)
+                + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
 
         case "ft_snapshot":
             // **明示分だけ・丸ごと置き換え**(snapshotAfterBody が読む記憶)。省略したキーは
@@ -1002,12 +1001,81 @@ extension MCPServer {
             guard let direction = FTSwipeDirection(rawValue: args["direction"] as? String ?? "") else {
                 throw MCPError("direction must be one of up/down/left/right")
             }
-            try await driver(args).swipe(direction)
-            recordInteraction(action: "swipe", resolvedRef: nil, args: args,
-                              direction: direction.rawValue)
-            // **「動いた」と断言しない**(back と同じ理由。2026-08-06)。スワイプは端に着いていれば
-            // 1px も動かないし、スクロールできない画面では何も起きない
-            return text("swipe \(direction.rawValue) sent."
+            let swipeDriver = try await driver(args)
+            // **型は入口で確かめる**(2026-08-12 のレビュー指摘): resolveScrollFrameArg が見るのは
+            // Int と String だけなので、それ以外(bool・配列・オブジェクト)は空の ScrollFrameArg
+            // になり、**容器を無視した全画面スワイプを「inside …」と名乗って**返していた
+            if let frame = args["scrollFrame"], !(frame is Int), !(frame is String) {
+                throw MCPError("scrollFrame must be a selector string (e.g. \"#list_rows\") or an"
+                    + " ft_snapshot ref (an integer)")
+            }
+            // **未指定は今までと1バイトも変えない**(全画面固定の既定経路)
+            guard args["scrollFrame"] != nil else {
+                try await swipeDriver.swipe(direction)
+                recordInteraction(action: "swipe", resolvedRef: nil, args: args,
+                                  direction: direction.rawValue)
+                // **「動いた」と断言しない**(back と同じ理由。2026-08-06)。スワイプは端に着いていれば
+                // 1px も動かないし、スクロールできない画面では何も起きない
+                return text("swipe \(direction.rawValue) sent."
+                    + Self.changedHint(args, otherwise: " If anything moved, the old refs are stale"
+                        + " — take a fresh ft_snapshot before using any ref")
+                    + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
+            }
+
+            // **探索(ft_scroll_to)と同じ StepExecutor に委ねる**(DSL の
+            // scrollDown/scrollUp/scrollLeft/scrollRight(scrollFrame:) と同じ FlowStep 形。
+            // ScrollGeometry の呼び出し・マージン定数・容器解決・fail-fast は全部あちらに
+            // 1本化されている — MCP に2つ目の実装を作らない。**実機で確認した実害**
+            // (2026-08-12): MCP から driver.swipe(_:intent:path:) を直に叩くと、in-app
+            // ブリッジは領域指定つきスクロールを 501 で拒否する設計(Compose/Flutter。
+            // InAppBridge/Sources/InAppBridge.swift:673-677「黙って別の領域を動かすより
+            // 501 で XCUITest へ回す」)で、その 501→XCUITest フォールバックは
+            // `StepExecutor.swipeWithFallback`(StepExecutor+Settle.swift:479
+            // `DriverError.isEngineIncapable(error), let td = typeDriver`)にしか無いため、
+            // in-app 単独のエンジンで ft_swipe が 501 のまま終わっていた
+            let scrollFrameArg = try await resolveScrollFrameArg(args, driver: swipeDriver)
+            let scrollFrameLabelNote = scrollFrameArg.note.isEmpty ? ""
+                : "note: the scrollFrame ref was re-checked against the current tree\(scrollFrameArg.note).\n"
+            let step = Self.swipeScrollFrameStep(direction: direction, scrollFrameArg: scrollFrameArg)
+            let (isAndroid, uiFrameworkHint) = await resolveExecutorHints(swipeDriver, args: args)
+            let executor = StepExecutor(driver: swipeDriver, releasesScrollTouch: !isAndroid,
+                                        uiFramework: uiFrameworkHint)
+            let outcome = await executor.execute(step)
+            guard StepExecutor.isSuccess(outcome.status) else {
+                let reason: String
+                switch outcome.status {
+                case .failed(let message), .skipped(let message), .inconclusive(let message):
+                    reason = message
+                case .passed, .passedViaFallback, .healed:
+                    reason = "could not confirm the result"
+                }
+                // **容器なし/経路なしの文言は StepExecutor(FTCore)側の1本だけ**
+                // (scrollFrameFailFastMessage)。MCP 側で二重に持たない
+                throw MCPError(scrollFrameLabelNote + reason)
+            }
+            let containerName = scrollFrameArg.original.map(RefGuard.describe)
+                ?? scrollFrameArg.locator?.summary ?? "the scrollFrame"
+            // **下書きへは実行した step をそのまま渡す**: action "scroll" は
+            // scrollDown/scrollUp/scrollLeft/scrollRight(scrollFrame:) として書き戻せる
+            // (ScenarioCodeGen の "scroll" ケース)。**ref 形だけは書き戻せない** ——
+            // rect は木の中の座標で、セレクタとして再現できないので正直に unresolved で残す
+            // (セレクタの無い要素と同じ regime)
+            if scrollFrameArg.locator != nil {
+                interactions.record(InteractionLog.Entry(
+                    step: step, unresolved: nil,
+                    summary: "swipe \(direction.rawValue) inside \(containerName)"))
+            } else {
+                interactions.record(InteractionLog.Entry(
+                    step: nil,
+                    unresolved: "swipe \(direction.rawValue) inside \(containerName) — the container"
+                        + " was given as a ref, which no selector reproduces; name it with a"
+                        + " selector to get a scrollDown/scrollUp/scrollLeft/scrollRight line",
+                    summary: "swipe \(direction.rawValue) inside \(containerName)"
+                        + " [no stable DSL reproduction]"))
+            }
+            let fallbackNote = outcome.driverFallback.map { " (\($0))" } ?? ""
+            return text(scrollFrameLabelNote + "swipe \(direction.rawValue) sent inside \(containerName)."
+                + fallbackNote
                 + Self.changedHint(args, otherwise: " If anything moved, the old refs are stale"
                     + " — take a fresh ft_snapshot before using any ref")
                 + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
@@ -1517,6 +1585,38 @@ extension MCPServer {
     }
 
     static let draftGeneratedBy = "ftester MCP exploration (ft_draft_scenario)"
+
+    /// `ft_open_url` の1行目。**snapshotAfter の有無で出し分ける**(2026-08-12):
+    /// 木を返すのに「ft_snapshot を撃ち直せ」と言うのは矛盾するので、そちらは待ち方の案内に替える。
+    /// **配送が非同期であることは黙らない** —— settle-lite は**操作前の木を覚えているときしか
+    /// 走らない**ので、`ft_launch` 直後(記憶が無い)の `snapshotAfter` は遷移前の画面を
+    /// 何の断りもなく返し得る(2026-08-12 のレビュー指摘)
+    static func openURLSummary(url: String, bundleID: String?, snapshotAfter: Bool) -> String {
+        let delivered = "Delivered \(url)" + (bundleID.map { " to \($0)" } ?? "") + "."
+        let asynchronous = " Delivery is asynchronous (the app has to receive and handle it)"
+        guard !snapshotAfter else {
+            return delivered + asynchronous + " — the tree below was read right after delivery, so"
+                + " it can still be the previous screen; pass waitFor with something only the"
+                + " destination has when that matters"
+        }
+        return delivered + asynchronous
+            + " — if a ft_snapshot right after still shows the old screen, wait and snapshot again"
+    }
+
+    /// `ft_swipe(scrollFrame:)` が投げる `FlowStep`(action "scroll" = DSL の
+    /// scrollDown/scrollUp/scrollLeft/scrollRight(scrollFrame:) と同じ形)。純関数へ切り出したのは
+    /// **direction を書き換えないことをここで固定する**ため: action "scroll" は `FlowStep.direction`
+    /// を**指の向き**として読む(`StepExecutor+Actions.swift:55`
+    /// `FTSwipeDirection(rawValue: step.direction ?? "")`)。DSL の `scrollImpl`
+    /// (`Commands.swift:664`)も `direction.swipe.rawValue`(content→指の向き)を積んでおり、
+    /// `ft_swipe` の `direction` 引数はもともと指の向きなので、**ここで逆写像を掛けてはいけない**
+    /// (掛けると黙って逆へ振る)。maxSwipes は 1(一画面ぶん)固定。マージン比は渡さない
+    /// (nil = `StepExecutor` 側の探索既定に従う。MCP 側で定数を選ばない)
+    static func swipeScrollFrameStep(direction: FTSwipeDirection,
+                                     scrollFrameArg: ScrollFrameArg) -> FlowStep {
+        FlowStep(action: "scroll", direction: direction.rawValue, maxSwipes: 1,
+                scrollFrame: scrollFrameArg.locator, scrollFrameRect: scrollFrameArg.rect)
+    }
 
     /// 「撮り直せ」の案内。**snapshotAfter を渡されているときは黙る** —— 木がその下に続くのに
     /// 撮り直しを勧めると、往復を減らすために足した機能が往復を増やす助言と矛盾する

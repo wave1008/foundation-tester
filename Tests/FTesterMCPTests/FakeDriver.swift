@@ -109,6 +109,15 @@ final class FakeDriver: AppDriver, @unchecked Sendable {
         try record("swipe(\(direction.rawValue))", "swipe")
     }
 
+    /// **`calls` には積まない**(既存のテストが `swipe(up)` の等値・件数で見ているため)。
+    /// 領域指定つきかどうかは経路そのものでしか判定できないので、最後の経路だけ別に持つ
+    private(set) var lastSwipePath: FTSwipePath?
+
+    func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent, path: FTSwipePath?) async throws {
+        lastSwipePath = path
+        try await swipe(direction)
+    }
+
     func press(ref: Int, duration: Double) async throws {
         try record("press(ref:\(ref),duration:\(duration))", "press")
     }

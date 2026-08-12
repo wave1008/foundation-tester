@@ -50,7 +50,7 @@ final class MCPServerToolDefinitionsTests: XCTestCase {
     /// `snapshotAfterBody` は `snapshotBody` を経由するので、args を渡せば元々効いていた
     /// (`snapshotBody` が `args["interactiveOnly"]`/`args["expandBulk"]` を読む) —— スキーマに
     /// 無いだけで MCP クライアントから渡す術が無かった。2026-08-10 の語彙統一で
-    /// 操作系の全ツール(tap/type/drag/swipe/double_tap/press/pinch)が対象
+    /// 操作系の全ツール(tap/type/drag/swipe/double_tap/press/pinch/navigate/open_url)が対象
     /// (ft_scroll_to/ft_snapshot は別途宣言済み)
     func testSnapshotAfterToolsDeclareTheSameFoldingPropertiesAsSnapshot() {
         func properties(_ name: String) -> [String: Any] {
@@ -64,7 +64,7 @@ final class MCPServerToolDefinitionsTests: XCTestCase {
         }.compactMap { $0["name"] as? String }
         XCTAssertEqual(Set(snapshotToolNames),
                        ["ft_tap", "ft_type", "ft_drag", "ft_swipe", "ft_double_tap",
-                        "ft_press", "ft_pinch", "ft_navigate"],
+                        "ft_press", "ft_pinch", "ft_navigate", "ft_open_url"],
                        "snapshotAfter を持つツールの集合が変わった場合はこのテストごと見直すこと")
         for name in snapshotToolNames {
             let props = properties(name)
