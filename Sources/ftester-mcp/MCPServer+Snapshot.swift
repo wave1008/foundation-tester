@@ -194,7 +194,8 @@ extension MCPServer {
     /// **FTCore.StaleFrameDetector へ寄せない**(2026-08-12): あちらの指紋は ref/type/identifier/
     /// label/frame までで、value/checked の変化には反応しない(あちらはスクリーンショットの
     /// 鮮度判定用で、ここが要る「入力しただけの変化」を感知できない)
-    private static func looksUnchanged(_ before: SnapshotResponse, _ after: SnapshotResponse) -> Bool {
+    /// **同一性判定はこの1本だけ**(ft_batch も跨いで呼ぶ。2つ目を書かない)
+    static func looksUnchanged(_ before: SnapshotResponse, _ after: SnapshotResponse) -> Bool {
         guard before.elements.count == after.elements.count else { return false }
         return zip(before.elements, after.elements).allSatisfy { a, b in
             a.ref == b.ref && a.type == b.type && a.identifier == b.identifier

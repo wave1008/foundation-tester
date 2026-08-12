@@ -464,6 +464,10 @@ extension MCPServer {
         }
 
         let batchDriver = try await driver(args)
+        // **手が動く前の起点**(settle-lite の beforeAction と同じ役目)。ループ中は recordSnapshot
+        // を呼ばない(呼ぶのは失敗時の throw 直前と成功時の末尾だけ)ので、ここで捕まえておけば
+        // 上書きより先に取れる
+        let beforeBatch = lastSnapshots[Self.engineKey(args)]
         let (isAndroid, uiFrameworkHint) = await resolveExecutorHints(batchDriver, args: args)
         let executor = StepExecutor(driver: batchDriver, releasesScrollTouch: !isAndroid,
                                     uiFramework: uiFrameworkHint)
@@ -520,10 +524,41 @@ extension MCPServer {
             okLine += refNote
             lines.append(okLine)
         }
-        let final = try await freshSnapshot(batchDriver, args: args)
+        let (unchangedNote, final) = try await Self.batchUnchangedNote(
+            beforeBatch: beforeBatch, final: try await freshSnapshot(batchDriver, args: args),
+            stepCount: plans.count) {
+            // settle-lite と同じ待ち(snapshotAfterBodyWithStatus 参照。新しい定数は置かない)
+            try await Task.sleep(nanoseconds: UInt64(max(0, self.settleWaitSeconds) * 1_000_000_000))
+            return try await self.freshSnapshot(batchDriver, args: args)
+        }
         recordSnapshot(final, batchDriver is AndroidDriver ? "android" : "ios", args)
         return text(lines.joined(separator: "\n") + "\n\nAll \(plans.count) step(s) passed.\n\n"
-            + (await snapshotBody(final, driver: batchDriver, args: args)))
+            + unchangedNote + (await snapshotBody(final, driver: batchDriver, args: args)))
+    }
+
+    /// バッチ開始前の木(`beforeBatch`)と、全手が通った後の木(`final`)が見分けが付かないときの
+    /// 注記。**同一性判定は `MCPServer.looksUnchanged` を再利用する**(2つ目を書かない)。
+    /// 形は snapshotAfterBodyWithStatus の settle-lite 分岐と同じ: 1回だけ短く待って撮り直し、
+    /// それでも同一なら「どの手も画面を変えなかったかもしれない」と言うだけで断定しない
+    /// (縁で止まっているだけの正当なケースがあるため)。撮り直したら、以後の表示・記録は
+    /// **撮り直したほうの木**を使う(snapshotAfterBodyWithStatus と同じ)。
+    /// `beforeBatch` が nil(起点を知らない)なら比較対象が無いので何もしない
+    static func batchUnchangedNote(beforeBatch: SnapshotResponse?, final: SnapshotResponse,
+                                   stepCount: Int,
+                                   reread: () async throws -> SnapshotResponse) async rethrows
+        -> (note: String, snapshot: SnapshotResponse) {
+        guard let beforeBatch, Self.looksUnchanged(beforeBatch, final) else { return ("", final) }
+        let rereadSnapshot = try await reread()
+        if Self.looksUnchanged(final, rereadSnapshot) {
+            return ("note: every one of the \(stepCount) step(s) reported success, but the tree is"
+                + " still identical to the one before the batch started, even after a short"
+                + " re-read wait — none of the steps may have actually changed the screen. It can"
+                + " also be legitimate: the screen was already at the target state, or the steps"
+                + " went somewhere and came back.\n", rereadSnapshot)
+        }
+        return ("note: the tree looked unchanged right after the last step, so it was re-read once"
+            + " after a short wait — the tree below is the re-read, not the tree right after the"
+            + " last step.\n", rereadSnapshot)
     }
 
     /// シートを広げたときにグラバーを運ぶ先(画面高に対する比)。**上端そのものにはしない** ——
