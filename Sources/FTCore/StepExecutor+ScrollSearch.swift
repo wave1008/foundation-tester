@@ -413,13 +413,17 @@ extension StepExecutor {
                 // **木に居ること ≠ 画面に居ること**: 中心が**画面**の外なら「見つかった」に
                 // しない(下の未検出経路へ合流)。**効くのは弾切れの周回だけ** —— それ以外は上の
                 // isClippedByViewport が先に寄せに行く。
+                // **isClippedByViewport と同じサイズ免除が要る**(offscreenScrollGateAdvisory 参照):
+                // ビューポートより大きい/ゼロサイズの要素は isClippedByViewport が false を返し
+                // 続けるので、免除しないとゲートだけが弾切れ前から found を拒否し、探索方向へ
+                // 進むたび遠ざかる(縦3000pt の要素で確認)。
                 // **基準は viewport(容器)ではなく screen**: 容器の外だが画面には映っている
                 // ghost は、掴み直し + `RefGuard` の警告つきタップという既存の設計で扱う
                 // (ここで failed にすると、その警告が拒否へ格上げされて
                 // `testTapAfterSearchNotesWhenTheGhostPersists` の経路ごと消える)。
                 // 見切れ(中心は画面内)も同じ理由で found のまま —— タップは通る。
-                // 判定は MCP の ⚠️offscreen と共有(TapTargetGeometry.offscreenAdvisory)
-                if TapTargetGeometry.offscreenAdvisory(for: element, screen: snapshot.screen) == nil {
+                // 判定は MCP の ⚠️offscreen と共有(TapTargetGeometry.offscreenScrollGateAdvisory)
+                if TapTargetGeometry.offscreenScrollGateAdvisory(for: element, screen: snapshot.screen) == nil {
                     // **スワイプしたなら静止を待つ**(空打ち→静止待ちの順。settleAfterFind 参照)。
                     // スワイプしていない周回(attempt == 0)は静止しているので追加コストを払わない
                     if attempt > 0 {

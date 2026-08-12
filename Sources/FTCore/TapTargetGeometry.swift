@@ -278,6 +278,32 @@ public enum TapTargetGeometry {
             + " so this almost certainly did nothing"
     }
 
+    /// スクロール探索の「見つかった」ゲート専用の画面外判定。`StepExecutor.isClippedByViewport`
+    /// と同じサイズ免除を**軸ごとに**重ねる ——ある軸のサイズが `0 < size <= screen` に収まる
+    /// ときだけ、その軸の中心はみ出しを判定に使う。収まらない(oversized/ゼロ)軸は判定から外す。
+    /// **isClippedByViewport の全体免除とは意味が違う**: あちらは「寄せ(nudge)を諦める」判定で
+    /// 要素全体の可否を1つに畳んでよいが、ここは「found を疑うか」の判定なので、収まる軸で
+    /// 中心が画面外なら oversized な相方の軸に免除を借りて found と言ってはいけない
+    /// (実例: 画面 402x874 で高さ1000のページャセルが x=800 = 横に完全に画面外。縦が
+    /// oversized でも、収まる横軸の画面外は無視できない)。両軸とも oversized/ゼロなら
+    /// 判定材料が無いので nil(従来の全体免除と同じ帰結)。MCP 側の scroll_to 再照合
+    /// (`MCPServer+Snapshot.swift`)もこれへ揃える(単独の `offscreenAdvisory` ではなくこちら)
+    public static func offscreenScrollGateAdvisory(for element: ElementInfo, screen: FTRect) -> String? {
+        guard screen.width > 0, screen.height > 0 else { return nil }
+        let frame = element.frame
+        let widthFits = frame.width > 0 && frame.width <= screen.width
+        let heightFits = frame.height > 0 && frame.height <= screen.height
+        guard widthFits || heightFits else { return nil }
+        let cx = frame.x + frame.width / 2
+        let cy = frame.y + frame.height / 2
+        let pad = offscreenCentreTolerance
+        let xInside = cx >= screen.x - pad && cx <= screen.x + screen.width + pad
+        let yInside = cy >= screen.y - pad && cy <= screen.y + screen.height + pad
+        guard (widthFits && !xInside) || (heightFits && !yInside) else { return nil }
+        return "its centre (\(Int(cx)), \(Int(cy))) is outside the visible screen,"
+            + " so this almost certainly did nothing"
+    }
+
     /// 「中心が中身のどこにも乗らない」。**frame の中心を撃つときにしか言えない** ——
     /// 呼び出し側が見えている部分の中心へ寄せる(`StepExecutor.visibleTapRect`)場合、
     /// 撃つ点が変わるので「背後へ抜けた」は嘘になる(2026-08-08 のレビュー)

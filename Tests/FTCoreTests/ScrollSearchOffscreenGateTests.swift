@@ -135,4 +135,62 @@ final class ScrollSearchOffscreenGateTests: XCTestCase {
         }
         XCTAssertGreaterThan(driver.moves, 0, "寄せる操作(swipe/drag)を1回も送っていない")
     }
+
+    /// **不変条件4(回帰)**: ビューポートより大きい要素(縦3000pt・画面874pt)は、可視位置の
+    /// 大半で中心が画面外になる。`isClippedByViewport` が既にこの形を「送っても収まらない」
+    /// として false 扱いにしている(nudge 分岐は発火しない)ので、ゲート側も同じ免除が無いと
+    /// attempt 0 から found を拒否し続ける
+    func testOversizedElementIsExemptFromOffscreenGate() async {
+        let driver = StaticFrameDriver(
+            frame: FTRect(x: 0, y: -2500, width: 402, height: 3000), screen: screen)
+
+        let outcome = await StepExecutor(driver: driver)
+            .execute(scrollTo(direction: "down", maxSwipes: 0))
+
+        guard case .passed = outcome.status else {
+            return XCTFail("送っても収まらない巨大要素をゲートが拒否している: \(outcome.status)")
+        }
+    }
+
+    /// **不変条件5(回帰)**: ゼロサイズ要素(退化 frame)も `isClippedByViewport` と同じ理由で
+    /// 免除する —— 中心座標そのものが無意味なので、画面外を理由に found を拒否しない
+    func testZeroSizeElementIsExemptFromOffscreenGate() async {
+        let driver = StaticFrameDriver(
+            frame: FTRect(x: 1000, y: 1000, width: 0, height: 0), screen: screen)
+
+        let outcome = await StepExecutor(driver: driver)
+            .execute(scrollTo(direction: "down", maxSwipes: 0))
+
+        guard case .passed = outcome.status else {
+            return XCTFail("ゼロサイズ要素をゲートが拒否している: \(outcome.status)")
+        }
+    }
+
+    /// **不変条件6**: 縦が oversized(免除対象)でも、横は画面内に収まっており、その横軸で
+    /// 中心が画面外(x=800、画面幅402)なら found を拒否する(要素全体を免除してはいけない)
+    func testOversizedHeightDoesNotExemptOffscreenOnFittingWidthAxis() async {
+        let driver = StaticFrameDriver(
+            frame: FTRect(x: 800, y: -2500, width: 234, height: 3000), screen: screen)
+
+        let outcome = await StepExecutor(driver: driver)
+            .execute(scrollTo(direction: "right", maxSwipes: 0))
+
+        guard case .failed = outcome.status else {
+            return XCTFail("縦が oversized なだけで横の画面外まで免除している: \(outcome.status)")
+        }
+    }
+
+    /// **不変条件7**: 横が oversized(免除対象)でも、縦は画面内に収まっており、その縦軸で
+    /// 中心が画面外(y=2000、画面高874)なら found を拒否する
+    func testOversizedWidthDoesNotExemptOffscreenOnFittingHeightAxis() async {
+        let driver = StaticFrameDriver(
+            frame: FTRect(x: -49, y: 2000, width: 500, height: 56), screen: screen)
+
+        let outcome = await StepExecutor(driver: driver)
+            .execute(scrollTo(direction: "down", maxSwipes: 0))
+
+        guard case .failed = outcome.status else {
+            return XCTFail("横が oversized なだけで縦の画面外まで免除している: \(outcome.status)")
+        }
+    }
 }
