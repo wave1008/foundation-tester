@@ -488,6 +488,21 @@ extension MCPServer {
         return ScrollFrameArg()
     }
 
+    /// シート展開救済の高さ計測(sheetExpansionGrew / sheetShrunkAfterRetry の入力)。
+    /// ref 形式は同じ要素を再照合、セレクタ形式は DSL と同じ照合の先頭一致で測る。
+    /// scrollFrame 未指定なら nil = 判定は黙る(sheetExpansionGrew 側の宣言参照)
+    private static func scrollFrameHeight(_ arg: ScrollFrameArg, step: FlowStep,
+                                          in snapshot: SnapshotResponse) -> Double? {
+        if let original = arg.original {
+            guard case .found(let found, _) = RefGuard.relocate(
+                original, in: snapshot.elements, screen: snapshot.screen) else { return nil }
+            return found.frame.height
+        }
+        guard let locator = step.scrollFrame else { return nil }
+        return StepExecutor.resolvedCandidates(locator, elements: snapshot.elements)?
+            .first?.frame.height
+    }
+
     /// `StepExecutor` を組むための2つの入力(releasesScrollTouch の反転元 / 空打ちゲート用
     /// uiFramework)。**scrollTo と ft_batch が共有する**(2つ目の判定を作らない) ——
     /// releasesScrollTouch は **iOS だけ true**(Android では 2pt のドラッグがクリックとして
@@ -582,6 +597,8 @@ extension MCPServer {
            let grabber = Self.sheetGrabber(in: after) {
             let rescueStart = timingClock.now
             let beforeExpansion = after
+            let beforeHeight = Self.scrollFrameHeight(scrollFrameArg, step: step,
+                                                      in: beforeExpansion)
             let toY = after.screen.height * Self.expandedSheetTopRatio
             try await scrollDriver.drag(fromX: grabber.frame.centerX, fromY: grabber.frame.centerY,
                                         toX: grabber.frame.centerX, toY: toY,
@@ -589,25 +606,73 @@ extension MCPServer {
             // **rect は展開後の木で作り直す**: シートが伸びると scrollFrameRect の元になった
             // 容器の frame も変わるので、展開前の rect のまま撃つと広がった分を探索できない。
             // 同じ要素を撮り直した木から再照合し、取れなければ従来の rect のまま(2026-08-10)
-            if let original = scrollFrameArg.original {
-                let expanded = try await freshSnapshot(scrollDriver, args: args)
-                if case .found(let found, _) = RefGuard.relocate(
-                    original, in: expanded.elements, screen: expanded.screen) {
-                    step.scrollFrameRect = found.frame
-                }
+            let expanded = try await freshSnapshot(scrollDriver, args: args)
+            after = expanded
+            if let original = scrollFrameArg.original,
+               case .found(let found, _) = RefGuard.relocate(
+                   original, in: expanded.elements, screen: expanded.screen) {
+                step.scrollFrameRect = found.frame
             }
-            // **再試行は逆走査つき**(defers... を外した別 executor)。展開後も稀に部分高のまま
-            // のことがあり、そこで再び後回しにすると救済がどこにも無くなる
-            let retryExecutor = StepExecutor(driver: scrollDriver,
-                                             releasesScrollTouch: !isAndroid,
-                                             uiFramework: uiFrameworkHint)
-            outcome = await retryExecutor.execute(step)
-            after = try await freshSnapshot(scrollDriver, args: args)
-            rescueMs = Int((timingClock.now - rescueStart) / .milliseconds(1))
-            sheetNote = "note: the list had stopped moving inside a partially open sheet, so"
-                + " [\(grabber.ref)] \(RefGuard.describe(grabber)) was dragged up to expand it and"
-                + " the search was retried once."
-                + Self.sheetExpansionLayoutNote(before: beforeExpansion, after: after) + "\n"
+            let expandedHeight = Self.scrollFrameHeight(scrollFrameArg, step: step, in: expanded)
+            // 伸びなかったら再試行しない(判定は sheetExpansionGrew の宣言参照)
+            if !Self.sheetExpansionGrew(beforeHeight: beforeHeight,
+                                        expandedHeight: expandedHeight) {
+                let beforeHeight = beforeHeight ?? 0
+                let expandedHeight = expandedHeight ?? 0
+                rescueMs = Int((timingClock.now - rescueStart) / .milliseconds(1))
+                sheetNote = "note: the list had stopped moving inside a partially open sheet, so"
+                    + " [\(grabber.ref)] \(RefGuard.describe(grabber)) was dragged up to expand it,"
+                    + " but its height did not increase (\(Int(beforeHeight))pt before,"
+                    + " \(Int(expandedHeight))pt after) — the sheet cannot be expanded this way,"
+                    + " so the search was not retried.\n"
+            } else {
+                // **再試行は逆走査つき**(defers... を外した別 executor)。展開後も稀に部分高の
+                // ままのことがあり、そこで再び後回しにすると救済がどこにも無くなる
+                let retryExecutor = StepExecutor(driver: scrollDriver,
+                                                 releasesScrollTouch: !isAndroid,
+                                                 uiFramework: uiFrameworkHint)
+                outcome = await retryExecutor.execute(step)
+                after = try await freshSnapshot(scrollDriver, args: args)
+                rescueMs = Int((timingClock.now - rescueStart) / .milliseconds(1))
+                // **再試行後にシートが元より縮んでいたら名指しする**(2026-08-12実測: Apple
+                // マップの乗換案内は、リスト端で続けたスワイプが外側シートの折りたたみに化ける。
+                // 黙っていると読み手は同じ探索をもう一度撃つ)
+                var shrunkNote = ""
+                // **再試行も sheetCollapsed で終わったら、その画面の性質として名指しする**
+                // (2026-08-12実測: Apple マップの乗換案内は、リスト内のドラッグが外側シートの
+                // 折りたたみに化ける。展開→再試行→また畳まれる、を黙って返すと読み手は
+                // 3回目を撃つ)。高さ比較(shrunk)より直接的な証拠なのでこちらを優先する
+                if !StepExecutor.isSuccess(outcome.status),
+                   outcome.notes.contains(.sheetCollapsed) {
+                    shrunkNote = " The retry ended the same way (the sheet collapsed again) —"
+                        + " on this screen drags inside the list collapse the outer sheet instead"
+                        + " of scrolling it, so a third attempt will not do better. Read the rows"
+                        + " already listed (the ⚠️offscreen ones included), or use the app's own"
+                        + " controls to reveal the content."
+                } else {
+                    // **基準は「救済前」or「展開直後」の測れたほう**: 最初の探索のスワイプが
+                    // シートを畳んでいると救済前の木に容器が居ない(実測)。展開で容器が
+                    // 戻ったなら、その高さとの比較で「再試行がまた畳んだ」を言える。
+                    // gone(容器ごと消えた)はここでは言わない —— 展開直後の木はシートの
+                    // アニメーション中で計測が不安定(実測)。最終木での判定は下の失敗文が持つ
+                    let referenceHeight = beforeHeight ?? expandedHeight
+                    let finalHeight = Self.scrollFrameHeight(scrollFrameArg, step: step, in: after)
+                    if !StepExecutor.isSuccess(outcome.status),
+                       Self.sheetRetryContainerState(beforeHeight: referenceHeight,
+                                                     finalHeight: finalHeight) == .shrunk {
+                        shrunkNote = " The scroll container ended up SHORTER than before the rescue"
+                            + " (\(Int(referenceHeight ?? 0))pt → \(Int(finalHeight ?? 0))pt) — on"
+                            + " this screen a swipe at the list's edge collapses the outer sheet"
+                            + " instead of scrolling, so repeating the search will not help; read"
+                            + " the visible rows or navigate another way."
+                    }
+                }
+                sheetNote = "note: the list had stopped moving inside a partially open sheet, so"
+                    + " [\(grabber.ref)] \(RefGuard.describe(grabber)) was dragged up to expand it and"
+                    + " the search was retried once."
+                    + Self.sheetExpansionLayoutNote(before: beforeExpansion, after: after)
+                    + shrunkNote + "\n"
+            }
         }
         // **成功は .passed/.passedViaFallback/.healed の3形**(StepExecutor.isSuccess の定義)。
         // fallback 一致も探索としては成功であり、失敗文を投げると内部 enum(FlowLocator ダンプ)が
@@ -628,6 +693,20 @@ extension MCPServer {
                 throw MCPError(scrollFrameLabelNote + "scrollTo \"\(selectorText)\": \(reason)"
                     + Self.scrollAlternativesHint(beforeScroll ?? after))
             }
+            // **渡された scrollFrame 容器が最終木から消えていたら名指しする**(2026-08-12実測:
+            // Apple マップの乗換案内は探索スワイプがシートごと畳み、最終画面が地図だけになる。
+            // 探索開始時には実在した容器(無ければ scrollFrameMissing で上の分岐に入る)なので、
+            // 消えたのは探索中 = 同じ探索を繰り返しても届かない)。判定は**最終木**で行う ——
+            // 展開直後の木はシートのアニメーション中で計測が不安定(実測)
+            var containerGoneNote = ""
+            if scrollFrameArg.original != nil || step.scrollFrame != nil,
+               Self.scrollFrameHeight(scrollFrameArg, step: step, in: after) == nil {
+                containerGoneNote = "note: the scrollFrame container itself is GONE from the final"
+                    + " tree — the search swipes collapsed or closed the outer sheet, so repeating"
+                    + " the same search will not help. Reopen the sheet (tap the control that"
+                    + " showed it) and read the visible rows, or use ft_swipe one screenful at a"
+                    + " time instead.\n"
+            }
             // **止まった時点で見えているものを一緒に返す**(外部フィードバック 2026-08-06)。
             // 「届かなかった」だけだと ft_snapshot の往復が要るうえ、**記法の誤りに気づけない**
             // —— 素のラベルは完全一致なので、「端末情報」は「端末情報を表示」に当たらない。
@@ -636,7 +715,7 @@ extension MCPServer {
             // 読んで**もう一度同じことを手で試す**(そのぶん往復が増える)
             // **内訳は失敗側にも出す**: 実測で 7.8 秒かけて届かなかった回に何も出ず、
             // 何本振ったのかも分からなかった —— 遅さの説明が最も要るのはこちら
-            throw MCPError(scrollFrameLabelNote + sheetNote
+            throw MCPError(scrollFrameLabelNote + sheetNote + containerGoneNote
                 + Self.scrollTimingNote(totalMs: Int((timingClock.now - timingStart)
                                                      / .milliseconds(1)),
                                         swipes: outcome.scrollSwipes, rescueMs: rescueMs)

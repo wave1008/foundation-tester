@@ -39,6 +39,29 @@ extension MCPServer {
             + " a single vertical list, so `direction` no longer selects which page to advance."
     }
 
+    /// シート展開救済で scrollFrame 容器が実際に伸びたか。伸びていなければ再試行(逆走査
+    /// 8本+通常8本)は最初から無駄なので撃たない(2026-08-12実測: Apple マップの乗換案内
+    /// シートはグラバーを引いても伸びず、32.5秒かけて同じ失敗をなぞっていた)。
+    /// **どちらかの高さを測れなかったら「伸びた」扱い** = 従来どおり再試行する(判断できない
+    /// ときに救済を奪わない)。+1 は同一高の描画ゆらぎ吸収
+    static func sheetExpansionGrew(beforeHeight: Double?, expandedHeight: Double?) -> Bool {
+        guard let beforeHeight, let expandedHeight else { return true }
+        return expandedHeight > beforeHeight + 1
+    }
+
+    /// 再試行後の scrollFrame 容器の姿(リスト端でのスワイプが外側シートの折りたたみ/閉鎖に
+    /// 化ける画面の検出)。救済前に測れていた容器が再試行後の木から消えていたら `gone`
+    /// (2026-08-12実測: Apple マップの乗換案内は再試行のスワイプでシートごと閉じ、
+    /// 最終画面が地図だけになっていた)。縮んでいたら `shrunk`。救済前から測れていない
+    /// 容器については黙る(嘘を足さない)
+    enum SheetRetryContainerState { case silent, shrunk, gone }
+    static func sheetRetryContainerState(beforeHeight: Double?, finalHeight: Double?)
+        -> SheetRetryContainerState {
+        guard let beforeHeight else { return .silent }
+        guard let finalHeight else { return .gone }
+        return finalHeight < beforeHeight - 1 ? .shrunk : .silent
+    }
+
     /// この長さ未満(ms)の探索は、救済(シート展開)が無ければ内訳を出さない —— 短い探索まで
     /// 毎回「何本振ったか」を出すと、実際に遅い回(2026-08-12実測 9.8/12.8/15.6s)の内訳が
     /// 埋もれる。救済ありは長さに関わらず出す(遅さの主因を切り分けたい回だから)

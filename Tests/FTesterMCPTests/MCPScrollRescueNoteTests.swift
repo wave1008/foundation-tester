@@ -70,6 +70,62 @@ final class MCPScrollExpansionLayoutNoteTests: XCTestCase {
     }
 }
 
+final class MCPSheetExpansionHeightGateTests: XCTestCase {
+
+    /// **本丸**: 伸びていなければ再試行しない(2026-08-12実測: Apple マップの乗換案内シートは
+    /// グラバーを引いても伸びず、無駄な再試行込みで32.5秒かけて失敗していた)
+    func testUnchangedHeightMeansExpansionFailed() {
+        XCTAssertFalse(MCPServer.sheetExpansionGrew(beforeHeight: 283, expandedHeight: 283))
+    }
+
+    /// 縮んだ(引いたら閉じる実装)も「伸びていない」
+    func testShrunkHeightMeansExpansionFailed() {
+        XCTAssertFalse(MCPServer.sheetExpansionGrew(beforeHeight: 283, expandedHeight: 120))
+    }
+
+    /// 実際に伸びたら従来どおり再試行する(常に false へ縮退する変異をここで落とす)
+    func testGrownHeightMeansExpansionWorked() {
+        XCTAssertTrue(MCPServer.sheetExpansionGrew(beforeHeight: 283, expandedHeight: 700))
+    }
+
+    /// +1 は描画ゆらぎの吸収なので、1pt 差は「伸びていない」(境界値)
+    func testOnePointGrowthIsStillFailed() {
+        XCTAssertFalse(MCPServer.sheetExpansionGrew(beforeHeight: 283, expandedHeight: 284))
+    }
+
+    /// 高さを測れなかったら「伸びた」扱い = 判断できないときに救済を奪わない
+    func testUnknownHeightsKeepTheRetry() {
+        XCTAssertTrue(MCPServer.sheetExpansionGrew(beforeHeight: nil, expandedHeight: 700))
+        XCTAssertTrue(MCPServer.sheetExpansionGrew(beforeHeight: 283, expandedHeight: nil))
+    }
+
+    /// 再試行後に救済前より縮んだ = リスト端のスワイプが外側シートを畳んだ画面(名指しする)
+    func testShrunkAfterRetryDetected() {
+        XCTAssertEqual(MCPServer.sheetRetryContainerState(beforeHeight: 283, finalHeight: 247),
+                       .shrunk)
+    }
+
+    /// 救済前に測れていた容器が再試行後の木から消えた = シートごと閉じた(実測の最悪形)
+    func testGoneAfterRetryDetected() {
+        XCTAssertEqual(MCPServer.sheetRetryContainerState(beforeHeight: 283, finalHeight: nil),
+                       .gone)
+    }
+
+    /// 同じ高さ・伸びた・救済前から測れていない、はどれも黙る(嘘を足さない側に倒す)。
+    /// 救済前が nil なら final が何であっても gone とは言わない(消えたのではなく元々見て
+    /// いない)
+    func testNotShrunkStaysSilent() {
+        XCTAssertEqual(MCPServer.sheetRetryContainerState(beforeHeight: 283, finalHeight: 283),
+                       .silent)
+        XCTAssertEqual(MCPServer.sheetRetryContainerState(beforeHeight: 283, finalHeight: 700),
+                       .silent)
+        XCTAssertEqual(MCPServer.sheetRetryContainerState(beforeHeight: nil, finalHeight: 100),
+                       .silent)
+        XCTAssertEqual(MCPServer.sheetRetryContainerState(beforeHeight: nil, finalHeight: nil),
+                       .silent)
+    }
+}
+
 final class MCPScrollTimingNoteTests: XCTestCase {
 
     /// 救済ありなら、閾値未満でも必ず内訳を出す(遅さの主因を切り分けたい回だから)

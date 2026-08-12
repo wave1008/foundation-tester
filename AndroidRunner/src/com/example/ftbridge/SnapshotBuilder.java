@@ -6,8 +6,12 @@
 package com.example.ftbridge;
 
 import android.app.UiAutomation;
+import android.content.Context;
 import android.graphics.Rect;
+import android.os.Build;
 import android.os.SystemClock;
+import android.view.Display;
+import android.view.WindowManager;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityWindowInfo;
 
@@ -111,17 +115,33 @@ final class SnapshotBuilder {
      * ディスプレイ全体の矩形。**アクティブウィンドウの根では代用できない** —— ダイアログが
      * 出ている間はそれがダイアログの DecorView になる(実測 1024x427)。
      *
-     * Context を持ち回らずに済む `Resources.getSystem()` の DisplayMetrics を使う
-     * (既定ディスプレイの実ピクセル)。**取れなければウィンドウの根へ落ちる**:
+     * **インセットを除かない物理サイズ**を返す(API 30+: getMaximumWindowMetrics().getBounds()。
+     * 未満: Display#getRealMetrics。どちらも下部ジェスチャーナビゲーションバー分を含む)。
+     * `Resources.getSystem().getDisplayMetrics()`(widthPixels/heightPixels)は
+     * **アプリウィンドウに割り当てられた領域**で、edge-to-edge 端末だと上部ステータスバー分は
+     * 含むのに下部ジェスチャーバー分だけ非対称に欠ける(実測: Pixel 9/Android 15 で
+     * 報告 1080x2219、実ディスプレイは 1080x2424)。**取れなければウィンドウの根へ落ちる**:
      * 嘘の大きさを返すより、従来の値のままの方が害が小さい(ホストはこれで
      * 既定スワイプとピンチの座標を作る)。
      */
-    private static Rect displayBounds(Rect fallback) {
+    private static Rect displayBounds(Context context, Rect fallback) {
         try {
-            android.util.DisplayMetrics metrics =
-                    android.content.res.Resources.getSystem().getDisplayMetrics();
-            if (metrics != null && metrics.widthPixels > 0 && metrics.heightPixels > 0) {
-                return new Rect(0, 0, metrics.widthPixels, metrics.heightPixels);
+            WindowManager wm = context == null
+                    ? null : (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
+            if (wm != null) {
+                if (Build.VERSION.SDK_INT >= 30) {
+                    Rect bounds = wm.getMaximumWindowMetrics().getBounds();
+                    if (bounds.width() > 0 && bounds.height() > 0) return bounds;
+                } else {
+                    Display display = wm.getDefaultDisplay();
+                    if (display != null) {
+                        android.util.DisplayMetrics metrics = new android.util.DisplayMetrics();
+                        display.getRealMetrics(metrics);
+                        if (metrics.widthPixels > 0 && metrics.heightPixels > 0) {
+                            return new Rect(0, 0, metrics.widthPixels, metrics.heightPixels);
+                        }
+                    }
+                }
             }
         } catch (RuntimeException ignored) {
             // 取得できない環境では従来どおり
@@ -129,8 +149,9 @@ final class SnapshotBuilder {
         return fallback;
     }
 
-    /** forceRefresh: WebView 外のノードも refresh() してから読むか(既定は false。collect 参照) */
-    static Result build(UiAutomation ua, boolean forceRefresh) throws JSONException {
+    /** forceRefresh: WebView 外のノードも refresh() してから読むか(既定は false。collect 参照)。
+     *  context: displayBounds の WindowManager 取得用(null 可・その場合はウィンドウの根へ落ちる) */
+    static Result build(UiAutomation ua, Context context, boolean forceRefresh) throws JSONException {
         AccessibilityNodeInfo root = waitForRoot(ua, 2000);
         if (root == null) {
             throw new IllegalStateException("cannot read the UI tree of the active window");
@@ -166,7 +187,7 @@ final class SnapshotBuilder {
         // ホスト側の実害はもう1つある: BridgeRouter はこれを lastScreen として覚え、
         // **既定の全画面スワイプとピンチの座標をここから作る**ので、ダイアログを撮った直後の
         // swipe が画面上部の狭い帯を払うことになる
-        Rect screen = displayBounds(window);
+        Rect screen = displayBounds(context, window);
 
         List<UINode> included = new ArrayList<>();
         for (UINode node : nodes) {
