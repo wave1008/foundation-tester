@@ -155,31 +155,15 @@ extension MCPServer {
         // **ghostNote と render で畳みの有無を揃える**: 片方だけ expandBulk を無視すると、
         // 注記は「畳んだ」と言うのに木は個別列挙、という食い違いになる
         let collapsingBulk = args["expandBulk"] as? Bool != true
+        // **木だけから決まる注記は NoteCatalog が唯一の定義元**(並び順・短縮・A/B の黙らせも
+        // あちら)。ここへ直に `Self.xxxNote(...)` を足さないこと —— 足すと発火が測れなくなり、
+        // NoteCoverageTests のソース走査が落ちる
         return switchedNote + extraNote + backgroundNote
-            + Self.ghostNote(snapshot, collapsingBulk: collapsingBulk, cache: cache)
-            + (ScrollFrameCandidates.note(snapshot) ?? "")
-            + Self.truncationNote(snapshot)
-            + onceNonEmpty("bulkExemptNote") { Self.bulkExemptNote(snapshot, abbreviated: $0) }
-            + onceNonEmpty("unlabeledClickablesNote") { Self.unlabeledClickablesNote(snapshot, abbreviated: $0) }
-            + onceNonEmpty("ambiguousLabelsNote") { Self.ambiguousLabelsNote(snapshot, abbreviated: $0, cache: cache) }
-            // ラベル版の直後に置く(読み手はどちらも「一意に指せるか」を見に来る)
-            + onceNonEmpty("duplicateIDsNote") { Self.duplicateIDsNote(snapshot, abbreviated: $0, cache: cache) }
-            + Self.keyboardCoverageNote(snapshot) + Self.sliverNote(snapshot)
-            + truncatedLabelNote(snapshot)
+            + catalogNotes(NoteCatalog.Input(snapshot: snapshot, collapsingBulk: collapsingBulk,
+                                             cache: cache), context: .snapshot)
             + SnapshotRenderer.render(snapshot, flagging: cache.ghostFlags(snapshot),
                                       collapsingBulk: collapsingBulk,
                                       interactiveOnly: args["interactiveOnly"] as? Bool == true)
-    }
-
-    /// `SnapshotRenderer.truncatedLabelNote` を `once` で包む(F-6)。ft_snapshot と
-    /// ft_scroll_to の両方が呼ぶので**鍵はここに1つだけ**にする(2つ目の呼び口を作らない)
-    private func truncatedLabelNote(_ snapshot: SnapshotResponse) -> String {
-        onceNonEmpty("truncatedLabelNote") { abbreviated in
-            abbreviated
-                ? "note: long labels are shown cut off with \"…\" — match with"
-                    + " \"*prefix*\" (see the first snapshot's note).\n"
-                : SnapshotRenderer.truncatedLabelNote(snapshot) ?? ""
-        }
     }
 
     /// `snapshotAfter` が読む木は基本的に整定を待たないという注意を初回だけ満額で出す
@@ -903,10 +887,10 @@ extension MCPServer {
         return text(switched + scrollFrameLabelNote + sheetNote + timingNote
             + "scrolled to \"\(selectorText)\"\(landed)\(fallbackNote)."
             + " The refs below are fresh\n" + scrollAreaNote
-            + Self.ghostNote(after, collapsingBulk: collapsingBulk, cache: cache)
-            + Self.truncationNote(after)
-            + Self.keyboardCoverageNote(after) + Self.sliverNote(after)
-            + truncatedLabelNote(after)
+            // **ft_snapshot より少ない**(scrollFrame 候補・重複 id 系は出さない)。その差は
+            // NoteCatalog の contexts が持つ = 2箇所の並びを読み比べる必要はない
+            + catalogNotes(NoteCatalog.Input(snapshot: after, collapsingBulk: collapsingBulk,
+                                             cache: cache), context: .scrollTo)
             // **既定で畳む**(expandBulk で戻せる): ft_scroll_to の答えは「探した1つがどこに居るか」
             // なので、地図のピンが数十行並ぶ意味は薄い。ft_snapshot と同じ規則にする
             // (2026-08-10 まではここだけ interactiveOnly を無視して常に全行を出していた)

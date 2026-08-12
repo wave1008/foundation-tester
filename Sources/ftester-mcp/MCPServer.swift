@@ -113,6 +113,18 @@ final class MCPServer {
     // MARK: - メインループ(stdio: 改行区切り JSON-RPC)
 
     func run() async {
+        // **黙らせた注記は起動時に名乗る**(A/B の陽性対照)。差が出なかったときに
+        // 「変更が無効だった」と「実験が無効だった」を区別できないと、Scripts/mcp-bench.sh の
+        // 結論は毎回どちらとも取れる。綴り違いの鍵は落ちていないので必ず名指しする
+        if !NoteCatalog.disabled.isEmpty {
+            Self.logStderr("FT_MCP_NOTES_OFF: silencing "
+                + NoteCatalog.disabled.sorted().joined(separator: ", "))
+        }
+        let unknownNoteKeys = NoteCatalog.unknownDisabledKeys()
+        if !unknownNoteKeys.isEmpty {
+            Self.logStderr("FT_MCP_NOTES_OFF: NOT a note key (ignored): "
+                + unknownNoteKeys.joined(separator: ", "))
+        }
         while let line = readLine(strippingNewline: true) {
             // **壊れた行でループを抜けない**: 1行の不正でサーバが死ぬとセッションごと落ちる
             guard let message = Self.parseMessage(line) else { continue }
