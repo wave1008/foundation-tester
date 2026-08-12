@@ -116,10 +116,24 @@ final class MCPSelectorDurabilityTests: XCTestCase {
     }
 
     /// **絞り込みの取り分を守る**(2026-08-12)。`.型&&ラベル` / `#容器 >> ラベル` を足す前は
-    /// コーパス 975 要素のうち **indexed 326 / 書けない 38** で、足した後は **157 / 18**。
-    /// 上限はその実測値に余裕を持たせた値 —— **上げるときは増えた分を1件ずつ見てから**
-    /// (黙って上げるとこの砦は現状の追認装置になる。SweepHarnessTests の基準値と同じ規律)。
-    /// 候補の事前ゲート(数え上げ)はコストだけを下げるもので、**この数を1件も動かさない**
+    /// コーパス 975 要素のうち **indexed 326 / 書けない 38** で、足した後は **150 / 27**。
+    /// **上げるときは増えた分を1件ずつ見てから**(黙って上げるとこの砦は現状の追認装置になる。
+    /// SweepHarnessTests の基準値と同じ規律)。検分は `FT_SELECTOR_DURABILITY=1` の
+    /// 画面別内訳で行う。候補の事前ゲート(数え上げ)はコストだけを下げるもので、
+    /// **この数を1件も動かさない**。
+    ///
+    /// **割合も見る**(2026-08-12 に追加): 絶対数だけだとコーパスを広げるたびに上限を
+    /// 上げる儀式になり、砦が「増えたら追認する」装置に退化する。要素あたりの割合は
+    /// コーパスの大きさに依らない。
+    ///
+    /// 2026-08-12 にアーキタイプを6枚足して **150 → 229 / 975 → 1,261 要素**(15.4% → 18.2%)。
+    /// 増分 79 の内訳は画面別に検分済みで、**3枚に集中**している:
+    /// `ios-settings_root` 23 / `and-dialer_keypad` 22 / `and-settings_root` 21
+    /// (残り: safari 10・messages 3・photos 0)。いずれも**行の中の無名の下位ビュー**が
+    /// 同じ id で繰り返される形(`#icon`/`#icon_frame`/`#text_frame` ×7、
+    /// `#dialpad_key_layout`/`#dialpad_key_number` ×12)で、**ラベルもテキストも無いので
+    /// 絞り込みようがない = indexed が正しい格付け**。絞り込みの退行ではなく、
+    /// コーパスがその形を含むようになっただけ
     func testNarrowingKeepsIndexedAndUnwritableLow() throws {
         var indexed = 0, unwritable = 0, total = 0
         for name in try fixtureNames() {
@@ -134,9 +148,12 @@ final class MCPSelectorDurabilityTests: XCTestCase {
                 }
             }
         }
-        XCTAssertGreaterThan(total, 900, "コーパスが縮んでいる = この砦は何も見ていない")
-        XCTAssertLessThanOrEqual(indexed, 200, "索引セレクタが増えている(実測 157)")
-        XCTAssertLessThanOrEqual(unwritable, 30, "書けない要素が増えている(実測 18)")
+        XCTAssertGreaterThan(total, 1200, "コーパスが縮んでいる = この砦は何も見ていない")
+        XCTAssertLessThanOrEqual(indexed, 260, "索引セレクタが増えている(実測 229)")
+        XCTAssertLessThanOrEqual(indexed * 100 / max(1, total), 20,
+                                 "索引セレクタの割合が増えている(実測 18%)"
+                                 + " —— 画面を足しただけでは上がらない指標なので、絞り込みの退行を疑う")
+        XCTAssertLessThanOrEqual(unwritable, 35, "書けない要素が増えている(実測 28)")
     }
 
     /// コーパスに両方の格付けが出ていること(片側しか見ていない状態を防ぐ)
@@ -152,6 +169,33 @@ final class MCPSelectorDurabilityTests: XCTestCase {
         }
         XCTAssertGreaterThan(stable, 0)
         XCTAssertGreaterThan(indexed, 0, "添字付きが1件も出ないコーパスでは印の検証にならない")
+    }
+
+    /// 上限を上げる前の検分用(`FT_SELECTOR_DURABILITY=1` のときだけ動く)。**どの画面が
+    /// 索引セレクタを増やしたか**を出す —— 総数だけ見て上げると現状の追認になる
+    func testPrintDurabilityPerFixture() throws {
+        guard ProcessInfo.processInfo.environment["FT_SELECTOR_DURABILITY"] == "1" else { return }
+        var totalIndexed = 0, totalUnwritable = 0, totalAll = 0
+        for name in try fixtureNames() {
+            let snapshot = try fixture(name)
+            let naming = MCPServer.SelectorNaming(snapshot)
+            var indexed = 0, unwritable = 0
+            for element in snapshot.elements {
+                switch naming.graded(for: element, in: snapshot)?.durability {
+                case .some(.indexed): indexed += 1
+                case .none: unwritable += 1
+                case .some(.stable): break
+                }
+            }
+            totalIndexed += indexed
+            totalUnwritable += unwritable
+            totalAll += snapshot.elements.count
+            print(String(format: "  %-30s elements=%3d indexed=%3d unwritable=%2d",
+                         (name as NSString).utf8String!, snapshot.elements.count,
+                         indexed, unwritable))
+        }
+        print("TOTAL elements=\(totalAll) indexed=\(totalIndexed)"
+            + " (\(totalIndexed * 100 / max(1, totalAll))%) unwritable=\(totalUnwritable)")
     }
 
     /// 曖昧ラベル注記の凡例が印を説明していること(印だけ出て意味が書いていない状態を防ぐ)

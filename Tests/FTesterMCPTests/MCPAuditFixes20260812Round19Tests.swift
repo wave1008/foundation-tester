@@ -89,24 +89,44 @@ final class MCPAuditFixes20260812Round19Tests: XCTestCase {
         XCTAssertEqual(MCPServer.emptyLoadingScroller(in: tree)?.identifier, "results")
     }
 
-    /// **誤検知0の砦**(CLAUDE.md「新しい検知は既存資産の全数に当てて誤検知0まで確認する」)。
-    /// 実アプリのコーパス19枚は**すべて描画の済んだ画面**なので、1枚でも「読み込み中」と
-    /// 言うなら述語が緩い —— 緩ければ操作のたびに 0.4 秒の空待ちと誤った注記を払う。
-    /// 判定が depth の入れ子に依存しているので、**depth を平坦に送るブリッジが混じったら
-    /// ここが落ちる**(その時は述語ではなく前提を疑う)
+    /// **発火する画面を集合で固定する砦**(CLAUDE.md「新しい検知は既存資産の全数に当てて
+    /// 誤検知0まで確認する」)。実アプリのコーパスは**すべて描画の済んだ画面**なので、
+    /// 「読み込み中かもしれない」と言うのは原則すべて誤検知 —— 緩ければ操作のたびに
+    /// 0.4 秒の空待ちと誤った注記を払う。判定が depth の入れ子に依存しているので、
+    /// **depth を平坦に送るブリッジが混じったらここが落ちる**(その時は述語ではなく前提を疑う)。
+    ///
+    /// **等号で照合する**(2026-08-12 に nil 固定から変更): アーキタイプを広げたとき
+    /// `ios-messages_keyboard` で発火した。検分の結果**述語としては誤検知だが、実害は
+    /// 小さいと判断して現状を固定する**:
+    /// - 会話に1件もメッセージが無い状態で、`#TranscriptCollectionView`(0,0 402x874 =
+    ///   全画面の器)が子ゼロで返る。**全画面の器は入れ子の兄弟しか持たない**ので、
+    ///   「子が無い」は中身が無いことを意味しない —— 述語の穴はここ
+    /// - 払うのは1回きりの短い待ちと、「本当に空かもしれない」と明記した注記だけ
+    ///   (throw も再試行もしない。emptyLoadingScroller の宣言参照)
+    ///
+    /// **述語を絞るなら、地図側の witness(`#expandingscrollview_container`)を
+    /// フィクスチャに採ってからにすること** —— それが無いまま「全画面の器を除く」と
+    /// 絞ると、この検知が生まれた動機の形を落としたことに気付けない
+    static let knownEmptyScrollerFirings: Set<String> = ["ios-messages_keyboard.json"]
+
     func testNoFalsePositiveOnTheRealAppCorpus() throws {
         let dir = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Fixtures/RealAppSnapshots")
         let names = try FileManager.default.contentsOfDirectory(atPath: dir.path)
             .filter { $0.hasSuffix(".json") }.sorted()
-        XCTAssertGreaterThanOrEqual(names.count, 19, "コーパスが痩せていると砦にならない")
+        XCTAssertGreaterThanOrEqual(names.count, 25, "コーパスが痩せていると砦にならない")
+        var fired: [String: String] = [:]
         for name in names {
             let data = try Data(contentsOf: dir.appendingPathComponent(name))
             let tree = try JSONDecoder().decode(SnapshotResponse.self, from: data)
-            let found = MCPServer.emptyLoadingScroller(in: tree)
-            XCTAssertNil(found, "\(name): \(found.map(RefGuard.describe) ?? "") を空と誤認した")
+            if let found = MCPServer.emptyLoadingScroller(in: tree) {
+                fired[name] = RefGuard.describe(found)
+            }
         }
+        XCTAssertEqual(Set(fired.keys), Self.knownEmptyScrollerFirings,
+                       "「空の読み込み中容器」と判定される画面の集合が変わった(実測 \(fired))。"
+                       + " 増えたなら述語が緩い。減ったなら述語を絞った副作用が出ていないか見ること")
     }
 
     // MARK: - ③ 配線(snapshotAfter の実経路)

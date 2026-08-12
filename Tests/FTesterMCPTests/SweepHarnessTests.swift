@@ -62,6 +62,15 @@ final class SweepHarnessTests: XCTestCase {
         // 化けた witness と同一要素 = 真陽性。overlay 1(compass ← 候補行)も描画どおり
         "and-maps_suggest_ime": Counts(ghost: 0, overlay: 1, stacked: 0, misses: 0, disabled: 0,
                                        warnedTappable: 0, keyboard: 2),
+        // 2026-08-12 採取(アーキタイプ拡張)。**キーパッド**(同じ形の 12 キー格子)。
+        // nested 1 は真陽性: `#dialpad_view`(0,1220 1080x1141・clickable)の中心 (540,1790) が
+        // その中の `#eight`(377,1779 324x168)の上にある = 容器を撃つと「8」が入る。
+        // overlay 1(#fab_container ← #dialpad_call_buttons)は通話ボタン列が FAB の器を覆う実描画どおり。
+        // disabled 1 は入力が空のときの Backspace(`#deleteButton`)= 真陽性。
+        // **実アプリで初めて `disabled` が出た2枚のうちの1枚**(それまで供給源は自前 SUT だけ)
+        "and-dialer_keypad": Counts(ghost: 0, overlay: 1, stacked: 0, misses: 0, disabled: 1,
+                                    offscreen: 0, warnedTappable: 2, keyboard: 0, sliver: 0,
+                                    nested: 1, scrolledOut: 0),
         "and-overflow": Counts(),
         "and-place": Counts(ghost: 0, overlay: 1, stacked: 0, misses: 1, disabled: 0,
                             warnedTappable: 0),
@@ -69,6 +78,12 @@ final class SweepHarnessTests: XCTestCase {
                                      warnedTappable: 3),
         "and-results": Counts(ghost: 0, overlay: 18, stacked: 0, misses: 2, disabled: 0,
                               warnedTappable: 2),
+        // 2026-08-12 採取。**設定ツリー**(Android)。misses 1 は
+        // `#homepage_app_bar_regular_phone_view`(非操作の器)の中心が中の `#search_bar` に乗る形 =
+        // 既存の「見出し容器」と同型の受理済み。警告付きのタップ対象は0
+        "and-settings_root": Counts(ghost: 0, overlay: 0, stacked: 0, misses: 1, disabled: 0,
+                                    offscreen: 0, warnedTappable: 0, keyboard: 0, sliver: 0,
+                                    nested: 0, scrolledOut: 0),
         // nested 1 は検分済みの真陽性: `#PinnedItemSection`(横スクロールする clickable の帯)の
         // 中心は、その中の `#PinnedTile` の上にある。帯を撃つと1枚のタイルが開く
         "ios-home": Counts(ghost: 0, overlay: 1, stacked: 0, misses: 0, disabled: 0,
@@ -93,6 +108,16 @@ final class SweepHarnessTests: XCTestCase {
         "ios-maps_suggest_keyboard": Counts(ghost: 0, overlay: 11, stacked: 0, misses: 0,
                                             disabled: 0, offscreen: 1, warnedTappable: 9,
                                             keyboard: 16),
+        // 2026-08-12 採取。**チャット + ソフトキーボード**(会話を開いて入力欄に焦点)。
+        // 全項目0 —— キーボードは出ている(`keyboardFrame` (0,583 402x233))が、その下に
+        // タップ対象が1つも無い画面なので `keyboard` も0になる。**「何も出ない実アプリの画面」の
+        // 供給源として意味がある**(検知が常に何か出す装置になっていないことの陰性対照)
+        "ios-messages_keyboard": Counts(),
+        // 2026-08-12 採取。**メディアグリッド**(写真6枚のタイル)。misses 1 は
+        // `#PXGGridLayout-Group`(非操作の器)の中心が中のタイルに乗る形 = 受理済みの型
+        "ios-photos_grid": Counts(ghost: 0, overlay: 0, stacked: 0, misses: 1, disabled: 0,
+                                  offscreen: 0, warnedTappable: 0, keyboard: 0, sliver: 0,
+                                  nested: 0, scrolledOut: 0),
         "ios-place": Counts(ghost: 0, overlay: 3, stacked: 0, misses: 2, disabled: 0,
                             warnedTappable: 0),
         // 2026-08-09 採取。**scrolledOut 検知の witness**: 場所カードを送ると
@@ -105,6 +130,25 @@ final class SweepHarnessTests: XCTestCase {
                                             disabled: 0, offscreen: 13, warnedTappable: 6,
                                             keyboard: 0, sliver: 0, nested: 0, scrolledOut: 3),
         "ios-profile": Counts(),
+        // 2026-08-12 採取。**WebView / ブラウザ**(Safari で Wikipedia の記事)。
+        // **14 件の overlay を全数検分した結果、10 件は誤検知・4 件は真陽性**:
+        // - **誤検知 10 件は「折り返す inline テキスト」**という新しい下位形。web の a11y は
+        //   1つの文中の run ごとに矩形を出すが、**折り返した run は前の run と同じ原点で
+        //   2行ぶんの高さを持つ**(実測: staticText "A mobile app…"(16,332 254x23)と
+        //   link "computer program"(16,332 328x51)は原点が一致し、後者が前者を完全に含む)。
+        //   iOS は z を持たないので後着の link が「手前」と読まれるが、その座標に実際に
+        //   描かれているのは前の run の字。**既知の「iOS に z が無い」型の一種**であって
+        //   新しい欠陥ではないが、**1画面に 10 件出るのはこのコーパスで初めて**
+        // - **真陽性 4 件**は下部ツールバー(`#MoreMenuButton` (90,792 48x48) /
+        //   `#CapsuleNavigationBar`)がページ本文(y=823〜844 の "The"/"Instagram"/
+        //   "photo sharing app on a")を覆う形。ここを撃つとブラウザの chrome に当たる
+        // disabled 1 は履歴が無いときの「戻る」(`#BackButton`)= 真陽性。
+        // warnedTappable 7 = 誤検知の link 5 + 真陽性の link "Instagram" 1 + disabled 1
+        "ios-safari_article": Counts(ghost: 0, overlay: 14, stacked: 0, misses: 0, disabled: 1,
+                                     offscreen: 0, warnedTappable: 7, keyboard: 0, sliver: 0,
+                                     nested: 0, scrolledOut: 0),
+        // 2026-08-12 採取。**設定ツリー**(iOS)。全項目0 —— ios-messages_keyboard と並ぶ陰性対照
+        "ios-settings_root": Counts(),
         "sut-cmp_controls": Counts(ghost: 0, overlay: 0, stacked: 0, misses: 0, disabled: 2,
                                    warnedTappable: 2),
         "sut-cmp_home": Counts(),
