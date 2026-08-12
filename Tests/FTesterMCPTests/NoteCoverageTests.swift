@@ -60,6 +60,12 @@ final class NoteCoverageTests: XCTestCase {
         // 2週間天気ページを Android Chrome / iOS Safari で採取。iOS 側は見出し行がツリーにある
         // 陰性対照)
         "and-browser_weektable": "browser", "ios-browser_weektable": "browser",
+        // 2026-08-13 の監査で足した対(Yahoo!天気の週間画面を両 OS で)。iOS 側は
+        // **gridWithoutHeaderNote が実アプリで初めて出した誤検知**の witness(見出し行が
+        // 値の列と揃っていて鎖の最上行に取り込まれる形)。Android 側は
+        // **閾値超えの空白帯が2本ある**形で、最大の1本だけを返していた頃は
+        // 週間表の見出しが落ちている側が黙って捨てられていた
+        "and-browser_weather_weekly": "browser", "ios-browser_weather_weekly": "browser",
         "ios-maps_route_options": "picker",
         // 自前 SUT(盤面が契約で固定されている対照)
         "sutec-calendar_day": "ec", "sutec-detail": "ec", "sutec-home": "ec",
@@ -68,7 +74,7 @@ final class NoteCoverageTests: XCTestCase {
 
     static func family(_ fixture: String) -> String { archetypes[fixture] ?? "?" }
 
-    // MARK: - 基準値(2026-08-12 実測)
+    // MARK: - 基準値(2026-08-12 実測 / 2026-08-13 にブラウザ2枚を追加して 34 画面)
 
     /// 発火の内訳(2026-08-12 実測 / コーパス 25 画面 = map 14・ec 3・settings 2・sut 2 +
     /// chat/keypad/media/webview 各1)。**アーキタイプを6枚足したときに判定が動いた** ——
@@ -86,19 +92,22 @@ final class NoteCoverageTests: XCTestCase {
     /// 量の主因は `duplicateIDsNote`(15.1KB)と `ambiguousLabelsNote`(10.0KB)で変わらず、
     /// この2本は 5〜6/8 アーキタイプで発火する = 汎用の側。**削るなら文面であって対象ではない**
     static let baseline: [String: Coverage] = [
-        "ghostNote": Coverage(fixtures: ["ios-browser_startpage", "ios-place_guides_scrolled"], bytes: 588),
+        "ghostNote": Coverage(fixtures: ["and-browser_weather_weekly", "ios-browser_startpage", "ios-place_guides_scrolled"], bytes: 888),
         "scrollFrameCandidates": Coverage(fixtures: ["and-place_expanded", "and-results", "ios-browser_startpage", "ios-maps_route_options", "ios-maps_station", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-messages_keyboard", "ios-place_guides_scrolled"], bytes: 2317),
         "truncationNote": Coverage(fixtures: ["ios-browser_nationwide", "ios-browser_startpage", "ios-maps_station"], bytes: 1012),
-        // 取りこぼしのある Chrome の2枚(2026-08-12 に and-browser_weektable を追加)で発火し、
-        // 取りこぼしの無い iOS Safari の3枚(ios-browser_weektable 含む)では出ない
-        // (閾値の根拠は MCPServer.webViewGapNote のコメント)。browser 限定なのは
-        // **webView を持つフィクスチャがブラウザ6枚しか無い**ためで、対象はアプリ内 WebView も含む
-        "webViewGapNote": Coverage(fixtures: ["and-browser_weather", "and-browser_weektable"], bytes: 973),
+        // 取りこぼしのある Chrome の3枚(2026-08-13 に and-browser_weather_weekly を追加)で発火し、
+        // 取りこぼしの無い iOS Safari の4枚(ios-browser_weektable / _weather_weekly 含む)では
+        // 出ない(閾値の根拠は MCPServer.webViewGapNote のコメント)。browser 限定なのは
+        // **webView を持つフィクスチャがブラウザ8枚しか無い**ためで、対象はアプリ内 WebView も含む。
+        // and-browser_weather_weekly だけ**帯が2本**あり、複数形の文面になる(+577 バイトの主因)
+        "webViewGapNote": Coverage(fixtures: ["and-browser_weather", "and-browser_weather_weekly", "and-browser_weektable"], bytes: 1534),
         // 値の格子はあるのに列見出しがツリーに無い形(2026-08-12・作業2の witness)。
-        // 陰性対照の ios-browser_weektable(見出しがツリーにある)では出ない。
+        // 陰性対照は2枚 —— ios-browser_weektable(見出しがツリーにある)と、
+        // 2026-08-13 に足した ios-browser_weather_weekly(**見出しが格子の最上行として
+        // 取り込まれる**形。ここで初めて実アプリの誤検知が出た)。
         // 誤検知ゼロの根拠は GridWithoutHeaderNoteTests.testFiresOnlyOnTheAndroidWeektableWitness
-        "gridWithoutHeaderNote": Coverage(fixtures: ["and-browser_weektable"], bytes: 520),
-        "urlishLabelsNote": Coverage(fixtures: ["and-browser_weather"], bytes: 298),
+        "gridWithoutHeaderNote": Coverage(fixtures: ["and-browser_weektable"], bytes: 511),
+        "urlishLabelsNote": Coverage(fixtures: ["and-browser_weather", "and-browser_weather_weekly"], bytes: 590),
         // アドレス欄の値を名指しする(2026-08-12)。**既知 identifier だけで拾う**
         // (url_bar = Android Chrome / TabBarItemTitle = iOS Safari 通常時 /
         // URL = iOS Safari のアドレス欄タップ中 = ios-browser_startpage)。
@@ -106,14 +115,14 @@ final class NoteCoverageTests: XCTestCase {
         // アドレス欄要素が無い(または値が空)ので黙る。**「値が URL らしい textField」の
         // フォールバックは置かない** —— メール欄・住所欄を誤って名乗る形がコーパスに無く、
         // 誤検知0の確認が効かないため(AddressBarNoteTests の当該テスト)
-        "addressBarNote": Coverage(fixtures: ["and-browser_weektable", "ios-browser_nationwide", "ios-browser_startpage", "ios-browser_weektable", "ios-safari_article"], bytes: 1328),
+        "addressBarNote": Coverage(fixtures: ["and-browser_weektable", "ios-browser_nationwide", "ios-browser_startpage", "ios-browser_weather_weekly", "ios-browser_weektable", "ios-safari_article"], bytes: 1592),
         "unlabeledClickablesNote": Coverage(fixtures: ["and-browser_urlmenu", "and-directions_tabs", "and-home", "and-place", "and-place_expanded", "and-results", "ios-home", "ios-maps_route_options", "ios-profile", "ios-settings_root"], bytes: 5105),
         // **格子は曖昧ラベルの塊**(2026-08-12): 週間表の2枚が入って +2,049 バイト。
         // 同じ数値(`29/24`・`90%`)が行と列に何度も出るので、増分は形そのもの
-        "ambiguousLabelsNote": Coverage(fixtures: ["and-browser_weather", "and-browser_weektable", "and-home", "and-maps_suggest_ime", "and-place", "and-place_expanded", "and-results", "ios-browser_nationwide", "ios-browser_startpage", "ios-browser_weektable", "ios-home", "ios-maps_station", "ios-maps_suggest_keyboard", "ios-messages_keyboard", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-safari_article", "ios-settings_root", "sut-cmp_controls", "sut-cmp_home", "sutec-detail", "sutec-home"], bytes: 13665),
+        "ambiguousLabelsNote": Coverage(fixtures: ["and-browser_weather", "and-browser_weather_weekly", "and-browser_weektable", "and-home", "and-maps_suggest_ime", "and-place", "and-place_expanded", "and-results", "ios-browser_nationwide", "ios-browser_startpage", "ios-browser_weather_weekly", "ios-browser_weektable", "ios-home", "ios-maps_station", "ios-maps_suggest_keyboard", "ios-messages_keyboard", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-safari_article", "ios-settings_root", "sut-cmp_controls", "sut-cmp_home", "sutec-detail", "sutec-home"], bytes: 15291),
         "duplicateIDsNote": Coverage(fixtures: ["and-dialer_keypad", "and-home", "and-overflow", "and-place_expanded", "and-results", "and-settings_root", "ios-browser_startpage", "ios-home", "ios-maps_route_options", "ios-maps_station", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-photos_grid", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-settings_root", "sutec-home"], bytes: 16450),
         "keyboardCoverageNote": Coverage(fixtures: ["and-browser_urlmenu", "and-maps_suggest_ime", "ios-browser_startpage", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-messages_keyboard"], bytes: 1088),
-        "truncatedLabelNote": Coverage(fixtures: ["and-browser_urlmenu", "and-browser_weather", "and-place_expanded", "ios-browser_weektable", "ios-photos_grid", "ios-place_guides_scrolled", "ios-safari_article", "ios-settings_root", "sutec-detail", "sutec-home"], bytes: 3063),
+        "truncatedLabelNote": Coverage(fixtures: ["and-browser_urlmenu", "and-browser_weather", "and-browser_weather_weekly", "and-place_expanded", "ios-browser_weektable", "ios-photos_grid", "ios-place_guides_scrolled", "ios-safari_article", "ios-settings_root", "sutec-detail", "sutec-home"], bytes: 3362),
     ]
 
     /// **コーパスでは構造上発火し得ないと確かめた注記**。ここに載せるには理由が要る ——
@@ -126,6 +135,12 @@ final class NoteCoverageTests: XCTestCase {
         "bulkExemptNote",
         // 縁で細帯に切れた操作可能要素が1件も無い(SweepHarnessTests の基準値も全画面 sliver: 0)
         "sliverNote",
+        // **要素0の木はコーパスに置けない**(2026-08-13): このコーパスは「実アプリの画面の形」を
+        // 代表するためのもので、空の木はどの検知にも材料を与えず、アーキタイプにも属さない
+        // (testEveryFixtureHasAnArchetype と testNoArchetypeDominatesTheCorpus が意味を失う)。
+        // 判定そのものは `guard snapshot.elements.isEmpty` の1行なので、
+        // EmptyTreeNoteTests の合成木で両方向を固定してある
+        "emptyTreeNote",
     ]
 
     /// 1画面ぶんの注記の合計バイトの上限。**エージェントは木を読みに来ているのであって
@@ -266,6 +281,24 @@ final class NoteCoverageTests: XCTestCase {
         for entry in NoteCatalog.snapshotNotes {
             XCTAssertFalse(entry.contexts.isEmpty, "\(entry.key) が どの応答にも載らない")
         }
+    }
+
+    /// **ft_scroll_to に載る注記の集合を等号で固定する**(2026-08-13)。
+    ///
+    /// なぜ等号か: ft_scroll_to は「swipe + snapshot の繰り返しの代わりに使え」と自ら勧める
+    /// 経路なので、**警告が落ちる側が常用経路になる**。実測(Yahoo!天気の週間画面)では
+    /// `link "13101"`(実際の描画は「千代田区」)と `"40％" ×3` を何の断りもなく返し、
+    /// 同じ画面を ft_snapshot で撮り直して初めて両方が出た。
+    /// **ここに並ぶのは「この一覧をそのまま報告してよいか / この行を指せるか」を言う注記**で、
+    /// 外すと誤った出力に直結する。手数が増えるだけのもの(unlabeledClickablesNote)や
+    /// スクロールでは変わらないもの(addressBarNote)は入れない ——
+    /// 増やすときは Scripts/mcp-bench.sh の手数で決めること
+    func testScrollToCarriesTheReadingIntegrityNotes() {
+        XCTAssertEqual(Set(NoteCatalog.entries(for: .scrollTo).map(\.key)), [
+            "emptyTreeNote", "ghostNote", "truncationNote", "webViewGapNote",
+            "gridWithoutHeaderNote", "urlishLabelsNote", "ambiguousLabelsNote",
+            "duplicateIDsNote", "keyboardCoverageNote", "sliverNote", "truncatedLabelNote",
+        ])
     }
 
     // MARK: - 黙らせる指定(A/B)

@@ -691,36 +691,62 @@ extension MCPServer {
     /// 判定は幾何だけ: WebView の可視部分を 60 分割し、**内側**(上端・下端に接しない)で
     /// どの葉の矩形とも交わらない連続帯を測る。**端の帯は数えない** —— 容器自身の余白は
     /// どのページにもあり、これを数えると健全な木まで疑う。
+    /// **閾値を超えた帯は全部数える**(emptyBands の doc に実害)。
     ///
     /// 閾値は固定コーパスの実測から置いた(2026-08-12・webView を持つ4画面):
     /// 取りこぼしのある Chrome の1枚が **実測 302px(容器の 13.6%)**、
     /// 取りこぼしの無い iOS Safari の3枚が **0/14/29px(0〜3.3%)**。8% はその間。
-    /// 帯の高さは**実要素の縁まで測る**(60分割スライスの量子化ではない。largestEmptyBand の
+    /// 帯の高さは**実要素の縁まで測る**(60分割スライスの量子化ではない。emptyBands の
     /// doc 参照 —— スライス丸めのままだと実効閾値が最大 11.3% まで縮み、砦の余裕が薄かった)。
     /// 画面比の下限も併せて要求する(小さな容器の中の小さな穴で騒がない)。
     /// **「不完全だ」とは断定しない**(新しい検知は警告から始める)。
     /// **落とすのはあくまで読み手の判断**なので、確かめる手段(ft_screenshot)まで書く
+    /// 1つの応答で名指しする帯の本数。**全部言うのではなく件数だけは必ず言う**
+    /// (超えた分は「and N more」)—— 上限を置かないと1画面で帯が10本並びうる
+    static let webViewGapBandsReported = 3
+
     static func webViewGapNote(_ snapshot: SnapshotResponse) -> String {
         let screen = snapshot.screen
         guard screen.height > 0 else { return "" }
         for container in snapshot.elements where container.type == "webView" {
-            guard let band = largestEmptyBand(inside: container, of: snapshot) else { continue }
             let visible = min(container.frame.y + container.frame.height, screen.y + screen.height)
                 - max(container.frame.y, screen.y)
-            guard visible > 0, band.height >= visible * 0.08,
-                  band.height >= screen.height * 0.05 else { continue }
-            return "note: inside \(RefGuard.describe(container)) nothing is listed between y="
-                + "\(Int(band.y)) and y=\(Int(band.y + band.height)) — a band \(Int(band.height))"
-                + " tall with no element at all. A browser can publish only part of a page to the"
-                + " accessibility tree (Android's Chrome does this), so text that IS on screen can"
-                + " be missing from this list. Check that band with ft_screenshot before concluding"
-                + " the content is not there; elements missing from the tree cannot be waited for,"
-                + " scrolled to, or tapped by selector.\n"
+            guard visible > 0 else { continue }
+            let bands = emptyBands(inside: container, of: snapshot)
+                .filter { $0.height >= visible * 0.08 && $0.height >= screen.height * 0.05 }
+            guard !bands.isEmpty else { continue }
+            let shown = Array(bands.prefix(webViewGapBandsReported))
+            let located: String
+            if shown.count == 1, let band = shown.first {
+                located = "nothing is listed between y=\(Int(band.y)) and"
+                    + " y=\(Int(band.y + band.height)) — a band \(Int(band.height)) tall with no"
+                    + " element at all."
+            } else {
+                let listed = shown
+                    .map { "y=\(Int($0.y))-\(Int($0.y + $0.height)) (\(Int($0.height)) tall)" }
+                    .joined(separator: ", ")
+                let more = bands.count > shown.count
+                    ? ", and \(bands.count - shown.count) more" : ""
+                located = "nothing is listed in \(bands.count) separate bands — \(listed)\(more)"
+                    + "; no element at all in any of them."
+            }
+            return "note: inside \(RefGuard.describe(container)) \(located) A browser can publish"
+                + " only part of a page to the accessibility tree (Android's Chrome does this), so"
+                + " text that IS on screen can be missing from this list. Check"
+                + " \(shown.count == 1 ? "that band" : "those bands") with ft_screenshot before"
+                + " concluding the content is not there; elements missing from the tree cannot be"
+                + " waited for, scrolled to, or tapped by selector.\n"
         }
         return ""
     }
 
-    /// WebView の可視部分のうち、**内側でどの葉とも交わらない最大の連続帯**。
+    /// WebView の可視部分のうち、**内側でどの葉とも交わらない連続帯をすべて**(y の昇順)。
+    ///
+    /// **最大の1本だけを返していた頃の実害**(2026-08-13・Yahoo!天気の週間画面を Android Chrome で):
+    /// 閾値を超える帯が2本あり、報告されたのは大きいほう(345px)だけだった。黙って落ちた
+    /// 268px のほうが**週間表の日付・気温・アイコンが丸ごと落ちている場所**で、読み手は
+    /// 「警告された1箇所以外は揃っている」と読む。**閾値を超えた帯は全部数える**
+    /// (名指しは webViewGapBandsReported 本まで。件数だけは必ず言う)。
     /// 走査は 60 分割の格子(木のサイズに比例した O(n) で、応答ごとに払える)で**候補の位置だけ**
     /// 決める —— 高さそのものはスライスの量子化を使わず、実要素の縁まで伸ばして返す
     /// (2026-08-12): スライス境界で丸めたままだと、帯の両端にあるスライス(境界要素とわずかに
@@ -736,22 +762,23 @@ extension MCPServer {
     ///
     /// **上端・下端に接する帯は返さない**: 容器の余白はどのページにもあるので、
     /// 数えると健全な木も疑うことになる(実測: iOS Safari の3枚はいずれも先頭の 58px が空)
-    private static func largestEmptyBand(inside container: ElementInfo,
-                                         of snapshot: SnapshotResponse) -> FTRect? {
+    private static func emptyBands(inside container: ElementInfo,
+                                   of snapshot: SnapshotResponse) -> [FTRect] {
         let screen = snapshot.screen
         let top = max(container.frame.y, screen.y)
         let bottom = min(container.frame.y + container.frame.height, screen.y + screen.height)
-        guard bottom - top > 0 else { return nil }
+        guard bottom - top > 0 else { return [] }
         let slices = 60
         let sliceHeight = (bottom - top) / Double(slices)
-        guard sliceHeight > 0 else { return nil }
+        guard sliceHeight > 0 else { return [] }
         // **葉だけを数える**: 容器(webView・scrollView)は帯を丸ごと覆うので、含めると
         // どんな木でも「埋まっている」に見える
         let leaves = snapshot.elements.filter {
             $0.ref != container.ref && $0.scrollable != true && $0.type != "webView"
                 && $0.frame.height < (bottom - top)
         }
-        var bestStart = 0, bestCount = 0, runStart = 0, run = 0
+        var columns: [(start: Int, count: Int)] = []
+        var runStart = 0, run = 0
         for slice in 0..<slices {
             let y0 = top + Double(slice) * sliceHeight
             let covered = leaves.contains {
@@ -759,7 +786,7 @@ extension MCPServer {
             }
             if covered {
                 // 内側で閉じた帯だけを候補にする(runStart > 0 = 上端に接していない)
-                if run > 0, runStart > 0, run > bestCount { bestCount = run; bestStart = runStart }
+                if run > 0, runStart > 0 { columns.append((runStart, run)) }
                 run = 0
             } else {
                 if run == 0 { runStart = slice }
@@ -767,15 +794,16 @@ extension MCPServer {
             }
         }
         // 末尾で終わった帯(下端に接する)は候補にしない = ここでは拾わない
-        guard bestCount > 0 else { return nil }
-        let columnStart = top + Double(bestStart) * sliceHeight
-        let columnEnd = top + Double(bestStart + bestCount) * sliceHeight
-        let trueTop = leaves.filter { $0.frame.y + $0.frame.height <= columnStart }
-            .map { $0.frame.y + $0.frame.height }.max() ?? columnStart
-        let trueBottom = leaves.filter { $0.frame.y >= columnEnd }
-            .map(\.frame.y).min() ?? columnEnd
-        return FTRect(x: container.frame.x, y: trueTop,
-                      width: container.frame.width, height: trueBottom - trueTop)
+        return columns.map { column in
+            let columnStart = top + Double(column.start) * sliceHeight
+            let columnEnd = top + Double(column.start + column.count) * sliceHeight
+            let trueTop = leaves.filter { $0.frame.y + $0.frame.height <= columnStart }
+                .map { $0.frame.y + $0.frame.height }.max() ?? columnStart
+            let trueBottom = leaves.filter { $0.frame.y >= columnEnd }
+                .map(\.frame.y).min() ?? columnEnd
+            return FTRect(x: container.frame.x, y: trueTop,
+                          width: container.frame.width, height: trueBottom - trueTop)
+        }
     }
 
     /// センターX が近い(=セルが中央揃えで縦に並ぶ)ことを列とみなす許容誤差。**容器幅の比率**
@@ -788,6 +816,16 @@ extension MCPServer {
     static let gridRowOverlapRatio = 0.6
     static let gridMinColumns = 3
     static let gridMinRows = 2
+    /// **見出し行が入る余地**の下限。格子の直上の空白が「行の間隔(pitch)の何倍あれば
+    /// 1行ぶん抜けたと言えるか」。
+    ///
+    /// なぜ要るか(2026-08-13・Yahoo!天気を iOS Safari で実測。**実アプリでの初めての誤検知**):
+    /// 見出し行そのものが値の行と centerX で揃っていると、**見出しは格子の最上行として鎖に
+    /// 取り込まれ**、その上の余白(見出しのさらに上の段落間)が「見出しが無い」と読まれる。
+    /// 実測比 = 空白 / pitch: 誤検知 **1.16**(週間表: 22px / 19px)・**0.54**(時間別の表:
+    /// 19px / 35px)に対し、真陽性の witness(and-browser_weektable)は **4.4**(286px / 65px)。
+    /// 2.0 はその間で、**「抜けた行1つぶんの高さ+その上下の余白」が要る**という読みでもある
+    static let gridHeaderRoomRatio = 2.0
 
     /// 値のセル(格子)はツリーにあるのに、その真上の見出し行(列ヘッダ)が無い形の検知。
     /// `webViewGapNote` は「どこかに空白がある」としか言わないので、格子であることと
@@ -812,7 +850,7 @@ extension MCPServer {
             }
             return "note: inside \(RefGuard.describe(container)), a \(grid.columns)x\(grid.rows)"
                 + " grid of values starts at y=\(Int(grid.band.y + grid.band.height)), but nothing"
-                + " is listed in the band right above it (y=\(Int(grid.band.y))-"
+                + " is listed above its columns (y=\(Int(grid.band.y))-"
                 + "\(Int(grid.band.y + grid.band.height))) — its header row (e.g. column labels)"
                 + " may be missing from the accessibility tree; a browser can publish only part of"
                 + " a page (Android's Chrome does this). Read the header with ft_screenshot before"
@@ -887,18 +925,42 @@ extension MCPServer {
         elements.isEmpty ? 0 : elements.map(\.frame.y).reduce(0, +) / Double(elements.count)
     }
 
-    /// 帯の中に何か描かれているか。**葉限定にしない**(largestEmptyBand と同じ判断): 実測した
-    /// フィクスチャの depth 列には「兄弟が祖先に見える」欠けがあり(TapTargetGeometry.ancestors
-    /// の doc 参照)、見出しの一部(例: `(水)`)が isLeaf 判定から漏れて「空」に見えることがあった。
-    /// 容器サイズ未満という緩い条件に寄せ、ラベルの有無を問わず何か描かれていれば止める
-    /// (誤検知を出さない側に倒す)
-    private static func gridBandHasContent(_ band: FTRect, in container: ElementInfo,
-                                           of snapshot: SnapshotResponse) -> Bool {
-        StepExecutor.descendants(of: container, in: snapshot.elements).contains { element in
-            element.scrollable != true && element.frame.height < container.frame.height
-                && element.frame.x < band.x + band.width && element.frame.x + element.frame.width > band.x
-                && element.frame.y < band.y + band.height && element.frame.y + element.frame.height > band.y
-        }
+    /// 格子の**直上に空いている高さ**(格子の列が占める x 範囲だけを見る)。
+    /// **葉限定にしない**(emptyBands と同じ判断): 実測したフィクスチャの depth 列には
+    /// 「兄弟が祖先に見える」欠けがあり(TapTargetGeometry.ancestors の doc 参照)、
+    /// 見出しの一部(例: `(水)`)が isLeaf 判定から漏れて「空」に見えることがあった。
+    /// 容器サイズ未満という緩い条件に寄せ、ラベルの有無を問わず何か描かれていれば空きを縮める。
+    ///
+    /// **最上行の仲間は除く** —— 鎖に入らなかった同じ行の要素(行見出しの列など)は
+    /// gridTop より上に始まることがあり、数えると常に空きゼロになる。
+    /// 上端をまたぐ要素(下端が gridTop より下)は**負の空き**を返す ——
+    /// 呼び出し側の下限(`room >= pitch * ratio`・pitch > 0)がそのまま弾くので、
+    /// 「またいでいる = 空白を埋めている」の意味になる
+    private static func roomAboveGrid(topRow: [ElementInfo], gridTop: Double,
+                                      columns: (minX: Double, maxX: Double),
+                                      in container: ElementInfo,
+                                      of snapshot: SnapshotResponse) -> Double {
+        let topRowRefs = Set(topRow.map(\.ref))
+        let edges = StepExecutor.descendants(of: container, in: snapshot.elements)
+            .filter { element in
+                !topRowRefs.contains(element.ref) && element.scrollable != true
+                    && element.frame.height < container.frame.height
+                    && element.frame.y < gridTop
+                    && element.frame.x < columns.maxX
+                    && element.frame.x + element.frame.width > columns.minX
+            }
+            .map { $0.frame.y + $0.frame.height }
+        return gridTop - (edges.max() ?? max(container.frame.y, snapshot.screen.y))
+    }
+
+    /// 行の間隔の代表値(隣り合う行の平均 y の差の中央値)。**平均でなく中央値**:
+    /// 実測の格子は途中に別セクションの行が挟まって間隔が飛ぶ(and-browser_weektable の
+    /// 53/65/**184**/53/65)ので、平均だと1本の飛びに引きずられる
+    private static func rowPitch(_ rows: [[ElementInfo]]) -> Double {
+        let centers = rows.map(averageY)
+        guard centers.count >= 2 else { return 0 }
+        let gaps = zip(centers.dropFirst(), centers).map { $0 - $1 }.sorted()
+        return gaps[gaps.count / 2]
     }
 
     /// webView 1つぶんの格子探索。**列は「隣接する行どうしが centerX で揃う」連鎖でだけ決める**
@@ -948,12 +1010,16 @@ extension MCPServer {
             guard let gridMinX = topMembers.map(\.frame.x).min(),
                   let gridMaxX = topMembers.map({ $0.frame.x + $0.frame.width }).max(),
                   let gridTop = topMembers.map(\.frame.y).min() else { continue }
-            let rowHeight = topMembers.map(\.frame.height).reduce(0, +) / Double(topMembers.count)
-            let bandTop = max(gridTop - rowHeight, snapshot.screen.y, container.frame.y)
-            guard gridTop - bandTop > 0 else { continue }
-            let band = FTRect(x: gridMinX, y: bandTop, width: gridMaxX - gridMinX,
-                              height: gridTop - bandTop)
-            guard !gridBandHasContent(band, in: container, of: snapshot) else { continue }
+            // **見出し行が入る余地があるときだけ言う**(gridHeaderRoomRatio の宣言参照)。
+            // 見出しが値と同じ列に揃っていると鎖の最上行として取り込まれるので、
+            // 「直上が空か」だけでは見出しの在る格子と区別が付かない
+            let pitch = rowPitch(run)
+            let room = roomAboveGrid(topRow: run[0], gridTop: gridTop,
+                                     columns: (gridMinX, gridMaxX),
+                                     in: container, of: snapshot)
+            guard pitch > 0, room >= pitch * gridHeaderRoomRatio else { continue }
+            let band = FTRect(x: gridMinX, y: gridTop - room, width: gridMaxX - gridMinX,
+                              height: room)
             return (chains.count, run.count, band)
         }
         return nil
@@ -1463,6 +1529,19 @@ extension MCPServer {
             .filter { $0.type == element.type }
         guard let position = siblings.firstIndex(where: { $0.ref == element.ref }) else { return nil }
         return "#\(scopeID) >> .\(element.type)[\(position + 1)]"
+    }
+
+    /// 木が空(要素0)であること自体を言う。**一覧が空なのと「画面に何も無い」のは別**で、
+    /// 実測(2026-08-13・Android Chrome の初回起動ダイアログを閉じた直後)では
+    /// `screen: 1080x2424` の1行だけが返り、**遷移中である**という手掛かりがどこにも無かった。
+    /// 木だけで判る事実なので目録に載る(NoteCatalog)。**次の一手まで書く** ——
+    /// ここで読み手が撃つべきは撮り直しではなく `waitFor` 付きの1回
+    static func emptyTreeNote(_ snapshot: SnapshotResponse) -> String {
+        guard snapshot.elements.isEmpty else { return "" }
+        return "note: the element list is empty — the app published no accessibility element at"
+            + " all. That is almost always a screen mid-transition (or one that has not finished"
+            + " loading), not an empty screen: read it again with ft_snapshot waitFor set to"
+            + " something the destination has, and check ft_screenshot if it stays empty.\n"
     }
 
     /// **打ち切りは先頭でも言う**(2026-08-09)。`(+91 elements truncated)` は render の末尾に

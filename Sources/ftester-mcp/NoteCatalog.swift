@@ -58,6 +58,10 @@ enum NoteCatalog {
     /// **並び順がそのまま応答の並び順**。入れ替えると読み手の目に入る順番が変わるので、
     /// 位置に意味があるものはここにコメントを残すこと
     static let snapshotNotes: [Entry] = [
+        // 「一覧が1行も無い」は他のどの注記より上流(下の注記はどれも要素を見て決まる)
+        Entry(key: "emptyTreeNote", contexts: [.snapshot, .scrollTo], abbreviates: false) { input, _ in
+            MCPServer.emptyTreeNote(input.snapshot)
+        },
         // 遮蔽・ghost は「下の一覧をそのまま信じてよいか」なので最初に置く
         Entry(key: "ghostNote", contexts: [.snapshot, .scrollTo], abbreviates: false) { input, _ in
             MCPServer.ghostNote(input.snapshot, collapsingBulk: input.collapsingBulk,
@@ -88,14 +92,22 @@ enum NoteCatalog {
         Entry(key: "unlabeledClickablesNote", contexts: [.snapshot], abbreviates: true) { input, abbreviated in
             MCPServer.unlabeledClickablesNote(input.snapshot, abbreviated: abbreviated)
         },
-        Entry(key: "urlishLabelsNote", contexts: [.snapshot], abbreviates: true) { input, abbreviated in
+        // **この3本は scrollTo にも載せる**(2026-08-13): どれも「この一覧の行をそのまま
+        // 報告してよいか / この行をセレクタで指せるか」を言う注記で、外すと**誤った出力**に
+        // 直結する。しかも ft_scroll_to は「swipe+snapshot を繰り返す代わりに使え」と
+        // 自ら勧める経路なので、警告が落ちる側が常用経路になっていた —— 実測(Yahoo!天気の
+        // 週間画面)で `link "13101"`(実際の描画は「千代田区」)と `"40％" ×3` を
+        // 何の断りもなく返し、同じ画面を ft_snapshot で撮り直して初めて両方が出た。
+        // 手数が増えるだけの注記(unlabeledClickablesNote)や、スクロールでは変わらないもの
+        // (addressBarNote)は載せない
+        Entry(key: "urlishLabelsNote", contexts: [.snapshot, .scrollTo], abbreviates: true) { input, abbreviated in
             MCPServer.urlishLabelsNote(input.snapshot, abbreviated: abbreviated)
         },
-        Entry(key: "ambiguousLabelsNote", contexts: [.snapshot], abbreviates: true) { input, abbreviated in
+        Entry(key: "ambiguousLabelsNote", contexts: [.snapshot, .scrollTo], abbreviates: true) { input, abbreviated in
             MCPServer.ambiguousLabelsNote(input.snapshot, abbreviated: abbreviated, cache: input.cache)
         },
         // ラベル版の直後に置く(読み手はどちらも「一意に指せるか」を見に来る)
-        Entry(key: "duplicateIDsNote", contexts: [.snapshot], abbreviates: true) { input, abbreviated in
+        Entry(key: "duplicateIDsNote", contexts: [.snapshot, .scrollTo], abbreviates: true) { input, abbreviated in
             MCPServer.duplicateIDsNote(input.snapshot, abbreviated: abbreviated, cache: input.cache)
         },
         Entry(key: "keyboardCoverageNote", contexts: [.snapshot, .scrollTo], abbreviates: false) { input, _ in

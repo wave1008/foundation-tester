@@ -149,7 +149,15 @@ final class MCPSelectorDurabilityTests: XCTestCase {
     /// 索引セレクタが書けて indexed、Android は容器の id すら無いので unwritable ——
     /// どちらも**格付けとしては正しい**。
     /// **書けない側の割合は 3% → 4.75% へ動いた**(上限 4% にちょうど乗っている)。
-    /// 次に web の格子を足すとこの砦は落ちる —— そのときは同じ検分をやり直すこと
+    /// 次に web の格子を足すとこの砦は落ちる —— そのときは同じ検分をやり直すこと。
+    /// **2026-08-13 に予告どおり落ちたので同じ検分をやり直した**(Yahoo!天気の週間画面を両 OS で
+    /// 足して 350 → 386 / 1,832 → 1,986 要素)。増分は**やはり新しい2枚に完全に閉じている**
+    /// (`ios-browser_weather_weekly` 36/2・`and-browser_weather_weekly` 0/8 = 索引 +36・
+    /// 書けない +10 が総差分と一致し、他の32枚は不動)。理由も同じで、web ページなので id が
+    /// 無く、iOS は `#WebView` を持つので索引が書けて indexed・Android は容器の id すら無く
+    /// unwritable になる。**割合は 19.1% → 19.4% / 4.75% → 4.88%** で、どちらも上限の内側に
+    /// 留まった = 絞り込みの退行ではない。**書けない側は上限 5% まであと 0.12 ポイント** ——
+    /// 次に Android の web ページを足すと今度は割合ゲートのほうが落ちる
     func testNarrowingKeepsIndexedAndUnwritableLow() throws {
         var indexed = 0, unwritable = 0, total = 0
         for name in try fixtureNames() {
@@ -165,18 +173,18 @@ final class MCPSelectorDurabilityTests: XCTestCase {
             }
         }
         XCTAssertGreaterThan(total, 1500, "コーパスが縮んでいる = この砦は何も見ていない")
-        XCTAssertLessThanOrEqual(indexed, 360, "索引セレクタが増えている(実測 350)")
+        XCTAssertLessThanOrEqual(indexed, 390, "索引セレクタが増えている(実測 386)")
         // **割合は千分率で見る**(2026-08-12 のレビュー指摘)。百分率の整数除算だと
         // 「4%以下」が実際には 4.99% まで通り、宣言した上限より1ポイント緩い砦になる
         // (実測 4.75% が「4」に切り捨てられて素通りしていた)
         XCTAssertLessThanOrEqual(indexed * 1000 / max(1, total), 200,
-                                 "索引セレクタの割合が増えている(実測 19.1%)"
+                                 "索引セレクタの割合が増えている(実測 19.4%)"
                                  + " —— 画面を足しただけでは上がらない指標なので、絞り込みの退行を疑う")
-        XCTAssertLessThanOrEqual(unwritable, 90, "書けない要素が増えている(実測 87)")
+        XCTAssertLessThanOrEqual(unwritable, 100, "書けない要素が増えている(実測 97)")
         // **書けない側にも割合ゲートを置く**(2026-08-12)。絶対数だけだと、コーパスを
         // 広げるたびに上限を上げる儀式になる(索引側で既に踏んだ轍)
         XCTAssertLessThanOrEqual(unwritable * 1000 / max(1, total), 50,
-                                 "書けない要素の割合が増えている(実測 4.75%)")
+                                 "書けない要素の割合が増えている(実測 4.88%)")
     }
 
     /// コーパスに両方の格付けが出ていること(片側しか見ていない状態を防ぐ)

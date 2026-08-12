@@ -233,6 +233,27 @@ final class SweepHarnessTests: XCTestCase {
         "ios-browser_weektable": Counts(ghost: 0, overlay: 6, stacked: 0, misses: 0, disabled: 1,
                                         offscreen: 4, warnedTappable: 2, keyboard: 0, sliver: 0,
                                         nested: 0, scrolledOut: 0),
+        // 2026-08-13 採取(Yahoo!天気の週間画面・同じ画面を両 OS で)。**全件検分済み**。
+        //
+        // iOS: overlay 30 は**全部真陽性**で、しかも1つの原因 —— 下端に貼り付く広告
+        // (「【公式】ホットペッパーグルメ」)が週間表のアイコン・気温・降水確率の行を丸ごと覆い、
+        // 「さらに表示」のピルが市区町村リンクを覆う。ft_screenshot で実描画を確認した
+        // (広告の下に隠れて1つも見えない)。**覆われているのは staticText/image ばかり**なので
+        // warnedTappable は 4 に留まる = 読み手には出ない: 「木に在るのに画面では読めない」
+        // という形は、タップの安全性としては無害でも**裏取りの手段が無くなる**
+        "ios-browser_weather_weekly": Counts(ghost: 0, overlay: 30, stacked: 0, misses: 0,
+                                             disabled: 0, offscreen: 1, warnedTappable: 4,
+                                             keyboard: 0, sliver: 0, nested: 0, scrolledOut: 0),
+        // Android: **コーパスで初めて ghost が非0**(それまで全画面 0)。中身は
+        // `staticText "洗濯指数10"` 1件で、ft_screenshot では同じ位置に下端の広告が描かれており
+        // **その座標を叩けば広告に当たる** = 助言としては正しい。ただし「自分のスクロール容器の
+        // 外」という理由付けのほうは depth から復元した親(直前の `link "8月14日(金)"`)に
+        // 依るもので、a11y 上の本当の親ではない可能性が高い。**判定の当否ではなく助言の当否で
+        // 真陽性とした**(同型が増えたら親の復元のほうを見直すこと)。
+        // overlay 14 も同じ広告と「さらに表示」による被覆で、iOS 側と同じ原因
+        "and-browser_weather_weekly": Counts(ghost: 1, overlay: 14, stacked: 0, misses: 0,
+                                             disabled: 0, offscreen: 0, warnedTappable: 2,
+                                             keyboard: 0, sliver: 0, nested: 0, scrolledOut: 0),
     ]
 
     private static var fixtureDirectory: URL {

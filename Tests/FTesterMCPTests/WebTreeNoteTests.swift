@@ -35,12 +35,26 @@ final class WebTreeNoteTests: XCTestCase {
 
     // MARK: - webViewGapNote
 
-    /// 中ほどに 800pt(容器の 40%)の空白がある = 木が落としている疑い
+    /// 中ほどに 860pt(容器の 43%)の空白がある = 木が落としている疑い。
+    /// 空白は**1本だけ**(以降は 50pt 刻みで詰まっている)なので、単数形の文面になる
     func testAWideInteriorGapIsReported() {
-        let snapshot = tree(leafYs: [0, 100, 200, 300, 1200, 1400, 1600, 1800])
-        let note = MCPServer.webViewGapNote(snapshot)
+        let ys: [Double] = [0, 100, 200, 300] + stride(from: 1200.0, to: 2000.0, by: 50.0)
+        let note = MCPServer.webViewGapNote(tree(leafYs: ys))
         XCTAssertTrue(note.contains("nothing is listed between"), note)
         XCTAssertTrue(note.contains("ft_screenshot"), "確かめる手段まで書くこと: \(note)")
+    }
+
+    /// **閾値を超えた帯は全部数える**(2026-08-13)。最大の1本だけを返していた頃は、
+    /// 2本目以降が黙って落ち、読み手は「警告された1箇所以外は揃っている」と読んだ
+    /// (実測: Yahoo!天気の週間画面で、落ちたほうに週間表の日付・気温が丸ごと入っていた)。
+    /// 名指しは webViewGapBandsReported 本までだが、**件数は必ず言う**
+    func testEveryQualifyingBandIsCountedNotJustTheLargest() {
+        let note = MCPServer.webViewGapNote(tree(leafYs: [0, 100, 200, 300, 1200, 1400, 1600, 1800]))
+        XCTAssertTrue(note.contains("4 separate bands"), "全部数えること: \(note)")
+        XCTAssertTrue(note.contains("y=340-1200 (860 tall)"), "最大の帯: \(note)")
+        XCTAssertTrue(note.contains("y=1240-1400 (160 tall)"), "2本目も名指しすること: \(note)")
+        XCTAssertTrue(note.contains("and 1 more"),
+                      "名指しは \(MCPServer.webViewGapBandsReported) 本まで・残りは件数で: \(note)")
     }
 
     /// 一様に埋まっていれば黙る(**誤検知0が使い物になる条件**)
