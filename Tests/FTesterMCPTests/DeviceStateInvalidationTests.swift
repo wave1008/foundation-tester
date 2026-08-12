@@ -171,4 +171,40 @@ final class DeviceStateInvalidationTests: XCTestCase {
         XCTAssertEqual(server.launchedBundleIDs[other], "com.example.other")
         XCTAssertNotNil(server.drivers[other])
     }
+
+    // MARK: - キャッシュ命中のドライバの同一性(2026-08-13・軸②「ブリッジ建て直し」の監査で実機再現)
+
+    /// **確認を払う呼び出しの見分け**。記憶に依存する形だけが「機が変わると黙って別物へ届く」
+    func testOnlyCallsThatLeanOnRememberedStatePayForTheIdentityCheck() {
+        // ref を持つ = 世代から引く
+        XCTAssertTrue(MCPServer.usesRememberedDeviceState(["ref": 4]))
+        // ft_batch は先頭ステップだけ ref を受ける
+        XCTAssertTrue(MCPServer.usesRememberedDeviceState(["steps": "tap ref: 4; tap '#x'"]))
+        // bundleId 省略の ft_open_url = 記憶した起動アプリへ配る
+        XCTAssertTrue(MCPServer.usesRememberedDeviceState(["url": "https://example.com"]))
+
+        // 記憶を使わない呼び出しには払わせない
+        XCTAssertFalse(MCPServer.usesRememberedDeviceState([:]))
+        XCTAssertFalse(MCPServer.usesRememberedDeviceState(["x": 10, "y": 20]))
+        XCTAssertFalse(MCPServer.usesRememberedDeviceState(["selector": "#btn"]))
+        XCTAssertFalse(MCPServer.usesRememberedDeviceState(["steps": "tap '#a'; tap '#b'"]))
+        XCTAssertFalse(MCPServer.usesRememberedDeviceState(
+            ["url": "https://example.com", "bundleId": "com.example.app"]))
+    }
+
+    /// 断り文は**捨てたものを名指しする** —— 「別の機だ」だけだと手元の ref を撃ち直す
+    func testMovedDeviceRefusalNamesBothDevicesAndWhatWasDropped() {
+        let message = MCPServer.movedDeviceRefusal(port: 8123, previousUDID: "AAA", nowUDID: "BBB")
+        XCTAssertTrue(message.contains("8123"), message)
+        XCTAssertTrue(message.contains("AAA"), message)
+        XCTAssertTrue(message.contains("BBB"), message)
+        XCTAssertTrue(message.contains("ft_snapshot"), message)
+    }
+
+    /// ポートが分からないときも文が壊れない(記憶を消した後に組み立てても同じ)
+    func testMovedDeviceRefusalWithoutAPortStillReads() {
+        let message = MCPServer.movedDeviceRefusal(port: nil, previousUDID: "AAA", nowUDID: "BBB")
+        XCTAssertFalse(message.contains("port "), message)
+        XCTAssertTrue(message.contains("AAA"), message)
+    }
 }

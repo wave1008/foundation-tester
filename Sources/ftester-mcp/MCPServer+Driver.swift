@@ -98,6 +98,18 @@ extension MCPServer {
         let key = Self.driverCacheKey(platform: platform, port: explicitPort.map(Int.init),
                                       serial: args["serial"] as? String)
         if let cached = drivers[key] {
+            // **キャッシュ命中のドライバが、まだ同じ機を指しているかを確かめる**(2026-08-13)。
+            // engineKey は `direct:ios:<port>:` で、**port は機の同一性ではない** ——
+            // ブリッジを建て直すと同じ port が別のシミュレータのものになる。実機で再現:
+            // 8123 で機A の木を採った後、`bridge down --port 8123` → `bridge up --device 機B
+            // --port 8123` としてから**同じセッション**で古い ref を撃つと、
+            // `tap [4] done`(成功)で**機B の同名要素を叩いた**。
+            // 生成時の `keyChangedDevice` では防げない —— この間セッションは1回も呼んでおらず
+            // `forgetConnection` が走らないので、**ドライバはキャッシュ命中し生成が起きない**。
+            // 「死んだブリッジなら失敗経路が拾う」も誤り: 新しいブリッジは正常に応答する。
+            if let moved = await deviceIdentityChanged(key, args: args, platform: platform) {
+                throw MCPError(moved)
+            }
             // **キャッシュ命中でも記憶を更新する**(2026-08-12 の実アプリ監査で踏んだ)。
             // 記録を「ドライバを生成したとき」に紐付けると、2度目に同じ機を明示した呼び出しは
             // ここで返って記憶を動かさず、**A→B→A のあとの省略呼び出しが B へ行く**。
@@ -299,6 +311,51 @@ extension MCPServer {
 
     static func injectedFromMemory(_ args: [String: Any]) -> Bool {
         args[deviceFromMemoryKey] as? Bool == true
+    }
+
+    /// **記憶した状態に依存する呼び出しか**(純粋関数)。この形だけが「機が変わると黙って
+    /// 別物へ届く」——  ref は世代から引き、`bundleId` 省略の `ft_open_url` は記憶した起動アプリへ配る。
+    /// 座標タップや素の ft_snapshot は記憶を使わないので、確認の往復を払う価値が無い。
+    /// **`ft_batch` は先頭ステップだけ ref を受ける**ので steps も見る
+    static func usesRememberedDeviceState(_ args: [String: Any]) -> Bool {
+        if args["ref"] != nil { return true }
+        if let steps = args["steps"] as? String, steps.contains("ref:") { return true }
+        if args["url"] != nil, args["bundleId"] == nil { return true }
+        return false
+    }
+
+    /// キャッシュ命中のドライバが**別の機を指し始めていたら**、そのキーの記憶を捨てて理由を返す
+    /// (非 nil = 呼び出しを断る文)。
+    ///
+    /// **確認は `usesRememberedDeviceState` の呼び出しだけ**に絞る: 同一性の確認は
+    /// `/status` 1往復(実測 6〜9ms)で、ref 系はどのみち木を撮りにブリッジへ行くので
+    /// **限界費用がほぼ無い**。全呼び出しに掛けると、XCUITest の quiescence(実測 33.7 秒)中に
+    /// 記憶を使わない呼び出しまで詰まらせる。
+    /// **udid を採れないとき(実機・旧ブリッジ)は何もしない** —— 「分からない」を「変わった」と
+    /// 読むと毎回記憶が飛ぶ(`keyChangedDevice` と同じ規律)。
+    /// Android は engineKey に serial(= 機そのもの)が入っているので、この穴が構造的に無い
+    /// **問い合わせは掴んでいるドライバ越しにやらない**(2026-08-13 に実装2回目で踏んだ):
+    /// 実運用のドライバは `SessionRecoveryDriver` に包まれており、**建て直した直後のブリッジは
+    /// まだセッションを持たない**ので `status()` が 409 で落ちる。`try?` で握ると
+    /// **機が変わったときにちょうどガードが黙る** —— 陰性が「常に false を返す検出器」と
+    /// 区別できない形そのものだった(実機の陽性対照で発覚)。ポートへ直に `/status` を撃つ
+    func deviceIdentityChanged(_ key: String, args: [String: Any], platform: String) async -> String? {
+        guard platform == "ios", Self.usesRememberedDeviceState(args),
+              let recorded = udids[key] ?? nil, let port = connectedPorts[key],
+              let now = try? await BridgeClient(port: port, timeoutSeconds: 5).status().udid,
+              let moved = Self.keyChangedDevice(previous: recorded, now: now) else { return nil }
+        forgetDeviceState(key)
+        return Self.movedDeviceRefusal(port: port, previousUDID: moved, nowUDID: now)
+    }
+
+    /// ポートが別の機へ移っていたときに呼び出しを断る文。**捨てたものを名指しする** ——
+    /// 「別の機だ」だけだと、読み手は手元の ref をそのまま撃ち直す
+    static func movedDeviceRefusal(port: UInt16?, previousUDID: String, nowUDID: String) -> String {
+        let where_ = port.map { "port \($0)" } ?? "this bridge"
+        return "\(where_) now belongs to a different simulator (was \(previousUDID), now \(nowUDID))"
+            + " — refusing this call because it relies on state remembered for the previous device"
+            + " (a ref, or the launched app that ft_open_url defaults to). That state has been"
+            + " dropped. Take a fresh ft_snapshot and use the new refs."
     }
 
     /// **同じ engineKey が別の機を指し始めたか**(非 nil = 前の udid。走査から切り離した純粋関数)。
