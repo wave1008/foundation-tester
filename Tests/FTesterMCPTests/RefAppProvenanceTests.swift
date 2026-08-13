@@ -91,4 +91,48 @@ final class RefAppProvenanceTests: XCTestCase {
         _ = try await server.call(tool: "ft_tap", args: ["ref": 1])
         XCTAssertTrue(driver.calls.contains { $0.hasPrefix("tap") }, "\(driver.calls)")
     }
+
+    /// **2回目の試行でも断ること**(2026-08-13 のレビュー指摘)。`adoptSnapshot` は
+    /// 「同じ木」なら世代を**その場で上書き**するが、`identity` は frame を見ないので
+    /// **兄弟アプリの同じ画面は同じ木に見える**。アプリの一致を要求しないと、1回目の拒否で
+    /// 世代が新しいアプリの `sessionBundleID` に塗り替わり、**同じ呼び出しの2回目が通る**
+    /// —— 1回断ってから通すのは、黙って通すより悪い
+    func testTheRefusalSurvivesAnImmediateRetry() async throws {
+        let driver = FakeDriver()
+        let server = MCPServer(write: { _ in }, makeDriver: { _ in driver },
+                               recordSnapshot: { _, _, _ in })
+        driver.snapshotResponse = tree("com.ftester.e2e", id: "nav_selector")
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+
+        driver.snapshotResponse = tree("com.ftester.e2e.ios", id: "nav_selector")
+        for attempt in 1...2 {
+            do {
+                _ = try await server.call(tool: "ft_tap", args: ["ref": 1])
+                XCTFail("\(attempt) 回目で別アプリの ref が通った")
+            } catch {
+                XCTAssertTrue("\(error)".contains("com.ftester.e2e.ios"), "\(attempt): \(error)")
+            }
+        }
+        XCTAssertFalse(driver.calls.contains { $0.hasPrefix("tap") }, "\(driver.calls)")
+    }
+
+    /// **ref を食う3つ目の経路**(`scrollFrame: <ref>`)にも同じガードが要る。
+    /// 容器の ref も id・ラベルで再照合されるので、放置すると別アプリの同名容器の中で
+    /// ジェスチャが走る
+    func testScrollFrameRefIsAlsoGuarded() async throws {
+        let driver = FakeDriver()
+        let server = MCPServer(write: { _ in }, makeDriver: { _ in driver },
+                               recordSnapshot: { _, _, _ in })
+        driver.snapshotResponse = tree("com.ftester.e2e", id: "list_rows")
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+
+        driver.snapshotResponse = tree("com.ftester.e2e.ios", id: "list_rows")
+        do {
+            _ = try await server.call(tool: "ft_swipe",
+                                      args: ["direction": "up", "scrollFrame": 1])
+            XCTFail("別アプリで採った scrollFrame の ref が通った")
+        } catch {
+            XCTAssertTrue("\(error)".contains("com.ftester.e2e.ios"), "\(error)")
+        }
+    }
 }

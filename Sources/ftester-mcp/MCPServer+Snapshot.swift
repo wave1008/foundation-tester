@@ -81,7 +81,13 @@ extension MCPServer {
         if var generations = refGenerations[key], let last = generations.last {
             let nativeIdentity = Set(native.elements.map { Self.identity($0, base: 0) })
             let lastIdentity = Set(last.snapshot.elements.map { Self.identity($0, base: last.base) })
-            if nativeIdentity == lastIdentity {
+            // **アプリが同じであることも要求する**(2026-08-13 のレビュー指摘)。`identity` は
+            // frame を見ないので、**兄弟アプリの同じ画面は「同じ木」に見える**。ここで
+            // 使い回すと世代が**新しいアプリの sessionBundleID で上書き**され、
+            // `refFromAnotherAppMessage` の比較が B vs B になって**2回目の試行で素通り**する
+            // (1回目は断るのに、同じ呼び出しをもう一度撃つと通る = 最悪の形)
+            if nativeIdentity == lastIdentity,
+               last.snapshot.sessionBundleID == native.sessionBundleID {
                 // 同じ木 — base を使い回し、最新世代の内容だけ最新化する(frame/value/focused 等)
                 let remapped = Self.remapped(native, base: last.base)
                 generations[generations.count - 1] = (base: last.base, snapshot: remapped)
@@ -584,7 +590,13 @@ extension MCPServer {
                     + " Take a fresh ft_snapshot")
             }
             let target = resolved.element
+            let takenFrom = generationSnapshot(containing: ref, args: args)
             let fresh = try await freshSnapshot(driver, args: args)
+            // **ref を食う3つ目の経路**(2026-08-13 の掃討漏れ)。verifiedRef / verifiedElement /
+            // ここ、で全部。容器の ref も id・ラベルで再照合されるので、放置すると
+            // **別アプリの同名容器の中でジェスチャが走る**
+            if let message = Self.refFromAnotherAppMessage(
+                ref: ref, takenFrom: takenFrom, fresh: fresh) { throw MCPError(message) }
             switch RefGuard.relocate(target, in: fresh.elements, screen: fresh.screen) {
             case .gone:
                 throw MCPError(RefGuard.goneMessage(ref: ref, target: target,
