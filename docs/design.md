@@ -2559,6 +2559,29 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
     **警告のみで拒否しない**(新しい検知は警告から)。旧ブリッジは申告しない = 黙って従来どおり。
     Android は `getWindows()` を毎 snapshot 叩く(dumpsys と違い a11y 内 API で安い。ただし
     `FLAG_RETRIEVE_INTERACTIVE_WINDOWS` をブリッジ起動時に恒久で立てる副作用がある)。
+  - **iOS の `keyboardFrame` はキー面だけで、実際に覆う面積より狭い**(2026-08-13)。
+    `.keyboard` ノードの frame をそのまま申告しているが、上のサジェストバー
+    (`SystemInputAssistantView`)と地球儀/Dictate 行を含む `inputView` の下端を含まない
+    (実測: 仮想デバイス iPhone 17 Pro / 402x874 で申告 y=583..816 に対し木の chrome は y=538..874。
+    実機 iPhone 15 Pro でも上45pt・下58pt が同様に欠ける)。中心点判定
+    (`keyboardCoveredAdvisory`)は正しいのに、**渡す矩形が狭いせいで隠れた要素を見落とす**
+    ——「キーボードは何も覆っていない」という偽の全クリアが出た(witness: `#tab_home` が
+    キーボードに完全に隠れているのに note は無警告で、直後の `ft_tap` 自身が別要素への
+    誤爆を警告するという2機構の矛盾)。**中心点判定は変えない**(矩形1pt重なっただけの入力欄まで
+    警告すると誤検知になる) —— `FTCore.KeyboardOcclusion` が申告と木の chrome
+    (`inputView`/`SystemInputAssistantView`。**申告と交差するものだけ**)を足し込んで実効矩形を作り、
+    MCP/DSL の呼び出し側全員(MCPServer+Snapshot.swift / MCPServer+Hints.swift /
+    MCPServer+Dispatch.swift の ft_double_tap / StepExecutor+Actions.swift)がこの型を通す。
+    chrome が木に無ければ申告どおり(Android は既に画面下端まで届いており対象外。ブラウザの
+    WebView 内キーボードは chrome がツリーに出ないため同様に対象外)。
+    **広げるだけでは雑音になる**: キーボード自身の部品(地球儀キー・変換候補バー)まで
+    「キーボードの下に隠れている」に該当し、**注記は先頭8件しか名指ししない**ので本命が枠から
+    押し出される。chrome 自身とその部分木(木は親→子順+`depth`)は除外する ——
+    覆っている側を「覆われている」とは言えない。実測(`ios-maps_suggest_keyboard`):
+    16件(修正前・見落とし)→ 30件(広げただけ・雑音)→ **20件**(除外後)で、増分4は
+    **本当にキーボードに隠れた5件目の検索結果** `#Maps.PlaceTableViewCell`(y=836..906)。
+    **拾い直しが要る**: `SystemInputAssistantView` は申告矩形と縁が接するだけで交差しないので
+    最初の走査に入らない —— 実効矩形で chrome を引き直さないと、その部分木が除外から漏れる
   - **「セレクタを書けない」と言う前にスコープ記法を試す**(2026-08-09)。ラベルも id も無い
     clickable の注記は「ref か座標でしか指せない」と言い切っていたが、**id を持つ祖先があれば
     `#container >> .clickable[n]` で書ける**(スコープ記法。docs/commands.md)。実測(Google マップ

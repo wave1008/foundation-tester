@@ -1,11 +1,21 @@
-// 2026-08-13 の iOS 実機 MCP 監査由来の修正(欠陥③): セッションの宛先記憶・曖昧さガードが
-// `profile:` を数えていなかった。
+// 2026-08-13 の iOS 実機 MCP 監査由来の修正(欠陥③・④・⑥)。
 //
+// ③ セッションの宛先記憶・曖昧さガードが `profile:` を数えていなかった。
 // 実測した実害: ①実機を profile: で操作(port 8144 に解決)→ ②仮想デバイスを port: で操作
 // → ③宛先を省いた ft_snapshot が拒否されず仮想デバイスへ行った。実機のブリッジは /status に
 // udid を載せないため udid/port で名指しできず、profile: が実機を指す唯一の現実的な手段
 // —— recordsIOSMemory/recordsAndroidMemory が profile を見ないと、実機を使うセッションは
 // 2台目を触っても曖昧さガードに数えられない。
+//
+// ④ 実機は listen を iproxy(別プロセス)が引き継ぐため、XCUITest ランナーが死んでも
+// BridgeDiscovery.isBound は true のまま残る。bound だけで .busy と判定すると
+// forgetConnection が呼ばれず、profile: の呼び出しが永久に死んだポートへ再ダイヤルされ続ける
+// (実測: port 8143 は 65ms で応答するのに profile: 経路は復帰しなかった)。
+// pid ファイルの所有プロセス生死(bridgeOwnerAlive)で bound を補強する(trustBound)。
+//
+// ⑥ ft_list_devices のフォールバック見出しの畳み鍵が理由に依存していなかったため、
+// 「別の理由に変わった」2回目の呼び出しまで「初回と同じ理由」として畳まれ、指示どおり
+// 原因を直しても直った証拠(新しい理由)が読めなくなっていた。
 
 import XCTest
 @testable import ftester_mcp
@@ -152,5 +162,129 @@ final class MCPAuditFixes20260813PhysicalDeviceTests: XCTestCase {
         }
         XCTAssertEqual(args["port"] as? Int, 8144)
         XCTAssertTrue(note.contains("8144"), note)
+    }
+
+    // MARK: - 欠陥④ trustBound/bridgeUnreachableVerdict(実機の孤児 iproxy を生存中と誤判定しない)
+
+    /// bound=true でも所有プロセスが確認できる形で死んでいれば信じない
+    /// (実機は listen を iproxy が引き継ぐので、ランナー死後も bound は true のまま残る)
+    func testTrustBoundDoesNotTrustBoundWhenOwnerIsConfirmedDead() {
+        XCTAssertFalse(MCPServer.trustBound(bound: true, ownerAlive: false))
+    }
+
+    /// ownerAlive が nil(pid ファイル無し = in-app ブリッジ等、判定材料が無い)は疑わない側に倒す
+    /// —— nil を死と読むと仮想デバイスの in-app 経路まで巻き添えにする
+    func testTrustBoundStillTrustsBoundWhenOwnerIsUnknown() {
+        XCTAssertTrue(MCPServer.trustBound(bound: true, ownerAlive: nil))
+    }
+
+    func testTrustBoundIsFalseWheneverNotBound() {
+        XCTAssertFalse(MCPServer.trustBound(bound: false, ownerAlive: true))
+        XCTAssertFalse(MCPServer.trustBound(bound: false, ownerAlive: nil))
+    }
+
+    /// bound かつ ownerAlive=false は .busy にならない —— vanished の値で従来どおり決まる
+    func testBridgeUnreachableVerdictDoesNotSayBusyWhenOwnerIsConfirmedDead() {
+        XCTAssertEqual(
+            MCPServer.bridgeUnreachableVerdict(bound: true, ownerAlive: false, vanished: true),
+            .vanished)
+        XCTAssertEqual(
+            MCPServer.bridgeUnreachableVerdict(bound: true, ownerAlive: false, vanished: false),
+            .stillUnclear)
+    }
+
+    /// bound かつ ownerAlive=nil(in-app 等)は従来どおり busy —— 巻き添えにしない
+    func testBridgeUnreachableVerdictStaysBusyWhenOwnerIsUnknown() {
+        XCTAssertEqual(
+            MCPServer.bridgeUnreachableVerdict(bound: true, ownerAlive: nil, vanished: true), .busy)
+    }
+
+    func testBridgeOwnerAliveIsNilWithoutRepoRootOrPidFile() {
+        XCTAssertNil(MCPServer.bridgeOwnerAlive(port: 65000, repoRoot: nil))
+        let emptyRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ft-owner-alive-empty-\(UUID().uuidString)")
+        XCTAssertNil(MCPServer.bridgeOwnerAlive(port: 65000, repoRoot: emptyRoot))
+    }
+
+    /// pid ファイルを実際に置いて生死判定する(kill(pid, 0) の実地確認)。
+    /// 生存中の pid = 自分自身のプロセス。死亡確認済みの pid = waitUntilExit 後の子プロセス
+    /// (pid の即時再利用を避けるため、単なるマジックナンバーではなく実測で確定させる)
+    func testBridgeOwnerAliveReadsThePidFileAndChecksLiveness() throws {
+        let repoRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ft-owner-alive-\(UUID().uuidString)")
+        let stateDir = repoRoot.appendingPathComponent(".ftester")
+        try FileManager.default.createDirectory(at: stateDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: repoRoot) }
+
+        try String(ProcessInfo.processInfo.processIdentifier).write(
+            to: stateDir.appendingPathComponent("bridge-9001.pid"), atomically: true, encoding: .utf8)
+        XCTAssertEqual(MCPServer.bridgeOwnerAlive(port: 9001, repoRoot: repoRoot), true)
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/true")
+        try process.run()
+        process.waitUntilExit()
+        try String(process.processIdentifier).write(
+            to: stateDir.appendingPathComponent("bridge-9002.pid"), atomically: true, encoding: .utf8)
+        XCTAssertEqual(MCPServer.bridgeOwnerAlive(port: 9002, repoRoot: repoRoot), false)
+    }
+
+    /// **配線**: iosConnectionLostHint が ownerAlive を実際に計算し、verdict とスキャン要否の
+    /// 両方へ渡していること。純粋関数だけを固定すると「呼び出し側が ownerAlive を渡すのをやめる」
+    /// 変異が生き残る(この台帳が繰り返し踏んでいる型)
+    func testIosConnectionLostHintWiresOwnerAliveIntoBothDecisions() throws {
+        let source = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+                .appendingPathComponent("Sources/ftester-mcp/MCPServer+Dispatch.swift"),
+            encoding: .utf8)
+        let start = try XCTUnwrap(source.range(of: "func iosConnectionLostHint("),
+                                  "iosConnectionLostHint が見つからない")
+        let tail = source[start.upperBound...]
+        let end = try XCTUnwrap(tail.range(of: "\n    /// iOS の2分岐"),
+                                "iosConnectionLostHint の終端(次の関数のコメント)が見つからない")
+        let body = String(tail[..<end.lowerBound])
+
+        XCTAssertTrue(body.contains("Self.bridgeOwnerAlive(port: port, repoRoot: repoRoot)"),
+                     "ownerAlive を計算していない —— bound だけでは実機の孤児 iproxy を"
+                     + "生存中と誤判定する(欠陥④)")
+        XCTAssertTrue(body.contains("ownerAlive: ownerAlive"),
+                     "bridgeUnreachableVerdict へ ownerAlive を渡していない")
+        XCTAssertTrue(body.contains("Self.trustBound(bound: bound, ownerAlive: ownerAlive)"),
+                     "走査を省くかどうかの判定が trustBound を経由していない"
+                     + "(手書きの `bound ? [] : …` へ戻すと verdict と条件がずれ得る)")
+        XCTAssertFalse(body.contains("bound ? [] : await BridgeDiscovery.scan"),
+                       "旧来の bound 単独判定(欠陥④)へ戻っている")
+    }
+
+    // MARK: - 欠陥⑥ ft_list_devices の畳み鍵が理由込みであること(実測した実害の再現)
+
+    private func bodyText(_ content: [[String: Any]]) -> String {
+        content.compactMap { $0["text"] as? String }.joined(separator: "\n")
+    }
+
+    /// 実測: ①project 無指定で失敗(理由A)→ 指示どおり project: を渡す → ②同じ理由がもう一度
+    /// 出るなら畳んでよい → ③その後 project: を直しても別の理由(理由B。machine profile が
+    /// profiles/machines/ に無い等)で失敗したら、**理由が変わった回は満額で出る**こと。
+    /// 修正前は鍵が理由に依存しないため、②はおろか③まで「reason given in the first」で畳まれ、
+    /// 直したかどうかを読む手段が消えていた
+    func testFallbackHeaderIsFoldedPerReasonNotGlobally() async throws {
+        let s = server()
+        let missingA = "no-such-project-mcp-audit-defect6-a"
+        let missingB = "no-such-project-mcp-audit-defect6-b"
+
+        let first = bodyText(try await s.call(tool: "ft_list_devices", args: ["project": missingA]))
+        XCTAssertTrue(first.contains(missingA), first)
+        XCTAssertFalse(first.contains("reason given in the first"), first)
+
+        let second = bodyText(try await s.call(tool: "ft_list_devices", args: ["project": missingA]))
+        XCTAssertTrue(second.contains("reason given in the first ft_list_devices"),
+                      "同じ理由の繰り返しが畳まれていない: \(second)")
+
+        let third = bodyText(try await s.call(tool: "ft_list_devices", args: ["project": missingB]))
+        XCTAssertTrue(third.contains(missingB),
+                      "理由が変わったのに満額で出ていない(欠陥⑥の再現): \(third)")
+        XCTAssertFalse(third.contains("reason given in the first"),
+                       "理由が変わった回まで畳まれている(欠陥⑥の再現): \(third)")
     }
 }

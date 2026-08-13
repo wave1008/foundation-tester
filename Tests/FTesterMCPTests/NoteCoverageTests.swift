@@ -149,7 +149,13 @@ final class NoteCoverageTests: XCTestCase {
         // 同じ数値(`29/24`・`90%`)が行と列に何度も出るので、増分は形そのもの
         "ambiguousLabelsNote": Coverage(fixtures: ["and-apps_list", "and-browser_weather", "and-browser_weather_weekly", "and-browser_weektable", "and-home", "and-maps_suggest_ime", "and-place", "and-place_expanded", "and-results", "ios-browser_jma_hscroll", "ios-browser_nationwide", "ios-browser_startpage", "ios-browser_weather_weekly", "ios-browser_weektable", "ios-home", "ios-maps_station", "ios-maps_suggest_keyboard", "ios-messages_keyboard", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-safari_article", "ios-settings_root", "sut-cmp_controls", "sut-cmp_home", "sutec-detail", "sutec-home"], bytes: 16935),
         "duplicateIDsNote": Coverage(fixtures: ["and-dialer_keypad", "and-home", "and-overflow", "and-place_expanded", "and-results", "and-settings_root", "ios-browser_startpage", "ios-home", "ios-maps_route_options", "ios-maps_station", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-photos_grid", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-settings_root", "sutec-home"], bytes: 16450),
-        "keyboardCoverageNote": Coverage(fixtures: ["and-browser_urlmenu", "and-form_keyboard", "and-maps_suggest_ime", "ios-browser_startpage", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-messages_keyboard"], bytes: 1169),
+        // bytes 1169→1366→1170(2026-08-14・「chrome の部分木は覆われた側に数えない」修正):
+        // fixtures 集合は不変(発火する画面は変わらない = 全画面「nothing tappable」か列挙のどちらか
+        // では出続ける)。ios-maps_suggest_guides/ios-messages_keyboard は列挙(2件)から
+        // 再び「nothing tappable」へ(その2件は chrome 自身の部分木だった)。
+        // ios-maps_suggest_keyboard は列挙数が 30→20 に減るが、先頭8件(バイト数を左右する側)は
+        // 変わらないので画面単体のバイト数は不変(SweepHarnessTests の baselines コメント参照)
+        "keyboardCoverageNote": Coverage(fixtures: ["and-browser_urlmenu", "and-form_keyboard", "and-maps_suggest_ime", "ios-browser_startpage", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-messages_keyboard"], bytes: 1170),
         "truncatedLabelNote": Coverage(fixtures: ["and-browser_urlmenu", "and-browser_weather", "and-browser_weather_weekly", "and-place_expanded", "ios-browser_weektable", "ios-photos_grid", "ios-place_guides_scrolled", "ios-safari_article", "ios-settings_root", "sutec-detail", "sutec-home"], bytes: 3362),
     ]
 
@@ -173,7 +179,7 @@ final class NoteCoverageTests: XCTestCase {
 
     /// 1画面ぶんの注記の合計バイトの上限。**エージェントは木を読みに来ているのであって
     /// 注記を読みに来ているのではない** —— 上限を置かないと、監査のたびに1本ずつ足される注記が
-    /// 木そのものを押しのける。2026-08-12 の実測は最大 2,683B(ios-maps_suggest_keyboard)。
+    /// 木そのものを押しのける。2026-08-13 の実測は最大 2,684B(ios-maps_suggest_keyboard)。
     /// 超えたら「1本足す前に1本消す」を検討すること
     static let bytesPerScreenCeiling = 3000
 

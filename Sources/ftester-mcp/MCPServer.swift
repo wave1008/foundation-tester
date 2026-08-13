@@ -211,6 +211,11 @@ final class MCPServer {
     /// —— 表示用の文と機械判定を同じ文字列に相乗りさせると、表記を整えるたびに判定が壊れる。
     /// タイムアウト時にそのポートがまだ生きているかを確かめる `connectionLostHint` が使う
     var connectedPorts: [String: UInt16] = [:]
+    /// 掴んでいる Android ブリッジの serial(engineKey ごと)。iOS の `connectedPorts` と同じ理由で
+    /// `connections` の表示文字列からは読み解かない —— 直接指定は "serial <serial>"、profile
+    /// 経由は "<device name> serial <serial>" と経路ごとに書式が違い、文字列切り出しに頼ると
+    /// profile 経由だけ判定から漏れる(2026-08-14 に実際に踏んだ)
+    var connectedAndroidSerials: [String: String] = [:]
 
     /// 版ズレの内容(engineKey ごと)。ft_status が「失敗するが理由を返す」ために覚えておく
     var versionSkew: [String: String] = [:]

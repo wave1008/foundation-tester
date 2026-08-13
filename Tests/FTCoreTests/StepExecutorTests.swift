@@ -34,6 +34,9 @@ private final class FakeAppDriver: AppDriver {
     /// 非 nil なら swipe/press がこのエラーを throw する(501 ジェスチャ切替の検証用)
     var swipeError: Error?
     var pressError: Error?
+    /// SnapshotResponse.keyboardFrame(全 snapshot() 呼び出しに一律で乗せる。
+    /// キーボード遮蔽の配線テスト専用。既定 nil = 従来どおりキーボード非表示扱い)
+    var keyboardFrame: FTRect?
 
     init(name: String, log: CallLog, snapshotElements: [[ElementInfo]] = [],
          screenshots: [Data]? = nil) {
@@ -74,7 +77,8 @@ private final class FakeAppDriver: AppDriver {
         }
         return SnapshotResponse(sessionBundleID: nil,
                                 screen: FTRect(x: 0, y: 0, width: 400, height: 800),
-                                elements: elements, truncatedCount: 0, keyboardShown: keyboardShown)
+                                elements: elements, truncatedCount: 0, keyboardShown: keyboardShown,
+                                keyboardFrame: keyboardFrame)
     }
 
     var supportsCacheBypass: Bool { bypassSupported }
@@ -853,6 +857,66 @@ final class StepExecutorTests: XCTestCase {
         guard case .failed = await executor.execute(step).status else {
             XCTFail("tap は見つからなければ失敗のはず"); return
         }
+    }
+
+    /// **申告 keyboardFrame はキー面だけ**(TapTargetGeometry.effectiveKeyboardFrame の doc)。
+    /// MCP 側(MCPRefGuardTests.testTapWarnsWhenTheCentreIsOnlyUnderTheExpandedKeyboardChrome)と
+    /// 同じ witness を DSL 側(StepExecutor+Actions.swift)でも固定する —— 呼び出し元が申告のまま
+    /// 渡すよう後退すると、この注記が付かず落ちる
+    func testTapNotesKeyboardCoverageUsingTheExpandedChromeFrame() async throws {
+        let log = CallLog()
+        let tabHome = ElementInfo(ref: 1, type: "button", identifier: "tab_home", label: "ホーム",
+                                  value: nil, placeholder: nil, enabled: true,
+                                  frame: FTRect(x: 0, y: 548, width: 134, height: 62), depth: 1)
+        let inputView = ElementInfo(ref: 2, type: "other", identifier: "inputView", label: nil,
+                                    value: nil, placeholder: nil, enabled: true,
+                                    frame: FTRect(x: 0, y: 546, width: 402, height: 328), depth: 1)
+        let suggestBar = ElementInfo(ref: 3, type: "other", identifier: "SystemInputAssistantView",
+                                     label: nil, value: nil, placeholder: nil, enabled: true,
+                                     frame: FTRect(x: 0, y: 546, width: 402, height: 44), depth: 1)
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[tabHome, inputView, suggestBar]])
+        // 申告は 590..816 —— tab_home の中心 y=579 はこの外(修正前は無警告)
+        primary.keyboardFrame = FTRect(x: 0, y: 590, width: 402, height: 226)
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(action: "tap", locator: FlowLocator(id: "tab_home"))
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("tap 自体は passed のはず(警告であって拒否ではない): \(outcome.status)"); return
+        }
+        XCTAssertTrue(outcome.driverFallback?.contains("soft keyboard") == true,
+                      "chrome で広げた実効矩形(546..874)なら中心 579 を拾って警告すること:"
+                      + " \(outcome.driverFallback ?? "nil")")
+    }
+
+    /// **chrome 自身の部品を撃つときはキーボード警告を出さない**(2026-08-14)。地球儀キーは
+    /// 実効矩形の中に中心があるが chrome(`#inputView`)の子孫なので、覆っている側であって
+    /// 覆われている側ではない。片方だけ生の keyboardFrame へ戻す変異(RefGuard 側は直ったが
+    /// StepExecutor 側は据え置き、のような部分退行)をここで落とす
+    func testTapOnTheKeyboardChromeItselfDoesNotWarnAboutTheKeyboard() async throws {
+        let log = CallLog()
+        let inputView = ElementInfo(ref: 1, type: "other", identifier: "inputView", label: nil,
+                                    value: nil, placeholder: nil, enabled: true,
+                                    frame: FTRect(x: 0, y: 546, width: 402, height: 328), depth: 1)
+        let globeKey = ElementInfo(ref: 2, type: "button", identifier: "globe_key", label: nil,
+                                   value: nil, placeholder: nil, enabled: true,
+                                   frame: FTRect(x: 0, y: 806, width: 134, height: 68), depth: 2)
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[inputView, globeKey]])
+        primary.keyboardFrame = FTRect(x: 0, y: 590, width: 402, height: 226)
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(action: "tap", locator: FlowLocator(id: "globe_key"))
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("tap 自体は passed のはず: \(outcome.status)"); return
+        }
+        XCTAssertFalse(outcome.driverFallback?.contains("soft keyboard") == true,
+                       "chrome 自身の部品には keyboard 警告を出さないこと:"
+                       + " \(outcome.driverFallback ?? "nil")")
     }
 
     /// poll-until-visible: 最初は覆われ(covered)、後で可視になる過渡的オーバーレイは、即失敗せず

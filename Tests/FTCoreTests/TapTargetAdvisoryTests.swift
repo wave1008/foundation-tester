@@ -259,6 +259,124 @@ final class TapTargetAdvisoryTests: XCTestCase {
         XCTAssertNil(TapTargetGeometry.keyboardCoveredAdvisory(target, keyboardFrame: nil))
     }
 
+    // MARK: - effectiveKeyboardFrame
+    //
+    // 申告 keyboardFrame は `.keyboard` ノードの frame だけ(キー面のみ)で、上のサジェストバー
+    // (`SystemInputAssistantView`)と地球儀/Dictate 行を含む `inputView` の下端を取りこぼす
+    // (実測: 仮想デバイス iPhone 17 Pro / 402x874。申告 y=583..816 に対し木の chrome は y=538..874)。
+    // ここでは実測値を丸めた自己整合な数字を使う。
+
+    /// chrome があれば申告を上下に広げる
+    func testEffectiveKeyboardFrameExpandsWithChrome() {
+        let reported = FTRect(x: 0, y: 590, width: 402, height: 226) // 590..816
+        let elements = [
+            element(1, "inputView", "other", 0, 546, 402, 328),               // 546..874
+            element(2, "SystemInputAssistantView", "other", 0, 546, 402, 44), // 546..590
+        ]
+        let effective = TapTargetGeometry.effectiveKeyboardFrame(reported: reported, in: elements)
+        XCTAssertEqual(effective, FTRect(x: 0, y: 546, width: 402, height: 328), "546..874 まで広がること")
+    }
+
+    /// chrome が木に無ければ申告どおり(1バイトも変えない。iOS の browser_startpage /
+    /// Android 全機種がこのケース)
+    func testEffectiveKeyboardFrameFallsBackToReportedWithoutChrome() {
+        let reported = FTRect(x: 0, y: 583, width: 402, height: 233)
+        let elements = [element(1, "unrelated", "button", 16, 100, 100, 40)]
+        XCTAssertEqual(TapTargetGeometry.effectiveKeyboardFrame(reported: reported, in: elements),
+                       reported)
+    }
+
+    /// 申告と交差しない同名要素は和に入れない(無条件に identifier で拾うと、画面の別の場所に
+    /// ある同名要素で矩形が暴発する)
+    func testEffectiveKeyboardFrameIgnoresChromeThatDoesNotIntersectTheReportedFrame() {
+        let reported = FTRect(x: 0, y: 590, width: 402, height: 226) // 590..816
+        let elements = [element(1, "inputView", "other", 0, 0, 402, 50)] // 0..50、交差しない
+        XCTAssertEqual(TapTargetGeometry.effectiveKeyboardFrame(reported: reported, in: elements),
+                       reported, "交差しない chrome は無視すること")
+    }
+
+    /// keyboardFrame が nil → nil のまま(「キーボード無し」の意味を変えない)
+    func testEffectiveKeyboardFrameStaysNilWithoutAReportedFrame() {
+        let elements = [element(1, "inputView", "other", 0, 546, 402, 328)]
+        XCTAssertNil(TapTargetGeometry.effectiveKeyboardFrame(reported: nil, in: elements))
+    }
+
+    /// **witness の再現**(実害): `#tab_home` 相当の要素は中心 (67,579) が申告 590..816 の外に
+    /// 落ちるため無警告だったが、実際はキーボードの chrome(地球儀行まで)に隠れていた。
+    /// 実効矩形を通すと拾われることを固定する ——この2アサーションが揃って初めて「修正が効いた」
+    /// ことになる(実効矩形だけ広がって判定に使われなければ、この回帰は防げない)
+    func testWitnessTabHomeIsMissedByReportedFrameButCaughtByEffectiveFrame() {
+        let reported = FTRect(x: 0, y: 590, width: 402, height: 226)
+        let elements = [
+            element(1, "inputView", "other", 0, 546, 402, 328),
+            element(2, "SystemInputAssistantView", "other", 0, 546, 402, 44),
+        ]
+        let tabHome = element(3, "tab_home", "button", 0, 548, 134, 62) // 中心 (67, 579)
+        XCTAssertNil(TapTargetGeometry.keyboardCoveredAdvisory(tabHome, keyboardFrame: reported),
+                     "申告のままでは中心 579 が 590..816 の外 = 無警告(これが実害)")
+        let effective = TapTargetGeometry.effectiveKeyboardFrame(reported: reported, in: elements)
+        XCTAssertNotNil(TapTargetGeometry.keyboardCoveredAdvisory(tabHome, keyboardFrame: effective),
+                        "実効矩形(546..874)では中心 579 が中に入り、警告が出ること")
+    }
+
+    // MARK: - KeyboardOcclusion(chrome の部分木を除外する)
+    //
+    // 実測(2026-08-13 の実効矩形拡張の副作用): `#tab_home` を拾うために木の chrome
+    // (`#inputView`/`#SystemInputAssistantView`)で矩形を広げると、その chrome 自身の部品
+    // (地球儀キー・変換候補バー)まで「キーボードの下に隠れている」と数えてしまっていた。
+    // 覆っている側を覆われている側と言う雑音で、以下は ios-messages_keyboard の実測ダンプ
+    // (プロンプト記載)をそのまま使う。
+
+    /// witness の全体再現: chrome 自身(2件)・chrome の子(3件・非対話)・chrome の子の対話要素
+    /// (地球儀キー・dictation)は「覆われている」と言わない。chrome の部分木の外にある本当に
+    /// 隠れたアプリの行(`#Maps.PlaceTableViewCell` 相当)には言う
+    func testKeyboardOcclusionExcludesTheChromeSubtreeButKeepsAppElementsBeneathIt() {
+        let reported = FTRect(x: 0, y: 583, width: 402, height: 233) // キー面だけ
+        // chrome の部分木の外(preorder で chrome より前)。中心 y=871 は実効矩形の中
+        let appRow = element(1, "Maps.PlaceTableViewCell", "clickable", 20, 836, 362, 70, depth: 8)
+        let inputView = element(2, "inputView", "other", 0, 538, 402, 336, depth: 4)
+        let assistant = element(3, "SystemInputAssistantView", "other", 0, 538, 402, 45, depth: 4)
+        // SystemInputAssistantView の子孫(depth > 4 が続く間)
+        let centerPageView = element(4, "CenterPageView", "other", 0, 538, 402, 45, depth: 6)
+        let scrollView = element(5, "unused", "scrollView", 0, 538, 402, 45, depth: 8)
+        let collectionView = element(6, "unused2", "collectionView", 0, 538, 402, 45, depth: 12)
+        let globeKey = element(7, "globe_key", "button", 0, 806, 134, 68, depth: 5)
+        let dictation = element(8, "dictation", "button", 268, 805, 134, 69, depth: 5)
+        let elements = [appRow, inputView, assistant, centerPageView, scrollView,
+                        collectionView, globeKey, dictation]
+
+        let occlusion = KeyboardOcclusion.resolve(reported: reported, in: elements)
+        XCTAssertEqual(occlusion.frame, FTRect(x: 0, y: 538, width: 402, height: 336),
+                       "矩形は従来どおり chrome で広がること")
+
+        XCTAssertNil(occlusion.advisory(for: inputView), "chrome 自身(inputView)には言わない")
+        XCTAssertNil(occlusion.advisory(for: assistant),
+                     "chrome 自身(SystemInputAssistantView)には言わない")
+        XCTAssertNil(occlusion.advisory(for: globeKey), "chrome の子(地球儀キー)には言わない")
+        XCTAssertNil(occlusion.advisory(for: dictation), "chrome の子(dictation)には言わない")
+        XCTAssertNotNil(occlusion.advisory(for: appRow),
+                        "chrome の部分木の外にある、本当に隠れたアプリの行には言うこと(この修正の本命)")
+    }
+
+    /// chrome が木に無ければ除外もしない(申告どおりに戻る。`ios-browser_startpage` と
+    /// Android のフィクスチャ全部がこのケース)
+    func testKeyboardOcclusionWithoutChromeExcludesNothing() {
+        let reported = FTRect(x: 0, y: 600, width: 402, height: 274)
+        let row = element(1, "some_row", "button", 16, 620, 370, 40)
+        let occlusion = KeyboardOcclusion.resolve(reported: reported, in: [row])
+        XCTAssertEqual(occlusion.frame, reported, "chrome が無ければ矩形は申告どおり")
+        XCTAssertNotNil(occlusion.advisory(for: row), "除外対象が無いので申告どおり警告すること")
+    }
+
+    /// keyboardFrame が nil → `.none` と同じ(「キーボード無し」の意味を変えない)
+    func testKeyboardOcclusionResolveStaysNilWithoutAReportedFrame() {
+        let elements = [element(1, "inputView", "other", 0, 546, 402, 328)]
+        let occlusion = KeyboardOcclusion.resolve(reported: nil, in: elements)
+        XCTAssertNil(occlusion.frame)
+        let row = element(2, "row", "button", 16, 600, 370, 40)
+        XCTAssertNil(occlusion.advisory(for: row))
+    }
+
     // MARK: - isClippedSliver
 
     /// 実害形: 右端で幅9pxに切れたタブ「サンライズ瀬戸」(2026-08-08・Apple マップ)

@@ -193,8 +193,9 @@ public enum TapTargetGeometry {
     /// keyboard/disabled は座標に依らず言えるので先頭に残す。座標に依る残り(zero-frame〜sliver)は
     /// `occlusionAdvisory` へ委ねる(実測は各判定関数の doc を参照)
     public static func advisory(for element: ElementInfo, in elements: [ElementInfo],
-                                screen: FTRect, keyboardFrame: FTRect? = nil) -> String? {
-        keyboardCoveredAdvisory(element, keyboardFrame: keyboardFrame)
+                                screen: FTRect,
+                                keyboardOcclusion: KeyboardOcclusion = .none) -> String? {
+        keyboardOcclusion.advisory(for: element)
             ?? disabledAdvisory(for: element)
             ?? occlusionAdvisory(for: element, in: elements, screen: screen)
     }
@@ -317,14 +318,27 @@ public enum TapTargetGeometry {
             + " so the touch went to whatever is behind it (aim at \(name) instead)"
     }
 
-    /// 「中心がソフトキーボードの下」。木からは判定できない(キーボードはスナップショットの
-    /// 対象外)ので、ブリッジが申告する `keyboardFrame` でだけ言える。**警告のみ**(新しい検知は
-    /// 拒否でなく警告から。start-new-detections-as-warnings)。
+    /// キーボード chrome とみなす identifier。**申告 keyboardFrame と交差するものだけ**を
+    /// 対象にする(無条件に identifier で拾うと、画面の別の場所にある同名要素で矩形が暴発する)
+    public static let keyboardChromeIdentifiers: Set<String> = ["inputView", "SystemInputAssistantView"]
+
+    /// `KeyboardOcclusion.resolve(reported:in:).frame` の薄いラッパー(既存呼び出し・単体テスト互換用)
+    public static func effectiveKeyboardFrame(reported: FTRect?,
+                                              in elements: [ElementInfo]) -> FTRect? {
+        KeyboardOcclusion.resolve(reported: reported, in: elements).frame
+    }
+
+    /// 「中心がソフトキーボードの下」の**中心点だけの判定**。木からは判定できない
+    /// (キーボードはスナップショットの対象外)ので、ブリッジが申告する `keyboardFrame` でだけ
+    /// 言える。**警告のみ**(新しい検知は拒否でなく警告から。start-new-detections-as-warnings)。
     ///
     /// 実測(2026-08-08・iOS): キーボード下の候補行 ref タップが警告なしで顔文字キーに当たった。
     /// ツリー内の inputView は子孫が全部除外された空葉になり、既存の空葉コンテナ除外
     /// (`OcclusionGeometry.isBlankLeafContainer`。誤検知対策)で遮蔽候補から外れる —— だからツリー由来の
-    /// 遮蔽判定では原理的に拾えない
+    /// 遮蔽判定では原理的に拾えない。
+    ///
+    /// **chrome 自身の除外はこの関数の責務ではない** —— それは `KeyboardOcclusion.advisory(for:)`
+    /// が呼び出し前に行う。直接呼ぶ側(単体テスト等)は中心点だけで判定される
     public static func keyboardCoveredAdvisory(_ element: ElementInfo,
                                                keyboardFrame: FTRect?) -> String? {
         guard let keyboardFrame else { return nil }
@@ -369,4 +383,64 @@ public enum TapTargetGeometry {
         }
         return true
     }
+}
+
+/// 実効矩形(chrome で広げた申告 keyboardFrame)と、chrome 自身・その部分木の ref を
+/// **1つにまとめた値**。常にセットで使われる —— 地球儀キー・変換候補バーのような chrome の
+/// 部品は矩形の中に入るが、それらは「覆っている側」であって「覆われている側」ではないため、
+/// 矩形だけを持ち回ると chrome 自身を chrome の下に隠れていると誤って言ってしまう。
+///
+/// ブリッジ申告の `keyboardFrame` は `.keyboard` ノードの frame だけで、**キー面のみ**を指す
+/// (サジェストバー `SystemInputAssistantView` と、地球儀/Dictate 行を含む `inputView` の
+/// 下端を含まない)。実測(iOS 3フィクスチャ): 申告 y=583..816 に対し、木にある chrome の frame
+/// 和は y=538..874(画面高 874 = 下端まで)。
+public struct KeyboardOcclusion: Sendable {
+    /// 実効矩形。申告(reported)が無ければ nil
+    public let frame: FTRect?
+    /// chrome 自身と部分木の ref。この集合には「隠れている」と言わない
+    private let excluded: Set<Int>
+
+    public static let none = KeyboardOcclusion(frame: nil, excluded: [])
+
+    /// chrome が木に無ければ申告どおり・除外なし(旧ブリッジ・空葉除外で消えた場合の
+    /// 後退防止。`ios-browser_startpage` と Android 全機種がこのケース)
+    public static func resolve(reported: FTRect?, in elements: [ElementInfo]) -> KeyboardOcclusion {
+        guard let reported else { return .none }
+        let seeds = chromeElements(intersecting: reported, in: elements)
+        guard !seeds.isEmpty else { return KeyboardOcclusion(frame: reported, excluded: []) }
+        let minX = seeds.reduce(reported.x) { min($0, $1.frame.x) }
+        let minY = seeds.reduce(reported.y) { min($0, $1.frame.y) }
+        let maxX = seeds.reduce(reported.x + reported.width) { max($0, $1.frame.x + $1.frame.width) }
+        let maxY = seeds.reduce(reported.y + reported.height) { max($0, $1.frame.y + $1.frame.height) }
+        let expanded = FTRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+        // 広げた実効矩形で chrome を拾い直す —— 申告(reported)とは縁がちょうど接するだけの
+        // chrome(SystemInputAssistantView が申告の直上に隣接する形)は seeds に入らないが、
+        // 実効矩形には完全に収まる。ここで拾い直さないと、その部分木(地球儀キー等)が
+        // 除外から漏れる
+        let chrome = chromeElements(intersecting: expanded, in: elements)
+        var excluded: Set<Int> = []
+        for c in chrome {
+            excluded.insert(c.ref)
+            excluded.formUnion(StepExecutor.descendants(of: c, in: elements).map(\.ref))
+        }
+        return KeyboardOcclusion(frame: expanded, excluded: excluded)
+    }
+
+    private static func chromeElements(intersecting rect: FTRect,
+                                       in elements: [ElementInfo]) -> [ElementInfo] {
+        elements.filter {
+            guard let id = $0.identifier,
+                  TapTargetGeometry.keyboardChromeIdentifiers.contains(id) else { return false }
+            return ScrollGeometry.intersection(rect, $0.frame) != nil
+        }
+    }
+
+    /// 「中心がソフトキーボードの下」。**chrome 自身とその部分木には言わない**
+    /// (地球儀キー・変換候補バー等は覆っている側であり、覆われているとは言えない)
+    public func advisory(for element: ElementInfo) -> String? {
+        guard !excluded.contains(element.ref) else { return nil }
+        return TapTargetGeometry.keyboardCoveredAdvisory(element, keyboardFrame: frame)
+    }
+
+    public func covers(_ element: ElementInfo) -> Bool { advisory(for: element) != nil }
 }

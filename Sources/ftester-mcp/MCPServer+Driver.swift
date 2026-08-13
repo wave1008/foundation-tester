@@ -90,7 +90,14 @@ extension MCPServer {
                                                nowUDID: provisioned.udid ?? ""))
                 }
                 udids[key] = provisioned.udid
-                connectedPorts[key] = probePort
+                // **実機は probePort が常に nil**(loopback 経由ではないため。iosDriver 参照)。
+                // それをそのまま記録すると connectionLostHint の入口(connectedPorts の有無で
+                // iOS/Android を振り分ける)が実機の profile 呼び出しを一度も iOS 経路に乗せず、
+                // 回復(forgetConnection)が永久に起きない
+                connectedPorts[key] = probePort ?? provisioned.port
+            }
+            if case .android(let serial, _) = target {
+                connectedAndroidSerials[key] = serial
             }
             // engine=xcuitest はブリッジが uiFramework を申告しないが、profile 経由なら
             // 対象 bundleID が分かるのでバンドルのマーカーで判定して覚える(scroll_to の
@@ -217,6 +224,7 @@ extension MCPServer {
             created = try AndroidDriver(serial: serial)
             engines[key] = "android"
             connections[key] = "serial \(serial)"
+            connectedAndroidSerials[key] = serial
             rememberResolvedTarget(platform: "android", args: args,
                                    iosPort: nil, iosUDID: nil, androidSerial: serial)
         default:
@@ -277,8 +285,8 @@ extension MCPServer {
 
     /// ft_status の `@ …` に出す宛先の表記(純粋関数・テスト用)。**udid が分からないブリッジ
     /// (申告しない旧版)では port だけ** —— 「不明」と書くより短く、嘘も混ざらない。
-    /// `connectionLostHint` は `hasPrefix("port")` で iOS 経路を判別するので、**先頭は必ず
-    /// `port ` のまま**にすること
+    /// **表示専用**(2026-08-14): `connectionLostHint` の経路判別は `connectedPorts`/
+    /// `connectedAndroidSerials` の記録を見るので、ここの書式を変えても判定には影響しない
     static func connectionLabel(port: UInt16, udid: String?) -> String {
         guard let udid, !udid.isEmpty else { return "port \(port)" }
         return "port \(port) (udid \(udid))"

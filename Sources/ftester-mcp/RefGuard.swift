@@ -234,18 +234,17 @@ enum RefGuard {
 
     /// **中心がソフトキーボードの下にある要素を撃とうとしている**ときの警告。木からは判定できない
     /// (キーボードはスナップショットの対象外)ので、ブリッジが申告する `keyboardFrame` でだけ言える
-    /// (判定は TapTargetGeometry.keyboardCoveredAdvisory = DSL と共有)。実測(2026-08-08・iOS):
-    /// キーボード下の候補行 ref タップが警告なしで顔文字キーに当たった
-    static func keyboardWarning(_ element: ElementInfo, keyboardFrame: FTRect?) -> String? {
-        guard let advisory = TapTargetGeometry.keyboardCoveredAdvisory(
-            element, keyboardFrame: keyboardFrame) else { return nil }
+    /// (判定は KeyboardOcclusion = DSL と共有。chrome 自身とその部分木には言わない)。
+    /// 実測(2026-08-08・iOS): キーボード下の候補行 ref タップが警告なしで顔文字キーに当たった
+    static func keyboardWarning(_ element: ElementInfo, keyboardOcclusion: KeyboardOcclusion) -> String? {
+        guard let advisory = keyboardOcclusion.advisory(for: element) else { return nil }
         return " (warning: \(describe(element)) — \(advisory))"
     }
 
     /// keyboard + disabled の組。**この順序で4箇所から呼ばれる** —— キーボードを先にするのは、
     /// 木からは判定できず ghost/overlap 側では検知できない唯一の警告だから
-    static func preTapWarnings(_ element: ElementInfo, keyboardFrame: FTRect?) -> String {
-        (keyboardWarning(element, keyboardFrame: keyboardFrame) ?? "") + disabledWarning(element)
+    static func preTapWarnings(_ element: ElementInfo, keyboardOcclusion: KeyboardOcclusion) -> String {
+        (keyboardWarning(element, keyboardOcclusion: keyboardOcclusion) ?? "") + disabledWarning(element)
     }
 
     /// **申告されたスクロール容器の外へ送り出された要素を撃とうとしている**ときの警告

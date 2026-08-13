@@ -640,9 +640,13 @@ extension StepExecutor {
             // 実害はキーボード誤タップのほうが具体的で誤操作に直結する)。
             // **offscreen/missedContent はここに混ぜない**: 撃つ座標(visibleTapRect で寄せるか
             // frame の中心か)が決まってからでないと嘘になる(下記2箇所参照)。混ぜると
-            // keyboard/disabled が2回付く(2026-08-08 に発覚したバグ)ので、この2つだけをここで確定する
+            // keyboard/disabled が2回付く(2026-08-08 に発覚したバグ)ので、この2つだけをここで確定する。
+            // **申告 keyboardFrame はキー面だけ**なので木の chrome で広げ、chrome 自身とその
+            // 部分木(地球儀キー等)は除外して渡す(KeyboardOcclusion の doc。MCP 側も同じ型で揃える)
+            let tapKeyboardOcclusion = KeyboardOcclusion.resolve(
+                reported: snapshot.keyboardFrame, in: snapshot.elements)
             driverFallback = Self.joinNotes(driverFallback,
-                TapTargetGeometry.keyboardCoveredAdvisory(element, keyboardFrame: snapshot.keyboardFrame),
+                tapKeyboardOcclusion.advisory(for: element),
                 TapTargetGeometry.disabledAdvisory(for: element))
             // **長押しは tap の引数**(Shirates 準拠。`tap(sel, holdSeconds:)`)。0 より大きいときだけ
             // ブリッジの /press へ回す。in-app は座標ジェスチャを持たない(501)ので XCUITest へ
@@ -791,7 +795,8 @@ extension StepExecutor {
             let gestureAdvisory = action == "doubleTap"
                 ? TapTargetGeometry.advisory(for: element, in: snapshot.elements,
                                              screen: snapshot.screen,
-                                             keyboardFrame: snapshot.keyboardFrame)
+                                             keyboardOcclusion: KeyboardOcclusion.resolve(
+                                                reported: snapshot.keyboardFrame, in: snapshot.elements))
                 : nil
             let outcome = try await performGesture(action, step: step, target: element.frame,
                                                    identifier: element.identifier,

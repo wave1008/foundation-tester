@@ -536,6 +536,12 @@ extension MCPServer {
         let fresh = try await freshSnapshot(driver, args: args)
         if let message = Self.refFromAnotherAppMessage(
             ref: ref, takenFrom: takenFrom, fresh: fresh) { throw MCPError(message) }
+        // **申告 keyboardFrame はキー面だけ**(サジェストバー・地球儀/Dictate 行を含まない)。
+        // 木の chrome で広げ、chrome 自身とその部分木は除外する(KeyboardOcclusion の doc)。
+        // DSL 側(StepExecutor+Actions.swift)も同じ型で揃える —— 片方だけ広げると
+        // MCP と DSL が同じ画面で違う判断をする
+        let keyboardOcclusion = KeyboardOcclusion.resolve(
+            reported: fresh.keyboardFrame, in: fresh.elements)
         switch RefGuard.relocate(target, in: fresh.elements, screen: fresh.screen) {
         case .gone:
             throw MCPError(RefGuard.goneMessage(ref: ref, target: target,
@@ -544,7 +550,8 @@ extension MCPServer {
             // **拒否せず警告して撃つ**(2026-08-06 に方針を後退させた。理由は RefGuard の宣言)。
             // **キーボード被覆は先に言う**(木の遮蔽判定では原理的に拾えない事実なので、
             // 座標由来の他の警告より確度が高い)
-            return (found.ref, staleNote + RefGuard.preTapWarnings(found, keyboardFrame: fresh.keyboardFrame)
+            return (found.ref, staleNote
+                + RefGuard.preTapWarnings(found, keyboardOcclusion: keyboardOcclusion)
                 + RefGuard.ghostWarning(found: found, in: fresh.elements, screen: fresh.screen))
         case .found(let found, let moved):
             // **ラベルが変わっていないかも見る**(2026-08-10)。moved の大小とは無関係に出す ——
@@ -552,7 +559,8 @@ extension MCPServer {
             let labelNote = RefGuard.labelChangeNote(old: target.label, new: found.label) ?? ""
             // **ghost でなくても別の物に当たり得る**2形(上に描かれた overlay / 同一矩形への
             // 積み重なり)。どちらも容器の内側なので RefGuard.relocate では .found になる
-            let overlap = staleNote + RefGuard.preTapWarnings(found, keyboardFrame: fresh.keyboardFrame)
+            let overlap = staleNote
+                + RefGuard.preTapWarnings(found, keyboardOcclusion: keyboardOcclusion)
                 + RefGuard.overlapWarning(found: found, in: fresh.elements, screen: fresh.screen)
             guard moved >= RefGuard.movedThreshold else { return (found.ref, overlap + labelNote) }
             // **原因までは断定できない**が、「他も同じだけ動いたか」は手元の2枚から言える。
@@ -560,7 +568,8 @@ extension MCPServer {
             // 切り分けの手掛かりとして出す(外部フィードバック 2026-08-06。severity は低いとのこと)
             let cause = RefGuard.movedTogether(target, found,
                                                before: lastRendered, after: fresh.elements)
-            return (found.ref, staleNote + RefGuard.preTapWarnings(found, keyboardFrame: fresh.keyboardFrame)
+            return (found.ref, staleNote
+                + RefGuard.preTapWarnings(found, keyboardOcclusion: keyboardOcclusion)
                 + RefGuard.movedNote(found: found, moved: moved, cause: cause) + labelNote)
         }
     }

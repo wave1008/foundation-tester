@@ -1838,14 +1838,18 @@ extension MCPServer {
 
     /// キーボード下に隠れた操作対象。木からは判定できない(キーボードはスナップショットの対象外)
     /// ので、ブリッジ申告の `keyboardFrame` でだけ言える(判定は RefGuard.keyboardWarning と共有)。
-    /// 実測(2026-08-08・iOS): キーボード下の候補行 ref タップが警告なしで顔文字キーに当たった
+    /// 実測(2026-08-08・iOS): キーボード下の候補行 ref タップが警告なしで顔文字キーに当たった。
+    /// **見出しに出す座標は広げた実効矩形のまま**(申告のまま出すと判定と表示が食い違い、
+    /// 読み手が検算できない)。**列挙は chrome 自身とその部分木を除く**(地球儀キー・変換候補
+    /// バー等は覆っている側であり、覆われているとは言えない)
     static func keyboardCoverageNote(_ snapshot: SnapshotResponse) -> String {
-        guard let kb = snapshot.keyboardFrame else { return "" }
+        let occlusion = KeyboardOcclusion.resolve(
+            reported: snapshot.keyboardFrame, in: snapshot.elements)
+        guard let kb = occlusion.frame else { return "" }
         let header = "the soft keyboard covers"
             + " (\(Int(kb.x)),\(Int(kb.y)) \(Int(kb.width))x\(Int(kb.height)))"
         let covered = snapshot.elements.filter {
-            RefGuard.interactiveTypes.contains($0.type)
-                && TapTargetGeometry.keyboardCoveredAdvisory($0, keyboardFrame: kb) != nil
+            RefGuard.interactiveTypes.contains($0.type) && occlusion.covers($0)
         }
         guard !covered.isEmpty else { return "note: \(header); nothing tappable is beneath it\n" }
         let listed = covered.prefix(8).map { "[\($0.ref)] \(RefGuard.describe($0))" }

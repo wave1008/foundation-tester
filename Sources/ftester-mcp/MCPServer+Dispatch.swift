@@ -581,16 +581,21 @@ extension MCPServer {
             : String(format: "%.1fs", milliseconds / 1000)
     }
 
+    /// **経路の振り分けは記録(`connectedPorts`/`connectedAndroidSerials`)で決め、表示ラベルの
+    /// 接頭辞では決めない**(2026-08-14): `connections[key]` は表示用で、profile 経由の書式
+    /// ("<device name> port/serial <値>")は "port"/"serial " のどちらの接頭辞にも一致しない ——
+    /// 直接指定と profile とで判別条件を分けると、profile 経由はどちらの回復ハンドラにも
+    /// 一度も入らず、死んだブリッジへ永久に再ダイヤルし続ける(実機の陽性対照で確認)
     func connectionLostHint(_ error: Error, args: [String: Any]) async -> String {
         // 差し替えドライバ(テスト)では走査しない = 実ポートを叩かない
         guard makeDriver == nil else { return "" }
         let key = Self.engineKey(args)
         guard let connection = connections[key] else { return "" }
-        if connection.hasPrefix("port") {
+        if connectedPorts[key] != nil {
             return await iosConnectionLostHint(error, key: key, connection: connection)
         }
-        if connection.hasPrefix("serial ") {
-            return await androidConnectionLostHint(error, key: key, connection: connection)
+        if let serial = connectedAndroidSerials[key] {
+            return await androidConnectionLostHint(error, key: key, connection: connection, serial: serial)
         }
         return ""
     }
@@ -618,12 +623,19 @@ extension MCPServer {
             // 載らない。**bound(誰かが listen しているか)を verdict へそのまま渡し、production の
             // 判定点を bridgeUnreachableVerdict の1箇所に一本化する**(手前で `if bound { return }`
             // すると verdict の .busy 枝が production から一度も通らず、テストでしか確認できない
-            // 判定になる)。bound なら vanished によらず .busy が確定するので、bound のときは
-            // 走査を省ける(busy なブリッジは scan に載らず判定に使われない)
+            // 判定になる)。
+            // **実機では bound だけを信じない**(欠陥④): 到達手段が usb のとき listen しているのは
+            // ランナーではなく iproxy(別プロセス)なので、ランナーが死んでも bound は true のまま
+            // 残る。pid ファイルの所有プロセス生死(bridgeOwnerAlive)で補強し、「bound を信じてよいか」
+            // (trustBound)を verdict と scan 要否の両方で共有する(手書きの条件式を2箇所に置かない)。
+            // 信じてよいときだけ走査を省ける(busy なブリッジは scan に載らず判定に使われない)
             let bound = BridgeDiscovery.isBound(port: port, repoRoot: repoRoot)
-            let running = bound ? [] : await BridgeDiscovery.scan(excluding: 0, repoRoot: repoRoot)
+            let ownerAlive = Self.bridgeOwnerAlive(port: port, repoRoot: repoRoot)
+            let running = Self.trustBound(bound: bound, ownerAlive: ownerAlive)
+                ? [] : await BridgeDiscovery.scan(excluding: 0, repoRoot: repoRoot)
             switch Self.bridgeUnreachableVerdict(
-                bound: bound, vanished: Self.bridgeVanished(port: port, running: running)) {
+                bound: bound, ownerAlive: ownerAlive,
+                vanished: Self.bridgeVanished(port: port, running: running)) {
             case .busy:
                 return Self.bridgeBusyHint(connection: connection, engine: engines[key])
             case .stillUnclear:
@@ -656,15 +668,14 @@ extension MCPServer {
     /// **forgetConnection の Android 分岐(lastExplicitAndroidSerial の消去)はここが唯一の呼び手**
     /// (2026-08-12 まで到達不能だった —— 死んだ serial への省略呼び出しがセッション中ずっと
     /// 同じ死んだ serial へ再ダイヤルされ続けていた)
-    func androidConnectionLostHint(_ error: Error, key: String, connection: String) async -> String {
+    func androidConnectionLostHint(_ error: Error, key: String, connection: String,
+                                   serial: String) async -> String {
         switch error {
         case DriverError.bridgeUnreachable, DriverError.bridgeConnectionRefused, DriverError.badResponse:
             break
         default:
             return ""
         }
-        guard connection.hasPrefix("serial ") else { return "" }
-        let serial = String(connection.dropFirst("serial ".count))
         // 端末がまだ adb につながっているなら、今回の失敗は別の理由(アプリ側のエラー等)。
         // probe だけで判定するので、広めに構えても実害は「adb devices を1回余計に撃つ」だけ
         guard Self.androidSerialVanished(serial, connected: AndroidSerialResolver.connectedSerials())
@@ -685,12 +696,38 @@ extension MCPServer {
     /// 同じ理由: 実ブリッジが要るとこの判定はテストで一度も両方向を通らず、壊しても素通しする)。
     /// bound(誰かが listen している)は vanished より優先する —— busy なブリッジは scan にも
     /// 載らない(bridgeVanished は true になる)ので、bound を見ずに vanished だけで決めると
-    /// busy を死と誤判定する
+    /// busy を死と誤判定する。**ただし bound は無条件に信じない**(trustBound 参照。欠陥④:
+    /// 実機は listen を iproxy が引き継ぐため、ランナー死後も bound は true のまま残る)
     enum BridgeUnreachableVerdict: Equatable { case busy, vanished, stillUnclear }
 
-    static func bridgeUnreachableVerdict(bound: Bool, vanished: Bool) -> BridgeUnreachableVerdict {
-        if bound { return .busy }
+    static func bridgeUnreachableVerdict(
+        bound: Bool, ownerAlive: Bool?, vanished: Bool
+    ) -> BridgeUnreachableVerdict {
+        if trustBound(bound: bound, ownerAlive: ownerAlive) { return .busy }
         return vanished ? .vanished : .stillUnclear
+    }
+
+    /// bound(誰かが listen している)をそのまま信じてよいか。**判定はここ1箇所** ——
+    /// iosConnectionLostHint(走査を省くかどうか)と bridgeUnreachableVerdict(.busy を返すか)の
+    /// 両方がこれを使う。`ownerAlive == false` のときだけ疑う —— `nil`(pid ファイルが無い =
+    /// in-app ブリッジ等、判定材料が無い)は疑わない側に倒す(仮想デバイスの in-app 経路を
+    /// 巻き添えにしないため)
+    static func trustBound(bound: Bool, ownerAlive: Bool?) -> Bool {
+        bound && ownerAlive != false
+    }
+
+    /// `.ftester/bridge-<port>.pid`(xcodebuild の pid。BridgeLauncher.pidPath と同じ規約)の
+    /// 所有プロセスが生きているか。ファイルが無い/読めない/pid が数値でなければ nil(不明)。
+    /// **実機の usb トランスポートでは listen しているのがランナーでなく iproxy(別プロセス)** —
+    /// isBound だけではランナー死後も true のままなので、この判定で補強する(欠陥④)
+    static func bridgeOwnerAlive(port: UInt16, repoRoot: URL?) -> Bool? {
+        guard let repoRoot,
+              let pidString = try? String(
+                  contentsOf: repoRoot.appendingPathComponent(".ftester/bridge-\(port).pid"),
+                  encoding: .utf8),
+              let pid = Int32(pidString.trimmingCharacters(in: .whitespacesAndNewlines))
+        else { return nil }
+        return kill(pid, 0) == 0
     }
 
     /// bound(誰かが listen している)なポートへ「exited」と言わないための正直な文言。
@@ -739,8 +776,10 @@ extension MCPServer {
             // (rememberedDeviceNote が曖昧さの判定に使う集合。生きているものだけ残す)
             seenExplicitIOSPorts.remove(port)
         }
-        if let connection = connections[key], connection.hasPrefix("serial ") {
-            let serial = String(connection.dropFirst("serial ".count))
+        // **`connections[key]` の書式から抽出しない**(2026-08-14): profile 経由のラベルは
+        // "<device name> serial <serial>" で `hasPrefix("serial ")` に一致せず、profile で
+        // 触った Android 機は記憶が一度も消えなかった(connectionLostHint と同じ根の欠陥)
+        if let serial = connectedAndroidSerials[key] {
             if lastExplicitAndroidSerial == serial { lastExplicitAndroidSerial = nil }
             seenExplicitAndroidSerials.remove(serial)
         }
@@ -772,6 +811,7 @@ extension MCPServer {
         drivers[key] = nil
         connections[key] = nil
         connectedPorts[key] = nil
+        connectedAndroidSerials[key] = nil
         engines[key] = nil
         udids[key] = nil
         versionSkew[key] = nil
@@ -864,10 +904,12 @@ extension MCPServer {
             let listPlatform = args["platform"] as? String
             // **鍵は見出しが実際に組まれる回だけ消費する**(onceNonEmpty と同じ理由)。
             // devicesText 側の `abbreviated` クロージャに遅延評価させる — ここで同じ判定を
-            // 先読みすると、once 系の鍵をここでも消費する二重実装になる
+            // 先読みすると、once 系の鍵をここでも消費する二重実装になる。
+            // **鍵は理由込み**(欠陥⑥): 理由に依存しない鍵だと、原因を直した後の呼び出しまで
+            // 「初回に言った理由」として畳まれ、直ったかどうかを読む手段が消える
             return text(await DeviceInventory.devicesText(
                 project: listProject, profile: listProfile, platform: listPlatform,
-                abbreviated: { !self.firstTime("machineProfileFallback") }))
+                abbreviated: { reason in !self.firstTime("machineProfileFallback:\(reason)") }))
 
         case "ft_list_apps":
             // driver() を先に通す: profile 指定の解決(provision)と udids の記録がここで済み、
@@ -1414,11 +1456,15 @@ extension MCPServer {
                 // **ft_tap と同じ被覆にする**(ft_tap は verifiedRef 経由で遮蔽・残像・
                 // 中身外し・キーボード被覆も見ている)。ここだけ見落とすと、同じ要素に対して
                 // ツールごとに言うことが変わる(2026-08-08 のレビュー)。
-                // keyboardFrame は verifiedElement が撮り直した木(lastSnapshots に反映済み)から採る
+                // keyboardFrame は verifiedElement が撮り直した木(lastSnapshots に反映済み)から
+                // 作る(木の chrome で広げ、chrome 自身とその部分木は除外する)
+                let doubleTapSnapshot = lastSnapshots[Self.engineKey(args)]
                 doubleTapNote = RefGuard.preTapWarnings(
-                    element, keyboardFrame: lastSnapshots[Self.engineKey(args)]?.keyboardFrame)
-                    + RefGuard.overlapWarning(found: element, in: lastSnapshots[Self.engineKey(args)]?
-                        .elements ?? [], screen: lastSnapshots[Self.engineKey(args)]?.screen
+                    element, keyboardOcclusion: KeyboardOcclusion.resolve(
+                        reported: doubleTapSnapshot?.keyboardFrame,
+                        in: doubleTapSnapshot?.elements ?? []))
+                    + RefGuard.overlapWarning(found: element, in: doubleTapSnapshot?
+                        .elements ?? [], screen: doubleTapSnapshot?.screen
                         ?? FTRect(x: 0, y: 0, width: 0, height: 0)) + labelNote
                 doubleTapSelector = reproductionNote(resolvedRef: element.ref, args: args)
             } else if let x = args["x"] as? Double, let y = args["y"] as? Double {

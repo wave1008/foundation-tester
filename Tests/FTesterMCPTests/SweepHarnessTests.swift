@@ -112,21 +112,33 @@ final class SweepHarnessTests: XCTestCase {
         // 中心 (201,215) が、同じセルの中の `#FeaturedInMultipleGuidesContextLineItem`
         // (80,202 205x18) の上にある。Simulator 上で ft_tap がガイド一覧を開いた実測の真陽性。
         // overlay 2(無名 button ← #RichTextLabel / #MultiTextView)は iOS に z が無いことによる
-        // 兄弟重なりで、ios-maps_suggest_keyboard と同型の現状固定
+        // 兄弟重なりで、ios-maps_suggest_keyboard と同型の現状固定。
+        // keyboard 0(2026-08-14・「chrome の部分木は覆われた側に数えない」修正で 2→0): この画面の
+        // 唯一の候補は地球儀キー `次のキーボード`(ref33)・`#dictation`(ref34)で、どちらも
+        // `#inputView`/`#SystemInputAssistantView` の子孫 = chrome 自身の一部。覆っている側を
+        // 「覆われている」と数えていた雑音で、アプリ側の要素は元から0件のまま
         "ios-maps_suggest_guides": Counts(ghost: 0, overlay: 2, stacked: 0, misses: 0, disabled: 0,
                                           offscreen: 0, warnedTappable: 3, keyboard: 0, sliver: 0,
                                           nested: 1, scrolledOut: 0),
         // 2026-08-08 採取。検索候補 + キーボード(keyboardFrame (0,583 402x233))。
-        // keyboard 16 はキーボード下の候補行群(Simulator 上のプローブでタップが顔文字キーに化けた
-        // witness と同じ画面・同じ形 = 真陽性)。overlay 11 は候補行の button ← MultiTextView
-        // 兄弟重なり(iOS は z が無い既知の限界。and-results と同型の現状固定)
+        // keyboard は候補行群(Simulator 上のプローブでタップが顔文字キーに化けた witness と同じ画面・
+        // 同じ形 = 真陽性)。overlay 11 は候補行の button ← MultiTextView 兄弟重なり
+        // (iOS は z が無い既知の限界。and-results と同型の現状固定)。
+        // **16→30→20**: 08-13 の「偽の全クリア」修正で申告のキー面だけでは拾えなかった3種が
+        // 木の chrome で広がって入ったが、そのうち予測変換バー(7件)と地球儀キー・`#dictation`
+        // (2件)は chrome 自身の部分木で、覆っている側を覆われていると数えた雑音だった
+        // (2026-08-14 修正で 30→20 = -10)。残る20件は5件目の候補行
+        // `#Maps.PlaceTableViewCell`(ref64、y=836)とその子(button/`#MultiTextView`/
+        // `#IconImage`)を含む5行ぶん = 実際にキーボードの下に隠れた検索結果(修正が狙った実害そのもの)
         "ios-maps_suggest_keyboard": Counts(ghost: 0, overlay: 11, stacked: 0, misses: 0,
                                             disabled: 0, offscreen: 1, warnedTappable: 9,
-                                            keyboard: 16),
+                                            keyboard: 20),
         // 2026-08-12 採取。**チャット + ソフトキーボード**(会話を開いて入力欄に焦点)。
-        // 全項目0 —— キーボードは出ている(`keyboardFrame` (0,583 402x233))が、その下に
-        // タップ対象が1つも無い画面なので `keyboard` も0になる。**「何も出ない実アプリの画面」の
-        // 供給源として意味がある**(検知が常に何か出す装置になっていないことの陰性対照)
+        // タップ対象が無い画面という点は変わらない ——「何も出ない実アプリの画面」の供給源
+        // (検知が常に何か出す装置になっていないことの陰性対照)。
+        // keyboard 0(2026-08-13 に 0→2、2026-08-14 に 2→0): 唯一の候補は地球儀キー・
+        // `#dictation` で、ios-maps_suggest_guides と同型の chrome 自身の部分木。この画面固有の
+        // アプリ要素は最初から0のまま(「何も出ない実アプリの画面」の供給源としての役割は不変)
         "ios-messages_keyboard": Counts(),
         // 2026-08-12 採取。**メディアグリッド**(写真6枚のタイル)。misses 1 は
         // `#PXGGridLayout-Group`(非操作の器)の中心が中のタイルに乗る形 = 受理済みの型
@@ -162,7 +174,7 @@ final class SweepHarnessTests: XCTestCase {
         "ios-safari_article": Counts(ghost: 0, overlay: 14, stacked: 0, misses: 0, disabled: 1,
                                      offscreen: 0, warnedTappable: 7, keyboard: 0, sliver: 0,
                                      nested: 0, scrolledOut: 0),
-        // 2026-08-12 採取。**設定ツリー**(iOS)。全項目0 —— ios-messages_keyboard と並ぶ陰性対照
+        // 2026-08-12 採取。**設定ツリー**(iOS)。全項目0(キーボード非表示の画面での陰性対照)
         "ios-settings_root": Counts(),
         "sut-cmp_controls": Counts(ghost: 0, overlay: 0, stacked: 0, misses: 0, disabled: 2,
                                    warnedTappable: 2),
@@ -302,6 +314,11 @@ final class SweepHarnessTests: XCTestCase {
     static func counts(_ snap: SnapshotResponse) -> Counts {
         let els = snap.elements
         let stacked = RefGuard.stackedRefs(els)
+        // 申告 keyboardFrame はキー面だけ(KeyboardOcclusion の doc)。production
+        // (MCPServer+Snapshot.swift)と同じ型で広げ、chrome 自身とその部分木を除外してから
+        // 数える —— 生の申告のまま数えると、この砦がキーボード遮蔽の取りこぼしを永久に検出できない
+        let keyboardOcclusion = KeyboardOcclusion.resolve(
+            reported: snap.keyboardFrame, in: els)
         var c = Counts()
         for e in els {
             let ghost = RefGuard.isUntappableGhost(e, in: els, screen: snap.screen)
@@ -330,7 +347,7 @@ final class SweepHarnessTests: XCTestCase {
                 c.warnedTappable += 1
             }
             if RefGuard.interactiveTypes.contains(e.type),
-               RefGuard.keyboardWarning(e, keyboardFrame: snap.keyboardFrame) != nil {
+               RefGuard.keyboardWarning(e, keyboardOcclusion: keyboardOcclusion) != nil {
                 c.keyboard += 1
             }
             if RefGuard.isClippedSliver(e, screen: snap.screen) { c.sliver += 1 }
@@ -437,6 +454,8 @@ final class SweepHarnessTests: XCTestCase {
                 + " keyboard: \(c.keyboard), sliver: \(c.sliver), nested: \(c.nested),"
                 + " scrolledOut: \(c.scrolledOut)),")
             let els = snap.elements
+            let keyboardOcclusion = KeyboardOcclusion.resolve(
+                reported: snap.keyboardFrame, in: els)
             for e in els {
                 let who = RefGuard.describe(e)
                 if let hit = RefGuard.overlayCovering(e, in: els, screen: snap.screen) {
@@ -454,7 +473,7 @@ final class SweepHarnessTests: XCTestCase {
                         + "\(Int(f.y + f.height / 2)))")
                 }
                 if RefGuard.interactiveTypes.contains(e.type),
-                   RefGuard.keyboardWarning(e, keyboardFrame: snap.keyboardFrame) != nil {
+                   RefGuard.keyboardWarning(e, keyboardOcclusion: keyboardOcclusion) != nil {
                     emit("   DETAIL \(name) keyboard \(who)")
                 }
                 if RefGuard.isClippedSliver(e, screen: snap.screen) {

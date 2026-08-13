@@ -268,4 +268,27 @@ final class DeviceInventoryTests: XCTestCase {
         XCTAssertTrue(source.contains("BridgeDiscovery.scan(excluding: 0, repoRoot: try? RepoRoot.find())"),
                       "走査へ repoRoot が渡されていない")
     }
+
+    // MARK: - 欠陥⑥ devicesText が abbreviated へその回の理由を渡すこと
+
+    /// **`abbreviated` はその回の reason を受け取れる**(欠陥⑥): 呼び出し側が畳む鍵を理由込みに
+    /// できるのは、devicesText がここで理由を渡しているから。鍵を理由に依存させない実装へ戻ると、
+    /// このクロージャは常に同じ(または空の)引数しか受け取れなくなる
+    func testDevicesTextPassesTheFallbackReasonToAbbreviated() async {
+        let missing = "no-such-project-for-device-inventory-reason-test"
+        var received: [String] = []
+        _ = await DeviceInventory.devicesText(project: missing, profile: nil, platform: nil,
+                                              abbreviated: { reason in received.append(reason); return false })
+        XCTAssertEqual(received.count, 1, "abbreviated が想定回数呼ばれていない: \(received)")
+        XCTAssertTrue(received.first?.contains(missing) ?? false,
+                      "abbreviated へ渡された理由にプロジェクト名が無い: \(received)")
+    }
+
+    /// abbreviated が true を返せば見出しは短縮形になる(devicesText 側は引数をそのまま使うだけ)
+    func testDevicesTextHonoursAbbreviatedReturningTrue() async {
+        let text = await DeviceInventory.devicesText(
+            project: "no-such-project-for-device-inventory-reason-test", profile: nil, platform: nil,
+            abbreviated: { _ in true })
+        XCTAssertTrue(text.contains("reason given in the first ft_list_devices"), text)
+    }
 }

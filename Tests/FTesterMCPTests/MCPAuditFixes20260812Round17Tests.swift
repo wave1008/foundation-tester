@@ -231,12 +231,13 @@ final class MCPAuditFixes20260812Round17Tests: XCTestCase {
                        "無関係な記憶まで消してしまった")
     }
 
-    /// Android 版(connections の "serial X" 表記から抽出して照合)
+    /// Android 版(connectedAndroidSerials の記録から照合。connections の表示文字列は見ない)
     func testForgetConnectionClearsMatchingAndroidMemory() {
         let server = MCPServer(write: { _ in }, makeDriver: { _ in FakeDriver() },
                                recordSnapshot: { _, _, _ in })
         let key = "direct:android:0:emulator-5554"
         server.connections[key] = "serial emulator-5554"
+        server.connectedAndroidSerials[key] = "emulator-5554"
         server.lastExplicitAndroidSerial = "emulator-5554"
 
         server.forgetConnection(key)
@@ -249,11 +250,29 @@ final class MCPAuditFixes20260812Round17Tests: XCTestCase {
                                recordSnapshot: { _, _, _ in })
         let key = "direct:android:0:emulator-5554"
         server.connections[key] = "serial emulator-5554"
+        server.connectedAndroidSerials[key] = "emulator-5554"
         server.lastExplicitAndroidSerial = "emulator-5556"
 
         server.forgetConnection(key)
 
         XCTAssertEqual(server.lastExplicitAndroidSerial, "emulator-5556")
+    }
+
+    /// **profile 経由のラベルでも消せること**(2026-08-14 の実機監査): 表示ラベルは
+    /// "<device name> serial <serial>" で `hasPrefix("serial ")` に一致しないが、
+    /// `connectedAndroidSerials` から照合するので profile 経由でも記憶が消える
+    func testForgetConnectionClearsMatchingAndroidMemoryFromAProfileLabel() {
+        let server = MCPServer(write: { _ in }, makeDriver: { _ in FakeDriver() },
+                               recordSnapshot: { _, _, _ in })
+        let key = "profile::android-device:android"
+        server.connections[key] = "Pixel 9(Android 15)-01 serial emulator-5554"
+        server.connectedAndroidSerials[key] = "emulator-5554"
+        server.lastExplicitAndroidSerial = "emulator-5554"
+
+        server.forgetConnection(key)
+
+        XCTAssertNil(server.lastExplicitAndroidSerial,
+                     "profile 経由のラベルでは死んだ serial への記憶が消えない")
     }
 
     // MARK: - ⑤ ft_navigate back + snapshotAfter: 読み取り失敗を「効かなかった」と誤読しない
@@ -291,21 +310,27 @@ final class MCPAuditFixes20260812Round17Tests: XCTestCase {
 
     // MARK: - ④ bridgeUnreachableVerdict(busy を「消えた」と誤読しない)
 
-    /// bound なら vanished の値によらず busy(scan にも載らない busy ブリッジを死と誤判定しない)
+    /// bound かつ ownerAlive が nil(判定材料無し=in-app 等)なら vanished の値によらず busy
+    /// (scan にも載らない busy ブリッジを死と誤判定しない)
     func testBridgeUnreachableVerdictBoundMeansBusyRegardlessOfVanished() {
-        XCTAssertEqual(MCPServer.bridgeUnreachableVerdict(bound: true, vanished: false), .busy)
-        XCTAssertEqual(MCPServer.bridgeUnreachableVerdict(bound: true, vanished: true), .busy)
+        XCTAssertEqual(
+            MCPServer.bridgeUnreachableVerdict(bound: true, ownerAlive: nil, vanished: false), .busy)
+        XCTAssertEqual(
+            MCPServer.bridgeUnreachableVerdict(bound: true, ownerAlive: nil, vanished: true), .busy)
     }
 
     /// bound でなく、scan にも載っていなければ vanished
     func testBridgeUnreachableVerdictNotBoundAndVanishedMeansVanished() {
-        XCTAssertEqual(MCPServer.bridgeUnreachableVerdict(bound: false, vanished: true), .vanished)
+        XCTAssertEqual(
+            MCPServer.bridgeUnreachableVerdict(bound: false, ownerAlive: nil, vanished: true), .vanished)
     }
 
     /// bound でも vanished でもない(判定材料が足りない)ときは stillUnclear —— busy/vanished の
     /// どちらとも断定しない
     func testBridgeUnreachableVerdictNeitherBoundNorVanishedIsUnclear() {
-        XCTAssertEqual(MCPServer.bridgeUnreachableVerdict(bound: false, vanished: false), .stillUnclear)
+        XCTAssertEqual(
+            MCPServer.bridgeUnreachableVerdict(bound: false, ownerAlive: nil, vanished: false),
+            .stillUnclear)
     }
 
     func testBridgeBusyHintDoesNotClaimTheRunnerExited() {

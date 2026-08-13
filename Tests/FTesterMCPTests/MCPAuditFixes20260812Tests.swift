@@ -154,7 +154,8 @@ final class MCPAuditFixes20260812Tests: XCTestCase {
 
     // MARK: - #6 宛先に udid を出す
 
-    /// **先頭は必ず `port `**: `connectionLostHint` が `hasPrefix("port")` で iOS 経路を判別する
+    /// 表示用の書式そのものは変わらない(経路判別は `connectedPorts` の記録に移した。
+    /// MCPAuditFixes20260814ConnectionRecoveryTests 参照)
     func testConnectionLabelCarriesTheUDIDAndKeepsThePortPrefix() {
         let labelled = MCPServer.connectionLabel(port: 8127, udid: "C96A69C4-FE49-42EE")
         XCTAssertTrue(labelled.hasPrefix("port 8127"), labelled)

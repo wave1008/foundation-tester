@@ -41,12 +41,15 @@ enum DeviceInventory {
 
     // MARK: - ft_list_devices
 
-    /// `abbreviated`: マシンプロファイルを使えない見出しを短縮形で出すか判定するクロージャ。
+    /// `abbreviated`: マシンプロファイルを使えない見出しを短縮形で出すか、その回の理由(reason)を
+    /// 渡して判定するクロージャ。**理由込みで判定させる** —— 呼び出し側の鍵を理由に依存させないと、
+    /// 「同じ理由の繰り返しは畳む」が「理由が変わっても畳む」に化ける(欠陥⑥: 指示どおり原因を
+    /// 直しても、直った証拠だけが畳まれて読めなくなる)。
     /// **見出しが実際に組まれる回だけ評価する**(2026-08-12) —— プロファイルが解決できた回や
     /// platform が不正な回で先に評価すると、呼び出し側の once 系の鍵をここで消費してしまい、
     /// 本当の初出が短縮形になる
     static func devicesText(project: String?, profile: String?, platform: String?,
-                            abbreviated: () -> Bool = { false }) async -> String {
+                            abbreviated: (String) -> Bool = { _ in false }) async -> String {
         guard isSupportedPlatform(platform) else {
             return "unknown platform: \(platform ?? "") (expected \"ios\" or \"android\")"
         }
@@ -67,7 +70,7 @@ enum DeviceInventory {
         var rows: [Row] = []
         if wantsIOS { rows += await iosFallbackRows() }
         if wantsAndroid { rows += androidFallbackRows() }
-        let header = fallbackHeader(reason: lookup.reason, abbreviated: abbreviated())
+        let header = fallbackHeader(reason: lookup.reason, abbreviated: abbreviated(lookup.reason))
         guard !rows.isEmpty else { return header + "\nNone found." }
         return ([header] + rows.map(line)).joined(separator: "\n")
     }

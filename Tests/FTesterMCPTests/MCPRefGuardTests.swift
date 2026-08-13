@@ -1012,6 +1012,56 @@ final class MCPRefGuardTests: XCTestCase {
         XCTAssertTrue(actions.contains { $0.hasPrefix("tap") }, "拒否ではなく警告して撃つこと")
     }
 
+    /// **申告 keyboardFrame はキー面だけ**(TapTargetGeometry.effectiveKeyboardFrame の doc)。
+    /// この経路(ft_tap → verifiedRef → RefGuard.preTapWarnings)が申告のまま渡すよう後退すると、
+    /// このテストは警告が付かず落ちる ——「拡張後の矩形を使っているか」の配線テスト
+    /// (`effectiveKeyboardFrame` 自体の単体テストは TapTargetAdvisoryTests にある)
+    func testTapWarnsWhenTheCentreIsOnlyUnderTheExpandedKeyboardChrome() async throws {
+        var withKeyboard = screen([
+            element(ref: 1, id: "tab_home", label: "ホーム", x: 0, y: 548, w: 134, h: 62),
+            element(ref: 2, type: "other", id: "inputView", x: 0, y: 546, w: 390, h: 328),
+            element(ref: 3, type: "other", id: "SystemInputAssistantView", x: 0, y: 546, w: 390, h: 44),
+        ])
+        // 申告は 590..816 —— ref 1 の中心 y=579 はこの外(修正前は無警告)
+        withKeyboard.keyboardFrame = FTRect(x: 0, y: 590, width: 390, height: 226)
+        driver.snapshotResponse = withKeyboard
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        let text = Self.text(try await server.call(tool: "ft_tap", args: ["ref": 1]))
+        XCTAssertTrue(text.contains("soft keyboard"),
+                      "chrome で広げた実効矩形(546..874)なら中心 579 を拾って警告すること: \(text)")
+    }
+
+    /// `keyboardCoverageNote` の見出し座標と一覧も拡張後の実効矩形を使うこと(判定と表示が
+    /// 食い違うと読み手が検算できない)。申告のままだと ref 1 は列挙に載らず
+    /// 「nothing tappable is beneath it」になる(修正前の偽の全クリア)
+    func testKeyboardCoverageNoteUsesTheExpandedFrameForBothHeaderAndListing() {
+        var withKeyboard = screen([
+            element(ref: 1, type: "button", id: "tab_home", label: "ホーム", x: 0, y: 548, w: 134, h: 62),
+            element(ref: 2, type: "other", id: "inputView", x: 0, y: 546, w: 402, h: 328),
+        ])
+        withKeyboard.keyboardFrame = FTRect(x: 0, y: 590, width: 402, height: 226)
+        let note = MCPServer.keyboardCoverageNote(withKeyboard)
+        XCTAssertTrue(note.contains("(0,546 402x328)"), "見出しは拡張後の座標であること: \(note)")
+        XCTAssertTrue(note.contains("[1]"), "拡張後は ref 1 を列挙すること: \(note)")
+        XCTAssertFalse(note.contains("nothing tappable"), "偽の全クリアへ後退していないこと: \(note)")
+    }
+
+    /// **見出しの矩形は拡張後のまま・列挙は chrome の部分木を除く**(2026-08-14)。
+    /// ref 3(chrome=`#inputView` の子、地球儀キー相当)は実効矩形の中に中心があるが、
+    /// 覆っている側なので列挙しない。ref 1(chrome の外)は変わらず列挙する
+    func testKeyboardCoverageNoteExcludesTheChromeSubtreeFromTheListing() {
+        var withKeyboard = screen([
+            element(ref: 1, type: "button", id: "tab_home", label: "ホーム", x: 0, y: 548, w: 134, h: 62),
+            element(ref: 2, type: "other", id: "inputView", x: 0, y: 546, w: 402, h: 328),
+            element(ref: 3, type: "button", id: "globe_key", x: 0, y: 806, w: 134, h: 68, depth: 3),
+        ])
+        withKeyboard.keyboardFrame = FTRect(x: 0, y: 590, width: 402, height: 226)
+        let note = MCPServer.keyboardCoverageNote(withKeyboard)
+        XCTAssertTrue(note.contains("(0,546 402x328)"), "見出しは拡張後の座標のまま: \(note)")
+        XCTAssertTrue(note.contains("[1]"), "chrome の外にある ref 1 は列挙すること: \(note)")
+        XCTAssertFalse(note.contains("[3]"), "chrome の子(地球儀キー相当)は列挙しないこと: \(note)")
+    }
+
     private static func text(_ content: [[String: Any]]) -> String {
         content.compactMap { $0["text"] as? String }.joined(separator: "\n")
     }
