@@ -143,6 +143,39 @@ final class TapTargetAdvisoryTests: XCTestCase {
         XCTAssertTrue(note?.contains("instead") == true, note ?? "")
     }
 
+    /// **クランプされた幽霊は覆えない**(2026-08-14・実機 SmartNews で実測。
+    /// `OcclusionGeometry.occluder` の当該コメント参照)。容器の原点へ潰れた残骸(自身が
+    /// 容器より小さく、同じ原点・同 depth の兄弟が3つ以上いる)は `isOutsideContainer` を
+    /// 素通りするので、修正前は「本当は何も覆っていない対象」に対して幽霊を犯人として
+    /// 名指ししていた。実測ではコーパス全数(ios-news_feed)で overlay 52件中30件がこの誤り
+    func testClampedGhostDoesNotOccludeAnything() {
+        let container = element(1, "list_rows", "table", 0, 0, 400, 800, depth: 1)
+        // 中心 (150,75) がクランプ幽霊の矩形 (0,0 150x100) の縁ぎりぎり内側に入るよう置く
+        let target = element(2, "top_carousel", "clickable", 50, 50, 200, 50, depth: 2)
+        // クランプ幽霊の条件(hasClampedCoordinates): 容器の原点にちょうど固定され、
+        // 容器より小さい、同じ frame を持つ同 depth の兄弟が3つ以上
+        // **type は "other" にしない**: `isBlankLeafContainer` が type=="other"・無ラベル・
+        // 無子孫を先に弾くので、"other" のままだと本題(hasClampedCoordinates)の手前で
+        // 除外されてしまい、この修正を1バイトも検証しないテストになる
+        let ghosts = (0..<3).map { element(10 + $0, "", "clickable", 0, 0, 150, 100, depth: 2) }
+        let elements = [container, target] + ghosts
+        let note = TapTargetGeometry.occlusionAdvisory(for: target, in: elements, screen: screen)
+        XCTAssertNil(note, "実体の無いクランプ幽霊が覆っていると誤って名指しした: \(note ?? "-")")
+    }
+
+    /// 上と対になる**陰性対照ではない対照**: クランプの条件(3件以上・容器より小さい・
+    /// 同一原点)を1つでも外すと、普通の重なりとして通常どおり検出される(退化していないこと)
+    func testOrdinaryOverlapStillOccludesAfterTheClampFix() {
+        let container = element(1, "list_rows", "table", 0, 0, 400, 800, depth: 1)
+        let target = element(2, "top_carousel", "clickable", 50, 50, 200, 50, depth: 2)
+        // 2件しかない = clampedStackThreshold(3)未満なので、単なる重なりとして扱われる
+        let overlay1 = element(10, "ad_row", "clickable", 0, 0, 150, 100, depth: 2)
+        let overlay2 = element(11, "ad_row2", "clickable", 0, 0, 150, 100, depth: 2)
+        let elements = [container, target, overlay1, overlay2]
+        let note = TapTargetGeometry.occlusionAdvisory(for: target, in: elements, screen: screen)
+        XCTAssertTrue(note?.contains("#ad_row") == true, note ?? "-")
+    }
+
     /// 対話的な親の子孫が中心を横取りする形(`nestedActionCoveringCentre` の doc 参照)
     func testNestedActionIsCalledOutByChain() {
         let parent = ElementInfo(ref: 1, type: "cell", identifier: "row", label: nil, value: nil,

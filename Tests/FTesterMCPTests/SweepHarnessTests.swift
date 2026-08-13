@@ -147,13 +147,19 @@ final class SweepHarnessTests: XCTestCase {
         //   3個以上の群にだけ付けるので、原点は同じでも大きさが違う **23 件は無印**で残る。
         //   実機で無印の行を撃つと実際に別画面へ飛ぶ(カルーセルの販促カード)ことを確認済み。
         //   **広げる案は次の増設の回へ**(原点一致は容器と子で普通に起きるので、誤検知の実測が要る)
-        // - **overlay 52**: 無印の行も大半はこちらで警告される = **沈黙ではない**。ただし
-        //   名指しする相手が**同じくクランプされた別の幽霊**になる(実体は上部カルーセル)。
-        //   例: `staticText "髪型や服装も自由自在" ← staticText "広告 · 株式会社ハーブ健康本舗"`。
-        //   塗り順の最前面を採る規則が、幽霊だらけの座標では機能しない形の witness
+        // - **overlay 52 → 23**(2026-08-14 に修正・下記): 採取直後は無印の行の大半もこちらで
+        //   警告されていたが、名指しする相手が**同じくクランプされた別の幽霊**だった
+        //   (例: `staticText "髪型…" ← staticText "広告 …"`。塗り順の最前面を採る規則が、
+        //   幽霊だらけの座標では機能しない形)。**修正**: `OcclusionGeometry.occluder` が
+        //   `isOutsideContainer`(容器の**外**)しか見ておらず、容器の**原点にクランプ**された
+        //   残骸(`hasClampedCoordinates` と同じ現象)を遮蔽候補から除けていなかった。
+        //   同じ判定を足すと全数で **overlay 52→23・wrong_culprit 30→0**(コーパス全数の
+        //   プローブで確認)。DSL の `occlusionAdvisory` も同じ関数を経由するので同時に直る
+        // - **warnedTappable 14→13**: overlay 単独で警告されていた1件が、他の advisory にも
+        //   当たらず無警告に戻った(消えた警告は「誤って名指しされていた警告」なので後退ではない)
         // - misses 1 / nested 6: タブ帯とセルの中の帯 = 受理済みの型
-        "ios-news_feed": Counts(ghost: 0, overlay: 52, stacked: 42, misses: 1, disabled: 0,
-                                offscreen: 0, warnedTappable: 14, keyboard: 0, sliver: 0,
+        "ios-news_feed": Counts(ghost: 0, overlay: 23, stacked: 42, misses: 1, disabled: 0,
+                                offscreen: 0, warnedTappable: 13, keyboard: 0, sliver: 0,
                                 nested: 6, scrolledOut: 0),
         // 2026-08-12 採取。**メディアグリッド**(写真6枚のタイル)。misses 1 は
         // `#PXGGridLayout-Group`(非操作の器)の中心が中のタイルに乗る形 = 受理済みの型

@@ -34,6 +34,15 @@ public enum OcclusionGeometry {
             // **この判定を先に置く**のが要点 —— 包含判定は 1pt の差で外れるほど際どく
             // (閉じる y483..521 対 clickable y484..536)、閾値では守り切れない
             if StepExecutor.isOutsideContainer(other, in: elements) { return false }
+            // **容器の内側でも、原点へ潰れているだけなら描かれていない**。`isOutsideContainer`
+            // は容器の**外**しか見ないので、容器の**原点にクランプ**された残骸(自身が
+            // 容器より小さく、同じ原点の同 depth 兄弟が3つ以上いる = `hasClampedCoordinates`
+            // と同じ現象)は素通ししていた。実測(2026-08-14・ios-news_feed): フィード先頭で
+            // 画面外の行が全部 (0,103) に潰れて木に残る画面で、overlay 警告52件中30件が
+            // 犯人としてこのクランプ幽霊を名指ししていた(実体は上部カルーセル)。
+            // `stackedRefs` の「中身を持つものが3個以上」という絞り込みは警告の表示側の話で、
+            // ここは「この座標に本当に描かれているか」の判定なので条件を合わせない
+            if StepExecutor.hasClampedCoordinates(other, in: elements) { return false }
             // **矩形がぴったり同じ相手は遮蔽と言わない**。同寸同位置は「上に載った物」ではなく
             // ラッパーか、同じ枠を奪い合う入れ替わり(実測・Apple マップの検索結果:
             // `#ResultsViewTable` と `#SearchAutocompleteView` はどちらも (0,62 402x812) で、
