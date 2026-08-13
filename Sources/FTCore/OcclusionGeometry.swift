@@ -47,6 +47,17 @@ public enum OcclusionGeometry {
             // 犯人としては名指しされ続ける、という食い違いが残る
             if StepExecutor.hasClampedCoordinates(other, in: elements) { return false }
             if isOriginClamped(other, in: elements) { return false }
+            // **スクロール容器は、その点に自分の中身が無いなら何も隠していない**(2026-08-14)。
+            // iOS は z を出さないので塗り順は木の順序で代用するしかなく、**フレームが上の
+            // chrome の下へ潜り込む容器**(content inset を持つ表・コレクション)が、その上に
+            // 描かれているタブ帯を「覆っている」と報告していた。実測(ios-news_feed):
+            // `#crui_channelView_tableView` (0,0 393x769) がチャンネルタブ(y=59..100)を
+            // 覆うという報告が7件。表の最初の行は y=103 で、タブの位置に中身は1つも無い。
+            // **中身の有無で見る**のが要点 —— 容器そのものを弾くと真陽性を落とす
+            // (ios-browser_startpage の `StartPageCollectionView` は背後の本文リンクを
+            // 実際に覆っており、そこには中身のタイルが描かれている)
+            if other.scrollable == true,
+               !hasDescendantCovering(x: cx, y: cy, of: other, in: elements) { return false }
             // **矩形がぴったり同じ相手は遮蔽と言わない**。同寸同位置は「上に載った物」ではなく
             // ラッパーか、同じ枠を奪い合う入れ替わり(実測・Apple マップの検索結果:
             // `#ResultsViewTable` と `#SearchAutocompleteView` はどちらも (0,62 402x812) で、
@@ -196,6 +207,22 @@ public enum OcclusionGeometry {
             && abs(other.frame.y - element.frame.y) <= 0.5 {
             siblings += 1
             if siblings >= stackedFrameMinimum { return true }
+        }
+        return false
+    }
+
+    /// 容器の**子孫**がその点を覆っているか(= その位置に実際に中身が描かれているか)。
+    /// スナップショットは preorder + depth なので、容器の直後から depth が戻るまでが子孫
+    private static func hasDescendantCovering(x: Double, y: Double, of container: ElementInfo,
+                                              in elements: [ElementInfo]) -> Bool {
+        guard let start = elements.firstIndex(where: { $0.ref == container.ref })
+        else { return false }
+        var index = elements.index(after: start)
+        while index < elements.endIndex, elements[index].depth > container.depth {
+            let frame = elements[index].frame
+            if frame.x <= x, x <= frame.x + frame.width,
+               frame.y <= y, y <= frame.y + frame.height { return true }
+            index = elements.index(after: index)
         }
         return false
     }

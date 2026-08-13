@@ -163,14 +163,22 @@ final class SweepHarnessTests: XCTestCase {
         //   **原点クランプへ拡張した際に 23→7 へさらに落ちた** —— 印の規則だけ広げて遮蔽候補の
         //   除外を広げないと「印は付くのに犯人としては名指しされ続ける」食い違いが残るので、
         //   `occluder` にも同じ判定(isOriginClamped)を通した
-        // - **残る overlay 7 は別種の誤検知**(この修正の対象外・ラウンド2の題材): 上部の
-        //   チャンネルタブ(y=59..100)を `#crui_channelView_tableView` (0,0 393x769) が
-        //   覆っていると報告する。表はタブの**下**に敷かれているが、iOS は z を出さないので
-        //   木の順序(表のほうが後)で手前と判定される
+        // - **overlay 7 → 6**(2026-08-14・「中身の有無」規則): 上部のチャンネルタブ(y=59..100)を
+        //   `#crui_channelView_tableView` (0,0 393x769) が覆っていると報告していた。表はタブの
+        //   **下**に敷かれているが iOS は z を出さないので木の順序で手前と判定される。
+        //   **容器のその点に子孫が1つも無ければ何も隠していない**という条件で解消(表の最初の行は
+        //   y=103)。容器そのものを弾く案は真陽性を落とすので採らない —— ios-browser_startpage の
+        //   `StartPageCollectionView` は背後の本文リンクを実際に覆っており、そこには中身がある
+        // - **残る overlay 6 は別種**(未修正・ブリッジの版上げが要るので保留): 犯人は
+        //   `button (360,59 30x41)` = ラベル「垂直スクロールバー, 6ページ」の**スクロール指標**。
+        //   「ガジェット」タブ (321,59 79x41) の中心 x=360.5 がその上に乗る。指標は通常
+        //   タッチを取らないので誤検知だが、XCUITest の `scrollBar` 型がランナー側で `Button` に
+        //   落ちており、型で見分けるにはブリッジの版上げ + 全台再構築が要る。
+        //   **ラベル("垂直スクロールバー")での判定はしない** —— 言語に依存する
         // - **warnedTappable 14→13→12**: overlay 単独で警告されていた分が、他の advisory にも
         //   当たらず無警告に戻った(消えた警告は「誤って名指しされていた警告」なので後退ではない)
         // - misses 1 / nested 6: タブ帯とセルの中の帯 = 受理済みの型
-        "ios-news_feed": Counts(ghost: 0, overlay: 7, stacked: 60, misses: 1, disabled: 0,
+        "ios-news_feed": Counts(ghost: 0, overlay: 6, stacked: 60, misses: 1, disabled: 0,
                                 offscreen: 0, warnedTappable: 12, keyboard: 0, sliver: 0,
                                 nested: 6, scrolledOut: 0),
         // 2026-08-12 採取。**メディアグリッド**(写真6枚のタイル)。misses 1 は

@@ -209,6 +209,36 @@ final class TapTargetAdvisoryTests: XCTestCase {
                        "2件でクランプ扱いした(容器+子の普通の版組を巻き込む): \(note ?? "-")")
     }
 
+    /// **スクロール容器は、その点に自分の中身が無いなら何も隠していない**(2026-08-14)。
+    /// content inset を持つ容器はフレームが上の chrome の下へ潜り込むので、iOS(z 無し)では
+    /// 木の順序だけで「タブ帯を覆っている」と誤報告していた
+    func testScrollContainerWithNoContentAtThePointDoesNotOcclude() {
+        // 容器は y=0 から始まるが、中身は y=103 以降にしか無い(実測 ios-news_feed と同型)
+        let tab = element(1, "tab_gadget", "clickable", 320, 59, 79, 41, depth: 3)
+        var table = element(2, "list", "table", 0, 0, 393, 769, depth: 2)
+        table.scrollable = true
+        let row = element(3, "row_01", "clickable", 0, 103, 393, 128, depth: 3)
+        let note = TapTargetGeometry.occlusionAdvisory(for: tab, in: [tab, table, row],
+                                                       screen: screen)
+        XCTAssertNil(note, "中身の無い帯で覆っていると報告した: \(note ?? "-")")
+    }
+
+    /// 上の陽性対照: **同じ形でも、その点に中身があるなら従来どおり覆っていると報告する**
+    /// (実アプリの witness は Safari のスタートページ —— 背後の本文リンクをタイルが実際に覆う)
+    func testScrollContainerWithContentAtThePointStillOccludes() {
+        let link = element(1, "bg_link", "link", 320, 59, 79, 41, depth: 3)
+        var grid = element(2, "StartPageCollectionView", "collectionView", 0, 0, 393, 769, depth: 2)
+        grid.scrollable = true
+        // 中身は**その点を覆うが、それ自身は遮蔽候補にならない**もの(無ラベルの葉 =
+        // isBlankLeafContainer)にする。中身を単なる cell にすると、「容器を丸ごと除外する」
+        // 変異でその cell が身代わりに犯人となり、テストが素通りする
+        // (2026-08-14 に変異が生き残って判明。**名指しの相手まで固定する**)
+        let tile = element(3, "", "other", 300, 40, 90, 90, depth: 3)
+        let note = TapTargetGeometry.occlusionAdvisory(for: link, in: [link, grid, tile],
+                                                       screen: screen)
+        XCTAssertTrue(note?.contains("#StartPageCollectionView") == true, note ?? "-")
+    }
+
     /// 対話的な親の子孫が中心を横取りする形(`nestedActionCoveringCentre` の doc 参照)
     func testNestedActionIsCalledOutByChain() {
         let parent = ElementInfo(ref: 1, type: "cell", identifier: "row", label: nil, value: nil,
