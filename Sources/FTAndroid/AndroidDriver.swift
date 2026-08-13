@@ -82,6 +82,23 @@ public final class AndroidDriver: AppDriver {
 
     // MARK: - adb helpers
 
+    /// 前面アプリの pid(DOM 経路が **対象アプリの** WebView ソケットを選ぶために要る。
+    /// pid で絞らないと端末に並ぶ**他アプリの WebView を読む**)
+    func foregroundPID() -> Int? {
+        guard let bundle = currentPackage,
+              let out = try? adb(["shell", "pidof", bundle]).output else { return nil }
+        return Int(out.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: " ").first ?? "")
+    }
+
+    /// 論理 px → 物理 px の倍率(DOM の CSS px を画面座標へ写すのに要る)
+    func displayDensity() -> Double {
+        guard let out = try? adb(["shell", "wm", "density"]).output,
+              let match = out.split(separator: "\n").last(where: { $0.contains("density") }),
+              let value = match.split(separator: ":").last.flatMap({ Double($0.trimmingCharacters(in: .whitespaces)) })
+        else { return 1 }
+        return value / 160.0
+    }
+
     func adb(_ args: [String]) throws -> Shell.Result {
         var full = [adbPath]
         if let serial { full += ["-s", serial] }
@@ -317,6 +334,19 @@ public final class AndroidDriver: AppDriver {
         // RN の button 内側 Text 双子を畳む(SnapshotDedupe の宣言コメント参照)。
         // syncLocalState より前 = 下流(DSL/MCP)は正規化後の木だけを見る
         snapshot.elements = SnapshotDedupe.dropLabelTwinsInsideButtons(snapshot.elements)
+        // **WebView の中身を DOM から補う**(2026-08-13 の spike。既定オフ)。
+        // `android.webkit.WebView` は `<table>` のセルを a11y へ1つも公開しないので、
+        // 同じページでも iOS とセレクタが書き分けになる。iOS と**同じ JS** を CDP 経由で
+        // 走らせて木を揃える(AndroidWebViewDOM の宣言に成立条件と経路)
+        if AndroidWebViewDOM.isEnabled, let frame = AndroidWebViewDOM.webViewFrame(in: snapshot.elements),
+           let pid = foregroundPID(),
+           let payload = await AndroidWebViewDOM.read(serial: serial ?? "", pid: pid,
+                                                      adb: { try self.adb($0).output }) {
+            let nextRef = (snapshot.elements.map(\.ref).max() ?? 0) + 1
+            let added = AndroidWebViewDOM.elements(payload: payload, webViewFrame: frame,
+                                                   density: displayDensity(), startingRef: nextRef)
+            if !added.isEmpty { snapshot.elements.append(contentsOf: added) }
+        }
         syncLocalState(from: snapshot)
         // IME は別プロセスの window でアプリの a11y ツリーに出ないため、オンデバイスのブリッジでは
         // 判定できずホスト側で dumpsys を引いて補う(AndroidForegroundWindows.keyboardVisible)。

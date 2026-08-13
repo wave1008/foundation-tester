@@ -3645,6 +3645,49 @@ CoreSimulator.framework を直接叩き、`SimulatorCatalog.devices()` が直叩
   **シナリオ1本=1プロセス**なので、最初に触った呼び出しが必ずこれを被る(性能の内訳と
   暖機を不採用にした理由は performance-tuning.md §3.12)
 
+## Android の WebView を DOM から読む(2026-08-13・spike)
+
+**`FT_ANDROID_WEBVIEW_DOM=1` で有効。既定はオフ。**
+
+**なぜ**: `android.webkit.WebView` は `<table>` のセルを a11y ツリーへ**1つも公開しない**
+(2026-08-13 に **4 SUT で実測** —— Compose interop / Flutter / RN / 素の View のどれでも同じなので
+ホスト側の作りではなく WebView の性質。`role="table"/"row"/"cell"` を明示しても変わらない)。
+同じページを iOS の WKWebView は公開するため、**同じ HTML なのに OS でセレクタが書き分け**になる。
+
+**やり方**: iOS の in-app が使っているのと**同じ JS**(`FTCore.WebViewDOM.javaScript`)を
+Android の WebView で走らせる。ブリッジはアクセシビリティサービスで別プロセスなので
+`evaluateJavascript` を撃てず、**ホスト側から CDP** で入る:
+
+    adb shell cat /proc/net/unix   → webview_devtools_remote_<pid>
+    adb forward tcp:<port> localabstract:<socket>
+    GET /json → ページを選ぶ → WebSocket → Runtime.evaluate(共有 JS)
+
+WebSocket は **Foundation の `URLSessionWebSocketTask`**(依存を足さない。送信1・受信1で足りる)。
+
+**成立条件はアプリが debuggable であること**。実測: どの SUT も
+`setWebContentsDebuggingEnabled` を呼んでいないのにソケットが在った = WebView が debuggable
+アプリに対して自動公開する。**デバイスが実機かどうかは無関係**。リリースビルドの他社アプリでは
+使えないので、**失敗は握って従来どおりに落ちる**(取れないことは `webViewGapNote` が別途告げる)。
+
+**実測**(E2EAppCMP の WebView 画面・`wv_grid`):
+
+| | 要素数 | 表の値 | 見出し | snapshot |
+|---|---|---|---|---|
+| オフ | 15 | 出ない | 出ない | 86ms |
+| **オン** | 32 | **出る** | 出ない(`aria-hidden` なので正しい) | **233ms** |
+
+**同じ1行が両 OS で通ることまで確認した**: `scrollTo '8/15'` が iOS ✅ / Android(DOM 経路)✅ /
+Android(従来)❌。
+
+**既定にしていない理由**: 1 snapshot あたり **+147ms**(86→233)。常時払う値ではないので、
+「WebView 画面でだけ」「初回だけ」等の絞り込みを設計してから既定化する。
+**pid で絞ることは外さない** —— 端末には他アプリの WebView ソケットが並ぶので、
+外すと**別アプリの DOM を自分の木へ混ぜる**(`AndroidWebViewDOMTests` が変異で守る)。
+
+**未着手**: 複数 WebView を持つ画面でのページ選択規則 / 評価とスナップショットの間に
+ページ遷移が起きた場合 / Chrome など**自ら DevTools を公開するブラウザ**(ソケットは在るが
+今日の環境では HTTP が応答せず未解明)。
+
 ## 17. テストベースからのシナリオ下書き生成(2026-07-26)
 
 `TestProjects/<name>/docs/testbases/*.md`(テスト設計の元資料)を Swift DSL シナリオの**下書き**に
