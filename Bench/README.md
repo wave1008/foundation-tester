@@ -61,6 +61,7 @@ Scripts/mcp-bench.sh --task cmp-scroll-find --repeat 5 \
 | `ios-settings-about` | settings | 実アプリ・深い設定ツリー(2階層たどって値を読む) |
 | `and-settings-keyboard` | settings | **Android の**設定ツリー(3階層 + 根のスクロール。行の状態=スイッチも読む) |
 | `and-chat-newconv` | chat | **Android の**チャット。入力 + ソフトキーボード遮蔽 + **`unlabeledClickablesNote` が偽の主張をする戻るボタン**を実際に押させる |
+| `and-form-wifi` | form | 通常欄 + **伏せ字欄** + 有効化条件つきボタン。**フォームが伸びると操作ボタンがツリーから消える**状態を必ず通るので、そこからの回復の手数が測れる |
 
 自前 SUT の4つは**対照**(盤面が契約で固定されているので手数のブレが小さい)。
 `maps-route` だけが実アプリで、**自前 SUT は実アプリの形を代表しない**(遮蔽・積み重なり・
@@ -79,8 +80,9 @@ Scripts/mcp-bench.sh --task cmp-scroll-find --repeat 5 \
 (`Tests/Fixtures/RealAppSnapshots/README.md`)。1アプリを深く掘るより、初見のアーキタイプを
 1つ足すほうが1件あたり安い。
 
-タスク側は 2026-08-12 に settings と webview を足し、2026-08-13 に **Android の settings と chat**
-を足して **実アプリ4 + 自前 SUT 4**。コーパスにあってタスクに無いアーキタイプは **media / keypad**。
+タスク側は 2026-08-12 に settings と webview を足し、2026-08-13 に **Android の settings / chat / form**
+を足して **実アプリ5 + 自前 SUT 4**。コーパスにあってタスクに無いアーキタイプは
+**media / keypad / dense-list**。
 
 **2026-08-13 まで全タスクが iOS だった。** Android を足したのは、注記の未解決の witness
 (`unlabeledClickablesNote` の包含形)が Android メッセージにしか無かったため —— **測れない盤面の
