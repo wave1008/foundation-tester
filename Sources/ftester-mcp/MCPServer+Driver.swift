@@ -111,6 +111,23 @@ extension MCPServer {
             case .android(let serial, let deviceName):
                 "\(deviceName) serial \(serial)"
             }
+            // **profile 経由もセッション記憶へ記録する**(欠陥③・実機監査 2026-08-13。以前は
+            // ここが呼ばれておらず profile 経由の宛先は一度も記憶されなかった)。args は
+            // port/udid/serial ではなく `profile` を持つので、記録可否は recordsIOSMemory/
+            // recordsAndroidMemory 側で `profile:` を明示扱いする(上記参照)。
+            // **iOS は probePort でなく `probePort ?? provisioned.port` を使う**: 実機は
+            // loopback 経由ではないため probePort が常に nil(iosDriver 参照)——
+            // それをそのまま渡すと実機の宛先が rememberResolvedTarget の `guard let iosPort` で
+            // 弾かれ、実機がまた記録されなくなる
+            switch target {
+            case .ios(let provisioned, _):
+                rememberResolvedTarget(platform: "ios", args: args,
+                                       iosPort: probePort ?? provisioned.port,
+                                       iosUDID: provisioned.udid, androidSerial: nil)
+            case .android(let serial, _):
+                rememberResolvedTarget(platform: "android", args: args,
+                                       iosPort: nil, iosUDID: nil, androidSerial: serial)
+            }
             // **profile 経由もゲートを通す**(G-2 の「全操作系」): BridgeProvisioner が版で
             // 再利用可否を決めるので普段はここで落ちないが、**落ちないことと検査しないことは別**
             // —— 供給の判断とホストの期待がズレた回に、黙って旧ブリッジを操作させない
@@ -462,9 +479,13 @@ extension MCPServer {
     /// driver() が iOS 記憶を更新してよいかの判定(2026-08-12)。fold が注入した呼び出し
     /// (deviceFromMemoryKey 付き)は port/udid を持っていても**明示扱いしない** —— さもないと
     /// この直後の iosMemoryAfterResolve が「利用者が選んだ」として記憶を上書きし、ポート再利用で
-    /// 別デバイスに化けたときに記憶が黙って乗り換わる
+    /// 別デバイスに化けたときに記憶が黙って乗り換わる。
+    /// **`profile:` も名指しとして数える**(実機監査 2026-08-13): 実機のブリッジは `/status` に
+    /// udid を載せないため udid/port で指せず、`profile:` が実機を指す唯一の現実的な手段。
+    /// ここが profile を見ないと、実機を使うセッションは2台目を触っても曖昧さガードに数えられず
+    /// 省略呼び出しが黙って別の機(仮想デバイス側)へ流れる
     static func recordsIOSMemory(_ args: [String: Any]) -> Bool {
-        argsGaveIOSTarget(args) && !injectedFromMemory(args)
+        (argsGaveIOSTarget(args) || args["profile"] is String) && !injectedFromMemory(args)
     }
 
     /// iOS と同じ規律の Android 版。serial は空文字列も「無指定」として扱う(resolveAndroidSerial
@@ -476,19 +497,29 @@ extension MCPServer {
         return remembered
     }
 
-    static func androidMemoryAfterResolve(fromArgs: String?, resolvedSerial: String) -> String? {
-        guard let fromArgs, !fromArgs.isEmpty else { return nil }
-        return resolvedSerial
+    /// iosMemoryAfterResolve の Android 版。**記録するのは解決済みの serial だけ** ——
+    /// 「記録してよいか」は Bool で受ける(serial 型の値で可否を表すと、その値自体が
+    /// serial として使われる誤用を招く)
+    static func androidMemoryAfterResolve(
+        argsHadExplicitTarget: Bool, resolvedSerial: String
+    ) -> String? {
+        argsHadExplicitTarget ? resolvedSerial : nil
     }
 
-    /// recordsIOSMemory の Android 版。fold が注入した serial は記憶の記録に使わない
-    static func recordsAndroidMemory(_ args: [String: Any], explicitSerial: String?) -> String? {
-        injectedFromMemory(args) ? nil : explicitSerial
+    /// recordsIOSMemory の Android 版。fold が注入した serial は記憶の記録に使わない。
+    /// **`profile:` も名指しとして数える**(iOS 側と同じ理由・対称に直す)。
+    /// serial は空文字列を「無指定」として扱う(resolveAndroidSerial と揃える)
+    static func recordsAndroidMemory(_ args: [String: Any], explicitSerial: String?) -> Bool {
+        guard !injectedFromMemory(args) else { return false }
+        if let explicitSerial, !explicitSerial.isEmpty { return true }
+        return args["profile"] is String
     }
 
-    /// 解決済みの宛先をセッション記憶へ記録する。**driver() の2経路(新規生成・キャッシュ命中)が
-    /// 共に呼ぶ唯一の記録点** —— 片方だけに置くと、2度目に同じ機を明示した呼び出しが記憶を
-    /// 動かさず、省略呼び出しが黙って別の機(別 OS のことすらある)へ行く。
+    /// 解決済みの宛先をセッション記憶へ記録する。**driver() の3経路(profile 解決・新規生成・
+    /// キャッシュ命中)が共に呼ぶ唯一の記録点** —— どれか1つでも欠けると、その経路で触った機が
+    /// 記憶にも曖昧さの候補にも載らず、省略呼び出しが黙って別の機(別 OS のことすらある)へ行く
+    /// (実測 2026-08-13: profile 経路だけが呼んでいなかったため、実機を profile で触った後に
+    /// 仮想デバイスを port で触ると、宛先を省いた呼び出しが拒否されず仮想デバイスへ流れた)。
     /// 何を記録するかの判定は recordsIOSMemory / recordsAndroidMemory が持つ(明示指定でなければ
     /// 記録しない・fold が注入した宛先も記録しない)ので、ここは配線だけ
     func rememberResolvedTarget(
@@ -506,7 +537,8 @@ extension MCPServer {
             everNamedIOSTarget = true
         case "android":
             guard let androidSerial, let remembered = Self.androidMemoryAfterResolve(
-                fromArgs: Self.recordsAndroidMemory(args, explicitSerial: args["serial"] as? String),
+                argsHadExplicitTarget: Self.recordsAndroidMemory(
+                    args, explicitSerial: args["serial"] as? String),
                 resolvedSerial: androidSerial) else { return }
             lastExplicitAndroidSerial = remembered
             lastExplicitPlatform = "android"

@@ -177,19 +177,31 @@ enum DeviceInventory {
                                   liveBridges: live) }
     }
 
-    /// 純粋関数(テスト用): spec と実測カタログから 1 行分を組む。`liveBridges` は端末名で引く
-    /// (省略時はブリッジなし)
+    /// 生きているブリッジの引き方。**1つの辞書に名前と udid を混ぜない** —— どちらの鍵で
+    /// 当たったか読めなくなる(取り違え診断に必要)
+    struct LiveBridges {
+        let byName: [String: [Row.Bridge]]
+        let byUDID: [String: [Row.Bridge]]
+        static let empty = LiveBridges(byName: [:], byUDID: [:])
+    }
+
+    /// 純粋関数(テスト用): spec と実測カタログから 1 行分を組む。`liveBridges` は
+    /// **udid で先に引き、外れたら名前で引く**(省略時はブリッジなし)。
+    /// 実機の `/status.device` は機種名("iPhone")で返り、プロファイル名とは一致しないため、
+    /// udid が唯一の安定鍵になる(欠陥①(a))
     static func iosRow(spec: DeviceSpec, simDevices: [SimDeviceInfo],
                        physicalDevices: [IOSPhysicalDeviceInfo],
-                       liveBridges: [String: [Row.Bridge]] = [:]) -> Row {
+                       liveBridges: LiveBridges = .empty) -> Row {
         if spec.isPhysical {
             let udid = spec.udid ?? ""
             let match = physicalDevices.first { $0.udid == udid || $0.deviceCtlIdentifier == udid }
             let running = match?.connected ?? false
+            let resolvedUDID = spec.udid ?? match?.udid
             let key = match?.name ?? spec.name
             return Row(name: spec.name, platform: "ios", identifier: spec.udid ?? match?.udid,
                       running: running, physical: true, registered: true,
-                      bridges: running ? (liveBridges[key] ?? []) : [])
+                      bridges: running
+                          ? resolveBridges(udid: resolvedUDID, name: key, in: liveBridges) : [])
         }
         let match: SimDeviceInfo?
         if let udid = spec.udid, !udid.isEmpty {
@@ -200,10 +212,16 @@ enum DeviceInventory {
             match = simDevices.first { $0.name == name && (os == nil || $0.os == os) }
         }
         let running = match?.booted ?? false
+        let resolvedUDID = match?.udid ?? spec.udid
         let key = match?.name ?? spec.name
         return Row(name: spec.name, platform: "ios", identifier: match?.udid ?? spec.udid,
                   running: running, physical: false, registered: true,
-                  bridges: running ? (liveBridges[key] ?? []) : [])
+                  bridges: running ? resolveBridges(udid: resolvedUDID, name: key, in: liveBridges) : [])
+    }
+
+    private static func resolveBridges(udid: String?, name: String,
+                                       in live: LiveBridges) -> [Row.Bridge] {
+        (udid.flatMap { live.byUDID[$0] }) ?? live.byName[name] ?? []
     }
 
     private static func iosFallbackRows() async -> [Row] {
@@ -212,19 +230,29 @@ enum DeviceInventory {
         let live = await liveIOSBridges()
         return booted.map { device in
             Row(name: device.name, platform: "ios", identifier: device.udid, running: true,
-               physical: false, registered: false, bridges: live[device.name] ?? [])
+               physical: false, registered: false,
+               bridges: resolveBridges(udid: device.udid, name: device.name, in: live))
         }
     }
 
-    /// 生きている iOS ブリッジを端末名で引けるようにする(port 昇順)。1 台への疎通失敗は
-    /// BridgeDiscovery.scan が内部で握って次へ進む(呼び出し側は空を受け取るだけ)
-    private static func liveIOSBridges() async -> [String: [Row.Bridge]] {
-        let found = await BridgeDiscovery.scan(excluding: 0, repoRoot: nil)
-        var byDevice: [String: [BridgeDiscovery.Found]] = [:]
-        for entry in found { byDevice[entry.device, default: []].append(entry) }
-        return byDevice.mapValues { entries in
-            entries.sorted { $0.port < $1.port }.map { Row.Bridge(port: $0.port, engine: $0.engine) }
+    /// 生きている iOS ブリッジを udid と端末名の両方で引けるようにする(port 昇順)。1 台への
+    /// 疎通失敗は BridgeDiscovery.scan が内部で握って次へ進む(呼び出し側は空を受け取るだけ)。
+    /// **repoRoot を渡す**: nil だと lan トランスポート(実機を LAN IP で直叩き)のブリッジが
+    /// BridgeEndpoint の記録を読めず一度も疎通できない(欠陥①(b))
+    private static func liveIOSBridges() async -> LiveBridges {
+        let found = await BridgeDiscovery.scan(excluding: 0, repoRoot: try? RepoRoot.find())
+        var byName: [String: [BridgeDiscovery.Found]] = [:]
+        var byUDID: [String: [BridgeDiscovery.Found]] = [:]
+        for entry in found {
+            byName[entry.device, default: []].append(entry)
+            if let udid = entry.udid { byUDID[udid, default: []].append(entry) }
         }
+        func rows(_ grouped: [String: [BridgeDiscovery.Found]]) -> [String: [Row.Bridge]] {
+            grouped.mapValues { entries in
+                entries.sorted { $0.port < $1.port }.map { Row.Bridge(port: $0.port, engine: $0.engine) }
+            }
+        }
+        return LiveBridges(byName: rows(byName), byUDID: rows(byUDID))
     }
 
     // MARK: - Android

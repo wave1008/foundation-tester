@@ -18,7 +18,8 @@ public enum BridgeDiscovery {
         public let port: UInt16
         public let device: String
         public let engine: String
-        /// `StatusResponse.udid`(申告しない旧ブリッジは nil)。**scan が status から埋める**
+        /// `StatusResponse.udid`(申告しない旧ブリッジ・SIMULATOR_UDID の無い実機は nil)。
+        /// **scan が status から埋め、実機だけ BridgeDeviceRecord の記録で補う**(resolveUDID)
         public let udid: String?
 
         public init(port: UInt16, device: String, engine: String, udid: String? = nil) {
@@ -114,14 +115,22 @@ public enum BridgeDiscovery {
                     guard let status = try? await BridgeClient(
                         port: endpoint.port, timeoutSeconds: 2, host: endpoint.host).status(timeout: 2),
                         status.ready else { return nil }
-                    return Found(port: port, device: status.device,
-                                 engine: status.engine ?? "xcuitest", udid: status.udid)
+                    let recorded = repoRoot.flatMap { BridgeDeviceRecord.load(port: port, repoRoot: $0) }
+                    return Found(port: port, device: status.device, engine: status.engine ?? "xcuitest",
+                                 udid: resolveUDID(reported: status.udid, recorded: recorded))
                 }
             }
             var result: [Found] = []
             for await entry in group { if let entry { result.append(entry) } }
             return result
         }
+    }
+
+    /// status の申告と記録(BridgeDeviceRecord)の優先順位。**申告があれば必ずそちら** ——
+    /// 仮想デバイスは自分で正しい udid を出すので、記録が古くても信じない。記録は実機のときだけ
+    /// (申告できないランナー向けの)補完
+    static func resolveUDID(reported: String?, recorded: String?) -> String? {
+        reported ?? recorded
     }
 
     // MARK: - 文言(1箇所に置く。呼び出し側は throw / ログに載せるだけ)

@@ -64,6 +64,23 @@ final class BridgeDiscoveryTests: XCTestCase {
         XCTAssertTrue(busy.contains("different device"), busy)
     }
 
+    // MARK: - udid の優先順位(status の申告 vs BridgeDeviceRecord の記録)
+
+    /// 仮想デバイスは自分で正しい udid を出すので、記録が古くてもそちらを信じてはいけない
+    func testResolveUDIDPrefersReportedOverRecorded() {
+        XCTAssertEqual(BridgeDiscovery.resolveUDID(reported: "REPORTED", recorded: "RECORDED"),
+                       "REPORTED")
+    }
+
+    /// 実機は申告できないので記録で補う(欠陥②の前提)
+    func testResolveUDIDFallsBackToRecordedWhenNotReported() {
+        XCTAssertEqual(BridgeDiscovery.resolveUDID(reported: nil, recorded: "RECORDED"), "RECORDED")
+    }
+
+    func testResolveUDIDIsNilWhenNeitherIsPresent() {
+        XCTAssertNil(BridgeDiscovery.resolveUDID(reported: nil, recorded: nil))
+    }
+
     /// 文言はそのまま利用者(エージェント)への指示になる。**次の一手が書かれていること**
     func testMessagesCarryPortsDevicesAndTheNextStep() {
         let adopted = BridgeDiscovery.adoptedNote(preferred: 8123, found: found(8124))

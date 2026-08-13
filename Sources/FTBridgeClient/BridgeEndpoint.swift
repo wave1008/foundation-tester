@@ -56,3 +56,33 @@ public struct BridgeEndpoint: Sendable, Hashable, Codable {
         try? FileManager.default.removeItem(at: fileURL(port: port, repoRoot: repoRoot))
     }
 }
+
+/// 実機ブリッジの udid 記録(.ftester/bridge-<port>.device)。ランナーに `SIMULATOR_UDID` が無く
+/// `/status` が udid を申告できない実機のためだけの記録で、書くのは
+/// IOSDeviceTransport.establish・消すのは同ファイルの teardown のみ(実機の経路にしか無い呼び出し
+/// なので仮想デバイスにはファイルが増えない)。読むのは BridgeDiscovery.scan
+/// (status.udid が nil のときのフォールバックとしてのみ。申告があればそちらを優先する契約)。
+public enum BridgeDeviceRecord {
+    static func fileURL(port: UInt16, repoRoot: URL) -> URL {
+        repoRoot.appendingPathComponent(".ftester/bridge-\(port).device")
+    }
+
+    public static func persist(udid: String, port: UInt16, repoRoot: URL) {
+        let url = fileURL(port: port, repoRoot: repoRoot)
+        try? FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? udid.write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    /// 記録が無ければ nil(旧ブリッジ・仮想デバイスはファイル自体が無い。throw しない)
+    public static func load(port: UInt16, repoRoot: URL) -> String? {
+        guard let text = try? String(contentsOf: fileURL(port: port, repoRoot: repoRoot),
+                                     encoding: .utf8) else { return nil }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    public static func forget(port: UInt16, repoRoot: URL) {
+        try? FileManager.default.removeItem(at: fileURL(port: port, repoRoot: repoRoot))
+    }
+}

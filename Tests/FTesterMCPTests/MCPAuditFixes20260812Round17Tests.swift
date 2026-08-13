@@ -78,10 +78,9 @@ final class MCPAuditFixes20260812Round17Tests: XCTestCase {
         XCTAssertTrue(MCPServer.recordsIOSMemory(explicit))
 
         let injectedAndroid: [String: Any] = ["serial": "emulator-5554", MCPServer.deviceFromMemoryKey: true]
-        XCTAssertNil(MCPServer.recordsAndroidMemory(injectedAndroid, explicitSerial: "emulator-5554"))
+        XCTAssertFalse(MCPServer.recordsAndroidMemory(injectedAndroid, explicitSerial: "emulator-5554"))
         let explicitAndroid: [String: Any] = ["serial": "emulator-5554"]
-        XCTAssertEqual(MCPServer.recordsAndroidMemory(explicitAndroid, explicitSerial: "emulator-5554"),
-                       "emulator-5554")
+        XCTAssertTrue(MCPServer.recordsAndroidMemory(explicitAndroid, explicitSerial: "emulator-5554"))
     }
 
     /// **(iii) 4欠陥修正③**: serial を明示した呼び出し(platform 省略 = 既定 ios)へ iOS の記憶を

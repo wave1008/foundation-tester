@@ -99,13 +99,17 @@ public enum IOSDeviceTransport {
             endpoint = BridgeEndpoint(port: port)
         }
         endpoint.persist(repoRoot: repoRoot)
+        // status.udid を申告できない実機のための補記(BridgeDeviceRecord のコメント参照)。
+        // establish は実機の経路にしか無いので、仮想デバイスにはこの記録が増えない
+        BridgeDeviceRecord.persist(udid: deviceUDID, port: port, repoRoot: repoRoot)
         return endpoint
     }
 
-    /// 実機ブリッジの後始末(usb のトンネル停止+endpoint 記録の破棄)。lan は何も残さない
+    /// 実機ブリッジの後始末(usb のトンネル停止+endpoint/udid 記録の破棄)。lan は何も残さない
     public static func teardown(port: UInt16, repoRoot: URL) {
         stopIproxy(hostPort: port, repoRoot: repoRoot)
         BridgeEndpoint.forget(port: port, repoRoot: repoRoot)
+        BridgeDeviceRecord.forget(port: port, repoRoot: repoRoot)
     }
 
     // MARK: - LAN

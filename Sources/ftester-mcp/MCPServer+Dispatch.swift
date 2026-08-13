@@ -890,6 +890,17 @@ extension MCPServer {
             let deviceName = try await appsDriver.status().device
             let udid = try udids[Self.engineKey(args)].flatMap { $0 }
                 ?? SimulatorAppCatalog.bootedSimulatorUDID(named: deviceName)
+            // **実機は simctl ではなく devicectl**(欠陥⑤): udid の形はどちらも同じなので、
+            // simctl へ素通しすると "Invalid device" で失敗する。実機かどうかは
+            // IOSPhysicalDeviceCatalog の一覧に居るかで判定する(判定できなければ
+            // シミュレータ側の従来経路へ素通し = 断定しない側に倒す)
+            if let physicalDevices = try? IOSPhysicalDeviceCatalog.devices(),
+               physicalDevices.contains(where: { $0.udid == udid || $0.deviceCtlIdentifier == udid }) {
+                let apps = try IOSPhysicalAppCatalog.apps(udid: udid)
+                return text(DeviceInventory.renderAppLines(
+                    apps.map { DeviceInventory.AppRow(id: $0.id, name: $0.name, isUser: $0.isUser) },
+                    includeSystem: includeSystem, filter: appsFilter, systemAppsCounted: true))
+            }
             return text(DeviceInventory.appsText(apps: try SimulatorAppCatalog.apps(udid: udid),
                                                  includeSystem: includeSystem, filter: appsFilter))
 

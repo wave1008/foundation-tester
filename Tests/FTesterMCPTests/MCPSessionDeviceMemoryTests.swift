@@ -121,15 +121,13 @@ final class MCPSessionDeviceMemoryTests: XCTestCase {
 
     func testAndroidMemoryUpdatesOnlyWhenArgsGaveASerial() {
         XCTAssertEqual(MCPServer.androidMemoryAfterResolve(
-            fromArgs: "emulator-5554", resolvedSerial: "emulator-5554"), "emulator-5554")
+            argsHadExplicitTarget: true, resolvedSerial: "emulator-5554"), "emulator-5554")
     }
 
     /// 自動解決(無指定呼び出し)の結果は記憶を汚さない(4)
     func testAndroidMemoryDoesNotUpdateOnAutoResolvedCall() {
         XCTAssertNil(MCPServer.androidMemoryAfterResolve(
-            fromArgs: nil, resolvedSerial: "emulator-5554"))
-        XCTAssertNil(MCPServer.androidMemoryAfterResolve(
-            fromArgs: "", resolvedSerial: "emulator-5554"))
+            argsHadExplicitTarget: false, resolvedSerial: "emulator-5554"))
     }
 
     // MARK: - Android: 一連の流れ(3)
@@ -138,11 +136,11 @@ final class MCPSessionDeviceMemoryTests: XCTestCase {
         var memory: String?
 
         memory = MCPServer.androidMemoryAfterResolve(
-            fromArgs: "emulator-5554", resolvedSerial: "emulator-5554")
+            argsHadExplicitTarget: true, resolvedSerial: "emulator-5554")
         XCTAssertEqual(memory, "emulator-5554")
 
         memory = MCPServer.androidMemoryAfterResolve(
-            fromArgs: "emulator-5556", resolvedSerial: "emulator-5556")
+            argsHadExplicitTarget: true, resolvedSerial: "emulator-5556")
         XCTAssertEqual(memory, "emulator-5556")
 
         let used = MCPServer.androidExplicitWithMemory(argsGaveTarget: false, remembered: memory)

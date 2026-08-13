@@ -82,12 +82,26 @@ final class DeviceInventoryTests: XCTestCase {
         let row = DeviceInventory.iosRow(
             spec: spec(name: "primary", simulator: "iPhone 17 Pro"),
             simDevices: [device], physicalDevices: [],
-            liveBridges: ["iPhone 17 Pro": [DeviceInventory.Row.Bridge(port: 8124, engine: nil)]])
+            liveBridges: DeviceInventory.LiveBridges(
+                byName: ["iPhone 17 Pro": [DeviceInventory.Row.Bridge(port: 8124, engine: nil)]],
+                byUDID: [:]))
         XCTAssertTrue(row.running)
         XCTAssertEqual(row.identifier, "SIM-1")
         XCTAssertEqual(row.bridges.first?.port, 8124)
         XCTAssertFalse(row.physical)
         XCTAssertTrue(row.registered)
+    }
+
+    /// udid 一致を名前一致より優先すること(iosRow の探索順の契約)
+    func testIOSRowPrefersUDIDMatchOverNameMatchWhenBothPresent() {
+        let device = SimDeviceInfo(udid: "SIM-2", name: "iPhone 17 Pro", os: "iOS 26.0", booted: true)
+        let live = DeviceInventory.LiveBridges(
+            byName: ["iPhone 17 Pro": [DeviceInventory.Row.Bridge(port: 9999, engine: nil)]],
+            byUDID: ["SIM-2": [DeviceInventory.Row.Bridge(port: 8124, engine: nil)]])
+        let row = DeviceInventory.iosRow(
+            spec: spec(name: "primary", simulator: "iPhone 17 Pro"),
+            simDevices: [device], physicalDevices: [], liveBridges: live)
+        XCTAssertEqual(row.bridges.first?.port, 8124, "udid 一致を名前一致より優先すること")
     }
 
     func testIOSRowWithNoMatchIsNotRunningAndKeepsSpecUDID() {
@@ -117,6 +131,38 @@ final class DeviceInventoryTests: XCTestCase {
             spec: spec(name: "old-phone", kind: .physical, udid: "PHYS-2"),
             simDevices: [], physicalDevices: [disconnected])
         XCTAssertFalse(row.running)
+    }
+
+    /// 実機の `/status.device` は "iPhone" のような機種名で返り、プロファイルの表示名
+    /// ("iPhone wave" 等)とは一致しない。udid だけが両者を橋渡しできる安定鍵であること
+    /// (欠陥①(a)の再発防止)
+    func testIOSRowPhysicalFindsBridgeByUDIDEvenWhenDeviceNameDoesNotMatch() {
+        let connected = IOSPhysicalDeviceInfo(udid: "00008130-001819863E60001C", name: "iPhone wave",
+                                              os: "iOS 26.6", connected: true, transport: "wired")
+        let live = DeviceInventory.LiveBridges(
+            byName: [:],  // status.device="iPhone" はプロファイル名 "iPhone wave" と一致しない
+            byUDID: ["00008130-001819863E60001C":
+                [DeviceInventory.Row.Bridge(port: 8144, engine: "xcuitest")]])
+        let row = DeviceInventory.iosRow(
+            spec: spec(name: "iPhone wave", kind: .physical, udid: "00008130-001819863E60001C"),
+            simDevices: [], physicalDevices: [connected], liveBridges: live)
+        XCTAssertTrue(row.running)
+        XCTAssertEqual(row.bridges.first?.port, 8144)
+        XCTAssertTrue(DeviceInventory.line(row).contains("bridge port 8144 (xcuitest)"),
+                     DeviceInventory.line(row))
+    }
+
+    /// udid に一致するブリッジが見つからないときは従来どおり「no bridge」文言に落ちること
+    /// (記録が無い旧ブリッジ・別 udid のブリッジのケース)
+    func testIOSRowPhysicalWithoutMatchingBridgeStillSaysNoBridge() {
+        let connected = IOSPhysicalDeviceInfo(udid: "PHYS-3", name: "iPhone", os: "iOS 26.6",
+                                              connected: true, transport: "wired")
+        let row = DeviceInventory.iosRow(
+            spec: spec(name: "my-phone", kind: .physical, udid: "PHYS-3"),
+            simDevices: [], physicalDevices: [connected])
+        XCTAssertTrue(row.running)
+        XCTAssertTrue(row.bridges.isEmpty)
+        XCTAssertTrue(DeviceInventory.line(row).contains("no bridge"), DeviceInventory.line(row))
     }
 
     // MARK: - androidRow (純粋関数)
@@ -204,5 +250,22 @@ final class DeviceInventoryTests: XCTestCase {
         let text = DeviceInventory.renderAppLines(Self.rows, includeSystem: false, filter: "maps")
         XCTAssertTrue(text.contains("no app matches \"maps\" among the 2 listed"), text)
         XCTAssertTrue(text.contains("pass includeSystem: true"), text)
+    }
+
+    // MARK: - 配線(ソース走査): ブリッジ走査に repoRoot を渡すこと
+
+    /// `repoRoot: nil` で走査すると `BridgeEndpoint.load` が記録を読めず 127.0.0.1 へ落ちるため、
+    /// **lan トランスポート(実機を LAN IP で直叩き)のブリッジが一度も疎通されない**。
+    /// I/O の引数なので純粋関数からは踏めない(欠陥①(b))
+    func testLiveBridgeScanIsGivenTheRepoRoot() throws {
+        let source = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+                .appendingPathComponent("Sources/ftester-mcp/DeviceInventory.swift"),
+            encoding: .utf8)
+        XCTAssertFalse(source.contains("repoRoot: nil"),
+                       "ブリッジ走査が repoRoot: nil のまま —— lan の実機ブリッジに到達できない")
+        XCTAssertTrue(source.contains("BridgeDiscovery.scan(excluding: 0, repoRoot: try? RepoRoot.find())"),
+                      "走査へ repoRoot が渡されていない")
     }
 }

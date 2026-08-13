@@ -95,8 +95,10 @@ final class MCPAuditFixes20260812Round13Tests: XCTestCase {
         let row = DeviceInventory.iosRow(
             spec: DeviceSpec(name: "primary", simulator: "iPhone 17 Pro"),
             simDevices: [device], physicalDevices: [],
-            liveBridges: ["iPhone 17 Pro": [DeviceInventory.Row.Bridge(port: 8143, engine: "inapp"),
-                                            DeviceInventory.Row.Bridge(port: 8124, engine: "xcuitest")]])
+            liveBridges: DeviceInventory.LiveBridges(
+                byName: ["iPhone 17 Pro": [DeviceInventory.Row.Bridge(port: 8143, engine: "inapp"),
+                                           DeviceInventory.Row.Bridge(port: 8124, engine: "xcuitest")]],
+                byUDID: [:]))
         XCTAssertEqual(row.bridges,
                        [DeviceInventory.Row.Bridge(port: 8143, engine: "inapp"),
                         DeviceInventory.Row.Bridge(port: 8124, engine: "xcuitest")])
@@ -108,7 +110,9 @@ final class MCPAuditFixes20260812Round13Tests: XCTestCase {
         let row = DeviceInventory.iosRow(
             spec: DeviceSpec(name: "stopped", simulator: "iPad Pro"),
             simDevices: [], physicalDevices: [],
-            liveBridges: ["iPad Pro": [DeviceInventory.Row.Bridge(port: 8143, engine: "inapp")]])
+            liveBridges: DeviceInventory.LiveBridges(
+                byName: ["iPad Pro": [DeviceInventory.Row.Bridge(port: 8143, engine: "inapp")]],
+                byUDID: [:]))
         XCTAssertFalse(row.running)
         XCTAssertTrue(row.bridges.isEmpty)
     }
