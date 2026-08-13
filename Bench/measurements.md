@@ -110,18 +110,30 @@ server recommended at the time」)。したがって**注記を落としても�
 盤面ごとの書き取りやすさが出る)が、**カタログを縮める道具にはならない**。ここは正直に書いておく
 —— この軸を足した理由が、測ってみたら成り立たなかった。
 
-**初回の使用で観測した欠陥(未修正・機構は未特定)**: `ft_type` の手が
-**id を持つ欄でも下書きで `// TODO: no stable selector — type` になる**ことがある。
+**初回の使用で欠陥を1件見つけ、直した**: `ft_type` の手が
+**id を持つ欄でも下書きで `// TODO: no stable selector — type` になっていた**。
 
 - 再現: Google メッセージの「新しい会話」で `ft_type ref:<#ContactSearchField の ref>` を撃ち、
-  `ft_draft_scenario` を呼ぶ。3/3 の run で TODO になった
-- **退行ではない**: 今日の変更前(05545ed)のバイナリでも同じ結果(2回反復して一致)
-- **`snapshotAfter` の有無は原因ではない**: フォーム盤面は `snapshotAfter: true` 付きで
-  `type("#ssid", "bench-net")` が解決している
-- 影響: 探索から下書きを起こす経路で、**入力の手だけが毎回手作業になる**
+  `ft_draft_scenario` を呼ぶ。**3/3** の run で TODO
+- **退行ではない**(今日の変更前 05545ed でも同じ・2回反復して一致)。
+  **`snapshotAfter` の有無も原因ではない**(フォーム盤面は snapshotAfter 付きで
+  `type("#ssid", …)` が解決している)
+- **機構は推測せず一時計測で押さえた**。`recordInteraction` に観測を差し、実機で:
 
-**推測で直さない**(機構をコードで押さえてから)。TODO の文面に ref の名指しが無い
-(`tap ref 26 — clickable` と対照的に `type` だけ)ことが手掛かり。
+      REC action=tap  ref=14 refs=1,2,3,…    → 引ける
+      REC action=type ref=21 refs=26,27,28,… → 引けない(木が入力後の世代)
+
+  `lastSnapshots` は「最後に読んだ木」であって「その ref が属する木」ではない。
+  `ft_type` は入力の読み返しと `snapshotAfter` を**記録より先に**通すので、記録時点では
+  ref が別世代の番号になっていた
+- 修正は `MCPServer.namingSnapshot`(純粋関数)——**ref が属する世代の木で名付ける**。
+  実機で **2/2** が `type("#ContactSearchField", …)` になった
+- **新しい軸がそのまま回帰ゲートになった**: `and-chat-newconv` の `sel ok/weak` が
+  **1/2 → 2/1**(残る1は無ラベルの戻るボタン = アプリ側の性質)
+
+**配線は単体テストで守れていない**(判定は変異2/2で守れている)。偽ドライバでは中間の
+読み返しが起きず `lastSnapshots` が進まないので、`recordInteraction` が最新の木を直に見る形へ
+戻す変異が**生き残る**。**この経路を触ったら実機で下書きを確かめること**(上の再現手順)。
 
 ---
 

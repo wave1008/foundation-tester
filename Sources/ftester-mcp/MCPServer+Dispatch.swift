@@ -1864,6 +1864,32 @@ extension MCPServer {
     ///
     /// セレクタを解決できなかった手も**捨てずに**残す(`unresolved`)。落とすと、
     /// 出来上がったシナリオが実際の手順と食い違う(F-4)
+    /// 記録した手のセレクタを**どの木で名付けるか**(2026-08-13)。
+    ///
+    /// **`lastSnapshots` は「最後に読んだ木」であって「その ref が属する木」ではない。**
+    /// 記録より先に撮り直す経路がある —— `ft_type` は入力の読み返しと `snapshotAfter` を
+    /// 記録の前に通すので、そこでは ref は別世代の番号になっている。実機の観測:
+    ///
+    ///     REC action=tap  ref=14 refs=1,2,3,…    → 引ける
+    ///     REC action=type ref=21 refs=26,27,28,… → 引けない(木が入力後の世代)
+    ///
+    /// 引けないと `// TODO: no stable selector — type` として下書きへ落ちる ——
+    /// **`#id` を持つ欄でも**。Google メッセージの `#ContactSearchField` で 3/3 再現し、
+    /// 修正後は 2/2 で `type("#ContactSearchField", …)` になった。
+    ///
+    /// **世代が無いときだけ最新の木へ落ちる**(世代を持たない経路 = 座標タップ等は従来どおり)。
+    ///
+    /// **配線(ここを呼ぶこと)は単体テストで守れていない** —— 偽ドライバでは中間の読み直しが
+    /// 起きず `lastSnapshots` が進まないので、`recordInteraction` が最新の木を直に見る形へ
+    /// 戻す変異が**生き残る**(2026-08-13 に実測)。**この判定を呼び出し側へ書き戻さないこと**、
+    /// および**触ったら実機で下書きを確かめること**(witness の手順は
+    /// Bench/measurements.md「セレクタの品質」の節)
+    static func namingSnapshot(ref: Int, generation: SnapshotResponse?,
+                               latest: SnapshotResponse?) -> SnapshotResponse? {
+        if let generation, generation.elements.contains(where: { $0.ref == ref }) { return generation }
+        return latest
+    }
+
     func recordInteraction(action: String, resolvedRef: Int?, args: [String: Any],
                            text: String? = nil, direction: String? = nil,
                            coordinate: (x: Double, y: Double)? = nil,
@@ -1872,8 +1898,17 @@ extension MCPServer {
         var selector: String?
         var durability: Durability = .stable
         var described = "\(action)"
+        // **ref が属する世代の木で名付ける**(2026-08-13)。`lastSnapshots` は「最後に読んだ木」で、
+        // **記録より先に撮り直す経路がある**(ft_type は入力の読み返し・snapshotAfter を
+        // 記録の前に通す)。そこを見ると ref は別世代の番号なので引けず、**#id を持つ欄でも
+        // 下書きが `// TODO: no stable selector — type` になる**。実機の観測:
+        //   REC action=tap  ref=14 refs=1,2,3,…   → 引ける
+        //   REC action=type ref=21 refs=26,27,28,… → 引けない(木が入力後の世代)
+        // 世代を先に見て、無ければ従来どおり最新の木へ落ちる
         if let resolvedRef,
-           let snapshot = lastSnapshots[Self.engineKey(args)],
+           let snapshot = Self.namingSnapshot(
+               ref: resolvedRef, generation: generationSnapshot(containing: resolvedRef, args: args),
+               latest: lastSnapshots[Self.engineKey(args)]),
            let element = snapshot.elements.first(where: { $0.ref == resolvedRef }) {
             let graded = Self.SelectorNaming(snapshot).graded(for: element, in: snapshot)
             selector = graded?.selector
