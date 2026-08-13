@@ -517,6 +517,17 @@ iOS/CMP は文字列定数、Android/Flutter はアセット)。ネットワー�
 | `wv_result=<v>` 初期 `wv_result=-` | staticText | (タップ不可) | 状態の echo |
 | `WebView 行 01`〜`WebView 行 30` | staticText | (タップ不可) | 行の高さ 56px 以上 |
 | `WebView 画面外テキスト` | staticText | (タップ不可) | 画面外(要 `scrollTo`) |
+| `8/13` `晴れ` `31` … | staticText | (タップ不可) | **見出しを a11y へ出さない格子**(3列×3行)。下記 |
+
+**格子の見出し行は `aria-hidden="true"`**(2026-08-13 追加)。**描画はされるが a11y には出ない**ので、
+`日付` / `天気` / `気温` は木に**現れない**。実 web ページで観測した形(ブラウザが `<th>` を
+落とす等)を**オフラインで決定的に再現する**ための材料で、`gridWithoutHeaderNote` と
+`webViewGapNote` の**唯一の offline witness**(実 web を叩くタスクは盤面が毎日変わるので
+bench では使わない —— Bench/README.md)。**触るときの制約が2つある**:
+
+- **`aria-hidden` を外さない**。外すと見出しが木に出て検知が発火しなくなる
+- **見出し行の厚み(`padding: 34px`)を減らさない**。判定は「直上の空き ÷ 行間の中央値 ≥ 2.0」で、
+  素直な厚みだと 91/48 = **1.9 で発火しない**(2026-08-13 に実機で測って 34px に決めた)
 
 到達は `#nav_webview`(ホームのナビ。ここはネイティブなので id が効く)。
 **CMP は interop 埋め込み**(Android=`AndroidView`、iOS=`UIKitView`)。iOS 側は
