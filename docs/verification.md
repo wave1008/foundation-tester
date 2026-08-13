@@ -80,7 +80,16 @@ E2E-Android(View/XML)を回して初めて赤くなり、a11y の `ACTION_IME_EN
 | `E2E-iOS / フリックが正しく動くこと.S0010` | 並列負荷時 1/3 程度 | `flickRightToLeft(the screen did not settle)` → `scrollLeft ×3` → `#tag_01` not found。横カルーセルが戻り切らない | 既知。単独実行では 5/5 成功 |
 | `E2E-RN / 待機とタイムアウトが正しく効くこと.S0010` | **1/10**(2026-08-13 に実測) | `#btn_delay_1` タップ後の `exist "#txt_delayed"` が 5s で落ちる | **flake**。同じ周の別シーンでは同じ操作が成功しており決定的ではない |
 
+| `E2E-CMP / テキスト入力が正しくechoされること.S0040`(android) | **2/7**(08-12)+ 1/4(08-13) | step 5 の `type (replace)` が `clearInput reported success but the value remained: "単一行"` で落ちる。同じログに `Another window is in front of the app: InputMethod` | **既知の Android テキスト注入の間欠失敗**。**ただしメッセージは原因を取り違えている**(下記) |
 | `E2E-CMP / 否定と個数と方向セレクタが正しく動くこと.S0010` | 凍結機が居る間だけ 4/5 | `#btn_delay_1` タップ後の `exist "#txt_delayed"` が 5s で落ちる。同じログに `-01 dropped out because of a frozen screen` | **凍結機**。下の「退行に見えた」を読むこと |
+
+**「クリアが失敗した」と読める文言が、実際には「直前の入力が届かなかった」を指すことがある**
+(2026-08-13)。上の CMP/android の1件がそれ —— `clearInput reported success but the value
+remained: "単一行"` と出るが、**「単一行」はこの欄のヒント文字列**であって残留した入力ではない。
+step 4 の `type "abc"` が IME に飲まれて届かず、欄が**空のまま**(= `value` にヒントが見えている)
+だったので、`clearInput` は空の欄に対して正しく何もしていない。
+`residualClearValue` は `before != placeholder` で守っているが、**Android の CMP は
+`placeholder` を送らない**ので素通りする。**この文言を見たら、まず直前の入力が届いたかを疑う**。
 
 **「A では落ちて B では通る」を、順序を反転せずに退行と読まない**(2026-08-13)。上の CMP の1本は
 変更後のツリーで 4/5 落ち、HEAD のツリーでは 4/4 通ったので**退行に見えた**。
