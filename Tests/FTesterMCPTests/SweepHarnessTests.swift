@@ -269,6 +269,14 @@ final class SweepHarnessTests: XCTestCase {
         "ios-browser_jma_hscroll": Counts(ghost: 4, overlay: 33, stacked: 0, misses: 0,
                                           disabled: 1, offscreen: 5, warnedTappable: 1,
                                           keyboard: 0, sliver: 0, nested: 0, scrolledOut: 0),
+        // 2026-08-13 の監査(長い再利用リスト)。Android 設定の「すべてのアプリ」——
+        // **40 要素すべてが identifier を持たず、scrollable の申告も無い**平坦なリスト。
+        // 幾何の検知はほぼ全部0 = **密なリストの陰性対照**として効く。
+        // sliver=1 は `staticText "74.78 MB"` (y 2421・高さ3 / 画面高 2424)= 画面下端で
+        // 切られた行の実測値で、**全数検分済みの真陽性**
+        "and-apps_list": Counts(ghost: 0, overlay: 0, stacked: 0, misses: 0, disabled: 0,
+                                offscreen: 0, warnedTappable: 0, keyboard: 0, sliver: 1,
+                                nested: 0, scrolledOut: 0),
     ]
 
     private static var fixtureDirectory: URL {
