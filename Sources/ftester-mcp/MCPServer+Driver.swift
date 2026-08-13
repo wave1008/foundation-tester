@@ -42,6 +42,21 @@ extension MCPServer {
             // 「profile を使う利用者にだけ穴が残る」形になる
             if let cached = drivers[key] {
                 if let moved = await deviceIdentityChanged(key, args: args) { throw MCPError(moved) }
+                // **profile のキャッシュ命中でも記憶を更新する**(欠陥②・2026-08-14): 下の
+                // direct 経路のキャッシュ命中と同じ理由(rememberResolvedTarget のコメント参照)。
+                // platform 変数はここではまだ無い(resolveProfileTarget を経ていない)ので、
+                // connectionLostHint と同じく **記録(connectedPorts/connectedAndroidSerials)で
+                // 判別する**(表示ラベルの接頭辞では判別しない、と同じ規律)。iosPort は生成側と
+                // 揃えて `connectedPorts[key]` をそのまま渡す(そちらに実機は
+                // `probePort ?? provisioned.port` が既に入っている)
+                if connectedPorts[key] != nil {
+                    rememberResolvedTarget(platform: "ios", args: args,
+                                           iosPort: connectedPorts[key], iosUDID: udids[key] ?? nil,
+                                           androidSerial: nil)
+                } else if let serial = connectedAndroidSerials[key] {
+                    rememberResolvedTarget(platform: "android", args: args,
+                                           iosPort: nil, iosUDID: nil, androidSerial: serial)
+                }
                 return cached
             }
             let project = try ScenarioHost.project(named: args["project"] as? String)
@@ -431,8 +446,19 @@ extension MCPServer {
     /// 合成することになり、そこで取り違える余地が生まれる
     func deviceIdentityChanged(_ key: String, args: [String: Any]) async -> String? {
         guard Self.usesRememberedDeviceState(args),
-              let recorded = udids[key] ?? nil, let port = connectedPorts[key],
-              let now = try? await BridgeClient(port: port, timeoutSeconds: 5).status().udid,
+              let recorded = udids[key] ?? nil, let port = connectedPorts[key] else { return nil }
+        // **宛先ホストは BridgeEndpoint.load で解決する**(欠陥④・2026-08-14): 127.0.0.1 決め打ちだと
+        // 実機の lan トランスポート(ランナーを 0.0.0.0 に bind してデバイスの LAN IP へ直接 HTTP)
+        // ではデバイスに届かず、同じポート番号で loopback に応答した**別の機**の udid を読んでしまう
+        // (BridgeDiscovery.isBound/scan・ExploreDriverResolver と同じ解決点に揃える)。
+        // **実機のブリッジは /status に udid を申告しないので status().udid は常に nil になり、
+        // このガードは実機では実質 no-op**(誤って拒否することは無いが、保護もされない)。
+        // `.ftester/bridge-<port>.device` の記録で補える余地はあるが、今回は広げない
+        // (no-op のままなら実害は無く、広げると誤拒否の側にリスクが移る)
+        let endpoint = (try? RepoRoot.find()).map { BridgeEndpoint.load(port: port, repoRoot: $0) }
+            ?? BridgeEndpoint(port: port)
+        guard let now = try? await BridgeClient(port: endpoint.port, timeoutSeconds: 5,
+                                                host: endpoint.host).status().udid,
               let moved = Self.keyChangedDevice(previous: recorded, now: now) else { return nil }
         forgetDeviceState(key)
         return Self.movedDeviceRefusal(port: port, previousUDID: moved, nowUDID: now)
@@ -523,11 +549,15 @@ extension MCPServer {
         return args["profile"] is String
     }
 
-    /// 解決済みの宛先をセッション記憶へ記録する。**driver() の3経路(profile 解決・新規生成・
-    /// キャッシュ命中)が共に呼ぶ唯一の記録点** —— どれか1つでも欠けると、その経路で触った機が
-    /// 記憶にも曖昧さの候補にも載らず、省略呼び出しが黙って別の機(別 OS のことすらある)へ行く
-    /// (実測 2026-08-13: profile 経路だけが呼んでいなかったため、実機を profile で触った後に
-    /// 仮想デバイスを port で触ると、宛先を省いた呼び出しが拒否されず仮想デバイスへ流れた)。
+    /// 解決済みの宛先をセッション記憶へ記録する。**driver() の4箇所(profile の新規生成・
+    /// キャッシュ命中、direct の新規生成・キャッシュ命中)が共に呼ぶ唯一の記録点** —— どれか1つ
+    /// でも欠けると、その経路で触った機が記憶にも曖昧さの候補にも載らず、省略呼び出しが黙って
+    /// 別の機(別 OS のことすらある)へ行く
+    /// (実測 2026-08-13: profile の新規生成だけが呼んでいなかったため、実機を profile で触った後に
+    /// 仮想デバイスを port で触ると、宛先を省いた呼び出しが拒否されず仮想デバイスへ流れた。
+    /// 2026-08-14: profile のキャッシュ命中も同じ理由で漏れていた —— profile:A → port:B →
+    /// profile:A の順に触ると、2回目の profile:A がキャッシュ命中で記憶を更新せず、
+    /// セッションの記憶が B のまま止まった)。
     /// 何を記録するかの判定は recordsIOSMemory / recordsAndroidMemory が持つ(明示指定でなければ
     /// 記録しない・fold が注入した宛先も記録しない)ので、ここは配線だけ
     func rememberResolvedTarget(

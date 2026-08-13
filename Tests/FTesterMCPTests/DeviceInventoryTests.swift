@@ -92,8 +92,10 @@ final class DeviceInventoryTests: XCTestCase {
         XCTAssertTrue(row.registered)
     }
 
-    /// udid 一致を名前一致より優先すること(iosRow の探索順の契約)
-    func testIOSRowPrefersUDIDMatchOverNameMatchWhenBothPresent() {
+    /// udid 一致と名前一致は和集合で出ること(欠陥③・2026-08-14。以前は udid 側が
+    /// 1本でも当たると名前側を丸ごと捨てていた)。この形は両方に別のポートが1本ずつ載るので、
+    /// 結果は port 昇順で両方揃う
+    func testIOSRowUnionsUDIDMatchAndNameMatchWhenBothPresent() {
         let device = SimDeviceInfo(udid: "SIM-2", name: "iPhone 17 Pro", os: "iOS 26.0", booted: true)
         let live = DeviceInventory.LiveBridges(
             byName: ["iPhone 17 Pro": [DeviceInventory.Row.Bridge(port: 9999, engine: nil)]],
@@ -101,7 +103,7 @@ final class DeviceInventoryTests: XCTestCase {
         let row = DeviceInventory.iosRow(
             spec: spec(name: "primary", simulator: "iPhone 17 Pro"),
             simDevices: [device], physicalDevices: [], liveBridges: live)
-        XCTAssertEqual(row.bridges.first?.port, 8124, "udid 一致を名前一致より優先すること")
+        XCTAssertEqual(row.bridges.map(\.port), [8124, 9999], "udid 一致と名前一致が両方出ること")
     }
 
     func testIOSRowWithNoMatchIsNotRunningAndKeepsSpecUDID() {

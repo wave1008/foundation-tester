@@ -2351,6 +2351,42 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
     容器基準の刻み・ghost の掴み直し・飛び越しの拾い直し・打ち切りは全部あちらに入っており、
     **同じ知見の2つ目の実装を作ると必ず割れる**。MCP は FlowStep を1つ組んで投げるだけ =
     MCP で届く要素はシナリオでも届く
+  - **実機ブリッジは `/status` で udid を申告しない**(2026-08-13。iOS 実機の初監査)。
+    iOS 16 以降 `UIDevice.name` は伏せられ機種名("iPhone")しか返らず、`SIMULATOR_UDID` も
+    存在しないため、`status.device` を鍵にした一致(`liveIOSBridges`)も `Found.udid` も
+    原理的に実らない(`ft_list_devices` が実機を必ず「no bridge」と報告し、`udid:` で実機を
+    指せない)。ホスト側へ `.ftester/bridge-<port>.device` = port→実機 udid の記録を新設した。
+    **書くのは `IOSDeviceTransport.establish` の1箇所**(lan/usb 両方が通る実機専用経路)、
+    **消すのは `teardown` の1箇所**(`bridge down` から無条件に呼ばれる。仮想デバイスでは
+    no-op)。`BridgeDiscovery.scan` は**`status.udid` の申告を必ず優先**し、nil のときだけ
+    記録で補う(仮想デバイスは自分で正しい udid を出すので古い記録に引きずられない)。
+    記録の無い旧ブリッジは従来挙動へ静かに落ちる。あわせて `scan(repoRoot: nil)` を修正した
+    —— 記録を読めず 127.0.0.1 へ落ちていたため、lan トランスポート(LAN IP 直叩き)の
+    実機ブリッジは一度も疎通されていなかった。
+    **この記録は `ft_list_apps` の宛先解決にも使う**: 実機を **`port:` だけで指した**呼び出しは
+    `udids[key]` が nil のまま(`ExploreDriverResolver` は `SimulatorCatalog` しか引かない)なので、
+    `connectedPorts[key]` からこの記録を引いて実機 udid を得る。**実機かどうかの判定は
+    `bootedSimulatorUDID` より必ず前**に置くこと —— あちらは実機で throw するので、
+    後ろに置くと実機判定へ到達しない(`udid:` 経路で実際に踏んだ)
+  - **`ft_list_apps` の実機経路は `devicectl`**(`IOSPhysicalAppCatalog`。2026-08-13)。
+    `simctl` は実機 udid を渡すと `Invalid device` で落ちるので
+    `xcrun devicectl device info apps --include-all-apps --json-output` を使う。
+    **user/system は `bundleIdentifier` の `com.apple.` 接頭辞で分類する** ——
+    devicectl の既定一覧(`--include-all-apps` 無し)は `builtByDeveloper` だけで
+    App Store アプリが漏れ、`url` の `/System` でも分類できない(Safari も Apple マップも
+    `/private/var/containers/...` に居る。実測: 全287件・非Apple 206件)
+  - **接続断からの回復は表示ラベルでなく記録で振り分ける**(`connectedPorts` /
+    `connectedAndroidSerials`。2026-08-14)。`connectionLostHint` は `connections[key]`
+    (表示用ラベル)の接頭辞 "port"/"serial " で iOS/Android を判別していたが、`profile:`
+    経由のラベル(例 `"iPhone wave(実機) port 8144"`)は**どちらの接頭辞にも一致せず**、
+    profile: のセッションは iOS も Android も回復機構(`forgetConnection`)に一度も
+    入っていなかった。同じ根が3箇所 —— `connectionLostHint` の iOS/Android・
+    `forgetConnection` の Android(serial をラベルから `dropFirst` で切り出していた)。
+    **表示文字列で制御を分岐しない**のが教訓(表記を整えるたびに判定が壊れる。上の
+    `connectionLabel` の注意と同型)。あわせて `connectedPorts[key] = probePort` を
+    `probePort ?? provisioned.port` に修正(`probePort` は実機で常に nil。同じ根の消費側が
+    2つあり片方だけ直っていた掃討漏れ)。**純粋関数・単体テストが正しく緑でも、この配線の
+    手前で弾かれていれば何も改善しない**(教訓の詳細は docs/verification.md 参照)
   - **ブラウザの取りこぼしは「空白の幾何」で言う**(`MCPServer.webViewGapNote` /
     `gridWithoutHeaderNote`)。ブラウザは画面に描いているものを a11y へ出さないことがあり
     (Android の Chrome が顕著)、**木に無い要素は待つことも探すことも指すこともできない**のに

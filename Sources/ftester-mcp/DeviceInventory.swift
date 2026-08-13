@@ -189,7 +189,7 @@ enum DeviceInventory {
     }
 
     /// 純粋関数(テスト用): spec と実測カタログから 1 行分を組む。`liveBridges` は
-    /// **udid で先に引き、外れたら名前で引く**(省略時はブリッジなし)。
+    /// **udid 一致と名前一致の和集合**(resolveBridges 参照。省略時はブリッジなし)。
     /// 実機の `/status.device` は機種名("iPhone")で返り、プロファイル名とは一致しないため、
     /// udid が唯一の安定鍵になる(欠陥①(a))
     static func iosRow(spec: DeviceSpec, simDevices: [SimDeviceInfo],
@@ -222,9 +222,18 @@ enum DeviceInventory {
                   bridges: running ? resolveBridges(udid: resolvedUDID, name: key, in: liveBridges) : [])
     }
 
+    /// **udid で当たった行と名前で当たった行の和集合**(欠陥③)。`??` で片方だけを採ると、
+    /// udid を申告するブリッジ(新版)と申告しないブリッジ(旧版。`Found.udid` の doc 参照)が
+    /// 同じ端末に同居したとき、udid 側で1本でも当たった時点で名前側が丸ごと見えなくなる
+    /// (Row.Bridge の doc の「同じ端末に in-app と XCUITest が同時に立つのが常態」参照)。
+    /// port で重複を除き、line(_:) の契約どおり port 昇順を保つ
     private static func resolveBridges(udid: String?, name: String,
                                        in live: LiveBridges) -> [Row.Bridge] {
-        (udid.flatMap { live.byUDID[$0] }) ?? live.byName[name] ?? []
+        let byUDID = udid.flatMap { live.byUDID[$0] } ?? []
+        let byName = live.byName[name] ?? []
+        var seenPorts = Set<UInt16>()
+        return (byUDID + byName).sorted { $0.port < $1.port }
+            .filter { seenPorts.insert($0.port).inserted }
     }
 
     private static func iosFallbackRows() async -> [Row] {

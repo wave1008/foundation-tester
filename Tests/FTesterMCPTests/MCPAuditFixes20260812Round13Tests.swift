@@ -89,7 +89,9 @@ final class MCPAuditFixes20260812Round13Tests: XCTestCase {
         XCTAssertFalse(text.contains("8143 ("), text)
     }
 
-    /// iosRow: 稼働中カタログに複数ブリッジがあれば、liveBridges の並びがそのまま row.bridges へ通ること
+    /// iosRow: 稼働中カタログに複数ブリッジがあれば**全部** row.bridges へ通ること。
+    /// 並びは `Row.Bridge` の契約どおり **port 昇順**(入力の並びに依らず resolveBridges が保つ ——
+    /// 供給側の並びを信用すると、鍵を2本にしたときに順序が入力依存で揺れる)
     func testIOSRowCarriesEveryLiveBridgeForTheMatchedDevice() {
         let device = SimDeviceInfo(udid: "SIM-1", name: "iPhone 17 Pro", os: "iOS 26.0", booted: true)
         let row = DeviceInventory.iosRow(
@@ -100,8 +102,8 @@ final class MCPAuditFixes20260812Round13Tests: XCTestCase {
                                            DeviceInventory.Row.Bridge(port: 8124, engine: "xcuitest")]],
                 byUDID: [:]))
         XCTAssertEqual(row.bridges,
-                       [DeviceInventory.Row.Bridge(port: 8143, engine: "inapp"),
-                        DeviceInventory.Row.Bridge(port: 8124, engine: "xcuitest")])
+                       [DeviceInventory.Row.Bridge(port: 8124, engine: "xcuitest"),
+                        DeviceInventory.Row.Bridge(port: 8143, engine: "inapp")])
     }
 
     /// 端末が動いていなければブリッジ情報は乗せない(booted=false の機に稼働中カタログの

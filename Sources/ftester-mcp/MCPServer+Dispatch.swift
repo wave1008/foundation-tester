@@ -930,19 +930,37 @@ extension MCPServer {
                     includeSystem: includeSystem, filter: appsFilter))
             }
             let deviceName = try await appsDriver.status().device
-            let udid = try udids[Self.engineKey(args)].flatMap { $0 }
-                ?? SimulatorAppCatalog.bootedSimulatorUDID(named: deviceName)
+            let appsKey = Self.engineKey(args)
+            // **実機判定をシミュレータへの素通し(bootedSimulatorUDID)より先にする**(欠陥①):
+            // 実機の /status は device に機種名("iPhone")しか返さず SIMULATOR_UDID も持たないので、
+            // bootedSimulatorUDID は udid の出所がどこであれ必ず throw する。候補 udid を先に
+            // 揃えてから実機かどうかを確かめ、実機でなければ初めてシミュレータ側へ素通しする。
+            //
+            // 候補は3段(先に見つかったものを使う): ①呼び出し引数の `udid:`(利用者の直接指定。
+            // `udids[key]` は port: だけの呼び出しでは埋まらないことがあるので、まずこちらを見る)/
+            // ②このセッションが既に記憶している udid(`udids[key]`。profile 経由は
+            // BridgeProvisioner が実機の udid をそのまま `udids[key]` に載せるのでここで拾える)/
+            // ③実機専用のポート記録(`.ftester/bridge-<port>.device`。`port:` だけで実機を指した
+            // ときの唯一の手がかり —— ExploreDriverResolver は SimulatorCatalog しか見ないため、
+            // 実機では udids[key] がここまで来ても nil のまま)
+            let candidateUDID = (args["udid"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+                ?? udids[appsKey].flatMap { $0 }
+                ?? connectedPorts[appsKey].flatMap { port in
+                    (try? RepoRoot.find()).flatMap { BridgeDeviceRecord.load(port: port, repoRoot: $0) }
+                }
             // **実機は simctl ではなく devicectl**(欠陥⑤): udid の形はどちらも同じなので、
             // simctl へ素通しすると "Invalid device" で失敗する。実機かどうかは
             // IOSPhysicalDeviceCatalog の一覧に居るかで判定する(判定できなければ
             // シミュレータ側の従来経路へ素通し = 断定しない側に倒す)
-            if let physicalDevices = try? IOSPhysicalDeviceCatalog.devices(),
-               physicalDevices.contains(where: { $0.udid == udid || $0.deviceCtlIdentifier == udid }) {
-                let apps = try IOSPhysicalAppCatalog.apps(udid: udid)
+            if let candidateUDID,
+               let physicalDevices = try? IOSPhysicalDeviceCatalog.devices(),
+               physicalDevices.contains(where: { $0.udid == candidateUDID || $0.deviceCtlIdentifier == candidateUDID }) {
+                let apps = try IOSPhysicalAppCatalog.apps(udid: candidateUDID)
                 return text(DeviceInventory.renderAppLines(
                     apps.map { DeviceInventory.AppRow(id: $0.id, name: $0.name, isUser: $0.isUser) },
                     includeSystem: includeSystem, filter: appsFilter, systemAppsCounted: true))
             }
+            let udid = try candidateUDID ?? SimulatorAppCatalog.bootedSimulatorUDID(named: deviceName)
             return text(DeviceInventory.appsText(apps: try SimulatorAppCatalog.apps(udid: udid),
                                                  includeSystem: includeSystem, filter: appsFilter))
 
