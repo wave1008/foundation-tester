@@ -75,6 +75,12 @@ final class NoteCoverageTests: XCTestCase {
         // id を前提にした指標(前の木の id がどれだけ生き残るか)が**定義すらできない**盤面で、
         // 容器が無いので `ft_scroll_to` の逆走査(飛び越しの拾い直し)も走らない
         "and-apps_list": "dense-list",
+        // 2026-08-13 の監査(フォーム / ログイン)で足した1枚。Android 設定の
+        // 「ネットワークを追加」で WPA を選び、キーボードが立ったまま採った木。
+        // **操作ボタン(保存/キャンセル)がツリーから丸ごと消えている** —— フォームが伸びて
+        // `#buttonPanel` がキーボードとの間で 1080x12 に潰され、中身が公開されなくなった。
+        // キーボード注記は「その下に触れる物は無い」と言うが、**消えたものは数えられない**
+        "and-form_keyboard": "form",
         // 自前 SUT(盤面が契約で固定されている対照)
         "sutec-calendar_day": "ec", "sutec-detail": "ec", "sutec-home": "ec",
         "sut-cmp_controls": "sut", "sut-cmp_home": "sut",
@@ -111,7 +117,7 @@ final class NoteCoverageTests: XCTestCase {
         // (and-home)で、単純なキーだけの一致では別々の表の同名見出しに誤発火するため
         // y/x の幾何制約を必須にした(MCPServer.duplicateRegionNote の当該コメント参照)
         "duplicateRegionNote": Coverage(fixtures: ["ios-browser_jma_hscroll"], bytes: 391),
-        "scrollFrameCandidates": Coverage(fixtures: ["and-place_expanded", "and-results", "ios-browser_startpage", "ios-maps_route_options", "ios-maps_station", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-messages_keyboard", "ios-place_guides_scrolled"], bytes: 2317),
+        "scrollFrameCandidates": Coverage(fixtures: ["and-form_keyboard", "and-place_expanded", "and-results", "ios-browser_startpage", "ios-maps_route_options", "ios-maps_station", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-messages_keyboard", "ios-place_guides_scrolled"], bytes: 2442),
         "truncationNote": Coverage(fixtures: ["ios-browser_nationwide", "ios-browser_startpage", "ios-maps_station"], bytes: 1012),
         // 取りこぼしのある Chrome の3枚(2026-08-13 に and-browser_weather_weekly を追加)で発火し、
         // 取りこぼしの無い iOS Safari の4枚(ios-browser_weektable / _weather_weekly 含む)では
@@ -139,7 +145,7 @@ final class NoteCoverageTests: XCTestCase {
         // 同じ数値(`29/24`・`90%`)が行と列に何度も出るので、増分は形そのもの
         "ambiguousLabelsNote": Coverage(fixtures: ["and-apps_list", "and-browser_weather", "and-browser_weather_weekly", "and-browser_weektable", "and-home", "and-maps_suggest_ime", "and-place", "and-place_expanded", "and-results", "ios-browser_jma_hscroll", "ios-browser_nationwide", "ios-browser_startpage", "ios-browser_weather_weekly", "ios-browser_weektable", "ios-home", "ios-maps_station", "ios-maps_suggest_keyboard", "ios-messages_keyboard", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-safari_article", "ios-settings_root", "sut-cmp_controls", "sut-cmp_home", "sutec-detail", "sutec-home"], bytes: 16935),
         "duplicateIDsNote": Coverage(fixtures: ["and-dialer_keypad", "and-home", "and-overflow", "and-place_expanded", "and-results", "and-settings_root", "ios-browser_startpage", "ios-home", "ios-maps_route_options", "ios-maps_station", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-photos_grid", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-settings_root", "sutec-home"], bytes: 16450),
-        "keyboardCoverageNote": Coverage(fixtures: ["and-browser_urlmenu", "and-maps_suggest_ime", "ios-browser_startpage", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-messages_keyboard"], bytes: 1088),
+        "keyboardCoverageNote": Coverage(fixtures: ["and-browser_urlmenu", "and-form_keyboard", "and-maps_suggest_ime", "ios-browser_startpage", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-messages_keyboard"], bytes: 1169),
         "truncatedLabelNote": Coverage(fixtures: ["and-browser_urlmenu", "and-browser_weather", "and-browser_weather_weekly", "and-place_expanded", "ios-browser_weektable", "ios-photos_grid", "ios-place_guides_scrolled", "ios-safari_article", "ios-settings_root", "sutec-detail", "sutec-home"], bytes: 3362),
     ]
 

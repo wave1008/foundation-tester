@@ -277,6 +277,15 @@ final class SweepHarnessTests: XCTestCase {
         "and-apps_list": Counts(ghost: 0, overlay: 0, stacked: 0, misses: 0, disabled: 0,
                                 offscreen: 0, warnedTappable: 0, keyboard: 0, sliver: 1,
                                 nested: 0, scrolledOut: 0),
+        // 2026-08-13 の監査(フォーム / ログイン)。Android 設定「ネットワークを追加」で
+        // WPA を選び**キーボードが立ったまま**採った木。**保存/キャンセルがツリーに居ない**
+        // (`#buttonPanel` が 1080x12 に潰れて中身を公開しなくなる)= フォーム特有の行き止まり。
+        // misses=3 は全数検分済みの真陽性で、いずれも**容器の中心が子と子の隙間に落ちる**形:
+        // `#type` の中心 y=739.5 は `#ssid`(〜734)と `#security`(809〜)の間、
+        // 残る2件は `#collapsing_toolbar` / `#action_bar` の中心が空白域
+        "and-form_keyboard": Counts(ghost: 0, overlay: 0, stacked: 0, misses: 3, disabled: 0,
+                                    offscreen: 0, warnedTappable: 0, keyboard: 0, sliver: 0,
+                                    nested: 0, scrolledOut: 0),
     ]
 
     private static var fixtureDirectory: URL {
