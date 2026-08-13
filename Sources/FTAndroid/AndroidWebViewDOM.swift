@@ -1,11 +1,8 @@
 // Android の**ブラウザ本体**のページ内容を DOM(CDP)から読む(2026-08-13)。
 //
-// **アプリ内 WebView には使わない**(方針転換・同日中)。当初の根拠「WebView は `<table>` の
-// セルを a11y へ出さない」は誤診で、実際は `SnapshotBuilder.mappedType` の葉テキスト救済が
-// `contentDesc` しか見ていなかったための取りこぼしだった(版 61 で修正済み)。自作アプリの
-// WebView は a11y のまま読む。**ブラウザだけ**が対象 —— あちらは本当にページを部分的にしか
-// a11y へ出さない(監査22/23/25 の実 web ページ。Android Chrome が本文を1要素も公開しない形が
-// 2サイトで再現)。
+// **対象はブラウザだけ。自作アプリの WebView は a11y のまま読む**
+// (ブラウザは本当にページを部分的にしか a11y へ出さない。経緯と根拠は docs/design.md
+// §ブラウザの中身は DOM から読む)。
 //
 // **JS も木への差し込みロジックも iOS と共有する**(`FTCore.WebViewDOM`)。あちらは in-app
 // エンジンから WKWebView の a11y が見えない事情で先に入った経路で、返す形(role/label/矩形)も
@@ -65,7 +62,7 @@ public enum AndroidWebViewDOM {
     /// (実測: タブ URL `https://www.jma.go.jp/bosai/forecast/` に対し欄の値は
     /// `jma.go.jp/bosai/forecast/`)。**フラグメントはここでは落とさない** ——
     /// 同じページの2タブを分ける唯一の材料がフラグメントのことがあり、
-    /// ここで落とすと**区別したい当の差が消えて背面タブと同点になる**(設計中にテストが捕まえた)
+    /// ここで落とすと**区別したい当の差が消えて背面タブと同点になる**
     static func normalizedURL(_ url: String) -> String {
         var s = url
         for prefix in ["https://", "http://"] where s.hasPrefix(prefix) {

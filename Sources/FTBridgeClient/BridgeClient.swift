@@ -505,15 +505,20 @@ public final class BridgeClient: AppDriver {
     /// 純粋な名前引き(`resolveTarget(named:simulators:physicalDevices:)` と同じ形)。
     /// **実機は `.udid`(ハードウェア UDID)を返す** —— `resolveTarget` が返す
     /// `deviceCtlIdentifier` は devicectl 専用でここでは使えない
+    /// **同名が複数居たら諦める**(2026-08-13 のレビュー指摘)。ここで1つ選ぶと
+    /// **別端末の Safari の画面内容を、この端末の木へ正として差し込む**ことになる。
+    /// 宛先が一意でないときは撃たない規律(MCP の宛先記憶と同じ)。
+    /// 取れないときは黙って a11y のまま = 誤った木を返すより無害
     static func resolveBrowserDOMTarget(named device: String, simulators: [SimDeviceInfo]?,
                                         physicalDevices: () -> [IOSPhysicalDeviceInfo]?) -> BrowserDOMTarget? {
-        if let simulators, let simulator = simulators.first(where: { $0.booted && !$0.physical && $0.name == device }) {
-            return .simulator(udid: simulator.udid)
+        if let simulators {
+            let booted = simulators.filter { $0.booted && !$0.physical && $0.name == device }
+            if booted.count > 1 { return nil }
+            if let simulator = booted.first { return .simulator(udid: simulator.udid) }
         }
-        if let phone = physicalDevices()?.first(where: { $0.name == device }) {
-            return .physical(udid: phone.udid)
-        }
-        return nil
+        let phones = physicalDevices()?.filter { $0.name == device } ?? []
+        if phones.count > 1 { return nil }
+        return phones.first.map { .physical(udid: $0.udid) }
     }
 
     public func tap(ref: Int) async throws {

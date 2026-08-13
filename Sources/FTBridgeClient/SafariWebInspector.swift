@@ -13,7 +13,6 @@
 // `Target.targetCreated` イベントを待って targetId を採り、`Target.sendMessageToTarget` で
 // 内側の CDP リクエストを JSON 文字列にして包む必要がある。応答は
 // `Target.dispatchMessageFromTarget` の `params.message`(文字列)に入って返る。
-// 手順は 2026-08-13 に Python spike で実測確認済み(2タブの Safari から DOM が正しく返った)。
 //
 // **JS は iOS in-app 経路(`WebViewDOM.javaScript`)と共有する** —— 返す形(role/label/矩形)が
 // 揃うので、アプリ内 WebView とブラウザ本体で同じ書き方のセレクタが通る。
@@ -139,8 +138,7 @@ public enum SafariWebInspector {
     // MARK: - 気付けるようにする(**この2つは人の操作でしか直せない**)
 
     /// ブラウザ DOM が取れなかったときに、**人が直せる原因なら名指しする**(純粋)。
-    /// どちらも黙って a11y へ落ちるだけだと、利用者は「このツールは Safari を読めない」と
-    /// 誤解する(2026-08-13 に私自身が半日この2つで詰まった)。
+    /// 黙って a11y へ落ちるだけだと「このツールは Safari を読めない」と誤解される。
     ///
     /// - `handshakeRefused`: `_rpc_reportIdentifier:` すら送れずに切られた。実機で
     ///   **Web インスペクタが無効**のときの実測どおりの形(TLS までは通り、直後に切断)

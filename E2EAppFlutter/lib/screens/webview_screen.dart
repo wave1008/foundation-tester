@@ -74,6 +74,7 @@ const String _html = r'''
   <tr><td>8/13</td><td>晴れ</td><td>31</td></tr>
   <tr><td>8/14</td><td>曇り</td><td>29</td></tr>
   <tr><td>8/15</td><td>雨</td><td>27</td></tr>
+    <tr><td>8/16</td><td>晴れ</td><td><span>19</span> / <span>24</span></td></tr>
 </table>
 <button id="wv_fixed" style="position: fixed; right: 8px; bottom: 8px;" onclick="setResult('fixed')">固定ボタン</button>
 <script>

@@ -2,7 +2,7 @@
 //
 // **`WebViewDOMSnapshot.swift` へ置かない**: あちらは `BridgeSourceSet` の inApp ブリッジ入力に
 // 入っているので、ホスト側だけで使う関数を足すと **dylib に不要なコードが入り、
-// `BridgeContractTests` の指紋が鳴って版を上げるか問い直される**(2026-08-13 に実際に鳴った)。
+// `BridgeContractTests` の指紋が鳴って版を上げるか問い直される**。
 // 共有したいのは JS と Payload の形だけで、木の組み立てはホスト専用。
 //
 // 呼び手は `FTAndroid.AndroidWebViewDOM`(Chrome)と

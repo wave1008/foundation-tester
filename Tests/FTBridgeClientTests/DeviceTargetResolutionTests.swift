@@ -102,4 +102,22 @@ final class DeviceTargetResolutionTests: XCTestCase {
     func testBrowserDOMReturnsNilWhenNothingMatches() {
         XCTAssertNil(resolveBrowserDOM("unknown", simulators: [], phones: []))
     }
+
+    // MARK: - 宛先が一意でないときは撃たない(2026-08-13)
+
+    /// **同名のシミュレータが2台起きていたら諦める**。1つ選ぶと
+    /// 別端末の Safari の画面内容をこの端末の木へ差し込むことになる
+    func testAmbiguousSimulatorNameYieldsNoBrowserTarget() {
+        XCTAssertNil(resolveBrowserDOM("iPhone 17 Pro",
+                                       simulators: [device("iPhone 17 Pro", udid: "SIM-1"),
+                                                    device("iPhone 17 Pro", udid: "SIM-2")]))
+    }
+
+    /// 一意なら従来どおり選ぶ(諦めすぎない)
+    func testUniqueSimulatorNameStillResolves() {
+        XCTAssertEqual(resolveBrowserDOM("iPhone 17 Pro",
+                                         simulators: [device("iPhone 17 Pro", udid: "SIM-1"),
+                                                      device("iPhone 16", udid: "SIM-2")]),
+                       .simulator(udid: "SIM-1"))
+    }
 }
