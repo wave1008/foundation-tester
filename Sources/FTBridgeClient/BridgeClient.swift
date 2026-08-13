@@ -433,13 +433,53 @@ public final class BridgeClient: AppDriver {
         pendingElementLimit = nil
         let merged = [query, limit.map { "max=\(BridgeAPI.resolvedSnapshotElementLimit($0))" }]
             .compactMap { $0 }.joined(separator: "&")
-        let response: SnapshotResponse = try await get("/snapshot",
+        var response: SnapshotResponse = try await get("/snapshot",
                                                        query: merged.isEmpty ? nil : merged,
                                                        timeout: sessionTimeout)
         // 取りこぼしの申告(クロスオリジン iframe 等)は記録に載せる。
         // **無申告なら触らない**: 直前アクションの note を消してしまわないため
         if let note = response.note { lastActionNote = note }
+        await injectSafariDOMIfApplicable(&response)
         return response
+    }
+
+    /// **前面が Safari のときだけ WebView の中身を DOM で置き換える**(Android の
+    /// `AndroidDriver.snapshot(bypassingCache:)` と同じ規則。宣言は `WebViewDOM.droppingWebViewSubtree`)。
+    ///
+    /// 前面判定は `sessionBundleID`(ブリッジがデバイス上で見た値)**だけ**を見る。
+    /// このクライアントは Android の `currentPackage` に相当する host 側の帳簿を持たないので
+    /// 新たに足さない —— Android では「帳簿は launch/openURL 経由でしか更新されず、MCP のように
+    /// 既に前面にあるブラウザへ繋ぐと nil のまま」という実害が出ている(AndroidDriver 宣言コメント参照)。
+    /// **取れなければ黙って a11y のまま**(例外にしない。Safari 未起動・タブ無し・実機はどれも普通にある)。
+    private func injectSafariDOMIfApplicable(_ response: inout SnapshotResponse) async {
+        guard SafariWebInspector.isEnabled,
+              response.sessionBundleID == SafariWebInspector.safariBundleID,
+              let webView = WebViewDOM.webViewElement(in: response.elements),
+              let udid = await simulatorUDIDForBrowserDOM(),
+              let payload = await SafariWebInspector.read(udid: udid)
+        else { return }
+        // nextRef は差し込み前の全要素から採る(落とす内側の要素も含めて衝突を避ける)
+        let nextRef = (response.elements.map(\.ref).max() ?? 0) + 1
+        // **density: 1**(iOS の a11y frame は既に pt。Android は物理 px なので density を掛ける)
+        let added = WebViewDOM.elements(payload: payload, webViewFrame: webView.frame,
+                                        density: 1, startingRef: nextRef)
+        response.elements = WebViewDOM.droppingWebViewSubtree(response.elements, webView: webView) + added
+    }
+
+    /// シミュレータの UDID(Safari inspector ソケットの解決に使う)。**クライアント1つにつき
+    /// 1回だけ解決してキャッシュする** —— `installTarget()` は status() 往復 + simctl を伴うため、
+    /// snapshot のたびに引くと重い(相手は接続の生存中に変わらない前提)。
+    /// 外側 Optional = 未解決、内側 Optional = 解決済みで対象外(物理端末・解決不能)。
+    /// **物理端末では常に nil**(Safari の inspector ソケットはシミュレータの
+    /// `/private/var/tmp` 配下にしか無く、物理端末は接続対象を持たない)
+    private var resolvedSimulatorUDIDForBrowserDOM: String??
+
+    private func simulatorUDIDForBrowserDOM() async -> String? {
+        if let resolvedSimulatorUDIDForBrowserDOM { return resolvedSimulatorUDIDForBrowserDOM }
+        let udid: String?
+        if case .simulator(let value) = try? await installTarget() { udid = value } else { udid = nil }
+        resolvedSimulatorUDIDForBrowserDOM = udid
+        return udid
     }
 
     public func tap(ref: Int) async throws {

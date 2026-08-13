@@ -81,11 +81,36 @@ public enum WebViewDOM {
           if (role === "image") {
             var alt = el.getAttribute("alt");
             if (alt && alt.trim()) return alt.trim();
+            // **alt が無い画像は src のファイル名を名前にする**(2026-08-13)。
+            // Chromium の a11y はそうしており(`logo_small.svg` → `logo_small`)、
+            // 揃えないと**ブラウザで a11y を DOM に置き換えた瞬間に名前が消える**
+            var src = el.getAttribute("src") || "";
+            var base = src.split("?")[0].split("#")[0].split("/").pop() || "";
+            base = base.replace(/\\.[A-Za-z0-9]+$/, "");
+            if (base) return base;
           }
           var t = (el.textContent || "").replace(/\\s+/g, " ").trim();
           // 容器の全文が入り込まないよう、葉かボタン/リンクのときだけテキストを label にする
           if (el.children.length === 0 || role === "button" || role === "link") return t;
           return "";
+        }
+
+        // **子孫が全部インラインのテキストなら1ノードへ畳む**(2026-08-13)。
+        // Chromium の a11y は `<td><span>19</span> / <span>24</span></td>` を「19 / 24」1件で出すが、
+        // 素の DOM 走査は葉ごとに3件出す。揃えないと**同じページなのに
+        // 「a11y で読む画面」と「DOM で読む画面」でセレクタが書き分け**になる。
+        // **役割を持つ子孫(link/button/input/img…)が1つでもあれば畳まない**(操作対象を潰さない)。
+        // ブロック級の子孫があるものも畳まない(`<div>` が段落をまとめて1件になるのを防ぐ)。
+        // 走査は el ごとに部分木を舐めるので、**大きい部分木は数で足切りする**(そもそもテキスト塊ではない)
+        function isInlineTextBlock(el) {
+          var kids = el.getElementsByTagName("*");
+          if (kids.length === 0 || kids.length > 50) return false;
+          for (var i = 0; i < kids.length; i++) {
+            if (roleOf(kids[i]) !== "") return false;
+            var d = window.getComputedStyle(kids[i]).display;
+            if (d !== "inline" && d !== "inline-block" && d !== "contents") return false;
+          }
+          return (el.textContent || "").replace(/\\s+/g, " ").trim() !== "";
         }
 
         // 中心点が別要素に取られている = 見えていない。祖先/子孫に当たるのは正常(重なりではない)
@@ -119,6 +144,29 @@ public enum WebViewDOM {
             walker.currentNode = next;
             el = next;
             continue;
+          }
+
+          // **テキスト塊は1件に畳んで部分木を飛ばす**(a11y と粒度を揃える。宣言は isInlineTextBlock)。
+          // **飛ばすのは実際に出せたときだけ** —— 可視判定で落ちた容器の中身まで捨てない
+          if (roleOf(el) === "" && isInlineTextBlock(el)) {
+            var br = el.getBoundingClientRect();
+            if (br.width >= 2 && br.height >= 2 && br.bottom > 0 && br.right > 0
+                && br.top < viewport.height && br.left < viewport.width && hittable(el, br)) {
+              nodes.push({ role: "staticText",
+                           label: (el.textContent || "").replace(/\\s+/g, " ").trim(),
+                           x: br.left, y: br.top, width: br.width, height: br.height,
+                           enabled: true });
+              var after = null;
+              var up = el;
+              while (up && up !== document.body && !after) {
+                after = up.nextElementSibling;
+                up = up.parentElement;
+              }
+              if (!after) break;
+              walker.currentNode = after;
+              el = after;
+              continue;
+            }
           }
 
           var role = roleOf(el);

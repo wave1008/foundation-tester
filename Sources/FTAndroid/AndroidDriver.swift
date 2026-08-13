@@ -82,14 +82,6 @@ public final class AndroidDriver: AppDriver {
 
     // MARK: - adb helpers
 
-    /// 前面アプリの pid(DOM 経路が **対象アプリの** WebView ソケットを選ぶために要る。
-    /// pid で絞らないと端末に並ぶ**他アプリの WebView を読む**)
-    func foregroundPID() -> Int? {
-        guard let bundle = currentPackage,
-              let out = try? adb(["shell", "pidof", bundle]).output else { return nil }
-        return Int(out.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: " ").first ?? "")
-    }
-
     /// 論理 px → 物理 px の倍率(DOM の CSS px を画面座標へ写すのに要る)
     func displayDensity() -> Double {
         guard let out = try? adb(["shell", "wm", "density"]).output,
@@ -334,18 +326,29 @@ public final class AndroidDriver: AppDriver {
         // RN の button 内側 Text 双子を畳む(SnapshotDedupe の宣言コメント参照)。
         // syncLocalState より前 = 下流(DSL/MCP)は正規化後の木だけを見る
         snapshot.elements = SnapshotDedupe.dropLabelTwinsInsideButtons(snapshot.elements)
-        // **WebView の中身を DOM から補う**(2026-08-13 の spike。既定オフ)。
-        // `android.webkit.WebView` は `<table>` のセルを a11y へ1つも公開しないので、
-        // 同じページでも iOS とセレクタが書き分けになる。iOS と**同じ JS** を CDP 経由で
-        // 走らせて木を揃える(AndroidWebViewDOM の宣言に成立条件と経路)
-        if AndroidWebViewDOM.isEnabled, let frame = AndroidWebViewDOM.webViewFrame(in: snapshot.elements),
-           let pid = foregroundPID(),
-           let payload = await AndroidWebViewDOM.read(serial: serial ?? "", pid: pid,
-                                                      adb: { try self.adb($0).output }) {
-            let nextRef = (snapshot.elements.map(\.ref).max() ?? 0) + 1
-            let added = AndroidWebViewDOM.elements(payload: payload, webViewFrame: frame,
-                                                   density: displayDensity(), startingRef: nextRef)
-            if !added.isEmpty { snapshot.elements.append(contentsOf: added) }
+        // **前面がブラウザのときだけ WebView の中身を DOM で置き換える**(2026-08-13 に方針転換)。
+        // 自作アプリの WebView は a11y のまま(AndroidWebViewDOM の宣言コメント参照。誤診で撤回)。
+        //
+        // **前面の判定はスナップショット自身の `sessionBundleID`(= ブリッジがデバイス上で見た値)を
+        // 先に見る**。`currentPackage` は launch/openURL/activate が更新するホスト側の帳簿でしかなく、
+        // **MCP のようにアプリを起こさず既にブラウザが前面の端末へ繋ぐ経路では nil のまま**になる
+        // (2026-08-13 に実測: 新しいプロセスから Chrome を撮ったら帳簿が nil で経路が丸ごと不発だった)。
+        // 帳簿は `sessionBundleID` を返さない古いブリッジのための保険として残す
+        if AndroidWebViewDOM.isBrowserDOMEnabled,
+           let package = snapshot.sessionBundleID ?? currentPackage,
+           AndroidWebViewDOM.browserSocketName(packageID: package) != nil,
+           let webView = WebViewDOM.webViewElement(in: snapshot.elements) {
+            let urlBarValue = AndroidWebViewDOM.urlBarValue(in: snapshot.elements)
+            if let payload = await AndroidWebViewDOM.read(serial: serial ?? "", packageID: package,
+                                                          webViewLabel: webView.label, urlBarValue: urlBarValue,
+                                                          adb: { try self.adb($0).output }) {
+                // nextRef は差し込み前の全要素から採る(落とす内側の要素も含めて衝突を避ける)
+                let nextRef = (snapshot.elements.map(\.ref).max() ?? 0) + 1
+                let added = WebViewDOM.elements(payload: payload, webViewFrame: webView.frame,
+                                                density: displayDensity(), startingRef: nextRef)
+                snapshot.elements = WebViewDOM.droppingWebViewSubtree(snapshot.elements, webView: webView)
+                    + added
+            }
         }
         syncLocalState(from: snapshot)
         // IME は別プロセスの window でアプリの a11y ツリーに出ないため、オンデバイスのブリッジでは

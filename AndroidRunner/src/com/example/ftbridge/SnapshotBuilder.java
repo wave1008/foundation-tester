@@ -684,8 +684,16 @@ final class SnapshotBuilder {
                 // Flutter(Android)はテキストも android.view.View で、contentDesc にだけ文字が入る。
                 // 葉であることを条件にする(子を持つ汎用コンテナを StaticText にしないため)。
                 // これが無いと id を振っていないテキストがスナップショットから丸ごと落ち、
-                // ラベルをアンカーにした方向セレクタが使えない(2026-07-26 実測)
-                if (!node.hasChildren && !node.contentDesc.isEmpty()) return "StaticText";
+                // ラベルをアンカーにした方向セレクタが使えない(2026-07-26 実測)。
+                // **text 側も見る**(2026-08-13 実機で発見): Chromium は WebView 内の
+                // `<td>` 等を className=android.view.View + **getText()** で出す(contentDesc は空)。
+                // contentDesc だけを見ていたため Other へ落ち、shouldInclude の default が
+                // resource-id を要求して**表のセルが1つも木に出なかった**。しかも
+                // `<table>` 自身は GridView + id で残るので `webViewGapNote` の空白帯にもならず、
+                // **黙って消える**(WebView 150 で実機再現。124 のエミュレータでは table ごと出ない)
+                if (!node.hasChildren && (!node.contentDesc.isEmpty() || !node.text.isEmpty())) {
+                    return "StaticText";
+                }
                 return "Other";
         }
     }

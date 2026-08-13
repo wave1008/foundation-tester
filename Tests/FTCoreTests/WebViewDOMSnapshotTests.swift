@@ -153,4 +153,130 @@ final class WebViewDOMSnapshotTests: XCTestCase {
         XCTAssertFalse(WebViewDOM.isInteropHosted(
             ancestorClassNames: ["WKWebView", "UIView", "UIViewControllerWrapperView", "UIWindow"]))
     }
+
+    // MARK: - 木への差し込み(Android/iOS 共通。守るのは座標の写しと二重表示を作らないことの2つ)
+
+    private func nodePayload(x: Double, y: Double, scale: Double = 1,
+                             offsetLeft: Double = 0, offsetTop: Double = 0) -> WebViewDOM.Payload {
+        let json = """
+        {"readyState":"complete",
+         "viewport":{"offsetLeft":\(offsetLeft),"offsetTop":\(offsetTop),"scale":\(scale),
+                     "width":360,"height":640},
+         "crossOriginFrames":0,
+         "nodes":[{"role":"staticText","label":"8/15","x":\(x),"y":\(y),
+                   "width":56,"height":45,"enabled":true}]}
+        """
+        return try! WebViewDOM.decode(json)
+    }
+
+    /// **Android: density 倍して WebView の原点を足す**。ここを間違えるとタップが画面外や別の行へ飛ぶ
+    func testElementsScalesByDensityAndAddsTheWebViewOrigin() {
+        // **原点は x も y も 0 にしない**(2026-08-13): x=0 で書いたら「x の原点を足し忘れる」
+        // 変異が生き残った —— 片方が 0 の座標テストは、その軸を1つも守っていない
+        let frame = FTRect(x: 24, y: 142, width: 1080, height: 1500)
+        let els = WebViewDOM.elements(payload: nodePayload(x: 16, y: 595),
+                                      webViewFrame: frame, density: 3, startingRef: 7)
+        XCTAssertEqual(els.count, 1)
+        let e = els[0]
+        XCTAssertEqual(e.ref, 7)
+        XCTAssertEqual(e.label, "8/15")
+        XCTAssertEqual(e.frame.x, 24 + 48, accuracy: 0.001)         // 24 + 16 * 3
+        XCTAssertEqual(e.frame.y, 142 + 1785, accuracy: 0.001)      // 142 + 595 * 3
+        XCTAssertEqual(e.frame.width, 168, accuracy: 0.001)
+        XCTAssertEqual(e.web, true, "web の印が無いと OS で扱いが割れる")
+    }
+
+    /// **iOS: density: 1 は倍率なしと等価**(a11y frame が既に pt)。原点は足すだけ
+    func testElementsWithDensityOneAddsOnlyTheOrigin() {
+        // 原点を両軸とも 0 にしない: どちらかの軸だけ足し忘れる変異を検出するため
+        let frame = FTRect(x: 12, y: 88, width: 390, height: 700)
+        let els = WebViewDOM.elements(payload: nodePayload(x: 16, y: 60),
+                                      webViewFrame: frame, density: 1, startingRef: 5)
+        XCTAssertEqual(els.count, 1)
+        let e = els[0]
+        XCTAssertEqual(e.ref, 5)
+        XCTAssertEqual(e.frame.x, 28, accuracy: 0.001)   // 12 + 16
+        XCTAssertEqual(e.frame.y, 148, accuracy: 0.001)  // 88 + 60
+        XCTAssertEqual(e.web, true, "web の印が無いと OS で扱いが割れる")
+    }
+
+    /// ピンチ中は visualViewport の offset/scale を通す(density の掛け算と独立に効く)
+    func testElementsHonoursTheVisualViewport() {
+        let els = WebViewDOM.elements(
+            payload: nodePayload(x: 20, y: 100, scale: 2, offsetLeft: 10, offsetTop: 50),
+            webViewFrame: FTRect(x: 0, y: 0, width: 1080, height: 1500),
+            density: 1, startingRef: 1)
+        XCTAssertEqual(els[0].frame.x, 20, accuracy: 0.001)   // (20-10)*2
+        XCTAssertEqual(els[0].frame.y, 100, accuracy: 0.001)  // (100-50)*2
+    }
+
+    /// 潰れた要素は落とす(a11y 側の規約と揃える)
+    func testElementsDropsZeroSizedNodes() {
+        let json = """
+        {"viewport":{"offsetLeft":0,"offsetTop":0,"scale":1,"width":360,"height":640},
+         "nodes":[{"role":"staticText","label":"x","x":0,"y":0,"width":0,"height":10}]}
+        """
+        let els = WebViewDOM.elements(payload: try! WebViewDOM.decode(json),
+                                      webViewFrame: FTRect(x: 0, y: 0, width: 10, height: 10),
+                                      density: 1, startingRef: 1)
+        XCTAssertTrue(els.isEmpty)
+    }
+
+    // MARK: - 差し込み先の WebView 選択
+
+    func testWebViewElementPicksTheLargestOne() {
+        let small = ElementInfo(ref: 1, type: "webView", identifier: nil, label: nil, value: nil,
+                                placeholder: nil, enabled: true,
+                                frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 1)
+        let big = ElementInfo(ref: 2, type: "webView", identifier: nil, label: nil, value: nil,
+                              placeholder: nil, enabled: true,
+                              frame: FTRect(x: 0, y: 100, width: 1080, height: 900), depth: 1)
+        XCTAssertEqual(WebViewDOM.webViewFrame(in: [small, big])?.height, 900)
+    }
+
+    func testWebViewElementNilMeansNoInjection() {
+        let native = ElementInfo(ref: 1, type: "button", identifier: "ok", label: "OK", value: nil,
+                                 placeholder: nil, enabled: true,
+                                 frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 1)
+        XCTAssertNil(WebViewDOM.webViewFrame(in: [native]))
+    }
+
+    // MARK: - 木への差し込み(重複させない)
+
+    /// WebView の内側の a11y 要素だけを落とす。**外側(ブラウザ chrome)とノード自身は残す**
+    /// —— 素朴に木全体を対象にすると url バー等まで消えてしまい、能動タブ選択の手掛かりが壊れる
+    func testDroppingWebViewSubtreeDropsOnlyElementsInside() {
+        let urlBar = ElementInfo(ref: 1, type: "textField", identifier: "url_bar", label: nil,
+                                 value: "example.com", placeholder: nil, enabled: true,
+                                 frame: FTRect(x: 0, y: 0, width: 100, height: 40), depth: 1)
+        let webView = ElementInfo(ref: 2, type: "webView", identifier: nil, label: "Example Domain",
+                                  value: nil, placeholder: nil, enabled: true,
+                                  frame: FTRect(x: 0, y: 40, width: 1080, height: 1800), depth: 1)
+        // pre-order: webView の直後に来る depth > 1 の要素が「内側」
+        let heading = ElementInfo(ref: 3, type: "staticText", identifier: nil, label: "Example Domain",
+                                  value: nil, placeholder: nil, enabled: true,
+                                  frame: FTRect(x: 10, y: 60, width: 200, height: 30), depth: 2)
+        let paragraph = ElementInfo(ref: 4, type: "staticText", identifier: nil, label: "More info...",
+                                    value: nil, placeholder: nil, enabled: true,
+                                    frame: FTRect(x: 10, y: 100, width: 200, height: 30), depth: 2)
+        let tabButton = ElementInfo(ref: 5, type: "button", identifier: "tab_switcher_button", label: nil,
+                                    value: nil, placeholder: nil, enabled: true,
+                                    frame: FTRect(x: 0, y: 1840, width: 60, height: 60), depth: 1)
+        let elements = [urlBar, webView, heading, paragraph, tabButton]
+
+        let result = WebViewDOM.droppingWebViewSubtree(elements, webView: webView)
+
+        XCTAssertEqual(result.map(\.ref), [1, 2, 5], "内側(3,4)だけを落とし、外側と本体は残す")
+    }
+
+    func testDroppingWebViewSubtreeWithNoDescendantsIsANoop() {
+        let webView = ElementInfo(ref: 1, type: "webView", identifier: nil, label: nil, value: nil,
+                                  placeholder: nil, enabled: true,
+                                  frame: FTRect(x: 0, y: 0, width: 100, height: 100), depth: 1)
+        let sibling = ElementInfo(ref: 2, type: "button", identifier: nil, label: "OK", value: nil,
+                                  placeholder: nil, enabled: true,
+                                  frame: FTRect(x: 0, y: 100, width: 100, height: 40), depth: 1)
+        XCTAssertEqual(WebViewDOM.droppingWebViewSubtree([webView, sibling], webView: webView).map(\.ref),
+                       [1, 2])
+    }
 }

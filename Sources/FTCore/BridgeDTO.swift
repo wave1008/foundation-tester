@@ -185,7 +185,7 @@ public enum BridgeAPI {
     /// 65: GET /snapshot accepts `max=<n>` (the per-request element limit; `maxSnapshotElements`
     /// stays the default). A stale bridge ignores the parameter and answers with 120 elements
     /// **without saying so**, so the reader would conclude the dropped rows do not exist → bump.
-    public static let bridgeProtocolVersion = 65
+    public static let bridgeProtocolVersion = 66
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の

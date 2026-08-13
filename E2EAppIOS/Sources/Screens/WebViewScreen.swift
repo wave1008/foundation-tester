@@ -31,10 +31,10 @@ struct WebViewScreen: View {
       button, input { min-height: 44px; padding: 8px; box-sizing: border-box; }
       input { width: 90%; }
       .row { min-height: 56px; padding: 8px 0; border-bottom: 1px solid #ccc; }
-  #wv_grid { border-collapse: collapse; margin-top: 8px; }
-  #wv_grid td { border: 1px solid #999; padding: 10px; }
-  /* 見出しの厚みは検知の閾値に効く(HTML のコメント参照)。減らさないこと */
-  #wv_grid th { border: 1px solid #999; padding: 34px 10px; }
+    #wv_grid { border-collapse: collapse; margin-top: 8px; }
+    #wv_grid td { border: 1px solid #999; padding: 10px; }
+    /* 見出しの厚みは検知の閾値に効く(HTML のコメント参照)。減らさないこと */
+    #wv_grid th { border: 1px solid #999; padding: 34px 10px; }
     </style>
     </head>
     <body>
@@ -59,13 +59,13 @@ struct WebViewScreen: View {
      **aria-hidden を外さないこと** —— 外すと見出しが木に出て検知が発火しなくなる。
      **見出し行の厚み(padding)も減らさないこと** —— 判定は「直上の空き ÷ 行間 ≥ 2.0」で、
      薄いと 1.9 になって発火しない(2026-08-13 に実測して 34px に決めた) -->
-<table id="wv_grid">
-  <tr aria-hidden="true"><th>日付</th><th>天気</th><th>気温</th></tr>
-  <tr><td>8/13</td><td>晴れ</td><td>31</td></tr>
-  <tr><td>8/14</td><td>曇り</td><td>29</td></tr>
-  <tr><td>8/15</td><td>雨</td><td>27</td></tr>
-</table>
-<button id="wv_fixed" style="position: fixed; right: 8px; bottom: 8px;" onclick="setResult('fixed')">固定ボタン</button>
+    <table id="wv_grid">
+      <tr aria-hidden="true"><th>日付</th><th>天気</th><th>気温</th></tr>
+      <tr><td>8/13</td><td>晴れ</td><td>31</td></tr>
+      <tr><td>8/14</td><td>曇り</td><td>29</td></tr>
+      <tr><td>8/15</td><td>雨</td><td>27</td></tr>
+    </table>
+    <button id="wv_fixed" style="position: fixed; right: 8px; bottom: 8px;" onclick="setResult('fixed')">固定ボタン</button>
     <script>
       function setResult(value) {
         document.getElementById('wv_result').textContent = 'wv_result=' + value;

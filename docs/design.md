@@ -3649,10 +3649,20 @@ CoreSimulator.framework を直接叩き、`SimulatorCatalog.devices()` が直叩
 
 **`FT_ANDROID_WEBVIEW_DOM=1` で有効。既定はオフ。**
 
-**なぜ**: `android.webkit.WebView` は `<table>` のセルを a11y ツリーへ**1つも公開しない**
-(2026-08-13 に **4 SUT で実測** —— Compose interop / Flutter / RN / 素の View のどれでも同じなので
-ホスト側の作りではなく WebView の性質。`role="table"/"row"/"cell"` を明示しても変わらない)。
-同じページを iOS の WKWebView は公開するため、**同じ HTML なのに OS でセレクタが書き分け**になる。
+**当初の「なぜ」は誤診だった**(2026-08-13 に同日中に判明)。「`android.webkit.WebView` は
+`<table>` のセルを a11y へ1つも公開しない」と 4 SUT で実測して書いたが、**測っていたのは
+自分のブリッジの出力**で、実際はセルは a11y に在り `SnapshotBuilder` が捨てていた
+(ブリッジ版 61 で修正。詳細は E2EAppCMP/docs/ui-contract.md §WebView 画面の格子)。
+**アプリ内 WebView の表を読むだけならこの経路は要らない。**
+
+**残る「なぜ」**: **ブラウザ本体は本当にページを部分的にしか a11y へ出さない**
+(監査22/23/25 の実 web ページで確認。Android Chrome が本文を1要素も公開せず
+`missingPageContentNote` が発火した形が2サイトで再現)。そこは a11y からは埋めようがないので、
+DOM を直接読む経路に意味がある。**ただし現状の実装は Chrome に届かない** ——
+ソケット名が `@chrome_devtools_remote` で **pid が付かず**、`socketName(procNetUnix:pid:)` の
+pid 一致規則では必ず外れる(第2の規則と能動タブの選択が要る)。
+**この経路を既定にする前に、まず Chrome へ届かせること**(アプリ内 WebView に当てる限り、
++147ms を払って得るものが無い)。
 
 **やり方**: iOS の in-app が使っているのと**同じ JS**(`FTCore.WebViewDOM.javaScript`)を
 Android の WebView で走らせる。ブリッジはアクセシビリティサービスで別プロセスなので

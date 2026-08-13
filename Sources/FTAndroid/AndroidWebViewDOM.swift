@@ -1,95 +1,138 @@
-// Android の WebView の中身を **DOM から** 読む(2026-08-13)。
+// Android の**ブラウザ本体**のページ内容を DOM(CDP)から読む(2026-08-13)。
 //
-// **なぜ要るか**: `android.webkit.WebView` は `<table>` のセルを a11y ツリーへ**1つも公開しない**
-// (2026-08-13 に 4 SUT で実測。Compose interop / Flutter / RN / 素の View のどれでも同じなので
-// ホスト側の作りではなく WebView の性質)。同じページを iOS の WKWebView は公開するため、
-// **同じ HTML なのに OS でセレクタが書き分けになる**。
+// **アプリ内 WebView には使わない**(方針転換・同日中)。当初の根拠「WebView は `<table>` の
+// セルを a11y へ出さない」は誤診で、実際は `SnapshotBuilder.mappedType` の葉テキスト救済が
+// `contentDesc` しか見ていなかったための取りこぼしだった(版 61 で修正済み)。自作アプリの
+// WebView は a11y のまま読む。**ブラウザだけ**が対象 —— あちらは本当にページを部分的にしか
+// a11y へ出さない(監査22/23/25 の実 web ページ。Android Chrome が本文を1要素も公開しない形が
+// 2サイトで再現)。
 //
-// **JS は iOS と共有する**(`FTCore.WebViewDOM.javaScript`)。あちらは in-app エンジンから
-// WKWebView の a11y が見えない事情で先に入った経路で、返す形(role/label/矩形)も共通なので、
-// **同じ JS を Android で走らせれば木が一致する** = セレクタが同じ書き方で通る。
+// **JS も木への差し込みロジックも iOS と共有する**(`FTCore.WebViewDOM`)。あちらは in-app
+// エンジンから WKWebView の a11y が見えない事情で先に入った経路で、返す形(role/label/矩形)も
+// 共通なので、**同じ JS を Android で走らせれば木が一致する** = セレクタが同じ書き方で通る。
+// 座標写し(`elements`)・WebView 選択(`webViewElement`/`webViewFrame`)・差し込み
+// (`droppingWebViewSubtree`)は `FTCore.WebViewDOM` の関数を直接呼ぶ(ここに2つ目を持たない)。
+// **density だけがこのファイルの担当**(a11y の bounds が物理 px なので、呼ぶ側で
+// `displayDensity()` を渡す。iOS は `density: 1` を渡すだけで同じ関数を使う)。
 //
 // **経路は CDP**(Chrome DevTools Protocol)。Android のブリッジはアクセシビリティサービスで
 // 別プロセスなので、他アプリの WebView に `evaluateJavascript` を撃てない。ホスト側から
-// `adb forward localabstract:webview_devtools_remote_<pid>` で入る。
+// `adb forward localabstract:<socket>` で入る。
 //
-// **成立条件はアプリが debuggable であること**(実測: どの SUT も
-// `setWebContentsDebuggingEnabled` を呼んでいないのにソケットが在った = WebView が
-// debuggable アプリに対して自動で公開する)。**デバイスが実機かどうかは無関係**。
-// リリースビルドの他社アプリでは使えないので、**使えないときは黙って従来どおり**に落ちる
-// (取れないことは `webViewGapNote` が別途告げる)。
+// **ソケット名はアプリ内 WebView と規則が違う**: `webview_devtools_remote_<pid>` は pid が
+// 付くが、**Chrome のソケットは `@chrome_devtools_remote` で pid が付かない**(実測)。
+// pid 一致規則では届かないので、ブラウザは**パッケージ名 → 固定ソケット名**の別規則を使う。
 //
-// **既定はオフ**。`FT_ANDROID_WEBVIEW_DOM=1` で有効(spike。実測が揃うまで既定にしない)。
+// **能動タブの選択が要る**: Chrome は複数タブを開くので `/json` は `type=page` を複数返す
+// (実測で7件)。**順序では決まらない**(`/json` は MRU 順ではないと実測。詳細は `rankedTabs`)。
+// 確からしい順に並べ、**上から評価を試して応答したものを能動タブとみなす** ——
+// 背面タブは Chrome が JS を止めるので返らない。
+//
+// **木への差し込みは重複させない**: Chrome は簡単なページなら a11y へ本文を普通に公開する
+// (example.com で `WebView` ノード + 本文の StaticText/Link が実際に出た)。素朴に DOM を
+// append すると同じ本文が二重に並ぶ。**ブラウザでは DOM を web コンテンツ領域の唯一の正とする**
+// —— `WebView` ノードの内側にある a11y 要素を落としてから DOM のノードを入れる
+// (`droppingWebViewSubtree`)。ブラウザ chrome(`#url_bar` `#toolbar` 等 = WebView の外)は
+// a11y のまま残す。条件付きで切り替えない(ページごとに a11y の充実度が変わるので、
+// 「このページでは通るが別のページでは落ちる」を防ぐ)。
+//
+// **既定はオン**(対象をブラウザに絞ってあるので自作アプリへの影響が無い)。
+// 殺しスイッチは `FT_BROWSER_DOM=off`(iOS in-app 側の `FT_WEBVIEW_DOM=off` と同じ語法)。
+//
+// **成立条件は未確認**。アプリ内 WebView は debuggable マニフェストが要ったが、Chrome の
+// ソケット公開条件はまだ実測していない(実測できた端末では常に見えていた)。取れないときは
+// 例外にせず黙って従来の a11y のまま(下の `read` の宣言参照)。
 
+import CryptoKit
 import Foundation
 import FTCore
 
 public enum AndroidWebViewDOM {
 
-    /// `/proc/net/unix` の1行から `webview_devtools_remote_<pid>` を拾う(純粋)。
-    /// **pid で絞る**: 端末には他アプリの WebView ソケットも並ぶので、対象アプリの pid と
-    /// 一致するものだけを使わないと**別アプリの DOM を読む**(今日の監査で何度も踏んだ型)
-    public static func socketName(procNetUnix: String, pid: Int) -> String? {
-        let wanted = "webview_devtools_remote_\(pid)"
-        for line in procNetUnix.split(separator: "\n") {
-            guard let at = line.range(of: "@") else { continue }
-            let name = line[at.upperBound...].trimmingCharacters(in: .whitespaces)
-            if name == wanted { return name }
-        }
-        return nil
+    /// パッケージ名 → CDP ソケット名(pid 不要)。**`com.android.chrome` だけ実測**。
+    /// 他チャンネル(beta/dev/canary)はソケット名が同じという確証が無いので**推測で足さない**
+    /// (誤った名前を書くより、対象外として a11y へ黙って落ちるほうが安全)。
+    private static let browserSockets: [String: String] = [
+        "com.android.chrome": "chrome_devtools_remote",
+    ]
+
+    /// 対象パッケージのブラウザ用ソケット名。既知集合に無ければ nil(= a11y のまま)
+    public static func browserSocketName(packageID: String) -> String? {
+        browserSockets[packageID]
     }
 
-    /// CDP の `/json` から評価対象のページを選ぶ(純粋)。
-    /// **about:blank も候補にする** —— `loadDataWithBaseURL` で読ませた画面は url が about:blank
-    /// になる(実測)。除くのは devtools 自身と、ページ以外の型だけ
-    public static func pickPage(_ targets: [[String: Any]]) -> String? {
-        for t in targets {
-            guard (t["type"] as? String) == "page",
-                  let ws = t["webSocketDebuggerUrl"] as? String, !ws.isEmpty else { continue }
-            if (t["url"] as? String)?.hasPrefix("devtools://") == true { continue }
-            return ws
+    /// スキームと `www.` だけを落とした比較用の形。Chrome のアドレス欄はこの2つを隠して出す
+    /// (実測: タブ URL `https://www.jma.go.jp/bosai/forecast/` に対し欄の値は
+    /// `jma.go.jp/bosai/forecast/`)。**フラグメントはここでは落とさない** ——
+    /// 同じページの2タブを分ける唯一の材料がフラグメントのことがあり、
+    /// ここで落とすと**区別したい当の差が消えて背面タブと同点になる**(設計中にテストが捕まえた)
+    static func normalizedURL(_ url: String) -> String {
+        var s = url
+        for prefix in ["https://", "http://"] where s.hasPrefix(prefix) {
+            s = String(s.dropFirst(prefix.count))
         }
-        return nil
+        if s.hasPrefix("www.") { s = String(s.dropFirst(4)) }
+        return s
     }
 
-    /// DOM のノードを**画面座標の要素**へ写す(純粋)。
+    /// フラグメントまで落とした形(1段ゆるい一致に使う)
+    static func withoutFragment(_ url: String) -> String {
+        guard let hash = url.firstIndex(of: "#") else { return url }
+        return String(url[..<hash])
+    }
+
+    /// CDP の `/json` を**確からしい順**に並べる(純粋)。**1つに決め打ちしない** ——
+    /// 呼び出し側が上から順に評価を試し、**応答したものを能動タブとみなす**
+    /// (`read` の宣言参照)。
     ///
-    /// JS は CSS px・visual viewport 相対で返す。Android は
-    /// **CSS px × density = 物理 px** で、そこへ WebView ノードの画面上の原点を足す。
-    /// (iOS 側は `UIView.convert` が担っていた部分。Android は a11y の bounds が既に物理 px)
-    public static func elements(payload: WebViewDOM.Payload, webViewFrame: FTRect,
-                                density: Double, startingRef: Int) -> [ElementInfo] {
-        guard let nodes = payload.nodes, let viewport = payload.viewport else { return [] }
-        var out: [ElementInfo] = []
-        var ref = startingRef
-        for node in nodes {
-            guard let type = WebViewDOM.typeName(role: node.role) else { continue }
-            let local = WebViewDOM.localRect(node, viewport: viewport)
-            let frame = FTRect(x: webViewFrame.x + local.x * density,
-                               y: webViewFrame.y + local.y * density,
-                               width: local.width * density,
-                               height: local.height * density)
-            // 高さ・幅が 0 の要素は a11y 側の規約に合わせて落とす(SnapshotBuilder と同じ扱い)
-            guard frame.width >= 1, frame.height >= 1 else { continue }
-            // **web: true を立てる**(iOS の in-app 経路と同じ印)。読み手が
-            // 「#id が効かない画面」だと判断する材料で、ここを落とすと OS で扱いが割れる
-            out.append(ElementInfo(ref: ref, type: type, identifier: nil,
-                                   label: node.label, value: node.value,
-                                   placeholder: node.placeholder,
-                                   enabled: node.enabled ?? true, frame: frame, depth: 1,
-                                   checked: node.checked, web: true))
-            ref += 1
+    /// **`/json` は MRU 順ではない**(2026-08-13 に実測して撤回した。7タブの Chrome で
+    /// 先頭は前面ではない別サイトだった)。順序を信じて1つ選ぶと**背面タブを掴む**ことがあり、
+    /// **Chrome は背面タブの JS を止めるので評価が返らない**(実測で 183 秒待っても返らなかった)。
+    ///
+    /// 並べる根拠は強い順に ①アドレス欄の値とタブ URL が一致(スキーム/`www.` だけ正規化)→
+    /// ②フラグメントまで落とせば一致 → ③タブ URL がアドレス欄の値を含む → ④タブ title が
+    /// a11y の `WebView` ラベルと一致 → ⑤残り。**題名だけでは足りない**(同じページを2タブ開くと
+    /// 題名が同じになり、実際にそれで背面タブを選んで固まった)。
+    /// about:blank も候補にする。除くのは devtools 自身のページと、ページ以外の型・ソケット欠落だけ
+    public static func rankedTabs(webViewLabel: String?, urlBarValue: String?,
+                                  targets: [[String: Any]]) -> [String] {
+        struct Page { let index: Int; let url: String; let title: String; let socket: String }
+        let pages: [Page] = targets.enumerated().compactMap { index, t in
+            guard (t["type"] as? String) == "page",
+                  let socket = t["webSocketDebuggerUrl"] as? String, !socket.isEmpty else { return nil }
+            let url = (t["url"] as? String) ?? ""
+            guard !url.hasPrefix("devtools://") else { return nil }
+            return Page(index: index, url: url, title: (t["title"] as? String) ?? "", socket: socket)
         }
-        return out
+        let bar = (urlBarValue ?? "").trimmingCharacters(in: .whitespaces)
+        let label = (webViewLabel ?? "").trimmingCharacters(in: .whitespaces)
+        func rank(_ page: Page) -> Int {
+            let url = normalizedURL(page.url)
+            let barURL = normalizedURL(bar)
+            if !bar.isEmpty, url == barURL { return 0 }
+            if !bar.isEmpty, withoutFragment(url) == withoutFragment(barURL) { return 1 }
+            if !bar.isEmpty, url.contains(barURL) { return 2 }
+            if !label.isEmpty, page.title == label { return 3 }
+            return 4
+        }
+        // 同順位は元の並びを保つ(`sorted` は安定でないので index を第2キーにする)
+        return pages.map { (rank($0), $0.index, $0.socket) }
+            .sorted { ($0.0, $0.1) < ($1.0, $1.1) }
+            .map(\.2)
     }
 
-    /// 木の中の WebView ノード(DOM を差し込む先)。**最大のものを選ぶ**
-    /// —— 入れ子の WebView はブリッジ側で既に落としているが、複数並ぶ画面では
-    /// 面積の大きいほうが本体である公算が高い
-    public static func webViewFrame(in elements: [ElementInfo]) -> FTRect? {
-        elements.filter { $0.type.lowercased() == "webview" }
-            .max { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }?
-            .frame
+    /// a11y の `#url_bar` の value(能動タブの手掛かり②。宣言コメント参照)
+    public static func urlBarValue(in elements: [ElementInfo]) -> String? {
+        elements.first(where: { $0.identifier == "url_bar" })?.value
+    }
+
+    /// serial ごとに host 側の forward port を固定(pid が使えないブラウザ経路でも、並列 run で
+    /// 別デバイスの forward と衝突しないようにする)。SHA256 で決定的に散らす
+    /// (`String.hashValue` はプロセスごとに乱数化され再現しない = 同じ入力でも run ごとに port が変わる)
+    static func stablePort(seed: String) -> Int {
+        let digest = SHA256.hash(data: Data(seed.utf8))
+        let value = digest.prefix(4).reduce(0) { ($0 << 8) | Int($1) }
+        return 10000 + (value % 20000)
     }
 }
 
@@ -97,26 +140,32 @@ public enum AndroidWebViewDOM {
 
 public extension AndroidWebViewDOM {
 
-    /// この spike が有効か。**既定はオフ**(実測が揃うまで既定の経路を変えない)
-    static var isEnabled: Bool {
-        ProcessInfo.processInfo.environment["FT_ANDROID_WEBVIEW_DOM"] == "1"
+    /// **既定はオン**(対象をブラウザに絞ってあるので自作アプリへは影響しない)。
+    /// 殺しスイッチ `FT_BROWSER_DOM=off`(iOS in-app 側 `FT_WEBVIEW_DOM=off` と同じ語法)
+    static var isBrowserDOMEnabled: Bool {
+        (ProcessInfo.processInfo.environment["FT_BROWSER_DOM"] ?? "").lowercased() != "off"
     }
 
-    /// CDP で DOM を1往復読む。**失敗は握って nil**(使えない相手 = リリースビルドの他社アプリが
-    /// 普通にあるので、取れないことを例外にしない。取れないことは webViewGapNote が別途告げる)
-    static func read(serial: String, pid: Int, adb: (_ args: [String]) throws -> String)
-        async -> WebViewDOM.Payload? {
-        guard let proc = try? adb(["shell", "cat", "/proc/net/unix"]),
-              let socket = socketName(procNetUnix: proc, pid: pid) else { return nil }
-        // **ポートは serial ごとに固定**(並列 run で衝突しないよう pid から決める)。
-        // 既に張ってあれば adb 側が同じものを返すだけなので毎回張ってよい
-        let port = 10000 + (pid % 20000)
+    /// CDP で能動タブの DOM を1往復読む。**失敗は握って nil**(未対応ブラウザ・非公開ソケット・
+    /// タブ未選択はどれも普通にあるので、取れないことを例外にしない。呼び出し側はこの nil を
+    /// 「従来どおり a11y のまま」に読み替える)
+    static func read(serial: String, packageID: String, webViewLabel: String?, urlBarValue: String?,
+                     adb: (_ args: [String]) throws -> String) async -> WebViewDOM.Payload? {
+        guard let socket = browserSocketName(packageID: packageID) else { return nil }
+        let port = stablePort(seed: serial)
         guard (try? adb(["forward", "tcp:\(port)", "localabstract:\(socket)"])) != nil else { return nil }
         defer { _ = try? adb(["forward", "--remove", "tcp:\(port)"]) }
-        guard let list = await getJSON(port: port), let ws = pickPage(list) else { return nil }
-        guard let json = await evaluate(webSocket: ws, javaScript: WebViewDOM.javaScript) else { return nil }
-        guard let payload = try? WebViewDOM.decode(json), payload.error == nil else { return nil }
-        return payload
+        guard let list = await getJSON(port: port) else { return nil }
+        // **応答したタブを能動タブとみなす**(順序の推測では決めない。rankedTabs の宣言参照)。
+        // 背面タブは JS が止まっていて返らないので、締切で切って次の候補へ移る。
+        // **試す数を絞る**: 上限が無いと、タブを大量に開いた端末で snapshot が候補数×締切だけ延びる
+        for socket in rankedTabs(webViewLabel: webViewLabel, urlBarValue: urlBarValue,
+                                 targets: list).prefix(maxTabAttempts) {
+            guard let json = await evaluate(webSocket: socket, javaScript: WebViewDOM.javaScript),
+                  let payload = try? WebViewDOM.decode(json), payload.error == nil else { continue }
+            return payload
+        }
+        return nil
     }
 
     private static func getJSON(port: Int) async -> [[String: Any]]? {
@@ -127,6 +176,14 @@ public extension AndroidWebViewDOM {
         return (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]]
     }
 
+    /// DOM 評価の締切(秒)。実測は前面タブで 33ms なので十分に広い。**背面タブは返らない**ので、
+    /// ここは「能動タブを外した」と見切る時間でもある(evaluate と read の宣言参照)
+    static let evaluateTimeout: Double = 3
+
+    /// 試すタブ数の上限。**外した候補1つにつき締切ぶん待つ**ので、上限が無いと
+    /// タブを大量に開いた端末で snapshot が候補数 × 3秒だけ延びる
+    static let maxTabAttempts = 3
+
     /// `Runtime.evaluate` を1回だけ撃つ。**WebSocket は Foundation 標準**を使う
     /// (依存を足さない。CDP に要るのは送信1件・受信1件だけ)
     private static func evaluate(webSocket: String, javaScript: String) async -> String? {
@@ -134,6 +191,15 @@ public extension AndroidWebViewDOM {
         let task = URLSession.shared.webSocketTask(with: url)
         task.resume()
         defer { task.cancel(with: .goingAway, reason: nil) }
+        // **必ず締切を付ける**(2026-08-13 の実害)。`URLSessionWebSocketTask.receive()` には
+        // タイムアウトが無く、**Chrome は背面タブの JS を止める**ので評価の応答が永久に来ないことがある。
+        // snapshot は最頻の操作なので、ここで止まると run ごと固まる(実測で 183 秒待っても返らなかった)。
+        // ソケットを閉じると受信側が throw で起きるため、番犬は cancel するだけでよい
+        let watchdog = Task {
+            try? await Task.sleep(nanoseconds: UInt64(evaluateTimeout * 1_000_000_000))
+            task.cancel(with: .goingAway, reason: nil)
+        }
+        defer { watchdog.cancel() }
         let request: [String: Any] = [
             "id": 1, "method": "Runtime.evaluate",
             "params": ["expression": javaScript, "returnByValue": true, "awaitPromise": false],

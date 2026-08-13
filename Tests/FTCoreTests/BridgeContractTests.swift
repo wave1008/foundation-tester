@@ -113,8 +113,8 @@ final class BridgeContractTests: XCTestCase {
             "InAppBridge/Sources/InAppWebViewDOM.swift": "91add4d32dfd9db8ece05ea026b64de2c90227c1ceec1acc5005da0381796afb",
             "InAppBridge/Sources/boot.m": "b23fc93fbc99ce2579c9fd8ae75a6f9bbfd0ec6122bec60eb6cd00775dd635ef",
             "InAppBridge/build.sh": "73f53b3434d29114cf1bd0fd68264d373dc2730585d9f0c001d750dfd2844794",
-            "Sources/FTCore/BridgeDTO.swift": "168bb73aa3cf21ee1bbf754b67531e233c5aed4ee603ae53c2ac90be2a159664",
-            "Sources/FTCore/WebViewDOMSnapshot.swift": "4c10c6a84b96c6d1760c1b5a2e9b7005cca221d77dc2d4acda7109817637d41b",
+            "Sources/FTCore/BridgeDTO.swift": "91f1b1f51353638b84b75335e830125057c0378081f6b3c77ad0e3e87c6ee6c9",
+            "Sources/FTCore/WebViewDOMSnapshot.swift": "98c01f646bef4a5789faeaa5e787ba75314d0a16b16e21021d1c12bb7bbc3f72",
         ],
         .xcuitest: [
             "Runner/FTesterRunnerUITests/BridgeHTTPServer.swift": "a915206e5b7a4a6a24c2e50ec64bcbe11f11566edae36128a731db29735044d9",
@@ -125,7 +125,7 @@ final class BridgeContractTests: XCTestCase {
             "Runner/FTesterRunnerUITests/FastInput.swift": "18b54340c404eac53736675763fad8e291b08e2f1f1ba96d696172698aa83bc1",
             "Runner/FTesterRunnerUITests/ObjCExceptionCatcher.h": "5a98cdbeefb031137a985b2f4430a5e12fec447a492599f8f4da1bd2c7101edc",
             "Runner/FTesterRunnerUITests/ObjCExceptionCatcher.m": "8b41a8a81bc8199bca13a364717614684f8003999c7675d9a63242c8e74c26be",
-            "Sources/FTCore/BridgeDTO.swift": "168bb73aa3cf21ee1bbf754b67531e233c5aed4ee603ae53c2ac90be2a159664",
+            "Sources/FTCore/BridgeDTO.swift": "91f1b1f51353638b84b75335e830125057c0378081f6b3c77ad0e3e87c6ee6c9",
             "Sources/FTCore/SnapshotDedupe.swift": "01912610b9bbf66f1fcf6cecc8c3d51d3fedc836c24d1a9ba8689a2538227b17",
             "Sources/FTCore/TypeReadback.swift": "8238adeb5146ee2441478a94bf6e2aabb85e6c88c38538ed8df74b2e025bf8ca",
         ],
@@ -138,7 +138,7 @@ final class BridgeContractTests: XCTestCase {
             "AndroidRunner/src/com/example/ftbridge/DisplayHeartbeat.java": "0e0bf7a46a719878f6c1bef3b3f5696355a6f7237f9c2d1e5eeeb21a9b62c9a7",
             "AndroidRunner/src/com/example/ftbridge/InputInjector.java": "fee61e11172e4c3528bc67ad35361a17c81e58624f0a28d9d9f8c2a9defe887f",
             "AndroidRunner/src/com/example/ftbridge/QuietWaiter.java": "bed0d4c3bbafa9a4038aabfbf1e29ebaeb0198eaf4bee926cbd842b7907c3c29",
-            "AndroidRunner/src/com/example/ftbridge/SnapshotBuilder.java": "a7601ff94b232551750f45964f06b6db9d889adc2b5958af78dc34e6dd29adfe",
+            "AndroidRunner/src/com/example/ftbridge/SnapshotBuilder.java": "22927f9d045a73924e44a640d837c4656c48f7d830068c1f7a02a74ff8847ed5",
         ],
     ]
 
