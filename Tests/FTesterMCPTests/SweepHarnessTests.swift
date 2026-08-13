@@ -147,19 +147,31 @@ final class SweepHarnessTests: XCTestCase {
         //   3個以上の群にだけ付けるので、原点は同じでも大きさが違う **23 件は無印**で残る。
         //   実機で無印の行を撃つと実際に別画面へ飛ぶ(カルーセルの販促カード)ことを確認済み。
         //   **広げる案は次の増設の回へ**(原点一致は容器と子で普通に起きるので、誤検知の実測が要る)
-        // - **overlay 52 → 23**(2026-08-14 に修正・下記): 採取直後は無印の行の大半もこちらで
+        // - **stacked 42 → 60**(2026-08-14・原点クランプへ拡張): `stackedRefs` が矩形の完全一致
+        //   しか見ていなかったため、行の高さがまちまちな実アプリのフィードでは 65 件のクランプに
+        //   42 件しか印が付かなかった。同じ原点に同 depth の兄弟が3つ以上 + 原点を貸す容器、
+        //   という条件を足して +18(`OcclusionGeometry.originClampedRefs`)。
+        //   **コーパス全数で誤検知0**を測ってから入れた —— 他の39枚は1件も増えていない
+        // - **overlay 52 → 23 → 7**(2026-08-14 に修正・下記): 採取直後は無印の行の大半もこちらで
         //   警告されていたが、名指しする相手が**同じくクランプされた別の幽霊**だった
         //   (例: `staticText "髪型…" ← staticText "広告 …"`。塗り順の最前面を採る規則が、
         //   幽霊だらけの座標では機能しない形)。**修正**: `OcclusionGeometry.occluder` が
         //   `isOutsideContainer`(容器の**外**)しか見ておらず、容器の**原点にクランプ**された
         //   残骸(`hasClampedCoordinates` と同じ現象)を遮蔽候補から除けていなかった。
         //   同じ判定を足すと全数で **overlay 52→23・wrong_culprit 30→0**(コーパス全数の
-        //   プローブで確認)。DSL の `occlusionAdvisory` も同じ関数を経由するので同時に直る
-        // - **warnedTappable 14→13**: overlay 単独で警告されていた1件が、他の advisory にも
+        //   プローブで確認)。DSL の `occlusionAdvisory` も同じ関数を経由するので同時に直る。
+        //   **原点クランプへ拡張した際に 23→7 へさらに落ちた** —— 印の規則だけ広げて遮蔽候補の
+        //   除外を広げないと「印は付くのに犯人としては名指しされ続ける」食い違いが残るので、
+        //   `occluder` にも同じ判定(isOriginClamped)を通した
+        // - **残る overlay 7 は別種の誤検知**(この修正の対象外・ラウンド2の題材): 上部の
+        //   チャンネルタブ(y=59..100)を `#crui_channelView_tableView` (0,0 393x769) が
+        //   覆っていると報告する。表はタブの**下**に敷かれているが、iOS は z を出さないので
+        //   木の順序(表のほうが後)で手前と判定される
+        // - **warnedTappable 14→13→12**: overlay 単独で警告されていた分が、他の advisory にも
         //   当たらず無警告に戻った(消えた警告は「誤って名指しされていた警告」なので後退ではない)
         // - misses 1 / nested 6: タブ帯とセルの中の帯 = 受理済みの型
-        "ios-news_feed": Counts(ghost: 0, overlay: 23, stacked: 42, misses: 1, disabled: 0,
-                                offscreen: 0, warnedTappable: 13, keyboard: 0, sliver: 0,
+        "ios-news_feed": Counts(ghost: 0, overlay: 7, stacked: 60, misses: 1, disabled: 0,
+                                offscreen: 0, warnedTappable: 12, keyboard: 0, sliver: 0,
                                 nested: 6, scrolledOut: 0),
         // 2026-08-12 採取。**メディアグリッド**(写真6枚のタイル)。misses 1 は
         // `#PXGGridLayout-Group`(非操作の器)の中心が中のタイルに乗る形 = 受理済みの型

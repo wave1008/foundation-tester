@@ -613,7 +613,7 @@ final class MCPRefGuardTests: XCTestCase {
         XCTAssertFalse(rendered.contains("\"行 01\" (36,270 330x56) ⚠️"),
                        "本当にそこに描かれている行は巻き込まないこと")
         let text = Self.text(try await server.call(tool: "ft_tap", args: ["ref": 6]))
-        XCTAssertTrue(text.contains("shares its exact frame"), text)
+        XCTAssertTrue(text.contains("stacked on the same spot"), text)
     }
 
     /// **入れ子の一本鎖は積み重なりではない**。Android のダイアログは

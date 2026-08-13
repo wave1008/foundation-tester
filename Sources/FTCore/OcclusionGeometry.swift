@@ -42,7 +42,11 @@ public enum OcclusionGeometry {
             // 犯人としてこのクランプ幽霊を名指ししていた(実体は上部カルーセル)。
             // `stackedRefs` の「中身を持つものが3個以上」という絞り込みは警告の表示側の話で、
             // ここは「この座標に本当に描かれているか」の判定なので条件を合わせない
+            // **判定は2つとも通す**: 矩形の完全一致(hasClampedCoordinates)と、
+            // 原点だけ同じで大きさが違う形(isOriginClamped)。片方だけだと、印は付くのに
+            // 犯人としては名指しされ続ける、という食い違いが残る
             if StepExecutor.hasClampedCoordinates(other, in: elements) { return false }
+            if isOriginClamped(other, in: elements) { return false }
             // **矩形がぴったり同じ相手は遮蔽と言わない**。同寸同位置は「上に載った物」ではなく
             // ラッパーか、同じ枠を奪い合う入れ替わり(実測・Apple マップの検索結果:
             // `#ResultsViewTable` と `#SearchAutocompleteView` はどちらも (0,62 402x812) で、
@@ -155,7 +159,59 @@ public enum OcclusionGeometry {
             guard withContent.count >= stackedFrameMinimum else { continue }
             flagged.formUnion(group.map(\.ref))
         }
-        return flagged
+        return flagged.union(originClampedRefs(elements))
+    }
+
+    /// **原点だけが同じで大きさが違うクランプ**の ref。上の `stackedRefs` は矩形の*完全一致*しか
+    /// 見ないので、行の高さがまちまちなリスト(実アプリのフィードはたいていそう)では
+    /// 群が3件に届かず**無印のまま出る**。
+    ///
+    /// 実測(2026-08-14・iOS 実機の SmartNews。フィクスチャ `ios-news_feed`): 画面外の行 65 件が
+    /// 全部 `(0,103)` へ潰れているのに、完全一致で印が付くのは 42 件だけだった。残りを撃つと
+    /// 実際に上部カルーセルの販促カードへ飛ぶ(実機で確認)。
+    ///
+    /// **条件は「機構そのもの」**(`hasClampedCoordinates` と同じ考え方): 同じ原点に**同 depth の
+    /// 兄弟が3つ以上**居て、かつ**その原点を貸している自分より大きい祖先候補**が居ること。
+    /// 原点の一致だけなら容器と子で普通に起きるので、3件の同 depth 兄弟という条件が効く。
+    ///
+    /// **コーパス全数で誤検知0**(2026-08-14 に測ってから入れた): 他の39枚は1件も増えず、
+    /// witness の `ios-news_feed` だけが +18(全部 (0,103) のクランプ広告コピー)。
+    ///
+    /// **これは警告であって拒否ではない**(新しい検知は警告から)。DSL の候補除外
+    /// (`StepExecutor.hasClampedCoordinates`)は**広げていない** —— あちらは解決そのものを
+    /// 拒む強い経路なので、同じ根拠で格上げする前に別途 witness が要る
+    static func originClampedRefs(_ elements: [ElementInfo]) -> Set<Int> {
+        Set(elements.filter { isOriginClamped($0, in: elements) }.map(\.ref))
+    }
+
+    /// 1要素ぶんの判定(`originClampedRefs` と**同じ規則**。遮蔽候補の除外はこちらを使う ——
+    /// 集合を作り直すと `occluder` の呼び出しごとに全数を走査することになる)
+    public static func isOriginClamped(_ element: ElementInfo,
+                                       in elements: [ElementInfo]) -> Bool {
+        guard lendsItsOrigin(to: element, in: elements) else { return false }
+        var siblings = 0
+        for other in elements
+        where other.depth == element.depth
+            && abs(other.frame.x - element.frame.x) <= 0.5
+            && abs(other.frame.y - element.frame.y) <= 0.5 {
+            siblings += 1
+            if siblings >= stackedFrameMinimum { return true }
+        }
+        return false
+    }
+
+    /// 自分より浅く、原点が一致し、自分より大きい要素(= クランプ先の容器)が居るか
+    private static func lendsItsOrigin(to element: ElementInfo,
+                                       in elements: [ElementInfo]) -> Bool {
+        let frame = element.frame
+        return elements.contains { container in
+            container.depth < element.depth
+                && abs(container.frame.x - frame.x) <= 0.5
+                && abs(container.frame.y - frame.y) <= 0.5
+                && container.frame.width >= frame.width && container.frame.height >= frame.height
+                && (container.frame.width > frame.width + 0.5
+                    || container.frame.height > frame.height + 0.5)
+        }
     }
 
     /// 積み重なりとみなす下限。**3**にしてある: 2個は「容器＋その子」で普通に起きる形で、

@@ -176,6 +176,39 @@ final class TapTargetAdvisoryTests: XCTestCase {
         XCTAssertTrue(note?.contains("#ad_row") == true, note ?? "-")
     }
 
+    /// **原点だけが同じで大きさが違うクランプにも印が付く**(2026-08-14。
+    /// `OcclusionGeometry.originClampedRefs`)。実アプリのフィードは行の高さがまちまちなので、
+    /// 矩形の完全一致だけを見ていた頃はクランプ 65 件のうち 42 件にしか印が付かなかった
+    func testOriginOnlyClampIsFlaggedEvenWhenSizesDiffer() {
+        let container = element(1, "list", "table", 0, 100, 400, 700, depth: 1)
+        // 同じ原点 (0,100)・同 depth・大きさはバラバラ = 実アプリのフィードのクランプ
+        let a = element(10, "", "staticText", 0, 100, 150, 20, depth: 2)
+        let b = element(11, "", "staticText", 0, 100, 200, 30, depth: 2)
+        let c = element(12, "", "staticText", 0, 100, 120, 40, depth: 2)
+        let elements = [container, a, b, c]
+        for ghost in [a, b, c] {
+            let note = TapTargetGeometry.occlusionAdvisory(for: ghost, in: elements, screen: screen)
+            XCTAssertTrue(note?.contains("clamped leftovers") == true,
+                          "原点クランプに印が付かない: \(note ?? "-")")
+        }
+        // **断定しない**: 大きさが違うので「完全一致」と言ってはいけない
+        let note = TapTargetGeometry.occlusionAdvisory(for: a, in: elements, screen: screen)
+        XCTAssertFalse(note?.contains("exact frame") == true, note ?? "-")
+    }
+
+    /// 上の陰性対照: **同じ原点でも兄弟が2件だけならクランプ扱いしない**(容器と子が原点を
+    /// 共有するのは普通の版組なので、ここを緩めると正常な木が丸ごと警告になる)。
+    /// 2件は「片方が本当にもう片方を覆っている」形なので、overlay の警告になるのが正しい
+    func testOriginClampNeedsThreeSiblings() {
+        let container = element(1, "list", "table", 0, 100, 400, 700, depth: 1)
+        let a = element(10, "", "staticText", 0, 100, 150, 20, depth: 2)
+        let b = element(11, "", "staticText", 0, 100, 200, 30, depth: 2)
+        XCTAssertFalse(OcclusionGeometry.isOriginClamped(a, in: [container, a, b]))
+        let note = TapTargetGeometry.occlusionAdvisory(for: a, in: [container, a, b], screen: screen)
+        XCTAssertFalse(note?.contains("clamped leftovers") == true,
+                       "2件でクランプ扱いした(容器+子の普通の版組を巻き込む): \(note ?? "-")")
+    }
+
     /// 対話的な親の子孫が中心を横取りする形(`nestedActionCoveringCentre` の doc 参照)
     func testNestedActionIsCalledOutByChain() {
         let parent = ElementInfo(ref: 1, type: "cell", identifier: "row", label: nil, value: nil,

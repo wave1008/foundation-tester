@@ -229,7 +229,10 @@ public enum TapTargetGeometry {
                 + " may have triggered \(describe(nested)) instead"
         }
         if OcclusionGeometry.stackedRefs(elements).contains(element.ref) {
-            return "the target shares its exact frame with other elements, so at most one of"
+            // **「完全一致」と断定しない**(2026-08-14): 判定は矩形の完全一致に加えて
+            // 「原点だけが同じで大きさが違う」形も見るようになったので、断定すると
+            // 広げた分について嘘になる(実アプリのフィードは行の高さがまちまち)
+            return "the target is stacked on the same spot as other elements, so at most one of"
                 + " them is really drawn there — the rest are clamped leftovers"
         }
         if isClippedSliver(element, screen: screen) {

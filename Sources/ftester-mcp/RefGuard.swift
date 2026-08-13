@@ -289,7 +289,10 @@ enum RefGuard {
                 + " actually want)"
         }
         if stackedRefs(elements).contains(found.ref) {
-            return " (warning: \(describe(found)) shares its exact frame with other elements,"
+            // **「完全一致」と断定しない**(2026-08-14): 判定は原点だけが同じで大きさが違う
+            // クランプも見るようになった(OcclusionGeometry.originClampedRefs)。DSL 側の
+            // 同じ文面(TapTargetGeometry.occlusionAdvisory)と揃える
+            return " (warning: \(describe(found)) is stacked on the same spot as other elements,"
                 + " so at most one of them is really drawn there — the rest are clamped"
                 + " leftovers. Bring it into view with ft_scroll_to and re-snapshot)"
         }

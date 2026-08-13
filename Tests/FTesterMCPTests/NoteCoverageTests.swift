@@ -123,7 +123,7 @@ final class NoteCoverageTests: XCTestCase {
         // 陰性対照は and-browser_urlmenu(URL バーはあるが webView も無い画面。0.059)と
         // and-overflow(0.564 まで達するが URL バーが無いので黙る=browser 限定の理由)
         "missingPageContentNote": Coverage(fixtures: ["and-browser_jma_notree"], bytes: 303),
-        "ghostNote": Coverage(fixtures: ["and-browser_weather_weekly", "ios-browser_jma_hscroll", "ios-browser_startpage", "ios-news_feed", "ios-place_guides_scrolled"], bytes: 2122),
+        "ghostNote": Coverage(fixtures: ["and-browser_weather_weekly", "ios-browser_jma_hscroll", "ios-browser_startpage", "ios-news_feed", "ios-place_guides_scrolled"], bytes: 2027),
         // 横スクロール後の前後コピーが両方木に残る形の witness(ios-browser_jma_hscroll。
         // refs 72-81 vs 158-167 = 同じ行で x が定数200ptずれた10ペア)。他の全画面は最大3
         // (and-home)で、単純なキーだけの一致では別々の表の同名見出しに誤発火するため
