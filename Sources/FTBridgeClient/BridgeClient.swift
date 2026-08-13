@@ -450,13 +450,13 @@ public final class BridgeClient: AppDriver {
     /// このクライアントは Android の `currentPackage` に相当する host 側の帳簿を持たないので
     /// 新たに足さない —— Android では「帳簿は launch/openURL 経由でしか更新されず、MCP のように
     /// 既に前面にあるブラウザへ繋ぐと nil のまま」という実害が出ている(AndroidDriver 宣言コメント参照)。
-    /// **取れなければ黙って a11y のまま**(例外にしない。Safari 未起動・タブ無し・実機はどれも普通にある)。
+    /// **取れなければ黙って a11y のまま**(例外にしない。Safari 未起動・タブ無し・ペアリング未了はどれも普通にある)。
     private func injectSafariDOMIfApplicable(_ response: inout SnapshotResponse) async {
         guard SafariWebInspector.isEnabled,
               response.sessionBundleID == SafariWebInspector.safariBundleID,
               let webView = WebViewDOM.webViewElement(in: response.elements),
-              let udid = await simulatorUDIDForBrowserDOM(),
-              let payload = await SafariWebInspector.read(udid: udid)
+              let target = await browserDOMTarget(),
+              let payload = await readBrowserDOM(target)
         else { return }
         // nextRef は差し込み前の全要素から採る(落とす内側の要素も含めて衝突を避ける)
         let nextRef = (response.elements.map(\.ref).max() ?? 0) + 1
@@ -466,20 +466,54 @@ public final class BridgeClient: AppDriver {
         response.elements = WebViewDOM.droppingWebViewSubtree(response.elements, webView: webView) + added
     }
 
-    /// シミュレータの UDID(Safari inspector ソケットの解決に使う)。**クライアント1つにつき
-    /// 1回だけ解決してキャッシュする** —— `installTarget()` は status() 往復 + simctl を伴うため、
-    /// snapshot のたびに引くと重い(相手は接続の生存中に変わらない前提)。
-    /// 外側 Optional = 未解決、内側 Optional = 解決済みで対象外(物理端末・解決不能)。
-    /// **物理端末では常に nil**(Safari の inspector ソケットはシミュレータの
-    /// `/private/var/tmp` 配下にしか無く、物理端末は接続対象を持たない)
-    private var resolvedSimulatorUDIDForBrowserDOM: String??
+    private func readBrowserDOM(_ target: BrowserDOMTarget) async -> WebViewDOM.Payload? {
+        switch target {
+        case .simulator(let udid): return await SafariWebInspector.read(udid: udid)
+        case .physical(let udid): return await SafariWebInspector.read(physicalUDID: udid)
+        }
+    }
 
-    private func simulatorUDIDForBrowserDOM() async -> String? {
-        if let resolvedSimulatorUDIDForBrowserDOM { return resolvedSimulatorUDIDForBrowserDOM }
-        let udid: String?
-        if case .simulator(let value) = try? await installTarget() { udid = value } else { udid = nil }
-        resolvedSimulatorUDIDForBrowserDOM = udid
-        return udid
+    /// Safari inspector の接続先。シミュレータは simctl UDID、実機は **usbmuxd の識別子
+    /// (= ハードウェア UDID)**。**devicectl の identifier とは別物**(`ResolvedTarget.physical` /
+    /// `installTarget()` が持つのは devicectl 用の識別子で、usbmuxd の `ReadPairRecord`/
+    /// `ListDevices` には通らない。`IOSPhysicalDeviceInfo.udid` がハードウェア UDID)
+    enum BrowserDOMTarget: Equatable {
+        case simulator(udid: String)
+        case physical(udid: String)
+    }
+
+    /// **クライアント1つにつき1回だけ解決してキャッシュする** —— `status()`/カタログ列挙は
+    /// snapshot のたびに引くと重い(相手は接続の生存中に変わらない前提)。
+    /// 外側 Optional = 未解決、内側 Optional = 解決済みで対象外(解決不能)
+    private var resolvedBrowserDOMTarget: BrowserDOMTarget??
+
+    private func browserDOMTarget() async -> BrowserDOMTarget? {
+        if let resolvedBrowserDOMTarget { return resolvedBrowserDOMTarget }
+        let target: BrowserDOMTarget?
+        if let physicalUDID {
+            target = .physical(udid: physicalUDID)
+        } else if let current = try? await status() {
+            target = Self.resolveBrowserDOMTarget(named: current.device, simulators: try? SimulatorCatalog.devices(),
+                                                   physicalDevices: { try? IOSPhysicalDeviceCatalog.devices() })
+        } else {
+            target = nil
+        }
+        resolvedBrowserDOMTarget = target
+        return target
+    }
+
+    /// 純粋な名前引き(`resolveTarget(named:simulators:physicalDevices:)` と同じ形)。
+    /// **実機は `.udid`(ハードウェア UDID)を返す** —— `resolveTarget` が返す
+    /// `deviceCtlIdentifier` は devicectl 専用でここでは使えない
+    static func resolveBrowserDOMTarget(named device: String, simulators: [SimDeviceInfo]?,
+                                        physicalDevices: () -> [IOSPhysicalDeviceInfo]?) -> BrowserDOMTarget? {
+        if let simulators, let simulator = simulators.first(where: { $0.booted && !$0.physical && $0.name == device }) {
+            return .simulator(udid: simulator.udid)
+        }
+        if let phone = physicalDevices()?.first(where: { $0.name == device }) {
+            return .physical(udid: phone.udid)
+        }
+        return nil
     }
 
     public func tap(ref: Int) async throws {

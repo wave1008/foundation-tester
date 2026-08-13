@@ -3645,72 +3645,123 @@ CoreSimulator.framework を直接叩き、`SimulatorCatalog.devices()` が直叩
   **シナリオ1本=1プロセス**なので、最初に触った呼び出しが必ずこれを被る(性能の内訳と
   暖機を不採用にした理由は performance-tuning.md §3.12)
 
-## Android の WebView を DOM から読む(2026-08-13・spike)
+## ブラウザの中身は DOM から読む(2026-08-13)
 
-**`FT_ANDROID_WEBVIEW_DOM=1` で有効。既定はオフ。**
+**対象はブラウザ本体だけ。自作アプリの WebView は a11y のまま読む。**
+殺しスイッチは `FT_BROWSER_DOM=off`(iOS in-app 側の `FT_WEBVIEW_DOM=off` と同じ語法)。
 
-**当初の「なぜ」は誤診だった**(2026-08-13 に同日中に判明)。「`android.webkit.WebView` は
-`<table>` のセルを a11y へ1つも公開しない」と 4 SUT で実測して書いたが、**測っていたのは
-自分のブリッジの出力**で、実際はセルは a11y に在り `SnapshotBuilder` が捨てていた
-(ブリッジ版 61 で修正。詳細は E2EAppCMP/docs/ui-contract.md §WebView 画面の格子)。
-**アプリ内 WebView の表を読むだけならこの経路は要らない。**
+### なぜ(当初の根拠は誤診だったので、置き換わっている)
 
-**残る「なぜ」**: **ブラウザ本体は本当にページを部分的にしか a11y へ出さない**
-(監査22/23/25 の実 web ページで確認。Android Chrome が本文を1要素も公開せず
-`missingPageContentNote` が発火した形が2サイトで再現)。そこは a11y からは埋めようがないので、
-DOM を直接読む経路に意味がある。**ただし現状の実装は Chrome に届かない** ——
-ソケット名が `@chrome_devtools_remote` で **pid が付かず**、`socketName(procNetUnix:pid:)` の
-pid 一致規則では必ず外れる(第2の規則と能動タブの選択が要る)。
-**この経路を既定にする前に、まず Chrome へ届かせること**(アプリ内 WebView に当てる限り、
-+147ms を払って得るものが無い)。
+最初は「`android.webkit.WebView` は `<table>` のセルを a11y へ1つも公開しない」を根拠に
+アプリ内 WebView 向けに作った。**これは誤診**で、実際はセルは a11y に在り
+`SnapshotBuilder.mappedType` の葉テキスト救済が取りこぼしていた(ブリッジ版 61 で修正)。
+**4 SUT で揃って再現したのは WebView の性質ではなく共通のフィルタだった**
+(教訓は docs/verification.md)。
 
-**やり方**: iOS の in-app が使っているのと**同じ JS**(`FTCore.WebViewDOM.javaScript`)を
-Android の WebView で走らせる。ブリッジはアクセシビリティサービスで別プロセスなので
-`evaluateJavascript` を撃てず、**ホスト側から CDP** で入る:
+残った本物の根拠は**ブラウザ本体**。あちらは実際にページを部分的にしか a11y へ出さない
+(監査22/23/25 の実 web ページ。Android Chrome が本文を1要素も公開しない形が2サイトで再現)。
+a11y からは埋めようがないので DOM を直接読む。
 
-    adb shell cat /proc/net/unix   → webview_devtools_remote_<pid>
-    adb forward tcp:<port> localabstract:<socket>
-    GET /json → ページを選ぶ → WebSocket → Runtime.evaluate(共有 JS)
+### 何を差し替えるか(条件分岐にしない)
 
-WebSocket は **Foundation の `URLSessionWebSocketTask`**(依存を足さない。送信1・受信1で足りる)。
+**ブラウザでは DOM を web コンテンツ領域の唯一の正とする**。`webView` ノードの内側にある
+a11y 要素を落としてから DOM のノードを入れ、ノード自身とブラウザ chrome(URL 欄・ツールバー)は
+a11y のまま残す。
 
-**成立条件はアプリが debuggable であること**。実測: どの SUT も
-`setWebContentsDebuggingEnabled` を呼んでいないのにソケットが在った = WebView が debuggable
-アプリに対して自動公開する。**デバイスが実機かどうかは無関係**。リリースビルドの他社アプリでは
-使えないので、**失敗は握って従来どおりに落ちる**(取れないことは `webViewGapNote` が別途告げる)。
+**「a11y が足りないときだけ DOM」にしない** —— Chrome は軽いページなら本文を普通に公開し
+(example.com で実測)、重いページでは1要素も出さない。条件で切り替えると
+**このページでは通るが別のページでは落ちる**が起きる。素朴に append すると本文が二重に並ぶ。
 
-**実測**(E2EAppCMP の WebView 画面・`wv_grid`):
+判定は `FTCore.WebViewDOM` の1箇所(`WebViewDOMTree.swift`)。**`WebViewDOMSnapshot.swift` へ
+置かない** —— あちらは `BridgeSourceSet` の inApp ブリッジ入力なので、ホスト専用の関数を足すと
+dylib に無駄なコードが入り `BridgeContractTests` の指紋が鳴る。
 
-| | 要素数 | 表の値 | 見出し | snapshot |
-|---|---|---|---|---|
-| オフ | 15 | 出ない | 出ない | 86ms |
-| **オン** | 32 | **出る** | 出ない(`aria-hidden` なので正しい) | **233ms** |
+### 口は3つ、その上の層は1つ
 
-**同じ1行が両 OS で通ることまで確認した**: `scrollTo '8/15'` が iOS ✅ / Android(DOM 経路)✅ /
-Android(従来)❌。
+プロトコル層(JS・座標写し・差し込み)は共通で、**開け方だけが違う**。
 
-**既定にしていない理由**: 1 snapshot あたり **+147ms**(86→233)。常時払う値ではないので、
-「WebView 画面でだけ」「初回だけ」等の絞り込みを設計してから既定化する。
-**pid で絞ることは外さない** —— 端末には他アプリの WebView ソケットが並ぶので、
-外すと**別アプリの DOM を自分の木へ混ぜる**(`AndroidWebViewDOMTests` が変異で守る)。
+| 相手 | 口 | 備考 |
+|---|---|---|
+| iOS 自作アプリの WKWebView | in-app ブリッジから直に JS | 既存(`InAppWebViewDOM`) |
+| Android Chrome | CDP。`adb forward localabstract:chrome_devtools_remote` | **pid が付かない**ので WebView の pid 一致規則とは別規則 |
+| iOS Safari(シミュレータ) | `webinspectord_sim` の unix ソケット | 根が `/private/var/tmp` と `/private/tmp` の**2つ**ある |
 
-**ブラウザでも成立する**(2026-08-13 に確認)。Chrome は **debuggable でなくても自ら
-`@chrome_devtools_remote` を公開する**(`chrome://inspect` が成り立つ理由)。
-**a11y が6要素(ブラウザ chrome のみ)しか返さなかった Wikipedia のページから、
-同じ JS で 64 ノードを 9ms で取得できた**。実 web ページを読む監査でも使える。
+**Chrome は debuggable でなくても `@chrome_devtools_remote` を公開する**(`chrome://inspect` が
+成り立つ理由)。a11y が6要素しか返さなかった Wikipedia のページから、同じ JS で 64 ノードを
+9ms で取得できた。
 
-> 一度「Chrome は未応答」と記録したが**誤りだった**。原因は自分の実験で、
-> 120 秒でタイムアウトした curl がバックグラウンドに残ったまま同じポートを掴んでいた。
-> **同じ端末の WebView ソケットと比べる**対照を置いて初めて切り分けられた。
+### 能動タブの選択は「順序」では決まらない
 
-**ただしソケット名の規則が違う**: WebView は `webview_devtools_remote_<pid>` で pid を含むが、
-Chrome は `chrome_devtools_remote` で**含まない**。いまの実装は pid で絞る(別アプリの DOM を
-読まないため)ので、**そのままではブラウザに当たらない**。ブラウザを対象にするなら
-「pid で絞る」と「ブラウザの固定名」を別の規則として持つ必要がある。
+**`/json` は MRU 順ではない**(7タブの Chrome で先頭は前面ではない別サイトだった)。しかも
+同じページを2タブ開くと**題名が一致する**。順序や題名で1つに決めると背面タブを掴み、
+**Chrome は背面タブの JS を止めるので評価が返らない**(実測 183 秒待っても返らなかった)。
 
-**未着手**: 複数 WebView を持つ画面でのページ選択規則 / 評価とスナップショットの間に
-ページ遷移が起きた場合 / ブラウザ対応(上記のソケット名規則)/ iOS Safari(WebKit の
-remote inspector は別プロトコルで、`ios-webkit-debug-proxy` 等の別部品が要る。未検証)。
+確からしい順に並べ(`rankedTabs`)、**上から試して応答したものを能動タブとみなす**。
+根拠は強い順に ①アドレス欄と URL が一致 → ②フラグメントを落とせば一致 → ③部分一致 →
+④題名一致 → ⑤残り。**フラグメントを最初から落とさない** —— 同じページの2タブを分ける
+唯一の材料がそれのことがある。
+
+**`URLSessionWebSocketTask.receive()` には締切が無い**ので必ず番犬を付ける。snapshot は
+最頻の操作で、ここが無期限だと run ごと固まる。
+
+### DOM は a11y の粒度・命名へ揃える
+
+同じ画面を a11y と DOM で読んで**セレクタの書き方が変わらない**ようにする(ブリッジ版 66)。
+
+- **子孫が全部インラインのテキストなら1ノードへ畳む**。Chromium の accname は
+  `<td><span>19</span> / <span>24</span></td>` を「19 / 24」1件で出すが、素の DOM 走査は
+  葉ごとに3件出す。役割を持つ子孫(link/button/input/img)が1つでもあれば畳まない
+- **`alt` の無い画像は `src` のファイル名を名前にする**(`logo_small.svg` → `logo_small`)。
+  Chromium がそうしており、揃えないと置き換えた瞬間に名前が消える
+
+**揃えた副作用**: ラベルだけでは a11y と DOM を見分けられなくなる。**検証は木の構造で行う**
+(ブラウザ chrome の後に id 無しノードが続くか)。ここを怠って一度、a11y の木を
+「DOM が効いている」と誤読した。
+
+### 実機(iOS)は口が違う
+
+シミュレータの unix ソケットは実機に無い。実機は **usbmuxd → lockdownd → TLS → webinspectord**:
+
+    /var/run/usbmuxd に ReadPairRecord / ListDevices / Connect(62078)
+      → lockdown: QueryType → StartSession(EnableSessionSSL)→ **クライアント証明書付き TLS**
+      → StartService "com.apple.webinspector" → Port と EnableServiceSSL
+      → その Port へもう1本 Connect し、**同じ証明書で TLS**
+      → 以後はシミュレータと同じ WIR プロトコル
+
+**root は要らない**(ペアリング記録は `/var/db/lockdown/` を読めなくても usbmuxd が渡す)。
+**外部ツールも要らない**(`ios-webkit-debug-proxy` は不要)。
+iOS 17 以降 RemoteXPC/RSD へ移ったサービスもあるが、`com.apple.webinspector` は
+**iOS 26.6 でも従来の lockdown から起こせた**(実測)。移された合図は `InvalidService` で、
+そのときだけ stderr に出す。
+
+`SecIdentity` は PKCS#12 を `kSecImportToMemoryOnly` で読む(**キーチェーンに触れない**)。
+
+**Android の実機は特別扱い不要**(Pixel 4a で確認。Chrome は同じく `@chrome_devtools_remote`)。
+
+### 実機だけの罠(3つとも実測で踏んだ)
+
+**⑴ 1通が大きいと黙って捨てられる。** エラーも応答も返らず、60 秒待っても来ない。
+しかも**上限は固定ではない** —— 同じ端末・同じページで2回測って境界がフレーム
+7917/7981 と 8493/8557 に割れた(約 600 バイトの揺れ)。`Runtime.compileScript` でも同じで、
+**コマンドの種類ではなく1通の大きさ**が効く。共有 JS(約 9.7KB)は1通で送れない。
+
+対処は**分割して積む**(`assemblyExpressions`)。`globalThis.__ftSrc` へ `=`/`+=` で積み、
+最後に eval して削除する。**共有 JS は1文字も変えない**(変えると他の3経路と別物になる)。
+予算は **7000 → 駄目なら 4000**(境界のギリギリは狙わない。壊れ方が沈黙なので気付けない)。
+**切るのはソース長ではなくフレーム長** —— JSON のリテラル化で 1.2 倍に膨らみ、
+膨張率は場所によって違う(ソース 3000 → フレーム 5546 / 4000 → 8630)。
+**文字単位で切る**(JS に日本語コメントがあり、バイトで切ると UTF-8 が割れる)。
+
+**⑵ Web インスペクタが無効だと、TLS までは通って直後に切られる。**
+`_rpc_reportIdentifier:` すら送れない。設定 → Safari → 詳細 → Web インスペクタ。
+
+**⑶ 有効にする前から動いていた Safari は webinspectord に登録されない。**
+アプリ一覧にデーモンだけが並び Safari が居ない。起動し直せば載る。
+
+⑵⑶ は**人の操作でしか直せない**ので、黙って a11y へ落ちるだけにせず
+**stderr で原因を名指しする**(`inspectorHint`)。**一覧が空のときは何も言わない** ——
+単に Safari 未起動の可能性があり、そこで「起動し直せ」は的外れ(誤った助言は無いより悪い)。
+
 
 ## 17. テストベースからのシナリオ下書き生成(2026-07-26)
 

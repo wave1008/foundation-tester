@@ -1,9 +1,10 @@
-// シミュレータの Safari を WebKit remote inspector 越しに DOM から読む(2026-08-13)。
+// シミュレータ/実機の Safari を WebKit remote inspector 越しに DOM から読む(2026-08-13)。
 //
-// **対象はシミュレータの Safari(`com.apple.mobilesafari`)だけ**。物理 iPhone は対象外
-// (usbmuxd 越しの別プロトコルが要り未検証)。`read` は対象 UDID のソケットが
-// `/private/var/tmp/com.apple.launchd.*/` 配下に見つからなければ黙って nil を返すので、
-// 物理端末で呼んでも自然に不発になる(専用の分岐は置かない)。
+// **対象は Safari(`com.apple.mobilesafari`)だけ**。シミュレータは `/private/var/tmp` 等の
+// unix ソケットに直結する。実機は usbmuxd(`/var/run/usbmuxd`)→ lockdownd → TLS →
+// webinspectord という別の口を通る(`PhysicalSafariInspector.swift`)。**この先の
+// フレーミング・plist メッセージ・Target 包みは完全に共通**(`InspectorTransport` 越しに
+// 同じ `evaluate` を通す) —— 違うのはソケットの開け方だけ。
 //
 // **プロトコルは CDP ではない**(Android/Chrome と違う)。フレームは
 // **4byte ビッグエンディアン長 + バイナリ plist**(`{"__selector": <name>, "__argument": <dict>}`)。
@@ -135,6 +136,78 @@ public enum SafariWebInspector {
         return params["message"] as? [String: Any]
     }
 
+    // MARK: - 気付けるようにする(**この2つは人の操作でしか直せない**)
+
+    /// ブラウザ DOM が取れなかったときに、**人が直せる原因なら名指しする**(純粋)。
+    /// どちらも黙って a11y へ落ちるだけだと、利用者は「このツールは Safari を読めない」と
+    /// 誤解する(2026-08-13 に私自身が半日この2つで詰まった)。
+    ///
+    /// - `handshakeRefused`: `_rpc_reportIdentifier:` すら送れずに切られた。実機で
+    ///   **Web インスペクタが無効**のときの実測どおりの形(TLS までは通り、直後に切断)
+    /// - `apps` に Safari が居ない: **有効化より前から動いていた Safari は webinspectord に
+    ///   登録されない**(実測。デーモンだけが並ぶ)。起動し直せば載る
+    static func inspectorHint(handshakeRefused: Bool, apps: [String: [String: Any]]) -> String? {
+        if handshakeRefused {
+            return "ftester: the Safari web inspector refused the connection."
+                + " On a physical device, enable Settings > Safari > Advanced > Web Inspector."
+                + " (falling back to the accessibility tree)"
+        }
+        guard !apps.isEmpty, pickSafariApplicationId(apps) == nil else { return nil }
+        return "ftester: Safari is not registered with the web inspector."
+            + " Relaunch Safari — enabling Web Inspector does not apply to an app that was"
+            + " already running. (falling back to the accessibility tree)"
+    }
+
+    static func reportInspectorHint(handshakeRefused: Bool, apps: [String: [String: Any]]) {
+        guard let hint = inspectorHint(handshakeRefused: handshakeRefused, apps: apps) else { return }
+        FileHandle.standardError.write(Data((hint + "\n").utf8))
+    }
+
+    /// JS の文字列を JS のリテラルへ(引用符・バックスラッシュ・改行のエスケープを自分で書かない)
+    static func jsStringLiteral(_ text: String) -> String? {
+        guard let data = try? JSONSerialization.data(withJSONObject: [text]),
+              let json = String(data: data, encoding: .utf8), json.count >= 2 else { return nil }
+        return String(json.dropFirst().dropLast())
+    }
+
+    /// **1通が予算に収まるようにソースを分割し、グローバルへ積む式の列**を作る(純粋)。
+    ///
+    /// 実機では 1通のフレームが大きいと黙って捨てられるので、共有 JS(約 9.7KB)は1通で送れない。
+    /// **共有 JS 自体は1文字も変えない** —— 変えるとシミュレータ・Android・in-app と別物になる。
+    ///
+    /// **切るのはソースの長さではなくフレーム長**(サイズ計算は `frameSize` で外から渡す)。
+    /// JSON のリテラル化で **1.2 倍**に膨らみ、しかも膨張率は場所によって違うため
+    /// (実測: ソース 3000 → フレーム 5546 / 4000 → 8630)、ソース長で切ると予算を超える。
+    ///
+    /// **文字単位で切る**: JS には日本語コメントが入っているので、バイトで切ると
+    /// UTF-8 の途中で割れて壊れる
+    static func assemblyExpressions(javaScript: String, budget: Int,
+                                    frameSize: (String) -> Int) -> [String]? {
+        let characters = Array(javaScript)
+        var expressions: [String] = []
+        var index = 0
+        while index < characters.count {
+            let assign = expressions.isEmpty ? "=" : "+="
+            // 予算に収まる最大の文字数を二分探索する(1文字でも入らないなら組み立て不能)
+            var low = 0, high = characters.count - index
+            while low < high {
+                let middle = (low + high + 1) / 2
+                guard let literal = jsStringLiteral(String(characters[index..<(index + middle)])) else { return nil }
+                if frameSize("globalThis.__ftSrc\(assign)\(literal);\"ok\"") <= budget { low = middle } else { high = middle - 1 }
+            }
+            guard low > 0,
+                  let literal = jsStringLiteral(String(characters[index..<(index + low)])) else { return nil }
+            expressions.append("globalThis.__ftSrc\(assign)\(literal);\"ok\"")
+            index += low
+        }
+        return expressions.isEmpty ? nil : expressions
+    }
+
+    /// 積み終えたソースを実行して**後片付けまでする**式。ページに `__ftSrc` を残さない
+    /// (残すと次の読みで前回の残骸に足してしまう)。共有 JS は IIFE なので eval の戻り値が結果
+    static let assemblyRunExpression =
+        "(function(){var s=globalThis.__ftSrc;delete globalThis.__ftSrc;return (0,eval)(s);})()"
+
     /// `Runtime.evaluate` の応答から評価結果の文字列値を取り出す。**id が一致するときだけ**
     /// (CDP は要求と無関係なイベントも流すため、id 照合を飛ばすと別の応答を掴む)
     public static func extractEvaluateResult(_ message: [String: Any], expectingId: Int) -> String? {
@@ -235,6 +308,35 @@ public extension SafariWebInspector {
         return payload
     }
 
+    /// ハードウェア UDID の実機の Safari から DOM を1往復読む。**握り経路は
+    /// usbmuxd → lockdownd → TLS → webinspectord**(`PhysicalSafariInspector.connect`)。
+    /// 未ペアリング・USB 未接続・Web インスペクタ無効はどれも珍しくないので**失敗は握って nil**
+    /// (`PhysicalSafariInspector` 内で `InvalidService` だけ例外的に stderr へ知らせる)
+    static func read(physicalUDID: String) async -> WebViewDOM.Payload? {
+        guard isEnabled else { return nil }
+        // ハンドシェイク(usbmuxd 3往復 + lockdown 2往復 + TLS 2回)の予算。
+        // `evaluate` 自体はここに含めない(内部に独自の締切を段ごとに持つ)
+        guard let connection = PhysicalSafariInspector.connect(
+            hardwareUDID: physicalUDID, deadline: Date().addingTimeInterval(10))
+        else { return nil }
+        defer { connection.close() }
+        // **実機は1通あたりのフレーム長に上限がある**(分割する理由は messageBudgets の宣言)
+        for budget in Self.messageBudgets {
+            guard let json = evaluate(over: connection, messageBudget: budget) else { continue }
+            guard let payload = try? WebViewDOM.decode(json), payload.error == nil else { continue }
+            return payload
+        }
+        return nil
+    }
+
+    /// **実機だけ、1通が大きいと黙って捨てられる**(2026-08-13 実測)。エラーも応答も返らず、
+    /// 60 秒待っても来ない。しかも**上限は固定ではない** —— 同じ端末・同じページで2回測って
+    /// 境界がフレーム 7917/7981 と 8493/8557 に割れた(約 600 バイトの揺れ)。
+    /// 測った境界のギリギリは狙わず、まず 7000 で試し、駄目なら 4000 へ落とす。
+    /// **落ちたあとも接続は生きている**ので同じ接続で送り直せる(実測)。
+    /// シミュレータに上限は無い(9.7KB を1通で 7ms)ので分割しない
+    static let messageBudgets = [7000, 4000]
+
     /// `/private/var/tmp/com.apple.launchd.*/com.apple.webinspectord_sim.socket` を
     /// 対象 UDID まで絞り込む。**全ソケットへ接続して探る案は採らない**(2026-08-13 実測で
     /// 10台ぶん Safari を probe すると約1〜2秒×台数がかかる)。`lsof`+`ps` の2コマンドで
@@ -268,8 +370,11 @@ public extension SafariWebInspector {
 
     /// 一連の RPC(reportIdentifier → getConnectedApplications → forwardGetListing →
     /// forwardSocketSetup → Target 越しの Runtime.evaluate)を1本の接続で順に往復する。
-    /// 各段に締切があり、**越えたら nil**(Safari が居ない・タブが無い等はここで自然に諦める)
-    private static func evaluate(over connection: SafariInspectorConnection) -> String? {
+    /// 各段に締切があり、**越えたら nil**(Safari が居ない・タブが無い等はここで自然に諦める)。
+    /// **`InspectorTransport` 越し** —— シミュレータ(unix ソケット)と実機(usbmuxd 経由の
+    /// TLS ソケット)でソケットの開け方は違うが、この先の RPC はどちらも同じ
+    private static func evaluate(over connection: InspectorTransport,
+                                 messageBudget: Int? = nil) -> String? {
         let connectionId = UUID().uuidString.uppercased()
         let senderId = UUID().uuidString.uppercased()
 
@@ -283,8 +388,12 @@ public extension SafariWebInspector {
             return try? decodePlistMessage(body)
         }
 
+        // **送れずに切られたら Web インスペクタ無効の疑い**(実測の形。inspectorHint 参照)
         guard send("_rpc_reportIdentifier:", ["WIRConnectionIdentifierKey": connectionId]),
-              send("_rpc_getConnectedApplications:", ["WIRConnectionIdentifierKey": connectionId]) else { return nil }
+              send("_rpc_getConnectedApplications:", ["WIRConnectionIdentifierKey": connectionId]) else {
+            reportInspectorHint(handshakeRefused: true, apps: [:])
+            return nil
+        }
 
         var apps: [String: [String: Any]] = [:]
         let appsDeadline = Date().addingTimeInterval(4)
@@ -300,7 +409,11 @@ public extension SafariWebInspector {
             default: break
             }
         }
-        guard let appId = pickSafariApplicationId(apps) else { return nil }
+        guard let appId = pickSafariApplicationId(apps) else {
+            // 他のアプリは見えているのに Safari だけ居ない = 起動し直しが要る(inspectorHint 参照)
+            reportInspectorHint(handshakeRefused: false, apps: apps)
+            return nil
+        }
 
         guard send("_rpc_forwardGetListing:", ["WIRConnectionIdentifierKey": connectionId,
                                                 "WIRApplicationIdentifierKey": appId]) else { return nil }
@@ -339,29 +452,75 @@ public extension SafariWebInspector {
         }
         guard let targetId else { return nil }
 
-        let requestId = 1
-        let inner: [String: Any] = ["id": requestId, "method": "Runtime.evaluate",
-                                    "params": ["expression": WebViewDOM.javaScript, "returnByValue": true]]
-        guard let envelope = try? wrapInTarget(targetId: targetId, envelopeId: 50, inner: inner),
-              sendCDP(envelope) else { return nil }
-
-        let resultDeadline = Date().addingTimeInterval(15)
-        while Date() < resultDeadline {
-            guard let message = pumpCDP(deadline: resultDeadline) else { continue }
-            if let value = extractEvaluateResult(message, expectingId: requestId) { return value }
+        /// 1つの式を撃って結果の文字列を待つ。**大きすぎる1通は黙って捨てられる**ので、
+        /// 返らなければ nil(呼び出し側が小さい予算で組み直す)
+        func evaluateExpression(_ expression: String, id: Int, timeout: TimeInterval) -> String? {
+            let inner: [String: Any] = ["id": id, "method": "Runtime.evaluate",
+                                        "params": ["expression": expression, "returnByValue": true]]
+            guard let envelope = try? wrapInTarget(targetId: targetId, envelopeId: 50 + id, inner: inner),
+                  sendCDP(envelope) else { return nil }
+            let deadline = Date().addingTimeInterval(timeout)
+            while Date() < deadline {
+                guard let message = pumpCDP(deadline: deadline) else { continue }
+                if let value = extractEvaluateResult(message, expectingId: id) { return value }
+            }
+            return nil
         }
-        return nil
+
+        guard let budget = messageBudget else {
+            // シミュレータは1通で送れる(上限が無い)
+            return evaluateExpression(WebViewDOM.javaScript, id: 1, timeout: 15)
+        }
+
+        // フレーム長は実際に組み立てて測る(plist ヘッダ・Target 包み・JSON エスケープを込みで見る)
+        func frameSize(_ expression: String) -> Int {
+            let inner: [String: Any] = ["id": 1, "method": "Runtime.evaluate",
+                                        "params": ["expression": expression, "returnByValue": true]]
+            guard let envelope = try? wrapInTarget(targetId: targetId, envelopeId: 51, inner: inner),
+                  let data = try? JSONSerialization.data(withJSONObject: envelope) else { return .max }
+            var argument = base
+            argument["WIRSocketDataKey"] = data
+            guard let body = try? encodePlistMessage(selector: "_rpc_forwardSocketData:",
+                                                     argument: argument) else { return .max }
+            return encodeFrame(body).count
+        }
+        guard let expressions = assemblyExpressions(javaScript: WebViewDOM.javaScript,
+                                                    budget: budget, frameSize: frameSize) else { return nil }
+        for (offset, expression) in expressions.enumerated() {
+            // 積む側は短い応答しか返らないので待ちは短くてよい
+            guard evaluateExpression(expression, id: 100 + offset, timeout: 5) != nil else { return nil }
+        }
+        return evaluateExpression(assemblyRunExpression, id: 1, timeout: 15)
     }
 }
 
+/// 4byte BE 長 + plist フレームを話す口の共通形。シミュレータ(`SafariInspectorConnection`。
+/// unix ソケット直結)と実機(`TLSInspectorConnection`。usbmuxd 越しの TLS)が適合する。
+/// **`evaluate` はこの越しにだけ書く** —— ソケットの開け方が違うだけで RPC は共通なので、
+/// プロトコル本体(plist メッセージ・Target 包み)を2箇所に重複させない
+protocol InspectorTransport: AnyObject {
+    func send(_ frame: Data) -> Bool
+    func receiveFrame(deadline: Date) -> Data?
+    func close()
+}
+
 /// WebKit remote inspector の生ソケット(unix domain, SOCK_STREAM)。
-/// **物理端末は繋がない** —— この経路自体がシミュレータの `/private/var/tmp` ソケットにしか
-/// 対応しておらず、実機は接続対象を持たない(呼び出し元の `resolveSocketPath` が見つけられず nil で止まる)。
-final class SafariInspectorConnection {
+/// シミュレータは `init?(path:)` で `/private/var/tmp` 等へ直接繋ぐ。実機は
+/// `PhysicalSafariInspector` が usbmuxd 経由で確立済みの fd を `init(fd:)` で渡す
+/// (webinspectord が平文の場合のみ。TLS が要る場合は `TLSInspectorConnection` を使う)
+final class SafariInspectorConnection: InspectorTransport {
     private let fd: Int32
     private var buffer = Data()
 
-    init?(path: String) {
+    /// 接続済みの fd をそのまま使う。**受信タイムアウトの設定と close の責務だけ持つ**
+    /// (接続の確立・fd の所有権移譲は呼び出し側の契約)
+    init(fd: Int32) {
+        self.fd = fd
+        var timeout = timeval(tv_sec: 0, tv_usec: 500_000)
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+    }
+
+    convenience init?(path: String) {
         let sock = socket(AF_UNIX, SOCK_STREAM, 0)
         guard sock >= 0 else { return nil }
         var addr = sockaddr_un()
@@ -374,18 +533,16 @@ final class SafariInspectorConnection {
             raw[pathBytes.count] = 0
         }
         addr.sun_len = UInt8(MemoryLayout<sockaddr_un>.size)
-        // **受信はここで一律 0.5秒でタイムアウトさせる**: `receiveFrame` の待ちループが
-        // deadline を細かくチェックできるようにするため(1回の recv がデッドラインを超えて
-        // ブロックし続けるのを防ぐ)
-        var timeout = timeval(tv_sec: 0, tv_usec: 500_000)
-        setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
         let connected = withUnsafePointer(to: &addr) { ptr -> Int32 in
             ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) {
                 connect(sock, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
             }
         }
         guard connected == 0 else { Darwin.close(sock); return nil }
-        self.fd = sock
+        // **受信はここで一律 0.5秒でタイムアウトさせる**: `receiveFrame` の待ちループが
+        // deadline を細かくチェックできるようにするため(1回の recv がデッドラインを超えて
+        // ブロックし続けるのを防ぐ)。`init(fd:)` 側でも同じ設定をやり直す(冪等)
+        self.init(fd: sock)
     }
 
     func send(_ frame: Data) -> Bool {

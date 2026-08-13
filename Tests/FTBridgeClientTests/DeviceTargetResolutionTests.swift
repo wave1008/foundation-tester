@@ -73,4 +73,33 @@ final class DeviceTargetResolutionTests: XCTestCase {
         XCTAssertEqual(resolve("iPhone 17 Pro", simulators: nil),
                        .unknown(name: "iPhone 17 Pro"))
     }
+
+    // MARK: - Safari DOM 読み取りの対象特定(`resolveTarget` とは別物 —— 実機は
+    // devicectl identifier ではなく usbmuxd 用のハードウェア UDID を返す)
+
+    private func resolveBrowserDOM(_ name: String, simulators: [SimDeviceInfo]?,
+                                   phones: [IOSPhysicalDeviceInfo]? = []) -> BridgeClient.BrowserDOMTarget? {
+        BridgeClient.resolveBrowserDOMTarget(named: name, simulators: simulators, physicalDevices: { phones })
+    }
+
+    func testBrowserDOMSimulatorResolvesToSimctlUDID() {
+        XCTAssertEqual(resolveBrowserDOM("iPhone 17 Pro", simulators: [device("iPhone 17 Pro", udid: "SIM-1")]),
+                       .simulator(udid: "SIM-1"))
+    }
+
+    /// **実機はハードウェア UDID を返す** —— `resolveTarget` の `.physical` が持つ
+    /// devicectl identifier とは値が違う(`IOSPhysicalDeviceInfo.udid` を使う)。
+    /// usbmuxd の ReadPairRecord/ListDevices はこちらの値でないと引けない
+    func testBrowserDOMPhysicalDeviceResolvesToHardwareUDIDNotDeviceCtlIdentifier() {
+        let phone = IOSPhysicalDeviceInfo(udid: "00008130-001819863E60001C", name: "wave の iPhone",
+                                          os: "iOS 26.6", connected: true, transport: "wired",
+                                          deviceCtlIdentifier: "2DBFD3DF-21FE-5C6C-9F5D-1210BF80726B",
+                                          model: "iPhone17,1")
+        XCTAssertEqual(resolveBrowserDOM("wave の iPhone", simulators: [], phones: [phone]),
+                       .physical(udid: "00008130-001819863E60001C"))
+    }
+
+    func testBrowserDOMReturnsNilWhenNothingMatches() {
+        XCTAssertNil(resolveBrowserDOM("unknown", simulators: [], phones: []))
+    }
 }
