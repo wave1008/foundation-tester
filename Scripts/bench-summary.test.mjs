@@ -7,7 +7,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  metricsFromTranscript, median, aggregate, compare, formatTable, formatComparison, draftQuality,
+  metricsFromTranscript, median, aggregate, compare, formatTable, formatComparison, draftQuality, noteCost, foldNoteCost,
 } from './bench-summary.mjs'
 
 const toolUse = (name) => ({
@@ -225,4 +225,51 @@ test('下書きを採っていない task では sel 列が "-"', () => {
     { variant: 'full', task: 't1', metrics: { completed: true, toolCalls: 10, snapshots: 4, errors: 0, wallSeconds: 20, outputTokens: 100, draft: null } },
   ])
   assert.match(formatTable(rows), /-\s*$/m)
+})
+
+// --- 注記の実現コスト(2026-08-13)。カタログを縮めたいのに「実際に出ている量」で
+// 削る候補を並べられなかったので足した。鍵との写像は持たない(二重管理はズレる)。
+
+test('注記の行だけを拾う(木の行や本文は数えない)', () => {
+  const text = [
+    'note: these ids are shared by multiple elements',
+    'screen: 1080x2424',
+    '[1] button "OK" id=ok (0,0 10x10)',
+    'caution: its label has changed from "A" to "B"',
+    '⚠️ com.example is a system dialog drawn over the app',
+    'tap [3] done.',
+  ].join('\n')
+  assert.deepEqual(noteCost(text).map((n) => n.signature.slice(0, 12)),
+                   ['note: these ', 'caution: its', '⚠️ com.examp'])
+})
+
+test('同じ注記は署名で畳み、バイトの多い順に並ぶ', () => {
+  const folded = foldNoteCost([
+    { signature: 'note: A', bytes: 10 },
+    { signature: 'note: B', bytes: 50 },
+    { signature: 'note: A', bytes: 10 },
+  ])
+  assert.deepEqual(folded, [
+    { signature: 'note: B', count: 1, bytes: 50 },
+    { signature: 'note: A', count: 2, bytes: 20 },
+  ])
+})
+
+test('metricsFromTranscript が注記のバイトを積む', () => {
+  const noteResult = (text) => ({
+    type: 'user',
+    message: { content: [{ type: 'tool_result', content: [{ type: 'text', text }] }] },
+  })
+  const m = metricsFromTranscript([
+    toolUse('mcp__ftester__ft_snapshot'),
+    noteResult('note: abc\nscreen: 1x1\n[1] button "x"'),
+    result('RESULT: ok'),
+  ], null)
+  assert.equal(m.noteBytes, Buffer.byteLength('note: abc', 'utf8'))
+  assert.equal(m.notes.length, 1)
+})
+
+test('注記が1つも無い run は 0(欠測ではない)', () => {
+  const m = metricsFromTranscript([toolUse('mcp__ftester__ft_tap'), result('RESULT: ok')], null)
+  assert.equal(m.noteBytes, 0)
 })

@@ -141,6 +141,47 @@ ref が進まず、**欠陥そのものが起きなかった**。実機では入
 
 ---
 
+## 2026-08-13 実際の run で「どの注記が何バイト出ているか」を測った
+
+**動機**: カタログを縮めたいのに、**削る候補を「実際に出ている量」で並べられなかった**。
+`NoteCoverageTests` は固定コーパスに対する**満額**のバイト数で、実運用の頻度を含まない。
+`bench-summary.mjs` に `noteCost()` を足し、記録に残っている tool_result から
+注記行(`note:` / `caution:` / `⚠️`)を拾って**署名ごとにバイトを畳む**ようにした
+(鍵との写像は持たない —— 二重管理は必ずズレる)。**デバイス時間はゼロ**で、
+既に取ってある記録に後から流せる。
+
+**`and-form-wifi`(5 run・合計 15,870 B)**:
+
+| バイト | 回数 | 注記 |
+|---|---|---|
+| 3255 | 31 | `long labels are shown cut off with "…"`(**短縮形が 6回/run**) |
+| 2480 | 20 | `2 scroll areas on screen: #content_parent …` |
+| 1795 | 5 | `this tree was read immediately after the action …` |
+| 1760 | 22 | `the soft keyboard covers (0,1541 1080x883) …` |
+| 1655 | 5 | `these ids are shared by multiple elements …`(初回の満額) |
+
+**`and-chat-newconv` + `and-settings-keyboard`(20 run・合計 19,481 B)**:
+
+| バイト | 回数 | 注記 |
+|---|---|---|
+| 7180 | 20 | `this tree was read immediately after the action …`(**359 B × 1回/run**) |
+| 3471 | 39 | `duplicate ids — write one of these instead …` |
+| 3310 | 10 | `these ids are shared by multiple elements …` |
+
+**分かったこと**: **実現コストの順位は、固定コーパスの満額バイトの順位と違う**。
+カタログのコメントは主因を `duplicateIDsNote`(15.1KB)/ `ambiguousLabelsNote`(10.0KB)と
+書いているが、実際の run で最も多く出ているのは:
+
+1. **`this tree was read immediately after the action`** —— `snapshotAfter` を使うたびに
+   **359 B を毎 run 満額で**払う静的な但し書き
+2. **`long labels are shown cut off`の短縮形** —— 1回 105 B が **6回/run** 繰り返される
+   (`once()` で短くはなっているが、**短縮形でも 100 B 級**で、しかも毎回出る)
+
+どちらも**画面の中身に依らない定型文**で、**削る/短くする判断が手数と独立に立てられる**
+(「この但し書きが無いと手詰まりになる」形が想像しにくい)。**次に削るならここから**。
+
+---
+
 ## この計測で見つかった bench 側の欠陥(修正済み)
 
 - **`--out` に相対パスを渡すと 20 run すべてが起動しない**。run は `cd "$CWD"` してから
