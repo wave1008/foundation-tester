@@ -87,7 +87,10 @@ final class MCPRepeatedCoordinateNoteTests: XCTestCase {
         let second = try await server.call(tool: "ft_snapshot", args: [:])
         let secondText = try XCTUnwrap(second.first?["text"] as? String)
         XCTAssertFalse(secondText.contains("note: labels longer than"), secondText)
-        XCTAssertTrue(secondText.contains("see the first snapshot's note"), secondText)
+        // **短縮形は「行動に要ることだけ」**(2026-08-13 に文面を削った): `*prefix*` の書き方は
+        // 残し、「最初の注記を見よ」は落とした。実運用で 105 B が 6回/run 出ていたため
+        XCTAssertTrue(secondText.contains("*prefix*"), secondText)
+        XCTAssertLessThan(secondText.count, firstText.count, "2回目が短くなっていない")
     }
 }
 

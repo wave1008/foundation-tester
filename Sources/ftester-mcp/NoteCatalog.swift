@@ -128,9 +128,12 @@ enum NoteCatalog {
             MCPServer.sliverNote(input.snapshot)
         },
         Entry(key: "truncatedLabelNote", contexts: [.snapshot, .scrollTo], abbreviates: true) { input, abbreviated in
+            // **短縮形をさらに短くした**(2026-08-13): 実運用の記録で 105 B が **6回/run**
+            // 出ていた(Bench/measurements.md)。短縮形なのに満額の指示をそのまま繰り返して
+            // いたのが原因。行動に要るのは `*prefix*` の書き方だけで、
+            // 「最初の注記を見よ」は既に読んでいる読み手には不要
             abbreviated
-                ? "note: long labels are shown cut off with \"…\" — match with"
-                    + " \"*prefix*\" (see the first snapshot's note).\n"
+                ? "note: long labels are cut off with \"…\" — match with \"*prefix*\".\n"
                 : SnapshotRenderer.truncatedLabelNote(input.snapshot) ?? ""
         },
     ]

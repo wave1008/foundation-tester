@@ -207,13 +207,17 @@ extension MCPServer {
     /// 付かないときだけ、snapshotAfterBody が1回だけ短い待ちを挟んで撮り直す)。
     /// 実測: ft_type の直後は候補リストがまだネットワーク待ちで、waitFor 付きの ft_snapshot なら
     /// 出るものが「候補なし」に見えた
+    /// **満額を短くした**(2026-08-13)。実運用の記録で**最もバイトを食っている注記**だった
+    /// (20 run で 7,180 B = 359 B を毎 run 満額で。Bench/measurements.md)。
+    /// 落としたのは「不変に見えたら1回だけ待って撮り直した(上の注記を見よ)」の説明 ——
+    /// **それが実際に起きた回には settle-lite の注記そのものが出る**ので二重だった。
+    /// 残したのは行動に要る2つ:「操作直後の木である」と「waitFor で確かめてから無いと言え」
     private func immediateReadNote() -> String {
         once("snapshotAfterImmediateNote",
-            full: "note: this tree was read immediately after the action; if it looked unchanged"
-                + " right after, it was re-read once after a short wait (see the note above if that"
-                + " happened) — a dynamic list (search suggestions, network results) may still not"
-                + " have populated yet; if something you expect is missing, confirm with"
-                + " ft_snapshot waitFor before concluding it is absent.\n",
+            full: "note: this tree was read immediately after the action — a dynamic list"
+                + " (search suggestions, network results) may not have populated yet."
+                + " If something you expect is missing, confirm with ft_snapshot waitFor"
+                + " before concluding it is absent.\n",
             short: "(immediate read — see the first snapshotAfter note)\n")
     }
 
