@@ -1,8 +1,9 @@
 {
   "id": "and-form-wifi",
   "archetype": "form",
-  "requires": "Android エミュレータ1台に ftbridge + 設定アプリ(com.android.settings)。表示言語は日本語。保存はしないので盤面は自動で戻る(ft_launch でダイアログは消える)",
+  "requires": "Android エミュレータ1台に ftbridge + 設定アプリ(com.android.settings)。表示言語は日本語。保存はしないので盤面は自動で戻る(ft_launch でダイアログは消える)。`draft: true` = 下書きまで書かせる(セレクタの品質を測る軸。手数は下書き1〜2手ぶん増えるので、2026-08-13 の手数13は draft 無しの値)",
   "maxTurns": 60,
   "expect": "(?=[\\s\\S]*save\\s*=\\s*on)[\\s\\S]*cancel\\s*=\\s*キャンセル",
-  "prompt": "ftester の MCP ツール(ft_*)だけを使って、Android エミュレータの「設定」アプリ(com.android.settings)を操作してください。\n\nゴール: Wi-Fi のネットワークを手動で追加するフォームを開き、(1) ネットワーク名に bench-net、(2) セキュリティに WPA/WPA2-Personal、(3) パスワードに bench4242 を入れる。そのうえで、**保存ボタンが押せる状態(有効)か押せない状態(無効)か**と、**その隣にあるボタンの表示文字**を読み取ること。\n\n**保存は押さないでください**(ネットワークを実際に追加しない)。\n\n手順や使うツールは自分で決めてください。デバイスは ft_list_devices で選びます(Android なので serial を渡します)。\n\n最後に必ず1行だけ次の形式で出力してください: RESULT: save=<on または off> cancel=<隣のボタンの表示文字>\n読み取れなかった場合は RESULT: unknown と出力してください。"
+  "prompt": "ftester の MCP ツール(ft_*)だけを使って、Android エミュレータの「設定」アプリ(com.android.settings)を操作してください。\n\nゴール: Wi-Fi のネットワークを手動で追加するフォームを開き、(1) ネットワーク名に bench-net、(2) セキュリティに WPA/WPA2-Personal、(3) パスワードに bench4242 を入れる。そのうえで、**保存ボタンが押せる状態(有効)か押せない状態(無効)か**と、**その隣にあるボタンの表示文字**を読み取ること。\n\n**保存は押さないでください**(ネットワークを実際に追加しない)。\n\n手順や使うツールは自分で決めてください。デバイスは ft_list_devices で選びます(Android なので serial を渡します)。\n\n最後に必ず1行だけ次の形式で出力してください: RESULT: save=<on または off> cancel=<隣のボタンの表示文字>\n読み取れなかった場合は RESULT: unknown と出力してください。",
+  "draft": true
 }

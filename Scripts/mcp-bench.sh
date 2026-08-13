@@ -126,6 +126,16 @@ JSON
     prompt="$(task_field "$f" prompt)"
     expect="$(task_field "$f" expect)"
     max_turns="$(task_field "$f" maxTurns)"; [ -n "$max_turns" ] || max_turns=60
+    # **`"draft": true` のタスクだけ下書きで締める**(2026-08-13)。指示は台本側に1本だけ持つ ——
+    # タスクごとに文言を書くと、A/B の両側で頼み方が変わって品質の差が文言の差に化ける。
+    # 既存タスクは `draft` を持たないので**1バイトも変わらない**(過去の計測と比較可能なまま)
+    if [ "$(task_field "$f" draft)" = "true" ]; then
+      prompt="$prompt
+
+最後に、RESULT の行を出す前に ft_draft_scenario を呼んで、いま行った操作を Swift シナリオの
+下書きへ書き戻してください(ファイルには保存しないでください)。回り道を記録していたら
+drop: や lastN: で刈り込んでから、もう一度呼んでください。"
+    fi
 
     for n in $(seq 1 "$REPEAT"); do
       transcript="$vdir/$id-$n.jsonl"

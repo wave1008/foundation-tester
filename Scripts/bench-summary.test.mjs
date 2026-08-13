@@ -7,7 +7,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  metricsFromTranscript, median, aggregate, compare, formatTable, formatComparison,
+  metricsFromTranscript, median, aggregate, compare, formatTable, formatComparison, draftQuality,
 } from './bench-summary.mjs'
 
 const toolUse = (name) => ({
@@ -137,4 +137,92 @@ test('表と差分の見出しが出る(空の差分は何も出さない)', () 
     { variant: 'full', task: 't1', n: 1, completed: 1, toolCalls: 10, wallSeconds: 20 },
     { variant: 'off', task: 't1', n: 1, completed: 1, toolCalls: 13, wallSeconds: 20 },
   ], 'full'), 'full'), /tools \+3/)
+})
+
+// --- セレクタの品質(2026-08-13)。**手数と独立の軸** ——
+// 「書き手を助ける」注記(duplicateIDsNote 等)は、エージェントが常に ref で叩ける以上
+// 手数には出ない。下書きのセレクタで測る。
+
+const DRAFT = `Draft for com.example from 3 recorded interaction(s).
+Steps in this draft:
+  1. launch com.example
+  2. tap "#ok"
+  3. tap ".clickable&&送信"
+
+@TestClass(app: "com.example", platform: "android")
+class DraftedScenario {
+    func S0010() {
+        scenario {
+            scene(1) {
+                condition { launchApp() }.action {
+                    tap("#ok")
+                    tap(".clickable&&送信")
+                    tap("#recycler_view >> .clickable[3]")
+                    // TODO: no stable selector — tap at (12, 85) (step 5 of the exploration)
+                    type("#field", "abc")
+                }.expectation { }
+            }
+        }
+    }
+}`
+
+test('下書きが無ければ null(その run はこの軸について何も言っていない)', () => {
+  assert.equal(draftQuality('tap "#ok" done'), null)
+  assert.equal(draftQuality(undefined), null)
+})
+
+test('索引セレクタと TODO を弱い側へ数える', () => {
+  const q = draftQuality(DRAFT)
+  assert.deepEqual(q, { stable: 3, indexed: 1, todo: 1 })
+})
+
+test('**冒頭の手順一覧は数えない**(同じ手を二重に数えてしまう)', () => {
+  // 一覧の形は `2. tap "#ok"`(括弧が無い)。Swift の呼び出しだけを数えること
+  const listingOnly = 'Steps in this draft:\n  1. tap "#ok"\n  2. tap "#ng"\n@TestClass(app: "x")\n'
+  assert.deepEqual(draftQuality(listingOnly), { stable: 0, indexed: 0, todo: 0 })
+})
+
+test('metricsFromTranscript が tool_result から下書きを拾う(最後のものを採る)', () => {
+  const draftResult = (text) => ({
+    type: 'user',
+    message: { content: [{ type: 'tool_result', content: [{ type: 'text', text }] }] },
+  })
+  const m = metricsFromTranscript([
+    toolUse('mcp__ftester__ft_draft_scenario'),
+    draftResult(DRAFT.replace('tap("#ok")', 'tap("#recycler_view >> .clickable[9]")')),
+    toolUse('mcp__ftester__ft_draft_scenario'),
+    draftResult(DRAFT),
+    result('RESULT: ok'),
+  ], null)
+  assert.deepEqual(m.draft, { stable: 3, indexed: 1, todo: 1 }, '刈り込み後の下書きを採ること')
+})
+
+test('下書きを採らなかった run は品質の中央値に混ぜない', () => {
+  const withDraft = { completed: true, toolCalls: 5, snapshots: 1, errors: 0, wallSeconds: 1, outputTokens: 1, draft: { stable: 4, indexed: 1, todo: 1 } }
+  const without = { completed: true, toolCalls: 5, snapshots: 1, errors: 0, wallSeconds: 1, outputTokens: 1, draft: null }
+  const [row] = aggregate([
+    { variant: 'full', task: 't1', metrics: withDraft },
+    { variant: 'full', task: 't1', metrics: without },
+  ])
+  assert.equal(row.drafted, 1)
+  assert.equal(row.draftStable, 4)
+  assert.equal(row.draftWeak, 2, '索引 + TODO を弱い側にまとめる')
+})
+
+test('弱いセレクタの差が比較に出る(手数が動かなくても)', () => {
+  const rows = [
+    { variant: 'full', task: 't1', n: 1, completed: 1, toolCalls: 10, wallSeconds: 1, drafted: 1, draftStable: 5, draftWeak: 0 },
+    { variant: 'off', task: 't1', n: 1, completed: 1, toolCalls: 10, wallSeconds: 1, drafted: 1, draftStable: 2, draftWeak: 3 },
+  ]
+  const [d] = compare(rows, 'full')
+  assert.equal(d.toolCallsDelta, 0, '手数は動かない = この注記は手数では測れない')
+  assert.equal(d.draftWeakDelta, 3)
+  assert.match(formatComparison([d], 'full'), /弱いセレクタ \+3/)
+})
+
+test('下書きを採っていない task では sel 列が "-"', () => {
+  const rows = aggregate([
+    { variant: 'full', task: 't1', metrics: { completed: true, toolCalls: 10, snapshots: 4, errors: 0, wallSeconds: 20, outputTokens: 100, draft: null } },
+  ])
+  assert.match(formatTable(rows), /-\s*$/m)
 })
