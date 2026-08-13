@@ -1879,11 +1879,11 @@ extension MCPServer {
     ///
     /// **世代が無いときだけ最新の木へ落ちる**(世代を持たない経路 = 座標タップ等は従来どおり)。
     ///
-    /// **配線(ここを呼ぶこと)は単体テストで守れていない** —— 偽ドライバでは中間の読み直しが
-    /// 起きず `lastSnapshots` が進まないので、`recordInteraction` が最新の木を直に見る形へ
-    /// 戻す変異が**生き残る**(2026-08-13 に実測)。**この判定を呼び出し側へ書き戻さないこと**、
-    /// および**触ったら実機で下書きを確かめること**(witness の手順は
-    /// Bench/measurements.md「セレクタの品質」の節)
+    /// **配線(ここを呼ぶこと)も単体テストで守っている**(`DraftTypeSelectorTests`)。
+    /// ただし台本には条件がある —— **操作後の木の顔ぶれを変えること**。`adoptSnapshot` は
+    /// identity(ref/type/identifier/label)が同じなら世代を使い回すので、`value` だけが
+    /// 変わる木では ref が進まず**欠陥そのものが起きない**(最初に書いたテストはこれで
+    /// 空回りし、変異が生き残った)。詳細は FakeDriver.scriptedSnapshots の罠の項
     static func namingSnapshot(ref: Int, generation: SnapshotResponse?,
                                latest: SnapshotResponse?) -> SnapshotResponse? {
         if let generation, generation.elements.contains(where: { $0.ref == ref }) { return generation }

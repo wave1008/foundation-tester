@@ -86,7 +86,16 @@ final class FakeDriver: AppDriver, @unchecked Sendable {
         return snapshotResponse
     }
 
-    /// snapshot が順に返す台本(空 = snapshotResponse を返し続ける)
+    /// snapshot が順に返す台本(空 = snapshotResponse を返し続ける)。
+    ///
+    /// **罠(2026-08-13)**: 操作の前後で `value` だけが違う木を並べても **ref は進まない** ——
+    /// `adoptSnapshot` は identity(ref / type / identifier / **label**)が同じなら世代を
+    /// 使い回すので、`lastSnapshots` は同じ番号のまま更新される。「操作の後に木が進む」
+    /// 経路(記録が別世代の木を見てしまう類の欠陥)を再現したいときは、
+    /// **顔ぶれを変える**こと(要素を足す・ラベルを変える)。
+    /// 実機では入力後に候補一覧が現れる等で自然に変わる —— それを知らずに value だけ
+    /// 変える台本を書くと、**流れのテストが黙って空回りする**
+    /// (DraftTypeSelectorTests の配線テストがこの形)
     var scriptedSnapshots: [SnapshotResponse] = []
 
     func clearAppData(bundleID: String) async throws {
