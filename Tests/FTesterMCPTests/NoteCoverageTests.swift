@@ -81,6 +81,10 @@ final class NoteCoverageTests: XCTestCase {
         // `#buttonPanel` がキーボードとの間で 1080x12 に潰され、中身が公開されなくなった。
         // キーボード注記は「その下に触れる物は無い」と言うが、**消えたものは数えられない**
         "and-form_keyboard": "form",
+        // 2026-08-13 の監査(モーダル / ダイアログ)で足した1枚。Android 設定のアプリ情報から
+        // 開いた確認ダイアログ。**背景が a11y から丸ごと落ちる**(直前は 29 要素 → 6 要素)。
+        // 画面の大半が木に無い形の陰性対照 —— **未表現率が極端でも、モーダルなら正常**
+        "and-dialog_confirm": "dialog",
         // 自前 SUT(盤面が契約で固定されている対照)
         "sutec-calendar_day": "ec", "sutec-detail": "ec", "sutec-home": "ec",
         "sut-cmp_controls": "sut", "sut-cmp_home": "sut",

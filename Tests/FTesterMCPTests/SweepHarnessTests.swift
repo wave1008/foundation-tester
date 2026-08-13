@@ -286,6 +286,10 @@ final class SweepHarnessTests: XCTestCase {
         "and-form_keyboard": Counts(ghost: 0, overlay: 0, stacked: 0, misses: 3, disabled: 0,
                                     offscreen: 0, warnedTappable: 0, keyboard: 0, sliver: 0,
                                     nested: 0, scrolledOut: 0),
+        // 2026-08-13 の監査(モーダル / ダイアログ)。Android 設定の確認ダイアログ。
+        // **全項目0** —— 背景が a11y から落ちて木は6要素だけになり、幾何の検知は何も出ない。
+        // 実アプリの**陰性対照**(検知が常に何か出す装置になっていないことの witness)
+        "and-dialog_confirm": Counts(),
     ]
 
     private static var fixtureDirectory: URL {
