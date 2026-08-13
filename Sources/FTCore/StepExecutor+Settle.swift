@@ -188,10 +188,9 @@ extension StepExecutor {
                                 - Self.bottomUncoveredBand - 1)
         if shouldEmptyDrag,
            Self.emptyDragIsSafe(x: x, y: y, of: element,
-                                in: snapshot.elements, screen: snapshot.screen) {
-            await emptyDrag(x: x, y: y,
-                            toX: Self.emptyDragEndX(of: element, from: x,
-                                                    screen: snapshot.screen))
+                                in: snapshot.elements, screen: snapshot.screen),
+           let toX = Self.emptyDragEndX(of: element, from: x, screen: snapshot.screen) {
+            await emptyDrag(x: x, y: y, toX: toX)
         }
         return try await !settleAfterScroll(step: step, found: element, phase: &phase)
     }
@@ -421,12 +420,21 @@ extension StepExecutor {
     /// コマンドがアプリの状態を書き換える)。矩形の外で離せばクリックは取り消される。
     /// **縦に抜いてはいけない**: 容器がスクロールとして消費して内容が動き、直後に
     /// 「今ここにある」を確かめる assertion が壊れる(実測: E2E-CMP/ios-inapp の S0020 が 0/3)。
-    /// **止めるという選択肢も無い**: 完全に外すと肩代わりが効かず S0080 が CMP/ios で落ちる
-    static func emptyDragEndX(of element: ElementInfo, from x: Double, screen: FTRect) -> Double {
+    /// **止めるという選択肢も無い**: 完全に外すと肩代わりが効かず S0080 が CMP/ios で落ちる。
+    /// **抜けられないときだけ nil**(= その回は撃たない)。矩形が画面幅いっぱいだと左右どちらへも
+    /// 出られず、ここは以前**開始点をそのまま返していた** —— 始点と終点が同じ 0.30 秒のプレスは
+    /// タップそのもので、この doc が禁じている「矩形の中で離す」を実装自身が踏んでいた。
+    /// 実機(iPhone 実機・SmartNews)の全幅セルで `ft_scroll_to` が**記事を開く**形で 2/2 再現
+    /// (2026-08-14)。自前 SUT の行はすべてインセット(例 16,270 330x56)なので E2E には出ない
+    /// —— 全幅の行は実アプリに固有。実機は `AppBundleInspector` が必ず nil を返すので
+    /// `shouldEmptyDrag` が常に true になり、全アプリが対象になる。
+    /// 撃たない代償は「容器が次の1タッチを消費したまま」= 呼び手のやり直しで回復するが、
+    /// 撃った場合の代償は**アプリの状態が変わって戻せない**(読み取り専用のはずの scrollTo が書き込む)
+    static func emptyDragEndX(of element: ElementInfo, from x: Double, screen: FTRect) -> Double? {
         let right = element.frame.x + element.frame.width + 4
         if right <= screen.x + screen.width - 1 { return right }
         let left = element.frame.x - 4
-        return left >= screen.x + 1 ? left : x
+        return left >= screen.x + 1 ? left : nil
     }
 
     /// スクロール探索直後の「空打ち」極小ドラッグ(呼ぶ条件は呼び出し側の判定を参照)。

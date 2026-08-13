@@ -2922,6 +2922,106 @@ final class StepExecutorTests: XCTestCase {
             x: 201, y: 728, of: mid, in: [mid, tabBar], screen: screen))
     }
 
+    /// **全幅の行では空打ちの終点が作れない**ので撃たない。左右どちらへも 4pt 出られないとき、
+    /// 以前は開始点をそのまま返しており、始点=終点の 0.30 秒プレスは**タップとして成立する**
+    /// —— emptyDragEndX の doc が禁じている「矩形の中で離す」を実装自身が踏んでいた。
+    /// 実機(iPhone 実機・SmartNews の全幅セル)で `ft_scroll_to` が記事を開く形で 2/2 再現(2026-08-14)
+    func testEmptyDragEndXRefusesWhenItCannotLeaveTheElement() {
+        let screen = FTRect(x: 0, y: 0, width: 393, height: 852)
+
+        let fullBleed = framed(ref: 1, id: "cell", x: 0, y: 103, width: 393, height: 116)
+        XCTAssertNil(StepExecutor.emptyDragEndX(of: fullBleed, from: 196.5, screen: screen),
+                     "全幅の行は抜けられないので撃たないこと")
+
+        // インセットの行(自前 SUT の形)は従来どおり右へ抜ける
+        let inset = framed(ref: 2, id: "row_30", x: 16, y: 270, width: 330, height: 56)
+        XCTAssertEqual(StepExecutor.emptyDragEndX(of: inset, from: 181, screen: screen), 350)
+        // 右端に貼り付いた行は左へ抜ける
+        let atRight = framed(ref: 3, id: "row", x: 200, y: 270, width: 193, height: 56)
+        XCTAssertEqual(StepExecutor.emptyDragEndX(of: atRight, from: 296, screen: screen), 196)
+
+        // 返す点は必ず矩形の外(この不変条件が破れた瞬間にタップになる)
+        for element in [inset, atRight] {
+            let end = StepExecutor.emptyDragEndX(of: element, from: element.frame.centerX,
+                                                 screen: screen)
+            XCTAssertNotNil(end)
+            if let end {
+                XCTAssertFalse(end > element.frame.x && end < element.frame.x + element.frame.width,
+                               "終点が矩形の中に留まるとクリックとして成立する: \(end)")
+            }
+        }
+    }
+
+    /// 配線: 探索終端の空打ちが**全幅の行では1本も撃たれない**こと。純粋関数だけを固定すると
+    /// 「呼び出しを外す」変異が生き残るので、同じ台本をインセット行でも回して
+    /// **陽性対照を同じテストの中に置く**(空打ちに到達しない台本だと無条件に緑になる)
+    func testSearchTerminalDoesNotEmptyDragAFullBleedRow() async throws {
+        /// 台本: 1回目は対象が無く、スワイプ後に出現する(= 終端の空打ちが掛かる周回)
+        func horizontalDrags(targetX: Double, width: Double) async -> [(fromX: Double,
+                                                                       fromY: Double,
+                                                                       toX: Double, toY: Double)] {
+            let log = CallLog()
+            let container = framed(ref: 100, id: "list", x: 0, y: 0, width: 400, height: 700,
+                                   depth: 1)
+            let filler = framed(ref: 1, id: "cell_01", x: targetX, y: 100, width: width,
+                                height: 116, depth: 2)
+            let target = framed(ref: 2, id: "cell_40", x: targetX, y: 300, width: width,
+                                height: 116, depth: 2)
+            // 先頭を対象なしで数枚埋める(1周が何枚読むかに依存せず、必ず attempt > 0 で
+            // 見つかるようにする = 終端の空打ちが掛かる周回に入る)
+            let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [
+                [container, filler],
+                [container, filler],
+                [container, filler],
+                [container, filler, target],
+            ])
+            let executor = StepExecutor(driver: primary, releasesScrollTouch: true)
+            _ = await executor.execute(FlowStep(action: "tap",
+                                                locator: FlowLocator(id: "cell_40"),
+                                                direction: "up", maxSwipes: 6))
+            return primary.dragCalls.filter { $0.fromY == $0.toY }
+        }
+
+        // 陽性対照: インセット(画面 400 幅に対し 16..386)なら従来どおり空打ちが出る
+        let inset = await horizontalDrags(targetX: 16, width: 370)
+        XCTAssertFalse(inset.isEmpty, "台本が終端の空打ちに到達していない(この検査は無力)")
+
+        // 本題: 全幅(0..400)では1本も出ない
+        let fullBleed = await horizontalDrags(targetX: 0, width: 400)
+        XCTAssertTrue(fullBleed.isEmpty,
+                      "全幅の行に空打ちを撃ってはいけない(矩形から出られずタップになる): \(fullBleed)")
+    }
+
+    /// 掃討: 空打ちの呼び出しは**2箇所**(探索終端と救済の後)。救済側も全幅の行では撃たない。
+    /// 陽性対照は `testRecoverySwipeIsFollowedByTheEmptyDrag`(同じ台本のインセット版で
+    /// 横ドラッグが出ることを固定している)
+    func testRecoveryEmptyDragIsSkippedForAFullBleedRow() async throws {
+        let log = CallLog()
+        let container = framed(ref: 100, id: "list_rows", x: 0, y: 230, width: 400, height: 462,
+                               depth: 1)
+        let inside1 = framed(ref: 1, id: "row_28", x: 0, y: 300, width: 400, height: 56, depth: 2)
+        let inside2 = framed(ref: 2, id: "row_29", x: 0, y: 360, width: 400, height: 56, depth: 2)
+        let target = framed(ref: 3, id: "row_30", x: 0, y: 420, width: 400, height: 56, depth: 2)
+        let ghost = framed(ref: 4, id: "row_30", x: 0, y: 783, width: 400, height: 56, depth: 2)
+        let settled = framed(ref: 5, id: "row_30", x: 0, y: 430, width: 400, height: 56, depth: 2)
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [
+            [container, inside1, inside2, target],
+            [container, inside1, inside2, target],
+            [container, inside1, inside2, ghost],
+            [container, inside1, inside2, ghost],
+            [container, inside1, inside2, settled],
+        ])
+        let executor = StepExecutor(driver: primary, releasesScrollTouch: true)
+        let step = FlowStep(action: "tap", locator: FlowLocator(id: "row_30"),
+                            direction: "up", maxSwipes: 2)
+
+        _ = await executor.execute(step)
+
+        let horizontal = primary.dragCalls.filter { $0.fromY == $0.toY }
+        XCTAssertTrue(horizontal.isEmpty,
+                      "救済後の空打ちも全幅の行では撃たないこと: \(primary.dragCalls)")
+    }
+
     /// 要素数の上限で打ち切られたスナップショットは「見つかりません」と区別が付かない。
     /// 失敗文言に必ず打ち切りを添える(WebView 画面は要素が多く最も当たりやすい)
     func testTruncationHint() {
