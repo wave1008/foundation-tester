@@ -153,6 +153,28 @@ extension MCPServer {
             + " Take a fresh ft_snapshot and use the new refs."
     }
 
+    /// この ref を持っている**別の** engineKey(= 別の宛先、または同じ機の別の指し方)。
+    /// 拒否するときに出自を名指しするために使う —— 「不明な番号」とだけ言うと、
+    /// 呼び手は撃ち間違いだと読んで同じ番号を別の宛先へ撃ち直す
+    func otherKeyHolding(_ ref: Int, args: [String: Any]) -> String? {
+        let current = Self.engineKey(args)
+        return refGenerations.first { key, generations in
+            key != current
+                && generations.contains { $0.snapshot.elements.contains { $0.ref == ref } }
+        }?.key
+    }
+
+    /// 別の宛先(または別の指し方)で採った ref を撃たれたときの拒否文。
+    /// **engineKey をそのまま出す** —— 呼び手が実際に書いた引数の形なので照合できる
+    static func refFromAnotherTargetMessage(ref: Int, takenUnder: String,
+                                            firedAt: String) -> String {
+        "[\(ref)] was taken under a different target (\(takenUnder)), but this call addressed"
+            + " \(firedAt) — refusing, because ref numbers are scoped to the target they were"
+            + " taken from. Forwarding it would let that bridge resolve the number in its own"
+            + " numbering and silently operate a different element."
+            + " Take a fresh ft_snapshot for this target and use the new refs."
+    }
+
     /// `ref` を含む世代の snapshot 全体(movedTogether の兄弟比較に使う「同じ世代の他の要素」用。
     /// resolveSessionRef と同じ探索だが、要素1件ではなく世代の全体が要る)
     func generationSnapshot(containing ref: Int, args: [String: Any]) -> SnapshotResponse? {
@@ -513,11 +535,26 @@ extension MCPServer {
     /// **どの世代にも無い ref**(何か撮った後で、それでも一致しない番号)は素通しせず throw する
     /// —— セッション内で ref は一意なので、世代があるのに見つからないのは番号の書き間違いか、
     /// 直近5世代より前の snapshot からコピーしてきた番号のどちらか(2026-08-10)。
+    ///
+    /// **素通しの条件はセッション全体で見る**(2026-08-14・実機+仮想デバイス混在の監査)。
+    /// 以前は「この engineKey に世代が無いか」で判定していたが、engineKey は**指し方**込み
+    /// (`profile:<project>:<name>` / `direct:ios:<port>:`)なので、**同じ機を profile: で撮って
+    /// port: で撃つ**だけで「世代なし」になり、番号がそのままブリッジへ渡っていた。
+    /// ブリッジは自前の 1..N で解決するので**別の要素に当たって成功と報告する** ——
+    /// 実機で再現: profile: で撮った木の ref は 70..93 なのに `port:8143 ref:10` が
+    /// `tap [10] done` を返し、ブリッジの #10 = `#btn_input_submit` を実際に押した
+    /// (`submitted=-` → `submitted=physical`)。既存の「機を跨いだ ref」テストが通っていたのは
+    /// 2台目も MCP で撮っていたからで、**撮っていない宛先へ撃つ形が丸ごと抜けていた**。
+    /// 素通しは `nextRefBase == 0`(このセッションが ref を1つも発行していない)ときだけにする。
     /// 返す ref は**セッション ref**(ブリッジへ渡す前に呼び手が `nativeRef` を通すこと)
     func verifiedRef(_ ref: Int, driver: AppDriver,
                              args: [String: Any]) async throws -> (ref: Int, note: String) {
         guard let resolved = resolveSessionRef(ref, args: args) else {
-            guard !(refGenerations[Self.engineKey(args)]?.isEmpty ?? true) else { return (ref, "") }
+            guard nextRefBase > 0 else { return (ref, "") }
+            if let owner = otherKeyHolding(ref, args: args) {
+                throw MCPError(Self.refFromAnotherTargetMessage(
+                    ref: ref, takenUnder: owner, firedAt: Self.engineKey(args)))
+            }
             throw MCPError("unknown ref [\(ref)] — it is not from any recent snapshot"
                 + " (refs are per-snapshot; the last 5 snapshots were checked)."
                 + " Take a fresh ft_snapshot")

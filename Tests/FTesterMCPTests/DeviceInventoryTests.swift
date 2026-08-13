@@ -167,6 +167,53 @@ final class DeviceInventoryTests: XCTestCase {
         XCTAssertTrue(DeviceInventory.line(row).contains("no bridge"), DeviceInventory.line(row))
     }
 
+    // MARK: - iosFallbackRows(マシンプロファイルが解決しなかったときの唯一の一覧)
+
+    /// **本命**(2026-08-14・実機+仮想デバイス混在の監査で実機再現)。fallback は
+    /// 「いま booted/connected のものを並べる」と名乗るのに、iOS だけシミュレータしか
+    /// 数えておらず、**繋がっている iPhone が一覧から丸ごと消えていた**。
+    /// `udid:` を求めるエラー文は「ft_list_devices を見ろ」と言うので、実機の利用者は
+    /// udid をどこからも採れないまま行き止まりになる
+    func testIOSFallbackListsConnectedPhysicalDevicesAlongsideSimulators() {
+        let sim = SimDeviceInfo(udid: "SIM-1", name: "iPhone 17 Pro-01", os: "iOS 27.0",
+                                booted: true, physical: false)
+        let phone = IOSPhysicalDeviceInfo(udid: "00008130-001819863E60001C", name: "iPhone wave",
+                                          os: "iOS 26.6", connected: true, transport: "wired")
+        let rows = DeviceInventory.iosFallbackRows(simulators: [sim], physical: [phone],
+                                                   live: .empty)
+        XCTAssertEqual(rows.map(\.identifier), ["SIM-1", "00008130-001819863E60001C"],
+                       "実機の行が fallback に出ていない")
+        XCTAssertEqual(rows.last?.physical, true)
+        XCTAssertTrue(DeviceInventory.line(rows[1]).contains("physical"),
+                      DeviceInventory.line(rows[1]))
+    }
+
+    /// 実機のブリッジは udid の記録経由でしか引けない(名前は汎用の "iPhone")。
+    /// fallback の行にもそのポートが載ること
+    func testIOSFallbackPhysicalRowCarriesTheBridgeFoundByUDID() {
+        let phone = IOSPhysicalDeviceInfo(udid: "PHYS-9", name: "iPhone wave", os: "iOS 26.6",
+                                          connected: true, transport: "wired")
+        let live = DeviceInventory.LiveBridges(
+            byName: [:], byUDID: ["PHYS-9": [DeviceInventory.Row.Bridge(port: 8143,
+                                                                        engine: "xcuitest")]])
+        let rows = DeviceInventory.iosFallbackRows(simulators: [], physical: [phone], live: live)
+        XCTAssertEqual(rows.first?.bridges.first?.port, 8143)
+    }
+
+    /// 見出しの約束どおり「いま booted / connected のもの」だけを並べる —— 過去にペアリング
+    /// しただけの実機や停止中のシミュレータで一覧が埋まらないこと
+    func testIOSFallbackListsOnlyBootedSimulatorsAndConnectedPhones() {
+        let booted = SimDeviceInfo(udid: "SIM-2", name: "iPhone 17 Pro-02", os: "iOS 27.0",
+                                   booted: true, physical: false)
+        let shutdown = SimDeviceInfo(udid: "SIM-3", name: "iPhone 16", os: "iOS 18.5",
+                                     booted: false, physical: false)
+        let away = IOSPhysicalDeviceInfo(udid: "PHYS-OFF", name: "old iPhone", os: "iOS 17.0",
+                                         connected: false, transport: "wired")
+        let rows = DeviceInventory.iosFallbackRows(simulators: [booted, shutdown],
+                                                   physical: [away], live: .empty)
+        XCTAssertEqual(rows.map(\.identifier), ["SIM-2"])
+    }
+
     // MARK: - androidRow (純粋関数)
 
     func testAndroidRowMatchesConnectedAVDByName() {

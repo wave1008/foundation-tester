@@ -166,6 +166,58 @@ final class MCPRefGenerationTests: XCTestCase {
         }
     }
 
+    /// **上のテストが見ていなかった形**(2026-08-14・実機+仮想デバイス混在の監査で実機再現)。
+    /// あちらは2台目も MCP で撮っているので「この engineKey に世代がある」が成り立ち、
+    /// 素通しの分岐に入らなかった。**撮っていない宛先へ撃つ**とその分岐に落ちて、
+    /// MCP の番号がそのままブリッジへ渡り、ブリッジ自前の 1..N で解決されて別要素に当たる。
+    ///
+    /// 実機実測(E2E-iOS・iPhone wave): profile: で撮った木の ref は 70..93 なのに、
+    /// 同じ機を `port:8143 ref:10` で撃つと `tap [10] done`(警告ゼロ)で
+    /// ブリッジの #10 = `#btn_input_submit` を実際に押し、`submitted=-` → `submitted=physical`
+    /// になった。**engineKey は指し方込み**(`profile:…` / `direct:ios:<port>:`)なので、
+    /// 同じ1台でも指し方を変えるだけでこの穴に入る
+    func testARefIsNotForwardedRawToATargetThatWasNeverSnapshotted() async throws {
+        driver.snapshotResponse = screen([element(ref: 1, id: "row_30", label: "行 30")])
+        let taken = Self.text(try await server.call(tool: "ft_snapshot", args: ["port": 8123]))
+        let ref = Self.firstRef(in: taken)
+
+        // 撃つ先(port 8124)では一度も ft_snapshot を撮っていない
+        do {
+            _ = try await server.call(tool: "ft_tap", args: ["port": 8124, "ref": ref])
+            XCTFail("撮っていない宛先へ ref \(ref) が素通しされた(ブリッジ自前の番号で解決される)")
+        } catch {
+            XCTAssertFalse(driver.calls.contains { $0.hasPrefix("tap") },
+                           "拒否したはずなのに tap が発射されている: \(driver.calls)")
+            XCTAssertTrue(error.localizedDescription.contains("different target"),
+                          error.localizedDescription)
+        }
+    }
+
+    /// 出自を名指しすること —— 「不明な番号」とだけ言うと、呼び手は撃ち間違いだと読んで
+    /// 同じ番号を別の宛先へ撃ち直す(拒否が助言になっていない)
+    func testTheRefusalNamesBothTheTargetItWasTakenUnderAndTheOneItWasFiredAt() async throws {
+        driver.snapshotResponse = screen([element(ref: 1, id: "btn_ok", label: "OK")])
+        let taken = Self.text(try await server.call(
+            tool: "ft_snapshot", args: ["project": "E2E-iOS", "profile": "ios-device"]))
+        let ref = Self.firstRef(in: taken)
+        do {
+            _ = try await server.call(tool: "ft_tap", args: ["port": 8143, "ref": ref])
+            XCTFail("同じ機でも指し方が違えば ref は通してはいけない")
+        } catch {
+            let message = error.localizedDescription
+            XCTAssertTrue(message.contains("ios-device"), message)
+            XCTAssertTrue(message.contains("8143"), message)
+        }
+    }
+
+    /// 陰性対照: **セッションが ref を1つも発行していない**ときの素通しは残す
+    /// (ft_snapshot を挟まずに撃つ呼び方。判断の起点が無いのでブリッジの 404 に任せる)。
+    /// 上の2本が「常に拒否する検出器」になっていないことをここで確かめる
+    func testPassThroughSurvivesOnlyWhileTheSessionHasIssuedNoRefs() async throws {
+        _ = try await server.call(tool: "ft_tap", args: ["port": 8124, "ref": 42])
+        XCTAssertEqual(actions, ["tap(ref:42)"])
+    }
+
     /// 採番はセッションに1つ(機を跨いでも単調増加)。上のテストが「たまたま番号がずれた」で
     /// 通ることを防ぐ —— 2台目の base が1台目の消費ぶんだけ進んでいることを直接見る
     func testRefBaseIsSharedAcrossDevicesAndOnlyGrows() async throws {

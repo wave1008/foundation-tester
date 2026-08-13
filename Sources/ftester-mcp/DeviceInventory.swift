@@ -236,14 +236,36 @@ enum DeviceInventory {
             .filter { seenPorts.insert($0.port).inserted }
     }
 
+    /// **実機も並べる**(2026-08-14・実機+仮想デバイス混在の監査)。ここはマシンプロファイルが
+    /// 解決しなかったときの**唯一の一覧**で、`androidFallbackRows` は最初から実機を含むのに
+    /// iOS だけシミュレータしか数えていなかった。結果、繋がっている iPhone が
+    /// **どの経路からも見えず**、`udid:` を要求するエラー文が「ft_list_devices を見ろ」と言うのと
+    /// 相互参照して行き止まりになる(監査ラウンド1の欠陥②と同じ袋小路の別の入口)。
+    /// machines/ に自分のホスト名が無い構成では、この fallback が常用経路になる
     private static func iosFallbackRows() async -> [Row] {
-        let booted = ((try? SimulatorCatalog.devices()) ?? []).filter(\.booted)
-        guard !booted.isEmpty else { return [] }
-        let live = await liveIOSBridges()
-        return booted.map { device in
+        let simulators = ((try? SimulatorCatalog.devices()) ?? [])
+        let physical = ((try? IOSPhysicalDeviceCatalog.devices()) ?? [])
+        guard simulators.contains(where: \.booted) || physical.contains(where: \.connected)
+        else { return [] }
+        return iosFallbackRows(simulators: simulators, physical: physical,
+                               live: await liveIOSBridges())
+    }
+
+    /// 純粋関数(テスト用): 実測カタログ2本を fallback の行へ組む。**絞り込みもここに置く**
+    /// (「いま booted/connected のもの」という見出しの約束を1箇所で守る)。
+    /// 実機のブリッジは `/status` に udid を申告せず名前も汎用の "iPhone" なので、名前引きは
+    /// 原理的に当たらない —— `.ftester/bridge-<port>.device` の記録から BridgeDiscovery が
+    /// 補った udid 側で当てる(resolveBridges は udid 引きと名前引きの和集合を取る)
+    static func iosFallbackRows(simulators: [SimDeviceInfo], physical: [IOSPhysicalDeviceInfo],
+                                live: LiveBridges) -> [Row] {
+        simulators.filter(\.booted).map { device in
             Row(name: device.name, platform: "ios", identifier: device.udid, running: true,
                physical: false, registered: false,
                bridges: resolveBridges(udid: device.udid, name: device.name, in: live))
+        } + physical.filter(\.connected).map { device in
+            Row(name: device.name, platform: "ios", identifier: device.udid, running: true,
+                physical: true, registered: false,
+                bridges: resolveBridges(udid: device.udid, name: device.name, in: live))
         }
     }
 
