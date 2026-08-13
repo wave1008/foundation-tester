@@ -731,9 +731,13 @@ extension StepExecutor {
                     : element.type == "secureTextField"
                         ? "the field already holds a value; type appends, so the result will not"
                             + " simply be what you typed. Call clearInput first if you meant to replace it"
+                        // **連結後の値を予告しない**(2026-08-13。MCP 側の同名警告と同じ理由)——
+                        // 空欄のヒント文字列が `value` に載り `placeholder` が来ないアプリ
+                        // (Google メッセージの宛先欄が witness)では前の値が実在の内容ではなく、
+                        // 予告は外れる。**ここでは読み返さない**(型ステップごとの往復を増やさない)
+                        // ので、観測していない値は名乗らず「撃つ前に入っていた値」だけを言う
                         : "the field already held \"\(SnapshotRenderer.truncate(priorValue, 30))\";"
-                            + " type appends, so it will read"
-                            + " \"\(SnapshotRenderer.truncate(priorValue + text, 60))\" after this."
+                            + " type appends, so the result will not simply be what you typed."
                             + " Call clearInput first if you meant to replace it")
             if let td = typeDriver, preferTypeDriver || text.contains("\n"),
                try await typeViaTypeDriver(td, step: step, phase: &phase) {
@@ -751,6 +755,7 @@ extension StepExecutor {
                 if !actingDriver.verifiesTypedText, TypeReadback.isTextInput(element) {
                     if let failure = try await verifyTypedText(actingDriver, element: element,
                                                                 expected: existingValue + text,
+                                                                typedOnly: text,
                                                                 phase: &phase) {
                         return StepOutcome(status: .failed(failure))
                     }
@@ -888,6 +893,7 @@ extension StepExecutor {
     /// 伏せ字を書き込む)。戻り値: nil = 検証済み(一致・検証不能とも受理)/ 非nil = 失敗理由
     /// (値そのものは含めない。パスワード欄も通る経路)
     private func verifyTypedText(_ driver: AppDriver, element: ElementInfo, expected: String,
+                                 typedOnly: String,
                                  phase: inout PhaseAccumulator) async throws -> String? {
         let clock = ContinuousClock()
         let deadline = Date().addingTimeInterval(Self.typeVerifyBudgetSeconds)
@@ -898,10 +904,12 @@ extension StepExecutor {
         while true {
             rounds += 1
             guard let actual = try await awaitTypeCommit(driver, element: element, expected: expected,
+                                                          typedOnly: typedOnly,
                                                           deadline: deadline, phase: &phase) else {
                 return nil   // 読めない/曖昧 = 検証不能なので受理する(TypeReadback.value 参照)
             }
-            switch TypeReadback.plan(expected: expected, actual: actual) {
+            let target = Self.readbackTarget(expected: expected, typedOnly: typedOnly, actual: actual)
+            switch TypeReadback.plan(expected: target, actual: actual) {
             case .done, .unverifiable:
                 return nil
             case .resend(let missing):
@@ -913,7 +921,7 @@ extension StepExecutor {
                 // (handleClear と同じ 422 系の判断。clearInput のケースの既存実装と同じ API 形)
                 let start = clock.now
                 try await driver.clearInput(ref: element.ref)
-                try await driver.type(ref: element.ref, text: expected)
+                try await driver.type(ref: element.ref, text: target)
                 phase.actionMs += Self.ms(clock.now - start)
             }
             stagnantRounds = (actual == previous) ? stagnantRounds + 1 : 0
@@ -930,6 +938,7 @@ extension StepExecutor {
     /// (0.3〜0.6s)なのでポーリング間隔は typePollSeconds(0.05s)より粗い typeVerifyPollSeconds を使う。
     /// 戻り値 nil = 読めない/複数候補(検証不能。TypeReadback.value 参照)
     private func awaitTypeCommit(_ driver: AppDriver, element: ElementInfo, expected: String,
+                                 typedOnly: String,
                                  deadline: Date, phase: inout PhaseAccumulator) async throws -> String? {
         let clock = ContinuousClock()
         func read() async throws -> String? {
@@ -941,7 +950,9 @@ extension StepExecutor {
         guard var lastValue = try await read() else { return nil }
         var lastChange = Date()
         while true {
-            if lastValue == expected { return lastValue }
+            // **撃った文字だけになった形も「着いた」**(下の readbackTarget)。これが無いと
+            // ヒントを value に載せる欄では毎回 stableSeconds ぶん待たされる
+            if lastValue == expected || lastValue == typedOnly { return lastValue }
             if Date() >= deadline { return lastValue }
             if Date().timeIntervalSince(lastChange) >= Self.typeVerifyStableSeconds { return lastValue }
             let waitStart = clock.now
@@ -950,6 +961,37 @@ extension StepExecutor {
             guard let current = try await read() else { return nil }
             if current != lastValue { lastChange = Date(); lastValue = current }
         }
+    }
+
+    /// 読み返しが目標にする値(2026-08-13)。**既定は `expected`(撃つ前の値 + 本文)**で、
+    /// それが `.unverifiable`(前方一致でも超過でもない = 追送も削除も効かない)のときだけ
+    /// 「撃った文字だけ」を目標に採り直す。
+    ///
+    /// **なぜ要るか**: 空欄のヒント文字列を `value` に載せ `placeholder` を出さないアプリでは
+    /// 撃つ前の値が実在の内容ではないので、`expected` が最初から偽になる。すると plan は必ず
+    /// `.unverifiable` に落ち、**追送も打ち直しも走らないまま受理される** —— 読み返しという砦が
+    /// 丸ごと外れる。
+    ///
+    /// **この退化は再現していない**(2026-08-13 時点)。値にヒントが載る盤面として確かめられたのは
+    /// **Android の E2E-CMP `#field_single`**(value="単一行" / placeholder なし。同じシナリオの
+    /// `textIs "#txt_echo_length" == "len=8"` が通るので "単一行hello123" は偽)と
+    /// **Google メッセージの宛先欄**の2つで、どちらも `verifiesTypedText == true` の
+    /// ドライバなのでこの関数は通らない。iOS の in-app(唯一の `false`)で当たる盤面はまだ無い ——
+    /// `#field_single` は iOS では placeholder を**ラベル**として出すので `priorValue` が空になる。
+    /// **失敗モードが沈黙(検証を諦めたことを誰にも言わない)なので、witness が無くても塞ぐ**。
+    ///
+    /// **順序を入れ替えないこと**: `typedOnly` を先に見ると、撃つ前の値と本文が同じ欄
+    /// (prior="abc" に "abc" を追記)で**追記が届かなかった失敗**が `.done` に見える。
+    /// 採り直しは「今なら諦めていた」場合だけに限る = 既存の検査を弱めない
+    static func readbackTarget(expected: String, typedOnly: String, actual: String) -> String {
+        guard expected != typedOnly else { return expected }
+        guard case .unverifiable = TypeReadback.plan(expected: expected, actual: actual) else {
+            return expected
+        }
+        if case .unverifiable = TypeReadback.plan(expected: typedOnly, actual: actual) {
+            return expected
+        }
+        return typedOnly
     }
 
     /// 読み返しの打ち切り時間・停滞許容周回数・安定待ち。BridgeRouter.handleType の

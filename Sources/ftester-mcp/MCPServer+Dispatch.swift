@@ -279,9 +279,23 @@ extension MCPServer {
         }
         switch platform {
         case "ios":
+            let iosOther = Self.platformWasInferred(args)
+                && !seenExplicitAndroidSerials.isEmpty ? "Android" : nil
             guard let remembered = Self.iosExplicitWithMemory(
                 argsGaveTarget: Self.argsGaveIOSTarget(args), remembered: lastExplicitIOSTarget)
-            else { return .unchanged }
+            else {
+                return lostTargetFold(gaveTarget: Self.argsGaveIOSTarget(args),
+                                      everNamed: everNamedIOSTarget,
+                                      survivors: seenExplicitIOSPorts.map(String.init),
+                                      apply: { label in
+                                          var out = args
+                                          out["port"] = Int(label) ?? 0
+                                          if explicitPlatform == nil { out["platform"] = "ios" }
+                                          return out
+                                      },
+                                      deviceNoun: "iOS devices", unitNoun: "ports",
+                                      otherPlatform: iosOther)
+            }
             var out = args
             out["port"] = Int(remembered.port)
             if explicitPlatform == nil { out["platform"] = "ios" }
@@ -300,9 +314,23 @@ extension MCPServer {
             }
             return iosFold
         case "android":
+            let androidOther = Self.platformWasInferred(args)
+                && !seenExplicitIOSPorts.isEmpty ? "iOS" : nil
             guard let remembered = Self.androidExplicitWithMemory(
                 argsGaveTarget: Self.argsGaveAndroidTarget(args), remembered: lastExplicitAndroidSerial)
-            else { return .unchanged }
+            else {
+                return lostTargetFold(gaveTarget: Self.argsGaveAndroidTarget(args),
+                                      everNamed: everNamedAndroidTarget,
+                                      survivors: Array(seenExplicitAndroidSerials),
+                                      apply: { label in
+                                          var out = args
+                                          out["serial"] = label
+                                          if explicitPlatform == nil { out["platform"] = "android" }
+                                          return out
+                                      },
+                                      deviceNoun: "Android devices", unitNoun: "serials",
+                                      otherPlatform: androidOther)
+            }
             var out = args
             out["serial"] = remembered
             if explicitPlatform == nil { out["platform"] = "android" }
@@ -321,6 +349,56 @@ extension MCPServer {
         default:
             return .unchanged
         }
+    }
+
+    /// 記憶した宛先が**失敗で消えた後**の省略呼び出し(2026-08-13 の監査。セッションの形 = OS 跨ぎ)。
+    ///
+    /// **実測した事故**: ①port 8138 を明示して成功 → ②存在しない port 8999 を明示して失敗 →
+    /// ③宛先を省いた呼び出しが、**8138 でも 8999 でもない別のシミュレータ**(ホーム画面が返った)
+    /// へ黙って行った。記憶は**解決時**に書かれるので ② が 8138 を 8999 で上書きし、
+    /// 失敗の後始末(`forgetConnection`)が 8999 を消して**記憶を空にする**。空になると
+    /// 「まだ1台も指していない新しいセッション」と同じ扱いになり、`resolveIOSPort(explicit: nil)`
+    /// = **ブリッジ探索**へ落ちて、このセッションが一度も名指ししていない機を拾う。
+    /// 曖昧さのガードは記憶を見るので、記憶が空ではそもそも働かない。
+    ///
+    /// 規則: **一度でも宛先を名指ししたセッションでは、省略呼び出しを探索へ落とさない**。
+    /// 生き残りが1つならそこへ戻し(= ③ は 8138 へ行く)、0 か複数なら断る。
+    func lostTargetFold(gaveTarget: Bool, everNamed: Bool, survivors: [String],
+                        apply: (String) -> [String: Any],
+                        deviceNoun: String, unitNoun: String,
+                        otherPlatform: String?) -> RememberedDeviceFold {
+        guard !gaveTarget, everNamed else { return .unchanged }
+        // **「候補が2台以上」はここで数えない** —— 曖昧さの判定は `isAmbiguousMemory` の1箇所に
+        // あり、下の `finishingFold` が同じ規則で断る。ここで先に数えると規則が2箇所になり、
+        // しかも**片方を壊しても何も落ちない**(変異で実証した)
+        guard let survivor = survivors.first else {
+            return .ambiguous(message: Self.lostTargetRefusal(
+                survivors: survivors, deviceNoun: deviceNoun, unitNoun: unitNoun,
+                otherPlatform: otherPlatform))
+        }
+        return Self.finishingFold(apply(survivor), chosen: "\(unitNoun.dropLast()) \(survivor)",
+                                  allSeenLabels: survivors, deviceNoun: deviceNoun,
+                                  unitNoun: unitNoun, otherPlatform: otherPlatform,
+                                  noteKey: "lostTarget:\(deviceNoun):\(survivor)",
+                                  firstTime: firstTime)
+    }
+
+    /// `lostTargetFold` が断るときの文。**探索へ落ちない理由を言う** —— 「見つからない」とだけ
+    /// 返すと、読み手は宛先を渡すのではなくブリッジを建て直しにいく
+    static func lostTargetRefusal(survivors: [String], deviceNoun: String, unitNoun: String,
+                                  otherPlatform: String?) -> String {
+        let sorted = survivors.sorted()
+        let left = sorted.isEmpty
+            ? " The \(deviceNoun) this session had targeted are no longer reachable."
+            : " This session still has \(sorted.count) reachable \(unitNoun)"
+                + " (\(sorted.prefix(rememberedDeviceListCap).joined(separator: ", ")))."
+        let crossed = otherPlatform.map {
+            " This session has also driven \($0), and no platform was given either."
+        } ?? ""
+        return "no udid/port/serial given, and this session's earlier target is gone.\(left)\(crossed)"
+            + " Refusing to fall back to whichever bridge happens to be running: that would operate"
+            + " a device you never named, and unlike a bad answer that is not something you can take"
+            + " back. Pass udid or port (iOS) / serial (Android) to say which."
     }
 
     /// `foldInRememberedDevice` の結果。**曖昧なら適用せず拒否する**(2026-08-13)。
@@ -971,7 +1049,10 @@ extension MCPServer {
                 note = verified.note
                 priorElement = lastSnapshots[Self.engineKey(args)]?
                     .elements.first { $0.ref == verified.ref }
-                priorValue = priorElement?.value
+                // **「入っている値」の判定は DSL と同じ**(2026-08-13)。素の `value` を見ていたので、
+                // `placeholder` と同値の空欄(iOS 全般 / Android の CMP)でも MCP だけが
+                // 追記警告を出していた —— StepExecutor は normalizedValue で黙る側
+                priorValue = priorElement.map(TypeReadback.normalizedValue)
             }
             // **replace は文字が空でも clear する**(2026-08-12): {replace:true, text:""} や
             // {replace:true, pressEnter:true} は「クリアだけ」「クリア+Enter」を成立させるための
@@ -988,8 +1069,13 @@ extension MCPServer {
             // **pressEnter を伴う形は対象外**: Enter の前後で状態が変わるので、検証は Enter 前に
             // 読む必要があり(下の呼び出し位置のまま)、最終的に返す木は Enter 後でなければならない
             // —— そもそも2回読む理由がある(この最適化を適用すると Enter 前の古い木を返す)
+            // 追記(replace なし)も読み返して確かめるので、同じ merge の対象にする(2026-08-13)。
+            // これが無いと `snapshotAfter: true` の呼び方で**同じ木を2回読む**
+            let verifiesAppend = !wantsReplace && !(priorValue ?? "").isEmpty
+                && !(content ?? "").isEmpty
             let mergesSnapshotAfterIntoVerification =
-                wantsReplace && !wantsEnter && args["snapshotAfter"] as? Bool == true
+                (wantsReplace || verifiesAppend) && !wantsEnter
+                && args["snapshotAfter"] as? Bool == true
             var precomputedAfterBody: String?
             func verificationSnapshot() async -> SnapshotResponse? {
                 guard mergesSnapshotAfterIntoVerification else {
@@ -1034,10 +1120,10 @@ extension MCPServer {
                     note += Self.replaceVerificationNote(
                         target: priorElement, expected: content, fresh: await verificationSnapshot())
                 } else if let prior = priorValue, !prior.isEmpty {
-                    note += " (the field already held \"\(SnapshotRenderer.truncate(prior, 30))\";"
-                        + " ft_type appends, so it now reads"
-                        + " \"\(SnapshotRenderer.truncate(prior + content, 60))\"."
-                        + " Call ft_clear_input first if you meant to replace it)"
+                    // **予告ではなく観測**(2026-08-13。appendVerificationNote の doc に witness)
+                    note += Self.appendVerificationNote(target: priorElement, typed: content,
+                                                        prior: prior,
+                                                        fresh: await verificationSnapshot())
                 }
             } else {
                 // **clear-only({replace:true, text:"" or 省略})も無条件に「cleared」と断言しない**
@@ -1271,15 +1357,25 @@ extension MCPServer {
             let clearDriver = try await driver(args)
             var clearRef = args["ref"] as? Int
             var clearNote = ""
+            var clearTarget: ElementInfo?
             if let ref = clearRef {
                 let verified = try await verifiedRef(ref, driver: clearDriver, args: args)
                 clearRef = verified.ref
                 clearNote = verified.note
+                clearTarget = lastSnapshots[Self.engineKey(args)]?
+                    .elements.first { $0.ref == verified.ref }
             }
             // clearRef はセッション ref。ブリッジへ渡す直前にだけ native へ戻す
             try await clearDriver.clearInput(ref: clearRef.map { nativeRef($0, args: args) })
             recordInteraction(action: "clearInput", resolvedRef: clearRef, args: args)
-            return text("cleared\(clearNote)"
+            // **無条件の「cleared」を断言しない**(2026-08-13。ft_type replace / 追記と同じ型の掃討)——
+            // in-app iOS の UIKit 経路は clearInput の成否を検証なしで YES を返すので、値が残っていても
+            // 「消した」と言ってしまう。呼び手はこの後 ft_type を撃つので、**残っていると黙って連結される**。
+            // 判定は replace の clear-only 検証と同じ関数(空を期待して読み返す)
+            let clearedVerdict = Self.replaceVerificationNote(
+                target: clearTarget, expected: "",
+                fresh: try? await clearDriver.snapshot(bypassingCache: clearDriver.supportsCacheBypass))
+            return text("clearInput sent\(clearNote)\(clearedVerdict)"
                 + (clearRef.map { reproductionNote(resolvedRef: $0, args: args) } ?? ""))
 
         case "ft_draft_scenario":

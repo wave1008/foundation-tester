@@ -576,6 +576,45 @@ extension MCPServer {
             + " \"\(SnapshotRenderer.truncate(value, 40))\" — this does not match what was typed)"
     }
 
+    /// `ft_type`(replace なし)で既存値へ追記したときの読み返し(2026-08-13)。
+    /// **連結後の値を予告しない** —— 空欄のヒント文字列が `value` に載るアプリでは撃つ前の値が
+    /// 実在の内容ではないので、「今は "ヒント+入力" と読める」は**同じ応答が返す木に否定される**。
+    /// witness は Google メッセージの宛先欄(`ContactSearchField`。撃つ前 value="名前、電話番号、
+    /// メールアドレスのいずれかを入力" → 撃った後 value="5551234567")。`isShowingHintText()` が
+    /// false なのでブリッジは `placeholder` を出さず、DSL 側の `TypeReadback.normalizedValue`
+    /// (value == placeholder を落とす)でも取り切れない —— **読み返す以外に区別する手が無い**。
+    /// 引数の規約は `replaceVerificationNote` と同じ(target 無指定なら focused を見る)。
+    static func appendVerificationNote(target: ElementInfo?, typed: String, prior: String,
+                                       fresh: SnapshotResponse?) -> String {
+        let unread = " (the field showed \"\(SnapshotRenderer.truncate(prior, 30))\" before this;"
+            + " ft_type appends rather than replacing, but the result could not be read back"
+            + " — check it with ft_snapshot)"
+        guard let fresh else { return unread }
+        let found: ElementInfo?
+        if let target {
+            switch RefGuard.relocate(target, in: fresh.elements, screen: fresh.screen) {
+            case .found(let f, _), .ghost(let f): found = f
+            case .gone: found = nil
+            }
+        } else {
+            found = fresh.elements.first { $0.focused == true }
+        }
+        guard let found, let rawValue = found.value else { return unread }
+        let value = FlowMatchMode.normalizeInvisibleCharacters(rawValue)
+        let normalizedTyped = FlowMatchMode.normalizeInvisibleCharacters(typed)
+        // **撃った文字だけが残っているなら、撃つ前の値は実在の内容ではなかった**(ヒント/
+        // プレースホルダ)。DSL は normalizedValue が空を返して黙るので、こちらも黙る
+        if value == normalizedTyped { return "" }
+        if Self.looksMasked(value), !Self.looksMasked(normalizedTyped) {
+            return " (the field held a value before this and ft_type appends, but it reads back"
+                + " masked, so the result could not be verified)"
+        }
+        return " (the field already held \"\(SnapshotRenderer.truncate(prior, 30))\";"
+            + " ft_type appends, so it now reads"
+            + " \"\(SnapshotRenderer.truncate(value, 60))\"."
+            + " Call ft_clear_input first if you meant to replace it)"
+    }
+
     /// パスワード欄などの読み返しが伏せ字だけで構成されているか。**1文字でも非マスクなら false**
     /// —— 実データが読めている可能性を残し、誤って中立扱いにしない
     private static func looksMasked(_ value: String) -> Bool {

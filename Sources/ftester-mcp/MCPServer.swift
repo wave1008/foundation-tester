@@ -231,6 +231,14 @@ final class MCPServer {
     var seenExplicitIOSPorts: Set<UInt16> = []
     /// Android 版の同じ延べ集合(serial)
     var seenExplicitAndroidSerials: Set<String> = []
+    /// **このセッションが一度でも宛先を名指ししたか**(2026-08-13。一度立ったら降ろさない)。
+    /// 上の2つの集合とは別に要る —— あちらは forgetConnection が死んだ機を取り除くので、
+    /// 名指しした機が全部死ぬと空になり、**新しいセッションと見分けが付かなくなる**。
+    /// その状態で省略呼び出しをブリッジ探索へ落とすと、名指ししていない機を操作する
+    /// (lostTargetFold の doc に実測した事故)
+    var everNamedIOSTarget = false
+    /// Android 版の同じフラグ
+    var everNamedAndroidTarget = false
     /// **udid/port/serial を全部省略した呼び出しがどちらの platform の記憶を見るか**
     /// (2026-08-12)。lastExplicitIOSTarget/lastExplicitAndroidSerial は platform ごとに
     /// 分かれているだけで「どちらが最後に明示されたか」を持たないため、Android を明示した

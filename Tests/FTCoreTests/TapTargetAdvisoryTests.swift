@@ -636,14 +636,17 @@ final class TapAdvisoryWiringTests: XCTestCase {
 
     // MARK: - T7: type の既存値注記
 
-    /// 通常欄: 既存値と、連結後の結果値の両方をエコーする
+    /// 通常欄: **撃つ前に入っていた値だけ**をエコーする。連結後の値は予告しない(2026-08-13)——
+    /// ここでは読み返さないので観測していない値であり、ヒント文字列を `value` に載せる欄
+    /// (E2E-CMP の `#field_single` が witness)では外れる。詳細は StepExecutor.readbackTarget
     func testTypeEchoesExistingValueInTheNote() async throws {
         let driver = AdvisoryProbeDriver(disabled: false, existingValue: "東京タワー")
         let outcome = await StepExecutor(driver: driver)
             .execute(FlowStep(action: "type", locator: FlowLocator(id: "target"), text: "レストラン"))
         let note = outcome.driverFallback ?? ""
         XCTAssertTrue(note.contains("東京タワー"), note)
-        XCTAssertTrue(note.contains("東京タワーレストラン"), note)
+        XCTAssertFalse(note.contains("東京タワーレストラン"),
+                       "観測していない連結後の値を予告している: \(note)")
     }
 
     /// secureTextField: 既存値の中身は出さず、あることだけを言う

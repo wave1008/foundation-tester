@@ -503,6 +503,7 @@ extension MCPServer {
             lastExplicitIOSTarget = remembered
             lastExplicitPlatform = "ios"
             seenExplicitIOSPorts.insert(remembered.port)
+            everNamedIOSTarget = true
         case "android":
             guard let androidSerial, let remembered = Self.androidMemoryAfterResolve(
                 fromArgs: Self.recordsAndroidMemory(args, explicitSerial: args["serial"] as? String),
@@ -510,6 +511,7 @@ extension MCPServer {
             lastExplicitAndroidSerial = remembered
             lastExplicitPlatform = "android"
             seenExplicitAndroidSerials.insert(remembered)
+            everNamedAndroidTarget = true
         default: break
         }
     }
