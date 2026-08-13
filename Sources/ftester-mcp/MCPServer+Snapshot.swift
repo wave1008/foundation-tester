@@ -123,6 +123,30 @@ extension MCPServer {
         return nil
     }
 
+    /// **ref を採った木と、今の木が同じアプリか**(2026-08-13・「アプリ切替」の監査で実機再現)。
+    ///
+    /// ref の世代は engineKey(= 機)ごとで、**アプリでは区切っていない**。同じ機で別アプリを
+    /// 起動すると、前のアプリで採った ref が次のアプリの木に対して再照合され、
+    /// **`#id` が同じなら黙って当たる**。E2E の 5 SUT は `#id`・ラベルが共通契約なので
+    /// これは机上の話ではない —— 実測(iOS・同一機)で `com.ftester.e2e` の `#nav_selector`
+    /// (ref 54)を採ってから `com.ftester.e2e.ios` を launch して撃つと `tap [54] done` で
+    /// **別アプリの同名要素を叩き**、しかも注記は
+    /// 「1px 動いた・周囲のレイアウトが変わった」と**自信を持って誤説明**した。
+    /// `switchedAppNote` は「起動したアプリ = 前面」を見るので、明示 launch した後は発火しない
+    /// —— 見ていないのは**ref の出自**のほうだった。
+    ///
+    /// **どちらかが不明なら何もしない**(旧ブリッジは sessionBundleID を返さない。
+    /// 「分からない」を「変わった」と読むと毎回拒否になる)
+    static func refFromAnotherAppMessage(ref: Int, takenFrom: SnapshotResponse?,
+                                         fresh: SnapshotResponse) -> String? {
+        guard let taken = takenFrom?.sessionBundleID, let now = fresh.sessionBundleID,
+              taken != now else { return nil }
+        return "[\(ref)] was taken from \(taken) but the app in front is now \(now)"
+            + " — refusing, because refs are per-device and not per-app: sibling apps can expose"
+            + " the same ids and labels, so this would silently hit a different app's element."
+            + " Take a fresh ft_snapshot and use the new refs."
+    }
+
     /// `ref` を含む世代の snapshot 全体(movedTogether の兄弟比較に使う「同じ世代の他の要素」用。
     /// resolveSessionRef と同じ探索だが、要素1件ではなく世代の全体が要る)
     func generationSnapshot(containing ref: Int, args: [String: Any]) -> SnapshotResponse? {
@@ -497,8 +521,11 @@ extension MCPServer {
                 + " It was matched as \(RefGuard.describe(target)) and re-located in the current"
                 + " tree — prefer refs from the latest snapshot."
             : ""
-        let lastRendered = generationSnapshot(containing: ref, args: args)?.elements ?? []
+        let takenFrom = generationSnapshot(containing: ref, args: args)
+        let lastRendered = takenFrom?.elements ?? []
         let fresh = try await freshSnapshot(driver, args: args)
+        if let message = Self.refFromAnotherAppMessage(
+            ref: ref, takenFrom: takenFrom, fresh: fresh) { throw MCPError(message) }
         switch RefGuard.relocate(target, in: fresh.elements, screen: fresh.screen) {
         case .gone:
             throw MCPError(RefGuard.goneMessage(ref: ref, target: target,

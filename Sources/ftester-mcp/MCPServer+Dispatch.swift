@@ -62,7 +62,11 @@ extension MCPServer {
         // 世代が無ければその場で最初の世代を作ってしまう。後から見ると常に「世代あり」に見えて
         // 「そもそも撮っていない」と「見つからない」を区別できなくなる
         let hadGenerations = !(refGenerations[Self.engineKey(args)]?.isEmpty ?? true)
+        let takenFrom = generationSnapshot(containing: ref, args: args)
         let fresh = try await freshSnapshot(driver, args: args)
+        // **ref の出自がアプリを跨いでいないか**(verifiedRef と同じガード。理由はあちらの doc)
+        if resolved != nil, let message = Self.refFromAnotherAppMessage(
+            ref: ref, takenFrom: takenFrom, fresh: fresh) { throw MCPError(message) }
         guard let target = resolved?.element else {
             // 世代が無かった(ft_snapshot を挟まずに撃たれた)= 撮ったばかりの木から素直に引く。
             // 世代があったのに見つからない(= 直近5世代のどれにも無い番号)なら unknown ref
