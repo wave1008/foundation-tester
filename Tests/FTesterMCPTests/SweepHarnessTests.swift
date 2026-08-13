@@ -140,6 +140,21 @@ final class SweepHarnessTests: XCTestCase {
         // `#dictation` で、ios-maps_suggest_guides と同型の chrome 自身の部分木。この画面固有の
         // アプリ要素は最初から0のまま(「何も出ない実アプリの画面」の供給源としての役割は不変)
         "ios-messages_keyboard": Counts(),
+        // 2026-08-14 採取(**iOS 実機**の SmartNews・フィード先頭)。**append-on-scroll の本物**で、
+        // 実アプリ固有の形を2つ持ち込む —— ⑴ 行が画面幅いっぱい ⑵ 画面外の行 65 件が
+        // 全部 (0,103) にクランプされて木に載る(120 件中)。件数の意味:
+        // - **stacked 42**: クランプ 65 件のうち印が付く数。`stackedRefs` は**矩形の完全一致**が
+        //   3個以上の群にだけ付けるので、原点は同じでも大きさが違う **23 件は無印**で残る。
+        //   実機で無印の行を撃つと実際に別画面へ飛ぶ(カルーセルの販促カード)ことを確認済み。
+        //   **広げる案は次の増設の回へ**(原点一致は容器と子で普通に起きるので、誤検知の実測が要る)
+        // - **overlay 52**: 無印の行も大半はこちらで警告される = **沈黙ではない**。ただし
+        //   名指しする相手が**同じくクランプされた別の幽霊**になる(実体は上部カルーセル)。
+        //   例: `staticText "髪型や服装も自由自在" ← staticText "広告 · 株式会社ハーブ健康本舗"`。
+        //   塗り順の最前面を採る規則が、幽霊だらけの座標では機能しない形の witness
+        // - misses 1 / nested 6: タブ帯とセルの中の帯 = 受理済みの型
+        "ios-news_feed": Counts(ghost: 0, overlay: 52, stacked: 42, misses: 1, disabled: 0,
+                                offscreen: 0, warnedTappable: 14, keyboard: 0, sliver: 0,
+                                nested: 6, scrolledOut: 0),
         // 2026-08-12 採取。**メディアグリッド**(写真6枚のタイル)。misses 1 は
         // `#PXGGridLayout-Group`(非操作の器)の中心が中のタイルに乗る形 = 受理済みの型
         "ios-photos_grid": Counts(ghost: 0, overlay: 0, stacked: 0, misses: 1, disabled: 0,

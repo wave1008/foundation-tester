@@ -187,14 +187,26 @@ final class MCPSelectorDurabilityTests: XCTestCase {
             }
         }
         XCTAssertGreaterThan(total, 1500, "コーパスが縮んでいる = この砦は何も見ていない")
-        XCTAssertLessThanOrEqual(indexed, 570, "索引セレクタが増えている(実測 566)")
+        // **2026-08-14 に `ios-news_feed`(実機 SmartNews)を足して 566 → 593 / 122 → 168**。
+        // 増分は**この1枚に完全に閉じている**(indexed 27・unwritable 46 = 総差分と一致)。
+        // 書けない 46 の内訳は全部数え上げてある:
+        //   ・**クランプされた記事セル 39**(id もラベルも持つのに書けない)—— フィード先頭では
+        //     画面外の行が容器の原点へ潰れるので、`candidates()` の `hasClampedCoordinates` が
+        //     候補から外す。**これは正しい格付け** で、残すと「解決できたのに別の場所を叩く」
+        //     沈黙の誤りになる(見出しが40字超なのでラベル形の代替も無い)。
+        //     **スクロールして実位置が出れば `#id` で書ける** = 恒久的に指せないわけではない
+        //   ・無ラベル無 id の button 2 + clickable 1(タブ帯の下位ビュー)
+        //   ・重複 id の `#crui_more_options_button` 1(同画面に4つ)
+        //   ・広告コピーの staticText 3(ラベルが広告間で重複)
+        // 割合は **5.3% → 6.9%**。1枚で 46/120 が書けない盤面なので一段動くのは構造的
+        XCTAssertLessThanOrEqual(indexed, 600, "索引セレクタが増えている(実測 593)")
         // **割合は千分率で見る**(2026-08-12 のレビュー指摘)。百分率の整数除算だと
         // 「4%以下」が実際には 4.99% まで通り、宣言した上限より1ポイント緩い砦になる
         // (実測 4.75% が「4」に切り捨てられて素通りしていた)
         XCTAssertLessThanOrEqual(indexed * 1000 / max(1, total), 255,
                                  "索引セレクタの割合が増えている(実測 25.2%)"
                                  + " —— 画面を足しただけでは上がらない指標なので、絞り込みの退行を疑う")
-        XCTAssertLessThanOrEqual(unwritable, 124, "書けない要素が増えている(実測 122)")
+        XCTAssertLessThanOrEqual(unwritable, 172, "書けない要素が増えている(実測 168)")
         // **書けない側にも割合ゲートを置く**(2026-08-12)。絶対数だけだと、コーパスを
         // 広げるたびに上限を上げる儀式になる(索引側で既に踏んだ轍)。
         //
@@ -208,8 +220,8 @@ final class MCPSelectorDurabilityTests: XCTestCase {
         // 行と内側テキストの重複(`clickable "設定"` / `staticText "設定"` など ×12 組)は
         // **型で解ける**ので書ける側に残っている = 絞り込み自体は効いている。
         // **次に上げたくなったら、まず増分を1件ずつ数えること** —— 数えられない増分は退行
-        XCTAssertLessThanOrEqual(unwritable * 1000 / max(1, total), 55,
-                                 "書けない要素の割合が増えている(実測 5.3%)")
+        XCTAssertLessThanOrEqual(unwritable * 1000 / max(1, total), 70,
+                                 "書けない要素の割合が増えている(実測 6.9%)")
     }
 
     /// コーパスに両方の格付けが出ていること(片側しか見ていない状態を防ぐ)

@@ -85,6 +85,14 @@ final class NoteCoverageTests: XCTestCase {
         // 開いた確認ダイアログ。**背景が a11y から丸ごと落ちる**(直前は 29 要素 → 6 要素)。
         // 画面の大半が木に無い形の陰性対照 —— **未表現率が極端でも、モーダルなら正常**
         "and-dialog_confirm": "dialog",
+        // 2026-08-14 の監査(append-on-scroll の本物)で足した1枚。**iOS 実機**の SmartNews を
+        // フィード先頭で採った木。この形の特徴は2つで、どちらも実アプリ固有:
+        // ⑴ **行が画面幅いっぱい**(0,y 393xH)—— 自前 SUT の行はすべてインセットなので、
+        //    全幅でだけ壊れる幾何(空打ちの終点が矩形から出られない)を代表していなかった
+        // ⑵ **画面外の行 65 件が全部 (0,103) にクランプされて木に載る**(120 件中)。
+        //    `compose-ios-ax-frame-clamp` と同型が UIKit の実アプリで出る。原点は同じでも
+        //    大きさが違うので、`stackedRefs`(矩形の完全一致が3個以上)の死角の供給源
+        "ios-news_feed": "feed",
         // 自前 SUT(盤面が契約で固定されている対照)
         "sutec-calendar_day": "ec", "sutec-detail": "ec", "sutec-home": "ec",
         "sut-cmp_controls": "sut", "sut-cmp_home": "sut",
@@ -115,14 +123,14 @@ final class NoteCoverageTests: XCTestCase {
         // 陰性対照は and-browser_urlmenu(URL バーはあるが webView も無い画面。0.059)と
         // and-overflow(0.564 まで達するが URL バーが無いので黙る=browser 限定の理由)
         "missingPageContentNote": Coverage(fixtures: ["and-browser_jma_notree"], bytes: 303),
-        "ghostNote": Coverage(fixtures: ["and-browser_weather_weekly", "ios-browser_jma_hscroll", "ios-browser_startpage", "ios-place_guides_scrolled"], bytes: 1271),
+        "ghostNote": Coverage(fixtures: ["and-browser_weather_weekly", "ios-browser_jma_hscroll", "ios-browser_startpage", "ios-news_feed", "ios-place_guides_scrolled"], bytes: 2122),
         // 横スクロール後の前後コピーが両方木に残る形の witness(ios-browser_jma_hscroll。
         // refs 72-81 vs 158-167 = 同じ行で x が定数200ptずれた10ペア)。他の全画面は最大3
         // (and-home)で、単純なキーだけの一致では別々の表の同名見出しに誤発火するため
         // y/x の幾何制約を必須にした(MCPServer.duplicateRegionNote の当該コメント参照)
         "duplicateRegionNote": Coverage(fixtures: ["ios-browser_jma_hscroll"], bytes: 391),
-        "scrollFrameCandidates": Coverage(fixtures: ["and-form_keyboard", "and-place_expanded", "and-results", "ios-browser_startpage", "ios-maps_route_options", "ios-maps_station", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-messages_keyboard", "ios-place_guides_scrolled"], bytes: 2442),
-        "truncationNote": Coverage(fixtures: ["ios-browser_nationwide", "ios-browser_startpage", "ios-maps_station"], bytes: 1012),
+        "scrollFrameCandidates": Coverage(fixtures: ["and-form_keyboard", "and-place_expanded", "and-results", "ios-browser_startpage", "ios-maps_route_options", "ios-maps_station", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-messages_keyboard", "ios-news_feed", "ios-place_guides_scrolled"], bytes: 2674),
+        "truncationNote": Coverage(fixtures: ["ios-browser_nationwide", "ios-browser_startpage", "ios-maps_station", "ios-news_feed"], bytes: 1297),
         // 取りこぼしのある Chrome の3枚(2026-08-13 に and-browser_weather_weekly を追加)で発火し、
         // 取りこぼしの無い iOS Safari の4枚(ios-browser_weektable / _weather_weekly 含む)では
         // 出ない(閾値の根拠は MCPServer.webViewGapNote のコメント)。browser 限定なのは
@@ -144,11 +152,11 @@ final class NoteCoverageTests: XCTestCase {
         // フォールバックは置かない** —— メール欄・住所欄を誤って名乗る形がコーパスに無く、
         // 誤検知0の確認が効かないため(AddressBarNoteTests の当該テスト)
         "addressBarNote": Coverage(fixtures: ["and-browser_weektable", "ios-browser_jma_hscroll", "ios-browser_nationwide", "ios-browser_startpage", "ios-browser_weather_weekly", "ios-browser_weektable", "ios-safari_article"], bytes: 1846),
-        "unlabeledClickablesNote": Coverage(fixtures: ["and-apps_list", "and-browser_urlmenu", "and-directions_tabs", "and-home", "and-place", "and-place_expanded", "and-results", "ios-home", "ios-maps_route_options"], bytes: 3337),
+        "unlabeledClickablesNote": Coverage(fixtures: ["and-apps_list", "and-browser_urlmenu", "and-directions_tabs", "and-home", "and-place", "and-place_expanded", "and-results", "ios-home", "ios-maps_route_options", "ios-news_feed"], bytes: 3845),
         // **格子は曖昧ラベルの塊**(2026-08-12): 週間表の2枚が入って +2,049 バイト。
         // 同じ数値(`29/24`・`90%`)が行と列に何度も出るので、増分は形そのもの
-        "ambiguousLabelsNote": Coverage(fixtures: ["and-apps_list", "and-browser_weather", "and-browser_weather_weekly", "and-browser_weektable", "and-home", "and-maps_suggest_ime", "and-place", "and-place_expanded", "and-results", "ios-browser_jma_hscroll", "ios-browser_nationwide", "ios-browser_startpage", "ios-browser_weather_weekly", "ios-browser_weektable", "ios-home", "ios-maps_station", "ios-maps_suggest_keyboard", "ios-messages_keyboard", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-safari_article", "ios-settings_root", "sut-cmp_controls", "sut-cmp_home", "sutec-detail", "sutec-home"], bytes: 16935),
-        "duplicateIDsNote": Coverage(fixtures: ["and-dialer_keypad", "and-home", "and-overflow", "and-place_expanded", "and-results", "and-settings_root", "ios-browser_startpage", "ios-home", "ios-maps_route_options", "ios-maps_station", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-photos_grid", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-settings_root", "sutec-home"], bytes: 16450),
+        "ambiguousLabelsNote": Coverage(fixtures: ["and-apps_list", "and-browser_weather", "and-browser_weather_weekly", "and-browser_weektable", "and-home", "and-maps_suggest_ime", "and-place", "and-place_expanded", "and-results", "ios-browser_jma_hscroll", "ios-browser_nationwide", "ios-browser_startpage", "ios-browser_weather_weekly", "ios-browser_weektable", "ios-home", "ios-maps_station", "ios-maps_suggest_keyboard", "ios-messages_keyboard", "ios-news_feed", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-safari_article", "ios-settings_root", "sut-cmp_controls", "sut-cmp_home", "sutec-detail", "sutec-home"], bytes: 17411),
+        "duplicateIDsNote": Coverage(fixtures: ["and-dialer_keypad", "and-home", "and-overflow", "and-place_expanded", "and-results", "and-settings_root", "ios-browser_startpage", "ios-home", "ios-maps_route_options", "ios-maps_station", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-news_feed", "ios-photos_grid", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-settings_root", "sutec-home"], bytes: 16940),
         // bytes 1169→1366→1170(2026-08-14・「chrome の部分木は覆われた側に数えない」修正):
         // fixtures 集合は不変(発火する画面は変わらない = 全画面「nothing tappable」か列挙のどちらか
         // では出続ける)。ios-maps_suggest_guides/ios-messages_keyboard は列挙(2件)から
@@ -156,7 +164,7 @@ final class NoteCoverageTests: XCTestCase {
         // ios-maps_suggest_keyboard は列挙数が 30→20 に減るが、先頭8件(バイト数を左右する側)は
         // 変わらないので画面単体のバイト数は不変(SweepHarnessTests の baselines コメント参照)
         "keyboardCoverageNote": Coverage(fixtures: ["and-browser_urlmenu", "and-form_keyboard", "and-maps_suggest_ime", "ios-browser_startpage", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-messages_keyboard"], bytes: 1170),
-        "truncatedLabelNote": Coverage(fixtures: ["and-browser_urlmenu", "and-browser_weather", "and-browser_weather_weekly", "and-place_expanded", "ios-browser_weektable", "ios-photos_grid", "ios-place_guides_scrolled", "ios-safari_article", "ios-settings_root", "sutec-detail", "sutec-home"], bytes: 3362),
+        "truncatedLabelNote": Coverage(fixtures: ["and-browser_urlmenu", "and-browser_weather", "and-browser_weather_weekly", "and-place_expanded", "ios-browser_weektable", "ios-news_feed", "ios-photos_grid", "ios-place_guides_scrolled", "ios-safari_article", "ios-settings_root", "sutec-detail", "sutec-home"], bytes: 3685),
     ]
 
     /// **コーパスでは構造上発火し得ないと確かめた注記**。ここに載せるには理由が要る ——
@@ -180,8 +188,16 @@ final class NoteCoverageTests: XCTestCase {
     /// 1画面ぶんの注記の合計バイトの上限。**エージェントは木を読みに来ているのであって
     /// 注記を読みに来ているのではない** —— 上限を置かないと、監査のたびに1本ずつ足される注記が
     /// 木そのものを押しのける。2026-08-13 の実測は最大 2,684B(ios-maps_suggest_keyboard)。
-    /// 超えたら「1本足す前に1本消す」を検討すること
-    static let bytesPerScreenCeiling = 3000
+    /// 超えたら「1本足す前に1本消す」を検討すること。
+    ///
+    /// **2026-08-14 に 3000 → 3200**(新しい最悪値 3,165B = `ios-news_feed`)。**注記は1本も
+    /// 足していない** —— 実機のニュースフィードという新しいアーキタイプが、既存の7本を
+    /// 同時に踏んだだけ(最大は ⚠️scroll-leftover の一覧 851B で、42 ref を畳んで並べている)。
+    /// 消す候補を検分したが、この盤面ではどれも本命: leftover は「撃つと別物に当たる」本体、
+    /// truncation は 35 件脱落、duplicateIDs/ambiguousLabels は `#crui_more_options_button` が
+    /// 6個並ぶ形、scrollFrameCandidates は容器が2つある形。**上げるのは1回きりの記録**で、
+    /// 次に超えたときはまた検分すること(黙って上げると現状追認装置になる)
+    static let bytesPerScreenCeiling = 3200
 
     // MARK: - 測定
 
