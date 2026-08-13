@@ -15,7 +15,9 @@ Scripts/mcp-bench.sh --task cmp-scroll-find --repeat 5 \
   --variant full= --variant no-dupids=duplicateIDsNote
 ```
 
-記録は `.ftester/bench/<日時>/`(生の stream-json・`summary.json`・`bench.log`)。
+生の記録は `.ftester/bench/<日時>/`(stream-json・`summary.json`・`bench.log`)。そこは
+`.gitignore` されているので、**回したら結論を Bench/measurements.md へ1節書く**
+(判定に使った陽性対照まで)。
 
 ## 読み方
 
@@ -32,10 +34,16 @@ Scripts/mcp-bench.sh --task cmp-scroll-find --repeat 5 \
 ## 判定の規律
 
 - **1回のグリーンで判定しない**。`--repeat` は最低3、差が小さいなら5以上
-- **陽性対照を先に確かめる**: `--variant` を渡した run は、サーバが起動時に
-  `FT_MCP_NOTES_OFF: silencing …` を stderr へ出す(`bench.log` に残る)。
-  これが出ていない run の A/B は無効(黙らせたつもりで黙っていない)。
-  綴りを間違えた鍵は `NOT a note key (ignored)` として名指しされる
+- **陽性対照は記録の中で数える**: 落としたはずの注記の文言を
+  `grep -c "<注記の一部>" <variant>/<task>-*.jsonl` で数え、
+  **base では出ていて variant では 0 になっている**ことを確かめる。両方 0 なら
+  「そもそもこの盤面では発火しない」= その A/B は注記について何も言っていない。
+  **`bench.log` を見ても分からない**(2026-08-13 実測): サーバは起動時に
+  `FT_MCP_NOTES_OFF: silencing …` を stderr へ出すが、**その stderr は `claude` が抱える**ので
+  `bench.log` には1件も残らない。綴りを間違えた鍵の `NOT a note key (ignored)` も同じ
+- **記録が空の run(`!! 記録が空`)が出たら、その回の集計は読まない**。それは
+  タスクの失敗ではなく台本の失敗(claude が起動していない)なので、`bench.log` の
+  `Error:` を先に潰す
 - **差が出ないときは実験系を疑う**。ビルドは毎回 `swift build --product ftester-mcp` を通すが、
   タスク・盤面・デバイスが変わっていれば手数は簡単に動く
 - **CLAUDE.md の無い作業ディレクトリで走らせている**(`<out>/cwd`)。保守者向けの指示を
@@ -51,6 +59,8 @@ Scripts/mcp-bench.sh --task cmp-scroll-find --repeat 5 \
 | `cmp-webview-aria` | webview | `#id` が効かない画面・`aria-label` 由来のラベル(内蔵 HTML なので通信に依存しない) |
 | `maps-route` | map | 実アプリ・高密度・システムアプリ(xcuitest ブリッジが要る) |
 | `ios-settings-about` | settings | 実アプリ・深い設定ツリー(2階層たどって値を読む) |
+| `and-settings-keyboard` | settings | **Android の**設定ツリー(3階層 + 根のスクロール。行の状態=スイッチも読む) |
+| `and-chat-newconv` | chat | **Android の**チャット。入力 + ソフトキーボード遮蔽 + **`unlabeledClickablesNote` が偽の主張をする戻るボタン**を実際に押させる |
 
 自前 SUT の4つは**対照**(盤面が契約で固定されているので手数のブレが小さい)。
 `maps-route` だけが実アプリで、**自前 SUT は実アプリの形を代表しない**(遮蔽・積み重なり・
@@ -69,8 +79,13 @@ Scripts/mcp-bench.sh --task cmp-scroll-find --repeat 5 \
 (`Tests/Fixtures/RealAppSnapshots/README.md`)。1アプリを深く掘るより、初見のアーキタイプを
 1つ足すほうが1件あたり安い。
 
-タスク側は 2026-08-12 に settings と webview を足して **実アプリ2 + 自前 SUT 4**。
-コーパスにあってタスクに無いアーキタイプは **chat / media / keypad**。
+タスク側は 2026-08-12 に settings と webview を足し、2026-08-13 に **Android の settings と chat**
+を足して **実アプリ4 + 自前 SUT 4**。コーパスにあってタスクに無いアーキタイプは **media / keypad**。
+
+**2026-08-13 まで全タスクが iOS だった。** Android を足したのは、注記の未解決の witness
+(`unlabeledClickablesNote` の包含形)が Android メッセージにしか無かったため —— **測れない盤面の
+上で設計判断を保留し続けていた**。盤面は両方とも `ft_launch` で根まで戻るので run 間の後始末が要らない
+(chat は**送信しない**ので会話一覧は0件のまま)。
 
 **監査ラウンドとの関係**: 監査(docs/mcp-audit-rounds.md)で初見のアプリを触ったら、
 フィクスチャを1枚採るのと同じ流れでここへタスクを1本足す。そうすると

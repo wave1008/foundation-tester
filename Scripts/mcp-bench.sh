@@ -82,6 +82,10 @@ if [ ${#VARIANT_NAMES[@]} -eq 0 ]; then VARIANT_NAMES=(full); VARIANT_SPECS=("")
 STAMP="$(date +%Y%m%d-%H%M%S)"
 [ -n "$OUT" ] || OUT="$ROOT/.ftester/bench/$STAMP"
 mkdir -p "$OUT"
+# **絶対パスへ正規化する**: run は `cd "$CWD"` してから claude を起動するので、相対の
+# `--mcp-config` は cwd 側で解決されて必ず見つからない。それでも claude は 1 イベントも
+# 出さずに終わるだけなので、集計は `0/3` = **タスク失敗と区別が付かない**(実際に踏んだ)
+OUT="$(cd "$OUT" && pwd)"
 LOG="$OUT/bench.log"
 
 say() { echo "$*" | tee -a "$LOG"; }
@@ -101,6 +105,7 @@ BIN="$ROOT/.build/debug/ftester-mcp"
 CWD="$OUT/cwd"
 mkdir -p "$CWD"
 
+EMPTY=0
 INDEX="$OUT/index.json"
 echo '{"baseVariant":"'"${VARIANT_NAMES[0]}"'","runs":[' > "$INDEX"
 first_entry=1
@@ -137,7 +142,14 @@ JSON
         # 残り、集計では未完了として数えられる
         (cd "$CWD" && "$@") > "$transcript" 2>>"$LOG" || true
         lines="$(wc -l < "$transcript" | tr -d ' ')"
-        say "    $id #$n → $lines events"
+        # **記録が空 = エージェントが1手も打っていない**。集計ではこれも「未完了」に
+        # 畳まれるので、ここで名指ししないと**盤面の失敗と台本の失敗が区別できない**
+        if [ "$lines" = 0 ]; then
+          EMPTY=$((EMPTY + 1))
+          say "    $id #$n → !! 記録が空(claude が1イベントも出していない。$LOG の Error を見ること)"
+        else
+          say "    $id #$n → $lines events"
+        fi
       fi
       [ "$first_entry" = 1 ] || echo ',' >> "$INDEX"
       first_entry=0
@@ -153,6 +165,10 @@ echo ']}' >> "$INDEX"
 if [ "$DRY_RUN" = 1 ]; then
   say "==> dry-run。実行はしていない($INDEX に予定だけ書いた)"
   exit 0
+fi
+
+if [ "$EMPTY" != 0 ]; then
+  say "!! $EMPTY run が1イベントも出していない。下の表の未完了はタスクの失敗ではなく台本の失敗"
 fi
 
 say "==> 集計"
