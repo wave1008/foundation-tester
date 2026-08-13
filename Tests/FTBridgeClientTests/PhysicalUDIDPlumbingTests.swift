@@ -35,6 +35,36 @@ final class PhysicalUDIDPlumbingTests: FTBridgeClientSourceScanCase {
                       "BridgeClient(port: ...) の構築は physicalUDID: を渡すこと(渡さないと実機で"
                       + " 名前引きの simctl 経路へ誤って落ち、Invalid device の的外れな失敗になる): \(offenders)")
     }
+
+    /// **稼働ブリッジ → 端末の引き当ては共有規則を通すこと**(2026-08-14)。
+    /// `scanRunningBridges` はここが名前引きだけだったため、udid を申告しない実機のブリッジが
+    /// **生きていても端末に紐付かず**、planBridge の同一デバイス判定に一度も当たらないまま
+    /// 2本目のランナーが立っていた(1台の実機に2本立てると両方死ぬ)。
+    /// 純粋関数のテスト(BridgeDiscoveryTests)は規則の正しさしか見ないので、
+    /// **呼んでいること・結果を使っていること**は別に要求する
+    func testRunningBridgeIdentityGoesThroughTheSharedResolveUDID() throws {
+        let source = try Self.readSource("Sources/FTBridgeClient/BridgeProvisioner.swift")
+        let calls = Self.argumentRanges(in: source, callPrefix: "BridgeDiscovery.resolveUDID(")
+        // **添字で取らない**: 0 件のときに続きの行がクラッシュし、失敗の分類が「アサート失敗」
+        // ではなく「ビルド失敗」に化ける(変異テストの判定が濁る)
+        guard calls.count == 1, let first = calls.first else {
+            return XCTFail("scanRunningBridges は共有規則を1回だけ通すこと"
+                           + "(見つかった数 \(calls.count)。0 = 名前引きへ戻った)")
+        }
+        let arguments = Self.collapsed(String(source[first]))
+        XCTAssertTrue(arguments.contains("reported: status.udid"), arguments)
+        XCTAssertTrue(arguments.contains("BridgeDeviceRecord.load(port: port"),
+                      "実機は記録でしか特定できない: \(arguments)")
+        XCTAssertTrue(arguments.contains("matchedByName:"), arguments)
+
+        // 呼んだ結果を捨てていないこと(規則を通しても RunningBridge へ渡さなければ無意味)
+        let built = Self.argumentRanges(in: source, callPrefix: "RunningBridge(udid:")
+        guard built.count == 1, let construction = built.first else {
+            return XCTFail("RunningBridge の構築箇所が \(built.count) 箇所 = この走査を見直すこと")
+        }
+        XCTAssertTrue(Self.collapsed(String(source[construction])).hasPrefix("udid: udid,"),
+                      Self.collapsed(String(source[construction])))
+    }
 }
 
 // MARK: - 共通ヘルパー(ソース走査系テストで使い回す)
@@ -59,7 +89,10 @@ class FTBridgeClientSourceScanCase: XCTestCase {
     /// `callPrefix`(例 "BridgeClient(port:")で始まる呼び出しの引数リスト全体を返す。
     /// 丸カッコの対応を数えて取り出すため、複数行の呼び出しにもまたがる
     static func argumentRanges(in source: String, callPrefix: String) -> [Range<String.Index>] {
-        precondition(callPrefix.hasSuffix(":") && callPrefix.contains("("))
+        // 末尾は "(" でも ":" でもよい。**"(" で切れる形を許す**のは、引数を改行で折り返した
+        // 呼び出し(`foo(\n  bar: ...`)では最初のラベルまで含む prefix が原文に現れず、
+        // 要求すると整形を検査することになるため(2026-08-14)
+        precondition(callPrefix.contains("("))
         let callee = String(callPrefix[callPrefix.startIndex..<callPrefix.firstIndex(of: "(")!])
         var ranges: [Range<String.Index>] = []
         var searchStart = source.startIndex
@@ -81,5 +114,11 @@ class FTBridgeClientSourceScanCase: XCTestCase {
             searchStart = source.index(after: close)
         }
         return ranges
+    }
+
+    /// 走査の照合は**空白を潰してから**行う(2026-08-14 の教訓)。引数を改行で折り返しただけで
+    /// 落ちる走査は、整形を検査しているのであって配線を検査していない
+    static func collapsed(_ text: String) -> String {
+        text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 }

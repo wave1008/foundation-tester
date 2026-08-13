@@ -162,7 +162,103 @@
 | **アプリ切替**(同一機で launch を跨ぐ) | **1**(2026-08-13) | 開いている。**元からあった欠陥1件**(下記)。`switchedAppNote`(back でアプリを出た形)と `ft_open_url` の既定の開示は**どちらも正しく発火した** |
 | **ブリッジの建て直しを挟む** | **1**(2026-08-13) | 開いている。**元からあった欠陥1件**(下記)。狙いどおり、**入れたばかりの防御が発火しないこと**を掴んだ |
 | **長時間**(失敗キャッシュ・TTL を跨ぐ) | **1**(2026-08-13) | 開いている。**元からあった欠陥1件(未修正・下記)**。失敗キャッシュの期限切れと、無操作を跨いだブリッジ死亡は**どちらも検分パス** |
+| **実機 + 仮想デバイスの混在(同一 OS)** | **1**(2026-08-14) | 開いている。**元からあった欠陥2件**(下記)。乗り物は E2E-iOS を実機 iPhone wave と仮想 iPhone 17 Pro-01(port 8124)の2台へ。**指し方が非対称になるのがこの形の核** —— 実機は `profile:` / 仮想は `port:` で指すことになり、**engineKey は指し方込み**なので同じ1台でも名前空間が割れる |
 | **実機(物理端末)** | **1**(2026-08-13) | 開いている。乗り物 E2E-iOS(`com.ftester.e2e.ios`)/ iPhone wave(iPhone 15 Pro・iOS 26.6)。**元からあった欠陥6件**(下記)。核は共通: 実機ブリッジの `/status` は `device:"iPhone"` という汎用名を返し `udid` を申告しない(iOS 16 以降 `UIDevice.name` は伏せられ `SIMULATOR_UDID` も無い)ため、ここから3件が派生した |
+
+### 実機のブリッジが短時間で死に、ポートが 8143 ⇄ 8144 を往復する(2026-08-14。**原因まで測って修正済み**)
+
+混在ラウンドの副産物。**症状**: `ft_launch` のたびにランナー再構築で約190秒かかる回が続いた。
+
+**結論**: **1台の実機に XCUITest ランナーを2本立てると、2本目の起動が1本目を即殺し、
+その約5分半後に1本目の後始末が2本目を道連れにする。** 対照と時系列(すべて実測):
+
+| 条件 | 生存 |
+|---|---|
+| ランナー1本だけ | **27分健全**(01:53:47 起動 → 02:21:04 に下記の道連れで終了するまで。無操作 5 分を挟んでも死なない) |
+| 2本目を立てた瞬間 | **1本目が即死**(2本目が応答を始める **2秒前**に黙る) |
+| その後 | **約5分半で両方終了**(02:21:04.879 と 02:21:05.716 = **0.8 秒差**) |
+
+**機構(3段)**:
+
+1. **2本目の起動が1本目の端末側アプリを殺す。** 実測: 8143 が 02:15:35 に黙り、
+   8145 が答え始めたのが 02:15:37 —— **黙るほうが先**なので、後始末の巻き添えではなく
+   起動そのものが原因
+2. **殺された1本目は終了しない。** XCTest が端末側ランナーを建て直そうとするが、
+   端末は2本目が握っているので**その建て直しがハングする**
+   (`xcresult` の `failureText` = **`The test runner hung before establishing connection.`**)。
+   ここで**約5分半**待つ —— 台帳が2度観測した「5分32秒 / 5分27秒」は**このハング締切**であって、
+   端末側のタイマー(自動ロック等)ではない
+3. **締切が切れた1本目の後始末が2本目を道連れにする。** 1本目は `devicectl diagnose` を走らせて
+   セッションを畳み、**その 0.8 秒後に2本目も `Test crashed with signal kill.` で落ちる**
+
+ログには異常が1行も無い(`bridge listening on 0.0.0.0:8143 ttl=7200s` の後は普通の
+`Getting device orientation` が並ぶだけ)。**クラッシュログは端末にも残らない。**
+
+「先に死んだ1本目の teardown が原因」という当初の対抗仮説は、上の①で否定された。
+
+**修正: 実機専用の手当ては要らなかった —— 規則は既にあり、実機だけがそこから見えていなかった。**
+
+同じ「同一デバイスに2本目を建てる」操作を両方で撃つと結果が割れていた:
+シミュレータは **`reusing the running xcuitest bridge`** で2本目を建てないのに、実機は建てた。
+`planBridge` の同一デバイス判定(`sameDevice`)自体は正しく、材料を作る
+**`BridgeProvisioner.scanRunningBridges` が udid を `/status.device` の名前引きだけで解決していた** ——
+実機は `device` が汎用名 `"iPhone"`、プロファイル名は `"iPhone wave(実機)"` なので
+**udid は nil・名前も不一致**になり、**生きている実機ブリッジが同一デバイス判定に一度も当たらない**。
+昨日 `BridgeDiscovery.scan` 側だけ直した引き当ての**2つ目の実装**で、そこに修正が届いていなかった。
+
+修正は引き当てを **`BridgeDiscovery.resolveUDID` の1箇所**へ寄せ、
+`status.udid`(仮想)→ `BridgeDeviceRecord`(実機)→ 名前引き(旧ブリッジ)の優先順にした。
+**ついでにシミュレータ側の劣化も直る** —— 従来は `status.udid` を使わず名前引きだったので、
+コード自身が認めるとおり「同名 sim が複数 booted だと udid を nil に落とす」= そのとき二重起動を許していた。
+
+**ゾンビ(/status 無応答)の側は元から塞がっていた**: `provision()` の `startingByUDID` が
+`BridgeLauncher.portsByUDID`(プロセス引数の `-destination id=<UDID>` 照合。HTTP を使わないので
+両プラットフォームで同じに効く)で拾い、`.adopt` → 応答しなければ `stopAndWait` → **同じポートで**
+建て直す。だから塞ぐべき穴は「映っているのに端末を特定できない」1つだけだった。
+
+**検証**: `swift test --parallel` 緑 / 変異 6/6 検出 / **陽性対照は実機とシミュレータの両方**で、
+別ポートを要求しても `reusing the running xcuitest bridge`(実機は port 8145、端末上のランナーは1本のまま)。
+**修正前の同じ操作は実機で2本目を建てていた。**
+
+**残っている周辺の穴**(この修正では触っていない。実害はまだ観測していない):
+
+- 黙ったポートを **`MCPServer` の `trustBound(bound:ownerAlive:)` は `.busy`(retry せよ)と読む** ——
+  実機では **iproxy が listen を引き継ぐので `bound` は true のまま**、**`xcodebuild` は端末側の
+  セッションを失っても終了しない**ので pid も生存する。`bridgeOwnerAlive` は 2026-08-13 に
+  欠陥④の手当てとして入れたもので、**「ホストのプロセスが生きている」と「ブリッジが生きている」を
+  同一視している**。ここは**助言の文言にしか効かない**(供給の判断は上の修正で塞いだ)ので、
+  間違えても「retry せよ」という的外れな助言が出るだけ
+- **`assignPort.isPidFree` は pid ファイルの*存在*しか見ない**(生死を見ない)。
+  止め損ねた `.ftester/bridge-<port>.pid` は**そのポートを予約したままになる**
+  (`stopMatching` が死んだ pid のファイルを掃除するので、実運用では回収される)
+- 死んだ後の `xcodebuild` と `iproxy` は誰にも回収されない(実測: **ppid 1 の孤児が2本 + iproxy 2本**)
+
+**まだ測っていない**: 「2本目の起動が1本目を殺す」のか「先に死んだ1本目の teardown が
+2本目を巻き込む」のか(8144 のログには**1本目の xcodebuild が走らせた `devicectl diagnose`** が
+出ており、後者の線がある)。**直す前にここを決める** —— 前者なら供給側で2本目を立てない、
+後者なら孤児の回収が要る。手当ての向きが違う。
+
+**確定している周辺事実**(実測):
+
+- **1台の実機に対して `xcodebuild test-without-building` が2本同時に生きている**
+  (`FTesterRunner-8143` / `-8144`。どちらも **ppid 1** = 起動元が先に終わって孤児化)。
+  **応答するのは片方だけ** —— 8144 は iproxy 経由でも LAN 直叩きでも `/status` を返し、
+  8143 は**どちらからも無応答**(= トンネルではなく端末側のランナーが失われている)
+- **その黙ったポートを、道具は「busy」と読む。** `trustBound(bound:ownerAlive:)` は
+  `bound && ownerAlive != false` で、実機では **iproxy が listen を引き継ぐので bound は true**、
+  **`xcodebuild` は端末側のセッションを失っても終了しないので pid も生存**する。
+  結果 `.busy` と判定され「likely busy — retry the call」と助言するが、**このポートは二度と答えない**。
+  `bridgeOwnerAlive` は 2026-08-13 に欠陥④の手当てとして入れたもので、
+  **「ホストのプロセスが生きている」と「ブリッジが生きている」を同一視している**のがここでの穴
+  (仮想デバイスにはランナーとポートの間に別プロセスが挟まらないので出ない)
+- **`assignPort.isPidFree` は pid ファイルの*存在*しか見ない**(生死を見ない)。
+  止め損ねた `.ftester/bridge-<port>.pid` は**そのポートを永久に予約する**
+- **`Getting device orientation` は要求駆動**(暇なときの心拍ではない)。ログが止まっていることを
+  「黙った」の証拠に使わない —— 誰も叩いていないだけのことがある。**死活は `/status` で見る**。
+  最初これを取り違えて「起動15秒後に死ぬ」と読み、時系列の因果を1回外した
+- **無操作では死なない**: 3分間まったく叩かなかった腕でも生存した(死因は idle ではない)
+- **切り分けは「2本目を建てる瞬間」を秒単位で挟む**(2秒間隔のポーリングで1本目と2本目を
+  同時に見る)。分単位の観測では①と③が区別できず、実際に一度誤読した
 
 **持ち越しの候補**(証拠が無いのでまだ触らない):
 
@@ -180,8 +276,9 @@
    Play ストアは起動不可なので、**乗り物を先に用意する**必要がある。実機は 2026-08-13 の
    ラウンドで乗り物として使えると確認できたので候補に残る。ほかは Chrome の
    無限スクロールページか、自前 SUT に足すか)
-4. **実機の未踏部分**(台帳②参照。Android 実機・実機を2台以上・実機と仮想デバイスの
-   混在はまだ触っていない。物理端末というだけで6件出た形なので優先度は高い)
+4. **実機の未踏部分**(台帳②参照。**混在は 2026-08-14 に触って2件出た**ので、残るは
+   Android 実機・実機を2台以上。物理端末というだけで6件出た形なので優先度は高い)
+5. **実機ブリッジの寿命**(2026-08-14 に副産物として掴んだ。下の「未解決」)
 
 **画面の形の側は減衰した(2026-08-13 に判定)**: フォーム / 長い再利用リスト / モーダル /
 タブ切替の**元からあった欠陥は 0 → 0 → 0 → 0**(ブラウザ格子の6回目は形に触れていないので
@@ -346,6 +443,7 @@ iOS 設定の行を壊す・面積比で切ると Android の戻るボタン 25%
 | E2EAppCMP・ポートを別の機へ付け替える | ブリッジの建て直しを挟む | 1(2026-08-13) | **タスク**: セッションが port P で機A の木を採った後、`bridge down --port P` → `bridge up --device 機B --port P` で **P を機B のものにし**、同じセッションから古い ref を撃つ。**元からあった欠陥1件**: **キャッシュ命中のドライバの同一性を誰も確かめていなかった**。実測 —— `tap [4] done`(`isError=False`)で**機B の同名要素を実際に叩いた**。注記は「古いスナップショット由来」としか言わず、**機が変わったことに触れない**。前日入れた `keyChangedDevice` は**ドライバ生成時にしか走らない**ので防げない: 建て直しの間セッションは1回も呼ばず `forgetConnection` が走らないため、**キャッシュ命中して生成が起きない**。「死んだブリッジなら失敗経路が拾う」という想定も誤りで、**新しいブリッジは正常に応答する**。修正は「記憶に依存する引数を持つ呼び出し(ref / `steps` の先頭 ref / `bundleId` 省略の `ft_open_url`)に限り、キャッシュ命中時にポートへ直に `/status` を撃って udid を照合し、違えば記憶を捨てて断る」。**実装で1回外した**: 最初は掴んでいるドライバの `status()` を使ったが、実運用のドライバは `SessionRecoveryDriver` に包まれており**建て直し直後のブリッジはセッションが無い**ので 409 で落ち、`try?` が握って**機が変わったときにちょうどガードが黙った** —— 陰性が「常に false を返す検出器」と区別できない形そのもので、**陽性対照を回さなければ気付けなかった**。**修正後の実機確認**: `port 8125 now belongs to a different simulator (was E38DCA93…, now 2C4FBE2E…)` で拒否され、`ft_launch` し直せば通常どおり続行できる。**費用**: 確認は `/status` 1往復(実測6〜9ms)で、ref 系はどのみち木を撮りにブリッジへ行くので限界費用はほぼ無い。全呼び出しに掛けない理由は XCUITest quiescence(実測33.7秒)中に記憶を使わない呼び出しまで詰まらせるため。**却下した案**: 全応答に udid を載せる案(X)は、`BridgeClient` が応答ヘッダを捨てており `AppDriver` プロトコルへの要件追加=全ドライバ改修+両ブリッジ改修+版上げ+フル E2E が要るうえ、**ヘッダは操作の後にしか読めず1回目の誤操作を防げない**。**掃討の抜け(同日中に発見・修正)**: 最初の修正は `direct:ios:<port>:` 経路のキャッシュ命中にしか確認を入れておらず、**`profile:` 経路には穴が残っていた**。しかも profile 経路は `connectedPorts[key]` を記録していないので、確認を足すだけでは**また黙って no-op** になるところだった(材料の記録が先)。両経路で実機の陽性対照を通した(profile 側: `port 8126 now belongs to a different simulator (was …-01, now …-05)`)。再発は `testEveryDriverCacheHitVerifiesDeviceIdentity`(キャッシュ命中の箇所数を2に固定し、各ブロックが確認を呼ぶことを走査)と `testBothPathsRecordWhatTheIdentityGuardNeeds` が落とす |
 | E2EAppCMP を iOS 2台 | 2台以上(同一 OS) | 1(2026-08-13) | **タスク**: 2台に同じアプリを入れ、機A を「スクロール画面で `#row_40` を選択」・機B を「セレクタ画面で `#btn_item_3` を選択」まで進め、最後に両方から各自の値を読む。**誤配送が起きると成功したまま同じ値が2回返る**形を狙った。**元からあった欠陥1件**: **機を跨いで ref 番号が衝突する**。`nextRefBase` が engineKey ごとに 0 から始まっていたため、両機の ref が同じ番号空間を使っていた。実測 —— 機A の `[10]` は `#row_30`、機B の `[10]` は `#btn_item_1`。機A の木を見て採った `ft_tap ref: 10` を `port:` だけ機B にして撃つと、**警告も拒否も無く成功して**機B のボタンを叩き、状態が `result=item3` → `result=item1` に変わった。**どちらも button なのでもっともらしく成功する**のが最悪の形で、`refGenerations` の宣言が謳っていた「セッションを通じて ref が一度も衝突しない」という不変条件が2台では破れていた。採番をセッション共通のスカラーへ変更(`nextRefBase`)。**修正後の実機確認**: 機B の ref は 55/57/59 に採番されて衝突せず、機A の `[10]` は `unknown ref [10] — it is not from any recent snapshot` で拒否され、**tap は発射されず状態も変わらない**。回帰は `MCPRefGenerationTests.testARefTakenOnOneDeviceDoesNotHitAnotherDevice` ほか1本(変異2/2検出)。**正しく動いたもの**(この形で初めて確認): A→B→A の交互読みが毎回自分の機の木を返す(監査20 の型は再発しない)/ 省略呼び出しが候補を名指しして拒否される/ 拒否の後も明示指定は通る。**次にこの形をやるとき**: アプリ切替(同一機で launch を跨ぐ)と、ブリッジ建て直しを挟む形はまだ未着手 |
 | E2EAppCMP → E2EAppIOS(同一機・兄弟アプリ) | アプリ切替 | 1(2026-08-13) | **タスク**: 同じ機でアプリA を起動して ref を採り、アプリB を起動してからその ref を撃つ。**元からあった欠陥1件**: **ref の世代は機ごとで、アプリでは区切っていない**。E2E の 5 SUT は `#id`・ラベルが共通契約なので、前のアプリで採った ref が次のアプリの木へ再照合されて**黙って当たる**。実測(iOS・同一機)—— `com.ftester.e2e` の `#nav_selector`(ref 54)を採ってから `com.ftester.e2e.ios` を launch して撃つと `tap [54] done` で成功し、注記は「**1px 動いた・周囲のレイアウトが変わった**」と**自信を持って誤説明**した(まったく別のアプリなのに)。`switchedAppNote` は「起動したアプリ = 前面」を見るので明示 launch 後は発火せず、**見ていないのは ref の出自**だった。世代の `sessionBundleID` と今の木のそれを突き合わせて断る(`refFromAnotherAppMessage`)。**どちらかが不明なら何もしない**(旧ブリッジは `sessionBundleID` を返さないので、断ると ref がまったく使えなくなる)。**修正後の実機確認**: `[4] was taken from com.ftester.e2e but the app in front is now com.ftester.e2e.ios — refusing…` で拒否され、素の `ft_snapshot` を撮り直せば新しい ref で続行できる。**正しく動いたもの**(この形で初めて確認): back でアプリを出た後の `⚠️ This tree belongs to …, NOT the app you launched` / `ft_open_url` の `bundleId` 省略時の開示(「前面が変わっているなら bundleId を渡せ」)。**配線のテストを別に持つ**: 純粋関数だけを固定したら「呼び出しを外す」変異が生き残った(レビューが以前指摘した型) |
+| E2E-iOS を実機1台 + 仮想1台 | 実機 + 仮想デバイスの混在 | 1(2026-08-14) | **タスク**: 同じアプリを実機(iPhone wave・`profile: ios-device`)と仮想機(iPhone 17 Pro-01・`port: 8124`)へ入れ、実機を「入力画面で `physical` を入力して読み返す」・仮想機を「セレクタ画面で `#btn_item_2` を選択」まで進め、最後に**両方から各自の値を読む**(誤配送すると、どちらも同じ画面・同じ `#id` なのでもっともらしく成功する)。**完遂**(実機 `single=physical` / 仮想 `result=item2`)。**元からあった欠陥2件**。**①`ft_list_devices` の fallback が実機を1台も並べない。** マシンプロファイルが解決しないとき(このホストは `LocalConfig.currentMachineName()` が `M2Ultra` で machines/ に無い)一覧は「Listing devices that are currently booted/connected instead」と名乗るのに、`iosFallbackRows` は `SimulatorCatalog.devices().filter(\.booted)` しか数えておらず、**USB 接続・ペアリング済み・Developer Mode 有効の iPhone が消える**。`androidFallbackRows` は最初から実機を含む(`physical: device.avd == nil`)ので **iOS だけの非対称**だった。しかも同じセッションの曖昧さ拒否・`udid:` のエラー文はどちらも「udid を渡せ / `ft_list_devices` を見ろ」と言うので、**ラウンド1の欠陥②で塞いだ袋小路の別の入口**になっていた(あちらは machine profile がある構成で塞いだ)。修正は fallback にも `IOSPhysicalDeviceCatalog.devices().filter(\.connected)` を並べ、絞り込みごと純粋関数 `iosFallbackRows(simulators:physical:live:)` へ出してテストで固定。ブリッジの引き当ては**名前ではなく udid** —— 実機の `/status.device` は汎用名 "iPhone" なので `byName` は原理的に当たらず、`.ftester/bridge-<port>.device` の記録から補った `byUDID` 側で当てる。**費用**: fallback が `devicectl` を1回叩くので 33ms → 2.7s(この経路は一覧を出す1回だけなので許容)。**②(本命)撮っていない宛先へ ref を撃つと素通しし、ブリッジ自前の番号で解決されて別の要素を操作する。** `verifiedRef` は「この engineKey に世代が無ければ素通し」だったが、**engineKey は指し方込み**(`profile:<project>:<name>` / `direct:ios:<port>:`)なので、**同じ1台を profile: で撮って port: で撃つ**だけで「世代なし」に落ちる。ブリッジは自前の 1..N で解決するので**別の要素に当たって成功を返す**。実機実測: profile: で撮った木の ref は 70..93 なのに `port:8143 ref:5` が `tap [5] done`(警告ゼロ)、`ref:10` は**送信ボタンを実際に押して** `submitted=-` → `submitted=physical` にした(ブリッジ側の #5=`len=8` の静的テキスト・#10=`#btn_input_submit`。`curl /snapshot` で番号対応を確認)。**既存の「機を跨いだ ref」テストが通っていたのは2台目も MCP で撮っていたから**で、**撮っていない宛先へ撃つ形が丸ごと抜けていた**。これは既に3回直した型(別デバイス / 別アプリ / 別画面 の同じ id)の4つ目だが、**前3つのガードはどれも当たらない** —— 番号が ref 照合の機構に入る前に素通しされるため。修正は素通しの条件を**セッション全体**で見る(`nextRefBase == 0` = このセッションが ref を1つも発行していないときだけ素通し)。`nextRefBase` は「2台以上」のラウンドでセッション共通のスカラーにしてあるので、**発行済みかどうかは原理的に判る**(doc が依拠していた「セッション内で ref は一意」という不変条件を、判定側だけが per-key で見ていた不整合)。拒否文は `otherKeyHolding` で出自を探して**両方の宛先を名指しする**。**掃討**: ref を食う経路は3つ(`verifiedRef` / `verifiedElement` / `resolveScrollFrameArg`)。`verifiedElement` の無世代分岐は撮り直した木の**セッション ref** と照合するので、発行済みの小さい番号とは原理的に一致せず安全。`resolveScrollFrameArg` は最初から throw。**素通しするのは `verifiedRef` だけ**だった。**検証**: `swift test --parallel` 緑。実機の陽性対照(新プロセス・stdin): `[10] was taken under a different target (profile:E2E-iOS:ios-device:), but this call addressed direct:ios:8144:` で拒否され、**画面は変わらない**。**陰性対照**: 同じ port で `ft_snapshot` を撮ってから撃てば従来どおり `tap [5] done`(`#nav_input`)—— 常に拒否する検出器にはなっていない。**正しく動いたもの**(この形で初めて確認): ref 番号は実機と仮想機で衝突しない(実機 1..16 / 仮想 18..34)/ 2台を触った後の宛先省略が `ports 8124, 8143` を名指しして拒否 / **存在しない port への失敗を挟んでも記憶が壊れない**(OS 跨ぎのラウンドで入れた `lostTargetFold` が実機混在でも効く)/ キーボード遮蔽の実効矩形と chrome 除外が実機で正しく働く(`#tab_home`/`#tab_controls`/`#tab_about` の3件だけを挙げ、サジェストバー・地球儀/Dictate 行は挙げない) |
 | E2E-iOS(iPhone wave・実機) | 実機(物理端末) | 1(2026-08-13) | **タスク**: 入力画面で値を入れて読み返し → スクロール画面で `#row_38` まで到達してタップ。乗り物は iPhone 15 Pro・iOS 26.6・`com.ftester.e2e.ios`(iPhone wave)。**完遂**。**元からあった欠陥6件** —— 核は共通: 実機ブリッジの `/status` が `device:"iPhone"` という機種名だけを返し `udid` を申告しない(iOS 16 以降 `UIDevice.name` は伏せられ、`SIMULATOR_UDID` も無い)。ここから①②③が派生する。**①** `ft_list_devices` が実機を必ず「no bridge」と報告する(生きたブリッジがあっても)。`liveIOSBridges` が `status.device` を鍵にし、実機の行は `IOSPhysicalDeviceCatalog` の名前で引くので原理的に一致しない。あわせて `scan(repoRoot: nil)` を修正 —— 記録を読めず 127.0.0.1 へ落ちるため、lan トランスポート(LAN IP 直叩き)の実機ブリッジが一度も疎通されていなかった。**②** `udid:` で実機を指せない。`Found.udid` が常に nil なので udid→port の一致がゼロ。エラー文が「`ft_list_devices` を見ろ」と言い①と相互参照して行き止まりになる(①②の修正 = `.ftester/bridge-<port>.device` の port→udid 記録。詳細は docs/design.md 参照)。**③** 宛先記憶・曖昧さガードが `profile:` を数えない。実機は udid もポートも事前に分からず `profile:` が唯一の現実的な指し方なので、実機を使う経路がちょうど死角だった。実測: 実機を profile で操作 → 仮想デバイスを port で操作 → 宛先省略の呼び出しが拒否されず仮想デバイスへ流れた。真因は述語ではなく配線 —— `driver()` の profile 分岐が `rememberResolvedTarget` を一度も呼んでいなかった(記録点は「2経路」と書かれていたが3経路目が無配線)。あわせて `recordsIOSMemory`/`recordsAndroidMemory` に `profile:` を追加、Android 側は serial 型の文字列でなく Bool で受けるよう対称化(値そのものが serial として誤用されるのを防ぐ)。**④(既存の台帳の教訓に直結)** 実機ブリッジが建て直されると `profile:` のセッションが永久に詰む。実測: `profile:` で成功 → 実機のランナーが死ぬ → 以後 `profile:` の呼び出しは何度撃っても "Cannot reach the driver"(port を明示すれば 65ms で応答)。**最初の修正(`isBound` を pid で補強)は純粋関数もテストも全部正しく緑だったのに、実機の陽性対照で1バイトも改善しなかった**。真因はもっと手前 —— `connectionLostHint` が `connections[key]`(表示用ラベル)の接頭辞 "port"/"serial " で振り分けており、profile 経路のラベル `"iPhone wave(実機) port 8144"` はどちらにも一致せず、**profile: のセッションは iOS も Android も回復機構に一度も入っていなかった**(`forgetConnection` が走らない)。同じ根が3箇所 —— `connectionLostHint` の iOS/Android・`forgetConnection` の Android(serial をラベルから `dropFirst` で切り出していた)。あわせて `connectedPorts[key] = probePort` を `probePort ?? provisioned.port` に(`probePort` は実機で常に nil。同じ根の消費側が2つあり片方だけ直っていた掃討漏れ)。**このハーネスを先に書いていなければ、緑のテストと正しい純粋関数だけを見て「直った」と報告していた**(ハーネスの形と教訓は docs/verification.md §「純粋関数が全部正しく緑でも」参照)。修正後の実機確認: 復帰の呼び出しが「The XCUITest runner behind iPhone wave port 8144 exited」と名指ししたうえで、次の呼び出しが port 8143 へ建て直して `ready: true`。**⑤** `ft_list_apps` が実機で `simctl listapps failed: Invalid device`。iOS 分岐に実機の経路が無く実機 udid を simctl へ素通ししていた。`IOSPhysicalAppCatalog` を新設(`devicectl device info apps --include-all-apps --json-output`)。user/system は `bundleIdentifier` の `com.apple.` 接頭辞で分類(devicectl の既定一覧は `builtByDeveloper` だけで App Store アプリが漏れ、`url` の `/System` でも分類できない。実測: 全287件・非Apple 206件。詳細は docs/design.md 参照)。**⑥** `ft_list_devices` が「別の理由」を畳んで隠す。1回目「project: を渡せ」→ 渡した2回目が「reason given in the first」。実際の理由は machine profile が見つからない別物で、**言われたとおり直したのに直った証拠だけが消える**。畳み鍵を理由込みにした(同じ理由の繰り返しは従来どおり畳む)。**横断1件(実機固有ではなく比較中に出た)**: キーボード遮蔽の偽の全クリア。`keyboardFrame` は XCUI の `.keyboard` ノード(キー面のみ)で上のサジェストバー・下の地球儀/Dictate 行を含まず(実測 上45pt・下58pt)、witness `#tab_home` が完全に隠れているのに「nothing tappable is beneath it」と言い、その1秒後に `ft_tap` 自身が別要素への誤爆を警告(同じ要素で2機構が矛盾)。`FTCore.KeyboardOcclusion` に実効矩形と除外 ref を束ね MCP/DSL 双方が通す形にした(既に docs/design.md に記載済み)。**検証**: `swift test --parallel` 緑。①②③⑤の回は変異テストが最初 4/8 しか検出できず、配線の走査テストを3本足し「分岐のどこかに1回あるか」だけを見ていた走査を OS ごとに1本ずつ要求する形へ寄せて 8/8(片方の case だけ外す変異を素通ししていた)。④⑥の回は変異 10/10。実機の陽性対照(新プロセス・修正後のコードで建て直したブリッジ): ①bridge port 8143(xcuitest)/ ②`udid:` で `ready: true` / ③2台触った後の省略呼び出しを ports 8124, 8143 を名指しして拒否 / ⑤ "2 app(s) matching \"ftester\" (of 287)"。陰性対照(1台だけのセッション)は従来どおり再利用され、③は常に拒否する検出器にはなっていない。**自作機構の欠陥4件(収穫に数えない)**: 修正後のレビューで、**この回の修正自身が作った/取り残した欠陥**が4件出た —— ⒜ `ft_list_apps` の実機経路が `profile:` にしか効かず、**②で使えるようにしたばかりの `udid:` で `no booted simulator found: iPhone`**(実機判定が throw し得るフォールバックより後ろにあった。実機で再現)⒝ profile の**キャッシュ命中**が `rememberResolvedTarget` を呼ばず、③で直した宣言「記録点は driver() の全経路」が成り立っていなかった(生成側だけ直して命中側を落とす、③と同じ型の掃討漏れ)⒞ `resolveBridges` の `??` で、udid を申告するブリッジと申告しない旧ブリッジが同居すると後者が一覧から消える(`Row.Bridge` の「片方しか出さないと『動いているのに見えない』になる」に反する。port で和集合へ)⒟ `deviceIdentityChanged` が 127.0.0.1 決め打ちで、④の修正で `connectedPorts` が実機でも埋まった結果**このガードが実機で走るようになった**(他3箇所と同じ `BridgeEndpoint.load` へ揃えた)。**⒜⒝⒟はいずれも「この回の修正が新しく踏ませた」もの**で、台帳の「自作の機構を監査しているとき、それは収穫ではない」の実例。修正後 `swift test --parallel` 緑・変異 4/4・実機で `udid:`/`port:`/`profile:` の3経路とも `2 app(s) matching "ftester"` |
 
 ## 各ラウンドの記録(browser)

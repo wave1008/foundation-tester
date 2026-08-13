@@ -47,6 +47,40 @@ final class PlanBridgeTests: XCTestCase {
         XCTAssertEqual(port, 8128)
     }
 
+    /// **実機の形**(2026-08-14・実機+仮想混在の監査)。実機ブリッジの `/status` は udid を
+    /// 申告せず `device` も汎用名 "iPhone" なので、**名前フォールバックは原理的に当たらない**
+    /// (プロファイルの表示名は "iPhone wave(実機)")。`scanRunningBridges` が
+    /// `BridgeDeviceRecord` から udid を補うようになったので、ここは udid だけで再利用に当たる。
+    ///
+    /// 当たらないと**同じ実機に2本目のランナーが立つ**。実測: 2本目の起動が1本目を即殺し
+    /// (2秒差)、約5分半後に1本目のハング締切の後始末が2本目も道連れにする(0.8秒差)
+    func testReusesPhysicalBridgeByUDIDWhenItsReportedNameCannotMatch() throws {
+        let phone = SimDeviceInfo(udid: "00008130-0018", name: "iPhone wave(実機)",
+                                  os: "iOS 26.6", booted: true, physical: true)
+        let running: [UInt16: BridgeProvisioner.RunningBridge] = [
+            8143: .init(udid: "00008130-0018", name: "iPhone", engine: "xcuitest",
+                        protocolVersion: BridgeAPI.bridgeProtocolVersion, sessionBundleID: nil),
+        ]
+        guard case .reuse(let port) = try plan(running: running, sim: phone) else {
+            return XCTFail("生きている実機ブリッジを再利用せず2本目を建てようとしている")
+        }
+        XCTAssertEqual(port, 8143)
+    }
+
+    /// 陰性対照: udid が付いていなければ従来どおり名前で相関し、名前も違えば再利用しない
+    /// (上のテストが「実機なら何でも再利用する」になっていないこと)
+    func testDoesNotReusePhysicalShapedBridgeWithNeitherUDIDNorMatchingName() throws {
+        let phone = SimDeviceInfo(udid: "00008130-0018", name: "iPhone wave(実機)",
+                                  os: "iOS 26.6", booted: true, physical: true)
+        let running: [UInt16: BridgeProvisioner.RunningBridge] = [
+            8143: .init(udid: nil, name: "iPhone", engine: "xcuitest",
+                        protocolVersion: BridgeAPI.bridgeProtocolVersion, sessionBundleID: nil),
+        ]
+        guard case .launch = try plan(running: running, sim: phone) else {
+            return XCTFail("別の端末かもしれないブリッジを再利用してはいけない")
+        }
+    }
+
     /// announce 済みの再利用が優先(adopt は再利用できないときの経路)
     func testReuseWinsOverAdopt() throws {
         let sim = SimDeviceInfo(udid: "UDID-A", name: "iPhone 17 Pro", os: "iOS 27.0", booted: true)

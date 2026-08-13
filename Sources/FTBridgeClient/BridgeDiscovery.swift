@@ -126,11 +126,23 @@ public enum BridgeDiscovery {
         }
     }
 
-    /// status の申告と記録(BridgeDeviceRecord)の優先順位。**申告があれば必ずそちら** ——
-    /// 仮想デバイスは自分で正しい udid を出すので、記録が古くても信じない。記録は実機のときだけ
-    /// (申告できないランナー向けの)補完
-    static func resolveUDID(reported: String?, recorded: String?) -> String? {
-        reported ?? recorded
+    /// 稼働ブリッジ → 端末の引き当て。**規則はここ1箇所**(BridgeDiscovery.scan と
+    /// BridgeProvisioner.scanRunningBridges が共有する。2つ目の優先順位を書かない)。
+    ///
+    /// **申告があれば必ずそちら** —— 仮想デバイスは自分で正しい udid を出すので、記録が古くても
+    /// 信じない。記録(BridgeDeviceRecord)は実機のときだけの補完(申告できないランナー向け)。
+    /// `matchedByName` は `/status.device` を起動中シミュレータのカタログで引いた結果で、
+    /// **最後の手段**(旧ブリッジは udid を申告せず記録も持たない)。名前は同名 sim が複数
+    /// booted だと一意にならないので、呼び手は特定できたときだけ渡すこと。
+    ///
+    /// **実機に名前引きは原理的に当たらない**(`/status.device` は汎用名 "iPhone" を返し、
+    /// プロファイルの表示名 "iPhone wave(実機)" とは一致しない)。この段が抜けていたために
+    /// **生きている実機ブリッジが同一デバイス判定に当たらず、2本目のランナーが立っていた**
+    /// (2026-08-14 実測。1台の実機に2本立てると2本目の起動が1本目を即殺し、
+    /// 約5分半後に1本目のハング締切の後始末が2本目を道連れにする)
+    static func resolveUDID(reported: String?, recorded: String?,
+                            matchedByName: String? = nil) -> String? {
+        reported ?? recorded ?? matchedByName
     }
 
     // MARK: - 文言(1箇所に置く。呼び出し側は throw / ログに載せるだけ)

@@ -81,6 +81,28 @@ final class BridgeDiscoveryTests: XCTestCase {
         XCTAssertNil(BridgeDiscovery.resolveUDID(reported: nil, recorded: nil))
     }
 
+    /// 名前引きは**最後の手段**(旧ブリッジは udid を申告せず記録も持たない)。
+    /// 申告・記録のどちらかがあればそちらが勝つ —— 同名 sim が複数 booted のとき、
+    /// 名前引きを先に見ると一意に決まらず nil へ落ちて二重起動を許す
+    func testResolveUDIDUsesTheNameMatchOnlyAsALastResort() {
+        XCTAssertEqual(BridgeDiscovery.resolveUDID(reported: "REPORTED", recorded: nil,
+                                                   matchedByName: "BY-NAME"), "REPORTED")
+        XCTAssertEqual(BridgeDiscovery.resolveUDID(reported: nil, recorded: "RECORDED",
+                                                   matchedByName: "BY-NAME"), "RECORDED")
+        XCTAssertEqual(BridgeDiscovery.resolveUDID(reported: nil, recorded: nil,
+                                                   matchedByName: "BY-NAME"), "BY-NAME")
+    }
+
+    /// **実機の形**(2026-08-14): udid を申告せず、名前も汎用の "iPhone" でプロファイル名と
+    /// 一致しないので名前引きは nil。記録が無ければ端末に紐付かず、planBridge の同一デバイス
+    /// 判定に当たらないまま2本目のランナーが立つ(1台に2本立てると両方死ぬ)
+    func testResolveUDIDIdentifiesAPhysicalBridgeOnlyThroughTheRecord() {
+        XCTAssertNil(BridgeDiscovery.resolveUDID(reported: nil, recorded: nil, matchedByName: nil),
+                     "記録が無ければ特定できない(= 記録を書くことが実機対応の前提)")
+        XCTAssertEqual(BridgeDiscovery.resolveUDID(reported: nil, recorded: "00008130-0018",
+                                                   matchedByName: nil), "00008130-0018")
+    }
+
     /// 文言はそのまま利用者(エージェント)への指示になる。**次の一手が書かれていること**
     func testMessagesCarryPortsDevicesAndTheNextStep() {
         let adopted = BridgeDiscovery.adoptedNote(preferred: 8123, found: found(8124))

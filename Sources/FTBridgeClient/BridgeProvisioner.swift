@@ -754,7 +754,10 @@ public struct BridgeProvisioner {
     /// nil。旧ブリッジは engine を "xcuitest" 扱いにするが protocolVersion は nil のままにして
     /// 再利用不可と判定させる)。
     /// 注意: /status 無応答のゾンビは映らない。停止用途には BridgeLauncher.stopMatching を使う
-    /// (HTTP でなく pid ファイル+プロセス引数の UDID 照合)。
+    /// (HTTP でなく pid ファイル+プロセス引数の UDID 照合)。**ゾンビ側は provision() の
+    /// startingByUDID(同じくプロセス引数照合)が拾って .adopt → 同ポートで建て直すので、
+    /// ここに映らないこと自体は穴ではない** —— 穴だったのは「映っているのに端末を特定できない」
+    /// ほう(下の resolveUDID)。
     func scanRunningBridges(catalog: [SimDeviceInfo]) async -> [UInt16: RunningBridge] {
         await withTaskGroup(of: (UInt16, RunningBridge)?.self,
                             returning: [UInt16: RunningBridge].self) { group in
@@ -773,7 +776,16 @@ public struct BridgeProvisioner {
                     }
                     // デバイス名 → UDID(同名の起動中シミュレータが複数なら特定不能 = nil)
                     let booted = catalog.filter { $0.booted && $0.name == status.device }
-                    let udid = booted.count == 1 ? booted[0].udid : nil
+                    // **引き当ての規則は BridgeDiscovery.resolveUDID の1箇所**(2026-08-14)。
+                    // ここは名前引きしか見ていなかったので、**udid を申告しない実機のブリッジは
+                    // 生きていても端末に紐付かず**、planBridge の sameDevice / stopStalePort に
+                    // 一度も当たらないまま2本目のランナーが立っていた(1台に2本立てると全滅する)。
+                    // status.udid を最優先にしたことで、同名 sim が複数 booted のときに
+                    // 名前引きが nil へ落ちていた劣化も同時に解消する
+                    let udid = BridgeDiscovery.resolveUDID(
+                        reported: status.udid,
+                        recorded: BridgeDeviceRecord.load(port: port, repoRoot: self.repoRoot),
+                        matchedByName: booted.count == 1 ? booted[0].udid : nil)
                     return (port, RunningBridge(udid: udid, name: status.device,
                                                 engine: status.engine ?? "xcuitest",
                                                 protocolVersion: status.protocolVersion,
