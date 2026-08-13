@@ -180,3 +180,60 @@ final class MCPServerDriverCacheKeyTests: XCTestCase {
         XCTAssertEqual(a, b)
     }
 }
+
+/// 整数を受ける引数の**全数振り分け**(2026-08-13)。`ref` を受ける引数の見落としは
+/// 2026-08-13 の1日で3度起きた(`ref` → `fromRef` → `scrollFrame`)。綴りの類似では
+/// 判定できない(`scrollFrame` は名前から ref だと分からない)ので、
+/// **スキーマ側の「整数を受ける引数」を ref 系と非 ref 系へ全部振り分けて等号照合**する ——
+/// 新しい整数引数を足したらどちらかに入れることになり、黙って穴が開かない。
+final class MCPServerIntegerArgumentPartitionTests: XCTestCase {
+
+    /// `"type": "integer"` と `"type": ["string", "integer"]` の**両方**を拾う。
+    /// 後者を取りこぼしたのが `scrollFrame` の見落としの直接の原因だった
+    private func integerArgumentNames() -> Set<String> {
+        var names: Set<String> = []
+        for definition in MCPServer.toolDefinitions {
+            guard let schema = definition["inputSchema"] as? [String: Any],
+                  let properties = schema["properties"] as? [String: Any] else { continue }
+            for (name, value) in properties {
+                guard let property = value as? [String: Any] else { continue }
+                let accepts: Bool
+                if let single = property["type"] as? String { accepts = single == "integer" }
+                else if let many = property["type"] as? [String] { accepts = many.contains("integer") }
+                else { accepts = false }
+                if accepts { names.insert(name) }
+            }
+        }
+        return names
+    }
+
+    func testEveryIntegerArgumentIsClassifiedAsRefOrNotRef() {
+        let declared = integerArgumentNames()
+        let classified = Set(MCPServer.refBearingKeys).union(MCPServer.nonRefIntegerKeys)
+        XCTAssertFalse(declared.isEmpty, "スキーマ走査が空振りしている(穴を検出できない)")
+        XCTAssertEqual(declared, classified,
+                       "整数を受ける引数の振り分けがスキーマと食い違っている"
+                       + "(未分類: \(declared.subtracting(classified).sorted()) /"
+                       + " 実在しない: \(classified.subtracting(declared).sorted()))。"
+                       + "ref を受けるなら refBearingKeys へ —— 入れ忘れると、その引数の"
+                       + "呼び出しだけ機の同一性が確認されない")
+    }
+
+    /// **走査が配列型を拾えること**の陰性対照(`scrollFrame` を取りこぼした形の再発防止)
+    func testTheScanSeesArrayTypedIntegerArguments() {
+        XCTAssertTrue(integerArgumentNames().contains("scrollFrame"),
+                      "`[\"string\", \"integer\"]` 形の宣言を走査が拾えていない")
+    }
+
+    /// `ft_batch` の先頭 ref は綴りの揺れを許して拾う(パーサが `ref : 12` を受理する)
+    func testBatchStepRefDetectionToleratesSpacing() {
+        // **ガード本体(usesRememberedDeviceState)越しに見る** —— 補助関数を直に叩くと、
+        // 「呼び出し側を素朴な contains へ戻す」変異が届かない
+        XCTAssertTrue(MCPServer.usesRememberedDeviceState(["steps": "tap ref: 12"]))
+        XCTAssertTrue(MCPServer.usesRememberedDeviceState(["steps": "tap ref : 12"]),
+                      "パーサが受理する `ref : 12` の綴りで確認を飛ばしている")
+        XCTAssertTrue(MCPServer.usesRememberedDeviceState(["steps": "tap ref  :12; type '#f' 'x'"]))
+        XCTAssertFalse(MCPServer.usesRememberedDeviceState(["steps": "tap '#btn'; type '#f' 'x'"]))
+        XCTAssertFalse(MCPServer.usesRememberedDeviceState(["steps": "tap '#refresh'"]))
+    }
+}

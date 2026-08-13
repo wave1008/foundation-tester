@@ -478,6 +478,20 @@ extension MCPServer {
             return abs(fa.y - fb.y) <= 2 && abs(fa.x - fb.x) > 2
         }
 
+        // **一様な1行を「2回出ている」と読まないための材料**(2026-08-13 のレビュー指摘)。
+        // 重なり禁止だけでは足りない —— 同じキーのセルが 12 個並ぶと 6+6 の**重ならない**
+        // 2区間に割れて発火する(独立に再現済み)。本物の複製は「**変化のある並び**が
+        // そのまま繰り返される」形なので、**採った区間が2種類以上のキーを含むこと**を要求する。
+        // 区間ごとに数えると O(n³) になるので、隣接が変わる位置の累積で O(1) 判定にする
+        var variedPrefix = [Int](repeating: 0, count: n + 1)
+        for k in 1..<max(n, 1) {
+            variedPrefix[k + 1] = variedPrefix[k] + (keys[k] == keys[k - 1] ? 0 : 1)
+        }
+        func spansTwoKinds(from start: Int, length: Int) -> Bool {
+            guard length >= 2, start + length <= n else { return false }
+            return variedPrefix[start + length] - variedPrefix[start + 1] > 0
+        }
+
         var bestLength = 0, bestI = 0, bestJ = 0
         var previous = [Int](repeating: 0, count: n + 1)
         for i in 1...n {
@@ -491,7 +505,7 @@ extension MCPServer {
                 // (`minimumRun=6` なので7個並べば発火する。無ラベルのセル・ページ送りのドット等)。
                 // 言いたいのは「同じ領域が2回出ている」なので、重なる区間は候補にしない。
                 // **採用時に弾く**(最後に弾くと、重なる長い一致が本物の短い一致を隠して黙る)
-                if length > bestLength, j - i >= length {
+                if length > bestLength, j - i >= length, spansTwoKinds(from: i - length, length: length) {
                     bestLength = length
                     bestI = i - length
                     bestJ = j - length
@@ -1272,9 +1286,11 @@ extension MCPServer {
             $0.type == "clickable" && ($0.identifier ?? "").isEmpty && ($0.label ?? "").isEmpty
         }
         guard !candidates.isEmpty else { return "" }
-        let unlabeled = candidates.filter {
-            !stableTwinFrames(candidates, in: snapshot, cache: cache).contains(frameKey($0.frame))
-        }
+        // **filter の外で1回だけ求める**(2026-08-13 のレビュー指摘): クロージャの中で呼ぶと
+        // 候補ごとに全要素走査と集合の再構築が走り、`cache: nil` なら `SelectorNaming` まで
+        // 作り直していた —— 直前に直した性能問題と同じ形を、同じ関数で作っていた
+        let twins = stableTwinFrames(candidates, in: snapshot, cache: cache)
+        let unlabeled = candidates.filter { !twins.contains(frameKey($0.frame)) }
         guard !unlabeled.isEmpty else { return "" }
         let listed = unlabeled.prefix(8).map { element -> String in
             scopedSelector(for: element, in: snapshot).map { "[\(element.ref)] = \($0)" }

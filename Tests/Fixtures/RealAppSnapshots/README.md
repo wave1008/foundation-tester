@@ -22,7 +22,7 @@
 
 | ファイル | アーキタイプ | 由来 | 何を代表するか |
 |---|---|---|---|
-| `ios-settings_root` | settings | iOS 設定 | 深い設定ツリー。**無名 clickable が地図以外でも出ることの witness**(`unlabeledClickablesNote`) |
+| `ios-settings_root` | settings | iOS 設定 | 深い設定ツリー。**行を `clickable` の容器で包み、同じ矩形に `button` + `#id` を置く形の witness**(2026-08-13: この形は `unlabeledClickablesNote` の**誤検知**と判明し、同一矩形に `.stable` なセレクタがあるときは黙るようにした。11/11 が該当してこの画面では発火しなくなった) |
 | `and-settings_root` | settings | Android 設定 | 同上の Android 版(`#title`/`#summary` が行ごとに重複する形) |
 | `ios-messages_keyboard` | chat | iOS メッセージ | 会話 + ソフトキーボード。**`keyboardCoverageNote` と `scrollFrameCandidates` が地図以外でも出ることの witness**。検知は全項目0 = **陰性対照** |
 | `ios-photos_grid` | media | iOS 写真 | 同じ id のタイル格子 |

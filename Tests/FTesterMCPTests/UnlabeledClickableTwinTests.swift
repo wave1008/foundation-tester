@@ -103,4 +103,27 @@ final class UnlabeledClickableTwinTests: XCTestCase {
                                  "候補と無関係な要素まで grade している"
                                  + "(実測 \(cache.gradedComputeCount) 回 / 候補の矩形は1つ)")
     }
+
+    /// **twin の走査を filter の中で呼ばないこと**(2026-08-13 のレビュー指摘)。
+    /// クロージャの中で呼ぶと候補ごとに全要素走査と集合の再構築が走る —— 正しさでは差が出ず
+    /// `gradedComputeCount` にも出ない(キャッシュが効くため)ので、構造をソースで固定する
+    func testTheTwinScanIsHoistedOutOfTheFilter() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/ftester-mcp/MCPServer+Hints.swift")
+        let source = try String(contentsOf: url, encoding: .utf8)
+        guard let start = source.range(of: "static func unlabeledClickablesNote"),
+              let end = source.range(of: "\n    }", range: start.upperBound..<source.endIndex) else {
+            return XCTFail("unlabeledClickablesNote が見つからない")
+        }
+        let body = String(source[start.upperBound..<end.lowerBound])
+        XCTAssertTrue(body.contains("let twins = stableTwinFrames("),
+                      "twin の集合を1回だけ求める形になっていない")
+        guard let filterRange = body.range(of: "candidates.filter {") else {
+            return XCTFail("候補の絞り込みが見つからない")
+        }
+        let closure = String(body[filterRange.upperBound...].prefix(200))
+        XCTAssertFalse(closure.contains("stableTwinFrames("),
+                       "filter のクロージャの中で twin を走査している(候補ごとに再計算)")
+    }
 }

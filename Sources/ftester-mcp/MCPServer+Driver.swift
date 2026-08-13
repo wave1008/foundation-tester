@@ -77,6 +77,18 @@ extension MCPServer {
             // (`iosDriver` の probePort。理由はあちらの doc)—— 誤ったポートを記録すると
             // ガードが無関係な機のブリッジを読み、正しい呼び出しを拒否して記憶まで捨てる
             if case .ios(let provisioned, _) = target {
+                // **生成経路でも機の入れ替わりを見る**(2026-08-13 のレビュー指摘)。
+                // キャッシュ命中側だけに置くと、`enforceVersion` の拒否(`drivers[key]` だけを
+                // nil にする)のあとブリッジが別のフリート機へ建て直された回に、
+                // 前の機の ref 世代と起動アプリが生き残る(直接ポート経路と同じ手当て)
+                if let previousUDID = Self.keyChangedDevice(previous: udids[key] ?? nil,
+                                                            now: provisioned.udid) {
+                    forgetDeviceState(key)
+                    pendingWarnings[key, default: []].append(
+                        Self.reusedPortWarning(port: probePort ?? provisioned.port,
+                                               previousUDID: previousUDID,
+                                               nowUDID: provisioned.udid ?? ""))
+                }
                 udids[key] = provisioned.udid
                 connectedPorts[key] = probePort
             }
@@ -338,13 +350,39 @@ extension MCPServer {
     /// `fromRef` で受け、`verifiedElement` 経由で同じ世代から引く。名前を1つ見落とすと
     /// **その1ツールだけ穴が開いたまま**になるので、`refBearingKeys` を唯一の定義元にして
     /// `MCPServerToolDefinitionsTests` がスキーマ側と突き合わせる
-    static let refBearingKeys = ["ref", "fromRef"]
+    static let refBearingKeys = ["ref", "fromRef", "scrollFrame"]
+
+    /// 整数を受けるが **ref ではない**引数。`refBearingKeys` と合わせて
+    /// **整数を受ける引数を全部説明しきる**(`MCPServerToolDefinitionsTests` がスキーマと
+    /// 等号照合する)—— 新しい整数引数を足したらどちらかへ入れることになるので、
+    /// 「ref を受ける引数が1つ増えたのにガードが知らない」が起きない。
+    /// **綴りの類似で判定しない**(2026-08-13 に3度踏んだ): `ref` → `fromRef` →
+    /// `scrollFrame` と、名前からは ref だと分からない引数が毎回出てきた
+    static let nonRefIntegerKeys = ["lastN", "lines", "maxElements", "maxSwipes", "maxWidth",
+                                    "port", "sinceSeconds"]
 
     static func usesRememberedDeviceState(_ args: [String: Any]) -> Bool {
         if Self.refBearingKeys.contains(where: { args[$0] != nil }) { return true }
-        if let steps = args["steps"] as? String, steps.contains("ref:") { return true }
+        if let steps = args["steps"] as? String, stepsCarryARef(steps) { return true }
         if args["url"] != nil, args["bundleId"] == nil { return true }
         return false
+    }
+
+    /// `ft_batch` の先頭ステップが ref を持つか。**`contains("ref:")` では足りない**
+    /// (2026-08-13 のレビュー指摘): パーサは `tap ref : 12` という綴りも受理する。
+    /// **空白を許す形で見る**。引用符の中の `ref:` を拾う偽陽性はあり得るが、
+    /// **外した場合は黙って別の機を操作する**のに対し、余分に拾っても `/status` 1往復
+    /// (実測6〜9ms)なので、**安全側へ倒す**
+    static func stepsCarryARef(_ steps: String) -> Bool {
+        var sawRef = false
+        var index = steps.startIndex
+        while let found = steps.range(of: "ref", range: index..<steps.endIndex) {
+            var cursor = found.upperBound
+            while cursor < steps.endIndex, steps[cursor] == " " { cursor = steps.index(after: cursor) }
+            if cursor < steps.endIndex, steps[cursor] == ":" { sawRef = true; break }
+            index = found.upperBound
+        }
+        return sawRef
     }
 
     /// キャッシュ命中のドライバが**別の機を指し始めていたら**、そのキーの記憶を捨てて理由を返す

@@ -195,4 +195,21 @@ final class DuplicateRegionNoteTests: XCTestCase {
                              elements: row, truncatedCount: 0))
         XCTAssertEqual(note, "", "1行の並びを『2回出ている』と誤検知した: \(note)")
     }
+
+    /// **一様な1行は「2回出ている」ではない**(2026-08-13 のレビュー指摘)。重なり禁止だけでは
+    /// 足りず、同じキーのセルが 12 個並ぶと 6+6 の**重ならない**2区間に割れて発火していた。
+    /// 本物の複製は「変化のある並びがそのまま繰り返される」形なので、区間が2種類以上の
+    /// キーを含むことを要求する
+    func testALongUniformRowIsNotReportedAsADuplicatedRegion() {
+        let row = (0..<12).map {
+            ElementInfo(ref: $0 + 1, type: "staticText", identifier: nil, label: "",
+                        value: nil, placeholder: nil, enabled: true,
+                        frame: FTRect(x: Double($0) * 40, y: 100, width: 36, height: 20), depth: 1)
+        }
+        let note = MCPServer.duplicateRegionNote(
+            SnapshotResponse(sessionBundleID: "com.example.app",
+                             screen: FTRect(x: 0, y: 0, width: 402, height: 874),
+                             elements: row, truncatedCount: 0))
+        XCTAssertEqual(note, "", "一様な12個の並びを 6+6 の複製と読んだ: \(note)")
+    }
 }

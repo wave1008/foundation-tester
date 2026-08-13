@@ -266,30 +266,31 @@ final class DeviceStateInvalidationTests: XCTestCase {
             .appendingPathComponent("Sources/ftester-mcp/MCPServer+Driver.swift")
     }
 
-    /// **ref を受ける引数名を1つでも見落とすと、そのツールだけ穴が開く**(2026-08-13 のレビュー指摘)。
-    /// `ft_drag` は `fromRef` で受けており、`ref` だけを見ていた最初の実装は素通しだった。
-    /// スキーマ側(toolDefinitions)で「整数の ref 系」を名乗る引数の集合と突き合わせる
-    func testEveryRefBearingSchemaArgumentIsCoveredByTheGuard() {
-        var declared: Set<String> = []
-        for definition in MCPServer.toolDefinitions {
-            guard let schema = definition["inputSchema"] as? [String: Any],
-                  let props = schema["properties"] as? [String: Any] else { continue }
-            for (name, spec) in props {
-                guard let spec = spec as? [String: Any], spec["type"] as? String == "integer",
-                      name.lowercased().hasSuffix("ref") else { continue }
-                declared.insert(name)
-            }
-        }
-        XCTAssertFalse(declared.isEmpty, "スキーマ走査が空振りしている(穴を検出できない)")
-        XCTAssertEqual(declared, Set(MCPServer.refBearingKeys),
-                       "ref を受ける引数とガードの一覧が食い違っている"
-                       + "(スキーマにあってガードに無い: \(declared.subtracting(MCPServer.refBearingKeys).sorted()) /"
-                       + " ガードにあってスキーマに無い: \(Set(MCPServer.refBearingKeys).subtracting(declared).sorted()))。"
-                       + "見落とすと、そのツールだけ機が変わっても古い ref が通る")
-    }
+    /// **この検査は `MCPServerIntegerArgumentPartitionTests` へ移した**(2026-08-13)。
+    /// ここにあった版は「型が `"integer"`(単一の String)で、名前が ref で終わる」を条件に
+    /// していたため、**`scrollFrame`(`["string","integer"]` 宣言・名前も ref で終わらない)を
+    /// 構造的に拾えなかった** —— レビューで無力だと実証された。
+    /// 置き換えた版は**整数を受ける引数を全数、ref 系と非 ref 系へ振り分けて等号照合**する
 
     /// 実際にガードが `fromRef` を拾うこと(一覧の突き合わせだけだと配線漏れを見逃す)
     func testDragFromRefIsTreatedAsRememberedState() {
         XCTAssertTrue(MCPServer.usesRememberedDeviceState(["fromRef": 4]))
+    }
+
+    /// **profile の生成経路にも機の入れ替わり判定があること**(2026-08-13 のレビュー指摘)。
+    /// キャッシュ命中側だけに置くと、版ズレ拒否(`drivers[key]` だけを nil にする)のあと
+    /// ブリッジが別のフリート機へ建て直された回に、前の機の記憶が生き残る
+    func testProfileCreationPathAlsoPurgesOnADeviceChange() throws {
+        let source = try String(contentsOf: Self.driverSourceURL(), encoding: .utf8)
+        guard let branch = source.range(of: "if let profileName = args[\"profile\"] as? String {"),
+              let end = source.range(of: "\n        // **engineKey と同じ解決を使う**",
+                                     range: branch.upperBound..<source.endIndex) else {
+            return XCTFail("profile 分岐が見つからない — 構造を変えたらこのテストも直す")
+        }
+        let body = String(source[branch.upperBound..<end.lowerBound])
+        XCTAssertTrue(body.contains("keyChangedDevice"),
+                      "profile の生成経路が機の入れ替わりを見ていない")
+        XCTAssertTrue(body.contains("forgetDeviceState"),
+                      "入れ替わりを見つけても記憶を捨てていない")
     }
 }
