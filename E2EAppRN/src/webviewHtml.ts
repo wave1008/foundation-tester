@@ -43,9 +43,9 @@ export const WEBVIEW_HTML = `<!doctype html>
      ずらす実装だと、スクロール後のタップが外れる)。右下に置く = 全幅要素の中心を覆わない
      (DOM 経路の可視判定は中心点の elementFromPoint。中央に置くと行や本文を不可視にしてしまう) -->
 <!-- **見出しを a11y へ出さない格子**(2026-08-13)。実 web ページで観測した形
-     (Android Chrome が `<th>` を落とす等)を **offline で決定的に**再現する材料で、
-     `gridWithoutHeaderNote` / `webViewGapNote` の唯一の offline witness。
-     **`aria-hidden` を外さないこと** —— 外すと見出しが木に出て検知が発火しなくなる。
+     (Android Chrome が <th> を落とす等)を **offline で決定的に**再現する材料で、
+     gridWithoutHeaderNote / webViewGapNote の唯一の offline witness。
+     **aria-hidden を外さないこと** —— 外すと見出しが木に出て検知が発火しなくなる。
      **見出し行の厚み(padding)も減らさないこと** —— 判定は「直上の空き ÷ 行間 ≥ 2.0」で、
      薄いと 1.9 になって発火しない(2026-08-13 に実測して 34px に決めた) -->
 <table id="wv_grid">
