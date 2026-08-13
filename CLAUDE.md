@@ -294,6 +294,15 @@
   **ブリッジの入力ファイル一覧は `Sources/FTCore/BridgeSourceSet.swift` が唯一の定義元**
   (`InAppLauncher` の dylib 再ビルド判定も同じ一覧を使う。片方だけ変えない)。
   指紋の性質(コメント編集でも落ちる理由)・保留中の代替案は docs/verification.md
+- **ブラウザの中身は DOM から読む(自作アプリの WebView は a11y のまま)**(2026-08-13。
+  設計と実測は docs/design.md §ブラウザの中身は DOM から読む)。**口は3つ・その上の層は1つ**
+  (Android Chrome=CDP / iOS Safari シミュレータ=unix ソケット / iOS Safari 実機=usbmuxd →
+  lockdown → TLS)。**条件分岐にしない** —— a11y の充実度はページごとに変わるので、
+  「このページでは通るが別のページでは落ちる」を防ぐため、ブラウザでは常に DOM を正とする。
+  差し込みの判定は `FTCore.WebViewDOM`(`WebViewDOMTree.swift`)の1箇所。
+  **`WebViewDOMSnapshot.swift` へホスト専用の関数を足さない**(ブリッジのソース集合に入っており、
+  足すと dylib に無駄が入って指紋ゲートが鳴る)。**実機 iOS だけの罠3つ**(1通の大きさ・
+  Web インスペクタ・Safari の起動し直し)は docs/design.md §実機だけの罠
 - **判定は MCP と DSL で共有する**(2026-08-07)。「手前かどうか」は `FTCore.PaintOrder`、
   「撃つと別の物に当たるか」は `FTCore.TapTargetGeometry`(合成チェーンは `occlusionAdvisory`)と
   `FTCore.OcclusionGeometry`(中心を覆う最前面の名指し。`OcclusionSuspicion.covering` とは

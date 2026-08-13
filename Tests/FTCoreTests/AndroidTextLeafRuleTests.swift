@@ -29,12 +29,16 @@ final class AndroidTextLeafRuleTests: XCTestCase {
     /// この分岐が text を見ている証拠にはならないため)
     func testTheLeafTextRuleConsultsBothTextAndContentDescription() throws {
         let source = try snapshotBuilderSource()
-        guard let range = source.range(of: "!node.hasChildren") else {
-            return XCTFail("葉テキストの救済分岐(`!node.hasChildren` を含む条件)が見つからない。"
-                           + "改名したなら、この規則を守るテストも一緒に直すこと")
-        }
         // 条件式は `if (...)` の閉じ括弧まで。`return "StaticText"` に届く範囲だけを見る
-        let tail = source[range.lowerBound...].prefix(400)
+        // **コメントを剥がしてから見る**(2026-08-13 のレビュー指摘)。分岐の内側に
+        // 説明コメントを置くと、コメント中の `node.text` だけでアサートが通ってしまう
+        let stripped = source.split(separator: "\n", omittingEmptySubsequences: false)
+            .map { $0.trimmingCharacters(in: .whitespaces).hasPrefix("//") ? "" : String($0) }
+            .joined(separator: "\n")
+        guard let range = stripped.range(of: "!node.hasChildren") else {
+            return XCTFail("葉テキストの救済分岐が見つからない(コメント除去後)")
+        }
+        let tail = stripped[range.lowerBound...].prefix(400)
         guard let staticText = tail.range(of: "\"StaticText\"") else {
             return XCTFail("`!node.hasChildren` の分岐が StaticText を返していない")
         }

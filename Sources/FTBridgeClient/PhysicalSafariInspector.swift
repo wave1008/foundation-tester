@@ -423,9 +423,14 @@ enum PairingIdentityImporter {
         try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: combinedPath.path)
 
         let passphrase = UUID().uuidString
-        guard let result = try? Shell.runData(["openssl", "pkcs12", "-export",
+        // **絶対パスで固定**(2026-08-13 のレビュー指摘)。PATH 次第で macOS 同梱の LibreSSL と
+        // Homebrew の OpenSSL 3 が入れ替わり、p12 の既定暗号が変わって `SecPKCS12Import` の
+        // 可否が受け手の環境で割れ得る。**締切も必ず付ける** —— ここだけ無期限だと、
+        // `connect(deadline:)` という契約の内側に締切の効かない子プロセス待ちが残る
+        guard let result = try? Shell.runData(["/usr/bin/openssl", "pkcs12", "-export",
                                                "-in", combinedPath.path, "-inkey", combinedPath.path,
-                                               "-passout", "pass:\(passphrase)", "-out", "/dev/stdout"]),
+                                               "-passout", "pass:\(passphrase)", "-out", "/dev/stdout"],
+                                              timeout: 10),
               result.status == 0, !result.data.isEmpty else { return nil }
 
         let options: [String: Any] = [kSecImportExportPassphrase as String: passphrase,

@@ -70,11 +70,11 @@ final class AndroidWebViewDOMTests: XCTestCase {
 
     /// 手掛かりが無ければ元の並びのまま(順序に意味は無いが、決定的であること)
     func testWithoutHintsTheOriginalOrderIsKept() {
-        let ranked = AndroidWebViewDOM.rankedTabs(
-            webViewLabel: nil, urlBarValue: nil,
-            targets: [target("A", "https://a.test/", ws: "ws://a"),
-                      target("B", "https://b.test/", ws: "ws://b")])
-        XCTAssertEqual(ranked, ["ws://a", "ws://b"])
+        // **候補を多く並べる**(2026-08-13 のレビュー指摘)。2件だと `sorted` から
+        // index キーを外す変異でも順序が保たれて生き残る
+        let targets = (0..<24).map { target("T\($0)", "https://t\($0).test/", ws: "ws://\($0)") }
+        let ranked = AndroidWebViewDOM.rankedTabs(webViewLabel: nil, urlBarValue: nil, targets: targets)
+        XCTAssertEqual(ranked, (0..<24).map { "ws://\($0)" }, "同順位は元の並びを保つこと")
     }
 
     func testAboutBlankIsAValidPage() {
@@ -100,6 +100,24 @@ final class AndroidWebViewDOMTests: XCTestCase {
     func testEvaluateHasADeadline() {
         XCTAssertGreaterThan(AndroidWebViewDOM.evaluateTimeout, 0)
         XCTAssertLessThanOrEqual(AndroidWebViewDOM.evaluateTimeout, 5)
+    }
+
+    /// **定数の値だけでは守れない**(2026-08-13 のレビュー指摘)。番犬ごと消す変異も
+    /// `prefix` を外す変異も、値のテストは素通しする。使われていることをソースで見る
+    /// (`SwipeForScrollForwardingTests` と同じ作法)
+    func testTheDeadlineAndTheCapAreActuallyApplied() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let source = try String(contentsOf: root.appendingPathComponent(
+            "Sources/FTAndroid/AndroidWebViewDOM.swift"), encoding: .utf8)
+        let code = source.split(separator: "\n", omittingEmptySubsequences: false)
+            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+            .joined(separator: "\n")
+        // **`task.cancel` の有無では見分けられない**(`defer` 側にも在るため)。
+        // 番犬そのもの = 締切ぶん眠ってから閉じる Task を名指しで見る
+        XCTAssertTrue(code.contains("Task.sleep(nanoseconds: UInt64(evaluateTimeout"),
+                      "番犬が締切ぶん眠っていない = 受信が無期限になる")
+        XCTAssertTrue(code.contains("prefix(maxTabAttempts)"), "試行回数の上限が掛かっていない")
     }
 
     // MARK: - 座標の写し・WebView 選択・差し込みは `FTCore.WebViewDOM` へ移設

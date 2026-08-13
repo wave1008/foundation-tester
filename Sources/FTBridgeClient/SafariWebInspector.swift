@@ -282,8 +282,11 @@ public enum SafariWebInspector {
     /// 呼び出しは `BridgeClient.snapshot(query:)`(木の組み立て箇所)。
 
     /// 殺しスイッチの判定(純粋)。**`"off"` のときだけ無効**(既定オン)
+    /// **大小文字を無視する**(2026-08-13 のレビュー指摘)。Android(`AndroidWebViewDOM`)と
+    /// in-app(`InAppWebViewDOM`)は `.lowercased()` で見ているので、ここだけ素の比較だと
+    /// `FT_BROWSER_DOM=OFF` で**片肺**になる(片方だけ止まると A/B の陽性対照が壊れる)
     public static func isEnabled(env: [String: String]) -> Bool {
-        env["FT_BROWSER_DOM"] != "off"
+        (env["FT_BROWSER_DOM"] ?? "").lowercased() != "off"
     }
 }
 
@@ -303,7 +306,8 @@ public extension SafariWebInspector {
         guard let socketPath = resolveSocketPath(forUDID: udid) else { return nil }
         guard let connection = SafariInspectorConnection(path: socketPath) else { return nil }
         defer { connection.close() }
-        guard let json = evaluate(over: connection) else { return nil }
+        guard let json = evaluate(over: connection, overallDeadline: Date().addingTimeInterval(readBudget))
+        else { return nil }
         guard let payload = try? WebViewDOM.decode(json), payload.error == nil else { return nil }
         return payload
     }
@@ -314,20 +318,36 @@ public extension SafariWebInspector {
     /// (`PhysicalSafariInspector` 内で `InvalidService` だけ例外的に stderr へ知らせる)
     static func read(physicalUDID: String) async -> WebViewDOM.Payload? {
         guard isEnabled else { return nil }
-        // ハンドシェイク(usbmuxd 3往復 + lockdown 2往復 + TLS 2回)の予算。
-        // `evaluate` 自体はここに含めない(内部に独自の締切を段ごとに持つ)
-        guard let connection = PhysicalSafariInspector.connect(
-            hardwareUDID: physicalUDID, deadline: Date().addingTimeInterval(10))
-        else { return nil }
-        defer { connection.close() }
-        // **実機は1通あたりのフレーム長に上限がある**(分割する理由は messageBudgets の宣言)
-        for budget in Self.messageBudgets {
-            guard let json = evaluate(over: connection, messageBudget: budget) else { continue }
-            guard let payload = try? WebViewDOM.decode(json), payload.error == nil else { continue }
+        // **実機は1通あたりのフレーム長に上限がある**(分割する理由は messageBudgets の宣言)。
+        // **退避のたびに繋ぎ直す** —— 同じ接続で RPC をやり直すと、2周目は
+        // `_rpc_getConnectedApplications:` にアプリ一覧が返らず必ず失敗する(2026-08-13 に実機で実測)。
+        // **退避も含めて全体の締切の内側**(段ごとの締切を足すだけだと分単位で沈黙し得る。
+        // snapshot は最頻の操作)
+        let overall = Date().addingTimeInterval(readBudget)
+        for (attempt, budget) in Self.messageBudgets.enumerated() {
+            guard Date() < overall else { break }
+            // **閉じた直後に繋ぎ直すと2周目のアプリ一覧が返らない**(実測)。間を置く
+            if attempt > 0 { try? await Task.sleep(nanoseconds: UInt64(reconnectPause * 1_000_000_000)) }
+            // ハンドシェイク(usbmuxd 3往復 + lockdown 2往復 + TLS 2回)の予算
+            guard let connection = PhysicalSafariInspector.connect(
+                hardwareUDID: physicalUDID,
+                deadline: min(Date().addingTimeInterval(10), overall)) else { return nil }
+            let json = evaluate(over: connection, messageBudget: budget, overallDeadline: overall)
+            connection.close()
+            guard let json, let payload = try? WebViewDOM.decode(json), payload.error == nil
+            else { continue }
             return payload
         }
         return nil
     }
+
+    /// **DOM 読みが1回で使ってよい上限(秒)**。段ごとの締切の合計ではなく、
+    /// ここが天井になる(退避のやり直しも内側)。実測は前面タブで 226ms なので十分に広く、
+    /// **黙って分単位で止まらない**ことのほうが大事。Android 側の `evaluateTimeout` と同じ規律
+    static let readBudget: TimeInterval = 30
+
+    /// 退避で繋ぎ直す前に置く間(秒)。**0 にすると2周目のアプリ一覧が返らない**(実測)
+    static let reconnectPause: TimeInterval = 1.5
 
     /// **実機だけ、1通が大きいと黙って捨てられる**(2026-08-13 実測)。エラーも応答も返らず、
     /// 60 秒待っても来ない。しかも**上限は固定ではない** —— 同じ端末・同じページで2回測って
@@ -374,7 +394,12 @@ public extension SafariWebInspector {
     /// **`InspectorTransport` 越し** —— シミュレータ(unix ソケット)と実機(usbmuxd 経由の
     /// TLS ソケット)でソケットの開け方は違うが、この先の RPC はどちらも同じ
     private static func evaluate(over connection: InspectorTransport,
-                                 messageBudget: Int? = nil) -> String? {
+                                 messageBudget: Int? = nil,
+                                 overallDeadline: Date) -> String? {
+        /// 段ごとの締切は**全体の締切で頭打ちにする**(段の合計が天井を超えないこと)
+        func stageDeadline(_ seconds: TimeInterval) -> Date {
+            min(Date().addingTimeInterval(seconds), overallDeadline)
+        }
         let connectionId = UUID().uuidString.uppercased()
         let senderId = UUID().uuidString.uppercased()
 
@@ -396,7 +421,7 @@ public extension SafariWebInspector {
         }
 
         var apps: [String: [String: Any]] = [:]
-        let appsDeadline = Date().addingTimeInterval(4)
+        let appsDeadline = stageDeadline(4)
         while pickSafariApplicationId(apps) == nil, Date() < appsDeadline {
             guard let (selector, argument) = receive(deadline: appsDeadline) else { continue }
             switch selector {
@@ -418,7 +443,7 @@ public extension SafariWebInspector {
         guard send("_rpc_forwardGetListing:", ["WIRConnectionIdentifierKey": connectionId,
                                                 "WIRApplicationIdentifierKey": appId]) else { return nil }
         var listing: [String: [String: Any]] = [:]
-        let listingDeadline = Date().addingTimeInterval(4)
+        let listingDeadline = stageDeadline(4)
         while listing.isEmpty, Date() < listingDeadline {
             guard let (selector, argument) = receive(deadline: listingDeadline),
                   selector == "_rpc_applicationSentListing:" else { continue }
@@ -445,7 +470,7 @@ public extension SafariWebInspector {
         }
 
         var targetId: String?
-        let targetDeadline = Date().addingTimeInterval(6)
+        let targetDeadline = stageDeadline(6)
         while targetId == nil, Date() < targetDeadline {
             guard let message = pumpCDP(deadline: targetDeadline) else { continue }
             targetId = targetCreatedId(message)
@@ -459,7 +484,7 @@ public extension SafariWebInspector {
                                         "params": ["expression": expression, "returnByValue": true]]
             guard let envelope = try? wrapInTarget(targetId: targetId, envelopeId: 50 + id, inner: inner),
                   sendCDP(envelope) else { return nil }
-            let deadline = Date().addingTimeInterval(timeout)
+            let deadline = stageDeadline(timeout)
             while Date() < deadline {
                 guard let message = pumpCDP(deadline: deadline) else { continue }
                 if let value = extractEvaluateResult(message, expectingId: id) { return value }
@@ -581,6 +606,17 @@ final class SafariInspectorConnection: InspectorTransport {
         return nil
     }
 
-    func close() { Darwin.close(fd) }
-    deinit { Darwin.close(fd) }
+    /// **二度閉じない**(2026-08-13 のレビュー指摘)。呼び出し側は `defer { close() }` を打つので
+    /// close → deinit で同じ fd を2回閉じることになり、**その間に別スレッドが開いた無関係な
+    /// fd を閉じ得る**(このプロセスはソケット・パイプを並行に開く)。
+    /// `TLSInspectorConnection` は同じ理由で最初から `closed` を持っている
+    private var closed = false
+
+    func close() {
+        guard !closed else { return }
+        closed = true
+        Darwin.close(fd)
+    }
+
+    deinit { close() }
 }
