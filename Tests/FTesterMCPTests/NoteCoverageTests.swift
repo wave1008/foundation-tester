@@ -93,6 +93,14 @@ final class NoteCoverageTests: XCTestCase {
         //    `compose-ios-ax-frame-clamp` と同型が UIKit の実アプリで出る。原点は同じでも
         //    大きさが違うので、`stackedRefs`(矩形の完全一致が3個以上)の死角の供給源
         "ios-news_feed": "feed",
+        // 2026-08-14 の監査(全画面キャンバス)で足した1枚。**Android 実機**の Google カメラ。
+        // 台帳が求めていた「a11y がほぼ空の面」の初の witness で、代表するのは2つ:
+        // ⑴ **同一矩形 (0,288 1080x1440) に14要素**が積まれる(プレビューの重ね合わせ層)。
+        //    ラベルを持つのは `viewfinder_frame` の1つだけなので `stackedRefs` は正しく黙る ——
+        //    「無地のラッパーは数えない」と、原点クランプ判定(2026-08-14 追加)の**陰性対照**
+        // ⑵ 操作子が `staticText`(モード切替)で、器 `#bottom_bar` が z 上は手前・実体は透明という
+        //    形。透明性は a11y から見えないので遮蔽の誤検知が出る(台帳に記録・規則は棄却済み)
+        "and-camera_canvas": "canvas",
         // 自前 SUT(盤面が契約で固定されている対照)
         "sutec-calendar_day": "ec", "sutec-detail": "ec", "sutec-home": "ec",
         "sut-cmp_controls": "sut", "sut-cmp_home": "sut",
@@ -155,7 +163,7 @@ final class NoteCoverageTests: XCTestCase {
         "unlabeledClickablesNote": Coverage(fixtures: ["and-apps_list", "and-browser_urlmenu", "and-directions_tabs", "and-home", "and-place", "and-place_expanded", "and-results", "ios-home", "ios-maps_route_options", "ios-news_feed"], bytes: 3845),
         // **格子は曖昧ラベルの塊**(2026-08-12): 週間表の2枚が入って +2,049 バイト。
         // 同じ数値(`29/24`・`90%`)が行と列に何度も出るので、増分は形そのもの
-        "ambiguousLabelsNote": Coverage(fixtures: ["and-apps_list", "and-browser_weather", "and-browser_weather_weekly", "and-browser_weektable", "and-home", "and-maps_suggest_ime", "and-place", "and-place_expanded", "and-results", "ios-browser_jma_hscroll", "ios-browser_nationwide", "ios-browser_startpage", "ios-browser_weather_weekly", "ios-browser_weektable", "ios-home", "ios-maps_station", "ios-maps_suggest_keyboard", "ios-messages_keyboard", "ios-news_feed", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-safari_article", "ios-settings_root", "sut-cmp_controls", "sut-cmp_home", "sutec-detail", "sutec-home"], bytes: 17411),
+        "ambiguousLabelsNote": Coverage(fixtures: ["and-apps_list", "and-browser_weather", "and-browser_weather_weekly", "and-browser_weektable", "and-camera_canvas", "and-home", "and-maps_suggest_ime", "and-place", "and-place_expanded", "and-results", "ios-browser_jma_hscroll", "ios-browser_nationwide", "ios-browser_startpage", "ios-browser_weather_weekly", "ios-browser_weektable", "ios-home", "ios-maps_station", "ios-maps_suggest_keyboard", "ios-messages_keyboard", "ios-news_feed", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-safari_article", "ios-settings_root", "sut-cmp_controls", "sut-cmp_home", "sutec-detail", "sutec-home"], bytes: 17800),
         "duplicateIDsNote": Coverage(fixtures: ["and-dialer_keypad", "and-home", "and-overflow", "and-place_expanded", "and-results", "and-settings_root", "ios-browser_startpage", "ios-home", "ios-maps_route_options", "ios-maps_station", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-news_feed", "ios-photos_grid", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-settings_root", "sutec-home"], bytes: 16940),
         // bytes 1169→1366→1170(2026-08-14・「chrome の部分木は覆われた側に数えない」修正):
         // fixtures 集合は不変(発火する画面は変わらない = 全画面「nothing tappable」か列挙のどちらか

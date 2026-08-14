@@ -200,13 +200,21 @@ public enum OcclusionGeometry {
     public static func isOriginClamped(_ element: ElementInfo,
                                        in elements: [ElementInfo]) -> Bool {
         guard lendsItsOrigin(to: element, in: elements) else { return false }
-        var siblings = 0
+        // **無地のラッパーは数えない**(2026-08-14 に and-camera_canvas を足して判明)。
+        // 矩形一致の側には最初からあった条件を、原点側に付け忘れていた ——
+        // Google カメラのプレビューは重ね合わせ層 14 枚が全部 (0,288 1080x1440) に並ぶ普通の形で、
+        // ラベルを持つのは `viewfinder_frame` の1つだけ。**入れたばかりの検知が次の画面で
+        // 誤検知を出す**という台帳の警告そのものを踏んだので、同じ条件を写す
+        // 数えるのは**中身を持つ兄弟だけ**(無地の兄弟を別に数えても、常に
+        // `withContent <= siblings` なので条件が二重になるだけ = 変異で殺せない分岐が残る)
+        var withContent = 0
         for other in elements
         where other.depth == element.depth
             && abs(other.frame.x - element.frame.x) <= 0.5
-            && abs(other.frame.y - element.frame.y) <= 0.5 {
-            siblings += 1
-            if siblings >= stackedFrameMinimum { return true }
+            && abs(other.frame.y - element.frame.y) <= 0.5
+            && (!(other.label ?? "").isEmpty || !(other.value ?? "").isEmpty) {
+            withContent += 1
+            if withContent >= stackedFrameMinimum { return true }
         }
         return false
     }

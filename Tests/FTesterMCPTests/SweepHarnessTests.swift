@@ -140,6 +140,18 @@ final class SweepHarnessTests: XCTestCase {
         // `#dictation` で、ios-maps_suggest_guides と同型の chrome 自身の部分木。この画面固有の
         // アプリ要素は最初から0のまま(「何も出ない実アプリの画面」の供給源としての役割は不変)
         "ios-messages_keyboard": Counts(),
+        // 2026-08-14 採取(**Android 実機**の Google カメラ)。**全画面キャンバス**(a11y がほぼ空の面)。
+        // **この1枚が、同日入れたばかりの原点クランプ判定の誤検知を即座に捕まえた** ——
+        // プレビューの重ね合わせ層 14 枚が全部 (0,288 1080x1440) に並ぶ普通の形なのに
+        // stacked が 13 件付いた。矩形一致の側には最初からあった「無地のラッパーは数えない」
+        // (中身を持つものが3個以上)を原点側に付け忘れていたため。条件を写して **13 → 0**、
+        // 真陽性(ios-news_feed の 60)は不変。
+        // overlay 31 は `#options_menu_container` (0,112 1080x1457) が重ね合わせ層の中心を
+        // 覆う形で、器が層より後に来る木の順序どおり = 現状固定(タップ対象は0件なので
+        // warnedTappable も0)。misses 1 は中心が中身に乗らない器 = 受理済みの型
+        "and-camera_canvas": Counts(ghost: 0, overlay: 31, stacked: 0, misses: 1, disabled: 0,
+                                    offscreen: 0, warnedTappable: 0, keyboard: 0, sliver: 0,
+                                    nested: 0, scrolledOut: 0),
         // 2026-08-14 採取(**iOS 実機**の SmartNews・フィード先頭)。**append-on-scroll の本物**で、
         // 実アプリ固有の形を2つ持ち込む —— ⑴ 行が画面幅いっぱい ⑵ 画面外の行 65 件が
         // 全部 (0,103) にクランプされて木に載る(120 件中)。件数の意味:

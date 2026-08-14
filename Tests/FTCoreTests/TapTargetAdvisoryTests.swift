@@ -181,10 +181,17 @@ final class TapTargetAdvisoryTests: XCTestCase {
     /// 矩形の完全一致だけを見ていた頃はクランプ 65 件のうち 42 件にしか印が付かなかった
     func testOriginOnlyClampIsFlaggedEvenWhenSizesDiffer() {
         let container = element(1, "list", "table", 0, 100, 400, 700, depth: 1)
-        // 同じ原点 (0,100)・同 depth・大きさはバラバラ = 実アプリのフィードのクランプ
-        let a = element(10, "", "staticText", 0, 100, 150, 20, depth: 2)
-        let b = element(11, "", "staticText", 0, 100, 200, 30, depth: 2)
-        let c = element(12, "", "staticText", 0, 100, 120, 40, depth: 2)
+        // 同じ原点 (0,100)・同 depth・大きさはバラバラ = 実アプリのフィードのクランプ。
+        // **ラベルを持たせるのが要点**: 実際の witness(SmartNews の広告コピー)は文字を持ち、
+        // 無地のラッパーの重ね合わせ(and-camera_canvas)と区別されるのがこの条件
+        func labelled(_ ref: Int, _ w: Double, _ h: Double, _ text: String) -> ElementInfo {
+            ElementInfo(ref: ref, type: "staticText", identifier: nil, label: text, value: nil,
+                        placeholder: nil, enabled: true,
+                        frame: FTRect(x: 0, y: 100, width: w, height: h), depth: 2)
+        }
+        let a = labelled(10, 150, 20, "広告 A")
+        let b = labelled(11, 200, 30, "広告 B")
+        let c = labelled(12, 120, 40, "広告 C")
         let elements = [container, a, b, c]
         for ghost in [a, b, c] {
             let note = TapTargetGeometry.occlusionAdvisory(for: ghost, in: elements, screen: screen)
@@ -194,6 +201,21 @@ final class TapTargetAdvisoryTests: XCTestCase {
         // **断定しない**: 大きさが違うので「完全一致」と言ってはいけない
         let note = TapTargetGeometry.occlusionAdvisory(for: a, in: elements, screen: screen)
         XCTAssertFalse(note?.contains("exact frame") == true, note ?? "-")
+    }
+
+    /// **無地のラッパーの重ね合わせは数えない**(2026-08-14・and-camera_canvas で判明)。
+    /// Google カメラのプレビューは重ね合わせ層が全部 (0,288 1080x1440) に並ぶ普通の形で、
+    /// ラベルを持つのは1つだけ。矩形一致の側には最初からあったこの条件を原点側に付け忘れ、
+    /// **入れたばかりの検知が次の画面で誤検知を出す**という台帳の警告を踏んだ(13件)
+    func testOriginClampIgnoresBlankWrapperStacks() {
+        let container = element(1, "preview", "other", 0, 100, 400, 700, depth: 1)
+        // 同じ原点・同 depth・**ラベルも値も無い**層が3つ
+        let layers = (0..<3).map { element(10 + $0, "layer\($0)", "other", 0, 100, 400, 600, depth: 2) }
+        let elements = [container] + layers
+        for layer in layers {
+            XCTAssertFalse(OcclusionGeometry.isOriginClamped(layer, in: elements),
+                           "無地の重ね合わせ層をクランプ扱いした")
+        }
     }
 
     /// 上の陰性対照: **同じ原点でも兄弟が2件だけならクランプ扱いしない**(容器と子が原点を
