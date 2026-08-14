@@ -1124,6 +1124,15 @@ extension MCPServer {
                 // `placeholder` と同値の空欄(iOS 全般 / Android の CMP)でも MCP だけが
                 // 追記警告を出していた —— StepExecutor は normalizedValue で黙る側
                 priorValue = priorElement.map(TypeReadback.normalizedValue)
+                // **入力欄でないものへ打とうとしていないか**(2026-08-14)。判定は DSL と共有
+                // (TypeReadback.nonInputTargetNote。実測と理由はそちらの doc)。
+                // MCP は StepExecutor を経由しない別経路なので、ここにも配線が要る
+                if let priorElement,
+                   let elements = lastSnapshots[Self.engineKey(args)]?.elements,
+                   let warn = TapTargetGeometry.nonInputTypeTargetNote(priorElement, in: elements) {
+                    note = note.isEmpty ? " (warning: \(warn))"
+                        : note + " (warning: \(warn))"
+                }
             }
             // **replace は文字が空でも clear する**(2026-08-12): {replace:true, text:""} や
             // {replace:true, pressEnter:true} は「クリアだけ」「クリア+Enter」を成立させるための

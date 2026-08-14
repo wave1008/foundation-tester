@@ -244,6 +244,53 @@ public enum TapTargetGeometry {
 
     /// 人が読める名指し(`#id` があればそれ、無ければ型 + ラベル)。MCP(`RefGuard.describe`)は
     /// ここへの転送。ラベルはゼロ幅文字を除いて比較と揃える
+
+    // MARK: - type の宛先
+
+    /// **ブリッジのソース集合には置かない**(TypeReadback.swift はランナーが
+    /// コンパイルするので、ホスト専用の関数を足すと dylib に無駄が入り指紋ゲートが鳴る)
+    /// **入力欄でないものへ打とうとしている**ときの警告(内側の入力欄を名指しする)。
+    ///
+    /// 実測(2026-08-14・iOS ヘルスケアの初期設定・Simulator): 行は
+    /// `clickable id=…HeightEntry` が「姓/名/身長…」のラベルと入力欄を包む形で、**id を持つのは
+    /// 包み側だけ**(欄は無ラベル・プレースホルダが5つとも "オプション")。素直に
+    /// `type '#…HeightEntry' '170'` と書くと **ok が返るのに欄の値は "168 cm"** になった ——
+    /// 行タップでホイールピッカーが開き、要求した文字とは無関係な値が確定していた。
+    ///
+    /// **検証が両側とも空になる**のが原因: ホスト側の読み返しは
+    /// 「`!verifiesTypedText` かつ対象が入力型」でしか走らず(StepExecutor)、xcuitest は
+    /// 自前検証を名乗るので前段で外れる。そのランナーの検証も、値を持たない包み要素に対しては
+    /// 何とも突き合わせられない。
+    ///
+    /// **内側に入力欄がちょうど1つあるときだけ**言う(0個 = そもそも入力欄でない可能性が高く、
+    /// Compose のように型が `clickable` で報告される本物の欄を誤って責める。2個以上 = どれを
+    /// 指すべきか言えない)。**警告であって拒否ではない** —— 包みへ打って通っている既存の
+    /// 書き方を壊さない
+    public static func nonInputTypeTargetNote(_ target: ElementInfo,
+                                          in elements: [ElementInfo]) -> String? {
+        guard !TypeReadback.isTextInput(target) else { return nil }
+        guard let index = elements.firstIndex(where: { $0.ref == target.ref }) else { return nil }
+        var inner: [ElementInfo] = []
+        var cursor = elements.index(after: index)
+        while cursor < elements.endIndex, elements[cursor].depth > target.depth {
+            if TypeReadback.isTextInput(elements[cursor]) { inner.append(elements[cursor]) }
+            cursor = elements.index(after: cursor)
+        }
+        guard inner.count == 1, let field = inner.first else { return nil }
+        // **書ける形で名指しする**(2026-08-14 の実画面で判明): 内側の欄は無ラベル・無 id の
+        // ことが多く、素の `describe` だと "textField" としか言えない —— 同型が5つ並ぶ画面では
+        // 選べないので助言にならない。包み側の id があればスコープ記法、無ければ ref を出す
+        let how: String
+        if let id = target.identifier, !id.isEmpty {
+            how = "#\(id) >> .\(field.type)"
+        } else {
+            how = "ref \(field.ref)"
+        }
+        return "the target is a \(target.type), not a text field — typing into a container relies"
+            + " on focus landing on the field inside it, which is not guaranteed (the value can"
+            + " end up something you did not type). Target the field itself: \(how)"
+    }
+
     public static func describe(_ element: ElementInfo) -> String {
         if let id = element.identifier, !id.isEmpty { return "#\(id)" }
         if let label = element.label.map(FlowMatchMode.normalizeInvisibleCharacters), !label.isEmpty {

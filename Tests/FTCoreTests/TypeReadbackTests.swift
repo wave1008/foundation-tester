@@ -43,6 +43,60 @@ final class TypeReadbackTests: XCTestCase {
                     placeholder: placeholder, enabled: true, frame: frame, depth: 0)
     }
 
+    // MARK: - 入力欄でないものへ打とうとしている警告
+
+    /// 実測(iOS ヘルスケアの初期設定): 行 `clickable` がラベルと欄を包み、**id は包み側だけ**。
+    /// 素直に包みへ `type` すると ok が返るのに欄の値は要求と無関係になる(TypeReadback の doc)
+    func testNonInputTargetNamesTheFieldInside() {
+        let wrapper = ElementInfo(ref: 1, type: "clickable", identifier: "HeightEntry", label: nil,
+                                  value: nil, placeholder: nil, enabled: true,
+                                  frame: FTRect(x: 22, y: 650, width: 358, height: 60), depth: 2)
+        let label = ElementInfo(ref: 2, type: "staticText", identifier: nil, label: "身長",
+                                value: nil, placeholder: nil, enabled: true,
+                                frame: FTRect(x: 38, y: 670, width: 32, height: 20), depth: 3)
+        let field = ElementInfo(ref: 3, type: "textField", identifier: nil, label: nil,
+                                value: nil, placeholder: "オプション", enabled: true,
+                                frame: FTRect(x: 168, y: 669, width: 196, height: 21), depth: 3)
+        let note = TapTargetGeometry.nonInputTypeTargetNote(wrapper, in: [wrapper, label, field])
+        XCTAssertNotNil(note)
+        XCTAssertTrue(note?.contains("not a text field") == true, note ?? "-")
+        // **書ける形で名指しすること**: 内側の欄は無ラベル無 id なので、素の型名だけでは
+        // 同型が5つ並ぶ実画面で選べない(2026-08-14 の実画面で判明)
+        XCTAssertTrue(note?.contains("#HeightEntry >> .textField") == true, note ?? "-")
+    }
+
+    /// **入力欄そのものには出さない**(通常の書き方を壊さない)。
+    /// **中に入力欄を持つ入力欄**で試すのが要点 —— iOS の `searchField` は内側に `textField` を
+    /// 持つ実在の形で、ここを素通しすると「本物の欄に打っているのに責める」誤検知になる
+    /// (中身を持たない欄で試すと、条件を外す変異が 0 件で nil に落ちて素通りする。
+    /// 2026-08-14 に変異が生き残って判明)
+    func testNonInputTargetIsSilentForARealField() {
+        let search = ElementInfo(ref: 1, type: "searchField", identifier: "search", label: nil,
+                                 value: nil, placeholder: nil, enabled: true,
+                                 frame: FTRect(x: 0, y: 0, width: 200, height: 40), depth: 2)
+        let inner = ElementInfo(ref: 2, type: "textField", identifier: nil, label: nil, value: nil,
+                                placeholder: nil, enabled: true,
+                                frame: FTRect(x: 4, y: 4, width: 192, height: 32), depth: 3)
+        XCTAssertNil(TapTargetGeometry.nonInputTypeTargetNote(search, in: [search, inner]))
+    }
+
+    /// **内側の欄がちょうど1つのときだけ言う**: 0個なら Compose のように型が clickable で
+    /// 報告される本物の欄を誤って責める / 2個以上ならどれを指すべきか言えない
+    func testNonInputTargetStaysSilentWhenItCannotNameOneField() {
+        let wrapper = ElementInfo(ref: 1, type: "clickable", identifier: "row", label: nil,
+                                  value: nil, placeholder: nil, enabled: true,
+                                  frame: FTRect(x: 0, y: 0, width: 100, height: 40), depth: 2)
+        XCTAssertNil(TapTargetGeometry.nonInputTypeTargetNote(wrapper, in: [wrapper]))
+
+        let a = ElementInfo(ref: 2, type: "textField", identifier: nil, label: nil, value: nil,
+                            placeholder: nil, enabled: true,
+                            frame: FTRect(x: 0, y: 0, width: 50, height: 20), depth: 3)
+        let b = ElementInfo(ref: 3, type: "textField", identifier: nil, label: nil, value: nil,
+                            placeholder: nil, enabled: true,
+                            frame: FTRect(x: 50, y: 0, width: 50, height: 20), depth: 3)
+        XCTAssertNil(TapTargetGeometry.nonInputTypeTargetNote(wrapper, in: [wrapper, a, b]))
+    }
+
     func testValueMatchesByIdentifier() {
         let target = element(ref: 1, id: "field_single")
         // キーボード出現で frame が動いても identifier で追える

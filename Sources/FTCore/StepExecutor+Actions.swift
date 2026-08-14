@@ -743,16 +743,21 @@ extension StepExecutor {
                         : "the field already held \"\(SnapshotRenderer.truncate(priorValue, 30))\";"
                             + " type appends, so the result will not simply be what you typed."
                             + " Call clearInput first if you meant to replace it")
+            // **入力欄でないものへ打とうとしていないか**(2026-08-14。TypeReadback の doc に実測)。
+            // 検証は両側とも空になる経路なので、せめて内側の欄を名指しして知らせる
+            let nonInputNote = TapTargetGeometry.nonInputTypeTargetNote(element, in: snapshot.elements)
             if let td = typeDriver, preferTypeDriver || text.contains("\n"),
                try await typeViaTypeDriver(td, step: step, phase: &phase) {
                 return StepOutcome(status: .passed, healedStep: healedStep, healedByCache: healedByCache,
-                                   driverFallback: Self.joinNotes(replaceFallbackNote, existingValueNote))
+                                   driverFallback: Self.joinNotes(replaceFallbackNote, existingValueNote,
+                                                                  nonInputNote))
             }
             do {
                 start = clock.now
                 try await actingDriver.type(ref: element.ref, text: step.text ?? "")
                 phase.actionMs += Self.ms(clock.now - start)
-                driverFallback = Self.joinNotes(driverFallback, replaceFallbackNote, existingValueNote)
+                driverFallback = Self.joinNotes(driverFallback, replaceFallbackNote, existingValueNote,
+                                                nonInputNote)
                 // in-app は「200 が返った = 入った」を保証しない(insertText の成否しか見ていない)。
                 // xcuitest ランナー/Android 注入器は自前で読み返し済みなので二重にしない
                 // (verifiesTypedText == true のドライバはここへ来ない)
@@ -772,7 +777,8 @@ extension StepExecutor {
                 guard try await typeViaTypeDriver(td, step: step, phase: &phase) else { throw error }
                 // セレクタは正しくドライバが変わっただけ = .passedViaFallback(ロケータ用)は立てない
                 // (typeDriver = xcuitest が自前で読み返し済みなので、ここでも読み返さない)
-                driverFallback = Self.joinNotes("fell back to XCUITest", replaceFallbackNote, existingValueNote)
+                driverFallback = Self.joinNotes("fell back to XCUITest", replaceFallbackNote,
+                                                existingValueNote, nonInputNote)
             }
         case "clearInput":
             if let td = typeDriver, preferTypeDriver,
