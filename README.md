@@ -307,7 +307,7 @@ class ログインテスト {
 
 | 記法 | 意味 |
 |---|---|
-| `#login_btn` | accessibility id(完全一致) |
+| `#login_btn` | accessibility id(完全一致)。**identifier で1件も引けなければ placeholder を引く**(入力欄は経路で id と placeholder が入れ替わるため。docs/commands.md) |
 | `#login*` / `#*login*` / `#*btn` | id の前方一致 / 部分一致 / 後方一致(完全形は `idStartsWith=` `idContains=` `idEndsWith=`) |
 | `ログイン` | ラベル(**完全一致のみ**。完全形は `text=ログイン`) |
 | `*ログイン*` / `ログイン*` / `*ログイン` | 部分一致 / 前方一致 / 後方一致(完全形は `textContains=` `textStartsWith=` `textEndsWith=`) |
@@ -334,11 +334,16 @@ class ログインテスト {
 **WebView(Web コンテンツ)内の要素**: ネイティブの WebView(iOS: WKWebView / Android:
 android.webkit.WebView)の中身も同じセレクタ・同じコマンドで操作できるが、規約が3点だけ違う:
 
-- **`#id` は効かない**(HTML の `id` 属性は両 OS とも a11y に出ない)。指せるのは
-  表示テキスト・`aria-label`(label になる)・型だけ
+- **`#id`(HTML の `id`)が使えるかは読み取り経路で決まる**。DOM を読める経路
+  (iOS の既定エンジン / Android のアプリ内 WebView・ブラウザ)と、a11y が id を出す構成
+  (Android WebView 150 以降)では使える。**iOS の `engine: xcuitest` では出ない**
+  (WebKit が HTML id を a11y へ渡さない)
 - **リンクは `.link` と `.staticText` の2要素で重複して出る**(両 OS 共通)。同じラベルが
   2つ並ぶため、ラベル単独では曖昧になる → `.link&&ラベル` と型で絞る
-- **ラベルの無い入力欄は `placeholder=…` で指す**(素の文字列は text/label にしか当たらない)
+- **入力欄は `#id||#placeholder の値` の2節で書く**のが確実。`#x` は identifier で引けなければ
+  placeholder を引くので、この2節で「id だけ出る構成」「placeholder だけ出る構成」の両方を覆える
+  (Android は WebView の版で **id と placeholder が入れ替わる**。片方だけに書くと他方の端末で
+  「セレクタが見つからない」になる)
 
 コンテナは `.webView` 型で出る(`.webView >> …` のスコープ起点にできる)。中身が
 a11y/DOM に現れるまで初回は数秒かかることがあるため、**画面遷移直後の検証は `timeout:` を
