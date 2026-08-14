@@ -3713,7 +3713,7 @@ CoreSimulator.framework を直接叩き、`SimulatorCatalog.devices()` が直叩
 | 自作アプリの WebView | Android の a11y ブリッジ | **a11y** | — |
 | 自作アプリの WebView | iOS **in-app** | **DOM**(`InAppWebViewDOM`) | `FT_WEBVIEW_DOM=off` |
 | 自作アプリの WebView | iOS **xcuitest** | **a11y** | — |
-| **ブラウザ**(Safari / Chrome) | ホスト側 | **DOM**(唯一の正) | `FT_BROWSER_DOM=off` |
+| **ブラウザ**(Safari / Chrome) | ホスト側 | **a11y。足りないときだけ DOM** | `FT_BROWSER_DOM=off` |
 
 **2行目だけが例外に見えるが、理由は別**: in-app エンジンからは WKWebView の a11y ツリーが
 そもそも見えない(別プロセス提供)。**ブラウザ = DOM の方針とは無関係の、前からある事情**。
@@ -3743,15 +3743,21 @@ DOM 由来が1件も無ければ `browserA11yFallbackNote` が「a11y から来�
 (監査22/23/25 の実 web ページ。Android Chrome が本文を1要素も公開しない形が2サイトで再現)。
 a11y からは埋めようがないので DOM を直接読む。
 
-### 何を差し替えるか(条件分岐にしない)
+### 既定は a11y。足りないときだけ DOM(2026-08-14 に反転)
 
-**ブラウザでは DOM を web コンテンツ領域の唯一の正とする**。`webView` ノードの内側にある
-a11y 要素を落としてから DOM のノードを入れ、ノード自身とブラウザ chrome(URL 欄・ツールバー)は
-a11y のまま残す。
+**当初は「ブラウザでは常に DOM」だった。** 根拠は「ページごとに a11y の充実度が変わるので、
+条件で切り替えると**このページでは通るが別のページでは落ちる**」。**この前提が実測で崩れた**:
 
-**「a11y が足りないときだけ DOM」にしない** —— Chrome は軽いページなら本文を普通に公開し
-(example.com で実測)、重いページでは1要素も出さない。条件で切り替えると
-**このページでは通るが別のページでは落ちる**が起きる。素朴に append すると本文が二重に並ぶ。
+- 充実度が変わって見えた正体は **a11y サービス接続から木が出来るまでの数秒の窓**で、
+  ページの性質ではなかった(§実機だけの罠 の ⑵ と同じ現象)
+- 窓を過ぎた実ページでは **a11y と DOM のラベル集合が完全に一致**した
+  (Wikipedia 34 / 気象庁 61 / tenki.jp 75、いずれも差 0)
+- **a11y は 6〜20 倍速い**(126ms 対 1430ms)
+
+判定は `WebViewDOM.browserA11yLooksSufficient` の1箇所。足りないと見なすのは
+**`webView` ノードが無い / その内側にラベルが1つも無い**の2つだけ。
+DOM を入れるときは `webView` ノードの内側の a11y 要素を落としてから足す
+(素朴に append すると本文が二重に並ぶ)。ノード自身とブラウザ chrome は a11y のまま残す。
 
 判定は `FTCore.WebViewDOM` の1箇所(`WebViewDOMTree.swift`)。**`WebViewDOMSnapshot.swift` へ
 置かない** —— あちらは `BridgeSourceSet` の inApp ブリッジ入力なので、ホスト専用の関数を足すと

@@ -131,14 +131,7 @@ final class NoteCoverageTests: XCTestCase {
         // 陰性対照は and-browser_urlmenu(URL バーはあるが webView も無い画面。0.059)と
         // and-overflow(0.564 まで達するが URL バーが無いので黙る=browser 限定の理由)
         "missingPageContentNote": Coverage(fixtures: ["and-browser_jma_notree"], bytes: 458),
-        // **発火した10枚はすべて a11y 時代に採ったブラウザのフィクスチャ**(2026-08-14)。
-        // 当時は DOM 経路が無く `web` 印が立たないので条件に合う。DOM が効いていれば出ない ——
-        // この基準はコーパスの履歴であって production の頻度ではない
-        "browserA11yFallbackNote": Coverage(fixtures: [
-            "and-browser_urlmenu", "and-browser_weather", "and-browser_weather_weekly",
-            "and-browser_weektable", "ios-browser_jma_hscroll", "ios-browser_nationwide",
-            "ios-browser_startpage", "ios-browser_weather_weekly", "ios-browser_weektable",
-            "ios-safari_article"], bytes: 2560),
+
         "ghostNote": Coverage(fixtures: ["and-browser_weather_weekly", "ios-browser_jma_hscroll", "ios-browser_startpage", "ios-news_feed", "ios-place_guides_scrolled"], bytes: 2027),
         // 横スクロール後の前後コピーが両方木に残る形の witness(ios-browser_jma_hscroll。
         // refs 72-81 vs 158-167 = 同じ行で x が定数200ptずれた10ペア)。他の全画面は最大3
@@ -188,6 +181,11 @@ final class NoteCoverageTests: XCTestCase {
     /// 理由を確かめていない新しい注記を足すと testEveryNoteFiresSomewhere が落ちる
     /// (この免除表が「死んだ注記の置き場」になるのを防ぐ)
     static let knownSilent: Set<String> = [
+        // **既定が a11y になったので恒久的に黙る**(2026-08-14 のユーザー決定)。
+        // 実装は空文字を返すだけにしてある —— a11y から来ているのは正常で、言っても行動が
+        // 変わらない(足りないときは missingPageContentNote が読み直しを促す)。
+        // **目録から消すのは次のラウンド**(鍵の集合を変える操作は意識的に分ける)
+        "browserA11yFallbackNote",
         // 全 19 枚とも `bulkExemptCount` の申告自体が無い(採取時のブリッジが出していない)。
         // 判定は `guard let count = snapshot.bulkExemptCount, count > 0` なので永久に出ない
         "bulkExemptNote",

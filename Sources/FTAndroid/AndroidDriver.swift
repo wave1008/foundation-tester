@@ -344,7 +344,8 @@ public final class AndroidDriver: AppDriver {
             let webView = WebViewDOM.webViewElement(in: snapshot.elements)
             let frame = webView?.frame ?? WebViewDOM.browserContentFrame(in: snapshot.elements,
                                                                         screen: snapshot.screen)
-            if let frame,
+            // **既定は a11y**。足りているなら DOM は読まない(理由は browserA11yLooksSufficient)
+            if !WebViewDOM.browserA11yLooksSufficient(elements: snapshot.elements), let frame,
                let payload = await AndroidWebViewDOM.read(
                 serial: serial ?? "", packageID: package, webViewLabel: webView?.label,
                 urlBarValue: AndroidWebViewDOM.urlBarValue(in: snapshot.elements),

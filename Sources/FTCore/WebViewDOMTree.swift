@@ -64,6 +64,22 @@ public extension WebViewDOM {
     /// —— 割れると「Safari では DOM・注記は a11y 前提」のような食い違いが出る
     public static let knownBrowserIDs: Set<String> = ["com.apple.mobilesafari", "com.android.chrome"]
 
+    /// **ブラウザの a11y が足りているか**(純粋)。足りていれば DOM は読まない。
+    ///
+    /// **既定は a11y**(2026-08-14 にユーザー決定で反転)。実測で、窓を過ぎた実ページでは
+    /// a11y と DOM の**ラベル集合が完全に一致**し(Wikipedia 34 / 気象庁 61 / tenki.jp 75、
+    /// いずれも差 0)、a11y は 6〜20 倍速い(126ms 対 1430ms)。
+    /// 当初「ページごとに a11y の充実度が変わる」を根拠に常時 DOM としたが、
+    /// 実際に変わっていたのは**サービス接続から木が出来るまでの数秒の窓**だった。
+    ///
+    /// 足りないと見なすのは2つだけ: **`webView` ノードが無い** / **その内側にラベルが1つも無い**。
+    /// どちらも「本文がまだ来ていない」形で、`missingPageContentNote` が言うのと同じ状態
+    public static func browserA11yLooksSufficient(elements: [ElementInfo]) -> Bool {
+        guard let webView = webViewElement(in: elements) else { return false }
+        return StepExecutor.descendants(of: webView, in: elements)
+            .contains { !($0.label ?? "").isEmpty }
+    }
+
     /// **`webView` ノードが無いブラウザ画面の、web コンテンツ領域**(純粋)。
     ///
     /// **これが無いと DOM 経路は「最も要る場面」で発動しない**(2026-08-14 の監査で実測):

@@ -294,7 +294,7 @@
   **ブリッジの入力ファイル一覧は `Sources/FTCore/BridgeSourceSet.swift` が唯一の定義元**
   (`InAppLauncher` の dylib 再ビルド判定も同じ一覧を使う。片方だけ変えない)。
   指紋の性質(コメント編集でも落ちる理由)・保留中の代替案は docs/verification.md
-- **ブラウザの中身は DOM から読む(自作アプリの WebView は a11y のまま)**(2026-08-13。
+- **木は a11y が既定。ブラウザで足りないときだけ DOM で補う**(2026-08-14 に反転。
   **どの組み合わせでどこから木が来るかの一覧は docs/design.md §木はどこから来るか**。
   設計と実測は同 §ブラウザの中身は DOM から読む)。**口は3つ・その上の層は1つ**
   (Android Chrome=CDP / iOS Safari シミュレータ=unix ソケット / iOS Safari 実機=usbmuxd →

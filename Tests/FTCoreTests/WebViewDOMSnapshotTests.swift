@@ -332,4 +332,39 @@ final class WebViewDOMSnapshotTests: XCTestCase {
         XCTAssertEqual(frame.y, 213, accuracy: 0.001)
         XCTAssertEqual(frame.height, 2424 - 213, accuracy: 0.001)
     }
+
+    // MARK: - a11y で足りているか(既定を a11y にしたときの判定。2026-08-14)
+
+    private func node(_ ref: Int, _ type: String, label: String?, depth: Int) -> ElementInfo {
+        ElementInfo(ref: ref, type: type, identifier: nil, label: label, value: nil,
+                    placeholder: nil, enabled: true,
+                    frame: FTRect(x: 0, y: 0, width: 100, height: 20), depth: depth)
+    }
+
+    /// 本文が来ていれば DOM は読まない(a11y で足りている)
+    func testSufficientWhenTheWebViewHasLabelledContent() {
+        let els = [node(1, "webView", label: nil, depth: 1),
+                   node(2, "staticText", label: "本文", depth: 2)]
+        XCTAssertTrue(WebViewDOM.browserA11yLooksSufficient(elements: els))
+    }
+
+    /// **`webView` ノードが無い** = 本文がまだ来ていない → DOM を読む
+    func testInsufficientWithoutAWebViewNode() {
+        let els = [node(1, "other", label: nil, depth: 1)]
+        XCTAssertFalse(WebViewDOM.browserA11yLooksSufficient(elements: els))
+    }
+
+    /// **内側にラベルが1つも無い** = 器だけ来ている → DOM を読む
+    func testInsufficientWhenTheWebViewIsEmptyInside() {
+        let els = [node(1, "webView", label: nil, depth: 1),
+                   node(2, "other", label: nil, depth: 2)]
+        XCTAssertFalse(WebViewDOM.browserA11yLooksSufficient(elements: els))
+    }
+
+    /// **外側の要素で足りていると誤判定しない**(子孫だけを見る)
+    func testLabelsOutsideTheWebViewDoNotCount() {
+        let els = [node(1, "webView", label: nil, depth: 1),
+                   node(2, "button", label: "ツールバー", depth: 1)]
+        XCTAssertFalse(WebViewDOM.browserA11yLooksSufficient(elements: els))
+    }
 }

@@ -472,6 +472,8 @@ public final class BridgeClient: AppDriver {
               response.sessionBundleID == SafariWebInspector.safariBundleID else { return }
         // **`webView` ノードが無くても差し込む**(2026-08-14 の監査で直した。Android 側と同じ規律。
         // 理由は `WebViewDOM.browserContentFrame` の宣言)
+        // **既定は a11y**。足りているなら DOM は読まない(理由は browserA11yLooksSufficient)
+        guard !WebViewDOM.browserA11yLooksSufficient(elements: response.elements) else { return }
         let webView = WebViewDOM.webViewElement(in: response.elements)
         guard let frame = webView?.frame ?? WebViewDOM.browserContentFrame(in: response.elements,
                                                                           screen: response.screen),
