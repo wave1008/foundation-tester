@@ -622,6 +622,15 @@ WebView(iOS=WKWebView / Android=android.webkit.WebView)の中身は、経路ご�
 - **DOM 由来の要素は `ElementInfo.web = true`** で申告する。ホスト(`WebViewDelegatingDriver`)は
   これを見て委譲要否を決める。**幾何で「中に何か居るか」を見てはいけない**: Compose iOS の
   interop 容器は WebView と同じ矩形を持つため、中身と誤認して委譲が止まる(2026-07-29 実害)。
+- **中身が出ないまま待ちが尽きたら木がそう名乗る**(2026-08-15。`WebViewPath.delegatedEmpty`)。
+  委譲直後は XCUITest 側の WebView AX 活性化に時間がかかるので中身ゼロの木を待つが、
+  上限(`contentWaitMs` = 5000)は **Simulator の実測 2.3s に対する余裕**でしかなく、
+  hybrid は実機でも動く —— 13_WebView のシナリオ自身が「SUT により最大 約8秒」と書いている。
+  尽きたときに黙って空の木を返すと**否定アサーションは必ず通る**(空の木に要素は無い)。
+  木からは「AX がまだ公開されていない」と「本当に空のページ」を区別できないので**判定は変えず**、
+  `StepNote.webViewNotRendered`(通った回にも残る)と失敗文言で名乗る。
+  値の定義元は `FTCore.WebViewPath`(**BridgeDTO には置かない** —— あちらはブリッジの
+  ソース集合で、触ると3ブリッジの指紋が動く)。
 - **効果**(E2E-iOS / ios-inapp・4 run で再現): WebView 画面の検証 1 手が **450ms → 4ms**、
   シナリオ全体 **27.2s → 10.3〜11.0s**。委譲中は XCUITest 経由で 1 手 378ms かかっていた。
 - **委譲中でもスクロールだけは in-app で行う**(2026-08-01)。interop が横取りするのは**タッチ**で、
@@ -1865,6 +1874,15 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   探索終端の空打ちドラッグ(iOS)は**触る点が手前の要素に取られないときだけ**打つ
   (`pointIsTakenByFrontElement`。取られると覆っている要素が反応する。
   verification.md「スクロールした直後のタップ」)。
+  **打つ相手の判定(`shouldEmptyDrag`)を起動時プローブの締切に預けない**(2026-08-15):
+  あの締切は「suspend したアプリは TCP を受理して答えない」を素早く諦めるための値で、
+  冷えた実機ブリッジが収まる保証は無い。外れて `uiFramework` が nil になると
+  「不明なら打つ」へ倒れ、RN では横抜き 4pt が `pressRetentionOffset`(既定20pt)に収まって
+  `onPress` が成立する = **`scrollTo` しただけで行が選択される**(E2E-RN S0100 を
+  プローブ無応答で回して再現。`selected=row_40`)。自己申告が取れなければ
+  **バンドルのマーカー**(`AppBundleInspector.detect(appPath:udid:bundleID:physical:)` =
+  デバイスの応答が要らない)へ落とし、それも無ければ**盲打ちであることを run に残す**
+  (判断は変えない —— 打たない側へ倒すと Compose の探索直後タップが容器に吸われる)。
   **別ステップにしない理由**: 利用者が書いたのは1コマンドなので記録も1行にする。
   合成ステップは**ソース行を持たない**ためジャンプも修正提案の照合もできず、説明の要る状態になる
   (2026-07-27 に一度その形で入れて、直した)。

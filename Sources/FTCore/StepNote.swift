@@ -49,6 +49,14 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// 注記として運ぶ。MCP はこのコードで上限引き上げの案内を足す
     case truncatedDuringSearch = "truncated-during-search"
 
+    /// 委譲した WebView が**中身を1つも出さないまま待ちの上限に達した**木で判定した(2026-08-15)。
+    /// 木からは「AX がまだ公開されていない」と「本当に空のページ」を区別できないので判定は変えないが、
+    /// **黙るとこの木で成立した不在が後から見分けられない**(否定アサーションは空の木で必ず通る)。
+    /// 上限は Simulator の実測 2.3s に対する余裕で、hybrid は実機でも動く =
+    /// 尽きること自体が想定内(`WebViewDelegatingDriver.contentWaitMs`)。
+    /// 率が上がっていたら上限か画面の作りを疑う
+    case webViewNotRendered = "webview-not-rendered"
+
     /// 人間向けの文言(FTRuntime がステップ説明へ括弧書きで付ける)
     public var text: String {
         switch self {
@@ -59,6 +67,8 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
         case .staleScreenshot: return "the occlusion-guard screenshot looked stale, so the check was skipped"
         case .truncatedDuringSearch:
             return "the tree hit the element limit during the search, so the target may have been dropped from it"
+        case .webViewNotRendered:
+            return "the delegated WebView had published no content when this was judged, so an absence here is not evidence"
         }
     }
 }

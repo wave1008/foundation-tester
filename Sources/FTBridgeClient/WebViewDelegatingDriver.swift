@@ -45,9 +45,17 @@ public final class WebViewDelegatingDriver: AppDriver {
 
     private var note: String?
 
-    /// Web コンテンツが現れるまでの初回待ち。実測 2.3s に対し余裕を持たせる
+    /// Web コンテンツが現れるまでの初回待ちの**上限**。XCUITest 側の WebView AX 活性化は
+    /// **Simulator の実測 2.3s** で、これはそれに余裕を持たせた値。
+    /// **hybrid は実機でも動く**ので、この上限が実機で足りる保証は無い ——
+    /// だから尽きたときは黙らず `WebViewPath.delegatedEmpty` を名乗る(2026-08-15)。
+    /// 名乗らないと「AX がまだ出ていない空の木」と「本当に空のページ」が区別できず、
+    /// 否定アサーションが誤って通り、肯定側は「見つからない」で誤誘導される
     private static let contentWaitMs = 5000
     private static let contentPollMs = 250
+
+    /// 委譲中であることの申告(失敗文言・記録に出る)。空のまま尽きた回はこれに理由を足す
+    private static let delegatedNote = "WebView screen — delegated to XCUITest"
 
     public init(primary: AppDriver, delegated: AppDriver) {
         self.primary = primary
@@ -121,11 +129,11 @@ public final class WebViewDelegatingDriver: AppDriver {
 
         mode = .delegated
         domFrames = [:]
-        note = "WebView screen — delegated to XCUITest"
+        note = Self.delegatedNote
         var snapshot = try await delegated.snapshot(bypassingCache: bypassingCache)
         // 経路は**返した本人が名乗る**(StepExecutor が失敗文言に添える。要素の形から
         // 推測させると Android が「XCUITest へ委譲」を名乗る事故になる)
-        snapshot.webViewPath = "delegated"
+        snapshot.webViewPath = WebViewPath.delegated
         // offscreen ヒントは純 xcuitest エンジン限定にする: hybrid の WebView スクロールは
         // in-app の contentOffset 短絡が既に速く(実測 scrollToTop 1.5s)、ヒントが乗ると
         // StepExecutor の跳躍(実ドラッグ)が優先されて計測済みの挙動が変わる(2026-08-04)
@@ -137,10 +145,19 @@ public final class WebViewDelegatingDriver: AppDriver {
             try await Task.sleep(for: .milliseconds(Self.contentPollMs))
             waited += Self.contentPollMs
             snapshot = try await delegated.snapshot()
-            snapshot.webViewPath = "delegated"
+            snapshot.webViewPath = WebViewPath.delegated
             snapshot.offscreen = nil
         }
-        if Self.hasWebContent(snapshot) { sawWebContent = true }
+        if Self.hasWebContent(snapshot) {
+            sawWebContent = true
+        } else {
+            // **待ちを使い切ったことを木に載せる**(判定は変えない): 木からは「AX がまだ出ていない」と
+            // 「本当に空のページ」を区別できないので失敗にはしないが、黙って空の木を返すと
+            // 不在アサーションがそれを根拠に通ってしまう。StepExecutor が注記と失敗文言に使う
+            snapshot.webViewPath = WebViewPath.delegatedEmpty
+            note = Self.delegatedNote
+                + " (it produced no content within \(Self.contentWaitMs)ms, so an absence here is not evidence)"
+        }
         return snapshot
     }
 

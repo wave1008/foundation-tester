@@ -167,6 +167,16 @@ extension StepExecutor {
         return full
     }
 
+    /// **空の WebView で判定したことを黙らない**(2026-08-15)。委譲した WebView が中身を出さない
+    /// まま待ちの上限に達した木では、「無い」と「まだ公開されていない」を区別できない。
+    /// 判定は変えない(区別できないものを失敗にすると空ページの検証が書けなくなる)ので、
+    /// **通った回にも残る機械可読な注記**にする —— 黙ると、空の木で成立した不在が後から見分けられない
+    func noteEmptyWebView(_ snapshot: SnapshotResponse) {
+        if snapshot.webViewPath == WebViewPath.delegatedEmpty {
+            noteCodesThisStep.insert(.webViewNotRendered)
+        }
+    }
+
     /// 「不在(件数)を結論できない」ことの失敗文言。**「見つからない」と言わない**のが要点 ——
     /// 送られていないだけの要素を「無い」と報告するのがこの欠陥そのもので、同じ言葉で返すと
     /// 読み手は塞いだ穴と区別が付かない。`evidence` は何がどれだけ落ちたか(呼び手が組み立てる)
@@ -196,14 +206,19 @@ extension StepExecutor {
         // 推測すると「XCUITest へ委譲」と名乗って Android のデバッグを誤誘導する(2026-07-29 実害)。
         // 申告が無いドライバ(Android・engine=xcuitest 単独・旧ブリッジ)では何も足さない
         switch snapshot?.webViewPath {
-        case "dom":
+        case WebViewPath.delegatedEmpty:
+            return " (the WebView was delegated to XCUITest but produced no content before the wait"
+                + " ran out, so this tree cannot tell \"the element is not there\" from \"the web"
+                + " content had not been published to accessibility yet\". Give the screen more time"
+                + " (a preceding exist() on a known element waits for it), or check the page loaded.)"
+        case WebViewPath.dom:
             return " (WebView contents were read through the DOM path. Taps are synthesized onto DOM rects, so "
                 + "a WebView embedded through interop **records success even when nothing responds**. "
                 + "Suspect that the preceding interaction had no effect.)"
-        case "dom-interop":
+        case WebViewPath.domInterop:
             return " (WebView contents were read through the DOM path, and interactions were routed to real "
                 + "XCUITest touches, so this does not have the DOM-tap blind spot that plain \"dom\" has.)"
-        case "delegated":
+        case WebViewPath.delegated:
             return " (WebView contents were read by delegating to XCUITest)"
         default:
             return ""
@@ -268,6 +283,7 @@ extension StepExecutor {
             var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
             phase.snapshotMs += Self.ms(clock.now - start)
             try await dismissInterruption(in: &snapshot, phase: &phase)
+            noteEmptyWebView(snapshot)
             lastSnapshot = snapshot
             // アサーションでは type+index のみのフォールバックを使わない。
             // 別画面の無関係な要素にマッチして偽陽性になる(実測済み)
@@ -499,6 +515,7 @@ extension StepExecutor {
             var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
             phase.snapshotMs += Self.ms(clock.now - start)
             try await dismissInterruption(in: &snapshot, phase: &phase)
+            noteEmptyWebView(snapshot)
             var resolved = Self.resolve(step: step, in: snapshot, strictForAssert: true)
             // **見つからないのは上限で間引かれたからかもしれない**。切り詰められた木で
             // 不在に見えたときだけ天井まで上げて撮り直す(retakenAtElementLimitCeiling)
@@ -587,6 +604,7 @@ extension StepExecutor {
             var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
             phase.snapshotMs += Self.ms(clock.now - start)
             try await dismissInterruption(in: &snapshot, phase: &phase)
+            noteEmptyWebView(snapshot)
             lastSeenElements = snapshot.elements
             if let (element, fallback) = Self.resolve(step: step, in: snapshot,
                                                       strictForAssert: true) {
@@ -814,6 +832,7 @@ extension StepExecutor {
             var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
             phase.snapshotMs += Self.ms(clock.now - start)
             try await dismissInterruption(in: &snapshot, phase: &phase)
+            noteEmptyWebView(snapshot)
             // **件数は木の完全性がそのまま結果になる**(間引かれた分は「無い」と区別が付かない)。
             // 不在と違い一致・不一致のどちらにも効くので、数える前に撮り直す
             if snapshot.truncatedCount > 0, !needsCeiling {
