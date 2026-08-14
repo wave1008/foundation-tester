@@ -225,6 +225,7 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | クラスエイリアス・スペシャルフィルタ | 型語彙 `SelType` で部分的に | 🟡 |
 | タイトルセレクタ / Web タイトルセレクタ | — | ❌ |
 | — | 型付きセレクタ `Sel`(`.id("x").right(.switch)`) | 🟢 |
+| `#x` = アクセシビリティ id のみ | `#x` は **identifier で1件も引けなければ placeholder** を引く | 🟢 **意図的に広げた**(2026-08-15 ユーザー指示)。入力欄は指す手段が経路で割れる —— HTML の id は XCUITest が読む a11y に出ないが placeholder は出る / Android は WebView の版で id と placeholder が**入れ替わる**。Shirates は Appium 一本で経路が割れないためこの問題を持たない。**identifier が当たったらそちらだけ**を使うので、`#x[2]` の序数と `countIs` は経路で変わらない |
 
 ---
 
