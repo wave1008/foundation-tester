@@ -380,6 +380,22 @@ let 合計 = try await fetchTotal()        // procedure { } 内で取得した�
 - **`ftester run --dry-run`(MCP は `ft_dry_run`)ならデバイス無しで判定できます**。
   デバイスを触る前にここで落とすのが安上がりです
 
+## `#x` は placeholder も引く
+
+`#x` は **identifier で1件も引けなかったときだけ** placeholder が `x` の要素を引きます
+(2026-08-15)。入力欄は**指す手段が経路で割れる**ためです —— HTML の id は
+XCUITest が読む a11y には出ませんが placeholder は出ますし、Android は WebView の版で
+id と placeholder が入れ替わります。同じ欄が実行エンジンや OS 版で指せたり指せなかったり
+するのを、シナリオ側ではなくセレクタ側で吸収します。
+
+```swift
+type("#WebView 入力", "hello123")   // id が無い WebView の入力欄も placeholder で掴める
+```
+
+- **identifier が当たったらそちらだけ**を使います(placeholder は受け皿)。混ざらないので
+  `#x[2]` の序数や `countIs` が経路で変わることはありません
+- placeholder だけを狙いたいときは従来どおり `placeholder=x` と書けます
+
 ## セレクタの綴り誤りの検知(dry-run)
 
 `ft_snapshot` で撮った画面の `#id` はプロジェクトの台帳
@@ -394,6 +410,8 @@ let 合計 = try await fetchTotal()        // procedure { } 内で取得した�
   (2026-08-03 の実測)
 - 対象は**完全一致の `#id` だけ**。ワイルドカード(`#row_*`)とラベルは対象外です
   (ラベルは文言変更で普通に変わるため)
+- 台帳は identifier に加えて **placeholder も貯めます**。`#x` は identifier で引けなければ
+  placeholder を引く(下記)ので、台帳は「`#` で指せる名前の集合」です
 - 台帳は**和集合で増える**だけで、消えた id が残っても警告が増えることはありません
 
 ## まとめて検証(verify)

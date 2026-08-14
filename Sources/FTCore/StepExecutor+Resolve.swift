@@ -224,7 +224,18 @@ extension StepExecutor {
             let types = Set(FlowTypeAlias.expand(type))
             pool = pool.filter { types.contains($0.type) }
         }
-        narrow(locator.id, locator.idMatch) { $0.identifier }
+        // **`#x` は identifier だけでなく placeholder も引く**(2026-08-15 ユーザー指示)。
+        // 入力欄は指す手段が経路で割れる: HTML の id は XCUITest が読む a11y には出ないが
+        // placeholder は出る / Android は WebView の版で id と placeholder が入れ替わる
+        // ([[webview-support]])。同じ欄が**エンジンやOS版によって指せたり指せなかったり**するのを
+        // セレクタ側で吸収する。
+        // **identifier が1件でも当たったらそちらだけ**(placeholder は id で引けなかったときの
+        // 受け皿)。混ぜると `#x[2]` の序数や count が経路で変わる
+        if let id = locator.id {
+            let mode = locator.idMatch ?? .exact
+            let byIdentifier = pool.filter { mode.matches($0.identifier, id) }
+            pool = byIdentifier.isEmpty ? pool.filter { mode.matches($0.placeholder, id) } : byIdentifier
+        }
         narrow(locator.label, locator.labelMatch) { $0.label }
         narrow(locator.value, locator.valueMatch) { $0.value }
         narrow(locator.placeholder, locator.placeholderMatch) { $0.placeholder }

@@ -78,11 +78,16 @@ public struct SelectorInventory: Codable, Sendable {
         return inventory
     }
 
-    /// スナップショットから記録対象の id を取り出す
+    /// スナップショットから記録対象の id を取り出す。
+    /// **placeholder も入れる**(2026-08-15): `#x` は identifier で引けなければ placeholder を
+    /// 引く(`StepExecutor.candidates`)ので、入れないと dry-run が**実在する入力欄を
+    /// 「撮った画面に無い id」と誤警告する** —— 台帳は「`#` で指せる名前の集合」であって
+    /// identifier の集合ではない
     public static func ids(in snapshot: SnapshotResponse) -> [String] {
-        snapshot.elements.compactMap { element in
-            guard let id = element.identifier, !id.isEmpty else { return nil }
-            return id
+        snapshot.elements.flatMap { element in
+            [element.identifier, element.placeholder]
+                .compactMap { $0 }
+                .filter { !$0.isEmpty }
         }
     }
 

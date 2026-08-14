@@ -680,9 +680,18 @@ Android のアプリ内 WebView・ブラウザ)と、a11y が id を出す構成
 (2026-08-15 に呼ばないビルドで対照を取って実測)。**リリースビルドは対象外でよい**
 (id が難読化されるので id で指すテストは元からデバッグビルドの活動)。
 
-**供給できない構成は iOS xcuitest だけ**(WebKit は HTML id を a11y へ出さない)。
+**HTML id を供給できない構成は iOS xcuitest だけ**(WebKit は HTML id を a11y へ出さない)。
 そこでは**黙って不一致にせず、構成を名指しして落とす**(`#id` の意味を構成ごとに変えない、
-という原則は維持する)。`css=` のような**別記法を `#id` に相乗りさせない**方針も維持
+という原則は維持する)。
+
+**`#x` は identifier で引けなければ placeholder を引く**(2026-08-15 ユーザー指示。
+判定は `StepExecutor.candidates` の1箇所)。**構成ごとに意味を変える例外ではない** ——
+規則はどの OS・エンジンでも同じで、`#` が指す名前の集合が「identifier ∪(identifier で
+引けないときの)placeholder」になる。入力欄はまさにここが経路で割れる(xcuitest は HTML id を
+出さないが placeholder は出す / Android は WebView の版で **id と placeholder が入れ替わる**)ので、
+シナリオ側に分岐を書かせない。**identifier が1件でも当たったらそちらだけ**を使う ——
+混ぜると `#x[2]` の序数と `countIs` が経路で変わる(静かに別の要素を指す)。
+台帳(`SelectorInventory`)も placeholder を貯める = dry-run が実在する欄を誤警告しない。`css=` のような**別記法を `#id` に相乗りさせない**方針も維持
 —— css は DOM への問い合わせなので届く構成が `#id` よりさらに狭く(xcuitest と
 非 debuggable が外れる)、相乗りさせると `#id` の適用範囲まで狭く見える。
 

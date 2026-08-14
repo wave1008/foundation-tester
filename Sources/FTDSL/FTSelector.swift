@@ -7,6 +7,8 @@
 //   textMatches=^ログイン.*$         → 正規表現(部分一致。全体一致は ^...$)
 //   .button / .button[2]           → 型(+順番。**型名は先頭小文字**)
 //   .switch#PHOTOS_UPLOAD          → 型 + id(`.switch&&#PHOTOS_UPLOAD` の短縮形)
+//   #WebView 入力                   → id は **identifier で引けなければ placeholder** を引く
+//                                     (入力欄は経路で id/placeholder が入れ替わる。docs/commands.md)
 //   .switch&&Resource Upload       → 型 + text(`&&` は条件の連結。`.型=…` という書き方は無い)
 //   .button&&value=太郎&&enabled=true → `&&` で条件を AND 合成(フィルタは全部これで書ける)
 //   (保存|OK) / text=(保存|OK)        → フィルタ内 OR。`保存||OK` と等価(パース時に節へ展開する)。
