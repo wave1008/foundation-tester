@@ -947,6 +947,25 @@ extension MCPServer {
     /// (identifier のリテラルを2箇所に持たない)
     static let missingPageContentFractionThreshold = 0.5
 
+    /// **ブラウザなのに DOM 由来の要素が1つも無い = 黙って a11y へ落ちた**(2026-08-14 の監査)。
+    ///
+    /// ブラウザでは DOM を web コンテンツの唯一の正とする設計で、**ページごとに挙動を変えない**
+    /// ことが目的だった。読みに失敗すると a11y の木が返るが、**粒度と命名を a11y へ揃えた結果
+    /// 中身では見分けられない** —— 監査中は ref の穴という偶然の痕跡でしか判別できなかった。
+    /// 気付けないまま「このページは表が読めない」と結論する事故を防ぐために言う。
+    ///
+    /// **chrome だけの画面では黙る**(`missingPageContentNote` が別に言う)。
+    /// 判定材料は `web` 印で、DOM 由来の要素にだけ立つ
+    static func browserA11yFallbackNote(_ snapshot: SnapshotResponse) -> String {
+        guard let id = snapshot.sessionBundleID, WebViewDOM.knownBrowserIDs.contains(id) else { return "" }
+        guard !snapshot.elements.contains(where: { $0.web == true }) else { return "" }
+        // ブラウザ chrome しか無い画面は別の注記の担当(こちらまで出すと二重に言う)
+        guard snapshot.elements.contains(where: { ($0.identifier ?? "").isEmpty }) else { return "" }
+        return "the page content below came from the accessibility tree, not the DOM"
+            + " — the browser publishes only part of a page there, so text that IS on screen can be missing."
+            + " Re-read with ft_snapshot, or check with ft_screenshot before concluding it is absent."
+    }
+
     static func missingPageContentNote(_ snapshot: SnapshotResponse) -> String {
         guard !snapshot.elements.contains(where: { $0.type == "webView" }),
               addressBarCandidate(in: snapshot) != nil,

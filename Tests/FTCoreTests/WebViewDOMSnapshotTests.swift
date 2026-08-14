@@ -279,4 +279,57 @@ final class WebViewDOMSnapshotTests: XCTestCase {
         XCTAssertEqual(WebViewDOM.droppingWebViewSubtree([webView, sibling], webView: webView).map(\.ref),
                        [1, 2])
     }
+
+    // MARK: - webView ノードが無いブラウザ画面の内容領域(2026-08-14 の監査で必要になった)
+
+    private func chrome(_ id: String, _ y: Double, _ h: Double) -> ElementInfo {
+        ElementInfo(ref: Int.random(in: 1...9999), type: "other", identifier: id, label: nil,
+                    value: nil, placeholder: nil, enabled: true,
+                    frame: FTRect(x: 0, y: y, width: 1080, height: h), depth: 1)
+    }
+
+    /// **実測した Chrome の木そのもの**(本文を1要素も公開しない画面)。
+    /// `webView` ノードが在るときの矩形 y=210 に近い値へ落ちること
+    func testDerivesTheContentBandFromTheBrowserChrome() throws {
+        let screen = FTRect(x: 0, y: 0, width: 1080, height: 2424)
+        let elements = [chrome("control_container", 63, 150), chrome("toolbar_container", 63, 150),
+                        chrome("toolbar", 63, 147), chrome("url_bar", 71, 131),
+                        chrome("toolbar_hairline", 210, 3), chrome("navigationBarBackground", 2361, 63)]
+        let frame = try XCTUnwrap(WebViewDOM.browserContentFrame(in: elements, screen: screen))
+        XCTAssertEqual(frame.y, 213, accuracy: 0.001, "上端の chrome の最下端")
+        XCTAssertEqual(frame.y + frame.height, 2361, accuracy: 0.001, "下端の chrome の最上端")
+        XCTAssertEqual(frame.width, 1080, accuracy: 0.001)
+    }
+
+    /// **web の中身を chrome と数えない**。`identifier` を持たない要素は無視する ——
+    /// 数えると内容領域が潰れ、差し込んだノードが1件も残らない
+    func testIgnoresElementsWithoutAnIdentifier() throws {
+        let screen = FTRect(x: 0, y: 0, width: 1080, height: 2424)
+        var elements = [chrome("toolbar_container", 63, 150), chrome("navigationBarBackground", 2361, 63)]
+        elements.append(ElementInfo(ref: 99, type: "staticText", identifier: nil, label: "本文",
+                                    value: nil, placeholder: nil, enabled: true,
+                                    frame: FTRect(x: 0, y: 300, width: 1080, height: 400), depth: 1))
+        let frame = try XCTUnwrap(WebViewDOM.browserContentFrame(in: elements, screen: screen))
+        XCTAssertEqual(frame.y, 213, accuracy: 0.001, "本文を chrome と数えてはいけない")
+    }
+
+    /// **手掛かりが無ければ nil**。画面全体で代用すると原点が chrome のぶんずれ、
+    /// タップが全部上へ外れる(黙って外すより差し込まないほうがよい)
+    func testWithoutAnyChromeItRefusesRatherThanGuessing() {
+        let screen = FTRect(x: 0, y: 0, width: 1080, height: 2424)
+        let body = ElementInfo(ref: 1, type: "staticText", identifier: nil, label: "本文", value: nil,
+                               placeholder: nil, enabled: true,
+                               frame: FTRect(x: 0, y: 300, width: 1080, height: 400), depth: 1)
+        XCTAssertNil(WebViewDOM.browserContentFrame(in: [body], screen: screen))
+        XCTAssertNil(WebViewDOM.browserContentFrame(in: [], screen: screen))
+    }
+
+    /// 上下のどちらか片方しか無くても成立する(下端の chrome を持たない端末がある)
+    func testOneSidedChromeStillYieldsABand() throws {
+        let screen = FTRect(x: 0, y: 0, width: 1080, height: 2424)
+        let frame = try XCTUnwrap(WebViewDOM.browserContentFrame(
+            in: [chrome("toolbar_container", 63, 150)], screen: screen))
+        XCTAssertEqual(frame.y, 213, accuracy: 0.001)
+        XCTAssertEqual(frame.height, 2424 - 213, accuracy: 0.001)
+    }
 }

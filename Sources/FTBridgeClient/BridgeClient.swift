@@ -469,17 +469,23 @@ public final class BridgeClient: AppDriver {
     /// **取れなければ黙って a11y のまま**(例外にしない。Safari 未起動・タブ無し・ペアリング未了はどれも普通にある)。
     private func injectSafariDOMIfApplicable(_ response: inout SnapshotResponse) async {
         guard SafariWebInspector.isEnabled,
-              response.sessionBundleID == SafariWebInspector.safariBundleID,
-              let webView = WebViewDOM.webViewElement(in: response.elements),
+              response.sessionBundleID == SafariWebInspector.safariBundleID else { return }
+        // **`webView` ノードが無くても差し込む**(2026-08-14 の監査で直した。Android 側と同じ規律。
+        // 理由は `WebViewDOM.browserContentFrame` の宣言)
+        let webView = WebViewDOM.webViewElement(in: response.elements)
+        guard let frame = webView?.frame ?? WebViewDOM.browserContentFrame(in: response.elements,
+                                                                          screen: response.screen),
               let target = await browserDOMTarget(),
               let payload = await readBrowserDOM(target)
         else { return }
         // nextRef は差し込み前の全要素から採る(落とす内側の要素も含めて衝突を避ける)
         let nextRef = (response.elements.map(\.ref).max() ?? 0) + 1
         // **density: 1**(iOS の a11y frame は既に pt。Android は物理 px なので density を掛ける)
-        let added = WebViewDOM.elements(payload: payload, webViewFrame: webView.frame,
+        let added = WebViewDOM.elements(payload: payload, webViewFrame: frame,
                                         density: 1, startingRef: nextRef)
-        response.elements = WebViewDOM.droppingWebViewSubtree(response.elements, webView: webView) + added
+        let kept = webView.map { WebViewDOM.droppingWebViewSubtree(response.elements, webView: $0) }
+            ?? response.elements
+        response.elements = kept + added
     }
 
     private func readBrowserDOM(_ target: BrowserDOMTarget) async -> WebViewDOM.Payload? {

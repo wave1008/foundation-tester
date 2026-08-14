@@ -25,7 +25,11 @@ final class NoteBudgetTests: XCTestCase {
     ///   ただしコーパスに無い形については何も言っていないので、**次のラウンドで当てに行く**)
     ///
     /// **減らすときも書き換える**(等号で照合しているのは、消したことも差分に出すため)。
-    static let budget = 17
+    // 18 本目 = `browserA11yFallbackNote`(2026-08-14 の監査ラウンドで追加。根拠は
+    // docs/mcp-audit-rounds.md の当該ラウンド ⒝ —— ブラウザで DOM が黙って a11y へ落ちても、
+    // **粒度と命名を揃えた結果、木の中身では見分けられない**。監査中は ref の穴という
+    // 偶然の痕跡でしか判別できなかった)
+    static let budget = 18
 
     /// **等号**で照合する。`<=` にすると「上限に余裕があるうちは黙って増やせる」ことになり、
     /// ラチェットとして機能しない(`knownSilent` を等号で照合しているのと同じ理由 ——
@@ -44,7 +48,7 @@ final class NoteBudgetTests: XCTestCase {
     /// 鍵の集合そのものも固定する
     func testNoteKeysMatchTheRecordedSet() {
         let expected: Set<String> = [
-            "addressBarNote", "ambiguousLabelsNote", "bulkExemptNote", "duplicateIDsNote",
+            "addressBarNote", "ambiguousLabelsNote", "browserA11yFallbackNote", "bulkExemptNote", "duplicateIDsNote",
             "duplicateRegionNote", "emptyTreeNote", "ghostNote", "gridWithoutHeaderNote",
             "keyboardCoverageNote", "missingPageContentNote", "scrollFrameCandidates",
             "sliverNote", "truncatedLabelNote", "truncationNote", "unlabeledClickablesNote",

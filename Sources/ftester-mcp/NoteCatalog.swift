@@ -67,6 +67,9 @@ enum NoteCatalog {
         Entry(key: "missingPageContentNote", contexts: [.snapshot, .scrollTo], abbreviates: false) { input, _ in
             MCPServer.missingPageContentNote(input.snapshot)
         },
+        Entry(key: "browserA11yFallbackNote", contexts: [.snapshot, .scrollTo], abbreviates: false) { input, _ in
+            MCPServer.browserA11yFallbackNote(input.snapshot)
+        },
         // 遮蔽・ghost は「下の一覧をそのまま信じてよいか」なので最初に置く
         Entry(key: "ghostNote", contexts: [.snapshot, .scrollTo], abbreviates: false) { input, _ in
             MCPServer.ghostNote(input.snapshot, collapsingBulk: input.collapsingBulk,

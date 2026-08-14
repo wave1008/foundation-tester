@@ -336,18 +336,26 @@ public final class AndroidDriver: AppDriver {
         // 帳簿は `sessionBundleID` を返さない古いブリッジのための保険として残す
         if AndroidWebViewDOM.isBrowserDOMEnabled,
            let package = snapshot.sessionBundleID ?? currentPackage,
-           AndroidWebViewDOM.browserSocketName(packageID: package) != nil,
-           let webView = WebViewDOM.webViewElement(in: snapshot.elements) {
-            let urlBarValue = AndroidWebViewDOM.urlBarValue(in: snapshot.elements)
-            if let payload = await AndroidWebViewDOM.read(serial: serial ?? "", packageID: package,
-                                                          webViewLabel: webView.label, urlBarValue: urlBarValue,
-                                                          adb: { try self.adb($0).output }) {
+           AndroidWebViewDOM.browserSocketName(packageID: package) != nil {
+            // **`webView` ノードが無くても差し込む**(2026-08-14 の監査で直した)。
+            // Chrome は本文を1要素も公開しない画面でノードごと出さないことがあり、
+            // そこが**まさに DOM が要る場面**なのに門で弾いていた。無いときは
+            // 上下の chrome から内容領域を割り出す(`browserContentFrame`)
+            let webView = WebViewDOM.webViewElement(in: snapshot.elements)
+            let frame = webView?.frame ?? WebViewDOM.browserContentFrame(in: snapshot.elements,
+                                                                        screen: snapshot.screen)
+            if let frame,
+               let payload = await AndroidWebViewDOM.read(
+                serial: serial ?? "", packageID: package, webViewLabel: webView?.label,
+                urlBarValue: AndroidWebViewDOM.urlBarValue(in: snapshot.elements),
+                adb: { try self.adb($0).output }) {
                 // nextRef は差し込み前の全要素から採る(落とす内側の要素も含めて衝突を避ける)
                 let nextRef = (snapshot.elements.map(\.ref).max() ?? 0) + 1
-                let added = WebViewDOM.elements(payload: payload, webViewFrame: webView.frame,
+                let added = WebViewDOM.elements(payload: payload, webViewFrame: frame,
                                                 density: displayDensity(), startingRef: nextRef)
-                snapshot.elements = WebViewDOM.droppingWebViewSubtree(snapshot.elements, webView: webView)
-                    + added
+                let kept = webView.map { WebViewDOM.droppingWebViewSubtree(snapshot.elements, webView: $0) }
+                    ?? snapshot.elements
+                snapshot.elements = kept + added
             }
         }
         syncLocalState(from: snapshot)
