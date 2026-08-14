@@ -961,9 +961,11 @@ extension MCPServer {
         guard !snapshot.elements.contains(where: { $0.web == true }) else { return "" }
         // ブラウザ chrome しか無い画面は別の注記の担当(こちらまで出すと二重に言う)
         guard snapshot.elements.contains(where: { ($0.identifier ?? "").isEmpty }) else { return "" }
-        return "the page content below came from the accessibility tree, not the DOM"
+        // **`note: ` は各注記が自分で付ける規約**(目録側は付けない。2026-08-14 に付け忘れて
+        // この注記だけ書式が揃っていなかった)。末尾の改行も同様
+        return "note: the page content below came from the accessibility tree, not the DOM"
             + " — the browser publishes only part of a page there, so text that IS on screen can be missing."
-            + " Re-read with ft_snapshot, or check with ft_screenshot before concluding it is absent."
+            + " Re-read with ft_snapshot, or check with ft_screenshot before concluding it is absent.\n"
     }
 
     static func missingPageContentNote(_ snapshot: SnapshotResponse) -> String {

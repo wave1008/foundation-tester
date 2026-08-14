@@ -138,7 +138,7 @@ final class NoteCoverageTests: XCTestCase {
             "and-browser_urlmenu", "and-browser_weather", "and-browser_weather_weekly",
             "and-browser_weektable", "ios-browser_jma_hscroll", "ios-browser_nationwide",
             "ios-browser_startpage", "ios-browser_weather_weekly", "ios-browser_weektable",
-            "ios-safari_article"], bytes: 2490),
+            "ios-safari_article"], bytes: 2560),
         "ghostNote": Coverage(fixtures: ["and-browser_weather_weekly", "ios-browser_jma_hscroll", "ios-browser_startpage", "ios-news_feed", "ios-place_guides_scrolled"], bytes: 2027),
         // 横スクロール後の前後コピーが両方木に残る形の witness(ios-browser_jma_hscroll。
         // refs 72-81 vs 158-167 = 同じ行で x が定数200ptずれた10ペア)。他の全画面は最大3
