@@ -130,7 +130,7 @@ final class NoteCoverageTests: XCTestCase {
         // 木に無い**形の witness(and-browser_jma_notree。unrepresentedScreenFraction 0.886)。
         // 陰性対照は and-browser_urlmenu(URL バーはあるが webView も無い画面。0.059)と
         // and-overflow(0.564 まで達するが URL バーが無いので黙る=browser 限定の理由)
-        "missingPageContentNote": Coverage(fixtures: ["and-browser_jma_notree"], bytes: 303),
+        "missingPageContentNote": Coverage(fixtures: ["and-browser_jma_notree"], bytes: 458),
         // **発火した10枚はすべて a11y 時代に採ったブラウザのフィクスチャ**(2026-08-14)。
         // 当時は DOM 経路が無く `web` 印が立たないので条件に合う。DOM が効いていれば出ない ——
         // この基準はコーパスの履歴であって production の頻度ではない
