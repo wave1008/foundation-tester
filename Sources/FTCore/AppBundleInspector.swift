@@ -27,6 +27,21 @@ public enum AppBundleInspector {
                 atPath: bundle.appendingPathComponent("Frameworks/Flutter.framework")))
     }
 
+    /// バンドルから判定できる手段を**安い順に**当てる(--app-path → simctl)。
+    ///
+    /// **ブリッジの自己申告が取れなかったときの受け皿**として使うこと(2026-08-15)。
+    /// in-app/hybrid は起動時プローブの `uiFramework` を使うが、あの締切(4秒)は
+    /// 「suspend したアプリは TCP を受けても答えない」を素早く諦めるための値で、
+    /// **実機の冷えたブリッジが収まる保証は無い**。外れたときに nil のまま進むと
+    /// `StepExecutor.shouldEmptyDrag` が「不明なら打つ」へ倒れ、RN では 4pt の横抜きが
+    /// `pressRetentionOffset`(既定20pt)に収まって `onPress` が成立する =
+    /// **`scrollTo` しただけで行が選択される**(E2E-RN S0100 で実測した現象)。何も失敗しない。
+    /// バンドルのマーカーはデバイスの応答を必要としないので、締切に判断を預けずに済む
+    public static func detect(appPath: String?, udid: String?, bundleID: String,
+                              physical: Bool) -> String? {
+        detect(appPath: appPath) ?? detect(udid: udid, bundleID: bundleID, physical: physical)
+    }
+
     /// Simulator 上のインストール済みアプリのバンドルを調べて uiFramework を返す。
     /// **コマンド失敗・実機・udid 不明は nil**(呼び出し側は「不明」として shouldEmptyDrag を
     /// 従来どおり true 側に倒す)

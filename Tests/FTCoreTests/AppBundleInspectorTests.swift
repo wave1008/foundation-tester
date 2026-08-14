@@ -53,4 +53,27 @@ final class AppBundleInspectorTests: XCTestCase {
         XCTAssertNil(AppBundleInspector.detect(appPath: nil))
         XCTAssertNil(AppBundleInspector.detect(appPath: "/nonexistent/FT.app"))
     }
+
+    // MARK: - 自己申告が取れなかったときの受け皿(2026-08-15)
+
+    /// **実機でも答えが出ること**が要点: バンドルは手元にあるので、デバイスの応答を
+    /// 待たずに判定できる(プローブの締切に判断を預けない)。
+    /// RN は compose でも flutter でもないので "uikit" = 空打ちを打たない側に落ちる
+    func testCombinedDetectAnswersFromTheBundleEvenForAPhysicalDevice() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ft-inspector-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        XCTAssertEqual(AppBundleInspector.detect(appPath: dir.path, udid: nil,
+                                                 bundleID: "com.example.rn", physical: true),
+                       "uikit")
+    }
+
+    /// バンドルが手元に無ければ**嘘をつかず nil**(呼び手が「不明のまま進む」と名乗る)
+    func testCombinedDetectStaysUnknownWithoutABundle() {
+        XCTAssertNil(AppBundleInspector.detect(appPath: nil, udid: nil,
+                                               bundleID: "com.example.rn", physical: true))
+        XCTAssertNil(AppBundleInspector.detect(appPath: "/nonexistent/FT.app", udid: nil,
+                                               bundleID: "com.example.rn", physical: true))
+    }
 }
