@@ -24,6 +24,9 @@ final class BridgeRouter {
     private var app: XCUIApplication?
     private var sessionBundleID: String?
     private var refFrames: [Int: CGRect] = [:]
+    /// `/hittable` が ref から XCUIElement を引き直すための手掛かり(直近の /snapshot 由来)。
+    /// **タップ経路では使わない** —— タップは従来どおり座標で撃つ(クエリの往復を払わない)
+    private var refIdentity: [Int: (identifier: String?, label: String?, type: String)] = [:]
     /// 直近スナップショットの ref→要素。handleType の読み返しが「対象の identifier」と
     /// 「入力前の値」をここから採る(ライブクエリを撃たずに済ませるため)
     private var refElements: [Int: ElementInfo] = [:]
@@ -72,6 +75,7 @@ final class BridgeRouter {
             case ("GET", "/status"): response = handleStatus()
             case ("POST", "/session"): response = try handleLaunch(request.body)
             case ("GET", "/snapshot"): response = try handleSnapshot(request)
+            case ("GET", "/hittable"): response = try handleHittable(request)
             case ("POST", "/tap"): response = try handleTap(request.body)
             case ("POST", "/type"): response = try handleType(request.body)
             case ("POST", "/clear"): response = try handleClear(request.body)
@@ -135,6 +139,7 @@ final class BridgeRouter {
             app = target
             sessionBundleID = req.bundleID
             refFrames = [:]
+            refIdentity = [:]
             refElements = [:]
             return .json(OKResponse())
         }
@@ -157,6 +162,7 @@ final class BridgeRouter {
         app = target
         sessionBundleID = req.bundleID
         refFrames = [:]
+        refIdentity = [:]
         refElements = [:]
         return .json(OKResponse())
     }
@@ -164,6 +170,8 @@ final class BridgeRouter {
     private struct Captured {
         let elements: [ElementInfo]
         let frames: [Int: CGRect]
+        /// `/hittable` が ref から要素を引き直すための手掛かり
+        var identities: [Int: (identifier: String?, label: String?, type: String)] = [:]
         let truncated: Int
         /// 捨てた候補の内訳(SnapshotResponse.truncatedTiers)。件数だけでは
         /// 「選べる物が消えたのか、飾りが消えただけか」をホストが区別できない
@@ -199,6 +207,7 @@ final class BridgeRouter {
         settlePending = false
 
         refFrames = cap.frames
+        refIdentity = cap.identities
         // ref → 要素(handleType の読み返しが identifier / 直前の値を使う)。frame と同じ寿命
         refElements = Dictionary(uniqueKeysWithValues: zip(cap.elements.map(\.ref), cap.elements))
         return .json(SnapshotResponse(
@@ -296,21 +305,85 @@ final class BridgeRouter {
         return text
     }
 
+    /// **その ref を撃つと本当にそれに当たるか**を XCUITest 自身に聞く(`XCUIElement.isHittable`)。
+    ///
+    /// **なぜブリッジ側にしか置けないか**: `isHittable` は `XCUIElement`(生のクエリ)の API で、
+    /// 木を作るのに使う `XCUIElementSnapshot` は持たない。ホストは木しか受け取らないので
+    /// 原理的に計算できない。
+    ///
+    /// **なぜ全要素に付けないか**(2026-08-14 実測・iPhone 17 Pro / iOS 27・126ノード):
+    /// 木の取得は 102ms なのに、`isHittable` は**要素ごとに往復**して中央 39ms かかる。
+    /// 121 要素に付けると約 5.1 秒 = **snapshot の 50 倍**で、常時払える額ではない。
+    /// 対象1件だけなら 72〜146ms(引き方による)なので、**呼び手が疑ったときだけ**聞く形にする。
+    ///
+    /// **タップ経路は変えない**: タップは従来どおり座標で撃つ(`resolvePoint`)。ここはあくまで
+    /// 撃つ前の照会で、`isHittable` の評価そのものは何も操作しない。
+    ///
+    /// 引き当ては identifier → label の順で、**候補が1つに絞れて frame も一致するときだけ**
+    /// 答える(`hittable` が nil = 「引き当てられなかった」で、呼び手は黙る)。
+    /// 曖昧なまま別要素の可否を返すと、木の限界を別の嘘で置き換えるだけになる
+    private func handleHittable(_ request: BridgeHTTPServer.Request) throws
+        -> BridgeHTTPServer.Response {
+        let app = try requireApp()
+        guard let ref = request.queryValue("ref").flatMap({ Int($0) }) else {
+            throw BridgeError(400, "ref is required")
+        }
+        guard let frame = refFrames[ref], let identity = refIdentity[ref] else {
+            throw BridgeError(404, "unknown reference number [\(ref)] — run GET /snapshot first")
+        }
+        struct Out: Encodable {
+            let ref: Int
+            /// nil = 引き当てられなかった(呼び手は何も言わない)
+            let hittable: Bool?
+            let resolvedBy: String
+        }
+        func answer(_ hittable: Bool?, _ how: String) -> BridgeHTTPServer.Response {
+            .json(Out(ref: ref, hittable: hittable, resolvedBy: how))
+        }
+
+        // **frame の一致まで確かめる**: 同じ id/label が複数あるとき、別の個体の可否を
+        // 返してしまうのを防ぐ(1pt の丸めは許容)
+        func matches(_ element: XCUIElement) -> Bool {
+            let f = element.frame
+            return abs(f.origin.x - frame.origin.x) <= 1 && abs(f.origin.y - frame.origin.y) <= 1
+                && abs(f.width - frame.width) <= 1 && abs(f.height - frame.height) <= 1
+        }
+        func unique(_ query: XCUIElementQuery, _ how: String) -> BridgeHTTPServer.Response? {
+            let all = query.allElementsBoundByAccessibilityElement.filter(matches)
+            guard all.count == 1, let element = all.first else { return nil }
+            return answer(element.isHittable, how)
+        }
+
+        if let id = identity.identifier, !id.isEmpty,
+           let hit = unique(app.descendants(matching: .any).matching(identifier: id), "identifier") {
+            return hit
+        }
+        if let label = identity.label, !label.isEmpty,
+           let hit = unique(app.descendants(matching: .any)
+                                .matching(NSPredicate(format: "label == %@", label)), "label") {
+            return hit
+        }
+        return answer(nil, "unresolved")
+    }
+
     private func captureOnce(_ app: XCUIApplication) throws -> Captured {
         let root = try app.snapshot()
         let screen = root.frame
         var elements: [ElementInfo] = []
         var frames: [Int: CGRect] = [:]
+        var identities: [Int: (identifier: String?, label: String?, type: String)] = [:]
         var truncated = 0
         var truncatedTiers: [String: Int] = [:]
         var bulkExempt = 0
         var keyboardFrame: CGRect?
         var offscreenHints: [ElementInfo] = []
         collect(root, depth: 0, screen: screen,
-                elements: &elements, frames: &frames, truncated: &truncated,
+                elements: &elements, frames: &frames, identities: &identities,
+                truncated: &truncated,
                 truncatedTiers: &truncatedTiers, bulkExempt: &bulkExempt,
                 keyboardFrame: &keyboardFrame, offscreenHints: &offscreenHints)
-        return Captured(elements: elements, frames: frames, truncated: truncated,
+        return Captured(elements: elements, frames: frames, identities: identities,
+                        truncated: truncated,
                         truncatedTiers: truncatedTiers, bulkExempt: bulkExempt, screen: screen,
                         keyboardFrame: keyboardFrame, offscreen: offscreenHints)
     }
@@ -792,6 +865,7 @@ final class BridgeRouter {
         self.app = nil
         sessionBundleID = nil
         refFrames = [:]
+        refIdentity = [:]
         refElements = [:]
         return .json(OKResponse())
     }
@@ -818,6 +892,7 @@ final class BridgeRouter {
     /// 先に全件へ通す(先に間引くと、落とした要素を基準にしていた冗長判定が変わる)。
     private func collect(_ node: XCUIElementSnapshot, depth: Int, screen: CGRect,
                          elements: inout [ElementInfo], frames: inout [Int: CGRect],
+                         identities: inout [Int: (identifier: String?, label: String?, type: String)],
                          truncated: inout Int,
                          truncatedTiers: inout [String: Int],
                          bulkExempt: inout Int,
@@ -860,6 +935,7 @@ final class BridgeRouter {
             var info = deduped[index].info
             info.ref = ref
             frames[ref] = deduped[index].frame
+            identities[ref] = (info.identifier, info.label, info.type)
             elements.append(info)
         }
     }

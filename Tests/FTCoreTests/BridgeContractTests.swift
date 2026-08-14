@@ -48,6 +48,9 @@ final class BridgeContractTests: XCTestCase {
     ]
 
     static let xcuiTestRoutes: Set<String> = [
+        // GET /hittable は「その ref を撃つと本当に当たるか」を XCUITest 自身に聞く照会
+        // (2026-08-14 追加。BridgeRouter.handleHittable の doc に費用の実測がある)
+        "GET /hittable",
         "GET /screenshot", "GET /snapshot", "GET /status",
         "POST /appstate", "POST /appswitcher", "POST /clear", "POST /doubletap", "POST /drag",
         "POST /hidekeyboard", "POST /home", "POST /pinch", "POST /press", "POST /pressEnter",
@@ -113,19 +116,19 @@ final class BridgeContractTests: XCTestCase {
             "InAppBridge/Sources/InAppWebViewDOM.swift": "91add4d32dfd9db8ece05ea026b64de2c90227c1ceec1acc5005da0381796afb",
             "InAppBridge/Sources/boot.m": "b23fc93fbc99ce2579c9fd8ae75a6f9bbfd0ec6122bec60eb6cd00775dd635ef",
             "InAppBridge/build.sh": "73f53b3434d29114cf1bd0fd68264d373dc2730585d9f0c001d750dfd2844794",
-            "Sources/FTCore/BridgeDTO.swift": "91f1b1f51353638b84b75335e830125057c0378081f6b3c77ad0e3e87c6ee6c9",
+            "Sources/FTCore/BridgeDTO.swift": "03ffe5dd822e84e2f5ecc27b68b45e5df6c9d4fabf39dde1d54a08436250675c",
             "Sources/FTCore/WebViewDOMSnapshot.swift": "98c01f646bef4a5789faeaa5e787ba75314d0a16b16e21021d1c12bb7bbc3f72",
         ],
         .xcuitest: [
             "Runner/FTesterRunnerUITests/BridgeHTTPServer.swift": "a915206e5b7a4a6a24c2e50ec64bcbe11f11566edae36128a731db29735044d9",
-            "Runner/FTesterRunnerUITests/BridgeRouter.swift": "2dbdba42f85b23827b4fc03540b31ef6d9c8d19028b81251855c37243210127b",
+            "Runner/FTesterRunnerUITests/BridgeRouter.swift": "9153610004405d0521d15d22566c1dbbef9bc47055748cdeca6d140b083e3bcc",
             "Runner/FTesterRunnerUITests/BridgingHeader.h": "f7ff424d9283644d0e7a0c6e202911ecbf2d9c12d469eea330d91471c4788272",
             "Runner/FTesterRunnerUITests/DisplayHeartbeat.swift": "e991d489bb2acdee6a523231fc136c78445d5e67c8464750b3c6ba01171d2c69",
             "Runner/FTesterRunnerUITests/FTesterBridgeTests.swift": "fa310ccbbe3447012d46ec300f3cb30e40435ad4739293432b4f9f6369f44338",
             "Runner/FTesterRunnerUITests/FastInput.swift": "18b54340c404eac53736675763fad8e291b08e2f1f1ba96d696172698aa83bc1",
             "Runner/FTesterRunnerUITests/ObjCExceptionCatcher.h": "5a98cdbeefb031137a985b2f4430a5e12fec447a492599f8f4da1bd2c7101edc",
             "Runner/FTesterRunnerUITests/ObjCExceptionCatcher.m": "8b41a8a81bc8199bca13a364717614684f8003999c7675d9a63242c8e74c26be",
-            "Sources/FTCore/BridgeDTO.swift": "91f1b1f51353638b84b75335e830125057c0378081f6b3c77ad0e3e87c6ee6c9",
+            "Sources/FTCore/BridgeDTO.swift": "03ffe5dd822e84e2f5ecc27b68b45e5df6c9d4fabf39dde1d54a08436250675c",
             "Sources/FTCore/SnapshotDedupe.swift": "01912610b9bbf66f1fcf6cecc8c3d51d3fedc836c24d1a9ba8689a2538227b17",
             "Sources/FTCore/TypeReadback.swift": "8238adeb5146ee2441478a94bf6e2aabb85e6c88c38538ed8df74b2e025bf8ca",
         ],
