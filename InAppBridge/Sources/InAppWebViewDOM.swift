@@ -96,7 +96,11 @@ enum InAppWebViewDOM {
             elements.append(ElementInfo(
                 ref: 0,   // 採番は呼び出し側(全体の並びが決まってから)
                 type: type,
-                identifier: nil,   // HTML の id は当てない(契約: WebView 内は #id を使わない)
+                // **DOM の id を `#id` として出す**。「WebView 内は #id を使わない」という
+                // 旧契約は 2026-08-14 に撤回済みで、共有側(WebViewDOMSnapshot.Node.identifier)は
+                // 既に供給していた。ここだけ nil のままだと**同じページで経路によってセレクタが
+                // 変わる**(iOS in-app だけ #id が解決できない)
+                identifier: (node.identifier?.isEmpty ?? true) ? nil : node.identifier,
                 label: label,
                 value: (node.value?.isEmpty ?? true) ? nil : node.value,
                 placeholder: (node.placeholder?.isEmpty ?? true) ? nil : node.placeholder,
