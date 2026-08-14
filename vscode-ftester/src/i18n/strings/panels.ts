@@ -90,6 +90,10 @@ export const panelsStrings = {
     en: "Enable fast input (acts without waiting for animations, which may make tests unstable)",
   },
   "panels.runProfile.androidSectionTitle": { ja: "Android", en: "Android" },
+  "panels.runProfile.updateWebViewLabel": {
+    ja: "テスト開始時に WebViewをアップデートする",
+    en: "Update WebView when the test session starts",
+  },
   "panels.runProfile.wipeOnBloatLabel": {
     ja: "イメージ肥大時に自動で Wipe Data する(Android)",
     en: "Automatically wipe data when the image bloats (Android)",

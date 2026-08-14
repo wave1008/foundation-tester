@@ -45,7 +45,7 @@ class WebViewの中身を操作できること {
                 action {
                     // 入力欄は id もラベルも持たない。placeholder フィルタで指す
                     // (素の文字列セレクタは text/label にしか当たらない)
-                    type("placeholder=WebView 入力", "hello123")
+                    type("#wv_input", "hello123")
                     tap("送信")
                 }.expectation {
                     select("wv_result=*").textIs("wv_result=hello123")

@@ -580,6 +580,11 @@ data URI にすると「ファイル名」という手掛かり自体が無意�
 | WebView 内の `#id` | **×** | **○**(`#wv_grid` `#wv_row_26`) |
 | 入力欄の `placeholder` | **○**(`ph="WebView 入力"`) | **×** |
 
+**WebView 150 は入力欄の名前を出さない**(2026-08-14 実測)。`placeholder` だけでなく
+**`aria-label` を足しても名前にならない**(同じページの `<button aria-label>` は名前になるので、
+入力欄に固有の挙動)。accname では `aria-label` が最優先のはずで、**Chromium 側の回帰と見ている**。
+したがって **WebView 内の入力欄は `#id` で指す**(`#wv_input`)。ラベルでも placeholder でも指せない。
+
 **`#id` と `placeholder` は入れ替わる**(2026-08-14 実測。トレードではない):
 
     124: textField ph="WebView 入力"     ← placeholder あり / id なし

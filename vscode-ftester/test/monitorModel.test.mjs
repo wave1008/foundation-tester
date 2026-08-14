@@ -764,6 +764,7 @@ test("buildRunProfileTemplate: apps/devices 候補ありなら先頭のappと全
     falsePositiveCheck: false,
     screenIs: true,
     iosInappEngine: true,
+    updateWebView: true,
     wipeDataOnBloat: true,
     reportDir: "reports",
   });
@@ -781,6 +782,7 @@ test("buildRunProfileTemplate: 候補が無ければ app は空文字、devices 
     falsePositiveCheck: false,
     screenIs: true,
     iosInappEngine: true,
+    updateWebView: true,
     wipeDataOnBloat: true,
     reportDir: "reports",
   });
@@ -798,6 +800,7 @@ test("buildRunProfileTemplate: machine が空文字なら machine キー自体�
     falsePositiveCheck: false,
     screenIs: true,
     iosInappEngine: true,
+    updateWebView: true,
     wipeDataOnBloat: true,
     reportDir: "reports",
   });
@@ -1120,6 +1123,7 @@ const VALID_RUN_PROFILE_SAVE = {
     enableAnimations: false,
     reportDir: "reports",
     defaultTimeout: "10",
+    updateWebView: true,
     wipeDataOnBloat: true,
     wipeDataThresholdGB: "1",
     recoverCpuFallbackToGpu: false,
@@ -1167,6 +1171,7 @@ test("isMonitorFromWebviewMessage: runProfileSave は profile 非空・fields21�
         enableAnimations: true,
         reportDir: "",
         defaultTimeout: "",
+        updateWebView: true,
         wipeDataOnBloat: false,
         wipeDataThresholdGB: "",
         recoverCpuFallbackToGpu: true,
@@ -1973,7 +1978,7 @@ test("syncDevicesInMachineProfile: トップレベルがオブジェクトでな
 
 // ---- parseRunProfileForForm ----
 
-test("parseRunProfileForForm: 正常な値は21フィールドをそのまま読み取る", () => {
+test("parseRunProfileForForm: 正常な値は22フィールドをそのまま読み取る", () => {
   const parsed = parseRunProfileForForm({
     machine: "M1 Max",
     app: "sampleapp",
@@ -1989,6 +1994,7 @@ test("parseRunProfileForForm: 正常な値は21フィールドをそのまま読
     enableAnimations: true,
     reportDir: "reports",
     defaultTimeout: 10,
+    updateWebView: true,
     wipeDataOnBloat: false,
     wipeDataThresholdGB: 1.5,
     recoverCpuFallbackToGpu: true,
@@ -2013,6 +2019,7 @@ test("parseRunProfileForForm: 正常な値は21フィールドをそのまま読
     enableAnimations: true,
     reportDir: "reports",
     defaultTimeout: "10",
+    updateWebView: true,
     wipeDataOnBloat: false,
     wipeDataThresholdGB: "1.5",
     recoverCpuFallbackToGpu: true,
@@ -2041,6 +2048,7 @@ test("parseRunProfileForForm: 欠落キーは既定値(machine/app/reportDir/loc
     enableAnimations: false,
     reportDir: "",
     defaultTimeout: "",
+    updateWebView: true,
     wipeDataOnBloat: true,
     wipeDataThresholdGB: "",
     recoverCpuFallbackToGpu: false,
@@ -2090,6 +2098,7 @@ test("parseRunProfileForForm: 型不正のキーは既定値扱い(machine が�
     enableAnimations: false,
     reportDir: "",
     defaultTimeout: "",
+    updateWebView: true,
     wipeDataOnBloat: true,
     wipeDataThresholdGB: "",
     recoverCpuFallbackToGpu: false,
@@ -2272,6 +2281,7 @@ const BASE_RUN_PROFILE_FIELDS = {
   enableAnimations: false,
   reportDir: "reports",
   defaultTimeout: "10",
+  updateWebView: true,
   wipeDataOnBloat: true,
   wipeDataThresholdGB: "1",
   locale: "ja_JP",

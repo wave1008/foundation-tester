@@ -64,6 +64,7 @@ export function buildRunProfileTemplate(
   template.falsePositiveCheck = false;
   template.screenIs = true;
   template.iosInappEngine = true;
+  template.updateWebView = true;   // 既定 ON(WebView の版差でシナリオが端末ごとに落ちるため)
   template.wipeDataOnBloat = true;
   template.reportDir = "reports";
   return `${JSON.stringify(template, null, 2)}\n`;
@@ -122,6 +123,7 @@ export interface RunProfileFormFields {
   readonly enableAnimations: boolean;
   readonly reportDir: string;
   readonly defaultTimeout: string;
+  readonly updateWebView: boolean;
   readonly wipeDataOnBloat: boolean;
   readonly wipeDataThresholdGB: string;
   readonly recoverCpuFallbackToGpu: boolean;
@@ -160,6 +162,7 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
   const iosFastInput = typeof source.iosFastInput === "boolean" ? source.iosFastInput : false;
   const homeOnStart = typeof source.homeOnStart === "boolean" ? source.homeOnStart : true;
   const enableAnimations = typeof source.enableAnimations === "boolean" ? source.enableAnimations : false;
+  const updateWebView = typeof source.updateWebView === "boolean" ? source.updateWebView : true;
   const wipeDataOnBloat = typeof source.wipeDataOnBloat === "boolean" ? source.wipeDataOnBloat : true;
   const recoverCpuFallbackToGpu =
     typeof source.recoverCpuFallbackToGpu === "boolean" ? source.recoverCpuFallbackToGpu : false;
@@ -195,6 +198,7 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
     enableAnimations,
     reportDir,
     defaultTimeout,
+    updateWebView,
     wipeDataOnBloat,
     wipeDataThresholdGB,
     recoverCpuFallbackToGpu,
@@ -248,6 +252,7 @@ export function updateRunProfileInObject(
   result.screenIs = fields.screenIs;
   result.containerInference = fields.containerInference;
   result.iosInappEngine = fields.iosInappEngine;
+  result.updateWebView = fields.updateWebView;
   result.wipeDataOnBloat = fields.wipeDataOnBloat;
   // 既定 true 側なので containerInference と同じく常に書く(false を落とすと既定へ戻ってしまう)
   result.homeOnStart = fields.homeOnStart;

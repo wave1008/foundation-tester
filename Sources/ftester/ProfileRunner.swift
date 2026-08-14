@@ -103,8 +103,17 @@ enum ProfileRunner {
         await ProfileWorkerFactory.preparePhysicalAndroidDevices(resolved: resolved) { print($0) }
         var workers = try ProfileWorkerFactory.buildAndroidWorkers(resolved: resolved) { print($0) }
         supplyLease?.hold(keys: workers.compactMap { $0.connection.serial ?? $0.connection.udid })
-        // **WebView の版が混在していたら言う**(落とさない。AndroidWebViewVersions の宣言参照)
-        warnIfWebViewVersionsDiffer(serials: workers.compactMap { $0.connection.serial }) { print($0) }
+        let androidSerials = workers.compactMap { $0.connection.serial }
+        // **テスト開始時に WebView を揃える**(既定 ON。AndroidWebViewUpdate の宣言参照)
+        if resolved.updateWebView, let adbPath = try? AndroidDriver.findADB() {
+            AndroidWebViewUpdate.run(
+                targets: androidSerials,
+                allSerials: (try? AndroidDeviceCatalog.connectedSerials()) ?? androidSerials,
+                adb: { args in try? Shell.run([adbPath] + args, timeout: 600).output },
+                log: { print($0) })
+        }
+        // **揃わなかった場合は混在を言う**(落とさない。AndroidWebViewVersions の宣言参照)
+        warnIfWebViewVersionsDiffer(serials: androidSerials) { print($0) }
         let beforeBlankCheck = workers.count
         let triage = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(
                 workers, stateDir: (try? RepoRoot.find())?.appendingPathComponent(".ftester")) { print($0) }

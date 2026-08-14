@@ -215,6 +215,10 @@ function renderRunProfileSection(): string {
               <label for="run-profile-recover-cpu-fallback">${t("panels.runProfile.recoverCpuFallbackLabel")}</label>
             </div>
             <div class="modal-row profile-checkbox-row">
+              <input type="checkbox" id="run-profile-update-webview">
+              <label for="run-profile-update-webview">${t("panels.runProfile.updateWebViewLabel")}</label>
+            </div>
+            <div class="modal-row profile-checkbox-row">
               <input type="checkbox" id="run-profile-wipe-data-on-bloat">
               <label for="run-profile-wipe-data-on-bloat">${t("panels.runProfile.wipeOnBloatLabel")}</label>
             </div>

@@ -235,6 +235,9 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// wipeDataOnBloat のしきい値(GB、1GB=1_073_741_824 バイト。既定 8。0 以下は検証エラー。
     /// Play イメージは wipe 直後の再構築だけで userdata が 2〜4GB になるため(実測 2026-07-17)、
     /// それ未満のしきい値は毎実行 wipe が発動するスラッシングになる — 下げるときは要注意)
+    /// **テスト開始時に WebView を揃えるか**(既定 ON)。版が混在すると同じシナリオが
+    /// 端末によって落ちる(124 は placeholder / 150 は #id と表現が入れ替わる)
+    public var updateWebView: Bool?
     public var wipeDataThresholdGB: Double?
     /// 実行開始時に、画面凍結で CPU 描画(swiftshader)へフォールバック済みの Android エミュレータを
     /// GPU(-gpu host)で起動し直すか(既定 false=OFF)。GPU モードは emulator プロセスの起動引数で
@@ -288,7 +291,8 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
                 heal: Bool? = nil, falsePositiveCheck: Bool? = nil, screenIs: Bool? = nil,
                 reportDir: String? = nil, defaultTimeout: Double? = nil, scenarioTimeout: Int? = nil,
                 machine: String? = nil, iosInappEngine: Bool? = nil,
-                wipeDataOnBloat: Bool? = nil, wipeDataThresholdGB: Double? = nil,
+                wipeDataOnBloat: Bool? = nil, updateWebView: Bool? = nil,
+                wipeDataThresholdGB: Double? = nil,
                 recoverCpuFallbackToGpu: Bool? = nil,
                 locale: String? = nil, iosFastInput: Bool? = nil,
                 containerInference: Bool? = nil,
@@ -307,6 +311,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         self.machine = machine
         self.iosInappEngine = iosInappEngine
         self.wipeDataOnBloat = wipeDataOnBloat
+        self.updateWebView = updateWebView
         self.wipeDataThresholdGB = wipeDataThresholdGB
         self.recoverCpuFallbackToGpu = recoverCpuFallbackToGpu
         self.locale = locale
@@ -323,7 +328,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     static let knownKeys: Set<String> = [
         "app", "devices", "fm", "heal", "falsePositiveCheck", "screenIs",
         "reportDir", "defaultTimeout", "scenarioTimeout",
-        "machine", "iosInappEngine", "wipeDataOnBloat", "wipeDataThresholdGB",
+        "machine", "iosInappEngine", "wipeDataOnBloat", "updateWebView", "wipeDataThresholdGB",
         "recoverCpuFallbackToGpu", "locale",
         "iosFastInput", "enableAnimations", "homeOnStart", "containerInference",
         "record", "recordFailuresOnly", "recordBitrateKbps", "recordFullResolution",
@@ -386,6 +391,9 @@ public struct ResolvedProfile: Sendable {
     public let scenarioTimeout: Int?
     /// 実行開始時に Android AVD 肥大化を Wipe Data するか(既定 true)
     public let wipeDataOnBloat: Bool
+    /// **テスト開始時に WebView を揃えるか**(既定 true)
+    /// (`AndroidWebViewUpdate`。adb に更新コマンドは無いので、接続中で最も新しい端末から配る)
+    public let updateWebView: Bool
     /// wipeDataOnBloat のしきい値(GB)
     public let wipeDataThresholdGB: Double
     /// 実行開始時に CPU 描画フォールバック機を GPU で起動し直すか
@@ -773,6 +781,7 @@ public enum ProfileResolver {
             defaultTimeout: runDoc.defaultTimeout,
             scenarioTimeout: runDoc.scenarioTimeout,
             wipeDataOnBloat: runDoc.wipeDataOnBloat ?? true,
+            updateWebView: runDoc.updateWebView ?? true,
             wipeDataThresholdGB: wipeDataThresholdGB,
             recoverCpuFallbackToGpu: runDoc.recoverCpuFallbackToGpu ?? false,
             locale: locale,
