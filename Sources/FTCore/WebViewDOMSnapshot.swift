@@ -185,6 +185,9 @@ public enum WebViewDOM {
                   x: r.left, y: r.top, width: r.width, height: r.height,
                   enabled: !el.disabled
                 };
+                // **DOM の id を `#id` として出す**。a11y 側(WebView 150)も
+                // viewIdResourceName に同じものを出すので、経路が変わっても同じ書き方で指せる
+                if (el.id) node.identifier = el.id;
                 if (role === "textField" || role === "secureTextField" || role === "textView") {
                   var ph = el.getAttribute("placeholder");
                   if (ph) node.placeholder = ph;
@@ -236,6 +239,10 @@ public enum WebViewDOM {
 
     public struct Node: Decodable, Sendable {
         public var role: String
+        /// DOM の `id`(**`#id` セレクタの供給源**)。2026-08-14 に足した ——
+        /// WebView 150 の a11y は既に DOM の id を `viewIdResourceName` に出しており、
+        /// DOM 経路だけ出さないと**同じページで経路によってセレクタが変わる**
+        public var identifier: String?
         public var label: String?
         public var value: String?
         public var placeholder: String?

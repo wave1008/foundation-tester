@@ -33,7 +33,12 @@ tag 定数は `composeApp/src/commonMain/kotlin/com/ftester/e2e/Tags.kt` に集�
   **iOS の3エンジン間でも揃っている**: in-app は traits の `.toggleButton`(実測 0x20000000000001 =
   `.button` と併用。UIKit/SwiftUI/Compose 共通)で `switch` を出す。ここが抜けると in-app だけ
   `switch` が `button` になり、`:rightSwitch` が xcuitest とだけ食い違う(2026-07-27 に実害)。
-- **WebView 画面だけは別規約**(`#id` が効かない・`link` / `webView` 型が出る)。§WebView 画面を参照。
+- **WebView 画面だけは別規約**(`link` / `webView` 型が出る)。§WebView 画面を参照。
+  **`#id` は 2026-08-14 に扱えるようにした**(旧規約「WebView 内の `#id` は使えない」は撤回)。
+  供給源は**経路で違う**: DOM 経路は `el.id`(版に依存しない)/ a11y 経路は
+  `viewIdResourceName`(**WebView 150 以降だけ**。124 は出さない)。
+  **自動生成の id に頼らない** —— 実 web ページには `#mwHw` のように**ページを編集すると変わる**
+  id があり(Wikipedia の parsoid で実測)、`#id` が在ることは安定していることを意味しない。
 - **`checkBox` / `slider` / リスト行は型で指さない**。iOS 側の a11y が役割を出さず
   (Compose の Checkbox/Radio は iOS で `button`、Slider は `other`)、ブリッジでも揃えられない。
   これらは `#id` で指す。`#id` とラベルは全プラットフォーム共通。

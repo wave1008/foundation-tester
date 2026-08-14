@@ -36,7 +36,7 @@ public extension WebViewDOM {
             guard frame.width >= 1, frame.height >= 1 else { continue }
             // **web: true を立てる**。読み手が「#id が効かない画面」だと判断する材料で、
             // ここを落とすと OS で扱いが割れる
-            out.append(ElementInfo(ref: ref, type: type, identifier: nil,
+            out.append(ElementInfo(ref: ref, type: type, identifier: node.identifier,
                                    label: node.label, value: node.value,
                                    placeholder: node.placeholder,
                                    enabled: node.enabled ?? true, frame: frame, depth: 1,

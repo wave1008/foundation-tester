@@ -117,7 +117,7 @@ final class BridgeContractTests: XCTestCase {
             "InAppBridge/Sources/boot.m": "b23fc93fbc99ce2579c9fd8ae75a6f9bbfd0ec6122bec60eb6cd00775dd635ef",
             "InAppBridge/build.sh": "73f53b3434d29114cf1bd0fd68264d373dc2730585d9f0c001d750dfd2844794",
             "Sources/FTCore/BridgeDTO.swift": "03ffe5dd822e84e2f5ecc27b68b45e5df6c9d4fabf39dde1d54a08436250675c",
-            "Sources/FTCore/WebViewDOMSnapshot.swift": "98c01f646bef4a5789faeaa5e787ba75314d0a16b16e21021d1c12bb7bbc3f72",
+            "Sources/FTCore/WebViewDOMSnapshot.swift": "2d989286ece73949a866af8b2196e6ed95628159bad1ba1166a4f87d03a511f1",
         ],
         .xcuitest: [
             "Runner/FTesterRunnerUITests/BridgeHTTPServer.swift": "a915206e5b7a4a6a24c2e50ec64bcbe11f11566edae36128a731db29735044d9",
