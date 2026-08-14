@@ -1070,7 +1070,8 @@ extension StepExecutor {
     private func performClearInputFocused(phase: inout PhaseAccumulator) async throws -> ClearOutcome {
         let clock = ContinuousClock()
         let snapStart = clock.now
-        let beforeSnapshot = try await driver.snapshot()
+        // **キャッシュを捨てて読む**(理由は valueBeforeClear。ロケータ有りの経路と同じ穴)
+        let beforeSnapshot = try await driver.snapshot(bypassingCache: driver.supportsCacheBypass)
         phase.snapshotMs += Self.ms(clock.now - snapStart)
         let focusedBefore = beforeSnapshot.elements.first { $0.focused == true }
 
@@ -1114,6 +1115,8 @@ extension StepExecutor {
     private func performClearInput(element: ElementInfo, step: FlowStep, actingDriver: AppDriver,
                                    phase: inout PhaseAccumulator) async throws -> ClearOutcome {
         let clock = ContinuousClock()
+        let before = try await valueBeforeClear(element: element, step: step,
+                                                driver: actingDriver, phase: &phase)
         do {
             let start = clock.now
             try await actingDriver.clearInput(ref: element.ref)
@@ -1121,13 +1124,13 @@ extension StepExecutor {
             // 事後検証: ブリッジが 200 を返しても実際に消えていない(嘘の成功)場合の保険。
             // 同じ driver で snapshot を撮り直し、同じ locator を再解決して value を見る
             if let residual = try await residualClearValue(actingDriver, step: step,
-                                                          before: element.value, phase: &phase) {
+                                                          before: before, phase: &phase) {
                 guard let td = typeDriver,
                       try await clearViaTypeDriver(td, step: step, phase: &phase) else {
                     return .failed("clearInput reported success but the value remained: \"\(residual)\"")
                 }
                 if let residual2 = try await residualClearValue(td, step: step,
-                                                               before: element.value,
+                                                               before: before,
                                                                phase: &phase) {
                     return .failed("clearInput reported success but the value remained: \"\(residual2)\"")
                 }
@@ -1140,11 +1143,57 @@ extension StepExecutor {
             // フォールバック経路も同じ事後検証を通す(**どのパスなら検証されるかに例外を作らない**。
             // 規則が無いと将来の変更で無検証の穴が復活する)
             if let residual = try await residualClearValue(td, step: step,
-                                                          before: element.value, phase: &phase) {
+                                                          before: before, phase: &phase) {
                 return .failed("clearInput reported success but the value remained: \"\(residual)\"")
             }
             return .cleared(driverFallback: "fell back to XCUITest")
         }
+    }
+
+    /// clearInput 事後検証の**最後の1周だけ**キャッシュを捨てるか。
+    ///
+    /// ポーリングは「撮り直せば新しい値が来る」を前提にしているが、**a11y キャッシュは撮り直しても
+    /// 同じ古い値を返す**ので、周回数を増やしてもこの穴からは抜けられない(3周とも同じ古い値を読み、
+    /// `after == before` が成立して**誤って「消えていない」と報告する**)。`valueBeforeClear` が
+    /// 塞いだのは `before` 側で、こちらは対になる `after` 側。
+    ///
+    /// **失敗と決まる直前の1周にだけ払う**(既存の `AssertFreshRetry` と同じ規律)。
+    /// 通常は消えているので1周目で `nil` を返して終わり、追加費用は発生しない
+    private static func bypassOnLastAttempt(attempt: Int, driver: AppDriver) -> Bool {
+        attempt == residualClearAttempts - 1 && driver.supportsCacheBypass
+    }
+
+    /// clearInput 事後検証のポーリング回数(両経路で共有。`bypassOnLastAttempt` が最終周の判定に使う)
+    private static let residualClearAttempts = 3
+
+    /// clearInput 事後検証が使う「クリア前の値」。**撃つ直前にキャッシュを捨てて採り直す**。
+    ///
+    /// 解決済みの `element.value` をそのまま使うと、Android の a11y キャッシュが古い値を返した
+    /// とき `before == after` が成立し、**実際には消えているのに「消えていない」と報告する**。
+    /// 2026-08-14 に E2E-CMP/android の S0040 で並列負荷 10 周中 8 周再現:
+    /// 空欄の `value` にヒント文字列が載る欄(CMP の `#field_single` は placeholder を送らない)では、
+    /// 撃つ前の古い読みが「ヒント」・クリア後も「ヒント」で一致してしまう。
+    /// ブリッジ側は撃つ前に `refresh()` してから読むので、**同じノードをブリッジは「入っている」・
+    /// snapshot は「空」と読む**のが元の食い違い。
+    ///
+    /// **キャッシュ迂回でなければならない**(2026-08-14 の実測):
+    /// ブリッジの木で editable ノードだけ `refresh()` する案は、step5 の誤検出を 12/28 → 0/4 に
+    /// したが、**木が混世代になり ref の座標が別版のレイアウトを指す**ため、後段の clearInput が
+    /// **別の入力欄を消す**退行(step12 が 0/17 → 2/4)を生んで棄却した。`bypassingCache` は
+    /// 全ノードを取り直すので木の世代が揃い、この危険が無い。
+    ///
+    /// 迂回を持たないドライバ(iOS)は従来どおり解決時の値を使う(費用ゼロ)。
+    /// Android は 1 clearInput につき約 +65ms —— 沈黙する誤判定と引き換えなら安い
+    private func valueBeforeClear(element: ElementInfo, step: FlowStep, driver clearDriver: AppDriver,
+                                  phase: inout PhaseAccumulator) async throws -> String? {
+        guard clearDriver.supportsCacheBypass else { return element.value }
+        let clock = ContinuousClock()
+        let start = clock.now
+        let snapshot = try await clearDriver.snapshot(bypassingCache: true)
+        phase.snapshotMs += Self.ms(clock.now - start)
+        // 撃つ前に消えた/解決できないときは、判定を弱めるより解決時の値を残す
+        guard let (found, _) = Self.resolve(step: step, in: snapshot) else { return element.value }
+        return found.value
     }
 
     /// clearInput 事後検証: 残っている値(nil = 消えている/判定不能)。
@@ -1181,14 +1230,15 @@ extension StepExecutor {
         let clock = ContinuousClock()
         var backoff = PollBackoff()
         var residual: String?
-        for attempt in 0..<3 {
+        for attempt in 0..<Self.residualClearAttempts {
             if attempt > 0 {
                 let waitStart = clock.now
                 try await Task.sleep(for: backoff.nextDelay())
                 phase.waitMs += Self.ms(clock.now - waitStart)
             }
             let start = clock.now
-            let snapshot = try await driver.snapshot()
+            let snapshot = try await driver.snapshot(bypassingCache: Self.bypassOnLastAttempt(
+                attempt: attempt, driver: driver))
             phase.snapshotMs += Self.ms(clock.now - start)
             residual = Self.residualClearValue(step: step, before: before, in: snapshot)
             if residual == nil { return nil }
@@ -1203,14 +1253,15 @@ extension StepExecutor {
         let clock = ContinuousClock()
         var backoff = PollBackoff()
         var residual: String?
-        for attempt in 0..<3 {
+        for attempt in 0..<Self.residualClearAttempts {
             if attempt > 0 {
                 let waitStart = clock.now
                 try await Task.sleep(for: backoff.nextDelay())
                 phase.waitMs += Self.ms(clock.now - waitStart)
             }
             let start = clock.now
-            let snapshot = try await driver.snapshot()
+            let snapshot = try await driver.snapshot(bypassingCache: Self.bypassOnLastAttempt(
+                attempt: attempt, driver: driver))
             phase.snapshotMs += Self.ms(clock.now - start)
             residual = Self.residualClearValue(of: focusedBefore, in: snapshot)
             if residual == nil { return nil }
