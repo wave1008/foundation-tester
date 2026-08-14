@@ -43,9 +43,11 @@ class WebViewの中身を操作できること {
             }
             scene(3, "Web の入力欄へ入力し、送信ボタンで反映する") {
                 action {
-                    // 入力欄は id もラベルも持たない。placeholder フィルタで指す
-                    // (素の文字列セレクタは text/label にしか当たらない)
-                    type("#wv_input", "hello123")
+                    // **2節で書く**(ui-contract.md「#id と placeholder は入れ替わる」)。
+                    // この欄は経路で出る属性が違う: iOS in-app は両方 / iOS xcuitest と
+                    // Android WebView 124 は placeholder のみ / Android WebView 150 は id のみ。
+                    // `#x` は identifier で引けなければ placeholder を引くので、この2節で全部覆う
+                    type("#wv_input||#WebView 入力", "hello123")
                     tap("送信")
                 }.expectation {
                     select("wv_result=*").textIs("wv_result=hello123")

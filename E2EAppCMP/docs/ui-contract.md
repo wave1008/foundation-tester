@@ -583,7 +583,7 @@ data URI にすると「ファイル名」という手掛かり自体が無意�
 **WebView 150 は入力欄の名前を出さない**(2026-08-14 実測)。`placeholder` だけでなく
 **`aria-label` を足しても名前にならない**(同じページの `<button aria-label>` は名前になるので、
 入力欄に固有の挙動)。accname では `aria-label` が最優先のはずで、**Chromium 側の回帰と見ている**。
-したがって **WebView 内の入力欄は `#id` で指す**(`#wv_input`)。ラベルでも placeholder でも指せない。
+したがって、**この入力欄はどれか1つの属性では指せない**。
 
 **`#id` と `placeholder` は入れ替わる**(2026-08-14 実測。トレードではない):
 
@@ -593,6 +593,19 @@ data URI にすると「ファイル名」という手掛かり自体が無意�
 **どちらの版に合わせて書いても他方で落ちる。** 1台だけ更新して実際に事故を起こした
 (`placeholder=WebView 入力` のシナリオが 150 の端末でだけ「セレクタが見つからない」)。
 run 開始時に `AndroidWebViewVersions` が混在を警告する。
+
+**書き方は `#wv_input||#WebView 入力`**(2026-08-15。全 SUT のシナリオがこの形)。
+`#x` は identifier で引けなければ placeholder を引く(docs/commands.md)ので、
+**2節でこの表の4通りすべてを覆う**:
+
+| 構成 | 何が出るか | どちらの節が当たるか |
+|---|---|---|
+| iOS in-app(DOM) | id と placeholder の両方 | `#wv_input` |
+| iOS xcuitest | placeholder のみ(WebKit は HTML id を a11y へ出さない) | `#WebView 入力` |
+| Android WebView 124 | placeholder のみ | `#WebView 入力` |
+| Android WebView 150 | id のみ | `#wv_input` |
+
+**片方だけに縮めないこと** —— 縮めた瞬間に、上の4行のどれかで「セレクタが見つからない」に戻る。
 
 Android の版ではない(実機 SDK 33 / エミュレータ SDK 35 で、**古い OS のほうが新しい WebView**)。
 **シナリオは WebView 内の `#id` に依存させない** —— 受け手はユーザーの WebView 版を選べない。
