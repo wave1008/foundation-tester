@@ -401,10 +401,22 @@ export interface RecordedStep {
 }
 
 /**
- * 契約: Sources/FTCore/Flow.swift FlowLocatorBuilder.chain と同じ優先度(同期対象):
+ * ライブ録画(モニターの Live タブ)専用の軽量ヒューリスティック。優先度:
  * identifier > label > (同じ type 内での位置)index。全て無ければ type+index:0 のみを返す。
  * ただし id があるときは位置依存の type+index フォールバックは足さない(id は安定なので
  * `.TextField` 等は冗長・ノイズ。生成コードの `#id||.Type` を `#id` にする)。
+ *
+ * **もう Swift 側の双子は無い**(2026-08-15): 旧 `Sources/FTCore/Flow.swift
+ * FlowLocatorBuilder.chain` は画面内の一意性を見ずに id/label をそのまま採っていたため、
+ * StepExecutor の自己修復(結果をユーザーの .swift ソースへ書き戻す経路)で「別要素に解決する
+ * セレクタ」を書く欠陥のもとになり、一意性を検査する `FTCore.SelectorNaming` に統合されて
+ * 廃止された。この関数はそちらへ統合しない ——
+ * ここが作るのは `ftester api gen-scenario` に渡す**下書き**(生成先は新規ファイルで、
+ * 利用者がコンパイル→dry-run→デバイス実行の3段で必ず目を通してから使う)。
+ * 自己修復の書き戻しのように**既存のシナリオへ無人で反映される**経路ではないので、
+ * 一意性を検査できない(=書けないと拒否する)より、多少ゆるくても記録を止めない方を優先する。
+ * 厳密化したい場合は `ftester api` を同期的に呼ぶ形に作り直す必要があり、この関数の
+ * 呼び出し元(1タップごとに同期的に呼ばれる)を非同期化する規模の変更になるため見送っている。
  */
 export function locatorChainForElement(
   element: LiveElement,
@@ -484,7 +496,7 @@ export function describeElementShort(element: LiveElement): string {
   return element.type;
 }
 
-/** セレクタ(`||` 区切り節)から表示ラベルを抽出する。節分類は Sources/FTDSL/FTSelector.swift の
+/** セレクタ(`||` 区切り節)から表示ラベルを抽出する。節分類は Sources/FTCore/FTSelector.swift の
  * parseClause と同期(label を持つ最初の節を採用。無ければセレクタ全体を返す)。 */
 export function selectorObjectPhrase(selector: string): string {
   for (const clause of selector.split("||")) {

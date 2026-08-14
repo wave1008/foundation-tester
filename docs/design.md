@@ -135,8 +135,11 @@ foundation-tester/
 ├── Sources/
 │   ├── ftester/                   # CLI エントリポイント(+ ProjectCommands / ProfileRunner / Api*Command)
 │   ├── FTCore/                    # AppDriver, StepExecutor, ScenarioHost, RunOrchestrator,
-│   │                              # TestProject / RunProfile / LocalConfig(§11)
-│   ├── FTDSL / FTDSLMacros/       # Shirates 風 Swift DSL とマクロ(§10)
+│   │                              # TestProject / RunProfile / LocalConfig(§11)。
+│   │                              # セレクタ文法(FTSelector)・コマンド索引(CommandIndex)・
+│   │                              # コード生成(ScenarioCodeGen)もここ = DSL ランタイム非依存
+│   ├── FTDSL / FTDSLMacros/       # Shirates 風 Swift DSL とマクロ(§10)。
+│   │                              # コマンド本体・FTRuntime・下書き生成(ScenarioDraftCodeGen)
 │   ├── FTScenarioRunner/          # ftester-scenarios-<project> の CLI 実装
 │   ├── FTAgent/                   # FoundationModels: プロファイル, @Generable 型, Tools
 │   ├── FTBridgeClient/            # iOS ブリッジ HTTP クライアント + SimulatorCatalog / BridgeProvisioner

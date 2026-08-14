@@ -1,8 +1,10 @@
 // Flow(インメモリの内部モデル)→ Swift DSL シナリオコードの生成。gen-scenario(記録操作からのシナリオ生成)が使う。
 // 生成コードは人が追記編集する前提の素直な直列コードにする。
+//
+// FTCore に居る理由: 入出力(Flow/FlowStep/FlowLocator/TestProject/ScenarioHost)は全て FTCore の型で、
+// 生成先のコードが `import FTDSL` を書くだけ(このファイル自体は DSL ランタイムを呼ばない)。
 
 import Foundation
-import FTCore
 
 public enum ScenarioCodeGen {
 
@@ -325,8 +327,9 @@ public enum ScenarioCodeGen {
         return ""
     }
 
-    /// Swift 文字列リテラルとしてエスケープする(日本語はそのまま)
-    static func literal(_ text: String) -> String {
+    /// Swift 文字列リテラルとしてエスケープする(日本語はそのまま)。
+    /// public: ScenarioDraftCodeGen.literal(FTDSL)がそのまま転送する
+    public static func literal(_ text: String) -> String {
         var escaped = ""
         for ch in text {
             switch ch {

@@ -57,6 +57,19 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// 率が上がっていたら上限か画面の作りを疑う
     case webViewNotRendered = "webview-not-rendered"
 
+    /// back() の前後で木の指紋が同一 = システム back がこの画面に効かなかった(自前ナビの画面が
+    /// システムの戻るを無視するアプリでよくある)。判定は FTCore.BackEffect が唯一の定義元
+    /// (MCP の ft_navigate と共有)。before/after とも back() 1回につき1枚ずつ素直に読む
+    /// (使い回しキャッシュを持たない理由は BackEffect.swift 参照)
+    case backIneffective = "back-ineffective"
+
+    /// 自己修復が代わりの要素を見つけたのに、**この画面でそれを一意に指せる書き方が無い**
+    /// (`SelectorNaming.graded` が nil)。操作はその要素で続けるが、修正提案もヒールキャッシュも
+    /// 作らない —— 書けないセレクタを利用者の .swift へ書き戻さないため
+    /// (`ftester api apply-heal` が直接書き込む経路がある)。
+    /// **率が上がったら id/ラベルの一意性を疑う**: この状態が続く限り毎回 FM を呼び直す
+    case healUnwritable = "heal-unwritable"
+
     /// 人間向けの文言(FTRuntime がステップ説明へ括弧書きで付ける)
     public var text: String {
         switch self {
@@ -69,6 +82,10 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
             return "the tree hit the element limit during the search, so the target may have been dropped from it"
         case .webViewNotRendered:
             return "the delegated WebView had published no content when this was judged, so an absence here is not evidence"
+        case .backIneffective: return BackEffect.note(advice: BackEffect.dslAdvice)
+        case .healUnwritable:
+            return "self-heal found a stand-in element but no selector picks it out uniquely on this"
+                + " screen, so the fix was not written back — give the element a stable id"
         }
     }
 }

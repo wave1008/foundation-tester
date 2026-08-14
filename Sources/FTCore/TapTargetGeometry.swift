@@ -200,46 +200,79 @@ public enum TapTargetGeometry {
             ?? occlusionAdvisory(for: element, in: elements, screen: screen)
     }
 
+    /// **座標に依る警告の優先順チェーン、当たった形**(強い事実から先に、最初の1件だけ)。
+    /// `occlusionAdvisory`(DSL)と `RefGuard.overlapWarning`(MCP)は**両方これを呼ぶ**
+    /// —— 順序と当たり判定はここに1箇所だけ置き、文言は呼び出し側がそれぞれ持つ
+    /// (同じ判定に対して言い回しが違うため。詳細は各呼び出し側)
+    public enum TapAdvisoryKind {
+        case zeroFrame
+        case offscreen
+        case scrolledOut(ElementInfo)
+        case overlayCovering(ElementInfo)
+        case missedContent(ElementInfo)
+        case nestedAction(ElementInfo)
+        case stacked
+        case sliver
+    }
+
     /// **座標に依る警告の優先順チェーン**(強い事実から先に、最初の1件だけ)。
-    /// MCP(`RefGuard.overlapWarning`)と同じ優先順 —— offscreen → scrolledOut →
-    /// overlayCovering → missedContent → nested → stacked → sliver。zero-frame はここにしか無い
-    /// (退化 frame は MCP 側では未検知)。**frame の中心を撃つ経路でしか言えない**
+    /// 順序: zeroFrame → offscreen → scrolledOut → overlayCovering → missedContent →
+    /// nested → stacked → sliver。**frame の中心を撃つ経路でしか言えない**
     /// (`StepExecutor.visibleTapRect` で寄せた場合は呼ばない —— 撃つ点が変わるので嘘になる)
+    public static func advisoryKind(for element: ElementInfo, in elements: [ElementInfo],
+                                    screen: FTRect) -> TapAdvisoryKind? {
+        if element.frame.width <= 0 || element.frame.height <= 0 { return .zeroFrame }
+        if offscreenAdvisory(for: element, screen: screen) != nil { return .offscreen }
+        if let scroller = outsideDeclaredScroller(element, in: elements) {
+            return .scrolledOut(scroller)
+        }
+        if let over = OcclusionGeometry.overlayCovering(element, in: elements, screen: screen) {
+            return .overlayCovering(over)
+        }
+        if let inner = missesItsOwnContent(element, in: elements, screen: screen) {
+            return .missedContent(inner)
+        }
+        if let nested = nestedActionCoveringCentre(element, in: elements) {
+            return .nestedAction(nested)
+        }
+        if OcclusionGeometry.stackedRefs(elements).contains(element.ref) { return .stacked }
+        if isClippedSliver(element, screen: screen) { return .sliver }
+        return nil
+    }
+
+    /// **DSL 用の文言**(ステップ注記なので主語は "the target")。`advisoryKind` の kind ごとに
+    /// 写すだけで、判定そのものはしない
     public static func occlusionAdvisory(for element: ElementInfo, in elements: [ElementInfo],
                                          screen: FTRect) -> String? {
-        if element.frame.width <= 0 || element.frame.height <= 0 {
+        guard let kind = advisoryKind(for: element, in: elements, screen: screen) else { return nil }
+        switch kind {
+        case .zeroFrame:
             return "its reported frame has zero width/height — the tap may land on whatever"
                 + " is at that point"
-        }
-        if let off = offscreenAdvisory(for: element, screen: screen) { return off }
-        if let scroller = outsideDeclaredScroller(element, in: elements) {
+        case .offscreen:
+            return offscreenAdvisory(for: element, screen: screen)
+        case .scrolledOut(let scroller):
             return "the target is reported entirely outside \(describe(scroller)), the scroll"
                 + " container it belongs to — it is a leftover from scrolling, not what is"
                 + " currently drawn there"
-        }
-        if let over = OcclusionGeometry.overlayCovering(element, in: elements, screen: screen) {
+        case .overlayCovering(let over):
             return "the target's centre is covered by \(describe(over)), so this may have hit"
                 + " \(describe(over)) instead"
-        }
-        if let missed = missedContentAdvisory(for: element, in: elements, screen: screen) {
-            return missed
-        }
-        if let nested = nestedActionCoveringCentre(element, in: elements) {
+        case .missedContent:
+            return missedContentAdvisory(for: element, in: elements, screen: screen)
+        case .nestedAction(let nested):
             return "\(describe(nested)) sits inside the target and covers its centre, so this"
                 + " may have triggered \(describe(nested)) instead"
-        }
-        if OcclusionGeometry.stackedRefs(elements).contains(element.ref) {
+        case .stacked:
             // **「完全一致」と断定しない**(2026-08-14): 判定は矩形の完全一致に加えて
             // 「原点だけが同じで大きさが違う」形も見るようになったので、断定すると
             // 広げた分について嘘になる(実アプリのフィードは行の高さがまちまち)
             return "the target is stacked on the same spot as other elements, so at most one of"
                 + " them is really drawn there — the rest are clamped leftovers"
-        }
-        if isClippedSliver(element, screen: screen) {
+        case .sliver:
             return "the target is clipped to a thin sliver at the edge of its container —"
                 + " it is narrower than it looks and the tap may miss"
         }
-        return nil
     }
 
     /// 人が読める名指し(`#id` があればそれ、無ければ型 + ラベル)。MCP(`RefGuard.describe`)は
@@ -322,10 +355,13 @@ public enum TapTargetGeometry {
         guard inner.count == 1, let field = inner.first else { return nil }
         // **書ける形で名指しする**(2026-08-14 の実画面で判明): 内側の欄は無ラベル・無 id の
         // ことが多く、素の `describe` だと "textField" としか言えない —— 同型が5つ並ぶ画面では
-        // 選べないので助言にならない。包み側の id があればスコープ記法、無ければ ref を出す
+        // 選べないので助言にならない。包み側の id があればスコープ記法、無ければ ref を出す。
+        // **id の記法エスケープは `FTSelector.serialize` に委ねる**(2026-08-15) —— 手で
+        // `"#\(id)"` と組み立てると、id が(稀だが)`*` で始まる/終わるとき `#` 短縮形は
+        // ワイルドカードに化ける(`FTSelector.idToken` の規約)。唯一の正しい変換元を通す
         let how: String
         if let id = target.identifier, !id.isEmpty {
-            how = "#\(id) >> .\(field.type)"
+            how = "\(FTSelector.serialize(FlowLocator(id: id))) >> .\(field.type)"
         } else {
             how = "ref \(field.ref)"
         }
@@ -334,6 +370,11 @@ public enum TapTargetGeometry {
             + " end up something you did not type). Target the field itself: \(how)"
     }
 
+    /// **人が読む名指しであって、セレクタとして貼れる保証はしない**(2026-08-15)。
+    /// `#id` はそのまま貼れることが多いが、ラベル側は `型 "ラベル"` という複合表示で、
+    /// 記法として読まれる先頭文字(`#`/`.` 等)のエスケープも通していない —— ここを直すなら
+    /// `SelectorNaming` を使う経路(MCP の graded セレクタ)へ寄せるべきで、この関数は
+    /// あくまで「どれの話をしているか」を短く言うためのもの
     public static func describe(_ element: ElementInfo) -> String {
         if let id = element.identifier, !id.isEmpty { return "#\(id)" }
         if let label = element.label.map(FlowMatchMode.normalizeInvisibleCharacters), !label.isEmpty {
@@ -406,6 +447,9 @@ public enum TapTargetGeometry {
         guard let inner = missesItsOwnContent(element, in: elements, screen: screen) else {
             return nil
         }
+        // **`describe` と同じ「名指し」であってセレクタの保証はしない**(2026-08-15。
+        // ラベルはエスケープを通していない)。「代わりにこれを狙え」という助言だが、
+        // 対象は読み手が見て選ぶための短い名前で、DSL に書ける保証まで負わせていない
         let name = inner.identifier.map { "#\($0)" } ?? inner.label.map { "\"\($0)\"" } ?? inner.type
         return "the target is not interactive and its centre is not over any of its own content,"
             + " so the touch went to whatever is behind it (aim at \(name) instead)"

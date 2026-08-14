@@ -82,7 +82,7 @@
   **TOOL_ROOT の解決規則は preflight.sh / update.sh / `src/toolRootResolve.ts` と同じ**(4箇所。片方だけ変えない。
   `toolRootContract.test.mjs` が規則の3語(クローン判別マーカー・既定の隣・Package.swift の宣言)の欠落を検出)
 - DSL コマンドリファレンス(全コマンドの引数・挙動。利用者向け): docs/commands.md。
-  **機械可読な索引は `Sources/FTDSL/CommandIndex.swift`**(`ftester api dsl-commands` が出す。
+  **機械可読な索引は `Sources/FTCore/CommandIndex.swift`**(`ftester api dsl-commands` が出す。
   読者はコードを生成する側で、名前の存在確認に使う)。**コマンドを足す/消す/改名したら索引も直す**
   (`CommandIndexSyncTests` が Commands.swift / CommandsVerify.swift / CommandsAppControl.swift / ValueAssertions.swift / FTElement と突き合わせる)。
   **置いていない名前は `Sources/FTDSL/UnavailableCommands.swift` で受け止める**(他ツールの名前・
@@ -336,6 +336,35 @@
   が唯一の定義元で、run 前トリアージとモニターは**根拠(`FrozenEvidence`)を束ねた同じ型**を配る。
   プロセスを跨ぐ受け渡しは `FTCore.DeviceFrozenStore`(`.ftester/frozen-<key>.json`。RunLease と
   同じ pid 生存 + mtime)。**新しい根拠は `isConclusive=false`(警告)から入れる**
+- **共有するのは「判定」であって「文言」ではない**(2026-08-15)。同じ事実に対して MCP は
+  ツール名で逃げ道を書き(`ft_screenshot` / `ft_scroll_to`)、DSL はシナリオの言葉で書く
+  (`back()` を呼び直す)。**文言まで一本化しようとすると、既存の応答文字列を壊して
+  MCP のテストと注記の予算ゲート(`NoteBudgetTests`)に当たる**。正しい形は
+  **①判定・順序・当たり判定を FTCore に1つ ②文言は呼び手ごとに持つ**:
+  - タップ前警告の連鎖 = `TapTargetGeometry.advisoryKind`(当たった形を enum で返す)。
+    `occlusionAdvisory`(DSL)と `RefGuard.overlapWarning`(MCP)は**両方これを呼んで写すだけ**。
+    以前は同じ順序を2箇所に手で書いており、**実際に2形(ゼロ幅高さ frame・縁の細切れ)が
+    DSL にだけあって MCP のタップ時に出ていなかった**。「同じ優先順」はテストのコメントに
+    書いてあっただけで、照合するテストは1本も無かった
+  - 近い候補の選定 = `FTCore.SimilarLabels`。文言の組み立ては MCP と `StepExecutor.candidateHint`
+    がそれぞれ持つ。DSL 側は MCP が 2026-08-10 に捨てた旧版(部分文字列一致・文書順の先着3件)の
+    ままで、装飾要素が枠を埋めて実在する操作可能要素を出せない画面があった
+  - back の空振り = `FTCore.BackEffect`(中核文 + 呼び手ごとの advice)
+- **「書けるセレクタ」の規則は `FTCore.SelectorNaming` の1箇所**(2026-08-15 に FTCore へ降ろした)。
+  一意性(`picksOnlyOne`)・祖先スコープ・記法のエスケープ・耐久性の格付けを持つ。
+  **ヒール(自己修復)もここを通す** —— 旧 `FlowLocatorBuilder.chain` は一意性を見ずに
+  id/label を採っており、同じ id が複数ある画面で**別要素に解決するセレクタを利用者の .swift へ
+  書き戻していた**(`ftester api apply-heal` は直接書き込む)。書けるセレクタが無いときは
+  **操作は続けて修復だけ成立させない**(`StepNote.healUnwritable` で数える)——
+  掴んだ要素は手元にあるので叩くのは正しく、書き戻せないという理由で緑の run を赤にしない
+- **セレクタ文法(`FTSelector`)・コマンド索引(`CommandIndex`)・コード生成(`ScenarioCodeGen`)は
+  FTCore に居る**(2026-08-15 に FTDSL から降ろした)。写像先の `FlowLocator` が FTCore の型で、
+  DSL ランタイムには依存しない。FTDSL に置いていた間は **FTCore が `FTSelector.serialize` を
+  呼べず7箇所でセレクタを手で綴っており**、`ftester-mcp` はセレクタ文法のためだけに
+  DSL ランタイム全体をリンクしていた(この依存は外した)。利用者からの見え方は
+  `Descriptors.swift` の `@_exported import FTCore` が保っている。
+  **ただし FTCore の名指し(`TapTargetGeometry.describe` 等)は「どれの話か」を短く言うためのもので、
+  セレクタとして貼れる保証はしない** —— 貼れる形が要るなら `SelectorNaming` を通す
 - **1台の失敗で全体を落とさない**(2026-08-11 の実害)。ブリッジ供給は 10台中8台が ready でも
   残り2台の期限切れで throw し、**Flutter/RN の 51 本が1本も走らなかった**(健全な8台は待機のまま)。
   凍結機をレーンから外して残りで走るのと同じ思想で、**供給は部分失敗を許容し全滅のときだけ throw**

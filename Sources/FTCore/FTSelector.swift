@@ -31,8 +31,10 @@
 // 空振りで緑になるため。run 開始時と dry-run が呼ぶ)。
 // ラベルに `>>` `&&` `:right` `*` 等を含めたいときは先頭 `=` でエスケープ。
 
+// FTCore に居る理由: 写像先の FlowLocator は FTCore の型で、DSL ランタイム(FTRuntime)には
+// 依存しない(FTRuntime.perform への言及はコメントのみ)。
+
 import Foundation
-import FTCore
 
 public struct FTSelector {
     /// 元のセレクタ式(ログ・レポート・修正提案用)
@@ -47,8 +49,10 @@ public struct FTSelector {
     /// structured は構文検証を通さないので、**代わりにこれが唯一の防波堤**になる
     public let structuredError: String?
 
-    init(text: String, primary: FlowLocator, fallbacks: [FlowLocator], structured: Bool = false,
-         structuredError: String? = nil) {
+    // public: Sel.ftSelector(FTDSL)がここから直に組み立てる(型付きセレクタは validationError を
+    // 通らないので、この経路以外に structured=true を作る場所が無い)
+    public init(text: String, primary: FlowLocator, fallbacks: [FlowLocator], structured: Bool = false,
+                structuredError: String? = nil) {
         self.text = text
         self.primary = primary
         self.fallbacks = fallbacks
@@ -56,8 +60,9 @@ public struct FTSelector {
         self.structuredError = structuredError
     }
 
-    /// 実行前に落とすべき理由。型付きは組み立て時の誤り、文字列は構文検証(唯一の合流点)
-    var preflightError: String? {
+    /// 実行前に落とすべき理由。型付きは組み立て時の誤り、文字列は構文検証(唯一の合流点)。
+    /// public: FTRuntime.perform(FTDSL)が実行前ゲートとして読む
+    public var preflightError: String? {
         structured ? structuredError : FTSelector.validationError(text)
     }
 

@@ -4,7 +4,6 @@
 
 import XCTest
 import FTCore
-import FTDSL
 @testable import ftester_mcp
 
 private func testElement(ref: Int = 1, type: String = "staticText", identifier: String? = nil,

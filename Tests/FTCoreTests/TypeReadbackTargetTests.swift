@@ -57,4 +57,53 @@ final class TypeReadbackTargetTests: XCTestCase {
                                         actual: "1-2345"),
             "単一行12345")
     }
+
+    // ---- 不可視文字の正規化(2026-08-15) ----
+    // MCP 側(replaceVerificationNote/appendVerificationNote)は既に
+    // FlowMatchMode.normalizeInvisibleCharacters を両辺にかけているが、DSL のこの読み返し経路だけ
+    // 素の比較のままだと、見た目が同じ文字列でも不一致になり 8 秒待った末にシナリオが失敗する
+    // (MCP は緑・シナリオは赤という食い違い)。readbackTarget は expected/typedOnly/actual の
+    // 三者を自前で正規化するので、呼び出し側の正規化有無に関わらずここで検証できる。
+
+    /// ゼロ幅文字が**読み返し値だけ**に混じっていても正規化後は一致として扱う
+    func testTreatsInvisibleCharactersInActualAsAMatch() {
+        let target = StepExecutor.readbackTarget(expected: "priorHello", typedOnly: "Hello",
+                                                  actual: "priorHel\u{200B}lo")
+        XCTAssertEqual(target, "priorHello")
+        XCTAssertEqual(
+            TypeReadback.plan(expected: target,
+                              actual: FlowMatchMode.normalizeInvisibleCharacters("priorHel\u{200B}lo")),
+            .done)
+    }
+
+    /// ゼロ幅文字が**期待値だけ**に混じっていても正規化後は一致として扱う
+    func testTreatsInvisibleCharactersInExpectedAsAMatch() {
+        let target = StepExecutor.readbackTarget(expected: "priorHel\u{200B}lo", typedOnly: "Hello",
+                                                  actual: "priorHello")
+        XCTAssertEqual(target, "priorHello")
+        XCTAssertEqual(TypeReadback.plan(expected: target, actual: "priorHello"), .done)
+    }
+
+    /// ゼロ幅の雑音を落としても、見える文字の欠落(=本当の resend 対象)は隠さない
+    func testStillResendsVisibleCharactersAfterNormalizingNoise() {
+        let target = StepExecutor.readbackTarget(expected: "priorHello", typedOnly: "Hello",
+                                                  actual: "prio\u{200B}r")
+        XCTAssertEqual(target, "priorHello")
+        XCTAssertEqual(
+            TypeReadback.plan(expected: target,
+                              actual: FlowMatchMode.normalizeInvisibleCharacters("prio\u{200B}r")),
+            .resend("Hello"))
+    }
+
+    /// **逆方向の変異ガード**: 正規化しても消えない見える文字の差分(o と p)は依然として一致にならない
+    /// (「常に正規化して常に一致させる」実装への退化をここで検出する)
+    func testGenuinelyDifferentValuesStillDoNotMatchAfterNormalizing() {
+        let target = StepExecutor.readbackTarget(expected: "hello", typedOnly: "hello",
+                                                  actual: "hell\u{200B}p")
+        XCTAssertEqual(target, "hello")
+        XCTAssertEqual(
+            TypeReadback.plan(expected: target,
+                              actual: FlowMatchMode.normalizeInvisibleCharacters("hell\u{200B}p")),
+            .unverifiable)
+    }
 }

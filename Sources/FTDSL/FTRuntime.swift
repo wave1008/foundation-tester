@@ -188,7 +188,8 @@ public final class FTDriveCore {
     let scenarioTitle: String
     let emit: (ScenarioEvent) -> Void
     let healCache: HealCache
-    /// 検証コマンド(exist/textIs 等)の既定タイムアウト秒(実行プロファイルで変更可)
+    /// 検証コマンド(exist/textIs 等)の既定タイムアウト秒(実行プロファイルで変更可)。
+    /// 既定値の定義元は FTCore.DefaultWait(MCP の defaultWaitSeconds と共有)
     public let defaultTimeout: Double
 
     private(set) var record: ScenarioRecordData
@@ -397,7 +398,7 @@ public final class FTDriveCore {
         self.knownIDs = dryRun
             ? selectorInventoryURL.flatMap { SelectorInventory.load(at: $0) }?.ids(platform: platform)
             : nil
-        self.defaultTimeout = defaultTimeout ?? 5
+        self.defaultTimeout = defaultTimeout ?? DefaultWait.seconds
         self.emit = emit
         self.record = ScenarioRecordData(id: scenarioID, title: scenarioTitle,
                                          app: app, platform: platform,
@@ -889,6 +890,7 @@ public final class FTDriveCore {
     func performCustom(description: String, file: StaticString, line: UInt,
                        launchTiming: (() -> LaunchTiming?)? = nil,
                        isAssertion: Bool = false,
+                       note: (() -> StepNote?)? = nil,
                        _ body: @escaping () async throws -> Void) -> StepResult.Status {
         let filePath = relativePath("\(file)")
         if isAssertion { noteAssertion() }
@@ -924,9 +926,14 @@ public final class FTDriveCore {
             status = .failed("the operation timed out (\(Int(FTSync.commandTimeout))s)")
         }
         let timing = launchTiming?()
-        recordStep(description: description, status: status, file: "\(file)", line: Int(line),
+        // note は perform() の driverFallback と同じ見せ方(括弧書き)。StepNote.notes へも積むのは
+        // perform() の heldValue と同じ理由(run 横断で率を見たい注記は notes: 経由にする)
+        let resolvedNote = note?()
+        let recordedDescription = resolvedNote.map { "\(description)(\($0.text))" } ?? description
+        recordStep(description: recordedDescription, status: status, file: "\(file)", line: Int(line),
                    durationMs: elapsedMs, actionMs: timing?.actionMs, waitMs: timing?.waitMs,
-                   at: ISO8601Millis.string(from: Date()))
+                   at: ISO8601Millis.string(from: Date()),
+                   notes: resolvedNote.map { [$0] } ?? [])
 
         if case .failed(let reason) = status {
             handleFailure(stepDescription: description, reason: reason)

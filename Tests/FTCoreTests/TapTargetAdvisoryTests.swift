@@ -116,7 +116,14 @@ final class TapTargetAdvisoryTests: XCTestCase {
             for: e, screen: FTRect(x: 0, y: 0, width: 0, height: 0)))
     }
 
-    // MARK: - occlusionAdvisory(座標に依るチェーン。MCP の RefGuard.overlapWarning と同じ優先順)
+    // MARK: - occlusionAdvisory(座標に依るチェーン。連鎖と優先順の実体は advisoryKind)
+    //
+    // **advisoryKind が唯一の連鎖の定義**(2026-08-15): 以前はここに「MCP の
+    // RefGuard.overlapWarning と同じ優先順」という主張だけがあり、それを照合するテストが
+    // 無いままズレていた(zeroFrame・sliver の2形が MCP のタップ時に出ていなかった)。
+    // 今は両者が `TapTargetGeometry.advisoryKind` を呼ぶので、順序はここでしか変えられない。
+    // 優先順そのものの固定は下の TapAdvisoryKindPriorityTests、DSL/MCP が同じ kind を
+    // 経由することの固定は Tests/FTesterMCPTests/TapAdvisoryKindSharedTests.swift 側にある。
 
     func testZeroWidthFrameIsCalledOutByChain() {
         let e = element(1, "z", "button", 100, 100, 0, 40)
@@ -961,5 +968,118 @@ final class TapAdvisoryWiringTests: XCTestCase {
         let outcome = await StepExecutor(driver: driver)
             .execute(FlowStep(action: "type", locator: FlowLocator(id: "target"), text: "hello"))
         XCTAssertNil(outcome.driverFallback, "空値なのに注記が付いた: \(outcome.driverFallback ?? "")")
+    }
+}
+
+/// **advisoryKind の優先順を等号で固定する**(2026-08-15)。DSL(`occlusionAdvisory`)と
+/// MCP(`RefGuard.overlapWarning`)が両方これを呼ぶので、順序を入れ替える変異・
+/// どれか1形を落とす変異のどちらでも、ここか上の occlusionAdvisory 群のテストが落ちる。
+/// **各対は両方の条件が同時に成り立つ木で確かめる**(片方だけの木では「たまたま順序が
+/// 合っていた」を区別できない)
+final class TapAdvisoryKindPriorityTests: XCTestCase {
+
+    private let screen = FTRect(x: 0, y: 0, width: 1080, height: 2424)
+
+    /// **zeroFrame は offscreen より先**。高さ0(zeroFrame の条件)かつ中心が画面外
+    /// (offscreen の条件)という形で、frame の退化を先に言うこと
+    func testZeroFrameBeatsOffscreen() {
+        let e = ElementInfo(ref: 1, type: "button", identifier: "z", label: nil, value: nil,
+                            placeholder: nil, enabled: true,
+                            frame: FTRect(x: 100, y: -1000, width: 40, height: 0), depth: 2)
+        XCTAssertNotNil(TapTargetGeometry.offscreenAdvisory(for: e, screen: screen),
+                        "この形では offscreen 条件も同時に成り立つこと(対照の前提)")
+        guard case .zeroFrame = TapTargetGeometry.advisoryKind(for: e, in: [e], screen: screen) else {
+            return XCTFail("zeroFrame が先に勝つべき")
+        }
+    }
+
+    /// **overlayCovering は missedContent より先**。対象は非対話容器(`other`)で、
+    /// 自分の子(小さな画像)は中心を覆わない(missedContent の条件)が、同時に
+    /// 後から描かれた別要素が中心を覆う(overlayCovering の条件)。子の有無は
+    /// overlayCovering 側の判定に影響しないので、両条件は互いに独立に成立する
+    func testOverlayCoveringBeatsMissedContent() {
+        let target = ElementInfo(ref: 1, type: "other", identifier: "target", label: nil,
+                                 value: nil, placeholder: nil, enabled: true,
+                                 frame: FTRect(x: 0, y: 0, width: 100, height: 100), depth: 2)
+        let child = ElementInfo(ref: 2, type: "image", identifier: "child", label: nil,
+                                value: nil, placeholder: nil, enabled: true,
+                                frame: FTRect(x: 80, y: 80, width: 10, height: 10), depth: 3)
+        // **target と同じ矩形にしない**: `occluder` は矩形の完全一致を遮蔽と言わない
+        // (積み重なりは stackedRefs の担当なので、ここで同じ矩形にすると occluder が
+        // overlay を候補から外し、この対照が overlayCovering を1件も検証しないテストになる)
+        let overlay = ElementInfo(ref: 3, type: "clickable", identifier: "overlay", label: nil,
+                                  value: nil, placeholder: nil, enabled: true,
+                                  frame: FTRect(x: 30, y: 30, width: 40, height: 40), depth: 2)
+        let withOverlay = [target, child, overlay]
+        XCTAssertNotNil(TapTargetGeometry.missesItsOwnContent(target, in: withOverlay, screen: screen),
+                        "この形では missedContent 条件も同時に成り立つこと(対照の前提)")
+        guard case .overlayCovering(let hit) = TapTargetGeometry.advisoryKind(
+            for: target, in: withOverlay, screen: screen) else {
+            return XCTFail("overlayCovering が先に勝つべき")
+        }
+        XCTAssertEqual(hit.ref, overlay.ref)
+        // 陰性対照: overlay を除くと missedContent が代わりに発火する(条件自体は独立に成立)
+        guard case .missedContent(let inner) = TapTargetGeometry.advisoryKind(
+            for: target, in: [target, child], screen: screen) else {
+            return XCTFail("overlay が無ければ missedContent が発火するはず")
+        }
+        XCTAssertEqual(inner.ref, child.ref)
+    }
+
+    /// **nestedAction は stacked より先**。対象自身が3件の同一矩形(stacked の条件)の1つで、
+    /// かつその内側に別アクションの小さな帯を持つ(nestedAction の条件)。同一矩形の相手は
+    /// `sameFrame` 除外で overlayCovering には掛からないので、この2つだけが競合する
+    func testNestedActionBeatsStacked() {
+        let target = ElementInfo(ref: 1, type: "cell", identifier: "row1", label: "行1",
+                                 value: nil, placeholder: nil, enabled: true,
+                                 frame: FTRect(x: 0, y: 0, width: 100, height: 100), depth: 2)
+        let chip = ElementInfo(ref: 2, type: "button", identifier: "chip", label: nil,
+                               value: nil, placeholder: nil, enabled: true,
+                               frame: FTRect(x: 40, y: 40, width: 20, height: 20), depth: 3)
+        let dup2 = ElementInfo(ref: 3, type: "cell", identifier: "row2", label: "行2",
+                               value: nil, placeholder: nil, enabled: true,
+                               frame: FTRect(x: 0, y: 0, width: 100, height: 100), depth: 2)
+        let dup3 = ElementInfo(ref: 4, type: "cell", identifier: "row3", label: "行3",
+                               value: nil, placeholder: nil, enabled: true,
+                               frame: FTRect(x: 0, y: 0, width: 100, height: 100), depth: 2)
+        let elements = [target, chip, dup2, dup3]
+        XCTAssertTrue(OcclusionGeometry.stackedRefs(elements).contains(target.ref),
+                     "この形では stacked 条件も同時に成り立つこと(対照の前提)")
+        guard case .nestedAction(let nested) = TapTargetGeometry.advisoryKind(
+            for: target, in: elements, screen: screen) else {
+            return XCTFail("nestedAction が先に勝つべき")
+        }
+        XCTAssertEqual(nested.ref, chip.ref)
+        // 陰性対照: chip を除くと stacked が代わりに発火する
+        let withoutChip = [target, dup2, dup3]
+        guard case .stacked = TapTargetGeometry.advisoryKind(
+            for: target, in: withoutChip, screen: screen) else {
+            return XCTFail("chip が無ければ stacked が発火するはず")
+        }
+    }
+
+    /// **stacked は sliver より先**。同じ細帯(縁で切れたラベル付きタブ)が3件同一矩形に
+    /// 積まれた形にすると、stacked と sliver の両条件が同時に成り立つ
+    func testStackedBeatsSliver() {
+        func sliverShaped(_ ref: Int, _ label: String) -> ElementInfo {
+            ElementInfo(ref: ref, type: "tab", identifier: nil, label: label, value: nil,
+                        placeholder: nil, enabled: true,
+                        frame: FTRect(x: 1071, y: 100, width: 9, height: 137), depth: 1)
+        }
+        let elements = [sliverShaped(1, "サンライズ瀬戸1"), sliverShaped(2, "サンライズ瀬戸2"),
+                        sliverShaped(3, "サンライズ瀬戸3")]
+        let target = elements[0]
+        XCTAssertTrue(TapTargetGeometry.isClippedSliver(target, screen: screen),
+                     "この形では sliver 条件も同時に成り立つこと(対照の前提)")
+        guard case .stacked = TapTargetGeometry.advisoryKind(
+            for: target, in: elements, screen: screen) else {
+            return XCTFail("stacked が先に勝つべき")
+        }
+        // 陰性対照: 2件だけ(stackedFrameMinimum 未満)なら sliver が代わりに発火する
+        let onlyTwo = [elements[0], elements[1]]
+        guard case .sliver = TapTargetGeometry.advisoryKind(
+            for: target, in: onlyTwo, screen: screen) else {
+            return XCTFail("stacked の下限を割れば sliver が発火するはず")
+        }
     }
 }

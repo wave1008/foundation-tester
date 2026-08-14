@@ -349,7 +349,14 @@ extension StepExecutor {
     }
 
     /// 解決できなかったロケータに「惜しい候補」を最大3件添える(失敗メッセージ用)。
-    /// 優先度: id の部分一致 → ラベルの部分一致 → 同じ型。1件も無ければ nil(黙って何も足さない)
+    /// 優先度: id/ラベルの近さ(強い一致 > 操作可能 > 文書順)→ 同じ型。1件も無ければ nil(黙って何も足さない)
+    ///
+    /// id/ラベルの近さの選定は MCP(`MCPServer.similarLabelsHint`)と共有する `FTCore.SimilarLabels`
+    /// (2026-08-15 に置き換え)。旧実装(部分文字列一致だけ・装飾葉を除かず・文書順の先着3件)は
+    /// MCP が 2026-08-10 に同じ形を書き直した理由をそのまま引き継いでいた ——
+    /// 地図 POI のような装飾要素が短い CJK 語の緩い一致で枠を埋め、実在する操作可能要素を
+    /// 1件も出せない画面がある(実測は MCPServer+Hints.swift の similarLabelsHint 参照)。
+    /// **型による候補集めはここに残す**(SimilarLabels は id/ラベルの近さしか見ないため)
     static func candidateHint(for step: FlowStep, in snapshot: SnapshotResponse) -> String? {
         guard let locator = step.locator else { return nil }
         let elements = snapshot.elements
@@ -361,17 +368,11 @@ extension StepExecutor {
                 if picked.count >= 3 { return }
             }
         }
-        if let id = locator.id?.lowercased(), !id.isEmpty {
-            add(elements.filter {
-                guard let other = $0.identifier?.lowercased() else { return false }
-                return other.contains(id) || id.contains(other)
-            })
-        }
-        if let label = locator.label?.lowercased(), !label.isEmpty, picked.count < 3 {
-            add(elements.filter {
-                guard let other = $0.label?.lowercased() else { return false }
-                return other.contains(label) || label.contains(other)
-            })
+        func nonEmpty(_ s: String?) -> String? { (s?.isEmpty == false) ? s : nil }
+        let labelTarget = nonEmpty(locator.label), idTarget = nonEmpty(locator.id)
+        if labelTarget != nil || idTarget != nil {
+            add(SimilarLabels.candidates(labelTarget: labelTarget, idTarget: idTarget, in: snapshot)
+                .map(\.element))
         }
         if let type = locator.type, picked.count < 3 {
             // エイリアス(.input / .widget)も実型集合へ展開して候補を挙げる
@@ -383,8 +384,11 @@ extension StepExecutor {
             let summaries = picked.prefix(3).map { element -> String in
                 var parts = [element.type]
                 if let id = element.identifier, !id.isEmpty { parts.append("#\(id)") }
-                // 「代わりにこれを使え」と勧める文なので、**そのまま貼れる形**にする
-                // (ゼロ幅文字が残ると見た目が正しいのに一致しない)
+                // ゼロ幅文字は落とす(見た目が正しいのに一致しない事故を防ぐ)が、これは
+                // **「型 #id "ラベル」の複合名指し」**であって単一のセレクタ式ではない。
+                // ラベルは24字で切り詰めるので完全一致の保証も無い(SnapshotRenderer.truncate)——
+                // `TapTargetGeometry.describe` と同じ「後者」(単なる名指し)扱いで、記法として
+                // 読まれる先頭文字のエスケープ(SelectorNaming.needsEscaping)は通していない
                 if let label = element.label.map(FlowMatchMode.normalizeInvisibleCharacters),
                    !label.isEmpty {
                     parts.append("\"\(SnapshotRenderer.truncate(label, 24))\"")

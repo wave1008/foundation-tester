@@ -178,12 +178,29 @@ public func home(file: StaticString = #filePath, line: UInt = #line) {
 }
 
 /// 前の画面へ戻る(Android = 戻るキー / iOS = ナビゲーションバーの戻るボタン、
-/// 無ければ左端エッジスワイプ。Shirates の pressBack 相当)
+/// 無ければ左端エッジスワイプ。Shirates の pressBack 相当)。
+/// **自前ナビの画面(SwiftUI の `#btn_back` 等)はシステム back を無視することがある** ——
+/// 判定・文言は MCP の ft_navigate と共有(FTCore.BackEffect)。before は毎回素直に1枚読む
+/// (前回の back() の木を使い回すキャッシュは持たない。理由は BackEffect.swift 参照。
+/// 「間に他のコマンドが挟まっていなければ使い回せる」形は back() が連続しない限り一度も
+/// 発火せず、E2E 全 SUT で back() は各1回しか呼ばれないため実質恒久的に沈黙していた)
 public func back(file: StaticString = #filePath, line: UInt = #line) {
     let core = FTRuntime.requireCore(command: "back")
     let driver = core.systemDriver
-    core.performCustom(description: "back", file: file, line: line) {
+    // **木を読むのは systemDriver ではなく driver**: hybrid の systemDriver は typeDriver
+    // (AppAttachDriver)で、snapshot のたびに**テスト対象アプリを再前面化する**(このファイルの
+    // homeScreenDriver の宣言参照)。前後で2回読むこの経路で使うと、観測のはずが画面を動かす。
+    // 見たいのは「アプリの画面が back で変わったか」なので、対象アプリを映す driver が正しい。
+    // 読めなければ黙る(判定材料が無いのに断定しない = MCP の ft_navigate と同じ規律)
+    let observer = core.driver
+    var observedNote: StepNote?
+    core.performCustom(description: "back", file: file, line: line, note: { observedNote }) {
+        let before = try? await observer.snapshot()
         try await driver.back()
+        guard let before, let after = try? await observer.snapshot() else { return }
+        if BackEffect.shouldWarn(before: before.elements, afterObservations: [after.elements]) {
+            observedNote = .backIneffective
+        }
     }
 }
 

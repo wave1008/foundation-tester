@@ -126,6 +126,8 @@ extension StepExecutor {
         guard let element,
               let cover = OcclusionSuspicion.covering(element: element, in: elements, screen: screen)
         else { return "" }
+        // **`TapTargetGeometry.describe` と同じ「名指し」**(2026-08-15)。失敗文言に混ぜる
+        // 説明であって、読み手がそのまま貼れるセレクタである保証はしない(エスケープ未対応)
         let label = cover.identifier.map { "#\($0)" } ?? cover.label.map { "\"\($0)\"" } ?? cover.type
         return " (the target is covered by \(label); the interaction may have been swallowed by it)"
     }

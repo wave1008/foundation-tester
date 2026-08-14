@@ -402,37 +402,6 @@ public enum FlowTypeAlias {
     }
 }
 
-public enum FlowLocatorBuilder {
-    /// スナップショット中の要素から、優先ロケータ+フォールバック連鎖を導出する。
-    /// 優先度: accessibility id > label > type+index
-    /// 同期対象: vscode-ftester/src/liveModel.ts locatorChainForElement。
-    /// id があるときは位置依存の type+index フォールバックは足さない(id は安定なので `.TextField` 等は
-    /// 冗長・ノイズ。生成コードの `#id||.Type` を `#id` にする)。
-    public static func chain(for element: ElementInfo, in elements: [ElementInfo])
-        -> (primary: FlowLocator, fallbacks: [FlowLocator]) {
-        var locators: [FlowLocator] = []
-        var hasId = false
-        if let id = element.identifier {
-            locators.append(FlowLocator(id: id))
-            hasId = true
-        }
-        if let label = element.label {
-            locators.append(FlowLocator(label: label))
-        }
-        if !hasId {
-            let sameType = elements.filter { $0.type == element.type }
-            if let index = sameType.firstIndex(where: { $0.ref == element.ref }) {
-                locators.append(FlowLocator(type: element.type, index: index))
-            }
-        }
-        if locators.isEmpty {
-            // 最後の砦: 座標も何もない場合は type だけでも残す
-            locators.append(FlowLocator(type: element.type, index: 0))
-        }
-        return (locators[0], Array(locators.dropFirst()))
-    }
-}
-
 public extension FlowStep {
     /// ステップの人間可読な1行表現(ヒールプロンプト・コード生成のフォールバック表示用)
     var summary: String {

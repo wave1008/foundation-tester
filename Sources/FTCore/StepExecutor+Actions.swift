@@ -561,15 +561,36 @@ extension StepExecutor {
         } else if healingEnabled, let delegate,
                   let proposal = await delegate.healLocator(step: step, snapshot: snapshot),
                   proposal.confidence == "high" {
-            // 自己修復: 新しいロケータ連鎖に置き換えたステップを返す(永続化は呼び出し側)
+            // 自己修復: 新しいロケータ連鎖に置き換えたステップを返す(永続化は呼び出し側 →
+            // `ftester api apply-heal` が利用者の .swift ソースへ直接書き込む経路がある)。
+            // **書けるセレクタは `SelectorNaming` にだけ決めさせる**(2026-08-15。旧実装
+            // `FlowLocatorBuilder.chain` は一意性を見ずに id/label をそのまま採っていたため、
+            // 同じ id を複数持つ画面では書いたセレクタが別要素に解決していた)。
             element = proposal.element
-            let (primary, fallbacks) = FlowLocatorBuilder.chain(for: element, in: snapshot.elements)
-            var healed = step
-            healed.locator = primary
-            healed.fallbacks = fallbacks.isEmpty ? nil : fallbacks
-            healed.note = (step.note.map { $0 + " / " } ?? "") + "self-healed: \(proposal.rationale)"
-            healedStep = healed
-            status = .healed(primary)
+            // **`graded` が nil = この画面でその要素を一意に指せる書き方が無い**。
+            // **操作は続け、修復だけ成立させない**(2026-08-15)。掴んだ要素は手元にあるので
+            // 叩くこと自体は正しく、ここで失敗させるとシナリオ全体が中断する = 書き戻せない
+            // という理由だけで緑の run を赤にすることになる。塞ぎたい欠陥は「壊れたセレクタが
+            // 利用者の資産へ書かれる」ことなので、`healedStep` を立てない(= 修正提案も
+            // ヒールキャッシュも作らない)だけで足りる。**黙らない** —— 毎回 FM を呼び直す
+            // 状態が続くので、率が上がったら id/ラベルの一意性を疑う手掛かりとして数える
+            if let graded = SelectorNaming(snapshot).graded(for: proposal.element, in: snapshot) {
+                // 得たセレクタは `FTSelector.parse` で往復させ、綴りと意味の唯一の写像を通す
+                let parsed = FTSelector.parse(graded.selector)
+                var healed = step
+                healed.locator = parsed.primary
+                healed.fallbacks = parsed.fallbacks.isEmpty ? nil : parsed.fallbacks
+                // **indexed(位置依存)は書き込む前に必ず言う**(Durability.caution が文言を持つ)
+                // —— 兄弟の増減で別要素を指すようになるセレクタを、黙って利用者のソースへ書かない
+                healed.note = (step.note.map { $0 + " / " } ?? "") + "self-healed: \(proposal.rationale)"
+                    + graded.durability.caution
+                healedStep = healed
+                status = .healed(parsed.primary)
+            } else {
+                var notes: [String] = []
+                note(.healUnwritable, into: &notes)
+                driverFallback = Self.joinNotes(driverFallback, notes.joined(separator: " / "))
+            }
         } else {
             // 惜しい候補を添える。これが無いと直すために snapshot を取り直す往復が必要になる
             // (レポート側の全要素一覧は ScenarioReportWriter が別途出す)
@@ -912,6 +933,14 @@ extension StepExecutor {
         var rounds = 0
         var stagnantRounds = 0
         var previous: String?
+        // 不可視文字を正規化する(2026-08-15): MCP の replaceVerificationNote/appendVerificationNote
+        // と同じ規律 —— これが無いと、実データが混入させるゼロ幅文字(Flow.swift 参照)だけで
+        // 実質同じ文字列が不一致と判定され、8秒待った末にシナリオごと失敗する。TypeReadback.swift は
+        // ブリッジ共有ファイルで編集不可なので、正規化は呼び出し側(ここ・readbackTarget・
+        // awaitTypeCommit)に置く。expected.count は正規化後を使う —— 不可視文字は利用者の目に
+        // 映らないので、見えている文字数で失敗を語るほうが親切
+        let expected = FlowMatchMode.normalizeInvisibleCharacters(expected)
+        let typedOnly = FlowMatchMode.normalizeInvisibleCharacters(typedOnly)
 
         while true {
             rounds += 1
@@ -925,12 +954,17 @@ extension StepExecutor {
             case .done, .unverifiable:
                 return nil
             case .resend(let missing):
+                // target は正規化済み(readbackTarget)なので missing も正規化済み = 不可視文字を
+                // 落とした形。**原文の不可視文字は再現できない**(expected は既存値+本文の連結で、
+                // どちらの由来かここでは分からない)が、不可視文字は表示に現れないので、
+                // 見える文字を送り損ねるより実害が小さい
                 let start = clock.now
                 try await driver.type(ref: element.ref, text: missing)
                 phase.actionMs += Self.ms(clock.now - start)
             case .deleteExcess:
                 // in-app はバックスペースを送れないので、丸ごとクリアしてから全文を打ち直す
-                // (handleClear と同じ 422 系の判断。clearInput のケースの既存実装と同じ API 形)
+                // (handleClear と同じ 422 系の判断。clearInput のケースの既存実装と同じ API 形)。
+                // target は正規化済み(上と同じ理由で受け入れる)
                 let start = clock.now
                 try await driver.clearInput(ref: element.ref)
                 try await driver.type(ref: element.ref, text: target)
@@ -953,11 +987,17 @@ extension StepExecutor {
                                  typedOnly: String,
                                  deadline: Date, phase: inout PhaseAccumulator) async throws -> String? {
         let clock = ContinuousClock()
+        // 正規化(readbackTarget と同じ理由・同じ関数)。呼び出し側(verifyTypedText)は既に
+        // 正規化済みを渡すが、ここでも掛け直す(冪等なので害はない) —— これが無いと下の早期終了
+        // 条件だけ素通りし、実質一致していても stableSeconds ぶん待たされる
+        let expected = FlowMatchMode.normalizeInvisibleCharacters(expected)
+        let typedOnly = FlowMatchMode.normalizeInvisibleCharacters(typedOnly)
         func read() async throws -> String? {
             let start = clock.now
             let snap = try await driver.snapshot()
             phase.snapshotMs += Self.ms(clock.now - start)
             return TypeReadback.value(of: element, in: snap.elements)
+                .map(FlowMatchMode.normalizeInvisibleCharacters)
         }
         guard var lastValue = try await read() else { return nil }
         var lastChange = Date()
@@ -996,6 +1036,13 @@ extension StepExecutor {
     /// (prior="abc" に "abc" を追記)で**追記が届かなかった失敗**が `.done` に見える。
     /// 採り直しは「今なら諦めていた」場合だけに限る = 既存の検査を弱めない
     static func readbackTarget(expected: String, typedOnly: String, actual: String) -> String {
+        // 不可視文字を正規化してから比較する(2026-08-15。MCP の
+        // replaceVerificationNote/appendVerificationNote と同じ規律)。self-contained にする
+        // (呼び出し側での正規化に依存しない) —— これが無いと、ゼロ幅文字が expected/typedOnly/actual
+        // のどれか1つにだけ混じった時点で .unverifiable に落ち、追送も打ち直しも走らず受理される
+        let expected = FlowMatchMode.normalizeInvisibleCharacters(expected)
+        let typedOnly = FlowMatchMode.normalizeInvisibleCharacters(typedOnly)
+        let actual = FlowMatchMode.normalizeInvisibleCharacters(actual)
         guard expected != typedOnly else { return expected }
         guard case .unverifiable = TypeReadback.plan(expected: expected, actual: actual) else {
             return expected

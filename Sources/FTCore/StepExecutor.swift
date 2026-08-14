@@ -656,6 +656,8 @@ public final class StepExecutor {
             var text = " (the preceding \(last.description) did not change the screen at all"
                 + "; the interaction may have been swallowed"
             if let taken = last.pointTakenBy {
+                // 名指しであって貼れるセレクタの保証はしない(TapTargetGeometry.describe と同じ判断。
+                // 2026-08-15。エスケープ未対応)
                 let label = taken.identifier.map { "#\($0)" } ?? taken.label.map { "\"\($0)\"" }
                     ?? taken.type
                 text += " — its point was inside \(label), which is in front of the target"

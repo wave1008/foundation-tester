@@ -6,7 +6,6 @@
 
 import XCTest
 import FTCore
-import FTDSL
 @testable import ftester_mcp
 
 final class MCPWritableSelectorTests: XCTestCase {

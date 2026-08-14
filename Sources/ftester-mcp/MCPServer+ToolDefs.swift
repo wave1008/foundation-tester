@@ -6,7 +6,6 @@ import FTAgent
 import FTAndroid
 import FTBridgeClient
 import FTCore
-import FTDSL
 
 extension MCPServer {
 

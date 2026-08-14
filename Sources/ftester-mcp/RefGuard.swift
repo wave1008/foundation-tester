@@ -262,41 +262,52 @@ enum RefGuard {
             + " not what you see. Bring it into view with ft_scroll_to and re-snapshot)"
     }
 
+    /// **判定は `TapTargetGeometry.advisoryKind` の1箇所だけ**(DSL の `occlusionAdvisory` と共有)。
+    /// ここは kind を MCP の文言(要素を名指しし、ft_screenshot / ft_scroll_to という MCP の
+    /// ツール名で逃げ道を書く)へ写すだけ —— 順序・当たり判定を書き直さない
     static func overlapWarning(found: ElementInfo, in elements: [ElementInfo], screen: FTRect) -> String {
-        // 画面外の中心は「何にも当たらない」= 遮蔽・中身外しより強い事実なので先に言う
-        let offscreen = offscreenWarning(found, screen: screen)
-        if !offscreen.isEmpty { return offscreen }
-        // **次に容器の外**: これが真なら frame そのものが今の描画位置ではないので、
-        // 以下の遮蔽・中身外しはその古い frame を前提にした話になり、名指しが嘘になる
-        let scrolledOut = scrolledOutWarning(found, in: elements)
-        if !scrolledOut.isEmpty { return scrolledOut }
-        if let over = overlayCovering(found, in: elements, screen: screen) {
+        guard let kind = TapTargetGeometry.advisoryKind(for: found, in: elements, screen: screen)
+        else { return "" }
+        switch kind {
+        case .zeroFrame:
+            // **DSL にだけあり MCP のタップ時には出ていなかった形**(2026-08-15 に合流)
+            return " (warning: \(describe(found))'s reported frame has zero width/height,"
+                + " so the tap may land on whatever is at that point — verify with ft_screenshot)"
+        case .offscreen:
+            // 画面外の中心は「何にも当たらない」= 遮蔽・中身外しより強い事実なので先に言う
+            return offscreenWarning(found, screen: screen)
+        case .scrolledOut:
+            // **容器の外**: これが真なら frame そのものが今の描画位置ではないので、
+            // 以下の遮蔽・中身外しはその古い frame を前提にした話になり、名指しが嘘になる
+            return scrolledOutWarning(found, in: elements)
+        case .overlayCovering(let over):
             return " (warning: \(describe(over)) is drawn over the center of \(describe(found)),"
                 + " so this may have hit \(describe(over)) instead — verify with ft_screenshot,"
                 + " or scroll the element clear of the overlay first)"
-        }
-        if let inner = missesItsOwnContent(found, in: elements, screen: screen) {
+        case .missedContent(let inner):
             return " (warning: \(describe(found)) is not interactive and its center is not over any"
                 + " of its own content, so this tap went to whatever is behind it."
                 + " Target the content instead, e.g. \(describe(inner)))"
-        }
-        // **子孫が中心を横取りしている**。`overlayCovering` は子孫を除外するので届かない
-        // (2026-08-09 に Apple マップの検索候補で実害。TapTargetGeometry の解説を参照)
-        if let nested = nestedActionCoveringCentre(found, in: elements) {
+        case .nestedAction(let nested):
+            // **子孫が中心を横取りしている**。`overlayCovering` は子孫を除外するので届かない
+            // (2026-08-09 に Apple マップの検索候補で実害。TapTargetGeometry の解説を参照)
             return " (warning: \(describe(nested)) sits inside \(describe(found)) and covers its"
                 + " center, so this may have triggered \(describe(nested)) instead of"
                 + " \(describe(found)) — verify with ft_screenshot, and target the part you"
                 + " actually want)"
-        }
-        if stackedRefs(elements).contains(found.ref) {
+        case .stacked:
             // **「完全一致」と断定しない**(2026-08-14): 判定は原点だけが同じで大きさが違う
             // クランプも見るようになった(OcclusionGeometry.originClampedRefs)。DSL 側の
             // 同じ文面(TapTargetGeometry.occlusionAdvisory)と揃える
             return " (warning: \(describe(found)) is stacked on the same spot as other elements,"
                 + " so at most one of them is really drawn there — the rest are clamped"
                 + " leftovers. Bring it into view with ft_scroll_to and re-snapshot)"
+        case .sliver:
+            // **DSL にだけあり MCP のタップ時には出ていなかった形**(2026-08-15 に合流)
+            return " (warning: \(describe(found)) is clipped to a thin sliver at the edge of its"
+                + " container, so it is narrower than it looks and the tap may miss —"
+                + " verify with ft_screenshot)"
         }
-        return ""
     }
 
     static func movedNote(found: ElementInfo, moved: Double, cause: String) -> String {

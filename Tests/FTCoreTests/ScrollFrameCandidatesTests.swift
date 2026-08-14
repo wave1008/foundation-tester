@@ -66,17 +66,26 @@ final class ScrollFrameCandidatesTests: XCTestCase {
         XCTAssertEqual(found.first?.selector, "#list_rows")
     }
 
-    func testLabelIsUsedWhenThereIsNoIdButNotWhenItIsTooLongOrQuoted() {
+    func testLabelIsUsedWhenThereIsNoIdButNotWhenItIsTooLong() {
         let frame = FTRect(x: 0, y: 100, width: 400, height: 200)
+        // 実際に FTSelector で往復する**素の**形(2026-08-15。旧実装は `"…"` で囲んでいたが、
+        // FTSelector の記法は引用符を特別扱いしないため、その形は要素の実ラベルに一致しなかった)
         XCTAssertEqual(ScrollFrameCandidates.selector(
             for: element(1, label: "Recent items", frame: frame, scrollable: true)),
-                       "\"Recent items\"")
+                       "Recent items")
         // 切り詰めると別のセレクタになるので、長いラベルは名指しできない扱い
         let long = String(repeating: "a", count: ScrollFrameCandidates.maxLabelLength + 1)
         XCTAssertNil(ScrollFrameCandidates.selector(
             for: element(2, label: long, frame: frame, scrollable: true)))
-        XCTAssertNil(ScrollFrameCandidates.selector(
-            for: element(3, label: "say \"hi\"", frame: frame, scrollable: true)))
+        // ラベルに引用符を含んでいても、FTSelector の記法としては何の意味も持たないので
+        // エスケープ不要でそのまま書ける(旧実装は誤って弾いていた)
+        XCTAssertEqual(ScrollFrameCandidates.selector(
+            for: element(3, label: "say \"hi\"", frame: frame, scrollable: true)),
+                       "say \"hi\"")
+        // **記法として読まれる先頭文字は `=` で逃がす**(SelectorNaming.needsEscaping と同じ判定)
+        XCTAssertEqual(ScrollFrameCandidates.selector(
+            for: element(4, label: "#hashtag", frame: frame, scrollable: true)),
+                       "=#hashtag")
     }
 
     // MARK: - note

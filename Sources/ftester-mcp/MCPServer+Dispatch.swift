@@ -6,7 +6,6 @@ import FTAgent
 import FTAndroid
 import FTBridgeClient
 import FTCore
-import FTDSL
 
 extension MCPServer {
 
@@ -1363,8 +1362,8 @@ extension MCPServer {
             // 覚えている木が無ければチェック自体をしない(照合の起点が無いのに撃つのは
             // 余計な往復を増やすだけ)。指紋は記憶から読むだけなので往復は増えない
             let wantsSnapshotAfter = args["snapshotAfter"] as? Bool == true
-            let beforeBackFingerprint = target == "back"
-                ? lastSnapshots[Self.engineKey(args)].map(Self.treeFingerprint) : nil
+            let beforeBackElements = target == "back"
+                ? lastSnapshots[Self.engineKey(args)]?.elements : nil
             switch target {
             case "back": try await navigation.back()
             case "home": try await navigation.home()
@@ -1385,34 +1384,31 @@ extension MCPServer {
                 snapshotAfterSucceeded = result.succeeded
             }
             var backIneffectiveNote = ""
-            if let before = beforeBackFingerprint {
+            if let before = beforeBackElements {
+                // 判定そのものは FTCore.BackEffect(DSL の back() と共有・2つ目の指紋実装を作らない)。
                 // **1回の撮り直しでは判定しない**(ポーリング): アニメーション途中の木を
                 // 「変わっていない」と誤読しないため。取得に失敗したら黙って諦める
-                // (成功した観測が1つも無ければ「変わっていない」と断言する材料が無い)
-                var sawChange = false
-                var sawAnySnapshot = false
+                // (成功した観測が1つも無ければ「変わっていない」と断言する材料が無い =
+                // BackEffect.shouldWarn は observations が空なら false を返す)
+                var observations: [[ElementInfo]] = []
                 if wantsSnapshotAfter {
                     // **撮り直しに成功した回だけ判定する**(2026-08-12): snapshotAfterBody が
                     // 読みに失敗すると lastSnapshots は back 前の木のまま残り、succeeded を見ずに
                     // 読むと指紋が自明に一致して「back は効かなかった」と誤読する(catch した回の
                     // 謝罪文の横に、矛盾する偽の注記が並ぶ)
                     if snapshotAfterSucceeded, let after = lastSnapshots[Self.engineKey(args)] {
-                        sawAnySnapshot = true
-                        sawChange = Self.treeFingerprint(after) != before
+                        observations = [after.elements]
                     }
                 } else {
-                    for _ in 0..<4 {
-                        try? await Task.sleep(for: .seconds(0.3))
+                    for _ in 0..<BackEffect.pollCount {
+                        try? await Task.sleep(for: .seconds(BackEffect.pollIntervalSeconds))
                         guard let after = try? await freshSnapshot(navigation, args: args) else { continue }
-                        sawAnySnapshot = true
-                        if Self.treeFingerprint(after) != before { sawChange = true; break }
+                        observations.append(after.elements)
+                        if !BackEffect.treesAreIdentical(before: before, after: after.elements) { break }
                     }
                 }
-                if sawAnySnapshot, !sawChange {
-                    backIneffectiveNote = ". note: the tree is identical to the one before back —"
-                        + " back appears to have had no effect on this screen (apps drawing their"
-                        + " own back button often ignore the system back); tap the app's own back"
-                        + " control, or send back again"
+                if BackEffect.shouldWarn(before: before, afterObservations: observations) {
+                    backIneffectiveNote = ". note: " + BackEffect.note(advice: BackEffect.mcpAdvice)
                 }
             }
             // **「画面が変わった」と断言しない**(2026-08-06 の探索で外した): iOS の back は
@@ -1820,12 +1816,10 @@ extension MCPServer {
         return header + Self.pruningListing(scope) + "\n" + code
     }
 
-    /// 下書きに書かれる形。`FTSelector` を通して往復させ、**ScenarioCodeGen が出す綴りに揃える**
-    /// (あちらも `serialize` で書き戻すので、ここを通せば注記とコードが必ず一致する)
+    /// 実体は `FTCore.SelectorNaming.asWritten`(2026-08-15 に移設。needsEscaping/computeGraded が
+    /// 使うため SelectorNaming と一緒に FTCore へ移った)。ここは呼び出し元の綴りを変えないための転送
     static func asWritten(_ selector: String) -> String {
-        let parsed = FTSelector.parse(selector)
-        let serialized = FTSelector.serialize(primary: parsed.primary, fallbacks: parsed.fallbacks)
-        return serialized.isEmpty ? selector : serialized
+        SelectorNaming.asWritten(selector)
     }
 
     /// 下書きの行末に残す但し書き。安定なセレクタには**付けない** ——
@@ -2229,7 +2223,7 @@ extension MCPServer {
         return text(lines.joined(separator: "\n"))
     }
 
-    /// DSL コマンド索引(`ftester api dsl-commands` と同じ出典 = Sources/FTDSL/CommandIndex.swift)。
+    /// DSL コマンド索引(`ftester api dsl-commands` と同じ出典 = Sources/FTCore/CommandIndex.swift)。
     /// **既定は名前と署名だけ**にする: 全 136 件の要約まで返すと 15KB 級になり、
     /// 「どのコマンドがあるか」を知りたいだけの呼び出しでコンテキストを食う。
     /// 要約が要るときは name / category で絞る

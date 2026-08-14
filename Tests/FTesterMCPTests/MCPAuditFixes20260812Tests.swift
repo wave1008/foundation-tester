@@ -10,7 +10,6 @@
 import XCTest
 import FTBridgeClient
 import FTCore
-import FTDSL
 @testable import ftester_mcp
 
 final class MCPAuditFixes20260812Tests: XCTestCase {
