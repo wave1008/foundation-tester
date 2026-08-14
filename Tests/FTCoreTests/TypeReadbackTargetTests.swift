@@ -65,15 +65,53 @@ final class TypeReadbackTargetTests: XCTestCase {
     // (MCP は緑・シナリオは赤という食い違い)。readbackTarget は expected/typedOnly/actual の
     // 三者を自前で正規化するので、呼び出し側の正規化有無に関わらずここで検証できる。
 
-    /// ゼロ幅文字が**読み返し値だけ**に混じっていても正規化後は一致として扱う
+    /// ゼロ幅文字が**読み返し値だけ**に混じっていても正規化後は一致として扱う。
+    ///
+    /// **`actual` の正規化は readbackTarget 自身がやること**を確かめる形にしてある(2026-08-15)。
+    /// アサーション側で `normalizeInvisibleCharacters` を掛けてから `plan` を呼ぶ書き方だと、
+    /// テストが production の代わりに正規化してしまい、**production 側の正規化を外しても落ちない**
+    /// (変異で実際に生き残った)。ここは正規化していない生の値だけを渡す。
+    ///
+    /// この組(expected ≠ typedOnly かつ actual が typedOnly と正規化後だけ一致)を選ぶのは、
+    /// **戻り値が分岐する唯一の形**だから —— actual を正規化しないと両方の plan が
+    /// `.unverifiable` になり `expected` が返る(= 追記が届いていないのに全文一致を期待し続ける)
     func testTreatsInvisibleCharactersInActualAsAMatch() {
-        let target = StepExecutor.readbackTarget(expected: "priorHello", typedOnly: "Hello",
-                                                  actual: "priorHel\u{200B}lo")
-        XCTAssertEqual(target, "priorHello")
-        XCTAssertEqual(
-            TypeReadback.plan(expected: target,
-                              actual: FlowMatchMode.normalizeInvisibleCharacters("priorHel\u{200B}lo")),
-            .done)
+        let target = StepExecutor.readbackTarget(expected: "priorhi", typedOnly: "hi",
+                                                  actual: "h\u{200B}i")
+        XCTAssertEqual(target, "hi", "actual を正規化していれば typedOnly 側へ寄る")
+    }
+
+    /// 実経路(type ステップ全体)で確かめる版。`readbackTarget` 単体では
+    /// `awaitTypeCommit` が読み返した値を正規化しているかを確かめられない。
+    ///
+    /// **不可視文字が途中にある形**(`Hel\u{200B}lo`): 正規化しないと `plan` の前方一致が
+    /// どちらにも成立せず `.unverifiable` = **黙って受理**になる。ステップは緑のまま通るので、
+    /// **読み返しの砦が丸ごと外れたことに誰も気付かない**(このファイル冒頭の witness と同じ型)。
+    /// ここは「通ること」ではなく**検証を諦めていないこと**を見たいので、下の末尾形と対で置く
+    func testTypeStepAcceptsAValueThatOnlyDiffersByInvisibleCharacters() async {
+        let outcome = await runTypeStep(fieldValue: "Hel\u{200B}lo", typing: "Hello")
+        XCTAssertTrue(StepExecutor.isSuccess(outcome.status),
+                      "ゼロ幅文字だけの差で読み返しを失敗させてはいけない: \(outcome.status)")
+    }
+
+    /// **不可視文字が末尾にある形**(`Hello\u{200B}`): 正規化しないと `actual.hasPrefix(expected)`
+    /// が成立して `.deleteExcess` へ落ち、**clearInput + 全文打ち直し**が走る。打ち直しても欄は
+    /// 同じ値を返すので停滞し、最後は "did not settle" で**ステップが失敗する**(最大 8 秒)。
+    /// 正規化していれば1周目で `.done`。**この形が正規化を外した変異を殺す唯一の入力**
+    /// (途中形は `.unverifiable` で緑のまま通ってしまうため)
+    func testTypeStepDoesNotRetypeOverATrailingInvisibleCharacter() async {
+        let outcome = await runTypeStep(fieldValue: "Hello\u{200B}", typing: "Hello")
+        XCTAssertTrue(StepExecutor.isSuccess(outcome.status),
+                      "末尾のゼロ幅文字を「余分な入力」と読んで打ち直してはいけない: \(outcome.status)")
+    }
+
+    /// **空の欄**へ1回 type し、以後は `fieldValue` を読み返す形。
+    /// 撃つ前を空にするのが肝 —— 撃つ前から値が入っていると `expected = 既存値 + 本文` になり、
+    /// 検証したい「打った文字がそのまま入ったか」ではなく追記の話になる
+    private func runTypeStep(fieldValue: String, typing: String) async -> StepOutcome {
+        let driver = ReadbackStubDriver(before: "", after: fieldValue)
+        return await StepExecutor(driver: driver).execute(
+            FlowStep(action: "type", locator: FlowLocator(id: "field"), text: typing))
     }
 
     /// ゼロ幅文字が**期待値だけ**に混じっていても正規化後は一致として扱う
@@ -106,4 +144,42 @@ final class TypeReadbackTargetTests: XCTestCase {
                               actual: FlowMatchMode.normalizeInvisibleCharacters("hell\u{200B}p")),
             .unverifiable)
     }
+}
+
+/// 打鍵の前後で欄の値が変わるドライバ。`verifiesTypedText` は既定 false = in-app 相当なので
+/// `StepExecutor` がホスト側で読み返す経路(検証したい経路)を通る。
+/// `clearInput` は**わざと何もしない** —— `.deleteExcess` へ落ちた回に打ち直しても値が変わらず
+/// 停滞することで、「正規化を外すと失敗する」を観測できるようにする
+private final class ReadbackStubDriver: AppDriver {
+    private let before: String
+    private let after: String
+    private var typed = false
+    init(before: String, after: String) { self.before = before; self.after = after }
+
+    private var response: SnapshotResponse {
+        SnapshotResponse(sessionBundleID: nil,
+                         screen: FTRect(x: 0, y: 0, width: 400, height: 800),
+                         elements: [ElementInfo(ref: 1, type: "textField", identifier: "field",
+                                                label: nil, value: typed ? after : before,
+                                                placeholder: nil, enabled: true,
+                                                frame: FTRect(x: 0, y: 0, width: 100, height: 40),
+                                                depth: 1)],
+                         truncatedCount: 0)
+    }
+    func status() async throws -> StatusResponse {
+        StatusResponse(ready: true, device: "stub", osVersion: "-", sessionBundleID: nil)
+    }
+    func install(packagePath: String) async throws {}
+    func uninstall(bundleID: String) async throws {}
+    func isAppForeground(bundleID: String) async throws -> Bool { false }
+    func foregroundAppID() async throws -> String? { nil }
+    func launch(bundleID: String) async throws {}
+    func snapshot() async throws -> SnapshotResponse { response }
+    func tap(ref: Int) async throws {}
+    func tap(x: Double, y: Double) async throws {}
+    func type(ref: Int?, text: String) async throws { typed = true }
+    func swipe(_ direction: FTSwipeDirection) async throws {}
+    func press(ref: Int, duration: Double) async throws {}
+    func screenshot() async throws -> Data { Data() }
+    func terminate() async throws {}
 }

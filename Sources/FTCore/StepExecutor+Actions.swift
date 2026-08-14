@@ -934,11 +934,16 @@ extension StepExecutor {
         var stagnantRounds = 0
         var previous: String?
         // 不可視文字を正規化する(2026-08-15): MCP の replaceVerificationNote/appendVerificationNote
-        // と同じ規律 —— これが無いと、実データが混入させるゼロ幅文字(Flow.swift 参照)だけで
-        // 実質同じ文字列が不一致と判定され、8秒待った末にシナリオごと失敗する。TypeReadback.swift は
-        // ブリッジ共有ファイルで編集不可なので、正規化は呼び出し側(ここ・readbackTarget・
-        // awaitTypeCommit)に置く。expected.count は正規化後を使う —— 不可視文字は利用者の目に
-        // 映らないので、見えている文字数で失敗を語るほうが親切
+        // と同じ規律。実データが混入させるゼロ幅文字(Flow.swift 参照)だけで、実質同じ文字列が
+        // `TypeReadback.plan` の前方一致から外れる。**壊れ方は混入位置で2つに割れる**:
+        //   途中(`Hel<ZWSP>lo`)= どちらの前方一致も成立せず `.unverifiable` で**黙って受理** ——
+        //     ステップは緑のまま通り、読み返しの砦が丸ごと外れたことに気付けない
+        //   末尾(`Hello<ZWSP>`)= `actual.hasPrefix(expected)` が成立して `.deleteExcess` へ落ち、
+        //     clearInput + 全文打ち直しが走る。欄は同じ値を返すので停滞し、最大 8 秒で
+        //     "did not settle" として**失敗する**(緑の run が赤になる)
+        // TypeReadback.swift はブリッジ共有ファイルで編集不可(BridgeSourceSet)なので、正規化は
+        // 呼び出し側(ここ・readbackTarget・awaitTypeCommit)に置く。expected.count は正規化後を
+        // 使う —— 不可視文字は利用者の目に映らないので、見えている文字数で失敗を語るほうが親切
         let expected = FlowMatchMode.normalizeInvisibleCharacters(expected)
         let typedOnly = FlowMatchMode.normalizeInvisibleCharacters(typedOnly)
 

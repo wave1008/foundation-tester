@@ -64,6 +64,20 @@ final class SimilarLabelsTests: XCTestCase {
         let top = SimilarLabels.candidates(labelTarget: "経路", idTarget: nil, in: tree)
         XCTAssertEqual(top.first?.matchedText, "計画")
     }
+
+    /// **同じ文字が複数の要素に出たときの取捨**。候補は一致した文字で1件に畳むので、
+    /// どちらの要素を代表に採るかは畳む時点で決まる —— 文書順で先に出た装飾側ではなく
+    /// **操作可能な方**を残す。上のテストは全部が別々の文字なのでこの分岐を1度も通らず、
+    /// 「先着を採る」実装への退化を検出できなかった(2026-08-15 の変異で発覚)
+    func testCandidatesKeepTheOperableElementWhenTheSameTextAppearsTwice() {
+        let tree = snapshot([
+            node(1, type: "staticText", label: "計画"),
+            node(2, type: "button", label: "計画"),
+        ])
+        let top = SimilarLabels.candidates(labelTarget: "経路", idTarget: nil, in: tree)
+        XCTAssertEqual(top.count, 1, "同じ文字は1件に畳む")
+        XCTAssertEqual(top.first?.element.ref, 2, "文書順で後でも操作可能な方を代表に採る")
+    }
 }
 
 // MARK: - StepExecutor.candidateHint(この選定の利用者)
