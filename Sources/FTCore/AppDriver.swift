@@ -141,6 +141,16 @@ public protocol AppDriver {
     /// キャッシュを捨てた snapshot(`snapshot(bypassingCache: true)`)が意味を持つか。
     /// **ラッパードライバは base の値を透過すること**(false 固定にすると最内の Android へ届かない)
     var supportsCacheBypass: Bool { get }
+    /// **木の座標1単位あたり何 px か**(iOS = 1: 木は pt / Android = 表示密度: 木は px)。
+    /// 幾何の床(`StepExecutor.minimumVisibleTapExtent`)を木の単位へ換算するために使う。
+    ///
+    /// iOS の pt(1/163 inch)と Android の dp(1/160 inch)は**物理的にほぼ同じ**なので、
+    /// pt で測った床は dp としてそのまま通用する —— 足りないのは px への換算だけ。
+    /// 換算しないと 3倍密度の端末で床が約3倍緩くなり、**わずかな重なりを「見えている部分」と
+    /// 信じて叩く**(2026-08-15。コメントが pt と書いてある値を px の木へ当てていた)。
+    /// **プロトコル要件として宣言すること**(install(packagePath:) と同じ理由)。
+    /// **ラッパードライバは base の値を透過すること**(1 に落とすと最内の Android へ届かない)
+    var pointScale: Double { get }
     /// type(ref:text:) を自前で読み返して検証済みか(xcuitest ランナー・Android 注入器は内部で
     /// 読み返す。iOS in-app ブリッジは読み返さない=false)。false のときだけ StepExecutor が
     /// 読み返しを行う(TypeReadback.swift 参照)。**プロトコル要件として宣言すること**
@@ -228,6 +238,9 @@ public extension AppDriver {
 
     /// 既定は未検証(false)= StepExecutor 側の読み返しが働く安全側。検証済みドライバだけが true を宣言する
     var verifiesTypedText: Bool { false }
+
+    /// 既定は 1(木が pt = iOS 系)。px で木を返す Android だけが密度を申告する
+    var pointScale: Double { 1 }
 
     func activate(bundleID: String) async throws {
         try await launch(bundleID: bundleID)

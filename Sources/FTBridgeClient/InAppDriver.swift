@@ -143,6 +143,7 @@ public final class InAppDriver: AppDriver {
         client.raiseElementLimitOnNextSnapshot(max)
     }
     public var supportsCacheBypass: Bool { client.supportsCacheBypass }
+    public var pointScale: Double { client.pointScale }
     /// **client.verifiesTypedText を転送しない**: client(BridgeClient)は XCUITest ランナー向けの
     /// 既定 true を持つが、ここでは同じ HTTP プロトコルで in-app ブリッジ(読み返し無し)を話している。
     /// 固定 false で StepExecutor 側の読み返しを常に働かせる

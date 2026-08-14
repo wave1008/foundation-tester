@@ -104,6 +104,7 @@ public final class LaunchPreflightDriver: AppDriver {
         base.raiseElementLimitOnNextSnapshot(max)
     }
     public var supportsCacheBypass: Bool { base.supportsCacheBypass }
+    public var pointScale: Double { base.pointScale }
     public var verifiesTypedText: Bool { base.verifiesTypedText }
     public func tap(ref: Int) async throws { try await base.tap(ref: ref) }
     public func tap(x: Double, y: Double) async throws { try await base.tap(x: x, y: y) }

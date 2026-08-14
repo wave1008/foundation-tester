@@ -35,6 +35,7 @@ public final class SystemUIDriver: AppDriver {
         client.raiseElementLimitOnNextSnapshot(max)
     }
     public var supportsCacheBypass: Bool { client.supportsCacheBypass }
+    public var pointScale: Double { client.pointScale }
     public var verifiesTypedText: Bool { client.verifiesTypedText }
 
     public func tap(ref: Int) async throws { try await client.tap(ref: ref) }

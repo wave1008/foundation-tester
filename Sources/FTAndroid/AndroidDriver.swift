@@ -35,6 +35,9 @@ public final class AndroidDriver: AppDriver {
     /// raiseElementLimitOnNextSnapshot() が立てる1回限りの要素上限(nil = 既定)
     private var pendingElementLimit: Int?
 
+    /// `pointScale` の1度きりの実測値(端末ごとに固定)
+    private var cachedPointScale: Double?
+
     private struct PersistedState: Codable {
         var centers: [Int: [Double]]
         var screen: FTRect
@@ -93,10 +96,21 @@ public final class AndroidDriver: AppDriver {
     /// 論理 px → 物理 px の倍率(DOM の CSS px を画面座標へ写すのに要る)
     func displayDensity() -> Double {
         guard let out = try? adb(["shell", "wm", "density"]).output,
-              let match = out.split(separator: "\n").last(where: { $0.contains("density") }),
-              let value = match.split(separator: ":").last.flatMap({ Double($0.trimmingCharacters(in: .whitespaces)) })
-        else { return 1 }
-        return value / 160.0
+              let density = Self.parseDisplayDensity(out) else { return 1 }
+        return density
+    }
+
+    /// `adb shell wm density` の出力 → **dp あたりの px**。
+    /// **最後の density 行**を採る(`Override density` があればそれが実効値)。
+    /// 160 は dp の定義そのもの(1dp = 1/160 inch)なので調整値ではない。
+    /// 読めなければ nil = 呼び手は 1(換算しない = 従来の挙動)へ落ちる
+    static func parseDisplayDensity(_ output: String) -> Double? {
+        guard let line = output.split(separator: "\n").last(where: { $0.contains("density") }),
+              let dpi = line.split(separator: ":").last
+                .flatMap({ Double($0.trimmingCharacters(in: .whitespaces)) }),
+              dpi > 0
+        else { return nil }
+        return dpi / 160.0
     }
 
     func adb(_ args: [String]) throws -> Shell.Result {
@@ -313,6 +327,16 @@ public final class AndroidDriver: AppDriver {
     }
 
     public var supportsCacheBypass: Bool { true }
+
+    /// 木は px で来るので、**pt/dp で決めた床を px へ換算する倍率**(= 表示密度)。
+    /// 端末ごとに固定なので1度だけ引く(`wm density` の adb 往復をタップのたび払わない)。
+    /// 引けなければ 1 = 換算しない側 = 従来の挙動(嘘の倍率を作らない)
+    public var pointScale: Double {
+        if let cachedPointScale { return cachedPointScale }
+        let value = displayDensity()
+        cachedPointScale = value
+        return value
+    }
 
     /// InputInjector が ACTION_SET_TEXT のたび自前で読み返す(docs/design.md §Android のテキスト注入の規律)
     public var verifiesTypedText: Bool { true }

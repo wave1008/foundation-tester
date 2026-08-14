@@ -189,6 +189,7 @@ public final class HybridFallbackDriver: AppDriver {
         active.raiseElementLimitOnNextSnapshot(max)
     }
     public var supportsCacheBypass: Bool { active.supportsCacheBypass }
+    public var pointScale: Double { active.pointScale }
     public var verifiesTypedText: Bool { active.verifiesTypedText }
     public func status() async throws -> StatusResponse { try await active.status() }
     public func screenshot() async throws -> Data { try await active.screenshot() }

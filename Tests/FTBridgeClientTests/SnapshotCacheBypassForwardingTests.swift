@@ -33,6 +33,7 @@ final class SnapshotCacheBypassForwardingTests: XCTestCase {
         var missingBypass: [String] = []
         var missingSupports: [String] = []
         var missingElementLimit: [String] = []
+        var missingPointScale: [String] = []
         var checked = 0
         for dir in ["Sources/FTBridgeClient", "Sources/FTAndroid", "Sources/FTCore"] {
             let base = root.appendingPathComponent(dir)
@@ -54,6 +55,11 @@ final class SnapshotCacheBypassForwardingTests: XCTestCase {
                 if !source.contains("func raiseElementLimitOnNextSnapshot(_ max: Int?)") {
                     missingElementLimit.append(file.lastPathComponent)
                 }
+                // 同型の4本目(2026-08-15): 木の単位(px か pt か)も**包む側が透過しないと
+                // 既定の 1 に落ち**、Android で幾何の床が密度ぶん緩む(誤タップは沈黙する)
+                if !source.contains("var pointScale: Double") {
+                    missingPointScale.append(file.lastPathComponent)
+                }
             }
         }
         XCTAssertGreaterThan(checked, 3, "走査対象が見つからない = パスかシグネチャの書式が変わった")
@@ -66,5 +72,8 @@ final class SnapshotCacheBypassForwardingTests: XCTestCase {
         XCTAssertTrue(missingElementLimit.isEmpty,
                       "同じ型は raiseElementLimitOnNextSnapshot も base へ素通しすること"
                       + "(既定の no-op に落ちると maxElements が黙って効かない): \(missingElementLimit)")
+        XCTAssertTrue(missingPointScale.isEmpty,
+                      "同じ型は pointScale も base の値を透過すること"
+                      + "(既定の 1 に落ちると Android の木が px なのに pt の床で判定される): \(missingPointScale)")
     }
 }

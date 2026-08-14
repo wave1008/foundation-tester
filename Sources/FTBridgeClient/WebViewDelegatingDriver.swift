@@ -66,6 +66,8 @@ public final class WebViewDelegatingDriver: AppDriver {
     public var supportsCacheBypass: Bool {
         mode == .delegated ? delegated.supportsCacheBypass : primary.supportsCacheBypass
     }
+    /// **どちらの経路でも同じ端末**なので mode を見ない(委譲へ落ちた回だけ床が変わるのを防ぐ)
+    public var pointScale: Double { primary.pointScale }
 
     /// **両方へ立てる**(supportsCacheBypass と違い、こちらは撮る前に決める必要がある):
     /// mode は「直前の snapshot」が決めた値で、次の1回がどちらから読まれるかは

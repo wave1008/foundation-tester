@@ -685,7 +685,8 @@ extension StepExecutor {
             // (visibleTapRect 参照)。ref で撃つとブリッジが frame の中心へ解決するので、
             // 壊れた frame ではそのまま容器の外を叩いて黙って飲まれる
             if let visible = Self.visibleTapRect(for: element, in: snapshot.elements,
-                                                inferring: step.containerInference ?? true) {
+                                                inferring: step.containerInference ?? true,
+                                                scale: driver.pointScale) {
                 try await actingDriver.tap(x: visible.centerX, y: visible.centerY)
                 driverFallback = Self.joinNotes(driverFallback,
                     "tapped the visible part (the reported frame's centre falls outside its container)")
