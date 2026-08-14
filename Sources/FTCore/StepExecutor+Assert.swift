@@ -4,24 +4,43 @@
 
 import Foundation
 
-/// 期限切れで失敗と決める**前に**、キャッシュを捨てた snapshot でもう1周だけ確かめる。
-/// Android の a11y ツリーは IME 等が前面のとき数秒古い値を返し続けるため、アプリは正しいのに
-/// 検証だけが落ちる(docs/verification.md「ブリッジの『偽陰性』を疑う手順」)。
-/// **通ったアサーションは1円も払わない**(期限切れ時にしか撃たない)。
-/// 対応しないドライバ(iOS 系。鮮度問題を持たない)では arm 自体を行わず周回を増やさない。
+/// キャッシュを捨てた snapshot でもう1周だけ確かめる仕掛け。撃つ場面が**2つ**ある。
+/// Android の a11y ツリーは IME 等が前面のとき数秒古い値を返し続ける
+/// (docs/verification.md「ブリッジの『偽陰性』を疑う手順」)。
+/// 対応しないドライバ(iOS 系。鮮度問題を持たない)ではどちらも行わず周回を増やさない。
+///
+/// - `arm`: **失敗と決める前**(期限切れ)。アプリは正しいのに検証だけが落ちるのを防ぐ。
+///   誤った**失敗**を潰す側で、通るアサーションは1円も払わない
+/// - `confirmPass`: **否定形を通す前**。古い木は「まだ現れていない」姿を返すので、
+///   不在・不一致での pass は**誤った成功**になりうる(2026-08-14 の掃討で発見)。
+///   肯定形が同じ穴を持たないのは、古い木が期待値に一致せずポーリングが続くから ——
+///   つまり肯定形は運で守られているだけで、**否定形だけが通る側にも払う必要がある**
+///
+/// **予算は別々に持つ**(片方を使っても他方は残る)。共有にすると、pass の確認で使い切った
+/// アサーションが期限切れ時に取り直せず、塞いだ穴の隣に誤った失敗を作る
 struct AssertFreshRetry {
-    private var used = false
+    private var failUsed = false
+    private var passUsed = false
     private var armed = false
 
     /// 期限到達時に呼ぶ。true なら「取り直してもう1周」
     mutating func arm(ifSupported supported: Bool) -> Bool {
-        guard supported, !used else { return false }
-        used = true
+        guard supported, !failUsed else { return false }
+        failUsed = true
         armed = true
         return true
     }
 
-    /// snapshot 取得時に呼ぶ。arm した直後の1周だけ true
+    /// **否定形が pass を返す直前**に呼ぶ。true なら「取り直して確かめ直す」。
+    /// 1アサーションにつき1回だけなので、確認の周で再び pass に達したらそのまま通る
+    mutating func confirmPass(ifSupported supported: Bool) -> Bool {
+        guard supported, !passUsed else { return false }
+        passUsed = true
+        armed = true
+        return true
+    }
+
+    /// snapshot 取得時に呼ぶ。arm/confirmPass した直後の1周だけ true
     mutating func takeArmed() -> Bool {
         defer { armed = false }
         return armed
@@ -416,6 +435,8 @@ extension StepExecutor {
         // 可視性(occlusion)は見ない: ツリーから消えたことが唯一の判定。
         let deadline = Date().addingTimeInterval(step.timeout ?? 5)
         var freshRetry = AssertFreshRetry()
+        // 否定形を通す前の確認は1周だけ(上の continue が deadline 検査を飛ばすため)
+        var passConfirmed = false
         var backoff = PollBackoff()
         var lastElements: [ElementInfo] = []   // 失敗文言の tapDiagnosisHint 用
         while true {
@@ -425,6 +446,16 @@ extension StepExecutor {
             try await dismissInterruption(in: &snapshot, phase: &phase)
             lastElements = snapshot.elements
             if Self.resolve(step: step, in: snapshot, strictForAssert: true) == nil {
+                // **不在は古い木でも成立する**(要素が現れた直後はキャッシュが追いつかない)ので、
+                // 通す前にキャッシュを捨てて1周だけ確かめる。ここを省くと誤った成功になる。
+                // `continue` は deadline 検査を飛ばすため、**確認は1周だけ**が無限ループを
+                // 防ぐ不変条件になっている。AssertFreshRetry の予算だけに頼らず局所でも止める
+                // (予算側が壊れたときの症状が「失敗」でなく「ハング」になるのを避ける)
+                if !passConfirmed,
+                   freshRetry.confirmPass(ifSupported: driver.supportsCacheBypass) {
+                    passConfirmed = true
+                    continue
+                }
                 // primary で不在 = pass だが、hybrid ではシステム UI(別プロセスのダイアログ)が
                 // primary の snapshot に映らない。不在を確定する側でだけ fallbackDriver を1回照会する
                 // (pass 経路の固定費 1 回のみ。miss 毎に払う exists 側の間引きとは事情が逆)
@@ -470,6 +501,8 @@ extension StepExecutor {
         }
         let deadline = Date().addingTimeInterval(step.timeout ?? 5)
         var freshRetry = AssertFreshRetry()
+        // 否定形を通す前の確認は1周だけ(上の continue が deadline 検査を飛ばすため)
+        var passConfirmed = false
         var backoff = PollBackoff()
         var found = false
         var lastActual: String?
@@ -497,6 +530,13 @@ extension StepExecutor {
                     assert, actual: actual, expected: step.expected,
                     normalization: Self.textNormalization(for: step))
                 if satisfied {
+                    // 否定形の成立は古い値でも起きる(変わる前の値が条件を満たす)。
+                    // 通す前にキャッシュを捨てて1周だけ確かめる(局所ガードの理由も notExists と同じ)
+                    if !passConfirmed,
+                       freshRetry.confirmPass(ifSupported: driver.supportsCacheBypass) {
+                        passConfirmed = true
+                        continue
+                    }
                     if let fallback { return .passedViaFallback(fallback) }
                     return .passed
                 }
@@ -596,6 +636,8 @@ extension StepExecutor {
         let wantShown = assert == "keyboardShown"
         let deadline = Date().addingTimeInterval(step.timeout ?? 5)
         var freshRetry = AssertFreshRetry()
+        // 否定形を通す前の確認は1周だけ(上の continue が deadline 検査を飛ばすため)
+        var passConfirmed = false
         var backoff = PollBackoff()
         var lastShown: Bool?
         while true {
@@ -605,7 +647,17 @@ extension StepExecutor {
             phase.snapshotMs += Self.ms(clock.now - start)
             try await dismissInterruption(in: &snapshot, phase: &phase)
             lastShown = snapshot.keyboardShown
-            if snapshot.keyboardShown == wantShown { return .passed }
+            if snapshot.keyboardShown == wantShown {
+                // **否定側(keyboardIsNotShown)だけ**通す前に確かめる。閉じたと読めた木が
+                // 古いと、開いたままのキーボードを「閉じている」と通す。肯定側は
+                // 「開くのを待つ」用途なので古い木では一致せずポーリングが続く
+                if !wantShown, !passConfirmed,
+                   freshRetry.confirmPass(ifSupported: driver.supportsCacheBypass) {
+                    passConfirmed = true
+                    continue
+                }
+                return .passed
+            }
             if Date() >= deadline {
                 // 失敗と決める前に、キャッシュを捨てた1周だけ確かめる(AssertFreshRetry)
                 if freshRetry.arm(ifSupported: driver.supportsCacheBypass) { continue }

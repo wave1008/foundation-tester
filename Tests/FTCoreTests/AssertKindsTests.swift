@@ -842,4 +842,76 @@ final class AssertKindsTests: XCTestCase {
         XCTAssertNotNil(failureReason(outcome.status))
         XCTAssertEqual(driver.freshReads, 0)
     }
+
+    // MARK: - 否定形を通す前の確認(AssertFreshRetry.confirmPass)
+
+    // **この群の失敗モードは沈黙(誤った成功)**なので、緑は証拠にならない。
+    // 各テストは「古い木なら通ってしまう盤面」を作り、**通らないこと**を見る。
+
+    /// notExist: 要素は実在するのに古い木にまだ載っていない。確認が無ければ**誤って成功**する
+    func testNotExistDoesNotPassOnAStaleAbsence() async {
+        let driver = StaleCacheDriver(stale: [], fresh: [node(1, id: "dialog", label: "エラー")])
+        let step = FlowStep(assert: "notExists", locator: FlowLocator(id: "dialog"),
+                            timeout: 0, occlusionGuard: false)
+        let outcome = await StepExecutor(driver: driver).execute(step)
+        XCTAssertNotNil(failureReason(outcome.status),
+                        "実在する要素を不在と通した(誤った成功): \(outcome.status)")
+        XCTAssertGreaterThan(driver.freshReads, 0, "確認の取り直しが撃たれていない")
+    }
+
+    /// 逆方向: **本当に不在**なら従来どおり通る(確認が誤検出を生まないこと)。
+    /// 取り直しは1回だけ = 通る側の固定費を増やさない
+    func testNotExistStillPassesWhenGenuinelyAbsent() async {
+        let driver = StaleCacheDriver(stale: [], fresh: [])
+        let step = FlowStep(assert: "notExists", locator: FlowLocator(id: "dialog"),
+                            timeout: 0, occlusionGuard: false)
+        let outcome = await StepExecutor(driver: driver).execute(step)
+        XCTAssertTrue(isPassed(outcome.status), "不在なのに落ちた: \(outcome.status)")
+        XCTAssertEqual(driver.freshReads, 1)
+    }
+
+    /// 否定テキスト比較: 値は既に "new" なのに古い木が "old" を返す。
+    /// `textIsNot "new"` は古い値で成立してしまう
+    func testNegativeTextComparisonDoesNotPassOnAStaleValue() async {
+        let driver = StaleCacheDriver(stale: [node(1, id: "txt", label: "old")],
+                                      fresh: [node(1, id: "txt", label: "new")])
+        let step = FlowStep(assert: "textNotEquals", locator: FlowLocator(id: "txt"),
+                            expected: "new", timeout: 0, occlusionGuard: false)
+        let outcome = await StepExecutor(driver: driver).execute(step)
+        XCTAssertNotNil(failureReason(outcome.status),
+                        "古い値で否定条件を満たして通した(誤った成功): \(outcome.status)")
+    }
+
+    /// 逆方向: 値が本当に違うなら通る
+    func testNegativeTextComparisonStillPassesWhenGenuinelyDifferent() async {
+        let driver = StaleCacheDriver(stale: [node(1, id: "txt", label: "old")],
+                                      fresh: [node(1, id: "txt", label: "old")])
+        let step = FlowStep(assert: "textNotEquals", locator: FlowLocator(id: "txt"),
+                            expected: "new", timeout: 0, occlusionGuard: false)
+        let outcome = await StepExecutor(driver: driver).execute(step)
+        XCTAssertTrue(isPassed(outcome.status), "値が違うのに落ちた: \(outcome.status)")
+    }
+
+    /// 非対応ドライバ(iOS 系)では否定形でも取り直さない = 固定費を増やさない
+    func testNegativePassIsNotConfirmedOnUnsupportedDrivers() async {
+        let driver = StaleCacheDriver(stale: [], fresh: [node(1, id: "dialog")],
+                                      supportsBypass: false)
+        let step = FlowStep(assert: "notExists", locator: FlowLocator(id: "dialog"),
+                            timeout: 0, occlusionGuard: false)
+        let outcome = await StepExecutor(driver: driver).execute(step)
+        XCTAssertTrue(isPassed(outcome.status))
+        XCTAssertEqual(driver.freshReads, 0)
+    }
+
+    /// 予算は pass 側と fail 側で別々 —— pass の確認で使い切っても、期限切れの取り直しは残る。
+    /// 共有にすると、塞いだ穴の隣に**誤った失敗**を作る
+    func testPassConfirmationDoesNotConsumeTheFailureRetryBudget() async {
+        var retry = AssertFreshRetry()
+        XCTAssertTrue(retry.confirmPass(ifSupported: true))
+        XCTAssertTrue(retry.takeArmed())
+        XCTAssertFalse(retry.confirmPass(ifSupported: true), "pass 側は1回だけ")
+        XCTAssertTrue(retry.arm(ifSupported: true), "fail 側の予算まで消費している")
+        XCTAssertTrue(retry.takeArmed())
+        XCTAssertFalse(retry.arm(ifSupported: true), "fail 側も1回だけ")
+    }
 }
