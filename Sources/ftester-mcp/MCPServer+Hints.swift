@@ -2100,10 +2100,46 @@ extension MCPServer {
     /// 下限を2へ下げると、`button "自宅、追加"` とその子 `#IconImage-TitleLabel-SubtitleLabel`
     /// のようなラッパー対が全部鳴る —— どちらを掴んでも同じものなので曖昧ではない。
     /// `RefGuard.stackedRefs` が同じ理由で使っている除外と同型
+    /// **前提が崩れる形が1つある**(2026-08-14 に実機 Android の YouTube で実測): 祖先が
+    /// **画面規模の面**で、子孫が**その中の小さな操作子**のとき、「どちらを掴んでも同じ」は
+    /// 成り立たない。実測 —— 広告再生中の `clickable "Skip" #player_overlays (0,136 1080x1683)`
+    /// と `clickable "Skip" #skip_ad_button (888,1555 192x132)` が同じラベルを名乗り、
+    /// 前者は再生面のトグル・後者は広告スキップで**別の動作**なのに、一本鎖なので曖昧警告が
+    /// 出ず、`tap 'Skip'` は木の順序で**面のほう**へ解決する。
+    ///
+    /// 条件は3つとも要る(**コーパス全数で誤検知0**を測ってから入れた):
+    /// ⑴ 群のうち**2つ以上が操作可能型** —— 片方が staticText なら触れても祖先が受け取るので
+    ///   無害(大小を `interactive` から採るので 75 件の誤検知はそこで消えている。この guard 自体は
+    ///   不変条件の明示で、外しても振る舞いは変わらない = 変異では殺せない)
+    /// ⑵ 大きいほうの**中心が小さいほうの外**にある(中に入るなら撃つ場所が同じ)
+    /// ⑶ 大きいほうが**画面規模**(`fullScreenContainerAreaRatio`)—— これが無いと
+    ///   `and-browser_weektable` の入れ子リンク(面積比2倍)が鳴る。実測の witness は
+    ///   画面の 72% を占める再生面で、比は約 72 倍
     static func isSingleChain(_ group: [ElementInfo], in snapshot: SnapshotResponse) -> Bool {
         guard let first = group.first else { return true }
         let chain = TapTargetGeometry.lineage(of: first, in: snapshot.elements)
-        return group.allSatisfy { chain.contains($0.ref) }
+        guard group.allSatisfy({ chain.contains($0.ref) }) else { return false }
+        return !chainHidesADifferentTarget(group, in: snapshot)
+    }
+
+    /// 一本鎖でも「どちらを掴んでも同じ」が成り立たない形か(`isSingleChain` の doc 参照)
+    static func chainHidesADifferentTarget(_ group: [ElementInfo],
+                                           in snapshot: SnapshotResponse) -> Bool {
+        func area(_ e: ElementInfo) -> Double { e.frame.width * e.frame.height }
+        let interactive = group.filter { TapTargetGeometry.interactiveTypes.contains($0.type) }
+        guard interactive.count >= 2,
+              let big = interactive.max(by: { area($0) < area($1) }),
+              let small = interactive.min(by: { area($0) < area($1) })
+        else { return false }
+        let screenArea = snapshot.screen.width * snapshot.screen.height
+        guard screenArea > 0,
+              area(big) >= screenArea * TapTargetGeometry.fullScreenContainerAreaRatio
+        else { return false }
+        let cx = big.frame.x + big.frame.width / 2
+        let cy = big.frame.y + big.frame.height / 2
+        let centreInsideSmall = small.frame.x <= cx && cx <= small.frame.x + small.frame.width
+            && small.frame.y <= cy && cy <= small.frame.y + small.frame.height
+        return !centreInsideSmall
     }
 
     /// 語を1文字も含まないラベル(記号・約物・空白だけ)。曖昧ラベル一覧の唯一の除外判定。

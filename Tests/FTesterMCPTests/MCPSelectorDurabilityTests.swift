@@ -276,4 +276,59 @@ final class MCPSelectorDurabilityTests: XCTestCase {
         }
         XCTFail("曖昧ラベル注記が1枚も出ないコーパスでは凡例を検証できない")
     }
+
+    /// **一本鎖でも「どちらを掴んでも同じ」が成り立たない形**(2026-08-14・実機 Android の
+    /// YouTube で実測)。画面規模の再生面と、その中の小さなスキップボタンが同じラベルを名乗る。
+    /// 前者は再生トグル・後者は広告スキップで**別の動作**なのに、一本鎖として曖昧警告から
+    /// 除外されていた(`MCPServer.isSingleChain` の doc 参照)
+    func testFullScreenSurfaceSharingALabelWithASmallButtonIsAmbiguous() {
+        let screen = FTRect(x: 0, y: 0, width: 1080, height: 2340)
+        let surface = ElementInfo(ref: 1, type: "clickable", identifier: "player_overlays",
+                                  label: "Skip", value: nil, placeholder: nil, enabled: true,
+                                  frame: FTRect(x: 0, y: 136, width: 1080, height: 1683), depth: 2)
+        let button = ElementInfo(ref: 2, type: "clickable", identifier: "skip_ad_button",
+                                 label: "Skip", value: nil, placeholder: nil, enabled: true,
+                                 frame: FTRect(x: 888, y: 1555, width: 192, height: 132), depth: 3)
+        let snap = SnapshotResponse(sessionBundleID: nil, screen: screen,
+                                    elements: [surface, button], truncatedCount: 0)
+        XCTAssertFalse(MCPServer.isSingleChain([surface, button], in: snap),
+                       "画面規模の面と中の小さなボタンを『同じもの』として除外した")
+    }
+
+    /// 陰性対照3つ(どれか1つでも欠けるとコーパスで誤検知が出る。全数で測って決めた):
+    /// 片方が非操作 / 中心が中に入る / 大きいほうが画面規模でない
+    func testOrdinaryWrapperChainsStayExcluded() {
+        let screen = FTRect(x: 0, y: 0, width: 1080, height: 2340)
+        func snap(_ els: [ElementInfo]) -> SnapshotResponse {
+            SnapshotResponse(sessionBundleID: nil, screen: screen, elements: els, truncatedCount: 0)
+        }
+        // ⑴ 中身が staticText(触れても祖先が受け取る)= 実アプリで最も多い形
+        let row = ElementInfo(ref: 1, type: "clickable", identifier: "row", label: "設定",
+                              value: nil, placeholder: nil, enabled: true,
+                              frame: FTRect(x: 0, y: 0, width: 1080, height: 2000), depth: 2)
+        let text = ElementInfo(ref: 2, type: "staticText", identifier: nil, label: "設定",
+                               value: nil, placeholder: nil, enabled: true,
+                               frame: FTRect(x: 30, y: 20, width: 200, height: 60), depth: 3)
+        XCTAssertTrue(MCPServer.isSingleChain([row, text], in: snap([row, text])))
+
+        // ⑵ 大きいほうの中心が小さいほうの中に入る(撃つ場所が同じ)
+        let outer = ElementInfo(ref: 3, type: "clickable", identifier: "outer", label: "A",
+                                value: nil, placeholder: nil, enabled: true,
+                                frame: FTRect(x: 0, y: 0, width: 1080, height: 2000), depth: 2)
+        let inner = ElementInfo(ref: 4, type: "clickable", identifier: "inner", label: "A",
+                                value: nil, placeholder: nil, enabled: true,
+                                frame: FTRect(x: 400, y: 900, width: 300, height: 300), depth: 3)
+        XCTAssertTrue(MCPServer.isSingleChain([outer, inner], in: snap([outer, inner])))
+
+        // ⑶ 大きいほうが画面規模でない(入れ子リンク。and-browser_weektable の形)
+        let link = ElementInfo(ref: 5, type: "link", identifier: nil, label: "tenki.jp",
+                              value: nil, placeholder: nil, enabled: true,
+                              frame: FTRect(x: 0, y: 0, width: 400, height: 100), depth: 2)
+        let sub = ElementInfo(ref: 6, type: "link", identifier: nil, label: "tenki.jp",
+                              value: nil, placeholder: nil, enabled: true,
+                              frame: FTRect(x: 0, y: 0, width: 150, height: 100), depth: 3)
+        // 中心 (200,50) は sub(0..150)の**外** —— こうしないと中心判定で除外されてしまい、
+        // 画面規模の条件を1バイトも検証しないテストになる(2026-08-14 に変異が生き残って判明)
+        XCTAssertTrue(MCPServer.isSingleChain([link, sub], in: snap([link, sub])))
+    }
 }
