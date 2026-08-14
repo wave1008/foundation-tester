@@ -245,6 +245,49 @@ public enum TapTargetGeometry {
     /// 人が読める名指し(`#id` があればそれ、無ければ型 + ラベル)。MCP(`RefGuard.describe`)は
     /// ここへの転送。ラベルはゼロ幅文字を除いて比較と揃える
 
+    /// **上のクロムの下へスクロールで潜っている疑い**があるか(= `AppDriver.hittable` を
+    /// 聞きに行くゲート)。**警告そのものではない** —— ここは粗くてよく、断定は
+    /// プラットフォームのヒットテストに委ねる。
+    ///
+    /// 動機(2026-08-14 実測・iOS カレンダーの月表示): 前月の行が y=47 に報告され、
+    /// ナビゲーションバー(y=61..106)の `#BackButton` が中心を覆っているのに、
+    /// **ナビバーは木の前にある**ので `PaintOrder.drawnAbove` が false になり遮蔽として
+    /// 名指しされない。`ft_tap` は警告ゼロで成功を返し、実際には戻るボタンが押されて
+    /// 画面が変わった(**沈黙の誤操作**)。
+    ///
+    /// **iOS だけに掛ける**(`z` を持たない木だけ)。Android は塗り順が実測で採れていて
+    /// `drawnAbove` が権威なので、黙っているのが正しい判断であり、そもそも聞く先も無い。
+    /// 実測でも Android だけで32件鳴っていた(`and-place_expanded` 17・`and-results` 15)。
+    ///
+    /// **条件は4つ**(コーパス全数で 197/820=24% → 52/820=6.3% → iOS だけで 14 件まで絞った):
+    /// ⑴ 木が z を持たない ⑵ 現状の遮蔽判定が黙っている ⑶ victim がスクロール容器の中
+    /// ⑷ 中心を覆う非系譜の要素が**その容器の外**にいる(= 上に載る chrome の形)
+    public static func suspectedHiddenUnderChrome(_ element: ElementInfo,
+                                                  in elements: [ElementInfo],
+                                                  screen: FTRect) -> Bool {
+        // ⑴ z があるならそれが権威(Android)。聞く必要が無い
+        guard elements.allSatisfy({ $0.z == nil }) else { return false }
+        // ⑵ 既に遮蔽として名指しできているなら、この経路は要らない
+        guard OcclusionGeometry.overlayCovering(element, in: elements, screen: screen) == nil
+        else { return false }
+        // ⑶ victim を包むスクロール容器
+        guard let container = ancestors(of: element, in: elements).first(where: {
+            $0.scrollable == true
+        }) else { return false }
+        let inside = Set(StepExecutor.descendants(of: container, in: elements).map(\.ref))
+            .union([container.ref])
+        let cx = element.frame.x + element.frame.width / 2
+        let cy = element.frame.y + element.frame.height / 2
+        let lineage = lineage(of: element, in: elements)
+        // ⑷ 容器の外から中心を覆っている相手(クランプ残骸は「描かれていない」ので数えない)
+        return elements.contains { other in
+            !inside.contains(other.ref) && !lineage.contains(other.ref)
+                && other.frame.x <= cx && cx <= other.frame.x + other.frame.width
+                && other.frame.y <= cy && cy <= other.frame.y + other.frame.height
+                && !OcclusionGeometry.isOriginClamped(other, in: elements)
+        }
+    }
+
     // MARK: - type の宛先
 
     /// **ブリッジのソース集合には置かない**(TypeReadback.swift はランナーが

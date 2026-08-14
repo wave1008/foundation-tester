@@ -50,6 +50,12 @@ public final class AppAttachDriver: AppDriver {
     /// bypassingCache 版の素通し(既定実装に任せるとフラグが落ちて最内へ届かない。
     /// SnapshotCacheBypassForwardingTests がラッパー全体でこれを守る)。
     /// **attach の前処理は必ずこちらに置く** —— snapshot() を素通し側にすると片方だけ attach を飛ばす
+    /// **転送必須**(既定実装 nil に落ちると、ラッパー越しでは常に「答えられない」になる。
+    /// AppDriver.hittable の doc と AppDriverDefaultDispatchTests 参照)
+    public func hittable(ref: Int) async throws -> Bool? {
+        try await client.hittable(ref: ref)
+    }
+
     public func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {
         try await client.activate(bundleID: bundleID)
         attached = true

@@ -409,6 +409,22 @@ public final class BridgeClient: AppDriver {
         try await snapshot(query: nil)
     }
 
+    /// `AppDriver.hittable`。**XCUITest ブリッジだけが答えられる**(in-app / Android は既定の nil)。
+    /// 版 67 より古いブリッジは 404 を返すので、その場合も nil(呼び手は黙る)。
+    /// 費用は対象1件で 72〜146ms(実測)なので、**呼び手が疑ったときだけ**呼ぶこと
+    public func hittable(ref: Int) async throws -> Bool? {
+        struct Answer: Decodable { let hittable: Bool? }
+        do {
+            let answer: Answer = try await get("/hittable", query: "ref=\(ref)",
+                                               timeout: sessionTimeout)
+            return answer.hittable
+        } catch {
+            // 未対応(旧ブリッジ)・引き当て不能・一時的な失敗はすべて「答えられない」に畳む ——
+            // **タップの手前の照会で失敗して操作ごと落とすのは本末転倒**
+            return nil
+        }
+    }
+
     /// 次の1回だけ効く要素上限(AppDriver.raiseElementLimitOnNextSnapshot)。
     /// **消費は snapshot(query:) の1箇所**(取りこぼすと以後の木が全部膨らむ)
     private var pendingElementLimit: Int?

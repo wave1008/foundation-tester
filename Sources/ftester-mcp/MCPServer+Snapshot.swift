@@ -544,6 +544,25 @@ extension MCPServer {
     /// 実機で再現: profile: で撮った木の ref は 70..93 なのに `port:8143 ref:10` が
     /// `tap [10] done` を返し、ブリッジの #10 = `#btn_input_submit` を実際に押した
     /// (`submitted=-` → `submitted=physical`)。既存の「機を跨いだ ref」テストが通っていたのは
+    /// **木では答えられない「上のクロムの下へ潜っているか」をプラットフォームに聞く**(iOS だけ)。
+    ///
+    /// ゲートは `TapTargetGeometry.suspectedHiddenUnderChrome`(粗くてよい。断定は
+    /// ヒットテストに委ねる)。**疑ったときだけ1件聞く** —— 全要素に付けると実測 5.1 秒
+    /// = snapshot の 50 倍で、常時は払えない(`AppDriver.hittable` の doc)。
+    ///
+    /// **答えられないとき(nil)は黙る**: 旧ブリッジ・引き当て不能・Android はすべてここ。
+    /// 木の限界を別の推測で置き換えないため、`false` と断言されたときだけ言う
+    static func hiddenUnderChromeWarning(_ found: ElementInfo, in fresh: SnapshotResponse,
+                                         driver: AppDriver) async -> String {
+        guard TapTargetGeometry.suspectedHiddenUnderChrome(found, in: fresh.elements,
+                                                           screen: fresh.screen),
+              let hittable = try? await driver.hittable(ref: found.ref), hittable == false
+        else { return "" }
+        return " (warning: the platform reports \(RefGuard.describe(found)) is NOT hittable at its"
+            + " reported position — it is scrolled under the navigation bar or another overlay, so"
+            + " this tap most likely landed on whatever is drawn there. Scroll it into view first)"
+    }
+
     /// 2台目も MCP で撮っていたからで、**撮っていない宛先へ撃つ形が丸ごと抜けていた**。
     /// 素通しは `nextRefBase == 0`(このセッションが ref を1つも発行していない)ときだけにする。
     /// 返す ref は**セッション ref**(ブリッジへ渡す前に呼び手が `nativeRef` を通すこと)
@@ -599,6 +618,7 @@ extension MCPServer {
             let overlap = staleNote
                 + RefGuard.preTapWarnings(found, keyboardOcclusion: keyboardOcclusion)
                 + RefGuard.overlapWarning(found: found, in: fresh.elements, screen: fresh.screen)
+                + (await Self.hiddenUnderChromeWarning(found, in: fresh, driver: driver))
             guard moved >= RefGuard.movedThreshold else { return (found.ref, overlap + labelNote) }
             // **原因までは断定できない**が、「他も同じだけ動いたか」は手元の2枚から言える。
             // 揃って動いていればスクロール等の画面全体の移動、その要素だけならレイアウト変化。

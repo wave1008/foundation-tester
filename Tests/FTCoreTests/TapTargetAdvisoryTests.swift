@@ -261,6 +261,66 @@ final class TapTargetAdvisoryTests: XCTestCase {
         XCTAssertTrue(note?.contains("#StartPageCollectionView") == true, note ?? "-")
     }
 
+    /// **ゲート**: 上のクロムの下へスクロールで潜っている疑い(2026-08-14・iOS カレンダーで実測)。
+    /// ナビバーは木の**前**にあるので `drawnAbove` が false になり遮蔽として名指しされない ——
+    /// その死角を拾って `AppDriver.hittable` へ聞きに行く入口
+    func testSuspectedHiddenUnderChromeFiresForACellScrolledUnderTheNavBar() {
+        // **並びは実物どおり**(iOS カレンダーの月表示): ナビバーの子が depth 15 で数個並び、
+        // その後に scrollView(18)が来る。BackButton の直後に容器を置くと、depth だけを見る
+        // 祖先復元が **BackButton を cell の祖先と見なして** lineage で除外してしまい、
+        // ゲートが発火しないテストになる(2026-08-14 に一度そう書いて落ちた)
+        let nav = element(1, "nav", "navigationBar", 0, 61, 402, 45, depth: 14)
+        let back = element(2, "BackButton", "button", 16, 61, 111, 44, depth: 15)
+        let title = element(3, "current-month-year", "staticText", 20, 122, 54, 39, depth: 15)
+        var scroller = element(4, "month", "scrollView", 0, 0, 402, 874, depth: 18)
+        scroller.scrollable = true
+        let cell = element(5, "cell_0726", "button", 7, 47, 42, 41, depth: 20)
+        let visible = element(6, "cell_0817", "button", 66, 549, 38, 41, depth: 20)
+        let elements = [nav, back, title, scroller, cell, visible]
+        XCTAssertTrue(TapTargetGeometry.suspectedHiddenUnderChrome(cell, in: elements,
+                                                                   screen: screen))
+        // 陰性対照1: 普通に見えているセルは疑わない(= 照会を払わない)
+        XCTAssertFalse(TapTargetGeometry.suspectedHiddenUnderChrome(visible, in: elements,
+                                                                    screen: screen))
+
+        // 陰性対照2: **覆う相手が容器の中**なら疑わない —— 容器の中の重なりは木の順序で
+        // 判断できる領域(`occluder` の担当)で、プラットフォームへ聞く理由が無い。
+        // この対照が無いと「容器の外」という条件を外す変異が生き残る
+        // **ref を victim より小さくする**(塗り順は配列順ではなく **ref の大小**。
+        // 大きいと drawnAbove が真になって既存の遮蔽判定が先に拾い、「容器の外」という条件を
+        // 外す変異が素通りする。2026-08-14 に配列順で並べ替えて一度生き残った)
+        let sibling = element(5, "overlay_row", "button", 60, 540, 60, 60, depth: 20)
+        let insideOverlap = [nav, back, title, scroller, sibling, visible]
+        XCTAssertFalse(TapTargetGeometry.suspectedHiddenUnderChrome(visible, in: insideOverlap,
+                                                                    screen: screen),
+                       "容器の中の重なりまで疑うと、聞く必要の無い照会を払う")
+    }
+
+    /// **z がある木(Android)には掛けない**: 塗り順が実測で採れているなら `drawnAbove` が権威で、
+    /// 黙っているのが正しい判断。そもそも聞く先(isHittable)も無い。
+    /// 実測でもこの条件が無いと Android のフィクスチャだけで32件鳴った
+    func testSuspectedHiddenUnderChromeStaysSilentWhenPaintOrderIsKnown() {
+        var nav = element(1, "nav", "navigationBar", 0, 61, 402, 45, depth: 14)
+        var back = element(2, "BackButton", "button", 16, 61, 111, 44, depth: 15)
+        var title = element(3, "current-month-year", "staticText", 20, 122, 54, 39, depth: 15)
+        var scroller = element(4, "month", "scrollView", 0, 0, 402, 874, depth: 18)
+        scroller.scrollable = true
+        var cell = element(5, "cell_0726", "button", 7, 47, 42, 41, depth: 20)
+        // **z 以外の条件はすべて満たす形にする**(そうしないと「z を外しても落ちない」= 変異で
+        // 殺せないテストになる。2026-08-14 に一度そう書いて生き残った)。
+        // z を外せば発火する = この検査は z の条件だけを見ている
+        // 覆う相手の z を**下**にする = 塗り順が「奥」と言って既存の遮蔽判定は黙る形
+        // (Android で32件鳴っていたのがこれ)。z が上だと occluder が先に拾ってしまい、
+        // z の条件を外す変異が素通りする
+        nav.z = 0; back.z = 0; title.z = 0; scroller.z = 1; cell.z = 2
+        let withZ = [nav, back, title, scroller, cell]
+        XCTAssertFalse(TapTargetGeometry.suspectedHiddenUnderChrome(cell, in: withZ, screen: screen))
+        let withoutZ = withZ.map { e -> ElementInfo in var c = e; c.z = nil; return c }
+        XCTAssertTrue(TapTargetGeometry.suspectedHiddenUnderChrome(
+            withoutZ[4], in: withoutZ, screen: screen),
+                      "z を外しても発火しないなら、この検査は z の条件を見ていない")
+    }
+
     /// 対話的な親の子孫が中心を横取りする形(`nestedActionCoveringCentre` の doc 参照)
     func testNestedActionIsCalledOutByChain() {
         let parent = ElementInfo(ref: 1, type: "cell", identifier: "row", label: nil, value: nil,

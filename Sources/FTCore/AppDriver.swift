@@ -40,6 +40,17 @@ public protocol AppDriver {
     /// キャッシュを捨てて撮り直す。**プロトコル要件として宣言すること**(extension だけに置くと
     /// 存在型越しの呼び出しが静的ディスパッチで既定実装に落ち、実装したドライバが無視される)
     func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse
+    /// **その ref を撃つと本当にそれに当たるか**をプラットフォームに聞く(iOS の XCUITest だけが
+    /// 答えられる。`XCUIElement.isHittable` はヒットテストそのもの)。
+    /// nil = 「答えられない」(未対応のドライバ・引き当て不能)で、呼び手は何も言わない。
+    ///
+    /// **木では原理的に答えられない問い**への逃げ道。iOS は塗り順(z)を出さないので、
+    /// 木の順序では「上のクロムの下へスクロールで潜った要素」を見分けられない
+    /// (実測: カレンダーのセルを撃つと警告ゼロで戻るボタンが押される)。
+    ///
+    /// **全要素に付けてはいけない**(実測 121 要素で 5.1 秒 = snapshot の 50 倍)。
+    /// 呼び手が疑ったときだけ1件聞く。**プロトコル要件として宣言すること**(理由は上と同じ)
+    func hittable(ref: Int) async throws -> Bool?
     func tap(ref: Int) async throws
     func tap(x: Double, y: Double) async throws
     func type(ref: Int?, text: String) async throws
@@ -193,6 +204,8 @@ public enum DriverError: Error, LocalizedError {
 /// activate 未対応ドライバ(InAppDriver/SystemUIDriver 等)は launch(再起動)にフォールバックする。
 public extension AppDriver {
     var lastActionNote: String? { nil }
+    /// 既定は「答えられない」。答えられるのは XCUITest ブリッジを話す BridgeClient だけ
+    func hittable(ref: Int) async throws -> Bool? { nil }
     var lastLaunchTiming: LaunchTiming? { nil }
 
     /// 既定は用途を落として通常 swipe に委譲する(ラッパードライバはこれで素通しになる)。

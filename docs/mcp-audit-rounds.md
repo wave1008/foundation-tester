@@ -439,8 +439,23 @@ frame も一致するときだけ答える(曖昧なら `hittable:null` で呼�
 「現状黙っている」** で、タップ対象の数%に収まる。狙いの形(ナビバーの下へ潜ったカレンダーのセル)は
 まさにこの形なので入る。
 
-**未着手**: ホスト側の配線(`AppDriver` の能力追加 → `BridgeClient` → MCP のタップ経路)。
-設計と数字は上で確定しているので、次はそこから。
+**配線済み**(2026-08-14): `AppDriver.hittable`(プロトコル要件として宣言。既定は nil)→
+`BridgeClient` が `/hittable` を叩く → MCP のタップ経路が
+`TapTargetGeometry.suspectedHiddenUnderChrome` で疑ったときだけ聞く。
+
+**実画面の対照**(iOS カレンダー月表示): 潜ったセルへの `ft_tap` が
+`the platform reports button "7月26日 日曜日" is NOT hittable at its reported position —
+it is scrolled under the navigation bar or another overlay` と警告し、
+**普通に見えるセルは黙る**。今日「木だけでは解けない」と結論した沈黙の誤操作が塞がった。
+
+**配線で1回外した**(台帳の既知の型): ラッパードライバ5つ
+(`SessionRecoveryDriver`/`HybridFallbackDriver`/`FastLaunchDriver`/`LaunchPreflightDriver`/
+`AppAttachDriver`)が転送していないと既定の nil に落ちる。**純粋関数もブリッジも正しいのに
+実画面で1バイトも変わらなかった** —— `snapshot(bypassingCache:)` と同じ罠で、5つとも転送を足して解消。
+
+**変異で合成盤面の誤りが2つ出た**(どちらも「条件を外しても落ちない」形): ⑴ 覆う相手の z を
+**上**にしていたので既存の遮蔽判定が先に拾い、z の条件を検証していなかった ⑵ **塗り順は配列順ではなく
+ref の大小**なのに配列の並べ替えで前後を作ったつもりでいた。両方直して 3/3 検出。
 
 ### 未修正の持ち越し: 別の画面の同じ id を黙って撃つ(2026-08-13・長時間のラウンド)
 

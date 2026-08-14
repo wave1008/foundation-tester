@@ -90,6 +90,12 @@ public final class LaunchPreflightDriver: AppDriver {
     public func snapshot() async throws -> SnapshotResponse { try await base.snapshot() }
     /// bypassingCache 版の素通し(既定実装に任せるとフラグが落ちて最内へ届かない。
     /// SnapshotCacheBypassForwardingTests がラッパー全体でこれを守る)
+    /// **転送必須**(既定実装 nil に落ちると、ラッパー越しでは常に「答えられない」になる。
+    /// AppDriver.hittable の doc と AppDriverDefaultDispatchTests 参照)
+    public func hittable(ref: Int) async throws -> Bool? {
+        try await base.hittable(ref: ref)
+    }
+
     public func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {
         try await base.snapshot(bypassingCache: bypassingCache)
     }

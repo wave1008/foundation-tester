@@ -175,6 +175,12 @@ public final class HybridFallbackDriver: AppDriver {
 
     public func tap(ref: Int) async throws { try await active.tap(ref: ref) }
     public func snapshot() async throws -> SnapshotResponse { try await active.snapshot() }
+    /// **転送必須**(既定実装 nil に落ちると、ラッパー越しでは常に「答えられない」になる。
+    /// AppDriver.hittable の doc と AppDriverDefaultDispatchTests 参照)
+    public func hittable(ref: Int) async throws -> Bool? {
+        try await active.hittable(ref: ref)
+    }
+
     public func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {
         try await active.snapshot(bypassingCache: bypassingCache)
     }
