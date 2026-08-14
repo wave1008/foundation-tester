@@ -3,8 +3,8 @@
 // パーサ・引数の妥当性判定を単体で見る(デバイス・MCPServer の状態には一切触れない)。
 
 import XCTest
-import FTCore
-@testable import FTDSL
+// @testable: ScenarioCodeGen.command(for:) は internal(FTCore に住む。移動前は FTDSL だった)
+@testable import FTCore
 @testable import ftester_mcp
 
 final class BatchLineParserTests: XCTestCase {

@@ -8,7 +8,6 @@ import ArgumentParser
 import Foundation
 import FTAgent
 import FTCore
-import FTDSL
 
 struct ApiGenScenarioCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(

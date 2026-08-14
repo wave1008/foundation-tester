@@ -83,13 +83,14 @@ let package = Package(
         // MCP サーバ(stdio)。Claude Code 等のエージェントからブリッジ操作・フロー実行を使えるようにする
         .executableTarget(
             name: "ftester-mcp",
+            // FTDSL は意図して外してある: セレクタ文法(FTSelector)・コマンド索引(DSLCommandIndex)・
+            // コード生成(ScenarioCodeGen)は FTCore に住み、この target が使うのはそれだけ
+            // (DSL ランタイム本体は使わない)。ft_dsl_commands が返す索引の出典は Sources/FTCore/CommandIndex.swift
             dependencies: [
                 "FTCore",
                 "FTBridgeClient",
                 "FTAgent",
                 "FTAndroid",
-                // ft_dsl_commands が DSL コマンド索引を返す(出典は Sources/FTDSL/CommandIndex.swift)
-                "FTDSL",
             ],
             swiftSettings: swift5Mode
         ),
@@ -250,11 +251,12 @@ let package = Package(
         ),
         // ftester-mcp は executableTarget だが @testable import 可能(モジュール名は c99name の
         // ftester_mcp)。toolDefinitions のスキーマ宣言と drivers キャッシュキーの純関数のみ対象。
-        // FTDSL は ft_batch の往復テスト用(@testable import FTDSL で ScenarioCodeGen.command(for:)
-        // を直接叩き、「ft_draft_scenario が描く行を ft_batch のパーサへ戻せるか」を検証する)
+        // FTCore は ft_batch の往復テスト用(BatchLineParserTests が @testable import FTCore で
+        // ScenarioCodeGen.command(for:) を直接叩き、「ft_draft_scenario が描く行を ft_batch の
+        // パーサへ戻せるか」を検証する。移動前は FTDSL 側のこの関数を叩いていた)
         .testTarget(
             name: "FTesterMCPTests",
-            dependencies: ["ftester-mcp", "FTDSL"],
+            dependencies: ["ftester-mcp", "FTCore"],
             swiftSettings: swift5Mode
         ),
         // CLI 本体(executableTarget)の純粋ロジック。FTesterMCPTests と同じく @testable import で

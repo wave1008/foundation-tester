@@ -1,6 +1,7 @@
 import XCTest
 @testable import FTDSL
-import FTCore
+// @testable: ScenarioCodeGen.render(step:indent:) は internal(FTCore に住む。移動前は FTDSL だった)
+@testable import FTCore
 
 final class StepDescriptionTests: XCTestCase {
 

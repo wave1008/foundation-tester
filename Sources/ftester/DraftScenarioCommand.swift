@@ -6,6 +6,8 @@ import ArgumentParser
 import Foundation
 import FTAgent
 import FTCore
+// 下書きの生成器(ScenarioDraftCodeGen)だけは FTDSL に残る —— 出力が DSL の構文そのもので、
+// プレースホルダの規約も DSL 側の運用(@Deleted を外す手順)と一体だから
 import FTDSL
 
 struct DraftScenarioCommand: AsyncParsableCommand {

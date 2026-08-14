@@ -14,16 +14,12 @@
 // Swift 全体は解釈しない —— 入れ子呼び出し・配列・演算子・クロージャは構文的に受け付けず、
 // 明確なエラーにする(価は BatchLineParserTests)。
 //
-// **BatchLineParser / BatchArgSpecTable は純粋関数**: デバイスにも MCPServer の状態にも依存しない
-// (Foundation のみ import)。テストしやすくするための設計で、意図して FTDSL へ触れていない。
-// シグネチャ文字列を DSLCommandIndex から引く責務は呼び出し側(MCPServer.planBatchStep)に残す。
-//
-// BatchStepResolver だけは例外(FTDSL を import)—— パース結果を、既存の `batchStepBuilders`
-// クロージャがそのまま食える `[String: Any]` へ変換するには、DSLCommandIndex のシグネチャ文字列
-// (位置引数の名前・ラベルの妥当性)が要るため。
+// **BatchLineParser / BatchArgSpecTable / BatchStepResolver は純粋関数**: デバイスにも MCPServer の
+// 状態にも依存しない(Foundation のみ import)。テストしやすくするための設計。シグネチャ文字列を
+// DSLCommandIndex から引く責務は呼び出し側(MCPServer.planBatchStep)に残す —— BatchStepResolver.resolve
+// は signature を String で受け取るだけで、DSLCommandIndex 自体には触れない。
 
 import Foundation
-import FTDSL
 
 // MARK: - パース結果の型
 

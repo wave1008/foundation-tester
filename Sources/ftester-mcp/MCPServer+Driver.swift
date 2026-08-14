@@ -6,7 +6,6 @@ import FTAgent
 import FTAndroid
 import FTBridgeClient
 import FTCore
-import FTDSL
 
 extension MCPServer {
 
@@ -793,9 +792,8 @@ extension MCPServer {
             + " until you bring it back with ft_launch"
     }
 
-    /// 待ちの既定(秒)。**DSL の defaultTimeout と同じ 5**(FTRuntime)。揃えておかないと
-    /// 「MCP では出たのにシナリオでは間に合わない」が起きる
-    static let defaultWaitSeconds: Double = 5
+    /// 待ちの既定(秒)。定義元は FTCore.DefaultWait(DSL の FTRuntime.defaultTimeout と共有)
+    static let defaultWaitSeconds: Double = DefaultWait.seconds
 
     /// ポーリング間隔(秒)。短くしても律速は snapshot 自体(iOS in-app で約 0.12s)。
     /// waitFor と waitForChange(snapshotAfterBody)が共有する

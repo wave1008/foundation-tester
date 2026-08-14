@@ -1,9 +1,9 @@
 // `ftester api dsl-commands`: DSL コマンドの索引を JSON で出す。
-// 表の実体と同期規律は Sources/FTDSL/CommandIndex.swift(`CommandIndexSyncTests` が守る)。
+// 表の実体と同期規律は Sources/FTCore/CommandIndex.swift(`CommandIndexSyncTests` が守る)。
 // デバイスにもプロジェクトにも触らないので、シナリオ生成の前に何度でも呼べる。
 
 import ArgumentParser
-import FTDSL
+import FTCore
 import Foundation
 
 struct ApiDslCommandsCommand: AsyncParsableCommand {

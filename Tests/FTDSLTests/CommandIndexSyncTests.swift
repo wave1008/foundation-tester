@@ -1,7 +1,7 @@
 import XCTest
 @testable import FTDSL
 
-/// `ftester api dsl-commands` が出す索引(Sources/FTDSL/CommandIndex.swift)を**ソースと突き合わせる**。
+/// `ftester api dsl-commands` が出す索引(Sources/FTCore/CommandIndex.swift)を**ソースと突き合わせる**。
 /// 索引は手書きなので、これが無いとコマンドを足した瞬間に「載っていない = 存在しない」と
 /// 読まれる嘘を配ることになる(索引の唯一の用途がコード生成前の存在確認なので致命的)。
 final class CommandIndexSyncTests: XCTestCase {

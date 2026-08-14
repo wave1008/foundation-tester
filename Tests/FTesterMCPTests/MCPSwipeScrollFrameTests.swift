@@ -18,7 +18,6 @@
 
 import XCTest
 import FTCore
-import FTDSL
 @testable import ftester_mcp
 
 /// **FlowStep の組み立てが要点**(2026-08-12 の作り直し指示)。direction を書き換える変異

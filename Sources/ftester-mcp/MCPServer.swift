@@ -13,7 +13,6 @@ import FTAgent
 import FTAndroid
 import FTBridgeClient
 import FTCore
-import FTDSL
 
 @main
 struct FTesterMCP {

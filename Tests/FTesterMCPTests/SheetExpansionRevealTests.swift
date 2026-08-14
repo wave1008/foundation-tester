@@ -9,7 +9,6 @@
 
 import XCTest
 import FTCore
-@testable import FTDSL
 @testable import ftester_mcp
 
 final class SheetExpansionRevealTests: XCTestCase {
