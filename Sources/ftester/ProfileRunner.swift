@@ -103,6 +103,8 @@ enum ProfileRunner {
         await ProfileWorkerFactory.preparePhysicalAndroidDevices(resolved: resolved) { print($0) }
         var workers = try ProfileWorkerFactory.buildAndroidWorkers(resolved: resolved) { print($0) }
         supplyLease?.hold(keys: workers.compactMap { $0.connection.serial ?? $0.connection.udid })
+        // **WebView の版が混在していたら言う**(落とさない。AndroidWebViewVersions の宣言参照)
+        warnIfWebViewVersionsDiffer(serials: workers.compactMap { $0.connection.serial }) { print($0) }
         let beforeBlankCheck = workers.count
         let triage = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(
                 workers, stateDir: (try? RepoRoot.find())?.appendingPathComponent(".ftester")) { print($0) }
@@ -347,4 +349,16 @@ enum ProfileRunner {
         }
     }
 
+}
+
+/// フリートの WebView 版を集めて混在を警告する。**adb を端末数だけ叩く**が
+/// 1台あたり1回・数十msなので run 前の固定費として許容範囲
+/// (取れない端末は黙って飛ばす = 判定材料が無いだけで異常ではない)
+private func warnIfWebViewVersionsDiffer(serials: [String], log: (String) -> Void) {
+    guard serials.count > 1 else { return }
+    let versions = AndroidWebViewVersions.collect(serials: serials) { serial, args in
+        guard let adb = try? AndroidDriver.findADB() else { return nil }
+        return try? Shell.run([adb, "-s", serial] + args, timeout: 10).output
+    }
+    if let warning = AndroidWebViewVersions.mixedVersionWarning(versions) { log(warning) }
 }

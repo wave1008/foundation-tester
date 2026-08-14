@@ -573,6 +573,16 @@ data URI にすると「ファイル名」という手掛かり自体が無意�
 | 表のセルの値 | ○ | ○ |
 | 見出し(`aria-hidden`) | ×(意図どおり) | ×(意図どおり) |
 | WebView 内の `#id` | **×** | **○**(`#wv_grid` `#wv_row_26`) |
+| 入力欄の `placeholder` | **○**(`ph="WebView 入力"`) | **×** |
+
+**`#id` と `placeholder` は入れ替わる**(2026-08-14 実測。トレードではない):
+
+    124: textField ph="WebView 入力"     ← placeholder あり / id なし
+    150: textField id=wv_input          ← id あり / placeholder なし
+
+**どちらの版に合わせて書いても他方で落ちる。** 1台だけ更新して実際に事故を起こした
+(`placeholder=WebView 入力` のシナリオが 150 の端末でだけ「セレクタが見つからない」)。
+run 開始時に `AndroidWebViewVersions` が混在を警告する。
 
 Android の版ではない(実機 SDK 33 / エミュレータ SDK 35 で、**古い OS のほうが新しい WebView**)。
 **シナリオは WebView 内の `#id` に依存させない** —— 受け手はユーザーの WebView 版を選べない。
