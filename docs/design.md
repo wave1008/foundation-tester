@@ -647,13 +647,24 @@ selfOrDescendant=true になってネイティブと区別が付かない。CMP 
 要素の形から推測すると、webView 型を出すが web フラグを持たない **Android が
 「XCUITest へ委譲」を名乗る**(2026-07-29 実害)。申告が無ければ何も足さない。
 
-**`#id` は WebView 内では使えない(確定仕様)**。DOM 経路だけは HTML id を取れるが、
-iOS in-app の uikit ホストでしか成立せず(4 SUT 中1)、Android は Chromium が
-`viewIdResourceName` にも extras にも id を出さない(WebView 124 / Android 15 実測)。
-CDP を使えば取れるが `setWebContentsDebuggingEnabled(true)` = 対象アプリの協力が要る。
-一様化の経路が無いため保留ではなく確定仕様とし、`identifier` は付けない。
-将来必要になっても **`#id` に相乗りさせない**: `css=` のような別記法にし、使えない構成では
-エンジン名とホスト名を挙げて即座に失敗させる(`#id` の意味を構成ごとに変えない)。
+**`#id` は WebView 内でも使える**(旧「確定仕様: 使えない」は 2026-08-14 に撤回。
+撤回の根拠と現在の供給源は §木はどこから来るか)。**意味は構成によらず id の完全一致**で、
+変わるのは意味ではなく**供給の有無**だけ。供給できるのは DOM に届く経路(iOS in-app /
+Android のアプリ内 WebView・ブラウザ)と、a11y が id を出す構成(Android WebView 150 以降)。
+
+**撤回前の根拠は2つとも誤りだった**(記録として残す。同じ誤診を繰り返さないため):
+「Android は id を出さない」は **WebView 124 限定**の観測を一般則として書いたもので、
+150 は `viewIdResourceName` に出す(そのうえ 124 と 150 は **id と placeholder が入れ替わる**。
+`AndroidWebViewVersions.swift`)。「CDP は対象アプリの協力が要る」も誤りで、
+**debuggable なら `setWebContentsDebuggingEnabled(true)` 無しでソケットが開く**
+(2026-08-15 に呼ばないビルドで対照を取って実測)。**リリースビルドは対象外でよい**
+(id が難読化されるので id で指すテストは元からデバッグビルドの活動)。
+
+**供給できない構成は iOS xcuitest だけ**(WebKit は HTML id を a11y へ出さない)。
+そこでは**黙って不一致にせず、構成を名指しして落とす**(`#id` の意味を構成ごとに変えない、
+という原則は維持する)。`css=` のような**別記法を `#id` に相乗りさせない**方針も維持
+—— css は DOM への問い合わせなので届く構成が `#id` よりさらに狭く(xcuitest と
+非 debuggable が外れる)、相乗りさせると `#id` の適用範囲まで狭く見える。
 
 **スクロールヒント(Android の WebView・2026-07-29 実装)**: Chromium は**全ドキュメントの
 ノードをツリーに載せる**(画面外は extras の `offscreen=true`・実座標は `unclippedTop/Bottom`。
@@ -3710,17 +3721,21 @@ CoreSimulator.framework を直接叩き、`SimulatorCatalog.devices()` が直叩
 
 | 対象 | エンジン | 木の出どころ | 殺しスイッチ |
 |---|---|---|---|
-| 自作アプリの WebView | Android の a11y ブリッジ | **a11y** | — |
+| 自作アプリの WebView | Android の a11y ブリッジ | **DOM**(CDP。`webView` ノードがある画面だけ) | `FT_WEBVIEW_DOM=off` |
 | 自作アプリの WebView | iOS **in-app** | **DOM**(`InAppWebViewDOM`) | `FT_WEBVIEW_DOM=off` |
 | 自作アプリの WebView | iOS **xcuitest** | **a11y** | — |
 | **ブラウザ**(Safari / Chrome) | ホスト側 | **a11y。足りないときだけ DOM** | `FT_BROWSER_DOM=off` |
 
-**2行目だけが例外に見えるが、理由は別**: in-app エンジンからは WKWebView の a11y ツリーが
-そもそも見えない(別プロセス提供)。**ブラウザ = DOM の方針とは無関係の、前からある事情**。
+**スイッチは2つで意味が割れている**: `FT_WEBVIEW_DOM` = 自作アプリの WebView(OS 共通)/
+`FT_BROWSER_DOM` = ブラウザ本体(OS 共通)。**1つに束ねない** —— 束ねると
+「ブラウザだけ止めて A/B」が取れない。
 
-**自作アプリの WebView に DOM を使わない**のは、一度そう作って同日中に撤回したから
-(根拠だった「Android の WebView は表を a11y に出さない」が誤診で、実際はブリッジの
-取りこぼしだった。版 61 で修正)。a11y で読めるなら +147ms を払う理由が無い。
+**iOS in-app が DOM なのは別の事情**: あちらは in-app エンジンから WKWebView の a11y ツリーが
+そもそも見えない(別プロセス提供)。
+
+**Android の自作アプリが DOM なのは版差**(2026-08-15。詳細は次節「Android の自作アプリも
+DOM から読む」)。一度は「a11y で読めるなら +147ms を払う理由が無い」として撤回したが、
+**読めることと、どの端末でも同じ属性で読めることは別**だった。
 
 **どちらの木を見ているかの判別**: 要素の `web: true` が DOM 由来の印。ブラウザなのに
 DOM 由来が1件も無ければ `browserA11yFallbackNote` が「a11y から来ている」と言う
@@ -3728,8 +3743,8 @@ DOM 由来が1件も無ければ `browserA11yFallbackNote` が「a11y から来�
 
 ## ブラウザの中身は DOM から読む(2026-08-13)
 
-**対象はブラウザ本体だけ。自作アプリの WebView は a11y のまま読む。**
-殺しスイッチは `FT_BROWSER_DOM=off`(iOS in-app 側の `FT_WEBVIEW_DOM=off` と同じ語法)。
+殺しスイッチは `FT_BROWSER_DOM=off`(自作アプリ側の `FT_WEBVIEW_DOM=off` とは別の口)。
+**自作アプリの WebView は別の理由で別の門**(次節)。
 
 ### なぜ(当初の根拠は誤診だったので、置き換わっている)
 
@@ -3852,6 +3867,50 @@ iOS 17 以降 RemoteXPC/RSD へ移ったサービスもあるが、`com.apple.we
 **stderr で原因を名指しする**(`inspectorHint`)。**一覧が空のときは何も言わない** ——
 単に Safari 未起動の可能性があり、そこで「起動し直せ」は的外れ(誤った助言は無いより悪い)。
 
+## Android の自作アプリの WebView も DOM から読む(2026-08-15)
+
+**ブラウザとは理由も門も違う。** ブラウザは「a11y に本文が出ない」だが、こちらは
+**同じ HTML・同じアプリでも WebView の版で属性が入れ替わる**(実測。記録は
+`Sources/FTAndroid/AndroidWebViewVersions.swift` 冒頭):
+
+    WebView 124 : textField ph="WebView 入力"   (placeholder あり / id なし)
+    WebView 150 : textField id=wv_input          (id あり / placeholder なし)
+
+トレードではなく**入れ替え**なので、`#id` も `placeholder=` も混在フリートでは移植できない。
+**DOM から読めば木が両方を持つ**ので、版差が供給源で消える。
+
+**だから門も違う**: ブラウザは a11y が足りていれば読まないが、**自作アプリは足りて見えても読む**
+(問うているのは「読めているか」ではなく「**どの端末でも同じ属性が出るか**」)。
+自作アプリ側の門は **`webView` ノードの有無だけ** —— 無い画面で pid 引きと forward を払わない。
+判定は `AndroidWebViewDOM.route`(純粋)の1箇所。
+
+**ソケット規則が2つある**:
+
+| 相手 | ソケット | 解決 |
+|---|---|---|
+| Chrome | `@chrome_devtools_remote`(**pid なし**) | パッケージ名 → 固定名 |
+| 自作アプリの WebView | `@webview_devtools_remote_<pid>` | `pidof <package>` の**アプリ自身の pid** |
+
+**成立条件は debuggable だけ**(2026-08-15 に emulator-5554 / `com.ftester.e2e` で実測)。
+**アプリが `setWebContentsDebuggingEnabled(true)` を呼ぶ必要は無い** —— debuggable なら
+WebView が1つでも生成された時点でソケットが開く(確認した版は Chrome/150.0.7871.181)。
+**アプリの協力を要る退化は足さない**(release ビルドは id を難読化するので、id で指すテスト自体が
+debug ビルドの活動)。取れないときは例外にせず黙って従来の a11y。
+
+**注入は ref の名前空間が違う**(踏みやすい罠)。ブリッジの `/type` `/clear` は
+**自分の snapshot の ref しか受け付けない**(`BridgeRouter.centerOf` は未知の ref を 404)。
+DOM ノードにはホストが新しい ref を振るので、そのままでは**入力だけが 404 で落ちる**
+(タップは座標をホストが持っているので通る = 落ち方が入力に偏る)。
+`AndroidWebViewDOM.bridgeRefMap`(中心点を含む最小の a11y 入力欄)で写してから送り、
+注入は従来どおり SET_TEXT + resource-id 追跡 + 読み返しの経路に乗せる。
+**木の ref そのものは書き換えない** —— `z` を持たない要素の塗り順は ref 順に落ちるので、
+入力欄だけ小さい ref にすると**その欄が兄弟の裏にあると判定される**。
+**ブラウザ経路には対応表を作らない**(今日の挙動のまま)。
+
+**推測で1つ選ばない**: 一覧(`/proc/net/unix`)には他アプリの `webview_devtools_remote_<別 pid>`
+も Chrome の口も並ぶ。採るのは**自分の pid と厳密一致する名前だけ**で、複数当たれば
+`ambiguous` = a11y のまま(外すと**別プロセスの DOM を本物の画面として木へ差し込む**)。
+pid 引きとソケット一覧は**1往復に畳む**(adb は1回ごとに数十 ms かかり、ここは毎 snapshot の経路)。
 
 ## 17. テストベースからのシナリオ下書き生成(2026-07-26)
 

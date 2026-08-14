@@ -40,4 +40,23 @@ final class AndroidDriverTypeSplitTests: XCTestCase {
         XCTAssertEqual(main, "")
         XCTAssertFalse(hasTrailingNewline)
     }
+
+    /// **注入は必ず ref 対応表を通す**(`AndroidWebViewDOM.bridgeRefMap`)。素の ref を渡すと
+    /// DOM 由来の入力欄がブリッジに存在せず 404 になる。対応表を作る側は単体テストで固めてあるが、
+    /// **使う側を外す変異はそこでは落ちない**のでソースで見る(`SwipeForScrollForwardingTests` の作法)
+    func testInjectionGoesThroughTheBridgeRefMap() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let source = try String(contentsOf: root.appendingPathComponent(
+            "Sources/FTAndroid/AndroidDriver.swift"), encoding: .utf8)
+        let code = source.split(separator: "\n", omittingEmptySubsequences: false)
+            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+            .joined(separator: "\n")
+        XCTAssertTrue(code.contains("$0.type(ref: target"), "type が対応表を通っていない")
+        XCTAssertTrue(code.contains("$0.clearInput(ref: target"), "clearInput が対応表を通っていない")
+        XCTAssertTrue(code.contains("domBridgeRefs[ref] ?? ref"), "対応表の引き当てが無い")
+        // **タップは写さない**(座標はホストが持っている。写すと古い a11y の中心へ撃つ)
+        XCTAssertTrue(code.contains("guard let center = refCenters[ref]"),
+                      "tap がホスト側の座標表から離れている")
+    }
 }

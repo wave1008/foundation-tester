@@ -19,6 +19,11 @@ public final class AndroidDriver: AppDriver {
     // 直近スナップショットの ref → 中心座標(iOS ランナーと同じ方式)。iOS と違い CLI プロセス内に
     // 住むため、呼び出しをまたぐ手動駆動用に一時ファイルへも永続化する(run は単一プロセスで不要だが無害)
     private var refCenters: [Int: (x: Double, y: Double)] = [:]
+    /// DOM 由来の要素の ref → ブリッジが知っている a11y の ref(自作アプリの WebView のときだけ埋まる)。
+    /// **注入(type / clear)でだけ差し替える**。ブリッジは自分の snapshot の ref しか受け付けない
+    /// (未知の ref は 404)ので、これが無いと WebView 内の入力だけが落ちる
+    /// (規則と根拠は `AndroidWebViewDOM.bridgeRefMap`)
+    private var domBridgeRefs: [Int: Int] = [:]
     private var screen: FTRect = FTRect(x: 0, y: 0, width: 0, height: 0)
     private var currentPackage: String?
 
@@ -34,6 +39,8 @@ public final class AndroidDriver: AppDriver {
         var centers: [Int: [Double]]
         var screen: FTRect
         var package: String?
+        /// 省略可(古い状態ファイルとの互換。domBridgeRefs 参照)
+        var domBridgeRefs: [Int: Int]?
     }
 
     private var stateFileURL: URL {
@@ -47,7 +54,7 @@ public final class AndroidDriver: AppDriver {
     func persistState() {
         let state = PersistedState(
             centers: refCenters.mapValues { [$0.x, $0.y] },
-            screen: screen, package: currentPackage)
+            screen: screen, package: currentPackage, domBridgeRefs: domBridgeRefs)
         if let data = try? JSONEncoder().encode(state) {
             try? data.write(to: stateFileURL)
         }
@@ -58,6 +65,7 @@ public final class AndroidDriver: AppDriver {
               let data = try? Data(contentsOf: stateFileURL),
               let state = try? JSONDecoder().decode(PersistedState.self, from: data) else { return }
         refCenters = state.centers.compactMapValues { $0.count == 2 ? (x: $0[0], y: $0[1]) : nil }
+        domBridgeRefs = state.domBridgeRefs ?? [:]
         screen = state.screen
         if currentPackage == nil { currentPackage = state.package }
     }
@@ -123,6 +131,7 @@ public final class AndroidDriver: AppDriver {
                 body: "failed to clear app data (is \(bundleID) installed?): \(result.tail)")
         }
         refCenters = [:]
+        domBridgeRefs = [:]
         currentPackage = nil
         persistState()
     }
@@ -138,6 +147,7 @@ public final class AndroidDriver: AppDriver {
                 body: "failed to open the URL via am start: \(result.tail)")
         }
         refCenters = [:]
+        domBridgeRefs = [:]
         if let bundleID { currentPackage = bundleID }
         persistState()
     }
@@ -221,6 +231,7 @@ public final class AndroidDriver: AppDriver {
         // 再起動で旧 snapshot の ref は無効。メモリ・永続化の両方から落とし、
         // 以後の tap(ref:) を「先に snapshot」エラーに倒す(古い座標への誤タップ防止)
         refCenters = [:]
+        domBridgeRefs = [:]
         currentPackage = bundleID
         persistState()
     }
@@ -326,36 +337,52 @@ public final class AndroidDriver: AppDriver {
         // RN の button 内側 Text 双子を畳む(SnapshotDedupe の宣言コメント参照)。
         // syncLocalState より前 = 下流(DSL/MCP)は正規化後の木だけを見る
         snapshot.elements = SnapshotDedupe.dropLabelTwinsInsideButtons(snapshot.elements)
-        // **前面がブラウザのときだけ WebView の中身を DOM で置き換える**(2026-08-13 に方針転換)。
-        // 自作アプリの WebView は a11y のまま(AndroidWebViewDOM の宣言コメント参照。誤診で撤回)。
+        // 対応表は snapshot ごとに作り直す(前の画面のものを持ち越すと別の欄へ注入する)
+        domBridgeRefs = [:]
+        // **web コンテンツを DOM で置き換える**。対象はブラウザ本体(2026-08-13)と
+        // **テスト対象アプリ自身の WebView**(2026-08-15。a11y が版で属性を入れ替えるため)。
+        // **どちらの門も `AndroidWebViewDOM.route` の1箇所**(ここに2つ目の判定を書かない)。
         //
         // **前面の判定はスナップショット自身の `sessionBundleID`(= ブリッジがデバイス上で見た値)を
         // 先に見る**。`currentPackage` は launch/openURL/activate が更新するホスト側の帳簿でしかなく、
         // **MCP のようにアプリを起こさず既にブラウザが前面の端末へ繋ぐ経路では nil のまま**になる
         // (2026-08-13 に実測: 新しいプロセスから Chrome を撮ったら帳簿が nil で経路が丸ごと不発だった)。
         // 帳簿は `sessionBundleID` を返さない古いブリッジのための保険として残す
-        if AndroidWebViewDOM.isBrowserDOMEnabled,
-           let package = snapshot.sessionBundleID ?? currentPackage,
-           AndroidWebViewDOM.browserSocketName(packageID: package) != nil {
-            // **`webView` ノードが無くても差し込む**(2026-08-14 の監査で直した)。
+        if let package = snapshot.sessionBundleID ?? currentPackage {
+            // **`webView` ノードが無くても差し込む(ブラウザだけ)**(2026-08-14 の監査で直した)。
             // Chrome は本文を1要素も公開しない画面でノードごと出さないことがあり、
             // そこが**まさに DOM が要る場面**なのに門で弾いていた。無いときは
-            // 上下の chrome から内容領域を割り出す(`browserContentFrame`)
+            // 上下の chrome から内容領域を割り出す(`browserContentFrame`)。
+            // 自作アプリ側は `route` が `webView` ノードの存在を門にしているので必ず frame がある
             let webView = WebViewDOM.webViewElement(in: snapshot.elements)
             let frame = webView?.frame ?? WebViewDOM.browserContentFrame(in: snapshot.elements,
                                                                         screen: snapshot.screen)
-            // **既定は a11y**。足りているなら DOM は読まない(理由は browserA11yLooksSufficient)
-            if !WebViewDOM.browserA11yLooksSufficient(elements: snapshot.elements), let frame,
+            let route = AndroidWebViewDOM.route(
+                packageID: package, hasWebViewNode: webView != nil,
+                a11yLooksSufficient: WebViewDOM.browserA11yLooksSufficient(elements: snapshot.elements),
+                browserDOMEnabled: AndroidWebViewDOM.isBrowserDOMEnabled,
+                appWebViewDOMEnabled: AndroidWebViewDOM.isAppWebViewDOMEnabled)
+            if route != .a11y, let frame,
                let payload = await AndroidWebViewDOM.read(
-                serial: serial ?? "", packageID: package, webViewLabel: webView?.label,
+                serial: serial ?? "", packageID: package, route: route, webViewLabel: webView?.label,
                 urlBarValue: AndroidWebViewDOM.urlBarValue(in: snapshot.elements),
                 adb: { try self.adb($0).output }) {
                 // nextRef は差し込み前の全要素から採る(落とす内側の要素も含めて衝突を避ける)
                 let nextRef = (snapshot.elements.map(\.ref).max() ?? 0) + 1
                 let added = WebViewDOM.elements(payload: payload, webViewFrame: frame,
                                                 density: displayDensity(), startingRef: nextRef)
-                let kept = webView.map { WebViewDOM.droppingWebViewSubtree(snapshot.elements, webView: $0) }
-                    ?? snapshot.elements
+                var kept = snapshot.elements
+                if let webView {
+                    // **自作アプリだけ、注入用の ref 対応表を作る**(理由は bridgeRefMap。
+                    // ブリッジは自分の ref しか受けないので、無いと type/clearInput が 404)。
+                    // **ブラウザ経路は今日の挙動のまま**にする(今回の変更の対象外)
+                    if route == .appWebView {
+                        domBridgeRefs = AndroidWebViewDOM.bridgeRefMap(
+                            dom: added,
+                            droppedA11y: StepExecutor.descendants(of: webView, in: snapshot.elements))
+                    }
+                    kept = WebViewDOM.droppingWebViewSubtree(snapshot.elements, webView: webView)
+                }
                 snapshot.elements = kept + added
             }
         }
@@ -400,7 +427,17 @@ public final class AndroidDriver: AppDriver {
     }
 
     public func clearInput(ref: Int?) async throws {
-        try await withBridge { try await $0.clearInput(ref: ref) }
+        restoreStateIfNeeded()
+        let target = bridgeRef(ref)
+        try await withBridge { try await $0.clearInput(ref: target) }
+    }
+
+    /// ホストの ref をブリッジが知っている ref へ写す(DOM 由来だけ差し替わる。domBridgeRefs 参照)。
+    /// **タップ系は写さない** —— あちらは座標をホストが持っているので、写すと逆に古い a11y の
+    /// 中心へ撃つことになる
+    private func bridgeRef(_ ref: Int?) -> Int? {
+        guard let ref else { return nil }
+        return domBridgeRefs[ref] ?? ref
     }
 
     /// ソフトキーボードを閉じる(DSL の hideKeyboard)。ブリッジの /hidekeyboard
@@ -444,13 +481,15 @@ public final class AndroidDriver: AppDriver {
         // 末尾の改行1つは ACTION_SET_TEXT では文字として入るだけで IME アクションにならないため、
         // 分離して本文の SET_TEXT 後に Enter キーイベントを送る(pressEnter と同じ経路。文中の
         // 改行はそのまま文字として本文に残す)
+        restoreStateIfNeeded()
+        let target = bridgeRef(ref)
         let (main, hasTrailingNewline) = Self.splitTrailingNewline(text)
         guard hasTrailingNewline else {
-            try await withBridge { try await $0.type(ref: ref, text: text) }
+            try await withBridge { try await $0.type(ref: target, text: text) }
             return
         }
         // 本文が空でも ref があれば SET_TEXT を通し、対象ノードへのフォーカス確立を維持する
-        try await withBridge { try await $0.type(ref: ref, text: main) }
+        try await withBridge { try await $0.type(ref: target, text: main) }
         try await pressEnter()
     }
 

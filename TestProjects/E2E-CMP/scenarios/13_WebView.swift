@@ -40,12 +40,19 @@ class WebViewの中身を操作できること {
             }
             scene(3, "Web の入力欄へ入力し、送信ボタンで反映する") {
                 action {
-                    // 入力欄は id もラベルも持たない。placeholder フィルタで指す
-                    // (素の文字列セレクタは text/label にしか当たらない)
                     type("#wv_input", "hello123")
                     tap("送信")
                 }.expectation {
                     select("wv_result=*").textIs("wv_result=hello123")
+                    // **DOM 経路が生きていることの検査**(2026-08-15)。placeholder は DOM にしか無い
+                    // —— Android の a11y は WebView 150 で id しか出さないので、DOM 読みが黙って
+                    // a11y へ落ちるとここだけが落ちる。**`#wv_input` では検知できない**
+                    // (150 の a11y も id を出すため、落ちていても通ってしまう)。
+                    // 実際に「経路が発火していないのに全部緑」を1日見逃した
+                    // xcuitest は a11y なので placeholder を持たない(ラベルで当てる)。
+                    // **どちらも無いのは Android が a11y へ落ちたときだけ**なので検知力は保つ
+                    // (150 の a11y は id しか出さない = ラベルも placeholder も無い。実測)
+                    exist("placeholder=WebView 入力||WebView 入力")
                 }
             }
             scene(4, "aria-label だけのボタンもラベルで指せる") {

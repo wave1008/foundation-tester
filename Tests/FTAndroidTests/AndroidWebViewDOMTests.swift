@@ -1,7 +1,9 @@
-// Android の**ブラウザ本体**を DOM から読む経路の純粋ロジック(`AndroidWebViewDOM`。2026-08-13)。
+// Android の web コンテンツを DOM から読む経路の純粋ロジック(`AndroidWebViewDOM`)。
+// 対象は**ブラウザ本体**(2026-08-13)と**テスト対象アプリ自身の WebView**(2026-08-15)。
 //
 // I/O(adb / CDP)はデバイスが要るのでここでは触らない。守るのは
-// **ソケット/タブを取り違えないこと**(別アプリ・別タブの DOM を読まない)。
+// **ソケット/タブを取り違えないこと**(別アプリ・別プロセス・別タブの DOM を読まない)と
+// **門の違い**(ブラウザは a11y で足りれば読まない / 自作アプリは足りて見えても読む)。
 // 座標の写し・WebView 選択・木への差し込みは `FTCore.WebViewDOM`(iOS と共有)へ移設済みで、
 // そちらは `Tests/FTCoreTests/WebViewDOMSnapshotTests.swift` が守る。
 
@@ -22,6 +24,185 @@ final class AndroidWebViewDOMTests: XCTestCase {
     func testUnknownPackageHasNoSocket() {
         XCTAssertNil(AndroidWebViewDOM.browserSocketName(packageID: "com.example.myapp"))
         XCTAssertNil(AndroidWebViewDOM.browserSocketName(packageID: "com.chrome.beta"))
+    }
+
+    // MARK: - 自作アプリのソケット名(pid 規則。ブラウザの固定名と混ぜない)
+
+    func testAppSocketNameCarriesThePID() {
+        XCTAssertEqual(AndroidWebViewDOM.appSocketName(pid: 5142), "webview_devtools_remote_5142")
+    }
+
+    /// 自作アプリのパッケージは**ブラウザの固定名を持たない**(規則が混線すると別プロセスを覗く)
+    func testAppPackagesDoNotGetABrowserSocket() {
+        XCTAssertNil(AndroidWebViewDOM.browserSocketName(packageID: "com.ftester.e2e"))
+    }
+
+    // MARK: - 経路の判定(門はブラウザと自作アプリで違う)
+
+    func testBrowserReadsDOMOnlyWhenA11yIsNotEnough() {
+        XCTAssertEqual(AndroidWebViewDOM.route(packageID: "com.android.chrome", hasWebViewNode: true,
+                                               a11yLooksSufficient: false, browserDOMEnabled: true,
+                                               appWebViewDOMEnabled: true),
+                       .browser(socket: "chrome_devtools_remote"))
+        XCTAssertEqual(AndroidWebViewDOM.route(packageID: "com.android.chrome", hasWebViewNode: true,
+                                               a11yLooksSufficient: true, browserDOMEnabled: true,
+                                               appWebViewDOMEnabled: true),
+                       .a11y, "a11y で足りているブラウザに DOM の 6〜20 倍のコストを払わない")
+    }
+
+    /// **`webView` ノードが無くてもブラウザは読む**(2026-08-14 の監査。Chrome は本文非公開の
+    /// 画面でノードごと出さず、そこがまさに DOM の要る場面だった)
+    func testBrowserRouteDoesNotRequireAWebViewNode() {
+        XCTAssertEqual(AndroidWebViewDOM.route(packageID: "com.android.chrome", hasWebViewNode: false,
+                                               a11yLooksSufficient: false, browserDOMEnabled: true,
+                                               appWebViewDOMEnabled: true),
+                       .browser(socket: "chrome_devtools_remote"))
+    }
+
+    /// **この経路の存在理由そのもの**: a11y は版で属性を入れ替える(124=placeholder のみ /
+    /// 150=#id のみ)ので、**足りて見えても DOM を正とする**。ここを a11y の充足度で
+    /// 切り替えると版差がそのまま残り、混在フリートでセレクタが端末ごとに割れる
+    func testAppWebViewIgnoresWhetherA11yLooksSufficient() {
+        for sufficient in [true, false] {
+            XCTAssertEqual(AndroidWebViewDOM.route(packageID: "com.ftester.e2e", hasWebViewNode: true,
+                                                   a11yLooksSufficient: sufficient,
+                                                   browserDOMEnabled: true, appWebViewDOMEnabled: true),
+                           .appWebView, "a11y の充足度で切り替えてはいけない")
+        }
+    }
+
+    /// `webView` ノードが無い画面では pid 引きと forward を払わない(自作アプリ側の唯一の門)
+    func testAppWithoutAWebViewNodeStaysOnA11y() {
+        XCTAssertEqual(AndroidWebViewDOM.route(packageID: "com.ftester.e2e", hasWebViewNode: false,
+                                               a11yLooksSufficient: false, browserDOMEnabled: true,
+                                               appWebViewDOMEnabled: true),
+                       .a11y)
+    }
+
+    /// **殺しスイッチは2つで、互いに独立**(束ねると「ブラウザだけ止めて A/B」が取れない)
+    func testTheTwoKillSwitchesAreIndependent() {
+        // FT_BROWSER_DOM=off はブラウザだけを止める
+        XCTAssertEqual(AndroidWebViewDOM.route(packageID: "com.android.chrome", hasWebViewNode: true,
+                                               a11yLooksSufficient: false, browserDOMEnabled: false,
+                                               appWebViewDOMEnabled: true),
+                       .a11y)
+        XCTAssertEqual(AndroidWebViewDOM.route(packageID: "com.ftester.e2e", hasWebViewNode: true,
+                                               a11yLooksSufficient: false, browserDOMEnabled: false,
+                                               appWebViewDOMEnabled: true),
+                       .appWebView, "ブラウザ側のスイッチが自作アプリまで止めてはいけない")
+        // FT_WEBVIEW_DOM=off は自作アプリだけを止める
+        XCTAssertEqual(AndroidWebViewDOM.route(packageID: "com.ftester.e2e", hasWebViewNode: true,
+                                               a11yLooksSufficient: false, browserDOMEnabled: true,
+                                               appWebViewDOMEnabled: false),
+                       .a11y)
+        XCTAssertEqual(AndroidWebViewDOM.route(packageID: "com.android.chrome", hasWebViewNode: true,
+                                               a11yLooksSufficient: false, browserDOMEnabled: true,
+                                               appWebViewDOMEnabled: false),
+                       .browser(socket: "chrome_devtools_remote"),
+                       "自作アプリ側のスイッチがブラウザまで止めてはいけない")
+    }
+
+    // MARK: - pid → ソケットの解決(**推測で選ばない**。外すと別プロセスの DOM を木へ差し込む)
+
+    /// `/proc/net/unix` の抜粋(実際の桁数・並びに合わせた形)
+    private func procNetUnix(_ sockets: [String]) -> String {
+        sockets.enumerated().map { index, name in
+            "0000000000000000: 00000002 00000000 00010000 0001 01 4509\(index) @\(name)"
+        }.joined(separator: "\n")
+    }
+
+    private func probe(pids: [Int], sockets: [String]) -> String {
+        pids.map(String.init).joined(separator: " ") + "\n"
+            + AndroidWebViewDOM.probeMarker + "\n" + procNetUnix(sockets)
+    }
+
+    /// **自分の pid と厳密一致する名前だけ**を採る(他アプリの WebView も Chrome も並んでいる)
+    func testPicksOnlyTheSocketBelongingToTheApp() {
+        let output = probe(pids: [5142], sockets: [
+            "chrome_devtools_remote",
+            "webview_devtools_remote_9001",
+            "webview_devtools_remote_5142",
+            "webview_devtools_remote_51420",
+        ])
+        XCTAssertEqual(AndroidWebViewDOM.resolveAppSocket(probeOutput: output),
+                       .socket("webview_devtools_remote_5142"))
+    }
+
+    func testAppNotRunning() {
+        XCTAssertEqual(AndroidWebViewDOM.resolveAppSocket(probeOutput: probe(pids: [], sockets: [
+            "webview_devtools_remote_9001",
+        ])), .appNotRunning)
+    }
+
+    /// WebView がまだ生成されていない(= ソケットが開いていない)。**黙って a11y へ落とす形**
+    func testNoWebViewSocketYet() {
+        XCTAssertEqual(AndroidWebViewDOM.resolveAppSocket(probeOutput: probe(pids: [5142], sockets: [
+            "chrome_devtools_remote", "webview_devtools_remote_9001",
+        ])), .noWebView)
+        XCTAssertEqual(AndroidWebViewDOM.resolveAppSocket(probeOutput: probe(pids: [5142], sockets: [])),
+                       .noWebView)
+    }
+
+    /// 同名プロセスが複数(マルチユーザ等)。**1つに決め打ちしない**
+    func testAmbiguousWhenSeveralPidsHaveASocket() {
+        let output = probe(pids: [5142, 6100], sockets: [
+            "webview_devtools_remote_6100", "webview_devtools_remote_5142",
+        ])
+        XCTAssertEqual(AndroidWebViewDOM.resolveAppSocket(probeOutput: output),
+                       .ambiguous(["webview_devtools_remote_5142", "webview_devtools_remote_6100"]))
+    }
+
+    /// 区切りが無い = 端末へ問い合わせられていない。**pid の切れ目が分からない出力を読まない**
+    func testUnavailableWithoutTheMarker() {
+        XCTAssertEqual(AndroidWebViewDOM.resolveAppSocket(probeOutput: "error: device offline"),
+                       .unavailable)
+    }
+
+    /// `/proc/net/unix` 自体を読めない端末では pid の規則から名前を組み立て、実在の判定は
+    /// 続く HTTP に任せる。**pid が複数なら組み立てない**(確かめられないまま別プロセスを覗かない)
+    func testDerivesTheNameWhenTheListingCannotBeRead() {
+        let denied = "5142\n" + AndroidWebViewDOM.probeMarker
+            + "\ncat: /proc/net/unix: Permission denied"
+        XCTAssertEqual(AndroidWebViewDOM.resolveAppSocket(probeOutput: denied),
+                       .socket("webview_devtools_remote_5142"))
+        let manyPids = "5142 6100\n" + AndroidWebViewDOM.probeMarker
+            + "\ncat: /proc/net/unix: Permission denied"
+        XCTAssertEqual(AndroidWebViewDOM.resolveAppSocket(probeOutput: manyPids),
+                       .ambiguous(["webview_devtools_remote_5142", "webview_devtools_remote_6100"]))
+    }
+
+    func testParsesTheSocketListing() {
+        let text = procNetUnix(["webview_devtools_remote_5142", "chrome_devtools_remote"])
+            + "\n0000000000000000: 00000002 00000000 00010000 0001 01 45099 /dev/socket/logdw"
+            + "\n0000000000000000: 00000002 00000000 00010000 0001 01 45100 @android:foo"
+        XCTAssertEqual(AndroidWebViewDOM.devtoolsSockets(inProcNetUnix: text),
+                       ["webview_devtools_remote_5142", "chrome_devtools_remote"],
+                       "devtools 以外の口を候補にしない")
+    }
+
+    func testParsesPidofOutput() {
+        XCTAssertEqual(AndroidWebViewDOM.pidList("5142 6100\n"), [5142, 6100])
+        XCTAssertEqual(AndroidWebViewDOM.pidList("\n"), [])
+        XCTAssertEqual(AndroidWebViewDOM.pidList("error: not found\n5142"), [5142],
+                       "stderr の語を pid と読み違えない")
+    }
+
+    // MARK: - 端末への問い合わせ(素のシェル文字列に埋めるので綴りを検める)
+
+    func testProbeAsksForBothThePidAndTheSockets() throws {
+        let command = try XCTUnwrap(AndroidWebViewDOM.probeCommand(packageID: "com.ftester.e2e"))
+        let script = command.joined(separator: " ")
+        XCTAssertTrue(script.contains("pidof com.ftester.e2e"))
+        XCTAssertTrue(script.contains(AndroidWebViewDOM.probeMarker), "pid とソケットの切れ目が無い")
+        XCTAssertTrue(script.contains("/proc/net/unix"))
+    }
+
+    /// **端末上で別コマンドにならないこと**(パッケージ名は素で埋めている)
+    func testProbeRefusesShellMetacharacters() {
+        XCTAssertNil(AndroidWebViewDOM.probeCommand(packageID: "com.x; rm -rf /"))
+        XCTAssertNil(AndroidWebViewDOM.probeCommand(packageID: "com.x`id`"))
+        XCTAssertNil(AndroidWebViewDOM.probeCommand(packageID: "com.x $(id)"))
+        XCTAssertNil(AndroidWebViewDOM.probeCommand(packageID: ""))
     }
 
     // MARK: - 能動タブの候補順(**1つに決め打ちしない**。応答で決めるのは read の責務)
@@ -129,6 +310,10 @@ final class AndroidWebViewDOMTests: XCTestCase {
         // **生死の判定を評価と同じ締切でやらない**(凍ったタブに 3 秒 × 候補数を払っていた)
         XCTAssertTrue(code.contains("timeout: livenessTimeout"),
                       "生死の判定に安い締切が使われていない")
+        // **自作アプリのソケットは解決器を通すこと**。pid から名前を組み立てて直に forward すると、
+        // 「一致するソケットが実在するか」「候補が複数でないか」の判定を丸ごと飛ばす
+        XCTAssertTrue(code.contains("case .socket(let name) = resolveAppSocket(probeOutput:"),
+                      "自作アプリのソケット解決が read から外れている")
     }
 
     // MARK: - 座標の写し・WebView 選択・差し込みは `FTCore.WebViewDOM` へ移設
@@ -143,6 +328,61 @@ final class AndroidWebViewDOMTests: XCTestCase {
         XCTAssertEqual(AndroidWebViewDOM.urlBarValue(in: [bar]), "example.com")
     }
 
+    // MARK: - 注入用の ref 対応表(ブリッジは自分の ref しか受けない)
+
+    private func element(_ ref: Int, _ type: String, x: Double, y: Double,
+                         w: Double = 100, h: Double = 40) -> ElementInfo {
+        ElementInfo(ref: ref, type: type, identifier: nil, label: nil, value: nil, placeholder: nil,
+                    enabled: true, frame: FTRect(x: x, y: y, width: w, height: h), depth: 1)
+    }
+
+    /// 対応表が無いと `type` / `clearInput` が 404 になる(タップは座標なので通る = 入力だけ落ちる)
+    func testInputFieldsMapToTheA11yRef() {
+        let dom = [element(90, "textField", x: 10, y: 100), element(91, "button", x: 10, y: 200)]
+        let dropped = [element(7, "textField", x: 8, y: 98), element(8, "staticText", x: 8, y: 200)]
+        XCTAssertEqual(AndroidWebViewDOM.bridgeRefMap(dom: dom, droppedA11y: dropped), [90: 7],
+                       "入力欄だけ対応付ける(他は座標で操作する)")
+    }
+
+    /// **1つの a11y 欄を2つの DOM ノードで取り合わない**(同じ欄へ2回書き込む形になる)
+    func testEachA11yFieldIsMappedOnlyOnce() {
+        let dom = [element(90, "textField", x: 10, y: 100), element(91, "textField", x: 12, y: 102)]
+        let dropped = [element(7, "textField", x: 8, y: 98)]
+        XCTAssertEqual(AndroidWebViewDOM.bridgeRefMap(dom: dom, droppedA11y: dropped), [90: 7])
+    }
+
+    /// 決まらないときは対応付けない(**取り違えは沈黙する誤り**。404 のほうが気付ける)
+    func testAmbiguousOverlapIsNotMapped() {
+        let dom = [element(90, "textField", x: 10, y: 100)]
+        let dropped = [element(7, "textField", x: 0, y: 90, w: 300, h: 60),
+                       element(8, "textField", x: 5, y: 95, w: 300, h: 60)]
+        XCTAssertEqual(AndroidWebViewDOM.bridgeRefMap(dom: dom, droppedA11y: dropped), [:],
+                       "同じ大きさで重なる2つのどちらかを当てずっぽうで選ばない")
+    }
+
+    /// 入れ子(欄と、それを包む容器の両方が入力型)なら**内側**を採る
+    func testPrefersTheSmallestCoveringField() {
+        let dom = [element(90, "textField", x: 10, y: 100)]
+        let dropped = [element(7, "textField", x: 0, y: 0, w: 400, h: 400),
+                       element(8, "textField", x: 5, y: 95, w: 120, h: 50)]
+        XCTAssertEqual(AndroidWebViewDOM.bridgeRefMap(dom: dom, droppedA11y: dropped), [90: 8])
+    }
+
+    /// a11y 側に入力欄が無い(版によっては出ない)なら空 = 呼び出し側は今までどおり素の ref を送る
+    func testWithoutAnA11yFieldNothingIsMapped() {
+        let dom = [element(90, "textField", x: 10, y: 100)]
+        XCTAssertEqual(AndroidWebViewDOM.bridgeRefMap(dom: dom, droppedA11y: [
+            element(7, "staticText", x: 8, y: 98),
+        ]), [:])
+    }
+
+    /// 離れた欄には引っ掛からない(中心点が中に入ることが条件)
+    func testAFieldElsewhereOnTheScreenIsNotMapped() {
+        let dom = [element(90, "textField", x: 10, y: 100)]
+        let dropped = [element(7, "textField", x: 10, y: 600)]
+        XCTAssertEqual(AndroidWebViewDOM.bridgeRefMap(dom: dom, droppedA11y: dropped), [:])
+    }
+
     // MARK: - forward port(pid が無いブラウザ経路の代替。並列 run での host port 衝突回避)
 
     func testStablePortIsDeterministicForTheSameSeed() {
@@ -154,6 +394,23 @@ final class AndroidWebViewDOMTests: XCTestCase {
         let port = AndroidWebViewDOM.stablePort(seed: "192.168.1.23:5555")
         XCTAssertGreaterThanOrEqual(port, 10000)
         XCTAssertLessThan(port, 30000)
+    }
+
+    /// **ブラウザの port は従来のまま**(種は serial だけ)。自作アプリを足したついでに
+    /// 動かすと、稼働中の forward と食い違って切り分けが難しくなる
+    func testBrowserPortSeedIsStillJustTheSerial() {
+        XCTAssertEqual(AndroidWebViewDOM.portSeed(serial: "emulator-5554", appSocket: nil),
+                       "emulator-5554")
+    }
+
+    /// 同じ端末でブラウザ経路と自作アプリ経路が別プロセスから同時に forward されうる
+    func testAppPortDiffersFromTheBrowserPortOnTheSameDevice() {
+        let browser = AndroidWebViewDOM.stablePort(
+            seed: AndroidWebViewDOM.portSeed(serial: "emulator-5554", appSocket: nil))
+        let app = AndroidWebViewDOM.stablePort(
+            seed: AndroidWebViewDOM.portSeed(serial: "emulator-5554",
+                                             appSocket: "webview_devtools_remote_5142"))
+        XCTAssertNotEqual(browser, app)
     }
 
     func testStablePortDiffersAcrossSerials() {
