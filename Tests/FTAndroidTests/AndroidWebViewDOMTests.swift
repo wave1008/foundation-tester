@@ -102,6 +102,14 @@ final class AndroidWebViewDOMTests: XCTestCase {
         XCTAssertLessThanOrEqual(AndroidWebViewDOM.evaluateTimeout, 5)
     }
 
+    /// **生死の判定は評価よりずっと短いこと**。凍ったタブは待っても答えないので、
+    /// ここを評価と同じ 3 秒にしていたとき snapshot の中央値が 9.5 秒になった(実測)
+    func testLivenessProbeIsMuchCheaperThanTheEvaluation() {
+        XCTAssertGreaterThan(AndroidWebViewDOM.livenessTimeout, 0)
+        XCTAssertLessThan(AndroidWebViewDOM.livenessTimeout * 3, AndroidWebViewDOM.evaluateTimeout,
+                          "候補を全部外しても評価1回ぶんに収まること")
+    }
+
     /// **定数の値だけでは守れない**(2026-08-13 のレビュー指摘)。番犬ごと消す変異も
     /// `prefix` を外す変異も、値のテストは素通しする。使われていることをソースで見る
     /// (`SwipeForScrollForwardingTests` と同じ作法)
@@ -115,9 +123,12 @@ final class AndroidWebViewDOMTests: XCTestCase {
             .joined(separator: "\n")
         // **`task.cancel` の有無では見分けられない**(`defer` 側にも在るため)。
         // 番犬そのもの = 締切ぶん眠ってから閉じる Task を名指しで見る
-        XCTAssertTrue(code.contains("Task.sleep(nanoseconds: UInt64(evaluateTimeout"),
+        XCTAssertTrue(code.contains("Task.sleep(nanoseconds: UInt64(timeout"),
                       "番犬が締切ぶん眠っていない = 受信が無期限になる")
         XCTAssertTrue(code.contains("prefix(maxTabAttempts)"), "試行回数の上限が掛かっていない")
+        // **生死の判定を評価と同じ締切でやらない**(凍ったタブに 3 秒 × 候補数を払っていた)
+        XCTAssertTrue(code.contains("timeout: livenessTimeout"),
+                      "生死の判定に安い締切が使われていない")
     }
 
     // MARK: - 座標の写し・WebView 選択・差し込みは `FTCore.WebViewDOM` へ移設

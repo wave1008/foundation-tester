@@ -156,8 +156,12 @@ public extension AndroidWebViewDOM {
         // **応答したタブを能動タブとみなす**(順序の推測では決めない。rankedTabs の宣言参照)。
         // 背面タブは JS が止まっていて返らないので、締切で切って次の候補へ移る。
         // **試す数を絞る**: 上限が無いと、タブを大量に開いた端末で snapshot が候補数×締切だけ延びる
+        // **生死を先に安く見る**(凍ったタブは待っても答えない。livenessTimeout の宣言参照)。
+        // 当たったタブにだけ本命の JS を撃つ
         for socket in rankedTabs(webViewLabel: webViewLabel, urlBarValue: urlBarValue,
                                  targets: list).prefix(maxTabAttempts) {
+            guard await evaluate(webSocket: socket, javaScript: "1+1",
+                                 timeout: livenessTimeout) != nil else { continue }
             guard let json = await evaluate(webSocket: socket, javaScript: WebViewDOM.javaScript),
                   let payload = try? WebViewDOM.decode(json), payload.error == nil else { continue }
             return payload
@@ -173,9 +177,15 @@ public extension AndroidWebViewDOM {
         return (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]]
     }
 
-    /// DOM 評価の締切(秒)。実測は前面タブで 33ms なので十分に広い。**背面タブは返らない**ので、
-    /// ここは「能動タブを外した」と見切る時間でもある(evaluate と read の宣言参照)
+    /// DOM 評価の締切(秒)。実測は前面タブで 33ms。**選んだタブが当たった後**の待ちなので広めでよい
     static let evaluateTimeout: Double = 3
+
+    /// **生きているタブかを見る安い問い合わせの締切(秒)**。
+    /// **凍ったタブは待っても絶対に答えない**(実測: 19 タブ中 18 が 3005ms で無応答、
+    /// 生きている1つは 11ms)。ここを評価と同じ 3 秒にしていたため、外すたびに 3 秒を捨てて
+    /// **snapshot の中央値が 9.5 秒**になっていた(DOM オフは 126ms)。
+    /// 生死の判定に大きな JS は要らないので `1+1` を撃つ
+    static let livenessTimeout: Double = 0.4
 
     /// 試すタブ数の上限。**外した候補1つにつき締切ぶん待つ**ので、上限が無いと
     /// タブを大量に開いた端末で snapshot が候補数 × 3秒だけ延びる
@@ -183,7 +193,8 @@ public extension AndroidWebViewDOM {
 
     /// `Runtime.evaluate` を1回だけ撃つ。**WebSocket は Foundation 標準**を使う
     /// (依存を足さない。CDP に要るのは送信1件・受信1件だけ)
-    private static func evaluate(webSocket: String, javaScript: String) async -> String? {
+    private static func evaluate(webSocket: String, javaScript: String,
+                                 timeout: Double = evaluateTimeout) async -> String? {
         guard let url = URL(string: webSocket) else { return nil }
         let task = URLSession.shared.webSocketTask(with: url)
         task.resume()
@@ -193,7 +204,7 @@ public extension AndroidWebViewDOM {
         // snapshot は最頻の操作なので、ここで止まると run ごと固まる(実測で 183 秒待っても返らなかった)。
         // ソケットを閉じると受信側が throw で起きるため、番犬は cancel するだけでよい
         let watchdog = Task {
-            try? await Task.sleep(nanoseconds: UInt64(evaluateTimeout * 1_000_000_000))
+            try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
             task.cancel(with: .goingAway, reason: nil)
         }
         defer { watchdog.cancel() }
