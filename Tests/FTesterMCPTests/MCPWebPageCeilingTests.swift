@@ -113,6 +113,32 @@ final class MCPWebPageCeilingTests: XCTestCase {
         XCTAssertTrue(MCPServer.needsWebPageCeiling(chrome))
     }
 
+    /// **本命**(2026-08-15 の2度目の追試): iOS Safari の a11y 木は `webView` 要素を
+    /// **出したり出さなかったりする**。ブラウザ chrome もスクロールで木から落ちる。
+    /// どちらも「そのとき何が公開されたか」に依存するので、**セッションのアプリ**で判定する
+    func testBrowserSessionCountsEvenWhenNothingInTheTreeSaysWeb() {
+        let bare = SnapshotResponse(sessionBundleID: "com.apple.mobilesafari",
+                                    screen: FTRect(x: 0, y: 0, width: 402, height: 874),
+                                    elements: tree(120, truncated: 89, webView: false).elements,
+                                    truncatedCount: 89)
+        XCTAssertFalse(bare.elements.contains { $0.type == "webView" })
+        XCTAssertNil(TreeCoverage.addressBarCandidate(in: bare))
+        XCTAssertTrue(MCPServer.needsWebPageCeiling(bare),
+                      "ブラウザのセッションなのに web と見なせていない")
+    }
+
+    /// **アプリ内 WebView は DOM 由来の印で拾う**(ブラウザではないのでセッションでは拾えない)
+    func testInAppWebContentCountsViaTheWebFlag() {
+        var elements = tree(120, truncated: 89, webView: false).elements
+        elements[0] = ElementInfo(ref: elements[0].ref, type: "staticText", identifier: nil,
+                                  label: "body", value: nil, placeholder: nil, enabled: true,
+                                  frame: elements[0].frame, depth: 2, web: true)
+        let snapshot = SnapshotResponse(sessionBundleID: "com.example.app",
+                                        screen: FTRect(x: 0, y: 0, width: 402, height: 874),
+                                        elements: elements, truncatedCount: 89)
+        XCTAssertTrue(MCPServer.needsWebPageCeiling(snapshot))
+    }
+
     /// **webView 要素が1つも無いブラウザの木**でも、アドレス欄があれば web と見なす。
     /// Chrome は「ページ本体どころか webView 容器すら a11y に出さない」状態を取り得る
     /// (`missingPageContentNote` が扱う形。デバイスで実際に観測した)

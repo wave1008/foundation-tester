@@ -212,16 +212,24 @@ public enum TreeCoverage {
         }
     }
 
-    /// **この木は web ページを載せているか**。webView 要素**か**アドレス欄のどちらかで判定する。
+    /// **この木は web ページを載せているか**。
     ///
-    /// **両方見るのが必須**(2026-08-15 の実害): Android Chrome の木には **webView 要素が
-    /// 1つも無い** —— ページ本体は CDP から差し込まれ、a11y に居るのはブラウザ chrome だけ。
-    /// 固定コーパスの `and-browser_*` 7枚すべてがそうで、webView だけを見る判定は
-    /// **Android のブラウザで構造的に発火しない**(要素上限の自動撮り直しがこれで死んでいた)。
-    /// 逆に iOS Safari とアプリ内 WebView は webView 要素を持つ一方、アドレス欄を持たない
-    /// ものがある(`ios-news_feed`)ので、どちらか片方では足りない
+    /// **木の中身だけで判定してはいけない**(2026-08-15 に2度外した)。実測で確かめた事実:
+    /// iOS Safari の a11y 木は **`webView` 要素を出したり出さなかったりする**(同じセッションで
+    /// 消えた木が観測されている)し、ブラウザ chrome(アドレス欄・ツールバー)はスクロールで
+    /// 隠れると木から落ちる。**どちらも「そのとき何が公開されたか」に依存する信号**なので、
+    /// これだけを根拠にすると同じページで判定が揺れる。
+    ///
+    /// そこで**セッションのアプリが既知のブラウザか**を第一の根拠にする —— 公開の揺れに
+    /// 影響されず、`WebViewDOM.knownBrowserIDs`(DOM を読む対象の唯一の定義元)と同じ集合を使う。
+    /// 残り3つはアプリ内 WebView(ブラウザではない)を拾うための補助:
+    /// **DOM 由来の要素**(`web == true`)/ webView 要素 / アドレス欄。
     public static func holdsWebContent(in snapshot: SnapshotResponse) -> Bool {
-        snapshot.elements.contains { $0.type == "webView" } || addressBarCandidate(in: snapshot) != nil
+        if let session = snapshot.sessionBundleID, WebViewDOM.knownBrowserIDs.contains(session) {
+            return true
+        }
+        return snapshot.elements.contains { $0.web == true || $0.type == "webView" }
+            || addressBarCandidate(in: snapshot) != nil
     }
 
     /// **アドレス欄はあるのに webView 要素そのものが1つも無い**形。
