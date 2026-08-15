@@ -152,6 +152,45 @@ extension MCPServer {
             + " Take a fresh ft_snapshot and use the new refs."
     }
 
+    /// **ref を採ったときの木と、撃つ直前の木が違う**ことの警告(2026-08-15・Simulator で再現)。
+    ///
+    /// なぜ要るか: 既存の警告はどれも**要素の見え方**を見ている(gone / ghost / moved /
+    /// ラベル変化 / 遮蔽 / 別アプリ)ので、**同じ id・同じラベル・同じ frame の別インスタンス**を
+    /// 掴んだときに1つも当たらない。実測 —— E2EAppCMP のセレクタ画面で `#btn_back`(ref 350)を
+    /// 採り、**ツールの外から** `simctl openurl` でライフサイクル画面へ進めてから撃つと、
+    /// `tap [350] done.` だけを返してライフサイクル画面の `#btn_back`(同じ frame・同じ「戻る」)を
+    /// 叩く。`isStale` も当たらない —— 間に snapshot を挟んでいないので ref は最新世代のままだから。
+    ///
+    /// **しきい値を持たない**: 「木の類似度が閾値以下なら別画面」は固定コーパスで棄却済み
+    /// (同じ画面の別状態 0.33 と別画面 0.30/0.35 が重なり、別画面で 0.92 のペアもある)。
+    /// `adoptSnapshot` は同一性が変わらなければ世代を進めない = 同一性の一致がそのまま
+    /// 「変わっていない」の表明なので、**厳密比較でよい**。
+    ///
+    /// **比較キーに ref と frame を入れない**: ref は世代でずれ、frame はスクロールで動くが、
+    /// どちらも「画面が別物になった」ことを意味しない。
+    ///
+    /// **断定しない**: 木からは「別の画面か」を決められない(できないことは上の棄却が示している)。
+    /// 事実(木が違う・このセッションの操作では変えていない)だけを述べて撮り直しを勧める。
+    /// `isStale` のときは黙る —— あちらの注記が同じことを既に言っており、二重になる
+    static func screenChangedUnderRefNote(ref: Int, takenFrom: SnapshotResponse?,
+                                          fresh: SnapshotResponse, isStale: Bool,
+                                          matched: ElementInfo) -> String {
+        guard !isStale, let taken = takenFrom,
+              Self.treeIdentity(taken) != Self.treeIdentity(fresh) else { return "" }
+        return " note: [\(ref)] came from a snapshot whose tree no longer matches the current one,"
+            + " and nothing this session did changed it — the app itself, another process or a"
+            + " person moved the screen on. It still matched \(RefGuard.describe(matched)), but that"
+            + " can be the same-looking element of a different screen. Take a fresh ft_snapshot."
+    }
+
+    /// 木の同一性(型 + identifier + ラベルの集合)。`identity` と違い **ref を含めない** ——
+    /// あちらは世代の据え置き判定用で、こちらは**別の木どうし**を比べる
+    private static func treeIdentity(_ snapshot: SnapshotResponse) -> Set<String> {
+        Set(snapshot.elements.map {
+            "\($0.type)\u{1}\($0.identifier ?? "")\u{1}\($0.label ?? "")"
+        })
+    }
+
     /// この ref を持っている**別の** engineKey(= 別の宛先、または同じ機の別の指し方)。
     /// 拒否するときに出自を名指しするために使う —— 「不明な番号」とだけ言うと、
     /// 呼び手は撃ち間違いだと読んで同じ番号を別の宛先へ撃ち直す
@@ -591,6 +630,11 @@ extension MCPServer {
         let fresh = try await freshSnapshot(driver, args: args)
         if let message = Self.refFromAnotherAppMessage(
             ref: ref, takenFrom: takenFrom, fresh: fresh) { throw MCPError(message) }
+        // **ref の出所についての注記はまとめて先頭に置く**(何に当たったかより前に言う)。
+        // 2つは排他 —— screenChangedUnderRefNote は isStale のとき黙る
+        let originNote = staleNote + Self.screenChangedUnderRefNote(
+            ref: ref, takenFrom: takenFrom, fresh: fresh,
+            isStale: resolved.isStale, matched: target)
         // **申告 keyboardFrame はキー面だけ**(サジェストバー・地球儀/Dictate 行を含まない)。
         // 木の chrome で広げ、chrome 自身とその部分木は除外する(KeyboardOcclusion の doc)。
         // DSL 側(StepExecutor+Actions.swift)も同じ型で揃える —— 片方だけ広げると
@@ -605,7 +649,7 @@ extension MCPServer {
             // **拒否せず警告して撃つ**(2026-08-06 に方針を後退させた。理由は RefGuard の宣言)。
             // **キーボード被覆は先に言う**(木の遮蔽判定では原理的に拾えない事実なので、
             // 座標由来の他の警告より確度が高い)
-            return (found.ref, staleNote
+            return (found.ref, originNote
                 + RefGuard.preTapWarnings(found, keyboardOcclusion: keyboardOcclusion)
                 + RefGuard.ghostWarning(found: found, in: fresh.elements, screen: fresh.screen))
         case .found(let found, let moved):
@@ -614,7 +658,7 @@ extension MCPServer {
             let labelNote = RefGuard.labelChangeNote(old: target.label, new: found.label) ?? ""
             // **ghost でなくても別の物に当たり得る**2形(上に描かれた overlay / 同一矩形への
             // 積み重なり)。どちらも容器の内側なので RefGuard.relocate では .found になる
-            let overlap = staleNote
+            let overlap = originNote
                 + RefGuard.preTapWarnings(found, keyboardOcclusion: keyboardOcclusion)
                 + RefGuard.overlapWarning(found: found, in: fresh.elements, screen: fresh.screen)
                 + (await Self.hiddenUnderChromeWarning(found, in: fresh, driver: driver))
@@ -624,7 +668,7 @@ extension MCPServer {
             // 切り分けの手掛かりとして出す(外部フィードバック 2026-08-06。severity は低いとのこと)
             let cause = RefGuard.movedTogether(target, found,
                                                before: lastRendered, after: fresh.elements)
-            return (found.ref, staleNote
+            return (found.ref, originNote
                 + RefGuard.preTapWarnings(found, keyboardOcclusion: keyboardOcclusion)
                 + RefGuard.movedNote(found: found, moved: moved, cause: cause) + labelNote)
         }
