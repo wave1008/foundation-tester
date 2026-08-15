@@ -19,6 +19,21 @@ final class MCPWaitForChangeStabilizationTests: XCTestCase {
         XCTAssertTrue(text.contains("already present on the first read"), text)
     }
 
+    /// **この注記で ft_snapshot を撃たせない**(2026-08-15 の外部評価: AI が「未確認」の合図と
+    /// 読んで追加の ft_snapshot を撃つ例が実際に出た)。この分岐は撮り直して同一だったときに
+    /// しか来ないので、素の読み直しは同じ木がもう1枚返るだけの丸損 —— **済んでいることを言い、
+    /// 残る疑いに効く別の手(waitFor)を名指しする**
+    func testChangedOnFirstReadDoesNotInviteAPlainReSnapshot() async throws {
+        let text = try await runWaitForChange(
+            script: [Self.screen("base"), Self.screen("empty-intermediate")])
+        XCTAssertTrue(text.contains("re-read until it stopped changing"),
+                      "済んでいる確認を言っていない: \(text)")
+        XCTAssertTrue(text.contains("another ft_snapshot will not tell you more"),
+                      "素の読み直しが無駄だと言っていない: \(text)")
+        XCTAssertTrue(text.contains("ft_snapshot waitFor:"),
+                      "残る疑いに効く手を名指ししていない: \(text)")
+    }
+
     /// **ポーリング中に遷移を観測した**: 注意書きは出さない(どこにでも付く注意は読み飛ばされる)
     func testTransitionObservedOnALaterPollDoesNotCarryTheCaveat() async throws {
         let text = try await runWaitForChange(

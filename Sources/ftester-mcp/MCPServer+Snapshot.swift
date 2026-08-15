@@ -562,13 +562,21 @@ extension MCPServer {
         } else if changedOnFirstRead {
             // 安定確認は「中間状態がそれ自体しばらく静止している」場合を
             // 見抜けない —— 遷移を1度も観測していないことだけは言える
+            // **「確かめろ」で終えない**(2026-08-15 の外部評価): 旧文はここまで来た木が
+            // 何を通っているかを言わずに確認だけ促しており、読み手は素の ft_snapshot を
+            // もう1回撃っていた —— この分岐は `stable && churn == 0`、つまり
+            // **撮り直して同一だった**ときにしか来ないので、同じ木がもう1枚返るだけの丸損。
+            // 済んでいることを先に言い、残る唯一の疑い(静止した読み込み中)と、
+            // それに効く**別の**手(waitFor)を名指しする
             note += once("waitForChangeFirstReadNote",
                 full: "note: the difference was already present on the first"
-                    + " read, so no transition was actually observed — a screen"
-                    + " that populates asynchronously (search results, network"
-                    + " content) may still be showing a loading or empty"
-                    + " intermediate state; if you expect specific content,"
-                    + " confirm it is present before relying on this tree.\n",
+                    + " read, so no transition was observed. The tree was still"
+                    + " re-read until it stopped changing, so reading it again"
+                    + " now returns the same thing — another ft_snapshot will not"
+                    + " tell you more. What this cannot rule out is a screen that"
+                    + " settles into a loading or empty state; if you are waiting"
+                    + " for specific content, ask for it directly with"
+                    + " ft_snapshot waitFor: <selector>.\n",
                 short: "(already differed on the first read — see the earlier"
                     + " waitForChange note)\n")
         }
