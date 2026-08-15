@@ -48,6 +48,14 @@ extension MCPServer {
         return adoptSnapshot(full, args: args)
     }
 
+    /// 待ちのポーリングが毎回かける要素上限(`Self.waitFor` の `elementLimit`)。
+    /// **明示指定 > ラッチ > 既定(nil)** —— `freshSnapshot` の優先順と同じにする
+    func pollElementLimit(_ args: [String: Any]) -> Int? {
+        if let requested = args["maxElements"] as? Int { return requested }
+        return webPageCeilingLatched.contains(Self.engineKey(args))
+            ? BridgeAPI.maxSnapshotElementsCeiling : nil
+    }
+
     /// **切り詰められた web ページなら、言われる前に天井で撮り直す**(2026-08-15 の外部評価。
     /// 1セッションで 89 件と 72 件を落とされたと報告された)。
     ///
@@ -59,10 +67,15 @@ extension MCPServer {
     /// (`BridgeAPI.maxSnapshotElementsCeiling` の doc)、web ページは広告リンク等の tier0 が
     /// 枠を埋め、捨てられるのは **tier1 = ラベル付きの本文** = 読み手が欲しい行そのものになる。
     /// native のリストは操作可能な要素が優先的に残るので、同じ被害にはならない。
-    /// 既に天井で読まれた木なら撮り直しても同じ木が返るだけなので撮らない
+    /// 既に天井で読まれた木なら撮り直しても同じ木が返るだけなので撮らない。
+    ///
+    /// **「web ページか」の判定は `TreeCoverage.holdsWebContent` に委ねる**(2026-08-15 に修正)。
+    /// 最初の実装は `type == "webView"` だけを見ており、**Android Chrome では1件も発火しなかった**
+    /// (あちらの木に webView 要素は無い)。固定コーパスに Android のブラウザが7枚あったのに
+    /// 当てずに入れたのが原因で、外部評価で Yahoo 天気の 81 件脱落として報告された
     static func needsWebPageCeiling(_ snapshot: SnapshotResponse) -> Bool {
         snapshot.truncatedCount > 0 && !SnapshotTruncation.isAtCeiling(snapshot)
-            && snapshot.elements.contains { $0.type == "webView" }
+            && TreeCoverage.holdsWebContent(in: snapshot)
     }
 
     /// ref 同一性の比較キー。(ref, type, identifier, label) — 値/frame/focused の変化では
@@ -487,7 +500,8 @@ extension MCPServer {
             if let waitFor = args["waitFor"] as? String {
                 let seconds = args["timeout"] as? Double ?? Self.defaultWaitSeconds
                 let waited = try await Self.waitFor(waitFor, driver: snapshotDriver,
-                                                    first: snapshot, seconds: seconds)
+                                                    first: snapshot, seconds: seconds,
+                                                    elementLimit: pollElementLimit(args))
                 snapshot = waited.refetched ? adoptSnapshot(waited.snapshot, args: args) : waited.snapshot
                 waitNote = waited.found ? "waitFor \"\(waitFor)\" appeared.\n"
                     : "waitFor \"\(waitFor)\" did not appear within \(seconds)s"

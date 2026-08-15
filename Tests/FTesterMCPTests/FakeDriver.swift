@@ -77,6 +77,12 @@ final class FakeDriver: AppDriver, @unchecked Sendable {
     /// `snapshot(bypassingCache: true)` を撃つはずで、呼び出し記録で区別できる
     var supportsCacheBypass = false
 
+    /// `raiseElementLimitOnNextSnapshot` に渡された値を撮った順に記録する。
+    /// **既定実装は no-op なので、記録しないと「上限を上げたつもり」を検証できない**
+    var elementLimits: [Int?] = []
+
+    func raiseElementLimitOnNextSnapshot(_ max: Int?) { elementLimits.append(max) }
+
     func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {
         guard bypassingCache else { return try await snapshot() }
         try record("snapshot(fresh)", "snapshot")

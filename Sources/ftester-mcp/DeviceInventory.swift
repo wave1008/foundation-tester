@@ -27,6 +27,10 @@ enum DeviceInventory {
         /// **同じ端末に in-app と XCUITest が同時に立つのが常態**(実測: 10台に稼働ブリッジ17本)。
         /// port 昇順。line(_:) がまとめて畳んで出す
         let bridges: [Bridge]
+        /// **名前でしか当たらず、その名前が一意でないので捨てたブリッジの本数**
+        /// (`resolveBridges` 参照)。0 なら何も出さない。黙って捨てると
+        /// 「動いているのに一覧に出ない」になるので、本数だけは行に残す
+        var unattributedByName: Int = 0
 
         struct Bridge: Equatable {
             let port: UInt16
@@ -110,6 +114,13 @@ enum DeviceInventory {
             // 動かない。行の見た目は他と同じなので、書かないと利用者は「なぜか効かない」を踏む
             parts.append("no bridge — not drivable from MCP until `ftester bridge up`")
         }
+        // **捨てた本数は黙らない**(Row.unattributedByName)。同名の機が2台以上あると、
+        // udid を申告しないブリッジはどちらのものか決められない
+        if row.unattributedByName > 0 {
+            parts.append("\(row.unattributedByName) more bridge(s) match this device's name but not"
+                + " its udid, and another device shares that name — not listed here because they"
+                + " cannot be attributed; pass port: explicitly, or rename the devices")
+        }
         return "- \(row.name) (\(parts.joined(separator: ", ")))"
     }
 
@@ -176,8 +187,13 @@ enum DeviceInventory {
         let physicalDevices = specs.contains(where: \.isPhysical)
             ? ((try? IOSPhysicalDeviceCatalog.devices()) ?? []) : []
         let live = await liveIOSBridges()
+        // **名前引きを無効にする条件は「機の名前が一意でないこと」**なので、材料は実測カタログ
+        // (spec ではなく)。プロファイルの表示名が違っていても、指している機の名前が同じなら
+        // 名前引きは両方に当たる
+        let ambiguous = ambiguousDeviceNames(simDevices.filter(\.booted).map(\.name)
+                                             + physicalDevices.filter(\.connected).map(\.name))
         return specs.map { iosRow(spec: $0, simDevices: simDevices, physicalDevices: physicalDevices,
-                                  liveBridges: live) }
+                                  liveBridges: live, ambiguousNames: ambiguous) }
     }
 
     /// 生きているブリッジの引き方。**1つの辞書に名前と udid を混ぜない** —— どちらの鍵で
@@ -194,17 +210,21 @@ enum DeviceInventory {
     /// udid が唯一の安定鍵になる(欠陥①(a))
     static func iosRow(spec: DeviceSpec, simDevices: [SimDeviceInfo],
                        physicalDevices: [IOSPhysicalDeviceInfo],
-                       liveBridges: LiveBridges = .empty) -> Row {
+                       liveBridges: LiveBridges = .empty,
+                       ambiguousNames: Set<String> = []) -> Row {
         if spec.isPhysical {
             let udid = spec.udid ?? ""
             let match = physicalDevices.first { $0.udid == udid || $0.deviceCtlIdentifier == udid }
             let running = match?.connected ?? false
             let resolvedUDID = spec.udid ?? match?.udid
             let key = match?.name ?? spec.name
+            let resolved = running
+                ? resolveBridges(udid: resolvedUDID, name: key, in: liveBridges,
+                                 ambiguousNames: ambiguousNames)
+                : (bridges: [], droppedByName: 0)
             return Row(name: spec.name, platform: "ios", identifier: spec.udid ?? match?.udid,
                       running: running, physical: true, registered: true,
-                      bridges: running
-                          ? resolveBridges(udid: resolvedUDID, name: key, in: liveBridges) : [])
+                      bridges: resolved.bridges, unattributedByName: resolved.droppedByName)
         }
         let match: SimDeviceInfo?
         if let udid = spec.udid, !udid.isEmpty {
@@ -217,9 +237,13 @@ enum DeviceInventory {
         let running = match?.booted ?? false
         let resolvedUDID = match?.udid ?? spec.udid
         let key = match?.name ?? spec.name
+        let resolved = running
+            ? resolveBridges(udid: resolvedUDID, name: key, in: liveBridges,
+                             ambiguousNames: ambiguousNames)
+            : (bridges: [], droppedByName: 0)
         return Row(name: spec.name, platform: "ios", identifier: match?.udid ?? spec.udid,
                   running: running, physical: false, registered: true,
-                  bridges: running ? resolveBridges(udid: resolvedUDID, name: key, in: liveBridges) : [])
+                  bridges: resolved.bridges, unattributedByName: resolved.droppedByName)
     }
 
     /// **udid で当たった行と名前で当たった行の和集合**(欠陥③)。`??` で片方だけを採ると、
@@ -227,13 +251,35 @@ enum DeviceInventory {
     /// 同じ端末に同居したとき、udid 側で1本でも当たった時点で名前側が丸ごと見えなくなる
     /// (Row.Bridge の doc の「同じ端末に in-app と XCUITest が同時に立つのが常態」参照)。
     /// port で重複を除き、line(_:) の契約どおり port 昇順を保つ
-    private static func resolveBridges(udid: String?, name: String,
-                                       in live: LiveBridges) -> [Row.Bridge] {
+    ///
+    /// **名前が一意でないときは名前引きを使わない**(2026-08-15 の外部評価の実害): 同じ機種で
+    /// 2台作れば名前は既定で同じになる。そのとき和集合を取ると**2台とも同じポートを名乗り**、
+    /// 読み手からは「ポートでは区別できない・必ず udid を渡すしかない」ように見える
+    /// (報告された症状そのもの)。**どちらの機のものか決められない以上、どちらにも付けない** ——
+    /// 片方に付けるのは当てずっぽうで、間違えたほうを操作させる。
+    /// 捨てた本数は行に残す(`Row.unattributedByName`)
+    private static func resolveBridges(udid: String?, name: String, in live: LiveBridges,
+                                       ambiguousNames: Set<String> = [])
+        -> (bridges: [Row.Bridge], droppedByName: Int) {
         let byUDID = udid.flatMap { live.byUDID[$0] } ?? []
-        let byName = live.byName[name] ?? []
+        let named = live.byName[name] ?? []
+        let byName = ambiguousNames.contains(name) ? [] : named
         var seenPorts = Set<UInt16>()
-        return (byUDID + byName).sorted { $0.port < $1.port }
+        let merged = (byUDID + byName).sorted { $0.port < $1.port }
             .filter { seenPorts.insert($0.port).inserted }
+        // **udid で既に出ているものは「捨てた」に数えない**(同じ機の同じブリッジなので実害が無い)
+        let dropped = ambiguousNames.contains(name)
+            ? named.filter { bridge in !merged.contains(where: { $0.port == bridge.port }) }.count
+            : 0
+        return (merged, dropped)
+    }
+
+    /// **2台以上が名乗っている名前**。名前引きを無効にする条件(`resolveBridges` 参照)
+    static func ambiguousDeviceNames(_ names: [String]) -> Set<String> {
+        var seen: Set<String> = []
+        var duplicated: Set<String> = []
+        for name in names where !seen.insert(name).inserted { duplicated.insert(name) }
+        return duplicated
     }
 
     /// **実機も並べる**(2026-08-14・実機+仮想デバイス混在の監査)。ここはマシンプロファイルが
@@ -258,14 +304,20 @@ enum DeviceInventory {
     /// 補った udid 側で当てる(resolveBridges は udid 引きと名前引きの和集合を取る)
     static func iosFallbackRows(simulators: [SimDeviceInfo], physical: [IOSPhysicalDeviceInfo],
                                 live: LiveBridges) -> [Row] {
-        simulators.filter(\.booted).map { device in
-            Row(name: device.name, platform: "ios", identifier: device.udid, running: true,
-               physical: false, registered: false,
-               bridges: resolveBridges(udid: device.udid, name: device.name, in: live))
+        let ambiguous = ambiguousDeviceNames(simulators.filter(\.booted).map(\.name)
+                                             + physical.filter(\.connected).map(\.name))
+        return simulators.filter(\.booted).map { device in
+            let resolved = resolveBridges(udid: device.udid, name: device.name, in: live,
+                                          ambiguousNames: ambiguous)
+            return Row(name: device.name, platform: "ios", identifier: device.udid, running: true,
+                       physical: false, registered: false,
+                       bridges: resolved.bridges, unattributedByName: resolved.droppedByName)
         } + physical.filter(\.connected).map { device in
-            Row(name: device.name, platform: "ios", identifier: device.udid, running: true,
-                physical: true, registered: false,
-                bridges: resolveBridges(udid: device.udid, name: device.name, in: live))
+            let resolved = resolveBridges(udid: device.udid, name: device.name, in: live,
+                                          ambiguousNames: ambiguous)
+            return Row(name: device.name, platform: "ios", identifier: device.udid, running: true,
+                       physical: true, registered: false,
+                       bridges: resolved.bridges, unattributedByName: resolved.droppedByName)
         }
     }
 

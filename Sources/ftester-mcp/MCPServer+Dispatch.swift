@@ -1037,7 +1037,8 @@ extension MCPServer {
             if let waitFor = args["waitFor"] as? String {
                 let seconds = args["timeout"] as? Double ?? Self.defaultWaitSeconds
                 let waited = try await Self.waitFor(waitFor, driver: snapshotDriver,
-                                                    first: snapshot, seconds: seconds)
+                                                    first: snapshot, seconds: seconds,
+                                                    elementLimit: pollElementLimit(args))
                 // **撃ち直しが起きたときだけ adoptSnapshot を通す**: 撃ち直しが無ければ
                 // `waited.snapshot` は `snapshot`(既にセッション ref)そのものなので、
                 // native 前提の adoptSnapshot に通すと同じ木を「別世代」と誤認する

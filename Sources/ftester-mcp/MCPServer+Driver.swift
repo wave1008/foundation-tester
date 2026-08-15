@@ -816,8 +816,14 @@ extension MCPServer {
     /// `adoptSnapshot` を通すかどうかを決める —— **通さないと世代が進まない従来どおりの結果に
     /// なるだけで無害だが、通すと事故る**: `first` は既にセッション ref(base 込み)なので、
     /// native 前提の adoptSnapshot にそのまま渡すと素の native と誤認して余計な世代を作る
+    /// `elementLimit`: ポーリングの読みへ毎回かける要素上限(nil = ブリッジの既定)。
+    /// **ここを通さないと web ページの天井ラッチが待ちの経路だけ効かない**(2026-08-15 の実害):
+    /// 最初の1枚は `freshSnapshot` がラッチして天井で撮り直すのに、その直後の waitFor が
+    /// 素の 120 で撮り直すため、**返る木は切り詰められたまま**になり
+    /// 「maxElements を上げろ」の旧注記が出続けていた(`raiseElementLimitOnNextSnapshot` は
+    /// 1回ぶんの指定なので、freshSnapshot の読みで消費されている)
     static func waitFor(_ selector: String, driver: AppDriver, first: SnapshotResponse,
-                        seconds: Double) async throws
+                        seconds: Double, elementLimit: Int? = nil) async throws
         -> (found: Bool, snapshot: SnapshotResponse, partialSeenAfter: Double?, partialHint: String,
             refetched: Bool) {
         var partialSeenAfter: Double?
@@ -838,6 +844,7 @@ extension MCPServer {
         while Date() < deadline {
             try await Task.sleep(for: .seconds(waitPollSeconds))
             // **キャッシュを捨てて撮る**: 同じ木を読み続けると、出ていても永遠に出ない
+            if let elementLimit { driver.raiseElementLimitOnNextSnapshot(elementLimit) }
             latest = driver.supportsCacheBypass
                 ? try await driver.snapshot(bypassingCache: true) : try await driver.snapshot()
             refetched = true

@@ -106,6 +106,75 @@ final class MCPWebPageCeilingTests: XCTestCase {
                        "指定があるのに撮り直している: \(driver.calls)")
     }
 
+    /// 実コーパスの Android ブラウザ(切り詰めあり)で発火すること
+    func testAndroidBrowserFixtureFires() throws {
+        let chrome = try fixture("and-browser_j1_standings")
+        XCTAssertGreaterThan(chrome.truncatedCount, 0, "コーパスの形が変わった")
+        XCTAssertTrue(MCPServer.needsWebPageCeiling(chrome))
+    }
+
+    /// **webView 要素が1つも無いブラウザの木**でも、アドレス欄があれば web と見なす。
+    /// Chrome は「ページ本体どころか webView 容器すら a11y に出さない」状態を取り得る
+    /// (`missingPageContentNote` が扱う形。デバイスで実際に観測した)
+    func testBrowserChromeWithoutAWebViewElementCountsViaTheAddressBar() {
+        let addressBar = ElementInfo(ref: 1, type: "textField", identifier: "url_bar", label: nil,
+                                     value: "tenki.jp", placeholder: nil, enabled: true,
+                                     frame: FTRect(x: 0, y: 0, width: 400, height: 40), depth: 1)
+        var elements = tree(120, truncated: 81, webView: false).elements
+        elements.append(addressBar)
+        let snapshot = SnapshotResponse(sessionBundleID: nil,
+                                        screen: FTRect(x: 0, y: 0, width: 402, height: 874),
+                                        elements: elements, truncatedCount: 81)
+        XCTAssertTrue(MCPServer.needsWebPageCeiling(snapshot))
+    }
+
+    /// **待ちの経路にも上限が要る**(2026-08-15 の実害): 最初の1枚は撮り直して天井にするのに、
+    /// 直後の waitFor が素の既定で撮り直すため、**返る木は切り詰められたまま**になり
+    /// 「maxElements を上げろ」の旧注記が出続けていた
+    /// (`raiseElementLimitOnNextSnapshot` は1回ぶんの指定で、最初の読みで消費されている)
+    func testWaitForPollingKeepsTheCeilingOnALatchedDevice() async throws {
+        let driver = FakeDriver()
+        driver.scriptedSnapshots = [tree(120, truncated: 81, webView: true),
+                                    tree(209, truncated: 0, webView: true)]
+        let server = makeServer(driver)
+        _ = try await server.call(tool: "ft_snapshot", args: [:])   // ここでラッチ
+        driver.elementLimits.removeAll()
+
+        _ = try await server.call(tool: "ft_snapshot",
+                                  args: ["waitFor": "#never_appears", "timeout": 0.6])
+
+        XCTAssertGreaterThanOrEqual(
+            driver.elementLimits.filter { $0 == BridgeAPI.maxSnapshotElementsCeiling }.count, 2,
+            "ポーリングの読みが既定の上限に戻っている: \(driver.elementLimits)")
+    }
+
+    /// **コーパス全数で発火する集合を等号で固定する**(増減は1件ずつ検分してから更新)。
+    /// `ios-news_feed` はアプリ内 WebView のフィード —— アドレス欄は無いが webView 要素で拾う
+    func testFiringSetOverTheWholeCorpus() throws {
+        var fired: [String] = []
+        for name in try fixtureNames() where MCPServer.needsWebPageCeiling(try fixture(name)) {
+            fired.append(name)
+        }
+        XCTAssertEqual(fired.sorted(),
+                       ["and-browser_j1_standings", "ios-browser_j1_standings",
+                        "ios-browser_nationwide", "ios-browser_startpage", "ios-news_feed"],
+                       "撮り直す画面の集合が変わった。増えた分が本当に web か1件ずつ見ること")
+    }
+
+    private func fixture(_ name: String) throws -> SnapshotResponse {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/RealAppSnapshots/\(name).json")
+        return try JSONDecoder().decode(SnapshotResponse.self, from: try Data(contentsOf: url))
+    }
+
+    private func fixtureNames() throws -> [String] {
+        let dir = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Fixtures/RealAppSnapshots")
+        return try FileManager.default.contentsOfDirectory(atPath: dir.path)
+            .filter { $0.hasSuffix(".json") }.map { String($0.dropLast(5)) }.sorted()
+    }
+
     /// 判定そのもの(3条件)
     func testNeedsWebPageCeilingRules() {
         XCTAssertTrue(MCPServer.needsWebPageCeiling(tree(120, truncated: 1, webView: true)))

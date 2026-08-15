@@ -214,6 +214,64 @@ final class DeviceInventoryTests: XCTestCase {
         XCTAssertEqual(rows.map(\.identifier), ["SIM-2"])
     }
 
+    // MARK: - 同名の機が2台(2026-08-15 の外部評価の実害)
+
+    /// **同じ機種で2台作れば名前は既定で同じになる**。名前引きは udid を申告しないブリッジの
+    /// ために在るが、名前が一意でないと**どちらの機のものか決められない** —— 和集合を取ると
+    /// 2台とも同じポートを名乗り、読み手からは「ポートでは区別できない」ように見える
+    /// (報告された症状: 別 udid の2台がどちらも 8123/8124 を表示)
+    func testSameNamedDevicesDoNotShareEachOthersPorts() {
+        let a = SimDeviceInfo(udid: "SIM-A", name: "iPhone 17 Pro", os: "iOS 27.0",
+                              booted: true, physical: false)
+        let b = SimDeviceInfo(udid: "SIM-B", name: "iPhone 17 Pro", os: "iOS 27.0",
+                              booted: true, physical: false)
+        let live = DeviceInventory.LiveBridges(
+            byName: ["iPhone 17 Pro": [DeviceInventory.Row.Bridge(port: 8123, engine: "xcuitest"),
+                                       DeviceInventory.Row.Bridge(port: 8124, engine: "xcuitest")]],
+            byUDID: ["SIM-A": [DeviceInventory.Row.Bridge(port: 8123, engine: "xcuitest")],
+                     "SIM-B": [DeviceInventory.Row.Bridge(port: 8124, engine: "xcuitest")]])
+
+        let rows = DeviceInventory.iosFallbackRows(simulators: [a, b], physical: [], live: live)
+
+        XCTAssertEqual(rows.map { $0.bridges.map(\.port) }, [[8123], [8124]],
+                       "同名の2台が互いのポートを名乗っている")
+    }
+
+    /// 名前が一意なら従来どおり名前引きも使う(udid を申告しない旧ブリッジのための経路)
+    func testUniquelyNamedDeviceStillUsesTheNameLookup() {
+        let only = SimDeviceInfo(udid: "SIM-A", name: "iPhone 17 Pro-01", os: "iOS 27.0",
+                                 booted: true, physical: false)
+        let live = DeviceInventory.LiveBridges(
+            byName: ["iPhone 17 Pro-01": [DeviceInventory.Row.Bridge(port: 8123, engine: nil)]],
+            byUDID: [:])
+
+        let rows = DeviceInventory.iosFallbackRows(simulators: [only], physical: [], live: live)
+
+        XCTAssertEqual(rows.first?.bridges.map(\.port), [8123])
+    }
+
+    /// **捨てたことは黙らない**: 同名かつ udid で引けないブリッジは行から消えるので、本数を残す
+    func testDroppedNameOnlyBridgesAreCounted() {
+        let a = SimDeviceInfo(udid: "SIM-A", name: "iPhone 17 Pro", os: "iOS 27.0",
+                              booted: true, physical: false)
+        let b = SimDeviceInfo(udid: "SIM-B", name: "iPhone 17 Pro", os: "iOS 27.0",
+                              booted: true, physical: false)
+        let live = DeviceInventory.LiveBridges(
+            byName: ["iPhone 17 Pro": [DeviceInventory.Row.Bridge(port: 8123, engine: nil)]],
+            byUDID: [:])
+
+        let rows = DeviceInventory.iosFallbackRows(simulators: [a, b], physical: [], live: live)
+
+        XCTAssertEqual(rows.map(\.unattributedByName), [1, 1])
+        XCTAssertTrue(DeviceInventory.line(rows[0]).contains("cannot be attributed"),
+                      DeviceInventory.line(rows[0]))
+    }
+
+    func testAmbiguousDeviceNamesFindsOnlyRepeatedOnes() {
+        XCTAssertEqual(DeviceInventory.ambiguousDeviceNames(["a", "b", "a", "c"]), ["a"])
+        XCTAssertEqual(DeviceInventory.ambiguousDeviceNames(["a", "b"]), [])
+    }
+
     // MARK: - androidRow (純粋関数)
 
     func testAndroidRowMatchesConnectedAVDByName() {

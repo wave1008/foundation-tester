@@ -212,6 +212,18 @@ public enum TreeCoverage {
         }
     }
 
+    /// **この木は web ページを載せているか**。webView 要素**か**アドレス欄のどちらかで判定する。
+    ///
+    /// **両方見るのが必須**(2026-08-15 の実害): Android Chrome の木には **webView 要素が
+    /// 1つも無い** —— ページ本体は CDP から差し込まれ、a11y に居るのはブラウザ chrome だけ。
+    /// 固定コーパスの `and-browser_*` 7枚すべてがそうで、webView だけを見る判定は
+    /// **Android のブラウザで構造的に発火しない**(要素上限の自動撮り直しがこれで死んでいた)。
+    /// 逆に iOS Safari とアプリ内 WebView は webView 要素を持つ一方、アドレス欄を持たない
+    /// ものがある(`ios-news_feed`)ので、どちらか片方では足りない
+    public static func holdsWebContent(in snapshot: SnapshotResponse) -> Bool {
+        snapshot.elements.contains { $0.type == "webView" } || addressBarCandidate(in: snapshot) != nil
+    }
+
     /// **アドレス欄はあるのに webView 要素そのものが1つも無い**形。
     ///
     /// **ブラウザにだけ絞る**(アドレス欄の存在が要る理由): 空白の割合だけで判定すると
