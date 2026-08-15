@@ -35,18 +35,19 @@ final class MCPRepeatedCoordinateNoteTests: XCTestCase {
         server = MCPServer(write: { _ in }, makeDriver: { _ in fake }, recordSnapshot: { _, _, _ in })
     }
 
-    /// 座標形の「セレクタでは再現できない」注記は、同じセッション内2回目以降は短縮形になる
+    /// 座標形の注記(2026-08-16 に「書けない」→「書けるが弱い」へ改訂)は、
+    /// 同じセッション内2回目以降は短縮形になる
     func testCoordinateNoteShortensOnTheSecondCallInTheSameSession() async throws {
         let first = try await server.call(tool: "ft_tap", args: ["x": 1.0, "y": 2.0])
         let firstText = try XCTUnwrap(first.first?["text"] as? String)
-        XCTAssertTrue(firstText.contains("will break as soon as the layout moves"), firstText)
+        XCTAssertTrue(firstText.contains("before keeping it in a scenario"), firstText)
 
         // 2回目は同じ ft_tap で確かめる(FakeDriver は座標 press を 501 で拒む)。
         // 鍵はツール間で共有なので、縮むこと自体はどのツール経由でも同じ
         let second = try await server.call(tool: "ft_tap", args: ["x": 3.0, "y": 4.0])
         let secondText = try XCTUnwrap(second.first?["text"] as? String)
-        XCTAssertFalse(secondText.contains("will break as soon as the layout moves"), secondText)
-        XCTAssertTrue(secondText.contains("coordinates cannot be reproduced by selector"), secondText)
+        XCTAssertFalse(secondText.contains("before keeping it in a scenario"), secondText)
+        XCTAssertTrue(secondText.contains("writable as tap(x:, y:)"), secondText)
     }
 
     /// **fromRef のドラッグは coordinateReproductionNote を一度も「見せて」いない**ので、
@@ -65,7 +66,7 @@ final class MCPRepeatedCoordinateNoteTests: XCTestCase {
         let coordinateDrag = try await server.call(
             tool: "ft_drag", args: ["fromX": 10.0, "fromY": 20.0, "toX": 30.0, "toY": 40.0])
         let text = try XCTUnwrap(coordinateDrag.first?["text"] as? String)
-        XCTAssertTrue(text.contains("will break as soon as the layout moves"), text)
+        XCTAssertTrue(text.contains("before keeping it in a scenario"), text)
     }
 
     /// 長いラベルの切り詰め注記も同じ規則(2回目以降は短縮形)。ft_snapshot と ft_scroll_to は

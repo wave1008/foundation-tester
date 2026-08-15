@@ -223,6 +223,35 @@ extension StepExecutor {
                                driverFallback: notes.isEmpty ? nil : notes.joined(separator: " / "))
         }
 
+        // **座標タップ**(`tap(x:y:)`)。要素解決を一切通さない = アプリが要素を1つも公開しない
+        // 画面のための経路。**locator があるときはここへ来ない** —— セレクタで指せるなら常に
+        // そちらを使う(FlowStep.x の宣言。用途を問わない規律)
+        if action == "tap", let x = step.x, let y = step.y, step.locator == nil,
+           step.fallbacks?.isEmpty ?? true {
+            let clock = ContinuousClock()
+            let start = clock.now
+            let hold = step.duration ?? FlowStep.defaultTapHoldSeconds
+            var note: String?
+            do {
+                if hold > 0 {
+                    try await driver.press(x: x, y: y, duration: hold)
+                } else {
+                    try await driver.tap(x: x, y: y)
+                }
+            } catch {
+                // in-app は座標ジェスチャを持たない(501)。hybrid では XCUITest へ回す
+                guard DriverError.isEngineIncapable(error), let td = typeDriver else { throw error }
+                if hold > 0 {
+                    try await td.press(x: x, y: y, duration: hold)
+                } else {
+                    try await td.tap(x: x, y: y)
+                }
+                note = "fell back to XCUITest"
+            }
+            phase.actionMs += Self.ms(clock.now - start)
+            return StepOutcome(status: .passed, driverFallback: note)
+        }
+
         // ピンチ・ダブルタップ・相対ドラッグ(斜め可)の**対象未指定版** = 画面全体を対象にする。
         // ロケータ付きは下の switch(要素解決・ヒール・スクロール探索にそのまま乗せるため)で、
         // 対象の決め方以外は performGesture に集約してある

@@ -32,6 +32,44 @@ final class MCPBatchTests: XCTestCase {
         ["steps": dsl]
     }
 
+    // MARK: - 座標タップ(2026-08-16 に解禁)
+
+    /// **座標タップはバッチで通る**。以前は「座標はセレクタ解決の外」として弾いていたが、
+    /// その理由は座標をシナリオ行に書けなかったことの言い換えで、DSL に `tap(x:y:)` が
+    /// 入った時点で消えた。要素を1つも公開しない画面のための唯一の手なので、
+    /// ここを塞ぐとバッチが「9.3% の要素には使えない道具」になる
+    func testCoordinateTapRunsInABatch() async throws {
+        let text = body(try await server.call(tool: "ft_batch",
+                                              args: steps("tap x: 120 y: 640")))
+        XCTAssertTrue(text.contains("tap (120"), text)
+        XCTAssertTrue(driver.calls.contains { $0.hasPrefix("tap(x:") }, "\(driver.calls)")
+    }
+
+    /// **セレクタと座標の併記は拒否する**。黙ってどちらかを選ぶと、読み手は自分が何を
+    /// 撃ったのか分からないまま次の手を組む
+    func testCoordinateTapWithASelectorIsRejected() async {
+        do {
+            _ = try await server.call(tool: "ft_batch",
+                                      args: steps("tap '#btn' x: 10 y: 20"))
+            XCTFail("セレクタと座標の併記が通った")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("not both"),
+                          error.localizedDescription)
+        }
+        XCTAssertEqual(driver.calls, [], "弾いた手はドライバへ触れないこと")
+    }
+
+    /// 片方だけの指定は「どこを撃つのか」が決まらないので拒否(黙って中心を撃たない)
+    func testCoordinateTapNeedsBothAxes() async {
+        do {
+            _ = try await server.call(tool: "ft_batch", args: steps("tap x: 10"))
+            XCTFail("y の無い座標タップが通った")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("both x and y"),
+                          error.localizedDescription)
+        }
+    }
+
     // MARK: - (a) 操作系でないコマンドは弾かれ、代わりの呼び方が本文に出る
 
     func testAppLifecycleCommandIsRejectedWithTheToolToCallInstead() async {

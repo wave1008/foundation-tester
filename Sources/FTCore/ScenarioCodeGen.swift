@@ -136,6 +136,10 @@ public enum ScenarioCodeGen {
                 return "select(\(literal(selector))\(timeoutArg(step)))"
             case "tap":
                 let hold = step.duration.map { ", holdSeconds: \(FTSeconds.format($0))" } ?? ""
+                // 座標タップ(locator を持たない tap)。**セレクタがあるときは常にそちらを出す**
+                if step.locator == nil, let x = step.x, let y = step.y {
+                    return "tap(x: \(FTSeconds.format(x)), y: \(FTSeconds.format(y))\(hold))"
+                }
                 return "tap(\(literal(selector))\(hold))"
             case "type":
                 let replaceArg = step.replace == true ? ", replace: true" : ""

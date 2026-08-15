@@ -126,6 +126,12 @@ public struct FlowStep: Codable, Sendable {
     /// swipeBy の移動量(対象領域の幅・高さに対する比。符号は指の向き)。**swipeBy 以外は未使用**
     public var dxRatio: Double?
     public var dyRatio: Double?
+    /// 座標タップの座標(`tap(x:y:)`)。**単位は snapshot の screen と同じ** ——
+    /// iOS = pt / Android = px(dp ではない)。**locator と排他**: 両方あるときは locator を使う
+    /// (セレクタで指せるならそちらが常に優先。用途を問わない規律)。
+    /// **`tap` 以外は未使用**
+    public var x: Double?
+    public var y: Double?
 
     public init(action: String? = nil, assert: String? = nil, locator: FlowLocator? = nil,
                 fallbacks: [FlowLocator]? = nil, endLocator: FlowLocator? = nil,
@@ -140,7 +146,10 @@ public struct FlowStep: Codable, Sendable {
                 scrollFrameRect: FTRect? = nil,
                 startMarginRatio: Double? = nil, endMarginRatio: Double? = nil,
                 intervalSeconds: Double? = nil,
-                scale: Double? = nil, dxRatio: Double? = nil, dyRatio: Double? = nil) {
+                scale: Double? = nil, dxRatio: Double? = nil, dyRatio: Double? = nil,
+                x: Double? = nil, y: Double? = nil) {
+        self.x = x
+        self.y = y
         self.scale = scale
         self.dxRatio = dxRatio
         self.dyRatio = dyRatio

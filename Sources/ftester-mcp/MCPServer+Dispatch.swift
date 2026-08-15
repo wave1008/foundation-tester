@@ -1974,12 +1974,16 @@ extension MCPServer {
 
     /// 座標で撃ったときの断り(E-4)。**推測のセレクタを出さない** —— 座標には
     /// 「その点に何があったか」以上の根拠が無い
+    /// **2026-08-16 に「書けない」から「書けるが弱い」へ直した**: DSL に `tap(x:y:)` が入ったので
+    /// 座標もシナリオ行になる(`ft_draft_scenario` は置き換えを促す行末コメント付きで出す)。
+    /// 用途で重みが違う —— **探索中は座標のほうが速いことがあり、それでよい**。
+    /// **シナリオに残すならセレクタが最優先**(レイアウトが動けば座標は別の物を叩く)
     static let coordinateReproductionNote =
-        " (coordinates cannot be reproduced by selector — a scenario written from this"
-        + " will break as soon as the layout moves)"
+        " (writable as tap(x:, y:) — fine while exploring, but replace it with a selector"
+        + " before keeping it in a scenario: a layout change makes it hit something else)"
     /// `once` の短縮形(セッション内2回目以降)。**理由の再掲は落とす** —— 1度言えば足りる
     static let coordinateReproductionNoteShort =
-        " (coordinates cannot be reproduced by selector — see the first note)"
+        " (writable as tap(x:, y:) — see the first note)"
 
     /// 操作を1手ぶん記録する(F)。**E と同じ `SelectorNaming` でセレクタを決める** ——
     /// 戻り値に出したセレクタと、下書きに書かれるセレクタが食い違わないようにするため。
@@ -2043,6 +2047,20 @@ extension MCPServer {
         let needsLocator = !["swipe", "type", "pressEnter", "back", "home", "appSwitcher",
                              "pinchOut", "pinchIn"]
             .contains(action) || (resolvedRef != nil || coordinate != nil)
+        // **座標タップは行にできる**(2026-08-16。DSL の `tap(x:y:)`)。以前は TODO 行へ落ちて
+        // いたが、それは書ける形が無かったからで、今は 1:1 で書き出せる。
+        // **ただし用途で重みが違う**(ユーザー方針): 対話中の探索では座標のほうが速いことがあるが、
+        // **シナリオに残す目的ならセレクタが最優先**。下書きは実行できる行を出したうえで、
+        // 置き換えるべきであることを行末コメントに残す(ScenarioCodeGen が `step.note` を出す)
+        if action == "tap", selector == nil, let coordinate {
+            var step = FlowStep(action: "tap", x: coordinate.x, y: coordinate.y)
+            step.duration = duration
+            step.note = "coordinates — replace with a selector before keeping this;"
+                + " a layout change makes it hit something else"
+            interactions.record(InteractionLog.Entry(step: step, unresolved: nil,
+                                                     summary: described))
+            return
+        }
         if selector == nil, needsLocator, action != "swipe" {
             interactions.record(InteractionLog.Entry(step: nil, unresolved: described,
                                                      summary: "\(described) [no selector]"))

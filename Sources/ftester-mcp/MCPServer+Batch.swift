@@ -52,13 +52,30 @@ extension MCPServer {
     }
 
     static let batchStepBuilders: [String: BatchStepBuilder] = [
-        "tap": BatchStepBuilder(keys: ["selector", "holdSeconds", "timeout"]) { raw in
-            let selector = try requiredBatchSelector(raw, command: "tap")
+        "tap": BatchStepBuilder(keys: ["selector", "holdSeconds", "timeout", "x", "y"]) { raw in
             let hold = raw["holdSeconds"] as? Double ?? FlowStep.defaultTapHoldSeconds
+            let duration = hold == FlowStep.defaultTapHoldSeconds ? nil : hold
+            // **座標タップ**(2026-08-16 に解禁)。以前は「座標はセレクタ解決の外」として弾いて
+            // いたが、その理由は**座標をシナリオ行に書けなかったこと**の言い換えだった ——
+            // DSL に `tap(x:y:)` が入り、`ScenarioCodeGen` が 1:1 で書き出せるので契約は保たれる。
+            // **セレクタと併記されたら拒否する**(黙ってどちらかを選ぶと、読み手は自分が何を
+            // 撃ったのか分からない)
+            if let x = raw["x"] as? Double, let y = raw["y"] as? Double {
+                guard raw["selector"] == nil else {
+                    throw MCPError("tap takes either a selector or x/y, not both —"
+                        + " drop one (a selector survives a layout change, coordinates do not)")
+                }
+                let step = FlowStep(action: "tap", duration: duration, x: x, y: y)
+                return (step, "tap (\(FTSeconds.format(x)), \(FTSeconds.format(y)))")
+            }
+            if raw["x"] != nil || raw["y"] != nil {
+                throw MCPError("tap needs both x and y for a coordinate tap")
+            }
+            let selector = try requiredBatchSelector(raw, command: "tap")
             let step = FlowStep(action: "tap", locator: selector.primary,
                                 fallbacks: batchFallbacks(selector),
                                 timeout: raw["timeout"] as? Double,
-                                duration: hold == FlowStep.defaultTapHoldSeconds ? nil : hold)
+                                duration: duration)
             return (step, "tap \"\(selector.text)\"")
         },
         "select": BatchStepBuilder(keys: ["selector", "timeout"]) { raw in

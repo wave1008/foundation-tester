@@ -453,10 +453,12 @@ final class MCPReproductionSelectorTests: XCTestCase {
         XCTAssertTrue(text.contains("ft_launch bundleId:"), text)
     }
 
-    /// E-4: 座標には出せる根拠が無いので、出さずに断る
+    /// E-4: 座標から**セレクタを推測しない**(出せる根拠が無い)。
+    /// 2026-08-16 以降は「書けない」ではなく「tap(x:y:) で書けるが、シナリオに残すなら
+    /// セレクタへ置き換えよ」と案内する —— 推測しないことは変わらない
     func testCoordinateTapRefusesToGuessASelector() async throws {
         let text = body(try await server.call(tool: "ft_tap", args: ["x": 10.0, "y": 20.0]))
-        XCTAssertTrue(text.contains("coordinates cannot be reproduced by selector"), text)
+        XCTAssertTrue(text.contains("writable as tap(x:, y:)"), text)
         XCTAssertFalse(text.contains("(selector:"), text)
     }
 

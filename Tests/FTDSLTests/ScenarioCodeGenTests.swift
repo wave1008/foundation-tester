@@ -33,6 +33,24 @@ final class ScenarioCodeGenTests: XCTestCase {
         XCTAssertFalse(omitted.contains("holdSeconds:"), omitted)
     }
 
+    /// **座標タップが行になること**(2026-08-16)。これが書けないと ft_batch は座標を通せず、
+    /// 下書きも `// TODO: no stable selector` に落ちる —— 実測で操作可能要素の 9.3% は
+    /// 書けるセレクタを持たないので、そこがまるごと再生できないシナリオになる。
+    /// **セレクタがあるときは必ずセレクタ形**(テストを書く目的では常にそちらが優先)
+    func testCoordinateTapIsGeneratedAndSelectorAlwaysWins() {
+        let coordinate = render([FlowStep(action: "tap", x: 120, y: 640)])
+        XCTAssertTrue(coordinate.contains("tap(x: 120, y: 640)"), coordinate)
+
+        let held = render([FlowStep(action: "tap", duration: 1.5, x: 10, y: 20)])
+        XCTAssertTrue(held.contains("tap(x: 10, y: 20, holdSeconds: 1.5)"), held)
+
+        // locator と座標が両方あるときはセレクタ形(併記は MCP 側で拒否するが、
+        // 生成側でも取り違えない)
+        let both = render([FlowStep(action: "tap", locator: FlowLocator(id: "btn"), x: 1, y: 2)])
+        XCTAssertTrue(both.contains("tap(\"#btn\")"), both)
+        XCTAssertFalse(both.contains("x:"), both)
+    }
+
     /// **ライブ操作パネルの録画が生成に届くこと**。ここが nil を返すと、記録した操作が
     /// 黙って生成コードから落ちる(パネルは 2026-08-04 からダブルタップ・ピンチを記録する)
     func testMapGesturesAreGenerated() {

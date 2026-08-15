@@ -449,7 +449,9 @@ enum BatchStepResolver {
                                           "orientation"]
     static let intKeys: Set<String> = ["maxSwipes", "repeat", "ref"]
     static let doubleKeys: Set<String> = [
-        "holdSeconds", "timeout", "scale", "durationSeconds", "dxRatio", "dyRatio",
+        // x/y は座標タップ(`tap x: 120 y: 640`)。単位は snapshot の screen と同じ
+        // (iOS = pt / Android = px)なので整数で書かれることが多いが、型は Double で揃える
+        "holdSeconds", "timeout", "scale", "durationSeconds", "dxRatio", "dyRatio", "x", "y",
     ]
 
     private static func assign(_ raw: inout [String: Any], dictKey: String, value: BatchLineValue,
