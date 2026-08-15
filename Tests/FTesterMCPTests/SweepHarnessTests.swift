@@ -134,6 +134,37 @@ final class SweepHarnessTests: XCTestCase {
         "ios-maps_suggest_keyboard": Counts(ghost: 0, overlay: 11, stacked: 0, misses: 0,
                                             disabled: 0, offscreen: 1, warnedTappable: 9,
                                             keyboard: 20),
+        // 2026-08-16 採取(外部評価の赤羽→立川の乗換案内)。**同じ画面の2状態**で、
+        // 注記の量を測るための供給源(NoteCoverageTests の当該コメント参照)。
+        //
+        // scrolledOut 5(両状態とも)は**真陽性**: 容器 `#TransitDirectionsListView` より上へ
+        // 出た「出発 / 赤羽駅」の行群(半開きでは y=554〜639 対 容器 y=640〜)。評価者が
+        // 「scroll-leftover が多くノイズ」と言った当人で、印は行ごとに出続けるべき側。
+        // misses(半開き2 / 展開4)は `#MainStackView` (64,272 322x55) の中心 y=299.5 が
+        // 子と子の隙間(`#LabelAndButtonStackView` の下端 299 と `乗車位置` の上端 306)に
+        // 落ちる形 = and-form_keyboard で受理済みの型。offscreen は画面高 874 に対し
+        // 中心 y=877/890 の行(下端に半分隠れた停車駅)。
+        //
+        // **overlay は状態で意味が違う**:
+        // - 半開き 1 =「閉じる」(336,648 42x42)が leftover 行の `#DetailButton`
+        //   (350,640 29x29)の中心を覆う。浮いた閉じるボタンと行の chevron の実重なりで、
+        //   撃ち分けが本当に曖昧 = 真陽性
+        // - 展開 1 = `4:58`(351,510 34x19)が同じ行の `#DetailButton`(356,498 30x30)の
+        //   中心に乗る形。**Simulator で実際に撃って裏取り済み** —— タップは chevron に通り、
+        //   地図がその停車駅へ寄ってシートが半開きへ戻った = **装飾の staticText が
+        //   操作可能要素の中心に重なる既知クラスの誤検知**(ios-safari_article 10件・
+        //   and-browser_error_page 1件と同型)
+        //
+        // **展開側は整定を待ってから採ること**(2026-08-16 に踏んだ): ドラッグ直後に読むと
+        // `#DetailButton` **だけ**が最終位置より 13〜30pt 下に居り(他の要素は最初から最終位置)、
+        // その一過性の木では overlay が 4 件出る(うち3件は `#PrimaryAccessoryLabel` との
+        // 重なり)。連続2回の読みが一致することを確かめてから保存した
+        "ios-maps_transit_steps": Counts(ghost: 0, overlay: 1, stacked: 0, misses: 2, disabled: 0,
+                                         offscreen: 1, warnedTappable: 2, keyboard: 0, sliver: 0,
+                                         nested: 0, scrolledOut: 5),
+        "ios-maps_transit_steps_expanded": Counts(ghost: 0, overlay: 1, stacked: 0, misses: 4,
+                                                  disabled: 0, offscreen: 2, warnedTappable: 3,
+                                                  keyboard: 0, sliver: 0, nested: 0, scrolledOut: 5),
         // 2026-08-12 採取。**チャット + ソフトキーボード**(会話を開いて入力欄に焦点)。
         // タップ対象が無い画面という点は変わらない ——「何も出ない実アプリの画面」の供給源
         // (検知が常に何か出す装置になっていないことの陰性対照)。
@@ -497,6 +528,12 @@ final class SweepHarnessTests: XCTestCase {
         "ios-browser_nationwide.json": 39,
         // 内訳は同上 + スタートページのカードが背後の WebView 本文を覆う
         "ios-browser_startpage.json": 63,
+        // **分母が6しかない画面**(2026-08-16)。半開きシートの経路詳細はタップ対象が
+        // `#DetailButton`×3・「閉じる」・「さらに表示」・グラバーの6個だけで、警告2件で 33% に
+        // 乗る。2件とも検分済みの真陽性(容器の外へ出た leftover の `#DetailButton` と、
+        // 浮いている「閉じる」に中心を覆われた `#DetailButton`。内訳は baselines の当該コメント)
+        // = **密度の高さは検知の質ではなく分母の小ささ**。展開側は分母14・警告3で 21% なので免除不要
+        "ios-maps_transit_steps.json": 33,
     ]
 
     func testWarningDensityStaysLow() throws {

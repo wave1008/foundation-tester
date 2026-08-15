@@ -111,6 +111,22 @@
 | `ios-browser_j1_standings` | browser | Safari / `jleague.jp/standings/j1/`(J1順位表) | **`gridWithoutHeaderNote` の実アプリ誤検知の witness**。検出された 7x2 格子の最上行そのものが列見出し(「順位/クラブ/勝点/試合/勝/分/負/得点」)なのに、room 比のガード(直上の空き=120 / pitch=46 = 2.6倍)だけでは「見出しが抜けた」と誤読していた ——空きの正体は見出しとは無関係の別要素(「Ｊ１」「2026/27」セレクタ)が iOS 側の a11y から落ちている形で、両者は無関係。**同じ木は `webViewGapNote` の真陽性 witness でもある** —— そのセレクタは Android 側の木には在る(下の対で確認できる)ので、iOS だけが本当に公開していない |
 | `and-browser_j1_standings` | browser | Chrome / **同じ URL・同じページ** | 上の Android 側。6x2 @ y=1318 で同型の誤検知(最上行「勝点/試合/勝/分/負/得点」が見出しそのもの)。「Ｊ１」「2026/27」セレクタは木に在る = iOS 側だけがそれを a11y から落としていることの対照 |
 
+**2026-08-16 の外部評価(赤羽→立川の乗換案内)で足した対**(**同じ画面の2状態**。
+「ft_snapshot の出力が非常に長い」という指摘を、印象ではなく注記の実数で測るための供給源):
+
+| ファイル | アーキタイプ | 由来 | 何を代表するか |
+|---|---|---|---|
+| `ios-maps_transit_steps` | map | Apple マップ / 経路詳細を**半開きシート**のまま採取(iOS 27.0 Simulator・xcuitest) | **容器の外へ出た行が5つ残る**形。`#TransitDirectionsListView` (8,640 386x226) より上に「出発 / 赤羽駅」の行群(y=554〜639)が居座り、⚠️scroll-leftover が5行に付く —— 評価者が「scroll-leftover が多くノイズ」と言った当人。overlay 1 は浮いている「閉じる」(336,648 42x42)が行の `#DetailButton`(350,640 29x29)の中心を覆う**真陽性**(撃ち分けが本当に曖昧) |
+| `ios-maps_transit_steps_expanded` | dense-list | 同じ画面をシート展開まで広げた状態 | **全行が同じ id を共有する密なリスト**(`and-apps_list` = id を1つも持たない密なリスト、の逆の極)。**注記だけで 3,621B = 木(5,658B)の 64%** というコーパス新記録で、内訳は `duplicateIDsNote` 1,810B + `ambiguousLabelsNote` 880B が 74% を占める。**どれも誤検知ではない**(`#DetailButton`×10 `#PrimaryLabel`×8 が実在し、素の `#id` では選べない)= 内容ではなく文面でしか下げられない、の witness。上限を 3200→3700 に上げた記録は `NoteCoverageTests.bytesPerScreenCeiling` |
+
+**展開側は整定を待ってから採ること**(2026-08-16 に踏んだ): グラバーを引いた直後に読むと
+`#DetailButton` **だけ**が最終位置より 13〜30pt 下に居る(他の要素は最初から最終位置)。
+その一過性の木では overlay が 4 件出て、うち3件は `#PrimaryAccessoryLabel`(時刻)との重なり ——
+**整定後は1件**まで減る。連続2回の読みが一致することを確かめてから保存した。
+残る1件も **Simulator で実際に撃って裏取りし**、タップは chevron に通った(地図がその停車駅へ
+寄ってシートが半開きへ戻った)= `ios-safari_article` の10件と同じ**既知クラスの誤検知**
+(装飾の staticText が操作可能要素の中心に重なる形)。
+
 **採り直すとき**は基準値も一緒に更新する(`SweepHarnessTests.baselines`)。件数が増えたら
 まず誤検知を疑い、真陽性だと確かめてから基準値を上げること —— 黙って上げると、
 この砦は「現状を追認するだけ」になる。

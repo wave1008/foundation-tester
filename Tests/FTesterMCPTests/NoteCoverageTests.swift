@@ -88,6 +88,12 @@ final class NoteCoverageTests: XCTestCase {
         // セッションのアプリを第一の根拠にしている理由の witness
         "ios-browser_yahoo_top": "browser",
         "ios-maps_route_options": "picker",
+        // 2026-08-16 の外部評価(赤羽→立川の乗換案内)で採った対。**同じ画面の2状態** ——
+        // 評価者が「出力が長い」と言った画面そのものを、注記の実数で測るための供給源。
+        // 半開きは地図+シート(map)、展開は全画面の手順リスト —— 後者は
+        // **全行が同じ id を共有する**密なリストで、`and-apps_list`(id を1つも持たない密な
+        // リスト)と同じ family の逆の極なので dense-list に入れる
+        "ios-maps_transit_steps": "map", "ios-maps_transit_steps_expanded": "dense-list",
         // 2026-08-13 の監査(長い再利用リスト)で足した1枚。Android 設定の「すべてのアプリ」——
         // **40 要素すべてが identifier を持たず、scrollable を申告する要素も1つも無い**。
         // id を前提にした指標(前の木の id がどれだけ生き残るか)が**定義すらできない**盤面で、
@@ -150,13 +156,13 @@ final class NoteCoverageTests: XCTestCase {
         // and-overflow(0.564 まで達するが URL バーが無いので黙る=browser 限定の理由)
         "missingPageContentNote": Coverage(fixtures: ["and-browser_jma_notree"], bytes: 458),
 
-        "ghostNote": Coverage(fixtures: ["and-browser_weather_weekly", "ios-browser_jma_hscroll", "ios-browser_startpage", "ios-news_feed", "ios-place_guides_scrolled"], bytes: 2027),
+        "ghostNote": Coverage(fixtures: ["and-browser_weather_weekly", "ios-browser_jma_hscroll", "ios-browser_startpage", "ios-maps_transit_steps", "ios-maps_transit_steps_expanded", "ios-news_feed", "ios-place_guides_scrolled"], bytes: 2734),
         // 横スクロール後の前後コピーが両方木に残る形の witness(ios-browser_jma_hscroll。
         // refs 72-81 vs 158-167 = 同じ行で x が定数200ptずれた10ペア)。他の全画面は最大3
         // (and-home)で、単純なキーだけの一致では別々の表の同名見出しに誤発火するため
         // y/x の幾何制約を必須にした(MCPServer.duplicateRegionNote の当該コメント参照)
         "duplicateRegionNote": Coverage(fixtures: ["ios-browser_jma_hscroll"], bytes: 391),
-        "scrollFrameCandidates": Coverage(fixtures: ["and-form_keyboard", "and-place_expanded", "and-results", "ios-browser_startpage", "ios-maps_route_options", "ios-maps_station", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-messages_keyboard", "ios-news_feed", "ios-place_guides_scrolled"], bytes: 2674),
+        "scrollFrameCandidates": Coverage(fixtures: ["and-form_keyboard", "and-place_expanded", "and-results", "ios-browser_startpage", "ios-maps_route_options", "ios-maps_station", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-maps_transit_steps", "ios-maps_transit_steps_expanded", "ios-messages_keyboard", "ios-news_feed", "ios-place_guides_scrolled"], bytes: 3168),
         // 2026-08-15 に J1順位表(両OS)を追加して +555 バイト。and-/ios- とも 120要素上限で
         // 38〜42件が脱落する高密度ページ(ios-browser_nationwide と同型)
         "truncationNote": Coverage(fixtures: ["and-browser_j1_standings", "ios-browser_j1_standings", "ios-browser_nationwide", "ios-browser_startpage", "ios-browser_yahoo_top", "ios-maps_station", "ios-news_feed"], bytes: 2149),
@@ -192,12 +198,12 @@ final class NoteCoverageTests: XCTestCase {
         // **格子は曖昧ラベルの塊**(2026-08-12): 週間表の2枚が入って +2,049 バイト。
         // 同じ数値(`29/24`・`90%`)が行と列に何度も出るので、増分は形そのもの。
         // J1順位表(両OS。2026-08-15)も同型で +2,246 バイト —— 同じ勝点/試合数が縦横に並ぶ
-        "ambiguousLabelsNote": Coverage(fixtures: ["and-apps_list", "and-browser_j1_standings", "and-browser_weather", "and-browser_weather_weekly", "and-browser_weektable", "and-camera_canvas", "and-home", "and-maps_suggest_ime", "and-place", "and-place_expanded", "and-results", "ios-browser_j1_standings", "ios-browser_jma_hscroll", "ios-browser_nationwide", "ios-browser_startpage", "ios-browser_weather_weekly", "ios-browser_weektable", "ios-browser_yahoo_top", "ios-home", "ios-maps_station", "ios-maps_suggest_keyboard", "ios-messages_keyboard", "ios-news_feed", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-safari_article", "ios-settings_root", "sut-cmp_controls", "sut-cmp_home", "sutec-detail", "sutec-home"], bytes: 20877),
+        "ambiguousLabelsNote": Coverage(fixtures: ["and-apps_list", "and-browser_j1_standings", "and-browser_weather", "and-browser_weather_weekly", "and-browser_weektable", "and-camera_canvas", "and-home", "and-maps_suggest_ime", "and-place", "and-place_expanded", "and-results", "ios-browser_j1_standings", "ios-browser_jma_hscroll", "ios-browser_nationwide", "ios-browser_startpage", "ios-browser_weather_weekly", "ios-browser_weektable", "ios-browser_yahoo_top", "ios-home", "ios-maps_station", "ios-maps_suggest_keyboard", "ios-maps_transit_steps_expanded", "ios-messages_keyboard", "ios-news_feed", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-safari_article", "ios-settings_root", "sut-cmp_controls", "sut-cmp_home", "sutec-detail", "sutec-home"], bytes: 21757),
         // 2026-08-15 に 16,940 → 16,984(+44)。**発火する画面は1枚も増えていない** ——
         // 増えたのは ios-place_guides_scrolled の `#PlaceCollectionCell` ×3 の**中身**で、
         // 40字超のラベルしか無い行に `*断片*` が書けるようになったぶん(以前は索引形 `~`)。
         // 索引形が stable な式に替わった = 増えたバイトはそのまま再現性の改善
-        "duplicateIDsNote": Coverage(fixtures: ["and-dialer_keypad", "and-home", "and-overflow", "and-place_expanded", "and-results", "and-settings_root", "ios-browser_startpage", "ios-home", "ios-maps_route_options", "ios-maps_station", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-news_feed", "ios-photos_grid", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-settings_root", "sutec-home"], bytes: 16984),
+        "duplicateIDsNote": Coverage(fixtures: ["and-dialer_keypad", "and-home", "and-overflow", "and-place_expanded", "and-results", "and-settings_root", "ios-browser_startpage", "ios-home", "ios-maps_route_options", "ios-maps_station", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-maps_transit_steps", "ios-maps_transit_steps_expanded", "ios-news_feed", "ios-photos_grid", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-settings_root", "sutec-home"], bytes: 19851),
         // bytes 1169→1366→1170(2026-08-14・「chrome の部分木は覆われた側に数えない」修正):
         // fixtures 集合は不変(発火する画面は変わらない = 全画面「nothing tappable」か列挙のどちらか
         // では出続ける)。ios-maps_suggest_guides/ios-messages_keyboard は列挙(2件)から
@@ -205,7 +211,7 @@ final class NoteCoverageTests: XCTestCase {
         // ios-maps_suggest_keyboard は列挙数が 30→20 に減るが、先頭8件(バイト数を左右する側)は
         // 変わらないので画面単体のバイト数は不変(SweepHarnessTests の baselines コメント参照)
         "keyboardCoverageNote": Coverage(fixtures: ["and-browser_urlmenu", "and-form_keyboard", "and-maps_suggest_ime", "ios-browser_startpage", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-messages_keyboard"], bytes: 1170),
-        "truncatedLabelNote": Coverage(fixtures: ["and-browser_urlmenu", "and-browser_weather", "and-browser_weather_weekly", "and-place_expanded", "ios-browser_weektable", "ios-news_feed", "ios-photos_grid", "ios-place_guides_scrolled", "ios-safari_article", "ios-settings_root", "sutec-detail", "sutec-home"], bytes: 3685),
+        "truncatedLabelNote": Coverage(fixtures: ["and-browser_urlmenu", "and-browser_weather", "and-browser_weather_weekly", "and-place_expanded", "ios-browser_weektable", "ios-maps_transit_steps", "ios-maps_transit_steps_expanded", "ios-news_feed", "ios-photos_grid", "ios-place_guides_scrolled", "ios-safari_article", "ios-settings_root", "sutec-detail", "sutec-home"], bytes: 4315),
         // 2026-08-15 に J1順位表(Android)を足して初めて発火(それまで knownSilent)。
         // クラブ名「清水エスパルス」が下端で高さ6pxに切られた行 = SweepHarnessTests.baselines の
         // and-browser_j1_standings と同じ真陽性(sliver: 2)
@@ -245,7 +251,23 @@ final class NoteCoverageTests: XCTestCase {
     /// truncation は 35 件脱落、duplicateIDs/ambiguousLabels は `#crui_more_options_button` が
     /// 6個並ぶ形、scrollFrameCandidates は容器が2つある形。**上げるのは1回きりの記録**で、
     /// 次に超えたときはまた検分すること(黙って上げると現状追認装置になる)
-    static let bytesPerScreenCeiling = 3200
+    /// **2026-08-16 に 3200 → 3700**(新しい最悪値 3,621B = `ios-maps_transit_steps_expanded`)。
+    /// **注記は1本も足していない** —— 外部評価者が「出力が非常に長い」と言った画面そのものを
+    /// 採ったら、既存の5本がこの量になった。検分した内訳(この画面の木は 5,658B なので
+    /// **注記が木の 64%**。比較: `ios-news_feed` は 3,070B / 13,155B = 23%):
+    ///
+    /// | 注記 | バイト | 検分 |
+    /// |---|---|---|
+    /// | `duplicateIDsNote` | 1,810 | **正しい**。手順リストの全行が `#DetailButton`×10 `#PrimaryLabel`×8 … を共有し、素の `#id` では1つも選べない |
+    /// | `ambiguousLabelsNote` | 880 | **正しい**。「4駅（12分）」「さらに表示」が行ごとに重複 |
+    /// | `ghostNote` | 353 | **真陽性**(容器の外へ出た「出発 / 赤羽駅」の行群) |
+    /// | `truncatedLabelNote` | 317 | 正しい(路線名が 40 字で切られる) |
+    /// | `scrollFrameCandidates` | 261 | 正しい(容器が2つ) |
+    ///
+    /// **どれも誤りではない = 内容ではなく文面を削る以外に下げ道が無い**というのが、この
+    /// 上げ幅そのものの意味。**削減が入ったら下げ直すこと**(この 3700 は現状追認ではなく、
+    /// 未着手の課題「注記の量」の witness として置いてある)
+    static let bytesPerScreenCeiling = 3700
 
     // MARK: - 測定
 
@@ -452,6 +474,35 @@ final class NoteCoverageTests: XCTestCase {
             .catalogNotes(input, context: .snapshot,
                           disabled: NoteCatalog.disabledKeys(from: "all"))
         XCTAssertEqual(allOff, "")
+    }
+
+    /// **明細だけ畳む指定が production の組み立てに効くこと**(`FT_MCP_NOTES_BRIEF` の陽性対照)。
+    /// 見るのは3つ: ⑴ 事実(ヘッダ)と群は残る ⑵ 明細(代替セレクタ)は消える
+    /// ⑶ 既定(空集合)では1バイトも変わらない —— A/B の基準側が汚れていないこと
+    func testBriefFoldsTheDetailButKeepsTheFact() throws {
+        let snapshot = try Self.load("ios-maps_transit_steps_expanded")
+        let brief = NoteCatalog.Input(snapshot: snapshot, brief: ["duplicateIDsNote"])
+        let full = NoteCatalog.Input(snapshot: snapshot)
+        guard let entry = NoteCatalog.snapshotNotes.first(where: { $0.key == "duplicateIDsNote" })
+        else { return XCTFail("duplicateIDsNote が目録に無い") }
+        let briefText = entry.render(brief, false)
+        let fullText = entry.render(full, false)
+
+        XCTAssertTrue(briefText.contains("#DetailButton ×10"),
+                      "群と件数(=事実)は畳んだ側にも残ること: \(briefText)")
+        XCTAssertTrue(briefText.contains("[11]"), "ref は残ること(叩く手段を奪わない)")
+        XCTAssertFalse(briefText.contains(" >> .button["),
+                       "明細(要素ごとの索引セレクタ)は畳まれること: \(briefText)")
+        // 実測(2026-08-16): 1,810B → 912B(50.4%)。**既に畳まれている群には触らない**ので
+        // 全部が消えるわけではない —— 残るのは compactGroupLine が既に1行にした群
+        XCTAssertLessThan(briefText.utf8.count, fullText.utf8.count * 6 / 10,
+                          "畳んでも 6 割を切らないなら、明細は出力量の主因ではない"
+                          + "(実測 1810B → 912B)")
+
+        // 既定は素通し(brief を渡さない Input は従来と1バイトも変わらない)
+        XCTAssertEqual(NoteCatalog.Input(snapshot: snapshot, brief: []).brief, [])
+        XCTAssertEqual(entry.render(NoteCatalog.Input(snapshot: snapshot, brief: []), false),
+                       fullText)
     }
 
     /// 文脈の絞り込みが production の組み立てに効いていること(scrollTo は ft_snapshot より少ない)

@@ -171,6 +171,24 @@ final class MCPSelectorDurabilityTests: XCTestCase {
     /// このまま据えると「1枚の病理が全体の基準」になる
     /// **書けない側の割合は 4.88% → 5.04%**(千分率の切り捨てで 50。上限 50 にちょうど乗った)。
     /// 次の1枚で必ず落ちるので、そのときは緩める前にここと同じ除外実験をやること
+    /// **2026-08-16 に乗換案内の2枚(赤羽→立川。半開き/展開)を足して 640 → 703 / 301 → 307**。
+    /// 増分 **indexed +63 / unwritable +6** は**新しい2枚に完全に閉じている**
+    /// (`ios-maps_transit_steps` 13/4 ・ `ios-maps_transit_steps_expanded` 50/2 = 総差分と一致)。
+    /// **格付けは画面ごとに閉じている**(`SelectorNaming` は snapshot 1枚から作る)ので、
+    /// 他の46枚は定義上不動 —— 除外実験は算術で足りる。
+    ///
+    /// 内訳は全部数え上げてある。**どちらも正しい格付け**:
+    /// - 展開(indexed 50): 手順の行が**下位ビューごと同じ id で繰り返される**
+    ///   (`#TextStackView`×8 / `#DetailButton`×9 / `#MainStackView`・`#CarStackView`・
+    ///   `#TransitDirectionsBoardingInfoView` 等が各×2)。ラベルを持つものも「さらに表示」
+    ///   「4駅（12分）」が行ごとに重複するので、素の `#id` でもラベルでも一意に選べない
+    /// - 半開き(indexed 13): 大半が背後の地図 POI(`#VKPointFeature` 8。無名か地名の重複)
+    /// - unwritable 6 のうち展開側の2件は**画面外の行**(中心 y=890 / 画面高 874)で、
+    ///   クランプされた座標を持つため候補から外れる —— `ios-news_feed` と同じ理由で、
+    ///   **スクロールして実位置が出れば書ける**
+    ///
+    /// **割合は動いていない**(索引 25.2% は上限 25.5‰ の内側・書けない側も同様) ——
+    /// 絞り込みの退行ではなく、コーパスが「全行が id を共有する密なリスト」を含むようになっただけ
     func testNarrowingKeepsIndexedAndUnwritableLow() throws {
         var indexed = 0, unwritable = 0, total = 0
         for name in try fixtureNames() {
@@ -231,14 +249,14 @@ final class MCPSelectorDurabilityTests: XCTestCase {
         // 一意な id を持つ祖先が要るが、この木は**その `#WebView` すら要素上限で落ちている**。
         // 切り詰めが「web だと分かる手掛かり」だけでなく「索引形の足場」まで奪う、という
         // 同じ自己言及の帰結(fixture のコメント参照)
-        XCTAssertLessThanOrEqual(indexed, 660, "索引セレクタが増えている(実測 640)")
+        XCTAssertLessThanOrEqual(indexed, 710, "索引セレクタが増えている(実測 703)")
         // **割合は千分率で見る**(2026-08-12 のレビュー指摘)。百分率の整数除算だと
         // 「4%以下」が実際には 4.99% まで通り、宣言した上限より1ポイント緩い砦になる
         // (実測 4.75% が「4」に切り捨てられて素通りしていた)
         XCTAssertLessThanOrEqual(indexed * 1000 / max(1, total), 255,
                                  "索引セレクタの割合が増えている(実測 25.2%)"
                                  + " —— 画面を足しただけでは上がらない指標なので、絞り込みの退行を疑う")
-        XCTAssertLessThanOrEqual(unwritable, 305, "書けない要素が増えている(実測 301)")
+        XCTAssertLessThanOrEqual(unwritable, 310, "書けない要素が増えている(実測 307)")
         // **書けない側にも割合ゲートを置く**(2026-08-12)。絶対数だけだと、コーパスを
         // 広げるたびに上限を上げる儀式になる(索引側で既に踏んだ轍)。
         //
