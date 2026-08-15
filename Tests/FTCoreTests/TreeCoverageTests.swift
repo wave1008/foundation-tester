@@ -26,6 +26,10 @@ final class TreeCoverageTests: XCTestCase {
     /// webViewGapNote の baseline と一致していなければならない(同じ判定の別の呼び手)
     private let expectedGapFixtures: Set<String> = [
         "and-browser_weather", "and-browser_weather_weekly", "and-browser_weektable",
+        // 2026-08-15 に足した J1順位表(gridWithoutHeaderNote の誤検知修正の witness 対)。
+        // iOS 側だけが season セレクタ(「2026/27」)を a11y から落としており、**初めて iOS 単独**
+        // (Android 対になし)で発火した真陽性
+        "ios-browser_j1_standings",
     ]
 
     /// 同上。`NoteCoverageTests` の missingPageContentNote の baseline と一致
@@ -44,12 +48,15 @@ final class TreeCoverageTests: XCTestCase {
     }
 
     /// **誤検知0**: 自前 SUT とネイティブ画面は1枚も疑われない。ここが破れると
-    /// DSL の全シナリオに `treeUnderreported` が付き、注記が意味を失う
+    /// DSL の全シナリオに `treeUnderreported` が付き、注記が意味を失う。
+    /// **接頭辞はブラウザなら何でもよい**(2026-08-15 に `ios-browser_j1_standings` が加わり、
+    /// `and-browser` 限定では真陽性まで弾いてしまうようになった)——見ているのは「ネイティブ画面が
+    /// 疑われないこと」であって「Android の Chrome だけが疑われること」ではない
     func testNoNativeScreenIsSuspected() throws {
         let suspected = try corpus()
             .filter { TreeCoverage.underreports($0.snapshot) }
             .map(\.name)
-        XCTAssertTrue(suspected.allSatisfy { $0.hasPrefix("and-browser") },
+        XCTAssertTrue(suspected.allSatisfy { $0.contains("browser") },
                       "ブラウザ以外の画面が疑われた: \(suspected)")
     }
 

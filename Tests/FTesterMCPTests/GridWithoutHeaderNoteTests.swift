@@ -69,6 +69,85 @@ final class GridWithoutHeaderNoteTests: XCTestCase {
         XCTAssertTrue(MCPServer.gridWithoutHeaderNote(minimalGrid(extra: [above])).contains("3x2"))
     }
 
+    /// 合成木⑴: 最上行がラベルの見出し(数字でない)・下2行が数字だけの値 → 黙る
+    /// (chainsHaveHeaderTopRow の witness である J1順位表と同じ形)。
+    /// 直上に他の要素を置かない = 自然な room(gridTop - container.y = 140)が
+    /// pitch(60)の 2.33倍で room 比のガードは素通りする —— **黙るのは新しい見出し判定のほう**
+    func testStaysSilentWhenTheTopRowIsAllNonNumericLabelsAboveAllNumericColumns() {
+        let elements = [webView()]
+            + [leaf(2, "順位", x: 10, y: 140), leaf(3, "勝点", x: 110, y: 140), leaf(4, "試合", x: 210, y: 140)]
+            // 右列は**全角数字**(日本語の表では珍しくない)。半角しか数字と見ない実装だと
+            // この列が「値でない」に落ちて発火するので、全角の枝もここで踏んでいる
+            + [leaf(5, "1", x: 10, y: 200), leaf(6, "6", x: 110, y: 200), leaf(7, "３４", x: 210, y: 200)]
+            + [leaf(8, "2", x: 10, y: 260), leaf(9, "5", x: 110, y: 260), leaf(10, "３３", x: 210, y: 260)]
+        let snapshot = SnapshotResponse(sessionBundleID: nil,
+                                        screen: FTRect(x: 0, y: 0, width: 300, height: 600),
+                                        elements: elements, truncatedCount: 0)
+        XCTAssertEqual(MCPServer.gridWithoutHeaderNote(snapshot), "",
+                       "最上行は数字でない見出し・下は全部数字 = 見出し行そのものなので発火してはいけない")
+    }
+
+    /// 合成木⑵: 最上行も値の行(数字でない文字列)で、下の行も数字でない → 発火し続ける
+    /// (真陽性側を規則が消していないことの回帰。room はテスト⑴と同じ自然な 2.33倍)
+    func testFiresWhenTheTopRowIsAValueRowNotAHeader() {
+        let elements = [webView()]
+            + [leaf(2, "晴", x: 10, y: 140), leaf(3, "曇", x: 110, y: 140), leaf(4, "雨", x: 210, y: 140)]
+            + [leaf(5, "晴", x: 10, y: 200), leaf(6, "曇", x: 110, y: 200), leaf(7, "雨", x: 210, y: 200)]
+            + [leaf(8, "晴", x: 10, y: 260), leaf(9, "曇", x: 110, y: 260), leaf(10, "雨", x: 210, y: 260)]
+        let snapshot = SnapshotResponse(sessionBundleID: nil,
+                                        screen: FTRect(x: 0, y: 0, width: 300, height: 600),
+                                        elements: elements, truncatedCount: 0)
+        XCTAssertTrue(MCPServer.gridWithoutHeaderNote(snapshot).contains("3x3"),
+                     "最上行が値の行(下も数字でない)なら見出し扱いにしてはいけない: "
+                     + MCPServer.gridWithoutHeaderNote(snapshot))
+    }
+
+    /// 合成木⑶: **一部の列だけ**が見出しらしい(左2列はラベル→数字だが、右列は値→値)。
+    /// 見出し判定は**全列**を要求するので発火し続ける —— ここを「どれか1列でも」に緩めると、
+    /// 数字の列を1つ持つだけの値の格子が黙る(真陽性を落とす側の退行)
+    func testFiresWhenOnlySomeColumnsLookLikeAHeader() {
+        let elements = [webView()]
+            + [leaf(2, "順位", x: 10, y: 140), leaf(3, "勝点", x: 110, y: 140), leaf(4, "晴", x: 210, y: 140)]
+            + [leaf(5, "1", x: 10, y: 200), leaf(6, "6", x: 110, y: 200), leaf(7, "曇", x: 210, y: 200)]
+            + [leaf(8, "2", x: 10, y: 260), leaf(9, "5", x: 110, y: 260), leaf(10, "雨", x: 210, y: 260)]
+        let snapshot = SnapshotResponse(sessionBundleID: nil,
+                                        screen: FTRect(x: 0, y: 0, width: 300, height: 600),
+                                        elements: elements, truncatedCount: 0)
+        XCTAssertTrue(MCPServer.gridWithoutHeaderNote(snapshot).contains("3x3"),
+                      "全列が見出しらしいときだけ黙ること: "
+                      + MCPServer.gridWithoutHeaderNote(snapshot))
+    }
+
+    /// 合成木⑷: 列の下のセルが**数字と非数字の混在**(欠測の `—` など実表で普通に出る)。
+    /// 「下が全部数字」を「どれか1つでも数字」に緩めると、この値の格子が見出し扱いで黙る
+    func testFiresWhenAColumnMixesNumericAndNonNumericBelowTheTopRow() {
+        let elements = [webView()]
+            + [leaf(2, "順位", x: 10, y: 140), leaf(3, "勝点", x: 110, y: 140), leaf(4, "試合", x: 210, y: 140)]
+            + [leaf(5, "1", x: 10, y: 200), leaf(6, "6", x: 110, y: 200), leaf(7, "—", x: 210, y: 200)]
+            + [leaf(8, "2", x: 10, y: 260), leaf(9, "5", x: 110, y: 260), leaf(10, "33", x: 210, y: 260)]
+        let snapshot = SnapshotResponse(sessionBundleID: nil,
+                                        screen: FTRect(x: 0, y: 0, width: 300, height: 600),
+                                        elements: elements, truncatedCount: 0)
+        XCTAssertTrue(MCPServer.gridWithoutHeaderNote(snapshot).contains("3x3"),
+                      "下の行に非数字が混じる列がある = 見出し行だと断定できない: "
+                      + MCPServer.gridWithoutHeaderNote(snapshot))
+    }
+
+    /// 合成木⑸: **最上行も数字**の格子(= 見出しが本当に抜けている、この注記の主目的の形)。
+    /// 「最上のセルは数字でない」を落とすと、全部数字の表が見出し扱いで黙る = 真陽性が消える
+    func testFiresWhenEveryRowIncludingTheTopIsNumeric() {
+        let elements = [webView()]
+            + [leaf(2, "1", x: 10, y: 140), leaf(3, "6", x: 110, y: 140), leaf(4, "34", x: 210, y: 140)]
+            + [leaf(5, "2", x: 10, y: 200), leaf(6, "5", x: 110, y: 200), leaf(7, "33", x: 210, y: 200)]
+            + [leaf(8, "3", x: 10, y: 260), leaf(9, "4", x: 110, y: 260), leaf(10, "32", x: 210, y: 260)]
+        let snapshot = SnapshotResponse(sessionBundleID: nil,
+                                        screen: FTRect(x: 0, y: 0, width: 300, height: 600),
+                                        elements: elements, truncatedCount: 0)
+        XCTAssertTrue(MCPServer.gridWithoutHeaderNote(snapshot).contains("3x3"),
+                      "最上行も数字 = 見出しではないので発火し続けること: "
+                      + MCPServer.gridWithoutHeaderNote(snapshot))
+    }
+
     /// 上端をまたぐ要素は空きを埋めている(空きが負になり下限で弾かれる)。
     /// またぎを無視して下端をそのまま採ると、**格子の上に何か描かれていても出る**
     func testStaysSilentWhenSomethingSpansTheTopOfTheGrid() {
@@ -151,6 +230,20 @@ final class GridWithoutHeaderNoteTests: XCTestCase {
     func testStaysSilentOnTheYahooWeeklyGridWhoseHeaderIsItsTopRow() throws {
         XCTAssertEqual(MCPServer.gridWithoutHeaderNote(try load("ios-browser_weather_weekly")), "",
                        "見出し行が格子の最上行として取り込まれた形で出してはいけない")
+    }
+
+    /// **実アプリで出た誤検知の witness(2026-08-15・J1順位表を iOS Safari で)**。
+    /// room 比のガードは効かない(直上の空きは見出しとは無関係の別要素が作ったもの)ので、
+    /// `chainsHaveHeaderTopRow` が最上行の中身(「順位/クラブ/勝点/…」)を見て黙る必要がある
+    func testStaysSilentOnTheIOSJ1StandingsWhoseTopRowIsTheRealHeader() throws {
+        XCTAssertEqual(MCPServer.gridWithoutHeaderNote(try load("ios-browser_j1_standings")), "",
+                       "見出し行は最上行として木に在る(順位/クラブ/勝点/…) — 出してはいけない")
+    }
+
+    /// 同じ誤検知の Android 側 witness(6x2 @ y=1318)
+    func testStaysSilentOnTheAndroidJ1StandingsWhoseTopRowIsTheRealHeader() throws {
+        XCTAssertEqual(MCPServer.gridWithoutHeaderNote(try load("and-browser_j1_standings")), "",
+                       "見出し行は最上行として木に在る(勝点/試合/勝/分/負/得点) — 出してはいけない")
     }
 
     /// **全数検証**: 固定コーパスでこの検知器が発火するフィクスチャの集合を固定する

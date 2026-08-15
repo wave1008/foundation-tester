@@ -98,6 +98,13 @@
 |---|---|---|---|
 | `and-browser_error_page` | browser | Chrome / `https://nonexistent.invalid/`(`DNS_PROBE_FINISHED_NXDOMAIN`) | **ページが viewport に収まりきり、木がそれを全部公開している**形。`webViewGapNote` がここで **1616px(可視容器の 75%)を2本の帯として「木が落としているかもしれない」と警告していた誤検知の witness** —— スクリーンショットで確かめると帯は本当に空(上はエラーアイコンだけ・下は白紙)で、描かれているテキストは1つ残らず木に在る。**Chrome の既定のエラー画面なのでどの利用者も踏む**。`TreeCoverage.pageExtendsBeyondViewport` の陰性対照で、この webView は**スクロール容器を申告せず `offscreen` も0**(実ページ側は Android が `scrollable=true`・iOS が `offscreen` 103〜120 件)。幾何の検知は overlay=1 だけで、それも**既知クラスの誤検知** —— ホスト名の span `nonexistent.invalid` (63,900 312x47) が、それを含む文 ` にタイプミスがないか確認してください。` (63,900 955x110) に囲まれる = `ios-safari_article` で 10 件受理済みの「折り返す inline テキスト」と同じ形 |
 
+**2026-08-15 の監査(gridWithoutHeaderNote の誤検知)で足した対**(**同じページを両OSで採った対**):
+
+| ファイル | アーキタイプ | 由来 | 何を代表するか |
+|---|---|---|---|
+| `ios-browser_j1_standings` | browser | Safari / `jleague.jp/standings/j1/`(J1順位表) | **`gridWithoutHeaderNote` の実アプリ誤検知の witness**。検出された 7x2 格子の最上行そのものが列見出し(「順位/クラブ/勝点/試合/勝/分/負/得点」)なのに、room 比のガード(直上の空き=120 / pitch=46 = 2.6倍)だけでは「見出しが抜けた」と誤読していた ——空きの正体は見出しとは無関係の別要素(「Ｊ１」「2026/27」セレクタ)が iOS 側の a11y から落ちている形で、両者は無関係。**同じ木は `webViewGapNote` の真陽性 witness でもある** —— そのセレクタは Android 側の木には在る(下の対で確認できる)ので、iOS だけが本当に公開していない |
+| `and-browser_j1_standings` | browser | Chrome / **同じ URL・同じページ** | 上の Android 側。6x2 @ y=1318 で同型の誤検知(最上行「勝点/試合/勝/分/負/得点」が見出しそのもの)。「Ｊ１」「2026/27」セレクタは木に在る = iOS 側だけがそれを a11y から落としていることの対照 |
+
 **採り直すとき**は基準値も一緒に更新する(`SweepHarnessTests.baselines`)。件数が増えたら
 まず誤検知を疑い、真陽性だと確かめてから基準値を上げること —— 黙って上げると、
 この砦は「現状を追認するだけ」になる。

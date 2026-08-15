@@ -969,11 +969,51 @@ extension MCPServer {
                                      columns: (gridMinX, gridMaxX),
                                      in: container, of: snapshot)
             guard pitch > 0, room >= pitch * gridHeaderRoomRatio else { continue }
+            // **鎖の最上行そのものが見出し行なら黙る**(chainsHaveHeaderTopRow の doc 参照)。
+            // room 比のガードは「直上に見出し1行ぶんの空きがあるか」しか見ないので、その空きを
+            // 作ったのが見出しとは無関係の別要素でも通ってしまう(witness は同 doc)
+            guard !chainsHaveHeaderTopRow(chains) else { continue }
             let band = FTRect(x: gridMinX, y: gridTop - room, width: gridMaxX - gridMinX,
                               height: room)
             return (chains.count, run.count, band)
         }
         return nil
+    }
+
+    /// **鎖の最上行が見出し行そのものに見えるか**(internal = GridWithoutHeaderNoteTests から届く)。
+    ///
+    /// なぜ要るか(2026-08-15・J1順位表を iOS Safari(Simulator)/ Android Chrome(Emulator)で実測):
+    /// `gridHeaderRoomRatio` は「直上に見出し1行ぶんの空きがあるか」しか見ないので、その空きを
+    /// **見出しとは無関係の別要素**(ページ内の「Ｊ１」「2026/27」セレクタが a11y から落ちている)
+    /// が作った画面でも通ってしまう(iOS: room/pitch=2.6・y=438 の 7x2 / Android: y=1318 の 6x2、
+    /// どちらも最上行が「順位/クラブ/勝点/…」の実見出しなのに発火した)。room 比だけでは
+    /// 区別できないので、**最上行の中身**を見る: 全列が「最上のセルは数字でなく、その列の
+    /// 下のセル全部が数字」を満たすなら、最上行こそ見出し行なので黙る。
+    /// **全列が満たすことを要求する**(一部の列だけでは緩めない = 真陽性(and-browser_weektable)を
+    /// 消す側に倒さない)
+    static func chainsHaveHeaderTopRow(_ chains: [[ElementInfo]]) -> Bool {
+        guard !chains.isEmpty else { return false }
+        return chains.allSatisfy { chain in
+            guard let top = chain.first else { return false }
+            let below = chain.dropFirst()
+            guard !below.isEmpty else { return false }
+            return !isGridDigitsOnlyText(gridHeaderJudgeText(top))
+                && below.allSatisfy { isGridDigitsOnlyText(gridHeaderJudgeText($0)) }
+        }
+    }
+
+    /// 見出し判定に使う文字列。**label が空なら value**(gridHeaderGap の葉抽出と同じ優先順)
+    private static func gridHeaderJudgeText(_ element: ElementInfo) -> String {
+        let label = (element.label ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return label.isEmpty ? (element.value ?? "").trimmingCharacters(in: .whitespacesAndNewlines) : label
+    }
+
+    /// ASCII 数字 `0-9` / 全角数字 `０-９` だけで構成されるか。空文字は数字ではない
+    private static func isGridDigitsOnlyText(_ text: String) -> Bool {
+        guard !text.isEmpty else { return false }
+        return text.unicodeScalars.allSatisfy {
+            (0x30...0x39).contains($0.value) || (0xFF10...0xFF19).contains($0.value)
+        }
     }
 
     /// アドレス欄の identifier 既知集合(実測 2026-08-12)。Android Chrome = `url_bar` /

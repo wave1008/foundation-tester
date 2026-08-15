@@ -74,6 +74,12 @@ final class NoteCoverageTests: XCTestCase {
         // webViewGapNote がここで容器の 75% を「落ちたかもしれない」と警告していた誤検知の
         // witness で、`TreeCoverage.pageExtendsBeyondViewport` の陰性対照
         "and-browser_error_page": "browser",
+        // 2026-08-15 の監査(gridWithoutHeaderNote の誤検知)で足した対。J1順位表を両OSで採取 ——
+        // 見出し行(「順位/クラブ/勝点/…」)は最上行として木に在るのに、room 比のガードだけでは
+        // 直上の空きを見出しの欠落と誤読していた(空きの正体は「Ｊ１」「2026/27」セレクタが
+        // iOS 側 a11y から落ちている形で、見出しとは無関係)。真陽性(and-browser_weektable)の
+        // 陰性対照として `chainsHaveHeaderTopRow` を追加した witness
+        "ios-browser_j1_standings": "browser", "and-browser_j1_standings": "browser",
         "ios-maps_route_options": "picker",
         // 2026-08-13 の監査(長い再利用リスト)で足した1枚。Android 設定の「すべてのアプリ」——
         // **40 要素すべてが identifier を持たず、scrollable を申告する要素も1つも無い**。
@@ -144,13 +150,19 @@ final class NoteCoverageTests: XCTestCase {
         // y/x の幾何制約を必須にした(MCPServer.duplicateRegionNote の当該コメント参照)
         "duplicateRegionNote": Coverage(fixtures: ["ios-browser_jma_hscroll"], bytes: 391),
         "scrollFrameCandidates": Coverage(fixtures: ["and-form_keyboard", "and-place_expanded", "and-results", "ios-browser_startpage", "ios-maps_route_options", "ios-maps_station", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-messages_keyboard", "ios-news_feed", "ios-place_guides_scrolled"], bytes: 2674),
-        "truncationNote": Coverage(fixtures: ["ios-browser_nationwide", "ios-browser_startpage", "ios-maps_station", "ios-news_feed"], bytes: 1297),
+        // 2026-08-15 に J1順位表(両OS)を追加して +555 バイト。and-/ios- とも 120要素上限で
+        // 38〜42件が脱落する高密度ページ(ios-browser_nationwide と同型)
+        "truncationNote": Coverage(fixtures: ["and-browser_j1_standings", "ios-browser_j1_standings", "ios-browser_nationwide", "ios-browser_startpage", "ios-maps_station", "ios-news_feed"], bytes: 1852),
         // 取りこぼしのある Chrome の3枚(2026-08-13 に and-browser_weather_weekly を追加)で発火し、
         // 取りこぼしの無い iOS Safari の4枚(ios-browser_weektable / _weather_weekly 含む)では
         // 出ない(閾値の根拠は MCPServer.webViewGapNote のコメント)。browser 限定なのは
         // **webView を持つフィクスチャがブラウザ8枚しか無い**ためで、対象はアプリ内 WebView も含む。
         // and-browser_weather_weekly だけ**帯が2本**あり、複数形の文面になる(+577 バイトの主因)
-        "webViewGapNote": Coverage(fixtures: ["and-browser_weather", "and-browser_weather_weekly", "and-browser_weektable"], bytes: 1534),
+        // 2026-08-15 に ios-browser_j1_standings を追加(+431 バイト)。これは
+        // gridWithoutHeaderNote とは別の帯 —— 見出し行そのものは見つかっている(gridWithoutHeaderNote
+        // は正しく黙る)一方、この画面には season セレクタ(「2026/27」)が iOS 側の a11y から
+        // 丸ごと落ちている(Android 側の木には在る)ので、webViewGapNote は独立に真陽性で発火する
+        "webViewGapNote": Coverage(fixtures: ["and-browser_weather", "and-browser_weather_weekly", "and-browser_weektable", "ios-browser_j1_standings"], bytes: 1965),
         // 値の格子はあるのに列見出しがツリーに無い形(2026-08-12・作業2の witness)。
         // 陰性対照は2枚 —— ios-browser_weektable(見出しがツリーにある)と、
         // 2026-08-13 に足した ios-browser_weather_weekly(**見出しが格子の最上行として
@@ -166,12 +178,14 @@ final class NoteCoverageTests: XCTestCase {
         // フォールバックは置かない** —— メール欄・住所欄を誤って名乗る形がコーパスに無く、
         // 誤検知0の確認が効かないため(AddressBarNoteTests の当該テスト)
         // and-browser_error_page は 2026-08-15 に足した DNS エラーページ。**真陽性** ——
-        // 読み込めなかった URL を名指しするのはこの画面でこそ要る情報
-        "addressBarNote": Coverage(fixtures: ["and-browser_error_page", "and-browser_weektable", "ios-browser_jma_hscroll", "ios-browser_nationwide", "ios-browser_startpage", "ios-browser_weather_weekly", "ios-browser_weektable", "ios-safari_article"], bytes: 2110),
+        // 読み込めなかった URL を名指しするのはこの画面でこそ要る情報。同日に J1順位表(両OS)も
+        // 追加(+524 バイト。url_bar/TabBarItemTitle が jleague.jp を名乗る)
+        "addressBarNote": Coverage(fixtures: ["and-browser_error_page", "and-browser_j1_standings", "and-browser_weektable", "ios-browser_j1_standings", "ios-browser_jma_hscroll", "ios-browser_nationwide", "ios-browser_startpage", "ios-browser_weather_weekly", "ios-browser_weektable", "ios-safari_article"], bytes: 2634),
         "unlabeledClickablesNote": Coverage(fixtures: ["and-apps_list", "and-browser_urlmenu", "and-directions_tabs", "and-home", "and-place", "and-place_expanded", "and-results", "ios-home", "ios-maps_route_options", "ios-news_feed"], bytes: 3845),
         // **格子は曖昧ラベルの塊**(2026-08-12): 週間表の2枚が入って +2,049 バイト。
-        // 同じ数値(`29/24`・`90%`)が行と列に何度も出るので、増分は形そのもの
-        "ambiguousLabelsNote": Coverage(fixtures: ["and-apps_list", "and-browser_weather", "and-browser_weather_weekly", "and-browser_weektable", "and-camera_canvas", "and-home", "and-maps_suggest_ime", "and-place", "and-place_expanded", "and-results", "ios-browser_jma_hscroll", "ios-browser_nationwide", "ios-browser_startpage", "ios-browser_weather_weekly", "ios-browser_weektable", "ios-home", "ios-maps_station", "ios-maps_suggest_keyboard", "ios-messages_keyboard", "ios-news_feed", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-safari_article", "ios-settings_root", "sut-cmp_controls", "sut-cmp_home", "sutec-detail", "sutec-home"], bytes: 17800),
+        // 同じ数値(`29/24`・`90%`)が行と列に何度も出るので、増分は形そのもの。
+        // J1順位表(両OS。2026-08-15)も同型で +2,246 バイト —— 同じ勝点/試合数が縦横に並ぶ
+        "ambiguousLabelsNote": Coverage(fixtures: ["and-apps_list", "and-browser_j1_standings", "and-browser_weather", "and-browser_weather_weekly", "and-browser_weektable", "and-camera_canvas", "and-home", "and-maps_suggest_ime", "and-place", "and-place_expanded", "and-results", "ios-browser_j1_standings", "ios-browser_jma_hscroll", "ios-browser_nationwide", "ios-browser_startpage", "ios-browser_weather_weekly", "ios-browser_weektable", "ios-home", "ios-maps_station", "ios-maps_suggest_keyboard", "ios-messages_keyboard", "ios-news_feed", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-safari_article", "ios-settings_root", "sut-cmp_controls", "sut-cmp_home", "sutec-detail", "sutec-home"], bytes: 20046),
         "duplicateIDsNote": Coverage(fixtures: ["and-dialer_keypad", "and-home", "and-overflow", "and-place_expanded", "and-results", "and-settings_root", "ios-browser_startpage", "ios-home", "ios-maps_route_options", "ios-maps_station", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-news_feed", "ios-photos_grid", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-settings_root", "sutec-home"], bytes: 16940),
         // bytes 1169→1366→1170(2026-08-14・「chrome の部分木は覆われた側に数えない」修正):
         // fixtures 集合は不変(発火する画面は変わらない = 全画面「nothing tappable」か列挙のどちらか
@@ -181,6 +195,10 @@ final class NoteCoverageTests: XCTestCase {
         // 変わらないので画面単体のバイト数は不変(SweepHarnessTests の baselines コメント参照)
         "keyboardCoverageNote": Coverage(fixtures: ["and-browser_urlmenu", "and-form_keyboard", "and-maps_suggest_ime", "ios-browser_startpage", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-messages_keyboard"], bytes: 1170),
         "truncatedLabelNote": Coverage(fixtures: ["and-browser_urlmenu", "and-browser_weather", "and-browser_weather_weekly", "and-place_expanded", "ios-browser_weektable", "ios-news_feed", "ios-photos_grid", "ios-place_guides_scrolled", "ios-safari_article", "ios-settings_root", "sutec-detail", "sutec-home"], bytes: 3685),
+        // 2026-08-15 に J1順位表(Android)を足して初めて発火(それまで knownSilent)。
+        // クラブ名「清水エスパルス」が下端で高さ6pxに切られた行 = SweepHarnessTests.baselines の
+        // and-browser_j1_standings と同じ真陽性(sliver: 2)
+        "sliverNote": Coverage(fixtures: ["and-browser_j1_standings"], bytes: 249),
     ]
 
     /// **コーパスでは構造上発火し得ないと確かめた注記**。ここに載せるには理由が要る ——
@@ -196,8 +214,6 @@ final class NoteCoverageTests: XCTestCase {
         // 全 19 枚とも `bulkExemptCount` の申告自体が無い(採取時のブリッジが出していない)。
         // 判定は `guard let count = snapshot.bulkExemptCount, count > 0` なので永久に出ない
         "bulkExemptNote",
-        // 縁で細帯に切れた操作可能要素が1件も無い(SweepHarnessTests の基準値も全画面 sliver: 0)
-        "sliverNote",
         // **要素0の木はコーパスに置けない**(2026-08-13): このコーパスは「実アプリの画面の形」を
         // 代表するためのもので、空の木はどの検知にも材料を与えず、アーキタイプにも属さない
         // (testEveryFixtureHasAnArchetype と testNoArchetypeDominatesTheCorpus が意味を失う)。

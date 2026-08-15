@@ -186,6 +186,16 @@ final class MCPSelectorDurabilityTests: XCTestCase {
             }
         }
         XCTAssertGreaterThan(total, 1500, "コーパスが縮んでいる = この砦は何も見ていない")
+        // **2026-08-15 に J1順位表(両OS。gridWithoutHeaderNote の誤検知修正の witness 対)を
+        // 足して 593→653 / 179→241**。増分は数え上げ済み(FT_SELECTOR_DURABILITY=1 の内訳):
+        //   ・**and-browser_j1_standings: indexed +0 / unwritable +61**(id を持つのは120件中12件
+        //     だけで、残りはラベルが表の中で大量に重複する — 順位・勝点等の数字が同じ値を
+        //     何十行と共有し、id も一意ラベルも無いので indexed 化する足場(容器 #id)も無い)
+        //   ・**ios-browser_j1_standings: indexed +60 / unwritable +1**(同じ表だが Safari 側は
+        //     `#WebView` という一意な祖先があり、scoped index(`#容器 >> .type[n]`)で書ける)
+        //   ・**2枚を外して再計測すると 593 / 179 に戻る**(既存フィクスチャは1件も動いていない)。
+        //     上限を上げるときはこの確認まで通すこと —— 内訳だけでは、既存画面の退行が新画面の
+        //     増分に紛れても気付けない
         // **2026-08-14 に `ios-news_feed`(実機 SmartNews)を足して 566 → 593 / 122 → 168**。
         // 増分は**この1枚に完全に閉じている**(indexed 27・unwritable 46 = 総差分と一致)。
         // 書けない 46 の内訳は全部数え上げてある:
@@ -204,14 +214,14 @@ final class MCPSelectorDurabilityTests: XCTestCase {
         // Modes)だけ。**同じラベルが `mode_switcher` のラベルとしても出る**ので一意に絞れず、
         // 容器 `#mode_switcher` を足場にした索引形しか書けない = **格付けとしては正しい**。
         // 残る増分はプレビューの重ね合わせ層(同一矩形・無ラベル)で、同じ理由で索引側へ落ちる
-        XCTAssertLessThanOrEqual(indexed, 600, "索引セレクタが増えている(実測 593)")
+        XCTAssertLessThanOrEqual(indexed, 660, "索引セレクタが増えている(実測 653)")
         // **割合は千分率で見る**(2026-08-12 のレビュー指摘)。百分率の整数除算だと
         // 「4%以下」が実際には 4.99% まで通り、宣言した上限より1ポイント緩い砦になる
         // (実測 4.75% が「4」に切り捨てられて素通りしていた)
         XCTAssertLessThanOrEqual(indexed * 1000 / max(1, total), 255,
                                  "索引セレクタの割合が増えている(実測 25.2%)"
                                  + " —— 画面を足しただけでは上がらない指標なので、絞り込みの退行を疑う")
-        XCTAssertLessThanOrEqual(unwritable, 183, "書けない要素が増えている(実測 179)")
+        XCTAssertLessThanOrEqual(unwritable, 250, "書けない要素が増えている(実測 241)")
         // **書けない側にも割合ゲートを置く**(2026-08-12)。絶対数だけだと、コーパスを
         // 広げるたびに上限を上げる儀式になる(索引側で既に踏んだ轍)。
         //
@@ -225,8 +235,8 @@ final class MCPSelectorDurabilityTests: XCTestCase {
         // 行と内側テキストの重複(`clickable "設定"` / `staticText "設定"` など ×12 組)は
         // **型で解ける**ので書ける側に残っている = 絞り込み自体は効いている。
         // **次に上げたくなったら、まず増分を1件ずつ数えること** —— 数えられない増分は退行
-        XCTAssertLessThanOrEqual(unwritable * 1000 / max(1, total), 74,
-                                 "書けない要素の割合が増えている(実測 7.2%)")
+        XCTAssertLessThanOrEqual(unwritable * 1000 / max(1, total), 90,
+                                 "書けない要素の割合が増えている(実測 8.7%)")
     }
 
     /// コーパスに両方の格付けが出ていること(片側しか見ていない状態を防ぐ)

@@ -366,6 +366,20 @@ final class SweepHarnessTests: XCTestCase {
         // **全項目0** —— 背景が a11y から落ちて木は6要素だけになり、幾何の検知は何も出ない。
         // 実アプリの**陰性対照**(検知が常に何か出す装置になっていないことの witness)
         "and-dialog_confirm": Counts(),
+        // 2026-08-15 の監査(gridWithoutHeaderNote の誤検知)。J1順位表(jleague.jp)を両OSで採取
+        // した対 —— `chainsHaveHeaderTopRow` を追加した witness そのもの(NoteCoverageTests /
+        // GridWithoutHeaderNoteTests の当該コメント参照)。offscreen=1 は右にはみ出す
+        // 競技切替タブ「ACL Two」・sliver=2 は下端で高さ6pxに切られたクラブ名行
+        "and-browser_j1_standings": Counts(ghost: 0, overlay: 0, stacked: 0, misses: 0, disabled: 0,
+                                           offscreen: 1, warnedTappable: 1, keyboard: 0, sliver: 2,
+                                           nested: 0, scrolledOut: 0),
+        // 同じページの iOS 側。overlay 5 は「清水エスパルス」行がページ先頭付近にあり、
+        // z を持たない iOS の兄弟重なりで Safari の chrome(#BackButton・#MoreMenuButton・
+        // #TabOverviewButton)に乗る形(ios-browser_nationwide 等と同型)。
+        // offscreen 3 は右/下にはみ出す競技タブとクラブ行。disabled 1 は履歴なしの「戻る」
+        "ios-browser_j1_standings": Counts(ghost: 0, overlay: 5, stacked: 0, misses: 0, disabled: 1,
+                                           offscreen: 3, warnedTappable: 4, keyboard: 0, sliver: 0,
+                                           nested: 0, scrolledOut: 0),
     ]
 
     static func counts(_ snap: SnapshotResponse) -> Counts {
