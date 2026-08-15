@@ -34,7 +34,12 @@ public enum TreeCoverage {
     public static let gapBandScreenFraction = 0.05
 
     /// 空白帯の走査に使う分割数。**位置の候補を決めるだけ**で高さの量子化には使わない
-    /// (`emptyBands` の doc)。木のサイズに比例した O(n) で応答ごとに払える
+    /// (`emptyBands` の doc)。
+    ///
+    /// **コストは webView がある画面でだけ効く**(容器を探す O(n) で抜けるため)。実測
+    /// (2026-08-15・debug ビルド): `underreports` 1回が 120 要素のブラウザ画面で 1.1ms、
+    /// 天井の 400 要素で 11.9ms。**ポーリングの毎周には置けない量**なので、呼び手は
+    /// 結論に使う周回でだけ呼ぶこと(`StepExecutor` は不在を見た周/件数が一致した周だけ)
     public static let gapScanSlices = 60
 
     /// 空白帯が見つかった webView 容器1つぶん

@@ -435,8 +435,6 @@ extension MCPServer {
     /// **判定は `FTCore.DuplicateRegion` が唯一の定義元**(閾値・y/x 制約・誤検知の witness・
     /// アルゴリズムの根拠はそちら。DSL のタップも同じ判定を `StepNote.staleDuplicateRegion`
     /// として運ぶ)。ここが持つのは文言だけ
-    static let duplicateRegionMinimumRun = DuplicateRegion.minimumRun
-
     static func duplicateRegionNote(_ snapshot: SnapshotResponse) -> String {
         guard let match = DuplicateRegion.find(in: snapshot.elements) else { return "" }
         return "note: the tree appears to list the same \(match.length) elements twice — starting at"
@@ -713,6 +711,17 @@ extension MCPServer {
             + " Re-read with ft_snapshot, or check with ft_screenshot before concluding it is absent.\n"
     }
 
+    /// **アドレス欄はあるのに webView 要素そのものが1つも無い**形の注記
+    /// (監査ラウンド5・2026-08-13・jma.go.jp を Android Chrome で実測)。
+    ///
+    /// なぜ要るか: `webViewGapNote` は webView 容器の**内側**しか測れず、`emptyTreeNote` は
+    /// `elements.isEmpty` の完全一致でしか発火しない。Chrome が自分の chrome(ツールバー・
+    /// アドレス欄)しか公開せず、ページ本体を一切木に出さない画面は、この2本のどちらの網にも
+    /// 掛からずに黙って通り抜ける —— 実測(and-browser_jma_notree)は要素19件が全部ブラウザ
+    /// chrome で、画面の 88.6% が空白のまま報告されていた。
+    ///
+    /// **判定は `FTCore.TreeCoverage.missingPageContent` が唯一の定義元**(閾値・ブラウザに
+    /// 絞る理由・witness の実測はそちら)。ここが持つのは文言だけ
     static func missingPageContentNote(_ snapshot: SnapshotResponse) -> String {
         guard TreeCoverage.missingPageContent(in: snapshot) else { return "" }
         // **次の一手まで書く**(2026-08-14 に原因が判った)。Chromium は a11y を要求する

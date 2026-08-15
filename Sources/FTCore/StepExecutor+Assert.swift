@@ -569,7 +569,6 @@ extension StepExecutor {
             phase.snapshotMs += Self.ms(clock.now - start)
             try await dismissInterruption(in: &snapshot, phase: &phase)
             noteEmptyWebView(snapshot)
-            noteUnderreportedTree(snapshot)
             var resolved = Self.resolve(step: step, in: snapshot, strictForAssert: true)
             // **見つからないのは上限で間引かれたからかもしれない**。切り詰められた木で
             // 不在に見えたときだけ天井まで上げて撮り直す(retakenAtElementLimitCeiling)
@@ -580,6 +579,10 @@ extension StepExecutor {
             }
             lastElements = snapshot.elements
             if resolved == nil {
+                // **不在を見た周でだけ評価する**(2026-08-15 の実測)。毎周だと 400 要素の
+                // ブラウザ画面で 11.9ms/回(debug)を全ポーリングぶん払う —— 見えている
+                // 要素があった周の木は結論に使われないので、測る意味が無い
+                noteUnderreportedTree(snapshot)
                 // 天井でも切り詰められている = 「無い」と「送られていない」を分けられない。
                 // ここで pass を返すのが 2026-08-15 に掃討した誤った成功そのもの
                 if snapshot.truncatedCount > 0 {
@@ -887,7 +890,6 @@ extension StepExecutor {
             phase.snapshotMs += Self.ms(clock.now - start)
             try await dismissInterruption(in: &snapshot, phase: &phase)
             noteEmptyWebView(snapshot)
-            noteUnderreportedTree(snapshot)
             // **件数は木の完全性がそのまま結果になる**(間引かれた分は「無い」と区別が付かない)。
             // 不在と違い一致・不一致のどちらにも効くので、数える前に撮り直す
             if snapshot.truncatedCount > 0, !needsCeiling {
@@ -900,6 +902,9 @@ extension StepExecutor {
             nestingHint = Self.nestingHint(breakdown.flatMap(\.elements),
                                            in: snapshot.elements)
             if actual == expectedCount {
+                // **一致した周でだけ評価する**(notExists と同じ理由。不一致はそのまま赤くなるので
+                // 「不在の証拠にならない」と言う相手が居ない)
+                noteUnderreportedTree(snapshot)
                 // 天井でも足りない木で数えた一致は根拠にならない(notExists と同じ誤った成功)
                 if snapshot.truncatedCount > 0 {
                     return .failed(Self.undecidableTruncationMessage(
