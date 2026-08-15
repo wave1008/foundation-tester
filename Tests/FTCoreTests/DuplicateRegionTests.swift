@@ -108,6 +108,39 @@ final class DuplicateRegionTests: XCTestCase {
                      "別の行に出る同名の並びは正当なページ構造")
     }
 
+    /// **同じ場所に重なったコピーは別の判定の担当**(`OcclusionGeometry.stackedRefs`)。
+    /// x がずれていない = 横スクロールの残骸ではないので、ここでは黙る。
+    /// この形が無いと x 制約を外す変異を1つも殺せない(2026-08-15 の変異チェックで生き残った)
+    func testACopyStackedAtTheSameXIsNotADuplicate() {
+        let labels = ["日付", "天気", "気温", "降水", "風", "波"]
+        func copy(startRef: Int) -> [ElementInfo] {
+            labels.enumerated().map { index, label in
+                ElementInfo(ref: startRef + index, type: "staticText", identifier: nil,
+                            label: label, value: nil, placeholder: nil, enabled: true,
+                            frame: FTRect(x: Double(index) * 50, y: 100, width: 40, height: 20),
+                            depth: 3)
+            }
+        }
+        XCTAssertNil(DuplicateRegion.find(in: copy(startRef: 1) + copy(startRef: 100)),
+                     "同一 frame に重なったコピーは stacked の担当で、横スクロール残骸ではない")
+    }
+
+    /// **周期的な並びを「2回出ている」と読まない**: A,B,A,B… は自分自身の2要素ずれと
+    /// 一致し続けるので、重なり禁止が無いと長い run が成立する。`spansTwoKinds` は
+    /// A≠B なので通ってしまい、**重なり禁止だけがこの形を止めている**
+    /// (2026-08-15 の変異チェックで生き残った形)
+    func testAPeriodicRunDoesNotMatchItself() {
+        let periodic = (0..<10).map { index in
+            ElementInfo(ref: index + 1, type: "staticText", identifier: nil,
+                        label: index.isMultiple(of: 2) ? "A" : "B", value: nil,
+                        placeholder: nil, enabled: true,
+                        frame: FTRect(x: Double(index) * 50, y: 100, width: 40, height: 20),
+                        depth: 3)
+        }
+        XCTAssertNil(DuplicateRegion.find(in: periodic),
+                     "周期的な1行が自分自身と一致して複製扱いされた")
+    }
+
     /// **一様な並びは複製ではない**: 同じキーのセルが 12 個並ぶだけで発火してはいけない
     /// (重なり禁止だけでは 6+6 に割れて通ってしまう)
     func testAUniformRunIsNotADuplicate() {
