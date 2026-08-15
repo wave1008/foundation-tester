@@ -629,12 +629,6 @@ extension MCPServer {
             + " use ft_scroll_to (it searches by scrolling)."
     }
 
-    /// **ラベルも id も無い clickable**の注記(欠陥⑨)。座標か ref でしか指定できず、
-    /// シナリオでは安定したセレクタを書けないことを伝える。実測: 経路の移動手段タブ(アイコンのみ)
-    /// が id もラベルも無い `clickable` として出て、書ける手段が何も無いことに気付けなかった
-    /// `abbreviated`(F-6 の対象拡大・2026-08-10): 明細(`listed`)は既定と同じまま、
-    /// 冒頭の長い advice だけ「初出の注記を見よ」に圧縮する。呼び手は once 経由(instance の
-    /// `unlabeledClickablesNote(_:)` ラッパ)で使い分ける
     /// WebView の中に**要素が1つも無い縦帯**がある = 木がその部分を落としている疑い。
     ///
     /// なぜ要るか(2026-08-12・Android の Chrome で実測): Chrome は web コンテンツの
@@ -1049,6 +1043,12 @@ extension MCPServer {
         return false
     }
 
+    /// **ラベルも id も無い clickable**の注記(欠陥⑨)。座標か ref でしか指定できず、
+    /// シナリオでは安定したセレクタを書けないことを伝える。実測: 経路の移動手段タブ(アイコンのみ)
+    /// が id もラベルも無い `clickable` として出て、書ける手段が何も無いことに気付けなかった
+    /// `abbreviated`(F-6 の対象拡大・2026-08-10): 明細(`listed`)は既定と同じまま、
+    /// 冒頭の長い advice だけ「初出の注記を見よ」に圧縮する。呼び手は once 経由(instance の
+    /// `unlabeledClickablesNote(_:)` ラッパ)で使い分ける
     static func unlabeledClickablesNote(_ snapshot: SnapshotResponse, abbreviated: Bool = false,
                                         cache: SnapshotAnnotationCache? = nil) -> String {
         // **候補を先に絞ってから grade する**(2026-08-13 のレビュー指摘)。木の全要素を
