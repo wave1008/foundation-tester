@@ -20,7 +20,8 @@ final class WebViewGapMeasurementTests: XCTestCase {
     private func tree(fillers: [(y: Double, height: Double)]) -> SnapshotResponse {
         var elements = [ElementInfo(ref: 1, type: "webView", identifier: nil, label: "page",
                                     value: nil, placeholder: nil, enabled: true,
-                                    frame: FTRect(x: 0, y: 210, width: 1084, height: 2153), depth: 2)]
+                                    frame: FTRect(x: 0, y: 210, width: 1084, height: 2153), depth: 2,
+                                    scrollable: true)]
         for (i, filler) in fillers.enumerated() {
             elements.append(element(i + 2, y: filler.y, height: filler.height))
         }

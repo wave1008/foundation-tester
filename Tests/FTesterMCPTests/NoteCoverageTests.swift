@@ -69,6 +69,11 @@ final class NoteCoverageTests: XCTestCase {
         // 2026-08-13 の監査ラウンド5(jma.go.jp)で足した対。missingPageContentNote /
         // duplicateRegionNote の witness(NoteCoverageTests.baseline の当該コメント参照)
         "and-browser_jma_notree": "browser", "ios-browser_jma_hscroll": "browser",
+        // 2026-08-15 の監査ラウンド(ブラウザ・格子)で足した1枚。Chrome の DNS エラーページ ——
+        // **ページが viewport に収まりきり、木がそれを全部公開している**形。
+        // webViewGapNote がここで容器の 75% を「落ちたかもしれない」と警告していた誤検知の
+        // witness で、`TreeCoverage.pageExtendsBeyondViewport` の陰性対照
+        "and-browser_error_page": "browser",
         "ios-maps_route_options": "picker",
         // 2026-08-13 の監査(長い再利用リスト)で足した1枚。Android 設定の「すべてのアプリ」——
         // **40 要素すべてが identifier を持たず、scrollable を申告する要素も1つも無い**。
@@ -160,7 +165,9 @@ final class NoteCoverageTests: XCTestCase {
         // アドレス欄要素が無い(または値が空)ので黙る。**「値が URL らしい textField」の
         // フォールバックは置かない** —— メール欄・住所欄を誤って名乗る形がコーパスに無く、
         // 誤検知0の確認が効かないため(AddressBarNoteTests の当該テスト)
-        "addressBarNote": Coverage(fixtures: ["and-browser_weektable", "ios-browser_jma_hscroll", "ios-browser_nationwide", "ios-browser_startpage", "ios-browser_weather_weekly", "ios-browser_weektable", "ios-safari_article"], bytes: 1846),
+        // and-browser_error_page は 2026-08-15 に足した DNS エラーページ。**真陽性** ——
+        // 読み込めなかった URL を名指しするのはこの画面でこそ要る情報
+        "addressBarNote": Coverage(fixtures: ["and-browser_error_page", "and-browser_weektable", "ios-browser_jma_hscroll", "ios-browser_nationwide", "ios-browser_startpage", "ios-browser_weather_weekly", "ios-browser_weektable", "ios-safari_article"], bytes: 2110),
         "unlabeledClickablesNote": Coverage(fixtures: ["and-apps_list", "and-browser_urlmenu", "and-directions_tabs", "and-home", "and-place", "and-place_expanded", "and-results", "ios-home", "ios-maps_route_options", "ios-news_feed"], bytes: 3845),
         // **格子は曖昧ラベルの塊**(2026-08-12): 週間表の2枚が入って +2,049 バイト。
         // 同じ数値(`29/24`・`90%`)が行と列に何度も出るので、増分は形そのもの

@@ -78,9 +78,49 @@ final class TreeCoverageTests: XCTestCase {
         ]
         let container = ElementInfo(ref: 1, type: "webView", identifier: "page", label: nil,
                                    value: nil, placeholder: nil, enabled: true,
-                                   frame: FTRect(x: 0, y: 0, width: 1000, height: 1000), depth: 1)
+                                   frame: FTRect(x: 0, y: 0, width: 1000, height: 1000), depth: 1,
+                                   scrollable: true)
         return SnapshotResponse(sessionBundleID: nil, screen: screen,
                                 elements: [container] + leaves, truncatedCount: 0)
+    }
+
+    /// **viewport に収まりきるページでは空白帯を証拠にしない**(2026-08-15 の監査ラウンドの witness:
+    /// Chrome の `DNS_PROBE_FINISHED_NXDOMAIN` エラーページが容器の 75% を「落ちたかもしれない」と
+    /// 警告していたが、スクリーンショットでは本当に白紙だった)。
+    ///
+    /// **両方向に掛ける** —— 証拠を消す変異(常に黙る)と、証拠を無視する変異(常に鳴る)の
+    /// どちらも殺せるように、同じ帯で「鳴らない木」と「鳴る木」を並べる。
+    /// 証拠の形は OS で違うので**2つとも**確かめる(Android=スクロール容器 / iOS=画面外ノード)
+    func testABandInAPageThatFitsTheViewportIsNotEvidence() {
+        let fitting = withoutBeyondViewportEvidence(treeWithBand(height: 400))
+        XCTAssertNil(TreeCoverage.gap(in: fitting),
+                     "収まりきるページの空白帯は「木が落とした」証拠にならない"
+                     + "(白紙のページと幾何では区別できない)")
+        XCTAssertNotNil(TreeCoverage.gap(in: treeWithBand(height: 400)),
+                        "前提: 同じ帯はスクロール容器の申告があれば発火すること")
+        let offscreenOnly = SnapshotResponse(
+            sessionBundleID: nil, screen: screen, elements: fitting.elements, truncatedCount: 0,
+            offscreen: [ElementInfo(ref: 99, type: "staticText", identifier: nil, label: "below",
+                                    value: nil, placeholder: nil, enabled: true,
+                                    frame: FTRect(x: 0, y: 3000, width: 1000, height: 40),
+                                    depth: 2)])
+        XCTAssertNotNil(TreeCoverage.gap(in: offscreenOnly),
+                        "画面外ノードの報告だけでもページは viewport の外へ続いている"
+                        + "(iOS の webView は scrollable を申告しない)")
+    }
+
+    /// `scrollable` の申告だけを落とした同じ木(他は1バイトも変えない)
+    private func withoutBeyondViewportEvidence(_ tree: SnapshotResponse) -> SnapshotResponse {
+        let elements = tree.elements.map { element -> ElementInfo in
+            guard element.type == "webView" else { return element }
+            return ElementInfo(ref: element.ref, type: element.type,
+                               identifier: element.identifier, label: element.label,
+                               value: element.value, placeholder: element.placeholder,
+                               enabled: element.enabled, frame: element.frame,
+                               depth: element.depth, scrollable: nil)
+        }
+        return SnapshotResponse(sessionBundleID: nil, screen: tree.screen, elements: elements,
+                                truncatedCount: 0)
     }
 
     /// 容器比 8% を下回る帯では騒がない。**容器 = 画面いっぱい**の木なので、ここで効いているのは
@@ -101,7 +141,8 @@ final class TreeCoverageTests: XCTestCase {
         let container = ElementInfo(ref: 1, type: "webView", identifier: "page", label: nil,
                                    value: nil, placeholder: nil, enabled: true,
                                    frame: FTRect(x: 0, y: containerTop, width: 1000,
-                                                 height: containerHeight), depth: 1)
+                                                 height: containerHeight), depth: 1,
+                                   scrollable: true)
         let top = ElementInfo(ref: 2, type: "staticText", identifier: nil, label: "top", value: nil,
                               placeholder: nil, enabled: true,
                               frame: FTRect(x: 0, y: containerTop, width: 1000, height: 80),
@@ -153,7 +194,8 @@ final class TreeCoverageTests: XCTestCase {
     private func treeWithTallLeaf(bodyLabel: String?, bodyValue: String?) -> SnapshotResponse {
         let container = ElementInfo(ref: 1, type: "webView", identifier: "page", label: nil,
                                    value: nil, placeholder: nil, enabled: true,
-                                   frame: FTRect(x: 0, y: 0, width: 1000, height: 1000), depth: 1)
+                                   frame: FTRect(x: 0, y: 0, width: 1000, height: 1000), depth: 1,
+                                   scrollable: true)
         let header = ElementInfo(ref: 2, type: "staticText", identifier: nil, label: "header",
                                  value: nil, placeholder: nil, enabled: true,
                                  frame: FTRect(x: 0, y: 0, width: 1000, height: 100), depth: 2)
@@ -254,7 +296,8 @@ final class TreeCoverageStepNoteTests: XCTestCase {
     private func gappyTree() -> SnapshotResponse {
         let container = ElementInfo(ref: 1, type: "webView", identifier: "page", label: nil,
                                    value: nil, placeholder: nil, enabled: true,
-                                   frame: FTRect(x: 0, y: 0, width: 1000, height: 1000), depth: 1)
+                                   frame: FTRect(x: 0, y: 0, width: 1000, height: 1000), depth: 1,
+                                   scrollable: true)
         let top = ElementInfo(ref: 2, type: "staticText", identifier: nil, label: "top", value: nil,
                               placeholder: nil, enabled: true,
                               frame: FTRect(x: 0, y: 0, width: 1000, height: 200), depth: 2)

@@ -66,6 +66,7 @@ public enum TreeCoverage {
             let visible = min(container.frame.y + container.frame.height, screen.y + screen.height)
                 - max(container.frame.y, screen.y)
             guard visible > 0 else { continue }
+            guard pageExtendsBeyondViewport(container, of: snapshot) else { continue }
             let bands = emptyBands(inside: container, of: snapshot)
                 .filter {
                     $0.height >= visible * gapBandContainerFraction
@@ -75,6 +76,28 @@ public enum TreeCoverage {
             return Gap(container: container, bands: bands)
         }
         return nil
+    }
+
+    /// **ページが viewport の外まで続いている証拠があるか**(純粋)。
+    ///
+    /// この検知の前提は「ブラウザがページの**一部**しか公開していない」こと。ページが
+    /// viewport に収まりきり、外に1ノードも報告が無いときは、**空白帯は「落ちた」証拠にならない**
+    /// —— 本当に白紙の場合と幾何では区別できないので、警告しても読み手は選べない。
+    ///
+    /// **witness(2026-08-15 の監査ラウンド)**: Chrome の `DNS_PROBE_FINISHED_NXDOMAIN`
+    /// エラーページが 1616px 分(容器の 75%)を「木が落としているかもしれない」と警告していた。
+    /// スクリーンショットで確認すると帯は**本当に空**(上はアイコンだけ・下は白紙)で、
+    /// 描かれているテキストは1つ残らず木に在る。エラーページは Chrome の既定画面なので
+    /// **どの利用者も踏む**。
+    ///
+    /// 証拠は2つのどちらか(**OS で形が違うので両方見る**。片方だけだと OS 単位で死ぬ):
+    /// - 容器が**スクロール容器**だと申告している(Android の Chrome。実測: 実ページ3枚とも true /
+    ///   エラーページは申告なし)
+    /// - **画面外ノードの報告がある**(iOS。webView は `scrollable` を申告しないが、
+    ///   実測でブラウザの5枚がいずれも 103〜120 件の `offscreen` を持つ)
+    static func pageExtendsBeyondViewport(_ container: ElementInfo,
+                                          of snapshot: SnapshotResponse) -> Bool {
+        container.scrollable == true || !(snapshot.offscreen ?? []).isEmpty
     }
 
     /// WebView の可視部分のうち、**内側でどの葉とも交わらない連続帯をすべて**(y の昇順)。

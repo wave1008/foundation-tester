@@ -332,6 +332,16 @@ final class SweepHarnessTests: XCTestCase {
         // ghost=4 は ⚠️scroll-leftover の4行 / offscreen=5 は y<0 の行 /
         // disabled=1・warnedTappable=1 はどちらも履歴なしの「戻る」
         "and-browser_jma_notree": Counts(),
+        // 2026-08-15 の監査(ブラウザ・格子)。Chrome の DNS エラーページ =
+        // **ページが viewport に収まりきる**形(webViewGapNote の誤検知 witness。
+        // TreeCoverage.pageExtendsBeyondViewport の陰性対照)。
+        // overlay=1 は**既知クラスの誤検知**で、この修正とは無関係 —— ホスト名の span
+        // `nonexistent.invalid` (63,900 312x47) が、それを含む文
+        // ` にタイプミスがないか確認してください。` (63,900 955x110) に囲まれている
+        // = ios-safari_article で 10 件受理済みの「折り返す inline テキスト」と同じ形
+        "and-browser_error_page": Counts(ghost: 0, overlay: 1, stacked: 0, misses: 0,
+                                         disabled: 0, offscreen: 0, warnedTappable: 0,
+                                         keyboard: 0, sliver: 0, nested: 0, scrolledOut: 0),
         "ios-browser_jma_hscroll": Counts(ghost: 4, overlay: 33, stacked: 0, misses: 0,
                                           disabled: 1, offscreen: 5, warnedTappable: 1,
                                           keyboard: 0, sliver: 0, nested: 0, scrolledOut: 0),

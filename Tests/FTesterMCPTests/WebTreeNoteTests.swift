@@ -24,7 +24,12 @@ final class WebTreeNoteTests: XCTestCase {
 
     /// webView 1つ + 指定した y 位置の葉、というだけの木
     private func tree(leafYs: [Double], leafHeight: Double = 40) -> SnapshotResponse {
-        var elements = [element(1, "webView", "page", y: 0, height: 2000)]
+        // **`scrollable` を落とさない**: viewport に収まりきるページでは空白帯を「落ちた」証拠に
+        // しない(TreeCoverage.pageExtendsBeyondViewport)。ここが代表するのは実ページ側
+        var elements = [ElementInfo(ref: 1, type: "webView", identifier: nil, label: "page",
+                                    value: nil, placeholder: nil, enabled: true,
+                                    frame: FTRect(x: 0, y: 0, width: 1000, height: 2000), depth: 2,
+                                    scrollable: true)]
         for (i, y) in leafYs.enumerated() {
             elements.append(element(i + 2, "staticText", "row \(i)", y: y, height: leafHeight))
         }
