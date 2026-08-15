@@ -1,6 +1,7 @@
 import XCTest
 
 @testable import FTCore
+import FTTestSupport
 
 /// 不可視文字を挟んでも一致すること。**`matches` の既定は `.selector`**(この関数は
 /// セレクタのフィルタから呼ばれる)。テキストと期待値の比較は `.text` で、規則が違う ——
@@ -136,15 +137,10 @@ final class RenderedLabelRoundTripTests: XCTestCase {
 
     /// **実アプリのコーパス全数**に当てる(自前の例だけだと想定した形しか試せない)
     func testEveryLabelInTheRealAppCorpusRoundTrips() throws {
-        let dir = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Fixtures/RealAppSnapshots")
-        let files = try FileManager.default.contentsOfDirectory(atPath: dir.path)
-            .filter { $0.hasSuffix(".json") }
-        XCTAssertFalse(files.isEmpty, "コーパスが空 — このテストは何も検証していない")
-        for file in files {
-            let data = try Data(contentsOf: dir.appendingPathComponent(file))
-            let snapshot = try JSONDecoder().decode(SnapshotResponse.self, from: data)
+        let corpus = try RealAppSnapshotCorpus.all()
+        XCTAssertFalse(corpus.isEmpty, "コーパスが空 — このテストは何も検証していない")
+        for (name, snapshot) in corpus {
+            let file = name + ".json"
             for element in snapshot.elements {
                 guard let label = element.label, !label.isEmpty else { continue }
                 let printed = FlowMatchMode.normalizeInvisibleCharacters(label)

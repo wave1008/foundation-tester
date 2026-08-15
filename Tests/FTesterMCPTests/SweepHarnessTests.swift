@@ -12,6 +12,7 @@
 
 import XCTest
 import FTCore
+import FTTestSupport
 @testable import ftester_mcp
 
 final class SweepHarnessTests: XCTestCase {
@@ -357,13 +358,6 @@ final class SweepHarnessTests: XCTestCase {
         "and-dialog_confirm": Counts(),
     ]
 
-    private static var fixtureDirectory: URL {
-        URL(fileURLWithPath: #filePath)          // Tests/FTesterMCPTests/このファイル
-            .deletingLastPathComponent()          // Tests/FTesterMCPTests
-            .deletingLastPathComponent()          // Tests
-            .appendingPathComponent("Fixtures/RealAppSnapshots")
-    }
-
     static func counts(_ snap: SnapshotResponse) -> Counts {
         let els = snap.elements
         let stacked = RefGuard.stackedRefs(els)
@@ -431,17 +425,15 @@ final class SweepHarnessTests: XCTestCase {
 
     /// 固定コーパスに対して件数が基準値どおりであること
     func testDetectionCountsMatchTheBaseline() throws {
-        let dir = Self.fixtureDirectory
-        let files = try FileManager.default.contentsOfDirectory(atPath: dir.path)
-            .filter { $0.hasSuffix(".json") }.sorted()
+        let corpus = try RealAppSnapshotCorpus.all()
+        let files = corpus.map { $0.name + ".json" }
         XCTAssertEqual(files.count, Self.baselines.count,
                        "フィクスチャと基準値の数が合っていない: \(files)")
-        for file in files {
-            let name = String(file.dropLast(".json".count))
+        for (name, snapshot) in corpus {
             guard let expected = Self.baselines[name] else {
                 XCTFail("基準値が無いフィクスチャ: \(name)"); continue
             }
-            let actual = Self.counts(try load(dir.appendingPathComponent(file)))
+            let actual = Self.counts(snapshot)
             XCTAssertEqual(actual, expected,
                            "\(name) の検知件数が変わった。**増えた分を1件ずつ見て真陽性だと"
                            + "確かめてから**基準値を更新すること(\(actual) vs \(expected))")
@@ -471,10 +463,8 @@ final class SweepHarnessTests: XCTestCase {
     ]
 
     func testWarningDensityStaysLow() throws {
-        let dir = Self.fixtureDirectory
-        for file in try FileManager.default.contentsOfDirectory(atPath: dir.path)
-            .filter({ $0.hasSuffix(".json") }).sorted() {
-            let snap = try load(dir.appendingPathComponent(file))
+        for (name, snap) in try RealAppSnapshotCorpus.all() {
+            let file = name + ".json"
             let tappable = snap.elements.filter { RefGuard.interactiveTypes.contains($0.type) }
             guard !tappable.isEmpty else { continue }
             let warned = Self.counts(snap).warnedTappable
@@ -495,12 +485,8 @@ final class SweepHarnessTests: XCTestCase {
     /// 何が発火したかの明細を両方出す** —— 基準値を上げる前に1件ずつ真陽性を確かめるため
     func testPrintBaselines() throws {
         guard ProcessInfo.processInfo.environment["FT_SWEEP_BASELINE"] == "1" else { return }
-        let dir = Self.fixtureDirectory
-        for file in try FileManager.default.contentsOfDirectory(atPath: dir.path)
-            .filter({ $0.hasSuffix(".json") }).sorted() {
-            let snap = try load(dir.appendingPathComponent(file))
+        for (name, snap) in try RealAppSnapshotCorpus.all() {
             let c = Self.counts(snap)
-            let name = String(file.dropLast(".json".count))
             emit("BASELINE \"\(name)\": Counts(ghost: \(c.ghost), overlay: \(c.overlay),"
                 + " stacked: \(c.stacked), misses: \(c.misses), disabled: \(c.disabled),"
                 + " offscreen: \(c.offscreen), warnedTappable: \(c.warnedTappable),"

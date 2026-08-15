@@ -45,10 +45,13 @@ let package = Package(
         .target(
             name: "FTCoreSimShim"
         ),
-        // テスト専用の資源ロック(SharedResource)。依存ゼロ・products に出さない
-        // (受け手のパッケージへ公開しない)。使うテストターゲットだけが dependencies に足す
+        // テスト専用の資源ロック(SharedResource)+実アプリ固定コーパスの共有ローダ
+        // (RealAppSnapshotCorpus。SnapshotResponse の decode に FTCore が要る)。
+        // products に出さない(受け手のパッケージへ公開しない)。使うテストターゲットだけが
+        // dependencies に足す
         .target(
             name: "FTTestSupport",
+            dependencies: ["FTCore"],
             swiftSettings: swift5Mode
         ),
         // XCUITestランナー(ブリッジ)へのHTTPクライアントと起動管理
@@ -226,7 +229,7 @@ let package = Package(
         ),
         .testTarget(
             name: "FTCoreTests",
-            dependencies: ["FTCore"],
+            dependencies: ["FTCore", "FTTestSupport"],
             swiftSettings: swift5Mode
         ),
         .testTarget(
@@ -256,7 +259,7 @@ let package = Package(
         // パーサへ戻せるか」を検証する。移動前は FTDSL 側のこの関数を叩いていた)
         .testTarget(
             name: "FTesterMCPTests",
-            dependencies: ["ftester-mcp", "FTCore"],
+            dependencies: ["ftester-mcp", "FTCore", "FTTestSupport"],
             swiftSettings: swift5Mode
         ),
         // CLI 本体(executableTarget)の純粋ロジック。FTesterMCPTests と同じく @testable import で
