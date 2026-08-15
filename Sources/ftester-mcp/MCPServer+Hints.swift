@@ -109,6 +109,27 @@ extension MCPServer {
         return finalHeight < beforeHeight - 1 ? .shrunk : .silent
     }
 
+    /// 待ちの秒数の印字。`5.0s` ではなく `5s`(既定値の桁が増えるだけで情報が無い)
+    static func secondsText(_ seconds: Double) -> String {
+        seconds == seconds.rounded() ? "\(Int(seconds))s" : String(format: "%.1fs", seconds)
+    }
+
+    /// 満額待って外れた回に、**払った場所で**上限の変え方を名指しする。
+    /// `timeout` は全ての待ち(ft_snapshot / 操作系の snapshotAfter)に元からあるが、
+    /// 外れた回の文がどこにもそれを名指していなかったため、外部評価では「5秒固定」と読まれ、
+    /// **外れると分かっている待ちにも毎回満額**を払っていた(2026-08-16)。
+    /// 逃げ道は払った場所で言う(`SnapshotTruncation.remedy` と同じ規律)
+    static let waitTimeoutRemedy =
+        " (timeout: <seconds> sets this cap — a smaller one to find out sooner,"
+        + " a larger one for a slow load)"
+
+    /// シート展開救済が走った(または意図的に省いた)ことを表す、応答の先頭に立つ固定の語。
+    /// **所要時間の内訳(`scrollTimingNote`)と同じ語**にしてあるので、1つの文字列で
+    /// 「起きたか」と「いくらかかったか」の両方を拾える —— 2026-08-16 の外部評価は
+    /// 散文からの判別が難しいとして構造化フラグを求めたが、この応答は宛先が
+    /// エージェントの本文1本なので、**別の機械可読チャネルを増やさず語を固定する**側で応える
+    static let sheetRescueMarker = "note: sheet-expand rescue "
+
     /// この長さ未満(ms)の探索は、救済(シート展開)が無ければ内訳を出さない —— 短い探索まで
     /// 毎回「何本振ったか」を出すと、実際に遅い回(2026-08-12実測 9.8/12.8/15.6s)の内訳が
     /// 埋もれる。救済ありは長さに関わらず出す(遅さの主因を切り分けたい回だから)

@@ -1064,7 +1064,8 @@ extension MCPServer {
                 // (base 込みの ref を native ref と取り違えて比較するため)
                 snapshot = waited.refetched ? adoptSnapshot(waited.snapshot, args: args) : waited.snapshot
                 if !waited.found {
-                    waitNote = "waitFor \"\(waitFor)\" did not appear within \(seconds)s"
+                    waitNote = "waitFor \"\(waitFor)\" did not appear within"
+                        + " \(Self.secondsText(seconds))\(Self.waitTimeoutRemedy)"
                         + " — this is the screen as it is now\(Self.truncationHint(snapshot))"
                         + (waited.partialSeenAfter.map { seenAfter in
                             // **完全一致でなく部分一致が先に出た形を名指しする**: 満額待った理由

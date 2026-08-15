@@ -463,6 +463,30 @@ extension MCPServer {
             + " it was ignored)"
     }
 
+    /// 直近の ft_snapshot の**明示指定**(`rememberedSnapshotFilters`)を、木を返す応答へ引き継ぐ。
+    ///
+    /// **木を返す口はすべてここを通す**(`snapshotAfter` と `ft_scroll_to`)。片方だけ継承すると
+    /// 「interactiveOnly を渡した後、どのツールで読むかで出力量が変わる」になり、読み手は
+    /// 自分の指定が効いていないと読む —— 2026-08-16 の外部評価で `ft_scroll_to` だけが
+    /// 継承せず、しかも継承しなかったことも言っていなかった。
+    /// **明示された値が常に優先**: args に無いキーだけ記憶で補う。補った値が true の
+    /// ときだけ宣言する(false を補っても render の既定と同じなので出力は変わらない)
+    func inheritingSnapshotFilters(_ args: [String: Any]) -> (args: [String: Any], note: String) {
+        let key = Self.engineKey(args)
+        var effective = args
+        var note = ""
+        for filterKey in ["interactiveOnly", "expandBulk"] {
+            guard !(args[filterKey] is Bool),
+                  let remembered = rememberedSnapshotFilters[key]?[filterKey] else { continue }
+            effective[filterKey] = remembered
+            if remembered {
+                note += "(\(filterKey): true inherited from your last ft_snapshot —"
+                    + " pass \(filterKey): false to override)\n"
+            }
+        }
+        return (effective, note)
+    }
+
     /// 操作系ツールが `snapshotAfter: true` で返す「操作の直後の画面」。
     ///
     /// **往復を半分にするためにある**: tap/type/drag は「変わったかもしれない」で終わるので、
@@ -492,19 +516,7 @@ extension MCPServer {
             let key = Self.engineKey(args)
             let beforeAction = lastSnapshots[key]
 
-            // **明示された値が常に優先**: args に無いキーだけ記憶で補う。補った値が true の
-            // ときだけ宣言する(false を補っても render の既定と同じなので出力は変わらない)
-            var effectiveArgs = args
-            var inheritedNote = ""
-            for filterKey in ["interactiveOnly", "expandBulk"] {
-                guard !(args[filterKey] is Bool),
-                      let remembered = rememberedSnapshotFilters[key]?[filterKey] else { continue }
-                effectiveArgs[filterKey] = remembered
-                if remembered {
-                    inheritedNote += "(\(filterKey): true inherited from your last ft_snapshot —"
-                        + " pass \(filterKey): false to override)\n"
-                }
-            }
+            let (effectiveArgs, inheritedNote) = inheritingSnapshotFilters(args)
 
             var snapshot = try await freshSnapshot(snapshotDriver, args: args)
             var settleNote = ""
@@ -519,7 +531,8 @@ extension MCPServer {
                                                     elementLimit: pollElementLimit(args))
                 snapshot = waited.refetched ? adoptSnapshot(waited.snapshot, args: args) : waited.snapshot
                 waitNote = waited.found ? "waitFor \"\(waitFor)\" appeared.\n"
-                    : "waitFor \"\(waitFor)\" did not appear within \(seconds)s"
+                    : "waitFor \"\(waitFor)\" did not appear within \(Self.secondsText(seconds))"
+                        + Self.waitTimeoutRemedy
                         + " — this is the screen as it is now\(Self.truncationHint(snapshot))"
                         + (waited.partialSeenAfter.map { seenAfter in
                             " — a partial match was already on screen \(Int(seenAfter.rounded()))s"
@@ -610,7 +623,8 @@ extension MCPServer {
             changed = !Self.looksUnchanged(beforeAction, snapshot)
         }
         guard changed else {
-            return (snapshot, "note: waitForChange timed out after \(seconds)s — the tree"
+            return (snapshot, "note: waitForChange timed out after \(Self.secondsText(seconds))"
+                + Self.waitTimeoutRemedy + " — the tree"
                 + " still matches the one before the action, so the action may not"
                 + " have changed the screen."
                 + Self.unrepresentedScreenCaveat(snapshot) + "\n")
@@ -959,7 +973,8 @@ extension MCPServer {
         if StepExecutor.isSuccess(outcome.status) {
             // 成功。救済は要らない
         } else if outcome.notes.contains(.sheetCollapsed), rescueKnownFutile {
-            sheetNote = "note: the list stopped moving inside a partially open sheet again."
+            sheetNote = Self.sheetRescueMarker + "skipped — the list stopped moving inside a"
+                + " partially open sheet again."
                 + " Expanding the sheet was already tried on this exact screen earlier in this"
                 + " session and did not help, so it was NOT retried this time (that rescue costs"
                 + " seconds)." + Self.sheetManualExpandHint(after) + "\n"
@@ -993,7 +1008,8 @@ extension MCPServer {
                 // **効かなかったことを覚える**(sheetRescueKey 参照)。鍵は救済**前**の木 ——
                 // これが次の呼び出しの1回目の探索が行き着く画面だから
                 rememberFutileSheetRescue(beforeExpansion, args: args)
-                sheetNote = "note: the list had stopped moving inside a partially open sheet, so"
+                sheetNote = Self.sheetRescueMarker
+                    + "— the list had stopped moving inside a partially open sheet, so"
                     + " [\(grabber.ref)] \(RefGuard.describe(grabber)) was dragged up to expand it,"
                     + " but its height did not increase (\(Int(beforeHeight))pt before,"
                     + " \(Int(expandedHeight))pt after) — the sheet cannot be expanded this way,"
@@ -1011,7 +1027,8 @@ extension MCPServer {
                 outcome = StepOutcome(status: .passed, notes: outcome.notes,
                                       resolvedElement: alreadyThere,
                                       scrollSwipes: outcome.scrollSwipes)
-                sheetNote = "note: the list had stopped moving inside a partially open sheet, so"
+                sheetNote = Self.sheetRescueMarker
+                    + "— the list had stopped moving inside a partially open sheet, so"
                     + " [\(grabber.ref)] \(RefGuard.describe(grabber)) was dragged up to expand it,"
                     + " which revealed the target — the search was NOT retried."
                     + Self.sheetExpansionLayoutNote(before: beforeExpansion, after: after) + "\n"
@@ -1061,7 +1078,8 @@ extension MCPServer {
                             + Self.sheetManualExpandHint(after)
                     }
                 }
-                sheetNote = "note: the list had stopped moving inside a partially open sheet, so"
+                sheetNote = Self.sheetRescueMarker
+                    + "— the list had stopped moving inside a partially open sheet, so"
                     + " [\(grabber.ref)] \(RefGuard.describe(grabber)) was dragged up to expand it and"
                     + " the search was retried once."
                     + Self.sheetExpansionLayoutNote(before: beforeExpansion, after: after)
@@ -1219,8 +1237,10 @@ extension MCPServer {
         // 逆向きの語を出すと `drop:` の選択を誤らせる
         interactions.record(InteractionLog.Entry(
             step: scrollStep, unresolved: nil, summary: "scrollTo \"\(selectorText)\""))
+        // **畳み方は snapshotAfter と同じ規則で継承する**(inheritingSnapshotFilters 参照)
+        let (treeArgs, inheritedNote) = inheritingSnapshotFilters(args)
         // **ghostNote と render で畳みの有無を揃える**(ft_snapshot と同じ理由)
-        let collapsingBulk = args["expandBulk"] as? Bool != true
+        let collapsingBulk = treeArgs["expandBulk"] as? Bool != true
         let totalMs = Int((timingClock.now - timingStart) / .milliseconds(1))
         let timingNote = Self.scrollTimingNote(totalMs: totalMs, swipes: outcome.scrollSwipes,
                                                rescueMs: rescueMs)
@@ -1229,7 +1249,7 @@ extension MCPServer {
         let cache = SnapshotAnnotationCache()
         return text(switched + scrollFrameLabelNote + sheetNote + timingNote
             + "scrolled to \"\(selectorText)\"\(landed)\(fallbackNote)."
-            + " The refs below are fresh\n" + scrollAreaNote
+            + " The refs below are fresh\n" + inheritedNote + scrollAreaNote
             // **ft_snapshot より少ない**(scrollFrame 候補・重複 id 系は出さない)。その差は
             // NoteCatalog の contexts が持つ = 2箇所の並びを読み比べる必要はない
             + catalogNotes(NoteCatalog.Input(snapshot: after, collapsingBulk: collapsingBulk,
@@ -1239,7 +1259,7 @@ extension MCPServer {
             // (2026-08-10 まではここだけ interactiveOnly を無視して常に全行を出していた)
             + SnapshotRenderer.render(after, flagging: cache.ghostFlags(after),
                                       collapsingBulk: collapsingBulk,
-                                      interactiveOnly: args["interactiveOnly"] as? Bool == true,
+                                      interactiveOnly: treeArgs["interactiveOnly"] as? Bool == true,
                                       unit: Self.coordinateUnit(scrollDriver)))
     }
 }

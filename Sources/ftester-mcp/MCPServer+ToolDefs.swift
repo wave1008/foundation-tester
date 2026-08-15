@@ -125,8 +125,10 @@ extension MCPServer {
         changed", not "the final content arrived": a screen that first shows a loading or empty \
         intermediate (a search still fetching) satisfies it early — the response notes when the \
         difference was already on the first read, and only checking for the expected content \
-        guarantees it is there. snapshotAfter inherits \
-        interactiveOnly/expandBulk from your last ft_snapshot call unless passed explicitly.
+        guarantees it is there. Both waits run to timeout (default 5s) when they miss — pass a \
+        smaller timeout on a wait you expect to miss, a larger one for a slow load. \
+        snapshotAfter and ft_scroll_to inherit interactiveOnly/expandBulk from your last \
+        ft_snapshot call unless passed explicitly, and say so when they do.
 
         Once you can name the next few steps by selector — typically right after reading a tree \
         — ft_batch runs them in one call and one approval, and a batch that passes converts 1:1 \
@@ -255,7 +257,14 @@ extension MCPServer {
             "text": ["type": "string", "description": "Omit it to fire Enter only"],
             "pressEnter": ["type": "boolean", "description": "Fire Enter/IME action (search, submit)"],
             "ref": ["type": "integer", "description": "Reference number of the input field (defaults to the focused element)"],
-            "replace": ["type": "boolean", "description": "Clear the field before typing, instead of appending"],
+            // **値段と、二重払いの避け方まで書く**(2026-08-16 の外部評価): replace は素の type の
+            // 約2倍かかる(実測 6.1s 対 2.3s)。内訳は clear の1往復と、**打った結果の読み返し**
+            // (in-app iOS は clear/type の成否を検証せず YES を返すので、読み返さないと
+            // 「replaced」が嘘になる)。snapshotAfter を付ければその1枚と共有する
+            "replace": ["type": "boolean", "description": "Clear the field before typing, instead "
+                + "of appending. Costs a clear round trip plus one read-back that verifies what the "
+                + "field ends up holding — with snapshotAfter (and no pressEnter) that read is the "
+                + "same one, so pass it instead of taking a separate ft_snapshot"],
             "snapshotAfter": snapshotAfterProperty,
             "waitForChange": snapshotAfterWaitForChangeProperty,
             "waitFor": snapshotAfterWaitForProperty,
