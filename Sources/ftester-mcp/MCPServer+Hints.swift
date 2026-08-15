@@ -575,14 +575,24 @@ extension MCPServer {
     /// 撃ち直す。さらに、開始時の木からしか出せなかったということは**その要素はもう後ろにある**
     /// ので、勧めた `*X*` をそのまま同じ向きで撃っても届かない(外部評価 2026-08-15 の実害:
     /// apple.com で `Shop` が8スワイプ空振り → 勧められた `*Shop*` も同じ結果、と報告された)。
+    /// **両方の木から出せた回は「探索前から分かっていた」と帰属させる**(下の分岐の理由)。
     /// `backDirection` は探索方向の逆(呼び手が渡す)
     static func scrollNotationHint(_ selectorText: String, after: SnapshotResponse,
                                    beforeScroll: SnapshotResponse?,
                                    backDirection: String) -> String {
         let fromFinal = notationHint(selectorText, in: after)
-        if !fromFinal.isEmpty { return fromFinal }
-        guard let beforeScroll else { return "" }
-        let fromStart = notationHint(selectorText, in: beforeScroll)
+        let fromStart = beforeScroll.map { notationHint(selectorText, in: $0) } ?? ""
+        if !fromFinal.isEmpty {
+            // **待たされた理由を帰属させる**(2026-08-15 の追加フィードバック): 開始画面から
+            // 同じ答えが出せた回は、スワイプの秒数を丸ごと捨てている。**時間は縮まない**
+            // (MCP は1応答なので「これから探します」を先に届ける口が無い)が、
+            // 黙っていると「完全一致は即成功・部分一致だけは 24 秒かけて失敗」という
+            // 非対称が原因不明のまま残り、同じ書き方を繰り返すことになる
+            return fromStart.isEmpty ? fromFinal
+                : fromFinal + " This was already true on the screen where the search started,"
+                    + " so the swipes could not have helped — when a plain label is not on the"
+                    + " current screen, check it for a partial match before scrolling."
+        }
         guard !fromStart.isEmpty else { return "" }
         return fromStart + " That was on the screen where this search STARTED — the search has"
             + " since scrolled past it, so re-running with direction: \(backDirection) (or going"

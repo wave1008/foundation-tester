@@ -42,6 +42,22 @@ final class MCPEvaluationFixes20260815Tests: XCTestCase {
                        "最終木で出せたのに「開始画面にあった」と言っている: \(hint)")
     }
 
+    /// **開始画面からも同じ答えが出せた回は、待たされた理由を帰属させる**(追加フィードバック)。
+    /// 「完全一致は即成功・部分一致だけは 24 秒かけて失敗」という非対称は、原因が書かれない限り
+    /// ツールの気まぐれにしか見えず、同じ書き方が繰り返される。**時間は縮まない**
+    /// (MCP は1応答なので「これから探します」を先に届ける口が無い)ので、直せるのは説明だけ
+    func testSaysWhenTheAnswerWasAlreadyOnTheStartingScreen() {
+        let shop = text(1, "Shop, Education Store", y: 400)
+
+        let hint = MCPServer.scrollNotationHint("Shop", after: snapshot([shop]),
+                                                beforeScroll: snapshot([shop]), backDirection: "up")
+
+        XCTAssertTrue(hint.contains("*Shop*"), hint)
+        XCTAssertTrue(hint.contains("already true on the screen where the search started"), hint)
+        XCTAssertFalse(hint.contains("STARTED"),
+                       "まだ画面に居るのに「通り過ぎた」と言っている: \(hint)")
+    }
+
     /// **探索で流れた回でも黙らない**。旧実装は最終木しか見ないので、
     /// スクロールで相手が画面外へ出ると「`*Shop*` と書け」ごと消えていた
     func testFallsBackToTheScreenTheSearchStartedOn() {
