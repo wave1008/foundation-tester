@@ -113,9 +113,25 @@ final class MCPWebPageCeilingTests: XCTestCase {
         XCTAssertTrue(MCPServer.needsWebPageCeiling(chrome))
     }
 
-    /// **本命**(2026-08-15 の2度目の追試): iOS Safari の a11y 木は `webView` 要素を
-    /// **出したり出さなかったりする**。ブラウザ chrome もスクロールで木から落ちる。
-    /// どちらも「そのとき何が公開されたか」に依存するので、**セッションのアプリ**で判定する
+    /// **実コーパスの witness**(ios-browser_yahoo_top。2026-08-15 に評価者から受け取った
+    /// 実ページの生 JSON)。**自己言及の罠**そのもの: 上限で切り詰められたこの木には
+    /// `webView` 要素もアドレス欄も**1つも無い** —— 同じ画面を 400 で撮ると両方居るので、
+    /// **どちらも上限で落とされた**のだと確定できる(ブラウザが不安定なのではない)。
+    /// つまり木の中身で判定する限り、**切り詰めがひどいほど検出器が効かなくなる** ——
+    /// 検出したい現象が検出器を殺す形。セッションのアプリだけがこれを免れる
+    func testTruncationItselfRemovesTheTreeSignalsForWeb() throws {
+        let truncated = try fixture("ios-browser_yahoo_top")
+        XCTAssertEqual(truncated.truncatedCount, 89, "コーパスの形が変わった")
+        XCTAssertFalse(truncated.elements.contains { $0.type == "webView" },
+                       "この witness の要点(webView も上限で落ちている)が失われた")
+        XCTAssertNil(TreeCoverage.addressBarCandidate(in: truncated),
+                     "この witness の要点(アドレス欄も上限で落ちている)が失われた")
+        XCTAssertEqual(truncated.sessionBundleID, "com.apple.mobilesafari")
+        XCTAssertTrue(MCPServer.needsWebPageCeiling(truncated),
+                      "切り詰めが最もひどい木でこそ効かなければ意味が無い")
+    }
+
+    /// 上と同じ形を合成でも押さえる(コーパスの1枚に依存させない)
     func testBrowserSessionCountsEvenWhenNothingInTheTreeSaysWeb() {
         let bare = SnapshotResponse(sessionBundleID: "com.apple.mobilesafari",
                                     screen: FTRect(x: 0, y: 0, width: 402, height: 874),
@@ -183,7 +199,8 @@ final class MCPWebPageCeilingTests: XCTestCase {
         }
         XCTAssertEqual(fired.sorted(),
                        ["and-browser_j1_standings", "ios-browser_j1_standings",
-                        "ios-browser_nationwide", "ios-browser_startpage", "ios-news_feed"],
+                        "ios-browser_nationwide", "ios-browser_startpage",
+                        "ios-browser_yahoo_top", "ios-news_feed"],
                        "撮り直す画面の集合が変わった。増えた分が本当に web か1件ずつ見ること")
     }
 

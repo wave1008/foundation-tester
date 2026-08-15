@@ -80,6 +80,13 @@ final class NoteCoverageTests: XCTestCase {
         // iOS 側 a11y から落ちている形で、見出しとは無関係)。真陽性(and-browser_weektable)の
         // 陰性対照として `chainsHaveHeaderTopRow` を追加した witness
         "ios-browser_j1_standings": "browser", "and-browser_j1_standings": "browser",
+        // 2026-08-15 の外部評価で受け取った1枚(iOS Safari・Yahoo 天気トップ)。**要素上限で
+        // 切り詰められた実ページ**(120 要素・89 件脱落)で、代表するのは自己言及の罠 ——
+        // **`webView` 要素とアドレス欄そのものが上限で落ちている**(同じ画面を 400 で撮ると
+        // 両方居る)。木の中身で「これは web ページか」を判定すると、**切り詰めがひどいほど
+        // 判定が効かなくなる** = 検出したい現象が検出器を殺す。`holdsWebContent` が
+        // セッションのアプリを第一の根拠にしている理由の witness
+        "ios-browser_yahoo_top": "browser",
         "ios-maps_route_options": "picker",
         // 2026-08-13 の監査(長い再利用リスト)で足した1枚。Android 設定の「すべてのアプリ」——
         // **40 要素すべてが identifier を持たず、scrollable を申告する要素も1つも無い**。
@@ -152,7 +159,7 @@ final class NoteCoverageTests: XCTestCase {
         "scrollFrameCandidates": Coverage(fixtures: ["and-form_keyboard", "and-place_expanded", "and-results", "ios-browser_startpage", "ios-maps_route_options", "ios-maps_station", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-messages_keyboard", "ios-news_feed", "ios-place_guides_scrolled"], bytes: 2674),
         // 2026-08-15 に J1順位表(両OS)を追加して +555 バイト。and-/ios- とも 120要素上限で
         // 38〜42件が脱落する高密度ページ(ios-browser_nationwide と同型)
-        "truncationNote": Coverage(fixtures: ["and-browser_j1_standings", "ios-browser_j1_standings", "ios-browser_nationwide", "ios-browser_startpage", "ios-maps_station", "ios-news_feed"], bytes: 1852),
+        "truncationNote": Coverage(fixtures: ["and-browser_j1_standings", "ios-browser_j1_standings", "ios-browser_nationwide", "ios-browser_startpage", "ios-browser_yahoo_top", "ios-maps_station", "ios-news_feed"], bytes: 2149),
         // 取りこぼしのある Chrome の3枚(2026-08-13 に and-browser_weather_weekly を追加)で発火し、
         // 取りこぼしの無い iOS Safari の4枚(ios-browser_weektable / _weather_weekly 含む)では
         // 出ない(閾値の根拠は MCPServer.webViewGapNote のコメント)。browser 限定なのは
@@ -185,7 +192,7 @@ final class NoteCoverageTests: XCTestCase {
         // **格子は曖昧ラベルの塊**(2026-08-12): 週間表の2枚が入って +2,049 バイト。
         // 同じ数値(`29/24`・`90%`)が行と列に何度も出るので、増分は形そのもの。
         // J1順位表(両OS。2026-08-15)も同型で +2,246 バイト —— 同じ勝点/試合数が縦横に並ぶ
-        "ambiguousLabelsNote": Coverage(fixtures: ["and-apps_list", "and-browser_j1_standings", "and-browser_weather", "and-browser_weather_weekly", "and-browser_weektable", "and-camera_canvas", "and-home", "and-maps_suggest_ime", "and-place", "and-place_expanded", "and-results", "ios-browser_j1_standings", "ios-browser_jma_hscroll", "ios-browser_nationwide", "ios-browser_startpage", "ios-browser_weather_weekly", "ios-browser_weektable", "ios-home", "ios-maps_station", "ios-maps_suggest_keyboard", "ios-messages_keyboard", "ios-news_feed", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-safari_article", "ios-settings_root", "sut-cmp_controls", "sut-cmp_home", "sutec-detail", "sutec-home"], bytes: 20046),
+        "ambiguousLabelsNote": Coverage(fixtures: ["and-apps_list", "and-browser_j1_standings", "and-browser_weather", "and-browser_weather_weekly", "and-browser_weektable", "and-camera_canvas", "and-home", "and-maps_suggest_ime", "and-place", "and-place_expanded", "and-results", "ios-browser_j1_standings", "ios-browser_jma_hscroll", "ios-browser_nationwide", "ios-browser_startpage", "ios-browser_weather_weekly", "ios-browser_weektable", "ios-browser_yahoo_top", "ios-home", "ios-maps_station", "ios-maps_suggest_keyboard", "ios-messages_keyboard", "ios-news_feed", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-safari_article", "ios-settings_root", "sut-cmp_controls", "sut-cmp_home", "sutec-detail", "sutec-home"], bytes: 20877),
         // 2026-08-15 に 16,940 → 16,984(+44)。**発火する画面は1枚も増えていない** ——
         // 増えたのは ios-place_guides_scrolled の `#PlaceCollectionCell` ×3 の**中身**で、
         // 40字超のラベルしか無い行に `*断片*` が書けるようになったぶん(以前は索引形 `~`)。

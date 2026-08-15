@@ -299,6 +299,19 @@ final class SweepHarnessTests: XCTestCase {
         "ios-browser_weektable": Counts(ghost: 0, overlay: 6, stacked: 0, misses: 0, disabled: 1,
                                         offscreen: 4, warnedTappable: 2, keyboard: 0, sliver: 0,
                                         nested: 0, scrolledOut: 0),
+        // 2026-08-15 に外部評価者から受け取った1枚(iOS Safari・Yahoo 天気トップ)。**全件検分済み**。
+        //
+        // nested 20 は**全部真陽性**で1つの形 —— 日付セル `link "16 (日)"` と地点セルが
+        // **入れ子のアンカー**を持ち、外側の中心が内側("16" / "28/22" 等)に乗る。ref で
+        // 外側を撃つと内側が取る、という警告どおりの構造(HTML のリンク入れ子そのもの)。
+        // overlay 5 は**全部 `link "東海北陸近畿"`(158,597 72x77)が発生源**で、地図の地方リンクが
+        // 金沢・大阪のセルと矩形で重なる形。iOS の木に `z` が無いためツリー順に落ちた判定で、
+        // 実描画ではセルが手前 = **既知クラスの誤検知**(ios-safari_article の「折り返す inline
+        // テキスト」と同じ、z を持たない木の限界)。disabled 1 は履歴なしの「戻る」= 真陽性。
+        // **新しい形は1件も無い**
+        "ios-browser_yahoo_top": Counts(ghost: 0, overlay: 5, stacked: 0, misses: 0, disabled: 1,
+                                        offscreen: 0, warnedTappable: 25, keyboard: 0, sliver: 0,
+                                        nested: 20, scrolledOut: 0),
         // 2026-08-13 採取(Yahoo!天気の週間画面・同じ画面を両 OS で)。**全件検分済み**。
         //
         // iOS: overlay 30 は**全部真陽性**で、しかも1つの原因 —— 下端に貼り付く広告
