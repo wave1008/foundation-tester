@@ -219,6 +219,17 @@ final class DuplicateRegionStepNoteTests: XCTestCase {
         XCTAssertFalse(driver.tapped.isEmpty, "注記であって拒否ではない(撃つこと)")
     }
 
+    /// **doubleTap も指で触る操作**なので同じ注記が要る(この経路は tap と同じ advisory を
+    /// 載せる規律が既にあり、片方だけ黙ると判断が食い違う)
+    func testDoubleTapCarriesTheSameNote() async {
+        let driver = DuplicateRegionDriver(tree(secondCopyY: 100))
+        let step = FlowStep(action: "doubleTap", locator: FlowLocator(label: "気温"), timeout: 0,
+                            occlusionGuard: false)
+        let outcome = await StepExecutor(driver: driver).execute(step)
+        XCTAssertTrue(outcome.notes.contains(.staleDuplicateRegion),
+                      "doubleTap が黙った: \(outcome.notes) / \(outcome.status)")
+    }
+
     /// **陰性対照**: 2つ目のコピーが別の行にある = 正当なページ構造では付かない
     func testAValidPageStructureCarriesNoNote() async {
         let driver = DuplicateRegionDriver(tree(secondCopyY: 400))

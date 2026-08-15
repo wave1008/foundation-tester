@@ -523,12 +523,7 @@ extension StepExecutor {
         // **ドライバ切替と FM ヒールより前**に置く: 切り詰められた木で FM に代わりを探させると、
         // 実在する本命が候補に無いまま別の要素へ「修復」し、それが利用者の .swift へ書き戻される
         if resolved == nil, snapshot.truncatedCount > 0 {
-            start = clock.now
-            driver.raiseElementLimitOnNextSnapshot(BridgeAPI.maxSnapshotElementsCeiling)
-            var full = try await driver.snapshot()
-            phase.snapshotMs += Self.ms(clock.now - start)
-            try await dismissInterruption(in: &full, phase: &phase)
-            snapshot = full
+            snapshot = try await retakenAtElementLimitCeiling(snapshot, phase: &phase)
             resolved = Self.resolve(step: step, in: snapshot)
         }
 
@@ -684,19 +679,7 @@ extension StepExecutor {
             driverFallback = Self.joinNotes(driverFallback,
                 tapKeyboardOcclusion.advisory(for: element),
                 TapTargetGeometry.disabledAdvisory(for: element))
-            // **横スクロールの残骸を掴んでいないか**(判定は MCP の duplicateRegionNote と共有)。
-            // **座標に依らない**ので keyboard/disabled と同じくここで確定してよい ——
-            // 言っているのは「この ref はもう描かれていないコピーかもしれない」であって、
-            // 撃つ点をどこへ寄せるかとは無関係。**注記だけで拒否しない**: どちらのコピーが
-            // 生きているかは木から決められないので、撃たずに止めると正しい操作まで殺す
-            if let duplicate = DuplicateRegion.riskFor(element, in: snapshot.elements) {
-                noteCodesThisStep.insert(.staleDuplicateRegion)
-                driverFallback = Self.joinNotes(
-                    driverFallback,
-                    "the tree lists this row twice ([\(duplicate.firstRef)] and"
-                        + " [\(duplicate.secondRef)], \(duplicate.length) elements each);"
-                        + " one copy is a leftover from horizontal scrolling")
-            }
+            driverFallback = Self.joinNotes(driverFallback, duplicateRegionAdvisory(element, in: snapshot))
             // **長押しは tap の引数**(Shirates 準拠。`tap(sel, holdSeconds:)`)。0 より大きいときだけ
             // ブリッジの /press へ回す。in-app は座標ジェスチャを持たない(501)ので XCUITest へ
             // フォールバックする経路も長押し側だけが必要
@@ -849,10 +832,13 @@ extension StepExecutor {
             // (MCP の ft_double_tap も同じ内容を出す。片方だけ黙ると判断が食い違う)。
             // pinch / swipeBy は「要素を掴んで動かす」形で、無効でも意味があるので対象外
             let gestureAdvisory = action == "doubleTap"
-                ? TapTargetGeometry.advisory(for: element, in: snapshot.elements,
-                                             screen: snapshot.screen,
-                                             keyboardOcclusion: KeyboardOcclusion.resolve(
-                                                reported: snapshot.keyboardFrame, in: snapshot.elements))
+                ? Self.joinNotes(
+                    TapTargetGeometry.advisory(for: element, in: snapshot.elements,
+                                               screen: snapshot.screen,
+                                               keyboardOcclusion: KeyboardOcclusion.resolve(
+                                                  reported: snapshot.keyboardFrame,
+                                                  in: snapshot.elements)),
+                    duplicateRegionAdvisory(element, in: snapshot))
                 : nil
             let outcome = try await performGesture(action, step: step, target: element.frame,
                                                    identifier: element.identifier,
@@ -1366,6 +1352,24 @@ extension StepExecutor {
     }
 
     /// 注記の合流(どちらか片方だけのことが多いので nil を潰して " / " で繋ぐ)
+    /// **横スクロールの残骸を掴んでいないか**(判定は `DuplicateRegion` = MCP の
+    /// `duplicateRegionNote` と共有)。**座標に依らない**ので keyboard/disabled と同じく
+    /// 掴んだ時点で確定してよい —— 言っているのは「この ref はもう描かれていないコピーかも
+    /// しれない」であって、撃つ点をどこへ寄せるかとは無関係。
+    ///
+    /// **注記だけで拒否しない**: どちらのコピーが生きているかは木から決められないので、
+    /// 撃たずに止めると正しい操作まで殺す。
+    /// **tap と doubleTap の両方から呼ぶ**(どちらも指で触る操作。片方だけ黙ると判断が食い違う)
+    func duplicateRegionAdvisory(_ element: ElementInfo, in snapshot: SnapshotResponse) -> String? {
+        guard let duplicate = DuplicateRegion.riskFor(element, in: snapshot.elements) else {
+            return nil
+        }
+        noteCodesThisStep.insert(.staleDuplicateRegion)
+        return "the tree lists this row twice ([\(duplicate.firstRef)] and"
+            + " [\(duplicate.secondRef)], \(duplicate.length) elements each);"
+            + " one copy is a leftover from horizontal scrolling"
+    }
+
     static func joinNotes(_ notes: String?...) -> String? {
         let present = notes.compactMap { $0 }.filter { !$0.isEmpty }
         return present.isEmpty ? nil : present.joined(separator: " / ")
