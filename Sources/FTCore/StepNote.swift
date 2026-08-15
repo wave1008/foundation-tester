@@ -57,6 +57,14 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// 率が上がっていたら上限か画面の作りを疑う
     case webViewNotRendered = "webview-not-rendered"
 
+    /// 否定判定に使った木が**画面を代表していない疑い**があった(`FTCore.TreeCoverage`。
+    /// webView の内側に大きな空白帯が残る / アドレス欄はあるのにページ本体が1要素も無い)。
+    /// 打ち切り(`truncatedDuringSearch`)と失敗の型は同じだが、あちらはブリッジの申告に基づく
+    /// 事実、こちらは**幾何からの疑い**なので判定は変えず注記だけにする ——
+    /// 断定すると空のページに対する正当な `notExist` が書けなくなる。
+    /// **率が上がったらブラウザの a11y 公開待ちを疑う**(木の構築中に撮ると chrome しか返らない)
+    case treeUnderreported = "tree-underreported"
+
     /// back() の前後で木の指紋が同一 = システム back がこの画面に効かなかった(自前ナビの画面が
     /// システムの戻るを無視するアプリでよくある)。判定は FTCore.BackEffect が唯一の定義元
     /// (MCP の ft_navigate と共有)。before/after とも back() 1回につき1枚ずつ素直に読む
@@ -82,6 +90,9 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
             return "the tree hit the element limit during the search, so the target may have been dropped from it"
         case .webViewNotRendered:
             return "the delegated WebView had published no content when this was judged, so an absence here is not evidence"
+        case .treeUnderreported:
+            return "the tree did not appear to cover the whole screen when this was judged, so an"
+                + " absence here is not evidence"
         case .backIneffective: return BackEffect.note(advice: BackEffect.dslAdvice)
         case .healUnwritable:
             return "self-heal found a stand-in element but no selector picks it out uniquely on this"

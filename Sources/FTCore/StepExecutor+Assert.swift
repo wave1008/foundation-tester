@@ -179,6 +179,19 @@ extension StepExecutor {
         }
     }
 
+    /// **木が画面を代表していない疑いを黙らない**(2026-08-15)。`noteEmptyWebView` は
+    /// ドライバ申告の「委譲した WebView が空」しか見ないので、**中身が部分的にしか公開されない**
+    /// 形(Android の Chrome)と、**webView 容器すら出ない**形をどちらも取り逃がす。
+    /// 判定は `FTCore.TreeCoverage`(MCP の webViewGapNote / missingPageContentNote と共有)。
+    ///
+    /// **注記だけで判定は変えない**: 打ち切りと違いブリッジの申告ではなく幾何からの疑いなので、
+    /// 失敗にすると空のページに対する正当な `notExist` が書けなくなる
+    func noteUnderreportedTree(_ snapshot: SnapshotResponse) {
+        if TreeCoverage.underreports(snapshot) {
+            noteCodesThisStep.insert(.treeUnderreported)
+        }
+    }
+
     /// 「不在(件数)を結論できない」ことの失敗文言。**「見つからない」と言わない**のが要点 ——
     /// 送られていないだけの要素を「無い」と報告するのがこの欠陥そのもので、同じ言葉で返すと
     /// 読み手は塞いだ穴と区別が付かない。`evidence` は何がどれだけ落ちたか(呼び手が組み立てる)
@@ -518,6 +531,7 @@ extension StepExecutor {
             phase.snapshotMs += Self.ms(clock.now - start)
             try await dismissInterruption(in: &snapshot, phase: &phase)
             noteEmptyWebView(snapshot)
+            noteUnderreportedTree(snapshot)
             var resolved = Self.resolve(step: step, in: snapshot, strictForAssert: true)
             // **見つからないのは上限で間引かれたからかもしれない**。切り詰められた木で
             // 不在に見えたときだけ天井まで上げて撮り直す(retakenAtElementLimitCeiling)
@@ -835,6 +849,7 @@ extension StepExecutor {
             phase.snapshotMs += Self.ms(clock.now - start)
             try await dismissInterruption(in: &snapshot, phase: &phase)
             noteEmptyWebView(snapshot)
+            noteUnderreportedTree(snapshot)
             // **件数は木の完全性がそのまま結果になる**(間引かれた分は「無い」と区別が付かない)。
             // 不在と違い一致・不一致のどちらにも効くので、数える前に撮り直す
             if snapshot.truncatedCount > 0, !needsCeiling {

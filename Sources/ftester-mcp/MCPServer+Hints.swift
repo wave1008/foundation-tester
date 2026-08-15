@@ -716,150 +716,44 @@ extension MCPServer {
     /// **フルツリーにも1つも無い**(スクリーンショットで実在を確認済み)。
     /// 木だけを読む読み手は、そこに何も無いと結論して**黙って誤答する**。
     ///
-    /// 判定は幾何だけ: WebView の可視部分を 60 分割し、**内側**(上端・下端に接しない)で
-    /// どの葉の矩形とも交わらない連続帯を測る。**端の帯は数えない** —— 容器自身の余白は
-    /// どのページにもあり、これを数えると健全な木まで疑う。
-    /// **閾値を超えた帯は全部数える**(emptyBands の doc に実害)。
+    /// **判定は `FTCore.TreeCoverage.gap` が唯一の定義元**(閾値・走査・実測の根拠はそちら。
+    /// DSL の否定アサーションも同じ判定を `StepNote.treeUnderreported` として運ぶ)。
+    /// ここが持つのは**文言だけ**: 「不完全だ」と断定せず、確かめる手段(ft_screenshot)まで書く。
     ///
-    /// 閾値は固定コーパスの実測から置いた(2026-08-12・webView を持つ4画面):
-    /// 取りこぼしのある Chrome の1枚が **実測 302px(容器の 13.6%)**、
-    /// 取りこぼしの無い iOS Safari の3枚が **0/14/29px(0〜3.3%)**。8% はその間。
-    /// 帯の高さは**実要素の縁まで測る**(60分割スライスの量子化ではない。emptyBands の
-    /// doc 参照 —— スライス丸めのままだと実効閾値が最大 11.3% まで縮み、砦の余裕が薄かった)。
-    /// 画面比の下限も併せて要求する(小さな容器の中の小さな穴で騒がない)。
-    /// **「不完全だ」とは断定しない**(新しい検知は警告から始める)。
-    /// **落とすのはあくまで読み手の判断**なので、確かめる手段(ft_screenshot)まで書く
     /// 1つの応答で名指しする帯の本数。**全部言うのではなく件数だけは必ず言う**
     /// (超えた分は「and N more」)—— 上限を置かないと1画面で帯が10本並びうる
     static let webViewGapBandsReported = 3
 
     static func webViewGapNote(_ snapshot: SnapshotResponse) -> String {
-        let screen = snapshot.screen
-        guard screen.height > 0 else { return "" }
-        for container in snapshot.elements where container.type == "webView" {
-            let visible = min(container.frame.y + container.frame.height, screen.y + screen.height)
-                - max(container.frame.y, screen.y)
-            guard visible > 0 else { continue }
-            let bands = emptyBands(inside: container, of: snapshot)
-                .filter { $0.height >= visible * 0.08 && $0.height >= screen.height * 0.05 }
-            guard !bands.isEmpty else { continue }
-            let shown = Array(bands.prefix(webViewGapBandsReported))
-            let located: String
-            if shown.count == 1, let band = shown.first {
-                located = "nothing is listed between y=\(Int(band.y)) and"
-                    + " y=\(Int(band.y + band.height)) — a band \(Int(band.height)) tall with no"
-                    + " element at all."
-            } else {
-                let listed = shown
-                    .map { "y=\(Int($0.y))-\(Int($0.y + $0.height)) (\(Int($0.height)) tall)" }
-                    .joined(separator: ", ")
-                let more = bands.count > shown.count
-                    ? ", and \(bands.count - shown.count) more" : ""
-                located = "nothing is listed in \(bands.count) separate bands — \(listed)\(more)"
-                    + "; no element at all in any of them."
-            }
-            return "note: inside \(RefGuard.describe(container)) \(located) A browser can publish"
-                + " only part of a page to the accessibility tree (Android's Chrome does this), so"
-                + " text that IS on screen can be missing from this list. Check"
-                + " \(shown.count == 1 ? "that band" : "those bands") with ft_screenshot before"
-                + " concluding the content is not there; elements missing from the tree cannot be"
-                + " waited for, scrolled to, or tapped by selector.\n"
+        guard let gap = TreeCoverage.gap(in: snapshot) else { return "" }
+        let bands = gap.bands
+        let shown = Array(bands.prefix(webViewGapBandsReported))
+        let located: String
+        if shown.count == 1, let band = shown.first {
+            located = "nothing is listed between y=\(Int(band.y)) and"
+                + " y=\(Int(band.y + band.height)) — a band \(Int(band.height)) tall with no"
+                + " element at all."
+        } else {
+            let listed = shown
+                .map { "y=\(Int($0.y))-\(Int($0.y + $0.height)) (\(Int($0.height)) tall)" }
+                .joined(separator: ", ")
+            let more = bands.count > shown.count
+                ? ", and \(bands.count - shown.count) more" : ""
+            located = "nothing is listed in \(bands.count) separate bands — \(listed)\(more)"
+                + "; no element at all in any of them."
         }
-        return ""
+        return "note: inside \(RefGuard.describe(gap.container)) \(located) A browser can publish"
+            + " only part of a page to the accessibility tree (Android's Chrome does this), so"
+            + " text that IS on screen can be missing from this list. Check"
+            + " \(shown.count == 1 ? "that band" : "those bands") with ft_screenshot before"
+            + " concluding the content is not there; elements missing from the tree cannot be"
+            + " waited for, scrolled to, or tapped by selector.\n"
     }
 
-    /// WebView の可視部分のうち、**内側でどの葉とも交わらない連続帯をすべて**(y の昇順)。
-    ///
-    /// **最大の1本だけを返していた頃の実害**(2026-08-13・Yahoo!天気の週間画面を Android Chrome で):
-    /// 閾値を超える帯が2本あり、報告されたのは大きいほう(345px)だけだった。黙って落ちた
-    /// 268px のほうが**週間表の日付・気温・アイコンが丸ごと落ちている場所**で、読み手は
-    /// 「警告された1箇所以外は揃っている」と読む。**閾値を超えた帯は全部数える**
-    /// (名指しは webViewGapBandsReported 本まで。件数だけは必ず言う)。
-    /// 走査は 60 分割の格子(木のサイズに比例した O(n) で、応答ごとに払える)で**候補の位置だけ**
-    /// 決める —— 高さそのものはスライスの量子化を使わず、実要素の縁まで伸ばして返す
-    /// (2026-08-12): スライス境界で丸めたままだと、帯の両端にあるスライス(境界要素とわずかに
-    /// 交わるだけのスライス)が丸ごと落ちる。実測(60分割・容器高2153px→1スライス35.9px)では
-    /// 最大2スライス(≒3.3ポイント)を失い、`webViewGapNote` の実効閾値が宣言上の8%ではなく
-    /// 最大11.3%になっていた。
-    ///
-    /// **不変条件**: 選んだスライス列(`bestStart`..`bestStart+bestCount`)はどのスライスも
-    /// 被覆されていない(=列の中でどの葉とも交わらない)ので、**すべての葉は「下端が列の開始 y
-    /// 以下」か「上端が列の終了 y 以上」のどちらかを満たす**(列に少しでも交わる葉があれば、
-    /// その葉は列内の少なくとも1スライスを被覆し、連続した空き列にならない)。
-    /// この不変条件により、列の外側にある最も近い葉の縁までは安全に伸ばせる。
-    ///
-    /// **上端・下端に接する帯は返さない**: 容器の余白はどのページにもあるので、
-    /// 数えると健全な木も疑うことになる(実測: iOS Safari の3枚はいずれも先頭の 58px が空)
-    private static func emptyBands(inside container: ElementInfo,
-                                   of snapshot: SnapshotResponse) -> [FTRect] {
-        let screen = snapshot.screen
-        let top = max(container.frame.y, screen.y)
-        let bottom = min(container.frame.y + container.frame.height, screen.y + screen.height)
-        guard bottom - top > 0 else { return [] }
-        let slices = 60
-        let sliceHeight = (bottom - top) / Double(slices)
-        guard sliceHeight > 0 else { return [] }
-        // **葉だけを数える**: 容器(webView・scrollView)は帯を丸ごと覆うので、含めると
-        // どんな木でも「埋まっている」に見える
-        let leaves = snapshot.elements.filter {
-            $0.ref != container.ref && $0.scrollable != true && $0.type != "webView"
-                && $0.frame.height < (bottom - top)
-        }
-        var columns: [(start: Int, count: Int)] = []
-        var runStart = 0, run = 0
-        for slice in 0..<slices {
-            let y0 = top + Double(slice) * sliceHeight
-            let covered = leaves.contains {
-                $0.frame.y < (y0 + sliceHeight) && ($0.frame.y + $0.frame.height) > y0
-            }
-            if covered {
-                // 内側で閉じた帯だけを候補にする(runStart > 0 = 上端に接していない)
-                if run > 0, runStart > 0 { columns.append((runStart, run)) }
-                run = 0
-            } else {
-                if run == 0 { runStart = slice }
-                run += 1
-            }
-        }
-        // 末尾で終わった帯(下端に接する)は候補にしない = ここでは拾わない
-        return columns.map { column in
-            let columnStart = top + Double(column.start) * sliceHeight
-            let columnEnd = top + Double(column.start + column.count) * sliceHeight
-            let trueTop = leaves.filter { $0.frame.y + $0.frame.height <= columnStart }
-                .map { $0.frame.y + $0.frame.height }.max() ?? columnStart
-            let trueBottom = leaves.filter { $0.frame.y >= columnEnd }
-                .map(\.frame.y).min() ?? columnEnd
-            return FTRect(x: container.frame.x, y: trueTop,
-                          width: container.frame.width, height: trueBottom - trueTop)
-        }
-    }
-
-    /// **画面全体**のうち、どの要素の frame とも縦に交わらない最大の帯の割合(0〜1)。
-    /// `emptyBands(inside:of:)` の画面全体版 —— あちらは webView 容器の**内側**しか測れない
-    /// (`for container in snapshot.elements where container.type == "webView"`)ので、
-    /// webView 要素そのものが1つも無い画面(`missingPageContentNote`)には使えない。
-    /// **`emptyBands`/`webViewGapNote` は変えない**(既存の閾値・回帰ゲートに触れない)。
-    ///
-    /// 判定は縦だけ: 各要素の frame を画面の上下端で切り、縦の重なりが無い要素は無視する
-    /// (横方向は見ない = emptyBands と違って容器の x 範囲を持たないため)。
-    /// 残った区間を昇順に流し、隙間の最大値を返す。screen.height <= 0 では測れないので 0
+    /// 実体は `FTCore.TreeCoverage.unrepresentedScreenFraction`。ここは呼び出し元の綴りを
+    /// 変えないための転送(テストが MCP 側の名前で当てている)
     static func unrepresentedScreenFraction(_ snapshot: SnapshotResponse) -> Double {
-        let screen = snapshot.screen
-        guard screen.height > 0 else { return 0 }
-        let top = screen.y, bottom = screen.y + screen.height
-        let intervals = snapshot.elements.compactMap { element -> (Double, Double)? in
-            let y0 = max(element.frame.y, top)
-            let y1 = min(element.frame.y + element.frame.height, bottom)
-            return y1 > y0 ? (y0, y1) : nil
-        }.sorted { $0.0 < $1.0 }
-        var cursor = top
-        var largest = 0.0
-        for (y0, y1) in intervals {
-            if y0 > cursor { largest = max(largest, y0 - cursor) }
-            cursor = max(cursor, y1)
-        }
-        if bottom > cursor { largest = max(largest, bottom - cursor) }
-        return largest / screen.height
+        TreeCoverage.unrepresentedScreenFraction(snapshot)
     }
 
     /// **アドレス欄はあるのに webView 要素そのものが1つも無い**形の検知
@@ -871,13 +765,9 @@ extension MCPServer {
     /// 掛からずに黙って通り抜ける —— 実測(and-browser_jma_notree)は要素19件が全部ブラウザ
     /// chrome で、画面の 88.6%(unrepresentedScreenFraction)が空白のまま報告されていた。
     ///
-    /// **ブラウザにだけ絞る**(条件2・アドレス欄の存在が要る理由): 空白の割合だけで判定すると
-    /// ネイティブ画面まで拾う —— `and-overflow`(地図)は unrepresentedScreenFraction が
-    /// 0.564 まで達するが、アドレス欄が無い=ブラウザではないので黙るべき。アドレス欄はあるが
-    /// webView が無い他の witness は `and-browser_urlmenu`(0.059)だけで、これは閾値未満のまま
-    /// 黙る。判定に使う「アドレス欄の在り処」は addressBarNote と同じ `addressBarCandidate`
-    /// (identifier のリテラルを2箇所に持たない)
-    static let missingPageContentFractionThreshold = 0.5
+    /// **判定は `FTCore.TreeCoverage.missingPageContent` が唯一の定義元**(閾値・witness の
+    /// 実測・ブラウザに絞る理由はそちら)。ここが持つのは文言だけ
+    static let missingPageContentFractionThreshold = TreeCoverage.missingPageContentFractionThreshold
 
     /// **既定が a11y になったので、この注記は役目を終えた**(2026-08-14 にユーザー決定で反転)。
     /// a11y から来ているのは**正常**になり、言うことが行動に繋がらない
@@ -899,10 +789,7 @@ extension MCPServer {
     }
 
     static func missingPageContentNote(_ snapshot: SnapshotResponse) -> String {
-        guard !snapshot.elements.contains(where: { $0.type == "webView" }),
-              addressBarCandidate(in: snapshot) != nil,
-              unrepresentedScreenFraction(snapshot) >= missingPageContentFractionThreshold
-        else { return "" }
+        guard TreeCoverage.missingPageContent(in: snapshot) else { return "" }
         // **次の一手まで書く**(2026-08-14 に原因が判った)。Chromium は a11y を要求する
         // サービスが繋がってから木を作り、**出来上がるまで数秒かかる**。その窓で撮ると
         // chrome だけが返る(実測: ブリッジ起動直後 19 要素 → 5 秒後 135 要素で安定)。
@@ -1143,16 +1030,13 @@ extension MCPServer {
     /// 入力画面で誤って「アドレス欄」と名乗る** —— そしてその形は固定コーパス(ブラウザ6枚は
     /// すべて既知 identifier を持つ)には1枚も無いので、「誤検知0」の確認が効かない。
     /// 名前の分かるブラウザだけを名指しし、知らないブラウザについては黙る
-    static let addressBarIdentifiers: Set<String> = ["url_bar", "TabBarItemTitle", "URL"]
+    static let addressBarIdentifiers = TreeCoverage.addressBarIdentifiers
 
-    /// アドレス欄になり得る要素の生の探索(**webView の有無を問わない**)。
+    /// 実体は `FTCore.TreeCoverage.addressBarCandidate`(identifier のリテラルは1箇所)。
     /// 2つの呼び手が逆の前提で使う: `addressBarElement` は webView が居るときだけ通す
-    /// (addressBarNote)/ `missingPageContentNote` は逆に webView が**居ない**ことを条件にする
-    /// (下記)。identifier のリテラルはここ1箇所にしか置かない
+    /// (addressBarNote)/ `missingPageContent` は逆に webView が**居ない**ことを条件にする
     private static func addressBarCandidate(in snapshot: SnapshotResponse) -> ElementInfo? {
-        snapshot.elements.first {
-            addressBarIdentifiers.contains($0.identifier ?? "") && !($0.value ?? "").isEmpty
-        }
+        TreeCoverage.addressBarCandidate(in: snapshot)
     }
 
     private static func addressBarElement(in snapshot: SnapshotResponse) -> ElementInfo? {
