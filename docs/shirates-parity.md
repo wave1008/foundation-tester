@@ -45,7 +45,8 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `existAll` / `canSelectAll` / `dontExistAll` | — | ➖ **実装しない**(ユーザー決定 2026-07-31)。`exist` のチェーンで書く方が保守しやすく、要素ごとに `timeout:` / `scroll:` 等のオプションも指定できる。**再提案しない** |
 | `scanElements` / `*InScanResults` | — | ❌ |
 | `tapAppIcon` | `tapAppIcon(name?)` | ✅ 2026-08-03 **`auto` 相当のみ**(`tapAppIconMethod`・マクロ機構は持たない)。名前省略はプロファイルの `appName`(Shirates の `appIconName` 既定=プロファイル、と同義。親が解決して子へ渡す) |
-| `tapCenterOfScreen` / `tapTopOfScreen` / `tapCenterOf` / `tapOffset` / `tapDefault` | — | ❌ |
+| `tap(x, y)`(座標) | `tap(x:y:holdSeconds:)` | 🟡 2026-08-16 実装。**承認済み差分**: 座標は `Int` ではなく `Double`(ftester の座標コマンドは全部 `Double`。`swipePointToPoint` と揃える)/ `repeat:` `safeMode:` は持たない(Shirates は tap を swipe で合成するための引数だが、ftester はドライバに座標タップの口がある)。単位は iOS = pt / Android = px |
+| `tapCenterOfScreen` / `tapTopOfScreen` / `tapCenterOf` / `tapOffset` / `tapDefault` | — | ❌ **`tap(x:y:)` の上に組めるものばかり**(前2つは画面基準、後3つは要素基準)。必要になった時点で足す |
 | `tapSoftwareKey` | — | ➖ キーボード要素を snapshot から除外しているため tap できない |
 | `widget` | セレクタの型語彙 `.widget` | 🟡 |
 | `tempSelector` / `tempValue` | — | ➖ 生成側がセレクタを直書きするので間接参照は読みにくさが勝つ |

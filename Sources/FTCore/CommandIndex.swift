@@ -65,7 +65,13 @@ public enum DSLCommandIndex {
         // MARK: operation
         .init("tap", "operation",
               "tap(selector, holdSeconds:, timeout:, scroll:, maxSwipes:, containerInference:)",
-              "Taps an element. holdSeconds greater than 0 makes it a long press."),
+              // **座標形はオーバーロードなので別項目にできない**(索引は関数名で一意。
+              // signature 文字列は BatchArgSpecTable が位置引数名を導出するのにも使うので触らない)
+              "Taps an element. holdSeconds greater than 0 makes it a long press. "
+                + "There is also tap(x:, y:, holdSeconds:) for raw coordinates — iOS pt / Android px, "
+                + "the same system as the snapshot frames. Prefer a selector: coordinates hit "
+                + "something else as soon as the layout moves, and they are for screens where the "
+                + "app publishes nothing to select."),
         .init("select", "operation", "select(selector, timeout:, requireVisible:, scroll:, maxSwipes:)",
               "Grabs an element without touching the device. Returns an empty element instead of failing."),
         .init("lastElement", "operation", "lastElement",

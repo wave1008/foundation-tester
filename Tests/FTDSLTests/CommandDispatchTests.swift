@@ -63,7 +63,14 @@ final class CommandDispatchTests: XCTestCase {
                 truncatedCount: 0)
         }
         func tap(ref: Int) async throws { tapped.append(ref) }
-        func tap(x: Double, y: Double) async throws {}
+        /// 座標タップ(`tap(x:y:)`)の到達点。ref タップと**別に**記録する ——
+        /// 混ぜると「セレクタで解決したのか座標で撃ったのか」を区別できない
+        private(set) var tappedPoints: [(x: Double, y: Double)] = []
+        func tap(x: Double, y: Double) async throws { tappedPoints.append((x, y)) }
+        private(set) var pressedPoints: [(x: Double, y: Double, duration: Double)] = []
+        func press(x: Double, y: Double, duration: Double) async throws {
+            pressedPoints.append((x, y, duration))
+        }
         func type(ref: Int?, text: String) async throws {}
         func pressEnter() async throws { pressEnterCount += 1 }
         func swipe(_ direction: FTSwipeDirection) async throws {}
@@ -206,6 +213,46 @@ final class CommandDispatchTests: XCTestCase {
 
     /// pressEnter はロケータを持たず、フォーカス中の要素へ直接 driver.pressEnter() が届くこと
     /// (StepExecutor のロケータ解決を経由しない経路。type(ref: nil) と同じ扱い)
+    /// **座標タップはセレクタ解決を通さずドライバへ届く**(2026-08-16。Shirates の `tap(x, y)` 準拠)。
+    /// アプリが要素を1つも公開しない画面のための唯一の手なので、木を1枚も読まないことまで見る
+    func testCoordinateTapReachesDriverWithoutResolvingAnElement() {
+        let driver = RecordingDriver()
+        let core = makeCore(driver: driver)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "s") {
+                action { tap(x: 120, y: 640) }
+            }
+        }
+
+        XCTAssertEqual(driver.tappedPoints.map(\.x), [120])
+        XCTAssertEqual(driver.tappedPoints.map(\.y), [640])
+        XCTAssertEqual(driver.tapped, [], "座標タップで ref タップを撃ってはいけない")
+        XCTAssertEqual(core.finalRecord.scenes.flatMap(\.steps).map(\.description),
+                       ["tap (120.0, 640.0)"])
+        XCTAssertTrue(core.finalRecord.passed)
+    }
+
+    /// `holdSeconds` は `tap(sel, holdSeconds:)` と同じ意味 —— 0 より大きいときだけ長押しの口へ
+    func testCoordinateTapWithHoldSecondsGoesToPress() {
+        let driver = RecordingDriver()
+        let core = makeCore(driver: driver)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "s") {
+                action { tap(x: 10, y: 20, holdSeconds: 1.5) }
+            }
+        }
+
+        XCTAssertEqual(driver.pressedPoints.map(\.duration), [1.5])
+        XCTAssertEqual(driver.tappedPoints.count, 0, "長押しを通常タップで撃ってはいけない")
+        XCTAssertTrue(core.finalRecord.passed)
+    }
+
     func testPressEnterReachesDriverAndIsRecorded() {
         let driver = RecordingDriver()
         let core = makeCore(driver: driver)

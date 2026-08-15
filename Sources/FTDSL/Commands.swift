@@ -289,6 +289,44 @@ public func rotateTo(_ orientation: FTOrientation,
         .perform(step: step, description: "rotateTo \(orientation.rawValue)", file: file, line: line)
 }
 
+/// **座標を直接タップする**(Shirates(Classic) の `tap(x:y:)` 準拠)。
+/// 座標は snapshot の screen と**同じ座標系**: iOS = pt / Android = px(**dp ではない**)。
+/// `swipePointToPoint` と同じ規約で、`ft_snapshot` の frame・`ft_tap` の x/y とも一致する。
+///
+/// **セレクタで指せるなら `tap(sel)` を使うこと** —— 座標はレイアウトが動いた瞬間に別の物を
+/// 叩く。それでも要る場面がある: 実測(気象庁のページを Android Chrome で開いた画面。
+/// docs/mcp-audit-rounds.md の監査5)では、**ページ本体が a11y に1要素も公開されず**
+/// `ft_swipe scrollFrame` も `ft_drag` も効かない = 座標しか手が無かった。
+/// 固定コーパス47画面の実測でも、操作可能な要素の 9.3% は書けるセレクタを持たない。
+///
+/// **Shirates との差**(準拠表に記載): 座標は `Int` ではなく `Double`(ftester の
+/// 座標コマンドは全部 `Double`。`swipePointToPoint` と揃える)/ `repeat:` `safeMode:` は持たない
+/// (あちらは tap を swipe で合成するための引数。ftester はドライバに座標タップの口がある)
+public func tap(x: Double, y: Double, holdSeconds: Double = FlowStep.defaultTapHoldSeconds,
+                file: StaticString = #filePath, line: UInt = #line) {
+    let core = FTRuntime.requireCore(command: "tap")
+    let driver = core.driver
+    let typeDriver = core.executor.typeDriver
+    core.performCustom(description: "tap (\(x), \(y))", file: file, line: line) {
+        // 長押しだけ経路が分かれるのは `tap(sel, holdSeconds:)` と同じ(StepExecutor+Actions)。
+        // in-app は座標ジェスチャを持たない(501)ので hybrid では XCUITest へ回す
+        do {
+            if holdSeconds > 0 {
+                try await driver.press(x: x, y: y, duration: holdSeconds)
+            } else {
+                try await driver.tap(x: x, y: y)
+            }
+        } catch {
+            guard DriverError.isEngineIncapable(error), let typeDriver else { throw error }
+            if holdSeconds > 0 {
+                try await typeDriver.press(x: x, y: y, duration: holdSeconds)
+            } else {
+                try await typeDriver.tap(x: x, y: y)
+            }
+        }
+    }
+}
+
 /// 2点間ドラッグ(座標は snapshot の screen と同じ座標系。iOS = pt / Android = px)。
 /// スライダー・並べ替え等、要素ではなく座標で操作したいときに使う。既定 1.5 秒は
 /// Shirates(shirates-core Const.SWIPE_DURATION_SECONDS)準拠
