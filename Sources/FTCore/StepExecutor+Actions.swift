@@ -521,7 +521,11 @@ extension StepExecutor {
         // 同じ retake を操作側にも入れる —— こちらは誤った成功ではなく**実在する要素での赤**
         // (flake)になる形だが、直す手段は同じ。
         // **ドライバ切替と FM ヒールより前**に置く: 切り詰められた木で FM に代わりを探させると、
-        // 実在する本命が候補に無いまま別の要素へ「修復」し、それが利用者の .swift へ書き戻される
+        // 実在する本命が候補に無いまま別の要素へ「修復」し、それが利用者の .swift へ書き戻される。
+        // **`select` も対象にする**(下のドライバ切替は select を除外するが、あちらの理由は
+        // fallbackDriver が springboard セッションを張ってアプリ attach を潰すことで、
+        // ここには当てはまらない)。`ifCanSelect` が切り詰められた木で「無い」側の枝を選ぶのは
+        // notExist の誤った成功と同じ形なので、掴めないことが答えになり得るコマンドこそ要る
         if resolved == nil, snapshot.truncatedCount > 0 {
             snapshot = try await retakenAtElementLimitCeiling(snapshot, phase: &phase)
             resolved = Self.resolve(step: step, in: snapshot)
