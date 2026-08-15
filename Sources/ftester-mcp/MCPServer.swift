@@ -80,6 +80,10 @@ final class MCPServer {
     /// 丸ごと置き換える(省略されたキーは記憶から消える)。snapshotAfterBody が、呼び出し側の
     /// args に無いキーだけこれで補う — 明示した値が常に優先(snapshotAfterBody 参照)
     var rememberedSnapshotFilters: [String: [String: Bool]] = [:]
+    /// **切り詰められた web ページを見たデバイス**(engineKey)。以後の読みは最初から要素上限の
+    /// 天井で撮る(`needsWebPageCeiling`)。2枚払うのはラッチした1回だけ ——
+    /// 毎回「撮る→切り詰めを見て撮り直す」だと、waitFor のポーリングで読みが倍になる
+    var webPageCeilingLatched: Set<String> = []
     /// **シート展開救済が効かないと分かった画面**(engineKey ごと・木の指紋の集合。
     /// `sheetRescueKey` 参照)。同じ画面での2回目以降の ft_scroll_to は救済を撃たずに即返す
     var sheetRescueFutile: [String: Set<String>] = [:]

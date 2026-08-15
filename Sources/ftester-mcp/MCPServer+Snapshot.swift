@@ -27,9 +27,42 @@ extension MCPServer {
         // ドライバ側が1回で消費する契約なので、次の呼び出しは黙って 120 に戻る
         if let requested = args["maxElements"] as? Int {
             driver.raiseElementLimitOnNextSnapshot(requested)
+            return adoptSnapshot(try await driver.snapshot(bypassingCache: driver.supportsCacheBypass),
+                                 args: args)
+        }
+        let key = Self.engineKey(args)
+        // ラッチ後は**最初から**天井で撮る(2枚払うのはラッチした1回だけ。DSL の
+        // `retakenAtElementLimitCeiling` と同じ設計)
+        if webPageCeilingLatched.contains(key) {
+            driver.raiseElementLimitOnNextSnapshot(BridgeAPI.maxSnapshotElementsCeiling)
         }
         let native = try await driver.snapshot(bypassingCache: driver.supportsCacheBypass)
-        return adoptSnapshot(native, args: args)
+        guard !webPageCeilingLatched.contains(key), Self.needsWebPageCeiling(native) else {
+            return adoptSnapshot(native, args: args)
+        }
+        webPageCeilingLatched.insert(key)
+        driver.raiseElementLimitOnNextSnapshot(BridgeAPI.maxSnapshotElementsCeiling)
+        // **捨てる木は adopt しない**: adopt は ref 世代を進めるので、読み手に渡さない木で
+        // 番号を飛ばすと「さっきの ref がもう無い」を自分で増やすことになる
+        let full = try await driver.snapshot(bypassingCache: driver.supportsCacheBypass)
+        return adoptSnapshot(full, args: args)
+    }
+
+    /// **切り詰められた web ページなら、言われる前に天井で撮り直す**(2026-08-15 の外部評価。
+    /// 1セッションで 89 件と 72 件を落とされたと報告された)。
+    ///
+    /// DSL には既に同じ撮り直し(`StepExecutor.retakenAtElementLimitCeiling`)がある一方、
+    /// **MCP は別経路なので届いていなかった** —— 注記で「maxElements を上げろ」と案内するだけで、
+    /// 読み手は必ず1往復を払い、注記を見落とせば**実在する行を存在しないものとして扱う**。
+    ///
+    /// **native の密な画面には広げない**。web だけを対象にする根拠は間引きの規則そのもので
+    /// (`BridgeAPI.maxSnapshotElementsCeiling` の doc)、web ページは広告リンク等の tier0 が
+    /// 枠を埋め、捨てられるのは **tier1 = ラベル付きの本文** = 読み手が欲しい行そのものになる。
+    /// native のリストは操作可能な要素が優先的に残るので、同じ被害にはならない。
+    /// 既に天井で読まれた木なら撮り直しても同じ木が返るだけなので撮らない
+    static func needsWebPageCeiling(_ snapshot: SnapshotResponse) -> Bool {
+        snapshot.truncatedCount > 0 && !SnapshotTruncation.isAtCeiling(snapshot)
+            && snapshot.elements.contains { $0.type == "webView" }
     }
 
     /// ref 同一性の比較キー。(ref, type, identifier, label) — 値/frame/focused の変化では
@@ -254,7 +287,20 @@ extension MCPServer {
         // **木だけから決まる注記は NoteCatalog が唯一の定義元**(並び順・短縮・A/B の黙らせも
         // あちら)。ここへ直に `Self.xxxNote(...)` を足さないこと —— 足すと発火が測れなくなり、
         // NoteCoverageTests のソース走査が落ちる
-        return switchedNote + extraNote + backgroundNote
+        // **勝手に上限を上げたことは名乗る**(黙って出力量が3倍になると、読み手は
+        // 自分の指定が効いていないと読む)。初回だけ満額 —— 以後は同じ device で常時なので
+        let ceilingNote = webPageCeilingLatched.contains(Self.engineKey(args))
+            ? once("webPageCeilingRetake",
+                   full: "note: this device showed a truncated web page, so snapshots for it are"
+                       + " now taken at the \(BridgeAPI.maxSnapshotElementsCeiling)-element ceiling"
+                       + " instead of the \(BridgeAPI.maxSnapshotElements) default — on a web page"
+                       + " the dropped elements are the labelled body text, and they are gone from"
+                       + " the tree rather than off screen (scrolling never brings them back)."
+                       + " Pass interactiveOnly: true if the extra lines are noise, or maxElements"
+                       + " to set your own limit.\n",
+                   short: "")
+            : ""
+        return switchedNote + ceilingNote + extraNote + backgroundNote
             + catalogNotes(NoteCatalog.Input(snapshot: snapshot, collapsingBulk: collapsingBulk,
                                              cache: cache), context: .snapshot)
             + SnapshotRenderer.render(snapshot, flagging: cache.ghostFlags(snapshot),
