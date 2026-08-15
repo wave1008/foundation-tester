@@ -361,6 +361,17 @@ extension StepExecutor {
         // (層3 の coveringHint と同じ事象。あちらは診断、こちらは宣言があるときの自動処理)
         try await dismissInterruption(in: &snapshot, phase: &phase)
         var resolved = Self.resolve(step: step, in: snapshot)
+        // **切り詰めが原因の未発見に、リトライ/ghost 救済の予算を燃やさない**(2026-08-15)。
+        // ここで撮り直さないと、下のリトライループが全予算(バックオフ3回 or step.timeout 全部)を
+        // 当たるはずのない既定上限のスナップショットで使い切ってから、ループを抜けた後の
+        // 1回でようやく天井に当たる。**ghost 救済(実ジェスチャで画面を動かす)より前**に置く ——
+        // 切り詰めが原因なら画面を動かさずに解決できる。以後の読みは freshSnapshot がラッチ経由で
+        // 自動的に天井を維持する(elementLimitCeilingLatchedThisStep の doc)
+        if resolved == nil, snapshot.truncatedCount > 0, !elementLimitCeilingLatchedThisStep {
+            elementLimitCeilingLatchedThisStep = true
+            snapshot = try await retakenAtElementLimitCeiling(snapshot, phase: &phase)
+            resolved = Self.resolve(step: step, in: snapshot)
+        }
         // **探索の直後は容器の外に並ぶ ghost 行を掴むことがある**(Compose iOS は容器の外にも
         // 子を報告する。docs/verification.md「Compose の探索直後タップ」)。掴んだままタップすると
         // 容器の外を撃って**黙って飲まれる**(値が変わらないので、後段の検証だけが落ちて原因が遠い)。
@@ -526,7 +537,17 @@ extension StepExecutor {
         // fallbackDriver が springboard セッションを張ってアプリ attach を潰すことで、
         // ここには当てはまらない)。`ifCanSelect` が切り詰められた木で「無い」側の枝を選ぶのは
         // notExist の誤った成功と同じ形なので、掴めないことが答えになり得るコマンドこそ要る
-        if resolved == nil, snapshot.truncatedCount > 0 {
+        //
+        // **ラッチが既に立っているならここは撮らない**: 上のリトライループ入口で先に撮り直して
+        // いれば、以後の周回は freshSnapshot がラッチ経由で天井のまま読んでいるので、ここで
+        // もう1枚撮っても同じ木が返るだけの無駄になる
+        if resolved == nil, snapshot.truncatedCount > 0, !elementLimitCeilingLatchedThisStep {
+            // **ラッチを立てる**: one-shot の arm はこの1枚にしか効かないので、このステップの
+            // 後続読み(freshSnapshot 経由・下の readback ヘルパの直呼び)も天井で撮らせる
+            // (elementLimitCeilingLatchedThisStep の doc)。立てないと縁またぎの撮り直し(下の
+            // straddle 補正)や type/clearInput の読み返しが既定上限へ戻り、この撮り直しで
+            // 拾えた対象がまた落ちる
+            elementLimitCeilingLatchedThisStep = true
             snapshot = try await retakenAtElementLimitCeiling(snapshot, phase: &phase)
             resolved = Self.resolve(step: step, in: snapshot)
         }
@@ -857,11 +878,25 @@ extension StepExecutor {
             var endStep = step
             endStep.locator = endLocator
             endStep.fallbacks = nil
-            guard let (endElement, _) = Self.resolve(step: endStep, in: snapshot) else {
+            var endResolved = Self.resolve(step: endStep, in: snapshot)
+            // **終点も上限で間引かれているなら撮り直す**(2026-08-15。始点(上の truncatedCount
+            // ブロック)だけ救済される非対称を埋める)。**始点も同じ撮り直した木から取り直す** ——
+            // 片方だけ別の読みの座標のままだと frame の世代が混ざる
+            if endResolved == nil, snapshot.truncatedCount > 0 {
+                elementLimitCeilingLatchedThisStep = true
+                snapshot = try await retakenAtElementLimitCeiling(snapshot, phase: &phase)
+                endResolved = Self.resolve(step: endStep, in: snapshot)
+                if let (refreshedStart, _) = Self.resolve(step: step, in: snapshot) {
+                    element = refreshedStart
+                    resolvedElementThisStep = element
+                }
+            }
+            guard let (endElement, _) = endResolved else {
                 let hint = Self.candidateHint(for: endStep, in: snapshot)
                 return StepOutcome(status: .failed(
                     "cannot resolve the end locator: \(endStep.locatorSummary)"
-                        + (hint.map { ". \($0)" } ?? "")))
+                        + (hint.map { ". \($0)" } ?? "")
+                        + Self.truncationHint(snapshot)))
             }
             let swipeDuration = step.duration ?? FlowStep.defaultSwipeDurationSeconds
             do {
@@ -1016,6 +1051,12 @@ extension StepExecutor {
         let expected = FlowMatchMode.normalizeInvisibleCharacters(expected)
         let typedOnly = FlowMatchMode.normalizeInvisibleCharacters(typedOnly)
         func read() async throws -> String? {
+            // one-shot なので毎回 arm し直す(elementLimitCeilingLatchedThisStep の doc)。
+            // 無いと、上限で間引かれて撮り直した木で解決した対象を、この読み返しがまた
+            // 既定上限で撮って見失う
+            if elementLimitCeilingLatchedThisStep {
+                driver.raiseElementLimitOnNextSnapshot(BridgeAPI.maxSnapshotElementsCeiling)
+            }
             let start = clock.now
             let snap = try await driver.snapshot()
             phase.snapshotMs += Self.ms(clock.now - start)
@@ -1259,6 +1300,10 @@ extension StepExecutor {
                                   phase: inout PhaseAccumulator) async throws -> String? {
         guard clearDriver.supportsCacheBypass else { return element.value }
         let clock = ContinuousClock()
+        // one-shot なので毎回 arm し直す(elementLimitCeilingLatchedThisStep の doc)
+        if elementLimitCeilingLatchedThisStep {
+            clearDriver.raiseElementLimitOnNextSnapshot(BridgeAPI.maxSnapshotElementsCeiling)
+        }
         let start = clock.now
         let snapshot = try await clearDriver.snapshot(bypassingCache: true)
         phase.snapshotMs += Self.ms(clock.now - start)
@@ -1306,6 +1351,10 @@ extension StepExecutor {
                 let waitStart = clock.now
                 try await Task.sleep(for: backoff.nextDelay())
                 phase.waitMs += Self.ms(clock.now - waitStart)
+            }
+            // one-shot なので毎回 arm し直す(elementLimitCeilingLatchedThisStep の doc)
+            if elementLimitCeilingLatchedThisStep {
+                driver.raiseElementLimitOnNextSnapshot(BridgeAPI.maxSnapshotElementsCeiling)
             }
             let start = clock.now
             let snapshot = try await driver.snapshot(bypassingCache: Self.bypassOnLastAttempt(
@@ -1355,7 +1404,6 @@ extension StepExecutor {
                                        placeholder: match.placeholder)
     }
 
-    /// 注記の合流(どちらか片方だけのことが多いので nil を潰して " / " で繋ぐ)
     /// **横スクロールの残骸を掴んでいないか**(判定は `DuplicateRegion` = MCP の
     /// `duplicateRegionNote` と共有)。**座標に依らない**ので keyboard/disabled と同じく
     /// 掴んだ時点で確定してよい —— 言っているのは「この ref はもう描かれていないコピーかも
@@ -1374,6 +1422,7 @@ extension StepExecutor {
             + " one copy is a leftover from horizontal scrolling"
     }
 
+    /// 注記の合流(どちらか片方だけのことが多いので nil を潰して " / " で繋ぐ)
     static func joinNotes(_ notes: String?...) -> String? {
         let present = notes.compactMap { $0 }.filter { !$0.isEmpty }
         return present.isEmpty ? nil : present.joined(separator: " / ")

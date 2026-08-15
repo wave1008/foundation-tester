@@ -154,7 +154,13 @@ extension StepExecutor {
         let webView = snapshot.elements.contains { $0.type == "webView" }
             ? " WebView screens hold many elements and hit this limit easily." : ""
         // **スクロールを勧めない**: 落ちた要素は配列から抜けているので、スクロールしても戻らない
-        return " (the snapshot was truncated at \(snapshot.elements.count) elements;"
+        // **`elements.count` を印字しない**(SnapshotTruncation.budgetedCount のレビュー参照):
+        // bulk 群は予算の外で送られるので、生の件数は勧める上限より大きく見え、読み手には
+        // 矛盾に映る。予算ぶんの件数(budgetedCount)を出し、bulk が居るときだけ内訳を添える
+        let budgeted = SnapshotTruncation.budgetedCount(snapshot)
+        let bulk = SnapshotTruncation.bulkExemptPresentCount(snapshot)
+        let bulkClause = bulk > 0 ? " (plus \(bulk) bulk-exempt elements outside the budget)" : ""
+        return " (the snapshot was truncated at \(budgeted) elements\(bulkClause);"
             + " \(snapshot.truncatedCount) more were omitted\(ceiling) — they are gone from the"
             + " tree, not just off screen, so scrolling will not bring them back.\(webView)"
             + " Narrow the screen before this step (close a sheet, collapse a long list) so fewer"
@@ -177,6 +183,9 @@ extension StepExecutor {
     func retakenAtElementLimitCeiling(_ snapshot: SnapshotResponse,
                                       phase: inout PhaseAccumulator) async throws -> SnapshotResponse {
         guard snapshot.truncatedCount > 0 else { return snapshot }
+        // 既に天井で読まれた木なら、上げて撮り直しても同じ木が返るだけ(1枚ぶんのデバイス I/O)。
+        // 呼び手のラッチはそのまま立ってよい(以後の arm は同じ上限なので無害)
+        guard !SnapshotTruncation.isAtCeiling(snapshot) else { return snapshot }
         let clock = ContinuousClock()
         let start = clock.now
         driver.raiseElementLimitOnNextSnapshot(BridgeAPI.maxSnapshotElementsCeiling)
@@ -223,14 +232,24 @@ extension StepExecutor {
     /// 読み手は塞いだ穴と区別が付かない。`evidence` は何がどれだけ落ちたか(呼び手が組み立てる)
     static func undecidableTruncationMessage(_ what: String, step: FlowStep,
                                              evidence: String) -> String {
+        // **truncationHint(165〜166行)と同じ助言に揃える**: 「.webView >> で絞る」「対象へ
+        // スクロールする」は truncationHint が撤回した2助言そのもの(スコープは母数に効かず、
+        // 落ちた要素はスクロールで戻らない)。天井かどうかは evidence 側の文言が言うので、
+        // ここは remedy に依存しない中立な1文にする
         "cannot decide \(what): \(step.locatorSummary) — \(evidence), so an element that is absent"
             + " cannot be told apart from one the snapshot dropped."
-            + " Narrow the scope (`.webView >> ...` / scrollFrame:), or scroll closer to the target."
+            + " Narrow the screen before this step (close a sheet, collapse a long list) so fewer"
+            + " elements compete for the limit."
     }
 
-    /// 天井まで上げてもまだ上限に当たっている木の証拠文(undecidableTruncationMessage 用)
+    /// 天井まで上げてもまだ上限に当たっている木の証拠文(undecidableTruncationMessage 用)。
+    /// **予算ぶんの件数(budgetedCount)を印字する**(truncationHint と同じ理由 — `elements.count`
+    /// は bulk 群を含み天井を超えて見えるが、天井そのものは予算ぶんに掛かる)
     static func ceilingTruncationEvidence(_ snapshot: SnapshotResponse) -> String {
-        "the snapshot is still truncated at \(snapshot.elements.count) elements"
+        let budgeted = SnapshotTruncation.budgetedCount(snapshot)
+        let bulk = SnapshotTruncation.bulkExemptPresentCount(snapshot)
+        let bulkClause = bulk > 0 ? " (plus \(bulk) bulk-exempt elements outside the budget)" : ""
+        return "the snapshot is still truncated at \(budgeted) elements\(bulkClause)"
             + " (\(snapshot.truncatedCount) more were omitted even at the"
             + " \(BridgeAPI.maxSnapshotElementsCeiling)-element ceiling)"
     }
@@ -331,16 +350,18 @@ extension StepExecutor {
             // **見つからないのは上限で間引かれたからかもしれない**(2026-08-15)。否定側だけ
             // 塞いであったが、肯定側は**実在する要素で赤くなる** = flake になる。
             // 誤った成功ではないので優先度は下だが、直す手段は同じファイルに既にある。
-            // 撮り直しは切り詰められていて解決できなかったときだけ(通る側の固定費はゼロ)
-            if snapshot.truncatedCount > 0, !needsCeiling,
-               Self.resolveDetailed(step: step, in: snapshot, strictForAssert: true) == nil {
+            // 撮り直しは切り詰められていて解決できなかったときだけ(通る側の固定費はゼロ)。
+            // 解決は1周1回(撮り直した周だけ2回)—— ゲートと本判定で同じ木に2回払わない
+            var resolvedDetail = Self.resolveDetailed(step: step, in: snapshot, strictForAssert: true)
+            if resolvedDetail == nil, snapshot.truncatedCount > 0, !needsCeiling {
                 needsCeiling = true
                 snapshot = try await retakenAtElementLimitCeiling(snapshot, phase: &phase)
+                resolvedDetail = Self.resolveDetailed(step: step, in: snapshot, strictForAssert: true)
             }
             lastSnapshot = snapshot
             // アサーションでは type+index のみのフォールバックを使わない。
             // 別画面の無関係な要素にマッチして偽陽性になる(実測済み)
-            if let d = Self.resolveDetailed(step: step, in: snapshot, strictForAssert: true) {
+            if let d = resolvedDetail {
                 if let flip = try await occlusionFlip(
                     element: d.element, expectedText: d.element.label ?? step.locator?.label ?? "",
                     elements: snapshot.elements, screen: snapshot.screen,
@@ -410,12 +431,21 @@ extension StepExecutor {
         var lastScreen = FTRect(x: 0, y: 0, width: 0, height: 0)
         /// 失敗文言に WebView の経路を添えるために最後のスナップショットを保持する
         var lastSnapshot: SnapshotResponse?
+        // 一度でも上限に当たったら以後は最初から天井で撮る(exists と同じ latch)
+        var needsCeiling = false
         // timeout==0 でも初回照会は必ず1回行う(ループ後段の deadline チェックで離脱)。
         while true {
             var start = clock.now
+            if needsCeiling { driver.raiseElementLimitOnNextSnapshot(BridgeAPI.maxSnapshotElementsCeiling) }
             var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
             phase.snapshotMs += Self.ms(clock.now - start)
             try await dismissInterruption(in: &snapshot, phase: &phase)
+            // 見つからないのは上限で間引かれたからかもしれない(exists 側 331〜334行と同じ型)
+            if snapshot.truncatedCount > 0, !needsCeiling,
+               Self.resolve(step: step, in: snapshot, strictForAssert: true) == nil {
+                needsCeiling = true
+                snapshot = try await retakenAtElementLimitCeiling(snapshot, phase: &phase)
+            }
             lastSnapshot = snapshot
             var candidate = Self.resolve(step: step, in: snapshot, strictForAssert: true)
             var fromFallbackDriver = false
@@ -496,6 +526,7 @@ extension StepExecutor {
                       + tapDiagnosisHint(lastSnapshot?.elements)
                       + Self.webViewPathHint(lastSnapshot))
             : .failed("element not found: \(step.locatorSummary)"
+                      + Self.truncationHint(lastSnapshot)
                       + tapDiagnosisHint(lastSnapshot?.elements)
                       + Self.webViewPathHint(lastSnapshot))
     }
@@ -656,13 +687,26 @@ extension StepExecutor {
         // **lastElements とは別に持つ**: あちらは lastElement と対で coveringHint が ref を引くため、
         // 見つかった周のものでなければならない。こちらは木の同一性だけを見るので毎周更新する
         var lastSeenElements: [ElementInfo] = []
+        /// 失敗文言に切り詰めを添えるための直近の観測
+        var lastSnapshot: SnapshotResponse?
+        // 一度でも上限に当たったら以後は最初から天井で撮る(exists と同じ latch)
+        var needsCeiling = false
         while true {
             let start = clock.now
+            if needsCeiling { driver.raiseElementLimitOnNextSnapshot(BridgeAPI.maxSnapshotElementsCeiling) }
             var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
             phase.snapshotMs += Self.ms(clock.now - start)
             try await dismissInterruption(in: &snapshot, phase: &phase)
             noteEmptyWebView(snapshot)
+            // **要素は在ることが前提の経路**: 未発見のときだけ撮り直す(exists 側 331〜334行と同じ型)。
+            // 発見済みで値の変化を待っている周には不要
+            if snapshot.truncatedCount > 0, !needsCeiling,
+               Self.resolve(step: step, in: snapshot, strictForAssert: true) == nil {
+                needsCeiling = true
+                snapshot = try await retakenAtElementLimitCeiling(snapshot, phase: &phase)
+            }
             lastSeenElements = snapshot.elements
+            lastSnapshot = snapshot
             if let (element, fallback) = Self.resolve(step: step, in: snapshot,
                                                       strictForAssert: true) {
                 found = true
@@ -697,6 +741,7 @@ extension StepExecutor {
         }
         guard found else {
             return .failed("element not found: \(step.locatorSummary)"
+                           + Self.truncationHint(lastSnapshot)
                            + tapDiagnosisHint(lastSeenElements))
         }
         let hint = Self.coveringHint(element: lastElement, elements: lastElements,
@@ -740,11 +785,23 @@ extension StepExecutor {
         var freshRetry = AssertFreshRetry()
         var backoff = PollBackoff()
         var found = false
+        /// 失敗文言に切り詰めを添えるための直近の観測
+        var lastSnapshot: SnapshotResponse?
+        // 一度でも上限に当たったら以後は最初から天井で撮る(exists と同じ latch)
+        var needsCeiling = false
         while true {
             let start = clock.now
+            if needsCeiling { driver.raiseElementLimitOnNextSnapshot(BridgeAPI.maxSnapshotElementsCeiling) }
             var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
             phase.snapshotMs += Self.ms(clock.now - start)
             try await dismissInterruption(in: &snapshot, phase: &phase)
+            // 見つからないのは上限で間引かれたからかもしれない(exists 側 331〜334行と同じ型)
+            if snapshot.truncatedCount > 0, !needsCeiling,
+               Self.resolve(step: step, in: snapshot, strictForAssert: true) == nil {
+                needsCeiling = true
+                snapshot = try await retakenAtElementLimitCeiling(snapshot, phase: &phase)
+            }
+            lastSnapshot = snapshot
             if let (element, fallback) = Self.resolve(step: step, in: snapshot,
                                                       strictForAssert: true) {
                 found = true
@@ -765,7 +822,7 @@ extension StepExecutor {
         }
         return found
             ? .failed("the element is \(wantEnabled ? "disabled" : "enabled"): \(step.locatorSummary)")
-            : .failed("element not found: \(step.locatorSummary)")
+            : .failed("element not found: \(step.locatorSummary)" + Self.truncationHint(lastSnapshot))
     }
 
     /// キーボード開閉はアニメーションを伴うため単発チェックはフレークする → notExists と同じ
@@ -831,11 +888,23 @@ extension StepExecutor {
         var freshRetry = AssertFreshRetry()
         var backoff = PollBackoff()
         var found = false
+        /// 失敗文言に切り詰めを添えるための直近の観測
+        var lastSnapshot: SnapshotResponse?
+        // 一度でも上限に当たったら以後は最初から天井で撮る(exists と同じ latch)
+        var needsCeiling = false
         while true {
             let start = clock.now
+            if needsCeiling { driver.raiseElementLimitOnNextSnapshot(BridgeAPI.maxSnapshotElementsCeiling) }
             var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
             phase.snapshotMs += Self.ms(clock.now - start)
             try await dismissInterruption(in: &snapshot, phase: &phase)
+            // 見つからないのは上限で間引かれたからかもしれない(exists 側 331〜334行と同じ型)
+            if snapshot.truncatedCount > 0, !needsCeiling,
+               Self.resolve(step: step, in: snapshot, strictForAssert: true) == nil {
+                needsCeiling = true
+                snapshot = try await retakenAtElementLimitCeiling(snapshot, phase: &phase)
+            }
+            lastSnapshot = snapshot
             if let (element, fallback) = Self.resolve(step: step, in: snapshot,
                                                       strictForAssert: true) {
                 found = true
@@ -858,7 +927,7 @@ extension StepExecutor {
         }
         return found
             ? .failed("the element is \(wantChecked ? "off" : "on"): \(step.locatorSummary)")
-            : .failed("element not found: \(step.locatorSummary)")
+            : .failed("element not found: \(step.locatorSummary)" + Self.truncationHint(lastSnapshot))
     }
 
     private func executeAssertCount(step: FlowStep,

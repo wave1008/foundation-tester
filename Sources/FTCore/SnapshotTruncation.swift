@@ -33,13 +33,46 @@ public enum SnapshotTruncation {
     /// (`BridgeAPI` の版 61。安全弁 `bulkExemptCeiling` は 400)、`elements.count` は
     /// 上限 + 最大 400 まで膨らむ。既定 120 で読んだ木に bulk が 280 件乗っただけで
     /// 「もう天井だ」と誤判定し、**上げれば取れる要素に「上げても無駄」と言う**。
-    /// 申告しないブリッジ(旧版・Android)は bulk 免除自体が無いので nil = 0 で正しい
     ///
-    /// `max(0,)` は**不正な申告への保険**(bulk 群は要素配列の一部なので、正しい木では
-    /// `bulkExemptCount <= elements.count` が必ず成り立つ)。到達しないので変異テストでは
-    /// 殺せない —— 無理にテストを作らず、ここに理由を書いておく
+    /// **bulk 群の件数は申告(`bulkExemptCount`)を信用せず、最終配列から数え直す**
+    /// (2026-08-15 のレビューで発見。分類器は予算計算の唯一の定義元
+    /// `BridgeSnapshotThinning.bulkExemptCount` を再適用するだけで、規則をここへ複製しない):
+    /// 申告と配列がずれる生産者が2つある。①in-app の WebView-DOM マージ
+    /// (`InAppBridge.mergeWebViewDOM`)はマージ後の集合で bulk 免除を**やり直す**のに、
+    /// 返す `bulkExempt` はマージ前(native 単独)の値のまま —— マージで bulk 群が増えると
+    /// 申告が実際より小さくなり、`budgetedCount` が**過大**になる(上げれば取れる要素に
+    /// 「もう天井だ」と言う偽陽性)。②Safari のホスト側 DOM 注入
+    /// (`BridgeClient.injectSafariDOMIfApplicable`)は webView 部分木を落として DOM 要素を
+    /// 無制限に足すが `bulkExemptCount` を一切更新しない —— 落とした部分木に native の bulk 群が
+    /// 含まれていると申告が配列より大きいまま残り、`elements.count - 申告` が負に振れる
+    /// (**過少**方向。旧実装ではここで `max(0,)` の保険が実際に発動していた)。
+    /// 最終配列そのものから数え直せば、どちらの生産者でも実配列と一致する
+    ///
+    /// **申告が nil(旧ブリッジ・Android)のときは数え直さない**: これらは bulk 免除の概念を
+    /// 持たず、同一 id ×20 以上の群があっても**予算を消費して**送っている。分類器を当てると
+    /// 「免除されている」扱いにしてしまい過少カウントになる。nil は「このブリッジは bulk を
+    /// 免除しない」という申告として読み、従来どおり `elements.count` をそのまま使う
+    ///
+    /// `max(0,)` は残すが、**数え直した bulk 件数は必ず `elements.count` の部分集合**
+    /// (`BridgeSnapshotThinning.bulkExemptCount` は同じ配列をフィルタするだけ)なので、
+    /// この経路では数学的に到達しない。旧実装は「申告が正しい」という前提が崩れて
+    /// 実際に到達していた(②)。到達しないので変異テストでは殺せない
+    ///
+    /// **表示も判定もこの `budgetedCount` と `bulkExemptPresentCount` の2つから組み立てる**
+    /// (2026-08-15 のレビューで発見) —— 呼び手が切り詰めの文脈で `snapshot.elements.count` を
+    /// 直接印字すると、bulk が乗った木では「truncated at 420 elements」のように、勧める上限
+    /// (予算ぶんの120基準)より大きい数字を出して読み手に矛盾として映る
     public static func budgetedCount(_ snapshot: SnapshotResponse) -> Int {
-        max(0, snapshot.elements.count - (snapshot.bulkExemptCount ?? 0))
+        max(0, snapshot.elements.count - bulkExemptPresentCount(snapshot))
+    }
+
+    /// bulk 免除群の実数(申告 nil なら0)。`budgetedCount` が使う分類器の数え直しを
+    /// 呼び手からも直接引けるようにする口 —— **表示に bulk の内訳を添えるときはここを呼ぶ**
+    /// (budgetedCount 側で二重に分類器を呼ばないよう、budgetedCount はこれを経由する)
+    public static func bulkExemptPresentCount(_ snapshot: SnapshotResponse) -> Int {
+        guard snapshot.bulkExemptCount != nil else { return 0 }
+        let candidates = snapshot.elements.map { BridgeSnapshotThinning.Candidate(info: $0) }
+        return BridgeSnapshotThinning.bulkExemptCount(candidates)
     }
 
     /// この木は天井で読まれたか。**上限で切り詰められた木の予算ぶんの件数は上限そのもの**なので、

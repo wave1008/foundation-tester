@@ -379,6 +379,7 @@ public final class StepExecutor {
         resolvedElementThisStep = nil
         scrollSwipesThisStep = nil
         noteCodesThisStep = []
+        elementLimitCeilingLatchedThisStep = false
         do {
             if let action = step.action {
                 let outcome = try await executeAction(action, step: step, cached: cached, phase: &phase)
@@ -432,7 +433,11 @@ public final class StepExecutor {
     /// **`snapshot(_:)` にしない** —— 呼び出し側の多くが `snapshot` という局所変数へ代入するので、
     /// 同名だと変数がメソッドを覆って `cannot call value of non-function type` になる
     func freshSnapshot(_ freshness: SnapshotFreshness) async throws -> SnapshotResponse {
-        try await driver.snapshot(bypassingCache: bypassesCache(freshness))
+        // one-shot なので、ラッチが立っている間は呼ぶたびに arm し直す(elementLimitCeilingLatchedThisStep の doc)
+        if elementLimitCeilingLatchedThisStep {
+            driver.raiseElementLimitOnNextSnapshot(BridgeAPI.maxSnapshotElementsCeiling)
+        }
+        return try await driver.snapshot(bypassingCache: bypassesCache(freshness))
     }
 
     /// このステップで立った注記。順序を rawValue 固定にするのは、記録が run 間で決定的に
@@ -479,6 +484,15 @@ public final class StepExecutor {
     /// (scrollSearchNote / observedCheckedThisStep と同じ受け渡し形)。
     /// StepExecutor+Assert.swift からも書くため internal
     var noteCodesThisStep: Set<StepNote> = []
+
+    /// 天井の撮り直しで対象を拾ったステップの**後続読み**も天井にする per-step ラッチ。
+    /// 立てるのは StepExecutor+Actions.swift の撮り直し呼び出し箇所だけ(Assert のループは
+    /// ループ内 var で完結し、後続読みが無いので立てない)。寿命はステップ
+    /// (execute(_:cached:) の入口で false に戻す)。
+    /// `AppDriver.raiseElementLimitOnNextSnapshot` は次の1回だけ効く one-shot なので、
+    /// 立っている間は `freshSnapshot(_:)` および StepExecutor+Actions.swift の直呼び読みが
+    /// **呼ぶたびに** arm し直す。StepExecutor+Actions.swift からも立てるため internal
+    var elementLimitCeilingLatchedThisStep = false
 
     /// 注記の**表示文言と機械可読コードを同時に**足す。片方だけ足すと
     /// 「レポートには出ているのに集計に乗らない(逆も)」が起きるので、必ずこれを通す

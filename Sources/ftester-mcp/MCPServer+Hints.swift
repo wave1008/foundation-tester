@@ -603,18 +603,44 @@ extension MCPServer {
     /// 撃ち直す(2026-08-12 のブラウザ監査で 45.3s + 56.1s を空費した)
     static func truncationHint(_ snapshot: SnapshotResponse) -> String {
         guard let remedy = SnapshotTruncation.remedy(for: snapshot) else { return "" }
-        let escape: String
-        switch remedy {
-        case .raiseLimit(let limit):
-            escape = "read again with ft_snapshot maxElements: \(limit)"
-        case .narrowTheScreen:
-            escape = "raising the limit will not help (already at the"
-                + " \(BridgeAPI.maxSnapshotElementsCeiling)-element ceiling) — narrow the screen"
-                + " (close a sheet, scroll a big list away)"
-        }
-        return " (the tree was truncated at \(snapshot.elements.count) elements;"
+        let escape = truncationEscape(remedy, for: .hint)
+        // **`elements.count` を印字しない**(SnapshotTruncation.budgetedCount のレビュー参照):
+        // bulk 群は予算の外で送られるので、生の件数は escape が勧める上限より大きく見える。
+        // 予算ぶんの件数を出し、bulk が居るときだけ内訳を添える(DSL 側 truncationHint と同型)
+        let budgeted = SnapshotTruncation.budgetedCount(snapshot)
+        let bulk = SnapshotTruncation.bulkExemptPresentCount(snapshot)
+        let bulkClause = bulk > 0 ? " (plus \(bulk) bulk-exempt elements outside the budget)" : ""
+        return " (the tree was truncated at \(budgeted) elements\(bulkClause);"
             + " \(snapshot.truncatedCount) more were omitted — the element you are looking for"
             + " may be among them; scrolling will not bring them back, \(escape))"
+    }
+
+    /// `truncationHint`/`truncationNote` の2呼び手が使う逃げ道文言。
+    /// **文言は呼び手ごとに意図して別々のまま並置している**(docs/design.md の規律:
+    /// 「判定は共有・文言は呼び手ごと」)—— ここへ同居させているのは統一するためではなく、
+    /// 次に文言を調整するとき両方が編集者の目に入るようにするため。**片方だけ直すな**
+    private enum TruncationEscapeStyle {
+        case hint
+        case note
+    }
+
+    private static func truncationEscape(_ remedy: SnapshotTruncation.Remedy,
+                                         for style: TruncationEscapeStyle) -> String {
+        switch (style, remedy) {
+        case (.hint, .raiseLimit(let limit)):
+            return "read again with ft_snapshot maxElements: \(limit)"
+        case (.hint, .narrowTheScreen):
+            return "raising the limit will not help (already at the"
+                + " \(BridgeAPI.maxSnapshotElementsCeiling)-element ceiling) — narrow the screen"
+                + " (close a sheet, scroll a big list away)"
+        case (.note, .raiseLimit(let limit)):
+            return "Read again with ft_snapshot maxElements: \(limit) to get them, or narrow"
+                + " the screen (close a sheet, scroll a big list away)."
+        case (.note, .narrowTheScreen):
+            return "Raising the limit will not help (already at the"
+                + " \(BridgeAPI.maxSnapshotElementsCeiling)-element ceiling) — narrow the screen"
+                + " (close a sheet, scroll a big list away)."
+        }
     }
 
     /// waitFor タイムアウト文の共通末尾(2026-08-12 監査)。waitFor はレンダリング済みの木しか
@@ -1271,17 +1297,11 @@ extension MCPServer {
         // **落ちた 179 件が全部 labelled = 表の本文**で、`ft_scroll_to` が2回で 101 秒を捨てた。
         // 順序は「上限を上げる」が先: 落ちた行がまさに読みたい物である確率が高い
         // 逃げ道の判定は `FTCore.SnapshotTruncation.remedy`(DSL と共有)。**天井まで来ていたら
-        // 「上限を上げろ」と言わない** —— 言われたとおり上げても同じ木が返るのが最悪
-        let escape: String
-        switch SnapshotTruncation.remedy(for: snapshot) {
-        case .raiseLimit(let limit):
-            escape = "Read again with ft_snapshot maxElements: \(limit) to get them, or narrow"
-                + " the screen (close a sheet, scroll a big list away)."
-        case .narrowTheScreen, nil:
-            escape = "Raising the limit will not help (already at the"
-                + " \(BridgeAPI.maxSnapshotElementsCeiling)-element ceiling) — narrow the screen"
-                + " (close a sheet, scroll a big list away)."
-        }
+        // 「上限を上げろ」と言わない** —— 言われたとおり上げても同じ木が返るのが最悪。
+        // `remedy` が nil を返すのは `truncatedCount == 0` のときだけで、それは上のガードで
+        // 既に排除済み。ここでは到達しない = 渡すのは Remedy の2ケースだけでよい
+        guard let remedy = SnapshotTruncation.remedy(for: snapshot) else { return "" }
+        let escape = truncationEscape(remedy, for: .note)
         return "note: \(snapshot.truncatedCount) element(s) were dropped by the snapshot limit"
             + "\(breakdown) — they are gone from the tree, not just hidden, so waitFor/ft_scroll_to"
             + " will never find them. \(escape)\(capHogNote(snapshot))\n"
