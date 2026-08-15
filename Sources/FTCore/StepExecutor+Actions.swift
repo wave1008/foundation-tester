@@ -669,6 +669,19 @@ extension StepExecutor {
             driverFallback = Self.joinNotes(driverFallback,
                 tapKeyboardOcclusion.advisory(for: element),
                 TapTargetGeometry.disabledAdvisory(for: element))
+            // **横スクロールの残骸を掴んでいないか**(判定は MCP の duplicateRegionNote と共有)。
+            // **座標に依らない**ので keyboard/disabled と同じくここで確定してよい ——
+            // 言っているのは「この ref はもう描かれていないコピーかもしれない」であって、
+            // 撃つ点をどこへ寄せるかとは無関係。**注記だけで拒否しない**: どちらのコピーが
+            // 生きているかは木から決められないので、撃たずに止めると正しい操作まで殺す
+            if let duplicate = DuplicateRegion.riskFor(element, in: snapshot.elements) {
+                noteCodesThisStep.insert(.staleDuplicateRegion)
+                driverFallback = Self.joinNotes(
+                    driverFallback,
+                    "the tree lists this row twice ([\(duplicate.firstRef)] and"
+                        + " [\(duplicate.secondRef)], \(duplicate.length) elements each);"
+                        + " one copy is a leftover from horizontal scrolling")
+            }
             // **長押しは tap の引数**(Shirates 準拠。`tap(sel, holdSeconds:)`)。0 より大きいときだけ
             // ブリッジの /press へ回す。in-app は座標ジェスチャを持たない(501)ので XCUITest へ
             // フォールバックする経路も長押し側だけが必要

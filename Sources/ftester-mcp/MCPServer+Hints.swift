@@ -427,107 +427,26 @@ extension MCPServer {
         return parts.joined(separator: " ")
     }
 
-    /// 木の中に**同じ連続領域が2回**現れる形の検知(監査ラウンド5・2026-08-13・
+    /// 木の中に**同じ連続領域が2回**現れる形の注記(監査ラウンド5・2026-08-13・
     /// jma.go.jp を横スクロールした後の iOS Safari で実測)。横スクロールで前後のコピーが
     /// 両方残ると、片方は既にスクロールで動いた実座標を持たないまま木に残る = 読み手が
     /// コピーした ref が古い側かもしれない。
     ///
-    /// **単純な「(type,label,value) の最長共通連続列」では誤検知する**(2026-08-13 に実装して
-    /// すぐ撤回): witness フィクスチャの最長一致(11)の正体は、**別々の2つの表が同じ8列の
-    /// 日付見出し行を共有している**形だった(「東京地方」の見出し y=463 と「伊豆諸島」の見出し
-    /// y=722 —— どちらも `["日付","今夜 12日(水)", …]` を名乗る、正当なページ構造)。
-    /// **同じ行(y がほぼ同じ)で x だけがずれた一致だけを候補にする**ことでこれを機械的に除く
-    /// —— 横スクロールの残骸は同じ行のまま x だけ動くが、別の表の同名見出しは y ごと違う位置に
-    /// 出るので、この制約だけで両者を分けられる。**この y/x 制約を外して「キーだけの一致」へ
-    /// 単純化しないこと**(上の誤検知が戻る)。
-    ///
-    /// witness(2026-08-13・ios-browser_jma_hscroll、refs 72-81 vs 158-167。全10ペアとも
-    /// 同じ y・x が定数200ptずれる。最左列は 0 にクランプされる):
-    ///   東京(x=25,y=629 / x=0,y=629)・最高(x=70,y=627 / x=0,y=627)・
-    ///   29(x=220,y=627 / x=20,y=627)・(28～32)(x=277,y=638 / x=77,y=638)
-    ///
-    /// **`StepExecutor.hasClampedCoordinates` は使えない**(≥3要素が**同じ深さで同一 frame**を
-    /// 共有することを要求する。ここでの重複行は frame が違う(x だけ違う)ので、2つ目の判定を
-    /// 書かず流用しようとしても発火し得ない)。
-    ///
-    /// アルゴリズムは longest-repeated-substring の変形(2行だけ持つ DP。O(n²)・n≦400程度なら
-    /// 十分安い)。`extendsRun(a,b)` は (a,b) が「同じキー・同じ行(y 差 ≤2pt)・違う列(x 差 >2pt)」
-    /// を満たすときだけ true。dp[i][j] は extendsRun(i-1,j-1) のときだけ previous[j-1]+1、
-    /// でなければ0。i<j だけを見る(a↔b は対称なので片側で足りる)
-    ///
-    /// 実測(2026-08-13・37枚のコーパス。y/x 制約を入れた後の閾値): ios-browser_jma_hscroll = 10。
-    /// 他の全画面は最大3(and-home。それ以外は 0〜2)。閾値 6 はその倍近く上に置いてある
-    static let duplicateRegionMinimumRun = 6
+    /// **判定は `FTCore.DuplicateRegion` が唯一の定義元**(閾値・y/x 制約・誤検知の witness・
+    /// アルゴリズムの根拠はそちら。DSL のタップも同じ判定を `StepNote.staleDuplicateRegion`
+    /// として運ぶ)。ここが持つのは文言だけ
+    static let duplicateRegionMinimumRun = DuplicateRegion.minimumRun
 
     static func duplicateRegionNote(_ snapshot: SnapshotResponse) -> String {
-        let elements = snapshot.elements
-        let n = elements.count
-        guard n >= 2 else { return "" }
-        struct Key: Equatable { let type: String; let label: String; let value: String }
-        let keys = elements.map { Key(type: $0.type, label: $0.label ?? "", value: $0.value ?? "") }
-
-        // **O(n²) だが最適化しない**(2026-08-13 に実測してから決めた)。debug ビルドでの実測は
-        // n=233 で 8.5ms・n=120 で 2.2ms、**同じ木の全注記の合計に対して 1〜5%** に過ぎない
-        // (合計は n=233 で 750ms・n=120 で 40〜100ms)。キーを Int へ畳んで String 比較を
-        // 無くす案は試して 8.6 → 7.8ms にしかならず、**主因は比較ではなく反復そのもの**だった。
-        // ここを速くしても体感は動かない —— 効くのは合計のほう(監査17)
-        func extendsRun(_ a: Int, _ b: Int) -> Bool {
-            guard keys[a] == keys[b] else { return false }
-            let fa = elements[a].frame, fb = elements[b].frame
-            return abs(fa.y - fb.y) <= 2 && abs(fa.x - fb.x) > 2
-        }
-
-        // **一様な1行を「2回出ている」と読まないための材料**(2026-08-13 のレビュー指摘)。
-        // 重なり禁止だけでは足りない —— 同じキーのセルが 12 個並ぶと 6+6 の**重ならない**
-        // 2区間に割れて発火する(独立に再現済み)。本物の複製は「**変化のある並び**が
-        // そのまま繰り返される」形なので、**採った区間が2種類以上のキーを含むこと**を要求する。
-        // 区間ごとに数えると O(n³) になるので、隣接が変わる位置の累積で O(1) 判定にする
-        var variedPrefix = [Int](repeating: 0, count: n + 1)
-        for k in 1..<max(n, 1) {
-            variedPrefix[k + 1] = variedPrefix[k] + (keys[k] == keys[k - 1] ? 0 : 1)
-        }
-        func spansTwoKinds(from start: Int, length: Int) -> Bool {
-            guard length >= 2, start + length <= n else { return false }
-            return variedPrefix[start + length] - variedPrefix[start + 1] > 0
-        }
-
-        var bestLength = 0, bestI = 0, bestJ = 0
-        var previous = [Int](repeating: 0, count: n + 1)
-        for i in 1...n {
-            var current = [Int](repeating: 0, count: n + 1)
-            for j in 1...n where i < j {
-                guard extendsRun(i - 1, j - 1) else { continue }
-                let length = previous[j - 1] + 1
-                current[j] = length
-                // **2つの区間が重なっていないこと**(2026-08-13 のレビュー指摘)。この制約が無いと、
-                // **同じ行に同種・同ラベルのセルが並んでいるだけ**で自分自身と一致する
-                // (`minimumRun=6` なので7個並べば発火する。無ラベルのセル・ページ送りのドット等)。
-                // 言いたいのは「同じ領域が2回出ている」なので、重なる区間は候補にしない。
-                // **採用時に弾く**(最後に弾くと、重なる長い一致が本物の短い一致を隠して黙る)
-                if length > bestLength, j - i >= length, spansTwoKinds(from: i - length, length: length) {
-                    bestLength = length
-                    bestI = i - length
-                    bestJ = j - length
-                }
-            }
-            previous = current
-        }
-        guard bestLength >= duplicateRegionMinimumRun else { return "" }
-        let firstRef = elements[bestI].ref
-        let secondRef = elements[bestJ].ref
-        return "note: the tree appears to list the same \(bestLength) elements twice — starting at"
-            + " [\(firstRef)] and again at [\(secondRef)] (same type/label/value, same row,"
+        guard let match = DuplicateRegion.find(in: snapshot.elements) else { return "" }
+        return "note: the tree appears to list the same \(match.length) elements twice — starting at"
+            + " [\(match.firstRef)] and again at [\(match.secondRef)] (same type/label/value, same row,"
             + " shifted x). This happens when a scrollable region moved (e.g. a"
             + " horizontally-scrolled table) but the tree still reports the previous rows"
             + " alongside the new ones — refs from one copy may be stale. Check ft_screenshot to"
             + " see which copy is actually on screen.\n"
     }
 
-    /// **scrollFrame を渡すべき当人**である ft_scroll_to にだけ出す、複数スクロール領域の注記
-    /// (欠陥⑪)。`ScrollFrameCandidates.note` は ft_snapshot でしか呼ばれておらず、一番効く場所
-    /// (scrollFrame: を渡すべき本人の失敗文・成功文)に届いていなかった。
-    /// scrollFrame: を既に渡しているときは黙る(選んだ後なので不要)
-    /// 木の前に置く注記は**1行で終える**(次の注記と同じ行に流れ込むと読み手が切れ目を失う)
     static func lineNote(_ text: String) -> String {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? "" : "note: \(trimmed)\n"
