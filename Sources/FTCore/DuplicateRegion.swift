@@ -24,10 +24,25 @@ public enum DuplicateRegion {
     /// その画面をコーパスへ足し、何が一致しているのかを見ること
     public static let minimumRun = 6
 
-    /// 同じ行とみなす y の許容差(pt/px)。横スクロールの残骸は**行はそのまま x だけ動く**
+    /// 同じ行とみなす y の許容差(pt/px)。横スクロールの残骸は**行はそのまま x だけ動く**。
+    ///
+    /// 根拠(2026-08-15・witness `ios-browser_jma_hscroll` の複製10ペアを実測。
+    /// refs 72-81 vs 158-167): 全ペアの y 差は**厳密に 0**(このアプリのレイアウトは pt に
+    /// 整列済み)。2.0 は非0の実測差から出した値ではなく、**将来ずれうる丸め誤差への安全余裕**
+    /// —— 行の高さ(witness で 19pt)からは一桁小さいので、隣接する別の行と誤認する余地は
+    /// 無い。**流用の安全性**(pt/px の両方に同じ値を当てる理由): 丸め誤差はどちらの単位でも
+    /// 1 未満で、セルの寸法(witness で 18〜59pt)からは同じく一桁小さい。桁が近いから安全なの
+    /// ではなく、**どちらの単位でも「丸め」と「セル1つ分」の間に少なくとも一桁の余白がある**
+    /// ことが流用の根拠。
     public static let sameRowTolerance = 2.0
-    /// 別の列とみなす x の下限(pt/px)。これ以下は丸め差
+    /// 別の列とみなす x の下限(pt/px)。これ以下は丸め差として無視する。
+    ///
+    /// 根拠: 同じ10ペアの x 差の実測は 25〜200pt(最小は「東京」列の25pt)。2.0 はこの最小の
+    /// 実差より1桁小さく、かつ丸め誤差(<1)よりは大きい —— 両側に余裕を残して選んだ。
     public static let shiftedColumnMinimum = 2.0
+    /// **尽きたとき**(実アプリで sameRowTolerance/shiftedColumnMinimum が誤検知・見逃しを
+    /// 出す)は、数字を動かす前にその画面をコーパスへ足し、y/x のどちらがずれているのか
+    /// (丸めか、実際に行/列が動いているのか)を実測してから直すこと(`minimumRun` と同じ規律)
 
     /// 見つかった複製。`firstIndex`/`secondIndex` は `elements` の添字(ref ではない)
     public struct Match: Sendable, Equatable {
@@ -62,7 +77,9 @@ public enum DuplicateRegion {
     /// **O(n²) だが最適化しない**(2026-08-13 に実測してから決めた): debug ビルドで n=233 が
     /// 8.5ms・n=120 が 2.2ms で、同じ木の全注記の合計に対して 1〜5% に過ぎない。
     /// キーを Int へ畳んで String 比較を無くす案は 8.6 → 7.8ms にしかならず、
-    /// **主因は比較ではなく反復そのもの**だった
+    /// **主因は比較ではなく反復そのもの**だった。
+    ///
+    /// **常に最長の1件だけを返す**(2つ目以降の複製領域は取りこぼす)。全件が要るなら `findAll` を使う
     public static func find(in elements: [ElementInfo]) -> Match? {
         let n = elements.count
         guard n >= 2 else { return nil }
@@ -89,6 +106,23 @@ public enum DuplicateRegion {
             return variedPrefix[start + length] - variedPrefix[start + 1] > 0
         }
 
+        // **窓自身が周期的か**(ある 1 <= p < length で keys[k] == keys[k+p] が窓内全域で成り立つ)。
+        // 周期的な窓は「パターンが繰り返されているだけの1本の行」と「2つの独立した領域」を
+        // 幾何的に区別できない(A,B,A,B,… の前半と後半はつねに一致してしまう)。この判定は
+        // 最終的な最長一致(採用直前)だけに掛ける ——「拾い直し」まではしない(棄却したら nil)
+        func isPeriodic(from start: Int, length: Int) -> Bool {
+            guard length >= 2 else { return false }
+            for p in 1..<length {
+                var matchesAllOffsets = true
+                for k in 0..<(length - p) where keys[start + k] != keys[start + k + p] {
+                    matchesAllOffsets = false
+                    break
+                }
+                if matchesAllOffsets { return true }
+            }
+            return false
+        }
+
         var bestLength = 0, bestI = 0, bestJ = 0
         var previous = [Int](repeating: 0, count: n + 1)
         for i in 1...n {
@@ -112,37 +146,105 @@ public enum DuplicateRegion {
             previous = current
         }
         guard bestLength >= minimumRun else { return nil }
+        // 重なり禁止(`j - i >= length`)は境界ちょうどでは素通しする(length=6 の周期2なら
+        // j-i=6 で通過)ので、採用直前に周期性を明示的に見て黙る側に倒す
+        guard !isPeriodic(from: bestI, length: bestLength) else { return nil }
+
         return Match(firstIndex: bestI, secondIndex: bestJ, length: bestLength,
                      firstRef: elements[bestI].ref, secondRef: elements[bestJ].ref)
     }
 
-    /// **掴んだ要素が複製区間に入っているか**(DSL の入口)。
+    /// `find` を貪欲に繰り返し、木の中の複製領域を尽くす(2つ目以降を取りこぼさない)。
     ///
-    /// `find` を毎ステップ無条件に呼ばないための安価な門を先に通す: 複製が成立するには
-    /// `element` 自身に「同じキー・同じ行・違う列」の相方が居なければならないので、
-    /// **O(n) のその検査で落ちる木では DP を回さない**(横スクロールの残骸が無い普通の画面は
-    /// ここで抜ける = 固定費は要素の1走査だけ)。
+    /// **偽の境界越え連続を作らない設計**: 見つかった領域を配列から取り除いて残りを詰め直すと、
+    /// 取り除いた前後の要素が新たに隣接し、`extendsRun`(文書順の連続前提)が本来離れていた
+    /// 要素同士を「連続」と誤認しうる。代わりに**元配列の範囲をセグメントに分割して独立に
+    /// `find` を回す**(前方 / 両コピーの間 / 後方の3区間)。区間は常に元配列の連続部分列
+    /// (詰め直さない)なので、取り除いた境界を跨ぐ隣接はそもそも起こらない。
+    /// 添字はセグメントの開始位置を足して**元配列基準へ写像し直す**(`Match.covers` が
+    /// 元添字で効くことが `riskFor` の要件)。
     ///
-    /// **門は必要条件であって十分条件ではない**(相方が居るだけでは「領域が2回」ではない)ので、
-    /// 通った場合は必ず `find` で確かめる
-    public static func riskFor(_ element: ElementInfo, in elements: [ElementInfo]) -> Match? {
-        let key = Key(type: element.type, label: element.label ?? "", value: element.value ?? "")
-        let hasTwin = elements.contains { other in
-            other.ref != element.ref
-                && Key(type: other.type, label: other.label ?? "",
-                       value: other.value ?? "") == key
-                && abs(other.frame.y - element.frame.y) <= sameRowTolerance
-                && abs(other.frame.x - element.frame.x) > shiftedColumnMinimum
+    /// 停止は自明: 1回のマッチが最低 `2 * minimumRun` 要素を消費するので、3つの部分区間の
+    /// 合計は必ず縮む(上限定数は要らない)。
+    static func findAll(in elements: [ElementInfo]) -> [Match] {
+        var results: [Match] = []
+        func search(_ range: Range<Int>) {
+            guard range.count >= 2 * minimumRun else { return }
+            guard let match = find(in: Array(elements[range])) else { return }
+            let firstIndex = range.lowerBound + match.firstIndex
+            let secondIndex = range.lowerBound + match.secondIndex
+            results.append(Match(firstIndex: firstIndex, secondIndex: secondIndex,
+                                  length: match.length,
+                                  firstRef: match.firstRef, secondRef: match.secondRef))
+            search(range.lowerBound..<firstIndex)
+            search((firstIndex + match.length)..<secondIndex)
+            search((secondIndex + match.length)..<range.upperBound)
         }
-        guard hasTwin else { return nil }
-        guard let match = find(in: elements),
-              let index = elements.firstIndex(where: { $0.ref == element.ref }),
-              match.covers(index: index)
-        else { return nil }
-        return match
+        search(0..<elements.count)
+        return results
     }
 
-    private struct Key: Equatable {
+    /// `index` を含む、文書順で連続する `minimumRun` 個の窓であって、①窓内の全要素が
+    /// 各自「同じキー・同じ行・違う列」の双子を持ち、②窓内に2種類以上のキーがある、
+    /// ものが存在するか。`riskFor` が `findAll` の DP を回す前に通す門(この形にした経緯は
+    /// `riskFor` のコメント)。
+    ///
+    /// 実装は、キー→添字一覧の辞書を1回作り(O(n))、各要素の双子有無をその**同キー群の中だけ**
+    /// 走査して判定する(O(群サイズ)。全要素との比較ではない)。窓は `index` の前後
+    /// `minimumRun` 範囲だけを見る(新しい調整定数は置かない —— 窓長は `minimumRun` を使う)。
+    ///
+    /// **健全性**(false のとき `find`/`findAll` はこの添字を覆わない): 本物の複製領域
+    /// (長さ L>=minimumRun)の内部にある要素は、その領域に収まる minimumRun 窓が①を満たす
+    /// (領域内の全要素が offset d の双子を持つ)。②も、採用条件 `spansTwoKinds` が領域内に
+    /// 隣接キー変化を要求するために満たされる —— 37枚の固定コーパスの複製領域(witness)は
+    /// 変化が列ごとに分布しており、どの位置を含む窓を取っても2種以上になることを実測で
+    /// 確認している(`DuplicateRegionTests` のコーパス不変条件がこれを継続して固定する)。
+    /// **一様なラベル無し行**(同キーが並ぶだけ)は②で、**孤立した双子1組**は窓自体が
+    /// 作れず①で、それぞれここで抜ける。
+    static func hasQualifyingWindow(around index: Int, in elements: [ElementInfo]) -> Bool {
+        let n = elements.count
+        guard n >= minimumRun else { return false }
+        let keys = elements.map { Key(type: $0.type, label: $0.label ?? "", value: $0.value ?? "") }
+        var groups: [Key: [Int]] = [:]
+        for i in 0..<n { groups[keys[i], default: []].append(i) }
+
+        func hasTwin(_ i: Int) -> Bool {
+            let fi = elements[i].frame
+            return groups[keys[i], default: []].contains { j in
+                j != i
+                    && abs(elements[j].frame.y - fi.y) <= sameRowTolerance
+                    && abs(elements[j].frame.x - fi.x) > shiftedColumnMinimum
+            }
+        }
+
+        let lowStart = max(0, index - minimumRun + 1)
+        let highStart = min(index, n - minimumRun)
+        guard lowStart <= highStart else { return false }
+        for start in lowStart...highStart {
+            let window = start..<(start + minimumRun)
+            guard window.allSatisfy(hasTwin) else { continue }
+            if Set(window.map { keys[$0] }).count >= 2 { return true }
+        }
+        return false
+    }
+
+    /// **掴んだ要素が複製区間に入っているか**(DSL の入口)。
+    ///
+    /// `findAll` を毎ステップ無条件に呼ばないための安価な門(`hasQualifyingWindow`)を先に通す。
+    /// **単に「相方が1つ居るか」だけの門では緩すぎた**(2026-08-15 に強化): ラベル無し同型要素の
+    /// 行(写真グリッド・アイコン列・ページドット)は全要素が互いの相方になるので毎回門を通り、
+    /// **毎タップ** O(n²) の DP を払ってほぼ常に nil を得ていた。窓に「2種類以上のキー」を
+    /// 要求することで、一様な行は `find`/`findAll` を呼ぶ前に落とせる。
+    ///
+    /// **門は必要条件であって十分条件ではない**(窓の形だけでは「領域が2回」ではない)ので、
+    /// 通った場合は必ず `findAll` で確かめる
+    public static func riskFor(_ element: ElementInfo, in elements: [ElementInfo]) -> Match? {
+        guard let index = elements.firstIndex(where: { $0.ref == element.ref }) else { return nil }
+        guard hasQualifyingWindow(around: index, in: elements) else { return nil }
+        return findAll(in: elements).first { $0.covers(index: index) }
+    }
+
+    private struct Key: Hashable {
         let type: String
         let label: String
         let value: String
