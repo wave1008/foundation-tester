@@ -43,7 +43,17 @@ public enum ScenarioSourceEditor {
 
     /// 指定行(1 起点)にあるクォート付きセレクタ文字列を書き換える(自己修復の確定反映用)。
     /// 対象行に `"<oldSelector>"` がちょうど 1 回出現することを要求(0 回 = ソース変更の可能性、
-    /// 2 回以上 = 曖昧で自動判定できない)。対象行以外・改行・インデントは完全保存する
+    /// 2 回以上 = 曖昧で自動判定できない)。対象行以外・改行・インデントは完全保存する。
+    ///
+    /// **両側を Swift リテラルとして綴る**(2026-08-16)。ここは**利用者の .swift を直接書き換える
+    /// 唯一の経路**(`ftester api apply-heal`)なので、素の `"\(selector)"` で綴ると
+    /// **`"` を含むラベルでコンパイルできないコードを書き込む**。実際に再現した形:
+    ///
+    ///     tap("*【速報】"特価"セール開催中*")   ← 不正な Swift
+    ///
+    /// 探索側も同じ綴りにする —— 綴りが片側だけだと、正しくエスケープして書かれている行を
+    /// 「見つからない」と誤判定して修復が黙って落ちる(こちらは以前から在った穴)。
+    /// **エスケープの定義は `ScenarioCodeGen.literal` の1箇所**(下書き生成と共有。2つ目を書かない)
     public static func replaceSelector(inSource source: String, line: Int,
                                        oldSelector: String, newSelector: String) throws -> String {
         var lines = source.components(separatedBy: "\n")
@@ -51,7 +61,7 @@ public enum ScenarioSourceEditor {
             throw ScenarioSourceEditError.lineOutOfRange(line)
         }
         let target = lines[line - 1]
-        let quotedOld = "\"\(oldSelector)\""
+        let quotedOld = ScenarioCodeGen.literal(oldSelector)
         let occurrences = target.components(separatedBy: quotedOld).count - 1
         if occurrences == 0 {
             throw ScenarioSourceEditError.selectorNotFound(oldSelector)
@@ -59,7 +69,8 @@ public enum ScenarioSourceEditor {
         if occurrences > 1 {
             throw ScenarioSourceEditError.selectorAmbiguous(oldSelector)
         }
-        lines[line - 1] = target.replacingOccurrences(of: quotedOld, with: "\"\(newSelector)\"")
+        lines[line - 1] = target.replacingOccurrences(
+            of: quotedOld, with: ScenarioCodeGen.literal(newSelector))
         return lines.joined(separator: "\n")
     }
 
