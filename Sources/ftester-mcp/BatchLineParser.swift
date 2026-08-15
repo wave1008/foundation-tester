@@ -432,13 +432,23 @@ enum BatchStepResolver {
     }
 
     /// 2手目以降に ref が来たときの拒否文言。1手目でだけ使える理由(なぜ2手目以降は信用できないか)
-    /// まで言う —— 「そんな引数は無い」で終えると、渡し方を探してもう1往復する
+    /// まで言う —— 「そんな引数は無い」で終えると、渡し方を探してもう1往復する。
+    ///
+    /// **2手目以降の ref は採用しない**(2026-08-16 ユーザー決定。再提案しない): 一意なセレクタが
+    /// 無い要素をバッチで叩く手段としては**座標タップのほうが筋が良い** —— ref はシナリオに
+    /// 書けないので「バッチで通った = そのまま書けばシナリオでも通る」の契約から外れるが、
+    /// `tap x: y:` は `ScenarioCodeGen` が 1:1 で書き出せる。逃げ道はそちらを案内する
     private static func refOnlyOnFirstStepMessage(_ command: String) -> String {
         "ft_batch steps take a selector, not a ref — except on the very first step, a ref is only"
             + " valid against the snapshot it came from, and each step can change the tree, so a"
             + " later step's ref would silently hit a different element. Write \(command) '#id'"
             + " (or a label / .type) instead, or move this step to be first;"
             + " ft_snapshot prints the id next to each ref."
+            + (command == "tap"
+               ? " When the element has no selector that picks it out uniquely, tap x: <n> y: <n>"
+                 + " works here and is writable as a scenario line (replace it with a selector"
+                 + " before keeping it)."
+               : "")
     }
 
     // このバッチ辞書語彙で使われている全キーの型。3集合はどれとも重ならない
