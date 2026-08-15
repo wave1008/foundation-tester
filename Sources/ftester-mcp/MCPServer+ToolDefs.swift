@@ -127,6 +127,14 @@ extension MCPServer {
         difference was already on the first read, and only checking for the expected content \
         guarantees it is there. snapshotAfter inherits \
         interactiveOnly/expandBulk from your last ft_snapshot call unless passed explicitly.
+
+        Once you can name the next few steps by selector — typically right after reading a tree \
+        — ft_batch runs them in one call and one approval, and a batch that passes converts 1:1 \
+        into scenario lines, so it doubles as the check that the sequence is writable. It is not \
+        the tool for finding your way: every step after the first must use a selector rather than \
+        a ref, assertions and lifecycle commands (launchApp, clearAppData, …) are rejected, and \
+        the run stops at the first failure. Explore with the single-operation tools, then batch \
+        the part you have already worked out.
         """
 
     /// 全ツール共通のデバイス選択プロパティ。tool() が無条件で足す

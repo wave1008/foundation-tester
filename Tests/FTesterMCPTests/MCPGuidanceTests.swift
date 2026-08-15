@@ -40,6 +40,36 @@ final class MCPGuidanceTests: XCTestCase {
         }
     }
 
+    // MARK: - ft_batch の案内(2026-08-16 の外部評価5人目)
+
+    /// **1セッションに1回だけ渡る instructions で ft_batch に触れること**。
+    /// 評価者の申し立ては「個別ツールが並んでいるので順に呼ぶのが自然に見え、ft_batch を使う
+    /// 動機が生まれなかった」。実際 ft_batch は**自分のツール説明にしか出ていなかった**。
+    ///
+    /// **境界も一緒に固定する** —— 「常に batch」ではない: 2手目以降は ref を受けず、
+    /// アサーションと lifecycle は拒否し、最初の失敗で止まる。探索は個別ツールが正しい
+    func testInstructionsPointAtBatchWithItsBoundary() {
+        let text = MCPServer.serverInstructions
+        XCTAssertTrue(text.contains("ft_batch"), "instructions が ft_batch に触れていない")
+        XCTAssertTrue(text.contains("one call and one approval"), text)
+        XCTAssertTrue(text.contains("not the tool for finding your way"),
+                      "「常に batch」と読めてはいけない(探索は個別ツール): \(text)")
+    }
+
+    /// **案内は1箇所だけ**(2026-08-10 のスキーマ痩身)。個別ツールの説明へ同じ文言を複製すると、
+    /// 全ツールぶん毎セッションのコンテキスト費用になる —— 5人目の評価はまさにその複製を
+    /// 求めていたが、同じ効果は instructions 1箇所で得られる
+    func testBatchGuidanceIsNotDuplicatedIntoEveryToolDescription() {
+        let mentions = MCPServer.toolDefinitions.filter { def in
+            guard let name = def["name"] as? String, name != "ft_batch",
+                  let description = def["description"] as? String else { return false }
+            return description.contains("ft_batch")
+        }.compactMap { $0["name"] as? String }
+        XCTAssertEqual(mentions, [],
+                       "ft_batch の案内が個別ツールの説明へ複製されている: \(mentions)。"
+                       + "ニュアンスは serverInstructions に1本化する(スキーマ痩身)")
+    }
+
     // MARK: - システムダイアログ(2026-08-16 の外部評価)
 
     /// 「操作しても木が変わらない」ときに、**SpringBoard のダイアログはこの木に出ない**ことと
