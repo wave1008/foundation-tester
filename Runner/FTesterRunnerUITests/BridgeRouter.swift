@@ -199,7 +199,7 @@ final class BridgeRouter {
         // 解釈は resolvedSnapshotElementLimit の1箇所 = ホスト・3ブリッジで同じ規則
         snapshotElementLimit = BridgeAPI.resolvedSnapshotElementLimit(
             request.queryValue("max").flatMap { Int($0) })
-        let app = try requireApp()
+        let app = try requireForegroundApp()
         // 操作直後のみ整定してから取得する(captureSettled)。XCUITest の tap quiescence は
         // 非同期 push 遷移の完了前に返るため、直後の素取得は遷移前ツリーを返す(実測 50%)。
         // 連続 snapshot(settlePending=false)は整定不要なので素取得のまま。
@@ -324,7 +324,7 @@ final class BridgeRouter {
     /// 曖昧なまま別要素の可否を返すと、木の限界を別の嘘で置き換えるだけになる
     private func handleHittable(_ request: BridgeHTTPServer.Request) throws
         -> BridgeHTTPServer.Response {
-        let app = try requireApp()
+        let app = try requireForegroundApp()
         guard let ref = request.queryValue("ref").flatMap({ Int($0) }) else {
             throw BridgeError(400, "ref is required")
         }
@@ -1148,6 +1148,38 @@ final class BridgeRouter {
             throw BridgeError(503, "the target app (\(sessionBundleID ?? "?")) is not running, so"
                 + " it cannot be driven (it may have exited or crashed in an earlier step; the host"
                 + " relaunches it with /session)")
+        }
+        return app
+    }
+
+    /// **取得系(snapshot/hittable)専用**の前面確認。
+    ///
+    /// セッションのアプリが**前面から外れている**間に木を撮ると、XCUI が対象を引けず
+    /// `Find the Application '<bundle>'` を約45秒リトライした末に**ランナーごと落ちる**
+    /// (2026-08-15 実測 6/6。ログの最終行は必ずこのリトライで、続いて "Restarting after
+    /// unexpected exit, crash, or test timeout" → 建て直されたランナーは 0 tests で
+    /// スイート終了 = **ブリッジが永久に消える**)。`requireLiveApp` は `.notRunning`/`.unknown`
+    /// しか弾かないので、**背面(`.runningBackground`)は掛けても素通りする**。
+    ///
+    /// - `/screenshot` 自体は `XCUIScreen` なのでアプリに触れないが、MCP の `ft_screenshot` が
+    ///   鮮度判定のため直後に snapshot を撃ち、その失敗を `try?` で握り潰す ——
+    ///   **画像を返したままブリッジだけ死ぬ**ので、ここを塞げば両方が塞がる
+    /// - **springboard は他アプリが前面でも `.runningForeground` を名乗る**(2026-08-15 実測)。
+    ///   システム UI を読む `ft_launch com.apple.springboard` の経路は塞がらない
+    /// - **409 でも 503 でもなく 422**: 409 はセッション消失専用、503 は `AppAttachDriver` が
+    ///   activate で復帰を試みる = **呼び手に黙ってアプリを前面へ引き戻す**。ここは
+    ///   「セッションはあるが今のこの画面では実行できない」なので 422(handleClear と同じ理由)
+    /// - `state` の実測コストは 1.5ms 未満(`/appstate` の HTTP 往復込み)。45 秒とブリッジ喪失に
+    ///   対して十分安い。**取得系を外していた元の判断はこのコストだけを見ていた**
+    private func requireForegroundApp() throws -> XCUIApplication {
+        let app = try requireApp()
+        guard app.state == .runningForeground else {
+            throw BridgeError(422, "the session's app (\(sessionBundleID ?? "?")) is not in the"
+                + " foreground — another app is. Reading the tree in this state hangs XCUITest and"
+                + " takes this runner (and the bridge) down with it, so it is refused. Bring it back"
+                + " (DSL: launchApp / MCP: ft_launch \(sessionBundleID ?? "<bundleId>")), or point"
+                + " the session at whatever IS in front (MCP: ft_launch with that bundle id;"
+                + " com.apple.springboard reads the home screen or a system dialog)")
         }
         return app
     }

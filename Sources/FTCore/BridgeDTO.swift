@@ -185,7 +185,12 @@ public enum BridgeAPI {
     /// 65: GET /snapshot accepts `max=<n>` (the per-request element limit; `maxSnapshotElements`
     /// stays the default). A stale bridge ignores the parameter and answers with 120 elements
     /// **without saying so**, so the reader would conclude the dropped rows do not exist → bump.
-    public static let bridgeProtocolVersion = 68
+    /// 69: the XCUITest runner refuses GET /snapshot and GET /hittable with **422** while the
+    /// session's app is not in the foreground. Reading the tree in that state made XCUI retry
+    /// `Find the Application` for ~45s and then **took the runner down**, losing the bridge for
+    /// good (measured 6/6 on 2026-08-15). A stale bridge still wedges and dies, so the host must
+    /// not keep using one → bump.
+    public static let bridgeProtocolVersion = 69
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の

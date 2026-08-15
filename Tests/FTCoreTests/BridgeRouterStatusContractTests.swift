@@ -59,6 +59,38 @@ final class BridgeRouterStatusContractTests: XCTestCase {
                        "503 は requireLiveApp() の1箇所だけ")
     }
 
+    /// **取得系はセッションのアプリが前面のときだけ木を撮る**(`requireForegroundApp`)。
+    ///
+    /// 外すと 45 秒待たされた末に**ランナーごと落ちてブリッジが消える**(2026-08-15 実測 6/6)。
+    /// `requireLiveApp` では代用できない —— あちらは `.notRunning`/`.unknown` しか弾かず、
+    /// 引き金の**背面**(`.runningBackground`)を素通しする。
+    /// 状態は 422 であること: 409 はセッション消失専用、503 は `AppAttachDriver` が
+    /// activate で復帰を試みる = 呼び手に黙ってアプリを前面へ引き戻す
+    func testTreeReadsRequireTheAppToBeInTheForeground() throws {
+        let source = try routerSource
+        for handler in ["handleSnapshot", "handleHittable"] {
+            let body = try XCTUnwrap(handlerBody(handler, in: source), "\(handler) が見つからない")
+            XCTAssertTrue(body.contains("try requireForegroundApp()"),
+                          "\(handler) は requireForegroundApp() を通すこと"
+                          + "(背面のまま木を撮るとランナーが落ちてブリッジが消える)")
+        }
+        let guardBody = try XCTUnwrap(handlerBody("requireForegroundApp", in: source))
+        XCTAssertTrue(guardBody.contains("BridgeError(422,"),
+                      "前面でないことの申告は 422(409 = セッション消失 / "
+                      + "503 = AppAttachDriver が黙って activate する)")
+        XCTAssertTrue(guardBody.contains("== .runningForeground"),
+                      "背面を弾くには前面と等しいことを要求すること"
+                      + "(.notRunning の否定では .runningBackground が素通りする)")
+    }
+
+    /// `private func <名>` から次の `private func` の手前まで
+    private func handlerBody(_ name: String, in source: String) -> String? {
+        guard let start = source.range(of: "private func \(name)") else { return nil }
+        let rest = source[start.upperBound...]
+        guard let end = rest.range(of: "\n    private func ") else { return String(rest) }
+        return String(rest[..<end.lowerBound])
+    }
+
     /// XCUITest ランナーの 501 は `handleHideKeyboard` の**1箇所だけ**。
     /// 501 は isEngineIncapable が真になり、ホストは XCUITest へフォールバックする ——
     /// つまり**フォールバック先が自分自身**になるので、増やすと無限の遠回りを作る。
