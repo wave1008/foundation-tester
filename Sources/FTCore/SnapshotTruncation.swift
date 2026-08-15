@@ -34,6 +34,10 @@ public enum SnapshotTruncation {
     /// 上限 + 最大 400 まで膨らむ。既定 120 で読んだ木に bulk が 280 件乗っただけで
     /// 「もう天井だ」と誤判定し、**上げれば取れる要素に「上げても無駄」と言う**。
     /// 申告しないブリッジ(旧版・Android)は bulk 免除自体が無いので nil = 0 で正しい
+    ///
+    /// `max(0,)` は**不正な申告への保険**(bulk 群は要素配列の一部なので、正しい木では
+    /// `bulkExemptCount <= elements.count` が必ず成り立つ)。到達しないので変異テストでは
+    /// 殺せない —— 無理にテストを作らず、ここに理由を書いておく
     public static func budgetedCount(_ snapshot: SnapshotResponse) -> Int {
         max(0, snapshot.elements.count - (snapshot.bulkExemptCount ?? 0))
     }

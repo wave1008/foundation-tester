@@ -694,10 +694,6 @@ extension MCPServer {
     /// 掛からずに黙って通り抜ける —— 実測(and-browser_jma_notree)は要素19件が全部ブラウザ
     /// chrome で、画面の 88.6%(unrepresentedScreenFraction)が空白のまま報告されていた。
     ///
-    /// **判定は `FTCore.TreeCoverage.missingPageContent` が唯一の定義元**(閾値・witness の
-    /// 実測・ブラウザに絞る理由はそちら)。ここが持つのは文言だけ
-    static let missingPageContentFractionThreshold = TreeCoverage.missingPageContentFractionThreshold
-
     /// **既定が a11y になったので、この注記は役目を終えた**(2026-08-14 にユーザー決定で反転)。
     /// a11y から来ているのは**正常**になり、言うことが行動に繋がらない
     /// (足りないときは `missingPageContentNote` が「読み直せ」と言う)。
@@ -959,8 +955,6 @@ extension MCPServer {
     /// 入力画面で誤って「アドレス欄」と名乗る** —— そしてその形は固定コーパス(ブラウザ6枚は
     /// すべて既知 identifier を持つ)には1枚も無いので、「誤検知0」の確認が効かない。
     /// 名前の分かるブラウザだけを名指しし、知らないブラウザについては黙る
-    static let addressBarIdentifiers = TreeCoverage.addressBarIdentifiers
-
     /// 実体は `FTCore.TreeCoverage.addressBarCandidate`(identifier のリテラルは1箇所)。
     /// 2つの呼び手が逆の前提で使う: `addressBarElement` は webView が居るときだけ通す
     /// (addressBarNote)/ `missingPageContent` は逆に webView が**居ない**ことを条件にする
@@ -1304,11 +1298,6 @@ extension MCPServer {
         return "note: \(count) element(s) of large same-id group(s) are listed outside the"
             + " element limit — they did not crowd other elements out of the tree, but they do"
             + " add to this output; the rendering folds them (expandBulk lists them in full).\n"
-    }
-
-    /// 実体は `FTCore.SnapshotTruncation.suggestedLimit`(DSL と共有)。転送だけ
-    static func suggestedElementLimit(_ snapshot: SnapshotResponse) -> Int {
-        SnapshotTruncation.suggestedLimit(snapshot)
     }
 
     /// 打ち切ったときだけ添える「枠を食っている当人」。
