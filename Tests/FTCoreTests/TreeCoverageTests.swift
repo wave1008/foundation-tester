@@ -253,6 +253,31 @@ final class TreeCoverageTests: XCTestCase {
         XCTAssertTrue(TreeCoverage.missingPageContent(in: browser))
     }
 
+    /// **打ち切られた木からは結論しない**(2026-08-15 の witness: `maxElements: 6` で撮った
+    /// Chrome のエラーページが「webView 容器すら無い」と断言した。既定の上限で読み直すと在る)。
+    /// 材料が3つとも「要素が無いこと」なので、**上限で落とされただけの木でも同じように真になる**
+    func testMissingPageContentIsNotConcludedFromATruncatedTree() {
+        let elements = [
+            ElementInfo(ref: 1, type: "other", identifier: "top_strip", label: nil, value: nil,
+                        placeholder: nil, enabled: true,
+                        frame: FTRect(x: 0, y: 0, width: 1000, height: 50), depth: 1),
+            ElementInfo(ref: 2, type: "textField", identifier: "url_bar", label: nil,
+                        value: "https://example.com", placeholder: nil, enabled: true,
+                        frame: FTRect(x: 0, y: 0, width: 1000, height: 50), depth: 1),
+        ]
+        let whole = SnapshotResponse(sessionBundleID: nil, screen: screen, elements: elements,
+                                     truncatedCount: 0)
+        XCTAssertTrue(TreeCoverage.missingPageContent(in: whole),
+                      "前提: 打ち切りが無ければこの木は真陽性の形")
+        let truncated = SnapshotResponse(sessionBundleID: nil, screen: screen, elements: elements,
+                                         truncatedCount: 1)
+        XCTAssertFalse(TreeCoverage.missingPageContent(in: truncated),
+                       "落とされた要素を「公開されていない」と読んではいけない"
+                       + "(件数は truncationNote が別に言う)")
+        XCTAssertFalse(TreeCoverage.underreports(truncated),
+                       "否定アサーションの裏取りにもこの疑いを持ち込まないこと")
+    }
+
     /// **webView が居る画面では黙る**(そちらは `gap` の担当。二重に言わない)
     func testMissingPageContentStaysSilentWhenAWebViewExists() {
         var tree = treeWithBand(height: 300)

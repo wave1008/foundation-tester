@@ -218,7 +218,22 @@ public enum TreeCoverage {
     /// ネイティブ画面まで拾う —— 地図の `and-overflow` は空白率 0.564 まで達するが、
     /// アドレス欄が無い = ブラウザではないので黙るべき
     public static func missingPageContent(in snapshot: SnapshotResponse) -> Bool {
-        !snapshot.elements.contains { $0.type == "webView" }
+        // **打ち切られた木からは結論しない**(2026-08-15 の witness)。この判定の材料は3つとも
+        // 「要素が無いこと」なので、**上限で落とされただけの木でも同じように真になる** ——
+        // 実測: `ft_snapshot maxElements: 6` で Chrome のエラーページを撮ると
+        // 「webView 容器すら無く、あるのはブラウザ chrome だけ」と**断言**するが、
+        // 既定の上限で読み直すと webView も本文も在る。
+        //
+        // 打ち切りと両立しないのは形からも言える —— 本体が1つも公開されていない画面は
+        // そもそも要素が少ない(真陽性の witness `and-browser_jma_notree` は 19 要素・
+        // 打ち切り0)。打ち切りが同時に起きているなら、それは**落として初めてこの形になった**
+        // ということ。件数は `truncationNote` が別に言うので、ここは黙って譲る。
+        //
+        // **同型の候補(未計測なので触っていない)**: `gap` も要素の不在から帯を測るので、
+        // 上限で落ちた要素が偽の帯を作り得る。witness はまだ無い(コーパスの真陽性3枚は
+        // いずれも打ち切り0)
+        guard snapshot.truncatedCount == 0 else { return false }
+        return !snapshot.elements.contains { $0.type == "webView" }
             && addressBarCandidate(in: snapshot) != nil
             && unrepresentedScreenFraction(snapshot) >= missingPageContentFractionThreshold
     }
