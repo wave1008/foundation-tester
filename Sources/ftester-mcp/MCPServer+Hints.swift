@@ -557,6 +557,38 @@ extension MCPServer {
         return parts.joined()
     }
 
+    /// 逆向きの content direction(注記で「戻れ」と言うときの語彙)。
+    /// `FTScrollDirection.swipe` と値は同じになるが**意味が違う**(あちらは指の向き)ので別に持つ
+    static func reversedDirection(_ direction: FTScrollDirection) -> String {
+        switch direction {
+        case .down: return "up"
+        case .up: return "down"
+        case .right: return "left"
+        case .left: return "right"
+        }
+    }
+
+    /// 探索が空振りしたときの記法ヒント。**最終木で出なければ探索を始めた木で見る**(2026-08-15)。
+    ///
+    /// `notationHint` は渡された1枚の木しか見ないので、部分一致の相手が探索のスワイプで
+    /// 画面外へ流れると**ヒントごと黙る** —— 読み手は「`*X*` と書け」を受け取れないまま同じ式で
+    /// 撃ち直す。さらに、開始時の木からしか出せなかったということは**その要素はもう後ろにある**
+    /// ので、勧めた `*X*` をそのまま同じ向きで撃っても届かない(外部評価 2026-08-15 の実害:
+    /// apple.com で `Shop` が8スワイプ空振り → 勧められた `*Shop*` も同じ結果、と報告された)。
+    /// `backDirection` は探索方向の逆(呼び手が渡す)
+    static func scrollNotationHint(_ selectorText: String, after: SnapshotResponse,
+                                   beforeScroll: SnapshotResponse?,
+                                   backDirection: String) -> String {
+        let fromFinal = notationHint(selectorText, in: after)
+        if !fromFinal.isEmpty { return fromFinal }
+        guard let beforeScroll else { return "" }
+        let fromStart = notationHint(selectorText, in: beforeScroll)
+        guard !fromStart.isEmpty else { return "" }
+        return fromStart + " That was on the screen where this search STARTED — the search has"
+            + " since scrolled past it, so re-running with direction: \(backDirection) (or going"
+            + " back to that screen first) is what actually reaches it."
+    }
+
     /// **記法の形違い**による部分一致の空振り。実測(2026-08-10): `*武蔵野線`(endsWith)を渡して
     /// 7スクロール空振りした(正解は `*武蔵野線*`)。StepExecutor.partialMatchHint は
     /// 「素の完全一致指定が部分一致なら在る」しか見ないので、**既に endsWith/startsWith を

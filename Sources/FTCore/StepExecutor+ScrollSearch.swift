@@ -20,6 +20,12 @@ extension StepExecutor {
         var swipes: Int = 0
         /// **もう動かないので上限より手前で打ち切った**。上限まで振り続けても結果は変わらないため
         var stoppedUnmoving: Bool = false
+        /// 探索中に木が**一度でも変わったか**。`stoppedUnmoving` の2形を分けるためだけに持つ:
+        /// true = スクロールできていて末尾に着いた / false = 最初から1度も動いていない
+        /// (指が容器の外・上に重なったモーダル・そもそもスクロールしない画面)。
+        /// **この区別が無いと「stopped early」としか言えず**、末尾に着いただけの回を
+        /// 「途中で諦めた」と読ませて maxSwipes の引き上げを繰り返させる(2026-08-15 の外部評価)
+        var contentEverMoved: Bool = false
         /// 端まで来ても見つからず、**逆向きの細刻みで拾い直した**回数(0 か 1。注記に載せる)
         var reverseSweeps: Int = 0
         /// 拾い直しに使った容器を**そのまま書けるセレクタ**にしたもの(nil = 名指しできない)。
@@ -98,8 +104,20 @@ extension StepExecutor {
         let limit = max(0, step.maxSwipes ?? FlowStep.defaultMaxSwipes)
         // 打ち切ったときは**実際の回数**を出す(上限を名乗ると「8回も振ったのに」と読めてしまう)
         let swipes = result?.stoppedUnmoving == true ? (result?.swipes ?? limit) : limit
-        let stopped = result?.stoppedUnmoving == true
-            ? " (stopped early: the content no longer moved)" : ""
+        // **「stopped early」と言わない**(2026-08-15 の外部評価)。旧文言は「途中で諦めた」としか
+        // 読めず、実際には**リストの末尾に着いていた**回(iOS の設定アプリで実測)を欠陥と
+        // 受け取らせ、maxSwipes を上げた再試行を誘っていた。上げても結果は変わらないので明言する。
+        // 2形を分けるのは `contentEverMoved` —— 動いた末の停止と、1度も動かなかったのとでは次の手が違う
+        let stopped: String
+        if result?.stoppedUnmoving == true {
+            stopped = result?.contentEverMoved == true
+                ? " (the scroll area reached its end — the content stopped moving,"
+                    + " so raising maxSwipes will not help)"
+                : " (nothing moved at all during the search — the swipes are not reaching a"
+                    + " scrolling area, so raising maxSwipes will not help)"
+        } else {
+            stopped = ""
+        }
         // **シート展開のヒント**: 半開ボトムシート内のリストは容器が動いても中身は動かず、
         // 「動かなくなった」だけでは利用者がシートの状態に気付けない(2026-08-08・Google マップ実測)。
         // **全画面リストの末尾到達には出さない**(containerIsPartialHeight。2026-08-08)
@@ -324,6 +342,8 @@ extension StepExecutor {
         // (1周で切らないのは、遅れて描画される行を「動かなかった」と誤断しないため)
         var swipes = 0
         var unmovedRounds = 0
+        // 打ち切りの理由文を分けるためだけの記録(ScrollSearchResult.contentEverMoved 参照)
+        var contentEverMoved = false
         var truncatedDuringSearch = 0
         // スクロールした容器(中身が入れ替わった領域)。逆走査の刻みの基準
         var scrolledContainer: FTRect?
@@ -488,6 +508,7 @@ extension StepExecutor {
                             snapshot = confirmed.snapshot
                             previousSnapshot = snapshot
                             unmovedRounds = 0
+                            contentEverMoved = true
                             continue
                         }
                         // シート展開ヒントは**対象の容器が画面の大半を占めない**ときだけ
@@ -505,6 +526,7 @@ extension StepExecutor {
                                                         viaXCUITest: viaXCUITest,
                                                         hintJumps: hintJumps,
                                                         swipes: swipes, stoppedUnmoving: true,
+                                                        contentEverMoved: contentEverMoved,
                                                         containerIsPartialHeight: containerIsPartialHeight,
                                                         maxTruncatedDuringSearch: truncatedDuringSearch)
                         guard recoverOnMiss, step.containerInference ?? true,
@@ -534,6 +556,9 @@ extension StepExecutor {
                         return result
                     }
                 } else {
+                    // **比較が成立した回だけ**「動いた」と数える(1周目は previousSnapshot が
+                    // 無いので、ここへ来ても何とも比べていない)
+                    if previousSnapshot != nil { contentEverMoved = true }
                     unmovedRounds = 0
                 }
                 // ヒント跳躍: 距離が分かるときは固定幅スワイプでなく長距離ドラッグで寄せる。

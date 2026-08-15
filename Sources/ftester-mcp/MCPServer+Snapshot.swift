@@ -1043,7 +1043,8 @@ extension MCPServer {
                 + "scrollTo \"\(selectorText)\" did not reach the element"
                 + " (\(reason))\(manualExpand)\(Self.truncationHint(after))."
                 + " \(Self.visibleLabelsHint(after))"
-                + Self.notationHint(selectorText, in: after)
+                + Self.scrollNotationHint(selectorText, after: after, beforeScroll: beforeScroll,
+                                          backDirection: Self.reversedDirection(direction))
                 + Self.similarLabelsHint(selectorText, in: after)
                 + Self.scrollAreaHint(beforeScroll ?? after, args: args))
         }

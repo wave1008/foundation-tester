@@ -40,10 +40,14 @@ private final class CountingDriver: AppDriver {
     }
 }
 
-/// 1周ごとに木が変わり続ける(= 動いている)画面。最後まで目標は出てこない
+/// 1周ごとに木が変わり続ける(= 動いている)画面。最後まで目標は出てこない。
+/// `movesAtMost` を絞ると**動いた末に凍る**(= リストの末尾に着いた形)になる
 private final class MovingDriver: AppDriver {
     private(set) var swipeCount = 0
     private var snapshots = 0
+    private let movesAtMost: Int
+
+    init(movesAtMost: Int = .max) { self.movesAtMost = movesAtMost }
 
     func status() async throws -> StatusResponse {
         StatusResponse(ready: true, device: "fake", osVersion: "-", sessionBundleID: nil)
@@ -66,7 +70,7 @@ private final class MovingDriver: AppDriver {
     func snapshot() async throws -> SnapshotResponse {
         snapshots += 1
         // 整定(1周目)で同じ木を2枚要求されるので、2枚ごとに位置を動かす
-        let y = 600 - Double((snapshots - 1) / 2) * 40
+        let y = 600 - Double(min((snapshots - 1) / 2, movesAtMost)) * 40
         return SnapshotResponse(sessionBundleID: nil,
                                 screen: FTRect(x: 0, y: 0, width: 402, height: 874),
                                 elements: [ElementInfo(ref: 1, type: "clickable",
@@ -104,10 +108,55 @@ final class ScrollSearchStopTests: XCTestCase {
         guard case .failed(let reason) = result.status else {
             return XCTFail("見つからない探索は失敗のはず: \(result.status)")
         }
-        XCTAssertTrue(reason.contains("stopped early"),
-                      "打ち切ったことが理由文に出ていない: \(reason)")
+        XCTAssertTrue(reason.contains("nothing moved at all"),
+                      "1度も動かなかったことが理由文に出ていない: \(reason)")
+        XCTAssertTrue(reason.contains("raising maxSwipes will not help"),
+                      "上限を上げても無駄だと言っていない: \(reason)")
         XCTAssertFalse(reason.contains("after 8 scroll(s)"),
                        "実際には振っていない回数を名乗っている: \(reason)")
+    }
+
+    /// **末尾に着いた回を「途中で諦めた」と読ませない**(2026-08-15 の外部評価)。
+    /// iOS の設定アプリで実測: リストの末尾まで届いていたのに旧文言が
+    /// 「stopped early: the content no longer moved」としか言わず、読み手は欠陥と受け取って
+    /// maxSwipes を 15 に上げて撃ち直した(結果は同じ)
+    func testReachedTheEndSaysSoInsteadOfStoppedEarly() {
+        let step = scrollTo("missing", maxSwipes: 8)
+        let reachedEnd = StepExecutor.ScrollSearchResult(found: false, fallback: nil,
+                                                         viaXCUITest: false, hintJumps: 0,
+                                                         swipes: 3, stoppedUnmoving: true,
+                                                         contentEverMoved: true)
+        let message = StepExecutor.scrollNotFoundMessage(step, reachedEnd)
+        XCTAssertTrue(message.contains("reached its end"), message)
+        XCTAssertTrue(message.contains("raising maxSwipes will not help"), message)
+        XCTAssertFalse(message.contains("nothing moved at all"),
+                       "動いた末の停止を「1度も動かなかった」と言っている: \(message)")
+    }
+
+    /// 1度も動かなかった回は別の手(容器の指定・上に重なった物の始末)が要るので文を分ける
+    func testNeverMovedIsDistinguishedFromReachingTheEnd() {
+        let step = scrollTo("missing", maxSwipes: 8)
+        let neverMoved = StepExecutor.ScrollSearchResult(found: false, fallback: nil,
+                                                         viaXCUITest: false, hintJumps: 0,
+                                                         swipes: 3, stoppedUnmoving: true,
+                                                         contentEverMoved: false)
+        let message = StepExecutor.scrollNotFoundMessage(step, neverMoved)
+        XCTAssertTrue(message.contains("nothing moved at all"), message)
+        XCTAssertFalse(message.contains("reached its end"), message)
+    }
+
+    /// **動いた末に止まったことを探索本体が申告する**。文言のテストだけだと
+    /// `contentEverMoved` を常に false にしても両方緑のままになる(配線の砦)
+    func testSearchReportsThatTheContentMovedBeforeItStopped() async throws {
+        let driver = MovingDriver(movesAtMost: 1)
+
+        let result = await StepExecutor(driver: driver).execute(scrollTo("missing", maxSwipes: 8))
+
+        guard case .failed(let reason) = result.status else {
+            return XCTFail("見つからない探索は失敗のはず: \(result.status)")
+        }
+        XCTAssertTrue(reason.contains("reached its end"),
+                      "動いた後で止まったのに「1度も動かなかった」と言っている: \(reason)")
     }
 
     /// **動いている間は打ち切らない**(上限まで使う)。ここが縮むと、

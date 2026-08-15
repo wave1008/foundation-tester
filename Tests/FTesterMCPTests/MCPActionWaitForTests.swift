@@ -116,7 +116,7 @@ final class MCPActionWaitForTests: XCTestCase {
     func testFtPressSupportsSnapshotAfterAndHoldSeconds() async throws {
         driver.snapshotResponse = waitSnapshot([waitElement(ref: 1, id: "row")])
         let text = bodyText(try await server.call(
-            tool: "ft_press", args: ["ref": 1, "holdSeconds": 2.0, "snapshotAfter": true]))
+            tool: "ft_long_press", args: ["ref": 1, "holdSeconds": 2.0, "snapshotAfter": true]))
         XCTAssertTrue(text.contains("press [1] done"), text)
         XCTAssertEqual(text.components(separatedBy: "\n").filter { $0.hasPrefix("screen:") }.count,
                        1, text)
@@ -125,7 +125,7 @@ final class MCPActionWaitForTests: XCTestCase {
     /// 旧名 duration は黙って既定値へ落とさない(1.0s の長押しに化けると沈黙した誤りになる)
     func testFtPressRejectsTheOldDurationName() async {
         do {
-            _ = try await server.call(tool: "ft_press",
+            _ = try await server.call(tool: "ft_long_press",
                                       args: ["x": 10.0, "y": 20.0, "duration": 2.0])
             XCTFail("旧名 duration が通った")
         } catch {

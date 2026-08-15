@@ -539,12 +539,12 @@ final class MCPToolCallTests: XCTestCase {
     }
 
     func testPressUsesDefaultDurationWhenOmitted() async throws {
-        _ = try await server.call(tool: "ft_press", args: ["ref": 4])
+        _ = try await server.call(tool: "ft_long_press", args: ["ref": 4])
         XCTAssertEqual(driver.calls, ["press(ref:4,duration:1.0)"])
     }
 
     func testPressPassesExplicitHoldSeconds() async throws {
-        _ = try await server.call(tool: "ft_press", args: ["ref": 4, "holdSeconds": 2.5])
+        _ = try await server.call(tool: "ft_long_press", args: ["ref": 4, "holdSeconds": 2.5])
         XCTAssertEqual(driver.calls, ["press(ref:4,duration:2.5)"])
     }
 
@@ -614,7 +614,7 @@ final class MCPToolCallTests: XCTestCase {
             ("ft_install", [:], "packagePath"),
             ("ft_launch", [:], "bundleId"),
             ("ft_type", [:], "text"),
-            ("ft_press", [:], "ref"),
+            ("ft_long_press", [:], "ref"),
             ("ft_tap", [:], "ref or x/y"),
             ("ft_swipe", ["direction": "sideways"], "up/down/left/right"),
             ("ft_run_scenario", [:], "id"),
@@ -674,7 +674,7 @@ final class MCPToolCallTests: XCTestCase {
     /// 起こし、ft_doctor は実 FM を叩くため(数秒〜分・環境依存)。そちらは名前の集合で担保する
     private static let driverBackedTools: Set<String> = [
         "ft_status", "ft_install", "ft_launch", "ft_snapshot", "ft_tap", "ft_type",
-        "ft_swipe", "ft_scroll_to", "ft_batch", "ft_press", "ft_screenshot", "ft_terminate",
+        "ft_swipe", "ft_scroll_to", "ft_batch", "ft_long_press", "ft_screenshot", "ft_terminate",
         "ft_double_tap", "ft_pinch", "ft_drag",
         "ft_navigate", "ft_clear_input", "ft_clear_app_data", "ft_open_url", "ft_rotate",
         "ft_list_apps",

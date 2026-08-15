@@ -1582,7 +1582,7 @@ extension MCPServer {
                 // **地図・キャンバスには ref が無い**(2026-08-09 実測): Apple マップの場所カードを
                 // 半分出したまま ref 無しで撃つと、指が画面全体に開くのでシートが掴まれ、
                 // **地図は 1px も動かずシートが全画面に展開した**。逃げ道が無かったので、
-                // ft_tap / ft_press / ft_drag と同じく座標を受ける
+                // ft_tap / ft_long_press / ft_drag と同じく座標を受ける
                 pinchCoordinate = (x, y)
                 frame = Self.pinchArea(x: x, y: y, radius: args["radius"] as? Double,
                                        screen: lastSnapshots[Self.engineKey(args)]?.screen)
@@ -1621,7 +1621,9 @@ extension MCPServer {
                 + (areaIgnored ? "" : iosEngineHint("Flutter", "pinch", args: args))
                 + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
 
-        case "ft_press":
+        // `ft_press` は旧名(2026-08-15 に `ft_long_press` へ改名)。**受け続ける** ——
+        // 手元のメモや既存の手順に残っている名前を「不明なツール」で落とす理由が無い
+        case "ft_long_press", "ft_press":
             // 引数名は DSL の tap(holdSeconds:) と同語彙(2026-08-10 の語彙統一)。
             // 旧名は黙って既定値に落とさない(1.0s の長押しに化けて沈黙した誤りになる)。
             // **引数だけで弾ける検証はドライバ取得より前に**(コールドスタートは分単位かかりうる)
@@ -1926,6 +1928,19 @@ extension MCPServer {
         }
         return " — no stable selector for this element, so a scenario cannot reproduce this"
             + " by selector; use a labelled ancestor, or have the app expose an id"
+            + Self.homeScreenLaunchHint(snapshot.sessionBundleID)
+    }
+
+    /// ホーム画面(ランチャ)で「安定セレクタが無い」と言われた相手への次の手(2026-08-15 の外部評価)。
+    /// アイコンは a11y の id を持たないので**この画面では永久に書けない** —— そこで詰まった読み手が
+    /// 欲しいのは別のセレクタではなく「アプリを開く別の口」なので、そちらを名指しする
+    static func homeScreenLaunchHint(_ session: String?) -> String {
+        guard let session,
+              session == "com.apple.springboard" || session.lowercased().contains("launcher")
+        else { return "" }
+        return ". This is the home screen — if you meant to open an app, ft_launch bundleId:"
+            + " <bundle id / package> does it directly (ft_list_apps prints the ids), and a"
+            + " scenario can reproduce that."
     }
 
     /// 座標で撃ったときの断り(E-4)。**推測のセレクタを出さない** —— 座標には

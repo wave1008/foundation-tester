@@ -363,6 +363,30 @@ final class MCPReproductionSelectorTests: XCTestCase {
         _ = try await server.call(tool: "ft_snapshot", args: [:])
         let text = body(try await server.call(tool: "ft_tap", args: ["ref": 1]))
         XCTAssertTrue(text.contains("no stable selector for this element"), text)
+        XCTAssertFalse(text.contains("ft_launch bundleId:"),
+                       "アプリの中なのにホーム画面向けの助言が出ている: \(text)")
+    }
+
+    /// **ホーム画面のアイコンには次の手を添える**(2026-08-15 の外部評価)。ランチャのアイコンは
+    /// a11y の id を持たないので「安定セレクタが無い」で永久に終わる —— そこで欲しいのは
+    /// 別のセレクタではなく `ft_launch`。**助手の配線まで通す**(単体の
+    /// `homeScreenLaunchHint` が緑でも、呼ばれていなければ利用者には何も届かない)
+    func testHomeScreenIconPointsAtLaunchInstead() async throws {
+        driver.snapshotResponse = SnapshotResponse(
+            sessionBundleID: "com.google.android.apps.nexuslauncher",
+            screen: FTRect(x: 0, y: 0, width: 1080, height: 2424),
+            elements: [
+                ElementInfo(ref: 1, type: "staticText", identifier: nil, label: nil, value: nil,
+                            placeholder: nil, enabled: true,
+                            frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 1),
+                ElementInfo(ref: 2, type: "staticText", identifier: nil, label: nil, value: nil,
+                            placeholder: nil, enabled: true,
+                            frame: FTRect(x: 0, y: 20, width: 10, height: 10), depth: 1),
+            ],
+            truncatedCount: 0)
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        let text = body(try await server.call(tool: "ft_tap", args: ["ref": 1]))
+        XCTAssertTrue(text.contains("ft_launch bundleId:"), text)
     }
 
     /// E-4: 座標には出せる根拠が無いので、出さずに断る
@@ -375,7 +399,7 @@ final class MCPReproductionSelectorTests: XCTestCase {
     /// **ref を受ける操作系すべて**に入る(1つでも漏れると、その道具を使った手だけ書けない)
     func testEveryRefTakingToolNamesASelector() async throws {
         for (tool, args) in [("ft_tap", ["ref": 1] as [String: Any]),
-                             ("ft_press", ["ref": 1]),
+                             ("ft_long_press", ["ref": 1]),
                              ("ft_double_tap", ["ref": 1]),
                              ("ft_clear_input", ["ref": 1]),
                              ("ft_type", ["ref": 1, "text": "abc"]),

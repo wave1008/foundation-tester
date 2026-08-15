@@ -131,6 +131,9 @@ final class MCPRoundTripTests: XCTestCase {
     // MARK: - 撃った値・撃った手が draft に残る(2026-08-10 レビュー: 3秒の長押しが
     // 1秒に化ける / doubleTap・pinch が下書きから消える、の両方を塞ぐ)
 
+    /// **旧名 `ft_press` で呼ぶのは意図的**(2026-08-15 に `ft_long_press` へ改名した際の別名の砦)。
+    /// 手元のメモや既存の手順に残っている名前が「不明なツール」で落ちないことを、
+    /// 名前の集合ではなく**実際に1手通して**確かめる
     func testPressHoldSecondsReachesTheDraft() async throws {
         _ = try await server.call(tool: "ft_snapshot", args: [:])  // ref の台帳を作る(実フローと同順)
         _ = try await server.call(tool: "ft_press", args: ["ref": 1, "holdSeconds": 3.0])

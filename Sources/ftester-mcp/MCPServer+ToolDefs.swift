@@ -439,7 +439,11 @@ extension MCPServer {
             "expandBulk": expandBulkProperty,
             "interactiveOnly": interactiveOnlyProperty,
         ]),
-        tool("ft_press", "Long-press an element (ref) or a coordinate (x,y). Use x/y on a map or "
+        // **名前が「長押し」と言い切っていること**(2026-08-15 の外部評価)。ツールの説明が
+        // 遅延ロードされるクライアントでは、呼ぶかどうかを**名前だけ**で決める瞬間があり、
+        // `ft_press` は「ハードウェアキーを押す」と読まれていた。旧名は dispatch で受け続ける
+        tool("ft_long_press", "Long-press (press and hold) an element (ref) or a coordinate (x,y). "
+            + "This is NOT a hardware key press. Use x/y on a map or "
             + "canvas, where the point you want has no element of its own. " + coordinateCaveat, [
             "ref": ["type": "integer", "description": "Reference number from ft_snapshot"],
             "x": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
