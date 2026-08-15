@@ -1535,6 +1535,12 @@ extension MCPServer {
             } else {
                 prefix = ""
             }
+            // **スコープが割れたら畳まない**。2026-08-16 に「全員索引形なら畳めるはず」と
+            // 緩めて実測したが、**撤回した** —— 固定コーパス 40 枚で減るのは 1,555B(最悪画面
+            // `ios-maps_transit_steps_expanded` で 2,690→2,290)なのに対し、
+            // 失うのは上のテストが witness を持つ識別情報そのもの(Google マップのタブ帯は
+            // **どのタブの子かが祖先名にしか乗っていない**)。畳んだ瞬間に5件が区別できなくなる。
+            // **再提案しない**(測ったうえで割に合わないと決めた)
             if let existing = scope {
                 guard existing == prefix else { return nil }
             } else {
@@ -1559,13 +1565,53 @@ extension MCPServer {
     /// (呼び出し側で `label` に整形済み — `"\"foo\""` か `"#foo"`)と3つの文言だけなので、
     /// ここは凡例ヘッダ・グループごとの明細・打ち切り行・`anyStable` フッタだけを持つ。
     /// **グループ化とフィルタは呼び出し側の責務のまま**(ここへ寄せない)
+    /// `brief`(2026-08-16): **事実と群は出すが、要素ごとの代替セレクタの列挙だけ畳む**。
+    /// A/B の計測用の口(`FT_MCP_NOTES_BRIEF` の宣言参照)で、既定は false = 従来どおり。
+    /// **`abbreviated` とは畳む対象が違う** —— あちらはヘッダの凡例、こちらは明細。
+    /// 実測(`ios-maps_transit_steps_expanded`)では、注記 3,621B のうち明細が主因で、
+    /// 短縮形にしても 2,894B にしか下がらない
     private static func renderGroups(_ sortedGroups: [(label: String, matches: [ElementInfo])],
                                      naming: SelectorNaming, in snapshot: SnapshotResponse,
                                      fullHeader: String, shortHeader: String,
-                                     overflowNoun: String, abbreviated: Bool) -> String {
+                                     overflowNoun: String, abbreviated: Bool,
+                                     brief: Bool = false) -> String {
         guard !sortedGroups.isEmpty else { return "" }
         var lines: [String] = [abbreviated ? shortHeader : fullHeader]
         var anyStable = false
+        if brief {
+            // **既に畳まれている群には触らない**(2026-08-16 の実測で踏んだ): 全群が
+            // `compactGroupLine` で畳まれる画面(セレクタが1つも書けない web の格子等)で
+            // 末尾の総括を足すと、**畳んだはずの brief のほうが長くなる**(固定コーパス 40 枚中
+            // 10 枚が負だった)。brief は full の**厳密な部分集合**でなければ、A/B が
+            // 「明細の有無」ではなく「定型文の差」を測ってしまう
+            var foldedAny = false
+            for (label, matches) in sortedGroups.prefix(ambiguousLabelsShown) {
+                let gradedShown = matches.prefix(ambiguousMatchesShown)
+                    .map { naming.graded(for: $0, in: snapshot) }
+                if let compact = compactGroupLine(label: label, matches: matches,
+                                                  gradedShown: gradedShown, naming: naming,
+                                                  in: snapshot) {
+                    lines.append(compact)
+                    continue
+                }
+                foldedAny = true
+                let shownRefs = matches.prefix(ambiguousMatchesShown).map { "[\($0.ref)]" }
+                    .joined(separator: " ")
+                let cut = matches.count > ambiguousMatchesShown
+                    ? " (+\(matches.count - ambiguousMatchesShown) more matches not shown)" : ""
+                lines.append("  \(label) ×\(matches.count): \(shownRefs)\(cut)")
+            }
+            if sortedGroups.count > ambiguousLabelsShown {
+                lines.append("  (+\(sortedGroups.count - ambiguousLabelsShown) more"
+                    + " \(overflowNoun)(s) not shown — ft_snapshot again after narrowing the"
+                    + " screen to see them)")
+            }
+            if foldedAny {
+                lines.append("  Tap these by ref. To get a selector for one of them,"
+                    + " ft_tap prints the selector it recommends for the element it hit.")
+            }
+            return lines.joined(separator: "\n") + "\n"
+        }
         // **畳んだ行は既に「tap by ref instead」と言っている**(compactGroupLine)。全部が
         // 畳まれた回に末尾の総括まで出すと、同じ助言が N+1 回並ぶ(2026-08-12 の監査で実測:
         // Google マップの経路一覧で5群すべてが畳まれ、その下にもう一度同じ文が出ていた)
@@ -1581,6 +1627,13 @@ extension MCPServer {
                 continue
             }
             allCompact = false
+            // **索引形も書き出す**。2026-08-16 に「索引形は最も弱い格付けなので ref だけにする」と
+            // 削って実測したが、**撤回した** —— 固定コーパスで 3,401B(明細の 42%)を占める
+            // 最大の塊ではあるが、**その長さの元凶であるスコープ接頭辞が識別情報そのもの**
+            // (`#explore_tab_strip_button >> .other` と `#saved_tab_strip_button >> .other` は
+            // 「どのタブの子か」だけが違う)。落とすと5件が区別できなくなる ——
+            // compactGroupLine の同スコープ要求と**同じ理由で同じテストが捕まえる**。
+            // **再提案しない**(2回試して2回とも同じ砦に当たった)
             let shown = zip(matches.prefix(ambiguousMatchesShown), gradedShown)
                 .map { element, graded -> String in
                     guard let graded else { return "[\(element.ref)] —" }
@@ -1608,6 +1661,7 @@ extension MCPServer {
     /// `abbreviated`(F-6 の対象拡大・2026-08-10): 明細行(ラベルごとの候補列挙)と末尾の
     /// 「+N more」は既定と同じまま、ヘッダの凡例だけ「初出の注記を見よ」に圧縮する
     static func ambiguousLabelsNote(_ snapshot: SnapshotResponse, abbreviated: Bool = false,
+                                    brief: Bool = false,
                                     cache: SnapshotAnnotationCache? = nil) -> String {
         var groups: [String: [ElementInfo]] = [:]
         for e in snapshot.elements {
@@ -1656,7 +1710,7 @@ extension MCPServer {
                                 + " weakest of the three):",
                             shortHeader: "note: ambiguous labels — write one of these instead"
                                 + " (legend in the first snapshot's note):",
-                            overflowNoun: "ambiguous label", abbreviated: abbreviated)
+                            overflowNoun: "ambiguous label", abbreviated: abbreviated, brief: brief)
     }
 
     /// 重複 id の要約注記。`#id` はこのツールが最も推奨するセレクタなので、行末の `×N` だけ
@@ -1666,6 +1720,7 @@ extension MCPServer {
     /// 仕組み**(SelectorNaming.graded)を使い回す —— 採番規則を2つ持たない。
     /// `abbreviated` はラベル版と同じ意味(F-6)
     static func duplicateIDsNote(_ snapshot: SnapshotResponse, abbreviated: Bool = false,
+                                 brief: Bool = false,
                                  cache: SnapshotAnnotationCache? = nil) -> String {
         var groups: [String: [ElementInfo]] = [:]
         for e in snapshot.elements {
@@ -1698,7 +1753,7 @@ extension MCPServer {
                                 + " weakest of the three):",
                             shortHeader: "note: duplicate ids — write one of these instead"
                                 + " (legend in the first snapshot's note):",
-                            overflowNoun: "duplicate id", abbreviated: abbreviated)
+                            overflowNoun: "duplicate id", abbreviated: abbreviated, brief: brief)
     }
 
     /// 注記に並べる群の順序。件数の多い順で、**同数タイは key の昇順**。

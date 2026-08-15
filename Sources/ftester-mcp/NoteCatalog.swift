@@ -34,12 +34,17 @@ enum NoteCatalog {
         let snapshot: SnapshotResponse
         let collapsingBulk: Bool
         let cache: MCPServer.SnapshotAnnotationCache
+        /// 明細(要素ごとの代替セレクタ)を畳む鍵。`brief` の宣言参照。
+        /// **差し替え口**(既定 = env 由来。テストは自分の集合を渡してこの経路を通す)
+        let brief: Set<String>
 
         init(snapshot: SnapshotResponse, collapsingBulk: Bool = true,
-             cache: MCPServer.SnapshotAnnotationCache? = nil) {
+             cache: MCPServer.SnapshotAnnotationCache? = nil,
+             brief: Set<String> = NoteCatalog.brief) {
             self.snapshot = snapshot
             self.collapsingBulk = collapsingBulk
             self.cache = cache ?? MCPServer.SnapshotAnnotationCache()
+            self.brief = brief
         }
     }
 
@@ -118,11 +123,15 @@ enum NoteCatalog {
             MCPServer.urlishLabelsNote(input.snapshot, abbreviated: abbreviated)
         },
         Entry(key: "ambiguousLabelsNote", contexts: [.snapshot, .scrollTo], abbreviates: true) { input, abbreviated in
-            MCPServer.ambiguousLabelsNote(input.snapshot, abbreviated: abbreviated, cache: input.cache)
+            MCPServer.ambiguousLabelsNote(input.snapshot, abbreviated: abbreviated,
+                                          brief: input.brief.contains("ambiguousLabelsNote"),
+                                          cache: input.cache)
         },
         // ラベル版の直後に置く(読み手はどちらも「一意に指せるか」を見に来る)
         Entry(key: "duplicateIDsNote", contexts: [.snapshot, .scrollTo], abbreviates: true) { input, abbreviated in
-            MCPServer.duplicateIDsNote(input.snapshot, abbreviated: abbreviated, cache: input.cache)
+            MCPServer.duplicateIDsNote(input.snapshot, abbreviated: abbreviated,
+                                       brief: input.brief.contains("duplicateIDsNote"),
+                                       cache: input.cache)
         },
         Entry(key: "keyboardCoverageNote", contexts: [.snapshot, .scrollTo], abbreviates: false) { input, _ in
             MCPServer.keyboardCoverageNote(input.snapshot)
@@ -160,6 +169,18 @@ enum NoteCatalog {
 
     /// プロセスの寿命で固定(途中で変わると同じセッションの応答が不揃いになる)
     static let disabled = disabledKeys(from: ProcessInfo.processInfo.environment["FT_MCP_NOTES_OFF"])
+
+    /// `FT_MCP_NOTES_BRIEF` = **注記は出すが明細(要素ごとの代替セレクタ)だけ畳む**指定。
+    /// 解釈は `FT_MCP_NOTES_OFF` と同じ(カンマ/空白区切り、`all`)。
+    ///
+    /// **なぜ「落とす」と別の口が要るか**(2026-08-16。動機は Bench/measurements.md の
+    /// 2026-08-16 節): 列挙する注記は本単位で落とすと**事実そのもの**(この id は×N なので
+    /// 素の `#id` では選べない)まで消えるので、A/B が測るのは「事実が要るか」になってしまう。
+    /// 実測ではその事実は効いており(`ambiguousLabelsNote` を落とすとセレクタを書くタスクで
+    /// ft_* が 17→28)、**残る問いは「明細まで要るか」**だった —— 出力量の主因は明細のほうで、
+    /// 短縮形(2回目以降)でも `duplicateIDsNote` は 1,810B→1,568B しか減らない
+    /// (畳んでいるのは凡例だけ)。この口はその問いを測るためにある
+    static let brief = disabledKeys(from: ProcessInfo.processInfo.environment["FT_MCP_NOTES_BRIEF"])
 
     /// 目録に無い鍵を指定された分。**黙って無視しない** —— 綴りを間違えたまま A/B を回すと
     /// 「その注記は効かなかった」という誤った結論が出る(実際には落ちていない)

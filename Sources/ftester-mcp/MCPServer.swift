@@ -137,6 +137,16 @@ final class MCPServer {
             Self.logStderr("FT_MCP_NOTES_OFF: NOT a note key (ignored): "
                 + unknownNoteKeys.joined(separator: ", "))
         }
+        // 明細だけ畳む指定も同じ規律で名乗る(A/B の陽性対照。NoteCatalog.brief の宣言参照)
+        if !NoteCatalog.brief.isEmpty {
+            Self.logStderr("FT_MCP_NOTES_BRIEF: folding the per-element detail of "
+                + NoteCatalog.brief.sorted().joined(separator: ", "))
+        }
+        let unknownBriefKeys = NoteCatalog.unknownDisabledKeys(NoteCatalog.brief)
+        if !unknownBriefKeys.isEmpty {
+            Self.logStderr("FT_MCP_NOTES_BRIEF: NOT a note key (ignored): "
+                + unknownBriefKeys.joined(separator: ", "))
+        }
         while let line = readLine(strippingNewline: true) {
             // **壊れた行でループを抜けない**: 1行の不正でサーバが死ぬとセッションごと落ちる
             guard let message = Self.parseMessage(line) else { continue }

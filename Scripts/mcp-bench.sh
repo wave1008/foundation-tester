@@ -15,6 +15,11 @@
 # 鍵と同じで、`all` で全注記を落とす。**綴りを間違えた鍵はサーバが stderr で名指しする**
 # (落ちていない注記を「落とした」と誤解したまま結論を出さないため)。
 #
+# `brief:` を頭に付けると**注記は出したまま明細(要素ごとの代替セレクタ)だけ畳む**
+# (`FT_MCP_NOTES_BRIEF` へ回す)。列挙する注記は本単位で落とすと事実まで消えるので、
+# 「事実が要るか」ではなく「明細まで要るか」を測るときはこちら:
+#   --variant full= --variant brief=brief:duplicateIDsNote,ambiguousLabelsNote
+#
 # 前提: `claude` CLI と、タスクが要求するデバイス/アプリ。デバイスは各タスクの
 # `requires` に書いてあるものを**先に用意しておくこと**(この台本は用意しない ——
 # 用意まで抱えると、失敗したときに「エージェントが下手だった」のか「盤面が違った」のかが
@@ -115,10 +120,15 @@ for vi in "${!VARIANT_NAMES[@]}"; do
   spec="${VARIANT_SPECS[$vi]}"
   vdir="$OUT/$variant"
   mkdir -p "$vdir"
+  # `brief:` 接頭辞は「落とす」ではなく「明細だけ畳む」側へ回す(冒頭の使い方を参照)
+  case "$spec" in
+    brief:*) off_spec=""; brief_spec="${spec#brief:}" ;;
+    *) off_spec="$spec"; brief_spec="" ;;
+  esac
   cat > "$vdir/mcp.json" <<JSON
-{"mcpServers":{"ftester":{"command":"$BIN","env":{"FT_MCP_NOTES_OFF":"$spec"}}}}
+{"mcpServers":{"ftester":{"command":"$BIN","env":{"FT_MCP_NOTES_OFF":"$off_spec","FT_MCP_NOTES_BRIEF":"$brief_spec"}}}}
 JSON
-  say "==> variant $variant (FT_MCP_NOTES_OFF='$spec')"
+  say "==> variant $variant (FT_MCP_NOTES_OFF='$off_spec' FT_MCP_NOTES_BRIEF='$brief_spec')"
 
   for id in "${TASKS[@]}"; do
     f="$TASK_DIR/$id.json"
