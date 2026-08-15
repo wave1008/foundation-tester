@@ -11,28 +11,14 @@
 
 import XCTest
 @testable import FTCore
+import FTTestSupport
 
 final class TreeCoverageTests: XCTestCase {
 
     // MARK: - 固定コーパス
 
-    private static var fixtureDirectory: URL {
-        URL(fileURLWithPath: #filePath)      // Tests/FTCoreTests/このファイル
-            .deletingLastPathComponent()      // Tests/FTCoreTests
-            .deletingLastPathComponent()      // Tests
-            .appendingPathComponent("Fixtures/RealAppSnapshots")
-    }
-
     private func corpus() throws -> [(name: String, snapshot: SnapshotResponse)] {
-        try FileManager.default.contentsOfDirectory(atPath: Self.fixtureDirectory.path)
-            .filter { $0.hasSuffix(".json") }
-            .sorted()
-            .map { file in
-                let url = Self.fixtureDirectory.appendingPathComponent(file)
-                return (String(file.dropLast(".json".count)),
-                        try JSONDecoder().decode(SnapshotResponse.self,
-                                                 from: try Data(contentsOf: url)))
-            }
+        try RealAppSnapshotCorpus.all()
     }
 
     /// **等号で固定する**(部分集合ではない)。増えたら1件ずつ見て真陽性だと確かめてから直すこと ——
@@ -158,6 +144,49 @@ final class TreeCoverageTests: XCTestCase {
             XCTAssertNotNil(TreeCoverage.gap(in: tree),
                             "\(type) が帯を埋めたことにされた(葉だけを数えていない)")
         }
+    }
+
+    // MARK: - 高さ条件はテキストを持たない要素にだけ効く(2026-08-15 レビュー修正)
+
+    /// ヘッダ(0-100)+3000pt の本文(100-3100)+フッタ(700-1000)。本文が可視高(1000)より
+    /// 高いラッパーと区別できないまま除外されると、埋まっている 100-700 が空白帯に見える
+    private func treeWithTallLeaf(bodyLabel: String?, bodyValue: String?) -> SnapshotResponse {
+        let container = ElementInfo(ref: 1, type: "webView", identifier: "page", label: nil,
+                                   value: nil, placeholder: nil, enabled: true,
+                                   frame: FTRect(x: 0, y: 0, width: 1000, height: 1000), depth: 1)
+        let header = ElementInfo(ref: 2, type: "staticText", identifier: nil, label: "header",
+                                 value: nil, placeholder: nil, enabled: true,
+                                 frame: FTRect(x: 0, y: 0, width: 1000, height: 100), depth: 2)
+        let body = ElementInfo(ref: 3, type: "staticText", identifier: nil, label: bodyLabel,
+                               value: bodyValue, placeholder: nil, enabled: true,
+                               frame: FTRect(x: 0, y: 100, width: 1000, height: 3000), depth: 2)
+        let footer = ElementInfo(ref: 4, type: "staticText", identifier: nil, label: "footer",
+                                 value: nil, placeholder: nil, enabled: true,
+                                 frame: FTRect(x: 0, y: 700, width: 1000, height: 300), depth: 2)
+        return SnapshotResponse(sessionBundleID: nil, screen: screen,
+                                elements: [container, header, body, footer], truncatedCount: 0)
+    }
+
+    /// 確定トレースそのもの: ラベル付きの縦長本文は可視高より高くても覆いに数える(誤検知の直し)
+    func testATallLabeledLeafCoversTheBandItSpans() throws {
+        let tree = treeWithTallLeaf(bodyLabel: "article body text", bodyValue: nil)
+        XCTAssertFalse(TreeCoverage.underreports(tree),
+                       "ラベル付き本文で埋まっている帯が空白と誤報告された")
+    }
+
+    /// ラベルも値も持たない同じ形(全面ラッパー)は従来どおり覆いに数えない ——
+    /// 高さ条件の役目(ラッパーの除外)が残っていること。逆方向の変異を殺す
+    func testATallUnlabeledLeafStillDoesNotCoverTheBand() throws {
+        let tree = treeWithTallLeaf(bodyLabel: nil, bodyValue: nil)
+        XCTAssertNotNil(TreeCoverage.gap(in: tree),
+                        "ラベルも値も無い全面ラッパーが覆いにされた(高さ条件が効いていない)")
+    }
+
+    /// OR のもう一方の枝: value だけ(label は nil)でも覆いになる
+    func testATallLeafWithOnlyAValueCoversTheBand() throws {
+        let tree = treeWithTallLeaf(bodyLabel: nil, bodyValue: "27.4")
+        XCTAssertNil(TreeCoverage.gap(in: tree),
+                     "value だけ持つ縦長葉が覆いにされなかった")
     }
 
     /// **アドレス欄が無ければ黙る**: 空白率だけで判定するとネイティブ画面まで拾う

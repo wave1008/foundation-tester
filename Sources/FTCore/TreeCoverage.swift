@@ -36,6 +36,12 @@ public enum TreeCoverage {
     /// 空白帯の走査に使う分割数。**位置の候補を決めるだけ**で高さの量子化には使わない
     /// (`emptyBands` の doc)。
     ///
+    /// **60 の根拠**(単位: 分割数): 数える最小の帯は容器可視高の 8%(gapBandContainerFraction)。
+    /// 格子間隔は可視高の 1/60 ≈ 1.7% なので、最小帯の内側に必ず4本以上の候補が落ちる
+    /// (約4.8倍の余裕。検知には1本で足りる)。**尽きたとき**(gapBandContainerFraction を
+    /// 下げて細い帯を拾いたくなったとき)は、間隔 1/60 が新しい最小帯より細いままかを
+    /// 先に確かめてから分割数を動かす
+    ///
     /// **コストは webView がある画面でだけ効く**(容器を探す O(n) で抜けるため)。実測
     /// (2026-08-15・debug ビルド): `underreports` 1回が 120 要素のブラウザ画面で 1.1ms、
     /// 天井の 400 要素で 11.9ms。**ポーリングの毎周には置けない量**なので、呼び手は
@@ -94,10 +100,20 @@ public enum TreeCoverage {
         let sliceHeight = (bottom - top) / Double(gapScanSlices)
         guard sliceHeight > 0 else { return [] }
         // **葉だけを数える**: 容器(webView・scrollView)は帯を丸ごと覆うので、含めると
-        // どんな木でも「埋まっている」に見える
+        // どんな木でも「埋まっている」に見える。
+        //
+        // **高さの上限はラベルも値も持たない要素にだけ適用する**: 元々の役目は「容器の可視高より
+        // 高いレイアウトラッパー」(DOM 由来の div 等。描かれた中身の申し立てが無い)を覆いから
+        // 落とすことだが、テキストを持つ葉(縦長の記事本文 staticText 等)まで一緒に落としており、
+        // 実際は本文で埋まっている帯を空白と誤報告していた(2026-08-15 のレビューで確定。
+        // webView 可視 0-800 に対し 100-3100 の本文 staticText が丸ごと除外され、100-700 が
+        // 偽の空白帯として発火した)。label/value のどちらかが非空なら、可視高より高くても
+        // 覆いに数える。**この検知は警告専用なので、テキスト付き全面要素という曖昧な形は
+        // 黙る側(見逃し)に倒す** —— 逆に倒すと健全な木を騒がせる
         let leaves = snapshot.elements.filter {
             $0.ref != container.ref && $0.scrollable != true && $0.type != "webView"
-                && $0.frame.height < (bottom - top)
+                && ($0.frame.height < (bottom - top)
+                    || !($0.label ?? "").isEmpty || !($0.value ?? "").isEmpty)
         }
         var columns: [(start: Int, count: Int)] = []
         var runStart = 0, run = 0
