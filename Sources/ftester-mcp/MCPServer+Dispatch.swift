@@ -1004,6 +1004,24 @@ extension MCPServer {
             // installedState は撃たない: simctl openurl/devicectl openURL・am start は OS の URL
             // ルーティングで、installedState が守っている XCUIApplication.launch() のランナー死
             // (ft_launch のコメント参照)とは経路が別
+            // **既定で着地を待つ**(2026-08-16 の外部評価)。URL の配送は非同期なので、
+            // `snapshotAfter` だけを渡すと**前の画面が黙って返る** —— 読み手は「開いた先の
+            // 画面が欲しい」から snapshotAfter を付けているので、既定が誤りの側に倒れていた
+            // (評価者の指摘。こちらも同セッションで踏んで snapshot を2回撮った)。
+            // **比較の基準が要る**: `waitForChange` は「操作前の木」と比べるので、まだ1枚も
+            // 読んでいないデバイス(ft_launch → ft_open_url が典型)では**待たずに素通りする**。
+            // そこで基準が無いときだけ配送**前**に1枚読む。読めなくても配送は続ける
+            // (主たる操作は URL の配送で、基準取りの失敗でそれを落とさない)。
+            // 明示された `waitFor` / `waitForChange: false` は当然そのまま尊重する
+            var openURLArgs = args
+            let wantsLandingWait = args["snapshotAfter"] as? Bool == true
+                && args["waitFor"] == nil && args["waitForChange"] == nil
+            if wantsLandingWait {
+                if lastSnapshots[Self.engineKey(args)] == nil {
+                    _ = try? await freshSnapshot(openURLDriver, args: args)
+                }
+                openURLArgs["waitForChange"] = true
+            }
             try await openURLDriver.openURL(url, bundleID: openURLBundleID)
             var openStep = FlowStep(action: "openURL")
             openStep.text = url
@@ -1011,8 +1029,9 @@ extension MCPServer {
                                                      summary: "openURL \"\(url)\""))
             return text(Self.openURLSummary(url: url, bundleID: openURLBundleID,
                                             bundleIDWasRemembered: explicitBundleID == nil,
-                                            snapshotAfter: args["snapshotAfter"] as? Bool == true)
-                + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
+                                            snapshotAfter: args["snapshotAfter"] as? Bool == true,
+                                            waitedForLanding: wantsLandingWait)
+                + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(openURLArgs)))
 
         case "ft_snapshot":
             // **明示分だけ・丸ごと置き換え**(snapshotAfterBody が読む記憶)。省略したキーは
@@ -1858,8 +1877,11 @@ extension MCPServer {
     /// しかも Android では bundleID が intent の宛先そのものなので、その間に別アプリへ
     /// 移っていれば**裏に居るアプリが叩き起こされる**。断らずに済ませる代わりに、
     /// 何を根拠に選んだかを必ず添える
+    /// `waitedForLanding`: 着地待ち(waitForChange)を実際に適用したか。**要約は実際にやったことを
+    /// 言う** —— `waitForChange: false` を渡した相手に「待って読んだ」と書くと、返ってきた木が
+    /// 前の画面でも読み手は待った結果だと信じる(2026-08-16 に変異テストの境界を締めて露見)
     static func openURLSummary(url: String, bundleID: String?, bundleIDWasRemembered: Bool,
-                               snapshotAfter: Bool) -> String {
+                               snapshotAfter: Bool, waitedForLanding: Bool = true) -> String {
         let target = bundleID.map {
             " to \($0)" + (bundleIDWasRemembered
                 ? " (not given — this session's last ft_launch on this device;"
@@ -1869,9 +1891,15 @@ extension MCPServer {
         let delivered = "Delivered \(url)" + target + "."
         let asynchronous = " Delivery is asynchronous (the app has to receive and handle it)"
         guard !snapshotAfter else {
-            return delivered + asynchronous + " — the tree below was read right after delivery, so"
-                + " it can still be the previous screen; pass waitFor with something only the"
-                + " destination has when that matters"
+            // **既定が「待つ」に変わった**(2026-08-16)。以前は配送直後に読んでいたので
+            // 前の画面が返り得た。待っても着地しなかったことは waitForChange の注記が言う
+            guard waitedForLanding else {
+                return delivered + asynchronous + " — the tree below was read right after delivery"
+                    + " (waitForChange: false), so it can still be the previous screen"
+            }
+            return delivered + asynchronous + " — the tree below was read after waiting for the"
+                + " screen to change (pass waitFor with something only the destination has when"
+                + " the change alone is not enough, or waitForChange: false to read immediately)"
         }
         return delivered + asynchronous
             + " — if a ft_snapshot right after still shows the old screen, wait and snapshot again"

@@ -104,6 +104,12 @@ final class FakeDriver: AppDriver, @unchecked Sendable {
     /// (DraftTypeSelectorTests の配線テストがこの形)
     var scriptedSnapshots: [SnapshotResponse] = []
 
+    /// **既定実装は 501 を投げる**ので、上書きしないと ft_open_url の経路が一切テストできない
+    /// (2026-08-16 に着地待ちの既定を入れたときに必要になった)。順序の検証に使うので記録する
+    func openURL(_ url: String, bundleID: String?) async throws {
+        try record("openURL(\(url))", "openURL")
+    }
+
     func clearAppData(bundleID: String) async throws {
         try record("clearAppData(\(bundleID))", "clearAppData")
     }

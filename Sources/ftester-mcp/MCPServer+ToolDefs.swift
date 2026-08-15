@@ -200,7 +200,10 @@ extension MCPServer {
         tool("ft_open_url", "Deliver a URL (deep link) to the app WITHOUT restarting it — unlike "
             + "ft_launch, the app keeps running and whatever it navigates to is pushed on top of the "
             + "current screen. Use this to jump into a specific screen of an already-running app; use "
-            + "ft_launch when you need it from the first screen instead", [
+            + "ft_launch when you need it from the first screen instead. Delivery is asynchronous, so "
+            + "snapshotAfter waits for the screen to change before reading (pass waitFor when the "
+            + "destination needs more than 'something changed', or waitForChange: false to read "
+            + "immediately)", [
             "url": ["type": "string", "description": "The URL/deep link to deliver"],
             "bundleId": ["type": "string", "description": "bundle ID (iOS) / package name — the Android "
                 + "intent target. Defaults to the bundle ID of the last ft_launch"],
