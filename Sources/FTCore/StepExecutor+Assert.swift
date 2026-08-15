@@ -202,7 +202,16 @@ extension StepExecutor {
     /// 判定は `FTCore.TreeCoverage`(MCP の webViewGapNote / missingPageContentNote と共有)。
     ///
     /// **注記だけで判定は変えない**: 打ち切りと違いブリッジの申告ではなく幾何からの疑いなので、
-    /// 失敗にすると空のページに対する正当な `notExist` が書けなくなる
+    /// 失敗にすると空のページに対する正当な `notExist` が書けなくなる。
+    ///
+    /// **呼ぶのは不在を結論する2経路(notExists / count)だけ**(2026-08-15 のデバイス実行で確定)。
+    /// 隣の `noteEmptyWebView` は4経路すべてから呼ぶので揃えたくなるが、**あちらの条件
+    /// (委譲 WebView が完全に空)は稀**なのに対し、こちらは a11y に出ない部分がある WebView
+    /// なら**どの画面でも立つ**。4経路へ広げたところ、5 SUT の緑の run すべてで
+    /// `exist "WebView 画面外テキスト"` に毎回付いた(真陽性 —— あのページは
+    /// `aria-hidden` の見出しを持つ `webViewGapNote` の offline witness そのもの)。
+    /// **毎回出る注記は率を見る役に立たない**(StepNote 冒頭の規律)うえ、通った `exist` に
+    /// 「不在の証拠にならない」と書くのは文としても噛み合わない
     func noteUnderreportedTree(_ snapshot: SnapshotResponse) {
         if TreeCoverage.underreports(snapshot) {
             noteCodesThisStep.insert(.treeUnderreported)
@@ -319,7 +328,6 @@ extension StepExecutor {
             phase.snapshotMs += Self.ms(clock.now - start)
             try await dismissInterruption(in: &snapshot, phase: &phase)
             noteEmptyWebView(snapshot)
-            noteUnderreportedTree(snapshot)
             // **見つからないのは上限で間引かれたからかもしれない**(2026-08-15)。否定側だけ
             // 塞いであったが、肯定側は**実在する要素で赤くなる** = flake になる。
             // 誤った成功ではないので優先度は下だが、直す手段は同じファイルに既にある。
@@ -651,7 +659,6 @@ extension StepExecutor {
             phase.snapshotMs += Self.ms(clock.now - start)
             try await dismissInterruption(in: &snapshot, phase: &phase)
             noteEmptyWebView(snapshot)
-            noteUnderreportedTree(snapshot)
             lastSeenElements = snapshot.elements
             if let (element, fallback) = Self.resolve(step: step, in: snapshot,
                                                       strictForAssert: true) {
