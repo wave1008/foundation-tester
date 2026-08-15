@@ -80,11 +80,75 @@ final class MCPWritableSelectorTests: XCTestCase {
                        "送信")
     }
 
-    /// **切り詰め表示になるラベルは勧めない**(印字が "…" 付きになり完全一致が必ず外れる)
-    func testOverlongLabelIsNotSuggested() throws {
+    /// **切り詰め表示になるラベルは完全一致では勧めない**(印字が "…" 付きになり必ず外れる)。
+    /// 2026-08-15 から**黙って諦めるのもやめた**: 印字されている先頭部分で `*断片*` が書け、
+    /// しかも位置に依存しないので索引形より強い(外部評価: 長いラベルの要素が軒並み
+    /// index-based になり再現性が不安、という指摘)
+    func testOverlongLabelIsSuggestedAsAPartialMatchNotAnExactOne() throws {
         let long = String(repeating: "あ", count: SnapshotRenderer.labelDisplayLimit + 1)
         let snap = snapshot([element(1, label: long)])
-        XCTAssertNil(MCPServer.SelectorNaming(snap).selector(for: snap.elements[0], in: snap))
+        let graded = try XCTUnwrap(MCPServer.SelectorNaming(snap).graded(for: snap.elements[0],
+                                                                        in: snap))
+        XCTAssertEqual(graded.selector,
+                       "*\(String(repeating: "あ", count: SnapshotRenderer.labelDisplayLimit))*",
+                       "印字される範囲を超えた断片を勧めている(読み手が出力から確かめられない)")
+        XCTAssertEqual(graded.durability, .stable, "兄弟の増減では別物を指さないので stable")
+        XCTAssertEqual(resolvedRef(graded.selector, in: snap), 1)
+    }
+
+    /// **断片は注記と同じ切り出し規則を通す**: 「, 」より先を含めると複数要素の列挙に読める
+    /// (2026-08-10 の事故と同じ形。truncatedLabelNote と規則を共有している)
+    func testPartialMatchFragmentStopsAtASeparator() throws {
+        let long = "深夜の訪問者, " + String(repeating: "説明", count: 30)
+        let snap = snapshot([element(1, label: long)])
+        XCTAssertEqual(MCPServer.SelectorNaming(snap).selector(for: snap.elements[0], in: snap),
+                       "*深夜の訪問者*")
+    }
+
+    /// **一意でない断片は勧めない**(従来どおり索引形へ落ちる)。
+    /// 実コーパスの witness: sutec-home の `#product_card_books_1` ×2 は
+    /// 「深夜の訪問者(ミステリー小説)」を両方が含むので、ここで弾かれる
+    func testAmbiguousFragmentFallsThroughInsteadOfLying() throws {
+        let shared = "深夜の訪問者(ミステリー小説), "
+        let snap = snapshot([element(1, label: shared + String(repeating: "甲", count: 30), y: 100),
+                             element(2, label: shared + String(repeating: "乙", count: 30), y: 200)])
+        let naming = MCPServer.SelectorNaming(snap)
+        for e in snap.elements {
+            let selector = naming.selector(for: e, in: snap)
+            XCTAssertNotEqual(selector, "*\(shared.dropLast(2))*",
+                              "両方に当たる断片を「1つを指す」と勧めている: \(selector ?? "nil")")
+        }
+    }
+
+    /// **行と中の staticText が同じ長ラベルを持つ形**(実アプリで最も多い)。素の `*断片*` は
+    /// 2件に当たるので、**型で絞れないと1つも救えない**。ここは id を持つ祖先が無いので
+    /// スコープ形にも逃げられず、`.型&&*断片*` だけが答えになる
+    func testTypeNarrowsAFragmentWhenTheRowAndItsTextShareTheLabel() throws {
+        let long = String(repeating: "永", count: SnapshotRenderer.labelDisplayLimit + 5)
+        let snap = snapshot([element(1, type: "clickable", label: long, depth: 1),
+                             element(2, type: "staticText", label: long, depth: 2)])
+        let naming = MCPServer.SelectorNaming(snap)
+        let fragment = "*\(String(repeating: "永", count: SnapshotRenderer.labelDisplayLimit))*"
+        XCTAssertEqual(naming.selector(for: snap.elements[0], in: snap), ".clickable&&\(fragment)")
+        XCTAssertEqual(naming.selector(for: snap.elements[1], in: snap), ".staticText&&\(fragment)")
+        XCTAssertEqual(resolvedRef(".clickable&&\(fragment)", in: snap), 1)
+    }
+
+    /// **実コーパスの witness**(ios-place_guides_scrolled): `#PlaceCollectionCell` が3つ並び、
+    /// どれも 40字超のラベルしか手掛かりが無い。以前は `#容器 >> .型[n]` の索引形しか
+    /// 書けなかった行が、位置に依存しない `*断片*` になること
+    func testLongLabelledCellsInTheRealCorpusStopBeingIndexBased() throws {
+        let snap = try fixture("ios-place_guides_scrolled")
+        let naming = MCPServer.SelectorNaming(snap)
+        let cells = snap.elements.filter { $0.identifier == "PlaceCollectionCell" }
+        XCTAssertEqual(cells.count, 3, "コーパスの形が変わった。この witness を選び直すこと")
+        for cell in cells {
+            let graded = try XCTUnwrap(naming.graded(for: cell, in: snap),
+                                       "[\(cell.ref)] に書ける式が1つも無い")
+            XCTAssertEqual(graded.durability, .stable,
+                           "[\(cell.ref)] がまだ索引形: \(graded.selector)")
+            XCTAssertEqual(resolvedRef(graded.selector, in: snap), cell.ref)
+        }
     }
 
     // MARK: - 索引に落ちる前に絞る(2026-08-12 の実アプリ監査)

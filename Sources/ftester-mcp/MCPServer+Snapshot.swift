@@ -259,8 +259,18 @@ extension MCPServer {
                                              cache: cache), context: .snapshot)
             + SnapshotRenderer.render(snapshot, flagging: cache.ghostFlags(snapshot),
                                       collapsingBulk: collapsingBulk,
-                                      interactiveOnly: args["interactiveOnly"] as? Bool == true)
+                                      interactiveOnly: args["interactiveOnly"] as? Bool == true,
+                                      unit: Self.coordinateUnit(driver))
     }
+
+    /// 木に添える座標の単位。**ドライバの実体で決める**(args の platform は省略されうる)。
+    /// 判定は純粋関数に分けてある —— `AndroidDriver` の生成には adb の実在が要るので、
+    /// これを分けないと単位の規則をテストするだけでホストの都合に縛られる
+    static func coordinateUnit(_ driver: AppDriver) -> String {
+        coordinateUnit(isAndroid: driver is AndroidDriver)
+    }
+
+    static func coordinateUnit(isAndroid: Bool) -> String { isAndroid ? "px" : "pt" }
 
     /// `snapshotAfter` が読む木は基本的に整定を待たないという注意を初回だけ満額で出す
     /// (2026-08-10。settle-lite 追加後も「基本的に」待たない: 直後の木が操作前と見分けが
@@ -1144,6 +1154,7 @@ extension MCPServer {
             // (2026-08-10 まではここだけ interactiveOnly を無視して常に全行を出していた)
             + SnapshotRenderer.render(after, flagging: cache.ghostFlags(after),
                                       collapsingBulk: collapsingBulk,
-                                      interactiveOnly: args["interactiveOnly"] as? Bool == true))
+                                      interactiveOnly: args["interactiveOnly"] as? Bool == true,
+                                      unit: Self.coordinateUnit(scrollDriver)))
     }
 }

@@ -186,7 +186,11 @@ final class NoteCoverageTests: XCTestCase {
         // 同じ数値(`29/24`・`90%`)が行と列に何度も出るので、増分は形そのもの。
         // J1順位表(両OS。2026-08-15)も同型で +2,246 バイト —— 同じ勝点/試合数が縦横に並ぶ
         "ambiguousLabelsNote": Coverage(fixtures: ["and-apps_list", "and-browser_j1_standings", "and-browser_weather", "and-browser_weather_weekly", "and-browser_weektable", "and-camera_canvas", "and-home", "and-maps_suggest_ime", "and-place", "and-place_expanded", "and-results", "ios-browser_j1_standings", "ios-browser_jma_hscroll", "ios-browser_nationwide", "ios-browser_startpage", "ios-browser_weather_weekly", "ios-browser_weektable", "ios-home", "ios-maps_station", "ios-maps_suggest_keyboard", "ios-messages_keyboard", "ios-news_feed", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-safari_article", "ios-settings_root", "sut-cmp_controls", "sut-cmp_home", "sutec-detail", "sutec-home"], bytes: 20046),
-        "duplicateIDsNote": Coverage(fixtures: ["and-dialer_keypad", "and-home", "and-overflow", "and-place_expanded", "and-results", "and-settings_root", "ios-browser_startpage", "ios-home", "ios-maps_route_options", "ios-maps_station", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-news_feed", "ios-photos_grid", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-settings_root", "sutec-home"], bytes: 16940),
+        // 2026-08-15 に 16,940 → 16,984(+44)。**発火する画面は1枚も増えていない** ——
+        // 増えたのは ios-place_guides_scrolled の `#PlaceCollectionCell` ×3 の**中身**で、
+        // 40字超のラベルしか無い行に `*断片*` が書けるようになったぶん(以前は索引形 `~`)。
+        // 索引形が stable な式に替わった = 増えたバイトはそのまま再現性の改善
+        "duplicateIDsNote": Coverage(fixtures: ["and-dialer_keypad", "and-home", "and-overflow", "and-place_expanded", "and-results", "and-settings_root", "ios-browser_startpage", "ios-home", "ios-maps_route_options", "ios-maps_station", "ios-maps_suggest_guides", "ios-maps_suggest_keyboard", "ios-news_feed", "ios-photos_grid", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-settings_root", "sutec-home"], bytes: 16984),
         // bytes 1169→1366→1170(2026-08-14・「chrome の部分木は覆われた側に数えない」修正):
         // fixtures 集合は不変(発火する画面は変わらない = 全画面「nothing tappable」か列挙のどちらか
         // では出続ける)。ios-maps_suggest_guides/ios-messages_keyboard は列挙(2件)から

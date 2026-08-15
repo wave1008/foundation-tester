@@ -89,6 +89,25 @@ final class MCPEvaluationFixes20260815Tests: XCTestCase {
         XCTAssertEqual(MCPServer.reversedDirection(.left), "right")
     }
 
+    // MARK: - 座標の単位を木に添える(2026-08-15 の2人目の評価)
+
+    /// Android の論理解像度(実測 1280x2856)は iOS(402x874)と桁違いで、**同じ数字の感覚で
+    /// 読むと的を外す**。数字は変えず(1セッションに座標系を2つ持つと黙って別の場所を撃つ)、
+    /// 単位だけ名乗る
+    func testScreenLineNamesTheCoordinateUnit() {
+        let android = SnapshotRenderer.render(snapshot([]), unit: "px")
+        XCTAssertTrue(android.hasPrefix("screen: 402x874 px"), android)
+        XCTAssertTrue(android.contains("all x/y below are px"), android)
+        XCTAssertEqual(MCPServer.coordinateUnit(isAndroid: true), "px")
+        XCTAssertEqual(MCPServer.coordinateUnit(isAndroid: false), "pt")
+    }
+
+    /// **渡さなければ従来どおり**(DSL のレポート・`ftester snapshot` は platform を持たない)
+    func testScreenLineIsUnchangedWithoutAUnit() {
+        let first = SnapshotRenderer.render(snapshot([])).split(separator: "\n").first
+        XCTAssertEqual(first.map(String.init), "screen: 402x874")
+    }
+
     // MARK: - ② ホーム画面では ft_launch を名指しする
 
     func testHomeScreenHintFiresOnTheAndroidLauncher() {

@@ -11,13 +11,21 @@ public enum SnapshotRenderer {
     /// `flagging` に入れた ref の行末には印を付ける(既定は空 = 従来どおり)。MCP が
     /// スクロール残像を名指しするのに使う —— **先頭の注記だけでは足りない**という
     /// 外部フィードバック(2026-08-06)への対応で、ref をコピーする行そのものに出す。
+    /// `unit` は座標の単位(iOS="pt" / Android="px")。**呼び手が知っているときだけ渡す** ——
+    /// `SnapshotResponse` は platform を持たないので、ここで推測はしない。
+    /// 出すのは、Android の論理解像度(実測 1280x2856)が iOS(402x874)と桁違いで、
+    /// **同じ数字の感覚で読むと的を外す**という外部評価(2026-08-15)への答え。
+    /// 数字そのものは変えない —— 1セッションに座標系を2つ持つと、木の frame と
+    /// 撃つ x/y が食い違ったときにエラーにならず黙って別の場所を撃つ
     public static func render(_ snapshot: SnapshotResponse,
                               flagging: [Int: String] = [:],
                               collapsingBulk: Bool = false,
-                              interactiveOnly: Bool = false) -> String {
+                              interactiveOnly: Bool = false,
+                              unit: String? = nil) -> String {
         var lines: [String] = []
         let s = snapshot.screen
-        lines.append("screen: \(Int(s.width))x\(Int(s.height))")
+        lines.append("screen: \(Int(s.width))x\(Int(s.height))"
+            + (unit.map { " \($0) (all x/y below are \($0))" } ?? ""))
         // 同じ id が2つ以上ある要素は、生成側へ「単独では曖昧」と伝えるため件数を付す
         var idCounts: [String: Int] = [:]
         // **ラベルが木の中で一意な要素は ×N を省く**(2026-08-10): id 共有件数は「この行を
@@ -431,14 +439,19 @@ public enum SnapshotRenderer {
     /// **渡された断片に "…" が混じっていても例には含めない**(呼び出し元が中略済みの
     /// 表示文字列を誤って渡しても、絶対に一致しない例を出さないための保険)
     static func quotedPartialMatchExample(_ rawFragment: String) -> String {
+        "\"*\(partialMatchFragment(rawFragment))*\""
+    }
+
+    /// 上の切り出し規則そのもの。**`SelectorNaming` の長ラベル候補と共有する**(2026-08-15)——
+    /// 別々に書くと、注記が勧める断片と、勧められるセレクタの断片が食い違う
+    public static func partialMatchFragment(_ rawFragment: String) -> String {
         let fragment = rawFragment.range(of: "…")
             .map { String(rawFragment[..<$0.lowerBound]) } ?? rawFragment
         let cutIndex = [", ", "、"]
             .compactMap { fragment.range(of: $0)?.lowerBound }
             .filter { $0 > fragment.startIndex }
             .min()
-        let text = cutIndex.map { String(fragment[..<$0]) } ?? fragment
-        return "\"*\(text)*\""
+        return cutIndex.map { String(fragment[..<$0]) } ?? fragment
     }
 
     /// 切り詰めたラベルがあるときだけ出す注記。**印字された文字列は完全一致では当たらない** ——

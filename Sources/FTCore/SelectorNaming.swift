@@ -227,6 +227,32 @@ public struct SelectorNaming {
                 out += labelForms.map { ("#\(scope) >> .\(element.type)&&\($0)", .stable) }
             }
         }
+        // **長すぎるラベルは「書けない」ではなく「部分一致でなら書ける」**(2026-08-15 の外部評価)。
+        // ここが無い版は、40字超のラベルしか手掛かりが無い要素を**一足飛びに索引形へ落として**
+        // いた(索引形すら作れなければ「安定セレクタが無い」)。実際には木に印字されている
+        // 先頭部分で `*断片*` が書け、しかも**位置に依存しない** = 索引形より強い。
+        // 断片は注記(`truncatedLabelNote`)と**同じ切り出し規則**を通す ——
+        // 勧める断片が2つの経路で食い違うと、読み手はどちらが正しいか判断できない。
+        // 長さは**木が印字する範囲(labelDisplayLimit)**に限る: それより先は読み手が
+        // 出力から確かめられないので、当たっても根拠を見せられない。
+        // 一意でなければ `picksOnlyOne` が落として索引形へ進む = 従来の挙動に戻るだけ
+        // **絞り方は完全一致ラベルと同じ梯子を辿る**(素 → 型 → スコープ → スコープ+型)。
+        // 素だけだと、行そのものと中の staticText が同じ文言を持つ形(実測:
+        // ios-place_guides_scrolled の `#PlaceCollectionCell`)で必ず2件に当たり、
+        // **長ラベルの行がひとつも救えない**
+        if !writableLabel, !label.isEmpty {
+            let fragment = SnapshotRenderer.partialMatchFragment(
+                String(label.prefix(SnapshotRenderer.labelDisplayLimit)))
+            if !fragment.isEmpty {
+                let contains = "*\(fragment)*"
+                out.append((contains, .stable))
+                out.append((".\(element.type)&&\(contains)", .stable))
+                if let scopeElement, let scope = scopeElement.identifier {
+                    out.append(("#\(scope) >> \(contains)", .stable))
+                    out.append(("#\(scope) >> .\(element.type)&&\(contains)", .stable))
+                }
+            }
+        }
         // indexed は最後の砦なので writableLabel を問わず試す
         if let scopeElement,
            let indexed = Self.scopedSelector(scope: scopeElement, for: element, in: snapshot) {
