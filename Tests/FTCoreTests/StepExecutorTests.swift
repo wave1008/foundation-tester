@@ -1085,6 +1085,32 @@ final class StepExecutorTests: XCTestCase {
                        "primary の substring 要素で act してはいけない(偽陽性): \(log.entries)")
     }
 
+    /// **システムダイアログの形**(2026-08-16): iOS の権限ダイアログは SpringBoard が別プロセスで
+    /// 描くので、**アプリ側の木には1件も現れない**。hybrid ではこのとき fallbackDriver
+    /// (SystemUIDriver = springboard 参照)だけが持っているので、`tap("許可")` は
+    /// フォールバック経由で解決して**そちらのドライバで撃つ**必要がある。
+    ///
+    /// 既存の fallback テストは「primary にも何かある」形(substring vs exact)しか見ておらず、
+    /// **primary が空**というこの形は未カバーだった。docs/commands.md §システムダイアログ(iOS)
+    /// が「hybrid なら普通に書ける」と約束している経路の砦
+    func testTapResolvesViaFallbackWhenPrimaryTreeHasNothing() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
+        let fallback = FakeAppDriver(name: "fallback", log: log,
+                                     snapshotElements: [[labeled(ref: 7, label: "許可")]])
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback)
+        let step = FlowStep(action: "tap", locator: FlowLocator(label: "許可"))
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("fallback だけが持つ要素での passed を期待したが \(outcome.status) だった")
+            return
+        }
+        XCTAssertTrue(log.entries.contains("fallback.tap(ref:7)"),
+                      "システムダイアログのボタンは fallback のドライバで撃つこと: \(log.entries)")
+    }
+
     /// primary が substring 一致で fallback に exact が無ければ、primary の substring 一致で act する
     /// (fallback は1回照会するが上書きしない)
     func testTapKeepsPrimarySubstringWhenFallbackHasNoExact() async throws {
