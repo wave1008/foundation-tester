@@ -517,6 +517,21 @@ extension StepExecutor {
                 + " — the element was first reported outside its scroll container"
         }
 
+        // **解決できないのは上限で間引かれたからかもしれない**(2026-08-15)。否定アサーションと
+        // 同じ retake を操作側にも入れる —— こちらは誤った成功ではなく**実在する要素での赤**
+        // (flake)になる形だが、直す手段は同じ。
+        // **ドライバ切替と FM ヒールより前**に置く: 切り詰められた木で FM に代わりを探させると、
+        // 実在する本命が候補に無いまま別の要素へ「修復」し、それが利用者の .swift へ書き戻される
+        if resolved == nil, snapshot.truncatedCount > 0 {
+            start = clock.now
+            driver.raiseElementLimitOnNextSnapshot(BridgeAPI.maxSnapshotElementsCeiling)
+            var full = try await driver.snapshot()
+            phase.snapshotMs += Self.ms(clock.now - start)
+            try await dismissInterruption(in: &full, phase: &phase)
+            snapshot = full
+            resolved = Self.resolve(step: step, in: snapshot)
+        }
+
         var actingDriver: AppDriver = driver
         if action != "select", let fb = fallbackDriver {
             let primaryQuality = resolved == nil ? nil : Self.resolveDetailed(step: step, in: snapshot)?.quality

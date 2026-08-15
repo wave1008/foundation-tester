@@ -597,16 +597,26 @@ extension MCPServer {
     /// 脱落**であって描画の省略ではないので、waitFor/scrollTo は打ち切られた要素を一生探し続ける。
     /// 実測: 画面に描画されている `#nav_button` を waitFor が「did not appear」、scrollTo が
     /// 「element not found」としか言わず、存在しない要素を探し続けることになっていた。
-    /// FTCore 側に同趣旨(`StepExecutor+Assert.truncationHint`)があるが internal で呼べないため、
-    /// 文言だけ揃えてこちらに複製する
+    ///
+    /// **残っている手の判定は `FTCore.SnapshotTruncation.remedy`(DSL と共有)**。文言だけは
+    /// 呼び手ごとに持つ —— MCP は `ft_snapshot maxElements:` と書き、DSL は
+    /// `.webView >> ...` / `scrollFrame:` と書く。
     /// **逃げ道まで書く**: 「落ちた中に居るかもしれない」で止めると、読み手は同じ探索を
     /// 撃ち直す(2026-08-12 のブラウザ監査で 45.3s + 56.1s を空費した)
     static func truncationHint(_ snapshot: SnapshotResponse) -> String {
-        guard snapshot.truncatedCount > 0 else { return "" }
+        guard let remedy = SnapshotTruncation.remedy(for: snapshot) else { return "" }
+        let escape: String
+        switch remedy {
+        case .raiseLimit(let limit):
+            escape = "read again with ft_snapshot maxElements: \(limit)"
+        case .narrowTheScreen:
+            escape = "raising the limit will not help (already at the"
+                + " \(BridgeAPI.maxSnapshotElementsCeiling)-element ceiling) — narrow the screen"
+                + " (close a sheet, scroll a big list away)"
+        }
         return " (the tree was truncated at \(snapshot.elements.count) elements;"
             + " \(snapshot.truncatedCount) more were omitted — the element you are looking for"
-            + " may be among them; scrolling will not bring them back, read again with"
-            + " ft_snapshot maxElements: \(suggestedElementLimit(snapshot)))"
+            + " may be among them; scrolling will not bring them back, \(escape))"
     }
 
     /// waitFor タイムアウト文の共通末尾(2026-08-12 監査)。waitFor はレンダリング済みの木しか
@@ -1257,11 +1267,21 @@ extension MCPServer {
         // 1ドキュメントぶんの要素が最初から全部載っている)。実測では tenki.jp の2週間天気で
         // **落ちた 179 件が全部 labelled = 表の本文**で、`ft_scroll_to` が2回で 101 秒を捨てた。
         // 順序は「上限を上げる」が先: 落ちた行がまさに読みたい物である確率が高い
+        // 逃げ道の判定は `FTCore.SnapshotTruncation.remedy`(DSL と共有)。**天井まで来ていたら
+        // 「上限を上げろ」と言わない** —— 言われたとおり上げても同じ木が返るのが最悪
+        let escape: String
+        switch SnapshotTruncation.remedy(for: snapshot) {
+        case .raiseLimit(let limit):
+            escape = "Read again with ft_snapshot maxElements: \(limit) to get them, or narrow"
+                + " the screen (close a sheet, scroll a big list away)."
+        case .narrowTheScreen, nil:
+            escape = "Raising the limit will not help (already at the"
+                + " \(BridgeAPI.maxSnapshotElementsCeiling)-element ceiling) — narrow the screen"
+                + " (close a sheet, scroll a big list away)."
+        }
         return "note: \(snapshot.truncatedCount) element(s) were dropped by the snapshot limit"
             + "\(breakdown) — they are gone from the tree, not just hidden, so waitFor/ft_scroll_to"
-            + " will never find them. Read again with ft_snapshot maxElements:"
-            + " \(suggestedElementLimit(snapshot)) to get them, or narrow the screen (close a"
-            + " sheet, scroll a big list away).\(capHogNote(snapshot))\n"
+            + " will never find them. \(escape)\(capHogNote(snapshot))\n"
     }
 
     /// 上限の外で bulk を送ったときの注記(61)。
@@ -1286,12 +1306,9 @@ extension MCPServer {
             + " add to this output; the rendering folds them (expandBulk lists them in full).\n"
     }
 
-    /// 打ち切られた木に対して勧める `maxElements`。**落ちた分がちょうど入る値**を出す
-    /// (天井で丸める)。刻みの良い値へ切り上げるのは、次の1回で足りずにもう一度払うのを避けるため
+    /// 実体は `FTCore.SnapshotTruncation.suggestedLimit`(DSL と共有)。転送だけ
     static func suggestedElementLimit(_ snapshot: SnapshotResponse) -> Int {
-        let needed = snapshot.elements.count + snapshot.truncatedCount
-        let rounded = (needed + 49) / 50 * 50
-        return min(max(rounded, BridgeAPI.maxSnapshotElements), BridgeAPI.maxSnapshotElementsCeiling)
+        SnapshotTruncation.suggestedLimit(snapshot)
     }
 
     /// 打ち切ったときだけ添える「枠を食っている当人」。

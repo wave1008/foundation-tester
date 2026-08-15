@@ -134,14 +134,31 @@ extension StepExecutor {
 
     /// スナップショットが上限で打ち切られていたときの注記。**要素数の上限に当たると
     /// 「見つかりません」と区別が付かない**(実在するのに送られていないだけ)ため、
-    /// 失敗文言に必ず添える。WebView は1画面に要素が数百並ぶことがあり最も当たりやすい
+    /// 失敗文言に必ず添える。WebView は1画面に要素が数百並ぶことがあり最も当たりやすい。
+    ///
+    /// **残っている手の判定は `SnapshotTruncation.remedy`(MCP と共有)**。以前ここだけが
+    /// 「対象に近づくようスクロールする」と勧めており、同じ事実に対して MCP は
+    /// 「スクロールしても戻ってこない」と書いていた —— 打ち切りは配列からの脱落なので
+    /// MCP のほうが正しく、この助言は読み手に空振りの探索を撃たせる(2026-08-15 に統一)。
+    /// 文言(スコープの絞り方)は DSL の語彙で持つ
     static func truncationHint(_ snapshot: SnapshotResponse?) -> String {
-        guard let snapshot, snapshot.truncatedCount > 0 else { return "" }
+        guard let snapshot, let remedy = SnapshotTruncation.remedy(for: snapshot) else { return "" }
+        // **実行側が何をしたかは書かない**(2026-08-15)。「天井で撮り直してある」と書きたく
+        // なるが、撮り直すのは**解決できなかったとき**だけで、要素は見つかったが覆われていた
+        // 周回ではその文が嘘になる。書いてよいのは木から読み取れる事実と、読み手にできる手だけ
+        let ceiling = remedy == .narrowTheScreen
+            ? " even at the \(BridgeAPI.maxSnapshotElementsCeiling)-element ceiling" : ""
+        // WebView は文脈として残す(この上限に最も当たりやすい画面がどれかは有用)。
+        // **`.webView >> ...` でスコープを狭めることは勧めない** —— あれは照合の範囲であって
+        // スナップショットの母数ではないので、打ち切りには1件も効かない
         let webView = snapshot.elements.contains { $0.type == "webView" }
-            ? ". WebView screens hold many elements and hit this limit easily (narrow the scope with `.webView >> ...`, or scroll closer to the target)"
-            : ""
-        return " (the snapshot was truncated at \(snapshot.elements.count) elements"
-            + "; \(snapshot.truncatedCount) more were omitted\(webView))"
+            ? " WebView screens hold many elements and hit this limit easily." : ""
+        // **スクロールを勧めない**: 落ちた要素は配列から抜けているので、スクロールしても戻らない
+        return " (the snapshot was truncated at \(snapshot.elements.count) elements;"
+            + " \(snapshot.truncatedCount) more were omitted\(ceiling) — they are gone from the"
+            + " tree, not just off screen, so scrolling will not bring them back.\(webView)"
+            + " Narrow the screen before this step (close a sheet, collapse a long list) so fewer"
+            + " elements compete for the limit)"
     }
 
     /// **切り詰められた木で「不在」を結論にしない**ための撮り直し(2026-08-15)。
@@ -292,13 +309,25 @@ extension StepExecutor {
         // 最後に観測した occlusion 失敗を保持し、可視化されなければこれを返す。
         var lastOcclusion: StepResult.Status?
         var lastSnapshot: SnapshotResponse?
+        // 一度でも上限に当たったら以後は最初から天井で撮る(notExists と同じ latch)
+        var needsCeiling = false
         // timeout==0 でも初回照会は必ず1回行う(ループ後段の deadline チェックで離脱)。
         while true {
             var start = clock.now
+            if needsCeiling { driver.raiseElementLimitOnNextSnapshot(BridgeAPI.maxSnapshotElementsCeiling) }
             var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
             phase.snapshotMs += Self.ms(clock.now - start)
             try await dismissInterruption(in: &snapshot, phase: &phase)
             noteEmptyWebView(snapshot)
+            // **見つからないのは上限で間引かれたからかもしれない**(2026-08-15)。否定側だけ
+            // 塞いであったが、肯定側は**実在する要素で赤くなる** = flake になる。
+            // 誤った成功ではないので優先度は下だが、直す手段は同じファイルに既にある。
+            // 撮り直しは切り詰められていて解決できなかったときだけ(通る側の固定費はゼロ)
+            if snapshot.truncatedCount > 0, !needsCeiling,
+               Self.resolveDetailed(step: step, in: snapshot, strictForAssert: true) == nil {
+                needsCeiling = true
+                snapshot = try await retakenAtElementLimitCeiling(snapshot, phase: &phase)
+            }
             lastSnapshot = snapshot
             // アサーションでは type+index のみのフォールバックを使わない。
             // 別画面の無関係な要素にマッチして偽陽性になる(実測済み)
