@@ -36,19 +36,25 @@
 <body>
 <h1>全国の天気</h1>
 <p id="issued">16日 05時00分発表</p>
+<p id="tap_result">tap_result=-</p>
 <div class="cells">
-  <a class="cell" href="javascript:void(0)"><span class="name">札幌</span><a href="javascript:void(0)"><span>曇り</span></a><a href="javascript:void(0)"><span>28/22</span></a><a href="javascript:void(0)"><span>10%</span></a></a>
-  <a class="cell" href="javascript:void(0)"><span class="name">仙台</span><a href="javascript:void(0)"><span>曇り</span></a><a href="javascript:void(0)"><span>27/22</span></a><a href="javascript:void(0)"><span>10%</span></a></a>
-  <a class="cell" href="javascript:void(0)"><span class="name">新潟</span><a href="javascript:void(0)"><span>曇り</span></a><a href="javascript:void(0)"><span>33/25</span></a><a href="javascript:void(0)"><span>20%</span></a></a>
-  <a class="cell" href="javascript:void(0)"><span class="name">東京</span><a href="javascript:void(0)"><span>曇り</span></a><a href="javascript:void(0)"><span>29/25</span></a><a href="javascript:void(0)"><span>30%</span></a></a>
-  <a class="cell" href="javascript:void(0)"><span class="name">金沢</span><a href="javascript:void(0)"><span>曇り</span></a><a href="javascript:void(0)"><span>33/24</span></a><a href="javascript:void(0)"><span>30%</span></a></a>
-  <a class="cell" href="javascript:void(0)"><span class="name">名古屋</span><a href="javascript:void(0)"><span>曇り</span></a><a href="javascript:void(0)"><span>33/26</span></a><a href="javascript:void(0)"><span>10%</span></a></a>
-  <a class="cell" href="javascript:void(0)"><span class="name">大阪</span><a href="javascript:void(0)"><span>曇り</span></a><a href="javascript:void(0)"><span>32/25</span></a><a href="javascript:void(0)"><span>20%</span></a></a>
-  <a class="cell" href="javascript:void(0)"><span class="name">広島</span><a href="javascript:void(0)"><span>曇り</span></a><a href="javascript:void(0)"><span>33/26</span></a><a href="javascript:void(0)"><span>10%</span></a></a>
-  <a class="cell" href="javascript:void(0)"><span class="name">高知</span><a href="javascript:void(0)"><span>曇り</span></a><a href="javascript:void(0)"><span>32/24</span></a><a href="javascript:void(0)"><span>40%</span></a></a>
-  <a class="cell" href="javascript:void(0)"><span class="name">福岡</span><a href="javascript:void(0)"><span>曇り</span></a><a href="javascript:void(0)"><span>33/26</span></a><a href="javascript:void(0)"><span>20%</span></a></a>
-  <a class="cell" href="javascript:void(0)"><span class="name">鹿児島</span><a href="javascript:void(0)"><span>曇り</span></a><a href="javascript:void(0)"><span>32/25</span></a><a href="javascript:void(0)"><span>20%</span></a></a>
-  <a class="cell" href="javascript:void(0)"><span class="name">那覇</span><a href="javascript:void(0)"><span>晴時々曇</span></a><a href="javascript:void(0)"><span>32/27</span></a><a href="javascript:void(0)"><span>10%</span></a></a>
+  <a class="cell" href="javascript:void(0)"><span class="name">札幌</span><a href="javascript:void(0)" onclick="setTap('sapporo-sky')"><span>曇り</span></a><a href="javascript:void(0)" onclick="setTap('sapporo-temp')"><span>28/22</span></a><a href="javascript:void(0)" onclick="setTap('sapporo-precip')"><span>10%</span></a></a>
+  <a class="cell" href="javascript:void(0)"><span class="name">仙台</span><a href="javascript:void(0)" onclick="setTap('sendai-sky')"><span>曇り</span></a><a href="javascript:void(0)" onclick="setTap('sendai-temp')"><span>27/22</span></a><a href="javascript:void(0)" onclick="setTap('sendai-precip')"><span>10%</span></a></a>
+  <a class="cell" href="javascript:void(0)"><span class="name">新潟</span><a href="javascript:void(0)" onclick="setTap('niigata-sky')"><span>曇り</span></a><a href="javascript:void(0)" onclick="setTap('niigata-temp')"><span>33/25</span></a><a href="javascript:void(0)" onclick="setTap('niigata-precip')"><span>20%</span></a></a>
+  <a class="cell" href="javascript:void(0)"><span class="name">東京</span><a href="javascript:void(0)" onclick="setTap('tokyo-sky')"><span>曇り</span></a><a href="javascript:void(0)" onclick="setTap('tokyo-temp')"><span>29/25</span></a><a href="javascript:void(0)" onclick="setTap('tokyo-precip')"><span>30%</span></a></a>
+  <a class="cell" href="javascript:void(0)"><span class="name">金沢</span><a href="javascript:void(0)" onclick="setTap('kanazawa-sky')"><span>曇り</span></a><a href="javascript:void(0)" onclick="setTap('kanazawa-temp')"><span>33/24</span></a><a href="javascript:void(0)" onclick="setTap('kanazawa-precip')"><span>30%</span></a></a>
+  <a class="cell" href="javascript:void(0)"><span class="name">名古屋</span><a href="javascript:void(0)" onclick="setTap('nagoya-sky')"><span>曇り</span></a><a href="javascript:void(0)" onclick="setTap('nagoya-temp')"><span>33/26</span></a><a href="javascript:void(0)" onclick="setTap('nagoya-precip')"><span>10%</span></a></a>
+  <a class="cell" href="javascript:void(0)"><span class="name">大阪</span><a href="javascript:void(0)" onclick="setTap('osaka-sky')"><span>曇り</span></a><a href="javascript:void(0)" onclick="setTap('osaka-temp')"><span>32/25</span></a><a href="javascript:void(0)" onclick="setTap('osaka-precip')"><span>20%</span></a></a>
+  <a class="cell" href="javascript:void(0)"><span class="name">広島</span><a href="javascript:void(0)" onclick="setTap('hiroshima-sky')"><span>曇り</span></a><a href="javascript:void(0)" onclick="setTap('hiroshima-temp')"><span>33/26</span></a><a href="javascript:void(0)" onclick="setTap('hiroshima-precip')"><span>10%</span></a></a>
+  <a class="cell" href="javascript:void(0)"><span class="name">高知</span><a href="javascript:void(0)" onclick="setTap('kochi-sky')"><span>曇り</span></a><a href="javascript:void(0)" onclick="setTap('kochi-temp')"><span>32/24</span></a><a href="javascript:void(0)" onclick="setTap('kochi-precip')"><span>40%</span></a></a>
+  <a class="cell" href="javascript:void(0)"><span class="name">福岡</span><a href="javascript:void(0)" onclick="setTap('fukuoka-sky')"><span>曇り</span></a><a href="javascript:void(0)" onclick="setTap('fukuoka-temp')"><span>33/26</span></a><a href="javascript:void(0)" onclick="setTap('fukuoka-precip')"><span>20%</span></a></a>
+  <a class="cell" href="javascript:void(0)"><span class="name">鹿児島</span><a href="javascript:void(0)" onclick="setTap('kagoshima-sky')"><span>曇り</span></a><a href="javascript:void(0)" onclick="setTap('kagoshima-temp')"><span>32/25</span></a><a href="javascript:void(0)" onclick="setTap('kagoshima-precip')"><span>20%</span></a></a>
+  <a class="cell" href="javascript:void(0)"><span class="name">那覇</span><a href="javascript:void(0)" onclick="setTap('naha-sky')"><span>晴時々曇</span></a><a href="javascript:void(0)" onclick="setTap('naha-temp')"><span>32/27</span></a><a href="javascript:void(0)" onclick="setTap('naha-precip')"><span>10%</span></a></a>
 </div>
+<script>
+  function setTap(token) {
+    document.getElementById('tap_result').textContent = 'tap_result=' + token;
+  }
+</script>
 </body>
 </html>
