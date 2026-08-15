@@ -16,14 +16,16 @@ final class SnapshotTruncationTests: XCTestCase {
 
     private let screen = FTRect(x: 0, y: 0, width: 400, height: 800)
 
-    private func snapshot(kept: Int, truncated: Int) -> SnapshotResponse {
-        let elements = (0..<kept).map { index in
+    /// `kept` は**予算ぶん**、`bulkExempt` は予算の外で届いた bulk 群(要素配列には両方入る)
+    private func snapshot(kept: Int, truncated: Int, bulkExempt: Int = 0) -> SnapshotResponse {
+        let elements = (0..<(kept + bulkExempt)).map { index in
             ElementInfo(ref: index + 1, type: "staticText", identifier: "e\(index)", label: nil,
                         value: nil, placeholder: nil, enabled: true,
                         frame: FTRect(x: 0, y: Double(index), width: 10, height: 10), depth: 1)
         }
         return SnapshotResponse(sessionBundleID: nil, screen: screen, elements: elements,
-                                truncatedCount: truncated)
+                                truncatedCount: truncated,
+                                bulkExemptCount: bulkExempt > 0 ? bulkExempt : nil)
     }
 
     func testNoRemedyWhenNothingWasDropped() {
@@ -43,12 +45,24 @@ final class SnapshotTruncationTests: XCTestCase {
         XCTAssertEqual(remedy, .narrowTheScreen)
     }
 
-    /// **畳まれた群(bulk-exempt)で件数が天井を超える木**も「上げろ」と言わない。
-    /// `elements.count` は上限の外で足される分を含むので、天井以上になり得る
-    func testATreeLargerThanTheCeilingIsNotToldToRaiseTheLimit() {
-        let remedy = SnapshotTruncation.remedy(
-            for: snapshot(kept: BridgeAPI.maxSnapshotElementsCeiling + 30, truncated: 10))
-        XCTAssertEqual(remedy, .narrowTheScreen)
+    /// **bulk 群で件数が天井を超えただけの木は「上げろ」と言う**(2026-08-15 のレビューで発見)。
+    /// bulk 群は**予算の外**で送られる(安全弁は 400 件)ので、既定 120 で読んだ木でも
+    /// `elements.count` は 500 を超え得る。`elements.count` をそのまま天井と比べると
+    /// **上げれば取れる要素に「上げても無駄」と言う**
+    func testABulkHeavyTreeReadAtTheDefaultLimitStillRaisesTheLimit() {
+        let tree = snapshot(kept: BridgeAPI.maxSnapshotElements, truncated: 60, bulkExempt: 300)
+        XCTAssertGreaterThan(tree.elements.count, BridgeAPI.maxSnapshotElementsCeiling,
+                             "前提: 要素数だけなら天井を超えていること")
+        XCTAssertFalse(SnapshotTruncation.isAtCeiling(tree), "予算ぶんは 120 なので天井ではない")
+        XCTAssertEqual(SnapshotTruncation.remedy(for: tree), .raiseLimit(to: 200),
+                       "bulk を予算に数えると、上げれば取れる要素を諦めさせる")
+    }
+
+    /// 逆側: **予算ぶんが天井に達していれば** bulk の有無に関わらず「上げろ」と言わない
+    func testACeilingReadWithBulkIsStillNotToldToRaiseTheLimit() {
+        let tree = snapshot(kept: BridgeAPI.maxSnapshotElementsCeiling, truncated: 10,
+                            bulkExempt: 50)
+        XCTAssertEqual(SnapshotTruncation.remedy(for: tree), .narrowTheScreen)
     }
 
     func testTheSuggestedLimitIsCappedAtTheCeiling() {

@@ -26,16 +26,30 @@ public enum SnapshotTruncation {
         case narrowTheScreen
     }
 
-    /// この木は天井で読まれたか。**上限で切り詰められた木の要素数は上限そのもの**なので、
-    /// 保った件数が天井以上なら `max=天井` で読んだ回だと判る
+    /// **予算を使った件数**(= `elements.count` から bulk 群を引いたもの)。
+    ///
+    /// **`elements.count` をそのまま上限と比べてはいけない**(2026-08-15 のレビューで発見):
+    /// bulk 群(同一 id ×20 以上の非操作の葉)は**予算の外で送られる**ので
+    /// (`BridgeAPI` の版 61。安全弁 `bulkExemptCeiling` は 400)、`elements.count` は
+    /// 上限 + 最大 400 まで膨らむ。既定 120 で読んだ木に bulk が 280 件乗っただけで
+    /// 「もう天井だ」と誤判定し、**上げれば取れる要素に「上げても無駄」と言う**。
+    /// 申告しないブリッジ(旧版・Android)は bulk 免除自体が無いので nil = 0 で正しい
+    public static func budgetedCount(_ snapshot: SnapshotResponse) -> Int {
+        max(0, snapshot.elements.count - (snapshot.bulkExemptCount ?? 0))
+    }
+
+    /// この木は天井で読まれたか。**上限で切り詰められた木の予算ぶんの件数は上限そのもの**なので、
+    /// 予算ぶんが天井以上なら `max=天井` で読んだ回だと判る
     public static func isAtCeiling(_ snapshot: SnapshotResponse) -> Bool {
-        snapshot.elements.count >= BridgeAPI.maxSnapshotElementsCeiling
+        budgetedCount(snapshot) >= BridgeAPI.maxSnapshotElementsCeiling
     }
 
     /// 打ち切られた木に勧める要素上限。**落ちた分がちょうど入る値**を出し、刻みの良い値へ
-    /// 切り上げる(次の1回で足りずにもう一度払うのを避けるため)。天井で頭打ち
+    /// 切り上げる(次の1回で足りずにもう一度払うのを避けるため)。天井で頭打ち。
+    /// **必要量も予算ぶんで数える** —— bulk を混ぜると、次の読みでも予算の外へ出る分を
+    /// 予算として要求することになり、必要より大きな値を勧める
     public static func suggestedLimit(_ snapshot: SnapshotResponse) -> Int {
-        let needed = snapshot.elements.count + snapshot.truncatedCount
+        let needed = budgetedCount(snapshot) + snapshot.truncatedCount
         let rounded = (needed + 49) / 50 * 50
         return min(max(rounded, BridgeAPI.maxSnapshotElements), BridgeAPI.maxSnapshotElementsCeiling)
     }
