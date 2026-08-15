@@ -115,13 +115,37 @@ final class WebTreeNoteTests: XCTestCase {
                       "%XX が2つ並べば URL 断片")
     }
 
+    /// webView の中のリンク(= この注記が代表する形)。容器を外すと下のテストになる
+    private func urlishTree(insideWebView: Bool) -> SnapshotResponse {
+        let link = ElementInfo(ref: 2, type: "link", identifier: nil,
+                               label: "details%3Fid%3Dcom.example%26x%3D1", value: nil,
+                               placeholder: nil, enabled: true,
+                               // **容器の子である**ことは両側で同じにする(違いは容器の型だけ)。
+                               // 同じ深さに置くとどの容器の子孫でもなくなり、ゲートを
+                               // 「どんな容器でも通す」に壊しても落ちないテストになる
+                               frame: FTRect(x: 0, y: 10, width: 1000, height: 40), depth: 3)
+        let container = ElementInfo(ref: 1, type: insideWebView ? "webView" : "scrollView",
+                                    identifier: nil, label: nil, value: nil, placeholder: nil,
+                                    enabled: true,
+                                    frame: FTRect(x: 0, y: 0, width: 1000, height: 2000), depth: 2)
+        return SnapshotResponse(sessionBundleID: nil,
+                                screen: FTRect(x: 0, y: 0, width: 1000, height: 2000),
+                                elements: [container, link], truncatedCount: 0)
+    }
+
     func testTheNoteNamesTheRefsAndForbidsUsingThemAsContent() {
-        let snapshot = SnapshotResponse(
-            sessionBundleID: nil, screen: FTRect(x: 0, y: 0, width: 1000, height: 2000),
-            elements: [element(1, "link", "details%3Fid%3Dcom.example%26x%3D1", y: 10, height: 40)],
-            truncatedCount: 0)
-        let note = MCPServer.urlishLabelsNote(snapshot)
-        XCTAssertTrue(note.contains("[1]"), note)
+        let note = MCPServer.urlishLabelsNote(urlishTree(insideWebView: true))
+        XCTAssertTrue(note.contains("[2]"), note)
         XCTAssertTrue(note.contains("not the text drawn on"), note)
+    }
+
+    /// **ネイティブ画面では黙る**(2026-08-15・E2EAppCMP のライフサイクル画面が witness)。
+    /// この注記が主張するのは「ブラウザがアクセシブル名の無いリンクに URL を入れた」という機構で、
+    /// ブラウザの居ない木では2重に誤る —— 実測では、契約で URL を丸ごと画面に出す
+    /// ネイティブの Text に対して「the browser fell back to…」と述べ、
+    /// **正しいラベルを「画面の文字ではない」と疑うよう勧めていた**
+    func testStaysSilentWhenTheURLishLabelIsNotInsideAWebView() {
+        XCTAssertEqual(MCPServer.urlishLabelsNote(urlishTree(insideWebView: false)), "",
+                       "ブラウザの居ない木でブラウザの機構を語ってはいけない")
     }
 }

@@ -1064,8 +1064,20 @@ extension MCPServer {
     ///
     /// **数字だけの形は判定に入れない**(`13101`): 本文の数値(気温・件数)と区別が付かず、
     /// 誤検知のほうが害になる。ここで名指しできるのは「人が書いた文には出ない綴り」だけ
+    ///
+    /// **webView の中だけを見る**(2026-08-15。E2EAppCMP のライフサイクル画面が witness):
+    /// この注記の主張は「ブラウザがアクセシブル名の無いリンクに URL を入れた」という**機構**なので、
+    /// ブラウザが関与しない木で言うと**2重に誤る** —— 実測では、契約で URL を丸ごと表示する
+    /// ネイティブの `Text`(`#txt_last_deeplink` = `deeplink=fte2ecmp://screen/lifecycle`)に対して
+    /// 「the browser fell back to the link target」と述べ、さらに
+    /// 「画面の文字ではないので ft_screenshot で読め」と**正しいラベルを疑うよう勧めていた**。
+    /// 実際はラベルこそが画面に描かれている文字。ゲートは `addressBarElement` と同じ考えだが、
+    /// **こちらは要素ごとに名指しする**ので容器の中に居ることまで要る
     static func urlishLabelsNote(_ snapshot: SnapshotResponse, abbreviated: Bool = false) -> String {
-        let urlish = snapshot.elements.filter { looksLikeURLFragment($0.label) }
+        let insideWebView = webViewDescendantRefs(in: snapshot)
+        let urlish = snapshot.elements.filter {
+            insideWebView.contains($0.ref) && looksLikeURLFragment($0.label)
+        }
         guard !urlish.isEmpty else { return "" }
         guard !abbreviated else {
             return "note: \(urlish.count) link label(s) are URL fragments, not on-screen text"
@@ -1077,6 +1089,17 @@ extension MCPServer {
             + " screen — the browser fell back to the link target because the link has no"
             + " accessible name. Do not report these as page content, and do not build a selector"
             + " from them; read what they say with ft_screenshot and tap them by ref.\n"
+    }
+
+    /// webView 容器の子孫の ref(容器が複数あれば全部)。**容器自身は含めない**
+    static func webViewDescendantRefs(in snapshot: SnapshotResponse) -> Set<Int> {
+        var refs = Set<Int>()
+        for container in snapshot.elements where container.type == "webView" {
+            for element in StepExecutor.descendants(of: container, in: snapshot.elements) {
+                refs.insert(element.ref)
+            }
+        }
+        return refs
     }
 
     /// URL 断片らしさ。**人が書いた文には出ない綴りだけ**を見る(百分率エンコード・
