@@ -218,6 +218,34 @@ final class MCPWebPageCeilingTests: XCTestCase {
             .filter { $0.hasSuffix(".json") }.map { String($0.dropLast(5)) }.sorted()
     }
 
+    // MARK: - 効かない逃げ道は勧めない(2026-08-15 の外部評価)
+
+    /// **実コーパスの witness**: Yahoo 天気トップは要素がほぼ全部 `link` なので
+    /// `interactiveOnly` で消える行が**1つも無い**(実測 4,028B → 4,028B)。
+    /// それでも勧めていたのが元の文面で、読み手はそれを試して1往復を捨てる
+    func testDoesNotOfferInteractiveOnlyWhereItHidesNothing() throws {
+        let yahoo = try fixture("ios-browser_yahoo_top")
+        XCTAssertEqual(SnapshotRenderer.hiddenByInteractiveOnlyCount(yahoo), 0,
+                       "この witness の要点(隠せる行が無い画面)が失われた")
+
+        let advice = MCPServer.shorteningAdvice(yahoo, cache: MCPServer.SnapshotAnnotationCache())
+
+        XCTAssertFalse(advice.contains("interactiveOnly"), advice)
+        XCTAssertTrue(advice.contains("maxElements"), "常に効く逃げ道まで消している: \(advice)")
+    }
+
+    /// 隠せる行がある画面では従来どおり勧める(件数まで出す)
+    func testOffersInteractiveOnlyWithTheLineCountWhereItHelps() throws {
+        let dense = try fixture("ios-settings_root")
+        let hidden = SnapshotRenderer.hiddenByInteractiveOnlyCount(dense)
+        XCTAssertGreaterThan(hidden, 0, "この witness の形が変わった")
+
+        let advice = MCPServer.shorteningAdvice(dense, cache: MCPServer.SnapshotAnnotationCache())
+
+        XCTAssertTrue(advice.contains("interactiveOnly"), advice)
+        XCTAssertTrue(advice.contains("\(hidden) layout-only"), "消える行数を出していない: \(advice)")
+    }
+
     /// 判定そのもの(3条件)
     func testNeedsWebPageCeilingRules() {
         XCTAssertTrue(MCPServer.needsWebPageCeiling(tree(120, truncated: 1, webView: true)))

@@ -48,6 +48,22 @@ extension MCPServer {
         return adoptSnapshot(full, args: args)
     }
 
+    /// 出力を短くする逃げ道の案内。**効くものだけを出す**(2026-08-15 の外部評価)。
+    ///
+    /// `interactiveOnly` は「レイアウト専用の行」を隠す道具なので、**そういう行が1つも無い画面では
+    /// 1バイトも減らない** —— 実測(Yahoo 天気トップ)で 4,028B → 4,028B。要素がほぼ全部 `link` の
+    /// web ページはこの形になる。効かない逃げ道を出すのは逃げ道が無いことより悪い
+    /// (読み手はそれを試して1往復を捨てる)ので、消える行数を数えてから勧める。
+    /// `maxElements` は常に効く(自分で上限を決め直せる)ので無条件
+    static func shorteningAdvice(_ snapshot: SnapshotResponse,
+                                 cache: SnapshotAnnotationCache) -> String {
+        let hidden = SnapshotRenderer.hiddenByInteractiveOnlyCount(
+            snapshot, flagging: cache.ghostFlags(snapshot))
+        let interactive = hidden > 0
+            ? " Pass interactiveOnly: true to drop \(hidden) layout-only line(s), or" : ""
+        return interactive + " pass maxElements to set your own limit."
+    }
+
     /// 待ちのポーリングが毎回かける要素上限(`Self.waitFor` の `elementLimit`)。
     /// **明示指定 > ラッチ > 既定(nil)** —— `freshSnapshot` の優先順と同じにする
     func pollElementLimit(_ args: [String: Any]) -> Int? {
@@ -309,8 +325,7 @@ extension MCPServer {
                        + " instead of the \(BridgeAPI.maxSnapshotElements) default — on a web page"
                        + " the dropped elements are the labelled body text, and they are gone from"
                        + " the tree rather than off screen (scrolling never brings them back)."
-                       + " Pass interactiveOnly: true if the extra lines are noise, or maxElements"
-                       + " to set your own limit.\n",
+                       + Self.shorteningAdvice(snapshot, cache: cache) + "\n",
                    short: "")
             : ""
         return switchedNote + ceilingNote + extraNote + backgroundNote

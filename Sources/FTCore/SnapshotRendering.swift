@@ -6,6 +6,21 @@ import Foundation
 
 public enum SnapshotRenderer {
 
+    /// `interactiveOnly: true` で**実際に消える行数**。0 なら、その画面で
+    /// `interactiveOnly` を勧めても1バイトも減らない。
+    ///
+    /// **逃げ道として案内する前にこれを見ること**(2026-08-15 の外部評価): 出力が多いときの
+    /// 対処として `interactiveOnly` を勧めていたが、**実測した Yahoo 天気トップでは
+    /// 4,028B → 4,028B と1行も減らなかった** —— ページの要素がほぼ全部 `link` で、
+    /// 「レイアウト専用」に当たる行が1つも無いため。**効かない逃げ道を出すのは、
+    /// 逃げ道が無いことより悪い**(読み手はそれを試して1往復を捨てる)
+    public static func hiddenByInteractiveOnlyCount(_ snapshot: SnapshotResponse,
+                                                    flagging: [Int: String] = [:]) -> Int {
+        snapshot.elements.filter {
+            isHiddenByInteractiveOnly($0, in: snapshot.elements, flagging: flagging)
+        }.count
+    }
+
     /// `[3] Button "ログイン" id=login_btn (120,610 180x44)` 形式の1行を要素ごとに出力する。
     ///
     /// `flagging` に入れた ref の行末には印を付ける(既定は空 = 従来どおり)。MCP が
@@ -40,10 +55,7 @@ public enum SnapshotRenderer {
             if !label.isEmpty { labelCounts[label, default: 0] += 1 }
         }
         // **数えるのは描く前**: 畳んだ群の中で隠した分まで足すと二重に数える
-        let hidden = interactiveOnly
-            ? snapshot.elements.filter {
-                isHiddenByInteractiveOnly($0, in: snapshot.elements, flagging: flagging)
-            }.count : 0
+        let hidden = interactiveOnly ? hiddenByInteractiveOnlyCount(snapshot, flagging: flagging) : 0
         if hidden > 0 {
             lines.append("(interactiveOnly: \(hidden) layout-only or duplicate-content line(s)"
                 + " hidden — refs and frames of the rest are unchanged; call again without it"
