@@ -97,13 +97,41 @@ final class TreeCoverageTests: XCTestCase {
                                 elements: [container] + leaves, truncatedCount: 0)
     }
 
-    /// 容器比 8% / 画面比 5% の**両方**を超えたときだけ発火する。
-    /// 120 は両方を超え、40 は容器比だけ見ても足りない
-    func testBandThresholdsAreBothRequired() {
+    /// 容器比 8% を下回る帯では騒がない。**容器 = 画面いっぱい**の木なので、ここで効いているのは
+    /// 容器比のほう(画面比を単独で確かめるのは下の test)
+    func testASmallBandRelativeToItsContainerIsIgnored() {
         XCTAssertNotNil(TreeCoverage.gap(in: treeWithBand(height: 120)),
                         "容器比 12% / 画面比 12% の帯は発火するはず")
         XCTAssertNil(TreeCoverage.gap(in: treeWithBand(height: 40)),
                      "容器比 4% の帯で騒いではいけない")
+    }
+
+    /// **画面比の下限が単独で効くこと**。容器が画面の一部しか占めない木でないと2つの閾値は
+    /// 区別できない —— 容器 = 画面の木だけで確かめると、画面比を 0 にする変異が生き残る
+    /// (実際に生き残った。2026-08-15 の変異チェック)。
+    /// 帯は容器の 20%(容器比は通る)だが画面の 4%(画面比で落ちる)
+    func testTheScreenFractionFloorAloneSilencesASmallContainer() {
+        let containerTop = 100.0, containerHeight = 200.0, band = 40.0
+        let container = ElementInfo(ref: 1, type: "webView", identifier: "page", label: nil,
+                                   value: nil, placeholder: nil, enabled: true,
+                                   frame: FTRect(x: 0, y: containerTop, width: 1000,
+                                                 height: containerHeight), depth: 1)
+        let top = ElementInfo(ref: 2, type: "staticText", identifier: nil, label: "top", value: nil,
+                              placeholder: nil, enabled: true,
+                              frame: FTRect(x: 0, y: containerTop, width: 1000, height: 80),
+                              depth: 2)
+        let bottom = ElementInfo(ref: 3, type: "staticText", identifier: nil, label: "bottom",
+                                 value: nil, placeholder: nil, enabled: true,
+                                 frame: FTRect(x: 0, y: containerTop + 80 + band, width: 1000,
+                                               height: containerHeight - 80 - band), depth: 2)
+        let tree = SnapshotResponse(sessionBundleID: nil, screen: screen,
+                                    elements: [container, top, bottom], truncatedCount: 0)
+        XCTAssertGreaterThan(band / containerHeight, TreeCoverage.gapBandContainerFraction,
+                             "前提: 容器比では通る帯であること")
+        XCTAssertLessThan(band / screen.height, TreeCoverage.gapBandScreenFraction,
+                          "前提: 画面比では落ちる帯であること")
+        XCTAssertNil(TreeCoverage.gap(in: tree),
+                     "画面の 4% の穴で騒いではいけない(小さな容器の中の小さな穴)")
     }
 
     /// **上端に接する帯は数えない**(容器の余白はどのページにもある)。
@@ -115,14 +143,21 @@ final class TreeCoverageTests: XCTestCase {
     }
 
     /// **葉だけを数える**(容器を数えると、どんな木でも「埋まっている」に見える)。
-    /// 帯を覆うスクロール容器を足しても発火は消えない
-    func testAScrollContainerDoesNotFillTheBand() {
-        var tree = treeWithBand(height: 300)
-        tree.elements.append(ElementInfo(ref: 9, type: "scrollView", identifier: "sv", label: nil,
-                                        value: nil, placeholder: nil, enabled: true,
-                                        frame: FTRect(x: 0, y: 0, width: 1000, height: 1000),
-                                        depth: 2, scrollable: true))
-        XCTAssertNotNil(TreeCoverage.gap(in: tree))
+    ///
+    /// 足す容器は**容器より低く**すること: 葉の絞り込みには高さの条件
+    /// (`frame.height < 容器の可視高`)もあり、容器と同じ高さの矩形はそちらで落ちるので、
+    /// **scrollable/webView を無視する変異を1つも殺せない**(実際に生き残った。2026-08-15)。
+    /// ここでは帯(y=200..500)をちょうど覆う 400 高の容器を2形とも置く
+    func testContainersDoNotFillTheBand() {
+        for (type, scrollable) in [("scrollView", true), ("webView", nil as Bool?)] {
+            var tree = treeWithBand(height: 300)
+            tree.elements.append(ElementInfo(ref: 9, type: type, identifier: "inner", label: nil,
+                                            value: nil, placeholder: nil, enabled: true,
+                                            frame: FTRect(x: 0, y: 150, width: 1000, height: 400),
+                                            depth: 2, scrollable: scrollable))
+            XCTAssertNotNil(TreeCoverage.gap(in: tree),
+                            "\(type) が帯を埋めたことにされた(葉だけを数えていない)")
+        }
     }
 
     /// **アドレス欄が無ければ黙る**: 空白率だけで判定するとネイティブ画面まで拾う
