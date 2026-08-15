@@ -57,9 +57,10 @@ public enum SnapshotRenderer {
         // **数えるのは描く前**: 畳んだ群の中で隠した分まで足すと二重に数える
         let hidden = interactiveOnly ? hiddenByInteractiveOnlyCount(snapshot, flagging: flagging) : 0
         if hidden > 0 {
+            let scopes = hiddenScopeClause(snapshot, flagging: flagging, idCounts: idCounts)
             lines.append("(interactiveOnly: \(hidden) layout-only or duplicate-content line(s)"
                 + " hidden — refs and frames of the rest are unchanged; call again without it"
-                + " for the full tree)")
+                + " for the full tree" + scopes + ")")
         }
         let bulk = collapsingBulk ? bulkGroups(snapshot, flagging: flagging) : [:]
         // **畳むのは群の一部でありうる**(D-2)ので、判定は id ではなく ref 単位で持つ。
@@ -98,6 +99,51 @@ public enum SnapshotRenderer {
         }
         return lines.joined(separator: "\n")
     }
+
+    /// 隠した行のうち**スコープの足場に使える容器の id**(2026-08-16 の外部評価⑧)。
+    ///
+    /// 評価者の申し立ては「layout-only として消された要素に重要な情報が混ざっているかもしれず、
+    /// 件数だけでは判断できない」。**件数を id に置き換えるのではなく、使える id だけ足す**:
+    /// - **画面で一意**(`#id` で1件に決まらないものは `>>` の足場にならない)
+    /// - **子孫を持つ**(容器だけ。葉の id はスコープにならない)
+    /// - **他の注記が既に名指ししていない**ものだけ、という絞りはここでは掛けない ——
+    ///   注記は木だけからは決まらない条件で出たり出なかったりするので、ここが依存すると
+    ///   同じ木で出力が揺れる
+    ///
+    /// **これは注記の追加ではなく往復の削減**: この情報を得る他の手段は
+    /// 「interactiveOnly 無しでもう一度撮る」= まるごと1往復 + 全行。固定コーパス 47 枚の実測では
+    /// 隠れる 882 行のうち 564 が id を持ち、**足場に使えるものが 211 件 / 33 画面**(1画面あたり
+    /// 平均 6.4)。上限 6 件で打ち切るのはその実測から。
+    ///
+    /// **払う側も測ってある**(同コーパス): この1行は 37 画面で合計 5,572B(平均 150B)で、
+    /// `interactiveOnly` が削る 38,008B の **14.7%** を食う。1画面の木は平均 3,640B なので、
+    /// 足場を知るために撮り直す1往復(1ツール呼び出し + 全行)より安い、という判断。
+    /// **読み手が実際にこの足場を使うか**はまだ手数で測っていない —— 測るなら
+    /// `NoteCatalog.brief` と同じ形の殺しスイッチを足してから(Bench/measurements.md)
+    ///
+    /// 子孫の判定は**preorder の深さ**で行う(次の行が深ければ子がいる)。`ancestors` を
+    /// 全要素に掛けると O(n²) になり、ここは毎回の描画で通る経路
+    static func hiddenScopeClause(_ snapshot: SnapshotResponse, flagging: [Int: String],
+                                  idCounts: [String: Int]) -> String {
+        let elements = snapshot.elements
+        var ids: [String] = []
+        for (index, e) in elements.enumerated() {
+            guard isHiddenByInteractiveOnly(e, in: elements, flagging: flagging),
+                  let id = e.identifier, !id.isEmpty, idCounts[id] == 1,
+                  index + 1 < elements.count, elements[index + 1].depth > e.depth,
+                  !ids.contains(id)
+            else { continue }
+            ids.append(id)
+        }
+        guard !ids.isEmpty else { return "" }
+        let shown = ids.prefix(hiddenScopeIDsShown).map { "#\($0)" }.joined(separator: " ")
+        let cut = ids.count > hiddenScopeIDsShown
+            ? " (+\(ids.count - hiddenScopeIDsShown) more)" : ""
+        return ". Hidden containers you can scope a selector to: \(shown)\(cut)"
+    }
+
+    /// `hiddenScopeClause` が並べる上限(実測の1画面あたり平均 6.4 から)
+    static let hiddenScopeIDsShown = 6
 
     /// `interactiveOnly` で残す要素か。**「読み手が次の一手に使えるもの」だけ**を残す:
     /// 操作できる型 / スクロール容器(`scrollFrame:` に渡せる) / 文字を持つもの(ラベル・値・

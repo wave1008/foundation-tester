@@ -309,10 +309,46 @@ final class SnapshotRenderingTests: XCTestCase {
                                 elements: elements, truncatedCount: 0)
     }
 
+    /// **見るのは「行が消えたか」**(2026-08-16 に精密化): 見出しの1行は
+    /// 隠した容器の `#id` をスコープの足場として最大6件まで名指しするので、
+    /// `contains("icon_container")` では「行が残っている」と区別できない
     func testInteractiveOnlyHidesLayoutContainers() {
         let text = SnapshotRenderer.render(mixedSnapshot(), interactiveOnly: true)
-        XCTAssertFalse(text.contains("icon_container"), text)
+        XCTAssertFalse(text.contains("[3] other id=icon_container"), text)
         XCTAssertTrue(text.contains("2 layout-only or duplicate-content line(s) hidden"), text)
+    }
+
+    /// 隠した容器のうち**足場に使えるもの**(画面で一意 + 子孫を持つ)を見出しで名指しする。
+    /// これが無いと、読み手はスコープ記法の足場を知るためだけに
+    /// **interactiveOnly 無しでもう1回撮る**(まるごと1往復 + 全行)しかない
+    func testInteractiveOnlyNamesHiddenContainersUsableAsAScope() {
+        let text = SnapshotRenderer.render(mixedSnapshot(), interactiveOnly: true)
+        XCTAssertTrue(text.contains("Hidden containers you can scope a selector to:"), text)
+        XCTAssertTrue(text.contains("#icon_container"), text)
+    }
+
+    /// **葉と重複 id は足場にならないので出さない**(嘘の足場を渡さない)
+    func testHiddenLeavesAndDuplicatedIDsAreNotOfferedAsScopes() {
+        let frame = FTRect(x: 0, y: 0, width: 100, height: 40)
+        let elements = [
+            // 子を持たない葉(id はあるが `>>` の足場にならない)
+            ElementInfo(ref: 1, type: "other", identifier: "leaf_only", label: nil, value: nil,
+                        placeholder: nil, enabled: true, frame: frame, depth: 1),
+            // 同じ id が2つ = `#dup` では1件に決まらない
+            ElementInfo(ref: 2, type: "other", identifier: "dup", label: nil, value: nil,
+                        placeholder: nil, enabled: true, frame: frame, depth: 1),
+            ElementInfo(ref: 3, type: "other", identifier: nil, label: nil, value: nil,
+                        placeholder: nil, enabled: true, frame: frame, depth: 2),
+            ElementInfo(ref: 4, type: "other", identifier: "dup", label: nil, value: nil,
+                        placeholder: nil, enabled: true, frame: frame, depth: 1),
+            ElementInfo(ref: 5, type: "other", identifier: nil, label: nil, value: nil,
+                        placeholder: nil, enabled: true, frame: frame, depth: 2),
+        ]
+        let snapshot = SnapshotResponse(sessionBundleID: "com.example.app",
+                                        screen: FTRect(x: 0, y: 0, width: 402, height: 874),
+                                        elements: elements, truncatedCount: 0)
+        let text = SnapshotRenderer.render(snapshot, interactiveOnly: true)
+        XCTAssertFalse(text.contains("Hidden containers you can scope a selector to:"), text)
     }
 
     /// 操作できる型・文字を持つもの・スクロール容器は残す(`scrollFrame:` に渡せなくなるため)
