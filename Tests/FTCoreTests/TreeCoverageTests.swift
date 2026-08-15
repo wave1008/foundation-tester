@@ -264,11 +264,21 @@ final class TreeCoverageStepNoteTests: XCTestCase {
         XCTAssertFalse(outcome.notes.contains(.treeUnderreported), "\(outcome.notes)")
     }
 
-    /// count も同じ木で判定するので同じ注記が要る
-    func testTheNoteAlsoReachesCount() async {
-        let step = FlowStep(assert: "count", locator: FlowLocator(id: "submit"),
-                            timeout: 0, expectedCount: 0)
-        let outcome = await StepExecutor(driver: FixedTreeDriver(gappyTree())).execute(step)
-        XCTAssertTrue(outcome.notes.contains(.treeUnderreported), "count: \(outcome.notes)")
+    /// **判定に木を使う4経路すべてに載る**(`noteEmptyWebView` と同じ配線)。
+    /// 片方だけに載せると、同じ木で下した判断なのに注記の有無が分岐で変わる
+    func testTheNoteReachesEveryJudgingPath() async {
+        let steps: [(String, FlowStep)] = [
+            ("count", FlowStep(assert: "count", locator: FlowLocator(id: "submit"),
+                               timeout: 0, expectedCount: 0)),
+            ("exists", FlowStep(assert: "exists", locator: FlowLocator(id: "submit"),
+                                timeout: 0, occlusionGuard: false)),
+            ("textNotEquals", FlowStep(assert: "textNotEquals", locator: FlowLocator(id: "submit"),
+                                       expected: "送信", timeout: 0, occlusionGuard: false)),
+        ]
+        for (name, step) in steps {
+            let outcome = await StepExecutor(driver: FixedTreeDriver(gappyTree())).execute(step)
+            XCTAssertTrue(outcome.notes.contains(.treeUnderreported),
+                          "\(name) が黙った: \(outcome.notes) / \(outcome.status)")
+        }
     }
 }

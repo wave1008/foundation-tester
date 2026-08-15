@@ -319,6 +319,7 @@ extension StepExecutor {
             phase.snapshotMs += Self.ms(clock.now - start)
             try await dismissInterruption(in: &snapshot, phase: &phase)
             noteEmptyWebView(snapshot)
+            noteUnderreportedTree(snapshot)
             // **見つからないのは上限で間引かれたからかもしれない**(2026-08-15)。否定側だけ
             // 塞いであったが、肯定側は**実在する要素で赤くなる** = flake になる。
             // 誤った成功ではないので優先度は下だが、直す手段は同じファイルに既にある。
@@ -650,6 +651,7 @@ extension StepExecutor {
             phase.snapshotMs += Self.ms(clock.now - start)
             try await dismissInterruption(in: &snapshot, phase: &phase)
             noteEmptyWebView(snapshot)
+            noteUnderreportedTree(snapshot)
             lastSeenElements = snapshot.elements
             if let (element, fallback) = Self.resolve(step: step, in: snapshot,
                                                       strictForAssert: true) {
