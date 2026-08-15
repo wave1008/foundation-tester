@@ -40,6 +40,27 @@ final class MCPGuidanceTests: XCTestCase {
         }
     }
 
+    // MARK: - システムダイアログ(2026-08-16 の外部評価)
+
+    /// 「操作しても木が変わらない」ときに、**SpringBoard のダイアログはこの木に出ない**ことと
+    /// 読む口を出す。評価者はここで詰まり、座標でダイアログを叩いていた
+    func testUnchangedTreeMentionsTheSystemDialogEscapeHatch() {
+        for engine in [nil, "xcuitest"] {
+            let hint = MCPServer.systemDialogHint(engine: engine)
+            XCTAssertTrue(hint.contains("com.apple.springboard"), "engine=\(engine ?? "nil"): \(hint)")
+            XCTAssertTrue(hint.contains("SpringBoard"), hint)
+        }
+    }
+
+    /// **springboardHint と同じゲート**: in-app は注入先アプリしか見えないので springboard を
+    /// 掴めず、Android は木のセッションごと移るので switchedAppNote が捕まえる
+    func testSystemDialogHintIsIOSXCUITestOnly() {
+        for engine in ["inapp", "hybrid", "android"] {
+            XCTAssertEqual(MCPServer.systemDialogHint(engine: engine), "",
+                           "engine=\(engine) にシステムダイアログの案内を出してはいけない")
+        }
+    }
+
     /// 関係ない失敗(404・ネットワーク)に足さない = 誤誘導しない
     func testUnrelatedFailuresGetNoHint() {
         XCTAssertEqual(MCPServer.springboardHint(

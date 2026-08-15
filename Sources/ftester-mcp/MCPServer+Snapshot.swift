@@ -535,6 +535,7 @@ extension MCPServer {
                            ? " the tree is also identical to the one before the action, so the"
                              + " action itself may not have taken effect."
                              + Self.unrepresentedScreenCaveat(snapshot)
+                             + Self.systemDialogHint(engine: engines[Self.engineKey(args)])
                            : "") + "\n"
             } else if args["waitForChange"] as? Bool == true {
                 let result = try await waitForChangeBody(beforeAction: beforeAction,
@@ -548,7 +549,8 @@ extension MCPServer {
                 if Self.looksUnchanged(snapshot, reread) {
                     settleNote = "note: the tree still looked unchanged after a short re-read"
                         + " wait — the action may not have changed the screen."
-                        + Self.unrepresentedScreenCaveat(reread) + "\n"
+                        + Self.unrepresentedScreenCaveat(reread)
+                        + Self.systemDialogHint(engine: engines[Self.engineKey(args)]) + "\n"
                 } else {
                     settleNote = "note: the tree looked unchanged right after the action, so it"
                         + " was re-read once after a short wait — the tree below is the re-read.\n"

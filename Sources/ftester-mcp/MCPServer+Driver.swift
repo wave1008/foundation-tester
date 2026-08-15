@@ -759,6 +759,30 @@ extension MCPServer {
             + " ft_launch your app again to go back."
     }
 
+    /// **iOS のシステムダイアログはこの木に出ない**ことを、詰まった場所で言う(2026-08-16 の外部評価)。
+    ///
+    /// 位置情報・通知の許可や「"◯◯"で開きますか?」は **SpringBoard が別プロセスで描く**ので、
+    /// アプリに閉じた XCUITest のセッションからは**存在しないのと同じ**に見える。しかも
+    /// アプリはその間入力を受け取れないので、症状は「操作しても木が1つも変わらない」になる ——
+    /// **`ft_snapshot` を何度撮っても手掛かりが出ない**形。評価者は座標でダイアログを叩いて
+    /// 切り抜けており(画面サイズが変われば壊れる)、読む口が既にあること自体に気付けなかった。
+    ///
+    /// Android は木のセッションごと別パッケージへ移るので `switchedAppNote` が捕まえる ——
+    /// **この穴は iOS 固有**。
+    ///
+    /// 出す場所は「操作しても変わらなかった」と告げる3箇所(waitFor の identical 判定・
+    /// settle-lite の再読み・ft_batch の still identical)だけ = **読み手が実際に詰まった瞬間**。
+    /// ゲートは `springboardHint` と同じ(engine 不明 or xcuitest。in-app は注入先アプリしか
+    /// 見えないので springboard を掴めず、勧めても実行できない)
+    static func systemDialogHint(engine: String?) -> String {
+        guard engine == nil || engine == "xcuitest" else { return "" }
+        return " If a system dialog is up (a permission prompt, an \"Open in …\" confirmation),"
+            + " it is drawn by SpringBoard and not by the app, so it never appears in this tree"
+            + " — and the app cannot receive input while it is there, which looks exactly like"
+            + " this. Read it with ft_launch bundleId: com.apple.springboard (non-destructive),"
+            + " operate it by ref there, then ft_launch your app again."
+    }
+
     /// home 直後の XCUITest は「セッションはアプリのまま・画面はホーム」になり、次の
     /// ft_snapshot がアプリの古い木か 500 を返す。**先に言う**(踏んでから調べさせない)
     static func homeScreenReadNote(target: String, engine: String?) -> String {

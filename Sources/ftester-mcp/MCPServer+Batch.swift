@@ -525,7 +525,7 @@ extension MCPServer {
         }
         let (unchangedNote, final) = try await Self.batchUnchangedNote(
             beforeBatch: beforeBatch, final: try await freshSnapshot(batchDriver, args: args),
-            stepCount: plans.count) {
+            stepCount: plans.count, engine: engines[Self.engineKey(args)]) {
             // settle-lite と同じ待ち(snapshotAfterBodyWithStatus 参照。新しい定数は置かない)
             try await Task.sleep(nanoseconds: UInt64(max(0, self.settleWaitSeconds) * 1_000_000_000))
             return try await self.freshSnapshot(batchDriver, args: args)
@@ -544,8 +544,10 @@ extension MCPServer {
     /// `beforeBatch` が nil(起点を知らない)なら比較対象が無いので何もしない。
     /// **木がほぼ空の画面には `unrepresentedScreenCaveat` を添える**(2026-08-13 監査。
     /// MCPServer+Snapshot.swift 参照) —— 空の木は必ず「変化なし」に一致するため
+    /// `engine` は iOS のシステムダイアログの案内を出すかの判定にだけ使う
+    /// (`systemDialogHint` 参照。既定 nil = engine 不明として出す側)
     static func batchUnchangedNote(beforeBatch: SnapshotResponse?, final: SnapshotResponse,
-                                   stepCount: Int,
+                                   stepCount: Int, engine: String? = nil,
                                    reread: () async throws -> SnapshotResponse) async rethrows
         -> (note: String, snapshot: SnapshotResponse) {
         guard let beforeBatch, Self.looksUnchanged(beforeBatch, final) else { return ("", final) }
@@ -556,7 +558,8 @@ extension MCPServer {
                 + " re-read wait — none of the steps may have actually changed the screen. It can"
                 + " also be legitimate: the screen was already at the target state, or the steps"
                 + " went somewhere and came back."
-                + Self.unrepresentedScreenCaveat(rereadSnapshot) + "\n", rereadSnapshot)
+                + Self.unrepresentedScreenCaveat(rereadSnapshot)
+                + Self.systemDialogHint(engine: engine) + "\n", rereadSnapshot)
         }
         return ("note: the tree looked unchanged right after the last step, so it was re-read once"
             + " after a short wait — the tree below is the re-read, not the tree right after the"
