@@ -1,13 +1,13 @@
 # FT E2E Flutter アプリ UI 契約
 
-**画面構成・`#id`・表示ラベルは `E2EApp/docs/ui-contract.md`(Compose Multiplatform 版)と共通**。
+**画面構成・`#id`・表示ラベルは `E2EAppCMP/docs/ui-contract.md`(Compose Multiplatform 版)と共通**。
 同じシナリオを各 SUT に当てて比較できるよう、値は byte 一致させてある。
 このファイルは **Flutter 実装固有の差分だけ**を定義する。
 tag 定数は `lib/tags.dart` に集約する(値は共通契約の表と byte 一致)。
 
 - bundle id / applicationId: `com.ftester.e2e.flutter`(他の SUT と共存できる)
 - `#txt_about_app` は `app=com.ftester.e2e.flutter`
-- シナリオ: `Projects/E2E-Flutter/Scenarios/`(**platform 未指定 = ios/android 両方で回す**)
+- シナリオ: `TestProjects/E2E-Flutter/scenarios/`(**platform 未指定 = ios/android 両方で回す**)
 
 ## Flutter で `#id` を出すための必須設定(2つ)
 
@@ -23,6 +23,11 @@ Flutter の semantics ツリーは**支援技術が要求したときだけ**構
 ただし `Semantics` ウィジェットは**それ自体が1ノードを作る**ため、素で包むと
 「identifier だけのノード」と「label だけのノード」に割れる。`MergeSemantics` で
 1ノードに畳む(`lib/widgets.dart` の `tagged()`)。
+
+## ディープリンクの受け取り方式
+
+自前 `MethodChannel`(`com.ftester.e2e.flutter/deeplink`)を採用。標準の Flutter deep linking
+(`flutter/navigation` route push)は、本アプリが Navigator の名前付きルートでなく手動 State でタブ/画面を管理しているため不採用。
 
 ## Flutter 固有の罠(すべて実測で踏んだもの)
 
@@ -49,7 +54,7 @@ Flutter は canvas 描画で Android 側の className が `android.view.View` �
 ブリッジが **葉 + contentDesc → `staticText`** の規則で写像している(docs/design.md §10)。
 → 型セレクタは `button` / `switch` / `staticText` / `textField` が使える。
 → **id の無いテキストもスナップショットに出る**(2026-07-26 以降)。ラベルをアンカーにした
-  方向セレクタが Android でも使える(`Projects/E2E-Flutter/Scenarios/13_ID無し画面.swift`)。
+  方向セレクタが Android でも使える(`TestProjects/E2E-Flutter/scenarios/13_ID無し画面.swift`)。
 → `obscureText: true` は **`secureTextField` にならない**(ネイティブ SUT と違い型で区別できない)。
 → **iOS の in-app エンジンではテキスト欄は `other`**(Flutter のフィールドは UITextField ではないため。
   `#id` 指定なら両エンジン同一に動く)。

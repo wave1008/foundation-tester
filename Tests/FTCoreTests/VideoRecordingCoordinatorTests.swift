@@ -36,6 +36,7 @@ private struct UnusedDriver: AppDriver {
     struct Unused: Error {}
     func status() async throws -> StatusResponse { throw Unused() }
     func install(packagePath: String) async throws { throw Unused() }
+    func uninstall(bundleID: String) async throws { throw Unused() }
     func launch(bundleID: String) async throws { throw Unused() }
     func snapshot() async throws -> SnapshotResponse { throw Unused() }
     func tap(ref: Int) async throws { throw Unused() }
@@ -45,6 +46,8 @@ private struct UnusedDriver: AppDriver {
     func press(ref: Int, duration: Double) async throws { throw Unused() }
     func screenshot() async throws -> Data { throw Unused() }
     func terminate() async throws { throw Unused() }
+    func isAppForeground(bundleID: String) async throws -> Bool { throw Unused() }
+    func foregroundAppID() async throws -> String? { throw Unused() }
 }
 
 private struct FixedSourceSession: DeviceVideoRecorderSession {

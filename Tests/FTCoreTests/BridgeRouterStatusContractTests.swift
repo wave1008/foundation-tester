@@ -26,10 +26,16 @@ final class BridgeRouterStatusContractTests: XCTestCase {
         }
     }
 
+    /// ルータは status を**2書式**で返す(`throw BridgeError(501, …)` と
+    /// `.error(…, status: 501)`)。片方しか数えないと**もう片方で足した分を見逃す** ——
+    /// 実際に `handleHideKeyboard` の 501 が「0箇所」の主張をすり抜けていた(2026-08-04)
     private func throwSites(status: Int, in source: String) throws -> Int {
-        let regex = try NSRegularExpression(pattern: #"BridgeError\(\#(status)\s*,"#)
-        return regex.numberOfMatches(in: source,
-                                     range: NSRange(source.startIndex..<source.endIndex, in: source))
+        let patterns = [#"BridgeError\(\#(status)\s*,"#, #"status:\s*\#(status)\b"#]
+        return try patterns.reduce(0) { total, pattern in
+            let regex = try NSRegularExpression(pattern: pattern)
+            return total + regex.numberOfMatches(
+                in: source, range: NSRange(source.startIndex..<source.endIndex, in: source))
+        }
     }
 
     /// 409 は `requireApp()` のセッション消失だけ。**増やしてはいけない**:
@@ -41,7 +47,9 @@ final class BridgeRouterStatusContractTests: XCTestCase {
                        "XCUITest ランナーの 409 は requireApp() の1箇所だけ。"
                        + "「セッションはあるが実行できない」は 422 を使うこと"
                        + "(SessionRecoveryDriver がセッション消失と誤断定し activate を撃つ)")
-        XCTAssertTrue(source.contains("ランナーにセッションがありません"),
+        // 文言は英語(ブリッジのメッセージはホストへ素通しするため。CLAUDE.md の方針)。
+        // **目印は経路の意味**なので、言い回しを変えるときはここも直す
+        XCTAssertTrue(source.contains("the XCUITest runner has no session"),
                       "409 の1箇所はセッション消失の requireApp() であること")
     }
 
@@ -51,11 +59,52 @@ final class BridgeRouterStatusContractTests: XCTestCase {
                        "503 は requireLiveApp() の1箇所だけ")
     }
 
-    /// XCUITest ランナーは「このエンジンでは不可」を持たない(全ルートを実装している)。
-    /// 501 を足すと isEngineIncapable が真になり、ホストが**同じ XCUITest へ**
-    /// フォールバックする無限の遠回りになる
+    /// **取得系はセッションのアプリが前面のときだけ木を撮る**(`requireForegroundApp`)。
+    ///
+    /// 外すと 45 秒待たされた末に**ランナーごと落ちてブリッジが消える**(2026-08-15 実測 6/6)。
+    /// `requireLiveApp` では代用できない —— あちらは `.notRunning`/`.unknown` しか弾かず、
+    /// 引き金の**背面**(`.runningBackground`)を素通しする。
+    /// 状態は 422 であること: 409 はセッション消失専用、503 は `AppAttachDriver` が
+    /// activate で復帰を試みる = 呼び手に黙ってアプリを前面へ引き戻す
+    func testTreeReadsRequireTheAppToBeInTheForeground() throws {
+        let source = try routerSource
+        for handler in ["handleSnapshot", "handleHittable"] {
+            let body = try XCTUnwrap(handlerBody(handler, in: source), "\(handler) が見つからない")
+            XCTAssertTrue(body.contains("try requireForegroundApp()"),
+                          "\(handler) は requireForegroundApp() を通すこと"
+                          + "(背面のまま木を撮るとランナーが落ちてブリッジが消える)")
+        }
+        let guardBody = try XCTUnwrap(handlerBody("requireForegroundApp", in: source))
+        XCTAssertTrue(guardBody.contains("BridgeError(422,"),
+                      "前面でないことの申告は 422(409 = セッション消失 / "
+                      + "503 = AppAttachDriver が黙って activate する)")
+        XCTAssertTrue(guardBody.contains("== .runningForeground"),
+                      "背面を弾くには前面と等しいことを要求すること"
+                      + "(.notRunning の否定では .runningBackground が素通りする)")
+    }
+
+    /// `private func <名>` から次の `private func` の手前まで
+    private func handlerBody(_ name: String, in source: String) -> String? {
+        guard let start = source.range(of: "private func \(name)") else { return nil }
+        let rest = source[start.upperBound...]
+        guard let end = rest.range(of: "\n    private func ") else { return String(rest) }
+        return String(rest[..<end.lowerBound])
+    }
+
+    /// XCUITest ランナーの 501 は `handleHideKeyboard` の**1箇所だけ**。
+    /// 501 は isEngineIncapable が真になり、ホストは XCUITest へフォールバックする ——
+    /// つまり**フォールバック先が自分自身**になるので、増やすと無限の遠回りを作る。
+    ///
+    /// 唯一の例外が hideKeyboard で、これは iOS に実装手段が無い(§10)ため in-app も
+    /// XCUITest も 501 を返す。ホスト(`StepExecutor`)は in-app の 501 を typeDriver へ
+    /// **1回だけ**回し、そこでも 501 なら失敗させるので、遠回りは1往復で止まる。
+    /// **これ以外の 501 を足さないこと**(「今は無理」は 422)
     func testRunnerNeverClaimsEngineIncapable() throws {
-        XCTAssertEqual(try throwSites(status: 501, in: try routerSource), 0,
-                       "XCUITest ランナーが 501 を返すとフォールバック先が自分自身になる")
+        let source = try routerSource
+        XCTAssertEqual(try throwSites(status: 501, in: source), 1,
+                       "XCUITest ランナーの 501 は hideKeyboard の1箇所だけ。"
+                       + "増やすとフォールバック先が自分自身になる")
+        XCTAssertTrue(source.contains("hideKeyboard is Android-only"),
+                      "501 の1箇所は hideKeyboard であること")
     }
 }

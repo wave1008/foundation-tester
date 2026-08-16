@@ -18,12 +18,48 @@
   (`installStepSync.test.mjs` が「install.sh が指すステップが SKILL.md に実在するか」を検出)。
   **スキルからは curl 形で呼ぶ**(クローン側の Scripts/ は pull されるまで古く、新しい引数は
   「不明なオプション」で落ちる)。全出力は `<WORK_DIR>/.ftester/install-<日時>.log` に残る。
+  **pull 後は自分自身を再 exec する**(2026-08-06 追加)。**bash は実行中にファイルが差し替わっても
+  古い内容を最後まで実行する**(git は rename で置換するので開いた fd は旧 inode を指し続ける。
+  実験で確認)。この再 exec が無いと、update.sh 経由で入った**新しいステップはその回に1つも
+  実行されず**、次回は update.sh が up-to-date で即終了するので**永久に実行されない**
+  (実害: ステップ7.6 の CLAUDE.md 生成が版だけ上がって一度も走らなかった)。
+  条件は「実行中のファイル = pull したクローンの `Scripts/install.sh` 自身」かつ HEAD が動いたときだけ。
+  **`update.sh` にも同じ再 exec がある**(2026-08-06。install.sh から戻った時点で HEAD が動いていたら
+  やり直す)。一度は「委譲が中心だから影響は小さい」と残したが、**直後に利用者向けの修正
+  (project sync を外部構成でも走らせる)が update.sh 側へ入り、受け手が2回更新しないと
+  直らない状態を作った**。2周目は `FT_UPDATE_REEXEC` で up-to-date の早期終了を通さない
+  (直前に pull しているので必ず up-to-date になり、素通しだと project sync とプラグイン更新が飛ぶ)。
   **画面は各ステップ1行(逐次)+ 集計だけ・生ログはファイルへ**(`--verbose` で従来。54KB 出すと
   エージェント側で切られ、結果を探す grep が承認を増やす)。**逐次表示は人のためのもの** ——
   数分の無音は「止まった」と誤解され中断される。最後の再掲は warn/fail だけ(全行だと表が2つ並ぶ)。**外部構成ではクローンのローカル変更を自動破棄**
   (reset --hard + `clean -fd`。`-x` は付けない = .build/ を消さない。`--keep-local` で従来)。
+  **WORK_DIR の `CLAUDE.md` にマーカー付きで入口を4行置く**(ステップ7.6。`.mcp.json` も
+  `settings.json` も「設定として効く」だけでエージェントが読む物ではないため、これが無いと
+  導入の翌週にスキルの description しか手掛かりが無くなる)。**使い方の解説は書かない** ——
+  ツール説明と二重管理になり必ずズレる。受け手の資産なのでマーカーの内側だけ差し替え、
+  嫌う受け手には `--skip-claude-md`。
+  **ここは受け手のファイルを書き換える唯一の箇所**なので、**マーカーが begin/end ちょうど1組で
+  なければ1バイトも書かない**(片方だけ・2組以上・逆順は `damaged` で warn 止まり)。
+  素朴に「最初の begin 〜 最初の end」を置換すると、end だけ壊れた CLAUDE.md で
+  **1回目に2つ目のブロックを追記 → 2回目に間に挟まれた利用者の記述ごと削除**する
+  (2026-08-06 に実際に消して確認)。`installClaudeMdBlock.test.mjs` が
+  install.sh から python を抜き出して実行し、この3形を守る。
+  **クローンが git 管理しているファイルには書かない**(2026-08-07 に自己破壊を実再現)——
+  clone 構成では受け手の CLAUDE.md はクローン自身の追跡ファイルで、書くとツリーが dirty になり
+  **2回目以降の更新が pull ガードで必ず止まる**。`git reset --hard` で戻しても次の更新が
+  同じブロックを書くので堂々巡りになる。判定はレイアウトではなく
+  **`git ls-files --error-unmatch` で追跡の有無**。同型は packageLockSync(npm install が
+  lock を書き換える)。**受け手のフローに「クローンの中を書く」工程を足すときは必ず追跡を見る**
   **毎回 `ftester api ensure-settings` で Bash 許可リストを補修する**(init 経由だけだと
   `--skip-project` の更新で既存の受け手に永久に届かない)
+- MCP サーバの起動口: `Scripts/mcp-server.sh`(`.mcp.json` はこれを exec するだけ)。
+  **シェル式を `.mcp.json` へ直書きしない** —— 起動のたびに no-op でも約8秒の `swift build` を払い、
+  失敗すると `>/dev/null` で**理由が分からないまま起動しない**(2026-08-06 の外部フィードバック)。
+  ランチャが守るのは3つ: **鮮度でだけ建てる**(`find Sources Package.swift -newer <bin>`。
+  存在チェックに戻さない = InAppLauncher と同じ規律。建てた直後に `touch` するのは、
+  無変更のソースを触っただけだと再リンクされず毎回建て直しになるため)/
+  **stdout は JSON-RPC 専用**(診断は stderr・ビルド出力はログファイル)/
+  **cwd を変えない**(cwd は受け手パッケージの特定に使う。ビルドはサブシェルで行う)
 - 受け手の更新: `Scripts/update.sh`(install.sh を再実行 + project sync + プラグイン更新と版照合。
   `.claude/skills/ftester-update/SKILL.md` と 1:1)。**先に update-check.sh を呼び up-to-date なら
   即終了**(全工程は更新が無くても約30秒。入れ直しは `--force`)。**ログの場所は最後の
@@ -45,31 +81,55 @@
   **`reason=` は ja/en どちらでも英語**(拡張の通知に素通しするため。枠だけ訳す)。
   **TOOL_ROOT の解決規則は preflight.sh / update.sh / `src/toolRootResolve.ts` と同じ**(4箇所。片方だけ変えない。
   `toolRootContract.test.mjs` が規則の3語(クローン判別マーカー・既定の隣・Package.swift の宣言)の欠落を検出)
-- DSL コマンドリファレンス(全コマンドの引数・挙動。利用者向け): docs/commands.md
+- DSL コマンドリファレンス(全コマンドの引数・挙動。利用者向け): docs/commands.md。
+  **機械可読な索引は `Sources/FTCore/CommandIndex.swift`**(`ftester api dsl-commands` が出す。
+  読者はコードを生成する側で、名前の存在確認に使う)。**コマンドを足す/消す/改名したら索引も直す**
+  (`CommandIndexSyncTests` が Commands.swift / CommandsVerify.swift / CommandsAppControl.swift / ValueAssertions.swift / FTElement と突き合わせる)。
+  **置いていない名前は `Sources/FTDSL/UnavailableCommands.swift` で受け止める**(他ツールの名前・
+  対称性から実在すると誤解される別名。`cannot find in scope` の代わりに正しい書き方を出す)
 - Shirates(Classic)との対応表(何が揃っていて何を持たないか・意図的に持たないものの理由・
   OS で挙動が割れるもの・足す価値がある残り): docs/shirates-parity.md。
   **コマンドを足す/名前を変えるときは必ずここも更新する**(準拠漏れの一覧を含む)
+- MCP 監査ラウンドの回し方(**1ラウンド = 初見の「形」1つ**。**アプリ名は軸ではない** ——
+  軸①画面の形 / 軸②セッションの形の2本立て・拾ったものを**バグ / 自作機構の欠陥 / 言い回し**の
+  3つに分ける規律・**増設と検分は交互**・停止規則・台帳): docs/mcp-audit-rounds.md。
+  **地図の反復監査は 2026-08-12 に閉じた**。2026-08-13 に軸を「アプリ」から「形」へ直した ——
+  アプリで数えていたためにブラウザ6ラウンドが全部「天気」(うち5回は同じ格子)になり、
+  **直近の実バグの 3/4 が前のラウンドで自分が入れた注記の手直し**になっていたのを台帳が
+  検出できなかった。**天気サイトはもう足さない**
+- MCP の使い勝手の計測(**まっさらなエージェントがタスクを終えられたか・何手かかったか**。
+  注記の A/B の回し方と判定の規律): Bench/README.md(`Scripts/mcp-bench.sh`)。
+  **実 web ページの形はここで測れない**(offline の盤面が無い)ので、注記が最も増える形に
+  止める機構が無い。当面は `NoteBudgetTests` が**本数と鍵の集合を等号で固定**し、
+  増減を意識的な操作にする(予算を動かすには根拠を台帳へ書く)
 - CI 連携(`ftester run --junit` の JUnit 出力・GitHub Actions 例・flaky 方針): docs/ci.md
 - リリース(git タグ発行と版ピンの関係。配布はソースビルド前提): docs/releasing.md(`Scripts/release.sh`)
 - 設計書(アーキテクチャ・Swift DSL 仕様・セレクタ記法・プロファイル): docs/design.md
 - 性能チューニング(調整ノブ・不採用施策と再検討条件・計測手順): docs/performance-tuning.md
 - 検証の詳細(flake/性能の判定規律・ベータ整合・全滅時の切り分け・e2e.sh のオプション): docs/verification.md
-- ftester 自身の E2E: **UI フレームワークごとに SUT が4つ**ある(画面・`#id`・ラベルは全 SUT 共通契約):
+- ftester 自身の E2E: **UI フレームワークごとに SUT が5つ**ある(画面・`#id`・ラベルは全 SUT 共通契約):
 
   | SUT | 実装 | プロジェクト | 対象 OS |
   |---|---|---|---|
-  | `E2EApp/` | Compose Multiplatform | Projects/E2E | ios + android |
-  | `E2EAppIOS/` | SwiftUI + 一部 UIKit | Projects/E2E-iOS | ios |
-  | `E2EAppAndroid/` | View/XML + 一部 Compose | Projects/E2E-Android | android |
-  | `E2EAppFlutter/` | Flutter | Projects/E2E-Flutter | ios + android |
+  | `E2EAppCMP/` | Compose Multiplatform | TestProjects/E2E-CMP | ios + android |
+  | `E2EAppIOS/` | SwiftUI + 一部 UIKit | TestProjects/E2E-iOS | ios |
+  | `E2EAppAndroid/` | View/XML + 一部 Compose | TestProjects/E2E-Android | android |
+  | `E2EAppFlutter/` | Flutter | TestProjects/E2E-Flutter | ios + android |
+  | `E2EAppRN/` | React Native | TestProjects/E2E-RN | ios + android |
 
-  **要素の testTag/`#id`/ラベルの唯一の正は `E2EApp/docs/ui-contract.md`**(全 SUT とシナリオがこれを参照。
+  **要素の testTag/`#id`/ラベルの唯一の正は `E2EAppCMP/docs/ui-contract.md`**(全 SUT とシナリオがこれを参照。
   片方だけ変えない。`uiContractSync.test.mjs` が「SUT 側の `#id` が母体に実在するか」を検出)。
   **型語彙・OS/フレームワーク固有の罠だけ**は各 SUT の `<SUT>/docs/ui-contract.md` に置く
   (同じ `#id` でも型は SUT ごとに違う。例: ボタンは CMP/Android で `Cell`、View/XML なら `Button`)。
-  **4 SUT のシナリオはほぼ同内容だが共通化しない**(2026-07-29 ユーザー決定・可読性優先)。
-  差分は16ファイル中の過半が2〜10行で、DSL 変更のたび4箇所を編集することになるが、共通化すると
+  **5 SUT のシナリオはほぼ同内容だが共通化しない**(2026-07-29 ユーザー決定・可読性優先。
+  RN 追加後も同じ)。DSL 変更のたび5箇所を編集することになるが、共通化すると
   SUT 固有の差(型語彙・フレームワーク固有の罠)が表現しにくくなる。**共通化を再提案しない**
+- **ディープリンクの URL スキームは SUT ごとに固有**(`fte2ecmp`/`fte2eios`/`fte2eandroid`/
+  `fte2eflutter`/`fte2ern`。契約は `E2EAppCMP/docs/ui-contract.md` §ディープリンク)。
+  iOS は同一スキームを複数アプリが登録していても解決先を1つしか選ばず、E2E のシミュレータには
+  iOS の SUT が4つ同居するため共有スキームでは配送先が端末ごとに揺れる(実測で別アプリへ
+  配送された)。`Tests/FTesterTests/DeepLinkSchemeSyncTests.swift` が契約表との一致と
+  SUT 間の重複を検出する
 
 ## ビルド・検証
 
@@ -83,7 +143,58 @@
   **package.json だけ手で書き換えない** — lock も version を内包しており、放置すると受け手の
   `npm install` が lock を書き換えてクローンが dirty になり、**次の更新が pull ガードで止まる**
   (実害。`packageLockSync.test.mjs` が検出。既にズレたら `npm install --package-lock-only`)
-- Swift: `swift build --build-tests` / `swift test`。**合否は exit code で見る**(パイプすると grep 等の exit code に化けて失敗を握りつぶす実害)
+- Swift: **`swift test --parallel` だけでよい**(実測 127s → 34s。直列も緑のままだが、毎回の待ちが4倍違う)。
+  **前に `swift build --build-tests` を打たない** —— `swift test` が同じビルドをやり直すので
+  **無変更でも 12.3 秒を二重に払う**(実測: build 12.3s + test 37.9s = 50.2s / test 単独 37.9s)。
+  **5 SUT のシナリオも `swift test` で型チェックされる**(実験で確認: シナリオを1行壊すと
+  `swift test` が落ちる)ので、DSL の改名・シグネチャ変更の追随漏れもこれで捕まる。
+  別途ビルドが要るのは**変異テストの直後に製品バイナリを作り直すとき**だけ
+  (`swift build --product <名>`)。
+  **合否は exit code で見る**(パイプすると grep 等の exit code に化けて失敗を握りつぶす実害)。
+  **並列はテストプロセスを分けるので、ホストの共有資源に触るテストは自分で隔離する** ——
+  既定のパスを直接見に行くと、無関係なテストの後始末と競合して落ちる(2026-08-10 に `FMBreaker` で実際に発生。
+  状態ファイルがホスト単位なのは仕様なので、**テスト側が差し替え口でプロセスごとの一時パスへ逃がす**。
+  「どこに置くか」は I/O 抜きで別に表明する)。同型は `.ftester/` の台帳・`DiagnosticReports` の走査・simctl/adb
+  を呼ぶテスト。**隔離できないホストの実体**(simctl/adb・起動中の Simulator/Emulator・固定パス)は
+  `Sources/FTTestSupport/SharedResource.swift` の `SharedResource.<key>.locked { }` で資源キーごとに
+  直列化する(隔離が使えないときの下位の手段。詳細は docs/verification.md)
+- **`ftester bridge down --all` を頻繁に打たない**(2026-08-11 指示)。1回ごとに XCUITest ランナーの
+  `xcodebuild` が全台ぶん走り、他セッションや監視が使う端末も巻き添えにする。**打たずに済む順序で組む**:
+  **①ブリッジに触る編集を全部終えてから版を1回だけ上げる**(小刻みに上げると毎回全台の再構築)/
+  **②建て直しは使う端末だけ**(`bridge down --port <N>`。1シナリオの確認なら台数上限で2台しか要らない)/
+  **③版ガードに弾かせる**(古いブリッジは「the bridge is OLDER than this build」で明示的に落ちるので、
+  予防的に全台を落とさず**弾かれたポートだけ**建て直す)/
+  **④建て直しの要らない段から検証する**(単体テスト → dry-run → 生きているブリッジ1台での MCP 確認 →
+  最後にデバイス実行)。**ワイヤ形式(DTO の enum・フィールド)を変えたら必ず版を上げる** ——
+  上げないと「同じ版なのに非互換」なランナーが残り、400 で落ちて原因が分からなくなる(2026-08-11 に実際に踏んだ)
+- **1シナリオの確認にフリート全台を用意しない**。`ProfileRunner` は回す本数から台数を絞る
+  (`ResolvedProfile.deviceKeepCount` = 本数 + 予備1台)。実測で iOS の1本実行が 21.8s → 9.3s
+  (固定費 14.8s → 2.9s)。**予備1台は必須**(用意した台が blank/frozen で弾かれると run ごと落ちる)。
+  `ftester api run`(拡張の並列経路)は**シナリオ一覧をビルドと並行に解決する**ので一覧を待てない ——
+  確定している `--scenario` の指定だけで判断する(`ApiRun.exactScenarioCount`。
+  明示 ID は1つにつき高々1本なので合計を上限に使え、クラス名指定・全件は絞らない)
+- **E2E 実行中に `swift build` / `swift test` を打たない**(2026-08-15 の実害)。同じ `.build` を
+  共有するので、**実行中の `ftester` バイナリが差し替わってプロセスが SIGKILL される**
+  (`Killed: 9`)。フル E2E の最中に単体テストを回したところ、3プロファイルが同時刻の連番 PID で
+  落ち、**テストの失敗に見える形で赤くなった**(実際は1本も走っていない)。
+  見分け方は `Scripts/e2e.sh: line NNN: <pid> Killed: 9` と、シナリオ0本での即死。
+  **待つ間に手を動かしたくなる場面ほど踏む**ので、E2E を投げたらビルドを伴う作業は止める
+- **E2E の前にモニターを止める。配信まで止める**(2026-08-13 に3条件の対照で確定)。
+  モニターと同時に回すと Android が**実際に赤になる**(常駐で 3/4 プロファイル失敗・接続断11件 →
+  完全停止で 4/4 成功・接続断0)。**`ftester api monitor` を kill しても配信は8台ぶん残る** ——
+  `ftester-androidstream` と子の `adb … exec-out screenrecord` がデバイスを掴み続けるので、
+  `pkill -f "ftester api monitor"` / `pkill -f "ftester-androidstream"` /
+  `pkill -f "screenrecord --output-format=h264"` の**3つ**を打つ。
+  **中途半端に止めた対照は誤った結論を出す**(観測だけ止めて残った失敗を「特定の個体の問題」と
+  報告したが、実際はその台の配信が生きていただけだった)。詳細は docs/verification.md
+- **長時間ジョブ(E2E 等)の完了を「プロセスの生死」で待たない**(2026-08-09 の実害)。
+  `pgrep -f <文字列>` は自分自身こそ除外するが、**同じ文字列を含む他のシェルは拾う** ——
+  待機コマンド自身のコマンドラインにその文字列が載るので、待機を2つ以上同時に走らせると
+  **互いを「まだ実行中」と見て全員が止まらない**。実際 E2E の待機が3つ残り、次のスイートが
+  1本も起動しないまま「実行中」と表示され続けた(実験で機構を確認済み)。
+  **ジョブ自身が出す成果物で待つ**:
+  `nohup bash -c '<job> > log 2>&1; echo "exit=$?" > log.done' &` で起動し `log.done` を待つ。
+  併せて **起動を報告する前にログの実在を確かめる** —— 「開始しました」は観測ではなく期待になりやすい
 - 実行ファイル差し替えは `swift build --product <名>`。`--target` はリンクせず旧バイナリを実行する(事故実績)
 - **DSL コマンド・`StepExecutor`・ドライバ・ブリッジ(`InAppBridge`/`Runner`/`AndroidRunner`)・
   セレクタ/スナップショット/ヒール(`FTAgent`)を変えたら `Scripts/e2e.sh`**(ユニットテストはデバイス
@@ -91,34 +202,109 @@
   操作合成(タップ/ドラッグ/スクロール探索の終端処理)を触ったら SUT を絞らず全部**回す
   (フレームワーク差の退行は SUT を跨がないと出ない。実害: 探索終端の空打ちドラッグは CMP では
   無害・SwiftUI ではタブバーが反応し、E2E-iOS を回すまで 5/5 の回帰に気付けなかった)。
-  **入力・キー・IME 系を触ったら `--ios-inapp` も回す**(既定の e2e.sh は iOS を xcuitest でしか
-  回さないが、**利用者の既定エンジンは hybrid = in-app 優先**。実害: pressEnter のバグ2件が
-  既定スイートでは最後まで表面化しなかった)。詳細は docs/verification.md
+  **既定の e2e.sh は iOS を in-app エンジンで回す**(2026-08-11 に xcuitest から反転。
+  **利用者の既定エンジンは hybrid = in-app 優先**なので、既定スイートが見るべきはそちら)。
+  **フル E2E は引数なしの `Scripts/e2e.sh` だけ**(2026-08-11 指示。xcuitest は含めない)。
+  **XCUITest ブリッジを触ったときだけ `--ios-xcuitest` を的を絞って回す**。エンジン指定(`--ios-inapp` /
+  `--ios-xcuitest`)は **iOS だけを回す**(Android にエンジンの選択肢は無いので既定スイートと
+  同一の実行を二度払うだけ。2026-08-11 実測で 244 秒の純粋な重複)。OS の絞り込みは
+  `--ios` / `--android`。詳細は docs/verification.md。
+  **この漏れは e2e.sh が検出する**(2026-08-10)—— **回さなかった側**のブリッジ入力集合
+  (`BridgeSourceSet`)の digest を、そのエンジンの実行が**全部成功したときだけ**
+  `.ftester/<engine>-e2e-verified` に記録し、開始時と終了時に食い違いを警告する
+  (`ftester api bridge-sources --set inapp|xcuitest --digest`。一覧は BridgeSourceSet が唯一の定義元)。
+  **落とさず警告だけ**(検知は警告から始める)。実害: in-app/xcuitest 両方のスナップショット生成を
+  変えた回の E2E 254 本が全部 engine=xcuitest で、in-app 側は1度も動かないまま緑になった
 - **e2e の実行範囲はリスクとコストで決める**(上のゲートは「最低限ここまでは回す」の下限で、
   常に全部回す意味ではない。フルスイートは10分超かかるので、**何も足さない実行はしない**):
 
   | 変更の性質 | 範囲 |
   |---|---|
-  | 改名・シグネチャ変更・型に閉じたリファクタ | **ビルド+`swift test` だけ**。追随漏れは必ずコンパイルエラーになる(4 SUT のシナリオも Package のターゲットなので型チェックされる) |
+  | 改名・シグネチャ変更・型に閉じたリファクタ | **`swift test --parallel` だけ**。追随漏れは必ずコンパイルエラーになる(5 SUT のシナリオも Package のターゲットなので型チェックされる。実験で確認済み) |
   | ホスト側ロジック(`StepExecutor` の分岐・セレクタ解決) | `swift test` + **該当シナリオ1〜2本** |
   | ブリッジの挙動(注入・スナップショット・型写像) | 該当 SUT の**1プロファイル**。フレームワーク差が絡むなら全 SUT(上のゲート) |
-  | 入力・キー・IME 系 | 上記 + **`--ios-inapp`** |
+  | 入力・キー・IME 系 | 上記 + **`--ios-xcuitest`**(既定は in-app なので、もう片方のエンジン) |
   | flake 調査・性能 | 該当プロファイルを**反復10周**(docs/verification.md) |
-  | リリース前・大きな統合の締め | フルスイート(既定 + `--ios-inapp`) |
+  | run 制御(再キュー・ワーカー離脱など。シナリオ実行の中身を触らない) | `swift test` + **その経路を強制的に通す陽性対照**。緑の run では1度も実行されないのでフルは情報ゼロ |
+  | リリース前・大きな統合の締め | **フルスイート = `Scripts/e2e.sh`(引数なし)だけ**。xcuitest は含めない(2026-08-11 指示) |
 
+  **回す前に「それで何が検証できるか」を言えること**(2026-08-06 指示。惰性で回して指摘された)。
+  判定はひとつ —— **その変更は緑の run で1度でも実行されるか**。実行されないなら、
+  フルは 10 分を捨てるだけで、代わりに要るのは**経路を強制的に通す陽性対照**。
+
+- **受け手が受け取る経路も一度は通す**(2026-08-07 の実害)。9コミット積んだ後で
+  `Scripts/update.sh` を実際に走らせたら、**2回目以降の更新が必ず失敗する**欠陥が出た。
+  3ラウンドの実アプリ監査でも単体テストでも1度も出ていない ——
+  **コードの正しさと、それが受け手へ届くことは別に確かめる**
 - **flake の修正は1回グリーンで判定しない・単発の観測で性能を断じない**(反復+負荷で叩く。実害と
   手順は docs/verification.md)
+- **「読む回数を減らす」最適化は、その読みが担っている砦を先に列挙する**(2026-08-12)。
+  MCP の `ft_scroll_to` が 0 スワイプでも木を2回読むのを1回にしたら、
+  **既存の回帰テスト2本が落ちて「2枚目を読むこと自体がガード」だと分かった**
+  (返す木 = 照合した木にすると、対象の消失も画面外への移動も定義上検出できなくなる)。
+  節約できるのは**誰も見ていない読み**だけ。省く前に「この読みの結果を何が見ているか」を
+  grep で数え、**ガードなら速さと引き換えにしない**(実装は撤回。詳細は docs/design.md)
 - **単体テストが緑でも実データで1回動かすまで信用しない**。テストは書いた本人の前提を共有するので、
   前提が誤っていると実装とテストが同じ誤りを持ったまま緑になる(実害3件は docs/verification.md)
+- **定数を置くときは根拠・単位・尽きたときの発話を書く**(2026-08-15 ユーザー方針
+  「根拠のない定数は排除したい」)。書けないなら数字を調整するのではなく**数字への依存を消す**
+  (観測可能な事象を待つ・デバイスの応答が要らない情報源から導く)。**片方の文脈で詰めた値を
+  別の文脈へ流用しない** —— 読み手の予算・シミュレータの実測・pt で測った床は、読み手の
+  いない経路・実機・px の木では**遅くなるのではなく黙って誤る**(4件の実例と直し方は
+  docs/verification.md と記憶 context-blind-constants-20260815)。残す数字は名前を付けて
+  1箇所に置く(いずれ実行プロファイルから指定できるようにする差し込み口になる)
+- **陽性対照は pass/fail でなく出力の文言まで読む**。主張を含む文言(「天井でも足りない」等)は
+  **主張が偽になる周回**が設計に残っていても単体テストでは緑のままになる(2026-08-15 に実際に
+  嘘を出し、latch へ設計変更した。docs/verification.md)
+- **失敗の帰属は「HEAD での対照」で決める**。変更の直後に出た失敗を、印象で自分のせいにも
+  既存の問題にもしない(`git stash push -u` → HEAD で1シナリオ → `git stash pop`。3〜4分。
+  docs/verification.md)
+- **「差が出ない」ときは仮説より先に実験系を疑う**。差が出ないことは、**変更が無効だったこと**と
+  **実験が無効だったこと**を区別しない。実行の実体は `ftester` ではなく
+  **`ftester-scenarios-<project>` サブプロセス**なので、A/B で `ftester` を差し替えても
+  base と fix が同一コードを走る(2026-08-03 に性能の A/B と修正案2件を取り違えた)。
+  **陽性対照を先に通す**(マーカーを書くだけの版で差し替えが効くことを確認してから本番)。
+  判定に使うシナリオは **`clearAppData()` から始める** —— E2E アプリは状態を launch を跨いで
+  永続し、前の run の残留を読むと壊れていても通る。詳細は docs/verification.md
+  §「切り分けは『実験系が効いているか』を先に確かめる」
 - **不具合を直したら「同じ型が他に無いか」を機械的に掃討する**(grep で同じ呼び出し形・同じ定数・
   同じ既定実装依存を列挙してから潰す)。同じ型はほぼ必ず複数ある —— 2026-07-31 の1セッションで
   4回掃討して4回とも見つかった(Android の読み前 `refresh()` 漏れが3経路目にも / `forScroll` を
   落とすラッパー群 / ランナーの 409 多重定義 / 整定の打ち切りを黙る3層)。
   **再現しない同型でも、失敗モードが沈黙(誤った成功)なら塞ぐ価値がある**(その場合は
   「再現していない」と明記する)。可能なら**同型の再発を落とすテスト**まで足す
-  (`SwipeForScrollForwardingTests` = ソース走査 / `BridgeRouterStatusContractTests` = 本数固定)
-- **新しいテストは「破ったら落ちる」ことを1回確かめる**(production を1行壊して実行→復元)。
-  この確認だけで無力なテストが4件見つかった実績がある。検出できない変異が出たらテストを境界へ
+  (`SwipeForScrollForwardingTests` = ソース走査 / `BridgeRouterStatusContractTests` = 本数固定 /
+  `AppDriverDefaultDispatchTests` = 宣言の突き合わせ)
+- **`AppDriver` に既定実装を足すときはプロトコル要件にも宣言する**。存在型越しの呼び出しは
+  要件でなければ**静的ディスパッチで既定実装に落ち**、ドライバ側の実装が呼ばれないまま
+  黙って既定値が返る(ビルドもテストも通る)。2026-08-01 に `snapshot(bypassingCache:)` で実際に踏んだ。
+  `AppDriverDefaultDispatchTests` が検出する
+- **新しい検知(警告・lint・修正提案)は「既存資産の全数に当てて誤検知0」まで確認する**。
+  単体テストは想定した形しか試さないので緑のまま通る。dry-run はデバイス不要なので全数が安い
+  (レシピと実例は docs/verification.md。実際に誤検知2件と**実バグ1件**が出た)。
+  **ただしスナップショットの検知(遮蔽・積み重なり・ghost)は自前 SUT では代表できない** ——
+  木が要るので dry-run では当てられず、しかも 4 SUT 掃討が誤検知0でも**実アプリで出る**
+  (2026-08-06 に5形、2026-08-07 に3形。どちらも自前 SUT は0件)。
+  **逆向きも成り立つ ——「固定コーパスで0件」も自前 SUT の実画面を代表しない**(2026-08-15)。
+  木の欠落検知(`TreeCoverage`)は 37 枚のコーパスで誤検知0だったのに、**フル E2E では
+  5 SUT すべての緑の run で毎回発火**した(真陽性 —— `webview.html` は `aria-hidden` の
+  見出しを持つこの検知の offline witness そのもの)。**「出ない」ことを設計の根拠にするなら、
+  コーパスとデバイス実行の両方で確かめる**。とくに**注記を毎ステップの経路へ配線するとき**は、
+  発火率がそのまま出力とレポートの雑音になるので、デバイス実行の実測でしか判断できない。
+  **実アプリのスナップショットは `Tests/Fixtures/RealAppSnapshots/` に固定してあり、
+  `SweepHarnessTests` が `swift test` で毎回当てる**(件数の基準値+タップ対象に対する
+  警告率の上限)。**基準値を上げるのは増えた分を1件ずつ見て真陽性だと確かめてから** ——
+  黙って上げるとこの砦は現状の追認装置になる。採り直しは `FT_SWEEP_BASELINE=1`
+  (貼り付け用の1行と、何が発火したかの明細が出る)
+- **新しいテストは「破ったら落ちる」ことを1回確かめる**。変異は **`Scripts/mutation-check.sh` で
+  git worktree 並列**(2026-08-10 ユーザー指示。本線のツリーには書かないので復元忘れが起きない。
+  filter は密閉されたテストだけ。詳細は docs/verification.md)。手で1件だけやるときは
+  壊して実行→復元(**復元に `git checkout <file>` を使わない** = 未コミットの変更ごと消える。実害あり)。
+  この確認だけで無力なテストが4件見つかった実績がある。
+  **検知の類は両方向に掛ける**(出さなくする変異 / 常に出す変異)—— 片方だけだと
+  「常に空を返す」変異を「空を期待するテスト」に当てて素通しする(2026-08-07 に2回)。
+  **テストが production の関数を通っているかも見る** —— 掃討ハーネスが `!e.enabled` を
+  自前で書いていたため、`RefGuard.disabledWarning` を壊しても落ちなかった。検出できない変異が出たらテストを境界へ
   寄せる(要素数を増やす・既定値でなく限界値で呼ぶ)。詳細は docs/verification.md
 - **LPT の実績 run 数の既定値は3箇所(`LPTOrdering.defaultHistoryRuns` / `package.json` の
   `ftester.lptHistoryRuns.default` / `monitorPanel.ts` が webview へ送る default)で一致必須**
@@ -130,10 +316,151 @@
   ので、そこで版を上げてから期待値を貼り替える(貼り付け用のリテラルは失敗メッセージが出す)。
   検出は2段: ルート表(エンドポイントの増減)+ ソース指紋(**ルートが同じでハンドラだけ変えた場合も
   落ちる**)。**版を上げること自体は強制できない**ので最後は人間の規律。
+  **Android の版上げは revert しても端末側が戻らない**(2026-08-14 の実害)。**Android は
+  versionCode の引き下げインストールを拒否する**ので、上げた版を配った後に版を戻すと、
+  ホストは古い版を入れ直せず**全台が「no response to status」で応答不能**になる
+  (フリート8台が全滅し、`adb uninstall com.example.ftbridge` を全台に打つまで復旧しない。
+  その後も数台が凍結し、落ち着くまで2周かかった)。**試行的な変更ほどブリッジに入れない** ——
+  ホスト側で完結できないかを先に問う(この件の本修正は結局ホストだけで足りた)。
   **ブリッジの入力ファイル一覧は `Sources/FTCore/BridgeSourceSet.swift` が唯一の定義元**
   (`InAppLauncher` の dylib 再ビルド判定も同じ一覧を使う。片方だけ変えない)。
   指紋の性質(コメント編集でも落ちる理由)・保留中の代替案は docs/verification.md
-- **エラーの status はホストの分岐契約**(表は docs/design.md §「エラーの status」)。
+- **木は a11y が既定。ブラウザで足りないときだけ DOM で補う**(2026-08-14 に反転。
+  **どの組み合わせでどこから木が来るかの一覧は docs/design.md §木はどこから来るか**。
+  設計と実測は同 §ブラウザの中身は DOM から読む)。**口は3つ・その上の層は1つ**
+  (Android Chrome=CDP / iOS Safari シミュレータ=unix ソケット / iOS Safari 実機=usbmuxd →
+  lockdown → TLS)。**条件分岐にしない** —— a11y の充実度はページごとに変わるので、
+  「このページでは通るが別のページでは落ちる」を防ぐため、ブラウザでは常に DOM を正とする。
+  差し込みの判定は `FTCore.WebViewDOM`(`WebViewDOMTree.swift`)の1箇所。
+  **`WebViewDOMSnapshot.swift` へホスト専用の関数を足さない**(ブリッジのソース集合に入っており、
+  足すと dylib に無駄が入って指紋ゲートが鳴る)。**実機 iOS だけの罠3つ**(1通の大きさ・
+  Web インスペクタ・Safari の起動し直し)は docs/design.md §実機だけの罠
+- **判定は MCP と DSL で共有する**(2026-08-07)。「手前かどうか」は `FTCore.PaintOrder`、
+  「撃つと別の物に当たるか」は `FTCore.TapTargetGeometry`(合成チェーンは `occlusionAdvisory`)と
+  `FTCore.OcclusionGeometry`(中心を覆う最前面の名指し。`OcclusionSuspicion.covering` とは
+  判定軸が別=面積比 vs 中心点。統合しない理由は両型の doc)、「絵が古いか」は
+  `FTCore.StaleFrameDetector`、焦点待ちの定数は `FTCore.FocusWait` の1箇所だけに置き、
+  `RefGuard`/MCP は転送する。別々に持つと**同じ画面で MCP と DSL の判断が食い違う**。
+  移設したときは**掃討ゲート(`SweepHarnessTests`)が実アプリのコーパスで等価性を検証する**。
+  **type の読み返しの有無はドライバの能力**(`AppDriver.verifiesTypedText`。xcuitest ランナー/
+  Android 注入器=true・in-app=false で、false のときだけ `StepExecutor` がホスト側で読み返す)。
+  **デバイスの健康状態も同じ**(2026-08-11): 「画面が凍結しているか」は `FTCore.FrozenVerdict`
+  が唯一の定義元で、run 前トリアージとモニターは**根拠(`FrozenEvidence`)を束ねた同じ型**を配る。
+  プロセスを跨ぐ受け渡しは `FTCore.DeviceFrozenStore`(`.ftester/frozen-<key>.json`。RunLease と
+  同じ pid 生存 + mtime)。**新しい根拠は `isConclusive=false`(警告)から入れる**
+- **共有するのは「判定」であって「文言」ではない**(2026-08-15)。同じ事実に対して MCP は
+  ツール名で逃げ道を書き(`ft_screenshot` / `ft_scroll_to`)、DSL はシナリオの言葉で書く
+  (`back()` を呼び直す)。**文言まで一本化しようとすると、既存の応答文字列を壊して
+  MCP のテストと注記の予算ゲート(`NoteBudgetTests`)に当たる**。正しい形は
+  **①判定・順序・当たり判定を FTCore に1つ ②文言は呼び手ごとに持つ**:
+  - タップ前警告の連鎖 = `TapTargetGeometry.advisoryKind`(当たった形を enum で返す)。
+    `occlusionAdvisory`(DSL)と `RefGuard.overlapWarning`(MCP)は**両方これを呼んで写すだけ**。
+    以前は同じ順序を2箇所に手で書いており、**実際に2形(ゼロ幅高さ frame・縁の細切れ)が
+    DSL にだけあって MCP のタップ時に出ていなかった**。「同じ優先順」はテストのコメントに
+    書いてあっただけで、照合するテストは1本も無かった
+  - 近い候補の選定 = `FTCore.SimilarLabels`。文言の組み立ては MCP と `StepExecutor.candidateHint`
+    がそれぞれ持つ。DSL 側は MCP が 2026-08-10 に捨てた旧版(部分文字列一致・文書順の先着3件)の
+    ままで、装飾要素が枠を埋めて実在する操作可能要素を出せない画面があった
+  - back の空振り = `FTCore.BackEffect`(中核文 + 呼び手ごとの advice)
+  - 打ち切りの逃げ道 = `FTCore.SnapshotTruncation.remedy`(上限を上げる / 画面を狭くする の
+    2択を返す)。**DSL だけが「対象に近づくようスクロールする」と勧めていた** —— 同じ事実に
+    MCP は「スクロールしても戻ってこない」と書いており、同じ画面で逆のことを言っていた
+    (MCP のコメントは「文言だけ揃えて複製する」と書いてあったが揃っていなかった)。
+    落ちた要素は配列から抜けているので MCP が正しい。**天井まで来ていたら「上げろ」と言わない**
+- **「木が画面を代表していない」判定は `FTCore.TreeCoverage` の1箇所**(2026-08-15)。
+  webView の内側に大きな空白帯が残る形(Android の Chrome が a11y を部分的にしか公開しない)と、
+  アドレス欄はあるのにページ本体が1要素も無い形の2つ。**失敗の型は打ち切りと同じ**
+  (不完全な木で否定アサーションが誤って成功する)なので、DSL の notExists/count も
+  `StepNote.treeUnderreported` を運ぶ。**判定は変えず注記だけ** —— 幾何からの疑いであって
+  申告された事実ではないので、断定すると空のページに対する正当な `notExist` が書けなくなる。
+  同型で `FTCore.DuplicateRegion`(横スクロールで前後のコピーが両方 木に残る形。
+  片方は描かれていないので撃つと別物に当たる。DSL の tap は `StepNote.staleDuplicateRegion`)——
+  こちらは `hasClampedCoordinates`(同一 frame を要求)では**発火し得ない**ので独立に持つ。
+  どちらも固定コーパスで**発火する画面の集合を等号で固定**する(`TreeCoverageTests` /
+  `DuplicateRegionTests`)。増えたら1件ずつ検分してから直すこと
+- **要素上限の撮り直しは肯定側にも要る**(2026-08-15)。`retakenAtElementLimitCeiling` は
+  notExists/count(誤った成功)だけを塞いでいたが、exist と操作の解決は**実在する要素で
+  赤くなる** = flake として残っていた。操作側は**ドライバ切替と FM ヒールより前**に置く ——
+  切り詰められた木で FM に代わりを探させると、実在する本命が候補に無いまま別の要素へ
+  「修復」し、それが `ftester api apply-heal` で利用者の .swift へ書き戻される
+- **「書けるセレクタ」の規則は `FTCore.SelectorNaming` の1箇所**(2026-08-15 に FTCore へ降ろした)。
+  一意性(`picksOnlyOne`)・祖先スコープ・記法のエスケープ・耐久性の格付けを持つ。
+  **ヒール(自己修復)もここを通す** —— 旧 `FlowLocatorBuilder.chain` は一意性を見ずに
+  id/label を採っており、同じ id が複数ある画面で**別要素に解決するセレクタを利用者の .swift へ
+  書き戻していた**(`ftester api apply-heal` は直接書き込む)。書けるセレクタが無いときは
+  **操作は続けて修復だけ成立させない**(`StepNote.healUnwritable` で数える)——
+  掴んだ要素は手元にあるので叩くのは正しく、書き戻せないという理由で緑の run を赤にしない
+- **セレクタ文法(`FTSelector`)・コマンド索引(`CommandIndex`)・コード生成(`ScenarioCodeGen`)は
+  FTCore に居る**(2026-08-15 に FTDSL から降ろした)。写像先の `FlowLocator` が FTCore の型で、
+  DSL ランタイムには依存しない。FTDSL に置いていた間は **FTCore が `FTSelector.serialize` を
+  呼べず7箇所でセレクタを手で綴っており**、`ftester-mcp` はセレクタ文法のためだけに
+  DSL ランタイム全体をリンクしていた(この依存は外した)。利用者からの見え方は
+  `Descriptors.swift` の `@_exported import FTCore` が保っている。
+  **ただし FTCore の名指し(`TapTargetGeometry.describe` 等)は「どれの話か」を短く言うためのもので、
+  セレクタとして貼れる保証はしない** —— 貼れる形が要るなら `SelectorNaming` を通す
+- **1台の失敗で全体を落とさない**(2026-08-11 の実害)。ブリッジ供給は 10台中8台が ready でも
+  残り2台の期限切れで throw し、**Flutter/RN の 51 本が1本も走らなかった**(健全な8台は待機のまま)。
+  凍結機をレーンから外して残りで走るのと同じ思想で、**供給は部分失敗を許容し全滅のときだけ throw**
+  する(`BridgeProvisioner.resolveOutcomes` = 純粋関数・規則はテストで固定)。
+  同型は「N個中1個の失敗を致命にしていないか」——供給・インストール・回復の各段で確認する
+- **回復のたびに label(ポート)は変わる**。回復を注入するときは**その時点のワーカー一覧を渡す**
+  (`BlankWorkerTriage` の `recover` は第2引数で現在の一覧を渡す)。最初の一覧を捕まえたままだと
+  2回目の試行で新しい label を引けず、`frozen devices have no iOS simulator udid` で必ず失敗する
+- **変異が生き残ったら、まずテストの置き場所とフィルタを疑う**(2026-08-11)。
+  「効かないテスト」と結論する前に、**そのフィルタで狙ったテストが実際に走ったか**をログで見る
+  (実際は別クラスにあり1本も走っていなかった)。2026-08-15 に再発 ——
+  `--filter TapTargetAdvisoryTests` は**ファイル名ではなくクラス名**に当たるので、同じファイルの
+  別クラス(`TapAdvisoryKindPriorityTests`)が1本も走っていなかった。
+  **変異が生き残ったときの切り分けは3つ**(この順に疑う):
+  ①フィルタが狙ったクラスに当たっているか ②**変異式が本当に挙動を変えているか**
+  (既定引数を足すだけ・使われない関数を足すだけの「変異」は何も壊していない)
+  ③そのうえで初めてテストの内容
+- **テストが production の代わりに正規化・整形していないか**(2026-08-15。「テストが production の
+  関数を通っているか」の具体形)。`XCTAssertEqual(plan(target, normalize(actual)), .done)` のように
+  **アサーション側で production と同じ前処理を掛ける**と、production の前処理を外しても落ちない。
+  渡すのは**生の入力**だけにする。
+  **併せて「壊れ方が入力で割れる」ものは、割れた先ごとに入力を用意する** ——
+  不可視文字の混入は**途中なら `.unverifiable` で黙って受理・末尾なら `.deleteExcess` で
+  打ち直しループ→失敗**と別々に壊れ、途中形の入力では正規化を外した変異を**1つも殺せない**
+- **「観測」と「配信(表示の最適化)」を同じループに書かない**(2026-08-11 の実害)。
+  モニターは配信中のタイルのフレーム生成を止める(`suppressFrames`)が、そのガードが**観測より
+  手前**にあったため、実運用の全デバイス(iOS 10 + Android 8 = 全部ストリーミング対象)が
+  判定対象から外れ、凍結カウンタが**恒久的に 0** になっていた。抑制は配信段だけに効かせ、
+  観測は cadence を落として続ける(`ApiMonitorCommand.capturePlan` = 純粋関数・不変条件はテストで固定)
+- **凍結・a11y 異常など「意図的に起こせない事象」の検知には注入口を用意する**
+  (`FrozenInjection` / `FT_FAKE_FROZEN_KEYS`)。**陰性(誤検知0)の確認は「常に false を返す検出器」と
+  区別できない** —— 実際 2026-08-11 の凍結カウンタは「10台すべてに frozen が乗り誤検知0」を
+  根拠にマージされ、恒久 false のまま入った。注入は**観測と公表の経路だけ**を通し、
+  回復・除外のような**デバイスを触る動作は撃たない**(`FrozenVerdict.isInjectedOnly`)
+- **MCP(`ft_*`)は DSL と別経路なので、鮮度・防御を DSL 側に入れただけでは届かない**。
+  `StepExecutor` が持つ知見(キャッシュを捨てた snapshot・ghost の掴み直し・整定)を足したら、
+  **MCP にも同じものが要るかを必ず見る**(2026-08-06 に3件まとめて踏んだ: スクロール後の古い木・
+  容器外 ghost への座標タップ・pressEnter の焦点待ち。いずれも DSL 側では対処済みだった)。
+  **ただし同じ判定をそのまま強い挙動へ流用しない** —— DSL の「掴み直して送り直す」合図を
+  MCP で**タップ拒否**に格上げしたら、実アプリで誤検知が5形出て警告へ後退した
+  (docs/design.md §10「実装で得た知見」の `RefGuard.ghostWarning` の項)。**新しい検知はまず警告から**入れる。
+  探索ロジックは**MCP に2つ目の実装を書かず `StepExecutor` へ委ねる**(`ft_scroll_to`)
+- **木だけから決まる注記は `Sources/ftester-mcp/NoteCatalog.swift` が唯一の定義元**
+  (応答の組み立て側へ直に書かない。`NoteCoverageTests` のソース走査が検出)。目録にすると
+  3つ手に入る: **発火の全数計測**(どの注記がどの画面で出るか)/ **鍵ごとの黙らせ**
+  (`FT_MCP_NOTES_OFF=<鍵,…|all>`。起動時に stderr で名乗る = A/B の陽性対照)/
+  **出力バイトの回帰ゲート**。**注記を足すか消すかは読んだ印象で決めない** ——
+  `Scripts/mcp-bench.sh` で「まっさらなエージェントの手数」が動いたかで決める
+  (バグは有限なので監査を重ねれば減衰するが、**「もっと分かりやすく言えたはず」は無限に出る**
+  ので、印象で決める限り注記は単調に増える。実際そうなった)。
+  **「出ない」を削除の根拠にする前に、必ずアーキタイプを足して測り直す**(2026-08-12 に実証)——
+  19 枚(地図 14)の時点で「地図でしか出ない」と見えていた5本のうち、設定/チャット/WebView 等を
+  6枚足したら**3本は他アーキタイプでも出た**(`unlabeledClickablesNote` は settings、
+  `keyboardCoverageNote`/`scrollFrameCandidates` は chat)。削っていたら効いている注記を消していた。
+  **フィクスチャの分類の正は `NoteCoverageTests.archetypes`**(接頭辞は OS を表すだけ)。
+  残る `truncationNote`/`ghostNote` は 25 枚でも各1画面のみ、`bulkExemptNote`/`sliverNote` は
+  0 枚(理由を確かめて `knownSilent` に登録済み。等号照合なので新しい死に注記は落ちる)。
+  同じ6枚は幾何判定にも当たり、**実 web ページで overlay の誤検知が 10 件**出た
+  (折り返す inline テキストの矩形が重なる形。詳細は docs/verification.md)。
+  **1つのアーキタイプがコーパスの 60% を超えないこと**(`testNoArchetypeDominatesTheCorpus`)——
+  深く掘るほど1アプリが増え、**掘るほど汎用性の判定が悪くなる**逆向きの力が働くので機械で止める
+- **エラーの status はホストの分岐契約**(表は docs/design.md §4.3 の
+  「エラーの status はホスト側の分岐に使われる契約」)。
   とくに **XCUITest ランナーの 409 は `requireApp()` の1箇所だけ** — ホストはこの経路の 409 を
   無条件に「セッション消失」と読んで activate を撃つ。「セッションはあるが今は無理」は **422**
   を使う(`BridgeRouterStatusContractTests` が 409/503/501 の本数を数えて守る)。
@@ -161,8 +488,14 @@
   ローカル変更 = 受け手の資産ではないので自動破棄)/ **②許可リストに無いコマンド**(スクリプトを
   足したら許可も足す)/ **③巨大な出力**(切られてエージェントが grep を打つ。生ログはファイルへ)
 - **人に聞くのは AskUserQuestion(ダイアログ)だけ**。チャットに質問文を書くと見落とされてフローが止まる
-- **実機・シミュレータが要る判断は純粋ロジックへ切り出して単体テストで固める**
-  (例: `DevicePicker`・`ProfileWriter`・`ToolchainFingerprint`)。実機でしか出ない部分だけを E2E に残す
+- **生成したシナリオの検証は3段**(`.claude/skills/ftester-scenario/SKILL.md` ステップ4→4.5→5):
+  コンパイル → **dry-run(デバイス不要・数秒)** → デバイス実行。真ん中を飛ばすと「コンパイルは通るが
+  何も検証していない」をデバイス実行の時間で見つけることになる。**誤りは早い段の言葉で返す**のが方針
+  (未知の名前 = コンパイラのメッセージ / 構文・アサーション不足・**撮った画面に無い `#id`** = dry-run /
+  実挙動の確認 = デバイス実行)。**`#id` の実在照合は `ft_snapshot` が貯める台帳**が供給源
+  (`SelectorInventory`。撮っていない画面については黙る = 誤検知を出さない側に倒す。docs/design.md)
+- **デバイス(実機・シミュレータ/エミュレータ)が要る判断は純粋ロジックへ切り出して単体テストで固める**
+  (例: `DevicePicker`・`ProfileWriter`・`ToolchainFingerprint`)。デバイス上でしか出ない部分だけを E2E に残す
 
 ## 実装の委譲
 
@@ -175,7 +508,7 @@
 - 全域一括の機械的変更は、ファイル集合が互いに素になるようバッチ分割して並列委譲する(コメント量・行数で均等化)
 - サブエージェントに swift build / npm build を実行させない(SPM ビルドロック・出力の競合)。ビルド・テストはメインで全バッチ完了後に一括実行。軽量な per-file チェック(node --check 等)は各エージェントで可
 - 「コメントのみ」「移動のみ」を謳う変更は、diff の全変更行を機械検証(全 +/- 行がコメント/空行か、末尾コメント編集はコード部分が同一か)してからコミットする
-- Projects/ 配下のシナリオ(.swift)はユーザー資産(一部は explore 生成)。リポジトリ全域の一括整形・コメント編集の対象に含めない
+- TestProjects/ 配下のシナリオ(.swift)はユーザー資産(一部は explore 生成)。リポジトリ全域の一括整形・コメント編集の対象に含めない
 
 ## ソース分割の方針
 
@@ -216,3 +549,11 @@
 - 長い設計解説の散文(要点だけ箇条書きに圧縮)
 
 迷ったら: 契約・制約・罠は残す、説明・散文は削る。
+
+**用語**: 「実機」は**物理端末(本物の iPhone / Android)だけ**を指す。仮想デバイスは
+**「仮想デバイス」「デバイス」「Simulator」「Emulator」**と書く(「実デバイス」も使わない ——
+実機と紛らわしい)。デバイス上での実行一般は「デバイス実行」「デバイス上」でよい。
+2026-08-05 に一斉修正(dry-run との対比で「実機の前に落とす」等と書いていた 20 箇所が、
+実際は Simulator の話だった)。**翌 08-06 に再発**した —— Emulator 上の観測を
+「実機で観測」とコメント・docs・コミットメッセージに書いた。**「デバイスで動かした」と
+書きたくなった瞬間に、何の上で動かしたかを確認する**(プッシュ済みのメッセージは直せない)。

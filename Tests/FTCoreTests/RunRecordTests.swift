@@ -49,7 +49,7 @@ final class RunRecordTests: XCTestCase {
 
         var finished = ScenarioEvent(kind: "scenarioFinished")
         finished.passed = false
-        finished.reportPath = "/repo/root/Projects/SampleApp/reports/foo.json"
+        finished.reportPath = "/repo/root/TestProjects/SampleApp/reports/foo.json"
         builder.consume(finished)
 
         let record = builder.build(
@@ -87,7 +87,7 @@ final class RunRecordTests: XCTestCase {
         XCTAssertEqual(fixSuggestions[0].oldSelector, "#foo")
         XCTAssertEqual(fixSuggestions[0].newSelector, "#foo2")
 
-        XCTAssertEqual(record.reportPath, "Projects/SampleApp/reports/foo.json", "packageRoot の prefix を剥がして相対化")
+        XCTAssertEqual(record.reportPath, "TestProjects/SampleApp/reports/foo.json", "packageRoot の prefix を剥がして相対化")
     }
 
     func testPassedScenarioHasNilFailureFields() {
@@ -111,8 +111,34 @@ final class RunRecordTests: XCTestCase {
 
         XCTAssertTrue(record.passed)
         XCTAssertNil(record.failedSteps)
-        XCTAssertNil(record.fixSuggestions)
+        XCTAssertNil(record.fixSuggestions, "提案イベントが1つも来ていないので nil(成否とは無関係)")
         XCTAssertEqual(record.scenes[0].durationMs, 10, "sceneFinished に durationMs が無ければ step 合計を使う")
+    }
+
+    /// **修正提案は成否によらず残す**。強い提案が出るのは自己修復かヒールキャッシュで
+    /// **通ったとき**なので、passed で捨てると「緑だがセレクタは壊れている」という
+    /// 一番知りたい状態の記録が1件も残らない(実測: 89,025 記録すべてで空だった)
+    func testPassedScenarioKeepsItsFixSuggestions() throws {
+        var builder = ScenarioRecordBuilder(
+            scenarioID: "Foo.heal", platform: "ios", title: nil, worker: nil)
+        builder.consume(stepEvent(index: 0, scene: 1, status: "healed", durationMs: 10))
+        var suggestion = ScenarioEvent(kind: "fixSuggestion")
+        suggestion.scene = 1
+        suggestion.file = "Scenarios/Foo.swift"
+        suggestion.line = 12
+        suggestion.oldSelector = "#old_id"
+        suggestion.newSelector = "#new_id"
+        builder.consume(suggestion)
+
+        let record = builder.build(
+            passed: true, timedOut: false, startedAt: Date(timeIntervalSince1970: 0),
+            durationMs: 50, packageRoot: nil)
+
+        XCTAssertTrue(record.passed)
+        let suggestions = try XCTUnwrap(record.fixSuggestions)
+        XCTAssertEqual(suggestions.count, 1)
+        XCTAssertEqual(suggestions.first?.oldSelector, "#old_id")
+        XCTAssertEqual(suggestions.first?.newSelector, "#new_id")
     }
 
     func testReportPathKeptAsIsWhenPrefixMismatches() {
@@ -204,6 +230,30 @@ final class RunRecordTests: XCTestCase {
             durationMs: 0, packageRoot: nil)
 
         XCTAssertNil(record.timeline)
+    }
+
+    /// inconclusive(verify にアサーション0個等)は failed に数えず、専用カウンタへ積む
+    func testInconclusiveStepsAreCountedSeparatelyFromFailures() {
+        var builder = ScenarioRecordBuilder(
+            scenarioID: "Foo.inconclusive", platform: "ios", title: nil, worker: nil)
+
+        builder.consume(stepEvent(index: 0, scene: 1, status: "passed", durationMs: 10))
+        builder.consume(stepEvent(index: 1, scene: 1, status: "inconclusive",
+                                  description: "verify \"何か\"",
+                                  detail: "verify block contains no assertions", durationMs: 5))
+
+        let record = builder.build(
+            passed: true, timedOut: false, startedAt: Date(timeIntervalSince1970: 0),
+            durationMs: 15, packageRoot: nil)
+
+        XCTAssertEqual(record.steps.total, 2)
+        XCTAssertEqual(record.steps.passed, 1)
+        XCTAssertEqual(record.steps.failed, 0, "inconclusive は failed に数えないこと")
+        XCTAssertEqual(record.steps.inconclusive, 1)
+        XCTAssertNil(record.failedSteps, "inconclusive は failedSteps に載らないこと")
+
+        let timeline = try? XCTUnwrap(record.timeline)
+        XCTAssertEqual(timeline?[1].status, "inconclusive")
     }
 
     func testSceneWithoutAnyDurationEventsIsNil() {

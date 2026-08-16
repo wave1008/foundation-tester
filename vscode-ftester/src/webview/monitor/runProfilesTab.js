@@ -26,8 +26,12 @@ const runProfileFmOptions = document.getElementById('run-profile-fm-options');
 const runProfileHeal = document.getElementById('run-profile-heal');
 const runProfileFalsePositiveCheck = document.getElementById('run-profile-false-positive-check');
 const runProfileScreenIs = document.getElementById('run-profile-screen-is');
+const runProfileContainerInference = document.getElementById('run-profile-container-inference');
 const runProfileIosInappEngine = document.getElementById('run-profile-ios-inapp-engine');
 const runProfileIosFastInput = document.getElementById('run-profile-ios-fast-input');
+const runProfileHomeOnStart = document.getElementById('run-profile-home-on-start');
+const runProfileEnableAnimations = document.getElementById('run-profile-enable-animations');
+const runProfileUpdateWebView = document.getElementById('run-profile-update-webview');
 const runProfileWipeDataOnBloat = document.getElementById('run-profile-wipe-data-on-bloat');
 const runProfileRecoverCpuFallback = document.getElementById('run-profile-recover-cpu-fallback');
 const runProfileRecord = document.getElementById('run-profile-record');
@@ -213,6 +217,10 @@ function renderRunProfileEditor(fields) {
   updateFmOptionsVisibility();
   runProfileIosInappEngine.checked = fields.iosInappEngine;
   runProfileIosFastInput.checked = fields.iosFastInput;
+  runProfileHomeOnStart.checked = fields.homeOnStart;
+  runProfileEnableAnimations.checked = fields.enableAnimations;
+  runProfileContainerInference.checked = fields.containerInference;
+  runProfileUpdateWebView.checked = fields.updateWebView;
   runProfileWipeDataOnBloat.checked = fields.wipeDataOnBloat;
   runProfileRecoverCpuFallback.checked = fields.recoverCpuFallbackToGpu;
   runProfileRecord.checked = fields.record;
@@ -363,6 +371,8 @@ runProfileFalsePositiveCheck.addEventListener('change', onRunProfileFormInput);
 runProfileScreenIs.addEventListener('change', onRunProfileFormInput);
 runProfileIosInappEngine.addEventListener('change', onRunProfileFormInput);
 runProfileIosFastInput.addEventListener('change', onRunProfileFormInput);
+runProfileEnableAnimations.addEventListener('change', onRunProfileFormInput);
+runProfileContainerInference.addEventListener('change', onRunProfileFormInput);
 runProfileWipeDataOnBloat.addEventListener('change', onRunProfileFormInput);
 runProfileRecoverCpuFallback.addEventListener('change', onRunProfileFormInput);
 // record ON のときだけ配下のサブオプション(recordFailuresOnly/recordBitrateKbps/
@@ -403,6 +413,10 @@ function runProfileValuesEqual(fields) {
     runProfileScreenIs.checked === fields.screenIs &&
     runProfileIosInappEngine.checked === fields.iosInappEngine &&
     runProfileIosFastInput.checked === fields.iosFastInput &&
+    runProfileHomeOnStart.checked === fields.homeOnStart &&
+    runProfileEnableAnimations.checked === fields.enableAnimations &&
+    runProfileContainerInference.checked === fields.containerInference &&
+    runProfileUpdateWebView.checked === fields.updateWebView &&
     runProfileWipeDataOnBloat.checked === fields.wipeDataOnBloat &&
     runProfileRecoverCpuFallback.checked === fields.recoverCpuFallbackToGpu &&
     runProfileRecord.checked === fields.record &&
@@ -434,6 +448,7 @@ function setRunProfileControlsEnabled(enabled) {
   runProfileScreenIs.disabled = !enabled;
   runProfileIosInappEngine.disabled = !enabled;
   runProfileIosFastInput.disabled = !enabled;
+  runProfileContainerInference.disabled = !enabled;
   runProfileWipeDataOnBloat.disabled = !enabled;
   runProfileRecoverCpuFallback.disabled = !enabled;
   runProfileRecord.disabled = !enabled;
@@ -510,6 +525,10 @@ runProfileConfirm.addEventListener('click', () => {
       screenIs: runProfileScreenIs.checked,
       iosInappEngine: runProfileIosInappEngine.checked,
       iosFastInput: runProfileIosFastInput.checked,
+      homeOnStart: runProfileHomeOnStart.checked,
+      enableAnimations: runProfileEnableAnimations.checked,
+      containerInference: runProfileContainerInference.checked,
+      updateWebView: runProfileUpdateWebView.checked,
       wipeDataOnBloat: runProfileWipeDataOnBloat.checked,
       recoverCpuFallbackToGpu: runProfileRecoverCpuFallback.checked,
       record: runProfileRecord.checked,

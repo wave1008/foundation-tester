@@ -1,5 +1,7 @@
 # xcodegen が project.yml から生成する(コミットしない)
 FTE2EIOS.xcodeproj/
+# 同じく project.yml の info.properties から毎ビルド上書きされる生成物(直接編集しない)。
+Sources/Info.plist
 # xcodebuild の derivedDataPath。build=scripts/build-ios.sh(シミュレータ)/
 # build-device=scripts/build-ios-device.sh(実機)。実機側は約 1,900 ファイル出る
 build/

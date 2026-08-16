@@ -15,7 +15,7 @@ extension AndroidDriver {
     /// デバイス側の listen ポート(全デバイス共通。デバイス毎に独立 loopback なので衝突しない)
     static let bridgeDevicePort: UInt16 = 8123
     /// AndroidRunner/build.sh の VERSION_CODE と同期(不一致なら自動で再インストール)
-    public static let expectedBridgeVersionCode = 36
+    public static let expectedBridgeVersionCode = 61
 
     enum BridgeState {
         case active(BridgeClient)
@@ -47,7 +47,10 @@ extension AndroidDriver {
         case .active(let client):
             return client
         case .unavailable(let retryAfter, let detail):
-            guard Date() >= retryAfter else { throw Self.unreachableError(detail: detail) }
+            guard Date() >= retryAfter else {
+                throw Self.unreachableError(detail: detail,
+                                            cachedSecondsRemaining: retryAfter.timeIntervalSinceNow)
+            }
             // 期限切れ → 下の再セットアップへ
         case nil:
             break
@@ -99,10 +102,28 @@ extension AndroidDriver {
         bridgeLock.lock(); bridgeSetup[key] = nil; bridgeLock.unlock()
     }
 
-    private static func unreachableError(detail: String?) -> DriverError {
+    /// - `cachedSecondsRemaining`: 失敗キャッシュ(`.unavailable`)を再生しているときだけ非 nil。
+    ///   **キャッシュだと名乗らせる**(2026-08-13): 再生された文はライブの失敗と1バイトも
+    ///   違わなかったので、読み手は「今まさに adb forward が落ちた」と読む。実際、手で
+    ///   `adb forward` を打って成功し `ftester bridge status` も通るのに MCP だけが同じ文言を
+    ///   返し続ける状況で、原因をブリッジ側だと誤認して調査に数分溶かした(2026-08-13 に実際に踏んだ)。
+    ///   嵐防止としてのキャッシュ自体は残す価値がある(失敗1回は probe 2s + 起動待ち最大 10s)
+    ///   ので、消さずに**残り時間と抜け道**を添える
+    static func unreachableError(detail: String?,
+                                 cachedSecondsRemaining: TimeInterval? = nil) -> DriverError {
         let base = "cannot reach the Android bridge. Check the environment with `ftester doctor`, "
             + "or try `ftester bridge up --platform android`"
-        return .bridgeUnreachable(detail.map { "\(base)(\($0))" } ?? base)
+        // **他プロセスで直しても、この文が消えるのは期限後**(2026-08-13 のレビュー指摘):
+        // `.unavailable` はプロセスごとの static なので、CLI の `bridge up` が成功しても
+        // **この長寿命プロセス(ftester-mcp / monitor)の記憶は消えない**。
+        // 「すぐ再試行できる」と書くと、直したのに同じ文が返る次の混乱を作る
+        let cached = cachedSecondsRemaining.map {
+            " [cached: this is the FIRST failure replayed, not a fresh attempt —"
+                + " the next try in \(max(1, Int($0.rounded(.up))))s will actually re-probe."
+                + " Fixing the device now (e.g. `ftester bridge up --platform android`) does NOT"
+                + " clear this: the cache is per-process, so this same text replays until then]"
+        } ?? ""
+        return .bridgeUnreachable((detail.map { "\(base)(\($0))" } ?? base) + cached)
     }
 
     /// bridgeConnectionRefused(リクエストが届いていないと確実な場合)だけレジストリを無効化して
@@ -149,11 +170,15 @@ extension AndroidDriver {
 
     private func startBridge() async throws -> BridgeClient {
         let hostPort = try ensureForward()
+        // 計時ログは instrumentation 引数なので**起動時にしか切り替わらない**。稼働中ブリッジを
+        // そのまま使うと、on 側は「1行も出ない = 待ちが無かった」と誤読し、off 側は計測が
+        // 終わった後もログを出し続ける。**希望と食い違うときは必ず起動し直す**(両方向)
+        let timingRequested = ProcessInfo.processInfo.environment["FT_BRIDGE_TIMING"] == "1"
         // 既に稼働中で版一致ならそのまま使う(CLI の別プロセスが起動済みのケース)。
         // 版不一致(旧ブリッジプロセスが常駐したまま)は素通しせず、下の再インストール+
         // force-stop+再起動で更新する(APK 差し替えだけでは稼働中プロセスは旧版のまま)
-        if let (client, version) = await probeBridge(hostPort: hostPort),
-           version == Self.expectedBridgeVersionCode {
+        if let (client, version, timing) = await probeBridge(hostPort: hostPort),
+           version == Self.expectedBridgeVersionCode, timing == timingRequested {
             return client
         }
 
@@ -170,13 +195,16 @@ extension AndroidDriver {
         // 起動元の自己申告(/status の ownerRepo。doctor の診断用)。シングルクォートで
         // スペースを含むパスを守る(パス中の ' は稀なので非対応)
         let owner = (try? RepoRoot.find()).map { " -e owner '\($0.path)'" } ?? ""
+        // ブリッジ内の所要内訳ログ(既定 off)。iOS 側の FT_BRIDGE_TIMING と同じスイッチで、
+        // あちらは環境変数・こちらは instrumentation 引数として渡す
+        let timing = timingRequested ? " -e timing 1" : ""
         _ = try adb(["shell",
-                     "am instrument -w -e port \(Self.bridgeDevicePort) -e ttl \(ttl)\(owner) "
+                     "am instrument -w -e port \(Self.bridgeDevicePort) -e ttl \(ttl)\(owner)\(timing) "
                      + "\(Self.bridgeComponent) </dev/null >/dev/null 2>&1 &"])
 
         // ready 待ち(200ms 間隔・最大 10 秒)。起動直後は導入したての APK なので版照合は不要
         for _ in 0..<50 {
-            if let (client, _) = await probeBridge(hostPort: hostPort) { return client }
+            if let (client, _, _) = await probeBridge(hostPort: hostPort) { return client }
             try await Task.sleep(nanoseconds: 200_000_000)
         }
         throw DriverError.bridgeUnreachable(
@@ -190,7 +218,9 @@ extension AndroidDriver {
     /// 実機判定は serial の emulator- 前置(ApiMonitorCommand のヘルス除外と同じ規則)
     private func noticePersistentSettingsOnPhysicalDevice() {
         guard let serial, !serial.hasPrefix("emulator-") else { return }
-        let message = "ℹ️ \(serial): applying these device settings — animations off / "
+        let animations = AnimationPolicy.animationsEnabled()
+            ? "animations on (restored to the OS default)" : "animations off"
+        let message = "ℹ️ \(serial): applying these device settings — \(animations) / "
             + "hidden_api_policy=1 / stylus handwriting off (its IME hint covers the app) / "
             + "crash and ANR dialogs hidden"
             + " (on physical devices these persist; revert via Developer options)\n"
@@ -199,13 +229,22 @@ extension AndroidDriver {
 
     /// アニメーションは a11y イベントを発しないため、QuietWaiter の静穏判定後もアニメが表示を
     /// 動かし続け screenshot が古い/遷移途中の絵を掴むことがある(a11y要素はFRESHだが画像だけSTALE)。
-    /// ブリッジのコールド起動時のみ実行(毎操作ではないため3回のadb spawnは許容)。失敗は非致命。
+    /// 既定は無効化。実行プロファイルの enableAnimations(→ FT_ANIMATIONS)が ON のときは OS 既定の
+    /// 1 へ戻す。ブリッジのコールド起動時のみ実行(毎操作ではないため3回のadb spawnは許容)。
+    /// run 開始ごとの同期は ProfileWorkerFactory.syncAnimationSettings(ブリッジ再利用でも効く)。
+    /// 失敗は非致命。
     private func disableAnimations() {
-        let keys = ["window_animation_scale", "transition_animation_scale", "animator_duration_scale"]
-        let failed = keys.filter { (try? adb(["shell", "settings", "put", "global", $0, "0"]))?.status != 0 }
+        let enabled = AnimationPolicy.animationsEnabled()
+        let failed = AndroidAnimationSettings.apply(animationsEnabled: enabled) {
+            (try? adb(["shell"] + $0))?.status == 0
+        }
         guard !failed.isEmpty else { return }
-        let message = "⚠️ Failed to disable the Android animation settings (\(failed.joined(separator: ", "))). "
-            + "While they stay on, screenshots can grab a stale frame even after the quiet check\n"
+        let action = enabled ? "restore" : "disable"
+        let consequence = enabled
+            ? "the device keeps running without animations"
+            : "while they stay on, screenshots can grab a stale frame even after the quiet check"
+        let message = "⚠️ Failed to \(action) the Android animation settings "
+            + "(\(failed.joined(separator: ", "))). \(consequence)\n"
         FileHandle.standardError.write(Data(message.utf8))
     }
 
@@ -253,11 +292,13 @@ extension AndroidDriver {
     }
 
     /// 生存確認+稼働中プロセスの版(旧ブリッジは bridgeVersionCode を返さない → nil)
-    private func probeBridge(hostPort: UInt16) async -> (client: BridgeClient, version: Int?)? {
+    private func probeBridge(hostPort: UInt16)
+        async -> (client: BridgeClient, version: Int?, timing: Bool)? {
         let probe = BridgeClient(port: hostPort, timeoutSeconds: 2)
         guard let status = try? await probe.status(), status.ready else { return nil }
         // 操作用は通常タイムアウト(snapshot 等は余裕を持つ)
-        return (BridgeClient(port: hostPort), status.bridgeVersionCode)
+        return (BridgeClient(port: hostPort), status.bridgeVersionCode,
+                status.timingEnabled ?? false)
     }
 
     private func ensureForward() throws -> UInt16 {
@@ -327,15 +368,15 @@ extension AndroidDriver {
     /// doctor 用: window/transition/animator の *_scale のいずれかが 0 でなければ注意文言を返す(全て0ならnil)。
     /// 未設定(get が "null" を返す)は Android の既定値である 1.0 相当として扱い、警告対象に含める
     public func animationScaleWarning() -> String? {
-        let keys = ["window_animation_scale", "transition_animation_scale", "animator_duration_scale"]
-        let nonZero = keys.filter { key in
-            let value = (try? adb(["shell", "settings", "get", "global", key]))?
-                .output.trimmingCharacters(in: .whitespacesAndNewlines)
-            return !(Double(value ?? "") == 0)
+        let nonZero = AnimationPolicy.androidScaleKeys.filter { key in
+            let value = (try? adb(["shell"] + AndroidAnimationSettings.getArguments(key: key)))?.output
+            return !AndroidAnimationSettings.matches(rawValue: value, animationsEnabled: false)
         }
         guard !nonZero.isEmpty else { return nil }
+        // doctor は実行プロファイルを知らないので断定しない(enableAnimations:true なら意図どおり)
         return "animation settings are on (\(nonZero.joined(separator: ", "))). "
-            + "Screenshots can grab a stale frame even after the quiet check (zeroed automatically on the next bridge start)"
+            + "Screenshots can grab a stale frame even after the quiet check. "
+            + "Unless the run profile sets enableAnimations, the next run turns them off automatically"
     }
 
     func installBridgeIfNeeded() throws {

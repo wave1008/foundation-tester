@@ -27,25 +27,35 @@ README.md「Swift DSL」節。ここはエージェントが順に実行する�
 
 - **人に何かを聞くときは必ず AskUserQuestion（ダイアログ）を使う**。チャットに質問文を書いて
   答えを待たない（テキストで聞くと見落とされ、フローが止まる）。自由入力は Other で受ける。
+- **コマンドも推測しない**。`ft_dsl_commands` が名前と署名の索引を返す(デバイス不要・引数なしで
+  一覧、`name:` / `category:` で要約つき)。**索引に無い名前は存在しない**(コンパイルエラーになる)。
 - **セレクタは推測せず、実画面から採取する**。id / ラベル / 型は `ft_snapshot`(または拡張のライブ操作
   パネル)が返す実物だけを使う。想像で `#login_btn` 等を書かない — セレクタの取り違えは design.md §10 が
   列挙する通り「たまに緑」の切り分け不能バグになる。
-- **探索と実行は同じデバイスで行う**。`ft_*` は `profile` を渡さないと既定ポート(8123)へ繋ぐので、
+- **探索と実行は同じデバイスで行う**。`ft_*` は `profile` を渡さないと稼働中のブリッジ/デバイスを
+  自力で探す(1つに決まらなければ候補を列挙してエラー)ため、
   ブリッジが複数立っているマシンでは**探索した画面と実行するデバイスが食い違う**。そうなると
   上の「実画面から採取する」原則が**静かに崩れる**(採取した id は実在するのに、実行機には無い)。
   **`ft_status` / `ft_snapshot` / `ft_tap` / `ft_type` / `ft_swipe` / `ft_launch` すべてに、
   後で `ft_run_scenario` へ渡すのと同じ `profile` を渡すこと**。
+- **マップ・キャンバス系の画面は `ft_pinch` / `ft_double_tap` / `ft_drag` で実際に試してから書く**。
+  このとき**`profile` を必ず渡す**(渡すと実行と同じデバイス・同じエンジンで動く)。渡さないと
+  iOS のエンジンは接続先ポートのブリッジ任せになり、XCUITest を掴んだときだけ
+  **Compose のダブルタップと Flutter のピンチが実行時と食い違う**(理由と実測は docs/commands.md)。
+  上の「探索と実行は同じデバイスで」がここでは「同じエンジンで」まで含む。
 - **人間チェックポイント(🧑)では停止**して、テストの意図・期待結果を確認する。何をテストしたいのかは
   エージェントが勝手に決めない。ただし確認は**推奨案を1つ出して短く承認を取る**形にする(多肢の重い
   設問で意思決定を丸投げしない。セレクタ・経路・後始末など既定で決められることは決めて進める)。
 - **各書き込みの後にコンパイル検証ゲートを通す**(`ft_list_scenarios` の自動ビルド、または
   `swift build --product ftester-scenarios-<proj>`)。緑になるまで次へ進まない。
-- Projects/ 配下のシナリオはユーザー資産。**既存 .swift を勝手に上書き・整形しない**。追記か新規ファイル。
+  **緑になったら実行の前に dry-run**(ステップ4.5)。デバイスを1台も使わずに「コンパイルは通るが
+  何も検証していない」を落とせるので、デバイスで1回試してから気付くより安い。
+- TestProjects/ 配下のシナリオはユーザー資産。**既存 .swift を勝手に上書き・整形しない**。追記か新規ファイル。
 
 ## 前提の確定(最初に1回)
 
-- **プロジェクトと WORK_DIR**: シナリオは `WORK_DIR/Projects/<プロジェクト>/Scenarios/` に住む。
-  Projects/ が1つならそれ。複数なら🧑どれかを確認する。
+- **プロジェクトと WORK_DIR**: シナリオは `WORK_DIR/TestProjects/<プロジェクト>/scenarios/` に住む。
+  TestProjects/ が1つならそれ。複数なら🧑どれかを確認する。
 - **ftester CLI の在り処**: clone 構成は `swift run ftester ...`、外部パッケージ構成は
   `../foundation-tester/.build/debug/ftester ...`(判定は `Sources/FTScenarioRunner/` の有無)。
   以降 `ftester` はこれを指す。MCP(`ft_*`)が使えるならそちらを優先。
@@ -57,7 +67,7 @@ README.md「Swift DSL」節。ここはエージェントが順に実行する�
 
 **bundle ID を推測・探索で決めない。プロジェクトに登録済みのアプリプロファイルから選ばせる。**
 
-1. `Projects/<proj>/profiles/apps/*.json` を列挙する(または `ftester profile list`)。各ファイルの
+1. `TestProjects/<proj>/profiles/apps/*.json` を列挙する(または `ftester profile list`)。各ファイルの
    `common.appName`(表示名)と `ios.app` / `android.app`(bundle ID・パッケージ名)を読む。
 2. 🧑 **どのアプリプロファイルを対象にするかをユーザーに確認**する(AskUserQuestion。候補が
    1つでも確認する)。選ばれたプロファイルの `app` を @TestClass の `app:` に使う。
@@ -85,6 +95,17 @@ README.md「Swift DSL」節。ここはエージェントが順に実行する�
 3. **画面ごとに `ft_snapshot`** を撮り、各行 `[ref] Type "label" id=... (x,y WxH)` から
    **セレクタに使う id / ラベル / 型を控える**。`ft_tap` / `ft_type` / `ft_swipe`(ref 指定)で
    フローを1手ずつ進め、遷移の各画面でまた snapshot する。これが CAE の action と expectation の素になる。
+   **通った画面は撮っておく** —— `ft_snapshot` は撮った `#id` をプロジェクトの台帳に貯め、
+   ステップ4.5 の dry-run が綴り誤りの照合に使う(撮っていない画面の id は照合できない)。
+   **長いリストは `ft_swipe` を繰り返さず `ft_scroll_to`(selector 指定)を使う** —— 要素の上で
+   止まったうえで撮り直した一覧を返すので、送りすぎ・古い ref のまま叩く事故が起きない。
+   スクロールする領域が画面に複数あるなら `scrollFrame`(容器の `#id`)も渡す ——
+   **どれが容器かは行末の `scroll` 印**で分かり、2つ以上あるときは snapshot の先頭でも名指しされる
+   (印が無い = スクロールしない、ではない。Compose / Flutter の in-app は申告できないので、
+   その場合は `scrollFrame` 無しで試してから考える)。
+   **`⚠️scroll-leftover` が付いた行は、その座標に別のものが描かれていることがある**
+   (スクロールで容器の外へ出た残り)。タップは通るが警告が返るので、**セレクタとして採る前に
+   `ft_scroll_to` で可視域へ入れ直す**(採ったセレクタ自体は正しいので、慌てて別の `#id` を探さない)。
 4. 出るか不定なダイアログ(権限・初回オンボーディング等)があれば、出た/出ないの両方を観察して
    `ifCanSelect` で無害化する対象を把握する。
 5. **コントロールが期待通り動かない**とき(タップしても遷移しない等)は snapshot 往復で粘らず
@@ -99,7 +120,7 @@ README.md「Swift DSL」節。ここはエージェントが順に実行する�
 
 ### 3. シナリオ .swift を書く
 
-`Projects/<proj>/Scenarios/<日本語可のファイル名>.swift` に、下記「DSL リファレンス」に従って書く。
+`TestProjects/<proj>/scenarios/<日本語可のファイル名>.swift` に、下記「DSL リファレンス」に従って書く。
 命名: クラス名は日本語可、@Test メソッドは `S0010`, `S0020`, …(10刻み)。@Test の説明は「〜できる」。
 
 ```swift
@@ -145,6 +166,31 @@ class ログインできること {
 - ビルドが `Could not find target 'ftester-scenarios-<proj>...'` で落ちたら、そのプロジェクトが
   Package.swift に未登録(手動 clone / git pull 後にありがち)。**`ftester project sync`** でマーカー
   区間を再生成してから再検証する(Package.swift のマーカー区間は自動生成・手編集しない)。
+- **コマンド名の当てずっぽうを避ける**: 存在しない名前はコンパイルエラーになるが、`ftester api
+  dsl-commands`(デバイス不要・JSON)で名前・引数・`exist` へのチェーン可否を先に引ける
+  (`--name tap` / `--category scroll` で絞る)。他ツールの名前(`assertExists` `waitFor` `click`
+  `sleep` `swipeUp` 等)を書くと、コンパイラが ftester での書き方を指して落ちる。
+
+### 4.5. dry-run ゲート(デバイス不要・数秒)
+
+**コンパイルの次・デバイス実行の前に必ず1回**。デバイスを1台も使わずに、セレクタの構文誤り・到達しない
+scene・**アサーションが0個の expectation** を落とす(どれもコンパイルは通り、デバイス実行では
+「なぜか緑」になって気付けない類)。
+
+- MCP: `ft_dry_run`(id=`クラス名.S0010`, project 指定)
+- CLI: `ftester run --project <proj> --dry-run --scenario <クラス名.S0010>`
+
+⚠️ 行が出たら直してから次へ進む:
+
+| 出る警告 | 意味 | 直し方 |
+|---|---|---|
+| `contains no assertions` / `no assertions at all` | 操作しただけで何も検証していない | expectation に `exist` / `textIs` / `thisIs` 等を足す |
+| `no snapshot taken for this project contains this id` | その `#id` は、**ステップ2で撮ったスナップショットのどれにも無い** = 綴り誤りの疑い | スナップショットの実物と突き合わせる。まだ撮っていない画面のものなら `ft_snapshot` を撮り直す(撮った時点で台帳に入る) |
+
+id の照合は**ステップ2で `ft_snapshot` を撮った画面ぶんだけ**効く(`ft_snapshot` が
+`<プロジェクト>/.ftester/selector-inventory.json` に貯める)。**撮らずに書いたシナリオでは
+何も言わない**ので、セレクタを推測で書かない原則は変わらない。ラベルとワイルドカード
+(`#row_*`)は照合対象外。
 
 ### 5. 🧑 実行して意図通りか確認
 
@@ -165,7 +211,7 @@ testbase(SC/TC 等の仕様書)を根拠にシナリオを書く場合、実行�
   期待のまま RED(失敗)**にして追跡する(緑で隠すと退行検知にならない)。後始末は `tearDown` に置く
   (失敗でシナリオは中断するが、tearDown だけは失敗後でも実行されるため残留を防げる)。
 - **バグは1件1ファイルで専用フォルダに起票**する(詳細=個別ファイル)。置き場所:
-  `Projects/<proj>/issues/defects/`。命名・テンプレート・凡例は同フォルダ `README.md`(`D-<連番2桁>-<slug>.md`)。
+  `TestProjects/<proj>/issues/defects/`。命名・テンプレート・凡例は同フォルダ `README.md`(`D-<連番2桁>-<slug>.md`)。
   **状態の一覧は同フォルダ `INDEX.md`(対応状況ダッシュボード)**に集約し、起票・状態変更時は個別ファイルと
   INDEX.md の両方(集計含む)を更新する。
   各ファイルに: 対象 / 対応 SC-TC / 重大度 / 状態 / 検出元シナリオ / 再現手順 / 期待 / 実際 / 証拠 / 仕様裁定案。
@@ -193,21 +239,24 @@ testbase(SC/TC 等の仕様書)を根拠にシナリオを書く場合、実行�
 
 | 分類 | コマンド |
 |---|---|
-| タップ/入力 | `tap(sel, optional:, timeout:)` / `type(text)`(直前フォーカス)/ `type(sel, text)` / `press(sel, duration:)`(長押し) |
-| スワイプ/スクロール | `swipe(.up/.down/.left/.right)`(**指の動き**。生のジェスチャ)/ 以下は**コンテンツ基準**(`.down` = 下に読み進める): `scrollTo(sel, direction:, maxSwipes:)` / `scrollDown(repeat:)` `scrollUp` `scrollRight` `scrollLeft` / `scrollToBottom(maxSwipes:)` `scrollToTop` `scrollToRightEdge` `scrollToLeftEdge` |
+| タップ/入力 | `tap(sel, timeout:)` / `tap(sel, holdSeconds:)`(長押し)/ `type(text)`(直前フォーカス)/ `type(sel, text)` / `select(sel)`(掴むだけ。**掴めなければ空要素**を返し失敗しない)/ `lastElement`(直前に掴んだ要素。**値は掴んだ時点の凍結値**なので、掴んだ直後に読むときだけ使う。離れた場所で使うなら `let e = select(…)` で受ける) |
+| スワイプ/スクロール | `swipe(.up/.down/.left/.right)`(**指の動き**。生のジェスチャ)/ 以下は**コンテンツ基準**(`.down` = 下に読み進める): `scrollTo(sel, direction:, maxSwipes:)` / `scrollDown(repeat:)` `scrollUp` `scrollRight` `scrollLeft` / `scrollToBottom(maxSwipes:)` `scrollToTop` `scrollToRightEdge` `scrollToLeftEdge` / `flickCenterToTop/Bottom/Left/Right` `flickLeftToRight/RightToLeft` `flickBottomToTop/TopToBottom`(画面基点・8種。速い1ストロークの生ジェスチャ) |
 | スクロールしながら探す | `tap(sel, scroll: .down)` / `exist(sel, scroll: .down)`(別名 `tapWithScrollDown` / `existWithScrollDown`)/ ブロックで囲む `withScrollDown { … }` と、1コマンドだけ打ち消す `tapWithoutScroll` `existWithoutScroll` `withoutScroll { … }` |
-| 検証 | `exist(sel)` / `notExist(sel)` / `isEnabled(sel)` / `isDisabled(sel)` / `isChecked(sel)` / `isNotChecked(sel)` / `countIs(sel, 個数)` / `screenIs(名)`。exist は `.textIs()/.valueIs()/.idIs()` チェーン可 |
-| テキスト・値の検証 | `textIs` `textContains` `textStartsWith` `textEndsWith` `textMatches`(正規表現)`textMatchesDateFormat` `textIsEmpty` `textIsNotEmpty` と、**それぞれの否定** `textIsNot` `textContainsNot` … / `value…` も同名で一式。**これらに `scroll:` は無い**(静止画面の検証用。画面外は先に `scrollTo`) |
+| 検証 | セレクタを取るのは `exist(sel)` / `notExist(sel)` / `countIs(sel, 個数)` / `screenIs(名)` だけ。**要素の属性検証は「掴んでから」書く**: `select(sel).enabledIsTrue()` / `.enabledIsFalse()` / `.checkIsON()` / `.checkIsOFF()` / `.idIs("…")`。`verify("説明") { … }` は複数アサーションを1ステップに集約(ブロック内0個なら inconclusive = passed でも failed でもない・シナリオは続行) |
+| テキスト・値の検証 | **セレクタは取らない**(対象は直前に掴んだ要素)。`select(sel).textIs("期待値")` と書くか、`select(sel)` の次の行に `textIs("期待値")` を書く(**同義**。`lastElement.textIs(…)` も同じ)。種類は `textIs` `textContains` `textStartsWith` `textEndsWith` `textMatches`(正規表現)`textMatchesDateFormat` `textIsEmpty` `textIsNotEmpty` と、**それぞれの否定** `textIsNot` `textContainsNot` … / `value…` も同名で一式。**これらに `scroll:` は無い**(静止画面の検証用。画面外は先に `scrollTo`) |
 | 画面に依らない値の検証 | `thisIs` `thisIsNot` `thisIsTrue` `thisContains` `thisMatchesDateFormat` `thisIsGreaterThan` …(API 応答・計算結果に直接生える。失敗は1ステップとして記録される) |
-| アプリ制御 | `launchApp(bundleID?)` / `restartApp()` / `terminateApp()` / `home()` / `appSwitcher()` |
-| 待機/分岐 | `wait(秒)` / `ifCanSelect(sel, waitSeconds:) { … }.ifElse { … }` / `ios { }` / `android { }` / `procedure("名") { try await … }` |
+| アプリ制御 | `launchApp(bundleID?)` / `restartApp()` / `terminateApp()` / `home()` / `appSwitcher()` / `installApp(path?)` / `removeApp(id?)` / `appIs(id, waitSeconds:)` / `tapAppIcon(name?)`(ホーム画面のアイコンをタップ。省略時はプロファイルの appName) |
+| 待機/分岐 | `wait(秒)` / `waitForDisplay(sel, waitSeconds:)`(表示まで待つ。スクロールしない)/ `waitForClose(sel, waitSeconds:)`(消えるまで待つ。スクロールしない)/ `ifCanSelect(sel, waitSeconds:) { … }.ifElse { … }` / `ios { }` / `android { }` / `procedure("名") { try await … }` |
 | 反復 | `repeatWhileCanSelect(sel, max: n) { … }`(解決できる限り繰り返す。上限到達は失敗にしない)/ `doUntilTrue("名", waitSeconds:) { 条件 }`(**アプリ・外部の状態待ち専用**。要素の出現待ちは各コマンドの `timeout:`) |
 | 割り込み | `irregularHandler("#promo_modal", dismiss: "#btn_close")` を setUp で宣言すると、出るか不定の**アプリ内メッセージ**を出た時点で自動的に閉じる(OS のダイアログはツール側が吸収するので書かない) |
 | まとまり | `group("ログイン") { … }`(記録に `[ログイン]` を前置するだけ。実行・失敗の扱いは素の列と同じ) |
+| 記録 | `screenshot(filename:?)`(現在の画面を撮り、このステップ直後にレポートへ埋め込む) |
 | 前後処理 | テストクラスに `func setUp()` / `func tearDown()`(引数なし)を書くと各 `@Test` の前後で自動実行 |
 
-- `optional: true` = 見つからなくても失敗にしない。`timeout:` = ロケータ再試行の上限秒(0=即諦め、
-  省略=約0.7秒)。出るか不定な optional ステップの空振り短縮に使う。
+- **要素が見つからなければ失敗**(シナリオ中断)。**唯一の例外は `select`**(空要素を返す。`.isEmpty` で分岐)。
+  「出るか不定」を表す引数は無いので、アプリ内メッセージは `irregularHandler`、その場限りの分岐は
+  `ifCanSelect(sel) { … }` で書く。`timeout:` = ロケータ再試行の上限秒(0=即諦め、省略=約0.7秒)で、
+  `ifCanSelect` / `select` の空振り短縮に使う。
 - **`wait(秒)` は原則不要**。`tap` はロケータ解決を約0.7秒(`timeout:` でその秒数)まで再試行し、
   `exist`/`textIs`/`valueIs` は既定タイムアウト(5秒・実行プロファイルの `--default-timeout` で上書き)まで
   ポーリング再判定する。要素の**出現待ち**はこれらが暗黙にこなすので、遷移後の `exist` 直前などに
@@ -312,6 +361,6 @@ testbase(SC/TC 等の仕様書)を根拠にシナリオを書く場合、実行�
 
 ### 命名・配置
 
-- ファイル: `Projects/<proj>/Scenarios/<日本語可>.swift`(`_Main.swift` は触らない = エントリポイント)。
+- ファイル: `TestProjects/<proj>/scenarios/<日本語可>.swift`(`_Main.swift` は触らない = エントリポイント)。
 - クラス名は日本語可。@Test メソッド名 `S0010`/`S0020`/…(10刻み)。実行 ID は `クラス名.メソッド名`。
-- 深い階層に置いてよい(`Scenarios/Demo/…`)。objc 走査で自動発見される。
+- 深い階層に置いてよい(`scenarios/Demo/…`)。objc 走査で自動発見される。

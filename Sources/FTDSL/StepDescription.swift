@@ -15,7 +15,8 @@ public enum StepDescription {
     /// selectorOverride 指定時はセレクタ引数を差し替えて目的語を組み立てる
     /// (ヒール確認シートが新セレクタで説明を提案するため)。生成できなければ nil
     public static func describe(command: String, selectorOverride: String? = nil) -> String? {
-        // ` (optional)` サフィックス(tap の任意実行)は説明に影響しない
+        // ` (optional)` は廃止済みの `optional:` 引数が付けていたサフィックス。**過去 run の
+        // 説明文を読み直すため**に剥がしは残す(新しい run では二度と現れない)
         var text = command.trimmingCharacters(in: .whitespaces)
         if text.hasSuffix(" (optional)") {
             text = String(text.dropLast(" (optional)".count))
@@ -75,11 +76,11 @@ public enum StepDescription {
             guard let selector = unquote(rest) else { return nil }
             let obj = object(selector)
             return isJapanese(obj) ? "\"\(obj)\"が表示されていないこと" : "\"\(obj)\" is not shown"
-        case "isEnabled":
+        case "enabledIsTrue":
             guard let selector = unquote(rest) else { return nil }
             let obj = object(selector)
             return isJapanese(obj) ? "\"\(obj)\"が操作可能であること" : "\"\(obj)\" is enabled"
-        case "isDisabled":
+        case "enabledIsFalse":
             guard let selector = unquote(rest) else { return nil }
             let obj = object(selector)
             return isJapanese(obj) ? "\"\(obj)\"が操作不可であること" : "\"\(obj)\" is disabled"
@@ -95,11 +96,11 @@ public enum StepDescription {
             return isJapanese(obj, pattern)
                 ? "\"\(obj)\"が正規表現 \"\(pattern)\" に一致すること"
                 : "\"\(obj)\" matches the regex \"\(pattern)\""
-        case "isChecked":
+        case "checkIsON":
             guard let selector = unquote(rest) else { return nil }
             let obj = object(selector)
             return isJapanese(obj) ? "\"\(obj)\"がオンであること" : "\"\(obj)\" is on"
-        case "isNotChecked":
+        case "checkIsOFF":
             guard let selector = unquote(rest) else { return nil }
             let obj = object(selector)
             return isJapanese(obj) ? "\"\(obj)\"がオフであること" : "\"\(obj)\" is off"
@@ -163,6 +164,8 @@ public enum StepDescription {
             return isJapanese(rest) ? "\(rest)のアプリデータを消去する" : "clear app data for \(rest)"
         case "swipe":
             return swipePhrase(direction: rest)
+        case "rotateTo":
+            return rotateToPhrase(orientation: rest)
         case "wait":
             guard rest.hasSuffix("s"), let seconds = Double(rest.dropLast()) else { return nil }
             return "wait \(formatSeconds(seconds))s"
@@ -191,16 +194,25 @@ public enum StepDescription {
                     : "scroll until \"\(obj)\" is visible"
             case "type":
                 let input = step.text ?? ""
+                let replace = step.replace == true
                 if step.locator == nil {
-                    return isJapanese(input)
-                        ? "フォーカス中の要素に\"\(input)\"を入力する"
+                    if isJapanese(input) {
+                        return replace ? "フォーカス中の要素を空にしてから\"\(input)\"を入力する"
+                            : "フォーカス中の要素に\"\(input)\"を入力する"
+                    }
+                    return replace ? "clear the focused element, then type \"\(input)\" into it"
                         : "type \"\(input)\" into the focused element"
                 }
-                return isJapanese(obj, input)
-                    ? "\"\(obj)\"に\"\(input)\"を入力する"
+                if isJapanese(obj, input) {
+                    return replace ? "\"\(obj)\"を空にしてから\"\(input)\"を入力する"
+                        : "\"\(obj)\"に\"\(input)\"を入力する"
+                }
+                return replace ? "clear \"\(obj)\", then type \"\(input)\" into it"
                     : "type \"\(input)\" into \"\(obj)\""
             case "swipe":
                 return swipePhrase(direction: step.direction ?? "up")
+            case "rotateTo":
+                return rotateToPhrase(orientation: step.direction ?? "landscape")
             case "pressEnter":
                 return "press the Enter key"
             case "hideKeyboard":
@@ -208,6 +220,17 @@ public enum StepDescription {
             case "clearInput":
                 if step.locator == nil { return "clear the focused input" }
                 return isJapanese(obj) ? "\"\(obj)\"を空にする" : "clear \"\(obj)\""
+            case "doubleTap":
+                if step.locator == nil { return "double-tap the center of the screen" }
+                return isJapanese(obj) ? "\"\(obj)\"をダブルタップする" : "double-tap \"\(obj)\""
+            case "pinchOut", "pinchIn":
+                let zoom = action == "pinchOut" ? "zoom in" : "zoom out"
+                let zoomJa = action == "pinchOut" ? "拡大" : "縮小"
+                if step.locator == nil { return "\(zoom) with a pinch gesture" }
+                return isJapanese(obj) ? "\"\(obj)\"をピンチで\(zoomJa)する" : "\(zoom) on \"\(obj)\""
+            case "swipeBy":
+                if step.locator == nil { return "drag the screen by a relative offset" }
+                return isJapanese(obj) ? "\"\(obj)\"を相対量でドラッグする" : "drag \"\(obj)\" by a relative offset"
             case "swipeElementToElement":
                 guard let endLocator = step.endLocator else { return nil }
                 let toObj = endLocator.label ?? FTSelector.serialize(primary: endLocator, fallbacks: [])
@@ -310,6 +333,11 @@ public enum StepDescription {
         case "up", "down", "left", "right": return "swipe \(direction)"
         default: return nil
         }
+    }
+
+    private static func rotateToPhrase(orientation: String) -> String? {
+        // 内容を持たないので常に英語(定型文)
+        FTOrientation(rawValue: orientation) != nil ? "rotate to \(orientation)" : nil
     }
 
     /// `"S"` → S(クォート囲みでなければ nil)

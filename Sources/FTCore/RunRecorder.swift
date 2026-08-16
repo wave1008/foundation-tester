@@ -110,7 +110,8 @@ public final class RunRecorder: @unchecked Sendable {
 
     public func finish(total: Int, passed: Int, failed: Int, degradedWorkers: [String] = [],
                        freezeRetries: [String] = [],
-                       blankRepairs: [String] = [], blankExclusions: [String] = []) {
+                       blankRepairs: [String] = [], blankExclusions: [String] = [],
+                       measurementInvalid: Bool = false, measurementInvalidReasons: [String] = []) {
         hostMetrics?.stop()
         let meta = RunMetaRecord(
             runID: runID, project: projectName, profile: profile, machine: machine,
@@ -120,7 +121,12 @@ public final class RunRecorder: @unchecked Sendable {
             degradedWorkers: degradedWorkers.isEmpty ? nil : degradedWorkers,
             freezeRetries: freezeRetries.isEmpty ? nil : freezeRetries,
             blankRepairs: blankRepairs.isEmpty ? nil : blankRepairs,
-            blankExclusions: blankExclusions.isEmpty ? nil : blankExclusions)
+            blankExclusions: blankExclusions.isEmpty ? nil : blankExclusions,
+            // false は書かない(既存レコードと同じ形を保つ。measurementInvalid=false の run は
+            // performanceMode オフか、performanceMode でもレーンが安定していた run)
+            measurementInvalid: measurementInvalid ? true : nil,
+            measurementInvalidReasons: measurementInvalid && !measurementInvalidReasons.isEmpty
+                ? measurementInvalidReasons : nil)
         RunResultsStore.writeMeta(meta, runDir: runDir)
     }
 

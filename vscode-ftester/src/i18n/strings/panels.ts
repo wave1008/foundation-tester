@@ -90,6 +90,10 @@ export const panelsStrings = {
     en: "Enable fast input (acts without waiting for animations, which may make tests unstable)",
   },
   "panels.runProfile.androidSectionTitle": { ja: "Android", en: "Android" },
+  "panels.runProfile.updateWebViewLabel": {
+    ja: "テスト開始時に WebViewをアップデートする",
+    en: "Update WebView when the test session starts",
+  },
   "panels.runProfile.wipeOnBloatLabel": {
     ja: "イメージ肥大時に自動で Wipe Data する(Android)",
     en: "Automatically wipe data when the image bloats (Android)",
@@ -101,6 +105,19 @@ export const panelsStrings = {
   },
   "panels.runProfile.recordSectionTitle": { ja: "録画", en: "Recording" },
   "panels.runProfile.miscSectionTitle": { ja: "misc", en: "misc" },
+  // 一斉 launch 直後の黒画面(描画要求が無いだけ)を避けるための予防措置。既定 ON
+  "panels.runProfile.homeOnStartLabel": {
+    ja: "テスト開始時にhome()を実行する(デバイス凍結対策)",
+    en: "Run home() when the test starts (guards against a frozen screen)",
+  },
+  "panels.runProfile.enableAnimationsLabel": {
+    ja: "アニメーションを有効にする(既定は無効。有効にすると整定待ちが伸び、テストが不安定になることがあります)",
+    en: "Keep app animations (off by default; keeping them lengthens settling waits and can make tests unstable)",
+  },
+  "panels.runProfile.containerInferenceLabel": {
+    ja: "タップ/スクロールの領域推測による補正",
+    en: "Container-inference corrections for taps/scrolls",
+  },
   "panels.runProfile.recordLabel": { ja: "録画する", en: "Record video" },
   "panels.runProfile.recordFailuresOnlyLabel": {
     ja: "OKになったテストの録画は保存しない",
@@ -266,6 +283,26 @@ export const panelsStrings = {
   },
   "panels.live.homeButton": { ja: "ホーム", en: "Home" },
   "panels.live.homeButtonTitle": { ja: "ホーム画面に戻ります", en: "Return to the home screen" },
+  "panels.live.zoomInButton": { ja: "拡大", en: "Zoom in" },
+  "panels.live.zoomInTitle": {
+    ja: "画面全体をピンチで拡大します(マップ・画像ビューア用)",
+    en: "Pinch the whole screen to zoom in (for maps and image viewers)",
+  },
+  /// **改行を含む**(CSS の white-space: pre-line で2行に出す)。マークアップを文言へ
+  /// 入れない(訳文に <br> が混ざると i18n の検査・エスケープ文脈で扱いが割れる)
+  "panels.live.gestureHint": { ja: "Alt+クリック\nでダブルタップ", en: "Alt+click\nfor double tap" },
+  /// 画面領域の tooltip。**割り当ての一覧はここが唯一の表示**(README にも同じ表がある)
+  "panels.live.gestureHintTitle": {
+    ja: "クリック=タップ / Alt(Option)+クリック=ダブルタップ / 500ms 以上ホールド=長押し /"
+      + " ドラッグ=スワイプ。拡大・縮小は下のボタン",
+    en: "Click = tap / Alt(Option)+click = double tap / hold 500ms+ = long press /"
+      + " drag = swipe. Zoom is on the buttons below",
+  },
+  "panels.live.zoomOutButton": { ja: "縮小", en: "Zoom out" },
+  "panels.live.zoomOutTitle": {
+    ja: "画面全体をピンチで縮小します",
+    en: "Pinch the whole screen to zoom out",
+  },
   "panels.live.appSwitcherButton": { ja: "タスク切替", en: "App Switcher" },
   "panels.live.appSwitcherTitle": {
     ja: "アプリスイッチャー(タスク一覧)を開きます",

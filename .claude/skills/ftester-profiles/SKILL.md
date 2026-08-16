@@ -23,8 +23,8 @@ description: ftester のマシンプロファイル・アプリプロファイ�
 
 ## 前提の確定(最初に1回)
 
-- **プロジェクトと WORK_DIR**: プロファイルは `WORK_DIR/Projects/<プロジェクト>/profiles/` に住む。
-  Projects/ が1つならそれ。複数なら🧑どのプロジェクトかを確認する。
+- **プロジェクトと WORK_DIR**: プロファイルは `WORK_DIR/TestProjects/<プロジェクト>/profiles/` に住む。
+  TestProjects/ が1つならそれ。複数なら🧑どのプロジェクトかを確認する。
 - **ftester CLI の在り処**: clone 構成は `swift run ftester ...`、外部パッケージ構成は
   `<TOOL_ROOT>/.build/debug/ftester ...`(TOOL_ROOT は WORK_DIR/Package.swift の `.package(path:)` から
   解決。無ければ既定の `../foundation-tester`。判定は `Sources/FTScenarioRunner/` の有無)。

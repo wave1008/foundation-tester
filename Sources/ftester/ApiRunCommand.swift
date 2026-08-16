@@ -24,7 +24,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             + "--dry-run/--debug. Diagnostics go to stderr only. With --debug, control "
             + "commands from stdin are passed straight through to the runner")
 
-    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
+    @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
 
     @Option(help: "Run profile name (profiles/runs/<name>.json). Includes device provisioning and auto-install. Cannot be combined with --platform/--port/--serial")
@@ -38,7 +38,7 @@ struct ApiRunCommand: AsyncParsableCommand {
     var heal = false
 
     @Option(name: .customLong("report-dir"),
-            help: "Directory to write reports to (defaults to Projects/<name>/reports; with --profile it overrides the profile reportDir)")
+            help: "Directory to write reports to (defaults to TestProjects/<name>/reports; with --profile it overrides the profile reportDir)")
     var reportDir: String?
 
     @Option(name: .customLong("default-timeout"),
@@ -99,6 +99,10 @@ struct ApiRunCommand: AsyncParsableCommand {
             help: "Collect recordings and run logs (results/) from the remote after the run: collect (default) or on-demand (leave them on the remote; docs/remote-runner.md)")
     var remoteArtifacts: String = "collect"
 
+    @Flag(name: .customLong("performance"),
+          help: "Performance-testing mode (--profile only): if a dead lane cannot be revived before the run starts, fail instead of dropping it and continuing on the remaining lanes. iOS lanes are built before the run starts (no late join) so a missing one is reported before the run, not in the middle of it")
+    var performanceMode = false
+
     func run() async throws {
         // pause等のイベントが既定の全バッファに滞留すると読み手(VSCode拡張)と相互待ちになる
         // (ScenarioRunnerMain.swift の --debug 実装と同じ理由)。--debug 以外も常に行バッファにする
@@ -153,10 +157,25 @@ struct ApiRunCommand: AsyncParsableCommand {
             if machine.auto {
                 logStderr("→ Using machine profile \(machine.name) automatically (it is the only one in machines/)")
             }
-            let resolved = try ProfileResolver.resolve(
+            let full = try ProfileResolver.resolve(
                 project: testProject, runName: profile, machineName: machine.name)
+            // **回す本数を超える台数を用意しない**(ResolvedProfile.limitingDevices)。
+            // ここではシナリオ一覧がまだ無い(ビルドと並行に解決するため。下の先行構築のコメント参照)
+            // ので、**確定している情報だけ**で絞る —— 明示 ID(`Class.method`)だけの指定なら
+            // 1つの ID は高々1本なので本数が決まる。クラス名指定・全件は絞らない
+            // (そこは並列度が要る場面で、絞ると遅くなる)。platform はまだ分からないので両方に同じ数を使う
+            let exactCount = ApiRun.exactScenarioCount(scenarios)
+            let resolved = full.limitingDevices(iosScenarios: exactCount, androidScenarios: exactCount)
+            if resolved.devices.count < full.devices.count {
+                logStderr("→ Using \(resolved.devices.count) of \(full.devices.count) device(s)"
+                    + " for \(scenarios.count) scenario(s)")
+            }
             for warning in resolved.warnings { logStderr("⚠️ \(warning)") }
             if resolved.iosFastInput { setenv("FT_FAST_INPUT", "1", 1) }  // BridgeClient.fastInput 参照
+            // 未指定でも必ず書く(既定の "0" を明示し、前段の値を残さない)。環境変数側で
+            // 既に ON なら尊重する(`ftester run --enable-animations` と手動 export の上書き)
+            let animations = resolved.enableAnimations || AnimationPolicy.animationsEnabled()
+            setenv(AnimationPolicy.environmentKey, animations ? "1" : "0", 1)
             await BackendHealthCheck.warnIfUnreachable(resolved: resolved) { logStderr($0) }
             resolvedProfile = resolved
         }
@@ -199,19 +218,33 @@ struct ApiRunCommand: AsyncParsableCommand {
                     _ = await AndroidGpuRecovery.recoverCpuFallbackDevices(
                         devices: resolved.androidDevices, locale: resolved.locale) { logStderr($0) }
                 }
-                // Android エミュレータの自動起動(未起動分のみ。iOS の BridgeProvisioner と同じ
-                // 「run するだけで使える」体験にする)。実機準備の前に置く(実機は対象外なので独立)
-                await ProfileWorkerFactory.ensureAndroidEmulators(
-                    resolved: resolved, repoRoot: try? RepoRoot.find()) { logStderr($0) }
+                // 死んだレーンの復活(両モード共通)。buildAndroidWorkers の直前(GPU 復帰の後)で
+                // 起動していない仮想デバイスを先に起こす。復活できなかった場合の扱いは
+                // performanceMode の有無で分岐する(このあとの LaneGate 判定。runWithProfileParallel 側)
+                if let running = try? AndroidDeviceCatalog.runningAVDs() {
+                    let laneTargets = AndroidLaneRecovery.plan(
+                        devices: resolved.androidDevices, runningAVDIDs: Set(running.values))
+                    if !laneTargets.isEmpty {
+                        let outcome = await AndroidLaneRecovery.bootMissingDevices(
+                            devices: laneTargets.map(\.device), locale: resolved.locale) { logStderr($0) }
+                        // 起こせた分は、ブリッジが定着するまで待ってから先へ進む(理由は
+                        // awaitDurableAndroidBridges の宣言)
+                        await ProfileWorkerFactory.awaitDurableAndroidBridges(
+                            devices: laneTargets.map(\.device)
+                                .filter { outcome.booted.contains($0.name) }) { logStderr($0) }
+                    }
+                }
                 await ProfileWorkerFactory.preparePhysicalAndroidDevices(
                     resolved: resolved) { logStderr($0) }
-                var workers = try ProfileWorkerFactory.buildAndroidWorkers(resolved: resolved)
+                var workers = try ProfileWorkerFactory.buildAndroidWorkers(
+                    resolved: resolved) { logStderr($0) }
                 supplyLease?.hold(
                     keys: workers.compactMap { $0.connection.serial ?? $0.connection.udid })
                 // 凍結機は修復→不発なら guest reboot 待ちで本 run に復帰・それでも駄目な個体のみ除外
                 // (CLI の ProfileRunner と同じ。全滅しても throw せず
                 // 空で返す=iOS の合流を殺さない。android シナリオはワーカー不在ドレインで失敗確定)
-                let triage = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(workers) { logStderr($0) }
+                let triage = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(
+                workers, stateDir: (try? RepoRoot.find())?.appendingPathComponent(".ftester")) { logStderr($0) }
                 workers = triage.workers
                 triageBox.set(repaired: triage.repaired, excluded: triage.excluded)
                 workers = try await ProfileWorkerFactory.installIfNeeded(
@@ -232,6 +265,24 @@ struct ApiRunCommand: AsyncParsableCommand {
                         workers = (try? await ProfileWorkerFactory.installIfNeeded(
                             apps: resolved.apps, workers: workers,
                             forceAndroidInstall: false) { logStderr($0) }) ?? workers
+                        // 画面だけ死んだシミュレータを**投入前に**弾く(BlankWorkerTriage 参照)。
+                        // Android は buildAndroidWorkers 直後に同等の処理(修復つき)を通している
+                        let repoRoot = try RepoRoot.find()
+                        workers = await BlankWorkerTriage.excludeBlankScreenWorkers(
+                            workers,
+                            recover: { @Sendable frozen, currentWorkers in
+                                await ProfileWorkerFactory.recoverFrozenIOSWorkers(
+                                    labels: frozen, workers: currentWorkers, resolved: resolved,
+                                    repoRoot: repoRoot, apps: resolved.apps) { logStderr($0) }
+                            },
+                            // 判定をモニターへ配る(DeviceFrozenStore)。run が知っている凍結を
+                            // モニターが知らない状態を作らないための唯一の口
+                            stateDir: repoRoot.appendingPathComponent(".ftester"),
+                            nudge: { @Sendable [bundleID = ProfileWorkerFactory.iosBundleID(apps: resolved.apps)] in
+                                await ProfileWorkerFactory.nudgeIOSScreen(worker: $0, restoring: bundleID) },
+                            log: { logStderr($0) }).workers
+                        await ProfileWorkerFactory.pressHomeOnStart(
+                            workers, enabled: resolved.homeOnStart) { logStderr($0) }
                         logStderr("🚀 \(workers.count) iOS worker(s) joined")
                         return workers
                     } catch {
@@ -255,7 +306,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         let all = try ScenarioHost.list(project: testProject)
         guard !all.isEmpty else {
             throw ValidationError(
-                "no scenarios (add a @TestClass under Projects/\(testProject.name)/Scenarios/)")
+                "no scenarios (add a @TestClass under TestProjects/\(testProject.name)/scenarios/)")
         }
         let selected = try RunScenarios.resolve(scenarios, from: all)
         guard !selected.isEmpty else {
@@ -278,10 +329,38 @@ struct ApiRunCommand: AsyncParsableCommand {
                     resolved: resolvedProfile, project: testProject, selected: selected,
                     debugOptions: debugOptions, recorder: recorder)
             } else {
-                let workers = try await androidWorkersTask!.value
+                let androidWorkers = try await androidWorkersTask!.value
+                // performanceMode では iOS の late join をやめて開始前に建てる。**理由は計測の
+                // 歪みではなくゲートの可視性**(ProfileRunner の同じ箇所のコメント参照)。
+                // iosWorkersTask は既に走っているので新しい実装は要らず、待つタイミングを
+                // 早めるだけ(2つ目の実装を書かない)
+                var eagerIOSWorkers: [RunWorker] = []
+                var effectiveIosWorkersTask = iosWorkersTask
+                if performanceMode, let task = iosWorkersTask {
+                    eagerIOSWorkers = await task.value
+                    effectiveIosWorkersTask = nil
+                }
+                // performanceMode: 復活できなかったレーンがあれば run を開始せずに失敗する
+                // (既定 false ではここへ来ない=切り離して完走を優先する従来どおりの挙動)
+                if performanceMode {
+                    let missingAndroid = LaneGate.missing(
+                        expected: resolvedProfile.androidDevices.map(\.name),
+                        actual: androidWorkers.compactMap(\.logicalName))
+                    let missingIOS = resolvedProfile.iosDevices.isEmpty ? [] : LaneGate.missing(
+                        expected: resolvedProfile.iosDevices.map(\.name),
+                        actual: eagerIOSWorkers.compactMap(\.logicalName))
+                    let missing = missingAndroid + missingIOS
+                    if !missing.isEmpty {
+                        throw ProfileWorkerFactory.InstallError(
+                            message: "performance mode: \(missing.count) device(s) could not be "
+                                + "started (\(missing.joined(separator: ", "))). Fix the devices, "
+                                + "or turn performanceMode off to run on the remaining lanes.")
+                    }
+                }
                 outcome = try await runWithProfileParallel(
                     resolved: resolvedProfile, project: testProject, selected: selected,
-                    workers: workers, iosWorkersTask: iosWorkersTask, recorder: recorder)
+                    workers: androidWorkers + eagerIOSWorkers, iosWorkersTask: effectiveIosWorkersTask,
+                    recorder: recorder)
             }
         } else {
             outcome = await runDirect(
@@ -293,11 +372,18 @@ struct ApiRunCommand: AsyncParsableCommand {
         let boxTriage = triageBox.get()
         if outcome.blankRepairs.isEmpty { outcome.blankRepairs = boxTriage.repaired }
         if outcome.blankExclusions.isEmpty { outcome.blankExclusions = boxTriage.excluded }
+        // performanceMode: レーン数が run 中に変わっていたら所要時間は計測に使えない
+        // (MeasurementValidity の宣言参照。既定モードは判定しない=印を付けない)
+        let validity = MeasurementValidity.verdict(
+            performanceMode: performanceMode,
+            degradedWorkers: outcome.degradedWorkers, blankExclusions: outcome.blankExclusions)
         recorder?.finish(total: selected.count, passed: outcome.passed, failed: outcome.failed,
                          degradedWorkers: outcome.degradedWorkers,
                          freezeRetries: outcome.freezeRetries,
                          blankRepairs: outcome.blankRepairs,
-                         blankExclusions: outcome.blankExclusions)
+                         blankExclusions: outcome.blankExclusions,
+                         measurementInvalid: validity.invalid,
+                         measurementInvalidReasons: validity.reasons)
         if !outcome.degradedWorkers.isEmpty {
             logStderr("⚠️ Degraded or dropped workers (\(outcome.degradedWorkers.count)):")
             for entry in outcome.degradedWorkers { logStderr("   - \(entry)") }
@@ -305,6 +391,10 @@ struct ApiRunCommand: AsyncParsableCommand {
         if !outcome.freezeRetries.isEmpty {
             logStderr("🔁 Results discarded and requeued (\(outcome.freezeRetries.count)):")
             for entry in outcome.freezeRetries { logStderr("   - \(entry)") }
+        }
+        if validity.invalid {
+            logStderr("⏱️❌ Measurement invalid: this run's timing cannot be used for performance"
+                + " comparisons (\(validity.reasons.joined(separator: "; ")))")
         }
         emitLine(ApiRunFinishedEvent(passed: outcome.passed, failed: outcome.failed,
                                      testSeconds: outcome.testSeconds,
@@ -448,11 +538,30 @@ struct ApiRunCommand: AsyncParsableCommand {
                 resolved: resolved, repoRoot: try RepoRoot.find()) { logStderr($0) }
             supplyLease?.hold(
                 keys: workers.compactMap { $0.connection.serial ?? $0.connection.udid })
-            // android ワーカーのみ判定対象(iOS はそのまま通る)。凍結機は修復→guest reboot 待ちで
-            // 本 run に復帰・それでも駄目な個体のみ除外
-            let triage = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(workers) { logStderr($0) }
+            // android は修復→guest reboot 待ちで本 run に復帰・それでも駄目な個体のみ除外
+            let triage = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(
+                workers, stateDir: (try? RepoRoot.find())?.appendingPathComponent(".ftester")) { logStderr($0) }
             workers = triage.workers
-            blankTriage = (triage.repaired, triage.excluded)
+            // iOS も **shutdown → boot → ブリッジ張り直し**で回復を試み、駄目な個体だけ除外する
+            // (BlankWorkerTriage 参照)。**この経路にも通すこと** ——
+            // iOS ワーカーの供給口は「遅延合流(lateWorkers)」とここの2つで、片方だけだと穴が空く
+            let iosRepoRoot = try RepoRoot.find()
+            let iosWorkers = workers
+            let iosTriage = await BlankWorkerTriage.excludeBlankScreenWorkers(
+                workers,
+                recover: { @Sendable frozen, currentWorkers in
+                    await ProfileWorkerFactory.recoverFrozenIOSWorkers(
+                        labels: frozen, workers: currentWorkers, resolved: resolved,
+                        repoRoot: iosRepoRoot, apps: resolved.apps) { logStderr($0) }
+                },
+                stateDir: iosRepoRoot.appendingPathComponent(".ftester"),
+                            nudge: { @Sendable [bundleID = ProfileWorkerFactory.iosBundleID(apps: resolved.apps)] in
+                                await ProfileWorkerFactory.nudgeIOSScreen(worker: $0, restoring: bundleID) },
+                log: { logStderr($0) })
+            workers = iosTriage.workers
+            await ProfileWorkerFactory.pressHomeOnStart(
+                workers, enabled: resolved.homeOnStart) { logStderr($0) }
+            blankTriage = (triage.repaired, triage.excluded + iosTriage.excluded)
             workers = try await ProfileWorkerFactory.installIfNeeded(
                 apps: resolved.apps, workers: workers,
                 forceAndroidInstall: !wipedAndroid.isEmpty) { logStderr($0) }
@@ -496,12 +605,18 @@ struct ApiRunCommand: AsyncParsableCommand {
             }
 
             let scenarioStart = Date()
+            // この経路(--dry-run/--debug)は installHandler(RPC)を配線しない — dry-run はデバイスに
+            // 触らず installApp() 自体を通過しない、debug は人間介入前提の単発実行のため。appPath だけ
+            // フォールバックとして渡し、installApp() 引数省略時に子が直接インストールできるようにする
             let passed = await ScenarioHost.run(
                 project: project, scenarioID: info.id, connection: connection,
                 fm: fm, reportDir: reportDirPath,
                 defaultTimeout: resolved.defaultTimeout,
+                containerInference: resolved.containerInference,
                 scenarioTimeout: resolved.scenarioTimeout, dryRun: dryRun,
-                debug: debugOptions, recording: recording) { event in
+                debug: debugOptions, recording: recording,
+                appPath: dryRun ? nil : resolved.apps[scenarioPlatform]?.appPath,
+                appName: resolved.appName) { event in
                 var event = event
                 if event.scenario == nil { event.scenario = info.id }
                 writeLine(event.encodedLine())
@@ -580,6 +695,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         let orchestrator = RunOrchestrator(
             project: project, workers: workers, fm: fm,
             reportDir: reportDirURL, defaultTimeout: resolved.defaultTimeout,
+            containerInference: resolved.containerInference,
             scenarioTimeout: resolved.scenarioTimeout, recorder: recorder,
             recordingConfig: recordingConfig,
             isDeviceFrozen: { serial in
@@ -675,7 +791,9 @@ struct ApiRunCommand: AsyncParsableCommand {
                     workerID.merge(ws)
                     return ws
                 })
-            })
+            },
+            installHandler: InstallHandlerFactory.make(apps: resolved.apps),
+            appName: resolved.appName)
         async let summary = orchestrator.run(items: items, defaultPlatform: defaultPlatform)
 
         var timing = ScenarioTimingTracker()
@@ -820,6 +938,9 @@ struct ApiRunCommand: AsyncParsableCommand {
                 step.detail = reason
             case .skipped(let reason):
                 step.status = "skipped"
+                step.detail = reason
+            case .inconclusive(let reason):
+                step.status = "inconclusive"
                 step.detail = reason
             }
             // 時間内訳(RunOrchestrator.swift の ScenarioRunner.stepResult(from:) から復元済み)
@@ -1141,4 +1262,16 @@ struct ScenarioTimingTracker {
     }
 
     var scenarioTotalSeconds: Double? { hasScenario ? scenarioTotal : nil }
+}
+
+/// `api run` が台数を決めるための本数の読み方(判断はここだけ。ApiRunExactScenarioCountTests)。
+/// この経路はシナリオ一覧をビルドと並行に解決するので、台数を決める時点では一覧が無い ——
+/// 確定しているのは `--scenario` の指定文字列だけ。**明示 ID(`Class.method`)は1つにつき高々1本**
+/// なので合計を上限に使える。クラス名指定や全件は本数が分からないので **0 = 絞らない**
+/// (そこは並列度が要る場面で、絞ると遅くなる)
+enum ApiRun {
+    static func exactScenarioCount(_ selectors: [String]) -> Int {
+        guard !selectors.isEmpty, selectors.allSatisfy({ $0.contains(".") }) else { return 0 }
+        return selectors.count
+    }
 }

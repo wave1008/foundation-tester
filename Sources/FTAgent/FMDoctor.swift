@@ -56,6 +56,15 @@ public enum FMDoctor {
                          + " (heal, triage and scenario naming keep working — they are text-only)")
     }
 
+    /// FM 本体が使えないときに**何が止まり、代わりに何を書くか**。
+    /// 「unavailable」だけでは、シナリオの書き方をどう変えればよいか分からない
+    /// (外部フィードバック 2026-08-06)。visionReport が視覚系について同じことをしている。
+    public static let unavailableImpact =
+        "Disabled: self-healing (--heal), failure triage, screenIs, and the occlusion-guard"
+        + " (the requireVisible check of exist). Everything deterministic keeps working —"
+        + " write textIs / valueIs / exist assertions instead of screenIs, and pin elements"
+        + " by #id rather than relying on healing."
+
     static func describe(_ reason: SystemLanguageModel.Availability.UnavailableReason) -> String {
         switch reason {
         case .deviceNotEligible:

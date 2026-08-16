@@ -7,7 +7,7 @@ ftester(Swift 製の iOS/Android UI テストツール。リポジトリルー�
 
 - ftester CLI (`ftester api ...`) の spawn・NDJSON/JSON パース・実行キュー(`src/cli.ts`)
 - シナリオツリー(folder → class → @Test メソッド)の表示・再読込(`src/testTree.ts`)
-- `Projects/*/Scenarios/**/*.swift` のファイル監視による自動再読込(`src/watcher.ts`)
+- `TestProjects/*/scenarios/**/*.swift` のファイル監視による自動再読込(`src/watcher.ts`)
 - Test Explorer の Run プロファイル「実行」「実行 (dry-run)」によるシナリオ実行と
   結果反映(`src/runHandler.ts` / `src/runReducer.ts`)
 - Test Explorer の Debug プロファイル「デバッグ」・DAP(Debug Adapter Protocol)アダプタによる
@@ -15,7 +15,7 @@ ftester(Swift 製の iOS/Android UI テストツール。リポジトリルー�
 - 読み取り専用の「ステップ一覧」TreeView(`src/stepsView.ts` / `src/stepsModel.ts`)。
   Test Explorer のビューコンテナに `ftester ステップ` ビューとして表示され、
   アクティブエディタのカーソル位置に追従してシナリオの scene/ステップを一覧表示する
-- `ftester.profile` 設定による実行プロファイル(`Projects/<project>/profiles/runs/<name>.json`)
+- `ftester.profile` 設定による実行プロファイル(`TestProjects/<project>/profiles/runs/<name>.json`)
   実行。実行・デバッグ実行の両方に対応し、デバイス供給・自動インストールを CLI 側(`ftester api
   run --profile`)に任せられる(詳細は下記「実行プロファイル(`ftester.profile`)について」)。
   プロファイル実行(非dry-run・非デバッグ)は CLI 側が並列実行になり、`src/runEventBus.ts` 経由で
@@ -69,7 +69,7 @@ ftester(Swift 製の iOS/Android UI テストツール。リポジトリルー�
 この拡張は `ftester` CLI(Swift 製)を spawn して動きます。CLI とシナリオ資産は
 `foundation-tester` リポジトリのワークスペースから来るため、**拡張を入れた VS Code で
 そのリポジトリのルートを開いている**ことが前提です(拡張は `Package.swift` を含むフォルダで
-起動し、`Projects/*/Scenarios/**/*.swift` を読みます)。
+起動し、`TestProjects/*/scenarios/**/*.swift` を読みます)。
 
 **使う(配布された .vsix を入れて動かす)ために必要なもの:**
 
@@ -179,8 +179,8 @@ code --install-extension vscode-ftester-<version>.vsix
 | 設定キー | 型 | 既定値 | 説明 |
 |---|---|---|---|
 | `ftester.binaryPath` | string | `.build/debug/ftester` | ftester CLI バイナリのパス。相対パスはワークスペースルート基準で解決される。**存在しなければ PATH から `ftester` を探す**(ビルド済み `ftester` を PATH に置いた場合など) |
-| `ftester.project` | string | `""` | 対象のテストプロジェクト名(`Projects/<name>` の `<name>`)。空なら自動判定(`Projects/` 直下が1つならそれを使用。複数あれば選択を促す) |
-| `ftester.profile` | string | `""` | 使用する実行プロファイル名(`Projects/<project>/profiles/runs/<name>.json` の `<name>`)。空なら未指定。非空なら実行・デバッグ実行の両方で `platform`/`port`/`serial` の代わりにこちらが使われる。**デバイスモニターの監視対象・「デバイスを全て起動/終了」もこのプロファイルのデバイスに絞られる**(空ならマシンプロファイルの全デバイスが対象)。切り替えてもデバイスの起動状態は変更されない |
+| `ftester.project` | string | `""` | 対象のテストプロジェクト名(`TestProjects/<name>` の `<name>`)。空なら自動判定(`TestProjects/` 直下が1つならそれを使用。複数あれば選択を促す) |
+| `ftester.profile` | string | `""` | 使用する実行プロファイル名(`TestProjects/<project>/profiles/runs/<name>.json` の `<name>`)。空なら未指定。非空なら実行・デバッグ実行の両方で `platform`/`port`/`serial` の代わりにこちらが使われる。**デバイスモニターの監視対象・「デバイスを全て起動/終了」もこのプロファイルのデバイスに絞られる**(空ならマシンプロファイルの全デバイスが対象)。切り替えてもデバイスの起動状態は変更されない |
 | `ftester.platform` | `"ios"` \| `"android"` | `"ios"` | 対象プラットフォーム。`ftester.profile` が空のときだけ使われる |
 | `ftester.port` | number | `0` | ブリッジ接続ポート。`0` は未指定(CLI 既定値を使用)。`ftester.profile` が空のときだけ使われる |
 | `ftester.serial` | string | `""` | Android デバイスのシリアル番号。空は未指定。`ftester.profile` が空のときだけ使われる |
@@ -253,7 +253,7 @@ UI 文字列は `src/i18n/`(拡張側ランタイム `i18n/index.ts`、辞書 `i
 
 ## 実行プロファイル(`ftester.profile`)について
 
-`ftester.profile` にプロファイル名(`Projects/<project>/profiles/runs/` にある `.json` の
+`ftester.profile` にプロファイル名(`TestProjects/<project>/profiles/runs/` にある `.json` の
 拡張子抜きファイル名)を設定すると、Test Explorer の「実行」「実行 (dry-run)」「デバッグ」の
 いずれも `ftester api run --profile <name>` / `ftester api run --debug --profile <name>` で
 呼び出されるようになります(`ftester.platform`/`ftester.port`/`ftester.serial` は無視されます)。
@@ -272,7 +272,7 @@ UI 文字列は `src/i18n/`(拡張側ランタイム `i18n/index.ts`、辞書 `i
 
 ## 実行プロファイルの編集支援
 
-`Projects/<project>/profiles/{apps,machines,runs}/*.json` の作成・編集を助ける機能です。
+`TestProjects/<project>/profiles/{apps,machines,runs}/*.json` の作成・編集を助ける機能です。
 プロファイルの構造の正は `Sources/FTCore/RunProfile.swift`(`AppProfile`/`MachineProfile`/
 `RunProfileDocument`/`DeviceSpec` 等)です。
 
@@ -293,7 +293,7 @@ JSON→Diagnostic への変換ロジック自体は vscode 非依存の `src/pro
 検証エラー(`errors`)は Error、未知キー等の警告(`warnings`)は Warning として表示されます
 (位置情報は無いため、いずれも対象ファイルの先頭行に付きます)。
 
-- **保存時の自動検証**: `Projects/<project>/profiles/{apps,machines,runs}/*.json` を保存すると、
+- **保存時の自動検証**: `TestProjects/<project>/profiles/{apps,machines,runs}/*.json` を保存すると、
   そのファイル1件だけを `--kind`/`--name` で絞り込んで検証し、該当ファイルの診断を更新します
   (エラー・警告が無くなれば問題パネルからも消えます)。
 - **コマンド「ftester: プロファイルを検証」**(`ftester.validateProfiles`): 対象プロジェクトの
@@ -388,7 +388,7 @@ JSON→Diagnostic への変換ロジック自体は vscode 非依存の `src/pro
     無効化されます(キューが空になると自動的に再度有効になります)。
 - `ftester api monitor` プロセスが異常終了した場合(マシンプロファイル未設定等)は、パネル上部に
   エラーバナーで案内が表示されます。`ftester machine set` の実行や
-  `Projects/<project>/profiles/machines/` の内容を確認してください。
+  `TestProjects/<project>/profiles/machines/` の内容を確認してください。
 - CLI 呼び出しの stdout/stderr の詳細ログは出力パネル「ftester」に出力されます。
 
 ### 「プロファイル」タブ
@@ -451,7 +451,7 @@ macOS GUI 版(`ftester-gui`)の「自己修復トグル + 修復候補の確認�
 - `ftester.heal` を `true` にすると、Test Explorer の**「実行」**(dry-run を除く)と
   **「デバッグ」**の CLI 呼び出しに `--heal` が付与され、FM によるロケータ自己修復が有効になります。
   **「実行 (dry-run)」**には付与されません(dry-run はデバイス不要の検証実行で、自己修復の対象になる
-  実機動作が発生しないため)。
+  デバイス操作が発生しないため)。
 - `ftester.profile` を使ったプロファイル実行では、プロファイル(`profiles/runs/<name>.json`)側にも
   `heal` を設定できます。`ftester.heal` が `true` のときだけプロファイル側の設定より優先されます
   (`ftester.heal` が `false`(既定)のときは何も付与せず、プロファイル側の `heal` 設定がそのまま
@@ -535,9 +535,15 @@ webview 資産は `src/webview/live/main.js`(UI 本体はデバイスモニタ�
 - **左: スクリーンショット**: 画像をクリックするとその位置をタップし(`{"cmd":"tap","x":..,"y":..}`)、
   ドラッグするとその軌跡でスワイプし(`{"cmd":"drag",...}`。方向は始点終点の差分から自動判定)、
   ほぼ動かさず500ms以上長押ししてから離すと長押しを送ります(`{"cmd":"press","x":..,"y":..,
-  "duration":..}`)。クリック位置→デバイス座標の変換は下記「座標変換について」参照。画像直下に
-  **「ホーム」**(`{"cmd":"home"}`)・**「タスク切替」**(`{"cmd":"appSwitcher"}`)ボタンがあります。
+  "duration":..}`)。**Alt(Option)を押しながらクリックするとダブルタップ**を送ります
+  (`{"cmd":"doubleTap","x":..,"y":..}`)。**「素早く2回クリック」に割り当てていない**のは、
+  1クリックを既にタップとして送っているためで、2回目を待つ設計にすると通常のタップが毎回遅くなります。
+  クリック位置→デバイス座標の変換は下記「座標変換について」参照。画像直下に
+  **「ホーム」**(`{"cmd":"home"}`)・**「タスク切替」**(`{"cmd":"appSwitcher"}`)・
+  **「拡大」「縮小」**(`{"cmd":"pinch","scale":2|0.5,...}`。画面全体のピンチ)ボタンがあります。
   未取得時はプレースホルダーが表示されます。
+  **iOS はエンジンで届かないジェスチャがあります**: Compose のダブルタップと Flutter のピンチは
+  XCUITest 経路では効きません(実行プロファイルが inapp/hybrid なら効く。docs/commands.md の表)。
 - **右: 操作パネル**: **「更新」**ボタン(snapshot 再取得)・**テキスト入力欄 + 「入力」**
   (`{"cmd":"type","text":..,"ref":..}`。要素一覧でタップした要素があれば `ref` を付けて送信し、
   未選択、または snapshot を再取得すると選択状態はクリアされてフォーカス中の要素に入力されます)・
@@ -545,7 +551,7 @@ webview 資産は `src/webview/live/main.js`(UI 本体はデバイスモニタ�
   その要素をタップ**(`{"cmd":"tap","ref":..}`)、行にマウスを乗せると画像上に該当要素の `frame` を
   枠オーバーレイ表示)。要素一覧の下には後述の**「操作記録」**欄が並び、間のスプリッタをドラッグして
   両者の高さ配分を調整できます(配分は `vscode.setState` に保存されます)。
-- **操作記録**: ライブ操作で実行した操作(タップ/スワイプ/長押し/入力/ホーム/タスク切替)を時刻付きで
+- **操作記録**: ライブ操作で実行した操作(タップ/ダブルタップ/スワイプ/長押し/ピンチ/入力/ホーム/タスク切替)を時刻付きで
   1 行ずつ追記する表示専用のログです(**下記「レコーディングとシナリオ生成」とは別機能**で、シナリオ
   生成には一切関与しません)。各行は「時刻 + 短いラベル」(タップ対象は label > `#id` > type の順、
   要素外のタップ/長押しは座標、入力は先頭20字)で、失敗した操作は `✗` を付けて強調します。最大 200 行
@@ -667,15 +673,15 @@ F5 で Extension Development Host を起動した状態(またはパッケージ
 ### ツリー表示
 
 1. サイドバーの「テスト」(Testing)ビューを開く。`ftester` というテストコントローラーの下に、
-   `Projects/<project>/Scenarios/` の構成に対応した folder → class → メソッドの3階層ツリーが
-   表示されることを確認する(`ftester.project` が未設定で `Projects/` 直下に複数プロジェクトが
+   `TestProjects/<project>/scenarios/` の構成に対応した folder → class → メソッドの3階層ツリーが
+   表示されることを確認する(`ftester.project` が未設定で `TestProjects/` 直下に複数プロジェクトが
    ある場合は警告通知が出るので、「プロジェクトを選択」から対象を選ぶか、`ftester.project`
    設定を明示的に指定する)。表示されない場合はコマンドパレットから
    **「ftester: シナリオを再読込」**(`ftester.refreshScenarios`)を実行するか、
    テストビューの再読込ボタンを押す。
 2. `@Deleted` が付いたシナリオ(削除予定としてマークされたメソッド)がツリー上で
    `(削除済み)` という説明付きで表示されることを確認する。
-3. `Projects/<project>/Scenarios/` 配下の `.swift` ファイルを編集・保存する(シナリオ名や
+3. `TestProjects/<project>/scenarios/` 配下の `.swift` ファイルを編集・保存する(シナリオ名や
    メソッドを追加/変更するなど)。800ms 程度のデバウンス後にツリーが自動的に再読込される
    ことを確認する。
 4. 出力パネルのドロップダウンから **「ftester」** チャンネルを選ぶと、CLI 呼び出しの
@@ -691,7 +697,7 @@ F5 で Extension Development Host を起動した状態(またはパッケージ
    - 対象シナリオが「実行中」→「成功」になり、実行時間が表示されることを確認する。
    - テスト結果パネルの出力(Output)に、シナリオ/シーン/各ステップが
      `▶`/`✅` 等のアイコン付きで逐次表示されることを確認する。
-   - 実行中は `Projects/*/Scenarios/**/*.swift` を編集してもツリーが再読込されず
+   - 実行中は `TestProjects/*/scenarios/**/*.swift` を編集してもツリーが再読込されず
      (watcher が suspend される)、実行完了後に保留していた変更が反映される
      (再読込される)ことを確認する。
    - 実行中に停止(■)ボタンでキャンセルすると、CLI プロセスが終了し
@@ -707,7 +713,7 @@ F5 で Extension Development Host を起動した状態(またはパッケージ
 ### デバッグ実行
 
 9. 以下の手順でブレークポイント・ステップ実行・続行・停止を一通り確認する。
-   1. `Projects/<project>/Scenarios/` 配下の `.swift` ファイルをエディタで開き、
+   1. `TestProjects/<project>/scenarios/` 配下の `.swift` ファイルをエディタで開き、
       `action { }` 内のコマンド呼び出し行(例: `tap(...)`)の行番号ガター(行番号の左側)を
       クリックしてブレークポイント(赤丸)を設定する。
    2. テストビューで対象シナリオを選び、「実行」ボタン横のドロップダウンから
@@ -721,14 +727,14 @@ F5 で Extension Development Host を起動した状態(またはパッケージ
       「失敗」(または「エラー」)として反映されることを確認する。
    7. ブレークポイントを設定せずに「デバッグ」を実行すると、途中で止まらずに
       最後まで実行され、成功/失敗がテスト結果パネルに正しく反映されることを確認する。
-   8. デバッグ実行中は `Projects/*/Scenarios/**/*.swift` を編集してもツリーが
+   8. デバッグ実行中は `TestProjects/*/scenarios/**/*.swift` を編集してもツリーが
       再読込されない(watcher が suspend される)ことを確認する。
    9. 出力パネル「ftester」またはデバッグコンソールに、シナリオ/シーン/各ステップの
       ログ(`▶`/`✅` 等のアイコン付き)が逐次表示されることを確認する。
 
 ### 実行プロファイル(`ftester.profile`)
 
-10. `.vscode/settings.json` に `"ftester.profile": "<Projects/<project>/profiles/runs/ にある名前>"`
+10. `.vscode/settings.json` に `"ftester.profile": "<TestProjects/<project>/profiles/runs/ にある名前>"`
     を設定し、「実行 (dry-run)」を実行する。出力パネルに `--profile` 経由で実行されている旨の
     ログ(プロファイル解決やワーカー構築のログは出さず NullDriver で流れる)が出て、
     dry-run 同様に成功することを確認する(デバイス不要)。
@@ -747,14 +753,14 @@ F5 で Extension Development Host を起動した状態(またはパッケージ
     現在の `ftester.profile` 設定値に `$(check)` アイコンと「現在の設定」という説明が付くことを
     確認する。いずれかを選択すると `ftester.profile` 設定が更新され(「(プロファイルなし)」は
     空文字列になる)、完了を通知するメッセージが表示されることを確認する。
-14. `Projects/<project>/profiles/runs/<name>.json` を開き、`"devices"` を削除するなど検証エラーに
+14. `TestProjects/<project>/profiles/runs/<name>.json` を開き、`"devices"` を削除するなど検証エラーに
     なる編集をして保存すると、数秒以内に問題パネル(Problems)にそのファイルのエラーが表示される
     ことを確認する(該当行はファイル先頭行になる)。エラーを直してから保存し直すと、問題パネルから
     該当エラーが消えることを確認する。
 15. コマンドパレットから **「ftester: プロファイルを検証」** を実行すると、対象プロジェクトの
     `profiles/{apps,machines,runs}/*.json` が一括検証され、「エラー N件・警告 N件・問題なし N件」
     という通知が表示されることを確認する(問題パネルにも各ファイルの結果が反映される)。
-16. `Projects/<project>/profiles/runs/<name>.json` をエディタで開き、既存キーの外側(オブジェクトの
+16. `TestProjects/<project>/profiles/runs/<name>.json` をエディタで開き、既存キーの外側(オブジェクトの
     トップレベル)で補完(Ctrl+Space / Cmd+Space)を呼び出すと、`app`/`devices`/`heal`/`reportDir`/
     `defaultTimeout` が説明付きで候補に出ることを確認する。`"heal"` に文字列を入力するなど型を
     誤ると、エディタ上に構文レベルの警告(波線)が表示されることも確認する
@@ -763,7 +769,7 @@ F5 で Extension Development Host を起動した状態(またはパッケージ
 
 ### ステップ一覧
 
-17. `Projects/<project>/Scenarios/` 配下の `.swift` ファイルをエディタで開き、`@Test` メソッド
+17. `TestProjects/<project>/scenarios/` 配下の `.swift` ファイルをエディタで開き、`@Test` メソッド
     (シナリオ)の本体内にカーソルを置く。サイドバーの「テスト」(Testing)ビューに
     `ftester ステップ` というビューが表示され、カーソルが乗っているシナリオの scene グループ
     (`scene N: <シーンタイトル>`)とステップ(`<番号>. <コマンド>`)一覧が表示されることを
@@ -913,7 +919,7 @@ F5 で Extension Development Host を起動した状態(またはパッケージ
 
 ### E2E テスト(実バイナリを使った疎通確認)
 
-実バイナリ(`.build/debug/ftester`)・実リポジトリ(`Projects/SampleApp/`)に依存する E2E テストは
+実バイナリ(`.build/debug/ftester`)・実リポジトリ(`TestProjects/SampleApp/`)に依存する E2E テストは
 `FTESTER_E2E=1` のときだけ実行され、通常の `npm test` では自動的に skip される
 (`node --test` の実行前に `node esbuild.mjs --tests` で `out-test/` を更新しておくこと)。
 
@@ -937,7 +943,7 @@ FTESTER_E2E=1 node --test out-test/e2e-dryrun-debug.test.mjs
 `connected`/`booted`/`offline`)を持つこと)・SIGTERM 送信から数秒以内にプロセスが終了すること・
 stdout に `monitorDevices`/`monitorFrame`/`monitorError` 以外の行種(パース不能な行を含む)が
 混ざっていないことを検証する。**シミュレータ/エミュレータ自体が起動している必要はありません**
-(`state: "offline"`(未起動)のままでも成功します。`Projects/SampleApp/profiles/machines/` に
+(`state: "offline"`(未起動)のままでも成功します。`TestProjects/SampleApp/profiles/machines/` に
 マシンプロファイルが定義されていることだけが前提です)。
 
 ```bash
@@ -1044,7 +1050,7 @@ vscode-ftester/
     ├── healModel.test.mjs        # healModel のユニットテスト + mock-runner(--pattern heal)を使った統合テスト
     ├── cli.test.mjs              # FtesterCli の stdin 対応 spawn のテスト(mock-apply-heal 相手)
     ├── profileModel.test.mjs     # profileModel のユニットテスト + mock-validate-profile を使った統合テスト + 実バイナリ(存在すれば)確認
-    ├── profileSchema.test.mjs    # schemas/*.schema.json が実在の Projects/SampleApp/profiles/*.json を受理することの確認(ajv 不使用の最小評価器)
+    ├── profileSchema.test.mjs    # schemas/*.schema.json が実在の TestProjects/SampleApp/profiles/*.json を受理することの確認(ajv 不使用の最小評価器)
     ├── liveModel.test.mjs        # liveModel のユニットテスト(検証・NDJSONコマンド組み立て/イベント検証・座標変換・要素行フォーマット・CLI引数組み立て・webviewメッセージプロトコル) + mock-live を使った統合テスト + 実バイナリ(存在すれば)確認
     ├── dashboardModel.test.mjs   # dashboardModel のユニットテスト(ApiResultsPayload の型ガード等)
     ├── i18n.test.mjs             # 辞書パリティ・残存日本語の AST 走査・webview/lane キー存在・nls 整合の検証

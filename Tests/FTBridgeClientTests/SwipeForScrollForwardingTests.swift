@@ -1,13 +1,13 @@
-// `swipe(_:forScroll:)` を**包むドライバが必ず素通しする**ことを守る。
+// `swipe(_:intent:path:)` の**用途とスクロール領域を包むドライバが必ず素通しする**ことを守る。
 //
-// AppDriver の既定実装は forScroll を捨てて自分の `swipe(_:)` を呼ぶ。ラッパーがこの既定に
-// 頼ると、フラグは**最初のラッパーで落ちて**ブリッジまで届かない。届かないと in-app の
+// AppDriver の既定実装は用途を捨てて自分の `swipe(_:)` を呼ぶ。ラッパーがこの既定に
+// 頼ると、用途は**最初のラッパーで落ちて**ブリッジまで届かない。届かないと in-app の
 // Compose/Flutter はスクロール要求をジェスチャ要求と読んで 501 を返し、スクロールが丸ごと
 // XCUITest へ回る —— つまり「動くが遅いまま」で、テストは緑のまま気付けない
 // (2026-07-31 に実際にこれを踏み、フルスイートを2周回してから気付いた)。
 //
 // 各ラッパーの型を1つずつ書き並べるのではなく、**ソースを走査して
-// 「swipe(_:) を実装しているのに forScroll 版が無い」型を検出する**。
+// 「swipe(_:) を実装しているのに intent 版が無い」型を検出する**。
 // 新しいラッパーを足したときも自動的に対象になる。
 
 import XCTest
@@ -19,9 +19,6 @@ final class SwipeForScrollForwardingTests: XCTestCase {
     private static let exempt: Set<String> = [
         // プロトコル定義と既定実装そのもの
         "AppDriver.swift",
-        // Android ブリッジを直接叩く葉ドライバ。素通しする base が無く、Android 側は
-        // フラグを読まない(スクロールはネイティブに効くので in-app のような代替経路が要らない)
-        "AndroidDriver.swift",
     ]
 
     func testEveryDriverImplementingSwipeAlsoForwardsForScroll() throws {
@@ -30,6 +27,7 @@ final class SwipeForScrollForwardingTests: XCTestCase {
             .deletingLastPathComponent()   // Tests
             .deletingLastPathComponent()   // リポジトリルート
         var offenders: [String] = []
+        var droppers: [String] = []
         var checked = 0
         for dir in ["Sources/FTBridgeClient", "Sources/FTAndroid", "Sources/FTCore"] {
             let base = root.appendingPathComponent(dir)
@@ -40,14 +38,24 @@ final class SwipeForScrollForwardingTests: XCTestCase {
                 guard let source = try? String(contentsOf: file, encoding: .utf8) else { continue }
                 guard source.contains("func swipe(_ direction: FTSwipeDirection) async throws") else { continue }
                 checked += 1
-                if !source.contains("func swipe(_ direction: FTSwipeDirection, forScroll: Bool)") {
+                if !source.contains("func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent,") {
                     offenders.append(file.lastPathComponent)
+                    continue
+                }
+                // **引数を受けるだけで捨てていないか**まで見る。`path: nil` と書けば
+                // シグネチャの検査は通るが、スクロール領域の指定は最初のラッパーで落ちる
+                // (intent で 2026-07-31 に踏んだ事故と同じ型)
+                if !source.contains("path: path") {
+                    droppers.append(file.lastPathComponent)
                 }
             }
         }
         XCTAssertGreaterThan(checked, 3, "走査対象が見つからない = パスかシグネチャの書式が変わった")
         XCTAssertTrue(offenders.isEmpty,
-                      "swipe(_:) を実装する型は forScroll 版も実装して base へ素通しすること"
-                      + "(既定実装に任せるとフラグが落ちてスクロールが XCUITest へ回る): \(offenders)")
+                      "swipe(_:) を実装する型は intent 版も実装して base へ素通しすること"
+                      + "(既定実装に任せると用途が落ちてスクロールが XCUITest へ回る): \(offenders)")
+        XCTAssertTrue(droppers.isEmpty,
+                      "intent 版を実装する型は path も素通しすること(`path: path` を渡す)。"
+                      + "受け取って捨てるとスクロール領域の指定が黙って無効になる: \(droppers)")
     }
 }

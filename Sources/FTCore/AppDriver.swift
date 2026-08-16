@@ -4,10 +4,28 @@
 
 import Foundation
 
+/// launch(bundleID:) の所要時間内訳(ミリ秒)。AppDriver.lastLaunchTiming が返す型。
+/// actionMs = プロセスを起動させる外部呼び出し自体(simctl launch 等の往復)。
+/// waitMs = 起動後、操作可能になるまで待った時間(readiness ポーリング等)。
+/// FTDSL の launchApp/restartApp が ScenarioEvent(kind:"step").actionMs/waitMs へ
+/// そのまま渡す(StepExecutor 経由のステップと同じフィールドに相乗り。新フィールドは足さない)。
+public struct LaunchTiming: Sendable {
+    public let actionMs: Int
+    public let waitMs: Int
+    public init(actionMs: Int, waitMs: Int) {
+        self.actionMs = actionMs
+        self.waitMs = waitMs
+    }
+}
+
 public protocol AppDriver {
     func status() async throws -> StatusResponse
     /// パッケージファイル(iOS: .app バンドル / Android: .apk)からアプリをインストールする
     func install(packagePath: String) async throws
+    /// アプリをアンインストールする(DSL の removeApp)。**プロトコル要件として宣言すること**
+    /// (install(packagePath:) と同じ理由。extension だけに置くと存在型越しの呼び出しが
+    /// 静的ディスパッチで既定実装に落ち、ドライバ側の実装が呼ばれないまま黙って無視される)
+    func uninstall(bundleID: String) async throws
     func launch(bundleID: String) async throws
     /// 状態を保持したまま前面へ切り替える(未起動なら起動)。
     func activate(bundleID: String) async throws
@@ -19,6 +37,20 @@ public protocol AppDriver {
     /// ドライバごとに機構が違う。
     func back() async throws
     func snapshot() async throws -> SnapshotResponse
+    /// キャッシュを捨てて撮り直す。**プロトコル要件として宣言すること**(extension だけに置くと
+    /// 存在型越しの呼び出しが静的ディスパッチで既定実装に落ち、実装したドライバが無視される)
+    func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse
+    /// **その ref を撃つと本当にそれに当たるか**をプラットフォームに聞く(iOS の XCUITest だけが
+    /// 答えられる。`XCUIElement.isHittable` はヒットテストそのもの)。
+    /// nil = 「答えられない」(未対応のドライバ・引き当て不能)で、呼び手は何も言わない。
+    ///
+    /// **木では原理的に答えられない問い**への逃げ道。iOS は塗り順(z)を出さないので、
+    /// 木の順序では「上のクロムの下へスクロールで潜った要素」を見分けられない
+    /// (実測: カレンダーのセルを撃つと警告ゼロで戻るボタンが押される)。
+    ///
+    /// **全要素に付けてはいけない**(実測 121 要素で 5.1 秒 = snapshot の 50 倍)。
+    /// 呼び手が疑ったときだけ1件聞く。**プロトコル要件として宣言すること**(理由は上と同じ)
+    func hittable(ref: Int) async throws -> Bool?
     func tap(ref: Int) async throws
     func tap(x: Double, y: Double) async throws
     func type(ref: Int?, text: String) async throws
@@ -30,11 +62,26 @@ public protocol AppDriver {
     /// 権限ダイアログを何度でも再現するためのもので、再インストールは伴わない。
     /// 実行前にアプリを終了する(起動中に消すとプロセスが持っている状態が書き戻る)
     func clearAppData(bundleID: String) async throws
+    /// アプリへ URL(ディープリンク)を配送する。**起動済みのアプリへ投げる**のが本来の用途。
+    /// bundleID は Android の intent 宛先指定と、iOS in-app の再注入起動にだけ使う
+    func openURL(_ url: String, bundleID: String?) async throws
+    /// openURL 直後に OS(iOS: SpringBoard)が出す初回確認アラートを、可能なら自動了承する
+    /// (ベストエフォート。同意は端末+アプリの組で永続するため以後の openURL では不要になる)。
+    /// springboard を見られない接続(in-app ブリッジ等)では何もしない。
+    /// **プロトコル要件として宣言すること**(install(packagePath:) と同じ理由。存在型越しの呼び出しは
+    /// 要件でなければ静的ディスパッチで既定実装に落ち、実装したドライバが無視される)
+    func acknowledgeOpenURLConsentIfPresent(bundleID: String) async
     /// 次の snapshot() 呼び出しでだけキーボード表示状態(SnapshotResponse.keyboardShown)を採る。
     /// StepExecutor が keyboardShown/keyboardNotShown アサートの直前に呼ぶ。既定は no-op
     /// (iOS はツリー走査中に常に判定できるため不要)。Android は dumpsys 呼び出しが固定費なので、
     /// 必要な snapshot でだけ払うためのフラグ(AndroidDriver 参照)
     func captureKeyboardStateOnNextSnapshot()
+    /// 次の snapshot() 1回だけ要素上限を引き上げる(nil = 既定へ戻す)。
+    /// **一発限りにする理由**: 上げたままだと以後の応答が全部膨らみ、上げた当人以外
+    /// (整定ループ・探索の各周回)が黙って重い木を引く。`captureKeyboardStateOnNextSnapshot`
+    /// と同じ形。**プロトコル要件として宣言すること**(既定実装だけに置くと存在型越しの
+    /// 呼び出しが静的ディスパッチで no-op に落ち、ブリッジまで届かない)
+    func raiseElementLimitOnNextSnapshot(_ max: Int?)
     /// フォーカス中の入力欄で Enter を押す(ref なし。Shirates pressEnter 相当)。
     /// iOS はソフトキー tap ができない(キーボード要素を snapshot から除外しているため)代替経路を
     /// ドライバごとに持つ: xcuitest は typeText("\n")、inapp は Compose 入力欄への insertText("\n")
@@ -42,23 +89,76 @@ public protocol AppDriver {
     /// xcuitest フォールバックは StepExecutor が担う
     func pressEnter() async throws
     func swipe(_ direction: FTSwipeDirection) async throws
-    /// スクロールが目的の swipe(`SwipeRequest.scroll`)。既定は通常 swipe と同じで、
-    /// ブリッジ実装だけがフラグを送る
-    func swipe(_ direction: FTSwipeDirection, forScroll: Bool) async throws
+    /// 用途つきの swipe。既定は通常 swipe と同じで、ブリッジ実装だけが用途を送る。
+    /// path 非 nil = **スクロール領域を指定した座標スワイプ**(ホストの ScrollGeometry が計算)。
+    /// **包むドライバは必ず素通しすること**(既定実装は自分の swipe(_:) を呼ぶので、受けないと
+    /// 最初のラッパーで用途と座標が落ちる)
+    func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent, path: FTSwipePath?) async throws
     /// 2点間ドラッグ(座標は snapshot の screen と同じ座標系)。pressSeconds=押下静止時間、
     /// durationSeconds=移動時間(実機ジェスチャの速度・長押しに反映される)。
     func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
               pressSeconds: Double, durationSeconds: Double) async throws
+    /// ダブルタップ(座標は snapshot の screen と同じ座標系)。**ref を取らない**のは、
+    /// ref がブリッジごとに別名前空間で、501 で別ドライバへ回すときに取り直しが要るため
+    /// (swipeElementToElement が中心座標へ畳んでから drag するのと同じ方針)。
+    /// **プロトコル要件として宣言すること**(install(packagePath:) と同じ理由)
+    func doubleTap(x: Double, y: Double) async throws
+    /// 2本指のピンチ(DSL の pinchOut / pinchIn)。対象指定が frame と identifier の2本立てな
+    /// 理由は BridgeDTO の PinchRequest 参照。**プロトコル要件として宣言すること**
+    func pinch(frame: FTRect?, identifier: String?, scale: Double,
+               durationSeconds: Double) async throws
+    /// Rotates the device and waits for it to settle, returning the actual settled orientation
+    /// (always equals the request — the driver throws instead of returning a mismatch; see
+    /// DriverError 422 usage). **Protocol requirement** (same reasoning as doubleTap/pinch above:
+    /// existential calls fall back to static dispatch on the default otherwise).
+    func rotate(to orientation: FTOrientation) async throws -> FTOrientation
+    /// Restores the orientation captured by this driver's first `rotate(to:)` call in the current
+    /// scenario, if any (no-op — no round trip — if rotate was never called). Called unconditionally
+    /// at scenario end. **Protocol requirement** (same reasoning as above).
+    func restoreOrientationIfNeeded() async throws
     func press(ref: Int, duration: Double) async throws
     /// 座標指定のロングプレス(座標は snapshot の screen と同じ座標系)。
     func press(x: Double, y: Double, duration: Double) async throws
     func screenshot() async throws -> Data
     func terminate() async throws
+    /// フォアグラウンドのアプリが bundleID(iOS)/ package(Android)と一致しているか(DSL の appIs)。
+    /// **プロトコル要件として宣言すること**(install(packagePath:) と同じ理由)
+    func isAppForeground(bundleID: String) async throws -> Bool
+    /// 現在フォアグラウンドのアプリの bundleID/package(分かるプラットフォームだけ実値。
+    /// 分からなければ nil。DSL の appIs の失敗メッセージが actual として使う)。
+    /// **プロトコル要件として宣言すること**(install(packagePath:) と同じ理由)
+    func foregroundAppID() async throws -> String?
     /// 直前のアクションで通常と違う経路を通ったときの説明(既定 nil)。失敗ではなく観測用。
     /// 「次のアクション呼び出しで上書き/クリアする」実装が前提(1シナリオ=1ドライバの逐次実行なので、
     /// クリアしないと前回の注記が別ステップに誤って付く)。デコレータ実装は base の値を透過すること
     /// (透過しないと最外のドライバから見えない)。
     var lastActionNote: String? { get }
+    /// 直近の launch(bundleID:) の内訳。lastActionNote と同じ「次の launch 呼び出しで
+    /// 上書き/クリアする」規約(1シナリオ=1ドライバの逐次実行が前提)。計測できないドライバ・
+    /// 失敗した呼び出しは既定 nil(嘘の内訳を返さない)。デコレータ実装は base の値を透過すること
+    /// (透過しないと最外のドライバから見えない。lastActionNote と同じ理由)。
+    var lastLaunchTiming: LaunchTiming? { get }
+    /// キャッシュを捨てた snapshot(`snapshot(bypassingCache: true)`)が意味を持つか。
+    /// **ラッパードライバは base の値を透過すること**(false 固定にすると最内の Android へ届かない)
+    var supportsCacheBypass: Bool { get }
+    /// **木の座標1単位あたり何 px か**(iOS = 1: 木は pt / Android = 表示密度: 木は px)。
+    /// 幾何の床(`StepExecutor.minimumVisibleTapExtent`)を木の単位へ換算するために使う。
+    ///
+    /// iOS の pt(1/163 inch)と Android の dp(1/160 inch)は**物理的にほぼ同じ**なので、
+    /// pt で測った床は dp としてそのまま通用する —— 足りないのは px への換算だけ。
+    /// 換算しないと 3倍密度の端末で床が約3倍緩くなり、**わずかな重なりを「見えている部分」と
+    /// 信じて叩く**(2026-08-15。コメントが pt と書いてある値を px の木へ当てていた)。
+    /// **プロトコル要件として宣言すること**(install(packagePath:) と同じ理由)。
+    /// **ラッパードライバは base の値を透過すること**(1 に落とすと最内の Android へ届かない)
+    var pointScale: Double { get }
+    /// type(ref:text:) を自前で読み返して検証済みか(xcuitest ランナー・Android 注入器は内部で
+    /// 読み返す。iOS in-app ブリッジは読み返さない=false)。false のときだけ StepExecutor が
+    /// 読み返しを行う(TypeReadback.swift 参照)。**プロトコル要件として宣言すること**
+    /// (install(packagePath:) と同じ理由。存在型越しの呼び出しは要件でなければ静的ディスパッチで
+    /// 既定実装に落ち、実装したドライバが無視される)。
+    /// **ラッパードライバは実際に type を実行する側の値へ転送すること**(既定 false に落とすと
+    /// 無害だが、既に検証済みの経路にも二重読み返しの固定費が乗る)
+    var verifiesTypedText: Bool { get }
 }
 
 public enum DriverError: Error, LocalizedError {
@@ -114,12 +214,33 @@ public enum DriverError: Error, LocalizedError {
 /// activate 未対応ドライバ(InAppDriver/SystemUIDriver 等)は launch(再起動)にフォールバックする。
 public extension AppDriver {
     var lastActionNote: String? { nil }
+    /// 既定は「答えられない」。答えられるのは XCUITest ブリッジを話す BridgeClient だけ
+    func hittable(ref: Int) async throws -> Bool? { nil }
+    var lastLaunchTiming: LaunchTiming? { nil }
 
-    /// 既定はフラグを落として通常 swipe に委譲する(ラッパードライバはこれで素通しになる)。
-    /// フラグを実際に送るのは HTTP を話す BridgeClient だけ
-    func swipe(_ direction: FTSwipeDirection, forScroll: Bool) async throws {
+    /// 既定は用途を落として通常 swipe に委譲する(ラッパードライバはこれで素通しになる)。
+    /// 用途を実際に送るのは HTTP を話す BridgeClient / AndroidDriver だけ
+    func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent, path: FTSwipePath?) async throws {
         try await swipe(direction)
     }
+
+    /// キャッシュを捨てて撮り直す snapshot。**Android だけが実装を持つ**(a11y ノードは
+    /// キャッシュ供給で、IME 等が前面のとき数秒古いツリーを返し続ける)。コストが高い
+    /// (1 snapshot あたり約 +65ms)ので、検証が期限切れで失敗と決まる直前の1回にだけ使う。
+    /// iOS 系は鮮度問題を持たないので既定の素通しでよい。
+    /// **ラッパードライバを足すときは転送すること**(素通しのままだと最内の Android へ届かない)
+    func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {
+        try await snapshot()
+    }
+
+    /// false のドライバでは検証側が取り直しの周回そのものを行わない(無駄な1周を増やさない)
+    var supportsCacheBypass: Bool { false }
+
+    /// 既定は未検証(false)= StepExecutor 側の読み返しが働く安全側。検証済みドライバだけが true を宣言する
+    var verifiesTypedText: Bool { false }
+
+    /// 既定は 1(木が pt = iOS 系)。px で木を返す Android だけが密度を申告する
+    var pointScale: Double { 1 }
 
     func activate(bundleID: String) async throws {
         try await launch(bundleID: bundleID)
@@ -149,7 +270,19 @@ public extension AppDriver {
         throw DriverError.badResponse(status: 501, body: "This driver does not support clearing app data")
     }
 
+    func openURL(_ url: String, bundleID: String?) async throws {
+        throw DriverError.badResponse(status: 501, body: "This driver does not support opening a URL")
+    }
+
+    /// 既定は no-op: 実装を持つのは springboard の /session を張れる接続(BridgeClient=XCUITest
+    /// 接続)だけ。他のドライバは黙って通す(取りこぼしより誤爆を避ける側に倒す)
+    func acknowledgeOpenURLConsentIfPresent(bundleID: String) async {}
+
     func captureKeyboardStateOnNextSnapshot() {}
+
+    /// 既定は no-op(上限を持たないドライバ = 上げようがない)。ブリッジ接続を持つ
+    /// ドライバとラッパーだけが実装する
+    func raiseElementLimitOnNextSnapshot(_ max: Int?) {}
 
     func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
               pressSeconds: Double, durationSeconds: Double) async throws {
@@ -159,6 +292,24 @@ public extension AppDriver {
     func press(x: Double, y: Double, duration: Double) async throws {
         throw DriverError.badResponse(status: 501, body: "This driver does not support long-press by coordinates")
     }
+
+    /// 実装を持たないドライバの既定。501 = ホストが typeDriver(XCUITest)へ回す合図
+    /// (in-app は 2026-08-04 から自前描画フレームワーク向けに実装を持つ。UIKit/SwiftUI は
+    /// 合成タッチを受理しないので、あちらが 501 を返して XCUITest へ回る)
+    func doubleTap(x: Double, y: Double) async throws {
+        throw DriverError.badResponse(status: 501, body: "This driver does not support double tap")
+    }
+
+    func pinch(frame: FTRect?, identifier: String?, scale: Double,
+               durationSeconds: Double) async throws {
+        throw DriverError.badResponse(status: 501, body: "This driver does not support pinch")
+    }
+
+    func rotate(to orientation: FTOrientation) async throws -> FTOrientation {
+        throw DriverError.badResponse(status: 501, body: "This driver does not support rotation")
+    }
+
+    func restoreOrientationIfNeeded() async throws {}
 
     func pressEnter() async throws {
         throw DriverError.badResponse(status: 501, body: "This driver does not support pressing the Enter key")

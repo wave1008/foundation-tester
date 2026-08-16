@@ -1,67 +1,84 @@
-// FTElement のチェーン網羅の同期検査。
-// 契約(Sources/FTDSL/Commands.swift の FTElement コメント): セレクタを取り「その要素」を
-// 検証する自由関数は、すべて同名で FTElement にも生える。一部だけ生やすと
-// 「どれがチェーンできるか」が覚えられず、書いてみるまで分からない状態になる。
+// 検証コマンドの「3つの書き方」の同期検査(2026-08-04)。
+// 契約(Sources/FTDSL/CommandsVerify.swift): 検証の対象は**直前に掴んだ要素**で、次の3つは同義。
 //
-// 一方向の検査(検証系の自由関数 → FTElement)。逆(FTElement にあって自由関数に無い)は
-// 見ない: idIs のようにチェーン専用の検証があり得るため。
+//     select("#x").textIs("OK")            // FTElement のメソッド(判定の実体はここ1か所)
+//     select("#x"); lastElement.textIs("OK")
+//     select("#x"); textIs("OK")           // トップレベルの自由関数(委譲するだけ)
 //
+// 片方だけ足すと「その検証はどの書き方でも使えるのか」が覚えられず、書いてみるまで分からない
+// (`textIs("#x", "OK")` = セレクタを取る形は置かない)。
+//
+// 逆方向(自由関数にあってチェーンに無い)も見る: 委譲先が無ければそもそも成立しない。
 // process.cwd() は npm test 実行時に vscode-ftester ルート(protocolVersion.test.mjs と同じ前提)。
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 
-const COMMANDS = path.join(process.cwd(), "..", "Sources/FTDSL/Commands.swift");
-
-/// 要素を1つに定めないので「掴んだ要素の検証」にならない = チェーンにしない
-const EXEMPT = new Set(["notExist", "countIs", "screenIs"]);
-
-/// 検証コマンドの見分け: assert を組み立てる共通実装のいずれかを呼ぶもの
-const ASSERT_IMPLS = ["textAssert(", "emptyAssert(", "enabledAssert(", "assert: \""];
+// コマンド定義は `Commands*.swift` に分割されている(CommandIndexSyncTests と同じ接頭辞規則)。
+// FTElement と検証コマンドは CommandsVerify.swift だが、名前を列挙せず接頭辞で拾い
+// 再分割で増えたファイルも対象から漏れないようにする
+const DSL_DIR = path.join(process.cwd(), "..", "Sources/FTDSL");
 
 function readSource() {
-  return readFileSync(COMMANDS, "utf8");
+  const names = readdirSync(DSL_DIR)
+    .filter((name) => name.startsWith("Commands") && name.endsWith(".swift"))
+    .sort();
+  assert.ok(names.length >= 3, `コマンド定義ファイルの発見が壊れている: ${names}`);
+  return names.map((name) => readFileSync(path.join(DSL_DIR, name), "utf8")).join("\n");
 }
 
-/// String 版の自由関数のうち、検証系のものの名前
-function assertionFreeFunctions(source) {
-  const upToFTElement = source.slice(0, source.indexOf("public struct FTElement"));
-  const names = new Set();
-  const pattern = /^public func ([a-zA-Z]+)\(_ selector: String[\s\S]*?\n\}/gm;
-  for (const match of upToFTElement.matchAll(pattern)) {
-    const [body, name] = [match[0], match[1]];
-    if (ASSERT_IMPLS.some((impl) => body.includes(impl))) names.add(name);
-  }
-  return names;
-}
-
+/// FTElement のメソッド名(判定の実体)。**構造体の終端(行頭 })で切る** —— 切らないと
+/// 後続の型のメソッド(FTBranch.ifElse 等)まで拾う
 function chainMethods(source) {
-  const body = source.slice(source.indexOf("public struct FTElement"));
+  const start = source.indexOf("public struct FTElement");
+  const rest = source.slice(start);
+  const body = rest.slice(0, rest.indexOf("\n}"));
   return new Set([...body.matchAll(/^    public func ([a-zA-Z]+)\(/gm)].map((m) => m[1]));
 }
 
-test("FTElement: 検証系の自由関数はすべてチェーンにも生えている", () => {
+/// トップレベルの自由関数のうち、`lastElement.<同名>(` へ委譲しているもの
+function delegatingFreeFunctions(source) {
+  const found = new Map();
+  const pattern = /^public func ([a-zA-Z]+)\((?![_\s]*selector)[\s\S]*?\n\}/gm;
+  for (const match of source.matchAll(pattern)) {
+    const [body, name] = [match[0], match[1]];
+    if (body.includes(`lastElement.${name}(`)) found.set(name, body);
+  }
+  return found;
+}
+
+test("検証コマンド: FTElement のメソッドと暗黙 lastElement の自由関数が1対1", () => {
   const source = readSource();
-  const free = assertionFreeFunctions(source);
   const chain = chainMethods(source);
+  const free = delegatingFreeFunctions(source);
 
   // 検出器そのものが壊れていないこと(0 件なら正規表現が腐っている)
-  assert.ok(free.size >= 20, `検証系の自由関数を取りこぼしている: ${free.size} 件`);
+  assert.ok(chain.size >= 30, `FTElement のメソッドを取りこぼしている: ${chain.size} 件`);
+  assert.ok(free.size >= 30, `委譲する自由関数を取りこぼしている: ${free.size} 件`);
 
-  const missing = [...free].filter((name) => !EXEMPT.has(name) && !chain.has(name)).sort();
+  const missingFree = [...chain].filter((name) => !free.has(name)).sort();
   assert.deepEqual(
-    missing,
+    missingFree,
     [],
-    `FTElement にチェーンが無い検証コマンド: ${missing.join(", ")}\n`
-      + "(自由関数だけ足すと exist(...).xxx が書けず、規則性が崩れる)",
+    `暗黙 lastElement の自由関数が無い検証: ${missingFree.join(", ")}\n`
+      + "(3つの書き方が同義でなくなる。select(…).x(…) だけ書けて x(…) が書けない状態)",
   );
+
+  const missingChain = [...free.keys()].filter((name) => !chain.has(name)).sort();
+  assert.deepEqual(missingChain, [], `委譲先の FTElement メソッドが無い: ${missingChain.join(", ")}`);
 });
 
-test("FTElement: 対象外のコマンドはチェーンに生やさない", () => {
-  const chain = chainMethods(readSource());
-  for (const name of EXEMPT) {
-    assert.ok(!chain.has(name), `${name} は要素を1つに定めないのでチェーンにしない`);
-  }
+test("検証コマンド: セレクタを取る旧形が復活していない", () => {
+  const source = readSource();
+  const revived = [...chainMethods(readSource())].filter((name) =>
+    new RegExp(`^public func ${name}\\(_ selector: (String|Sel)`, "m").test(source),
+  ).sort();
+  assert.deepEqual(
+    revived,
+    [],
+    `セレクタを取る検証が復活している: ${revived.join(", ")}\n`
+      + "(対象は直前に掴んだ要素に固定。select(selector).x(expected) と書く)",
+  );
 });

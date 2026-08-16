@@ -22,7 +22,7 @@ struct ApiDeviceUp: AsyncParsableCommand {
     @Option(help: "Logical device name (a name under ios or android in the machine profile)")
     var name: String
 
-    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
+    @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
 
     @Option(help: "Run profile name, used to resolve the machine. When given, that profile's machine wins; otherwise FT_MACHINE, the registered machine, or the only entry in machines/")
@@ -61,7 +61,7 @@ struct ApiDevicesUp: AsyncParsableCommand {
         abstract: "Start every device in the machine profile (NDJSON: log/deviceStarting/deviceFinished -> "
             + "finished on stdout; diagnostics on stderr only)")
 
-    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
+    @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
 
     @Option(help: "Run profile name (when given, only the devices that profile references are started)")
@@ -128,7 +128,7 @@ struct ApiDevicesRestart: AsyncParsableCommand {
             help: "Logical names of the devices to restart (under ios or android in the machine profile). Repeatable")
     var name: [String] = []
 
-    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
+    @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
 
     @Option(help: "Run profile name (when given, only the devices that profile references are affected)")
@@ -224,7 +224,7 @@ struct ApiDevicesDown: AsyncParsableCommand {
             + "to shutdownProfile in DevicesCommand.Down (sequential ios->android shutdownOne) with "
             + "per-device progress added")
 
-    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
+    @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
 
     @Option(help: "Run profile name (when given, only the devices that profile references are stopped)")
@@ -294,7 +294,7 @@ struct ApiDeviceDown: AsyncParsableCommand {
     @Option(help: "Android emulator adb serial. Direct mode: stops this emulator without resolving a project or machine profile")
     var serial: String?
 
-    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project). Ignored in direct (--udid/--serial) mode")
+    @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project). Ignored in direct (--udid/--serial) mode")
     var project: String?
 
     @Option(help: "Run profile name, used to resolve the machine. When given, that profile's machine wins; otherwise FT_MACHINE, the registered machine, or the only entry in machines/. Ignored in direct (--udid/--serial) mode")

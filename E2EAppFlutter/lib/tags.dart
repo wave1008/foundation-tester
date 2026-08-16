@@ -15,6 +15,7 @@ class Tags {
   static const navSelector = 'nav_selector';
   static const navInput = 'nav_input';
   static const navGesture = 'nav_gesture';
+  static const navMap = 'nav_map';
   static const navScroll = 'nav_scroll';
   static const navAsync = 'nav_async';
   static const navDialog = 'nav_dialog';
@@ -60,6 +61,14 @@ class Tags {
   static const txtLastGesture = 'txt_last_gesture';
   static const btnGestureReset = 'btn_gesture_reset';
 
+  // マップ(ピンチ・ダブルタップ・斜めドラッグ)
+  static const padMap = 'pad_map';
+  static const txtZoomDir = 'txt_zoom_dir';
+  static const txtZoom = 'txt_zoom';
+  static const txtPan = 'txt_pan';
+  static const txtDoubleCount = 'txt_double_count';
+  static const btnMapReset = 'btn_map_reset';
+
   // スクロール
   static const txtRowSelected = 'txt_row_selected';
   static const btnScrollTop = 'btn_scroll_top';
@@ -68,6 +77,13 @@ class Tags {
 
   /// 行 tag。n は 1..rowCount。ゼロ詰め("row_01")= ラベルの部分一致衝突回避と対。
   static String row(int n) => 'row_${n.toString().padLeft(2, '0')}';
+
+  /// 横スクロールの検証材料(scrollFrame。縦と横が同居していないと「指定した方だけ動く」を確かめられない)
+  static const txtTagSelected = 'txt_tag_selected';
+  static const carouselTags = 'carousel_tags';
+  static String tag(int n) => 'tag_${n.toString().padLeft(2, '0')}';
+  static String tagLabel(int n) => 'タグ ${n.toString().padLeft(2, '0')}';
+  static const tagCount = 20;
 
   /// 行ラベル("行 01")。
   static String rowLabel(int n) => '行 ${n.toString().padLeft(2, '0')}';
@@ -112,6 +128,7 @@ class Tags {
   static const btnSessionInc = 'btn_session_inc';
   static const btnResetPersisted = 'btn_reset_persisted';
   static const txtPlatform = 'txt_platform';
+  static const txtLastDeeplink = 'txt_last_deeplink';
 
   // 自己修復。ラベルは不変で id だけ入れ替わる(schema トグル)のが検証の核。
   static const swHealSchema = 'sw_heal_schema';

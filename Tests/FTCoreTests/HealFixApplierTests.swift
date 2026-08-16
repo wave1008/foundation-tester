@@ -28,7 +28,7 @@ final class HealFixApplierTests: XCTestCase {
 
     private func fix(line: Int, old: String, new: String,
                      newComment: String? = nil, scenarioID: String = "ログインテスト.S0010",
-                     file: String = "Scenarios/Login.swift") -> HealFixInput {
+                     file: String = "scenarios/Login.swift") -> HealFixInput {
         HealFixInput(scenarioID: scenarioID, file: file, line: line,
                     oldSelector: old, newSelector: new, newComment: newComment)
     }
@@ -41,6 +41,50 @@ final class HealFixApplierTests: XCTestCase {
         XCTAssertFalse(result.source.contains("\"#old_login_btn\""))
         XCTAssertEqual(result.applied.map(\.id), fixes.map(\.id))
         XCTAssertTrue(result.failures.isEmpty)
+    }
+
+    /// **利用者の .swift へ不正な Swift を書き込まない**(2026-08-16)。ここは
+    /// `ftester api apply-heal` が**利用者のファイルを直接書き換える唯一の経路**で、
+    /// 素の `"\(selector)"` で綴っていた版は `"` を含むラベルで
+    /// `tap("*【速報】"特価"セール*")` を書き、**プロジェクトがコンパイルできなくなる**。
+    ///
+    /// 40字超のラベルに `*断片*` を勧めるようになって(2026-08-15)露出が広がった ——
+    /// 長いラベルは宣伝文・見出しなので、短いボタン名より引用符を含みやすい
+    func testQuotedSelectorIsWrittenAsAValidSwiftLiteral() {
+        let new = "*【速報】\"特価\"セール開催中*"
+        let result = HealFixApplier.apply(fixes: [fix(line: 14, old: "#old_login_btn", new: new)],
+                                          toSource: source)
+
+        XCTAssertEqual(result.failures, [])
+        XCTAssertTrue(result.source.contains(#"tap("*【速報】\"特価\"セール開催中*")"#),
+                      "エスケープせずに書いている: \(result.source)")
+        // **リテラルの体を成しているか**を綴りではなく数で見る(行のクォートは開き閉じの2つだけ)
+        let line = result.source.components(separatedBy: "\n")[13]
+        let bare = line.replacingOccurrences(of: #"\""#, with: "")
+        XCTAssertEqual(bare.filter { $0 == "\"" }.count, 2,
+                       "エスケープされていないクォートが残っている: \(line)")
+    }
+
+    /// バックスラッシュも同じ(片方だけ直すと `\` で壊れる)
+    func testBackslashInSelectorIsEscapedToo() {
+        let result = HealFixApplier.apply(
+            fixes: [fix(line: 14, old: "#old_login_btn", new: #"*C:\path*"#)], toSource: source)
+
+        XCTAssertTrue(result.source.contains(#"tap("*C:\\path*")"#), result.source)
+    }
+
+    /// **探索側も同じ綴りにする**: 正しくエスケープして書かれている行を「見つからない」と
+    /// 誤判定すると、修復が黙って落ちる(素の綴りだった頃から在った穴)
+    func testFindsAnAlreadyEscapedSelectorInTheSource() {
+        let escapedSource = source.replacingOccurrences(
+            of: ##"tap("#old_login_btn")"##, with: ##"tap("*\"特価\"セール*")"##)
+
+        let result = HealFixApplier.apply(
+            fixes: [fix(line: 14, old: "*\"特価\"セール*", new: "#new_sale_btn")],
+            toSource: escapedSource)
+
+        XCTAssertEqual(result.failures, [])
+        XCTAssertTrue(result.source.contains(##"tap("#new_sale_btn")"##), result.source)
     }
 
     func testApplyOldSelectorMismatch() {
@@ -104,14 +148,14 @@ final class HealFixApplierTests: XCTestCase {
 
     func testRemovingAppliedKeysFromCache() {
         let dict: [String: Any] = [
-            "ログインテスト.S0010|Scenarios/Login.swift:14|#old_login_btn": ["newSelector": "x"],
+            "ログインテスト.S0010|scenarios/Login.swift:14|#old_login_btn": ["newSelector": "x"],
             "他のキー": ["newSelector": "y"],
         ]
         let result = HealFixApplier.removingAppliedKeys(
-            ["ログインテスト.S0010|Scenarios/Login.swift:14|#old_login_btn"], from: dict)
+            ["ログインテスト.S0010|scenarios/Login.swift:14|#old_login_btn"], from: dict)
 
         XCTAssertTrue(result.changed)
-        XCTAssertNil(result.dict["ログインテスト.S0010|Scenarios/Login.swift:14|#old_login_btn"])
+        XCTAssertNil(result.dict["ログインテスト.S0010|scenarios/Login.swift:14|#old_login_btn"])
         XCTAssertNotNil(result.dict["他のキー"])
     }
 

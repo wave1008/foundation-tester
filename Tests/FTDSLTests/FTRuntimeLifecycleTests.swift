@@ -14,6 +14,9 @@ final class FTRuntimeLifecycleTests: XCTestCase {
             StatusResponse(ready: true, device: "stub", osVersion: "-", sessionBundleID: nil)
         }
         func install(packagePath: String) async throws {}
+        func uninstall(bundleID: String) async throws {}
+        func isAppForeground(bundleID: String) async throws -> Bool { false }
+        func foregroundAppID() async throws -> String? { nil }
         func launch(bundleID: String) async throws {}
         func clearAppData(bundleID: String) async throws { clearedAppData.append(bundleID) }
         func snapshot() async throws -> SnapshotResponse {
@@ -54,6 +57,11 @@ final class FTRuntimeLifecycleTests: XCTestCase {
 
     private func isFailed(_ status: StepResult.Status) -> Bool {
         if case .failed = status { return true }
+        return false
+    }
+
+    private func isInconclusive(_ status: StepResult.Status) -> Bool {
+        if case .inconclusive = status { return true }
         return false
     }
 
@@ -405,5 +413,169 @@ final class FTRuntimeLifecycleTests: XCTestCase {
         }
         let elapsed = Date().timeIntervalSince(start)
         XCTAssertLessThan(elapsed, 0.48, "0.5 秒刻みに丸められている(実測 \(elapsed)s)")
+    }
+
+    // MARK: - verify
+
+    /// ブロック内のアサーションが全て成功すれば verify 自体も passed になること
+    func testVerifyPassesWhenAllAssertionsSucceed() {
+        let core = makeCore(driver: StubDriver(), dryRun: false)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "s") {
+                action {
+                    verify("cleanup is visible") {
+                        exist("#cleanup")
+                    }
+                }
+            }
+        }
+
+        XCTAssertTrue(core.finalRecord.passed)
+        let recorded = steps(core)
+        XCTAssertEqual(recorded.count, 2, "中の exist + verify 自身の2件が記録されること")
+        XCTAssertFalse(isFailed(recorded[0].status))
+        XCTAssertFalse(isFailed(recorded[1].status))
+    }
+
+    /// アサーションを1つも含まないブロックは**警告**(2026-08-03 ユーザー決定。失敗にしない=
+    /// シナリオを止めない)。⚠️ の気付かせ方は弱い修正提案で担保する
+    /// アサーション0個の verify は passed でも failed でもなく inconclusive になる
+    /// (2026-08-03 ユーザー決定)。失敗ではないので後続ステップは中断されず実行される
+    func testVerifyIsInconclusiveWhenBlockContainsNoAssertions() {
+        let core = makeCore(driver: StubDriver(), dryRun: false)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "s") {
+                action {
+                    verify("does nothing assertive") {
+                        tap("#cleanup")
+                    }
+                    tap("#cleanup")   // inconclusive は失敗ではないので中断されず実行されるはず
+                }
+            }
+        }
+
+        let recorded = steps(core)
+        // [0] = ブロック内の tap(action として成功), [1] = verify 自身(inconclusive), [2] = 後続 tap(実行される)
+        XCTAssertFalse(isFailed(recorded[0].status))
+        XCTAssertTrue(isInconclusive(recorded[1].status),
+                      "verify ステップが inconclusive になっていない: \(recorded[1].status)")
+        if case .inconclusive(let reason) = recorded[1].status {
+            XCTAssertTrue(reason.contains("no assertions"), reason)
+        }
+        XCTAssertFalse(isSkipped(recorded[2].status), "inconclusive は失敗ではないので後続は中断されないこと")
+        XCTAssertFalse(isFailed(recorded[2].status))
+        XCTAssertTrue(core.finalRecord.fixSuggestions.contains {
+            !$0.isStrong && $0.message.contains("no assertions")
+        }, "アサーション無しの verify は弱い修正提案で気付かせること")
+    }
+
+    /// ブロック内のアサーションが失敗した場合、verify ステップ自体は**呼び出し側の message**を
+    /// 失敗理由として記録する(中のコマンド自身の失敗理由とは別物。中のコマンドは既に
+    /// handleFailure を呼んでいるので verify は呼び直さない=二重の証跡を作らない)
+    func testVerifyFailsWithOwnMessageWhenInnerAssertionFails() {
+        let core = makeCore(driver: StubDriver(), dryRun: false)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "s") {
+                action {
+                    verify("the missing element should not break this") {
+                        exist("#missing", timeout: 0, requireVisible: false)
+                    }
+                    tap("#cleanup")   // verify 失敗後なのでスキップされる
+                }
+            }
+        }
+
+        let recorded = steps(core)
+        guard case .failed(let innerReason) = recorded[0].status else {
+            return XCTFail("中の exist が failed になっていない")
+        }
+        XCTAssertTrue(innerReason.contains("element not found"), innerReason)
+        guard case .failed(let verifyReason) = recorded[1].status else {
+            return XCTFail("verify ステップが failed になっていない")
+        }
+        XCTAssertEqual(verifyReason, "the missing element should not break this",
+                       "verify 自身の失敗理由は message であって、中のコマンドの失敗理由ではないこと")
+        XCTAssertTrue(isSkipped(recorded[2].status))
+    }
+
+    /// ネスト: 外側に直接のアサーションが無くても、内側 verify が持つアサーションで
+    /// 外側のアサーション数が満たされること(「ブロックが含む」を内側まで含めて数える)
+    func testNestedVerifyCountsInnerAssertionTowardOuter() {
+        let core = makeCore(driver: StubDriver(), dryRun: false)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "s") {
+                action {
+                    verify("outer") {
+                        verify("inner") {
+                            exist("#cleanup")
+                        }
+                    }
+                }
+            }
+        }
+
+        XCTAssertTrue(core.finalRecord.passed,
+                      "外側に直接のアサーションが無くても内側 verify のアサーションで満たされること")
+    }
+
+    /// ネスト: 内側 verify のアサーションが失敗すると、内側・外側どちらの verify ステップも failed になること
+    func testNestedVerifyFailurePropagatesToOuter() {
+        let core = makeCore(driver: StubDriver(), dryRun: false)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "s") {
+                action {
+                    verify("outer") {
+                        verify("inner") {
+                            exist("#missing", timeout: 0, requireVisible: false)
+                        }
+                    }
+                }
+            }
+        }
+
+        let recorded = steps(core)
+        // [0] = 中の exist(failed), [1] = inner verify(failed), [2] = outer verify(failed)
+        XCTAssertTrue(isFailed(recorded[0].status))
+        XCTAssertTrue(isFailed(recorded[1].status))
+        XCTAssertTrue(isFailed(recorded[2].status))
+        XCTAssertFalse(core.finalRecord.passed)
+    }
+
+    /// 呼び出し時点で既にシナリオが中断していれば、ブロックを実行せず skipped で記録すること
+    /// (他の DSL コマンドと同じ abort-skip 経路)
+    func testVerifySkipsWithoutRunningBlockWhenScenarioAlreadyAborted() {
+        let core = makeCore(driver: StubDriver(), dryRun: false)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "s") {
+                action {
+                    exist("#missing", timeout: 0, requireVisible: false)   // 失敗 → シナリオ中断
+                    verify("should be skipped") { exist("#cleanup") }
+                }
+            }
+        }
+
+        let recorded = steps(core)
+        XCTAssertTrue(isFailed(recorded[0].status))
+        XCTAssertTrue(isSkipped(recorded[1].status))
+        XCTAssertEqual(recorded.count, 2,
+                       "verify がブロックを実行していれば中の exist の記録が増えるはず(実行していないこと)")
     }
 }

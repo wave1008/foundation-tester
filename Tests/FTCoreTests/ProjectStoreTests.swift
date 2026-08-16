@@ -16,7 +16,7 @@ final class ProjectStoreTests: XCTestCase {
 
     private func makeProject(_ name: String) throws {
         try FileManager.default.createDirectory(
-            at: repoRoot.appendingPathComponent("Projects/\(name)/Scenarios"),
+            at: repoRoot.appendingPathComponent("TestProjects/\(name)/scenarios"),
             withIntermediateDirectories: true)
     }
 
@@ -35,7 +35,7 @@ final class ProjectStoreTests: XCTestCase {
 
         let beta = try ProjectStore.find("Beta", repoRoot: repoRoot)
         XCTAssertEqual(beta.productName, "ftester-scenarios-Beta")
-        XCTAssertEqual(beta.scenariosDir.lastPathComponent, "Scenarios")
+        XCTAssertEqual(beta.scenariosDir.lastPathComponent, "scenarios")
 
         let picked = try ProjectStore.find(nil, repoRoot: repoRoot, defaultProject: "Alpha")
         XCTAssertEqual(picked.name, "Alpha")

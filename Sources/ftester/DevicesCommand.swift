@@ -22,7 +22,7 @@ struct DevicesCommand: AsyncParsableCommand {
             abstract: "Start every device (at most two at a time; already-running devices are skipped."
                 + " With --profile, only the devices that profile references)")
 
-        @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
+        @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
         var project: String?
 
         @Option(help: "Run profile name (when given, only the devices that profile references are started; otherwise every device in the machine profile)")
@@ -49,7 +49,7 @@ struct DevicesCommand: AsyncParsableCommand {
             abstract: "Stop every bridge and shut down all simulators and emulators (physical Android devices are"
                 + " excluded). With --profile, only the devices that profile references are stopped individually)")
 
-        @Option(help: "Test project name (only used with --profile; defaults to the only one in Projects/, or the default project)")
+        @Option(help: "Test project name (only used with --profile; defaults to the only one in TestProjects/, or the default project)")
         var project: String?
 
         @Option(help: "Run profile name (when given, only the devices that profile references are stopped individually; otherwise every bridge is stopped and all simulators and emulators are shut down)")

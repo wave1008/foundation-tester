@@ -6,9 +6,14 @@
 package com.example.ftbridge;
 
 import android.app.UiAutomation;
+import android.content.Context;
 import android.graphics.Rect;
+import android.os.Build;
 import android.os.SystemClock;
+import android.view.Display;
+import android.view.WindowManager;
 import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.accessibility.AccessibilityWindowInfo;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -23,6 +28,25 @@ final class SnapshotBuilder {
 
     /** BridgeAPI.maxSnapshotElements と同期(4Kトークン対策) */
     static final int MAX_ELEMENTS = 120;
+
+    /** BridgeAPI.maxSnapshotElementsCeiling と同期(`?max=` で引き上げられる天井) */
+    static final int MAX_ELEMENTS_CEILING = 400;
+
+    /**
+     * `?max=` の解釈。**規則は BridgeAPI.resolvedSnapshotElementLimit と同じ**
+     * (null・非整数・0以下 = 既定、天井超え = 天井へ丸める)。片方だけ変えないこと
+     */
+    static int resolveElementLimit(String raw) {
+        if (raw == null || raw.isEmpty()) return MAX_ELEMENTS;
+        int value;
+        try {
+            value = Integer.parseInt(raw);
+        } catch (NumberFormatException e) {
+            return MAX_ELEMENTS;
+        }
+        if (value <= 0) return MAX_ELEMENTS;
+        return Math.min(value, MAX_ELEMENTS_CEILING);
+    }
 
     static final class Result {
         final String json;
@@ -50,8 +74,28 @@ final class SnapshotBuilder {
         boolean clickable;
         boolean checkable;
         boolean checked;
+        /** タブ・選択行の選択状態(isChecked とは別軸。checked へ OR して出す。collect 参照) */
+        boolean selected;
         /** clearInput 事後検証用(BridgeDTO.ElementInfo.focused 参照) */
         boolean focused;
+        /** スクロールできる容器か(BridgeDTO.ElementInfo.scrollable 参照) */
+        boolean scrollable;
+        /** 根から自分までの描画順の並び(各段は API24+ の getDrawingOrder)。
+         *  **preorder は描画順ではない** —— ViewGroup は elevation で子を並べ替えるので、
+         *  木で後に出る要素が奥にあることがある(実測: Google マップは地図の FAB を
+         *  シートより後に出すが、描画はシートが手前)。
+         *  **単体の getDrawingOrder はホストでは合成できない**: 出力ツリーは中間ノードを
+         *  間引くので、2要素の共通祖先が木に残っていない。だから**根からの並びをここで持ち**、
+         *  最後に辞書式で並べて 1 本の整数 z にしてから送る(assignPaintOrder) */
+        int[] zPath = new int[0];
+        /** 塗り順(0 起点の通し番号。大きいほど手前)。BridgeDTO.ElementInfo.z 参照 */
+        int z;
+        /** スライダー/プログレスの現在値と範囲(API21+ の RangeInfo)。**採っていないと
+         *  Android ではスライダーの状態がまったく読めない** —— iOS は XCUIElement.value が
+         *  "50%" を返すので、同じ SUT の同じ要素でプラットフォームごとに結果が違っていた
+         *  (2026-08-07 実測)。`hasRange` が false のときは3値とも無効 */
+        boolean hasRange;
+        float rangeCurrent, rangeMin, rangeMax;
         boolean enabled = true;
         boolean password;
         Rect bounds = new Rect();
@@ -86,15 +130,57 @@ final class SnapshotBuilder {
         }
     }
 
-    static Result build(UiAutomation ua) throws JSONException {
+    /**
+     * ディスプレイ全体の矩形。**アクティブウィンドウの根では代用できない** —— ダイアログが
+     * 出ている間はそれがダイアログの DecorView になる(実測 1024x427)。
+     *
+     * **インセットを除かない物理サイズ**を返す(API 30+: getMaximumWindowMetrics().getBounds()。
+     * 未満: Display#getRealMetrics。どちらも下部ジェスチャーナビゲーションバー分を含む)。
+     * `Resources.getSystem().getDisplayMetrics()`(widthPixels/heightPixels)は
+     * **アプリウィンドウに割り当てられた領域**で、edge-to-edge 端末だと上部ステータスバー分は
+     * 含むのに下部ジェスチャーバー分だけ非対称に欠ける(実測: Pixel 9/Android 15 で
+     * 報告 1080x2219、実ディスプレイは 1080x2424)。**取れなければウィンドウの根へ落ちる**:
+     * 嘘の大きさを返すより、従来の値のままの方が害が小さい(ホストはこれで
+     * 既定スワイプとピンチの座標を作る)。
+     */
+    private static Rect displayBounds(Context context, Rect fallback) {
+        try {
+            WindowManager wm = context == null
+                    ? null : (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
+            if (wm != null) {
+                if (Build.VERSION.SDK_INT >= 30) {
+                    Rect bounds = wm.getMaximumWindowMetrics().getBounds();
+                    if (bounds.width() > 0 && bounds.height() > 0) return bounds;
+                } else {
+                    Display display = wm.getDefaultDisplay();
+                    if (display != null) {
+                        android.util.DisplayMetrics metrics = new android.util.DisplayMetrics();
+                        display.getRealMetrics(metrics);
+                        if (metrics.widthPixels > 0 && metrics.heightPixels > 0) {
+                            return new Rect(0, 0, metrics.widthPixels, metrics.heightPixels);
+                        }
+                    }
+                }
+            }
+        } catch (RuntimeException ignored) {
+            // 取得できない環境では従来どおり
+        }
+        return fallback;
+    }
+
+    /** forceRefresh: WebView 外のノードも refresh() してから読むか(既定は false。collect 参照)。
+     *  context: displayBounds の WindowManager 取得用(null 可・その場合はウィンドウの根へ落ちる) */
+    static Result build(UiAutomation ua, Context context, boolean forceRefresh, int maxElements)
+            throws JSONException {
         AccessibilityNodeInfo root = waitForRoot(ua, 2000);
         if (root == null) {
-            throw new IllegalStateException("アクティブウィンドウの UI ツリーを取得できません");
+            throw new IllegalStateException("cannot read the UI tree of the active window");
         }
 
         List<UINode> nodes = new ArrayList<>();
         // uiautomator dump の XML は hierarchy=depth1、root ノード=depth2 相当
-        collect(root, 2, nodes, false);
+        collect(root, 2, nodes, false, forceRefresh);
+        assignPaintOrder(nodes);
         markChildren(nodes);
         adoptRoleFromMarkerChildren(nodes);
 
@@ -111,18 +197,30 @@ final class SnapshotBuilder {
             }
         }
 
-        Rect screen = nodes.isEmpty() ? new Rect() : nodes.get(0).bounds;
+        // **フィルタの基準はアクティブウィンドウの根**(従来どおり)。ここを display に替えると
+        // 「画面の大半を覆う容器を落とす」0.85 の意味が変わり、ダイアログの中身の出方が動く
+        Rect window = nodes.isEmpty() ? new Rect() : nodes.get(0).bounds;
+        // **報告する screen は display**(2026-08-06 の探索で外した)。ウィンドウの根をそのまま
+        // 返していたため、ダイアログが出ている間 `screen` が 1080x2424 ではなく
+        // ダイアログの DecorView(実測 1024x427 / 735x386)になり、**同じ応答に入っている
+        // 要素座標(y=1342 等)が screen をはみ出す**自己矛盾した木を返していた。
+        // ホスト側の実害はもう1つある: BridgeRouter はこれを lastScreen として覚え、
+        // **既定の全画面スワイプとピンチの座標をここから作る**ので、ダイアログを撮った直後の
+        // swipe が画面上部の狭い帯を払うことになる
+        Rect screen = displayBounds(context, window);
+
+        List<UINode> included = new ArrayList<>();
+        for (UINode node : nodes) {
+            if (shouldInclude(node, window)) included.add(node);
+        }
+        List<UINode> kept = included.size() <= maxElements
+                ? included : selectByPriority(included, maxElements);
+        int truncated = included.size() - kept.size();
 
         JSONArray elements = new JSONArray();
         Map<Integer, double[]> centers = new HashMap<>();
         Map<Integer, String> ids = new HashMap<>();
-        int truncated = 0;
-        for (UINode node : nodes) {
-            if (!shouldInclude(node, screen)) continue;
-            if (elements.length() >= MAX_ELEMENTS) {
-                truncated++;
-                continue;
-            }
+        for (UINode node : kept) {
             int ref = elements.length() + 1;
             centers.put(ref, new double[]{node.bounds.exactCenterX(), node.bounds.exactCenterY()});
             String shortId = shortResourceId(node.resourceID);
@@ -156,20 +254,57 @@ final class SnapshotBuilder {
         response.put("elements", elements);
         response.put("truncatedCount", truncated);
         if (offscreen.length() > 0) response.put("offscreen", offscreen);
+        Rect keyboard = keyboardBounds(ua);
+        if (keyboard != null) response.put("keyboardFrame", rectJSON(keyboard));
         return new Result(response.toString(), centers, ids, screen);
+    }
+
+    /**
+     * IME(ソフトキーボード)ウィンドウの bounds。別プロセスの別ウィンドウで a11y 木に出ないため、
+     * ここで申告しないとホストは要素がキーボードに隠れているかを判定できない
+     * (2026-08-08 Google マップで無警告タップ漏れを実害確認)。
+     * getWindows() は BridgeRouter コンストラクタで FLAG_RETRIEVE_INTERACTIVE_WINDOWS を
+     * 立てないと常に空を返す。取れない(空/例外)場合は黙って null = レスポンスから省略する。
+     */
+    private static Rect keyboardBounds(UiAutomation ua) {
+        try {
+            List<AccessibilityWindowInfo> windows = ua.getWindows();
+            if (windows == null) return null;
+            for (AccessibilityWindowInfo window : windows) {
+                if (window == null || window.getType() != AccessibilityWindowInfo.TYPE_INPUT_METHOD) {
+                    continue;
+                }
+                Rect bounds = new Rect();
+                window.getBoundsInScreen(bounds);
+                if (!bounds.isEmpty()) return bounds;
+            }
+        } catch (RuntimeException ignored) {
+            // a11y サービス切断中などで getWindows が使えない環境では省略
+        }
+        return null;
     }
 
     /** preorder 走査。不可視ノードはサブツリーごと除外(uiautomator dump と同じ) */
     private static void collect(AccessibilityNodeInfo node, int depth, List<UINode> out,
-                                boolean insideWebView) {
-        if (node == null || !node.isVisibleToUser()) return;
+                                boolean insideWebView, boolean forceRefresh) {
+        collect(node, depth, out, insideWebView, forceRefresh, new int[0]);
+    }
 
-        // **WebView 内だけキャッシュを捨てて取り直す**。Chromium は DOM 変更の a11y イベントを
-        // 遅れて出すことがあり(CMP / Flutter の interop 埋め込みで実測 4〜8 秒、負荷時はさらに)、
-        // そのあいだ getText() は**変更前の文字列**を返し続ける。tap は効いているのに
-        // textIs だけが古い値で落ちる、という最も追いにくい失敗になる(2026-07-29 実測)。
-        // refresh() は1ノード1 IPC なので WebView の外では呼ばない(通常画面のコストを増やさない)
-        if (insideWebView) node.refresh();
+    private static void collect(AccessibilityNodeInfo node, int depth, List<UINode> out,
+                                boolean insideWebView, boolean forceRefresh, int[] parentZPath) {
+        if (node == null) return;
+
+        // a11y ノードはキャッシュ供給で古い値を返し続ける(Chromium は DOM 変更のイベントを
+        // 遅れて出す。interop 埋め込みで実測 4〜8 秒)。**既定は WebView 内だけ** refresh() する
+        // — 全ノードに広げると snapshot 1回あたり約 +65ms 増え、View/XML SUT(ノード数が多い)の
+        // scenario sum が +43% になると実測済み(2026-08-01、E2E-Android 208.3s→297.3s)。
+        // forceRefresh は呼び出し側(BridgeRouter.handleSnapshot、クエリ `refresh=1`)が
+        // 検証タイムアウト直前の1回だけ明示的に要求するときの逃げ道。
+        // **順序が要**: isVisibleToUser() 自体が古いと、実際は見えているノードがサブツリーごと
+        // 消える。getChildCount()/getChild() も refresh 後の子リストを読む必要がある。
+        // 無効ノードの refresh() は false を返すだけで例外は投げないので戻り値は見ない。
+        if (insideWebView || forceRefresh) node.refresh();
+        if (!node.isVisibleToUser()) return;
 
         UINode n = new UINode();
         n.className = charSeq(node.getClassName());
@@ -185,7 +320,17 @@ final class SnapshotBuilder {
         n.clickable = node.isClickable();
         n.checkable = node.isCheckable();
         n.checked = node.isChecked();
+        n.selected = node.isSelected();
         n.focused = node.isFocused();
+        n.scrollable = node.isScrollable();
+        AccessibilityNodeInfo.RangeInfo range = node.getRangeInfo();
+        if (range != null) {
+            n.hasRange = true;
+            n.rangeCurrent = range.getCurrent();
+            n.rangeMin = range.getMin();
+            n.rangeMax = range.getMax();
+        }
+
         n.enabled = node.isEnabled();
         n.password = node.isPassword();
         n.chromeRole = chromeRole(node);
@@ -202,10 +347,15 @@ final class SnapshotBuilder {
         }
         node.getBoundsInScreen(n.bounds);
         n.depth = depth;
+        int[] zPath = new int[parentZPath.length + 1];
+        System.arraycopy(parentZPath, 0, zPath, 0, parentZPath.length);
+        zPath[parentZPath.length] = node.getDrawingOrder();
+        n.zPath = zPath;
         out.add(n);
 
         for (int i = 0; i < node.getChildCount(); i++) {
-            collect(node.getChild(i), depth + 1, out, insideWebView || isWebView);
+            collect(node.getChild(i), depth + 1, out, insideWebView || isWebView, forceRefresh,
+                    zPath);
         }
     }
 
@@ -225,6 +375,27 @@ final class SnapshotBuilder {
         return extras == null ? "" : charSeq(extras.getCharSequence(EXTRA_CHROME_ROLE));
     }
 
+    /**
+     * zPath を辞書式に並べて 0 起点の通し番号 `z` を振る(大きいほど手前)。
+     * **出力の並び(preorder)は変えない** —— `RefGuard.lineage` が preorder+depth で
+     * ツリーを復元するので、並べ替えるとそちらが壊れる。順位だけを別フィールドで持つ。
+     * 辞書式でよいのは塗り順がまさにそれだから: 親を塗ってから子を描画順に、を再帰する
+     * = 祖先は必ず先、同じ親なら drawingOrder の小さい枝が先。
+     */
+    private static void assignPaintOrder(List<UINode> nodes) {
+        List<UINode> sorted = new java.util.ArrayList<>(nodes);
+        java.util.Collections.sort(sorted, new java.util.Comparator<UINode>() {
+            @Override public int compare(UINode a, UINode b) {
+                int n = Math.min(a.zPath.length, b.zPath.length);
+                for (int i = 0; i < n; i++) {
+                    if (a.zPath[i] != b.zPath[i]) return a.zPath[i] < b.zPath[i] ? -1 : 1;
+                }
+                return Integer.compare(a.zPath.length, b.zPath.length);
+            }
+        });
+        for (int i = 0; i < sorted.size(); i++) sorted.get(i).z = i;
+    }
+
     /** pre-order なので「次のノードの depth が自分より深い」= 子を持つ */
     private static void markChildren(List<UINode> nodes) {
         for (int i = 0; i < nodes.size(); i++) {
@@ -239,6 +410,22 @@ final class SnapshotBuilder {
      * 当の clickable ノードは android.view.View のままにする。そのままだと既定分岐に落ちて `Cell` に
      * なり、iOS(AX trait で Button になる)と型が食い違う。ここで子の役割を親へ引き上げて揃える。
      * 2026-07-26 に E2EApp(CMP)と E2EAppAndroid(ComposeView)の実スナップショットで確認。
+     *
+     * **矩形の完全一致を条件にしてはいけない**(2026-08-06 に実測して緩めた): 見切れると
+     * 親とマーカー子が**独立にクリップされる**。一致条件では引き上げに失敗し、
+     * **同じ Composable が可視状態によって Button と Clickable を行き来していた**
+     * (`.button` の型セレクタがスクロール位置で落ちる)。実測した3形はどれも食い違う:
+     *
+     * | 見切れ方 | 親 | マーカー子 |
+     * |---|---|---|
+     * | 右端(`#tag_04`) | `(987,1972)-(1080,2119)` | `(987,1972)-(1038,2119)`(子が狭い) |
+     * | 下端(`#btn_scroll_top`) | `(42,378)-(278,441)` | `(42,378)-(278,504)`(**子のほうが大きい**) |
+     * | 上端(`#row_07`) | `(42,441)-(1038,559)` | `(42,504)-(1038,559)`(原点が違う) |
+     *
+     * 「子は親に内包される」も「原点は動かない」も成り立たない。**成り立つのは辺の共有**で、
+     * 3形とも4辺のうち3辺が一致する(切れていない側は必ず一致する)。角で切れれば2辺なので
+     * しきい値は2。装飾(行の中のアイコン等)は0〜1辺しか一致しない —— ここを緩めすぎると
+     * **リスト行が Image になる**ので、面積比(3倍以内)も併せて要求する。
      */
     private static void adoptRoleFromMarkerChildren(List<UINode> nodes) {
         for (int i = 0; i < nodes.size(); i++) {
@@ -246,8 +433,8 @@ final class SnapshotBuilder {
             if (!node.clickable || !isGenericContainer(node.className)) continue;
             for (int j = i + 1; j < nodes.size() && nodes.get(j).depth > node.depth; j++) {
                 UINode child = nodes.get(j);
-                // マーカーの条件: 親と同じ矩形・名前を持たない・自身は操作対象でない
-                if (!child.bounds.equals(node.bounds)) continue;
+                // マーカーの条件: 親と同じ矩形(見切れ許容)・名前を持たない・自身は操作対象でない
+                if (!looksLikeRoleMarker(child.bounds, node.bounds)) continue;
                 if (!child.text.isEmpty() || !child.contentDesc.isEmpty()
                         || !child.resourceID.isEmpty() || child.clickable) continue;
                 if (isGenericContainer(child.className)) continue;
@@ -257,10 +444,66 @@ final class SnapshotBuilder {
         }
     }
 
+    /** 役割マーカーの矩形条件: 4辺のうち2辺以上が一致し、面積が3倍以内(独立クリップの許容) */
+    private static boolean looksLikeRoleMarker(Rect child, Rect parent) {
+        int sharedEdges = (child.left == parent.left ? 1 : 0)
+                + (child.top == parent.top ? 1 : 0)
+                + (child.right == parent.right ? 1 : 0)
+                + (child.bottom == parent.bottom ? 1 : 0);
+        if (sharedEdges < 2) return false;
+        long childArea = (long) child.width() * child.height();
+        long parentArea = (long) parent.width() * parent.height();
+        if (childArea <= 0 || parentArea <= 0) return false;
+        return Math.min(childArea, parentArea) * 3 >= Math.max(childArea, parentArea);
+    }
+
     /** 役割を持たない汎用コンテナ(Compose/Flutter が canvas 描画で使う)か */
     private static boolean isGenericContainer(String className) {
         return className.equals("android.view.View") || className.equals("android.view.ViewGroup")
                 || className.endsWith("Layout") || className.isEmpty();
+    }
+
+    /**
+     * MAX_ELEMENTS 超過時に優先度の低いノードから間引く。**preorder 順は維持する**
+     * (RefGuard.lineage が preorder+depth からツリーを復元し、ref の大小を z-order の
+     * 代理に使うため。並べ替え厳禁)。
+     * tier0(clickable/checkable/scrollable/編集可能なテキスト欄) → tier1(非空白の
+     * text/contentDesc か resourceID を持つ) → tier2(それ以外)の順に、**tier2 から**
+     * 全部捨ててもまだ超過するなら tier1、それでも超過するなら tier0 を捨てる。
+     * 同一 tier 内では preorder の後ろから捨てる(先頭寄りの要素を優先して残す)。
+     */
+    private static List<UINode> selectByPriority(List<UINode> included, int max) {
+        int n = included.size();
+        boolean[] keep = new boolean[n];
+        java.util.Arrays.fill(keep, true);
+        int remaining = n;
+        for (int tier = 2; tier >= 0 && remaining > max; tier--) {
+            for (int i = n - 1; i >= 0 && remaining > max; i--) {
+                if (!keep[i] || priorityTier(included.get(i)) != tier) continue;
+                keep[i] = false;
+                remaining--;
+            }
+        }
+        List<UINode> kept = new ArrayList<>(Math.min(max, n));
+        for (int i = 0; i < n; i++) {
+            if (keep[i]) kept.add(included.get(i));
+        }
+        return kept;
+    }
+
+    /**
+     * 0=高優先(残す) .. 2=低優先(先に捨てる)。tier0/1 の条件は shouldInclude と別軸。
+     * **正は Swift 側の BridgeSnapshotThinning**(Sources/FTCore/BridgeDTO.swift)。
+     * あちらは iOS 専用に tier3(同一 id が20件以上の非スクロール装飾群)を持つが、
+     * コーパス14本の実測で Android は1画面も発火しなかったので写していない。
+     */
+    private static int priorityTier(UINode node) {
+        if (node.clickable || node.checkable || node.scrollable) return 0;
+        String type = mappedType(node);
+        if (type.equals("TextField") || type.equals("SecureTextField")) return 0;
+        boolean hasText = !node.text.trim().isEmpty() || !node.contentDesc.trim().isEmpty();
+        if (hasText || !node.resourceID.isEmpty()) return 1;
+        return 2;
     }
 
     // MARK: - フィルタと変換(AndroidDriver.shouldInclude / makeInfo / mappedType の移植)
@@ -282,7 +525,13 @@ final class SnapshotBuilder {
         }
 
         boolean hasText = !node.text.isEmpty() || !node.contentDesc.isEmpty() || !node.resourceID.isEmpty();
-        if (node.clickable || node.checkable) return true;
+        // **選択中のノードは必ず残す**(2026-08-07 実測): Android は選択中のタブから
+        // clickable を落とす。そのノードが resource-id もテキストも持たないと、下の default
+        // 分岐で捨てられて**木から丸ごと消える**。実害は Google マップの経路プランナーで、
+        // 移動手段タブを切り替えると**選んだ側だけが消え**、今どれが選ばれているのか
+        // エージェントから読めなくなっていた(下部ナビが無事なのは id を持つから)。
+        // `selected` は checked へ OR して出しているので、残れば状態も読める
+        if (node.clickable || node.checkable || node.selected) return true;
         switch (type) {
             case "TextField":
             case "SecureTextField":
@@ -330,6 +579,15 @@ final class SnapshotBuilder {
             identifier = idx >= 0 ? node.resourceID.substring(idx + 3) : node.resourceID;
         }
 
+        // **スライダー等は現在値を value に載せる**。パーセントへ正規化しない ——
+        // 0..10 のスライダーで current=3 を "30%" と言うのは、生値を読みたい側には嘘に近い。
+        // 範囲は別キー `range` で添えるので、読み手は割合も自分で出せる(2026-08-07 の決定)
+        String range = null;
+        if (node.hasRange) {
+            if (value == null) value = trimFloat(node.rangeCurrent);
+            range = trimFloat(node.rangeMin) + "-" + trimFloat(node.rangeMax);
+        }
+
         // Optional フィールドは nil のときキー省略(Swift JSONEncoder と同じ形)
         JSONObject info = new JSONObject();
         info.put("ref", ref);
@@ -339,13 +597,27 @@ final class SnapshotBuilder {
         if (value != null) info.put("value", value);
         if (isInput && !node.hint.isEmpty()) info.put("placeholder", node.hint);
         info.put("enabled", node.enabled);
-        // checked は true のときだけ送る(iOS の isSelected と同じ意味・同じ省略規約)
-        if (node.checked) info.put("checked", true);
+        // checked は true のときだけ送る(iOS の isSelected と同じ意味・同じ省略規約)。
+        // Android は isChecked と isSelected の両方を OR で流し込む —— タブ・選択行は
+        // isChecked を立てず isSelected だけで選択状態を出す widget がある(実測: Google マップ
+        // 下部ナビ)。isChecked/isSelected どちらが立っても checkIsON の意味は同じ「選択中」
+        if (node.checked || node.selected) info.put("checked", true);
         // focused も同じ省略規約(clearInput 事後検証用。BridgeDTO.ElementInfo.focused 参照)
         if (node.focused) info.put("focused", true);
+        // scrollable も同じ省略規約(scrollFrame の空振り検出用)
+        if (node.scrollable) info.put("scrollable", true);
+        if (range != null) info.put("range", range);
+        // 塗り順は**常に**送る(0 も有効な値。省略すると「奥から数えて0番目」と
+        // 「申告なし」が区別できなくなる)
+        info.put("z", node.z);
         info.put("frame", rectJSON(node.bounds));
         info.put("depth", node.depth);
         return info;
+    }
+
+    /** 整数なら小数点以下を落とす("50.0" ではなく "50")。読み手はこれをそのまま値として使う */
+    private static String trimFloat(float f) {
+        return f == Math.rint(f) ? String.valueOf((long) f) : String.valueOf(f);
     }
 
     static JSONObject rectJSON(Rect rect) throws JSONException {
@@ -412,8 +684,16 @@ final class SnapshotBuilder {
                 // Flutter(Android)はテキストも android.view.View で、contentDesc にだけ文字が入る。
                 // 葉であることを条件にする(子を持つ汎用コンテナを StaticText にしないため)。
                 // これが無いと id を振っていないテキストがスナップショットから丸ごと落ち、
-                // ラベルをアンカーにした方向セレクタが使えない(2026-07-26 実測)
-                if (!node.hasChildren && !node.contentDesc.isEmpty()) return "StaticText";
+                // ラベルをアンカーにした方向セレクタが使えない(2026-07-26 実測)。
+                // **text 側も見る**(2026-08-13 実機で発見): Chromium は WebView 内の
+                // `<td>` 等を className=android.view.View + **getText()** で出す(contentDesc は空)。
+                // contentDesc だけを見ていたため Other へ落ち、shouldInclude の default が
+                // resource-id を要求して**表のセルが1つも木に出なかった**。しかも
+                // `<table>` 自身は GridView + id で残るので `webViewGapNote` の空白帯にもならず、
+                // **黙って消える**(WebView 150 で実機再現。124 のエミュレータでは table ごと出ない)
+                if (!node.hasChildren && (!node.contentDesc.isEmpty() || !node.text.isEmpty())) {
+                    return "StaticText";
+                }
                 return "Other";
         }
     }

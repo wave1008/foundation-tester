@@ -24,6 +24,9 @@ final class BridgeRouter {
     private var app: XCUIApplication?
     private var sessionBundleID: String?
     private var refFrames: [Int: CGRect] = [:]
+    /// `/hittable` が ref から XCUIElement を引き直すための手掛かり(直近の /snapshot 由来)。
+    /// **タップ経路では使わない** —— タップは従来どおり座標で撃つ(クエリの往復を払わない)
+    private var refIdentity: [Int: (identifier: String?, label: String?, type: String)] = [:]
     /// 直近スナップショットの ref→要素。handleType の読み返しが「対象の identifier」と
     /// 「入力前の値」をここから採る(ライブクエリを撃たずに済ませるため)
     private var refElements: [Int: ElementInfo] = [:]
@@ -34,6 +37,10 @@ final class BridgeRouter {
     // (要素 5〜22 個・M2 Ultra アイドル・2026-07-30)。以前ここに「~0.45s と高コスト」と
     // 書いていたのは **350ms ガード込みの値を素のコストと取り違えた誤り**だった。
     private var settlePending = false
+
+    /// この snapshot 1回に適用する要素上限(`?max=`)。**要求ごとに handleSnapshot が入れ直す**
+    /// ので持ち越しは起きない(接続は1本ずつ順に処理される = 別要求と混ざらない)
+    private var snapshotElementLimit = BridgeAPI.maxSnapshotElements
 
     /// /status の idleSeconds 申告用(FTesterBridgeTests がサーバ生成後に配線する。
     /// サーバ⇔ルーターの生成順の都合でコンストラクタ注入にしない)
@@ -49,7 +56,17 @@ final class BridgeRouter {
     // 撮るため、その全てにこの待ちが乗っていた。
     // **スクロール後の静止はホスト側が担う**: 探索終端は StepExecutor.settleAfterScroll、
     // 明示的な swipe/scroll コマンドは同 settledSignature(どちらも「連続2回一致」で待つ)。
+    // **/pinch と /doubletap も同じ理由で入れない**: ズーム・展開のアニメーションは budget 内に
+    // 収まらないことがあり、ホストの performGesture が末尾で必ず整定を待つ(二重に待たない)。
     private static let mutatingPaths: Set<String> = ["/session", "/tap", "/type", "/clear", "/pressEnter", "/hidekeyboard", "/press", "/appswitcher", "/home"]
+
+    /// 所要内訳ログの on/off(既定 off)。ホストの FT_BRIDGE_TIMING=1 を BridgeLauncher が
+    /// xctestrun の環境変数へ注入する(同期相手: Sources/FTBridgeClient/BridgeLauncher.swift)
+    private static let timingEnabled =
+        ProcessInfo.processInfo.environment["FT_BRIDGE_TIMING"] == "1"
+    /// ゲート off でも記録する閾値(ms)。実測の p90 は 439ms・最大 889ms なので、
+    /// 通常運転では1行も出ない値にしてある(2026-08-02 実測)
+    private static let timingAlwaysLogMs: Double = 1500
 
     func handle(_ request: BridgeHTTPServer.Request) -> BridgeHTTPServer.Response {
         do {
@@ -57,7 +74,8 @@ final class BridgeRouter {
             switch (request.method, request.path) {
             case ("GET", "/status"): response = handleStatus()
             case ("POST", "/session"): response = try handleLaunch(request.body)
-            case ("GET", "/snapshot"): response = try handleSnapshot()
+            case ("GET", "/snapshot"): response = try handleSnapshot(request)
+            case ("GET", "/hittable"): response = try handleHittable(request)
             case ("POST", "/tap"): response = try handleTap(request.body)
             case ("POST", "/type"): response = try handleType(request.body)
             case ("POST", "/clear"): response = try handleClear(request.body)
@@ -65,11 +83,15 @@ final class BridgeRouter {
             case ("POST", "/hidekeyboard"): response = try handleHideKeyboard()
             case ("POST", "/swipe"): response = try handleSwipe(request.body)
             case ("POST", "/drag"): response = try handleDrag(request.body)
+            case ("POST", "/doubletap"): response = try handleDoubleTap(request.body)
+            case ("POST", "/pinch"): response = try handlePinch(request.body)
+            case ("POST", "/rotate"): response = try handleRotate(request.body)
             case ("POST", "/press"): response = try handlePress(request.body)
             case ("GET", "/screenshot"): response = handleScreenshot()
             case ("POST", "/appswitcher"): response = try handleAppSwitcher()
             case ("POST", "/home"): response = try handleHome()
             case ("POST", "/terminate"): response = try handleTerminate()
+            case ("POST", "/appstate"): response = try handleAppState(request.body)
             default:
                 return .error("not found: \(request.method) \(request.path)", status: 404)
             }
@@ -95,11 +117,17 @@ final class BridgeRouter {
             sessionBundleID: sessionBundleID,
             engine: "xcuitest",
             protocolVersion: BridgeAPI.bridgeProtocolVersion,
+            // 画面が進んでいるかの計器(DisplayHeartbeat 参照)。凍結を絵の一様さではなく直接測る
+            displayIdleSeconds: DisplayHeartbeat.shared.idleSeconds,
             fastInputAvailable: FastInput.available,
             // 起動元の自己申告(doctor の刈り取り判定が依存。BridgeDTO の各フィールド参照)
             ownerRepo: ProcessInfo.processInfo.environment["FT_OWNER_REPO"],
             ownerPid: Int(ProcessInfo.processInfo.processIdentifier),
-            idleSeconds: idleSecondsProvider.map { $0() }))
+            idleSeconds: idleSecondsProvider.map { $0() },
+            // 載っているシミュレータの UDID(H)。ホストが port ではなく udid で宛先を
+            // 指せるようにするための申告。実機には SIMULATOR_UDID が無いので nil
+            udid: ProcessInfo.processInfo.environment["SIMULATOR_UDID"],
+            orientation: XCUIDevice.shared.orientation.ftOrientation))
     }
 
     private func handleLaunch(_ body: Data) throws -> BridgeHTTPServer.Response {
@@ -111,6 +139,7 @@ final class BridgeRouter {
             app = target
             sessionBundleID = req.bundleID
             refFrames = [:]
+            refIdentity = [:]
             refElements = [:]
             return .json(OKResponse())
         }
@@ -119,8 +148,8 @@ final class BridgeRouter {
             // 前面到達の確認だけ行う=未起動なら即エラーで呼び出し側が診断できる)
             guard target.state == .runningForeground
                 || target.wait(for: .runningForeground, timeout: 5) else {
-                throw BridgeError(500, "attach 対象アプリが前面にありません: \(req.bundleID)"
-                    + "(simctl launch の成否を確認してください)")
+                throw BridgeError(500, "the app to attach to is not in the foreground:"
+                    + " \(req.bundleID) (check whether simctl launch succeeded)")
             }
         } else if req.activate == true {
             target.activate()
@@ -128,11 +157,12 @@ final class BridgeRouter {
             target.launch()
         }
         guard target.state == .runningForeground || target.wait(for: .runningForeground, timeout: 10) else {
-            throw BridgeError(500, "アプリを起動できませんでした: \(req.bundleID)(インストール済みか確認してください)")
+            throw BridgeError(500, "could not launch \(req.bundleID) — check that it is installed")
         }
         app = target
         sessionBundleID = req.bundleID
         refFrames = [:]
+        refIdentity = [:]
         refElements = [:]
         return .json(OKResponse())
     }
@@ -140,18 +170,36 @@ final class BridgeRouter {
     private struct Captured {
         let elements: [ElementInfo]
         let frames: [Int: CGRect]
+        /// `/hittable` が ref から要素を引き直すための手掛かり
+        var identities: [Int: (identifier: String?, label: String?, type: String)] = [:]
         let truncated: Int
+        /// 捨てた候補の内訳(SnapshotResponse.truncatedTiers)。件数だけでは
+        /// 「選べる物が消えたのか、飾りが消えただけか」をホストが区別できない
+        var truncatedTiers: [String: Int] = [:]
+        /// 要素上限の外で送った bulk の件数(SnapshotResponse.bulkExemptCount)
+        var bulkExempt: Int = 0
         let screen: CGRect
-        /// SnapshotResponse.keyboardShown 用。**Captured に載せる**: 整定ループは captureOnce を
-        /// 複数回まわして「返す1回」を選ぶので、インスタンス変数だと返却ツリーと1回ズレる
-        let sawKeyboard: Bool
+        /// SnapshotResponse.keyboardShown/keyboardFrame 用。**Captured に載せる**: 整定ループは
+        /// captureOnce を複数回まわして「返す1回」を選ぶので、インスタンス変数だと返却ツリーと
+        /// 1回ズレる。nil = 非表示または不明(XCUITest は「非表示」を積極的に確認できない)
+        let keyboardFrame: CGRect?
         /// captureSettled が **budget 切れで打ち切った**(= 収束していないツリー)。
         /// 黙って返すと「毎回 350ms 使い切っているのに誰も気付かない」状態が続くので note にする
         var settleCapped: Bool = false
+        /// WebView 内の画面外ノード(スクロールヒント)。Android の SnapshotBuilder と同じ契約 =
+        /// ref 0・elements に混ぜない(見えない要素へ exist/tap が当たる)・実座標。iOS は
+        /// XCUITest が実座標のまま報告するので復元は不要(2026-08-04 実測)。
+        /// 読み手は StepExecutor.offscreenJump / offscreenEdgeJump
+        let offscreen: [ElementInfo]
     }
 
-    private func handleSnapshot() throws -> BridgeHTTPServer.Response {
-        let app = try requireApp()
+    private func handleSnapshot(_ request: BridgeHTTPServer.Request) throws
+        -> BridgeHTTPServer.Response {
+        // `max=<n>` は呼び手が1回だけ上限を引き上げるためのもの(BridgeAPI.maxSnapshotElementsCeiling)。
+        // 解釈は resolvedSnapshotElementLimit の1箇所 = ホスト・3ブリッジで同じ規則
+        snapshotElementLimit = BridgeAPI.resolvedSnapshotElementLimit(
+            request.queryValue("max").flatMap { Int($0) })
+        let app = try requireForegroundApp()
         // 操作直後のみ整定してから取得する(captureSettled)。XCUITest の tap quiescence は
         // 非同期 push 遷移の完了前に返るため、直後の素取得は遷移前ツリーを返す(実測 50%)。
         // 連続 snapshot(settlePending=false)は整定不要なので素取得のまま。
@@ -159,6 +207,7 @@ final class BridgeRouter {
         settlePending = false
 
         refFrames = cap.frames
+        refIdentity = cap.identities
         // ref → 要素(handleType の読み返しが identifier / 直前の値を使う)。frame と同じ寿命
         refElements = Dictionary(uniqueKeysWithValues: zip(cap.elements.map(\.ref), cap.elements))
         return .json(SnapshotResponse(
@@ -168,7 +217,13 @@ final class BridgeRouter {
             elements: withFocusedFlag(cap.elements, app: app),
             truncatedCount: cap.truncated,
             note: cap.settleCapped ? "snapshot taken before the screen settled (budget)" : nil,
-            keyboardShown: cap.sawKeyboard ? true : nil))
+            offscreen: cap.offscreen.isEmpty ? nil : cap.offscreen,
+            keyboardShown: cap.keyboardFrame != nil ? true : nil,
+            keyboardFrame: cap.keyboardFrame.map {
+                FTRect(x: $0.origin.x, y: $0.origin.y, width: $0.width, height: $0.height)
+            },
+            truncatedTiers: cap.truncatedTiers.isEmpty ? nil : cap.truncatedTiers,
+            bulkExemptCount: cap.bulkExempt > 0 ? cap.bulkExempt : nil))
     }
 
     /// フォーカス中要素の申告(clearInput 事後検証用。ElementInfo.focused 参照)。
@@ -250,26 +305,108 @@ final class BridgeRouter {
         return text
     }
 
+    /// **その ref を撃つと本当にそれに当たるか**を XCUITest 自身に聞く(`XCUIElement.isHittable`)。
+    ///
+    /// **なぜブリッジ側にしか置けないか**: `isHittable` は `XCUIElement`(生のクエリ)の API で、
+    /// 木を作るのに使う `XCUIElementSnapshot` は持たない。ホストは木しか受け取らないので
+    /// 原理的に計算できない。
+    ///
+    /// **なぜ全要素に付けないか**(2026-08-14 実測・iPhone 17 Pro / iOS 27・126ノード):
+    /// 木の取得は 102ms なのに、`isHittable` は**要素ごとに往復**して中央 39ms かかる。
+    /// 121 要素に付けると約 5.1 秒 = **snapshot の 50 倍**で、常時払える額ではない。
+    /// 対象1件だけなら 72〜146ms(引き方による)なので、**呼び手が疑ったときだけ**聞く形にする。
+    ///
+    /// **タップ経路は変えない**: タップは従来どおり座標で撃つ(`resolvePoint`)。ここはあくまで
+    /// 撃つ前の照会で、`isHittable` の評価そのものは何も操作しない。
+    ///
+    /// 引き当ては identifier → label の順で、**候補が1つに絞れて frame も一致するときだけ**
+    /// 答える(`hittable` が nil = 「引き当てられなかった」で、呼び手は黙る)。
+    /// 曖昧なまま別要素の可否を返すと、木の限界を別の嘘で置き換えるだけになる
+    private func handleHittable(_ request: BridgeHTTPServer.Request) throws
+        -> BridgeHTTPServer.Response {
+        let app = try requireForegroundApp()
+        guard let ref = request.queryValue("ref").flatMap({ Int($0) }) else {
+            throw BridgeError(400, "ref is required")
+        }
+        guard let frame = refFrames[ref], let identity = refIdentity[ref] else {
+            throw BridgeError(404, "unknown reference number [\(ref)] — run GET /snapshot first")
+        }
+        struct Out: Encodable {
+            let ref: Int
+            /// nil = 引き当てられなかった(呼び手は何も言わない)
+            let hittable: Bool?
+            let resolvedBy: String
+        }
+        func answer(_ hittable: Bool?, _ how: String) -> BridgeHTTPServer.Response {
+            .json(Out(ref: ref, hittable: hittable, resolvedBy: how))
+        }
+
+        // **frame の一致まで確かめる**: 同じ id/label が複数あるとき、別の個体の可否を
+        // 返してしまうのを防ぐ(1pt の丸めは許容)
+        func matches(_ element: XCUIElement) -> Bool {
+            let f = element.frame
+            return abs(f.origin.x - frame.origin.x) <= 1 && abs(f.origin.y - frame.origin.y) <= 1
+                && abs(f.width - frame.width) <= 1 && abs(f.height - frame.height) <= 1
+        }
+        func unique(_ query: XCUIElementQuery, _ how: String) -> BridgeHTTPServer.Response? {
+            let all = query.allElementsBoundByAccessibilityElement.filter(matches)
+            guard all.count == 1, let element = all.first else { return nil }
+            return answer(element.isHittable, how)
+        }
+
+        if let id = identity.identifier, !id.isEmpty,
+           let hit = unique(app.descendants(matching: .any).matching(identifier: id), "identifier") {
+            return hit
+        }
+        if let label = identity.label, !label.isEmpty,
+           let hit = unique(app.descendants(matching: .any)
+                                .matching(NSPredicate(format: "label == %@", label)), "label") {
+            return hit
+        }
+        return answer(nil, "unresolved")
+    }
+
     private func captureOnce(_ app: XCUIApplication) throws -> Captured {
         let root = try app.snapshot()
         let screen = root.frame
         var elements: [ElementInfo] = []
         var frames: [Int: CGRect] = [:]
+        var identities: [Int: (identifier: String?, label: String?, type: String)] = [:]
         var truncated = 0
-        var sawKeyboard = false
+        var truncatedTiers: [String: Int] = [:]
+        var bulkExempt = 0
+        var keyboardFrame: CGRect?
+        var offscreenHints: [ElementInfo] = []
         collect(root, depth: 0, screen: screen,
-                elements: &elements, frames: &frames, truncated: &truncated,
-                sawKeyboard: &sawKeyboard)
-        return Captured(elements: elements, frames: frames, truncated: truncated, screen: screen,
-                        sawKeyboard: sawKeyboard)
+                elements: &elements, frames: &frames, identities: &identities,
+                truncated: &truncated,
+                truncatedTiers: &truncatedTiers, bulkExempt: &bulkExempt,
+                keyboardFrame: &keyboardFrame, offscreenHints: &offscreenHints)
+        return Captured(elements: elements, frames: frames, identities: identities,
+                        truncated: truncated,
+                        truncatedTiers: truncatedTiers, bulkExempt: bulkExempt, screen: screen,
+                        keyboardFrame: keyboardFrame, offscreen: offscreenHints)
     }
 
     private func handleTap(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(TapRequest.self, body)
         let app = try requireLiveApp()
         let point = try resolvePoint(ref: req.ref, x: req.x, y: req.y)
+        // 計測: `tap()` は「イベント合成」と「暗黙の quiescence 待ち」の両方を含む1呼び出しで、
+        // ホスト側の actionMs からは分解できない。quiescence 側だけ swizzle 経由で数え、
+        // 残り(synth)を引き算で出す(FastInput.quiescenceMs の但し書きも読むこと)
+        FastInput.resetTiming()
+        let start = DispatchTime.now()
         try FastInput.with(req.fast) {
             coordinate(app, point).tap()
+        }
+        let totalMs = Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1e6
+        // 閾値超えは**ゲートに関係なく**残す。FT_BRIDGE_TIMING はランナー起動時にしか効かず
+        // (稼働中ランナーを再利用すると届かない)、そのとき 0 行を「待ちが無かった」と
+        // 誤読する事故が起きる。異常に遅い tap だけは必ず記録が残るようにしておく
+        if Self.timingEnabled || totalMs >= Self.timingAlwaysLogMs {
+            NSLog("[ftester] tapTiming total=%.0f quiesce=%.0f synth=%.0f", totalMs,
+                  FastInput.quiescenceMs, totalMs - FastInput.quiescenceMs)
         }
         return .json(OKResponse())
     }
@@ -347,8 +484,9 @@ final class BridgeRouter {
             if stagnantRounds >= Self.typeMaxStagnantRounds || Date() >= deadline {
                 // 残った値そのものは出さない(パスワード欄も通る経路)。長さと周回数だけ出す。
                 // **409 ではなく 422**(理由は handleClear のコメント)
-                throw BridgeError(422, "入力が期待した値になりませんでした"
-                    + "(\(rounds) 周打っても \(expected.count) 文字に対して \(actual.count) 文字)")
+                throw BridgeError(422, "the field did not end up holding the expected text"
+                    + " (\(rounds) round(s) of keystrokes left \(actual.count) character(s)"
+                    + " against the expected \(expected.count))")
             }
         }
         // 本文を入れ切ってから発火する(app 全体へ送るのは従来どおり。要素への typeText は
@@ -432,8 +570,13 @@ final class BridgeRouter {
         let focused = app.descendants(matching: .any)
             .matching(NSPredicate(format: "hasKeyboardFocus == true")).firstMatch
         guard focused.exists else {
-            throw BridgeError(422, "フォーカスされた入力欄がありません(hasKeyboardFocus な要素が"
-                + "見つかりません)。対象を先に tap するか ref を指定してください")
+            // **原因を名指しする**(2026-08-12 のブラウザ監査): 「ref を指定してください」だけだと
+            // ref を渡した呼び手が読む先を失う —— 実際に起きるのは「渡した ref が入力欄ではなく、
+            // タップしても焦点が立たない容器だった」形(Safari の畳んだアドレスバー等)
+            throw BridgeError(422, "nothing has keyboard focus, so there is no field to clear."
+                + " If you passed a ref, it is probably not the input element itself — tapping a"
+                + " container does not move focus. Tap the field (or pass the ref of the element"
+                + " whose type is a text field) and try again")
         }
         let deadline = Date().addingTimeInterval(Self.clearBudgetSeconds)
         var previous: String?
@@ -451,8 +594,8 @@ final class BridgeRouter {
         }
         if let residual = Self.remainingText(of: focused) {
             // 残った値そのものは出さない(パスワード欄も通る経路)。長さと周回数だけ出す
-            throw BridgeError(422, "入力欄をクリアしきれませんでした"
-                + "(\(rounds) 周叩いても \(residual.count) 文字残っています)")
+            throw BridgeError(422, "could not empty the field"
+                + " (\(residual.count) character(s) still there after \(rounds) round(s))")
         }
         return .json(OKResponse())
     }
@@ -493,19 +636,59 @@ final class BridgeRouter {
     /// **iOS ではキーボードを閉じられない**(docs/design.md に不採用の記録)。Esc は不発で、
     /// app.keyboards は別プロセス扱いでタイムアウトする(handleType のコメント参照)。
     /// **嘘の成功を返さない**ため 501 を返す
+    /// アプリの窓の縦横から読む向き(デバイスの向きではない。handleRotate のコメント参照)。
+    /// **`snapshot()` ではなく `frame` を読む** —— 回転中の snapshot は高コストで失敗もし、
+    /// nil が返り続けると「回っていない」と誤判定して 3 秒待ち切る(2026-08-10 実測)。
+    /// セッションが無いときは窓で判定できないのでデバイスの向きに落ちる
+    /// (その場合だけは縦専用アプリを見抜けないが、/rotate をセッション無しで撃つ経路は無い)
+    private func appOrientation() -> FTOrientation? {
+        guard let app else { return XCUIDevice.shared.orientation.ftOrientation }
+        let frame = app.frame
+        guard frame.width > 0, frame.height > 0 else { return nil }
+        return frame.width > frame.height ? .landscape : .portrait
+    }
+
     private func handleHideKeyboard() throws -> BridgeHTTPServer.Response {
-        .error("hideKeyboard は iOS では未対応(Android のみ)。閉じたい場合は pressEnter を使う", status: 501)
+        .error("hideKeyboard is Android-only; on iOS use pressEnter to dismiss the keyboard",
+               status: 501)
     }
 
     private func handleSwipe(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(SwipeRequest.self, body)
         let app = try requireLiveApp()
+        // velocity(points/sec)はホストが用途に応じて送る(scrollToEdge だけ。契約は
+        // FTCore/BridgeDTO の FTSwipeIntent)。**`?? .default` で4分岐に畳まないこと**:
+        // XCUIGestureVelocityDefault の実体は -10 というセンチネル値で、実速度は XCTest 内部が
+        // 解決する。`swipeUp(velocity: .default)` が `swipeUp()` と同一である保証は公開されておらず、
+        // 未指定側(search / DSL の swipe = スイート内の大半)の挙動を確認なしに変えることになる
+        let velocity = req.velocity.map { XCUIGestureVelocity($0) }
+        // **スクロール領域を指定された場合は座標ドラッグ**(swipeUp() 系は始点を選べない)。
+        // 同じ velocity なら両者の物理は一致する(2026-08-02 実測: 984.3pt 対 985.3pt)。
+        // 速度未指定のときは既定速度を模倣せず**素の press-drag** にする —— 指定領域を
+        // 動かすことが目的で、未指定側(全画面)の挙動を変えるものではない
+        if let path = req.path {
+            let from = coordinate(app, CGPoint(x: path.fromX, y: path.fromY))
+            let to = coordinate(app, CGPoint(x: path.toX, y: path.toY))
+            FastInput.with(req.fast) {
+                if let velocity {
+                    from.press(forDuration: 0.05, thenDragTo: to,
+                               withVelocity: velocity, thenHoldForDuration: 0)
+                } else {
+                    from.press(forDuration: 0.05, thenDragTo: to)
+                }
+            }
+            return .json(OKResponse())
+        }
         FastInput.with(req.fast) {
-            switch req.direction {
-            case .up: app.swipeUp()
-            case .down: app.swipeDown()
-            case .left: app.swipeLeft()
-            case .right: app.swipeRight()
+            switch (req.direction, velocity) {
+            case (.up, nil): app.swipeUp()
+            case (.down, nil): app.swipeDown()
+            case (.left, nil): app.swipeLeft()
+            case (.right, nil): app.swipeRight()
+            case (.up, let v?): app.swipeUp(velocity: v)
+            case (.down, let v?): app.swipeDown(velocity: v)
+            case (.left, let v?): app.swipeLeft(velocity: v)
+            case (.right, let v?): app.swipeRight(velocity: v)
             }
         }
         return .json(OKResponse())
@@ -527,9 +710,95 @@ final class BridgeRouter {
         let duration = max(requestedDuration, 0.05)
         // velocity の単位は pt/秒。極端値はクランプ(0除算・非現実的な速度の防止)
         let velocity = max(10.0, min(distance / duration, 5000.0))
+        // **thenHoldForDuration に正の値を渡しても慣性は消えない**(2026-08-02 実測。
+        // 指を保持するだけでイベントが出ず velocity 計算が更新されない)。0 のままにすること
         from.press(forDuration: press, thenDragTo: to,
                    withVelocity: XCUIGestureVelocity(velocity), thenHoldForDuration: 0)
         return .json(OKResponse())
+    }
+
+    /// ダブルタップ(座標は tap と同じポイント座標)。**2回の /tap に分けない** ——
+    /// ホストとの往復が入ると OS のダブルタップ判定時間を超えて単タップ2回になる。
+    ///
+    /// **ランナー内で2打に分けるのも不可**(2026-08-04 実測): `XCUICoordinate.tap()` は
+    /// FastInput(quiescence スキップ)込みでも**1打 335ms** かかり、間隔を 60ms に詰めても
+    /// 実際の2打間隔は約 400ms = 判定窓(約 300ms)を外れて単タップ2回になる。
+    /// よって XCTest の `doubleTap()` に任せるしかない。
+    /// **既知の穴**: この2打は間隔が詰まりすぎていて **Compose Multiplatform の iOS だけ拾えない**
+    /// (`detectTapGestures` は最初の UP から `doubleTapMinTimeMillis` = 40ms 以内の DOWN を捨てる)。
+    /// SwiftUI/UIKit・Flutter・Android は問題ない。詳細と回避策は docs/commands.md
+    private func handleDoubleTap(_ body: Data) throws -> BridgeHTTPServer.Response {
+        let req = try decode(TapRequest.self, body)
+        let app = try requireLiveApp()
+        let point = try resolvePoint(ref: req.ref, x: req.x, y: req.y)
+        try FastInput.with(req.fast) {
+            coordinate(app, point).doubleTap()
+        }
+        return .json(OKResponse())
+    }
+
+    /// 2本指のピンチ。**XCUITest には座標指定の多点ジェスチャが無い**(XCUICoordinate は単点のみ)ため、
+    /// `XCUIElement.pinch(withScale:velocity:)` に落とすしかない = **要素単位**になる。
+    /// identifier で対象を引き、見つからなければアプリ全体をピンチして注記を返す
+    /// (ホストは PinchRequest.frame も送ってくるが、こちらでは使えない。Android 側が使う)。
+    ///
+    /// velocity(scale/秒)は**符号が scale と食い違うと XCTest が例外を投げる**ので、ここで
+    /// scale と所要時間から導出する(ホストからは受け取らない = 不整合を作れなくする)。
+    private func handlePinch(_ body: Data) throws -> BridgeHTTPServer.Response {
+        let req = try decode(PinchRequest.self, body)
+        let app = try requireLiveApp()
+        guard req.scale > 0, req.scale != 1, req.scale.isFinite else {
+            throw BridgeError(400, "scale must be positive, finite and not 1 (got \(req.scale))")
+        }
+        var target: XCUIElement = app
+        var note: String?
+        if let identifier = req.identifier {
+            let matched = app.descendants(matching: .any)
+                .matching(NSPredicate(format: "identifier == %@", identifier)).firstMatch
+            if matched.exists {
+                target = matched
+            } else {
+                note = "identifier [\(identifier)] not found; pinched the whole app instead"
+            }
+        }
+        let duration = max(req.durationSeconds ?? 0.5, 0.05)
+        // 拡大は正・縮小は負の velocity。極端値は避ける(0.1〜10 scale/秒)
+        let magnitude = min(max(abs(req.scale - 1) / duration, 0.1), 10)
+        target.pinch(withScale: CGFloat(req.scale),
+                     velocity: req.scale > 1 ? magnitude : -magnitude)
+        return .json(OKResponse(note: note))
+    }
+
+    /// POST /rotate. See InAppBridge.handleRotate for why this polls (XCUIDevice's readback is
+    /// immediate per PoC, but the shared budget/behavior stays symmetric across both iOS bridges).
+    /// **No requireApp()**: rotation is device-level, not app-session-scoped (same as handleAppState).
+    private func handleRotate(_ body: Data) throws -> BridgeHTTPServer.Response {
+        let req = try decode(RotateRequest.self, body)
+        // 契約は「アプリの UI が横になること」で物理方向は約束しない(FTOrientation の宣言を参照)
+        // ので、`UIDeviceOrientation` と `UIInterfaceOrientation` の左右が逆であることは問題に
+        // ならない —— どちらの landscape でも成功とする(読み側も左右をまとめている)
+        let target: UIDeviceOrientation
+        switch req.orientation {
+        case .portrait: target = .portrait
+        case .landscape: target = .landscapeLeft
+        }
+        XCUIDevice.shared.orientation = target
+        // **アプリの窓で判定する**(デバイスの向きではない)。契約は「アプリの UI がその向きに
+        // なること」で、**縦向き専用のアプリはデバイスを回しても縦のまま** —— XCUIDevice の
+        // 向きだけを見ると、そういうアプリで**成功を返してしまう**
+        // (2026-08-10 実測: 縦専用の React Native SUT が xcuitest では成功・in-app では 422 と
+        // 食い違った)。Android の判定(スナップショットの画面サイズ)と同じ基準に揃える
+        let deadline = Date().addingTimeInterval(RotationSettle.deadlineSeconds)
+        while Date() < deadline {
+            if appOrientation() == req.orientation {
+                return .json(RotateResponse(orientation: req.orientation))
+            }
+            Thread.sleep(forTimeInterval: RotationSettle.pollIntervalSeconds)
+        }
+        throw BridgeError(422, "orientation did not settle to \(req.orientation.rawValue) within "
+            + "\(RotationSettle.deadlineSeconds)s (the app stayed "
+            + "\(appOrientation()?.rawValue ?? "unknown") — an app that does not declare that "
+            + "orientation in UISupportedInterfaceOrientations cannot rotate)")
     }
 
     private func handlePress(_ body: Data) throws -> BridgeHTTPServer.Response {
@@ -558,9 +827,28 @@ final class BridgeRouter {
         return .json(OKResponse())
     }
 
-    /// ホーム画面に戻る(セッション不要。XCUIDevice のホームボタン押下=前面アプリに関係なく効く)
+    /// ホーム画面に戻る(セッション不要)。
+    /// **実機では `XCUIDevice.press(.home)` が黙って効かない**(2026-08-05 実測:
+    /// iPhone 15 Pro / iOS 26.5.2 で ok を返すのにアプリが前面のまま。同じ端末で
+    /// スワイプ系[appswitcher]は効くので、ジェスチャではなく API 側の問題)。
+    /// そこで実機だけ springboard の下端スワイプで代替する —— ホールドしなければ
+    /// アプリスイッチャーではなくホームに戻る(handleAppSwitcher と同じ座標系)。
+    /// シミュレータは press(.home) が確実に効くので変えない(ジェスチャに一本化すると
+    /// 既存の全シナリオの前提を実測せずに動かすことになる)
     private func handleHome() throws -> BridgeHTTPServer.Response {
+        #if targetEnvironment(simulator)
         XCUIDevice.shared.press(.home)
+        #else
+        // **速い短フリック**でないとアプリスイッチャーが開く(実測: 下端から画面の 1/4 強を
+        // 0.08 秒で駆け上がるとホーム・ゆっくり長く引くとスイッチャー)。
+        // 数値は iPhone 15 Pro / iOS 26.5.2 で確認した値
+        let sb = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let start = sb.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.995))
+        let end = sb.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.73))
+        // press は 0 にしない(タッチダウンが載らず不発になる。handleDrag の下限 0.05 と同じ)
+        start.press(forDuration: 0.05, thenDragTo: end, withVelocity: XCUIGestureVelocity(2850),
+                    thenHoldForDuration: 0.0)
+        #endif
         return .json(OKResponse())
     }
 
@@ -571,51 +859,128 @@ final class BridgeRouter {
         // チェック〜呼び出し間のレースで投げられた「is not running」だけは握り潰して冪等にする。
         if app.state != .notRunning && app.state != .unknown {
             if let ex = FTCatchObjCException({ app.terminate() }), !ex.contains("is not running") {
-                throw BridgeError(500, "アプリの終了に失敗しました: \(ex)")
+                throw BridgeError(500, "could not terminate the app: \(ex)")
             }
         }
         self.app = nil
         sessionBundleID = nil
         refFrames = [:]
+        refIdentity = [:]
         refElements = [:]
         return .json(OKResponse())
     }
 
+    /// フォアグラウンドのアプリが bundleID と一致するか(DSL の appIs)。**requireApp() を使わない**
+    /// — このルートはセッション対象アプリに依存しない読み取りで、任意の bundleID を照会できる
+    private func handleAppState(_ body: Data) throws -> BridgeHTTPServer.Response {
+        let req = try decode(AppStateRequest.self, body)
+        let target = XCUIApplication(bundleIdentifier: req.bundleID)
+        return .json(AppStateResponse(foreground: target.state == .runningForeground))
+    }
+
     // MARK: - スナップショット収集・フィルタ
 
+    /// 1パス目(gather)で拾った要素。ref はまだ未採番(0)
+    private struct Gathered {
+        var info: ElementInfo
+        var frame: CGRect
+    }
+
+    /// **2パス化**: 1パス目(gather)は上限で打ち切らずに全件 preorder で集め、2パス目で
+    /// dedupe → 間引き(超過時のみ)→ ref 採番を行う。
+    /// **順序が要る**: SnapshotDedupe.isRedundant は「既に出したもの」基準なので、間引きより
+    /// 先に全件へ通す(先に間引くと、落とした要素を基準にしていた冗長判定が変わる)。
     private func collect(_ node: XCUIElementSnapshot, depth: Int, screen: CGRect,
                          elements: inout [ElementInfo], frames: inout [Int: CGRect],
-                         truncated: inout Int, sawKeyboard: inout Bool,
+                         identities: inout [Int: (identifier: String?, label: String?, type: String)],
+                         truncated: inout Int,
+                         truncatedTiers: inout [String: Int],
+                         bulkExempt: inout Int,
+                         keyboardFrame: inout CGRect?,
+                         offscreenHints: inout [ElementInfo],
                          insideWebView: Bool = false) {
+        var gathered: [Gathered] = []
+        gather(node, depth: depth, screen: screen, insideWebView: insideWebView,
+               gathered: &gathered,
+               keyboardFrame: &keyboardFrame, offscreenHints: &offscreenHints)
+
+        // isRedundant は [ElementInfo] を取るので**同じ列を2本持つ**。`deduped.map(\.info)` を
+        // 毎回作ると、全件走査になった分そのまま要素ごとの配列確保になる(木が大きいほど効く)
+        var deduped: [Gathered] = []
+        var dedupedInfos: [ElementInfo] = []
+        deduped.reserveCapacity(gathered.count)
+        dedupedInfos.reserveCapacity(gathered.count)
+        for item in gathered where !SnapshotDedupe.isRedundant(item.info, alreadyEmitted: dedupedInfos) {
+            deduped.append(item)
+            dedupedInfos.append(item.info)
+        }
+
+        let keptIndices: [Int]
+        if deduped.count <= snapshotElementLimit {
+            keptIndices = Array(deduped.indices)
+        } else {
+            let candidates = deduped.map { BridgeSnapshotThinning.Candidate(info: $0.info) }
+            keptIndices = BridgeSnapshotThinning.indicesToKeep(candidates, max: snapshotElementLimit)
+            // **落とした本人しか内訳を知らない**(ホストへ届くのは残った側だけ)
+            for (key, count) in BridgeSnapshotThinning.droppedByTier(candidates, kept: keptIndices) {
+                truncatedTiers[key, default: 0] += count
+            }
+            // 上限の外で送った bulk の件数(61)
+            bulkExempt += BridgeSnapshotThinning.bulkExemptCount(candidates)
+        }
+        truncated += deduped.count - keptIndices.count
+
+        for index in keptIndices {
+            let ref = elements.count + 1
+            var info = deduped[index].info
+            info.ref = ref
+            frames[ref] = deduped[index].frame
+            identities[ref] = (info.identifier, info.label, info.type)
+            elements.append(info)
+        }
+    }
+
+    /// preorder 走査。不可視ノードはサブツリーごと除外。**上限で打ち切らない**(collect の2パス目が
+    /// dedupe・間引きをまとめて行う)
+    private func gather(_ node: XCUIElementSnapshot, depth: Int, screen: CGRect,
+                        insideWebView: Bool,
+                        gathered: inout [Gathered],
+                        keyboardFrame: inout CGRect?,
+                        offscreenHints: inout [ElementInfo]) {
         // キーボードはキー1つ1つが Button として大量に写り込むため、サブツリーごと除外
         // (4Kトークン対策。入力は /type がキーイベント合成で行うので情報として不要)。
-        // 除外前に検知だけ記録する(SnapshotResponse.keyboardShown)
-        if node.elementType == .keyboard { sawKeyboard = true }
+        // 除外前に frame だけ記録する(SnapshotResponse.keyboardShown/keyboardFrame。
+        // keyboardShown は keyboardFrame != nil から導く)
+        if node.elementType == .keyboard {
+            keyboardFrame = node.frame
+        }
         if node.elementType == .keyboard || node.elementType == .key { return }
         // WebView は入れ子で複数出る(Compose iOS の interop ラッパで実測3重)。外側だけ残さないと
         // `.webView[1]` がどれを指すか読めない。Android ブリッジの nestedWebView と同じ規則
         let isWebView = node.elementType == .webView
         if isWebView && insideWebView {
             for child in node.children {
-                collect(child, depth: depth, screen: screen,
-                        elements: &elements, frames: &frames, truncated: &truncated,
-                        sawKeyboard: &sawKeyboard, insideWebView: true)
+                gather(child, depth: depth, screen: screen, insideWebView: true,
+                       gathered: &gathered,
+                       keyboardFrame: &keyboardFrame,
+                       offscreenHints: &offscreenHints)
             }
             return
         }
         if shouldInclude(node, screen: screen) {
-            if elements.count < BridgeAPI.maxSnapshotElements {
-                let ref = elements.count + 1
-                frames[ref] = node.frame
-                elements.append(makeInfo(node, ref: ref, depth: depth))
-            } else {
-                truncated += 1
-            }
+            let info = makeInfo(node, ref: 0, depth: depth)
+            gathered.append(Gathered(info: info, frame: node.frame))
+        } else if insideWebView, offscreenHints.count < BridgeAPI.maxSnapshotElements,
+                  isOffscreenHintCandidate(node, screen: screen) {
+            // ref 0(座標表に入れない・タップ対象にしない)。Captured.offscreen 参照。
+            // **この別枠上限は間引きと無関係**(hint は elements に混ざらない)
+            offscreenHints.append(makeInfo(node, ref: 0, depth: depth))
         }
         for child in node.children {
-            collect(child, depth: depth + 1, screen: screen,
-                    elements: &elements, frames: &frames, truncated: &truncated,
-                    sawKeyboard: &sawKeyboard, insideWebView: insideWebView || isWebView)
+            gather(child, depth: depth + 1, screen: screen,
+                   insideWebView: insideWebView || isWebView,
+                   gathered: &gathered, keyboardFrame: &keyboardFrame,
+                   offscreenHints: &offscreenHints)
         }
     }
 
@@ -623,11 +988,27 @@ final class BridgeRouter {
         let frame = node.frame
         guard frame.width >= 2, frame.height >= 2 else { return false }
         guard screen.isEmpty || frame.intersects(screen) else { return false }
+        return isEligible(node, screen: screen)
+    }
 
+    /// 画面外ヒント(offscreenHints)の候補判定。サイズガードは shouldInclude と共有、
+    /// 画面交差ガードだけ反転する(「画面と交わらない」ときだけヒント化する。screen が空だと
+    /// 交差判定ができないので対象にしない)
+    private func isOffscreenHintCandidate(_ node: XCUIElementSnapshot, screen: CGRect) -> Bool {
+        let frame = node.frame
+        guard frame.width >= 2, frame.height >= 2 else { return false }
+        guard !screen.isEmpty, !frame.intersects(screen) else { return false }
+        return isEligible(node, screen: screen)
+    }
+
+    /// 型・テキストによる採用資格(画面内/外は問わない)。shouldInclude(可視要素)と
+    /// isOffscreenHintCandidate(WebView 配下の画面外ノード)が共有する
+    private func isEligible(_ node: XCUIElementSnapshot, screen: CGRect) -> Bool {
         // 画面の大半を覆う Other コンテナは identifier があっても除外する。
         // タップ対象になり得ず、id が「タブ」等に見えると FM の誤タップを誘発する
         // (SwiftUI の .accessibilityIdentifier がコンテナに付くケース)。
         if node.elementType == .other {
+            let frame = node.frame
             let screenArea = screen.width * screen.height
             if screenArea > 0, (frame.width * frame.height) / screenArea > 0.85 {
                 return false
@@ -637,10 +1018,11 @@ final class BridgeRouter {
         let hasText = !node.identifier.isEmpty || !node.label.isEmpty || valueString(node) != nil
 
         switch node.elementType {
-        // 操作可能な要素はテキストがなくても含める(アイコンだけのボタン等)
+        // 操作可能な要素はテキストがなくても含める(アイコンだけのボタン等)。
+        // .icon は springboard のホーム画面アイコン(tapAppIcon 用。label のみで identifier を持たない)
         case .button, .textField, .secureTextField, .textView, .`switch`, .toggle,
              .slider, .cell, .link, .searchField, .segmentedControl, .pickerWheel,
-             .stepper, .datePicker, .checkBox, .menuItem:
+             .stepper, .datePicker, .checkBox, .menuItem, .icon:
             return true
         // 表示要素はテキストを持つ場合のみ
         case .staticText, .image:
@@ -649,11 +1031,21 @@ final class BridgeRouter {
         // identifier が無くても残す(Web コンテンツは id を一切持たない = 唯一の絞り込み手段)
         case .navigationBar, .tabBar, .alert, .sheet, .webView:
             return true
-        // その他(Other/Group/ScrollView 等)は identifier 付きのみ
+        // スクロール容器は identifier が無くても残す(2026-08-08。in-app 側
+        // InAppSnapshot.shouldInclude と同じ規律)。落とすと scrollFrame の候補も scroll マークも
+        // 出ないまま木から消える(自前描画の容器は Other 型で id を持たないのが普通)
+        case .scrollView, .table, .collectionView:
+            return true
+        // その他(Other/Group 等)は identifier 付きのみ
         default:
             return !node.identifier.isEmpty
         }
     }
+
+    /// スクロールできる容器とみなす型(`ElementInfo.scrollable`)
+    private static let scrollableTypes: Set<XCUIElement.ElementType> = [
+        .scrollView, .table, .collectionView,
+    ]
 
     private func makeInfo(_ node: XCUIElementSnapshot, ref: Int, depth: Int) -> ElementInfo {
         let frame = node.frame
@@ -670,13 +1062,25 @@ final class BridgeRouter {
             depth: depth,
             // Compose iOS は Switch の value を出さないため isSelected が唯一の checked 経路
             // (SwiftUI/Flutter も同じ trait が立つ。2026-07-26 実測)。false は送らない
-            checked: node.isSelected ? true : nil)
+            checked: node.isSelected ? true : nil,
+            // スクロールできる容器か(scrollFrame の空振り検出用)。XCUITest は Android の
+            // isScrollable に当たる属性を持たないので**型で判定する**(Shirates の iOS 側と同じ規則)。
+            // 自前描画(Compose/Flutter)の容器は Other として出るため申告できない = false は送らない
+            scrollable: Self.scrollableTypes.contains(node.elementType) ? true : nil)
     }
 
     private func valueString(_ node: XCUIElementSnapshot) -> String? {
         guard let value = node.value else { return nil }
         let string = (value as? String) ?? String(describing: value)
-        return string.isEmpty ? nil : string
+        guard !string.isEmpty else { return nil }
+        // **placeholder がそのまま value で来る欄は「空」**。WebKit は空の `<input>` の
+        // AXValue に placeholder を入れて返すので(UIKit の入力欄は入れない)、正規化しないと
+        // iOS の WebView だけ `value="WebView 入力"` になり `valueIs("")` が通らない。
+        // Android のブリッジは同じ欄を empty で返す = ここが揃っていなかった
+        // (2026-08-06 に E2E-iOS / E2E-CMP の WebView 画面で実測)。
+        // 判定は clearInput の `remainingText` と同じ規則(同じ知見の2つ目の定義を作らない)
+        if let placeholder = node.placeholderValue, string == placeholder { return nil }
+        return string
     }
 
     static func typeName(_ type: XCUIElement.ElementType) -> String {
@@ -690,7 +1094,7 @@ final class BridgeRouter {
         case .toggle: return "Toggle"
         case .slider: return "Slider"
         // UITableView/UICollectionView のセル。Android の「役割不明の clickable 容器」と
-        // 同じバケツに入れるため名前を揃える(型語彙の唯一の正は E2EApp/docs/ui-contract.md)
+        // 同じバケツに入れるため名前を揃える(型語彙の唯一の正は E2EAppCMP/docs/ui-contract.md)
         case .cell: return "Clickable"
         case .link: return "Link"
         case .image: return "Image"
@@ -703,6 +1107,7 @@ final class BridgeRouter {
         case .datePicker: return "DatePicker"
         case .checkBox: return "CheckBox"
         case .menuItem: return "MenuItem"
+        case .pageIndicator: return "PageIndicator"
         case .navigationBar: return "NavigationBar"
         case .tabBar: return "TabBar"
         case .toolbar: return "Toolbar"
@@ -740,8 +1145,41 @@ final class BridgeRouter {
     private func requireLiveApp() throws -> XCUIApplication {
         let app = try requireApp()
         guard app.state != .notRunning, app.state != .unknown else {
-            throw BridgeError(503, "対象アプリ(\(sessionBundleID ?? "?"))が起動していないため操作できません"
-                + "(前のステップで終了/クラッシュした可能性。ホストは /session で起動し直してください)")
+            throw BridgeError(503, "the target app (\(sessionBundleID ?? "?")) is not running, so"
+                + " it cannot be driven (it may have exited or crashed in an earlier step; the host"
+                + " relaunches it with /session)")
+        }
+        return app
+    }
+
+    /// **取得系(snapshot/hittable)専用**の前面確認。
+    ///
+    /// セッションのアプリが**前面から外れている**間に木を撮ると、XCUI が対象を引けず
+    /// `Find the Application '<bundle>'` を約45秒リトライした末に**ランナーごと落ちる**
+    /// (2026-08-15 実測 6/6。ログの最終行は必ずこのリトライで、続いて "Restarting after
+    /// unexpected exit, crash, or test timeout" → 建て直されたランナーは 0 tests で
+    /// スイート終了 = **ブリッジが永久に消える**)。`requireLiveApp` は `.notRunning`/`.unknown`
+    /// しか弾かないので、**背面(`.runningBackground`)は掛けても素通りする**。
+    ///
+    /// - `/screenshot` 自体は `XCUIScreen` なのでアプリに触れないが、MCP の `ft_screenshot` が
+    ///   鮮度判定のため直後に snapshot を撃ち、その失敗を `try?` で握り潰す ——
+    ///   **画像を返したままブリッジだけ死ぬ**ので、ここを塞げば両方が塞がる
+    /// - **springboard は他アプリが前面でも `.runningForeground` を名乗る**(2026-08-15 実測)。
+    ///   システム UI を読む `ft_launch com.apple.springboard` の経路は塞がらない
+    /// - **409 でも 503 でもなく 422**: 409 はセッション消失専用、503 は `AppAttachDriver` が
+    ///   activate で復帰を試みる = **呼び手に黙ってアプリを前面へ引き戻す**。ここは
+    ///   「セッションはあるが今のこの画面では実行できない」なので 422(handleClear と同じ理由)
+    /// - `state` の実測コストは 1.5ms 未満(`/appstate` の HTTP 往復込み)。45 秒とブリッジ喪失に
+    ///   対して十分安い。**取得系を外していた元の判断はこのコストだけを見ていた**
+    private func requireForegroundApp() throws -> XCUIApplication {
+        let app = try requireApp()
+        guard app.state == .runningForeground else {
+            throw BridgeError(422, "the session's app (\(sessionBundleID ?? "?")) is not in the"
+                + " foreground — another app is. Reading the tree in this state hangs XCUITest and"
+                + " takes this runner (and the bridge) down with it, so it is refused. Bring it back"
+                + " (DSL: launchApp / MCP: ft_launch \(sessionBundleID ?? "<bundleId>")), or point"
+                + " the session at whatever IS in front (MCP: ft_launch with that bundle id;"
+                + " com.apple.springboard reads the home screen or a system dialog)")
         }
         return app
     }
@@ -750,8 +1188,8 @@ final class BridgeRouter {
         guard let app else {
             // status は 409 のまま変えないこと(ホスト側 SessionRecoveryDriver がこの1箇所の
             // 409 だけを「セッション消失」と断定して判定に使う)
-            throw BridgeError(409, "XCUITest ランナーにセッションがありません"
-                + "(ランナー再起動でセッションが失われた可能性)。ホストが /session で張り直します")
+            throw BridgeError(409, "the XCUITest runner has no session (it may have been lost to a"
+                + " runner restart); the host re-establishes it with /session")
         }
         return app
     }
@@ -759,14 +1197,14 @@ final class BridgeRouter {
     private func resolvePoint(ref: Int?, x: Double?, y: Double?) throws -> CGPoint {
         if let ref {
             guard let frame = refFrames[ref] else {
-                throw BridgeError(404, "参照番号 [\(ref)] は未知です。先に GET /snapshot を実行してください")
+                throw BridgeError(404, "unknown reference number [\(ref)] — run GET /snapshot first")
             }
             return CGPoint(x: frame.midX, y: frame.midY)
         }
         if let x, let y {
             return CGPoint(x: x, y: y)
         }
-        throw BridgeError(400, "ref または x/y が必要です")
+        throw BridgeError(400, "either ref or x/y is required")
     }
 
     private func coordinate(_ app: XCUIApplication, _ point: CGPoint) -> XCUICoordinate {
@@ -778,7 +1216,18 @@ final class BridgeRouter {
         do {
             return try decoder.decode(type, from: body)
         } catch {
-            throw BridgeError(400, "リクエストボディの JSON が不正です: \(error)")
+            throw BridgeError(400, "malformed JSON in the request body: \(error)")
+        }
+    }
+}
+
+private extension UIDeviceOrientation {
+    var ftOrientation: FTOrientation? {
+        switch self {
+        case .portrait: return .portrait
+        // 左右どちらも landscape として読む(要求と同じ側かは問わない = 契約どおり)
+        case .landscapeLeft, .landscapeRight: return .landscape
+        default: return nil   // upsideDown/faceUp/faceDown/unknown — not part of FTOrientation
         }
     }
 }

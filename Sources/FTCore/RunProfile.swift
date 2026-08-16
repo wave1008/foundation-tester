@@ -235,6 +235,9 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// wipeDataOnBloat のしきい値(GB、1GB=1_073_741_824 バイト。既定 8。0 以下は検証エラー。
     /// Play イメージは wipe 直後の再構築だけで userdata が 2〜4GB になるため(実測 2026-07-17)、
     /// それ未満のしきい値は毎実行 wipe が発動するスラッシングになる — 下げるときは要注意)
+    /// **テスト開始時に WebView を揃えるか**(既定 ON)。版が混在すると同じシナリオが
+    /// 端末によって落ちる(124 は placeholder / 150 は #id と表現が入れ替わる)
+    public var updateWebView: Bool?
     public var wipeDataThresholdGB: Double?
     /// 実行開始時に、画面凍結で CPU 描画(swiftshader)へフォールバック済みの Android エミュレータを
     /// GPU(-gpu host)で起動し直すか(既定 false=OFF)。GPU モードは emulator プロセスの起動引数で
@@ -252,6 +255,24 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// 実行環境に注入する(伝搬経路は BridgeClient.fastInput 参照)。動きの激しい画面では
     /// 整定前タップのフレークリスクを伴う(既定 false)
     public var iosFastInput: Bool?
+    /// **容器の推測に依存する補正**を行うか(既定 true)。false にすると見切れ判定・掴み直し・
+    /// 救済ドラッグ・見えている部分を撃つ座標補正・壊れた座標の候補除外が止まり、
+    /// 推測を持たなかった頃の挙動へ戻る。**FM とは無関係**(幾何ヒューリスティック)。
+    /// シナリオ側は `tap(..., containerInference:)` で1コマンド単位に上書きできる
+    public var containerInference: Bool?
+    /// テスト対象アプリのアニメーションを残すか(既定 false = 実行開始時に無効化する)。
+    /// true で FT_ANIMATIONS=1 を実行環境に注入する(判定元は AnimationPolicy)。ON にすると
+    /// 整定待ちが伸び、Android では静穏判定後もスクリーンショットが遷移途中の絵を掴みうる。
+    /// 端末側の設定は run 開始時に毎回この値へ同期される(ブリッジ再利用でも効く)。
+    /// 同期相手: vscode-ftester/schemas/run-profile.schema.json と
+    /// src/monitorProfileForms.ts の RunProfileFormFields
+    public var enableAnimations: Bool?
+    /// run 開始時に各デバイスへ home() を1回撃つか(**既定 true**)。
+    /// 一斉に launch した直後の端末は「描画要求が無いだけ」で画面が黒いまま止まることがあり、
+    /// そのままだと凍結と見分けが付かない(2026-08-11 の実測: 黒かった5台のうち4台は入力で戻った)。
+    /// 予防として1回だけ入力を入れる。**デバイスあたり1回**なので実行時間への影響はほぼゼロ。
+    /// 同期相手: vscode-ftester/schemas/run-profile.schema.json と RunProfileFormFields
+    public var homeOnStart: Bool?
     /// 並列実行の各ワーカー(デバイス)ごとに run 全体を録画し、テスト関数(シナリオ)ごとに
     /// 1本の mp4 へ切り出すか(既定 false)。実体は RunOrchestrator への VideoRecordingConfig 注入
     /// (VideoRecordingCoordinator.swift)。録画失敗は run を失敗させない(警告ログのみ)
@@ -270,9 +291,12 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
                 heal: Bool? = nil, falsePositiveCheck: Bool? = nil, screenIs: Bool? = nil,
                 reportDir: String? = nil, defaultTimeout: Double? = nil, scenarioTimeout: Int? = nil,
                 machine: String? = nil, iosInappEngine: Bool? = nil,
-                wipeDataOnBloat: Bool? = nil, wipeDataThresholdGB: Double? = nil,
+                wipeDataOnBloat: Bool? = nil, updateWebView: Bool? = nil,
+                wipeDataThresholdGB: Double? = nil,
                 recoverCpuFallbackToGpu: Bool? = nil,
-                locale: String? = nil, iosFastInput: Bool? = nil, record: Bool? = nil,
+                locale: String? = nil, iosFastInput: Bool? = nil,
+                containerInference: Bool? = nil,
+                enableAnimations: Bool? = nil, homeOnStart: Bool? = nil, record: Bool? = nil,
                 recordFailuresOnly: Bool? = nil, recordBitrateKbps: Int? = nil,
                 recordFullResolution: Bool? = nil) {
         self.app = app
@@ -287,10 +311,14 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         self.machine = machine
         self.iosInappEngine = iosInappEngine
         self.wipeDataOnBloat = wipeDataOnBloat
+        self.updateWebView = updateWebView
         self.wipeDataThresholdGB = wipeDataThresholdGB
         self.recoverCpuFallbackToGpu = recoverCpuFallbackToGpu
         self.locale = locale
         self.iosFastInput = iosFastInput
+        self.containerInference = containerInference
+        self.enableAnimations = enableAnimations
+        self.homeOnStart = homeOnStart
         self.record = record
         self.recordFailuresOnly = recordFailuresOnly
         self.recordBitrateKbps = recordBitrateKbps
@@ -300,9 +328,10 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     static let knownKeys: Set<String> = [
         "app", "devices", "fm", "heal", "falsePositiveCheck", "screenIs",
         "reportDir", "defaultTimeout", "scenarioTimeout",
-        "machine", "iosInappEngine", "wipeDataOnBloat", "wipeDataThresholdGB",
+        "machine", "iosInappEngine", "wipeDataOnBloat", "updateWebView", "wipeDataThresholdGB",
         "recoverCpuFallbackToGpu", "locale",
-        "iosFastInput", "record", "recordFailuresOnly", "recordBitrateKbps", "recordFullResolution",
+        "iosFastInput", "enableAnimations", "homeOnStart", "containerInference",
+        "record", "recordFailuresOnly", "recordBitrateKbps", "recordFullResolution",
     ]
 }
 
@@ -349,7 +378,8 @@ public struct ResolvedProfile: Sendable {
     public let appName: String
     /// platform("ios"/"android")→ アプリ情報(デバイスがある platform のみ)
     public let apps: [String: ResolvedAppTarget]
-    public let devices: [ResolvedDevice]
+    /// 実行に使うデバイス。**limitingDevices が本数に合わせて絞る**ので var
+    public var devices: [ResolvedDevice]
     /// FM 機能の実効設定(RunProfileDocument の fm/heal/falsePositiveCheck/screenIs を合成)
     public let fm: FMConfig
     /// FM によるロケータ自己修復を許可するか(fm.heal のエイリアス。既存呼び出し互換のため維持)
@@ -361,6 +391,9 @@ public struct ResolvedProfile: Sendable {
     public let scenarioTimeout: Int?
     /// 実行開始時に Android AVD 肥大化を Wipe Data するか(既定 true)
     public let wipeDataOnBloat: Bool
+    /// **テスト開始時に WebView を揃えるか**(既定 true)
+    /// (`AndroidWebViewUpdate`。adb に更新コマンドは無いので、接続中で最も新しい端末から配る)
+    public let updateWebView: Bool
     /// wipeDataOnBloat のしきい値(GB)
     public let wipeDataThresholdGB: Double
     /// 実行開始時に CPU 描画フォールバック機を GPU で起動し直すか
@@ -370,6 +403,12 @@ public struct ResolvedProfile: Sendable {
     public let locale: String
     /// iOS xcuitest ブリッジの高速入力(RunProfileDocument.iosFastInput。既定 false)
     public let iosFastInput: Bool
+    /// 容器の推測に依存する補正(RunProfileDocument.containerInference。**既定 true**)
+    public let containerInference: Bool
+    /// アプリのアニメーションを残すか(RunProfileDocument.enableAnimations。既定 false=無効化)
+    public let enableAnimations: Bool
+    /// run 開始時に各デバイスへ home() を撃つか(RunProfileDocument.homeOnStart。**既定 true**)
+    public let homeOnStart: Bool
     /// 各ワーカーを run 全体で録画し、シナリオごとに切り出すか(RunProfileDocument.record。既定 false)
     public let record: Bool
     /// 成功したシナリオのクリップを保存しないか(RunProfileDocument.recordFailuresOnly。既定 false)
@@ -383,6 +422,31 @@ public struct ResolvedProfile: Sendable {
 
     public var iosDevices: [ResolvedDevice] { devices.filter { $0.platform == "ios" } }
     public var androidDevices: [ResolvedDevice] { devices.filter { $0.platform == "android" } }
+
+    /// **回す本数を超える台数を用意しない**。1本のシナリオを回すのに 10 台ぶんのブリッジ供給と
+    /// アプリ版チェックを払うのは丸損で、実測では iOS の固定費 14.8s のほとんどがこれだった
+    /// (合計 21.8s のうちテスト実行は 7.0s)。
+    ///
+    /// **予備を1台残す**(`+ 1`): 用意した台が blank/frozen で triage に弾かれると
+    /// 「使えるワーカーが無い」で run ごと落ちる。10 台あった頃はその余裕が偶然あった。
+    /// 台数が上限以下、または本数が 0(= platform 不明で絞れない)のときは何もしない
+    /// 用意する台数。**判断はここだけ**(テストはこの純粋関数を直接叩く)。
+    /// `scenarios == 0` は「判断材料が無い」= 絞らない
+    public static func deviceKeepCount(available: Int, scenarios: Int) -> Int {
+        guard scenarios > 0 else { return available }
+        return min(available, scenarios + 1)
+    }
+
+    public func limitingDevices(iosScenarios: Int, androidScenarios: Int) -> ResolvedProfile {
+        func keep(_ list: [ResolvedDevice], _ count: Int) -> [ResolvedDevice] {
+            Array(list.prefix(Self.deviceKeepCount(available: list.count, scenarios: count)))
+        }
+        let kept = Set(keep(iosDevices, iosScenarios) + keep(androidDevices, androidScenarios))
+        guard kept.count < devices.count else { return self }
+        var trimmed = self
+        trimmed.devices = devices.filter { kept.contains($0) }
+        return trimmed
+    }
 }
 
 /// プロファイルファイルの種別(profiles/ 配下のサブディレクトリと対応)
@@ -661,8 +725,8 @@ public enum ProfileResolver {
         }
 
         // 5. アプリ解決(デバイスのある platform ごと。合成規則は AppProfileSection.merging 参照)
-        // appPath の相対パスは「リポジトリルート」基準(project.rootURL = <repoRoot>/Projects/<name> の
-        // 2 階層上)。ビルド成果物は Projects/ 外(リポジトリ直下の builds/ 等)に置くのが普通なため。
+        // appPath の相対パスは「リポジトリルート」基準(project.rootURL = <repoRoot>/TestProjects/<name> の
+        // 2 階層上)。ビルド成果物は TestProjects/ 外(リポジトリ直下の builds/ 等)に置くのが普通なため。
         // packageRoot() の CWD 走査は使わない(単体テストでは CWD が本体リポジトリを指し誤基準になる。
         // project.rootURL からの決定的導出で統一)。reportDir だけはプロジェクト直下に出すため下記で
         // project.rootURL 基準のまま(基準が異なるので resolvePath の base で使い分ける)。
@@ -717,10 +781,14 @@ public enum ProfileResolver {
             defaultTimeout: runDoc.defaultTimeout,
             scenarioTimeout: runDoc.scenarioTimeout,
             wipeDataOnBloat: runDoc.wipeDataOnBloat ?? true,
+            updateWebView: runDoc.updateWebView ?? true,
             wipeDataThresholdGB: wipeDataThresholdGB,
             recoverCpuFallbackToGpu: runDoc.recoverCpuFallbackToGpu ?? false,
             locale: locale,
             iosFastInput: runDoc.iosFastInput ?? false,
+            containerInference: runDoc.containerInference ?? true,
+            enableAnimations: runDoc.enableAnimations ?? false,
+            homeOnStart: runDoc.homeOnStart ?? true,
             record: runDoc.record ?? false,
             recordFailuresOnly: runDoc.recordFailuresOnly ?? false,
             // 0 以下は無意味な指定なので既定にフォールバック(run を止めるほどの問題ではない)

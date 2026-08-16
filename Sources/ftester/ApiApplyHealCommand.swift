@@ -13,7 +13,7 @@ struct ApiApplyHeal: AsyncParsableCommand {
         abstract: "Apply a self-heal candidate (JSON on stdin) to the scenario source for good and remove"
             + " the matching key from the heal cache (result as one line of JSON on stdout; diagnostics on stderr only)")
 
-    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
+    @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
 
     func run() async throws {

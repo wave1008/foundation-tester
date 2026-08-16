@@ -15,8 +15,8 @@ export const workbenchStrings = {
     en: "ftester: No folder is open. Please open the repository folder.",
   },
   "workbench.activate.noProjectsDirLog": {
-    ja: "[ftester] {workspaceRoot} に Projects/ が見つからないため初期化しません。",
-    en: "[ftester] No Projects/ found under {workspaceRoot}; skipping initialization.",
+    ja: "[ftester] {workspaceRoot} に TestProjects/ が見つからないため初期化しません。",
+    en: "[ftester] No TestProjects/ found under {workspaceRoot}; skipping initialization.",
   },
   "workbench.activate.initializedLog": {
     ja: "[ftester] 初期化しました: {workspaceRoot}",
@@ -70,8 +70,8 @@ export const workbenchStrings = {
   },
 
   "workbench.selectProject.noProjects": {
-    ja: "ftester: Projects/ 配下にテストプロジェクトが見つかりません。",
-    en: "ftester: No test projects found under Projects/.",
+    ja: "ftester: TestProjects/ 配下にテストプロジェクトが見つかりません。",
+    en: "ftester: No test projects found under TestProjects/.",
   },
   "workbench.selectProject.placeholder": {
     ja: "対象のテストプロジェクトを選択してください",
@@ -96,8 +96,8 @@ export const workbenchStrings = {
     en: "Current setting",
   },
   "workbench.selectProfile.placeholder": {
-    ja: "使用する実行プロファイルを選択してください(Projects/{project}/profiles/runs/ の一覧)",
-    en: "Select the run profile to use (from Projects/{project}/profiles/runs/)",
+    ja: "使用する実行プロファイルを選択してください(TestProjects/{project}/profiles/runs/ の一覧)",
+    en: "Select the run profile to use (from TestProjects/{project}/profiles/runs/)",
   },
   "workbench.selectProfile.setLog": {
     ja: "[ftester] 実行プロファイルを「{value}」に設定しました。",
@@ -152,8 +152,8 @@ export const workbenchStrings = {
   },
 
   "workbench.testTree.noProjectsLog": {
-    ja: "[ftester] Projects/ 配下にテストプロジェクトが見つかりません。",
-    en: "[ftester] No test projects found under Projects/.",
+    ja: "[ftester] TestProjects/ 配下にテストプロジェクトが見つかりません。",
+    en: "[ftester] No test projects found under TestProjects/.",
   },
   "workbench.testTree.listScenariosExitLog": {
     ja: "[ftester] list-scenarios が exit code {exitCode} で終了しました。",

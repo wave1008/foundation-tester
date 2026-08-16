@@ -13,10 +13,8 @@
 //   WIDTH(uint16 BE) HEIGHT(uint16 BE) LEN(uint32 BE) JPEG(LEN バイト)の繰り返し。
 // stdin EOF = 親がパイプを閉じた = 終了指示(常駐ヘルパー共通規約。他 2 ヘルパーと同じ)。
 
-import CoreGraphics
 import Foundation
-import ImageIO
-import UniformTypeIdentifiers
+import FTCore
 
 // MARK: - 引数
 
@@ -87,36 +85,8 @@ func captureAndroid(_ o: Options) -> Data? {
 }
 
 // MARK: - 変換・出力
-
-/// PNG → 幅 maxWidth 以内へ縮小 → JPEG。ImageIO のサムネイル生成を使う(自前の描画より速い)。
-/// **--max-width は「幅」の上限**(既存 2 ヘルパーと同じ意味。androidstream の scale=maxWidth/w 参照)。
-/// kCGImageSourceThumbnailMaxPixelSize は**長辺**の上限なので、縦長画面ではそのまま渡すと
-/// 幅が指定より大幅に小さくなる(1080x2340 で 360 指定 → 166x360)。長辺換算に直してから渡す
-func encodeJPEG(png: Data, maxWidth: Int, quality: Double) -> (Data, Int, Int)? {
-    guard let source = CGImageSourceCreateWithData(png as CFData, nil) else { return nil }
-    let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
-    let sourceWidth = (properties?[kCGImagePropertyPixelWidth] as? Int) ?? maxWidth
-    let sourceHeight = (properties?[kCGImagePropertyPixelHeight] as? Int) ?? maxWidth
-    let longSide: Int = {
-        guard sourceWidth > 0, maxWidth < sourceWidth else { return max(sourceWidth, sourceHeight) }
-        let scale = Double(maxWidth) / Double(sourceWidth)
-        return Int((Double(max(sourceWidth, sourceHeight)) * scale).rounded())
-    }()
-    let options: [CFString: Any] = [
-        kCGImageSourceCreateThumbnailFromImageAlways: true,
-        kCGImageSourceThumbnailMaxPixelSize: max(longSide, 1),
-        kCGImageSourceCreateThumbnailWithTransform: true,
-    ]
-    guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
-        return nil
-    }
-    let out = NSMutableData()
-    guard let dest = CGImageDestinationCreateWithData(
-        out as CFMutableData, UTType.jpeg.identifier as CFString, 1, nil) else { return nil }
-    CGImageDestinationAddImage(dest, image, [kCGImageDestinationLossyCompressionQuality: quality] as CFDictionary)
-    guard CGImageDestinationFinalize(dest) else { return nil }
-    return (out as Data, image.width, image.height)
-}
+// **--max-width は「幅」の上限**(既存 2 ヘルパーと同じ意味。androidstream の scale=maxWidth/w 参照)。
+// PNG→JPEG 縮小(長辺換算の罠込み)は Sources/FTCore/ImageDownscale.swift(MCP の ft_screenshot と共有)
 
 /// v1 レコード 1 件。書き込み失敗(親が閉じた)は終了扱い
 func emit(jpeg: Data, width: Int, height: Int) -> Bool {
@@ -173,7 +143,7 @@ let maxConsecutiveFailures = 10
 while true {
     let started = Date()
     let png = options.platform == "ios" ? captureIOS(options) : captureAndroid(options)
-    if let png, let (jpeg, width, height) = encodeJPEG(
+    if let png, let (jpeg, width, height) = ImageDownscale.jpeg(
         png: png, maxWidth: options.maxWidth, quality: options.quality) {
         consecutiveFailures = 0
         if !emit(jpeg: jpeg, width: width, height: height) { exit(0) }

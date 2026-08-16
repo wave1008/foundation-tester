@@ -1,4 +1,4 @@
-// ftester-scenarios(Scenarios/ ターゲット)の CLI 実装。
+// ftester-scenarios(scenarios/ ターゲット)の CLI 実装。
 //   list [--json]                       … シナリオ一覧
 //   run --scenario <クラス名.メソッド名>  … 1 シナリオを実行(1 プロセス = 1 シナリオ)
 // --json 指定時は NDJSON イベント(FTCore/ScenarioEvent)を stdout に流す。
@@ -56,7 +56,7 @@ struct ListScenarios: AsyncParsableCommand {
             print(String(data: data, encoding: .utf8)!)
         } else {
             guard !classes.isEmpty else {
-                print("No scenarios (add a @TestClass under the project Scenarios/)")
+                print("No scenarios (add a @TestClass under the project scenarios/)")
                 return
             }
             for testClass in classes {
@@ -77,6 +77,12 @@ struct ListScenarios: AsyncParsableCommand {
 struct RunScenario: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "run", abstract: "Run a single scenario")
+
+    /// in-app ブリッジへの起動時プローブ(注入先アプリの判別)の締切。秒。
+    /// **待ちは判断の正しさと引き換え**: 短いと冷えた実機ブリッジを「無応答」と誤読し、
+    /// 長いと suspend 中のアプリ(TCP は受理して答えない)でその秒数を丸ごと払う。
+    /// 10 は 2026-08-15 のユーザー指示(いずれ実行プロファイルで指定できるようにする)
+    static let injectedAppProbeTimeout: TimeInterval = 10
 
     @Option(help: "Scenario ID (Class.method)")
     var scenario: String
@@ -126,6 +132,12 @@ struct RunScenario: AsyncParsableCommand {
     @Flag(name: .customLong("no-screen-is"), help: "Disable screenIs (screenMatches)")
     var noScreenIs = false
 
+    /// **FM とは無関係**の幾何ヒューリスティック。実行プロファイルの containerInference 由来で、
+    /// シナリオ側は `tap(..., containerInference:)` で1コマンド単位に上書きできる
+    @Flag(name: .customLong("no-container-inference"),
+          help: "Disable corrections that infer the scroll container from the tree")
+    var noContainerInference = false
+
     @Option(name: .customLong("report-dir"), help: "Directory to write reports to")
     var reportDir: String = "reports"
 
@@ -136,6 +148,18 @@ struct RunScenario: AsyncParsableCommand {
     @Option(name: .customLong("default-timeout"),
             help: "Default timeout in seconds for assertions such as exist/textIs (decimals allowed, default 5)")
     var defaultTimeout: Double?
+
+    @Flag(name: .customLong("host-install"),
+          help: "Route installApp() through the orchestrator via a stdin/stdout RPC instead of installing directly (set by ScenarioHost when an install handler is configured)")
+    var hostInstall = false
+
+    @Option(name: .customLong("app-path"),
+            help: "Resolved appPath from the run profile, used by installApp() when the argument is omitted and --host-install is not set")
+    var appPath: String?
+
+    @Option(name: .customLong("app-name"),
+            help: "App display name from the run profile (appName), used by tapAppIcon() when the argument is omitted")
+    var appName: String?
 
     @Flag(help: "Emit NDJSON events (for the host)")
     var json = false
@@ -177,6 +201,9 @@ struct RunScenario: AsyncParsableCommand {
         // hybrid: primary=in-app、fallback=XCUITest ブリッジ(springboard 参照)を StepExecutor へ。
         let driver: AppDriver
         var fallbackDriver: AppDriver?
+        // tapAppIcon 用(FTDriveCore.homeScreenDriver の①)。xcuitest 単独でだけ明示注入する
+        // (hybrid は fallbackDriver が同役を担う。Android は主ドライバで足りる)
+        var homeScreenDriver: AppDriver?
         // typeDriver は常に渡す(409 安全網)。preferTypeDriver は probe の uiFramework 検出時のみ
         // (probe 不達なら false のまま=安全網頼み)。
         var typeDriver: AppDriver?
@@ -185,6 +212,11 @@ struct RunScenario: AsyncParsableCommand {
         // (tap/type は通る。実験で確定済み)。probe の uiFramework=="compose" 検出時のみ true
         // (probe 不達なら false のまま=StepExecutor の事後 409 安全網に委ねる)
         var typeDriverGestures: Set<String> = []
+        // StepExecutor の空打ちゲート(shouldEmptyDrag)へ渡すヒント。in-app/hybrid は probe の
+        // 自己申告(uiFramework)をそのまま使い、engine=xcuitest はブリッジが自己申告を持たないため
+        // AppBundleInspector でバンドルのマーカーから判定する。Android は releasesScrollTouch=false
+        // で影響しないので nil のまま(判定コスト自体を払わない)
+        var uiFrameworkHint: String?
         if dryRun {
             driver = NullDriver()  // dry-run はデバイスに触れない
         } else {
@@ -204,8 +236,24 @@ struct RunScenario: AsyncParsableCommand {
                     // relaunch で bridge を張り直す)、別アプリ(Preferences 等)なら mismatch=XCUITest
                     // へ正しく分岐する。inappApp を使わず nil を「不明」扱いにすると、suspend 中の
                     // 別アプリシナリオを in-app 経路へ誤ルーティングして破綻する(実際に回帰した)。
-                    let probe = BridgeClient(port: port, timeoutSeconds: 4, host: bridgeHost ?? BridgeEndpoint.loopbackHost)
-                    let probeStatus = try? await probe.status(timeout: 4)
+                    // 締切は 30 秒(2026-08-15 ユーザー指示)。**短くしない**: 実機は LAN/USB 越しで
+                    // 冷えたブリッジの初回応答が数秒に収まる保証が無く、外れると「注入先が分からない」
+                    // まま進む。代わりに suspend 中のアプリ(TCP は受理するが答えない)では
+                    // ここで最大 30 秒待つ —— 判断の正しさを待ち時間で買っている。
+                    // **uiFramework をこの締切に預けない**のは下の受け皿参照(外れても判断は変わらない)
+                    let probe = BridgeClient(port: port, timeoutSeconds: Self.injectedAppProbeTimeout,
+                                             host: bridgeHost ?? BridgeEndpoint.loopbackHost,
+                                             physicalUDID: physical ? udid : nil)
+                    let probeStatus = try? await probe.status(timeout: Self.injectedAppProbeTimeout)
+                    // in-app/hybrid はブリッジの自己申告を使うが、**プローブの締切に判断を
+                    // 預けない**(2026-08-15): この 4 秒は「suspend したアプリは答えない」を
+                    // 素早く諦めるための値で、実機の冷えたブリッジが収まる保証は無い。
+                    // 外れて nil のまま進むと shouldEmptyDrag が「不明なら打つ」へ倒れ、
+                    // RN では scrollTo しただけで行が選ばれる(AppBundleInspector.detect 参照)。
+                    // バンドルのマーカーはデバイスの応答が要らないので受け皿にできる
+                    uiFrameworkHint = probeStatus?.uiFramework
+                        ?? AppBundleInspector.detect(appPath: appPath, udid: udid,
+                                                     bundleID: testClass.app, physical: physical)
                     let injected = probeStatus?.sessionBundleID ?? inappApp
                     if let injected, injected != testClass.app {
                         guard engine == "hybrid", let xcuiPort else {
@@ -216,8 +264,13 @@ struct RunScenario: AsyncParsableCommand {
                                 + "to hybrid) it is driven automatically via XCUITest"
                                 + " (iosInappEngine does not apply to devices that explicitly set engine=inapp)")
                         }
-                        let client = BridgeClient(port: xcuiPort, host: bridgeHost ?? BridgeEndpoint.loopbackHost)
+                        let client = BridgeClient(port: xcuiPort, host: bridgeHost ?? BridgeEndpoint.loopbackHost,
+                                                  physicalUDID: physical ? udid : nil)
                         driver = udid.map { LaunchPreflightDriver(base: client, udid: $0) } ?? client
+                        // 上で採った自己申告は**注入先アプリ**のもの。ここは別アプリを XCUITest で
+                        // 駆動する分岐なので、対象アプリのマーカーで判定し直す(取れなければ不明)
+                        uiFrameworkHint = AppBundleInspector.detect(
+                            appPath: appPath, udid: udid, bundleID: testClass.app, physical: physical)
                     } else {
                         // in-app は launch=simctl 再起動+dylib 注入(自己再起動できないため)
                         let repoRoot = try RepoRoot.find()
@@ -249,7 +302,13 @@ struct RunScenario: AsyncParsableCommand {
                         }
                     }
                 } else {
-                    let client = BridgeClient(port: port, host: bridgeHost ?? BridgeEndpoint.loopbackHost)
+                    // **physicalUDID を渡す**: これが無いとドライバは /status のデバイス名から
+                    // 宛先を引き直し、実機は名前が一致せず `.unknown` に落ちて **simctl 経路**へ行く
+                    // (`simctl openurl` が "Invalid device: iPhone" で失敗する形。2026-08-09 に実機で実測)。
+                    // ホスト側の RunWorker は渡しているので install だけ成功し、シナリオ中の
+                    // 実機分岐(openURL 等)だけが黙って壊れる
+                    let client = BridgeClient(port: port, host: bridgeHost ?? BridgeEndpoint.loopbackHost,
+                                              physicalUDID: physical ? udid : nil)
                     // launch は既定で simctl 化(FastLaunchDriver。実測 -14〜19%)。
                     // FT_NO_FAST_LAUNCH=1 で従来の XCUIApplication.launch() に戻せる。
                     // preflight(未インストール検査)は fast launch の外側に置く。
@@ -265,6 +324,15 @@ struct RunScenario: AsyncParsableCommand {
                         ? inner
                         : (udid.map { LaunchPreflightDriver(base: inner, udid: $0) as AppDriver } ?? client)
                     driver = SessionRecoveryDriver(base: preflighted)
+                    // 通常ドライバのセッションは対象アプリに縛られ、home() 後の snapshot が
+                    // 背面アプリ照会でハングする(実機で確認)。springboard 参照専用を渡す
+                    homeScreenDriver = SystemUIDriver(port: port)
+                    // xcuitest はブリッジの自己申告が無いため、バンドルのマーカーで判定する。
+                    // --app-path があれば FileManager だけで判定できる(simctl の ~0.5s を
+                    // シナリオプロセスごとに払わない)。無ければ simctl へ落ちる
+                    // (コマンド失敗・実機・udid 不明は nil のまま = 従来どおり空打ちを打つ)
+                    uiFrameworkHint = AppBundleInspector.detect(
+                        appPath: appPath, udid: udid, bundleID: testClass.app, physical: physical)
                 }
             case "android":
                 driver = try AndroidDriver(serial: serial)
@@ -278,6 +346,19 @@ struct RunScenario: AsyncParsableCommand {
             // suspend ハングが復活する)
             if !(driver is InAppDriver) && !(driver is WebViewDelegatingDriver) {
                 _ = try await driver.status()
+            }
+            // **不明のまま進むことは黙らない**(2026-08-15)。自己申告もバンドルのマーカーも
+            // 取れないのは実機で --app-path が無いときで、そのとき shouldEmptyDrag は
+            // 「不明なら打つ」へ倒れる = RN なら scrollTo が行を選ぶ(沈黙する実害)。
+            // 判断は変えない(打たない側へ倒すと Compose の探索直後タップが容器に吸われて
+            // 全部赤になる)ので、**せめて run に残す**。stderr は ScenarioHost が
+            // "⚠️ " 付きの log イベントへ変換する
+            if runPlatform == "ios", uiFrameworkHint == nil {
+                FileHandle.standardError.write(Data(
+                    ("could not determine the UI framework of \(testClass.app) (the bridge did not"
+                     + " report it and no app bundle was available), so the empty drag after a"
+                     + " scroll search is fired blind — on React Native that can select a row."
+                     + " Pass --app-path (the run profile's appPath) to settle it.\n").utf8))
             }
         }
 
@@ -299,20 +380,31 @@ struct RunScenario: AsyncParsableCommand {
         let healCacheURL = projectDir.map {
             URL(fileURLWithPath: $0).appendingPathComponent(".ftester/heal-cache.json")
         }
+        // `#id` の実在照合に使う台帳(dry-run 専用。ft_snapshot が貯める。SelectorInventory)
+        let selectorInventoryURL = projectDir.map {
+            SelectorInventory.url(projectRoot: URL(fileURLWithPath: $0))
+        }
         // 技術識別子: Android は adb serial、iOS はシミュレータ UDID(共に既存のドライバ構築引数の再利用)
         let deviceIdentifier = runPlatform == "android" ? serial : udid
         let core = FTDriveCore(driver: driver, platform: runPlatform, app: testClass.app,
                                scenarioID: scenarioID, scenarioTitle: descriptor.title,
                                delegate: delegate, healingEnabled: heal && !noFM,
                                falsePositiveCheckEnabled: !noFalsePositiveCheck,
-                               screenIsEnabled: !noScreenIs, dryRun: dryRun,
-                               healCacheURL: healCacheURL, defaultTimeout: defaultTimeout,
+                               screenIsEnabled: !noScreenIs,
+                               containerInference: !noContainerInference, dryRun: dryRun,
+                               healCacheURL: healCacheURL,
+                               selectorInventoryURL: selectorInventoryURL,
+                               defaultTimeout: defaultTimeout,
                                fallbackDriver: fallbackDriver,
                                typeDriver: typeDriver, preferTypeDriver: preferTypeDriver,
                                typeDriverGestures: typeDriverGestures,
+                               homeScreenDriver: homeScreenDriver,
                                deviceName: deviceName, deviceIdentifier: deviceIdentifier,
                                physical: physical,
+                               uiFramework: uiFrameworkHint,
                                emit: emit)
+        core.appPathOverride = appPath
+        core.appDisplayName = appName
 
         // 失敗時に「アプリより手前の別 window」を添える(Android のみ。adb を叩くのでここで注入する)
         if runPlatform == "android", let serial {
@@ -322,18 +414,34 @@ struct RunScenario: AsyncParsableCommand {
             }
         }
 
+        var debugControl: ScenarioDebugControl?
         if debug {
             let control = ScenarioDebugControl(breakpoints: breakpoint,
                                                pauseOnStart: pauseOnStart)
             core.debugControl = control
-            // stdin の制御コマンドは専用スレッドで読む(DSL スレッドは停止中ブロックする)。
-            // EOF(ホスト終了)で読み終わり、プロセス終了とともに消える
+            debugControl = control
+        }
+        var installControl: ScenarioInstallControl?
+        if hostInstall {
+            let control = ScenarioInstallControl()
+            core.installControl = control
+            installControl = control
+        }
+        if debugControl != nil || installControl != nil {
+            // stdin の制御コマンドは専用スレッドで読む(DSL スレッドは停止中・RPC 待ちでブロックする)。
+            // EOF(ホスト終了)で読み終わり、プロセス終了とともに消える。debug と host-install の
+            // 制御コマンドは同じ stdin を共有し、"cmd" の値で振り分ける
+            // (installResult は installControl、それ以外は既存の debugControl.apply)
             let reader = Thread {
                 while let line = readLine(strippingNewline: true) {
-                    control.apply(line: line)
+                    if let installControl, let parsed = ScenarioInstallControl.parse(line: line) {
+                        Task { await installControl.resolve(id: parsed.id, ok: parsed.ok, message: parsed.message) }
+                    } else {
+                        debugControl?.apply(line: line)
+                    }
                 }
             }
-            reader.name = "ftester-debug-control"
+            reader.name = "ftester-control"
             reader.start()
         }
 
@@ -350,9 +458,21 @@ struct RunScenario: AsyncParsableCommand {
         }
         FTRuntime.tearDown()
 
-        // 「否定側でしか使われず一度も解決できなかった #id」「最後まで不成立の ifCanSelect」を
-        // 修正提案として残す(どちらも緑のまま腐る経路。docs/design.md §10)
+        // Unconditional call, but cheap when unused: each leaf driver's rotate(to:) only captures
+        // the original orientation on its first call in this scenario, so this is a true no-op
+        // (no adb/HTTP round trip) for scenarios that never called rotateTo. Best-effort — a
+        // failure here is cleanup, not a scenario assertion, so it doesn't fail the run.
+        do {
+            try await core.restoreOrientationIfNeeded()
+        } catch {
+            FileHandle.standardError.write(Data("⚠️ failed to restore original orientation: \(error)\n".utf8))
+        }
+
+        // 「否定側でしか使われず一度も解決できなかった #id」「最後まで不成立の ifCanSelect」
+        // 「アサーションが1本も無い」を修正提案として残す(いずれも緑のまま腐る経路。docs/design.md §10)
         core.warnAboutNeverResolvedIDs()
+        core.warnAboutMissingAssertions()
+        core.warnAboutUnknownIDs()
 
         let record = core.finalRecord
         let reportURL = try? ScenarioReportWriter.write(
@@ -439,6 +559,7 @@ struct NullDriver: AppDriver {
         StatusResponse(ready: true, device: "dry-run", osVersion: "-", sessionBundleID: nil)
     }
     func install(packagePath: String) async throws { throw Unavailable() }
+    func uninstall(bundleID: String) async throws { throw Unavailable() }
     func launch(bundleID: String) async throws { throw Unavailable() }
     func snapshot() async throws -> SnapshotResponse { throw Unavailable() }
     func tap(ref: Int) async throws { throw Unavailable() }
@@ -448,6 +569,8 @@ struct NullDriver: AppDriver {
     func press(ref: Int, duration: Double) async throws { throw Unavailable() }
     func screenshot() async throws -> Data { throw Unavailable() }
     func terminate() async throws { throw Unavailable() }
+    func isAppForeground(bundleID: String) async throws -> Bool { throw Unavailable() }
+    func foregroundAppID() async throws -> String? { throw Unavailable() }
 }
 
 // (人間向けログ整形は FTCore.ScenarioLogFormatter を使用 — MCP 応答と共通)

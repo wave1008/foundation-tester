@@ -1,0 +1,8 @@
+{
+  "id": "and-settings-keyboard",
+  "archetype": "settings",
+  "requires": "Android エミュレータ1台に ftbridge + 設定アプリ(com.android.settings)。表示言語は日本語",
+  "maxTurns": 60,
+  "expect": "(?=[\\s\\S]*12\\s*キー)[\\s\\S]*switch=on",
+  "prompt": "ftester の MCP ツール(ft_*)だけを使って、Android エミュレータの「設定」アプリ(com.android.settings)を操作してください。\n\nゴール: 画面キーボードの設定までたどり着き、「Gboard」の行に出ている説明の文言と、その行のスイッチが ON か OFF かを読み取ること。\n\n手順や使うツールは自分で決めてください。デバイスは ft_list_devices で選びます(Android なので serial を渡します)。\n\n最後に必ず1行だけ次の形式で出力してください: RESULT: gboard=<Gboard の行の説明> switch=<on または off>\n読み取れなかった場合は RESULT: unknown と出力してください。"
+}

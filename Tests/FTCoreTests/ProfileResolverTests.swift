@@ -8,7 +8,7 @@ final class ProfileResolverTests: XCTestCase {
     override func setUpWithError() throws {
         tempDir = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("FTCoreTests-\(UUID().uuidString)")
-        let root = tempDir.appendingPathComponent("Projects/SampleApp")
+        let root = tempDir.appendingPathComponent("TestProjects/SampleApp")
         project = TestProject(name: "SampleApp", rootURL: root)
         for dir in [project.appsDir, project.machinesDir, project.runsDir] {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -65,7 +65,7 @@ final class ProfileResolverTests: XCTestCase {
         // appPath の相対パスはリポジトリルート基準(= project.rootURL の 2 階層上 = tempDir)
         XCTAssertEqual(ios.appPath,
                        tempDir.appendingPathComponent("builds/SampleApp.app").path,
-                       "appPath 相対はリポジトリルート(<repoRoot>/Projects/<name> の 2 階層上)基準")
+                       "appPath 相対はリポジトリルート(<repoRoot>/TestProjects/<name> の 2 階層上)基準")
         XCTAssertTrue(ios.autoInstall, "common の autoInstall: true が両 platform に効く")
         let android = try XCTUnwrap(resolved.apps["android"])
         XCTAssertEqual(android.bundleID, "com.example.sampleapp")
@@ -372,6 +372,24 @@ final class ProfileResolverTests: XCTestCase {
             project: project, runName: "typo", machineName: "M1 Max(64GB)")
         XCTAssertTrue(resolved.warnings.contains { $0.contains("maxParallel") },
                       "未知キー警告が出るはず: \(resolved.warnings)")
+    }
+
+    /// enableAnimations は既定 false(= 実行開始時にアニメーションを無効化する)。
+    /// true 指定は素通しし、未知キー警告を出さない(knownKeys 登録漏れの検出)
+    func testEnableAnimationsDefaultsToFalseAndIsKnown() throws {
+        try writeStandardFixture()
+        let defaulted = try ProfileResolver.resolve(
+            project: project, runName: "all", machineName: "M1 Max(64GB)")
+        XCTAssertFalse(defaulted.enableAnimations)
+
+        try write("""
+        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ], "enableAnimations": true }
+        """, to: project.runsDir, name: "animated")
+        let enabled = try ProfileResolver.resolve(
+            project: project, runName: "animated", machineName: "M1 Max(64GB)")
+        XCTAssertTrue(enabled.enableAnimations)
+        XCTAssertFalse(enabled.warnings.contains { $0.contains("enableAnimations") },
+                       "既知キーなので未知キー警告を出さない: \(enabled.warnings)")
     }
 
     func testDetermineMachinePriority() throws {
@@ -1013,6 +1031,32 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertFalse(resolved.fm.heal)
         XCTAssertTrue(resolved.fm.falsePositiveCheck, "明示 true で有効化できること")
         XCTAssertFalse(resolved.fm.screenIs)
+    }
+
+    // MARK: - containerInference(FM とは独立。既定 true)
+
+    func testContainerInferenceDefaultsToTrueAndFollowsExplicitFalse() throws {
+        try writeStandardFixture()
+        let onByDefault = try ProfileResolver.resolve(
+            project: project, runName: "all", machineName: "M1 Max(64GB)")
+        XCTAssertTrue(onByDefault.containerInference, "省略時は既定 true のはず")
+
+        // fm:false に巻き込まれない(FM のサブフラグではない)ことも同時に見る
+        try write("""
+        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ],
+          "fm": false, "containerInference": false }
+        """, to: project.runsDir, name: "ciofffmoff")
+        let off = try ProfileResolver.resolve(
+            project: project, runName: "ciofffmoff", machineName: "M1 Max(64GB)")
+        XCTAssertFalse(off.containerInference)
+
+        try write("""
+        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ], "fm": false }
+        """, to: project.runsDir, name: "fmoffonly")
+        let fmOffOnly = try ProfileResolver.resolve(
+            project: project, runName: "fmoffonly", machineName: "M1 Max(64GB)")
+        XCTAssertTrue(fmOffOnly.containerInference, "fm:false でも補正は止まらない")
+        XCTAssertTrue(fmOffOnly.warnings.isEmpty, "containerInference は既知キー: \(fmOffOnly.warnings)")
     }
 
     func testValidateMachineProfileReportsPhysicalErrors() throws {

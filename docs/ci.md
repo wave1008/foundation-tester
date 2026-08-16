@@ -32,8 +32,12 @@ ftester run --profile ios-xcuitest --quiet --junit reports/junit.xml
 - **exit code**: 0 = 全シナリオ成功 / 1 = 失敗あり(JUnit は**失敗時も書かれる**)
 - **JUnit XML**: `<testsuite>` = シナリオクラス、`<testcase>` = シナリオ。
   失敗には最初の失敗ステップの要約(message)・全失敗ステップとソース位置・
-  Markdown レポートのパス・実行 worker が入る
-- **失敗の調査**: `Projects/<name>/reports/` に Markdown レポート(失敗時の要素一覧・
+  Markdown レポートのパス・実行 worker が入る。
+  **inconclusive**(`verify` のアサーション0個)は JUnit に語彙が無いため、
+  シナリオの**全ステップ**が inconclusive のときだけ `<skipped>` になる —
+  通常のステップと混在する場合は passed の `<testcase>` に埋もれる
+  (気付く経路は実行ログ・Markdown レポートの ❓ と修正提案)
+- **失敗の調査**: `TestProjects/<name>/reports/` に Markdown レポート(失敗時の要素一覧・
   スクリーンショット・FM トリアージ)が出る。**artifact に上げておく**と JUnit の
   `report:` 行から辿れる
 
@@ -52,7 +56,7 @@ pipeline {
   }
   post {
     always  { junit 'reports/junit.xml' }
-    failure { archiveArtifacts artifacts: 'reports/junit.xml, Projects/*/reports/**', allowEmptyArchive: true }
+    failure { archiveArtifacts artifacts: 'reports/junit.xml, TestProjects/*/reports/**', allowEmptyArchive: true }
   }
 }
 ```
@@ -102,5 +106,7 @@ CI 用のシナリオ単位リトライは**実装していない**。自動リ�
 ## 関連
 
 - 検証の詳細な罠(flake 判定の規律・ベータ整合): [docs/verification.md](verification.md)
-- 結果 DB の分析コマンド: `ftester results --help` / [docs/commands.md](commands.md)
+- 結果 DB の分析コマンド: `ftester results --help`(サブコマンドの一覧は
+  [README「コマンド一覧」](../README.md#コマンド一覧)。docs/commands.md は**シナリオ用 DSL** の
+  リファレンスなので `results` は載っていない)
 - 導入・更新の詳細: [docs/getting-started.md](getting-started.md)

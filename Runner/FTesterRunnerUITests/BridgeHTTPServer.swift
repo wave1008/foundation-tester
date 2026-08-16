@@ -10,7 +10,22 @@ final class BridgeHTTPServer {
     struct Request {
         let method: String
         let path: String
+        /// `?` の後ろ(無ければ空)。**path とは分けて持つ** —— 分けないと switch の完全一致が
+        /// 外れ、クエリ付きの要求が丸ごと 404 になる(2026-08-03 に `?refresh=1` で実測)。
+        /// 規則は Android の BridgeHttpServer.parseRequest と同じ
+        let query: String
         let body: Data
+
+        /// クエリ1個の取り出し(値は素のまま = 数値パラメータしか受けないので decode は要らない)。
+        /// 同期相手: AndroidRunner の BridgeRouter.queryParam
+        func queryValue(_ key: String) -> String? {
+            guard !query.isEmpty else { return nil }
+            for pair in query.split(separator: "&") {
+                let kv = pair.split(separator: "=", maxSplits: 1)
+                if kv.count == 2, kv[0] == Substring(key) { return String(kv[1]) }
+            }
+            return nil
+        }
     }
 
     struct Response {
@@ -263,7 +278,12 @@ final class BridgeHTTPServer {
             if n <= 0 { break }
             body.append(contentsOf: chunk[0..<n])
         }
-        return Request(method: String(parts[0]), path: String(parts[1]), body: body)
+        let target = String(parts[1])
+        let cut = target.firstIndex(of: "?")
+        return Request(method: String(parts[0]),
+                       path: cut.map { String(target[target.startIndex..<$0]) } ?? target,
+                       query: cut.map { String(target[target.index(after: $0)...]) } ?? "",
+                       body: body)
     }
 
     private func writeResponse(_ fd: Int32, _ response: Response) {

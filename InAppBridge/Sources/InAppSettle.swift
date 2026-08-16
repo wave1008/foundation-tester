@@ -18,6 +18,7 @@ enum InAppSettle {
                            done: @escaping (_ converged: Bool) -> Void) {
         let start = CACurrentMediaTime()
         var lastBusy = start
+        lastOffsets = [:]   // 前回の待ちの残骸を「動いた」と誤読しない
         var finished = false
         var observer: CFRunLoopObserver?
         var heartbeat: Timer?
@@ -32,7 +33,7 @@ enum InAppSettle {
 
         func evaluate() {
             let now = CACurrentMediaTime()
-            if anyLayerAnimating() { lastBusy = now }
+            if anyLayerAnimating() || anyScrollViewMoving() { lastBusy = now }
             let quietFor = (now - lastBusy) * 1000
             let elapsed = (now - start) * 1000
             if quietFor >= Double(quietMs) { finish(true) }
@@ -47,6 +48,36 @@ enum InAppSettle {
         let timer = Timer(timeInterval: 0.016, repeats: true) { _ in evaluate() }
         RunLoop.main.add(timer, forMode: .common)
         heartbeat = timer
+    }
+
+    /// 直前の評価時点の contentOffset(スクロールの動きを差分で見るため)
+    private static var lastOffsets: [ObjectIdentifier: CGPoint] = [:]
+
+    /// **スクロールが動いているか**。`setContentOffset(animated: true)`(「先頭へ」等の
+    /// プログラム的スクロール)は **CALayer のアニメーションを伴わない**ため
+    /// `anyLayerAnimating` をすり抜ける。すり抜けると tap が「整定済み」で返り、直後の
+    /// snapshot が**動く前のツリー**を返す —— ステップは成功のまま別の要素が掴まれる
+    /// (2026-08-02 実測: 「先頭へ」直後のスクロール探索が1回も送らずに古い座標をタップした)。
+    /// 動き自体を差分で見るのが唯一の確実な信号(isDragging/isDecelerating は
+    /// プログラム的スクロールでは立たない)
+    private static func anyScrollViewMoving() -> Bool {
+        var moving = false
+        var seen: [ObjectIdentifier: CGPoint] = [:]
+        for scene in UIApplication.shared.connectedScenes {
+            guard let windowScene = scene as? UIWindowScene else { continue }
+            guard let key = windowScene.windows.first(where: { $0.isKeyWindow }) else { continue }
+            var stack: [UIView] = [key]
+            while let view = stack.popLast() {
+                if let sv = view as? UIScrollView, !sv.isHidden, sv.alpha > 0.01 {
+                    let id = ObjectIdentifier(sv)
+                    seen[id] = sv.contentOffset
+                    if let previous = lastOffsets[id], previous != sv.contentOffset { moving = true }
+                }
+                stack.append(contentsOf: view.subviews)
+            }
+        }
+        lastOffsets = seen
+        return moving
     }
 
     private static func anyLayerAnimating() -> Bool {

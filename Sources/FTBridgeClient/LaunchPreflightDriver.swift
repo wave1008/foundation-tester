@@ -1,6 +1,6 @@
-// launch(bundleID:) 前に simctl でインストール済みか検査する AppDriver ラッパー。未インストールの
-// まま launch すると XCUITest ランナーの main queue がハングする(~45s → ランナー死亡)ため、
-// その場合は launch を呼ばず即座にエラーで中断する。
+// launch(bundleID:) 前にインストール済みか検査する AppDriver ラッパー(CoreSimulator 直叩き優先・
+// 利用不能なら simctl get_app_container)。未インストールのまま launch すると XCUITest ランナーの
+// main queue がハングする(~45s → ランナー死亡)ため、その場合は launch を呼ばず即座にエラーで中断する。
 
 import Foundation
 import FTCore
@@ -36,8 +36,20 @@ public final class LaunchPreflightDriver: AppDriver {
 
     public func status() async throws -> StatusResponse { try await base.status() }
     public func install(packagePath: String) async throws { try await base.install(packagePath: packagePath) }
+    public func uninstall(bundleID: String) async throws { try await base.uninstall(bundleID: bundleID) }
     public func clearAppData(bundleID: String) async throws { try await base.clearAppData(bundleID: bundleID) }
+    public func openURL(_ url: String, bundleID: String?) async throws {
+        try await base.openURL(url, bundleID: bundleID)
+    }
+    public func acknowledgeOpenURLConsentIfPresent(bundleID: String) async {
+        await base.acknowledgeOpenURLConsentIfPresent(bundleID: bundleID)
+    }
+    public func isAppForeground(bundleID: String) async throws -> Bool {
+        try await base.isAppForeground(bundleID: bundleID)
+    }
+    public func foregroundAppID() async throws -> String? { try await base.foregroundAppID() }
     public var lastActionNote: String? { base.lastActionNote }
+    public var lastLaunchTiming: LaunchTiming? { base.lastLaunchTiming }
 
     public func launch(bundleID: String) async throws {
         try ensureInstalled(bundleID: bundleID)
@@ -52,6 +64,15 @@ public final class LaunchPreflightDriver: AppDriver {
 
     private func ensureInstalled(bundleID: String) throws {
         if confirmedInstalled.contains(bundleID) { return }
+        // CoreSimulator 直叩き優先(simctl get_app_container 約703ms → ほぼ0ms・2026-08-02実測)。
+        // シム利用不能なら simctl へフォールバック(FT_SIMULATOR_CONTROL=simctl で強制)
+        if let installed = CoreSimAppControl.isInstalled(udid: udid, bundleID: bundleID) {
+            guard installed else {
+                throw LaunchPreflightError.appNotInstalled(bundleID: bundleID, udid: udid)
+            }
+            confirmedInstalled.insert(bundleID)
+            return
+        }
         let container: Shell.Result
         do {
             container = try Shell.run(["xcrun", "simctl", "get_app_container", udid, bundleID])
@@ -67,6 +88,24 @@ public final class LaunchPreflightDriver: AppDriver {
     public func openAppSwitcher() async throws { try await base.openAppSwitcher() }
     public func home() async throws { try await base.home() }
     public func snapshot() async throws -> SnapshotResponse { try await base.snapshot() }
+    /// bypassingCache 版の素通し(既定実装に任せるとフラグが落ちて最内へ届かない。
+    /// SnapshotCacheBypassForwardingTests がラッパー全体でこれを守る)
+    /// **転送必須**(既定実装 nil に落ちると、ラッパー越しでは常に「答えられない」になる。
+    /// AppDriver.hittable の doc と AppDriverDefaultDispatchTests 参照)
+    public func hittable(ref: Int) async throws -> Bool? {
+        try await base.hittable(ref: ref)
+    }
+
+    public func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {
+        try await base.snapshot(bypassingCache: bypassingCache)
+    }
+    /// **転送必須**(既定実装に任せると最内のブリッジ接続へ届かず、上げたつもりで 120 のまま)
+    public func raiseElementLimitOnNextSnapshot(_ max: Int?) {
+        base.raiseElementLimitOnNextSnapshot(max)
+    }
+    public var supportsCacheBypass: Bool { base.supportsCacheBypass }
+    public var pointScale: Double { base.pointScale }
+    public var verifiesTypedText: Bool { base.verifiesTypedText }
     public func tap(ref: Int) async throws { try await base.tap(ref: ref) }
     public func tap(x: Double, y: Double) async throws { try await base.tap(x: x, y: y) }
     public func type(ref: Int?, text: String) async throws { try await base.type(ref: ref, text: text) }
@@ -75,9 +114,10 @@ public final class LaunchPreflightDriver: AppDriver {
     public func hideKeyboard() async throws { try await base.hideKeyboard() }
     public func back() async throws { try await base.back() }
     public func swipe(_ direction: FTSwipeDirection) async throws { try await base.swipe(direction) }
-    /// forScroll 版の素通し(FastLaunchDriver の注記と同じ理由)
-    public func swipe(_ direction: FTSwipeDirection, forScroll: Bool) async throws {
-        try await base.swipe(direction, forScroll: forScroll)
+    /// 用途つき版の素通し(FastLaunchDriver の注記と同じ理由)
+    public func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent,
+                      path: FTSwipePath?) async throws {
+        try await base.swipe(direction, intent: intent, path: path)
     }
 
     public func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
@@ -85,6 +125,22 @@ public final class LaunchPreflightDriver: AppDriver {
         try await base.drag(fromX: fromX, fromY: fromY, toX: toX, toY: toY,
                             pressSeconds: pressSeconds, durationSeconds: durationSeconds)
     }
+
+    public func doubleTap(x: Double, y: Double) async throws {
+        try await base.doubleTap(x: x, y: y)
+    }
+
+    public func pinch(frame: FTRect?, identifier: String?, scale: Double,
+                      durationSeconds: Double) async throws {
+        try await base.pinch(frame: frame, identifier: identifier, scale: scale,
+                             durationSeconds: durationSeconds)
+    }
+
+    public func rotate(to orientation: FTOrientation) async throws -> FTOrientation {
+        try await base.rotate(to: orientation)
+    }
+
+    public func restoreOrientationIfNeeded() async throws { try await base.restoreOrientationIfNeeded() }
 
     public func press(ref: Int, duration: Double) async throws {
         try await base.press(ref: ref, duration: duration)

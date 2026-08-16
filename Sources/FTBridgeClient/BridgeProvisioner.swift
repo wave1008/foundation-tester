@@ -259,11 +259,26 @@ public struct BridgeProvisioner {
         // 5. 共有ビルド(直列)。並列起動フェーズより前に必ず済ませる
         try await prepareSharedBuilds(plans: plans, log: safeLog)
 
-        // 6. 起動(デバイス単位で並列)
+        // 6. 起動(デバイス単位で並列。**in-app の新規起動を含むときだけ同時2台に絞る**)。
+        // 2026-08-08: フルスイート直後の in-app フェーズ開始(8台同時の terminate→launch+注入)で
+        // シミュレータの画面凍結クラスタが同日2回発生した(a11y は応答・描画とタップが停止。
+        // 凍結検出器がワーカー除外して完走はする)。Android で対照実験済みの「複数台同時描画」
+        // 凍結と同族とみて、一括デバイス起動と同じ「同時2台」に絞る(ユーザー決定の
+        // device-up ポリシーと同じ理屈)。再利用/adopt だけの供給は launch を伴わないので
+        // 従来どおり全並列 = xcuitest ランナー再利用時の供給時間は変わらない
+        let launchesInApp = plans.contains { plan in
+            plan.bridges.contains { bridge in
+                if case .launch = bridge.plan { return bridge.engine == "inapp" }
+                return false
+            }
+        }
+        let launchWidth = launchesInApp ? 2 : plans.count
         let outcomes = await withTaskGroup(
             of: (Int, Result<ProvisionedIOSDevice, Error>).self,
             returning: [Int: Result<ProvisionedIOSDevice, Error>].self) { group in
-            for plan in plans {
+            var pending = plans.makeIterator()
+            func addNext(_ group: inout TaskGroup<(Int, Result<ProvisionedIOSDevice, Error>)>) {
+                guard let plan = pending.next() else { return }
                 group.addTask {
                     do {
                         let device = try await self.executeDevice(
@@ -275,32 +290,44 @@ public struct BridgeProvisioner {
                     }
                 }
             }
+            for _ in 0..<max(1, launchWidth) { addNext(&group) }
             var results: [Int: Result<ProvisionedIOSDevice, Error>] = [:]
-            for await (index, result) in group { results[index] = result }
+            for await (index, result) in group {
+                results[index] = result
+                addNext(&group)
+            }
             return results
         }
 
-        // 7. 元のデバイス順に集約。appNotInstalled はそのデバイスだけ離脱して続行。
-        // それ以外のエラーは全タスク完走後にデバイス順で最初の1つを throw(直列版は途中 throw で
-        // 後続が未着手だったが、並列版は起動済みブリッジが常駐資産として残るだけなので完走待ちでよい)
-        var provisioned: [ProvisionedIOSDevice] = []
-        var firstError: Error?
-        for plan in plans {
-            guard let outcome = outcomes[plan.index] else { continue }
-            switch outcome {
-            case .success(let device):
-                provisioned.append(device)
-            case .failure(let error):
-                if case BridgeProvisionerError.appNotInstalled = error {
-                    // installIfNeeded の「失敗ワーカーは離脱し残りが続行」と同じ思想
-                    safeLog("❌ \(plan.name): \(error.localizedDescription)")
-                } else if firstError == nil {
-                    firstError = error
-                }
-            }
+        // 7. 元のデバイス順に集約。**供給できなかった機はその機だけ離脱させ、残りで走る**。
+        //
+        // 以前は appNotInstalled 以外を throw していたが、それは**健全な機を道連れにする**:
+        // 2026-08-11 のフル E2E では 10台中8台が ready だったのに、残り2台の期限切れで
+        // iOS ワーカーが丸ごと失われ、Flutter/RN の 51 本が1本も走らなかった。
+        // 「凍結機はレーンから外して残りで走る」(BlankWorkerTriage)と同じ思想へ揃える。
+        //
+        // **全滅のときだけ throw する**(呼び出し側が run 全体の失敗として扱えるように)。
+        let resolved = try Self.resolveOutcomes(plans.compactMap { plan in
+            outcomes[plan.index].map { (name: plan.name, result: $0) }
+        })
+        for failure in resolved.failures {
+            safeLog("❌ \(failure.name): \(failure.error.localizedDescription)")
         }
-        if let firstError { throw firstError }
-        return provisioned
+        if !resolved.failures.isEmpty {
+            // 何台落ちたかを1行で残す(個々の理由は上で出ている)。台数が減ったことは
+            // レーン稼働率にも出るので、run の遅さを供給失敗と取り違えないための手掛かり
+            safeLog("⚠️ \(resolved.failures.count) device(s) could not be provisioned"
+                + " — continuing with \(resolved.devices.count) device(s)")
+        }
+        return resolved.devices
+    }
+
+    /// 供給結果の集約規則。**定義元は `FTCore.FleetOutcome.resolve`**(Android ワーカー構築と
+    /// 規則を共有するため。ここは転送するだけ)。
+    static func resolveOutcomes<T>(
+        _ outcomes: [(name: String, result: Result<T, Error>)]
+    ) throws -> (devices: [T], failures: [(name: String, error: Error)]) {
+        try FleetOutcome.resolve(outcomes)
     }
 
     /// autoInstall 付き inapp/hybrid の「インストール済みアプリが最新か」を並列評価(UDID → 最新か)。
@@ -715,7 +742,10 @@ public struct BridgeProvisioner {
     /// nil。旧ブリッジは engine を "xcuitest" 扱いにするが protocolVersion は nil のままにして
     /// 再利用不可と判定させる)。
     /// 注意: /status 無応答のゾンビは映らない。停止用途には BridgeLauncher.stopMatching を使う
-    /// (HTTP でなく pid ファイル+プロセス引数の UDID 照合)。
+    /// (HTTP でなく pid ファイル+プロセス引数の UDID 照合)。**ゾンビ側は provision() の
+    /// startingByUDID(同じくプロセス引数照合)が拾って .adopt → 同ポートで建て直すので、
+    /// ここに映らないこと自体は穴ではない** —— 穴だったのは「映っているのに端末を特定できない」
+    /// ほう(下の resolveUDID)。
     func scanRunningBridges(catalog: [SimDeviceInfo]) async -> [UInt16: RunningBridge] {
         await withTaskGroup(of: (UInt16, RunningBridge)?.self,
                             returning: [UInt16: RunningBridge].self) { group in
@@ -734,7 +764,16 @@ public struct BridgeProvisioner {
                     }
                     // デバイス名 → UDID(同名の起動中シミュレータが複数なら特定不能 = nil)
                     let booted = catalog.filter { $0.booted && $0.name == status.device }
-                    let udid = booted.count == 1 ? booted[0].udid : nil
+                    // **引き当ての規則は BridgeDiscovery.resolveUDID の1箇所**(2026-08-14)。
+                    // ここは名前引きしか見ていなかったので、**udid を申告しない実機のブリッジは
+                    // 生きていても端末に紐付かず**、planBridge の sameDevice / stopStalePort に
+                    // 一度も当たらないまま2本目のランナーが立っていた(1台に2本立てると全滅する)。
+                    // status.udid を最優先にしたことで、同名 sim が複数 booted のときに
+                    // 名前引きが nil へ落ちていた劣化も同時に解消する
+                    let udid = BridgeDiscovery.resolveUDID(
+                        reported: status.udid,
+                        recorded: BridgeDeviceRecord.load(port: port, repoRoot: self.repoRoot),
+                        matchedByName: booted.count == 1 ? booted[0].udid : nil)
                     return (port, RunningBridge(udid: udid, name: status.device,
                                                 engine: status.engine ?? "xcuitest",
                                                 protocolVersion: status.protocolVersion,

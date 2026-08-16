@@ -15,7 +15,7 @@ struct ApiValidateProfile: AsyncParsableCommand {
         abstract: "Validate the profile JSON (apps/machines/runs) and print the result as JSON on stdout"
             + " (validation errors still exit 0; only operational errors such as file I/O exit non-zero; diagnostics on stderr only)")
 
-    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
+    @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
 
     @Option(help: "Kind to filter by: apps / machines / runs (defaults to all kinds)")

@@ -7,13 +7,25 @@ import XCTest
 
 final class FMBreakerTests: XCTestCase {
 
+    /// **状態ファイルをプロセスごとに隔離する**。既定のパスはホスト単位の共有ファイルで、
+    /// production ではそれが正しい(ワーカーのプロセスを跨いで落ちた事実を伝える)。
+    /// ここを差し替えないと `swift test --parallel` で他プロセスの `reset()` に消され、
+    /// トリップの判定が競合して落ちる(2026-08-10 実測。直列では通るので気づけなかった)
+    private var stateDir: URL!
+
     override func setUp() {
         super.setUp()
+        stateDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fm-breaker-\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: stateDir, withIntermediateDirectories: true)
+        FMBreaker.stateURLForTesting = stateDir.appendingPathComponent("fm-breaker.state")
         FMBreaker.reset()
     }
 
     override func tearDown() {
         FMBreaker.reset()
+        FMBreaker.stateURLForTesting = nil
+        try? FileManager.default.removeItem(at: stateDir)
         super.tearDown()
     }
 
@@ -49,12 +61,23 @@ final class FMBreakerTests: XCTestCase {
 
     /// **ホスト単位**であること(状態がファイルに載る)。ワーカーはプロセスが別なので、
     /// プロセス内カウンタだけだと 14 ワーカー分の無駄打ちが残る
-    func testTrippedStateIsHostWide() {
+    /// 落ちた事実は**メモリでなくファイル**に落ちる(別プロセスから見えることが要件)。
+    /// 実在を見るのは差し替え済みのパス —— 既定のパスを直接見ると、並列実行で他プロセスの
+    /// `reset()` と競合する。「どこに置くか」は下の I/O 抜きのテストが受け持つ
+    func testTrippedStateIsWrittenToAFile() {
         for _ in 0..<FMBreaker.threshold { FMBreaker.recordFailure() }
-        let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-        let state = base.appendingPathComponent("ftester/fm-breaker.state")
-        XCTAssertTrue(FileManager.default.fileExists(atPath: state.path),
+        XCTAssertTrue(FileManager.default.fileExists(atPath: FMBreaker.stateURLForTesting!.path),
                       "別プロセスから見えるようファイルに落とす")
+    }
+
+    /// 既定の置き場はホスト単位で1つ(ワーカーのプロセスを跨いで共有する要件)。
+    /// **書かずに形だけ**確かめる = 並列実行でも競合しない
+    func testDefaultStateURLIsHostWide() {
+        let url = FMBreaker.defaultStateURL
+        XCTAssertEqual(url.lastPathComponent, "fm-breaker.state")
+        XCTAssertEqual(url.deletingLastPathComponent().lastPathComponent, "ftester")
+        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+        XCTAssertTrue(url.path.hasPrefix(caches.path), url.path)
     }
 
     /// ゲートはブレーカが落ちていれば FM を呼ばせない

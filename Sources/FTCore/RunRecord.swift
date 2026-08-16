@@ -36,13 +36,19 @@ public struct RunMetaRecord: Codable, Sendable {
     /// run 前の blank 判定で修復不発により除外したワーカー label(guest reboot 発行済み)。
     /// 空/未発生は nil で省略。
     public var blankExclusions: [String]?
+    /// performanceMode の run で、実行中にレーン数が変わり所要時間が計測に使えないときだけ true。
+    /// false/nil は書かない(`MeasurementValidity.verdict` 参照。既定モードの run は常に nil)。
+    public var measurementInvalid: Bool?
+    /// measurementInvalid=true のときの理由(英語、人間可読)。measurementInvalid が無ければ nil。
+    public var measurementInvalidReasons: [String]?
 
     public init(schemaVersion: Int = RunRecordSchema.current, runID: String, project: String,
                 profile: String?, machine: String, trigger: String, startedAt: String,
                 finishedAt: String? = nil, total: Int? = nil, passed: Int? = nil,
                 failed: Int? = nil, degradedWorkers: [String]? = nil,
                 freezeRetries: [String]? = nil,
-                blankRepairs: [String]? = nil, blankExclusions: [String]? = nil) {
+                blankRepairs: [String]? = nil, blankExclusions: [String]? = nil,
+                measurementInvalid: Bool? = nil, measurementInvalidReasons: [String]? = nil) {
         self.schemaVersion = schemaVersion
         self.runID = runID
         self.project = project
@@ -58,6 +64,8 @@ public struct RunMetaRecord: Codable, Sendable {
         self.freezeRetries = freezeRetries
         self.blankRepairs = blankRepairs
         self.blankExclusions = blankExclusions
+        self.measurementInvalid = measurementInvalid
+        self.measurementInvalidReasons = measurementInvalidReasons
     }
 }
 
@@ -82,15 +90,27 @@ public struct StepCountsRecord: Codable, Sendable {
     public var skipped: Int
     public var healed: Int
     public var passedViaFallback: Int
+    /// verify のブロックにアサーションが無かった等の inconclusive(2026-08-03 追加)。失敗には数えない。
+    /// 後発の追加フィールドなので Optional(ScenarioEvent.durationMs と同じ理由。旧レコードの
+    /// 欠損キーが decode エラーにならず nil になる = 過去の run 結果を読み続けられる)
+    public var inconclusive: Int?
+    /// 掴んだ値だけで通り、デバイスを 1 度も見なかったステップ数(StepNote.heldValue)。
+    /// これらは durationMs=0 で記録されるため、**所要の内訳を読むときの母数から抜ける** ——
+    /// 高速化の効果を見るときに「当たり率が上がっただけ」を切り分けるための分母。Optional の理由は
+    /// inconclusive と同じ
+    public var viaHeldValue: Int?
 
     public init(total: Int = 0, passed: Int = 0, failed: Int = 0, skipped: Int = 0,
-                healed: Int = 0, passedViaFallback: Int = 0) {
+                healed: Int = 0, passedViaFallback: Int = 0, inconclusive: Int? = nil,
+                viaHeldValue: Int? = nil) {
         self.total = total
         self.passed = passed
         self.failed = failed
         self.skipped = skipped
         self.healed = healed
         self.passedViaFallback = passedViaFallback
+        self.inconclusive = inconclusive
+        self.viaHeldValue = viaHeldValue
     }
 }
 
@@ -136,9 +156,14 @@ public struct TimelineStepRecord: Codable, Sendable {
     /// ISO8601+ミリ秒(ScenarioEvent.at 由来)。取得できないステップでは nil
     public var at: String?
     public var durationMs: Int?
+    /// StepNote の rawValue(ScenarioEvent.notes 由来)。**run 横断の集計はここだけを見る**
+    /// (description の文言一致で数えない。StepNote の doc 参照)。注記が無いステップと、
+    /// notes を持たない旧レコードはどちらも nil
+    public var notes: [String]?
 
     public init(scene: Int? = nil, sceneTitle: String? = nil, index: Int, description: String,
-                status: String, at: String? = nil, durationMs: Int? = nil) {
+                status: String, at: String? = nil, durationMs: Int? = nil,
+                notes: [String]? = nil) {
         self.scene = scene
         self.sceneTitle = sceneTitle
         self.index = index
@@ -146,6 +171,7 @@ public struct TimelineStepRecord: Codable, Sendable {
         self.status = status
         self.at = at
         self.durationMs = durationMs
+        self.notes = notes
     }
 }
 
@@ -304,7 +330,11 @@ public struct ScenarioRecordBuilder {
         timeline.append(TimelineStepRecord(
             scene: event.scene, sceneTitle: event.sceneTitle ?? event.scene.flatMap { sceneTitles[$0] },
             index: event.index ?? 0, description: event.description ?? "",
-            status: status, at: event.at, durationMs: event.durationMs))
+            status: status, at: event.at, durationMs: event.durationMs,
+            notes: event.notes?.isEmpty == true ? nil : event.notes))
+        if event.notes?.contains(StepNote.heldValue.rawValue) == true {
+            stepCounts.viaHeldValue = (stepCounts.viaHeldValue ?? 0) + 1
+        }
         switch status {
         case "passed":
             stepCounts.passed += 1
@@ -314,6 +344,8 @@ public struct ScenarioRecordBuilder {
             stepCounts.healed += 1
         case "skipped":
             stepCounts.skipped += 1
+        case "inconclusive":
+            stepCounts.inconclusive = (stepCounts.inconclusive ?? 0) + 1
         case "failed":
             stepCounts.failed += 1
             failedSteps.append(FailedStepRecord(
@@ -344,7 +376,11 @@ public struct ScenarioRecordBuilder {
             durationMs: durationMs, scenes: scenes, steps: stepCounts,
             reportPath: Self.relativize(reportPath, packageRoot: packageRoot),
             failedSteps: passed ? nil : (failedSteps.isEmpty ? nil : failedSteps),
-            fixSuggestions: passed ? nil : (fixSuggestions.isEmpty ? nil : fixSuggestions),
+            // **修正提案は成否によらず残す**(fm と同じ理由)。強い提案が出るのは自己修復か
+            // ヒールキャッシュで**通ったとき**なので、passed で捨てると
+            // 「緑だがセレクタは壊れている」という一番知りたい状態の記録が1件も残らない
+            // (実測: 89,025 記録すべてで fixSuggestions が空だった)
+            fixSuggestions: fixSuggestions.isEmpty ? nil : fixSuggestions,
             errorLogs: passed ? nil : (errorLogs.isEmpty ? nil : errorLogs),
             // FM 実測は成否によらず残す(コスト分析は成功実行こそ必要)
             fm: fm,

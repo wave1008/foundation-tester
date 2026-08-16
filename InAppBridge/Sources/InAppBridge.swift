@@ -49,6 +49,13 @@ final class FTInAppBridge {
         }
         // AX ツリーを materialize させる(XCUITest 相当。未活性だと label/frame が取れない)
         DispatchQueue.main.async { FTActivateAccessibility() }
+        // キーボードの実矩形は通知でしか安定して取れない(TextEffects window は全画面、
+        // UIInputSetHostView のクラス名走査は iOS 27 で不発を実測)。ブリッジ起動前に
+        // 開いていたキーボードは最初の変化まで不明のまま = keyboardFrame なし
+        DispatchQueue.main.async { Self.observeKeyboardFrame() }
+        // 画面が進んでいるかの計器(/status の displayIdleSeconds)。凍結を「絵の一様さ」ではなく
+        // 直接測るための信号 —— DisplayHeartbeat の説明を参照
+        DisplayHeartbeat.shared.start()
         do {
             try server.start()
             self.server = server
@@ -75,13 +82,16 @@ final class FTInAppBridge {
         do {
             switch (req.method, req.path) {
             case ("GET", "/status"): return handleStatus()
-            case ("GET", "/snapshot"): return try handleSnapshot()
+            case ("GET", "/snapshot"): return try handleSnapshot(req)
             case ("POST", "/tap"): return try handleTap(req.body)
             case ("POST", "/type"): return try handleType(req.body)
             case ("POST", "/clear"): return try handleClear(req.body)
             case ("POST", "/pressEnter"): return try handlePressEnter()
             case ("POST", "/hidekeyboard"): return try handleHideKeyboard()
             case ("POST", "/swipe"): return try handleSwipe(req.body)
+            case ("POST", "/doubletap"): return try handleDoubleTap(req.body)
+            case ("POST", "/pinch"): return try handlePinch(req.body)
+            case ("POST", "/rotate"): return try handleRotate(req.body)
             case ("POST", "/press"): return try handlePress(req.body)
             case ("GET", "/screenshot"): return try handleScreenshot()
             case ("POST", "/session"):
@@ -90,11 +100,12 @@ final class FTInAppBridge {
                 // ホスト側がプロセス再起動+再注入で行う=lifecycle だけホスト責務)。
                 let req = try decode(LaunchRequest.self, req.body)
                 guard req.bundleID == Bundle.main.bundleIdentifier else {
-                    throw InAppError(409, "in-app ブリッジは注入先アプリ(\(Bundle.main.bundleIdentifier ?? "?"))専用です(要求: \(req.bundleID))")
+                    throw InAppError(409, "the in-app bridge serves only its host app (\(Bundle.main.bundleIdentifier ?? "?")) — requested: \(req.bundleID)")
                 }
                 return ok()
             case ("POST", "/terminate"):
-                return .error("/terminate は in-app では未対応(ホスト側でプロセス制御)", status: 501)
+                return .error("/terminate is not supported in-app (the host controls the process)", status: 501)
+            case ("POST", "/appstate"): return try handleAppState(req.body)
             default:
                 return .error("not found: \(req.method) \(req.path)", status: 404)
             }
@@ -128,8 +139,9 @@ final class FTInAppBridge {
                 protocolVersion: BridgeAPI.bridgeProtocolVersion,
                 applicationState: state,
                 uiFramework: self.uiFramework,
+                displayIdleSeconds: DisplayHeartbeat.shared.idleSeconds,
                 // 合成タッチは「時間・移動を伴うジェスチャ」を駆動できない。これは Compose 固有ではなく
-                // SwiftUI/UIKit でも同じ(2026-07-23 に Projects/E2E-iOS で実測)ので press は常に申告する。
+                // SwiftUI/UIKit でも同じ(2026-07-23 に TestProjects/E2E-iOS で実測)ので press は常に申告する。
                 //
                 // **swipe は申告しない**(2026-07-31 に取り下げ)。申告は「このアクションは一律不可」の
                 // 意味しか持たないが、swipe の可否は**目的と画面によって割れる**ようになった:
@@ -140,29 +152,53 @@ final class FTInAppBridge {
                 // (ホストは 501 を見て XCUITest へフォールバックする)
                 unsupportedActions: ["press"],
                 // 起動元の自己申告(InAppLauncher が SIMCTL_CHILD_FT_OWNER_REPO で注入)
-                ownerRepo: ProcessInfo.processInfo.environment["FT_OWNER_REPO"]))
+                ownerRepo: ProcessInfo.processInfo.environment["FT_OWNER_REPO"],
+                // 載っているシミュレータの UDID(H)。ホストが port ではなく udid で宛先を
+                // 指せるようにするための申告。実機には SIMULATOR_UDID が無いので nil
+                udid: ProcessInfo.processInfo.environment["SIMULATOR_UDID"],
+                orientation: self.keyWindow()?.windowScene?.interfaceOrientation.ftOrientation))
         }
     }
 
-    private func handleSnapshot() throws -> InAppHTTPServer.Response {
+    /// フォアグラウンドのアプリが bundleID と一致するか(DSL の appIs)。in-app ブリッジは
+    /// 自プロセスしか見えないため、判定は「要求された bundleID が自分自身で、かつ active か」
+    /// だけで足りる: 自分が active なら他アプリは前面にいられない。別アプリを問われた場合は、
+    /// ブリッジが応答できている(=自分は少なくとも起動している)こと自体からは前面/背面を
+    /// 判定できないので false を返す(前面なのは高々1つ、それが自分でない以上 false で正しい)
+    private func handleAppState(_ body: Data) throws -> InAppHTTPServer.Response {
+        let req = try decode(AppStateRequest.self, body)
+        return mainSync {
+            let isSelf = req.bundleID == Bundle.main.bundleIdentifier
+            let active = UIApplication.shared.applicationState == .active
+            return .json(AppStateResponse(foreground: isSelf && active))
+        }
+    }
+
+    private func handleSnapshot(_ req: InAppHTTPServer.Request) throws -> InAppHTTPServer.Response {
+        // `max=<n>`: 呼び手が1回だけ引き上げる要素上限(解釈は resolvedSnapshotElementLimit の
+        // 1箇所 = ホスト・3ブリッジで同じ規則)。DOM マージ側の上限にも同じ値を使う
+        let limit = BridgeAPI.resolvedSnapshotElementLimit(
+            req.queryValue("max").flatMap { Int($0) })
         let base: InAppSnapshot.Result = try mainSync {
             guard let window = self.keyWindow() else {
-                throw InAppError(409, "キーウィンドウがありません")
+                throw InAppError(409, "no key window")
             }
             // Flutter は engine.ensureSemanticsEnabled を呼ばないと SemanticsObject が生成されず
             // 0 要素になる(_AXSSetAutomationEnabled は Flutter engine に効かない)。冪等・非 Flutter は no-op。
             // 起動直後は FlutterViewController が未生成のことがあるため boot 時でなく snapshot ごとに呼ぶ
             FTEnsureFlutterSemantics()
-            return InAppSnapshot.capture(window: window)
+            return InAppSnapshot.capture(window: window, max: limit)
         }
         // **キーボードはキーウィンドウの外**(UITextEffectsWindow)に載るため、AX ツリー走査
-        // (InAppSnapshot の sawKeyboard)では見つからない。全 window から可視の
-        // TextEffects window を探すのが in-app での唯一の判定経路(2026-07-30 実測)
-        let keyboardShown: Bool = mainSync { Self.keyboardWindowVisible() }
+        // (InAppSnapshot の sawKeyboard)では見つからない。表示中かと実矩形を同一時点で読むため
+        // 1回の mainSync にまとめる(2回に分けると間でキーボードが閉じ、不整合な組が起こり得る)
+        let (keyboardShown, keyboardWindowFrame): (Bool, CGRect?) = mainSync {
+            (Self.keyboardIsVisible(), Self.keyboardFrameIfVisible())
+        }
 
         // **mainSync の外で行う**: WKWebView の DOM 読みは evaluateJavaScript の完了を待つが、
         // その完了はメインキューへ配送されるため、メインを保持したまま待つとデッドロックする
-        let merged = mergeWebViewDOM(into: base)
+        let merged = mergeWebViewDOM(into: base, max: limit)
 
         mainSync {
             self.frames = merged.frames
@@ -176,21 +212,61 @@ final class FTInAppBridge {
             truncatedCount: merged.truncated,
             note: merged.note,
             webViewPath: merged.webViewPath,
-            keyboardShown: keyboardShown))
+            // in-app は window 一覧から実際に「非表示」を確認できる唯一のエンジン
+            // (XCUITest/Android は不明を false 相当で返すしかない)。false を nil に潰すと
+            // keyboardIsNotShown() が unknown 扱いになりタイムアウトする(実害・再発させない)
+            keyboardShown: keyboardShown,
+            keyboardFrame: keyboardWindowFrame.map {
+                FTRect(x: $0.origin.x, y: $0.origin.y, width: $0.width, height: $0.height)
+            },
+            truncatedTiers: merged.truncatedTiers.isEmpty ? nil : merged.truncatedTiers,
+            bulkExemptCount: merged.bulkExempt > 0 ? merged.bulkExempt : nil))
+    }
+
+    /// keyboardWillChangeFrame の最新値(画面座標)。nil = 非表示または不明。
+    /// メインスレッドでのみ読み書きする(observeKeyboardFrame も snapshot も mainSync 内)
+    private static var observedKeyboardFrame: CGRect?
+    private static var keyboardObserversInstalled = false
+
+    private static func observeKeyboardFrame() {
+        guard !keyboardObserversInstalled else { return }
+        keyboardObserversInstalled = true
+        let center = NotificationCenter.default
+        center.addObserver(forName: UIResponder.keyboardWillChangeFrameNotification,
+                           object: nil, queue: .main) { note in
+            guard let frame = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey]
+                as? NSValue)?.cgRectValue else { return }
+            // 閉じるときは end frame が画面外(minY >= 画面下端)で来る
+            let screen = UIScreen.main.bounds
+            observedKeyboardFrame = frame.minY < screen.maxY - 1 ? frame : nil
+        }
+        center.addObserver(forName: UIResponder.keyboardWillHideNotification,
+                           object: nil, queue: .main) { _ in
+            observedKeyboardFrame = nil
+        }
     }
 
     /// ソフトキーボードが表示中か。**キーボードは UITextEffectsWindow(キーウィンドウとは別)に
-    /// 載る**ので window 一覧から探す。**存在だけでは判定にならない**(閉じても window は残る)ため
-    /// 可視かつ画面内に張り出しているかで見る
-    private static func keyboardWindowVisible() -> Bool {
+    /// 載る**ので window 一覧から探す。閉じた直後は window が画面外(y >= 画面下端)へ退避する
+    /// だけで残るため、可視かつ画面内に張り出しているかで見る
+    private static func keyboardIsVisible() -> Bool {
         for window in UIApplication.shared.windows
         where NSStringFromClass(type(of: window)).contains("TextEffects") {
             guard !window.isHidden, window.alpha > 0.01 else { continue }
-            // 閉じた直後は window が画面外(y >= 画面下端)へ退避するだけで残る
-            let screen = window.screen.bounds
-            if window.frame.minY < screen.maxY - 1 { return true }
+            if window.frame.minY < window.screen.bounds.maxY - 1 { return true }
         }
         return false
+    }
+
+    /// 可視なソフトキーボードの実矩形(画面座標)。通知の最新値から採る ——
+    /// **TextEffects window の frame をそのまま使ってはいけない**(開いている間も全画面。
+    /// 実測 2026-08-08: (0,0 402x874) が返り、画面上部の要素まで「キーボード下」と誤警告した。
+    /// 配下の UIInputSetHostView をクラス名で探す案も iOS 27 で不発を実測)。
+    /// 通知値が無ければ frame は申告しない(誤検知側に倒さない。keyboardShown だけ true になる)
+    private static func keyboardFrameIfVisible() -> CGRect? {
+        guard keyboardIsVisible(), let observed = observedKeyboardFrame,
+              observed.height >= 1 else { return nil }
+        return observed
     }
 
     /// 自分自身から window までのクラス名(interop 判定用。UIKit 参照だがメイン外でも
@@ -211,8 +287,15 @@ final class FTInAppBridge {
         var nodes: [Int: NSObject]
         var truncated: Int
         var note: String?
-        /// BridgeDTO の SnapshotResponse.webViewPath。DOM を読めたときだけ "dom"
+        /// BridgeDTO の SnapshotResponse.webViewPath。"dom" = uikit ホスト等で DOM を読めた /
+        /// "dom-interop" = DOM は読めたが interop(Compose/Flutter)配下 = 操作はホスト側
+        /// (WebViewDelegatingDriver)が XCUITest 座標へ回す。DOM 自体が読めなければ nil
         var webViewPath: String?
+        /// 捨てた候補の内訳(SnapshotResponse.truncatedTiers)。ネイティブ1段目と
+        /// DOM マージ2段目の両方を合算する
+        var truncatedTiers: [String: Int] = [:]
+        /// 要素上限の外で送った bulk の件数(SnapshotResponse.bulkExemptCount)
+        var bulkExempt: Int = 0
     }
 
     /// WebView コンテナの**直後**に DOM 由来の要素を差し込み、ref を採番し直す
@@ -222,29 +305,33 @@ final class FTInAppBridge {
     /// それがそのまま「DOM の矩形へ合成タッチを打つ」動作になる(DOM 側で click させない理由は
     /// InAppWebViewDOM の冒頭コメント参照)。
     ///
-    /// DOM が読めなかった WebView は素通し = 従来どおりコンテナだけが出る。
-    /// ホスト側(WebViewDelegatingDriver)はそれを見て XCUITest へ委譲する。
-    private func mergeWebViewDOM(into base: InAppSnapshot.Result) -> MergedSnapshot {
-        // interop 配下かどうかの選別はコンテナごとに下のループで行う(アプリ単位にしない理由も
-        // そちらのコメント参照)。ここでは全コンテナを候補にするだけ
+    /// interop(Compose/Flutter)配下でも DOM は読む(読み取りは届く、操作だけ interop に
+    /// 横取りされる)。操作は合成タッチでは届かないため、interop 配下が1つでも
+    /// あれば webViewPath を "dom-interop" と申告する — **ホスト(WebViewDelegatingDriver)が
+    /// これを見て ref を座標へ解決し XCUITest の実タッチへ回す**(ここでは判定だけ、実際の
+    /// ルーティングはブリッジの責務外)。DOM が全く読めなかった WebView は素通し = 従来どおり
+    /// コンテナだけが出て、ホストは画面ごと XCUITest へ委譲する。
+    private func mergeWebViewDOM(into base: InAppSnapshot.Result, max limit: Int)
+        -> MergedSnapshot {
         let containers = base.elements.filter { $0.type == "webView" }
         guard !containers.isEmpty else {
             return MergedSnapshot(elements: base.elements, frames: base.frames,
                                   nodes: base.nodes, truncated: base.truncated, note: nil,
-                                  webViewPath: nil)
+                                  webViewPath: nil, truncatedTiers: base.truncatedTiers,
+                                  bulkExempt: base.bulkExempt)
         }
         let screen = CGRect(x: base.screen.x, y: base.screen.y,
                             width: base.screen.width, height: base.screen.height)
         var domByRef: [Int: InAppWebViewDOM.Captured] = [:]
         var note: String?
+        var anyInterop = false
         for container in containers {
             guard let webView = base.nodes[container.ref] as? WKWebView,
-                  // interop(Compose / Flutter)配下の WebView は DOM を読んでも操作が届かない
-                  // ため読まない = 従来どおり画面ごと XCUITest へ委譲される。
-                  // **アプリ単位ではなく WebView 単位で見る**(isInteropHosted のコメント参照)
-                  !WebViewDOM.isInteropHosted(ancestorClassNames: Self.ancestorClassNames(of: webView)),
                   let captured = InAppWebViewDOM.capture(webView: webView, screen: screen)
             else { continue }
+            if WebViewDOM.isInteropHosted(ancestorClassNames: Self.ancestorClassNames(of: webView)) {
+                anyInterop = true
+            }
             domByRef[container.ref] = captured
             if note == nil { note = captured.note }
         }
@@ -252,33 +339,49 @@ final class FTInAppBridge {
             // 読めなかった = ホスト側が XCUITest へ委譲する。経路は委譲した側が名乗る
             return MergedSnapshot(elements: base.elements, frames: base.frames,
                                   nodes: base.nodes, truncated: base.truncated, note: nil,
-                                  webViewPath: nil)
+                                  webViewPath: nil, truncatedTiers: base.truncatedTiers,
+                                  bulkExempt: base.bulkExempt)
         }
 
+        // **先着順で切らない**(2026-08-08 実測: 密グリッドページで装飾セルが残り、送信・入力欄・
+        // リンクが全部押し出された)。捨てる順は BridgeSnapshotThinning.mergedSlots に1箇所
+        // (ネイティブ1段目の間引きと同じ優先度規則)
+        let domElements = domByRef.mapValues(\.elements)
+        let (kept, dropped) = BridgeSnapshotThinning.mergedSlots(
+            base: base.elements, dom: domElements, max: limit)
+        // 1段目(ネイティブ)と2段目(DOM マージ)は別々に捨てるので**両方を足す**
+        var truncatedTiers = base.truncatedTiers
+        if dropped > 0 {
+            for (key, count) in BridgeSnapshotThinning.mergedDroppedByTier(
+                base: base.elements, dom: domElements, max: limit) {
+                truncatedTiers[key, default: 0] += count
+            }
+        }
         var elements: [ElementInfo] = []
         var frames: [Int: CGRect] = [:]
         var nodes: [Int: NSObject] = [:]
-        var truncated = base.truncated
-        func append(_ info: ElementInfo, frame: CGRect?, node: NSObject?) {
-            guard elements.count < BridgeAPI.maxSnapshotElements else {
-                truncated += 1
-                return
+        for slot in kept {
+            var copy: ElementInfo
+            var frame: CGRect?
+            var node: NSObject?
+            switch slot {
+            case .base(let i):
+                copy = base.elements[i]
+                frame = base.frames[copy.ref]
+                node = base.nodes[copy.ref]
+            case .dom(let container, let index):
+                copy = domByRef[container]!.elements[index]
+                frame = domByRef[container]!.frames[index]
             }
-            var copy = info
             copy.ref = elements.count + 1
             elements.append(copy)
             if let frame { frames[copy.ref] = frame }
             if let node { nodes[copy.ref] = node }
         }
-        for info in base.elements {
-            append(info, frame: base.frames[info.ref], node: base.nodes[info.ref])
-            guard let dom = domByRef[info.ref] else { continue }
-            for (index, element) in dom.elements.enumerated() {
-                append(element, frame: dom.frames[index], node: nil)
-            }
-        }
         return MergedSnapshot(elements: elements, frames: frames, nodes: nodes,
-                              truncated: truncated, note: note, webViewPath: "dom")
+                              truncated: base.truncated + dropped, note: note,
+                              webViewPath: anyInterop ? "dom-interop" : "dom",
+                              truncatedTiers: truncatedTiers, bulkExempt: base.bulkExempt)
     }
 
     private func handleTap(_ body: Data) throws -> InAppHTTPServer.Response {
@@ -312,6 +415,10 @@ final class FTInAppBridge {
         let sem = DispatchSemaphore(value: 0)
         var thrown: Error?
         var note: String?
+        // 取り直しで判明した現在 frame の中心。activate が不発でも合成タッチはこちらを使う
+        // (stored frame はコールドラウンチ直後のレイアウト確定を跨ぐと古く、RN で1要素ぶん
+        // 上のナビを叩いた実害。2026-08-08)
+        var freshTapPoint: CGPoint?
 
         func finish(_ window: UIWindow) {
             InAppSettle.waitOnMain { converged in
@@ -326,7 +433,7 @@ final class FTInAppBridge {
             // (hybrid の XCUITest フォールバックは springboard 参照でアプリ要素には効かない)。
             note = "activate 不発 → 合成タッチ(要素が反応しない場合は testTag 付与か engine=xcuitest を検討)"
             do {
-                let p = try self.resolvePoint(ref: ref, x: req.x, y: req.y)
+                let p = try freshTapPoint ?? self.resolvePoint(ref: ref, x: req.x, y: req.y)
                 FTSynthTap(window, p)
             } catch {
                 thrown = error
@@ -336,11 +443,20 @@ final class FTInAppBridge {
             finish(window)
         }
         func retry(_ remaining: Int, stale: NSObject, window: UIWindow) {
-            if let fresh = self.refreshedNode(matching: stale, ref: ref, window: window),
-               fresh.accessibilityActivate() {
-                note = "activate 不発 → 要素を取り直して再実行"
-                finish(window)
-                return
+            if let fresh = self.refreshedNode(matching: stale, ref: ref, window: window) {
+                // 現在 frame を使うのは**近距離の移動だけ**(コールドラウンチ直後のレイアウト確定
+                // = 実測 ~60pt)。id 一致は距離無制限なので、画面遷移後の同 id 要素へ飛ぶと
+                // ホストの遮蔽・安全判定が別画面の木に対して無効になる。遠距離は従来どおり
+                // stored frame へ落とす
+                if let orig = self.frames[ref],
+                   abs(fresh.frame.midX - orig.midX) + abs(fresh.frame.midY - orig.midY) <= 120 {
+                    freshTapPoint = CGPoint(x: fresh.frame.midX, y: fresh.frame.midY)
+                }
+                if fresh.node.accessibilityActivate() {
+                    note = "activate 不発 → 要素を取り直して再実行"
+                    finish(window)
+                    return
+                }
             }
             guard remaining > 1 else {
                 synthFallback(window)
@@ -354,7 +470,7 @@ final class FTInAppBridge {
 
         DispatchQueue.main.async {
             guard let window = self.keyWindow() else {
-                thrown = InAppError(409, "キーウィンドウがありません")
+                thrown = InAppError(409, "no key window")
                 sem.signal()
                 return
             }
@@ -381,25 +497,33 @@ final class FTInAppBridge {
 
     /// 不発だった保持ノードの代わりを、取り直したツリーから探す(id 一致 → 無 id なら frame+label 一致)。
     /// 不発ノードでも identifier/label プロパティは読める(参照は生きている)のでキーに使う。
-    /// **self.nodes/frames は更新しない** — この tap リクエスト内の座標解決は元の snapshot が前提のため
-    private func refreshedNode(matching stale: NSObject, ref: Int, window: UIWindow) -> NSObject? {
+    /// **self.nodes/frames は更新しない** — この tap リクエスト内の座標解決は元の snapshot が前提のため。
+    /// frame は取り直したツリーの現在値を返す(activate 不発時の合成タッチがこれを使う)
+    private func refreshedNode(matching stale: NSObject, ref: Int, window: UIWindow)
+        -> (node: NSObject, frame: CGRect)? {
         guard let originalFrame = frames[ref] else { return nil }
         let fresh = InAppSnapshot.capture(window: window)
         func distance(_ frame: FTRect) -> CGFloat {
             abs(frame.x - originalFrame.origin.x) + abs(frame.y - originalFrame.origin.y)
         }
+        func pack(_ element: ElementInfo) -> (node: NSObject, frame: CGRect)? {
+            fresh.nodes[element.ref].map {
+                ($0, CGRect(x: element.frame.x, y: element.frame.y,
+                            width: element.frame.width, height: element.frame.height))
+            }
+        }
         if let id = FTAccessibilityIdentifier(stale), !id.isEmpty {
             // 同 id が複数あるときだけ frame で近い方に絞る(通常 testTag は一意)
             let best = fresh.elements.filter { $0.identifier == id }
                 .min { distance($0.frame) < distance($1.frame) }
-            return best.flatMap { fresh.nodes[$0.ref] }
+            return best.flatMap { pack($0) }
         }
         // id 無しは frame(±2pt)と label の一致で同定する
         let label = stale.accessibilityLabel
         let candidate = fresh.elements.first {
             $0.label == label && distance($0.frame) <= 2
         }
-        return candidate.flatMap { fresh.nodes[$0.ref] }
+        return candidate.flatMap { pack($0) }
     }
 
     /// point を含む最小フレームの snapshot 要素を accessibilityActivate する(座標→要素解決)。
@@ -441,12 +565,13 @@ final class FTInAppBridge {
         guard inserted else {
             // hybrid の XCUITest フォールバック(SystemUIDriver)は springboard 参照のシステム UI 専用で
             // アプリの入力欄を解決できない(2026-07-20 実証)。ここで hybrid を案内しないこと。
-            throw InAppError(409, "フォーカスされた入力欄がありません。対象を先に tap してください。"
-                + "tap 済みでも発生する場合、入力欄が UIKit 非依存(Compose Multiplatform/Flutter 等)の"
-                + "アプリは inapp では first responder を張れず type できません。"
-                + "engine=xcuitest の実行プロファイル(iosInappEngine: false)で実行してください。"
-                + "入力欄が AX ツリーに現れない(accessibilityIdentifier/testTag 未設定)場合は"
-                + "アプリ側で testTag を付けてください。診断: \(FTFirstResponderDiagnostics())")
+            throw InAppError(409, "no focused input field — tap the target field first."
+                + " If it still fails on a focused field, the input is not UIKit-backed"
+                + " (Compose Multiplatform / Flutter) and the in-app engine cannot attach a"
+                + " first responder to type into it: run with an engine=xcuitest run profile"
+                + " (iosInappEngine: false). If the field never appears in the AX tree"
+                + " (no accessibilityIdentifier/testTag), add a testTag in the app."
+                + " Diagnostics: \(FTFirstResponderDiagnostics())")
         }
         return ok()
     }
@@ -462,12 +587,13 @@ final class FTInAppBridge {
         var cleared = false
         try performWithSettle { _ in cleared = FTClearTextInFirstResponder() }
         guard cleared else {
-            throw InAppError(409, "フォーカスされた入力欄がありません。対象を先に tap してください。"
-                + "tap 済みでも発生する場合、入力欄が UIKit 非依存(Compose Multiplatform/Flutter 等)の"
-                + "アプリは inapp では first responder を張れずクリアできません。"
-                + "engine=xcuitest の実行プロファイル(iosInappEngine: false)で実行してください。"
-                + "入力欄が AX ツリーに現れない(accessibilityIdentifier/testTag 未設定)場合は"
-                + "アプリ側で testTag を付けてください。診断: \(FTFirstResponderDiagnostics())")
+            throw InAppError(409, "no focused input field — tap the target field first."
+                + " If it still fails on a focused field, the input is not UIKit-backed"
+                + " (Compose Multiplatform / Flutter) and the in-app engine cannot attach a"
+                + " first responder to clear it: run with an engine=xcuitest run profile"
+                + " (iosInappEngine: false). If the field never appears in the AX tree"
+                + " (no accessibilityIdentifier/testTag), add a testTag in the app."
+                + " Diagnostics: \(FTFirstResponderDiagnostics())")
         }
         return ok()
     }
@@ -487,11 +613,16 @@ final class FTInAppBridge {
             // (Compose = insertText("\n") / UITextField = Return の再現 / Flutter = engine への
             // アクション配送)。ここへ来るのはフォーカスが無いか、Flutter の私有 API が
             // 版差で欠けた場合。xcuitest 経路は in-app が立てたフォーカスに届かないため、
-            // hybrid では救済されない(engine=xcuitest 単独プロファイルを案内する)
-            throw InAppError(409, "in-app エンジンで Enter を発火できませんでした。"
-                + "フォーカスされた入力欄が無いか、対応していない入力実装です。"
-                + "engine=xcuitest の実行プロファイル(iosInappEngine: false)で実行してください。"
-                + "診断: \(FTFirstResponderDiagnostics())")
+            // hybrid では救済されない(engine=xcuitest 単独プロファイルを案内する)。
+            // **エンジン切替を最初に勧めない**(2026-08-08 の監査): 実際に多いのは
+            // 「フォーカスが無いだけ」で、それはどのエンジンでも Enter が意味を持たない ——
+            // 先に「欄を tap/type しろ」を言い、切替は「フォーカス済みでも失敗する」場合に限る
+            throw InAppError(409, "could not fire Enter via the in-app engine."
+                + " Most likely no input field is focused — tap or type into the field first"
+                + " (Enter needs focus on every engine, so switching engines will not fix that)."
+                + " If a field is focused and this still fails, the input implementation is"
+                + " unsupported here: run with an engine=xcuitest run profile"
+                + " (iosInappEngine: false). Diagnostics: \(FTFirstResponderDiagnostics())")
         }
         return ok()
     }
@@ -500,11 +631,19 @@ final class FTInAppBridge {
     /// 直接送っても nil ターゲットの sendAction でも閉じず(Compose の受け口が自前でフォーカスを
     /// 保持する)、xcuitest の Esc も不発。**嘘の成功を返さない**ため 501 を返す
     private func handleHideKeyboard() throws -> InAppHTTPServer.Response {
-        .error("hideKeyboard は iOS では未対応(Android のみ)。閉じたい場合は pressEnter を使う", status: 501)
+        .error("hideKeyboard is Android-only (iOS cannot close the soft keyboard — use pressEnter)", status: 501)
     }
 
     private func handleSwipe(_ body: Data) throws -> InAppHTTPServer.Response {
         let req = try decode(SwipeRequest.self, body)
+        // **スクロール領域の指定(SwipeRequest.path)は「座標を撃つ指示」ではなく
+        // 「どこを・どれだけ動かすか」の指示として読む**。合成タッチの drag は受理されないので
+        // 座標そのものは注入できないが、
+        //   - 始点(fromX/fromY)は**必ず対象領域の中**にある(ホストがマージンを内側に取るため)
+        //     → 動かすスクロールビュー/AX 要素を選ぶのに使える
+        //   - 始点と終点の差 = ホストが意図した移動量 → contentOffset をその量だけ動かせる
+        // これで in-app でもマージン指定が効く(ページ送り 0.85 固定ではなくなる)。
+        // 座標を無視して画面全体を動かしてはいけない —— **指定と違う領域が黙って動く**
         // Compose / Flutter は自前描画で UIScrollView を持たない(Compose の画面には**本体の
         // スクロールとは無関係な UIScrollView が存在する**ので、contentOffset を動かしても
         // 見た目は変わらず黙った空振りになる)。合成タッチの drag も受理されない
@@ -526,13 +665,24 @@ final class FTInAppBridge {
         // なる(2026-08-01 実測 scrollTo 9.5s / scrollToTop 14.2s。同じ画面が SwiftUI ホスト
         // では 1.1s / 1.5s)。
         if ["compose", "flutter"].contains(uiFramework), req.scroll == true {
+            // **領域指定つきは受けない**(2026-08-02 実測で確定)。自前描画のフレームワークでは
+            // hitTest も AX ツリーも「画面のどこか」までしか絞れず、指定領域の外を指しても
+            // 画面本体のスクロールが受理してしまう —— E2E-Flutter で「固定ヘッダを指定したのに
+            // リストが動く」を実際に踏んだ。**黙って別の領域を動かすより 501 で XCUITest へ回す**
+            // (あちらは座標を実際に撃てるので領域どおりに動く)。
+            // UIKit/SwiftUI 側(下の contentOffset 経路)は矩形で対象を選べるので受ける
+            if req.path != nil {
+                throw InAppError(501, "the in-app engine cannot confine a scroll to a region on"
+                    + " \(uiFramework) (self-rendered: neither hitTest nor AX can narrow the"
+                    + " area). hybrid falls back to XCUITest")
+            }
             var scrolled = false
             try performWithSettle { window in
-                if let webScroll = Self.centeredWebContentScrollView(in: window) {
+                if let webScroll = Self.webContentScrollView(in: window, at: req.path) {
                     // 端に達しているだけなら no-op で 200(UIKit 経路と同じ理由。501 を返すと
                     // XCUITest の実スワイプへ切り替わり、以降のジェスチャがラッチで全部 XCUITest 化する)
                     if Self.hasRoom(webScroll, req.direction) {
-                        Self.scrollByPage(webScroll, direction: req.direction)
+                        Self.scroll(webScroll, direction: req.direction, path: req.path)
                     }
                     scrolled = true
                     return
@@ -542,18 +692,18 @@ final class FTInAppBridge {
             guard scrolled else {
                 // 501 = このエンジンでは未対応(/terminate と同じ慣習)。409(Conflict)はキーウィンドウ
                 // 不在等の一時的競合と同じコードのため、フォールバック判定に使うと取り違える。
-                throw InAppError(501, "この画面には in-app エンジンで動かせるスクロールがありません"
-                    + "(UIAccessibility の scroll を受理する要素が無く、合成タッチの drag も"
-                    + "受理されません)。hybrid なら XCUITest へフォールバックします")
+                throw InAppError(501, "nothing on this screen scrolls via the in-app engine"
+                    + " (no element accepts the UIAccessibility scroll action, and synthetic"
+                    + " drags are not accepted). hybrid falls back to XCUITest")
             }
             return ok()
         }
         if ["compose", "flutter"].contains(uiFramework) {
             // ジェスチャ目的の swipe。自前描画で合成タッチの drag を受理しないので従来どおり
             // XCUITest へ回す(上の AX 経路はスクロールしか代行できない)
-            throw InAppError(501, "\(uiFramework) では in-app エンジンのジェスチャ swipe が効きません"
-                + "(UIScrollView を介さない自前描画で、合成タッチの drag も受理されない)。"
-                + "hybrid なら XCUITest へフォールバックします")
+            throw InAppError(501, "gesture swipes do not work via the in-app engine on \(uiFramework)"
+                + " (self-rendered without UIScrollView, and synthetic drags are not accepted)."
+                + " hybrid falls back to XCUITest")
         }
         try performWithSettle { window in
             // UIKit/SwiftUI のスクロールは合成タッチでは駆動できない(ジェスチャ認識器が受理しない)ため、
@@ -563,19 +713,19 @@ final class FTInAppBridge {
             // 「スクロールビューが無い」と「あるが端に達した」は**区別する**:
             // - 無い = ジェスチャ検出用パッド等。FTSynthSwipe を撃っても DragGesture /
             //   UIPanGestureRecognizer は受理されず 200 で黙って空振りするため、501 で申告して
-            //   ホストに XCUITest へ回させる(2026-07-23 に Projects/E2E-iOS で実測)
+            //   ホストに XCUITest へ回させる(2026-07-23 に TestProjects/E2E-iOS で実測)
             // - 端に達した = scrollTo の探索が終端に来ただけの**正常な状態**。ここで 501 を返すと
             //   XCUITest の実スワイプ(バウンス)へ切り替わり、さらにラッチで以降のジェスチャ全部が
             //   XCUITest 化して、下端でのタップが不安定になる(実測: scrollTo 直後の行タップが
             //   空振りする flake)。従来どおり無害な no-op にする(次の snapshot が解決を判定する)
             let scrollViews = Self.visibleScrollViews(in: window)
             guard !scrollViews.isEmpty else {
-                throw InAppError(501, "この画面には in-app エンジンで動かせるスクロールビューがありません"
-                    + "(合成タッチの drag はジェスチャ認識器に受理されません)。"
-                    + "hybrid なら XCUITest へフォールバックします")
+                throw InAppError(501, "no scroll view on this screen can be driven by the in-app engine"
+                    + " (synthetic drags are not accepted by gesture recognizers)."
+                    + " hybrid falls back to XCUITest")
             }
-            if let scrollView = Self.largestWithRoom(scrollViews, direction: req.direction) {
-                Self.scrollByPage(scrollView, direction: req.direction)
+            if let scrollView = Self.target(scrollViews, direction: req.direction, path: req.path) {
+                Self.scroll(scrollView, direction: req.direction, path: req.path)
             }
             // 余地なし = 端。no-op で 200 を返す
         }
@@ -639,6 +789,17 @@ final class FTInAppBridge {
 
     /// スワイプ1回 = 可視領域の ~85% 分だけ contentOffset を動かす(実機スワイプの体感に合わせる)。
     /// 指の向き=コンテンツと逆(上スワイプ=下方向へスクロール=offset.y 増)。範囲外はクランプ。
+    /// 1回ぶんのスクロール。**領域指定(path)があればホストが意図した移動量をそのまま使う**
+    /// (= マージン指定が in-app でも効く)。無ければ従来どおりビューポートの 85%。
+    /// 移動の向きは指の向きと逆
+    private static func scroll(_ sv: UIScrollView, direction: FTSwipeDirection, path: FTSwipePath?) {
+        guard let path else { scrollByPage(sv, direction: direction); return }
+        var offset = sv.contentOffset
+        offset.x += path.fromX - path.toX
+        offset.y += path.fromY - path.toY
+        clampAndApply(sv, offset)
+    }
+
     private static func scrollByPage(_ sv: UIScrollView, direction: FTSwipeDirection) {
         let inset = sv.adjustedContentInset
         let stepY = (sv.bounds.height - inset.top - inset.bottom) * 0.85
@@ -650,11 +811,18 @@ final class FTInAppBridge {
         case .left:  offset.x += stepX
         case .right: offset.x -= stepX
         }
+        clampAndApply(sv, offset)
+    }
+
+    /// コンテンツ範囲へ丸めてから適用する(はみ出すとバウンスして戻る = 動かないのと同じ)
+    private static func clampAndApply(_ sv: UIScrollView, _ offset: CGPoint) {
+        let inset = sv.adjustedContentInset
         let minY = -inset.top, maxY = max(-inset.top, sv.contentSize.height + inset.bottom - sv.bounds.height)
         let minX = -inset.left, maxX = max(-inset.left, sv.contentSize.width + inset.right - sv.bounds.width)
-        offset.y = min(max(offset.y, minY), maxY)
-        offset.x = min(max(offset.x, minX), maxX)
-        sv.setContentOffset(offset, animated: false)
+        var clamped = offset
+        clamped.y = min(max(offset.y, minY), maxY)
+        clamped.x = min(max(offset.x, minX), maxX)
+        sv.setContentOffset(clamped, animated: false)
     }
 
     private static func visibleScrollViews(in window: UIWindow) -> [UIScrollView] {
@@ -669,14 +837,16 @@ final class FTInAppBridge {
         return found
     }
 
-    /// **画面中央を覆う WKWebView 自身のスクロールビュー**(WKScrollView)。無ければ nil。
+    /// **指定点(領域指定が無ければ画面中央)を覆う WKWebView 自身のスクロールビュー**
+    /// (WKScrollView)。無ければ nil。
     ///
-    /// 中央で絞るのは、小さな埋め込み WebView のために画面本体のスクロールを奪わないため
+    /// 点で絞るのは、小さな埋め込み WebView のために画面本体のスクロールを奪わないため
     /// (XCUITest の実スワイプが駆動するのも画面中央の下にあるものだけ = 従来と同じ対象に揃う)。
     /// 面積で選ぶ判定は使えない: Compose の画面には本体と無関係な UIScrollView が居るので、
     /// 「WebView 由来か」を先に効かせる必要がある。
-    private static func centeredWebContentScrollView(in window: UIWindow) -> UIScrollView? {
-        let center = CGPoint(x: window.bounds.midX, y: window.bounds.midY)
+    private static func webContentScrollView(in window: UIWindow, at path: FTSwipePath?) -> UIScrollView? {
+        let center = path.map { CGPoint(x: $0.fromX, y: $0.fromY) }
+            ?? CGPoint(x: window.bounds.midX, y: window.bounds.midY)
         var best: UIScrollView?
         var bestArea: CGFloat = 0
         for sv in visibleScrollViews(in: window) where sv.superview is WKWebView {
@@ -686,6 +856,26 @@ final class FTInAppBridge {
             if area > bestArea { best = sv; bestArea = area }
         }
         return best
+    }
+
+    /// 動かすスクロールビューを選ぶ。**領域指定(path)があれば始点を含むものを優先する** ——
+    /// 始点はホストが対象領域の内側に取っているので、これで「指定と違う領域が動く」ことがなくなる。
+    /// 入れ子(リストの中の横カルーセル等)では**内側 = 面積が小さい方**を採る:
+    /// 指定された領域そのものを動かしたいのであって、その親ではない。
+    /// 含むものが無ければ従来どおり面積最大へ落ちる(領域が UIScrollView でない画面もあるため)
+    private static func target(_ scrollViews: [UIScrollView], direction: FTSwipeDirection,
+                               path: FTSwipePath?) -> UIScrollView? {
+        guard let path else { return largestWithRoom(scrollViews, direction: direction) }
+        let point = CGPoint(x: path.fromX, y: path.fromY)
+        let containing = scrollViews.filter { sv in
+            guard hasRoom(sv, direction), let window = sv.window else { return false }
+            return sv.convert(sv.bounds, to: window).contains(point)
+        }
+        if let innermost = containing.min(by: { $0.bounds.width * $0.bounds.height
+                                                < $1.bounds.width * $1.bounds.height }) {
+            return innermost
+        }
+        return largestWithRoom(scrollViews, direction: direction)
     }
 
     /// 面積最大の、**その向きに実際にスクロール余地がある**スクロールビュー。
@@ -718,27 +908,114 @@ final class FTInAppBridge {
 
     // 合成タッチの押下保持はどのフレームワークでも長押しとして受理されない
     // (Compose だけでなく SwiftUI の onLongPressGesture でも発火しないことを 2026-07-23 に
-    // Projects/E2E-iOS で実測。tap だけが通る)。黙って空振りさせず xcuitest へ誘導するため、
+    // TestProjects/E2E-iOS で実測。tap だけが通る)。黙って空振りさせず xcuitest へ誘導するため、
     // 実装(FTSynthPress 経路)は持たず常に 501 を返す。
     // 501 = このエンジンでは未対応(/terminate と同じ慣習。409 は一時的競合なので取り違えない)。
+    /// 合成タッチの多点・連打を受理するのは**自前描画のフレームワークだけ**(2026-08-04 実測):
+    /// Compose / Flutter は生タッチを自前のアリーナで捌くので通るが、UIKit/SwiftUI の
+    /// UIGestureRecognizer は受理しない(press / drag が in-app で 501 なのと同じ機構)。
+    /// **受理しない側で 200 を返すと黙って無反応になる**ので、ここで 501 を返して
+    /// ホストに XCUITest へ回させる(あちらは UIKit/SwiftUI では正しく動く)
+    private func requireSelfRenderedFramework(_ action: String) throws {
+        guard ["compose", "flutter"].contains(uiFramework) else {
+            throw InAppError(501, "\(action) does not work via the in-app engine on \(uiFramework)"
+                + " (UIGestureRecognizer does not accept synthetic touches)."
+                + " hybrid falls back to XCUITest")
+        }
+    }
+
+    /// ダブルタップ。**in-app の方が正確な場面がある**: 離してから次に押すまでの間隔を
+    /// こちらで決められるので、XCTest の doubleTap(この間隔が 0ms)では単タップに落ちる
+    /// Compose(iOS)でも成立する(2026-08-04 実測)
+    private func handleDoubleTap(_ body: Data) throws -> InAppHTTPServer.Response {
+        let req = try decode(TapRequest.self, body)
+        try requireSelfRenderedFramework("doubleTap")
+        try performWithSettle { window in
+            let p = try self.resolvePoint(ref: req.ref, x: req.x, y: req.y)
+            FTSynthDoubleTap(window, p, 0.08)
+        }
+        return ok()
+    }
+
+    /// 2本指ピンチ。対象領域(PinchRequest.frame。nil = 画面全体)の中心で開閉する。
+    /// **XCUITest より指を大きく動かせる**のが効く場面がある: XCTest のピンチは指の間隔を
+    /// 8px 程度からしか開かず、Flutter のスケール判定のしきい値に届かない(2026-08-04 実測)。
+    /// こちらは対象領域の短辺 90% まで開くので届く
+    private func handlePinch(_ body: Data) throws -> InAppHTTPServer.Response {
+        let req = try decode(PinchRequest.self, body)
+        try requireSelfRenderedFramework("pinch")
+        guard req.scale > 0, req.scale != 1, req.scale.isFinite else {
+            throw InAppError(400, "scale must be positive and not 1 (got: \(req.scale))")
+        }
+        try performWithSettle { window in
+            let bounds = window.bounds
+            let frame = req.frame.map {
+                CGRect(x: $0.x, y: $0.y, width: $0.width, height: $0.height)
+            } ?? bounds
+            // 指の間隔は**倍率が正確に出る側から決める**(Android ブリッジの handlePinch と同じ規律)
+            let maxSpan = min(frame.width, frame.height) * 0.9
+            let startSpan: Double
+            let endSpan: Double
+            if req.scale > 1 {
+                endSpan = maxSpan
+                startSpan = max(maxSpan / req.scale, 16)
+            } else {
+                startSpan = maxSpan
+                endSpan = max(maxSpan * req.scale, 16)
+            }
+            FTSynthPinch(window, CGPoint(x: frame.midX, y: frame.midY),
+                         startSpan, endSpan, req.durationSeconds ?? 0.5, 20)
+        }
+        return ok()
+    }
+
+    /// POST /rotate. `requestGeometryUpdate` is async — the readback right after the request can
+    /// still be the pre-rotation value — so poll until it matches or the deadline passes; never
+    /// answer 200 with a value that isn't what was requested (RotationSettle.deadlineSeconds).
+    private func handleRotate(_ body: Data) throws -> InAppHTTPServer.Response {
+        let req = try decode(RotateRequest.self, body)
+        let mask: UIInterfaceOrientationMask
+        switch req.orientation {
+        case .portrait: mask = .portrait
+        // **どちらの landscape でもよい**(契約は「アプリの UI が横になること」で、物理方向は
+        // テストから観測できないので約束しない。FTOrientation の宣言を参照)
+        case .landscape: mask = .landscapeLeft
+        }
+        try mainSync {
+            guard let scene = self.keyWindow()?.windowScene else {
+                throw InAppError(409, "no window scene")
+            }
+            scene.requestGeometryUpdate(.iOS(interfaceOrientations: mask)) { _ in }
+        }
+        let deadline = Date().addingTimeInterval(RotationSettle.deadlineSeconds)
+        while Date() < deadline {
+            let current: FTOrientation? = mainSync { self.keyWindow()?.windowScene?.interfaceOrientation.ftOrientation }
+            if current == req.orientation { return .json(RotateResponse(orientation: req.orientation)) }
+            Thread.sleep(forTimeInterval: RotationSettle.pollIntervalSeconds)
+        }
+        let observed: FTOrientation? = mainSync { self.keyWindow()?.windowScene?.interfaceOrientation.ftOrientation }
+        throw InAppError(422, "orientation did not settle to \(req.orientation.rawValue) within "
+            + "\(RotationSettle.deadlineSeconds)s (observed: \(observed?.rawValue ?? "unknown"))")
+    }
+
     private func handlePress(_ body: Data) throws -> InAppHTTPServer.Response {
-        throw InAppError(501, "in-app エンジンでは press(長押し)が効きません"
-            + "(合成タッチの押下保持がジェスチャ認識器に受理されない)。"
-            + "hybrid なら XCUITest へフォールバックします。engine=inapp 単独なら"
-            + "実行プロファイルで iosInappEngine: false(xcuitest)にしてください")
+        throw InAppError(501, "press (long-press) does not work via the in-app engine"
+            + " (gesture recognizers do not accept a held synthetic touch)."
+            + " hybrid falls back to XCUITest; with engine=inapp alone, set"
+            + " iosInappEngine: false (xcuitest) in the run profile")
     }
 
     private func handleScreenshot() throws -> InAppHTTPServer.Response {
         try mainSync {
             guard let window = self.keyWindow() else {
-                throw InAppError(409, "キーウィンドウがありません")
+                throw InAppError(409, "no key window")
             }
             let renderer = UIGraphicsImageRenderer(bounds: window.bounds)
             let image = renderer.image { _ in
                 window.drawHierarchy(in: window.bounds, afterScreenUpdates: false)
             }
             guard let png = image.pngData() else {
-                throw InAppError(500, "PNG エンコードに失敗しました")
+                throw InAppError(500, "PNG encoding failed")
             }
             return .png(png)
         }
@@ -762,7 +1039,7 @@ final class FTInAppBridge {
         var thrown: Error?
         DispatchQueue.main.async {
             guard let window = self.keyWindow() else {
-                thrown = InAppError(409, "キーウィンドウがありません")
+                thrown = InAppError(409, "no key window")
                 sem.signal()
                 return
             }
@@ -785,19 +1062,19 @@ final class FTInAppBridge {
     private func resolvePoint(ref: Int?, x: Double?, y: Double?) throws -> CGPoint {
         if let ref {
             guard let frame = frames[ref] else {
-                throw InAppError(404, "参照番号 [\(ref)] は未知です。先に GET /snapshot を実行してください")
+                throw InAppError(404, "unknown ref [\(ref)] — run GET /snapshot first")
             }
             return CGPoint(x: frame.midX, y: frame.midY)
         }
         if let x, let y { return CGPoint(x: x, y: y) }
-        throw InAppError(400, "ref または x/y が必要です")
+        throw InAppError(400, "ref or x/y is required")
     }
 
     private func decode<T: Decodable>(_ type: T.Type, _ body: Data) throws -> T {
         do {
             return try JSONDecoder().decode(type, from: body)
         } catch {
-            throw InAppError(400, "リクエストボディの JSON が不正です: \(error)")
+            throw InAppError(400, "invalid JSON in the request body: \(error)")
         }
     }
 
@@ -818,5 +1095,16 @@ struct InAppError: Error {
     init(_ status: Int, _ message: String) {
         self.status = status
         self.message = message
+    }
+}
+
+private extension UIInterfaceOrientation {
+    var ftOrientation: FTOrientation? {
+        switch self {
+        case .portrait: return .portrait
+        // 左右どちらも landscape として読む(要求と同じ側かは問わない = 契約どおり)
+        case .landscapeLeft, .landscapeRight: return .landscape
+        default: return nil   // portraitUpsideDown/unknown — not part of FTOrientation
+        }
     }
 }

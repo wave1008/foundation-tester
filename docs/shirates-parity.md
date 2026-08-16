@@ -4,7 +4,9 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 そのまま踏襲し、独自の「改良」をしない)。この文書は**どこまで揃っていて、何を持たないか**の一覧。
 
 - 読者は**保守者**(利用者向けの全コマンド説明は docs/commands.md)
-- 承認済みの差分と、その理由は docs/design.md「Shirates(Classic) 準拠の方針と承認済みの差分」
+- **この文書が準拠状況の正典**。コマンドを足す・名前を変える・意図的に持たないと決めたときは
+  ここを更新する。docs/design.md「Shirates(Classic) 準拠の方針と承認済みの差分」は
+  **理由の説明が要る代表例**を抜き出した表で、全リストではない(理由の詳述はあちらを参照)
 - Shirates 側の出典は `~/github/wave1008/shirates-core`(迷ったらソースを読む)
 
 ## 判定の凡例
@@ -33,16 +35,18 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 
 | Shirates | ftester | |
 |---|---|---|
-| `tap` | `tap(sel, optional:timeout:scroll:maxSwipes:)` | ✅ |
+| `tap` | `tap(sel, timeout:scroll:maxSwipes:)` | ✅ |
 | `tap(holdSeconds:)` | 同名 | ✅ |
 | `tapWithScrollDown/Up/Left/Right` | 同名 | ✅ |
 | `tapWithoutScroll` | 同名 | ✅ |
-| `select` / `selectWithScroll*` / `selectWithoutScroll` | 同名 | ✅ `exist`(検証)では代用にならないため実装(2026-07-31)。**可視性照合はするが、見えないときは失敗させず空要素を返す**(`requireVisible: false` で外せる)。Shirates の `throwsException` は持たず `optional:` で表す |
+| `select` / `selectWithScroll*` / `selectWithoutScroll` | 同名 | ✅ `exist`(検証)では代用にならないため実装(2026-07-31)。**掴めなければ失敗させず空要素を返す**(見つからないときも、見えないときも同じ。`requireVisible: false` で可視性照合を外せる)。Shirates の `throwsException` に相当する引数は持たない = 常に非 throw |
+| `TestDriver.lastElement` / `it` | `lastElement` | ✅ 2026-08-04 ユーザー決定で実装(それ以前は「概念を持たない」が承認済み差分)。要素を1つに定めて解決したコマンドが差し替える(`notExist` / `countIs` とセレクタを取らないコマンドは差し替えない)。**値は掴んだ時点の凍結値**・**掴めなければ空で上書き**・**scene を跨ぐと空**・一度も掴んでいない読み出しは空+警告。`it` の別名は置かない(Swift では読み手が識別子を追えない) |
 | `canSelect` / `canSelectWithScroll*` / `canSelectNot` | 単独コマンドは無い(`ifCanSelect` / `repeatWhileCanSelect` に内包) | 🟡 |
 | `existAll` / `canSelectAll` / `dontExistAll` | — | ➖ **実装しない**(ユーザー決定 2026-07-31)。`exist` のチェーンで書く方が保守しやすく、要素ごとに `timeout:` / `scroll:` 等のオプションも指定できる。**再提案しない** |
 | `scanElements` / `*InScanResults` | — | ❌ |
-| `tapAppIcon` | — | ❌ |
-| `tapCenterOfScreen` / `tapTopOfScreen` / `tapCenterOf` / `tapOffset` / `tapDefault` | — | ❌ |
+| `tapAppIcon` | `tapAppIcon(name?)` | ✅ 2026-08-03 **`auto` 相当のみ**(`tapAppIconMethod`・マクロ機構は持たない)。名前省略はプロファイルの `appName`(Shirates の `appIconName` 既定=プロファイル、と同義。親が解決して子へ渡す) |
+| `tap(x, y)`(座標) | `tap(x:y:holdSeconds:)` | 🟡 2026-08-16 実装。**承認済み差分**: 座標は `Int` ではなく `Double`(ftester の座標コマンドは全部 `Double`。`swipePointToPoint` と揃える)/ `repeat:` `safeMode:` は持たない(Shirates は tap を swipe で合成するための引数だが、ftester はドライバに座標タップの口がある)。単位は iOS = pt / Android = px |
+| `tapCenterOfScreen` / `tapTopOfScreen` / `tapCenterOf` / `tapOffset` / `tapDefault` | — | ❌ **`tap(x:y:)` の上に組めるものばかり**(前2つは画面基準、後3つは要素基準)。必要になった時点で足す |
 | `tapSoftwareKey` | — | ➖ キーボード要素を snapshot から除外しているため tap できない |
 | `widget` | セレクタの型語彙 `.widget` | 🟡 |
 | `tempSelector` / `tempValue` | — | ➖ 生成側がセレクタを直書きするので間接参照は読みにくさが勝つ |
@@ -52,7 +56,7 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 
 | Shirates | ftester | |
 |---|---|---|
-| `sendKeys` | `type("…")` / `type(sel, "…")` | 🟡 |
+| `sendKeys` | `type("…")` / `type(sel, "…")` | 🟡 **承認済み差分**: Shirates は `sendKeys` と `clearInput` が別コマンドで結合形を持たないが、ftester は `type(sel, "…", replace: true)` でクリア+入力を1コマンドに畳める(セレクタ解決も1回で済む) |
 | `pressEnter` | 同名 | ✅ |
 | `clearInput` | 同名(`clearInput()` / `clearInput(sel, …)`) | ✅ |
 | `hideKeyboard` | 同名だが **Android のみ**(iOS は 501) | 🟡 iOS は実装手段が無い(下記) |
@@ -73,10 +77,20 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `swipePointToPoint` | 同名(`durationSeconds:` 既定 1.5 = `Const.SWIPE_DURATION_SECONDS`) | ✅ |
 | `swipeElementToElement` | 同名 | ✅ 終点はヒール対象外 |
 | `swipeCenterToTop/Bottom/Left/Right` ほか swipe 一族 | `swipe(.up/.down/.left/.right)` 1本 | 🟡 集約 |
-| `swipeElementToElementAdjust` / `TestElement.swipeTo*` `swipeOut*` | — | ❌ |
-| `flick*` 一族(14種) | — | ❌ |
-| `scrollFrame` / マージン / 時間指定 | — | ➖ ブリッジのスワイプが全画面固定(承認済み差分) |
+| `swipeElementToElementAdjust`、および `swipePointToPoint` / `swipeElementToElement` の `withOffset` `offsetY` `intervalSeconds` `repeat` `safeMode` `marginRatio` `adjust` | — | ➖ ブリッジの drag が**単発ジェスチャ**のため(承認済み差分) |
+| `TestElement.swipeTo*` / `swipeOut*`(要素基点) | — | ❌ |
+| `flickCenterToTop/Bottom/Left/Right` `flickLeftToRight/RightToLeft` `flickBottomToTop/TopToBottom`(8種) | 同名 | ✅ 2026-08-03 **画面基点のみ**。`scrollableElement`/`safeMode` 引数は無い(`scrollFrame` で足りる) |
+| `flickAndGo*` 一族 | `scroll*`/`scrollTo` 系で代替 | ➖ 画面遷移トリガの糖衣は生成側の語彙を増やすだけ |
+| 要素基点 `TestElement.flickTo*` / `flickOut*` | — | ❌ |
+| `scrollFrame` | 同名(`scroll*` / `scrollTo` / `withScroll*` / `flick*` の引数。セレクタ式) | ✅ 2026-08-02。**型付きセレクタ(`Sel`)版は持たない = 文字列のみ**(ユーザー決定 2026-08-04・**再提案しない**。1対1を保証するのは対象セレクタまで。理由は design.md) |
+| `startMarginRatio` / `endMarginRatio` | 同名 | ✅ **既定値は ftester の実測値**(承認済み差分) |
+| `scrollableElement` | — | ➖ `scrollFrame` のセレクタ式で足りる |
+| `ScrollDirection.None` | `FTScrollDirection` に相当なし | ➖ 「スクロールしない」は `scroll:` 引数の省略(Optional)が担う |
+| `scrollDurationSeconds` / `scrollIntervalSeconds` | — | ➖ フリング前提の実測値を優先(承認済み差分) |
 | — | `scrollTo(sel, direction:maxSwipes:)` | 🟢 |
+| — | `swipeBy(sel?, dxRatio:dyRatio:)` | 🟢 2026-08-04 **斜めを含む相対ドラッグ**(マップのパン)。Shirates は縦横 4 方向しか持たない |
+| — | `doubleTap(sel?)` | 🟢 2026-08-04 ブリッジ側の1操作(往復するとダブルタップ判定時間を超える) |
+| — | `pinchOut(sel?, scale:)` / `pinchIn(sel?, scale:)` | 🟢 2026-08-04 2本指ズーム。**Shirates(Classic) にピンチ系は無い**ので名前の準拠先も無い。対象指定は Android=座標合成 / iOS=XCUITest は identifier・in-app は座標。**iOS はエンジンで成否が分かれる**(docs/commands.md の表) |
 
 ## 存在・画面の検証
 
@@ -84,15 +98,17 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 |---|---|---|
 | `exist` | 同名(戻り値チェーン可) | ✅ |
 | `existWithScrollDown/Up` | 同名 | ✅ |
-| `existWithScrollLeft/Right` | 別名なし(`exist(sel, scroll: .left)` で可) | 🟡 別名だけ欠落 |
+| `existWithScrollLeft/Right` | 別名なし(`exist(sel, scroll: .left)` で可) | ➖ **置かない**(下記「別名族が取る引数」) |
 | `existWithoutScroll` | 同名 | ✅ |
 | `dontExist` | `notExist(sel, timeout:scroll:maxSwipes:)` | 🟡 **名前が違う** |
 | `dontExistWithScrollDown/Up` / `dontExistWithoutScroll` | `notExist(scroll:)` に集約 | 🟡 別名は無い |
 | `screenIs` | 同名だが **FM の視覚照合**(Shirates は画面ニックネームの識別要素) | 🟡 意味が違う |
 | `screenIsOf` / `isScreen(Of)` / `waitScreen(Of)` / `switchScreen` | — | ➖ 画面ニックネーム機構を持たない |
 | `cell` / `cellOf` / `getCell` | セレクタのスコープ `>>` | 🟡 |
-| `appIs` / `packageIs` / `isApp` | — | ❌ |
-| `verify`(任意内容の検証) | — | ❌ |
+| `appIs` | `appIs(id, waitSeconds: 15)` | ✅ 2026-08-03 **ニックネーム機構が無く ID を直接書く**(Shirates はニックネーム解決込み)。Android は失敗時 actual を付ける |
+| `packageIs` | `appIs` で代用 | ➖ **実装しない**(ユーザー決定 2026-08-03。いったん実装後に削除)。ニックネームが無い ftester では `appIs` が ID 直指定のため Android で**完全に同じ検査**になる。**再提案しない** |
+| `isApp` | — | ❌ |
+| `verify`(任意内容の検証) | `verify(message) { }` | ✅ 2026-08-03 ブロック内のアサーション1つ以上が全成功で passed。**アサーション0個は inconclusive**(passed でも failed でもない・シナリオは中断しない。Shirates の `MANUAL` 相当は持たない。ユーザー決定 2026-08-03) |
 | `existImage` / `dontExistImage` / `findImage*` / `imageIs` / `imageContains` | — | ➖ 画像テンプレートマッチングは非対応(切り出し画像の管理が生成に向かない。FM の `screenIs` が代替) |
 | — | `countIs(sel, n)`(節ごとの内訳付き) | 🟢 |
 
@@ -100,12 +116,13 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 
 | Shirates | ftester | |
 |---|---|---|
-| `textIs/IsNot/Contains(Not)/StartsWith(Not)/EndsWith(Not)/Matches(Not)/MatchesDateFormat/IsEmpty/IsNotEmpty` | 全て同名 | ✅ 全対称 |
-| `valueIs…` 一式(同10種) | 全て同名 | ✅ 全対称 |
-| `idIs` | 同名(`FTElement` チェーン) | ✅ |
+| `textIs/IsNot/Contains(Not)/StartsWith(Not)/EndsWith(Not)/Matches(Not)/MatchesDateFormat/IsEmpty/IsNotEmpty` | 全て同名 | ✅ 全対称。**2026-08-04 以降セレクタを取らない**(対象は直前に掴んだ要素 = Shirates の `it`/`lastElement` と同じ考え方)。`select("#x").textIs("OK")` / `select("#x"); textIs("OK")` の2形が同義 |
+| `valueIs…` 一式(同10種) | 全て同名 | ✅ 全対称(対象の扱いは `textIs` と同じ) |
+| `idIs` | 同名(チェーン / 暗黙形の両方) | ✅ 2026-08-04 に自由関数版(`select("#x"); idIs("x")`)も追加 |
 | `accessIs…` 一式 | `#id` に統合 | 🟡 |
-| `enabledIs` / `enabledIsTrue/False` | `isEnabled` / `isDisabled` | 🟡 |
-| `checkedIs` / `checkIsON` / `checkIsOFF` | `isChecked` / `isNotChecked` | 🟡 |
+| `enabledIsTrue/False` | `enabledIsTrue()` / `enabledIsFalse()` | ✅ 2026-08-04 糖衣形を同名で踏襲(旧 `isEnabled`/`isDisabled` から改名)。**生文字列の親形 `enabledIs(expected:)` は持たない**(下記 ➖) |
+| `checkIsON` / `checkIsOFF` | `checkIsON()` / `checkIsOFF()` | ✅ 2026-08-04 同名で踏襲(旧 `isChecked`/`isNotChecked` から改名) |
+| `enabledIs(expected:)` / `checkedIs(expected:)`(生文字列の親形) | — | ➖ **持たない**。生値比較は OS 依存(checked は Android "true"/"false"・iOS "1"/"")で、ftester が持つ正規化済み Bool と衝突する。糖衣形(`enabledIsTrue/False`・`checkIsON/OFF`)は OS 差を吸収済みで正規化と一致する。Shirates 自身も `checkIsON/OFF` の中でこの OS 差を吸収している。**再提案しない** |
 | `selectedIs(True/False)` | — | ➖ iOS の selected trait は `checked` に写像している |
 | `displayedIs` | `requireVisible:` + `falsePositiveCheck` | 🟡 |
 | `classIs(Not)` | セレクタの `.型` で絞る | 🟡 |
@@ -127,7 +144,7 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 
 | Shirates | ftester | |
 |---|---|---|
-| `ifCanSelect { }` | 同名 + `.ifElse { }` | ✅ |
+| `ifCanSelect { }` | 同名 + `.ifElse { }` | ✅ **「出るか不定」の唯一の表現手段**(`optional:` 廃止後。アプリ内メッセージは `irregularHandler`) |
 | `ifCanSelectNot` | `.ifElse` で代替 | 🟡 |
 | `doUntilTrue` | 同名(引数名も準拠) | ✅ |
 | `android` / `ios` | 同名 | ✅ |
@@ -145,8 +162,8 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | Shirates | ftester | |
 |---|---|---|
 | `wait` | 同名 | ✅ |
-| `waitForDisplay` | 暗黙待ち(各コマンドの `timeout:` ポーリング) | 🟡 |
-| `waitForClose` | `notExist`(消えるまで待つ) | 🟡 |
+| `waitForDisplay` | `waitForDisplay(sel, waitSeconds: 15)` | ✅ 2026-08-03 スクロールしない・戻り値 `FTElement`。Shirates の `throwsException` に相当する引数は持たない(常に失敗として記録する) |
+| `waitForClose` | `waitForClose(sel, waitSeconds: 15)` | ✅ 2026-08-03 **`expression` 省略不可**(Shirates の直前セレクタ再利用の省略形は不採用。`lastElement` は 2026-08-04 に実装済みだが、待ち対象がソース上で読めなくなるため待ち系には省略形を置かない) |
 | `usingWaitSeconds` | `timeout:` 引数 / 実行プロファイル `defaultTimeout` | 🟡 |
 | `waitScreen` / `waitScreenOf` | — | ➖ 画面ニックネーム機構を持たない |
 
@@ -155,14 +172,17 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | Shirates | ftester | |
 |---|---|---|
 | `launchApp` / `terminateApp` | 同名 | ✅ |
-| `restartApp` | `restartApp` | 🟡 **名前が違う** |
-| `installApp` / `removeApp` / `isAppInstalled` / `launchAppByShell` | CLI 側(`ftester install`)。DSL には無い | ❌ |
+| `restartApp` | 同名 | ✅ 旧名 `relaunchApp` から改名済み(2026-07-31。下記「名前の相違」) |
+| `installApp` / `removeApp` | `installApp(path?)` / `removeApp(id?)` | ✅ 2026-08-03 DSL 化。`installApp` は実行をオーケストレータ(親プロセス)へ委譲し、パス省略時は実行プロファイルの `appPath` を解決する(Shirates の `appPackageFile` 既定に一致)。オーケストレータ無しの単独実行だけ引数必須(省略時は明示エラー)。`removeApp` は id 省略を実行中アプリの既定 bundleID/package に解決する |
+| `isAppInstalled` / `launchAppByShell` | CLI 側(`ftester install`)。DSL には無い | ❌ |
 | `goPreviousApp` | `appSwitcher()`(スイッチャーを開くだけ) | 🟡 |
 | `internetOn/Off` / `wiFiOn/Off` / `mobileOn/Off` | — | ❌ |
 | `shell` / `shellAsync` | `procedure { }` 内で任意 Swift | 🟡 |
-| `screenshot` | ステップごとに自動取得 + MCP `ft_screenshot` | 🟡 |
+| `screenshot` | `screenshot(filename:?)` | ✅ 2026-08-03 **`filename` のみ**(他3引数は Shirates の auto-screenshot 機構の制御で、ftester は毎操作の自動撮影を持たない)。画像はレポートの該当ステップ直後に埋め込む。失敗時の証跡・MCP `ft_screenshot` とは別経路 |
 | — | `home()` / `back()` | 🟢 OS 差を吸収した1コマンド |
 | — | `clearAppData(bundleID?)` | 🟢 再インストール不要でアプリデータ**と権限**を消す。初回起動・オンボーディング・権限ダイアログのテストが書ける(iOS はシミュレータ専用。キーチェーン/Keystore の値は残る) |
+| — | `openURL(url)` / `launchApp(url:)` | 🟢 2026-08-08 ディープリンク配送。**アプリを再起動せず**今の画面の上に遷移を積む(warm)。Shirates に対応物は無い |
+| — | `rotateTo(.landscape)` | 🟢 2026-08-10 画面回転。**Shirates に対応物は無い**(src/doc を全文検索して確認)。向きは portrait / landscape の2値のみ —— 契約は「アプリの UI がその向きになること」で、物理的な左右はテストから観測できないため語彙に置かない。回転を使ったシナリオは終了時に元の向きへ自動で戻る |
 
 ## 記述子・レポート・テストフロー
 
@@ -195,6 +215,8 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | Shirates | ftester | |
 |---|---|---|
 | 直接フィルタ(`text` `id` `class` `value` `checked` `enabled` `pos` 等) | 同等(`access` は `id` に統合) | 🟡 |
+| フィルタ内 OR `(a\|b)` | 同名記法 | ✅ 差分2つ: **`(a\|b)&&[2]` は「各節の2番目」**(Shirates は和集合の2番目。節ごとに `[n]` を持つ ftester の構造をそのまま使う)/ **相対セレクタの引数では括弧を自分で書く**(`:right((保存\|OK))`。`:right(...)` の括弧は引数の括弧で `\|` の囲みにならない)。展開数が 32 に達したら validationError |
+| 否定フィルタ `属性!=値` / 短縮形 `!値` | 同名記法 | ✅ ただし**序数は否定できない**(`pos!=n` も短縮形 `![2]` も実行前エラー。候補集合を絞れず黙って無視されるため) |
 | 相対セレクタ(方向ベース `:right` `:above` + `Button/Image/Input/Label/Switch`) | 同等(`:rightSwitch` 等) | ✅ |
 | 相対セレクタ(`:inner*`) | スコープ `>>` | 🟡 |
 | 相対セレクタ(`:next*` / `:pre*`) | — | ❌ |
@@ -204,6 +226,7 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | クラスエイリアス・スペシャルフィルタ | 型語彙 `SelType` で部分的に | 🟡 |
 | タイトルセレクタ / Web タイトルセレクタ | — | ❌ |
 | — | 型付きセレクタ `Sel`(`.id("x").right(.switch)`) | 🟢 |
+| `#x` = アクセシビリティ id のみ | `#x` は **identifier で1件も引けなければ placeholder** を引く | 🟢 **意図的に広げた**(2026-08-15 ユーザー指示)。入力欄は指す手段が経路で割れる —— HTML の id は XCUITest が読む a11y に出ないが placeholder は出る / Android は WebView の版で id と placeholder が**入れ替わる**。Shirates は Appium 一本で経路が割れないためこの問題を持たない。**identifier が当たったらそちらだけ**を使うので、`#x[2]` の序数と `countIs` は経路で変わらない |
 
 ---
 
@@ -215,15 +238,26 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 |---|---|---|
 | `restartApp` | `restartApp` | ✅ **揃えた**(旧名 `relaunchApp` から改名。2026-07-31) |
 | `notExist` | `dontExist` | ➖ **`notExist` を維持**(ユーザー決定 2026-07-31)。`notExist` は否定の意味が読み取りやすく、`exist` との対称も保てる。**再提案しない** |
+| `optional:` 引数なし | `throwsException: false` | ➖ **全廃**(ユーザー決定 2026-08-02)。空振りを許す引数が操作系にあると腐ったセレクタが緑で残る。代替は `irregularHandler` / `ifCanSelect`、値を読む用途は `select` の空要素。**再提案しない** |
 
 ## OS で挙動が割れるもの(利用者に見える差)
 
 | コマンド | 差 |
 |---|---|
-| `hideKeyboard()` | **Android のみ**。iOS は 501 で失敗する(`XCUIKeyboardKey.escape` / `resignFirstResponder` / nil ターゲット `sendAction` を実機で試して3手とも不発。Compose の入力受け口が自前でフォーカスを保持し UIKit の標準手段が届かない)。iOS で閉じるなら `pressEnter()` |
+| `hideKeyboard()` | **Android のみ**。iOS は 501 で失敗する(`XCUIKeyboardKey.escape` / `resignFirstResponder` / nil ターゲット `sendAction` をデバイス上で試して3手とも不発。Compose の入力受け口が自前でフォーカスを保持し UIKit の標準手段が届かない)。iOS で閉じるなら `pressEnter()` |
 | `back()` | iOS は**スワイプバック対応のナビ**(NavigationStack 等)を持つ画面でのみ戻れる。独自ナビのアプリではアプリ内の戻るボタンを `tap` する。Android はキーボードが開いていると1回目がキーボードを閉じるのに消費される(OS 仕様) |
 | `keyboardIsShown` / `keyboardIsNotShown` | 取得元が OS で違う(iOS xcuitest = AX ツリーの `.keyboard` / iOS in-app = `UITextEffectsWindow` の可視判定 / Android = ホストが `dumpsys` の `InputMethod` window を見る)。**IME が別プロセスの window でアプリの a11y ツリーに出ない**ため |
 | `clearInput(sel)` | **Flutter の iOS は in-app エンジンでは消せず XCUITest 経由**になる(自動フォールバック。1〜2秒)。engine への editing state 配送は3回実測して不採用(design.md) |
+| `tapAppIcon` | 見つからないときの探索方法が OS で違う: Android はドロワーを開いて `flickCenterToTop` で最大8回スクロール探索、iOS は `flickRightToLeft` で最大5ページ送り(2回連続で画面が変化しなければ打ち切り) |
+
+## 別名族が取る引数(2026-08-02 に仕様として固定)
+
+`tapWithScroll*` / `existWithScroll*` / `selectWithScroll*` は **`maxSwipes:`(select 系は
+`requireVisible:` も)しか取らない糖衣**で、本体の全引数は生やさない。`existWithScrollLeft/Right`
+を置かないのも同じ判断。**理由**: 別名は「Shirates と同名で書ける」ことだけが価値で、引数が要る
+場面では本体の `scroll:` の方が短く読みやすい(`tap(sel, scroll: .down, timeout: 2)`)。
+別名にも全引数を生やすと、同じことを2通りで書ける組み合わせが増え、**生成側の語彙のブレ**になる
+(この文書冒頭の「何を足すかの判断基準」そのもの)。**引数の欠落を不整合として再提案しない。**
 
 ## 足す価値がある残り
 
@@ -233,4 +267,4 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | 項目 | 状態 |
 |---|---|
 | **祖先方向の相対セレクタ**(`:parent`) | ⏸ **保留**(ユーザー決定 2026-07-31)。id を持つのが子ラベルだけの行を「行として」検証するときに効くが、タップは座標が最前面に当たるので現状でも大きくは困らない。**シナリオを書いていて実際に必要になった時点で提案する**(それまで再提案しない) |
-| `notExist` の別名族・`existWithScrollLeft/Right` | ⏸ 引数で書けるので不要(人間のタイプ量削減が目的の糖衣)|
+| `notExist` の別名族・`existWithScrollLeft/Right` | ➖ **置かない**(上記「別名族が取る引数」で決着。2026-08-02)|

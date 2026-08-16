@@ -24,6 +24,27 @@ iOS の残り時間は XCUITest 経路のコストが支配する。**その内�
 固定 350ms の整定待ちで、§3.8 で収束判定へ置換した)。iOS の高速化の本線は in-app 常駐ブリッジで、
 既に既定(hybrid)で動いている(§8 の 2〜4 は候補ではなく実装記録)。
 
+## ブラウザ DOM の snapshot が 9.5 秒だった(2026-08-14)
+
+**凍った背面タブに評価と同じ締切を払っていた。** Chrome は背面タブの JS を止めるので、
+その相手は**待っても絶対に答えない**。にもかかわらず候補ごとに 3 秒(`evaluateTimeout`)を
+使い切っており、上限3候補で最悪 9 秒を捨てていた。
+
+実測(同一ページ・同一端末・DOM の on/off を交互に3ブロック × 各5回。
+Android はセッション内で劣化するのでドリフトを相殺する並べ方にした):
+
+| | 修正前 | 修正後 |
+|---|---|---|
+| DOM オン | **中央値 9481ms** | **中央値 1430ms** |
+| DOM オフ(a11y のみ) | 126ms | 126ms |
+
+**直し方は「生死の判定を評価から分ける」だけ**。`1+1` を `livenessTimeout`(0.4 秒)で撃ち、
+答えたタブにだけ本命の JS を撃つ。タブごとの実測は **生きている1つが 11ms・
+凍った 18 個が 3005ms** で、生死の判定に 3 秒は要らない。
+
+**残る 1.3 秒の内訳は未測定**(adb forward の張り直し・`/json`・WebSocket 接続・
+生死の1往復)。測る前に切らない。
+
 ## 2. 設計原則(変更時も維持すること)
 
 1. **並列実行時の負荷を上げない。** エミュレータの CPU=ホストの CPU なので、
@@ -36,6 +57,19 @@ iOS の残り時間は XCUITest 経路のコストが支配する。**その内�
 3. **採用ゲートは 3 指標同時。** 速度が上がっても、ホスト CPU か N 回連続成功率が
    悪化する変更は採用しない。固定 sleep は「遅いが負荷ゼロ・フレークを隠す」性質が
    あったので、置換系の変更は特に成功率を疑うこと。
+4. **着手順は見積りでなく内訳で決める。** 2026-08-01 に「次は CoreSimulator 化(0.9s)」と
+   決めていたが、内訳を採ったら**別コールの `simctl terminate` が 1.5s** で、しかも
+   1行の修正だった。見積りで順序を決めていたら、大きい方を後回しにしたまま重い実装に
+   着手していた。**内訳が採れない区間があるなら、まず採れるようにする**(§4)。
+5. **削った先に何が残るかまで測る。** simctl を消したら律速が
+   「プロセスごとの CoreSimulator 初期化 384ms」へ移った(§3.12)。移った先を測らないと、
+   次の一手(暖機)の効果を過大評価する —— 実際 30〜60ms しか無く不採用にした。
+6. **省く前に、その呼び出しが兼ねていた副作用を数える。** 高い呼び出しは往々にして
+   「読む」以外の仕事もしている。interop WebView の委譲を外したとき、消えた
+   `delegated.snapshot()` が **XCUITest の attach を兼ねていた**ことに気付かず、
+   最初の座標タップが 200 を返しても効かない状態になった(§3.13)。
+   **消す前に「この呼び出しを消したら、他に何が起きなくなるか」を1度書き出す**。
+   副作用が要るなら、それだけを安く残す(今回は入場時1回の暖機)。
 
 ## 3. 現在の時間の内訳(どこを削ると何が起きるか)
 
@@ -48,6 +82,58 @@ wait ほぼ 0ms = 固定 sleep の残骸なし):
 | アクション 1 回(注入+静穏待ち+HTTP) | 0.2〜0.5s | 床は QUIET_MS=200ms。下げるとフレーク増と交換 |
 | 検証(exist 等、初回ヒット時) | 数十 ms | ほぼ下限(snapshot 8.7ms+パース) |
 | サブプロセス初期化(spawn+forward 照会+probe) | 0.15〜0.2s | ランナー常駐化で消せるが見送り中(§6) |
+
+**上の表は Android の値**。iOS はどのフレームワークでも launch がこれより桁で重く、
+**フル E2E では launch が全ステップ時間の 32〜57%**(1シナリオ1回 × 37〜40本)を占める最大項になる。
+中央値: iOS xcuitest 4.8〜5.6s / iOS in-app 3.26〜3.32s / Android 1.6s(View/XML)・2.0s(CMP)・3.2s(Flutter)。
+**iOS in-app の 3.3s は CMP/SwiftUI/Flutter でほぼ同値 = アプリ非依存の固定費**。内訳(2026-08-01 実測・アイドル):
+
+| 区間 | 所要 | 削る余地 |
+|---|---|---|
+| `xcrun simctl launch` の往復 | 0.61〜0.73s(アイドル)/ 0.88〜0.91s(8レーン) | ✅ **CoreSimulator 直叩きへ置換済み**(2026-08-02)。8レーンで 920→205ms |
+| プロセス生成 → ブリッジが listen | 約 0.30s | dylib の constructor 起動なのでほぼ下限 |
+| `/status` が返るまで(`mainSync` がメインスレッド待ち) | 1.82s(SwiftUI)/ 1.84s(Flutter)/ 2.48s(CMP) | **削れない**。アプリが実際に応答可能になるまでの時間で、readiness の定義として正しい |
+
+**内訳は `FT_EVENT_LOG_PATH` の `kind:"step"` で採れる**(launch の `actionMs`=外部起動呼び出し・
+`waitMs`=操作可能になるまでの待ち)。8レーン実負荷の実測(2026-08-01・E2E-CMP/40本):
+
+| エンジン | launch 中央 | actionMs(simctl) | waitMs | 内訳外 |
+|---|---:|---:|---:|---:|
+| ios-inapp | 3,563ms | 909ms | 2,379ms | 3ms |
+| ios-xcuitest(改善前) | 5,135ms | 788ms | 3,038ms | **1,515ms** |
+| ios-xcuitest(改善後) | 4,536ms | 883ms | 3,029ms | 703ms |
+
+- **「内訳外」を見ると計測していない区間が出る**。xcuitest の 1,515ms は `FastLaunchDriver` が
+  `simctl terminate` を別コールで撃っていたぶんで、`--terminate-running-process` へ畳んで解消
+  (in-app 側は元からこの形。sum 455.0→427.2s・壁時計 61.1→58.1s。E2E-iOS 469→419.5s /
+  E2E-Flutter 446→396.3s)
+- ~~残る 703ms は `LaunchPreflightDriver.ensureInstalled` の `simctl get_app_container`~~
+  → **CoreSimulator の `applicationIsInstalled:type:error:` へ置換済み**(2026-08-02)
+
+### 3.12 simctl のプロセス往復を CoreSimulator 直叩きへ(2026-08-02 実装)
+
+`simctl launch`(0.9s)と `simctl get_app_container`(0.7s)はどちらもシナリオ毎に1回走る。
+`FTCoreSimShim` にアプリ起動(`launchApplicationWithID:options:error:`)と
+インストール確認(`applicationIsInstalled:type:error:`)を足して置き換えた。
+
+実測(8レーン・E2E-CMP/40本): ios-xcuitest sum 427.4→**394.2s**・launch 中央 4,567→3,892ms
+(起動呼び出し 920→**205ms**)/ ios-inapp sum 266.5→**253.7s**。E2E-iOS 419.5→392.3s、
+E2E-Flutter 396.3→372.0s。全 466 本(既定+`--ios-inapp`)成功。
+
+**律速は初期化に移った**。CoreSimulator は**プロセスごとに約 384ms**の初期化
+(dlopen 13ms + `SimServiceContext` 327ms + deviceSet 44ms)が要り、以降の呼び出しは **0〜1ms**。
+**シナリオ1本=1プロセス**なので、そのプロセスで最初に CoreSimulator を触った呼び出しが必ず
+384ms を被る。xcuitest はインストール確認が先で launch が速くなる(205ms)、in-app は launch が
+最初なのでそこで払う(830ms)—— これが両エンジンの改善幅の差の理由。
+
+- **暖機(起動直後にバックグラウンドで初期化)は不採用**。効果 30〜60ms で雑音と区別できず、
+  引数解析前にプラットフォームを先読みする必要があり、Android のシナリオでは純粋な無駄になる
+- **未インストールの判定は `NSPOSIXErrorDomain` code 3 だけを根拠にする**。この API は
+  「入っていない」も「判定できない」も `NO` を返すので、エラー種別を見ないと端末が未 boot の
+  ときに `appNotInstalled` で run を止めてしまう。それ以外のエラーは nil = 判定不能にして
+  simctl の判定へ委ねる(遅くなるだけで誤らない側へ倒す)
+- 殺しスイッチは既存の `FT_SIMULATOR_CONTROL=simctl`(検証済み: action 869ms・sum 428.0s と
+  従来値へ戻る)
 
 ライブ操作 1 タップ = serve 常駐プロセスへの stdin 1 行 → ブリッジで注入+静穏 →
 actionResult+snapshot イベント。0.383s のうち大半は静穏待ちの床(200ms)+snapshot/JPEG。
@@ -77,7 +163,7 @@ Demo 16 シナリオ(iOS 6+Android 10)を iOS/Android 同数のデバイスで A
 
 1. **変更なし時の swift build スキップ**(`ScenarioHost.build` + `Sources/FTCore/BuildFingerprint.swift`):
    no-op の `swift build --product` でも SPM の依存グラフ再検証で **~2.6s** かかるため、
-   入力(Package.swift/.resolved・Sources/・Scenarios/ の mtime+size+ツールチェーン識別)の
+   入力(Package.swift/.resolved・Sources/・scenarios/ の mtime+size+ツールチェーン識別)の
    フィンガープリント一致でスキップする。実測: `api run --dry-run` の連続実行 3.96s → **0.08s**。
    ツールチェーン識別(xcode_select_link の先+version.plist の mtime)を含むのは、Xcode 更新後に
    古いバイナリを温存して FoundationModels ABI 不整合で dyld クラッシュする罠(§CLAUDE.md)を
@@ -198,7 +284,7 @@ SampleApp 76シナリオを `ios-5-android-5`(10台)で実行したときのレ�
 | スイート | 最長 | 合計÷8 | 律速 | 分割の効果 |
 |---|---|---|---|---|
 | E2E-Android | 31.8 | 23.7 | 最長 | 壁時計 −5 |
-| E2E / android | 33.9 | 31.3 | ほぼ拮抗 | ほぼ無し |
+| E2E-CMP / android | 33.9 | 31.3 | ほぼ拮抗 | ほぼ無し |
 | E2E-Flutter / android | 27.0 | **29.4** | 合計 | 無し(微増) |
 
 **@Test を増やすと合計が増える**(1本ごとに `launchApp` + 画面遷移。実測で1スイート約 +25秒 =
@@ -233,6 +319,12 @@ A/B 実測(E2E-Android 31シナリオ・Android 8レーン・交互に3回ずつ
   「スケジューリング」。既定 ON)
 - 実績の読む件数: `--lpt-history-runs <N>` / 設定 `ftester.lptHistoryRuns`(既定 5。
   モニターの設定タブ「スケジューリング」の入力欄には常に実際に使う件数が入る)。
+  **数えるのは run ではなく「シナリオ1本あたりの観測数」**(2026-08-11 変更。
+  `RunResultsStore.scanRecords(maxObservationsPerScenario:)`)。run 数で数えていたときは、
+  調査中に**1シナリオだけの run** を数本走らせただけで窓が埋まり、直前のフル run の実績が
+  丸ごと消えた —— 2026-08-11 のフル E2E は iOS 側が軒並み `1/N with history` で走っている。
+  遡りは `observationScanLimitFactor`(8)倍の run ディレクトリで打ち切る。
+  実データ(E2E-CMP・結果 JSON 約4,000件)で **0.166s/159件 → 0.426s/330件**。
   **既定値は Swift の `LPTOrdering.defaultHistoryRuns`・`package.json`・`monitorPanel.ts` が
   webview へ送る default の3箇所にあり、`lptDefaultSync.test.mjs` が一致を検証する**
   (設定タブは常に実際に使う件数を入力欄に入れ、空欄・不正値のときは既定値へ戻す)
@@ -240,7 +332,7 @@ A/B 実測(E2E-Android 31シナリオ・Android 8レーン・交互に3回ずつ
 **実装時に踏んだ罠(いずれも実データで初めて出た)**:
 
 1. **実績は platform ごとに集計する**。`RunResultsQuery.scenarioSummary` は `scenarioID` だけで
-   まとめるため、同じシナリオを iOS/Android 両プロファイルで走らせる構成(Projects/E2E 等)では
+   まとめるため、同じシナリオを iOS/Android 両プロファイルで走らせる構成(TestProjects/E2E-CMP 等)では
    1 つの `results/` に両方の記録が溜まり、iOS が数倍遅いぶん中央値が中間へ均されて順序判断が歪む。
    LPT は `(scenarioID, platform)` で集計し、各シナリオが走る platform
    (`info.platform ?? defaultPlatform`)の値で並べる。
@@ -255,7 +347,7 @@ A/B 実測(E2E-Android 31シナリオ・Android 8レーン・交互に3回ずつ
    「最短のシナリオ」と誤認して末尾へ回る。
 5. **履歴枠は「対象 platform の実績を含む run」で数える**(2026-07-30 修正)。1 と 3 を入れた後も
    **枠の数え方が platform 非対応**で残っていたため、iOS と Android を別プロファイルで回す
-   プロジェクト(Projects/E2E・E2E-Flutter は同じ `results/` に両方が溜まる)では
+   プロジェクト(TestProjects/E2E-CMP・E2E-Flutter は同じ `results/` に両方が溜まる)では
    **他 platform の run が枠を食い、対象 platform の直近フル run が窓から押し出されて実績ゼロ**に
    なった。`RunResultsStore.scanRecords(countingPlatform:)` で対象 platform のレコードを含む run
    だけを 1 枠と数える(返すレコードは絞らない。集計側が platform 別なので混在は無害)。
@@ -267,10 +359,21 @@ A/B 実測(E2E-Android 31シナリオ・Android 8レーン・交互に3回ずつ
 
    | パス | 実績カバレッジ | 実行スパン | 理論下限との差 | 開始順ρ |
    |---|---|---|---|---|
-   | E2E/android(崩れ) | 1/31 | 39.0s | +6.0s | 0.32 |
+   | E2E-CMP/android(崩れ) | 1/31 | 39.0s | +6.0s | 0.32 |
    | E2E-Flutter/android(崩れ) | 2/29 | 35.6s | +10.0s | 0.15 |
    | E2E-Flutter/android(履歴回復後) | 29/29 | **27.2s** | 0.0s | 0.90 |
    | 他 7 パス(正常) | 全件 | 下限 +0〜2.4s | — | 0.88〜0.96 |
+
+6. **run 数で数える窓は「1シナリオだけの run」で埋まる**(2026-08-11 修正)。5 を入れた後も
+   **同じ platform の中では**押し出しが残っていた —— 調査中にピンポイント実行を数本走らせると、
+   その5本で窓が尽きて直前のフル run が読めなくなる。2026-08-11 のフル E2E は
+   `1/33`・`1/23`・`1/25`(iOS 側)で走っており、実績が揃っていた E2E-RN/android(26/26)だけが
+   理論下限との差 1.6s だった(他は 4.4〜15.3s)。**窓を「シナリオ1本あたりの観測数」で数える**
+   ように変更(`maxObservationsPerScenario`)。副産物として 5 の platform 別カウントも不要になる
+   —— 観測は `(scenarioID, platform)` ごとに数えるため。
+   **「見えている分が満たされたら止める」早期打ち切りを入れてはいけない**(実装中に踏んだ):
+   新しい run が1シナリオしか含まないと、その1本が満たされた時点で遡りが止まり、
+   他のシナリオの実績を1件も読まないまま抜ける。歯止めは走査ディレクトリ数だけにする。
 
    **診断は run ログの `🔀 LPT 投入順: 実績あり N/M 件`**(N が M より大きく欠けていたらこれ)。
    壁時計だけ見ると「遅くなった」と誤読するので、**総仕事量(シナリオ所要の合計)を併せて見る** —
@@ -389,7 +492,7 @@ APK 変更なので `AndroidRunner/build.sh` の `VERSION_CODE` と
 整定の**挙動**が変わり、旧ブリッジ再利用が緑の偽装になり得たから。計測時の新旧混在は
 `ftester bridge down --all` で潰す(こちらは版数と無関係に必要)。
 
-検証: iOS 全 3 SUT(E2E / E2E-iOS / E2E-Flutter)× `ios-inapp` で 91 シナリオ全成功・振り直し 0 件。
+検証: iOS 全 3 SUT(E2E-CMP / E2E-iOS / E2E-Flutter)× `ios-inapp` で 91 シナリオ全成功・振り直し 0 件。
 
 ### 3.11 WebView 委譲中のスクロールを in-app の contentOffset へ(2026-08-01 実装)
 
@@ -437,12 +540,373 @@ ref の名前空間を跨ぐので別施策(§8)。
 `bridgeProtocolVersion` 27 → 28(ブリッジの挙動が変わる。上げないと稼働中の旧 dylib が
 再利用され、短縮が効かないまま緑になる)。
 
-検証: iOS 全 3 SUT(E2E / E2E-iOS / E2E-Flutter)× `ios-inapp` で **115 シナリオ全成功**・
+検証: iOS 全 3 SUT(E2E-CMP / E2E-iOS / E2E-Flutter)× `ios-inapp` で **115 シナリオ全成功**・
 振り直し 0 件(40 + 37 + 38。§3.8〜3.10 の「91 シナリオ」は当時の本数)。
+
+### 3.13 interop の WebView を「読みは DOM・触るのは XCUITest の座標」へ(2026-08-02 実装)
+
+Compose / Flutter(interop)ホストの WebView 画面は**画面ごと XCUITest へ委譲**していた。
+1 snapshot が 300〜500ms(in-app の DOM は約 3ms)で、WebView シナリオの**ステップ時間の
+半分以上**をここに使っていた(実測: CMP 26.3s 中 12.9s / Flutter 29.0s 中 17.8s。snapshot 22 回)。
+
+DOM は interop ホストでも**読める**(届かないのは操作だけ)ので、snapshot は in-app の DOM を返し、
+ref を使う操作だけホスト側で座標へ解決して XCUITest の実タッチへ回す。
+
+| 状態 | snapshot | ref を使う操作 |
+|---|---|---|
+| normal | in-app | in-app |
+| delegated(DOM が読めない構成) | XCUITest | XCUITest(ref) |
+| **domInterop** | in-app(DOM) | **座標へ解決して XCUITest** |
+
+実測(シナリオ単体): CMP 29.5→**13.2s**(3回とも同値)/ Flutter 26.4→13.0〜14.1s。
+uikit ホストの同シナリオ(元から DOM 経路)が 11.3s なので、ほぼそこまで落ちた。
+スイートでは E2E-CMP/ios-inapp 253.7→226.7s・E2E-Flutter/ios-inapp 277.2→264.6s。
+
+- **不変条件の守り方**: `ref` を XCUITest へ**渡さない**。委譲先は自分が最後に撮った別 snapshot の
+  ref 名前空間を持つので、混ぜると別要素を指す。ホストが ref → 矩形中心 → 座標に解決する
+- **判定はブリッジの申告**(`webViewPath == "dom-interop"`)。ホストにフレームワーク固有の
+  知識を持たせない
+- **画面に入るとき1回だけ委譲側を暖める**(`delegated.snapshot()`)。旧経路はこれを必ず通っており
+  attach を兼ねていた。省くと**最初の座標タップが 200 を返しても効かない**(CMP で再現・
+  Flutter でも高負荷時に発火)。1画面1回なので DOM 経路の利得は保たれる
+- 座標そのものは最初から正しかった(デバイス上で DOM と XCUITest の矩形が一致することを確認。
+  `transform: translate(60px,0)` の要素も両方 `(76,477)`)。**「タップが外れる」を座標のせいと
+  決めつけない** —— ランナー内では ref タップも座標タップも同じ `coordinate(...).tap()`
+
+### 3.14 tap の内訳を実測した(2026-08-02・**改善ではなく調査**)
+
+`tap` はステップ時間の 2 割強(スイート全体の 26%・897 回)で launch に次ぐ2位。ホスト側の
+`actionMs` しか無く「送信」と「整定待ち」を分けられなかったので、両ブリッジに計時を入れて測った。
+
+**結論: tap の 73〜91% は actionMs で、その中身は整定待ちではない。** snapshot は 8〜25% しかない。
+
+| エンジン | tap 平均 | 中央 | snapshot | action | 内訳(ブリッジ内) |
+|---|---|---|---|---|---|
+| iOS xcuitest | 634ms | 537ms | 160ms | 463ms | 合成 363ms + **quiescence 29ms(7.5%)** + HTTP 約70ms |
+| iOS in-app | 250ms | 117ms | 42ms | 195ms | — |
+| Android | 483ms | 337ms | 39ms | 438ms | inject 37ms + settle 285ms(stablePkg 60 + quiet 225)+ HTTP 約20ms |
+
+- **XCUITest の律速は `coordinate.tap()` のイベント合成そのもの**(363ms・全体の 92.5%)。
+  quiescence 待ちは 29ms しかない。**`FT_FAST_INPUT=1`(§6 のレバー1)を実負荷で2回計っても
+  tap 634→601/605ms・run 全体 −1.7% にとどまる**のはこれが理由で、数字は quiesce の実測値と一致する。
+  **「XCUITest が遅いのは整定待ちのせい」という見立ては誤り**。ツール側に削り代は無い
+- **Android の settle は cap(`ACTION_CAP_MS` 2,000ms)に一度も届かない**(165 回中 0 回・
+  quiet の最大 362ms)。ハンドラ全体でも最大 916ms
+- **ホスト `actionMs` が 5〜6 秒になる tap は「探索付き tap」**(`tap(sel, scroll:)` /
+  `tapWithScrollDown` / `withScrollDown { }`)。内蔵スクロール探索は**別ステップにしない**設計
+  (StepExecutor)なので、最大 15 回のスワイプが tap の名前で計上される。**素の tap は 255ms**。
+  平均値だけ見て「Android の tap が遅い」と読まないこと
+
+### 3.15 ブリッジ内の所要内訳ログ(2026-08-02 追加・計測基盤)
+
+上の調査のために足した口。**既定 off**。
+
+```bash
+FT_BRIDGE_TIMING=1 FT_HTTP_TIMING=1 ftester run --project E2E-CMP --profile android
+adb -s <serial> logcat -d -s FTBridge | grep -E 'tapTiming|settleTiming|reqTiming'  # Android
+grep tapTiming .ftester/bridge-<port>.log                                            # iOS
+```
+
+- iOS = xctestrun へ環境変数を注入(`BridgeLauncher`)/ Android = `am instrument -e timing 1`
+- **起動時にしか切り替わらない**。稼働中ブリッジを再利用すると on にしても 1 行も出ず、
+  それを「待ちが無かった」と誤読する。Android は `/status` の `timingEnabled` を見て
+  **希望と食い違えば起動し直す**(on/off 両方向)。iOS は再利用の判定が
+  「1デバイス1ランナー」制約と絡むため触らず、代わりに**1,500ms 超の tap はゲート無関係に必ず記録**する
+  (実測 p90 439ms・最大 889ms なので通常運転では 1 行も出ない)
+- ホスト側 `FT_HTTP_TIMING=1`(閾値 `FT_HTTP_TIMING_MS`・既定 1000ms)は URLSession の
+  接続/送信/TTFB を出す。**ブリッジのハンドラ計時と突き合わせて「差がブリッジの外か中か」を決める**用
+
+### 3.16 Android の swipe はフリングになっていなかった(2026-08-02・**改善**)
+
+`InputInjector.swipe` は MOVE を合成時刻(`downTime + t*durationMs`)で送るのに、**ACTION_UP だけ
+実時計**(`SystemClock.uptimeMillis()`)を使っていた。`sleep(16)` と注入のオーバーヘッドで UP が
+遅れるため、VelocityTracker が「指が止まってから離された」と読んで**フリングが発生しない**。
+飛距離が指の移動距離(969px)を下回る 690px だったのはこれ。
+
+- **ストロークを短くすると壊れる**: 150ms は [120, 780, 105, 714, 120] と二峰性 = UP が
+  間に合うかのレース。「300ms が最適」だったのではなく、壊れた曲線の中で一番マシな点だった
+- **SUT 差**: Flutter は影響を受けない(1,617px で実時計/合成が同値)。効くのは View/Compose
+- 直しは `FTSwipeIntent`(gesture / search / edge)を用途として渡し、**edge のときだけ**
+  `SwipeRequest.fling` + 短いストローク(150ms)を送る。**探索と DSL の `swipe` は据え置き** ——
+  探索は1回の移動量がビューポート高を超えると要素を飛び越すため、較正できるまで触らない
+
+**実測(`Scripts/e2e.sh --android` 118本・同セッションで基準を取り直し)**:
+scrollToTop sum 78.2→50.6s(**−35%**)・中央値 8,001→4,288ms(**−46%**)/ scrollToBottom −13% /
+スクロール系合計 128.4→98.5s(−23%)/ 全ステップ 923.4→859.7s(**−6.9%**)。`tap` は −2.5% =
+影響が用途に閉じている確認。
+
+**踏んだ罠(いずれも実測で判明)**:
+- **距離は広げてはいけない**。スワイプは画面中央基準の全画面固定なので `distance` を 0.8 に
+  すると始点が画面の 10% になり、**スクロール領域の外から始まって1ミリも動かない**。
+  scrollToBottom(始点がリスト内)は成功し **scrollToTop だけが 3 SUT とも失敗**した。
+  **上方向しか測っていなかったので A/B では見えなかった** —— 対称な操作は両方向測る。
+  さらに既定は**軸で違う**(縦 0.4 = 0.7→0.3 / 横 0.6 = 0.8→0.2)ため、ホストは距離を送らず
+  速さのパラメータ(`durationMs`/`fling`)だけ送る(一律 0.4 を送ると gesture / search を含む
+  横スワイプ全部が黙って狭くなる。レビューで一度やりかけて 3 周目に気付いた)
+- **`adb shell input swipe` で A/B してはいけない**。同一パラメータでブリッジの
+  `dispatchGesture` が 690px(5回で ±11%)なのに adb は 406px、100ms では [108, 900, 2940, 320, 414]
+  と 27 倍ばらつく。**production の注入経路で測る**(そのために /swipe を可変にした)
+- 直叩きハーネスの px は**デバイス・SUT を跨ぐと再現しない**(同一 SUT の別端末で 690 対 276、
+  CMP は 0 を返した)。**採否の判定は e2e の scrollToTop 実測で行う**
+- 「a11y が古くて端と誤判定している」という仮説で `snapshot(bypassingCache:)` を入れたが
+  **失敗は直らず** snapshot+wait が 22.4→29.3s に増えただけだった(真因は上の距離)。棄却して撤去済み
+
+**解像度・密度への依存性(実測済み)**: `wm size` / `wm density` で 4 条件
+(720x1280@320 〜 1600x2560@280)に振っても改善は 1.9〜3.7 倍で維持され、始点がスクロール領域の
+外に出た条件も無かった。距離が**画面比**なので px は解像度に自動追従し、実効速度
+「画面比 ÷ ストローク時間」と Android のフリング閾値(`getScaledMinimumFlingVelocity`)は
+どちらも密度スケールなので**密度は打ち消し合って消える**。効き方が変わるのは dp で見た
+画面サイズ(小型機は遅く・タブレットは速い)だが、scrollToEdge は到達をループで判定するため
+飛距離が短い端末では**回数が増えるだけで壊れない**。なお `wm` の差し替えは表示メトリクスだけで、
+タッチのサンプリングレートは実機で変わり得る(実機は未確認)
+
+### 3.17 iOS xcuitest の scrollToEdge を速いスワイプにする(2026-08-02・**改善**)
+
+§3.16 と同じ形を iOS へ。XCUITest ランナーの `handleSwipe` は `app.swipeUp()` を素で呼んでいたが、
+`swipeUp(velocity:)`(`XCUIGestureVelocity` = points/sec の CGFloat・任意値可)がある。
+`SwipeRequest.velocity` を足し、**ホストが `edge` のときだけ送る**(1,500)。
+
+**実測(`Scripts/e2e.sh --ios`・3設定 × 3周・設定を交互に回してセッション内劣化を均した)**:
+
+| 設定 | scrollToTop sum | 中央値 | **最悪** | scrollToBottom | bot 最悪 | scroll 計 |
+|---|---:|---:|---:|---:|---:|---:|
+| 既定速度 | 93.9s | 11,467ms | 20,259ms | 10.8s | 10,891ms | 167.7s |
+| **1500(採用)** | 72.4s(−23%) | 8,251ms(−28%) | **12,909ms(−36%)** | 6.3s(−41%) | 4,730ms(−57%) | 139.9s(−17%) |
+| 2500 | 62.4s(−34%) | 8,287ms(−28%) | 18,535ms(−9%) | 7.4s(−32%) | 4,964ms(−54%) | 131.1s(−22%) |
+
+周ごとの top sum: 既定 `93.9 / 99.6 / 89.6`・1500 `72.3 / 78.2 / 72.4`・2500 `73.3 / 59.9 / 62.4`。
+**既定の3周と両設定の6周は範囲が重ならない**。2500 は sum で勝つが最悪ケースとばらつきが大きく、
+中央値は 1500 とほぼ同じなので 1500 を採った。
+
+**この節は一度「保留(不採用)」と書いたものを覆している。** 最初は各設定1周で判定し、
+「1500 は基準より悪い(最大 30.9s)」「2500 は scrollToBottom を 3 倍悪化させる(3,459→16,390ms)」
+と読んだが、**3周ずつ回すとどちらも再現しなかった**(scrollToBottom はむしろ両設定とも −31〜41%)。
+1周ぶんの sum は設定間の差(−23%)と同程度に揺れる。**iOS のスクロール計測は最低3周**。
+
+**注意**: Android のノブ(画面比)と違い `velocity` は**絶対値**(points/sec)なので
+画面サイズ非依存ではない ——「1500 で画面の何割ぶんの慣性が出るか」は大きい画面ほど小さい。
+検証は iPhone 17 Pro のみで、iPad 等では効きが変わり得る(scrollToEdge はループ判定なので
+壊れはしない。遅くなるだけ)。「既定の何倍」とも言えない: `XCUIGestureVelocityDefault/Slow/Fast`
+の実体は −10/−20/−30 のセンチネル値で、実速度は XCTest 内部でしか解決されない
+(だからランナーは velocity 未指定を `?? .default` に畳まず引数なし API を呼び分ける)。
+
+### 3.18 iOS のスクロール慣性は何で制御できるか(2026-08-02・**実測のみ。施策は未実施**)
+
+スクロール領域制御(`scrollFrame`)の設計判断のために、**production の注入経路**(ブリッジの
+`/swipe` と `/drag`)で 3 SUT を横断計測した。幾何スパンは全画面の 0.7→0.3(349.6pt)、
+移動量はスクロール画面の可視 `#row_NN` から `n*行高 − frame.y` で推定(**Compose iOS は
+画面外要素の frame がクランプされるので、ビューポートに完全に収まる行だけを使う**)。
+
+**(a) `swipeUp(velocity:)` と `press-drag(withVelocity:)` は同じ物理**: 同スパン・同 velocity で
+984.3pt 対 985.3pt(差 0.1%・ばらつきも同等)。**座標経路へ移しても慣性の挙動は変わらない**。
+
+**(b) 終端ドウェル(`thenHoldForDuration`)は効かない**: v1500 で hold 0 / 0.05 / 0.10 / 0.20 を
+振っても 2.85 / 2.85 / 2.82 / 2.82 倍で、慣性は消えず**所要だけ +200ms**。XCUITest の hold は
+指を保持するだけでイベントを出さないため `UIPanGestureRecognizer` の速度計算が更新されない
+(Android の `VelocityTracker` は同一座標の MOVE を送れば速度が 0 になるのと対照的)。
+→ §6 の不採用表に登録。**iOS で慣性を消す手段は速度を落とすことだけ**。
+
+**(c) 慣性が消える速度はフレームワークで違う**(スパン比 = 実移動量 ÷ 幾何スパン):
+
+| velocity | SwiftUI(E2E-iOS) | Compose(E2E-CMP) | Flutter(E2E-Flutter) |
+|---:|---:|---:|---:|
+| 1500 | 2.85 | 1.46 | 2.76 |
+| 700 | 1.67 | 1.14 | 1.61 |
+| 500 | 1.43 | 1.10 | 1.37 |
+| 350 | **0.97** | **0.97** | 1.21 |
+| 250 | 0.97 | 0.97 | **1.11** |
+
+**Flutter は v250 でも 11% 残る**。「速度を下げれば幾何スパンどおりに動く」は SwiftUI/Compose だけ。
+
+**(d) 慣性除去のコストは SUT で逆向き**(v1500 → v350 のジェスチャ所要):
+SwiftUI 2,970→1,507ms(**−49%**)/ Compose 595→1,367ms(**+130%**)/ Flutter 594→1,369ms(**+130%**)。
+**SwiftUI だけが「慣性あり = quiescence 待ちが長い」構造**で、CMP/Flutter は素直に
+「遅いジェスチャ = 遅い」。1 SUT の計測から「慣性除去は速い」と一般化してはいけない。
+
+**(e) 遅いドラッグはジェスチャの意味を変える**: v350 / v150 の上方向ドラッグを **Flutter の
+検出パッドが `swipe=down` と誤判定**する(SwiftUI/Compose は正しく `up`)。
+**DSL の `swipe`(ジェスチャ目的)に慣性除去を適用してはいけない**。
+
+**(f) 現状の取りこぼしリスク**(1 スワイプの移動量 対 リストのビューポート高):
+SwiftUI 681/492 = **1.38 倍超過** / Compose 509/546 = 0.93 倍 / Flutter 963/550 = **1.75 倍超過**。
+スクロール探索は行き過ぎた要素を拾い直さないので、**SwiftUI と Flutter では原理的に取りこぼし得る**
+(E2E で顕在化しないのは目標が端の `#row_40` だから)。
+
+### 3.19 スクロール探索の座標化を「未指定」まで広げる案(2026-08-02・**撤回**)
+
+`scrollFrame` を明示したときの座標経路(§3.18 の実測に基づく実装)を、**未指定のスクロールにも
+広げる**案。面積最大のスクロール容器(`ElementInfo.scrollable`)を暗黙の対象にし、慣性を消す
+速度(iOS v350)と大きめの刻み(スパン 0.8)で「刻み = 実移動量」にして**要素の飛び越しを
+構造的に無くす**狙いだった。実装して 4 SUT × 3 エンジンで実測し、**3つの理由で撤回した**。
+
+- **iOS xcuitest には対象を特定できない画面がある**。E2E-iOS のセレクタ画面はスクロール容器に
+  identifier が無く、snapshot のフィルタ(Other/ScrollView は identifier 付きのみ)で落ちるため
+  申告が出ない。画面全体を対象にすると始点が画面の 90% = **タブバーの上**に乗り、
+  **実移動量 0.0pt**(従来の `swipeUp()` は XCTest が要素の中で始点を決めるので効く)
+- **Android には速度のノブが無い**。距離とストローク時間でしか決まらず、iOS と同じ設計にできない。
+  既定 300ms のままだと Flutter が負荷時に `maxSwipes` を使い切って到達し損ね、200ms に速めると
+  今度は Compose で**探索直後のタップが 9 行ずれた**(row_30 を狙って row_39)。
+  どちらかに倒せるだけの較正が無い。
+  **ずれを「慣性」と書いていたが未検証の推定**だった —— 同じ症状の真因は a11y ツリーの公開遅れで、
+  2026-08-03 に snapshot のキャッシュ迂回で解決している(docs/verification.md
+  「Compose の探索直後タップ」)。**この撤回理由を再検討するなら、まず 200ms を今のコードで測り直すこと**
+- 明示指定の経路は既に価値を出している(領域を決めるのは利用者の意図で、そこでは容器が分かる)
+
+**残したもの**(いずれも撤回とは独立に正しいと確認できた):
+`ElementInfo.scrollable` の申告と `implicitScrollTarget` の規則 / 見切れ判定を**容器基準**にする修正
+(下記)/ 座標スワイプが 1 ミリも動かなかったときに従来経路へ戻す自己補正 / 実移動量が
+ビューポートを超えたら刻みを詰める自己補正。
+
+**⚠️ 「残した」3つのうち2つは production で動いていなかった**(2026-08-05 に経路を追って確認)。
+**同日に棚卸し済み** —— 現在の状態は次のとおり:
+
+| 残したつもりのもの | 判明した実体 | 2026-08-05 の処置 |
+|---|---|---|
+| 実移動量がビューポートを超えたら刻みを詰める | `spanScale` は **`scrollPath` の中でしか読まれない**。`scrollPath` は `scrollFrame` 未指定なら nil を返すので、**既定の `scrollTo` では計算されるだけで効かない**。さらに閾値の基準が**画面の高さ**で、容器は定義上それより小さいため**指定時もほぼ発火しなかった** | **基準を容器へ直した**(下記) |
+| 座標スワイプが動かなかったら従来経路へ戻す | `coordinateSwipeIneffective` は書き込みとリセットだけで**読み取り箇所が無い**。しかも立てる条件が `scrollFrame == nil`(= 座標を撃っていない場面)で、**用途と条件が噛み合っていない**撤回の遺物だった | **削除** |
+| `implicitScrollTarget` の規則 | production からの呼び出し無し(単体テストのみ) | **削除**(規則はこの節に残る = 必要になったら書き直す) |
+
+**閾値の基準を画面 → 容器へ**(`StepExecutor` の探索ループ)。§3.18(f) の実測を当てると、旧実装では
+SwiftUI が 1 スワイプ 681pt に対し閾値 0.8×874=699pt で**素通り**していた(リストの可視高は 492pt =
+**1.38 倍の超過**)= いちばん取りこぼす SUT でガードが無効だった。
+
+**修正の実測は「差なし」= 現状の SUT では発火しない**(2026-08-05・同セッション A/B)。
+E2E-CMP `S0060/S0080/S0090` を fix 3 周 / base 3 周、E2E-iOS `S0060/S0090` を 2 周 / 2 周:
+スクロール系ステップの合計は**全シナリオで ±25ms 以内**(S0090 は 23.3s / 43.1s の規模)、
+26/26 緑。つまり**エンジン既定の速度で座標スワイプする限り、実移動量は容器の 0.8 倍に届かない**。
+→ この修正は**コストゼロの保険**であって高速化でも遅延でもない。**「効かないから戻す」ではなく
+「発火条件を満たす SUT が現れたときに初めて効く」**と読むこと(単体テストが発火側を固定している)。
+
+**効くのは `scrollFrame` を書いた経路だけ**で、これは仕様上の限界である(バグではない):
+刻みを縮める唯一の口が `spanScale` → `scrollPath` で、あちらは領域未指定ならエンジン既定に委ねるため。
+**既定経路の飛び越しをホスト側で塞ぐには座標スワイプの常用が必要で、それがこの節の撤回対象**。
+既定経路をどうしても救うなら、刻みを縮めるのではなく**行き過ぎを検出して1回戻す**(座標化を
+復活させない唯一の道)。現状の失敗率は ios-xcuitest の `scrollTo` で 25/2,971 ≒ 0.8% と低く、
+**凍結デバイス由来のノイズを除いた母数を取ってから**判断すること(docs/verification.md
+「iOS シミュレータも『画面だけ死ぬ』」)。
+
+**この過程で見つけて直した実バグ**:
+- **見切れ判定が容器でなく画面基準だった**。リストの下端で見切れた行を「可視」とみなし、
+  その中心をタップして**容器の外(タブバー)に当たり別画面へ遷移**していた
+- **`isClippedByViewport` の大きさガードが `<` だった**。リストの行は容器と同じ幅を持つのが普通で、
+  幅一致の行が丸ごと判定から漏れていた(`<=` が正しい)
+
+**2度目の撤回(2026-08-03)**: 条件を変えて再投入した —— 保守的な刻み(スパン 0.5・速度は
+エンジン既定のまま)で、**容器を特定できたときだけ**座標化する形。狙いは Compose の飛び越しを
+塞ぐことだったが、**2つの理由で再び撤回した**:
+- **Compose には効かない**。Compose の容器は xcuitest で `other` として出るため
+  `ElementInfo.scrollable` を申告できず、そもそも暗黙の対象に選べない(実測: `#list_rows` も
+  `#carousel_tags` も申告なし)。Compose の回避策は**利用者が `scrollFrame` を書くこと**
+- **in-app で到達距離が縮む**。刻みが 0.85 ページ送り → スパン 0.5 になり、既定 `maxSwipes`(8)で
+  `#row_40` に届かなくなった。「未指定ならエンジン既定を尊重する」という決定にも反する
+
+**再検討する条件**: (a) iOS xcuitest が identifier の無い容器も snapshot に載せられるようになる
+(= 要素集合が変わるので `.型[n]` の意味に影響する)か、(b) Android で 1 スワイプの実移動量を
+狙って出せる注入経路が見つかったとき。**どちらも無いまま再提案しない**(2回撤回済み)。
+
+### 3.20 `hintDrag` と `ScrollGeometry` の統合(2026-08-03・**部分採用**)
+
+WebView のヒント跳躍(`offscreenJump` / `dragGesture` / `hintDrag`)と、スクロール領域指定の
+座標計算(`ScrollGeometry`)は「容器の中でマージンを避けて直線を引く」点が同じなので、
+1箇所に寄せられないかを検討した。**完全統合はしない**。
+
+- **距離の意味が違う**: ヒントは「目標まであと何 px か」で決まる**跳躍**、`ScrollGeometry` は
+  「容器の何割か」で決まる**刻み**。同じ関数に押し込むと、どちらの意図も読めなくなる
+- **注入経路と較正が違う**: ヒントは `/drag` を使い、`min(max(|Δy|/2500, 0.3), 0.7)` という
+  **較正済みのジェスチャ時間**を持つ(§6 の分析どおり `scrollToEdge` の支配項)。
+  `ScrollGeometry` は `/swipe` の座標で、速度はエンジン既定に任せる。混ぜると較正値が壊れる
+
+**採ったのは1つだけ** —— **容器を画面と交差させる規則**(`ScrollGeometry.intersection`)を
+`dragGesture` でも使うようにした。従来は生の容器矩形を使っており、**画面からはみ出した容器では
+画面外の座標を撃つ**(WebView が画面より高いときに起き得た)。交差を取れば scrollFrame 側と
+規則が揃い、容器が画面内に収まる通常ケースでは**挙動は変わらない**(no-op)。単体テストつき。
+
+### 3.21 フル E2E の定常値(2026-08-04 実測・M2 Ultra・8 レーン)
+
+**450 シナリオ / 両スイート 9分37秒**(既定 409s + `--ios-inapp` 168s)。全プロファイル緑。
+
+| プロファイル | test time | 理論下限(sum/8) | 余剰 | レーン稼働 |
+|---|---|---|---|---|
+| E2E-CMP / ios-xcuitest | 71.2s | 68.8s | +2.4s | 97% |
+| E2E-CMP / android | 49.1s | 48.3s | +0.8s | 98% |
+| E2E-iOS / ios-xcuitest | 67.3s | 66.2s | +1.1s | 98% |
+| E2E-Android / android | 40.1s | 39.2s | +0.9s | 98% |
+| E2E-Flutter / ios-xcuitest | 62.7s | 60.6s | +2.1s | 97% |
+| E2E-Flutter / android | 49.7s | 48.6s | +1.1s | 98% |
+| ios-inapp 3 プロファイル | 38.6〜46.3s | +0.7〜1.6s | | 96〜99% |
+
+**スケジューリングは健全**(全パスが理論下限 +0.7〜2.4s・稼働 96〜99%)。
+壁時計を縮めたいならレーン配分ではなく**シナリオ自体の所要**を削るしかない。
+
+**コマンド別の総所要**(748 シナリオぶん・合計 5,822s):
+
+| | 合計 | 回数 | 中央値 |
+|---|---|---|---|
+| `launch` | **2,267s(39%)** | 764 | 3,102ms |
+| `tap` | 1,422s(24%) | 2,509 | 399ms |
+| `scrollTo` | 465s | 94 | 5,199ms |
+| `exist` | 427s | 931 | 44ms |
+| `scrollToTop` | 243s | 45 | 4,624ms |
+
+**launch が最大項なのは §3.2〜3.4 の既知どおり**で、CoreSimulator 直叩き・fast launch は適用済み、
+`attachOnly` 化は §7 で棄却済み。**新しい削り代は見つからなかった**。
+
+**この計測で踏んだ罠**: `E2E-CMP/ios-xcuitest` だけレーン稼働 87%・余剰 +10.1s と出たが、
+**測定手順が作ったアーティファクト**だった。直前に 1 シナリオを単独で約 90 回回したため
+LPT の履歴枠(既定 5 run)が 1 シナリオ run で埋まり、`🔀 LPT ordering: 1/52 with history` に
+なっていた(§3.7 の「残る狭い穴」そのもの)。**履歴が戻ると 97%・余剰 +2.4s**。
+**壁時計の異常を見たらまず `🔀 LPT ordering: N/M with history` を確認する**。
+
+**同じ罠を 2026-08-04 に再発させた(2回目)**。WebView の A/B で 1 シナリオ単独実行を 9 回
+回した直後にフルを回したため、**iOS の 3 プロファイルが揃って `1/45`・`1/41`・`1/42`**
+(Android は履歴を汚していないので `45/45` のまま健全)。結果、**シナリオ sum はほぼ不変なのに
+test time だけ +28〜44%** に膨らんだ(E2E-CMP/ios-xcuitest 71.2→91.2s)。
+履歴が戻った直後の同一プロファイルは **72.5s・稼働 98%** で、上表の定常値が正しいことを確認済み。
+**教訓: 単独反復のあとのフル実行は壁時計を定常値として使えない**(sum とステップ内訳は使える)。
 
 ## 4. 計測基盤の使い方(チューニングの必須手順)
 
 **変更前にベースライン、変更後に同条件で再計測、summary.md を比較する。**
+
+**計測手段は「使いたい条件」で一度検算してから信じる。** 2026-08-01 に launch の内訳を
+出せるようにしたが、いざ 8 レーンで採ると `FT_EVENT_LOG_PATH` が並列書き込みで壊れ、
+**launch 41 本中 3 本しか読めなかった**(1プロセス実行しか想定していなかった)。
+知りたい条件がまさに読めない状態で、しかも**壊れた行は黙って捨てられる**ので
+「n が少ない」以外に手がかりが出ない。手順は単純:
+
+1. 採れた件数が**期待どおりか**を必ず確認する(シナリオ数と一致するか)
+2. パースできなかった行数も数える(0 でないなら計測基盤を疑う)
+3. 疑わしければ**単発(1レーン)と並列で同じものを採って比べる**
+
+これを飛ばすと、少ない・偏ったサンプルで設計判断をすることになる。
+
+**集計はシナリオ・step index 単位で突き合わせる**。コマンド名だけで中央値を取ると、
+同名でも別シナリオ・別画面のステップが混ざって**実際より大きい差に見える**
+(2026-08-03: `scrollToTop` を混ぜて `+1,007ms` と書いたが、揃えると最大でも `+1,100ms` の
+1件で、他は `+130〜600ms` に散っていた)。**「1コマンドに集中」と読めたら集計方法を疑う**。
+
+**スイート総計で小さい差を主張しない**。Android は同条件でも run 間で 363〜398s 振れるので、
+n=3 では ±3s 程度は解像できない([[android-perf-degrades-within-session]])。
+狙った経路のステップだけを取り出して突き合わせる方が S/N が高い
+(実例: スイート総計は +3.2s で悪化に見えたが、scroll 系ステップだけ見ると −2.0s の改善だった)。
+
+**A/B でバイナリを差し替えるなら `ftester-scenarios-<project>` を差し替える(2026-08-03 に実害)。**
+`StepExecutor`・ドライバ・セレクタ解決は **`ftester` ではなくシナリオランナーのサブプロセス**で
+動く(`RunOrchestrator.swift` 冒頭の契約)。`swift build --product ftester` して
+`.build/debug/ftester` を入れ替え、`--skip-build` で回す —— という手順は
+**両側とも同一のコードを実行する**ので、どんな変更も必ず「差なし」に見える。
+実際にこれで、性能の A/B(誤って「+0.1% = 退行なし」と結論)と、Compose の探索不具合に当てた
+修正案2件(いずれも誤って「no-op」と結論)を取り違えた。**症状は「きれいに差が出ない」**なので
+気付きにくい。手順:
+
+1. 差し替えるのは `.build/debug/ftester-scenarios-<project>`(`swift build --product` も同名で)
+2. **陽性対照を先に通す** —— マーカーを書くだけの版をビルドして差し替え、
+   実行してマーカーが出ることを確認してから本番の A/B に入る
+3. 二つのバイナリが `cmp` で別物であることも確認する(同名プロダクトの取り違え検出)
+
+`nm` でシンボルを確認するときは、**動く側のバイナリ**を見ること
+([[swiftbuild-layout-and-rebuild-verification]] の「mtime でなく symbol」の別形。
+symbol を見ても対象を間違えれば同じ穴に落ちる)。
 
 軽量な計測口が2つある(bench.swift を回すほどでもない切り分け用):
 
@@ -452,7 +916,18 @@ FT_PHASE_LOG=1 ftester run --profile <p> --scenario <s> --skip-build
 
 # step 単位の NDJSON(durationMs/snapshotMs/actionMs/waitMs)をファイルへテー出力
 FT_EVENT_LOG_PATH=/tmp/steps.ndjson ftester run --profile <p> --scenario <s> --skip-build
+
+# --scenario を付けなければプロファイル全体(=8レーン実負荷)の内訳が採れる。
+# 並列でも行は混ざらない(EventLogAppender が直列化。2026-08-02 修正。それ以前は
+# 複数ワーカーが同じハンドルへ書いて行が壊れ、41 本中 3 本しか読めなかった)
+FT_EVENT_LOG_PATH=/tmp/steps.ndjson ftester run --project <P> --profile <p>
 ```
+
+- **`launch` も内訳を持つ**(2026-08-02 から): `actionMs`=プロセスを起動させる外部呼び出し、
+  `waitMs`=操作可能になるまでの待ち。**`durationMs - actionMs - waitMs`(内訳外)を必ず見る** ——
+  計測していない区間がここに出る(実際これで `simctl terminate` の 1.5s と
+  未インストール検査の 0.7s が見つかった。§3 の表)
+- 埋まらないエンジンは nil のまま(Android・`FT_NO_FAST_LAUNCH` 経路)。嘘の数字は出さない
 
 
 ```bash
@@ -474,7 +949,7 @@ swift Scripts/bench.swift --project SampleApp --profile ios --iterations 3 \
 - ステップ内訳は NDJSON イベント(`kind:"step"` の `durationMs/snapshotMs/actionMs/waitMs`)
   として流れるので、レポート/拡張からも参照できる
 - `bench-results/` は .gitignore 済み。比較対象のベースラインは削除しないこと
-- run ごとに `Projects/<project>/results/runs/<YYYY-MM>/<runID>/host-metrics.ndjson`(1Hz NDJSON)
+- run ごとに `TestProjects/<project>/results/runs/<YYYY-MM>/<runID>/host-metrics.ndjson`(1Hz NDJSON)
   へホスト負荷を採取し、`ftester api host-metrics-summary --project <p> --run latest`(既定 latest)
   で直近実行の avg/peak を JSON で読み戻せる(「あの実行は CPU 律速か」を実行後に確認できる)
 
@@ -504,9 +979,9 @@ python3 Scripts/stream_vs_poll_bench.py --boot-ios-name シミュ1 --boot-androi
   (モニタの支配的状態)で圧倒的。**
 - **H.264+WebCodecs 化後の実測(2026-07-14。上記は MJPEG 経路の値)**: helper モーション時
   Android **5.2%→1.0%**(パススルー化)・iOS **1.5%→0.9%**(VT HWエンコード)、4台デモ65秒平均で
-  webview Renderer **8.4%**(MJPEG 時代は瞬時 30-65%)・拡張ホスト 1.4%。このスクリプト自体は
-  MJPEG 経路(`--codec` 省略)を測る。h264 の helper 単体は `--codec h264` を付けて同手法で測れるが、
-  復号を担う消費側(webview Renderer)は本番パネルでの cputime デルタでしか測れない
+  webview Renderer **8.4%**(MJPEG 時代は瞬時 30-65%)・拡張ホスト 1.4%。このスクリプトが測るのは
+  **MJPEG 経路だけ**(コーデック切替のフラグは無い)。h264 側(helper と、復号を担う
+  webview Renderer)は本番パネルでの cputime デルタでしか測れない
 - **計測の罠(スクリプト冒頭 docstring に全掲)**:
   - `host-metrics`/`simstream`/`androidstream` は **stdin EOF で即終了**する常駐 CLI。Popen は
     `stdin=PIPE` を開いたまま保持必須(未保持=/dev/null 継承で即死→0 サンプル/0 フレーム。静止 0 と誤診しやすい)
@@ -526,7 +1001,7 @@ FM はホスト全体で直列化する共有資源(§3.5)なので、コスト�
 # run 全体の FM コストを集計(壁時計と比べて律速かを判定する)
 python3 -c "
 import json,glob
-fs=[json.load(open(f)).get('fm') for f in glob.glob('Projects/<project>/results/runs/*/<runID>/scenarios/*.json')]
+fs=[json.load(open(f)).get('fm') for f in glob.glob('TestProjects/<project>/results/runs/*/<runID>/scenarios/*.json')]
 fs=[f for f in fs if f]
 print('呼び出し', sum(f['calls'] for f in fs), '合計秒', sum(f['totalMs'] for f in fs)/1000)
 "
@@ -554,6 +1029,26 @@ in-app ブリッジはアプリのプロセス内にいるので、外形計測(
 - 撤去し忘れを防ぐため、計装は `// MARK: - 一時計測(TEMPORARY PROFILING — 計測後に削除する)`
   で囲んで1箇所に固める
 
+### 4.4 整定の打ち切り率(赤になる前の先行指標。2026-08-07 追加)
+
+収束判定がポーリング上限で打ち切られたステップは、**注記を付けて先へ進む**(止めない)。
+これは通った run にだけ現れる情報なので、合否だけを見ていると**フレーク率が上がる直前まで気付けない**。
+採用ゲート(§2 の 3 指標)の「成功率」を、赤が出るより前に判定するための指標がこれ。
+
+```bash
+ftester results insights --project <name>     # 🟡 unsettledSteps の行を見る
+```
+
+- 判定は `results/runs/**/scenarios/*.json` の `timeline[].notes`。閾値は
+  「3 run 以上 かつ 3割以上の run で発生」(`RunResultsQuery.unsettled*`)
+- **数えるのはコード(`settle-capped`)だけで説明文は見ない**。文言一致で数えると、文言を
+  書き換えた瞬間に集計が静かに 0 件になる(「問題が無い」と「測れていない」が区別できなくなる)。
+  文言とコードは `Sources/FTCore/StepNote.swift` が1箇所から供給する
+- **notes を持たない古い results は 0 件として数える** = 率が下がる側に倒れる(過小報告は安全)
+- 同じ経路で `steps.viaHeldValue`(掴んだ値だけで通り往復 0 回だったステップ数)も記録している。
+  これらは `durationMs=0` なので**所要の内訳の母数から抜ける** —— A/B で「速くなった」が出たとき、
+  実装の効果か当たり率の変化かを切り分けるのに使う
+
 ## 5. チューニングノブ(値を変える場所)
 
 | 定数 | 場所 | 現在値 | 意味・トレードオフ |
@@ -565,19 +1060,24 @@ in-app ブリッジはアプリのプロセス内にいるので、外形計測(
 | `RETARGET_EXCLUDED_PACKAGES` | AndroidRunner/…/QuietWaiter.java | {com.android.systemui} | クロスパッケージ遷移時、静穏対象パッケージの追従(TYPE_WINDOW_STATE_CHANGED 検知時に静穏対象を送信元パッケージへ切替)から除外するパッケージ。追従してしまうと遷移先アプリ本体ではなく付随ウィンドウの静穏を待つことになるため |
 | `PollBackoff` | Sources/FTCore/PollBackoff.swift | 100→200→400→800→上限1000ms | exist/textIs/ロケータ解決リトライの共通バックオフ。5s timeout での snapshot 回数は旧5回→新8回(許容済み) |
 | `defaultTimeout` | FTRuntime(runs プロファイルで上書き可) | 5s | 検証系の待ち上限。失敗するテストの所要を支配 |
-| `timeout:`(tap/type/press) | DSL 引数(FTDSL/Commands.swift) | nil | アクションのロケータ解決待ち上限秒。nil=従来の3回リトライ(計700ms)、**0=リトライなし(optional の空振り ~750ms→数十msに短縮する opt-in ノブ)**。遅れて出る要素を拾えなくなるので optional 以外では基本使わない |
-| fallback 照会の間引き | StepExecutor.swift(executeAssert) | primary 2回目以降・偶数回ミスのみ | hybrid の SystemUIDriver 照会(springboard 再session+XCUITest snapshot=数百ms)の頻度。実在するシステムUI要素の検知遅れは最大バックオフ1段+1周期 |
+| `timeout:`(tap/type/select) | DSL 引数(FTDSL/Commands.swift・select は CommandsVerify.swift) | nil | アクションのロケータ解決待ち上限秒。nil=従来の3回リトライ(計700ms)、**0=リトライなし(出るか不定の要素を見るときの空振り ~750ms→数十msに短縮する opt-in ノブ)**。遅れて出る要素を拾えなくなるので `ifCanSelect` / `select` の空振り短縮以外では基本使わない |
+| fallback 照会の間引き | StepExecutor+Assert.swift(executeAssert) | primary 2回目以降・偶数回ミスのみ | hybrid の SystemUIDriver 照会(springboard 再session+XCUITest snapshot=数百ms)の頻度。実在するシステムUI要素の検知遅れは最大バックオフ1段+1周期 |
 | LPT 投入順 | `ftester.lptScheduling` / `--no-lpt` | ON | 過去実績の長い順に投入する(§3.7)。OFF でシナリオ ID 順。レーン数とシナリオ長のばらつきが無いと効かない |
-| LPT の実績 run 数 | `ftester.lptHistoryRuns` / `--lpt-history-runs` | 5 | 実績として読む run の件数(新しい方から)。増やすと代表値は安定するが毎 run の読み込みファイルが増える。実測で 1 プロジェクト 3,500〜4,500 件の結果 JSON があるため全件走査はしない |
+| LPT の実績の読む件数 | `ftester.lptHistoryRuns` / `--lpt-history-runs` | 5 | **シナリオ1本あたり**読み込む実績の観測数(新しい方から。`RunResultsStore.scanRecords(maxObservationsPerScenario:)`。§3.7)。増やすと代表値は安定するが毎 run の読み込みファイルが増える。実測で 1 プロジェクト 3,500〜4,500 件の結果 JSON があるため全件走査はしない |
 | 操作直後の整定(Android) | ブリッジ `/settle`(QuietWaiter) | QUIET_MS=200ms | ブリッジを経由しない経路(activate/home/appSwitcher/pressEnter フォールバック)の整定(§3.9)。旧実装は固定 800ms。ブリッジ不達時のみ 800ms へフォールバック |
 | 操作直後の整定(iOS) | `BridgeRouter.captureSettled` の minSettle / budget | 0.12s / 0.35s | ツリーが連続2回一致するまで撮り直す(§3.8)。minSettle は早抜け防止の床、budget は収束しない画面の打ち切り。budget を上げるとスクロール慣性で待ち切ってしまい旧実装より遅くなる(0.8s で実測 0.72〜0.83s) |
 | ビルドスキップ判定 | FTCore/BuildFingerprint.swift | mtime+size+toolchain | §3.2。強制再ビルドは `.ftester/build-fingerprint-*.txt` を削除 |
 | `ftester.streamCodec` | VSCode 設定(package.json) | h264 | 画面配信コーデック。h264=HWエンコード/デコード(低負荷)、mjpeg=互換(WebCodecs 問題時の退避先。デバイス単位の自動フォールバックあり) |
 | 描画間引き(66ms) | vscode-ftester/src/webview/monitor/h264Decoder.js | 約15fps | h264 の canvas 描画間隔。デコード自体は全チャンク必須(P フレーム連鎖)なので下げても復号コストは減らない |
-| `FT_WEBVIEW_DOM` | InAppBridge/Sources/InAppWebViewDOM.swift | 有効(`off` で無効) | iOS in-app が WKWebView の中身を DOM から読むか。off にすると WebView 画面ごと XCUITest へ委譲する従来動作(1手 4ms → 378ms)。効果測定の A/B と切り分け用 |
+| `FT_WEBVIEW_DOM` | InAppBridge/Sources/InAppWebViewDOM.swift / Sources/FTAndroid/AndroidWebViewDOM.swift | 有効(`off` で無効) | **自作アプリの WebView の中身を DOM から読むか**(OS 共通の意味)。iOS in-app は off で WebView 画面ごと XCUITest へ委譲する従来動作(1手 4ms → 378ms)。Android は off で a11y のまま = **WebView の版で `#id` と `placeholder` が入れ替わる**状態に戻る(docs/design.md §Android の自作アプリの WebView も DOM から読む)。ブラウザ本体は別の口(`FT_BROWSER_DOM`)|
 | watchdog しきい値 | vscode-ftester/src/monitorBridgeWatchdog.ts | booted 連続5観測(約10秒)/クールダウン3分/2回で諦め | ブリッジ自動修復の感度。短くすると起動過渡を誤検知、長くすると復旧が遅い |
+| ワーカー参加の間隔(`FT_WORKER_STAGGER_SEC`) | Sources/FTCore/RunOrchestrator.swift(`WorkerStagger.seconds`) | 1.5s(`0` で無効) | run 開始時にワーカーを1本ずつ参加させる間隔。**先頭2本は待たない**(`simultaneousHead`=2。BridgeProvisioner の「in-app の新規起動は同時2台」と同じ値)。各シナリオは `condition { launchApp() }` から始まるので、N 本同時に積むと**最初の launch が N 本同時**に走る。**定常のレーン数は変えない**ので伸びるのは立ち上がりだけ(10 台で約 12 秒)。1.5 の根拠は「シミュレータの launch がおおむね1〜3秒」という観測だけで、凍結率で較正した値ではない |
+| ワーカー参加の CPU 上限(`FT_WORKER_START_CPU_MAX`) | Sources/FTCore/WorkerStartGate.swift(`WorkerStagger.cpuCeiling`) | 1.0 = 100%(`1` 以下は割合・超えたらパーセント) | **これ未満になるまで次のワーカーを起こさない**。間隔は時間の当て推量で、ホストが実際に空いたことを見ていない —— 供給が長引いた run では飽和したまま次を起こす。**先頭2本もこの門は通る**(間隔だけが先頭免除)。**30 秒(`cpuWaitCap`)空かなければ諦めて素通しし、以降その run では CPU を見ない**(飽和の理由がテストと無関係なとき立ち上がりが際限なく延びるため。諦めは1回だけ警告)。`CPUSampler` は連続呼び出しだと差分が取れず nil を返すので、**1窓(0.5s)以内の測定値は使い回す**(これが無いと先頭2本が測定窓のぶん離れ「間隔0」が崩れる)。コストは通常設定で最初の1窓=約 0.5 秒 |
 | `maxConcurrent`(bootAll 引数) | Sources/FTAndroid/DeviceBooter.swift | 2(固定。ユーザー決定 2026-07-16) | devices up の同時進行数(1台=ブート→iOS ブリッジ供給まで)。上限がブートストーム防止を兼ねる(旧 CPU 負荷ゲートは廃止済み。§3.3)。上げると速いがタイルの進行表示も増える |
 | GPU 描画モード / 凍結時 CPU フォールバック | DeviceBooter.startEmulator(gpuMode) / ApiDeviceUp `--gpu` / ApiDevicesUp `--cpu-render` / monitorHealthWatchdog | 既定 host / 凍結個体のみ swiftshader_indirect | `-gpu host` は速い(モーション時 約1コア/台)が**画面凍結の主因**(§7)。swiftshader は免疫だが 約3コア/台。全機 swiftshader ではなく、凍結が displayRepair/streamRepair で治らない個体だけ per-device で swiftshader 再起動(セッション中維持。bulk devices-up も `--cpu-render <論理名>` で維持される。host への意図的復帰は devices-restart) |
+| 探索の打ち切り(`unmovedRoundsToStopSearch`) | Sources/FTCore/StepExecutor+ScrollFrame.swift | 2 周連続で木が不変なら打ち切り | 端に着いた後も上限まで振り続けるのをやめる。**見つからない探索が 7.40s → 2.05s**(実測 2026-08-06)。1 にすると遅れて描画される行を取りこぼす |
+| 逆走査(`reverseSweepSpanRatio` / `MaxSwipes` / `DragSpeed`) | Sources/FTCore/StepExecutor+ScrollFrame.swift | 容器の 0.5 ぶん / 8 本 / 120px/s | 端に着いても見つからないときだけ、逆向きに細刻みで戻って拾い直す。**失敗が確定してからしか撃たない**ので通常経路のコストは 0。速度を上げるとフリングになって反対の端まで走る(実測: 189px 指定が約 700px 走った)。**MCP の ft_scroll_to の1回目だけは半開きシートの停滞で逆走査を撃たない**(`defersPartialSheetRecovery`。シートを展開して再試行する側の逆走査が救済を引き継ぐ。実測: 畳まれた経路カードで 7.8s の丸損 → 同一シナリオ 21s → 10.7s。2026-08-10) |
+| `FT_CONTAINER_INFERENCE` | 環境変数(`StepExecutor.containerInferenceEnabled`) | 既定 on / `off` で無効 | **容器をツリーから推測して行う補正の殺しスイッチ**。見切れ判定・ghost の掴み直し・救済ドラッグ・座標補正(見えている部分を撃つ)・壊れた座標の候補除外が**まとめて止まり**、推測を持たなかった頃の挙動へ戻る。容器は「pre-order で直前の depth の小さい要素 + 同 depth の兄弟が2つ以上中に居る」という推測なので、**想定外のツリーでは外れ得る**(外れると別の場所を叩く・明後日へ送る・正当な要素が消える)。E2E は 4 SUT しか見ていないので利用者の逃げ道として置く。**run 全体を殺す最上位のスイッチ**で、より細かい単位は実行プロファイルの `containerInference` と DSL の `tap(containerInference:)` / `withoutContainerInference { }`(docs/commands.md) |
 
 window/transition/animator の `*_scale` はチューニングノブではなく常時 0 固定で、
 `Sources/FTAndroid/AndroidBridge.swift` の `startBridge()` 内(ブリッジのコールド起動時)で
@@ -594,10 +1094,12 @@ window/transition/animator の `*_scale` はチューニングノブではなく
 |---|---|---|
 | ホスト ANE 負荷率の計測(IOReport `DIE_n_ANE0` の ACT/INACT residency) | 2026-07-22 実測で**電源状態の1ビットしか返さないと確定**し、指標ごと廃止(IOReport 私有API 依存 約200行も削除)。実推論レートを 8→175 回/秒(22倍)振っても全水準で正確に 1.00、アイドルのみ 0.00。**推論0件で失敗した実行でも 1.00 になる**(モデルをロードして電源が入っただけで立つ)。代替候補も全滅: PMP の `0%..100%` バケットは負荷時も常時オール0、DVFS residency(`ANEn-{SLOW,FAST}-*`)は SLOW/FAST クロックドメイン間を仕事が移動するため非単調、`ANEn RD+WR`(帯域)だけは単調だが GB/s であって利用率ではなく分母が定義できない。Energy Model グループは SIGSEGV、powermetrics は root 必須。**FM のコストは ANE ではなく呼び出し回数とレイテンシで測る**(§4.2) | Apple が ANE の利用率を公開 API で出したら、または powermetrics 相当を非 root で取れるようになったら |
 | ランナー常駐化(stdin でシナリオ逐次投入) | 残存コスト ~0.2s/本(全体の1〜6%)に対し、プロトコル+クラッシュ隔離の複雑さが見合わない | ヒール多用ワークロード(FM 3B モデルのプロセス毎再ロードが効く)か、1 バッチ数十本規模 |
+| シナリオ毎の CoreSimulator 初期化(約 360ms)の排除 = ホストへ委譲 or プロセス再利用(2026-08-02 調査) | 得られるのは壁時計 **1.8s/プロファイル(3.4%)**。代償はクラッシュ隔離・確実な kill・状態の初期化(design.md §16.4 / ScenarioHost 冒頭)で、失敗モードが「遅い」から「デッドロック」「別シナリオの状態漏れ」へ変わる。**安い入口も無い**: `serviceContextForDeveloperDir:connectionType:` は type=0 が同等、type=1 は deviceSet が 6.4s、`standaloneConnectionWithError:` は context として使えない。`xcode-select` の 65ms だけは `DEVELOPER_DIR` 受け渡しで削除済み | 初期化が数倍に伸びるか、1プロセスあたりのシナリオ数を増やす別の動機(隔離を捨ててよい理由)が先に出たとき |
 | エミュレータ黒画面対策としての Wipe Data / キャッシュ削除の自動化(2026-07-17 精査)→ **同日ユーザー決定で実行プロファイルのオプションとして実装済み** | 精査結論: Wipe Data が効くのは「ブート時黒画面」(Quickboot スナップショット破損・userdata 破損)。本フリートの症状は正常ブート後数分の表示パイプライン凍結で adb reboot で一旦回復する=userdata 破損型と不一致(guest cache.img は 66MB で削除効果なし)。コールドブート保証(`-no-snapshot`。ロード+セーブ無効)を DeviceBooter に実装。**別発見: フリート AVD の userdata-qemu.img.qcow2 が 6〜12GB に肥大**(qcow2 差分は縮まない)。この肥大解消のため、ユーザー決定で実行プロファイルに `wipeDataOnBloat`(既定 true)/`wipeDataThresholdGB`(既定 8。wipe 直後の再構築だけで 2〜4GB になるため 4GB 以下はスラッシング)を追加し、実行開始時に超過 AVD を Wipe Data する(AndroidDataWiper.swift)。**Wipe はゲストを初期化するが、アプリは appPath があれば強制再インストール、ロケールは実行プロファイル `locale`(既定 ja_JP)が再ブート後にブリッジ /locale で自動適用される**(design.md §11.2) | **真因は切り分け済み(2026-07-17): `-gpu host`(§7)。Wipe は凍結には無効で確定** |
 | エミュレータ凍結対策としての swangle_indirect(ANGLE/Metal)描画 | 2026-07-17 実測。headless で `screencap -p` が終始 0B(フレームバッファを読めない=証跡取得不能)。GPU アクセラを保ったまま凍結を避ける狙いだったが使い物にならない | emulator が headless での swangle スクショ取得に対応したら |
 | iOS ブリッジの実行前プレフライト(シナリオごとの /status 疎通確認) | 2026-07-18 に2実装とも撤去(ユーザー決定)。①「item を取ってから 5s×2 判定→振り直し+離脱」は 10台同時の AX スパイク(一過性の遅さ)で9台一斉離脱・freeze-retry 上限到達の失敗まで発生。②「取る前に 2s 即断+60s 回復待ち」も負荷時の誤判定が残った。**一過性の遅さと本物のウェッジは短い期限では区別できない**。検知は失敗後の事後チェック(bridgeUnreachable 等→振り直し)のみとし、ウェッジ機上の1件が scenarioTimeout(90s)を失うのは許容コスト | XCUITest ランナーが main queue 非依存で /status を返せるようになったら、または iOS 並列度削減で AX スパイク自体が消えたら |
 | ワーカー開始のスタガリング | 混在 5 デバイス実測で CPU 平均 50%・launch 衝突スパイクなし | ベンチで launch 時刻と CPU ピークの相関が観測されたら |
+| iOS の終端ドウェル(`thenHoldForDuration`)でスクロールの慣性を消す | 2026-08-02 実測で**効かず不採用**。v1500 + hold 0 / 0.05 / 0.10 / 0.20 の移動量は 2.85 / 2.85 / 2.82 / 2.82 倍で慣性は残り、**所要だけ +200ms** 増える。XCUITest の hold は指を保持するだけでイベントを出さないため `UIPanGestureRecognizer` の速度計算が更新されない(Android の `VelocityTracker` は同一座標の MOVE 連打で速度が 0 になるので、**Android 側の話をそのまま iOS へ持ち込まないこと**)。検証のため一時的に `DragRequest.hold` を足した(版 37)が撤去済み(版 38)。**iOS で慣性を消す手段は速度を落とすことだけ**で、その閾値はフレームワーク依存(§3.18) | XCUITest が「保持中も move イベントを出す」API を提供したとき。**再提案の前に §3.18 (b) を読むこと** |
 | snapshot 差分ポーリング/ポーリング間隔の一律短縮 | 負荷が並列 N 台で掛け算(原則違反) | なし(原則ごと見直す場合のみ) |
 | ブリッジ /waitFor(セレクタ条件待ち) | セレクタ解決の Java 複製=二重仕様。整定後は初回ヒットが普通で価値が薄い | exist の初回ミス率が実測で高くなったら |
 | HTTP keep-alive | 単一スレッドサーバ+複数クライアント(ライブ+モニター)で飢餓リスク。1接続 8.7ms 実測で効果は数 ms | サーバをマルチスレッド化する大改修をする場合のみ |
@@ -669,9 +1171,12 @@ window/transition/animator の `*_scale` はチューニングノブではなく
   通知権限は**アプリ再インストール(uninstall→install)でのみ未決定に戻る**。ダイアログ系の
   fixture を繰り返し検証するときは各回 reinstall する
 - **アニメーション有効デバイスでは静穏判定後もアニメが画面を動かすため画像が stale になる**
-  (a11y要素はFRESHだがscreenshotだけSTALE、という形で顕在化)。ブリッジ起動時に
+  (a11y要素はFRESHだがscreenshotだけSTALE、という形で顕在化)。ブリッジ起動時と**run 開始時**に
   window/transition/animator の `*_scale` を自動で無効化する(2026-07-12組込み)。
-  実機を追加したときも同様に自動適用される
+  実機を追加したときも同様に自動適用される。
+  **見た目の確認や録画のためにアニメーションを残したいときだけ**実行プロファイルの
+  `enableAnimations: true`(GUI は実行プロファイル設定「アニメーションを有効にする」)にする。
+  その場合は整定待ちが伸び、上記 stale の実害が戻る前提で使うこと(既定に戻すべき設定)
 - **常駐 CLI は stdin EOF で即終了する**(`ftester api {host-metrics,live serve,monitor}`、
   `ftester-simstream`、`ftester-androidstream`。拡張は stdin パイプを開いたまま保持している)。
   アドホックに spawn して計測・検証するとき、stdin を /dev/null 継承のまま渡すと即座に EOF を検知して
@@ -811,19 +1316,63 @@ window/transition/animator の `*_scale` はチューニングノブではなく
   なお **fail-fast 化は最適化ではなくトレードオフ**で、occlusion-guard は過渡的オーバーレイ
   (ローディング・スナックバー)が消えるのを timeout まで待つよう**意図的に**作られている
   (`StepExecutor+Assert.swift`。即失敗は脆い)
-- **interop ホストの WebView 画面を「読みは DOM・タップだけ XCUITest」にする**(未着手):
-  §3.11 でスクロールは in-app へ戻したが、**snapshot はまだ委譲したまま**で、そこが残る差の
-  ほぼ全部(CMP 12.9s 対 SwiftUI 2.8s / 1 snapshot につき XCUITest 300〜500ms)。
-  DOM は Compose/Flutter ホストでも読める(`WebViewDOMSnapshot.isInteropHosted` が止めているのは
-  **操作**が届かないから)ので、読みを DOM に戻してタップだけ XCUITest の**座標**タップへ回せば
-  もう一段速くなる。**壁は ref の名前空間**: 返す snapshot と ref の宛先を一致させる不変条件
-  (`WebViewDelegatingDriver` の冒頭注記)を、ref を持たない座標タップで跨ぐ設計にする必要がある。
-  効果見積り ≒ 1 シナリオあたり 8〜10s × 2 SUT
-- **WebView 画面のスクロールヒント跳躍(`runScrollSearch` / `scrollToEdge` の long drag)**(未対策):
-  `driver.drag` を使うため、in-app が drag 非対応である以上 WebView 委譲中は必ず XCUITest の
-  実ドラッグになる(§3.11 の contentOffset 化はスワイプだけで drag は対象外)。2026-08-01 の
-  全計測で一度も発火しておらず(レポートに「long drag(s) from scroll hints」の注記なし)、
-  効果を実測できないため未着手。着手条件は WebView 画面でこの注記が実際に出るシナリオの出現
+- ✅ **interop ホストの WebView 画面を「読みは DOM・触るのは XCUITest の座標」にする**
+  (2026-08-02 実装。§3.13)
+- ✅ **WebView 画面のスクロールヒント跳躍を iOS xcuitest でも発火させる**(2026-08-04 実装):
+  未発火の原因はホスト側ではなく**供給の欠落**だった(XCUITest は WKWebView 配下の画面外ノードを
+  実座標で報告するが、ランナーの画面交差ガードが落としていた。Android だけが
+  `SnapshotResponse.offscreen` を供給していた)。ランナーが Android と同じ契約で供給するように
+  変更(bridgeProtocolVersion 46)。実測(WebView シナリオ・アイドル3周 A/B・全3 SUT):
+  scrollTo −22〜31%・scrollToTop CMP/Flutter −16%(SwiftUI 中立)・シナリオ全体 34.1→30.4s(−11%)。
+  **hybrid には供給しない**(`WebViewDelegatingDriver` が落とす。contentOffset 短絡の方が速い)。
+  残る床は `scrollToEdge` の毎周 `settledSignature`(WebView は snapshot 1枚 300〜500ms かかり、
+  端確定に最低2周 = 減速中に比較すると早すぎる端判定になる実害由来で単純には外せない)と
+  Web コンテンツの AX 活性化待ち(`exist` 3〜4s・エンジン差なし)。
+- ✅ **`scrollToEdge` の端確定をヒントに任せる**(2026-08-05 実装。上の「再設計が要る」の答え):
+  端は「署名が2回続けて不変」で判定していたが、**2回目は Android のフリング停止で1回空振りする
+  形への保険**で、その代償として**端に着いてから捨てのスワイプを2回撃っていた**。
+  `SnapshotResponse.offscreen` は「その方向にまだ内容があるか」の**肯定的な証拠**なので、
+  ヒントを供給する画面(= WebView)でだけ**不変1回**に下げる(`StepExecutor.unchangedRoundsForEdge`)。
+  供給の無い画面(ネイティブ・旧ブリッジ・hybrid)は `offscreen` が nil なので従来どおり。
+  **同セッション A/B の実測**(E2E-CMP/ios-xcuitest・`WebViewの中身を操作できること.S0010` を
+  交互ではなく連続で fix 5 周 / base 3 周):
+
+  | | scrollToTop | scrollTo(対照・経路は無変更) | exist "見出し"(対照) |
+  |---|---|---|---|
+  | fix | **7,849ms**(7,796〜8,043) | 6,656ms | 2,967ms |
+  | base | **9,118ms**(9,087〜9,148) | 6,534ms | 2,962ms |
+  | 差 | **−1,269ms(−13.9%)** | +122ms(雑音) | +5ms |
+
+  減った量は XCUITest のスワイプ1回ぶんと整合(1スワイプ約2.5秒のうち約1.6秒が quiescence)。
+  **対照が動いていないこと**を同じ run から取っているのが判定の根拠(単独の壁時計では
+  デバイス差・セッション鮮度に埋もれる)。
+- **AX 活性化待ち約3秒は iOS 側の床でエンジン差なし**(2026-08-05 に `results/runs` 全数で確認):
+  `exist "WebView 見出し"` の中央値は **ios-xcuitest 2.96s(n=448)/ ios-inapp 3.04s(n=283)/
+  android 0.24s(n=174)**。DOM 経路(in-app)でも同じだけ掛かるので **AX ではなく WKWebView が
+  初回に中身を出すまでの時間**。ホスト側に削り代は無い(強いて言えば `PollBackoff` が
+  100→200→400→800ms と粗く、実測が 2.85〜2.96s に密集しているのは**5回目のポーリング境界**に
+  張り付いているため。細かくすれば最大 0.5〜0.8s 前倒しできるが、全アサーションの
+  ポーリング形を変えることになる)
+- **iOS xcuitest は 1 スワイプが約 2.5 秒(内 1.6 秒が XCTest の quiescence 待ち)**
+  ——「横が縦より高い」は**誤り**(2026-08-04 に測って訂正):
+  スイート最長の `E2E-iOS` `スクロールで折り返し下の要素に到達できること.S0090`(78.0s)は
+  横方向の4手で約 50 秒を使うが、**単価は横 2,567ms・縦 2,546ms でほぼ同じ**
+  (`FT_EVENT_LOG_PATH` の actionMs ÷ スワイプ数)。差は「横のステップが探索・端送りで
+  4スワイプ要る」だけで、方向の問題ではない。`scrollFrame` の有無でも変わらない
+  (path 指定 2,546ms 対 全画面 2,620ms)。**削るなら1スワイプの単価かスワイプ本数**で、
+  単価の内訳は `FT_FAST_INPUT=1` との差分から **quiescence 待ちが約 1.6 秒**と分かる
+  (2,546→926ms)。§3.14 の「tap の quiescence は 29ms」はタップの値で、**スワイプでは
+  桁が違う**(慣性が収まるまで XCTest がアイドルと認めない)
+- ➖ **探索スワイプだけ quiescence を飛ばす案は不採用**(2026-08-04 実測・再提案しない):
+  S0090 は 75.1→67.6s(−10%)になるが、**探索直後のタップが飲まれる** ——
+  `tap("#row_30")` の後に `selected=-` で **E2E-iOS の S0080/S0060 が 2/2 で落ちた**
+  (S0080 はまさにこの型の回帰テスト)。空打ちドラッグ+`settleAfterScroll` は
+  「XCTest の quiescence が慣性を吸った後」を前提に組まれている。しかも **CMP の
+  スクロール系は同一セッション A/B で改善ゼロ**(152.3/150.4s 対 153.0/153.5s)で、
+  賞金自体が SUT を跨いで一般化しない。`.edge`/`.gesture` へ広げるのは更に悪い
+  (ホスト側の整定が周回上限で打ち切られ、全ステップに打ち切り注記が付く)。
+  **残る手はスワイプ本数を減らすことだけ**だが、刻みを広げる較正は §3.18/§3.19 で
+  2度撤回済み(行き過ぎ = 探索失敗に直結)
 - **iOS ブリッジ供給の堅牢化(高並列時)**: ランナーのコールドスタートが負荷下で
   供給タイムアウトを超え、run 全体が中断する(§7 の交互成功パターン)。候補: タイムアウト値の
   負荷連動延長、ランナー起動の直列化、タイムアウト後も起動継続中なら待ち直す再確認ループ。
@@ -855,6 +1404,9 @@ window/transition/animator の `*_scale` はチューニングノブではなく
        launch を XCUIApplication.launch()(実測 4.6〜5.4s)から simctl terminate+launch+
        activate 接続(≈2.4s)へ置換。シナリオ wall −14〜19%。復帰用のエスケープハッチは
        `FT_NO_FAST_LAUNCH=1`。attachOnly 化の不採用理由は §6 参照。
+       **マージ後に同一バイナリ A/B(`FT_NO_FAST_LAUNCH` の on/off)で再計測した記録**は
+       [driver-improvements-verification.md](driver-improvements-verification.md)
+       (シナリオ4本 × 36ラン・改良効果 −14〜21% を再現。既定 on になった今は取り直せない対照)。
      - ✅ **autoInstall 差分判定の指紋キャッシュ**(採用 2026-07-21): `InstalledAppCheck` の
        バンドル深比較(40MB で 0.86s/ラン)を、検証済みソース指紋(相対パス+サイズ+mtime の
        SHA256、.ftester/install-check/)のヒット時にスキップ。0.86→0.41s(残りは列挙+
@@ -888,8 +1440,10 @@ window/transition/animator の `*_scale` はチューニングノブではなく
      **iOS の真のボトルネックは scrollTo(action 中央値 ~7.6s/回。swipe+再 snapshot ループ)と
      tap/type の quiescence 床**であり、大幅短縮には税の撤廃(下記2)が要る。
   2. **税の撤廃 = アプリ内常駐ブリッジ**(EarlGrey/Espresso と同クラス)。シミュレータは
-     `SIMCTL_CHILD_DYLD_INSERT_LIBRARIES=<dylib> simctl launch` で任意アプリに
+     `DYLD_INSERT_LIBRARIES=<dylib>` を起動時の環境に載せれば任意アプリに
      リビルドなしで注入できる(シミュレータプロセスは SIP/hardened runtime 非適用)。
+     **キー名は経路で違う**: simctl 経由は `SIMCTL_CHILD_` を前置する(simctl が剥がして子へ渡す)、
+     CoreSimulator 直叩き(現在の既定)は `options["environment"]` に**接頭辞なし**で入れる。
      UIKit ビュー階層の直接走査(ms 級・IPC ゼロ)+ランループオブザーバと
      CATransaction/CADisplayLink による**真のイベント駆動整定**+プロセス内タッチ合成。
      既存 9 エンドポイントの HTTP 互換にすればホスト側は概ね無変更(単一実装原則と整合)。
@@ -1033,3 +1587,19 @@ window/transition/animator の `*_scale` はチューニングノブではなく
        ハイブリッドで走る**(従来 XCUITest だった `ios.json` 等も高速化。XCUITest に戻すには OFF)。
 - **シナリオ設計の見直し**: 上記 iPhone Air フレークのようなデバイス依存アサーションの排除は、
   どんなエンジン改善より成功率に効く
+
+## xcuitest のスクロール探索スループット(2026-08-08 実測・未着手の較正候補)
+
+E2E の 07 S0060(scrollFrame 指定で #row_40 到達 + 行タップ3回)の実測:
+**CMP 25.5s / Flutter 38.6s / RN 56.2s(±0.2, n=3)/ SwiftUI 72.0s**。
+RN 固有ではなく xcuitest エンジン一般の構造で、内訳は「1周(スワイプ+整定+snapshot)≈2s ×
+周回数」。周回数は 移動距離 ÷ 刻み(容器×マージン 0.2/0.2 ≈ 0.6 掛け)で決まる。
+
+較正候補(どちらもグローバルノブ = **全 SUT の実測を添えてからでないと回さない**):
+1. scrollFrame の刻みマージンを 0.2/0.2 → 0.15/0.15(1周の移動 +17%)。飛び越しは
+   travelCeiling の自己補正が受けるが、見切れ発見率が上がる(= clipRecoveryJump の
+   出番が増える)ため相殺量は要実測
+2. 探索周回の settle を「木の署名が動いた周だけ」二段待ちにする(現在は毎周)
+
+なお 2026-08-08 の飛び越しフレーク3レバー(横逆走査・clipRecoveryJump・弾切れ時逆走査)は
+失敗経路の追加であり、上の正常系スループットには影響しない(S0060 は前後とも 56s)。

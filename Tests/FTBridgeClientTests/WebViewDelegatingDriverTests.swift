@@ -31,21 +31,36 @@ private final class FakeDriver: AppDriver, @unchecked Sendable {
         return StatusResponse(ready: true, device: "fake", osVersion: "", sessionBundleID: nil)
     }
     func install(packagePath: String) async throws { calls.append("install") }
+    func uninstall(bundleID: String) async throws { calls.append("uninstall") }
+    func isAppForeground(bundleID: String) async throws -> Bool {
+        calls.append("isAppForeground(\(bundleID))")
+        return false
+    }
+    func foregroundAppID() async throws -> String? { calls.append("foregroundAppID"); return nil }
     func launch(bundleID: String) async throws { calls.append("launch") }
     func terminate() async throws { calls.append("terminate") }
     func tap(ref: Int) async throws { calls.append("tap(\(ref))") }
-    func tap(x: Double, y: Double) async throws { calls.append("tap(xy)") }
-    func type(ref: Int?, text: String) async throws { calls.append("type") }
+    func tap(x: Double, y: Double) async throws { calls.append("tap(\(x),\(y))") }
+    func type(ref: Int?, text: String) async throws {
+        calls.append(ref.map { "type(\($0))" } ?? "type(focused)")
+    }
     func swipe(_ direction: FTSwipeDirection) async throws {
         calls.append("swipe")
         if let swipeError { throw swipeError }
     }
-    /// 既定実装は swipe(_:) を呼ぶだけなので、forScroll の行き先を見るには受けて記録する
-    func swipe(_ direction: FTSwipeDirection, forScroll: Bool) async throws {
-        calls.append(forScroll ? "swipe(scroll)" : "swipe")
+    /// 既定実装は swipe(_:) を呼ぶだけなので、用途の行き先を見るには受けて記録する
+    func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent,
+               path: FTSwipePath?) async throws {
+        calls.append(intent == .gesture ? "swipe" : "swipe(scroll)")
         if let swipeError { throw swipeError }
     }
-    func press(ref: Int, duration: Double) async throws { calls.append("press") }
+    func press(ref: Int, duration: Double) async throws { calls.append("press(\(ref))") }
+    func press(x: Double, y: Double, duration: Double) async throws {
+        calls.append("press(\(x),\(y))")
+    }
+    func clearInput(ref: Int?) async throws {
+        calls.append(ref.map { "clear(\($0))" } ?? "clear(focused)")
+    }
     func screenshot() async throws -> Data { calls.append("screenshot"); return Data() }
 }
 
@@ -56,10 +71,12 @@ private func element(_ ref: Int, _ type: String, x: Double = 0, y: Double = 0,
                 frame: FTRect(x: x, y: y, width: width, height: height), depth: 0, web: web)
 }
 
-private func snapshot(_ elements: [ElementInfo]) -> SnapshotResponse {
-    SnapshotResponse(sessionBundleID: "app",
-                     screen: FTRect(x: 0, y: 0, width: 400, height: 800),
-                     elements: elements, truncatedCount: 0)
+private func snapshot(_ elements: [ElementInfo], webViewPath: String? = nil) -> SnapshotResponse {
+    var response = SnapshotResponse(sessionBundleID: "app",
+                                    screen: FTRect(x: 0, y: 0, width: 400, height: 800),
+                                    elements: elements, truncatedCount: 0)
+    response.webViewPath = webViewPath
+    return response
 }
 
 final class WebViewDelegatingDriverTests: XCTestCase {
@@ -92,6 +109,21 @@ final class WebViewDelegatingDriverTests: XCTestCase {
         XCTAssertEqual(result.elements.count, 2, "XCUITest 側の snapshot が返るはず")
         XCTAssertEqual(delegated.calls, ["snapshot", "tap(2)"])
         XCTAssertEqual(primary.calls, ["snapshot"])
+    }
+
+    /// offscreen ヒントは純 xcuitest エンジン限定(WebViewDelegatingDriver.swift の
+    /// snapshot(bypassingCache:) コメント参照)。hybrid で乗ると計測済みの
+    /// contentOffset 短絡より StepExecutor の跳躍が優先され挙動が変わるため落とす
+    func testWebViewScreenDropsOffscreenHintsFromDelegatedSnapshot() async throws {
+        let primary = FakeDriver(snapshots: [snapshot([element(1, "WebView")])])
+        var delegatedSnapshot = snapshot([element(1, "WebView"), element(2, "StaticText", y: 10)])
+        delegatedSnapshot.offscreen = [element(3, "StaticText", y: 2000)]
+        let delegated = FakeDriver(snapshots: [delegatedSnapshot])
+        let driver = WebViewDelegatingDriver(primary: primary, delegated: delegated)
+
+        let result = try await driver.snapshot()
+
+        XCTAssertNil(result.offscreen, "委譲 snapshot の offscreen は落とすこと")
     }
 
     /// XCUITest 側は Web コンテンツの a11y 活性化が遅れる(実測 約2.3秒)。
@@ -188,7 +220,7 @@ final class WebViewDelegatingDriverTests: XCTestCase {
     /// Compose/Flutter の WebView シナリオが 3.5 倍遅くなる(2026-08-01 実測)
     func testScrollSwipeTriesPrimaryWhileDelegating() async throws {
         let (driver, primary, delegated) = try await delegatingDriver()
-        try await driver.swipe(.up, forScroll: true)
+        try await driver.swipe(.up, intent: .search, path: nil)
 
         XCTAssertEqual(primary.calls, ["snapshot", "swipe(scroll)"])
         XCTAssertEqual(delegated.calls, ["snapshot"], "スクロールで XCUITest を触らない")
@@ -199,7 +231,7 @@ final class WebViewDelegatingDriverTests: XCTestCase {
         let (driver, primary, delegated) = try await delegatingDriver()
         primary.swipeError = DriverError.badResponse(status: 501, body: "no scroll")
 
-        try await driver.swipe(.up, forScroll: true)
+        try await driver.swipe(.up, intent: .search, path: nil)
 
         XCTAssertEqual(delegated.calls, ["snapshot", "swipe(scroll)"])
     }
@@ -210,7 +242,7 @@ final class WebViewDelegatingDriverTests: XCTestCase {
         primary.swipeError = DriverError.badResponse(status: 409, body: "busy")
 
         do {
-            try await driver.swipe(.up, forScroll: true)
+            try await driver.swipe(.up, intent: .search, path: nil)
             XCTFail("409 は伝播すること")
         } catch {}
         XCTAssertEqual(delegated.calls, ["snapshot"], "409 で XCUITest へ回さない")
@@ -220,7 +252,7 @@ final class WebViewDelegatingDriverTests: XCTestCase {
     /// in-app は interop のジェスチャを駆動できないので、ここを in-app へ回すと黙って空振りする
     func testGestureSwipeStillGoesToDelegated() async throws {
         let (driver, primary, delegated) = try await delegatingDriver()
-        try await driver.swipe(.up, forScroll: false)
+        try await driver.swipe(.up, intent: .gesture, path: nil)
 
         XCTAssertEqual(delegated.calls, ["snapshot", "swipe"])
         XCTAssertEqual(primary.calls, ["snapshot"])
@@ -248,4 +280,136 @@ final class WebViewDelegatingDriverTests: XCTestCase {
                                element(2, "StaticText", x: 10, y: 10, width: 20, height: 20)])
         XCTAssertTrue(WebViewDelegatingDriver.hasWebContent(inside))
     }
+    // MARK: - domInterop(読みは DOM・触るのは XCUITest の座標)
+
+    /// interop ホスト: snapshot は in-app の DOM をそのまま返す(委譲すると 3ms → 378ms)。
+    /// **ref を使う操作は座標へ解決して XCUITest へ**渡り、ref は渡らない(名前空間の不変条件)
+    func testDomInteropReadsFromPrimaryAndTapsByCoordinate() async throws {
+        let dom = snapshot([element(1, "WebView"), element(2, "Link", x: 20, y: 40, width: 60, height: 20, web: true)],
+                           webViewPath: "dom-interop")
+        let primary = FakeDriver(snapshots: [dom])
+        let delegated = FakeDriver(snapshots: [snapshot([])])
+        let driver = WebViewDelegatingDriver(primary: primary, delegated: delegated)
+
+        let result = try await driver.snapshot()
+        try await driver.tap(ref: 2)
+
+        XCTAssertEqual(result.elements.count, 2, "in-app の DOM snapshot が返るはず")
+        // 中心 = (20+60/2, 40+20/2)
+        XCTAssertEqual(delegated.calls, ["snapshot", "tap(50.0,50.0)"],
+                       "暖機の snapshot 1回のあと、座標で渡すこと(ref を渡さない)")
+        XCTAssertEqual(primary.calls, ["snapshot"], "委譲 snapshot を撮らない")
+    }
+
+    /// press も座標へ解決する
+    func testDomInteropPressResolvesToCoordinate() async throws {
+        let dom = snapshot([element(1, "WebView"), element(2, "Button", x: 0, y: 0, width: 10, height: 10, web: true)],
+                           webViewPath: "dom-interop")
+        let primary = FakeDriver(snapshots: [dom])
+        let delegated = FakeDriver(snapshots: [snapshot([])])
+        let driver = WebViewDelegatingDriver(primary: primary, delegated: delegated)
+
+        _ = try await driver.snapshot()
+        try await driver.press(ref: 2, duration: 1)
+
+        XCTAssertEqual(delegated.calls, ["snapshot", "press(5.0,5.0)"])
+    }
+
+    /// type は「座標タップでフォーカス → ref なしで入力」の順(DOM への値代入は不採用)
+    func testDomInteropTypeFocusesByCoordinateThenTypesWithoutRef() async throws {
+        let dom = snapshot([element(1, "WebView"), element(2, "TextField", x: 0, y: 0, width: 40, height: 20, web: true)],
+                           webViewPath: "dom-interop")
+        let primary = FakeDriver(snapshots: [dom])
+        let delegated = FakeDriver(snapshots: [snapshot([])])
+        let driver = WebViewDelegatingDriver(primary: primary, delegated: delegated)
+
+        _ = try await driver.snapshot()
+        try await driver.type(ref: 2, text: "hello")
+
+        XCTAssertEqual(delegated.calls, ["snapshot", "tap(20.0,10.0)", "type(focused)"])
+    }
+
+    /// 直近 snapshot に無い ref は座標に解決できない。**黙って別経路へ流さない**
+    func testDomInteropUnknownRefFails() async throws {
+        let dom = snapshot([element(1, "WebView"), element(2, "Link", web: true)], webViewPath: "dom-interop")
+        let primary = FakeDriver(snapshots: [dom])
+        let delegated = FakeDriver(snapshots: [snapshot([])])
+        let driver = WebViewDelegatingDriver(primary: primary, delegated: delegated)
+
+        _ = try await driver.snapshot()
+        do {
+            try await driver.tap(ref: 99)
+            XCTFail("未知の ref は失敗するはず")
+        } catch {
+            XCTAssertTrue("\(error)".contains("99"), "どの ref か分かる文言であること: \(error)")
+        }
+        XCTAssertEqual(delegated.calls, ["snapshot"], "暖機以外で XCUITest を触ってはいけない")
+    }
+
+    /// WebView 画面を離れたら domInterop も畳む(古い ref/座標を持ち越さない)
+    func testDomInteropResetsWhenLeavingTheScreen() async throws {
+        let dom = snapshot([element(1, "WebView"), element(2, "Link", web: true)], webViewPath: "dom-interop")
+        let plain = snapshot([element(1, "Button")])
+        let primary = FakeDriver(snapshots: [dom, plain])
+        let delegated = FakeDriver(snapshots: [snapshot([])])
+        let driver = WebViewDelegatingDriver(primary: primary, delegated: delegated)
+
+        _ = try await driver.snapshot()
+        _ = try await driver.snapshot()
+        try await driver.tap(ref: 1)
+
+        // 入場時の暖機1回だけが残る。通常画面へ戻った後は一切触らない
+        XCTAssertEqual(delegated.calls, ["snapshot"], "通常画面へ戻ったら XCUITest を触らない")
+        XCTAssertEqual(primary.calls, ["snapshot", "snapshot", "tap(1)"])
+    }
+
+    /// 中心点計算そのものを非キリのいい値で検証する(丸め誤差や x/y 取り違えが
+    /// キリのいい値だけでは見えないため)
+    func testDomInteropCenterPointMathWithFractionalFrame() async throws {
+        let dom = snapshot([element(1, "WebView"),
+                            element(2, "Link", x: 15, y: 8, width: 41, height: 23, web: true)],
+                           webViewPath: "dom-interop")
+        let primary = FakeDriver(snapshots: [dom])
+        let delegated = FakeDriver(snapshots: [snapshot([])])
+        let driver = WebViewDelegatingDriver(primary: primary, delegated: delegated)
+
+        _ = try await driver.snapshot()
+        try await driver.tap(ref: 2)
+
+        // 中心 = (15+41/2, 8+23/2) = (35.5, 19.5)
+        XCTAssertEqual(delegated.calls, ["snapshot", "tap(35.5,19.5)"])
+    }
+
+    /// "dom"(interop でない)は従来どおり primary 一本のまま。"dom-interop" とだけ比較する文字列一致で
+    /// 判定しているので、ここが崩れると uikit ホストの WebView まで座標変換に回りかねない
+    func testWebViewPathDomExplicitlyStaysNonDomInterop() async throws {
+        let dom = snapshot([element(1, "WebView"), element(2, "StaticText", web: true)],
+                           webViewPath: "dom")
+        let primary = FakeDriver(snapshots: [dom])
+        let delegated = FakeDriver(snapshots: [snapshot([])])
+        let driver = WebViewDelegatingDriver(primary: primary, delegated: delegated)
+
+        _ = try await driver.snapshot()
+        try await driver.tap(ref: 2)
+
+        XCTAssertEqual(delegated.calls, [], "\"dom\" は domInterop ではない: XCUITest を触ってはいけない")
+        XCTAssertEqual(primary.calls, ["snapshot", "tap(2)"])
+    }
+
+    /// **暖機は画面ごとに1回だけ**。毎 snapshot 撃つと委譲と同じコストに戻り、この機能の意味が消える
+    func testDomInteropWarmsDelegatedOnlyOncePerScreen() async throws {
+        let dom = snapshot([element(1, "WebView"), element(2, "Link", web: true)], webViewPath: "dom-interop")
+        let primary = FakeDriver(snapshots: [dom])
+        let delegated = FakeDriver(snapshots: [snapshot([])])
+        let driver = WebViewDelegatingDriver(primary: primary, delegated: delegated)
+
+        _ = try await driver.snapshot()
+        _ = try await driver.snapshot()
+        _ = try await driver.snapshot()
+        try await driver.tap(ref: 2)
+
+        XCTAssertEqual(delegated.calls.filter { $0 == "snapshot" }.count, 1,
+                       "暖機は入場時の1回だけ(毎回撮ると 3ms → 378ms へ逆戻り)")
+    }
+
 }

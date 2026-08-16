@@ -16,30 +16,66 @@ enum InAppSnapshot {
         var frames: [Int: CGRect]
         var nodes: [Int: NSObject]
         var truncated: Int
+        /// 捨てた候補の内訳(SnapshotResponse.truncatedTiers)
+        var truncatedTiers: [String: Int] = [:]
+        /// 要素上限の外で送った bulk の件数(SnapshotResponse.bulkExemptCount)
+        var bulkExempt: Int = 0
     }
 
-    static func capture(window: UIWindow) -> Result {
+    /// 1パス目(collect)で拾った要素。ref はまだ未採番(0)
+    private struct Gathered {
+        var info: ElementInfo
+        var frame: CGRect
+        var node: NSObject
+    }
+
+    /// **2パス**: 集めるときは上限で打ち切らず、超過したときだけ優先度順に間引いて ref を振る
+    /// (規則と根拠は BridgeSnapshotThinning。XCUITest 版 BridgeRouter.collect と同じ形)
+    /// `max` は要求ごとの要素上限(既定 BridgeAPI.maxSnapshotElements。`?max=` で引き上げる)
+    static func capture(window: UIWindow, max limit: Int = BridgeAPI.maxSnapshotElements) -> Result {
         let screen = window.bounds
-        var elements: [ElementInfo] = []
-        var frames: [Int: CGRect] = [:]
-        var nodes: [Int: NSObject] = [:]
-        var truncated = 0
         // 同じオブジェクトが2経路から届くことがある(Compose iOS の interop は WKWebView を
         // accessibilityElements と subviews の両方から見せ、同じ WebView が2度出た。2026-07-29 実測)。
         // 重複すると同じラベルが並んでセレクタが曖昧になり、DOM も2回読むことになる
         var visited = Set<ObjectIdentifier>()
-        collect(window, depth: 0, screen: screen, visited: &visited,
-                elements: &elements, frames: &frames, nodes: &nodes, truncated: &truncated)
+        var gathered: [Gathered] = []
+        collect(window, depth: 0, screen: screen, visited: &visited, gathered: &gathered)
+
+        let keptIndices: [Int]
+        var truncatedTiers: [String: Int] = [:]
+        var bulkExempt = 0
+        if gathered.count <= limit {
+            keptIndices = Array(gathered.indices)
+        } else {
+            let candidates = gathered.map { BridgeSnapshotThinning.Candidate(info: $0.info) }
+            keptIndices = BridgeSnapshotThinning.indicesToKeep(candidates, max: limit)
+            // **落とした本人しか内訳を知らない**(ホストへ届くのは残った側だけ)
+            truncatedTiers = BridgeSnapshotThinning.droppedByTier(candidates, kept: keptIndices)
+            // 上限の外で送った bulk の件数(61)。ホストが「超過は異常ではない」と言うために要る
+            bulkExempt = BridgeSnapshotThinning.bulkExemptCount(candidates)
+        }
+
+        var elements: [ElementInfo] = []
+        var frames: [Int: CGRect] = [:]
+        var nodes: [Int: NSObject] = [:]
+        for index in keptIndices {
+            let ref = elements.count + 1
+            var info = gathered[index].info
+            info.ref = ref
+            frames[ref] = gathered[index].frame
+            nodes[ref] = gathered[index].node
+            elements.append(info)
+        }
         return Result(
             screen: FTRect(x: screen.origin.x, y: screen.origin.y,
                            width: screen.width, height: screen.height),
-            elements: elements, frames: frames, nodes: nodes, truncated: truncated)
+            elements: elements, frames: frames, nodes: nodes,
+            truncated: gathered.count - keptIndices.count,
+            truncatedTiers: truncatedTiers, bulkExempt: bulkExempt)
     }
 
     private static func collect(_ node: NSObject, depth: Int, screen: CGRect,
-                                visited: inout Set<ObjectIdentifier>,
-                                elements: inout [ElementInfo], frames: inout [Int: CGRect],
-                                nodes: inout [Int: NSObject], truncated: inout Int) {
+                                visited: inout Set<ObjectIdentifier>, gathered: inout [Gathered]) {
         guard visited.insert(ObjectIdentifier(node)).inserted else { return }
         // 非表示サブツリーは丸ごと除外
         if let view = node as? UIView, view.isHidden || view.alpha < 0.01
@@ -48,18 +84,13 @@ enum InAppSnapshot {
         let type = elementType(node)
         // キーボードのキーは大量に写り込むため除外(入力は /type が担うので情報として不要)。
         // **キーボードの表示判定はここではできない**(キーウィンドウの外に載るため。
-        // 判定は InAppBridge.keyboardWindowVisible)
+        // 判定は InAppBridge.keyboardIsVisible)
         if type == .keyboardKey { return }
 
         if let info = shouldInclude(node, type: type, screen: screen) {
-            if elements.count < BridgeAPI.maxSnapshotElements {
-                let ref = elements.count + 1
-                frames[ref] = info.frame
-                nodes[ref] = node
-                elements.append(makeInfo(node, type: type, ref: ref, depth: depth, frame: info.frame))
-            } else {
-                truncated += 1
-            }
+            gathered.append(Gathered(
+                info: makeInfo(node, type: type, ref: 0, depth: depth, frame: info.frame),
+                frame: info.frame, node: node))
         }
 
         // WKWebView の内部(WKScrollView/WKContentView)は AX を別プロセスが持つため走査しても
@@ -71,8 +102,7 @@ enum InAppSnapshot {
         if let view = node as? UIView, view.isAccessibilityElement { return }
         let children = axChildren(node)
         for child in children {
-            collect(child, depth: depth + 1, screen: screen, visited: &visited,
-                    elements: &elements, frames: &frames, nodes: &nodes, truncated: &truncated)
+            collect(child, depth: depth + 1, screen: screen, visited: &visited, gathered: &gathered)
         }
     }
 
@@ -104,8 +134,10 @@ enum InAppSnapshot {
         guard frame.width >= 2, frame.height >= 2 else { return nil }
         guard screen.isEmpty || frame.intersects(screen) else { return nil }
 
-        // 画面の大半を覆う Other コンテナは除外(誤タップ誘発。BridgeRouter と同じ)
-        if type == .other {
+        // 画面の大半を覆う Other コンテナは除外(誤タップ誘発。BridgeRouter と同じ)。
+        // **スクロール容器だけは残す**(2026-08-08): 全画面のスクロール画面はまさにこの形で、
+        // 落とすと scrollFrame の候補が1つも出ない。誤タップは offscreen/中身外しの注記が守る
+        if type == .other, isScrollableContainer(node) != true {
             let screenArea = screen.width * screen.height
             if screenArea > 0, (frame.width * frame.height) / screenArea > 0.85 { return nil }
         }
@@ -125,8 +157,36 @@ enum InAppSnapshot {
         case .keyboardKey:
             return nil
         case .other:
+            // id 無しでも**スクロール容器なら出す**(2026-08-08。Android の `|| node.selected` と
+            // 同じ型 = 情報を持つノードをフィルタで黙らせない)。Compose のスクロール容器は
+            // testTag が無いのが普通で、落とすと scrollFrame の候補も scroll マークも出ない
+            if isScrollableContainer(node) == true { return Included(frame: frame) }
             return (axIdentifier(node) ?? "").isEmpty ? nil : Included(frame: frame)
         }
+    }
+
+    /// スクロールできる容器か。**UIKit/SwiftUI** = UIScrollView の存在(従来どおり)。
+    /// **Compose/Flutter** = `UIFocusItemScrollableContainer`(公開プロトコル)への
+    /// **インスタンス毎の準拠**で判る(2026-08-08 PoC・sut-ec-mobile 3画面 + E2E-Flutter で確認):
+    /// Compose の AccessibilityElement は `conformsToProtocol:` を自前実装し、スクロール可能な
+    /// セマンティクスノードでだけ準拠を名乗る。ツールバー・Scaffold ルートのような
+    /// 非スクロールの traversal group(accessibilityContainerType は同じ semanticGroup)は
+    /// 準拠しない = ct では割れない誤検知がこれで消える。Flutter の FlutterSemanticsScrollView は
+    /// UIScrollView 側の分岐で従来どおり拾われる。
+    /// visible が 0 のガードは Flutter が持つ迷子の UIScrollView(402x0・content 2x2)対策
+    static func isScrollableContainer(_ node: NSObject) -> Bool? {
+        if let scrollView = node as? UIScrollView {
+            // content が 0x0 の UIScrollView はどこへも動けない。Compose の画面が持つ
+            // 「本体のスクロールとは無関係な UIScrollView」(handleSwipe の注記参照)が
+            // まさにこの形(402x874・content 0x0)で、素通しすると全画面の偽 scroll マークになる
+            let content = scrollView.contentSize
+            guard content.width > 0 || content.height > 0 else { return nil }
+            return true
+        }
+        guard let container = node as? (any UIFocusItemScrollableContainer) else { return nil }
+        let visible = container.visibleSize
+        guard visible.width > 0, visible.height > 0 else { return nil }
+        return true
     }
 
     // SwiftUI の AccessibilityNode/UIKitTextField は UIAccessibilityIdentification 準拠を
@@ -155,7 +215,10 @@ enum InAppSnapshot {
             // XCUITest 版と同じ経路(UIAccessibilityTraits.selected)。false は送らない
             checked: traits.contains(.selected) ? true : nil,
             // clearInput 事後検証用(ElementInfo.focused 参照)。true のときだけ送る
-            focused: (node as? UIResponder)?.isFirstResponder == true ? true : nil)
+            focused: (node as? UIResponder)?.isFirstResponder == true ? true : nil,
+            // スクロールできる容器か(scroll マーク・scrollFrame の空振り検出用)。
+            // 判定は isScrollableContainer(Compose/Flutter も 2026-08-08 から判る。false は送らない)
+            scrollable: Self.isScrollableContainer(node))
     }
 
     // 空の UITextField は accessibilityValue が placeholder を返すため value に漏れる。
@@ -193,6 +256,11 @@ enum InAppSnapshot {
     /// クラス取得は1回だけ(走査で全ノードに当たるため)
     private static let webViewClass: AnyClass? = NSClassFromString("WKWebView")
 
+    /// テキスト入力を表す非公開 trait(`1<<18`)。公開 API に相当するものが無く、
+    /// UIKit の UITextField/UITextView と Compose/Flutter の合成 AX 要素が共通で立てる
+    /// (2026-08-06 に iOS 27.0 の Simulator で実測)。`elementType` の宣言参照
+    private static let textEntryTrait = UIAccessibilityTraits(rawValue: 1 << 18)
+
     private static func elementType(_ node: NSObject) -> UIKitType {
         // trait 判定より先に置く: WKWebView は内部に別の trait を持つ子を抱えており、
         // 後ろに置くと other に落ちてホストが webview 画面だと気付けない
@@ -200,7 +268,7 @@ enum InAppSnapshot {
         if let tf = node as? UITextField { return tf.isSecureTextEntry ? .secureTextField : .textField }
         if node is UITextView { return .textView }
         // セルは trait を持たないため、クラスで判定しないと .other に落ちて `.Cell` セレクタが
-        // xcuitest エンジンとだけ食い違う(2026-07-23 に Projects/E2E-iOS で実測)。
+        // xcuitest エンジンとだけ食い違う(2026-07-23 に TestProjects/E2E-iOS で実測)。
         // trait 判定より先に置く: セル内のボタン trait に引きずられて Button にしないため。
         if node is UITableViewCell || node is UICollectionViewCell { return .cell }
         let t = node.accessibilityTraits
@@ -213,6 +281,21 @@ enum InAppSnapshot {
         if t.contains(.keyboardKey) { return .keyboardKey }
         if t.contains(.searchField) { return .searchField }
         if t.contains(.link) { return .link }
+        // **自前描画フレームワークの入力欄**(Compose / Flutter)。UIKit の UITextField/UITextView
+        // ではないので上のクラス判定を素通りし、trait も button/staticText を持たないため、
+        // これが無いと `.other` に落ちる —— 2026-08-06 に E2E-CMP で実害を観測した
+        // (in-app だけ `other`・xcuitest は `textView`。型セレクタが探索と実行で食い違う)。
+        //
+        // 判定は**テキスト入力 trait(1<<18)**。実測値(iPhone 17 Pro / iOS 27.0):
+        //   Compose `AccessibilityElement`      traits=1<<47|1<<18  UITextInput 非準拠
+        //   Flutter `TextInputSemanticsObject`  traits=1<<37|1<<18  UITextInput 準拠
+        // 上位ビットはフレームワーク固有なので見ない。**分岐は UITextInput 準拠**で、
+        // これが XCUITest の elementType と一致する(同じ画面で実測):
+        //   Flutter → textField / Compose → textView(パスワード欄も同じ = secure は出ない)。
+        // ここを片方に寄せると、寄せなかった側が xcuitest と食い違う
+        if t.contains(Self.textEntryTrait) {
+            return node.conforms(to: UITextInput.self) ? .textField : .textView
+        }
         if t.contains(.button) { return .button }
         if t.contains(.image) { return .image }
         if t.contains(.adjustable) { return .adjustable }

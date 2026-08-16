@@ -313,10 +313,31 @@ public enum RunResultsQuery {
     private static let newFailurePriorPassThreshold = 3
     /// infraFailures: timedOut またはステップ未到達失敗がシナリオあたり何件以上で警告するか
     private static let infraFailureMinCount = 2
-    /// selectorDecay: steps.healed + passedViaFallback の合計がシナリオあたり何件以上で警告するか
+    /// selectorDecay: steps.healed + passedViaFallback の合計がシナリオあたり何件以上で警告するか。
+    /// **これだけでは判定しない**(下の傾向条件と AND)—— 合計は窓の中で増え続けるので、
+    /// 単独だと「毎回1件フォールバックするシナリオ」が 3 run 目から永久に鳴る
     private static let selectorDecayMinCount = 3
-    /// deviceBias: 対象 worker の最小実行回数(サンプル数が少ない偏り判定を避ける)
-    private static let deviceBiasMinRunsPerWorker = 3
+    /// selectorDecay: 前半/後半の比較に要る最小 run 数(slowTestsMinRunsForDelta と同じ理由)
+    private static let selectorDecayMinRunsForTrend = 4
+    /// selectorDecay: 1 run あたりの件数が前半→後半でこの割合(%)以上増えたら「劣化」とみなす。
+    /// **一定なら劣化ではない** —— フォールバックや自己修復を意図的に検証するシナリオは
+    /// 毎 run 同じ件数を出す(実測: 2118 run で 2107 件 = 1件/run が2週間一定)
+    private static let selectorDecayRisePct = 30.0
+    /// healReliance: 同じセレクタの修正提案が何 run 続いたら警告するか。
+    /// **提案が出るのは自己修復かヒールキャッシュで「通った」ときだけ**なので、これは
+    /// 「緑だがセレクタは壊れている」状態が続いている run 数そのもの
+    private static let healRelianceMinRuns = 3
+    /// retiredScenarios: 最新の記録からこの日数より前にしか記録が無いシナリオは
+    /// 「実行されなくなった」とみなし、per-scenario の検知から外す
+    private static let retiredScenarioDays = 7.0
+    /// deviceBias: 対象 worker の最小実行回数(サンプル数が少ない偏り判定を避ける)。
+    /// **3 では足りなかった** —— 3 run 中 1 失敗で 33% になり、全体 4% の 2 倍を軽く超える。
+    /// 実データで 69 行出ていたうちの大半がこれと、worker ラベルの旧形式(1〜3 run しか無い)だった
+    private static let deviceBiasMinRunsPerWorker = 10
+    /// deviceBias: その worker での最小失敗**回数**。率だけだと単発の失敗が偏りに化ける。
+    /// 実データでの行数: (10 run, 1 回)=59 / (10, 3)=20 / (10, 5)=**7** / (20, 5)=4。
+    /// 生き残った 7 行はいずれも 5 失敗以上で全体率の 2〜50 倍
+    private static let deviceBiasMinFailures = 5
     /// deviceBias: シナリオ全体の失敗率に対してこの倍率以上なら偏りありと判定
     private static let deviceBiasRatioMultiplier = 2.0
     /// deviceBias: 対象にするシナリオの最小 worker 種類数(単一 worker では偏りを判定できない)
@@ -325,10 +346,16 @@ public enum RunResultsQuery {
     private static let durationRegressionPct = 30.0
     /// unfinishedRuns: finishedAt 欠落 run がこの件数以上で info を出す
     private static let unfinishedRunsMinCount = 1
+    /// unsettledSteps: 判定に要る最小 run 数(1〜2 run では整定の打ち切りは環境雑音と区別できない)
+    private static let unsettledMinRuns = 3
+    /// unsettledSteps: 整定打ち切りを含む run の割合がこれ以上で警告。**緑の run も母数に入れる** ——
+    /// これは失敗の集計ではなく「赤になる前の先行指標」なので、通っている run こそ見たい
+    private static let unsettledRunRatio = 0.3
 
     public struct InsightRow: Codable, Sendable, Equatable {
         /// "newFailure" | "consecutiveFailures" | "infraFailures" | "selectorDecay" | "deviceBias" |
-        /// "durationRegression" | "unfinishedRuns"
+        /// "durationRegression" | "unfinishedRuns" | "unsettledSteps" | "retiredScenarios" |
+        /// "healReliance"
         public let kind: String
         /// "critical" | "warn" | "info"
         public let severity: String
@@ -340,8 +367,17 @@ public enum RunResultsQuery {
     }
 
     /// severity 順(critical→warn→info)、同 severity 内は count 降順(同数は kind→scenarioID 昇順で決定的に)
-    public static func insights(records: [ScenarioRunRecord], runs: [RunMetaRecord]) -> [InsightRow] {
+    /// definedClasses: **今もソースに在る** @TestClass のクラス名(ScenarioFolders.classFileMap の
+    /// キー。_disabled/ は除外される)。渡すと「消えたシナリオ」を日数の推測ではなく確実に判定できる。
+    /// nil または空 = 供給されていない(走査に失敗した等)ので日数だけで判定する ——
+    /// **空集合を「全部消えた」と読まない**(全シナリオが retired になり、検知が丸ごと黙る)
+    public static func insights(records: [ScenarioRunRecord], runs: [RunMetaRecord],
+                                definedClasses: Set<String>? = nil) -> [InsightRow] {
         var rows: [InsightRow] = []
+        // **実行されなくなったシナリオを先に外す**。--since の窓に古い記録が残るかぎり、
+        // 削除・_disabled 化されたシナリオの「末尾の失敗」は永久に critical を出し続け、
+        // severity 順の先頭を占めて本物を押し下げる(実測: 12 行中 5 行がこれだった)
+        let (records, retiredIDs) = partitionRetired(records, definedClasses: definedClasses)
         let grouped = Dictionary(grouping: records, by: \.scenarioID)
 
         for (scenarioID, group) in grouped {
@@ -352,6 +388,10 @@ public enum RunResultsQuery {
                 rows.append(row)
             }
             rows.append(contentsOf: deviceBiasInsights(scenarioID: scenarioID, group: group))
+            if let row = unsettledStepsInsight(scenarioID: scenarioID, group: group) {
+                rows.append(row)
+            }
+            rows.append(contentsOf: healRelianceInsights(scenarioID: scenarioID, group: group))
         }
 
         for row in slowTests(records, limit: .max) {
@@ -360,6 +400,16 @@ public enum RunResultsQuery {
                 kind: "durationRegression", severity: "warn", scenarioID: row.scenarioID, worker: nil,
                 message: "\(row.scenarioID): duration regressed (+\(String(format: "%.0f", deltaPct))% vs the first half)",
                 count: nil, deltaPct: deltaPct))
+        }
+
+        // **黙って落とさない**: 外した事実は出す(消えたシナリオの結果が残っていること自体が情報)
+        if !retiredIDs.isEmpty {
+            rows.append(InsightRow(
+                kind: "retiredScenarios", severity: "info", scenarioID: nil, worker: nil,
+                message: "\(retiredIDs.count) scenario(s) have results but are no longer being run"
+                    + " (excluded from the checks above): \(retiredIDs.prefix(3).joined(separator: ", "))"
+                    + (retiredIDs.count > 3 ? ", …" : ""),
+                count: retiredIDs.count, deltaPct: nil))
         }
 
         let unfinishedCount = runs.filter { $0.finishedAt == nil }.count
@@ -538,13 +588,109 @@ public enum RunResultsQuery {
             count: infraFailures.count, deltaPct: nil)]
     }
 
+    /// セレクタの劣化は「**増えていること**」でしか判定できない。合計だけを見ると、
+    /// フォールバックや自己修復を意図的に検証するシナリオ(このリポジトリの
+    /// `セレクタの型と序数とフォールバックが解決できること` 等)が毎 run 同じ件数を出すため、
+    /// 3 run 目から永久に鳴り続けて一覧を埋める。1 run あたりの件数を前半/後半で比べる。
     private static func selectorDecayInsight(scenarioID: String, group: [ScenarioRunRecord]) -> InsightRow? {
-        let total = group.reduce(0) { $0 + $1.steps.healed + $1.steps.passedViaFallback }
-        guard total >= selectorDecayMinCount else { return nil }
+        let chronological = group.sorted { date(from: $0.startedAt) < date(from: $1.startedAt) }
+        let counts = chronological.map { $0.steps.healed + $0.steps.passedViaFallback }
+        let total = counts.reduce(0, +)
+        guard total >= selectorDecayMinCount, counts.count >= selectorDecayMinRunsForTrend else { return nil }
+        let mid = counts.count / 2
+        guard let firstAvg = average(Array(counts[0..<mid])),
+              let secondAvg = average(Array(counts[mid...])) else { return nil }
+        // 前半 0 = **無かったものが出始めた**。比率が発散するので率は出さず、これ自体を合図にする。
+        // このとき後半が 0 でないことは selectorDecayMinCount(合計 >= 3)が担保する
+        // ——「減っている」「一定」は下の閾値で落ちるので、ここで別途 secondAvg > firstAvg を見ない
+        // (見ても到達しない条件になり、テストで守れない枝が増えるだけ)
+        let deltaPct: Double? = firstAvg > 0 ? (secondAvg - firstAvg) / firstAvg * 100 : nil
+        if let deltaPct, deltaPct < selectorDecayRisePct { return nil }
+        let trend = deltaPct.map { "+\(String(format: "%.0f", $0))% per run" }
+            ?? "newly appeared"
         return InsightRow(
             kind: "selectorDecay", severity: "warn", scenarioID: scenarioID, worker: nil,
-            message: "\(scenarioID): early signs of selector staleness (kept alive by self-heal/fallback, \(total) time(s))",
-            count: total, deltaPct: nil)
+            message: "\(scenarioID): reliance on self-heal/fallback is growing (\(trend), \(total) time(s) total)",
+            count: total, deltaPct: deltaPct)
+    }
+
+    /// **ヒールキャッシュ/自己修復に寄りかかったまま緑が続いている**セレクタ。
+    ///
+    /// 修正提案は毎 run 出るが、放置しても何も起きない —— キャッシュは
+    /// `.ftester/heal-cache.json` に残り、2 回目以降は FM すら呼ばずに通る。
+    /// 速度のための仕組みが「壊れたセレクタを永久に緑にする装置」になっていないかを、
+    /// **提案が何 run 続いたか**で見る(1 run だけなら直せばよい。続いているなら放置されている)。
+    private static func healRelianceInsights(scenarioID: String,
+                                             group: [ScenarioRunRecord]) -> [InsightRow] {
+        var runsPerSelector: [String: Int] = [:]
+        for record in group {
+            // 同じ run に同じセレクタが複数回出ても 1 と数える(run 数が知りたい)
+            let selectors = Set((record.fixSuggestions ?? []).compactMap(\.oldSelector))
+            for selector in selectors { runsPerSelector[selector, default: 0] += 1 }
+        }
+        return runsPerSelector
+            .filter { $0.value >= healRelianceMinRuns }
+            .sorted { $0.key < $1.key }
+            .map { selector, runs in
+                InsightRow(
+                    kind: "healReliance", severity: "warn", scenarioID: scenarioID, worker: nil,
+                    message: "\(scenarioID): \"\(selector)\" has been passing only via self-heal/cache"
+                        + " for \(runs) run(s) — apply the suggested selector",
+                    count: runs, deltaPct: nil)
+            }
+    }
+
+    /// 実行されなくなったシナリオ(結果だけが results/ に残っている)を分ける。
+    /// 判定は**最新の記録からの相対**にする —— 絶対時刻だと、しばらく回していない
+    /// プロジェクトの全シナリオが一斉に retired になる
+    private static func partitionRetired(
+        _ records: [ScenarioRunRecord], definedClasses: Set<String>?
+    ) -> (live: [ScenarioRunRecord], retired: [String]) {
+        guard let newest = records.map({ date(from: $0.startedAt) }).max() else { return (records, []) }
+        let cutoff = newest.addingTimeInterval(-retiredScenarioDays * 86400)
+        // 空集合は「供給されていない」とみなす(下の doc 参照)
+        let defined = (definedClasses?.isEmpty ?? true) ? nil : definedClasses
+        var live: [ScenarioRunRecord] = []
+        var retired: [String] = []
+        for (scenarioID, group) in Dictionary(grouping: records, by: \.scenarioID) {
+            // ソースに無いなら日付を問わず retired(削除・_disabled 化。2〜3 日前に走っていても消す)
+            let className = String(scenarioID.prefix { $0 != "." })
+            let undefined = defined.map { !$0.contains(className) } ?? false
+            let stale = group.map({ date(from: $0.startedAt) }).max().map { $0 < cutoff } ?? false
+            if undefined || stale {
+                retired.append(scenarioID)
+            } else {
+                live.append(contentsOf: group)
+            }
+        }
+        return (live, retired.sorted())
+    }
+
+    /// 整定の収束判定が打ち切られたまま先へ進んだステップの**出現率**(赤になる前の先行指標)。
+    ///
+    /// 数えるのは `TimelineStepRecord.notes` のコードだけで、説明文は見ない(StepNote の doc)。
+    /// **notes を持たない旧レコードは 0 件として数える** = 率が下がる側 ==
+    /// 「まだ測れていない」を「異常あり」と言わない側に倒れる(過小報告は安全・過剰報告は害)。
+    /// timeline が無い記録も同じ扱い。
+    private static func unsettledStepsInsight(scenarioID: String,
+                                              group: [ScenarioRunRecord]) -> InsightRow? {
+        guard group.count >= unsettledMinRuns else { return nil }
+        let affected = group.filter { record in
+            record.timeline?.contains { $0.notes?.contains(StepNote.settleCapped.rawValue) == true } == true
+        }
+        guard !affected.isEmpty else { return nil }
+        let ratio = Double(affected.count) / Double(group.count)
+        guard ratio >= unsettledRunRatio else { return nil }
+        let steps = affected.reduce(0) { total, record in
+            total + (record.timeline?.filter {
+                $0.notes?.contains(StepNote.settleCapped.rawValue) == true
+            }.count ?? 0)
+        }
+        return InsightRow(
+            kind: "unsettledSteps", severity: "warn", scenarioID: scenarioID, worker: nil,
+            message: "\(scenarioID): the screen was still moving when \(steps) step(s) went ahead"
+                + " (in \(affected.count)/\(group.count) runs; a leading indicator of flakiness)",
+            count: steps, deltaPct: nil)
     }
 
     private static func deviceBiasInsights(scenarioID: String, group: [ScenarioRunRecord]) -> [InsightRow] {
@@ -557,6 +703,7 @@ public enum RunResultsQuery {
         return byWorker.sorted { $0.key < $1.key }.compactMap { worker, workerRecords -> InsightRow? in
             guard workerRecords.count >= deviceBiasMinRunsPerWorker else { return nil }
             let workerFailed = workerRecords.filter { !$0.passed }.count
+            guard workerFailed >= deviceBiasMinFailures else { return nil }
             let workerFailureRate = Double(workerFailed) / Double(workerRecords.count)
             guard workerFailureRate >= overallFailureRate * deviceBiasRatioMultiplier else { return nil }
             return InsightRow(

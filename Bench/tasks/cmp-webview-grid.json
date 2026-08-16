@@ -1,0 +1,8 @@
+{
+  "id": "cmp-webview-grid",
+  "archetype": "webview-grid",
+  "requires": "iOS シミュレータ1台にブリッジ + com.ftester.e2e(E2EAppCMP)。WebView 画面の格子は見出し行が aria-hidden なので、**列見出しはツリーからは絶対に取れない**(ft_screenshot でしか読めない)= 代替手段の無い盤面",
+  "maxTurns": 60,
+  "expect": "(?=[\\s\\S]*日付)(?=[\\s\\S]*天気)(?=[\\s\\S]*気温)[\\s\\S]*27",
+  "prompt": "ftester の MCP ツール(ft_*)だけを使って、iOS シミュレータ上のアプリ com.ftester.e2e を操作してください。あなたはこのアプリを初めて触ります。\n\nゴール: 「WebView」画面を開き、そこにある表について (1) 3つの列見出しをすべて読み取り、(2) 8/15 の行の気温の値を読み取ること。\n\n手順や使うツールは自分で決めてください。デバイスは ft_list_devices で選びます。\n\n最後に必ず1行だけ次の形式で出力してください: RESULT: headers=<列見出しを左から順にカンマ区切り> temp=<8/15 の気温>\n読み取れなかった場合は RESULT: unknown と出力してください。"
+}

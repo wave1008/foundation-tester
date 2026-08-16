@@ -101,16 +101,20 @@ clone 構成ならこのステップは不要(同梱 `.mcp.json` が効く)。�
   "mcpServers": {
     "ftester": {
       "command": "bash",
-      "args": ["-lc", "WD=\"$PWD\"; cd \"<ABS_TOOL_ROOT>\" && swift build --product ftester-mcp >/dev/null 2>&1 && cd \"$WD\" && exec \"<ABS_TOOL_ROOT>/.build/debug/ftester-mcp\""],
+      "args": ["-lc", "exec \"<ABS_TOOL_ROOT>/Scripts/mcp-server.sh\""],
       "env": { "FT_TOOL_ROOT": "<ABS_TOOL_ROOT>" }
     }
   }
 }
 ```
 
-- `<ABS_TOOL_ROOT>` は**絶対パス**(相対だと開く cwd 次第で解決できない)。3箇所すべて同じ値。
+- `<ABS_TOOL_ROOT>` は**絶対パス**(相対だと開く cwd 次第で解決できない)。2箇所とも同じ値。
+- 起動の中身は `Scripts/mcp-server.sh`(**シェル式を .mcp.json へ埋め込まない**)。あちらが
+  「ソースが実行ファイルより新しいときだけ建てる」「ビルド出力はログへ・失敗は stderr へ」を担う。
+  埋め込み式だった頃は**起動のたびに約8秒の no-op ビルド**を払い、失敗すると
+  `>/dev/null` のせいで**理由が分からないまま起動しなかった**(2026-08-06 の外部フィードバック)。
 - `env.FT_TOOL_ROOT` は**ブリッジ資産(`Runner/`・`InAppBridge/`)のルート**の明示指定
-  (cwd は受け手パッケージ = `Projects/` 側を指すため別物)。省略しても実行ファイルの位置から
+  (cwd は受け手パッケージ = `TestProjects/` 側を指すため別物)。省略しても実行ファイルの位置から
   自動解決するが、明示しておくと解決に依存しない。
 - build 出力は `/dev/null`(JSON-RPC は stdout 専用・混ぜると壊れる)。
 - `bash -lc`(ログインシェル)は、デスクトップ版 Claude Code が最小 PATH でサーバを起こしても
@@ -118,14 +122,14 @@ clone 構成ならこのステップは不要(同梱 `.mcp.json` が効く)。�
 - rebuild-on-start なので `/ftester-update` 後も版ズレしない(無変更なら増分ビルドは即座)。
 - **ビルドのため TOOL_ROOT へ `cd` した後、`exec` 前に元の WORK_DIR へ戻す**(`WD="$PWD"; cd ... ;
   cd "$WD"`)。cwd は `ftester-mcp` がパッケージルートを特定する入力(`packageRoot()` の探索基準)。
-  cd したまま exec すると外部パッケージ構成で受け手の `Projects/` が見えなくなる。
+  cd したまま exec すると外部パッケージ構成で受け手の `TestProjects/` が見えなくなる。
 - cwd = パッケージルートが前提。cd 制御ができない起動経路では代わりに環境変数 `FT_PACKAGE_ROOT`
   でパッケージルートを明示指定できる(未設定なら cwd 探索、無効なパスなら診断のため探索フォールバックせず失敗する)。
 
 「全プロジェクトで使いたい」場合のみ、代わりに user スコープ登録を案内する(claude CLI が PATH に要る):
 
 ```
-claude mcp add ftester --scope user -e FT_TOOL_ROOT=<ABS_TOOL_ROOT> -- bash -lc 'WD="$PWD"; cd "<ABS_TOOL_ROOT>" && swift build --product ftester-mcp >/dev/null 2>&1 && cd "$WD" && exec "<ABS_TOOL_ROOT>/.build/debug/ftester-mcp"'
+claude mcp add ftester --scope user -e FT_TOOL_ROOT=<ABS_TOOL_ROOT> -- bash -lc 'exec "<ABS_TOOL_ROOT>/Scripts/mcp-server.sh"'
 ```
 
 CLI が無ければ上の WORK_DIR `.mcp.json` 方式で十分。

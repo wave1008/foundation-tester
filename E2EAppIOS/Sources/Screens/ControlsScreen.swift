@@ -70,6 +70,7 @@ struct ControlsScreen: View {
 struct LifecycleScreen: View {
     @ObservedObject private var launch = LaunchCounter.shared
     @ObservedObject private var session = SessionCounter.shared
+    @ObservedObject private var deeplink = DeepLinkState.shared
 
     var body: some View {
         ScreenColumn {
@@ -78,6 +79,7 @@ struct LifecycleScreen: View {
             TaggedButton(tag: Tags.btnSessionInc, label: "セッション+1") { session.value += 1 }
             TaggedButton(tag: Tags.btnResetPersisted, label: "永続カウンタをリセット") { launch.reset() }
             TaggedText(tag: Tags.txtPlatform, text: "platform=iOS")
+            TaggedText(tag: Tags.txtLastDeeplink, text: "deeplink=\(deeplink.lastURL)")
         }
     }
 }

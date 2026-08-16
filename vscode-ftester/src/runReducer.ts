@@ -6,7 +6,7 @@
 // (内部で書き換える)。時刻は呼び出し側が nowMs として注入する(このモジュールは Date.now() を呼ばない)。
 //
 // アイコンは Sources/FTCore/RunOrchestrator.swift の RunLogFormatter と揃えている
-// (✅ 成功 / ❌ 失敗 / ⚠️ スキップ / 🔧 自己修復 / 💡 修正提案 / ▶ 開始 / ⏸ 一時停止)。
+// (✅ 成功 / ❌ 失敗 / ⚠️ スキップ / ❓ inconclusive / 🔧 自己修復 / 💡 修正提案 / ▶ 開始 / ⏸ 一時停止)。
 
 import { isRunEvent, type RunEvent, type WorkerInfo } from "./model";
 import { tLane } from "./i18n/strings/lane";
@@ -60,6 +60,7 @@ export const STATUS_MARK: Record<string, string> = {
   healed: "🔧",
   failed: "❌",
   skipped: "⚠️",
+  inconclusive: "❓",
 };
 
 /** value は NdjsonParser の onValue が渡す unknown。isRunEvent が false なら安全に無視する。 */
@@ -222,6 +223,9 @@ function stepActions(
         break;
       case "skipped":
         detailLine = tLane("lane.detailSkipped", { detail: event.detail });
+        break;
+      case "inconclusive":
+        detailLine = tLane("lane.detailInconclusive", { detail: event.detail });
         break;
       default:
         detailLine = `     ${event.detail}`;

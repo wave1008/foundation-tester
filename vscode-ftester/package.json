@@ -2,7 +2,7 @@
   "name": "vscode-ftester",
   "displayName": "ftester",
   "description": "%ftester.extension.description%",
-  "version": "0.0.451",
+  "version": "0.0.466",
   "private": true,
   "publisher": "wave1008",
   "license": "MIT",
@@ -448,15 +448,15 @@
     ],
     "jsonValidation": [
       {
-        "fileMatch": "**/Projects/*/profiles/runs/*.json",
+        "fileMatch": "**/TestProjects/*/profiles/runs/*.json",
         "url": "./schemas/run-profile.schema.json"
       },
       {
-        "fileMatch": "**/Projects/*/profiles/apps/*.json",
+        "fileMatch": "**/TestProjects/*/profiles/apps/*.json",
         "url": "./schemas/app-profile.schema.json"
       },
       {
-        "fileMatch": "**/Projects/*/profiles/machines/*.json",
+        "fileMatch": "**/TestProjects/*/profiles/machines/*.json",
         "url": "./schemas/machine-profile.schema.json"
       }
     ]

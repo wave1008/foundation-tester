@@ -44,10 +44,32 @@ public final class AppAttachDriver: AppDriver {
     }
 
     public func snapshot() async throws -> SnapshotResponse {
+        try await snapshot(bypassingCache: false)
+    }
+
+    /// bypassingCache 版の素通し(既定実装に任せるとフラグが落ちて最内へ届かない。
+    /// SnapshotCacheBypassForwardingTests がラッパー全体でこれを守る)。
+    /// **attach の前処理は必ずこちらに置く** —— snapshot() を素通し側にすると片方だけ attach を飛ばす
+    /// **転送必須**(既定実装 nil に落ちると、ラッパー越しでは常に「答えられない」になる。
+    /// AppDriver.hittable の doc と AppDriverDefaultDispatchTests 参照)
+    public func hittable(ref: Int) async throws -> Bool? {
+        try await client.hittable(ref: ref)
+    }
+
+    public func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {
         try await client.activate(bundleID: bundleID)
         attached = true
-        return try await client.snapshot()
+        var response = try await client.snapshot(bypassingCache: bypassingCache)
+        response.elements = SnapshotDedupe.wrapperScrollMerge(response.elements)
+        return response
     }
+    /// **転送必須**(既定実装に任せると最内のブリッジ接続へ届かず、上げたつもりで 120 のまま)
+    public func raiseElementLimitOnNextSnapshot(_ max: Int?) {
+        client.raiseElementLimitOnNextSnapshot(max)
+    }
+    public var supportsCacheBypass: Bool { client.supportsCacheBypass }
+    public var pointScale: Double { client.pointScale }
+    public var verifiesTypedText: Bool { client.verifiesTypedText }
 
     public func tap(ref: Int) async throws { try await client.tap(ref: ref) }
     /// ref 無し(フォーカス中要素への入力)は swipe と同じ回復を入れる(下の swipe のコメント参照)。
@@ -120,23 +142,26 @@ public final class AppAttachDriver: AppDriver {
     /// swipe は ref を使わないので、事前に attach を揃え(ensureAttached)、それでも
     /// 409/503 なら activate して1回だけ再試行する。snapshot() を経ずに swipe が先に来るシナリオ
     /// (scrollTo が最初の操作)が
-    /// あり、そのままだと 409 で落ちる(2026-07-23 に Projects/E2E-iOS の inapp 実行で顕在化。
+    /// あり、そのままだと 409 で落ちる(2026-07-23 に TestProjects/E2E-iOS の inapp 実行で顕在化。
     /// Compose 版は press のフォールバックが先に snapshot=activate していて露呈していなかった)。
     /// ref を使う tap/type/press には同じ回復を入れない: activate は refFrames をクリアするため、
     /// 再試行時には直前 snapshot の ref が別要素を指してしまう。
     public func swipe(_ direction: FTSwipeDirection) async throws {
-        try await swipe(direction, forScroll: false)
+        try await swipe(direction, intent: .gesture, path: nil)
     }
 
-    /// forScroll 版の素通し(FastLaunchDriver の注記と同じ理由)
-    public func swipe(_ direction: FTSwipeDirection, forScroll: Bool) async throws {
+    /// 用途つき版の素通し(FastLaunchDriver の注記と同じ理由)。
+    /// **client.swipe へ intent と path を渡す**(落とすと用途別のジェスチャ調整と
+    /// スクロール領域の指定が丸ごと効かなくなる)
+    public func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent,
+                      path: FTSwipePath?) async throws {
         try await ensureAttached()
         do {
-            try await client.swipe(direction)
+            try await client.swipe(direction, intent: intent, path: path)
         } catch {
             guard Self.isRecoverableSession(error) else { throw error }
             try await client.activate(bundleID: bundleID)
-            try await client.swipe(direction)
+            try await client.swipe(direction, intent: intent, path: path)
         }
     }
     /// drag も ref を使わないので swipe と同じ 409 回復を入れる(座標は対象アプリのセッションが要る)。
@@ -155,6 +180,66 @@ public final class AppAttachDriver: AppDriver {
         }
     }
 
+    /// 座標ロングプレスも ref を使わないので drag と同じ 409 回復を入れる。
+    /// **既定実装(501)に落としてはいけない**: hybrid のフォールバックで in-app が長押しを
+    /// 持たない(501)ぶんをここが受けるため、無いと「どちらの経路でも 501」になる
+    /// (2026-08-04 に MCP のエンジン追従で実際に踏んだ)
+    public func press(x: Double, y: Double, duration: Double) async throws {
+        try await ensureAttached()
+        do {
+            try await client.press(x: x, y: y, duration: duration)
+        } catch {
+            guard Self.isRecoverableSession(error) else { throw error }
+            try await client.activate(bundleID: bundleID)
+            try await client.press(x: x, y: y, duration: duration)
+        }
+    }
+
+    /// doubleTap / pinch も ref を使わない(座標・identifier)ので drag と同じ 409 回復を入れる。
+    /// in-app が 501 を返す組み合わせ(UIKit/SwiftUI)の hybrid ピンチはここへ回ってくる
+    public func doubleTap(x: Double, y: Double) async throws {
+        try await ensureAttached()
+        do {
+            try await client.doubleTap(x: x, y: y)
+        } catch {
+            guard Self.isRecoverableSession(error) else { throw error }
+            try await client.activate(bundleID: bundleID)
+            try await client.doubleTap(x: x, y: y)
+        }
+    }
+
+    public func pinch(frame: FTRect?, identifier: String?, scale: Double,
+                      durationSeconds: Double) async throws {
+        try await ensureAttached()
+        do {
+            try await client.pinch(frame: frame, identifier: identifier, scale: scale,
+                                   durationSeconds: durationSeconds)
+        } catch {
+            guard Self.isRecoverableSession(error) else { throw error }
+            try await client.activate(bundleID: bundleID)
+            try await client.pinch(frame: frame, identifier: identifier, scale: scale,
+                                   durationSeconds: durationSeconds)
+        }
+    }
+
+    /// rotate も ref を使わないので pinch と同じ回復を入れる(上の pinch のコメント参照)
+    public func rotate(to orientation: FTOrientation) async throws -> FTOrientation {
+        try await ensureAttached()
+        do {
+            return try await client.rotate(to: orientation)
+        } catch {
+            guard Self.isRecoverableSession(error) else { throw error }
+            try await client.activate(bundleID: bundleID)
+            return try await client.rotate(to: orientation)
+        }
+    }
+
+    /// client 側の originalOrientation が nil(未 rotate)なら no-op で返る。rotate 済みなら
+    /// そのとき既に attach 済みなので、ここで追加の ensureAttached は不要
+    public func restoreOrientationIfNeeded() async throws {
+        try await client.restoreOrientationIfNeeded()
+    }
+
     /// home / appSwitcher は XCUITest ブリッジ側が**セッション不要**で処理する
     /// (XCUIDevice / springboard 座標。Runner の BridgeRouter.handleHome / handleAppSwitcher)。
     /// activate を挟まない = 対象アプリを前面に戻してしまわない
@@ -163,11 +248,26 @@ public final class AppAttachDriver: AppDriver {
 
     public func screenshot() async throws -> Data { try await client.screenshot() }
     public func status() async throws -> StatusResponse { try await client.status() }
+    // simctl/devicectl 経由のホスト操作でセッション不要(isAppForeground と同じくそのまま使える)
+    public func openURL(_ url: String, bundleID: String?) async throws {
+        try await client.openURL(url, bundleID: bundleID)
+    }
+    /// **素通しが必須**: 既定実装(no-op)に落ちると、hybrid で WebViewDelegatingDriver がこの
+    /// インスタンス(XCUITest 接続=springboard を見られる側)へ回した同意ステップが握りつぶされる
+    public func acknowledgeOpenURLConsentIfPresent(bundleID: String) async {
+        await client.acknowledgeOpenURLConsentIfPresent(bundleID: bundleID)
+    }
 
-    // ライフサイクル・install はアプリ本体(primary=in-app)が担う。attach 用では no-op。
+    // ライフサイクル・install/uninstall はアプリ本体(primary=in-app)が担う。attach 用では no-op。
     public func install(packagePath: String) async throws {}
+    public func uninstall(bundleID: String) async throws {}
     public func launch(bundleID: String) async throws {}
     public func terminate() async throws {}
     public func clearAppData(bundleID: String) async throws {}
+    // /appstate はセッション不要の読み取り。attach 用も実体は BridgeClient なのでそのまま使える
+    public func isAppForeground(bundleID: String) async throws -> Bool {
+        try await client.isAppForeground(bundleID: bundleID)
+    }
+    public func foregroundAppID() async throws -> String? { try await client.foregroundAppID() }
     public var lastActionNote: String? { client.lastActionNote }
 }

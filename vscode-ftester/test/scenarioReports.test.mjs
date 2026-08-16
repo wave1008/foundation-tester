@@ -13,8 +13,8 @@ function makeDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "ftester-scenarioreports-test-"));
 }
 
-test("reportsDir: workspaceRoot/Projects/<project>/reports を返す", () => {
-  assert.equal(reportsDir("/root", "P"), path.join("/root", "Projects", "P", "reports"));
+test("reportsDir: workspaceRoot/TestProjects/<project>/reports を返す", () => {
+  assert.equal(reportsDir("/root", "P"), path.join("/root", "TestProjects", "P", "reports"));
 });
 
 test("findLatestReport: 同一シナリオの複数レポートから最新(タイムスタンプ最大)を選ぶ", () => {

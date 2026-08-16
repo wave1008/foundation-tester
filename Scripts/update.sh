@@ -27,7 +27,7 @@ usage() {
   cat <<'EOF'
 Usage: update.sh [options]
 
-  --work-dir <dir>   Consumer directory that holds Projects/ (default: current directory)
+  --work-dir <dir>   Consumer directory that holds TestProjects/ (default: current directory)
   --tool-root <dir>  Location of the foundation-tester clone (default: <work-dir>/../foundation-tester)
   --no-pull          Do not update the clone (to pin a version, or while developing the tool)
   --force            Run everything even without an update (to redo a broken install)
@@ -43,6 +43,9 @@ What it does: re-runs install.sh (git pull → swift build → extension → .mc
          **Exits without doing anything when there is no update** (decided by update-check.sh; use --force to run everything)
 EOF
 }
+
+# 再 exec(install.sh の pull で自分が新しくなったとき)で渡し直すため、パース前に控える
+ORIGINAL_ARGS=("$@")
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -88,7 +91,10 @@ fi
 # 再パッケージ 4s。M2 Ultra 実測)。1秒で済む判定を先に置く。
 # **up-to-date のときだけ止める** ―― pinned/unknown(版固定・オフライン)は判定できないだけなので
 # 従来どおり進む。取りこぼしを疑うとき(前回が途中で失敗した等)は --force
-if [ "$FORCE" = "0" ] && [ "$ALLOW_PULL" = "1" ] && [ -f "$TOOL_ROOT/Scripts/update-check.sh" ]; then
+# **再 exec された2周目はこの判定を通さない** —— 直前に pull しているので必ず up-to-date になり、
+# ここで抜けると project sync とプラグイン更新(= update 固有の工程)が丸ごと飛ぶ
+if [ "${FT_UPDATE_REEXEC:-0}" != "1" ] \
+   && [ "$FORCE" = "0" ] && [ "$ALLOW_PULL" = "1" ] && [ -f "$TOOL_ROOT/Scripts/update-check.sh" ]; then
   check_out="$(bash "$TOOL_ROOT/Scripts/update-check.sh" --tool-root "$TOOL_ROOT" 2>/dev/null || true)"
   case "$check_out" in
     *"verdict=up-to-date"*)
@@ -99,10 +105,11 @@ if [ "$FORCE" = "0" ] && [ "$ALLOW_PULL" = "1" ] && [ -f "$TOOL_ROOT/Scripts/upd
 fi
 
 # ---- 1〜2・5・5.5: install.sh に委譲(pull・build・拡張・.mcp.json・検証ゲート・ログ) -------
-# --skip-project: 既存の Projects/ を触らない(更新でプロジェクトを作り直さない)
+# --skip-project: 既存の TestProjects/ を触らない(更新でプロジェクトを作り直さない)
 echo "==> Re-running install.sh (pull → build → extension → .mcp.json → verification)"
 # --no-doctor が既定: 結果表に Apple Intelligence の warn 行が出るので情報が重複し、8秒かかる
 [ "$DO_DOCTOR" = "1" ] || PASS_THROUGH+=(--no-doctor)
+HEAD_BEFORE_INSTALL="$(git -C "$TOOL_ROOT" rev-parse HEAD 2>/dev/null || echo none)"
 bash "$TOOL_ROOT/Scripts/install.sh" --work-dir "$WORK_DIR" --skip-project --no-next-steps \
   "${PASS_THROUGH[@]+"${PASS_THROUGH[@]}"}"
 INSTALL_STATUS=$?
@@ -111,12 +118,34 @@ if [ "$INSTALL_STATUS" = "1" ]; then
   exit 1
 fi
 
-# ---- 3. 受け手側の反映(clone 構成のみ project sync) ----------------------------
-# 外部パッケージ構成はローカルパス依存なので pull だけで反映される(シナリオは実行時に自動ビルド)
-FT="$TOOL_ROOT/.build/debug/ftester"
-if [ "$WORK_DIR" = "$TOOL_ROOT" ] && [ -x "$FT" ]; then
+# ---- 2.5 pull で自分自身が新しくなったら、新版でやり直す --------------------------
+# install.sh 側と同じ理由(**bash は実行中にファイルが差し替わっても古い内容を最後まで実行する**)。
+# install.sh は自前で再 exec するようになったが、**この update.sh のロジック変更は依然1版遅れる**。
+# 「委譲が中心だから影響は小さい」と一度は残したが、直後に利用者向けの修正(project sync を
+# 外部構成でも走らせる)がこのファイルへ入り、**受け手は2回更新しないと直らない**状態になった
+# (2026-08-06 の外部フィードバックで判明)。ここも塞ぐ。
+# 2周目の install.sh は全ステップ skip で数秒。**up-to-date の早期終了は FT_UPDATE_REEXEC で回避済み**。
+if [ "${FT_UPDATE_REEXEC:-0}" != "1" ] && [ -f "$0" ] \
+   && [ "$HEAD_BEFORE_INSTALL" != "$(git -C "$TOOL_ROOT" rev-parse HEAD 2>/dev/null || echo none)" ] \
+   && [ "$(cd "$(dirname "$0")" 2>/dev/null && pwd)/$(basename "$0")" = "$TOOL_ROOT/Scripts/update.sh" ]; then
   echo ""
-  echo "==> ftester project sync (resyncing Projects/ ↔ Package.swift)"
+  echo "==> The clone moved to a new revision — restarting with the updated update.sh"
+  export FT_UPDATE_REEXEC=1
+  exec bash "$0" "${ORIGINAL_ARGS[@]+"${ORIGINAL_ARGS[@]}"}"
+fi
+
+# ---- 3. 受け手側の反映(project sync) ------------------------------------------
+# **構成で分けない**(2026-08-06 に修正)。かつては「外部パッケージ構成はローカルパス依存なので
+# pull だけで反映される」として clone 構成だけで走らせていたが、それが正しいのは**依存の解決**
+# だけで、**受け手の Package.swift に書かれたシナリオのパス**には効かない。
+# 実害: 2026-08-05 の `Projects/`→`TestProjects/` / `Scenarios/`→`scenarios/` 改名のあと、
+# 外部構成の受け手だけ Package.swift が旧名のまま取り残され、
+# `invalid custom path 'Projects/<name>/Scenarios'` でビルドが落ちた(外部フィードバック)。
+# syncManifest は external を明示的に扱う実装なので、両構成でそのまま安全に走る。
+FT="$TOOL_ROOT/.build/debug/ftester"
+if [ -x "$FT" ]; then
+  echo ""
+  echo "==> ftester project sync (resyncing TestProjects/ ↔ Package.swift)"
   ( cd "$WORK_DIR" && "$FT" project sync ) || echo "⚠️ project sync failed (check it by hand)"
 fi
 

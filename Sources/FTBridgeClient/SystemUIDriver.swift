@@ -18,11 +18,25 @@ public final class SystemUIDriver: AppDriver {
     }
 
     public func snapshot() async throws -> SnapshotResponse {
+        try await snapshot(bypassingCache: false)
+    }
+
+    /// bypassingCache 版の素通し(既定実装に任せるとフラグが落ちて最内へ届かない。
+    /// SnapshotCacheBypassForwardingTests がラッパー全体でこれを守る)。
+    /// **張り直しは必ずこちらに置く** —— snapshot() を素通し側にすると片方だけ張り直しを飛ばす
+    public func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {
         // 参照を張り直してから live ツリー(現在のアラート含む)を取る。session は refFrames をクリアし、
         // 続く snapshot が振り直すので、この直後の tap は同じ ref で当たる。
         try await client.launch(bundleID: "com.apple.springboard")
-        return try await client.snapshot()
+        return try await client.snapshot(bypassingCache: bypassingCache)
     }
+    /// **転送必須**(既定実装に任せると最内のブリッジ接続へ届かず、上げたつもりで 120 のまま)
+    public func raiseElementLimitOnNextSnapshot(_ max: Int?) {
+        client.raiseElementLimitOnNextSnapshot(max)
+    }
+    public var supportsCacheBypass: Bool { client.supportsCacheBypass }
+    public var pointScale: Double { client.pointScale }
+    public var verifiesTypedText: Bool { client.verifiesTypedText }
 
     public func tap(ref: Int) async throws { try await client.tap(ref: ref) }
     public func type(ref: Int?, text: String) async throws { try await client.type(ref: ref, text: text) }
@@ -32,17 +46,50 @@ public final class SystemUIDriver: AppDriver {
     public func press(ref: Int, duration: Double) async throws { try await client.press(ref: ref, duration: duration) }
     public func tap(x: Double, y: Double) async throws { try await client.tap(x: x, y: y) }
     public func swipe(_ direction: FTSwipeDirection) async throws { try await client.swipe(direction) }
-    /// forScroll 版の素通し(FastLaunchDriver の注記と同じ理由)
-    public func swipe(_ direction: FTSwipeDirection, forScroll: Bool) async throws {
-        try await client.swipe(direction, forScroll: forScroll)
+    /// 用途つき版の素通し(FastLaunchDriver の注記と同じ理由)
+    public func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent,
+                      path: FTSwipePath?) async throws {
+        try await client.swipe(direction, intent: intent, path: path)
     }
+    /// tapAppIcon のページ送り(flickRightToLeft 相当)用。既存 /drag ルートの素通し(新規エンドポイントではない)
+    public func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
+                     pressSeconds: Double, durationSeconds: Double) async throws {
+        try await client.drag(fromX: fromX, fromY: fromY, toX: toX, toY: toY,
+                              pressSeconds: pressSeconds, durationSeconds: durationSeconds)
+    }
+    /// 座標ロングプレス。**既定実装(501)に落としてはいけない** —— 包む相手が実装を
+    /// 持っているのに、ラッパーが黙って「未対応」を返すことになる
+    public func press(x: Double, y: Double, duration: Double) async throws {
+        try await client.press(x: x, y: y, duration: duration)
+    }
+    public func doubleTap(x: Double, y: Double) async throws { try await client.doubleTap(x: x, y: y) }
+    public func rotate(to orientation: FTOrientation) async throws -> FTOrientation {
+        try await client.rotate(to: orientation)
+    }
+    public func restoreOrientationIfNeeded() async throws { try await client.restoreOrientationIfNeeded() }
+    public func pinch(frame: FTRect?, identifier: String?, scale: Double,
+                      durationSeconds: Double) async throws {
+        try await client.pinch(frame: frame, identifier: identifier, scale: scale,
+                               durationSeconds: durationSeconds)
+    }
+    /// tapAppIcon の冒頭 home() 用。**素通しを書かないと extension の 501 既定実装に落ちる**
+    /// (実機で踏んだ。SystemUIDriverHomeForwardingTests が守る)
+    public func home() async throws { try await client.home() }
     public func screenshot() async throws -> Data { try await client.screenshot() }
     public func status() async throws -> StatusResponse { try await client.status() }
 
-    // ライフサイクル・install はアプリ本体(primary=in-app)が担う。フォールバックでは no-op。
+    // ライフサイクル・install/uninstall はアプリ本体(primary=in-app)が担う。フォールバックでは no-op。
     public func install(packagePath: String) async throws {}
+    public func uninstall(bundleID: String) async throws {}
     public func launch(bundleID: String) async throws {}
     public func terminate() async throws {}
     public func clearAppData(bundleID: String) async throws {}
+    // openURL は既定の 501 のまま(このクラスの用途は springboard 参照でアプリを持たない。
+    // URL を配送すべき対象アプリは primary=in-app 側が持つので、そちらが受け持つ)
+    // /appstate はセッション不要の読み取り。フォールバック用も実体は BridgeClient なのでそのまま使える
+    public func isAppForeground(bundleID: String) async throws -> Bool {
+        try await client.isAppForeground(bundleID: bundleID)
+    }
+    public func foregroundAppID() async throws -> String? { try await client.foregroundAppID() }
     public var lastActionNote: String? { client.lastActionNote }
 }

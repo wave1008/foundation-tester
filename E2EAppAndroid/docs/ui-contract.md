@@ -1,12 +1,24 @@
 # FT E2E Android ネイティブアプリ UI 契約
 
-**画面構成・`#id`・表示ラベルは `E2EApp/docs/ui-contract.md`(Compose Multiplatform 版)と共通**。
+**画面構成・`#id`・表示ラベルは `E2EAppCMP/docs/ui-contract.md`(Compose Multiplatform 版)と共通**。
 同じシナリオを各 SUT に当てて比較できるよう、値は byte 一致させてある。
 このファイルは **Android ネイティブ実装(View/XML + 一部 Compose)固有の差分だけ**を定義する。
 
 - applicationId: `com.ftester.e2e.android`(Compose 版 `com.ftester.e2e` と共存できる)
 - `#txt_about_app` は `app=com.ftester.e2e.android`
-- シナリオ: `Projects/E2E-Android/Scenarios/`
+- シナリオ: `TestProjects/E2E-Android/scenarios/`
+- ディープリンク: `MainActivity` は `android:launchMode="singleTop"` + `onNewIntent`(`singleTask` は
+  タスクを畳んで既存シナリオの launch 挙動に影響し得るため避けた)。
+
+## `textAllCaps` を必ず切る(2026-08-06)
+
+`Theme.FTE2E` に `android:textAllCaps=false` / `textAllCaps=false` を入れてある。
+AppCompat の既定は `Button` を大文字で描き、**a11y ラベルまで大文字になる** ——
+`android:text="WebView"` の `#nav_webview` が `WEBVIEW` で出て、
+「ラベルは全 SUT 共通」の契約どおりに書いたシナリオがこの SUT でだけ落ちていた。
+
+**日本語ラベルは大文字化の影響を受けない**ので、ASCII ラベルの `WebView` 1件だけが
+表面化していた。ASCII のラベルを増やすときはここを疑うこと。
 
 ## 実装方式(どこが View で、どこが Compose か)
 
@@ -28,7 +40,7 @@
 | `EditText`(通常) | `textField` | `textMultiLine` も `textField`(iOS ネイティブは `textView` になる) |
 | `EditText`(textPassword) | `secureTextField` | |
 | `SwitchCompat` | `switch` | ダイアログ画面・自己修復画面 |
-| Compose `Switch` / `Button` | `switch` / `button` | className は `android.view.View` のまま。ブリッジが checkable と同一 bounds の Button マーカー子から役割を復元する(2026-07-26 正規化。それ以前は両方 `cell` = 現 `clickable` の旧名) |
+| Compose `Switch` / `Button` | `switch` / `button` | className は `android.view.View` のまま。ブリッジが checkable と同じ矩形の Button マーカー子から役割を復元する(2026-07-26 正規化。それ以前は両方 `cell` = 現 `clickable` の旧名)。**Button は 2026-08-06 まで復元に失敗して `clickable` のままだった** —— ComposeView 埋め込みでは親とマーカー子の矩形が完全一致せず、一致条件で弾かれていた(`looksLikeRoleMarker` で辺の共有判定に緩めて解消) |
 | Compose `Checkbox` / `RadioButton` | `checkBox` | ラジオも `checkBox` に丸められる |
 | Compose `Slider` | `slider` | |
 | `RecyclerView` | `collectionView` | |
@@ -119,6 +131,15 @@ API 30 未満のときだけ `keyevent 66` に落ちる。`OnEditorActionListene
 - **DOM 変更の a11y 反映が 4〜8 秒遅れる**(CMP / Flutter で実測。タップは効いているのに
   `textIs` だけ古い値で落ちる)。ブリッジが WebView 内ノードを `refresh()` してから読むことで
   1 秒未満に短縮している(コストは snapshot 1 回あたり +20ms)。
+
+## 画面回転
+
+**回転しても画面は保たれる**(2026-08-11)。Android は回転で Activity を作り直すため、素のままだと
+ホームへ落ちていた(他の SUT は保つので、この SUT だけ挙動が割れていた)。
+`onRetainCustomNonConfigurationInstance` でタブと子画面だけを引き継いでいる ——
+**構成変更専用でプロセス死を跨がない**ので、「起動時は必ずホームのルート」契約
+(`MainActivity.onCreate` が `savedInstanceState` を捨てる理由)はそのまま。
+View 階層の状態(EditText の文字列など)は引き継がない。
 
 ## ビルド
 

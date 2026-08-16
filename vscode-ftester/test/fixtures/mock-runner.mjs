@@ -76,7 +76,7 @@ function emitRawLine(text) {
 
 /** 1シナリオ分の NDJSON を出力する。戻り値: 失敗したら true。 */
 function runScenario(id, { fail = false, skip = false, withLog = false } = {}) {
-  const file = "Projects/Mock/Scenarios/Mock.swift";
+  const file = "TestProjects/Mock/scenarios/Mock.swift";
   emit({ kind: "scenarioStarted", scenario: id, title: `${id} のタイトル` });
   emit({ kind: "sceneStarted", scenario: id, scene: 1, sceneTitle: "シーン1" });
   emit({
@@ -133,7 +133,7 @@ function runScenario(id, { fail = false, skip = false, withLog = false } = {}) {
 
 /** 1シナリオ分の NDJSON イベント配列を組み立てる(runScenario と違い、即emitせず配列で返す)。 */
 function buildScenarioEvents(id, workerId, { fail = false } = {}) {
-  const file = "Projects/Mock/Scenarios/Mock.swift";
+  const file = "TestProjects/Mock/scenarios/Mock.swift";
   return [
     { kind: "scenarioStarted", scenario: id, title: `${id} のタイトル`, worker: workerId },
     { kind: "sceneStarted", scenario: id, scene: 1, sceneTitle: "シーン1", worker: workerId },
@@ -215,7 +215,7 @@ function runParallel() {
  * healModel.ts の HealFixCollector・healReviewPanel.ts の統合テスト用。
  */
 function runHeal() {
-  const file = "Projects/Mock/Scenarios/Mock.swift";
+  const file = "TestProjects/Mock/scenarios/Mock.swift";
   const id = scenarios[0];
   emit({ kind: "runStarted", total: 1 });
   emit({ kind: "scenarioStarted", scenario: id, title: `${id} のタイトル` });
@@ -347,7 +347,7 @@ class ControlChannel {
 /** --debug の固定2ステップシナリオを、一時停止・再開を挟みながら実行する。 */
 async function runDebugScenario() {
   const id = scenarios[0];
-  const file = "Projects/Mock/Scenarios/Mock.swift";
+  const file = "TestProjects/Mock/scenarios/Mock.swift";
 
   emit({ kind: "runStarted", total: 1 });
   emit({ kind: "scenarioStarted", scenario: id, title: `${id} のタイトル` });

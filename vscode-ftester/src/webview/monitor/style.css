@@ -349,13 +349,25 @@ select:disabled { opacity: 0.5; cursor: default; }
    (line-height 明示で文字種による差も殺す)。表示切替は laneLog.js/deviceTiles.js。 */
 .badge-running,
 .badge-queued,
-.badge-recording {
+.badge-recording,
+.badge-frozen {
   display: none;
   flex: 0 0 auto;
   font-size: 9px;
   line-height: 12px;
   padding: 1px 6px;
   margin-right: 4px;
+}
+/* 凍結だけは**絵文字を裸で置く**(ピルの背景・角丸・パディングを持たない)。
+   他のバッジは文字なので下地が要るが、❄️ は絵文字自体が図形なので下地を敷くと二重になる。
+   .badge / 上のまとめ指定が付ける装飾をここで打ち消す(font-size は判別できる大きさへ) */
+.badge-frozen {
+  font-size: 13px;
+  line-height: 14px;
+  padding: 0;
+  background: none;
+  border-radius: 0;
+  color: inherit;
 }
 .badge-running {
   background-color: var(--vscode-charts-blue, #0078d4);
@@ -379,6 +391,8 @@ select:disabled { opacity: 0.5; cursor: default; }
   background-color: var(--vscode-errorForeground, #f14c4c);
   color: #ffffff;
 }
+/* 凍結バッジの色指定は持たない —— ❄️ の絵文字だけを裸で置くため(上の .badge-frozen 参照)。
+   他のバッジ(実行中・録画中)は文字なので下地の色で区別するが、ここは絵で区別が付く。 */
 .render-cpu {
   background-color: var(--vscode-charts-orange, #cc6633);
   color: #ffffff;
@@ -1453,7 +1467,11 @@ input[type="text"]::placeholder {
   justify-content: flex-start;
 }
 /* flex:0 で画像直下に確保 → ホーム/タスク切替は常に押せる */
-.screenshot-actions { flex: 0 0 auto; display: flex; justify-content: center; gap: 6px; }
+.screenshot-actions { flex: 0 0 auto; display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; align-items: center; }
+/* 修飾キーの割り当て表示。**行を増やさない**(パネル高は fitScreenshot が実測で配分するため、
+   行が増えるとスクリーンショットが縮む)。狭いときだけ折り返す */
+/* 文言に含めた改行をそのまま2行で見せる(pre-line。折り返しは行わない) */
+.screenshot-hint { font-size: 11px; opacity: 0.75; white-space: pre-line; line-height: 1.25; text-align: center; }
 #panel-live .screenshot-wrap {
   position: relative;
   /* img と同寸(overlay が inset:0 で貼り付くため wrap==img を維持)。frame の flex 子。 */

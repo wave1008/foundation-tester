@@ -9,12 +9,16 @@ final class AssertKindsTests: XCTestCase {
     private final class ScriptedDriver: AppDriver {
         var frames: [[ElementInfo]]
         private(set) var snapshotCallCount = 0
+        private(set) var swipeCallCount = 0
         init(frames: [[ElementInfo]]) { self.frames = frames }
 
         func status() async throws -> StatusResponse {
             StatusResponse(ready: true, device: "fake", osVersion: "-", sessionBundleID: nil)
         }
         func install(packagePath: String) async throws {}
+        func uninstall(bundleID: String) async throws {}
+        func isAppForeground(bundleID: String) async throws -> Bool { false }
+        func foregroundAppID() async throws -> String? { nil }
         func launch(bundleID: String) async throws {}
         func snapshot() async throws -> SnapshotResponse {
             snapshotCallCount += 1
@@ -27,7 +31,7 @@ final class AssertKindsTests: XCTestCase {
         func tap(ref: Int) async throws {}
         func tap(x: Double, y: Double) async throws {}
         func type(ref: Int?, text: String) async throws {}
-        func swipe(_ direction: FTSwipeDirection) async throws {}
+        func swipe(_ direction: FTSwipeDirection) async throws { swipeCallCount += 1 }
         func press(ref: Int, duration: Double) async throws {}
         func screenshot() async throws -> Data { Data() }
         func terminate() async throws {}
@@ -324,20 +328,25 @@ final class AssertKindsTests: XCTestCase {
         XCTAssertEqual(failureReason(outcome.status)?.contains("element not found"), true)
     }
 
-    /// tap(scroll:, optional: true) が伝える optional は scrollTo 経路でも同契約
-    /// (見つからないときは失敗ではなくスキップ)
-    func testScrollToHonoursOptional() async {
+    /// `scrollTo` は探索し尽くしても見つからなければ**失敗**する(空振りを許す逃げ道は無い)
+    func testScrollToFailsWhenNotFound() async {
         let elements = [[node(1, id: "other")]]
-        let optionalStep = FlowStep(action: "scrollTo", locator: FlowLocator(id: "居ない"),
-                                    direction: "down", maxSwipes: 1, optional: true)
-        let skipped = await StepExecutor(driver: ScriptedDriver(frames: elements))
-            .execute(optionalStep)
-        if case .skipped = skipped.status {} else { XCTFail("skipped を期待: \(skipped.status)") }
-        let requiredStep = FlowStep(action: "scrollTo", locator: FlowLocator(id: "居ない"),
-                                    direction: "down", maxSwipes: 1)
+        let step = FlowStep(action: "scrollTo", locator: FlowLocator(id: "居ない"),
+                            direction: "down", maxSwipes: 1)
         let failed = await StepExecutor(driver: ScriptedDriver(frames: elements))
-            .execute(requiredStep)
+            .execute(step)
         XCTAssertEqual(failureReason(failed.status)?.contains("scroll(s)"), true)
+    }
+
+    /// `select(scroll:)` はスクロール探索でも掴めなければ空要素を返す(失敗にしない)。
+    /// 解決経路が2つ(探索終端と通常解決)あるので、探索側にも契約が通っていることを固定する
+    func testSelectWithScrollReturnsEmptyWhenNotFound() async {
+        let step = FlowStep(action: "select", locator: FlowLocator(id: "居ない"),
+                            direction: "down", maxSwipes: 1)
+        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [[node(1, id: "other")]]))
+            .execute(step)
+        if case .skipped = outcome.status {} else { XCTFail("skipped を期待: \(outcome.status)") }
+        XCTAssertNil(outcome.resolvedElement)
     }
 
     // MARK: - スクロール探索の静止待ち
@@ -362,14 +371,21 @@ final class AssertKindsTests: XCTestCase {
         XCTAssertEqual(driver.snapshotCallCount, 5)
     }
 
-    /// スワイプせずに見つかったときは静止待ちを挟まない(既存の速度を落とさない)
-    func testScrollToSkipsSettleWhenFoundWithoutSwiping() async {
-        let driver = ScriptedDriver(frames: [[node(1, id: "row_30")]])
+    /// **探索の1周目は静止を待ってから解決する**。直前の操作がプログラム的な
+    /// アニメーションスクロール(「先頭へ」等)だと、ブリッジの整定はすり抜けることがあり、
+    /// 動く前のツリーで解決すると**古い座標をタップして別の要素が選ばれる**
+    /// (2026-08-02 に CMP の xcuitest / Android で実測。ステップは成功のまま = 黙って誤った結果)。
+    /// 以前は「スワイプせずに見つかったら静止待ちを挟まない」最適化だったが、
+    /// **実測コストが共通シナリオで +0.1〜1.0%(run 間ノイズ以下)**だったので安全側を採った。
+    /// スワイプは1回も起きない(見つかっているので)ことは変わらない
+    func testScrollToWaitsForStillnessOnTheFirstAttempt() async {
+        let driver = ScriptedDriver(frames: [[node(1, id: "row_30")], [node(1, id: "row_30")]])
         let step = FlowStep(action: "scrollTo", locator: FlowLocator(id: "row_30"),
                             direction: "up", maxSwipes: 5)
         let outcome = await StepExecutor(driver: driver).execute(step)
         XCTAssertTrue(isPassed(outcome.status))
-        XCTAssertEqual(driver.snapshotCallCount, 1)
+        XCTAssertEqual(driver.snapshotCallCount, 2, "静止確認の2枚だけで、スワイプは挟まない")
+        XCTAssertEqual(driver.swipeCallCount, 0)
     }
 
     // MARK: - アプリ内メッセージに覆われたときの失敗メッセージ
@@ -422,6 +438,9 @@ final class AssertKindsTests: XCTestCase {
             StatusResponse(ready: true, device: "fake", osVersion: "-", sessionBundleID: nil)
         }
         func install(packagePath: String) async throws {}
+        func uninstall(bundleID: String) async throws {}
+        func isAppForeground(bundleID: String) async throws -> Bool { false }
+        func foregroundAppID() async throws -> String? { nil }
         func launch(bundleID: String) async throws {}
         func snapshot() async throws -> SnapshotResponse {
             snapshotCallCount += 1
@@ -588,7 +607,7 @@ final class AssertKindsTests: XCTestCase {
         XCTAssertEqual(driver.tapped, [1])
     }
 
-    /// スクロールしても見つからなければ、その旨で失敗する(optional なら skipped)
+    /// スクロールしても見つからなければ、その旨で失敗する
     func testTapWithScrollFailsWithScrollMessage() async {
         let driver = TapRecordingDriver(frames: [[node(9, id: "other")]])
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "row_40"),
@@ -596,12 +615,6 @@ final class AssertKindsTests: XCTestCase {
         let outcome = await StepExecutor(driver: driver).execute(step)
         XCTAssertEqual(failureReason(outcome.status)?.contains("scroll(s)"), true)
         XCTAssertTrue(driver.tapped.isEmpty)
-
-        let optionalStep = FlowStep(action: "tap", locator: FlowLocator(id: "row_40"),
-                                    direction: "up", maxSwipes: 2, optional: true)
-        let skipped = await StepExecutor(driver: TapRecordingDriver(frames: [[node(9, id: "o")]]))
-            .execute(optionalStep)
-        if case .skipped = skipped.status {} else { XCTFail("skipped を期待: \(skipped.status)") }
     }
 
     /// exist(scroll:) も同じく1ステップ。探索して見つかれば検証が通る
@@ -759,5 +772,146 @@ final class AssertKindsTests: XCTestCase {
         let outcome = await StepExecutor(driver: ScriptedDriver(frames: [elements])).execute(fail)
         XCTAssertEqual(failureReason(outcome.status)?.contains("btn_ok"), true)
         XCTAssertEqual(failureReason(outcome.status)?.contains("id"), true)
+    }
+
+    // MARK: - 期限切れ直前のキャッシュ捨て(AssertFreshRetry)
+
+    /// キャッシュ供給の a11y ツリーを模したドライバ: 通常の snapshot は**何回撮っても古いまま**で、
+    /// bypassingCache=true のときだけ真の状態を返す(Android の実挙動と同じ形)
+    private final class StaleCacheDriver: AppDriver {
+        let stale: [ElementInfo]
+        let fresh: [ElementInfo]
+        let supportsBypass: Bool
+        private(set) var staleReads = 0
+        private(set) var freshReads = 0
+        init(stale: [ElementInfo], fresh: [ElementInfo], supportsBypass: Bool = true) {
+            self.stale = stale
+            self.fresh = fresh
+            self.supportsBypass = supportsBypass
+        }
+
+        var supportsCacheBypass: Bool { supportsBypass }
+
+        func status() async throws -> StatusResponse {
+            StatusResponse(ready: true, device: "fake", osVersion: "-", sessionBundleID: nil)
+        }
+        func install(packagePath: String) async throws {}
+        func uninstall(bundleID: String) async throws {}
+        func isAppForeground(bundleID: String) async throws -> Bool { false }
+        func foregroundAppID() async throws -> String? { nil }
+        func launch(bundleID: String) async throws {}
+        func snapshot() async throws -> SnapshotResponse { try await snapshot(bypassingCache: false) }
+        func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {
+            if bypassingCache { freshReads += 1 } else { staleReads += 1 }
+            return SnapshotResponse(sessionBundleID: nil,
+                                    screen: FTRect(x: 0, y: 0, width: 400, height: 800),
+                                    elements: bypassingCache ? fresh : stale,
+                                    truncatedCount: 0)
+        }
+        func tap(ref: Int) async throws {}
+        func tap(x: Double, y: Double) async throws {}
+        func type(ref: Int?, text: String) async throws {}
+        func swipe(_ direction: FTSwipeDirection) async throws {}
+        func press(ref: Int, duration: Double) async throws {}
+        func screenshot() async throws -> Data { Data() }
+        func terminate() async throws {}
+    }
+
+    /// 実害の再現: アプリは正しい状態なのにキャッシュが古く、期限切れまで古い値を読み続ける。
+    /// 期限切れ直前に1回だけ取り直すことで**失敗ではなく成功**になる
+    func testStaleTreeIsRecheckedOnceBeforeFailing() async {
+        let driver = StaleCacheDriver(stale: [node(1, id: "txt", label: "submitted=-")],
+                                      fresh: [node(1, id: "txt", label: "submitted=persist99")])
+        let step = FlowStep(assert: "textEquals", locator: FlowLocator(id: "txt"),
+                            expected: "submitted=persist99", timeout: 1, occlusionGuard: false)
+        let outcome = await StepExecutor(driver: driver).execute(step)
+        XCTAssertTrue(isPassed(outcome.status), "取り直しで成功になるはず: \(outcome.status)")
+        // 取り直しは**1回だけ**(毎周回払うとコストが跳ねる)
+        XCTAssertEqual(driver.freshReads, 1)
+        XCTAssertGreaterThan(driver.staleReads, 0)
+    }
+
+    /// 非対応ドライバ(iOS 系)では取り直しの周回そのものを行わない
+    func testUnsupportedDriverIsNotRetried() async {
+        let driver = StaleCacheDriver(stale: [node(1, id: "txt", label: "old")],
+                                      fresh: [node(1, id: "txt", label: "new")],
+                                      supportsBypass: false)
+        let step = FlowStep(assert: "textEquals", locator: FlowLocator(id: "txt"),
+                            expected: "new", timeout: 0, occlusionGuard: false)
+        let outcome = await StepExecutor(driver: driver).execute(step)
+        XCTAssertNotNil(failureReason(outcome.status))
+        XCTAssertEqual(driver.freshReads, 0)
+    }
+
+    // MARK: - 否定形を通す前の確認(AssertFreshRetry.confirmPass)
+
+    // **この群の失敗モードは沈黙(誤った成功)**なので、緑は証拠にならない。
+    // 各テストは「古い木なら通ってしまう盤面」を作り、**通らないこと**を見る。
+
+    /// notExist: 要素は実在するのに古い木にまだ載っていない。確認が無ければ**誤って成功**する
+    func testNotExistDoesNotPassOnAStaleAbsence() async {
+        let driver = StaleCacheDriver(stale: [], fresh: [node(1, id: "dialog", label: "エラー")])
+        let step = FlowStep(assert: "notExists", locator: FlowLocator(id: "dialog"),
+                            timeout: 0, occlusionGuard: false)
+        let outcome = await StepExecutor(driver: driver).execute(step)
+        XCTAssertNotNil(failureReason(outcome.status),
+                        "実在する要素を不在と通した(誤った成功): \(outcome.status)")
+        XCTAssertGreaterThan(driver.freshReads, 0, "確認の取り直しが撃たれていない")
+    }
+
+    /// 逆方向: **本当に不在**なら従来どおり通る(確認が誤検出を生まないこと)。
+    /// 取り直しは1回だけ = 通る側の固定費を増やさない
+    func testNotExistStillPassesWhenGenuinelyAbsent() async {
+        let driver = StaleCacheDriver(stale: [], fresh: [])
+        let step = FlowStep(assert: "notExists", locator: FlowLocator(id: "dialog"),
+                            timeout: 0, occlusionGuard: false)
+        let outcome = await StepExecutor(driver: driver).execute(step)
+        XCTAssertTrue(isPassed(outcome.status), "不在なのに落ちた: \(outcome.status)")
+        XCTAssertEqual(driver.freshReads, 1)
+    }
+
+    /// 否定テキスト比較: 値は既に "new" なのに古い木が "old" を返す。
+    /// `textIsNot "new"` は古い値で成立してしまう
+    func testNegativeTextComparisonDoesNotPassOnAStaleValue() async {
+        let driver = StaleCacheDriver(stale: [node(1, id: "txt", label: "old")],
+                                      fresh: [node(1, id: "txt", label: "new")])
+        let step = FlowStep(assert: "textNotEquals", locator: FlowLocator(id: "txt"),
+                            expected: "new", timeout: 0, occlusionGuard: false)
+        let outcome = await StepExecutor(driver: driver).execute(step)
+        XCTAssertNotNil(failureReason(outcome.status),
+                        "古い値で否定条件を満たして通した(誤った成功): \(outcome.status)")
+    }
+
+    /// 逆方向: 値が本当に違うなら通る
+    func testNegativeTextComparisonStillPassesWhenGenuinelyDifferent() async {
+        let driver = StaleCacheDriver(stale: [node(1, id: "txt", label: "old")],
+                                      fresh: [node(1, id: "txt", label: "old")])
+        let step = FlowStep(assert: "textNotEquals", locator: FlowLocator(id: "txt"),
+                            expected: "new", timeout: 0, occlusionGuard: false)
+        let outcome = await StepExecutor(driver: driver).execute(step)
+        XCTAssertTrue(isPassed(outcome.status), "値が違うのに落ちた: \(outcome.status)")
+    }
+
+    /// 非対応ドライバ(iOS 系)では否定形でも取り直さない = 固定費を増やさない
+    func testNegativePassIsNotConfirmedOnUnsupportedDrivers() async {
+        let driver = StaleCacheDriver(stale: [], fresh: [node(1, id: "dialog")],
+                                      supportsBypass: false)
+        let step = FlowStep(assert: "notExists", locator: FlowLocator(id: "dialog"),
+                            timeout: 0, occlusionGuard: false)
+        let outcome = await StepExecutor(driver: driver).execute(step)
+        XCTAssertTrue(isPassed(outcome.status))
+        XCTAssertEqual(driver.freshReads, 0)
+    }
+
+    /// 予算は pass 側と fail 側で別々 —— pass の確認で使い切っても、期限切れの取り直しは残る。
+    /// 共有にすると、塞いだ穴の隣に**誤った失敗**を作る
+    func testPassConfirmationDoesNotConsumeTheFailureRetryBudget() async {
+        var retry = AssertFreshRetry()
+        XCTAssertTrue(retry.confirmPass(ifSupported: true))
+        XCTAssertTrue(retry.takeArmed())
+        XCTAssertFalse(retry.confirmPass(ifSupported: true), "pass 側は1回だけ")
+        XCTAssertTrue(retry.arm(ifSupported: true), "fail 側の予算まで消費している")
+        XCTAssertTrue(retry.takeArmed())
+        XCTAssertFalse(retry.arm(ifSupported: true), "fail 側も1回だけ")
     }
 }

@@ -89,7 +89,7 @@ final class ScenarioFoldersTests: XCTestCase {
             switch className {
             case "Alpha": return "スモーク"
             case "Beta": return "回帰"
-            default: return nil  // Gamma は Scenarios/ 直下
+            default: return nil  // Gamma は scenarios/ 直下
             }
         }
 

@@ -1,8 +1,11 @@
 // ScenarioEvent.swift
 // ftester-scenarios(サブプロセス)とホスト(CLI/MCP)の間で交わす NDJSON イベントの DTO。
 // Foundation 以外に依存しないこと(ホスト側の軽量パースを保つ)。
-// kind: scenarioStarted / sceneStarted / step / sceneFinished / fixSuggestion / scenarioFinished / log / deviceFrozen
+// kind: scenarioStarted / sceneStarted / step / sceneFinished / fixSuggestion / scenarioFinished / log / deviceFrozen / installRequest
 // step は tap/exist 等 1 操作の結果(既存 StepResult と同語彙)。
+// installRequest は installApp() の子→親 RPC 専用(ScenarioInstall.swift)。ScenarioHost.run が
+// 横取りして stdin へ応答を書き、呼び出し側の emit へは渡さない — **ftester api の NDJSON 契約には
+// 現れない**(ProtocolVersion の対象外)。
 
 import Foundation
 
@@ -53,10 +56,19 @@ public struct ScenarioEvent: Codable, Sendable {
     /// FM を使わなかったシナリオでは nil(キーごと省略)。FM はホスト全体で直列化するため、
     /// 並列実行では他レーンの待ちも含む値になる(FMHealth の doc 参照)
     public var fm: FMUsageRecord?
+    /// kind == step。run を跨いで数える注記の機械可読コード(StepNote の rawValue)。
+    /// 表示は description の括弧書きに含まれるが、**集計は必ずこちらを見る**
+    /// (文言を変えた瞬間に集計が 0 件になるのを防ぐ。StepNote の doc 参照)。
+    /// 後発の追加フィールドで Optional = 旧クライアント互換
+    public var notes: [String]?
     /// kind == step。ステップの結果が確定した壁時計時刻(ISO8601+ミリ秒)。動画録画(record:true)の
     /// 再生位置ジャンプ用(録画の startedAt と突き合わせる)。failed 以外も付与されるが、
     /// 永続化(FailedStepRecord.at)は失敗ステップのみ
     public var at: String?
+    /// kind == installRequest。子→親 RPC の相関 id(ScenarioInstallControl が発番)
+    public var requestID: Int?
+    /// kind == installRequest。installApp() の明示引数(nil = 親が実行プロファイルの appPath を解決する)
+    public var installPath: String?
 
     public init(kind: String) {
         self.kind = kind
@@ -93,6 +105,8 @@ public extension StepResult.Status {
             return ("failed", reason)
         case .skipped(let reason):
             return ("skipped", reason)
+        case .inconclusive(let reason):
+            return ("inconclusive", reason)
         }
     }
 }

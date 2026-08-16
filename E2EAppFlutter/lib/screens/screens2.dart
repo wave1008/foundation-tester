@@ -13,7 +13,9 @@ import '../widgets.dart';
 // よって #pad_swipe はコンテンツ領域いっぱいに敷き、操作要素はその上に重ねる。
 // ボタン類は始点を塞がないよう幅 45% 以内(中央列を空ける)かつ上下の端に置く。
 class GestureScreen extends StatefulWidget {
-  const GestureScreen({super.key});
+  const GestureScreen({super.key, this.onOpenMap});
+
+  final VoidCallback? onOpenMap;
 
   @override
   State<GestureScreen> createState() => _GestureScreenState();
@@ -104,6 +106,19 @@ class _GestureScreenState extends State<GestureScreen> {
             ],
           ),
         ),
+        // マップ画面への導線。**右下に置く**(ホーム末尾に足すと下部タブに重なってタップを
+        // 吸われる。スワイプ経路は中央行・中央列なのでここは塞がない)
+        Positioned(
+          bottom: 12,
+          right: 12,
+          width: constraints.maxWidth * 0.45,
+          child: TaggedButton(
+            Tags.navMap,
+            'マップ',
+            fillWidth: true,
+            onTap: () => widget.onOpenMap?.call(),
+          ),
+        ),
         Positioned(
           bottom: 12,
           left: 12,
@@ -125,6 +140,107 @@ class _GestureScreenState extends State<GestureScreen> {
   );
 }
 
+// マップ系ジェスチャ(ピンチ・ダブルタップ・斜めドラッグ)の検証材料。
+// ジェスチャ画面と分けてあるのは、あちらの #pad_swipe が onPanEnd で方向判定していて
+// 同じ領域に onScaleUpdate を重ねると Flutter がジェスチャ衝突で片方を捨てるため。
+// **onScale 系と onPan 系は同居できない**(Flutter の制約)ので、パンも onScaleUpdate の
+// focalPointDelta から採る(1本指でも来る)。
+// 値は全て累積(#btn_map_reset でだけ戻る)。契約は E2EAppCMP/docs/ui-contract.md。
+class MapScreen extends StatefulWidget {
+  const MapScreen({super.key});
+
+  @override
+  State<MapScreen> createState() => _MapScreenState();
+}
+
+/// 軸ごとの向き。8px 未満は none(手ぶれを斜めと誤判定しないため)
+const double _panThreshold = 8;
+
+/// 倍率の不感帯。ピンチ以外の操作で拾う微小な zoom を in/out と読まないため
+const double _zoomDeadZone = 0.05;
+
+class _MapScreenState extends State<MapScreen> {
+  double _zoom = 1;
+  double _panX = 0;
+  double _panY = 0;
+  int _double = 0;
+
+  String get _zoomDir {
+    if (_zoom > 1 + _zoomDeadZone) return 'in';
+    if (_zoom < 1 - _zoomDeadZone) return 'out';
+    return '-';
+  }
+
+  /// 指の移動方向。両軸とも非 none なら斜め(ftester の swipeBy の検証材料)
+  String get _panLabel {
+    if (_panX.abs() < _panThreshold && _panY.abs() < _panThreshold) return '-';
+    final h = _panX.abs() < _panThreshold ? 'none' : (_panX < 0 ? 'left' : 'right');
+    final v = _panY.abs() < _panThreshold ? 'none' : (_panY < 0 ? 'up' : 'down');
+    return '$h-$v';
+  }
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) => Stack(
+      children: [
+        Positioned.fill(
+          child: tagged(
+            Tags.padMap,
+            GestureDetector(
+              onDoubleTap: () => setState(() => _double += 1),
+              // scale は「そのジェスチャ内の累積倍率」なので、更新のたびに掛けると
+              // 二重に効く。**直前の値との比**を掛ける
+              onScaleStart: (_) => _lastScale = 1,
+              onScaleUpdate: (details) => setState(() {
+                _zoom *= details.scale / _lastScale;
+                _lastScale = details.scale;
+                _panX += details.focalPointDelta.dx;
+                _panY += details.focalPointDelta.dy;
+              }),
+              child: Container(
+                color: const Color(0xFFEEEEEE),
+                alignment: Alignment.center,
+                child: const Text('マップ領域'),
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          top: 12,
+          right: 12,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              TaggedText(Tags.txtZoomDir, 'zoom=$_zoomDir'),
+              TaggedText(Tags.txtZoom, 'zoom=${_zoom.toStringAsFixed(1)}'),
+              TaggedText(Tags.txtPan, 'pan=$_panLabel'),
+              TaggedText(Tags.txtDoubleCount, 'double=$_double'),
+            ],
+          ),
+        ),
+        Positioned(
+          bottom: 12,
+          left: 12,
+          width: constraints.maxWidth * 0.45,
+          child: TaggedButton(
+            Tags.btnMapReset,
+            'マップクリア',
+            fillWidth: true,
+            onTap: () => setState(() {
+              _zoom = 1;
+              _panX = 0;
+              _panY = 0;
+              _double = 0;
+            }),
+          ),
+        ),
+      ],
+    ),
+  );
+
+  double _lastScale = 1;
+}
+
 class ScrollScreen extends StatefulWidget {
   const ScrollScreen({super.key});
 
@@ -134,11 +250,14 @@ class ScrollScreen extends StatefulWidget {
 
 class _ScrollScreenState extends State<ScrollScreen> {
   final _controller = ScrollController();
+  final _tagController = ScrollController();
   String _selected = '-';
+  String _tagSelected = '-';
 
   @override
   void dispose() {
     _controller.dispose();
+    _tagController.dispose();
     super.dispose();
   }
 
@@ -188,6 +307,36 @@ class _ScrollScreenState extends State<ScrollScreen> {
             ),
           ),
         ),
+        // 横スクロールの検証材料(scrollFrame)。**リストの下に置く** —— 画面中央に置くと
+        // 領域を指定しない従来スクロール(画面中央基準)がカルーセルに吸われる。
+        // **1画面に 3〜4 個しか入らない幅**にする ——
+        // 全部見えていると「横スクロールした」ことを不在で検証できない。
+        // 容器は list_rows と同じく Semantics(container/explicitChildNodes)で公開する
+        // (tagged() = MergeSemantics で包むと子孫が消える)
+        SizedBox(
+          height: 60,
+          child: Semantics(
+            identifier: Tags.carouselTags,
+            container: true,
+            explicitChildNodes: true,
+            child: ListView.builder(
+              controller: _tagController,
+              scrollDirection: Axis.horizontal,
+              cacheExtent: 0,
+              itemCount: Tags.tagCount,
+              itemBuilder: (context, index) {
+                final n = index + 1;
+                return SizedBox(
+                  width: 120,
+                  height: 56,
+                  child: TaggedButton(Tags.tag(n), Tags.tagLabel(n),
+                      onTap: () => setState(() => _tagSelected = Tags.tag(n))),
+                );
+              },
+            ),
+          ),
+        ),
+        TaggedText(Tags.txtTagSelected, 'tag=$_tagSelected'),
       ],
     ),
   );

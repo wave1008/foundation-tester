@@ -2,7 +2,7 @@
 // 録画セッション(recordings/index.json のある run)の列挙・読み込み。fs 直読みのみで vscode 非依存
 // (monitorRecordingsController.ts から呼ぶ。テストは test/recordingsStore.test.mjs)。
 //
-// レイアウト: <workspaceRoot>/Projects/<project>/results/runs/<YYYY-MM>/<runID>/
+// レイアウト: <workspaceRoot>/TestProjects/<project>/results/runs/<YYYY-MM>/<runID>/
 //   recordings/index.json(録画があった run のみ) / run.json / scenarios/<name>.json
 
 import * as fs from "node:fs/promises";
@@ -55,7 +55,7 @@ function numberField(obj: Record<string, unknown> | null, key: string): number |
  * 変更時は両方揃えること)。runID 先頭6桁が yyyyMM で無い(不正な runID)場合は "unknown" 配下。
  */
 function runDirFor(workspaceRoot: string, project: string, runID: string): string {
-  const runsDir = path.join(workspaceRoot, "Projects", project, "results", "runs");
+  const runsDir = path.join(workspaceRoot, "TestProjects", project, "results", "runs");
   if (runID.length < 6) {
     return path.join(runsDir, "unknown", runID);
   }
@@ -65,7 +65,7 @@ function runDirFor(workspaceRoot: string, project: string, runID: string): strin
 
 /** recordings/index.json のある run を新しい順(runID 降順)に列挙する。上限 SESSION_LIMIT 件。 */
 export async function listRecordingSessions(workspaceRoot: string): Promise<RecordingSessionSummary[]> {
-  const projectsDir = path.join(workspaceRoot, "Projects");
+  const projectsDir = path.join(workspaceRoot, "TestProjects");
   const sessions: RecordingSessionSummary[] = [];
   for (const project of await listDirNames(projectsDir)) {
     const runsDir = path.join(projectsDir, project, "results", "runs");

@@ -43,13 +43,75 @@ final class FakeDriver: AppDriver, @unchecked Sendable {
         try record("install(\(packagePath))", "install")
     }
 
+    func uninstall(bundleID: String) async throws {
+        try record("uninstall(\(bundleID))", "uninstall")
+    }
+
+    var foregroundBundleID: String?
+
+    func isAppForeground(bundleID: String) async throws -> Bool {
+        try record("isAppForeground(\(bundleID))", "isAppForeground")
+        return foregroundBundleID == bundleID
+    }
+
+    func foregroundAppID() async throws -> String? {
+        try record("foregroundAppID", "foregroundAppID")
+        return foregroundBundleID
+    }
+
     func launch(bundleID: String) async throws {
         try record("launch(\(bundleID))", "launch")
     }
 
     func snapshot() async throws -> SnapshotResponse {
         try record("snapshot", "snapshot")
+        // 待ちの検証用: 台本があれば呼ばれた順に返し、尽きたら最後の1枚を返し続ける
+        if !scriptedSnapshots.isEmpty {
+            let next = scriptedSnapshots.removeFirst()
+            snapshotResponse = next
+        }
         return snapshotResponse
+    }
+
+    /// Android を模す(既定 false = iOS 相当)。true にすると MCP は必ず
+    /// `snapshot(bypassingCache: true)` を撃つはずで、呼び出し記録で区別できる
+    var supportsCacheBypass = false
+
+    /// `raiseElementLimitOnNextSnapshot` に渡された値を撮った順に記録する。
+    /// **既定実装は no-op なので、記録しないと「上限を上げたつもり」を検証できない**
+    var elementLimits: [Int?] = []
+
+    func raiseElementLimitOnNextSnapshot(_ max: Int?) { elementLimits.append(max) }
+
+    func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {
+        guard bypassingCache else { return try await snapshot() }
+        try record("snapshot(fresh)", "snapshot")
+        if !scriptedSnapshots.isEmpty {
+            snapshotResponse = scriptedSnapshots.removeFirst()
+        }
+        return snapshotResponse
+    }
+
+    /// snapshot が順に返す台本(空 = snapshotResponse を返し続ける)。
+    ///
+    /// **罠(2026-08-13)**: 操作の前後で `value` だけが違う木を並べても **ref は進まない** ——
+    /// `adoptSnapshot` は identity(ref / type / identifier / **label**)が同じなら世代を
+    /// 使い回すので、`lastSnapshots` は同じ番号のまま更新される。「操作の後に木が進む」
+    /// 経路(記録が別世代の木を見てしまう類の欠陥)を再現したいときは、
+    /// **顔ぶれを変える**こと(要素を足す・ラベルを変える)。
+    /// 実機では入力後に候補一覧が現れる等で自然に変わる —— それを知らずに value だけ
+    /// 変える台本を書くと、**流れのテストが黙って空回りする**
+    /// (DraftTypeSelectorTests の配線テストがこの形)
+    var scriptedSnapshots: [SnapshotResponse] = []
+
+    /// **既定実装は 501 を投げる**ので、上書きしないと ft_open_url の経路が一切テストできない
+    /// (2026-08-16 に着地待ちの既定を入れたときに必要になった)。順序の検証に使うので記録する
+    func openURL(_ url: String, bundleID: String?) async throws {
+        try record("openURL(\(url))", "openURL")
+    }
+
+    func clearAppData(bundleID: String) async throws {
+        try record("clearAppData(\(bundleID))", "clearAppData")
     }
 
     func tap(ref: Int) async throws {
@@ -68,14 +130,55 @@ final class FakeDriver: AppDriver, @unchecked Sendable {
         try record("swipe(\(direction.rawValue))", "swipe")
     }
 
+    /// **`calls` には積まない**(既存のテストが `swipe(up)` の等値・件数で見ているため)。
+    /// 領域指定つきかどうかは経路そのものでしか判定できないので、最後の経路だけ別に持つ
+    private(set) var lastSwipePath: FTSwipePath?
+
+    func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent, path: FTSwipePath?) async throws {
+        lastSwipePath = path
+        try await swipe(direction)
+    }
+
     func press(ref: Int, duration: Double) async throws {
         try record("press(ref:\(ref),duration:\(duration))", "press")
     }
 
+    func doubleTap(x: Double, y: Double) async throws {
+        try record("doubleTap(x:\(x),y:\(y))", "doubleTap")
+    }
+
+    func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
+              pressSeconds: Double, durationSeconds: Double) async throws {
+        try record("drag(\(fromX),\(fromY)->\(toX),\(toY),duration:\(durationSeconds))", "drag")
+    }
+
+    func pinch(frame: FTRect?, identifier: String?, scale: Double,
+               durationSeconds: Double) async throws {
+        let target = frame.map { "\($0.x),\($0.y),\($0.width)x\($0.height)" } ?? "screen"
+        try record("pinch(\(target),id:\(identifier ?? "nil"),scale:\(scale))", "pinch")
+    }
+
+    func back() async throws { try record("back", "back") }
+    func home() async throws { try record("home", "home") }
+    func openAppSwitcher() async throws { try record("appSwitcher", "appSwitcher") }
+    func pressEnter() async throws { try record("pressEnter", "pressEnter") }
+
+    func clearInput(ref: Int?) async throws {
+        try record("clearInput(ref:\(ref.map(String.init) ?? "nil"))", "clearInput")
+    }
+
     func screenshot() async throws -> Data {
         try record("screenshot", "screenshot")
+        // 台本があれば呼ばれた順に返す(ft_screenshot の imageHash×treeFingerprint 判定を
+        // 「同じバイト列を2回」「別バイト列」で作り分けるため。空 = screenshotData を返し続ける
+        if !scriptedScreenshots.isEmpty {
+            return scriptedScreenshots.removeFirst()
+        }
         return screenshotData
     }
+
+    /// screenshot が順に返す台本。scriptedSnapshots と対になる(FakeDriver.snapshot 参照)
+    var scriptedScreenshots: [Data] = []
 
     func terminate() async throws {
         try record("terminate", "terminate")

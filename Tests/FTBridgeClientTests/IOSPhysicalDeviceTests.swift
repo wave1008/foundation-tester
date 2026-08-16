@@ -332,6 +332,24 @@ final class IOSPhysicalDeviceTests: XCTestCase {
         XCTAssertTrue(BridgeEndpoint.load(port: 8123, repoRoot: root).isLoopback)
     }
 
+    // MARK: - 実機 udid の記録(.ftester/bridge-<port>.device、欠陥②の前提)
+
+    func testBridgeDeviceRecordRoundTripsThroughFile() throws {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("ft-device-record-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        BridgeDeviceRecord.persist(udid: "00008130-001819863E60001C", port: 8123, repoRoot: root)
+        XCTAssertEqual(BridgeDeviceRecord.load(port: 8123, repoRoot: root),
+                       "00008130-001819863E60001C")
+
+        // 記録の無いポートは nil(旧ブリッジ・仮想デバイスの既定。throw しない)
+        XCTAssertNil(BridgeDeviceRecord.load(port: 8124, repoRoot: root))
+
+        BridgeDeviceRecord.forget(port: 8123, repoRoot: root)
+        XCTAssertNil(BridgeDeviceRecord.load(port: 8123, repoRoot: root))
+    }
+
     // MARK: - destination(実機 UDID の形状推測をしないこと)
 
     func testDestinationUsesPhysicalPlatformForDevice() {
@@ -376,5 +394,30 @@ final class IOSPhysicalDeviceTests: XCTestCase {
         let simulator = BridgeLauncher(repoRoot: root, device: "U", port: 8123)
         XCTAssertNotEqual(device.derivedDataPath, simulator.derivedDataPath,
                           "混在すると findXCTestRun が iphoneos/iphonesimulator の誤った方を掴む")
+    }
+
+    // MARK: - 配線(ソース走査): 実機 udid の記録の寿命をブリッジと揃えること
+
+    /// 記録を書くのは establish・消すのは teardown の各1箇所(BridgeDeviceRecord の契約)。
+    /// **書き込みが外れても純粋関数のテストは全部緑のまま**なので、ここで配線を止める
+    /// (実機が要るのでテストからは踏めない。欠陥②)
+    func testTransportWritesAndForgetsTheUDIDRecord() throws {
+        let source = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+                .appendingPathComponent("Sources/FTBridgeClient/IOSDeviceTransport.swift"),
+            encoding: .utf8)
+        func body(of function: String, until terminator: String) throws -> String {
+            let start = try XCTUnwrap(source.range(of: function), "\(function) が見つからない")
+            let tail = source[start.upperBound...]
+            let end = try XCTUnwrap(tail.range(of: terminator), "\(function) の終端が見つからない")
+            return String(tail[..<end.lowerBound])
+        }
+        XCTAssertTrue(try body(of: "public static func establish(", until: "return endpoint")
+                        .contains("BridgeDeviceRecord.persist"),
+                      "establish が udid を記録しない —— 実機ブリッジは udid で指せないままになる")
+        XCTAssertTrue(try body(of: "public static func teardown(", until: "\n    }")
+                        .contains("BridgeDeviceRecord.forget"),
+                      "teardown が記録を消さない —— 死んだブリッジの udid が残る")
     }
 }

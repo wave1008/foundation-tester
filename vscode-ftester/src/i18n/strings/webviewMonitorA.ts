@@ -42,6 +42,14 @@ export const webviewMonitorAStrings = {
     ja: "実機(シミュレータ/エミュレータではありません)。起動・停止は行いません",
     en: "Physical device (not a simulator/emulator). It is never started or stopped.",
   },
+  // **絵文字1文字**(言語に依らないので ja/en 同値)。意味は title(frozenTitle)が担うので、
+  // バッジの文字を増やさない = 狭いタイルのフッターで他のバッジを押し出さない
+  "wvMonitor.tile.frozen": { ja: "❄️", en: "❄️" },
+  // タイルの ❄️ バッジの説明(hoverTip)。バッジが絵文字1文字なので意味はここが担う
+  "wvMonitor.tile.frozenTitle": {
+    ja: "デバイス凍結中",
+    en: "Device frozen",
+  },
   "wvMonitor.tile.unregistered": { ja: "未登録", en: "Unregistered" },
   "wvMonitor.tile.unregisteredTitle": {
     ja: "マシンプロファイル未記載の起動中デバイスです。起動は行えません(停止・ライブ操作は可能です)",

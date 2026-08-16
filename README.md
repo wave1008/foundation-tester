@@ -23,7 +23,7 @@ UI は VSCode 拡張(`vscode-ftester/`)に一本化している(セットアッ�
 | **CLI** `ftester` | `swift run ftester ...`(clone 内)/ ビルド済み `.build/debug/ftester` | CI・回帰テストの定期実行(決定的・無料・exit code) |
 | **VSCode 拡張** | [vscode-ftester/](vscode-ftester/README.md)(F5 起動 または .vsix インストール) | 人間の対話操作: シナリオ実行・デバッグ実行・ライブ操作(録画→生成)・デバイスモニター・結果ダッシュボード |
 | **MCP** サーバ | Claude Code が自動起動([.mcp.json](.mcp.json)) | エージェント連携: AIによるテスト作成・デバッグ・探索的テスト |
-| **Swift DSL** | `Projects/<name>/Scenarios/*.swift` | テスト資産。どの入口で作っても同じ形式で保存・実行される |
+| **Swift DSL** | `TestProjects/<name>/scenarios/*.swift` | テスト資産。どの入口で作っても同じ形式で保存・実行される |
 
 役割分担の原則: **探索・判断(知能)はエージェント、操作・実行・検証(決定性)は ftester**。
 テスト作成は VSCode 拡張のライブ操作録画(操作を Swift シナリオに変換)か、複雑なものは Claude Code
@@ -63,7 +63,7 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scr
   版を固定するなら `claude plugin marketplace add https://github.com/wave1008/foundation-tester.git#<tag>`。
   プラグイン機構が無い環境向けの代替は
   `curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install-skill.sh | sh`。
-- 既定は**外部パッケージ構成**: ツール(この clone)と、あなたの `Projects/` が住むテスト用フォルダを分ける。
+- 既定は**外部パッケージ構成**: ツール(この clone)と、あなたの `TestProjects/` が住むテスト用フォルダを分ける。
 - 事前準備・インストール・更新・アンインストールの手順は [docs/getting-started.md](docs/getting-started.md)。
   導入後の使い方(プロファイル・シナリオ・実行)は本 README の以降の節と [docs/commands.md](docs/commands.md)。
 
@@ -116,7 +116,7 @@ bash AndroidRunner/build.sh                  # 常駐ブリッジ APK を生成(
 
 - macOS ベータを使う場合は **Xcode を同じベータへ揃えてフルリビルド**する
   (FoundationModels の ABI 不整合で全バイナリが dyld クラッシュするため)
-- 手動コピー・別リポジトリからの移行などで `Projects/` を持ち込んだ場合は
+- 手動コピー・別リポジトリからの移行などで `TestProjects/` を持ち込んだ場合は
   `swift run ftester project sync` で Package.swift のマーカー区間を再生成する
 
 ## クイックスタート
@@ -129,9 +129,9 @@ swift run ftester doctor
 swift run ftester bridge up --with-sample-app
 
 # 3. シナリオを用意する(下記いずれか)
-#    - VSCode 拡張のライブ操作パネルで操作を録画 → Projects/<name>/Scenarios/Generated/*.swift を生成
-#      (生成直後にビルド検証され、失敗コードは Scenarios/_disabled/ に隔離される)
-#    - Projects/<name>/Scenarios/ に Swift DSL で手書きする(下記「Swift DSL」参照)
+#    - VSCode 拡張のライブ操作パネルで操作を録画 → TestProjects/<name>/scenarios/Generated/*.swift を生成
+#      (生成直後にビルド検証され、失敗コードは scenarios/_disabled/ に隔離される)
+#    - TestProjects/<name>/scenarios/ に Swift DSL で手書きする(下記「Swift DSL」参照)
 #    - Claude Code(MCP 経由)に作らせる
 
 # 4. 決定的実行(LLM なし。失敗があれば exit code 1)
@@ -146,7 +146,7 @@ swift run ftester run --profile ios           # 実行プロファイル(ブリ�
 |---|---|
 | `doctor` | FM・Xcode・シミュレータ・adb の事前診断 |
 | `bridge up / down / status` | iOS ブリッジ(常駐 XCUITest ランナー)の管理 |
-| `run [--scenario <id>...]` | シナリオの決定的実行(`--project`、`--profile` プロファイル実行、`--folder` フォルダ指定、`--failed` 失敗のみ、`--heal` 自己修復、`--report-dir`、`--ports` 並列、`--skip-build`、`--no-lpt` 投入順を ID 順に固定、`--lpt-history-runs` 実績を読む run 数) |
+| `run [--scenario <id>...]` | シナリオの決定的実行(`--project`、`--profile` プロファイル実行、`--folder` フォルダ指定、`--failed` 失敗のみ、`--heal` 自己修復、`--report-dir`、`--ports` 並列、`--skip-build`、`--no-lpt` 投入順を ID 順に固定、`--lpt-history-runs` 実績を読む run 数、`--quiet`/`--junit` CI 向け出力、`--enable-animations` アプリのアニメーションを残す、`--fast-input` iOS xcuitest の quiescence 待ちを飛ばす)。**`--dry-run` はデバイスに触れずステップを列挙・検証する**(下記「dry-run」) |
 | `run-file <path.swift>...` | Package.swift に**登録していない** .swift をそのまま実行(プロファイル・レポート・自己修復は `--project` のものを借りる。`--profile`、`--scenario`、`--heal`、`--ports`) |
 | `project create / list / sync` | テストプロジェクトの作成・一覧・Package.swift 再整合 |
 | `devices up / down` | 実行プロファイルのデバイスを一括起動・停止(ブリッジ供給込み) |
@@ -169,17 +169,17 @@ swift run ftester run --profile ios           # 実行プロファイル(ブリ�
 
 ## テストプロジェクトと実行プロファイル
 
-テストは **テストプロジェクト**(`Projects/<name>/` = シナリオ+プロファイル+レポートの器)で管理する。
+テストは **テストプロジェクト**(`TestProjects/<name>/` = シナリオ+プロファイル+レポートの器)で管理する。
 プロジェクト毎に SPM ターゲット `ftester-scenarios-<name>` が対応し、`ftester project create/sync` が
 Package.swift のマーカー区間を自動更新する(プロジェクト間はビルド隔離)。
 
 ```
-Projects/SampleApp/
+TestProjects/SampleApp/
 ├── profiles/
 │   ├── apps/sampleapp_ios.json    # アプリ: appName/autoInstall は common、bundle ID(app)と appPath は ios/android
 │   ├── machines/M2 Ultra.json     # マシン別デバイス定義(ファイル名 = マシン名)
 │   └── runs/ios.json              # 実行プロファイル(アプリ+デバイス名リスト+実行時設定)
-├── Scenarios/                     # Swift DSL(_Main.swift / Generated/ / _disabled/)
+├── scenarios/                     # Swift DSL(_Main.swift / Generated/ / _disabled/)
 ├── reports/                       # 実行レポート(プロジェクト別)
 └── .ftester/heal-cache.json       # ヒールキャッシュ(プロジェクト別)
 ```
@@ -257,11 +257,11 @@ Android シナリオも iOS と同様に `--platform android` を付けて実行
 
 ブリッジ経由では `ACTION_SET_TEXT` で入力するため、日本語もそのまま入る(IME 切替なし)。
 
-## Swift DSL(Projects/<name>/Scenarios/)
+## Swift DSL(TestProjects/<name>/scenarios/)
 
 テストは Shirates 風の Swift DSL で書く。**`try await` もクロージャ引数も不要** —
 コマンドは同期・非 throw の自由関数で、`scenario → scene → condition/action/expectation`(CAE)
-の3層構造を持つ。プロジェクトの `Scenarios/` に .swift を置いて `swift build` すれば自動発見される。
+の3層構造を持つ。プロジェクトの `scenarios/` に .swift を置いて `swift build` すれば自動発見される。
 
 ```swift
 import FTDSL
@@ -279,7 +279,9 @@ class ログインテスト {
                     type("#email", "test@example.com")
                     type("#password", "password123")
                     tap("#login_btn||ログイン")          // || = 候補集合の和(節の順に先に見つかった方)
-                    tap("今はしない", optional: true)     // optional = 無ければスキップ
+                    ifCanSelect("今はしない") {            // 出るか不定のシートは条件分岐で包む
+                        tap("今はしない")
+                    }
                 }.expectation {
                     exist("#welcome_text||ようこそ")
                     screenIs("ログイン後のホーム画面が表示されている")  // FM マルチモーダル検証
@@ -305,7 +307,7 @@ class ログインテスト {
 
 | 記法 | 意味 |
 |---|---|
-| `#login_btn` | accessibility id(完全一致) |
+| `#login_btn` | accessibility id(完全一致)。**identifier で1件も引けなければ placeholder を引く**(入力欄は経路で id と placeholder が入れ替わるため。docs/commands.md) |
 | `#login*` / `#*login*` / `#*btn` | id の前方一致 / 部分一致 / 後方一致(完全形は `idStartsWith=` `idContains=` `idEndsWith=`) |
 | `ログイン` | ラベル(**完全一致のみ**。完全形は `text=ログイン`) |
 | `*ログイン*` / `ログイン*` / `*ログイン` | 部分一致 / 前方一致 / 後方一致(完全形は `textContains=` `textStartsWith=` `textEndsWith=`) |
@@ -332,11 +334,16 @@ class ログインテスト {
 **WebView(Web コンテンツ)内の要素**: ネイティブの WebView(iOS: WKWebView / Android:
 android.webkit.WebView)の中身も同じセレクタ・同じコマンドで操作できるが、規約が3点だけ違う:
 
-- **`#id` は効かない**(HTML の `id` 属性は両 OS とも a11y に出ない)。指せるのは
-  表示テキスト・`aria-label`(label になる)・型だけ
+- **`#id`(HTML の `id`)が使えるかは読み取り経路で決まる**。DOM を読める経路
+  (iOS の既定エンジン / Android のアプリ内 WebView・ブラウザ)と、a11y が id を出す構成
+  (Android WebView 150 以降)では使える。**iOS の `engine: xcuitest` では出ない**
+  (WebKit が HTML id を a11y へ渡さない)
 - **リンクは `.link` と `.staticText` の2要素で重複して出る**(両 OS 共通)。同じラベルが
   2つ並ぶため、ラベル単独では曖昧になる → `.link&&ラベル` と型で絞る
-- **ラベルの無い入力欄は `placeholder=…` で指す**(素の文字列は text/label にしか当たらない)
+- **入力欄は `#id||#placeholder の値` の2節で書く**のが確実。`#x` は identifier で引けなければ
+  placeholder を引くので、この2節で「id だけ出る構成」「placeholder だけ出る構成」の両方を覆える
+  (Android は WebView の版で **id と placeholder が入れ替わる**。片方だけに書くと他方の端末で
+  「セレクタが見つからない」になる)
 
 コンテナは `.webView` 型で出る(`.webView >> …` のスコープ起点にできる)。中身が
 a11y/DOM に現れるまで初回は数秒かかることがあるため、**画面遷移直後の検証は `timeout:` を
@@ -359,19 +366,26 @@ exist(.type(.button).text("保存", .contains))    // .button&&textContains=保�
 `.secureTextField` `.switch` と `.input` `.widget` `.cell` `.image` `.clickable`、語彙外は `.custom("…")`。
 フィルタは常に「現在の対象」に効く(相対の**後**ならその相対先、前なら基準)。
 
-**コマンド**の一覧・引数・挙動は **docs/commands.md** を参照(操作 `tap` `type` `press` `swipe` `pressEnter` /
-スクロール `scrollTo`・`scrollDown` 系・`withScrollDown { }` / 検証 `exist` `notExist` `countIs`・
-`textIs`/`valueIs` の全対称(否定 `…Not`・`…IsEmpty`・`…MatchesDateFormat`)・`screenIs`(FM 視覚検証)/
-素の値の検証 `thisIs` 系 / アプリ制御・待機・分岐・反復 / `procedure` `group` `irregularHandler` 等)。
+**コマンド**の一覧・引数・挙動は **docs/commands.md** を参照(操作 `tap` `type` `swipe` `flick` 系 `pressEnter` /
+スクロール `scrollTo`・`scrollDown` 系・`withScrollDown { }` / 検証 `exist` `notExist` `countIs` `appIs`・
+`textIs`/`valueIs` の全対称(否定 `…Not`・`…IsEmpty`・`…MatchesDateFormat`。**セレクタは取らず直前に掴んだ要素を見る**)・`screenIs`(FM 視覚検証)・
+`verify(message) { }`(アサーション集約)/ 素の値の検証 `thisIs` 系 / アプリ制御・待機
+(`waitForDisplay`/`waitForClose` 含む)・分岐・反復 / `procedure` `group` `irregularHandler` 等)。
 特に効く規約だけ抜粋:
 
 - **要素の出現待ちは暗黙**(`wait` は原則不要。足りなければ各コマンドの `timeout:` を上げる。
   秒は**小数可** — `timeout: 1.2` / `waitSeconds: 0.5`)
-- **画面の値は `exist` の戻り値から読める**(`exist("#txt_total").text` / `.value` / `.id`)。
+- **属性の検証は「掴んでから」書く**(`select("#msg").textIs("完了")`。`select("#msg")` の次の行に
+  `textIs("完了")` と書いても同義 = 対象は直前に掴んだ要素。`textIs("#msg", "完了")` は書けない)
+- **画面の値は `exist` / `select` の戻り値から読める**(`exist("#txt_total").text` / `.value` / `.id`)。
   期待値を書き切れないとき(控えた注文番号を後の画面で照合する等)に使う。
   値は `exist` した時点のもので**再取得しない**ので、更新途中の画面は先に `textIs` 等で確定させてから読む
 - 折り返しの下は `tap("設定", scroll: .down)` / `exist(…, scroll: .down)` で**スクロールしながら探す**
   (方向はコンテンツ基準。`swipe(.up)` だけは指の動き)。**テキスト検証は自動スクロールしない**
+- **マップ・キャンバス系**(地図・画像ビューア・図面)は `swipeBy(dxRatio:dyRatio:)` でパン
+  (**両軸を非 0 にすると斜め**)・`pinchOut` / `pinchIn` でズーム・`doubleTap` でズームイン。
+  **iOS はエンジンで成否が分かれるジェスチャがある**(既定の hybrid なら全て動く。
+  `xcuitest` 単独と実機に残る穴は docs/commands.md の表)
 - **出るか不定のアプリ内メッセージ**は `irregularHandler` を setUp で1回宣言すると自動で閉じる
   (OS 側のダイアログは書かなくてよい — ツール側で吸収する)
 - テストクラスの `func setUp()` / `func tearDown()` は各 `@Test` の前後で自動実行。
@@ -394,16 +408,23 @@ condition {
 - 失敗セマンティクス: コマンド NG → **シナリオ中断**(以降のステップは scene を跨いですべてスキップ。
   tearDown だけは失敗後でも実行される)。
   ブロック内の生 Swift コードはスキップされないため、失敗後に走らせたくない処理は `procedure { }` に包む
-- レポートは成否問わず `Projects/<name>/reports/scenario-*.md` に出力(scene → CAE → ステップ階層、
+- レポートは成否問わず `TestProjects/<name>/reports/scenario-*.md` に出力(scene → CAE → ステップ階層、
   トリアージ、失敗スクリーンショット、**修正提案**)
-- **自己修復とヒールキャッシュ**: 自己修復が有効な実行(実行プロファイルの `heal`。既定 ON、
-  CLI は `--heal` で上書き)では、壊れたセレクタは FM が修復して続行し、
-  結果は `Projects/<name>/.ftester/heal-cache.json` に保存される。**2回目以降は FM なしで決定的に通過**し、
-  レポートに「`Projects/SampleApp/Scenarios/LoginTest.swift:17` — セレクタ "#email_input" を
+- **自己修復とヒールキャッシュ**: 自己修復が有効な実行(**`--profile` 実行では実行プロファイルの
+  `heal` が既定 ON** / **プロファイルを使わない `ftester run` は既定 OFF**。CLI からは
+  `--heal` で ON・`--no-heal` で OFF に上書きできる。両方の同時指定はエラー)では、
+  壊れたセレクタは FM が修復して続行し、
+  結果は `TestProjects/<name>/.ftester/heal-cache.json` に保存される。**2回目以降は FM なしで決定的に通過**し、
+  レポートに「`TestProjects/SampleApp/scenarios/LoginTest.swift:17` — セレクタ "#email_input" を
   "#email||.textField[0]" に変更してください」のようなソース位置付き修正提案を出し続ける
   (ソースの自動書換はしない。人がソースを直すとキー不一致でキャッシュは自然に無効化される)
-- **dry-run**: `swift run ftester-scenarios-<プロジェクト名> run --scenario <id> --dry-run` で
-  デバイスに触れずステップ列挙だけ行える(Shirates の No-Load-Run 相当。レビュー・生成コードの確認用)
+- **dry-run**: `ftester run --dry-run`(Shirates の No-Load-Run 相当)。**デバイスにも FM にも
+  触れず**、セレクタの構文誤り・到達しない scene・アサーション0の `expectation`・
+  **撮った画面に実在しない `#id`** を数秒で落とす(実測: 76 シナリオで 3.4 秒)。
+  `--scenario` / `--folder` / `--project` / `--quiet` はそのまま効き、**失敗があれば exit code 1**。
+  デバイスを1台も使わないので `--profile` は使われない(`--platform` だけが
+  `ios { }` / `android { }` の分岐を決める)。レポートは書かず、`--failed` の判断材料にもならない。
+  MCP は `ft_dry_run`、VSCode 拡張は `ftester api run --dry-run` 経由で同じ検証を行う
 
 ## UI(VSCode 拡張)
 
@@ -411,6 +432,13 @@ condition {
 ライブ操作(録画→シナリオ生成)・結果ダッシュボード・自己修復候補の確認・プロファイル編集支援と
 いった対話的な UI は、VSCode 拡張(`vscode-ftester/`)に一本化している。CLI と同じ `ftester api ...` サブコマンド経由で
 ftester 本体を呼び出すため、挙動は CLI・MCP と共通のモジュールに基づく。
+
+**ライブ操作の割り当て**: 画面をクリック = タップ / 500ms 以上ホールド = 長押し /
+ドラッグ = スワイプ / **Alt(Option)+クリック = ダブルタップ** / ツールバーの **拡大・縮小** =
+画面全体のピンチ。ダブルタップを「素早く2回クリック」にしていないのは、パネルの1クリックを
+既にタップとして送っているため —— 2回目を待つ設計にすると通常のタップが毎回遅くなる。
+**iOS の Compose(ダブルタップ)と Flutter(ピンチ)は XCUITest 経路では届かない**
+(docs/commands.md の表。ライブ操作は実行プロファイルのエンジンに従う)。
 
 **デバイス画面はヘッドレス映像ストリーミングで表示する**: デバイスモニター・ライブ操作の
 画面は、変化駆動でフレーム(JPEG)を配信する常駐ヘルパー(iOS: `ftester-simstream` /
@@ -431,15 +459,47 @@ Android: `ftester-androidstream`)経由でほぼリアルタイムに更新す�
 
 | ツール | 内容 |
 |---|---|
-| `ft_status` / `ft_doctor` | 接続確認 / FM 可用性 |
+| `ft_status` | 接続確認。**宛先**(どのシミュレータ/エミュレータか。Android は serial と AVD 名)と、**session のアプリが今も前面か**まで返す(session はブリッジが掴んでいるアプリで、ホームへ戻っても変わらない)。Android で `serial` を省略して複数台つながっているときは、失敗せず**全台を一覧**で返す(読み取り専用なので。操作系は従来どおり曖昧なら断る) |
+| `ft_doctor` | FM 可用性。使えないときは**止まる機能(self-healing / triage / screenIs / occlusion-guard)と代わりの書き方**まで返す |
 | `ft_launch` / `ft_terminate` | アプリ起動・終了 |
-| `ft_snapshot` | 画面要素一覧(set-of-mark 圧縮形式) |
-| `ft_tap` / `ft_type` / `ft_swipe` / `ft_press` | 画面操作 |
+| `ft_install` | アプリをパッケージファイルからインストールする(iOS: `.app` バンドル / Android: `.apk`) |
+| `ft_snapshot` | 画面要素一覧(set-of-mark 圧縮形式)。**`waitFor` を渡すと出るまでホスト側で待つ**(セレクタ記法は DSL と同じ。既定 5 秒)。**対象アプリが前面に居なければ先頭で警告する**(XCUITest の木はセッションのアプリに閉じているので、別アプリが前面でも同じ木を返してしまう。**iOS 実機では OS が前面状態を正しく申告しないため警告は出ない**)。**スクロール容器の外に取り残された要素(ghost)は先頭と各行で名指しする**(`⚠️scroll-leftover`) —— 一覧の見た目は普通の行と同じだが、その座標には別のものが描かれていることがある。**スクロール容器の行には `scroll` を付ける**(`scrollFrame:` に指定できる領域。**2つ以上あるときだけ**先頭でも名指しする)—— ただし**印が無い = スクロールしない、ではない**(Compose / Flutter の in-app は自前描画で申告できない)。撮った `#id` は `<プロジェクト>/.ftester/selector-inventory.json` に貯まり、`ft_dry_run` の綴り誤り照合に使われる。**同じ id の大群(地図の POI など。非操作の葉が20件以上)は1行に畳む** —— 見出しに続けて「ラベル[ref]」の索引が出るので ref では撃てる。frame まで要るときは `expandBulk: true`。**上限で要素が落ちたときは先頭で言う**(何件・何が落ちたか。内訳は iOS のブリッジが申告する) —— 落ちた要素は木から消えているので `waitFor` も `ft_scroll_to` も一生見つけられない。**ラベルも id も無い clickable には `#容器 >> .clickable[n]` を添える**(id を持つ祖先があるときだけ。無ければ従来どおり「ref か座標しかない」)。**同じラベルが複数に当たるときは「代わりに書けるセレクタ」を一致ごとに出す**(`#id` > 一意ラベル > `#容器 >> .型[n]`。書けないものは「—」で明示する = 無言のケースを作らない。**勧める前にサーバ自身が引いて当人が返ることを確かめている**)。**打ち切ったときは枠を食っている id 群まで名指しする**(`#VKPointFeature が 119 件中 87 件` のように)—— 読み手にできる手は「それを描いている物を畳む」なので、原因を当てさせない。**`interactiveOnly: true` でレイアウト専用の行を隠す**(ラベルも値も持たず、操作もスクロールもしない要素。密な画面では半分以上が消える)—— ref も frame も変わらず、隠れた行も ref では撃てる |
+| `ft_tap` / `ft_type` / `ft_swipe` / `ft_long_press` | 画面操作(`ft_type` は `pressEnter: true` で入力後に Enter/IME アクションまで撃つ。`text` を省けば Enter だけ)。**ref は撃つ直前に撮り直して照合する** —— 動いていれば今の位置へ撃ち直し、消えていれば撃たずに理由を返す。スクロール残像は撃つが、**何に当たったかもしれないかを警告に添える**(黙って別の要素を叩かない)。**ref を撃つ操作系は「その操作を再現するセレクタ」を必ず返す**(`tap [40] done (selector: #btn_add)`)—— ref はセッション限りの番号でシナリオには書けないため。安定セレクタが無ければ「無い」と明示し、座標には出さない(再現できる根拠が無い)。**操作7ツール(`ft_tap` / `ft_type` / `ft_swipe` / `ft_drag` / `ft_double_tap` / `ft_long_press` / `ft_pinch`)は `snapshotAfter: true` で結果の一覧まで一緒に返す** —— 操作のたびに `ft_snapshot` を撃つ往復が消える(`waitFor` を併せて渡せば、結果の画面に目的のセレクタが出るまで待ってから返す)。長押しの秒数は DSL と同語彙の `holdSeconds`(`ft_long_press`) |
+| `ft_scroll_to` | セレクタが出るまでスクロールして、**撮り直した一覧を返す**。`ft_swipe` + `ft_snapshot` の繰り返しより確実で、探索そのものは DSL の `scrollTo` と同じ実装(整定・容器基準の刻み・飛び越しの拾い直し)。`scrollFrame` でスクロールする容器を指定できる(候補は `ft_snapshot` の `scroll` 印)。**半開きのシートの中でリストが動かなくなったら、グラバーを引き上げて1度だけやり直す**(判定は DSL と共有の `StepNote.sheetCollapsed`。やり直したことは note で言う)—— グラバーを名前で特定できないときは何もしない(当てずっぽうのドラッグで地図やリストを動かさない) |
+| `ft_batch` | **DSL の手を並べて1回の承認で実行する**(`"steps": "tap '#a'; type '#field' 'abc'; scrollTo '#btn' direction: .down"`)。構文は最小記述の1つだけ —— 引数は引用符(`'…'`/`"…"` 等価)+空白区切り・手は `;` か改行。正形の括弧・カンマ・配列は書き換え方を添えて拒否する。operation/scroll コマンドのみ(launchApp 等は `ft_launch` へ誘導)・対象はセレクタ指定(ref 不可)・全手を実行前に検証し、最初の失敗で止まってその画面を返す(成功時は最後の画面を1回だけ)。通ったバッチは `ft_draft_scenario` がそのまま正形の DSL にする |
+| `ft_rotate` | デバイスを回転し、**新しい向きの画面一覧を返す**(回転の整定を待つので frame は新座標系。回転前の ref は解決しなくなる)。シナリオの `rotateTo()` と違い**終了時に向きを戻さない**ので、次の作業へ渡す前に自分で戻す。Android は自動回転を off にして off のままにする(戻さないと角度が定着しないため) |
+| `ft_navigate` | 戻る / ホーム / タスク切替(3操作を1ツールに束ねている) |
+| `ft_open_url` | ディープリンクの URL を配送する(**アプリを再起動せず**、今の画面の上に遷移が積まれる。`ft_launch` は逆に必ず再起動する)。画面遷移を飛ばして目的の画面から探索を始めるときに使う。配送は非同期なので、素の `ft_snapshot` を直後に撃つと遷移前の画面を掴むことがある。**`snapshotAfter: true` は着地(木が変わること)を待ってから読む**(2026-08-16。目的地固有の物を待ちたいなら `waitFor`、待たずに読むなら `waitForChange: false`) |
+| `ft_clear_input` | 入力欄を空にする(`ft_type` は追記なので、置き換えるならまず消す)。**パスワード欄は追記できない**(読みが伏せ字なので追記すると伏せ字が本文に入る)ため、Android は 422 で断る = 先にここを通す |
+| `ft_clear_app_data` | アプリのデータと権限を消す(iOS はシミュレータのみ)。**シナリオは `clearAppData()` から始まる**ので、探索も同じ初期状態から行う。アプリは止まるので後で `ft_launch` |
+| `ft_dsl_commands` | **DSL コマンドの索引**(名前と署名)。シナリオを書く前に引いて、存在しないコマンドを書かないようにする。デバイスに触らない |
+| `ft_double_tap` / `ft_pinch` / `ft_drag` | マップ・キャンバス系の操作(ダブルタップ / ズーム / **斜めを含む任意方向のドラッグ**)。**`ft_drag` は `fromRef`(要素の中心から)と `dx`/`dy`(移動量)でも書ける** —— 半開きのボトムシートを広げるのに、グラバーの frame を読んで座標を組む必要がない。**`ft_pinch` は `ref` でも `x`/`y` でも対象を指せる** —— 地図は要素として木に無いので、シートが半分出ている画面で対象を省くと指が画面全体に開いて**シートのほうが掴まれる**(実測)。座標を honour できるのは **Android と iOS in-app だけ**(XCTest に座標ピンチが無い)で、iOS の XCUITest エンジンでは**全画面へ退化したことを戻り値で言う**。iOS は Compose のダブルタップと Flutter のピンチがエンジン依存なので、**`profile` を渡して実行と同じエンジンで試す**(docs/commands.md の表) |
 | `ft_screenshot` | スクリーンショット(画像を返す — エージェントの視覚検証用) |
 | `ft_list_scenarios` / `ft_run_scenario` | シナリオ一覧 / 決定的実行(`project`・`profile`・`heal` オプション付き。自動ビルド込みで、コンパイルエラーはそのまま返る=エージェントが直せる) |
+| `ft_dry_run` | **デバイス不要**の検証(数秒)。セレクタの構文誤り・到達しない scene・アサーション0の expectation・**`ft_snapshot` で撮った画面に実在しない `#id`** をデバイス実行の前に落とす |
 | `ft_list_projects` | テストプロジェクトと実行プロファイルの一覧 |
+| `ft_draft_scenario` | **探索した操作列を Swift シナリオの下書きにして返す**(ファイルには書かない — 置き場所はスキルの仕事)。各手は「そのとき MCP が推奨したセレクタ」で書かれ、**セレクタを解決できなかった手は TODO コメントとして残る**(消すと下書きが実際の手順と食い違う)。既定の範囲は直近の `ft_launch` 以降(`all: true` で全体)。**expectation は空の骨格で出る** —— アサーションは推測で作らず、`ft_dry_run` の「アサーションの無い expectation」検出が作者に埋めさせる(dry-run がそこを指摘するのは意図した設計)。**応答は使った手を番号付きで並べる** —— 探索は行き止まりや撃ち直しも本筋と同じ忠実さで記録するので、その一覧を見て `drop: [n, …]`(番号は一覧のもの)や `lastN: k` で回り道を落としてから採用する |
+| `ft_list_devices` / `ft_list_apps` / `ft_logs` | 端末・アプリ・ログの棚卸し。**`ft_list_apps` の既定は user アプリだけ**なので、地図やブラウザのような**プリインストール(system)は出ない** —— `filter:`(id と表示名の部分一致・大小無視)を渡すと system も併せて探し、`includeSystem: true` なら全部を `[system]` 付きで並べる。表示名が出るのは iOS だけ(Android の `pm` は package 名しか返さない)。**`ft_list_devices` はブリッジの無い iOS 機に「no bridge — MCP からは操作不可」と書く**(動いているのに触れない機が行の見た目では分からなかった) |
 
-全ツールに `platform: ios|android` を指定可能。探索(explore 相当)はツール化していない —
+**実機(iPhone / Android 端末)**: 画面操作系(`ft_tap` / `ft_type` / `ft_swipe` / `ft_scroll_to` /
+`ft_long_press` / `ft_double_tap` / `ft_pinch` / `ft_drag` / `ft_navigate` / `ft_snapshot` / `ft_screenshot`)は
+そのまま使える。**シミュレータ/エミュレータ専用の操作は自動で振り分ける**:
+`ft_install` は iOS 実機なら `devicectl`(シミュレータは `simctl`)、`ft_clear_app_data` は
+iOS 実機では 501 で断る(devicectl に同等手段が無い。Android は実機でも `pm clear` が効く)。
+in-app エンジンは注入できないので実機では選ばれない。Android のエミュレータ gRPC 制御も
+実機では自動的に adb 経路へ落ちる。**`profile` を渡すと端末の UDID まで分かる**ので、
+渡しておくのが確実(渡さないときはブリッジが名乗るデバイス名から引き当てる)。
+
+**iOS のエンジン**: `profile` を渡せば実行プロファイルのエンジンに追従する。渡さないときは
+**接続先ポートのブリッジに従う** —— in-app ブリッジが動いていればそれを主にした hybrid を組み
+(実行の既定と同じ)、XCUITest ブリッジならそのまま使う。in-app 側が実装できない操作
+(ホーム / タスク切替 / ドラッグ / 座標長押し)は XCUITest ブリッジへ自動で回るので、
+どちらでも全ツールが使える。**実機は注入できない**ので常に XCUITest。
+なお in-app 経路で `ft_navigate` の `home` / `appSwitcher` を撃つと対象アプリが背面化し、
+その中に住む in-app ブリッジが suspend されて応答しなくなる。**その間は全ツールが自動的に
+XCUITest ブリッジ側へ寄る**(読みが少し遅くなるだけで止まらない。`ft_launch` で戻すと元に戻る)。
+
+全ツールに `platform: ios|android` を指定可能。**`profile` を渡すと実行プロファイルのエンジン(既定 hybrid = in-app 優先)で動く** —— 探索と実行で snapshot の内容もジェスチャの成否も揃うので、マップ系を触るときは必ず渡す。探索(explore 相当)はツール化していない —
 スナップショットと操作プリミティブがあれば、クライアント側のエージェント自身が探索できるため。
 役割分担は「エージェント=知能(探索・判断)、ftester=決定性(操作・再生・検証)」。
 
@@ -467,10 +527,10 @@ ftester CLI / MCP ──(サブプロセス)──▶ ftester-scenarios-<project
 ## プロジェクト構成
 
 ```
-Projects/          テストプロジェクト(コミットして資産化する)
+TestProjects/          テストプロジェクト(コミットして資産化する)
   SampleApp/
     profiles/        実行プロファイル(apps / machines / runs。JSON)
-    Scenarios/       テストシナリオ(Swift DSL)
+    scenarios/       テストシナリオ(Swift DSL)
       _Main.swift      ランナーへの委譲(編集不要)
       Generated/       ライブ操作の録画(gen-scenario)が生成したシナリオ
       _disabled/       コンパイル対象外の退避場所(並列デモ・生成失敗コードの隔離先)
@@ -523,7 +583,7 @@ Jenkins の例と flaky の扱いは [docs/ci.md](docs/ci.md)。
 - **ドライバに接続できません** → iOS: `bridge up` を先に実行(ログは `.ftester/bridge-<ポート>.log`)。
   Android: `adb devices` で接続確認
 - **シナリオのコンパイルエラーで実行できない** → `swift build --product ftester-scenarios-<プロジェクト名>`
-  のエラーを修正する。ライブ操作録画(gen-scenario)の生成不良は Scenarios/_disabled/ に自動隔離される
+  のエラーを修正する。ライブ操作録画(gen-scenario)の生成不良は scenarios/_disabled/ に自動隔離される
 - **プロジェクトが認識されない(手動コピーや git pull 後)** → `ftester project sync` で
   Package.swift のマーカー区間を再生成する(`project list` が未登録を警告する)
 - **マシンプロファイルが見つからない** → `ftester machine show` で登録名と

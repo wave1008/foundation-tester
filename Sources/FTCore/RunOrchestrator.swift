@@ -25,6 +25,46 @@ public struct ScenarioRunItem: Identifiable, Sendable {
 }
 
 /// 並列ワーカー定義。platform が一致するシナリオだけをキューから消化する
+/// ワーカーを1本ずつ参加させる間隔(秒)。**0 で無効**。
+///
+/// なぜ要るか(2026-08-09): 各シナリオは `condition { launchApp() }` から始まるので、
+/// N 台のワーカーを同時に起こすと**最初の launch が N 本同時**に走る。ブリッジ供給側は
+/// 「in-app の新規起動は同時2台」に絞ってある(BridgeProvisioner)のに、その数秒後の
+/// 本番の launch は無制限、という非対称だった。実測では供給が 2 台ずつ進んだ直後に
+/// **10 台中 9 台が画面凍結**し、ワーカー 0 で 24/24 が実行不能になっている。
+///
+/// **1.5 秒の根拠は「シミュレータの launch がおおむね1〜3秒」**という観測だけで、
+/// 凍結率で較正した値ではない —— 効くかどうかは**まだ確かめていない**(凍結の観測は
+/// n=1 で、同じ run の別プロファイルは無事だった)。対照実験を安く回せるように
+/// `FT_WORKER_STAGGER_SEC` で差し替えられるようにしてある(`0` で従来どおり一斉起動)。
+///
+/// **間隔だけでは足りない**(2026-08-09 ユーザー指示)。時間は当て推量で、ホストが実際に
+/// 空いたことは見ていない —— 供給が長引いた run では飽和したまま次を起こす。もう一つの門
+/// (**直近の CPU 使用率が上限未満**)は `WorkerStartGate` にある。`seconds` を 0 にしても
+/// CPU の門は残る(こちらを外すのは `FT_WORKER_START_CPU_MAX` ではなく、上限を 100% に
+/// 保ったまま「飽和していなければ通る」既定に任せる)。
+///
+/// **定常のレーン数は変えない**ので、伸びるのは立ち上がりだけ(10 台なら約 13.5 秒)
+public enum WorkerStagger {
+    public static let defaultSeconds = 1.5
+
+    /// **最初に同時起動してよい台数**(2026-08-09 のユーザー決定)。ここを超えた分から
+    /// 1本ずつ間隔を空ける —— つまり 1本目と2本目は同時、3本目以降が待つ。
+    /// **2 は BridgeProvisioner の「in-app の新規起動は同時2台」と同じ値**で、
+    /// 供給と本番の launch で違う上限を持たないために揃えてある。
+    /// 10 台なら待つのは 8 本ぶん(既定 1.5s なら約 12 秒)
+    public static let simultaneousHead = 2
+
+    public static var seconds: Double {
+        guard let raw = ProcessInfo.processInfo.environment["FT_WORKER_STAGGER_SEC"] else {
+            return defaultSeconds
+        }
+        // 不正値は既定へ倒す(黙って 0 = 無効にすると、実験のつもりが対策を外した run になる)
+        guard let value = Double(raw), value >= 0, value.isFinite else { return defaultSeconds }
+        return value
+    }
+}
+
 public struct RunWorker {
     /// 表示・イベント上の識別子。形式は2系統ある:
     ///   プロファイル経路 = `makeLabel` の "<デバイス名>(<platform>:<serial|port>)"
@@ -130,16 +170,24 @@ public struct RunSummary: Sendable {
     public let blankRepairs: [String]
     /// run 前の blank 判定で修復不発により除外したワーカー label(同上)。
     public let blankExclusions: [String]
+    /// この run の所要時間を性能計測に使ってよいか(`MeasurementValidity.verdict` の結果)。
+    /// orchestrator 自身は performanceMode を知らないため常に false/[] を返す —— 呼び手
+    /// (ProfileRunner/ApiRunCommand)が blankExclusions 判明後に自分で構築した RunSummary へ埋める。
+    public let measurementInvalid: Bool
+    public let measurementInvalidReasons: [String]
 
     public init(total: Int, failed: Int, degradedWorkers: [String] = [],
                 freezeRetries: [String] = [],
-                blankRepairs: [String] = [], blankExclusions: [String] = []) {
+                blankRepairs: [String] = [], blankExclusions: [String] = [],
+                measurementInvalid: Bool = false, measurementInvalidReasons: [String] = []) {
         self.total = total
         self.failed = failed
         self.degradedWorkers = degradedWorkers
         self.freezeRetries = freezeRetries
         self.blankRepairs = blankRepairs
         self.blankExclusions = blankExclusions
+        self.measurementInvalid = measurementInvalid
+        self.measurementInvalidReasons = measurementInvalidReasons
     }
 }
 
@@ -250,6 +298,24 @@ actor ScenarioQueue {
 /// CLI の逐次実行と RunOrchestrator のワーカーの両方がここを通る。
 public enum ScenarioOutcome: Sendable, Equatable {
     case passed, failed, frozen
+    /// **デバイス側の一過性の故障**でテストが落ちた(コードの失敗ではない)。振り直す
+    case environmentFault
+}
+
+/// 「テストではなくデバイスが壊れていた」と機械的に言い切れる失敗のしるし。
+/// **ここに足すのは、アサーション失敗と構造的に区別できるものだけ** ——
+/// ドライバが返した基盤側のエラーで、同じコードを別デバイスや少し後に走らせれば通るもの。
+/// 判定を広げると本物の失敗を skipped に隠すことになる
+enum EnvironmentFault {
+    /// XCUITest の a11y 基盤が一時的に応答しない。**ブリッジ供給直後・アプリ入れ替え直後**に
+    /// 同時刻クラスタで出て、再実行で必ず消える(2026-08-05/06 に2回・8件と6件を手で判定した)。
+    /// docs/verification.md「kAXErrorAPIDisabled は環境と判定してよい」
+    static let markers = ["kAXErrorAPIDisabled"]
+
+    static func matches(_ detail: String?) -> Bool {
+        guard let detail else { return false }
+        return markers.contains { detail.contains($0) }
+    }
 }
 
 public enum ScenarioRunner {
@@ -257,9 +323,13 @@ public enum ScenarioRunner {
     public static func runOne(project: TestProject, item: ScenarioRunItem, worker: RunWorker,
                               fm: FMConfig, reportDir: URL,
                               defaultTimeout: Double? = nil,
+                              containerInference: Bool = true,
                               scenarioTimeout: Int? = nil,
                               debug: ScenarioDebugOptions? = nil,
                               recorder: RunRecorder? = nil,
+                              installHandler: (@Sendable (RunWorker, String?) async
+                                               -> (ok: Bool, message: String))? = nil,
+                              appName: String? = nil,
                               onEvent: @escaping (RunEvent) -> Void) async -> ScenarioOutcome {
         onEvent(.flowStarted(worker: worker.label, flowURL: item.url,
                              flowName: item.info.id, isDirty: false))
@@ -273,17 +343,27 @@ public enum ScenarioRunner {
         var reportURL: URL?
         var fmUsage: FMUsageRecord?
         var frozen = false
+        var environmentFault = false
         let passed = await ScenarioHost.run(
             project: project, scenarioID: item.info.id, connection: worker.connection,
             fm: fm, reportDir: reportDir.path,
-            defaultTimeout: defaultTimeout, scenarioTimeout: scenarioTimeout,
-            debug: debug, recording: recording) { event in
+            defaultTimeout: defaultTimeout, containerInference: containerInference,
+            scenarioTimeout: scenarioTimeout,
+            debug: debug, recording: recording,
+            installHandler: installHandler.map { handler in
+                { (path: String?) async -> (ok: Bool, message: String) in await handler(worker, path) }
+            },
+            appName: appName) { event in
             switch event.kind {
             case "sceneStarted":
                 onEvent(.sceneStarted(worker: worker.label, flowURL: item.url,
                                       scene: event.scene ?? 0,
                                       sceneTitle: event.sceneTitle ?? ""))
             case "step":
+                // **デバイス基盤の一過性エラーは「テストの失敗」として数えない**(振り直す)
+                if event.status == "failed", EnvironmentFault.matches(event.detail) {
+                    environmentFault = true
+                }
                 onEvent(.step(worker: worker.label, flowURL: item.url,
                               result: stepResult(from: event)))
             case "sceneFinished":
@@ -326,10 +406,20 @@ public enum ScenarioRunner {
             }
         }
 
-        let outcome: ScenarioOutcome = frozen ? .frozen : (passed ? .passed : .failed)
+        let outcome = Self.outcome(passed: passed, frozen: frozen,
+                                   environmentFault: environmentFault)
         onEvent(.flowFinished(worker: worker.label, flowURL: item.url, passed: frozen ? false : passed,
                               triage: nil, reportURL: reportURL, fm: fmUsage))
         return outcome
+    }
+
+    /// 実行結果の確定(純粋関数)。**優先順位に意味がある**: 画面凍結 > 環境の一過性エラー >
+    /// テストの合否。凍結はワーカーごと使えないので先に判定し、環境エラーは合格を上書きしない
+    /// (途中のステップが環境エラーでも、最終的に通ったならテストとしては合格)
+    static func outcome(passed: Bool, frozen: Bool, environmentFault: Bool) -> ScenarioOutcome {
+        if frozen { return .frozen }
+        if passed { return .passed }
+        return environmentFault ? .environmentFault : .failed
     }
 
     /// ScenarioEvent(step)→ StepResult。scene/sceneTitle/section は構造化フィールドのまま写す。
@@ -345,6 +435,8 @@ public enum ScenarioRunner {
             status = .healed(FlowLocator(raw: event.detail ?? ""))
         case "failed":
             status = .failed(event.detail ?? "")
+        case "inconclusive":
+            status = .inconclusive(event.detail ?? "")
         default:
             status = .skipped(event.detail ?? "")
         }
@@ -377,6 +469,7 @@ public final class RunOrchestrator {
     private let reportDir: URL
     private let project: TestProject
     private let defaultTimeout: Double?
+    private let containerInference: Bool
     private let scenarioTimeout: Int?
     /// デバッグ実行(ブレークポイント・ステップ実行)。呼び出し側が単一シナリオ実行時のみ指定する
     private let debug: ScenarioDebugOptions?
@@ -430,6 +523,12 @@ public final class RunOrchestrator {
     /// ドレインが「実行できるワーカーがありません」で失敗確定する)。
     /// Android を iOS 供給(壊れたブリッジの置き換え=数十秒)の完了待ちにしないための機構。
     private let lateWorkers: (platforms: Set<String>, provider: @Sendable () async -> [RunWorker])?
+    /// installApp() の親実行ハンドラ(RPC)。nil なら子は --host-install 無しで起動し、
+    /// フォールバック(--app-path・明示引数・明示エラー)に委ねる(ScenarioHost.run 参照)。
+    /// 呼び出し側(ftester ターゲット)が InstallHandlerFactory 経由で注入する
+    private let installHandler: (@Sendable (RunWorker, String?) async -> (ok: Bool, message: String))?
+    /// アプリの表示名(プロファイルの appName)。tapAppIcon() の引数省略時の既定として子へ渡す
+    private let appName: String?
     /// 劣化・離脱したワーカーの収集(summary/レポートの degradedWorkers に載せる)。
     private let degraded = NoteCollector()
     /// 振り直し(結果取り消し+requeue)の監査記録(summary/レポートの freezeRetries に載せる)。
@@ -442,7 +541,8 @@ public final class RunOrchestrator {
     }
 
     public init(project: TestProject, workers: [RunWorker], fm: FMConfig,
-                reportDir: URL, defaultTimeout: Double? = nil, scenarioTimeout: Int? = nil,
+                reportDir: URL, defaultTimeout: Double? = nil, containerInference: Bool = true,
+                scenarioTimeout: Int? = nil,
                 debug: ScenarioDebugOptions? = nil, recorder: RunRecorder? = nil,
                 recordingConfig: VideoRecordingConfig? = nil,
                 isDeviceFrozen: (@Sendable (String) async -> Bool)? = nil,
@@ -455,13 +555,17 @@ public final class RunOrchestrator {
                 removeRecordingLease: (@Sendable (String) -> Void)? = nil,
                 cleanupRetiredWorker: (@Sendable (RunWorker) async -> Void)? = nil,
                 reviveWorker: (@Sendable (RunWorker) async -> RunWorker?)? = nil,
-                lateWorkers: (platforms: Set<String>, provider: @Sendable () async -> [RunWorker])? = nil) {
+                lateWorkers: (platforms: Set<String>, provider: @Sendable () async -> [RunWorker])? = nil,
+                installHandler: (@Sendable (RunWorker, String?) async
+                                  -> (ok: Bool, message: String))? = nil,
+                appName: String? = nil) {
         (self.events, self.continuation) = AsyncStream.makeStream(of: RunEvent.self)
         self.workers = workers
         self.fm = fm
         self.reportDir = reportDir
         self.project = project
         self.defaultTimeout = defaultTimeout
+        self.containerInference = containerInference
         self.scenarioTimeout = scenarioTimeout
         self.debug = debug
         self.recorder = recorder
@@ -477,6 +581,8 @@ public final class RunOrchestrator {
         self.cleanupRetiredWorker = cleanupRetiredWorker
         self.reviveWorker = reviveWorker
         self.lateWorkers = lateWorkers
+        self.installHandler = installHandler
+        self.appName = appName
     }
 
     private func deviceUnreachable(_ serial: String) async -> Bool {
@@ -605,16 +711,38 @@ public final class RunOrchestrator {
             } : nil
 
         failed += await withTaskGroup(of: Int.self, returning: Int.self) { group in
+            // **ワーカーは一斉に起こさない**(2026-08-09)。各シナリオは `condition { launchApp() }`
+            // から始まるので、N 本のワーカーを同時に積むと**最初の launch が N 本同時**に走る。
+            // ブリッジ供給側は「in-app の新規起動は同時2台」に絞ってあるのに、その数秒後の
+            // 本番の launch は無制限、という非対称だった(実測: 供給は 2 台ずつ進んでいたのに
+            // 直後に 9/10 台が画面凍結)。**定常のレーン数は変えない**ので、遅くなるのは
+            // 立ち上がりだけ(**先頭 2 本は同時**・3 本目から間隔と CPU の門を通る)。
+            // 判定は WorkerStartGate に置いてある(間隔だけでは「本当に空いたか」を見ていないため、
+            // **直近の CPU 使用率が上限未満**であることも要求する)。
+            // ここで await しても**既に積んだ子タスクは止まらない**(下の遅延参加のコメントと同じ)
+            let cpuSampler = CPUSampler(logFailure: { _ in })
+            // CPUSampler は**初回だけ必ず nil**(前回サンプルが無く差分が取れない)。ここで
+            // 1回捨てておくと、3本目が門に来た時点で既に有効な値が返る
+            _ = cpuSampler.sample()
+            let startGate = WorkerStartGate(
+                sampleCPU: { cpuSampler.sample() },
+                sleep: { try? await Task.sleep(for: .seconds($0)) })
+            func admit(_ worker: RunWorker, _ queue: ScenarioQueue) async {
+                await startGate.waitForTurn(log: { [continuation] message in
+                    continuation.yield(.workerLog(worker: worker.label, message: message))
+                })
+                group.addTask { await self.superviseWorker(worker, queue: queue) }
+            }
             for worker in workers {
                 guard let queue = queues[worker.platform] else { continue }
-                group.addTask { await self.superviseWorker(worker, queue: queue) }
+                await admit(worker, queue)
             }
             // 遅延参加(iOS ブリッジ供給待ち)。この await の間も上で積んだ初期ワーカーの子タスクは
             // 並行実行される(group スコープ内の await は子を止めない)ため、Android は先に走り出す。
             if let late = lateWorkers {
                 for worker in await late.provider() {
                     guard let queue = queues[worker.platform] else { continue }
-                    group.addTask { await self.superviseWorker(worker, queue: queue) }
+                    await admit(worker, queue)
                 }
             }
             var total = 0
@@ -753,13 +881,24 @@ public final class RunOrchestrator {
             let outcome = await ScenarioRunner.runOne(
                 project: project, item: item, worker: worker,
                 fm: fm, reportDir: reportDir,
-                defaultTimeout: defaultTimeout, scenarioTimeout: scenarioTimeout, debug: debug,
-                recorder: recorder,
+                defaultTimeout: defaultTimeout, containerInference: containerInference,
+                scenarioTimeout: scenarioTimeout, debug: debug,
+                recorder: recorder, installHandler: installHandler, appName: appName,
                 onEvent: { [continuation] in continuation.yield($0) })
             await videoRecording?.scenarioFinished(
                 workerLabel: worker.label, at: Date(), passed: outcome == .passed)
             if outcome == .passed {
                 consecutiveFailures = 0
+                continue
+            }
+            // **デバイス基盤の一過性エラー**(kAXErrorAPIDisabled 等)は結果を捨てて振り直す。
+            // **ワーカーは離脱させない** —— 個体は健全で、ブリッジを作り直しても同じ確率で踏む
+            // (実測でも再実行で必ず消えた)。連続失敗の数にも入れない = サーキットブレーカを
+            // 環境ノイズで作動させない
+            if outcome == .environmentFault {
+                let requeued = await discardAndRequeue(item, worker: worker, queue: queue,
+                                                       reason: "a transient accessibility fault")
+                if !requeued { failed += 1 }
                 continue
             }
             // デバイスが使用不能なら結果取り消し+別デバイス再実行+ワーカー離脱。
@@ -890,6 +1029,8 @@ public enum RunLogFormatter {
             return ["  ❌ \(step.index). \(description)", "     \(reason)"]
         case .skipped(let reason):
             return ["  ⚠️ \(step.index). \(description) (skipped: \(reason))"]
+        case .inconclusive(let reason):
+            return ["  ❓ \(step.index). \(description) (inconclusive: \(reason))"]
         }
     }
 }

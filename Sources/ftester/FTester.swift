@@ -206,7 +206,7 @@ struct Doctor: AsyncParsableCommand {
     }
 
     /// 2つのルートを表示し、ツール本体を解決できたかを返す。外部パッケージ構成では別ディレクトリに
-    /// なり、取り違えると「InAppBridge/build.sh が無い」「Projects/ が見えない」で詰まる(実害あり)
+    /// なり、取り違えると「InAppBridge/build.sh が無い」「TestProjects/ が見えない」で詰まる(実害あり)
     /// このリポジトリの管理下に無いブリッジ(別クローン起動 / 版が古い)の報告と、
     /// **証拠が決定的なものだけ**の自動停止(処遇は UnmanagedBridgeTriage が唯一の判定者):
     /// 自リポジトリの旧版・起動元リポジトリが消滅したゾンビ → 停止 /
@@ -301,7 +301,7 @@ struct Doctor: AsyncParsableCommand {
             print("❌ Cannot determine the tool root: \(error.localizedDescription)")
         }
         if let packageRoot = ScenarioHost.packageRoot() {
-            print("✅ Scenario package (Projects/): \(packageRoot.path)")
+            print("✅ Scenario package (TestProjects/): \(packageRoot.path)")
         } else {
             print("⚠️ No scenario package (Package.swift) found above the current directory"
                 + " (set FT_PACKAGE_ROOT to point at it explicitly)")
@@ -630,9 +630,9 @@ struct Terminate: AsyncParsableCommand {
 struct RunScenarios: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "run",
-        abstract: "Run Swift DSL scenarios (Projects/<name>/Scenarios/). FM only steps in on failure")
+        abstract: "Run Swift DSL scenarios (TestProjects/<name>/scenarios/). FM only steps in on failure")
 
-    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
+    @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
 
     @Option(help: "Run profile name (profiles/runs/<name>.json). Includes device provisioning and auto-install")
@@ -643,11 +643,19 @@ struct RunScenarios: AsyncParsableCommand {
     var scenarios: [String] = []
 
     @Option(name: .customLong("folder"), parsing: .upToNextOption,
-            help: "Scenario folders to run (subfolders directly under Scenarios/). Repeatable; can be combined with --scenario and --failed")
+            help: "Scenario folders to run (subfolders directly under scenarios/). Repeatable; can be combined with --scenario and --failed")
     var folders: [String] = []
 
     @Flag(help: "Allow FM-based locator self-healing")
     var heal = false
+
+    @Flag(name: .customLong("no-heal"),
+          help: "Disable FM-based locator self-healing even when the run profile enables it (--profile runs default to heal: true)")
+    var noHeal = false
+
+    @Flag(name: .customLong("dry-run"),
+          help: "Enumerate and validate the steps without touching a device (No-Load-Run). Catches selector syntax errors, unreachable scenes and expectation blocks with no assertions")
+    var dryRun = false
 
     @Flag(name: .customLong("no-lpt"),
           help: "Disable LPT ordering (longest past runtime first) and dispatch in scenario ID order")
@@ -661,7 +669,7 @@ struct RunScenarios: AsyncParsableCommand {
     var failed = false
 
     @Option(name: .customLong("report-dir"),
-            help: "Directory to write reports to (defaults to Projects/<name>/reports)")
+            help: "Directory to write reports to (defaults to TestProjects/<name>/reports)")
     var reportDir: String?
 
     @Option(help: "Comma-separated bridge ports for running iOS scenarios in parallel (e.g. 8123,8124). Each port must already have bridge up on a separate device")
@@ -695,12 +703,30 @@ struct RunScenarios: AsyncParsableCommand {
             help: "Collect recordings and run logs (results/) from the remote after the run: collect (default) or on-demand (leave them on the remote; docs/remote-runner.md)")
     var remoteArtifacts: String = "collect"
 
+    @Flag(name: .customLong("enable-animations"),
+          help: "Keep the app's animations instead of turning them off on the device. Can also be set via enableAnimations in the run profile")
+    var enableAnimations = false
+
+    @Flag(name: .customLong("performance"),
+          help: "Performance-testing mode (--profile only): if a dead lane cannot be revived before the run starts, fail instead of dropping it and continuing on the remaining lanes. iOS lanes are built before the run starts (no late join) so a missing one is reported before the run, not in the middle of it")
+    var performanceMode = false
+
     @OptionGroup var driverOptions: DriverOptions
+
+    func validate() throws {
+        if heal && noHeal {
+            throw ValidationError("--heal and --no-heal cannot be used together")
+        }
+    }
 
     func run() async throws {
         // BridgeClient(ホスト・サブプロセス両方)が FT_FAST_INPUT を読む。プロファイル指定分は
         // ProfileRunner が同様に注入する
         if fastInput { setenv("FT_FAST_INPUT", "1", 1) }
+        // プロファイル指定分は ProfileRunner が注入する(こちらは ON 側の上書きのみ)
+        if enableAnimations { setenv(AnimationPolicy.environmentKey, "1", 1) }
+        // リモート実行はここで打ち切る(以降はローカル実行の段取り。フラグはコマンドラインごと
+        // リモートへ中継されるので、向こう側の ftester が同じ env を自分で立てる)
         if let host {
             try await dispatchToRemoteHost(host)
             return
@@ -719,7 +745,7 @@ struct RunScenarios: AsyncParsableCommand {
         PhaseLog.mark("scenario-list")
         guard !all.isEmpty else {
             throw ValidationError(
-                "no scenarios (add a @TestClass under Projects/\(testProject.name)/Scenarios/)")
+                "no scenarios (add a @TestClass under TestProjects/\(testProject.name)/scenarios/)")
         }
         var selected = try Self.resolve(scenarios, from: all)
         if scenarios.isEmpty {
@@ -750,6 +776,22 @@ struct RunScenarios: AsyncParsableCommand {
         // 逐次実行は並列度が無いので並べ替えない
         let items = selected.map { ScenarioRunItem(info: $0) }
 
+        // dry-run はデバイスにも FM にも触れないので、供給・接続・FM 診断・結果記録を全部飛ばす。
+        // **RunRecorder を作らない**(実行していない結果を results DB と --failed の判断材料に
+        // 混ぜないため。ScenarioHost も dryRun では LastResultsStore へ書かない)
+        if dryRun {
+            if profile != nil {
+                print("ℹ️ --dry-run touches no device, so --profile is not used"
+                      + " (--platform decides which ios { } / android { } blocks run)")
+            }
+            let failedCount = await runDryRun(items, project: testProject)
+            print(failedCount == 0
+                  ? "✅ All \(items.count) scenario(s) passed the dry-run"
+                  : "❌ \(failedCount) of \(items.count) scenario(s) failed the dry-run")
+            if failedCount > 0 { throw ExitCode(1) }
+            return
+        }
+
         if FMDoctor.check().available == false {
             print("⚠️ Foundation Models unavailable: self-healing, screenIs and triage are disabled")
         } else if !FMVisionSupport.isSupported {
@@ -764,9 +806,11 @@ struct RunScenarios: AsyncParsableCommand {
         if let profile {
             let runSummary = try await ProfileRunner.run(
                 project: testProject, profileName: profile, items: items,
-                healOverride: heal ? true : nil, reportDirOverride: reportDir,
+                healOverride: ProfileRunner.healOverride(heal: heal, noHeal: noHeal),
+                reportDirOverride: reportDir,
                 quiet: quiet, lpt: !noLPT,
                 lptHistoryRuns: lptHistoryRuns ?? LPTOrdering.defaultHistoryRuns,
+                performanceMode: performanceMode,
                 recorder: recorder)
             let failedCount = runSummary.failed
             PhaseLog.mark("profile-run-done")
@@ -774,7 +818,9 @@ struct RunScenarios: AsyncParsableCommand {
                             degradedWorkers: runSummary.degradedWorkers,
                             freezeRetries: runSummary.freezeRetries,
                             blankRepairs: runSummary.blankRepairs,
-                            blankExclusions: runSummary.blankExclusions)
+                            blankExclusions: runSummary.blankExclusions,
+                            measurementInvalid: runSummary.measurementInvalid,
+                            measurementInvalidReasons: runSummary.measurementInvalidReasons)
             PhaseLog.mark("recorder-finish")
             try writeJUnitIfRequested(project: testProject, recorder: recorder)
             print(failedCount == 0
@@ -910,15 +956,68 @@ struct RunScenarios: AsyncParsableCommand {
     }
 
     /// ブリッジの /status(デバイス名)→ 起動中シミュレータの一意な同名から UDID を解決する。
-    /// launch 事前検査(LaunchPreflightDriver)用。同名複数・未起動・応答なしは nil(検査なしで従来動作)
+    /// launch 事前検査(LaunchPreflightDriver)と FastLaunch 用。
+    /// **プロファイル経路は provision の udid を渡すのでここを通らない** —— これは
+    /// `--port` 直指定の経路だけの相関。
+    ///
+    /// 同名複数・未起動・応答なしは nil(検査なしで従来動作)だが、**黙って落とさない**:
+    /// 事前検査が外れると、未インストールのまま launch して XCUITest ランナーが死ぬ経路
+    /// (LaunchPreflightDriver のコメント)がそのまま開く。Xcode はランタイムごとに同名の
+    /// シミュレータを作るので、同名2台は受け手環境で普通に起きる(2026-08-06 に実例)
     private static func resolveUdid(port: UInt16) async -> String? {
         guard let status = try? await BridgeClient(port: port, timeoutSeconds: 5).status(),
               let catalog = try? SimulatorCatalog.devices() else { return nil }
         let matches = catalog.filter { $0.booted && $0.name == status.device }
-        return matches.count == 1 ? matches[0].udid : nil
+        if matches.count == 1 { return matches[0].udid }
+        FileHandle.standardError.write(Data(
+            ("install preflight and fast launch are disabled:"
+             + " \(matches.count) booted simulators are named \"\(status.device)\"."
+             + " Launching an app that is not installed will kill the XCUITest runner."
+             + " Use a run profile (--profile) to target a simulator by UDID.\n").utf8))
+        return nil
     }
 
     // MARK: - 逐次実行(ライブ出力)
+
+    /// dry-run(No-Load-Run): デバイスにも FM にも触れずステップを列挙・検証する。
+    /// **レポートは一時ディレクトリへ書かせて捨てる** —— ランナーは dry-run でもレポートを書くので、
+    /// 実行していない結果を reports/ に残すと results の集計と紛れる(`ScenarioHost.dryRunSteps`・
+    /// MCP の `ft_dry_run` と同じ扱い。案内すると開けないパスを渡すことになるので report 行も落とす)。
+    /// 接続情報は NullDriver 固定のため使われず、**platform だけが `ios { }` / `android { }` の
+    /// 分岐と `#id` 台帳の照合に効く**。整形は MCP・サブプロセスと同じ `ScenarioLogFormatter`
+    private func runDryRun(_ items: [ScenarioRunItem], project: TestProject) async -> Int {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ftester-dryrun-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        var failedCount = 0
+        for item in items {
+            let platform = item.info.platform ?? driverOptions.platform
+            // quiet: runSequential と同じ扱い(成功なら結果1行・失敗ならバッファ全体)
+            var buffer: [String] = []
+            let passed = await ScenarioHost.run(
+                project: project, scenarioID: item.info.id,
+                connection: DriverConnection(platform: platform),
+                // **`enabled: false`(= 子へ --no-fm)**。heal だけ切ると失敗のたびに triage が
+                // 走り、デバイスも画面も無いのに FM の直列化待ちを払う(数秒。実測で確認)
+                fm: FMConfig(enabled: false, heal: false), reportDir: tempDir.path,
+                dryRun: true) { event in
+                let lines = ScenarioLogFormatter.lines(for: event)
+                    .filter { !$0.contains("→ report:") }
+                if quiet {
+                    buffer.append(contentsOf: lines)
+                } else {
+                    for line in lines { print(line) }
+                }
+            }
+            if quiet {
+                print(passed ? "✅ \(item.info.id)" : "❌ \(item.info.id)")
+                if !passed { print(buffer.joined(separator: "\n")) }
+            }
+            if !passed { failedCount += 1 }
+        }
+        return failedCount
+    }
 
     private func runSequential(_ items: [ScenarioRunItem], project: TestProject,
                                port: UInt16, reportDir: String,
@@ -942,7 +1041,7 @@ struct RunScenarios: AsyncParsableCommand {
             // quiet: 全行をバッファし、成功なら結果1行のみ・失敗ならバッファ全体(失敗詳細)を出す
             var buffer: [String] = []
             let outcome = await ScenarioRunner.runOne(
-                project: project, item: item, worker: worker, fm: FMConfig(heal: heal),
+                project: project, item: item, worker: worker, fm: FMConfig(heal: heal && !noHeal),
                 reportDir: URL(fileURLWithPath: reportDir), recorder: recorder) { event in
                 let lines = RunLogFormatter.lines(for: event)
                 if quiet {
@@ -999,7 +1098,7 @@ struct RunScenarios: AsyncParsableCommand {
         }
 
         let orchestrator = RunOrchestrator(project: project, workers: workers,
-                                           fm: FMConfig(heal: heal),
+                                           fm: FMConfig(heal: heal && !noHeal),
                                            reportDir: URL(fileURLWithPath: reportDir),
                                            recorder: recorder)
         async let summary = orchestrator.run(items: items, defaultPlatform: defaultPlatform)

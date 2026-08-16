@@ -8,7 +8,6 @@ import ArgumentParser
 import Foundation
 import FTAgent
 import FTCore
-import FTDSL
 
 struct ApiGenScenarioCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
@@ -16,7 +15,7 @@ struct ApiGenScenarioCommand: AsyncParsableCommand {
         abstract: "Generate a Swift scenario from recorded interactions (the temporary JSON given to --steps)"
             + " and stream NDJSON (genStarted -> scenarioGenerated | error) on stdout (diagnostics on stderr only)")
 
-    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
+    @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
 
     @Option(name: .customLong("steps"), help: "Path of the temporary JSON file the recorded interactions were written to")
@@ -94,7 +93,7 @@ struct ApiGenScenarioCommand: AsyncParsableCommand {
 
 /// --steps の一時 JSON の形。TS 側(録画)が書き出す契約。steps は FlowStep の Codable キーに
 /// そのまま一致させる(action/assert/locator/fallbacks/text/direction/expected/timeout/
-/// maxSwipes/optional/note。Sources/FTCore/Flow.swift 参照)
+/// maxSwipes/note。Sources/FTCore/Flow.swift 参照)
 private struct RecordedSteps: Decodable {
     let app: String
     let platform: String

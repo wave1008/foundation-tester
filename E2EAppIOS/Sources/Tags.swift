@@ -1,8 +1,8 @@
 import Foundation
 
 // accessibilityIdentifier の唯一の正。値は docs/ui-contract.md の表と byte 一致させる。
-// シナリオ側(Projects/E2E-iOS/Scenarios)が "#<値>" で参照するため、リネームは契約変更。
-// Compose 版(E2EApp/composeApp/.../Tags.kt)と id/ラベルを共通にしてあり、
+// シナリオ側(TestProjects/E2E-iOS/scenarios)が "#<値>" で参照するため、リネームは契約変更。
+// Compose 版(E2EAppCMP/composeApp/.../Tags.kt)と id/ラベルを共通にしてあり、
 // 同じシナリオを両 SUT に当てられる(型セレクタだけが SUT ごとに異なる)。
 enum Tags {
     // シェル
@@ -17,6 +17,7 @@ enum Tags {
     static let navSelector = "nav_selector"
     static let navInput = "nav_input"
     static let navGesture = "nav_gesture"
+    static let navMap = "nav_map"
     static let navScroll = "nav_scroll"
     static let navAsync = "nav_async"
     static let navDialog = "nav_dialog"
@@ -64,6 +65,14 @@ enum Tags {
     static let txtLastGesture = "txt_last_gesture"
     static let btnGestureReset = "btn_gesture_reset"
 
+    // マップ(ピンチ・ダブルタップ・斜めドラッグ)
+    static let padMap = "pad_map"
+    static let txtZoomDir = "txt_zoom_dir"
+    static let txtZoom = "txt_zoom"
+    static let txtPan = "txt_pan"
+    static let txtDoubleCount = "txt_double_count"
+    static let btnMapReset = "btn_map_reset"
+
     // スクロール
     static let txtRowSelected = "txt_row_selected"
     static let btnScrollTop = "btn_scroll_top"
@@ -73,6 +82,13 @@ enum Tags {
 
     /// 行 tag。n は 1...rowCount。ゼロ詰め("row_01")= ラベルの部分一致衝突回避と対。
     static func row(_ n: Int) -> String { String(format: "row_%02d", n) }
+
+    /// 横スクロールの検証材料(scrollFrame。縦と横が同居していないと「指定した方だけ動く」を確かめられない)
+    static let txtTagSelected = "txt_tag_selected"
+    static let carouselTags = "carousel_tags"
+    static func tag(_ n: Int) -> String { String(format: "tag_%02d", n) }
+    static func tagLabel(_ n: Int) -> String { String(format: "タグ %02d", n) }
+    static let tagCount = 20
 
     /// 行ラベル("行 01")。
     static func rowLabel(_ n: Int) -> String { String(format: "行 %02d", n) }
@@ -117,6 +133,7 @@ enum Tags {
     static let btnSessionInc = "btn_session_inc"
     static let btnResetPersisted = "btn_reset_persisted"
     static let txtPlatform = "txt_platform"
+    static let txtLastDeeplink = "txt_last_deeplink"
 
     // 自己修復。ラベルは不変で id だけ入れ替わる(schema トグル)のが検証の核。
     static let swHealSchema = "sw_heal_schema"

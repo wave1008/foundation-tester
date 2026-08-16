@@ -21,6 +21,9 @@ private final class FakeAppDriver: AppDriver {
         StatusResponse(ready: true, device: "fake", osVersion: "-", sessionBundleID: nil)
     }
     func install(packagePath: String) async throws {}
+    func uninstall(bundleID: String) async throws {}
+    func isAppForeground(bundleID: String) async throws -> Bool { false }
+    func foregroundAppID() async throws -> String? { nil }
     func launch(bundleID: String) async throws {}
     func activate(bundleID: String) async throws { activateCalls.append(bundleID) }
     func openAppSwitcher() async throws {}
@@ -132,6 +135,23 @@ final class SessionRecoveryDriverTests: XCTestCase {
 
         XCTAssertTrue(fake.activateCalls.isEmpty, "launch 前は回復対象の bundleID が無い")
         XCTAssertEqual(fake.snapshotCallCount, 1, "再試行しない")
+    }
+
+    /// **launch 前の 409 は「何をすべきか」を返す**。ブリッジ側の 409 本文は
+    /// 「ランナーが再起動したかもしれない」だが、実際には**まだ起動していない**ときにも出る
+    /// (実機の MCP セッションで最初に ft_snapshot を撃つと必ずこれ)。原因の取り違えを防ぐ
+    func testPreLaunch409SaysToLaunchFirst() async throws {
+        let fake = FakeAppDriver()
+        fake.snapshotShouldFail = [true]
+        let driver = SessionRecoveryDriver(base: fake)
+
+        do {
+            _ = try await driver.snapshot()
+            XCTFail("409 を再スローするはず")
+        } catch let DriverError.badResponse(_, body) {
+            XCTAssertTrue(body.contains("has not been launched"), body)
+            XCTAssertTrue(body.contains("ft_launch"), "次の一手を出すこと: \(body)")
+        }
     }
 
     /// pressEnter は ref を使わない(フォーカス中要素へ作用する)ので tap(x:y:) と同じ扱い:

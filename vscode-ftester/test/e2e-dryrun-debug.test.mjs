@@ -8,7 +8,7 @@
 //   FTESTER_E2E=1 node --test out-test/e2e-dryrun-debug.test.mjs
 // (out-test/ へのバンドルは npm test と同じ `node esbuild.mjs --tests` で行われる)
 //
-// シナリオは Projects/SampleApp/Scenarios/ログインテスト.swift の S0010。19行目
+// シナリオは TestProjects/SampleApp/scenarios/ログインテスト.swift の S0010。19行目
 // (tap "#login_btn||ログイン", index=4)にブレークポイントを張り、--dry-run + stopOnEntry で
 // initialize → setBreakpoints → configurationDone → stopped(entry, index1/line15)
 // → next → stopped(step, index2/line17) → continue → stopped(breakpoint, line19)
@@ -28,9 +28,9 @@ const REPO_ROOT = path.resolve(process.cwd(), "..");
 const BINARY_PATH = path.join(REPO_ROOT, ".build", "debug", "ftester");
 const SCENARIO_FILE = path.join(
   REPO_ROOT,
-  "Projects",
+  "TestProjects",
   "SampleApp",
-  "Scenarios",
+  "scenarios",
   "ログインテスト.swift",
 );
 

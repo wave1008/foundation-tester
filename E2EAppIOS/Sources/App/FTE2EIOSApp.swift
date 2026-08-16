@@ -1,7 +1,7 @@
 import SwiftUI
 
 enum Screen {
-    case selector, input, gesture, scroll, async, dialog, lifecycle, heal, diagnostics, noid, webview
+    case selector, input, gesture, map, scroll, async, dialog, lifecycle, heal, diagnostics, noid, webview
 }
 
 private enum Tab { case home, controls, about }
@@ -33,6 +33,7 @@ struct AppShell: View {
             case .selector: return "セレクタ"
             case .input: return "テキスト入力"
             case .gesture: return "ジェスチャ"
+            case .map: return "マップ"
             case .scroll: return "スクロール"
             case .async: return "非同期表示"
             case .dialog: return "ダイアログ"
@@ -66,6 +67,25 @@ struct AppShell: View {
                 TaggedButton(tag: Tags.tabAbout, label: "情報", fillWidth: true) { switchTab(.about) }
             }
         }
+        .onOpenURL { handleDeepLink($0) }
+    }
+
+    // launchApp(url:) の再起動直後・実行中の openURL のどちらも SwiftUI がここへ集約して配送する。
+    // 起動時リセット(@State の初期値 = ホームのルート)の後に適用される順序になる(契約 §ディープリンク)。
+    // 未知の URL は #txt_last_deeplink の記録だけ行い、ナビは変えない(既存のタブ/画面状態を壊さない)。
+    private func handleDeepLink(_ url: URL) {
+        DeepLinkState.shared.lastURL = url.absoluteString
+        guard url.scheme == "fte2eios", url.host == "screen" else { return }
+        switch url.path {
+        case "/selector":
+            tab = .home
+            homeChild = .selector
+        case "/lifecycle":
+            tab = .home
+            homeChild = .lifecycle
+        default:
+            break
+        }
     }
 
     @ViewBuilder private var content: some View {
@@ -77,7 +97,8 @@ struct AppShell: View {
             case nil: HomeScreen { homeChild = $0 }
             case .selector: SelectorScreen()
             case .input: InputScreen()
-            case .gesture: GestureScreen()
+            case .gesture: GestureScreen(onOpenMap: { homeChild = .map })
+            case .map: MapScreen()
             case .scroll: ScrollScreen()
             case .async: AsyncScreen()
             case .dialog: DialogScreen()

@@ -74,7 +74,7 @@ test("step failed: TestMessage(text+location) が scenarioFinished(passed:false)
       description: 'exist "#missing"',
       status: "failed",
       detail: "要素が見つかりません",
-      file: "Projects/P/Scenarios/S.swift",
+      file: "TestProjects/P/scenarios/S.swift",
       line: 42,
     },
     { kind: "scenarioFinished", scenario: "S.T1", passed: false, reportPath: "/tmp/r.md" },
@@ -87,7 +87,7 @@ test("step failed: TestMessage(text+location) が scenarioFinished(passed:false)
   assert.equal(failed.messages.length, 1);
   assert.equal(failed.messages[0].text, 'exist "#missing"\n要素が見つかりません');
   assert.deepEqual(failed.messages[0].location, {
-    file: "Projects/P/Scenarios/S.swift",
+    file: "TestProjects/P/scenarios/S.swift",
     line: 42,
   });
 });
@@ -321,7 +321,7 @@ test("fixSuggestion は出力アクションになる(location 付き)", () => {
       scenario: "S.T1",
       description: 'tap "#old_id"',
       detail: "ロケータが変化した可能性があります",
-      file: "Projects/P/Scenarios/S.swift",
+      file: "TestProjects/P/scenarios/S.swift",
       line: 20,
       oldSelector: "#old_id",
       newSelector: "#new_id",
@@ -334,7 +334,7 @@ test("fixSuggestion は出力アクションになる(location 付き)", () => {
 
   assert.ok(suggestion);
   assert.equal(suggestion.scenario, "S.T1");
-  assert.deepEqual(suggestion.location, { file: "Projects/P/Scenarios/S.swift", line: 20 });
+  assert.deepEqual(suggestion.location, { file: "TestProjects/P/scenarios/S.swift", line: 20 });
   assert.ok(actions.some((a) => a.type === "output" && a.text.includes("#old_id → #new_id")));
 });
 

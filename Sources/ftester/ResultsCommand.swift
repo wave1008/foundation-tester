@@ -24,7 +24,7 @@ struct ResultsCommand: AsyncParsableCommand {
 
 /// results サブコマンド共通オプション
 struct ResultsQueryOptions: ParsableArguments {
-    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
+    @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
 
     @Option(help: "Start of the period: a relative value such as 30d/12h, or YYYY-MM-DD (default 90d)")
@@ -42,6 +42,13 @@ struct ResultsQueryOptions: ParsableArguments {
         }
         return (testProject, resultsDir, sinceDate)
     }
+}
+
+/// 今もソースに在る @TestClass のクラス名(`insights` が「消えたシナリオ」を確実に判定するために使う)。
+/// **ソース走査だけで済ませる**(ScenarioHost.list はビルドが要り、読み取りだけの results を重くする)。
+/// 走査できなければ空集合 = 供給なし扱い(RunResultsQuery.insights の doc 参照)
+func definedScenarioClasses(of project: TestProject) -> Set<String> {
+    Set(ScenarioFolders.classFileMap(scenariosDir: project.scenariosDir).keys)
 }
 
 /// --json 指定時の共通出力(sortedKeys・スラッシュ非エスケープの 1 行 JSON)
@@ -324,10 +331,11 @@ struct ResultsInsightsCommand: AsyncParsableCommand {
     @OptionGroup var options: ResultsQueryOptions
 
     func run() throws {
-        let (_, resultsDir, sinceDate) = try options.resolve()
+        let (project, resultsDir, sinceDate) = try options.resolve()
         let records = RunResultsStore.scanRecords(resultsDir: resultsDir, since: sinceDate)
         let runs = RunResultsStore.scanRuns(resultsDir: resultsDir, since: sinceDate)
-        let rows = RunResultsQuery.insights(records: records, runs: runs)
+        let rows = RunResultsQuery.insights(records: records, runs: runs,
+                                            definedClasses: definedScenarioClasses(of: project))
 
         if options.json {
             try printResultsJSON(rows)

@@ -56,16 +56,25 @@ public struct BridgeLauncher {
         }
     }
 
-    /// project.yml が .xcodeproj より新しいか(取得できなければ「古くない」= 再生成しない)
+    /// project.yml **またはランナーのソース**が .xcodeproj より新しいか
+    /// (取得できなければ「古くない」= 再生成しない)。
+    ///
+    /// **ソース側も見るのが要点**(2026-08-11 に踏んだ): project.yml はディレクトリを指すので、
+    /// ランナーへファイルを1本足しても manifest の mtime は動かない。manifest だけを見ていると
+    /// **新しいファイルがターゲットに入らないまま**ビルドが走り、`cannot find X in scope` で
+    /// 落ちる(原因が project 生成側にあると気付きにくい)
     private func isStale(manifest: URL) -> Bool {
         func modified(_ url: URL) -> Date? {
             (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
         }
-        guard let manifestDate = modified(manifest),
-              let projectDate = modified(projectPath.appendingPathComponent("project.pbxproj")) else {
+        guard let projectDate = modified(projectPath.appendingPathComponent("project.pbxproj")) else {
             return false
         }
-        return manifestDate > projectDate
+        if let manifestDate = modified(manifest), manifestDate > projectDate { return true }
+        let sourceDir = repoRoot.appendingPathComponent("Runner/FTesterRunnerUITests")
+        let contents = (try? FileManager.default.contentsOfDirectory(
+            at: sourceDir, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        return contents.contains { (modified($0) ?? .distantPast) > projectDate }
     }
 
     public func buildForTesting() throws {
@@ -183,6 +192,11 @@ public struct BridgeLauncher {
             // 実機はデバイス内ループバックがホストから見えないので全インターフェースに開く。
             // 同期相手: Runner/FTesterRunnerUITests/BridgeHTTPServer.swift の start()
             if physical { env["FT_BIND_ALL"] = "1" }
+            // ブリッジ内の所要内訳ログ(既定 off)。ホスト側の FT_HTTP_TIMING と対で使い、
+            // 「ホストの actionMs とブリッジのハンドラ計時の差」を突き合わせるためだけのもの
+            if ProcessInfo.processInfo.environment["FT_BRIDGE_TIMING"] == "1" {
+                env["FT_BRIDGE_TIMING"] = "1"
+            }
             target["EnvironmentVariables"] = env
         }
 
@@ -535,6 +549,21 @@ public struct BridgeLauncher {
 
     /// host: 実機は LAN IP か iproxy のループバック(IOSDeviceTransport が確立済みのもの)を渡す。
     /// log: 実機で「失敗ではないが進まない」条件(端末ロック等)を1回だけ知らせるための出力先
+    /// **xcodebuild のテストセッションが既に終わっている**ことをログから判定する。
+    /// 終わっていれば ready には二度とならないので、待ち続けても既定 180 秒を捨てるだけ
+    /// (2026-08-05 実測: 未インストールのアプリを launch してランナーが落ちた後、次の
+    /// provision がこの待ちで 3 分級になった)。**pid の生死では判定できない** ——
+    /// テストが失敗しても xcodebuild は後始末の間だけ生きており、`ps` にも残る。
+    /// ログは起動のたびに空で作り直される(startDetached の createFile)ので、
+    /// 見つかったマーカーは必ず今回のもの
+    public static func runnerSessionEnded(inLog text: String) -> String? {
+        for marker in ["** TEST EXECUTE FAILED **", "** BUILD INTERRUPTED **", "Testing failed:"]
+        where text.contains(marker) {
+            return marker
+        }
+        return nil
+    }
+
     public func waitUntilReady(timeout: TimeInterval = 180,
                                host: String = BridgeEndpoint.loopbackHost,
                                log: @escaping (String) -> Void = { _ in }) async throws {
@@ -565,6 +594,12 @@ public struct BridgeLauncher {
                 }
             } catch {
                 lastError = error
+            }
+            // **終わったセッションを待たない**(理由は runnerSessionEnded)
+            if let text = try? String(contentsOf: logPath, encoding: .utf8),
+               let marker = Self.runnerSessionEnded(inLog: text) {
+                throw LauncherError.timedOut("the test session already ended (\(marker))",
+                                             logPath.path)
             }
             // startDetached が logPath を毎回空で作り直す(createFile)ため、ここで見つかる
             // bindFailed は必ず今回の起動試行のもの。180 秒待たずに fail-fast する
@@ -603,22 +638,18 @@ public struct BridgeLauncher {
         return String(data: data, encoding: .utf8)?.contains("bindFailed(") ?? false
     }
 
-    /// コールド起動時のみ実行(稼働中ブリッジの再利用時はここを通らない)。設定は以後起動される
-    /// アプリに効く(実行中アプリには効かない。/session がシナリオ毎に再起動するので問題ない)。失敗は非致命。
+    /// コールド起動時のみ実行(稼働中ブリッジの再利用時はここを通らない。run 開始ごとの同期は
+    /// ProfileWorkerFactory.syncAnimationSettings)。設定は以後起動されるアプリに効く
+    /// (実行中アプリには効かない。/session がシナリオ毎に再起動するので問題ない)。失敗は非致命。
     private func enableReduceMotion() {
         // simctl spawn は実機に無い。実機のアクセシビリティ設定はホストから変えられないので
         // 何もしない(端末側で「視差効果を減らす」を手動 ON にすると整定が速くなる)
         if physical { return }
-        let result = try? Shell.run([
-            "xcrun", "simctl", "spawn", device,
-            "defaults", "write", "com.apple.Accessibility", "ReduceMotionEnabled", "-bool", "true",
-        ])
-        guard result?.status == 0 else {
-            let message = "⚠️ Failed to enable Reduce Motion (\(device)). "
-                + "With animations still on, action settling waits get slower\n"
-            FileHandle.standardError.write(Data(message.utf8))
-            return
-        }
+        IOSReduceMotion.apply(
+            udid: device,
+            animationsEnabled: AnimationPolicy.animationsEnabled()) { message in
+                FileHandle.standardError.write(Data("\(message)\n".utf8))
+            }
     }
 
     func findXCTestRun() throws -> URL? {

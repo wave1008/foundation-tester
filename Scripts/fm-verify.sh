@@ -20,7 +20,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
 FTESTER="$ROOT/.build/debug/ftester"
-PROJECT="E2E"
+PROJECT="E2E-CMP"
 PROFILE="ios-fm"
 
 while [ $# -gt 0 ]; do
@@ -33,11 +33,11 @@ done
 
 [ -x "$FTESTER" ] || { echo "❌ $FTESTER がありません(swift build --product ftester)" >&2; exit 1; }
 
-SCEN_DIR="$ROOT/Projects/$PROJECT/Scenarios"
+SCEN_DIR="$ROOT/TestProjects/$PROJECT/scenarios"
 DISABLED="$SCEN_DIR/_disabled"
 # FM を要するシナリオ(_disabled にある = 既定スイートには載らない)
 FM_FILES=(90_自己修復.swift 92_screenIs.swift 93_triage.swift)
-HEAL_CACHE="$ROOT/Projects/$PROJECT/.ftester/heal-cache.json"
+HEAL_CACHE="$ROOT/TestProjects/$PROJECT/.ftester/heal-cache.json"
 
 restore() {  # 途中で落ちても必ず元へ戻す(_disabled から出したまま = 既定スイートを汚す)
   for f in "${FM_FILES[@]}"; do
@@ -70,7 +70,7 @@ echo "--- 意図的に失敗させて triage を発火させる(失敗が正常)
 restore
 trap - EXIT
 
-python3 - "$ROOT/Projects/$PROJECT" <<'PY'
+python3 - "$ROOT/TestProjects/$PROJECT" <<'PY'
 import glob, json, os, sys
 
 # 直近2 run(上の2回)の fm を kind 別に合算する

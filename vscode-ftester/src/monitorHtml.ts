@@ -215,6 +215,10 @@ function renderRunProfileSection(): string {
               <label for="run-profile-recover-cpu-fallback">${t("panels.runProfile.recoverCpuFallbackLabel")}</label>
             </div>
             <div class="modal-row profile-checkbox-row">
+              <input type="checkbox" id="run-profile-update-webview">
+              <label for="run-profile-update-webview">${t("panels.runProfile.updateWebViewLabel")}</label>
+            </div>
+            <div class="modal-row profile-checkbox-row">
               <input type="checkbox" id="run-profile-wipe-data-on-bloat">
               <label for="run-profile-wipe-data-on-bloat">${t("panels.runProfile.wipeOnBloatLabel")}</label>
             </div>
@@ -229,6 +233,18 @@ function renderRunProfileSection(): string {
           </div>
           <div class="run-profile-section-group">
             <div class="run-profile-section-title">${t("panels.runProfile.miscSectionTitle")}</div>
+            <div class="modal-row profile-checkbox-row">
+              <input type="checkbox" id="run-profile-home-on-start">
+              <label for="run-profile-home-on-start">${t("panels.runProfile.homeOnStartLabel")}</label>
+            </div>
+            <div class="modal-row profile-checkbox-row">
+              <input type="checkbox" id="run-profile-enable-animations">
+              <label for="run-profile-enable-animations">${t("panels.runProfile.enableAnimationsLabel")}</label>
+            </div>
+            <div class="modal-row profile-checkbox-row">
+              <input type="checkbox" id="run-profile-container-inference">
+              <label for="run-profile-container-inference">${t("panels.runProfile.containerInferenceLabel")}</label>
+            </div>
             <div class="modal-row">
               <label for="run-profile-default-timeout">defaultTimeout</label>
               <input type="text" id="run-profile-default-timeout">

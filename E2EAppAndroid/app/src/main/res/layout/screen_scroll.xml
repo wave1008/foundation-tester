@@ -23,4 +23,19 @@
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1" />
+
+    <!-- 横スクロールの検証材料(scrollFrame)。**リストの下に置く** ——
+         画面中央に置くと領域を指定しない従来スクロールがカルーセルに吸われる。
+         1画面に 3〜4 個しか入らない幅にする -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/carousel_tags"
+        android:layout_width="match_parent"
+        android:layout_height="60dp" />
+
+    <TextView
+        android:id="@+id/txt_tag_selected"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="tag=-" />
+
 </LinearLayout>

@@ -1,0 +1,27 @@
+{
+  "machine": "M2Ultra",
+  "app": "sut-ec-mobile",
+  "devices": [
+    {
+      "name": "iPhone 17 Pro(iOS 27.0)-01"
+    },
+    {
+      "name": "iPhone 17 Pro(iOS 27.0)-02"
+    },
+    {
+      "name": "Pixel 9(Android 15)-01"
+    },
+    {
+      "name": "Pixel 9(Android 15)-02"
+    }
+  ],
+  "fm": true,
+  "heal": true,
+  "falsePositiveCheck": false,
+  "screenIs": true,
+  "iosInappEngine": true,
+  "wipeDataOnBloat": true,
+  "reportDir": "reports",
+  "containerInference": true,
+  "recoverCpuFallbackToGpu": true
+}

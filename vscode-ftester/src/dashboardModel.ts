@@ -94,6 +94,8 @@ export interface StepCountsRecord {
   readonly skipped: number;
   readonly healed: number;
   readonly passedViaFallback: number;
+  /** 後発フィールド(2026-08-03)。旧レコードには無いので optional。 */
+  readonly inconclusive?: number;
 }
 
 /** --scenario 指定時の trend にのみ現れる(ダッシュボードの表示優先度には含まれない)。 */
@@ -133,7 +135,10 @@ export type InsightKind =
   | "selectorDecay"
   | "deviceBias"
   | "durationRegression"
-  | "unfinishedRuns";
+  | "unfinishedRuns"
+  | "unsettledSteps"
+  | "retiredScenarios"
+  | "healReliance";
 
 export type InsightSeverity = "critical" | "warn" | "info";
 
@@ -324,7 +329,10 @@ function isInsightKind(value: unknown): value is InsightKind {
     value === "selectorDecay" ||
     value === "deviceBias" ||
     value === "durationRegression" ||
-    value === "unfinishedRuns"
+    value === "unfinishedRuns" ||
+    value === "unsettledSteps" ||
+    value === "retiredScenarios" ||
+    value === "healReliance"
   );
 }
 

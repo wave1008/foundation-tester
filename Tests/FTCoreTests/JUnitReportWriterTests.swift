@@ -12,12 +12,13 @@ final class JUnitReportWriterTests: XCTestCase {
                         errorLogs: [String]? = nil,
                         timedOut: Bool? = nil,
                         reportPath: String? = nil,
-                        worker: String? = nil) -> ScenarioRunRecord {
+                        worker: String? = nil,
+                        timeline: [TimelineStepRecord]? = nil) -> ScenarioRunRecord {
         ScenarioRunRecord(runID: "r1", scenarioID: id, platform: "ios", worker: worker,
                           passed: passed, timedOut: timedOut,
                           startedAt: "2026-07-30T00:00:00Z", durationMs: durationMs,
                           steps: steps, reportPath: reportPath,
-                          failedSteps: failedSteps, errorLogs: errorLogs)
+                          failedSteps: failedSteps, errorLogs: errorLogs, timeline: timeline)
     }
 
     func testAggregatesCountsAndGroupsByClass() {
@@ -46,13 +47,13 @@ final class JUnitReportWriterTests: XCTestCase {
                                                  detail: "element not found: id=x",
                                                  file: "A.swift", line: 12)],
                    errorLogs: ["❌ bridge unreachable"],
-                   reportPath: "Projects/E2E/reports/a.md",
+                   reportPath: "TestProjects/E2E-CMP/reports/a.md",
                    worker: "ios:iPhone 17")])
         XCTAssertTrue(xml.contains(
             #"<failure message="tap &quot;x&quot; — element not found: id=x">"#), xml)
         XCTAssertTrue(xml.contains("at A.swift:12"), xml)
         XCTAssertTrue(xml.contains("error logs:"), xml)
-        XCTAssertTrue(xml.contains("report: Projects/E2E/reports/a.md"), xml)
+        XCTAssertTrue(xml.contains("report: TestProjects/E2E-CMP/reports/a.md"), xml)
         XCTAssertTrue(xml.contains("worker: ios:iPhone 17"), xml)
     }
 
@@ -76,6 +77,30 @@ final class JUnitReportWriterTests: XCTestCase {
                    failedSteps: [FailedStepRecord(index: 3, description: "tap \"x\"")]),
         ])
         XCTAssertTrue(xml.contains(#"failures="1""#), xml)
+        XCTAssertTrue(xml.contains(#"skipped="0""#), xml)
+    }
+
+    /// 全ステップが inconclusive(passed のまま)= JUnit に inconclusive の概念が無いため
+    /// isSkipped と対称に skipped として出す(record.passed は true のまま)
+    func testAllInconclusiveScenarioBecomesSkippedEvenThoughPassed() {
+        let xml = JUnitReportWriter.xml(project: "E2E", records: [
+            record(id: "A.v", passed: true, durationMs: 100,
+                   steps: StepCountsRecord(total: 1, inconclusive: 1),
+                   timeline: [TimelineStepRecord(index: 1, description: "verify \"何か\"",
+                                                 status: "inconclusive")]),
+        ])
+        XCTAssertTrue(xml.contains(#"skipped="1""#), xml)
+        XCTAssertTrue(xml.contains(#"<skipped message="verify &quot;何か&quot;"/>"#), xml)
+        XCTAssertFalse(xml.contains("<failure"), xml)
+    }
+
+    /// inconclusive が一部だけ(他のステップが passed)なら通常どおり passed のまま
+    func testPartiallyInconclusiveScenarioStaysPlainPassed() {
+        let xml = JUnitReportWriter.xml(project: "E2E", records: [
+            record(id: "A.w", passed: true, durationMs: 100,
+                   steps: StepCountsRecord(total: 2, passed: 1, inconclusive: 1)),
+        ])
+        XCTAssertTrue(xml.contains(#"<testcase classname="A" name="w" time="0.100"/>"#), xml)
         XCTAssertTrue(xml.contains(#"skipped="0""#), xml)
     }
 

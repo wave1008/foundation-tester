@@ -1,0 +1,8 @@
+{
+  "id": "cmp-webview-aria",
+  "archetype": "webview",
+  "requires": "iOS シミュレータ1台にブリッジ + com.ftester.e2e(E2EAppCMP)がインストール済み",
+  "maxTurns": 60,
+  "expect": "wv_result=aria",
+  "prompt": "ftester の MCP ツール(ft_*)だけを使って、iOS シミュレータ上のアプリ com.ftester.e2e を操作してください。あなたはこのアプリを初めて触ります。\n\nゴール: 「WebView」画面を開き、そこにある「WebView アリアラベル」というボタンを押して、画面上の wv_result= で始まるテキストの値を読み取ること。この画面の中身は WebView なので、他の画面のような id は付いていません。\n\n手順や使うツールは自分で決めてください。デバイスは ft_list_devices で選びます。\n\n最後に必ず1行だけ次の形式で出力してください: RESULT: <読み取った wv_result=… の文字列>\n読み取れなかった場合は RESULT: unknown と出力してください。"
+}

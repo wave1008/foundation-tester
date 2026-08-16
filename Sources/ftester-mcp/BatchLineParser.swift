@@ -1,0 +1,491 @@
+// ft_batch のステップ文法(最小記述の1形だけ)を解釈する限定パーサ。
+//
+//   line   := name arg*                               (括弧・カンマは使わない: type '#f' 'abc')
+//   arg    := [ label ":" ] value
+//   value  := string | number | bool | "." ident      (string は '…' と "…" が等価)
+//
+// 手の区切りは ";" と改行(splitSteps。引用符の中では区切らない)。
+//
+// **構文は1つだけ**(2026-08-10 ユーザー決定。経緯は docs/design.md §ft_batch)。正形で書かれた
+// 行(`tap("#id")`・引数カンマ)と配列 steps は**書き換え方を添えて拒否**する —— 黙って受けると
+// 表記が再び分裂する。引用符は `'…'` と `"…"` を等価に受ける(JSON の `\"` 経由は自然な書き方。
+// 推奨は `'…'`)。シナリオへの変換は ft_draft_scenario(FlowStep から正形を再生成)が担う。
+//
+// Swift 全体は解釈しない —— 入れ子呼び出し・配列・演算子・クロージャは構文的に受け付けず、
+// 明確なエラーにする(価は BatchLineParserTests)。
+//
+// **BatchLineParser / BatchArgSpecTable / BatchStepResolver は純粋関数**: デバイスにも MCPServer の
+// 状態にも依存しない(Foundation のみ import)。テストしやすくするための設計。シグネチャ文字列を
+// DSLCommandIndex から引く責務は呼び出し側(MCPServer.planBatchStep)に残す —— BatchStepResolver.resolve
+// は signature を String で受け取るだけで、DSLCommandIndex 自体には触れない。
+
+import Foundation
+
+// MARK: - パース結果の型
+
+enum BatchLineValue: Equatable {
+    case string(String)
+    case number(Double)
+    case bool(Bool)
+    /// `.down` のようなドット付き識別子。値としては裸の文字列("down")として扱う
+    case dotIdent(String)
+}
+
+struct BatchLineArg: Equatable {
+    let label: String?
+    let value: BatchLineValue
+}
+
+struct BatchParsedLine: Equatable {
+    let name: String
+    let args: [BatchLineArg]
+}
+
+/// 構文レベルの拒否。`commandName` は名前だけ読めた時点(その後で構文が壊れていても)入る ——
+/// このファイルは FTDSL に触れないので、シグネチャを添えたメッセージは呼び出し側が組み立てる
+struct BatchLineSyntaxError: Error, Equatable {
+    let rawLine: String
+    let commandName: String?
+    let reason: String
+
+    /// シグネチャ・`ft_dsl_commands` への案内を含まない土台部分。呼び出し側
+    /// (`MCPServer.planBatchStep`)が `commandName` を使って肉付けする
+    var baseMessage: String {
+        "could not parse \"\(rawLine)\" — \(reason). Each step is one DSL call, e.g. tap '#id'."
+    }
+}
+
+// MARK: - 行パーサ
+
+enum BatchLineParser {
+
+    /// steps の文字列を手に分割する: `;` と改行が区切り。**引用符(`'` / `"`)の中では区切らない**
+    /// (type の text に `;` や改行が入り得る)。閉じ忘れの引用符は残り全部を1手として返し、
+    /// エラーは `parse` の unterminated string に言わせる。空要素の除去は呼び出し側
+    /// (`MCPServer.flattenBatchLines`)の役目
+    static func splitSteps(_ raw: String) -> [String] {
+        var parts: [String] = []
+        var current = ""
+        var quote: Character?
+        var escaped = false
+        for ch in raw {
+            if let q = quote {
+                current.append(ch)
+                if escaped { escaped = false } else if ch == "\\" { escaped = true }
+                else if ch == q { quote = nil }
+                continue
+            }
+            if ch == "'" || ch == "\"" { quote = ch; current.append(ch); continue }
+            if ch == ";" || ch == "\n" { parts.append(current); current = ""; continue }
+            current.append(ch)
+        }
+        parts.append(current)
+        return parts
+    }
+
+    /// 前後の空白を落とす。`;` の扱いは `splitSteps` だけが持つ(区切り規則の持ち主を
+    /// 2箇所にしない —— splitSteps が全ての最上位 `;` を消すので、ここに届く行には残らない)
+    static func normalize(_ rawLine: String) -> String {
+        rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    static func parse(_ rawLine: String) throws -> BatchParsedLine {
+        let line = normalize(rawLine)
+        let chars = Array(line)
+        var i = 0
+
+        func fail(_ reason: String, name: String? = nil) -> BatchLineSyntaxError {
+            BatchLineSyntaxError(rawLine: rawLine, commandName: name, reason: reason)
+        }
+        func peek() -> Character? { i < chars.count ? chars[i] : nil }
+        func skipSpaces() { while let c = peek(), c == " " || c == "\t" { i += 1 } }
+
+        skipSpaces()
+        let nameStart = i
+        while let c = peek(), c.isLetter || c.isNumber || c == "_" { i += 1 }
+        guard i > nameStart else { throw fail("expected a command name") }
+        let name = String(chars[nameStart..<i])
+        skipSpaces()
+
+        // 廃止した表記は黙って受けず、書き換え方を添えて拒む(表記の再分裂を防ぐ)
+        if peek() == "(" {
+            throw fail("parentheses are not part of the batch syntax — write arguments after the"
+                + " name, single-quoted and space-separated (\(name) '#id' …), or just the bare"
+                + " name if it takes none", name: name)
+        }
+        var args: [BatchLineArg] = []
+        while peek() != nil {
+            if peek() == "," {
+                throw fail("separate arguments with spaces, not commas: \(name) '#id' 'text'",
+                           name: name)
+            }
+            let arg = try parseArg(chars, &i, rawLine: rawLine, name: name)
+            args.append(arg)
+            // **区切りは空白だけ**を実際に強制する(`'#a''#b'` を黙って2引数に読むと、
+            // 打ち落とした空白や貼り残しの `)` が沈黙した別解釈になる)。カンマは次周の
+            // 頭で専用の文言に落とす
+            if let c = peek(), c != " ", c != "\t", c != "," {
+                if c == "(" || c == ")" {
+                    throw fail("stray \"\(c)\" — parentheses are not part of the batch syntax,"
+                        + " remove it", name: name)
+                }
+                throw fail("expected a space between arguments", name: name)
+            }
+            skipSpaces()
+        }
+        return BatchParsedLine(name: name, args: args)
+    }
+
+    private static func parseArg(_ chars: [Character], _ i: inout Int, rawLine: String,
+                                 name: String) throws -> BatchLineArg {
+        func peek() -> Character? { i < chars.count ? chars[i] : nil }
+        func skipSpaces() { while let c = peek(), c == " " || c == "\t" { i += 1 } }
+        func fail(_ reason: String) -> BatchLineSyntaxError {
+            BatchLineSyntaxError(rawLine: rawLine, commandName: name, reason: reason)
+        }
+
+        skipSpaces()
+        // ラベルは「識別子の直後に ':'」の形だけ受ける。true/false は識別子と衝突するので、
+        // ':' が続かなければブール値として扱う
+        if let c = peek(), c.isLetter || c == "_" {
+            let wordStart = i
+            var j = i
+            while j < chars.count, chars[j].isLetter || chars[j].isNumber || chars[j] == "_" {
+                j += 1
+            }
+            let word = String(chars[wordStart..<j])
+            var k = j
+            while k < chars.count, chars[k] == " " || chars[k] == "\t" { k += 1 }
+            if k < chars.count, chars[k] == ":" {
+                i = k + 1
+                skipSpaces()
+                let value = try parseValue(chars, &i, rawLine: rawLine, name: name)
+                return BatchLineArg(label: word, value: value)
+            }
+            if word == "true" { i = j; return BatchLineArg(label: nil, value: .bool(true)) }
+            if word == "false" { i = j; return BatchLineArg(label: nil, value: .bool(false)) }
+            throw fail(Self.notAValueReason)
+        }
+        let value = try parseValue(chars, &i, rawLine: rawLine, name: name)
+        return BatchLineArg(label: nil, value: value)
+    }
+
+    private static let notAValueReason = "arguments must be a quoted string, a number, "
+        + "true/false, or .identifier — nested calls, arrays, and operators are not supported"
+
+    private static func parseValue(_ chars: [Character], _ i: inout Int, rawLine: String,
+                                   name: String) throws -> BatchLineValue {
+        func peek() -> Character? { i < chars.count ? chars[i] : nil }
+        func fail(_ reason: String) -> BatchLineSyntaxError {
+            BatchLineSyntaxError(rawLine: rawLine, commandName: name, reason: reason)
+        }
+        guard let c = peek() else { throw fail("expected a value") }
+
+        // 文字列は '…' と "…" が等価(推奨は JSON エスケープの要らない '…')
+        if c == "'" || c == "\"" {
+            let quote = c
+            i += 1
+            var s = ""
+            while true {
+                guard i < chars.count else { throw fail("unterminated string") }
+                let ch = chars[i]
+                if ch == quote { i += 1; break }
+                if ch == "\\" {
+                    i += 1
+                    guard i < chars.count else { throw fail("unterminated string") }
+                    s.append(chars[i])  // \' \" \\ を解く。それ以外はバックスラッシュを落として通す
+                    i += 1
+                    continue
+                }
+                s.append(ch)
+                i += 1
+            }
+            return .string(s)
+        }
+        if c == "." {
+            i += 1
+            let start = i
+            while let c2 = peek(), c2.isLetter || c2.isNumber || c2 == "_" { i += 1 }
+            guard i > start else { throw fail("expected an identifier after \".\"") }
+            return .dotIdent(String(chars[start..<i]))
+        }
+        if c == "-" || c.isNumber {
+            let start = i
+            if c == "-" { i += 1 }
+            var sawDigit = false
+            while let c2 = peek(), c2.isNumber { i += 1; sawDigit = true }
+            if peek() == "." {
+                i += 1
+                while let c2 = peek(), c2.isNumber { i += 1; sawDigit = true }
+            }
+            if let c2 = peek(), c2 == "e" || c2 == "E" {
+                i += 1
+                if let sign = peek(), sign == "+" || sign == "-" { i += 1 }
+                while let c2 = peek(), c2.isNumber { i += 1 }
+            }
+            let text = String(chars[start..<i])
+            guard sawDigit, let n = Double(text) else {
+                throw fail("could not parse \"\(text)\" as a number")
+            }
+            return .number(n)
+        }
+        if c.isLetter || c == "_" {
+            let start = i
+            while let c2 = peek(), c2.isLetter || c2.isNumber || c2 == "_" { i += 1 }
+            let word = String(chars[start..<i])
+            if word == "true" { return .bool(true) }
+            if word == "false" { return .bool(false) }
+        }
+        throw fail(Self.notAValueReason)
+    }
+}
+
+// MARK: - シグネチャ文字列 → 引数の形
+
+/// 1つの呼び出し形の引数名(位置引数 / ラベル引数)。順序を保つ(メッセージの表示順に使う)
+struct BatchArgForm: Equatable {
+    let positional: [String]
+    let labels: [String]
+}
+
+/// `DSLCommandIndex.signature` の文字列から引数名を導出する。**名前の一覧をハードコードしない** ——
+/// 例外は `positionalOverrides`(シグネチャが引数リストの形をしていないコマンドだけ)と
+/// `dictKeyAliases`(バッチの辞書キー語彙が DSL 自身のパラメータ名と食い違う箇所だけ)。
+/// どちらも1件ずつしか無い(coverage テストが将来の増加を検出する)
+enum BatchArgSpecTable {
+
+    /// `swipe(.up / .down / .left / .right)` と `rotateTo(.portrait / .landscape / …)` は
+    /// 1引数がまるごと enum の選択肢で、通常の識別子リストとして解釈できない
+    static let positionalOverrides: [String: [String]] = [
+        "swipe": ["direction"],
+        "rotateTo": ["orientation"],
+    ]
+
+    /// バッチの辞書キー語彙は要素ロケータを常に "selector" と呼ぶが、
+    /// `swipeElementToElement(from, to, durationSeconds:)` の DSL 自身は始点を "from" と呼ぶ。
+    /// 受け取るビルダのキー名は変えない(CLAUDE.md)ので、ここで表示名だけ吸収する
+    static let dictKeyAliases: [String: String] = ["from": "selector"]
+
+    /// シグネチャ文字列(例: `"type(selector, text) / type(text)"`)を、呼び出し形ごとの
+    /// 引数名リストへ分解する。解釈できない形(swipe 等)は override に無ければ結果から落ちる
+    /// —— coverage テストが「ビルダを持つのに1つも形が取れないコマンド」を検出する
+    static func forms(for command: String, signature: String) -> [BatchArgForm] {
+        if let positional = positionalOverrides[command] {
+            return [BatchArgForm(positional: positional, labels: [])]
+        }
+        return splitTopLevel(signature, separator: " / ").compactMap(parseForm)
+    }
+
+    private static func parseForm(_ form: String) -> BatchArgForm? {
+        let trimmed = form.trimmingCharacters(in: .whitespaces)
+        guard let open = trimmed.firstIndex(of: "(") else {
+            return BatchArgForm(positional: [], labels: [])
+        }
+        guard let close = matchingParen(trimmed, open: open) else { return nil }
+        let afterClose = trimmed[trimmed.index(after: close)...]
+            .trimmingCharacters(in: .whitespaces)
+        guard afterClose.isEmpty else { return nil }
+        let inner = trimmed[trimmed.index(after: open)..<close]
+            .trimmingCharacters(in: .whitespaces)
+        guard !inner.isEmpty else { return BatchArgForm(positional: [], labels: []) }
+
+        var positional: [String] = []
+        var labels: [String] = []
+        for rawToken in splitTopLevel(inner, separator: ",") {
+            let token = rawToken.trimmingCharacters(in: .whitespaces)
+            guard !token.isEmpty else { return nil }
+            if token.hasSuffix(":") {
+                let name = String(token.dropLast())
+                guard isIdentifier(name) else { return nil }
+                labels.append(name)
+            } else {
+                var name = token
+                if name.hasSuffix("?") { name.removeLast() }
+                guard isIdentifier(name) else { return nil }
+                positional.append(name)
+            }
+        }
+        return BatchArgForm(positional: positional, labels: labels)
+    }
+
+    /// 深さを見ながら区切る(括弧の中の区切り文字では割らない)。" / "(複数呼び出し形の区切り)と
+    /// ","(引数の区切り)の両方に使う
+    private static func splitTopLevel(_ s: String, separator: String) -> [String] {
+        var parts: [String] = []
+        var depth = 0
+        var current = ""
+        var i = s.startIndex
+        while i < s.endIndex {
+            if s[i] == "(" { depth += 1; current.append(s[i]); i = s.index(after: i); continue }
+            if s[i] == ")" { depth -= 1; current.append(s[i]); i = s.index(after: i); continue }
+            if depth == 0, s[i...].hasPrefix(separator) {
+                parts.append(current)
+                current = ""
+                i = s.index(i, offsetBy: separator.count)
+                continue
+            }
+            current.append(s[i])
+            i = s.index(after: i)
+        }
+        parts.append(current)
+        return parts
+    }
+
+    private static func matchingParen(_ s: String, open: String.Index) -> String.Index? {
+        var depth = 0
+        var i = open
+        while i < s.endIndex {
+            if s[i] == "(" { depth += 1 } else if s[i] == ")" {
+                depth -= 1
+                if depth == 0 { return i }
+            }
+            i = s.index(after: i)
+        }
+        return nil
+    }
+
+    private static func isIdentifier(_ s: String) -> Bool {
+        guard let first = s.first, first.isLetter || first == "_" else { return false }
+        return s.dropFirst().allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" }
+    }
+}
+
+// MARK: - パース結果 → ビルダが食える [String: Any]
+
+/// `BatchParsedLine.args` を、既存の `batchStepBuilders` クロージャがそのまま読める辞書へ変換する。
+/// `declaredKeys` は「そのビルダが実際に読むキー」(`MCPServer.BatchStepBuilder.keys`。手で宣言、
+/// signature から自動導出しない — signature には無いのに読むキーもある: 例 `type` の `timeout`)。
+/// **未対応ラベルは黙って捨てず、signature に載っているかどうかでメッセージを変える**
+enum BatchStepResolver {
+    struct ResolveError: Error, LocalizedError {
+        let message: String
+        var errorDescription: String? { message }
+    }
+
+    /// `stepIndex` は0始まり(0 = その呼び出しの1手目)。**ref はステップ0でだけ**、かつ
+    /// `declaredKeys` に "selector" があるコマンドでだけ受け付ける ——
+    /// 1手目はまだどの手も画面を変えていないので、ref が撮られたスナップショットと
+    /// このステップの間に自分自身が挟まらない(2手目以降は違う: 前の手が木を変え得る)
+    static func resolve(command: String, signature: String, args: [BatchLineArg],
+                        declaredKeys: [String], stepIndex: Int = 0) throws -> [String: Any] {
+        let forms = BatchArgSpecTable.forms(for: command, signature: signature)
+        let positionalArgs = args.filter { $0.label == nil }
+        let labeledArgs = args.filter { $0.label != nil }
+        var raw: [String: Any] = [:]
+
+        if !positionalArgs.isEmpty {
+            guard let form = forms.first(where: { $0.positional.count == positionalArgs.count })
+            else {
+                throw ResolveError(message: "\(command) does not take \(positionalArgs.count)"
+                    + " positional argument(s) — signature: \(signature). See ft_dsl_commands.")
+            }
+            for (index, name) in form.positional.enumerated() {
+                let dictKey = BatchArgSpecTable.dictKeyAliases[name] ?? name
+                try assign(&raw, dictKey: dictKey, value: positionalArgs[index].value,
+                          command: command, displayName: name)
+            }
+        }
+
+        // シグネチャ中のどの呼び出し形にも載っている名前の全体(位置・ラベル問わず) ——
+        // 拒否したラベルを「対応していない」/「そもそも存在しない」に振り分けるためだけに使う
+        let universe = Set(forms.flatMap { $0.positional + $0.labels })
+        for arg in labeledArgs {
+            let label = arg.label!
+            let dictKey = BatchArgSpecTable.dictKeyAliases[label] ?? label
+            // **ref は declaredKeys に載らない**(セレクタを取るビルダも "ref" を宣言しない —
+            // それを読むのは MCPServer+Batch.swift 側の1手目だけの解決経路で、通常のビルダは
+            // 常に "selector" しか読まない)。ここでだけ特別扱いし、条件を満たさなければ
+            // 他の未知ラベルと同じ「そんな引数は無い」に合流させる
+            if label == "ref", declaredKeys.contains("selector") {
+                guard stepIndex == 0 else {
+                    throw ResolveError(message: Self.refOnlyOnFirstStepMessage(command))
+                }
+                guard raw["ref"] == nil else {
+                    throw ResolveError(message: "\(command) got \"ref:\" more than once.")
+                }
+                try assign(&raw, dictKey: "ref", value: arg.value, command: command,
+                          displayName: "ref")
+                continue
+            }
+            guard declaredKeys.contains(dictKey) else {
+                if universe.contains(label) {
+                    throw ResolveError(message: "\(command) does not support \"\(label):\" in"
+                        + " ft_batch — supported here: \(declaredKeys.joined(separator: ", "))."
+                        + " Write the full form in the scenario instead.")
+                }
+                throw ResolveError(message: "\(command) has no \"\(label):\" parameter —"
+                    + " signature: \(signature). See ft_dsl_commands.")
+            }
+            guard raw[dictKey] == nil else {
+                throw ResolveError(message: "\(command) got \"\(label):\" more than once.")
+            }
+            try assign(&raw, dictKey: dictKey, value: arg.value, command: command,
+                      displayName: label)
+        }
+        // **selector と ref を両方書いたら拒否**(順序に関係なく検出するため両ループの後で見る):
+        // どちらを使うか曖昧になる
+        if raw["selector"] != nil, raw["ref"] != nil {
+            throw ResolveError(message: "\(command) got both a selector and \"ref:\" — write one"
+                + " or the other, not both.")
+        }
+        return raw
+    }
+
+    /// 2手目以降に ref が来たときの拒否文言。1手目でだけ使える理由(なぜ2手目以降は信用できないか)
+    /// まで言う —— 「そんな引数は無い」で終えると、渡し方を探してもう1往復する。
+    ///
+    /// **2手目以降の ref は採用しない**(2026-08-16 ユーザー決定。再提案しない): 一意なセレクタが
+    /// 無い要素をバッチで叩く手段としては**座標タップのほうが筋が良い** —— ref はシナリオに
+    /// 書けないので「バッチで通った = そのまま書けばシナリオでも通る」の契約から外れるが、
+    /// `tap x: y:` は `ScenarioCodeGen` が 1:1 で書き出せる。逃げ道はそちらを案内する
+    private static func refOnlyOnFirstStepMessage(_ command: String) -> String {
+        "ft_batch steps take a selector, not a ref — except on the very first step, a ref is only"
+            + " valid against the snapshot it came from, and each step can change the tree, so a"
+            + " later step's ref would silently hit a different element. Write \(command) '#id'"
+            + " (or a label / .type) instead, or move this step to be first;"
+            + " ft_snapshot prints the id next to each ref."
+            + (command == "tap"
+               ? " When the element has no selector that picks it out uniquely, tap x: <n> y: <n>"
+                 + " works here and is writable as a scenario line (replace it with a selector"
+                 + " before keeping it)."
+               : "")
+    }
+
+    // このバッチ辞書語彙で使われている全キーの型。3集合はどれとも重ならない
+    // (現状 Bool 型のキーは無い —— containerInference/requireVisible/scroll は未対応のため)
+    /// ビルダが宣言するキーは必ずこの3表のどれか1つに載る(載せ忘れると、その引数を書いた行が
+    /// 「does not accept」で弾かれる。`SharedKeyTypeCoverageTests` が漏れを検出する)
+    static let stringKeys: Set<String> = ["selector", "text", "direction", "to", "scrollFrame",
+                                          "orientation"]
+    static let intKeys: Set<String> = ["maxSwipes", "repeat", "ref"]
+    static let doubleKeys: Set<String> = [
+        // x/y は座標タップ(`tap x: 120 y: 640`)。単位は snapshot の screen と同じ
+        // (iOS = pt / Android = px)なので整数で書かれることが多いが、型は Double で揃える
+        "holdSeconds", "timeout", "scale", "durationSeconds", "dxRatio", "dyRatio", "x", "y",
+    ]
+
+    private static func assign(_ raw: inout [String: Any], dictKey: String, value: BatchLineValue,
+                               command: String, displayName: String) throws {
+        switch value {
+        case .string(let s), .dotIdent(let s):
+            guard stringKeys.contains(dictKey) else {
+                throw ResolveError(message: mismatch(command, displayName, "\"\(s)\""))
+            }
+            raw[dictKey] = s
+        case .number(let n):
+            if intKeys.contains(dictKey) {
+                raw[dictKey] = Int(n)
+            } else if doubleKeys.contains(dictKey) {
+                raw[dictKey] = n
+            } else {
+                throw ResolveError(message: mismatch(command, displayName, "\(n)"))
+            }
+        case .bool(let b):
+            throw ResolveError(message: mismatch(command, displayName, "\(b)"))
+        }
+    }
+
+    private static func mismatch(_ command: String, _ displayName: String, _ got: String) -> String {
+        "\(command)'s \"\(displayName)\" does not accept \(got)."
+    }
+}

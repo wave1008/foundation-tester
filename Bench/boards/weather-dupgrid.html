@@ -1,0 +1,60 @@
+<!doctype html>
+<!--
+  ベンチ盤面: **実ブラウザ + 実 web ページの形**を offline で決定的に再現する。
+
+  なぜ要るか(2026-08-16 に測って分かったこと): 曖昧ラベル注記の最大の発生源は
+  `browser` アーキタイプ(固定コーパス14枚の平均 682B。次点の ec 646B・map 421B)なのに、
+  ベンチの盤面10個に **browser は1つも無かった**。最も近い `cmp-webview-grid` は
+  自前アプリの WebView で、しかも表の値がすべて異なるので**この注記がほとんど出ない**。
+  測れない形について「注記が効いているか」は決められない。
+
+  再現する形(外部評価で苦情の出た Yahoo 天気トップ・`ios-browser_yahoo_top` の実測):
+    ・同じ値が地点をまたいで何度も出る(降水確率・気温・天気)= 曖昧ラベルの塊
+    ・セルが**ラベルを持たないアンカー**で入れ子になっている(実測では 120 要素中 47)
+    ・結果として**書けるセレクタが無い要素が過半**(実測 64/120 = 53%)
+  **値を全部ユニークにしないこと** —— それをやると盤面の目的が消える。
+
+  実ページと違って**中身が変わらない**のがこのファイルの存在理由(手数の A/B は
+  盤面が動くと比較できない)。配信は Bench/README の「browser 盤面の立て方」参照。
+-->
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>全国の天気</title>
+<style>
+  body { font-family: -apple-system, system-ui, sans-serif; font-size: 15px; margin: 0; padding: 12px; }
+  h1 { font-size: 18px; }
+  .cells { display: flex; flex-wrap: wrap; gap: 8px; }
+  /* 44px 未満はタップ判定が不安定(webview.html と同じ理由) */
+  .cell { display: block; width: 88px; min-height: 88px; padding: 6px;
+          border: 1px solid #999; text-decoration: none; color: #111; }
+  .cell span { display: block; }
+  .name { font-weight: bold; }
+</style>
+</head>
+<body>
+<h1>全国の天気</h1>
+<p id="issued">16日 05時00分発表</p>
+<p id="tap_result">tap_result=-</p>
+<div class="cells">
+  <a class="cell" href="javascript:void(0)"><span class="name">札幌</span><a href="javascript:void(0)" onclick="setTap('sapporo-sky')"><span>曇り</span></a><a href="javascript:void(0)" onclick="setTap('sapporo-temp')"><span>28/22</span></a><a href="javascript:void(0)" onclick="setTap('sapporo-precip')"><span>10%</span></a></a>
+  <a class="cell" href="javascript:void(0)"><span class="name">仙台</span><a href="javascript:void(0)" onclick="setTap('sendai-sky')"><span>曇り</span></a><a href="javascript:void(0)" onclick="setTap('sendai-temp')"><span>27/22</span></a><a href="javascript:void(0)" onclick="setTap('sendai-precip')"><span>10%</span></a></a>
+  <a class="cell" href="javascript:void(0)"><span class="name">新潟</span><a href="javascript:void(0)" onclick="setTap('niigata-sky')"><span>曇り</span></a><a href="javascript:void(0)" onclick="setTap('niigata-temp')"><span>33/25</span></a><a href="javascript:void(0)" onclick="setTap('niigata-precip')"><span>20%</span></a></a>
+  <a class="cell" href="javascript:void(0)"><span class="name">東京</span><a href="javascript:void(0)" onclick="setTap('tokyo-sky')"><span>曇り</span></a><a href="javascript:void(0)" onclick="setTap('tokyo-temp')"><span>29/25</span></a><a href="javascript:void(0)" onclick="setTap('tokyo-precip')"><span>30%</span></a></a>
+  <a class="cell" href="javascript:void(0)"><span class="name">金沢</span><a href="javascript:void(0)" onclick="setTap('kanazawa-sky')"><span>曇り</span></a><a href="javascript:void(0)" onclick="setTap('kanazawa-temp')"><span>33/24</span></a><a href="javascript:void(0)" onclick="setTap('kanazawa-precip')"><span>30%</span></a></a>
+  <a class="cell" href="javascript:void(0)"><span class="name">名古屋</span><a href="javascript:void(0)" onclick="setTap('nagoya-sky')"><span>曇り</span></a><a href="javascript:void(0)" onclick="setTap('nagoya-temp')"><span>33/26</span></a><a href="javascript:void(0)" onclick="setTap('nagoya-precip')"><span>10%</span></a></a>
+  <a class="cell" href="javascript:void(0)"><span class="name">大阪</span><a href="javascript:void(0)" onclick="setTap('osaka-sky')"><span>曇り</span></a><a href="javascript:void(0)" onclick="setTap('osaka-temp')"><span>32/25</span></a><a href="javascript:void(0)" onclick="setTap('osaka-precip')"><span>20%</span></a></a>
+  <a class="cell" href="javascript:void(0)"><span class="name">広島</span><a href="javascript:void(0)" onclick="setTap('hiroshima-sky')"><span>曇り</span></a><a href="javascript:void(0)" onclick="setTap('hiroshima-temp')"><span>33/26</span></a><a href="javascript:void(0)" onclick="setTap('hiroshima-precip')"><span>10%</span></a></a>
+  <a class="cell" href="javascript:void(0)"><span class="name">高知</span><a href="javascript:void(0)" onclick="setTap('kochi-sky')"><span>曇り</span></a><a href="javascript:void(0)" onclick="setTap('kochi-temp')"><span>32/24</span></a><a href="javascript:void(0)" onclick="setTap('kochi-precip')"><span>40%</span></a></a>
+  <a class="cell" href="javascript:void(0)"><span class="name">福岡</span><a href="javascript:void(0)" onclick="setTap('fukuoka-sky')"><span>曇り</span></a><a href="javascript:void(0)" onclick="setTap('fukuoka-temp')"><span>33/26</span></a><a href="javascript:void(0)" onclick="setTap('fukuoka-precip')"><span>20%</span></a></a>
+  <a class="cell" href="javascript:void(0)"><span class="name">鹿児島</span><a href="javascript:void(0)" onclick="setTap('kagoshima-sky')"><span>曇り</span></a><a href="javascript:void(0)" onclick="setTap('kagoshima-temp')"><span>32/25</span></a><a href="javascript:void(0)" onclick="setTap('kagoshima-precip')"><span>20%</span></a></a>
+  <a class="cell" href="javascript:void(0)"><span class="name">那覇</span><a href="javascript:void(0)" onclick="setTap('naha-sky')"><span>晴時々曇</span></a><a href="javascript:void(0)" onclick="setTap('naha-temp')"><span>32/27</span></a><a href="javascript:void(0)" onclick="setTap('naha-precip')"><span>10%</span></a></a>
+</div>
+<script>
+  function setTap(token) {
+    document.getElementById('tap_result').textContent = 'tap_result=' + token;
+  }
+</script>
+</body>
+</html>

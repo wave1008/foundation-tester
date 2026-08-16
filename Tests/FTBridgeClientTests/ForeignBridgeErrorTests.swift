@@ -42,6 +42,12 @@ final class ForeignBridgeErrorTests: XCTestCase {
     /// 文言テストだけだと「プローブを呼ばない」退行を見逃す(実際に変異テストで素通りした)。
     func testStopReportsForeignBridgeWhenPortAnswers() throws {
         let port: UInt16 = 8191
+        // **固定ポートなので、実物のブリッジが先に居ることがある**(ブリッジのポート帯と重なる。
+        // 2026-08-11 に手動プローブのブリッジが 8191 に居て、このテストがその実物の
+        // device/version を読んで落ちた)。自前サーバは bind に失敗しても probe は成功するので、
+        // **先に誰も居ないことを確かめてから**始める(居るなら skip = 誤った失敗を出さない)
+        try XCTSkipUnless(BridgeLauncher.probeForeignBridge(port: port, timeout: 0.3) == nil,
+                          "port \(port) に別のブリッジが応答しています(このテストは固定ポートを使う)")
         let server = Process()
         server.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         server.arguments = ["python3", "-c", """
@@ -85,10 +91,43 @@ http.server.HTTPServer(("127.0.0.1", \(port)), H).serve_forever()
         }
     }
 
-    func testProbeReturnsNilForAPortWithNoListener() {
-        // 応答が無ければ nil = notRunning へ倒れる。短いタイムアウトで返ること
+    func testProbeReturnsNilForAPortWithNoListener() throws {
+        // 応答が無ければ nil = notRunning へ倒れる。短いタイムアウトで返ること。
+        // **ポート番号を決め打ちしない**(2026-08-10): 8199 固定だったため、開発中に立てた
+        // ブリッジが同じ番号を使っていると落ちた。ポートはホスト全体の共有資源で、
+        // テストの外(別セッション・手で立てたブリッジ)とも衝突する。OS に空きを1つ選ばせ、
+        // 閉じてから、その番号を「誰も居ない港」として使う
+        let port = try Self.portWithNoListener()
         let start = Date()
-        XCTAssertNil(BridgeLauncher.probeForeignBridge(port: 8199, timeout: 0.3))
+        XCTAssertNil(BridgeLauncher.probeForeignBridge(port: port, timeout: 0.3))
         XCTAssertLessThan(Date().timeIntervalSince(start), 3.0, "プローブが長引かないこと")
+    }
+
+    /// OS に空きポートを1つ選ばせて即座に閉じる。返した瞬間に誰かが掴む可能性はゼロではないが、
+    /// 固定番号(= 実際に使われている番号)よりはるかに安全
+    private static func portWithNoListener() throws -> UInt16 {
+        let listener = socket(AF_INET, SOCK_STREAM, 0)
+        guard listener >= 0 else { throw XCTSkip("socket を開けない") }
+        defer { close(listener) }
+        var addr = sockaddr_in()
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = 0            // 0 = OS が空きを選ぶ
+        addr.sin_addr.s_addr = inet_addr("127.0.0.1")
+        var bound = addr
+        let ok = withUnsafePointer(to: &bound) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                Darwin.bind(listener, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) == 0
+            }
+        }
+        guard ok else { throw XCTSkip("bind できない") }
+        var actual = sockaddr_in()
+        var length = socklen_t(MemoryLayout<sockaddr_in>.size)
+        let got = withUnsafeMutablePointer(to: &actual) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                Darwin.getsockname(listener, $0, &length) == 0
+            }
+        }
+        guard got else { throw XCTSkip("getsockname できない") }
+        return UInt16(bigEndian: actual.sin_port)
     }
 }

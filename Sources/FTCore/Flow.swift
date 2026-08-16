@@ -44,7 +44,7 @@ public struct FlowStep: Codable, Sendable {
     /// screenMatches 用の期待状態(自然言語。マルチモーダル画面検証に使う)
     public var expected: String?
     /// 秒(小数可)。検証(assert)では要素出現待ちの上限。アクションではロケータ解決の
-    /// 再試行待ち上限(nil = 既定の約0.7秒 / 0 = 再試行なし。optional ステップの空振り短縮用)
+    /// 再試行待ち上限(nil = 既定の約0.7秒 / 0 = 再試行なし。出るか不定の要素を待つ空振りの短縮用)
     public var timeout: Double?
     /// scrollTo のスクロール回数上限(省略時 8)
     public var maxSwipes: Int?
@@ -53,15 +53,22 @@ public struct FlowStep: Codable, Sendable {
     public var duration: Double?
     /// count アサーションの期待個数(DSL の countIs)。他のステップでは nil
     public var expectedCount: Int?
-    /// true のとき、ロケータが解決できなくても失敗にせずスキップする
-    /// (パスワード保存シート等、出るかどうか不定なシステムダイアログの処理用)
-    public var optional: Bool?
+    /// テキスト比較を**厳密に**行う(一切正規化しない)。DSL の `strict: true`(2026-08-09)。
+    /// 既定(nil / false)は「見た目が完全に一致していれば同じ」= 不可視文字を無視し、
+    /// 半角と全角は別物として扱う。**追加 optional のみ**なので旧レコードも decode できる
+    public var strictText: Bool?
     /// 探索時に FM が述べた意図(リプレイでは使わないがレビューの助けになる)
     public var note: String?
     /// [occlusion-guard] true のとき、この検証(exists/textEquals)がツリー一致で pass した直後に
     /// FM でスクショ視覚照合し、覆われ/切れ/不在なら偽陽性として失敗へ反転する。DSL の visible() が立てる。
     /// nil = executor 既定(StepExecutor.occlusionGuard)に従う。
     public var occlusionGuard: Bool?
+    /// **容器の推測に依存する補正**をこのステップで行うか(見切れ判定・掴み直し・救済ドラッグ・
+    /// 見えている部分を撃つ座標補正・壊れた座標の候補除外)。nil = 実行プロファイルの既定に従う。
+    /// 想定外のツリーで補正が裏目に出る画面だけ、利用者が1コマンド単位で切れるようにするためのもの
+    public var containerInference: Bool?
+    /// type のとき: 撃つ前に同じ要素を空にする(clearInput 相当)。既定(nil/false)は追記のまま
+    public var replace: Bool?
 
     /// `tap(holdSeconds:)` の既定。**0 = 通常タップ**(Shirates の `tapHoldSeconds` 準拠)。
     /// 0 より大きいときだけ長押しとしてブリッジの /press へ回す(StepExecutor)
@@ -78,13 +85,79 @@ public struct FlowStep: Codable, Sendable {
     /// shirates-core の Const.SWIPE_DURATION_SECONDS 準拠。DSL の既定引数はこの1つに揃える
     public static let defaultSwipeDurationSeconds: Double = 1.5
 
+    /// flickXxx の既定の移動時間(秒)。shirates-core の Const.FLICK_DURATION_SECONDS 準拠。
+    /// swipe と低レベル実装は同じ(等速 pointerMove 1本)で、既定値だけ短い
+    public static let defaultFlickDurationSeconds: Double = 0.25
+    /// flickXxx の repeat 間隔(秒)。shirates-core の Const.FLICK_INTERVAL_SECONDS 準拠。
+    /// repeat > 1 のとき、次のストロークの前に必ずこの秒数だけ待つ(Shirates の
+    /// swipePointToPointCore と同じ: 1回目も含め毎周の前に待つ)
+    public static let defaultFlickIntervalSeconds: Double = 0.3
+
+    /// pinchOut / pinchIn の既定拡大率。**Shirates に対応するコマンドが無い**ので準拠先は無く、
+    /// 「1回で目に見えて変わるが行き過ぎない」値として選んだ(倍率と 1/2)
+    public static let defaultPinchOutScale: Double = 2.0
+    public static let defaultPinchInScale: Double = 0.5
+    /// pinch の既定所要時間(秒)。Android はストローク時間、iOS は velocity(scale/秒)の分母になる
+    public static let defaultPinchDurationSeconds: Double = 0.5
+
+    /// waitForDisplay/waitForClose の既定待ち秒数(スクロールしない出現/消滅待ち)。
+    /// Shirates の WAIT_SECONDS_ON_ISSCREEN 準拠
+    public static let defaultIsScreenWaitSeconds: Double = 15.0
+
+    /// スクロール対象の領域(Shirates の `scrollFrame`)。**nil = 従来の全画面固定**。
+    /// 非 nil のときだけホストが座標を計算してブリッジへ渡す(`ScrollGeometry`)。
+    /// **解決できなければ全画面スワイプへ退化させず失敗させる**(`scrollFrameUnresolved` の
+    /// fail-fast。2026-08-08。黙って退化するとカード上のボタンを発火させる実害があった)
+    public var scrollFrame: FlowLocator?
+    /// スクロール対象の領域を矩形で直接指定する(MCP 専用。DSL は使わない)。非 nil なら
+    /// `scrollFrame`(セレクタ)より優先し、**常に解決済み扱い**(`scrollFrameUnresolved` の
+    /// fail-fast は掛からない)。**なぜ rect か**: id が重複・欠落した容器は一意なセレクタで
+    /// 指せないため、`MCPServer` が撮り直した木からその場で ref → frame を引いて渡す
+    public var scrollFrameRect: FTRect?
+    /// 指を置く側 / 離す側の余白比(領域の高さ・幅に対する比)。nil = `FTScrollDefaults` の用途別既定。
+    /// **`scrollFrame` が nil のときは無視される**(全画面固定のままスパンを広げると始点が
+    /// スクロール領域の外に出て 1 ミリも動かない。docs/performance-tuning.md §3.16)
+    public var startMarginRatio: Double?
+    public var endMarginRatio: Double?
+    /// flick の repeat 間隔(秒)。**flick 以外は未使用**。nil = `FlowStep.defaultFlickIntervalSeconds`
+    public var intervalSeconds: Double?
+    /// pinch の拡大率(> 1 = 拡大 / 0 < scale < 1 = 縮小)。**pinch 以外は未使用**
+    public var scale: Double?
+    /// swipeBy の移動量(対象領域の幅・高さに対する比。符号は指の向き)。**swipeBy 以外は未使用**
+    public var dxRatio: Double?
+    public var dyRatio: Double?
+    /// 座標タップの座標(`tap(x:y:)`)。**単位は snapshot の screen と同じ** ——
+    /// iOS = pt / Android = px(dp ではない)。**locator と排他**: 両方あるときは locator を使う
+    /// (セレクタで指せるならそちらが常に優先。用途を問わない規律)。
+    /// **`tap` 以外は未使用**
+    public var x: Double?
+    public var y: Double?
+
     public init(action: String? = nil, assert: String? = nil, locator: FlowLocator? = nil,
                 fallbacks: [FlowLocator]? = nil, endLocator: FlowLocator? = nil,
                 text: String? = nil, direction: String? = nil,
                 expected: String? = nil, timeout: Double? = nil, maxSwipes: Int? = nil,
                 duration: Double? = nil,
                 expectedCount: Int? = nil,
-                optional: Bool? = nil, note: String? = nil, occlusionGuard: Bool? = nil) {
+                note: String? = nil, occlusionGuard: Bool? = nil,
+                containerInference: Bool? = nil,
+                replace: Bool? = nil,
+                scrollFrame: FlowLocator? = nil,
+                scrollFrameRect: FTRect? = nil,
+                startMarginRatio: Double? = nil, endMarginRatio: Double? = nil,
+                intervalSeconds: Double? = nil,
+                scale: Double? = nil, dxRatio: Double? = nil, dyRatio: Double? = nil,
+                x: Double? = nil, y: Double? = nil) {
+        self.x = x
+        self.y = y
+        self.scale = scale
+        self.dxRatio = dxRatio
+        self.dyRatio = dyRatio
+        self.scrollFrame = scrollFrame
+        self.scrollFrameRect = scrollFrameRect
+        self.startMarginRatio = startMarginRatio
+        self.endMarginRatio = endMarginRatio
+        self.intervalSeconds = intervalSeconds
         self.action = action
         self.assert = assert
         self.locator = locator
@@ -97,9 +170,10 @@ public struct FlowStep: Codable, Sendable {
         self.maxSwipes = maxSwipes
         self.duration = duration
         self.expectedCount = expectedCount
-        self.optional = optional
         self.note = note
         self.occlusionGuard = occlusionGuard
+        self.containerInference = containerInference
+        self.replace = replace
     }
 }
 
@@ -110,16 +184,49 @@ public struct FlowStep: Codable, Sendable {
 public enum FlowMatchMode: String, Codable, Equatable, Sendable {
     case exact, startsWith, contains, endsWith, matches
 
-    /// 実属性値がこの一致方法で expected を満たすか。nil の属性は常に不一致
-    public func matches(_ actual: String?, _ expected: String) -> Bool {
+    /// 実属性値がこの一致方法で expected を満たすか。nil の属性は常に不一致。
+    ///
+    /// 正規化は `TextNormalization`。**既定は `.selector`**(この関数はセレクタのフィルタから
+    /// 呼ばれる = 「見つける」側なので寛容に寄せる)。テキストと期待値の比較は `.text` を渡す ——
+    /// あちらは「見た目が完全に一致していれば同じ」が基準で、規則が違う。
+    /// expected は `.matches`(正規表現)のときだけ素通し(パターンを書き換えないため)
+    public func matches(_ actual: String?, _ expected: String,
+                        normalization: TextNormalization = .selector) -> Bool {
         guard let actual else { return false }
+        let normalizedActual = normalization.apply(actual)
+        let normalizedExpected = self == .matches ? expected : normalization.apply(expected)
         switch self {
-        case .exact: return actual == expected
-        case .startsWith: return actual.hasPrefix(expected)
-        case .contains: return actual.contains(expected)
-        case .endsWith: return actual.hasSuffix(expected)
-        case .matches: return actual.range(of: expected, options: .regularExpression) != nil
+        case .exact: return normalizedActual == normalizedExpected
+        case .startsWith: return normalizedActual.hasPrefix(normalizedExpected)
+        case .contains: return normalizedActual.contains(normalizedExpected)
+        case .endsWith: return normalizedActual.hasSuffix(normalizedExpected)
+        case .matches: return normalizedActual.range(of: normalizedExpected, options: .regularExpression) != nil
         }
+    }
+
+    /// U+200B/U+200C/U+200D/U+FEFF/U+2060。Google マップ等の実データが混入させる不可視文字で、
+    /// 除去しないと目視では同一に見える文字列が完全一致に失敗する(SnapshotRenderer.renderElement も
+    /// `normalizeInvisibleCharacters` を通し、コピーした文字列が必ず一致する状態を保つ)
+    public static let zeroWidthScalars: Set<Unicode.Scalar> = [
+        "\u{200B}", "\u{200C}", "\u{200D}", "\u{FEFF}", "\u{2060}",
+    ]
+
+    /// **幅を持つ不可視空白**。ゼロ幅と違って**桁を食う**ので、除去すると `"A B"` が `"AB"` に
+    /// なって別の一致崩れを作る —— こちらは**通常空白(U+0020)へ正規化**する。
+    ///
+    /// 集合は実データで確認したものだけ(2026-08-09。Google マップ Android の路線ラベルが
+    /// `"\u{00A0} 埼京線"`)。**推測で足さない** —— 足すなら ft_snapshot で採った生ラベルの
+    /// スカラ列挙を根拠にすること。
+    /// **U+3000(全角スペース)は入れない**: 日本語ラベルでは有意な文字で、正規化すると
+    /// 別物を一致させる
+    public static let spaceLikeScalars: Set<Unicode.Scalar> = ["\u{00A0}"]
+
+    /// **描画のための正規化**(SnapshotRenderer が印字前に通す)。規則はテキスト比較側と同じ
+    /// `.text` —— 印字は「読み手が画面で見ているもの」を写すためのもので、
+    /// 見えない文字だけを落とし、見える差(全角と半角)は残すのが正しい。
+    /// 実体は `TextNormalization` に1つだけ置く(片方だけ変えられないように)
+    public static func normalizeInvisibleCharacters(_ s: String) -> String {
+        TextNormalization.text.apply(s)
     }
 
     /// セレクタ式のフィルタ名(属性名 + 一致方法)。exact は接尾辞なし。
@@ -290,7 +397,7 @@ public enum FlowDirection: String, Codable, Equatable, Sendable {
 /// 実型が1つで足りるものは増やさない = 語彙を増やすと生成側の誤用が増えるため)。
 /// 実型の綴りは ElementInfo.normalizedType(先頭小文字)と揃える。
 public enum FlowTypeAlias {
-    /// OS を跨いで保証される役割型(E2EApp/docs/ui-contract.md の契約)。`.widget` と
+    /// OS を跨いで保証される役割型(E2EAppCMP/docs/ui-contract.md の契約)。`.widget` と
     /// 相対セレクタの既定フィルタがこれを使う(役割不明の `clickable` 容器は**入れない**)
     public static let widget = ["button", "staticText", "textField", "secureTextField", "switch"]
     private static let table: [String: [String]] = [
@@ -304,37 +411,6 @@ public enum FlowTypeAlias {
     }
 }
 
-public enum FlowLocatorBuilder {
-    /// スナップショット中の要素から、優先ロケータ+フォールバック連鎖を導出する。
-    /// 優先度: accessibility id > label > type+index
-    /// 同期対象: vscode-ftester/src/liveModel.ts locatorChainForElement。
-    /// id があるときは位置依存の type+index フォールバックは足さない(id は安定なので `.TextField` 等は
-    /// 冗長・ノイズ。生成コードの `#id||.Type` を `#id` にする)。
-    public static func chain(for element: ElementInfo, in elements: [ElementInfo])
-        -> (primary: FlowLocator, fallbacks: [FlowLocator]) {
-        var locators: [FlowLocator] = []
-        var hasId = false
-        if let id = element.identifier {
-            locators.append(FlowLocator(id: id))
-            hasId = true
-        }
-        if let label = element.label {
-            locators.append(FlowLocator(label: label))
-        }
-        if !hasId {
-            let sameType = elements.filter { $0.type == element.type }
-            if let index = sameType.firstIndex(where: { $0.ref == element.ref }) {
-                locators.append(FlowLocator(type: element.type, index: index))
-            }
-        }
-        if locators.isEmpty {
-            // 最後の砦: 座標も何もない場合は type だけでも残す
-            locators.append(FlowLocator(type: element.type, index: 0))
-        }
-        return (locators[0], Array(locators.dropFirst()))
-    }
-}
-
 public extension FlowStep {
     /// ステップの人間可読な1行表現(ヒールプロンプト・コード生成のフォールバック表示用)
     var summary: String {
@@ -345,7 +421,11 @@ public extension FlowStep {
                     ? "type \"\(text ?? "")\""
                     : "type \(locatorSummary) \"\(text ?? "")\""
             case "swipe": return "swipe \(direction ?? "up")"
+            case "rotateTo": return "rotateTo \(direction ?? "landscape")"
             case "scrollTo": return "scrollTo \(locatorSummary)"
+            // 対象なし(画面全体)を取り得るアクションは locatorSummary の "(no locator)" を出さない
+            case "pinchOut", "pinchIn", "doubleTap", "swipeBy":
+                return locator == nil ? action : "\(action) \(locatorSummary)"
             default: return "\(action) \(locatorSummary)"
             }
         }

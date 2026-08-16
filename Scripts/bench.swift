@@ -13,7 +13,7 @@
 //   Scripts/bench.swift --project <名前> --profile <名前> [--iterations <N>] \
 //       [--binary <ftesterパス>] [--out <出力dir>] [--scenario <ID> ...]
 //
-//   --project <名前>      テストプロジェクト名(必須。Projects/<名前>)
+//   --project <名前>      テストプロジェクト名(必須。TestProjects/<名前>)
 //   --profile <名前>      実行プロファイル名(必須。profiles/runs/<名前>.json。デバイス供給込み)
 //   --iterations <N>      繰り返し回数(既定 3)
 //   --binary <パス>       ftester 実行ファイルのパス(既定 .build/debug/ftester)
@@ -54,7 +54,7 @@ func printUsage() {
     使い方: Scripts/bench.swift --project <名前> --profile <名前> [オプション]
 
     必須:
-      --project <名前>        テストプロジェクト名(Projects/<名前>)
+      --project <名前>        テストプロジェクト名(TestProjects/<名前>)
       --profile <名前>        実行プロファイル名(profiles/runs/<名前>.json)
 
     オプション:

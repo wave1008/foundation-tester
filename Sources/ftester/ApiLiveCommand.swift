@@ -12,6 +12,10 @@
 //   {"cmd":"hideKeyboard"}                              フォーカス中の入力のソフトキーボードを閉じる
 //   {"cmd":"swipe","direction":"up"|"down"|"left"|"right"}
 //   {"cmd":"drag","fromX":..,"fromY":..,"toX":..,"toY":..,"press":<秒省略可>,"duration":<秒省略可>}
+//                                                       **斜めのパンはこれで撃つ**(両軸を動かす)
+//   {"cmd":"doubleTap","ref":<Int>} / {"cmd":"doubleTap","x":..,"y":..}
+//   {"cmd":"pinch","scale":<Double>,"ref":<Int省略可>,"duration":<秒省略可>}
+//                                                       ref 省略 = 画面全体。scale>1 拡大 / <1 縮小
 //                                                        2点間ドラッグ(座標はpt。press=押下静止時間、duration=移動時間)
 //   {"cmd":"press","x":<Double>,"y":<Double>,"duration":<秒>}  座標ロングプレス
 //   {"cmd":"launch","bundle":<String>}                  bundle ID / パッケージ名を起動
@@ -207,6 +211,17 @@ struct ApiLiveServe: AsyncParsableCommand {
         return message
     }
 
+    /// ref から要素を引く(doubleTap / pinch が対象の座標・identifier を採るため)。
+    /// **snapshot を撮り直す**: ref は直近スナップショット基準なので、ここで採り直しても同じ番号を指す
+    private static func element(ref: Int, driver: AppDriver) async throws -> ElementInfo {
+        let snapshot = try await driver.snapshot()
+        guard let element = snapshot.elements.first(where: { $0.ref == ref }) else {
+            throw ServeCommandError.invalidArguments(
+                "unknown reference number [\(ref)]. Take a snapshot first")
+        }
+        return element
+    }
+
     /// コマンドに応じたドライバ操作を実行する。引数不足・未知の cmd は ServeCommandError を投げる
     /// (呼び出し元 handle が actionResult の ok:false として拾う)
     private func perform(command: ApiLiveServeCommand, driver: AppDriver) async throws {
@@ -242,6 +257,33 @@ struct ApiLiveServe: AsyncParsableCommand {
             try await driver.drag(fromX: fromX, fromY: fromY, toX: toX, toY: toY,
                                   pressSeconds: command.press ?? 0.05,
                                   durationSeconds: command.duration ?? 0.3)
+        case "doubleTap":
+            // **座標へ畳んでから撃つ**(ref はブリッジごとに別名前空間。AppDriver.doubleTap の注記参照)
+            if let ref = command.ref {
+                let element = try await Self.element(ref: ref, driver: driver)
+                try await driver.doubleTap(x: element.frame.centerX, y: element.frame.centerY)
+            } else if let x = command.x, let y = command.y {
+                try await driver.doubleTap(x: x, y: y)
+            } else {
+                throw ServeCommandError.invalidArguments("doubleTap requires ref or x/y")
+            }
+        case "pinch":
+            let scale = command.scale ?? 2.0
+            guard scale > 0, scale != 1, scale.isFinite else {
+                throw ServeCommandError.invalidArguments(
+                    "pinch scale must be positive and not 1 (>1 zooms in, <1 zooms out)")
+            }
+            // ref 指定時は frame と identifier の両方を渡す(経路で対象の伝え方が違う。
+            // FTCore/BridgeDTO の PinchRequest)
+            var frame: FTRect?
+            var identifier: String?
+            if let ref = command.ref {
+                let element = try await Self.element(ref: ref, driver: driver)
+                frame = element.frame
+                identifier = element.identifier
+            }
+            try await driver.pinch(frame: frame, identifier: identifier, scale: scale,
+                                   durationSeconds: command.duration ?? 0.5)
         case "press":
             guard let x = command.x, let y = command.y, let duration = command.duration else {
                 throw ServeCommandError.invalidArguments("press requires x/y/duration")
@@ -406,6 +448,7 @@ private struct ApiLiveServeCommand: Decodable {
     let toY: Double?
     let press: Double?
     let duration: Double?
+    let scale: Double?
 }
 
 // MARK: - JSON 出力(イベント)

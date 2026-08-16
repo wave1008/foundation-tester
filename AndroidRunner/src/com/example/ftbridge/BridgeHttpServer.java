@@ -17,11 +17,15 @@ final class BridgeHttpServer {
 
     static final class Request {
         final String method;
+        /** クエリ文字列を含まない(BridgeRouter の完全一致 switch がクエリ違いで割れないため) */
         final String path;
+        /** "?" 以降の生文字列("?" 自体は含まない)。無ければ空文字。パースは呼び出し側の責務 */
+        final String query;
         final byte[] body;
-        Request(String method, String path, byte[] body) {
+        Request(String method, String path, String query, byte[] body) {
             this.method = method;
             this.path = path;
+            this.query = query;
             this.body = body;
         }
     }
@@ -93,10 +97,14 @@ final class BridgeHttpServer {
                     // 相手が Content-Length 分を送り切らずに待つと、単スレッドの accept ループが
                     // read で無限ブロックしブリッジ全体が wedge する。受信タイムアウトで離脱させる(15s)。
                     sock.setSoTimeout(15000);
+                    // 計測: accept からの経過を段ごとに出す。ホスト側 actionMs との差が
+                    // 「ブリッジの外(HTTP クライアント・接続確立・単一スレッドの待ち行列)」の量
+                    long acceptedAt = android.os.SystemClock.uptimeMillis();
                     Request request = readRequest(sock.getInputStream());
+                    long readAt = android.os.SystemClock.uptimeMillis();
                     Response response;
                     if (request == null) {
-                        response = Response.error(400, "リクエストを解析できません");
+                        response = Response.error(400, "cannot parse the request");
                     } else {
                         try {
                             response = handler.handle(request);
@@ -105,7 +113,15 @@ final class BridgeHttpServer {
                             response = Response.error(500, "bridge exception: " + e);
                         }
                     }
+                    long handledAt = android.os.SystemClock.uptimeMillis();
                     writeResponse(sock.getOutputStream(), response);
+                    if (BridgeInstrumentation.timingEnabled && request != null
+                            && "POST".equals(request.method) && "/tap".equals(request.path)) {
+                        Log.i(BridgeInstrumentation.TAG, "reqTiming " + request.path
+                                + " read=" + (readAt - acceptedAt)
+                                + " handle=" + (handledAt - readAt)
+                                + " write=" + (android.os.SystemClock.uptimeMillis() - handledAt));
+                    }
                 } catch (Exception e) {
                     Log.e(BridgeInstrumentation.TAG, "connection failed", e);
                 }
@@ -131,6 +147,11 @@ final class BridgeHttpServer {
         String[] lines = header.split("\r\n");
         String[] requestLine = lines[0].split(" ");
         if (requestLine.length < 2) return null;
+        // "/snapshot?refresh=1" → path="/snapshot" (switch が完全一致するため) / query="refresh=1"
+        String rawTarget = requestLine[1];
+        int queryStart = rawTarget.indexOf('?');
+        String path = queryStart >= 0 ? rawTarget.substring(0, queryStart) : rawTarget;
+        String query = queryStart >= 0 ? rawTarget.substring(queryStart + 1) : "";
 
         int contentLength = 0;
         for (String line : lines) {
@@ -153,7 +174,7 @@ final class BridgeHttpServer {
             if (n <= 0) break;
             body.write(chunk, 0, n);
         }
-        return new Request(requestLine[0], requestLine[1], body.toByteArray());
+        return new Request(requestLine[0], path, query, body.toByteArray());
     }
 
     private static int indexOfHeaderEnd(byte[] data) {

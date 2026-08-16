@@ -36,13 +36,13 @@ def load_json(path: Path):
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--project", required=True, help="Projects/<name> の <name>")
+    parser.add_argument("--project", required=True, help="TestProjects/<name> の <name>")
     parser.add_argument("--repo-root", default=None,
                         help="省略時はこのスクリプト(Scripts/)の1階層上をリポジトリルートとみなす")
     args = parser.parse_args()
 
     repo_root = Path(args.repo_root) if args.repo_root else Path(__file__).resolve().parent.parent
-    project_root = repo_root / "Projects" / args.project
+    project_root = repo_root / "TestProjects" / args.project
 
     run_dir = find_latest_run_dir(project_root)
     if run_dir is None:

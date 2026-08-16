@@ -82,8 +82,13 @@ else
 fi
 
 # ---- 既に作られているもの(導入済みのとき何が残っているか) ----------------------
-if [ -d "$WORK_DIR/Projects" ]; then
-  kv projects "$(ls -1 "$WORK_DIR/Projects" 2>/dev/null | tr '\n' ' ' | sed 's/ $//')"
+# 器は TestProjects/(2026-08-05 に Projects/ から改名)。**旧名も見る**:
+# 既に導入済みの受け手は Projects/ のままなので、見落とすと「未導入」と誤判定する
+PROJECTS_DIR=""
+[ -d "$WORK_DIR/TestProjects" ] && PROJECTS_DIR="$WORK_DIR/TestProjects"
+[ -z "$PROJECTS_DIR" ] && [ -d "$WORK_DIR/Projects" ] && PROJECTS_DIR="$WORK_DIR/Projects"
+if [ -n "$PROJECTS_DIR" ]; then
+  kv projects "$(ls -1 "$PROJECTS_DIR" 2>/dev/null | tr '\n' ' ' | sed 's/ $//')"
 else
   kv projects ""
 fi

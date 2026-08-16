@@ -374,19 +374,78 @@ final class RunResultsQueryTests: XCTestCase {
 
     // MARK: - insights: selectorDecay
 
-    func testInsightsSelectorDecayAtThreshold() {
-        let records = [
+    /// 1 run あたりの件数が**増えている**ときに出る(合計ではない)
+    func testInsightsSelectorDecayWhenRelianceGrows() {
+        let counts = [0, 1, 2, 3]   // 前半平均 0.5 → 後半平均 2.5
+        let records = counts.enumerated().map { index, fallbacks in
             makeRecord(
-                scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:00Z", durationMs: 100,
-                steps: StepCountsRecord(total: 5, passed: 3, healed: 2)),
-            makeRecord(
-                scenarioID: "Foo.a", passed: true, startedAt: "2026-01-02T00:00:00Z", durationMs: 100,
-                steps: StepCountsRecord(total: 5, passed: 4, passedViaFallback: 1)),
-        ]
+                scenarioID: "Foo.a", passed: true,
+                startedAt: String(format: "2026-01-0%dT00:00:00Z", index + 1), durationMs: 100,
+                steps: StepCountsRecord(total: 5, passed: 5 - fallbacks, passedViaFallback: fallbacks))
+        }
         let rows = RunResultsQuery.insights(records: records, runs: [])
         let row = try? XCTUnwrap(rows.first { $0.kind == "selectorDecay" })
         XCTAssertEqual(row?.severity, "warn")
-        XCTAssertEqual(row?.count, 3)
+        XCTAssertEqual(row?.count, 6, "合計は説明のために出す(判定の材料ではない)")
+        // **分割位置まで固定する**: 前半 [0,1]=0.5 → 後半 [2,3]=2.5 で +400%。
+        // ここを緩めると「先頭1件 vs 残り」のような別の分け方でも通ってしまう
+        XCTAssertEqual(row?.deltaPct ?? 0, 400, accuracy: 0.01)
+    }
+
+    /// run 数が足りないうちは判定しない。**旧実装は合計だけを見ていた**ので、
+    /// 毎 run 1 件フォールバックするシナリオが 3 run 目から永久に鳴っていた
+    func testInsightsNoSelectorDecayBeforeEnoughRunsToSeeATrend() {
+        let records = (0..<3).map { index in
+            makeRecord(
+                scenarioID: "Foo.a", passed: true,
+                startedAt: String(format: "2026-01-0%dT00:00:00Z", index + 1), durationMs: 100,
+                steps: StepCountsRecord(total: 5, passed: 4, passedViaFallback: 1))
+        }
+        XCTAssertFalse(RunResultsQuery.insights(records: records, runs: [])
+            .contains { $0.kind == "selectorDecay" }, "3 run では増減を言えない(合計は 3 で旧閾値ちょうど)")
+    }
+
+    /// **一定なら劣化ではない**。フォールバックを意図的に検証するシナリオは毎 run 同じ件数を出し、
+    /// 合計だけで判定すると永久に鳴り続ける(実測 2118 run で 2107 件 = 1件/run が一定)
+    func testInsightsNoSelectorDecayWhenRelianceIsFlat() {
+        let records = (0..<10).map { index in
+            makeRecord(
+                scenarioID: "Foo.a", passed: true,
+                startedAt: String(format: "2026-01-%02dT00:00:00Z", index + 1), durationMs: 100,
+                steps: StepCountsRecord(total: 5, passed: 4, passedViaFallback: 1))
+        }
+        XCTAssertFalse(RunResultsQuery.insights(records: records, runs: [])
+            .contains { $0.kind == "selectorDecay" })
+    }
+
+    /// **わずかな増加では出さない**(閾値が効いていることの検証。一定との対だけだと、
+    /// 「増えているか」の条件と閾値の条件が互いを覆い隠して、どちらを壊しても落ちない)
+    func testInsightsNoSelectorDecayWhenTheRiseIsSmall() {
+        let counts = [4, 4, 4, 5]   // 前半 4.0 → 後半 4.5 = +12.5%(閾値 30% 未満)
+        let records = counts.enumerated().map { index, fallbacks in
+            makeRecord(
+                scenarioID: "Foo.a", passed: true,
+                startedAt: String(format: "2026-01-0%dT00:00:00Z", index + 1), durationMs: 100,
+                steps: StepCountsRecord(total: 10, passed: 10 - fallbacks, passedViaFallback: fallbacks))
+        }
+        XCTAssertFalse(RunResultsQuery.insights(records: records, runs: [])
+            .contains { $0.kind == "selectorDecay" })
+    }
+
+    /// 無かったものが出始めた場合も合図にする(前半 0 は比率が出せないので率は載せない)
+    func testInsightsSelectorDecayWhenItNewlyAppears() {
+        let counts = [0, 0, 2, 2]
+        let records = counts.enumerated().map { index, healed in
+            makeRecord(
+                scenarioID: "Foo.a", passed: true,
+                startedAt: String(format: "2026-01-0%dT00:00:00Z", index + 1), durationMs: 100,
+                steps: StepCountsRecord(total: 5, passed: 5 - healed, healed: healed))
+        }
+        let row = RunResultsQuery.insights(records: records, runs: [])
+            .first { $0.kind == "selectorDecay" }
+        XCTAssertNotNil(row)
+        XCTAssertNil(row?.deltaPct, "前半 0 では変化率を出さない")
+        XCTAssertTrue(row?.message.contains("newly appeared") ?? false)
     }
 
     func testInsightsNoSelectorDecayBelowThreshold() {
@@ -401,56 +460,51 @@ final class RunResultsQueryTests: XCTestCase {
 
     // MARK: - insights: deviceBias
 
-    func testInsightsDeviceBiasWhenWorkerFailureRateDoubled() {
-        // worker A: 3敗/3件=100% / worker B: 0敗/3件=0% → 全体失敗率50%、A は 100% >= 50%*2
-        let records =
-            (0..<3).map { i in
-                makeRecord(
-                    scenarioID: "Foo.a", passed: false,
-                    startedAt: String(format: "2026-01-0%dT00:00:00Z", i + 1), durationMs: 100,
-                    worker: "ios:A")
-            } +
-            (0..<3).map { i in
-                makeRecord(
-                    scenarioID: "Foo.a", passed: true,
-                    startedAt: String(format: "2026-01-1%dT00:00:00Z", i), durationMs: 100,
-                    worker: "ios:B")
-            }
+    /// worker ごとの記録を作る(deviceBias は実行回数と失敗回数の両方に下限があるので数が要る)
+    private func workerRecords(worker: String, runs: Int, failures: Int,
+                               dayOffset: Int) -> [ScenarioRunRecord] {
+        (0..<runs).map { index in
+            makeRecord(
+                scenarioID: "Foo.a", passed: index >= failures,
+                startedAt: String(format: "2026-01-%02dT%02d:00:00Z", dayOffset + 1, index % 24),
+                durationMs: 100, worker: worker)
+        }
+    }
+
+    func testInsightsDeviceBiasWhenFailuresClusterOnOneWorker() {
+        // A: 12 run 中 8 敗(67%)/ B: 20 run 全通 → 全体 25%。67% >= 25%*2 かつ 8 >= 最小失敗回数
+        let records = workerRecords(worker: "ios:A", runs: 12, failures: 8, dayOffset: 0)
+            + workerRecords(worker: "ios:B", runs: 20, failures: 0, dayOffset: 1)
         let rows = RunResultsQuery.insights(records: records, runs: [])
         let row = try? XCTUnwrap(rows.first { $0.kind == "deviceBias" })
         XCTAssertEqual(row?.severity, "warn")
         XCTAssertEqual(row?.worker, "ios:A")
-        XCTAssertEqual(row?.count, 3)
+        XCTAssertEqual(row?.count, 8)
+    }
+
+    /// **率だけでは出さない**。単発〜数件の失敗は率を跳ね上げるが偏りの証拠にならない
+    /// (実データで 69 行出ていた主因。3 run 中 1 敗 = 33% が全体 4% の 2 倍を軽く超えていた)
+    func testInsightsNoDeviceBiasWhenTheWorkerHasTooFewFailures() {
+        // A: 20 run 中 4 敗(20%)/ B: 20 run 全通 → 全体 10%、率は 2 倍だが失敗回数が足りない
+        let records = workerRecords(worker: "ios:A", runs: 20, failures: 4, dayOffset: 0)
+            + workerRecords(worker: "ios:B", runs: 20, failures: 0, dayOffset: 1)
+        XCTAssertFalse(RunResultsQuery.insights(records: records, runs: [])
+            .contains { $0.kind == "deviceBias" })
     }
 
     func testInsightsNoDeviceBiasWithSingleWorkerKind() {
-        let records = (0..<3).map { i in
-            makeRecord(
-                scenarioID: "Foo.a", passed: false,
-                startedAt: String(format: "2026-01-0%dT00:00:00Z", i + 1), durationMs: 100,
-                worker: "ios:A")
-        }
+        let records = workerRecords(worker: "ios:A", runs: 12, failures: 8, dayOffset: 0)
         let rows = RunResultsQuery.insights(records: records, runs: [])
         XCTAssertFalse(rows.contains { $0.kind == "deviceBias" }, "worker が 1 種類のみでは偏り判定不能")
     }
 
+    /// 実行回数が足りない worker は判定しない(率が安定しない)
     func testInsightsNoDeviceBiasBelowMinRunsPerWorker() {
-        // worker A: 2件のみ(最小実行回数 3 未満)
-        let records =
-            (0..<2).map { i in
-                makeRecord(
-                    scenarioID: "Foo.a", passed: false,
-                    startedAt: String(format: "2026-01-0%dT00:00:00Z", i + 1), durationMs: 100,
-                    worker: "ios:A")
-            } +
-            (0..<3).map { i in
-                makeRecord(
-                    scenarioID: "Foo.a", passed: true,
-                    startedAt: String(format: "2026-01-1%dT00:00:00Z", i), durationMs: 100,
-                    worker: "ios:B")
-            }
-        let rows = RunResultsQuery.insights(records: records, runs: [])
-        XCTAssertFalse(rows.contains { $0.kind == "deviceBias" })
+        // A: 8 run 中 8 敗(100%)—— 失敗回数は足りるが run 数が下限未満
+        let records = workerRecords(worker: "ios:A", runs: 8, failures: 8, dayOffset: 0)
+            + workerRecords(worker: "ios:B", runs: 20, failures: 0, dayOffset: 1)
+        XCTAssertFalse(RunResultsQuery.insights(records: records, runs: [])
+            .contains { $0.kind == "deviceBias" })
     }
 
     // MARK: - insights: durationRegression
@@ -513,14 +567,134 @@ final class RunResultsQueryTests: XCTestCase {
                 scenarioID: "Foo.fail", passed: false,
                 startedAt: String(format: "2026-01-0%dT00:00:00Z", i + 1), durationMs: 100)
         }
-        let decaying = [
+        // selectorDecay は傾向で判定するので、増えていく系列を与える(合計 3 件)
+        let decaying = [0, 0, 1, 2].enumerated().map { index, healed in
             makeRecord(
-                scenarioID: "Foo.decay", passed: true, startedAt: "2026-01-01T00:00:00Z", durationMs: 100,
-                steps: StepCountsRecord(total: 5, passed: 2, healed: 3)),
-        ]
+                scenarioID: "Foo.decay", passed: true,
+                startedAt: String(format: "2026-01-0%dT00:00:00Z", index + 1), durationMs: 100,
+                steps: StepCountsRecord(total: 5, passed: 5 - healed, healed: healed))
+        }
         let runs = [makeMeta(runID: "20260101-000000Z-m-0001", finishedAt: nil)]
         let rows = RunResultsQuery.insights(records: failing + decaying, runs: runs)
         XCTAssertEqual(rows.map(\.kind), ["consecutiveFailures", "selectorDecay", "unfinishedRuns"])
+    }
+
+    // MARK: - insights: retiredScenarios
+
+    /// **実行されなくなったシナリオは検知から外す**。--since の窓(既定 90d)に古い記録が
+    /// 残るかぎり、削除・_disabled 化されたシナリオの末尾の失敗は永久に critical を出し、
+    /// severity 順の先頭を占めて本物を押し下げる(実測: 12 行中 5 行がこれだった)
+    func testInsightsExcludesScenariosThatAreNoLongerRun() {
+        let retired = (0..<3).map { index in
+            makeRecord(
+                scenarioID: "Foo.gone", passed: false,
+                startedAt: String(format: "2026-01-0%dT00:00:00Z", index + 1), durationMs: 100)
+        }
+        // 別のシナリオが 20 日後まで回っている = 基準はこちら
+        let live = [
+            makeRecord(scenarioID: "Foo.live", passed: true,
+                       startedAt: "2026-01-21T00:00:00Z", durationMs: 100),
+        ]
+
+        let rows = RunResultsQuery.insights(records: retired + live, runs: [])
+
+        XCTAssertFalse(rows.contains { $0.scenarioID == "Foo.gone" },
+                       "回されていないシナリオの失敗が critical に残っている")
+        let notice = rows.first { $0.kind == "retiredScenarios" }
+        XCTAssertEqual(notice?.severity, "info")
+        XCTAssertEqual(notice?.count, 1, "黙って落とさず、外したことは出す")
+        XCTAssertTrue(notice?.message.contains("Foo.gone") ?? false)
+    }
+
+    /// まだ回っているシナリオは当然そのまま出ること(上の除外が広すぎないことの対)
+    func testInsightsKeepsScenariosStillBeingRun() {
+        let records = (0..<3).map { index in
+            makeRecord(
+                scenarioID: "Foo.a", passed: false,
+                startedAt: String(format: "2026-01-0%dT00:00:00Z", index + 1), durationMs: 100)
+        }
+        let rows = RunResultsQuery.insights(records: records, runs: [])
+        XCTAssertTrue(rows.contains { $0.kind == "consecutiveFailures" })
+        XCTAssertFalse(rows.contains { $0.kind == "retiredScenarios" })
+    }
+
+    /// しばらく回していないプロジェクトで**全部が retired になる**のを防ぐ(基準は最新記録からの相対)
+    func testInsightsDoesNotRetireEverythingWhenTheWholeProjectIsOld() {
+        let records = (0..<3).map { index in
+            makeRecord(
+                scenarioID: "Foo.a", passed: false,
+                startedAt: String(format: "2020-01-0%dT00:00:00Z", index + 1), durationMs: 100)
+        }
+        let rows = RunResultsQuery.insights(records: records, runs: [])
+        XCTAssertFalse(rows.contains { $0.kind == "retiredScenarios" })
+        XCTAssertTrue(rows.contains { $0.kind == "consecutiveFailures" })
+    }
+
+    // MARK: - insights: healReliance(ヒールキャッシュ依存)
+
+    /// 同じセレクタの修正提案が続いている = **緑だがセレクタは壊れている**状態が放置されている
+    func testInsightsHealRelianceWhenTheSameSelectorKeepsBeingSuggested() {
+        let records = (0..<3).map { index in
+            makeRecord(
+                scenarioID: "Foo.a", passed: true,
+                startedAt: String(format: "2026-01-0%dT00:00:00Z", index + 1), durationMs: 100,
+                fixSuggestions: [FixSuggestionRecord(oldSelector: "#old_id", newSelector: "#new_id")])
+        }
+        let row = RunResultsQuery.insights(records: records, runs: [])
+            .first { $0.kind == "healReliance" }
+        XCTAssertEqual(row?.severity, "warn")
+        XCTAssertEqual(row?.count, 3)
+        XCTAssertTrue(row?.message.contains("#old_id") ?? false)
+    }
+
+    /// 1〜2 run なら出さない(直せば済む段階では鳴らさない)
+    func testInsightsNoHealRelianceForAOneOffSuggestion() {
+        let records = (0..<2).map { index in
+            makeRecord(
+                scenarioID: "Foo.a", passed: true,
+                startedAt: String(format: "2026-01-0%dT00:00:00Z", index + 1), durationMs: 100,
+                fixSuggestions: [FixSuggestionRecord(oldSelector: "#old_id", newSelector: "#new_id")])
+        }
+        XCTAssertFalse(RunResultsQuery.insights(records: records, runs: [])
+            .contains { $0.kind == "healReliance" })
+    }
+
+    /// 同じ run に同じセレクタが複数回出ても **run 数**として 1 と数える
+    /// (ステップ数で数えると、1 run しか無いのに閾値を超える)
+    func testInsightsHealRelianceCountsRunsNotSuggestions() {
+        let many = (0..<5).map { _ in FixSuggestionRecord(oldSelector: "#old_id", newSelector: "#new_id") }
+        let records = [
+            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:00Z",
+                       durationMs: 100, fixSuggestions: many),
+        ]
+        XCTAssertFalse(RunResultsQuery.insights(records: records, runs: [])
+            .contains { $0.kind == "healReliance" })
+    }
+
+    // MARK: - insights: retiredScenarios(ソース照合)
+
+    /// **ソースに無いクラスは日付を問わず retired**(削除・_disabled 化。日数の窓では消えない)
+    func testInsightsRetiresScenariosMissingFromTheSource() {
+        let records = (0..<3).map { index in
+            makeRecord(
+                scenarioID: "Gone.a", passed: false,
+                startedAt: String(format: "2026-01-0%dT00:00:00Z", index + 1), durationMs: 100)
+        }
+        let rows = RunResultsQuery.insights(records: records, runs: [], definedClasses: ["Live"])
+        XCTAssertFalse(rows.contains { $0.scenarioID == "Gone.a" })
+        XCTAssertEqual(rows.first { $0.kind == "retiredScenarios" }?.count, 1)
+    }
+
+    /// **空集合を「全部消えた」と読まない**(走査に失敗したときに検知が丸ごと黙るのを防ぐ)
+    func testInsightsTreatsAnEmptyDefinedSetAsUnknown() {
+        let records = (0..<3).map { index in
+            makeRecord(
+                scenarioID: "Foo.a", passed: false,
+                startedAt: String(format: "2026-01-0%dT00:00:00Z", index + 1), durationMs: 100)
+        }
+        let rows = RunResultsQuery.insights(records: records, runs: [], definedClasses: [])
+        XCTAssertTrue(rows.contains { $0.kind == "consecutiveFailures" })
+        XCTAssertFalse(rows.contains { $0.kind == "retiredScenarios" })
     }
 
     // MARK: - matrix
@@ -693,13 +867,14 @@ final class RunResultsQueryTests: XCTestCase {
         steps: StepCountsRecord? = nil, platform: String = "ios", worker: String? = nil,
         timedOut: Bool? = nil, scenes: [SceneResultRecord] = [],
         failedSteps: [FailedStepRecord]? = nil, errorLogs: [String]? = nil,
-        runID: String = "", title: String? = nil
+        runID: String = "", title: String? = nil,
+        fixSuggestions: [FixSuggestionRecord]? = nil
     ) -> ScenarioRunRecord {
         ScenarioRunRecord(
             runID: runID, scenarioID: scenarioID, title: title, platform: platform, worker: worker,
             machine: "testmachine",
             passed: passed, timedOut: timedOut, startedAt: startedAt, durationMs: durationMs,
             scenes: scenes, steps: steps ?? StepCountsRecord(total: 1, passed: passed ? 1 : 0, failed: passed ? 0 : 1),
-            failedSteps: failedSteps, errorLogs: errorLogs)
+            failedSteps: failedSteps, fixSuggestions: fixSuggestions, errorLogs: errorLogs)
     }
 }

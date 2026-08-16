@@ -4,6 +4,49 @@
 
 import Foundation
 
+/// キャッシュを捨てた snapshot でもう1周だけ確かめる仕掛け。撃つ場面が**2つ**ある。
+/// Android の a11y ツリーは IME 等が前面のとき数秒古い値を返し続ける
+/// (docs/verification.md「ブリッジの『偽陰性』を疑う手順」)。
+/// 対応しないドライバ(iOS 系。鮮度問題を持たない)ではどちらも行わず周回を増やさない。
+///
+/// - `arm`: **失敗と決める前**(期限切れ)。アプリは正しいのに検証だけが落ちるのを防ぐ。
+///   誤った**失敗**を潰す側で、通るアサーションは1円も払わない
+/// - `confirmPass`: **否定形を通す前**。古い木は「まだ現れていない」姿を返すので、
+///   不在・不一致での pass は**誤った成功**になりうる(2026-08-14 の掃討で発見)。
+///   肯定形が同じ穴を持たないのは、古い木が期待値に一致せずポーリングが続くから ——
+///   つまり肯定形は運で守られているだけで、**否定形だけが通る側にも払う必要がある**
+///
+/// **予算は別々に持つ**(片方を使っても他方は残る)。共有にすると、pass の確認で使い切った
+/// アサーションが期限切れ時に取り直せず、塞いだ穴の隣に誤った失敗を作る
+struct AssertFreshRetry {
+    private var failUsed = false
+    private var passUsed = false
+    private var armed = false
+
+    /// 期限到達時に呼ぶ。true なら「取り直してもう1周」
+    mutating func arm(ifSupported supported: Bool) -> Bool {
+        guard supported, !failUsed else { return false }
+        failUsed = true
+        armed = true
+        return true
+    }
+
+    /// **否定形が pass を返す直前**に呼ぶ。true なら「取り直して確かめ直す」。
+    /// 1アサーションにつき1回だけなので、確認の周で再び pass に達したらそのまま通る
+    mutating func confirmPass(ifSupported supported: Bool) -> Bool {
+        guard supported, !passUsed else { return false }
+        passUsed = true
+        armed = true
+        return true
+    }
+
+    /// snapshot 取得時に呼ぶ。arm/confirmPass した直後の1周だけ true
+    mutating func takeArmed() -> Bool {
+        defer { armed = false }
+        return armed
+    }
+}
+
 extension StepExecutor {
     // MARK: - アサーション
 
@@ -27,7 +70,33 @@ extension StepExecutor {
         guard OcclusionEligibility.eligible(type: element.type, label: expectedText,
                                             isUserText: expectedIsUserText).ok else { return nil }
         // 操作を挟まない連続ガードでは直近スクショを再利用(~125ms 削減)。
-        let screenshot = try await guardScreenshot(phase: &phase)
+        let captured = try await guardScreenshot(phase: &phase)
+        var screenshot = captured.data
+        // [StaleFrameDetector] キャッシュ供給(同一 Data 使い回し)は判定しない —— 供給元が
+        // guardScreenshot 自身なので比較すると木のわずかな揺れで必ず偽 stale になる(guardScreenshot 参照)。
+        // 新規撮影のときだけ「木は変わったのに絵が前回とバイト同一」を確認し、疑いなら1回だけ撮り直す。
+        // それでも stale なら古い絵を根拠に偽陽性反転を宣言せず素通りする(flip しない)。
+        if captured.freshlyCaptured {
+            // **両方の判定を同じ元の baseline に対して行う**(2回目の判定を1回目の record に対して
+            // 行うと、elements はこの呼び出し内で不変なので treeFingerprint が必ず一致し
+            // 「撮り直しても stale のまま」が原理的に起こり得なくなる)。
+            let baseline = lastGuardFrameRecord
+            let (record, isStale) = StaleFrameDetector.judge(
+                png: screenshot, elements: elements, previous: baseline)
+            lastGuardFrameRecord = record
+            if isStale {
+                invalidateScreenshotCache()
+                let retaken = try await guardScreenshot(phase: &phase)
+                let (record2, stillStale) = StaleFrameDetector.judge(
+                    png: retaken.data, elements: elements, previous: baseline)
+                lastGuardFrameRecord = record2
+                if stillStale {
+                    noteCodesThisStep.insert(.staleScreenshot)
+                    return nil
+                }
+                screenshot = retaken.data
+            }
+        }
         // Tier-0 幾何(ツリーのみ)で疑わしければインク量に関わらず FM へ(部分覆いの取りこぼし対策)。
         let geo = OcclusionSuspicion.geometric(element: element, in: elements, screen: screen,
                                                looseMatch: looseMatch)
@@ -57,20 +126,132 @@ extension StepExecutor {
         guard let element,
               let cover = OcclusionSuspicion.covering(element: element, in: elements, screen: screen)
         else { return "" }
+        // **`TapTargetGeometry.describe` と同じ「名指し」**(2026-08-15)。失敗文言に混ぜる
+        // 説明であって、読み手がそのまま貼れるセレクタである保証はしない(エスケープ未対応)
         let label = cover.identifier.map { "#\($0)" } ?? cover.label.map { "\"\($0)\"" } ?? cover.type
         return " (the target is covered by \(label); the interaction may have been swallowed by it)"
     }
 
     /// スナップショットが上限で打ち切られていたときの注記。**要素数の上限に当たると
     /// 「見つかりません」と区別が付かない**(実在するのに送られていないだけ)ため、
-    /// 失敗文言に必ず添える。WebView は1画面に要素が数百並ぶことがあり最も当たりやすい
+    /// 失敗文言に必ず添える。WebView は1画面に要素が数百並ぶことがあり最も当たりやすい。
+    ///
+    /// **残っている手の判定は `SnapshotTruncation.remedy`(MCP と共有)**。以前ここだけが
+    /// 「対象に近づくようスクロールする」と勧めており、同じ事実に対して MCP は
+    /// 「スクロールしても戻ってこない」と書いていた —— 打ち切りは配列からの脱落なので
+    /// MCP のほうが正しく、この助言は読み手に空振りの探索を撃たせる(2026-08-15 に統一)。
+    /// 文言(スコープの絞り方)は DSL の語彙で持つ
     static func truncationHint(_ snapshot: SnapshotResponse?) -> String {
-        guard let snapshot, snapshot.truncatedCount > 0 else { return "" }
+        guard let snapshot, let remedy = SnapshotTruncation.remedy(for: snapshot) else { return "" }
+        // **実行側が何をしたかは書かない**(2026-08-15)。「天井で撮り直してある」と書きたく
+        // なるが、撮り直すのは**解決できなかったとき**だけで、要素は見つかったが覆われていた
+        // 周回ではその文が嘘になる。書いてよいのは木から読み取れる事実と、読み手にできる手だけ
+        let ceiling = remedy == .narrowTheScreen
+            ? " even at the \(BridgeAPI.maxSnapshotElementsCeiling)-element ceiling" : ""
+        // WebView は文脈として残す(この上限に最も当たりやすい画面がどれかは有用)。
+        // **`.webView >> ...` でスコープを狭めることは勧めない** —— あれは照合の範囲であって
+        // スナップショットの母数ではないので、打ち切りには1件も効かない
         let webView = snapshot.elements.contains { $0.type == "webView" }
-            ? ". WebView screens hold many elements and hit this limit easily (narrow the scope with `.webView >> ...`, or scroll closer to the target)"
-            : ""
-        return " (the snapshot was truncated at \(snapshot.elements.count) elements"
-            + "; \(snapshot.truncatedCount) more were omitted\(webView))"
+            ? " WebView screens hold many elements and hit this limit easily." : ""
+        // **スクロールを勧めない**: 落ちた要素は配列から抜けているので、スクロールしても戻らない
+        // **`elements.count` を印字しない**(SnapshotTruncation.budgetedCount のレビュー参照):
+        // bulk 群は予算の外で送られるので、生の件数は勧める上限より大きく見え、読み手には
+        // 矛盾に映る。予算ぶんの件数(budgetedCount)を出し、bulk が居るときだけ内訳を添える
+        let budgeted = SnapshotTruncation.budgetedCount(snapshot)
+        let bulk = SnapshotTruncation.bulkExemptPresentCount(snapshot)
+        let bulkClause = bulk > 0 ? " (plus \(bulk) bulk-exempt elements outside the budget)" : ""
+        return " (the snapshot was truncated at \(budgeted) elements\(bulkClause);"
+            + " \(snapshot.truncatedCount) more were omitted\(ceiling) — they are gone from the"
+            + " tree, not just off screen, so scrolling will not bring them back.\(webView)"
+            + " Narrow the screen before this step (close a sheet, collapse a long list) so fewer"
+            + " elements compete for the limit)"
+    }
+
+    /// **切り詰められた木で「不在」を結論にしない**ための撮り直し(2026-08-15)。
+    ///
+    /// 要素数の上限(`BridgeAPI.maxSnapshotElements`)は **LLM の読み手が読み切れる量**として
+    /// 決めた値で、上限を引き上げるのは MCP だけ。**読み手の居ない DSL のシナリオ実行も同じ木を
+    /// 受け取る**ので、密な画面(WebView・地図・長いリスト)では実在する要素が間引かれる。
+    /// 間引かれた要素は木の上で「存在しない要素」と1文字も違わない = 否定判定
+    /// (notExists / count)がそのまま**誤った成功**になる。
+    ///
+    /// 切り詰められていなければ**撮らない**(通る側の固定費はゼロ)。
+    /// **呼び手は1回当たったら以後の周を最初から天井で撮ること**(`needsCeiling` の latch)——
+    /// 毎周2枚払わずに済むうえ、判定に使う木が常に天井のものになるので
+    /// 「天井でも足りなかった」という文言が嘘にならない(2026-08-15 のデバイス実行で
+    /// 予算方式の文言が実際に嘘をついた)
+    func retakenAtElementLimitCeiling(_ snapshot: SnapshotResponse,
+                                      phase: inout PhaseAccumulator) async throws -> SnapshotResponse {
+        guard snapshot.truncatedCount > 0 else { return snapshot }
+        // 既に天井で読まれた木なら、上げて撮り直しても同じ木が返るだけ(1枚ぶんのデバイス I/O)。
+        // 呼び手のラッチはそのまま立ってよい(以後の arm は同じ上限なので無害)
+        guard !SnapshotTruncation.isAtCeiling(snapshot) else { return snapshot }
+        let clock = ContinuousClock()
+        let start = clock.now
+        driver.raiseElementLimitOnNextSnapshot(BridgeAPI.maxSnapshotElementsCeiling)
+        var full = try await driver.snapshot()
+        phase.snapshotMs += Self.ms(clock.now - start)
+        try await dismissInterruption(in: &full, phase: &phase)
+        return full
+    }
+
+    /// **空の WebView で判定したことを黙らない**(2026-08-15)。委譲した WebView が中身を出さない
+    /// まま待ちの上限に達した木では、「無い」と「まだ公開されていない」を区別できない。
+    /// 判定は変えない(区別できないものを失敗にすると空ページの検証が書けなくなる)ので、
+    /// **通った回にも残る機械可読な注記**にする —— 黙ると、空の木で成立した不在が後から見分けられない
+    func noteEmptyWebView(_ snapshot: SnapshotResponse) {
+        if snapshot.webViewPath == WebViewPath.delegatedEmpty {
+            noteCodesThisStep.insert(.webViewNotRendered)
+        }
+    }
+
+    /// **木が画面を代表していない疑いを黙らない**(2026-08-15)。`noteEmptyWebView` は
+    /// ドライバ申告の「委譲した WebView が空」しか見ないので、**中身が部分的にしか公開されない**
+    /// 形(Android の Chrome)と、**webView 容器すら出ない**形をどちらも取り逃がす。
+    /// 判定は `FTCore.TreeCoverage`(MCP の webViewGapNote / missingPageContentNote と共有)。
+    ///
+    /// **注記だけで判定は変えない**: 打ち切りと違いブリッジの申告ではなく幾何からの疑いなので、
+    /// 失敗にすると空のページに対する正当な `notExist` が書けなくなる。
+    ///
+    /// **呼ぶのは不在を結論する2経路(notExists / count)だけ**(2026-08-15 のデバイス実行で確定)。
+    /// 隣の `noteEmptyWebView` は4経路すべてから呼ぶので揃えたくなるが、**あちらの条件
+    /// (委譲 WebView が完全に空)は稀**なのに対し、こちらは a11y に出ない部分がある WebView
+    /// なら**どの画面でも立つ**。4経路へ広げたところ、5 SUT の緑の run すべてで
+    /// `exist "WebView 画面外テキスト"` に毎回付いた(真陽性 —— あのページは
+    /// `aria-hidden` の見出しを持つ `webViewGapNote` の offline witness そのもの)。
+    /// **毎回出る注記は率を見る役に立たない**(StepNote 冒頭の規律)うえ、通った `exist` に
+    /// 「不在の証拠にならない」と書くのは文としても噛み合わない
+    func noteUnderreportedTree(_ snapshot: SnapshotResponse) {
+        if TreeCoverage.underreports(snapshot) {
+            noteCodesThisStep.insert(.treeUnderreported)
+        }
+    }
+
+    /// 「不在(件数)を結論できない」ことの失敗文言。**「見つからない」と言わない**のが要点 ——
+    /// 送られていないだけの要素を「無い」と報告するのがこの欠陥そのもので、同じ言葉で返すと
+    /// 読み手は塞いだ穴と区別が付かない。`evidence` は何がどれだけ落ちたか(呼び手が組み立てる)
+    static func undecidableTruncationMessage(_ what: String, step: FlowStep,
+                                             evidence: String) -> String {
+        // **truncationHint(165〜166行)と同じ助言に揃える**: 「.webView >> で絞る」「対象へ
+        // スクロールする」は truncationHint が撤回した2助言そのもの(スコープは母数に効かず、
+        // 落ちた要素はスクロールで戻らない)。天井かどうかは evidence 側の文言が言うので、
+        // ここは remedy に依存しない中立な1文にする
+        "cannot decide \(what): \(step.locatorSummary) — \(evidence), so an element that is absent"
+            + " cannot be told apart from one the snapshot dropped."
+            + " Narrow the screen before this step (close a sheet, collapse a long list) so fewer"
+            + " elements compete for the limit."
+    }
+
+    /// 天井まで上げてもまだ上限に当たっている木の証拠文(undecidableTruncationMessage 用)。
+    /// **予算ぶんの件数(budgetedCount)を印字する**(truncationHint と同じ理由 — `elements.count`
+    /// は bulk 群を含み天井を超えて見えるが、天井そのものは予算ぶんに掛かる)
+    static func ceilingTruncationEvidence(_ snapshot: SnapshotResponse) -> String {
+        let budgeted = SnapshotTruncation.budgetedCount(snapshot)
+        let bulk = SnapshotTruncation.bulkExemptPresentCount(snapshot)
+        let bulkClause = bulk > 0 ? " (plus \(bulk) bulk-exempt elements outside the budget)" : ""
+        return "the snapshot is still truncated at \(budgeted) elements\(bulkClause)"
+            + " (\(snapshot.truncatedCount) more were omitted even at the"
+            + " \(BridgeAPI.maxSnapshotElementsCeiling)-element ceiling)"
     }
 
     /// WebView 画面での失敗に「どの経路で読んだ画面か」を添える。
@@ -85,11 +266,19 @@ extension StepExecutor {
         // 推測すると「XCUITest へ委譲」と名乗って Android のデバッグを誤誘導する(2026-07-29 実害)。
         // 申告が無いドライバ(Android・engine=xcuitest 単独・旧ブリッジ)では何も足さない
         switch snapshot?.webViewPath {
-        case "dom":
+        case WebViewPath.delegatedEmpty:
+            return " (the WebView was delegated to XCUITest but produced no content before the wait"
+                + " ran out, so this tree cannot tell \"the element is not there\" from \"the web"
+                + " content had not been published to accessibility yet\". Give the screen more time"
+                + " (a preceding exist() on a known element waits for it), or check the page loaded.)"
+        case WebViewPath.dom:
             return " (WebView contents were read through the DOM path. Taps are synthesized onto DOM rects, so "
                 + "a WebView embedded through interop **records success even when nothing responds**. "
                 + "Suspect that the preceding interaction had no effect.)"
-        case "delegated":
+        case WebViewPath.domInterop:
+            return " (WebView contents were read through the DOM path, and interactions were routed to real "
+                + "XCUITest touches, so this does not have the DOM-tap blind spot that plain \"dom\" has.)"
+        case WebViewPath.delegated:
             return " (WebView contents were read by delegating to XCUITest)"
         default:
             return ""
@@ -136,10 +325,11 @@ extension StepExecutor {
         // `exist(scroll:)` の内蔵探索(アクション側と同じ理由で別ステップにしない)
         if step.direction != nil, step.locator != nil {
             let result = try await runScrollSearch(step: step, phase: &phase)
-            scrollSearchNote = Self.scrollSearchNote(result)
-            guard result.found else { return .failed(Self.scrollNotFoundMessage(step)) }
+            scrollSearchNote = recordedScrollSearchNote(result)
+            guard result.found else { return .failed(Self.scrollNotFoundMessage(step, result)) }
         }
         let deadline = Date().addingTimeInterval(step.timeout ?? 5)
+        var freshRetry = AssertFreshRetry()
         var backoff = PollBackoff()
         var primaryMisses = 0
         // occlusion-guard: 要素が見つかっても覆われている場合、過渡的オーバーレイ(ローディング/
@@ -147,16 +337,31 @@ extension StepExecutor {
         // 最後に観測した occlusion 失敗を保持し、可視化されなければこれを返す。
         var lastOcclusion: StepResult.Status?
         var lastSnapshot: SnapshotResponse?
+        // 一度でも上限に当たったら以後は最初から天井で撮る(notExists と同じ latch)
+        var needsCeiling = false
         // timeout==0 でも初回照会は必ず1回行う(ループ後段の deadline チェックで離脱)。
         while true {
             var start = clock.now
-            var snapshot = try await driver.snapshot()
+            if needsCeiling { driver.raiseElementLimitOnNextSnapshot(BridgeAPI.maxSnapshotElementsCeiling) }
+            var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
             phase.snapshotMs += Self.ms(clock.now - start)
             try await dismissInterruption(in: &snapshot, phase: &phase)
+            noteEmptyWebView(snapshot)
+            // **見つからないのは上限で間引かれたからかもしれない**(2026-08-15)。否定側だけ
+            // 塞いであったが、肯定側は**実在する要素で赤くなる** = flake になる。
+            // 誤った成功ではないので優先度は下だが、直す手段は同じファイルに既にある。
+            // 撮り直しは切り詰められていて解決できなかったときだけ(通る側の固定費はゼロ)。
+            // 解決は1周1回(撮り直した周だけ2回)—— ゲートと本判定で同じ木に2回払わない
+            var resolvedDetail = Self.resolveDetailed(step: step, in: snapshot, strictForAssert: true)
+            if resolvedDetail == nil, snapshot.truncatedCount > 0, !needsCeiling {
+                needsCeiling = true
+                snapshot = try await retakenAtElementLimitCeiling(snapshot, phase: &phase)
+                resolvedDetail = Self.resolveDetailed(step: step, in: snapshot, strictForAssert: true)
+            }
             lastSnapshot = snapshot
             // アサーションでは type+index のみのフォールバックを使わない。
             // 別画面の無関係な要素にマッチして偽陽性になる(実測済み)
-            if let d = Self.resolveDetailed(step: step, in: snapshot, strictForAssert: true) {
+            if let d = resolvedDetail {
                 if let flip = try await occlusionFlip(
                     element: d.element, expectedText: d.element.label ?? step.locator?.label ?? "",
                     elements: snapshot.elements, screen: snapshot.screen,
@@ -188,7 +393,11 @@ extension StepExecutor {
                     }
                 }
             }
-            if Date() >= deadline { break }   // 初回照会後にここで離脱(timeout==0 も含む)
+            if Date() >= deadline {   // 初回照会後にここで離脱(timeout==0 も含む)
+                // 失敗と決める前に、キャッシュを捨てた1周だけ確かめる(AssertFreshRetry)
+                if freshRetry.arm(ifSupported: driver.supportsCacheBypass) { continue }
+                break
+            }
             start = clock.now
             try await Task.sleep(for: backoff.nextDelay())
             phase.waitMs += Self.ms(clock.now - start)
@@ -198,6 +407,7 @@ extension StepExecutor {
         if let lastOcclusion { return lastOcclusion }
         return .failed("element not found: \(step.locatorSummary) (timeout \(FTSeconds.format(step.timeout ?? 5))s)"
                        + Self.truncationHint(lastSnapshot)
+                       + tapDiagnosisHint(lastSnapshot?.elements)
                        + Self.webViewPathHint(lastSnapshot))
     }
 
@@ -209,6 +419,7 @@ extension StepExecutor {
             return .skipped("expected was not specified")
         }
         let deadline = Date().addingTimeInterval(step.timeout ?? 5)
+        var freshRetry = AssertFreshRetry()
         var lastActual: String?
         var found = false
         var backoff = PollBackoff()
@@ -220,12 +431,21 @@ extension StepExecutor {
         var lastScreen = FTRect(x: 0, y: 0, width: 0, height: 0)
         /// 失敗文言に WebView の経路を添えるために最後のスナップショットを保持する
         var lastSnapshot: SnapshotResponse?
+        // 一度でも上限に当たったら以後は最初から天井で撮る(exists と同じ latch)
+        var needsCeiling = false
         // timeout==0 でも初回照会は必ず1回行う(ループ後段の deadline チェックで離脱)。
         while true {
             var start = clock.now
-            var snapshot = try await driver.snapshot()
+            if needsCeiling { driver.raiseElementLimitOnNextSnapshot(BridgeAPI.maxSnapshotElementsCeiling) }
+            var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
             phase.snapshotMs += Self.ms(clock.now - start)
             try await dismissInterruption(in: &snapshot, phase: &phase)
+            // 見つからないのは上限で間引かれたからかもしれない(exists 側 331〜334行と同じ型)
+            if snapshot.truncatedCount > 0, !needsCeiling,
+               Self.resolve(step: step, in: snapshot, strictForAssert: true) == nil {
+                needsCeiling = true
+                snapshot = try await retakenAtElementLimitCeiling(snapshot, phase: &phase)
+            }
             lastSnapshot = snapshot
             var candidate = Self.resolve(step: step, in: snapshot, strictForAssert: true)
             var fromFallbackDriver = false
@@ -252,7 +472,8 @@ extension StepExecutor {
                 lastScreen = snapshot.screen
                 // 一致したテキスト。occlusion-guard には**実際に一致した文字列**を渡す
                 // (textMatches の期待値は正規表現で、そのまま画面と照合しても意味がないため)
-                let matched = Self.matchedText(actual, expected: expected, assert: assert)
+                let matched = Self.matchedText(actual, expected: expected, assert: assert,
+                                               normalization: Self.textNormalization(for: step))
                 if let expectedForGuard = matched {
                     // ロケータを label 指定していて実 label と不一致=部分一致で掴んだ疑い
                     let loose = step.locator?.label != nil && element.label != step.locator?.label
@@ -280,7 +501,11 @@ extension StepExecutor {
             } else {
                 lastOcclusion = nil   // #5: 要素未発見 → 過去の occlusion 失敗を無効化(消失時に stale を返さない)
             }
-            if Date() >= deadline { break }   // 初回照会後にここで離脱(timeout==0 も含む)
+            if Date() >= deadline {   // 初回照会後にここで離脱(timeout==0 も含む)
+                // 失敗と決める前に、キャッシュを捨てた1周だけ確かめる(AssertFreshRetry)
+                if freshRetry.arm(ifSupported: driver.supportsCacheBypass) { continue }
+                break
+            }
             start = clock.now
             try await Task.sleep(for: backoff.nextDelay())
             phase.waitMs += Self.ms(clock.now - start)
@@ -292,11 +517,24 @@ extension StepExecutor {
         let relation = Self.textMismatchRelation(assert)
         return found
             ? .failed("\(subject) \(relation): expected \"\(expected)\", actual \"\(lastActual ?? "nil")\""
+                      // **どちらの規則なら一致したか**を必ず添える(2026-08-09 のユーザー指示)。
+                      // 「見えない差で落ちたのか、本当に違う文字列なのか」で次の一手が変わる
+                      + Self.normalizationVerdict(actual: lastActual, expected: expected,
+                                                  assert: assert)
                       + Self.coveringHint(element: lastElement, elements: lastElements,
                                           screen: lastScreen)
+                      + tapDiagnosisHint(lastSnapshot?.elements)
                       + Self.webViewPathHint(lastSnapshot))
             : .failed("element not found: \(step.locatorSummary)"
+                      + Self.truncationHint(lastSnapshot)
+                      + tapDiagnosisHint(lastSnapshot?.elements)
                       + Self.webViewPathHint(lastSnapshot))
+    }
+
+    /// このステップで使う正規化。**既定は `.text`**(見た目が同じなら同じ)。
+    /// `strict: true` を明示したときだけ一切正規化しない
+    static func textNormalization(for step: FlowStep) -> TextNormalization {
+        step.strictText == true ? .strict : .text
     }
 
     /// executeAssertTextComparison の失敗文言用: 期待した関係のどれに反したかを表す語尾。
@@ -323,20 +561,76 @@ extension StepExecutor {
         // (現在のビューポートから消えるのを待つ)。前者が「無い」で終わっても、消滅アニメーションの
         // 途中(ツリーにはまだ残っている)ことがあるため後者を差し替えず両方通す
         if step.direction != nil, step.locator != nil {
-            let result = try await runScrollSearch(step: step, phase: &phase)
-            scrollSearchNote = Self.scrollSearchNote(result)
+            // **拾い直しは掛けない**: 見つからないのが期待値なので、逆走査は丸損になる
+            let result = try await runScrollSearch(step: step, recoverOnMiss: false, phase: &phase)
+            scrollSearchNote = recordedScrollSearchNote(result)
             guard !result.found else { return .failed(Self.scrollFoundMessage(step)) }
+            // **`!result.found` を成功材料にしない**: scrollFrame が解決できず1本も振らずに
+            // 打ち切った場合も found=false になるが、それは「無いことを確認した」ではなく
+            // 探索していない(2026-08-08)。exist 側(executeAssertExists)と同じく
+            // scrollNotFoundMessage 経由の文言でその場に失敗させる
+            if result.scrollFrameMissing {
+                return .failed(Self.scrollNotFoundMessage(step, result))
+            }
+            // **探索中に上限で切り詰められていたら「無い」を結論にしない**(同じ理由。
+            // `truncatedDuringSearch` の注記だけでは**検証は通ってしまう**)。通り過ぎた
+            // 画面の木はもう手元に無いので、ここは撮り直しでは救えない = その場で判定不能にする
+            if result.maxTruncatedDuringSearch > 0 {
+                return .failed(Self.undecidableTruncationMessage(
+                    "absence", step: step,
+                    evidence: "the tree hit the element limit during the scroll search"
+                        + " (\(result.maxTruncatedDuringSearch) element(s) were omitted in at"
+                        + " least one round)"))
+            }
         }
         // 「消えるまで待つ」。初回で不在なら即 pass、在るならタイムアウトまで消滅を待つ。
         // 可視性(occlusion)は見ない: ツリーから消えたことが唯一の判定。
         let deadline = Date().addingTimeInterval(step.timeout ?? 5)
+        var freshRetry = AssertFreshRetry()
+        // 否定形を通す前の確認は1周だけ(上の continue が deadline 検査を飛ばすため)
+        var passConfirmed = false
         var backoff = PollBackoff()
+        var lastElements: [ElementInfo] = []   // 失敗文言の tapDiagnosisHint 用
+        // 一度でも上限に当たったら、この検証の残りは**最初から天井で撮る**(needsCeiling)
+        var needsCeiling = false
         while true {
             let start = clock.now
-            var snapshot = try await driver.snapshot()
+            if needsCeiling { driver.raiseElementLimitOnNextSnapshot(BridgeAPI.maxSnapshotElementsCeiling) }
+            var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
             phase.snapshotMs += Self.ms(clock.now - start)
             try await dismissInterruption(in: &snapshot, phase: &phase)
-            if Self.resolve(step: step, in: snapshot, strictForAssert: true) == nil {
+            noteEmptyWebView(snapshot)
+            var resolved = Self.resolve(step: step, in: snapshot, strictForAssert: true)
+            // **見つからないのは上限で間引かれたからかもしれない**。切り詰められた木で
+            // 不在に見えたときだけ天井まで上げて撮り直す(retakenAtElementLimitCeiling)
+            if resolved == nil, snapshot.truncatedCount > 0, !needsCeiling {
+                needsCeiling = true
+                snapshot = try await retakenAtElementLimitCeiling(snapshot, phase: &phase)
+                resolved = Self.resolve(step: step, in: snapshot, strictForAssert: true)
+            }
+            lastElements = snapshot.elements
+            if resolved == nil {
+                // **不在を見た周でだけ評価する**(2026-08-15 の実測)。毎周だと 400 要素の
+                // ブラウザ画面で 11.9ms/回(debug)を全ポーリングぶん払う —— 見えている
+                // 要素があった周の木は結論に使われないので、測る意味が無い
+                noteUnderreportedTree(snapshot)
+                // 天井でも切り詰められている = 「無い」と「送られていない」を分けられない。
+                // ここで pass を返すのが 2026-08-15 に掃討した誤った成功そのもの
+                if snapshot.truncatedCount > 0 {
+                    return .failed(Self.undecidableTruncationMessage(
+                        "absence", step: step,
+                        evidence: Self.ceilingTruncationEvidence(snapshot)))
+                }
+                // **不在は古い木でも成立する**(要素が現れた直後はキャッシュが追いつかない)ので、
+                // 通す前にキャッシュを捨てて1周だけ確かめる。ここを省くと誤った成功になる。
+                // `continue` は deadline 検査を飛ばすため、**確認は1周だけ**が無限ループを
+                // 防ぐ不変条件になっている。AssertFreshRetry の予算だけに頼らず局所でも止める
+                // (予算側が壊れたときの症状が「失敗」でなく「ハング」になるのを避ける)
+                if !passConfirmed,
+                   freshRetry.confirmPass(ifSupported: driver.supportsCacheBypass) {
+                    passConfirmed = true
+                    continue
+                }
                 // primary で不在 = pass だが、hybrid ではシステム UI(別プロセスのダイアログ)が
                 // primary の snapshot に映らない。不在を確定する側でだけ fallbackDriver を1回照会する
                 // (pass 経路の固定費 1 回のみ。miss 毎に払う exists 側の間引きとは事情が逆)
@@ -356,12 +650,17 @@ extension StepExecutor {
                 }
                 return .passed
             }
-            if Date() >= deadline { break }
+            if Date() >= deadline {
+                // 失敗と決める前に、キャッシュを捨てた1周だけ確かめる(AssertFreshRetry)
+                if freshRetry.arm(ifSupported: driver.supportsCacheBypass) { continue }
+                break
+            }
             let waitStart = clock.now
             try await Task.sleep(for: backoff.nextDelay())
             phase.waitMs += Self.ms(clock.now - waitStart)
         }
-        return .failed("element still exists: \(step.locatorSummary) (timeout \(FTSeconds.format(step.timeout ?? 5))s)")
+        return .failed("element still exists: \(step.locatorSummary) (timeout \(FTSeconds.format(step.timeout ?? 5))s)"
+                       + tapDiagnosisHint(lastElements))
     }
 
     private func executeAssertNegativeTextComparison(
@@ -376,17 +675,38 @@ extension StepExecutor {
             return .skipped("expected was not specified")
         }
         let deadline = Date().addingTimeInterval(step.timeout ?? 5)
+        var freshRetry = AssertFreshRetry()
+        // 否定形を通す前の確認は1周だけ(上の continue が deadline 検査を飛ばすため)
+        var passConfirmed = false
         var backoff = PollBackoff()
         var found = false
         var lastActual: String?
         var lastElement: ElementInfo?
         var lastElements: [ElementInfo] = []
         var lastScreen = FTRect(x: 0, y: 0, width: 0, height: 0)
+        // **lastElements とは別に持つ**: あちらは lastElement と対で coveringHint が ref を引くため、
+        // 見つかった周のものでなければならない。こちらは木の同一性だけを見るので毎周更新する
+        var lastSeenElements: [ElementInfo] = []
+        /// 失敗文言に切り詰めを添えるための直近の観測
+        var lastSnapshot: SnapshotResponse?
+        // 一度でも上限に当たったら以後は最初から天井で撮る(exists と同じ latch)
+        var needsCeiling = false
         while true {
             let start = clock.now
-            var snapshot = try await driver.snapshot()
+            if needsCeiling { driver.raiseElementLimitOnNextSnapshot(BridgeAPI.maxSnapshotElementsCeiling) }
+            var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
             phase.snapshotMs += Self.ms(clock.now - start)
             try await dismissInterruption(in: &snapshot, phase: &phase)
+            noteEmptyWebView(snapshot)
+            // **要素は在ることが前提の経路**: 未発見のときだけ撮り直す(exists 側 331〜334行と同じ型)。
+            // 発見済みで値の変化を待っている周には不要
+            if snapshot.truncatedCount > 0, !needsCeiling,
+               Self.resolve(step: step, in: snapshot, strictForAssert: true) == nil {
+                needsCeiling = true
+                snapshot = try await retakenAtElementLimitCeiling(snapshot, phase: &phase)
+            }
+            lastSeenElements = snapshot.elements
+            lastSnapshot = snapshot
             if let (element, fallback) = Self.resolve(step: step, in: snapshot,
                                                       strictForAssert: true) {
                 found = true
@@ -395,21 +715,38 @@ extension StepExecutor {
                 lastElement = element
                 lastElements = snapshot.elements
                 lastScreen = snapshot.screen
-                let satisfied = Self.negativeAssertSatisfied(assert, actual: actual,
-                                                              expected: step.expected)
+                let satisfied = Self.negativeAssertSatisfied(
+                    assert, actual: actual, expected: step.expected,
+                    normalization: Self.textNormalization(for: step))
                 if satisfied {
+                    // 否定形の成立は古い値でも起きる(変わる前の値が条件を満たす)。
+                    // 通す前にキャッシュを捨てて1周だけ確かめる(局所ガードの理由も notExists と同じ)
+                    if !passConfirmed,
+                       freshRetry.confirmPass(ifSupported: driver.supportsCacheBypass) {
+                        passConfirmed = true
+                        continue
+                    }
                     if let fallback { return .passedViaFallback(fallback) }
                     return .passed
                 }
             }
-            if Date() >= deadline { break }
+            if Date() >= deadline {
+                // 失敗と決める前に、キャッシュを捨てた1周だけ確かめる(AssertFreshRetry)
+                if freshRetry.arm(ifSupported: driver.supportsCacheBypass) { continue }
+                break
+            }
             let waitStart = clock.now
             try await Task.sleep(for: backoff.nextDelay())
             phase.waitMs += Self.ms(clock.now - waitStart)
         }
-        guard found else { return .failed("element not found: \(step.locatorSummary)") }
+        guard found else {
+            return .failed("element not found: \(step.locatorSummary)"
+                           + Self.truncationHint(lastSnapshot)
+                           + tapDiagnosisHint(lastSeenElements))
+        }
         let hint = Self.coveringHint(element: lastElement, elements: lastElements,
                                      screen: lastScreen)
+            + tapDiagnosisHint(lastSeenElements)
         let subject = assert.hasPrefix("value") ? "value" : "text"
         switch assert {
         case "textIsEmpty", "valueIsEmpty":
@@ -445,13 +782,26 @@ extension StepExecutor {
         let clock = ContinuousClock()
         let wantEnabled = assert == "enabled"
         let deadline = Date().addingTimeInterval(step.timeout ?? 5)
+        var freshRetry = AssertFreshRetry()
         var backoff = PollBackoff()
         var found = false
+        /// 失敗文言に切り詰めを添えるための直近の観測
+        var lastSnapshot: SnapshotResponse?
+        // 一度でも上限に当たったら以後は最初から天井で撮る(exists と同じ latch)
+        var needsCeiling = false
         while true {
             let start = clock.now
-            var snapshot = try await driver.snapshot()
+            if needsCeiling { driver.raiseElementLimitOnNextSnapshot(BridgeAPI.maxSnapshotElementsCeiling) }
+            var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
             phase.snapshotMs += Self.ms(clock.now - start)
             try await dismissInterruption(in: &snapshot, phase: &phase)
+            // 見つからないのは上限で間引かれたからかもしれない(exists 側 331〜334行と同じ型)
+            if snapshot.truncatedCount > 0, !needsCeiling,
+               Self.resolve(step: step, in: snapshot, strictForAssert: true) == nil {
+                needsCeiling = true
+                snapshot = try await retakenAtElementLimitCeiling(snapshot, phase: &phase)
+            }
+            lastSnapshot = snapshot
             if let (element, fallback) = Self.resolve(step: step, in: snapshot,
                                                       strictForAssert: true) {
                 found = true
@@ -461,14 +811,18 @@ extension StepExecutor {
                     return .passed
                 }
             }
-            if Date() >= deadline { break }
+            if Date() >= deadline {
+                // 失敗と決める前に、キャッシュを捨てた1周だけ確かめる(AssertFreshRetry)
+                if freshRetry.arm(ifSupported: driver.supportsCacheBypass) { continue }
+                break
+            }
             let waitStart = clock.now
             try await Task.sleep(for: backoff.nextDelay())
             phase.waitMs += Self.ms(clock.now - waitStart)
         }
         return found
             ? .failed("the element is \(wantEnabled ? "disabled" : "enabled"): \(step.locatorSummary)")
-            : .failed("element not found: \(step.locatorSummary)")
+            : .failed("element not found: \(step.locatorSummary)" + Self.truncationHint(lastSnapshot))
     }
 
     /// キーボード開閉はアニメーションを伴うため単発チェックはフレークする → notExists と同じ
@@ -483,17 +837,34 @@ extension StepExecutor {
         let clock = ContinuousClock()
         let wantShown = assert == "keyboardShown"
         let deadline = Date().addingTimeInterval(step.timeout ?? 5)
+        var freshRetry = AssertFreshRetry()
+        // 否定形を通す前の確認は1周だけ(上の continue が deadline 検査を飛ばすため)
+        var passConfirmed = false
         var backoff = PollBackoff()
         var lastShown: Bool?
         while true {
             driver.captureKeyboardStateOnNextSnapshot()
             let start = clock.now
-            var snapshot = try await driver.snapshot()
+            var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
             phase.snapshotMs += Self.ms(clock.now - start)
             try await dismissInterruption(in: &snapshot, phase: &phase)
             lastShown = snapshot.keyboardShown
-            if snapshot.keyboardShown == wantShown { return .passed }
-            if Date() >= deadline { break }
+            if snapshot.keyboardShown == wantShown {
+                // **否定側(keyboardIsNotShown)だけ**通す前に確かめる。閉じたと読めた木が
+                // 古いと、開いたままのキーボードを「閉じている」と通す。肯定側は
+                // 「開くのを待つ」用途なので古い木では一致せずポーリングが続く
+                if !wantShown, !passConfirmed,
+                   freshRetry.confirmPass(ifSupported: driver.supportsCacheBypass) {
+                    passConfirmed = true
+                    continue
+                }
+                return .passed
+            }
+            if Date() >= deadline {
+                // 失敗と決める前に、キャッシュを捨てた1周だけ確かめる(AssertFreshRetry)
+                if freshRetry.arm(ifSupported: driver.supportsCacheBypass) { continue }
+                break
+            }
             let waitStart = clock.now
             try await Task.sleep(for: backoff.nextDelay())
             phase.waitMs += Self.ms(clock.now - waitStart)
@@ -514,13 +885,26 @@ extension StepExecutor {
         // 「状態が違う」と「見つからない」を別メッセージにするのは enabled と同じ規律
         let wantChecked = assert == "checked"
         let deadline = Date().addingTimeInterval(step.timeout ?? 5)
+        var freshRetry = AssertFreshRetry()
         var backoff = PollBackoff()
         var found = false
+        /// 失敗文言に切り詰めを添えるための直近の観測
+        var lastSnapshot: SnapshotResponse?
+        // 一度でも上限に当たったら以後は最初から天井で撮る(exists と同じ latch)
+        var needsCeiling = false
         while true {
             let start = clock.now
-            var snapshot = try await driver.snapshot()
+            if needsCeiling { driver.raiseElementLimitOnNextSnapshot(BridgeAPI.maxSnapshotElementsCeiling) }
+            var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
             phase.snapshotMs += Self.ms(clock.now - start)
             try await dismissInterruption(in: &snapshot, phase: &phase)
+            // 見つからないのは上限で間引かれたからかもしれない(exists 側 331〜334行と同じ型)
+            if snapshot.truncatedCount > 0, !needsCeiling,
+               Self.resolve(step: step, in: snapshot, strictForAssert: true) == nil {
+                needsCeiling = true
+                snapshot = try await retakenAtElementLimitCeiling(snapshot, phase: &phase)
+            }
+            lastSnapshot = snapshot
             if let (element, fallback) = Self.resolve(step: step, in: snapshot,
                                                       strictForAssert: true) {
                 found = true
@@ -532,14 +916,18 @@ extension StepExecutor {
                     return .passed
                 }
             }
-            if Date() >= deadline { break }
+            if Date() >= deadline {
+                // 失敗と決める前に、キャッシュを捨てた1周だけ確かめる(AssertFreshRetry)
+                if freshRetry.arm(ifSupported: driver.supportsCacheBypass) { continue }
+                break
+            }
             let waitStart = clock.now
             try await Task.sleep(for: backoff.nextDelay())
             phase.waitMs += Self.ms(clock.now - waitStart)
         }
         return found
             ? .failed("the element is \(wantChecked ? "off" : "on"): \(step.locatorSummary)")
-            : .failed("element not found: \(step.locatorSummary)")
+            : .failed("element not found: \(step.locatorSummary)" + Self.truncationHint(lastSnapshot))
     }
 
     private func executeAssertCount(step: FlowStep,
@@ -555,21 +943,50 @@ extension StepExecutor {
         // 節の優先順位が効くのは要素を1つ選ぶときだけで、数えるときは節を跨いで合計する
         let chain = [locator] + (step.fallbacks ?? [])
         let deadline = Date().addingTimeInterval(step.timeout ?? 5)
+        var freshRetry = AssertFreshRetry()
         var backoff = PollBackoff()
         var actual = 0
         var breakdown: [(clause: FlowLocator, elements: [ElementInfo])] = []
         var nestingHint = ""
+        /// 失敗文言に切り詰めを添えるための直近の観測
+        var lastSnapshot: SnapshotResponse?
+        // 一度でも上限に当たったら以後は天井で撮る(notExists と同じ latch)
+        var needsCeiling = false
         while true {
             let start = clock.now
-            var snapshot = try await driver.snapshot()
+            if needsCeiling { driver.raiseElementLimitOnNextSnapshot(BridgeAPI.maxSnapshotElementsCeiling) }
+            var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
             phase.snapshotMs += Self.ms(clock.now - start)
             try await dismissInterruption(in: &snapshot, phase: &phase)
+            noteEmptyWebView(snapshot)
+            // **件数は木の完全性がそのまま結果になる**(間引かれた分は「無い」と区別が付かない)。
+            // 不在と違い一致・不一致のどちらにも効くので、数える前に撮り直す
+            if snapshot.truncatedCount > 0, !needsCeiling {
+                needsCeiling = true
+                snapshot = try await retakenAtElementLimitCeiling(snapshot, phase: &phase)
+            }
+            lastSnapshot = snapshot
             breakdown = Self.unionByClause(chain, elements: snapshot.elements)
             actual = breakdown.reduce(0) { $0 + $1.elements.count }
             nestingHint = Self.nestingHint(breakdown.flatMap(\.elements),
                                            in: snapshot.elements)
-            if actual == expectedCount { return .passed }
-            if Date() >= deadline { break }
+            if actual == expectedCount {
+                // **一致した周でだけ評価する**(notExists と同じ理由。不一致はそのまま赤くなるので
+                // 「不在の証拠にならない」と言う相手が居ない)
+                noteUnderreportedTree(snapshot)
+                // 天井でも足りない木で数えた一致は根拠にならない(notExists と同じ誤った成功)
+                if snapshot.truncatedCount > 0 {
+                    return .failed(Self.undecidableTruncationMessage(
+                        "the count", step: step,
+                        evidence: Self.ceilingTruncationEvidence(snapshot)))
+                }
+                return .passed
+            }
+            if Date() >= deadline {
+                // 失敗と決める前に、キャッシュを捨てた1周だけ確かめる(AssertFreshRetry)
+                if freshRetry.arm(ifSupported: driver.supportsCacheBypass) { continue }
+                break
+            }
             let waitStart = clock.now
             try await Task.sleep(for: backoff.nextDelay())
             phase.waitMs += Self.ms(clock.now - waitStart)
@@ -581,8 +998,10 @@ extension StepExecutor {
             ? "breakdown: " + breakdown.map { "\($0.clause.summary) \($0.elements.count)" }
                 .joined(separator: " / ")
             : step.locatorSummary
+        // **切り詰めは不一致の側にも効く**(間引かれた分だけ actual が少ない)。天井まで上げても
+        // 残っているときは判定不能だが、既に不一致なので誤った成功にはならない = 注記で足りる
         return .failed("count mismatch: expected \(expectedCount), actual \(actual) (\(detail))"
-                       + nestingHint)
+                       + nestingHint + Self.truncationHint(lastSnapshot))
     }
 
     private func executeAssertScreenMatches(
@@ -601,28 +1020,55 @@ extension StepExecutor {
         guard FMVisionSupport.isSupported else {
             return .skipped("screen verification is disabled (\(FMVisionSupport.requirement))")
         }
-        var start = clock.now
-        var screenshot = try await driver.screenshot()
-        phase.actionMs += Self.ms(clock.now - start)
-        // 白フレーム(画面凍結)を FM 検証に渡すと必ず不一致で誤失敗するため、リトライで回復を待つ
-        if BlankFrameDetector.isUniformBlank(pngData: screenshot) {
-            for _ in 0..<2 {
-                try await Task.sleep(nanoseconds: 2_000_000_000)
-                start = clock.now
-                let retry = try await driver.screenshot()
-                phase.actionMs += Self.ms(clock.now - start)
-                screenshot = retry
-                if !BlankFrameDetector.isUniformBlank(pngData: retry) { break }
-            }
-            if BlankFrameDetector.isUniformBlank(pngData: screenshot) {
-                onDeviceFrozen?()
-                return .skipped("aborted due to a frozen display (blank frame) — requeued onto another device")
-            }
+        let frozen = StepResult.Status
+            .skipped("aborted due to a frozen display (blank frame) — requeued onto another device")
+        guard let screenshot = try await unfrozenScreenshot(phase: &phase) else {
+            onDeviceFrozen?()
+            return frozen
         }
         guard let verdict = await delegate.verifyScreen(expected: expected, screenshotPNG: screenshot) else {
             return .skipped("could not run screen verification")
         }
         if verdict.pass { return .passed }
-        return .failed("the screen does not match the expectation: \(verdict.reason)")
+        // **不一致なら1回だけ撮り直して判定し直す**。他の検証は timeout までポーリングして遷移の
+        // 整定を吸収するが、screenIs にそれを許すと FM 照合(ホスト全体で直列・約1回/秒)を
+        // 何度も焼くので、**回数を1回に固定**する(正常系のコストは増えない・失敗系で +1 回)。
+        // 狙いは「遷移直後のまだ描き終わっていない画面」の1件だけを救うこと
+        let start = clock.now
+        try await Task.sleep(nanoseconds: UInt64(Self.screenMatchRetryDelayMs) * 1_000_000)
+        phase.waitMs += Self.ms(clock.now - start)
+        // **撮り直しも白フレーム検査を通す**。素の screenshot() を呼ぶと、凍結した画面を FM に渡して
+        // 「画面が一致しない」で落ち、requeue すべき凍結を検証失敗に見せかける
+        guard let retryShot = try await unfrozenScreenshot(phase: &phase) else {
+            onDeviceFrozen?()
+            return frozen
+        }
+        guard let retryVerdict = await delegate.verifyScreen(expected: expected,
+                                                             screenshotPNG: retryShot) else {
+            return .failed("the screen does not match the expectation: \(verdict.reason)")
+        }
+        if retryVerdict.pass { return .passed }
+        return .failed("the screen does not match the expectation: \(retryVerdict.reason)")
+    }
+
+    /// スクショを撮り、白フレーム(画面凍結)なら回復を待って最大2回まで撮り直す。
+    /// **白のままなら nil**(呼び手が onDeviceFrozen + requeue する)。
+    /// 白フレームを FM 検証に渡すと必ず不一致になり、凍結が「検証失敗」に化けるための防波堤
+    private func unfrozenScreenshot(phase: inout PhaseAccumulator) async throws -> Data? {
+        let clock = ContinuousClock()
+        var start = clock.now
+        var screenshot = try await driver.screenshot()
+        phase.actionMs += Self.ms(clock.now - start)
+        guard BlankFrameDetector.isUniformBlank(pngData: screenshot) else { return screenshot }
+        for _ in 0..<2 {
+            start = clock.now
+            try await Task.sleep(nanoseconds: 2_000_000_000)
+            phase.waitMs += Self.ms(clock.now - start)
+            start = clock.now
+            screenshot = try await driver.screenshot()
+            phase.actionMs += Self.ms(clock.now - start)
+            if !BlankFrameDetector.isUniformBlank(pngData: screenshot) { return screenshot }
+        }
+        return nil
     }
 }

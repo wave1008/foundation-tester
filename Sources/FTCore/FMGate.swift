@@ -54,12 +54,23 @@ public enum FMBreaker {
     private static let lock = NSLock()
     private static var consecutiveFailures = 0
 
-    private static var stateURL: URL {
+    /// **テストだけが使う差し替え口**(production は nil)。状態はホスト単位の共有ファイルで、
+    /// それ自体は意図どおり(ワーカーのプロセスを跨いで落ちた事実を伝える)。ところが
+    /// テストを**プロセス並列**で走らせると、無関係なテストの `reset()` が同じファイルを消して
+    /// 判定と competing する(実測: `swift test --parallel` で FMBreakerTests が必ず落ちる)。
+    /// テスト側はプロセスごとの一時パスをここへ入れて隔離する
+    static var stateURLForTesting: URL?
+
+    /// 本番の置き場。**ホスト単位で1つ**(ここが共有であること自体が仕様 —— 14 ワーカーが
+    /// 別プロセスでも落ちた事実を共有できる)。パスの形はテストが I/O 抜きで表明する
+    static var defaultStateURL: URL {
         let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSTemporaryDirectory())
         return base.appendingPathComponent("ftester", isDirectory: true)
             .appendingPathComponent("fm-breaker.state")
     }
+
+    private static var stateURL: URL { stateURLForTesting ?? defaultStateURL }
 
     /// 落ちているか(= FM を呼ばない)。cooldown を過ぎていれば閉じたとみなして 1 回試させる
     public static var isOpen: Bool {

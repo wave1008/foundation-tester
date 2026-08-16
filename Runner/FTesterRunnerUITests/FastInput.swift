@@ -17,6 +17,16 @@ enum FastInput {
     /// swizzle が1つ以上成功したか(/status の fastInputAvailable として申告)
     private(set) static var available = false
 
+    /// 計測用: resetTiming() 以降に **元の quiescence 待ちの中で消えた時間**(ms)。
+    /// swizzle が入っている経路しか数えられないので、**available == false のときは常に 0**
+    /// (「整定待ちが無かった」ではなく「測れていない」。読み手はここを取り違えないこと)。
+    private(set) static var quiescenceMs: Double = 0
+    static func resetTiming() { quiescenceMs = 0 }
+
+    private static func addQuiescence(since start: DispatchTime) {
+        quiescenceMs += Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1e6
+    }
+
     /// ランナー起動時に1回だけ呼ぶ。既知の quiescence 待ちセレクタ候補を全て swizzle する
     /// (呼び出し経路が複数あるため、見つかったものは全部差し替える)。
     static func installSwizzle() {
@@ -40,7 +50,9 @@ enum FastInput {
                 let orig = unsafeBitCast(original, to: Fn.self)
                 let block: @convention(block) (AnyObject, Bool, Bool) -> Void = { obj, a, b in
                     if FastInput.enabled { return }
+                    let start = DispatchTime.now()
                     orig(obj, sel, a, b)
+                    FastInput.addQuiescence(since: start)
                 }
                 method_setImplementation(method, imp_implementationWithBlock(block))
             case 1:
@@ -48,7 +60,9 @@ enum FastInput {
                 let orig = unsafeBitCast(original, to: Fn.self)
                 let block: @convention(block) (AnyObject, Bool) -> Void = { obj, a in
                     if FastInput.enabled { return }
+                    let start = DispatchTime.now()
                     orig(obj, sel, a)
+                    FastInput.addQuiescence(since: start)
                 }
                 method_setImplementation(method, imp_implementationWithBlock(block))
             default:
@@ -56,7 +70,9 @@ enum FastInput {
                 let orig = unsafeBitCast(original, to: Fn.self)
                 let block: @convention(block) (AnyObject) -> Void = { obj in
                     if FastInput.enabled { return }
+                    let start = DispatchTime.now()
                     orig(obj, sel)
+                    FastInput.addQuiescence(since: start)
                 }
                 method_setImplementation(method, imp_implementationWithBlock(block))
             }

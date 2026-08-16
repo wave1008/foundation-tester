@@ -36,6 +36,7 @@ PLATFORM="both"
 DO_EXTENSION=1
 DO_PROJECT=1
 DO_MCP=1
+DO_CLAUDE_MD=1
 DO_DOCTOR=1
 DO_NEXT_STEPS=1
 ALLOW_CLONE=1
@@ -47,7 +48,7 @@ usage() {
   cat <<'EOF'
 Usage: install.sh [options]
 
-  --work-dir <dir>   Consumer directory that holds Projects/ (default: current directory)
+  --work-dir <dir>   Consumer directory that holds TestProjects/ (default: current directory)
   --name <name>      Project name to create (letters, digits, _ and -; derived from the directory name when omitted)
   --app <bundleID>   Bundle ID / package name of the app under test (--app-id also works; optional, can be changed later)
   --platform <p>     Which run profiles to scaffold: ios / android / both (default both)
@@ -57,8 +58,9 @@ Usage: install.sh [options]
   --no-clone         Do not clone when missing (an existing clone is required)
   --no-pull          Do not update an existing clone (to pin a version, or while developing the tool)
   --skip-extension   Do not install the VSCode extension
-  --skip-project     Do not create a project (Projects/<name>/) — e.g. MCP-only installs
+  --skip-project     Do not create a project (TestProjects/<name>/) — e.g. MCP-only installs
   --skip-mcp         Do not generate/merge .mcp.json
+  --skip-claude-md   Do not write the ftester block into <work-dir>/CLAUDE.md
   --no-doctor        Skip the final environment report (ftester doctor)
   --no-next-steps    Do not print "next steps" (when the caller, e.g. update.sh, guides instead)
   --keep-local       Do not auto-discard local changes in the clone (auto-discard is the default in the external layout)
@@ -67,12 +69,15 @@ Usage: install.sh [options]
 
 What it does: clone (git pull if it exists; in the external layout local changes are auto-discarded) /
          swift build / project creation / .gitignore upkeep / VSCode extension / .mcp.json /
-         verification gates. **With --machine and --app-name it also creates profiles (--auto-device)**
+         CLAUDE.md entry point / verification gates. **With --machine and --app-name it also creates profiles (--auto-device)**
          (idempotent; finished steps are skipped)
 Exit codes: 0=done / 2=only optional steps incomplete (CLI and MCP work) / 1=stopped at a required step
          (on stop, the [fail] line shows the cause and the number of the manual step to complete)
 EOF
 }
+
+# 再 exec(下の「自分自身が新しくなったら」)で渡し直すため、パース前に控える
+ORIGINAL_ARGS=("$@")
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -88,6 +93,7 @@ while [ $# -gt 0 ]; do
     --skip-extension) DO_EXTENSION=0; shift ;;
     --skip-project) DO_PROJECT=0; shift ;;
     --skip-mcp) DO_MCP=0; shift ;;
+    --skip-claude-md) DO_CLAUDE_MD=0; shift ;;
     --no-doctor) DO_DOCTOR=0; shift ;;
     --keep-local) KEEP_LOCAL=1; shift ;;
     --verbose) VERBOSE=1; shift ;;
@@ -204,7 +210,11 @@ WORK_DIR="$(abspath "$WORK_DIR")"
 # 実行のたびに別ファイル(前回の記録を上書きしない)。人への質問は /dev/tty へ直接書くので
 # tee の影響を受けない。ログを作れない場合でもインストールは続行する
 LOG_FILE=""
-if mkdir -p "$WORK_DIR/.ftester" 2>/dev/null; then
+if [ -n "${FT_INSTALL_LOG:-}" ]; then
+  # 再 exec された2周目。1周目と同じログへ続けて書く
+  LOG_FILE="$FT_INSTALL_LOG"
+  exec > >(tee -a "$LOG_FILE") 2>&1
+elif mkdir -p "$WORK_DIR/.ftester" 2>/dev/null; then
   LOG_FILE="$WORK_DIR/.ftester/install-$(date +%Y%m%d-%H%M%S).log"
   exec > >(tee -a "$LOG_FILE") 2>&1
   echo "==> Log: $LOG_FILE"
@@ -278,7 +288,7 @@ if [ -d "$TOOL_ROOT_RAW/.git" ] || [ -f "$TOOL_ROOT_RAW/Package.swift" ]; then
   else
     # 前回の更新が残した npm の版差分を先に片付ける(これを残すと下の dirty ガードで止まる)
     restore_lock_version_churn
-    # **外部パッケージ構成ではクローンに受け手の資産が無い**(Projects/・プロファイル・.mcp.json は
+    # **外部パッケージ構成ではクローンに受け手の資産が無い**(TestProjects/・プロファイル・.mcp.json は
     # すべて WORK_DIR 側)。そこに出る差分は生成物か上流コードの改変だけなので、聞かずに捨てる
     # ―― 聞くと更新1回あたりの承認が3手増える(ダイアログ + reset + 再実行。受け手実測)。
     # 捨てた内容は画面とログに残す(追跡分は reset、未追跡は clean。どちらも下の行を参照)。
@@ -292,7 +302,7 @@ if [ -d "$TOOL_ROOT_RAW/.git" ] || [ -f "$TOOL_ROOT_RAW/Package.swift" ]; then
       # **未追跡も消す** ―― reset は追跡分しか戻さず、残った未追跡ファイルは下のガードで止まるうえ、
       # 上流に同名ファイルが増えると `pull --ff-only` 自体が失敗する。`-x` は付けない
       # (.gitignore 対象 = .build/・node_modules・.vsix は消さない。消すと再ビルドで数分かかる)。
-      # clone 構成では受け手の Projects/ が未追跡のことがあるので**外部構成に限る**(この分岐の条件)
+      # clone 構成では受け手の TestProjects/ が未追跡のことがあるので**外部構成に限る**(この分岐の条件)
       git -C "$TOOL_ROOT" clean -fd >/dev/null 2>&1 || true
     fi
     if [ -n "$(git -C "$TOOL_ROOT" status --porcelain 2>/dev/null)" ]; then
@@ -308,7 +318,7 @@ if [ -d "$TOOL_ROOT_RAW/.git" ] || [ -f "$TOOL_ROOT_RAW/Package.swift" ]; then
       fi
       case "$answer" in
         [yY]*)
-          # 追跡ファイルの変更だけを戻す。未追跡は消さない(clone 構成では Projects/ が
+          # 追跡ファイルの変更だけを戻す。未追跡は消さない(clone 構成では TestProjects/ が
           # 未追跡のことがあり、git clean で受け手の資産を巻き込む)
           git -C "$TOOL_ROOT" reset --hard >/dev/null \
             || die "clone" "failed to discard local changes (git reset --hard)" 0.5
@@ -323,6 +333,7 @@ if [ -d "$TOOL_ROOT_RAW/.git" ] || [ -f "$TOOL_ROOT_RAW/Package.swift" ]; then
     fi
     echo "==> git pull (updating the existing clone $TOOL_ROOT)"
     step_started=$SECONDS
+    HEAD_BEFORE_PULL="$(git -C "$TOOL_ROOT" rev-parse HEAD 2>/dev/null || echo none)"
     if git -C "$TOOL_ROOT" pull --ff-only >>"$RAW_SINK" 2>&1; then
       record "clone" ok "updated the existing clone: $TOOL_ROOT ($branch $(git -C "$TOOL_ROOT" rev-parse --short HEAD), $(elapsed_since $step_started))"
     else
@@ -342,7 +353,25 @@ fi
 [ -f "$TOOL_ROOT/Package.swift" ] && [ -d "$TOOL_ROOT/Sources/FTScenarioRunner" ] \
   || die "clone" "$TOOL_ROOT is not a foundation-tester clone" 0.5
 
-# clone 構成 = 受け手ディレクトリがクローン自身(Projects/ はクローン内に作る)
+# ---- pull で自分自身が新しくなったら、新版で実行し直す ------------------------
+# **bash は実行中にファイルが差し替わっても古い内容を最後まで実行する**(git は rename で
+# 置換するので、開いた fd は旧 inode を指し続ける。2026-08-06 に実験で確認)。
+# そのため update.sh 経由(= クローンの Scripts/install.sh を bash で起動する経路)では、
+# **pull で入った新しいステップがその回は1つも実行されない**。しかも次回は update.sh が
+# up-to-date で即終了するので**永久に実行されない**(実害: ステップ7.6 の CLAUDE.md が
+# 版だけ上がって一度も走らなかった)。スキル既定の curl 形は常に新鮮なので対象外。
+#
+# 条件は「**いま実行しているファイルが、たった今 pull したクローンの install.sh 自身**」のときだけ。
+# ダウンロード済みの控えを実行している場合に再 exec しても意味が無い(同じ古い内容を読み直す)。
+if [ "${FT_REEXEC:-0}" != "1" ] && [ -f "$0" ] && [ -n "${HEAD_BEFORE_PULL:-}" ] \
+   && [ "$HEAD_BEFORE_PULL" != "$(git -C "$TOOL_ROOT" rev-parse HEAD 2>/dev/null || echo none)" ] \
+   && [ "$(abspath "$(dirname "$0")")/$(basename "$0")" = "$TOOL_ROOT/Scripts/install.sh" ]; then
+  echo "==> The clone moved to a new revision — restarting with the updated install.sh"
+  export FT_REEXEC=1 FT_INSTALL_LOG="$LOG_FILE"
+  exec bash "$0" "${ORIGINAL_ARGS[@]+"${ORIGINAL_ARGS[@]}"}"
+fi
+
+# clone 構成 = 受け手ディレクトリがクローン自身(TestProjects/ はクローン内に作る)
 LAYOUT="external"
 if [ "$WORK_DIR" = "$TOOL_ROOT" ]; then
   LAYOUT="clone"
@@ -388,7 +417,7 @@ fi
 
 # ---- 4. プロジェクト作成(SKILL ステップ4) ------------------------------------
 project_exists() {
-  [ -n "$PROJECT_NAME" ] && [ -d "$WORK_DIR/Projects/$PROJECT_NAME" ]
+  [ -n "$PROJECT_NAME" ] && [ -d "$WORK_DIR/TestProjects/$PROJECT_NAME" ]
 }
 
 # 省略可能な引数は配列で渡す(空文字列を引数として渡さないため)
@@ -402,13 +431,13 @@ NAME_ARGS=()
 if [ "$DO_PROJECT" = "0" ]; then
   record "project" skip "--skip-project"
 elif project_exists; then
-  record "project" skip "Projects/$PROJECT_NAME already exists"
+  record "project" skip "TestProjects/$PROJECT_NAME already exists"
 elif [ "$LAYOUT" = "clone" ]; then
   [ -n "$PROJECT_NAME" ] || die "project" "--name is required in the clone layout" 4
   echo "==> ftester project create $PROJECT_NAME"
   ( cd "$WORK_DIR" && "$FT" project create "$PROJECT_NAME" "${APP_ARGS[@]+"${APP_ARGS[@]}"}" \
       "${PLATFORM_ARGS[@]}" ) || die "project" "project create failed" 4
-  record "project" ok "Projects/$PROJECT_NAME"
+  record "project" ok "TestProjects/$PROJECT_NAME"
 elif [ -f "$WORK_DIR/Package.swift" ]; then
   # ftester と無関係の既存パッケージへの導入は事故になる(init も拒否する)
   grep -q "ftester projects begin\|foundation-tester" "$WORK_DIR/Package.swift" \
@@ -418,14 +447,14 @@ elif [ -f "$WORK_DIR/Package.swift" ]; then
   echo "==> ftester project create $PROJECT_NAME"
   ( cd "$WORK_DIR" && "$FT" project create "$PROJECT_NAME" "${APP_ARGS[@]+"${APP_ARGS[@]}"}" \
       "${PLATFORM_ARGS[@]}" ) || die "project" "project create failed" 4
-  record "project" ok "Projects/$PROJECT_NAME (added to the existing package)"
+  record "project" ok "TestProjects/$PROJECT_NAME (added to the existing package)"
 else
   # 新規の受け手パッケージ。TOOL_ROOT はローカルパス依存で引く(git 依存は手動・SKILL ステップ4参照)
   echo "==> ftester init($WORK_DIR)"
   ( cd "$WORK_DIR" && "$FT" init --ftester-path "$TOOL_ROOT" \
       "${NAME_ARGS[@]+"${NAME_ARGS[@]}"}" "${APP_ARGS[@]+"${APP_ARGS[@]}"}" "${PLATFORM_ARGS[@]}" ) \
     || die "project" "ftester init failed" 4
-  record "project" ok "created the consumer package${PROJECT_NAME:+ (Projects/$PROJECT_NAME)}"
+  record "project" ok "created the consumer package${PROJECT_NAME:+ (TestProjects/$PROJECT_NAME)}"
 fi
 
 # ---- 4 の検証ゲート: .gitignore(SKILL ステップ4) -----------------------------
@@ -436,7 +465,7 @@ if [ "$LAYOUT" = "clone" ]; then
 elif [ -d "$WORK_DIR/.git" ]; then
   added=""
   # 対の実装: FTCore.ProjectScaffold.ensureGitignore(ftester init が使う)。片方だけ変えない
-  for line in ".build/" ".ftester/" "Projects/*/reports/"; do
+  for line in ".build/" ".ftester/" "TestProjects/*/reports/"; do
     if ! grep -qxF "$line" "$WORK_DIR/.gitignore" 2>/dev/null; then
       printf '%s\n' "$line" >> "$WORK_DIR/.gitignore"
       added="$added $line"
@@ -492,12 +521,14 @@ if os.path.exists(path):
             sys.exit(3)
 servers = data.setdefault("mcpServers", {})
 previous = servers.get("ftester", {}).get("env", {}).get("FT_TOOL_ROOT")
-# cwd は受け手パッケージ(Projects/ の在り処)、FT_TOOL_ROOT はツール本体(ブリッジ資産)。
+# cwd は受け手パッケージ(TestProjects/ の在り処)、FT_TOOL_ROOT はツール本体(ブリッジ資産)。
 # ビルドのため TOOL_ROOT へ cd したあと exec 前に元の cwd へ戻すのが必須。
+# ランチャは Scripts/mcp-server.sh(鮮度判定・ログ・失敗の可視化はあちら)。
+# **1行のシェル式を埋め込まない**: 起動のたびに約8秒の no-op ビルドを払い、失敗しても
+# /dev/null で黙って起動しなかった(2026-08-06 の外部フィードバック)
 servers["ftester"] = {
     "command": "bash",
-    "args": ["-lc", 'WD="$PWD"; cd "%s" && swift build --product ftester-mcp >/dev/null 2>&1 '
-                    '&& cd "$WD" && exec "%s/.build/debug/ftester-mcp"' % (tool_root, tool_root)],
+    "args": ["-lc", 'exec "%s/Scripts/mcp-server.sh"' % tool_root],
     "env": {"FT_TOOL_ROOT": tool_root},
 }
 with open(path, "w") as f:
@@ -515,6 +546,99 @@ PY
     esac
   else
     soft_fail "MCP" "failed to merge .mcp.json ($merge_out)" 7.5
+  fi
+fi
+
+# ---- 7.6 エージェントの入口を CLAUDE.md に置く(SKILL ステップ7.6) ----------------
+# **導入直後ではなく、その後のセッションのための手当て**。.mcp.json も .claude/settings.json も
+# 「設定として効く」だけでエージェントが読む物ではないので、これが無いと翌週
+# 「このアプリのテスト書いて」と言われた Claude Code の手掛かりはスキルの description だけになる。
+# 実害は3つに絞られる(素の XCTest を書き始める / 新しい ft_* に気づかない /
+# DSL コマンドを推測で書く)ので、**使い方の解説は書かず入口だけ4行**置く
+# —— 解説を置くとツール説明と二重管理になり必ずズレる(docs/design.md「契約は1箇所」)。
+# 受け手の資産なので**マーカーの内側だけ**差し替える。共有リポジトリで嫌うなら --skip-claude-md。
+if [ "$DO_CLAUDE_MD" = "0" ]; then
+  record "CLAUDE.md" skip "--skip-claude-md"
+# **クローンが git 管理している CLAUDE.md には書かない**(2026-08-07 に自己破壊を再現)。
+# clone 構成(WORK_DIR = TOOL_ROOT)では受け手の CLAUDE.md はクローン自身の追跡ファイルで、
+# ここへ追記すると次の更新が pull ガード(「local changes」)で必ず止まる。しかも
+# `git reset --hard` で戻しても次の更新が同じブロックを書くので**同じ状態に戻る**。
+# 判定は「レイアウト」ではなく**そのファイルが追跡されているか** —— 外部構成でも受け手が
+# 自分のリポジトリで CLAUDE.md を管理していることはあるが、そちらはクローンの pull を
+# 妨げないので対象外(見るのは TOOL_ROOT の索引だけ)。
+# 同型: packageLockSync(npm install が lock を書き換えてクローンが dirty になる)
+elif git -C "$TOOL_ROOT" ls-files --error-unmatch \
+       "$(python3 -c 'import os,sys;print(os.path.relpath(sys.argv[1],sys.argv[2]))' \
+          "$WORK_DIR/CLAUDE.md" "$TOOL_ROOT" 2>/dev/null)" >/dev/null 2>&1; then
+  record "CLAUDE.md" skip "it is tracked by the clone — writing there would make the next update abort at the pull guard"
+elif ! command -v python3 >/dev/null 2>&1; then
+  record "CLAUDE.md" warn "python3 is missing, so the entry point was not written (agents may miss ft_*)"
+else
+  if guide_out=$(python3 - "$WORK_DIR/CLAUDE.md" <<'GUIDE'
+import os, re, sys
+
+path = sys.argv[1]
+# **マーカーは最短・不変にする**。説明文をマーカー行に埋めると、文言を変えた瞬間に
+# 既存ブロックを見失って**二重に追記される**。前置き一致で拾い、説明は本文の側に置く。
+BEGIN = "<!-- ftester:begin -->"
+END = "<!-- ftester:end -->"
+BODY = """## テスト(foundation-tester)
+
+<!-- この範囲は Scripts/install.sh が管理しており、更新のたび上書きされます。
+     不要なら begin〜end ごと削除するか、インストーラに --skip-claude-md を渡してください。 -->
+
+- シナリオ作成は `/ftester-scenario`、対象アプリ/デバイスの追加は `/ftester-profiles`、更新は `/ftester-update`
+- 画面の探索・操作は `ft_*` ツール。**長いリストは `ft_swipe` の繰り返しでなく `ft_scroll_to`**
+- DSL のコマンド名は推測せず `ft_dsl_commands` で索引を引く(無いコマンドを書かないため)
+- シナリオは `TestProjects/<プロジェクト>/scenarios/*.swift`。実行は `ft_run_scenario` か VSCode 拡張"""
+block = BEGIN + "\n" + BODY + "\n" + END
+
+existing = ""
+if os.path.exists(path):
+    with open(path) as f:
+        existing = f.read()
+
+# **マーカーが1組でないなら何も書かない**(2026-08-06。実際に消して確認した)。
+# 素朴に「最初の begin 〜 最初の end」を置換すると、end だけ壊れた CLAUDE.md で
+# 1回目に2つ目のブロックを追記 → 2回目に**間に挟まれた利用者の記述ごと**置換して消す。
+# 受け手の資産を黙って壊すくらいなら、案内を諦めて人に直してもらうほうがよい。
+# 行頭に限って数える(散文やコード例の中の言及に反応しないため)。
+begins = len(re.findall(r"(?m)^[ \t]*<!--\s*ftester:begin", existing))
+ends = len(re.findall(r"(?m)^[ \t]*<!--\s*ftester:end\s*-->", existing))
+span = None
+if begins == 1 and ends == 1:
+    span = re.search(r"(?ms)^[ \t]*<!--\s*ftester:begin.*?<!--\s*ftester:end\s*-->", existing)
+
+if begins == 0 and ends == 0:
+    if existing.strip():
+        updated = existing.rstrip("\n") + "\n\n" + block + "\n"
+        verb = "appended to"
+    else:
+        updated = block + "\n"
+        verb = "created"
+elif span:
+    updated = existing[: span.start()] + block + existing[span.end():]
+    verb = "unchanged" if updated == existing else "refreshed"
+else:
+    # begin/end が 0組でも1組でもない(片方だけ・2組以上・逆順)
+    updated = existing
+    verb = "damaged"
+
+if updated != existing:
+    with open(path, "w") as f:
+        f.write(updated)
+print(verb, end="")
+GUIDE
+  ); then
+    case "$guide_out" in
+      damaged)
+        record "CLAUDE.md" warn "the ftester markers in CLAUDE.md are not a single begin/end pair"\
+" — left the file untouched (fix or remove them by hand, then re-run)" ;;
+      *)
+        record "CLAUDE.md" ok "$guide_out CLAUDE.md (delete the ftester block, or pass --skip-claude-md, to opt out)" ;;
+    esac
+  else
+    record "CLAUDE.md" warn "could not write the entry point (agents may miss ft_*)"
   fi
 fi
 
@@ -537,7 +661,7 @@ else
 fi
 
 # ---- 検証ゲート: ルート解決(SKILL ステップ7.5 の検証ゲート) -------------------
-# ツール本体(ブリッジ資産)と受け手パッケージ(Projects/)の取り違えは ft_* を全滅させる。
+# ツール本体(ブリッジ資産)と受け手パッケージ(TestProjects/)の取り違えは ft_* を全滅させる。
 # 表示された解決結果が、このインストールで意図した2ディレクトリと一致するかまで見る
 if ! roots=$( cd "$WORK_DIR" && "$FT" doctor --roots-only 2>&1 ); then
   record "root-resolution" fail "$(printf '%s' "$roots" | tr '\n' ' ')"

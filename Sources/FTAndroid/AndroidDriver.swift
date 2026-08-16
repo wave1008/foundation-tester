@@ -19,6 +19,11 @@ public final class AndroidDriver: AppDriver {
     // 直近スナップショットの ref → 中心座標(iOS ランナーと同じ方式)。iOS と違い CLI プロセス内に
     // 住むため、呼び出しをまたぐ手動駆動用に一時ファイルへも永続化する(run は単一プロセスで不要だが無害)
     private var refCenters: [Int: (x: Double, y: Double)] = [:]
+    /// DOM 由来の要素の ref → ブリッジが知っている a11y の ref(自作アプリの WebView のときだけ埋まる)。
+    /// **注入(type / clear)でだけ差し替える**。ブリッジは自分の snapshot の ref しか受け付けない
+    /// (未知の ref は 404)ので、これが無いと WebView 内の入力だけが落ちる
+    /// (規則と根拠は `AndroidWebViewDOM.bridgeRefMap`)
+    private var domBridgeRefs: [Int: Int] = [:]
     private var screen: FTRect = FTRect(x: 0, y: 0, width: 0, height: 0)
     private var currentPackage: String?
 
@@ -27,10 +32,18 @@ public final class AndroidDriver: AppDriver {
     /// 直前に立てたときだけ払う(snapshot() 側で読み捨てる)
     private var captureKeyboardOnNextSnapshot = false
 
+    /// raiseElementLimitOnNextSnapshot() が立てる1回限りの要素上限(nil = 既定)
+    private var pendingElementLimit: Int?
+
+    /// `pointScale` の1度きりの実測値(端末ごとに固定)
+    private var cachedPointScale: Double?
+
     private struct PersistedState: Codable {
         var centers: [Int: [Double]]
         var screen: FTRect
         var package: String?
+        /// 省略可(古い状態ファイルとの互換。domBridgeRefs 参照)
+        var domBridgeRefs: [Int: Int]?
     }
 
     private var stateFileURL: URL {
@@ -44,7 +57,7 @@ public final class AndroidDriver: AppDriver {
     func persistState() {
         let state = PersistedState(
             centers: refCenters.mapValues { [$0.x, $0.y] },
-            screen: screen, package: currentPackage)
+            screen: screen, package: currentPackage, domBridgeRefs: domBridgeRefs)
         if let data = try? JSONEncoder().encode(state) {
             try? data.write(to: stateFileURL)
         }
@@ -55,6 +68,7 @@ public final class AndroidDriver: AppDriver {
               let data = try? Data(contentsOf: stateFileURL),
               let state = try? JSONDecoder().decode(PersistedState.self, from: data) else { return }
         refCenters = state.centers.compactMapValues { $0.count == 2 ? (x: $0[0], y: $0[1]) : nil }
+        domBridgeRefs = state.domBridgeRefs ?? [:]
         screen = state.screen
         if currentPackage == nil { currentPackage = state.package }
     }
@@ -78,6 +92,26 @@ public final class AndroidDriver: AppDriver {
     }
 
     // MARK: - adb helpers
+
+    /// 論理 px → 物理 px の倍率(DOM の CSS px を画面座標へ写すのに要る)
+    func displayDensity() -> Double {
+        guard let out = try? adb(["shell", "wm", "density"]).output,
+              let density = Self.parseDisplayDensity(out) else { return 1 }
+        return density
+    }
+
+    /// `adb shell wm density` の出力 → **dp あたりの px**。
+    /// **最後の density 行**を採る(`Override density` があればそれが実効値)。
+    /// 160 は dp の定義そのもの(1dp = 1/160 inch)なので調整値ではない。
+    /// 読めなければ nil = 呼び手は 1(換算しない = 従来の挙動)へ落ちる
+    static func parseDisplayDensity(_ output: String) -> Double? {
+        guard let line = output.split(separator: "\n").last(where: { $0.contains("density") }),
+              let dpi = line.split(separator: ":").last
+                .flatMap({ Double($0.trimmingCharacters(in: .whitespaces)) }),
+              dpi > 0
+        else { return nil }
+        return dpi / 160.0
+    }
 
     func adb(_ args: [String]) throws -> Shell.Result {
         var full = [adbPath]
@@ -111,8 +145,55 @@ public final class AndroidDriver: AppDriver {
                 body: "failed to clear app data (is \(bundleID) installed?): \(result.tail)")
         }
         refCenters = [:]
+        domBridgeRefs = [:]
         currentPackage = nil
         persistState()
+    }
+
+    /// URL(ディープリンク)を配送する。`am start -W` は遷移完了を待つ。package は bundleID が
+    /// 非 nil のときだけ付ける(付けないとチューザ/ブラウザへ流れず対象アプリへ直行する)。
+    /// 画面遷移を伴うため直前の ref は無効(launch と同じ理由: 次の snapshot 前に古い ref で
+    /// タップされると誤爆する)
+    public func openURL(_ url: String, bundleID: String?) async throws {
+        let result = try adb(try Self.amStartArgs(url: url, package: bundleID))
+        guard result.status == 0, !Self.amStartIndicatesFailure(output: result.output) else {
+            throw DriverError.badResponse(status: Int(result.status),
+                body: "failed to open the URL via am start: \(result.tail)")
+        }
+        refCenters = [:]
+        domBridgeRefs = [:]
+        if let bundleID { currentPackage = bundleID }
+        persistState()
+    }
+
+    /// URL をデバイス側シェルへ渡すためにシングルクォートで包む。`adb shell` はクライアント側の
+    /// 複数引数を空白結合してからデバイス側シェルへ渡す(execve 直結ではない)ため、`&`/`?` 等の
+    /// シェル特殊文字を筒抜けにしないためにこちらで引用する。URL 自体にシングルクォートを含む場合は
+    /// 安全に引用できないため throw する(黙って壊れた URL を送らない)
+    static func quoteURLForDeviceShell(_ url: String) throws -> String {
+        guard !url.contains("'") else {
+            throw DriverError.badResponse(status: 400,
+                body: "cannot deliver a URL containing a single quote via adb shell"
+                    + " (it would break the quoting): \(url)")
+        }
+        return "'\(url)'"
+    }
+
+    /// `adb shell am start -W -a android.intent.action.VIEW -d '<url>' [<package>]` の引数列
+    static func amStartArgs(url: String, package: String?) throws -> [String] {
+        var args = ["shell", "am", "start", "-W", "-a", "android.intent.action.VIEW",
+                    "-d", try quoteURLForDeviceShell(url)]
+        if let package { args.append(package) }
+        return args
+    }
+
+    /// am start は失敗しても exit 0 で stdout に "Error:" を出すことがある(intent 解決失敗等)ので
+    /// 出力も見る。**判定材料は "Error:" だけ** —— `Warning: Activity not started, intent has been
+    /// delivered to currently running top-most instance.` は**成功**(既に前面にある同じ Activity の
+    /// onNewIntent へ配送済み = ディープリンクの warm 配送そのもの)で、singleTop の SUT では
+    /// これが通常の応答になる。ここを失敗にすると Flutter/RN の配送が全滅する(2026-08-08 に実測)
+    static func amStartIndicatesFailure(output: String) -> Bool {
+        output.contains("Error:")
     }
 
     public func install(packagePath: String) async throws {
@@ -123,6 +204,40 @@ public final class AndroidDriver: AppDriver {
         }
     }
 
+    public func uninstall(bundleID: String) async throws {
+        let result = try adb(["uninstall", bundleID])
+        guard result.output.contains("Success") else {
+            throw DriverError.badResponse(status: Int(result.status),
+                body: "failed to uninstall the app: \(result.tail)")
+        }
+    }
+
+    /// フォアグラウンドのアプリが bundleID と一致するか(DSL の appIs)。
+    /// ホスト側で dumpsys を引く(ブリッジはアプリ内 a11y ツリーしか見えず、他プロセスの
+    /// window は見えない。AndroidForegroundWindows と同じ制約)
+    public func isAppForeground(bundleID: String) async throws -> Bool {
+        try await foregroundAppID() == bundleID
+    }
+
+    public func foregroundAppID() async throws -> String? {
+        let result = try adb(["shell", "dumpsys", "window", "windows"])
+        guard result.status == 0 else {
+            throw DriverError.badResponse(status: Int(result.status),
+                body: "dumpsys window windows failed: \(result.tail)")
+        }
+        return AndroidForegroundWindows.topmostAppPackage(dumpsys: result.output)
+    }
+
+    /// パッケージが入っているか。**判定できないときは nil**(adb 不調でも「未インストール」と
+    /// 断じない)。launch 失敗の切り分け文言に使う
+    public func isInstalled(bundleID: String) -> Bool? {
+        guard let result = try? adb(["shell", "pm", "list", "packages", bundleID]),
+              result.status == 0 else { return nil }
+        // pm list packages は前方一致で引くので、行の完全一致で判定する
+        return result.output.split(separator: "\n")
+            .contains { $0.trimmingCharacters(in: .whitespaces) == "package:\(bundleID)" }
+    }
+
     public func launch(bundleID: String) async throws {
         // force-stop+monkey+am start フォールバックと整定待ちはブリッジ側 handleLaunch() が持つ
         // (ここでの追加 sleep は不要)
@@ -130,6 +245,7 @@ public final class AndroidDriver: AppDriver {
         // 再起動で旧 snapshot の ref は無効。メモリ・永続化の両方から落とし、
         // 以後の tap(ref:) を「先に snapshot」エラーに倒す(古い座標への誤タップ防止)
         refCenters = [:]
+        domBridgeRefs = [:]
         currentPackage = bundleID
         persistState()
     }
@@ -210,9 +326,90 @@ public final class AndroidDriver: AppDriver {
         await settleViaBridge()
     }
 
+    public var supportsCacheBypass: Bool { true }
+
+    /// 木は px で来るので、**pt/dp で決めた床を px へ換算する倍率**(= 表示密度)。
+    /// 端末ごとに固定なので1度だけ引く(`wm density` の adb 往復をタップのたび払わない)。
+    /// 引けなければ 1 = 換算しない側 = 従来の挙動(嘘の倍率を作らない)
+    public var pointScale: Double {
+        if let cachedPointScale { return cachedPointScale }
+        let value = displayDensity()
+        cachedPointScale = value
+        return value
+    }
+
+    /// InputInjector が ACTION_SET_TEXT のたび自前で読み返す(docs/design.md §Android のテキスト注入の規律)
+    public var verifiesTypedText: Bool { true }
+
     public func snapshot() async throws -> SnapshotResponse {
+        try await snapshot(bypassingCache: false)
+    }
+
+    /// bypassingCache=true はブリッジに全ノード `refresh()` を要求する(既定は WebView 内だけ)。
+    /// 約 +65ms 掛かるので、検証が期限切れで失敗と決まる直前の1回にだけ使う(AppDriver の宣言参照)
+    public func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {
         restoreStateIfNeeded()  // 別プロセス実行時に refCenters 等を引き継ぐ(persistState で消さないため)
-        var snapshot = try await withBridge { try await $0.snapshot() }
+        // **上限の指定はここで消費する**(クライアントに持たせない): withBridge が返す
+        // BridgeClient は接続拒否のたびに作り直されるので、あちら側に立てた1回限りのフラグは
+        // 再接続で黙って消える
+        let limit = pendingElementLimit
+        pendingElementLimit = nil
+        var snapshot = try await withBridge {
+            $0.raiseElementLimitOnNextSnapshot(limit)
+            return try await $0.snapshot(bypassingCache: bypassingCache)
+        }
+        // RN の button 内側 Text 双子を畳む(SnapshotDedupe の宣言コメント参照)。
+        // syncLocalState より前 = 下流(DSL/MCP)は正規化後の木だけを見る
+        snapshot.elements = SnapshotDedupe.dropLabelTwinsInsideButtons(snapshot.elements)
+        // 対応表は snapshot ごとに作り直す(前の画面のものを持ち越すと別の欄へ注入する)
+        domBridgeRefs = [:]
+        // **web コンテンツを DOM で置き換える**。対象はブラウザ本体(2026-08-13)と
+        // **テスト対象アプリ自身の WebView**(2026-08-15。a11y が版で属性を入れ替えるため)。
+        // **どちらの門も `AndroidWebViewDOM.route` の1箇所**(ここに2つ目の判定を書かない)。
+        //
+        // **前面の判定はスナップショット自身の `sessionBundleID`(= ブリッジがデバイス上で見た値)を
+        // 先に見る**。`currentPackage` は launch/openURL/activate が更新するホスト側の帳簿でしかなく、
+        // **MCP のようにアプリを起こさず既にブラウザが前面の端末へ繋ぐ経路では nil のまま**になる
+        // (2026-08-13 に実測: 新しいプロセスから Chrome を撮ったら帳簿が nil で経路が丸ごと不発だった)。
+        // 帳簿は `sessionBundleID` を返さない古いブリッジのための保険として残す
+        if let package = snapshot.sessionBundleID ?? currentPackage {
+            // **`webView` ノードが無くても差し込む(ブラウザだけ)**(2026-08-14 の監査で直した)。
+            // Chrome は本文を1要素も公開しない画面でノードごと出さないことがあり、
+            // そこが**まさに DOM が要る場面**なのに門で弾いていた。無いときは
+            // 上下の chrome から内容領域を割り出す(`browserContentFrame`)。
+            // 自作アプリ側は `route` が `webView` ノードの存在を門にしているので必ず frame がある
+            let webView = WebViewDOM.webViewElement(in: snapshot.elements)
+            let frame = webView?.frame ?? WebViewDOM.browserContentFrame(in: snapshot.elements,
+                                                                        screen: snapshot.screen)
+            let route = AndroidWebViewDOM.route(
+                packageID: package, hasWebViewNode: webView != nil,
+                a11yLooksSufficient: WebViewDOM.browserA11yLooksSufficient(elements: snapshot.elements),
+                browserDOMEnabled: AndroidWebViewDOM.isBrowserDOMEnabled,
+                appWebViewDOMEnabled: AndroidWebViewDOM.isAppWebViewDOMEnabled)
+            if route != .a11y, let frame,
+               let payload = await AndroidWebViewDOM.read(
+                serial: serial ?? "", packageID: package, route: route, webViewLabel: webView?.label,
+                urlBarValue: AndroidWebViewDOM.urlBarValue(in: snapshot.elements),
+                adb: { try self.adb($0).output }) {
+                // nextRef は差し込み前の全要素から採る(落とす内側の要素も含めて衝突を避ける)
+                let nextRef = (snapshot.elements.map(\.ref).max() ?? 0) + 1
+                let added = WebViewDOM.elements(payload: payload, webViewFrame: frame,
+                                                density: displayDensity(), startingRef: nextRef)
+                var kept = snapshot.elements
+                if let webView {
+                    // **自作アプリだけ、注入用の ref 対応表を作る**(理由は bridgeRefMap。
+                    // ブリッジは自分の ref しか受けないので、無いと type/clearInput が 404)。
+                    // **ブラウザ経路は今日の挙動のまま**にする(今回の変更の対象外)
+                    if route == .appWebView {
+                        domBridgeRefs = AndroidWebViewDOM.bridgeRefMap(
+                            dom: added,
+                            droppedA11y: StepExecutor.descendants(of: webView, in: snapshot.elements))
+                    }
+                    kept = WebViewDOM.droppingWebViewSubtree(snapshot.elements, webView: webView)
+                }
+                snapshot.elements = kept + added
+            }
+        }
         syncLocalState(from: snapshot)
         // IME は別プロセスの window でアプリの a11y ツリーに出ないため、オンデバイスのブリッジでは
         // 判定できずホスト側で dumpsys を引いて補う(AndroidForegroundWindows.keyboardVisible)。
@@ -229,6 +426,10 @@ public final class AndroidDriver: AppDriver {
 
     public func captureKeyboardStateOnNextSnapshot() {
         captureKeyboardOnNextSnapshot = true
+    }
+
+    public func raiseElementLimitOnNextSnapshot(_ max: Int?) {
+        pendingElementLimit = max
     }
 
     /// システムロケールの永続変更(ブリッジ /locale。ブート完了後に呼ぶこと)。
@@ -250,7 +451,17 @@ public final class AndroidDriver: AppDriver {
     }
 
     public func clearInput(ref: Int?) async throws {
-        try await withBridge { try await $0.clearInput(ref: ref) }
+        restoreStateIfNeeded()
+        let target = bridgeRef(ref)
+        try await withBridge { try await $0.clearInput(ref: target) }
+    }
+
+    /// ホストの ref をブリッジが知っている ref へ写す(DOM 由来だけ差し替わる。domBridgeRefs 参照)。
+    /// **タップ系は写さない** —— あちらは座標をホストが持っているので、写すと逆に古い a11y の
+    /// 中心へ撃つことになる
+    private func bridgeRef(_ ref: Int?) -> Int? {
+        guard let ref else { return nil }
+        return domBridgeRefs[ref] ?? ref
     }
 
     /// ソフトキーボードを閉じる(DSL の hideKeyboard)。ブリッジの /hidekeyboard
@@ -294,13 +505,15 @@ public final class AndroidDriver: AppDriver {
         // 末尾の改行1つは ACTION_SET_TEXT では文字として入るだけで IME アクションにならないため、
         // 分離して本文の SET_TEXT 後に Enter キーイベントを送る(pressEnter と同じ経路。文中の
         // 改行はそのまま文字として本文に残す)
+        restoreStateIfNeeded()
+        let target = bridgeRef(ref)
         let (main, hasTrailingNewline) = Self.splitTrailingNewline(text)
         guard hasTrailingNewline else {
-            try await withBridge { try await $0.type(ref: ref, text: text) }
+            try await withBridge { try await $0.type(ref: target, text: text) }
             return
         }
         // 本文が空でも ref があれば SET_TEXT を通し、対象ノードへのフォーカス確立を維持する
-        try await withBridge { try await $0.type(ref: ref, text: main) }
+        try await withBridge { try await $0.type(ref: target, text: main) }
         try await pressEnter()
     }
 
@@ -317,13 +530,35 @@ public final class AndroidDriver: AppDriver {
     /// ため keyevent でも発火する。実機実測で確認済み)。404(旧ブリッジ未実装)/409(フォーカス無し
     /// 等)/501(API 30未満)は下のキーイベント経路へフォールバックする。bridgeConnectionRefused
     /// 等それ以外のエラーは握り潰さずそのまま投げる。
+    /// ブリッジが「入力フォーカスが無い」と言うときの目印(InputInjector と同期。
+    /// **文言ではなくこの接頭辞で判定する** —— 文言は英語化で変わる)
+    static let noInputFocusMarker = "no-input-focus"
+
+    /// ブリッジの pressEnter が失敗したあとの分岐(純関数 = 単体テストで固定する)。
+    /// nil = キーイベントへフォールバックしてよい / 非 nil = このエラーで止める。
+    ///
+    /// **「フォーカスが無い」だけはフォールバックしない**(2026-08-07 実測)。
+    /// 409 は2種類あり、「IME アクションが失敗」はキーイベントで救えるが、
+    /// 「そもそも入力フォーカスが無い」は**誰も受け取らない**ので、生の Enter を
+    /// 撃って成功を返すと沈黙した誤りになる(入力欄のタップに失敗したまま
+    /// 検索が実行されず、原因から遠いところで落ちていた)。
+    /// 目印はブリッジ側の `no-input-focus:` 接頭辞(InputInjector。文言は英語化で変わるので
+    /// 接頭辞で判定する)
+    static func pressEnterAbort(after error: DriverError) -> DriverError? {
+        guard case .badResponse(let status, let body) = error,
+              status == 404 || status == 409 || status == 501 else { return error }
+        guard body.contains(noInputFocusMarker) else { return nil }
+        return DriverError.badResponse(status: status,
+            body: "pressEnter did nothing: no field has input focus."
+                + " Tap the field by ref first (ft_type with ref does this for you)")
+    }
+
     public func pressEnter() async throws {
         do {
             try await withBridge { try await $0.pressEnter() }
             return
         } catch let error as DriverError {
-            guard case .badResponse(let status, _) = error,
-                  status == 404 || status == 409 || status == 501 else { throw error }
+            if let abort = Self.pressEnterAbort(after: error) { throw abort }
         }
         // gRPC KeyboardEvent.key は w3c 名(home()/openAppSwitcher() と同じ振り分け)。"Enter" は
         // w3c UIEvents キー値だが emulator gRPC 側の対応は未確認 — EmulatorControl.perform は
@@ -344,6 +579,83 @@ public final class AndroidDriver: AppDriver {
 
     public func swipe(_ direction: FTSwipeDirection) async throws {
         try await withBridge { try await $0.swipe(direction) }
+    }
+
+    /// 用途つき版。**Android は用途でジェスチャが変わる**(edge は強いフリング)ので、
+    /// 既定実装に落として用途を捨ててはいけない
+    public func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent,
+                      path: FTSwipePath?) async throws {
+        try await withBridge { try await $0.swipe(direction, intent: intent, path: path) }
+    }
+
+    /// ダブルタップ・ピンチは**ブリッジ apk 経由だけ**(gRPC の道は作らない)。
+    /// gRPC は `EmulatorController` = エミュレータ専用で実機に無く、一方 apk の
+    /// `UiAutomation.injectInputEvent` は両方で動く。1操作の中で時間制約(ダブルタップ判定)や
+    /// 多点の同期が要るので、実装を2本持つと差が出るところでもある
+    public func doubleTap(x: Double, y: Double) async throws {
+        try await withBridge { try await $0.doubleTap(x: x, y: y) }
+    }
+
+    public func pinch(frame: FTRect?, identifier: String?, scale: Double,
+                      durationSeconds: Double) async throws {
+        try await withBridge {
+            try await $0.pinch(frame: frame, identifier: identifier, scale: scale,
+                               durationSeconds: durationSeconds)
+        }
+    }
+
+    // MARK: - Rotation (host-side adb; no bridge route — adb already does this without one)
+
+    /// Captured only on this driver instance's first `rotate(to:)` call (nil = not used yet, or
+    /// already restored). Auto-rotate must be off for `user_rotation` to stick, so both settings
+    /// are captured/restored together, user_rotation before accelerometer_rotation (writing
+    /// accelerometer back to auto=1 first would let physical/simulated tilt override the angle).
+    private var originalRotationSettings: (userRotation: Int, accelerometerRotation: Int)?
+
+    /// Android Surface.ROTATION_*。**どちらの landscape でもよい**(契約は「アプリの UI が
+    /// 横になること」で、物理方向はテストから観測できないので約束しない。FTOrientation の宣言を参照)
+    private static func androidRotation(for orientation: FTOrientation) -> Int {
+        switch orientation {
+        case .portrait: return 0
+        case .landscape: return 1
+        }
+    }
+
+    private func currentRotationSettings() throws -> (userRotation: Int, accelerometerRotation: Int) {
+        let userRotation = Int((try adb(["shell", "settings", "get", "system", "user_rotation"])
+            .output).trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+        let accel = Int((try adb(["shell", "settings", "get", "system", "accelerometer_rotation"])
+            .output).trimmingCharacters(in: .whitespacesAndNewlines)) ?? 1
+        return (userRotation, accel)
+    }
+
+    private static let rotationDeadlineSeconds: Double = 5.0
+
+    public func rotate(to orientation: FTOrientation) async throws -> FTOrientation {
+        if originalRotationSettings == nil {
+            originalRotationSettings = try currentRotationSettings()
+        }
+        _ = try adb(["shell", "settings", "put", "system", "user_rotation",
+                     String(Self.androidRotation(for: orientation))])
+        _ = try adb(["shell", "settings", "put", "system", "accelerometer_rotation", "0"])
+        let wantsLandscape = orientation != .portrait
+        let deadline = Date().addingTimeInterval(Self.rotationDeadlineSeconds)
+        while Date() < deadline {
+            let screen = try await snapshot(bypassingCache: true).screen
+            if (screen.width > screen.height) == wantsLandscape { return orientation }
+            try await Task.sleep(nanoseconds: 300_000_000)
+        }
+        throw DriverError.badResponse(status: 422, body: "orientation did not settle to "
+            + "\(orientation.rawValue) within \(Self.rotationDeadlineSeconds)s")
+    }
+
+    public func restoreOrientationIfNeeded() async throws {
+        guard let original = originalRotationSettings else { return }
+        originalRotationSettings = nil
+        _ = try adb(["shell", "settings", "put", "system", "user_rotation",
+                     String(original.userRotation)])
+        _ = try adb(["shell", "settings", "put", "system", "accelerometer_rotation",
+                     String(original.accelerometerRotation)])
     }
 
     /// 2点間ドラッグ。ブリッジ経由ではなく gRPC タッチ合成(down→補間 move→up)優先・
@@ -430,7 +742,36 @@ public final class AndroidDriver: AppDriver {
 
     /// インストール済みのユーザーアプリ(third-party)のパッケージ名一覧。
     public func listInstalledPackages() throws -> [String] {
-        let result = try adb(["shell", "pm", "list", "packages", "-3"])
+        try packageIDs(scope: "-3")
+    }
+
+    public struct InstalledPackage: Sendable, Equatable {
+        public let id: String
+        public let isUser: Bool
+
+        public init(id: String, isUser: Bool) {
+            self.id = id
+            self.isUser = isUser
+        }
+    }
+
+    /// **system も引けるようにする**(2026-08-09): 端末に載っている地図・ブラウザ等は
+    /// system 扱いで `-3` には1つも出ず、MCP から探しようが無かった(実測: Pixel の AVD で
+    /// `com.google.android.apps.maps` が出ず adb へ落ちた)。`pm` は `-3` か `-s` の
+    /// どちらかしか出せないので2回撃つ。**system アプリに更新が当たると `-s` 側にだけ出る**ので、
+    /// 同じ id が両方に出たときは user を採る(利用者から見て「自分で入れた物」に近い)
+    public func listPackages(includeSystem: Bool) throws -> [InstalledPackage] {
+        let user = try packageIDs(scope: "-3").map { InstalledPackage(id: $0, isUser: true) }
+        guard includeSystem else { return user }
+        let userIDs = Set(user.map(\.id))
+        let system = try packageIDs(scope: "-s")
+            .filter { !userIDs.contains($0) }
+            .map { InstalledPackage(id: $0, isUser: false) }
+        return (user + system).sorted { $0.id < $1.id }
+    }
+
+    private func packageIDs(scope: String) throws -> [String] {
+        let result = try adb(["shell", "pm", "list", "packages", scope])
         return result.output.split(separator: "\n")
             .compactMap { line in
                 let trimmed = line.trimmingCharacters(in: .whitespaces)

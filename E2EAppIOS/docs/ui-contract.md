@@ -1,13 +1,20 @@
 # FT E2E iOS ネイティブアプリ UI 契約
 
-**画面構成・`#id`・表示ラベルは `E2EApp/docs/ui-contract.md`(Compose Multiplatform 版)と共通**。
+**画面構成・`#id`・表示ラベルは `E2EAppCMP/docs/ui-contract.md`(Compose Multiplatform 版)と共通**。
 同じシナリオを両 SUT に当てて比較できるよう、値は byte 一致させてある。
 このファイルは **iOS ネイティブ実装(SwiftUI + UIKit)固有の差分だけ**を定義する。
 tag 定数は `Sources/Tags.swift` に集約する(値は共通契約の表と byte 一致)。
 
 - bundle id: `com.ftester.e2e.ios`(Compose 版 `com.ftester.e2e` と共存できる)
 - `#txt_about_app` は `app=com.ftester.e2e.ios`
-- シナリオ: `Projects/E2E-iOS/Scenarios/`
+- シナリオ: `TestProjects/E2E-iOS/scenarios/`
+
+## 画面回転(この SUT 固有の罠)
+
+**横向きにすると `#txt_screen_title` が画面外へ出る画面がある**(2026-08-11 実測。テキスト入力画面で
+確認)。SwiftUI のレイアウトが縦に詰めるため、タイトルが可視領域の上へ追い出される。
+**回転を含むシナリオで着地判定にタイトルを使わない** —— その画面の本体の要素
+(例: `#field_single`)を見ること。共通契約は E2EAppCMP/docs/ui-contract.md §画面回転。
 
 ## 実装方式(どの画面が SwiftUI で、どこが UIKit か)
 
@@ -81,8 +88,11 @@ keyboard focus を持つ要素として見えず無言 no-op になる**。だ�
 
 ### Toggle / Slider
 
-- `Toggle` は同一 frame の `switch` ノードが2つ出る(id 付き1つ + id 無し1つ)。`#id` 指定なら実害なし
-- `Slider` の value は `"50%"`(パーセント表記)。値検証は echo Text(`#txt_slider`)で行う契約
+- `Toggle` は AX ツリー上は同一 frame の `switch` ノードが2つある(id 付き1つ + id 無し1つ・幅が 2pt 違う)。
+  **ブリッジが後から来て何も足さない方を落とすので、スナップショットには1つしか出ない**
+  (2026-08-06 / protocol 53。規則は `Sources/FTCore/SnapshotDedupe.swift`)。
+  同じ畳み込みは `UIAlertController` のボタン(`#btn_dialog_ok` / `#btn_dialog_cancel`)にも効く
+- `Slider` の value は `"50%"`(パーセント表記)。**アプリの状態**の値検証は echo Text(`#txt_slider`)で行う契約。例外が1箇所: 10_ライフサイクルとコントロール の `valueIs("50%")` は**ブリッジが value を供給していること**の検証で、echo では代替できない(SUT が自前で描くのでブリッジが黙っても緑のまま)
 
 ### WebView 画面(SUT 固有の実測)
 
@@ -92,6 +102,18 @@ keyboard focus を持つ要素として見えず無言 no-op になる**。だ�
   DOM 経路が有効 = WebView 画面でも in-app の速度が出る。
 - 中身が a11y に現れるまで **約 2.3 秒**(内蔵 HTML・2026-07-29 実測)。
 - HTML の `id` は **identifier に来ない**。`aria-label` は label に来る。
+- 空の `<input>` は WebKit が **placeholder を AXValue に入れて返す**(UIKit の入力欄は入れない)。
+  ブリッジが `value == placeholderValue` を空へ正規化するので、
+  スナップショットは `ph="WebView 入力" empty` になる(2026-08-06 / protocol 53)。
+  これが無いと `valueIs("")` が iOS の WebView でだけ通らない。
+
+## ホームの `#nav_heal` / `#nav_diagnostics` は**意図して下部タブに重ねてある**
+
+11 行が 1 画面に収まらず、`#nav_heal` (16,788 370x62) が下部タブ `#tab_controls` の下に着地し、
+`#nav_diagnostics` は画面外に出る。**直さないこと** —— MCP の
+「上に描かれた要素に覆われている」警告(`RefGuard.overlayCovering`)の唯一の生きた witness で、
+E2E-CMP の飛び越し画面と同じ役割を持つ。この2つを叩くシナリオは `_disabled/` にしか無いので
+通常実行には影響しない(母体の契約 `E2EAppCMP/docs/ui-contract.md` §ホームタブ にも記載)。
 
 ## ビルド
 

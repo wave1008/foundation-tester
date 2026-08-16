@@ -40,14 +40,14 @@ test("isValidateProfileOutput: results 複数件・machine あり の正常な�
       {
         kind: "apps",
         name: "sampleapp",
-        path: "/repo/Projects/SampleApp/profiles/apps/sampleapp.json",
+        path: "/repo/TestProjects/SampleApp/profiles/apps/sampleapp.json",
         errors: [],
         warnings: [],
       },
       {
         kind: "runs",
         name: "sampleapp_all",
-        path: "/repo/Projects/SampleApp/profiles/runs/sampleapp_all.json",
+        path: "/repo/TestProjects/SampleApp/profiles/runs/sampleapp_all.json",
         errors: ["\"devices\" がありません"],
         warnings: ["未知のキー \"foo\" は無視されます"],
       },
@@ -144,14 +144,14 @@ test("toDiagnosticsByPath: results を path キーの Map に変換し、errors/
       {
         kind: "apps",
         name: "sampleapp",
-        path: "/repo/Projects/SampleApp/profiles/apps/sampleapp.json",
+        path: "/repo/TestProjects/SampleApp/profiles/apps/sampleapp.json",
         errors: [],
         warnings: [],
       },
       {
         kind: "runs",
         name: "broken",
-        path: "/repo/Projects/SampleApp/profiles/runs/broken.json",
+        path: "/repo/TestProjects/SampleApp/profiles/runs/broken.json",
         errors: ["\"app\"(apps/ への参照)がありません"],
         warnings: ["未知のキー \"foo\" は無視されます"],
       },
@@ -159,11 +159,11 @@ test("toDiagnosticsByPath: results を path キーの Map に変換し、errors/
   };
   const map = toDiagnosticsByPath(output);
   assert.equal(map.size, 2);
-  assert.deepEqual(map.get("/repo/Projects/SampleApp/profiles/apps/sampleapp.json"), {
+  assert.deepEqual(map.get("/repo/TestProjects/SampleApp/profiles/apps/sampleapp.json"), {
     errors: [],
     warnings: [],
   });
-  assert.deepEqual(map.get("/repo/Projects/SampleApp/profiles/runs/broken.json"), {
+  assert.deepEqual(map.get("/repo/TestProjects/SampleApp/profiles/runs/broken.json"), {
     errors: ["\"app\"(apps/ への参照)がありません"],
     warnings: ["未知のキー \"foo\" は無視されます"],
   });
@@ -179,60 +179,60 @@ test("toDiagnosticsByPath: results が空なら空の Map を返す", () => {
 test("parseProfileFilePath: workspaceRoot 配下の絶対パスから project/kind/name を抽出する", () => {
   const location = parseProfileFilePath(
     "/repo",
-    "/repo/Projects/SampleApp/profiles/runs/sampleapp_all.json",
+    "/repo/TestProjects/SampleApp/profiles/runs/sampleapp_all.json",
   );
   assert.deepEqual(location, { project: "SampleApp", kind: "runs", name: "sampleapp_all" });
 });
 
 test("parseProfileFilePath: apps/machines も同様に抽出する", () => {
-  assert.deepEqual(parseProfileFilePath("/repo", "/repo/Projects/SampleApp/profiles/apps/sampleapp.json"), {
+  assert.deepEqual(parseProfileFilePath("/repo", "/repo/TestProjects/SampleApp/profiles/apps/sampleapp.json"), {
     project: "SampleApp",
     kind: "apps",
     name: "sampleapp",
   });
   assert.deepEqual(
-    parseProfileFilePath("/repo", "/repo/Projects/SampleApp/profiles/machines/M1 Max.json"),
+    parseProfileFilePath("/repo", "/repo/TestProjects/SampleApp/profiles/machines/M1 Max.json"),
     { project: "SampleApp", kind: "machines", name: "M1 Max" },
   );
 });
 
 test("parseProfileFilePath: 既にワークスペースルート相対のパスでも抽出できる", () => {
-  const location = parseProfileFilePath("/repo", "Projects/SampleApp/profiles/runs/ios.json");
+  const location = parseProfileFilePath("/repo", "TestProjects/SampleApp/profiles/runs/ios.json");
   assert.deepEqual(location, { project: "SampleApp", kind: "runs", name: "ios" });
 });
 
 test("parseProfileFilePath: Windows 風のバックスラッシュ区切りも正規化して抽出する", () => {
   const location = parseProfileFilePath(
     "C:\\repo",
-    "C:\\repo\\Projects\\SampleApp\\profiles\\runs\\ios.json",
+    "C:\\repo\\TestProjects\\SampleApp\\profiles\\runs\\ios.json",
   );
   assert.deepEqual(location, { project: "SampleApp", kind: "runs", name: "ios" });
 });
 
 test("parseProfileFilePath: profiles/ 配下以外のパスは undefined", () => {
   assert.equal(
-    parseProfileFilePath("/repo", "/repo/Projects/SampleApp/Scenarios/ログインテスト.swift"),
+    parseProfileFilePath("/repo", "/repo/TestProjects/SampleApp/scenarios/ログインテスト.swift"),
     undefined,
   );
 });
 
 test("parseProfileFilePath: 種別ディレクトリが apps/machines/runs 以外なら undefined", () => {
   assert.equal(
-    parseProfileFilePath("/repo", "/repo/Projects/SampleApp/profiles/unknown/foo.json"),
+    parseProfileFilePath("/repo", "/repo/TestProjects/SampleApp/profiles/unknown/foo.json"),
     undefined,
   );
 });
 
 test("parseProfileFilePath: 拡張子が .json 以外なら undefined", () => {
   assert.equal(
-    parseProfileFilePath("/repo", "/repo/Projects/SampleApp/profiles/runs/README.md"),
+    parseProfileFilePath("/repo", "/repo/TestProjects/SampleApp/profiles/runs/README.md"),
     undefined,
   );
 });
 
 test("parseProfileFilePath: profiles/ より深い/浅いパス(セグメント数不一致)は undefined", () => {
-  assert.equal(parseProfileFilePath("/repo", "/repo/Projects/SampleApp/profiles/runs/sub/ios.json"), undefined);
-  assert.equal(parseProfileFilePath("/repo", "/repo/Projects/SampleApp/profiles/runs.json"), undefined);
+  assert.equal(parseProfileFilePath("/repo", "/repo/TestProjects/SampleApp/profiles/runs/sub/ios.json"), undefined);
+  assert.equal(parseProfileFilePath("/repo", "/repo/TestProjects/SampleApp/profiles/runs.json"), undefined);
 });
 
 // ---- 統合: mock-validate-profile.mjs → FtesterCli → profileModel ----
@@ -254,13 +254,13 @@ test("統合: mock-validate-profile.mjs(mixed パターン)の出力を FtesterC
 
   const byPath = toDiagnosticsByPath(output);
   assert.equal(byPath.size, 4);
-  assert.deepEqual(byPath.get("/repo/Projects/SampleApp/profiles/apps/sampleapp.json"), {
+  assert.deepEqual(byPath.get("/repo/TestProjects/SampleApp/profiles/apps/sampleapp.json"), {
     errors: [],
     warnings: [],
   });
-  assert.equal(byPath.get("/repo/Projects/SampleApp/profiles/machines/M1 Max.json").errors.length, 1);
-  assert.equal(byPath.get("/repo/Projects/SampleApp/profiles/runs/sampleapp_all.json").warnings.length, 1);
-  assert.equal(byPath.get("/repo/Projects/SampleApp/profiles/runs/broken.json").errors.length, 1);
+  assert.equal(byPath.get("/repo/TestProjects/SampleApp/profiles/machines/M1 Max.json").errors.length, 1);
+  assert.equal(byPath.get("/repo/TestProjects/SampleApp/profiles/runs/sampleapp_all.json").warnings.length, 1);
+  assert.equal(byPath.get("/repo/TestProjects/SampleApp/profiles/runs/broken.json").errors.length, 1);
 });
 
 test("統合: mock-validate-profile.mjs を --kind/--name 付きで呼ぶと results が1件に絞り込まれる", async () => {

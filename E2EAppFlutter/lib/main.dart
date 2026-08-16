@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'screens/noid_screen.dart';
@@ -33,6 +34,15 @@ class SessionCounter {
   static int value = 0;
 }
 
+/// 受け取ったディープリンク URL 全体。永続しない(SessionCounter と同じくプロセス内メモリのみ)。
+/// ValueNotifier にする理由: #txt_last_deeplink を表示する LifecycleScreen は
+/// AppShell から const で生成されており、親の setState だけでは再 build されない
+/// (const 最適化でスキップされる)。未知 URL(画面遷移なし)のケースでも表示を更新するため、
+/// この値だけを直接購読させる。
+class DeepLinkState {
+  static final ValueNotifier<String> lastUrl = ValueNotifier<String>('-');
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // **必須**: Flutter の semantics ツリーは支援技術が要求したときだけ構築される。
@@ -48,6 +58,7 @@ enum Screen {
   selector,
   input,
   gesture,
+  map,
   scroll,
   async,
   dialog,
@@ -88,6 +99,48 @@ class _AppShellState extends State<AppShell> {
   AppTab _tab = AppTab.home;
   Screen? _homeChild;
 
+  // ネイティブ側と1本引く自前チャンネル(採用理由は E2EAppFlutter/docs/ui-contract.md)。
+  // getInitialUrl = 起動時に一度だけ pull(cold start の URL は配送タイミングが不定なため)。
+  // onNewUrl = 起動済みプロセスへネイティブから push(openURL・Android singleTop の再利用)。
+  static const _deepLinkChannel = MethodChannel('com.ftester.e2e.flutter/deeplink');
+
+  @override
+  void initState() {
+    super.initState();
+    _deepLinkChannel.setMethodCallHandler(_onDeepLinkCall);
+    _deepLinkChannel.invokeMethod<String>('getInitialUrl').then((url) {
+      if (url != null) _routeDeepLink(url);
+    });
+  }
+
+  Future<void> _onDeepLinkCall(MethodCall call) async {
+    if (call.method == 'onNewUrl') {
+      _routeDeepLink(call.arguments as String);
+    }
+  }
+
+  /// 受け取った URL は既知/未知を問わず必ず #txt_last_deeplink へ記録し、
+  /// 既知の画面(セレクタ/ライフサイクル)のときだけホームタブのスタックに積む。
+  /// クエリ(`?` 以降)は解釈しない(契約 §ディープリンク)。
+  void _routeDeepLink(String url) {
+    DeepLinkState.lastUrl.value = url;
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    Screen? target;
+    if (uri.host == 'screen' && uri.path == '/selector') {
+      target = Screen.selector;
+    } else if (uri.host == 'screen' && uri.path == '/lifecycle') {
+      target = Screen.lifecycle;
+    }
+    if (target == null) return;
+    if (mounted) {
+      setState(() {
+        _tab = AppTab.home;
+        _homeChild = target;
+      });
+    }
+  }
+
   String get _title {
     switch (_tab) {
       case AppTab.controls:
@@ -104,6 +157,8 @@ class _AppShellState extends State<AppShell> {
             return 'テキスト入力';
           case Screen.gesture:
             return 'ジェスチャ';
+          case Screen.map:
+            return 'マップ';
           case Screen.scroll:
             return 'スクロール';
           case Screen.async:
@@ -145,7 +200,10 @@ class _AppShellState extends State<AppShell> {
           case Screen.input:
             return const InputScreen();
           case Screen.gesture:
-            return const GestureScreen();
+            return GestureScreen(
+                onOpenMap: () => setState(() => _homeChild = Screen.map));
+          case Screen.map:
+            return const MapScreen();
           case Screen.scroll:
             return const ScrollScreen();
           case Screen.async:

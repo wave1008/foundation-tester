@@ -24,21 +24,129 @@ struct FTesterMCP {
 
 final class MCPServer {
 
-    private var drivers: [String: AppDriver] = [:]
+    var drivers: [String: AppDriver] = [:]
+    /// drivers と同じキーで「実際に主となったエンジン」を覚える。iosEngineHint がこれで
+    /// 助言を出し分ける(引数からは決まらない: profile 無しでも in-app を掴めば hybrid)
+    var engines: [String: String] = [:]
+    /// 探索中の操作列(ft_draft_scenario の材料。InteractionLog 参照)
+    var interactions = InteractionLog()
+    /// drivers と同じキーで**直前にエージェントへ返した木**を覚える。ref を撃つ直前に
+    /// 撮り直して同じ要素を引き直すための起点(RefGuard 参照)。
+    /// **ref はスナップショットごとに振り直される**ので、番号ではなく要素の同一性で照合する
+    var lastSnapshots: [String: SnapshotResponse] = [:]
+    /// **ref の世代管理**(2026-08-10)。ブリッジは撮るたびに ref を振り直すので、
+    /// 「1つ前の木」しか起点にしない `lastSnapshots` だけでは、それより前の snapshot の ref を
+    /// 撃たれたときに「たまたま同じ番号を持つ別要素」へ黙って当たる(実害: ft_scroll_to の後に
+    /// 旧 ref [42](戻るボタン)を叩いたら新しい木の [42](静的テキスト「料金:」)に当たった)。
+    /// MCP 層で ref にオフセット(`base`)を掛け、セッション内で全世代の ref を一意にする ——
+    /// ブリッジには一切触らない。古い順に並び、**直近5世代だけ**保持する(adoptSnapshot 参照)
+    var refGenerations: [String: [(base: Int, snapshot: SnapshotResponse)]] = [:]
+    /// 次の新しい世代に割り当てる base。**セッションに1つ**(engineKey ごとではない)・**単調増加のみ**。
+    ///
+    /// **機ごとに持ってはいけない**(2026-08-13 に実機で踏んだ): engineKey ごとに 0 から始めると
+    /// **2台を触ったセッションで ref 番号が両機で衝突する**。実測(E2EAppCMP・iOS 2台)——
+    /// 機A の ref 10 は `#row_30`、機B の ref 10 は `#btn_item_1` で、機A の木を見て採った
+    /// `ft_tap ref: 10` を `port:` だけ機B にして撃つと、**警告も拒否も無く成功して**
+    /// 機B の `#btn_item_1` を叩き、状態が `result=item3` → `result=item1` に変わった。
+    /// どちらも button なので**もっともらしく成功する**のが最悪の形。
+    /// セッション全体で単調増加にすれば、他機の ref は世代のどこにも無いので
+    /// `RefGuard` が `.gone` で断る(番号が衝突しない = 黙って別物に当たれない)。
+    /// **`forgetDeviceState` はこれを消さない** —— 捨てた番号を再配布しないため
+    var nextRefBase = 0
+    /// 保持する世代数の上限。**5**: 「1つ前の木」しか見ない従来より十分に厚いが、
+    /// 無制限にするとセッションが長引くほど探索コストと保持量が線形に増える
+    static let maxRefGenerations = 5
+    /// scroll_to の空打ちゲート用 uiFramework(engineKey ごと)。**成功だけ**記憶する —
+    /// 失敗(nil)を覚えると、suspend 中の1回のタイムアウトで判定がセッション全体に固定される
+    var uiFrameworkHints: [String: String] = [:]
+    /// 特定できたシミュレータの udid(engineKey ごと)。xcuitest のマーカー判定に使う
+    var udids: [String: String?] = [:]
+    /// drivers と同じキーで**最後に ft_launch した bundleID**を覚える。
+    ///
+    /// **Android のブリッジは session を前面ウィンドウから採る**(`SnapshotBuilder` の
+    /// `root.getPackageName()`)。つまり back でアプリを出ると session がその場で別アプリに
+    /// 差し替わり、`backgroundedSessionNote`(session が前面か)は**構造上まったく発火しない**。
+    /// E2E の 4 SUT は `#id`・ラベルが共通契約なので、木を見ても入れ替わりに気付けない
+    /// (2026-08-06 の探索で決定的に再現: `ft_launch com.ftester.e2e.android` → `back` 1回で
+    /// 以後の snapshot が `com.ftester.e2e.flutter` の木になった)。
+    /// **ホスト側で「起動したアプリ」を覚えて突き合わせる**のが唯一の検知経路。
+    var launchedBundleIDs: [String: String] = [:]
+    /// ft_screenshot の鮮度判定用(engineKey ごと)。**静止画面の2連続 ft_screenshot は PNG が
+    /// バイト単位で同一**(2026-08-10 実測: Android 83,028B×2 / iOS 95,076B×2)—— これが成り立つから
+    /// 「木は変わったのに絵が前回と同一 = 古いフレームを返し続けている」と言える(treeFingerprint の
+    /// 前後比較単独では拾えなかった動機の事象: 木は新しいのに絵だけ古い)
+    var lastScreenshots: [String: StaleFrameDetector.Record] = [:]
+    /// ft_snapshot で**明示された** interactiveOnly/expandBulk(engineKey ごと)。呼ばれるたびに
+    /// 丸ごと置き換える(省略されたキーは記憶から消える)。snapshotAfterBody が、呼び出し側の
+    /// args に無いキーだけこれで補う — 明示した値が常に優先(snapshotAfterBody 参照)
+    var rememberedSnapshotFilters: [String: [String: Bool]] = [:]
+    /// **切り詰められた web ページを見たデバイス**(engineKey)。以後の読みは最初から要素上限の
+    /// 天井で撮る(`needsWebPageCeiling`)。2枚払うのはラッチした1回だけ ——
+    /// 毎回「撮る→切り詰めを見て撮り直す」だと、waitFor のポーリングで読みが倍になる
+    var webPageCeilingLatched: Set<String> = []
+    /// **シート展開救済が効かないと分かった画面**(engineKey ごと・木の指紋の集合。
+    /// `sheetRescueKey` 参照)。同じ画面での2回目以降の ft_scroll_to は救済を撃たずに即返す
+    var sheetRescueFutile: [String: Set<String>] = [:]
+    /// プロファイル解決で出た警告(未解決のデバイス名など)。**次に返す応答へ1度だけ**混ぜる。
+    /// stderr だけに出していたときは MCP クライアントに一切届かなかった
+    var pendingWarnings: [String: [String]] = [:]
+    /// **セッション(プロセス)を通じて1度だけ**満額で説明した注記の鍵。以後は短縮形にする
+    /// (`once` 参照)。engineKey を跨いで共有する — 説明の中身は接続先に依らず同じ文なので、
+    /// 機ごとに割ると同じ長文が機の数だけ繰り返される
+    var explainedNotes: Set<String> = []
     /// 応答の書き出し口。**stdout は JSON-RPC 専用**(診断を混ぜるとクライアントのパースが壊れる)
-    private let write: (Data) -> Void
+    let write: (Data) -> Void
     /// ドライバ生成の差し替え口。nil = 実デバイスを解決する(既定)
-    private let makeDriver: ((_ args: [String: Any]) async throws -> AppDriver)?
+    let makeDriver: ((_ args: [String: Any]) async throws -> AppDriver)?
+    /// スナップショットの `#id` を台帳へ落とす口。**テストは必ず差し替える**
+    /// (既定は実プロジェクトの `.ftester/` へ書くので、テストが利用者の資産を汚す)
+    let recordSnapshot: (_ snapshot: SnapshotResponse, _ platform: String,
+                                 _ args: [String: Any]) -> Void
+
+    /// 差し替えドライバの経路でも版ズレのゲートを通すか(テスト用。既定 off。
+    /// 実運用の経路は常に通る。理由は driver(_:) のコメント)
+    let checksVersionOnInjectedDriver: Bool
+
+    /// snapshotAfter の settle-lite が挟む待ち(秒)。**テストは 0 にする**
+    /// (snapshotAfterBody 参照。既定 0.4 は実測に基づく調整値ではなく、1回だけの短い猶予)
+    var settleWaitSeconds: Double = 0.4
 
     init(write: @escaping (Data) -> Void = { FileHandle.standardOutput.write($0) },
-         makeDriver: ((_ args: [String: Any]) async throws -> AppDriver)? = nil) {
+         makeDriver: ((_ args: [String: Any]) async throws -> AppDriver)? = nil,
+         recordSnapshot: ((_ snapshot: SnapshotResponse, _ platform: String,
+                           _ args: [String: Any]) -> Void)? = nil,
+         checksVersionOnInjectedDriver: Bool = false) {
         self.write = write
         self.makeDriver = makeDriver
+        self.recordSnapshot = recordSnapshot ?? MCPServer.recordSelectors
+        self.checksVersionOnInjectedDriver = checksVersionOnInjectedDriver
     }
 
     // MARK: - メインループ(stdio: 改行区切り JSON-RPC)
 
     func run() async {
+        // **黙らせた注記は起動時に名乗る**(A/B の陽性対照)。差が出なかったときに
+        // 「変更が無効だった」と「実験が無効だった」を区別できないと、Scripts/mcp-bench.sh の
+        // 結論は毎回どちらとも取れる。綴り違いの鍵は落ちていないので必ず名指しする
+        if !NoteCatalog.disabled.isEmpty {
+            Self.logStderr("FT_MCP_NOTES_OFF: silencing "
+                + NoteCatalog.disabled.sorted().joined(separator: ", "))
+        }
+        let unknownNoteKeys = NoteCatalog.unknownDisabledKeys()
+        if !unknownNoteKeys.isEmpty {
+            Self.logStderr("FT_MCP_NOTES_OFF: NOT a note key (ignored): "
+                + unknownNoteKeys.joined(separator: ", "))
+        }
+        // 明細だけ畳む指定も同じ規律で名乗る(A/B の陽性対照。NoteCatalog.brief の宣言参照)
+        if !NoteCatalog.brief.isEmpty {
+            Self.logStderr("FT_MCP_NOTES_BRIEF: folding the per-element detail of "
+                + NoteCatalog.brief.sorted().joined(separator: ", "))
+        }
+        let unknownBriefKeys = NoteCatalog.unknownDisabledKeys(NoteCatalog.brief)
+        if !unknownBriefKeys.isEmpty {
+            Self.logStderr("FT_MCP_NOTES_BRIEF: NOT a note key (ignored): "
+                + unknownBriefKeys.joined(separator: ", "))
+        }
         while let line = readLine(strippingNewline: true) {
             // **壊れた行でループを抜けない**: 1行の不正でサーバが死ぬとセッションごと落ちる
             guard let message = Self.parseMessage(line) else { continue }
@@ -65,6 +173,7 @@ final class MCPServer {
                 "protocolVersion": (message["params"] as? [String: Any])?["protocolVersion"] ?? "2024-11-05",
                 "capabilities": ["tools": [String: Any]()],
                 "serverInfo": ["name": "ftester", "version": "0.1.0"],
+                "instructions": Self.serverInstructions,
             ])
         case "ping":
             reply(id: id, result: [String: Any]())
@@ -78,8 +187,12 @@ final class MCPServer {
                 let content = try await call(tool: name, args: args)
                 reply(id: id, result: ["content": content, "isError": false])
             } catch {
+                // FTCore 由来の文には CLI のフラグ(`--project`)が書いてある。MCP の読み手が
+                // 渡せるのは同名の**引数**なので、ここで一度だけ言い換える(MCPMessageText)
                 reply(id: id, result: [
-                    "content": [["type": "text", "text": "Error: \(error.localizedDescription)"]],
+                    "content": [["type": "text",
+                                 "text": "Error: "
+                                    + MCPMessageText.forMCP(error.localizedDescription)]],
                     "isError": true,
                 ])
             }
@@ -102,380 +215,55 @@ final class MCPServer {
         write(data)
     }
 
-    // MARK: - ドライバ
 
-    // ft_* は home/appSwitcher/drag/座標 press を含むため in-app ブリッジは使わない
-    // (XCUIBridgeResolver: in-app を掴んだら同じデバイスの XCUITest ブリッジへ振り替え、無ければ起動)。
-    // profile 指定時は resolveProfileTarget が ft_run_scenario と同じデバイスを解決し、iOS は
-    // provision 後のポートを XCUIBridgeResolver へ渡して同じ振り替えを通す
-    private func driver(_ args: [String: Any]) async throws -> AppDriver {
-        if let makeDriver { return try await makeDriver(args) }
-        if let profileName = args["profile"] as? String {
-            let key = Self.driverCacheKey(profile: profileName, project: args["project"] as? String,
-                                          platform: args["platform"] as? String)
-            if let cached = drivers[key] { return cached }
-            let project = try ScenarioHost.project(named: args["project"] as? String)
-            var prologue: [String] = []
-            // profile 指定の初回はブリッジ provision を伴い、コールドスタートは分単位かかりうる
-            // (既存ブリッジ再利用時は数秒。進捗は stderr に出る)
-            let (_, _, target) = try await resolveProfileTarget(
-                project: project, profileName: profileName,
-                platformArg: args["platform"] as? String, prologue: &prologue)
-            prologue.forEach(Self.logStderr)
-            let created: AppDriver
-            switch target {
-            case .ios(let provisioned, _):
-                let resolution = await XCUIBridgeResolver.resolve(
-                    preferred: provisioned.port, repoRoot: try? RepoRoot.find(),
-                    logger: { Self.logStderr($0) })
-                created = BridgeClient(port: resolution.endpoint.port, host: resolution.endpoint.host)
-            case .android(let serial, _):
-                created = try AndroidDriver(serial: serial)
-            }
-            drivers[key] = created
-            return created
-        }
+    /// 接続先の宛先(ft_status が見せる)。**#2/#5 の取り違えは「今どこに繋がっているか」が
+    /// 見えないまま起きる** —— 既定 8123 が死んでいても、はぐれエミュレータを掴んでいても、
+    /// 応答だけ見ると正常に見える
+    var connections: [String: String] = [:]
+    /// 掴んでいる iOS ブリッジのポート(engineKey ごと)。**`connections` の文字列から読み解かない**
+    /// —— 表示用の文と機械判定を同じ文字列に相乗りさせると、表記を整えるたびに判定が壊れる。
+    /// タイムアウト時にそのポートがまだ生きているかを確かめる `connectionLostHint` が使う
+    var connectedPorts: [String: UInt16] = [:]
+    /// 掴んでいる Android ブリッジの serial(engineKey ごと)。iOS の `connectedPorts` と同じ理由で
+    /// `connections` の表示文字列からは読み解かない —— 直接指定は "serial <serial>"、profile
+    /// 経由は "<device name> serial <serial>" と経路ごとに書式が違い、文字列切り出しに頼ると
+    /// profile 経由だけ判定から漏れる(2026-08-14 に実際に踏んだ)
+    var connectedAndroidSerials: [String: String] = [:]
 
-        let platform = (args["platform"] as? String)
-            ?? ProcessInfo.processInfo.environment["FTESTER_PLATFORM"]
-            ?? "ios"
-        let key = Self.driverCacheKey(platform: platform, port: args["port"] as? Int, serial: args["serial"] as? String)
-        if let cached = drivers[key] { return cached }
-        let created: AppDriver
-        switch platform {
-        case "ios":
-            let port = (args["port"] as? Int).map(UInt16.init) ?? BridgeAPI.defaultPort
-            let resolution = await XCUIBridgeResolver.resolve(
-                preferred: port, repoRoot: try? RepoRoot.find(),
-                logger: { Self.logStderr($0) })
-            created = BridgeClient(port: resolution.endpoint.port, host: resolution.endpoint.host)
-        case "android":
-            created = try AndroidDriver(serial: args["serial"] as? String)
-        default:
-            throw MCPError("platform must be ios or android: \(platform)")
-        }
-        drivers[key] = created
-        return created
-    }
+    /// 版ズレの内容(engineKey ごと)。ft_status が「失敗するが理由を返す」ために覚えておく
+    var versionSkew: [String: String] = [:]
 
-    /// drivers キャッシュのキー生成。profile / project / port / serial の違いを別ドライバとして扱う
-    static func driverCacheKey(profile: String, project: String?, platform: String?) -> String {
-        "profile:\(project ?? ""):\(profile):\(platform ?? "")"
-    }
-
-    static func driverCacheKey(platform: String, port: Int?, serial: String?) -> String {
-        "direct:\(platform):\(port ?? 0):\(serial ?? "")"
-    }
-
-    private enum ResolvedDriverTarget {
-        case ios(ProvisionedIOSDevice, iosApp: ResolvedAppTarget?)
-        case android(serial: String, deviceName: String)
-    }
-
-    /// profile からデバイスを解決する(ft_run_scenario と直接操作系で共通)。iOS は
-    /// BridgeProvisioner.provision を伴うため、初回コールドスタートは分単位かかりうる
-    private func resolveProfileTarget(
-        project: TestProject, profileName: String, platformArg: String?, prologue: inout [String]
-    ) async throws -> (platform: String, resolved: ResolvedProfile, target: ResolvedDriverTarget) {
-        let machine = try ProfileResolver.determineMachine(
-            project: project, registered: LocalConfig.currentMachineName(),
-            runProfileName: profileName)
-        let resolved = try ProfileResolver.resolve(
-            project: project, runName: profileName, machineName: machine.name)
-        prologue.append(contentsOf: resolved.warnings.map { "⚠️ \($0)" })
-        let platform = platformArg ?? resolved.devices.first?.platform ?? "ios"
-        guard let device = resolved.devices.first(where: { $0.platform == platform }) else {
-            throw MCPError("profile \(profileName) has no \(platform) device")
-        }
-        if platform == "ios" {
-            // ブリッジ資産(InAppBridge/・Runner/)を持つ**ツール本体**のルート。受け手パッケージの
-            // ルート(root(of:))を渡してはいけない — 外部パッケージ構成では別ディレクトリで、
-            // InAppBridge/build.sh が無く provision が必ず落ちる(.ftester の状態も CLI と食い違う)
-            let provisioner = BridgeProvisioner(repoRoot: try RepoRoot.find())
-            // bundleID/preinstallAppPath は inapp ブリッジのコールドスタートに必須。
-            // 稼働中ブリッジ再利用時は使われないため、欠落しても露見しにくい(実際に欠落バグが起きた)
-            let iosApp = resolved.apps["ios"]
-            // provision の進捗クロージャは @escaping のため inout の prologue を直接キャプチャできない
-            var provisionLog: [String] = []
-            let provisioned = try await provisioner.provision(
-                devices: [(device.name, device.spec)],
-                bundleID: iosApp?.bundleID,
-                preinstallAppPath: iosApp?.autoInstall == true ? iosApp?.appPath : nil) { provisionLog.append($0) }
-            prologue.append(contentsOf: provisionLog)
-            return (platform, resolved, .ios(provisioned[0], iosApp: iosApp))
-        } else {
-            let serial = try AndroidDeviceCatalog.resolveSerial(spec: device.spec)
-            return (platform, resolved, .android(serial: serial, deviceName: device.name))
-        }
-    }
-
-    // MARK: - ツール実装
-
-    func call(tool: String, args: [String: Any]) async throws -> [[String: Any]] {
-        switch tool {
-        case "ft_status":
-            let status = try await driver(args).status()
-            return text("ready: \(status.ready) / \(status.device) (\(status.osVersion)) / session: \(status.sessionBundleID ?? "none")")
-
-        case "ft_install":
-            guard let packagePath = args["packagePath"] as? String else {
-                throw MCPError("packagePath is required")
-            }
-            try await driver(args).install(packagePath: packagePath)
-            return text("Installed: \(packagePath)")
-
-        case "ft_launch":
-            guard let bundleID = args["bundleId"] as? String else { throw MCPError("bundleId is required") }
-            try await driver(args).launch(bundleID: bundleID)
-            return text("Launched: \(bundleID)")
-
-        case "ft_snapshot":
-            let snapshot = try await driver(args).snapshot()
-            return text(SnapshotRenderer.render(snapshot))
-
-        case "ft_tap":
-            let d = try await driver(args)
-            if let ref = args["ref"] as? Int {
-                try await d.tap(ref: ref)
-                return text("tap [\(ref)] done. The screen may have changed — take a fresh ft_snapshot")
-            }
-            if let x = args["x"] as? Double, let y = args["y"] as? Double {
-                try await d.tap(x: x, y: y)
-                return text("tap (\(x), \(y)) done")
-            }
-            throw MCPError("ref or x/y is required")
-
-        case "ft_type":
-            guard let content = args["text"] as? String else { throw MCPError("text is required") }
-            try await driver(args).type(ref: args["ref"] as? Int, text: content)
-            return text("Typed: \"\(content)\"")
-
-        case "ft_swipe":
-            guard let direction = FTSwipeDirection(rawValue: args["direction"] as? String ?? "") else {
-                throw MCPError("direction must be one of up/down/left/right")
-            }
-            try await driver(args).swipe(direction)
-            return text("swipe \(direction.rawValue) done")
-
-        case "ft_press":
-            guard let ref = args["ref"] as? Int else { throw MCPError("ref is required") }
-            try await driver(args).press(ref: ref, duration: args["duration"] as? Double ?? 1.0)
-            return text("press [\(ref)] done")
-
-        case "ft_screenshot":
-            let png = try await driver(args).screenshot()
-            return [["type": "image", "data": png.base64EncodedString(), "mimeType": "image/png"]]
-
-        case "ft_terminate":
-            try await driver(args).terminate()
-            return text("Terminated the app")
-
-        case "ft_list_scenarios":
-            return try listScenarios(args)
-
-        case "ft_run_scenario":
-            return try await runScenario(args)
-
-        case "ft_list_projects":
-            return try listProjects()
-
-        case "ft_doctor":
-            let fm = await FMDoctor.checkLive()
-            let vision = FMDoctor.visionReport
-            return text((fm.available ? "✅ " : "❌ ") + fm.detail
-                + "\n" + (vision.available ? "✅ " : "⚠️ ") + vision.detail)
-
-        default:
-            throw MCPError("unknown tool: \(tool)")
-        }
-    }
-
-    private func text(_ string: String) -> [[String: Any]] {
-        [["type": "text", "text": string]]
-    }
-
-    /// stdout は JSON-RPC 専用(混ぜるとクライアントのパースが壊れる)。診断は必ず stderr へ
-    private static func logStderr(_ message: String) {
-        FileHandle.standardError.write(Data(("[ftester-mcp] " + message + "\n").utf8))
-    }
-
-    /// シナリオ一覧(自動ビルド込み。コンパイルエラーはそのまま返す=エージェントが直せる)
-    private func listScenarios(_ args: [String: Any]) throws -> [[String: Any]] {
-        let project = try ScenarioHost.project(named: args["project"] as? String)
-        if !(args["skipBuild"] as? Bool ?? false) {
-            try ScenarioHost.build(project: project)
-        }
-        let scenarios = try ScenarioHost.list(project: project)
-        let lines = scenarios.map { info in
-            "\(info.id)"
-                + (info.title.isEmpty ? "" : " — \(info.title)")
-                + " (\(info.platform ?? "ios/android"), app: \(info.app))"
-                + (info.deleted ? " [deleted @Deleted — excluded from bulk runs]" : "")
-        }
-        return text(lines.isEmpty
-                    ? "No scenarios (add a @TestClass under Projects/\(project.name)/Scenarios/)"
-                    : "Project: \(project.name)\n" + lines.joined(separator: "\n"))
-    }
-
-    private func listProjects() throws -> [[String: Any]] {
-        guard let root = ScenarioHost.packageRoot() else {
-            throw MCPError("Package.swift not found (run this inside the repository)")
-        }
-        let projects = ProjectStore.all(repoRoot: root)
-        guard !projects.isEmpty else {
-            return text("No projects (create one with: ftester project create <name>)")
-        }
-        let machineName = LocalConfig.currentMachineName() ?? "unregistered"
-        var lines = ["This machine: \(machineName)"]
-        for project in projects {
-            let runs = ProfileResolver.runProfileNames(project: project)
-            let machines = ProfileResolver.machineNames(project: project)
-            lines.append("\(project.name)"
-                + " — run profiles: \(runs.isEmpty ? "none" : runs.joined(separator: ", "))"
-                + " / machines: \(machines.isEmpty ? "none" : machines.joined(separator: ", "))")
-        }
-        return text(lines.joined(separator: "\n"))
-    }
-
-    /// シナリオ実行(自動ビルド込み)。サブプロセス(ftester-scenarios)に委譲する
-    private func runScenario(_ args: [String: Any]) async throws -> [[String: Any]] {
-        guard let id = args["id"] as? String else { throw MCPError("id is required") }
-        let project = try ScenarioHost.project(named: args["project"] as? String)
-        if !(args["skipBuild"] as? Bool ?? false) {
-            try ScenarioHost.build(project: project)
-        }
-        let all = try ScenarioHost.list(project: project)
-        guard let info = all.first(where: { $0.id == id })
-            ?? all.first(where: { $0.id.hasPrefix(id + ".") }) else {
-            throw MCPError("scenario not found: \(id) (available: \(all.map(\.id).joined(separator: ", ")))")
-        }
-
-        var fm = FMConfig(heal: args["heal"] as? Bool ?? false)
-        var reportDir = project.reportsDir.path
-        var defaultTimeout: Double?
-        var connection: DriverConnection
-        var prologue: [String] = []
-
-        if let profileName = args["profile"] as? String {
-            // 接続先はシナリオの platform に合う先頭デバイス。プロファイル自身の machine 指定が最優先
-            let (_, resolved, target) = try await resolveProfileTarget(
-                project: project, profileName: profileName,
-                platformArg: info.platform, prologue: &prologue)
-            fm = resolved.fm
-            // heal 引数は master(fm.enabled)が有効な場合のみ ON にする override(未指定は resolved のまま)
-            if let healArg = args["heal"] as? Bool {
-                fm.heal = healArg && fm.enabled
-            }
-            reportDir = resolved.reportDir.path
-            defaultTimeout = resolved.defaultTimeout
-            switch target {
-            case .ios(let provisioned, let iosApp):
-                connection = ProfileWorkerFactory.iosConnection(device: provisioned, iosApp: iosApp)
-            case .android(let serial, let deviceName):
-                connection = DriverConnection(platform: "android", serial: serial, deviceName: deviceName)
-            }
-        } else {
-            let platform = info.platform ?? (args["platform"] as? String ?? "ios")
-            connection = DriverConnection(
-                platform: platform,
-                port: (args["port"] as? Int).map(UInt16.init),
-                serial: args["serial"] as? String)
-        }
-
-        var lines: [String] = prologue
-        _ = await ScenarioHost.run(project: project, scenarioID: info.id,
-                                   connection: connection,
-                                   fm: fm, reportDir: reportDir,
-                                   defaultTimeout: defaultTimeout) { event in
-            lines.append(contentsOf: ScenarioLogFormatter.lines(for: event))
-        }
-        return text(lines.joined(separator: "\n"))
-    }
-
-    // MARK: - ツール定義
-
-    static let platformProperty: [String: Any] = [
-        "type": "string", "enum": ["ios", "android"],
-        "description": "Target platform (default ios)",
-    ]
-    static let portProperty: [String: Any] = [
-        "type": "integer", "description": "iOS bridge port (default 8123)",
-    ]
-    static let serialProperty: [String: Any] = [
-        "type": "string", "description": "Android device serial",
-    ]
-    static let profileProperty: [String: Any] = [
-        "type": "string",
-        "description": "Run profile name. When given, connects to the same device as ft_run_scenario (profiles/runs/)",
-    ]
-    static let projectProperty: [String: Any] = [
-        "type": "string", "description": "Test project name (defaults to the default project)",
-    ]
-    /// 全ツール共通のデバイス選択プロパティ。tool() が無条件で足す
-    static let commonDeviceProperties: [(String, [String: Any])] = [
-        ("platform", platformProperty),
-        ("port", portProperty),
-        ("serial", serialProperty),
-        ("profile", profileProperty),
-        ("project", projectProperty),
-    ]
-
-    static let toolDefinitions: [[String: Any]] = [
-        tool("ft_status", "Check the device/bridge connection state", [:]),
-        tool("ft_install", "Install an app from a package file (iOS: .app bundle / Android: .apk)", [
-            "packagePath": ["type": "string", "description": "Absolute path of the package file"],
-        ], required: ["packagePath"]),
-        tool("ft_launch", "Launch the app (if already running, restarts from the first screen)", [
-            "bundleId": ["type": "string", "description": "bundle ID (iOS) / package name (Android)"],
-        ], required: ["bundleId"]),
-        tool("ft_snapshot", "Get the element list of the current screen. Each line: [ref] Type \"label\" id=... (x,y WxH). Use these refs for tap/type", [:]),
-        tool("ft_tap", "Tap an element (ref) or a coordinate (x,y). x/y use the same coordinate system as the ft_snapshot frames (iOS = points pt / Android = device pixels px) — NOT screenshot pixels. "
-            + "[Known iOS limitation] On dense, vertically scrolling screens (e.g. Compose Multiplatform), frames of elements below the fold can be reported clamped to the bottom edge, so tapping that coordinate/ref misses. Bring the target into view with ft_swipe, take a fresh ft_snapshot, then tap.", [
-            "ref": ["type": "integer", "description": "Reference number from ft_snapshot"],
-            "x": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
-            "y": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
-        ]),
-        tool("ft_type", "Type text (with ref, taps that field first)", [
-            "text": ["type": "string"],
-            "ref": ["type": "integer", "description": "Reference number of the input field (defaults to the focused element)"],
-        ], required: ["text"]),
-        tool("ft_swipe", "Swipe (up = scroll down the content)", [
-            "direction": ["type": "string", "enum": ["up", "down", "left", "right"]],
-        ], required: ["direction"]),
-        tool("ft_press", "Long-press an element", [
-            "ref": ["type": "integer"],
-            "duration": ["type": "number", "description": "Seconds (default 1.0)"],
-        ], required: ["ref"]),
-        tool("ft_screenshot", "Take a screenshot (returns an image). Use it for visual verification", [:]),
-        tool("ft_terminate", "Terminate the running app", [:]),
-        tool("ft_list_scenarios", "List the Swift DSL scenarios (Projects/<name>/Scenarios/). Builds automatically; compile errors are returned as-is", [
-            "project": ["type": "string", "description": "Test project name (defaults to the default project)"],
-            "skipBuild": ["type": "boolean", "description": "Skip the swift build (default false)"],
-        ]),
-        tool("ft_run_scenario", "Run a scenario deterministically. On failure, returns the triage and the report path. Builds automatically", [
-            "id": ["type": "string", "description": "Scenario ID (Class.method; see ft_list_scenarios)"],
-            "project": ["type": "string", "description": "Test project name (defaults to the default project)"],
-            "profile": ["type": "string", "description": "Run profile name (profiles/runs/; resolves the connection, heal and report destination)"],
-            "heal": ["type": "boolean", "description": "Override for locator self-healing (defaults to the profile setting, or false without a profile; ineffective when the profile has fm:false)"],
-            "port": ["type": "integer", "description": "iOS bridge port (default 8123)"],
-            "serial": ["type": "string", "description": "Android device serial"],
-        ], required: ["id"]),
-        tool("ft_list_projects", "List the test projects (Projects/) and their run profiles", [:]),
-        tool("ft_doctor", "Check Foundation Models availability", [:]),
-    ]
-
-    static func tool(_ name: String, _ description: String,
-                     _ properties: [String: Any], required: [String] = []) -> [String: Any] {
-        var props = properties
-        // デバイス選択は全ツール共通。個別宣言があればそちらを優先する
-        // (ft_run_scenario は profile/port/serial/project により詳細な説明文を持つ)
-        for (key, value) in commonDeviceProperties where props[key] == nil {
-            props[key] = value
-        }
-        var schema: [String: Any] = ["type": "object", "properties": props]
-        if !required.isEmpty { schema["required"] = required }
-        return ["name": name, "description": description, "inputSchema": schema]
-    }
+    /// このプロセスの寿命だけ生きる、最後に**明示**された iOS 宛先(port + udid)。
+    /// **更新は udid/port のどちらかが引数にあった呼び出しの、解決成功後だけ**
+    /// (自動解決の結果は混ぜない)。**使用は udid/port が両方とも無かった呼び出しだけ**
+    /// (driver(_:) 参照。純粋な判定は iosExplicitWithMemory/iosMemoryAfterResolve)
+    var lastExplicitIOSTarget: (port: UInt16, udid: String?)?
+    /// Android 版の同じ記憶。同じ規律(androidExplicitWithMemory/androidMemoryAfterResolve)
+    var lastExplicitAndroidSerial: String?
+    /// このセッションで明示解決された iOS 宛先(port)の**延べ集合**(2026-08-12)。
+    /// **lastExplicitIOSTarget との違い**: あちらは「省略呼び出しが実際にどこへ行くか」に使う
+    /// 直近1件、こちらは「省略呼び出しが曖昧かどうか」の判定材料(2件以上あれば
+    /// finishingFold が毎回注記する。1台しか触っていなければ従来どおり初回だけ)。
+    /// 更新は lastExplicitIOSTarget と同じ箇所・同じ条件(driver(_:) 参照)。
+    /// forgetConnection が死んだポートを取り除く(消えた機は候補として名乗る意味が無い)
+    var seenExplicitIOSPorts: Set<UInt16> = []
+    /// Android 版の同じ延べ集合(serial)
+    var seenExplicitAndroidSerials: Set<String> = []
+    /// **このセッションが一度でも宛先を名指ししたか**(2026-08-13。一度立ったら降ろさない)。
+    /// 上の2つの集合とは別に要る —— あちらは forgetConnection が死んだ機を取り除くので、
+    /// 名指しした機が全部死ぬと空になり、**新しいセッションと見分けが付かなくなる**。
+    /// その状態で省略呼び出しをブリッジ探索へ落とすと、名指ししていない機を操作する
+    /// (lostTargetFold の doc に実測した事故)
+    var everNamedIOSTarget = false
+    /// Android 版の同じフラグ
+    var everNamedAndroidTarget = false
+    /// **udid/port/serial を全部省略した呼び出しがどちらの platform の記憶を見るか**
+    /// (2026-08-12)。lastExplicitIOSTarget/lastExplicitAndroidSerial は platform ごとに
+    /// 分かれているだけで「どちらが最後に明示されたか」を持たないため、Android を明示した
+    /// 直後に platform も省略した呼び出しが(既定の "ios" に負けて)iOS の記憶へ迷い込んでいた。
+    /// 更新は iOS/Android どちらかの記憶が実際に更新された(= 利用者が明示した)ときだけ
+    /// (foldInRememberedDevice が platform 明示時はこれを読まない)
+    var lastExplicitPlatform: String?
 }
 
 struct MCPError: Error, LocalizedError {

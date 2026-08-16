@@ -15,6 +15,9 @@ final class FTElementChainTests: XCTestCase {
             StatusResponse(ready: true, device: "stub", osVersion: "-", sessionBundleID: nil)
         }
         func install(packagePath: String) async throws {}
+        func uninstall(bundleID: String) async throws {}
+        func isAppForeground(bundleID: String) async throws -> Bool { false }
+        func foregroundAppID() async throws -> String? { nil }
         func launch(bundleID: String) async throws {}
         func snapshot() async throws -> SnapshotResponse {
             SnapshotResponse(
@@ -85,8 +88,8 @@ final class FTElementChainTests: XCTestCase {
                 .valueEndsWithNot("01")
                 .valueMatchesNot("^[a-z]+$")
                 .valueIsNotEmpty()
-                .isEnabled()
-                .isNotChecked()
+                .enabledIsTrue()
+                .checkIsOFF()
                 .idIs("total")
         }
         let recorded = steps(core)

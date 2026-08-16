@@ -83,7 +83,7 @@ claude plugin marketplace update foundation-tester
 claude plugin update ftester@foundation-tester
 ```
 
-2. Claude Codeの新しいセッションを開始し、 `/ftester-update` を実行します
+2. Claude Codeの新しいセッションを開始し、 `/ftester:ftester-update` を実行します
 
 Claude Code を使わない場合は `bash <TOOL_ROOT>/Scripts/update.sh`(pull・ビルド・拡張・
 プラグイン更新までを1コマンドで行います)。更新が無ければ何もせず終わります（前回が途中で
@@ -115,6 +115,8 @@ claude plugin uninstall ftester@foundation-tester
 ### 作業フォルダの削除
 
 - VSCodeを終了してから Finder や rm で削除します
+- **作業フォルダを残す場合**は、`CLAUDE.md` の `<!-- ftester:begin -->` 〜 `<!-- ftester:end -->`
+  の範囲も削除してください(インストーラが置いた Claude Code 向けの案内。範囲外には触れていません)
 
 ### ファイルの削除
 

@@ -33,8 +33,19 @@ final class InputInjector {
         inject(ua, event(downTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, x, y));
     }
 
+    /**
+     * syntheticUpTime=true のとき ACTION_UP の eventTime を MOVE と同じ合成時刻
+     * (downTime + durationMs)にする。**false(実時計)だと sleep(16) とイベント注入の
+     * オーバーヘッドぶん UP が遅れ、VelocityTracker が「最後は止まっていた」と読んで
+     * フリングが出ない** —— 飛距離が指の移動距離を下回る(実測 969px 動かして 690px)。
+     * ストロークを短くするほど悪化し、150ms では [120, 780, 105, 714, 120] と
+     * 「UP が間に合うか」のレースになる。**View/Compose だけの現象で Flutter は影響を受けない**。
+     *
+     * 既定を true にしていないのは、探索(scrollTo)の1回の移動量がビューポート高を超えると
+     * 要素を飛び越すため。用途ごとの使い分けは FTCore/BridgeDTO の FTSwipeIntent を見ること
+     */
     static void swipe(UiAutomation ua, double fromX, double fromY, double toX, double toY,
-                      long durationMs) {
+                      long durationMs, boolean syntheticUpTime) {
         long downTime = SystemClock.uptimeMillis();
         inject(ua, event(downTime, downTime, MotionEvent.ACTION_DOWN, fromX, fromY));
         int steps = Math.max(1, (int) (durationMs / 16));
@@ -44,7 +55,8 @@ final class InputInjector {
                     fromX + (toX - fromX) * t, fromY + (toY - fromY) * t));
             SystemClock.sleep(16);
         }
-        inject(ua, event(downTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, toX, toY));
+        long upTime = syntheticUpTime ? downTime + durationMs : SystemClock.uptimeMillis();
+        inject(ua, event(downTime, upTime, MotionEvent.ACTION_UP, toX, toY));
     }
 
     /**
@@ -71,7 +83,7 @@ final class InputInjector {
         long focusGraceUntil = start + timeoutMs / 2;
         long lastClickAt = 0;
         long firstFireAt = 0;         // 最初に SET_TEXT を受理させた時刻(未反映の張り直し判定用)
-        String lastState = "対象ノード未発見";
+        String lastState = "target node not found";
         String combined = null;       // 最初の確定読みから1回だけ作る(上記の規律)
         boolean masked = false;
         boolean blindFired = false;   // 猶予後の未フォーカス発火は1回だけ
@@ -111,6 +123,7 @@ final class InputInjector {
                     if (focused || (SystemClock.uptimeMillis() >= focusGraceUntil && !blindFired)) {
                         if (combined == null) {
                             masked = target.isPassword();
+                            rejectMaskedAppend(masked, current);
                             combined = current + text;
                         }
                         Bundle args = new Bundle();
@@ -118,11 +131,11 @@ final class InputInjector {
                                 AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, combined);
                         if (target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
                             if (firstFireAt == 0) firstFireAt = SystemClock.uptimeMillis();
-                            lastState = focused ? "SET_TEXT は受理されたが値が反映されない"
-                                                : "未フォーカスの SET_TEXT が反映されない";
+                            lastState = focused ? "ACTION_SET_TEXT was accepted but the value did not change"
+                                                : "ACTION_SET_TEXT on an unfocused field did not take effect";
                             if (!focused) blindFired = true;
                         } else {
-                            lastState = "SET_TEXT 拒否(input connection 未確立の可能性)";
+                            lastState = "ACTION_SET_TEXT refused (the input connection may not be established yet)";
                         }
                     } else if (!focused && SystemClock.uptimeMillis() - lastClickAt >= 200) {
                         // フォーカスが立たない(タップがキーボードに吸われた等)。ACTION_CLICK は
@@ -133,17 +146,19 @@ final class InputInjector {
                         }
                         target.performAction(AccessibilityNodeInfo.ACTION_CLICK);
                         lastClickAt = SystemClock.uptimeMillis();
-                        lastState = "未フォーカス(ACTION_CLICK でフォーカス要求中)";
+                        lastState = "not focused (requesting focus with ACTION_CLICK)";
                     }
                 }
+            } catch (BridgeRouter.BridgeException e) {
+                throw e;   // 撃たずに弾いた判断(rejectMaskedAppend 等)は再試行の対象ではない
             } catch (RuntimeException e) {
                 // レイアウト変化中のノードは内部で NPE 等を投げる → 次周回で取り直す
-                lastState = "ノードが無効化された(" + e.getClass().getSimpleName() + ")";
+                lastState = "the node became stale (" + e.getClass().getSimpleName() + ")";
             }
             if (SystemClock.uptimeMillis() >= deadline) {
                 throw new BridgeRouter.BridgeException(500,
-                        "タップしたフィールドへ入力できませんでした(" + lastState + "、"
-                        + timeoutMs + "ms 待機。他のフィールドへ誤入力しないため中止します)");
+                        "cannot type into the field that was tapped (" + lastState + ", "
+                        + timeoutMs + "ms waited; giving up rather than typing into the wrong field)");
             }
             SystemClock.sleep(20);
         }
@@ -163,6 +178,7 @@ final class InputInjector {
                     KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BACK, 0));
             SystemClock.sleep(150);
         }
+        target.refresh();   // BACK 直後は IME 折り畳みでレイアウトが動く → bounds を取り直す
         Rect fresh = new Rect();
         target.getBoundsInScreen(fresh);
         tap(ua, fresh.exactCenterX(), fresh.exactCenterY());
@@ -179,33 +195,98 @@ final class InputInjector {
         ua.injectInputEvent(e, true);
     }
 
+    /**
+     * **中身のあるマスク欄への追記は撃たずに弾く**(2026-08-06 に実害を観測)。
+     *
+     * 追記は `既存の読み + text` を SET_TEXT で書き戻す形だが、**パスワード欄の読みは伏せ字**
+     * (`••••`)なので、そのまま書き戻すと**伏せ字そのものが本文になる**。
+     * 実測: 空欄へ "abc" → 続けて "def" で、アプリ側の echo が `•••def` になった。
+     * ツールは "Typed" と成功を返すため、値が壊れたことは後段の検証まで分からない。
+     *
+     * 既存コメント(setTextAppendingAt の規律)は「combined を**作り直す**と伏せ字を書く」と
+     * 警告していたが、**初回構築そのもの**が同じ穴だった。読める術が無い以上ここは
+     * 追記できない —— 置換したいなら呼び手が先に clearInput する(それは冪等で安全)。
+     * 空欄への1回目は `current` が "" なので従来どおり通る。
+     */
+    private static void rejectMaskedAppend(boolean masked, String current) {
+        if (!masked || current.isEmpty()) return;
+        throw new BridgeRouter.BridgeException(422,
+                "cannot append to a password field (its value reads back masked, so appending would write the mask "
+                + "as real text). Call clearInput first if you meant to replace it");
+    }
+
     /** 適用確認。マスク欄(パスワード)は読みが伏せ字になるため長さ一致で見る */
     private static boolean applied(String current, String combined, boolean masked) {
         if (combined.equals(current)) return true;
         return masked && current.length() == combined.length();
     }
 
-    /** resource-id(短縮形)優先でノードを探す。id が無い/見つからないときだけ点で探す */
+    /**
+     * resource-id(短縮形)優先でノードを探す。**id は画面内で一意とは限らない**
+     * (Google マップの時刻ピッカーで時/分の EditText が同じ id を持つ)ので、一致が
+     * 複数あるときは**先頭を採らず ref の座標で選び分ける**。1件目を採ると ref で指した欄と
+     * 別の欄を操作する(実測: 分を clear したら時が消えた)。
+     * 選び分けは「点を含む → 中心が最も近い」の順: **座標そのものへは落とさない** ——
+     * IME の開閉でダイアログが数百 px 動くので、点一致だけだと "target node not found" になる。
+     * setTextAppendingAt/clearTextAt の両方がここを通るので分岐を2箇所に書かない。
+     */
     private static AccessibilityNodeInfo findEditable(AccessibilityNodeInfo root, String shortId,
                                                       int x, int y, Rect tmp) {
         if (shortId != null) {
-            AccessibilityNodeInfo byId = editableById(root, shortId);
-            if (byId != null) return byId;
+            java.util.List<AccessibilityNodeInfo> matches = new java.util.ArrayList<>();
+            AccessibilityNodeInfo containing = collectEditableById(root, shortId, x, y, tmp, matches);
+            if (containing != null) return containing;
+            if (matches.size() == 1) return matches.get(0);
+            if (matches.size() > 1) return nearest(matches, x, y, tmp);
         }
         return editableAt(root, x, y, tmp);
     }
 
-    /** 短縮 resource-id が一致する editable ノード(SnapshotBuilder.shortResourceId と同じ規則) */
-    private static AccessibilityNodeInfo editableById(AccessibilityNodeInfo node, String shortId) {
+    /**
+     * 同じ id の候補から ref の点で中心が最も近いものを選ぶ。**包含一致は collectEditableById
+     * が走査中に確定して返す**ので、ここに来る候補はいずれも点を含まない(判定軸はここでは
+     * 中心距離だけ)。
+     */
+    private static AccessibilityNodeInfo nearest(java.util.List<AccessibilityNodeInfo> matches,
+                                                 int x, int y, Rect tmp) {
+        AccessibilityNodeInfo best = null;
+        double bestDistance = Double.MAX_VALUE;
+        for (AccessibilityNodeInfo node : matches) {
+            node.getBoundsInScreen(tmp);
+            double dx = tmp.centerX() - x;
+            double dy = tmp.centerY() - y;
+            double distance = dx * dx + dy * dy;
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                best = node;
+            }
+        }
+        return best;
+    }
+
+    /**
+     * 短縮 resource-id が一致する editable ノードを集める(SnapshotBuilder.shortResourceId
+     * と同じ規則)。**点 (x,y) を含む一致は走査中に確定してその場で返す**(件数上限と無関係。
+     * 一致が何件並んでいても対象は必ず見つかる)。含む一致が最後まで無かったときは
+     * nearest() が matches 全件から中心距離で選ぶので、**matches の収集数に上限を付けない**
+     * ——IME の開閉でダイアログが数百 px 動き点がどの欄にも乗らないケースがあり、上限を切ると
+     * 対象が上限より後ろにあるとき別の欄を選んでしまう。
+     */
+    private static AccessibilityNodeInfo collectEditableById(AccessibilityNodeInfo node, String shortId,
+                                            int x, int y, Rect tmp, java.util.List<AccessibilityNodeInfo> matches) {
         if (node == null) return null;
         String id = node.getViewIdResourceName();
         if (id != null && node.isEditable()) {
             int idx = id.indexOf("id/");
             String shortened = idx >= 0 ? id.substring(idx + 3) : id;
-            if (shortId.equals(shortened)) return node;
+            if (shortId.equals(shortened)) {
+                node.getBoundsInScreen(tmp);
+                if (tmp.contains(x, y)) return node;
+                matches.add(node);
+            }
         }
         for (int i = 0; i < node.getChildCount(); i++) {
-            AccessibilityNodeInfo found = editableById(node.getChild(i), shortId);
+            AccessibilityNodeInfo found = collectEditableById(node.getChild(i), shortId, x, y, tmp, matches);
             if (found != null) return found;
         }
         return null;
@@ -224,7 +305,7 @@ final class InputInjector {
         long focusGraceUntil = start + timeoutMs / 2;
         long lastClickAt = 0;
         long firstFireAt = 0;
-        String lastState = "対象ノード未発見";
+        String lastState = "target node not found";
         boolean blindFired = false;
         Rect bounds = new Rect();
         while (true) {
@@ -258,11 +339,11 @@ final class InputInjector {
                                 AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "");
                         if (target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
                             if (firstFireAt == 0) firstFireAt = SystemClock.uptimeMillis();
-                            lastState = focused ? "SET_TEXT は受理されたが値が残っている"
-                                                : "未フォーカスの SET_TEXT が反映されない";
+                            lastState = focused ? "ACTION_SET_TEXT was accepted but the value is still there"
+                                                : "ACTION_SET_TEXT on an unfocused field did not take effect";
                             if (!focused) blindFired = true;
                         } else {
-                            lastState = "SET_TEXT 拒否(input connection 未確立の可能性)";
+                            lastState = "ACTION_SET_TEXT refused (the input connection may not be established yet)";
                         }
                     } else if (!focused && SystemClock.uptimeMillis() - lastClickAt >= 200) {
                         if (!target.isVisibleToUser()) {
@@ -271,16 +352,18 @@ final class InputInjector {
                         }
                         target.performAction(AccessibilityNodeInfo.ACTION_CLICK);
                         lastClickAt = SystemClock.uptimeMillis();
-                        lastState = "未フォーカス(ACTION_CLICK でフォーカス要求中)";
+                        lastState = "not focused (requesting focus with ACTION_CLICK)";
                     }
                 }
+            } catch (BridgeRouter.BridgeException e) {
+                throw e;   // 撃たずに弾いた判断は再試行の対象ではない(上のコメント参照)
             } catch (RuntimeException e) {
-                lastState = "ノードが無効化された(" + e.getClass().getSimpleName() + ")";
+                lastState = "the node became stale (" + e.getClass().getSimpleName() + ")";
             }
             if (SystemClock.uptimeMillis() >= deadline) {
                 throw new BridgeRouter.BridgeException(409,
-                        "タップしたフィールドをクリアできませんでした(" + lastState + "、"
-                        + timeoutMs + "ms 待機)");
+                        "cannot clear the field that was tapped (" + lastState + ", "
+                        + timeoutMs + "ms waited)");
             }
             SystemClock.sleep(20);
         }
@@ -309,7 +392,7 @@ final class InputInjector {
      */
     static void setTextAppending(UiAutomation ua, String text) {
         long deadline = SystemClock.uptimeMillis() + 2000;
-        String lastState = "入力フォーカスを持つ要素がありません(先に ref 指定でタップしてください)";
+        String lastState = "no-input-focus: nothing has input focus (tap the field by ref first)";
         String combined = null;
         boolean masked = false;
         while (true) {
@@ -327,22 +410,25 @@ final class InputInjector {
                     }
                     if (combined == null) {
                         masked = focus.isPassword();
+                        rejectMaskedAppend(masked, current);
                         combined = current + text;
                     }
                     Bundle args = new Bundle();
                     args.putCharSequence(
                             AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, combined);
                     if (focus.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
-                        lastState = "SET_TEXT は受理されたが値が反映されない";
+                        lastState = "ACTION_SET_TEXT was accepted but the value did not change";
                     } else {
-                        lastState = "ACTION_SET_TEXT を受け付けないフィールドです(WebView 等)";
+                        lastState = "this field does not accept ACTION_SET_TEXT (a WebView, for example)";
                     }
                 }
+            } catch (BridgeRouter.BridgeException e) {
+                throw e;   // 撃たずに弾いた判断は再試行の対象ではない(上のコメント参照)
             } catch (RuntimeException e) {
-                lastState = "ノードが無効化された(" + e.getClass().getSimpleName() + ")";
+                lastState = "the node became stale (" + e.getClass().getSimpleName() + ")";
             }
             if (SystemClock.uptimeMillis() >= deadline) {
-                throw new BridgeRouter.BridgeException(500, lastState + "(2000ms 待機)");
+                throw new BridgeRouter.BridgeException(500, lastState + "(2000ms waited)");
             }
             SystemClock.sleep(20);
         }
@@ -359,13 +445,13 @@ final class InputInjector {
                 : root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
         if (focus == null) {
             throw new BridgeRouter.BridgeException(409,
-                    "入力フォーカスを持つ要素がありません(先に ref 指定でタップしてください)");
+                    "no-input-focus: nothing has input focus (tap the field by ref first)");
         }
         Bundle args = new Bundle();
         args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "");
         if (!focus.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
             throw new BridgeRouter.BridgeException(409,
-                    "ACTION_SET_TEXT を受け付けないフィールドです(WebView 等)");
+                    "this field does not accept ACTION_SET_TEXT (a WebView, for example)");
         }
     }
 
@@ -382,12 +468,88 @@ final class InputInjector {
                 : root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
         if (focus == null) {
             throw new BridgeRouter.BridgeException(409,
-                    "入力フォーカスを持つ要素がありません(先に ref 指定でタップしてください)");
+                    "no-input-focus: nothing has input focus (tap the field by ref first)");
         }
         // ホストがキーイベント経路へフォールバックできるよう、失敗は 409 で返す(500 にしない)
         if (!focus.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.getId())) {
-            throw new BridgeRouter.BridgeException(409, "IME の Enter アクションを実行できませんでした");
+            throw new BridgeRouter.BridgeException(409, "the IME Enter action could not be performed");
         }
+    }
+
+    /**
+     * ダブルタップ。2回のタップは**同じ downTime を共有しない**(別ストローク)が、
+     * GestureDetector は「1回目の UP から DOUBLE_TAP_TIMEOUT(既定 300ms)以内の DOWN」を
+     * ダブルタップと見なすので、間隔は固定 60ms にする。**ホストから2回 /tap を撃つ形にはできない**
+     * (HTTP の往復だけで 300ms を超えることがあり、単タップ2回に化ける)。
+     * 座標は動かさない(タップスロップを超えると別ジェスチャになる)。
+     */
+    static void doubleTap(UiAutomation ua, double x, double y) {
+        tap(ua, x, y);
+        SystemClock.sleep(60);
+        tap(ua, x, y);
+    }
+
+    /**
+     * 2本指のピンチ。(centerX, centerY) を中心に、対角線上へ startSpan → endSpan まで
+     * 2点を同時に動かす(span = 2点間の距離)。
+     *
+     * 規律:
+     * - **ACTION_POINTER_DOWN/UP は pointer index を action へ埋める**(<< 8)。埋め忘れると
+     *   1本目の指の DOWN として解釈され、ピンチにならない
+     * - **MOVE は必ず2点ぶんの座標を1イベントに載せる**(2本のストロークを交互に注入する形だと
+     *   ScaleGestureDetector が距離変化を取れない)
+     * - 45度方向へ開く(水平だと横スクロール、垂直だと縦スクロールと競合しやすい)
+     */
+    static void pinch(UiAutomation ua, double centerX, double centerY,
+                      double startSpan, double endSpan, long durationMs) {
+        double axis = Math.sqrt(0.5);   // 45度: 各軸への射影は span/2 * cos45
+        long downTime = SystemClock.uptimeMillis();
+        double[] a = new double[]{centerX - startSpan / 2 * axis, centerY - startSpan / 2 * axis};
+        double[] b = new double[]{centerX + startSpan / 2 * axis, centerY + startSpan / 2 * axis};
+        inject(ua, event(downTime, downTime, MotionEvent.ACTION_DOWN, a[0], a[1]));
+        inject(ua, multiEvent(downTime, downTime,
+                MotionEvent.ACTION_POINTER_DOWN | (1 << MotionEvent.ACTION_POINTER_INDEX_SHIFT),
+                a, b));
+        int steps = Math.max(1, (int) (durationMs / 16));
+        for (int i = 1; i <= steps; i++) {
+            double t = (double) i / steps;
+            double span = startSpan + (endSpan - startSpan) * t;
+            double[] p1 = new double[]{centerX - span / 2 * axis, centerY - span / 2 * axis};
+            double[] p2 = new double[]{centerX + span / 2 * axis, centerY + span / 2 * axis};
+            inject(ua, multiEvent(downTime, downTime + (long) (t * durationMs),
+                    MotionEvent.ACTION_MOVE, p1, p2));
+            SystemClock.sleep(16);
+        }
+        double[] e1 = new double[]{centerX - endSpan / 2 * axis, centerY - endSpan / 2 * axis};
+        double[] e2 = new double[]{centerX + endSpan / 2 * axis, centerY + endSpan / 2 * axis};
+        long upTime = downTime + durationMs;
+        inject(ua, multiEvent(downTime, upTime,
+                MotionEvent.ACTION_POINTER_UP | (1 << MotionEvent.ACTION_POINTER_INDEX_SHIFT),
+                e1, e2));
+        inject(ua, event(downTime, upTime, MotionEvent.ACTION_UP, e1[0], e1[1]));
+    }
+
+    /** 2点ぶんの座標を載せた MotionEvent(pointer id は 0 と 1 固定) */
+    private static MotionEvent multiEvent(long downTime, long eventTime, int action,
+                                          double[] p1, double[] p2) {
+        MotionEvent.PointerProperties[] props = new MotionEvent.PointerProperties[2];
+        MotionEvent.PointerCoords[] coords = new MotionEvent.PointerCoords[2];
+        double[][] points = new double[][]{p1, p2};
+        for (int i = 0; i < 2; i++) {
+            MotionEvent.PointerProperties p = new MotionEvent.PointerProperties();
+            p.id = i;
+            p.toolType = MotionEvent.TOOL_TYPE_FINGER;
+            props[i] = p;
+            MotionEvent.PointerCoords c = new MotionEvent.PointerCoords();
+            c.x = (float) points[i][0];
+            c.y = (float) points[i][1];
+            c.pressure = 1;
+            c.size = 1;
+            coords[i] = c;
+        }
+        MotionEvent e = MotionEvent.obtain(downTime, eventTime, action, 2, props, coords,
+                0, 0, 1, 1, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0);
+        return e;
     }
 
     private static MotionEvent event(long downTime, long eventTime, int action, double x, double y) {
@@ -399,7 +561,7 @@ final class InputInjector {
     private static void inject(UiAutomation ua, MotionEvent e) {
         try {
             if (!ua.injectInputEvent(e, true)) {
-                throw new BridgeRouter.BridgeException(500, "injectInputEvent が拒否されました");
+                throw new BridgeRouter.BridgeException(500, "injectInputEvent was refused");
             }
         } finally {
             e.recycle();

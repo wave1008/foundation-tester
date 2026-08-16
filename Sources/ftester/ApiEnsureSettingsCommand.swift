@@ -14,7 +14,7 @@ struct ApiEnsureSettingsCommand: AsyncParsableCommand {
         commandName: "ensure-settings",
         abstract: "Top up the ftester-related Bash permissions in the consumer package .claude/settings.json (idempotent)")
 
-    @Option(help: "Root of the consumer package (where Projects/ lives; defaults to the current directory)")
+    @Option(help: "Root of the consumer package (where TestProjects/ lives; defaults to the current directory)")
     var workDir: String?
 
     @Option(help: "Location of the foundation-tester clone (used for the absolute paths of the allowed commands)")

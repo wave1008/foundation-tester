@@ -107,8 +107,28 @@ public enum ScenarioHost {
     /// この値は子には渡さない(--default-timeout=子内部の検証待ちとは別物)
     public static let defaultScenarioTimeout = 90
 
+    /// `xcode-select -p` の結果(ホストで1回だけ解決)。未解決・Xcode 無しなら nil
+    /// テストが「解決できたなら必ず子へ載る」を検証するため internal
+    static let resolvedDeveloperDir: String? = {
+        if let set = ProcessInfo.processInfo.environment["DEVELOPER_DIR"], !set.isEmpty { return set }
+        guard let result = try? Shell.run(["xcode-select", "-p"]), result.status == 0 else { return nil }
+        let path = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+        return path.isEmpty ? nil : path
+    }()
+
+    /// 子プロセスへ渡す環境。**`DEVELOPER_DIR` を必ず載せる**: FTCoreSimShim は未設定だと
+    /// `xcode-select -p` を spawn する(実測 65ms)。**シナリオ1本=1プロセス**なので
+    /// 渡さないと毎回払う。ホストでは1回だけ解決する(resolvedDeveloperDir)
+    static func childEnvironment() -> [String: String] {
+        var env = ProcessInfo.processInfo.environment
+        if env["DEVELOPER_DIR"] == nil, let dir = resolvedDeveloperDir {
+            env["DEVELOPER_DIR"] = dir
+        }
+        return env
+    }
+
     /// テストプロジェクトを解決する。name 省略時:
-    /// Projects/ が 1 つならそれ → LocalConfig.defaultProject → 候補一覧付きエラー
+    /// TestProjects/ が 1 つならそれ → LocalConfig.defaultProject → 候補一覧付きエラー
     public static func project(named name: String? = nil) throws -> TestProject {
         guard let root = packageRoot() else {
             throw ScenarioHostError.buildFailed(
@@ -122,6 +142,19 @@ public enum ScenarioHost {
     /// (並列ワーカーが同時に swift build して SPM ロック競合するのを防ぐ)。
     /// no-op の swift build でも ~2.6s かかるため、BuildFingerprint が前回ビルド時と一致し
     /// (mtime+size 比較。コンテンツ hash ではない)、かつバイナリが実在すればビルドをスキップする
+    /// ビルド失敗の定型に「次の一手」を足す。**SPM のメッセージは正確だが、規約を知らない**ので
+    /// 受け手は原因(改名の取り残し)に辿り着けない(外部フィードバック 2026-08-06)。
+    /// 器のディレクトリは 2026-08-05 に `Projects/`→`TestProjects/` /
+    /// `Scenarios/`→`scenarios/` へ改名しており、Package.swift が旧名のまま残ると
+    /// `invalid custom path` で落ちる。直すのは `ftester project sync` の1手。
+    static func buildHint(_ tail: String, project: TestProject) -> String {
+        guard tail.contains("invalid custom path") else { return "" }
+        return "\n\nHint: Package.swift still points at a path that no longer exists."
+            + " The scenario directory is TestProjects/\(project.name)/scenarios"
+            + " (renamed from Projects/…/Scenarios on 2026-08-05)."
+            + " Run `ftester project sync` to rewrite the ftester-managed region of Package.swift."
+    }
+
     public static func build(project: TestProject, log: ((String) -> Void)? = nil) throws {
         guard let root = packageRoot() else {
             throw ScenarioHostError.buildFailed("Package.swift not found (run this inside the repository)")
@@ -137,7 +170,7 @@ public enum ScenarioHost {
 
         let result = try Shell.run(["swift", "build", "--product", project.productName], cwd: root)
         guard result.status == 0 else {
-            throw ScenarioHostError.buildFailed(result.tail)
+            throw ScenarioHostError.buildFailed(result.tail + Self.buildHint(result.tail, project: project))
         }
         if let fingerprint {
             BuildFingerprint.store(fingerprint, productName: project.productName, repoRoot: root)
@@ -195,15 +228,26 @@ public enum ScenarioHost {
 
     /// シナリオを 1 つ実行し、NDJSON イベントを onEvent へ流す。戻り値: passed。
     /// debug 指定時はランナーを制御チャネル付き(--debug)で起動し、
-    /// 起動直後に onControl で続行・ステップ・停止の送り口を渡す
+    /// 起動直後に onControl で続行・ステップ・停止の送り口を渡す。
+    /// installHandler 指定時は子を `--host-install` で起動し、installApp() の子→親 RPC
+    /// (installRequest イベント)をここで横取りして処理する(ScenarioEvent.swift のコメント参照。
+    /// onEvent へは転送しない)。appPath は installHandler 未指定時のみ意味を持つ
+    /// フォールバック(子へ `--app-path` として渡す。プロファイルの appPath 等、呼び出し側が
+    /// 解決できた値があれば渡す。無ければ渡さない = 子は明示引数のみで解決する)。
+    /// appName はアプリの表示名(プロファイルの appName)。子へ `--app-name` として渡し、
+    /// tapAppIcon() の引数省略時の既定になる(installHandler と無関係に常に渡す)
     @discardableResult
     public static func run(project: TestProject, scenarioID: String,
                            connection: DriverConnection,
                            fm: FMConfig = FMConfig(), reportDir: String, defaultTimeout: Double? = nil,
+                           containerInference: Bool = true,
                            scenarioTimeout: Int? = nil,
                            dryRun: Bool = false,
                            debug: ScenarioDebugOptions? = nil,
                            recording: ScenarioRecording? = nil,
+                           installHandler: ((String?) async -> (ok: Bool, message: String))? = nil,
+                           appPath: String? = nil,
+                           appName: String? = nil,
                            onEvent: @escaping (ScenarioEvent) -> Void) async -> Bool {
         let startedAt = Date()
         let clock = ContinuousClock()
@@ -229,6 +273,7 @@ public enum ScenarioHost {
 
         let process = Process()
         process.executableURL = runner
+        process.environment = childEnvironment()
         var args = ["run", "--scenario", scenarioID,
                     "--platform", connection.platform,
                     "--report-dir", reportDir, "--json",
@@ -248,11 +293,19 @@ public enum ScenarioHost {
         if connection.physical { args.append("--physical") }
         if let host = connection.host { args += ["--bridge-host", host] }
         if let defaultTimeout { args += ["--default-timeout", FTSeconds.format(defaultTimeout)] }
+        // **FM とは無関係**(幾何ヒューリスティックの既定)なので FMConfig には入れない
+        if !containerInference { args.append("--no-container-inference") }
         if let debug {
             args.append("--debug")
             if debug.pauseOnStart { args.append("--pause-on-start") }
             for location in debug.breakpoints { args += ["--breakpoint", location] }
         }
+        if installHandler != nil {
+            args.append("--host-install")
+        } else if let appPath {
+            args += ["--app-path", appPath]
+        }
+        if let appName { args += ["--app-name", appName] }
         process.arguments = args
 
         let stdout = Pipe()
@@ -260,7 +313,7 @@ public enum ScenarioHost {
         process.standardOutput = stdout
         process.standardError = stderr
         var stdinPipe: Pipe?
-        if debug != nil {
+        if debug != nil || installHandler != nil {
             let pipe = Pipe()
             process.standardInput = pipe
             stdinPipe = pipe
@@ -310,22 +363,20 @@ public enum ScenarioHost {
         // 行がまとめて届くことがあり、一時停止中の paused イベントがホストへ届かず
         // デバッグ実行が相互待ちになる(ScenarioHostDebugTests で回帰検知)
         // ベンチ用: FT_EVENT_LOG_PATH が設定されていれば子の NDJSON 生ログを追記する
-        // (1プロセス実行=1ファイル前提。JSON デコード可否に関わらず非空行はそのまま書く)
-        let eventLogHandle: FileHandle? = ProcessInfo.processInfo.environment["FT_EVENT_LOG_PATH"].flatMap { path in
-            if !FileManager.default.fileExists(atPath: path) {
-                FileManager.default.createFile(atPath: path, contents: nil)
-            }
-            let handle = FileHandle(forWritingAtPath: path)
-            handle?.seekToEndOfFile()
-            return handle
-        }
+        // (JSON デコード可否に関わらず非空行はそのまま書く)。**並列 run でも混ざらないよう
+        // EventLogAppender に直列化する** — ハンドル共有だと行が途中で混ざり読めなくなる
+        let eventLogEnabled = ProcessInfo.processInfo.environment["FT_EVENT_LOG_PATH"] != nil
 
         var passed: Bool?
         for await line in lineStream(stdout.fileHandleForReading) {
-            if !line.isEmpty {
-                eventLogHandle?.write(Data((line + "\n").utf8))
+            if !line.isEmpty, eventLogEnabled {
+                await EventLogAppender.shared.append(line)
             }
             if let event = ScenarioEvent.decode(line: line) {
+                if event.kind == "installRequest" {
+                    await handleInstallRequest(event, installHandler: installHandler, stdinPipe: stdinPipe)
+                    continue
+                }
                 if event.kind == "scenarioFinished" { passed = event.passed }
                 emit(event)
             } else if !line.isEmpty {
@@ -336,7 +387,8 @@ public enum ScenarioHost {
 
         // waitUntilExit() は使わない(永久ハングの実害。理由は ProcessExitWait 参照)
         for await _ in processExited {}
-        try? eventLogHandle?.close()
+        // イベントログのハンドルはここで閉じない(EventLogAppender がプロセス寿命で1本持つ。
+        // シナリオ毎に閉じると次のシナリオの追記先が失われる)。write(2) は無バッファなので flush 不要
         try? stdinPipe?.fileHandleForWriting.close()
 
         // watchdog と正常終了のどちらが先に claim したかで timeout を確定する。cancel は
@@ -380,6 +432,25 @@ public enum ScenarioHost {
         return result
     }
 
+    /// installRequest イベント(installApp() の子→親 RPC)を処理し、stdin へ installResult を書く。
+    /// installHandler が nil のときは黙って無視する(installHandler != nil のときだけ子は
+    /// --host-install で起動し installRequest を送るため、通常は起きない)
+    private static func handleInstallRequest(
+        _ event: ScenarioEvent,
+        installHandler: ((String?) async -> (ok: Bool, message: String))?,
+        stdinPipe: Pipe?
+    ) async {
+        guard let installHandler, let stdinPipe, let requestID = event.requestID else { return }
+        let result = await installHandler(event.installPath)
+        let object: [String: Any] = [
+            "cmd": "installResult", "id": requestID, "ok": result.ok, "message": result.message,
+        ]
+        guard var data = try? JSONSerialization.data(withJSONObject: object) else { return }
+        data.append(Data("\n".utf8))
+        // プロセス終了直後の broken pipe は無視(ScenarioRunControl.send と同じ理由)
+        try? stdinPipe.fileHandleForWriting.write(contentsOf: data)
+    }
+
     /// シナリオを dry-run(No-Load-Run)してイベント列を収集する。デバイス不要・FM 不使用で
     /// 全コマンドが step イベントとして列挙される(ステップ一覧表示用)。
     /// dry-run でもランナーはレポートを書くため、一時ディレクトリに書かせて後始末する
@@ -393,7 +464,9 @@ public enum ScenarioHost {
         // dry-run は NullDriver 固定のため接続情報は使われない(platform はダミー)
         let passed = await run(project: project, scenarioID: scenarioID,
                                connection: DriverConnection(platform: "ios"),
-                               fm: FMConfig(heal: false), reportDir: tempDir.path,
+                               // **`enabled: false`**(heal だけ切ると失敗のたびに triage が走り、
+                               // デバイスも画面も無いのに FM の直列化待ちを数秒払う。2026-08-12 実測)
+                               fm: FMConfig(enabled: false, heal: false), reportDir: tempDir.path,
                                dryRun: true) { events.append($0) }
         guard passed else {
             throw ScenarioHostError.dryRunFailed(dryRunFailureDetail(events))
@@ -481,6 +554,34 @@ public enum ScenarioHost {
     }
 }
 
+/// FT_EVENT_LOG_PATH への追記口。**並列 run では複数ワーカーの行が同じファイルへ流れる**ため、
+/// ハンドルを共有すると行の途中で混ざり JSON が壊れる(実測: 40 シナリオ 8 レーンで
+/// launch イベントが 41 本中 3 本しか読めなかった)。プロセス内で1本の actor に直列化し、
+/// 追記は 1 行単位で行う。**計測の入口はここだけ**なので、ここが壊れると内訳は採れない。
+///
+/// **プロセスを跨ぐ混線は O_APPEND で防ぐ**: actor が直列化できるのは自プロセス内だけで、
+/// 同じ FT_EVENT_LOG_PATH を指すホストを2つ走らせると、seekToEndOfFile 方式では各プロセスが
+/// 自分のオフセットを持ち互いの行を上書きする。O_APPEND なら write ごとにカーネルが末尾へ
+/// 位置付けるので、追記が競合しても行は失われない。
+actor EventLogAppender {
+    static let shared = EventLogAppender()
+    private var handle: FileHandle?
+    private var opened = false
+
+    func append(_ line: String) {
+        if !opened {
+            opened = true
+            if let path = ProcessInfo.processInfo.environment["FT_EVENT_LOG_PATH"] {
+                // O_CREAT があるので事前の createFile は不要
+                let fd = Darwin.open(path, O_WRONLY | O_APPEND | O_CREAT, 0o644)
+                if fd >= 0 { handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true) }
+            }
+        }
+        guard let handle else { return }
+        handle.write(Data((line + "\n").utf8))
+    }
+}
+
 /// watchdog の kill と子の正常終了が競合したとき、先に claim した側だけが勝つ 1 回限りフラグ
 /// (kill 発火と cancel のレースで二重処理しないため)
 private actor TimeoutGuard {
@@ -524,6 +625,8 @@ public enum ScenarioLogFormatter {
             case "failed":
                 return ["    ❌ \(index). \(section)\(description)",
                         "       \(event.detail ?? "")"]
+            case "inconclusive":
+                return ["    ❓ \(index). \(section)\(description) (inconclusive: \(event.detail ?? ""))"]
             default:
                 return ["    ⚠️ \(index). \(section)\(description) (skipped: \(event.detail ?? ""))"]
             }

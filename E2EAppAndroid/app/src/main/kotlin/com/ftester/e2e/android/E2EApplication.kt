@@ -42,6 +42,13 @@ object SessionCounter {
     var value = 0
 }
 
+// 受け取った URL 全体(クエリ込み)を保持。永続しない(§ディープリンク)。onNewIntent は
+// Activity インスタンスを再作成しないため、ここではなく Activity のフィールドに置いても良いが、
+// SessionCounter と同じ理由(タブ切替・render() の再構築を跨いで生き残る必要がある)でここに置く。
+object DeepLinkState {
+    var lastUrl = "-"
+}
+
 object AppInfo {
     const val VERSION = "1.0.0"
     const val APP_ID = "com.ftester.e2e.android"

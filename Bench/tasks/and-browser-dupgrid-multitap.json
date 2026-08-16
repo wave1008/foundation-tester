@@ -1,0 +1,8 @@
+{
+  "id": "and-browser-dupgrid-multitap",
+  "archetype": "browser",
+  "requires": "and-browser-dupgrid と同じ盤面・同じ前提。**測るのは ref の再利用**: 書けるセレクタが1つも無い画面で複数手を打たせると、エージェントは操作のたびにスナップショットを撮り直すか(= ref 失効の税)。ftester は**直近5世代の ref を受け付けて現在の木へ引き直す**ので、撮り直しは本来不要。A/B ではなく**絶対値(操作あたりの snaps)**を見る",
+  "maxTurns": 60,
+  "expect": "RESULT:\\s*osaka-precip",
+  "prompt": "ftester の MCP ツール(ft_*)だけを使って、Android エミュレータ上の Chrome を操作してください。あなたはこのページを初めて見ます。\n\nゴール: http://10.0.2.2:8791/weather-dupgrid.html を開き、**札幌 → 東京 → 大阪** の順に、それぞれの**降水確率**のリンクを1回ずつタップすること(合計3回)。最後にページ上部の tap_result の値を読み取ってください。\n\n手順や使うツールは自分で決めてください。デバイスは ft_list_devices で選びます。\n\n最後に必ず1行だけ次の形式で出力してください: RESULT: <tap_result の値>\nできなかった場合は RESULT: unknown と出力してください。"
+}

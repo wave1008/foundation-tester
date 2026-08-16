@@ -29,6 +29,7 @@ export const laneStrings = {
   "lane.detailFallback": { ja: "     フォールバック: {detail}", en: "     Fallback: {detail}" },
   "lane.detailHealed": { ja: "     自己修復: {detail}", en: "     Heal: {detail}" },
   "lane.detailSkipped": { ja: "     スキップ理由: {detail}", en: "     Skip reason: {detail}" },
+  "lane.detailInconclusive": { ja: "     結論なし: {detail}", en: "     Inconclusive: {detail}" },
   "lane.failedText": { ja: "失敗しました", en: "Failed" },
   "lane.passed": { ja: "  ✅ 成功", en: "  ✅ Passed" },
   "lane.failed": { ja: "  ❌ 失敗", en: "  ❌ Failed" },

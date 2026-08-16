@@ -16,7 +16,7 @@ public enum ProfileWorkerFactory {
     public static func buildWorkers(resolved: ResolvedProfile, repoRoot: URL,
                                     log: @escaping (String) -> Void) async throws -> [RunWorker] {
         let workers = try await buildIOSWorkers(resolved: resolved, repoRoot: repoRoot, log: log)
-            + (try buildAndroidWorkers(resolved: resolved))
+            + (try buildAndroidWorkers(resolved: resolved, log: log))
         guard !workers.isEmpty else {
             throw InstallError(message: "no usable workers (every device dropped out)")
         }
@@ -35,7 +35,118 @@ public enum ProfileWorkerFactory {
             bundleID: iosApp?.bundleID,
             preinstallAppPath: iosApp?.autoInstall == true ? iosApp?.appPath : nil,
             log: log)
+        // 供給後に同期する(シミュレータのブートは provision 側。未ブートでは simctl spawn が失敗する)
+        for device in provisioned where !device.physical {
+            IOSReduceMotion.apply(udid: device.udid,
+                                  animationsEnabled: resolved.enableAnimations, warn: log)
+        }
         return provisioned.map { makeIOSWorker(device: $0, iosApp: iosApp) }
+    }
+
+    /// run 開始時に各デバイスへ `home()` を1回撃つ(実行プロファイルの `homeOnStart`。既定 true)。
+    ///
+    /// **予防措置**(2026-08-11 の実測): 一斉に launch した直後の端末は「描画要求が無いだけ」で
+    /// 画面が黒いまま止まることがある(黒かった5台のうち4台は HOME を押した瞬間に 15KB → 1.4MB へ
+    /// 戻った)。この状態は本物の凍結と受動観測では見分けが付かないので、**先に1回入力を入れて
+    /// 描画を動かしておく**。デバイスあたり1回なので実行時間への影響はほぼ無い。
+    ///
+    /// `engine=inapp` 単独のデバイスだけは撃てない(in-app ドライバは自プロセス外を操作できず 501)。
+    /// **実行プロファイルからは到達しない構成**なので代替は用意しない —— `iosInappEngine` は
+    /// true→hybrid / false→xcuitest のどちらかで、両方とも home() が通る。
+    ///
+    /// **結果は正直に出す**(2026-08-11): 最初の実装は `try?` で握り潰して台数だけログしており、
+    /// **1台も撃てていないのに成功したように見えていた**。
+    public static func pressHomeOnStart(_ workers: [RunWorker], enabled: Bool,
+                                        log: @escaping @Sendable (String) -> Void) async {
+        guard enabled, !workers.isEmpty else { return }
+        let results = await withTaskGroup(of: Bool.self, returning: [Bool].self) { group in
+            for worker in workers {
+                group.addTask { (try? await worker.driver.home()) != nil }
+            }
+            var out: [Bool] = []
+            for await ok in group { out.append(ok) }
+            return out
+        }
+        let done = results.filter { $0 }.count
+        if done == results.count {
+            log("🏠 pressed home on \(done) device(s) (homeOnStart)")
+        } else {
+            log("🏠 pressed home on \(done)/\(results.count) device(s) (homeOnStart)"
+                + " — the rest do not support it (an iOS device pinned to engine=inapp cannot press"
+                + " home; hybrid and xcuitest can)")
+        }
+    }
+
+    /// **画面を必ず変える無害な入力**を送り、その後のフレームを返す(iOS シミュレータ)。
+    /// `BlankWorkerTriage` の能動プローブ用。
+    ///
+    /// なぜ要るか(2026-08-11 の実測): 一斉に force-stop / launch した直後の黒画面は、
+    /// **描画要求が無いだけ**で死んでいないことが多い(黒かった5台のうち本物の wedge は1台。
+    /// 残り4台は HOME を押した瞬間に 15KB → 1.4MB へ戻った)。受動観測ではこの2つを区別できない。
+    ///
+    /// 実装の要点3つ:
+    /// - 入力は**別アプリを前面に出す**(simctl に「ホームへ戻る」操作が無いため)
+    /// - 撮影は **simctl**。in-app ブリッジは背面化で suspend するのでブリッジ経由では撮れない
+    /// - **撃ったら SUT を前面へ戻す**。戻さないとブリッジが suspend したままになり、
+    ///   ワーカーが `cannot connect (no response to status)` で離脱する
+    ///   (フル E2E で10件発生。うち9件は Flutter iOS = プローブが最も発火するプロファイル)。
+    ///   シナリオ側の `launchApp()` が起動し直すまでの窓を、ここで閉じる
+    public static func nudgeIOSScreen(worker: RunWorker, restoring bundleID: String?) async -> Data? {
+        guard let udid = worker.connection.udid else { return nil }
+        _ = try? Shell.run(["xcrun", "simctl", "launch", udid, "com.apple.Preferences"], timeout: 20)
+        try? await Task.sleep(nanoseconds: 3_000_000_000)
+        let path = NSTemporaryDirectory() + "ft-nudge-\(udid).png"
+        defer {
+            try? FileManager.default.removeItem(atPath: path)
+            if let bundleID {
+                _ = try? Shell.run(["xcrun", "simctl", "launch", udid, bundleID], timeout: 20)
+            }
+        }
+        guard let result = try? Shell.run(["xcrun", "simctl", "io", udid, "screenshot", path],
+                                          timeout: 25), result.status == 0 else { return nil }
+        return try? Data(contentsOf: URL(fileURLWithPath: path))
+    }
+
+    /// 実行プロファイルから iOS の SUT の bundle ID を採る(プローブ後に前面へ戻すため)
+    public static func iosBundleID(apps: [String: ResolvedAppTarget]) -> String? {
+        apps["ios"]?.bundleID
+    }
+
+    /// run 開始時に Android 端末のアニメーション設定をプロファイルの enableAnimations へ合わせる。
+    /// **ブリッジのコールド起動時の適用(AndroidBridge)だけでは足りない** — ブリッジは run を
+    /// またいで再利用されるため、前の run が残した状態がそのまま残る。
+    /// 呼び出しは buildAndroidWorkers の1箇所(run 開始の全経路がそこを通る)。
+    /// iOS 側は buildIOSWorkers 内で供給後に同期する。
+    /// 実機はグローバル設定が永続的に書き換わるので、**現在値を読んで差分があるときだけ**書き、
+    /// そのときに1行知らせる(エミュレータは使い捨てなので無条件・無言)。失敗は非致命。
+    public static func syncAnimationSettings(
+        resolved: ResolvedProfile, log: (String) -> Void = { _ in }) {
+        guard let adb = try? AndroidDriver.findADB(), !resolved.androidDevices.isEmpty else { return }
+        let enabled = resolved.enableAnimations
+        for device in resolved.androidDevices {
+            guard let serial = try? AndroidDeviceCatalog.resolveSerial(spec: device.spec) else { continue }
+            func shell(_ args: [String]) -> Shell.Result? {
+                try? Shell.run([adb, "-s", serial] + args, timeout: 15)
+            }
+            if device.spec.isPhysical {
+                let stale = AnimationPolicy.androidScaleKeys.filter {
+                    !AndroidAnimationSettings.matches(
+                        rawValue: shell(["shell"] + AndroidAnimationSettings.getArguments(key: $0))?.output,
+                        animationsEnabled: enabled)
+                }
+                guard !stale.isEmpty else { continue }
+                log("ℹ️ \(serial): setting the device animations "
+                    + (enabled ? "back to the OS default (persists after the run)"
+                               : "off (persists after the run)"))
+            }
+            let failed = AndroidAnimationSettings.apply(animationsEnabled: enabled) {
+                shell(["shell"] + $0)?.status == 0
+            }
+            if !failed.isEmpty {
+                log("⚠️ \(serial): could not apply the animation settings "
+                    + "(\(failed.joined(separator: ", ")))")
+            }
+        }
     }
 
     /// excludeOrRepairBlankScreenWorkers の結果。repaired/excluded はワーカー label
@@ -67,8 +178,12 @@ public enum ProfileWorkerFactory {
     /// 事後の凍結判定(isBlankObserved・実行中の flap 検知)は別物。非 android ワーカーはそのまま
     /// 通し、元 workers の順序を維持する。
     /// 全除外で空になっても throw しない(混在プロファイルの iOS 合流を殺さない。呼び出し側が判断)
+    /// `stateDir` を渡すと判定を共有ストア(`DeviceFrozenStore`)へ公表する。**iOS 側と同じ口**で、
+    /// これが無いと「run は凍結を知っているのにモニターの ❄️ に出ない」非対称が残る(2026-08-11)
     public static func excludeOrRepairBlankScreenWorkers(
-        _ workers: [RunWorker], log: (String) -> Void) async -> BlankScreenTriage {
+        _ workers: [RunWorker], stateDir: URL? = nil,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        log: (String) -> Void) async -> BlankScreenTriage {
         // 実機は対象外。blank 判定(blankScreenMaxPNGBytes=30KB)は 1080x2424 エミュレータ較正で
         // 解像度の違う実機では当てにならず、誤判定すると健全な実機に adb reboot を撃ってしまう。
         // そもそも blank-screen はエミュレータの GPU 合成バッファ固着という固有の病理
@@ -81,13 +196,44 @@ public enum ProfileWorkerFactory {
         }
 
         // タスクは (index, repaired) を返す: nil=健全 / repaired=true は修復済み(除外しない)
+        // **回復したら公表を消す**(2026-08-11 の実害)。以前は回復の分岐ごとに `clear` を書いており、
+        // **guest restart の分岐だけ落ちていた**ため、戻った機が run の間ずっと ❄️ のままになった
+        // (モニターは公表を無条件に取り込む)。
+        // **label と serial を1つの記録にまとめてある**のが要点 —— 回復の分岐を足すときに
+        // 「レーンに残す」だけ書いて「公表を消す」を忘れる、が**型の上で起きない**
+        var repairedDevices: [(label: String, serial: String)] = []
+        defer {
+            if let stateDir {
+                for device in repairedDevices {
+                    DeviceFrozenStore.clear(stateDir: stateDir, key: device.serial)
+                }
+            }
+        }
         let outcomes = await withTaskGroup(of: (index: Int, repaired: Bool)?.self,
                                            returning: [(index: Int, repaired: Bool)].self) { group in
             for (index, worker) in candidates {
                 group.addTask {
                     guard let serial = worker.connection.serial else { return nil }
+                    // 陽性対照の注入は**公表だけ**通す(実体は健全なので sleep/wake も撃たない)。
+                    // iOS 側(BlankWorkerTriage.observedVerdict)と同じ規律
+                    if FrozenInjection.isInjected(key: serial, environment: environment) {
+                        if let stateDir {
+                            DeviceFrozenStore.publish(stateDir: stateDir, key: serial,
+                                                      verdict: FrozenVerdict([.injected]))
+                        }
+                        return nil
+                    }
                     guard await AndroidHealthProbe.isPersistentlyBlank(
-                        serial: serial, samples: 2, intervalMs: 1_500) else { return nil }
+                        serial: serial, samples: 2, intervalMs: 1_500) else {
+                        if let stateDir { DeviceFrozenStore.clear(stateDir: stateDir, key: serial) }
+                        return nil
+                    }
+                    // **修復の前に公表する**(sleep/wake → guest reboot は分単位になりうる。
+                    // 終わってから配るとモニターはその間ずっと「異常なし」を出す)
+                    if let stateDir {
+                        DeviceFrozenStore.publish(stateDir: stateDir, key: serial,
+                                                  verdict: FrozenVerdict([.uniformBlank]))
+                    }
                     let repaired = await AndroidHealthProbe.repairBlankDisplay(serial: serial)
                     return (index, repaired)
                 }
@@ -98,14 +244,18 @@ public enum ProfileWorkerFactory {
             }
             return result
         }
-        var repairedLabels = outcomes.sorted(by: { $0.index < $1.index })
-            .filter(\.repaired).map { workers[$0.index].label }
-        for label in repairedLabels {
-            log("🔧 \(label): recovered a frozen (blank) screen with sleep/wake")
+        repairedDevices = outcomes.sorted(by: { $0.index < $1.index }).filter(\.repaired)
+            .compactMap { outcome in
+                let worker = workers[outcome.index]
+                guard let serial = worker.connection.serial else { return nil }
+                return (worker.label, serial)
+            }
+        for device in repairedDevices {
+            log("🔧 \(device.label): recovered a frozen (blank) screen with sleep/wake")
         }
         let stubbornIndices = outcomes.filter { !$0.repaired }.map(\.index).sorted()
         guard !stubbornIndices.isEmpty else {
-            return BlankScreenTriage(workers: workers, repaired: repairedLabels, excluded: [])
+            return BlankScreenTriage(workers: workers, repaired: repairedDevices.map(\.label), excluded: [])
         }
 
         // sleep/wake 不発の難治型を guest reboot で本 run 内に復帰させる。1台ずつ直列に処理する
@@ -133,7 +283,7 @@ public enum ProfileWorkerFactory {
             }
             if await !AndroidHealthProbe.isPersistentlyBlank(serial: serial, samples: 2,
                                                              intervalMs: 1_500) {
-                repairedLabels.append(worker.label)
+                repairedDevices.append((worker.label, serial))
                 log("✅ \(worker.label): the guest restart cleared the frozen screen (using it in this run)")
                 continue
             }
@@ -141,11 +291,11 @@ public enum ProfileWorkerFactory {
             log("⚠️ \(worker.label): the screen is still blank after a guest restart — excluding it from dispatch")
         }
         guard !excludedIndices.isEmpty else {
-            return BlankScreenTriage(workers: workers, repaired: repairedLabels, excluded: [])
+            return BlankScreenTriage(workers: workers, repaired: repairedDevices.map(\.label), excluded: [])
         }
         return BlankScreenTriage(
             workers: workers.enumerated().filter { !excludedIndices.contains($0.offset) }.map(\.element),
-            repaired: repairedLabels,
+            repaired: repairedDevices.map(\.label),
             excluded: excludedIndices.sorted().map { workers[$0].label })
     }
 
@@ -195,38 +345,22 @@ public enum ProfileWorkerFactory {
         }
     }
 
-    /// 未起動のエミュレータだけを含む MachineProfile を作る(nil = 起動すべきものが無い)。
-    /// 実機は除外する(電源・接続は人が用意するもの)
-    static func pendingEmulatorProfile(
-        androidDevices: [(name: String, spec: DeviceSpec)],
-        isRunning: (DeviceSpec) -> Bool) -> MachineProfile? {
-        let pending = androidDevices
-            .filter { !$0.spec.isPhysical && !isRunning($0.spec) }
-            .map { $0.spec }
-        guard !pending.isEmpty else { return nil }
-        return MachineProfile(android: MachineDeviceList(devices: pending))
-    }
-
-    /// プロファイルが参照する Android エミュレータのうち**未起動のものを起動する**(iOS の
-    /// BridgeProvisioner と同じ「run するだけで使える」体験にする)。実機は対象外
-    /// (電源・接続は人が用意するもの)。buildAndroidWorkers の前に呼ぶこと
-    public static func ensureAndroidEmulators(
-        resolved: ResolvedProfile, repoRoot: URL?, log: @escaping @Sendable (String) -> Void) async {
-        let isRunning: (DeviceSpec) -> Bool = { (try? AndroidDeviceCatalog.resolveSerial(spec: $0)) != nil }
-        let candidates = resolved.androidDevices.map { ($0.name, $0.spec) }
-        guard let pendingProfile = pendingEmulatorProfile(
-            androidDevices: candidates, isRunning: isRunning) else { return }
-        let booted = candidates.filter { !$0.1.isPhysical && !isRunning($0.1) }
-        await DeviceBooter.bootAll(machine: pendingProfile, repoRoot: repoRoot, log: log)
-        // **起動しただけでは run できない**: コールドブート直後の Android は起動ストームの間、
-        // ブリッジ(ftbridge instrumentation)を立てても数秒で殺す(実測 2026-08-01:
-        // 起動17s→21s で死亡)。sys.boot_completed / bootanim / PackageManager 応答 /
-        // ランチャーの mCurrentFocus はどれもこの窓より手前で真になり、信号に使えなかった。
-        // よって**「立てて、生き続けることを確認する」自己検証で待つ**。
-        // これが機能する前提が AndroidBridge の .active 無効化(死んだクライアントを
-        // 握り続けない)で、それ以前は何度再試行しても同じ死体に当たっていた
-        for (name, spec) in booted {
-            await waitForDurableBridge(spec: spec, name: name, log: log)
+    /// **起動しただけでは run できない**: コールドブート直後の Android は起動ストームの間、
+    /// ブリッジ(ftbridge instrumentation)を立てても数秒で殺す(実測 2026-08-01:
+    /// 起動17s→21s で死亡)。sys.boot_completed / bootanim / PackageManager 応答 /
+    /// ランチャーの mCurrentFocus はどれもこの窓より手前で真になり、信号に使えなかった。
+    /// よって**「立てて、生き続けることを確認する」自己検証で待つ**。
+    /// これが機能する前提が AndroidBridge の .active 無効化(死んだクライアントを
+    /// 握り続けない)で、それ以前は何度再試行しても同じ死体に当たっていた。
+    ///
+    /// **起こす側は `AndroidLaneRecovery.bootMissingDevices`**(直列・再試行・locale 適用)。
+    /// ここはその直後に、**実際に起こせた分だけ**を渡して呼ぶ
+    /// (起こせなかったレーンの扱いは `FTCore.LaneGate` の責務なので待たない)。
+    /// buildAndroidWorkers より前に呼ぶこと
+    public static func awaitDurableAndroidBridges(
+        devices: [ResolvedDevice], log: @escaping @Sendable (String) -> Void) async {
+        for device in devices where !device.spec.isPhysical {
+            await waitForDurableBridge(spec: device.spec, name: device.name, log: log)
         }
     }
 
@@ -255,19 +389,49 @@ public enum ProfileWorkerFactory {
     }
 
     /// Android ワーカーのみ構築(serial 照合+ドライバ生成のみ=数秒)。
-    public static func buildAndroidWorkers(resolved: ResolvedProfile) throws -> [RunWorker] {
-        try resolved.androidDevices.map { device in
-            let serial = try AndroidDeviceCatalog.resolveSerial(spec: device.spec)
-            let driver = try AndroidDriver(serial: serial)
-            return RunWorker(
-                label: RunWorker.makeLabel(deviceName: device.name, platform: "android", id: serial),
-                platform: "android",
-                driver: driver,
-                connection: DriverConnection(platform: "android", serial: serial,
-                                             deviceName: device.name,
-                                             physical: device.spec.isPhysical),
-                logicalName: device.name)
+    /// アニメーション設定の同期もここで行う(run 開始の全経路がこの関数を通るため。
+    /// Wipe Data / GPU 復帰の後に呼ぶこと = serial が確定している)。
+    ///
+    /// **1台の解決失敗で全体を落とさない**(2026-08-16 の実害: 別プロファイル実行中にエミュレータ
+    /// 2台がプロセスごと死に、`try ... map` が丸ごと throw して後続3プロファイル74本が開始前に
+    /// 全滅した。健全な6台は使われなかった)。集約規則は `FTCore.FleetOutcome.resolve`
+    /// (iOS ブリッジ供給 `BridgeProvisioner.provision` と共有)。**全滅のときだけ**最初のエラーを
+    /// throw する(呼び出し側が run の失敗として扱えるよう現状維持)。
+    ///
+    /// `makeWorker` は1台分の解決(serial 照合+ドライバ生成)の差し込み口。既定は本番経路
+    /// (`makeAndroidWorker`)そのもので、テストはここへ失敗するスタブを渡して規則だけを検証する。
+    public static func buildAndroidWorkers(
+        resolved: ResolvedProfile, log: (String) -> Void = { _ in },
+        makeWorker: (ResolvedDevice) throws -> RunWorker = ProfileWorkerFactory.makeAndroidWorker
+    ) throws -> [RunWorker] {
+        syncAnimationSettings(resolved: resolved, log: log)
+        let outcomes: [(name: String, result: Result<RunWorker, Error>)] = resolved.androidDevices.map {
+            device in (name: device.name, result: Result { try makeWorker(device) })
         }
+        let aggregated = try FleetOutcome.resolve(outcomes)
+        for failure in aggregated.failures {
+            log("❌ \(failure.name): \(failure.error.localizedDescription)")
+        }
+        if !aggregated.failures.isEmpty {
+            log("⚠️ \(aggregated.failures.count) device(s) could not be resolved"
+                + " — continuing with \(aggregated.devices.count) device(s)")
+        }
+        return aggregated.devices
+    }
+
+    /// buildAndroidWorkers の既定解決経路(1台分)。serial 照合(`AndroidDeviceCatalog.resolveSerial`)と
+    /// ドライバ生成(`AndroidDriver.init`)の両方の失敗を同じ扱いにする(片方だけ許容しない)。
+    public static func makeAndroidWorker(device: ResolvedDevice) throws -> RunWorker {
+        let serial = try AndroidDeviceCatalog.resolveSerial(spec: device.spec)
+        let driver = try AndroidDriver(serial: serial)
+        return RunWorker(
+            label: RunWorker.makeLabel(deviceName: device.name, platform: "android", id: serial),
+            platform: "android",
+            driver: driver,
+            connection: DriverConnection(platform: "android", serial: serial,
+                                         deviceName: device.name,
+                                         physical: device.spec.isPhysical),
+            logicalName: device.name)
     }
 
     /// engine=inapp/hybrid のときサブプロセスは InAppDriver(+hybrid は SystemUIDriver フォールバック)を
@@ -435,11 +599,7 @@ public enum ProfileWorkerFactory {
                         return (index, worker)
                     }
                     do {
-                        try await worker.driver.install(packagePath: appPath)
-                        if worker.platform == "ios", let udid = worker.connection.udid {
-                            InstalledAppCheck.recordInstalled(udid: udid, bundleID: app.bundleID,
-                                                             appPath: appPath)
-                        }
+                        try await installOne(worker: worker, bundleID: app.bundleID, appPath: appPath)
                         safeLog("✅ \(worker.label): install complete")
                         return (index, worker)
                     } catch {
@@ -464,4 +624,85 @@ public enum ProfileWorkerFactory {
         }
         return result
     }
+
+    /// 1 ワーカーへの実インストール。installIfNeeded の TaskGroup 本体と installApp() の RPC ハンドラ
+    /// (InstallHandlerFactory)が共用する唯一の実行口(ロジックを複製しない)。差分スキップ
+    /// (installedIsCurrent)は呼ばない — 呼び出し側の判断に委ねる(installApp() は明示要求なので
+    /// 常に実行、installIfNeeded は自動インストールなのでスキップ判定を挟む)
+    public static func installOne(worker: RunWorker, bundleID: String, appPath: String) async throws {
+        try await worker.driver.install(packagePath: appPath)
+        if worker.platform == "ios", let udid = worker.connection.udid {
+            InstalledAppCheck.recordInstalled(udid: udid, bundleID: bundleID, appPath: appPath)
+        }
+    }
+
+    /// 凍結したシミュレータを **shutdown → boot** で戻し、**ブリッジを張り直した**
+    /// ワーカー一覧を返す(BlankWorkerTriage の `recover:` にそのまま渡せる形)。
+    ///
+    /// シミュレータを落とす前に**その機のブリッジを止める**(掴んだままだと shutdown が約50秒
+    /// かかる。下の実測コメント)。張り直しは `buildIOSWorkers` を呼び直すだけでよい ——
+    /// 生きているブリッジは再利用されるので、実際に建て直るのは落とした機だけ。
+    ///
+    /// **2台ずつ**戻す: 一斉 boot は凍結の相関要因そのもので、device-up の「同時2台」と同じ理屈。
+    /// udid はワーカーの connection から採る(label は表示用で simctl には渡せない)。
+    ///
+    /// **iOS ワーカーの供給口は3つある**(ProfileRunner の遅延合流 / ApiRunCommand の遅延合流 /
+    /// ApiRunCommand の直接供給)。**片方だけに入れない** —— 過去に同じ型の穴を空けている
+    public static func recoverFrozenIOSWorkers(
+        labels: [String], workers: [RunWorker], resolved: ResolvedProfile, repoRoot: URL,
+        apps: [String: ResolvedAppTarget], log: @escaping @Sendable (String) -> Void
+    ) async -> [RunWorker]? {
+        let targets = frozenIOSTargets(labels: labels, workers: workers)
+        guard !targets.isEmpty else {
+            log("⚠️ frozen devices have no iOS simulator udid — cannot reboot them")
+            return nil
+        }
+        for pair in stride(from: 0, to: targets.count, by: 2) {
+            let slice = Array(targets[pair..<Swift.min(pair + 2, targets.count)])
+            await withTaskGroup(of: Void.self) { group in
+                for (label, udid) in slice {
+                    group.addTask {
+                        log("→ \(label): rebooting the simulator (shutdown → boot)")
+                        // **先にこの機のブリッジを止める**。掴んだまま落とすと `simctl shutdown` が
+                        // XCUITest ランナーの teardown を待って **約50秒**かかり(止めてからなら約5秒)、
+                        // 生き残ったランナーが再ブート後に再接続してくるので張り直しも遅い
+                        // (2026-08-11 実測・3周とも一致: 96.5s → 34.6s)。
+                        // 止めるのは**この udid のブリッジだけ**(他機・他セッションは巻き込まない)
+                        _ = BridgeLauncher.stopMatching(udid: udid, repoRoot: repoRoot)
+                        _ = try? Shell.run(["xcrun", "simctl", "shutdown", udid])
+                        _ = try? Shell.run(["xcrun", "simctl", "boot", udid])
+                        // boot 完了まで待つ(待たずに注入すると launch が失敗する)
+                        _ = try? Shell.run(["xcrun", "simctl", "bootstatus", udid, "-b"])
+                        log("✅ \(label): simulator is back")
+                    }
+                }
+            }
+        }
+        guard var rebuilt = try? await buildIOSWorkers(resolved: resolved, repoRoot: repoRoot,
+                                                       log: log) else { return nil }
+        rebuilt = (try? await installIfNeeded(apps: apps, workers: rebuilt,
+                                              forceAndroidInstall: false, log: log)) ?? rebuilt
+        return mergeRecoveredIOS(into: workers, rebuiltIOS: rebuilt)
+    }
+
+    /// 再起動をかける対象。**iOS だけ**を採る —— 呼び出し元の一覧は Android と混ざっている
+    /// ことがあり(ApiRunCommand の直接供給)、Android の凍結機はここへ来る前に別経路
+    /// (`excludeOrRepairBlankScreenWorkers`)が修復済み。simctl は udid でしか撃てないので
+    /// udid の無い個体も落とす
+    static func frozenIOSTargets(labels: [String],
+                                 workers: [RunWorker]) -> [(label: String, udid: String)] {
+        workers.filter { labels.contains($0.label) && $0.platform == "ios" }
+            .compactMap { worker in
+                guard let udid = worker.connection.udid else { return nil }
+                return (worker.label, udid)
+            }
+    }
+
+    /// **非 iOS は元のまま残す** —— `buildIOSWorkers` は iOS しか作らないので、混在一覧を
+    /// 返り値でそのまま置き換えると Android のレーンが消える
+    static func mergeRecoveredIOS(into original: [RunWorker],
+                                  rebuiltIOS: [RunWorker]) -> [RunWorker] {
+        original.filter { $0.platform != "ios" } + rebuiltIOS
+    }
+
 }

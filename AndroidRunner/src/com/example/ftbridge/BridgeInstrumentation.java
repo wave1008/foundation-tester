@@ -19,6 +19,8 @@ public class BridgeInstrumentation extends Instrumentation {
     /** 起動元リポジトリ(-e owner)。/status の ownerRepo として申告する(doctor の診断用)。
      *  未指定 = 申告しない(旧ホスト起動) */
     static String ownerRepo;
+    /** 所要内訳ログ(tapTiming/settleTiming/reqTiming)を出すか。既定 false = 1行も出さない */
+    static boolean timingEnabled;
     private int port = 8123;
     private int ttlSeconds = TTL_DEFAULT_SECONDS;
 
@@ -31,6 +33,9 @@ public class BridgeInstrumentation extends Instrumentation {
         if (arguments != null) {
             ttlSeconds = parseTTL(arguments.getString("ttl"));
             ownerRepo = arguments.getString("owner");
+            // 所要内訳ログの on/off(既定 off)。ホストの FT_BRIDGE_TIMING=1 が
+            // `-e timing 1` として届く(同期相手: Sources/FTAndroid/AndroidBridge.swift)
+            timingEnabled = "1".equals(arguments.getString("timing"));
         }
         start();
     }
@@ -51,6 +56,9 @@ public class BridgeInstrumentation extends Instrumentation {
     public void onStart() {
         Log.i(TAG, "bridge starting on 127.0.0.1:" + port
                 + " ttl=" + (ttlSeconds > 0 ? ttlSeconds + "s" : "off"));
+        // 画面が進んでいるかの計器(/status の displayIdleSeconds)。**HTTP ループへ入る前に**
+        // 載せる(run() はこのスレッドを占有して戻らない)。実体はメインルーパー上で回る
+        DisplayHeartbeat.start();
         BridgeRouter router = new BridgeRouter(this);
         // iOS ランナーと同じく逐次処理(1接続ずつ)。UI 操作が自然に直列化される。
         // finish() は呼ばない = 常駐(停止は am force-stop com.example.ftbridge、

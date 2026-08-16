@@ -1,6 +1,7 @@
 import XCTest
 @testable import FTDSL
-import FTCore
+// @testable: ScenarioCodeGen.render(step:indent:) は internal(FTCore に住む。移動前は FTDSL だった)
+@testable import FTCore
 
 final class StepDescriptionTests: XCTestCase {
 
@@ -64,7 +65,7 @@ final class StepDescriptionTests: XCTestCase {
                        "\"アイコン\"を1秒間長押しする")
         XCTAssertEqual(StepDescription.describe(command: "tap \"Icon\" (hold 0.5s)"),
                        "long-press \"Icon\" for 0.5s")
-        // optional と併記(tapImpl の連結順: hold → optional)
+        // 廃止済み `optional:` が付けていたサフィックス。**過去 run の説明文を読み直せること**
         XCTAssertEqual(StepDescription.describe(command: "tap \"アイコン\" (hold 1s) (optional)"),
                        "\"アイコン\"を1秒間長押しする")
     }
@@ -75,6 +76,14 @@ final class StepDescriptionTests: XCTestCase {
         XCTAssertEqual(StepDescription.describe(command: "swipe left"), "swipe left")
         XCTAssertEqual(StepDescription.describe(command: "swipe right"), "swipe right")
         XCTAssertNil(StepDescription.describe(command: "swipe diagonal"))
+    }
+
+    func testRotateToAllOrientations() {
+        XCTAssertEqual(StepDescription.describe(command: "rotateTo portrait"), "rotate to portrait")
+        XCTAssertEqual(StepDescription.describe(command: "rotateTo landscape"), "rotate to landscape")
+        // 廃止した左右は語彙に無い = 説明も作らない(黙って通さない)
+        XCTAssertNil(StepDescription.describe(command: "rotateTo landscapeLeft"))
+        XCTAssertNil(StepDescription.describe(command: "rotateTo sideways"))
     }
 
     func testScrollTo() {
@@ -200,11 +209,25 @@ final class StepDescriptionTests: XCTestCase {
         XCTAssertEqual(StepDescription.describe(step: FlowStep(action: "type", text: "あいう")),
                        "フォーカス中の要素に\"あいう\"を入力する")
 
+        // replace: true は「空にしてから入力する」に言い換える(セレクタあり/なしとも)。
+        // 言語は元の type と同じ判定(obj/input 由来)に従う ―― この2件はラテン文字のみなので英語
+        var replaceType = type
+        replaceType.replace = true
+        XCTAssertEqual(StepDescription.describe(step: replaceType),
+                       "clear \"#email\", then type \"a@b.c\" into it")
+        var replaceNoLocator = FlowStep(action: "type", text: "あいう")
+        replaceNoLocator.replace = true
+        XCTAssertEqual(StepDescription.describe(step: replaceNoLocator),
+                       "フォーカス中の要素を空にしてから\"あいう\"を入力する")
+
         let screen = FlowStep(assert: "screenMatches", expected: "設定画面")
         XCTAssertEqual(StepDescription.describe(step: screen), "画面が\"設定画面\"であること")
 
         // 未知の action は nil
         XCTAssertNil(StepDescription.describe(step: FlowStep(action: "unknown")))
+
+        let rotate = FlowStep(action: "rotateTo", direction: "landscape")
+        XCTAssertEqual(StepDescription.describe(step: rotate), "rotate to landscape")
     }
 
     // MARK: - codegen の行末コメント(FM の note のみ。機械的な説明=StepDescription は付けない)

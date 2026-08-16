@@ -1,0 +1,61 @@
+// ログイン失敗.swift
+// testbase: TC-80 の負側/第2段階の実認証(user-manual「誤ったパスワードでのログインはできません」)。
+// 誤った資格情報ではログインできずエラーが出ることを検証する(負テスト・入力を伴う)。
+// type を伴う。入力欄は id 付与済み(#field_email/#field_password)で解決は全エンジン共通:
+//   - iOS: hybrid(all/ios プロファイル)は Compose 自動判定で type だけ XCUITest 実行に切り替わる
+//     ためそのまま通る(2026-07-20〜)。engine=inapp 単独にだけは載せない(type が 409)。
+//   - Android: inapp で type 可(ACTION_SET_TEXT・IME 不要)。
+// 失敗ログインはサーバ状態を作らないため副作用なし(正常ログイン/アカウント作成は専用テストアカウントが要る)。
+// セレクタは iPhone 17 Pro(iOS 27.0)/ja_JP・修正版ビルドで採取。
+
+import FTDSL
+
+@TestClass(app: "com.sutec.mobile")  // iOS(xcuitest)/Android(inapp)対応。#id は両プラットフォーム共通
+class ログイン失敗が表示されること {
+
+    // このテストは**ログアウト状態**が前提。アプリのデータは launchApp で消えないため、
+    // 前のシナリオのセッションが残っているとアカウント画面がプロフィール表示になり
+    // #btn_login が存在しない(実害: この前提が無くて 07/27 に解決失敗で落ちた)。
+    // setUp の失敗はシナリオごと中断されるので、前提が崩れたまま本体が走ることはない。
+    //
+    // **ログアウト分岐の前に2つ待つ**(2026-08-08 実測。同型4本の理由はここに集約):
+    //   1. #btn_benchmark = タブ直後は AX 木が前画面のまま残る(実測 ~1.5s)ので葉要素で着地を待つ
+    //   2. #account_loading の消失 = セッション復元中はログイン/ログアウトのどちらも描画されない
+    // どちらか欠けると、ログイン残留状態で ifCanSelect が #btn_logout を見逃し、
+    // ログインしたまま本体へ進んで #btn_login の解決失敗で落ちる(決定的に再現)
+    func setUp() {
+        launchApp()
+        ifCanSelect("#btn_back") { tap("#btn_back") }
+        tap("#tab_account")
+        waitForDisplay("#btn_benchmark")
+        waitForClose("#account_loading")
+        ifCanSelect("#btn_logout") { tap("#btn_logout") }
+    }
+
+    @Test("誤った資格情報ではログインできずエラーが出る")
+    func S0010() {
+        scenario {
+            scene(1, "ログイン画面を開く") {
+                action {
+                    tap("#btn_login", timeout: 5)  // アカウントの「ログイン / 登録」。セッション判定は非同期のため待つ
+                }.expectation {
+                    exist("#field_email")
+                    exist("#btn_goto_signup")
+                }
+            }
+            scene(2, "誤った資格情報でエラーが出る") {
+                action {
+                    // Compose 入力欄はフォーカスして input connection が張られるまで ACTION_SET_TEXT を
+                    // 受け付けず 500 になる(Android inapp)。tap で先にフォーカスしてから type する
+                    tap("#field_email")
+                    type("#field_email", "nouser@example.com")
+                    tap("#field_password")
+                    type("#field_password", "wrongpass123")
+                    tap("#btn_login")  // ログイン画面の送信ボタン(同 id・画面が別なので一意)
+                }.expectation {
+                    exist("ログインに失敗しました")
+                }
+            }
+        }
+    }
+}

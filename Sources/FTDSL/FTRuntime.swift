@@ -17,6 +17,24 @@ public struct DSLStepRecord: Sendable {
     public let line: Int
     /// レポートの時間列に使う。欠測条件は recordStep のコメント参照
     public let durationMs: Int?
+    /// screenshot() コマンドが撮った画像。ScenarioReportWriter がこのステップの直後に埋め込む。
+    /// 他コマンドは常に nil(failureScreenshot とは別経路)
+    public let screenshotData: Data?
+    public let screenshotLabel: String?
+
+    public init(index: Int, section: String?, description: String, status: StepResult.Status,
+                file: String, line: Int, durationMs: Int? = nil,
+                screenshotData: Data? = nil, screenshotLabel: String? = nil) {
+        self.index = index
+        self.section = section
+        self.description = description
+        self.status = status
+        self.file = file
+        self.line = line
+        self.durationMs = durationMs
+        self.screenshotData = screenshotData
+        self.screenshotLabel = screenshotLabel
+    }
 }
 
 /// セレクタの修正提案(自己修復・キャッシュ命中・フォールバック通過から導出)
@@ -146,6 +164,20 @@ public final class FTDriveCore {
     /// (XCUITest ブリッジの /home・/appswitcher はセッション不要)。
     /// hybrid 以外(xcuitest / Android / inapp 単独)は primary のまま = 挙動不変
     var systemDriver: AppDriver { executor.typeDriver ?? driver }
+    /// tapAppIcon 用。**systemDriver とは別**: hybrid の typeDriver(AppAttachDriver)は
+    /// snapshot() のたびテスト対象アプリを再前面化する(springboard を見せない)ため使えない。
+    /// 優先順: ①明示注入(xcuitest 単独。**セッションが対象アプリに縛られた通常ドライバは
+    /// home() 後の snapshot が背面アプリ照会でハングする** — 実機で踏んだため springboard 参照を
+    /// 注入する)→ ② fallbackDriver(hybrid の SystemUIDriver)→ ③ systemDriver
+    /// (Android は再前面化しない。inapp 単独は home() が 501 で自然に失敗する)
+    private let homeScreenDriverOverride: AppDriver?
+    var homeScreenDriver: AppDriver {
+        homeScreenDriverOverride ?? executor.fallbackDriver ?? systemDriver
+    }
+    /// true = homeScreenDriver が主ドライバと同じランナーのセッションを付け替える
+    /// (xcuitest 単独。tapAppIcon が終わりにセッションを張り直す条件。
+    /// hybrid は主ドライバが in-app なので張り替えの影響を受けない)
+    var homeScreenSharesRunnerSession: Bool { homeScreenDriverOverride != nil }
     public let platform: String
     /// 実機か。白フレーム=画面凍結の推定はエミュレータ固有の病理(GPU 合成バッファ固着)なので、
     /// 実機では「画面が消灯しているだけ」を凍結と誤断しないためにこれで抑止する
@@ -156,7 +188,8 @@ public final class FTDriveCore {
     let scenarioTitle: String
     let emit: (ScenarioEvent) -> Void
     let healCache: HealCache
-    /// 検証コマンド(exist/textIs 等)の既定タイムアウト秒(実行プロファイルで変更可)
+    /// 検証コマンド(exist/textIs 等)の既定タイムアウト秒(実行プロファイルで変更可)。
+    /// 既定値の定義元は FTCore.DefaultWait(MCP の defaultWaitSeconds と共有)
     public let defaultTimeout: Double
 
     private(set) var record: ScenarioRecordData
@@ -180,8 +213,40 @@ public final class FTDriveCore {
 
     // 実行状態(DSL スレッドからのみ触る。scenarioAborted は例外 = stateLock 経由)
     var currentSection: String?
+    /// 自由関数 `lastElement` が読む「直前に掴んだ要素」(Shirates の TestDriver.lastElement 相当)。
+    /// 更新するのは**要素を1つに定めて解決したコマンドだけ**(判定は Commands.swift の
+    /// `definesSingleElement`)。**掴めなかったときも空要素で上書きする** —— 前の要素を残すと
+    /// 別要素の値を「今掴んだもの」として読んでしまう。scene の切り替わりで捨てる(runScene)。
+    /// 保持するのは掴んだ時点の凍結値で、再取得はしない(FTElement.matched と同じ契約)
+    var lastResolvedElement: FTElement?
+    /// 何も掴んでいない状態で `lastElement` を読んだ警告は 1 run に 1 回だけ
+    private var lastElementWarned = false
     /// group("名前") { } の入れ子。記録時にステップ説明へ `[外/内]` を前置する
     var groupStack: [String] = []
+    /// verify() のブロック内で走ったアサーション数を数えるスタック。ネストした verify を
+    /// support するため「今アクティブな全フレーム」に加算する(noteAssertion 参照)。
+    /// group と同様 DSL スレッド専有で lock 不要
+    struct VerifyFrame { var assertionCount = 0 }
+    var verifyStack: [VerifyFrame] = []
+    /// 実行中の CAE セクション内で走ったアサーション数(runSection が退避・復元する)。
+    /// **0 のまま終わった expectation は「何も検証していない」** = 緑になる誤り
+    var sectionAssertionCount = 0
+    /// シナリオ全体のアサーション数。0 なら**どう転んでも検証していない**(warnAboutMissingAssertions)
+    var scenarioAssertionCount = 0
+    /// 本体を実行しなかった条件ブロックの数(`ios`/`android` の不一致・`ifCanSelect` の不成立・
+    /// `repeatWhileCanSelect` の 0 周)。**中に何が書かれているかは実行しないと分からない**ので、
+    /// 1つでもあればアサーション不足の警告を出さない —— 誤検知を出さない側に倒す
+    /// (実際 `expectation { android { notExist(...) } }` を iOS で回すと 0 本に見える)
+    var sectionUnexecutedBlocks = 0
+    var scenarioUnexecutedBlocks = 0
+    /// このプロジェクトで観測済みの `#id`(`ft_snapshot` が貯めた台帳。SelectorInventory)。
+    /// **nil = 台帳が無い / このプラットフォームの記録が無い** → 照合しない(黙る)
+    private let knownIDs: Set<String>?
+    /// dry-run 中に見つけた「台帳に無い id」→ 最初に見たステップの説明
+    private var unknownIDs: [String: String] = [:]
+    /// 同じく、台帳に**在った** id。**台帳がこのシナリオの範囲を実際にカバーしているか**の判定に使う
+    /// (warnAboutUnknownIDs 参照)
+    private var seenKnownIDs: Set<String> = []
     private var _scenarioAborted = false
     var scenarioAborted: Bool {
         get { stateLock.lock(); defer { stateLock.unlock() }; return _scenarioAborted }
@@ -199,7 +264,7 @@ public final class FTDriveCore {
     /// ifCanSelect のセレクタ → 一度でも成立したか。**一度も成立しなかったものだけ**警告する
     /// (交互に出るダイアログのように「出ないこともある」のが正しい用途があるため)
     var branchOutcomes: [String: Bool] = [:]
-    /// `isNotChecked` で通ったセレクタ → 最初に見た説明。**checked を一度も観測できなかったもの**は
+    /// `checkIsOFF` で通ったセレクタ → 最初に見た説明。**checked を一度も観測できなかったもの**は
     /// 「状態を持たない要素を指していて、何を書いても通っていた」疑いがある(ブリッジは
     /// checked を true のときだけ送るため、オフと未対応が区別できない)。
     /// iOS の SwiftUI / Flutter の checkbox は selected trait を出さない = 常に通る(design.md)
@@ -212,6 +277,11 @@ public final class FTDriveCore {
     enum ScrollContext { case none, direction(FTScrollDirection) }
     var scrollContextStack: [ScrollContext] = []
 
+    /// `withScrollDown(scrollFrame:) { }` が積むスクロール領域(Shirates の
+    /// CodeExecutionContext.scrollFrame 相当)。**向きと同じ寿命**で積み降ろしする。
+    /// 中身はセレクタ式(Shirates も String 式)。ブロック内の `scroll:` 探索が継承する
+    var scrollFrameStack: [String?] = []
+
     /// コマンドが使うスクロール向き。明示 > ブロックの文脈 > 無し
     func effectiveScroll(_ explicit: FTScrollDirection?) -> FTScrollDirection? {
         if let explicit { return explicit }
@@ -221,10 +291,38 @@ public final class FTDriveCore {
         }
     }
 
-    func runWithScrollContext(_ context: ScrollContext, _ body: () -> Void) {
+    /// コマンドが使うスクロール領域。明示 > ブロックの文脈 > 無し(= 従来の全画面固定)
+    func effectiveScrollFrame(_ explicit: String?) -> String? {
+        if let explicit { return explicit }
+        return scrollFrameStack.last ?? nil
+    }
+
+    func runWithScrollContext(_ context: ScrollContext, scrollFrame: String? = nil,
+                              _ body: () -> Void) {
         scrollContextStack.append(context)
+        scrollFrameStack.append(scrollFrame)
         body()
         scrollContextStack.removeLast()
+        scrollFrameStack.removeLast()
+    }
+
+    /// `withoutContainerInference { }` が積む文脈(Bool そのもの。方向のような .none 相当は無く、
+    /// スタックが空 = 文脈なし)。**`FlowStep.containerInference` と同じ3値ロジック** ——
+    /// nil はここでも「プロファイル既定に委ねる」を表す
+    var containerInferenceStack: [Bool] = []
+
+    /// コマンドが使う容器推測補正の有効/無効。明示 > ブロックの文脈 > nil(実行プロファイル既定に委ねる)。
+    /// `FTDriveCore.perform` の入口が `step.containerInference == nil` のときだけこれを呼ぶので、
+    /// 全コマンド共通でブロックの文脈が効く(tap/scrollTo は明示引数をここへ渡してから呼ぶ)
+    func effectiveContainerInference(_ explicit: Bool?) -> Bool? {
+        if let explicit { return explicit }
+        return containerInferenceStack.last
+    }
+
+    func runWithContainerInference(_ enabled: Bool, _ body: () -> Void) {
+        containerInferenceStack.append(enabled)
+        body()
+        containerInferenceStack.removeLast()
     }
 
     /// true = デバイスに触れず全コマンドを記録のみで通過させる(ステップ列挙・コード生成の検証用)
@@ -232,6 +330,15 @@ public final class FTDriveCore {
 
     /// --debug 時のブレークポイント/一時停止制御。nil なら通常実行(dry-run でも有効)
     public var debugControl: ScenarioDebugControl?
+    /// --host-install 時のみ非 nil。installApp() はこれがあれば親(オーケストレータ)へ RPC する
+    /// (installApp と同じ理由で子はパスを解決できないため、実行自体を親に委ねる。2026-08-03 決定)
+    public var installControl: ScenarioInstallControl?
+    /// --app-path で親が解決して渡した実行プロファイルの appPath。installControl が nil のとき
+    /// (ホスト無しの単独実行)の installApp() 引数省略時のフォールバックに使う
+    public var appPathOverride: String?
+    /// --app-name で親が解決して渡したアプリの表示名(プロファイルの appName)。
+    /// tapAppIcon() 引数省略時の既定(Shirates の appIconName 既定=プロファイル、に相当)
+    public var appDisplayName: String?
     /// DSL の `irregularHandler` が宣言した割り込み(アプリ内メッセージ)を実行器へ渡す
     func addInterruptHandler(detect: FlowLocator, dismiss: FlowLocator) {
         executor.interruptHandlers.append(
@@ -250,34 +357,48 @@ public final class FTDriveCore {
                 scenarioID: String, scenarioTitle: String,
                 delegate: ReplayDelegate?, healingEnabled: Bool,
                 falsePositiveCheckEnabled: Bool = true, screenIsEnabled: Bool = true,
+                // 容器の推測に依存する補正の既定(実行プロファイル由来。**FM とは無関係**)
+                containerInference: Bool = true,
                 dryRun: Bool = false,
                 healCacheURL: URL? = nil,
+                selectorInventoryURL: URL? = nil,
                 defaultTimeout: Double? = nil,
                 fallbackDriver: AppDriver? = nil,
                 typeDriver: AppDriver? = nil,
                 preferTypeDriver: Bool = false,
                 typeDriverGestures: Set<String> = [],
+                homeScreenDriver: AppDriver? = nil,
                 deviceName: String? = nil,
                 deviceIdentifier: String? = nil,
                 physical: Bool = false,
+                // StepExecutor の空打ちゲート(shouldEmptyDrag)へ渡すヒント。呼び出し側
+                // (ScenarioRunnerMain)が engine ごとに解決する。nil は「不明」= 従来どおり
+                uiFramework: String? = nil,
                 emit: @escaping (ScenarioEvent) -> Void) {
         self.driver = driver
         self.platform = platform
         self.physical = physical
         self.appBundleID = app
+        self.homeScreenDriverOverride = homeScreenDriver
         self.executor = StepExecutor(driver: driver, fallbackDriver: fallbackDriver,
                                      typeDriver: typeDriver, preferTypeDriver: preferTypeDriver,
                                      typeDriverGestures: typeDriverGestures,
                                      delegate: delegate, healingEnabled: healingEnabled,
                                      occlusionGuardEnabled: falsePositiveCheckEnabled,
                                      screenIsEnabled: screenIsEnabled,
-                                     releasesScrollTouch: platform == "ios")
+                                     releasesScrollTouch: platform == "ios",
+                                     uiFramework: uiFramework,
+                                     containerInference: containerInference)
         self.scenarioID = scenarioID
         self.scenarioTitle = scenarioTitle
         self.dryRun = dryRun
         self.healCache = HealCache(
             url: healCacheURL ?? URL(fileURLWithPath: ".ftester/heal-cache.json"))
-        self.defaultTimeout = defaultTimeout ?? 5
+        // 台帳の照合は dry-run 専用(実行なら解決の成否が答えを出すので、二重に言う意味が無い)
+        self.knownIDs = dryRun
+            ? selectorInventoryURL.flatMap { SelectorInventory.load(at: $0) }?.ids(platform: platform)
+            : nil
+        self.defaultTimeout = defaultTimeout ?? DefaultWait.seconds
         self.emit = emit
         self.record = ScenarioRecordData(id: scenarioID, title: scenarioTitle,
                                          app: app, platform: platform,
@@ -293,6 +414,8 @@ public final class FTDriveCore {
 
     func runScene(_ number: Int, _ title: String, _ body: () -> Void) {
         currentSection = nil
+        // scene を跨いで前の画面の要素を読むのは事故(値も座標も古い)。持ち越さない
+        lastResolvedElement = nil
         // scene 番号は利用者が手で振るのでコピペで重複しやすい。重複するとレポートに
         // 同じ番号が並び、どちらの結果か読み手が判別できなくなる。**警告に留める**
         // (失敗にはしない = 既存シナリオを止めない。番号は実行順にも結果にも影響しない)
@@ -329,11 +452,47 @@ public final class FTDriveCore {
         emit(finished)
     }
 
+    /// CAE の 1 ブロック。**expectation がアサーション 0 個で終わったら警告する** —
+    /// 「action に全部書いて expectation には tap だけ置く」「exist のつもりで select を置く」は
+    /// コンパイルも実行も通り、**何も検証しないまま緑**になる(verify の inconclusive と同じ穴を
+    /// CAE 側にも塞ぐ)。失敗にはしない = 既存シナリオを止めない
     func runSection(_ name: String, _ body: () -> Void) {
         let previous = currentSection
+        let previousCount = sectionAssertionCount
+        let previousUnexecuted = sectionUnexecutedBlocks
         currentSection = name
+        sectionAssertionCount = 0
+        sectionUnexecutedBlocks = 0
         body()
+        if name == "expectation", sectionAssertionCount == 0, sectionUnexecutedBlocks == 0 {
+            warnSectionWithoutAssertions()
+        }
         currentSection = previous
+        sectionAssertionCount = previousCount
+        sectionUnexecutedBlocks = previousUnexecuted
+    }
+
+    private func warnSectionWithoutAssertions() {
+        let scene = withState { record.scenes.last }
+        let title = (scene?.title).map { $0.isEmpty ? "" : " (\"\($0)\")" } ?? ""
+        let location = scene.map { "scene \($0.number)\(title)" } ?? "a scene"
+        let message = "the expectation block of \(location) contains no assertions "
+            + "(it checks nothing). Add exist / textIs / thisIs etc."
+        emit(.log("⚠️ " + message))
+        addSuggestion(FixSuggestion(isStrong: false, message: message),
+                      emitEvent: false, file: "", line: 0)
+    }
+
+    /// まだ何も掴んでいないのに `lastElement` が読まれた。空要素を返すだけだと
+    /// 「掴んだが空だった」と見分けが付かないので、1 度だけ警告と弱い修正提案を残す
+    func warnLastElementUnavailable() {
+        guard !lastElementWarned else { return }
+        lastElementWarned = true
+        let message = "lastElement was read before any element was grabbed, so it is empty. "
+            + "Grab one first (select / exist / tap ...), or hold it in a variable"
+        emit(.log("⚠️ " + message))
+        addSuggestion(FixSuggestion(isStrong: false, message: message),
+                      emitEvent: false, file: "", line: 0)
     }
 
     /// 名前付きの共通ステップ(group)。記録上の見え方だけを変え、実行・失敗セマンティクスは素の列と同じ
@@ -341,6 +500,45 @@ public final class FTDriveCore {
         groupStack.append(title)
         body()
         groupStack.removeLast()
+    }
+
+    struct VerifyOutcome { let assertionCount: Int; let failed: Bool }
+
+    /// verify() の実体。body 実行中に noteAssertion() で数えたアサーション数と、
+    /// 実行中に新たに scenarioAborted が立ったか(= 既存の failure が verify を失敗させたか)を返す
+    func runVerify(_ body: () -> Void) -> VerifyOutcome {
+        verifyStack.append(VerifyFrame())
+        let abortedBefore = scenarioAborted
+        body()
+        let frame = verifyStack.removeLast()
+        let failed = !abortedBefore && scenarioAborted
+        return VerifyOutcome(assertionCount: frame.assertionCount, failed: failed)
+    }
+
+    /// perform()(assert 系 FlowStep)と ValueAssertions.record()(thisIs 系)の両方から呼ぶ。
+    /// **「アサーションとして書かれた」の唯一の定義**で、verify / CAE セクション / シナリオ全体の
+    /// 3 つの計数がここに合流する(定義が割れると片方だけ誤検知する)
+    func noteAssertion() {
+        sectionAssertionCount += 1
+        scenarioAssertionCount += 1
+        for i in verifyStack.indices { verifyStack[i].assertionCount += 1 }
+    }
+
+    /// 条件ブロックの本体を実行しなかった(sectionUnexecutedBlocks の説明を参照)
+    func noteUnexecutedBlock() {
+        sectionUnexecutedBlocks += 1
+        scenarioUnexecutedBlocks += 1
+    }
+
+    /// verify のブロックにアサーションが無かったときの弱い修正提案(2026-08-03 ユーザー決定:
+    /// ステップ自体は .inconclusive(理由つき)で記録されるため、別途の警告ログは出さない
+    /// (旧 warnVerifyWithoutAssertions。ステップ行が理由を持つようになり役割が変わった)
+    func suggestVerifyWithoutAssertions(message: String) {
+        addSuggestion(FixSuggestion(
+            isStrong: false,
+            message: "verify \"\(message)\" block contains no assertions (it checks nothing). "
+                     + "Add exist / textIs / thisIs etc."),
+            emitEvent: false, file: "", line: 0)
     }
 
     /// setUp / tearDown の実行。
@@ -371,11 +569,27 @@ public final class FTDriveCore {
     /// 戻り値は status に加え**照合済み要素**も運ぶ(FTElement.text/value/id の元。
     /// exist 系の呼び出し元だけが element を読み、他は捨てる)
     @discardableResult
-    /// validateSelector: false = 型付きセレクタ(Sel)由来なので構文検証を飛ばす(FTSelector.structured)
+    /// selectorError: 実行前に落とす理由(FTSelector.preflightError)。
+    /// nil = 検証済み・問題なし。セレクタを取らないコマンドも nil
+    /// commandError: セレクタ以外の引数の誤り。**メッセージをそのまま**失敗理由にする
+    /// (selectorError は "invalid selector syntax: " を前置するので用途が違う)
+    /// heldElement: **既に掴んである要素**(FTElement のチェーンだけが渡す)。満たしていれば
+    /// デバイスを見ずに通す(下記の高速経路)。満たしていなければ従来どおり実機で取り直す
     func perform(step: FlowStep, description: String, selectorText: String? = nil,
-                 validateSelector: Bool = true,
+                 selectorError: String? = nil, commandError: String? = nil,
+                 heldElement: ElementInfo? = nil,
                  file: StaticString, line: UInt) -> PerformResult {
+        // 全コマンドの唯一の合流点(セレクタを取らないコマンドも含む)なので、ここで一度だけ
+        // ブロックの文脈を埋める。tap/scrollTo は明示引数を effectiveContainerInference 済みで
+        // 渡してくるため、ここでは非 nil で二重に通っても変わらない
+        var step = step
+        if step.containerInference == nil {
+            step.containerInference = effectiveContainerInference(nil)
+        }
         let filePath = relativePath("\(file)")
+        // verify() のブロック内アサーション数を数える(判定は FlowStep.assert != nil のみ。
+        // skip/dry-run/失敗いずれの結果になっても「アサーションとして書かれた」事実は変わらない)
+        if step.assert != nil { noteAssertion() }
         debugCheckpoint(description: description, file: filePath, line: Int(line))
         if scenarioAborted {
             let status = StepResult.Status.skipped(skipReason)
@@ -384,20 +598,43 @@ public final class FTDriveCore {
         }
         // 構文検証はデバイスに触る前(dry-run でも)に行う。パースは失敗しない契約のため、
         // `:rigth(x)` のような誤りは「そんなラベルは無い」に化け、notExist/countIs(x,0) では
-        // 緑になってしまう。ここで落とすのが唯一の防波堤(FTSelector.validationError 参照)
-        if validateSelector, let selectorText, let error = FTSelector.validationError(selectorText) {
-            let status = StepResult.Status.failed("invalid selector syntax: \(error)")
+        // 緑になってしまう。ここで落とすのが唯一の防波堤(FTSelector.preflightError 参照)
+        if let error = selectorError ?? commandError {
+            let reason = selectorError == nil ? error : "invalid selector syntax: \(error)"
+            let status = StepResult.Status.failed(reason)
             recordStep(description: description, status: status, file: filePath, line: Int(line))
-            handleFailure(stepDescription: description, reason: "invalid selector syntax: \(error)")
+            handleFailure(stepDescription: description, reason: reason)
             return PerformResult(status: status, element: nil)
         }
         if dryRun {
+            trackUnknownIDs(step: step, description: description)
             // 実機に触れず計測はほぼ 0ms だが、NDJSON 配線を検証できるよう durationMs は必ず付与する
             let clock = ContinuousClock()
             let start = clock.now
             recordStep(description: description, status: .passed, file: filePath, line: Int(line),
                        durationMs: continuousClockMilliseconds(clock.now - start))
             return PerformResult(status: .passed, element: nil)
+        }
+
+        // 高速経路: **掴んである値だけで満たしているなら実機を見に行かない**(FTElement のチェーン)。
+        // 満たしていなければ何もせず下の通常経路へ落ちる = 従来どおり取り直しながらポーリングする。
+        // 判定できるアサートの範囲と除外理由は HeldElementAssert。
+        // **可視性照合(occlusion-guard)が走る設定では高速経路に入らない** —— 見えているかは
+        // 保持値から言えないので、飛ばすと falsePositiveCheck 有効の run で検査が1つ静かに消える。
+        // 条件は StepExecutor.occlusionFlip の入口(ステップ非依存の部分)と同じものを見る。
+        // 注記を description に足すのは、レポートで「取り直していない判定」を見分けられるようにするため
+        let visibilityWouldBeChecked = executor.occlusionGuardEnabled
+            && (step.occlusionGuard ?? executor.occlusionGuard)
+            && executor.delegate != nil
+            && FMVisionSupport.isSupported
+        if let heldElement, let assert = step.assert, !visibilityWouldBeChecked,
+           HeldElementAssert.satisfied(assert: assert, expected: step.expected,
+                                       element: heldElement) == true {
+            recordStep(description: description + "(\(StepNote.heldValue.text))", status: .passed,
+                       file: filePath, line: Int(line), durationMs: 0,
+                       notes: [.heldValue])
+            trackIDResolution(step: step, status: .passed, description: description)
+            return PerformResult(status: .passed, element: heldElement)
         }
 
         // 解決順: プライマリ → フォールバック → キャッシュ → FM ヒール(StepExecutor 内)
@@ -429,7 +666,8 @@ public final class FTDriveCore {
                    snapshotMs: outcome?.timing?.snapshotMs,
                    actionMs: outcome?.timing?.actionMs,
                    waitMs: outcome?.timing?.waitMs,
-                   at: outcome?.at)
+                   at: outcome?.at,
+                   notes: outcome?.notes ?? [])
 
         // 修正提案とヒールキャッシュの更新
         if let outcome, let selectorText {
@@ -478,6 +716,20 @@ public final class FTDriveCore {
         return PerformResult(status: status, element: outcome?.resolvedElement)
     }
 
+    /// dry-run 中、**台帳に無い `#id`** を覚える(綴り誤り・でっち上げの検出。SelectorInventory)。
+    /// 台帳が無い/そのプラットフォームの記録が無いなら何もしない = 「知らない」を「間違い」と言わない
+    private func trackUnknownIDs(step: FlowStep, description: String) {
+        guard let knownIDs, !knownIDs.isEmpty else { return }
+        let locators = ([step.locator] + (step.fallbacks ?? [])).compactMap { $0 }
+        for id in locators.flatMap(SelectorInventory.exactIDs(in:)) {
+            if knownIDs.contains(id) {
+                seenKnownIDs.insert(id)
+            } else if unknownIDs[id] == nil {
+                unknownIDs[id] = description
+            }
+        }
+    }
+
     /// `#id` が「解決できた」のか「否定側でしか使われていない」のかを覚える。
     /// notExist / countIs 0 は要素が**無い**ことで成功するので、解決の証拠にはならない
     private func trackIDResolution(step: FlowStep, status: StepResult.Status, description: String) {
@@ -491,7 +743,7 @@ public final class FTDriveCore {
         let succeeded: Bool
         switch status {
         case .passed, .passedViaFallback, .healed: succeeded = true
-        case .failed, .skipped: succeeded = false
+        case .failed, .skipped, .inconclusive: succeeded = false
         }
         for id in ids {
             if succeeded, !isNegative {
@@ -503,7 +755,7 @@ public final class FTDriveCore {
         }
     }
 
-    /// `isNotChecked` が「状態を持たない要素」を指していないかを覚える。
+    /// `checkIsOFF` が「状態を持たない要素」を指していないかを覚える。
     /// notExist の id typo と同じ構造の穴(**何を指しても成功する**)なので、同じく run 終了時に警告する
     private func trackCheckedObservation(step: FlowStep, status: StepResult.Status,
                                          outcome: StepOutcome?, selectorText: String?,
@@ -519,7 +771,7 @@ public final class FTDriveCore {
         switch status {
         case .passed, .passedViaFallback, .healed:
             if notCheckedOnlySelectors[key] == nil { notCheckedOnlySelectors[key] = description }
-        case .failed, .skipped:
+        case .failed, .skipped, .inconclusive:
             break
         }
     }
@@ -527,10 +779,55 @@ public final class FTDriveCore {
     /// dry-run 判定(repeatWhileCanSelect が空回りしないよう1周で切るために参照する)
     public var isDryRun: Bool { dryRun }
 
-    /// ifCanSelect の成否を記録する(Commands.swift から呼ぶ)。同じセレクタが
+    /// ifCanSelect の成否を記録する(CommandsAppControl.swift から呼ぶ)。同じセレクタが
     /// 一度でも成立していれば警告しない = 「出ることも出ないこともある」正しい用途を潰さない
     func noteBranchOutcome(selector: String, met: Bool) {
         branchOutcomes[selector] = (branchOutcomes[selector] ?? false) || met
+    }
+
+    /// `driver` は internal なので、ScenarioRunnerMain(別モジュール)からのシナリオ終端の
+    /// リストア呼び出し用に forward するだけの公開口。呼ぶだけで安価
+    /// (rotate(to:) を一度も呼んでいなければ AppDriver 側で no-op)
+    public func restoreOrientationIfNeeded() async throws {
+        try await driver.restoreOrientationIfNeeded()
+    }
+
+    /// **シナリオ全体でアサーションが1本も無い**ときの警告。expectation 単位の警告
+    /// (runSection)より重い症状 —— 操作しただけで何も確かめておらず、**アプリがどう壊れても緑**。
+    /// dry-run でも成立する静的な判定なので、生成直後の検証ループで拾える。
+    /// シナリオ終了時に1回だけ呼ぶ(warnAboutNeverResolvedIDs と同じ位置)
+    public func warnAboutMissingAssertions() {
+        guard scenarioAssertionCount == 0, scenarioUnexecutedBlocks == 0,
+              withState({ !record.scenes.isEmpty }) else { return }
+        let message = "this scenario contains no assertions at all "
+            + "(it only operates the app, so it stays green no matter how the app breaks). "
+            + "Add exist / textIs / thisIs etc. to the expectation blocks"
+        emit(.log("⚠️ " + message))
+        addSuggestion(FixSuggestion(isStrong: true, message: message),
+                      emitEvent: false, file: "", line: 0)
+    }
+
+    /// **台帳(ft_snapshot が貯めた実在 id)に無い `#id`** を dry-run で警告する。
+    /// 綴り誤り・でっち上げは構文検証を通ってしまい、従来は実機で初めて分かった。
+    /// **失敗にはしない** —— 台帳は「撮った画面ぶんだけ」なので、新しい画面の id は当然載っていない。
+    /// シナリオ終了時に1回だけ呼ぶ(dry-run 以外では unknownIDs が空なので no-op)。
+    ///
+    /// **薄い台帳では黙る**: 台帳の有無だけで判定すると、1画面しか撮っていない状態で
+    /// 既存シナリオを回したときに**他画面の id を全部「綴り誤り」と言う**(実測 44/47 シナリオが
+    /// 誤警告。2026-08-03 のドッグフーディングで判明)。**そのシナリオが触る id の 2/3 以上が
+    /// 台帳に在るときだけ**警告する = 台帳がこの範囲をカバーしている証拠がある場合に限る。
+    /// 綴り誤りは「多数の正しい id に少数の誤り」という形で出るので、この比で拾える
+    public func warnAboutUnknownIDs() {
+        guard !unknownIDs.isEmpty else { return }
+        let total = unknownIDs.count + seenKnownIDs.count
+        guard unknownIDs.count * 3 <= total else { return }
+        let listed = unknownIDs.keys.sorted().map { "`#\($0)`" }.joined(separator: ", ")
+        let message = "\(listed): no snapshot taken for this project contains this id "
+            + "(it may be misspelled). If it belongs to a screen that has not been captured yet, "
+            + "take a fresh ft_snapshot of that screen"
+        emit(.log("⚠️ " + message))
+        addSuggestion(FixSuggestion(isStrong: false, message: message),
+                      emitEvent: false, file: "", line: 0)
     }
 
     /// 否定側でしか現れず、一度も解決できなかった `#id` を弱い提案として残す。
@@ -549,11 +846,11 @@ public final class FTDriveCore {
         where !checkedObservedSelectors.contains(selector) {
             addSuggestion(FixSuggestion(
                 isStrong: false,
-                message: "`\(selector)` passed isNotChecked, but a checked state was never observed "
+                message: "`\(selector)` passed checkIsOFF, but a checked state was never observed "
                     + "during this scenario (\(description)). If it points at an element with no check "
                     + "state (a plain button) or at an implementation that never reports one "
                     + "(SwiftUI on iOS, Flutter checkboxes), **any assertion passes**. "
-                    + "Turn it on and verify isChecked as well"),
+                    + "Turn it on and verify checkIsON as well"),
                 emitEvent: false, file: "", line: 0)
         }
         for (selector, met) in branchOutcomes.sorted(by: { $0.key < $1.key }) where !met {
@@ -584,11 +881,19 @@ public final class FTDriveCore {
         emit(event)
     }
 
-    /// 任意の async 処理を 1 ステップとして実行・記録する(launch / procedure / wait 等)
+    /// 任意の async 処理を 1 ステップとして実行・記録する(launch / procedure / wait 等)。
+    /// launchTiming は launchApp/restartApp だけが渡す(body 完了後に読む actionMs/waitMs 取得元。
+    /// 他の呼び出しは既定 nil = durationMs のみ)。
+    /// isAssertion は **appIs だけ** true(FlowStep を持たない唯一の検証コマンドで、
+    /// 渡さないと verify も expectation も「検証0本」と数えてしまう)
     @discardableResult
     func performCustom(description: String, file: StaticString, line: UInt,
+                       launchTiming: (() -> LaunchTiming?)? = nil,
+                       isAssertion: Bool = false,
+                       note: (() -> StepNote?)? = nil,
                        _ body: @escaping () async throws -> Void) -> StepResult.Status {
         let filePath = relativePath("\(file)")
+        if isAssertion { noteAssertion() }
         debugCheckpoint(description: description, file: filePath, line: Int(line))
         if scenarioAborted {
             let status = StepResult.Status.skipped(skipReason)
@@ -620,13 +925,70 @@ public final class FTDriveCore {
         case nil:
             status = .failed("the operation timed out (\(Int(FTSync.commandTimeout))s)")
         }
-        recordStep(description: description, status: status, file: "\(file)", line: Int(line),
-                   durationMs: elapsedMs, at: ISO8601Millis.string(from: Date()))
+        let timing = launchTiming?()
+        // note は perform() の driverFallback と同じ見せ方(括弧書き)。StepNote.notes へも積むのは
+        // perform() の heldValue と同じ理由(run 横断で率を見たい注記は notes: 経由にする)
+        let resolvedNote = note?()
+        let recordedDescription = resolvedNote.map { "\(description)(\($0.text))" } ?? description
+        recordStep(description: recordedDescription, status: status, file: "\(file)", line: Int(line),
+                   durationMs: elapsedMs, actionMs: timing?.actionMs, waitMs: timing?.waitMs,
+                   at: ISO8601Millis.string(from: Date()),
+                   notes: resolvedNote.map { [$0] } ?? [])
 
         if case .failed(let reason) = status {
             handleFailure(stepDescription: description, reason: reason)
         }
         return status
+    }
+
+    /// screenshot コマンドの実体。performCustom を使わないのは、取得した Data をこのステップの
+    /// 記録へ添付する必要があるため(performCustom の body は Void しか返せない)
+    @discardableResult
+    func performScreenshot(filename: String?, file: StaticString, line: UInt) -> StepResult.Status {
+        let filePath = relativePath("\(file)")
+        let label = Self.screenshotLabel(filename: filename, index: stepCounter + 1)
+        let description = "screenshot \"\(label)\""
+        debugCheckpoint(description: description, file: filePath, line: Int(line))
+        if scenarioAborted {
+            let status = StepResult.Status.skipped(skipReason)
+            recordStep(description: description, status: status, file: filePath, line: Int(line))
+            return status
+        }
+        if dryRun {
+            recordStep(description: description, status: .passed, file: filePath, line: Int(line))
+            return .passed
+        }
+
+        executor.invalidateScreenshotCache()
+        let driver = self.driver
+        let clock = ContinuousClock()
+        let start = clock.now
+        let result = FTSync.runThrowing { try await driver.screenshot() }
+        let elapsedMs = continuousClockMilliseconds(clock.now - start)
+        switch result {
+        case .success(let data):
+            recordStep(description: description, status: .passed, file: filePath, line: Int(line),
+                      durationMs: elapsedMs, screenshotData: data, screenshotLabel: label)
+            return .passed
+        case .failure(let error):
+            let status = StepResult.Status.failed(error.localizedDescription)
+            recordStep(description: description, status: status, file: filePath, line: Int(line),
+                      durationMs: elapsedMs)
+            handleFailure(stepDescription: description, reason: error.localizedDescription)
+            return status
+        case nil:
+            let reason = "the operation timed out (\(Int(FTSync.commandTimeout))s)"
+            let status = StepResult.Status.failed(reason)
+            recordStep(description: description, status: status, file: filePath, line: Int(line),
+                      durationMs: elapsedMs)
+            handleFailure(stepDescription: description, reason: reason)
+            return status
+        }
+    }
+
+    private static func screenshotLabel(filename: String?, index: Int) -> String {
+        let base = filename ?? "\(index)"
+        return base.hasSuffix(".png") ? base : base + ".png"
     }
 
     /// 停止条件に合致したら paused イベントを流してブロックし、再開コマンドを待つ。
@@ -705,15 +1067,18 @@ public final class FTDriveCore {
     // MARK: - 記録
 
     /// durationMs/snapshotMs/actionMs/waitMs: ステップの時間内訳(単位ミリ秒)。
-    /// StepExecutor 経由のステップ(tap/exist 等)は 4 つとも渡され、performCustom 経由
-    /// (launchApp/wait/procedure 等)は durationMs のみ、それ以外(skip・dry-run 等)は
+    /// StepExecutor 経由のステップ(tap/exist 等)は 4 つとも渡され、performCustom 経由は
+    /// durationMs のみ(launchApp/restartApp は launchTiming 経由で actionMs/waitMs も持つ。
+    /// 他の wait/procedure 等は durationMs のみ)、それ以外(skip・dry-run 等)は
     /// 全て nil のまま(=計測なし)になる。
     /// **DSL スレッドと違反スレッドが同時に呼び得るため stateLock で直列化する**(stepCounter/
     /// record 追記/emit を含む一体の操作。emit は呼び出し側が print 等で組んでおり FTDriveCore へ
     /// 再入しないことを確認済み = デッドロックしない)
     func recordStep(description: String, status: StepResult.Status, file: String, line: Int,
                     durationMs: Int? = nil, snapshotMs: Int? = nil,
-                    actionMs: Int? = nil, waitMs: Int? = nil, at: String? = nil) {
+                    actionMs: Int? = nil, waitMs: Int? = nil, at: String? = nil,
+                    notes: [StepNote] = [],
+                    screenshotData: Data? = nil, screenshotLabel: String? = nil) {
         stateLock.lock()
         defer { stateLock.unlock() }
         stepCounter += 1
@@ -723,7 +1088,8 @@ public final class FTDriveCore {
             : "[\(groupStack.joined(separator: "/"))] \(description)"
         let record = DSLStepRecord(index: stepCounter, section: currentSection,
                                    description: displayed, status: status,
-                                   file: relativePath(file), line: line, durationMs: durationMs)
+                                   file: relativePath(file), line: line, durationMs: durationMs,
+                                   screenshotData: screenshotData, screenshotLabel: screenshotLabel)
         appendToCurrentScene(record)
 
         var event = ScenarioEvent(kind: "step")
@@ -742,6 +1108,7 @@ public final class FTDriveCore {
         event.actionMs = actionMs
         event.waitMs = waitMs
         event.at = at
+        event.notes = notes.isEmpty ? nil : notes.map(\.rawValue)
         emit(event)
     }
 
@@ -774,14 +1141,22 @@ public final class FTDriveCore {
         scenarioAborted = true
 
         // 失敗時のスクリーンショット+トリアージ(FM 利用可時のみ)。Android は画面凍結(白フレーム)で
-        // 証跡が無効になり得るため、blank を検知したら最大3回撮り直して回復を待つ(iOS は対象外)。
+        // 証跡が無効になり得るため、blank を検知したら最大3回撮り直して回復を待つ。
         // トリアージは白のままでも変わらず実行する(証跡としては evidenceBlank で無効マークするのみ)。
         let driver = self.driver
         let delegate = executor.delegate
         let goal = scenarioTitle.isEmpty ? scenarioID : scenarioTitle
-        // 白フレーム=画面凍結の推定を行うか。エミュレータ固有の病理(GPU 合成バッファ固着)なので
-        // Android **かつ**実機でない場合だけ。実機は「画面が消灯しているだけ」を凍結と誤断する
-        let inferFrozenFromBlankFrame = platform == "android" && !physical
+        // 白フレーム=画面凍結の推定を行うか。**仮想デバイスなら OS を問わず行う**。
+        // **実機だけ外す**理由は「画面が消灯しているだけ」を凍結と誤断するため。
+        //
+        // **旧実装は Android 限定で、これは誤りだった**(2026-08-05 実測): iOS シミュレータでも
+        // まったく同じ病理が起きる —— 画面は真っ黒なのに **a11y ツリーは健全なホーム画面を返し、
+        // タップだけが1つも届かない**。E2E-CMP/ios-xcuitest の `-06` で `tap("#nav_scroll")` が
+        // 9/9 で飲まれ、MCP から手で叩いても再現した(2回連続タップも不発 =「容器が最初の1タッチを
+        // 吸う」型ではない)。**ファイルサイズでは検出できない**(黒一色でも 42KB あった)ので、
+        // 画素をサンプルする BlankFrameDetector が唯一の判定手段。
+        // これを外していたため、環境起因の全滅が「テストの失敗」として無警告で記録されていた
+        let inferFrozenFromBlankFrame = !physical
         let context = FTSync.run { () async -> (Data?, TriageInfo?, Bool, String?) in
             let snapshot = try? await driver.snapshot()
             let elementsText = snapshot.map { SnapshotRenderer.render($0) }

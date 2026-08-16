@@ -1,0 +1,639 @@
+{
+  "elements" : [
+    {
+      "depth" : 13,
+      "enabled" : true,
+      "frame" : {
+        "height" : 1786,
+        "width" : 1080,
+        "x" : 0,
+        "y" : 226
+      },
+      "identifier" : "typed_suggest_container",
+      "ref" : 1,
+      "type" : "collectionView",
+      "z" : 31
+    },
+    {
+      "depth" : 14,
+      "enabled" : true,
+      "frame" : {
+        "height" : 158,
+        "width" : 1080,
+        "x" : 0,
+        "y" : 226
+      },
+      "label" : "東京駅",
+      "ref" : 2,
+      "type" : "clickable",
+      "z" : 32
+    },
+    {
+      "depth" : 18,
+      "enabled" : true,
+      "frame" : {
+        "height" : 62,
+        "width" : 128,
+        "x" : 210,
+        "y" : 247
+      },
+      "label" : "東京駅",
+      "ref" : 3,
+      "type" : "staticText",
+      "z" : 40
+    },
+    {
+      "depth" : 18,
+      "enabled" : true,
+      "frame" : {
+        "height" : 54,
+        "width" : 600,
+        "x" : 210,
+        "y" : 309
+      },
+      "label" : "日本、東京都千代田区丸の内１丁目",
+      "ref" : 4,
+      "type" : "staticText",
+      "z" : 42
+    },
+    {
+      "depth" : 16,
+      "enabled" : true,
+      "frame" : {
+        "height" : 126,
+        "width" : 126,
+        "x" : 933,
+        "y" : 242
+      },
+      "label" : "提案語句「東京駅」を検索バーに入力",
+      "ref" : 5,
+      "type" : "clickable",
+      "z" : 43
+    },
+    {
+      "depth" : 14,
+      "enabled" : true,
+      "frame" : {
+        "height" : 158,
+        "width" : 1080,
+        "x" : 0,
+        "y" : 387
+      },
+      "label" : "東京駅一番街",
+      "ref" : 6,
+      "type" : "clickable",
+      "z" : 45
+    },
+    {
+      "depth" : 18,
+      "enabled" : true,
+      "frame" : {
+        "height" : 62,
+        "width" : 255,
+        "x" : 210,
+        "y" : 408
+      },
+      "label" : "東京駅一番街",
+      "ref" : 7,
+      "type" : "staticText",
+      "z" : 53
+    },
+    {
+      "depth" : 18,
+      "enabled" : true,
+      "frame" : {
+        "height" : 54,
+        "width" : 697,
+        "x" : 210,
+        "y" : 470
+      },
+      "label" : "日本、東京都千代田区丸の内１丁目９−１",
+      "ref" : 8,
+      "type" : "staticText",
+      "z" : 55
+    },
+    {
+      "depth" : 16,
+      "enabled" : true,
+      "frame" : {
+        "height" : 126,
+        "width" : 126,
+        "x" : 933,
+        "y" : 403
+      },
+      "label" : "提案語句「東京駅一番街」を検索バーに入力",
+      "ref" : 9,
+      "type" : "clickable",
+      "z" : 56
+    },
+    {
+      "depth" : 14,
+      "enabled" : true,
+      "frame" : {
+        "height" : 158,
+        "width" : 1080,
+        "x" : 0,
+        "y" : 548
+      },
+      "label" : "東京駅",
+      "ref" : 10,
+      "type" : "clickable",
+      "z" : 58
+    },
+    {
+      "depth" : 18,
+      "enabled" : true,
+      "frame" : {
+        "height" : 62,
+        "width" : 128,
+        "x" : 210,
+        "y" : 569
+      },
+      "label" : "東京駅",
+      "ref" : 11,
+      "type" : "staticText",
+      "z" : 66
+    },
+    {
+      "depth" : 18,
+      "enabled" : true,
+      "frame" : {
+        "height" : 54,
+        "width" : 638,
+        "x" : 210,
+        "y" : 631
+      },
+      "label" : "日本、東京都千代田区丸の内１丁目９",
+      "ref" : 12,
+      "type" : "staticText",
+      "z" : 68
+    },
+    {
+      "depth" : 16,
+      "enabled" : true,
+      "frame" : {
+        "height" : 126,
+        "width" : 126,
+        "x" : 933,
+        "y" : 564
+      },
+      "label" : "提案語句「東京駅」を検索バーに入力",
+      "ref" : 13,
+      "type" : "clickable",
+      "z" : 69
+    },
+    {
+      "depth" : 14,
+      "enabled" : true,
+      "frame" : {
+        "height" : 158,
+        "width" : 1080,
+        "x" : 0,
+        "y" : 709
+      },
+      "label" : "東京駅八重洲中央口乗降場",
+      "ref" : 14,
+      "type" : "clickable",
+      "z" : 71
+    },
+    {
+      "depth" : 18,
+      "enabled" : true,
+      "frame" : {
+        "height" : 62,
+        "width" : 510,
+        "x" : 210,
+        "y" : 730
+      },
+      "label" : "東京駅八重洲中央口乗降場",
+      "ref" : 15,
+      "type" : "staticText",
+      "z" : 79
+    },
+    {
+      "depth" : 18,
+      "enabled" : true,
+      "frame" : {
+        "height" : 54,
+        "width" : 697,
+        "x" : 210,
+        "y" : 792
+      },
+      "label" : "日本、東京都千代田区丸の内１丁目９−１",
+      "ref" : 16,
+      "type" : "staticText",
+      "z" : 81
+    },
+    {
+      "depth" : 16,
+      "enabled" : true,
+      "frame" : {
+        "height" : 126,
+        "width" : 126,
+        "x" : 933,
+        "y" : 725
+      },
+      "label" : "提案語句「東京駅八重洲中央口乗降場」を検索バーに入力",
+      "ref" : 17,
+      "type" : "clickable",
+      "z" : 82
+    },
+    {
+      "depth" : 14,
+      "enabled" : true,
+      "frame" : {
+        "height" : 158,
+        "width" : 1080,
+        "x" : 0,
+        "y" : 870
+      },
+      "label" : "東京駅丸の内駅前広場",
+      "ref" : 18,
+      "type" : "clickable",
+      "z" : 84
+    },
+    {
+      "depth" : 18,
+      "enabled" : true,
+      "frame" : {
+        "height" : 62,
+        "width" : 425,
+        "x" : 210,
+        "y" : 891
+      },
+      "label" : "東京駅丸の内駅前広場",
+      "ref" : 19,
+      "type" : "staticText",
+      "z" : 92
+    },
+    {
+      "depth" : 18,
+      "enabled" : true,
+      "frame" : {
+        "height" : 54,
+        "width" : 638,
+        "x" : 210,
+        "y" : 953
+      },
+      "label" : "日本、東京都千代田区丸の内１丁目９",
+      "ref" : 20,
+      "type" : "staticText",
+      "z" : 94
+    },
+    {
+      "depth" : 16,
+      "enabled" : true,
+      "frame" : {
+        "height" : 126,
+        "width" : 126,
+        "x" : 933,
+        "y" : 886
+      },
+      "label" : "提案語句「東京駅丸の内駅前広場」を検索バーに入力",
+      "ref" : 21,
+      "type" : "clickable",
+      "z" : 95
+    },
+    {
+      "depth" : 14,
+      "enabled" : true,
+      "frame" : {
+        "height" : 158,
+        "width" : 1080,
+        "x" : 0,
+        "y" : 1031
+      },
+      "label" : "東京駅八重洲地下街",
+      "ref" : 22,
+      "type" : "clickable",
+      "z" : 97
+    },
+    {
+      "depth" : 18,
+      "enabled" : true,
+      "frame" : {
+        "height" : 62,
+        "width" : 383,
+        "x" : 210,
+        "y" : 1052
+      },
+      "label" : "東京駅八重洲地下街",
+      "ref" : 23,
+      "type" : "staticText",
+      "z" : 105
+    },
+    {
+      "depth" : 18,
+      "enabled" : true,
+      "frame" : {
+        "height" : 54,
+        "width" : 659,
+        "x" : 210,
+        "y" : 1114
+      },
+      "label" : "日本、東京都中央区八重洲２丁目１−１",
+      "ref" : 24,
+      "type" : "staticText",
+      "z" : 107
+    },
+    {
+      "depth" : 16,
+      "enabled" : true,
+      "frame" : {
+        "height" : 126,
+        "width" : 126,
+        "x" : 933,
+        "y" : 1047
+      },
+      "label" : "提案語句「東京駅八重洲地下街」を検索バーに入力",
+      "ref" : 25,
+      "type" : "clickable",
+      "z" : 108
+    },
+    {
+      "depth" : 14,
+      "enabled" : true,
+      "frame" : {
+        "height" : 158,
+        "width" : 1080,
+        "x" : 0,
+        "y" : 1192
+      },
+      "label" : "東京駅(日本橋口)",
+      "ref" : 26,
+      "type" : "clickable",
+      "z" : 110
+    },
+    {
+      "depth" : 18,
+      "enabled" : true,
+      "frame" : {
+        "height" : 62,
+        "width" : 329,
+        "x" : 210,
+        "y" : 1213
+      },
+      "label" : "東京駅(日本橋口)",
+      "ref" : 27,
+      "type" : "staticText",
+      "z" : 118
+    },
+    {
+      "depth" : 18,
+      "enabled" : true,
+      "frame" : {
+        "height" : 54,
+        "width" : 638,
+        "x" : 210,
+        "y" : 1275
+      },
+      "label" : "日本、東京都千代田区丸の内１丁目９",
+      "ref" : 28,
+      "type" : "staticText",
+      "z" : 120
+    },
+    {
+      "depth" : 16,
+      "enabled" : true,
+      "frame" : {
+        "height" : 126,
+        "width" : 126,
+        "x" : 933,
+        "y" : 1208
+      },
+      "label" : "提案語句「東京駅(日本橋口)」を検索バーに入力",
+      "ref" : 29,
+      "type" : "clickable",
+      "z" : 121
+    },
+    {
+      "depth" : 14,
+      "enabled" : true,
+      "frame" : {
+        "height" : 158,
+        "width" : 1080,
+        "x" : 0,
+        "y" : 1353
+      },
+      "label" : "東京駅JR高速バスターミナル",
+      "ref" : 30,
+      "type" : "clickable",
+      "z" : 123
+    },
+    {
+      "depth" : 18,
+      "enabled" : true,
+      "frame" : {
+        "height" : 62,
+        "width" : 560,
+        "x" : 210,
+        "y" : 1374
+      },
+      "label" : "東京駅JR高速バスターミナル",
+      "ref" : 31,
+      "type" : "staticText",
+      "z" : 131
+    },
+    {
+      "depth" : 18,
+      "enabled" : true,
+      "frame" : {
+        "height" : 54,
+        "width" : 713,
+        "x" : 210,
+        "y" : 1436
+      },
+      "label" : "日本、東京都千代田区丸の内１丁目９−９−１",
+      "ref" : 32,
+      "type" : "staticText",
+      "z" : 133
+    },
+    {
+      "depth" : 16,
+      "enabled" : true,
+      "frame" : {
+        "height" : 126,
+        "width" : 126,
+        "x" : 933,
+        "y" : 1369
+      },
+      "label" : "提案語句「東京駅JR高速バスターミナル」を検索バーに入力",
+      "ref" : 33,
+      "type" : "clickable",
+      "z" : 134
+    },
+    {
+      "depth" : 14,
+      "enabled" : true,
+      "frame" : {
+        "height" : 158,
+        "width" : 1080,
+        "x" : 0,
+        "y" : 1514
+      },
+      "label" : "東京駅大丸東京店",
+      "ref" : 34,
+      "type" : "clickable",
+      "z" : 136
+    },
+    {
+      "depth" : 18,
+      "enabled" : true,
+      "frame" : {
+        "height" : 62,
+        "width" : 340,
+        "x" : 210,
+        "y" : 1535
+      },
+      "label" : "東京駅大丸東京店",
+      "ref" : 35,
+      "type" : "staticText",
+      "z" : 140
+    },
+    {
+      "depth" : 16,
+      "enabled" : true,
+      "frame" : {
+        "height" : 126,
+        "width" : 126,
+        "x" : 933,
+        "y" : 1530
+      },
+      "label" : "提案語句「東京駅大丸東京店」を検索バーに入力",
+      "ref" : 36,
+      "type" : "clickable",
+      "z" : 141
+    },
+    {
+      "depth" : 9,
+      "enabled" : true,
+      "frame" : {
+        "height" : 226,
+        "width" : 1080,
+        "x" : 0,
+        "y" : 0
+      },
+      "identifier" : "search_omnibox_container",
+      "ref" : 37,
+      "type" : "other",
+      "z" : 11
+    },
+    {
+      "depth" : 16,
+      "enabled" : true,
+      "frame" : {
+        "height" : 126,
+        "width" : 1018,
+        "x" : 31,
+        "y" : 84
+      },
+      "identifier" : "mod_search_omnibox_layout",
+      "ref" : 38,
+      "type" : "other",
+      "z" : 19
+    },
+    {
+      "depth" : 18,
+      "enabled" : true,
+      "frame" : {
+        "height" : 126,
+        "width" : 126,
+        "x" : 31,
+        "y" : 84
+      },
+      "identifier" : "search_omnibox_menu_button",
+      "label" : "上に移動",
+      "ref" : 39,
+      "type" : "button",
+      "z" : 21
+    },
+    {
+      "depth" : 17,
+      "enabled" : true,
+      "frame" : {
+        "height" : 126,
+        "width" : 766,
+        "x" : 157,
+        "y" : 84
+      },
+      "identifier" : "search_omnibox_text_box",
+      "ref" : 40,
+      "type" : "textField",
+      "value" : "東京駅",
+      "z" : 23
+    },
+    {
+      "depth" : 18,
+      "enabled" : true,
+      "focused" : true,
+      "frame" : {
+        "height" : 126,
+        "width" : 764,
+        "x" : 157,
+        "y" : 84
+      },
+      "identifier" : "search_omnibox_edit_text",
+      "placeholder" : "ここで検索",
+      "ref" : 41,
+      "type" : "textField",
+      "value" : "東京駅",
+      "z" : 24
+    },
+    {
+      "depth" : 17,
+      "enabled" : true,
+      "frame" : {
+        "height" : 126,
+        "width" : 126,
+        "x" : 923,
+        "y" : 84
+      },
+      "identifier" : "search_omnibox_text_clear",
+      "ref" : 42,
+      "type" : "button",
+      "z" : 25
+    },
+    {
+      "depth" : 18,
+      "enabled" : true,
+      "frame" : {
+        "height" : 63,
+        "width" : 63,
+        "x" : 954,
+        "y" : 115
+      },
+      "label" : "クリア",
+      "ref" : 43,
+      "type" : "image",
+      "z" : 26
+    },
+    {
+      "depth" : 9,
+      "enabled" : true,
+      "frame" : {
+        "height" : 126,
+        "width" : 1080,
+        "x" : 0,
+        "y" : 226
+      },
+      "identifier" : "compass_container",
+      "ref" : 44,
+      "type" : "other",
+      "z" : 8
+    }
+  ],
+  "keyboardFrame" : {
+    "height" : 883,
+    "width" : 1080,
+    "x" : 0,
+    "y" : 1541
+  },
+  "screen" : {
+    "height" : 2424,
+    "width" : 1080,
+    "x" : 0,
+    "y" : 0
+  },
+  "sessionBundleID" : "com.google.android.apps.maps",
+  "truncatedCount" : 0
+}

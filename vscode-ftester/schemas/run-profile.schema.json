@@ -58,6 +58,11 @@
       "description": "screenIs コマンド(FM による画面判定)を有効にするか(既定 true)。",
       "default": true
     },
+    "containerInference": {
+      "type": "boolean",
+      "description": "容器(スクロール領域)の推測に基づくタップ/スクロール座標補正を行うか(既定 true)。false で見切れ判定・掴み直し・救済ドラッグ・座標補正・壊れた座標の候補除外を止める。FM とは無関係の幾何ヒューリスティック。",
+      "default": true
+    },
     "reportDir": {
       "type": "string",
       "description": "レポート出力先(プロジェクトルート相対 or 絶対。既定 \"reports\")。",
@@ -103,6 +108,16 @@
     "iosFastInput": {
       "type": "boolean",
       "description": "iOS xcuitest ブリッジの高速入力(quiescence 待ちスキップ)。動きの激しい画面ではフレークリスクあり(既定 false)"
+    },
+    "homeOnStart": {
+      "type": "boolean",
+      "description": "run 開始時に各デバイスへ home() を1回撃つ(既定 true = 撃つ)。一斉に launch した直後の端末は「描画要求が無いだけ」で画面が黒いまま止まることがあり、そのままだと凍結と見分けが付かない。入力を1回入れておくと描画が動き出すので予防になる。デバイスあたり1回だけなので実行時間への影響はほぼ無い。",
+      "default": true
+    },
+    "enableAnimations": {
+      "type": "boolean",
+      "description": "テスト対象アプリのアニメーションを残す(既定 false = 実行開始時にデバイス側のアニメーションを無効化する)。true にすると整定待ちが伸び、Android ではスクリーンショットが遷移途中の絵を掴むことがある。設定は run 開始時に毎回デバイスへ同期される(Android 実機はグローバル設定が永続的に書き換わる)。",
+      "default": false
     },
     "record": {
       "type": "boolean",

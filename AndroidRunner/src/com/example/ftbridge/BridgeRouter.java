@@ -52,7 +52,16 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
     BridgeRouter(Instrumentation instrumentation) {
         this.instrumentation = instrumentation;
         this.versionCode = resolveVersionCode(instrumentation);
-        ua().setOnAccessibilityEventListener(quietWaiter.listener());
+        UiAutomation ua = ua();
+        ua.setOnAccessibilityEventListener(quietWaiter.listener());
+        // getWindows() は既定でこのフラグが立っていないと空を返す(IME ウィンドウの bounds が
+        // 拾えない=keyboardFrame が常に省略される)。SnapshotBuilder.keyboardBounds 参照
+        android.accessibilityservice.AccessibilityServiceInfo info = ua.getServiceInfo();
+        if (info != null) {
+            info.flags |= android.accessibilityservice.AccessibilityServiceInfo
+                    .FLAG_RETRIEVE_INTERACTIVE_WINDOWS;
+            ua.setServiceInfo(info);
+        }
     }
 
     /** インストール済み APK の実 versionCode(build.sh の VERSION_CODE と手動同期しないため実物を引く) */
@@ -71,11 +80,13 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
             String route = request.method + " " + request.path;
             switch (route) {
                 case "GET /status": return handleStatus();
-                case "GET /snapshot": return handleSnapshot();
+                case "GET /snapshot": return handleSnapshot(request);
                 case "POST /tap": return handleTap(body(request));
                 case "POST /type": return handleType(body(request));
                 case "POST /clear": return handleClear(body(request));
                 case "POST /swipe": return handleSwipe(body(request));
+                case "POST /doubletap": return handleDoubleTap(body(request));
+                case "POST /pinch": return handlePinch(body(request));
                 case "POST /press": return handlePress(body(request));
                 case "POST /pressEnter": return handlePressEnter();
                 case "GET /screenshot": return handleScreenshot();
@@ -98,7 +109,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         UiAutomation ua = instrumentation.getUiAutomation();
         if (ua == null) {
             throw new BridgeException(500,
-                    "UiAutomation を取得できません(am instrument は -w 付きで起動する必要があります)");
+                    "cannot obtain UiAutomation (am instrument must be started with -w)");
         }
         return ua;
     }
@@ -109,8 +120,25 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
             String text = new String(request.body, StandardCharsets.UTF_8);
             return text.isEmpty() ? new JSONObject() : new JSONObject(text);
         } catch (JSONException e) {
-            throw new BridgeException(400, "リクエストボディの JSON が不正です: " + e);
+            throw new BridgeException(400, "the request body is not valid JSON: " + e);
         }
+    }
+
+    /** "a=1&b=2" 形式から key を1つ引く。"?" が無い/値が無い/複数パラメータでも例外を投げない */
+    private static String queryParam(String query, String key) {
+        if (query == null || query.isEmpty()) return null;
+        for (String pair : query.split("&")) {
+            if (pair.isEmpty()) continue;
+            int eq = pair.indexOf('=');
+            String k = eq >= 0 ? pair.substring(0, eq) : pair;
+            if (!k.equals(key)) continue;
+            return eq >= 0 ? pair.substring(eq + 1) : "";
+        }
+        return null;
+    }
+
+    private static boolean isTruthy(String value) {
+        return "1".equals(value) || "true".equalsIgnoreCase(value);
     }
 
     // MARK: - Handlers
@@ -139,6 +167,12 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         // 起動元の自己申告(doctor の診断用。BridgeDTO.StatusResponse の同名フィールド参照)
         if (BridgeInstrumentation.ownerRepo != null) o.put("ownerRepo", BridgeInstrumentation.ownerRepo);
         o.put("idleSeconds", BridgeHttpServer.lastIdleSeconds);
+        // 画面が進んでいるかの計器(DisplayHeartbeat 参照)。負値 = 計器が動いていない = 申告しない
+        double displayIdle = DisplayHeartbeat.idleSeconds();
+        if (displayIdle >= 0) o.put("displayIdleSeconds", displayIdle);
+        // 所要内訳ログの状態。起動時にしか切り替わらないので、ホストは希望と違えば起動し直す
+        // (同期相手: Sources/FTAndroid/AndroidBridge.swift の startBridge)
+        if (BridgeInstrumentation.timingEnabled) o.put("timingEnabled", true);
         return BridgeHttpServer.Response.json(200, o.toString());
     }
 
@@ -155,16 +189,24 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         return ok();
     }
 
-    private BridgeHttpServer.Response handleSnapshot() throws JSONException {
+    private BridgeHttpServer.Response handleSnapshot(BridgeHttpServer.Request request) throws JSONException {
+        // クエリ `refresh=1`(または `true`)は「タイムアウト直前の1回だけ全ノード refresh() する」
+        // 契約(ホスト側と同期。SnapshotBuilder.collect のコメント参照)。無指定は従来どおり false
+        boolean forceRefresh = isTruthy(queryParam(request.query, "refresh"));
+        // クエリ `max=<n>` は「この1回だけ要素上限を引き上げる」契約(ホスト側 BridgeAPI の
+        // resolvedSnapshotElementLimit と同じ規則: 0以下・非整数=既定、天井超え=天井へ丸める)。
+        // web ページのように候補が数百ある画面で、間引きが本文テキストを丸ごと落とすのを
+        // 呼び手が回避するためのもの
+        int maxElements = SnapshotBuilder.resolveElementLimit(queryParam(request.query, "max"));
         SnapshotBuilder.Result result;
         try {
-            result = SnapshotBuilder.build(ua());
+            result = SnapshotBuilder.build(ua(), instrumentation.getContext(), forceRefresh, maxElements);
         } catch (IllegalStateException e) {
             // root=null が waitForRoot の 2s を超えて続く一時ストール(高負荷時の画面消灯/描画停止で
             // 実測。黒スクショと対の症状)。WAKEUP 注入で display を起こしてから1回だけ再試行する
             shell("input keyevent KEYCODE_WAKEUP");
             SystemClock.sleep(500);
-            result = SnapshotBuilder.build(ua());
+            result = SnapshotBuilder.build(ua(), instrumentation.getContext(), forceRefresh, maxElements);
         }
         refCenters = result.refCenters;
         refIds = result.refIds;
@@ -173,15 +215,21 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
     }
 
     private BridgeHttpServer.Response handleTap(JSONObject body) {
+        long t0 = SystemClock.uptimeMillis();
         double[] point = resolvePoint(body);
         InputInjector.tap(ua(), point[0], point[1]);
-        settle();
+        long t1 = SystemClock.uptimeMillis();
+        settle("tap");
+        if (BridgeInstrumentation.timingEnabled) {
+            android.util.Log.i(BridgeInstrumentation.TAG, "tapTiming inject=" + (t1 - t0)
+                    + " settle=" + (SystemClock.uptimeMillis() - t1));
+        }
         return ok();
     }
 
     private BridgeHttpServer.Response handleType(JSONObject body) {
         if (!body.has("text")) {
-            throw new BridgeException(400, "text が必要です");
+            throw new BridgeException(400, "text is required");
         }
         String text = body.optString("text");
         if (body.has("ref")) {
@@ -218,16 +266,85 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         double w = lastScreen.width() > 0 ? lastScreen.width() : 1080;
         double h = lastScreen.height() > 0 ? lastScreen.height() : 2400;
         double cx = w / 2, cy = h / 2;
+        boolean vertical = direction.equals("up") || direction.equals("down");
+        // 可変パラメータはホストが用途(FTSwipeIntent)に応じて送る(契約は FTCore/BridgeDTO.SwipeRequest)。
+        // distance の既定は**軸で違う**(縦 0.4 = 0.7→0.3 / 横 0.6 = 0.8→0.2。v40 までの固定値と同一)。
+        // 一律 0.4 にすると、何も送らない gesture / search の横スワイプまで黙って狭くなる。
+        // 明示値は既定と同値でも必ず計算に使う(「既定と同じなら無視」だと、既定を変えた瞬間に
+        // ホストの指定が黙って無視される)
+        double span = body.optDouble("distance", vertical ? 0.4 : 0.6);
+        long strokeMs = body.optLong("durationMs", 300);
+        boolean syntheticUp = body.optBoolean("fling", false);
+        double half = Math.min(Math.max(span, 0.05), 0.9) / 2;
         double[] from, to;
-        switch (direction) {
-            case "up": from = new double[]{cx, h * 0.7}; to = new double[]{cx, h * 0.3}; break;
-            case "down": from = new double[]{cx, h * 0.3}; to = new double[]{cx, h * 0.7}; break;
-            case "left": from = new double[]{w * 0.8, cy}; to = new double[]{w * 0.2, cy}; break;
-            case "right": from = new double[]{w * 0.2, cy}; to = new double[]{w * 0.8, cy}; break;
-            default:
-                throw new BridgeException(400, "direction は up/down/left/right のいずれかです");
+        // **スクロール領域を指定されたときはホストが計算した実座標を使う**(FTCore/ScrollGeometry)。
+        // ここで軸別既定や distance を混ぜてはいけない —— 領域内の座標として計算済みで、
+        // 比率で作り直すと画面中央基準に戻ってしまう
+        JSONObject path = body.optJSONObject("path");
+        if (path != null) {
+            InputInjector.swipe(ua(), path.optDouble("fromX"), path.optDouble("fromY"),
+                    path.optDouble("toX"), path.optDouble("toY"), strokeMs, syntheticUp);
+            settle();
+            return ok();
         }
-        InputInjector.swipe(ua(), from[0], from[1], to[0], to[1], 300);
+        switch (direction) {
+            case "up": from = new double[]{cx, h * (0.5 + half)}; to = new double[]{cx, h * (0.5 - half)}; break;
+            case "down": from = new double[]{cx, h * (0.5 - half)}; to = new double[]{cx, h * (0.5 + half)}; break;
+            case "left": from = new double[]{w * (0.5 + half), cy}; to = new double[]{w * (0.5 - half), cy}; break;
+            case "right": from = new double[]{w * (0.5 - half), cy}; to = new double[]{w * (0.5 + half), cy}; break;
+            default:
+                throw new BridgeException(400, "direction must be one of up/down/left/right");
+        }
+        InputInjector.swipe(ua(), from[0], from[1], to[0], to[1], strokeMs, syntheticUp);
+        settle();
+        return ok();
+    }
+
+    /** ダブルタップ(ref または x/y。iOS ブリッジと同じ受理形) */
+    private BridgeHttpServer.Response handleDoubleTap(JSONObject body) {
+        double[] point = resolvePoint(body);
+        InputInjector.doubleTap(ua(), point[0], point[1]);
+        settle();
+        return ok();
+    }
+
+    /**
+     * 2本指のピンチ。**ホストが送る frame の中心**で開閉する(nil = 画面全体)。
+     * PinchRequest.identifier は iOS 専用(XCUITest は座標指定の多点ジェスチャを持たないため)で、
+     * こちらは読まない —— 座標を作れるので frame の方が正確。
+     *
+     * span は**倍率が正確に出る側から決める**: 拡大なら「広い方 = 短辺の 90%」を終点にして
+     * 始点を span/scale に、縮小ならその逆。先に始点を決めて scale 倍すると領域からはみ出し、
+     * クランプで倍率が黙って目減りする(短辺の 90% を超える点は容器の外 = 別のビューが受け取る)。
+     * 指を 16px より近付けることはできない(タッチスロップ)ので、極端な scale では倍率が落ちる。
+     */
+    private BridgeHttpServer.Response handlePinch(JSONObject body) {
+        double scale = body.optDouble("scale", 0);
+        if (!(scale > 0) || scale == 1 || Double.isInfinite(scale)) {
+            throw new BridgeException(400, "scale must be positive and not 1 (received: " + scale + ")");
+        }
+        double left = lastScreen.left, top = lastScreen.top;
+        double width = lastScreen.width() > 0 ? lastScreen.width() : 1080;
+        double height = lastScreen.height() > 0 ? lastScreen.height() : 2400;
+        JSONObject frame = body.optJSONObject("frame");
+        if (frame != null) {
+            left = frame.optDouble("x", left);
+            top = frame.optDouble("y", top);
+            width = frame.optDouble("width", width);
+            height = frame.optDouble("height", height);
+        }
+        double maxSpan = Math.min(width, height) * 0.9;
+        double startSpan, endSpan;
+        if (scale > 1) {
+            endSpan = maxSpan;
+            startSpan = Math.max(maxSpan / scale, 16);
+        } else {
+            startSpan = maxSpan;
+            endSpan = Math.max(maxSpan * scale, 16);
+        }
+        long durationMs = Math.min(Math.max(
+                (long) (body.optDouble("durationSeconds", 0.5) * 1000), 50), 10000);
+        InputInjector.pinch(ua(), left + width / 2, top + height / 2, startSpan, endSpan, durationMs);
         settle();
         return ok();
     }
@@ -249,7 +366,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
      */
     private BridgeHttpServer.Response handlePressEnter() {
         if (Build.VERSION.SDK_INT < 30) {
-            throw new BridgeException(501, "ACTION_IME_ENTER は API 30 未満では未対応です");
+            throw new BridgeException(501, "ACTION_IME_ENTER is not supported below API 30");
         }
         InputInjector.pressImeEnter(ua());
         settle();
@@ -259,7 +376,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
     private BridgeHttpServer.Response handleScreenshot() {
         Bitmap bitmap = ua().takeScreenshot();
         if (bitmap == null) {
-            throw new BridgeException(500, "スクリーンショットを取得できません");
+            throw new BridgeException(500, "cannot take a screenshot");
         }
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         bitmap.compress(Bitmap.CompressFormat.PNG, 100, out);
@@ -285,7 +402,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
             String start = component == null ? null : shell("am start -n " + component);
             if (component == null || start == null || start.contains("Error")) {
                 throw new BridgeException(500,
-                        "アプリを起動できません: " + bundleID + "(インストール済みか確認してください)");
+                        "cannot launch the app: " + bundleID + " (check that it is installed)");
             }
         }
         sessionBundleID = bundleID;
@@ -313,7 +430,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
     private BridgeHttpServer.Response handleLaunch(JSONObject body) {
         String bundleID = body.optString("bundleID");
         if (bundleID.isEmpty()) {
-            throw new BridgeException(400, "bundleID が必要です");
+            throw new BridgeException(400, "bundleID is required");
         }
         if (attemptLaunch(bundleID)) return ok();
         // 前面判定が別パッケージの居座りで詰んだ。前面を掃除して1回だけ再試行する。
@@ -327,7 +444,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
             shell("input keyevent KEYCODE_HOME");
         }
         if (attemptLaunch(bundleID)) return ok();
-        throw new BridgeException(500, "アプリの画面が表示されませんでした: " + bundleID);
+        throw new BridgeException(500, "the app never came to the foreground: " + bundleID);
     }
 
     private BridgeHttpServer.Response handleTerminate() {
@@ -349,10 +466,10 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
      */
     private BridgeHttpServer.Response handleLocale(JSONObject body) throws JSONException {
         String tag = body.optString("locale", "").replace('_', '-');
-        if (tag.isEmpty()) throw new BridgeException(400, "locale がありません");
+        if (tag.isEmpty()) throw new BridgeException(400, "locale is required");
         java.util.Locale target = java.util.Locale.forLanguageTag(tag);
         if (target.getLanguage().isEmpty()) {
-            throw new BridgeException(400, "locale を解釈できません: " + tag);
+            throw new BridgeException(400, "cannot parse the locale: " + tag);
         }
         java.util.Locale current = android.content.res.Resources.getSystem()
                 .getConfiguration().getLocales().get(0);
@@ -363,7 +480,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
             return BridgeHttpServer.Response.json(200, o.toString());
         }
         if (Build.VERSION.SDK_INT < 29) {
-            throw new BridgeException(500, "ロケール変更は API 29 以上のみ対応です");
+            throw new BridgeException(500, "changing the locale requires API 29 or newer");
         }
         UiAutomation ua = ua();
         ua.adoptShellPermissionIdentity();
@@ -376,7 +493,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
             am.getClass().getMethod("updatePersistentConfiguration",
                     android.content.res.Configuration.class).invoke(am, config);
         } catch (ReflectiveOperationException e) {
-            throw new BridgeException(500, "ロケール変更に失敗(hidden_api_policy=1 が必要): " + e);
+            throw new BridgeException(500, "changing the locale failed (hidden_api_policy=1 is required): " + e);
         } finally {
             ua.dropShellPermissionIdentity();
         }
@@ -417,8 +534,21 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
      * QuietWaiter.java 参照)
      */
     private void settle() {
+        settle("-");
+    }
+
+    /** settle() の内訳を logcat に出す版。tag は呼び出し元(計測時にホスト側 actionMs と突き合わせる)。
+     *  ACTION_CAP_MS を超える値が出るなら待ちは quietWait の外にある。 */
+    private void settle(String tag) {
+        long t0 = SystemClock.uptimeMillis();
         String startPackage = stableActivePackage(STABLE_PACKAGE_BUDGET_MS);
+        long t1 = SystemClock.uptimeMillis();
         quietWaiter.quietWait(startPackage, QuietWaiter.QUIET_MS, QuietWaiter.ACTION_CAP_MS);
+        long t2 = SystemClock.uptimeMillis();
+        if (BridgeInstrumentation.timingEnabled) {
+            android.util.Log.i(BridgeInstrumentation.TAG, "settleTiming " + tag
+                    + " stablePkg=" + (t1 - t0) + " quiet=" + (t2 - t1));
+        }
     }
 
     /**
@@ -451,14 +581,14 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         if (body.has("x") && body.has("y")) {
             return new double[]{body.optDouble("x"), body.optDouble("y")};
         }
-        throw new BridgeException(400, "ref または x/y が必要です");
+        throw new BridgeException(400, "ref or x/y is required");
     }
 
     private double[] centerOf(int ref) {
         double[] center = refCenters.get(ref);
         if (center == null) {
             throw new BridgeException(404,
-                    "参照番号 [" + ref + "] は未知です。先に GET /snapshot を実行してください");
+                    "reference number [" + ref + "] is unknown. Run GET /snapshot first");
         }
         return center;
     }
@@ -474,7 +604,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
             }
             return out.toString("UTF-8");
         } catch (Exception e) {
-            throw new BridgeException(500, "shell 実行に失敗: " + command + " (" + e + ")");
+            throw new BridgeException(500, "the shell command failed: " + command + " (" + e + ")");
         }
     }
 
