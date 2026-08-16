@@ -1,7 +1,9 @@
 # リモートランナー構想
 
 2026-07-30 の検討結果の文書化。**Phase 1(`run --host` / `api run --host` と GUI の
-ホスト登録・実行先選択)は実装済み(§12)。Phase 2 以降と §13・§14 は設計のみで未実装**。
+ホスト登録・実行先選択)は実装済み(§12)。§14 の導入コマンド一式(`preflight.sh --runner` /
+`remote setup` / 汎用転送 `remote exec`)も実装済み(2026-08-16)。Phase 2 以降と §13 は設計のみで未実装**。
+**利用者向けの手順書は [remote-runner-setup.md](remote-runner-setup.md)**(この文書は設計の記録)。
 **SSH 越しの実 E2E は localhost で実施済み(2026-07-31。§9 実験①)** — 到達経路が確定し、
 `asuser` は撤去した(root 必須で実用不可)。実2台での検証は未実施。
 **セキュリティ前提と信頼モデルは §15** — 実装前に必ず読むこと。
@@ -530,7 +532,7 @@ machines/apps/runs はプロジェクト資産で、ディスパッチのたび�
 載らない**(レポート・JUnit はエントリごとに回収されるので調査は可能)。この期間が
 長引くようなら results マージを段6として繰り上げる。
 
-## 14. ランナー機の前提とインストーラー(設計・未実装)
+## 14. ランナー機の前提とインストーラー(実装済み: 2026-08-16)
 
 ### 前提(明文化)
 
@@ -568,23 +570,39 @@ machines/apps/runs はプロジェクト資産で、ディスパッチのたび�
 ### 構成(新規スクリプトを作らない)
 
 ```
-Scripts/preflight.sh --runner  既存に判定モードを追加。共通項目(Xcode・Android SDK・
-                               ツール本体・ルート解決)は既存判定を再利用し、ランナー固有
-                               (FileVault/自動ログイン・コンソールユーザー・スリープ・
-                               画面共有・sshd)だけを足す。ready=0 / needs-manual=2 / blocked=1
+Scripts/preflight.sh --runner  既存に判定モードを追加(--base <dir>。既定は --remote-dir と
+                               同じ ~/ftester-runner)。共通項目(macOS・Xcode・git/swift・
+                               xcodegen)は関数に括り出して両モードから呼ぶ。ランナー固有は
+                               コンソールユーザー・スリープ・sshd・画面共有・FileVault/自動
+                               ログイン・base 配下の導入状況。ready=0 / needs-manual=2 / blocked=1
 Scripts/install.sh             **そのまま流用**(外部構成で呼ぶ):
-                               `--work-dir <base>/work --tool-root <base>/tool`
-                               `--skip-project --skip-extension --skip-mcp`
-                               = ci.md の CI 導入と同じ組み合わせ(道を2本作らない)
-ftester remote setup <host>    発行側の入口。ssh で preflight --runner → install.sh を
-                               scp で送り込んで実行(初回はリモートに clone が無いため。
-                               受け手フローの「クローン側スクリプトは古い」と同型の解)
-                               → machine set → 検証ディスパッチ → 結果を1画面で集約
+                               `--work-dir <base>/work --name <project>`
+                               `--skip-extension --skip-mcp --skip-claude-md --no-next-steps`
+                               **--skip-project は使えない**(WORK_DIR に Package.swift が要る。§12)。
+                               --tool-root も渡さない(既定の <work-dir>/../foundation-tester が
+                               RemoteLayout.toolRoot とちょうど一致する)
+ftester remote setup <host>    発行側の入口。local(手元のプロジェクト解決)→ reach → preflight
+                               → install → align → machine → verify の7段。preflight と
+                               install.sh は**手元のスクリプトを scp で送って実行する**
+                               (リモートに clone が無い初回と、curl 形が main 固定で
+                               ブランチ検証に使えない問題の両方を1つの解で塞ぐ)。
+                               終了コードは install.sh と同じ 0=完了 / 2=人手の項目が残る / 1=失敗
 ```
 
-`remote setup` 固有の仕事は **machine set と検証ディスパッチだけ**で、導入本体は
+`remote setup` 固有の仕事は **版合わせ(align)・machine set・検証ディスパッチ**で、導入本体は
 既存 install.sh が持つ。出力規律も install.sh のものをそのまま使う(1ステップ1行+集計、
 生ログは `<clone>/.ftester/install-<日時>.log`)。
+
+**align が要る理由**: 適合チェックは git revision 一致を要求するが、install.sh が clone するのは
+upstream の既定ブランチなので、検証中のブランチでは必ず不一致になる。発行側の HEAD へ
+`git fetch → checkout → swift build --product ftester` で合わせる(revision は 16進 7〜40 文字を
+検証してから埋める = コマンド注入の入口を塞ぐ)。
+
+**踏んだ罠**: リモートで一時スクリプトを実行して後始末する1行で、終了コードの退避先を
+`status` にしていた。**ssh が起こすのは受け手のログインシェル(macOS 既定 zsh)で、zsh の
+`status` は `$?` の読み取り専用エイリアス**。代入が失敗して**中のスクリプトの終了コードが
+消え**(needs-manual=2 が 1 に化けて blocked と誤報)、後始末も走らず一時ファイルが残った。
+localhost へ1回流して初めて出た(単体テストは文字列しか見ない)。
 
 ### 単発コマンドの転送は汎用化する(個別実装を作らない)
 
@@ -592,12 +610,17 @@ ssh 越しの操作を用途ごとに実装しない。**2種類だけ**に整�
 
 | 種別 | 形 | 例 |
 |---|---|---|
-| **汎用転送**(状態照会・単発操作) | `ftester --host <name> <サブコマンド>` = リモートで同じコマンドを実行して出力を返すだけ | `--host studio doctor --fm-only`(§14 の FM 検証)/ `api device-catalog`・`api installed-devices`・`api create-device`(§13 の取得元セレクタ)/ `devices down`・更新 |
+| **汎用転送**(状態照会・単発操作) | `ftester remote exec <host> -- <サブコマンド>` = リモートで同じコマンドを実行して出力と終了コードを返すだけ | `remote exec studio -- doctor --fm-only`(§14 の FM 検証)/ `-- api device-catalog`・`-- api installed-devices`・`-- api create-device`(§13 の取得元セレクタ)/ `-- devices down` |
 | **ディスパッチ**(run 系) | `run --host` / `api run --host`(実装済み) | 転送(rsync)→ 実行 → 中継 → 回収が付く |
 
 §13 の「取得元セレクタ」「リモートデバイス作成」、§14 の FM 検証、設定タブの
 「このホストを更新」は**すべて汎用転送1つで賄える** — 個別の ssh 実装を書かない
 (RemoteExec ヘルパの一段上の一般化)。
+
+**当初案 `ftester --host <name> <サブコマンド>` から形を変えた(2026-08-16)**:
+トップレベルの `--host` はサブコマンド解決と衝突し、`run --host`(ディスパッチ)と
+意味も食い違う。`remote exec <host> -- <args>` なら**ホスト名より後ろは全部素通し**という
+規則1つで済む。転送する引数に `--host` が含まれていたら拒否する(入れ子のディスパッチを作らない)。
 
 ### 利用者から見た手順
 

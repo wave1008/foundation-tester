@@ -14,7 +14,9 @@
 | 1台のリモートへジョブ単位でディスパッチ(CLI・VSCode 拡張の両方) | ✅ |
 | 実行中の進行表示・キャンセル・タイムアウト | ✅ |
 | レポート・JUnit・録画・run ログの回収 | ✅ |
+| ランナー機の導入・撤去を手元から1コマンド(`remote setup`) | ✅ |
 | 複数ホストの一括診断・掃除(`remote status` / `remote clean`) | ✅ |
+| リモートで単発の `ftester` を走らせる(`remote exec`) | ✅ |
 | 複数ホストへの**同時**実行(フリート)、シナリオの台数分散 | ❌ 未実装 |
 | リモート実行分を `ftester results` の集計に混ぜる | ❌ 未実装(レポート・JUnit は回収されるので個別の調査は可能) |
 | 同一リモートへの二重ディスパッチの直列化 | ❌ 未実装 — **重ねて投げるとデバイスの取り合いになる**。運用で避ける |
@@ -52,7 +54,10 @@ ftester run --host mac2 …               ~/ftester-runner/               ← �
 
 ## ステップ0(ランナー機で1回だけ・手作業)
 
-sudo や GUI が要るものはインストーラでは行わない。ランナー機の前に座るか、画面共有で行う。
+sudo や GUI が要るものはインストーラでは行わない(無人機に sudo プロンプトを混ぜると
+冪等性と自動化が両方壊れる)。ランナー機の前に座るか、画面共有で行う。
+**何が足りないかは機械で確認できる** —— ランナー機で `bash Scripts/preflight.sh --runner`
+(または手元から `ftester remote setup <ホスト>`)を実行すると、残っている項目だけが列挙される。
 
 1. **リモートログインを ON**: システム設定 → 一般 → 共有 → リモートログイン
 2. **画面共有を ON**(強く推奨。再起動後のログインを手元からやるため)
@@ -76,34 +81,48 @@ ssh -o BatchMode=yes <ユーザー>@<ホスト> 'echo ok'   # これが ok を�
 > `StrictHostKeyChecking` を無効にしない。ホスト鍵の検証は「知らないマシンへ
 > プロジェクトを送り込んでしまう」経路を実際に塞いでいる唯一の仕掛け。
 
-## ステップ2(ランナー機): ツール一式を入れる
+## ステップ2(発行側): ランナー機を用意する
 
-**ランナー機に ssh して**(ログインシェルで PATH が通るため)、次を実行する。
+**手元から1コマンド**で済む。ランナー機に ssh して手で入れる必要はない。
 
 ```bash
-mkdir -p ~/ftester-runner/work
-curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install.sh | bash -s -- \
-  --work-dir ~/ftester-runner/work \
-  --name <プロジェクト名> \
-  --skip-extension --skip-mcp --skip-claude-md
+ftester remote setup <ユーザー>@<ホスト> --project <プロジェクト名> --machine "<マシン名>"
 ```
 
-- **`--name` は手元と同じプロジェクト名**(`TestProjects/<名前>` の名前)にする
-- **ディスパッチより前に必ず済ませる**。先にディスパッチするとプロジェクトのディレクトリだけが
-  でき、インストーラが「作成済み」と見なして土台(`Package.swift`)を作らない
-- 拡張・MCP・CLAUDE.md はランナー機には不要なので入れない(CLI だけで動く)
-- プロファイル(machines/apps/runs)はここでは作らない。**手元のものが実行のたびに転送される**
-- クローンは `~/ftester-runner/foundation-tester` にできる。**このディレクトリ名は変えない**
-  (SPM がパッケージ名をディレクトリ名から決めるため)
-- 初回はコールドビルドで数分かかる。exit 0 なら完了、詳細は `~/ftester-runner/work/.ftester/install-<日時>.log`
+何をするか(冪等。何度実行してもよい):
+
+| ステップ | 内容 |
+|---|---|
+| local | 手元のプロジェクト解決(ここで落ちれば ssh に行かない) |
+| reach | 到達確認とログイン状態の確認 |
+| preflight | **手元の `Scripts/preflight.sh` を送って `--runner` で判定**。人手が要る項目が残っていれば、その一覧を出して止まる(直して同じコマンドを再実行) |
+| install | **手元の `Scripts/install.sh` を送って**実行(`~/ftester-runner/work` に受け手パッケージを作る)。初回はコールドビルドで数分 |
+| align | ランナー機のクローンを**手元と同じコミット**へ合わせて `swift build`(下記) |
+| machine | `--machine` を渡したときだけ `ftester machine set` |
+| verify | `--profile`(と任意の `--scenario`)を渡すと**実ディスパッチを1本走らせる**。ここが通って初めてセットアップ成功 |
+
+終了コードは install.sh と同じ語彙: **0 = 完了 / 2 = 必須は通ったが人手の項目が残っている / 1 = 失敗**。
+
+- **`--project` は手元と同じプロジェクト名**(`TestProjects/<名前>`)。手元にプロジェクトが1つだけなら省略できる
+- **スクリプトは curl ではなく手元から送る**。GitHub の main ではなく、**いま自分がいるコミットの
+  スクリプト**を使うため(検証中のブランチでも版が揃う)
+- 拡張・MCP・CLAUDE.md はランナー機には入れない(CLI だけで動く)
+- プロファイル(machines/apps/runs)は**手元のものが実行のたびに転送される**ので、ここでは作らない
+- 撤去は `ftester remote setup <ホスト> --uninstall`(確認あり。`--yes` で無確認)
+
+> 手で入れたい場合は、上の install ステップと同じことを ssh して実行すればよい:
+> `bash install.sh --work-dir ~/ftester-runner/work --name <プロジェクト名> --skip-extension --skip-mcp --skip-claude-md`。
+> クローン先の**ディレクトリ名 `foundation-tester` は変えない**(SPM がパッケージ名をディレクトリ名から決めるため)。
 
 ## ステップ3: 版を揃える
 
 ディスパッチは **git のコミット**と **Xcode/macOS の指紋**の2つを照合し、どちらかが違えば
 **何も実行せずに止まる**(黙って古い版で走らせないため)。
 
+**`remote setup` の align ステップが毎回これを行う**ので、手元でコミットを進めたら
+`ftester remote setup <ホスト>` をもう一度流せば揃う。手で合わせるなら:
+
 ```bash
-# ランナー機を手元と同じコミットに合わせる(検証用のブランチを試すときは必ずこれ)
 ssh <ホスト> 'cd ~/ftester-runner/foundation-tester && git fetch origin && git checkout <コミット> && swift build --product ftester'
 ```
 
@@ -124,11 +143,19 @@ ssh <ホスト> 'cd ~/ftester-runner/foundation-tester && git fetch origin && gi
 ランナー機に名前を登録し、その名前のマシンプロファイルを**手元で**作る(転送される)。
 
 ```bash
-# ランナー機で(名前を登録する)
-ssh <ホスト> '~/ftester-runner/foundation-tester/.build/debug/ftester machine set "<マシン名>"'
+# ランナー機の名前を登録する(remote setup に --machine を渡していれば済んでいる)
+ftester remote setup <ホスト> --machine "<マシン名>"
 
 # 手元で(そのマシン名のプロファイルを作り、ランナー機に実在するデバイス名を書く)
 #   TestProjects/<プロジェクト>/profiles/machines/<マシン名>.json
+```
+
+ランナー機の状態は**手元から照会できる**(個別に ssh しなくてよい):
+
+```bash
+ftester remote exec <ホスト> -- machine show          # 登録名とプロファイルの対応
+ftester remote exec <ホスト> -- api installed-devices # 実在するデバイス
+ftester remote exec <ホスト> -- doctor --fm-only      # FM が使えるか
 ```
 
 **アプリのバイナリは転送されない。** アプリプロファイルの `appPath` は、ランナー機で解決できる
@@ -159,7 +186,7 @@ ftester run --host <ユーザー>@<ホスト> --profile <実行プロファイ�
 
 - **初回は数分**(リモートでのシナリオビルドとブリッジ供給)。2回目以降は十数秒で始まる
 - **Android を回すときは、先にエミュレータを起こしておく**(iOS と違い自動では起きない):
-  `ssh <ホスト> 'cd ~/ftester-runner/work && ~/ftester-runner/foundation-tester/.build/debug/ftester devices up --profile <実行プロファイル>'`
+  `ftester remote exec <ホスト> -- devices up --profile <実行プロファイル>`
 - `--host` と併用できないもの: `--ports` / `--report-dir` / `--failed` / `--skip-build`
   (理由付きで即座に止まる)。`--dry-run` は手元のシナリオだけで判定できるので、
   `--host` を付けていても**送らずローカルで完結する**
@@ -194,11 +221,15 @@ ftester run --host <ユーザー>@<ホスト> --profile <実行プロファイ�
 ftester remote status --host <ホスト>                        # 使える状態か
 ftester remote clean --host <ホスト> --keep-days 7 --dry-run # 何が消えるか見る
 ftester remote clean --host <ホスト> --keep-days 7           # 実際に消す
+ftester remote exec <ホスト> -- <サブコマンド>               # 単発の照会・操作(下記)
 ```
 
 - **`remote clean` は定期的に。** ランナー機は誰も見ないので、results・reports・録画が
   溜まり続けて、ある日ディスクフルで止まる。孤児プロセスやゾンビブリッジの掃除も同時に行う
-- **ツールの更新**は両側を同じコミットへ。ランナー機はステップ2と同じコマンドを流し直せばよい(冪等)
+- **ツールの更新**は `ftester remote setup <ホスト>` をもう一度流すだけ(冪等。align が版を揃える)
+- **`remote exec` はリモートで `ftester` を1本走らせる汎用の口**。デバイス一覧・FM の可否・
+  `devices down`・カタログ照会など、用途ごとに ssh を書かずにこれ1つで済ませる。
+  `--remote-dir` を使うときは**ホスト名より前**に置く(ホスト名より後ろは全部リモートへ素通し)
 - **ランナー機を再起動したら、1回ログインし直す**。ログイン画面のままだとディスパッチは
   「ログイン画面で待機中」と言って止まる(シミュレータの謎の失敗として現れないようにするため)
 
@@ -207,6 +238,8 @@ ftester remote clean --host <ホスト> --keep-days 7           # 実際に消�
 | 症状・メッセージ | 原因 | 対処 |
 |---|---|---|
 | `cannot reach … over ssh` | 鍵で入れない / ホスト名違い | ステップ1(`BatchMode=yes` でパスワードは聞けない) |
+| `remote setup` が preflight で warn 終了(exit 2) | ランナー機に人手の項目が残っている | 出力に列挙された操作を行い、同じコマンドを再実行(冪等) |
+| `cannot resolve the local project` | 手元にプロジェクトが複数 | `--project <名前>` を付ける |
 | `is sitting at the login window` | ランナー機がログイン画面 | 解錠してログイン(画面共有) |
 | `git revision mismatch` | 版がズレている | ステップ3 |
 | `toolchain mismatch` | Xcode / macOS が違う | 両機を同じ版に |

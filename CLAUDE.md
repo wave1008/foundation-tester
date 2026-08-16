@@ -10,8 +10,13 @@
 ## ドキュメント
 
 - 受け手向けの導入(事前準備・インストール・更新・アンインストールだけ。使い方は README とスキル): docs/getting-started.md
-- 受け手の状態判定: `Scripts/preflight.sh`(引数なし・読み取りのみ。カレントを見て
-  ready=0 / installed=2 / blocked=1 を返す。SKILL.md ステップ0・0.5 と 1:1)
+- 受け手の状態判定: `Scripts/preflight.sh`(読み取りのみ。既定モードは引数なしでカレントを見て
+  ready=0 / installed=2 / blocked=1 を返す。SKILL.md ステップ0・0.5 と 1:1)。
+  **`--runner [--base <dir>]` はリモートランナー機としての判定**(ready=0 / needs-manual=2 /
+  blocked=1。`ftester remote setup` が scp して実行する)。**既定モードの出力は1バイトも変えない**
+  (共通判定は関数に括り出して両モードから呼ぶ)。**判定を足すときは blocked/needs-manual の
+  仕分けを間違えない** —— install.sh が自動導入するもの(xcodegen 等)を needs-manual にすると、
+  `remote setup` が install.sh に到達できず「入れれば直るのに入れる工程まで進めない」で詰まる
 - 受け手の一括導入: `Scripts/install.sh`(clone〜検証ゲートを冪等に実行)。**各手順は
   `.claude/skills/ftester-setup/SKILL.md` のステップ番号と 1:1**(失敗時に「→ SKILL.md ステップ N」を
   出してエージェントを手作業手順へ戻す設計)。**片方だけ変えない** — 手順の追加・番号の変更は両方に入れる
