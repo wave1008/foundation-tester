@@ -387,7 +387,7 @@ SSH 側のプロセスからでもユーザーの launchd ドメインのサー�
   ```
   <base>/          ← --remote-dir(既定 ~/ftester-runner。チルダは $HOME で解決)
   ├── tool/        ← TOOL_ROOT(ランナー専用クローン)。バイナリは tool/.build/debug/ftester
-  └── work/        ← WORK_DIR(受け手パッケージ。Projects・results・.build)
+  └── work/        ← WORK_DIR(受け手パッケージ。TestProjects・results・.build)
   ```
 
   実行は `cd <base>/work && <base>/tool/.build/debug/ftester …`。`packageRoot()`(cwd から

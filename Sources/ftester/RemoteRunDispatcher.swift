@@ -33,7 +33,7 @@ struct RemoteRunDispatcher {
         try checkCompatibility(layout: layout)
         log("note: app packages are not transferred — appPath in app profiles must be valid on the remote")
 
-        try transfer(project: project.name, layout: layout)
+        try transfer(project: project, layout: layout)
 
         let stamp = Self.makeStamp()
         let remoteReportDir = layout.dispatchReportDir(stamp: stamp)
@@ -50,11 +50,11 @@ struct RemoteRunDispatcher {
         let exitCode = try runRemoteAndRelay(
             ftesterArgs: ftesterArgs, layout: layout, timeoutSeconds: timeoutSeconds)
 
-        collectReports(project: project.name, remoteReportDir: remoteReportDir)
+        collectReports(project: project, remoteReportDir: remoteReportDir)
         if let localJUnitPath, let remoteJUnitPath {
             collectJUnit(remotePath: remoteJUnitPath, localPath: localJUnitPath, layout: layout)
         }
-        collectArtifactsIfRequested(project: project.name, layout: layout)
+        collectArtifactsIfRequested(project: project, layout: layout)
         cleanupDispatchDir(layout: layout, stamp: stamp)
 
         log("==> remote run finished (exit \(exitCode))")
@@ -73,7 +73,7 @@ struct RemoteRunDispatcher {
         try checkCompatibility(layout: layout)
         log("note: app packages are not transferred — appPath in app profiles must be valid on the remote")
 
-        try transfer(project: project.name, layout: layout)
+        try transfer(project: project, layout: layout)
 
         let stamp = Self.makeStamp()
         let remoteReportDir = layout.dispatchReportDir(stamp: stamp)
@@ -87,8 +87,8 @@ struct RemoteRunDispatcher {
         let exitCode = try runRemoteAndRelay(
             ftesterArgs: ftesterArgs, layout: layout, timeoutSeconds: timeoutSeconds)
 
-        collectReports(project: project.name, remoteReportDir: remoteReportDir)
-        collectArtifactsIfRequested(project: project.name, layout: layout)
+        collectReports(project: project, remoteReportDir: remoteReportDir)
+        collectArtifactsIfRequested(project: project, layout: layout)
         cleanupDispatchDir(layout: layout, stamp: stamp)
 
         log("==> remote run finished (exit \(exitCode))")
@@ -167,11 +167,11 @@ struct RemoteRunDispatcher {
 
     // MARK: - 3. 転送
 
-    private func transfer(project: String, layout: RemoteLayout) throws {
-        log("==> transferring Projects/\(project) to \(host.sshTarget)")
+    private func transfer(project: TestProject, layout: RemoteLayout) throws {
+        log("==> transferring \(project.name) to \(host.sshTarget)")
         let args = ["rsync"] + RemoteTransferPlan.rsyncArgs(
-            project: project,
-            localProjectsDir: localRepoRoot.appendingPathComponent("Projects").path,
+            project: project.name,
+            localProjectsDir: project.rootURL.deletingLastPathComponent().path,
             layout: layout, sshTarget: host.sshTarget)
         let status = try runInherited(args)
         guard status == 0 else {
@@ -203,9 +203,9 @@ struct RemoteRunDispatcher {
     /// writeJUnitIfRequested と同じ規律)。ディスパッチ単位の reportDir だけを引く
     /// (--delete は付けない = リモートの reports/ 丸ごとは触らない。同じマシンで走る
     /// ローカル実行のレポート・録画と混ざらない)
-    private func collectReports(project: String, remoteReportDir: String) {
+    private func collectReports(project: TestProject, remoteReportDir: String) {
         log("==> collecting reports")
-        let localReports = localRepoRoot.appendingPathComponent("Projects/\(project)/reports")
+        let localReports = project.reportsDir
         try? FileManager.default.createDirectory(at: localReports, withIntermediateDirectories: true)
         let remoteReports = "\(host.sshTarget):\(remoteReportDir)/"
         let status = (try? runInherited(["rsync", "-az", remoteReports, localReports.path + "/"])) ?? -1
@@ -216,18 +216,18 @@ struct RemoteRunDispatcher {
 
     /// .onDemand: results(録画・run ログ)はリモートに残す(場所だけ知らせる)。.collect: rsync で
     /// 回収する。失敗は warn のみ(run の成否は変えない。collectReports と同じ規律)
-    private func collectArtifactsIfRequested(project: String, layout: RemoteLayout) {
+    private func collectArtifactsIfRequested(project: TestProject, layout: RemoteLayout) {
         guard artifacts == .collect else {
             log("note: recordings and run logs stay on \(host.sshTarget) "
-                + "(\(layout.projectDir(project))/results) — set remote artifacts to \"collect\" to pull them")
+                + "(\(layout.projectDir(project.name))/results) — set remote artifacts to \"collect\" to pull them")
             return
         }
         log("==> collecting recordings and run logs")
-        let localResults = localRepoRoot.appendingPathComponent("Projects/\(project)/results")
+        let localResults = project.rootURL.appendingPathComponent("results")
         try? FileManager.default.createDirectory(at: localResults, withIntermediateDirectories: true)
         let args = ["rsync"] + RemoteArtifactCollection.resultsRsyncArgs(
-            project: project, layout: layout, sshTarget: host.sshTarget,
-            localProjectsDir: localRepoRoot.appendingPathComponent("Projects").path)
+            project: project.name, layout: layout, sshTarget: host.sshTarget,
+            localProjectsDir: project.rootURL.deletingLastPathComponent().path)
         let status = (try? runInherited(args)) ?? -1
         if status != 0 {
             log("warning: failed to collect recordings and run logs from the remote (rsync exited with \(status))")

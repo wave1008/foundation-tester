@@ -120,13 +120,26 @@ final class RemoteDispatchTests: XCTestCase {
 
     func testRemoteLayoutProjectDir() {
         let layout = RemoteLayout(base: "/Users/x/ftester-runner")
-        XCTAssertEqual(layout.projectDir("E2E"), "/Users/x/ftester-runner/work/Projects/E2E")
+        XCTAssertEqual(layout.projectDir("E2E"), "/Users/x/ftester-runner/work/TestProjects/E2E")
     }
 
     func testRemoteLayoutDispatchReportDir() {
         let layout = RemoteLayout(base: "/Users/x/ftester-runner")
         XCTAssertEqual(layout.dispatchReportDir(stamp: "20260801-120000-42"),
                        "/Users/x/ftester-runner/work/.ftester/dispatch/20260801-120000-42/reports")
+    }
+
+    /// 次に改名する人をここで止める: `RemoteLayout.projectsDirName` は
+    /// `ProjectStore.projectsDir` が解決する現行の名前と一致必須(片方だけ変えない)
+    func testProjectsDirNameMatchesProjectStore() throws {
+        let tempRoot = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("ft-remote-dispatch-tests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(
+            at: tempRoot.appendingPathComponent("TestProjects"), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        let resolved = ProjectStore.projectsDir(repoRoot: tempRoot)
+        XCTAssertEqual(resolved.lastPathComponent, RemoteLayout.projectsDirName)
     }
 
     // MARK: - RemoteLayout.resolveBase
@@ -168,7 +181,7 @@ final class RemoteDispatchTests: XCTestCase {
                 "-az", "--delete",
                 "--exclude", "/reports", "--exclude", "/results", "--exclude", "/.ftester",
                 "/local/Projects/E2E/",
-                "user@host:/Users/ci/ftester-runner/work/Projects/E2E/",
+                "user@host:/Users/ci/ftester-runner/work/TestProjects/E2E/",
             ])
     }
 
@@ -209,7 +222,7 @@ final class RemoteDispatchTests: XCTestCase {
                 localProjectsDir: "/local/Projects"),
             [
                 "-az",
-                "user@host:/Users/ci/ftester-runner/work/Projects/E2E/results/",
+                "user@host:/Users/ci/ftester-runner/work/TestProjects/E2E/results/",
                 "/local/Projects/E2E/results/",
             ])
     }
@@ -688,8 +701,8 @@ final class RemoteDispatchTests: XCTestCase {
         let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
         let commands = RemoteCleanPlan.commands(layout: layout, keepDays: 7, dryRun: true)
         XCTAssertTrue(commands[0].contains("'/Users/ci/ftester-runner/work'/.ftester/dispatch"), commands[0])
-        XCTAssertTrue(commands[1].contains("'/Users/ci/ftester-runner/work'/Projects/*/reports"), commands[1])
-        XCTAssertTrue(commands[2].contains("'/Users/ci/ftester-runner/work'/Projects/*/results"), commands[2])
+        XCTAssertTrue(commands[1].contains("'/Users/ci/ftester-runner/work'/TestProjects/*/reports"), commands[1])
+        XCTAssertTrue(commands[2].contains("'/Users/ci/ftester-runner/work'/TestProjects/*/results"), commands[2])
     }
 
     func testCleanPlanQuotesTheWorkDirPortion() {

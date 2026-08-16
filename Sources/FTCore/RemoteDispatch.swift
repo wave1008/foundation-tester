@@ -90,7 +90,7 @@ public enum RemoteCompat {
 
 /// リモートホストに用意する専用ベースディレクトリの配置(docs/remote-runner.md 改訂版)。
 /// `tool/` = TOOL_ROOT(foundation-tester のクローン。ランナー専用) / `work/` = WORK_DIR
-/// (受け手パッケージ。Projects・results・.build)。マシンが既に持つローカルインストール
+/// (受け手パッケージ。TestProjects・results・.build)。マシンが既に持つローカルインストール
 /// (受け手自身の `~/foundation-tester` 等)とは別物にすることで、rsync --delete による
 /// ユーザー資産の消失・SPM ビルドロック競合・results DB 混在を避ける
 public struct RemoteLayout: Equatable, Sendable {
@@ -109,8 +109,13 @@ public struct RemoteLayout: Equatable, Sendable {
     public var workDir: String { base + "/work" }
     public var binary: String { toolRoot + "/.build/debug/ftester" }
 
+    /// `ProjectStore.projectsDir` が解決する現行の名前と一致必須。片方だけ変えない
+    /// (`RemoteDispatchTests.testProjectsDirNameMatchesProjectStore` が固定する)。
+    /// WORK_DIR は install.sh が新規に作るものなので旧名 `Projects/` への後方互換は持たない
+    public static let projectsDirName = "TestProjects"
+
     public func projectDir(_ project: String) -> String {
-        workDir + "/Projects/" + project
+        workDir + "/" + Self.projectsDirName + "/" + project
     }
 
     /// ディスパッチ1回分の隔離先(reports のみ。回収後にリモート側で削除する
@@ -430,7 +435,7 @@ public enum RemoteStatusProbe {
 public enum RemoteCleanPlan {
 
     /// keepDays より古いエントリを消す(dryRun なら列挙するだけの)find コマンド一覧。
-    /// `Projects/*/reports`・`Projects/*/results` はシェルのグロブ展開に任せる(呼び出し側は
+    /// `TestProjects/*/reports`・`TestProjects/*/results` はシェルのグロブ展開に任せる(呼び出し側は
     /// 単一プロジェクトへ絞り込まない)ため、workDir 部分だけ `RemoteShell.quote` し
     /// グロブ部分は非クォートのまま連結する(引用符の直後に続く非クォート文字列は
     /// シェル上で1語に結合される。丸ごとクォートするとグロブが展開されなくなる)
@@ -439,8 +444,8 @@ public enum RemoteCleanPlan {
         let base = RemoteShell.quote(layout.workDir)
         let targets = [
             base + "/.ftester/dispatch",
-            base + "/Projects/*/reports",
-            base + "/Projects/*/results",
+            base + "/\(RemoteLayout.projectsDirName)/*/reports",
+            base + "/\(RemoteLayout.projectsDirName)/*/results",
         ]
         return targets.map { "find \($0) -mindepth 1 -maxdepth 1 -mtime +\(keepDays) \(action)" }
     }
