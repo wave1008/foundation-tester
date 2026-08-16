@@ -920,17 +920,21 @@ struct RunScenarios: AsyncParsableCommand {
         guard let profile else {
             throw ValidationError("--host requires --profile")
         }
+        // 拒否 or 注記の分岐は FTCore.RemoteDispatchFlagPolicy に委譲(欠陥1)。origin が
+        // 自動ディスパッチ(マシンプロファイルの host)なら --skip-build は注記のみで無視する
+        // (リモートは常に自前でビルドする)。他の3つは自動でも意味を持たせられないため拒否のまま
+        let origin = dispatch.origin
         if ports != nil {
-            throw ValidationError("--ports is not supported with --host")
+            try applyFlagPolicy(RemoteDispatchFlagPolicy.rejected(flag: "--ports", origin: origin))
         }
         if reportDir != nil {
-            throw ValidationError("--report-dir is not supported with --host")
+            try applyFlagPolicy(RemoteDispatchFlagPolicy.rejected(flag: "--report-dir", origin: origin))
         }
         if failed {
-            throw ValidationError("--failed is not supported with --host")
+            try applyFlagPolicy(RemoteDispatchFlagPolicy.rejected(flag: "--failed", origin: origin))
         }
         if skipBuild {
-            throw ValidationError("--skip-build is not supported with --host")
+            try applyFlagPolicy(RemoteDispatchFlagPolicy.skipBuild(origin: origin))
         }
 
         let resolved = try resolveRemoteTarget(dispatch, remoteDirOverride: remoteDir)
@@ -949,6 +953,20 @@ struct RunScenarios: AsyncParsableCommand {
             localJUnitPath: junit, remoteTimeoutSeconds: remoteTimeout)
         if exitCode != 0 {
             throw ExitCode(exitCode)
+        }
+    }
+
+    /// RemoteDispatchFlagPolicy.Decision の適用。注記は FileHandle 直書き(print を使わない —
+    /// RemoteRunDispatcher.log と同じ規律。stdout が端末でないと libc の行バッファが効かず
+    /// 出力が遅延・欠落しうる)
+    private func applyFlagPolicy(_ decision: RemoteDispatchFlagPolicy.Decision) throws {
+        switch decision {
+        case .allowed:
+            return
+        case .ignoredWithNote(let note):
+            FileHandle.standardOutput.write(Data((note + "\n").utf8))
+        case .rejected(let message):
+            throw ValidationError(message)
         }
     }
 

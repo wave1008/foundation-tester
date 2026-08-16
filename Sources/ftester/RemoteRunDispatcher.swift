@@ -58,6 +58,7 @@ struct RemoteRunDispatcher {
             remoteJUnitPath: remoteJUnitPath, reportDir: remoteReportDir)
         let timeoutSeconds = RemoteTimeout.seconds(
             explicit: remoteTimeoutSeconds, scenarioCount: scenarios.count)
+        announceTimeout(timeoutSeconds)
         let exitCode = try runRemoteAndRelay(
             ftesterArgs: ftesterArgs, layout: layout, timeoutSeconds: timeoutSeconds)
 
@@ -99,6 +100,7 @@ struct RemoteRunDispatcher {
             defaultTimeout: defaultTimeout, scenarioTimeout: scenarioTimeout, reportDir: remoteReportDir)
         let timeoutSeconds = RemoteTimeout.seconds(
             explicit: remoteTimeoutSeconds, scenarioCount: scenarios.count)
+        announceTimeout(timeoutSeconds)
         let exitCode = try runRemoteAndRelay(
             ftesterArgs: ftesterArgs, layout: layout, timeoutSeconds: timeoutSeconds)
 
@@ -259,11 +261,20 @@ struct RemoteRunDispatcher {
 
     // MARK: - 4. 実行(行単位で中継)
 
+    /// timeoutSeconds が nil(見積り不能。RemoteTimeout.seconds 参照)のときだけ知らせる ——
+    /// 30分の下限で気づかず打ち切られていた欠陥2の裏返しで、今度は「本当に無期限で待つ」ことを
+    /// 黙らせない(欠陥1の skipBuild ignoredWithNote と同じ規律)
+    private func announceTimeout(_ timeoutSeconds: Int?) {
+        guard timeoutSeconds == nil else { return }
+        log("note: no automatic timeout (the scenario count is not known ahead of the run) —"
+            + " waiting indefinitely; pass --remote-timeout to cap it")
+    }
+
     /// ssh の stdout を StreamLineSplitter で行に割り、リモート絶対パスをローカルパスへ
     /// 書き換えて即 stdout へ中継する(cliRun/apiRun 共通。apiRun は中継行=NDJSON そのものなので
     /// 常に本物の stdout へ出す。進行メッセージは log() 経由で別に stderr へ逃がす)
     private func runRemoteAndRelay(ftesterArgs: [String], layout: RemoteLayout,
-                                   timeoutSeconds: Int) throws -> Int32 {
+                                   timeoutSeconds: Int?) throws -> Int32 {
         log("==> running on \(host.sshTarget): ftester \(ftesterArgs.joined(separator: " "))")
         let command = RemoteShell.remoteRunCommand(layout: layout, ftesterArgs: ftesterArgs)
         let status = try runInheritedWithLineRewrite(
@@ -457,9 +468,10 @@ struct RemoteRunDispatcher {
     /// print(stdout) する。stderr は継承のまま。パイプ 64KB 飽和で子がブロックする罠を避けるため
     /// 読み取りは別スレッドで行う。期限超過時は SIGTERM→2秒猶予→SIGKILL(Shell.runRaw の
     /// timeout 経路と同じ規律)。stdin は /dev/null に固定する(`-tt` は TTY として stdin を
-    /// 要求するが、ディスパッチは対話しない)
+    /// 要求するが、ディスパッチは対話しない)。**timeoutSeconds nil = 無期限**
+    /// (`.distantFuture` を渡す。欠陥2: RemoteTimeout.seconds がシナリオ数不明を表す nil)
     private func runInheritedWithLineRewrite(_ argv: [String], layout: RemoteLayout,
-                                             timeoutSeconds: Int) throws -> Int32 {
+                                             timeoutSeconds: Int?) throws -> Int32 {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = argv
@@ -494,7 +506,8 @@ struct RemoteRunDispatcher {
             }
             readDone.signal()
         }
-        if waitExit(.now() + .seconds(timeoutSeconds)) == .timedOut {
+        let deadline = timeoutSeconds.map { DispatchTime.now() + .seconds($0) } ?? .distantFuture
+        if waitExit(deadline) == .timedOut {
             process.terminate()                        // SIGTERM; -tt が SIGHUP をリモートへ伝える(§16.1)
             if waitExit(.now() + 2.0) == .timedOut {   // 猶予後も生存していれば強制終了
                 kill(process.processIdentifier, SIGKILL)
@@ -503,7 +516,7 @@ struct RemoteRunDispatcher {
             readDone.wait()
             if let remaining = splitter.flush() { relayLine(remaining) }
             throw RemoteDispatchError.remoteSetupFailed(
-                "remote run timed out after \(timeoutSeconds)s (the remote process was signalled;"
+                "remote run timed out after \(timeoutSeconds ?? 0)s (the remote process was signalled;"
                 + " run `ftester remote clean <host>` if devices remain busy)")
         }
         readDone.wait()

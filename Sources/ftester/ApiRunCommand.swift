@@ -433,11 +433,16 @@ struct ApiRunCommand: AsyncParsableCommand {
         if dryRun {
             throw ValidationError("--dry-run is not supported with --host")
         }
+        // 拒否 or 注記の分岐は FTCore.RemoteDispatchFlagPolicy に委譲(欠陥1)。VSCode 拡張は
+        // 設定 ftester.buildBeforeRun: false のとき常に --skip-build を送るため、マシンプロファイル
+        // 由来の自動ディスパッチ(origin = .autoDispatch)にそのまま適用すると、利用者が打っていない
+        // フラグを理由に必ず落ちる。自動側は注記のみで無視する(リモートは常に自前でビルドする)
+        let origin = dispatch.origin
         if reportDir != nil {
-            throw ValidationError("--report-dir is not supported with --host")
+            try applyFlagPolicy(RemoteDispatchFlagPolicy.rejected(flag: "--report-dir", origin: origin))
         }
         if skipBuild {
-            throw ValidationError("--skip-build is not supported with --host")
+            try applyFlagPolicy(RemoteDispatchFlagPolicy.skipBuild(origin: origin))
         }
 
         let resolved = try resolveRemoteTarget(dispatch, remoteDirOverride: remoteDir)
@@ -1050,6 +1055,19 @@ struct ApiRunCommand: AsyncParsableCommand {
 
     private func logStderr(_ message: String) {
         FileHandle.standardError.write(Data((message + "\n").utf8))
+    }
+
+    /// RemoteDispatchFlagPolicy.Decision の適用。stdout は NDJSON 専用の契約なので注記も stderr へ
+    /// (dispatchToRemoteHost の announce と同じ規律)
+    private func applyFlagPolicy(_ decision: RemoteDispatchFlagPolicy.Decision) throws {
+        switch decision {
+        case .allowed:
+            return
+        case .ignoredWithNote(let note):
+            logStderr(note)
+        case .rejected(let message):
+            throw ValidationError(message)
+        }
     }
 }
 

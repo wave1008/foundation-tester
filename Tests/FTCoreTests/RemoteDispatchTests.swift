@@ -499,9 +499,17 @@ final class RemoteDispatchTests: XCTestCase {
         XCTAssertEqual(RemoteTimeout.seconds(explicit: -5, scenarioCount: 5), 1800)
     }
 
-    func testRemoteTimeoutAutoZeroScenariosFallsBackToMinimum() {
-        // overhead(900) 単独では minimum(1800) を下回るため下限が効く
-        XCTAssertEqual(RemoteTimeout.seconds(explicit: nil, scenarioCount: 0), 1800)
+    func testRemoteTimeoutAutoZeroScenariosIsUnbounded() {
+        // 欠陥2(2026-08-17): scenarioCount 0 は「0本」ではなく「見積り不能」(プロファイル全体・
+        // --fleet)を意味しうるため、以前のように minimum(1800秒) へ丸めず nil(無期限)を返す。
+        // 見積り不能で30分の下限を機械的に掛けると、正当な長時間 run を SIGKILL していた
+        XCTAssertNil(RemoteTimeout.seconds(explicit: nil, scenarioCount: 0))
+    }
+
+    func testRemoteTimeoutExplicitStillWinsWithZeroScenarios() {
+        // 見積り不能でも明示指定は従来どおり最優先(下限クランプも生きる)
+        XCTAssertEqual(RemoteTimeout.seconds(explicit: 0, scenarioCount: 0), 1800)
+        XCTAssertEqual(RemoteTimeout.seconds(explicit: 60, scenarioCount: 0), 60)
     }
 
     func testRemoteTimeoutAutoOneScenarioStillClampsToMinimum() {
@@ -517,6 +525,59 @@ final class RemoteDispatchTests: XCTestCase {
     func testRemoteTimeoutAutoClampsToMaximum() {
         // 900 + 600*200 = 121_500 > 86_400
         XCTAssertEqual(RemoteTimeout.seconds(explicit: nil, scenarioCount: 200), 86_400)
+    }
+
+    // MARK: - RemoteDispatchFlagPolicy(欠陥1: --host 明示 vs マシンプロファイル自動での併用不可フラグ)
+
+    func testSkipBuildIsRejectedForExplicitHost() {
+        let decision = RemoteDispatchFlagPolicy.skipBuild(origin: .explicitHost)
+        guard case .rejected(let message) = decision else {
+            return XCTFail("expected .rejected, got \(decision)")
+        }
+        XCTAssertEqual(message, "--skip-build is not supported with --host")
+    }
+
+    func testSkipBuildIsIgnoredWithNoteForAutoDispatch() {
+        let decision = RemoteDispatchFlagPolicy.skipBuild(
+            origin: .autoDispatch(machine: "M1Max", host: "runner1"))
+        guard case .ignoredWithNote(let note) = decision else {
+            return XCTFail("expected .ignoredWithNote, got \(decision)")
+        }
+        XCTAssertTrue(note.contains("--skip-build"))
+        XCTAssertFalse(note.isEmpty)
+    }
+
+    func testReportDirIsRejectedForExplicitHostWithExistingMessage() {
+        let decision = RemoteDispatchFlagPolicy.rejected(flag: "--report-dir", origin: .explicitHost)
+        guard case .rejected(let message) = decision else {
+            return XCTFail("expected .rejected, got \(decision)")
+        }
+        XCTAssertEqual(message, "--report-dir is not supported with --host")
+    }
+
+    func testReportDirIsRejectedForAutoDispatchWithMachineAndHostInMessage() {
+        // 欠陥1: 拒否理由が「--host と併用できない」のままだと、打ってもいない --host を疑うことになる。
+        // マシン名・host 名を含む理由に変える
+        let decision = RemoteDispatchFlagPolicy.rejected(
+            flag: "--failed", origin: .autoDispatch(machine: "M1Max", host: "runner1"))
+        guard case .rejected(let message) = decision else {
+            return XCTFail("expected .rejected, got \(decision)")
+        }
+        XCTAssertTrue(message.contains("--failed"))
+        XCTAssertTrue(message.contains("M1Max"))
+        XCTAssertTrue(message.contains("runner1"))
+        XCTAssertFalse(message.contains("is not supported with --host"),
+                       "自動ディスパッチでは --host を打っていないので、この文言を出さない")
+    }
+
+    func testPortsIsRejectedForBothOrigins() {
+        guard case .rejected = RemoteDispatchFlagPolicy.rejected(flag: "--ports", origin: .explicitHost) else {
+            return XCTFail("expected .rejected for explicitHost")
+        }
+        guard case .rejected = RemoteDispatchFlagPolicy.rejected(
+            flag: "--ports", origin: .autoDispatch(machine: "M1Max", host: "runner1")) else {
+            return XCTFail("expected .rejected for autoDispatch")
+        }
     }
 
     // MARK: - RemoteProbe.parseSessionInfo

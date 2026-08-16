@@ -485,10 +485,17 @@ enum RemoteHostResolver {
 /// 実効ディスパッチ先。`rawHost` の由来で登録簿引きの規則が変わる(下記 resolveRemoteTarget)
 struct EffectiveHostDispatch {
     let rawHost: String
-    /// true = マシンプロファイル由来(`--host` 未指定)。登録簿の名前のみ受け付ける
-    /// (生の ssh 宛先は書けない = MachineProfile.host の契約)。false = `--host` 由来で、
-    /// 既存どおり未登録名も生の ssh 宛先として扱う
+    /// true = マシンプロファイル由来(`--host` 未指定/"local"以外の理由で自動採用)。登録簿の
+    /// 名前のみ受け付ける(生の ssh 宛先は書けない = MachineProfile.host の契約)。false =
+    /// `--host` 由来で、既存どおり未登録名も生の ssh 宛先として扱う
     let requiresRegisteredName: Bool
+    /// 自動ディスパッチ(requiresRegisteredName == true)のときのマシン名。RemoteDispatchFlagPolicy の
+    /// 拒否理由文言だけに使う(欠陥1)。明示 `--host` 由来なら常に nil
+    let autoDispatchMachineName: String?
+
+    var origin: RemoteDispatchOrigin {
+        autoDispatchMachineName.map { .autoDispatch(machine: $0, host: rawHost) } ?? .explicitHost
+    }
 }
 
 /// `--host` とマシンプロファイルの `host` を突き合わせ、実効ディスパッチ先を決める
@@ -503,34 +510,46 @@ struct EffectiveHostDispatch {
 /// - `requireMachineHost: false` かつ `--host` 未指定なら常に nil(呼び出し側が dry-run 等で
 ///   マシン側 host を見ない選択をしたとき用)
 ///
-/// **判定は正規化した値で行う**(`MachineHostDispatch.normalize`)——`--host local`/空文字は
-/// 「明示指定なし」と同じに扱う(host フィールドの "local" と同じ規則)。素の `explicitHost != nil`
-/// で分岐すると `--host local` だけが「明示あり」の扱いになり、マシン側 host が別のリモートを
-/// 指していても静かに無視される(食い違い警告も出ない)
+/// **`MachineHostDispatch.normalize` は "local"/空文字/未指定を同じ nil に畳むが、"local" だけは
+/// 明示のローカル指定として resolve() 側で別扱いする**(欠陥3。この関数はここでは判定せず、
+/// 生の explicitHost をそのまま `MachineHostDispatch.resolve` へ渡して委ねる)。machineHost の
+/// 読み取り自体は「未指定」と同じ経路で行ってよい —— 読めても resolve() が "local" を優先するので
+/// 安全側に倒れる
 func resolveEffectiveHostDispatch(
     explicitHost: String?, profile: String?, project: String?,
     requireMachineHost: Bool, warn: (String) -> Void
 ) throws -> EffectiveHostDispatch? {
     let explicitNormalized = MachineHostDispatch.normalize(explicitHost)
     var machineHost: String?
+    var machineName: String?
     if let profile {
         if explicitNormalized != nil {
-            machineHost = try? machineProfileHost(profile: profile, project: project)
+            let resolved = try? machineProfileHostAndName(profile: profile, project: project)
+            machineHost = resolved?.host
+            machineName = resolved?.name
         } else if requireMachineHost {
-            machineHost = try machineProfileHost(profile: profile, project: project)
+            let resolved = try machineProfileHostAndName(profile: profile, project: project)
+            machineHost = resolved.host
+            machineName = resolved.name
         }
     }
     let decision = MachineHostDispatch.resolve(explicitHost: explicitHost, machineHost: machineHost)
     if let warning = decision.mismatchWarning { warn(warning) }
     guard let rawHost = decision.host else { return nil }
-    return EffectiveHostDispatch(rawHost: rawHost, requiresRegisteredName: explicitNormalized == nil)
+    let requiresRegisteredName = explicitNormalized == nil
+    return EffectiveHostDispatch(
+        rawHost: rawHost, requiresRegisteredName: requiresRegisteredName,
+        autoDispatchMachineName: requiresRegisteredName ? machineName : nil)
 }
 
-private func machineProfileHost(profile: String, project: String?) throws -> String? {
+private func machineProfileHostAndName(
+    profile: String, project: String?
+) throws -> (host: String?, name: String) {
     let testProject = try ScenarioHost.project(named: project)
     let machine = try ProfileResolver.determineMachine(
         project: testProject, registered: LocalConfig.currentMachineName(), runProfileName: profile)
-    return try ProfileResolver.machineHost(project: testProject, machineName: machine.name)
+    let host = try ProfileResolver.machineHost(project: testProject, machineName: machine.name)
+    return (host, machine.name)
 }
 
 /// `EffectiveHostDispatch` → `ResolvedRemoteHost`。マシンプロファイル由来

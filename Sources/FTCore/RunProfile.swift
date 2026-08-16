@@ -204,9 +204,22 @@ public enum MachineHostDispatch {
     }
 
     /// **`--host` が常に勝つ**。マシン側 host が別のリモートを指していれば `mismatchWarning` を
-    /// 返す(黙って上書きしない)。`--host` が無ければマシン側の値をそのまま自動採用する
+    /// 返す(黙って上書きしない)。`--host` が無ければマシン側の値をそのまま自動採用する。
+    ///
+    /// **明示 `--host local` は「ここで走らせる」の指定であって「未指定」ではない**(欠陥3・
+    /// 2026-08-17)。`normalize` は "local" を nil に畳むため、素の `normalize(explicitHost)` だけで
+    /// 分岐すると "local" が「--host 未指定」と区別できず、マシン側の host へ自動ディスパッチして
+    /// しまう(`FleetRunner` の "local" エントリが実際にはリモートへ飛ぶ実害があった)。ここでだけ
+    /// 生の explicitHost を見て先に判定する。マシン側が別のリモートを指していれば、通常の食い違いと
+    /// 同じ規律で mismatchWarning を返す(黙って上書きしない)
     public static func resolve(explicitHost: String?, machineHost: String?) -> Decision {
         let machine = normalize(machineHost)
+        if isExplicitLocal(explicitHost) {
+            guard let machine else { return Decision(host: nil) }
+            return Decision(host: nil, mismatchWarning:
+                "--host local overrides the machine profile's host \"\(machine)\""
+                + " (the run stays local)")
+        }
         guard let explicit = normalize(explicitHost) else {
             return Decision(host: machine)
         }
@@ -216,6 +229,13 @@ public enum MachineHostDispatch {
         return Decision(host: explicit, mismatchWarning:
             "--host \(explicit) overrides the machine profile's host \"\(machine)\""
             + " (they differ; the run continues on \(explicit))")
+    }
+
+    /// 生の(trim 前の) explicitHost が文字どおり "local" か。normalize 後の nil とは区別する
+    /// 必要があるためこちらは公開しない(呼び出し側は resolve() 経由でだけ知ればよい)
+    private static func isExplicitLocal(_ raw: String?) -> Bool {
+        guard let raw else { return false }
+        return raw.trimmingCharacters(in: .whitespacesAndNewlines) == "local"
     }
 }
 

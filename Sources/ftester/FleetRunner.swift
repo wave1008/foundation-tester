@@ -335,12 +335,20 @@ enum FleetRunner {
         quiet: Bool, junitPath: String?
     ) -> [String] {
         var args = ["run", "--project", project, "--profile", entry.profile]
+        // "local" エントリも常に --host を渡す(欠陥3・2026-08-17)。子プロセスは自分自身が
+        // MachineHostDispatch を再適用するため、--host を省略すると「未指定」と区別が付かず、
+        // entry.profile が引くマシンプロファイルに host が設定されていると子がそこへ自動
+        // ディスパッチしてしまい、{"host":"local"} と書いた意味が失われる(重複ホスト拒否も
+        // 無意味になる)。"local" を明示すれば MachineHostDispatch.resolve がそこで止める
+        // (RunProfile.swift 参照)。--force-lock 等のリモート専用フラグは引き続きリモートのみ
         if entry.host != "local" {
             args += ["--host", entry.host]
             if forceLock { args += ["--force-lock"] }
             if let remoteDir { args += ["--remote-dir", remoteDir] }
             if let remoteTimeout { args += ["--remote-timeout", String(remoteTimeout)] }
             if remoteArtifacts != "collect" { args += ["--remote-artifacts", remoteArtifacts] }
+        } else {
+            args += ["--host", "local"]
         }
         if !scenarios.isEmpty { args += ["--scenario"] + scenarios }
         if !folders.isEmpty { args += ["--folder"] + folders }

@@ -252,6 +252,54 @@ public enum RemoteDispatchGate {
     }
 }
 
+/// `--host` が明示指定か、実行プロファイルのマシン `host` 経由の自動ディスパッチかを表す
+/// (欠陥1・2026-08-17)。ローカル専用フラグとの併用可否・拒否理由の文言はこれで分岐する
+/// (RemoteDispatchFlagPolicy 参照)。machine/host は自動ディスパッチのときの文言合成専用
+public enum RemoteDispatchOrigin: Equatable, Sendable {
+    case explicitHost
+    case autoDispatch(machine: String, host: String)
+}
+
+/// `--host`(明示または自動)と併用できないローカル専用フラグの扱い。origin で「拒否」と
+/// 「注記して無視」を分ける純粋ロジック(呼び出し側の if に判定を散らさない)
+public enum RemoteDispatchFlagPolicy {
+    public enum Decision: Equatable {
+        case allowed
+        /// 実行は続けるが、フラグが効かなかったことを1行伝える(黙って無視しない)
+        case ignoredWithNote(String)
+        case rejected(String)
+    }
+
+    /// `--skip-build`: リモートは常に自前でビルドするため、ローカルのビルド抑止指定はそもそも
+    /// 意味を持たない。**自動ディスパッチでは黙って無視する**(拡張の `buildBeforeRun: false` は
+    /// 常に `--skip-build` を送るため、host を持つマシンで実行すると利用者が打っていないフラグを
+    /// 理由に必ず落ちていた)。`--host` 明示は従来どおり拒否のまま(利用者が意識して付けたフラグ
+    /// なので、効かないことを黙認せず気づかせる)
+    public static func skipBuild(origin: RemoteDispatchOrigin) -> Decision {
+        switch origin {
+        case .explicitHost:
+            return .rejected("--skip-build is not supported with --host")
+        case .autoDispatch:
+            return .ignoredWithNote(
+                "note: --skip-build is ignored (the remote always builds itself before running)")
+        }
+    }
+
+    /// `--report-dir` / `--failed` / `--ports`: どちらの origin でも拒否する(意味を持たせられない
+    /// のは skipBuild と違い自動側でも変わらない)。文言だけ origin で変える —— 自動ディスパッチの
+    /// 拒否理由を「--host と併用できない」のままにすると、利用者は打ってもいない `--host` を
+    /// 疑うことになる
+    public static func rejected(flag: String, origin: RemoteDispatchOrigin) -> Decision {
+        switch origin {
+        case .explicitHost:
+            return .rejected("\(flag) is not supported with --host")
+        case .autoDispatch(let machine, let host):
+            return .rejected("\(flag) cannot be used: this profile automatically dispatches to"
+                + " machine \"\(machine)\"'s host \"\(host)\" — pass --host local to run it here instead")
+        }
+    }
+}
+
 public enum RemoteRunArgs {
 
     /// リモートで実行する `ftester run` の引数列("ftester" 自体は含まない)。reportDir は
@@ -313,16 +361,24 @@ public enum RemoteRunArgs {
 
 public enum RemoteTimeout {
 
-    /// 明示指定 > 自動算出。自動算出は「1シナリオあたりの上限 × シナリオ数 + 固定オーバーヘッド」で
-    /// minimum..maximum にクランプする(遅いデバイス起動・LPT 待ちを1シナリオ600秒/固定900秒で
-    /// 見込む。根拠は docs/remote-runner.md §16.2)。scenarioCount 0(全件指定なし)は自動算出が
-    /// overhead 分しか積まないため実質 minimum が効く
+    /// 明示指定 > 自動算出 > **無期限**。自動算出は「1シナリオあたりの上限 × シナリオ数 +
+    /// 固定オーバーヘッド」で minimum..maximum にクランプする(遅いデバイス起動・LPT 待ちを
+    /// 1シナリオ600秒/固定900秒で見込む。根拠は docs/remote-runner.md §16.2)。
+    ///
+    /// **戻り値 nil = タイムアウトを掛けない**(欠陥2・2026-08-17)。`scenarioCount` は呼び出し側の
+    /// 明示 `--scenario` の個数で、プロファイル全体や `--fleet` では実行本数を実行前に知らない
+    /// ため 0 になる。以前は 0 を「見積り不能」ではなく「overhead だけの極小値」として扱い
+    /// minimum(1800秒)へ丸めていたため、30分を超える正当な run が SIGKILL されていた。
+    /// タイムアウトは「無限に待たない」ための安全弁であって、正当な実行を打ち切る装置ではない
+    /// —— 見積りが立たないときは安全弁を掛けない方が実害が小さい。呼び手が上限を望むなら
+    /// `--remote-timeout` で明示すればよい(explicit は従来どおり必ず勝つ)
     public static func seconds(explicit: Int?, scenarioCount: Int, perScenario: Int = 600,
-                               overhead: Int = 900, minimum: Int = 1800, maximum: Int = 86_400) -> Int {
+                               overhead: Int = 900, minimum: Int = 1800, maximum: Int = 86_400) -> Int? {
         if let explicit {
             return explicit < 1 ? minimum : explicit
         }
-        let auto = overhead + perScenario * max(scenarioCount, 0)
+        guard scenarioCount > 0 else { return nil }
+        let auto = overhead + perScenario * scenarioCount
         return min(max(auto, minimum), maximum)
     }
 }

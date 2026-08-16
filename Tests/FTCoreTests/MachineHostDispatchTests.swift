@@ -78,19 +78,30 @@ final class MachineHostDispatchTests: XCTestCase {
         XCTAssertTrue(warning.contains("machineHost"))
     }
 
-    func testResolveExplicitLocalDefersToMachineHost() {
-        // "--host local" は「明示指定なし」と同じ規則(normalize)なので、マシン側の指定が採用される。
-        // 素の explicitHost != nil で分岐すると、この組み合わせだけ食い違い検出をすり抜けて
-        // 黙って無視される(実装コメント参照)
+    func testResolveExplicitLocalOverridesMachineHostAndWarns() {
+        // 欠陥3(2026-08-17): "--host local" は「ここで走らせる」の明示指定であり、
+        // 「未指定」ではない。マシン側が別のリモートを指していても黙って上書きせず、
+        // 通常の食い違いと同じ規律で warn したうえでローカルに留まる
+        // (以前は normalize の畳み込みだけで判定しており、この組み合わせだけ
+        // マシン側の host へ自動ディスパッチしてしまっていた)
         let decision = MachineHostDispatch.resolve(explicitHost: "local", machineHost: "runner1")
-        XCTAssertEqual(decision.host, "runner1")
-        XCTAssertNil(decision.mismatchWarning)
+        XCTAssertNil(decision.host, "--host local は常にローカルに留まる")
+        guard let warning = decision.mismatchWarning else {
+            return XCTFail("expected a mismatch warning when --host local overrides the machine host")
+        }
+        XCTAssertTrue(warning.contains("runner1"))
     }
 
     func testResolveExplicitLocalAndNoMachineHostStaysLocal() {
         let decision = MachineHostDispatch.resolve(explicitHost: "local", machineHost: nil)
         XCTAssertNil(decision.host)
-        XCTAssertNil(decision.mismatchWarning)
+        XCTAssertNil(decision.mismatchWarning, "食い違いが無ければ注記しない")
+    }
+
+    func testResolveExplicitLocalWithWhitespaceStillCountsAsLocal() {
+        let decision = MachineHostDispatch.resolve(explicitHost: "  local  ", machineHost: "runner1")
+        XCTAssertNil(decision.host, "前後空白は trim してから比較する")
+        XCTAssertNotNil(decision.mismatchWarning)
     }
 }
 
