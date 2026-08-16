@@ -711,11 +711,40 @@ struct RunScenarios: AsyncParsableCommand {
           help: "Performance-testing mode (--profile only): if a dead lane cannot be revived before the run starts, fail instead of dropping it and continuing on the remaining lanes. iOS lanes are built before the run starts (no late join) so a missing one is reported before the run, not in the middle of it")
     var performanceMode = false
 
+    @Option(help: ArgumentHelp("Dispatch this run across a fleet of hosts in parallel: "
+        + "profiles/fleets/<name>.json (docs/remote-runner.md §13). Each entry runs as its own "
+        + "child process, with output lines prefixed by the entry's host name. Mutually exclusive "
+        + "with --host/--profile/--ports/--failed/--report-dir/--skip-build/--junit. Experimental"))
+    var fleet: String?
+
+    @Flag(name: .customLong("force-lock"),
+          help: ArgumentHelp("Steal a remote host's dispatch.lock instead of failing fast when another dispatch "
+            + "already holds it (docs/remote-runner.md §5). Only meaningful with --host or --fleet"))
+    var forceLock = false
+
     @OptionGroup var driverOptions: DriverOptions
 
     func validate() throws {
         if heal && noHeal {
             throw ValidationError("--heal and --no-heal cannot be used together")
+        }
+        if fleet != nil {
+            if host != nil { throw ValidationError("--fleet cannot be combined with --host") }
+            if profile != nil {
+                throw ValidationError(
+                    "--fleet cannot be combined with --profile (set profile per entry in the fleet file)")
+            }
+            if ports != nil { throw ValidationError("--fleet cannot be combined with --ports") }
+            if failed { throw ValidationError("--fleet cannot be combined with --failed") }
+            if reportDir != nil { throw ValidationError("--fleet cannot be combined with --report-dir") }
+            if skipBuild { throw ValidationError("--fleet cannot be combined with --skip-build") }
+            if junit != nil {
+                throw ValidationError("--fleet cannot be combined with --junit "
+                    + "(each entry writes its own report; there is no merged fleet-wide JUnit yet)")
+            }
+        }
+        if forceLock, host == nil, fleet == nil {
+            throw ValidationError("--force-lock requires --host or --fleet")
         }
     }
 
@@ -730,6 +759,11 @@ struct RunScenarios: AsyncParsableCommand {
         // dry-run だけは送らない —— 理由と罠は RemoteDispatchGate の宣言
         if let host, RemoteDispatchGate.dispatchesRemotely(host: host, dryRun: dryRun) {
             try await dispatchToRemoteHost(host)
+            return
+        }
+        // dry-run だけは送らない(--host と同じ規律。RemoteDispatchGate の宣言参照)
+        if let fleet, !dryRun {
+            try await dispatchToFleet(fleet)
             return
         }
         PhaseLog.mark("start")
@@ -788,6 +822,10 @@ struct RunScenarios: AsyncParsableCommand {
             if host != nil {
                 print("ℹ️ --dry-run touches no device, so --host is not used"
                       + " (the scenarios are validated locally, from the same source the remote would run)")
+            }
+            if fleet != nil {
+                print("ℹ️ --dry-run touches no device, so --fleet is not used"
+                      + " (the scenarios are validated locally, from the same source every fleet entry would run)")
             }
             let failedCount = await runDryRun(items, project: testProject)
             print(failedCount == 0
@@ -889,13 +927,37 @@ struct RunScenarios: AsyncParsableCommand {
         let localRoot = try RepoRoot.find()
         let dispatcher = RemoteRunDispatcher(
             host: resolved.hostSpec, remoteDirRaw: resolved.remoteDirRaw, localRepoRoot: localRoot,
-            artifacts: artifactsMode, expectedMachineName: resolved.machineName)
+            artifacts: artifactsMode, expectedMachineName: resolved.machineName, forceLock: forceLock)
         let exitCode = try await dispatcher.dispatch(
             project: testProject, profile: profile, scenarios: scenarios, folders: folders,
             heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
             fastInput: fastInput, enableAnimations: enableAnimations,
             performanceMode: performanceMode,
             localJUnitPath: junit, remoteTimeoutSeconds: remoteTimeout)
+        if exitCode != 0 {
+            throw ExitCode(exitCode)
+        }
+    }
+
+    /// `--fleet`: profiles/fleets/<name>.json の全エントリを並行実行する(docs/remote-runner.md
+    /// §13)。検証は投入前に全部済ませる(FleetProfile.validate)。実体は FleetRunner
+    /// (エントリごとに子プロセスを起動し、出力を host 名で前置する)
+    private func dispatchToFleet(_ fleetName: String) async throws {
+        let testProject = try ScenarioHost.project(named: project)
+        let doc = try FleetProfile.load(project: testProject, name: fleetName)
+        let registeredNames = Set((LocalConfig.load().remoteHosts ?? []).map(\.name))
+        let issues = FleetProfile.validate(doc, project: testProject, registeredHostNames: registeredNames)
+        guard issues.isEmpty else {
+            throw ValidationError((["fleet \"\(fleetName)\" is invalid:"] + issues.map { "  - \($0)" })
+                .joined(separator: "\n"))
+        }
+        let exitCode = try await FleetRunner.run(
+            project: testProject, fleetName: fleetName, fleet: doc,
+            scenarios: scenarios, folders: folders,
+            heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
+            fastInput: fastInput, enableAnimations: enableAnimations, performanceMode: performanceMode,
+            forceLock: forceLock, remoteDir: remoteDir, remoteTimeout: remoteTimeout,
+            remoteArtifacts: remoteArtifacts, quiet: quiet)
         if exitCode != 0 {
             throw ExitCode(exitCode)
         }

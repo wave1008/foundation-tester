@@ -1,0 +1,6 @@
+{
+  "runs": [
+    { "host": "M1Ultra", "profile": "ios-m1ultra" },
+    { "host": "M1Max", "profile": "ios-m1max" }
+  ]
+}

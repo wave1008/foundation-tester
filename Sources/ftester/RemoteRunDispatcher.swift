@@ -1,6 +1,8 @@
 // RemoteRunDispatcher.swift
 // `ftester run --host` のプロセス起動(ssh/rsync)を集約する。純粋ロジックは
-// Sources/FTCore/RemoteDispatch.swift 側(単体テスト対象)。
+// Sources/FTCore/RemoteDispatch.swift 側(単体テスト対象)。同一ホストへの二重ディスパッチ防止
+// (dispatch.lock の取得・解放。docs/remote-runner.md §5)もここで行う。純粋ロジックは
+// Sources/FTCore/RemoteDispatchLock.swift 側。
 
 import FTCore
 import Foundation
@@ -24,6 +26,9 @@ struct RemoteRunDispatcher {
     /// 登録簿エントリの machine(キャッシュ。docs/remote-runner.md §13)。nil なら
     /// machineName 照合をしない(RemoteCompat.mismatches の既定 fail-open と揃える)
     var expectedMachineName: String? = nil
+    /// `--force-lock`: 既存の dispatch.lock を奪ってから取得する(docs/remote-runner.md §5)。
+    /// 既定では奪わない(stuck なロックを機械的に stale 判定しない)
+    var forceLock: Bool = false
 
     /// 戻り値 = リモート `ftester run` の exit code
     func dispatch(project: TestProject, profile: String,
@@ -35,6 +40,9 @@ struct RemoteRunDispatcher {
         let layout = try resolveLayout()
         try checkCompatibility(layout: layout)
         log("note: app packages are not transferred — appPath in app profiles must be valid on the remote")
+
+        try acquireDispatchLock(layout: layout)
+        defer { releaseDispatchLock(layout: layout) }
 
         try transfer(project: project, layout: layout)
 
@@ -75,6 +83,9 @@ struct RemoteRunDispatcher {
         let layout = try resolveLayout()
         try checkCompatibility(layout: layout)
         log("note: app packages are not transferred — appPath in app profiles must be valid on the remote")
+
+        try acquireDispatchLock(layout: layout)
+        defer { releaseDispatchLock(layout: layout) }
 
         try transfer(project: project, layout: layout)
 
@@ -173,6 +184,45 @@ struct RemoteRunDispatcher {
         let xcodeVersion = try sshCapture("xcodebuild -version")
         let sdkBuild = try sshCapture("xcrun --sdk iphonesimulator --show-sdk-build-version")
         return ToolchainFingerprint.compose(xcodeVersionOutput: xcodeVersion, sdkBuild: sdkBuild)
+    }
+
+    // MARK: - 2. 同一ホストへの二重ディスパッチ防止(docs/remote-runner.md §5)
+
+    /// フリート内の重複は FleetProfile.validate で防げるが、別フリート・別人・CLI/GUI 併走に
+    /// よる同一ホストへの二重実行はここでしか防げない。**単発の `run --host` でも常に取得する**
+    /// (フリート専用の仕組みにしない ―― 競合はフリートかどうかと無関係にホスト単位で起きる)
+    private func acquireDispatchLock(layout: RemoteLayout) throws {
+        log("==> acquiring dispatch lock on \(host.sshTarget)")
+        let info = RemoteDispatchLockInfo.now(
+            issuerHost: ProcessInfo.processInfo.hostName, pid: ProcessInfo.processInfo.processIdentifier)
+        if forceLock {
+            log("warning: --force-lock is stealing the dispatch lock on \(host.sshTarget)"
+                + " (any dispatch it was protecting may still be running)")
+            _ = try sshCapture(RemoteDispatchLock.forceAcquireCommand(base: layout.base, info: info))
+            return
+        }
+        let result = try Shell.run(sshBase + [host.sshTarget, RemoteDispatchLock.acquireCommand(
+            base: layout.base, info: info)])
+        guard result.status == 0 else {
+            guard result.status != 255 else {
+                throw RemoteDispatchError.remoteSetupFailed(
+                    "cannot reach \(host.sshTarget) over ssh (status 255)\n\(result.tail)")
+            }
+            let existing = try? sshCapture(RemoteDispatchLock.readCommand(base: layout.base))
+            let existingInfo = existing.flatMap(RemoteDispatchLock.decode)
+            throw RemoteDispatchError.remoteSetupFailed(RemoteDispatchLock.heldMessage(existingInfo))
+        }
+    }
+
+    /// 成功・失敗・タイムアウト・例外いずれでも defer から呼ばれる。解放の失敗は run の成否を
+    /// 変えない(warn のみ。他の回収処理と同じ規律)が、ロックが残るのは事故なので隠さず言う
+    private func releaseDispatchLock(layout: RemoteLayout) {
+        do {
+            _ = try sshCapture(RemoteDispatchLock.releaseCommand(base: layout.base))
+        } catch {
+            log("warning: failed to release the dispatch lock on \(host.sshTarget)"
+                + " (\(error.localizedDescription)) — clear it manually if the next dispatch is refused")
+        }
     }
 
     // MARK: - 3. 転送
