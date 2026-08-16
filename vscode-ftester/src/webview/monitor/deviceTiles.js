@@ -357,13 +357,24 @@ function renderFrame(entry) {
       icon.className = 'placeholder-icon booting booting-' + entry.device.platform;
     }
     const labelSpan = document.createElement('span');
-    labelSpan.textContent = shuttingDown
-      ? t('wvMonitor.tile.shuttingDown')
-      : waitingUp
-        ? t('wvMonitor.tile.waiting')
-        : offline
-          ? (upRunning ? t('wvMonitor.deviceState.booting') : t('wvMonitor.deviceState.offline'))
-          : t('wvMonitor.tile.connecting');
+    // **リモートのデバイスは状態を観測できない**(モニターの判定は simctl/adb = 手元にしか効かない)。
+    // 起動していても offline のままなので「未起動」と言ってはいけない —— 操作中(起動中/待機中)の
+    // 表示は本物の進捗なのでそのまま出し、静止状態だけ「状態を取得できない」に置き換える
+    const unobservableRemote = !!entry.device.machineHost
+      && !shuttingDown && !waitingUp && !upRunning;
+    if (unobservableRemote) {
+      icon.className = 'placeholder-icon remote';
+      icon.innerHTML = '';
+    }
+    labelSpan.textContent = unobservableRemote
+      ? t('wvMonitor.tile.remoteUnobservable', { host: entry.device.machineHost })
+      : shuttingDown
+        ? t('wvMonitor.tile.shuttingDown')
+        : waitingUp
+          ? t('wvMonitor.tile.waiting')
+          : offline
+            ? (upRunning ? t('wvMonitor.deviceState.booting') : t('wvMonitor.deviceState.offline'))
+            : t('wvMonitor.tile.connecting');
     entry.placeholderEl.append(icon, labelSpan);
     entry.frameWrapEl.appendChild(entry.placeholderEl);
   }

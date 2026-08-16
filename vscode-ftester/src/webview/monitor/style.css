@@ -470,6 +470,16 @@ select:disabled { opacity: 0.5; cursor: default; }
 .placeholder-icon.offline {
   color: var(--vscode-descriptionForeground);
 }
+/* リモート(状態を観測できない)はアイコンを置かない —— 電源アイコンは「止まっている」の意味に
+   読めるが、こちらは「分からない」。文字だけで伝える(deviceTiles.js の unobservableRemote) */
+.placeholder-icon.remote {
+  display: none;
+}
+/* 改行入りの文言(ホスト名 + 補足)をそのまま出す */
+.frame-placeholder span {
+  white-space: pre-line;
+  text-align: center;
+}
 /* 「待機中」の時計アイコン(.waiting)は専用の色を持たず .frame-placeholder の文字色を継承する
    (アイコンと文字を同色にする。ユーザー決定 2026-07-16)。 */
 .placeholder-icon.booting {
