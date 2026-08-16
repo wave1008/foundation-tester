@@ -176,4 +176,12 @@ public enum RemoteSetupPlan {
     public static func uninstallCommand(base: String) -> String {
         "rm -rf \(RemoteShell.quote(base))"
     }
+
+    /// **ランナーは origin から fetch する**ので、手元だけにあるコミットへは合わせられない。
+    /// そのまま撃つと `git checkout` が exit 128 で落ちるだけで理由が読めない(2026-08-16 に
+    /// 実際に踏んだ)。押していないと分かっているなら、ssh を張る前にそう言う
+    public static func unpublishedRevisionMessage(revision: String) -> String {
+        "commit \(revision.prefix(7)) is not on any remote — the runner fetches from origin, "
+            + "so push the branch first (git push), then re-run this command"
+    }
 }

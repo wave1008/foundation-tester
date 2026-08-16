@@ -261,6 +261,11 @@ extension RemoteCommand {
                 say("⚠️ local uncommitted changes will NOT reach the remote (aligning to the last commit, "
                     + "\(localRevision.prefix(7)))")
             }
+            // push 前だと checkout が exit 128 で落ちるだけで理由が読めない。ssh を張る前に落とす
+            if !Self.revisionIsPublished(repoRoot: repoRoot, revision: localRevision) {
+                emit("align", .fail, RemoteSetupPlan.unpublishedRevisionMessage(revision: localRevision))
+                try summarizeAndExit()
+            }
             let alignCmd = RemoteSetupPlan.alignRevisionCommand(layout: layout, revision: localRevision)
             let alignStatus = (try? runInheritedSSH(setupSSHBase + [hostSpec.sshTarget, alignCmd])) ?? -1
             guard alignStatus == 0 else {
@@ -341,6 +346,16 @@ extension RemoteCommand {
                 return (nil, nil, "could not determine $HOME on \(hostSpec.sshTarget)")
             }
             return (nil, firstLine, nil)
+        }
+
+        /// そのコミットがリモート追跡ブランチのどれかに含まれるか(= push 済みか)。
+        /// 判定できないとき(git の失敗)は**published 扱い**にする —— ここで止めるのは
+        /// 「押していないと分かっているとき」だけで、判定不能を理由に足止めしない
+        private static func revisionIsPublished(repoRoot: URL, revision: String) -> Bool {
+            guard let result = try? Shell.run(
+                ["git", "-C", repoRoot.path, "branch", "-r", "--contains", revision]),
+                  result.status == 0 else { return true }
+            return !result.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
 
         /// `--yes` があれば無条件に許可。無ければ TTY からのみ確認を取る(非対話セッションは

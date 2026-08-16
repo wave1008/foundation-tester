@@ -175,11 +175,27 @@ struct RemoteRunDispatcher {
                 .flatMap(RemoteMachineNameProbe.parse)
             : nil
 
-        let reasons = RemoteCompat.mismatches(
+        var reasons = RemoteCompat.mismatches(
             localRevision: localRevision, remoteRevision: remoteRevision,
             localToolchain: localToolchain, remoteToolchain: remoteToolchain,
             localMachineName: expectedMachineName, remoteMachineName: remoteMachineName)
+        // rev 不一致の**いちばん多い原因は「まだ push していない」**。ランナーは origin から
+        // fetch するので、押していないコミットへは remote setup でも合わせられない
+        // (そのままだと checkout が exit 128 で落ちるだけ。2026-08-16 に実際に踏んだ)
+        if reasons.contains(where: { $0.hasPrefix("git revision") }), let localRevision,
+           !revisionIsPublished(revision: localRevision) {
+            reasons.append(RemoteSetupPlan.unpublishedRevisionMessage(revision: localRevision))
+        }
         guard reasons.isEmpty else { throw RemoteDispatchError.incompatible(reasons) }
+    }
+
+    /// そのコミットがリモート追跡ブランチに含まれるか。判定不能なら published 扱い
+    /// (助言を足すかどうかの判断であって、実行を止める判定ではない)
+    private func revisionIsPublished(revision: String) -> Bool {
+        guard let result = try? Shell.run(
+            ["git", "-C", localRepoRoot.path, "branch", "-r", "--contains", revision]),
+              result.status == 0 else { return true }
+        return !result.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private func remoteToolchainFingerprint() throws -> String {
