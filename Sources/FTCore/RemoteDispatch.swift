@@ -196,6 +196,22 @@ public enum RemoteArtifactCollection {
     }
 }
 
+extension RemoteArtifactCollection {
+
+    /// rsync の失敗が「**転送元がそもそも無い**」だけかを判定する。run がシナリオ実行の前に
+    /// 落ちた場合(リモートのビルド失敗など)、reports/results はリモートに1つも作られないので
+    /// 回収は必ず 23 で失敗する —— これを warning にすると、**本当の失敗理由の下に
+    /// 無関係な警告が2行積まれる**(2026-08-16 に実機で確認)。
+    ///
+    /// 判定は exit code だけでは足りない: 23 は「一部が転送できなかった」の総称で、権限や
+    /// 途中切断でも返る。**転送元不在のときだけ黙る**ために stderr の文言まで見る
+    /// (`change_dir "…" failed: No such file or directory`)
+    public static func isMissingSourceFailure(status: Int32, stderr: String) -> Bool {
+        guard status == 23 else { return false }
+        return stderr.contains("No such file or directory")
+    }
+}
+
 public enum RemoteArtifactsMode: String, Sendable, CaseIterable {
     case collect
     case onDemand = "on-demand"

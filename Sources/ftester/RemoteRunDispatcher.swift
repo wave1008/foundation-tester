@@ -208,10 +208,9 @@ struct RemoteRunDispatcher {
         let localReports = project.reportsDir
         try? FileManager.default.createDirectory(at: localReports, withIntermediateDirectories: true)
         let remoteReports = "\(host.sshTarget):\(remoteReportDir)/"
-        let status = (try? runInherited(["rsync", "-az", remoteReports, localReports.path + "/"])) ?? -1
-        if status != 0 {
-            log("warning: failed to collect reports from the remote (rsync exited with \(status))")
-        }
+        collectRsync(["rsync", "-az", remoteReports, localReports.path + "/"],
+                     what: "reports",
+                     missingNote: "note: the remote produced no reports (the run failed before writing any)")
     }
 
     /// .onDemand: results(録画・run ログ)はリモートに残す(場所だけ知らせる)。.collect: rsync で
@@ -228,10 +227,24 @@ struct RemoteRunDispatcher {
         let args = ["rsync"] + RemoteArtifactCollection.resultsRsyncArgs(
             project: project.name, layout: layout, sshTarget: host.sshTarget,
             localProjectsDir: project.rootURL.deletingLastPathComponent().path)
-        let status = (try? runInherited(args)) ?? -1
-        if status != 0 {
-            log("warning: failed to collect recordings and run logs from the remote (rsync exited with \(status))")
+        collectRsync(args, what: "recordings and run logs",
+                     missingNote: "note: the remote produced no recordings or run logs")
+    }
+
+    /// 回収の rsync。**転送元不在(= run が成果物を作る前に落ちた)は警告にしない** ——
+    /// 本当の失敗理由の下にノイズを積まないため(RemoteArtifactCollection.isMissingSourceFailure)。
+    /// stderr を見る必要があるので継承ではなく捕捉する(回収は少量で進行表示が要らない)
+    private func collectRsync(_ args: [String], what: String, missingNote: String) {
+        guard let result = try? Shell.run(args) else {
+            log("warning: failed to collect \(what) from the remote (could not run rsync)")
+            return
         }
+        guard result.status != 0 else { return }
+        if RemoteArtifactCollection.isMissingSourceFailure(status: result.status, stderr: result.tail) {
+            log(missingNote)
+            return
+        }
+        log("warning: failed to collect \(what) from the remote (rsync exited with \(result.status))\n\(result.tail)")
     }
 
     private func collectJUnit(remotePath: String, localPath: String, layout: RemoteLayout) {
@@ -268,7 +281,11 @@ struct RemoteRunDispatcher {
     private func log(_ message: String) {
         switch mode {
         case .cliRun:
-            print(message)
+            // **stdout が端末でないときは行バッファが効かず、進行が最後まで出ない**。
+            // ディスパッチは分単位で無音になり得るので(リモートのビルド)、CI やエージェントが
+            // ログへリダイレクトすると「止まったのか進んでいるのか」を判断できない。
+            // FileHandle は libc のバッファを通さないのでそのまま届く
+            FileHandle.standardOutput.write(Data((message + "\n").utf8))
         case .apiRun:
             FileHandle.standardError.write(Data((message + "\n").utf8))
         }

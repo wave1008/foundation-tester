@@ -13,6 +13,13 @@ import Foundation
 private let setupSSHBase = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10"]
 private let setupSCPBase = ["scp", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10"]
 
+/// 進行の1行出力。**print は使わない** —— stdout が端末でないとき libc の行バッファが効かず、
+/// 分単位かかる install/align の進行が最後まで出ない(ログへリダイレクトすると「止まったのか
+/// 進んでいるのか」が判らない)。RemoteRunDispatcher.log の cliRun 側と同じ規律
+private func say(_ message: String) {
+    FileHandle.standardOutput.write(Data((message + "\n").utf8))
+}
+
 /// ssh/scp をそのまま実行して stdout/stderr を継承する(RemoteRunDispatcher.runInherited と
 /// 同じ規律だが private のため複製する)。preflight/install/align は数分かかり得るため、
 /// 出力をバッファせずその場で流す(受け手側スクリプトの逐次表示をそのまま見せる)
@@ -87,17 +94,17 @@ extension RemoteCommand {
             var recorded: [(name: String, status: RemoteSetupStepStatus, detail: String)] = []
             func emit(_ name: String, _ status: RemoteSetupStepStatus, _ detail: String) {
                 recorded.append((name, status, detail))
-                print(RemoteSetupStepLine.render(name: name, status: status, detail: detail))
+                say(RemoteSetupStepLine.render(name: name, status: status, detail: detail))
             }
             // 常にここへ落とす: 途中で止まった場合も含め、最後に必ず集計を出す
             // (CLAUDE.md「画面は各ステップ1行(逐次)+ 集計だけ」)。ExitCode を投げて終わるので
             // 呼び出し側に return は要らない(Never)
             func summarizeAndExit() throws -> Never {
-                print("")
-                print("──────── remote setup results ────────")
-                print(RemoteSetupSummary(statuses: recorded.map(\.status)).line)
+                say("")
+                say("──────── remote setup results ────────")
+                say(RemoteSetupSummary(statuses: recorded.map(\.status)).line)
                 for step in recorded where step.status == .warn || step.status == .fail {
-                    print(RemoteSetupStepLine.render(name: step.name, status: step.status, detail: step.detail))
+                    say(RemoteSetupStepLine.render(name: step.name, status: step.status, detail: step.detail))
                 }
                 // install.sh と同じ終了コードの語彙(0=完了 / 2=必須は通ったが未完の項目がある /
                 // 1=必須で停止)。**warn を 0 にしない** —— preflight の needs-manual や
@@ -124,7 +131,7 @@ extension RemoteCommand {
                 emit("local", .ok, "project \(localPrerequisites!.project.name)")
             }
 
-            print("==> reach: checking \(hostSpec.sshTarget)...")
+            say("==> reach: checking \(hostSpec.sshTarget)...")
             let (session, home, reachError) = Self.reach(hostSpec: hostSpec)
             guard let home else {
                 emit("reach", .fail, reachError ?? "unreachable")
@@ -156,7 +163,7 @@ extension RemoteCommand {
                     emit("uninstall", .fail, "cancelled (pass --yes to skip the confirmation prompt)")
                     try summarizeAndExit()
                 }
-                print("==> uninstall: deleting \(layout.base) on \(hostSpec.sshTarget)...")
+                say("==> uninstall: deleting \(layout.base) on \(hostSpec.sshTarget)...")
                 let command = RemoteSetupPlan.uninstallCommand(base: layout.base)
                 let status = (try? runInheritedSSH(setupSSHBase + [hostSpec.sshTarget, command])) ?? -1
                 if status == 0 {
@@ -174,7 +181,7 @@ extension RemoteCommand {
 
             // MARK: preflight
 
-            print("==> preflight: copying and running Scripts/preflight.sh --runner on \(hostSpec.sshTarget)...")
+            say("==> preflight: copying and running Scripts/preflight.sh --runner on \(hostSpec.sshTarget)...")
             let localPreflight = repoRoot.appendingPathComponent("Scripts/preflight.sh").path
             let remotePreflight = "/tmp/ftester-remote-setup-\(stamp)-preflight.sh"
             let preflightScpStatus = (try? runInheritedSSH(
@@ -203,7 +210,7 @@ extension RemoteCommand {
 
             // MARK: install
 
-            print("==> install: copying and running Scripts/install.sh on \(hostSpec.sshTarget)"
+            say("==> install: copying and running Scripts/install.sh on \(hostSpec.sshTarget)"
                 + " (first run can take several minutes)...")
             let mkdirStatus = (try? Shell.run(
                 setupSSHBase + [hostSpec.sshTarget, RemoteSetupPlan.ensureWorkDirCommand(layout: layout)]))?.status ?? -1
@@ -230,7 +237,7 @@ extension RemoteCommand {
 
             // MARK: align
 
-            print("==> align: fetching and building the remote clone...")
+            say("==> align: fetching and building the remote clone...")
             guard let localRevision = (try? Shell.run(["git", "-C", repoRoot.path, "rev-parse", "HEAD"]))
                 .map({ $0.output.trimmingCharacters(in: .whitespacesAndNewlines) }), !localRevision.isEmpty else {
                 emit("align", .fail, "could not determine the local git revision")
@@ -244,7 +251,7 @@ extension RemoteCommand {
             }
             if let statusResult = try? Shell.run(["git", "-C", repoRoot.path, "status", "--porcelain"]),
                !statusResult.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                print("⚠️ local uncommitted changes will NOT reach the remote (aligning to the last commit, "
+                say("⚠️ local uncommitted changes will NOT reach the remote (aligning to the last commit, "
                     + "\(localRevision.prefix(7)))")
             }
             let alignCmd = RemoteSetupPlan.alignRevisionCommand(layout: layout, revision: localRevision)
@@ -258,7 +265,7 @@ extension RemoteCommand {
             // MARK: machine
 
             if let machine {
-                print("==> machine: setting the machine name to \"\(machine)\" on \(hostSpec.sshTarget)...")
+                say("==> machine: setting the machine name to \"\(machine)\" on \(hostSpec.sshTarget)...")
                 let cmd = RemoteShell.remoteExecCommand(layout: layout, args: ["machine", "set", machine])
                 let status = (try? runInheritedSSH(setupSSHBase + [hostSpec.sshTarget, cmd])) ?? -1
                 if status == 0 {
@@ -274,7 +281,7 @@ extension RemoteCommand {
 
             if let profile, !skipVerify {
                 let what = scenario.map { "scenario \($0)" } ?? "profile \(profile)"
-                print("==> verify: dispatching \(what) to \(hostSpec.sshTarget) (this is the real success gate)...")
+                say("==> verify: dispatching \(what) to \(hostSpec.sshTarget) (this is the real success gate)...")
                 let dispatcher = RemoteRunDispatcher(host: hostSpec, remoteDirRaw: remoteDir, localRepoRoot: repoRoot)
                 do {
                     let exitCode = try await dispatcher.dispatch(
@@ -330,7 +337,9 @@ extension RemoteCommand {
         private func confirmUninstall(base: String, host: String) -> Bool {
             if yes { return true }
             guard isatty(fileno(stdin)) != 0 else { return false }
-            print("This permanently deletes \(base) on \(host). Type 'yes' to continue: ", terminator: "")
+            // 入力を同じ行で待つので改行を付けない(ここは TTY 限定なのでバッファ懸念は無い)
+            FileHandle.standardOutput.write(
+                Data("This permanently deletes \(base) on \(host). Type 'yes' to continue: ".utf8))
             guard let line = readLine() else { return false }
             return line.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "yes"
         }

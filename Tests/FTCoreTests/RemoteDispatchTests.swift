@@ -749,6 +749,35 @@ final class RemoteDispatchTests: XCTestCase {
 
     // MARK: - RemoteShell.remoteExecCommand
 
+    // MARK: - RemoteArtifactCollection.isMissingSourceFailure
+
+    /// run が成果物を作る前に落ちたときの rsync 失敗(転送元不在)は黙る。**実際の rsync の
+    /// 文言で固定する** —— これを warning にすると、本当の失敗理由の下にノイズが積まれる
+    func testMissingSourceFailureIsDetectedFromRsyncStderr() {
+        let stderr = """
+            rsync: [sender] change_dir "/Users/ci/ftester-runner/work/.ftester/dispatch/20260816-080316-95613/reports" \
+            failed: No such file or directory (2)
+            rsync error: some files/attrs were not transferred (see previous errors) (code 23) at main.c(1338)
+            """
+        XCTAssertTrue(RemoteArtifactCollection.isMissingSourceFailure(status: 23, stderr: stderr))
+    }
+
+    /// 23 は「一部が転送できなかった」の総称。転送元不在**以外**(権限・切断)は警告のままにする
+    func testOtherRsyncFailuresAreNotSilenced() {
+        let stderr = """
+            rsync: [receiver] mkstemp "/local/reports/.a.json.XYZ" failed: Permission denied (13)
+            rsync error: some files/attrs were not transferred (see previous errors) (code 23) at main.c(1338)
+            """
+        XCTAssertFalse(RemoteArtifactCollection.isMissingSourceFailure(status: 23, stderr: stderr))
+    }
+
+    /// 別の exit code は文言が似ていても黙らせない(23 以外は「一部失敗」ではない)
+    func testNonTwentyThreeStatusIsNotSilenced() {
+        XCTAssertFalse(RemoteArtifactCollection.isMissingSourceFailure(
+            status: 12, stderr: "rsync: connection unexpectedly closed: No such file or directory"))
+        XCTAssertFalse(RemoteArtifactCollection.isMissingSourceFailure(status: 0, stderr: ""))
+    }
+
     func testRemoteExecCommand() {
         let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
         let command = RemoteShell.remoteExecCommand(layout: layout, args: ["doctor", "--fm-only"])
