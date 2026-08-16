@@ -323,3 +323,30 @@ final class MonitorDeviceStateTests: XCTestCase {
         XCTAssertEqual(names, ["同名シム [AAAAAAAA]", "同名シム [BBBBBBBB]"])
     }
 }
+
+// MARK: - タイル識別子(ホストを含む)
+
+/// タイル・ストリーミングの識別子は拡張側で Map のキーになる。**同名が別の機械に居るのは通常**
+/// (一意なのは (host, name))なので、ホストを含めないと複数のデバイスが1タイルに潰れる
+/// (2026-08-17 の実害: 12台のプロファイルが6タイルになった)。
+final class MonitorTargetIDTests: XCTestCase {
+
+    func testLocalDeviceKeepsTheHostlessForm() {
+        let target = MonitorTarget(platform: "ios", spec: DeviceSpec(name: "iPhone-01"))
+        XCTAssertEqual(target.id, "ios:iPhone-01")
+    }
+
+    func testRemoteDeviceIncludesTheHost() {
+        let target = MonitorTarget(platform: "ios",
+                                   spec: DeviceSpec(name: "iPhone-01", host: "M1Ultra"))
+        XCTAssertEqual(target.id, "ios:M1Ultra/iPhone-01")
+    }
+
+    func testSameNameOnDifferentHostsGetsDistinctIDs() {
+        let ids = ["local", "M1Max", "M1Ultra"].map { host -> String in
+            MonitorTarget(platform: "android",
+                          spec: DeviceSpec(name: "Pixel-01", host: host)).id
+        }
+        XCTAssertEqual(Set(ids).count, 3, "\(ids)")
+    }
+}

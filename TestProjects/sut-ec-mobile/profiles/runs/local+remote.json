@@ -1,5 +1,5 @@
 {
-  "machine": "M2Ultra",
+  "machine": "local+remote",
   "app": "sut-ec-mobile",
   "devices": [
     {
@@ -11,68 +11,44 @@
       "name": "iPhone 17 Pro(iOS 27.0)-02"
     },
     {
-      "host": "local",
-      "name": "iPhone 17 Pro(iOS 27.0)-03"
+      "host": "M1Max",
+      "name": "iPhone 17 Pro(iOS 27.0)-01"
+    },
+    {
+      "host": "M1Max",
+      "name": "iPhone 17 Pro(iOS 27.0)-02"
+    },
+    {
+      "host": "M1Ultra",
+      "name": "iPhone 17 Pro(iOS 27.0)-01"
+    },
+    {
+      "host": "M1Ultra",
+      "name": "iPhone 17 Pro(iOS 27.0)-02"
     },
     {
       "host": "local",
-      "name": "iPhone 17 Pro(iOS 27.0)-04"
+      "name": "Pixel 10(Android 16(API 36) / arm64-v8a)-01"
     },
     {
       "host": "local",
-      "name": "iPhone 17 Pro(iOS 27.0)-05"
+      "name": "Pixel 10(Android 16(API 36) / arm64-v8a)-02"
     },
     {
-      "host": "local",
-      "name": "iPhone 17 Pro(iOS 27.0)-06"
+      "host": "M1Max",
+      "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-01"
     },
     {
-      "host": "local",
-      "name": "iPhone 17 Pro(iOS 27.0)-07"
+      "host": "M1Max",
+      "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-02"
     },
     {
-      "host": "local",
-      "name": "iPhone 17 Pro(iOS 27.0)-08"
+      "host": "M1Ultra",
+      "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-01"
     },
     {
-      "host": "local",
-      "name": "iPhone 17 Pro(iOS 27.0)-09"
-    },
-    {
-      "host": "local",
-      "name": "iPhone 17 Pro(iOS 27.0)-10"
-    },
-    {
-      "host": "local",
-      "name": "Pixel 9(Android 15)-01"
-    },
-    {
-      "host": "local",
-      "name": "Pixel 9(Android 15)-02"
-    },
-    {
-      "host": "local",
-      "name": "Pixel 9(Android 15)-03"
-    },
-    {
-      "host": "local",
-      "name": "Pixel 9(Android 15)-04"
-    },
-    {
-      "host": "local",
-      "name": "Pixel 9(Android 15)-05"
-    },
-    {
-      "host": "local",
-      "name": "Pixel 9(Android 15)-06"
-    },
-    {
-      "host": "local",
-      "name": "Pixel 9(Android 15)-07"
-    },
-    {
-      "host": "local",
-      "name": "Pixel 9(Android 15)-08"
+      "host": "M1Ultra",
+      "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-02"
     }
   ],
   "containerInference": true,
@@ -85,5 +61,6 @@
   "recoverCpuFallbackToGpu": true,
   "reportDir": "reports",
   "screenIs": true,
-  "wipeDataOnBloat": true
+  "wipeDataOnBloat": true,
+  "updateWebView": true
 }

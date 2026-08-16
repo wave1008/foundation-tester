@@ -80,6 +80,11 @@ export interface MonitorDevice {
    * **1サイクル遅れる**(devices イベントはフレーム取得より前に出る)。欠落・非 bool は false
    * に正規化する(旧 CLI 互換)。ヘッダの Frozen カウンタとタイルのバッジが消費する。 */
   readonly frozen?: boolean;
+  /** このデバイスが居る機械(登録名。手元は undefined)。**`host` はブリッジ宛先の IP で別物**。
+   * モニターは手元のデバイスしか触れないので、リモートのタイルは状態を観測できない ——
+   * タイルにホスト名を出して「どの機械の台か」を分かるようにする
+   * (Sources/ftester/ApiMonitorCommand.swift の ApiMonitorDeviceInfo.machineHost と対)。 */
+  readonly machineHost?: string;
 }
 
 /** `ftester api monitor` の NDJSON 1行分のイベント(kind で判別)。 */
@@ -191,15 +196,23 @@ export function isMonitorEvent(value: unknown): value is MonitorEvent {
 }
 
 /**
- * デバイス一覧をプロファイルタブの表示順(ios→android・各プラットフォーム内は name 順。
- * config.ts の listMachineProfiles と同じ規則 — 変更時は両方揃える)に整列する。
+ * デバイス一覧をプロファイルタブの表示順に整列する:
+ * **手元が先 → ホスト名順 → ios→android → name 順**
+ * (config.ts の listMachineProfiles と同じ規則 — 変更時は両方揃える)。
  * monitorProcessManager.ts が monitorDevices 受信時に適用し、以降の全消費側
  * (デバイスタブのタイル)はこの順で受け取る。
  */
 export function sortMonitorDevices(devices: readonly MonitorDevice[]): MonitorDevice[] {
-  return [...devices].sort((a, b) =>
-    a.platform !== b.platform ? (a.platform === "ios" ? -1 : 1) : a.name.localeCompare(b.name),
-  );
+  return [...devices].sort((a, b) => {
+    const [ha, hb] = [a.machineHost ?? "", b.machineHost ?? ""];
+    if (ha !== hb) {
+      return ha === "" ? -1 : hb === "" ? 1 : ha.localeCompare(hb);  // 手元が先
+    }
+    if (a.platform !== b.platform) {
+      return a.platform === "ios" ? -1 : 1;
+    }
+    return a.name.localeCompare(b.name);
+  });
 }
 
 // ---- 「起動中のデバイス」(動的プロファイル)------------------------------------------------

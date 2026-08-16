@@ -816,7 +816,16 @@ struct MonitorTarget {
     var name: String { spec.name }
     /// VSCode 拡張側の識別子("ios:simulator1" 等。論理名ベースなのでポート・serial の
     /// 再割当をまたいで安定する)
-    var id: String { "\(platform):\(spec.name)" }
+    /// タイル・ストリーミングの識別子。**ホストを含める** —— 同名のデバイスが別の機械に居るのは
+    /// 通常(一意なのは (host, name))で、含めないと拡張側の Map で1つに潰れ、12台の
+    /// プロファイルが6タイルになる(2026-08-17 の実害)。手元のデバイスは従来と同じ形にする
+    /// (単一マシン構成の id を変えない)
+    var id: String {
+        guard let host = MachineHostDispatch.normalize(spec.host) else {
+            return "\(platform):\(spec.name)"
+        }
+        return "\(platform):\(host)/\(spec.name)"
+    }
 }
 
 /// 1 サイクル分のデバイス判定結果。internal: determineStates と一緒に list-devices へ共有
@@ -856,7 +865,9 @@ struct DeviceRuntimeState {
                              inRun: inRun,
                              kind: target.spec.isPhysical ? "physical" : "virtual",
                              host: host, port: iosPort,
-                             recording: recording, registered: target.registered, frozen: frozen)
+                             recording: recording, registered: target.registered,
+                             machineHost: MachineHostDispatch.normalize(target.spec.host),
+                             frozen: frozen)
     }
 }
 
@@ -1060,6 +1071,12 @@ private struct ApiMonitorDeviceInfo: Encodable {
     /// 起動中デバイス(未登録)。追加フィールドのみで後方互換のため ProtocolVersion は不変
     /// (契約は vscode-ftester/src/monitorDeviceModel.ts の MonitorDevice.registered)
     let registered: Bool
+    /// **このデバイスが居る機械**(登録名。手元は nil)。`host` はブリッジ宛先の IP で別物 ——
+    /// 名前が近いので取り違えない。モニターは手元のデバイスしか触れないため、リモートのタイルは
+    /// 状態を観測できない。拡張はこの値でタイルにホスト名を出す
+    /// (契約は vscode-ftester/src/monitorDeviceModel.ts の MonitorDevice.machineHost)。
+    /// 追加フィールドのみで後方互換のため ProtocolVersion は不変
+    let machineHost: String?
     /// 画面が凍結している(一様フレームが2サイクル連続)。**この値は1サイクル遅れる** ——
     /// devices イベントはフレーム取得より前に出るため、判定に使うのは前サイクルの PNG。
     /// スクショを撮らないデバイス(未接続・タイルがストリーミング中で frame 抑止・

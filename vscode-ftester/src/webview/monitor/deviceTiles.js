@@ -159,6 +159,12 @@ function createTile(device) {
   header.className = 'tile-header';
   const name = document.createElement('span');
   name.className = 'tile-name';
+  // 手元でないデバイスのホスト名(マシンプロファイル/実行プロファイルの一覧と同じバッジ)。
+  // **モニターは手元のデバイスしか触れない**ので、リモートのタイルは状態を観測できない ——
+  // 「どの機械の台か」を出さないと、未起動表示の理由が分からない
+  const remoteBadge = document.createElement('span');
+  remoteBadge.className = 'badge badge-remote';
+  remoteBadge.style.display = 'none';
   const kindBadge = document.createElement('span');
   kindBadge.className = 'badge badge-kind';
   kindBadge.textContent = t('wvMonitor.tile.physicalBadge');
@@ -194,8 +200,9 @@ function createTile(device) {
   unregisteredBadge.textContent = t('wvMonitor.tile.unregistered');
   unregisteredBadge.title = t('wvMonitor.tile.unregisteredTitle');
   unregisteredBadge.style.display = 'none';
-  // 実機バッジはデバイス名の左(ピッカー・一覧・編集フォームと同じ並び)
-  header.append(kindBadge, name, unregisteredBadge);
+  // 実機バッジはデバイス名の左(ピッカー・一覧・編集フォームと同じ並び)。
+  // ホスト名バッジは名前の右(マシンプロファイル/実行プロファイルの一覧と同じ並び)
+  header.append(kindBadge, name, remoteBadge, unregisteredBadge);
 
   const frameWrap = document.createElement('div');
   frameWrap.className = 'frame-wrap';
@@ -244,6 +251,7 @@ function createTile(device) {
     frozenBadgeEl: frozenBadge,
     renderBadgeEl: renderBadge,
     kindBadgeEl: kindBadge,
+    remoteBadgeEl: remoteBadge,
     unregisteredBadgeEl: unregisteredBadge,
     frameWrapEl: frameWrap,
     imgEl: img,
@@ -388,6 +396,13 @@ function renderMeta(entry) {
     entry.device.frozen && entry.device.state === 'connected' ? 'inline-block' : 'none';
   // 実機は署名・接続の前提がシミュレータ/エミュレータと違うので取り違えないよう明示する
   entry.kindBadgeEl.style.display = entry.device.kind === 'physical' ? 'inline-block' : 'none';
+  // リモートのデバイスはホスト名を出す(手元は出さない = 既存の見た目のまま)
+  if (entry.device.machineHost) {
+    entry.remoteBadgeEl.textContent = entry.device.machineHost;
+    entry.remoteBadgeEl.style.display = 'inline-block';
+  } else {
+    entry.remoteBadgeEl.style.display = 'none';
+  }
   // マシンプロファイル未記載の合成デバイス(「(起動中のデバイス)」フィルタでのみ現れる)。
   // 起動(up)と GPU 再起動が成立しないことをタイル上でも明示する(停止・ライブ操作は可)
   entry.unregisteredBadgeEl.style.display = entry.device.registered === false ? 'inline-block' : 'none';

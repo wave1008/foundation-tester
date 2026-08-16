@@ -150,3 +150,66 @@ final class RunProfileScopeTests: XCTestCase {
             warnings: &warnings))
     }
 }
+
+// MARK: - デバイス単位の host(混在プロファイル)
+
+extension RunProfileScopeTests {
+
+    /// 参照は (host, name)。**名前だけで絞ると選んでいない台まで混ざる** ——
+    /// モニターに未選択のタイルが並び、devices up が別の機械のぶんまで起こそうとする
+    /// (2026-08-17 の実害)
+    func testKeepsOnlyTheReferencedHostsDevice() throws {
+        let doc: [String: Any] = [
+            "machine": "M2 Ultra",
+            "devices": [["host": "local", "name": "iPhone-01"]],
+        ]
+        try JSONSerialization.data(withJSONObject: doc)
+            .write(to: project.runsDir.appendingPathComponent("scoped.json"))
+
+        let machine = MachineProfile(ios: MachineDeviceList(devices: [
+            DeviceSpec(name: "iPhone-01", host: "local", udid: "LOCAL"),
+            DeviceSpec(name: "iPhone-01", host: "M1Ultra", udid: "REMOTE"),
+        ]))
+        var warnings: [String] = []
+        let result = try filtered(runProfile: "scoped", machine: machine, warnings: &warnings)
+        XCTAssertEqual(result.ios?.devices?.map { $0.udid }, ["LOCAL"])
+        XCTAssertEqual(warnings, [])
+    }
+
+    /// host を書いていない参照が複数ホストに当たったら**触らない**(どちらの機械か決まらない台を
+    /// 起動・監視しない)。run 側は同じ状況で中止する
+    func testAmbiguousReferenceIsSkippedWithAWarning() throws {
+        let doc: [String: Any] = [
+            "machine": "M2 Ultra",
+            "devices": [["name": "iPhone-01"], ["host": "M1Ultra", "name": "iPhone-02"]],
+        ]
+        try JSONSerialization.data(withJSONObject: doc)
+            .write(to: project.runsDir.appendingPathComponent("ambiguous.json"))
+
+        let machine = MachineProfile(ios: MachineDeviceList(devices: [
+            DeviceSpec(name: "iPhone-01", host: "local"),
+            DeviceSpec(name: "iPhone-01", host: "M1Ultra"),
+            DeviceSpec(name: "iPhone-02", host: "M1Ultra"),
+        ]))
+        var warnings: [String] = []
+        let result = try filtered(runProfile: "ambiguous", machine: machine, warnings: &warnings)
+        XCTAssertEqual(result.ios?.devices?.map { $0.name }, ["iPhone-02"])
+        XCTAssertTrue(warnings.contains { $0.contains("ambiguous") }, "\(warnings)")
+    }
+
+    /// 実効ホストは spec.host へ書き戻る(モニターがタイルにホスト名を出せる)
+    func testEffectiveHostIsStampedOntoTheReturnedSpecs() throws {
+        let doc: [String: Any] = [
+            "machine": "M2 Ultra", "devices": [["host": "M1Max", "name": "iPhone-09"]],
+        ]
+        try JSONSerialization.data(withJSONObject: doc)
+            .write(to: project.runsDir.appendingPathComponent("stamped.json"))
+
+        // デバイス側は host を書かず、プロファイル直下の既定から継ぐ形
+        let machine = MachineProfile(host: "M1Max",
+                                     ios: MachineDeviceList(devices: [DeviceSpec(name: "iPhone-09")]))
+        var warnings: [String] = []
+        let result = try filtered(runProfile: "stamped", machine: machine, warnings: &warnings)
+        XCTAssertEqual(result.ios?.devices?.map { $0.host }, ["M1Max"])
+    }
+}
