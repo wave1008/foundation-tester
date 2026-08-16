@@ -558,56 +558,6 @@ export function listMachineProfiles(workspaceRoot: string, project: string): Mac
   });
 }
 
-/**
- * マシンローカル設定($XDG_CONFIG_HOME/ftester/config.json、既定 ~/.config/ftester/config.json。
- * Sources/FTCore/LocalConfig.swift と同じファイル場所・スキーマ)の machineName を読む。
- * 読めない/解析不可/machineName が string でなければ null。
- * (LocalConfig.swift は FT_MACHINE 環境変数を優先するが、この拡張はファイルの状態のみ反映する)。
- */
-export function readLocalMachineName(): string | null {
-  const xdg = process.env.XDG_CONFIG_HOME;
-  const base = xdg && xdg.length > 0 ? xdg : path.join(os.homedir(), ".config");
-  const configPath = path.join(base, "ftester", "config.json");
-  try {
-    const raw = fs.readFileSync(configPath, "utf8");
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null) {
-      return null;
-    }
-    const machineName = (parsed as Record<string, unknown>).machineName;
-    return typeof machineName === "string" ? machineName : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * readLocalMachineName と同じ config.json の machineName を書き換える(マシンプロファイル名変更時、
- * CLI `ftester machine set` が書いた登録名が旧名のままだと解決が壊れるため追随させる)。
- * machineName === oldName のときのみ newName に更新して true を返す(他キーは保持)。
- * 読み取り/解析失敗・オブジェクトでない・不一致なら false(例外は握りつぶす)。
- */
-export function updateLocalMachineName(oldName: string, newName: string): boolean {
-  const xdg = process.env.XDG_CONFIG_HOME;
-  const base = xdg && xdg.length > 0 ? xdg : path.join(os.homedir(), ".config");
-  const configPath = path.join(base, "ftester", "config.json");
-  try {
-    const raw = fs.readFileSync(configPath, "utf8");
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null) {
-      return false;
-    }
-    const record = parsed as Record<string, unknown>;
-    if (record.machineName !== oldName) {
-      return false;
-    }
-    const updated = { ...record, machineName: newName };
-    fs.writeFileSync(configPath, `${JSON.stringify(updated, null, 2)}\n`, "utf8");
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 export type ProjectResolution =
   | { kind: "resolved"; project: string }

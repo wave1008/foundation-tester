@@ -95,7 +95,7 @@ ssh -o BatchMode=yes <ユーザー>@<ホスト> 'echo ok'   # これが ok を�
 **手元から1コマンド**で済む。ランナー機に ssh して手で入れる必要はない。
 
 ```bash
-ftester remote setup <ユーザー>@<ホスト> --project <プロジェクト名> --machine "<マシン名>"
+ftester remote setup <ユーザー>@<ホスト> --project <プロジェクト名>
 ```
 
 何をするか(冪等。何度実行してもよい):
@@ -107,7 +107,6 @@ ftester remote setup <ユーザー>@<ホスト> --project <プロジェクト名
 | preflight | **手元の `Scripts/preflight.sh` を送って `--runner` で判定**。人手が要る項目が残っていれば、その一覧を出して止まる(直して同じコマンドを再実行) |
 | install | **手元の `Scripts/install.sh` を送って**実行(`~/ftester-runner/work` に受け手パッケージを作る)。初回はコールドビルドで数分 |
 | align | ランナー機のクローンを**手元と同じコミット**へ合わせて `swift build`(下記) |
-| machine | `--machine` を渡したときだけ `ftester machine set` |
 | verify | `--profile`(と任意の `--scenario`)を渡すと**実ディスパッチを1本走らせる**。ここが通って初めてセットアップ成功 |
 
 終了コードは install.sh と同じ語彙: **0 = 完了 / 2 = 必須は通ったが人手の項目が残っている / 1 = 失敗**。
@@ -144,19 +143,19 @@ ssh <ホスト> 'cd ~/ftester-runner/foundation-tester && git fetch origin && gi
 実行プロファイルが参照する**マシンプロファイル**(どのデバイスを使うか)は、次の順で決まる。
 
 1. 実行プロファイルが `machine` を明示していればそれ
-2. 環境変数 `FT_MACHINE`
-3. そのマシンに登録された名前(`ftester machine set`)
-4. マシンプロファイルが1つしかなければそれ
+2. 環境変数 `FT_MACHINE`(その回だけの上書き)
+3. マシンプロファイルが1つしかなければそれ
 
-**マシンプロファイルが1つだけなら何もしなくてよい。** 手元とランナー機でデバイス構成が違う場合は、
-ランナー機に名前を登録し、その名前のマシンプロファイルを**手元で**作る(転送される)。
+複数あって `machine` も書いていなければ、**候補を挙げて止まります**(どれを使うか決められないため)。
+「この Mac の登録名」という概念は廃止しました —— 名前1つに「機械の身元」と「どのデバイス群か」の
+2つの意味が載っており、プロファイルを改名するとこの Mac の身元まで変わっていたためです。
 
-```bash
-# ランナー機の名前を登録する(remote setup に --machine を渡していれば済んでいる)
-ftester remote setup <ホスト> --machine "<マシン名>"
+ランナー機のデバイス構成が手元と違う場合は、そのためのマシンプロファイルを**手元で**作り
+(転送されます)、実行プロファイルの `machine` でそれを指します。
 
-# 手元で(そのマシン名のプロファイルを作り、ランナー機に実在するデバイス名を書く)
-#   TestProjects/<プロジェクト>/profiles/machines/<マシン名>.json
+```
+TestProjects/<プロジェクト>/profiles/machines/<名前>.json   # ランナー機に実在するデバイスを書く
+TestProjects/<プロジェクト>/profiles/runs/<名前>.json       # "machine": "<名前>" で指す
 ```
 
 ### どのホストで走るかは、マシンプロファイルが決める
@@ -212,7 +211,6 @@ ftester run --profile <実行プロファイル>   # --host は要らない。�
 ランナー機の状態は**手元から照会できる**(個別に ssh しなくてよい):
 
 ```bash
-ftester remote exec <ホスト> -- machine show          # 登録名とプロファイルの対応
 ftester remote exec <ホスト> -- api installed-devices # 実在するデバイス
 ftester remote exec <ホスト> -- doctor --fm-only      # FM が使えるか
 ```
@@ -280,13 +278,13 @@ ftester run --host <ユーザー>@<ホスト> --profile <実行プロファイ�
 `~/.config/ftester/config.json`。リポジトリの設定からは触れない):
 
 ```bash
-ftester remote hosts add M1Max --host <ユーザー>@192.168.20.101 --machine "M1Max"
+ftester remote hosts add M1Max --host <ユーザー>@192.168.20.101
 ftester remote hosts                      # 一覧
 ftester run --host M1Max --profile <実行プロファイル>
 ```
 
-`--machine` を登録しておくと、**ディスパッチ前にランナー機の登録名と照合**し、食い違えば止まります
-(別のマシンへ送っていることに気付けます)。
+送り先の同一性は **ssh の宛先(とホスト鍵)** が保証します(以前はランナー機の登録名とも
+照合していましたが、登録名そのものを廃止しました)。
 
 登録簿は**モニターの「設定」タブからも編集できます**(同じファイルを読み書きします)。
 登録した名前は、そのまま**マシンプロファイルの `host`**(ステップ4)とフリート定義に書けます。

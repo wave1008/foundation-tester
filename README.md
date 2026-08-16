@@ -87,13 +87,9 @@ swift build
 # 3. 事前診断(FM 可用性・Xcode・xcodegen・シミュレータ・adb をまとめて確認)
 swift run ftester doctor
 
-# 4. このマシンの名前を登録する(★必須。登録情報は ~/.config/ftester/config.json に
-#    保存されリポジトリには入らないため、クローンごとに必要。未登録だと machines/ が
-#    複数あるとき device-up 等が「マシン名が未登録です」で失敗する)
-swift run ftester machine set "<マシン名>"   # profiles/machines/<マシン名>.json のファイル名と一致させる
-
-# 5. (プロファイル実行や VSCode 拡張を使う場合)このマシン向けのデバイス定義を用意する
-#    profiles/machines/<マシン名>.json に UDID/AVD などの実体を書く(既存例をコピーして編集)
+# 4. (プロファイル実行や VSCode 拡張を使う場合)デバイス定義を用意する
+#    profiles/machines/<名前>.json に UDID/AVD などの実体を書き(既存例をコピーして編集)、
+#    実行プロファイルの "machine" でその名前を指す
 ```
 
 VSCode 拡張(デバイスモニター・ライブ操作・結果ダッシュボードなどの UI)を使う場合は、続けて拡張をビルド・インストールする(Node.js v24 系 / npm v11 系):
@@ -155,7 +151,6 @@ swift run ftester run --profile ios           # 実行プロファイル(ブリ�
 | `init` | 外部パッケージ構成の scaffold(`--platform` で作る run 雛形を絞る)(受け手ディレクトリを ftester テストパッケージ化。スキル入口 `/ftester-setup` の既定経路) |
 | `profile setup` | マシン/アプリ/実行プロファイルを整合させて作成(冪等。`--platform`、`--device-name`、`--simulator`/`--avd`、`--app-id`、`--auto-device` は既存デバイスから自動選定(iOS は iPad を除外)) |
 | `profile list` | 実行プロファイルの一覧と現在マシンでの解決チェック |
-| `machine set / show` | このマシンの名前(マシンプロファイルの選択キー)の登録・確認 |
 | `install <パッケージパス>` | .app / .apk のインストール |
 | `launch / terminate <bundle-id>` | アプリの起動・終了 |
 | `snapshot [--json]` | 画面の要素一覧(圧縮形式)を表示 |
@@ -202,11 +197,11 @@ TestProjects/SampleApp/
 ```
 
 ```bash
-swift run ftester machine set "M2Ultra"                  # このマシンの名前を登録(machines/ の選択キー)
 swift run ftester run --project SampleApp --profile all   # 解決 → ブリッジ供給 → 自動インストール → 並列実行
 ```
 
-- マシン決定: `FT_MACHINE` 環境変数 > 登録名 > machines/ に 1 ファイルならそれを自動採用
+- マシン決定: 実行プロファイルの `machine` > `FT_MACHINE` 環境変数 > machines/ に 1 ファイルならそれ
+  (複数あって `machine` 未指定なら候補を挙げて停止する)
 - マシンプロファイルに `"host": "<登録名>"` を書くと、そのデバイスは**別の Mac 上にある**ものとして
   扱われ、実行プロファイルを選ぶだけでそのマシンへ SSH でディスパッチされる
   (省略 = 手元。導入は [docs/remote-runner-setup.md](docs/remote-runner-setup.md))
@@ -592,8 +587,8 @@ Jenkins の例と flaky の扱いは [docs/ci.md](docs/ci.md)。
   のエラーを修正する。ライブ操作録画(gen-scenario)の生成不良は scenarios/_disabled/ に自動隔離される
 - **プロジェクトが認識されない(手動コピーや git pull 後)** → `ftester project sync` で
   Package.swift のマーカー区間を再生成する(`project list` が未登録を警告する)
-- **マシンプロファイルが見つからない** → `ftester machine show` で登録名と
-  `profiles/machines/` の対応を確認(`machine set "<マシン名>"` で登録)
+- **マシンプロファイルが見つからない** → 実行プロファイルの `"machine"` が
+  `profiles/machines/<名前>.json` と一致しているか確認する
 - **Android の snapshot が遅い** → `ftester bridge status --platform android`・`doctor` で
   ブリッジの導入・起動状況を確認。`ftester bridge up --platform android` で強制再セットアップできる
 - **Android の日本語入力が入らない** → ブリッジが `ACTION_SET_TEXT` で入力するため通常は IME 不要。

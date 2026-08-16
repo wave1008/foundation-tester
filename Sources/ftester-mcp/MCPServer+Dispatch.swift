@@ -143,7 +143,7 @@ extension MCPServer {
         project: TestProject, profileName: String, platformArg: String?, prologue: inout [String]
     ) async throws -> (platform: String, resolved: ResolvedProfile, target: ResolvedDriverTarget) {
         let machine = try ProfileResolver.determineMachine(
-            project: project, registered: LocalConfig.currentMachineName(),
+            project: project,
             runProfileName: profileName)
         let resolved = try ProfileResolver.resolve(
             project: project, runName: profileName, machineName: machine.name)
@@ -2175,8 +2175,9 @@ extension MCPServer {
         guard !projects.isEmpty else {
             return text("No projects (create one with: ftester project create <name>)")
         }
-        let machineName = LocalConfig.currentMachineName() ?? "unregistered"
-        var lines = ["This machine: \(machineName)"]
+        // 「この機械の登録名」は廃止したので出さない(ProfileResolver.determineMachine の宣言)。
+        // 使うマシンプロファイルは実行プロファイルの machine が決めるため、下の一覧で足りる
+        var lines: [String] = []
         for project in projects {
             let runs = ProfileResolver.runProfileNames(project: project)
             let machines = ProfileResolver.machineNames(project: project)

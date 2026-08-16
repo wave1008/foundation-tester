@@ -62,21 +62,17 @@ public enum RemoteCompat {
     /// fail-closed: 片方でも取得できなければ(nil)不一致に含める(古い/未検証の組で
     /// 黙って走らせない。CLAUDE.md「片方だけ変えない」規律をマシン間に広げる)。
     ///
-    /// **machineName だけ既定 fail-open**(localMachineName が nil = 登録簿にキャッシュが
-    /// 無い/生の ssh 宛先。docs/remote-runner.md §13「登録エントリに machine があるときだけ
-    /// 3項目目を足す」)。localMachineName が非 nil のときは他の2項目と同じ fail-closed になる
-    /// (リモート値が取れなければ不一致)
+    /// **照合するのは rev と toolchain の2つだけ**。以前は「送り先が想定の機械か」を
+    /// リモートの登録名で確かめていたが、機械の身元は ssh の宛先(とホスト鍵)が既に
+    /// 保証しており、登録名そのものを 2026-08-17 に廃止した
+    /// (ProfileResolver.determineMachine の宣言)
     public static func mismatches(
         localRevision: String?, remoteRevision: String?,
-        localToolchain: String?, remoteToolchain: String?,
-        localMachineName: String? = nil, remoteMachineName: String? = nil
+        localToolchain: String?, remoteToolchain: String?
     ) -> [String] {
         var reasons: [String] = []
         append(&reasons, label: "git revision", local: localRevision, remote: remoteRevision)
         append(&reasons, label: "toolchain", local: localToolchain, remote: remoteToolchain)
-        if let localMachineName {
-            append(&reasons, label: "machine name", local: localMachineName, remote: remoteMachineName)
-        }
         return reasons
     }
 
@@ -414,33 +410,6 @@ public enum RemoteProbe {
         let trimmed = lines.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
         guard trimmed.allSatisfy({ !$0.isEmpty }) else { return nil }
         return RemoteSessionInfo(home: trimmed[0], consoleUser: trimmed[1], sshUser: trimmed[2])
-    }
-}
-
-/// `<binary> machine show` の1行目からリモートの登録済みマシン名を取り出す(§13 の
-/// machineName 照合。docs/remote-runner.md §13「登録エントリに machine があるときだけ
-/// 3項目目を足す」)。新しい照会コマンドを増やさず、既存の人間向けコマンドの出力を読む
-/// (`ftester machine show` の1行目フォーマットは ProjectCommands.swift の Machine.Show が唯一の発生源)
-public enum RemoteMachineNameProbe {
-    private static let prefix = "Machine name: "
-
-    /// 未登録("Machine name: unregistered (...)")は nil。FT_MACHINE 環境変数由来の注記
-    /// ("<name> (from the FT_MACHINE environment variable)")は名前の一部ではないので削る
-    public static func parse(_ output: String) -> String? {
-        guard let firstLine = output.split(separator: "\n", maxSplits: 1,
-                                           omittingEmptySubsequences: false).first else {
-            return nil
-        }
-        let line = firstLine.trimmingCharacters(in: .whitespaces)
-        guard line.hasPrefix(prefix) else { return nil }
-        var name = String(line.dropFirst(prefix.count))
-        guard !name.hasPrefix("unregistered") else { return nil }
-        let envNote = " (from the FT_MACHINE environment variable)"
-        if let range = name.range(of: envNote) {
-            name.removeSubrange(range)
-        }
-        let trimmed = name.trimmingCharacters(in: .whitespaces)
-        return trimmed.isEmpty ? nil : trimmed
     }
 }
 

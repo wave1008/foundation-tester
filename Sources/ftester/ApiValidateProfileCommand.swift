@@ -45,7 +45,7 @@ struct ApiValidateProfile: AsyncParsableCommand {
         var machineName: String?
         do {
             machineName = try ProfileResolver.determineMachine(
-                project: testProject, registered: LocalConfig.currentMachineName()).name
+                project: testProject).name
         } catch {
             logStderr("⚠️ Cannot determine the machine name (the machine field in the output will be null): "
                 + error.localizedDescription)
@@ -96,7 +96,7 @@ struct ApiValidateProfile: AsyncParsableCommand {
         if kind == .run, errors.isEmpty {
             do {
                 let machine = try ProfileResolver.determineMachine(
-                    project: project, registered: LocalConfig.currentMachineName(),
+                    project: project,
                     runProfileName: fileName)
                 let resolved = try ProfileResolver.resolve(
                     project: project, runName: fileName, machineName: machine.name)

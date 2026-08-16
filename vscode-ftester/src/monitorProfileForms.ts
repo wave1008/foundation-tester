@@ -986,6 +986,7 @@ export function validateNewMachineProfileName(name: string, existing: readonly s
 export function removeDeviceFromMachineProfile(
   profileObject: unknown,
   name: string,
+  host?: string,
 ): { readonly object: Record<string, unknown>; readonly removed: boolean } | null {
   if (typeof profileObject !== "object" || profileObject === null || Array.isArray(profileObject)) {
     return null;
@@ -1008,7 +1009,19 @@ export function removeDeviceFromMachineProfile(
       if (typeof device !== "object" || device === null || Array.isArray(device)) {
         return true; // 型不正の要素はこの操作の対象外として保持する
       }
-      return (device as Record<string, unknown>).name !== name;
+      const record = device as Record<string, unknown>;
+      if (record.name !== name) {
+        return true;
+      }
+      // **ホストを渡されたらそのホストのぶんだけ消す**。名前は (host, name) でしか一意でないので、
+      // 名前だけで消すと別の機械の同名デバイスが巻き添えになる(mixed プロファイルでは同名が普通)
+      if (host === undefined) {
+        return false;
+      }
+      const effective = effectiveDeviceHost(
+        typeof record.host === "string" ? record.host : undefined,
+        typeof source.host === "string" ? source.host : undefined);
+      return (effective ?? "local") !== host;
     });
     if (filtered.length !== devices.length) {
       removed = true;
@@ -1175,15 +1188,21 @@ export function addDevicesToMachineProfile(
   const source = profileObject as Record<string, unknown>;
   const result: Record<string, unknown> = { ...source };
 
-  // ios/android 横断で既存デバイス名を集める(同一バッチ内で確定した名前も随時追加し、
-  // バッチ内衝突も検出する)。
+  // 既存デバイス名を **(host, name)** で集める(ios/android 横断。同一バッチ内で確定した
+  // 名前も随時追加し、バッチ内衝突も検出する)。**別の機械の同名は衝突ではない** ——
+  // 各機が同じ命名規則でシミュレータを作るので同名が普通で、ここを name だけで見ると
+  // リモートを足すたびに " (2)" が付く(2026-08-17 の実害。Sources/FTCore/DeviceHostGrouping.swift)。
+  const profileDefault = typeof source.host === "string" ? source.host : undefined;
+  const nameKey = (host: string | undefined, name: string) =>
+    `${effectiveDeviceHost(host, profileDefault) ?? "local"}\t${name}`;
   const existingNames = new Set<string>();
   for (const platform of ["ios", "android"] as const) {
     const section = source[platform];
     if (isDeviceEntryLike(section) && Array.isArray(section.devices)) {
       for (const device of section.devices) {
         if (isDeviceEntryLike(device) && typeof device.name === "string") {
-          existingNames.add(device.name);
+          existingNames.add(nameKey(
+            typeof device.host === "string" ? device.host : undefined, device.name));
         }
       }
     }
@@ -1195,11 +1214,11 @@ export function addDevicesToMachineProfile(
   for (const entry of entries) {
     let name = entry.name;
     let suffix = 2;
-    while (existingNames.has(name)) {
+    while (existingNames.has(nameKey(entry.host, name))) {
       name = `${entry.name} (${suffix})`;
       suffix += 1;
     }
-    existingNames.add(name);
+    existingNames.add(nameKey(entry.host, name));
     added.push(name);
 
     // **キー順は host → name → その他**(2026-08-17 指示。JSON.stringify は挿入順で出す)。
@@ -1272,7 +1291,8 @@ export function syncDevicesInMachineProfile(
   let current: unknown = profileObject;
   let removedCount = 0;
   for (const name of remove) {
-    const result = removeDeviceFromMachineProfile(current, name);
+    const result = removeDeviceFromMachineProfile(
+      current, name, source?.kind === "remote" ? source.host : (source ? "local" : undefined));
     if (!result) {
       // removeDeviceFromMachineProfile は object 入力に対し常に非null を返すため実際には到達しないが、
       // 型上 null を返しうるための防御(削除しない)。

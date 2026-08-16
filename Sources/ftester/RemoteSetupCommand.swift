@@ -47,7 +47,7 @@ extension RemoteCommand {
         static let configuration = CommandConfiguration(
             commandName: "setup",
             abstract: "Provision a remote Mac to receive --host dispatches (idempotent)",
-            discussion: "Steps: local → reach → preflight → install → align → machine → verify "
+            discussion: "Steps: local → reach → preflight → install → align → verify "
                 + "(docs/remote-runner.md §14). Exit codes match install.sh: "
                 + "0 = done / 2 = stopped with steps left for a human / 1 = failed.")
 
@@ -63,10 +63,6 @@ extension RemoteCommand {
         @Option(help: ArgumentHelp("Project name to install on the remote (default: the local project resolution — "
             + "the only TestProjects/ entry, or LocalConfig.defaultProject)"))
         var project: String?
-
-        @Option(help: ArgumentHelp("Register this name as the remote's machine profile (ftester machine set). "
-            + "Omit to leave the remote's existing registration untouched"))
-        var machine: String?
 
         @Option(help: ArgumentHelp("Run profile for the verification dispatch. Setup is not confirmed working "
             + "until one real dispatch passes (docs/remote-runner.md §14, decision 3)"))
@@ -87,9 +83,9 @@ extension RemoteCommand {
 
         func validate() throws {
             guard uninstall else { return }
-            if project != nil || machine != nil || profile != nil || scenario != nil || skipVerify {
+            if project != nil || profile != nil || scenario != nil || skipVerify {
                 throw ValidationError(
-                    "--uninstall does not use --project/--machine/--profile/--scenario/--skip-verify")
+                    "--uninstall does not use --project/--profile/--scenario/--skip-verify")
             }
         }
 
@@ -274,31 +270,13 @@ extension RemoteCommand {
             }
             emit("align", .ok, "aligned to \(localRevision.prefix(7)) and built")
 
-            // MARK: machine
-
-            if let machine {
-                say("==> machine: setting the machine name to \"\(machine)\" on \(hostSpec.sshTarget)...")
-                let cmd = RemoteShell.remoteExecCommand(layout: layout, args: ["machine", "set", machine])
-                let status = (try? runInheritedSSH(setupSSHBase + [hostSpec.sshTarget, cmd])) ?? -1
-                if status == 0 {
-                    emit("machine", .ok, "set to \"\(machine)\"")
-                } else {
-                    emit("machine", .fail, "machine set exited with status \(status)")
-                }
-            } else {
-                emit("machine", .skip, "no --machine given (the remote's existing registration is left untouched)")
-            }
-
             // MARK: verify
 
             if let profile, !skipVerify {
                 let what = scenario.map { "scenario \($0)" } ?? "profile \(profile)"
                 say("==> verify: dispatching \(what) to \(hostSpec.sshTarget) (this is the real success gate)...")
-                // このコマンドで --machine を明示した場合は registry のキャッシュより優先する
-                // (キャッシュは古いままの可能性があるが、--machine はこの回の確定した意図)
                 let dispatcher = RemoteRunDispatcher(
-                    host: hostSpec, remoteDirRaw: resolved.remoteDirRaw, localRepoRoot: repoRoot,
-                    expectedMachineName: machine ?? resolved.machineName)
+                    host: hostSpec, remoteDirRaw: resolved.remoteDirRaw, localRepoRoot: repoRoot)
                 do {
                     let exitCode = try await dispatcher.dispatch(
                         project: resolvedProject, profile: profile,

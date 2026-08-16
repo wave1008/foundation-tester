@@ -848,7 +848,6 @@ ftester draft-scenario [--project P] [--testbase 資料.md] [--app ...] [--no-fm
                                            # テスト設計資料からシナリオ下書きを生成(§17)
 ftester project create|list|sync          # テストプロジェクトの作成・一覧・Package.swift 再整合(§11)
 ftester profile list                      # 実行プロファイルの一覧と現在マシンでの解決チェック(§11)
-ftester machine set|show                  # このマシンの名前(マシンプロファイルの選択キー)の登録・確認
 ftester install <パッケージパス>           # .app / .apk のインストール
 ftester launch|terminate <bundle-id>      # アプリの起動・終了
 ftester snapshot [--json] | tap | type | swipe | press | screenshot
@@ -3150,7 +3149,8 @@ executableTarget `ftester-scenarios-<name>`(path: `TestProjects/<name>/scenarios
 
 **実行プロファイル** `runs/<name>.json` — アプリ+デバイス名リスト+実行時設定。
 platform フィールドは持たず、**iOS/Android のデバイス名を混在させれば両OS同時実行**になる。
-`machine` は使うマシンプロファイル名の明示指定(未指定なら登録名などから解決)。
+`machine` は使うマシンプロファイル名の明示指定(未指定なら FT_MACHINE、それも無ければ
+machines/ が1つのときだけ自動採用)。
 **`ftester profile setup` は書いたときのマシン名を必ず残す** — 拡張の実行プロファイル編集は
 `machine` が無いと「(未指定)」になりデバイスを選べないため。別マシンへ持ち出すときは
 同名の `machines/<名>.json` を用意するか、この行を消して登録名解決に戻す:
@@ -3243,7 +3243,7 @@ DeviceBooter.defaultLocale(実行プロファイルの locale が届くのは wi
 
 ### 11.3 解決規則(ProfileResolver)
 
-1. **マシン決定**: `FT_MACHINE` 環境変数 > 登録名(`ftester machine set`、
+1. **マシン決定**: 実行プロファイルの `machine` > `FT_MACHINE` 環境変数 > (旧: 登録名。廃止済み、
    `~/.config/ftester/config.json`)> machines/ が 1 ファイルならそれを自動採用 > エラー。
    設定を UserDefaults にしないのは CLI/MCP/VSCode 拡張(内部で `ftester api` を呼ぶ)の
    複数プロセスでドメインを揃えて共有するため
@@ -3300,7 +3300,7 @@ DeviceBooter.defaultLocale(実行プロファイルの locale が届くのは wi
 ### 11.5 インターフェース
 
 - CLI: `ftester run [--project P] [--profile 名] [--scenario ...]`(profile 未指定時は従来どおり
-  手動 --ports/--serial)、`ftester profile list`(解決結果と整合チェック)、`ftester machine set/show`
+  手動 --ports/--serial)、`ftester profile list`(解決結果と整合チェック)
 - **GUI(SwiftUI 版 `ftester-gui`)は 2026-07-10 に削除**。対話的 UI は VSCode 拡張
   (`vscode-ftester/`)に一本化した。プロジェクト/実行プロファイルの選択はコマンドパレット
   (「ftester: プロジェクトを選択」「ftester: 実行プロファイルを選択」、`ftester.project` /

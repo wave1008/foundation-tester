@@ -5,8 +5,9 @@
 
 import Foundation
 
-/// 登録簿の1エントリ。`machine` はキャッシュであり真実ではない
-/// (真実はリモートの `LocalConfig.machineName`。適合チェックは RemoteCompat.mismatches 側)
+/// 登録簿の1エントリ。**論理名 → ssh 実体の対応だけ**を持つ。
+/// 以前はリモートのマシン登録名(machine)をキャッシュしていたが、機械の身元は ssh の宛先が
+/// 保証しており、登録名そのものを 2026-08-17 に廃止した(ProfileResolver.determineMachine)
 public struct RemoteHostEntry: Codable, Equatable, Sendable {
     /// 論理名。登録簿内で一意(RemoteHostRegistry.upsert が同名を置き換える)
     public let name: String
@@ -14,14 +15,11 @@ public struct RemoteHostEntry: Codable, Equatable, Sendable {
     public let host: String
     /// ベースディレクトリ。nil なら CLI 既定("~/ftester-runner")
     public let dir: String?
-    /// 対応する machines プロファイル名(キャッシュ)
-    public let machine: String?
 
-    public init(name: String, host: String, dir: String? = nil, machine: String? = nil) {
+    public init(name: String, host: String, dir: String? = nil) {
         self.name = name
         self.host = host
         self.dir = dir
-        self.machine = machine
     }
 }
 

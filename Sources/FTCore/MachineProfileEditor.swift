@@ -45,14 +45,23 @@ public enum MachineProfileEditor {
     /// platform("ios"/"android")のセクションへ device を追加した新しい辞書を返す。
     /// セクションや devices 配列が無ければ作る。既存の未知キー(トップレベル・セクション内とも)は
     /// 触れずに保持する(このセクション以外/devices 以外のキーには一切書き込まないため)。
-    /// device["name"] が ios/android 横断で既存名と重複していれば
-    /// duplicateDeviceName を throw する(name が String でない/無い場合は重複チェックをスキップする)
+    /// device["name"] が **同じホストの**既存名と重複していれば duplicateDeviceName を throw する
+    /// (name が String でない/無い場合は重複チェックをスキップする)。**別の機械の同名は
+    /// 重複ではない** —— 各機が同じ命名規則でシミュレータを作るので同名が普通
+    /// (一意なのは (host, name)。FTCore.DeviceHostGrouping)
     public static func addingDevice(
         toProfileObject object: [String: Any], platform: String, device: [String: Any]
     ) throws -> [String: Any] {
         if let name = device["name"] as? String {
-            let existingNames = Set(deviceNames(inProfileObject: object))
-            guard !existingNames.contains(name) else {
+            let host = effectiveHost(of: device, in: object)
+            let clash = ["ios", "android"].contains { section in
+                guard let devices = (object[section] as? [String: Any])?["devices"]
+                    as? [[String: Any]] else { return false }
+                return devices.contains {
+                    ($0["name"] as? String) == name && effectiveHost(of: $0, in: object) == host
+                }
+            }
+            guard !clash else {
                 throw MachineProfileEditorError.duplicateDeviceName(name)
             }
         }
@@ -63,6 +72,29 @@ public enum MachineProfileEditor {
         section["devices"] = devices
         object[platform] = section
         return object
+    }
+
+    /// **手元のデバイス名だけ**(実効ホストが nil のもの)。api create-device は手元にしか
+    /// 実体を作らないので、重複判定の相手はこれ(別ホストの同名は重複ではない)
+    public static func localDeviceNames(inProfileObject object: [String: Any]) -> [String] {
+        var names: [String] = []
+        for section in ["ios", "android"] {
+            guard let devices = (object[section] as? [String: Any])?["devices"]
+                as? [[String: Any]] else { continue }
+            for device in devices where effectiveHost(of: device, in: object) == nil {
+                if let name = device["name"] as? String { names.append(name) }
+            }
+        }
+        return names
+    }
+
+    /// デバイスの実効ホスト(デバイス指定 > プロファイル直下の既定 > 手元)。
+    /// 規則は FTCore.DeviceHostGrouping.effectiveHost と同じ(生の辞書版)
+    private static func effectiveHost(of device: [String: Any], in object: [String: Any]) -> String? {
+        DeviceHostGrouping.effectiveHost(
+            device: DeviceSpec(name: (device["name"] as? String) ?? "",
+                               host: device["host"] as? String),
+            machineHost: object["host"] as? String)
     }
 
     /// AVD ID として使える文字([A-Za-z0-9._-])以外を "_" に置換し、連続する "_"

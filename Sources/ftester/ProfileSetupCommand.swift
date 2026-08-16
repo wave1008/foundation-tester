@@ -246,21 +246,13 @@ struct ProfileSetupCommand: AsyncParsableCommand {
         return picked
     }
 
+    /// --machine が指定されていればそれ。無ければ通常の決定規則(実行プロファイルの machine >
+    /// FT_MACHINE > machines/ が1つ)。**「この Mac の登録名」は見ない**(2026-08-17 に廃止。
+    /// 理由は ProfileResolver.determineMachine の宣言)
     private func resolveMachineName(project: TestProject) throws -> String {
         if let machine, !machine.isEmpty {
-            // 未登録なら同時に登録する(別途 ftester machine set を打たせない)
-            if LocalConfig.currentMachineName()?.isEmpty ?? true {
-                var config = LocalConfig.load()
-                config.machineName = machine
-                try config.save()
-                print("   Registered this machine's name: \(machine) (~/.config/ftester/config.json)")
-            }
             return machine
         }
-        // machines/ が空の初回は登録名(ftester machine set)を使う。それも無ければ聞く側の責務
-        if let registered = LocalConfig.currentMachineName(), !registered.isEmpty {
-            return registered
-        }
-        return try ProfileResolver.determineMachine(project: project, registered: nil).name
+        return try ProfileResolver.determineMachine(project: project).name
     }
 }

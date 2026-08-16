@@ -152,7 +152,7 @@ enum MachineProfileLoad {
         let testProject = try ScenarioHost.project(named: project)
         // --profile の machine 明示指定を最優先(ProfileResolver.resolve() と同じ優先順位)
         let machine = try ProfileResolver.determineMachine(
-            project: testProject, registered: LocalConfig.currentMachineName(),
+            project: testProject,
             runProfileName: profile)
         if machine.auto {
             noteAutoMachine("→ Using machine profile \(machine.name) automatically")

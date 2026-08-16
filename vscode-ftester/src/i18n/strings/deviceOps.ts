@@ -91,6 +91,18 @@ export const deviceOpsStrings = {
     en: "This creates \"{name}\" on {host}. Continue?",
   },
   "deviceOps.createRemoteConfirmButton": { ja: "作成", en: "Create" },
+  // 同名の実体があるときの上書き確認。**削除を伴う**ので、消える対象と機械を文中に出す
+  "deviceOps.createOverwriteConfirmMessage": {
+    ja: "{host} の「{name}」は既に存在します。削除して作り直しますか?(元に戻せません)",
+    en: "\"{name}\" already exists on {host}. Delete it and create it again? (cannot be undone)",
+  },
+  "deviceOps.createOverwriteConfirmButton": { ja: "削除して作り直す", en: "Delete and recreate" },
+  "deviceOps.createOverwriteLocalHost": { ja: "このマシン", en: "this machine" },
+  // exit 64 = 引数エラー。リモートで出たら「向こうの ftester が古い」がほぼ唯一の原因
+  "deviceOps.remoteCliTooOld": {
+    ja: "{host} の ftester がこの操作に対応していません(版が古い可能性があります)。{host} で版を揃えてください: ftester remote setup {host} — {detail}",
+    en: "The ftester on {host} does not support this operation (it is probably out of date). Align it with: ftester remote setup {host} — {detail}",
+  },
   "deviceOps.createCancelled": { ja: "作成をキャンセルしました。", en: "Device creation was cancelled." },
   "deviceOps.createAlreadyRunning": {
     ja: "作成処理が既に実行中です。",

@@ -74,7 +74,7 @@ description: ftester のマシンプロファイル・アプリプロファイ�
 ### 4. プロファイルを作る(**1コマンド。JSON は手書きしない**)
 
 マシン/アプリ/実行の3ファイルは `ftester profile setup` が整合させて書く(冪等・再実行可)。
-**デバイスの選定もコマンドに任せる**(`--auto-device`)。`ftester machine show` /
+**デバイスの選定もコマンドに任せる**(`--auto-device`)。
 `ftester api device-catalog` / `simctl list` / `emulator -list-avds` を別々に叩かない
 (承認回数が増えるだけで、選定規則はコマンド側に入っている):
 
@@ -86,7 +86,8 @@ ftester profile setup --project <プロジェクト> --platform <ios|android|bot
 - `--auto-device` の選定規則: **iOS = 最新 OS の既存シミュレータ(iPad は除外・名前に "Pro" を含むものを優先)** /
   **Android = config.ini の API レベルが最大の既存 AVD**。0台なら作成方法を示してエラーになる。
 - `--platform both` で iOS と Android を1回で作る(論理名は simulator1 / emulator1)。
-- `--machine` が未登録なら**同時に登録**する(`ftester machine set` を別途打たない)。
+- `--machine` はマシンプロファイル名(`profiles/machines/<名前>.json`)。作った実行プロファイルには
+  その名前が `"machine"` として書かれる(この Mac の登録名という概念は無い)。
 - 機種/OS をユーザーが指定した場合だけ `--auto-device` を外し、実体を明示する
   (iOS: `--simulator "<機種名>" --os <version>` か `--udid`、Android: `--avd <avdID>` か `--serial`)。
 - 仮想デバイスを**新規作成**する必要があるとき(0台・指定に合うものが無い)は

@@ -410,7 +410,7 @@ private enum ApiDeviceOperation {
         // runProfileName を渡すと determineMachine が実行プロファイルの machine を最優先で解決する。
         // これが無いと machines/ 複数時に「マシン名が未登録」で落ちる(DevicesCommand.Up と同経路)。
         let machine = try ProfileResolver.determineMachine(
-            project: testProject, registered: LocalConfig.currentMachineName(),
+            project: testProject,
             runProfileName: profile)
         if machine.auto {
             logStderr("→ Using machine profile \(machine.name) automatically (it is the only one in machines/)")

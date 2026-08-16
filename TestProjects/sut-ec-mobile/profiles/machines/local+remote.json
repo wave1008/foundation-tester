@@ -76,6 +76,20 @@
         "os": "27.0",
         "simulator": "iPhone 17 Pro(iOS 27.0)-10",
         "udid": "AF99951F-FB48-4D6A-9BB2-BBCE8CFEEC8B"
+      },
+      {
+        "host": "M1Ultra",
+        "name": "iPhone 17 Pro(iOS 27.0)-01",
+        "simulator": "iPhone 17 Pro(iOS 27.0)-01",
+        "os": "27.0",
+        "udid": "E1A517B3-2E0A-45AD-9C32-38AF315F39F7"
+      },
+      {
+        "host": "M1Ultra",
+        "name": "iPhone 17 Pro(iOS 27.0)-02",
+        "simulator": "iPhone 17 Pro(iOS 27.0)-02",
+        "os": "27.0",
+        "udid": "D5D8497F-CCBB-4FD4-A003-792EE592FBE1"
       }
     ]
   },
@@ -126,6 +140,21 @@
         "host": "local",
         "name": "Pixel 9(Android 15)-08",
         "avd": "Pixel_9_Android_15_-08"
+      },
+      {
+        "host": "M1Max",
+        "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-01",
+        "avd": "Pixel_10_Android_14_API_34_arm64-v8a_-01"
+      },
+      {
+        "host": "M1Max",
+        "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-02",
+        "avd": "Pixel_10_Android_14_API_34_arm64-v8a_-02"
+      },
+      {
+        "host": "M1Ultra",
+        "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-01",
+        "avd": "Pixel_10_Android_14_API_34_arm64-v8a_-01"
       }
     ]
   }

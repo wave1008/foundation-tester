@@ -24,8 +24,6 @@ struct RemoteRunDispatcher {
     var mode: RemoteDispatchMode = .cliRun
     var artifacts: RemoteArtifactsMode = .collect
     /// 登録簿エントリの machine(キャッシュ。docs/remote-runner.md §13)。nil なら
-    /// machineName 照合をしない(RemoteCompat.mismatches の既定 fail-open と揃える)
-    var expectedMachineName: String? = nil
     /// `--force-lock`: 既存の dispatch.lock を奪ってから取得する(docs/remote-runner.md §5)。
     /// 既定では奪わない(stuck なロックを機械的に stale 判定しない)
     var forceLock: Bool = false
@@ -170,17 +168,9 @@ struct RemoteRunDispatcher {
         let remoteRevision = try? sshCapture("git -C \(RemoteShell.quote(layout.toolRoot)) rev-parse HEAD")
         let localToolchain = ToolchainFingerprint.current()
         let remoteToolchain = try? remoteToolchainFingerprint()
-        // 登録簿に machine のキャッシュがあるときだけ ssh を1往復追加する(§13)。既存の
-        // 人間向けコマンドを読むだけなので専用の照会エンドポイントは増やさない
-        let remoteMachineName = expectedMachineName != nil
-            ? (try? sshCapture("\(RemoteShell.quote(layout.binary)) machine show"))
-                .flatMap(RemoteMachineNameProbe.parse)
-            : nil
-
         var reasons = RemoteCompat.mismatches(
             localRevision: localRevision, remoteRevision: remoteRevision,
-            localToolchain: localToolchain, remoteToolchain: remoteToolchain,
-            localMachineName: expectedMachineName, remoteMachineName: remoteMachineName)
+            localToolchain: localToolchain, remoteToolchain: remoteToolchain)
         // rev 不一致の**いちばん多い原因は「まだ push していない」**。ランナーは origin から
         // fetch するので、押していないコミットへは remote setup でも合わせられない
         // (そのままだと checkout が exit 128 で落ちるだけ。2026-08-16 に実際に踏んだ)

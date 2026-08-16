@@ -945,6 +945,33 @@ button.profile-jump-link:hover:not(:disabled) {
   font-weight: 600;
 }
 
+/* 「登録はあるが実体が無い」行。行全体を淡くし、バッジは注意色(枠線だけ)にする ——
+   実体を伴わない登録は run で必ず落ちるので、他の行と同じ見た目にしない */
+.device-pick-row-missing .device-pick-row-name {
+  opacity: 0.7;
+}
+.badge-missing {
+  flex: 0 0 auto;
+  background-color: transparent;
+  border: 1px solid var(--vscode-editorWarning-foreground, #cca700);
+  color: var(--vscode-editorWarning-foreground, #cca700);
+  font-weight: 600;
+}
+
+/* リモートのデバイス(マシンプロファイルの一覧行)。行の右端へ寄せる。
+   薄いグレー地に黒字(2026-08-17 指示)。**テーマ変数を使わない** —— 前景と背景の
+   組み合わせを固定したいので、ここだけはリテラル色にする(ダークテーマでも
+   薄いグレー地に黒字のまま。他のバッジは意味ごとの色を持つので変数のまま) */
+.badge-remote {
+  flex: 0 0 auto;
+  /* 名前ピルのすぐ右に置く(margin-left: auto で行の右端へ飛ばすと、名前との間が
+     行幅ぶん空いて「どのデバイスの札か」が読み取りにくい。2026-08-17 指示)。
+     間隔は .machine-device-name-line の gap(6px)に任せる */
+  background-color: #d4d4d4;
+  color: #1f1f1f;
+  font-weight: 600;
+}
+
 /* 編集フォームの実機バッジ。配色は .badge-kind と揃える(同じ意味のものを別色にしない) */
 .editor-kind-badge {
   font-size: 11px;

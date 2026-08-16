@@ -170,7 +170,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         var resolvedProfile: ResolvedProfile?
         if let profile {
             let machine = try ProfileResolver.determineMachine(
-                project: testProject, registered: LocalConfig.currentMachineName(),
+                project: testProject,
                 runProfileName: profile)
             if machine.auto {
                 logStderr("→ Using machine profile \(machine.name) automatically (it is the only one in machines/)")
@@ -465,7 +465,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         let localRoot = try RepoRoot.find()
         let dispatcher = RemoteRunDispatcher(
             host: resolved.hostSpec, remoteDirRaw: resolved.remoteDirRaw, localRepoRoot: localRoot,
-            mode: .apiRun, artifacts: artifactsMode, expectedMachineName: resolved.machineName)
+            mode: .apiRun, artifacts: artifactsMode)
         let exitCode = try await dispatcher.dispatchApi(
             project: project, profile: profile, scenarios: scenarios,
             heal: heal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,

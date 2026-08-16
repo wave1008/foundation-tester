@@ -353,12 +353,6 @@ if ls -d "$HOME/.vscode/extensions/"*ftester* >/dev/null 2>&1; then
 else
   kv vscode_extension no
 fi
-if [ -f "$HOME/.config/ftester/config.json" ]; then
-  kv machine_registered "$(sed -n 's/.*"machineName" *: *"\([^"]*\)".*/\1/p' "$HOME/.config/ftester/config.json" | head -1)"
-else
-  kv machine_registered ""
-fi
-
 # ---- セットアップ質問の候補値(エージェントが別コマンドを都度実行しないで済むように) ----------
 kv computer_name "$(scutil --get ComputerName 2>/dev/null | tr ' ' '-' | tr -cd 'A-Za-z0-9_-')"
 kv folder_name "$(basename "$WORK_DIR" | tr -cd 'A-Za-z0-9_-')"

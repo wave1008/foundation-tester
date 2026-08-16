@@ -78,31 +78,12 @@ final class LocalConfigTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent().deletingLastPathComponent()) }
 
         var config = LocalConfig()
-        config.machineName = "M1 Max(64GB)"
         config.defaultProject = "SampleApp"
         try config.save(to: url)
         XCTAssertEqual(LocalConfig.load(from: url), config)
 
         try "not json".data(using: .utf8)!.write(to: url)
         XCTAssertEqual(LocalConfig.load(from: url), LocalConfig())
-    }
-
-    func testCurrentMachineNamePriority() throws {
-        let url = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("FTCoreTests-config-\(UUID().uuidString)/config.json")
-        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
-        try LocalConfig(machineName: "FromConfig").save(to: url)
-
-        XCTAssertEqual(
-            LocalConfig.currentMachineName(environment: ["FT_MACHINE": "FromEnv"], configURL: url),
-            "FromEnv", "FT_MACHINE が最優先")
-        XCTAssertEqual(
-            LocalConfig.currentMachineName(environment: [:], configURL: url),
-            "FromConfig")
-        XCTAssertNil(
-            LocalConfig.currentMachineName(
-                environment: [:],
-                configURL: url.deletingLastPathComponent().appendingPathComponent("none.json")))
     }
 
     func testXDGConfigHome() {

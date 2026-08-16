@@ -2141,6 +2141,50 @@ test("syncDevicesInMachineProfile: トップレベルがオブジェクトでな
 // 指しているときだけ、追加したローカルのデバイスに "local" を明示する(書かないと既定のリモートに
 // 居ることになる)。source を渡さない・remove のみ(add:[])では何も書かない。
 
+test("removeDeviceFromMachineProfile: host を渡すとそのホストのぶんだけ消す(別ホストの同名は残す)", () => {
+  const profile = { ios: { devices: [
+    { host: "local", name: "iPhone 17 Pro", udid: "LOCAL" },
+    { host: "M1Ultra", name: "iPhone 17 Pro", udid: "REMOTE" },
+  ] } };
+  const result = removeDeviceFromMachineProfile(profile, "iPhone 17 Pro", "M1Ultra");
+  assert.equal(result.removed, true);
+  assert.deepEqual(result.object.ios.devices, [{ host: "local", name: "iPhone 17 Pro", udid: "LOCAL" }]);
+});
+
+test("removeDeviceFromMachineProfile: host 省略時は従来どおり同名を全部消す", () => {
+  const profile = { ios: { devices: [
+    { host: "local", name: "x" }, { host: "M1Ultra", name: "x" },
+  ] } };
+  const result = removeDeviceFromMachineProfile(profile, "x");
+  assert.equal(result.removed, true);
+  assert.deepEqual(result.object.ios.devices, []);
+});
+
+// 直下の既定がリモートのプロファイルで、host を書いていないデバイスは既定のホストに居る
+test("removeDeviceFromMachineProfile: host 未指定のデバイスは直下の既定に従って判定する", () => {
+  const profile = { host: "M1Ultra", ios: { devices: [{ name: "x" }] } };
+  assert.deepEqual(
+    removeDeviceFromMachineProfile(profile, "x", "local").object.ios.devices,
+    [{ name: "x" }], "手元として消してはいけない");
+  assert.deepEqual(
+    removeDeviceFromMachineProfile(profile, "x", "M1Ultra").object.ios.devices, []);
+});
+
+test("addDevicesToMachineProfile: 別ホストの同名には (2) を付けない(一意なのは (host, name))", () => {
+  const profile = { ios: { devices: [{ host: "local", name: "iPhone 17 Pro" }] } };
+  const result = addDevicesToMachineProfile(profile, [{ ...IOS_ADD_ENTRY, host: "M1Ultra" }]);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.added, ["iPhone 17 Pro"]);
+  assert.equal(result.object.ios.devices[1].name, "iPhone 17 Pro");
+});
+
+test("addDevicesToMachineProfile: 同じホストの同名には従来どおり (2) を付ける", () => {
+  const profile = { ios: { devices: [{ host: "M1Ultra", name: "iPhone 17 Pro" }] } };
+  const result = addDevicesToMachineProfile(profile, [{ ...IOS_ADD_ENTRY, host: "M1Ultra" }]);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.added, ["iPhone 17 Pro (2)"]);
+});
+
 test("syncDevicesInMachineProfile: add + source:remote は追加したデバイスに host を書く", () => {
   const result = syncDevicesInMachineProfile({}, [IOS_ADD_ENTRY], [], { kind: "remote", host: "M1Max" });
   assert.equal(result.ok, true);

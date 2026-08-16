@@ -12,10 +12,8 @@ import {
   listMachineProfiles,
   listRunProfileNames,
   type MachineProfileSummary,
-  readLocalMachineName,
   readMachineDeviceNames,
   resolveProjectName,
-  updateLocalMachineName,
 } from "./config";
 import {
   type AppProfileFormFields,
@@ -138,15 +136,12 @@ export class MonitorProfilesController {
   }
 
   /**
-   * 現在使うべきマシンプロファイル名を決める(postMachineProfileInfo・handleProfileAdd 共通)。
-   * readLocalMachineName() の値が summaries に存在すればそれを、無ければ summaries が1件のときに
-   * 限り採用する(あいまいな場合は選ばない。readMachineDeviceNames と同じ方針 — 変更時は両方揃える)。
+   * 初期選択にするマシンプロファイル名(postMachineProfileInfo・handleProfileAdd 共通)。
+   * **1件のときだけ**選ぶ(あいまいな場合は選ばない。readMachineDeviceNames と同じ方針 —
+   * 変更時は両方揃える)。以前は「この Mac の登録名」を先に見ていたが、その概念は
+   * 2026-08-17 に廃止した(Sources/FTCore/RunProfile.swift の determineMachine)。
    */
   private resolveCurrentMachineName(summaries: readonly MachineProfileSummary[]): string | null {
-    const machineName = readLocalMachineName();
-    if (machineName !== null && summaries.some((summary) => summary.name === machineName)) {
-      return machineName;
-    }
     return summaries.length === 1 ? summaries[0]!.name : null;
   }
 
@@ -785,9 +780,6 @@ export class MonitorProfilesController {
     }
     try {
       fs.renameSync(oldPath, path.join(machinesDir, `${newName}.json`));
-      if (updateLocalMachineName(machine, newName)) {
-        this.deps.outputChannel.appendLine(t("profiles.log.registeredMachineNameUpdated", { name: newName }));
-      }
       this.deps.outputChannel.appendLine(t("profiles.log.machineProfileRenamed", { oldName: machine, newName }));
       this.postMachineProfileInfo();
       this.deps.post({ type: "machineProfileSelected", name: newName });

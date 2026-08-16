@@ -35,7 +35,7 @@ enum DeviceHostRunner {
                      explicitHost: String?, deviceFilter: [String]) throws -> [Group]? {
         if explicitHost != nil { return nil }
         let machine = try ProfileResolver.determineMachine(
-            project: project, registered: LocalConfig.currentMachineName(),
+            project: project,
             runProfileName: profileName)
         var devices = try ProfileResolver.runDeviceHosts(
             project: project, runProfileName: profileName, machineName: machine.name)

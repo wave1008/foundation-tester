@@ -74,33 +74,28 @@ struct ApiRemoteHostsCommand: AsyncParsableCommand {
     }
 }
 
-/// `--import` のデコード用(ApiRemoteHostEntry の逆向き)。dir/machine は "" もキー省略も
-/// 未設定として受け取る
+/// `--import` のデコード用(ApiRemoteHostEntry の逆向き)。dir は "" もキー省略も未設定として
+/// 受け取る。**machine は 2026-08-17 に廃止**(未知キーとして黙って無視される = 古い設定でも壊れない)
 private struct ApiRemoteHostImportEntry: Decodable {
     let name: String
     let host: String
     let dir: String?
-    let machine: String?
 
     var entry: RemoteHostEntry {
-        RemoteHostEntry(name: name, host: host,
-                        dir: dir.flatMap { $0.isEmpty ? nil : $0 },
-                        machine: machine.flatMap { $0.isEmpty ? nil : $0 })
+        RemoteHostEntry(name: name, host: host, dir: dir.flatMap { $0.isEmpty ? nil : $0 })
     }
 }
 
-/// dir/machine は常にキーを出し、未設定は空文字("" )にする(nil にはしない。契約はファイル冒頭のコメント)
+/// dir は常にキーを出し、未設定は空文字("")にする(nil にはしない。契約はファイル冒頭のコメント)
 private struct ApiRemoteHostEntry: Encodable {
     let name: String
     let host: String
     let dir: String
-    let machine: String
 
     init(_ entry: RemoteHostEntry) {
         name = entry.name
         host = entry.host
         dir = entry.dir ?? ""
-        machine = entry.machine ?? ""
     }
 }
 

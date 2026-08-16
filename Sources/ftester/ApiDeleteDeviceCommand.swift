@@ -106,7 +106,7 @@ struct ApiDeleteDeviceCommand: AsyncParsableCommand {
         let name = match?.displayName ?? avd
 
         guard let avdmanagerURL = AndroidSDKLocator.findAVDManager() else {
-            throw DeleteDeviceError(AndroidSDKLocator.avdManagerMissingMessage + "。"
+            throw DeleteDeviceError(AndroidSDKLocator.avdManagerMissingMessage + ". "
                 + AndroidSDKLocator.avdManagerInstallHint)
         }
 

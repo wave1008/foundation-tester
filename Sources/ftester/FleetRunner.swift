@@ -131,10 +131,7 @@ enum FleetRunner {
                 + " (docs/remote-runner.md §8)")
         }
 
-        let remoteHosts = LocalConfig.load().remoteHosts ?? []
-        let entryPlatforms = try fleet.runs.map {
-            try resolveEntryPlatforms($0, project: project, remoteHosts: remoteHosts)
-        }
+        let entryPlatforms = try fleet.runs.map { try resolveEntryPlatforms($0, project: project) }
 
         let historyRuns = max(1, lptHistoryRuns ?? LPTOrdering.defaultHistoryRuns)
         let resultsDir = RunResultsStore.resultsDir(projectRoot: project.rootURL)
@@ -206,34 +203,19 @@ enum FleetRunner {
     }
 
     /// エントリが走らせられる platform 集合を、実際の run と同じ規則(ProfileResolver.resolve)で
-    /// 求める。**マシンプロファイルはプロジェクト資産(git 管理)なので、リモートエントリでも
-    /// SSH せずローカルの clone から解決できる**(docs/remote-runner.md §8)。
-    /// リモートエントリの machine は登録簿のキャッシュ(RemoteHostEntry.machine)を使う ——
-    /// 空でも実行プロファイル自身が "machine" を明示していれば ProfileResolver.resolve 側で
-    /// そちらが優先される(RunProfile.swift の resolve() 参照)。どちらも無ければ案内して throw する
+    /// 求める。**マシンプロファイルはプロジェクト資産(git 管理)で、実行のたびにリモートへ
+    /// 転送される**ので、リモートエントリでも SSH せずローカルの clone から解決できる
+    /// (docs/remote-runner.md §8)。どのマシンプロファイルかは**実行プロファイルの `machine`**
+    /// が決める —— 以前は登録簿にキャッシュしたリモートのマシン名を使っていたが、
+    /// 「この機械の登録名」は 2026-08-17 に廃止した(ProfileResolver.determineMachine の宣言)
     private static func resolveEntryPlatforms(
-        _ entry: FleetRunEntry, project: TestProject, remoteHosts: [RemoteHostEntry]
+        _ entry: FleetRunEntry, project: TestProject
     ) throws -> Set<String> {
-        let machineName: String
-        if entry.host == "local" {
-            let (name, _) = try ProfileResolver.determineMachine(
-                project: project, registered: LocalConfig.currentMachineName(), runProfileName: entry.profile)
-            machineName = name
-        } else {
-            machineName = remoteHosts.first(where: { $0.name == entry.host })?.machine ?? ""
-        }
-        do {
-            let resolved = try ProfileResolver.resolve(
-                project: project, runName: entry.profile, machineName: machineName)
-            return Set(resolved.devices.map(\.platform))
-        } catch ProfileError.machineProfileNotFound where machineName.isEmpty {
-            throw ValidationError(
-                "fleet entry \"\(entry.host)\" has no cached machine name in the host registry, and run "
-                + "profile \(entry.profile) does not set \"machine\" explicitly either — cannot tell which "
-                + "platforms it can run for --split (register the machine with: ftester remote hosts add "
-                + "\(entry.host) --host <user@host> --machine <name>, or set \"machine\" in "
-                + "profiles/runs/\(entry.profile).json)")
-        }
+        let (machineName, _) = try ProfileResolver.determineMachine(
+            project: project, runProfileName: entry.profile)
+        let resolved = try ProfileResolver.resolve(
+            project: project, runName: entry.profile, machineName: machineName)
+        return Set(resolved.devices.map(\.platform))
     }
 
     private static func medianMs(_ values: [Double]) -> Double? {

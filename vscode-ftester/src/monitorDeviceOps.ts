@@ -1095,6 +1095,12 @@ export class MonitorDeviceOps {
       return;
     }
     this.creatingDevice = true;
+    // 上書き(既存の実体を消して作り直す)は破壊的なので、ローカル・リモートを問わず確認する。
+    // リモートの確認文はホスト名も出す(どの機械の実体を消すかが要点)
+    if (msg.overwrite) {
+      void this.confirmAndSpawnCreateDevice(msg, msg.source.kind === "remote" ? msg.source.host : null);
+      return;
+    }
     if (msg.source.kind === "remote") {
       void this.confirmAndSpawnCreateDevice(msg, msg.source.host);
       return;
@@ -1104,10 +1110,17 @@ export class MonitorDeviceOps {
 
   /** リモート作成の modal 確認(§11・§13 と同じ showWarningMessage({modal:true}) 方式。
    * webview の window.confirm は効かないため必ずホスト側で行う)。 */
-  private async confirmAndSpawnCreateDevice(msg: CreateDeviceMessage, host: string): Promise<void> {
-    const confirmLabel = t("deviceOps.createRemoteConfirmButton");
+  private async confirmAndSpawnCreateDevice(msg: CreateDeviceMessage, host: string | null): Promise<void> {
+    const overwrite = msg.overwrite === true;
+    const confirmLabel = overwrite
+      ? t("deviceOps.createOverwriteConfirmButton")
+      : t("deviceOps.createRemoteConfirmButton");
+    const where = host ?? t("deviceOps.createOverwriteLocalHost");
+    const message = overwrite
+      ? t("deviceOps.createOverwriteConfirmMessage", { host: where, name: msg.name })
+      : t("deviceOps.createRemoteConfirmMessage", { host: where, name: msg.name });
     const choice = await vscode.window.showWarningMessage(
-      t("deviceOps.createRemoteConfirmMessage", { host, name: msg.name }),
+      message,
       { modal: true },
       confirmLabel,
     );
@@ -1169,6 +1182,10 @@ export class MonitorDeviceOps {
     if (!msg.register || msg.source.kind === "remote") {
       apiArgs.push("--no-register");
     }
+    // 上書き(既存の実体を消してから作る)。判定と確認は呼び出し側で済んでいる
+    if (msg.overwrite) {
+      apiArgs.push("--overwrite");
+    }
     const args = deviceCommandArgs(msg.source, apiArgs);
     const source = msg.source;
 
@@ -1228,9 +1245,24 @@ export class MonitorDeviceOps {
       },
       (line) => this.deps.outputChannel.appendLine(`[create-device ${msg.name} stdout] ${line}`),
     );
+    // stderr の末尾を保持する。**finished を経由せず落ちたときはこれが唯一の手掛かり** ——
+    // exit code だけ出しても「何が起きたか」は OUTPUT を開くまで分からない
+    // (実害: リモートの ftester が古く --overwrite を知らず exit 64。画面には数字しか出なかった)
+    let lastStderr = "";
+    const rememberStderr = (line: string): void => {
+      const trimmed = line.trim();
+      if (trimmed.length > 0) {
+        lastStderr = trimmed;
+      }
+    };
     const stderrParser = new NdjsonParser(
-      (value) => this.deps.outputChannel.appendLine(`[create-device ${msg.name} stderr] ${JSON.stringify(value)}`),
-      (line) => this.deps.outputChannel.appendLine(`[create-device ${msg.name} stderr] ${line}`),
+      (value) => {
+        this.deps.outputChannel.appendLine(`[create-device ${msg.name} stderr] ${JSON.stringify(value)}`);
+      },
+      (line) => {
+        rememberStderr(line);
+        this.deps.outputChannel.appendLine(`[create-device ${msg.name} stderr] ${line}`);
+      },
     );
 
     proc.stdout.on("data", (chunk: Buffer) => stdoutParser.push(chunk));
@@ -1249,7 +1281,11 @@ export class MonitorDeviceOps {
         t("deviceOps.log.createDeviceClosed", { name: msg.name, exitCode: String(exitCode) }),
       );
       // finished を経由せず落ちた場合の合成失敗(executeDeviceOpJob と同じパターン。responded ガードで二重防止)。
-      respond(false, t("deviceOps.processExitedWithCode", { exitCode: String(exitCode) }), null);
+      // **exit 64 = 引数エラー**(ArgumentParser)。リモートで出たなら、ほぼ「向こうの ftester が
+      // 古くてこのオプションを知らない」なので、版合わせの案内に変える(数字だけでは辿れない)
+      const detail = lastStderr.length > 0 ? `${t("deviceOps.processExitedWithCode", { exitCode: String(exitCode) })}: ${lastStderr}` : t("deviceOps.processExitedWithCode", { exitCode: String(exitCode) });
+      const staleRemote = exitCode === 64 && source.kind === "remote";
+      respond(false, staleRemote ? t("deviceOps.remoteCliTooOld", { host: source.host, detail: lastStderr }) : detail, null);
     });
   }
 

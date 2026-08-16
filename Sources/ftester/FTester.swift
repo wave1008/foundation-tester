@@ -28,7 +28,6 @@ struct FTester: AsyncParsableCommand {
             RunFileCommand.self,
             DraftScenarioCommand.self,
             ProjectCommand.self,
-            MachineCommand.self,
             ProfileCommand.self,
             DevicesCommand.self,
             ApiCommand.self,
@@ -186,7 +185,7 @@ struct Doctor: AsyncParsableCommand {
             if let avdmanager = AndroidSDKLocator.findAVDManager() {
                 print("   ✅ avdmanager: \(avdmanager.path)")
             } else {
-                print("   ⚠️ \(AndroidSDKLocator.avdManagerMissingMessage)。"
+                print("   ⚠️ \(AndroidSDKLocator.avdManagerMissingMessage). "
                       + "New AVDs cannot be created (running on existing AVDs is unaffected). "
                       + AndroidSDKLocator.avdManagerInstallHint)
             }
@@ -970,7 +969,7 @@ struct RunScenarios: AsyncParsableCommand {
         let localRoot = try RepoRoot.find()
         let dispatcher = RemoteRunDispatcher(
             host: resolved.hostSpec, remoteDirRaw: resolved.remoteDirRaw, localRepoRoot: localRoot,
-            artifacts: artifactsMode, expectedMachineName: resolved.machineName, forceLock: forceLock)
+            artifacts: artifactsMode, forceLock: forceLock)
         let exitCode = try await dispatcher.dispatch(
             project: testProject, profile: profile, scenarios: scenarios, folders: folders,
             heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,

@@ -38,6 +38,23 @@ export const webviewMonitorAStrings = {
   "wvMonitor.tile.connecting": { ja: "接続中", en: "Connecting" },
   "wvMonitor.tile.cpuBadgeTitle": { ja: "CPU描画(swiftshader・フォールバック)", en: "CPU rendering (swiftshader fallback)" },
   "wvMonitor.tile.physicalBadge": { ja: "実機", en: "Device" },
+  // マシンプロファイルのデバイス行の右端。**手元でないデバイス**だと一目で分かるようにする
+  // (同名が別ホストに並ぶのが通常なので、名前だけでは見分けられない)
+  "wvMonitor.machine.remoteBadge": { ja: "Remote", en: "Remote" },
+  // 登録はあるのに一覧に無いデバイス(実体を手で消した等)。リモートの実体は手元から見えないので、
+  // ここで出さないと「実行して落ちるまで気付けない」
+  "wvMonitor.devicePick.missingBadge": { ja: "実体なし", en: "Not installed" },
+  "wvMonitor.devicePick.missingDetail": {
+    ja: "登録: {identifier}(このホストに実体がありません。チェックを外すと登録を解除します)",
+    en: "Registered as {identifier} (no such device on this host; uncheck to unregister)",
+  },
+  // avdmanager 不在の解決手段。**導入先はカタログを取った機械**なので、ローカルは導入ボタン、
+  // リモートは remote exec の案内を出す(手元へ入れても向こうの欠けは埋まらない)
+  "wvMonitor.deviceAdd.installCmdlineToolsOnRemote": {
+    ja: "導入は {host} 側で行います: ftester remote exec {host} -- api install-cmdline-tools",
+    en: "Install it on {host}: ftester remote exec {host} -- api install-cmdline-tools",
+  },
+  "wvMonitor.machine.remoteBadgeTitle": { ja: "ホスト: {host}", en: "Host: {host}" },
   "wvMonitor.tile.physicalBadgeTitle": {
     ja: "実機(シミュレータ/エミュレータではありません)。起動・停止は行いません",
     en: "Physical device (not a simulator/emulator). It is never started or stopped.",

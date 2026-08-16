@@ -40,7 +40,7 @@ enum ProfileRunner {
         // 1. マシン決定 → プロファイル合成(実行プロファイル自身の machine 指定があれば最優先)
         PhaseLog.mark("profile-runner-start")
         let machine = try ProfileResolver.determineMachine(
-            project: project, registered: LocalConfig.currentMachineName(),
+            project: project,
             runProfileName: profileName)
         if machine.auto {
             print("→ Using machine profile \(machine.name) automatically (it is the only one in machines/)")

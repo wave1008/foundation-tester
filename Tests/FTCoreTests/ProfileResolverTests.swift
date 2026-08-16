@@ -392,31 +392,36 @@ final class ProfileResolverTests: XCTestCase {
                        "既知キーなので未知キー警告を出さない: \(enabled.warnings)")
     }
 
+    /// 決定順: 実行プロファイルの machine > FT_MACHINE > machines/ が1つ。
+    /// **「この Mac の登録名」は見ない**(2026-08-17 に廃止。プロファイル名と機械の身元が
+    /// 1つの値に載っていたため、プロファイルを改名するとこの Mac の身元まで変わっていた)
     func testDetermineMachinePriority() throws {
         try writeStandardFixture()
         // FT_MACHINE が最優先
         var result = try ProfileResolver.determineMachine(
-            project: project, environment: ["FT_MACHINE": "EnvMachine"], registered: "Reg")
+            project: project, environment: ["FT_MACHINE": "EnvMachine"])
         XCTAssertEqual(result.name, "EnvMachine")
         XCTAssertFalse(result.auto)
-        // 次に登録名
-        result = try ProfileResolver.determineMachine(
-            project: project, environment: [:], registered: "Reg")
-        XCTAssertEqual(result.name, "Reg")
-        // 未登録でも machines/ が 1 ファイルなら自動採用
-        result = try ProfileResolver.determineMachine(
-            project: project, environment: [:], registered: nil)
+        // machines/ が 1 ファイルなら自動採用
+        result = try ProfileResolver.determineMachine(project: project, environment: [:])
         XCTAssertEqual(result.name, "M1 Max(64GB)")
         XCTAssertTrue(result.auto)
-        // 複数ファイルならエラー
+        // 複数ファイルで machine 未指定ならエラー(候補を挙げる)
         try write("{}", to: project.machinesDir, name: "M2 Ultra(192GB)")
         XCTAssertThrowsError(try ProfileResolver.determineMachine(
-            project: project, environment: [:], registered: nil)) { error in
+            project: project, environment: [:])) { error in
             guard case ProfileError.machineUndetermined(let available) = error else {
                 return XCTFail("machineUndetermined のはず: \(error)")
             }
             XCTAssertEqual(available, ["M1 Max(64GB)", "M2 Ultra(192GB)"])
         }
+        // 実行プロファイルが machine を書いていれば、複数あっても解決する
+        try write("""
+        { "app": "sampleapp", "machine": "M1 Max(64GB)", "devices": [ { "name": "メイン機" } ] }
+        """, to: project.runsDir, name: "all-on-M1")
+        result = try ProfileResolver.determineMachine(
+            project: project, environment: [:], runProfileName: "all-on-M1")
+        XCTAssertEqual(result.name, "M1 Max(64GB)")
     }
 
     // MARK: - 実行プロファイルの machine フィールド
@@ -474,9 +479,9 @@ final class ProfileResolverTests: XCTestCase {
         { "app": "sampleapp", "devices": [ { "name": "B専用機" } ], "machine": "B" }
         """, to: project.runsDir, name: "withMachine")
 
-        // FT_MACHINE/登録名より実行プロファイルの machine 指定が優先される
+        // FT_MACHINE より実行プロファイルの machine 指定が優先される
         let result = try ProfileResolver.determineMachine(
-            project: project, environment: ["FT_MACHINE": "EnvMachine"], registered: "Reg",
+            project: project, environment: ["FT_MACHINE": "EnvMachine"],
             runProfileName: "withMachine")
         XCTAssertEqual(result.name, "B")
         XCTAssertFalse(result.auto)
@@ -489,8 +494,7 @@ final class ProfileResolverTests: XCTestCase {
         """, to: project.runsDir, name: "badMachine")
 
         XCTAssertThrowsError(try ProfileResolver.determineMachine(
-            project: project, environment: [:], registered: nil,
-            runProfileName: "badMachine")) { error in
+            project: project, environment: [:], runProfileName: "badMachine")) { error in
             guard case ProfileError.runSpecifiedMachineNotFound = error else {
                 return XCTFail("runSpecifiedMachineNotFound のはず: \(error)")
             }

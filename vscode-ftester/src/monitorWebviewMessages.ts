@@ -419,6 +419,9 @@ export type MonitorFromWebviewMessage =
       // 正はローカル。作成した1台は #device-pick-overlay の再取得→チェック→OK[machineDevicesSync]
       // という既存の register:false 経路にそのまま乗せる)。
       readonly register: boolean;
+      /** 同名の実体が既にあるとき、消してから作り直す(`api create-device --overwrite`)。
+       * 破壊的なので webview では決めず、ホスト側のモーダル確認を通ってから true になる。 */
+      readonly overwrite?: boolean;
       readonly source: DeviceCommandSource;
     }
   // 「+既存から選択」モーダル(#device-pick-overlay)が開いた直後に送る、

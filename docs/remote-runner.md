@@ -686,7 +686,6 @@ M1Ultra / M1Max の run が machine 名付きで並ぶ)。「マージの実装�
 | 電源 | **システムスリープ無効**(ディスプレイスリープは可) | 必須 | `pmset -g` |
 | ネットワーク | リモートログイン ON・発行側からの鍵認証(BatchMode)・**画面共有 ON**(モード A の再起動後の解錠に使う。モード B では任意だが復旧用に推奨) | 必須 | 到達性プローブ(実装済み)+ ポート応答 |
 | ツール本体 | **専用ベースディレクトリ配下**(`<base>/tool` = クローン・`<base>/work` = WORK_DIR)に導入済みで `swift build` 済み。CLI のみ(拡張・MCP・モニター不要 = CI ランナーと同型)。**マシン自身のローカルインストールとは別物**(§12) | 必須 | `test -x <base>/tool/.build/debug/ftester` |
-| マシン名 | `machine set` 済みで登録簿の machine と一致 | 必須 | config.json 照合(§13) |
 | Android | Android SDK + AVD | レーン使用時 | 既存 preflight 流用 |
 | FM | システム言語**英語** + Apple Intelligence 有効化 | screenIs/heal 使用時 | `doctor --fm-only`(実呼び出し) |
 
@@ -730,7 +729,7 @@ ftester remote setup <host>    発行側の入口。local(手元のプロジェ�
                                終了コードは install.sh と同じ 0=完了 / 2=人手の項目が残る / 1=失敗
 ```
 
-`remote setup` 固有の仕事は **版合わせ(align)・machine set・検証ディスパッチ**で、導入本体は
+`remote setup` 固有の仕事は **版合わせ(align)・検証ディスパッチ**で、導入本体は
 既存 install.sh が持つ。出力規律も install.sh のものをそのまま使う(1ステップ1行+集計、
 生ログは `<clone>/.ftester/install-<日時>.log`)。
 
@@ -799,7 +798,7 @@ ssh 越しの操作を用途ごとに実装しない。**2種類だけ**に整�
 2. **ステップ1(発行側から)**: `ssh-copy-id`(初回のみパスワード1回)→ 設定タブで
    ホスト登録 → `ftester remote setup <host>`。不足があれば手動手順の番号付きで
    列挙されて止まる(直して同じコマンドを再実行 — 冪等)。全部揃うと
-   clone → build(コールド数分は初回のみ)→ machine set → toolchain/FM 検証 →
+   clone → build(コールド数分は初回のみ)→ toolchain/FM 検証 →
    **SampleApp 1本のディスパッチ実走**まで通って ✅
 3. **以後の日常**: 実行先を選ぶ(またはフリート)だけ。シナリオは実行のたびに自動転送。
    ツール本体の版ズレは fail fast で申告され、設定タブ「このホストを更新」で

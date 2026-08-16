@@ -334,11 +334,9 @@ struct RemoteCommand: AsyncParsableCommand {
             }
 
             private static func emitTable(_ entries: [RemoteHostEntry]) {
-                let header = ["NAME", "HOST", "DIR", "MACHINE"]
+                let header = ["NAME", "HOST", "DIR"]
                 var rows = [header]
-                rows.append(contentsOf: entries.map {
-                    [$0.name, $0.host, $0.dir ?? "-", $0.machine ?? "-"]
-                })
+                rows.append(contentsOf: entries.map { [$0.name, $0.host, $0.dir ?? "-"] })
                 let widths = (0..<header.count).map { col in rows.map { $0[col].count }.max() ?? 0 }
                 for row in rows {
                     let line = zip(row, widths)
@@ -371,16 +369,12 @@ struct RemoteCommand: AsyncParsableCommand {
                 + "unless --remote-dir is given explicitly on the dispatch command)"))
             var dir: String?
 
-            @Option(help: ArgumentHelp("Machine profile name this host corresponds to. This is a cache, not the source of "
-                + "truth — the remote's own `ftester machine set` decides; a mismatch fails the dispatch fast"))
-            var machine: String?
-
             func run() async throws {
                 try RemoteHostRegistry.validateName(name)
                 _ = try RemoteHostSpec.parse(host)
                 if let dir { try RemoteLayout.validateBase(dir) }
                 var config = LocalConfig.load()
-                let entry = RemoteHostEntry(name: name, host: host, dir: dir, machine: machine)
+                let entry = RemoteHostEntry(name: name, host: host, dir: dir)
                 config.remoteHosts = RemoteHostRegistry.upsert(entry, into: config.remoteHosts ?? [])
                 try config.save()
                 print("✅ Registered host \"\(name)\" → \(host)")
@@ -427,8 +421,6 @@ struct ResolvedRemoteHost {
     let remoteDirRaw: String
     /// 登録名を経由したときだけ非 nil
     let registeredName: String?
-    /// 登録簿の machine キャッシュ(登録名を経由し、かつエントリに設定されているときだけ非 nil)
-    let machineName: String?
 
     /// 登録名を使ったときに実行冒頭で出す1行。黙って別のマシンへ送らない
     /// (docs/remote-runner.md §13 レビュー指摘)
@@ -468,13 +460,12 @@ enum RemoteHostResolver {
             try RemoteLayout.validateBase(dir)
             return ResolvedRemoteHost(
                 hostSpec: try RemoteHostSpec.parse(entry.host), remoteDirRaw: dir,
-                registeredName: entry.name, machineName: entry.machine)
+                registeredName: entry.name)
         case .rawTarget(let raw):
             let dir = remoteDirOverride ?? defaultRemoteDir
             try RemoteLayout.validateBase(dir)
             return ResolvedRemoteHost(
-                hostSpec: try RemoteHostSpec.parse(raw), remoteDirRaw: dir,
-                registeredName: nil, machineName: nil)
+                hostSpec: try RemoteHostSpec.parse(raw), remoteDirRaw: dir, registeredName: nil)
         }
     }
 }
@@ -553,7 +544,7 @@ private func machineProfileHostAndName(
 ) throws -> (host: String?, name: String) {
     let testProject = try ScenarioHost.project(named: project)
     let machine = try ProfileResolver.determineMachine(
-        project: testProject, registered: LocalConfig.currentMachineName(), runProfileName: profile)
+        project: testProject, runProfileName: profile)
     let devices = (try? ProfileResolver.runDeviceHosts(
         project: testProject, runProfileName: profile, machineName: machine.name)) ?? []
     let hosts = Set(devices.map { DeviceHostGrouping.display($0.host) })

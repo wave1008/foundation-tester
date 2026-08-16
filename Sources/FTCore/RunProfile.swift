@@ -618,8 +618,9 @@ public enum ProfileError: Error, LocalizedError {
             return "the machine profile \"\(machine)\" referenced by run profile \(run) was not found"
                 + availableHint(available, empty: "profiles/machines/ is empty")
         case .machineUndetermined(let available):
-            return "no machine name is registered. Register one with: ftester machine set \"<name>\", "
-                + "or set the FT_MACHINE environment variable"
+            return "cannot tell which machine profile to use: the run profile does not set "
+                + "\"machine\" and profiles/machines/ holds more than one. Add \"machine\": "
+                + "\"<name>\" to the run profile (or set FT_MACHINE for a one-off run)"
                 + availableHint(available, empty: "profiles/machines/ is empty")
         case .decodeFailed(let url, let detail):
             return "cannot load the profile: \(url.path)\n\(detail)"
@@ -694,11 +695,17 @@ public enum ProfileResolver {
     /// 明示指定された machine が machines/ に存在しない場合のみ、ここで
     /// runSpecifiedMachineNotFound を投げる(resolve() を経由しない呼び出し側でも
     /// 同じ明確なエラーになるようにするため)。
-    /// 戻り値 auto = 自動採用だったか(呼び出し側がログ表示に使う。明示指定/FT_MACHINE/登録名は false)
+    /// 戻り値 auto = 自動採用だったか(呼び出し側がログ表示に使う。明示指定/FT_MACHINE は false)
+    ///
+    /// **「この Mac の登録名」は見ない**(2026-08-17 にユーザー決定で廃止)。登録名は
+    /// 「複数ある machines/*.json のうちこの機械を表すのはどれか」を答えるためのものだったが、
+    /// ①ツールが書く実行プロファイルには必ず machine が入る(42本中 machine 未指定は3本だった)
+    /// ②デバイス側が host を持つようになり「どの機械のデバイスか」はプロファイル内で表現できる
+    /// ——の2点で役目を終えた。残すと「マシンプロファイルを改名したらこの Mac の身元が変わる」
+    /// (実際に project1 の解決が壊れた)ような、名前1つに2つの意味が載る構造が残る
     public static func determineMachine(
         project: TestProject,
         environment: [String: String] = ProcessInfo.processInfo.environment,
-        registered: String?,
         runProfileName: String? = nil
     ) throws -> (name: String, auto: Bool) {
         if let runProfileName,
@@ -711,7 +718,6 @@ public enum ProfileResolver {
             return (explicit, false)
         }
         if let env = environment["FT_MACHINE"], !env.isEmpty { return (env, false) }
-        if let registered, !registered.isEmpty { return (registered, false) }
         let machines = machineNames(project: project)
         if machines.count == 1 { return (machines[0], true) }
         throw ProfileError.machineUndetermined(available: machines)
@@ -1026,13 +1032,17 @@ public enum ProfileResolver {
             warnings += checkDeprecatedSectionKeys(json, context: context)
         case .machine:
             if let machine = try? decoder.decode(MachineProfile.self, from: data) {
-                var seen = Set<String>()
+                // **一意なのは (host, name)**(別の機械の同名は重複ではない)。判定は
+                // DeviceHostGrouping で resolve() と共有する —— 片方だけ厳しいと
+                // 「保存できるのに検証が赤い」(その逆も)になる
+                if let duplicate = DeviceHostGrouping.firstDuplicate(
+                    in: DeviceHostGrouping.entries(machine: machine)) {
+                    errors.append("duplicate device name: \(duplicate.name)"
+                                  + " on host \(DeviceHostGrouping.display(duplicate.host))"
+                                  + " (names must be unique per host, across ios and android)")
+                }
                 for (platform, list) in [("ios", machine.ios), ("android", machine.android)] {
                     for spec in list?.devices ?? [] {
-                        if !seen.insert(spec.name).inserted {
-                            errors.append("duplicate device name: \(spec.name)"
-                                          + " (names must be unique across ios and android)")
-                        }
                         errors += physicalDeviceErrors(spec, platform: platform)
                     }
                 }

@@ -166,15 +166,16 @@ final class RemoteHostRegistryTests: XCTestCase {
 
         var config = LocalConfig()
         config.remoteHosts = [RemoteHostEntry(name: "M1Ultra", host: "wave1008@192.168.20.95",
-                                              dir: "~/ftester-runner", machine: "M1Ultra")]
+                                              dir: "~/ftester-runner")]
         try config.save(to: url)
 
         let loaded = LocalConfig.load(from: url)
         XCTAssertEqual(loaded.remoteHosts, config.remoteHosts)
     }
 
-    /// 既存の(remoteHosts キーを持たない)config.json を読んでも壊れない
-    func testLocalConfigDecodesOldConfigWithoutRemoteHosts() throws {
+    /// 既存の config.json を読んでも壊れない。**廃止した machineName のような未知キーは
+    /// 黙って無視される**(2026-08-17 に登録名を廃止したので、古い設定がそのまま残っている)
+    func testLocalConfigDecodesOldConfigWithUnknownKeys() throws {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("RemoteHostRegistryTests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -183,82 +184,22 @@ final class RemoteHostRegistryTests: XCTestCase {
         try Data("{\"machineName\":\"M2Ultra\"}".utf8).write(to: url)
 
         let loaded = LocalConfig.load(from: url)
-        XCTAssertEqual(loaded.machineName, "M2Ultra")
         XCTAssertNil(loaded.remoteHosts)
     }
 
-    // MARK: - RemoteCompat.mismatches (machineName, 3rd item added for §13)
+    // MARK: - RemoteCompat.mismatches
 
-    /// localMachineName が nil(登録簿に machine キャッシュが無い/生の ssh 宛先)のときは
-    /// 照合しない — 既存の2項目だけで判定する
-    func testMismatchesSkipsMachineNameWhenLocalIsNil() {
-        let reasons = RemoteCompat.mismatches(
-            localRevision: "abc", remoteRevision: "abc",
-            localToolchain: "Xcode 27.0", remoteToolchain: "Xcode 27.0",
-            localMachineName: nil, remoteMachineName: "SomeOtherMachine")
-        XCTAssertEqual(reasons, [])
+    /// 照合は rev と toolchain の2つだけ(2026-08-17)。機械の身元は ssh の宛先が保証しており、
+    /// 「リモートの登録名」という概念自体を廃止した
+    func testMismatchesChecksRevisionAndToolchainOnly() {
+        XCTAssertEqual(
+            RemoteCompat.mismatches(localRevision: "abc", remoteRevision: "abc",
+                                    localToolchain: "Xcode 27.0", remoteToolchain: "Xcode 27.0"),
+            [])
+        XCTAssertEqual(
+            RemoteCompat.mismatches(localRevision: "abc", remoteRevision: "def",
+                                    localToolchain: "Xcode 27.0", remoteToolchain: "Xcode 27.0").count,
+            1)
     }
 
-    func testMismatchesEmptyWhenMachineNameMatches() {
-        let reasons = RemoteCompat.mismatches(
-            localRevision: "abc", remoteRevision: "abc",
-            localToolchain: "Xcode 27.0", remoteToolchain: "Xcode 27.0",
-            localMachineName: "M1Ultra", remoteMachineName: "M1Ultra")
-        XCTAssertEqual(reasons, [])
-    }
-
-    func testMismatchesFlagsMachineNameMismatch() {
-        let reasons = RemoteCompat.mismatches(
-            localRevision: "abc", remoteRevision: "abc",
-            localToolchain: "Xcode 27.0", remoteToolchain: "Xcode 27.0",
-            localMachineName: "M1Ultra", remoteMachineName: "M2Ultra")
-        XCTAssertEqual(reasons.count, 1)
-        XCTAssertTrue(reasons[0].contains("machine name"), reasons[0])
-        XCTAssertTrue(reasons[0].contains("local=M1Ultra") && reasons[0].contains("remote=M2Ultra"), reasons[0])
-    }
-
-    /// fail-closed: local に期待値があるのにリモート値が取れない(nil)場合も不一致
-    func testMismatchesFlagsMachineNameWhenRemoteUnavailable() {
-        let reasons = RemoteCompat.mismatches(
-            localRevision: "abc", remoteRevision: "abc",
-            localToolchain: "Xcode 27.0", remoteToolchain: "Xcode 27.0",
-            localMachineName: "M1Ultra", remoteMachineName: nil)
-        XCTAssertEqual(reasons.count, 1)
-        XCTAssertTrue(reasons[0].contains("could not determine the remote value"), reasons[0])
-    }
-
-    /// 既存呼び出し(machineName 引数を渡さない)は後方互換のまま動く
-    func testMismatchesBackwardCompatibleWithoutMachineNameArgs() {
-        let reasons = RemoteCompat.mismatches(
-            localRevision: "abc", remoteRevision: "abc",
-            localToolchain: "Xcode 27.0", remoteToolchain: "Xcode 27.0")
-        XCTAssertEqual(reasons, [])
-    }
-
-    // MARK: - RemoteMachineNameProbe.parse
-
-    func testMachineNameProbeParsesRegisteredName() {
-        XCTAssertEqual(RemoteMachineNameProbe.parse("Machine name: M1Ultra\nConfig file: /x/config.json"),
-                      "M1Ultra")
-    }
-
-    func testMachineNameProbeReturnsNilForUnregistered() {
-        XCTAssertNil(RemoteMachineNameProbe.parse(
-            "Machine name: unregistered (register with: ftester machine set \"<name>\")\nConfig file: /x"))
-    }
-
-    /// FT_MACHINE 環境変数由来の注記は名前の一部ではないので削る
-    func testMachineNameProbeStripsEnvironmentVariableNote() {
-        XCTAssertEqual(RemoteMachineNameProbe.parse(
-            "Machine name: CI-Runner (from the FT_MACHINE environment variable)\nConfig file: /x"),
-            "CI-Runner")
-    }
-
-    func testMachineNameProbeReturnsNilForGarbageOutput() {
-        XCTAssertNil(RemoteMachineNameProbe.parse("bash: ftester: command not found"))
-    }
-
-    func testMachineNameProbeReturnsNilForEmptyOutput() {
-        XCTAssertNil(RemoteMachineNameProbe.parse(""))
-    }
 }

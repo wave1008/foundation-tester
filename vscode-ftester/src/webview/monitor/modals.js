@@ -123,19 +123,43 @@ function platformIssue(platform) {
   // 変えれば解決するので、カタログが空という言い方をしない)
   const serviceOnly = platform === 'android' && models.length > 0
     && deviceCatalog.android.systemImages.length > 0;
-  // side.error は CLI 由来の理由文(訳さず素通しする。枠だけ i18n)
+  // side.error は CLI 由来の理由文(訳さず素通しする。枠だけ i18n)。
+  // **解決手段は呼び手が足す** —— cmdline-tools の導入先はカタログを取った機械なので、
+  // リモートのときは remote exec の案内にする(ローカルは下の導入ボタンが出る)
+  const source = currentDeviceSource();
+  const remedy = side.errorCode === 'avdmanager-missing' && source.kind === 'remote'
+    ? ' ' + t('wvMonitor.deviceAdd.installCmdlineToolsOnRemote', { host: source.host })
+    : '';
   return {
     blocked,
     message: side.error
-      || (blocked
+      ? side.error + remedy
+      : (blocked
         ? t(serviceOnly ? 'wvMonitor.deviceAdd.noImageForService' : 'wvMonitor.deviceAdd.catalogEmpty')
         : ''),
     // 導入で解消できる欠け方のときだけボタンを出す(文言では分岐しない)。導入は常にローカルで
     // 実行するため(installCmdlineToolsRequest はホストセレクタの対象外)、ホストがリモートの
     // ときは出さない — 出すと「別マシンの欠けを手元に導入するボタン」という誤動作になる。
     installable: platform === 'android' && side.errorCode === 'avdmanager-missing'
-      && currentDeviceSource().kind === 'local',
+      && source.kind === 'local',
   };
+}
+
+// いま選んでいるホストで name が衝突するか(実体・登録のどちらか)。**別ホストの同名は衝突ではない**
+// (FTCore.DeviceHostGrouping と同じ「一意なのは (host, name)」)。
+function nameClashesOnCurrentHost(name, platform, source) {
+  const host = source.kind === 'remote' ? source.host : undefined;
+  if (allDeviceNamesForSelectedMachine(host).includes(name)) {
+    return true;
+  }
+  // 実体側(このホストから取得済みの一覧)。ピッカー経由で開いているので行が揃っている
+  const rows = platform === 'ios' ? devicePickIosRows : devicePickAndroidRows;
+  return rows.some((row) => {
+    if (row.missing) { return false; }         // 実体が無い行は衝突しない
+    if (row.device) { return row.device.name === name; }
+    if (row.avd) { return row.avd.displayName === name; }
+    return false;
+  });
 }
 
 function selectedOptionLabel(select) {
@@ -308,7 +332,9 @@ export function applyCreateDeviceResult(message) {
     closeDeviceAddModal();
     // pendingAutoCheck に識別子を保持(次の一覧再描画で自動チェックON。詳細は宣言箇所参照)。
     if (deviceAddFromPicker) {
-      pendingAutoCheck = message.device ? { udid: message.device.udid, avd: message.device.avd } : null;
+      pendingAutoCheck = message.device
+        ? { udid: message.device.udid, avd: message.device.avd, name: message.name }
+        : null;
     }
     reloadDevicePickIfOpen();
     return;
@@ -348,15 +374,17 @@ dlgOk.addEventListener('click', () => {
     return;
   }
   const name = dlgName.value.trim();
-  // 重複判定は**選択中のホストのぶんだけ**(一意なのは (host, name)。別の機械の同名は通す)。
   const source = currentDeviceSource();
-  const error = validateNewDeviceName(
-    name, allDeviceNamesForSelectedMachine(source.kind === 'remote' ? source.host : undefined));
-  if (error) {
+  if (name.length === 0) {
     dlgError.classList.remove('info');
-    dlgError.textContent = error;
+    dlgError.textContent = t('wvMonitor.deviceAdd.nameRequired');
     return;
   }
+  // **同名は拒否せず「上書きするか」を聞く**(2026-08-17 指示)。判定は選択中のホストのぶんだけ
+  // (一意なのは (host, name)。別の機械の同名は衝突ではない)。実体と登録のどちらの衝突でも、
+  // 上書き = 実体を消して作り直す + 古い登録を新しい実体で置き換える。
+  // 確認ダイアログはホスト側(webview の window.confirm は効かない)。
+  const overwrite = nameClashesOnCurrentHost(name, getDialogPlatform(), source);
   deviceAddCreating = true;
   setDialogControlsEnabled(false);
   dlgOk.disabled = true;
@@ -373,6 +401,7 @@ dlgOk.addEventListener('click', () => {
     // ピッカー経由なら register:false(登録はピッカー側 OK の machineDevicesSync で行う)。
     // source が remote のときはホスト側が register によらず --no-register を強制する(§13)。
     register: !deviceAddFromPicker,
+    overwrite: overwrite,
     source: currentDeviceSource(),
   });
 });
@@ -543,28 +572,36 @@ let devicePickDeleteMenuEntry = null;
 // その間にダイアログを閉じられることがある)。
 const devicePickDeletingIdentifiers = new Set();
 
+// **いま選んでいるホストに居る登録済みデバイスだけ**を返す。ホストを跨いで見ると、
+// 別の機械の同じ AVD id(各機が同じ命名規則で作るので普通に一致する)を「登録済み」と
+// 誤判定し、チェックを外すと**別ホストの登録を消す**(FTCore.DeviceHostGrouping と同じ
+// 「一意なのは (host, name)」)。
+function registeredDevicesForCurrentHost() {
+  const machine = findMachine(selectedMachine);
+  if (!machine) {
+    return [];
+  }
+  const source = currentDeviceSource();
+  const host = source.kind === 'remote' ? source.host : undefined;
+  return machine.devices.filter((d) => (d.host ?? undefined) === host);
+}
+
 // 識別値→マシンプロファイル上の name の対応表(初期チェック判定・remove 対象名の特定に使う)。
 // Android は avd の id/displayName どちらの一致も登録済みとみなす。
 function registeredIosNameByUdid() {
-  const machine = findMachine(selectedMachine);
   const map = new Map();
-  if (machine) {
-    for (const d of machine.devices) {
-      if (d.platform === 'ios' && d.udid) {
-        map.set(d.udid, d.name);
-      }
+  for (const d of registeredDevicesForCurrentHost()) {
+    if (d.platform === 'ios' && d.udid) {
+      map.set(d.udid, d.name);
     }
   }
   return map;
 }
 function registeredAndroidNameByAvd() {
-  const machine = findMachine(selectedMachine);
   const map = new Map();
-  if (machine) {
-    for (const d of machine.devices) {
-      if (d.platform === 'android' && d.avd) {
-        map.set(d.avd, d.name);
-      }
+  for (const d of registeredDevicesForCurrentHost()) {
+    if (d.platform === 'android' && d.avd) {
+      map.set(d.avd, d.name);
     }
   }
   return map;
@@ -572,13 +609,10 @@ function registeredAndroidNameByAvd() {
 
 // 実機は serial で登録済みを判定する(AVD は持たないため registeredAndroidNameByAvd に載らない)。
 function registeredAndroidNameBySerial() {
-  const machine = findMachine(selectedMachine);
   const map = new Map();
-  if (machine) {
-    for (const d of machine.devices) {
-      if (d.platform === 'android' && d.serial) {
-        map.set(d.serial, d.name);
-      }
+  for (const d of registeredDevicesForCurrentHost()) {
+    if (d.platform === 'android' && d.serial) {
+      map.set(d.serial, d.name);
     }
   }
   return map;
@@ -671,6 +705,23 @@ function renderDevicePickGroups(data) {
   // 再描画で行 DOM を作り直すため、開いたままの削除メニューは対象行を失う(machineProfilesTab.js の
   // renderMachineProfileBody と同じ理由)。
   closeDevicePickDeleteMenu();
+
+  // 登録はあるのに一覧に無いデバイス(実体を手で消した等)。**出さないと気付けない** ——
+  // リモートの実体は手元から見えず、実行して「AVD が無い」で落ちるまで分からない。
+  // チェックを外して OK すれば登録だけ解除できる(実体は元から無い)
+  const missingRows = (bodyEl, rows, platform, installedIdentifiers, identifierOf) => {
+    for (const d of registeredDevicesForCurrentHost()) {
+      if (d.platform !== platform) { continue; }
+      const identifier = identifierOf(d);
+      if (!identifier || installedIdentifiers.has(identifier)) { continue; }
+      const row = buildMissingPickRow(platform, d.name, identifier);
+      bodyEl.appendChild(row.rowEl);
+      rows.push({
+        checkbox: row.checkbox, missing: true,
+        initialChecked: true, registeredName: d.name, rowEl: row.rowEl,
+      });
+    }
+  };
 
   const iosNameByUdid = registeredIosNameByUdid();
   const iosData = data.ios;
@@ -814,6 +865,48 @@ function renderDevicePickGroups(data) {
       devicePickAndroidRows.push({ checkbox: checkbox, avd: avd, initialChecked: registered, registeredName: registeredName, rowEl: row });
     }
   }
+
+  missingRows(devicePickIosBody, devicePickIosRows, 'ios',
+              new Set([...iosData.devices, ...iosPhysical].map((d) => d.udid).filter(Boolean)),
+              (d) => d.udid);
+  missingRows(devicePickAndroidBody, devicePickAndroidRows, 'android',
+              new Set([...androidData.avds.map((a) => a.id),
+                       ...androidData.avds.map((a) => a.displayName),
+                       ...androidPhysical.map((p) => p.serial)].filter(Boolean)),
+              (d) => d.avd || d.serial);
+}
+
+// 「登録はあるが実体が無い」行。チェックは ON(登録済み)で始まり、外して OK すると登録だけ消える。
+// 実体を指す操作(右クリック削除)は付けない —— 消す対象が無い
+function buildMissingPickRow(platform, name, identifier) {
+  const rowEl = document.createElement('div');
+  rowEl.className = 'device-pick-row device-pick-row-missing';
+  const checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  checkbox.checked = true;
+  checkbox.addEventListener('change', () => {
+    syncDevicePickRowChecked(rowEl, checkbox);
+    updateDevicePickOkState();
+  });
+  const textWrap = document.createElement('div');
+  textWrap.className = 'device-pick-row-text';
+  const nameRow = document.createElement('div');
+  nameRow.className = 'device-pick-row-name-line';
+  const badge = document.createElement('span');
+  badge.className = 'badge badge-missing';
+  badge.textContent = t('wvMonitor.devicePick.missingBadge');
+  const nameEl = document.createElement('span');
+  nameEl.className = 'device-pick-row-name tile-name tile-name-' + platform;
+  nameEl.textContent = name;
+  nameRow.append(badge, nameEl);
+  const detailEl = document.createElement('div');
+  detailEl.className = 'device-pick-row-detail';
+  detailEl.textContent = t('wvMonitor.devicePick.missingDetail', { identifier: identifier });
+  textWrap.append(nameRow, detailEl);
+  rowEl.append(checkbox, textWrap);
+  attachDevicePickRowToggle(rowEl, checkbox);
+  syncDevicePickRowChecked(rowEl, checkbox);
+  return { rowEl: rowEl, checkbox: checkbox };
 }
 
 // pendingAutoCheck が指す行の checkbox だけ ON にする(initialChecked は false のままなので
@@ -824,6 +917,16 @@ function applyPendingAutoCheck() {
   }
   const target = pendingAutoCheck;
   pendingAutoCheck = null;
+  // 上書きで作り直した場合、同名の古い登録が「実体なし」行として残る。**自動で外す** ——
+  // 外さないと OK を押しても古い登録が残り、同名2件(片方は実体なし)になる
+  if (target.name) {
+    for (const row of devicePickIosRows.concat(devicePickAndroidRows)) {
+      if (row.missing && row.registeredName === target.name && row.checkbox.checked) {
+        row.checkbox.checked = false;
+        syncDevicePickRowChecked(row.rowEl, row.checkbox);
+      }
+    }
+  }
   if (target.udid) {
     const row = devicePickIosRows.find((r) => r.device.udid === target.udid);
     if (row) {

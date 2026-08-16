@@ -60,7 +60,7 @@ ssh -o BatchMode=yes -o ConnectTimeout=10 <宛先> 'echo ok'
 ### 2. セットアップを実行する
 
 ```
-ftester remote setup <宛先> --project <プロジェクト> --machine "<マシン名>"
+ftester remote setup <宛先> --project <プロジェクト>
 ```
 
 **初回は数分〜十数分かかる**(clone・xcodegen 導入・`swift build` のコールドビルド)。
@@ -171,7 +171,7 @@ ftester run --project <プロジェクト> --profile <実行プロファイル>
 書くと、実行プロファイルの選択だけで行き先が決まる。`--host <名前>` でも指せる):
 
 ```
-ftester remote hosts add <名前> --host <宛先> --machine "<マシン名>"
+ftester remote hosts add <名前> --host <宛先>
 ```
 
 複数台へ一斉に流すなら**フリート**を作る(`TestProjects/<プロジェクト>/profiles/fleets/<名前>.json`。
