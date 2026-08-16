@@ -59,6 +59,7 @@ import {
   applyNameInputOpen,
 } from './modals.js';
 import { applySettings } from './settingsTab.js';
+import { applyDeviceSourceHosts } from './deviceSource.js';
 import { applyResidentMessage } from './processesTab.js';
 import { applyRecordingsSessions, applyRecordingsSession } from './recordingsTab.js';
 import { activateTab, TAB_IDS, switchTab } from './tabs.js';
@@ -194,6 +195,13 @@ window.addEventListener('message', (event) => {
     case 'language':
     case 'updateStatus':
       applySettings(message);
+      break;
+    // deviceSource.js は remoteConfig(§13 段2「取得元」セレクタのホスト一覧)を独立に購読する
+    // (settingsTab.js の hostRows とは別モジュールの別コピー)。この case が無いと remoteConfig は
+    // default で握り潰され、設定タブのリモートホスト一覧もこのセレクタも初期化されない。
+    case 'remoteConfig':
+      applySettings(message);
+      applyDeviceSourceHosts(message);
       break;
     case 'residentProcesses':
     case 'residentKillResult':

@@ -68,6 +68,24 @@ export function buildRemoteRunArgs(entry: RemoteHostEntry, artifacts: "collect" 
   return args;
 }
 
+/** マシンプロファイルタブ「デバイス候補の取得元」(§13 段2)。host は登録簿の name
+ * (`remote exec <host>` の第1引数。raw な ssh 宛先ではなく登録名を渡す契約)。 */
+export type DeviceCommandSource = { readonly kind: "local" } | { readonly kind: "remote"; readonly host: string };
+
+/**
+ * device-catalog/installed-devices/create-device を取得元に応じた CLI 引数へ組み立てる
+ * (docs/remote-runner.md §13「プロファイルのリモート対応」・§14「単発コマンドの転送は汎用化する」)。
+ * リモートは既存の汎用転送 `remote exec <host> -- <apiArgs>` を使うだけで、個別 ssh 実装は書かない。
+ * ローカルは apiArgs をそのまま返す(§13 段2 の「ローカルの挙動を1バイトも変えない」契約 —
+ * この分岐が無いと既存の spawn 引数が変わってしまう)。
+ */
+export function deviceCommandArgs(source: DeviceCommandSource, apiArgs: readonly string[]): string[] {
+  if (source.kind === "local") {
+    return [...apiArgs];
+  }
+  return ["remote", "exec", source.host, "--", ...apiArgs];
+}
+
 /**
  * リモートホスト登録簿の生の値(JSON。`ftester api remote-hosts` の stdout の hosts[]、または
  * 移行元の ftester.remote.hosts 設定値。どちらも settings.json/外部プロセス由来で型不定)を

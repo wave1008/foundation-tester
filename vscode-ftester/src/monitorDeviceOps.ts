@@ -5,6 +5,7 @@
 
 import { type ChildProcessByStdio, spawn } from "node:child_process";
 import type { Readable } from "node:stream";
+import * as vscode from "vscode";
 import { resolveProjectName } from "./config";
 import { t } from "./i18n";
 import {
@@ -33,6 +34,7 @@ import {
 } from "./monitorModel";
 import { NdjsonParser } from "./ndjson";
 import type { MonitorPanelDeps } from "./monitorPanel";
+import { type DeviceCommandSource, deviceCommandArgs } from "./remoteRunArgs";
 
 /** stdin=ignore, stdout/stderr=pipe で spawn したプロセスの型(cli.ts の FtesterProcess と同じ形)。 */
 type PipeProcess = ChildProcessByStdio<null, Readable, Readable>;
@@ -44,6 +46,12 @@ export type CreateDeviceMessage = Extract<MonitorFromWebviewMessage, { type: "cr
 export function summarizeDeviceNames(names: readonly string[]): string {
   const shown = names.slice(0, 3).join(t("deviceOps.nameSeparator"));
   return names.length > 3 ? t("deviceOps.nameListMore", { shown }) : shown;
+}
+
+/** エラーメッセージへ取得元ホストを付記する(§13 段2「失敗時はホスト名込みのメッセージにする」)。
+ * ローカルは素通し(既存の文言を変えない)。 */
+function withSourceContext(message: string, source: DeviceCommandSource): string {
+  return source.kind === "remote" ? t("deviceOps.remoteHostSuffix", { host: source.host, message }) : message;
 }
 
 /** デバイスライフサイクルの直列キューおよび device-catalog/installed-devices/create-device の
@@ -796,19 +804,26 @@ export class MonitorDeviceOps {
    * 多重リクエストはボタン側(モーダルは開いた直後に1回だけ送る)で抑止する前提のため、
    * ここでは単純に都度実行する。stdout を全量蓄積し、close 時にまとめて JSON.parse する
    * (単発 JSON 1行の出力なので NDJSON パーサは不要)。
+   * source が remote なら deviceCommandArgs が `remote exec <host> -- api device-catalog` に
+   * 組み立てる(§13 段2。個別 ssh 実装は書かない)。local は従来どおり `api device-catalog` のまま
+   * (deviceCommandArgs の local 分岐が apiArgs を素通しするため、挙動は1バイトも変わらない)。
    */
-  runDeviceCatalog(): void {
+  runDeviceCatalog(source: DeviceCommandSource): void {
     const config = this.deps.getConfig();
+    const args = deviceCommandArgs(source, ["api", "device-catalog"]);
 
     let proc: PipeProcess;
     try {
-      proc = spawn(config.binaryPath, ["api", "device-catalog"], {
+      proc = spawn(config.binaryPath, args, {
         cwd: this.deps.workspaceRoot,
         shell: false,
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (error) {
-      const message = t("deviceOps.cmdStartFailed", { cmd: "device-catalog", error: String(error) });
+      const message = withSourceContext(
+        t("deviceOps.cmdStartFailed", { cmd: "device-catalog", error: String(error) }),
+        source,
+      );
       this.deps.outputChannel.appendLine(`[ftester] ${message}`);
       this.deps.post({ type: "deviceCatalog", ok: false, catalog: null, error: message });
       return;
@@ -840,7 +855,10 @@ export class MonitorDeviceOps {
     };
 
     proc.on("error", (error) => {
-      const message = t("deviceOps.cmdRuntimeError", { cmd: "device-catalog", error: error.message });
+      const message = withSourceContext(
+        t("deviceOps.cmdRuntimeError", { cmd: "device-catalog", error: error.message }),
+        source,
+      );
       this.deps.outputChannel.appendLine(`[ftester] ${message}`);
       flushStderr();
       respond({ type: "deviceCatalog", ok: false, catalog: null, error: message });
@@ -848,7 +866,10 @@ export class MonitorDeviceOps {
     proc.on("close", (exitCode) => {
       flushStderr();
       if (exitCode !== 0) {
-        const message = t("deviceOps.cmdFailedExitCode", { cmd: "device-catalog", exitCode: String(exitCode) });
+        const message = withSourceContext(
+          t("deviceOps.cmdFailedExitCode", { cmd: "device-catalog", exitCode: String(exitCode) }),
+          source,
+        );
         this.deps.outputChannel.appendLine(`[ftester] ${message}`);
         respond({ type: "deviceCatalog", ok: false, catalog: null, error: message });
         return;
@@ -857,13 +878,16 @@ export class MonitorDeviceOps {
       try {
         parsed = JSON.parse(stdout);
       } catch (error) {
-        const message = t("deviceOps.cmdParseFailed", { cmd: "device-catalog", error: String(error) });
+        const message = withSourceContext(
+          t("deviceOps.cmdParseFailed", { cmd: "device-catalog", error: String(error) }),
+          source,
+        );
         this.deps.outputChannel.appendLine(`[ftester] ${message}`);
         respond({ type: "deviceCatalog", ok: false, catalog: null, error: message });
         return;
       }
       if (!isDeviceCatalogJson(parsed)) {
-        const message = t("deviceOps.cmdOutputInvalid", { cmd: "device-catalog" });
+        const message = withSourceContext(t("deviceOps.cmdOutputInvalid", { cmd: "device-catalog" }), source);
         this.deps.outputChannel.appendLine(`[ftester] ${message}`);
         respond({ type: "deviceCatalog", ok: false, catalog: null, error: message });
         return;
@@ -954,20 +978,24 @@ export class MonitorDeviceOps {
    * `ftester api installed-devices` を短命プロセスとして実行し、結果を webview へ返す
    * (「+既存から選択」モーダルが開いた直後の installedDevicesRequest への応答。runDeviceCatalog と
    * 全く同じ短命 spawn パターン — 単発 JSON 1行の出力を全量蓄積して close 時にまとめて
-   * JSON.parse する)。
+   * JSON.parse する。source の扱いも runDeviceCatalog と同じ)。
    */
-  runInstalledDevices(): void {
+  runInstalledDevices(source: DeviceCommandSource): void {
     const config = this.deps.getConfig();
+    const args = deviceCommandArgs(source, ["api", "installed-devices"]);
 
     let proc: PipeProcess;
     try {
-      proc = spawn(config.binaryPath, ["api", "installed-devices"], {
+      proc = spawn(config.binaryPath, args, {
         cwd: this.deps.workspaceRoot,
         shell: false,
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (error) {
-      const message = t("deviceOps.cmdStartFailed", { cmd: "installed-devices", error: String(error) });
+      const message = withSourceContext(
+        t("deviceOps.cmdStartFailed", { cmd: "installed-devices", error: String(error) }),
+        source,
+      );
       this.deps.outputChannel.appendLine(`[ftester] ${message}`);
       this.deps.post({ type: "installedDevices", ok: false, data: null, error: message });
       return;
@@ -998,7 +1026,10 @@ export class MonitorDeviceOps {
     };
 
     proc.on("error", (error) => {
-      const message = t("deviceOps.cmdRuntimeError", { cmd: "installed-devices", error: error.message });
+      const message = withSourceContext(
+        t("deviceOps.cmdRuntimeError", { cmd: "installed-devices", error: error.message }),
+        source,
+      );
       this.deps.outputChannel.appendLine(`[ftester] ${message}`);
       flushStderr();
       respond({ type: "installedDevices", ok: false, data: null, error: message });
@@ -1006,7 +1037,10 @@ export class MonitorDeviceOps {
     proc.on("close", (exitCode) => {
       flushStderr();
       if (exitCode !== 0) {
-        const message = t("deviceOps.cmdFailedExitCode", { cmd: "installed-devices", exitCode: String(exitCode) });
+        const message = withSourceContext(
+          t("deviceOps.cmdFailedExitCode", { cmd: "installed-devices", exitCode: String(exitCode) }),
+          source,
+        );
         this.deps.outputChannel.appendLine(`[ftester] ${message}`);
         respond({ type: "installedDevices", ok: false, data: null, error: message });
         return;
@@ -1015,13 +1049,16 @@ export class MonitorDeviceOps {
       try {
         parsed = JSON.parse(stdout);
       } catch (error) {
-        const message = t("deviceOps.cmdParseFailed", { cmd: "installed-devices", error: String(error) });
+        const message = withSourceContext(
+          t("deviceOps.cmdParseFailed", { cmd: "installed-devices", error: String(error) }),
+          source,
+        );
         this.deps.outputChannel.appendLine(`[ftester] ${message}`);
         respond({ type: "installedDevices", ok: false, data: null, error: message });
         return;
       }
       if (!isInstalledDevicesJson(parsed)) {
-        const message = t("deviceOps.cmdOutputInvalid", { cmd: "installed-devices" });
+        const message = withSourceContext(t("deviceOps.cmdOutputInvalid", { cmd: "installed-devices" }), source);
         this.deps.outputChannel.appendLine(`[ftester] ${message}`);
         respond({ type: "installedDevices", ok: false, data: null, error: message });
         return;
@@ -1032,12 +1069,10 @@ export class MonitorDeviceOps {
 
   /**
    * `ftester api create-device` を短命プロセスとして実行する(デバイス追加モーダルの OK)。
-   * creatingDevice による多重実行防止(モーダル側のボタン無効化に加えた保険)。finished が来る前に
-   * プロセスが落ちた場合は合成の失敗結果を送る(executeDeviceOpJob と同じパターン)。成功時は
-   * FileSystemWatcher 経由でも postMachineProfileInfo() が呼ばれるが、反映を待たせないようここでも
-   * MonitorPanelDeps.notifyMachineProfilesChanged 経由で明示的に呼ぶ(冪等なので二重呼び出しは無害)。
-   * msg.register が false のときは `--no-register` を付与し物理作成のみ行う(マシンプロファイルには
-   * 追記しない。#device-pick-overlay の「+」新規作成モーダルが使う)。
+   * creatingDevice による多重実行防止(モーダル側のボタン無効化に加えた保険)。source が remote
+   * なら、実行環境を変え得る破壊的操作として先にホスト側 modal 確認を挟む(§13。照会系の
+   * device-catalog/installed-devices は確認不要)。確認を待つ間も多重実行防止は効かせる
+   * (creatingDevice を確認前に true にする)。
    */
   runCreateDevice(msg: CreateDeviceMessage): void {
     if (this.creatingDevice) {
@@ -1050,9 +1085,53 @@ export class MonitorDeviceOps {
       });
       return;
     }
+    this.creatingDevice = true;
+    if (msg.source.kind === "remote") {
+      void this.confirmAndSpawnCreateDevice(msg, msg.source.host);
+      return;
+    }
+    this.spawnCreateDevice(msg);
+  }
+
+  /** リモート作成の modal 確認(§11・§13 と同じ showWarningMessage({modal:true}) 方式。
+   * webview の window.confirm は効かないため必ずホスト側で行う)。 */
+  private async confirmAndSpawnCreateDevice(msg: CreateDeviceMessage, host: string): Promise<void> {
+    const confirmLabel = t("deviceOps.createRemoteConfirmButton");
+    const choice = await vscode.window.showWarningMessage(
+      t("deviceOps.createRemoteConfirmMessage", { host, name: msg.name }),
+      { modal: true },
+      confirmLabel,
+    );
+    if (choice !== confirmLabel) {
+      this.creatingDevice = false;
+      this.deps.post({
+        type: "createDeviceResult",
+        ok: false,
+        name: msg.name,
+        error: t("deviceOps.createCancelled"),
+        device: null,
+      });
+      return;
+    }
+    this.spawnCreateDevice(msg);
+  }
+
+  /**
+   * runCreateDevice/confirmAndSpawnCreateDevice からの実処理。finished が来る前にプロセスが
+   * 落ちた場合は合成の失敗結果を送る(executeDeviceOpJob と同じパターン)。成功時は
+   * FileSystemWatcher 経由でも postMachineProfileInfo() が呼ばれるが、反映を待たせないようここでも
+   * MonitorPanelDeps.notifyMachineProfilesChanged 経由で明示的に呼ぶ(冪等なので二重呼び出しは無害)。
+   * msg.register が false、または source が remote のときは `--no-register` を付与し物理作成のみ
+   * 行う(マシンプロファイルには追記しない)。remote は register の値によらず強制する ——
+   * リモート側に登録してもプロファイルの正はローカルで、次回ディスパッチの rsync --delete で
+   * 消えるため(§13)。作成した1台は #device-pick-overlay の再取得→チェック→OK
+   * (machineDevicesSync。常にローカルへ書く既存経路)にそのまま乗せてローカル登録する。
+   */
+  private spawnCreateDevice(msg: CreateDeviceMessage): void {
     const config = this.deps.getConfig();
     const resolution = resolveProjectName(this.deps.workspaceRoot, config);
     if (resolution.kind !== "resolved") {
+      this.creatingDevice = false;
       this.deps.post({
         type: "createDeviceResult",
         ok: false,
@@ -1062,7 +1141,7 @@ export class MonitorDeviceOps {
       });
       return;
     }
-    const args = [
+    const apiArgs = [
       "api",
       "create-device",
       "--project",
@@ -1078,11 +1157,12 @@ export class MonitorDeviceOps {
       "--os",
       msg.os,
     ];
-    if (!msg.register) {
-      args.push("--no-register");
+    if (!msg.register || msg.source.kind === "remote") {
+      apiArgs.push("--no-register");
     }
+    const args = deviceCommandArgs(msg.source, apiArgs);
+    const source = msg.source;
 
-    this.creatingDevice = true;
     let responded = false;
     const respond = (
       ok: boolean,
@@ -1094,7 +1174,7 @@ export class MonitorDeviceOps {
       }
       responded = true;
       this.creatingDevice = false;
-      this.deps.post({ type: "createDeviceResult", ok, name: msg.name, error, device });
+      this.deps.post({ type: "createDeviceResult", ok, name: msg.name, error: error ? withSourceContext(error, source) : error, device });
       if (ok) {
         this.deps.notifyMachineProfilesChanged();
       }

@@ -8,7 +8,7 @@
 import type { MonitorDeviceFilter } from "./config";
 import type { RecordingErrorEntry, RecordingScenarioVideo, RecordingTreeClass } from "./recordingsModel";
 import type { RecordingSessionSummary } from "./recordingsStore";
-import type { RemoteHostEntry } from "./remoteRunArgs";
+import type { DeviceCommandSource, RemoteHostEntry } from "./remoteRunArgs";
 import type { ResidentProcess } from "./residentProcesses";
 import { isRecord, type MonitorDevice, type MonitorEvent, type MonitorPlatform } from "./monitorDeviceModel";
 import type { DeviceOpKind, DeviceOpQueueStatus } from "./monitorDeviceLifecycle";
@@ -373,9 +373,13 @@ export type MonitorFromWebviewMessage =
   | { readonly type: "machineProfileDelete"; readonly machine: string }
   | { readonly type: "machineProfileRename"; readonly machine: string }
   // デバイス追加モーダルを開いた直後に送る、`ftester api device-catalog` の再取得リクエスト。
-  | { readonly type: "deviceCatalogRequest" }
+  // source: マシンプロファイルタブの「デバイス候補の取得元」セレクタの選択(§13 段2)。
+  // remote なら monitorDeviceOps.ts が deviceCommandArgs で `remote exec <host> -- api device-catalog`
+  // に組み立てる(docs/remote-runner.md §13「プロファイルのリモート対応」)。
+  | { readonly type: "deviceCatalogRequest"; readonly source: DeviceCommandSource }
   // 同モーダルで Android のモデル一覧が空(errorCode: "avdmanager-missing")のときだけ出る
-  // 導入ボタン。応答は installCmdlineToolsResult。
+  // 導入ボタン。応答は installCmdlineToolsResult。cmdline-tools の導入はローカル専用
+  // (取得元セレクタの対象外。リモートの avdmanager 導入はスコープ外)。
   | { readonly type: "installCmdlineToolsRequest" }
   // デバイス追加モーダルの OK クリック。全フィールドは空文字だと「未選択/未入力」を意味するため、
   // selectProfile と違い非空文字列を必須として検証する。
@@ -389,11 +393,16 @@ export type MonitorFromWebviewMessage =
       // true: 物理作成+即登録。false: 物理作成のみ(ホストが --no-register 付与)、登録は
       // #device-pick-overlay の「+」経由なら呼び出し側が machineDevicesSync で別途行う(OK 押下時に
       // 登録するため)。.profile-actions の「+新規作成」なら register:true を送る。
+      // source が remote のときはホスト側が register の値によらず --no-register を強制する
+      // (§13。リモート側のプロファイルは次回ディスパッチの rsync --delete で消えるため、
+      // 正はローカル。作成した1台は #device-pick-overlay の再取得→チェック→OK[machineDevicesSync]
+      // という既存の register:false 経路にそのまま乗せる)。
       readonly register: boolean;
+      readonly source: DeviceCommandSource;
     }
   // 「+既存から選択」モーダル(#device-pick-overlay)が開いた直後に送る、
   // `ftester api installed-devices` の再取得リクエスト(deviceCatalogRequest と同じ趣旨)。
-  | { readonly type: "installedDevicesRequest" }
+  | { readonly type: "installedDevicesRequest"; readonly source: DeviceCommandSource }
   // 同モーダルの OK クリック。チェックボックスは「登録状態そのもの」を表すため、送るのは全件では
   // なく初期状態からの差分のみ: add は新たにチェックした(未登録だった)デバイス、remove は
   // チェックを外した(登録済みだった)デバイスのマシンプロファイル上の名前。add/remove は片方が
@@ -531,6 +540,15 @@ function isMachineDeviceAddEntryLike(value: unknown): value is MachineDeviceAddE
   );
 }
 
+/** deviceCatalogRequest/installedDevicesRequest/createDevice の source(§13 段2)の検証。
+ * remote は host が非空文字列であること(空文字は `remote exec` に渡せない不正値)。 */
+function isDeviceCommandSourceLike(value: unknown): value is DeviceCommandSource {
+  return (
+    isRecord(value) &&
+    (value.kind === "local" || (value.kind === "remote" && typeof value.host === "string" && value.host !== ""))
+  );
+}
+
 /** setRemoteConfig の hosts[] 1件の検証(webview 側は既に正規化済みの値を送る想定だが、
  * 型不正なペイロードを弾くための最終ゲート)。machine は settingsTab.js が remoteConfig 受信時の
  * 値をパススルーするだけの隠しフィールド(UI に入力欄は無い)なので、無い(旧版 webview 由来)
@@ -608,11 +626,12 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
     case "profileDelete":
       return typeof value.profile === "string" && value.profile !== "";
     case "machineProfileRefresh":
-    case "deviceCatalogRequest":
     case "installCmdlineToolsRequest":
     case "machineProfileAdd":
-    case "installedDevicesRequest":
       return true;
+    case "deviceCatalogRequest":
+    case "installedDevicesRequest":
+      return isDeviceCommandSourceLike(value.source);
     case "machineProfileCopy":
     case "machineProfileDelete":
     case "machineProfileRename":
@@ -628,7 +647,8 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         value.model !== "" &&
         typeof value.os === "string" &&
         value.os !== "" &&
-        typeof value.register === "boolean"
+        typeof value.register === "boolean" &&
+        isDeviceCommandSourceLike(value.source)
       );
     case "machineDevicesSync":
       return (

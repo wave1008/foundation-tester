@@ -7,6 +7,7 @@ import { t } from '../i18n.js';
 import { vscode } from './vscodeApi.js';
 import { cachePhysicalDeviceInfo } from './physicalDeviceCache.js';
 import { selectedMachine, findMachine, allDeviceNamesForSelectedMachine, btnDeviceAddExisting, refreshSelectedDeviceEditor } from './machineProfilesTab.js';
+import { currentDeviceSource, refreshSourceBadges } from './deviceSource.js';
 
 // ---- デバイス追加モーダル ---------------------------------------------------
 
@@ -128,8 +129,11 @@ function platformIssue(platform) {
       || (blocked
         ? t(serviceOnly ? 'wvMonitor.deviceAdd.noImageForService' : 'wvMonitor.deviceAdd.catalogEmpty')
         : ''),
-    // 導入で解消できる欠け方のときだけボタンを出す(文言では分岐しない)
-    installable: platform === 'android' && side.errorCode === 'avdmanager-missing',
+    // 導入で解消できる欠け方のときだけボタンを出す(文言では分岐しない)。導入は常にローカルで
+    // 実行するため(installCmdlineToolsRequest は取得元セレクタの対象外)、取得元がリモートの
+    // ときは出さない — 出すと「別マシンの欠けを手元に導入するボタン」という誤動作になる。
+    installable: platform === 'android' && side.errorCode === 'avdmanager-missing'
+      && currentDeviceSource().kind === 'local',
   };
 }
 
@@ -209,6 +213,7 @@ function openDeviceAddModal() {
   dlgNameDirty = false;
   dlgName.value = '';
   dlgService.value = DEFAULT_ANDROID_SERVICE;
+  refreshSourceBadges();
   requestDeviceCatalog();
   dlgOk.textContent = 'OK';
   dlgCancel.disabled = false;
@@ -225,7 +230,7 @@ function requestDeviceCatalog() {
   dlgInstallRow.hidden = true;
   setDialogControlsEnabled(false);
   dlgOk.disabled = true;
-  vscode.postMessage({ type: 'deviceCatalogRequest' });
+  vscode.postMessage({ type: 'deviceCatalogRequest', source: currentDeviceSource() });
 }
 
 // 導入中(数分)は閉じられる: CLI が固まってもモーダルが永久に閉じなくなるのを避ける。
@@ -348,7 +353,9 @@ dlgOk.addEventListener('click', () => {
     model: dlgModel.value,
     os: dlgOs.value,
     // ピッカー経由なら register:false(登録はピッカー側 OK の machineDevicesSync で行う)。
+    // source が remote のときはホスト側が register によらず --no-register を強制する(§13)。
     register: !deviceAddFromPicker,
+    source: currentDeviceSource(),
   });
 });
 // closeDeviceAddModal は自分の状態のみ見るため、他の Esc ハンドラと独立して共存できる。
@@ -787,7 +794,7 @@ function reloadDevicePickIfOpen() {
   devicePickError.classList.add('info');
   devicePickError.textContent = t('wvMonitor.devicePick.loading');
   devicePickOk.disabled = true;
-  vscode.postMessage({ type: 'installedDevicesRequest' });
+  vscode.postMessage({ type: 'installedDevicesRequest', source: currentDeviceSource() });
 }
 
 function openDevicePickModal() {
@@ -809,8 +816,9 @@ function openDevicePickModal() {
   devicePickOk.disabled = true;
   devicePickOk.textContent = 'OK';
   devicePickCancel.disabled = false;
+  refreshSourceBadges();
   devicePickOverlay.classList.add('visible');
-  vscode.postMessage({ type: 'installedDevicesRequest' });
+  vscode.postMessage({ type: 'installedDevicesRequest', source: currentDeviceSource() });
 }
 
 function closeDevicePickModal() {

@@ -84,6 +84,14 @@ export const deviceOpsStrings = {
     en: "Failed to parse {cmd} output: {error}",
   },
   "deviceOps.cmdOutputInvalid": { ja: "{cmd} の出力形式が不正です。", en: "{cmd} output format is invalid." },
+  // §13 段2「取得元」セレクタ: リモート実行時のエラーへホスト名を付記する(withSourceContext)。
+  "deviceOps.remoteHostSuffix": { ja: "{message}(ホスト: {host})", en: "{message} (host: {host})" },
+  "deviceOps.createRemoteConfirmMessage": {
+    ja: "「{name}」を {host} 上に作成します。よろしいですか?",
+    en: "This creates \"{name}\" on {host}. Continue?",
+  },
+  "deviceOps.createRemoteConfirmButton": { ja: "作成", en: "Create" },
+  "deviceOps.createCancelled": { ja: "作成をキャンセルしました。", en: "Device creation was cancelled." },
   "deviceOps.createAlreadyRunning": {
     ja: "作成処理が既に実行中です。",
     en: "A create operation is already in progress.",

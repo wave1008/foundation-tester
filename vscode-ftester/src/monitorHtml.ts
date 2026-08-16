@@ -345,6 +345,11 @@ function renderMachineProfileSection(): string {
         <!-- 「+新規作成」ボタンは廃止済み。新規作成は#device-pick-overlay内の「+」(device-pick-add-new)から行う。 -->
         <span class="profile-actions-label">${t("panels.common.devices")}</span>
         <button id="btn-device-add-existing" class="icon-button" title="${t("panels.machineProfile.addExistingTitle")}" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M14 7v1H8v6H7V8H1V7h6V1h1v6h6z"/></svg></button>
+        <!-- §13 段2「デバイス候補の取得元」。選択肢(ローカル/登録済みリモートホスト)は
+             deviceSource.js が remoteConfig(設定タブと同じメッセージ)を購読して組み立てる。
+             選択は installedDevicesRequest/deviceCatalogRequest/createDevice の source に載る。 -->
+        <span class="profile-actions-label" id="device-source-label">${t("panels.machineProfile.deviceSourceLabel")}</span>
+        <select id="device-source-select"></select>
       </div>
       <div id="machine-profile-error" class="profile-error" style="display: none;"></div>
       <div id="machine-profile-body" class="profile-body">
@@ -614,7 +619,12 @@ function renderMachineDeviceMenu(): string {
 function renderDeviceAddOverlay(): string {
   return `<div id="device-add-overlay" class="modal-overlay">
     <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="device-add-title">
-      <div id="device-add-title" class="modal-title">${t("panels.deviceAdd.title")}</div>
+      <div class="modal-title device-pick-title-row">
+        <span id="device-add-title">${t("panels.deviceAdd.title")}</span>
+        <!-- どのホストから作成するかを常時表示(§13 段2。黙って別マシンを操作しない)。
+             deviceSource.js が開いたタイミングで文言を入れる。 -->
+        <span id="device-add-source-badge" class="modal-hint"></span>
+      </div>
       <div class="modal-row">
         <label>${t("panels.deviceAdd.osTypeLabel")}</label>
         <div class="modal-radio-group">
@@ -687,6 +697,8 @@ function renderDevicePickOverlay(): string {
     <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="device-pick-title">
       <div class="modal-title device-pick-title-row">
         <span id="device-pick-title">${t("panels.devicePick.title")}</span>
+        <!-- 取得元バッジ(device-add-source-badge と同じ役割)。 -->
+        <span id="device-pick-source-badge" class="modal-hint"></span>
         <button id="device-pick-add-new" class="icon-button" type="button" title="${t("panels.devicePick.addNewTitle")}"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M14 7v1H8v6H7V8H1V7h6V1h1v6h6z"/></svg></button>
       </div>
       <div id="device-pick-list" class="device-pick-list">

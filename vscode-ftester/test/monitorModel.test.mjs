@@ -855,10 +855,25 @@ test("buildRunProfileTemplate: machine が空文字なら machine キー自体�
 
 // ---- isMonitorFromWebviewMessage: マシンプロファイル(machineProfileRefresh/deviceCatalogRequest/createDevice) ----
 
-test("isMonitorFromWebviewMessage: machineProfileRefresh/deviceCatalogRequest/installedDevicesRequest は常に true", () => {
+test("isMonitorFromWebviewMessage: machineProfileRefresh は常に true", () => {
   assert.equal(isMonitorFromWebviewMessage({ type: "machineProfileRefresh" }), true);
-  assert.equal(isMonitorFromWebviewMessage({ type: "deviceCatalogRequest" }), true);
-  assert.equal(isMonitorFromWebviewMessage({ type: "installedDevicesRequest" }), true);
+});
+
+test("isMonitorFromWebviewMessage: deviceCatalogRequest/installedDevicesRequest は source が local/remote(host非空)なら true", () => {
+  for (const type of ["deviceCatalogRequest", "installedDevicesRequest"]) {
+    assert.equal(isMonitorFromWebviewMessage({ type, source: { kind: "local" } }), true);
+    assert.equal(isMonitorFromWebviewMessage({ type, source: { kind: "remote", host: "M1Max" } }), true);
+  }
+});
+
+test("isMonitorFromWebviewMessage: deviceCatalogRequest/installedDevicesRequest は source 欠落/不正なら false", () => {
+  for (const type of ["deviceCatalogRequest", "installedDevicesRequest"]) {
+    assert.equal(isMonitorFromWebviewMessage({ type }), false);
+    assert.equal(isMonitorFromWebviewMessage({ type, source: { kind: "remote", host: "" } }), false);
+    assert.equal(isMonitorFromWebviewMessage({ type, source: { kind: "remote" } }), false);
+    assert.equal(isMonitorFromWebviewMessage({ type, source: { kind: "bogus" } }), false);
+    assert.equal(isMonitorFromWebviewMessage({ type, source: null }), false);
+  }
 });
 
 // ---- isMonitorFromWebviewMessage: マシンプロファイル自体の追加/削除/名前変更 ----
@@ -882,7 +897,7 @@ test("isMonitorFromWebviewMessage: machineProfileCopy/Delete/Rename は machine 
   }
 });
 
-test("isMonitorFromWebviewMessage: createDevice は全フィールドが非空文字列(platformはios/android)+registerがbooleanなら true", () => {
+test("isMonitorFromWebviewMessage: createDevice は全フィールドが非空文字列(platformはios/android)+registerがboolean+sourceが妥当なら true", () => {
   assert.equal(
     isMonitorFromWebviewMessage({
       type: "createDevice",
@@ -892,6 +907,7 @@ test("isMonitorFromWebviewMessage: createDevice は全フィールドが非空�
       model: "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro",
       os: "com.apple.CoreSimulator.SimRuntime.iOS-27-0",
       register: true,
+      source: { kind: "local" },
     }),
     true,
   );
@@ -904,12 +920,13 @@ test("isMonitorFromWebviewMessage: createDevice は全フィールドが非空�
       model: "pixel_9_pro",
       os: "system-images;android-37;google_apis;arm64-v8a",
       register: false,
+      source: { kind: "remote", host: "M1Max" },
     }),
     true,
   );
 });
 
-test("isMonitorFromWebviewMessage: createDevice はフィールド欠落/空文字/不正platform/register非booleanなら false", () => {
+test("isMonitorFromWebviewMessage: createDevice はフィールド欠落/空文字/不正platform/register非boolean/source不正なら false", () => {
   const base = {
     type: "createDevice",
     machine: "M1",
@@ -918,6 +935,7 @@ test("isMonitorFromWebviewMessage: createDevice はフィールド欠落/空文�
     model: "m",
     os: "o",
     register: true,
+    source: { kind: "local" },
   };
   assert.equal(isMonitorFromWebviewMessage({ ...base, machine: "" }), false);
   assert.equal(isMonitorFromWebviewMessage({ ...base, name: "" }), false);
@@ -926,10 +944,14 @@ test("isMonitorFromWebviewMessage: createDevice はフィールド欠落/空文�
   assert.equal(isMonitorFromWebviewMessage({ ...base, platform: "windows" }), false);
   assert.equal(isMonitorFromWebviewMessage({ ...base, register: "true" }), false);
   assert.equal(isMonitorFromWebviewMessage({ ...base, register: undefined }), false);
+  assert.equal(isMonitorFromWebviewMessage({ ...base, source: { kind: "remote", host: "" } }), false);
+  assert.equal(isMonitorFromWebviewMessage({ ...base, source: { kind: "bogus" } }), false);
   const { machine, ...missingMachine } = base;
   assert.equal(isMonitorFromWebviewMessage(missingMachine), false);
   const { register, ...missingRegister } = base;
   assert.equal(isMonitorFromWebviewMessage(missingRegister), false);
+  const { source, ...missingSource } = base;
+  assert.equal(isMonitorFromWebviewMessage(missingSource), false);
 });
 
 test("isMonitorFromWebviewMessage: machineDeviceRemove は machine 非空文字列・names 非空配列(各要素非空文字列)なら true", () => {

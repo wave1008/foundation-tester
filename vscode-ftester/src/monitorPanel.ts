@@ -547,7 +547,7 @@ class MonitorPanelController implements vscode.Disposable {
         void this.profiles.handleMachineProfileRename(message.machine);
         break;
       case "deviceCatalogRequest":
-        this.deviceOps.runDeviceCatalog();
+        this.deviceOps.runDeviceCatalog(message.source);
         break;
       case "installCmdlineToolsRequest":
         this.deviceOps.runInstallCmdlineTools();
@@ -556,7 +556,7 @@ class MonitorPanelController implements vscode.Disposable {
         this.deviceOps.runCreateDevice(message);
         break;
       case "installedDevicesRequest":
-        this.deviceOps.runInstalledDevices();
+        this.deviceOps.runInstalledDevices(message.source);
         break;
       case "machineDevicesSync":
         this.profiles.handleMachineDevicesSync(message);

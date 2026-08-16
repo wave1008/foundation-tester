@@ -94,6 +94,13 @@ export const webviewMonitorAStrings = {
   "wvMonitor.deviceAdd.createFailed": { ja: "デバイスの作成に失敗しました。", en: "Failed to create the device." },
   "wvMonitor.deviceAdd.creating": { ja: "作成中...", en: "Creating..." },
 
+  // §13 段2「取得元」セレクタ(machineProfilesTab.js の #device-source-select・deviceSource.js)。
+  // モーダルを開いている間、どのホストから取得しているかを常時表示するバッジに使う
+  // (「黙って別マシンの一覧を出さない」ため。#device-add-source-badge/#device-pick-source-badge)。
+  "wvMonitor.deviceSource.localOption": { ja: "ローカル(このマシン)", en: "Local (this machine)" },
+  "wvMonitor.deviceSource.localShort": { ja: "ローカル", en: "local" },
+  "wvMonitor.deviceSource.badge": { ja: "取得元: {source}", en: "Source: {source}" },
+
   "wvMonitor.nameInput.required": { ja: "{noun}を入力してください。", en: "Please enter {noun}." },
   "wvMonitor.nameInput.forbiddenChars": {
     ja: "{noun}に \"/\" や \"{backslash}\" は使えません。",

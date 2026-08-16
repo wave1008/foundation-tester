@@ -154,6 +154,10 @@ export const panelsStrings = {
     ja: "インストール済みのシミュレータ/AVD・接続中の実機からマシンプロファイルに追加",
     en: "Add from installed simulators/AVDs or connected physical devices to the machine profile",
   },
+  // §13 段2: デバイス候補の取得元(ローカル/登録済みリモートホスト)セレクタのラベル。
+  // 選択は #device-catalog-request 等の source として deviceCatalogRequest/installedDevicesRequest/
+  // createDevice に載る(docs/remote-runner.md §13「プロファイルのリモート対応」)。
+  "panels.machineProfile.deviceSourceLabel": { ja: "取得元:", en: "Source:" },
   "panels.machineProfile.selectPrompt": {
     ja: "デバイスを選択すると内容を表示します",
     en: "Select a device to view details",
