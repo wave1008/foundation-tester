@@ -1,0 +1,18 @@
+{
+  "ios": {
+    "devices": [
+      {
+        "name": "iPhone 17 Pro(iOS 27.0)-01",
+        "simulator": "iPhone 17 Pro(iOS 27.0)-01",
+        "os": "27.0",
+        "udid": "84CBFBA3-6414-4AEE-A3CC-39A124D17D9E"
+      },
+      {
+        "name": "iPhone 17 Pro(iOS 27.0)-02",
+        "simulator": "iPhone 17 Pro(iOS 27.0)-02",
+        "os": "27.0",
+        "udid": "A831A09A-668C-43F7-85E9-D1A4C8C7FF75"
+      }
+    ]
+  }
+}
