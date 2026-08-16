@@ -157,7 +157,19 @@
   (反映は VSCode の Reload Window **+パネル開き直し**。Reload だけでは効かないことがある。code CLI は PATH に無い)。
   **package.json だけ手で書き換えない** — lock も version を内包しており、放置すると受け手の
   `npm install` が lock を書き換えてクローンが dirty になり、**次の更新が pull ガードで止まる**
-  (実害。`packageLockSync.test.mjs` が検出。既にズレたら `npm install --package-lock-only`)
+  (実害。`packageLockSync.test.mjs` が検出。既にズレたら `npm install --package-lock-only`)。
+  **jsdom を使う webview テストは `t.after(() => window.close())` で必ず閉じる** ——
+  `pretendToBeVisual` の rAF と `main.js` の `setInterval` が残るとプロセスが終了せず、
+  `node --test` はファイル単位の子プロセスの終了を待つので**1本の閉じ忘れでスイート全体が
+  止まる**(2026-08-17 の実害: 10本中1本の漏れで `npm test` が終わらなくなった。個々のテストは
+  1〜2秒で、遅いテストは1つも無かった)。二重に塞いである: `jsdomTeardown.test.mjs` が
+  閉じ忘れをソース走査で落とし(**コメント中の `window.close()` を実装と数えない** ——
+  規律はコメントで説明されているので素の一致だと素通しする)、`npm test` は
+  **`--test-force-exit`** を付けて漏れがあっても止まらないようにしてある。
+  **同型: `argumentHelpLiteral.test.mjs`**(`ArgumentHelp` は文字列リテラルからしか作れないので
+  `help: "…" + "…"` はコンパイルが通らない。4回踏んだ)。**Swift 側の「コンパイルで落ちる誤り」や
+  「テストが終わらない」型は、swift build/npm test を1回払うまで気付けないので、ソース走査で
+  秒未満に落とす**
 - Swift: **`swift test --parallel` だけでよい**(実測 127s → 34s。直列も緑のままだが、毎回の待ちが4倍違う)。
   **前に `swift build --build-tests` を打たない** —— `swift test` が同じビルドをやり直すので
   **無変更でも 12.3 秒を二重に払う**(実測: build 12.3s + test 37.9s = 50.2s / test 単独 37.9s)。

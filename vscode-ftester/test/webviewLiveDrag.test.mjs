@@ -64,6 +64,9 @@ before(async () => {
 
 /** 実 HTML+バンドルを読み込んだ webview 相当の DOM を作り、host への postMessage を捕捉する。
  * スクリプト実行(=webviewBundle の eval)だけでパネル初期化が走る(タブ切替は無い)。 */
+/** **window.close() を忘れると main.js の setInterval が残ってプロセスが終わらない**
+ * (node --test はファイル単位の子プロセスの終了を待つので、1本の閉じ忘れでスイート全体が
+ * 止まる。2026-08-17 に実際に起き、npm test が終わらなくなった)。各 test は t.after で閉じる。 */
 function createWebview() {
   const dom = new JSDOM(panelHtml, {
     runScripts: "outside-only",
@@ -117,15 +120,17 @@ const SNAPSHOT_MESSAGE = {
 };
 const FRAME_MESSAGE = { type: "live", message: { type: "frame", image: "aW1n" } };
 
-test("パネル読み込みで visibility:true と refreshDevices を host へ送る", () => {
-  const { liveMessages } = createWebview();
+test("パネル読み込みで visibility:true と refreshDevices を host へ送る", (t) => {
+  const { window, liveMessages } = createWebview();
+  t.after(() => window.close());
   const messages = liveMessages();
   assert.ok(messages.some((m) => m.type === "visibility" && m.visible === true));
   assert.ok(messages.some((m) => m.type === "refreshDevices"));
 });
 
-test("snapshot 未取得で frame のみ受信: refreshSnapshot を一度だけ自動要求し、ポインタ操作は送らない", () => {
+test("snapshot 未取得で frame のみ受信: refreshSnapshot を一度だけ自動要求し、ポインタ操作は送らない", (t) => {
   const { window, screenshot, sendToWebview, liveMessages } = createWebview();
+  t.after(() => window.close());
 
   sendToWebview(FRAME_MESSAGE);
   sendToWebview(FRAME_MESSAGE);
@@ -139,8 +144,9 @@ test("snapshot 未取得で frame のみ受信: refreshSnapshot を一度だけ�
   assert.equal(gestures.length, 0);
 });
 
-test("snapshot 取得後: 5px 以上の移動は dragPoints(window の pointerup で拾う)", () => {
+test("snapshot 取得後: 5px 以上の移動は dragPoints(window の pointerup で拾う)", (t) => {
   const { window, screenshot, sendToWebview, liveMessages } = createWebview();
+  t.after(() => window.close());
   sendToWebview(SNAPSHOT_MESSAGE);
 
   const down = pointerEvent(window, "pointerdown", { x: 100, y: 100 });
@@ -164,8 +170,9 @@ test("snapshot 取得後: 5px 以上の移動は dragPoints(window の pointerup
   assert.ok(dragMs >= 0);
 });
 
-test("snapshot 取得後: 5px 未満の移動は tapPoint になる", () => {
+test("snapshot 取得後: 5px 未満の移動は tapPoint になる", (t) => {
   const { window, screenshot, sendToWebview, liveMessages } = createWebview();
+  t.after(() => window.close());
   sendToWebview(SNAPSHOT_MESSAGE);
 
   screenshot.dispatchEvent(pointerEvent(window, "pointerdown", { x: 50, y: 60 }));
@@ -181,8 +188,9 @@ test("snapshot 取得後: 5px 未満の移動は tapPoint になる", () => {
   assert.equal(liveMessages().filter((m) => m.type === "dragPoints").length, 0);
 });
 
-test("ドラッグ中は軌跡オーバーレイが表示され、離すと消える", () => {
+test("ドラッグ中は軌跡オーバーレイが表示され、離すと消える", (t) => {
   const { window, screenshot, sendToWebview } = createWebview();
+  t.after(() => window.close());
   sendToWebview(SNAPSHOT_MESSAGE);
   const overlay = window.document.getElementById("live-drag-overlay");
   const line = window.document.getElementById("live-drag-line");
@@ -196,8 +204,9 @@ test("ドラッグ中は軌跡オーバーレイが表示され、離すと消�
   assert.ok(!overlay.classList.contains("visible"), "離すとオーバーレイ非表示");
 });
 
-test("500ms 以上ホールドして離すと pressPoint になる", async () => {
+test("500ms 以上ホールドして離すと pressPoint になる", async (t) => {
   const { window, screenshot, sendToWebview, liveMessages } = createWebview();
+  t.after(() => window.close());
   sendToWebview(SNAPSHOT_MESSAGE);
 
   screenshot.dispatchEvent(pointerEvent(window, "pointerdown", { x: 80, y: 90 }));
@@ -211,8 +220,9 @@ test("500ms 以上ホールドして離すと pressPoint になる", async () =>
   assert.equal(liveMessages().filter((m) => m.type === "tapPoint").length, 0);
 });
 
-test("画像の外で離したドラッグは表示範囲にクランプされる", () => {
+test("画像の外で離したドラッグは表示範囲にクランプされる", (t) => {
   const { window, screenshot, sendToWebview, liveMessages } = createWebview();
+  t.after(() => window.close());
   sendToWebview(SNAPSHOT_MESSAGE);
 
   screenshot.dispatchEvent(pointerEvent(window, "pointerdown", { x: 200, y: 700 }));
@@ -231,8 +241,9 @@ test("画像の外で離したドラッグは表示範囲にクランプされ�
 // マップ・キャンバス系の操作(2026-08-04 追加)。**ダブルタップは「素早く2回」では表せない** ——
 // パネルの1クリックは既にタップとして送っているので、2回目を待つ設計にすると通常のタップが
 // 毎回遅くなる。そこで Alt(Option)+クリックに割り当てている
-test("Alt+クリックは doubleTapPoint になる(通常のタップは送らない)", () => {
+test("Alt+クリックは doubleTapPoint になる(通常のタップは送らない)", (t) => {
   const { window, screenshot, sendToWebview, liveMessages } = createWebview();
+  t.after(() => window.close());
   sendToWebview(SNAPSHOT_MESSAGE);
 
   screenshot.dispatchEvent(pointerEvent(window, "pointerdown", { x: 70, y: 80, altKey: true }));
@@ -247,8 +258,9 @@ test("Alt+クリックは doubleTapPoint になる(通常のタップは送ら�
 
 // **修飾キーは UI に出ていないと使われない**(README だけでは届かない)。
 // ヒント表示と画面領域の tooltip の両方を固定する
-test("Alt+クリックの割り当てがパネル上に表示されている", () => {
+test("Alt+クリックの割り当てがパネル上に表示されている", (t) => {
   const { window } = createWebview();
+  t.after(() => window.close());
 
   const hint = window.document.getElementById("live-gesture-hint");
   assert.ok(hint, "ツールバーに割り当てのヒントを出すこと");
@@ -263,8 +275,9 @@ test("Alt+クリックの割り当てがパネル上に表示されている", (
   assert.match(wrap.getAttribute("title") ?? "", /ダブルタップ|double tap/i);
 });
 
-test("拡大・縮小ボタンは画面全体のピンチを送る", () => {
+test("拡大・縮小ボタンは画面全体のピンチを送る", (t) => {
   const { window, sendToWebview, liveMessages } = createWebview();
+  t.after(() => window.close());
   sendToWebview(SNAPSHOT_MESSAGE);
 
   window.document.getElementById("live-btn-zoom-in").dispatchEvent(
