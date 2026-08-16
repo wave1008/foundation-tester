@@ -470,22 +470,23 @@ export class MonitorDeviceOps {
           case "deviceStopping":
             // down 開始(up では --restart 対象)。ストリームをこのデバイスだけ止め(simctl/adb に
             // 殺される前にタイルを切断表示へ倒す。他デバイスのライブ映像は残す)、「シャットダウン中」に。
+            // **host も渡す** —— 同名が別の機械にも居ると、名前だけでは別タイルを触ってしまう
             startedNames.add(value.name);
             this.deps.stopDeviceStreams(value.name);
-            this.deps.post({ type: "deviceOpBusy", name: value.name, op: "down", status: "running" });
+            this.deps.post({ type: "deviceOpBusy", name: value.name, host: value.host ?? undefined, op: "down", status: "running" });
             break;
           case "deviceStarting":
             startedNames.add(value.name);
-            this.deps.post({ type: "deviceOpBusy", name: value.name, op: "up", status: "running" });
+            this.deps.post({ type: "deviceOpBusy", name: value.name, host: value.host ?? undefined, op: "up", status: "running" });
             break;
           case "deviceFinished":
             startedNames.delete(value.name);
             if (kind === "down") {
               // down 中はモニター pause で state 更新が来ないため、この per-device 通知でそのタイルを
               // 即「未起動」へ倒す(offline を先行反映。opBusy もここで解除される)。
-              this.deps.post({ type: "deviceDownFinished", name: value.name });
+              this.deps.post({ type: "deviceDownFinished", name: value.name, host: value.host ?? undefined });
             } else {
-              this.deps.post({ type: "deviceOpBusy", name: value.name, op: null, status: null });
+              this.deps.post({ type: "deviceOpBusy", name: value.name, host: value.host ?? undefined, op: null, status: null });
             }
             break;
           case "finished":

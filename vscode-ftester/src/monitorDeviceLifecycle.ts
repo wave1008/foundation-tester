@@ -47,11 +47,14 @@ export function isDeviceOpEvent(value: unknown): value is DeviceOpEvent {
  * 契約の同期相手: Sources/ftester/ApiDeviceCommands.swift ApiDevicesUp(deviceStarting/deviceFinished は
  * ブート開始/完了の即時通知で、モニターの状態スキャンを待たずタイルを「起動中」表示にするために使う。
  * deviceStopping は --restart 指定デバイスの down 開始通知)。 */
+// host: そのデバイスが居る機械(手元は null/省略)。**同名のデバイスが別の機械にも居るのが通常**
+// なので、名前だけではタイルを特定できない(Sources/ftester/ApiDeviceCommands.swift の
+// ApiDevicesUpLifecycleEvent と対。リモートへ分散した分は子プロセスの行がそのまま流れてくる)。
 export type DevicesUpEvent =
   | { readonly kind: "log"; readonly message: string }
-  | { readonly kind: "deviceStopping"; readonly name: string; readonly platform: string }
-  | { readonly kind: "deviceStarting"; readonly name: string; readonly platform: string }
-  | { readonly kind: "deviceFinished"; readonly name: string; readonly platform: string }
+  | { readonly kind: "deviceStopping"; readonly name: string; readonly platform: string; readonly host?: string | null }
+  | { readonly kind: "deviceStarting"; readonly name: string; readonly platform: string; readonly host?: string | null }
+  | { readonly kind: "deviceFinished"; readonly name: string; readonly platform: string; readonly host?: string | null }
   | { readonly kind: "finished"; readonly ok: boolean; readonly error: string | null };
 
 /** value が DevicesUpEvent として扱ってよいか判定する(isDeviceOpEvent と同じ方針)。 */

@@ -78,14 +78,28 @@ struct ApiDevicesUp: AsyncParsableCommand {
             help: "Logical names of devices to restart with down->up even if already running, to bring CPU-rendering devices back onto the GPU. Repeatable; processed two at a time in the same queue as booting stopped devices")
     var restart: [String] = []
 
+    @Option(name: .customLong("device-host"), help: ArgumentHelp(
+        "Operate on the devices that belong to this machine (registered host name)."
+        + " Default: the devices with no host (this machine). Used when a parent dispatches"
+        + " to a runner: remote exec <name> -- ... --device-host <name>"))
+    var deviceHost: String?
+
     func run() async throws {
         setvbuf(stdout, nil, _IOLBF, 0)
         do {
             let machineProfile = try MachineProfileLoad.load(
-                project: project, profile: profile,
+                project: project, profile: profile, deviceHost: deviceHost,
                 noteAutoMachine: { Self.logStderr($0) },
                 warn: { Self.logStderr($0) })
             let repoRoot = noBridge ? nil : try RepoRoot.find()
+            // **リモートのぶんはその機械へ投げる**(手元の起動と同時に走る。RemoteDeviceFanout)。
+            // 起動は機械ごとに独立した資源を使うので、「同時2台」の上限は機械ごとに持てる
+            let hosts = RemoteDeviceFanout.remoteHosts(
+                project: project, profile: profile, deviceHost: deviceHost)
+            async let fanout: Void = RemoteDeviceFanout.dispatch(
+                subcommand: "devices-up", hosts: hosts, project: project, profile: profile,
+                relay: { ApiDeviceEventEmitter.emitRaw($0) })
+
             // deviceStopping/deviceStarting/deviceFinished は bootAll のワーカータスクから並行に
             // 呼ばれるため、emit(ApiDeviceEventEmitter 経由)でロックして直列化する
             await DeviceBooter.bootAll(
@@ -95,16 +109,20 @@ struct ApiDevicesUp: AsyncParsableCommand {
                 log: { message in ApiDeviceEventEmitter.emit(ApiDeviceLogEvent(message: message)) },
                 deviceStopping: { name, platform in
                     ApiDeviceEventEmitter.emit(
-                        ApiDevicesUpLifecycleEvent(kind: "deviceStopping", name: name, platform: platform))
+                        ApiDevicesUpLifecycleEvent(kind: "deviceStopping", name: name, platform: platform,
+                                                   host: MachineHostDispatch.normalize(deviceHost)))
                 },
                 deviceStarting: { name, platform in
                     ApiDeviceEventEmitter.emit(
-                        ApiDevicesUpLifecycleEvent(kind: "deviceStarting", name: name, platform: platform))
+                        ApiDevicesUpLifecycleEvent(kind: "deviceStarting", name: name, platform: platform,
+                                                   host: MachineHostDispatch.normalize(deviceHost)))
                 },
                 deviceFinished: { name, platform in
                     ApiDeviceEventEmitter.emit(
-                        ApiDevicesUpLifecycleEvent(kind: "deviceFinished", name: name, platform: platform))
+                        ApiDevicesUpLifecycleEvent(kind: "deviceFinished", name: name, platform: platform,
+                                                   host: MachineHostDispatch.normalize(deviceHost)))
                 })
+            await fanout  // リモート分の完走まで finished を出さない(受け手の「全部終わった」の合図)
             ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(ok: true, error: nil))
         } catch {
             ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(ok: false, error: error.localizedDescription))
@@ -134,6 +152,11 @@ struct ApiDevicesRestart: AsyncParsableCommand {
     @Option(help: "Run profile name (when given, only the devices that profile references are affected)")
     var profile: String?
 
+    @Option(name: .customLong("device-host"), help: ArgumentHelp(
+        "Operate on the devices that belong to this machine (registered host name)."
+        + " Default: the devices with no host (this machine)"))
+    var deviceHost: String?
+
     func run() async throws {
         setvbuf(stdout, nil, _IOLBF, 0)
         guard !name.isEmpty else {
@@ -141,7 +164,7 @@ struct ApiDevicesRestart: AsyncParsableCommand {
         }
         do {
             let machineProfile = try MachineProfileLoad.load(
-                project: project, profile: profile,
+                project: project, profile: profile, deviceHost: deviceHost,
                 noteAutoMachine: { Self.logStderr($0) },
                 warn: { Self.logStderr($0) })
 
@@ -184,19 +207,22 @@ struct ApiDevicesRestart: AsyncParsableCommand {
             ApiDeviceEventEmitter.emit(ApiDeviceLogEvent(message: message))
         }
         ApiDeviceEventEmitter.emit(
-            ApiDevicesUpLifecycleEvent(kind: "deviceStopping", name: spec.name, platform: platform))
+            ApiDevicesUpLifecycleEvent(kind: "deviceStopping", name: spec.name, platform: platform,
+                                       host: spec.host))
         do {
             try await DeviceBooter.shutdownOne(
                 spec: spec, platform: platform,
                 repoRoot: platform == "ios" ? repoRoot : nil, log: log)
             ApiDeviceEventEmitter.emit(
-                ApiDevicesUpLifecycleEvent(kind: "deviceStarting", name: spec.name, platform: platform))
+                ApiDevicesUpLifecycleEvent(kind: "deviceStarting", name: spec.name, platform: platform,
+                                           host: spec.host))
             try await DeviceBooter.bootOne(spec: spec, platform: platform, log: log)
         } catch {
             log("❌ \(spec.name): \(error.localizedDescription)")
         }
         ApiDeviceEventEmitter.emit(
-            ApiDevicesUpLifecycleEvent(kind: "deviceFinished", name: spec.name, platform: platform))
+            ApiDevicesUpLifecycleEvent(kind: "deviceFinished", name: spec.name, platform: platform,
+                                       host: spec.host))
     }
 
     private struct RestartItem: Sendable {
@@ -230,13 +256,26 @@ struct ApiDevicesDown: AsyncParsableCommand {
     @Option(help: "Run profile name (when given, only the devices that profile references are stopped)")
     var profile: String?
 
+    @Option(name: .customLong("device-host"), help: ArgumentHelp(
+        "Operate on the devices that belong to this machine (registered host name)."
+        + " Default: the devices with no host (this machine). Used when a parent dispatches"
+        + " to a runner: remote exec <name> -- ... --device-host <name>"))
+    var deviceHost: String?
+
     func run() async throws {
         setvbuf(stdout, nil, _IOLBF, 0)
         do {
             let machineProfile = try MachineProfileLoad.load(
-                project: project, profile: profile,
+                project: project, profile: profile, deviceHost: deviceHost,
                 noteAutoMachine: { Self.logStderr($0) },
                 warn: { Self.logStderr($0) })
+            // リモートのぶんはその機械へ投げる(起動と同じ分散。RemoteDeviceFanout)
+            let hosts = RemoteDeviceFanout.remoteHosts(
+                project: project, profile: profile, deviceHost: deviceHost)
+            async let fanout: Void = RemoteDeviceFanout.dispatch(
+                subcommand: "devices-down", hosts: hosts, project: project, profile: profile,
+                relay: { ApiDeviceEventEmitter.emitRaw($0) })
+
             // shutdownProfile と同じ ios→android 逐次(1台落ちるごとに deviceFinished を出すので、
             // 拡張側は落ちた順にタイルを「未起動」へ倒せる)。iOS のみブリッジ停止のため repoRoot を渡す。
             let repoRoot = try? RepoRoot.find()
@@ -246,6 +285,7 @@ struct ApiDevicesDown: AsyncParsableCommand {
             for spec in machineProfile.android?.devices ?? [] {
                 await Self.shutdownOneEmitting(spec: spec, platform: "android", repoRoot: nil)
             }
+            await fanout  // リモート分の完走まで finished を出さない(受け手の「全部終わった」の合図)
             ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(ok: true, error: nil))
         } catch {
             ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(ok: false, error: error.localizedDescription))
@@ -260,14 +300,16 @@ struct ApiDevicesDown: AsyncParsableCommand {
             ApiDeviceEventEmitter.emit(ApiDeviceLogEvent(message: message))
         }
         ApiDeviceEventEmitter.emit(
-            ApiDevicesUpLifecycleEvent(kind: "deviceStopping", name: spec.name, platform: platform))
+            ApiDevicesUpLifecycleEvent(kind: "deviceStopping", name: spec.name, platform: platform,
+                                       host: spec.host))
         do {
             try await DeviceBooter.shutdownOne(spec: spec, platform: platform, repoRoot: repoRoot, log: log)
         } catch {
             log("❌ \(spec.name): \(error.localizedDescription)")
         }
         ApiDeviceEventEmitter.emit(
-            ApiDevicesUpLifecycleEvent(kind: "deviceFinished", name: spec.name, platform: platform))
+            ApiDevicesUpLifecycleEvent(kind: "deviceFinished", name: spec.name, platform: platform,
+                                       host: spec.host))
     }
 
     private static func logStderr(_ message: String) {
@@ -475,6 +517,14 @@ private enum ApiDeviceOperation {
 private enum ApiDeviceEventEmitter {
     private static let lock = NSLock()
 
+    /// 子プロセス(リモートへ分散したぶん)の NDJSON を**そのまま**流す。行を作り直すと
+    /// host 等のフィールドを落としかねないので、解釈せず中継する
+    static func emitRaw(_ line: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        print(line)
+    }
+
     static func emit<T: Encodable>(_ value: T) {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
@@ -499,6 +549,10 @@ private struct ApiDevicesUpLifecycleEvent: Encodable {
     let kind: String
     let name: String
     let platform: String
+    /// **どの機械のデバイスか**(手元は nil)。同名のデバイスが別の機械にも居るのは通常なので、
+    /// 名前だけでは受け手がタイルを特定できない(拡張のタイル id は platform:host/name)。
+    /// リモートへ分散したときは、子プロセスの行をそのまま中継するので値は子が入れる
+    let host: String?
 }
 
 /// 末尾イベント。error は省略可能フィールドとして明示的に null を encode する

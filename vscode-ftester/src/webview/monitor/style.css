@@ -316,6 +316,19 @@ select:disabled { opacity: 0.5; cursor: default; }
   flex: 0 0 20px;
   height: 20px;
 }
+/* ホスト名バッジの段(デバイス名の下)。**グリッドに .with-host-row が付いたときだけ**出す ——
+   段の有無がタイルごとに混ざると、共通の --tile-image-h では高さが揃わない。
+   高さは deviceTiles.js の TILE_HOST_ROW_HEIGHT と一致させること */
+.tile-host-row {
+  display: none;
+}
+.grid.with-host-row .tile-host-row {
+  display: flex;
+  align-items: center;
+  flex: 0 0 16px;
+  height: 16px;
+  overflow: hidden;
+}
 .tile-name {
   font-weight: 600;
   font-size: 12px;

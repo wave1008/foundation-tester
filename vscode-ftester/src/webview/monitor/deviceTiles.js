@@ -95,6 +95,12 @@ export const selectedDeviceIds = new Set();
 // タイル内の「画像以外」の高さの合計(px)。CSS の固定高と一致させること:
 // padding 上下 8+8 + header 20 + footer 18 + gap 6×2 = 66
 const TILE_CHROME_HEIGHT = 66;
+// ホスト名バッジの段(.tile-host-row)。**リモートのデバイスが1台でも居るときだけ**全タイルに
+// 確保する —— タイルの画像高さ(--tile-image-h)はグリッド共通の1値で、段の有無が混ざると
+// 高さが揃わない。手元だけの構成では従来と1px も変わらない。CSS の .tile-host-row と一致必須
+const TILE_HOST_ROW_HEIGHT = 16;
+// 直近の applyDevices が「リモート込み」だったか(chrome 高さの算出に使う)
+let hostRowReserved = false;
 
 // タイル幅は「--tile-image-h × --tile-aspect」で決まる(style.css の .frame-wrap)。
 // **実際にデコードできた画像の実寸からしか設定しない**: ストリームのヘッダ由来の寸法を信じると、
@@ -139,7 +145,8 @@ export function relayoutTiles() {
   if (probe.clientHeight === 0) {
     return;
   }
-  const imageHeight = Math.max(60, probe.clientHeight - TILE_CHROME_HEIGHT);
+  const chrome = TILE_CHROME_HEIGHT + (hostRowReserved ? TILE_HOST_ROW_HEIGHT + 6 : 0);  // +6 = gap
+  const imageHeight = Math.max(60, probe.clientHeight - chrome);
   grid.style.setProperty('--tile-image-h', imageHeight + 'px');
 }
 
@@ -200,9 +207,13 @@ function createTile(device) {
   unregisteredBadge.textContent = t('wvMonitor.tile.unregistered');
   unregisteredBadge.title = t('wvMonitor.tile.unregisteredTitle');
   unregisteredBadge.style.display = 'none';
-  // 実機バッジはデバイス名の左(ピッカー・一覧・編集フォームと同じ並び)。
-  // ホスト名バッジは名前の右(マシンプロファイル/実行プロファイルの一覧と同じ並び)
-  header.append(kindBadge, name, remoteBadge, unregisteredBadge);
+  // 実機バッジはデバイス名の左(ピッカー・一覧・編集フォームと同じ並び)
+  header.append(kindBadge, name, unregisteredBadge);
+  // ホスト名は**名前の下の段**(2026-08-17 指示)。段の有無はグリッド単位で揃える(上記
+  // hostRowReserved)ので、手元のデバイスでも段自体は作る(中身が空になるだけ)
+  const hostRow = document.createElement('div');
+  hostRow.className = 'tile-host-row';
+  hostRow.appendChild(remoteBadge);
 
   const frameWrap = document.createElement('div');
   frameWrap.className = 'frame-wrap';
@@ -234,7 +245,7 @@ function createTile(device) {
   // 実行中/キュー待ち/録画中のバッジはタイル左下(フッター先頭)。録画は実行中の右(ユーザー指定)。
   footer.append(runningBadge, recordingBadge, frozenBadge, queuedBadge, stateBadge, error, renderBadge);
 
-  tile.append(header, frameWrap, footer);
+  tile.append(header, hostRow, frameWrap, footer);
   grid.appendChild(tile);
 
   const entry = {
@@ -580,12 +591,18 @@ window.addEventListener('resize', () => closeDeviceOpMenu());
 // タイル外の右クリック(OS既定メニューが開く場合)用。タイル上はstopPropagation済みで来ない。
 document.addEventListener('contextmenu', () => closeDeviceOpMenu());
 
-// deviceOp は device.name(論理名)だけをhostに渡すため、host応答(deviceOpBusy等)もnameで来る。
-function findTileByName(name) {
+// 応答(deviceOpBusy 等)は名前で来る。**host が付いていればそれも見る** —— 同名のデバイスが
+// 別の機械にも居るのは通常で、名前だけだと別タイルの表示を書き換えてしまう
+// (host 省略の応答は従来どおり名前だけで引く=手元のみの構成では挙動が変わらない)。
+function findTileByName(name, host) {
   for (const entry of tiles.values()) {
-    if (entry.device.name === name) {
-      return entry;
+    if (entry.device.name !== name) {
+      continue;
     }
+    if (host !== undefined && (entry.device.machineHost ?? undefined) !== host) {
+      continue;
+    }
+    return entry;
   }
   return undefined;
 }
@@ -603,6 +620,14 @@ function clearTileError(entry) {
 
 export function applyDevices(devices) {
   const previousTileCount = tiles.size;
+  // リモートのデバイスが混ざる構成でだけホスト名の段を出す(全タイルで高さを揃えるため
+  // グリッド単位のクラスで制御する。判定は machineHost の有無)
+  const nextHostRow = devices.some((device) => !!device.machineHost);
+  if (nextHostRow !== hostRowReserved) {
+    hostRowReserved = nextHostRow;
+    grid.classList.toggle('with-host-row', nextHostRow);
+    notifyTileLayoutChanged('deviceCount');
+  }
   const seen = new Set();
   for (const device of devices) {
     seen.add(device.id);
@@ -749,7 +774,7 @@ export function applyH264Chunk(message) {
 // op: 'up'|'down'|null、status: 'queued'|'running'|null)。一括起動時は executeBulkJob の
 // devices-up NDJSON 中継からも同形のメッセージが飛ぶ(op:'up'→null。由来は個別デバイスではなく一括起動)。
 export function applyDeviceOpBusy(message) {
-  const entry = findTileByName(message.name);
+  const entry = findTileByName(message.name, message.host);
   if (!entry) {
     return;
   }
@@ -778,7 +803,7 @@ export function applyDeviceOpBusy(message) {
 // 上書きされる)。opBusy も解除する。offline を立てることで renderFrame が凍結フレームを出さない
 // (applyDeviceOpBusy の「down 完了直後は再描画しない」フリッカ回避と同じ問題をここで解消する)。
 export function applyDeviceDownFinished(message) {
-  const entry = findTileByName(message.name);
+  const entry = findTileByName(message.name, message.host);
   if (!entry) {
     return;
   }
