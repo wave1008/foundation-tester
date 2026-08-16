@@ -251,6 +251,35 @@ final class RunResultsStoreTests: XCTestCase {
         XCTAssertFalse(meta?.machine.isEmpty ?? true)
     }
 
+    /// measurementInvalid=false/未指定は run.json に一切書かれない(既存レコードと同じ形を保つ
+    /// 契約。RunRecorder.finish の "false は nil で渡す" を確かめる)
+    func testFinishOmitsMeasurementInvalidKeysWhenValid() {
+        let recorder = RunRecorder.begin(project: project, profile: "default", trigger: "cli", captureHostMetrics: false)
+        recorder.finish(total: 1, passed: 1, failed: 0)
+        let runDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: recorder.runID)
+        let raw = (try? Data(contentsOf: runDir.appendingPathComponent("run.json")))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? ""
+        XCTAssertFalse(raw.contains("measurementInvalid"))
+
+        let meta = (try? Data(contentsOf: runDir.appendingPathComponent("run.json")))
+            .flatMap { try? JSONDecoder().decode(RunMetaRecord.self, from: $0) }
+        XCTAssertNil(meta?.measurementInvalid)
+        XCTAssertNil(meta?.measurementInvalidReasons)
+    }
+
+    /// measurementInvalid=true のときだけ理由とともに書かれ、往復で読み戻せる
+    func testFinishRoundTripsMeasurementInvalidWhenSet() {
+        let recorder = RunRecorder.begin(project: project, profile: "default", trigger: "cli", captureHostMetrics: false)
+        recorder.finish(total: 4, passed: 3, failed: 1,
+                        measurementInvalid: true,
+                        measurementInvalidReasons: ["2 lane(s) degraded or dropped during the run"])
+        let runDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: recorder.runID)
+        let meta = (try? Data(contentsOf: runDir.appendingPathComponent("run.json")))
+            .flatMap { try? JSONDecoder().decode(RunMetaRecord.self, from: $0) }
+        XCTAssertEqual(meta?.measurementInvalid, true)
+        XCTAssertEqual(meta?.measurementInvalidReasons, ["2 lane(s) degraded or dropped during the run"])
+    }
+
     func testDiscardLastRemovesFileAndRewindsCounter() {
         let recorder = RunRecorder.begin(project: project, profile: "default", trigger: "cli", captureHostMetrics: false)
         recorder.record(makeScenarioRecord(scenarioID: "Foo.bar", runID: "", passed: false))

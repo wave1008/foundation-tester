@@ -31,6 +31,7 @@ enum ProfileRunner {
                     healOverride: Bool?, reportDirOverride: String?,
                     quiet: Bool = false, lpt: Bool = true,
                     lptHistoryRuns: Int = LPTOrdering.defaultHistoryRuns,
+                    performanceMode: Bool = false,
                     recorder: RunRecorder? = nil) async throws -> RunSummary {
         var items = rawItems
         let runClockStart = Date()
@@ -55,6 +56,7 @@ enum ProfileRunner {
                 + " for \(items.count) scenario(s)")
         }
         for warning in resolved.warnings { print("⚠️ \(warning)") }
+
 
         // CLI の --heal override は master(fm.enabled)が有効な場合のみ heal を ON にする。
         // healOverride==false は明示 OFF、nil は profile の値をそのまま使う
@@ -92,6 +94,17 @@ enum ProfileRunner {
             _ = await AndroidGpuRecovery.recoverCpuFallbackDevices(
                 devices: resolved.androidDevices, locale: resolved.locale) { print($0) }
         }
+        // 死んだレーンの復活(両モード共通)。buildAndroidWorkers の直前(GPU 復帰の後)で
+        // 起動していない仮想デバイスを先に起こす。復活できなかった場合の扱いは
+        // performanceMode の有無で分岐する(このあとの LaneGate 判定)
+        if let running = try? AndroidDeviceCatalog.runningAVDs() {
+            let laneTargets = AndroidLaneRecovery.plan(
+                devices: resolved.androidDevices, runningAVDIDs: Set(running.values))
+            if !laneTargets.isEmpty {
+                _ = await AndroidLaneRecovery.bootMissingDevices(
+                    devices: laneTargets.map(\.device), locale: resolved.locale) { print($0) }
+            }
+        }
         // run-lease(.ftester/run-<key>.lease)。best-effort: リポジトリ外実行等で root が
         // 取れない場合は書かない(monitor 側の inRun 判定が false になるだけで安全)
         let leaseStateDir = (try? RepoRoot.find())?.appendingPathComponent(".ftester")
@@ -127,16 +140,52 @@ enum ProfileRunner {
             forceAndroidInstall: !wipedAndroid.isEmpty) { print($0) }
         // 一斉 launch 直後の黒画面を作らないための予防(ProfileWorkerFactory.pressHomeOnStart)
         await ProfileWorkerFactory.pressHomeOnStart(workers, enabled: resolved.homeOnStart) { print($0) }
-        let hasLateIOS = !resolved.iosDevices.isEmpty
+        let iosDevicesExist = !resolved.iosDevices.isEmpty
+
+        // performanceMode では iOS の late join をやめて開始前に建てる。**理由は計測の歪みではなく
+        // ゲートの可視性** —— late join だと iOS ワーカーは run 開始後に建つので、「iOS のレーンが
+        // 足りない」を開始前に検出できず、モードの約束(足りなければ開始しない)が iOS だけ守れない。
+        // 計測そのものは late join でも歪まない(provider は全機をまとめて返すのでレーンは 0→N と
+        // 一段で増え、シナリオはそれまで走らない)。Android が先行する混在プロファイルだけは
+        // 歪むが、そこは計測対象外(両OSを1プロファイルにまとめない方針)。
+        // buildIOSLane は lateWorkers provider と同じ関数(2つ目の実装を書かない)
+        var eagerIOSWorkers: [RunWorker] = []
+        if performanceMode, iosDevicesExist {
+            eagerIOSWorkers = await buildIOSLane(
+                resolved: resolved, repoRoot: repoRoot, supplyLease: supplyLease)
+            print("🚀 \(eagerIOSWorkers.count) iOS worker(s) joined")
+        }
+        let hasLateIOS = iosDevicesExist && !performanceMode
+
+        // performanceMode: 復活できなかったレーンがあれば run を開始せずに失敗する
+        // (既定 false ではここへ来ない=切り離して完走を優先する従来どおりの挙動)
+        if performanceMode {
+            let missingAndroid = LaneGate.missing(
+                expected: resolved.androidDevices.map(\.name),
+                actual: workers.compactMap(\.logicalName))
+            let missingIOS = iosDevicesExist
+                ? LaneGate.missing(expected: resolved.iosDevices.map(\.name),
+                                   actual: eagerIOSWorkers.compactMap(\.logicalName))
+                : []
+            let missing = missingAndroid + missingIOS
+            if !missing.isEmpty {
+                throw ProfileWorkerFactory.InstallError(
+                    message: "performance mode: \(missing.count) device(s) could not be started "
+                        + "(\(missing.joined(separator: ", "))). Fix the devices, or turn "
+                        + "performanceMode off to run on the remaining lanes.")
+            }
+        }
 
         // 3. 両OS同時並列実行(platform 別キューは RunOrchestrator がそのまま担う)
-        let defaultPlatform = (hasLateIOS || workers.contains { $0.platform == "ios" })
+        let defaultPlatform = (hasLateIOS || (workers + eagerIOSWorkers).contains { $0.platform == "ios" })
             ? "ios" : "android"
         // 長いシナリオを先に流すと末尾の遊休が減る(実績は platform 別。--no-lpt で従来の ID 順)
         items = LPTOrdering.apply(items, project: project, defaultPlatform: defaultPlatform,
                                   enabled: lpt, historyRuns: lptHistoryRuns, log: { print($0) })
         print("🚀 Starting with \(workers.count) Android worker(s)"
-            + (hasLateIOS ? " (iOS joins once bridge provisioning finishes)" : "") + "\n")
+            + (hasLateIOS ? " (iOS joins once bridge provisioning finishes)"
+                          : (eagerIOSWorkers.isEmpty ? "" : " + \(eagerIOSWorkers.count) iOS worker(s)"))
+            + "\n")
 
         // record:true のときだけ VideoRecordingConfig を注入(runDir が無ければ録画自体しない)
         let recordingConfig: VideoRecordingConfig? = {
@@ -148,7 +197,7 @@ enum ProfileRunner {
         }()
 
         let orchestrator = RunOrchestrator(
-            project: project, workers: workers, fm: fm,
+            project: project, workers: workers + eagerIOSWorkers, fm: fm,
             reportDir: reportDir, defaultTimeout: resolved.defaultTimeout,
             containerInference: resolved.containerInference,
             scenarioTimeout: resolved.scenarioTimeout, recorder: recorder,
@@ -237,41 +286,9 @@ enum ProfileRunner {
                 return nil
             },
             lateWorkers: hasLateIOS ? (platforms: Set(["ios"]), provider: { @Sendable in
-                do {
-                    PhaseLog.mark("ios-workers-start")
-                    var ws = try await ProfileWorkerFactory.buildIOSWorkers(
-                        resolved: resolved, repoRoot: repoRoot) { print($0) }
-                    PhaseLog.mark("ios-workers-built")
-                    supplyLease?.hold(
-                        keys: ws.compactMap { $0.connection.serial ?? $0.connection.udid })
-                    ws = (try? await ProfileWorkerFactory.installIfNeeded(
-                        apps: resolved.apps, workers: ws, forceAndroidInstall: false) { print($0) }) ?? ws
-                    PhaseLog.mark("ios-workers-installed")
-                    // 画面だけ死んだシミュレータを**投入前に回復させる**(BlankWorkerTriage 参照)。
-                    // 回復は simctl shutdown→boot で、**ブリッジごと死ぬ**ので張り直しまでが1セット。
-                    // 張り直しは buildIOSWorkers を呼び直すだけでよい(生きているブリッジは
-                    // 再利用されるので、実際に建て直るのは落とした機だけ)。
-                    // レーンに凍結機を残さないための処理で、戻らなかった個体だけが除外される
-                    let recovered = try? await BlankWorkerTriage.excludeBlankScreenWorkers(
-                        ws,
-                        recover: { @Sendable frozen, currentWorkers in
-                            await ProfileWorkerFactory.recoverFrozenIOSWorkers(
-                                labels: frozen, workers: currentWorkers, resolved: resolved,
-                                repoRoot: repoRoot, apps: resolved.apps) { print($0) }
-                        },
-                        stateDir: repoRoot.appendingPathComponent(".ftester"),
-                            nudge: { @Sendable [bundleID = ProfileWorkerFactory.iosBundleID(apps: resolved.apps)] in
-                                await ProfileWorkerFactory.nudgeIOSScreen(worker: $0, restoring: bundleID) },
-                        log: { print($0) }).workers
-                    ws = recovered ?? ws
-                    await ProfileWorkerFactory.pressHomeOnStart(ws, enabled: resolved.homeOnStart) { print($0) }
-                    print("🚀 \(ws.count) iOS worker(s) joined")
-                    return ws
-                } catch {
-                    // iOS 供給失敗は run 全体を落とさない(iOS シナリオはワーカー不在ドレインで失敗確定)
-                    print("❌ Failed to build iOS workers: \(error.localizedDescription)")
-                    return []
-                }
+                let ws = await buildIOSLane(resolved: resolved, repoRoot: repoRoot, supplyLease: supplyLease)
+                print("🚀 \(ws.count) iOS worker(s) joined")
+                return ws
             }) : nil,
             installHandler: InstallHandlerFactory.make(apps: resolved.apps),
             appName: resolved.appName)
@@ -334,12 +351,23 @@ enum ProfileRunner {
             print("🔁 Results discarded and requeued (\(finalSummary.freezeRetries.count)):")
             for entry in finalSummary.freezeRetries { print("   - \(entry)") }
         }
+        // performanceMode: レーン数が run 中に変わっていたら所要時間は計測に使えない
+        // (MeasurementValidity の宣言参照。既定モードは判定しない=印を付けない)
+        let validity = MeasurementValidity.verdict(
+            performanceMode: performanceMode,
+            degradedWorkers: finalSummary.degradedWorkers, blankExclusions: triage.excluded)
+        if validity.invalid {
+            print("⏱️❌ Measurement invalid: this run's timing cannot be used for performance"
+                + " comparisons (\(validity.reasons.joined(separator: "; ")))")
+        }
         // run 前の blank triage(orchestrator は関与しない)を summary に載せ替えて返す
         // (RunScenarios が recorder.finish で run.json に記録する)
         return RunSummary(total: finalSummary.total, failed: finalSummary.failed,
                           degradedWorkers: finalSummary.degradedWorkers,
                           freezeRetries: finalSummary.freezeRetries,
-                          blankRepairs: triage.repaired, blankExclusions: triage.excluded)
+                          blankRepairs: triage.repaired, blankExclusions: triage.excluded,
+                          measurementInvalid: validity.invalid,
+                          measurementInvalidReasons: validity.reasons)
     }
 
     /// heal 有効 run の開始前に FM の実呼び出し可否を確認して警告する。availability は嘘をつく
@@ -355,6 +383,52 @@ enum ProfileRunner {
         } else if !FMVisionSupport.isSupported {
             log("⚠️ \(FMVisionSupport.requirement): occlusion-guard and screenIs are disabled for this run"
                 + " (self-healing and triage stay enabled)")
+        }
+    }
+
+    /// iOS レーンの構築(供給→インストール→凍結 triage→home)。**通常は `lateWorkers` provider
+    /// として run 開始後に呼ばれる**(iOS のブリッジ供給は数十秒かかりうるため、Android の
+    /// 開始をそれで待たせない)。`performanceMode` のときだけ run 開始前に同じ関数を呼ぶ
+    /// (ゲートが iOS レーンの不足を開始前に見られるようにするため。呼び出し箇所のコメント参照。
+    /// 2つ目の実装を書かない —— 通常経路と performanceMode 経路で処理が食い違うと、
+    /// どちらか一方だけにバグが残る)。
+    /// 供給失敗は run 全体を落とさない(iOS シナリオはワーカー不在ドレインで失敗確定させる。
+    /// performanceMode では空配列が返ることで後段の LaneGate が run 開始前エラーへ格上げする)
+    private static func buildIOSLane(
+        resolved: ResolvedProfile, repoRoot: URL, supplyLease: SupplyLeaseHolder?
+    ) async -> [RunWorker] {
+        do {
+            PhaseLog.mark("ios-workers-start")
+            var ws = try await ProfileWorkerFactory.buildIOSWorkers(
+                resolved: resolved, repoRoot: repoRoot) { print($0) }
+            PhaseLog.mark("ios-workers-built")
+            supplyLease?.hold(keys: ws.compactMap { $0.connection.serial ?? $0.connection.udid })
+            ws = (try? await ProfileWorkerFactory.installIfNeeded(
+                apps: resolved.apps, workers: ws, forceAndroidInstall: false) { print($0) }) ?? ws
+            PhaseLog.mark("ios-workers-installed")
+            // 画面だけ死んだシミュレータを**投入前に回復させる**(BlankWorkerTriage 参照)。
+            // 回復は simctl shutdown→boot で、**ブリッジごと死ぬ**ので張り直しまでが1セット。
+            // 張り直しは buildIOSWorkers を呼び直すだけでよい(生きているブリッジは
+            // 再利用されるので、実際に建て直るのは落とした機だけ)。
+            // レーンに凍結機を残さないための処理で、戻らなかった個体だけが除外される
+            let recovered = try? await BlankWorkerTriage.excludeBlankScreenWorkers(
+                ws,
+                recover: { @Sendable frozen, currentWorkers in
+                    await ProfileWorkerFactory.recoverFrozenIOSWorkers(
+                        labels: frozen, workers: currentWorkers, resolved: resolved,
+                        repoRoot: repoRoot, apps: resolved.apps) { print($0) }
+                },
+                stateDir: repoRoot.appendingPathComponent(".ftester"),
+                    nudge: { @Sendable [bundleID = ProfileWorkerFactory.iosBundleID(apps: resolved.apps)] in
+                        await ProfileWorkerFactory.nudgeIOSScreen(worker: $0, restoring: bundleID) },
+                log: { print($0) }).workers
+            ws = recovered ?? ws
+            await ProfileWorkerFactory.pressHomeOnStart(ws, enabled: resolved.homeOnStart) { print($0) }
+            return ws
+        } catch {
+            // iOS 供給失敗は run 全体を落とさない(iOS シナリオはワーカー不在ドレインで失敗確定)
+            print("❌ Failed to build iOS workers: \(error.localizedDescription)")
+            return []
         }
     }
 

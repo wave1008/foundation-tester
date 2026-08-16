@@ -691,6 +691,10 @@ struct RunScenarios: AsyncParsableCommand {
           help: "Keep the app's animations instead of turning them off on the device. Can also be set via enableAnimations in the run profile")
     var enableAnimations = false
 
+    @Flag(name: .customLong("performance"),
+          help: "Performance-testing mode (--profile only): if a dead lane cannot be revived before the run starts, fail instead of dropping it and continuing on the remaining lanes. iOS lanes are built before the run starts (no late join) so a missing one is reported before the run, not in the middle of it")
+    var performanceMode = false
+
     @OptionGroup var driverOptions: DriverOptions
 
     func validate() throws {
@@ -784,6 +788,7 @@ struct RunScenarios: AsyncParsableCommand {
                 reportDirOverride: reportDir,
                 quiet: quiet, lpt: !noLPT,
                 lptHistoryRuns: lptHistoryRuns ?? LPTOrdering.defaultHistoryRuns,
+                performanceMode: performanceMode,
                 recorder: recorder)
             let failedCount = runSummary.failed
             PhaseLog.mark("profile-run-done")
@@ -791,7 +796,9 @@ struct RunScenarios: AsyncParsableCommand {
                             degradedWorkers: runSummary.degradedWorkers,
                             freezeRetries: runSummary.freezeRetries,
                             blankRepairs: runSummary.blankRepairs,
-                            blankExclusions: runSummary.blankExclusions)
+                            blankExclusions: runSummary.blankExclusions,
+                            measurementInvalid: runSummary.measurementInvalid,
+                            measurementInvalidReasons: runSummary.measurementInvalidReasons)
             PhaseLog.mark("recorder-finish")
             try writeJUnitIfRequested(project: testProject, recorder: recorder)
             print(failedCount == 0

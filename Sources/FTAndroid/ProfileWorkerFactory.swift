@@ -348,21 +348,47 @@ public enum ProfileWorkerFactory {
     /// Android ワーカーのみ構築(serial 照合+ドライバ生成のみ=数秒)。
     /// アニメーション設定の同期もここで行う(run 開始の全経路がこの関数を通るため。
     /// Wipe Data / GPU 復帰の後に呼ぶこと = serial が確定している)。
+    ///
+    /// **1台の解決失敗で全体を落とさない**(2026-08-16 の実害: 別プロファイル実行中にエミュレータ
+    /// 2台がプロセスごと死に、`try ... map` が丸ごと throw して後続3プロファイル74本が開始前に
+    /// 全滅した。健全な6台は使われなかった)。集約規則は `FTCore.FleetOutcome.resolve`
+    /// (iOS ブリッジ供給 `BridgeProvisioner.provision` と共有)。**全滅のときだけ**最初のエラーを
+    /// throw する(呼び出し側が run の失敗として扱えるよう現状維持)。
+    ///
+    /// `makeWorker` は1台分の解決(serial 照合+ドライバ生成)の差し込み口。既定は本番経路
+    /// (`makeAndroidWorker`)そのもので、テストはここへ失敗するスタブを渡して規則だけを検証する。
     public static func buildAndroidWorkers(
-        resolved: ResolvedProfile, log: (String) -> Void = { _ in }) throws -> [RunWorker] {
+        resolved: ResolvedProfile, log: (String) -> Void = { _ in },
+        makeWorker: (ResolvedDevice) throws -> RunWorker = ProfileWorkerFactory.makeAndroidWorker
+    ) throws -> [RunWorker] {
         syncAnimationSettings(resolved: resolved, log: log)
-        return try resolved.androidDevices.map { device in
-            let serial = try AndroidDeviceCatalog.resolveSerial(spec: device.spec)
-            let driver = try AndroidDriver(serial: serial)
-            return RunWorker(
-                label: RunWorker.makeLabel(deviceName: device.name, platform: "android", id: serial),
-                platform: "android",
-                driver: driver,
-                connection: DriverConnection(platform: "android", serial: serial,
-                                             deviceName: device.name,
-                                             physical: device.spec.isPhysical),
-                logicalName: device.name)
+        let outcomes: [(name: String, result: Result<RunWorker, Error>)] = resolved.androidDevices.map {
+            device in (name: device.name, result: Result { try makeWorker(device) })
         }
+        let aggregated = try FleetOutcome.resolve(outcomes)
+        for failure in aggregated.failures {
+            log("❌ \(failure.name): \(failure.error.localizedDescription)")
+        }
+        if !aggregated.failures.isEmpty {
+            log("⚠️ \(aggregated.failures.count) device(s) could not be resolved"
+                + " — continuing with \(aggregated.devices.count) device(s)")
+        }
+        return aggregated.devices
+    }
+
+    /// buildAndroidWorkers の既定解決経路(1台分)。serial 照合(`AndroidDeviceCatalog.resolveSerial`)と
+    /// ドライバ生成(`AndroidDriver.init`)の両方の失敗を同じ扱いにする(片方だけ許容しない)。
+    public static func makeAndroidWorker(device: ResolvedDevice) throws -> RunWorker {
+        let serial = try AndroidDeviceCatalog.resolveSerial(spec: device.spec)
+        let driver = try AndroidDriver(serial: serial)
+        return RunWorker(
+            label: RunWorker.makeLabel(deviceName: device.name, platform: "android", id: serial),
+            platform: "android",
+            driver: driver,
+            connection: DriverConnection(platform: "android", serial: serial,
+                                         deviceName: device.name,
+                                         physical: device.spec.isPhysical),
+            logicalName: device.name)
     }
 
     /// engine=inapp/hybrid のときサブプロセスは InAppDriver(+hybrid は SystemUIDriver フォールバック)を

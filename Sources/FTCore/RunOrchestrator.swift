@@ -170,16 +170,24 @@ public struct RunSummary: Sendable {
     public let blankRepairs: [String]
     /// run 前の blank 判定で修復不発により除外したワーカー label(同上)。
     public let blankExclusions: [String]
+    /// この run の所要時間を性能計測に使ってよいか(`MeasurementValidity.verdict` の結果)。
+    /// orchestrator 自身は performanceMode を知らないため常に false/[] を返す —— 呼び手
+    /// (ProfileRunner/ApiRunCommand)が blankExclusions 判明後に自分で構築した RunSummary へ埋める。
+    public let measurementInvalid: Bool
+    public let measurementInvalidReasons: [String]
 
     public init(total: Int, failed: Int, degradedWorkers: [String] = [],
                 freezeRetries: [String] = [],
-                blankRepairs: [String] = [], blankExclusions: [String] = []) {
+                blankRepairs: [String] = [], blankExclusions: [String] = [],
+                measurementInvalid: Bool = false, measurementInvalidReasons: [String] = []) {
         self.total = total
         self.failed = failed
         self.degradedWorkers = degradedWorkers
         self.freezeRetries = freezeRetries
         self.blankRepairs = blankRepairs
         self.blankExclusions = blankExclusions
+        self.measurementInvalid = measurementInvalid
+        self.measurementInvalidReasons = measurementInvalidReasons
     }
 }
 

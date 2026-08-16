@@ -84,6 +84,10 @@ struct ApiRunCommand: AsyncParsableCommand {
     @Option(help: "Android device serial (adb -s; defaults to the only connected device. Cannot be combined with --profile)")
     var serial: String?
 
+    @Flag(name: .customLong("performance"),
+          help: "Performance-testing mode (--profile only): if a dead lane cannot be revived before the run starts, fail instead of dropping it and continuing on the remaining lanes. iOS lanes are built before the run starts (no late join) so a missing one is reported before the run, not in the middle of it")
+    var performanceMode = false
+
     func run() async throws {
         // pause等のイベントが既定の全バッファに滞留すると読み手(VSCode拡張)と相互待ちになる
         // (ScenarioRunnerMain.swift の --debug 実装と同じ理由)。--debug 以外も常に行バッファにする
@@ -192,6 +196,17 @@ struct ApiRunCommand: AsyncParsableCommand {
                     _ = await AndroidGpuRecovery.recoverCpuFallbackDevices(
                         devices: resolved.androidDevices, locale: resolved.locale) { logStderr($0) }
                 }
+                // 死んだレーンの復活(両モード共通)。buildAndroidWorkers の直前(GPU 復帰の後)で
+                // 起動していない仮想デバイスを先に起こす。復活できなかった場合の扱いは
+                // performanceMode の有無で分岐する(このあとの LaneGate 判定。runWithProfileParallel 側)
+                if let running = try? AndroidDeviceCatalog.runningAVDs() {
+                    let laneTargets = AndroidLaneRecovery.plan(
+                        devices: resolved.androidDevices, runningAVDIDs: Set(running.values))
+                    if !laneTargets.isEmpty {
+                        _ = await AndroidLaneRecovery.bootMissingDevices(
+                            devices: laneTargets.map(\.device), locale: resolved.locale) { logStderr($0) }
+                    }
+                }
                 await ProfileWorkerFactory.preparePhysicalAndroidDevices(
                     resolved: resolved) { logStderr($0) }
                 var workers = try ProfileWorkerFactory.buildAndroidWorkers(
@@ -287,10 +302,38 @@ struct ApiRunCommand: AsyncParsableCommand {
                     resolved: resolvedProfile, project: testProject, selected: selected,
                     debugOptions: debugOptions, recorder: recorder)
             } else {
-                let workers = try await androidWorkersTask!.value
+                let androidWorkers = try await androidWorkersTask!.value
+                // performanceMode では iOS の late join をやめて開始前に建てる。**理由は計測の
+                // 歪みではなくゲートの可視性**(ProfileRunner の同じ箇所のコメント参照)。
+                // iosWorkersTask は既に走っているので新しい実装は要らず、待つタイミングを
+                // 早めるだけ(2つ目の実装を書かない)
+                var eagerIOSWorkers: [RunWorker] = []
+                var effectiveIosWorkersTask = iosWorkersTask
+                if performanceMode, let task = iosWorkersTask {
+                    eagerIOSWorkers = await task.value
+                    effectiveIosWorkersTask = nil
+                }
+                // performanceMode: 復活できなかったレーンがあれば run を開始せずに失敗する
+                // (既定 false ではここへ来ない=切り離して完走を優先する従来どおりの挙動)
+                if performanceMode {
+                    let missingAndroid = LaneGate.missing(
+                        expected: resolvedProfile.androidDevices.map(\.name),
+                        actual: androidWorkers.compactMap(\.logicalName))
+                    let missingIOS = resolvedProfile.iosDevices.isEmpty ? [] : LaneGate.missing(
+                        expected: resolvedProfile.iosDevices.map(\.name),
+                        actual: eagerIOSWorkers.compactMap(\.logicalName))
+                    let missing = missingAndroid + missingIOS
+                    if !missing.isEmpty {
+                        throw ProfileWorkerFactory.InstallError(
+                            message: "performance mode: \(missing.count) device(s) could not be "
+                                + "started (\(missing.joined(separator: ", "))). Fix the devices, "
+                                + "or turn performanceMode off to run on the remaining lanes.")
+                    }
+                }
                 outcome = try await runWithProfileParallel(
                     resolved: resolvedProfile, project: testProject, selected: selected,
-                    workers: workers, iosWorkersTask: iosWorkersTask, recorder: recorder)
+                    workers: androidWorkers + eagerIOSWorkers, iosWorkersTask: effectiveIosWorkersTask,
+                    recorder: recorder)
             }
         } else {
             outcome = await runDirect(
@@ -302,11 +345,18 @@ struct ApiRunCommand: AsyncParsableCommand {
         let boxTriage = triageBox.get()
         if outcome.blankRepairs.isEmpty { outcome.blankRepairs = boxTriage.repaired }
         if outcome.blankExclusions.isEmpty { outcome.blankExclusions = boxTriage.excluded }
+        // performanceMode: レーン数が run 中に変わっていたら所要時間は計測に使えない
+        // (MeasurementValidity の宣言参照。既定モードは判定しない=印を付けない)
+        let validity = MeasurementValidity.verdict(
+            performanceMode: performanceMode,
+            degradedWorkers: outcome.degradedWorkers, blankExclusions: outcome.blankExclusions)
         recorder?.finish(total: selected.count, passed: outcome.passed, failed: outcome.failed,
                          degradedWorkers: outcome.degradedWorkers,
                          freezeRetries: outcome.freezeRetries,
                          blankRepairs: outcome.blankRepairs,
-                         blankExclusions: outcome.blankExclusions)
+                         blankExclusions: outcome.blankExclusions,
+                         measurementInvalid: validity.invalid,
+                         measurementInvalidReasons: validity.reasons)
         if !outcome.degradedWorkers.isEmpty {
             logStderr("⚠️ Degraded or dropped workers (\(outcome.degradedWorkers.count)):")
             for entry in outcome.degradedWorkers { logStderr("   - \(entry)") }
@@ -314,6 +364,10 @@ struct ApiRunCommand: AsyncParsableCommand {
         if !outcome.freezeRetries.isEmpty {
             logStderr("🔁 Results discarded and requeued (\(outcome.freezeRetries.count)):")
             for entry in outcome.freezeRetries { logStderr("   - \(entry)") }
+        }
+        if validity.invalid {
+            logStderr("⏱️❌ Measurement invalid: this run's timing cannot be used for performance"
+                + " comparisons (\(validity.reasons.joined(separator: "; ")))")
         }
         emitLine(ApiRunFinishedEvent(passed: outcome.passed, failed: outcome.failed,
                                      testSeconds: outcome.testSeconds,

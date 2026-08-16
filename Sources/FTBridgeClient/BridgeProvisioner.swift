@@ -322,24 +322,12 @@ public struct BridgeProvisioner {
         return resolved.devices
     }
 
-    /// 供給結果の集約規則。**デバイス不要の純粋ロジック**として切り出してある
-    /// (実機/シミュレータが要る部分と分けて単体テストで固めるため。ジェネリックなのは
-    /// テストがデバイス型を用意せずに規則そのものを試せるようにするため)。
-    ///
-    /// 規則は1つ: **1台でも供給できたら残りで走る**。全滅のときだけ最初のエラーを投げる。
+    /// 供給結果の集約規則。**定義元は `FTCore.FleetOutcome.resolve`**(Android ワーカー構築と
+    /// 規則を共有するため。ここは転送するだけ)。
     static func resolveOutcomes<T>(
         _ outcomes: [(name: String, result: Result<T, Error>)]
     ) throws -> (devices: [T], failures: [(name: String, error: Error)]) {
-        var devices: [T] = []
-        var failures: [(name: String, error: Error)] = []
-        for outcome in outcomes {
-            switch outcome.result {
-            case .success(let device): devices.append(device)
-            case .failure(let error): failures.append((outcome.name, error))
-            }
-        }
-        if devices.isEmpty, let first = failures.first { throw first.error }
-        return (devices, failures)
+        try FleetOutcome.resolve(outcomes)
     }
 
     /// autoInstall 付き inapp/hybrid の「インストール済みアプリが最新か」を並列評価(UDID → 最新か)。

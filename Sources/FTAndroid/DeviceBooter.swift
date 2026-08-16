@@ -380,6 +380,19 @@ public enum DeviceBooter {
                     return serial
                 }
             }
+            // **起動そのものに失敗した emulator は即座に落ちる**ので、60秒の期限を待たずに理由を返す
+            // (AVD 名の誤りは約2秒で exit≠0。レーン復活の再試行が1台あたり3分かかっていた)。
+            // **成功時はここへ入らない**: emulator は exec で qemu に化け、プロセスは起動中ずっと
+            // 生き続ける(実測 2026-08-16 —— この Process を kill するとエミュレータごと落ちる。
+            // ps で見える qemu の PPID が 1 なのは、起動させた側が先に終了して再親付けされただけ)。
+            // **isRunning を「起動できたか」の判定に流用しない** —— ここが偽になるのは
+            // 「serial を掴む前にプロセスが消えた」ときだけで、それ以外の失敗は下の期限切れが拾う
+            if !process.isRunning {
+                throw DeviceBooterError.commandFailed(
+                    "the emulator exited before it registered with adb"
+                        + " (status \(process.terminationStatus); \(avd)."
+                        + " Check the AVD name and \(EmulatorLog.url(avdID: avd).path))")
+            }
             try? await Task.sleep(nanoseconds: 1_000_000_000)
         }
         // serial を掴めないまま放置すると、起動済みエミュレータが参照されないまま ~3コアを消費し続ける

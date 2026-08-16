@@ -36,13 +36,19 @@ public struct RunMetaRecord: Codable, Sendable {
     /// run 前の blank 判定で修復不発により除外したワーカー label(guest reboot 発行済み)。
     /// 空/未発生は nil で省略。
     public var blankExclusions: [String]?
+    /// performanceMode の run で、実行中にレーン数が変わり所要時間が計測に使えないときだけ true。
+    /// false/nil は書かない(`MeasurementValidity.verdict` 参照。既定モードの run は常に nil)。
+    public var measurementInvalid: Bool?
+    /// measurementInvalid=true のときの理由(英語、人間可読)。measurementInvalid が無ければ nil。
+    public var measurementInvalidReasons: [String]?
 
     public init(schemaVersion: Int = RunRecordSchema.current, runID: String, project: String,
                 profile: String?, machine: String, trigger: String, startedAt: String,
                 finishedAt: String? = nil, total: Int? = nil, passed: Int? = nil,
                 failed: Int? = nil, degradedWorkers: [String]? = nil,
                 freezeRetries: [String]? = nil,
-                blankRepairs: [String]? = nil, blankExclusions: [String]? = nil) {
+                blankRepairs: [String]? = nil, blankExclusions: [String]? = nil,
+                measurementInvalid: Bool? = nil, measurementInvalidReasons: [String]? = nil) {
         self.schemaVersion = schemaVersion
         self.runID = runID
         self.project = project
@@ -58,6 +64,8 @@ public struct RunMetaRecord: Codable, Sendable {
         self.freezeRetries = freezeRetries
         self.blankRepairs = blankRepairs
         self.blankExclusions = blankExclusions
+        self.measurementInvalid = measurementInvalid
+        self.measurementInvalidReasons = measurementInvalidReasons
     }
 }
 
