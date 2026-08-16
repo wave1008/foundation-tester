@@ -185,10 +185,14 @@ PMSET_OUT
   kv auto_login "$auto_login"
 
   check_core_toolchain
-  # xcodegen は install.sh が brew で入れる。**needs-manual にしない** —— `remote setup` は
-  # このモードが 0 以外を返すと install.sh に到達せず中止するので、自動で入るものを人手扱いに
-  # すると「入れれば直るのに入れる工程まで進めない」で詰まる(既定モードの missing[] と同じ扱い)
-  check_xcodegen || true
+  # xcodegen は install.sh が brew で入れるので**単独では needs-manual にしない**(自動で入るものを
+  # 人手扱いにすると、remote setup がこのモードの 0 以外で止まって install.sh に到達できない)。
+  # **ただし brew が無ければ install.sh も入れられず、clone の直後に fail で落ちる**
+  # (2026-08-16 に M1Ultra で実測)。両方無いときだけ人手の項目にする = install.sh の条件と同じ
+  command -v brew >/dev/null 2>&1 && kv homebrew yes || kv homebrew no
+  if ! check_xcodegen && ! command -v brew >/dev/null 2>&1; then
+    runner_manual+=("neither xcodegen nor Homebrew is available → install Homebrew (https://brew.sh), then install.sh installs xcodegen automatically")
+  fi
   check_adb
 
   # ---- ツール本体・作業場所(§14「構成」)。未導入は `ftester remote setup` が作るので情報のみ ----
@@ -196,20 +200,24 @@ PMSET_OUT
   work_dir="$BASE/work"
   kv tool_root "$tool_root"
   kv work_dir "$work_dir"
+  # **kv に直値を渡さず変数に入れてから出す**。judgement 文(ready 行)が同じ値を参照するので、
+  # 直値だけだと `set -u` で unbound variable になり、**ready のときだけ**落ちる
+  # (needs-manual/blocked は参照しないので手元では出ず、実機の1回目で出た)
+  tool_root_exists=no
+  tool_root_head=""
+  cli_built=no
   if [ -d "$tool_root" ]; then
-    kv tool_root_exists yes
+    tool_root_exists=yes
     if [ -d "$tool_root/.git" ]; then
-      kv tool_root_head "$(git -C "$tool_root" rev-parse --short HEAD 2>/dev/null || echo unknown)"
-    else
-      kv tool_root_head ""
+      tool_root_head="$(git -C "$tool_root" rev-parse --short HEAD 2>/dev/null || echo unknown)"
     fi
-    [ -x "$tool_root/.build/debug/ftester" ] && kv cli_built yes || kv cli_built no
-  else
-    kv tool_root_exists no
-    kv tool_root_head ""
-    kv cli_built no
+    [ -x "$tool_root/.build/debug/ftester" ] && cli_built=yes
   fi
-  [ -f "$work_dir/Package.swift" ] && kv work_package yes || kv work_package no
+  kv tool_root_exists "$tool_root_exists"
+  kv tool_root_head "$tool_root_head"
+  kv cli_built "$cli_built"
+  [ -f "$work_dir/Package.swift" ] && work_package=yes || work_package=no
+  kv work_package "$work_package"
   if [ -d "$work_dir/TestProjects" ]; then
     kv projects "$(ls -1 "$work_dir/TestProjects" 2>/dev/null | tr '\n' ' ' | sed 's/ $//')"
   else

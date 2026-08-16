@@ -87,6 +87,52 @@ test("--runner: 助言文には想定どおり sudo pmset の文言が残って�
   assert.match(section, /runner_manual\+=\("system sleep is enabled.*sudo pmset -a sleep 0/);
 });
 
+/**
+ * `--runner` 節が参照する変数は、同じ節(または共通部)で必ず代入されていること。
+ *
+ * `set -u` の下では未代入の参照は**その行を通ったときだけ**致命的に落ちる。判定文は
+ * ready / needs-manual / blocked で分岐するので、**片方の経路にしか無い参照は他方を
+ * 何度実行しても出ない**。実際 ready 行だけが `$tool_root_exists` 等を参照しており、
+ * 手元(needs-manual)では出ず、ランナー機の1回目(ready)で `unbound variable` で落ち、
+ * exit 1 = blocked と誤報した(2026-08-16)。
+ *
+ * 静的走査なので**「どこかで代入されているが、通った経路では代入されていない」形は見えない**。
+ * そちらは判定より前に既定値を代入して構造的に防ぐ(この節の tool_root_exists 等がその形)。
+ */
+test("--runner: 参照する変数はすべて代入されている(set -u で経路依存に落ちない)", () => {
+  const source = readFileSync(PREFLIGHT_PATH, "utf8");
+  const section = runnerSection(source);
+  const provided = new Set(["HOME", "PWD"]);   // シェル/環境が供給するもの
+
+  // 代入の収集は**ファイル全体**から(共通部で代入され runner 節が参照するものがある)。
+  // ただし **表示行は除く** —— `say "… tool_root_exists=$tool_root_exists"` のような
+  // 出力文字列は `name=` を含むので、数えると「代入されている」と誤認して検知が死ぬ
+  const codeLines = source.split("\n").filter((line) => {
+    const t = line.trim();
+    if (t === "" || t.startsWith("#")) return false;
+    if (t.startsWith("say ") || t.startsWith("kv ") || t.startsWith("printf ")) return false;
+    return !t.includes("+=(");   // 配列追加は下で別に拾う(引数の文字列に name= を含み得る)
+  });
+  const assigned = new Set(
+    [...codeLines.join("\n").matchAll(/(?:^|[\s;&|(])(?:local\s+)?([A-Za-z_][A-Za-z0-9_]*)=/gm)]
+      .map((m) => m[1]),
+  );
+  for (const m of source.matchAll(/^\s*([A-Za-z_][A-Za-z0-9_]*)\+=\(/gm)) assigned.add(m[1]);
+  for (const m of source.matchAll(/\bfor\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\b/g)) assigned.add(m[1]);
+  for (const m of source.matchAll(/\bread\s+(?:-\w+\s+)*([A-Za-z_][A-Za-z0-9_]*)/g)) assigned.add(m[1]);
+
+  const referenced = new Set(
+    [...section.matchAll(/\$\{?#?([A-Za-z_][A-Za-z0-9_]*)/g)].map((m) => m[1]),
+  );
+  const unbound = [...referenced].filter((name) => !assigned.has(name) && !provided.has(name));
+  assert.deepEqual(
+    unbound,
+    [],
+    `--runner 節が代入していない変数を参照しています: ${unbound.join(", ")}\n` +
+      "set -u の下では、その参照を通る経路(ready / needs-manual / blocked のどれか)でだけ落ちます。",
+  );
+});
+
 test("verdict: 3終了コード(0/1/2)と3 verdict 名が揃っている", () => {
   const source = readFileSync(PREFLIGHT_PATH, "utf8");
   for (const code of ["exit 0", "exit 1", "exit 2"]) {

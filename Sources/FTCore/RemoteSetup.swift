@@ -113,10 +113,15 @@ public enum RemoteSetupPlan {
     /// `read-only variable: status` で失敗し、**中のスクリプトの終了コードが zsh のエラーに化けて
     /// 消える**(preflight の needs-manual=2 が 1 に化け blocked と誤報した。rm も実行されず
     /// 一時ファイルが残った。2026-08-16 に localhost で実測)
+    /// **PATH に Homebrew を足してから実行する**。非対話 ssh の PATH は
+    /// `/usr/bin:/bin:/usr/sbin:/sbin` だけで、install.sh が要求する `brew`(xcodegen の導入元)が
+    /// 見えない —— 入っているのに「Homebrew が無い」で落ちる(`RemoteShell.remoteRunCommand` と
+    /// 同じ理由・同じ並び。片方だけ変えない)
     public static func runAndCleanupCommand(remotePath: String, args: [String]) -> String {
         let script = RemoteShell.quote(remotePath)
         let quotedArgs = args.map(RemoteShell.quote).joined(separator: " ")
-        return "bash \(script) \(quotedArgs); ft_status=$?; rm -f \(script); exit $ft_status"
+        return "export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\"; "
+            + "bash \(script) \(quotedArgs); ft_status=$?; rm -f \(script); exit $ft_status"
     }
 
     /// git revision として埋め込む前の検証(16進 7〜40 文字のみ)。

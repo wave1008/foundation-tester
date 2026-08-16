@@ -65,7 +65,15 @@ final class RemoteSetupTests: XCTestCase {
     func testRunAndCleanupCommand() {
         XCTAssertEqual(
             RemoteSetupPlan.runAndCleanupCommand(remotePath: "/tmp/preflight.sh", args: ["--runner", "--base", "/x"]),
-            "bash '/tmp/preflight.sh' '--runner' '--base' '/x'; ft_status=$?; rm -f '/tmp/preflight.sh'; exit $ft_status")
+            "export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\"; "
+                + "bash '/tmp/preflight.sh' '--runner' '--base' '/x'; ft_status=$?; rm -f '/tmp/preflight.sh'; exit $ft_status")
+    }
+
+    /// 非対話 ssh の PATH には Homebrew が入らない。install.sh は brew から xcodegen を入れるので、
+    /// これが抜けると**入っているのに「Homebrew が無い」で落ちる**(remoteRunCommand と同じ規律)
+    func testRunAndCleanupCommandPrependsHomebrewToPath() {
+        let command = RemoteSetupPlan.runAndCleanupCommand(remotePath: "/tmp/x.sh", args: [])
+        XCTAssertTrue(command.hasPrefix("export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\";"), command)
     }
 
     /// 一時ファイルの削除は成否に関わらず走る(rm は状態保存の後・exit の前)。
