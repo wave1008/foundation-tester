@@ -1,14 +1,15 @@
 {
+  "machine": "M2Ultra",
   "app": "sut-ec-mobile",
   "devices": [
     {
+      "host": "local",
       "name": "iPhone 17 Pro(iOS 27.0)-01"
     }
   ],
   "heal": false,
-  "reportDir": "reports",
-  "machine": "M2Ultra",
   "iosInappEngine": true,
-  "wipeDataOnBloat": true,
-  "record": true
+  "record": true,
+  "reportDir": "reports",
+  "wipeDataOnBloat": true
 }

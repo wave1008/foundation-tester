@@ -53,11 +53,16 @@ public enum DeviceDeletion {
     }
 
     /// 起動中/不存在を理由に削除を拒否するときの文言。両方 false なら削除してよい(nil)。
-    /// isRunning を exists より先に見る —— 走っている run を巻き添えにしないことが最優先のため
-    public static func refusalReason(isRunning: Bool, exists: Bool) -> String? {
+    /// isRunning を exists より先に見る —— 走っている run を巻き添えにしないことが最優先のため。
+    ///
+    /// **判定は共有・末尾の一手だけ呼び手が決める**(`then:`)。削除コマンドなら "delete it"、
+    /// 作り直し(create --overwrite)なら "create it again" —— 共有された文言をそのまま流用すると、
+    /// 上書きしようとした人に「then delete it」と言うことになる(2026-08-17 に実際に出た)
+    public static func refusalReason(isRunning: Bool, exists: Bool,
+                                     then: String = "delete it") -> String? {
         if isRunning {
             return "the device is currently running — stop it first (ftester devices down, "
-                + "or the monitor), then delete it"
+                + "or the monitor), then \(then)"
         }
         if !exists {
             return "no such simulator/AVD (it may already be deleted)"

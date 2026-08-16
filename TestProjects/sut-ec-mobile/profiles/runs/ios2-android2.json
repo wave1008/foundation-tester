@@ -3,25 +3,29 @@
   "app": "sut-ec-mobile",
   "devices": [
     {
+      "host": "local",
       "name": "iPhone 17 Pro(iOS 27.0)-01"
     },
     {
+      "host": "local",
       "name": "iPhone 17 Pro(iOS 27.0)-02"
     },
     {
+      "host": "local",
       "name": "Pixel 9(Android 15)-01"
     },
     {
+      "host": "local",
       "name": "Pixel 9(Android 15)-02"
     }
   ],
+  "containerInference": true,
+  "falsePositiveCheck": false,
   "fm": true,
   "heal": true,
-  "falsePositiveCheck": false,
-  "screenIs": true,
   "iosInappEngine": true,
-  "wipeDataOnBloat": true,
+  "recoverCpuFallbackToGpu": true,
   "reportDir": "reports",
-  "containerInference": true,
-  "recoverCpuFallbackToGpu": true
+  "screenIs": true,
+  "wipeDataOnBloat": true
 }

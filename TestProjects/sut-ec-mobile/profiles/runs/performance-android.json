@@ -1,30 +1,35 @@
 {
+  "machine": "M2Ultra",
   "app": "sut-ec-mobile",
   "devices": [
     {
+      "host": "local",
       "name": "Pixel 9(Android 15)-01"
     },
     {
+      "host": "local",
       "name": "Pixel 9(Android 15)-02"
     },
     {
+      "host": "local",
       "name": "Pixel 9(Android 15)-03"
     },
     {
+      "host": "local",
       "name": "Pixel 9(Android 15)-04"
     },
     {
+      "host": "local",
       "name": "Pixel 9(Android 15)-05"
     }
   ],
+  "falsePositiveCheck": false,
+  "fm": true,
   "heal": false,
-  "reportDir": "reports",
-  "machine": "M2Ultra",
   "iosInappEngine": true,
-  "wipeDataOnBloat": true,
   "record": true,
   "recoverCpuFallbackToGpu": true,
-  "fm": true,
-  "falsePositiveCheck": false,
-  "screenIs": true
+  "reportDir": "reports",
+  "screenIs": true,
+  "wipeDataOnBloat": true
 }

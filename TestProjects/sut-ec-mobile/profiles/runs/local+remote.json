@@ -1,71 +1,89 @@
 {
+  "machine": "M2Ultra",
   "app": "sut-ec-mobile",
   "devices": [
     {
+      "host": "local",
       "name": "iPhone 17 Pro(iOS 27.0)-01"
     },
     {
+      "host": "local",
       "name": "iPhone 17 Pro(iOS 27.0)-02"
     },
     {
+      "host": "local",
       "name": "iPhone 17 Pro(iOS 27.0)-03"
     },
     {
+      "host": "local",
       "name": "iPhone 17 Pro(iOS 27.0)-04"
     },
     {
+      "host": "local",
       "name": "iPhone 17 Pro(iOS 27.0)-05"
     },
     {
+      "host": "local",
       "name": "iPhone 17 Pro(iOS 27.0)-06"
     },
     {
+      "host": "local",
       "name": "iPhone 17 Pro(iOS 27.0)-07"
     },
     {
+      "host": "local",
       "name": "iPhone 17 Pro(iOS 27.0)-08"
     },
     {
+      "host": "local",
       "name": "iPhone 17 Pro(iOS 27.0)-09"
     },
     {
+      "host": "local",
       "name": "iPhone 17 Pro(iOS 27.0)-10"
     },
     {
+      "host": "local",
       "name": "Pixel 9(Android 15)-01"
     },
     {
+      "host": "local",
       "name": "Pixel 9(Android 15)-02"
     },
     {
+      "host": "local",
       "name": "Pixel 9(Android 15)-03"
     },
     {
+      "host": "local",
       "name": "Pixel 9(Android 15)-04"
     },
     {
+      "host": "local",
       "name": "Pixel 9(Android 15)-05"
     },
     {
+      "host": "local",
       "name": "Pixel 9(Android 15)-06"
     },
     {
+      "host": "local",
       "name": "Pixel 9(Android 15)-07"
     },
     {
+      "host": "local",
       "name": "Pixel 9(Android 15)-08"
     }
   ],
+  "containerInference": true,
+  "falsePositiveCheck": false,
+  "fm": true,
   "heal": false,
-  "reportDir": "reports",
-  "machine": "M2Ultra",
+  "homeOnStart": true,
   "iosInappEngine": true,
-  "wipeDataOnBloat": true,
   "record": true,
   "recoverCpuFallbackToGpu": true,
-  "fm": true,
-  "falsePositiveCheck": false,
+  "reportDir": "reports",
   "screenIs": true,
-  "containerInference": true,
-  "homeOnStart": true
+  "wipeDataOnBloat": true
 }

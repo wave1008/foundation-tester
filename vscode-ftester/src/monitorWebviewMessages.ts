@@ -744,7 +744,14 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         typeof value.fields.machine === "string" &&
         typeof value.fields.app === "string" &&
         Array.isArray(value.fields.devices) &&
-        value.fields.devices.every((name) => typeof name === "string") &&
+        // 参照は { name, host? }(一意なのは (host, name))。**文字列だった頃の形は受け取らない** ——
+        // 素通しすると host の無い参照として保存され、同名が別ホストに居ると run で曖昧になる
+        value.fields.devices.every(
+          (ref) =>
+            isRecord(ref) &&
+            typeof ref.name === "string" &&
+            (ref.host === undefined || typeof ref.host === "string"),
+        ) &&
         typeof value.fields.fm === "boolean" &&
         typeof value.fields.heal === "boolean" &&
         typeof value.fields.falsePositiveCheck === "boolean" &&

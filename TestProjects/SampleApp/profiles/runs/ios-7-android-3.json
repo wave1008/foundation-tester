@@ -1,41 +1,51 @@
 {
+  "machine": "M2_ManyDevices",
   "app": "sampleapp_ios",
   "devices": [
     {
+      "host": "local",
       "name": "iPhone 17 Pro(iOS 27.0)-01"
     },
     {
+      "host": "local",
       "name": "iPhone 17 Pro(iOS 27.0)-02"
     },
     {
+      "host": "local",
       "name": "iPhone 17 Pro(iOS 27.0)-03"
     },
     {
+      "host": "local",
       "name": "iPhone 17 Pro(iOS 27.0)-04"
     },
     {
+      "host": "local",
       "name": "iPhone 17 Pro(iOS 27.0)-05"
     },
     {
+      "host": "local",
       "name": "iPhone 17 Pro(iOS 27.0)-06"
     },
     {
+      "host": "local",
       "name": "iPhone 17 Pro(iOS 27.0)-07"
     },
     {
+      "host": "local",
       "name": "Pixel 9(Android 15)-01"
     },
     {
+      "host": "local",
       "name": "Pixel 9(Android 15)-02"
     },
     {
+      "host": "local",
       "name": "Pixel 9(Android 15)-03"
     }
   ],
-  "heal": true,
   "defaultTimeout": 8,
+  "heal": true,
   "iosInappEngine": true,
   "reportDir": "reports",
-  "machine": "M2_ManyDevices",
   "wipeDataOnBloat": true
 }

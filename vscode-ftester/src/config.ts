@@ -548,7 +548,23 @@ export function listMachineProfiles(workspaceRoot: string, project: string): Mac
             sectionDevices.push(device);
           }
         }
-        sectionDevices.sort((a, b) => a.name.localeCompare(b.name));
+        // **機械ごとにまとめる**(2026-08-17 指示): 手元が先 → ホスト名順、その中で名前順。
+        // 同名が別ホストに並ぶのが通常なので、名前を第1キーにすると1台ずつ機械が入れ替わり、
+        // 「この機械には何が居るか」が読めない。実効ホスト(デバイス指定 > 直下の既定)で比べる
+        const hostKey = (device: MachineDeviceEntry): string => {
+          const raw = (device.host ?? "").trim();
+          if (raw === "local") {
+            return "";
+          }
+          return raw !== "" ? raw : (host ?? "");
+        };
+        sectionDevices.sort((a, b) => {
+          const [ha, hb] = [hostKey(a), hostKey(b)];
+          if (ha !== hb) {
+            return ha === "" ? -1 : hb === "" ? 1 : ha.localeCompare(hb);  // 手元が先
+          }
+          return a.name.localeCompare(b.name);
+        });
         devices.push(...sectionDevices);
       }
       return { name, devices, ...(host !== undefined ? { host } : {}) };

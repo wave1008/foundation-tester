@@ -65,6 +65,18 @@ final class DeviceDeletionTests: XCTestCase {
         XCTAssertTrue(reason.contains("no such"))
     }
 
+    /// **末尾の一手は呼び手が決める**(判定は共有・文言は呼び手ごと)。共有文言をそのまま流用すると、
+    /// 上書きしようとした人に「then delete it」と言うことになる(2026-08-17 に実際に出た)
+    func testRefusalReasonUsesTheCallersRemedy() throws {
+        let deleting = try XCTUnwrap(DeviceDeletion.refusalReason(isRunning: true, exists: true))
+        XCTAssertTrue(deleting.hasSuffix("then delete it"), deleting)
+        let recreating = try XCTUnwrap(DeviceDeletion.refusalReason(
+            isRunning: true, exists: true, then: "create it again"))
+        XCTAssertTrue(recreating.hasSuffix("then create it again"), recreating)
+        // 理由の本体(停止のさせ方)は共有したまま
+        XCTAssertTrue(recreating.contains("ftester devices down"), recreating)
+    }
+
     /// isRunning が exists より優先される(存在確認が信頼できない状況でも走っている疑いを最優先で扱う)
     func testRefusalReasonPrioritizesRunningOverMissing() throws {
         let reason = try XCTUnwrap(DeviceDeletion.refusalReason(isRunning: true, exists: false))

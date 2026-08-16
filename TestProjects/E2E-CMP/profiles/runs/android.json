@@ -1,35 +1,43 @@
 {
-  "app": "ft_e2e",
   "machine": "M2Ultra",
+  "app": "ft_e2e",
   "devices": [
     {
+      "host": "local",
       "name": "Pixel 9(Android 15)-01"
     },
     {
+      "host": "local",
       "name": "Pixel 9(Android 15)-02"
     },
     {
+      "host": "local",
       "name": "Pixel 9(Android 15)-03"
     },
     {
+      "host": "local",
       "name": "Pixel 9(Android 15)-04"
     },
     {
+      "host": "local",
       "name": "Pixel 9(Android 15)-05"
     },
     {
+      "host": "local",
       "name": "Pixel 9(Android 15)-06"
     },
     {
+      "host": "local",
       "name": "Pixel 9(Android 15)-07"
     },
     {
+      "host": "local",
       "name": "Pixel 9(Android 15)-08"
     }
   ],
   "heal": false,
-  "reportDir": "reports",
   "iosInappEngine": false,
-  "wipeDataOnBloat": true,
-  "scenarioTimeout": 240
+  "reportDir": "reports",
+  "scenarioTimeout": 240,
+  "wipeDataOnBloat": true
 }

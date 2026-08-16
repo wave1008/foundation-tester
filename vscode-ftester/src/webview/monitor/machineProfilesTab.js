@@ -253,20 +253,18 @@ function renderMachineProfileBody(error) {
         nameLine.appendChild(badge);
       }
       nameLine.appendChild(name);
-      // 手元でないデバイスは行の右端に (Remote) を出す(同名が別ホストに並ぶのが通常で、
-      // 名前だけでは見分けられない)。ホスト名は detail 段と title に出る
+      // 手元でないデバイスは名前の右に**ホスト名**を出す(同名が別ホストに並ぶのが通常なので、
+      // 「リモートかどうか」より「どの機械か」が要る。2026-08-17 指示)
       if (device.host) {
         const remote = document.createElement('span');
         remote.className = 'badge badge-remote';
-        remote.textContent = t('wvMonitor.machine.remoteBadge');
-        remote.title = t('wvMonitor.machine.remoteBadgeTitle', { host: device.host });
+        remote.textContent = device.host;
         nameLine.appendChild(remote);
       }
       const detail = document.createElement('div');
       detail.className = 'machine-device-detail';
-      // 別の機械のデバイスは同名でありうる(一意なのは (host, name))ので、手元でないものは
-      // どの機械のものかを出す。手元だけの構成では何も足さない(既存の見た目を変えない)
-      detail.textContent = device.host ? `${device.host} / ${device.detail}` : device.detail;
+      // ホスト名は上のバッジに出るので、ここでは繰り返さない
+      detail.textContent = device.detail;
       row.append(nameLine, detail);
       row.addEventListener('click', (event) => toggleDeviceRowSelection(device.name, event));
       row.addEventListener('contextmenu', (event) => {

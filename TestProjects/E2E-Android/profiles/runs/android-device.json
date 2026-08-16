@@ -1,11 +1,14 @@
 {
-  "app": "ft_e2e_android",
   "machine": "M2Ultra",
+  "app": "ft_e2e_android",
   "devices": [
-    { "name": "Pixel 4a(実機)" }
+    {
+      "host": "local",
+      "name": "Pixel 4a(実機)"
+    }
   ],
   "heal": false,
-  "reportDir": "reports",
   "iosInappEngine": false,
+  "reportDir": "reports",
   "wipeDataOnBloat": false
 }

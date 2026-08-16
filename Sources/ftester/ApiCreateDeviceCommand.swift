@@ -242,7 +242,8 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
         let matches = ((try? SimulatorCatalog.devices()) ?? []).filter { $0.name == name }
         guard !matches.isEmpty else { return }
         for device in matches {
-            if let reason = DeviceDeletion.refusalReason(isRunning: device.booted, exists: true) {
+            if let reason = DeviceDeletion.refusalReason(
+                isRunning: device.booted, exists: true, then: "create it again") {
                 throw CreateDeviceError("cannot overwrite \(name): \(reason)")
             }
         }
@@ -261,7 +262,7 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
     private func deleteExistingAVD(_ avdID: String, avdmanagerPath: String) throws {
         let running = (try? AndroidDeviceCatalog.runningAVDs()) ?? [:]
         if let reason = DeviceDeletion.refusalReason(
-            isRunning: running.values.contains(avdID), exists: true) {
+            isRunning: running.values.contains(avdID), exists: true, then: "create it again") {
             throw CreateDeviceError("cannot overwrite \(avdID): \(reason)")
         }
         emitLog("Deleting the existing AVD before recreating it: \(avdID)...")

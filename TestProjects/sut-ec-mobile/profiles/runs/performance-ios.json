@@ -1,39 +1,47 @@
 {
+  "machine": "M2Ultra",
   "app": "sut-ec-mobile",
   "devices": [
     {
+      "host": "local",
       "name": "iPhone 17 Pro(iOS 27.0)-01"
     },
     {
+      "host": "local",
       "name": "iPhone 17 Pro(iOS 27.0)-02"
     },
     {
+      "host": "local",
       "name": "iPhone 17 Pro(iOS 27.0)-03"
     },
     {
+      "host": "local",
       "name": "iPhone 17 Pro(iOS 27.0)-04"
     },
     {
+      "host": "local",
       "name": "iPhone 17 Pro(iOS 27.0)-05"
     },
     {
+      "host": "local",
       "name": "iPhone 17 Pro(iOS 27.0)-06"
     },
     {
+      "host": "local",
       "name": "iPhone 17 Pro(iOS 27.0)-07"
     },
     {
+      "host": "local",
       "name": "iPhone 17 Pro(iOS 27.0)-08"
     }
   ],
+  "falsePositiveCheck": false,
+  "fm": true,
   "heal": false,
-  "reportDir": "reports",
-  "machine": "M2Ultra",
   "iosInappEngine": true,
-  "wipeDataOnBloat": true,
   "record": true,
   "recoverCpuFallbackToGpu": true,
-  "fm": true,
-  "falsePositiveCheck": false,
-  "screenIs": true
+  "reportDir": "reports",
+  "screenIs": true,
+  "wipeDataOnBloat": true
 }

@@ -38,9 +38,6 @@ export const webviewMonitorAStrings = {
   "wvMonitor.tile.connecting": { ja: "接続中", en: "Connecting" },
   "wvMonitor.tile.cpuBadgeTitle": { ja: "CPU描画(swiftshader・フォールバック)", en: "CPU rendering (swiftshader fallback)" },
   "wvMonitor.tile.physicalBadge": { ja: "実機", en: "Device" },
-  // マシンプロファイルのデバイス行の右端。**手元でないデバイス**だと一目で分かるようにする
-  // (同名が別ホストに並ぶのが通常なので、名前だけでは見分けられない)
-  "wvMonitor.machine.remoteBadge": { ja: "Remote", en: "Remote" },
   // 登録はあるのに一覧に無いデバイス(実体を手で消した等)。リモートの実体は手元から見えないので、
   // ここで出さないと「実行して落ちるまで気付けない」
   "wvMonitor.devicePick.missingBadge": { ja: "実体なし", en: "Not installed" },
@@ -54,7 +51,6 @@ export const webviewMonitorAStrings = {
     ja: "導入は {host} 側で行います: ftester remote exec {host} -- api install-cmdline-tools",
     en: "Install it on {host}: ftester remote exec {host} -- api install-cmdline-tools",
   },
-  "wvMonitor.machine.remoteBadgeTitle": { ja: "ホスト: {host}", en: "Host: {host}" },
   "wvMonitor.tile.physicalBadgeTitle": {
     ja: "実機(シミュレータ/エミュレータではありません)。起動・停止は行いません",
     en: "Physical device (not a simulator/emulator). It is never started or stopped.",

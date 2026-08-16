@@ -1,14 +1,15 @@
 {
-  "app": "ft_e2e_ios",
   "machine": "M1Max",
+  "app": "ft_e2e_ios",
   "devices": [
     {
+      "host": "M1Max",
       "name": "iPhone 17 Pro(iOS 27.0)-01"
     }
   ],
   "heal": false,
-  "reportDir": "reports",
   "iosInappEngine": true,
-  "wipeDataOnBloat": true,
-  "scenarioTimeout": 180
+  "reportDir": "reports",
+  "scenarioTimeout": 180,
+  "wipeDataOnBloat": true
 }

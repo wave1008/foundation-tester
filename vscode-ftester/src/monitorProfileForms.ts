@@ -108,10 +108,17 @@ export function validateNewAppProfileName(name: string, existing: readonly strin
  * falsePositiveCheck/screenIs は「FM」セクション、iosFastInput は「iOS」セクションのサブオプション
  * (親チェックボックスの状態に関わらず独立して保持・保存する。表示上の非表示切替は
  * runProfilesTab.js の責務)。containerInference は独立トグル(FM とは無関係の幾何ヒューリスティック)。 */
+/** 実行プロファイルのデバイス参照。**一意なのは (host, name)** なので host も持つ
+ * (Sources/FTCore/RunProfile.swift の RunDeviceRef と同形。省略=手元)。 */
+export interface RunProfileDeviceRef {
+  readonly name: string;
+  readonly host?: string;
+}
+
 export interface RunProfileFormFields {
   readonly machine: string;
   readonly app: string;
-  readonly devices: readonly string[];
+  readonly devices: readonly RunProfileDeviceRef[];
   readonly fm: boolean;
   readonly heal: boolean;
   readonly falsePositiveCheck: boolean;
@@ -170,10 +177,18 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
   const record = typeof source.record === "boolean" ? source.record : false;
   const recordFailuresOnly = typeof source.recordFailuresOnly === "boolean" ? source.recordFailuresOnly : false;
   const recordFullResolution = typeof source.recordFullResolution === "boolean" ? source.recordFullResolution : false;
-  const devices: string[] = Array.isArray(source.devices)
+  const devices: RunProfileDeviceRef[] = Array.isArray(source.devices)
     ? source.devices
-        .map((device) => (isRecord(device) && typeof device.name === "string" ? device.name : undefined))
-        .filter((name): name is string => name !== undefined)
+        .map((device) => {
+          if (!isRecord(device) || typeof device.name !== "string") {
+            return undefined;
+          }
+          // 内部表現は「手元 = undefined」。ファイル側の "local"(明示)と "" と省略は同じ意味
+          const raw = typeof device.host === "string" ? device.host.trim() : "";
+          const host = raw === "" || raw === "local" ? undefined : raw;
+          return host === undefined ? { name: device.name } : { name: device.name, host };
+        })
+        .filter((ref): ref is RunProfileDeviceRef => ref !== undefined)
     : [];
   const rawTimeout = source.defaultTimeout;
   const defaultTimeout =
@@ -304,14 +319,33 @@ export function updateRunProfileInObject(
     result.locale = localeTrimmed;
   }
 
+  // 既存エントリの未知キーは保つ。**引き当ては (host, name)** —— 名前だけだと、同名が別ホストに
+  // 並ぶプロファイルで別のエントリの未知キーを持ってきてしまう
+  const refKey = (ref: RunProfileDeviceRef): string => `${ref.host ?? ""}\t${ref.name}`;
   const existingDevices = Array.isArray(source.devices) ? source.devices : [];
-  const existingByName = new Map<string, Record<string, unknown>>();
+  const existingByRef = new Map<string, Record<string, unknown>>();
   for (const device of existingDevices) {
-    if (isRecord(device) && typeof device.name === "string" && !existingByName.has(device.name)) {
-      existingByName.set(device.name, device);
+    if (!isRecord(device) || typeof device.name !== "string") {
+      continue;
+    }
+    const key = refKey({
+      name: device.name,
+      host: typeof device.host === "string" && device.host.trim() !== "" ? device.host : undefined,
+    });
+    if (!existingByRef.has(key)) {
+      existingByRef.set(key, device);
     }
   }
-  result.devices = fields.devices.map((name) => existingByName.get(name) ?? { name });
+  result.devices = fields.devices.map((ref) => {
+    const existing = existingByRef.get(refKey(ref));
+    if (existing) {
+      return existing;
+    }
+    // **host は省略しない**(手元なら "local")。省略した参照は、同名が複数ホストに居ると
+    // 実行時に「どちらか決められない」で止まる(FTCore の ambiguousDeviceRef)。
+    // マシンプロファイル側の「"local" も明示する」規律と揃える
+    return { host: ref.host ?? "local", name: ref.name };
+  });
 
   return { ok: true, object: result };
 }

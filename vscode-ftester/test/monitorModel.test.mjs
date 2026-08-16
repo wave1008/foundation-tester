@@ -1266,7 +1266,7 @@ const VALID_RUN_PROFILE_SAVE = {
   fields: {
     machine: "M1 Max",
     app: "sampleapp",
-    devices: ["シミュ1", "エミュ1"],
+    devices: [{ name: "シミュ1" }, { name: "エミュ1" }],
     fm: true,
     heal: false,
     falsePositiveCheck: true,
@@ -1347,7 +1347,7 @@ test("isMonitorFromWebviewMessage: runProfileSave は profile 空文字・fields
   assert.equal(
     isMonitorFromWebviewMessage({
       ...VALID_RUN_PROFILE_SAVE,
-      fields: { ...VALID_RUN_PROFILE_SAVE.fields, devices: ["シミュ1", 1] }, // 要素が非文字列
+      fields: { ...VALID_RUN_PROFILE_SAVE.fields, devices: [{ name: "シミュ1" }, { name: 1 }] }, // name が非文字列
     }),
     false,
   );
@@ -2141,6 +2141,43 @@ test("syncDevicesInMachineProfile: トップレベルがオブジェクトでな
 // 指しているときだけ、追加したローカルのデバイスに "local" を明示する(書かないと既定のリモートに
 // 居ることになる)。source を渡さない・remove のみ(add:[])では何も書かない。
 
+// 実行プロファイルのデバイス参照は (host, name)。**名前だけで保存すると、同名が別ホストに
+// 居るプロファイルで run が「どちらか決められない」と言って止まる**(CLI の ambiguousDeviceRef)
+test("parseRunProfileForForm / updateRunProfileInObject: devices の host を往復させる", () => {
+  const profile = {
+    devices: [{ name: "iPhone-01" }, { host: "M1Ultra", name: "iPhone-01", note: "keep" }],
+  };
+  const parsed = parseRunProfileForForm(profile);
+  assert.deepEqual(parsed.devices, [{ name: "iPhone-01" }, { name: "iPhone-01", host: "M1Ultra" }]);
+
+  const saved = updateRunProfileInObject(profile, { ...BASE_RUN_PROFILE_FIELDS, devices: parsed.devices });
+  assert.equal(saved.ok, true);
+  // 同名でも (host, name) で引き当てるので、未知キーは正しい方のエントリに残る
+  assert.deepEqual(saved.object.devices, [
+    { name: "iPhone-01" },
+    { host: "M1Ultra", name: "iPhone-01", note: "keep" },
+  ]);
+});
+
+// **host は省略しない**(手元も "local")。省略した参照は、同名が複数ホストに居ると実行時に
+// 「どちらか決められない」で止まる(マシンプロファイル側の「"local" も明示」と同じ規律)
+test("updateRunProfileInObject: host は常に書く(手元は local)", () => {
+  const remote = updateRunProfileInObject(
+    { devices: [] },
+    { ...BASE_RUN_PROFILE_FIELDS, devices: [{ name: "x", host: "M1Max" }] });
+  assert.deepEqual(remote.object.devices, [{ host: "M1Max", name: "x" }]);
+
+  const local = updateRunProfileInObject(
+    { devices: [] }, { ...BASE_RUN_PROFILE_FIELDS, devices: [{ name: "y" }] });
+  assert.deepEqual(local.object.devices, [{ host: "local", name: "y" }]);
+});
+
+// ファイル側の "local" は内部表現では「手元」= host 無しに畳む(往復で形が揺れない)
+test("parseRunProfileForForm: host の \"local\" は手元として読む", () => {
+  const parsed = parseRunProfileForForm({ devices: [{ host: "local", name: "y" }] });
+  assert.deepEqual(parsed.devices, [{ name: "y" }]);
+});
+
 test("removeDeviceFromMachineProfile: host を渡すとそのホストのぶんだけ消す(別ホストの同名は残す)", () => {
   const profile = { ios: { devices: [
     { host: "local", name: "iPhone 17 Pro", udid: "LOCAL" },
@@ -2268,7 +2305,7 @@ test("parseRunProfileForForm: 正常な値は22フィールドをそのまま読
   assert.deepEqual(parsed, {
     machine: "M1 Max",
     app: "sampleapp",
-    devices: ["シミュ1", "エミュ1"],
+    devices: [{ name: "シミュ1" }, { name: "エミュ1" }],
     fm: false,
     heal: true,
     falsePositiveCheck: false,
@@ -2416,7 +2453,7 @@ test("parseRunProfileForForm: devices は name が非文字列/オブジェク�
   const parsed = parseRunProfileForForm({
     devices: [{ name: "シミュ1" }, { name: 123 }, "not-an-object", { other: "x" }, { name: "エミュ1" }],
   });
-  assert.deepEqual(parsed.devices, ["シミュ1", "エミュ1"]);
+  assert.deepEqual(parsed.devices, [{ name: "シミュ1" }, { name: "エミュ1" }]);
 });
 
 test("parseRunProfileForForm: defaultTimeout が string ならそのまま返す(整数化しない)", () => {
@@ -2530,7 +2567,7 @@ test("parseAppProfileForForm: トップレベルが非オブジェクト(配列�
 const BASE_RUN_PROFILE_FIELDS = {
   machine: "M1 Max",
   app: "sampleapp",
-  devices: ["シミュ1", "エミュ1"],
+  devices: [{ name: "シミュ1" }, { name: "エミュ1" }],
   fm: true,
   heal: false,
   falsePositiveCheck: true,
@@ -2568,7 +2605,8 @@ test("updateRunProfileInObject: 基本更新(machine/app/fm/heal/falsePositiveCh
   assert.equal(result.object.reportDir, "reports");
   assert.equal(result.object.defaultTimeout, 10);
   assert.equal(result.object.locale, "ja_JP");
-  assert.deepEqual(result.object.devices, [{ name: "シミュ1" }, { name: "エミュ1" }]);
+  // host は常に書く(手元は "local")
+  assert.deepEqual(result.object.devices, [{ host: "local", name: "シミュ1" }, { host: "local", name: "エミュ1" }]);
   assert.equal("record" in result.object, false); // record:false はキーを書かない
   assert.equal("recordFailuresOnly" in result.object, false);
   assert.equal("recordBitrateKbps" in result.object, false);
@@ -2712,14 +2750,17 @@ test("updateRunProfileInObject: devices は既存の同名エントリ(未知キ
       { name: "旧デバイス" },
     ],
   };
-  const result = updateRunProfileInObject(profile, { ...BASE_RUN_PROFILE_FIELDS, devices: ["シミュ1", "新デバイス"] });
+  const result = updateRunProfileInObject(
+    profile, { ...BASE_RUN_PROFILE_FIELDS, devices: [{ name: "シミュ1" }, { name: "新デバイス" }] });
   assert.equal(result.ok, true);
-  assert.deepEqual(result.object.devices, [{ name: "シミュ1", note: "keep-me" }, { name: "新デバイス" }]);
+  assert.deepEqual(result.object.devices,
+                   [{ name: "シミュ1", note: "keep-me" }, { host: "local", name: "新デバイス" }]);
 });
 
 test("updateRunProfileInObject: devices は fields.devices の順序で再構成する", () => {
   const profile = { devices: [{ name: "A" }, { name: "B" }] };
-  const result = updateRunProfileInObject(profile, { ...BASE_RUN_PROFILE_FIELDS, devices: ["B", "A"] });
+  const result = updateRunProfileInObject(
+    profile, { ...BASE_RUN_PROFILE_FIELDS, devices: [{ name: "B" }, { name: "A" }] });
   assert.equal(result.ok, true);
   assert.deepEqual(result.object.devices, [{ name: "B" }, { name: "A" }]);
 });
@@ -2733,7 +2774,8 @@ test("updateRunProfileInObject: 未知キー(トップレベル)を保持する"
 
 test("updateRunProfileInObject: devices 要素内の未知キーを保持する(再利用時)", () => {
   const profile = { devices: [{ name: "シミュ1", customFlag: true, nested: { a: 1 } }] };
-  const result = updateRunProfileInObject(profile, { ...BASE_RUN_PROFILE_FIELDS, devices: ["シミュ1"] });
+  const result = updateRunProfileInObject(
+    profile, { ...BASE_RUN_PROFILE_FIELDS, devices: [{ name: "シミュ1" }] });
   assert.equal(result.ok, true);
   assert.deepEqual(result.object.devices, [{ name: "シミュ1", customFlag: true, nested: { a: 1 } }]);
 });

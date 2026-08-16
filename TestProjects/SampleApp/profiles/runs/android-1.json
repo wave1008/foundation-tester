@@ -1,13 +1,14 @@
 {
+  "machine": "M2Ultra",
   "app": "sampleapp_ios",
   "devices": [
     {
+      "host": "local",
       "name": "Pixel 9(Android 15)-01"
     }
   ],
   "heal": false,
-  "reportDir": "reports",
-  "machine": "M2Ultra",
   "iosInappEngine": true,
+  "reportDir": "reports",
   "wipeDataOnBloat": true
 }
