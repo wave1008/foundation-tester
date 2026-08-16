@@ -25,8 +25,9 @@ struct RemoteRunDispatcher {
     /// 戻り値 = リモート `ftester run` の exit code
     func dispatch(project: TestProject, profile: String,
                   scenarios: [String], folders: [String],
-                  heal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
-                  fastInput: Bool, localJUnitPath: String?,
+                  heal: Bool, noHeal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
+                  fastInput: Bool, enableAnimations: Bool, performanceMode: Bool,
+                  localJUnitPath: String?,
                   remoteTimeoutSeconds: Int?) async throws -> Int32 {
         let layout = try resolveLayout()
         try checkCompatibility(layout: layout)
@@ -40,8 +41,10 @@ struct RemoteRunDispatcher {
             ? "\(layout.workDir)/.ftester/dispatch/\(stamp)/junit.xml" : nil
         let ftesterArgs = RemoteRunArgs.build(
             project: project.name, profile: profile, scenarios: scenarios, folders: folders,
-            heal: heal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
-            fastInput: fastInput, remoteJUnitPath: remoteJUnitPath, reportDir: remoteReportDir)
+            heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
+            fastInput: fastInput, enableAnimations: enableAnimations,
+            performanceMode: performanceMode,
+            remoteJUnitPath: remoteJUnitPath, reportDir: remoteReportDir)
         let timeoutSeconds = RemoteTimeout.seconds(
             explicit: remoteTimeoutSeconds, scenarioCount: scenarios.count)
         let exitCode = try runRemoteAndRelay(
@@ -63,6 +66,7 @@ struct RemoteRunDispatcher {
     /// `ftester api run` の exit code
     func dispatchApi(project: TestProject, profile: String, scenarios: [String],
                      heal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
+                     performanceMode: Bool,
                      defaultTimeout: Double?, scenarioTimeout: Double?,
                      remoteTimeoutSeconds: Int?) async throws -> Int32 {
         let layout = try resolveLayout()
@@ -76,6 +80,7 @@ struct RemoteRunDispatcher {
         let ftesterArgs = RemoteRunArgs.buildApi(
             project: project.name, profile: profile, scenarios: scenarios,
             heal: heal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
+            performanceMode: performanceMode,
             defaultTimeout: defaultTimeout, scenarioTimeout: scenarioTimeout, reportDir: remoteReportDir)
         let timeoutSeconds = RemoteTimeout.seconds(
             explicit: remoteTimeoutSeconds, scenarioCount: scenarios.count)

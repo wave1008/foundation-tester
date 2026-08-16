@@ -231,8 +231,9 @@ final class RemoteDispatchTests: XCTestCase {
     func testRemoteRunArgsMinimal() {
         XCTAssertEqual(
             RemoteRunArgs.build(project: "E2E", profile: "ios-inapp", scenarios: [], folders: [],
-                                heal: false, noLPT: false, lptHistoryRuns: nil,
-                                fastInput: false, remoteJUnitPath: nil, reportDir: nil),
+                                heal: false, noHeal: false, noLPT: false, lptHistoryRuns: nil,
+                                fastInput: false, enableAnimations: false, performanceMode: false,
+                                remoteJUnitPath: nil, reportDir: nil),
             ["run", "--project", "E2E", "--profile", "ios-inapp", "--quiet"])
     }
 
@@ -240,8 +241,9 @@ final class RemoteDispatchTests: XCTestCase {
         XCTAssertEqual(
             RemoteRunArgs.build(project: "E2E", profile: "ios-inapp",
                                 scenarios: ["Login.S0010", "Login.S0020"], folders: ["smoke"],
-                                heal: true, noLPT: true, lptHistoryRuns: 3,
-                                fastInput: true, remoteJUnitPath: "/remote/junit.xml",
+                                heal: true, noHeal: false, noLPT: true, lptHistoryRuns: 3,
+                                fastInput: true, enableAnimations: true, performanceMode: true,
+                                remoteJUnitPath: "/remote/junit.xml",
                                 reportDir: "/remote/reports"),
             [
                 "run", "--project", "E2E", "--profile", "ios-inapp", "--quiet",
@@ -249,6 +251,7 @@ final class RemoteDispatchTests: XCTestCase {
                 "--scenario", "Login.S0010", "--scenario", "Login.S0020",
                 "--folder", "smoke",
                 "--heal", "--no-lpt", "--lpt-history-runs", "3", "--fast-input",
+                "--enable-animations", "--performance",
                 "--junit", "/remote/junit.xml",
             ])
     }
@@ -256,9 +259,83 @@ final class RemoteDispatchTests: XCTestCase {
     func testRemoteRunArgsReportDirOmittedWhenNil() {
         XCTAssertFalse(
             RemoteRunArgs.build(project: "E2E", profile: "ios-inapp", scenarios: [], folders: [],
-                                heal: false, noLPT: false, lptHistoryRuns: nil,
-                                fastInput: false, remoteJUnitPath: nil, reportDir: nil)
+                                heal: false, noHeal: false, noLPT: false, lptHistoryRuns: nil,
+                                fastInput: false, enableAnimations: false, performanceMode: false,
+                                remoteJUnitPath: nil, reportDir: nil)
                 .contains("--report-dir"))
+    }
+
+    /// 実行の意図を変えるフラグは**中継されないと黙って無視される**(リモートはプロファイルの
+    /// 既定で走り、指定しなかったのと同じ結果になる)。ここは OFF のときに**付けない**ことと
+    /// 対で固定する —— 常に付ける実装なら計測でないふつうの run が計測モードになる
+    func testRunPerformanceModeIsRelayedOnlyWhenOn() {
+        func args(performance: Bool) -> [String] {
+            RemoteRunArgs.build(project: "E2E", profile: "android-1", scenarios: [], folders: [],
+                                heal: false, noHeal: false, noLPT: false, lptHistoryRuns: nil,
+                                fastInput: false, enableAnimations: false,
+                                performanceMode: performance,
+                                remoteJUnitPath: nil, reportDir: nil)
+        }
+        XCTAssertTrue(args(performance: true).contains("--performance"))
+        XCTAssertFalse(args(performance: false).contains("--performance"))
+    }
+
+    func testRunEnableAnimationsIsRelayedOnlyWhenOn() {
+        func args(animations: Bool) -> [String] {
+            RemoteRunArgs.build(project: "E2E", profile: "android-1", scenarios: [], folders: [],
+                                heal: false, noHeal: false, noLPT: false, lptHistoryRuns: nil,
+                                fastInput: false, enableAnimations: animations,
+                                performanceMode: false,
+                                remoteJUnitPath: nil, reportDir: nil)
+        }
+        XCTAssertTrue(args(animations: true).contains("--enable-animations"))
+        XCTAssertFalse(args(animations: false).contains("--enable-animations"))
+    }
+
+    /// `api run` には `--enable-animations` が無い(実行プロファイルと環境変数から解決する)。
+    /// 存在しないフラグを渡すとリモートの ftester が起動時に落ちるので、**混入しないこと**を固定する
+    func testApiPerformanceModeIsRelayedAndAnimationsFlagIsNever() {
+        func args(performance: Bool) -> [String] {
+            RemoteRunArgs.buildApi(project: "E2E", profile: "android-1", scenarios: [],
+                                   heal: false, noLPT: false, lptHistoryRuns: nil,
+                                   performanceMode: performance,
+                                   defaultTimeout: nil, scenarioTimeout: nil, reportDir: nil)
+        }
+        XCTAssertTrue(args(performance: true).contains("--performance"))
+        XCTAssertFalse(args(performance: false).contains("--performance"))
+        XCTAssertFalse(args(performance: true).contains("--enable-animations"))
+    }
+
+    /// `--heal` だけ中継すると、ヒールを止めたつもりでリモートはプロファイルの既定で走る
+    func testRunNoHealIsRelayedOnlyWhenOn() {
+        func args(noHeal: Bool) -> [String] {
+            RemoteRunArgs.build(project: "E2E", profile: "android-1", scenarios: [], folders: [],
+                                heal: false, noHeal: noHeal, noLPT: false, lptHistoryRuns: nil,
+                                fastInput: false, enableAnimations: false, performanceMode: false,
+                                remoteJUnitPath: nil, reportDir: nil)
+        }
+        XCTAssertTrue(args(noHeal: true).contains("--no-heal"))
+        XCTAssertFalse(args(noHeal: false).contains("--no-heal"))
+    }
+
+    // MARK: - RemoteDispatchGate
+
+    /// `--dry-run` はデバイスに触れず、判定はローカルのシナリオ原本だけから決まるので
+    /// **`--host` が付いていてもリモートへ送らない**(送っても答えは同じで遅いだけ)。
+    /// この門が無いと `--dry-run --host` が実デバイス実行になる —— リモート送出は
+    /// `run()` の dryRun 分岐より手前にあり、`--dry-run` は中継の許可リストにも無いため
+    func testDryRunIsNotDispatchedRemotely() {
+        XCTAssertFalse(RemoteDispatchGate.dispatchesRemotely(host: "user@host", dryRun: true))
+    }
+
+    func testHostWithoutDryRunIsDispatchedRemotely() {
+        XCTAssertTrue(RemoteDispatchGate.dispatchesRemotely(host: "user@host", dryRun: false))
+    }
+
+    /// `--host` 無しはどちらの場合もローカル実行(dry-run の有無で変わらない)
+    func testNoHostIsNeverDispatchedRemotely() {
+        XCTAssertFalse(RemoteDispatchGate.dispatchesRemotely(host: nil, dryRun: false))
+        XCTAssertFalse(RemoteDispatchGate.dispatchesRemotely(host: nil, dryRun: true))
     }
 
     // MARK: - RemoteShell.quote
@@ -338,6 +415,7 @@ final class RemoteDispatchTests: XCTestCase {
         XCTAssertEqual(
             RemoteRunArgs.buildApi(project: "E2E", profile: "ios-inapp", scenarios: ["Login.S0010"],
                                    heal: false, noLPT: false, lptHistoryRuns: nil,
+                                   performanceMode: false,
                                    defaultTimeout: nil, scenarioTimeout: nil, reportDir: nil),
             ["api", "run", "--project", "E2E", "--profile", "ios-inapp", "--scenario", "Login.S0010"])
     }
@@ -347,13 +425,14 @@ final class RemoteDispatchTests: XCTestCase {
             RemoteRunArgs.buildApi(project: "E2E", profile: "ios-inapp",
                                    scenarios: ["Login.S0010", "Login.S0020"],
                                    heal: true, noLPT: true, lptHistoryRuns: 3,
+                                   performanceMode: true,
                                    defaultTimeout: 5.5, scenarioTimeout: 90,
                                    reportDir: "/remote/reports"),
             [
                 "api", "run", "--project", "E2E", "--profile", "ios-inapp",
                 "--report-dir", "/remote/reports",
                 "--scenario", "Login.S0010", "--scenario", "Login.S0020",
-                "--heal", "--no-lpt", "--lpt-history-runs", "3",
+                "--heal", "--no-lpt", "--lpt-history-runs", "3", "--performance",
                 "--default-timeout", "5.5", "--scenario-timeout", "90",
             ])
     }

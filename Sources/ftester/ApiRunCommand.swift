@@ -444,6 +444,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         let exitCode = try await dispatcher.dispatchApi(
             project: project, profile: profile, scenarios: scenarios,
             heal: heal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
+            performanceMode: performanceMode,
             defaultTimeout: defaultTimeout, scenarioTimeout: scenarioTimeout.map(Double.init),
             remoteTimeoutSeconds: remoteTimeout)
         if exitCode != 0 {

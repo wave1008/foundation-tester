@@ -726,8 +726,9 @@ struct RunScenarios: AsyncParsableCommand {
         // プロファイル指定分は ProfileRunner が注入する(こちらは ON 側の上書きのみ)
         if enableAnimations { setenv(AnimationPolicy.environmentKey, "1", 1) }
         // リモート実行はここで打ち切る(以降はローカル実行の段取り。フラグはコマンドラインごと
-        // リモートへ中継されるので、向こう側の ftester が同じ env を自分で立てる)
-        if let host {
+        // リモートへ中継されるので、向こう側の ftester が同じ env を自分で立てる)。
+        // dry-run だけは送らない —— 理由と罠は RemoteDispatchGate の宣言
+        if let host, RemoteDispatchGate.dispatchesRemotely(host: host, dryRun: dryRun) {
             try await dispatchToRemoteHost(host)
             return
         }
@@ -783,6 +784,10 @@ struct RunScenarios: AsyncParsableCommand {
             if profile != nil {
                 print("ℹ️ --dry-run touches no device, so --profile is not used"
                       + " (--platform decides which ios { } / android { } blocks run)")
+            }
+            if host != nil {
+                print("ℹ️ --dry-run touches no device, so --host is not used"
+                      + " (the scenarios are validated locally, from the same source the remote would run)")
             }
             let failedCount = await runDryRun(items, project: testProject)
             print(failedCount == 0
@@ -886,8 +891,10 @@ struct RunScenarios: AsyncParsableCommand {
             host: hostSpec, remoteDirRaw: remoteDir, localRepoRoot: localRoot, artifacts: artifactsMode)
         let exitCode = try await dispatcher.dispatch(
             project: testProject, profile: profile, scenarios: scenarios, folders: folders,
-            heal: heal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
-            fastInput: fastInput, localJUnitPath: junit, remoteTimeoutSeconds: remoteTimeout)
+            heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
+            fastInput: fastInput, enableAnimations: enableAnimations,
+            performanceMode: performanceMode,
+            localJUnitPath: junit, remoteTimeoutSeconds: remoteTimeout)
         if exitCode != 0 {
             throw ExitCode(exitCode)
         }

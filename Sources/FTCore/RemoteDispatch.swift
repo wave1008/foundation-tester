@@ -204,31 +204,61 @@ public enum RemoteArtifactsMode: String, Sendable, CaseIterable {
     }
 }
 
+public enum RemoteDispatchGate {
+
+    /// `--host` が付いていても**リモートへ送らない**場合がある。
+    ///
+    /// `--dry-run` はデバイスにも FM にも触れず、判定(セレクタ構文・到達しない scene・
+    /// アサーションの無い expectation)は**ローカルのシナリオ原本だけから決まる**
+    /// —— リモートへ渡す原本もローカルから転送したものなので、送っても答えは同じで
+    /// SSH と転送のぶん遅いだけ。`RunScenarios` が `--dry-run` で `--profile` を
+    /// 無視する(拒否ではなく注記して続行する)のと同じ扱いにする。
+    ///
+    /// **順序の罠**: `run()` のリモート送出は dryRun の分岐より手前にあるので、この門を
+    /// 通さないと `--dry-run --host` が**デバイスに触らないつもりで実デバイス実行になる**
+    /// (`--dry-run` は中継の許可リストにも載っていないため、リモートは本番実行する)
+    public static func dispatchesRemotely(host: String?, dryRun: Bool) -> Bool {
+        host != nil && !dryRun
+    }
+}
+
 public enum RemoteRunArgs {
 
     /// リモートで実行する `ftester run` の引数列("ftester" 自体は含まない)。reportDir は
     /// ディスパッチ単位の隔離先(non-nil のときのみ付与。RemoteRunDispatcher が常に渡す)
     public static func build(project: String, profile: String,
                              scenarios: [String], folders: [String],
-                             heal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
-                             fastInput: Bool, remoteJUnitPath: String?,
+                             heal: Bool, noHeal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
+                             fastInput: Bool, enableAnimations: Bool, performanceMode: Bool,
+                             remoteJUnitPath: String?,
                              reportDir: String?) -> [String] {
         var args = ["run", "--project", project, "--profile", profile, "--quiet"]
         if let reportDir { args += ["--report-dir", reportDir] }
         for scenario in scenarios { args += ["--scenario", scenario] }
         for folder in folders { args += ["--folder", folder] }
         if heal { args.append("--heal") }
+        // `--heal` だけ中継すると、ヒールを止めたつもりでリモートはプロファイルの既定で走る
+        // (`ProfileRunner.healOverride` は nil = 既定・false = 明示 OFF を区別する)
+        if noHeal { args.append("--no-heal") }
         if noLPT { args.append("--no-lpt") }
         if let lptHistoryRuns { args += ["--lpt-history-runs", String(lptHistoryRuns)] }
         if fastInput { args.append("--fast-input") }
+        // 実行の意図を変えるフラグは**中継しないと黙って無視される**(リモート側は
+        // プロファイルの既定で走る)。ここに載っていない run のフラグは、
+        // dispatchToRemoteHost が ValidationError で明示的に拒否している
+        if enableAnimations { args.append("--enable-animations") }
+        if performanceMode { args.append("--performance") }
         if let remoteJUnitPath { args += ["--junit", remoteJUnitPath] }
         return args
     }
 
     /// リモートで実行する `ftester api run` の引数列("ftester" 自体は含まない)。JUnit は
     /// 扱わない(拡張連携は NDJSON 中継のみで完結する)
+    /// `api run` に `--enable-animations` は無い(アニメーションは実行プロファイルの
+    /// enableAnimations と環境変数から解決する)ので、中継するのは `--performance` だけ
     public static func buildApi(project: String, profile: String, scenarios: [String],
                                 heal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
+                                performanceMode: Bool,
                                 defaultTimeout: Double?, scenarioTimeout: Double?,
                                 reportDir: String?) -> [String] {
         var args = ["api", "run", "--project", project, "--profile", profile]
@@ -237,6 +267,7 @@ public enum RemoteRunArgs {
         if heal { args.append("--heal") }
         if noLPT { args.append("--no-lpt") }
         if let lptHistoryRuns { args += ["--lpt-history-runs", String(lptHistoryRuns)] }
+        if performanceMode { args.append("--performance") }
         if let defaultTimeout { args += ["--default-timeout", formatTimeout(defaultTimeout)] }
         if let scenarioTimeout { args += ["--scenario-timeout", formatTimeout(scenarioTimeout)] }
         return args
