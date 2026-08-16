@@ -45,7 +45,8 @@ ftester run --host mac2 …               ~/ftester-runner/               ← �
 | ログイン | **コンソールにログイン済み**(いわゆる Aqua セッションが立っている) | `stat -f%Su /dev/console` がランナーのユーザー名 |
 | 電源 | システムスリープ無効(ディスプレイスリープと画面ロックは可) | `pmset -g \| grep " sleep"` |
 | ネットワーク | リモートログイン ON・鍵で入れる。画面共有 ON を推奨 | 下のステップ1 |
-| Homebrew | `xcodegen` が入っていること(iOS のブリッジビルドに必須) | `brew install xcodegen` |
+| Homebrew | **その macOS を知っている版であること**(古い brew は `unknown or unsupported macOS version` で**起動自体が失敗**し、`xcodegen` を入れられない) | `brew --version` が動くこと |
+| ネットワーク | git が GitHub へ直接出られること(社内プロキシ設定が残っていると clone で数十秒待たされて失敗する) | `git config --global --get-regexp '^https?\.'` が空 |
 | Android | Android SDK と AVD(Android を回すときだけ) | `ftester doctor` |
 | FM | システム言語が**英語** + Apple Intelligence 有効(`screenIs` や自己修復を使うときだけ) | `ftester doctor --fm-only` |
 
@@ -64,9 +65,14 @@ sudo や GUI が要るものはインストーラでは行わない(無人機に
 3. **システムスリープを無効化**: `sudo pmset -a sleep 0`
 4. **Xcode を導入**し、1回起動してライセンスに同意(`sudo xcodebuild -license accept` /
    `sudo xcodebuild -runFirstLaunch`)。**版は発行側と揃える**
-5. **Homebrew と xcodegen**: `brew install xcodegen`
-6. 必要なら Android SDK・AVD、FM を使うならシステム言語を英語にして Apple Intelligence を有効化
-7. **ログインしたままにする**(ログアウトしない。ロックはしてよい)
+5. **Homebrew** — `brew --version` が通ること。**しばらく更新していない機械は要注意**:
+   古い brew は新しい macOS を知らず、コマンドが1つも動かない。その場合は
+   `git -C /opt/homebrew fetch origin && git -C /opt/homebrew reset --hard origin/master` で更新する
+   (`brew update` 自体が動かないため git で入れ替える)。`xcodegen` は install.sh が入れる
+6. **git のプロキシ設定を確認** — `git config --global --get-regexp '^https?\.'` に
+   使われていないプロキシが残っていると clone が失敗する（不要なら `--unset-all` で消す）
+7. 必要なら Android SDK・AVD、FM を使うならシステム言語を英語にして Apple Intelligence を有効化
+8. **ログインしたままにする**(ログアウトしない。ロックはしてよい)
 
 ## ステップ1(発行側): 鍵で入れるようにする
 
@@ -159,7 +165,14 @@ ftester remote exec <ホスト> -- doctor --fm-only      # FM が使えるか
 ```
 
 **アプリのバイナリは転送されない。** アプリプロファイルの `appPath` は、ランナー機で解決できる
-パス(相対パスなら同じ相対位置にビルド済みのものがある状態)にしておく。
+パスにしておく。**相対パスの基準は「リポジトリルート」= ランナー機では `<base>/work`** で、
+**クローン(`<base>/foundation-tester`)の中は見ない**。
+
+> ここは手元とランナー機で意味が変わる箇所。手元がツールのクローンで作業する構成
+> (クローン = 作業ディレクトリ)だと `E2EAppIOS/dist/...` のような相対パスがリポジトリ内を
+> 指すが、**ランナー機は外部構成**(クローンと作業ディレクトリが別)なので同じ文字列が
+> `<base>/work/E2EAppIOS/dist/...` に解決される。ビルド済みのアプリは
+> **`<base>/work` から見た位置**に置く(rsync/scp で置くか、ランナー機でビルドしてそこへ出す)。
 
 ## ステップ5: 疎通を確認する
 
@@ -184,7 +197,14 @@ user@mac2     yes        yes    ✅ 9655a21…  ✅ Xcode26…   -   yes     412
 ftester run --host <ユーザー>@<ホスト> --profile <実行プロファイル> --scenario <シナリオID>
 ```
 
-- **初回は数分**(リモートでのシナリオビルドとブリッジ供給)。2回目以降は十数秒で始まる
+- **初回は数分**(リモートでのシナリオビルドとブリッジ供給)。2回目以降は十数秒で始まる。
+  実測(iOS in-app・1シナリオ・LAN 越し): **初回 138.8 秒 / 2回目 12.6 秒**(どちらもテスト時間は約5秒。
+  2回目はブリッジを再利用する)
+- **初回だけ SPM の依存取得でつまずくことがある**(`Couldn't fetch updates from remote repositories` /
+  `Recv failure: Operation timed out`)。ランナー機の回線が細いと出る。**再実行すれば進む**
+  (取得済みの分は残る)。確実にやるなら先に
+  `ftester remote exec <ホスト> -- ...` ではなく、ランナー機で
+  `cd ~/ftester-runner/work && swift package resolve` を通しておく
 - **Android を回すときは、先にエミュレータを起こしておく**(iOS と違い自動では起きない):
   `ftester remote exec <ホスト> -- devices up --profile <実行プロファイル>`
 - `--host` と併用できないもの: `--ports` / `--report-dir` / `--failed` / `--skip-build`
@@ -239,6 +259,8 @@ ftester remote exec <ホスト> -- <サブコマンド>               # 単発�
 |---|---|---|
 | `cannot reach … over ssh` | 鍵で入れない / ホスト名違い | ステップ1(`BatchMode=yes` でパスワードは聞けない) |
 | `remote setup` が preflight で warn 終了(exit 2) | ランナー機に人手の項目が残っている | 出力に列挙された操作を行い、同じコマンドを再実行(冪等) |
+| `Failed to connect to <名前> port 8080`(clone が75秒待って失敗) | ランナー機の git に古いプロキシ設定が残っている | `git config --global --unset-all http.proxy` / 同 `https.proxy`（必要な環境ならプロキシ側を直す） |
+| `unknown or unsupported macOS version` / `brew install xcodegen failed` | Homebrew がその macOS を知らない古い版（brew が1つも動かない） | `git -C /opt/homebrew fetch origin && git -C /opt/homebrew reset --hard origin/master` |
 | `cannot resolve the local project` | 手元にプロジェクトが複数 | `--project <名前>` を付ける |
 | `is sitting at the login window` | ランナー機がログイン画面 | 解錠してログイン(画面共有) |
 | `git revision mismatch` | 版がズレている | ステップ3 |
@@ -247,7 +269,9 @@ ftester remote exec <ホスト> -- <サブコマンド>               # 単発�
 | `unknown package` | クローンのディレクトリ名を変えた | `~/ftester-runner/foundation-tester` に戻す |
 | `no running emulator for AVD …` | Android のエミュレータが未起動 | ステップ6 の `devices up` |
 | シナリオが0本 / 見つからない | プロジェクト名が手元と違う | ステップ2 の `--name` を手元と揃える |
-| アプリのインストールに失敗する | `appPath` がランナー機で解決できない | ステップ4(バイナリは転送されない) |
+| アプリのインストールに失敗する | `appPath` がランナー機で解決できない | ステップ4（相対パスは `<base>/work` 基準。バイナリは転送されない） |
+| `Couldn't fetch updates from remote repositories` / `Recv failure: Operation timed out` | ランナー機の回線が細く SPM の依存取得が落ちた | 再実行する（取得済みは残るので数回で通る）。事前に `swift package resolve` を通しておくと確実 |
+| `Foundation Models unavailable` の警告 | ランナー機で Apple Intelligence が無効 | heal / screenIs / トリアージを使わないなら無視してよい（実行は続く）。使うならシステム言語を英語にして有効化 |
 | `--ports is not supported with --host` 等 | 併用できない指定 | ステップ6 の一覧 |
 
 切り分けが要るときは、ランナー機で**そのまま手で実行してみる**のが早い —

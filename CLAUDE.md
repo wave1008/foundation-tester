@@ -109,7 +109,9 @@
   増減を意識的な操作にする(予算を動かすには根拠を台帳へ書く)
 - CI 連携(`ftester run --junit` の JUnit 出力・GitHub Actions 例・flaky 方針): docs/ci.md
 - リリース(git タグ発行と版ピンの関係。配布はソースビルド前提): docs/releasing.md(`Scripts/release.sh`)
-- リモート実行(`run --host` の SSH ディスパッチ): 設計・却下案・セキュリティ前提は docs/remote-runner.md /
+- リモート実行(`run --host` の SSH ディスパッチ): **ssh 越しに何かを起動する経路を新設したら
+  非対話 PATH の補正(`/opt/homebrew:/usr/local/bin`)を必ず写す**(既存は `RemoteShell.remoteRunCommand`。
+  写し漏れで「入っているのに brew が無い」と落ちた実害)。設計・却下案・セキュリティ前提は docs/remote-runner.md /
   **利用者向けの導入手順は docs/remote-runner-setup.md**(ランナー機の前提・install.sh の呼び方・
   版の揃え方・トラブルシュート)。**片方だけ変えない** —— 手順に影響する変更(レイアウト・
   併用不可オプション・適合チェックの項目)は setup 側にも入れる
