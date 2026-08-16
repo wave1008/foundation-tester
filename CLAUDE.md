@@ -109,6 +109,19 @@
   増減を意識的な操作にする(予算を動かすには根拠を台帳へ書く)
 - CI 連携(`ftester run --junit` の JUnit 出力・GitHub Actions 例・flaky 方針): docs/ci.md
 - リリース(git タグ発行と版ピンの関係。配布はソースビルド前提): docs/releasing.md(`Scripts/release.sh`)
+- **リモートのデバイスの監視と配信**(2026-08-17): 手元の `api monitor` は simctl/adb =
+  **この機械しか観測できない**。別の機械のぶんは `RemoteMonitorFanout` が
+  `remote exec <host> -- api monitor --device-host <host>` を1本ずつ立てて合流させ、
+  ライブ映像は**1デバイス = 1本の ssh**(`api device-stream` が向こうで宛先を解決し配信
+  ヘルパーへ `execv` で化ける = stdout のバイト列が手元起動時と同一なので `StreamPipeline` を
+  そのまま使える)。**多重化の枠は作らない**(却下理由は docs/remote-runner.md §13)。
+  守る規律3つ: **①他の機械の台を走査しない**(同名の手元の台に解決して別の機械の状態と画面を出す。
+  仕分けは `ApiMonitorCommand.scope` が pure に持つ)/ **②観測していない台は `state:"unknown"`**
+  —— offline(止まっている)と別の値にする(同じにすると向こうで動いていても止まって見える。
+  拡張の `MonitorDeviceState` と対)/ **③配信が張れなければポーリングへ落ちる**(monitorFrame は
+  止めていないので、配信を止めるだけでフォールバックが成立する)。
+  **版が揃っていないと状態も映像も来ない**(`--device-host` は新しいので旧バイナリは即死 →
+  3回で諦め)
 - リモート実行(`run --host` の SSH ディスパッチ): **ssh 越しに何かを起動する経路を新設したら
   非対話 PATH の補正(`/opt/homebrew:/usr/local/bin`)を必ず写す**(既存は `RemoteShell.remoteRunCommand`。
   写し漏れで「入っているのに brew が無い」と落ちた実害)。設計・却下案・セキュリティ前提は docs/remote-runner.md /

@@ -62,7 +62,7 @@ function deviceOpMenuItem(state, busy, physical) {
   if (busy && busy.status === 'queued') { return { label: t('wvMonitor.deviceOpMenu.queued'), op: busy.op, disabled: true }; }
   if (busy && busy.op === 'up') { return { label: t('wvMonitor.deviceOpMenu.startingUp'), op: 'up', disabled: true }; }
   if (busy && busy.op === 'down') { return { label: t('wvMonitor.deviceOpMenu.stoppingDown'), op: 'down', disabled: true }; }
-  if (state === 'offline') {
+  if (state === 'offline' || state === 'unknown') {
     return {
       label: t(physical ? 'wvMonitor.deviceOpMenu.startBridge' : 'wvMonitor.deviceOpMenu.start'),
       op: 'up', disabled: false,
@@ -305,7 +305,9 @@ function renderFrame(entry) {
   entry.frameWrapEl.textContent = '';
   // ブリッジ不在の実機は未起動と同じ扱い(bridgeNotRunning のコメント参照)。フレームも出さない:
   // 残っているのはブリッジが死ぬ前の古い1枚で、生きた画面と見分けがつかない
-  const offline = entry.device.state === 'offline' || bridgeNotRunning(entry.device);
+  // unknown(誰も観測していない)もフレームは来ないのでプレースホルダ側で扱う
+  const offline = entry.device.state === 'offline' || entry.device.state === 'unknown'
+    || bridgeNotRunning(entry.device);
   // 終了中(一括・個別とも)は最終フレームを凍結表示のまま見せず、プレースホルダに倒す
   // (ストリームは down 開始時に破棄済みで、以後フレームは更新されない)。
   // ただし個別 down が「キュー待ち(queued)」の間はまだ stopDeviceStreams 前=ストリーム生存中なので
@@ -360,14 +362,16 @@ function renderFrame(entry) {
     // **リモートのデバイスは状態を観測できない**(モニターの判定は simctl/adb = 手元にしか効かない)。
     // 起動していても offline のままなので「未起動」と言ってはいけない —— 操作中(起動中/待機中)の
     // 表示は本物の進捗なのでそのまま出し、静止状態だけ「状態を取得できない」に置き換える
-    const unobservableRemote = !!entry.device.machineHost
+    const unobservableRemote = entry.device.state === 'unknown'
       && !shuttingDown && !waitingUp && !upRunning;
     if (unobservableRemote) {
       icon.className = 'placeholder-icon remote';
       icon.innerHTML = '';
     }
     labelSpan.textContent = unobservableRemote
-      ? t('wvMonitor.tile.remoteUnobservable', { host: entry.device.machineHost })
+      ? (entry.device.machineHost
+        ? t('wvMonitor.tile.remoteUnobservable', { host: entry.device.machineHost })
+        : t('wvMonitor.tile.stateUnknown'))
       : shuttingDown
         ? t('wvMonitor.tile.shuttingDown')
         : waitingUp

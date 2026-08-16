@@ -34,7 +34,10 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export type MonitorPlatform = "ios" | "android";
-export type MonitorDeviceState = "connected" | "booted" | "offline";
+/** "unknown" は**誰も観測していない**の意味(この機械のものではなく、その機械の monitor も
+ * 届いていない)。offline(= 止まっている)と区別する —— 向こうで動いていても手元の simctl/adb
+ * には映らないので、offline と言うと「起動したのに未起動のまま」に見える(2026-08-17 の実害)。 */
+export type MonitorDeviceState = "connected" | "booted" | "offline" | "unknown";
 /** デバイスの実体種別(ApiMonitorCommand の kind。旧 CLI 互換のため欠落時は virtual 扱い)。 */
 export type MonitorDeviceKind = "virtual" | "physical";
 
@@ -100,7 +103,7 @@ export type MonitorEvent =
   | { readonly kind: "monitorError"; readonly device?: string; readonly message: string };
 
 const PLATFORMS: ReadonlySet<string> = new Set<MonitorPlatform>(["ios", "android"]);
-const STATES: ReadonlySet<string> = new Set<MonitorDeviceState>(["connected", "booted", "offline"]);
+const STATES: ReadonlySet<string> = new Set<MonitorDeviceState>(["connected", "booted", "offline", "unknown"]);
 
 function isMonitorDevice(value: unknown): value is MonitorDevice {
   if (!isRecord(value)) {

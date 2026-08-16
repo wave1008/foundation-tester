@@ -1,12 +1,14 @@
 // リモートのデバイスのタイルが「未起動」と言わないことの DOM テスト。
 //
 // 背景(実害 2026-08-17): モニターの状態判定は simctl/adb = **手元にしか効かない**ので、
-// リモートのデバイスは向こうで起動していても state が offline のまま来る。以前はそれを
+// リモートのデバイスは向こうで起動していても state が offline のまま来ていた。それを
 // そのまま「未起動」と表示していたため、`api devices-up` が実際に向こうを起動しても
 // 画面が1ミリも変わらず、利用者は「起動しようとしたのかどうか分からない」状態になった。
 //
-// 規律は2つ:
-//  - 静止状態では**断定しない**(ホスト名 + 状態を取得できない旨)
+// 現在は**その機械の monitor を1本走らせて合流させる**(RemoteMonitorFanout)ので、届いて
+// いれば本物の状態が来る。届いていない台だけが state="unknown" で、表示の規律は3つ:
+//  - unknown では**断定しない**(どの機械に届いていないかを言う)
+//  - 状態が届いていれば**手元の台と同じ扱い**(リモートだからという理由で別表示にしない)
 //  - 操作中(deviceOpBusy)は**本物の進捗**なので従来どおり「起動中」を出す
 //    (この行が消えると、リモートを起動しても無反応に見える回帰に戻る)
 //
@@ -82,7 +84,7 @@ function sendMixedDevices(window) {
         udid: "UDID-L", recording: false,
       },
       {
-        id: "ios:M1Max/Dev 1", name: "Dev 1", platform: "ios", state: "offline", kind: "virtual",
+        id: "ios:M1Max/Dev 1", name: "Dev 1", platform: "ios", state: "unknown", kind: "virtual",
         udid: "UDID-R", recording: false, machineHost: "M1Max",
       },
     ],
@@ -95,7 +97,7 @@ function placeholderTexts(document) {
   );
 }
 
-test("リモートのタイルは「未起動」ではなくホスト名と観測不能である旨を出す", (t) => {
+test("届いていないタイルは「未起動」ではなくホスト名と観測不能である旨を出す", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   sendMixedDevices(window);
@@ -116,4 +118,22 @@ test("操作中はリモートでも「起動中」を出す(無反応に見え�
   const [local, remote] = placeholderTexts(document);
   assert.match(remote, /起動中/, "deviceStarting は本物の進捗なので出す");
   assert.match(local, /未起動/, "host が違う手元のタイルは巻き込まれない");
+});
+
+test("状態が届いているリモートのタイルは手元の台と同じ表示になる", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  post(window, {
+    type: "devices",
+    devices: [
+      {
+        id: "ios:M1Max/Dev 1", name: "Dev 1", platform: "ios", state: "offline", kind: "virtual",
+        udid: "UDID-R", recording: false, machineHost: "M1Max",
+      },
+    ],
+  });
+
+  const [remote] = placeholderTexts(document);
+  assert.match(remote, /未起動/, "その機械の monitor が offline と言っているなら、それが事実");
+  assert.doesNotMatch(remote, /取得できません/, "届いているのに「取得できません」は嘘になる");
 });

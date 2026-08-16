@@ -139,7 +139,9 @@ export function deviceOpMenuItem(
   if (busy?.op === "down") {
     return { label: t("monitor.deviceOp.labelStopping"), op: "down", disabled: true };
   }
-  return state === "offline"
+  // unknown(リモートで観測できていない)は「起動」を出す —— 止めようがない状態で「停止」を
+  // 出すより、起動を撃てるほうが役に立つ(起動は fan-out でその機械へ届く)
+  return state === "offline" || state === "unknown"
     ? { label: t("monitor.deviceOp.labelStart"), op: "up", disabled: false }
     : { label: t("monitor.deviceOp.labelStop"), op: "down", disabled: false };
 }

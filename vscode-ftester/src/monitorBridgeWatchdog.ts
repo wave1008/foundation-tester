@@ -110,13 +110,14 @@ export class MonitorBridgeWatchdog {
       return;
     }
 
-    if (state === "offline") {
-      // 連続性が途切れるだけで、failed/attemptCount/cooldown は connected 観測まで保持する。
+    if (state !== "booted") {
+      // offline と unknown(観測できていない)。連続性が途切れるだけで、failed/attemptCount/
+      // cooldown は connected 観測まで保持する。**unknown で streak を積まない** —— 観測が
+      // 無いことを「ブリッジが応答しない」と読むと、届いていないだけのリモート機に復旧を撃つ
       entry.bootedStreak = 0;
       return;
     }
 
-    // state === "booted"
     if (entry.failed) {
       return;
     }

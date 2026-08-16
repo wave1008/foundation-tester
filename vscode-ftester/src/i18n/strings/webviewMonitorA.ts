@@ -40,9 +40,10 @@ export const webviewMonitorAStrings = {
   "wvMonitor.tile.physicalBadge": { ja: "実機", en: "Device" },
   // リモートのデバイスはモニターから状態を観測できない(simctl/adb は手元にしか効かない)。
   // 「未起動」と言うと、向こうで起動していても止まっているように見える
+  "wvMonitor.tile.stateUnknown": { ja: "(状態は取得できません)", en: "(state not observable)" },
   "wvMonitor.tile.remoteUnobservable": {
-    ja: "{host} 上\n(状態は取得できません)",
-    en: "on {host}\n(state not observable)",
+    ja: "{host} に届いていません\n(状態は取得できません)",
+    en: "{host} is not answering\n(state not observable)",
   },
   // 登録はあるのに一覧に無いデバイス(実体を手で消した等)。リモートの実体は手元から見えないので、
   // ここで出さないと「実行して落ちるまで気付けない」

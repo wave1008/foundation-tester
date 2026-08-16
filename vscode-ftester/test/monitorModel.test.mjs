@@ -122,10 +122,23 @@ test("isMonitorEvent: monitorDevices は要素の state が欠落/不正なら f
   const invalidState = {
     kind: "monitorDevices",
     devices: [
-      { id: "ios:シミュ1", name: "シミュ1", platform: "ios", state: "unknown", detail: "" },
+      { id: "ios:シミュ1", name: "シミュ1", platform: "ios", state: "booting", detail: "" },
     ],
   };
   assert.equal(isMonitorEvent(invalidState), false);
+
+  // "unknown" は**誰も観測していない**の意味で正規の state(offline = 止まっている とは別物)。
+  // 弾くとリモートのタイルが devices ごと落ちて画面から消える
+  const unknownState = {
+    kind: "monitorDevices",
+    devices: [
+      {
+        id: "ios:M1Max/シミュ1", name: "シミュ1", platform: "ios", state: "unknown", detail: "",
+        machineHost: "M1Max",
+      },
+    ],
+  };
+  assert.equal(isMonitorEvent(unknownState), true);
 });
 
 test("isMonitorEvent: monitorDevices は要素の platform が ios/android 以外なら false", () => {

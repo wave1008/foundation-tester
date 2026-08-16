@@ -18,7 +18,7 @@
 // (Sources/ftester/ApiMonitorCommand.swift 同期)を送り、生成側でもポーリングを止める
 // (monitorProcessManager.ts の間引きは受信後の安全弁として残る)。
 
-import { resolveAdb, resolveAndroidStream, resolveDevicePoll, resolveSimStream } from "./config";
+import { resolveAdb, resolveAndroidStream, resolveDevicePoll, resolveProjectName, resolveSimStream } from "./config";
 import { StreamPipeline } from "./deviceStream";
 import { t } from "./i18n";
 import type { MonitorDevice, MonitorPlatform } from "./monitorModel";
@@ -41,6 +41,12 @@ interface StreamEntry {
   // するため、破棄判定で target.codec と比較する(不一致なら張り替え)。
   readonly codec: "mjpeg" | "h264";
   readonly pipeline: StreamPipeline;
+}
+
+/** MonitorTarget.id("<platform>:<name>" / リモートは "<platform>:<host>/<name>")の名前部分が
+ * name と一致するか。**":name" の後方一致だけだとリモートに当たらない** —— 区切りが "/" になる */
+function matchesDeviceName(deviceId: string, name: string): boolean {
+  return deviceId.endsWith(`:${name}`) || deviceId.endsWith(`/${name}`);
 }
 
 export class MonitorDeviceStreamController {
@@ -103,6 +109,17 @@ export class MonitorDeviceStreamController {
       return;
     }
 
+    // リモートの device-stream は向こうでマシンプロファイルを引くのでプロジェクト名が要る
+    // (未解決なら省略 = 向こうの既定プロジェクトに委ねる)。**リモートが1台も無いなら引かない**
+    let projectArgs: string[] | undefined;
+    const remoteProjectArgs = (): string[] => {
+      if (!projectArgs) {
+        const resolution = resolveProjectName(this.deps.workspaceRoot, config);
+        projectArgs = resolution.kind === "resolved" ? ["--project", resolution.project] : [];
+      }
+      return projectArgs;
+    };
+
     const qualifying = new Map<string, QualifyingTarget>();
     for (const device of devices) {
       if (device.state !== "connected") {
@@ -111,6 +128,36 @@ export class MonitorDeviceStreamController {
       // codecError を受けたデバイスは設定値に関わらず mjpeg 固定(fallbackToMjpeg 参照)。
       const codec: "mjpeg" | "h264" = this.mjpegFallbackIds.has(device.id) ? "mjpeg" : config.streamCodec;
       const codecArgs = codec === "h264" ? ["--codec", "h264"] : [];
+      if (device.machineHost) {
+        // **別の機械のデバイス**。udid も adb serial も向こうのものなので、手元でヘルパーを
+        // 起こしても当たらない(同名の手元の台に当たると**別の機械の画面が映る**)。代わりに
+        // その機械で `api device-stream` を起こす —— 向こうは宛先を解決してヘルパーへ exec で
+        // 化けるので、**stdout に流れるバイト列はここで直接起こしたときと同じ**。だから
+        // StreamPipeline も codec の扱いも失敗時のポーリング復帰もそのまま使える
+        // (契約: Sources/ftester/ApiDeviceStreamCommand.swift)。
+        // 配信できないときは何も起こさない = そのタイルはリモート monitor のポーリング
+        // フレーム(2秒毎)で更新され続ける
+        const enabled = device.platform === "ios" ? config.iosStreamEnabled : config.androidStreamEnabled;
+        if (!enabled) {
+          continue;
+        }
+        qualifying.set(device.id, {
+          platform: device.platform,
+          key: `${device.machineHost}/${device.name}`,
+          command: config.binaryPath,
+          args: [
+            "remote", "exec", device.machineHost, "--",
+            "api", "device-stream", "--device-host", device.machineHost,
+            "--platform", device.platform, "--name", device.name,
+            "--fps", String(config.liveFps), "--max-width", String(config.monitorMaxWidth),
+            ...remoteProjectArgs(),
+            ...(config.profile ? ["--profile", config.profile] : []),
+            ...codecArgs,
+          ],
+          codec,
+        });
+        continue;
+      }
       // 実機は種別を問わず devicepoll(スクリーンショットのポーリング)。
       // iOS 実機に simstream は使えず(CoreSimulator 私有 API)、Android 実機は screenrecord だと
       // 静止画面でフレームが流れないため、両者ともこちらへ寄せる
@@ -224,12 +271,12 @@ export class MonitorDeviceStreamController {
   }
 
   /** device-down ジョブ(monitorDeviceOps.ts)の実行開始時に呼ぶ。deviceId は "<platform>:<name>"
-   * (Swift 側 MonitorTarget.id)だがジョブは name しか持たないため、":name" サフィックス一致で
-   * 判定する(同名デバイスが ios/android 両方に存在する場合も両方破棄する)。 */
+   * (リモートは "<platform>:<host>/<name>"。Swift 側 MonitorTarget.id)だがジョブは name しか
+   * 持たないため、名前部分の一致で判定する(同名デバイスが ios/android 両方・複数の機械に
+   * 存在する場合も全部破棄する)。 */
   disposeForDeviceName(name: string): void {
-    const suffix = `:${name}`;
     for (const deviceId of [...this.pipelines.keys()]) {
-      if (deviceId.endsWith(suffix)) {
+      if (matchesDeviceName(deviceId, name)) {
         this.disposeDevice(deviceId);
       }
     }
@@ -238,10 +285,9 @@ export class MonitorDeviceStreamController {
   /** health watchdog の blank-screen 軽量修復(monitorHealthWatchdog.ts)。name の稼働中パイプラインを
    * 破棄して即再生成する(restartDevice と同じ仕組み)。1本でも張り替えたら true。 */
   restartForDeviceName(name: string): boolean {
-    const suffix = `:${name}`;
     let found = false;
     for (const deviceId of [...this.pipelines.keys()]) {
-      if (deviceId.endsWith(suffix)) {
+      if (matchesDeviceName(deviceId, name)) {
         this.disposeDevice(deviceId);
         found = true;
       }

@@ -16,7 +16,6 @@
 // - 子の stdout は **NDJSON のまま中継する**(行を作り直さない)。host は子が各イベントへ
 //   入れているので、受け手(拡張)はそのままタイルを特定できる
 
-import FTBridgeClient  // RepoRoot
 import FTCore
 import Foundation
 
@@ -50,7 +49,8 @@ enum RemoteDeviceFanout {
                     // 向こうの作業ディレクトリに profiles/ が無い(または古い)ままだと
                     // 「machines/ が空」で失敗する(2026-08-17 実機で確認)。run のディスパッチと
                     // 同じ rsync 引数(RemoteTransferPlan)を使う = 転送の規則を二重に持たない
-                    if let project, !(await syncProject(project: project, host: host, relay: relay)) {
+                    if let project, let failure = RemoteProjectSync.run(project: project, host: host) {
+                        relay(logLine("❌ \(failure)"))
                         return
                     }
                     var args = ["remote", "exec", host, "--", "api", subcommand]
@@ -62,40 +62,6 @@ enum RemoteDeviceFanout {
                 }
             }
         }
-    }
-
-    /// プロファイル(シナリオ含むプロジェクト一式)をそのホストへ送る。失敗は1行伝えて false
-    /// (その機械のぶんを諦める。他のホストと手元の処理は続く)
-    private static func syncProject(project: String, host: String,
-                                    relay: @escaping @Sendable (String) -> Void) async -> Bool {
-        guard let repoRoot = try? RepoRoot.find(),
-              let resolved = try? RemoteHostResolver.resolve(rawHost: host, remoteDirOverride: nil)
-        else {
-            relay(logLine("❌ \(host): cannot resolve the host or the repository root"))
-            return false
-        }
-        let layout = RemoteLayout(base: RemoteLayout.resolveBase(resolved.remoteDirRaw, home: "$HOME"))
-        let args = RemoteTransferPlan.rsyncArgs(
-            project: project,
-            localProjectsDir: repoRoot.appendingPathComponent("TestProjects").path,
-            layout: layout, sshTarget: resolved.hostSpec.sshTarget)
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/rsync")
-        process.arguments = args
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.standardError
-        do {
-            try process.run()
-            process.waitUntilExit()
-        } catch {
-            relay(logLine("❌ \(host): rsync failed to start: \(error.localizedDescription)"))
-            return false
-        }
-        guard process.terminationStatus == 0 else {
-            relay(logLine("❌ \(host): rsync exited with \(process.terminationStatus)"))
-            return false
-        }
-        return true
     }
 
     /// NDJSON の log 行(中継経路に流すので JSON で作る)
@@ -112,7 +78,7 @@ enum RemoteDeviceFanout {
     private static func runChild(args: [String], host: String,
                                  relay: @escaping @Sendable (String) -> Void) async {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: selfBinaryPath())
+        process.executableURL = URL(fileURLWithPath: RemoteProjectSync.selfBinaryPath())
         process.arguments = args
         let pipe = Pipe()
         process.standardOutput = pipe
@@ -145,11 +111,4 @@ enum RemoteDeviceFanout {
         }
     }
 
-    /// 実行中の ftester バイナリ自身(FleetRunner.selfBinaryPath と同じ理由・同じ実装)
-    private static func selfBinaryPath() -> String {
-        if let url = Bundle.main.executableURL {
-            return url.resolvingSymlinksInPath().path
-        }
-        return CommandLine.arguments[0]
-    }
 }
