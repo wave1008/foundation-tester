@@ -425,6 +425,9 @@ export function readMachineDeviceNames(workspaceRoot: string, project: string): 
 export interface MachineDeviceEntry {
   readonly name: string;
   readonly platform: Platform;
+  /** このデバイスが居る機械(登録名。省略=プロファイル直下の host、それも無ければ手元)。
+   * 一意なのは (host, name)(Sources/FTCore/DeviceHostGrouping.swift)。 */
+  readonly host?: string;
   readonly kind?: "virtual" | "physical";
   readonly simulator?: string;
   readonly os?: string;
@@ -451,7 +454,7 @@ function toMachineDeviceEntry(value: unknown, platform: Platform): MachineDevice
     return undefined;
   }
   const record = value as Record<string, unknown>;
-  const { name, kind, simulator, os: osVersion, udid, port, avd, serial, model } = record;
+  const { name, host, kind, simulator, os: osVersion, udid, port, avd, serial, model } = record;
   if (typeof name !== "string") {
     return undefined;
   }
@@ -476,6 +479,9 @@ function toMachineDeviceEntry(value: unknown, platform: Platform): MachineDevice
   if (model !== undefined && typeof model !== "string") {
     return undefined;
   }
+  if (host !== undefined && typeof host !== "string") {
+    return undefined;
+  }
   // kind は省略可(未指定=virtual)。未知の値はこのエントリだけ捨てる
   // (Swift 側は DeviceKind の decode に失敗してプロファイル全体がエラーになる。
   // 拡張が勝手に virtual と解釈して表示すると、run では動かないものを動くように見せてしまう)
@@ -485,6 +491,7 @@ function toMachineDeviceEntry(value: unknown, platform: Platform): MachineDevice
   return {
     name,
     platform,
+    host: host as string | undefined,
     kind: kind as "virtual" | "physical" | undefined,
     simulator: simulator as string | undefined,
     os: osVersion as string | undefined,

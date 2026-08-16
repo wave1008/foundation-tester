@@ -247,7 +247,7 @@ final class RemoteDispatchTests: XCTestCase {
                                 heal: false, noHeal: false, noLPT: false, lptHistoryRuns: nil,
                                 fastInput: false, enableAnimations: false, performanceMode: false,
                                 remoteJUnitPath: nil, reportDir: nil),
-            ["run", "--project", "E2E", "--profile", "ios-inapp", "--quiet"])
+            ["run", "--project", "E2E", "--profile", "ios-inapp", "--quiet", "--host", "local"])
     }
 
     func testRemoteRunArgsEverything() {
@@ -259,7 +259,7 @@ final class RemoteDispatchTests: XCTestCase {
                                 remoteJUnitPath: "/remote/junit.xml",
                                 reportDir: "/remote/reports"),
             [
-                "run", "--project", "E2E", "--profile", "ios-inapp", "--quiet",
+                "run", "--project", "E2E", "--profile", "ios-inapp", "--quiet", "--host", "local",
                 "--report-dir", "/remote/reports",
                 "--scenario", "Login.S0010", "--scenario", "Login.S0020",
                 "--folder", "smoke",
@@ -267,6 +267,28 @@ final class RemoteDispatchTests: XCTestCase {
                 "--enable-animations", "--performance",
                 "--junit", "/remote/junit.xml",
             ])
+    }
+
+    /// リモートで走る ftester が**もう一度ディスパッチしない**ことを固定する。転送された
+    /// マシンプロファイルには host(= そのリモート自身の名前)が入っているので、--host local が
+    /// 抜けると向こうの MachineHostDispatch が自動ディスパッチに入り、登録簿次第で
+    /// 「未登録のホスト」で落ちるか自分自身へ ssh する
+    func testRemoteRunArgsAlwaysPinTheRemoteSideToLocal() {
+        for args in [
+            RemoteRunArgs.build(project: "E2E", profile: "p", scenarios: [], folders: [],
+                                heal: false, noHeal: false, noLPT: false, lptHistoryRuns: nil,
+                                fastInput: false, enableAnimations: false, performanceMode: false,
+                                remoteJUnitPath: nil, reportDir: nil),
+            RemoteRunArgs.buildApi(project: "E2E", profile: "p", scenarios: [],
+                                   heal: false, noLPT: false, lptHistoryRuns: nil,
+                                   performanceMode: false,
+                                   defaultTimeout: nil, scenarioTimeout: nil, reportDir: nil),
+        ] {
+            guard let index = args.firstIndex(of: "--host") else {
+                return XCTFail("--host local が無い: \(args)")
+            }
+            XCTAssertEqual(args[index + 1], "local")
+        }
     }
 
     func testRemoteRunArgsReportDirOmittedWhenNil() {
@@ -430,7 +452,8 @@ final class RemoteDispatchTests: XCTestCase {
                                    heal: false, noLPT: false, lptHistoryRuns: nil,
                                    performanceMode: false,
                                    defaultTimeout: nil, scenarioTimeout: nil, reportDir: nil),
-            ["api", "run", "--project", "E2E", "--profile", "ios-inapp", "--scenario", "Login.S0010"])
+            ["api", "run", "--project", "E2E", "--profile", "ios-inapp", "--host", "local",
+             "--scenario", "Login.S0010"])
     }
 
     func testBuildApiEverything() {
@@ -442,7 +465,7 @@ final class RemoteDispatchTests: XCTestCase {
                                    defaultTimeout: 5.5, scenarioTimeout: 90,
                                    reportDir: "/remote/reports"),
             [
-                "api", "run", "--project", "E2E", "--profile", "ios-inapp",
+                "api", "run", "--project", "E2E", "--profile", "ios-inapp", "--host", "local",
                 "--report-dir", "/remote/reports",
                 "--scenario", "Login.S0010", "--scenario", "Login.S0020",
                 "--heal", "--no-lpt", "--lpt-history-runs", "3", "--performance",

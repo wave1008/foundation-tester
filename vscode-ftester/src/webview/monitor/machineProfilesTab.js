@@ -255,7 +255,9 @@ function renderMachineProfileBody(error) {
       nameLine.appendChild(name);
       const detail = document.createElement('div');
       detail.className = 'machine-device-detail';
-      detail.textContent = device.detail;
+      // 別の機械のデバイスは同名でありうる(一意なのは (host, name))ので、手元でないものは
+      // どの機械のものかを出す。手元だけの構成では何も足さない(既存の見た目を変えない)
+      detail.textContent = device.host ? `${device.host} / ${device.detail}` : device.detail;
       row.append(nameLine, detail);
       row.addEventListener('click', (event) => toggleDeviceRowSelection(device.name, event));
       row.addEventListener('contextmenu', (event) => {
@@ -323,10 +325,20 @@ if (typeof ResizeObserver !== 'undefined') {
   new ResizeObserver(() => applyDeviceListHeightCap()).observe(machineDeviceList);
 }
 
-// 選択中マシンの全デバイス名(ios/android 横断。デバイス追加モーダルの重複検証に使う)。
-export function allDeviceNamesForSelectedMachine() {
+// 選択中マシンのデバイス名(ios/android 横断。デバイス追加モーダルと編集フォームの重複検証用)。
+// **host を渡すとその機械のぶんだけ**返す —— 一意なのは (host, name) で、別の機械に同じ名前の
+// デバイスが居るのは通常(各機が同じ命名規則でシミュレータを作る)。判定の正は
+// Sources/FTCore/DeviceHostGrouping.swift で、ここはその写し。
+// host は undefined = 手元。引数を省略すると全ホストぶん(呼び出し側が自分で絞る)。
+export function allDeviceNamesForSelectedMachine(host) {
   const machine = findMachine(selectedMachine);
-  return machine ? machine.devices.map((d) => d.name) : [];
+  if (!machine) {
+    return [];
+  }
+  if (arguments.length === 0) {
+    return machine.devices.map((d) => d.name);
+  }
+  return machine.devices.filter((d) => (d.host ?? undefined) === host).map((d) => d.name);
 }
 
 // ---- 右ペインの編集フォーム ---------------------------------------------
@@ -405,7 +417,8 @@ function setEditorDirty(dirty) {
 
 // 選択中デバイスの値でフォームを作り直す(編集途中の値は破棄する)。
 function renderDeviceEditor(machine, device) {
-  editorTarget = { machine: machine, platform: device.platform, originalName: device.name };
+  editorTarget = { machine: machine, platform: device.platform, originalName: device.name,
+                   host: device.host ?? undefined };
   editorOriginalValues = deviceFieldValues(device);
   editorSubmitting = false;
   editorError.textContent = '';
@@ -581,7 +594,9 @@ function validateDeviceEditorFields(name) {
   if (name.length === 0) {
     return t('wvMonitor2.machine.validation.nameRequired');
   }
-  const others = allDeviceNamesForSelectedMachine().filter((n) => n !== editorTarget.originalName);
+  // 重複はそのデバイスが居る機械の中だけで見る(一意なのは (host, name))。
+  const others = allDeviceNamesForSelectedMachine(editorTarget.host)
+    .filter((n) => n !== editorTarget.originalName);
   if (others.includes(name)) {
     return t('wvMonitor2.machine.validation.nameExists', { name });
   }

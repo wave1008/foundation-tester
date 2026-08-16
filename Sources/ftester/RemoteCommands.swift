@@ -542,12 +542,24 @@ func resolveEffectiveHostDispatch(
         autoDispatchMachineName: requiresRegisteredName ? machineName : nil)
 }
 
+/// **デバイスが居る機械が優先**。マシンプロファイルの `host` は「そのプロファイルの既定」で、
+/// デバイス1台ずつが自分の host を持てる(DeviceHostGrouping)。実際に回す全デバイスが同じ機械に
+/// 居るならそこがディスパッチ先 —— 既定を見るだけだと、`host` を書いていないマシンプロファイルに
+/// リモートのデバイスだけを並べた形が**黙って手元で走る**(そのデバイスは手元に無いので落ちる)。
+/// 複数の機械にまたがる場合はここへ来る前に DeviceHostRunner が引き取っているので、
+/// 残りは「絞り込みで1つに定まらなかった」= 既定に従う場合だけ
 private func machineProfileHostAndName(
     profile: String, project: String?
 ) throws -> (host: String?, name: String) {
     let testProject = try ScenarioHost.project(named: project)
     let machine = try ProfileResolver.determineMachine(
         project: testProject, registered: LocalConfig.currentMachineName(), runProfileName: profile)
+    let devices = (try? ProfileResolver.runDeviceHosts(
+        project: testProject, runProfileName: profile, machineName: machine.name)) ?? []
+    let hosts = Set(devices.map { DeviceHostGrouping.display($0.host) })
+    if hosts.count == 1, let only = hosts.first {
+        return (only == DeviceHostGrouping.localDisplayName ? nil : only, machine.name)
+    }
     let host = try ProfileResolver.machineHost(project: testProject, machineName: machine.name)
     return (host, machine.name)
 }

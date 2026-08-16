@@ -56,12 +56,22 @@ public enum FleetSplit {
     /// - entryPlatforms: fleet の実行対象エントリと同じ並び・同じ本数。空集合 = そのエントリは
     ///   どのシナリオも受けない(呼び出し側は空バケツを skip として扱う)
     /// - unknownDurationMs: 実績の無いシナリオの見積り(既定値の根拠は呼び出し側のコメントに書く)
+    /// - entryCapacities: エントリの**同時実行本数**(= 割り当てるデバイス台数)。省略時は全員 1。
+    ///   分ける相手が「1ホスト = 1プロファイル」なら台数差は割り当てに現れないが、
+    ///   デバイス単位の host 混在(1つの実行プロファイルの中に複数ホストのデバイスが並ぶ形)では
+    ///   **台数が違うホストへ同じ量を配ると台数の少ない側が終わらない**。総量ではなく
+    ///   「見込み終了時刻 = 負荷合計 / 台数」で比べる。全員同じ値なら比較順序は変わらないので、
+    ///   既定(全員 1)の割り当ては従来と1バイトも変わらない
     public static func partition(
         scenarios: [(id: String, platform: String?)],
         durations: [LPTScheduler.Duration],
         entryPlatforms: [Set<String>],
-        unknownDurationMs: Double
+        unknownDurationMs: Double,
+        entryCapacities: [Double]? = nil
     ) throws -> [Bucket] {
+        let capacities = entryCapacities ?? [Double](repeating: 1, count: entryPlatforms.count)
+        precondition(capacities.count == entryPlatforms.count,
+                     "entryCapacities must line up with entryPlatforms")
         var medianByScenario: [String: Double] = [:]
         for duration in durations {
             medianByScenario[duration.scenarioID] =
@@ -84,8 +94,13 @@ public enum FleetSplit {
                 guard let platform = scenario.platform else { return !entryPlatforms[index].isEmpty }
                 return entryPlatforms[index].contains(platform)
             }
-            // 負荷合計が最小のエントリへ。同着は entryIndex 昇順(決定的)
-            guard let target = fitting.min(by: { (totals[$0], $0) < (totals[$1], $1) }) else {
+            // 見込み終了時刻(負荷合計 / 台数)が最小のエントリへ。同着は entryIndex 昇順(決定的)
+            func finishIfAssigned(_ index: Int) -> Double {
+                (totals[index] + estimatedMs(scenario.id)) / max(capacities[index], 1)
+            }
+            guard let target = fitting.min(by: {
+                (finishIfAssigned($0), $0) < (finishIfAssigned($1), $1)
+            }) else {
                 throw FleetSplitError.noFittingEntry(
                     scenarioID: scenario.id, platform: scenario.platform ?? "ios/android")
             }

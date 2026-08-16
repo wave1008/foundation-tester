@@ -424,10 +424,14 @@ public enum ProjectScaffold {
     実行時のマシン選択: FT_MACHINE 環境変数 > `ftester machine set` の登録名 >
     ここに .json が 1 つだけならそれを自動採用。
 
-    `"host"`(任意)は**そのデバイスがある機械**。省略・`""`・`"local"` = 手元。
+    `"host"` は**そのデバイスがある機械**。**手元でも省略せず `"local"` と書く**(省略は
+    「直下の既定を継ぐ」の意味になり、既定がリモートのときに別の機械のデバイス扱いになる)。
+    ツールが書き出すときは常に `host` → `name` の順で先頭に置く。
     別の Mac(リモートランナー)を指すときは `ftester remote hosts` の登録名だけを書く
-    (ssh の宛先は書けない)。実行プロファイルはマシンを経由するので、`host` を書いておくと
-    `--host` を付けなくてもその機械へディスパッチされる(docs/remote-runner-setup.md)。
+    (ssh の宛先は書けない)。`host` を書いておくと `--host` を付けなくてもその機械へ
+    ディスパッチされる。**トップレベルにも devices の各要素にも書ける** —— トップレベルは既定で、
+    デバイス側が優先。**一意なのは (host, name)** なので、別の機械に同名のデバイスが居てよく、
+    1つの実行プロファイルで手元とリモートを同時に回せる(docs/remote-runner-setup.md)。
 
     iOS の `os`(例 `"26.0"`)は任意。**書かなければ名前一致の最新ランタイム**に解決されるので、
     複数ランタイムを使い分けるとき以外は省略する(このマシンに無い版を書くと解決不能になる)。
@@ -436,14 +440,14 @@ public enum ProjectScaffold {
     {
       "ios": {
         "devices": [
-          { "name": "simulator1", "simulator": "iPhone 17 Pro" },
-          { "name": "simulator2", "simulator": "iPhone Air", "udid": "XXXX-XXXX" }
+          { "host": "local", "name": "simulator1", "simulator": "iPhone 17 Pro" },
+          { "host": "local", "name": "simulator2", "simulator": "iPhone Air", "udid": "XXXX-XXXX" }
         ]
       },
       "android": {
         "devices": [
-          { "name": "emulator1", "avd": "Pixel 9(Android 16)" },
-          { "name": "emulator2", "avd": "Pixel_8_Android_14" }
+          { "host": "local", "name": "emulator1", "avd": "Pixel 9(Android 16)" },
+          { "host": "local", "name": "emulator2", "avd": "Pixel_8_Android_14" }
         ]
       }
     }

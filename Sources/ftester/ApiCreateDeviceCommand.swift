@@ -144,9 +144,8 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
                 + error.localizedDescription)
         }
         do {
-            let output = try JSONSerialization.data(
-                withJSONObject: updated, options: [.prettyPrinted, .sortedKeys])
-            try output.write(to: machineURL, options: .atomic)
+            // キー順は OrderedProfileJSON(host → name を先頭)。ProfileWriter.json と同じ口を通す
+            try ProfileWriter.json(updated).write(to: machineURL, options: .atomic)
         } catch {
             throw CreateDeviceError(
                 "the simulator/AVD was created, but writing the profile file failed: "
@@ -212,7 +211,10 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
         }
         emitLog("Created the simulator (UDID: \(udid))")
 
+        // host は**必ず書く**(手元なら "local")。省略は「プロファイル直下の既定を継ぐ」の意味で、
+        // 既定がリモートのプロファイルだと手元で作った実体が別の機械のものとして扱われる
         let deviceEntry: [String: Any] = [
+            "host": DeviceHostGrouping.localDisplayName,
             "name": name, "simulator": deviceTypeName, "os": runtimeVersion, "udid": udid,
         ]
         let resultEntry = ApiCreateDeviceEntry(avd: nil, name: name, udid: udid)
@@ -247,7 +249,10 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
 
         updateDisplayName(avdID: avdID, displayName: name)
 
-        let deviceEntry: [String: Any] = ["name": name, "avd": avdID]
+        // host は必ず書く(理由は createSimulator 側のコメント)
+        let deviceEntry: [String: Any] = [
+            "host": DeviceHostGrouping.localDisplayName, "name": name, "avd": avdID,
+        ]
         let resultEntry = ApiCreateDeviceEntry(avd: avdID, name: name, udid: nil)
         return (deviceEntry, resultEntry)
     }

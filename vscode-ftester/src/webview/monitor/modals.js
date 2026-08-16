@@ -348,7 +348,10 @@ dlgOk.addEventListener('click', () => {
     return;
   }
   const name = dlgName.value.trim();
-  const error = validateNewDeviceName(name, allDeviceNamesForSelectedMachine());
+  // 重複判定は**選択中のホストのぶんだけ**(一意なのは (host, name)。別の機械の同名は通す)。
+  const source = currentDeviceSource();
+  const error = validateNewDeviceName(
+    name, allDeviceNamesForSelectedMachine(source.kind === 'remote' ? source.host : undefined));
   if (error) {
     dlgError.classList.remove('info');
     dlgError.textContent = error;

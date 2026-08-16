@@ -116,7 +116,10 @@ struct ProfileSetupCommand: AsyncParsableCommand {
         let machineURL = testProject.machinesDir.appendingPathComponent("\(machineName).json")
         let machineObject = try readObject(machineURL)
 
-        var device: [String: Any] = ["name": deviceName]
+        // host は必ず書く(手元なら "local"。省略はプロファイル直下の既定を継ぐ意味になる)
+        var device: [String: Any] = [
+            "host": DeviceHostGrouping.localDisplayName, "name": deviceName,
+        ]
         if platform == "ios" {
             if let simulator { device["simulator"] = simulator }
             if let os { device["os"] = os }

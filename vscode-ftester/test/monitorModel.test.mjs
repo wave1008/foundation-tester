@@ -1839,10 +1839,10 @@ test("addDevicesToMachineProfile: 実機は kind/serial を書き、simulator/os
   ]);
   assert.equal(result.ok, true);
   assert.deepEqual(result.object.ios.devices[0], {
-    name: "iPhone 実機", kind: "physical", udid: "00008130-AAAA",
+    host: "local", name: "iPhone 実機", kind: "physical", udid: "00008130-AAAA",
   });
   assert.deepEqual(result.object.android.devices[0], {
-    name: "Pixel 実機", kind: "physical", serial: "14141JEC204922",
+    host: "local", name: "Pixel 実機", kind: "physical", serial: "14141JEC204922",
   });
 });
 
@@ -1979,9 +1979,12 @@ test("addDevicesToMachineProfile: 基本追記(iOS1件をセクション末尾�
   const result = addDevicesToMachineProfile({}, [IOS_ADD_ENTRY]);
   assert.equal(result.ok, true);
   assert.deepEqual(result.added, ["iPhone 17 Pro"]);
+  // host は省略しない(手元でも "local" を書く)。省略は「直下の既定を継ぐ」の意味になるため。
   assert.deepEqual(result.object.ios.devices, [
-    { name: "iPhone 17 Pro", simulator: "iPhone 17 Pro", os: "27.0", udid: "1C86FAKE-0000-0000-0000-000000000000" },
+    { host: "local", name: "iPhone 17 Pro", simulator: "iPhone 17 Pro", os: "27.0", udid: "1C86FAKE-0000-0000-0000-000000000000" },
   ]);
+  // キー順も契約(2026-08-17 指示: host → name を先に書く)。deepEqual は順序を見ないので別に固定する
+  assert.deepEqual(Object.keys(result.object.ios.devices[0]).slice(0, 2), ["host", "name"]);
 });
 
 test("addDevicesToMachineProfile: 複数一括(iOS+Androidをまとめて追加し、既存デバイスの後ろに追記する)", () => {
@@ -2021,14 +2024,14 @@ test("addDevicesToMachineProfile: 同一バッチ内の名前衝突も自動サ�
 test("addDevicesToMachineProfile: エントリは name + 非空のオプショナルフィールドのみをキーとして構築する(空文字/undefinedは持たせない)", () => {
   const undefinedFields = addDevicesToMachineProfile({}, [{ platform: "android", name: "エミュ1" }]);
   assert.equal(undefinedFields.ok, true);
-  assert.deepEqual(undefinedFields.object.android.devices, [{ name: "エミュ1" }]);
+  assert.deepEqual(undefinedFields.object.android.devices, [{ host: "local", name: "エミュ1" }]);
 
   // オプショナルフィールドが空文字で明示的に渡された場合もキー自体を持たせない。
   const emptyStringFields = addDevicesToMachineProfile({}, [
     { platform: "ios", name: "シミュ1", simulator: "", os: "", udid: "" },
   ]);
   assert.equal(emptyStringFields.ok, true);
-  assert.deepEqual(emptyStringFields.object.ios.devices, [{ name: "シミュ1" }]);
+  assert.deepEqual(emptyStringFields.object.ios.devices, [{ host: "local", name: "シミュ1" }]);
 });
 
 test("addDevicesToMachineProfile: 未知キー(トップレベル・既存セクション・既存デバイスエントリ)を保持する", () => {
@@ -2063,7 +2066,7 @@ test("syncDevicesInMachineProfile: 追加のみ(remove:[])は addDevicesToMachin
   assert.deepEqual(result.added, ["iPhone 17 Pro"]);
   assert.equal(result.removed, 0);
   assert.deepEqual(result.object.ios.devices, [
-    { name: "iPhone 17 Pro", simulator: "iPhone 17 Pro", os: "27.0", udid: "1C86FAKE-0000-0000-0000-000000000000" },
+    { host: "local", name: "iPhone 17 Pro", simulator: "iPhone 17 Pro", os: "27.0", udid: "1C86FAKE-0000-0000-0000-000000000000" },
   ]);
 });
 
@@ -2132,15 +2135,18 @@ test("syncDevicesInMachineProfile: トップレベルがオブジェクトでな
 });
 
 // ---- syncDevicesInMachineProfile: source(devicePickHost.js のホスト選択)による host 書き込み ----
-// 契約(monitorProfileForms.ts): add が非空かつ source.kind === "remote" のときだけ、選ばれたホスト名を
-// マシンプロファイルの host キーへ書く。source.kind === "local" のときは既存の host キーを消す
-// (リモート→ローカルへ選び直した後の追加で古い host が残らないようにする)。source を渡さない・
-// remove のみ(add:[])のいずれでも host には触らない(判断材料が無い・追加が起きていないため)。
+// 契約(monitorProfileForms.ts): host は**追加したデバイス1台ずつ**に書く(一意なのは (host, name)
+// で、ローカルとリモートに同名のデバイスが並んでよい。Sources/FTCore/DeviceHostGrouping.swift)。
+// プロファイル直下の host は「このプロファイルの既定」なので触らない —— ただし既定が別のホストを
+// 指しているときだけ、追加したローカルのデバイスに "local" を明示する(書かないと既定のリモートに
+// 居ることになる)。source を渡さない・remove のみ(add:[])では何も書かない。
 
-test("syncDevicesInMachineProfile: add + source:remote は host キーを書く", () => {
+test("syncDevicesInMachineProfile: add + source:remote は追加したデバイスに host を書く", () => {
   const result = syncDevicesInMachineProfile({}, [IOS_ADD_ENTRY], [], { kind: "remote", host: "M1Max" });
   assert.equal(result.ok, true);
-  assert.equal(result.object.host, "M1Max");
+  assert.equal(result.object.ios.devices[0].host, "M1Max");
+  // プロファイル直下は既定なので触らない(混在プロファイルでは「全部 M1Max」を意味してしまう)
+  assert.equal("host" in result.object, false);
 });
 
 test("syncDevicesInMachineProfile: add + source:local は host キーを書かない", () => {
@@ -2149,11 +2155,15 @@ test("syncDevicesInMachineProfile: add + source:local は host キーを書か�
   assert.equal("host" in result.object, false);
 });
 
-test("syncDevicesInMachineProfile: add + source:local は既存の host キーを消す(リモート→ローカルの選び直し)", () => {
+// 既定がリモートのプロファイルへ手元のデバイスを混ぜる形。デバイス側に "local" を書かないと、
+// 既定(M1Max)を継いで「M1Max に居る」ことになり、run が手元の実体を見つけられない
+test("syncDevicesInMachineProfile: 既定がリモートのとき、追加したローカルのデバイスには local を明示する", () => {
   const profile = { host: "M1Max", ios: { devices: [] } };
   const result = syncDevicesInMachineProfile(profile, [IOS_ADD_ENTRY], [], { kind: "local" });
   assert.equal(result.ok, true);
-  assert.equal("host" in result.object, false);
+  assert.equal(result.object.ios.devices[0].host, "local");
+  // 既定そのものは他のデバイスが使っているので消さない
+  assert.equal(result.object.host, "M1Max");
 });
 
 test("syncDevicesInMachineProfile: source を渡さない場合は従来どおり host キーを書かない", () => {

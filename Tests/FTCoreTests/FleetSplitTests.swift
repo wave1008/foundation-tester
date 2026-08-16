@@ -148,3 +148,44 @@ extension FleetSplitTests {
         XCTAssertEqual(withUnitWeight.map(\.scenarioIDs.count).sorted(), [2, 3])
     }
 }
+
+// MARK: - entryCapacities(デバイス単位 host の分散。台数で重み付ける)
+
+extension FleetSplitTests {
+
+    /// 既定(省略)は全員 1 = 従来の「負荷合計が最小のエントリへ」。ここが変わると
+    /// --fleet --split の割り当てが黙って変わるので、明示の 1 と省略が一致することを固定する
+    func testOmittedCapacitiesBehaveExactlyLikeAllOnes() throws {
+        let scenarios: [(id: String, platform: String?)] =
+            [("A.one", nil), ("B.two", nil), ("C.three", nil)]
+        let platforms: [Set<String>] = [["ios"], ["ios"]]
+        let omitted = try FleetSplit.partition(
+            scenarios: scenarios, durations: [], entryPlatforms: platforms, unknownDurationMs: 1_000)
+        let explicit = try FleetSplit.partition(
+            scenarios: scenarios, durations: [], entryPlatforms: platforms,
+            unknownDurationMs: 1_000, entryCapacities: [1, 1])
+        XCTAssertEqual(omitted, explicit)
+    }
+
+    /// 台数が3倍のホストには3倍のシナリオが行く。総量で均すと、台数の少ない側だけが
+    /// 最後まで走り続けて壁時計が縮まない(混在プロファイルの分散はこれが目的)
+    func testCapacitySendsMoreScenariosToTheMachineWithMoreDevices() throws {
+        let scenarios: [(id: String, platform: String?)] = (1...8).map { ("S.\($0)", nil) }
+        let buckets = try FleetSplit.partition(
+            scenarios: scenarios, durations: [], entryPlatforms: [["ios"], ["ios"]],
+            unknownDurationMs: 1_000, entryCapacities: [3, 1])
+        XCTAssertEqual(buckets.map(\.scenarioIDs.count), [6, 2])
+    }
+
+    /// 台数で重み付けても platform 適合は曲げない(走らせられない機械へ配ると
+    /// 「走ったつもりで走っていない」になる)
+    func testCapacityNeverOverridesPlatformAffinity() throws {
+        let scenarios: [(id: String, platform: String?)] =
+            [("A.ios", "ios"), ("B.ios", "ios"), ("C.android", "android")]
+        let buckets = try FleetSplit.partition(
+            scenarios: scenarios, durations: [], entryPlatforms: [["ios"], ["android"]],
+            unknownDurationMs: 1_000, entryCapacities: [1, 10])
+        XCTAssertEqual(buckets[0].scenarioIDs.sorted(), ["A.ios", "B.ios"])
+        XCTAssertEqual(buckets[1].scenarioIDs, ["C.android"])
+    }
+}

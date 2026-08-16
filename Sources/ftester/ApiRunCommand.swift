@@ -126,6 +126,18 @@ struct ApiRunCommand: AsyncParsableCommand {
         // 拒否する(既存どおり)ため常に解決へ進める一方、自動側(host 未指定)は dry-run のとき
         // マシン側 host を見ない(requireMachineHost: !dryRun)= ローカルで dry-run が走る。
         // 優先順位・食い違いは FTCore.MachineHostDispatch に委譲(ユーザー決定 2026-08-17)
+        // デバイスが複数の機械にまたがる実行プロファイルは、この経路(NDJSON 1本の中継)では
+        // 扱えない —— レーンはホストを跨いで一意でなく、中継も1接続ぶんしか無い。
+        // **黙って一部の台だけ走らせない**(そのほうが「全部走った」と誤読されるので危険)
+        if !dryRun, let profile,
+           let groups = try DeviceHostRunner.plan(
+               project: testProject, profileName: profile, explicitHost: host, deviceFilter: []) {
+            throw ValidationError(
+                "run profile \(profile) spans \(groups.count) machines"
+                + " (\(groups.map(\.hostLabel).joined(separator: ", ")))."
+                + " Running one profile across several machines is CLI-only for now:"
+                + " ftester run --profile \(profile)")
+        }
         if let dispatch = try resolveEffectiveHostDispatch(
             explicitHost: host, profile: profile, project: project,
             requireMachineHost: !dryRun, warn: { logStderr($0) }) {

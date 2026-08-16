@@ -98,8 +98,14 @@ public enum DeviceKind: String, Codable, Sendable, Hashable {
 
 /// マシンプロファイル内の 1 デバイス定義
 public struct DeviceSpec: Codable, Sendable, Hashable {
-    /// ユーザーがデバイスを識別するための名前(実行プロファイルからの参照キー)
+    /// ユーザーがデバイスを識別するための名前(実行プロファイルからの参照キー)。
+    /// **一意なのは name 単体ではなく (host, name)** —— 別のホストに同名のデバイスが居てよい
+    /// (フリートの各機が同じ命名規則でシミュレータを作るため、同名は例外ではなく通常)
     public var name: String
+    /// このデバイスが居る機械。省略時はマシンプロファイルの host(そちらも省略なら手元)。
+    /// 書けるのは登録名だけ(ssh の実体は書けない。MachineProfile.host と同じ規律)。
+    /// 解決規則は DeviceHostGrouping、正規化は MachineHostDispatch.normalize
+    public var host: String?
     /// 実体種別(省略時 virtual)。実機の識別子は iOS=udid / Android=serial
     public var kind: DeviceKind?
     /// iOS: シミュレータのデバイス名(例 "iPhone 17 Pro"。実機では未使用)
@@ -126,10 +132,12 @@ public struct DeviceSpec: Codable, Sendable, Hashable {
     /// 同定には使わない(登録時に控えるだけ。端末を挿し替えても値は追随しない)
     public var model: String?
 
-    public init(name: String, kind: DeviceKind? = nil, simulator: String? = nil, os: String? = nil,
+    public init(name: String, host: String? = nil, kind: DeviceKind? = nil,
+                simulator: String? = nil, os: String? = nil,
                 udid: String? = nil, port: UInt16? = nil, engine: String? = nil,
                 avd: String? = nil, serial: String? = nil, model: String? = nil) {
         self.name = name
+        self.host = host
         self.kind = kind
         self.simulator = simulator
         self.os = os
@@ -145,7 +153,8 @@ public struct DeviceSpec: Codable, Sendable, Hashable {
     public var isPhysical: Bool { kind == .physical }
 
     static let knownKeys: Set<String> = [
-        "name", "kind", "simulator", "os", "udid", "port", "engine", "avd", "serial", "model",
+        "name", "host", "kind", "simulator", "os", "udid", "port", "engine", "avd", "serial",
+        "model",
     ]
 }
 
@@ -231,9 +240,10 @@ public enum MachineHostDispatch {
             + " (they differ; the run continues on \(explicit))")
     }
 
-    /// 生の(trim 前の) explicitHost が文字どおり "local" か。normalize 後の nil とは区別する
-    /// 必要があるためこちらは公開しない(呼び出し側は resolve() 経由でだけ知ればよい)
-    private static func isExplicitLocal(_ raw: String?) -> Bool {
+    /// 生の(trim 前の)値が文字どおり "local" か。normalize 後の nil(= 未指定)とは区別する。
+    /// `--host local` と実行プロファイルの `"host": "local"` の両方が「ここで走らせる」の明示指定で、
+    /// 判定を写すと片方だけズレるのでここが唯一の定義元(呼び出し側は DeviceHostGrouping.resolve)
+    public static func isExplicitLocal(_ raw: String?) -> Bool {
         guard let raw else { return false }
         return raw.trimmingCharacters(in: .whitespacesAndNewlines) == "local"
     }
@@ -242,10 +252,16 @@ public enum MachineHostDispatch {
 /// 実行プロファイルのデバイス参照(name でマシンプロファイルを引く)
 public struct RunDeviceRef: Codable, Sendable, Equatable {
     public var name: String
+    /// 同名のデバイスが複数のホストに居るときの指定(省略可)。省略した参照が複数に当たると
+    /// **候補を挙げて中止する**(どちらか一方を黙って選ばない。解決規則は DeviceHostGrouping)
+    public var host: String?
 
-    public init(name: String) { self.name = name }
+    public init(name: String, host: String? = nil) {
+        self.name = name
+        self.host = host
+    }
 
-    static let knownKeys: Set<String> = ["name"]
+    static let knownKeys: Set<String> = ["name", "host"]
 }
 
 /// FM 機能の実行時トグル(実行プロファイル由来の実効値)。enabled=false のとき他フラグも
@@ -515,6 +531,17 @@ public struct ResolvedProfile: Sendable {
         return min(available, scenarios + 1)
     }
 
+    /// `run --device` の絞り込み(ホスト別サブ実行が「自分のぶんのデバイス」だけを回すのに使う)。
+    /// 空配列は「絞らない」。**1台も残らない指定は呼び出し側でエラーにする** ——
+    /// ここで黙って全台に戻すと、名前を打ち間違えたときに意図しない台で走る
+    public func filteringDevices(names: [String]) -> ResolvedProfile {
+        guard !names.isEmpty else { return self }
+        let wanted = Set(names)
+        var filtered = self
+        filtered.devices = devices.filter { wanted.contains($0.name) }
+        return filtered
+    }
+
     public func limitingDevices(iosScenarios: Int, androidScenarios: Int) -> ResolvedProfile {
         func keep(_ list: [ResolvedDevice], _ count: Int) -> [ResolvedDevice] {
             Array(list.prefix(Self.deviceKeepCount(available: list.count, scenarios: count)))
@@ -563,7 +590,10 @@ public enum ProfileError: Error, LocalizedError {
     case decodeFailed(URL, detail: String)
     case missingAppReference(run: String)
     case missingDevices(run: String)
-    case duplicateDeviceName(name: String, machine: String)
+    /// 同じ (host, name) が2つある。**別ホストの同名は重複ではない**(DeviceHostGrouping)
+    case duplicateDeviceName(name: String, host: String?, machine: String)
+    /// 実行プロファイルの参照が host を書いておらず、同名が複数ホストに居る
+    case ambiguousDeviceRef(name: String, hosts: [String], run: String, machine: String)
     case noDevicesResolved(run: String, machine: String, requested: [String], available: [String])
     case missingBundleID(platform: String, appProfile: String)
     case invalidWipeDataThreshold(run: String)
@@ -597,9 +627,14 @@ public enum ProfileError: Error, LocalizedError {
             return "run profile \(run) has no \"app\" (a reference into apps/)"
         case .missingDevices(let run):
             return "run profile \(run) has no \"devices\""
-        case .duplicateDeviceName(let name, let machine):
+        case .duplicateDeviceName(let name, let host, let machine):
             return "duplicate device name in machine profile \(machine): \(name)"
-                + " (names must be unique across ios and android)"
+                + " on host \(DeviceHostGrouping.display(host))"
+                + " (names must be unique per host, across ios and android)"
+        case .ambiguousDeviceRef(let name, let hosts, let run, let machine):
+            return "device \"\(name)\" in run profile \(run) is ambiguous on machine \(machine):"
+                + " it exists on \(hosts.joined(separator: ", "))."
+                + " Add \"host\" to the device entry in the run profile to say which one"
         case .noDevicesResolved(let run, let machine, let requested, let available):
             return "none of the devices in run profile \(run) resolve on machine \(machine)"
                 + " (requested: \(requested.joined(separator: ", ")) / "
@@ -706,6 +741,41 @@ public enum ProfileResolver {
         }
     }
 
+    /// 実行プロファイルが使うデバイスを「どの機械に居るか」付きで返す(ディスパッチ判定用。
+    /// フルの resolve() はアプリ解決まで行い、host を決める前に落ちうるのでこちらを使う)。
+    /// 解決できない参照は**黙って落とす** —— 警告と中止は resolve() が受け持ち、ここは
+    /// 「実際に走るデバイスがどの機械にあるか」だけを答える。曖昧な参照だけは resolve() を
+    /// 待たずに投げる(どのホストへ配るかがここで決まってしまうため)
+    public static func runDeviceHosts(project: TestProject, runProfileName: String,
+                                      machineName: String) throws -> [RunDeviceHost] {
+        let runURL = project.runsDir.appendingPathComponent("\(runProfileName).json")
+        guard let runData = try? Data(contentsOf: runURL),
+              let runDoc = try? JSONDecoder().decode(RunProfileDocument.self, from: runData),
+              let refs = runDoc.devices else {
+            return []
+        }
+        let machineURL = project.machinesDir.appendingPathComponent("\(machineName).json")
+        guard let machineData = try? Data(contentsOf: machineURL),
+              let machine = try? JSONDecoder().decode(MachineProfile.self, from: machineData) else {
+            return []
+        }
+        let entries = DeviceHostGrouping.entries(machine: machine)
+        var result: [RunDeviceHost] = []
+        for ref in refs {
+            switch DeviceHostGrouping.resolve(ref, in: entries) {
+            case .found(let entry):
+                result.append(RunDeviceHost(host: entry.host, name: entry.name,
+                                            platform: entry.platform))
+            case .missing:
+                continue
+            case .ambiguous(let hosts):
+                throw ProfileError.ambiguousDeviceRef(
+                    name: ref.name, hosts: hosts, run: runProfileName, machine: machineName)
+            }
+        }
+        return result
+    }
+
     /// runProfileName の実行プロファイルが指定する machine(trim 後非空)を返す。
     /// ファイルが無い/デコード不能/未指定・空文字列なら nil(呼び出し側は fallback を使う。
     /// ファイル自体の欠落・型不一致は resolve() 側で改めて明確なエラーにする)
@@ -773,17 +843,13 @@ public enum ProfileResolver {
             checkMachineProfileKeys(json, context: "machines/\(machineName).json")
         }
 
-        var catalog: [String: ResolvedDevice] = [:]
-        var catalogOrder: [String] = []
-        for (platform, list) in [("ios", machine.ios), ("android", machine.android)] {
-            for spec in list?.devices ?? [] {
-                guard catalog[spec.name] == nil else {
-                    throw ProfileError.duplicateDeviceName(name: spec.name, machine: machineName)
-                }
-                catalog[spec.name] = ResolvedDevice(platform: platform, spec: spec)
-                catalogOrder.append(spec.name)
-            }
+        // 一意なのは (host, name)。別ホストの同名は許す(DeviceHostGrouping にすべての規則がある)
+        let catalogEntries = DeviceHostGrouping.entries(machine: machine)
+        if let duplicate = DeviceHostGrouping.firstDuplicate(in: catalogEntries) {
+            throw ProfileError.duplicateDeviceName(
+                name: duplicate.name, host: duplicate.host, machine: machineName)
         }
+        let catalogOrder = catalogEntries.map(\.name)
 
         // 4. デバイス解決(このマシンに無い name はスキップ+警告)。
         // iOS 実効エンジン: 実行プロファイルの iosInappEngine(既定 true)で決める。
@@ -792,7 +858,13 @@ public enum ProfileResolver {
         let iosEngine = (runDoc.iosInappEngine ?? true) ? "hybrid" : "xcuitest"
         var devices: [ResolvedDevice] = []
         for ref in deviceRefs {
-            if let device = catalog[ref.name] {
+            switch DeviceHostGrouping.resolve(ref, in: catalogEntries) {
+            case .ambiguous(let hosts):
+                // 片方を黙って選ぶと「別の機械のデバイスを操作した」になる。候補を挙げて止める
+                throw ProfileError.ambiguousDeviceRef(
+                    name: ref.name, hosts: hosts, run: runName, machine: machineName)
+            case .found(let entry):
+                let device = ResolvedDevice(platform: entry.platform, spec: entry.spec)
                 try validatePhysical(device, machine: machineName)
                 if device.spec.isPhysical, device.platform == "ios" {
                     // 実機は dylib 注入不可。iosInappEngine の既定(hybrid)を無視して固定する
@@ -815,9 +887,11 @@ public enum ProfileResolver {
                     }
                     devices.append(device)
                 }
-            } else {
+            case .missing:
+                let onHost = ref.host.map { " on host \($0)" } ?? ""
                 warnings.append(
-                    "device \"\(ref.name)\" is not defined on machine \(machineName) — skipping it")
+                    "device \"\(ref.name)\"\(onHost) is not defined on machine \(machineName)"
+                    + " — skipping it")
             }
         }
         guard !devices.isEmpty else {

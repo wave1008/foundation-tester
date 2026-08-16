@@ -561,7 +561,7 @@ final class ProfileResolverTests: XCTestCase {
 
         XCTAssertThrowsError(try ProfileResolver.resolve(
             project: project, runName: "r", machineName: "dup")) { error in
-            guard case ProfileError.duplicateDeviceName(let name, _) = error else {
+            guard case ProfileError.duplicateDeviceName(let name, _, _) = error else {
                 return XCTFail("duplicateDeviceName のはず: \(error)")
             }
             XCTAssertEqual(name, "同名")
@@ -1074,5 +1074,68 @@ final class ProfileResolverTests: XCTestCase {
                       "Android 実機の serial 欠落エラーが出るはず: \(errors)")
         XCTAssertFalse(warnings.contains { $0.contains("kind") || $0.contains("serial") },
                        "kind/serial は既知キーなので未知キー警告を出さない: \(warnings)")
+    }
+}
+
+// MARK: - デバイス単位の host(混在プロファイル)
+
+extension ProfileResolverTests {
+
+    private func writeMixedHostFixture(runDevices: String) throws {
+        try write("""
+        { "common": { "appName": "サンプル" }, "ios": { "app": "com.example.sampleapp" } }
+        """, to: project.appsDir, name: "sampleapp")
+        try write("""
+        { "ios": { "devices": [
+              { "name": "iPhone-01", "simulator": "iPhone 17 Pro", "udid": "LOCAL-UDID" },
+              { "name": "iPhone-01", "host": "M1Ultra", "simulator": "iPhone 17 Pro",
+                "udid": "REMOTE-UDID" } ] } }
+        """, to: project.machinesDir, name: "mixed")
+        try write("""
+        { "app": "sampleapp", "devices": \(runDevices) }
+        """, to: project.runsDir, name: "r")
+    }
+
+    /// 同名が2つの機械に居るのは通常(各機が同じ命名規則でシミュレータを作る)。
+    /// 重複エラーにしてはいけない —— ここが壊れると混在プロファイルが1台も作れない
+    func testSameDeviceNameOnDifferentHostsResolves() throws {
+        try writeMixedHostFixture(runDevices: #"[ { "name": "iPhone-01", "host": "M1Ultra" } ]"#)
+        let resolved = try ProfileResolver.resolve(project: project, runName: "r",
+                                                   machineName: "mixed")
+        XCTAssertEqual(resolved.devices.map(\.spec.udid), ["REMOTE-UDID"])
+        XCTAssertEqual(resolved.devices.map(\.spec.host), ["M1Ultra"])
+    }
+
+    func testExplicitLocalHostInARunRefPicksTheLocalDevice() throws {
+        try writeMixedHostFixture(runDevices: #"[ { "name": "iPhone-01", "host": "local" } ]"#)
+        let resolved = try ProfileResolver.resolve(project: project, runName: "r",
+                                                   machineName: "mixed")
+        XCTAssertEqual(resolved.devices.map(\.spec.udid), ["LOCAL-UDID"])
+        XCTAssertNil(resolved.devices[0].spec.host)
+    }
+
+    /// host を書いていない参照が2台に当たるときは**候補を挙げて止める**。
+    /// どちらかを選ぶと「別の機械のデバイスを操作した」になり、しかも気づけない
+    func testAmbiguousRunRefIsRejectedWithBothHostsNamed() throws {
+        try writeMixedHostFixture(runDevices: #"[ { "name": "iPhone-01" } ]"#)
+        XCTAssertThrowsError(try ProfileResolver.resolve(
+            project: project, runName: "r", machineName: "mixed")) { error in
+            guard case ProfileError.ambiguousDeviceRef(let name, let hosts, _, _) = error else {
+                return XCTFail("ambiguousDeviceRef のはず: \(error)")
+            }
+            XCTAssertEqual(name, "iPhone-01")
+            XCTAssertEqual(hosts, ["local", "M1Ultra"])
+        }
+    }
+
+    /// runDeviceHosts はディスパッチ先の判定に使う(resolve() より前に呼ばれる)。
+    /// resolve() と同じ規則で解決していないと、配る先と実際に走る台がズレる
+    func testRunDeviceHostsReportsWhereEachDeviceLives() throws {
+        try writeMixedHostFixture(runDevices:
+            #"[ { "name": "iPhone-01", "host": "local" }, { "name": "iPhone-01", "host": "M1Ultra" } ]"#)
+        let devices = try ProfileResolver.runDeviceHosts(
+            project: project, runProfileName: "r", machineName: "mixed")
+        XCTAssertEqual(devices.map(\.host), [nil, "M1Ultra"])
+        XCTAssertEqual(Set(devices.map(\.platform)), ["ios"])
     }
 }

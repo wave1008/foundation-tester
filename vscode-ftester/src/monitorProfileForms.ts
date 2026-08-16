@@ -506,6 +506,10 @@ export function updateAppProfileInObject(
 export interface MachineDeviceEntry {
   readonly name: string;
   readonly platform: MonitorPlatform;
+  /** このデバイスが居る機械(登録名。省略=プロファイル直下の host、それも無ければ手元)。
+   * 一意なのは (host, name) で、別ホストの同名は重複ではない
+   * (Sources/FTCore/DeviceHostGrouping.swift)。 */
+  readonly host?: string;
   /** 実体種別。省略=virtual(シミュレータ/エミュレータ)。physical は実機で、
    * 識別子は iOS=udid / Android=serial(Sources/FTCore/RunProfile.swift の DeviceKind と同期)。 */
   readonly kind?: "virtual" | "physical";
@@ -532,6 +536,8 @@ export interface MachineDeviceEntry {
 export interface MachineDeviceAddEntry {
   readonly platform: MonitorPlatform;
   readonly name: string;
+  /** 追加先の機械(devicePickHost の選択。省略=手元)。 */
+  readonly host?: string;
   readonly kind?: "virtual" | "physical";
   readonly simulator?: string;
   readonly os?: string;
@@ -892,6 +898,24 @@ export function isDeleteDeviceEvent(value: unknown): value is DeleteDeviceEvent 
  * 無ければ udid 先頭8文字、それも無ければ "iOS"。Android: avd があれば "AVD: "+avd、
  * 実機(avd を持たない)は serial、どちらも無ければ "Android"。
  */
+/** デバイスの実効ホスト(デバイス指定 > プロファイル直下の既定 > 手元)。手元は undefined。
+ * **判定は Sources/FTCore/DeviceHostGrouping.effectiveHost と同じ規則**(空文字=未指定で既定へ、
+ * "local"=手元の明示で既定より強い)。片方だけ変えると、拡張の重複判定と CLI の解決がズレて
+ * 「UI では足せるのに run で解決できない」になる。 */
+export function effectiveDeviceHost(
+  deviceHost: string | undefined, profileDefaultHost: string | undefined,
+): string | undefined {
+  const device = (deviceHost ?? "").trim();
+  if (device === "local") {
+    return undefined;
+  }
+  if (device !== "") {
+    return device;
+  }
+  const fallback = (profileDefaultHost ?? "").trim();
+  return fallback === "" || fallback === "local" ? undefined : fallback;
+}
+
 export function machineDeviceDetail(entry: MachineDeviceEntry): string {
   if (entry.platform === "ios") {
     if (entry.simulator) {
@@ -1178,7 +1202,10 @@ export function addDevicesToMachineProfile(
     existingNames.add(name);
     added.push(name);
 
-    const deviceEntry: Record<string, unknown> = { name };
+    // **キー順は host → name → その他**(2026-08-17 指示。JSON.stringify は挿入順で出す)。
+    // host は常に書く("local" も省略しない) —— 省略は「直下の既定を継ぐ」の意味なので、
+    // 既定がリモートのプロファイルでは黙って別の機械のデバイス扱いになる
+    const deviceEntry: Record<string, unknown> = { host: entry.host ?? "local", name };
     // kind は physical のときだけ書く(未指定=virtual が既定。既存プロファイルにノイズを足さない)
     if (entry.kind === "physical") {
       deviceEntry.kind = "physical";
@@ -1256,21 +1283,18 @@ export function syncDevicesInMachineProfile(
       removedCount += 1;
     }
   }
-  const addResult = addDevicesToMachineProfile(current, add);
+  // 契約: 追加したデバイス1台ずつに、それが居る機械を**必ず**書く(手元なら "local"。
+  // Sources/FTCore/DeviceHostGrouping.swift。一意なのは (host, name) なので、ローカルと
+  // リモートに同名のデバイスが並んでよい)。省略すると「プロファイル直下の既定を継ぐ」に
+  // なるため、既定がリモートのプロファイルでは手元のデバイスが別の機械のものとして扱われる。
+  // **プロファイル直下の host は触らない**(あちらは既定で、デバイス側の指定が優先)。
+  const stamped = add.map((entry) => {
+    const host = source?.kind === "remote" ? source.host : "local";
+    return entry.host === host ? entry : { ...entry, host };
+  });
+  const addResult = addDevicesToMachineProfile(current, stamped);
   if (!addResult.ok) {
     return addResult;
   }
-  // 契約: リモートに選び直したホストから確定追加(add 非空)した時点で、そのホストをマシン
-  // プロファイルへ記録する(以後の run は CLI が host フィールドからそのホストへ出す)。
-  // ローカルを明示的に選んだ場合は既存の host キーを消す(選び直しでリモート→ローカルへ
-  // 戻したときに古い host が残ってそちらへディスパッチされ続ける実害があった)。
-  // source を渡さない呼び出し(将来の他経路)は判断材料が無いため何も書かない・消さない。
-  let object: Record<string, unknown> = addResult.object;
-  if (add.length > 0 && source?.kind === "remote") {
-    object = { ...object, host: source.host };
-  } else if (add.length > 0 && source?.kind === "local" && "host" in object) {
-    const { host: _removedHost, ...rest } = object;
-    object = rest;
-  }
-  return { ok: true, object, added: addResult.added, removed: removedCount };
+  return { ok: true, object: addResult.object, added: addResult.added, removed: removedCount };
 }

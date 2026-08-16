@@ -59,7 +59,8 @@ enum FleetRunner {
             for (index, entry) in fleet.runs.enumerated() {
                 group.addTask {
                     let args = buildArgs(
-                        project: project.name, entry: entry, scenarios: scenarios, folders: folders,
+                        project: project.name, host: entry.host, profile: entry.profile,
+                        scenarios: scenarios, folders: folders,
                         heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
                         fastInput: fastInput, enableAnimations: enableAnimations,
                         performanceMode: performanceMode, forceLock: forceLock,
@@ -174,7 +175,8 @@ enum FleetRunner {
             for (index, entry, ids) in active {
                 group.addTask {
                     let args = buildArgs(
-                        project: project.name, entry: entry, scenarios: ids, folders: [],
+                        project: project.name, host: entry.host, profile: entry.profile,
+                        scenarios: ids, folders: [],
                         heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
                         fastInput: fastInput, enableAnimations: enableAnimations,
                         performanceMode: performanceMode, forceLock: forceLock,
@@ -327,22 +329,27 @@ enum FleetRunner {
 
     // MARK: - subprocess
 
-    private static func buildArgs(
-        project: String, entry: FleetRunEntry, scenarios: [String], folders: [String],
+    /// 子プロセスの引数列。フリート("1エントリ = 1ホスト + 1プロファイル")と
+    /// デバイス単位 host のサブ実行("同じプロファイルをホストごとに、担当デバイスだけで")の
+    /// **両方がここを通る** —— run のフラグを足すときに片方だけ中継し忘れると、そのフラグは
+    /// 黙って無視される(リモートはプロファイルの既定で走る)
+    static func buildArgs(
+        project: String, host: String, profile: String,
+        deviceNames: [String] = [], scenarios: [String], folders: [String],
         heal: Bool, noHeal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
         fastInput: Bool, enableAnimations: Bool, performanceMode: Bool,
         forceLock: Bool, remoteDir: String?, remoteTimeout: Int?, remoteArtifacts: String,
         quiet: Bool, junitPath: String?
     ) -> [String] {
-        var args = ["run", "--project", project, "--profile", entry.profile]
+        var args = ["run", "--project", project, "--profile", profile]
         // "local" エントリも常に --host を渡す(欠陥3・2026-08-17)。子プロセスは自分自身が
         // MachineHostDispatch を再適用するため、--host を省略すると「未指定」と区別が付かず、
         // entry.profile が引くマシンプロファイルに host が設定されていると子がそこへ自動
         // ディスパッチしてしまい、{"host":"local"} と書いた意味が失われる(重複ホスト拒否も
         // 無意味になる)。"local" を明示すれば MachineHostDispatch.resolve がそこで止める
         // (RunProfile.swift 参照)。--force-lock 等のリモート専用フラグは引き続きリモートのみ
-        if entry.host != "local" {
-            args += ["--host", entry.host]
+        if host != "local" {
+            args += ["--host", host]
             if forceLock { args += ["--force-lock"] }
             if let remoteDir { args += ["--remote-dir", remoteDir] }
             if let remoteTimeout { args += ["--remote-timeout", String(remoteTimeout)] }
@@ -350,6 +357,7 @@ enum FleetRunner {
         } else {
             args += ["--host", "local"]
         }
+        if !deviceNames.isEmpty { args += ["--device"] + deviceNames }
         if !scenarios.isEmpty { args += ["--scenario"] + scenarios }
         if !folders.isEmpty { args += ["--folder"] + folders }
         if heal { args += ["--heal"] }
@@ -370,7 +378,7 @@ enum FleetRunner {
 
     /// エントリごとの一時 --junit 出力を集める作業ディレクトリ。junit が指定されていなければ nil
     /// (通常の --fleet の挙動を変えない)
-    private static func makeJUnitTempDir(requested junit: String?) throws -> URL? {
+    static func makeJUnitTempDir(requested junit: String?) throws -> URL? {
         guard junit != nil else { return nil }
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("ftester-fleet-junit-\(UUID().uuidString)", isDirectory: true)
@@ -380,7 +388,7 @@ enum FleetRunner {
 
     /// エントリの index ごとに固定のファイル名にする(host は "user@host" 等ファイル名に
     /// 使えない文字を含みうるため、host 文字列は使わない)
-    private static func entryJUnitPath(tempDir: URL?, index: Int) -> String? {
+    static func entryJUnitPath(tempDir: URL?, index: Int) -> String? {
         tempDir?.appendingPathComponent("entry-\(index).xml").path
     }
 
@@ -388,7 +396,7 @@ enum FleetRunner {
     /// (= --junit を付けて子プロセスを起動した)エントリだけにする** —— --split で0本割当のため
     /// 送らなかったエントリまで含めると「出力が無い」合成失敗にされ、走らせてもいない結果が
     /// 赤として報告される。書き込み失敗は run の成否を変えない(warn のみ。単発 --junit と同じ規律)
-    private static func mergeAndWriteJUnit(
+    static func mergeAndWriteJUnit(
         junit: String, project: String, tempDir: URL, entries: [(host: String, index: Int)]
     ) {
         let merged = entries.map { entry -> JUnitMerge.Entry in
@@ -409,7 +417,7 @@ enum FleetRunner {
     }
 
     /// 実行中の ftester バイナリ自身の絶対パス(このプロセスを子として再起動する)
-    private static func selfBinaryPath() -> String {
+    static func selfBinaryPath() -> String {
         if let url = Bundle.main.executableURL {
             return url.resolvingSymlinksInPath().path
         }
@@ -419,7 +427,7 @@ enum FleetRunner {
     /// 子の stdout+stderr を1本のパイプへ合流させ、行単位で `[<host>] ` を前置して中継する。
     /// 読み取りは RemoteRunDispatcher.runInheritedWithLineRewrite と同じ規律(専用スレッドで
     /// ブロッキング読み取り、完了は AsyncStream で待つ)
-    private static func runEntry(binary: String, args: [String], hostLabel: String) async -> Int32 {
+    static func runEntry(binary: String, args: [String], hostLabel: String) async -> Int32 {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: binary)
         process.arguments = args
@@ -459,13 +467,14 @@ enum FleetRunner {
     /// (PIPE_BUF を超える長い行が他エントリの行と噛み合って文字化けするのを防ぐ)
     private static let outputLock = NSLock()
 
-    private static func logLine(host: String, line: String) {
+    static func logLine(host: String, line: String) {
         outputLock.lock()
         defer { outputLock.unlock() }
         FileHandle.standardOutput.write(Data("[\(host)] \(line)\n".utf8))
     }
 
-    private static func log(_ message: String) {
+    /// 子プロセスの中継行と混ざらないよう outputLock 越しに書く(DeviceHostRunner も同じ口を使う)
+    static func log(_ message: String) {
         outputLock.lock()
         defer { outputLock.unlock() }
         FileHandle.standardOutput.write(Data((message + "\n").utf8))

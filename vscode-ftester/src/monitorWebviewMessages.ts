@@ -96,6 +96,9 @@ export type MonitorToWebviewMessage =
         readonly devices: readonly {
           readonly name: string;
           readonly platform: MonitorPlatform;
+          /** このデバイスが居る機械(実効値。undefined=手元)。**一意なのは (host, name)** なので、
+           * 重複判定はホストごとに行う(Sources/FTCore/DeviceHostGrouping.swift)。 */
+          readonly host?: string;
           /** 一覧2行目の表示文字列(machineDeviceDetail で組み立て済み)。 */
           readonly detail: string;
           // 右ペインの編集フォーム用の生フィールド(MachineDeviceEntry と同形)。undefined は

@@ -2,9 +2,10 @@
   "ios": {
     "devices": [
       {
+        "host": "local",
         "name": "iPhone 17 Pro(iOS 27.0)",
-        "simulator": "iPhone 17 Pro",
         "os": "27.0",
+        "simulator": "iPhone 17 Pro",
         "udid": "6E7FD226-DF38-477E-8BB4-6363B688946F"
       }
     ]

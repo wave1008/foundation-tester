@@ -88,11 +88,9 @@ public enum ProfileWriter {
         return profile
     }
 
-    /// 人が読む前提のファイルなので、キー順を固定して整形する(差分が安定する)
+    /// 人が読む前提のファイルなので、キー順を固定して整形する(差分が安定する)。
+    /// 順序の定義元は OrderedProfileJSON(host → name を先頭に出す。アルファベット順ではない)
     public static func json(_ object: [String: Any]) throws -> Data {
-        var data = try JSONSerialization.data(
-            withJSONObject: object, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
-        data.append(0x0A)
-        return data
+        try OrderedProfileJSON.data(object)
     }
 }

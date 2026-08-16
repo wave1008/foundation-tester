@@ -310,7 +310,12 @@ public enum RemoteRunArgs {
                              fastInput: Bool, enableAnimations: Bool, performanceMode: Bool,
                              remoteJUnitPath: String?,
                              reportDir: String?) -> [String] {
-        var args = ["run", "--project", project, "--profile", profile, "--quiet"]
+        // **リモート側は必ず「ここで走らせる」**(--host local)。省略すると、向こうの ftester が
+        // 転送されたマシンプロファイルの host(= 自分のはずのホスト名)を読んで**もう一度
+        // ディスパッチしようとする** —— 登録簿に無ければ「未登録のホスト」で落ち、あれば
+        // 自分自身へ ssh する。"local" は MachineHostDispatch.resolve が明示指定として止める
+        // (FleetRunner が "local" エントリに --host local を渡すのと同じ理由)
+        var args = ["run", "--project", project, "--profile", profile, "--quiet", "--host", "local"]
         if let reportDir { args += ["--report-dir", reportDir] }
         for scenario in scenarios { args += ["--scenario", scenario] }
         for folder in folders { args += ["--folder", folder] }
@@ -339,7 +344,8 @@ public enum RemoteRunArgs {
                                 performanceMode: Bool,
                                 defaultTimeout: Double?, scenarioTimeout: Double?,
                                 reportDir: String?) -> [String] {
-        var args = ["api", "run", "--project", project, "--profile", profile]
+        // --host local の理由は build() のコメント(リモートでの再ディスパッチを止める)
+        var args = ["api", "run", "--project", project, "--profile", profile, "--host", "local"]
         if let reportDir { args += ["--report-dir", reportDir] }
         for scenario in scenarios { args += ["--scenario", scenario] }
         if heal { args.append("--heal") }

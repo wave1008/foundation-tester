@@ -730,6 +730,13 @@ struct RunScenarios: AsyncParsableCommand {
             + "already holds it (docs/remote-runner.md §5). Only meaningful with --host or --fleet"))
     var forceLock = false
 
+    @Option(name: .customLong("device"), parsing: .upToNextOption,
+            help: ArgumentHelp("Run on only these devices of the run profile (device names as written in "
+                + "the machine profile). Repeatable; defaults to every device the run profile lists. "
+                + "Used by the per-host sub-runs when one run profile spans devices on several machines "
+                + "(docs/remote-runner.md §13)"))
+    var devices: [String] = []
+
     @OptionGroup var driverOptions: DriverOptions
 
     func validate() throws {
@@ -767,6 +774,24 @@ struct RunScenarios: AsyncParsableCommand {
         // 理由と罠は RemoteDispatchGate の宣言。優先順位・食い違いは resolveEffectiveHostDispatch
         // → FTCore.MachineHostDispatch に委譲。ユーザー決定 2026-08-17: マシンプロファイルで
         // host を持たせることで、実行プロファイル経由で間接的にリモートを指定できるようにした)
+        // デバイスが複数の機械にまたがる実行プロファイルは、ホストごとのサブ実行へ分ける
+        // (単一ディスパッチでは「そのホストに無いデバイス」が解決できない)。--host 明示や
+        // 全台が同じ機械なら nil が返り、従来の経路をそのまま通る
+        if !dryRun, fleet == nil, let profile,
+           let groups = try DeviceHostRunner.plan(
+               project: try ScenarioHost.project(named: project), profileName: profile,
+               explicitHost: host, deviceFilter: devices) {
+            let exitCode = try await DeviceHostRunner.run(
+                project: try ScenarioHost.project(named: project), profileName: profile,
+                groups: groups, scenarios: scenarios, folders: folders,
+                heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
+                fastInput: fastInput, enableAnimations: enableAnimations,
+                performanceMode: performanceMode, forceLock: forceLock,
+                remoteDir: remoteDir, remoteTimeout: remoteTimeout,
+                remoteArtifacts: remoteArtifacts, quiet: quiet, junit: junit)
+            if exitCode != 0 { throw ExitCode(exitCode) }
+            return
+        }
         if !dryRun, let dispatch = try resolveEffectiveHostDispatch(
             explicitHost: host, profile: profile, project: project,
             requireMachineHost: true, warn: { print("⚠️ \($0)") }) {
@@ -866,6 +891,7 @@ struct RunScenarios: AsyncParsableCommand {
                 quiet: quiet, lpt: !noLPT,
                 lptHistoryRuns: lptHistoryRuns ?? LPTOrdering.defaultHistoryRuns,
                 performanceMode: performanceMode,
+                deviceFilter: devices,
                 recorder: recorder)
             let failedCount = runSummary.failed
             PhaseLog.mark("profile-run-done")

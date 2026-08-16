@@ -849,10 +849,17 @@ button.profile-jump-link:hover:not(:disabled) {
   background-color: color-mix(in srgb, var(--vscode-list-hoverBackground) 50%, transparent);
   color: var(--vscode-list-hoverForeground, inherit);
 }
-/* 選択色は editorGroupHeader-tabsBackground で統一(.element-row.selected も同じ値。
-   variant として .device-pick-row.checked は別の値を意図的に使う)。 */
+/* 選択色は list-activeSelectionBackground で統一(.element-row.selected も同じ値。
+   variant として .device-pick-row.checked は別の値を意図的に使う)。
+   **editorGroupHeader-tabsBackground は使わない** —— 多くのテーマでエディタ背景と
+   ほぼ同色(Dark Modern は #181818 対 #1f1f1f)で、選択がほとんど見えなかった。
+   detail 段は自前の色を持つので、選択中は前景色を継承させて明度差を保つ。 */
 .machine-device-row.selected {
-  background-color: var(--vscode-editorGroupHeader-tabsBackground, rgba(128, 128, 128, 0.15));
+  background-color: var(--vscode-list-activeSelectionBackground, rgba(0, 122, 204, 0.35));
+  color: var(--vscode-list-activeSelectionForeground, inherit);
+}
+.machine-device-row.selected .machine-device-detail {
+  color: inherit;
 }
 .machine-device-detail {
   margin-top: 4px;
@@ -1671,9 +1678,10 @@ input[type="text"]::placeholder {
 }
 /* .machine-device-row/.device-pick-row と同じ式(50%透過)。 */
 #panel-live .element-row:hover { background-color: color-mix(in srgb, var(--vscode-list-hoverBackground) 50%, transparent); }
-/* .machine-device-row.selected と同じ値(editorGroupHeader-tabsBackground)で統一。変更時は揃えること。 */
+/* .machine-device-row.selected と同じ値(list-activeSelectionBackground)で統一。変更時は揃えること。 */
 #panel-live .element-row.selected {
-  background-color: var(--vscode-editorGroupHeader-tabsBackground, rgba(128, 128, 128, 0.15));
+  background-color: var(--vscode-list-activeSelectionBackground, rgba(0, 122, 204, 0.35));
+  color: var(--vscode-list-activeSelectionForeground, inherit);
 }
 
 /* ---- 操作記録(要素一覧の下・スプリッターで上下比率を調整。#live-lists-splitter は既存 .splitter を流用) ---- */

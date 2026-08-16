@@ -3,6 +3,7 @@
 //   自動インストール → RunOrchestrator で両OS同時並列実行。
 // ワーカー構築の実体は ProfileWorkerFactory。
 
+import ArgumentParser  // --device の指定違いを ValidationError で返す
 import Foundation
 import FTAgent
 import FTAndroid
@@ -32,6 +33,7 @@ enum ProfileRunner {
                     quiet: Bool = false, lpt: Bool = true,
                     lptHistoryRuns: Int = LPTOrdering.defaultHistoryRuns,
                     performanceMode: Bool = false,
+                    deviceFilter: [String] = [],
                     recorder: RunRecorder? = nil) async throws -> RunSummary {
         var items = rawItems
         let runClockStart = Date()
@@ -43,8 +45,16 @@ enum ProfileRunner {
         if machine.auto {
             print("→ Using machine profile \(machine.name) automatically (it is the only one in machines/)")
         }
-        let full = try ProfileResolver.resolve(
+        let resolvedAll = try ProfileResolver.resolve(
             project: project, runName: profileName, machineName: machine.name)
+        // --device(ホスト別サブ実行が自分のぶんだけ回す)。名前違いで0台になったら止める
+        let full = resolvedAll.filteringDevices(names: deviceFilter)
+        if full.devices.isEmpty {
+            throw ValidationError(
+                "--device matched no device in run profile \(profileName): "
+                + deviceFilter.joined(separator: ", ")
+                + " (available: \(resolvedAll.devices.map(\.name).joined(separator: ", ")))")
+        }
         // **回す本数を超える台数を用意しない**(ResolvedProfile.limitingDevices の宣言参照)。
         // 本数はここで確定している(items は呼び出し側で解決済み)ので、ブリッジ供給・アプリ版チェック・
         // blank triage が丸ごと縮む。platform 未指定のシナリオは**両方**に数える(どちらでも走りうる)
