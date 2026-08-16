@@ -104,6 +104,10 @@
   増減を意識的な操作にする(予算を動かすには根拠を台帳へ書く)
 - CI 連携(`ftester run --junit` の JUnit 出力・GitHub Actions 例・flaky 方針): docs/ci.md
 - リリース(git タグ発行と版ピンの関係。配布はソースビルド前提): docs/releasing.md(`Scripts/release.sh`)
+- リモート実行(`run --host` の SSH ディスパッチ): 設計・却下案・セキュリティ前提は docs/remote-runner.md /
+  **利用者向けの導入手順は docs/remote-runner-setup.md**(ランナー機の前提・install.sh の呼び方・
+  版の揃え方・トラブルシュート)。**片方だけ変えない** —— 手順に影響する変更(レイアウト・
+  併用不可オプション・適合チェックの項目)は setup 側にも入れる
 - 設計書(アーキテクチャ・Swift DSL 仕様・セレクタ記法・プロファイル): docs/design.md
 - 性能チューニング(調整ノブ・不採用施策と再検討条件・計測手順): docs/performance-tuning.md
 - 検証の詳細(flake/性能の判定規律・ベータ整合・全滅時の切り分け・e2e.sh のオプション): docs/verification.md
