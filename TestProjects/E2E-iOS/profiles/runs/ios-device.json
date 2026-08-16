@@ -1,6 +1,6 @@
 {
   "app": "ft_e2e_ios_device",
-  "machine": "M2 Ultra",
+  "machine": "M2Ultra",
   "devices": [
     { "name": "iPhone wave(実機)" }
   ],

@@ -1,6 +1,6 @@
 {
   "app": "ft_e2e_android",
-  "machine": "M2 Ultra",
+  "machine": "M2Ultra",
   "devices": [
     { "name": "Pixel 4a(実機)" }
   ],

@@ -1,6 +1,6 @@
 {
   "app": "ft_e2e",
-  "machine": "M2 Ultra",
+  "machine": "M2Ultra",
   "devices": [
     {
       "name": "Pixel 9(Android 15)-01"

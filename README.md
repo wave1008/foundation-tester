@@ -177,7 +177,7 @@ Package.swift のマーカー区間を自動更新する(プロジェクト間�
 TestProjects/SampleApp/
 ├── profiles/
 │   ├── apps/sampleapp_ios.json    # アプリ: appName/autoInstall は common、bundle ID(app)と appPath は ios/android
-│   ├── machines/M2 Ultra.json     # マシン別デバイス定義(ファイル名 = マシン名)
+│   ├── machines/M2Ultra.json     # マシン別デバイス定義(ファイル名 = マシン名)
 │   └── runs/ios.json              # 実行プロファイル(アプリ+デバイス名リスト+実行時設定)
 ├── scenarios/                     # Swift DSL(_Main.swift / Generated/ / _disabled/)
 ├── reports/                       # 実行レポート(プロジェクト別)
@@ -195,14 +195,14 @@ TestProjects/SampleApp/
   "devices": [ { "name": "simulator1" }, { "name": "simulator2" }, { "name": "emulator1" } ],
   "fm": true, "heal": true, "reportDir": "reports", "defaultTimeout": 5 }
 
-// profiles/machines/M2 Ultra.json — マシン毎に UDID/AVD などの実体を書く
+// profiles/machines/M2Ultra.json — マシン毎に UDID/AVD などの実体を書く
 // (avd は AVD の ID と表示名のどちらでも可)
 { "ios":     { "devices": [ { "name": "simulator1", "simulator": "iPhone 17 Pro", "os": "27.0" } ] },
   "android": { "devices": [ { "name": "emulator1", "avd": "Pixel 9(Android 16)" } ] } }
 ```
 
 ```bash
-swift run ftester machine set "M2 Ultra"                  # このマシンの名前を登録(machines/ の選択キー)
+swift run ftester machine set "M2Ultra"                  # このマシンの名前を登録(machines/ の選択キー)
 swift run ftester run --project SampleApp --profile all   # 解決 → ブリッジ供給 → 自動インストール → 並列実行
 ```
 

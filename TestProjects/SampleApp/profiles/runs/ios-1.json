@@ -7,7 +7,7 @@
   ],
   "heal": true,
   "reportDir": "reports",
-  "machine": "M2 Ultra",
+  "machine": "M2Ultra",
   "iosInappEngine": true,
   "wipeDataOnBloat": true
 }

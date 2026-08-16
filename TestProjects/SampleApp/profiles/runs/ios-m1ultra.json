@@ -7,7 +7,7 @@
   ],
   "heal": false,
   "reportDir": "reports",
-  "machine": "M1 Ultra",
+  "machine": "M1Ultra",
   "iosInappEngine": true,
   "wipeDataOnBloat": true
 }
