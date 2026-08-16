@@ -34,6 +34,7 @@ enum ProfileRunner {
                     lptHistoryRuns: Int = LPTOrdering.defaultHistoryRuns,
                     performanceMode: Bool = false,
                     deviceFilter: [String] = [],
+                    deviceHost: String? = nil,
                     recorder: RunRecorder? = nil) async throws -> RunSummary {
         var items = rawItems
         let runClockStart = Date()
@@ -47,12 +48,15 @@ enum ProfileRunner {
         }
         let resolvedAll = try ProfileResolver.resolve(
             project: project, runName: profileName, machineName: machine.name)
-        // --device(ホスト別サブ実行が自分のぶんだけ回す)。名前違いで0台になったら止める
-        let full = resolvedAll.filteringDevices(names: deviceFilter)
+        // --device / --device-host(ホスト別サブ実行が自分のぶんだけ回す)。**ホストで絞らないと
+        // 別の機械の同名デバイスまで掴む**(filteringDevices の宣言)。0台になったら止める
+        let full = resolvedAll.filteringDevices(names: deviceFilter, deviceHost: deviceHost)
         if full.devices.isEmpty {
+            let scope = deviceFilter.isEmpty ? "--device-host \(deviceHost ?? "")"
+                : "--device \(deviceFilter.joined(separator: ", "))"
+                    + (deviceHost.map { " --device-host \($0)" } ?? "")
             throw ValidationError(
-                "--device matched no device in run profile \(profileName): "
-                + deviceFilter.joined(separator: ", ")
+                "\(scope) matched no device in run profile \(profileName)"
                 + " (available: \(resolvedAll.devices.map(\.name).joined(separator: ", ")))")
         }
         // **回す本数を超える台数を用意しない**(ResolvedProfile.limitingDevices の宣言参照)。

@@ -534,11 +534,21 @@ public struct ResolvedProfile: Sendable {
     /// `run --device` の絞り込み(ホスト別サブ実行が「自分のぶんのデバイス」だけを回すのに使う)。
     /// 空配列は「絞らない」。**1台も残らない指定は呼び出し側でエラーにする** ——
     /// ここで黙って全台に戻すと、名前を打ち間違えたときに意図しない台で走る
-    public func filteringDevices(names: [String]) -> ResolvedProfile {
-        guard !names.isEmpty else { return self }
+    /// ホスト別サブ実行のスコープ。**一意なのは name 単体ではなく (host, name)** なので、
+    /// 名前だけで絞ると**別の機械の同名デバイスまで掴む**(フリートの各機は同じ命名規則で
+    /// シミュレータを作るので、同名は例外ではなく通常。2026-08-17 に実走で確認 ——
+    /// 手元のサブ実行が3機ぶんの "iPhone …-01" を全部拾って8台になった)。
+    /// - deviceHost: そのサブ実行が担当する機械("local" / 登録名。nil = ホストで絞らない)
+    public func filteringDevices(names: [String], deviceHost: String? = nil) -> ResolvedProfile {
+        guard !names.isEmpty || deviceHost != nil else { return self }
         let wanted = Set(names)
+        let wantedHost = MachineHostDispatch.normalize(deviceHost)
         var filtered = self
-        filtered.devices = devices.filter { wanted.contains($0.name) }
+        filtered.devices = devices.filter { device in
+            if !wanted.isEmpty, !wanted.contains(device.name) { return false }
+            guard deviceHost != nil else { return true }
+            return MachineHostDispatch.normalize(device.spec.host) == wantedHost
+        }
         return filtered
     }
 

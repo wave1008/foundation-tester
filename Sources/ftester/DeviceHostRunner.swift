@@ -107,7 +107,8 @@ enum DeviceHostRunner {
                 taskGroup.addTask {
                     let args = FleetRunner.buildArgs(
                         project: project.name, host: group.hostLabel, profile: profileName,
-                        deviceNames: group.deviceNames, scenarios: ids, folders: [],
+                        deviceNames: group.deviceNames, deviceHost: group.hostLabel,
+                        scenarios: ids, folders: [],
                         heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
                         fastInput: fastInput, enableAnimations: enableAnimations,
                         performanceMode: performanceMode, forceLock: forceLock,

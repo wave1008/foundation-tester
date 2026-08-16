@@ -302,6 +302,7 @@ public enum RemoteRunArgs {
     /// ディスパッチ単位の隔離先(non-nil のときのみ付与。RemoteRunDispatcher が常に渡す)
     public static func build(project: String, profile: String,
                              scenarios: [String], folders: [String],
+                             deviceNames: [String] = [], deviceHost: String? = nil,
                              heal: Bool, noHeal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
                              fastInput: Bool, enableAnimations: Bool, performanceMode: Bool,
                              remoteJUnitPath: String?,
@@ -313,6 +314,11 @@ public enum RemoteRunArgs {
         // (FleetRunner が "local" エントリに --host local を渡すのと同じ理由)
         var args = ["run", "--project", project, "--profile", profile, "--quiet", "--host", "local"]
         if let reportDir { args += ["--report-dir", reportDir] }
+        // **デバイスの絞り込みは中継しないと効かない** —— 向こうは同じマシンプロファイルを
+        // 受け取るので、渡さないと**全ホストぶんの台**を自分のものとして解決しようとする
+        // (同名は別の機械にも居るのが通常。2026-08-17 に実走で確認)
+        if !deviceNames.isEmpty { args += ["--device"] + deviceNames }
+        if let deviceHost { args += ["--device-host", deviceHost] }
         for scenario in scenarios { args += ["--scenario", scenario] }
         for folder in folders { args += ["--folder", folder] }
         if heal { args.append("--heal") }
@@ -343,6 +349,8 @@ public enum RemoteRunArgs {
         // --host local の理由は build() のコメント(リモートでの再ディスパッチを止める)
         var args = ["api", "run", "--project", project, "--profile", profile, "--host", "local"]
         if let reportDir { args += ["--report-dir", reportDir] }
+        // デバイスの絞り込みは中継しない —— `api run` は混在プロファイルを明示的に拒否するので
+        // (NDJSON 中継が1本しか無い)、ここに来る時点で全台が同じ機械にある
         for scenario in scenarios { args += ["--scenario", scenario] }
         if heal { args.append("--heal") }
         if noLPT { args.append("--no-lpt") }

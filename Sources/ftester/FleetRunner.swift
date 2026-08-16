@@ -317,7 +317,8 @@ enum FleetRunner {
     /// 黙って無視される(リモートはプロファイルの既定で走る)
     static func buildArgs(
         project: String, host: String, profile: String,
-        deviceNames: [String] = [], scenarios: [String], folders: [String],
+        deviceNames: [String] = [], deviceHost: String? = nil,
+        scenarios: [String], folders: [String],
         heal: Bool, noHeal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
         fastInput: Bool, enableAnimations: Bool, performanceMode: Bool,
         forceLock: Bool, remoteDir: String?, remoteTimeout: Int?, remoteArtifacts: String,
@@ -340,6 +341,9 @@ enum FleetRunner {
             args += ["--host", "local"]
         }
         if !deviceNames.isEmpty { args += ["--device"] + deviceNames }
+        // **ホストも渡す** —— 一意なのは (host, name) なので、名前だけだと子が別の機械の
+        // 同名デバイスまで掴む(2026-08-17 に実走で確認。RunProfile.filteringDevices の宣言)
+        if let deviceHost { args += ["--device-host", deviceHost] }
         if !scenarios.isEmpty { args += ["--scenario"] + scenarios }
         if !folders.isEmpty { args += ["--folder"] + folders }
         if heal { args += ["--heal"] }

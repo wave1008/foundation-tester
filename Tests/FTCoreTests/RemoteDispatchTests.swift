@@ -250,6 +250,22 @@ final class RemoteDispatchTests: XCTestCase {
             ["run", "--project", "E2E", "--profile", "ios-inapp", "--quiet", "--host", "local"])
     }
 
+    /// **リモートのサブ実行はデバイスの絞り込みを中継しないと効かない**(2026-08-17 の実走)。
+    /// 向こうは同じマシンプロファイルを受け取るので、渡さないと全ホストぶんの台を自分のものと
+    /// して解決しようとする。一意なのは (host, name) なのでホストも要る
+    func testRemoteRunArgsRelaysTheDeviceScope() {
+        let args = RemoteRunArgs.build(
+            project: "E2E", profile: "mixed", scenarios: [], folders: [],
+            deviceNames: ["iPhone-01", "iPhone-02"], deviceHost: "M1Max",
+            heal: false, noHeal: false, noLPT: false, lptHistoryRuns: nil,
+            fastInput: false, enableAnimations: false, performanceMode: false,
+            remoteJUnitPath: nil, reportDir: nil)
+        XCTAssertEqual(
+            args,
+            ["run", "--project", "E2E", "--profile", "mixed", "--quiet", "--host", "local",
+             "--device", "iPhone-01", "iPhone-02", "--device-host", "M1Max"])
+    }
+
     func testRemoteRunArgsEverything() {
         XCTAssertEqual(
             RemoteRunArgs.build(project: "E2E", profile: "ios-inapp",

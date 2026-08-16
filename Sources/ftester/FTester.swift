@@ -736,6 +736,16 @@ struct RunScenarios: AsyncParsableCommand {
                 + "(docs/remote-runner.md §13)"))
     var devices: [String] = []
 
+    /// **どの機械のデバイスを使うか**。`--device` は名前でしか絞れないが、一意なのは (host, name)
+    /// なので、名前だけだと別の機械の同名デバイスまで掴む(docs/remote-runner.md §13)。
+    /// ホスト別サブ実行が自分で付ける値で、手で打つものではない
+    @Option(name: .customLong("device-host"),
+            help: ArgumentHelp(
+                "Only use the devices assigned to this machine (\"local\" or a registered host name). "
+                + "Set by the per-host sub-runs; not for hand use",
+                visibility: .hidden))
+    var deviceHost: String?
+
     @OptionGroup var driverOptions: DriverOptions
 
     func validate() throws {
@@ -891,6 +901,7 @@ struct RunScenarios: AsyncParsableCommand {
                 lptHistoryRuns: lptHistoryRuns ?? LPTOrdering.defaultHistoryRuns,
                 performanceMode: performanceMode,
                 deviceFilter: devices,
+                deviceHost: deviceHost,
                 recorder: recorder)
             let failedCount = runSummary.failed
             PhaseLog.mark("profile-run-done")
@@ -972,6 +983,7 @@ struct RunScenarios: AsyncParsableCommand {
             artifacts: artifactsMode, forceLock: forceLock)
         let exitCode = try await dispatcher.dispatch(
             project: testProject, profile: profile, scenarios: scenarios, folders: folders,
+            deviceNames: devices, deviceHost: deviceHost,
             heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
             fastInput: fastInput, enableAnimations: enableAnimations,
             performanceMode: performanceMode,

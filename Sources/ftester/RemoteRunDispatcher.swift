@@ -31,6 +31,7 @@ struct RemoteRunDispatcher {
     /// 戻り値 = リモート `ftester run` の exit code
     func dispatch(project: TestProject, profile: String,
                   scenarios: [String], folders: [String],
+                  deviceNames: [String] = [], deviceHost: String? = nil,
                   heal: Bool, noHeal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
                   fastInput: Bool, enableAnimations: Bool, performanceMode: Bool,
                   localJUnitPath: String?,
@@ -50,6 +51,7 @@ struct RemoteRunDispatcher {
             ? "\(layout.workDir)/.ftester/dispatch/\(stamp)/junit.xml" : nil
         let ftesterArgs = RemoteRunArgs.build(
             project: project.name, profile: profile, scenarios: scenarios, folders: folders,
+            deviceNames: deviceNames, deviceHost: deviceHost,
             heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
             fastInput: fastInput, enableAnimations: enableAnimations,
             performanceMode: performanceMode,
