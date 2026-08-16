@@ -717,6 +717,13 @@ struct RunScenarios: AsyncParsableCommand {
         + "with --host/--profile/--ports/--failed/--report-dir/--skip-build/--junit. Experimental"))
     var fleet: String?
 
+    @Flag(help: ArgumentHelp("With --fleet: distribute the scenario set across the fleet's entries "
+        + "(LPT bin packing by past duration; docs/remote-runner.md §8) instead of running the same "
+        + "set on every entry. Requires a local build+scenario list to resolve the assignment "
+        + "(skipped by plain --fleet), and resolves each entry's platform from its run profile's "
+        + "devices. Entries assigned 0 scenarios are not dispatched. Experimental"))
+    var split = false
+
     @Flag(name: .customLong("force-lock"),
           help: ArgumentHelp("Steal a remote host's dispatch.lock instead of failing fast when another dispatch "
             + "already holds it (docs/remote-runner.md §5). Only meaningful with --host or --fleet"))
@@ -742,6 +749,9 @@ struct RunScenarios: AsyncParsableCommand {
                 throw ValidationError("--fleet cannot be combined with --junit "
                     + "(each entry writes its own report; there is no merged fleet-wide JUnit yet)")
             }
+        }
+        if split, fleet == nil {
+            throw ValidationError("--split requires --fleet")
         }
         if forceLock, host == nil, fleet == nil {
             throw ValidationError("--force-lock requires --host or --fleet")
@@ -957,7 +967,7 @@ struct RunScenarios: AsyncParsableCommand {
             heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
             fastInput: fastInput, enableAnimations: enableAnimations, performanceMode: performanceMode,
             forceLock: forceLock, remoteDir: remoteDir, remoteTimeout: remoteTimeout,
-            remoteArtifacts: remoteArtifacts, quiet: quiet)
+            remoteArtifacts: remoteArtifacts, split: split, quiet: quiet)
         if exitCode != 0 {
             throw ExitCode(exitCode)
         }
