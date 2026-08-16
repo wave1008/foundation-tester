@@ -55,6 +55,8 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
 
   ${renderMachineDeviceMenu()}
 
+  ${renderDevicePickDeleteMenu()}
+
   ${renderDeviceAddOverlay()}
 
   ${renderNameInputOverlay()}
@@ -558,7 +560,10 @@ function renderSettingsPanel(): string {
       <!-- 実体は CLI のホスト登録簿("ftester api remote-hosts")+ ftester.remote.artifacts 設定
            (config.ts)。ここはもう1つの操作口(docs/remote-runner.md §12)。ホスト一覧
            (#settings-remote-hosts-body)は行数が可変のため settingsTab.js が動的に組み立てる。
+           「追加」で足した行は name/host が埋まって行内の「確定」ボタンを押すまで CLI へ送らない
+           (未確定のまま送ると空の name を CLI が拒否し、失敗経路が旧一覧を再送して行が消える)。
            artifacts セレクタは remoteConfig/setRemoteConfig に相乗り(専用メッセージ型は無い)。
+           #settings-remote-hosts-error は直前の同期が失敗したときの理由(remoteConfig.error)。
            対向: settingsTab.js の applySettings / setRemoteConfig, monitorPanel.ts。 -->
       <div class="settings-group">
         <div class="settings-section-title">${t("panels.settings.remoteSectionTitle")}</div>
@@ -584,6 +589,7 @@ function renderSettingsPanel(): string {
         <div class="settings-remote-hosts-actions">
           <button id="settings-remote-hosts-add" class="secondary" type="button">${t("panels.settings.remoteHostsAdd")}</button>
         </div>
+        <div id="settings-remote-hosts-error" class="settings-hint settings-remote-hosts-error" hidden></div>
       </div>
     </div>
   </div>`;
@@ -604,6 +610,15 @@ function renderMachineDeviceMenu(): string {
   return `<!-- #device-op-menuとスタイルのみ共用する別要素。「除去」はプロファイルから外すだけで本体は削除しない。 -->
   <div id="machine-device-menu" class="device-op-menu" role="menu">
     <button id="machine-device-menu-item" class="device-op-menu-item" type="button" role="menuitem">${t("panels.deviceMenu.remove")}</button>
+  </div>`;
+}
+
+function renderDevicePickDeleteMenu(): string {
+  return `<!-- #device-op-menuとスタイルのみ共用する別要素。#device-pick-overlay の行専用。
+       machineDeviceMenu の「除去」(プロファイルから外すだけ)と違い、ホスト上の実体(シミュレータ/AVD)
+       そのものを ftester api delete-device で消す(modals.js が実機行にはこのメニューを出さない)。 -->
+  <div id="device-pick-delete-menu" class="device-op-menu" role="menu">
+    <button id="device-pick-delete-menu-item" class="device-op-menu-item" type="button" role="menuitem">${t("panels.deviceMenu.delete")}</button>
   </div>`;
 }
 
@@ -685,7 +700,7 @@ function renderDevicePickOverlay(): string {
        チェックボックスは「選択」ではなく登録状態そのもの(登録済み=初期チェック、disabled化しない)。
        OKは初期状態からの差分がある間だけ有効(JS側)。「+」(device-pick-add-new)はこのモーダルを
        閉じずに#device-add-overlayを重ねて開く(z-indexは#device-add-overlayのCSSルール参照)。
-       #device-pick-host-select はこのダイアログのデバイス候補の取得元(ローカル/登録済みリモート
+       #device-pick-host-select はこのダイアログのデバイス候補のホスト(ローカル/登録済みリモート
        ホスト)。選択肢は devicePickHost.js が remoteConfig(設定タブと同じメッセージ)を購読して
        組み立てる。初期値はダイアログを開いたときの編集対象マシンプロファイルの host フィールド
        (未設定ならローカル)。変更すると installed-devices を選び直したホストから再取得する
@@ -697,7 +712,14 @@ function renderDevicePickOverlay(): string {
         <span class="device-pick-host-group">
           <label for="device-pick-host-select">${t("panels.devicePick.hostLabel")}</label>
           <select id="device-pick-host-select"></select>
+          <!-- ホスト切替中のインジケーター。**リストボックスの右に置く**(一覧側に出すと
+               ダイアログの高さが変わって画面が跳ねる。2026-08-17 ユーザー指示) -->
+          <span id="device-pick-loading" class="device-pick-loading" style="display: none;">
+            <span class="device-pick-spinner"></span>
+            <span>${t("panels.devicePick.loading")}</span>
+          </span>
         </span>
+        <span class="device-pick-add-label">${t("panels.devicePick.addNewLabel")}</span>
         <button id="device-pick-add-new" class="icon-button" type="button" title="${t("panels.devicePick.addNewTitle")}"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M14 7v1H8v6H7V8H1V7h6V1h1v6h6z"/></svg></button>
       </div>
       <div id="device-pick-list" class="device-pick-list">

@@ -55,6 +55,7 @@ import {
   applyInstallCmdlineToolsResult,
   applyCreateDeviceResult,
   applyInstalledDevices,
+  applyDevicePickDeviceDeleteResult,
   applyMachineDevicesSyncResult,
   applyNameInputOpen,
 } from './modals.js';
@@ -152,6 +153,9 @@ window.addEventListener('message', (event) => {
       break;
     case 'installedDevices':
       applyInstalledDevices(message);
+      break;
+    case 'devicePickDeviceDeleteResult':
+      applyDevicePickDeviceDeleteResult(message);
       break;
     case 'machineDevicesSyncResult':
       applyMachineDevicesSyncResult(message);

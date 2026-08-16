@@ -24,8 +24,10 @@ import {
   deviceOpMenuItem,
   enqueueDeviceLifecycleJob,
   filterMonitorDevices,
+  deleteDeviceApiArgs,
   hasDeviceLifecycleJobFor,
   isCreateDeviceEvent,
+  isDeleteDeviceEvent,
   isDeviceCatalogJson,
   isDeviceLifecycleQueueBusy,
   isDeviceOpEvent,
@@ -950,6 +952,46 @@ test("isMonitorFromWebviewMessage: createDevice はフィールド欠落/空文�
   assert.equal(isMonitorFromWebviewMessage(missingRegister), false);
   const { source, ...missingSource } = base;
   assert.equal(isMonitorFromWebviewMessage(missingSource), false);
+});
+
+test("isMonitorFromWebviewMessage: devicePickDeviceDelete は platform(ios/android)+identifier/name 非空文字列+source 妥当なら true", () => {
+  assert.equal(
+    isMonitorFromWebviewMessage({
+      type: "devicePickDeviceDelete",
+      platform: "ios",
+      identifier: "ABCDEFGH-1234",
+      name: "シミュ1",
+      source: { kind: "local" },
+    }),
+    true,
+  );
+  assert.equal(
+    isMonitorFromWebviewMessage({
+      type: "devicePickDeviceDelete",
+      platform: "android",
+      identifier: "Pixel_9_API_37",
+      name: "エミュ1",
+      source: { kind: "remote", host: "M1Max" },
+    }),
+    true,
+  );
+});
+
+test("isMonitorFromWebviewMessage: devicePickDeviceDelete はフィールド欠落/空文字/不正platform/source不正なら false", () => {
+  const base = {
+    type: "devicePickDeviceDelete",
+    platform: "ios",
+    identifier: "UDID-1",
+    name: "n",
+    source: { kind: "local" },
+  };
+  assert.equal(isMonitorFromWebviewMessage({ ...base, platform: "windows" }), false);
+  assert.equal(isMonitorFromWebviewMessage({ ...base, identifier: "" }), false);
+  assert.equal(isMonitorFromWebviewMessage({ ...base, name: "" }), false);
+  assert.equal(isMonitorFromWebviewMessage({ ...base, source: { kind: "remote", host: "" } }), false);
+  assert.equal(isMonitorFromWebviewMessage({ ...base, source: { kind: "bogus" } }), false);
+  const { identifier, ...missingIdentifier } = base;
+  assert.equal(isMonitorFromWebviewMessage(missingIdentifier), false);
 });
 
 test("isMonitorFromWebviewMessage: machineDeviceRemove は machine 非空文字列・names 非空配列(各要素非空文字列)なら true", () => {
@@ -2091,8 +2133,9 @@ test("syncDevicesInMachineProfile: トップレベルがオブジェクトでな
 
 // ---- syncDevicesInMachineProfile: source(devicePickHost.js のホスト選択)による host 書き込み ----
 // 契約(monitorProfileForms.ts): add が非空かつ source.kind === "remote" のときだけ、選ばれたホスト名を
-// マシンプロファイルの host キーへ書く。local を選んだ・source を渡さない・remove のみ(add:[])の
-// いずれでも host は書かない(省略 = ローカルが CLI の既定であり、余計な差分を作らないため)。
+// マシンプロファイルの host キーへ書く。source.kind === "local" のときは既存の host キーを消す
+// (リモート→ローカルへ選び直した後の追加で古い host が残らないようにする)。source を渡さない・
+// remove のみ(add:[])のいずれでも host には触らない(判断材料が無い・追加が起きていないため)。
 
 test("syncDevicesInMachineProfile: add + source:remote は host キーを書く", () => {
   const result = syncDevicesInMachineProfile({}, [IOS_ADD_ENTRY], [], { kind: "remote", host: "M1Max" });
@@ -2106,10 +2149,24 @@ test("syncDevicesInMachineProfile: add + source:local は host キーを書か�
   assert.equal("host" in result.object, false);
 });
 
+test("syncDevicesInMachineProfile: add + source:local は既存の host キーを消す(リモート→ローカルの選び直し)", () => {
+  const profile = { host: "M1Max", ios: { devices: [] } };
+  const result = syncDevicesInMachineProfile(profile, [IOS_ADD_ENTRY], [], { kind: "local" });
+  assert.equal(result.ok, true);
+  assert.equal("host" in result.object, false);
+});
+
 test("syncDevicesInMachineProfile: source を渡さない場合は従来どおり host キーを書かない", () => {
   const result = syncDevicesInMachineProfile({}, [IOS_ADD_ENTRY], []);
   assert.equal(result.ok, true);
   assert.equal("host" in result.object, false);
+});
+
+test("syncDevicesInMachineProfile: source を渡さない場合は既存の host キーも保持する(判断材料が無い)", () => {
+  const profile = { host: "M1Max", ios: { devices: [] } };
+  const result = syncDevicesInMachineProfile(profile, [IOS_ADD_ENTRY], []);
+  assert.equal(result.ok, true);
+  assert.equal(result.object.host, "M1Max");
 });
 
 test("syncDevicesInMachineProfile: remove のみ(add:[])は source:remote でも host キーを書かない", () => {
@@ -2117,6 +2174,13 @@ test("syncDevicesInMachineProfile: remove のみ(add:[])は source:remote でも
   const result = syncDevicesInMachineProfile(profile, [], ["削除対象"], { kind: "remote", host: "M1Max" });
   assert.equal(result.ok, true);
   assert.equal("host" in result.object, false);
+});
+
+test("syncDevicesInMachineProfile: remove のみ(add:[])は source:local でも既存の host キーを消さない", () => {
+  const profile = { host: "M1Max", ios: { devices: [{ name: "削除対象", udid: "EXISTING" }] } };
+  const result = syncDevicesInMachineProfile(profile, [], ["削除対象"], { kind: "local" });
+  assert.equal(result.ok, true);
+  assert.equal(result.object.host, "M1Max");
 });
 
 // ---- parseRunProfileForForm ----
@@ -2915,6 +2979,49 @@ test("isCreateDeviceEvent: 未知のkind・フィールド欠落/型不一致は
     false, // name 欠落
   );
   assert.equal(isCreateDeviceEvent(null), false);
+});
+
+// ---- deleteDeviceApiArgs ----
+
+test("deleteDeviceApiArgs: iOS は --udid、Android は --avd を渡す", () => {
+  assert.deepEqual(
+    deleteDeviceApiArgs("ios", "ABCDEFGH-1234"),
+    ["api", "delete-device", "--platform", "ios", "--udid", "ABCDEFGH-1234"],
+  );
+  assert.deepEqual(
+    deleteDeviceApiArgs("android", "Pixel_9_API_37"),
+    ["api", "delete-device", "--platform", "android", "--avd", "Pixel_9_API_37"],
+  );
+});
+
+// ---- isDeleteDeviceEvent ----
+
+test("isDeleteDeviceEvent: log/finished(ok:true/false、referencedBy あり/なし)の正常な値を true と判定する", () => {
+  assert.equal(isDeleteDeviceEvent({ kind: "log", message: "削除しています..." }), true);
+  assert.equal(isDeleteDeviceEvent({ kind: "finished", ok: true, error: null }), true);
+  assert.equal(isDeleteDeviceEvent({ kind: "finished", ok: true, error: null, referencedBy: [] }), true);
+  assert.equal(
+    isDeleteDeviceEvent({ kind: "finished", ok: true, error: null, referencedBy: ["M1", "M2"] }),
+    true,
+  );
+  assert.equal(isDeleteDeviceEvent({ kind: "finished", ok: false, error: "起動中のため削除できません" }), true);
+});
+
+test("isDeleteDeviceEvent: 未知のkind・フィールド欠落/型不一致は false", () => {
+  assert.equal(isDeleteDeviceEvent({ kind: "unknown" }), false);
+  assert.equal(isDeleteDeviceEvent({ kind: "log" }), false);
+  assert.equal(isDeleteDeviceEvent({ kind: "log", message: 123 }), false);
+  assert.equal(isDeleteDeviceEvent({ kind: "finished", ok: "true", error: null }), false);
+  assert.equal(isDeleteDeviceEvent({ kind: "finished", ok: false, error: 123 }), false);
+  assert.equal(
+    isDeleteDeviceEvent({ kind: "finished", ok: true, error: null, referencedBy: ["M1", 2] }),
+    false,
+  );
+  assert.equal(
+    isDeleteDeviceEvent({ kind: "finished", ok: true, error: null, referencedBy: "M1" }),
+    false,
+  );
+  assert.equal(isDeleteDeviceEvent(null), false);
 });
 
 // ---- 統合: mock-device-op.mjs → NdjsonParser → isDeviceOpEvent ----

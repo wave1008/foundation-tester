@@ -11,6 +11,7 @@ import { t } from "./i18n";
 import {
   bulkLifecycleOp,
   createDeviceLifecycleQueueState,
+  deleteDeviceApiArgs,
   finishDeviceLifecycleJob,
   type DeviceLifecycleJob,
   type DeviceLifecycleQueueState,
@@ -21,6 +22,7 @@ import {
   enqueueDeviceLifecycleJob,
   hasDeviceLifecycleJobFor,
   isCreateDeviceEvent,
+  isDeleteDeviceEvent,
   isDeviceCatalogJson,
   isDeviceLifecycleQueueBusy,
   isDeviceOpEvent,
@@ -42,13 +44,16 @@ type PipeProcess = ChildProcessByStdio<null, Readable, Readable>;
 /** webview からの "createDevice" メッセージの形(runCreateDevice で使う)。 */
 export type CreateDeviceMessage = Extract<MonitorFromWebviewMessage, { type: "createDevice" }>;
 
+/** webview からの "devicePickDeviceDelete" メッセージの形(runDeleteDevice で使う)。 */
+export type DevicePickDeviceDeleteMessage = Extract<MonitorFromWebviewMessage, { type: "devicePickDeviceDelete" }>;
+
 /** monitorProfilesController.ts の handleMachineDeviceRemove(複数選択一括除去の確認文言)で使う。 */
 export function summarizeDeviceNames(names: readonly string[]): string {
   const shown = names.slice(0, 3).join(t("deviceOps.nameSeparator"));
   return names.length > 3 ? t("deviceOps.nameListMore", { shown }) : shown;
 }
 
-/** エラーメッセージへ取得元ホストを付記する(§13 段2「失敗時はホスト名込みのメッセージにする」)。
+/** エラーメッセージへホストホストを付記する(§13 段2「失敗時はホスト名込みのメッセージにする」)。
  * ローカルは素通し(既存の文言を変えない)。 */
 function withSourceContext(message: string, source: DeviceCommandSource): string {
   return source.kind === "remote" ? t("deviceOps.remoteHostSuffix", { host: source.host, message }) : message;
@@ -68,6 +73,10 @@ export class MonitorDeviceOps {
   private lifecycleQueue: DeviceLifecycleQueueState = createDeviceLifecycleQueueState();
   /** create-device の多重実行ガード。true の間に来た createDevice リクエストは即座に失敗を返す。 */
   private creatingDevice = false;
+  /** delete-device の多重実行ガード(identifier 単位)。行ごとに独立して走らせるため creatingDevice と
+   * 違い Set にする(他の行の削除は妨げない。webview 側もその行の checkbox を disabled にして
+   * 連打を防ぐが、直後の再送・別経路からの二重送信に対する保険として持つ)。 */
+  private readonly deletingIdentifiers = new Set<string>();
   /** 実行中の bulk up(devices-up)プロセス。「デバイスの起動を中断」の kill 対象。close で undefined に戻す。 */
   private bulkUpProc: PipeProcess | undefined;
   /** 凍結が治らず CPU 描画(swiftshader)へフォールバックしたデバイス論理名。セッション中維持
@@ -1241,6 +1250,150 @@ export class MonitorDeviceOps {
       );
       // finished を経由せず落ちた場合の合成失敗(executeDeviceOpJob と同じパターン。responded ガードで二重防止)。
       respond(false, t("deviceOps.processExitedWithCode", { exitCode: String(exitCode) }), null);
+    });
+  }
+
+  /**
+   * #device-pick-overlay の行右クリック「削除」: `ftester api delete-device` を実行し、ホスト上の
+   * 実体(シミュレータ/AVD)を消す(machineDeviceRemove のプロファイル除去とは別物。本体は残さない)。
+   * 破壊的・不可逆な操作なので、ローカル/リモートどちらでも必ずホスト側 modal 確認を挟む
+   * (§13・runCreateDevice のリモート確認と同じ showWarningMessage({modal:true}) 方式だが、
+   * こちらは常に確認する — create と違い「作るだけ」ではなく実体を消すため)。
+   */
+  async runDeleteDevice(msg: DevicePickDeviceDeleteMessage): Promise<void> {
+    if (this.deletingIdentifiers.has(msg.identifier)) {
+      this.deps.post({
+        type: "devicePickDeviceDeleteResult",
+        ok: false,
+        identifier: msg.identifier,
+        name: msg.name,
+        error: t("deviceOps.deleteAlreadyRunning"),
+        referencedBy: [],
+      });
+      return;
+    }
+    this.deletingIdentifiers.add(msg.identifier);
+    const hostLabel = msg.source.kind === "remote" ? msg.source.host : t("deviceOps.hostLocalLabel");
+    const deleteLabel = t("deviceOps.deleteConfirmButton");
+    const choice = await vscode.window.showWarningMessage(
+      t("deviceOps.deleteConfirmMessage", { name: msg.name, host: hostLabel }),
+      { modal: true },
+      deleteLabel,
+    );
+    if (choice !== deleteLabel) {
+      this.deletingIdentifiers.delete(msg.identifier);
+      this.deps.post({
+        type: "devicePickDeviceDeleteResult",
+        ok: false,
+        identifier: msg.identifier,
+        name: msg.name,
+        error: t("deviceOps.deleteCancelled"),
+        referencedBy: [],
+      });
+      return;
+    }
+    this.spawnDeleteDevice(msg);
+  }
+
+  /**
+   * runDeleteDevice からの実処理(confirm 済み)。finished が来る前にプロセスが落ちた場合は合成の
+   * 失敗結果を送る(spawnCreateDevice と同じパターン)。成功時、referencedBy が非空なら
+   * (削除した実体をまだ参照しているマシンプロファイルが残る)webview のダイアログが閉じていても
+   * 気付けるよう、別途 warning 通知も出す(devicePickDeviceDeleteResult はダイアログが開いている
+   * 間しか見えないため)。
+   */
+  private spawnDeleteDevice(msg: DevicePickDeviceDeleteMessage): void {
+    const config = this.deps.getConfig();
+    const args = deviceCommandArgs(msg.source, deleteDeviceApiArgs(msg.platform, msg.identifier));
+    const source = msg.source;
+
+    let responded = false;
+    const respond = (ok: boolean, error: string | null, referencedBy: readonly string[]): void => {
+      if (responded) {
+        return;
+      }
+      responded = true;
+      this.deletingIdentifiers.delete(msg.identifier);
+      const finalError = error ? withSourceContext(error, source) : error;
+      this.deps.post({
+        type: "devicePickDeviceDeleteResult",
+        ok,
+        identifier: msg.identifier,
+        name: msg.name,
+        error: finalError,
+        referencedBy,
+      });
+      if (ok) {
+        this.deps.outputChannel.appendLine(t("deviceOps.log.deleteDeviceSucceeded", { name: msg.name }));
+        if (referencedBy.length > 0) {
+          void vscode.window.showWarningMessage(
+            t("deviceOps.deleteReferencedByWarning", {
+              name: msg.name,
+              profiles: referencedBy.join(t("deviceOps.nameSeparator")),
+            }),
+          );
+        }
+      } else {
+        this.deps.outputChannel.appendLine(
+          t("deviceOps.log.deleteDeviceFailed", { name: msg.name, error: finalError ?? "" }),
+        );
+        void vscode.window.showErrorMessage(`ftester: ${finalError ?? t("deviceOps.deleteFailedGeneric")}`);
+      }
+    };
+
+    let proc: PipeProcess;
+    try {
+      proc = spawn(config.binaryPath, args, {
+        cwd: this.deps.workspaceRoot,
+        shell: false,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } catch (error) {
+      this.deps.outputChannel.appendLine(
+        t("deviceOps.log.deleteDeviceStartFailed", { name: msg.name, error: String(error) }),
+      );
+      respond(false, String(error), []);
+      return;
+    }
+
+    const stdoutParser = new NdjsonParser(
+      (value) => {
+        if (!isDeleteDeviceEvent(value)) {
+          this.deps.outputChannel.appendLine(
+            t("deviceOps.log.unknownLine", { label: `delete-device ${msg.name}`, value: JSON.stringify(value) }),
+          );
+          return;
+        }
+        if (value.kind === "log") {
+          this.deps.outputChannel.appendLine(`[delete-device ${msg.name}] ${value.message}`);
+        } else {
+          respond(value.ok, value.error, value.referencedBy ?? []);
+        }
+      },
+      (line) => this.deps.outputChannel.appendLine(`[delete-device ${msg.name} stdout] ${line}`),
+    );
+    const stderrParser = new NdjsonParser(
+      (value) => this.deps.outputChannel.appendLine(`[delete-device ${msg.name} stderr] ${JSON.stringify(value)}`),
+      (line) => this.deps.outputChannel.appendLine(`[delete-device ${msg.name} stderr] ${line}`),
+    );
+
+    proc.stdout.on("data", (chunk: Buffer) => stdoutParser.push(chunk));
+    proc.stderr.on("data", (chunk: Buffer) => stderrParser.push(chunk));
+
+    proc.on("error", (error) => {
+      this.deps.outputChannel.appendLine(
+        t("deviceOps.log.deleteDeviceRuntimeError", { name: msg.name, error: error.message }),
+      );
+      respond(false, error.message, []);
+    });
+    proc.on("close", (exitCode) => {
+      stdoutParser.end();
+      stderrParser.end();
+      this.deps.outputChannel.appendLine(
+        t("deviceOps.log.deleteDeviceClosed", { name: msg.name, exitCode: String(exitCode) }),
+      );
+      // finished を経由せず落ちた場合の合成失敗(spawnCreateDevice と同じパターン。responded ガードで二重防止)。
+      respond(false, t("deviceOps.processExitedWithCode", { exitCode: String(exitCode) }), []);
     });
   }
 }

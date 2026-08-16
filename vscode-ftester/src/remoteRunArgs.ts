@@ -27,12 +27,12 @@ export interface RemoteHostEntry {
   readonly machine: string;
 }
 
-/** マシンプロファイルタブ「デバイス候補の取得元」(§13 段2)。host は登録簿の name
+/** マシンプロファイルタブ「デバイス候補のホスト」(§13 段2)。host は登録簿の name
  * (`remote exec <host>` の第1引数。raw な ssh 宛先ではなく登録名を渡す契約)。 */
 export type DeviceCommandSource = { readonly kind: "local" } | { readonly kind: "remote"; readonly host: string };
 
 /**
- * device-catalog/installed-devices/create-device を取得元に応じた CLI 引数へ組み立てる
+ * device-catalog/installed-devices/create-device をホストに応じた CLI 引数へ組み立てる
  * (docs/remote-runner.md §13「プロファイルのリモート対応」・§14「単発コマンドの転送は汎用化する」)。
  * リモートは既存の汎用転送 `remote exec <host> -- <apiArgs>` を使うだけで、個別 ssh 実装は書かない。
  * ローカルは apiArgs をそのまま返す(§13 段2 の「ローカルの挙動を1バイトも変えない」契約 —
@@ -48,7 +48,7 @@ export function deviceCommandArgs(source: DeviceCommandSource, apiArgs: readonly
 /**
  * リモートホスト登録簿の生の値(JSON。`ftester api remote-hosts` の stdout の hosts[]。
  * 外部プロセス由来で型不定)を防御的に正規化する。name も host も空の要素は捨てる
- * (識別も接続先も持たない無意味な登録)。name が空なら host を name に流用する
+ * (識別もホストも持たない無意味な登録)。name が空なら host を name に流用する
  * (一意キーとして機能させるため)。host が空の要素も捨てない(壊れた登録として設定タブに
  * そのまま出す—黙って消すと利用者が編集で直す機会を失う)。dir/machine は欠落・型不正なら
  * 空文字(CLI 契約: 未設定でもキーは必ずあり空文字)。

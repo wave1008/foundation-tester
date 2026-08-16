@@ -24,35 +24,40 @@ export interface RemoteHostsCliDeps {
   registerChild(proc: PipeProcess): void;
 }
 
-async function runRemoteHostsCli(
-  deps: RemoteHostsCliDeps,
-  args: readonly string[],
-): Promise<RemoteHostEntry[] | undefined> {
+/** 呼び出し1回の結果。成功時は hosts、失敗時は error(理由テキスト。設定タブへそのまま出す)。
+ * 両方 undefined にはならない(どちらか一方だけが立つ)。 */
+export interface RemoteHostsCliOutcome {
+  readonly hosts?: RemoteHostEntry[];
+  readonly error?: string;
+}
+
+async function runRemoteHostsCli(deps: RemoteHostsCliDeps, args: readonly string[]): Promise<RemoteHostsCliOutcome> {
   const config = deps.getConfig();
   let result: Awaited<ReturnType<typeof runOneShot>>;
   try {
     result = await runOneShot(config.binaryPath, deps.workspaceRoot, [...args], deps.outputChannel, deps.registerChild);
   } catch (error) {
-    deps.outputChannel.appendLine(
-      `[remote-hosts] ${args.join(" ")}: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    return undefined;
+    const message = error instanceof Error ? error.message : String(error);
+    deps.outputChannel.appendLine(`[remote-hosts] ${args.join(" ")}: ${message}`);
+    return { error: message };
   }
   if (result.exitCode !== 0) {
     deps.outputChannel.appendLine(
       `[remote-hosts] ${args.join(" ")} failed (exit ${String(result.exitCode)}): ${result.stderrTail}`,
     );
-    return undefined;
+    const message = result.stderrTail.trim();
+    return { error: message.length > 0 ? message : `exit ${String(result.exitCode)}` };
   }
   const hosts = parseRemoteHostsResponse(result.json);
   if (hosts === undefined) {
     deps.outputChannel.appendLine(`[remote-hosts] ${args.join(" ")}: unexpected output shape`);
+    return { error: "unexpected output shape" };
   }
-  return hosts;
+  return { hosts };
 }
 
-/** `ftester api remote-hosts` で登録簿全体を読む。失敗時は undefined(呼び出し側でログ済み)。 */
-export function fetchRemoteHosts(deps: RemoteHostsCliDeps): Promise<RemoteHostEntry[] | undefined> {
+/** `ftester api remote-hosts` で登録簿全体を読む。失敗時は error(呼び出し側でログ済み)。 */
+export function fetchRemoteHosts(deps: RemoteHostsCliDeps): Promise<RemoteHostsCliOutcome> {
   return runRemoteHostsCli(deps, ["api", "remote-hosts"]);
 }
 
@@ -60,11 +65,11 @@ export function fetchRemoteHosts(deps: RemoteHostsCliDeps): Promise<RemoteHostEn
 export function importRemoteHosts(
   deps: RemoteHostsCliDeps,
   entries: readonly RemoteHostEntry[],
-): Promise<RemoteHostEntry[] | undefined> {
+): Promise<RemoteHostsCliOutcome> {
   return runRemoteHostsCli(deps, ["api", "remote-hosts", "--import", JSON.stringify(entries)]);
 }
 
 /** name の登録を削除し、結果の一覧を返す。 */
-export function removeRemoteHost(deps: RemoteHostsCliDeps, name: string): Promise<RemoteHostEntry[] | undefined> {
+export function removeRemoteHost(deps: RemoteHostsCliDeps, name: string): Promise<RemoteHostsCliOutcome> {
   return runRemoteHostsCli(deps, ["api", "remote-hosts", "--remove", name]);
 }

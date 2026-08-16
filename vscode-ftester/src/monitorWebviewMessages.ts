@@ -148,6 +148,19 @@ export type MonitorToWebviewMessage =
       readonly data: InstalledDevices | null;
       readonly error: string | null;
     }
+  // デバイス選択ダイアログの行右クリック「削除」(devicePickDeviceDelete)への応答。ok:true でも
+  // モーダルが閉じていれば webview 側は表示更新をせず捨てる(applyInstalledDevices と同じ方針)。
+  // referencedBy はホスト側が既に withSourceContext で error にホスト名を付記済みなので、webview は
+  // error をそのまま表示するだけでよい。
+  | {
+      readonly type: "devicePickDeviceDeleteResult";
+      readonly ok: boolean;
+      /** 削除対象の識別子(iOS=udid/Android=avd id)。行の再特定に使う。 */
+      readonly identifier: string;
+      readonly name: string;
+      readonly error: string | null;
+      readonly referencedBy: readonly string[];
+    }
   // 同モーダルの OK(machineDevicesSync)への応答。added は追記できた件数(サフィックス適用後)、
   // removed は実際に登録解除できた件数(存在しない名前は黙ってスキップし数に含めない)。
   // ok:true ならモーダルは閉じ、一覧は直後の machineProfileInfo 再送で最新化される。
@@ -250,6 +263,9 @@ export type MonitorToWebviewMessage =
       readonly type: "remoteConfig";
       readonly hosts: readonly RemoteHostEntry[];
       readonly artifacts: "collect" | "on-demand";
+      /** 直前の setRemoteConfig(追加・削除)が CLI 側で失敗したときの理由。settingsTab.js が
+       * 画面に出す。成功時・ready 直後の初回配信では undefined。 */
+      readonly error?: string;
     }
   // 設定タブ「更新」セクションの状態。パネル ready 直後と checkUpdate/runUpdate の前後に送る。
   // 判定そのものは Scripts/update-check.sh(拡張は解釈するだけ)。対向: settingsTab.js の applyUpdate。
@@ -375,13 +391,13 @@ export type MonitorFromWebviewMessage =
   | { readonly type: "machineProfileDelete"; readonly machine: string }
   | { readonly type: "machineProfileRename"; readonly machine: string }
   // デバイス追加モーダルを開いた直後に送る、`ftester api device-catalog` の再取得リクエスト。
-  // source: マシンプロファイルタブの「デバイス候補の取得元」セレクタの選択(§13 段2)。
+  // source: マシンプロファイルタブの「デバイス候補のホスト」セレクタの選択(§13 段2)。
   // remote なら monitorDeviceOps.ts が deviceCommandArgs で `remote exec <host> -- api device-catalog`
   // に組み立てる(docs/remote-runner.md §13「プロファイルのリモート対応」)。
   | { readonly type: "deviceCatalogRequest"; readonly source: DeviceCommandSource }
   // 同モーダルで Android のモデル一覧が空(errorCode: "avdmanager-missing")のときだけ出る
   // 導入ボタン。応答は installCmdlineToolsResult。cmdline-tools の導入はローカル専用
-  // (取得元セレクタの対象外。リモートの avdmanager 導入はスコープ外)。
+  // (ホストセレクタの対象外。リモートの avdmanager 導入はスコープ外)。
   | { readonly type: "installCmdlineToolsRequest" }
   // デバイス追加モーダルの OK クリック。全フィールドは空文字だと「未選択/未入力」を意味するため、
   // selectProfile と違い非空文字列を必須として検証する。
@@ -414,13 +430,24 @@ export type MonitorFromWebviewMessage =
       readonly machine: string;
       readonly add: readonly MachineDeviceAddEntry[];
       readonly remove: readonly string[];
-      /** OK 押下時点でダイアログ内ホスト選択(devicePickHost.js)が指していた取得元。add が非空かつ
+      /** OK 押下時点でダイアログ内ホスト選択(devicePickHost.js)が指していたホスト。add が非空かつ
        * remote のときだけ monitorProfileForms.ts がマシンプロファイルの host キーへ書き込む。 */
       readonly source: DeviceCommandSource;
     }
   // デバイス行の右クリック「削除」。names は複数選択の一括削除に対応する配列(単一削除も1件配列)。
   // 空配列は「対象なし」として不正扱い。
   | { readonly type: "machineDeviceRemove"; readonly machine: string; readonly names: readonly string[] }
+  // #device-pick-overlay の行右クリック「削除」: マシンプロファイルからの除去(machineDeviceRemove)
+  // とは別に、ホスト上の実体(シミュレータ/AVD)そのものを `ftester api delete-device` で消す。
+  // identifier は iOS=udid/Android=avd id(実機行にはこのメニュー自体を出さない)。name は確認
+  // ダイアログ・失敗表示に使う表示名。source は OK 押下時と同じダイアログ内ホスト選択。
+  | {
+      readonly type: "devicePickDeviceDelete";
+      readonly platform: MonitorPlatform;
+      readonly identifier: string;
+      readonly name: string;
+      readonly source: DeviceCommandSource;
+    }
   // プロファイルタブ右ペインの編集フォーム「確定」。fields はクライアント側で trim 済み(空文字=
   // 未入力/対象外)。createDevice と違い machine/originalName 以外は空文字を許容する。
   | {
@@ -672,6 +699,15 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         Array.isArray(value.names) &&
         value.names.length > 0 &&
         value.names.every((name) => typeof name === "string" && name !== "")
+      );
+    case "devicePickDeviceDelete":
+      return (
+        (value.platform === "ios" || value.platform === "android") &&
+        typeof value.identifier === "string" &&
+        value.identifier !== "" &&
+        typeof value.name === "string" &&
+        value.name !== "" &&
+        isDeviceCommandSourceLike(value.source)
       );
     case "machineDeviceUpdate":
       return (

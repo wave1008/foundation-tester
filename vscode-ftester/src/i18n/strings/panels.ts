@@ -231,7 +231,7 @@ export const panelsStrings = {
   "panels.settings.remoteArtifactsCollect": { ja: "回収する", en: "Collect" },
   "panels.settings.remoteArtifactsOnDemand": { ja: "オンデマンド", en: "On demand" },
   "panels.settings.remoteHostsHint": {
-    ja: "ディスパッチ先として使うホストを登録します。name はホストを選ぶとき(例: 「デバイスを追加」ダイアログでの取得元選択)に出る表示名(一意)、host は SSH 先(user@host または host)、dir は空欄で ~/ftester-runner(そのマシンの既存のローカルインストールと同じパスにしないこと)。",
+    ja: "ディスパッチ先として使うホストを登録します。name はホストを選ぶとき(例: 「デバイスを追加」ダイアログでのホスト選択)に出る表示名(一意)、host は SSH 先(user@host または host)、dir は空欄で ~/ftester-runner(そのマシンの既存のローカルインストールと同じパスにしないこと)。",
     en: "Register hosts to dispatch runs to. Name is the display name shown when picking a host (e.g. the source selector in the \"add device\" dialog; must be unique); host is the SSH target (user@host or host); dir blank = ~/ftester-runner (must not be an existing local install on that machine).",
   },
   "panels.settings.remoteHostsColName": { ja: "名前", en: "Name" },
@@ -242,6 +242,9 @@ export const panelsStrings = {
   "panels.deviceMenu.liveControl": { ja: "ライブ操作", en: "Live Control" },
   "panels.deviceMenu.restartWithGpu": { ja: "GPUで再起動", en: "Restart with GPU" },
   "panels.deviceMenu.remove": { ja: "除去", en: "Remove" },
+  // #device-pick-overlay の行専用。machineDeviceMenu の「除去」(プロファイルから外すだけ)と違い、
+  // ホスト上の実体(シミュレータ/AVD)そのものを削除する(devicePickDeviceDelete)。
+  "panels.deviceMenu.delete": { ja: "削除", en: "Delete" },
 
   "panels.deviceAdd.title": { ja: "デバイスを追加", en: "Add Device" },
   "panels.deviceAdd.osTypeLabel": { ja: "OS種別", en: "OS Type" },
@@ -258,12 +261,14 @@ export const panelsStrings = {
     en: "Downloads about 150 MB (a few minutes)",
   },
 
-  "panels.devicePick.title": { ja: "既存のデバイスから選択", en: "Select from Existing Devices" },
+  "panels.devicePick.title": { ja: "デバイスを選択", en: "Select Devices" },
   "panels.devicePick.addNewTitle": { ja: "デバイスを新規作成", en: "Create New Device" },
+  "panels.devicePick.addNewLabel": { ja: "デバイスを作成", en: "Create device" },
   // タイトル行のホスト選択(#device-pick-host-select)の静的ラベル。選択肢自体は
   // devicePickHost.js が remoteConfig を受けて動的生成する(panels.machineProfile.deviceSourceLabel
   // と同じ役割・同じ文言だったが、常設セレクタを廃してこのダイアログの中だけに移した)。
-  "panels.devicePick.hostLabel": { ja: "取得元:", en: "Source:" },
+  "panels.devicePick.hostLabel": { ja: "ホスト:", en: "Host:" },
+  "panels.devicePick.loading": { ja: "読み込み中...", en: "Loading..." },
   // 見出しには接続中の実機も並ぶため「デバイス」と呼ぶ(台数は JS が確定後に付ける)
   "panels.devicePick.iosGroupTitle": { ja: "iOS デバイス", en: "iOS devices" },
   "panels.devicePick.androidGroupTitle": { ja: "Android デバイス", en: "Android devices" },

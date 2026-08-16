@@ -838,6 +838,56 @@ export function isCreateDeviceEvent(value: unknown): value is CreateDeviceEvent 
 }
 
 /**
+ * `ftester api delete-device` の CLI 引数を組み立てる(deviceCommandArgs と組み合わせて使う純粋関数。
+ * monitorDeviceOps.ts の spawnDeleteDevice からテスト分離のために公開する)。iOS は --udid、
+ * Android は --avd(いずれも識別子1本。マシンプロファイル・プロジェクトは参照しない —— この操作は
+ * ホスト上の実体[シミュレータ/AVD]を直接消すだけで、どのマシンプロファイルが参照しているかは
+ * finished イベントの referencedBy で返ってくる)。
+ */
+export function deleteDeviceApiArgs(platform: MonitorPlatform, identifier: string): string[] {
+  return ["api", "delete-device", "--platform", platform, platform === "ios" ? "--udid" : "--avd", identifier];
+}
+
+export interface DeleteDeviceLogEvent {
+  readonly kind: "log";
+  readonly message: string;
+}
+
+export interface DeleteDeviceFinishedEvent {
+  readonly kind: "finished";
+  readonly ok: boolean;
+  readonly error: string | null;
+  /** 削除した識別子を参照しているマシンプロファイル名。省略時は空扱い(古い CLI 互換)。 */
+  readonly referencedBy?: readonly string[];
+}
+
+/** `ftester api delete-device` の NDJSON 1行分のイベント(isCreateDeviceEvent と対になる形)。 */
+export type DeleteDeviceEvent = DeleteDeviceLogEvent | DeleteDeviceFinishedEvent;
+
+function isReferencedByLike(value: unknown): value is readonly string[] {
+  return Array.isArray(value) && value.every((v) => typeof v === "string");
+}
+
+/** DeleteDeviceEvent の判定(isCreateDeviceEvent と同じ方針)。referencedBy は省略可・あれば string[] のみ許容。 */
+export function isDeleteDeviceEvent(value: unknown): value is DeleteDeviceEvent {
+  if (!isRecord(value) || typeof value.kind !== "string") {
+    return false;
+  }
+  switch (value.kind) {
+    case "log":
+      return typeof value.message === "string";
+    case "finished":
+      return (
+        typeof value.ok === "boolean" &&
+        (value.error === null || typeof value.error === "string") &&
+        (value.referencedBy === undefined || isReferencedByLike(value.referencedBy))
+      );
+    default:
+      return false;
+  }
+}
+
+/**
  * マシンプロファイルのデバイス一覧2行目の詳細文字列。iOS: simulator優先(os があれば併記)、
  * 無ければ udid 先頭8文字、それも無ければ "iOS"。Android: avd があれば "AVD: "+avd、
  * 実機(avd を持たない)は serial、どちらも無ければ "Android"。
@@ -1212,9 +1262,15 @@ export function syncDevicesInMachineProfile(
   }
   // 契約: リモートに選び直したホストから確定追加(add 非空)した時点で、そのホストをマシン
   // プロファイルへ記録する(以後の run は CLI が host フィールドからそのホストへ出す)。
-  // ローカルを選んだ場合(source 省略時も含む)は何も書かない —— 省略 = ローカルが CLI の既定であり、
-  // 既にローカルだったプロファイルへ余計な差分を作らないため。
-  const object =
-    add.length > 0 && source?.kind === "remote" ? { ...addResult.object, host: source.host } : addResult.object;
+  // ローカルを明示的に選んだ場合は既存の host キーを消す(選び直しでリモート→ローカルへ
+  // 戻したときに古い host が残ってそちらへディスパッチされ続ける実害があった)。
+  // source を渡さない呼び出し(将来の他経路)は判断材料が無いため何も書かない・消さない。
+  let object: Record<string, unknown> = addResult.object;
+  if (add.length > 0 && source?.kind === "remote") {
+    object = { ...object, host: source.host };
+  } else if (add.length > 0 && source?.kind === "local" && "host" in object) {
+    const { host: _removedHost, ...rest } = object;
+    object = rest;
+  }
   return { ok: true, object, added: addResult.added, removed: removedCount };
 }

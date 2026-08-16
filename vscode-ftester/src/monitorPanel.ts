@@ -385,7 +385,8 @@ class MonitorPanelController implements vscode.Disposable {
    * 変更(hosts は不変)では CLI を叩かない。削除→追加(import は upsert)の順で送ることで、
    * rename(同じ行の name 変更)も「旧名を消し新名を作る」として正しく扱える。
    * CLI 呼び出しが失敗した行は lastKnownRemoteHosts に残らない(=書き込めなかったことが
-   * 次に webview へ返す一覧に反映される)。
+   * 次に webview へ返す一覧に反映される)。失敗理由は remoteConfig.error に乗せて webview へ返す
+   * (settingsTab.js が画面に出す。以前は OUTPUT へログするだけで、行が黙って消えて見えていた)。
    */
   private async syncRemoteHostsFromWebview(
     hosts: readonly RemoteHostEntry[],
@@ -394,16 +395,21 @@ class MonitorPanelController implements vscode.Disposable {
     const deps = this.remoteHostsDeps();
     const { removedNames, upserts } = diffRemoteHostsForSync(this.lastKnownRemoteHosts, hosts);
     let finalHosts = this.lastKnownRemoteHosts;
+    let error: string | undefined;
     for (const name of removedNames) {
       const result = await removeRemoteHost(deps, name);
-      if (result !== undefined) {
-        finalHosts = result;
+      if (result.hosts !== undefined) {
+        finalHosts = result.hosts;
+      } else {
+        error = result.error;
       }
     }
     if (upserts.length > 0) {
       const result = await importRemoteHosts(deps, upserts);
-      if (result !== undefined) {
-        finalHosts = result;
+      if (result.hosts !== undefined) {
+        finalHosts = result.hosts;
+      } else {
+        error = result.error;
       }
     }
     this.lastKnownRemoteHosts = finalHosts;
@@ -411,7 +417,7 @@ class MonitorPanelController implements vscode.Disposable {
     const remoteConfiguration = vscode.workspace.getConfiguration("ftester");
     void remoteConfiguration.update("remote.artifacts", artifacts, vscode.ConfigurationTarget.Global);
     // CLI が返した確定形(書き込めなかった行の除外・machine の実値を含む)で webview を必ず作り直す。
-    this.post({ type: "remoteConfig", hosts: finalHosts, artifacts });
+    this.post({ type: "remoteConfig", hosts: finalHosts, artifacts, error });
   }
 
   private hydrateLaneUi(): void {
@@ -550,6 +556,9 @@ class MonitorPanelController implements vscode.Disposable {
         break;
       case "installedDevicesRequest":
         this.deviceOps.runInstalledDevices(message.source);
+        break;
+      case "devicePickDeviceDelete":
+        void this.deviceOps.runDeleteDevice(message);
         break;
       case "machineDevicesSync":
         this.profiles.handleMachineDevicesSync(message);
@@ -702,8 +711,8 @@ class MonitorPanelController implements vscode.Disposable {
       const remoteConfiguration = vscode.workspace.getConfiguration("ftester");
       const artifacts =
         remoteConfiguration.get<string>("remote.artifacts", "collect") === "on-demand" ? "on-demand" : "collect";
-      void fetchRemoteHosts(this.remoteHostsDeps()).then((hosts) => {
-        this.lastKnownRemoteHosts = hosts ?? [];
+      void fetchRemoteHosts(this.remoteHostsDeps()).then((result) => {
+        this.lastKnownRemoteHosts = result.hosts ?? [];
         this.post({ type: "remoteConfig", hosts: this.lastKnownRemoteHosts, artifacts });
       });
     }

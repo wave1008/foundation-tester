@@ -7,7 +7,7 @@
 // deviceCatalogRequest/installedDevicesRequest/createDevice に載る、②マシンプロファイルの host が
 // 登録済みホスト名ならそのホストが初期値になり同じ3メッセージに remote(host)が載る、③登録簿に
 // 無いホストを指していればローカルへ落ちる、④ダイアログを開いたまま選び直すと installed-devices を
-// 選び直したホストで再取得する、⑤取得元バッジ(#device-add-source-badge)に現在の選択が出る、
+// 選び直したホストで再取得する、⑤ホストバッジ(#device-add-source-badge)に現在の選択が出る、
 // ⑥machineDevicesSync(OK ボタン)にも現在の選択が source として載る。
 
 import assert from "node:assert/strict";
@@ -172,7 +172,7 @@ test("ダイアログを開いたまま選び直すと installedDevicesRequest �
   assertRemoteSource(requests[1].source, "M1Max");
 });
 
-test("取得元バッジ(#device-add-source-badge)に現在の選択が出る", (t) => {
+test("ホストバッジ(#device-add-source-badge)に現在の選択が出る", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
 
@@ -181,14 +181,14 @@ test("取得元バッジ(#device-add-source-badge)に現在の選択が出る", 
   // ローカルのまま: バッジは「ローカル」
   openDevicePickModal(window, document, { name: "M1", devices: [] });
   document.getElementById("device-pick-add-new").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-  assert.equal(document.getElementById("device-add-source-badge").textContent, "取得元: ローカル");
+  assert.equal(document.getElementById("device-add-source-badge").textContent, "ホスト: ローカル");
   document.getElementById("dlg-cancel").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
   document.getElementById("device-pick-cancel").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 
   // host: M1Max のマシンを開き直す: バッジは「M1Max」
   openDevicePickModal(window, document, { name: "M1", devices: [], host: "M1Max" });
   document.getElementById("device-pick-add-new").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-  assert.equal(document.getElementById("device-add-source-badge").textContent, "取得元: M1Max");
+  assert.equal(document.getElementById("device-add-source-badge").textContent, "ホスト: M1Max");
 });
 
 test("machineDevicesSync(OK ボタン)にも現在選択中のホストが source として載る", (t) => {

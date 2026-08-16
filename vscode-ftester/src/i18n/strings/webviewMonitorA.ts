@@ -99,7 +99,7 @@ export const webviewMonitorAStrings = {
   // (「黙って別マシンの一覧を出さない」ため。#device-add-source-badge はこのバッジの読み取り専用複製)。
   "wvMonitor.devicePick.hostLocalOption": { ja: "ローカル(このマシン)", en: "Local (this machine)" },
   "wvMonitor.devicePick.hostLocalShort": { ja: "ローカル", en: "local" },
-  "wvMonitor.devicePick.hostBadge": { ja: "取得元: {source}", en: "Source: {source}" },
+  "wvMonitor.devicePick.hostBadge": { ja: "ホスト: {source}", en: "Host: {source}" },
 
   "wvMonitor.nameInput.required": { ja: "{noun}を入力してください。", en: "Please enter {noun}." },
   "wvMonitor.nameInput.forbiddenChars": {
@@ -119,9 +119,11 @@ export const webviewMonitorAStrings = {
   "wvMonitor.devicePick.androidEmpty": { ja: "Android AVD も接続中の実機もありません。", en: "No Android AVDs or connected devices." },
   "wvMonitor.devicePick.iosTitle": { ja: "iOS デバイス", en: "iOS devices" },
   "wvMonitor.devicePick.androidTitle": { ja: "Android デバイス", en: "Android devices" },
-  "wvMonitor.devicePick.loading": { ja: "一覧を読み込み中...", en: "Loading list..." },
   "wvMonitor.devicePick.fetchFailed": { ja: "一覧の取得に失敗しました。", en: "Failed to retrieve the list." },
   "wvMonitor.devicePick.syncFailed": { ja: "デバイスの同期に失敗しました。", en: "Failed to sync devices." },
+  // devicePickDeviceDeleteResult の error が空(理論上想定外)のときだけ使うフォールバック。
+  // 通常はホスト側が理由文を必ず載せる(monitorDeviceOps.ts の deleteOps.deleteFailedGeneric)。
+  "wvMonitor.devicePick.deleteFailed": { ja: "デバイスの削除に失敗しました。", en: "Failed to delete the device." },
   "wvMonitor.devicePick.applying": { ja: "適用中...", en: "Applying..." },
   "wvMonitor.devicePick.detailSeparator": { ja: "・", en: "·" },
 

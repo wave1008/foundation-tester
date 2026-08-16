@@ -84,7 +84,7 @@ export const deviceOpsStrings = {
     en: "Failed to parse {cmd} output: {error}",
   },
   "deviceOps.cmdOutputInvalid": { ja: "{cmd} の出力形式が不正です。", en: "{cmd} output format is invalid." },
-  // §13 段2「取得元」セレクタ: リモート実行時のエラーへホスト名を付記する(withSourceContext)。
+  // §13 段2「ホスト」セレクタ: リモート実行時のエラーへホスト名を付記する(withSourceContext)。
   "deviceOps.remoteHostSuffix": { ja: "{message}(ホスト: {host})", en: "{message} (host: {host})" },
   "deviceOps.createRemoteConfirmMessage": {
     ja: "「{name}」を {host} 上に作成します。よろしいですか?",
@@ -115,6 +115,47 @@ export const deviceOpsStrings = {
   "deviceOps.log.createDeviceClosed": {
     ja: "[ftester] create-device({name})が終了しました(exit code: {exitCode})",
     en: "[ftester] create-device({name}) finished (exit code: {exitCode})",
+  },
+
+  "deviceOps.hostLocalLabel": { ja: "ローカル", en: "the local machine" },
+  "deviceOps.deleteConfirmMessage": {
+    ja: "「{name}」を {host} から削除します。シミュレータ/AVD本体が削除されるため、元に戻せません。よろしいですか?",
+    en: "This deletes \"{name}\" from {host}. It removes the underlying simulator/AVD and cannot be undone. Continue?",
+  },
+  "deviceOps.deleteConfirmButton": { ja: "削除", en: "Delete" },
+  "deviceOps.deleteCancelled": { ja: "削除をキャンセルしました。", en: "Device deletion was cancelled." },
+  "deviceOps.deleteAlreadyRunning": {
+    ja: "削除処理が既に実行中です。",
+    en: "A delete operation is already in progress.",
+  },
+  "deviceOps.deleteFailedGeneric": { ja: "デバイスの削除に失敗しました。", en: "Failed to delete the device." },
+  "deviceOps.deleteReferencedByWarning": {
+    ja:
+      "「{name}」を削除しました。これを参照しているマシンプロファイルが残っています: {profiles}。" +
+      "次回の実行前に該当プロファイルのデバイス設定を見直してください。",
+    en:
+      "Deleted \"{name}\". The following machine profiles still reference it: {profiles}. " +
+      "Review their device settings before the next run.",
+  },
+  "deviceOps.log.deleteDeviceStartFailed": {
+    ja: "[ftester] delete-device({name})の起動に失敗しました: {error}",
+    en: "[ftester] Failed to start delete-device({name}): {error}",
+  },
+  "deviceOps.log.deleteDeviceSucceeded": {
+    ja: "[ftester] delete-device({name})が完了しました。",
+    en: "[ftester] delete-device({name}) finished.",
+  },
+  "deviceOps.log.deleteDeviceFailed": {
+    ja: "[ftester] delete-device({name})が失敗しました: {error}",
+    en: "[ftester] delete-device({name}) failed: {error}",
+  },
+  "deviceOps.log.deleteDeviceRuntimeError": {
+    ja: "[ftester] delete-device({name})の実行でエラーが発生しました: {error}",
+    en: "[ftester] An error occurred while running delete-device({name}): {error}",
+  },
+  "deviceOps.log.deleteDeviceClosed": {
+    ja: "[ftester] delete-device({name})が終了しました(exit code: {exitCode})",
+    en: "[ftester] delete-device({name}) finished (exit code: {exitCode})",
   },
 
   "deviceOps.log.monitorStartFailed": {

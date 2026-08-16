@@ -6,6 +6,7 @@
 import { t } from '../i18n.js';
 import { vscode } from './vscodeApi.js';
 import { cachePhysicalDeviceInfo } from './physicalDeviceCache.js';
+import { clampMenuPosition } from './menu.js';
 import { selectedMachine, findMachine, allDeviceNamesForSelectedMachine, btnDeviceAddExisting, refreshSelectedDeviceEditor } from './machineProfilesTab.js';
 import { currentDeviceSource, refreshDeviceAddBadge, resetDevicePickHost } from './devicePickHost.js';
 
@@ -130,7 +131,7 @@ function platformIssue(platform) {
         ? t(serviceOnly ? 'wvMonitor.deviceAdd.noImageForService' : 'wvMonitor.deviceAdd.catalogEmpty')
         : ''),
     // 導入で解消できる欠け方のときだけボタンを出す(文言では分岐しない)。導入は常にローカルで
-    // 実行するため(installCmdlineToolsRequest は取得元セレクタの対象外)、取得元がリモートの
+    // 実行するため(installCmdlineToolsRequest はホストセレクタの対象外)、ホストがリモートの
     // ときは出さない — 出すと「別マシンの欠けを手元に導入するボタン」という誤動作になる。
     installable: platform === 'android' && side.errorCode === 'avdmanager-missing'
       && currentDeviceSource().kind === 'local',
@@ -328,6 +329,20 @@ deviceAddOverlay.addEventListener('click', (event) => {
     closeDeviceAddModal();
   }
 });
+// Enter で OK。**入力欄・選択欄のどこにいても効かせる**(名前を打ってそのまま Enter が自然)。
+// ボタン上の Enter は既定のクリック動作に任せる(二重発火を避ける)。IME の変換確定 Enter は
+// 拾わない(isComposing / keyCode 229。liveTab.js と同じ規律 —— 日本語入力で確定した瞬間に
+// ダイアログが閉じると入力し直しになる)。
+deviceAddOverlay.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter' || event.isComposing || event.keyCode === 229) {
+    return;
+  }
+  if (event.target.closest('button') || dlgOk.disabled || deviceAddCreating) {
+    return;
+  }
+  event.preventDefault();
+  dlgOk.click();
+});
 dlgOk.addEventListener('click', () => {
   if (dlgOk.disabled || deviceAddCreating || !deviceCatalog) {
     return;
@@ -358,11 +373,17 @@ dlgOk.addEventListener('click', () => {
     source: currentDeviceSource(),
   });
 });
-// closeDeviceAddModal は自分の状態のみ見るため、他の Esc ハンドラと独立して共存できる。
+// **Esc は手前の1枚だけ閉じる**。document 上に Esc ハンドラが3つ(この追加ダイアログ /
+// 削除メニュー / 選択ダイアログ)あり、**手前を閉じた時点でフラグが下りる**ため、後続の
+// ハンドラが「奥も閉じてよい」と誤判定して2枚同時に閉じていた(2026-08-17 実機で確認)。
+// 消費したら preventDefault で印を付け、奥のハンドラはそれを見て降りる
+// (フラグの読み合いだと登録順に依存する)。
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') {
-    closeDeviceAddModal();
+  if (event.key !== 'Escape' || !deviceAddOpen || deviceAddCreating) {
+    return;
   }
+  closeDeviceAddModal();
+  event.preventDefault();
 });
 
 // ---- 名前入力モーダル(#name-input-overlay) ----------------------------------------
@@ -496,6 +517,10 @@ const devicePickCancel = document.getElementById('device-pick-cancel');
 const devicePickOk = document.getElementById('device-pick-ok');
 const devicePickAddNewBtn = document.getElementById('device-pick-add-new');
 const devicePickHostSelect = document.getElementById('device-pick-host-select');
+const devicePickList = document.getElementById('device-pick-list');
+const devicePickLoading = document.getElementById('device-pick-loading');
+const devicePickDeleteMenu = document.getElementById('device-pick-delete-menu');
+const devicePickDeleteMenuItemBtn = document.getElementById('device-pick-delete-menu-item');
 
 let devicePickOpen = false;
 let devicePickAdding = false;
@@ -506,6 +531,14 @@ let devicePickAndroidRows = [];
 // register:false で作成した直後、次の installedDevices 再描画で自動チェックONにしたい行の
 // 識別子(iOS=udid/Android=avd の id)。適用後は必ず null に戻す(一度きりの適用)。
 let pendingAutoCheck = null;
+// 行右クリック「削除」メニュー(#device-pick-delete-menu)を開いている対象
+// ({ platform, identifier, name, rowEl, checkbox })。未オープンなら null。実機行は対象外
+// (シミュレータ/AVD のような「削除できる実体」を持たない)。
+let devicePickDeleteMenuEntry = null;
+// devicePickDeviceDelete を送信中の identifier 集合。その行だけ操作不可にする(他行・OK/Cancel は
+// 引き続き操作できる)。応答は devicePickOpen の状態に関わらず届きうる(削除は数秒かかるため、
+// その間にダイアログを閉じられることがある)。
+const devicePickDeletingIdentifiers = new Set();
 
 // 識別値→マシンプロファイル上の name の対応表(初期チェック判定・remove 対象名の特定に使う)。
 // Android は avd の id/displayName どちらの一致も登録済みとみなす。
@@ -632,6 +665,9 @@ function renderDevicePickGroups(data) {
   devicePickAndroidRows = [];
   devicePickIosBody.textContent = '';
   devicePickAndroidBody.textContent = '';
+  // 再描画で行 DOM を作り直すため、開いたままの削除メニューは対象行を失う(machineProfilesTab.js の
+  // renderMachineProfileBody と同じ理由)。
+  closeDevicePickDeleteMenu();
 
   const iosNameByUdid = registeredIosNameByUdid();
   const iosData = data.ios;
@@ -689,6 +725,17 @@ function renderDevicePickGroups(data) {
       row.append(checkbox, textWrap);
       attachDevicePickRowToggle(row, checkbox);
       syncDevicePickRowChecked(row, checkbox);
+      // シミュレータ本体(実体)の削除。実機行(buildPhysicalPickRow)には付けない —— 実機は
+      // 「削除できる実体」を持たない。
+      row.addEventListener('contextmenu', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openDevicePickDeleteMenu(
+          { platform: 'ios', identifier: device.udid, name: device.name, rowEl: row, checkbox: checkbox },
+          event.clientX,
+          event.clientY,
+        );
+      });
       devicePickIosBody.appendChild(row);
       devicePickIosRows.push({ checkbox: checkbox, device: device, initialChecked: registered, registeredName: registeredName, rowEl: row });
     }
@@ -750,6 +797,16 @@ function renderDevicePickGroups(data) {
       row.append(checkbox, textWrap);
       attachDevicePickRowToggle(row, checkbox);
       syncDevicePickRowChecked(row, checkbox);
+      // AVD 本体(実体)の削除。実機行には付けない(iOS ループと同じ理由)。
+      row.addEventListener('contextmenu', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openDevicePickDeleteMenu(
+          { platform: 'android', identifier: avd.id, name: avd.displayName, rowEl: row, checkbox: checkbox },
+          event.clientX,
+          event.clientY,
+        );
+      });
       devicePickAndroidBody.appendChild(row);
       devicePickAndroidRows.push({ checkbox: checkbox, avd: avd, initialChecked: registered, registeredName: registeredName, rowEl: row });
     }
@@ -787,14 +844,40 @@ function setDevicePickControlsEnabled(enabled) {
   }
 }
 
+/** 取得中の表示。**一覧は消さずに保つ** —— 空にするとダイアログが一度縮んでから
+ * 新しい一覧で伸び直し、切り替えのたびに画面が跳ねる(2026-08-17 ユーザー指摘)。
+ * 代わりに薄くして操作を止め、**ホストのリストボックスの右**に「読み込み中...」を出す
+ * (一覧側に出すと同じ理由で高さが変わる)。中身の入れ替えは応答が届いた1回だけ。
+ * 取得中はホスト選択も止める(往復が重なると、あとから来た応答がどちらのものか分からなくなる)。 */
+function beginDevicePickLoading() {
+  devicePickList.classList.add('loading');
+  for (const row of devicePickIosRows.concat(devicePickAndroidRows)) {
+    row.checkbox.disabled = true;
+  }
+  devicePickLoading.style.display = '';
+  devicePickOk.disabled = true;
+  devicePickHostSelect.disabled = true;
+}
+
+/** 応答(成功・失敗どちらでも)が届いたら操作を戻す。ここで戻さないとホストを二度と切り替えられない。 */
+function endDevicePickLoading() {
+  devicePickList.classList.remove('loading');
+  devicePickLoading.style.display = 'none';
+  devicePickHostSelect.disabled = false;
+  // **行のチェックも戻す**。begin 側で無効化しているので、ここで戻さないと取得に失敗したとき
+  // 見た目は通常なのに全行が反応しない状態が残る(2026-08-17 のレビュー指摘)。
+  // 応答が来て再描画される場合は新しい行に置き換わるため二重には効かない
+  for (const row of devicePickIosRows.concat(devicePickAndroidRows)) {
+    row.checkbox.disabled = false;
+  }
+}
+
 // 作成成功後、モーダルが開いていれば一覧を再取得する(他行の未確定差分は破棄される。単純さ優先)。
 function reloadDevicePickIfOpen() {
   if (!devicePickOpen) {
     return;
   }
-  devicePickError.classList.add('info');
-  devicePickError.textContent = t('wvMonitor.devicePick.loading');
-  devicePickOk.disabled = true;
+  beginDevicePickLoading();
   vscode.postMessage({ type: 'installedDevicesRequest', source: currentDeviceSource() });
 }
 
@@ -805,20 +888,12 @@ function openDevicePickModal() {
   devicePickOpen = true;
   devicePickAdding = false;
   pendingAutoCheck = null; // 前回開いた際の残留分があれば捨てて、新規セッションはクリーンに始める
-  devicePickIosRows = [];
-  devicePickAndroidRows = [];
-  devicePickIosBody.textContent = '';
-  devicePickAndroidBody.textContent = '';
-  // 台数確定前の見出し。確定後は renderDevicePickGroups が台数付きに差し替える
-  devicePickIosTitle.textContent = t('wvMonitor.devicePick.iosTitle');
-  devicePickAndroidTitle.textContent = t('wvMonitor.devicePick.androidTitle');
-  devicePickError.classList.add('info');
-  devicePickError.textContent = t('wvMonitor.devicePick.loading');
-  devicePickOk.disabled = true;
   devicePickOk.textContent = 'OK';
   devicePickCancel.disabled = false;
   const machine = findMachine(selectedMachine);
+  // ホストを先に確定させてから取得表示を出す(表示に「どこから取るか」を載せるため)
   resetDevicePickHost(machine ? machine.host ?? null : null);
+  beginDevicePickLoading();
   devicePickOverlay.classList.add('visible');
   vscode.postMessage({ type: 'installedDevicesRequest', source: currentDeviceSource() });
 }
@@ -829,10 +904,12 @@ function closeDevicePickModal() {
   }
   devicePickOpen = false;
   pendingAutoCheck = null; // 閉じた後に届く installedDevices 応答で誤適用しないようクリアする
+  closeDevicePickDeleteMenu();
   devicePickOverlay.classList.remove('visible');
 }
 
 export function applyInstalledDevices(message) {
+  endDevicePickLoading();
   if (message.ok && message.data) {
     // モーダルが閉じていてもキャッシュだけは更新する(編集フォームが使うため)
     cachePhysicalDeviceInfo(message.data);
@@ -870,6 +947,90 @@ export function applyMachineDevicesSyncResult(message) {
   devicePickError.classList.remove('info');
   devicePickError.textContent = message.error || t('wvMonitor.devicePick.syncFailed');
 }
+
+// ---- 行の右クリックメニュー(削除。#device-pick-delete-menu) --------------------------
+// machineProfilesTab.js の #machine-device-menu(プロファイルからの除去)と見た目・挙動は同じ
+// パターンだが、DOM 要素・対象は独立させている(こちらはホスト上の実体を消す)。
+
+function closeDevicePickDeleteMenu() {
+  if (!devicePickDeleteMenuEntry) {
+    return;
+  }
+  devicePickDeleteMenuEntry = null;
+  devicePickDeleteMenu.classList.remove('visible');
+}
+
+function openDevicePickDeleteMenu(entry, clientX, clientY) {
+  devicePickDeleteMenuEntry = entry;
+  devicePickDeleteMenu.classList.add('visible');
+  clampMenuPosition(devicePickDeleteMenu, clientX, clientY);
+}
+
+// その行だけ操作不可にする(checkbox 無効化 + 薄く表示。他の行・OK/Cancel は引き続き操作できる)。
+function setDevicePickRowDeleting(rowEl, checkbox, deleting) {
+  rowEl.classList.toggle('deleting', deleting);
+  checkbox.disabled = deleting;
+}
+
+devicePickDeleteMenuItemBtn.addEventListener('click', (event) => {
+  event.stopPropagation();
+  const entry = devicePickDeleteMenuEntry;
+  closeDevicePickDeleteMenu();
+  if (!entry || devicePickDeletingIdentifiers.has(entry.identifier)) {
+    return;
+  }
+  devicePickDeletingIdentifiers.add(entry.identifier);
+  setDevicePickRowDeleting(entry.rowEl, entry.checkbox, true);
+  vscode.postMessage({
+    type: 'devicePickDeviceDelete',
+    platform: entry.platform,
+    identifier: entry.identifier,
+    name: entry.name,
+    source: currentDeviceSource(),
+  });
+});
+
+// devicePickDeviceDelete への応答。確認モーダル(ホスト側)を含めると数秒かかるため、その間に
+// ダイアログを閉じ直されうる(closeDevicePickModal は削除中でも通す設計)。行が現存すれば
+// 操作可能に戻し、モーダルが閉じていれば表示更新はしない(applyInstalledDevices と同じ方針。
+// 失敗・referencedBy の通知はホスト側の vscode 通知が担うため、閉じていても利用者に届く)。
+export function applyDevicePickDeviceDeleteResult(message) {
+  devicePickDeletingIdentifiers.delete(message.identifier);
+  const row =
+    devicePickIosRows.find((r) => r.device && r.device.udid === message.identifier) ||
+    devicePickAndroidRows.find((r) => r.avd && r.avd.id === message.identifier);
+  if (row) {
+    setDevicePickRowDeleting(row.rowEl, row.checkbox, false);
+  }
+  if (message.ok) {
+    // 削除できた実体を一覧から落とすため取り直す(reloadDevicePickIfOpen は devicePickOpen を
+    // 見て自分で no-op になる)。
+    reloadDevicePickIfOpen();
+    return;
+  }
+  if (!devicePickOpen) {
+    return;
+  }
+  devicePickError.classList.remove('info');
+  devicePickError.textContent = message.error || t('wvMonitor.devicePick.deleteFailed');
+}
+
+document.addEventListener('click', (event) => {
+  if (devicePickDeleteMenuEntry && !devicePickDeleteMenu.contains(event.target)) {
+    closeDevicePickDeleteMenu();
+  }
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || !devicePickDeleteMenuEntry) {
+    return;
+  }
+  closeDevicePickDeleteMenu();
+  event.preventDefault();   // メニューを閉じただけで、奥のダイアログは閉じない
+});
+document.addEventListener('scroll', () => closeDevicePickDeleteMenu(), true);
+window.addEventListener('resize', () => closeDevicePickDeleteMenu());
+// 行上の contextmenu は stopPropagation 済み。行外で右クリックした場合に残さないためのガード。
+document.addEventListener('contextmenu', () => closeDevicePickDeleteMenu());
 
 btnDeviceAddExisting.addEventListener('click', () => openDevicePickModal());
 devicePickAddNewBtn.addEventListener('click', () => openDeviceAddModal());
@@ -927,13 +1088,12 @@ devicePickOk.addEventListener('click', () => {
   devicePickError.textContent = '';
   vscode.postMessage({ type: 'machineDevicesSync', machine: selectedMachine, add: add, remove: remove, source: currentDeviceSource() });
 });
-// #device-add-overlay をこのモーダルの上に重ねて開けるため、deviceAddOpen 中は Esc で奥の
-// このモーダルまで閉じないよう先にチェックする(手前側は自身の Esc ハンドラで閉じる)。
+// 手前(追加ダイアログ・削除メニュー)が消費した Esc では閉じない。判定は
+// event.defaultPrevented ―― deviceAddOpen を見る形だと、手前が先に閉じてフラグを下ろした後に
+// ここが走り、2枚同時に閉じる(登録順に依存する読み合いになっていた)。
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') {
-    if (deviceAddOpen) {
-      return;
-    }
-    closeDevicePickModal();
+  if (event.key !== 'Escape' || event.defaultPrevented) {
+    return;
   }
+  closeDevicePickModal();
 });
