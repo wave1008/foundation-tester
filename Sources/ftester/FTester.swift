@@ -714,7 +714,8 @@ struct RunScenarios: AsyncParsableCommand {
     @Option(help: ArgumentHelp("Dispatch this run across a fleet of hosts in parallel: "
         + "profiles/fleets/<name>.json (docs/remote-runner.md §13). Each entry runs as its own "
         + "child process, with output lines prefixed by the entry's host name. Mutually exclusive "
-        + "with --host/--profile/--ports/--failed/--report-dir/--skip-build/--junit. Experimental"))
+        + "with --host/--profile/--ports/--failed/--report-dir/--skip-build. --junit is supported: "
+        + "each entry's report is merged into one file (docs/remote-runner.md §8). Experimental"))
     var fleet: String?
 
     @Flag(help: ArgumentHelp("With --fleet: distribute the scenario set across the fleet's entries "
@@ -745,10 +746,6 @@ struct RunScenarios: AsyncParsableCommand {
             if failed { throw ValidationError("--fleet cannot be combined with --failed") }
             if reportDir != nil { throw ValidationError("--fleet cannot be combined with --report-dir") }
             if skipBuild { throw ValidationError("--fleet cannot be combined with --skip-build") }
-            if junit != nil {
-                throw ValidationError("--fleet cannot be combined with --junit "
-                    + "(each entry writes its own report; there is no merged fleet-wide JUnit yet)")
-            }
         }
         if split, fleet == nil {
             throw ValidationError("--split requires --fleet")
@@ -967,7 +964,7 @@ struct RunScenarios: AsyncParsableCommand {
             heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
             fastInput: fastInput, enableAnimations: enableAnimations, performanceMode: performanceMode,
             forceLock: forceLock, remoteDir: remoteDir, remoteTimeout: remoteTimeout,
-            remoteArtifacts: remoteArtifacts, split: split, quiet: quiet)
+            remoteArtifacts: remoteArtifacts, split: split, quiet: quiet, junit: junit)
         if exitCode != 0 {
             throw ExitCode(exitCode)
         }

@@ -29,11 +29,17 @@ enum FleetRunner {
         heal: Bool, noHeal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
         fastInput: Bool, enableAnimations: Bool, performanceMode: Bool,
         forceLock: Bool, remoteDir: String?, remoteTimeout: Int?, remoteArtifacts: String,
-        split: Bool, quiet: Bool
+        split: Bool, quiet: Bool, junit: String?
     ) async throws -> Int32 {
         try preflightFolders(folders, project: project, fleetName: fleetName)
 
-        // --split は別経路(FleetSplit.swift の項参照)。**この分岐より下は無改修**
+        // --junit: 各エントリの子プロセスへ一時パスの --junit を渡し、全エントリ終了後に
+        // FTCore.JUnitMerge で1本へ結合する(docs/remote-runner.md §8)。--split でも同じ
+        // 仕組みを使うため一時ディレクトリの生成・削除はここで一度だけ行う
+        let junitTempDir = try makeJUnitTempDir(requested: junit)
+        defer { if let junitTempDir { try? FileManager.default.removeItem(at: junitTempDir) } }
+
+        // --split は別経路(FleetSplit.swift の項参照)。**この分岐より下は --junit 配線を除き無改修**
         // (プレーンな --fleet の挙動を1バイトも変えない契約)
         if split {
             return try await runSplit(
@@ -42,7 +48,7 @@ enum FleetRunner {
                 heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
                 fastInput: fastInput, enableAnimations: enableAnimations, performanceMode: performanceMode,
                 forceLock: forceLock, remoteDir: remoteDir, remoteTimeout: remoteTimeout,
-                remoteArtifacts: remoteArtifacts, quiet: quiet)
+                remoteArtifacts: remoteArtifacts, quiet: quiet, junit: junit, junitTempDir: junitTempDir)
         }
 
         let binary = selfBinaryPath()
@@ -58,7 +64,8 @@ enum FleetRunner {
                         fastInput: fastInput, enableAnimations: enableAnimations,
                         performanceMode: performanceMode, forceLock: forceLock,
                         remoteDir: remoteDir, remoteTimeout: remoteTimeout,
-                        remoteArtifacts: remoteArtifacts, quiet: quiet)
+                        remoteArtifacts: remoteArtifacts, quiet: quiet,
+                        junitPath: entryJUnitPath(tempDir: junitTempDir, index: index))
                     let start = Date()
                     let exitCode = await runEntry(binary: binary, args: args, hostLabel: entry.host)
                     return (index, FleetEntryOutcome(
@@ -72,6 +79,10 @@ enum FleetRunner {
         }
 
         printSummary(fleetName: fleetName, outcomes: outcomes)
+        if let junit, let junitTempDir {
+            mergeAndWriteJUnit(junit: junit, project: project.name, tempDir: junitTempDir,
+                                entries: fleet.runs.enumerated().map { (host: $0.element.host, index: $0.offset) })
+        }
         return FleetProfile.aggregateExitCode(outcomes.map(\.exitCode))
     }
 
@@ -99,7 +110,7 @@ enum FleetRunner {
         heal: Bool, noHeal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
         fastInput: Bool, enableAnimations: Bool, performanceMode: Bool,
         forceLock: Bool, remoteDir: String?, remoteTimeout: Int?, remoteArtifacts: String,
-        quiet: Bool
+        quiet: Bool, junit: String?, junitTempDir: URL?
     ) async throws -> Int32 {
         log("==> fleet \"\(fleetName)\" --split: building \(project.name) locally to resolve"
             + " the scenario list (plain --fleet skips this build)")
@@ -168,7 +179,8 @@ enum FleetRunner {
                         fastInput: fastInput, enableAnimations: enableAnimations,
                         performanceMode: performanceMode, forceLock: forceLock,
                         remoteDir: remoteDir, remoteTimeout: remoteTimeout,
-                        remoteArtifacts: remoteArtifacts, quiet: quiet)
+                        remoteArtifacts: remoteArtifacts, quiet: quiet,
+                        junitPath: entryJUnitPath(tempDir: junitTempDir, index: index))
                     let start = Date()
                     let exitCode = await runEntry(binary: binary, args: args, hostLabel: entry.host)
                     return (index, FleetEntryOutcome(
@@ -182,6 +194,12 @@ enum FleetRunner {
         }
 
         printSplitSummary(fleetName: fleetName, fleet: fleet, outcomes: outcomes, buckets: buckets)
+        // active だけを対象にする(0本割当で見送ったエントリは --junit を渡していないので
+        // 「出力が無い」合成失敗の対象に含めない)
+        if let junit, let junitTempDir {
+            mergeAndWriteJUnit(junit: junit, project: project.name, tempDir: junitTempDir,
+                                entries: active.map { (host: $0.1.host, index: $0.0) })
+        }
         return FleetProfile.aggregateExitCode(outcomes.map(\.exitCode))
     }
 
@@ -314,7 +332,7 @@ enum FleetRunner {
         heal: Bool, noHeal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
         fastInput: Bool, enableAnimations: Bool, performanceMode: Bool,
         forceLock: Bool, remoteDir: String?, remoteTimeout: Int?, remoteArtifacts: String,
-        quiet: Bool
+        quiet: Bool, junitPath: String?
     ) -> [String] {
         var args = ["run", "--project", project, "--profile", entry.profile]
         if entry.host != "local" {
@@ -334,7 +352,52 @@ enum FleetRunner {
         if enableAnimations { args += ["--enable-animations"] }
         if performanceMode { args += ["--performance"] }
         if quiet { args += ["--quiet"] }
+        // リモートエントリでも同じ --junit 中継でよい: RemoteRunDispatcher.dispatch が
+        // localJUnitPath(= このパス)へリモートの JUnit を回収して書く(RemoteRunDispatcher.swift)
+        if let junitPath { args += ["--junit", junitPath] }
         return args
+    }
+
+    // MARK: - --junit の集約(docs/remote-runner.md §8)
+
+    /// エントリごとの一時 --junit 出力を集める作業ディレクトリ。junit が指定されていなければ nil
+    /// (通常の --fleet の挙動を変えない)
+    private static func makeJUnitTempDir(requested junit: String?) throws -> URL? {
+        guard junit != nil else { return nil }
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ftester-fleet-junit-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    /// エントリの index ごとに固定のファイル名にする(host は "user@host" 等ファイル名に
+    /// 使えない文字を含みうるため、host 文字列は使わない)
+    private static func entryJUnitPath(tempDir: URL?, index: Int) -> String? {
+        tempDir?.appendingPathComponent("entry-\(index).xml").path
+    }
+
+    /// entries に挙げたぶんだけを FTCore.JUnitMerge へ渡して結合する。**渡すのはディスパッチした
+    /// (= --junit を付けて子プロセスを起動した)エントリだけにする** —— --split で0本割当のため
+    /// 送らなかったエントリまで含めると「出力が無い」合成失敗にされ、走らせてもいない結果が
+    /// 赤として報告される。書き込み失敗は run の成否を変えない(warn のみ。単発 --junit と同じ規律)
+    private static func mergeAndWriteJUnit(
+        junit: String, project: String, tempDir: URL, entries: [(host: String, index: Int)]
+    ) {
+        let merged = entries.map { entry -> JUnitMerge.Entry in
+            let path = tempDir.appendingPathComponent("entry-\(entry.index).xml").path
+            let xml = try? String(contentsOfFile: path, encoding: .utf8)
+            return JUnitMerge.Entry(host: entry.host, xml: (xml?.isEmpty == false) ? xml : nil)
+        }
+        do {
+            let xml = JUnitMerge.merge(merged, project: project)
+            let url = URL(fileURLWithPath: junit)
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try xml.write(to: url, atomically: true, encoding: .utf8)
+            log("📄 JUnit report: \(junit) (\(entries.count) entr\(entries.count == 1 ? "y" : "ies") merged)")
+        } catch {
+            log("⚠️ Failed to write the merged JUnit report: \(junit) (\(error.localizedDescription))")
+        }
     }
 
     /// 実行中の ftester バイナリ自身の絶対パス(このプロセスを子として再起動する)
