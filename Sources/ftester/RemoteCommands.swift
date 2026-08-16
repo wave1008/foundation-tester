@@ -4,6 +4,8 @@
 // (RemoteStatusProbe/RemoteCleanPlan、単体テスト対象)。ssh の張り方は
 // Sources/ftester/RemoteRunDispatcher.swift と同じ規律(BatchMode=yes・ConnectTimeout=10)だが
 // そちらは private のため複製する。
+// `remote setup` / `remote exec` は Sources/ftester/RemoteSetupCommand.swift(RemoteCommand の
+// extension として Setup/Exec を定義。ここではサブコマンド一覧への登録だけ行う)。
 
 import ArgumentParser
 import FTBridgeClient
@@ -17,8 +19,9 @@ private let remoteSSHBase = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout
 struct RemoteCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "remote",
-        abstract: "Fleet operations for --host dispatch: diagnose and clean up remote runners (docs/remote-runner.md §16.4/§16.5)",
-        subcommands: [Status.self, Clean.self])
+        abstract: "Fleet operations for --host dispatch: provision, diagnose, clean up and query remote runners "
+            + "(docs/remote-runner.md §14/§16.4/§16.5)",
+        subcommands: [Status.self, Clean.self, Setup.self, Exec.self])
 
     // MARK: - status
 

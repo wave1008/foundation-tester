@@ -746,4 +746,30 @@ final class RemoteDispatchTests: XCTestCase {
             XCTAssertFalse(RemoteRelay.isMachineReadableLine(line), line)
         }
     }
+
+    // MARK: - RemoteShell.remoteExecCommand
+
+    func testRemoteExecCommand() {
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
+        let command = RemoteShell.remoteExecCommand(layout: layout, args: ["doctor", "--fm-only"])
+        let binary = "/Users/ci/ftester-runner/foundation-tester/.build/debug/ftester"
+        XCTAssertEqual(command,
+            "cd '/Users/ci/ftester-runner/work' && export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\" && test -x '\(binary)' || "
+            + "{ echo \"ftester binary not found on remote — run: swift build --product ftester\" >&2; exit 90; } && "
+            + "'\(binary)' 'doctor' '--fm-only'")
+    }
+
+    /// 照会・単発操作が目的で、run 専用の `project sync` を混ぜてはいけない
+    /// (remoteRunCommand との唯一の差分。壊すと remote exec のたびに無駄な sync が走る)
+    func testRemoteExecCommandDoesNotSyncProject() {
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
+        let command = RemoteShell.remoteExecCommand(layout: layout, args: ["devices", "down"])
+        XCTAssertFalse(command.contains("project sync"), command)
+    }
+
+    func testRemoteExecCommandQuotesEachArgumentIndependently() {
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
+        let command = RemoteShell.remoteExecCommand(layout: layout, args: ["api", "device-catalog"])
+        XCTAssertTrue(command.hasSuffix("'api' 'device-catalog'"), command)
+    }
 }

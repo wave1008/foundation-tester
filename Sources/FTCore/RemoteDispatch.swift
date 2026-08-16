@@ -482,6 +482,19 @@ public enum RemoteShell {
         let pathCmd = "export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\""
         return "cd \(quote(layout.workDir)) && \(pathCmd) && \(guardCmd) && \(syncCmd) && \(launch)"
     }
+
+    /// `ftester remote exec`(docs/remote-runner.md §14「単発コマンドの転送は汎用化する」)。
+    /// remoteRunCommand と同じ PATH 補正・バイナリ不在 exit 90 の規律を踏襲するが、
+    /// **project sync は撃たない** — 照会・単発操作が目的で、同期は run 専用の前処理だから
+    public static func remoteExecCommand(layout: RemoteLayout, args: [String]) -> String {
+        let binary = quote(layout.binary)
+        let guardCmd = "test -x \(binary) || { echo \"ftester binary not found on remote"
+            + " — run: swift build --product ftester\" >&2; exit 90; }"
+        let quotedArgs = args.map(quote).joined(separator: " ")
+        let launch = "\(binary) \(quotedArgs)"
+        let pathCmd = "export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\""
+        return "cd \(quote(layout.workDir)) && \(pathCmd) && \(guardCmd) && \(launch)"
+    }
 }
 
 public enum RemotePathRewrite {

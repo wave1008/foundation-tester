@@ -1,0 +1,174 @@
+// RemoteSetup.swift
+// `ftester remote setup` (docs/remote-runner.md §14) の純粋ロジック。
+// scp/ssh の起動・確認プロンプトは Sources/ftester/RemoteSetupCommand.swift 側(単体テスト対象外)。
+// RemoteShell/RemoteLayout/RemoteProbe 等は Sources/FTCore/RemoteDispatch.swift(同じ規律を踏襲する)。
+
+import Foundation
+
+public enum RemoteSetupError: Error, LocalizedError, Equatable {
+    case invalidRevision(String)
+    case unsafeUninstallBase(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .invalidRevision(let detail):
+            return "invalid revision: \(detail)"
+        case .unsafeUninstallBase(let detail):
+            return "refusing to uninstall: \(detail)"
+        }
+    }
+}
+
+/// `Scripts/preflight.sh --runner` の exit code(docs/remote-runner.md §14「構成」)。
+/// ready=0 / needsManual=2 / blocked=1。それ以外は想定外(unknown)として扱う
+public enum RemotePreflightVerdict: Equatable, Sendable {
+    case ready
+    case needsManual
+    case blocked
+    case unknown(Int32)
+}
+
+/// `Scripts/install.sh` の `record()` が使う4状態と同じ語彙(1ステップ1行の逐次表示。
+/// docs/remote-runner.md §14「構成」/ CLAUDE.md「画面は各ステップ1行(逐次)」)
+public enum RemoteSetupStepStatus: String, Equatable, Sendable {
+    case ok, warn, fail, skip
+}
+
+/// install.sh の `step_line()`/`status_icon()` と同じ書式("<icon> [<status>] <name>: <detail>")。
+/// bash と Swift にまたがるが、受け手が同じ体裁で読めるよう揃える。行頭の `[status]` は
+/// 機械可読用(エージェントが warn/fail を拾う。install.sh 側のコメントと同じ理由)
+public enum RemoteSetupStepLine {
+    public static func render(name: String, status: RemoteSetupStepStatus, detail: String) -> String {
+        "\(icon(status)) [\(status.rawValue)] \(name): \(detail)"
+    }
+
+    private static func icon(_ status: RemoteSetupStepStatus) -> String {
+        switch status {
+        case .ok: return "✅"
+        case .warn: return "⚠️ "
+        case .fail: return "❌"
+        case .skip: return "⏭️ "
+        }
+    }
+}
+
+/// 集計行(install.sh の `print_summary` と同じ計上: warn/fail はどちらも「要対応」に数える)
+public struct RemoteSetupSummary: Equatable, Sendable {
+    public let ok: Int
+    public let skip: Int
+    public let needsAttention: Int
+
+    public init(statuses: [RemoteSetupStepStatus]) {
+        ok = statuses.filter { $0 == .ok }.count
+        skip = statuses.filter { $0 == .skip }.count
+        needsAttention = statuses.filter { $0 == .warn || $0 == .fail }.count
+    }
+
+    public var line: String {
+        "✅ done \(ok) / ⏭️ skipped \(skip) / ⚠️ needs attention \(needsAttention)"
+    }
+}
+
+public enum RemoteSetupPlan {
+
+    /// `Scripts/install.sh` へ渡す引数列(docs/remote-runner.md §14「構成」の並びのまま)。
+    /// `--tool-root` は渡さない — 既定の `<work-dir>/../foundation-tester` が
+    /// `RemoteLayout.toolRoot` とちょうど一致する(§12 の layout 設計。RemoteLayout.swift 参照)
+    public static func installArgs(workDir: String, projectName: String) -> [String] {
+        [
+            "--work-dir", workDir,
+            "--name", projectName,
+            "--skip-extension",
+            "--skip-mcp",
+            "--skip-claude-md",
+            "--no-next-steps",
+        ]
+    }
+
+    /// `Scripts/preflight.sh` へ渡す引数列
+    public static func preflightArgs(base: String) -> [String] {
+        ["--runner", "--base", base]
+    }
+
+    public static func preflightVerdict(exitCode: Int32) -> RemotePreflightVerdict {
+        switch exitCode {
+        case 0: return .ready
+        case 2: return .needsManual
+        case 1: return .blocked
+        default: return .unknown(exitCode)
+        }
+    }
+
+    /// install.sh が要求する前提(`[ -d "$WORK_DIR" ]`)を満たすためのコマンド。初回はリモートに
+    /// work/ が無いため、scp+実行より前に必ず一度これを通す
+    public static func ensureWorkDirCommand(layout: RemoteLayout) -> String {
+        "mkdir -p \(RemoteShell.quote(layout.workDir))"
+    }
+
+    /// scp 済みのローカルスクリプトをリモートで実行し、終了コードに関わらず一時ファイルを消す。
+    /// `$?` を保存してから `rm` し、保存した値で exit する(失敗パスでも一時ファイルを残さない)。
+    ///
+    /// **保存先を `status` にしない** —— ssh が起こすのは受け手のログインシェルで、macOS の既定は
+    /// zsh。zsh では `status` が `$?` の読み取り専用エイリアスなので、代入が
+    /// `read-only variable: status` で失敗し、**中のスクリプトの終了コードが zsh のエラーに化けて
+    /// 消える**(preflight の needs-manual=2 が 1 に化け blocked と誤報した。rm も実行されず
+    /// 一時ファイルが残った。2026-08-16 に localhost で実測)
+    public static func runAndCleanupCommand(remotePath: String, args: [String]) -> String {
+        let script = RemoteShell.quote(remotePath)
+        let quotedArgs = args.map(RemoteShell.quote).joined(separator: " ")
+        return "bash \(script) \(quotedArgs); ft_status=$?; rm -f \(script); exit $ft_status"
+    }
+
+    /// git revision として埋め込む前の検証(16進 7〜40 文字のみ)。
+    /// `alignRevisionCommand` へ渡す前に必ず呼ぶこと(`RemoteLayout.validateBase` と同じ、
+    /// コマンドへ埋める前に入口で落とす規律)
+    public static func validateRevision(_ raw: String) throws {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard (7...40).contains(trimmed.count),
+              trimmed.unicodeScalars.allSatisfy(hexDigits.contains) else {
+            throw RemoteSetupError.invalidRevision(
+                "must be a 7-40 character hex git revision: \"\(raw)\"")
+        }
+    }
+
+    private static let hexDigits = CharacterSet(charactersIn: "0123456789abcdefABCDEF")
+
+    /// リモートのクローンを発行側と同じコミットへ合わせ、`ftester` バイナリを作り直す
+    /// (docs/remote-runner.md §14 ステップ3 相当)。呼び出し側は `validateRevision` を先に通すこと
+    /// (ここでは検証しない — 検証は1箇所、埋め込みは複数箇所から呼ばれ得るため分離してある)
+    public static func alignRevisionCommand(layout: RemoteLayout, revision: String) -> String {
+        "cd \(RemoteShell.quote(layout.toolRoot)) && git fetch origin && "
+            + "git checkout \(RemoteShell.quote(revision)) && swift build --product ftester"
+    }
+
+    /// `--uninstall` が base ごと削除してよいかの判定(docs/remote-runner.md §14 撤去)。
+    /// 拒否理由: ①空・相対パス(想定外の解決) ②"/" 丸ごと ③$HOME そのもの(ランナーのホームごと
+    /// 消す) ④浅すぎる絶対パス(ルート直下1階層。例 "/tmp" "/etc" はシステムディレクトリ・
+    /// 他用途のディレクトリと衝突しやすい)。**$HOME 配下限定はしない** — `--remote-dir` は
+    /// home 外の専用ディスク(EC2 Mac 等)も許容する設計(docs/remote-runner.md §14)なので、
+    /// 深さと明白な危険パスだけで判定する
+    public static func validateUninstallBase(_ base: String, home: String) throws {
+        guard !base.isEmpty else {
+            throw RemoteSetupError.unsafeUninstallBase("base is empty")
+        }
+        guard base.hasPrefix("/") else {
+            throw RemoteSetupError.unsafeUninstallBase("base must be an absolute path: \"\(base)\"")
+        }
+        guard base != "/" else {
+            throw RemoteSetupError.unsafeUninstallBase("refusing to delete \"/\"")
+        }
+        let strippedHome = home.hasSuffix("/") ? String(home.dropLast()) : home
+        guard base != strippedHome else {
+            throw RemoteSetupError.unsafeUninstallBase("refusing to delete the HOME directory itself: \"\(base)\"")
+        }
+        let components = base.split(separator: "/", omittingEmptySubsequences: true)
+        guard components.count >= 2 else {
+            throw RemoteSetupError.unsafeUninstallBase(
+                "path is too shallow to delete automatically (needs at least 2 path components): \"\(base)\"")
+        }
+    }
+
+    public static func uninstallCommand(base: String) -> String {
+        "rm -rf \(RemoteShell.quote(base))"
+    }
+}
