@@ -54,15 +54,6 @@ export const runStrings = {
     en: "No previously failed scenarios (all passed or not yet run).",
   },
 
-  "run.remote.singleDeviceIgnored": {
-    ja: "⚠️ リモートホスト({host})が設定されていますが、単一デバイス実行(ライブ操作パネル連動)は常にローカルで実行されます。",
-    en: "⚠️ A remote host ({host}) is configured, but single-device runs (Live Control panel) always run locally.",
-  },
-  "run.remote.targetUnresolved": {
-    ja: "❌ リモート実行先「{target}」を解決できませんでした(未登録、または host が未設定です)。設定タブでホスト登録を確認してください。",
-    en: '❌ Could not resolve the remote target "{target}" (not registered, or its host is empty). Check the host list in the Settings tab.',
-  },
-
   "run.live.preparing": {
     ja: "ライブ操作パネルのデバイス準備(未起動なら起動)と画面同期を待機しています…",
     en: "Preparing the device in the Live Control panel (launching if needed) and waiting for screen sync…",

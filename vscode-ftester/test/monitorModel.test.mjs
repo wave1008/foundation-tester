@@ -316,20 +316,19 @@ test("isMonitorFromWebviewMessage: setTileAutoFit は boolean value のみ受理
   assert.equal(isMonitorFromWebviewMessage({ type: "setTileAutoFit", value: "true" }), false);
 });
 
-test("isMonitorFromWebviewMessage: setRemoteConfig は hosts[](name/host/dir)+target+artifacts なら true", () => {
+test("isMonitorFromWebviewMessage: setRemoteConfig は hosts[](name/host/dir)+artifacts なら true", () => {
   assert.equal(
     isMonitorFromWebviewMessage({
       type: "setRemoteConfig",
       hosts: [{ name: "mac-01", host: "user@mac-01", dir: "" }],
-      target: "mac-01",
       artifacts: "collect",
     }),
     true,
   );
-  // hosts 空配列 + target 空("" = ローカル)も正常値
+  // hosts 空配列も正常値
   assert.equal(
     isMonitorFromWebviewMessage({
-      type: "setRemoteConfig", hosts: [], target: "", artifacts: "on-demand",
+      type: "setRemoteConfig", hosts: [], artifacts: "on-demand",
     }),
     true,
   );
@@ -337,28 +336,27 @@ test("isMonitorFromWebviewMessage: setRemoteConfig は hosts[](name/host/dir)+ta
 
 test("isMonitorFromWebviewMessage: setRemoteConfig は artifacts 欠落・不正値なら false", () => {
   assert.equal(
-    isMonitorFromWebviewMessage({ type: "setRemoteConfig", hosts: [], target: "" }), false);
+    isMonitorFromWebviewMessage({ type: "setRemoteConfig", hosts: [] }), false);
   assert.equal(
     isMonitorFromWebviewMessage({
-      type: "setRemoteConfig", hosts: [], target: "", artifacts: "bogus",
+      type: "setRemoteConfig", hosts: [], artifacts: "bogus",
     }),
     false,
   );
 });
 
-test("isMonitorFromWebviewMessage: setRemoteConfig は hosts 要素の型不正・target 欠落なら false", () => {
-  assert.equal(isMonitorFromWebviewMessage({ type: "setRemoteConfig", hosts: [], target: undefined, artifacts: "collect" }), false);
+test("isMonitorFromWebviewMessage: setRemoteConfig は hosts 要素の型不正・hosts 欠落なら false", () => {
+  assert.equal(isMonitorFromWebviewMessage({ type: "setRemoteConfig", artifacts: "collect" }), false);
   assert.equal(
     isMonitorFromWebviewMessage({
       type: "setRemoteConfig",
       hosts: [{ name: "mac-01", host: 123, dir: "" }],
-      target: "",
       artifacts: "collect",
     }),
     false,
   );
   assert.equal(
-    isMonitorFromWebviewMessage({ type: "setRemoteConfig", hosts: "not-an-array", target: "", artifacts: "collect" }),
+    isMonitorFromWebviewMessage({ type: "setRemoteConfig", hosts: "not-an-array", artifacts: "collect" }),
     false,
   );
 });
@@ -995,6 +993,8 @@ const VALID_SYNC_ADD_ANDROID_ENTRY = {
   avd: "Pixel_9",
 };
 
+const LOCAL_SOURCE = { kind: "local" };
+
 test("isMonitorFromWebviewMessage: machineDevicesSync は add のみ非空(remove:[])なら true", () => {
   assert.equal(
     isMonitorFromWebviewMessage({
@@ -1002,6 +1002,7 @@ test("isMonitorFromWebviewMessage: machineDevicesSync は add のみ非空(remov
       machine: "M1",
       add: [VALID_SYNC_ADD_IOS_ENTRY, VALID_SYNC_ADD_ANDROID_ENTRY],
       remove: [],
+      source: LOCAL_SOURCE,
     }),
     true,
   );
@@ -1012,6 +1013,7 @@ test("isMonitorFromWebviewMessage: machineDevicesSync は add のみ非空(remov
       machine: "M1",
       add: [{ platform: "ios", name: "n" }],
       remove: [],
+      source: LOCAL_SOURCE,
     }),
     true,
   );
@@ -1024,6 +1026,7 @@ test("isMonitorFromWebviewMessage: machineDevicesSync は remove のみ非空(ad
       machine: "M1",
       add: [],
       remove: ["シミュ1"],
+      source: LOCAL_SOURCE,
     }),
     true,
   );
@@ -1036,8 +1039,31 @@ test("isMonitorFromWebviewMessage: machineDevicesSync は add/remove 両方非�
       machine: "M1",
       add: [VALID_SYNC_ADD_IOS_ENTRY],
       remove: ["シミュ1"],
+      source: { kind: "remote", host: "M1Max" },
     }),
     true,
+  );
+});
+
+test("isMonitorFromWebviewMessage: machineDevicesSync は source 欠落/不正なら false", () => {
+  assert.equal(
+    isMonitorFromWebviewMessage({
+      type: "machineDevicesSync",
+      machine: "M1",
+      add: [VALID_SYNC_ADD_IOS_ENTRY],
+      remove: [],
+    }),
+    false,
+  );
+  assert.equal(
+    isMonitorFromWebviewMessage({
+      type: "machineDevicesSync",
+      machine: "M1",
+      add: [VALID_SYNC_ADD_IOS_ENTRY],
+      remove: [],
+      source: { kind: "remote", host: "" },
+    }),
+    false,
   );
 });
 
@@ -1048,6 +1074,7 @@ test("isMonitorFromWebviewMessage: machineDevicesSync は machine 空文字な�
       machine: "",
       add: [VALID_SYNC_ADD_IOS_ENTRY],
       remove: [],
+      source: LOCAL_SOURCE,
     }),
     false,
   );
@@ -1055,34 +1082,50 @@ test("isMonitorFromWebviewMessage: machineDevicesSync は machine 空文字な�
 
 test("isMonitorFromWebviewMessage: machineDevicesSync は add/remove が両方空なら false", () => {
   assert.equal(
-    isMonitorFromWebviewMessage({ type: "machineDevicesSync", machine: "M1", add: [], remove: [] }),
+    isMonitorFromWebviewMessage({
+      type: "machineDevicesSync", machine: "M1", add: [], remove: [], source: LOCAL_SOURCE,
+    }),
     false,
   );
 });
 
 test("isMonitorFromWebviewMessage: machineDevicesSync は add が欠落/配列でなければ false", () => {
-  assert.equal(isMonitorFromWebviewMessage({ type: "machineDevicesSync", machine: "M1", remove: [] }), false);
   assert.equal(
-    isMonitorFromWebviewMessage({ type: "machineDevicesSync", machine: "M1", add: "not-array", remove: [] }),
+    isMonitorFromWebviewMessage({ type: "machineDevicesSync", machine: "M1", remove: [], source: LOCAL_SOURCE }),
+    false,
+  );
+  assert.equal(
+    isMonitorFromWebviewMessage({
+      type: "machineDevicesSync", machine: "M1", add: "not-array", remove: [], source: LOCAL_SOURCE,
+    }),
     false,
   );
 });
 
 test("isMonitorFromWebviewMessage: machineDevicesSync は remove が欠落/配列でなければ false", () => {
-  assert.equal(isMonitorFromWebviewMessage({ type: "machineDevicesSync", machine: "M1", add: [] }), false);
   assert.equal(
-    isMonitorFromWebviewMessage({ type: "machineDevicesSync", machine: "M1", add: [], remove: "not-array" }),
+    isMonitorFromWebviewMessage({ type: "machineDevicesSync", machine: "M1", add: [], source: LOCAL_SOURCE }),
+    false,
+  );
+  assert.equal(
+    isMonitorFromWebviewMessage({
+      type: "machineDevicesSync", machine: "M1", add: [], remove: "not-array", source: LOCAL_SOURCE,
+    }),
     false,
   );
 });
 
 test("isMonitorFromWebviewMessage: machineDevicesSync は remove に空文字/非文字列要素を含むと false", () => {
   assert.equal(
-    isMonitorFromWebviewMessage({ type: "machineDevicesSync", machine: "M1", add: [], remove: [""] }),
+    isMonitorFromWebviewMessage({
+      type: "machineDevicesSync", machine: "M1", add: [], remove: [""], source: LOCAL_SOURCE,
+    }),
     false,
   );
   assert.equal(
-    isMonitorFromWebviewMessage({ type: "machineDevicesSync", machine: "M1", add: [], remove: [123] }),
+    isMonitorFromWebviewMessage({
+      type: "machineDevicesSync", machine: "M1", add: [], remove: [123], source: LOCAL_SOURCE,
+    }),
     false,
   );
 });
@@ -1094,6 +1137,7 @@ test("isMonitorFromWebviewMessage: machineDevicesSync は add 要素が不正な
       machine: "M1",
       add: [{ platform: "ios", name: "" }],
       remove: [],
+      source: LOCAL_SOURCE,
     }),
     false, // name 空文字
   );
@@ -2043,6 +2087,36 @@ test("syncDevicesInMachineProfile: トップレベルがオブジェクトでな
   assert.equal(syncDevicesInMachineProfile(null, [], ["x"]).ok, false);
   assert.equal(syncDevicesInMachineProfile([{ ios: {} }], [], ["x"]).ok, false);
   assert.equal(syncDevicesInMachineProfile("string", [], ["x"]).ok, false);
+});
+
+// ---- syncDevicesInMachineProfile: source(devicePickHost.js のホスト選択)による host 書き込み ----
+// 契約(monitorProfileForms.ts): add が非空かつ source.kind === "remote" のときだけ、選ばれたホスト名を
+// マシンプロファイルの host キーへ書く。local を選んだ・source を渡さない・remove のみ(add:[])の
+// いずれでも host は書かない(省略 = ローカルが CLI の既定であり、余計な差分を作らないため)。
+
+test("syncDevicesInMachineProfile: add + source:remote は host キーを書く", () => {
+  const result = syncDevicesInMachineProfile({}, [IOS_ADD_ENTRY], [], { kind: "remote", host: "M1Max" });
+  assert.equal(result.ok, true);
+  assert.equal(result.object.host, "M1Max");
+});
+
+test("syncDevicesInMachineProfile: add + source:local は host キーを書かない", () => {
+  const result = syncDevicesInMachineProfile({}, [IOS_ADD_ENTRY], [], { kind: "local" });
+  assert.equal(result.ok, true);
+  assert.equal("host" in result.object, false);
+});
+
+test("syncDevicesInMachineProfile: source を渡さない場合は従来どおり host キーを書かない", () => {
+  const result = syncDevicesInMachineProfile({}, [IOS_ADD_ENTRY], []);
+  assert.equal(result.ok, true);
+  assert.equal("host" in result.object, false);
+});
+
+test("syncDevicesInMachineProfile: remove のみ(add:[])は source:remote でも host キーを書かない", () => {
+  const profile = { ios: { devices: [{ name: "削除対象", udid: "EXISTING" }] } };
+  const result = syncDevicesInMachineProfile(profile, [], ["削除対象"], { kind: "remote", host: "M1Max" });
+  assert.equal(result.ok, true);
+  assert.equal("host" in result.object, false);
 });
 
 // ---- parseRunProfileForForm ----

@@ -381,7 +381,7 @@ class MonitorPanelController implements vscode.Disposable {
 
   /**
    * 設定タブのリモートホスト行編集(追加・削除・name/host/dir 変更)を CLI 登録簿へ反映する。
-   * lastKnownRemoteHosts との差分だけを送る(diffRemoteHostsForSync)ので、target/artifacts のみの
+   * lastKnownRemoteHosts との差分だけを送る(diffRemoteHostsForSync)ので、artifacts のみの
    * 変更(hosts は不変)では CLI を叩かない。削除→追加(import は upsert)の順で送ることで、
    * rename(同じ行の name 変更)も「旧名を消し新名を作る」として正しく扱える。
    * CLI 呼び出しが失敗した行は lastKnownRemoteHosts に残らない(=書き込めなかったことが
@@ -389,7 +389,6 @@ class MonitorPanelController implements vscode.Disposable {
    */
   private async syncRemoteHostsFromWebview(
     hosts: readonly RemoteHostEntry[],
-    target: string,
     artifacts: "collect" | "on-demand",
   ): Promise<void> {
     const deps = this.remoteHostsDeps();
@@ -411,14 +410,8 @@ class MonitorPanelController implements vscode.Disposable {
 
     const remoteConfiguration = vscode.workspace.getConfiguration("ftester");
     void remoteConfiguration.update("remote.artifacts", artifacts, vscode.ConfigurationTarget.Global);
-    // 削除/リネームで target の指す先(name)が消えている場合は、黙ってローカルへフォールバック
-    // させず target 自体を "" に戻す(runHandler.ts の resolveRemoteDispatchTarget が「未登録」を
-    // 検出する前に、ここで目に見える形に補正する)。
-    const targetStillValid = target === "" || finalHosts.some((h) => h.name === target);
-    const nextTarget = targetStillValid ? target : "";
-    void remoteConfiguration.update("remote.target", nextTarget, vscode.ConfigurationTarget.Global);
     // CLI が返した確定形(書き込めなかった行の除外・machine の実値を含む)で webview を必ず作り直す。
-    this.post({ type: "remoteConfig", hosts: finalHosts, target: nextTarget, artifacts });
+    this.post({ type: "remoteConfig", hosts: finalHosts, artifacts });
   }
 
   private hydrateLaneUi(): void {
@@ -633,7 +626,7 @@ class MonitorPanelController implements vscode.Disposable {
         break;
       case "setRemoteConfig": {
         const artifacts = message.artifacts === "on-demand" ? "on-demand" : "collect";
-        void this.syncRemoteHostsFromWebview(message.hosts, message.target, artifacts);
+        void this.syncRemoteHostsFromWebview(message.hosts, artifacts);
         break;
       }
       case "setTilePaneHeight":
@@ -703,16 +696,15 @@ class MonitorPanelController implements vscode.Disposable {
       value: vscode.workspace.getConfiguration("ftester").get<"auto" | "ja" | "en">("language", "auto"),
     });
     {
-      // hosts の正は CLI の LocalConfig(docs/remote-runner.md §13「原則」)。target/artifacts は
+      // hosts の正は CLI の LocalConfig(docs/remote-runner.md §13「原則」)。artifacts は
       // 引き続き VSCode 設定(config.ts の readConfig と同じ既定値)。fetch は非同期なので
       // fire-and-forget で送り直す(失敗しても他の初期化を止めない。update-check と同じ方針)。
       const remoteConfiguration = vscode.workspace.getConfiguration("ftester");
-      const target = remoteConfiguration.get<string>("remote.target", "").trim();
       const artifacts =
         remoteConfiguration.get<string>("remote.artifacts", "collect") === "on-demand" ? "on-demand" : "collect";
       void fetchRemoteHosts(this.remoteHostsDeps()).then((hosts) => {
         this.lastKnownRemoteHosts = hosts ?? [];
-        this.post({ type: "remoteConfig", hosts: this.lastKnownRemoteHosts, target, artifacts });
+        this.post({ type: "remoteConfig", hosts: this.lastKnownRemoteHosts, artifacts });
       });
     }
     if (this.tilePaneHeight !== undefined) {

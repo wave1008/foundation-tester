@@ -1,76 +1,16 @@
 // remoteRunArgs.test.mjs
-// remoteRunArgs.ts(resolveRemoteTarget/buildRemoteRunArgs/normalizeRemoteHosts/
-// parseRemoteHostsResponse/diffRemoteHostsForSync)のユニットテスト。node:test で実行する。
+// remoteRunArgs.ts(normalizeRemoteHosts/parseRemoteHostsResponse/diffRemoteHostsForSync/
+// deviceCommandArgs)のユニットテスト。node:test で実行する。
 // esbuild が "../src/remoteRunArgs"(拡張子なし)を remoteRunArgs.ts に解決してバンドルする。
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  buildRemoteRunArgs,
   deviceCommandArgs,
   diffRemoteHostsForSync,
   normalizeRemoteHosts,
   parseRemoteHostsResponse,
-  resolveRemoteTarget,
 } from "../src/remoteRunArgs";
-
-const HOSTS = [
-  { name: "mac-01", host: "user@mac-01", dir: "", machine: "" },
-  { name: "mac-02", host: "mac-02", dir: "/Users/ci/ftester-runner", machine: "M2Ultra" },
-  { name: "broken", host: "", dir: "", machine: "" },
-];
-
-test("resolveRemoteTarget: target 空 → local", () => {
-  assert.deepEqual(resolveRemoteTarget("", HOSTS), { kind: "local" });
-  assert.deepEqual(resolveRemoteTarget("   ", HOSTS), { kind: "local" });
-});
-
-test("resolveRemoteTarget: hosts と一致 → remote(entry を返す)", () => {
-  assert.deepEqual(resolveRemoteTarget("mac-01", HOSTS), { kind: "remote", entry: HOSTS[0] });
-});
-
-test("resolveRemoteTarget: hosts に無い名前 → error", () => {
-  assert.deepEqual(resolveRemoteTarget("no-such-host", HOSTS), { kind: "error", target: "no-such-host" });
-});
-
-test("resolveRemoteTarget: 一致するが host が空(壊れた登録) → error", () => {
-  assert.deepEqual(resolveRemoteTarget("broken", HOSTS), { kind: "error", target: "broken" });
-});
-
-test("buildRemoteRunArgs: dir 既定省略(host のみ)", () => {
-  assert.deepEqual(
-    buildRemoteRunArgs({ name: "mac-01", host: "user@mac-01", dir: "" }, "collect"),
-    ["--host", "user@mac-01"],
-  );
-});
-
-test("buildRemoteRunArgs: 全指定(host + dir)", () => {
-  assert.deepEqual(
-    buildRemoteRunArgs(
-      {
-        name: "mac-02",
-        host: "mac-02",
-        dir: "/Users/ci/ftester-runner",
-      },
-      "collect",
-    ),
-    ["--host", "mac-02", "--remote-dir", "/Users/ci/ftester-runner"],
-  );
-});
-
-test("buildRemoteRunArgs: artifacts=collect(既定) は --remote-artifacts を付けない", () => {
-  assert.deepEqual(
-    buildRemoteRunArgs({ name: "mac-01", host: "user@mac-01", dir: "" }, "collect"),
-    ["--host", "user@mac-01"],
-  );
-});
-
-test("buildRemoteRunArgs: artifacts=on-demand は --remote-artifacts on-demand を足す", () => {
-  assert.deepEqual(
-    buildRemoteRunArgs({ name: "mac-01", host: "user@mac-01", dir: "" }, "on-demand"),
-    ["--host", "user@mac-01", "--remote-artifacts", "on-demand"],
-  );
-});
 
 test("normalizeRemoteHosts: 配列でない/不正要素は除去", () => {
   assert.deepEqual(normalizeRemoteHosts(undefined), []);
@@ -88,7 +28,7 @@ test("normalizeRemoteHosts: name 空なら host を name に補完", () => {
   );
 });
 
-test("normalizeRemoteHosts: host 空でも name があれば残す(resolveRemoteTarget が error 判定に使う)", () => {
+test("normalizeRemoteHosts: host 空でも name があれば残す(壊れた登録として設定タブにそのまま出す)", () => {
   assert.deepEqual(
     normalizeRemoteHosts([{ name: "broken", host: "", dir: "" }]),
     [{ name: "broken", host: "", dir: "", machine: "" }],

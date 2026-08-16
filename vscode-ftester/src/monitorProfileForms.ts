@@ -6,6 +6,7 @@
 
 import { t } from "./i18n";
 import { isRecord, type MonitorPlatform } from "./monitorDeviceModel";
+import type { DeviceCommandSource } from "./remoteRunArgs";
 
 // ---- 実行プロファイルの追加/コピー(名前検証・テンプレート生成) ------------------------------
 // monitorPanel.ts の profileAdd/profileCopy ハンドラが使う純粋ロジック(ファイル I/O は呼び出し側)。
@@ -1186,6 +1187,7 @@ export function syncDevicesInMachineProfile(
   profileObject: unknown,
   add: readonly MachineDeviceAddEntry[],
   remove: readonly string[],
+  source?: DeviceCommandSource,
 ): SyncDevicesInMachineProfileResult {
   if (typeof profileObject !== "object" || profileObject === null || Array.isArray(profileObject)) {
     return { ok: false, error: t("monitor.machineProfile.invalidFormat") };
@@ -1208,5 +1210,11 @@ export function syncDevicesInMachineProfile(
   if (!addResult.ok) {
     return addResult;
   }
-  return { ok: true, object: addResult.object, added: addResult.added, removed: removedCount };
+  // 契約: リモートに選び直したホストから確定追加(add 非空)した時点で、そのホストをマシン
+  // プロファイルへ記録する(以後の run は CLI が host フィールドからそのホストへ出す)。
+  // ローカルを選んだ場合(source 省略時も含む)は何も書かない —— 省略 = ローカルが CLI の既定であり、
+  // 既にローカルだったプロファイルへ余計な差分を作らないため。
+  const object =
+    add.length > 0 && source?.kind === "remote" ? { ...addResult.object, host: source.host } : addResult.object;
+  return { ok: true, object, added: addResult.added, removed: removedCount };
 }

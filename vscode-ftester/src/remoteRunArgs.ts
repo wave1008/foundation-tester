@@ -1,15 +1,17 @@
 // remoteRunArgs.ts
-// リモートホスト登録簿(name/host/dir/machine)の正規化・解決・差分計算と、`ftester api run` への
-// ディスパッチ引数の組み立て(docs/remote-runner.md §13「原則」・§15.2)。vscode 非依存の純粋関数
-// (config.ts/runHandler.ts/remoteHostsController.ts から呼ぶ。テストは runHandler.ts を経由せず
-// 直接 import する — runHandler.ts は testTree.ts 経由でトップレベル `new vscode.TestTag` を
-// 実行し vscode-stub で落ちるため)。
+// このファイルが持つのは2つ:
+// (a) リモートホスト登録簿(name/host/dir/machine)の正規化・解決・差分計算。設定タブのホスト表
+//     (name/host/dir/machine)を支える。登録簿の正は CLI の LocalConfig(~/.config/ftester/config.json。
+//     `ftester api remote-hosts` 経由。remoteHostsController.ts が spawn を担う)。
+// (b) DeviceCommandSource/deviceCommandArgs。「既存デバイスを追加」ダイアログで特定ホストから
+//     デバイス候補(device-catalog/installed-devices/create-device)を取得するときに使う。
 //
-// 登録簿の正は CLI の LocalConfig(~/.config/ftester/config.json)。拡張はここでは保持せず、
-// 都度 `ftester api remote-hosts` を読み書きする(remoteHostsController.ts が spawn を担う)。
-// ftester.remote.hosts(VSCode 設定)は旧版の置き場所で、起動時に1回だけ移行する
-// (remoteHostsMigration.ts)。ftester.remote.target/artifacts は「今どこへ出すか」という
-// UI の状態であって登録簿の実体ではないため、引き続き VSCode 設定(scope: machine)に残す。
+// run のディスパッチ(その run がリモートホストへ出るかどうか)はここには一切関わらない ——
+// 今は CLI がマシンプロファイルの `host` フィールドから判定する(拡張側は関与しない)。
+//
+// vscode 非依存の純粋関数(config.ts/remoteHostsController.ts から呼ぶ。テストは runHandler.ts を
+// 経由せず直接 import する — runHandler.ts は testTree.ts 経由でトップレベル `new vscode.TestTag` を
+// 実行し vscode-stub で落ちるため)。
 
 export interface RemoteHostEntry {
   readonly name: string;
@@ -23,49 +25,6 @@ export interface RemoteHostEntry {
    * ここで持つのは、拡張が登録簿を読み書きするたびに他経路(`ftester remote setup` 等)が
    * 書いた値を黙って消さないため(パススルー)。 */
   readonly machine: string;
-}
-
-export type RemoteTargetResolution =
-  | { readonly kind: "local" }
-  | { readonly kind: "remote"; readonly entry: RemoteHostEntry }
-  // target が hosts に無い、または一致した entry の host が空(壊れた登録)。
-  // 呼び出し側はこれを「黙ってローカルで走らせる」のではなく run 中止として扱うこと
-  // (「リモートで走ったつもりがローカル」という沈黙の失敗を塞ぐため)。
-  | { readonly kind: "error"; readonly target: string };
-
-/** ftester.remote.target を ftester.remote.hosts から解決する。target 空 = ローカル実行。 */
-export function resolveRemoteTarget(
-  target: string,
-  hosts: readonly RemoteHostEntry[],
-): RemoteTargetResolution {
-  const trimmed = target.trim();
-  if (trimmed.length === 0) {
-    return { kind: "local" };
-  }
-  const entry = hosts.find((h) => h.name === trimmed);
-  if (!entry || entry.host.trim().length === 0) {
-    return { kind: "error", target: trimmed };
-  }
-  return { kind: "remote", entry };
-}
-
-/**
- * dir は空なら省略する契約(CLI 既定 = "~/ftester-runner"。引数を渡さないことで CLI 側の
- * 既定に委ねる)。artifacts も同じ省略契約: CLI 既定 "collect" のときは --remote-artifacts を
- * 付けず、非既定の "on-demand" のときだけ付ける。呼び出し側は --profile 実行(profile 指定あり)
- * のときのみこれを args へ足すこと(--host は CLI 側で --profile を必須とし、単一デバイス
- * 直指定の実行経路には付けない)。
- */
-export function buildRemoteRunArgs(entry: RemoteHostEntry, artifacts: "collect" | "on-demand"): string[] {
-  const args = ["--host", entry.host.trim()];
-  const dir = entry.dir.trim();
-  if (dir.length > 0) {
-    args.push("--remote-dir", dir);
-  }
-  if (artifacts === "on-demand") {
-    args.push("--remote-artifacts", "on-demand");
-  }
-  return args;
 }
 
 /** マシンプロファイルタブ「デバイス候補の取得元」(§13 段2)。host は登録簿の name
@@ -87,12 +46,12 @@ export function deviceCommandArgs(source: DeviceCommandSource, apiArgs: readonly
 }
 
 /**
- * リモートホスト登録簿の生の値(JSON。`ftester api remote-hosts` の stdout の hosts[]、または
- * 移行元の ftester.remote.hosts 設定値。どちらも settings.json/外部プロセス由来で型不定)を
- * 防御的に正規化する。name も host も空の要素は捨てる(識別も接続先も持たない無意味な登録)。
- * name が空なら host を name に流用する(一意キーとして機能させるため)。host が空の要素は
- * 捨てない — resolveRemoteTarget が「登録はあるが host 未設定」を error として検出する経路に使う。
- * dir/machine は欠落・型不正なら空文字(CLI 契約: 未設定でもキーは必ずあり空文字)。
+ * リモートホスト登録簿の生の値(JSON。`ftester api remote-hosts` の stdout の hosts[]。
+ * 外部プロセス由来で型不定)を防御的に正規化する。name も host も空の要素は捨てる
+ * (識別も接続先も持たない無意味な登録)。name が空なら host を name に流用する
+ * (一意キーとして機能させるため)。host が空の要素も捨てない(壊れた登録として設定タブに
+ * そのまま出す—黙って消すと利用者が編集で直す機会を失う)。dir/machine は欠落・型不正なら
+ * 空文字(CLI 契約: 未設定でもキーは必ずあり空文字)。
  */
 export function normalizeRemoteHosts(raw: unknown): RemoteHostEntry[] {
   if (!Array.isArray(raw)) {

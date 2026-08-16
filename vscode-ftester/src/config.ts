@@ -70,14 +70,13 @@ export interface FtesterConfig {
   /** "auto": 起動時に upstream の更新有無を確認し、あれば通知する(updateCheck.ts)。"off": 確認しない。
    * 確認するだけで取り込みはしない(取り込みは /ftester-update)。 */
   updateCheck: UpdateCheckMode;
-  /** リモートディスパッチ(docs/remote-runner.md §13「原則」)。target は今回使う登録簿の name
-   * ("" = ローカル実行)。artifacts はリモートの results/ を回収するか("collect" 既定 /
-   * "on-demand" は回収しない)。登録簿(name→host/dir/machine)はここには持たない ——
-   * 正は CLI の LocalConfig で、runHandler.ts は実行のたびに remoteHostsController.ts 経由で
-   * `ftester api remote-hosts` を読む(target が空ならローカル実行が確定するため読まない)。
-   * target が登録簿に無い/host 未設定のときは run を中止する契約(黙ってローカル実行に
-   * フォールバックしない)。 */
-  remote: { target: string; artifacts: "collect" | "on-demand" };
+  /** リモート実行結果の回収方針(docs/remote-runner.md §13「原則」)。artifacts はリモートの
+   * results/ を回収するか("collect" 既定 / "on-demand" は回収しない)。run がどのホストへ
+   * ディスパッチされるかはこの設定には無い —— CLI がマシンプロファイルの `host` フィールドから
+   * 判定する(拡張は関与しない)。登録簿(name→host/dir/machine)もここには持たない ——
+   * 正は CLI の LocalConfig で、remoteHostsController.ts が `ftester api remote-hosts` を読む
+   * (設定タブのホスト表を支えるためだけに使う)。 */
+  remote: { artifacts: "collect" | "on-demand" };
 }
 
 /** ワークスペースルート(Package.swift のあるフォルダ)を解決する。開いていなければ undefined。 */
@@ -119,7 +118,6 @@ export function readConfig(workspaceRoot: string): FtesterConfig {
     liveControlOnRun: configuration.get<boolean>("liveControlOnRun", true),
     updateCheck: configuration.get<string>("updateCheck", "auto") === "off" ? "off" : "auto",
     remote: {
-      target: configuration.get<string>("remote.target", "").trim(),
       artifacts: configuration.get<string>("remote.artifacts", "collect") === "on-demand" ? "on-demand" : "collect",
     },
   };
@@ -442,6 +440,9 @@ export interface MachineDeviceEntry {
 export interface MachineProfileSummary {
   readonly name: string;
   readonly devices: readonly MachineDeviceEntry[];
+  /** 登録済みリモートホスト名(machines/<name>.json 直下の "host"。未設定/absent = ローカル)。
+   * CLI が run のディスパッチ先をここから判定する(この拡張は判定しない)。 */
+  readonly host?: string;
 }
 
 /** machines/<name>.json の devices[] 1要素を検証・変換する。name欠落/型不正は undefined(呼び出し側でスキップ)。 */
@@ -521,6 +522,8 @@ export function listMachineProfiles(workspaceRoot: string, project: string): Mac
       if (typeof parsed !== "object" || parsed === null) {
         return { name, devices: [] };
       }
+      const rawHost = (parsed as Record<string, unknown>).host;
+      const host = typeof rawHost === "string" && rawHost.length > 0 ? rawHost : undefined;
       const devices: MachineDeviceEntry[] = [];
       for (const platform of ["ios", "android"] as const) {
         const section = (parsed as Record<string, unknown>)[platform];
@@ -541,7 +544,7 @@ export function listMachineProfiles(workspaceRoot: string, project: string): Mac
         sectionDevices.sort((a, b) => a.name.localeCompare(b.name));
         devices.push(...sectionDevices);
       }
-      return { name, devices };
+      return { name, devices, ...(host !== undefined ? { host } : {}) };
     } catch {
       return { name, devices: [] };
     }

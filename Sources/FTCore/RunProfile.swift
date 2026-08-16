@@ -159,15 +159,64 @@ public struct MachineDeviceList: Codable, Sendable, Equatable {
 
 /// マシンプロファイル(profiles/machines/<マシン名>.json)。ファイル名がマシン名
 public struct MachineProfile: Codable, Sendable, Equatable {
+    /// このマシンの実行先(2026-08-17)。省略/"local" = このマシンでローカル実行(**既存プロファイルは
+    /// 無改修で動く**)。それ以外は `ftester remote hosts` の登録名でなければならない
+    /// (生の ssh 宛先は書けない — プロファイルはプロジェクト資産で、ssh の実体はローカル設定
+    /// = LocalConfig.remoteHosts にだけ置く規律。フリート定義と同じ)。優先順位・食い違いの扱いは
+    /// MachineHostDispatch、登録簿引きは Sources/ftester/RemoteCommands.swift
+    public var host: String?
     public var ios: MachineDeviceList?
     public var android: MachineDeviceList?
 
-    public init(ios: MachineDeviceList? = nil, android: MachineDeviceList? = nil) {
+    public init(host: String? = nil, ios: MachineDeviceList? = nil, android: MachineDeviceList? = nil) {
+        self.host = host
         self.ios = ios
         self.android = android
     }
 
-    static let knownKeys: Set<String> = ["ios", "android"]
+    static let knownKeys: Set<String> = ["host", "ios", "android"]
+}
+
+/// `MachineProfile.host` と `--host`(CLI 明示)の優先順位を1箇所に固定する純粋関数(2026-08-17)。
+/// マシンプロファイルに host を持たせたことで、実行プロファイル経由で間接的にリモートホストを
+/// 指定できるようにした(ユーザー決定)。呼び出し側(Sources/ftester/RemoteCommands.swift)は
+/// ここが返す名前を、由来に応じて登録簿引きするだけで if を散らさない。
+public enum MachineHostDispatch {
+    public struct Decision: Equatable {
+        /// 実際に使うべきホスト名(nil = ローカル実行)
+        public let host: String?
+        /// `--host` とマシン側 host が両方非ローカルで食い違うときの1行注記。無ければ nil
+        /// (黙って別のマシンへ送らない。既存の ResolvedRemoteHost.announce と同じ規律)
+        public let mismatchWarning: String?
+
+        public init(host: String? = nil, mismatchWarning: String? = nil) {
+            self.host = host
+            self.mismatchWarning = mismatchWarning
+        }
+    }
+
+    /// nil・空文字・trim 後 "local" は「ローカル」(nil に正規化)。MachineProfile.host と
+    /// --host の両方にこの規則を適用する
+    public static func normalize(_ raw: String?) -> String? {
+        guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty, trimmed != "local" else { return nil }
+        return trimmed
+    }
+
+    /// **`--host` が常に勝つ**。マシン側 host が別のリモートを指していれば `mismatchWarning` を
+    /// 返す(黙って上書きしない)。`--host` が無ければマシン側の値をそのまま自動採用する
+    public static func resolve(explicitHost: String?, machineHost: String?) -> Decision {
+        let machine = normalize(machineHost)
+        guard let explicit = normalize(explicitHost) else {
+            return Decision(host: machine)
+        }
+        guard let machine, machine != explicit else {
+            return Decision(host: explicit)
+        }
+        return Decision(host: explicit, mismatchWarning:
+            "--host \(explicit) overrides the machine profile's host \"\(machine)\""
+            + " (they differ; the run continues on \(explicit))")
+    }
 }
 
 /// 実行プロファイルのデバイス参照(name でマシンプロファイルを引く)
@@ -374,6 +423,15 @@ public struct ResolvedProfile: Sendable {
     public let project: TestProject
     public let runName: String
     public let machineName: String
+    /// マシンプロファイルの host(MachineHostDispatch.normalize 済み。nil = ローカル実行)。
+    /// 表示用途(`ftester profile list`)。実際のディスパッチ判定・登録簿引きは呼び出し側
+    /// (Sources/ftester/RemoteCommands.swift)が `--host` と突き合わせて行う。
+    /// **`var` にする**(memberwise init を直に呼ぶ既存テスト
+    /// (Tests/FTAndroidTests/BuildAndroidWorkersPartialFailureTests.swift 等)が
+    /// この引数を知らないため既定値が要る。**既定値付きの `let` は memberwise init から
+    /// 除外されて渡せなくなる** —— `var` なら既定引数として残る(RemoteRunDispatcher.mode と同じ罠)。
+    /// 省略時 nil = ローカル扱いは仕様どおり)
+    public var machineHost: String? = nil
     /// アプリの表示名(apps/<name>.json の appName。無ければファイル名)
     public let appName: String
     /// platform("ios"/"android")→ アプリ情報(デバイスがある platform のみ)
@@ -604,6 +662,30 @@ public enum ProfileResolver {
         throw ProfileError.machineUndetermined(available: machines)
     }
 
+    /// マシンプロファイルの `host` だけを読む(実行前のディスパッチ判定用)。フルの resolve() は
+    /// デバイス解決まで行い重いので、host だけ知りたいホスト解決の前段はこちらを使う
+    /// (Sources/ftester/RemoteCommands.swift の EffectiveHostDispatch 解決)。
+    /// 戻り値は MachineHostDispatch.normalize 済み(nil = ローカル)
+    public static func machineHost(project: TestProject, machineName: String) throws -> String? {
+        let machineURL = project.machinesDir.appendingPathComponent("\(machineName).json")
+        guard FileManager.default.fileExists(atPath: machineURL.path) else {
+            throw ProfileError.machineProfileNotFound(
+                machine: machineName, available: machineNames(project: project))
+        }
+        let data: Data
+        do {
+            data = try Data(contentsOf: machineURL)
+        } catch {
+            throw ProfileError.decodeFailed(machineURL, detail: error.localizedDescription)
+        }
+        do {
+            let machine = try JSONDecoder().decode(MachineProfile.self, from: data)
+            return MachineHostDispatch.normalize(machine.host)
+        } catch {
+            throw ProfileError.decodeFailed(machineURL, detail: "\(error)")
+        }
+    }
+
     /// runProfileName の実行プロファイルが指定する machine(trim 後非空)を返す。
     /// ファイルが無い/デコード不能/未指定・空文字列なら nil(呼び出し側は fallback を使う。
     /// ファイル自体の欠落・型不一致は resolve() 側で改めて明確なエラーにする)
@@ -773,6 +855,7 @@ public enum ProfileResolver {
             project: project,
             runName: runName,
             machineName: machineName,
+            machineHost: MachineHostDispatch.normalize(machine.host),
             appName: appProfile.resolvedAppName ?? appRef,
             apps: apps,
             devices: devices,

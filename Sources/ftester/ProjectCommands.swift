@@ -295,7 +295,10 @@ struct ProfileCommand: AsyncParsableCommand {
                     let devices = resolved.devices
                         .map { "\($0.name)(\($0.platform))" }
                         .joined(separator: ", ")
-                    print("・ \(run) — \(resolved.appName) / \(devices) @ \(resolved.machineName)")
+                    // マシンプロファイルの host はローカルのときだけ黙る(2026-08-17。ユーザー決定:
+                    // マシンプロファイルで実行プロファイル経由のリモートホスト指定を表せるようにした)
+                    let hostSuffix = resolved.machineHost.map { " (\($0))" } ?? ""
+                    print("・ \(run) — \(resolved.appName) / \(devices) @ \(resolved.machineName)\(hostSuffix)")
                     for warning in resolved.warnings { print("    ⚠️ \(warning)") }
                 } catch ProfileError.machineUndetermined {
                     print("・ \(run) — skipped the resolution check because the machine name is undecided")

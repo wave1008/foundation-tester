@@ -90,6 +90,9 @@ export type MonitorToWebviewMessage =
       /** 対象プロジェクトのマシンプロファイル一覧(config.ts の listMachineProfiles の要約形)。 */
       readonly machines: readonly {
         readonly name: string;
+        /** 登録済みリモートホスト名(config.ts の MachineProfileSummary.host。未設定=ローカル)。
+         * device-pick ダイアログのホスト選択の初期値に使う。 */
+        readonly host?: string;
         readonly devices: readonly {
           readonly name: string;
           readonly platform: MonitorPlatform;
@@ -239,14 +242,13 @@ export type MonitorToWebviewMessage =
   // 設定タブの表示言語セレクタ(#settings-language)の現在値(ftester.language 設定の生値)。ready 直後に
   // 送る。webview 側は settingsTab.js の applySettings。切替は setLanguage と対。
   | { readonly type: "language"; readonly value: "auto" | "ja" | "en" }
-  // 設定タブのリモート実行セクション(ftester.remote.* 設定の生値)。ready 直後と、削除で target の
-  // 指す先が消えたときの補正(monitorPanel.ts)に送る。webview 側は settingsTab.js の applySettings。
+  // 設定タブのリモート実行セクション(CLI のホスト登録簿 + ftester.remote.artifacts 設定の生値)。
+  // ready 直後に送る。webview 側は settingsTab.js の applySettings。
   // artifacts(results/ 回収モード)も同じメッセージに相乗りする(専用メッセージ型は起こさない)。
   // 変更は setRemoteConfig と対(docs/remote-runner.md §12)。
   | {
       readonly type: "remoteConfig";
       readonly hosts: readonly RemoteHostEntry[];
-      readonly target: string;
       readonly artifacts: "collect" | "on-demand";
     }
   // 設定タブ「更新」セクションの状態。パネル ready 直後と checkUpdate/runUpdate の前後に送る。
@@ -412,6 +414,9 @@ export type MonitorFromWebviewMessage =
       readonly machine: string;
       readonly add: readonly MachineDeviceAddEntry[];
       readonly remove: readonly string[];
+      /** OK 押下時点でダイアログ内ホスト選択(devicePickHost.js)が指していた取得元。add が非空かつ
+       * remote のときだけ monitorProfileForms.ts がマシンプロファイルの host キーへ書き込む。 */
+      readonly source: DeviceCommandSource;
     }
   // デバイス行の右クリック「削除」。names は複数選択の一括削除に対応する配列(単一削除も1件配列)。
   // 空配列は「対象なし」として不正扱い。
@@ -471,13 +476,12 @@ export type MonitorFromWebviewMessage =
   // 設定タブの表示言語セレクタ変更(settingsTab.js)。monitorPanel.ts が ftester.language 設定(Global)を
   // 更新する。反映は extension.ts の onDidChangeConfiguration ハンドラ(ツリー再翻訳 + 再読み込み案内)。
   | { readonly type: "setLanguage"; readonly value: "auto" | "ja" | "en" }
-  // 設定タブのリモート実行セクション変更(settingsTab.js)。monitorPanel.ts が ftester.remote.* 設定
-  // (Global)を更新する。hosts は正規化済みの想定だが検証は型のみ。target が hosts のどの name とも
-  // 一致しなくなった場合は monitorPanel.ts が "" に戻す。artifacts は remoteConfig と同じ相乗り。
+  // 設定タブのリモート実行セクション変更(settingsTab.js)。monitorPanel.ts が CLI のホスト登録簿と
+  // ftester.remote.artifacts 設定(Global)を更新する。hosts は正規化済みの想定だが検証は型のみ。
+  // artifacts は remoteConfig と同じ相乗り。
   | {
       readonly type: "setRemoteConfig";
       readonly hosts: readonly RemoteHostEntry[];
-      readonly target: string;
       readonly artifacts: "collect" | "on-demand";
     }
   // 設定タブ「更新」の「更新を確認」ボタン(settingsTab.js)。monitorPanel.ts が update-check.sh を実行する。
@@ -658,7 +662,8 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         value.add.every(isMachineDeviceAddEntryLike) &&
         Array.isArray(value.remove) &&
         value.remove.every((name) => typeof name === "string" && name !== "") &&
-        (value.add.length > 0 || value.remove.length > 0)
+        (value.add.length > 0 || value.remove.length > 0) &&
+        isDeviceCommandSourceLike(value.source)
       );
     case "machineDeviceRemove":
       return (
@@ -745,7 +750,6 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
       return value.value === "auto" || value.value === "ja" || value.value === "en";
     case "setRemoteConfig":
       return (
-        typeof value.target === "string" &&
         Array.isArray(value.hosts) &&
         value.hosts.every(isRemoteHostEntryLike) &&
         (value.artifacts === "collect" || value.artifacts === "on-demand")

@@ -345,11 +345,6 @@ function renderMachineProfileSection(): string {
         <!-- 「+新規作成」ボタンは廃止済み。新規作成は#device-pick-overlay内の「+」(device-pick-add-new)から行う。 -->
         <span class="profile-actions-label">${t("panels.common.devices")}</span>
         <button id="btn-device-add-existing" class="icon-button" title="${t("panels.machineProfile.addExistingTitle")}" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M14 7v1H8v6H7V8H1V7h6V1h1v6h6z"/></svg></button>
-        <!-- §13 段2「デバイス候補の取得元」。選択肢(ローカル/登録済みリモートホスト)は
-             deviceSource.js が remoteConfig(設定タブと同じメッセージ)を購読して組み立てる。
-             選択は installedDevicesRequest/deviceCatalogRequest/createDevice の source に載る。 -->
-        <span class="profile-actions-label" id="device-source-label">${t("panels.machineProfile.deviceSourceLabel")}</span>
-        <select id="device-source-select"></select>
       </div>
       <div id="machine-profile-error" class="profile-error" style="display: none;"></div>
       <div id="machine-profile-body" class="profile-body">
@@ -560,17 +555,13 @@ function renderSettingsPanel(): string {
         <label class="settings-item"><input type="checkbox" id="settings-polling-mode"> ${t("panels.settings.pollingModeLabel")}</label>
         <div class="settings-hint">${t("panels.settings.pollingModeHint")}</div>
       </div>
-      <!-- 実体は ftester.remote.hosts/target/artifacts 設定(config.ts)。ここはもう1つの操作口
-           (docs/remote-runner.md §12)。ホスト一覧(#settings-remote-hosts-body)は行数が可変のため
-           settingsTab.js が動的に組み立てる。artifacts セレクタは remoteConfig/setRemoteConfig に
-           相乗り(専用メッセージ型は無い)。対向: settingsTab.js の applySettings / setRemoteConfig,
-           monitorPanel.ts。 -->
+      <!-- 実体は CLI のホスト登録簿("ftester api remote-hosts")+ ftester.remote.artifacts 設定
+           (config.ts)。ここはもう1つの操作口(docs/remote-runner.md §12)。ホスト一覧
+           (#settings-remote-hosts-body)は行数が可変のため settingsTab.js が動的に組み立てる。
+           artifacts セレクタは remoteConfig/setRemoteConfig に相乗り(専用メッセージ型は無い)。
+           対向: settingsTab.js の applySettings / setRemoteConfig, monitorPanel.ts。 -->
       <div class="settings-group">
         <div class="settings-section-title">${t("panels.settings.remoteSectionTitle")}</div>
-        <label class="settings-item settings-item-inline" for="settings-remote-target">
-          ${t("panels.settings.remoteTargetLabel")}
-          <select id="settings-remote-target" class="settings-select"></select>
-        </label>
         <label class="settings-item settings-item-inline" for="settings-remote-artifacts">
           ${t("panels.settings.remoteArtifactsLabel")}
           <select id="settings-remote-artifacts" class="settings-select">
@@ -621,8 +612,9 @@ function renderDeviceAddOverlay(): string {
     <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="device-add-title">
       <div class="modal-title device-pick-title-row">
         <span id="device-add-title">${t("panels.deviceAdd.title")}</span>
-        <!-- どのホストから作成するかを常時表示(§13 段2。黙って別マシンを操作しない)。
-             deviceSource.js が開いたタイミングで文言を入れる。 -->
+        <!-- どのホストから作成するかを常時表示(§13 段2。黙って別マシンを操作しない)。このダイアログは
+             常に #device-pick-overlay の中から開くので、読み取り専用でその時点の選択(host select)を
+             映すだけ(devicePickHost.js の refreshDeviceAddBadge)。 -->
         <span id="device-add-source-badge" class="modal-hint"></span>
       </div>
       <div class="modal-row">
@@ -692,13 +684,20 @@ function renderDevicePickOverlay(): string {
   return `<!-- 中身(#device-pick-ios-body/-android-body)はJSがinstalledDevices受信時に組み立てる。
        チェックボックスは「選択」ではなく登録状態そのもの(登録済み=初期チェック、disabled化しない)。
        OKは初期状態からの差分がある間だけ有効(JS側)。「+」(device-pick-add-new)はこのモーダルを
-       閉じずに#device-add-overlayを重ねて開く(z-indexは#device-add-overlayのCSSルール参照)。 -->
+       閉じずに#device-add-overlayを重ねて開く(z-indexは#device-add-overlayのCSSルール参照)。
+       #device-pick-host-select はこのダイアログのデバイス候補の取得元(ローカル/登録済みリモート
+       ホスト)。選択肢は devicePickHost.js が remoteConfig(設定タブと同じメッセージ)を購読して
+       組み立てる。初期値はダイアログを開いたときの編集対象マシンプロファイルの host フィールド
+       (未設定ならローカル)。変更すると installed-devices を選び直したホストから再取得する
+       (modals.js の change リスナー)。 -->
   <div id="device-pick-overlay" class="modal-overlay">
     <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="device-pick-title">
       <div class="modal-title device-pick-title-row">
         <span id="device-pick-title">${t("panels.devicePick.title")}</span>
-        <!-- 取得元バッジ(device-add-source-badge と同じ役割)。 -->
-        <span id="device-pick-source-badge" class="modal-hint"></span>
+        <span class="device-pick-host-group">
+          <label for="device-pick-host-select">${t("panels.devicePick.hostLabel")}</label>
+          <select id="device-pick-host-select"></select>
+        </span>
         <button id="device-pick-add-new" class="icon-button" type="button" title="${t("panels.devicePick.addNewTitle")}"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M14 7v1H8v6H7V8H1V7h6V1h1v6h6z"/></svg></button>
       </div>
       <div id="device-pick-list" class="device-pick-list">

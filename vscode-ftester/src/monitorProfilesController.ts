@@ -170,6 +170,7 @@ export class MonitorProfilesController {
     const current = this.resolveCurrentMachineName(summaries);
     const machines = summaries.map((summary) => ({
       name: summary.name,
+      host: summary.host,
       devices: summary.devices.map((device) => ({
         name: device.name,
         platform: device.platform,
@@ -1000,7 +1001,7 @@ export class MonitorProfilesController {
       return;
     }
 
-    const result = syncDevicesInMachineProfile(parsed, message.add, message.remove);
+    const result = syncDevicesInMachineProfile(parsed, message.add, message.remove, message.source);
     if (!result.ok) {
       sendResult(false, 0, 0, result.error);
       return;

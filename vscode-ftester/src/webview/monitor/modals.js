@@ -7,7 +7,7 @@ import { t } from '../i18n.js';
 import { vscode } from './vscodeApi.js';
 import { cachePhysicalDeviceInfo } from './physicalDeviceCache.js';
 import { selectedMachine, findMachine, allDeviceNamesForSelectedMachine, btnDeviceAddExisting, refreshSelectedDeviceEditor } from './machineProfilesTab.js';
-import { currentDeviceSource, refreshSourceBadges } from './deviceSource.js';
+import { currentDeviceSource, refreshDeviceAddBadge, resetDevicePickHost } from './devicePickHost.js';
 
 // ---- デバイス追加モーダル ---------------------------------------------------
 
@@ -213,7 +213,7 @@ function openDeviceAddModal() {
   dlgNameDirty = false;
   dlgName.value = '';
   dlgService.value = DEFAULT_ANDROID_SERVICE;
-  refreshSourceBadges();
+  refreshDeviceAddBadge();
   requestDeviceCatalog();
   dlgOk.textContent = 'OK';
   dlgCancel.disabled = false;
@@ -495,6 +495,7 @@ const devicePickError = document.getElementById('device-pick-error');
 const devicePickCancel = document.getElementById('device-pick-cancel');
 const devicePickOk = document.getElementById('device-pick-ok');
 const devicePickAddNewBtn = document.getElementById('device-pick-add-new');
+const devicePickHostSelect = document.getElementById('device-pick-host-select');
 
 let devicePickOpen = false;
 let devicePickAdding = false;
@@ -816,7 +817,8 @@ function openDevicePickModal() {
   devicePickOk.disabled = true;
   devicePickOk.textContent = 'OK';
   devicePickCancel.disabled = false;
-  refreshSourceBadges();
+  const machine = findMachine(selectedMachine);
+  resetDevicePickHost(machine ? machine.host ?? null : null);
   devicePickOverlay.classList.add('visible');
   vscode.postMessage({ type: 'installedDevicesRequest', source: currentDeviceSource() });
 }
@@ -872,6 +874,8 @@ export function applyMachineDevicesSyncResult(message) {
 btnDeviceAddExisting.addEventListener('click', () => openDevicePickModal());
 devicePickAddNewBtn.addEventListener('click', () => openDeviceAddModal());
 devicePickCancel.addEventListener('click', () => closeDevicePickModal());
+// ホスト選択を開いたまま変更した場合、選び直したホストから一覧を取り直す。
+devicePickHostSelect.addEventListener('change', () => reloadDevicePickIfOpen());
 devicePickOverlay.addEventListener('click', (event) => {
   if (event.target === devicePickOverlay) {
     closeDevicePickModal();
@@ -921,7 +925,7 @@ devicePickOk.addEventListener('click', () => {
   devicePickOk.textContent = t('wvMonitor.devicePick.applying');
   devicePickError.classList.remove('info');
   devicePickError.textContent = '';
-  vscode.postMessage({ type: 'machineDevicesSync', machine: selectedMachine, add: add, remove: remove });
+  vscode.postMessage({ type: 'machineDevicesSync', machine: selectedMachine, add: add, remove: remove, source: currentDeviceSource() });
 });
 // #device-add-overlay をこのモーダルの上に重ねて開けるため、deviceAddOpen 中は Esc で奥の
 // このモーダルまで閉じないよう先にチェックする(手前側は自身の Esc ハンドラで閉じる)。

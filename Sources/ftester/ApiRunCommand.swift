@@ -120,10 +120,16 @@ struct ApiRunCommand: AsyncParsableCommand {
 
         let testProject = try ScenarioHost.project(named: project)
 
-        // NDJSON はここより後でしか出さない(emitLine(ApiRunStartedEvent) 以降)。--host は
-        // ローカルでは何も実行せずリモートの出力を中継するだけなので、必ずそれより前に分岐する
-        if let host {
-            try await dispatchToRemoteHost(host, project: testProject)
+        // NDJSON はここより後でしか出さない(emitLine(ApiRunStartedEvent) 以降)。--host/マシン
+        // プロファイルの host はローカルでは何も実行せずリモートの出力を中継するだけなので、
+        // 必ずそれより前に分岐する。--host 明示 + --dry-run は dispatchToRemoteHost が明示的に
+        // 拒否する(既存どおり)ため常に解決へ進める一方、自動側(host 未指定)は dry-run のとき
+        // マシン側 host を見ない(requireMachineHost: !dryRun)= ローカルで dry-run が走る。
+        // 優先順位・食い違いは FTCore.MachineHostDispatch に委譲(ユーザー決定 2026-08-17)
+        if let dispatch = try resolveEffectiveHostDispatch(
+            explicitHost: host, profile: profile, project: project,
+            requireMachineHost: !dryRun, warn: { logStderr($0) }) {
+            try await dispatchToRemoteHost(dispatch, project: testProject)
             return
         }
 
@@ -411,7 +417,7 @@ struct ApiRunCommand: AsyncParsableCommand {
     /// (--debug)・ローカル専用系(--dry-run 等)はリモートでは意味を持たない/中継されないため
     /// 併用不可にする。--profile は既存の platform/port/serial 排他チェックで担保済みなので
     /// ここでは個別に確認しない
-    private func dispatchToRemoteHost(_ rawHost: String, project: TestProject) async throws {
+    private func dispatchToRemoteHost(_ dispatch: EffectiveHostDispatch, project: TestProject) async throws {
         guard let profile else {
             throw ValidationError("--host requires --profile")
         }
@@ -434,7 +440,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             throw ValidationError("--skip-build is not supported with --host")
         }
 
-        let resolved = try RemoteHostResolver.resolve(rawHost: rawHost, remoteDirOverride: remoteDir)
+        let resolved = try resolveRemoteTarget(dispatch, remoteDirOverride: remoteDir)
         // stdout は NDJSON 専用の契約(RemoteRunDispatcher.log の apiRun 分岐と同じ規律)なので、
         // アナウンスは stderr へ出す
         resolved.announce(toStderr: true)

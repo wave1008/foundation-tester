@@ -763,9 +763,14 @@ struct RunScenarios: AsyncParsableCommand {
         if enableAnimations { setenv(AnimationPolicy.environmentKey, "1", 1) }
         // リモート実行はここで打ち切る(以降はローカル実行の段取り。フラグはコマンドラインごと
         // リモートへ中継されるので、向こう側の ftester が同じ env を自分で立てる)。
-        // dry-run だけは送らない —— 理由と罠は RemoteDispatchGate の宣言
-        if let host, RemoteDispatchGate.dispatchesRemotely(host: host, dryRun: dryRun) {
-            try await dispatchToRemoteHost(host)
+        // dry-run だけは送らない(--host 明示・マシンプロファイルの host 自動のどちらも。
+        // 理由と罠は RemoteDispatchGate の宣言。優先順位・食い違いは resolveEffectiveHostDispatch
+        // → FTCore.MachineHostDispatch に委譲。ユーザー決定 2026-08-17: マシンプロファイルで
+        // host を持たせることで、実行プロファイル経由で間接的にリモートを指定できるようにした)
+        if !dryRun, let dispatch = try resolveEffectiveHostDispatch(
+            explicitHost: host, profile: profile, project: project,
+            requireMachineHost: true, warn: { print("⚠️ \($0)") }) {
+            try await dispatchToRemoteHost(dispatch)
             return
         }
         // dry-run だけは送らない(--host と同じ規律。RemoteDispatchGate の宣言参照)
@@ -907,10 +912,11 @@ struct RunScenarios: AsyncParsableCommand {
         }
     }
 
-    /// `--host`: ローカルビルド・実行をせず、対等ピア(SSH 到達可能な foundation-tester clone)
-    /// に丸ごとディスパッチする(docs/remote-runner.md §3・§7・Phase 1)。デバイス割当競合を
-    /// 避けるためリモート1本での実行のみサポートし、ローカル専用オプションは併用不可にする
-    private func dispatchToRemoteHost(_ rawHost: String) async throws {
+    /// `--host` または(自動)マシンプロファイルの `host`: ローカルビルド・実行をせず、対等ピア
+    /// (SSH 到達可能な foundation-tester clone)に丸ごとディスパッチする
+    /// (docs/remote-runner.md §3・§7・Phase 1)。デバイス割当競合を避けるためリモート1本での
+    /// 実行のみサポートし、ローカル専用オプションは併用不可にする
+    private func dispatchToRemoteHost(_ dispatch: EffectiveHostDispatch) async throws {
         guard let profile else {
             throw ValidationError("--host requires --profile")
         }
@@ -927,7 +933,7 @@ struct RunScenarios: AsyncParsableCommand {
             throw ValidationError("--skip-build is not supported with --host")
         }
 
-        let resolved = try RemoteHostResolver.resolve(rawHost: rawHost, remoteDirOverride: remoteDir)
+        let resolved = try resolveRemoteTarget(dispatch, remoteDirOverride: remoteDir)
         resolved.announce()
         let artifactsMode = try RemoteArtifactsMode.parse(remoteArtifacts)
         let testProject = try ScenarioHost.project(named: project)

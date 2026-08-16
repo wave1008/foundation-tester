@@ -20,7 +20,6 @@ import { panelsStrings } from "../src/i18n/strings/panels";
 import { monitorStrings } from "../src/i18n/strings/monitor";
 import { liveStrings } from "../src/i18n/strings/live";
 import { deviceOpsStrings } from "../src/i18n/strings/deviceOps";
-import { remoteHostsStrings } from "../src/i18n/strings/remoteHosts";
 import { runStrings } from "../src/i18n/strings/run";
 import { workbenchStrings } from "../src/i18n/strings/workbench";
 import { exploreHealStrings } from "../src/i18n/strings/exploreHeal";
@@ -45,7 +44,6 @@ const DICTS = [
   { name: "exploreHeal", prefix: "exploreHeal.", dict: exploreHealStrings, side: "ext" },
   { name: "compat", prefix: "compat.", dict: compatStrings, side: "ext" },
   { name: "update", prefix: "update.", dict: updateStrings, side: "ext" },
-  { name: "remoteHosts", prefix: "remoteHosts.", dict: remoteHostsStrings, side: "ext" },
   { name: "webviewMonitorA", prefix: "wvMonitor.", dict: webviewMonitorAStrings, side: "webview" },
   { name: "webviewMonitorB", prefix: "wvMonitor2.", dict: webviewMonitorBStrings, side: "webview" },
   { name: "webviewDashboard", prefix: "wvDashboard.", dict: webviewDashboardStrings, side: "webview" },

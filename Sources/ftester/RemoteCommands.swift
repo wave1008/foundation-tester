@@ -479,6 +479,79 @@ enum RemoteHostResolver {
     }
 }
 
+// MARK: - --host ⊕ マシンプロファイルの host(共有。run/api run が使う。2026-08-17)
+
+/// `--host`(明示)と `--profile` が解決するマシンプロファイルの `host`(自動)を統合した
+/// 実効ディスパッチ先。`rawHost` の由来で登録簿引きの規則が変わる(下記 resolveRemoteTarget)
+struct EffectiveHostDispatch {
+    let rawHost: String
+    /// true = マシンプロファイル由来(`--host` 未指定)。登録簿の名前のみ受け付ける
+    /// (生の ssh 宛先は書けない = MachineProfile.host の契約)。false = `--host` 由来で、
+    /// 既存どおり未登録名も生の ssh 宛先として扱う
+    let requiresRegisteredName: Bool
+}
+
+/// `--host` とマシンプロファイルの `host` を突き合わせ、実効ディスパッチ先を決める
+/// (優先順位・食い違いの判定は FTCore.MachineHostDispatch の純粋関数に委譲。ここは I/O だけ担当)。
+///
+/// - `--host` が明示されていれば、マシン側 host の読み取りはミスマッチ警告のためだけの
+///   ベストエフォート(`try?`)。読めなくても `--host` での実行は妨げない
+///   (リモートオーケストレータ機がローカルにマシンプロファイルを持たない構成でも壊さない)
+/// - `--host` 未指定で `requireMachineHost` なら、マシン側 host を確定させる必要がある
+///   (自動ディスパッチの唯一の判断材料なので、読めなければここで素直にエラーにする——
+///   どのみち通常のローカル実行でも同じ理由でこの先失敗する)
+/// - `requireMachineHost: false` かつ `--host` 未指定なら常に nil(呼び出し側が dry-run 等で
+///   マシン側 host を見ない選択をしたとき用)
+///
+/// **判定は正規化した値で行う**(`MachineHostDispatch.normalize`)——`--host local`/空文字は
+/// 「明示指定なし」と同じに扱う(host フィールドの "local" と同じ規則)。素の `explicitHost != nil`
+/// で分岐すると `--host local` だけが「明示あり」の扱いになり、マシン側 host が別のリモートを
+/// 指していても静かに無視される(食い違い警告も出ない)
+func resolveEffectiveHostDispatch(
+    explicitHost: String?, profile: String?, project: String?,
+    requireMachineHost: Bool, warn: (String) -> Void
+) throws -> EffectiveHostDispatch? {
+    let explicitNormalized = MachineHostDispatch.normalize(explicitHost)
+    var machineHost: String?
+    if let profile {
+        if explicitNormalized != nil {
+            machineHost = try? machineProfileHost(profile: profile, project: project)
+        } else if requireMachineHost {
+            machineHost = try machineProfileHost(profile: profile, project: project)
+        }
+    }
+    let decision = MachineHostDispatch.resolve(explicitHost: explicitHost, machineHost: machineHost)
+    if let warning = decision.mismatchWarning { warn(warning) }
+    guard let rawHost = decision.host else { return nil }
+    return EffectiveHostDispatch(rawHost: rawHost, requiresRegisteredName: explicitNormalized == nil)
+}
+
+private func machineProfileHost(profile: String, project: String?) throws -> String? {
+    let testProject = try ScenarioHost.project(named: project)
+    let machine = try ProfileResolver.determineMachine(
+        project: testProject, registered: LocalConfig.currentMachineName(), runProfileName: profile)
+    return try ProfileResolver.machineHost(project: testProject, machineName: machine.name)
+}
+
+/// `EffectiveHostDispatch` → `ResolvedRemoteHost`。マシンプロファイル由来
+/// (`requiresRegisteredName`)なら登録簿の名前だけを受け付け、無ければ候補一覧付きで落とす
+/// (黙ってローカル実行しない)。`--host` 由来は既存どおり `RemoteHostResolver.resolve` に委ねる
+/// (未登録名は生の ssh 宛先として扱う)
+func resolveRemoteTarget(_ dispatch: EffectiveHostDispatch, remoteDirOverride: String?) throws -> ResolvedRemoteHost {
+    guard dispatch.requiresRegisteredName else {
+        return try RemoteHostResolver.resolve(rawHost: dispatch.rawHost, remoteDirOverride: remoteDirOverride)
+    }
+    let entries = LocalConfig.load().remoteHosts ?? []
+    guard case .registered = RemoteHostRegistry.resolve(dispatch.rawHost, entries: entries) else {
+        throw RemoteDispatchError.invalidHost(
+            "the machine profile's host \"\(dispatch.rawHost)\" is not a registered remote host"
+            + (entries.isEmpty
+               ? " (no hosts registered — run: ftester remote hosts add <name> --host <user@host>)"
+               : " (available: \(entries.map(\.name).sorted().joined(separator: ", ")))"))
+    }
+    return try RemoteHostResolver.resolve(rawHost: dispatch.rawHost, remoteDirOverride: remoteDirOverride)
+}
+
 // MARK: - shared helpers
 
 /// remote status の1ホスト分の生行(mismatch 判定前)。Sendable なのはタスクグループの

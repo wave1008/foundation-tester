@@ -1,7 +1,7 @@
 // モニターパネル「設定」タブ(#panel-settings)。main.js が applySettings を message
 // ディスパッチャに組み込む。対向: src/monitorWebviewMessages.ts の setPollingMode/pollingMode・
 // setLanguage/language メッセージ、処理は src/monitorPanel.ts。常駐プロセス一覧は processesTab.js を参照。
-// リモート実行の artifacts(results/ 回収モード)セレクタは remoteConfig/setRemoteConfig に相乗り。
+// リモート実行のホスト表と artifacts(results/ 回収モード)セレクタは remoteConfig/setRemoteConfig に相乗り。
 //
 // 更新セクション: checkUpdate/runUpdate を送り、updateStatus を受ける(実処理は
 // src/monitorUpdateController.ts → Scripts/update-check.sh / update.sh)。
@@ -17,7 +17,6 @@ const lptHistoryInput = document.getElementById('settings-lpt-history');
 // 拡張から届く既定値(空欄・不正値のときに戻す値)。届くまでは null。
 let lptHistoryDefault = null;
 const languageSelect = document.getElementById('settings-language');
-const remoteTargetSelect = document.getElementById('settings-remote-target');
 const remoteArtifactsSelect = document.getElementById('settings-remote-artifacts');
 const remoteHostsBody = document.getElementById('settings-remote-hosts-body');
 const remoteHostsAddButton = document.getElementById('settings-remote-hosts-add');
@@ -58,14 +57,11 @@ languageSelect.addEventListener('change', () => {
   vscode.postMessage({ type: 'setLanguage', value: languageSelect.value });
 });
 
-// ---- リモート実行(ftester.remote.hosts/target・config.ts。docs/remote-runner.md §12) --------
+// ---- リモート実行(CLI のホスト登録簿・config.ts。docs/remote-runner.md §12) --------
 // ホスト一覧は行数が可変のため DOM を直接組み立てる。行の識別は name(変更され得る)ではなく
-// 使い捨ての rowId で行う — さもないと「選択中ホストの name を編集する」操作で選択が迷子になる
-// (target セレクタの value は rowId、実際に送る target 文字列はそのIDの行の現在の name)。
+// 使い捨ての rowId で行う。
 let hostRows = []; // { id, nameInput, hostInput, dirInput, tr }
 let nextRowId = 0;
-// 選択中ターゲットの rowId。null = ローカル実行。
-let selectedTargetRowId = null;
 
 function currentHostsPayload() {
   return hostRows.map((row) => ({
@@ -78,45 +74,15 @@ function currentHostsPayload() {
   }));
 }
 
-function currentTargetPayload() {
-  if (selectedTargetRowId === null) {
-    return '';
-  }
-  const row = hostRows.find((r) => r.id === selectedTargetRowId);
-  return row ? row.nameInput.value.trim() : '';
-}
-
 function sendRemoteConfig() {
   vscode.postMessage({
     type: 'setRemoteConfig',
     hosts: currentHostsPayload(),
-    target: currentTargetPayload(),
     artifacts: remoteArtifactsSelect.value,
   });
 }
 
-// 実行先セレクタの選択肢を現在の行の name で作り直す(rowId を value にすることで name 変更中も
-// 選択を見失わない)。selectedTargetRowId が指す行が無くなっていれば local へ落とす。
-function rebuildTargetOptions() {
-  if (selectedTargetRowId !== null && !hostRows.some((r) => r.id === selectedTargetRowId)) {
-    selectedTargetRowId = null;
-  }
-  remoteTargetSelect.textContent = '';
-  const localOption = document.createElement('option');
-  localOption.value = '';
-  localOption.textContent = t('wvMonitor2.remote.localOption');
-  remoteTargetSelect.appendChild(localOption);
-  for (const row of hostRows) {
-    const option = document.createElement('option');
-    option.value = String(row.id);
-    option.textContent = row.nameInput.value.trim() || t('wvMonitor2.remote.unnamed');
-    remoteTargetSelect.appendChild(option);
-  }
-  remoteTargetSelect.value = selectedTargetRowId === null ? '' : String(selectedTargetRowId);
-}
-
 function onHostsChanged() {
-  rebuildTargetOptions();
   sendRemoteConfig();
 }
 
@@ -176,25 +142,17 @@ remoteHostsAddButton.addEventListener('click', () => {
   onHostsChanged();
 });
 
-remoteTargetSelect.addEventListener('change', () => {
-  selectedTargetRowId = remoteTargetSelect.value === '' ? null : Number(remoteTargetSelect.value);
-  sendRemoteConfig();
-});
-
 remoteArtifactsSelect.addEventListener('change', () => {
   sendRemoteConfig();
 });
 
-// remoteConfig 受信(ready 直後・削除で target の指す先が消えたときの拡張側補正)で全行を作り直す。
+// remoteConfig 受信(ready 直後)で全行を作り直す。
 function applyRemoteConfig(message) {
   remoteHostsBody.textContent = '';
   hostRows = [];
   for (const host of Array.isArray(message.hosts) ? message.hosts : []) {
     addHostRow(host);
   }
-  const matched = hostRows.find((row) => row.nameInput.value.trim() === message.target);
-  selectedTargetRowId = matched ? matched.id : null;
-  rebuildTargetOptions();
   remoteArtifactsSelect.value = message.artifacts === 'on-demand' ? 'on-demand' : 'collect';
 }
 

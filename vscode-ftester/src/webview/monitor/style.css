@@ -1359,6 +1359,11 @@ input[type="text"]::placeholder {
   align-items: center;
   justify-content: space-between;
 }
+.device-pick-host-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
 .device-pick-note {
   font-size: 11px;
   color: var(--vscode-descriptionForeground);

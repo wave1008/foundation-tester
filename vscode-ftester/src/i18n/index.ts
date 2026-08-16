@@ -17,7 +17,6 @@ import { liveStrings } from "./strings/live";
 import { monitorStrings } from "./strings/monitor";
 import { panelsStrings } from "./strings/panels";
 import { profilesStrings } from "./strings/profiles";
-import { remoteHostsStrings } from "./strings/remoteHosts";
 import { runStrings } from "./strings/run";
 import { updateStrings } from "./strings/update";
 import { workbenchStrings } from "./strings/workbench";
@@ -34,7 +33,6 @@ const merged = {
   ...exploreHealStrings,
   ...compatStrings,
   ...updateStrings,
-  ...remoteHostsStrings,
 };
 
 /** 全辞書のキー和集合。t() の第1引数はこの型に制約され、typo を tsc がコンパイル時に検出する。 */

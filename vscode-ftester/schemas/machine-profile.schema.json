@@ -5,6 +5,10 @@
   "type": "object",
   "additionalProperties": true,
   "properties": {
+    "host": {
+      "type": "string",
+      "description": "このマシンがどこにあるか。省略または \"local\" でこのマシン。それ以外は登録簿(ftester remote hosts)の名前で、実行プロファイルがこのマシンを指すと自動的にそのホストへディスパッチされる。ssh 宛先は書けない(プロジェクト資産に接続先の実体を混ぜない)。"
+    },
     "ios": {
       "$ref": "#/definitions/deviceList",
       "description": "iOS デバイス一覧。"

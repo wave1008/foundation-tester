@@ -177,9 +177,7 @@ export const webviewMonitorBStrings = {
   },
   "wvMonitor2.update.unknown": { ja: "確認できませんでした: {reason}", en: "Could not check: {reason}" },
 
-  // 設定タブ「リモート実行」セクションの動的表示(settingsTab.js。行・選択肢を JS で組み立てるため
+  // 設定タブ「リモート実行」セクションの動的表示(settingsTab.js。行を JS で組み立てるため
   // 静的ラベルの panels.settings.remote* と違いこちら側に置く。docs/remote-runner.md §12)。
-  "wvMonitor2.remote.localOption": { ja: "ローカル", en: "Local" },
-  "wvMonitor2.remote.unnamed": { ja: "(名前未設定)", en: "(unnamed)" },
   "wvMonitor2.remote.removeTitle": { ja: "このホストを削除", en: "Remove this host" },
 } satisfies MessageDict;

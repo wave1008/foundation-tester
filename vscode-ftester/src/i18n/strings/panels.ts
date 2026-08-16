@@ -154,10 +154,6 @@ export const panelsStrings = {
     ja: "インストール済みのシミュレータ/AVD・接続中の実機からマシンプロファイルに追加",
     en: "Add from installed simulators/AVDs or connected physical devices to the machine profile",
   },
-  // §13 段2: デバイス候補の取得元(ローカル/登録済みリモートホスト)セレクタのラベル。
-  // 選択は #device-catalog-request 等の source として deviceCatalogRequest/installedDevicesRequest/
-  // createDevice に載る(docs/remote-runner.md §13「プロファイルのリモート対応」)。
-  "panels.machineProfile.deviceSourceLabel": { ja: "取得元:", en: "Source:" },
   "panels.machineProfile.selectPrompt": {
     ja: "デバイスを選択すると内容を表示します",
     en: "Select a device to view details",
@@ -226,17 +222,17 @@ export const panelsStrings = {
   "panels.settings.languageJa": { ja: "日本語", en: "日本語" },
   "panels.settings.languageEn": { ja: "English", en: "English" },
 
-  // docs/remote-runner.md §12。実体は ftester.remote.hosts/target 設定(config.ts)、このタブはもう1つの操作口。
-  // 行内容(セレクタの選択肢・削除ボタン)は settingsTab.js が動的生成するため webview 側辞書
+  // docs/remote-runner.md §12。実体は CLI のホスト登録簿(`ftester api remote-hosts`)+
+  // ftester.remote.artifacts 設定(config.ts)、このタブはもう1つの操作口。
+  // 行内容(削除ボタン)は settingsTab.js が動的生成するため webview 側辞書
   // (i18n/strings/webviewMonitorB.ts の wvMonitor2.remote.*)を使う。ここは静的ラベルのみ。
   "panels.settings.remoteSectionTitle": { ja: "リモート実行", en: "Remote execution" },
-  "panels.settings.remoteTargetLabel": { ja: "実行先", en: "Run on" },
   "panels.settings.remoteArtifactsLabel": { ja: "成果物(録画・ログ)", en: "Artifacts (recordings, logs)" },
   "panels.settings.remoteArtifactsCollect": { ja: "回収する", en: "Collect" },
   "panels.settings.remoteArtifactsOnDemand": { ja: "オンデマンド", en: "On demand" },
   "panels.settings.remoteHostsHint": {
-    ja: "ディスパッチ先として使うホストを登録します。name は実行先セレクタに出る表示名(一意)、host は SSH 先(user@host または host)、dir は空欄で ~/ftester-runner(そのマシンの既存のローカルインストールと同じパスにしないこと)。",
-    en: "Register hosts to dispatch runs to. Name is the display name shown in the run-on selector (must be unique); host is the SSH target (user@host or host); dir blank = ~/ftester-runner (must not be an existing local install on that machine).",
+    ja: "ディスパッチ先として使うホストを登録します。name はホストを選ぶとき(例: 「デバイスを追加」ダイアログでの取得元選択)に出る表示名(一意)、host は SSH 先(user@host または host)、dir は空欄で ~/ftester-runner(そのマシンの既存のローカルインストールと同じパスにしないこと)。",
+    en: "Register hosts to dispatch runs to. Name is the display name shown when picking a host (e.g. the source selector in the \"add device\" dialog; must be unique); host is the SSH target (user@host or host); dir blank = ~/ftester-runner (must not be an existing local install on that machine).",
   },
   "panels.settings.remoteHostsColName": { ja: "名前", en: "Name" },
   "panels.settings.remoteHostsColHost": { ja: "ホスト", en: "Host" },
@@ -264,6 +260,10 @@ export const panelsStrings = {
 
   "panels.devicePick.title": { ja: "既存のデバイスから選択", en: "Select from Existing Devices" },
   "panels.devicePick.addNewTitle": { ja: "デバイスを新規作成", en: "Create New Device" },
+  // タイトル行のホスト選択(#device-pick-host-select)の静的ラベル。選択肢自体は
+  // devicePickHost.js が remoteConfig を受けて動的生成する(panels.machineProfile.deviceSourceLabel
+  // と同じ役割・同じ文言だったが、常設セレクタを廃してこのダイアログの中だけに移した)。
+  "panels.devicePick.hostLabel": { ja: "取得元:", en: "Source:" },
   // 見出しには接続中の実機も並ぶため「デバイス」と呼ぶ(台数は JS が確定後に付ける)
   "panels.devicePick.iosGroupTitle": { ja: "iOS デバイス", en: "iOS devices" },
   "panels.devicePick.androidGroupTitle": { ja: "Android デバイス", en: "Android devices" },
