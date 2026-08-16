@@ -716,9 +716,6 @@ select:disabled { opacity: 0.5; cursor: default; }
   min-height: 0;
   display: flex;
   flex-direction: column;
-  /* sticky な .profile-jump-header の裏に隠れないよう scrollIntoView 用の余白を確保
-     (ヘッダ実高さより大きい値にすること)。 */
-  scroll-margin-top: 40px;
 }
 .run-profile-section {
   flex: 0 0 auto;
@@ -735,17 +732,6 @@ select:disabled { opacity: 0.5; cursor: default; }
 }
 
 /* ---- プロファイルタブ: 固定ヘッダ(セクションジャンプリンク) ---- */
-.profile-jump-header {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  background-color: var(--vscode-editor-background);
-  border-bottom: 1px solid var(--vscode-panel-border, transparent);
-  padding: 6px 12px;
-  display: flex;
-  gap: 16px;
-  flex: 0 0 auto;
-}
 /* button 要素なのでグローバル button スタイルを打ち消す。hover は button:hover:not(:disabled)
    に詳細度で勝つよう要素セレクタ button を含めて揃える。 */
 button.profile-jump-link {
@@ -773,11 +759,9 @@ button.profile-jump-link:hover:not(:disabled) {
      不透明なエディタ背景の上に半透明グレーを重ねる(どのテーマでも破綻しない)。 */
   background-color: var(--vscode-editor-background);
   background-image: linear-gradient(rgba(128, 128, 128, 0.18), rgba(128, 128, 128, 0.18));
-  /* 確定/キャンセルを載せるため自セクション内で sticky にする。top はジャンプヘッダの実高さ
-     (フォント設定で変わるため tabs.js が --profile-jump-height を実測注入)。
-     z-index はジャンプヘッダ(10)より下に保つこと。 */
+  /* 確定/キャンセルを載せるため自セクション内で sticky にする。 */
   position: sticky;
-  top: var(--profile-jump-height, 30px);
+  top: 0;
   z-index: 9;
 }
 .profile-toolbar-buttons {
@@ -843,17 +827,13 @@ button.profile-jump-link:hover:not(:disabled) {
   border-radius: 4px;
   /* **10台ぶんで頭打ちにして中でスクロールする**(台数が多いとセクションが画面外まで伸び、
      プロファイルタブの他セクションへ辿り着けない。2026-08-17 指摘)。
-     1行 = padding 8px*2 + 本文の行高 + 下境界 1px。--machine-device-row-h をここの1箇所で
-     定義し、行側と共有する(片方だけ変えると上限がズレる)。 */
-  --machine-device-row-h: 37px;
-  max-height: calc(var(--machine-device-row-h) * 10);
+     max-height は machineProfilesTab.js が11行目の実位置から算出して設定する —— 1行の高さは
+     フォント設定・実機バッジの有無で変わるので、CSS に固定値を置くと行の下段(detail)が
+     切れる(実際に切れた)。 */
   overflow-y: auto;
 }
 .machine-device-row {
-  /* 高さは .machine-device-list の --machine-device-row-h と一致させる(上限10台の根拠)。
-     box-sizing: border-box で padding と境界を含めて数える */
-  box-sizing: border-box;
-  height: var(--machine-device-row-h);
+  /* 高さは中身(名前段 + detail 段)に任せる。固定値を入れないこと(上の max-height を参照) */
   padding: 8px 10px;
   border-bottom: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
   user-select: none; /* Shift+クリック範囲選択時のテキスト選択との競合を防ぐ */
@@ -1004,7 +984,7 @@ button.profile-jump-link:hover:not(:disabled) {
   display: flex;
   flex-direction: column;
 }
-/* ラベルが長い("使用するマシンプロファイル"等)ため #id で .modal-row > label の
+/* ラベルが長い("参照するマシンプロファイル"等)ため #id で .modal-row > label の
    flex:0 0 90px をソース順に依存せず上書きする(具体度をID分上げる)。 */
 #run-profile-editor .modal-row > label {
   flex: 0 0 170px;

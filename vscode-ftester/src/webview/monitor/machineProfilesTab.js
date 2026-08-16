@@ -277,6 +277,7 @@ function renderMachineProfileBody(error) {
       deviceRowElements.set(device.name, row);
       machineDeviceList.appendChild(row);
     }
+    applyDeviceListHeightCap();
   }
   // 一覧再描画で対象デバイス/マシンが変わった場合、開いたままの右クリックメニューを残さない。
   if (
@@ -287,6 +288,39 @@ function renderMachineProfileBody(error) {
     closeMachineDeviceMenu();
   }
   updateDeviceSelectionUi();
+}
+
+// 一覧の高さは10台ぶんで頭打ちにし、それ以上は中でスクロールさせる(台数が多いとセクションが
+// 画面外まで伸び、プロファイルタブの他セクションへ辿り着けない)。**1行の高さを定数で持たない** ——
+// 行はフォント設定と中身(実機バッジの有無)で伸縮するので、固定値だと行の下段(detail)が切れる。
+// 11行目の実位置との差 = ちょうど10行分。
+const MAX_VISIBLE_DEVICE_ROWS = 10;
+function deviceListHeightCap() {
+  const rows = [...machineDeviceList.children];
+  if (rows.length <= MAX_VISIBLE_DEVICE_ROWS) {
+    return '';
+  }
+  const tenRows = rows[MAX_VISIBLE_DEVICE_ROWS].offsetTop - rows[0].offsetTop;
+  // 非表示(タブ未選択)中とレイアウトを持たない jsdom では 0 になる。ここで上限を付けると
+  // 高さ0で全行が隠れるので付けず、可視になった時点の ResizeObserver で測り直す。
+  if (tenRows <= 0) {
+    return '';
+  }
+  // border-box なので枠線(と横スクロールバー)のぶんを足さないと10行目が数px欠ける。
+  return `${tenRows + machineDeviceList.offsetHeight - machineDeviceList.clientHeight}px`;
+}
+function applyDeviceListHeightCap() {
+  // 値が同じときは書かない: max-height の変更自体が ResizeObserver を再発火させるため。
+  // 行の offsetTop は上限やスクロール位置に影響されないので、値は1回で収束する。
+  const next = deviceListHeightCap();
+  if (machineDeviceList.style.maxHeight !== next) {
+    machineDeviceList.style.maxHeight = next;
+  }
+}
+// 一覧はタブが非表示のまま描画されることがある(モニター起動直後は「デバイス」タブが前面)。
+// そのときは寸法が取れないので、可視になって箱ができた時点で測り直す。
+if (typeof ResizeObserver !== 'undefined') {
+  new ResizeObserver(() => applyDeviceListHeightCap()).observe(machineDeviceList);
 }
 
 // 選択中マシンの全デバイス名(ios/android 横断。デバイス追加モーダルの重複検証に使う)。

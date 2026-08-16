@@ -28,16 +28,16 @@ export const webviewMonitorBStrings = {
     en: "(Not in the machine profile)",
   },
   "wvMonitor2.runProfile.validation.machineRequired": {
-    ja: "使用するマシンプロファイルを指定してください。",
-    en: "Specify the machine profile to use.",
+    ja: "参照するマシンプロファイルを指定してください。",
+    en: "Specify the machine profile to reference.",
   },
   "wvMonitor2.runProfile.validation.machineNotFound": {
     ja: "マシンプロファイル「{machine}」が見つかりません。",
     en: "Machine profile \"{machine}\" was not found.",
   },
   "wvMonitor2.runProfile.validation.appRequired": {
-    ja: "アプリを指定してください。",
-    en: "Specify an app.",
+    ja: "参照するアプリプロファイルを指定してください。",
+    en: "Specify the app profile to reference.",
   },
   "wvMonitor2.runProfile.validation.deviceRequired": {
     ja: "デバイスを1台以上選択してください。",

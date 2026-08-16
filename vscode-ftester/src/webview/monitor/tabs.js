@@ -66,20 +66,8 @@ for (const id of TAB_IDS) {
   });
 }
 
-// sticky な .profile-toolbar の top はジャンプヘッダの実高さに依存する(フォント設定で変わる
-// ため CSS 固定値にできない)。display:none→flex の切替でも ResizeObserver が発火するので、
-// 初回タブ表示時に正しい値が入る。jsdom(テスト)には ResizeObserver が無いためガードする。
-const profileJumpHeader = document.getElementById('profile-jump-header');
-const applyProfileJumpHeight = () => {
-  tabPanels.profiles.style.setProperty('--profile-jump-height', `${profileJumpHeader.offsetHeight}px`);
-};
-if (typeof ResizeObserver !== 'undefined') {
-  new ResizeObserver(applyProfileJumpHeight).observe(profileJumpHeader);
-}
-applyProfileJumpHeight();
-
-// data-target先へスクロール。scroll-margin-top(.profile-section、CSS側)でsticky見出しの
-// 裏に隠れないようにしてある。
+// data-target先へスクロール。リンクは実行プロファイルのラベル内(monitorHtml.ts の
+// profileJumpLink)にあり、静的HTMLなのでこの一括登録で足りる。
 for (const link of document.querySelectorAll('.profile-jump-link')) {
   link.addEventListener('click', () => {
     const target = document.getElementById(link.dataset.target);

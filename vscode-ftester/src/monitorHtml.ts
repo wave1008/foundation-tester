@@ -122,6 +122,13 @@ function renderDevicesPanel(): string {
   </div>`;
 }
 
+// 該当セクションへスクロールするインラインリンク(クリック処理は tabs.js が
+// .profile-jump-link 一括で張る)。label の中に置くが、interactive content なので
+// label の for による転送は起きない(HTML 仕様。押しても select にフォーカスは移らない)。
+function profileJumpLink(targetId: string, label: string): string {
+  return `<button type="button" class="profile-jump-link" data-target="${targetId}">${label}</button>`;
+}
+
 function renderRunProfileSection(): string {
   return `<div id="run-profile-section" class="profile-section run-profile-section">
       <div class="profile-toolbar">
@@ -146,12 +153,16 @@ function renderRunProfileSection(): string {
         <div id="run-profile-placeholder" class="profile-detail-placeholder" style="display: none;"></div>
         <div id="run-profile-editor" class="run-profile-editor" style="display: none;">
           <div class="modal-row">
-            <label for="run-profile-machine">${t("panels.runProfile.machineLabel")}</label>
-            <select id="run-profile-machine"></select>
+            <label for="run-profile-app">${t("panels.runProfile.appLabel", {
+              link: profileJumpLink("app-profile-section", t("panels.common.appProfile")),
+            })}</label>
+            <select id="run-profile-app"></select>
           </div>
           <div class="modal-row">
-            <label for="run-profile-app">${t("panels.runProfile.appLabel")}</label>
-            <select id="run-profile-app"></select>
+            <label for="run-profile-machine">${t("panels.runProfile.machineLabel", {
+              link: profileJumpLink("machine-profile-section", t("panels.common.machineProfile")),
+            })}</label>
+            <select id="run-profile-machine"></select>
           </div>
           <div class="modal-row run-profile-devices-row">
             <label>${t("panels.common.devices")}</label>
@@ -416,12 +427,6 @@ function renderMachineProfileSection(): string {
 
 function renderProfilesPanel(): string {
   return `<div id="panel-profiles" class="tab-panel" role="tabpanel" aria-labelledby="tab-profiles" style="display: none;">
-    <div id="profile-jump-header" class="profile-jump-header">
-      <button type="button" class="profile-jump-link" data-target="run-profile-section">${t("panels.common.runProfile")}</button>
-      <button type="button" class="profile-jump-link" data-target="app-profile-section">${t("panels.common.appProfile")}</button>
-      <button type="button" class="profile-jump-link" data-target="machine-profile-section">${t("panels.common.machineProfile")}</button>
-    </div>
-
     ${renderRunProfileSection()}
 
     ${renderAppProfileSection()}

@@ -73,8 +73,10 @@ export const panelsStrings = {
   "panels.runProfile.copyTitle": { ja: "実行プロファイルのコピー", en: "Copy run profile" },
   "panels.runProfile.removeTitle": { ja: "実行プロファイルの削除", en: "Delete run profile" },
   "panels.runProfile.renameTitle": { ja: "実行プロファイル名の変更", en: "Rename run profile" },
-  "panels.runProfile.machineLabel": { ja: "使用するマシンプロファイル", en: "Machine profile to use" },
-  "panels.runProfile.appLabel": { ja: "アプリ", en: "App" },
+  // {link} には該当セクションへジャンプする .profile-jump-link(HTML)が入る。プロファイル名は
+  // panels.common.{app,machine}Profile を再利用するので、語を変えるときは片方だけ直さない
+  "panels.runProfile.machineLabel": { ja: "参照する{link}", en: "{link} to reference" },
+  "panels.runProfile.appLabel": { ja: "参照する{link}", en: "{link} to reference" },
   "panels.runProfile.fmSectionTitle": { ja: "FM(Foundation Model)", en: "FM (Foundation Model)" },
   "panels.runProfile.fmLabel": { ja: "FMの機能を使用する", en: "Use FM features" },
   "panels.runProfile.healLabel": { ja: "自己修復(heal)を有効にする", en: "Enable self-heal" },
