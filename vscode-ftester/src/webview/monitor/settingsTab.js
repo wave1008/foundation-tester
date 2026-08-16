@@ -72,6 +72,9 @@ function currentHostsPayload() {
     name: row.nameInput.value.trim(),
     host: row.hostInput.value.trim(),
     dir: row.dirInput.value.trim(),
+    // machine には入力欄が無い(§13 のフリート実装段で GUI から埋める想定)。他経路
+    // (`ftester remote setup` 等)が書いた値を編集のたびに消さないようパススルーするだけ。
+    machine: row.machine,
   }));
 }
 
@@ -150,6 +153,7 @@ function addHostRow(host) {
   const nameInput = makeTextCell(host ? host.name : '');
   const hostInput = makeTextCell(host ? host.host : '', 'user@host');
   const dirInput = makeTextCell(host ? host.dir : '', '~/ftester-runner');
+  const machine = host && typeof host.machine === 'string' ? host.machine : '';
 
   const removeButton = document.createElement('button');
   removeButton.type = 'button';
@@ -164,7 +168,7 @@ function addHostRow(host) {
   tr.appendChild(removeTd);
 
   remoteHostsBody.appendChild(tr);
-  hostRows.push({ id, tr, nameInput, hostInput, dirInput });
+  hostRows.push({ id, tr, nameInput, hostInput, dirInput, machine });
 }
 
 remoteHostsAddButton.addEventListener('click', () => {

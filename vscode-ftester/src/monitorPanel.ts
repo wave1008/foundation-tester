@@ -45,7 +45,13 @@ import { type HostMetricsToWebviewMessage, MonitorProcessManager } from "./monit
 import { MonitorProfilesController } from "./monitorProfilesController";
 import { MonitorRecordingsController } from "./monitorRecordingsController";
 import { MonitorUpdateController } from "./monitorUpdateController";
-import { normalizeRemoteHosts } from "./remoteRunArgs";
+import {
+  fetchRemoteHosts,
+  importRemoteHosts,
+  removeRemoteHost,
+  type RemoteHostsCliDeps,
+} from "./remoteHostsController";
+import { diffRemoteHostsForSync, type RemoteHostEntry } from "./remoteRunArgs";
 import { TYPE_ORDER, parseAndroidBridges, parseResidentProcesses, type ResidentProcess } from "./residentProcesses";
 import type { RunBusMessage, RunEventBus } from "./runEventBus";
 import {
@@ -177,6 +183,10 @@ class MonitorPanelController implements vscode.Disposable {
   /** stopping/rebooting を post 済みで done/failed が未着のデバイス名。runEnded 時、キャンセル等で
    * done/failed が来ないまま残った名前にバッジ固着を防ぐため phase:"done" を post する。 */
   private readonly wipeInProgress = new Set<string>();
+  /** 直近に CLI(`ftester api remote-hosts`)から取得・同期した登録簿。setRemoteConfig の
+   * 差分計算(diffRemoteHostsForSync)の基準に使うだけで、これ自体が正ではない
+   * (docs/remote-runner.md §13「原則」。正は CLI の LocalConfig)。 */
+  private lastKnownRemoteHosts: RemoteHostEntry[] = [];
 
   constructor(
     private readonly workspaceRoot: string,
@@ -356,6 +366,59 @@ class MonitorPanelController implements vscode.Disposable {
 
   private post(message: MonitorToWebviewMessage | RunLaneToWebviewMessage | HostMetricsToWebviewMessage): void {
     void this.panel?.webview.postMessage(message);
+  }
+
+  private remoteHostsDeps(): RemoteHostsCliDeps {
+    return {
+      workspaceRoot: this.workspaceRoot,
+      outputChannel: this.outputChannel,
+      getConfig: this.getConfig,
+      // 参照/書き込みとも短命な単発コマンドのため、device-catalog 等と同じくパネル破棄時の
+      // キャンセル対象にはしない(登録せず終了を待つだけ)。
+      registerChild: () => {},
+    };
+  }
+
+  /**
+   * 設定タブのリモートホスト行編集(追加・削除・name/host/dir 変更)を CLI 登録簿へ反映する。
+   * lastKnownRemoteHosts との差分だけを送る(diffRemoteHostsForSync)ので、target/artifacts のみの
+   * 変更(hosts は不変)では CLI を叩かない。削除→追加(import は upsert)の順で送ることで、
+   * rename(同じ行の name 変更)も「旧名を消し新名を作る」として正しく扱える。
+   * CLI 呼び出しが失敗した行は lastKnownRemoteHosts に残らない(=書き込めなかったことが
+   * 次に webview へ返す一覧に反映される)。
+   */
+  private async syncRemoteHostsFromWebview(
+    hosts: readonly RemoteHostEntry[],
+    target: string,
+    artifacts: "collect" | "on-demand",
+  ): Promise<void> {
+    const deps = this.remoteHostsDeps();
+    const { removedNames, upserts } = diffRemoteHostsForSync(this.lastKnownRemoteHosts, hosts);
+    let finalHosts = this.lastKnownRemoteHosts;
+    for (const name of removedNames) {
+      const result = await removeRemoteHost(deps, name);
+      if (result !== undefined) {
+        finalHosts = result;
+      }
+    }
+    if (upserts.length > 0) {
+      const result = await importRemoteHosts(deps, upserts);
+      if (result !== undefined) {
+        finalHosts = result;
+      }
+    }
+    this.lastKnownRemoteHosts = finalHosts;
+
+    const remoteConfiguration = vscode.workspace.getConfiguration("ftester");
+    void remoteConfiguration.update("remote.artifacts", artifacts, vscode.ConfigurationTarget.Global);
+    // 削除/リネームで target の指す先(name)が消えている場合は、黙ってローカルへフォールバック
+    // させず target 自体を "" に戻す(runHandler.ts の resolveRemoteDispatchTarget が「未登録」を
+    // 検出する前に、ここで目に見える形に補正する)。
+    const targetStillValid = target === "" || finalHosts.some((h) => h.name === target);
+    const nextTarget = targetStillValid ? target : "";
+    void remoteConfiguration.update("remote.target", nextTarget, vscode.ConfigurationTarget.Global);
+    // CLI が返した確定形(書き込めなかった行の除外・machine の実値を含む)で webview を必ず作り直す。
+    this.post({ type: "remoteConfig", hosts: finalHosts, target: nextTarget, artifacts });
   }
 
   private hydrateLaneUi(): void {
@@ -569,19 +632,8 @@ class MonitorPanelController implements vscode.Disposable {
           .update("language", message.value, vscode.ConfigurationTarget.Global);
         break;
       case "setRemoteConfig": {
-        const remoteConfiguration = vscode.workspace.getConfiguration("ftester");
-        void remoteConfiguration.update("remote.hosts", message.hosts, vscode.ConfigurationTarget.Global);
         const artifacts = message.artifacts === "on-demand" ? "on-demand" : "collect";
-        void remoteConfiguration.update("remote.artifacts", artifacts, vscode.ConfigurationTarget.Global);
-        // 削除で target の指す先(name)が消えている場合は、黙ってローカルへフォールバックさせず
-        // target 自体を "" に戻す(runHandler.ts の resolveRemoteTarget が「未登録」を検出する前に、
-        // ここで目に見える形に補正する)。webview 側の選択欄も追随させるため remoteConfig を送り直す。
-        const targetStillValid = message.target === "" || message.hosts.some((h) => h.name === message.target);
-        const nextTarget = targetStillValid ? message.target : "";
-        void remoteConfiguration.update("remote.target", nextTarget, vscode.ConfigurationTarget.Global);
-        if (!targetStillValid) {
-          this.post({ type: "remoteConfig", hosts: message.hosts, target: "", artifacts });
-        }
+        void this.syncRemoteHostsFromWebview(message.hosts, message.target, artifacts);
         break;
       }
       case "setTilePaneHeight":
@@ -651,14 +703,16 @@ class MonitorPanelController implements vscode.Disposable {
       value: vscode.workspace.getConfiguration("ftester").get<"auto" | "ja" | "en">("language", "auto"),
     });
     {
-      // config.ts の readConfig と同じ正規化(normalizeRemoteHosts / artifacts の "collect" 既定)。
+      // hosts の正は CLI の LocalConfig(docs/remote-runner.md §13「原則」)。target/artifacts は
+      // 引き続き VSCode 設定(config.ts の readConfig と同じ既定値)。fetch は非同期なので
+      // fire-and-forget で送り直す(失敗しても他の初期化を止めない。update-check と同じ方針)。
       const remoteConfiguration = vscode.workspace.getConfiguration("ftester");
-      this.post({
-        type: "remoteConfig",
-        hosts: normalizeRemoteHosts(remoteConfiguration.get<unknown>("remote.hosts", [])),
-        target: remoteConfiguration.get<string>("remote.target", "").trim(),
-        artifacts:
-          remoteConfiguration.get<string>("remote.artifacts", "collect") === "on-demand" ? "on-demand" : "collect",
+      const target = remoteConfiguration.get<string>("remote.target", "").trim();
+      const artifacts =
+        remoteConfiguration.get<string>("remote.artifacts", "collect") === "on-demand" ? "on-demand" : "collect";
+      void fetchRemoteHosts(this.remoteHostsDeps()).then((hosts) => {
+        this.lastKnownRemoteHosts = hosts ?? [];
+        this.post({ type: "remoteConfig", hosts: this.lastKnownRemoteHosts, target, artifacts });
       });
     }
     if (this.tilePaneHeight !== undefined) {

@@ -532,13 +532,16 @@ function isMachineDeviceAddEntryLike(value: unknown): value is MachineDeviceAddE
 }
 
 /** setRemoteConfig の hosts[] 1件の検証(webview 側は既に正規化済みの値を送る想定だが、
- * 型不正なペイロードを弾くための最終ゲート)。 */
+ * 型不正なペイロードを弾くための最終ゲート)。machine は settingsTab.js が remoteConfig 受信時の
+ * 値をパススルーするだけの隠しフィールド(UI に入力欄は無い)なので、無い(旧版 webview 由来)
+ * ときも通す — 無いと "" 扱いになるだけで、無くても壊れない形にしておく。 */
 function isRemoteHostEntryLike(value: unknown): value is RemoteHostEntry {
   return (
     isRecord(value) &&
     typeof value.name === "string" &&
     typeof value.host === "string" &&
-    typeof value.dir === "string"
+    typeof value.dir === "string" &&
+    (value.machine === undefined || typeof value.machine === "string")
   );
 }
 

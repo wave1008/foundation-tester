@@ -23,6 +23,7 @@ import { registerLivePanel } from "./livePanel";
 import { registerMonitorPanel } from "./monitorPanel";
 import { sweepOrphans } from "./orphanSweep";
 import { registerProfileDiagnostics } from "./profileDiagnostics";
+import { migrateRemoteHostsToCli } from "./remoteHostsMigration";
 import { registerReportCodeLens } from "./reportCodeLens";
 import { RunEventBus } from "./runEventBus";
 import { isRunActive, registerRunHandler } from "./runHandler";
@@ -62,6 +63,20 @@ export function activate(context: vscode.ExtensionContext): void {
   // CLI ↔ 拡張のプロトコル版照合(compatCheck.ts)。activate をブロックしない fire-and-forget。
   void checkFtesterCompat(getConfig().binaryPath, workspaceRoot, outputChannel, (proc) => {
     context.subscriptions.push({ dispose: () => proc.kill() });
+  }).catch((error) => {
+    outputChannel.appendLine(`[ftester] ${error instanceof Error ? error.message : String(error)}`);
+  });
+
+  // リモートホスト登録簿の CLI 移行(docs/remote-runner.md §13「原則」・§15.2)。旧設定
+  // ftester.remote.hosts に要素があれば1回だけ LocalConfig へ import し、旧設定を空にする
+  // (移行済みかどうかは「旧設定が空かどうか」で判定するため専用フラグは持たない)。
+  void migrateRemoteHostsToCli({
+    workspaceRoot,
+    outputChannel,
+    getConfig,
+    registerChild: (proc) => {
+      context.subscriptions.push({ dispose: () => proc.kill() });
+    },
   }).catch((error) => {
     outputChannel.appendLine(`[ftester] ${error instanceof Error ? error.message : String(error)}`);
   });

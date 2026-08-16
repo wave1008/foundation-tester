@@ -21,7 +21,8 @@ import type { LiveRunTarget } from "./liveRunTarget";
 import { findLatestReport, listRecentReports, reportsDir } from "./scenarioReports";
 import type { ScenarioFinishedEventBody } from "./debugAdapter";
 import { isRunEvent } from "./model";
-import { buildRemoteRunArgs, resolveRemoteTarget } from "./remoteRunArgs";
+import { fetchRemoteHosts, resolveRemoteDispatchTarget, type RemoteHostsCliDeps } from "./remoteHostsController";
+import { buildRemoteRunArgs } from "./remoteRunArgs";
 import { type RunEventBus } from "./runEventBus";
 import {
   createRunReducerState,
@@ -512,7 +513,20 @@ async function executeRun(
   // リモートディスパッチ(--host)は CLI 側が --profile を必須とするため profile 分岐のみで付与する
   // (docs/remote-runner.md §12)。liveTarget(単一デバイス直指定)は常にローカル実行なので、
   // remote.target がリモートを指していても --host は付けず、1回だけ警告を出すに留める。
-  const remoteResolution = resolveRemoteTarget(config.remote.target, config.remote.hosts);
+  // 登録簿の正は CLI の LocalConfig(§13「原則」)なので、target が空でなければ都度
+  // `ftester api remote-hosts` を読んで解決する(target 空 = ローカル確定のときは読まない)。
+  const remoteHostsDeps: RemoteHostsCliDeps = {
+    workspaceRoot,
+    outputChannel,
+    getConfig,
+    registerChild: (proc) => {
+      const subscription = token.onCancellationRequested(() => proc.kill());
+      proc.on("close", () => subscription.dispose());
+    },
+  };
+  const remoteResolution = await resolveRemoteDispatchTarget(config.remote.target, () =>
+    fetchRemoteHosts(remoteHostsDeps),
+  );
   let remoteDispatchHost: string | undefined;
   if (liveTarget) {
     args.push("--platform", liveTarget.platform);
