@@ -66,6 +66,7 @@ struct RemoteRunDispatcher {
             collectJUnit(remotePath: remoteJUnitPath, localPath: localJUnitPath, layout: layout)
         }
         collectArtifactsIfRequested(project: project, layout: layout)
+        relinkCollectedReports(project: project, stamp: stamp)
         cleanupDispatchDir(layout: layout, stamp: stamp)
 
         log("==> remote run finished (exit \(exitCode))")
@@ -103,6 +104,7 @@ struct RemoteRunDispatcher {
 
         collectReports(project: project, remoteReportDir: remoteReportDir)
         collectArtifactsIfRequested(project: project, layout: layout)
+        relinkCollectedReports(project: project, stamp: stamp)
         cleanupDispatchDir(layout: layout, stamp: stamp)
 
         log("==> remote run finished (exit \(exitCode))")
@@ -289,6 +291,48 @@ struct RemoteRunDispatcher {
             localProjectsDir: project.rootURL.deletingLastPathComponent().path)
         collectRsync(args, what: "recordings and run logs",
                      missingNote: "note: the remote produced no recordings or run logs")
+    }
+
+    /// 回収した results の `reportPath` を、回収先(ローカルの `TestProjects/<project>/reports/`)へ
+    /// 向け直す。リモートは**ディスパッチ単位の隔離先**を記録しており、そこは回収後に消えるので、
+    /// 直さないと**リモート実行の結果だけ results からレポートへ飛べない**(規則は
+    /// `RemoteReportLink`)。走査は当月と前月の run ディレクトリに限り、**この stamp を含む
+    /// 記録だけ**書き換える(他の run に触らない)。失敗は warn のみ(run の成否は変えない)
+    private func relinkCollectedReports(project: TestProject, stamp: String) {
+        let fm = FileManager.default
+        let runsDir = project.rootURL.appendingPathComponent("results/runs")
+        let months = ((try? fm.contentsOfDirectory(atPath: runsDir.path)) ?? []).sorted().suffix(2)
+        let reportsFromRepoRoot = "\(RemoteLayout.projectsDirName)/\(project.name)/reports"
+        var relinked = 0
+        for month in months {
+            let monthDir = runsDir.appendingPathComponent(month)
+            for runID in (try? fm.contentsOfDirectory(atPath: monthDir.path)) ?? [] {
+                let scenariosDir = monthDir.appendingPathComponent("\(runID)/scenarios")
+                for file in (try? fm.contentsOfDirectory(atPath: scenariosDir.path)) ?? [] {
+                    let url = scenariosDir.appendingPathComponent(file)
+                    guard var text = try? String(contentsOf: url, encoding: .utf8),
+                          text.contains(stamp) else { continue }
+                    guard let recorded = Self.recordedReportPath(in: text),
+                          let rewritten = RemoteReportLink.rewrittenReportPath(
+                            recorded: recorded, stamp: stamp,
+                            projectReportsPathFromRepoRoot: reportsFromRepoRoot) else { continue }
+                    text = text.replacingOccurrences(of: recorded, with: rewritten)
+                    if (try? text.write(to: url, atomically: true, encoding: .utf8)) != nil { relinked += 1 }
+                }
+            }
+        }
+        if relinked > 0 { log("==> relinked \(relinked) report path(s) to the collected copies") }
+    }
+
+    /// scenario JSON の `"reportPath": "…"` の値だけを取り出す(JSON を再エンコードすると
+    /// 鍵の順序や表現が変わり、他のツールが読む記録を無用に書き換えるため文字列置換にする)
+    private static func recordedReportPath(in json: String) -> String? {
+        guard let keyRange = json.range(of: "\"reportPath\"") else { return nil }
+        let rest = json[keyRange.upperBound...]
+        guard let open = rest.range(of: "\""), let close = rest[open.upperBound...].range(of: "\"") else {
+            return nil
+        }
+        return String(rest[open.upperBound..<close.lowerBound])
     }
 
     /// 回収の rsync。**転送元不在(= run が成果物を作る前に落ちた)は警告にしない** ——

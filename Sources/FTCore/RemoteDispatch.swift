@@ -556,6 +556,32 @@ public enum RemoteShell {
     }
 }
 
+public enum RemoteReportLink {
+
+    /// 回収済みレポートへの貼り直し。リモートの run が記録する `reportPath` は
+    /// **ディスパッチ単位の隔離先**(`.ftester/dispatch/<stamp>/reports/…`)を指すが、そこは
+    /// 回収後に削除される(`RemoteRunDispatcher.cleanupDispatchDir`)。回収先はローカルの
+    /// `TestProjects/<project>/reports/` で、**ファイル名は rsync がそのまま保つ**ので、
+    /// 記録側を回収先へ向け直せば results から辿れるようになる。
+    ///
+    /// これを入れないと**リモート実行の結果だけレポートへ飛べない**(results には載るのに
+    /// リンクがどこも指していない。2026-08-16 に実機で確認)。ローカル実行は最初から
+    /// リポジトリルート基準の `TestProjects/<project>/reports/<file>` を記録している
+    /// ので、書き換え後は両者が同じ規約になる。
+    ///
+    /// このディスパッチの stamp を含むものだけ書き換える(他の run の記録に触らない)。
+    /// 対象外なら nil。
+    public static func rewrittenReportPath(
+        recorded: String, stamp: String, projectReportsPathFromRepoRoot: String
+    ) -> String? {
+        let marker = ".ftester/dispatch/\(stamp)/reports/"
+        guard let range = recorded.range(of: marker) else { return nil }
+        let fileName = String(recorded[range.upperBound...])
+        guard !fileName.isEmpty, !fileName.contains("/") else { return nil }
+        return projectReportsPathFromRepoRoot + "/" + fileName
+    }
+}
+
 public enum RemotePathRewrite {
 
     /// テキスト(JUnit XML / NDJSON 行)内の remoteRoot(絶対パス)を localRoot へ全置換する。

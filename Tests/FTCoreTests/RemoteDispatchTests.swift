@@ -757,6 +757,44 @@ final class RemoteDispatchTests: XCTestCase {
 
     // MARK: - RemoteShell.remoteExecCommand
 
+    // MARK: - RemoteReportLink
+
+    /// リモートが記録する reportPath はディスパッチ単位の隔離先で、そこは回収後に消える。
+    /// 回収先(ローカルの TestProjects/<project>/reports/)へ向け直す
+    func testReportPathIsRelinkedToTheCollectedCopy() {
+        XCTAssertEqual(
+            RemoteReportLink.rewrittenReportPath(
+                recorded: ".ftester/dispatch/20260816-130735-24451/reports/scenario-1-S0010.md",
+                stamp: "20260816-130735-24451",
+                projectReportsPathFromRepoRoot: "TestProjects/E2E-iOS/reports"),
+            "TestProjects/E2E-iOS/reports/scenario-1-S0010.md")
+    }
+
+    /// **他の run の記録に触らない**。別のディスパッチ(別 stamp)の記録は対象外
+    func testReportPathOfAnotherDispatchIsLeftAlone() {
+        XCTAssertNil(RemoteReportLink.rewrittenReportPath(
+            recorded: ".ftester/dispatch/20260816-999999-11111/reports/scenario-1-S0010.md",
+            stamp: "20260816-130735-24451",
+            projectReportsPathFromRepoRoot: "TestProjects/E2E-iOS/reports"))
+    }
+
+    /// ローカル実行が記録する形(既にリポジトリルート基準)は書き換えない
+    func testLocalStyleReportPathIsNotRewritten() {
+        XCTAssertNil(RemoteReportLink.rewrittenReportPath(
+            recorded: "TestProjects/E2E-iOS/reports/scenario-1-S0010.md",
+            stamp: "20260816-130735-24451",
+            projectReportsPathFromRepoRoot: "TestProjects/E2E-iOS/reports"))
+    }
+
+    /// 隔離先の下にさらにディレクトリがある形は想定していない(rsync はファイル名を保つ)。
+    /// 想定外を黙って別の場所へ向けない
+    func testNestedPathUnderTheDispatchDirIsNotRewritten() {
+        XCTAssertNil(RemoteReportLink.rewrittenReportPath(
+            recorded: ".ftester/dispatch/20260816-130735-24451/reports/sub/scenario-1-S0010.md",
+            stamp: "20260816-130735-24451",
+            projectReportsPathFromRepoRoot: "TestProjects/E2E-iOS/reports"))
+    }
+
     // MARK: - RemoteArtifactCollection.isMissingSourceFailure
 
     /// run が成果物を作る前に落ちたときの rsync 失敗(転送元不在)は黙る。**実際の rsync の
