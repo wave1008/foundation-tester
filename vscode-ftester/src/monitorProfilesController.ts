@@ -738,7 +738,7 @@ export class MonitorProfilesController {
 
   /**
    * マシン名横「✏」ボタン: machines/<machine>.json をリネームする。CLI 側の登録名
-   * (`ftester machine set` が書く ~/.config/ftester/config.json の machineName)が旧名と一致していれば
+   * (~/.config/ftester/config.json の machineName)が旧名と一致していれば
    * 追随して書き換える(一致させないと postMachineProfileInfo の current 決定が崩れる)。
    */
   async handleMachineProfileRename(machine: string): Promise<void> {

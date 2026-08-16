@@ -188,11 +188,11 @@ export const deviceOpsStrings = {
   },
   "deviceOps.monitorExitedMachineHint": {
     ja:
-      "マシンプロファイル未設定の可能性があります。「ftester machine set」の実行、または " +
-      "TestProjects/<project>/profiles/machines/ の内容を確認してください。",
+      "マシンプロファイル未設定の可能性があります。TestProjects/<project>/profiles/machines/ の " +
+      "内容と、実行プロファイルの machine を確認してください。",
     en:
-      "The machine profile might not be configured. Run \"ftester machine set\", or check " +
-      "TestProjects/<project>/profiles/machines/.",
+      "The machine profile might not be configured. Check TestProjects/<project>/profiles/machines/ " +
+      "and the run profile's machine.",
   },
   "deviceOps.monitorClosedMessage": {
     ja: "モニタープロセスが終了しました(exit code: {exitCode}, signal: {signal})。{hint}",

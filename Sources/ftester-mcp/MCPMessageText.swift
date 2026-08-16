@@ -7,8 +7,7 @@
 //
 // **`ftester` から始まる例示コマンドの中は書き換えない** —— そこは本当にシェルへ打つ
 // 文字列で、`ftester api list-scenarios project: X` は動かない。同じ1文に両方
-// (`--project` の案内と `ftester machine set` の案内)が同居するので、行ごとではなく
-// **直前の句**で判定する。
+// (`--project` の案内と候補一覧)が同居するので、行ごとではなく**直前の句**で判定する。
 
 import Foundation
 

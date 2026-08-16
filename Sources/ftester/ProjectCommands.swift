@@ -1,6 +1,5 @@
 // テストプロジェクト・マシン名・実行プロファイルの管理 CLI。
 //   ftester project create/list/sync … TestProjects/<name>/ と Package.swift マーカー区間の管理
-//   ftester machine set/show         … このマシンの名前(~/.config/ftester/config.json)
 //   ftester profile list             … 実行プロファイルと部品プロファイルの一覧・整合チェック
 
 import ArgumentParser
@@ -220,8 +219,8 @@ struct ProfileCommand: AsyncParsableCommand {
                 print("Machine name: \(ambientMachine.name)\(ambientMachine.auto ? " (picked automatically)" : "")")
             } else {
                 print("Machine name: undecided (resolution checks are skipped for run profiles without an "
-                    + "explicit machine. Register one with ftester machine set, or set machine "
-                    + "in the run profile)")
+                    + "explicit machine. Set machine in the run profile, or keep a single "
+                    + "profiles/machines/*.json so it is picked automatically)")
             }
 
             print("Run profiles:")

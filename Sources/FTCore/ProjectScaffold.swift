@@ -266,7 +266,6 @@ public enum ProjectScaffold {
         `ftester doctor` を実行し、結果を要約して見せる。赤(未導入・無効)が残る項目は 0 に戻って対処を依頼。
 
         ### 2. マシンプロファイル(この Mac のデバイス定義)
-        - `ftester machine set "<マシン名>"`(machines/ に .json が1つだけなら自動採用で省略可)
         - `xcrun simctl list devices available` で使えるシミュレータ名を採取
         - 🧑 `TestProjects/\(name)/profiles/machines/<マシン名>.json` に使うデバイスを列挙(雛形は同ディレクトリの README.md):
 
@@ -421,7 +420,7 @@ public enum ProjectScaffold {
     Android の `avd` は AVD の ID("Pixel_9_Android_16")と表示名("Pixel 9(Android 16)")の
     どちらでも書ける。
 
-    実行時のマシン選択: FT_MACHINE 環境変数 > `ftester machine set` の登録名 >
+    実行時のマシン選択: 実行プロファイルの `machine` > FT_MACHINE 環境変数 >
     ここに .json が 1 つだけならそれを自動採用。
 
     `"host"` は**そのデバイスがある機械**。**手元でも省略せず `"local"` と書く**(省略は
