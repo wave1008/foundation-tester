@@ -450,6 +450,13 @@ public enum RemoteStatusProbe {
 /// dispatch(実行中に残った孤児)/ 各プロジェクトの reports・results の3系統を対象にする
 public enum RemoteCleanPlan {
 
+    /// `--dry-run` でデバイスを止めてよいか = **止めてはいけない**。`remote clean` は削除の前に
+    /// `devices down`(ブリッジ停止 + シミュレータ/エミュレータのシャットダウン)を撃つが、これは
+    /// **走っている run を巻き添えにする破壊的操作**で、「消える物を見るだけ」の dry-run が
+    /// 実際に環境を壊すのは契約違反(2026-08-16 に実機で踏んだ: プレビューのつもりで
+    /// ランナーの 8123/8124 のブリッジが落ちた)
+    public static func stopsDevices(dryRun: Bool) -> Bool { !dryRun }
+
     /// keepDays より古いエントリを消す(dryRun なら列挙するだけの)find コマンド一覧。
     /// `TestProjects/*/reports`・`TestProjects/*/results` はシェルのグロブ展開に任せる(呼び出し側は
     /// 単一プロジェクトへ絞り込まない)ため、workDir 部分だけ `RemoteShell.quote` し

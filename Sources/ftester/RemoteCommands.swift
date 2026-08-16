@@ -239,12 +239,16 @@ struct RemoteCommand: AsyncParsableCommand {
             let target = hostSpec.sshTarget
             let layout = try Self.resolveLayout(target: target, remoteDirRaw: remoteDir)
 
-            print("→ stopping bridges and shutting down simulators/emulators")
-            let devicesDownCommand = RemoteShell.remoteRunCommand(
-                layout: layout, ftesterArgs: ["devices", "down"])
-            let downResult = try Shell.run(remoteSSHBase + [target, devicesDownCommand])
-            if downResult.status != 0 {
-                print("warning: `devices down` exited with status \(downResult.status)\n\(downResult.tail)")
+            if RemoteCleanPlan.stopsDevices(dryRun: dryRun) {
+                print("→ stopping bridges and shutting down simulators/emulators")
+                let devicesDownCommand = RemoteShell.remoteRunCommand(
+                    layout: layout, ftesterArgs: ["devices", "down"])
+                let downResult = try Shell.run(remoteSSHBase + [target, devicesDownCommand])
+                if downResult.status != 0 {
+                    print("warning: `devices down` exited with status \(downResult.status)\n\(downResult.tail)")
+                }
+            } else {
+                print("→ would stop bridges and shut down simulators/emulators (skipped: --dry-run)")
             }
 
             var totalEntries = 0

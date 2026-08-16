@@ -705,6 +705,14 @@ final class RemoteDispatchTests: XCTestCase {
         XCTAssertTrue(commands[2].contains("'/Users/ci/ftester-runner/work'/TestProjects/*/results"), commands[2])
     }
 
+    /// `--dry-run` は**何も変えない**。`devices down` は走っている run を巻き添えにする破壊的操作
+    /// なので、プレビューでは撃たない(2026-08-16 に実機で踏んだ: dry-run のつもりで
+    /// ランナーのブリッジが落ちた)
+    func testDryRunDoesNotStopDevices() {
+        XCTAssertFalse(RemoteCleanPlan.stopsDevices(dryRun: true))
+        XCTAssertTrue(RemoteCleanPlan.stopsDevices(dryRun: false))
+    }
+
     func testCleanPlanQuotesTheWorkDirPortion() {
         let layout = RemoteLayout(base: "/Users/ci/ftester runner")
         let commands = RemoteCleanPlan.commands(layout: layout, keepDays: 7, dryRun: true)
