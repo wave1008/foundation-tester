@@ -150,6 +150,9 @@ export const panelsStrings = {
   "panels.machineProfile.copyTitle": { ja: "マシンプロファイルのコピー", en: "Copy machine profile" },
   "panels.machineProfile.removeTitle": { ja: "マシンプロファイルの削除", en: "Delete machine profile" },
   "panels.machineProfile.renameTitle": { ja: "マシンプロファイル名の変更", en: "Rename machine profile" },
+  // マシンプロファイル側の見出し。実行プロファイルの「デバイス」(panels.common.devices)とは
+  // 用途が違う(あちらは選択済みの一覧、こちらは追加操作のラベル)ので別キーにする
+  "panels.machineProfile.addDevicesLabel": { ja: "デバイスを追加", en: "Add devices" },
   "panels.machineProfile.addExistingTitle": {
     ja: "インストール済みのシミュレータ/AVD・接続中の実機からマシンプロファイルに追加",
     en: "Add from installed simulators/AVDs or connected physical devices to the machine profile",

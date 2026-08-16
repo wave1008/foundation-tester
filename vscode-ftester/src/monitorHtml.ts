@@ -345,7 +345,7 @@ function renderMachineProfileSection(): string {
       </div>
       <div class="profile-actions">
         <!-- 「+新規作成」ボタンは廃止済み。新規作成は#device-pick-overlay内の「+」(device-pick-add-new)から行う。 -->
-        <span class="profile-actions-label">${t("panels.common.devices")}</span>
+        <span class="profile-actions-label">${t("panels.machineProfile.addDevicesLabel")}</span>
         <button id="btn-device-add-existing" class="icon-button" title="${t("panels.machineProfile.addExistingTitle")}" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M14 7v1H8v6H7V8H1V7h6V1h1v6h6z"/></svg></button>
       </div>
       <div id="machine-profile-error" class="profile-error" style="display: none;"></div>

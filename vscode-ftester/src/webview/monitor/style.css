@@ -801,7 +801,9 @@ button.profile-jump-link:hover:not(:disabled) {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 12px 6px;
+  /* 上は 10px。ツールバー(マシン選択・確定)と地続きに見えると、「デバイスを追加」が
+     どちらの操作群に属するのか読めない(2026-08-17 指摘)。下 6px は一覧との距離 */
+  padding: 10px 12px 6px;
 }
 .profile-actions-label {
   font-weight: 600;
