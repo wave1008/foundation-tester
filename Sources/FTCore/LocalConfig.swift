@@ -19,15 +19,21 @@ public struct LocalConfig: Codable, Sendable, Equatable {
     /// iOS 実機ブリッジの bundle id プレフィックス(既定 "com.example")。
     /// 既定のままだと他チームが登録済みの App ID と衝突して自動署名が失敗することがある
     public var bundleIDPrefix: String?
+    /// `--host` の論理名 → ssh 実体の登録簿(docs/remote-runner.md §13)。VSCode 設定
+    /// (`ftester.remote.hosts`)ではなくここに置くのは、①CLI が解決の主体になるため
+    /// ②ワークスペース設定でディスパッチ先を差し替えられる余地を消すため(§15.2)
+    public var remoteHosts: [RemoteHostEntry]?
 
     public init(machineName: String? = nil, defaultProject: String? = nil,
                 lastRunProfile: [String: String]? = nil,
-                developmentTeam: String? = nil, bundleIDPrefix: String? = nil) {
+                developmentTeam: String? = nil, bundleIDPrefix: String? = nil,
+                remoteHosts: [RemoteHostEntry]? = nil) {
         self.machineName = machineName
         self.defaultProject = defaultProject
         self.lastRunProfile = lastRunProfile
         self.developmentTeam = developmentTeam
         self.bundleIDPrefix = bundleIDPrefix
+        self.remoteHosts = remoteHosts
     }
 
     /// 実機署名の設定。優先順位: 環境変数 > 設定ファイル。

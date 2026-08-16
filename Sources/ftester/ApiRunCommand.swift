@@ -84,12 +84,12 @@ struct ApiRunCommand: AsyncParsableCommand {
     @Option(help: "Android device serial (adb -s; defaults to the only connected device. Cannot be combined with --profile)")
     var serial: String?
 
-    @Option(help: "Dispatch this run to a remote Mac over SSH (user@host or host) and relay its NDJSON stream. Requires --profile. Experimental (docs/remote-runner.md)")
+    @Option(help: "Dispatch this run to a remote Mac over SSH: a registered name (ftester remote hosts) or a raw user@host/host. Relays its NDJSON stream. Requires --profile. Experimental (docs/remote-runner.md)")
     var host: String?
 
     @Option(name: .customLong("remote-dir"),
-            help: "Runner-only base directory on the remote host (holds its own clone and workspace; default: ~/ftester-runner). Must NOT point at an existing local install of foundation-tester")
-    var remoteDir: String = "~/ftester-runner"
+            help: "Runner-only base directory on the remote host (holds its own clone and workspace; default: the host registry's entry, or ~/ftester-runner). Must NOT point at an existing local install of foundation-tester")
+    var remoteDir: String?
 
     @Option(name: .customLong("remote-timeout"),
             help: "Timeout in seconds for the whole remote dispatch (default: auto, sized from the scenario count; see docs/remote-runner.md)")
@@ -434,13 +434,15 @@ struct ApiRunCommand: AsyncParsableCommand {
             throw ValidationError("--skip-build is not supported with --host")
         }
 
-        try RemoteLayout.validateBase(remoteDir)
-        let hostSpec = try RemoteHostSpec.parse(rawHost)
+        let resolved = try RemoteHostResolver.resolve(rawHost: rawHost, remoteDirOverride: remoteDir)
+        // stdout は NDJSON 専用の契約(RemoteRunDispatcher.log の apiRun 分岐と同じ規律)なので、
+        // アナウンスは stderr へ出す
+        resolved.announce(toStderr: true)
         let artifactsMode = try RemoteArtifactsMode.parse(remoteArtifacts)
         let localRoot = try RepoRoot.find()
         let dispatcher = RemoteRunDispatcher(
-            host: hostSpec, remoteDirRaw: remoteDir, localRepoRoot: localRoot, mode: .apiRun,
-            artifacts: artifactsMode)
+            host: resolved.hostSpec, remoteDirRaw: resolved.remoteDirRaw, localRepoRoot: localRoot,
+            mode: .apiRun, artifacts: artifactsMode, expectedMachineName: resolved.machineName)
         let exitCode = try await dispatcher.dispatchApi(
             project: project, profile: profile, scenarios: scenarios,
             heal: heal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,

@@ -21,6 +21,9 @@ struct RemoteRunDispatcher {
     // var: default 付き let は memberwise init から除外され .apiRun を注入できない
     var mode: RemoteDispatchMode = .cliRun
     var artifacts: RemoteArtifactsMode = .collect
+    /// 登録簿エントリの machine(キャッシュ。docs/remote-runner.md §13)。nil なら
+    /// machineName 照合をしない(RemoteCompat.mismatches の既定 fail-open と揃える)
+    var expectedMachineName: String? = nil
 
     /// 戻り値 = リモート `ftester run` の exit code
     func dispatch(project: TestProject, profile: String,
@@ -152,10 +155,17 @@ struct RemoteRunDispatcher {
         let remoteRevision = try? sshCapture("git -C \(RemoteShell.quote(layout.toolRoot)) rev-parse HEAD")
         let localToolchain = ToolchainFingerprint.current()
         let remoteToolchain = try? remoteToolchainFingerprint()
+        // 登録簿に machine のキャッシュがあるときだけ ssh を1往復追加する(§13)。既存の
+        // 人間向けコマンドを読むだけなので専用の照会エンドポイントは増やさない
+        let remoteMachineName = expectedMachineName != nil
+            ? (try? sshCapture("\(RemoteShell.quote(layout.binary)) machine show"))
+                .flatMap(RemoteMachineNameProbe.parse)
+            : nil
 
         let reasons = RemoteCompat.mismatches(
             localRevision: localRevision, remoteRevision: remoteRevision,
-            localToolchain: localToolchain, remoteToolchain: remoteToolchain)
+            localToolchain: localToolchain, remoteToolchain: remoteToolchain,
+            localMachineName: expectedMachineName, remoteMachineName: remoteMachineName)
         guard reasons.isEmpty else { throw RemoteDispatchError.incompatible(reasons) }
     }
 

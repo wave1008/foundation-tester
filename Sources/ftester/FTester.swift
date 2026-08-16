@@ -688,12 +688,12 @@ struct RunScenarios: AsyncParsableCommand {
           help: "Enable fast input on the iOS xcuitest bridge (skips the quiescence wait). Can also be set via iosFastInput in the run profile")
     var fastInput = false
 
-    @Option(help: "Dispatch this run to a remote Mac over SSH (user@host or host). Requires --profile. Experimental (docs/remote-runner.md)")
+    @Option(help: "Dispatch this run to a remote Mac over SSH: a registered name (ftester remote hosts) or a raw user@host/host. Requires --profile. Experimental (docs/remote-runner.md)")
     var host: String?
 
     @Option(name: .customLong("remote-dir"),
-            help: "Runner-only base directory on the remote host (holds its own clone and workspace; default: ~/ftester-runner). Must NOT point at an existing local install of foundation-tester")
-    var remoteDir: String = "~/ftester-runner"
+            help: "Runner-only base directory on the remote host (holds its own clone and workspace; default: the host registry's entry, or ~/ftester-runner). Must NOT point at an existing local install of foundation-tester")
+    var remoteDir: String?
 
     @Option(name: .customLong("remote-timeout"),
             help: "Timeout in seconds for the whole remote dispatch (default: auto, sized from the scenario count; see docs/remote-runner.md)")
@@ -882,13 +882,14 @@ struct RunScenarios: AsyncParsableCommand {
             throw ValidationError("--skip-build is not supported with --host")
         }
 
-        try RemoteLayout.validateBase(remoteDir)
-        let hostSpec = try RemoteHostSpec.parse(rawHost)
+        let resolved = try RemoteHostResolver.resolve(rawHost: rawHost, remoteDirOverride: remoteDir)
+        resolved.announce()
         let artifactsMode = try RemoteArtifactsMode.parse(remoteArtifacts)
         let testProject = try ScenarioHost.project(named: project)
         let localRoot = try RepoRoot.find()
         let dispatcher = RemoteRunDispatcher(
-            host: hostSpec, remoteDirRaw: remoteDir, localRepoRoot: localRoot, artifacts: artifactsMode)
+            host: resolved.hostSpec, remoteDirRaw: resolved.remoteDirRaw, localRepoRoot: localRoot,
+            artifacts: artifactsMode, expectedMachineName: resolved.machineName)
         let exitCode = try await dispatcher.dispatch(
             project: testProject, profile: profile, scenarios: scenarios, folders: folders,
             heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,

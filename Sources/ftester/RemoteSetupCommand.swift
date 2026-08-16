@@ -20,6 +20,12 @@ private func say(_ message: String) {
     FileHandle.standardOutput.write(Data((message + "\n").utf8))
 }
 
+/// `remote exec` の宛先解決アナウンス専用。stdout は転送先コマンドの出力(機械可読の場合が
+/// ある: `-- api device-catalog` 等)そのままの契約なので、stdout に混ぜない
+private func sayStderr(_ message: String) {
+    FileHandle.standardError.write(Data((message + "\n").utf8))
+}
+
 /// ssh/scp をそのまま実行して stdout/stderr を継承する(RemoteRunDispatcher.runInherited と
 /// 同じ規律だが private のため複製する)。preflight/install/align は数分かかり得るため、
 /// 出力をバッファせずその場で流す(受け手側スクリプトの逐次表示をそのまま見せる)
@@ -45,12 +51,12 @@ extension RemoteCommand {
                 + "(docs/remote-runner.md §14). Exit codes match install.sh: "
                 + "0 = done / 2 = stopped with steps left for a human / 1 = failed.")
 
-        @Argument(help: "Remote host to set up (user@host or host)")
+        @Argument(help: "Remote host to set up: a registered name (ftester remote hosts) or a raw user@host/host")
         var host: String
 
         @Option(name: .customLong("remote-dir"),
-                help: "Runner-only base directory on the remote host (default: ~/ftester-runner)")
-        var remoteDir: String = "~/ftester-runner"
+                help: "Runner-only base directory on the remote host (default: the host registry's entry, or ~/ftester-runner)")
+        var remoteDir: String?
 
         // ArgumentHelp は文字列**リテラル**からしか作れない(連結した String は渡せない)。
         // 長い説明は ArgumentHelp(...) で明示的に包む
@@ -88,8 +94,9 @@ extension RemoteCommand {
         }
 
         func run() async throws {
-            try RemoteLayout.validateBase(remoteDir)
-            let hostSpec = try RemoteHostSpec.parse(host)
+            let resolved = try RemoteHostResolver.resolve(rawHost: host, remoteDirOverride: remoteDir)
+            let hostSpec = resolved.hostSpec
+            resolved.announce()
 
             var recorded: [(name: String, status: RemoteSetupStepStatus, detail: String)] = []
             func emit(_ name: String, _ status: RemoteSetupStepStatus, _ detail: String) {
@@ -150,7 +157,7 @@ extension RemoteCommand {
                 emit("reach", .warn, "could not determine the remote console login state — skipping the login check")
             }
 
-            let layout = RemoteLayout(base: RemoteLayout.resolveBase(remoteDir, home: home))
+            let layout = RemoteLayout(base: RemoteLayout.resolveBase(resolved.remoteDirRaw, home: home))
 
             if uninstall {
                 do {
@@ -282,7 +289,11 @@ extension RemoteCommand {
             if let profile, !skipVerify {
                 let what = scenario.map { "scenario \($0)" } ?? "profile \(profile)"
                 say("==> verify: dispatching \(what) to \(hostSpec.sshTarget) (this is the real success gate)...")
-                let dispatcher = RemoteRunDispatcher(host: hostSpec, remoteDirRaw: remoteDir, localRepoRoot: repoRoot)
+                // このコマンドで --machine を明示した場合は registry のキャッシュより優先する
+                // (キャッシュは古いままの可能性があるが、--machine はこの回の確定した意図)
+                let dispatcher = RemoteRunDispatcher(
+                    host: hostSpec, remoteDirRaw: resolved.remoteDirRaw, localRepoRoot: repoRoot,
+                    expectedMachineName: machine ?? resolved.machineName)
                 do {
                     let exitCode = try await dispatcher.dispatch(
                         project: resolvedProject, profile: profile,
@@ -355,12 +366,12 @@ extension RemoteCommand {
                 + "  ftester remote exec mac2 -- doctor --fm-only\n"
                 + "  ftester remote exec --remote-dir ~/runner mac2 -- api device-catalog")
 
-        @Argument(help: "Remote host to run on (user@host or host)")
+        @Argument(help: "Remote host to run on: a registered name (ftester remote hosts) or a raw user@host/host")
         var host: String
 
         @Option(name: .customLong("remote-dir"),
-                help: "Runner-only base directory on the remote host (default: ~/ftester-runner)")
-        var remoteDir: String = "~/ftester-runner"
+                help: "Runner-only base directory on the remote host (default: the host registry's entry, or ~/ftester-runner)")
+        var remoteDir: String?
 
         // 設計文書(docs/remote-runner.md §14)は `ftester --host <name> <サブコマンド>` の形で
         // 書いているが、ArgumentParser のサブコマンド解決と `run --host` の意味が衝突するため
@@ -378,8 +389,9 @@ extension RemoteCommand {
             guard !relayed.contains("--host") else {
                 throw ValidationError("--host cannot be relayed through `remote exec` (no nested dispatch to another host)")
             }
-            try RemoteLayout.validateBase(remoteDir)
-            let hostSpec = try RemoteHostSpec.parse(host)
+            let resolved = try RemoteHostResolver.resolve(rawHost: host, remoteDirOverride: remoteDir)
+            let hostSpec = resolved.hostSpec
+            resolved.announce(toStderr: true)
 
             let homeResult = try Shell.run(setupSSHBase + [hostSpec.sshTarget, "echo $HOME"])
             guard homeResult.status == 0 else {
@@ -390,7 +402,7 @@ extension RemoteCommand {
             guard !home.isEmpty else {
                 throw RemoteDispatchError.remoteSetupFailed("could not determine $HOME on \(hostSpec.sshTarget)")
             }
-            let layout = RemoteLayout(base: RemoteLayout.resolveBase(remoteDir, home: home))
+            let layout = RemoteLayout(base: RemoteLayout.resolveBase(resolved.remoteDirRaw, home: home))
             let command = RemoteShell.remoteExecCommand(layout: layout, args: relayed)
             let status = try runInheritedSSH(setupSSHBase + [hostSpec.sshTarget, command])
             if status == 90 {

@@ -6,6 +6,10 @@
 // そちらは private のため複製する。
 // `remote setup` / `remote exec` は Sources/ftester/RemoteSetupCommand.swift(RemoteCommand の
 // extension として Setup/Exec を定義。ここではサブコマンド一覧への登録だけ行う)。
+// `remote hosts` (list/add/remove) はここで定義する。登録簿(名前→ssh 実体)は
+// LocalConfig.remoteHosts に置く(docs/remote-runner.md §13・§15.2)。`--host` を受ける
+// 全コマンド(run/api run/remote status・clean・setup・exec)は RemoteHostResolver.resolve を
+// 通す(個別に登録簿を読む実装を増やさない)。
 
 import ArgumentParser
 import FTBridgeClient
@@ -21,7 +25,7 @@ struct RemoteCommand: AsyncParsableCommand {
         commandName: "remote",
         abstract: "Fleet operations for --host dispatch: provision, diagnose, clean up and query remote runners "
             + "(docs/remote-runner.md §14/§16.4/§16.5)",
-        subcommands: [Status.self, Clean.self, Setup.self, Exec.self])
+        subcommands: [Status.self, Clean.self, Setup.self, Exec.self, Hosts.self])
 
     // MARK: - status
 
@@ -31,12 +35,12 @@ struct RemoteCommand: AsyncParsableCommand {
             abstract: "Show reachability, login state, git revision, toolchain, and free disk space for a fleet of remote hosts (docs/remote-runner.md §16.5)")
 
         @Option(name: .customLong("host"), parsing: .upToNextOption,
-                help: "Remote host to check (user@host or host). Repeatable. A host registry is planned (docs/remote-runner.md §13); until then this is required")
+                help: "Remote host to check: a registered name (ftester remote hosts) or a raw user@host/host. Repeatable, required")
         var hosts: [String] = []
 
         @Option(name: .customLong("remote-dir"),
-                help: "Runner-only base directory on the remote host (default: ~/ftester-runner)")
-        var remoteDir: String = "~/ftester-runner"
+                help: "Runner-only base directory on the remote host (default: the host registry's entry, or ~/ftester-runner)")
+        var remoteDir: String?
 
         @Flag(help: "Also probe Foundation Models availability on each host (runs `<binary> doctor --fm-only`; adds a few seconds per host, so it is off by default)")
         var fm = false
@@ -46,28 +50,37 @@ struct RemoteCommand: AsyncParsableCommand {
 
         func run() async throws {
             guard !hosts.isEmpty else {
-                throw ValidationError(
-                    "no hosts specified (pass --host <user@host>; a host registry is planned in docs/remote-runner.md §13)")
+                throw ValidationError("no hosts specified (pass --host <name-or-user@host>)")
             }
-            // status は $HOME をリモートで展開させるため二重引用符でパスを包む。入口で文字種を
-            // 絞らないと `$(…)` がリモートで実行される
-            try RemoteLayout.validateBase(remoteDir)
-            let targets = hosts
-            let remoteDirRaw = remoteDir
+            // 解決(登録簿の読み取りのみ)は並列プローブより先に、全ホストぶん一括で行う。
+            // 失敗した解決はネットワークへ出さず即 unreachable 行にする
+            var targets: [(raw: String, resolved: ResolvedRemoteHost)] = []
+            var rows: [HostRow] = []
+            for raw in hosts {
+                do {
+                    let resolved = try RemoteHostResolver.resolve(rawHost: raw, remoteDirOverride: remoteDir)
+                    resolved.announce()
+                    targets.append((raw, resolved))
+                } catch {
+                    rows.append(HostRow(sshTarget: raw, reachable: false,
+                                        detail: error.localizedDescription, status: nil, fmOK: nil))
+                }
+            }
             let wantFM = fm
             let localRevision = localGitRevision()
             let localToolchain = ToolchainFingerprint.current()
 
-            let rows: [HostRow] = await withTaskGroup(of: (Int, HostRow).self) { group in
-                for (index, raw) in targets.enumerated() {
+            let probed: [HostRow] = await withTaskGroup(of: (Int, HostRow).self) { group in
+                for (index, entry) in targets.enumerated() {
                     group.addTask {
-                        (index, await Self.probe(raw, remoteDirRaw: remoteDirRaw, wantFM: wantFM))
+                        (index, await Self.probe(entry.resolved, wantFM: wantFM))
                     }
                 }
                 var collected: [Int: HostRow] = [:]
                 for await (index, row) in group { collected[index] = row }
                 return targets.indices.compactMap { collected[$0] }
             }
+            rows.append(contentsOf: probed)
 
             let reports = rows.map { row in
                 HostReport(row: row, localRevision: localRevision, localToolchain: localToolchain)
@@ -92,13 +105,9 @@ struct RemoteCommand: AsyncParsableCommand {
         /// 1 ssh 呼び出しに収める設計のため、$HOME 解決だけの往復を別に持たない。
         /// リモートシェルが実行時に自分の $HOME で展開する。RemoteStatusProbe.command が
         /// 二重引用符で包むのはこのため)
-        private static func probe(_ raw: String, remoteDirRaw: String, wantFM: Bool) async -> HostRow {
-            guard let hostSpec = try? RemoteHostSpec.parse(raw) else {
-                return HostRow(sshTarget: raw, reachable: false,
-                               detail: "invalid --host value: \(raw)", status: nil, fmOK: nil)
-            }
-            let target = hostSpec.sshTarget
-            let layout = RemoteLayout(base: RemoteLayout.resolveBase(remoteDirRaw, home: "$HOME"))
+        private static func probe(_ resolved: ResolvedRemoteHost, wantFM: Bool) async -> HostRow {
+            let target = resolved.hostSpec.sshTarget
+            let layout = RemoteLayout(base: RemoteLayout.resolveBase(resolved.remoteDirRaw, home: "$HOME"))
             let command = RemoteStatusProbe.command(layout: layout)
             do {
                 let result = try Shell.run(remoteSSHBase + [target, command])
@@ -197,12 +206,12 @@ struct RemoteCommand: AsyncParsableCommand {
             abstract: "Stop orphaned bridges/simulators and delete results, reports, and dispatch leftovers older than --keep-days on remote hosts (docs/remote-runner.md §16.4)")
 
         @Option(name: .customLong("host"), parsing: .upToNextOption,
-                help: "Remote host to clean (user@host or host). Repeatable, required")
+                help: "Remote host to clean: a registered name (ftester remote hosts) or a raw user@host/host. Repeatable, required")
         var hosts: [String] = []
 
         @Option(name: .customLong("remote-dir"),
-                help: "Runner-only base directory on the remote host (default: ~/ftester-runner)")
-        var remoteDir: String = "~/ftester-runner"
+                help: "Runner-only base directory on the remote host (default: the host registry's entry, or ~/ftester-runner)")
+        var remoteDir: String?
 
         @Option(name: .customLong("keep-days"), help: "Delete results/reports/dispatch entries older than this many days")
         var keepDays: Int = 7
@@ -212,10 +221,8 @@ struct RemoteCommand: AsyncParsableCommand {
 
         func run() async throws {
             guard !hosts.isEmpty else {
-                throw ValidationError(
-                    "no hosts specified (pass --host <user@host>; a host registry is planned in docs/remote-runner.md §13)")
+                throw ValidationError("no hosts specified (pass --host <name-or-user@host>)")
             }
-            try RemoteLayout.validateBase(remoteDir)
             if !dryRun {
                 print("This permanently deletes files older than \(keepDays) day(s) on each host below."
                     + " Pass --dry-run first to preview what would be removed.")
@@ -235,9 +242,10 @@ struct RemoteCommand: AsyncParsableCommand {
         }
 
         private func cleanOne(_ raw: String) throws {
-            let hostSpec = try RemoteHostSpec.parse(raw)
-            let target = hostSpec.sshTarget
-            let layout = try Self.resolveLayout(target: target, remoteDirRaw: remoteDir)
+            let resolved = try RemoteHostResolver.resolve(rawHost: raw, remoteDirOverride: remoteDir)
+            resolved.announce()
+            let target = resolved.hostSpec.sshTarget
+            let layout = try Self.resolveLayout(target: target, remoteDirRaw: resolved.remoteDirRaw)
 
             if RemoteCleanPlan.stopsDevices(dryRun: dryRun) {
                 print("→ stopping bridges and shutting down simulators/emulators")
@@ -293,6 +301,180 @@ struct RemoteCommand: AsyncParsableCommand {
                 throw RemoteDispatchError.remoteSetupFailed("could not determine $HOME on \(target)")
             }
             return RemoteLayout(base: RemoteLayout.resolveBase(remoteDirRaw, home: home))
+        }
+    }
+
+    // MARK: - hosts
+
+    struct Hosts: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "hosts",
+            abstract: "Manage the --host registry (name -> ssh destination; docs/remote-runner.md §13)",
+            subcommands: [List.self, Add.self, Remove.self],
+            defaultSubcommand: List.self)
+
+        struct List: AsyncParsableCommand {
+            static let configuration = CommandConfiguration(
+                commandName: "list", abstract: "List registered remote hosts")
+
+            @Flag(help: "Emit one JSON object instead of a table")
+            var json = false
+
+            func run() async throws {
+                let entries = LocalConfig.load().remoteHosts ?? []
+                if json {
+                    Self.emitJSON(entries)
+                } else {
+                    Self.emitTable(entries)
+                    for target in RemoteHostRegistry.duplicateTargets(entries) {
+                        print("⚠️ multiple entries point at the same host: \(target)"
+                            + " (dispatching to both fights over the same devices; docs/remote-runner.md §13)")
+                    }
+                }
+            }
+
+            private static func emitTable(_ entries: [RemoteHostEntry]) {
+                let header = ["NAME", "HOST", "DIR", "MACHINE"]
+                var rows = [header]
+                rows.append(contentsOf: entries.map {
+                    [$0.name, $0.host, $0.dir ?? "-", $0.machine ?? "-"]
+                })
+                let widths = (0..<header.count).map { col in rows.map { $0[col].count }.max() ?? 0 }
+                for row in rows {
+                    let line = zip(row, widths)
+                        .map { text, width in text + String(repeating: " ", count: max(0, width - text.count)) }
+                        .joined(separator: "  ")
+                    print(line)
+                }
+            }
+
+            private static func emitJSON(_ entries: [RemoteHostEntry]) {
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+                guard let data = try? encoder.encode(HostsListJSON(hosts: entries)),
+                      let line = String(data: data, encoding: .utf8) else { return }
+                print(line)
+            }
+        }
+
+        struct Add: AsyncParsableCommand {
+            static let configuration = CommandConfiguration(
+                commandName: "add", abstract: "Register or update a remote host (upsert by name)")
+
+            @Argument(help: "Logical name for this host (letters, digits, _ . - only; \"local\" is reserved)")
+            var name: String
+
+            @Option(help: "SSH destination (user@host or host)")
+            var host: String
+
+            @Option(help: ArgumentHelp("Default base directory on this host (overrides the CLI default of ~/ftester-runner "
+                + "unless --remote-dir is given explicitly on the dispatch command)"))
+            var dir: String?
+
+            @Option(help: ArgumentHelp("Machine profile name this host corresponds to. This is a cache, not the source of "
+                + "truth — the remote's own `ftester machine set` decides; a mismatch fails the dispatch fast"))
+            var machine: String?
+
+            func run() async throws {
+                try RemoteHostRegistry.validateName(name)
+                _ = try RemoteHostSpec.parse(host)
+                if let dir { try RemoteLayout.validateBase(dir) }
+                var config = LocalConfig.load()
+                let entry = RemoteHostEntry(name: name, host: host, dir: dir, machine: machine)
+                config.remoteHosts = RemoteHostRegistry.upsert(entry, into: config.remoteHosts ?? [])
+                try config.save()
+                print("✅ Registered host \"\(name)\" → \(host)")
+                for target in RemoteHostRegistry.duplicateTargets(config.remoteHosts ?? []) where target == host {
+                    print("⚠️ another entry already points at \(target)"
+                        + " (dispatching to both fights over the same devices; docs/remote-runner.md §13)")
+                }
+            }
+        }
+
+        struct Remove: AsyncParsableCommand {
+            static let configuration = CommandConfiguration(
+                commandName: "remove", abstract: "Remove a registered remote host")
+
+            @Argument(help: "Logical name to remove")
+            var name: String
+
+            func run() async throws {
+                var config = LocalConfig.load()
+                let before = config.remoteHosts ?? []
+                guard before.contains(where: { $0.name == name }) else {
+                    throw ValidationError("no host named \"\(name)\" is registered")
+                }
+                config.remoteHosts = RemoteHostRegistry.remove(name: name, from: before)
+                try config.save()
+                print("✅ Removed host \"\(name)\"")
+            }
+        }
+    }
+}
+
+/// `ftester remote hosts list --json` の出力全体
+private struct HostsListJSON: Encodable {
+    let hosts: [RemoteHostEntry]
+}
+
+// MARK: - --host resolution (shared by run/api run/remote status・clean・setup・exec)
+
+/// `--host` の解決結果。**登録簿が優先**: 同名の登録があればそれを使い、無ければ raw を
+/// そのまま ssh 宛先として扱う(docs/remote-runner.md §13)
+struct ResolvedRemoteHost {
+    let hostSpec: RemoteHostSpec
+    /// 明示 `--remote-dir` > 登録簿の dir > CLI 既定("~/ftester-runner")
+    let remoteDirRaw: String
+    /// 登録名を経由したときだけ非 nil
+    let registeredName: String?
+    /// 登録簿の machine キャッシュ(登録名を経由し、かつエントリに設定されているときだけ非 nil)
+    let machineName: String?
+
+    /// 登録名を使ったときに実行冒頭で出す1行。黙って別のマシンへ送らない
+    /// (docs/remote-runner.md §13 レビュー指摘)
+    var announcement: String? {
+        registeredName.map { "==> host \($0) → \(hostSpec.sshTarget)" }
+    }
+
+    /// **print を使わない**。stdout が端末でないと行バッファが効かず、この1行だけが
+    /// 最後まで出ない = 「どこへ送ったか」が進行より後に見える(実測)。NDJSON を stdout に
+    /// 流す経路(api run / remote exec)は stderr へ出す
+    func announce(toStderr: Bool = false) {
+        guard let announcement else { return }
+        let handle = toStderr ? FileHandle.standardError : FileHandle.standardOutput
+        handle.write(Data((announcement + "\n").utf8))
+    }
+}
+
+enum RemoteHostResolver {
+    static let defaultRemoteDir = "~/ftester-runner"
+
+    /// `remoteDirOverride` は `--remote-dir` の生値(未指定なら nil)。**未指定のときだけ**
+    /// 登録簿の dir を既定として使う(明示指定は常に勝つ。CLAUDE.md「片方だけ変えない」— 4箇所
+    /// (run/api run/remote status・clean/remote setup・exec)がここを通ることで規則を1つに保つ)
+    static func resolve(rawHost: String, remoteDirOverride: String?) throws -> ResolvedRemoteHost {
+        let entries = LocalConfig.load().remoteHosts ?? []
+        switch RemoteHostRegistry.resolve(rawHost, entries: entries) {
+        case .reserved:
+            // RemoteDispatchError(LocalizedError 準拠)を使う。ArgumentParser.ValidationError は
+            // LocalizedError を実装しておらず、ここは resolve() を内部で catch する呼び出し元
+            // (Status/Clean)もあるため .localizedDescription で読めないと理由が消える
+            // (RemoteCommands.Clean.resolveLayout のコメントと同じ罠)
+            throw RemoteDispatchError.invalidHost(
+                "must not be \"local\" or empty (\"local\" is reserved for local execution; "
+                + "docs/remote-runner.md §13): \"\(rawHost)\"")
+        case .registered(let entry):
+            let dir = remoteDirOverride ?? entry.dir ?? defaultRemoteDir
+            try RemoteLayout.validateBase(dir)
+            return ResolvedRemoteHost(
+                hostSpec: try RemoteHostSpec.parse(entry.host), remoteDirRaw: dir,
+                registeredName: entry.name, machineName: entry.machine)
+        case .rawTarget(let raw):
+            let dir = remoteDirOverride ?? defaultRemoteDir
+            try RemoteLayout.validateBase(dir)
+            return ResolvedRemoteHost(
+                hostSpec: try RemoteHostSpec.parse(raw), remoteDirRaw: dir,
+                registeredName: nil, machineName: nil)
         }
     }
 }
