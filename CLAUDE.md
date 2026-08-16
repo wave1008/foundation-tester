@@ -113,8 +113,12 @@
   非対話 PATH の補正(`/opt/homebrew:/usr/local/bin`)を必ず写す**(既存は `RemoteShell.remoteRunCommand`。
   写し漏れで「入っているのに brew が無い」と落ちた実害)。設計・却下案・セキュリティ前提は docs/remote-runner.md /
   **利用者向けの導入手順は docs/remote-runner-setup.md**(ランナー機の前提・install.sh の呼び方・
-  版の揃え方・トラブルシュート)。**片方だけ変えない** —— 手順に影響する変更(レイアウト・
-  併用不可オプション・適合チェックの項目)は setup 側にも入れる
+  版の揃え方・トラブルシュート)/ **エージェント向けは `.claude/skills/ftester-remote-setup/SKILL.md`**
+  (機械作業は `ftester remote setup` に委ね、聞くこと・人手へ渡すこと・結果の読み方だけを持つ。
+  トラブル表は頻出3件だけで、詳細は docs を参照させる = 二重管理にしない)。
+  **片方だけ変えない** —— 手順に影響する変更(レイアウト・併用不可オプション・適合チェックの項目)は
+  docs とスキルの両方に入れる。**スキルを増やしたら `Scripts/install-skill.sh` の `SKILLS` にも足す**
+  (プラグイン経由は `.claude/skills/` を直接見るので不要だが、curl 版は列挙が唯一の定義元)
 - 設計書(アーキテクチャ・Swift DSL 仕様・セレクタ記法・プロファイル): docs/design.md
 - 性能チューニング(調整ノブ・不採用施策と再検討条件・計測手順): docs/performance-tuning.md
 - 検証の詳細(flake/性能の判定規律・ベータ整合・全滅時の切り分け・e2e.sh のオプション): docs/verification.md
