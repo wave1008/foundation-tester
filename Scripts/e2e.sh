@@ -26,6 +26,10 @@
 #                                   # Android だけ回したいときは --android
 #   Scripts/e2e.sh --ios-inapp     # **iOS だけ**を in-app エンジン(= 既定と同じ)で回す
 #   Scripts/e2e.sh --rebuild       # SUT を必ず再ビルドしてから実行
+#   Scripts/e2e.sh --performance   # 性能計測モード(各 run へ --performance を渡す)。起動していない
+#                                   # 仮想デバイスは常に復活を試みるが、このモードでは**復活できない
+#                                   # レーンが1つでも残ると run を開始せず失敗する**(レーン数が変わると
+#                                   # 計測にならないため。既定は切り離して完走)。時間を比較する回に付ける
 #   Scripts/e2e.sh --record        # 各プロファイルの一時コピー(<名前>-record-tmp.json。実行後に削除)に
 #                                   # record:true を付けて実行し、録画パイプラインの整合を
 #                                   # Scripts/check-recordings.py で検証する(元のプロファイルは書き換えない)
@@ -46,6 +50,8 @@ FORCE_REBUILD=0
 RUN_IOS=1
 RUN_ANDROID=1
 RECORD=0
+# 性能計測モード(各 run へ --performance を渡す。ftester 側が run 開始前にレーンを揃える)
+PERFORMANCE=0
 # エンジンを明示した(--ios-inapp / --ios-xcuitest)= iOS のエンジン検証が目的。Android は回さない
 IOS_ENGINE_ONLY=0
 SUTS=""
@@ -61,6 +67,7 @@ for arg in "$@"; do
     --ios-inapp) IOS_PROFILE="ios-inapp"; IOS_ENGINE_ONLY=1 ;;
     --ios-xcuitest) IOS_PROFILE="ios-xcuitest"; IOS_ENGINE_ONLY=1 ;;
     --record) RECORD=1 ;;
+    --performance) PERFORMANCE=1 ;;
     --cmp|--ios-native|--android-native|--flutter|--rn) SUTS="$SUTS ${arg#--}" ;;
     *) echo "不明な引数: $arg" >&2; exit 2 ;;
   esac
@@ -134,7 +141,12 @@ run_profile() {  # $1 = プロジェクト名, $2 = プロファイル名
     fi
   fi
 
-  if "$FTESTER" run --project "$1" --profile "$profile"; then
+  # **配列で渡さない**: macOS の bash は 3.2 で、`set -u` 下の空配列 `"${a[@]}"` は
+  # "unbound variable" で落ちる(= --performance を付けない通常実行が全滅する)。
+  # 値は空白を含まない固定の1語なので、未クォートの変数展開で「空なら消える」を使う
+  local perf_flag=""
+  [ "$PERFORMANCE" = 1 ] && perf_flag="--performance"
+  if "$FTESTER" run --project "$1" --profile "$profile" $perf_flag; then
     echo "✅ $1 / $profile"
   else
     echo "❌ $1 / $profile"
