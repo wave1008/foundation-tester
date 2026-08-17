@@ -453,6 +453,10 @@ class MonitorPanelController implements vscode.Disposable {
           this.post({ type: "wipeStatus", name, phase: "done" });
         }
         this.wipeInProgress.clear();
+        // 録画タブを開いたまま実行すると、一覧の更新契機(タブ活性化・更新ボタン・再生からの戻る)
+        // がどれも起きず、終わった run が出ないままになる。runEnded は NDJSON プロセス終了後
+        // (= recordings/index.json 書き出し済み)なので、ここで取り直せば競合しない。
+        void this.recordings.refreshSessions();
         break;
     }
   }
