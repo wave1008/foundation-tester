@@ -128,7 +128,10 @@
   (修復手段が手元にしか効かず、記録が name 単位なので同名の台と混線する)
 - リモート実行(`run --host` の SSH ディスパッチ): **ssh 越しに何かを起動する経路を新設したら
   非対話 PATH の補正(`/opt/homebrew:/usr/local/bin`)を必ず写す**(既存は `RemoteShell.remoteRunCommand`。
-  写し漏れで「入っているのに brew が無い」と落ちた実害)。設計・却下案・セキュリティ前提は docs/remote-runner.md /
+  写し漏れで「入っているのに brew が無い」と落ちた実害)。**子プロセスを spawn する経路を足したら
+  中断のリレーも足す**(`InterruptRelay`)—— **親を殺しても子は死なない**ので、ssh が生き残って
+  リモートが走り続け、`dispatch.lock` も残る(2026-08-18 実測)。**SIGKILL へのエスカレートは
+  ssh にだけ**(自分の子に掛けるとロック解放と終了スクリプトを飛ばす)。設計・却下案・セキュリティ前提は docs/remote-runner.md /
   **利用者向けの導入手順は docs/remote-runner-setup.md**(ランナー機の前提・install.sh の呼び方・
   版の揃え方・トラブルシュート)/ **エージェント向けは `.claude/skills/ftester-remote-setup/SKILL.md`**
   (機械作業は `ftester remote setup` に委ね、聞くこと・人手へ渡すこと・結果の読み方だけを持つ。

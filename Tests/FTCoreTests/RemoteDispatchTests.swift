@@ -713,6 +713,27 @@ final class RemoteDispatchTests: XCTestCase {
         XCTAssertEqual(RemoteTimeout.seconds(explicit: nil, scenarioCount: 200), 86_400)
     }
 
+    // MARK: - RemoteDispatchFlagPolicy.forceLockRejection(リモートへ行きうる指定があれば受ける)
+
+    func testForceLockIsAcceptedWithAnExplicitHostOrFleet() {
+        XCTAssertNil(RemoteDispatchFlagPolicy.forceLockRejection(host: "M1Max", fleet: nil, profile: nil))
+        XCTAssertNil(RemoteDispatchFlagPolicy.forceLockRejection(host: nil, fleet: "nightly", profile: nil))
+    }
+
+    /// **プロファイルだけでも受ける** —— マシンプロファイル経由の自動ディスパッチや、
+    /// デバイスが複数の機械にまたがるプロファイル(ホスト別の子へ分かれる)では `--host` を打たない。
+    /// ここを拒否していたため、中断した run が残したロックを解除する手段が無かった
+    func testForceLockIsAcceptedWithAProfileAlone() {
+        XCTAssertNil(RemoteDispatchFlagPolicy.forceLockRejection(
+            host: nil, fleet: nil, profile: "android_local+remote"))
+    }
+
+    func testForceLockIsRejectedWhenNothingCanDispatchRemotely() {
+        let message = RemoteDispatchFlagPolicy.forceLockRejection(host: nil, fleet: nil, profile: nil)
+        XCTAssertNotNil(message)
+        XCTAssertTrue(message?.contains("--force-lock") == true, message ?? "")
+    }
+
     // MARK: - RemoteDispatchFlagPolicy(欠陥1: --host 明示 vs マシンプロファイル自動での併用不可フラグ)
 
     func testSkipBuildIsRejectedForExplicitHost() {

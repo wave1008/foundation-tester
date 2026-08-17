@@ -352,6 +352,21 @@ public enum RemoteDispatchFlagPolicy {
         }
     }
 
+    /// `--force-lock`(dispatch.lock を奪う)を受け付けてよいか。**リモートへ行きうる指定が
+    /// 1つでもあれば受け付ける** —— `--host` / `--fleet` だけを条件にすると、
+    /// **マシンプロファイル経由で自動ディスパッチする実行プロファイル**(`--host` を打たない)や
+    /// **デバイスが複数の機械にまたがるプロファイル**(ホスト別の子へ分かれる)で使えず、
+    /// 中断した run が残したロックを解除する手段が `remote clean`(デバイスも止まる)か
+    /// 手動削除しか無くなる(2026-08-18 に実際に詰まった。子への転送自体は
+    /// DeviceHostRunner/FleetRunner が既に行っている)。
+    /// 純粋にローカルだけの実行(プロファイルすら無い)のときだけ、打ち間違いとして拒否する
+    public static func forceLockRejection(host: String?, fleet: String?, profile: String?) -> String? {
+        let hasRemoteRoute = host != nil || fleet != nil || profile != nil
+        guard !hasRemoteRoute else { return nil }
+        return "--force-lock requires a run profile, --host or --fleet"
+            + " (it releases the dispatch lock on a remote host)"
+    }
+
     /// `--report-dir` / `--failed` / `--ports`: どちらの origin でも拒否する(意味を持たせられない
     /// のは skipBuild と違い自動側でも変わらない)。文言だけ origin で変える —— 自動ディスパッチの
     /// 拒否理由を「--host と併用できない」のままにすると、利用者は打ってもいない `--host` を

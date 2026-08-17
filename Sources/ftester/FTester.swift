@@ -727,7 +727,7 @@ struct RunScenarios: AsyncParsableCommand {
 
     @Flag(name: .customLong("force-lock"),
           help: ArgumentHelp("Steal a remote host's dispatch.lock instead of failing fast when another dispatch "
-            + "already holds it (docs/remote-runner.md §5). Only meaningful with --host or --fleet"))
+            + "already holds it (docs/remote-runner.md §5). Needs a run profile, --host or --fleet"))
     var forceLock = false
 
     @Option(name: .customLong("device"), parsing: .upToNextOption,
@@ -778,8 +778,9 @@ struct RunScenarios: AsyncParsableCommand {
         if split, fleet == nil {
             throw ValidationError("--split requires --fleet")
         }
-        if forceLock, host == nil, fleet == nil {
-            throw ValidationError("--force-lock requires --host or --fleet")
+        if forceLock, let message = RemoteDispatchFlagPolicy.forceLockRejection(
+            host: host, fleet: fleet, profile: profile) {
+            throw ValidationError(message)
         }
     }
 

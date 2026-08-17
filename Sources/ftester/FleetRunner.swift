@@ -429,6 +429,12 @@ enum FleetRunner {
             return 127
         }
 
+        // 中断はホスト別の子(それぞれが自分の ssh を持つ)へ伝える。ここを飛ばすと、
+        // 親だけ落ちて子とリモートが走り続ける。**時間で SIGKILL しない**(escalateAfter: nil)
+        // —— 子は SIGTERM のあとに dispatch.lock の解放と終了スクリプトを走らせる
+        let relay = InterruptRelay.forwarding(to: process, escalateAfter: nil)
+        defer { relay.stop() }
+
         let readHandle = pipe.fileHandleForReading
         let readDone = DispatchSemaphore(value: 0)
         let splitter = StreamLineSplitter()

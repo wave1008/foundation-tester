@@ -508,6 +508,10 @@ struct RemoteRunDispatcher {
         process.standardError = FileHandle.standardError
         let waitForExit = ProcessExitWait.prepareBlocking(process)
         try process.run()
+        // 中断はこの ssh へ伝える(親を殺しただけでは子は死なず、リモートが走り続ける。
+        // InterruptRelay の宣言)
+        let relay = InterruptRelay.forwarding(to: process)
+        defer { relay.stop() }
         waitForExit()
         return process.terminationStatus
     }
@@ -554,6 +558,10 @@ struct RemoteRunDispatcher {
             }
             readDone.signal()
         }
+        // 中断をこの ssh へ伝える(runInherited と同じ理由。これが無いと ftester を kill しても
+        // ssh が生き残り、-tt による SIGHUP がリモートへ届かない)
+        let relay = InterruptRelay.forwarding(to: process)
+        defer { relay.stop() }
         let deadline = timeoutSeconds.map { DispatchTime.now() + .seconds($0) } ?? .distantFuture
         if waitExit(deadline) == .timedOut {
             process.terminate()                        // SIGTERM; -tt が SIGHUP をリモートへ伝える(§16.1)
