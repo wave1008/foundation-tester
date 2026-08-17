@@ -1,5 +1,5 @@
 // appPath の原本をワークスペースの apps/ へ実際にコピーする I/O 層(WorkspaceAppStaging)。
-// パス計算(インストール先の決定)は FileSyncWorkspaceTests.swift 側(resolve() の純粋ロジック)。
+// パス計算(インストール先の決定)は RemoteControlWorkspaceTests.swift 側(resolve() の純粋ロジック)。
 // ここはファイル/ディレクトリの実コピーと冪等性(差分判定)だけを見る。デバイス不要。
 
 import Foundation

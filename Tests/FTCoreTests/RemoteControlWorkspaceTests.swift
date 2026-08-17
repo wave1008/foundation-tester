@@ -1,4 +1,4 @@
-// 実行プロファイルの `fileSync.workspace`(docs/remote-runner.md §17)の純粋ロジックと
+// 実行プロファイルの `remoteControl.workspace`(docs/remote-runner.md §17)の純粋ロジックと
 // resolve() への配線。デバイス・リモートは要らない(rsync/ssh はここでは扱わない —
 // RemoteDispatchTests.swift の workspaceRsyncArgs / RemoteRunArgs 側で固定する)。
 // appPath の原本(sourcePath)は常にリポジトリルート基準 —— ワークスペース宣言時は
@@ -10,13 +10,13 @@ import Foundation
 import XCTest
 @testable import FTCore
 
-final class FileSyncWorkspaceTests: XCTestCase {
+final class RemoteControlWorkspaceTests: XCTestCase {
     var tempDir: URL!
     var project: TestProject!
 
     override func setUpWithError() throws {
         tempDir = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("FTCoreTests-fileSync-\(UUID().uuidString)")
+            .appendingPathComponent("FTCoreTests-remoteControl-\(UUID().uuidString)")
         let root = tempDir.appendingPathComponent("TestProjects/SampleApp")
         project = TestProject(name: "SampleApp", rootURL: root)
         for dir in [project.appsDir, project.machinesDir, project.runsDir] {
@@ -77,10 +77,10 @@ final class FileSyncWorkspaceTests: XCTestCase {
 
     // MARK: - ProfileResolver.declaredWorkspace(軽量読み。マシン解決を経由しない)
 
-    func testDeclaredWorkspaceReadsFileSyncWorkspace() throws {
+    func testDeclaredWorkspaceReadsRemoteControlWorkspace() throws {
         try write("""
         { "app": "sampleapp", "devices": [ { "name": "d1" } ],
-          "fileSync": { "workspace": "../ws" } }
+          "remoteControl": { "workspace": "../ws" } }
         """, to: project.runsDir, name: "r")
         XCTAssertEqual(ProfileResolver.declaredWorkspace(project: project, runName: "r"), "../ws")
     }
@@ -95,7 +95,7 @@ final class FileSyncWorkspaceTests: XCTestCase {
     func testDeclaredWorkspaceNilWhenWorkspaceEmpty() throws {
         try write("""
         { "app": "sampleapp", "devices": [ { "name": "d1" } ],
-          "fileSync": { "workspace": "   " } }
+          "remoteControl": { "workspace": "   " } }
         """, to: project.runsDir, name: "r")
         XCTAssertNil(ProfileResolver.declaredWorkspace(project: project, runName: "r"))
     }
@@ -108,7 +108,7 @@ final class FileSyncWorkspaceTests: XCTestCase {
     // (2026-08-18。ワークスペースは常に有効 —— appPath のインストール先は常にリダイレクトされる。
     // 原本(sourcePath)の解決基準はリポジトリルートのまま不変)
 
-    func testUnspecifiedFileSyncDefaultsToProjectRootWorkspace() throws {
+    func testUnspecifiedRemoteControlDefaultsToProjectRootWorkspace() throws {
         try writeAppAndMachine()
         try write("""
         { "app": "sampleapp", "devices": [ { "name": "d1" } ] }
@@ -168,14 +168,14 @@ final class FileSyncWorkspaceTests: XCTestCase {
     func testEffectiveWorkspaceRootUsesDeclaredValueWhenPresent() throws {
         try write("""
         { "app": "sampleapp", "devices": [ { "name": "d1" } ],
-          "fileSync": { "workspace": "../ws" } }
+          "remoteControl": { "workspace": "../ws" } }
         """, to: project.runsDir, name: "r")
         let expected = tempDir.deletingLastPathComponent().appendingPathComponent("ws")
         XCTAssertEqual(
             ProfileResolver.effectiveWorkspaceRoot(project: project, runName: "r").path, expected.path)
     }
 
-    // MARK: - resolve(): fileSync.workspace 宣言時は「インストールに使うパス」だけが
+    // MARK: - resolve(): remoteControl.workspace 宣言時は「インストールに使うパス」だけが
     // ワークスペース基準へ切り替わる。**原本(sourcePath)の解決基準はリポジトリルートのまま不変**
     // (以前は appPath の相対パス解決そのものの基準を切り替えていたが、原本の置き場所と
     // インストールに使う場所を混同していた。docs/remote-runner.md §17)
@@ -184,7 +184,7 @@ final class FileSyncWorkspaceTests: XCTestCase {
         try writeAppAndMachine(appPath: "apps/SampleApp.app")
         try write("""
         { "app": "sampleapp", "devices": [ { "name": "d1" } ],
-          "fileSync": { "workspace": "../sut-workspace" } }
+          "remoteControl": { "workspace": "../sut-workspace" } }
         """, to: project.runsDir, name: "r")
 
         let resolved = try ProfileResolver.resolve(project: project, runName: "r", machineName: "m")
@@ -205,7 +205,7 @@ final class FileSyncWorkspaceTests: XCTestCase {
         try writeAppAndMachine(appPath: "apps/SampleApp.app")
         try write("""
         { "app": "sampleapp", "devices": [ { "name": "d1" } ],
-          "fileSync": { "workspace": "/Volumes/shared/ws" } }
+          "remoteControl": { "workspace": "/Volumes/shared/ws" } }
         """, to: project.runsDir, name: "r")
 
         let resolved = try ProfileResolver.resolve(project: project, runName: "r", machineName: "m")
@@ -222,7 +222,7 @@ final class FileSyncWorkspaceTests: XCTestCase {
         try writeAppAndMachine(appPath: "/opt/builds/SampleApp.app")
         try write("""
         { "app": "sampleapp", "devices": [ { "name": "d1" } ],
-          "fileSync": { "workspace": "../ws" } }
+          "remoteControl": { "workspace": "../ws" } }
         """, to: project.runsDir, name: "r")
 
         let resolved = try ProfileResolver.resolve(project: project, runName: "r", machineName: "m")
@@ -238,7 +238,7 @@ final class FileSyncWorkspaceTests: XCTestCase {
         try writeAppAndMachine(appPath: "apps/SampleApp.app")
         try write("""
         { "app": "sampleapp", "devices": [ { "name": "d1" } ],
-          "fileSync": { "workspace": "../local-only-ws" } }
+          "remoteControl": { "workspace": "../local-only-ws" } }
         """, to: project.runsDir, name: "r")
 
         let resolved = try ProfileResolver.resolve(
@@ -269,17 +269,43 @@ final class FileSyncWorkspaceTests: XCTestCase {
         XCTAssertEqual(ProfileResolver.declaredAppPaths(project: project, runName: "nope"), [:])
     }
 
-    // MARK: - validate(): fileSync 内の未知キーは警告(タイポ検出)
+    // MARK: - validate(): remoteControl 内の未知キーは警告(タイポ検出)
 
-    func testValidateWarnsOnUnknownFileSyncKey() throws {
+    func testValidateWarnsOnUnknownRemoteControlKey() throws {
         let json = Data("""
         { "app": "sampleapp", "devices": [ { "name": "d1" } ],
-          "fileSync": { "workspce": "../ws" } }
+          "remoteControl": { "workspce": "../ws" } }
         """.utf8)
         let (errors, warnings) = ProfileResolver.validate(
             kind: .run, data: json, context: "runs/r.json", project: project)
         XCTAssertTrue(errors.isEmpty, "\(errors)")
-        XCTAssertTrue(warnings.contains { $0.contains("fileSync") && $0.contains("workspce") },
+        XCTAssertTrue(warnings.contains { $0.contains("remoteControl") && $0.contains("workspce") },
                      "\(warnings)")
+    }
+
+    // MARK: - resolve(): 開始・終了スクリプトは実効ワークスペースの scripts/ 配下に解決される
+    // (規則そのものは RunHooksTests。ここは配線だけ)
+
+    func testResolveCarriesTheHooksResolvedAgainstTheEffectiveWorkspace() throws {
+        try writeAppAndMachine()
+        try write("""
+        { "app": "sampleapp", "devices": [ { "name": "d1" } ],
+          "remoteControl": { "workspace": "/Volumes/shared/ws" } }
+        """, to: project.runsDir, name: "r")
+
+        let resolved = try ProfileResolver.resolve(project: project, runName: "r", machineName: "m")
+        XCTAssertEqual(resolved.setupHook?.url.path, "/Volumes/shared/ws/scripts/setup.sh")
+        XCTAssertEqual(resolved.teardownHook?.url.path, "/Volumes/shared/ws/scripts/teardown.sh")
+    }
+
+    func testHooksFollowTheDefaultWorkspaceWhenUndeclared() throws {
+        try writeAppAndMachine()
+        try write("""
+        { "app": "sampleapp", "devices": [ { "name": "d1" } ] }
+        """, to: project.runsDir, name: "r")
+
+        let resolved = try ProfileResolver.resolve(project: project, runName: "r", machineName: "m")
+        XCTAssertEqual(resolved.setupHook?.url.path,
+                       project.rootURL.appendingPathComponent("workspace/scripts/setup.sh").path)
     }
 }

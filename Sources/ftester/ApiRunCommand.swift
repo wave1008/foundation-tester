@@ -123,7 +123,7 @@ struct ApiRunCommand: AsyncParsableCommand {
     /// **手で打つものではない**。RunScenarios.workspace と同じ契約(RemoteRunDispatcher が
     /// ミラー後の絶対パスを渡す)
     @Option(help: ArgumentHelp(
-        "Override this run profile's fileSync.workspace (where the staged appPath package is "
+        "Override this run profile's remoteControl.workspace (where the staged appPath package is "
         + "installed from). Set by the remote dispatcher on the far side; not for hand use",
         visibility: .hidden))
     var workspace: String?
@@ -264,6 +264,20 @@ struct ApiRunCommand: AsyncParsableCommand {
             setenv(AnimationPolicy.environmentKey, animations ? "1" : "0", 1)
             await BackendHealthCheck.warnIfUnreachable(resolved: resolved) { logStderr($0) }
             resolvedProfile = resolved
+        }
+
+        // 開始/終了スクリプト(docs/remote-runner.md §17。ProfileRunner.run と同じ規律 ——
+        // デバイスに触る前に撃ち、終了スクリプトは defer で必ず撃つ)。**resolvedAll ではなく
+        // 絞り込み後の resolved を渡す**(スクリプトが受け取るデバイス一覧は、この run が実際に
+        // 使う台と一致していないと `adb reverse` の宛先がずれる)
+        var hookSession: RunHookSession?
+        if let resolved = resolvedProfile {
+            let hookStateDir = (try? RepoRoot.find())?.appendingPathComponent(".ftester")
+            hookSession = try RunHookRunner.begin(
+                resolved: resolved, stateDir: hookStateDir) { logStderr($0) }
+        }
+        defer {
+            if let hookSession { RunHookRunner.end(hookSession) { logStderr($0) } }
         }
 
         // ワーカー並列実行経路のときだけビルドと並行してワーカー(iOSブリッジ起動/Android照合+

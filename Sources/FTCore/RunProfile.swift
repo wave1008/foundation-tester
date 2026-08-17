@@ -290,10 +290,12 @@ public struct FMConfig: Sendable, Equatable {
     }
 }
 
-/// リモートディスパッチでアプリのパッケージ(.app/.apk)を揃えるための共有ディレクトリ宣言
-/// (docs/remote-runner.md §fileSync)。中身の規約(apps/scripts/data)は WorkspaceScaffold。
+/// リモート実行の制御(docs/remote-runner.md §17)。ワークスペース(アプリのパッケージと
+/// 資材を揃える共有ディレクトリ。中身の規約 apps/scripts/data は WorkspaceScaffold)の宣言。
+/// run 前後のスクリプトはここでは宣言しない —— ワークスペースの `scripts/setup.sh` /
+/// `scripts/teardown.sh` があれば実行される(`RunHookPlan`)。
 /// 同期相手: vscode-ftester/schemas/run-profile.schema.json と拡張のプロファイルフォーム
-public struct FileSyncSection: Codable, Sendable, Equatable {
+public struct RemoteControlSection: Codable, Sendable, Equatable {
     /// ワークスペースのルート。絶対パス、または**リポジトリルート基準**の相対パス。
     /// appPath の解決基準には使わない(常にリポジトリルート基準のまま)——
     /// 実行時に appPath の原本をここ配下の `apps/<ファイル名>` へコピー(ステージング)し、
@@ -400,7 +402,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// Android は screenrecord 自体の --size 指定も省略する(録画元から既にフル解像度になる)
     public var recordFullResolution: Bool?
     /// ワークスペース(ファイル同期)宣言。省略可(既定 = リポジトリルート基準の従来挙動)
-    public var fileSync: FileSyncSection?
+    public var remoteControl: RemoteControlSection?
 
     public init(app: String? = nil, devices: [RunDeviceRef]? = nil, fm: Bool? = nil,
                 heal: Bool? = nil, falsePositiveCheck: Bool? = nil, screenIs: Bool? = nil,
@@ -413,7 +415,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
                 containerInference: Bool? = nil,
                 enableAnimations: Bool? = nil, homeOnStart: Bool? = nil, record: Bool? = nil,
                 recordFailuresOnly: Bool? = nil, recordBitrateKbps: Int? = nil,
-                recordFullResolution: Bool? = nil, fileSync: FileSyncSection? = nil) {
+                recordFullResolution: Bool? = nil, remoteControl: RemoteControlSection? = nil) {
         self.app = app
         self.devices = devices
         self.fm = fm
@@ -438,7 +440,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         self.recordFailuresOnly = recordFailuresOnly
         self.recordBitrateKbps = recordBitrateKbps
         self.recordFullResolution = recordFullResolution
-        self.fileSync = fileSync
+        self.remoteControl = remoteControl
     }
 
     static let knownKeys: Set<String> = [
@@ -447,7 +449,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         "machine", "iosInappEngine", "wipeDataOnBloat", "updateWebView", "wipeDataThresholdGB",
         "recoverCpuFallbackToGpu", "locale",
         "iosFastInput", "enableAnimations", "homeOnStart", "containerInference",
-        "record", "recordFailuresOnly", "recordBitrateKbps", "recordFullResolution", "fileSync",
+        "record", "recordFailuresOnly", "recordBitrateKbps", "recordFullResolution", "remoteControl",
     ]
 }
 
@@ -553,7 +555,7 @@ public struct ResolvedProfile: Sendable {
     public let recordBitrateKbps: Int
     /// 半分解像度化をスキップするか(RunProfileDocument.recordFullResolution。既定 false)
     public let recordFullResolution: Bool
-    /// **絶対パス解決済みのワークスペースルート**(fileSync.workspace / `--workspace` 上書きの
+    /// **絶対パス解決済みのワークスペースルート**(remoteControl.workspace / `--workspace` 上書きの
     /// 実効値)。**常に非 nil**(2026-08-18。既定 `<project.rootURL>/workspace` —— ワークスペースは
     /// 常に有効。`ProfileResolver.resolveWorkspaceRoot`)。appPath の原本の解決基準はこれの
     /// 有無に関わらず常にリポジトリルート ―― `apps[platform].appPath`(インストール先)だけが
@@ -565,6 +567,11 @@ public struct ResolvedProfile: Sendable {
     /// 既存テストの直接呼び出しが壊れる。型を Optional のまま残すのも同じ理由 ——
     /// 非 Optional にすると同じ既存テストが nil を渡せなくなる)
     public var workspaceRoot: URL? = nil
+    /// run の前後で走らせる利用者のスクリプト(`<workspace>/scripts/setup.sh`・`teardown.sh`)。
+    /// **workspaceRoot と同じく既定値付きの `var`**(memberwise init を直に呼ぶ既存テストのため)。
+    /// 実行するかどうかは**ファイルがあるかどうか**だけで決まる(`RunHookPlan.action`)
+    public var setupHook: RunHook? = nil
+    public var teardownHook: RunHook? = nil
     /// 解決中に出た警告(スキップしたデバイス・未知キー等)。呼び出し側が表示する
     public let warnings: [String]
 
@@ -860,7 +867,7 @@ public enum ProfileResolver {
         return machine
     }
 
-    /// runProfileName の実行プロファイルが宣言する `fileSync.workspace`(trim 後非空)を返す。
+    /// runProfileName の実行プロファイルが宣言する `remoteControl.workspace`(trim 後非空)を返す。
     /// ファイルが無い/デコード不能/未宣言・空文字列なら nil。**マシン解決を必要としないので
     /// フルの resolve() を経由しない** —— リモートディスパッチ(Sources/ftester/
     /// RemoteRunDispatcher.swift)はミラーの要否だけを知りたく、実行するマシンはまだ決めていない
@@ -868,7 +875,7 @@ public enum ProfileResolver {
         let runURL = project.runsDir.appendingPathComponent("\(runName).json")
         guard let data = try? Data(contentsOf: runURL),
               let doc = try? JSONDecoder().decode(RunProfileDocument.self, from: data),
-              let workspace = doc.fileSync?.workspace?.trimmingCharacters(in: .whitespacesAndNewlines),
+              let workspace = doc.remoteControl?.workspace?.trimmingCharacters(in: .whitespacesAndNewlines),
               !workspace.isEmpty else {
             return nil
         }
@@ -908,7 +915,7 @@ public enum ProfileResolver {
         return result
     }
 
-    /// `fileSync.workspace` 宣言と `--workspace` 上書きから実効の生値(未解決)を決める。
+    /// `remoteControl.workspace` 宣言と `--workspace` 上書きから実効の生値(未解決)を決める。
     /// override が非空なら常に勝つ(中継されたリモートの子はこれで自分のリポジトリルート基準を
     /// 上書きする)。両方無ければ nil(未宣言 = 従来どおりリポジトリルート基準)。
     /// 純粋関数として切り出す(デバイス・ファイル I/O 不要のためテストが直接叩ける)
@@ -921,8 +928,8 @@ public enum ProfileResolver {
         return trimmedNonEmpty(override) ?? trimmedNonEmpty(declared)
     }
 
-    /// `fileSync.workspace` の実効ルート(絶対パス解決済み)。優先順は
-    /// **override(`--workspace`) > declared(`fileSync.workspace`) > 既定**。
+    /// `remoteControl.workspace` の実効ルート(絶対パス解決済み)。優先順は
+    /// **override(`--workspace`) > declared(`remoteControl.workspace`) > 既定**。
     /// **既定は `"<projectRoot>/workspace"`**(2026-08-18。常に非 nil を返す ——
     /// ワークスペースは常に有効。declared/override 省略時に repoRoot 基準へ戻すと、
     /// 呼び出し側ごとに「省略時どう扱うか」の分岐が要る)。declared/override が相対パスなら
@@ -937,7 +944,7 @@ public enum ProfileResolver {
     }
 
     /// 実行プロファイルを合成して ResolvedProfile を返す。
-    /// - workspaceOverride: `--workspace`(hidden)。実行プロファイルの `fileSync.workspace` を
+    /// - workspaceOverride: `--workspace`(hidden)。実行プロファイルの `remoteControl.workspace` を
     ///   上書きする。リモートディスパッチが、ミラー先を実行するマシンの子へ伝えるのに使う
     ///   (RemoteRunDispatcher が必ず渡す。渡さないと子は自分のリポジトリルート基準で appPath を
     ///   解決し、リモートに転送されていない絶対パスを見に行く)
@@ -955,7 +962,7 @@ public enum ProfileResolver {
         let runDoc: RunProfileDocument = try load(runURL, warnings: &warnings) { json in
             checkKeys(json, allowed: RunProfileDocument.knownKeys, context: "runs/\(runName).json")
                 + checkDeviceRefKeys(json, context: "runs/\(runName).json")
-                + checkFileSyncKeys(json, context: "runs/\(runName).json")
+                + checkRemoteControlKeys(json, context: "runs/\(runName).json")
         }
         guard let appRef = runDoc.app else {
             throw ProfileError.missingAppReference(run: runName)
@@ -1076,8 +1083,12 @@ public enum ProfileResolver {
         // (`WorkspaceRemoteDispatch.placement`。Sources/ftester/RemoteRunDispatcher.swift)
         let repoRoot = project.rootURL.deletingLastPathComponent().deletingLastPathComponent()
         let workspaceRoot = resolveWorkspaceRoot(
-            declared: runDoc.fileSync?.workspace, override: workspaceOverride,
+            declared: runDoc.remoteControl?.workspace, override: workspaceOverride,
             projectRoot: project.rootURL, repoRoot: repoRoot)
+        // 開始/終了スクリプト。パス計算だけで、ファイルの有無は見ない —— それは実行側
+        // (RunHookRunner)が action() で判定する(resolve は I/O を増やさない)
+        let setupHook = RunHookPlan.resolve(kind: .setup, workspaceRoot: workspaceRoot)
+        let teardownHook = RunHookPlan.resolve(kind: .teardown, workspaceRoot: workspaceRoot)
         var apps: [String: ResolvedAppTarget] = [:]
         for platform in Set(devices.map(\.platform)) {
             let section = appProfile.section(for: platform)
@@ -1148,6 +1159,8 @@ public enum ProfileResolver {
             recordBitrateKbps: (runDoc.recordBitrateKbps).map { $0 > 0 ? $0 : 1500 } ?? 1500,
             recordFullResolution: runDoc.recordFullResolution ?? false,
             workspaceRoot: workspaceRoot,
+            setupHook: setupHook,
+            teardownHook: teardownHook,
             warnings: warnings)
     }
 
@@ -1237,7 +1250,7 @@ public enum ProfileResolver {
             }
             warnings += checkKeys(json, allowed: RunProfileDocument.knownKeys, context: context)
             warnings += checkDeviceRefKeys(json, context: context)
-            warnings += checkFileSyncKeys(json, context: context)
+            warnings += checkRemoteControlKeys(json, context: context)
             let (machineErrors, machineWarnings) = checkRunMachineField(json, project: project)
             errors += machineErrors
             warnings += machineWarnings
@@ -1310,9 +1323,9 @@ public enum ProfileResolver {
         }
     }
 
-    private static func checkFileSyncKeys(_ json: [String: Any], context: String) -> [String] {
-        guard let section = json["fileSync"] as? [String: Any] else { return [] }
-        return checkKeys(section, allowed: FileSyncSection.knownKeys, context: "\(context) fileSync")
+    private static func checkRemoteControlKeys(_ json: [String: Any], context: String) -> [String] {
+        guard let section = json["remoteControl"] as? [String: Any] else { return [] }
+        return checkKeys(section, allowed: RemoteControlSection.knownKeys, context: "\(context) remoteControl")
     }
 
     /// 実行プロファイルの machine フィールドの検証(型・参照先の存在・未指定)。

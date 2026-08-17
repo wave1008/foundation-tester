@@ -123,7 +123,7 @@ public struct RemoteLayout: Equatable, Sendable {
         workDir + "/" + Self.projectsDirName + "/" + project
     }
 
-    /// `fileSync.workspace` のミラー先(docs/remote-runner.md §ファイル同期(ワークスペース))。
+    /// `remoteControl.workspace` のミラー先(docs/remote-runner.md §17)。
     /// プロジェクトごとに分ける(複数プロジェクトを同じランナーで回しても衝突しない)。
     /// projectDir と違い `--delete` は付いていない側の呼び出し規約は無く、rsync 引数
     /// (RemoteTransferPlan.workspaceRsyncArgs)側で --delete を明示する
@@ -193,7 +193,7 @@ public enum RemoteTransferPlan {
         ]
     }
 
-    /// `fileSync.workspace` のミラー(RemoteRunDispatcher が宣言済みのときだけ呼ぶ)。
+    /// `remoteControl.workspace` のミラー(RemoteRunDispatcher が宣言済みのときだけ呼ぶ)。
     /// アプリのパッケージ(.app/.apk)を運ぶための rsync なので `-az --delete` で手元と揃える
     /// (rsyncArgs と同じ規律)。除外は .git(ワークスペース自体を git 管理するケース)・
     /// .DS_Store・node_modules(ビルドツール類の一時生成物)——先頭 "/" を付けず、階層を問わず除外する
@@ -239,7 +239,7 @@ extension RemoteArtifactCollection {
     }
 }
 
-/// `fileSync.workspace` の実効ルートがプロジェクトルート配下かどうかで転送経路を分ける
+/// `remoteControl.workspace` の実効ルートがプロジェクトルート配下かどうかで転送経路を分ける
 /// (docs/remote-runner.md §17。2026-08-18)。配下(既定 `<project.rootURL>/workspace` を含む)
 /// ならプロジェクト転送(`RemoteTransferPlan.rsyncArgs`。`TestProjects/<project>/` を丸ごと運ぶ)が
 /// そのまま運ぶので専用の rsync は要らない ―― 同じバイトを二度送らない。配下でない
@@ -390,7 +390,7 @@ public enum RemoteRunArgs {
         // (同名は別の機械にも居るのが通常。2026-08-17 に実走で確認)
         if !deviceNames.isEmpty { args += ["--device"] + deviceNames }
         if let deviceHost { args += ["--device-host", deviceHost] }
-        // **fileSync.workspace が宣言されているプロファイルだけ渡る**(RemoteRunDispatcher が
+        // **remoteControl.workspace が宣言されているプロファイルだけ渡る**(RemoteRunDispatcher が
         // ミラー後に埋める)。渡さないと子は自分のリポジトリルート基準で appPath を解決し、
         // ミラーしていない絶対パスを見に行く(この機能の動機になった不具合そのもの)
         if let workspace { args += ["--workspace", workspace] }

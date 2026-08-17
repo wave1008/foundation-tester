@@ -42,6 +42,7 @@ const runProfileRecordFullResolution = document.getElementById('run-profile-reco
 const runProfileWipeThreshold = document.getElementById('run-profile-wipe-threshold');
 const runProfileLocale = document.getElementById('run-profile-locale');
 const runProfileWorkspace = document.getElementById('run-profile-workspace');
+const btnRunProfileHookScaffold = document.getElementById('btn-run-profile-hook-scaffold');
 const runProfileReportDir = document.getElementById('run-profile-report-dir');
 const runProfileDefaultTimeout = document.getElementById('run-profile-default-timeout');
 const runProfileError = document.getElementById('run-profile-error');
@@ -417,6 +418,19 @@ runProfileRecordFullResolution.addEventListener('change', onRunProfileFormInput)
 runProfileWipeThreshold.addEventListener('input', onRunProfileFormInput);
 runProfileLocale.addEventListener('input', onRunProfileFormInput);
 runProfileWorkspace.addEventListener('input', onRunProfileFormInput);
+
+// 雛形の作成はフォームの値ではなくファイルを作る操作なので dirty にしない。ワークスペースは
+// **入力中の値**を送る(保存前に押しても、画面に見えている場所へ作られる)
+btnRunProfileHookScaffold.addEventListener('click', () => {
+  if (btnRunProfileHookScaffold.disabled || !selectedRunProfile) {
+    return;
+  }
+  vscode.postMessage({
+    type: 'runProfileHookScaffold',
+    profile: selectedRunProfile,
+    workspace: runProfileWorkspace.value.trim(),
+  });
+});
 runProfileReportDir.addEventListener('input', onRunProfileFormInput);
 runProfileDefaultTimeout.addEventListener('input', onRunProfileFormInput);
 
@@ -487,6 +501,7 @@ function setRunProfileControlsEnabled(enabled) {
   runProfileWipeThreshold.disabled = !enabled;
   runProfileLocale.disabled = !enabled;
   runProfileWorkspace.disabled = !enabled;
+  btnRunProfileHookScaffold.disabled = !enabled;
   runProfileReportDir.disabled = !enabled;
   runProfileDefaultTimeout.disabled = !enabled;
   for (const checkbox of runProfileDevices.querySelectorAll('input[type="checkbox"]')) {

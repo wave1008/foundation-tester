@@ -1,6 +1,6 @@
 // WorkspaceAppStaging.swift
 // appPath の原本(ResolvedAppTarget.sourcePath。常にリポジトリルート基準)を
-// `fileSync.workspace` の apps/ へ供給する I/O 層。インストール先の決定(パス計算)は
+// `remoteControl.workspace` の apps/ へ供給する I/O 層。インストール先の決定(パス計算)は
 // ProfileResolver.resolve が既に行っている(ResolvedAppTarget.appPath)。ここは
 // 「そこにバイトを実際に運ぶ」ことだけを担う。呼び出し場所は3つ:
 //   - ProfileRunner.run / ApiRunCommand: 自分自身の apps[platform] を揃える(stageWorkspaceApps)

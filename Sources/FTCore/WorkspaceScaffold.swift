@@ -1,5 +1,5 @@
 // WorkspaceScaffold.swift
-// `fileSync.workspace` 配下の規約フォルダ(apps/scripts/data)。中身は自由 —— 強制はしない。
+// `remoteControl.workspace` 配下の規約フォルダ(apps/scripts/data)。中身は自由 —— 強制はしない。
 // 無いフォルダだけを作る(ftester run/api run が ResolvedProfile.workspaceRoot を使うたび、
 // RemoteRunDispatcher がミラー前に呼ぶ)。
 

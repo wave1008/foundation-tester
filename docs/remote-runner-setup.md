@@ -400,6 +400,44 @@ ftester api delete-device --platform android --avd <AVD名>
 **両方の機械の ftester の版が揃っている必要があります**。古いと状態も映像も来ず、タイルは
 「<ホスト> に届いていません(状態は取得できません)」のままになります(→ ステップ3 で版を揃える)。
 
+## テストの前に DB やスタブサーバを起こす(開始/終了スクリプト)
+
+テスト対象アプリがバックエンドを必要とするときは、**テストを走らせる機械の上で**それを起こす
+必要がある。設定は要らない —— **ワークスペースの `scripts/` に置くだけ**でよい。
+
+```
+TestProjects/<project>/workspace/scripts/setup.sh      # テスト実行前に走る(あれば)
+TestProjects/<project>/workspace/scripts/teardown.sh   # テスト実行後に走る(あれば)
+```
+
+**雛形は VSCode 拡張から作れる**: モニターの「プロファイル」タブ →「リモート制御」→
+**「スクリプトの雛形を作成する」**。使い方(渡される環境変数・実行規則)は雛形の中に
+コメントで書いてある。既にあるファイルは上書きしない。
+
+- ワークスペースはディスパッチのときにランナー機へ運ばれるので、**スクリプトも資材
+  (compose ファイル・シードデータ)も一緒に届く**
+- **手元で実行しても同じように走る**(リモート専用ではない)
+- **setup.sh が失敗したら、テストは1本も走らずに止まる**(依存サービスが無いまま流すと、
+  全シナリオが「アプリの不具合」の顔で落ちるため)。teardown.sh の失敗は結果を変えない(警告のみ)
+- スクリプトが読める環境変数: `FT_HOOK`(setup/teardown)・`FT_WORKSPACE`・`FT_PROJECT`・
+  `FT_PROFILE`・`FT_MACHINE`・`FT_REPORT_DIR`・`FT_IOS_DEVICES`・`FT_ANDROID_DEVICES`
+
+```bash
+#!/bin/sh
+# workspace/scripts/setup.sh の例
+set -eu
+docker compose -f "$FT_WORKSPACE/data/compose.yaml" up -d
+until nc -z 127.0.0.1 5432; do sleep 1; done   # 「時間」ではなく「起きたこと」で待つ
+# Android エミュレータからは 10.0.2.2、実機は adb reverse で手元のポートへ届かせる
+for serial in $(adb devices | awk '/\tdevice$/ {print $1}'); do
+  adb -s "$serial" reverse tcp:8080 tcp:8080
+done
+```
+
+**run が異常終了(ssh 切断・強制終了)しても、起こしたものは残らない。** 次の run の開始時と
+`ftester remote clean` が、死んだ run の終了スクリプトを代わりに実行する
+(手で撃つなら `ftester hooks reap`)。
+
 ## 日常運用
 
 ```bash
@@ -410,7 +448,8 @@ ftester remote exec <ホスト> -- <サブコマンド>               # 単発�
 ```
 
 - **`remote clean` は定期的に。** ランナー機は誰も見ないので、results・reports・録画が
-  溜まり続けて、ある日ディスクフルで止まる。孤児プロセスやゾンビブリッジの掃除も同時に行う
+  溜まり続けて、ある日ディスクフルで止まる。孤児プロセスやゾンビブリッジの掃除、
+  死んだ run が残した終了スクリプトの実行も同時に行う
 - **ツールの更新**は `ftester remote setup <ホスト>` をもう一度流すだけ(冪等。align が版を揃える)
 - **`remote exec` はリモートで `ftester` を1本走らせる汎用の口**。デバイス一覧・FM の可否・
   `devices down`・カタログ照会など、用途ごとに ssh を書かずにこれ1つで済ませる。

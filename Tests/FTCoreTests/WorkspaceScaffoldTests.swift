@@ -1,4 +1,4 @@
-// fileSync.workspace 配下の規約フォルダ(apps/scripts/data)の雛形作成。
+// remoteControl.workspace 配下の規約フォルダ(apps/scripts/data)の雛形作成。
 // デバイス不要(FileManager だけの純粋な I/O)。
 
 import Foundation

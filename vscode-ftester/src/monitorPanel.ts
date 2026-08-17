@@ -579,6 +579,9 @@ class MonitorPanelController implements vscode.Disposable {
       case "runProfileSave":
         this.profiles.handleRunProfileSave(message);
         break;
+      case "runProfileHookScaffold":
+        void this.profiles.handleRunProfileHookScaffold(message);
+        break;
       case "appProfileAdd":
         void this.profiles.handleAppProfileAdd();
         break;

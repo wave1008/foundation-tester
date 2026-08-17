@@ -136,6 +136,19 @@
   **片方だけ変えない** —— 手順に影響する変更(レイアウト・併用不可オプション・適合チェックの項目)は
   docs とスキルの両方に入れる。**スキルを増やしたら `Scripts/install-skill.sh` の `SKILLS` にも足す**
   (プラグイン経由は `.claude/skills/` を直接見るので不要だが、curl 版は列挙が唯一の定義元)
+- **リモート制御(実行プロファイルの `remoteControl`。旧 `fileSync`)**: ワークスペース(資材の
+  置き場。ステージングと転送)+ **run 前後のスクリプト**(依存 DB・スタブサーバの起動と片付け。
+  docs/remote-runner.md §17)。**スクリプトに宣言は無い** —— `<workspace>/scripts/setup.sh` /
+  `teardown.sh` が**あれば実行、無ければ何もしない**(名前も置き場所も固定。拡張のフォームにも
+  入力欄を置かない = 2026-08-18 ユーザー決定)。**呼ぶのは `ProfileRunner.run` と
+  `ApiRunCommand` の2箇所** —— リモートの子は `ftester run --host local` として向こうで同じ
+  コードを通るので `RemoteRunDispatcher` には足さない(手元とリモートで実装を割らない)。
+  守る規律3つ: **①setup の失敗は run を止める**(インフラ起因。シナリオ0本)/
+  **teardown の失敗は結果を変えない** / **②デバイスに触る前に撃つ**(渡すデバイス一覧は
+  絞り込み後のもの)/ **③片付けは defer だけに頼らない** —— setup の前に
+  `.ftester/hooks/<pid>.json` を置き、次の run 開始時と `ftester hooks reap`(`remote clean` が
+  撃つ)が死んだ pid のぶんを代わりに実行する(**生存判定は pid だけ。mtime を見ない** =
+  数十分の run を「古い」と誤判定して動いている DB を落とさない)
 - 設計書(アーキテクチャ・Swift DSL 仕様・セレクタ記法・プロファイル): docs/design.md
 - 性能チューニング(調整ノブ・不採用施策と再検討条件・計測手順): docs/performance-tuning.md
 - 検証の詳細(flake/性能の判定規律・ベータ整合・全滅時の切り分け・e2e.sh のオプション): docs/verification.md

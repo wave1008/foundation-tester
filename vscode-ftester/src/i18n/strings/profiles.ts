@@ -4,6 +4,26 @@
 import type { MessageDict } from "../core";
 
 export const profilesStrings = {
+  "profiles.msg.hookScaffoldCreated": {
+    ja: "{files} を作成しました({dir})。使い方はファイル内のコメントを見てください。",
+    en: "Created {files} in {dir}. See the comments inside for how to use them.",
+  },
+  "profiles.msg.hookScaffoldExists": {
+    ja: "スクリプトは既にあります({dir})。上書きしていません。",
+    en: "The scripts already exist in {dir}; nothing was overwritten.",
+  },
+  "profiles.msg.hookScaffoldFailed": {
+    ja: "スクリプトの雛形を作成できませんでした({dir})。詳細は OUTPUT を見てください。",
+    en: "Could not create the script templates in {dir}. See OUTPUT for details.",
+  },
+  "profiles.log.hookScaffoldDone": {
+    ja: "スクリプトの雛形: {dir}(作成: {created} / 既存: {skipped})",
+    en: "Script templates: {dir} (created: {created} / existing: {skipped})",
+  },
+  "profiles.log.hookScaffoldFailed": {
+    ja: "スクリプトの雛形の作成に失敗しました({dir}): {error}",
+    en: "Failed to create the script templates in {dir}: {error}",
+  },
   "profiles.error.projectUnresolved": {
     ja: "対象のテストプロジェクトを解決できませんでした。ftester.project 設定を確認してください。",
     en: "Could not resolve the target test project. Check the ftester.project setting.",

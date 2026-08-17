@@ -501,6 +501,13 @@ export type MonitorFromWebviewMessage =
       readonly profile: string;
       readonly fields: RunProfileFormFields;
     }
+  // 同フォーム「リモート制御」の「スクリプトの雛形を作成する」。workspace は**入力中の値**
+  // (保存前でも画面に見えている場所へ作る)。空なら既定 TestProjects/<project>/workspace。
+  | {
+      readonly type: "runProfileHookScaffold";
+      readonly profile: string;
+      readonly workspace: string;
+    }
   // プロファイルタブ中段: アプリプロファイル自体の追加/コピー/名前変更/削除(実行プロファイルの
   // profileAdd/profileCopy/profileRename/profileDelete と同じ構成。対象は profile で1件指す)。
   | { readonly type: "appProfileAdd" }
@@ -753,6 +760,10 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
       );
     case "runProfileLoad":
       return typeof value.profile === "string" && value.profile !== "";
+    case "runProfileHookScaffold":
+      return (
+        typeof value.profile === "string" && value.profile !== "" && typeof value.workspace === "string"
+      );
     case "runProfileSave":
       return (
         typeof value.profile === "string" &&

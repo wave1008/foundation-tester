@@ -636,7 +636,7 @@ machines/apps/runs はプロジェクト資産で、ディスパッチのたび�
   ビルド成果物をランナー機の work からは見られない。加えて appPath のアプリパッケージ自体は
   そもそも rsync の転送対象外(§13「原則: プロファイルの正はローカル・実行時に配布」は
   `TestProjects/<project>` だけを運ぶ)なので、リモートにファイルが存在しなければ
-  「同一レイアウトにする」だけでは解決しない。**この2点は §17 の `fileSync.workspace` で解決した**
+  「同一レイアウトにする」だけでは解決しない。**この2点は §17 の `remoteControl.workspace` で解決した**
   (appPath のマシン別上書きは今も作らない —— 基準ディレクトリを揃える方式のまま)
 
 ### デバイスタブの多ホスト監視(**状態と映像は実装済み: 2026-08-17**)
@@ -1024,8 +1024,10 @@ Xcode/macOS を更新すると ToolchainFingerprint が不一致になり**全�
 | 3 | 16.4 `remote clean` | 運用開始と同時に必要(放置するとディスクフル) |
 | 4 | 16.6 カナリア更新の自動化・振り替え・ドライラン | 複数台の定常運用に入ってから |
 
-## 17. ファイル同期(ワークスペース。実装済み: 2026-08-17。ステージング方式へ改定: 2026-08-17。
-既定を常時有効化・プロジェクト配下は専用ミラー不要へ改定: 2026-08-18)
+## 17. リモート制御(ワークスペース + 開始/終了スクリプト。実装済み: 2026-08-17。
+ステージング方式へ改定: 2026-08-17。既定を常時有効化・プロジェクト配下は専用ミラー不要へ改定:
+2026-08-18。**旧称「ファイル同期」/ 旧キー `fileSync` を `remoteControl` へ改名し、
+run 前後のスクリプトを追加: 2026-08-18**)
 
 §13「アプリプロファイル」で保留していた実害の解決: リモートへディスパッチすると、
 appPath の絶対パス(リポジトリルート基準)がランナー機に存在せず
@@ -1043,10 +1045,10 @@ appPath の原本をワークスペースの `apps/<原本のファイル名>` �
 
 ### 既定と配置
 
-- **既定のワークスペースは `<project.rootURL>/workspace`**(`fileSync.workspace` 省略時。
+- **既定のワークスペースは `<project.rootURL>/workspace`**(`remoteControl.workspace` 省略時。
   例 `TestProjects/E2E-Android/workspace`)。**つまりワークスペースは常に有効**——
-  ローカル実行でも毎回このパスへステージングが走る。明示指定(`fileSync.workspace` / `--workspace`)は
-  従来どおり残り、優先順は **明示 `--workspace` > `fileSync.workspace` > 既定**
+  ローカル実行でも毎回このパスへステージングが走る。明示指定(`remoteControl.workspace` / `--workspace`)は
+  従来どおり残り、優先順は **明示 `--workspace` > `remoteControl.workspace` > 既定**
   (`ProfileResolver.resolveWorkspaceRoot`。純粋関数)
 - **プロジェクトルート配下なら専用ミラーは不要**: 既定のワークスペースを含め、ワークスペースが
   プロジェクトルートの配下にあるときは、`TestProjects/<project>/` の通常の転送(§13。
@@ -1062,8 +1064,9 @@ appPath の原本をワークスペースの `apps/<原本のファイル名>` �
   **必ず先**(`RemoteRunDispatcher.prepareWorkspace` → `transfer`)。配下のときは転送がステージング
   結果をそのまま運ぶため、逆にすると直前にステージングしたファイルが漏れる
 
-- **スキーマ**: 実行プロファイルに任意で `"fileSync": { "workspace": "<絶対パス or リポジトリ
-  ルート相対パス>" }` を書く(`Sources/FTCore/RunProfile.swift` の `FileSyncSection`)。
+- **スキーマ**: 実行プロファイルに任意で `"remoteControl": { "workspace": "<絶対パス or リポジトリ
+  ルート相対パス>" }` を書く(`Sources/FTCore/RunProfile.swift` の `RemoteControlSection`)。
+  **run 前後のスクリプトはここに書かない**(下記)。
   同期相手: `vscode-ftester/schemas/run-profile.schema.json` と拡張のプロファイルフォーム
 - **`ResolvedAppTarget` は原本とインストール先を別々に持つ**(`Sources/FTCore/RunProfile.swift`):
   `sourcePath` = リポジトリルート基準で解決した原本の絶対パス(常に不変)/
@@ -1105,7 +1108,7 @@ appPath の原本をワークスペースの `apps/<原本のファイル名>` �
   ミラー先はプロジェクトごとに分ける(`<remoteDir>/work/workspace/<project>/`。
   `RemoteLayout.workspaceDir`)
 - **`--workspace <path>`(hidden)**: `ftester run` / `ftester api run` の両方に持つ。
-  実行プロファイルの `fileSync.workspace`(既定込みの実効値)を1回限り上書きする
+  実行プロファイルの `remoteControl.workspace`(既定込みの実効値)を1回限り上書きする
   (`ProfileResolver.effectiveWorkspaceRaw` = override が非空なら常に勝つ)。**手で打つものでは
   ない** —— リモートディスパッチ(`Sources/ftester/RemoteRunDispatcher.swift` の
   `prepareWorkspace`)が、`WorkspaceRemoteDispatch.placement` の計算結果(配下ならプロジェクト
@@ -1115,6 +1118,59 @@ appPath の原本をワークスペースの `apps/<原本のファイル名>` �
   ホストごとの子プロセスとして `ftester (api) run --host <label> …` を起動するだけで、
   各子は自分自身が `RemoteRunDispatcher` を経由するときに独立してワークスペースの用意を行う
   (二重実装ではなく、既存の子プロセス起動経路にこの節の機構がそのまま乗る)
+
+### 開始/終了スクリプト(2026-08-18)
+
+テスト対象が依存する DB・スタブサーバ等を、**テストを走らせる機械の上で**起こして片付けるための口。
+ポートの取り方・待ち方・データの投入は**利用者のスクリプトが決める**(仕組み側は起動と片付けの
+保証だけを持つ)。
+
+- **宣言は無い**。ワークスペースの **`scripts/setup.sh`** と **`scripts/teardown.sh`** が
+  **存在すれば実行する**、それだけ(`FTCore.RunHookPlan`)。プロファイルに項目を増やさない ——
+  名前と置き場所が1つに決まっているほうが、受け手にも回収側にも読み違えが起きない。
+  無ければ何もしない(スクリプトを使わない利用者に空ファイルを強いない)
+- **実行場所はランナー機**。呼ぶのは `ProfileRunner.run` と `ApiRunCommand` の2箇所
+  (ワークスペースのステージングと同じ場所)で、リモートの子は `ftester run --host local` として
+  向こうで同じコードを通る —— **`RemoteRunDispatcher` には何も足さない**(手元とリモートで
+  実装が割れない)。ワークスペースごと運ばれるので、スクリプトと資材は勝手に届く
+- **順序**: デバイスに触る前に撃つ(依存サービスが無いままシミュレータを起こしても、
+  全シナリオが「アプリの不具合」の顔で落ちるだけ)。渡すデバイス一覧は**絞り込み後**の
+  ものを使う(`--device` / `--device-host` で減った台を渡すと `adb reverse` の宛先がずれる)
+- **失敗の扱い**: setup が非0 → **run を止める**(インフラ起因。§16.7 の「シナリオの失敗と
+  区別する」に乗せる。シナリオは1本も走らない)/ teardown が非0 → **警告のみ**
+  (片付けの失敗で結果を赤にすると、通ったのか落ちたのかが読めなくなる)。
+  setup が落ちた場合もその場で teardown を撃つ(途中まで起きたものを残さない)
+- **環境変数**(利用者のスクリプトが読む契約。`RunHookEnvironment`):
+  `FT_HOOK`(setup/teardown)・`FT_WORKSPACE`・`FT_PROJECT`・`FT_PROFILE`・`FT_MACHINE`・
+  `FT_REPORT_DIR`・`FT_IOS_DEVICES`・`FT_ANDROID_DEVICES`(空白区切りのデバイス名)。
+  **値が無いときもキーは置く**(落とすと呼び出し側の `set -u` が落ちる)。
+  **エミュレータの adb serial・シミュレータの UDID は載らない** —— 実体の解決は run の中で
+  ワーカーを組むときに起きるので、setup の時点ではまだ決まっていない(必要なスクリプトは
+  `adb devices` を自分で叩く)
+- **実行権が無ければ `/bin/sh` で起動する**(chmod を忘れただけで止めない)。あれば直接起動 =
+  shebang を尊重する(python で書いた片付けが sh に食われない)
+- **タイムアウトは置かない**。妥当な上限を決める根拠がこちら側に無い(何を起こすかは利用者が
+  決める)。リモート実行はディスパッチ全体の上限(§16.2)が外側から縛る
+- **片付けの保証**(ここが一番壊れやすい): 正常系は `defer`。**プロセスが defer に到達できずに
+  死んだ場合**(ssh 切断の SIGHUP・SIGKILL・停電)に備えて、setup を撃つ**前**に
+  `<repoRoot>/.ftester/hooks/<pid>.json` へ控えを置く(`FTCore.RunHookLease`。**プロジェクト
+  非依存** —— 掴まれたポートはホスト全体の資源で、次に走るのが別プロジェクトでも同じ衝突を
+  起こす)。**次の run の開始時**と **`ftester hooks reap`** がこれを見て、死んだ pid のぶんの
+  終了スクリプトを代わりに撃つ。`ftester remote clean` は `devices down` の**前**にこれを撃つ
+  (終了スクリプトはデバイスに触りうる)。
+  **生存判定は pid だけ**(RunLease と違い mtime は見ない) —— run は数十分かかりうるので、
+  無音の時間で「古い」と判定すると**動いている run の DB を落とす**
+- **孤児から撃つ終了スクリプトはプロファイルを読み直さない**(控えに書いた絶対パスをそのまま
+  撃つ)。残した run のプロファイルは既に書き換えられているかもしれない
+- **拡張のフォームには入力欄を置かない**(2026-08-18 のユーザー決定)。「リモート制御」の
+  セクションに置くのは**「スクリプトの雛形を作成する」ボタン**だけ ——
+  `<workspace>/scripts/` に雛形を書き(`vscode-ftester/src/runHookScaffold.ts`)、開いて見せる。
+  **使い方(環境変数・実行規則)は雛形のコメントに書く** —— 画面の説明文とファイル内コメントの
+  二重管理にしない。**既にあるファイルは1バイトも触らない**(利用者が書いた片付け手順を
+  雛形で潰すと、次の run が古い環境を掴んだまま走る)。**雛形の中身は locale に追従する**
+  (`vscode-ftester/src/i18n/strings/hookScaffold.ts` の ja/en。日本語モードならコメントも日本語。
+  生成物だが利用者が読むので UI と同じ扱いにする)。中身は実行規則の説明そのものなので、
+  規則を変えたらここと一緒に直す
 
 ## 関連
 

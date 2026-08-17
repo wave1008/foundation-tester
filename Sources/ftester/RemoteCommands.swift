@@ -248,6 +248,17 @@ struct RemoteCommand: AsyncParsableCommand {
             let layout = try Self.resolveLayout(target: target, remoteDirRaw: resolved.remoteDirRaw)
 
             if RemoteCleanPlan.stopsDevices(dryRun: dryRun) {
+                // デバイスを止める前に片付ける(docs/remote-runner.md §17)。順序は逆にしない ——
+                // 終了スクリプトはデバイスに触りうる(adb reverse の解除など)
+                print("→ running teardown scripts left behind by dead runs")
+                let reapCommand = RemoteShell.remoteRunCommand(
+                    layout: layout, ftesterArgs: ["hooks", "reap"])
+                let reapResult = try Shell.run(remoteSSHBase + [target, reapCommand])
+                if reapResult.status != 0 {
+                    print("warning: `hooks reap` exited with status \(reapResult.status)\n\(reapResult.tail)")
+                } else {
+                    print(reapResult.output.trimmingCharacters(in: .whitespacesAndNewlines))
+                }
                 print("→ stopping bridges and shutting down simulators/emulators")
                 let devicesDownCommand = RemoteShell.remoteRunCommand(
                     layout: layout, ftesterArgs: ["devices", "down"])

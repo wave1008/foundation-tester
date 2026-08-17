@@ -131,11 +131,15 @@ export const panelsStrings = {
     en: "Save at full resolution (larger files)",
   },
   "panels.runProfile.localeLabel": { ja: "ロケール", en: "Locale" },
-  "panels.runProfile.fileSyncSectionTitle": { ja: "ファイル同期", en: "File sync" },
+  "panels.runProfile.remoteControlSectionTitle": { ja: "リモート制御", en: "Remote control" },
   "panels.runProfile.workspaceLabel": { ja: "ワークスペース", en: "Workspace" },
   "panels.runProfile.workspaceHint": {
-    ja: "アプリのバイナリや実行スクリプトを置くフォルダ。リモートの Mac にはこのフォルダがミラーされます",
-    en: "The folder that holds the app binary and run scripts. This folder is mirrored to the remote Mac.",
+    ja: "アプリのバイナリや資材を置くフォルダ。リモートの Mac にはこのフォルダが運ばれます",
+    en: "The folder that holds the app binary and other assets. This folder is carried to the remote Mac.",
+  },
+  "panels.runProfile.hookScaffoldButton": {
+    ja: "スクリプトの雛形を作成する",
+    en: "Create script templates",
   },
 
   "panels.appProfile.noneSelected": { ja: "(アプリプロファイルなし)", en: "(No app profile)" },

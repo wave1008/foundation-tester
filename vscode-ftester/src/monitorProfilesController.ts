@@ -35,11 +35,13 @@ import {
   validateNewRunProfileName,
 } from "./monitorModel";
 import { summarizeDeviceNames } from "./monitorDeviceOps";
+import { type HookScaffoldResult, resolveWorkspaceDir, writeHookScriptTemplates } from "./runHookScaffold";
 import type { MonitorPanelDeps } from "./monitorPanel";
 
 type MachineDeviceUpdateMessage = Extract<MonitorFromWebviewMessage, { type: "machineDeviceUpdate" }>;
 type MachineDevicesSyncMessage = Extract<MonitorFromWebviewMessage, { type: "machineDevicesSync" }>;
 type RunProfileSaveMessage = Extract<MonitorFromWebviewMessage, { type: "runProfileSave" }>;
+type RunProfileHookScaffoldMessage = Extract<MonitorFromWebviewMessage, { type: "runProfileHookScaffold" }>;
 type AppProfileSaveMessage = Extract<MonitorFromWebviewMessage, { type: "appProfileSave" }>;
 
 /**
@@ -1117,6 +1119,58 @@ export class MonitorProfilesController {
     this.deps.outputChannel.appendLine(t("profiles.log.runProfileUpdated", { name: profile }));
     sendResult(true, null);
     this.handleRunProfileLoad(profile);
+  }
+
+  /**
+   * 「スクリプトの雛形を作成する」。ワークスペースの scripts/ に setup.sh / teardown.sh を置く
+   * (中身と「既存は触らない」規律は runHookScaffold.ts)。**プロファイルは書き換えない** ——
+   * スクリプトは宣言を持たず、あれば実行されるため(docs/remote-runner.md §17)。
+   * 結果は webview へ返さずホスト側の通知で出す(押した直後にしか意味が無い一過性の報告)。
+   */
+  async handleRunProfileHookScaffold(message: RunProfileHookScaffoldMessage): Promise<void> {
+    const resolution = resolveProjectName(this.deps.workspaceRoot, this.deps.getConfig());
+    if (resolution.kind !== "resolved") {
+      void vscode.window.showErrorMessage(t("profiles.error.projectUnresolved"));
+      return;
+    }
+    const workspaceDir = resolveWorkspaceDir(this.deps.workspaceRoot, resolution.project, message.workspace);
+    let result: HookScaffoldResult;
+    try {
+      result = writeHookScriptTemplates(workspaceDir);
+    } catch (error) {
+      this.deps.outputChannel.appendLine(
+        t("profiles.log.hookScaffoldFailed", { dir: workspaceDir, error: String(error) }),
+      );
+      void vscode.window.showErrorMessage(t("profiles.msg.hookScaffoldFailed", { dir: workspaceDir }));
+      return;
+    }
+
+    this.deps.outputChannel.appendLine(
+      t("profiles.log.hookScaffoldDone", {
+        dir: result.scriptsDir,
+        created: result.created.join(", ") || "-",
+        skipped: result.skipped.join(", ") || "-",
+      }),
+    );
+    if (result.created.length === 0) {
+      // 既にある = 何も作っていない。**上書きはしない**ので、そのことを言って開くだけにする
+      void vscode.window.showInformationMessage(
+        t("profiles.msg.hookScaffoldExists", { dir: result.scriptsDir }),
+      );
+    } else {
+      void vscode.window.showInformationMessage(
+        t("profiles.msg.hookScaffoldCreated", {
+          files: result.created.join(", "),
+          dir: result.scriptsDir,
+        }),
+      );
+    }
+    // 作った直後に中身(使い方のコメント)を読ませる。既にあった場合も現物を開く
+    const first = [...result.created, ...result.skipped][0];
+    if (first !== undefined) {
+      const document = await vscode.workspace.openTextDocument(path.join(result.scriptsDir, first));
+      void vscode.window.showTextDocument(document, { preview: false });
+    }
   }
 
   // ---- プロファイルタブ中段: アプリプロファイルの設定フォーム(appProfileLoad/appProfileSave) ----

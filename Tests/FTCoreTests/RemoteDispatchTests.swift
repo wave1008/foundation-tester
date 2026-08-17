@@ -123,7 +123,7 @@ final class RemoteDispatchTests: XCTestCase {
         XCTAssertEqual(layout.projectDir("E2E"), "/Users/x/ftester-runner/work/TestProjects/E2E")
     }
 
-    /// fileSync.workspace のミラー先はプロジェクトごとに分ける(複数プロジェクトの衝突を防ぐ)
+    /// remoteControl.workspace のミラー先はプロジェクトごとに分ける(複数プロジェクトの衝突を防ぐ)
     func testRemoteLayoutWorkspaceDir() {
         let layout = RemoteLayout(base: "/Users/x/ftester-runner")
         XCTAssertEqual(layout.workspaceDir("E2E"), "/Users/x/ftester-runner/work/workspace/E2E")
@@ -354,7 +354,7 @@ final class RemoteDispatchTests: XCTestCase {
              "--device", "iPhone-01", "iPhone-02", "--device-host", "M1Max"])
     }
 
-    /// fileSync.workspace が宣言されているプロファイルだけ `--workspace` が付く(渡さないと
+    /// remoteControl.workspace が宣言されているプロファイルだけ `--workspace` が付く(渡さないと
     /// 子は自分のリポジトリルート基準で appPath を解決し、ミラーしていない絶対パスを見に行く)
     func testRemoteRunArgsRelaysWorkspaceOnlyWhenGiven() {
         let withWorkspace = RemoteRunArgs.build(

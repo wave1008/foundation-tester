@@ -245,12 +245,15 @@ function renderRunProfileSection(): string {
             </div>
           </div>
           <div class="run-profile-section-group">
-            <div class="run-profile-section-title">${t("panels.runProfile.fileSyncSectionTitle")}</div>
+            <div class="run-profile-section-title">${t("panels.runProfile.remoteControlSectionTitle")}</div>
             <div class="modal-row">
               <label for="run-profile-workspace">${t("panels.runProfile.workspaceLabel")}</label>
               <input type="text" id="run-profile-workspace">
             </div>
             <div class="modal-row profile-hint">${t("panels.runProfile.workspaceHint")}</div>
+            <div class="modal-row">
+              <button id="btn-run-profile-hook-scaffold" class="secondary" type="button">${t("panels.runProfile.hookScaffoldButton")}</button>
+            </div>
           </div>
           <div class="run-profile-section-group">
             <div class="run-profile-section-title">${t("panels.runProfile.miscSectionTitle")}</div>

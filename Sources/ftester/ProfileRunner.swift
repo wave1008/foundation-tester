@@ -89,6 +89,17 @@ enum ProfileRunner {
         }
         for warning in resolved.warnings { print("⚠️ \(warning)") }
 
+        // 開始スクリプト(docs/remote-runner.md §17)。**デバイスに触る前**に撃つ ——
+        // 依存サービスが上がっていない状態でシミュレータを起こしてアプリを入れても、
+        // 全シナリオが「アプリの不具合」の顔で落ちるだけ。渡すのは絞り込み後の resolved
+        // (スクリプトが受け取るデバイス一覧を、この run が実際に使う台と一致させる)。
+        // 終了スクリプトは defer で必ず撃つ(途中の throw・シナリオの失敗のいずれでも)。
+        // プロセスごと殺された場合は lease が残り、次の run と `ftester hooks reap` が代わりに撃つ
+        let hookStateDir = (try? RepoRoot.find())?.appendingPathComponent(".ftester")
+        let hookSession = try RunHookRunner.begin(
+            resolved: resolved, stateDir: hookStateDir) { print($0) }
+        defer { RunHookRunner.end(hookSession) { print($0) } }
+
 
         // CLI の --heal override は master(fm.enabled)が有効な場合のみ heal を ON にする。
         // healOverride==false は明示 OFF、nil は profile の値をそのまま使う
