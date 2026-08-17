@@ -266,7 +266,8 @@ struct RemoteRunDispatcher {
         }
     }
 
-    /// 実行プロファイルが `fileSync.workspace` を宣言していれば、ローカルの中身をリモートへ
+    /// 実行プロファイルが `fileSync.workspace` を宣言していれば、appPath の原本をローカルの
+    /// ワークスペース apps/ へステージングしてから、ワークスペースの中身をまるごとリモートへ
     /// ミラーし、リモートの子へ渡す `--workspace` の値(ミラー先の絶対パス)を返す。宣言が無ければ
     /// nil(appPath は従来どおりリポジトリルート基準のまま。何もしない)。
     ///
@@ -281,10 +282,20 @@ struct RemoteRunDispatcher {
             return nil
         }
         let localWorkspacePath = ProfileResolver.resolvePath(raw, base: localRepoRoot)
-        let created = (try? WorkspaceScaffold.ensure(
-            root: URL(fileURLWithPath: localWorkspacePath))) ?? []
+        let localWorkspaceURL = URL(fileURLWithPath: localWorkspacePath)
+        let created = (try? WorkspaceScaffold.ensure(root: localWorkspaceURL)) ?? []
         for name in created {
             log("==> created workspace/\(name)/ (missing scaffold directory)")
+        }
+        // マシン/デバイス解決を経由しない軽量読み(declaredWorkspace と同じ理由)。
+        // インストール先の規則は WorkspaceAppStaging.installPath 1箇所と共有する
+        // (ProfileResolver.resolve が ResolvedAppTarget.appPath を計算するのと同じ規則)
+        for (platform, source) in ProfileResolver.declaredAppPaths(project: project, runName: profile)
+            .sorted(by: { $0.key < $1.key }) {
+            let dest = WorkspaceAppStaging.installPath(source: source, workspaceRoot: localWorkspaceURL)
+            if try WorkspaceAppStaging.stageApp(source: source, dest: dest) {
+                log("==> staged \(platform) app package into the workspace")
+            }
         }
         log("==> mirroring the workspace to \(host.sshTarget)")
         let args = ["rsync"] + RemoteTransferPlan.workspaceRsyncArgs(

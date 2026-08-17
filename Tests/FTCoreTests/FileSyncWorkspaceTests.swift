@@ -1,6 +1,10 @@
 // 実行プロファイルの `fileSync.workspace`(docs/remote-runner.md §17)の純粋ロジックと
 // resolve() への配線。デバイス・リモートは要らない(rsync/ssh はここでは扱わない —
 // RemoteDispatchTests.swift の workspaceRsyncArgs / RemoteRunArgs 側で固定する)。
+// appPath の原本(sourcePath)は常にリポジトリルート基準 —— ワークスペース宣言時は
+// **インストールに使うパス(appPath)だけ** が "<workspace>/apps/<ファイル名>" に切り替わる。
+// 実ファイルのコピー(ステージング)は WorkspaceAppStagingTests.swift 側の担当(ここは
+// 純粋な path 計算だけを固定する。デバイス・ファイル I/O 不要)。
 
 import Foundation
 import XCTest
@@ -112,11 +116,16 @@ final class FileSyncWorkspaceTests: XCTestCase {
         XCTAssertNil(resolved.workspaceRoot)
         XCTAssertEqual(resolved.apps["ios"]?.appPath,
                        tempDir.appendingPathComponent("apps/SampleApp.app").path)
+        // ワークスペース非経由では sourcePath(原本)と appPath(インストール先)は同値
+        XCTAssertEqual(resolved.apps["ios"]?.sourcePath, resolved.apps["ios"]?.appPath)
     }
 
-    // MARK: - resolve(): fileSync.workspace 宣言時は appPath の基準が切り替わる
+    // MARK: - resolve(): fileSync.workspace 宣言時は「インストールに使うパス」だけが
+    // ワークスペース基準へ切り替わる。**原本(sourcePath)の解決基準はリポジトリルートのまま不変**
+    // (以前は appPath の相対パス解決そのものの基準を切り替えていたが、原本の置き場所と
+    // インストールに使う場所を混同していた。docs/remote-runner.md §17)
 
-    func testDeclaredWorkspaceRelativeShiftsAppPathBase() throws {
+    func testDeclaredWorkspaceRedirectsInstallPathButKeepsSourceAtRepoRoot() throws {
         try writeAppAndMachine(appPath: "apps/SampleApp.app")
         try write("""
         { "app": "sampleapp", "devices": [ { "name": "d1" } ],
@@ -129,11 +138,15 @@ final class FileSyncWorkspaceTests: XCTestCase {
         // (resolvePath を経由せず独立に期待値を組み立てる)
         let expectedWorkspace = tempDir.deletingLastPathComponent().appendingPathComponent("sut-workspace")
         XCTAssertEqual(resolved.workspaceRoot?.path, expectedWorkspace.path)
+        // 原本は宣言前と同じくリポジトリルート基準のまま(ここが今回の契約変更の核)
+        XCTAssertEqual(resolved.apps["ios"]?.sourcePath,
+                       tempDir.appendingPathComponent("apps/SampleApp.app").path)
+        // インストールに使うパスだけが "<workspace>/apps/<原本のファイル名>" になる
         XCTAssertEqual(resolved.apps["ios"]?.appPath,
                        expectedWorkspace.appendingPathComponent("apps/SampleApp.app").path)
     }
 
-    func testDeclaredWorkspaceAbsoluteIsUsedVerbatim() throws {
+    func testDeclaredWorkspaceAbsoluteAlsoUsesAppsSubdirectory() throws {
         try writeAppAndMachine(appPath: "apps/SampleApp.app")
         try write("""
         { "app": "sampleapp", "devices": [ { "name": "d1" } ],
@@ -145,9 +158,12 @@ final class FileSyncWorkspaceTests: XCTestCase {
         XCTAssertEqual(resolved.apps["ios"]?.appPath, "/Volumes/shared/ws/apps/SampleApp.app")
     }
 
-    /// appPath 自体が絶対パスなら、fileSync.workspace が宣言されていても触らない
-    /// (resolvePath は "/" 始まりを base 無視で素通しする。既存の絶対パス規約を壊さない)
-    func testAbsoluteAppPathIsUntouchedEvenWithWorkspaceDeclared() throws {
+    /// appPath 自体が絶対パスでも、ワークスペース宣言時はインストール先が
+    /// "<workspace>/apps/<ファイル名>" へ**常に**切り替わる(要件3「存在するかどうかで
+    /// 分岐させない」の一貫性 —— 相対/絶対で扱いを変えると、絶対パスで書いたプロファイルだけ
+    /// リモートで見つからない、という以前と同じ不具合の変種が残る)。**原本(sourcePath)は
+    /// 絶対パスのまま変わらない**(以前の「絶対パスなら触らない」テストはこの契約変更で置き換わる)
+    func testAbsoluteAppPathIsAlsoRedirectedToWorkspaceAppsWhenDeclared() throws {
         try writeAppAndMachine(appPath: "/opt/builds/SampleApp.app")
         try write("""
         { "app": "sampleapp", "devices": [ { "name": "d1" } ],
@@ -155,7 +171,10 @@ final class FileSyncWorkspaceTests: XCTestCase {
         """, to: project.runsDir, name: "r")
 
         let resolved = try ProfileResolver.resolve(project: project, runName: "r", machineName: "m")
-        XCTAssertEqual(resolved.apps["ios"]?.appPath, "/opt/builds/SampleApp.app")
+        XCTAssertEqual(resolved.apps["ios"]?.sourcePath, "/opt/builds/SampleApp.app")
+        let expectedWorkspace = tempDir.deletingLastPathComponent().appendingPathComponent("ws")
+        XCTAssertEqual(resolved.apps["ios"]?.appPath,
+                       expectedWorkspace.appendingPathComponent("apps/SampleApp.app").path)
     }
 
     // MARK: - resolve(): --workspace(workspaceOverride)がプロファイルの宣言を上書きする
@@ -174,6 +193,25 @@ final class FileSyncWorkspaceTests: XCTestCase {
                        "/Users/ci/ftester-runner/work/workspace/SampleApp")
         XCTAssertEqual(resolved.apps["ios"]?.appPath,
                        "/Users/ci/ftester-runner/work/workspace/SampleApp/apps/SampleApp.app")
+        XCTAssertEqual(resolved.apps["ios"]?.sourcePath,
+                       tempDir.appendingPathComponent("apps/SampleApp.app").path)
+    }
+
+    // MARK: - ProfileResolver.declaredAppPaths(軽量読み。RemoteRunDispatcher のミラー直前用)
+
+    func testDeclaredAppPathsResolvesRelativeToRepoRoot() throws {
+        try writeAppAndMachine(appPath: "apps/SampleApp.app")
+        try write("""
+        { "app": "sampleapp", "devices": [ { "name": "d1" } ] }
+        """, to: project.runsDir, name: "r")
+
+        let paths = ProfileResolver.declaredAppPaths(project: project, runName: "r")
+        XCTAssertEqual(paths["ios"], tempDir.appendingPathComponent("apps/SampleApp.app").path)
+        XCTAssertNil(paths["android"])
+    }
+
+    func testDeclaredAppPathsEmptyWhenAppOrProfileMissing() {
+        XCTAssertEqual(ProfileResolver.declaredAppPaths(project: project, runName: "nope"), [:])
     }
 
     // MARK: - validate(): fileSync 内の未知キーは警告(タイポ検出)

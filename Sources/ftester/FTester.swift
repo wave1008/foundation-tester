@@ -748,11 +748,12 @@ struct RunScenarios: AsyncParsableCommand {
 
     /// **手で打つものではない**。RemoteRunDispatcher がミラー後の絶対パスを渡す
     /// (Sources/FTCore/RemoteDispatch.swift の RemoteRunArgs.build)。プロファイルの
-    /// `fileSync.workspace` を上書きし、appPath 相対パスの解決基準をそちらへ切り替える
-    /// (ProfileResolver.resolve の workspaceOverride 参照)
+    /// `fileSync.workspace` を上書きし、appPath のインストール先(ステージ先。原本の解決基準は
+    /// 常にリポジトリルートで不変)をそちらへ切り替える(ProfileResolver.resolve の
+    /// workspaceOverride / WorkspaceAppStaging 参照)
     @Option(help: ArgumentHelp(
-        "Override this run profile's fileSync.workspace (the root relative appPath resolves "
-        + "against). Set by the remote dispatcher on the far side; not for hand use",
+        "Override this run profile's fileSync.workspace (where the staged appPath package is "
+        + "installed from). Set by the remote dispatcher on the far side; not for hand use",
         visibility: .hidden))
     var workspace: String?
 

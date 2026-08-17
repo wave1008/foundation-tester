@@ -287,9 +287,11 @@ public struct FMConfig: Sendable, Equatable {
 /// (docs/remote-runner.md §fileSync)。中身の規約(apps/scripts/data)は WorkspaceScaffold。
 /// 同期相手: vscode-ftester/schemas/run-profile.schema.json と拡張のプロファイルフォーム
 public struct FileSyncSection: Codable, Sendable, Equatable {
-    /// ワークスペースのルート。絶対パス、または**リポジトリルート基準**の相対パス(appPath と
-    /// 同じ基準)。宣言されている間、このプロファイルの appPath 相対パスはリポジトリルートではなく
-    /// ここを基準に解決される(ProfileResolver.resolve 参照)。`--workspace` で1回限り上書き可
+    /// ワークスペースのルート。絶対パス、または**リポジトリルート基準**の相対パス。
+    /// appPath の解決基準には使わない(常にリポジトリルート基準のまま)——
+    /// 宣言されている間は、実行時に appPath の原本をここ配下の `apps/<ファイル名>` へコピー
+    /// (ステージング)し、インストールにはそちらを使う(`WorkspaceAppStaging`。
+    /// docs/remote-runner.md §17)。`--workspace` で1回限り上書き可
     public var workspace: String?
 
     public init(workspace: String? = nil) {
@@ -456,7 +458,15 @@ public struct ResolvedDevice: Sendable, Hashable {
 /// プラットフォーム毎に解決されたアプリ情報
 public struct ResolvedAppTarget: Sendable, Hashable {
     public let bundleID: String
-    /// 絶対パス解決済みのパッケージファイル(nil = インストールしない)
+    /// アプリの原本の絶対パス(常にリポジトリルート基準で解決済み。nil = appPath 未指定。
+    /// ワークスペースの宣言有無で基準は変わらない)。`WorkspaceAppStaging` がここを読んで
+    /// ワークスペースへコピーする。「原本が見つからない」系のエラーはこちらを名指しする
+    /// (インストール先を出しても何をビルドすればよいか分からないため)
+    public let sourcePath: String?
+    /// インストールに実際に使う絶対パス(nil = インストールしない)。ワークスペース未宣言なら
+    /// sourcePath と同値。宣言時は `WorkspaceAppStaging.installPath` が決める
+    /// "<workspaceRoot>/apps/<原本のファイル名>"(ProfileResolver.resolve が唯一の生成元)。
+    /// 呼び出し側(installApp・ProfileWorkerFactory 等)はこちらだけを見ればよい
     public let appPath: String?
     /// 実行前に appPath を自動インストールするか(既定 false = 無効。
     /// common セクションで明示的に true にした場合のみ有効)
@@ -464,9 +474,11 @@ public struct ResolvedAppTarget: Sendable, Hashable {
     /// バックエンド死活確認 URL(AppProfileSection.healthCheckURL)
     public let healthCheckURL: String?
 
-    public init(bundleID: String, appPath: String? = nil, autoInstall: Bool = false,
-                healthCheckURL: String? = nil) {
+    /// sourcePath 省略時は appPath と同値にする(ワークスペース非経由の既存呼び出しとの互換)
+    public init(bundleID: String, sourcePath: String? = nil, appPath: String? = nil,
+                autoInstall: Bool = false, healthCheckURL: String? = nil) {
         self.bundleID = bundleID
+        self.sourcePath = sourcePath ?? appPath
         self.appPath = appPath
         self.autoInstall = autoInstall
         self.healthCheckURL = healthCheckURL
@@ -531,7 +543,9 @@ public struct ResolvedProfile: Sendable {
     /// 半分解像度化をスキップするか(RunProfileDocument.recordFullResolution。既定 false)
     public let recordFullResolution: Bool
     /// **絶対パス解決済みのワークスペースルート**(fileSync.workspace / `--workspace` 上書きの
-    /// 実効値。宣言が無ければ nil = 従来どおり appPath はリポジトリルート基準)。
+    /// 実効値。宣言が無ければ nil)。appPath の原本の解決基準はこれの有無に関わらず常に
+    /// リポジトリルート ―― 宣言時は `apps[platform].appPath`(インストール先)だけがこの配下の
+    /// `apps/<ファイル名>` に切り替わる(ステージングは WorkspaceAppStaging)。
     /// リモートディスパッチはこれをミラーして子へ `--workspace <ミラー先>` を渡す
     /// (Sources/ftester/RemoteRunDispatcher.swift)。**`var` にする**(machineHost と同じ理由 ——
     /// 既定値付きの `let` は memberwise init から除外され、この引数を知らない既存テストの
@@ -847,6 +861,28 @@ public enum ProfileResolver {
         return workspace
     }
 
+    /// ステージング対象(appPath の原本)だけを軽量に読む。マシン/デバイス解決を経由しない
+    /// (declaredWorkspace と同じ理由 —— RemoteRunDispatcher はミラー直前にここだけ要る)。
+    /// 戻り値: platform("ios"/"android") → リポジトリルート基準で解決した原本の絶対パス
+    /// (appPath 未指定の platform は含まない)。プロファイル/アプリ定義が読めなければ空を返す
+    public static func declaredAppPaths(project: TestProject, runName: String) -> [String: String] {
+        guard let runData = try? Data(
+                contentsOf: project.runsDir.appendingPathComponent("\(runName).json")),
+              let runDoc = try? JSONDecoder().decode(RunProfileDocument.self, from: runData),
+              let appRef = runDoc.app else { return [:] }
+        guard let appData = try? Data(
+                contentsOf: project.appsDir.appendingPathComponent("\(appRef).json")),
+              let appProfile = try? JSONDecoder().decode(AppProfile.self, from: appData) else { return [:] }
+        let repoRoot = project.rootURL.deletingLastPathComponent().deletingLastPathComponent()
+        var result: [String: String] = [:]
+        for platform in ["ios", "android"] {
+            if let raw = appProfile.section(for: platform).appPath {
+                result[platform] = resolvePath(raw, base: repoRoot)
+            }
+        }
+        return result
+    }
+
     /// `fileSync.workspace` 宣言と `--workspace` 上書きから実効の生値(未解決)を決める。
     /// override が非空なら常に勝つ(中継されたリモートの子はこれで自分のリポジトリルート基準を
     /// 上書きする)。両方無ければ nil(未宣言 = 従来どおりリポジトリルート基準)。
@@ -977,34 +1013,42 @@ public enum ProfileResolver {
         }
 
         // 5. アプリ解決(デバイスのある platform ごと。合成規則は AppProfileSection.merging 参照)
-        // appPath の相対パスは既定で「リポジトリルート」基準(project.rootURL =
-        // <repoRoot>/TestProjects/<name> の2階層上)。ビルド成果物は TestProjects/ 外
-        // (リポジトリ直下の builds/ 等)に置くのが普通なため。packageRoot() の CWD 走査は使わない
-        // (単体テストでは CWD が本体リポジトリを指し誤基準になる。project.rootURL からの決定的導出で
-        // 統一)。reportDir だけはプロジェクト直下に出すため下記で project.rootURL 基準のまま
-        // (基準が異なるので resolvePath の base で使い分ける)。
+        // appPath の相対パスは常に「リポジトリルート」基準(project.rootURL =
+        // <repoRoot>/TestProjects/<name> の2階層上。= アプリの原本の場所)。**ワークスペースの
+        // 宣言有無でこの基準は変えない**(以前は宣言時にワークスペース基準へ切り替えていたが、
+        // 原本の置き場所とインストールに使う場所を混同していた。docs/remote-runner.md §17)。
+        // packageRoot() の CWD 走査は使わない(単体テストでは CWD が本体リポジトリを指し誤基準に
+        // なる。project.rootURL からの決定的導出で統一)。reportDir だけはプロジェクト直下に出すため
+        // 下記で project.rootURL 基準のまま(基準が異なるので resolvePath の base で使い分ける)。
         //
-        // **`fileSync.workspace` が宣言されていれば appPath の基準はそちらに切り替わる**
-        // (workspaceOverride が非空ならさらにそちらが勝つ。effectiveWorkspaceRaw 参照)。
+        // **`fileSync.workspace` が宣言されていれば、インストールに使うパス(ResolvedAppTarget.
+        // appPath)だけが "<workspaceRoot>/apps/<原本のファイル名>" に切り替わる**(原本の
+        // ResolvedAppTarget.sourcePath は常にリポジトリルート基準のまま)。実体のコピー(ステージング)
+        // はここでは行わない(純粋な path 計算のみ) —— 呼び出し側(ProfileRunner.run/ApiRunCommand/
+        // RemoteRunDispatcher)が resolve() 直後に `WorkspaceAppStaging` を呼んで原本を運ぶ。
         // リモートへディスパッチすると appPath のアプリパッケージ自体は転送されない
         // (RemoteTransferPlan は TestProjects/<project> しか rsync しない)ため、リポジトリルート
-        // 基準の絶対パスはリモートに存在しない。ワークスペースを別途ミラーし、そのミラー先を
-        // 基準にすることで手元とリモートで同じ相対位置に解決できるようにする
-        // (docs/remote-runner.md §ファイル同期(ワークスペース))
+        // 基準の絶対パスはリモートに存在しない。ワークスペースを別途ミラーすることで、手元でコピーした
+        // apps/<ファイル名> がリモートにも同じ相対位置で複製される(docs/remote-runner.md §17)
         let repoRoot = project.rootURL.deletingLastPathComponent().deletingLastPathComponent()
         let workspaceRaw = effectiveWorkspaceRaw(
             declared: runDoc.fileSync?.workspace, override: workspaceOverride)
         let workspaceRoot = workspaceRaw.map { URL(fileURLWithPath: resolvePath($0, base: repoRoot)) }
-        let appPathBase = workspaceRoot ?? repoRoot
         var apps: [String: ResolvedAppTarget] = [:]
         for platform in Set(devices.map(\.platform)) {
             let section = appProfile.section(for: platform)
             guard let bundleID = section.app else {
                 throw ProfileError.missingBundleID(platform: platform, appProfile: appRef)
             }
+            let sourcePath = section.appPath.map { resolvePath($0, base: repoRoot) }
+            let installPath = sourcePath.map { source in
+                workspaceRoot.map { WorkspaceAppStaging.installPath(source: source, workspaceRoot: $0) }
+                    ?? source
+            }
             apps[platform] = ResolvedAppTarget(
                 bundleID: bundleID,
-                appPath: section.appPath.map { resolvePath($0, base: appPathBase) },
+                sourcePath: sourcePath,
+                appPath: installPath,
                 // **appPath があれば既定で有効**。パスを書いたのに入らない(既定 false)方が
                 // 事故で、警告を出さないと気付けない設計だった。止めたいときだけ
                 // autoInstall: false を明示する(opt-out)。実インストールは中身が変わったときだけ

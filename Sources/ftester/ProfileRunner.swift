@@ -52,11 +52,17 @@ enum ProfileRunner {
             workspaceOverride: workspaceOverride)
         // fileSync.workspace 初回宣言時の雛形作成(既に揃っていれば何もしない。WorkspaceScaffold の宣言)。
         // リモートディスパッチはこれとは別に、ミラー前のローカル側で同じ呼び出しを行う
-        // (RemoteRunDispatcher.mirrorWorkspaceIfDeclared)
+        // (RemoteRunDispatcher.mirrorWorkspaceIfDeclared)。続けて appPath の原本を apps/ へ
+        // ステージング(WorkspaceAppStaging)。**dest も原本も無ければここで throw する**
+        // (原本のパスを名指しする。呼び出し側で握り潰さない)
         if let workspaceRoot = resolvedAll.workspaceRoot {
             let created = (try? WorkspaceScaffold.ensure(root: workspaceRoot)) ?? []
             if !created.isEmpty {
                 print("→ Created workspace scaffold: " + created.map { "\($0)/" }.joined(separator: ", "))
+            }
+            let staged = try WorkspaceAppStaging.stageWorkspaceApps(resolvedAll)
+            if !staged.isEmpty {
+                print("→ Staged app package(s) into the workspace: " + staged.joined(separator: ", "))
             }
         }
         // --device / --device-host(ホスト別サブ実行が自分のぶんだけ回す)。**ホストで絞らないと

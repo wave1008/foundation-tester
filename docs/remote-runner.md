@@ -1024,37 +1024,71 @@ Xcode/macOS を更新すると ToolchainFingerprint が不一致になり**全�
 | 3 | 16.4 `remote clean` | 運用開始と同時に必要(放置するとディスクフル) |
 | 4 | 16.6 カナリア更新の自動化・振り替え・ドライラン | 複数台の定常運用に入ってから |
 
-## 17. ファイル同期(ワークスペース。実装済み: 2026-08-17)
+## 17. ファイル同期(ワークスペース。実装済み: 2026-08-17。ステージング方式へ改定: 2026-08-17)
 
 §13「アプリプロファイル」で保留していた実害の解決: リモートへディスパッチすると、
 appPath の絶対パス(リポジトリルート基準)がランナー機に存在せず
 `package file not found` で必ずインストールに失敗していた
 (§13 が転送するのは `TestProjects/<project>/` だけで、アプリのパッケージ自体は運ばない)。
 
+**設計は「原本 → ステージング(apps/) → ミラー → リモートのインストール」の一本道**。
+appPath の相対パスは**常にリポジトリルート基準で解決する**(= アプリの原本の場所。ワークスペース
+宣言の有無で基準を変えない)。ワークスペースが有効なときは、実行時にその原本をワークスペースの
+`apps/<原本のファイル名>` へコピー(ステージング)し、**インストールに使うパスだけ**をそちらへ
+切り替える。手元でもリモートでも同じ規則(「無ければ原本を見る」のような存在チェックによる
+分岐は無い)。以前の版は宣言時に appPath の相対パス解決の基準そのものをワークスペースへ
+切り替えていたが、原本の置き場所とインストールに使う場所を混同していた(利用者はプロファイルの
+`appPath` をワークスペース配下の構造に合わせて書き直す必要があった)。
+
 - **スキーマ**: 実行プロファイルに任意で `"fileSync": { "workspace": "<絶対パス or リポジトリ
   ルート相対パス>" }` を書く(`Sources/FTCore/RunProfile.swift` の `FileSyncSection`)。
   省略時は従来どおり appPath はリポジトリルート基準(1バイトも挙動を変えない)。
   同期相手: `vscode-ftester/schemas/run-profile.schema.json` と拡張のプロファイルフォーム
-- **appPath の解決基準の切り替え**: `fileSync.workspace` が宣言されている実行プロファイルは、
-  appPath の相対パスをリポジトリルートではなくワークスペースルート基準で解決する
-  (`ProfileResolver.resolve` / `ResolvedProfile.workspaceRoot`)。絶対パスの appPath は
-  従来どおり触らない。マシン別の appPath 上書きは今回も作らない ——
-  「基準ディレクトリを手元とリモートで揃える」方式を踏襲した
+- **`ResolvedAppTarget` は原本とインストール先を別々に持つ**(`Sources/FTCore/RunProfile.swift`):
+  `sourcePath` = リポジトリルート基準で解決した原本の絶対パス(常に不変)/
+  `appPath` = インストールに実際に使う絶対パス(ワークスペース未宣言なら `sourcePath` と同値、
+  宣言時は `"<workspaceRoot>/apps/<sourcePath のファイル名>"`)。既存の呼び出し側
+  (`InstallPathResolver`・`ProfileWorkerFactory`・`installApp()` の RPC フォールバック等)は
+  従来どおり `appPath` だけを見ればよい ―― ステージングが済んでいれば自動的に正しい場所を指す
+- **インストール先の規則は1箇所**: `WorkspaceAppStaging.installPath(source:workspaceRoot:)`
+  (`Sources/FTCore/WorkspaceAppStaging.swift`)。`ProfileResolver.resolve`(`ResolvedAppTarget.appPath`
+  の計算)と `RemoteRunDispatcher`(ミラー直前のステージング先)の両方がここを呼ぶ。
+  絶対パスの appPath でも、ワークスペース宣言時は**常に**この規則で apps/ 配下へ切り替わる
+  (相対/絶対で分岐しない ―― 分岐すると「絶対パスで書いたプロファイルだけリモートで見つからない」
+  という同種の不具合が残る)
+- **ステージング**(`WorkspaceAppStaging.stageApp(source:dest:)`): 原本をインストール先へ
+  実際にコピーする I/O。**冪等・差分のみ** —— フィンガープリント(バイト数+自分自身の更新日時。
+  中身は読まない)が一致すればコピーを飛ばす。115MB の .app 全体を毎回ハッシュすると
+  「変化していなければ読まない」という目的に反するため、rsync の既定クイックチェック
+  (`--checksum` を渡さない限り size+mtime で十分とみなす)と同じ根拠を採用。ディレクトリ
+  (iOS の `.app`)は配下ファイルの総バイト数(深い変更も拾う。属性のみ走査しバイトは読まない)+
+  自分自身の更新日時で判定する。コピー後に dest の mtime を明示的に原本と揃える(`copyItem` の
+  mtime 保持はプラットフォーム実装に依存するため、次回の一致判定をそこに頼らせない)。
+  **原本が無ければ dest も無いときだけエラー**(原本のパスを名指しする ―― インストール先を
+  出しても何をビルドすればよいか分からない)。**原本が無くても dest が既にあれば何もしない**
+  (リモートの子は rsync で複製だけを受け取り原本を持たない。ここを常にエラーにすると、
+  この節が解決した「リモートで appPath が見つからない」問題へ逆戻りする)
 - **雛形**: ワークスペース配下に `apps/` `scripts/` `data/` の3フォルダを規約として置く
-  (中身は自由・強制しない)。無ければ作る(`Sources/FTCore/WorkspaceScaffold.swift`)。
-  ローカル実行(`ProfileRunner.run`/`ApiRunCommand`)と、リモートディスパッチ直前の
-  ミラー元(下記)の両方で呼ぶ
+  (中身は自由・強制しない)。無ければ作る(`Sources/FTCore/WorkspaceScaffold.swift`)
+- **呼び出し場所**(3箇所。プロファイル解決の直後): ローカル実行 `ProfileRunner.run` /
+  `ApiRunCommand`(自分自身の `resolved.apps` を `WorkspaceAppStaging.stageWorkspaceApps` で揃える)、
+  および `RemoteRunDispatcher.mirrorWorkspaceIfDeclared`(ミラー rsync 直前、ローカル側の
+  ワークスペースへ揃える。マシン/デバイス解決を経由しない軽量読み `ProfileResolver.
+  declaredAppPaths` で原本パスだけ取得する)。同じコードパスがリモートの子(ssh 越しに
+  実行される `ftester run`/`api run` 自身)でも走るが、そちらは原本を持たないため
+  上記の「dest があれば無視」で無害化される
 - **ミラー**: `--host` ディスパッチ時、`TestProjects/<project>/` の転送(§13)とは別枠で
   ワークスペースを丸ごと rsync する(`RemoteTransferPlan.workspaceRsyncArgs` = `-az --delete`、
-  除外は `.git`/`.DS_Store`/`node_modules`)。ミラー先はプロジェクトごとに分ける
-  (`<remoteDir>/work/workspace/<project>/`。`RemoteLayout.workspaceDir`)
+  除外は `.git`/`.DS_Store`/`node_modules`)。ステージング済みの `apps/` もこれで運ばれる。
+  ミラー先はプロジェクトごとに分ける(`<remoteDir>/work/workspace/<project>/`。
+  `RemoteLayout.workspaceDir`)
 - **`--workspace <path>`(hidden)**: `ftester run` / `ftester api run` の両方に持つ。
   実行プロファイルの `fileSync.workspace` を1回限り上書きする(`ProfileResolver.
   effectiveWorkspaceRaw` = override が非空なら常に勝つ)。**手で打つものではない** ——
   リモートディスパッチ(`Sources/ftester/RemoteRunDispatcher.swift` の
   `mirrorWorkspaceIfDeclared`)が、ミラーした絶対パスをリモートの子(`ftester run/api run
-  --host local …`)へ必ず渡す。渡し漏れると子は自分のリポジトリルート基準で appPath を
-  解決し、転送されていない絶対パスを見に行く(この節が解決した不具合そのものへ逆戻りする)
+  --host local …`)へ必ず渡す。渡し漏れると子は自分のリポジトリルート基準でインストール先を
+  決め、転送されていない絶対パス(ワークスペース化されていない原本の位置)を見に行く
 - **`fileSync.workspace` が宣言されていれば**「app packages are not transferred」の注記
   (§ ディスパッチ冒頭)は出さない(ミラーが運ぶため)
 - **多ホスト(§13 DeviceHostRunner/ApiRunHostFanout・フリート§8)への波及なし**: どちらも

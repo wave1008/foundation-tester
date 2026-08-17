@@ -214,12 +214,19 @@ struct ApiRunCommand: AsyncParsableCommand {
                 project: testProject, runName: profile, machineName: machine.name,
                 workspaceOverride: workspace)
             // fileSync.workspace 初回宣言時の雛形作成(ProfileRunner.run と同じ規律。既に揃って
-            // いれば何もしない。リモートディスパッチは別途ミラー前のローカル側で同じ呼び出しを行う)
+            // いれば何もしない。リモートディスパッチは別途ミラー前のローカル側で同じ呼び出しを行う)。
+            // 続けて appPath の原本を apps/ へステージング(WorkspaceAppStaging。ProfileRunner.run
+            // と同じ規律 —— dest も原本も無ければ throw する)
             if let workspaceRoot = resolvedAll.workspaceRoot {
                 let created = (try? WorkspaceScaffold.ensure(root: workspaceRoot)) ?? []
                 if !created.isEmpty {
                     logStderr("→ Created workspace scaffold: "
                         + created.map { "\($0)/" }.joined(separator: ", "))
+                }
+                let staged = try WorkspaceAppStaging.stageWorkspaceApps(resolvedAll)
+                if !staged.isEmpty {
+                    logStderr("→ Staged app package(s) into the workspace: "
+                        + staged.joined(separator: ", "))
                 }
             }
             // --device / --device-host: ApiRunHostFanout の子(ホスト別サブ実行)が自分のぶんだけを
