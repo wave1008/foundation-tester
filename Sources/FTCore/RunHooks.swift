@@ -192,12 +192,19 @@ public enum RunHookLease {
         var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
         // 居ないプロセスは「失敗」または「成功だが size 0」で返る(どちらも死んだ扱い)
         guard sysctl(&mib, 4, &info, &size, nil, 0) == 0, size > 0 else { return false }
-        return isAliveState(Int32(info.kp_proc.p_stat))
+        return isAliveState(Int32(info.kp_proc.p_stat), flags: info.kp_proc.p_flag)
     }
 
-    /// プロセス状態(`kinfo_proc.kp_proc.p_stat`)の判定だけを切り出した純粋関数
+    /// `<sys/proc.h>` の `P_WEXIT`(Swift へは import されないので値を写す)。
+    /// **exit 処理に入ったプロセスはもう戻ってこない** —— ssh 越しに殺された run は
+    /// ゾンビになりきらず「終了の途中で刺さったまま」残ることがあり(2026-08-18 にリモートで
+    /// 実測: `ps` の STAT が `?Es` のまま数十分)、生存扱いにすると lease が永久に回収されない
+    private static let processExitingFlag: Int32 = 0x0000_2000
+
+    /// プロセス状態(`kinfo_proc.kp_proc.p_stat` / `p_flag`)の判定だけを切り出した純粋関数
     /// (syscall 抜きでテストするため)
-    public static func isAliveState(_ pStat: Int32) -> Bool {
-        pStat != SZOMB
+    public static func isAliveState(_ pStat: Int32, flags: Int32 = 0) -> Bool {
+        guard pStat != SZOMB else { return false }
+        return flags & processExitingFlag == 0
     }
 }

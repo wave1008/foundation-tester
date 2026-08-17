@@ -111,4 +111,14 @@ final class RunHookLeaseTests: XCTestCase {
         XCTAssertTrue(RunHookLease.isAliveState(SSLEEP))
         XCTAssertTrue(RunHookLease.isAliveState(SSTOP), "停止中(SIGSTOP)は生きている = 回収しない")
     }
+
+    /// **exit 処理に入ったまま刺さったプロセスも死んだ扱い**。ゾンビになりきらずに残る形が
+    /// 実在し(2026-08-18 にリモートで実測。ps の STAT が `?Es`)、生存扱いだと永久に回収されない
+    func testAProcessStuckWhileExitingIsNotAlive() {
+        let exiting: Int32 = 0x0000_2000  // <sys/proc.h> の P_WEXIT
+        XCTAssertFalse(RunHookLease.isAliveState(SRUN, flags: exiting))
+        XCTAssertFalse(RunHookLease.isAliveState(SSLEEP, flags: exiting))
+        // 無関係なフラグは生存判定を変えない(P_WEXIT だけを見る)
+        XCTAssertTrue(RunHookLease.isAliveState(SRUN, flags: 0x0000_0004))
+    }
 }
