@@ -62,16 +62,23 @@ final class ProfileResolverTests: XCTestCase {
 
         let ios = try XCTUnwrap(resolved.apps["ios"])
         XCTAssertEqual(ios.bundleID, "com.example.sampleapp")
-        // appPath の相対パスはリポジトリルート基準(= project.rootURL の 2 階層上 = tempDir)
-        XCTAssertEqual(ios.appPath,
+        // 原本(sourcePath)の相対パスはリポジトリルート基準(= project.rootURL の 2 階層上 = tempDir)。
+        // インストールに使う appPath は既定ワークスペースの apps/ へ向く(docs/remote-runner.md §17)
+        XCTAssertEqual(ios.sourcePath,
                        tempDir.appendingPathComponent("builds/SampleApp.app").path,
                        "appPath 相対はリポジトリルート(<repoRoot>/TestProjects/<name> の 2 階層上)基準")
+        XCTAssertEqual(ios.appPath,
+                       project.rootURL.appendingPathComponent("workspace/apps/SampleApp.app").path,
+                       "インストール元は既定ワークスペースのステージ先")
         XCTAssertTrue(ios.autoInstall, "common の autoInstall: true が両 platform に効く")
         let android = try XCTUnwrap(resolved.apps["android"])
         XCTAssertEqual(android.bundleID, "com.example.sampleapp")
-        XCTAssertEqual(android.appPath,
+        XCTAssertEqual(android.sourcePath,
                        tempDir.appendingPathComponent("builds/app-debug.apk").path,
                        "android の appPath 相対もリポジトリルート基準")
+        XCTAssertEqual(android.appPath,
+                       project.rootURL.appendingPathComponent("workspace/apps/app-debug.apk").path,
+                       "android のインストール元も既定ワークスペースのステージ先")
         XCTAssertTrue(android.autoInstall, "common の autoInstall: true が両 platform に効く")
 
         XCTAssertEqual(resolved.reportDir.path,

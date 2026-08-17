@@ -296,9 +296,12 @@ public struct FMConfig: Sendable, Equatable {
 public struct FileSyncSection: Codable, Sendable, Equatable {
     /// ワークスペースのルート。絶対パス、または**リポジトリルート基準**の相対パス。
     /// appPath の解決基準には使わない(常にリポジトリルート基準のまま)——
-    /// 宣言されている間は、実行時に appPath の原本をここ配下の `apps/<ファイル名>` へコピー
-    /// (ステージング)し、インストールにはそちらを使う(`WorkspaceAppStaging`。
-    /// docs/remote-runner.md §17)。`--workspace` で1回限り上書き可
+    /// 実行時に appPath の原本をここ配下の `apps/<ファイル名>` へコピー(ステージング)し、
+    /// インストールにはそちらを使う(`WorkspaceAppStaging`。docs/remote-runner.md §17)。
+    /// **省略時の既定は `<project.rootURL>/workspace`**(2026-08-18。ワークスペースは常に有効
+    /// —— ここを省略しても appPath はリポジトリルート基準のままではなく、既定ワークスペースの
+    /// `apps/` へ切り替わる)。優先順位・既定値の算出は `ProfileResolver.resolveWorkspaceRoot`。
+    /// `--workspace` で1回限り上書き可
     public var workspace: String?
 
     public init(workspace: String? = nil) {
@@ -466,13 +469,14 @@ public struct ResolvedDevice: Sendable, Hashable {
 public struct ResolvedAppTarget: Sendable, Hashable {
     public let bundleID: String
     /// アプリの原本の絶対パス(常にリポジトリルート基準で解決済み。nil = appPath 未指定。
-    /// ワークスペースの宣言有無で基準は変わらない)。`WorkspaceAppStaging` がここを読んで
-    /// ワークスペースへコピーする。「原本が見つからない」系のエラーはこちらを名指しする
-    /// (インストール先を出しても何をビルドすればよいか分からないため)
+    /// ワークスペースの宣言有無・既定/明示のどれでも基準は変わらない)。`WorkspaceAppStaging`
+    /// がここを読んでワークスペースへコピーする。「原本が見つからない」系のエラーはこちらを
+    /// 名指しする(インストール先を出しても何をビルドすればよいか分からないため)
     public let sourcePath: String?
-    /// インストールに実際に使う絶対パス(nil = インストールしない)。ワークスペース未宣言なら
-    /// sourcePath と同値。宣言時は `WorkspaceAppStaging.installPath` が決める
-    /// "<workspaceRoot>/apps/<原本のファイル名>"(ProfileResolver.resolve が唯一の生成元)。
+    /// インストールに実際に使う絶対パス(nil = インストールしない)。**ワークスペースは常に
+    /// 有効**(既定 `<project.rootURL>/workspace`。2026-08-18)なので sourcePath と同値になるのは
+    /// appPath 自体が既にワークスペース配下を指している場合だけ。`WorkspaceAppStaging.installPath`
+    /// が決める "<workspaceRoot>/apps/<原本のファイル名>"(ProfileResolver.resolve が唯一の生成元)。
     /// 呼び出し側(installApp・ProfileWorkerFactory 等)はこちらだけを見ればよい
     public let appPath: String?
     /// 実行前に appPath を自動インストールするか(既定 false = 無効。
@@ -550,13 +554,16 @@ public struct ResolvedProfile: Sendable {
     /// 半分解像度化をスキップするか(RunProfileDocument.recordFullResolution。既定 false)
     public let recordFullResolution: Bool
     /// **絶対パス解決済みのワークスペースルート**(fileSync.workspace / `--workspace` 上書きの
-    /// 実効値。宣言が無ければ nil)。appPath の原本の解決基準はこれの有無に関わらず常に
-    /// リポジトリルート ―― 宣言時は `apps[platform].appPath`(インストール先)だけがこの配下の
-    /// `apps/<ファイル名>` に切り替わる(ステージングは WorkspaceAppStaging)。
-    /// リモートディスパッチはこれをミラーして子へ `--workspace <ミラー先>` を渡す
-    /// (Sources/ftester/RemoteRunDispatcher.swift)。**`var` にする**(machineHost と同じ理由 ——
-    /// 既定値付きの `let` は memberwise init から除外され、この引数を知らない既存テストの
-    /// 直接呼び出しが壊れる)
+    /// 実効値)。**常に非 nil**(2026-08-18。既定 `<project.rootURL>/workspace` —— ワークスペースは
+    /// 常に有効。`ProfileResolver.resolveWorkspaceRoot`)。appPath の原本の解決基準はこれの
+    /// 有無に関わらず常にリポジトリルート ―― `apps[platform].appPath`(インストール先)だけが
+    /// この配下の `apps/<ファイル名>` に切り替わる(ステージングは WorkspaceAppStaging)。
+    /// リモートディスパッチはこれがプロジェクトルート配下かどうかで転送経路を分ける
+    /// (`WorkspaceRemoteDispatch.placement`。配下ならプロジェクト転送がそのまま運ぶので専用
+    /// ミラーは不要。Sources/ftester/RemoteRunDispatcher.swift)。**`var` にする**(machineHost と
+    /// 同じ理由 —— 既定値付きの `let` は memberwise init から除外され、この引数を知らない
+    /// 既存テストの直接呼び出しが壊れる。型を Optional のまま残すのも同じ理由 ——
+    /// 非 Optional にすると同じ既存テストが nil を渡せなくなる)
     public var workspaceRoot: URL? = nil
     /// 解決中に出た警告(スキップしたデバイス・未知キー等)。呼び出し側が表示する
     public let warnings: [String]
@@ -868,6 +875,17 @@ public enum ProfileResolver {
         return workspace
     }
 
+    /// `resolveWorkspaceRoot` の軽量版(declaredWorkspace を読むだけ。マシン/デバイス解決を
+    /// 経由しない —— RemoteRunDispatcher がミラー前に、実行するマシンを決める前に呼ぶ)。
+    /// override は渡さない(このホストがワークスペースを最初に組み立てる側 = `--workspace` は
+    /// 子プロセスへの中継専用で、ここでは常に無指定)
+    public static func effectiveWorkspaceRoot(project: TestProject, runName: String) -> URL {
+        let repoRoot = project.rootURL.deletingLastPathComponent().deletingLastPathComponent()
+        return resolveWorkspaceRoot(
+            declared: declaredWorkspace(project: project, runName: runName), override: nil,
+            projectRoot: project.rootURL, repoRoot: repoRoot)
+    }
+
     /// ステージング対象(appPath の原本)だけを軽量に読む。マシン/デバイス解決を経由しない
     /// (declaredWorkspace と同じ理由 —— RemoteRunDispatcher はミラー直前にここだけ要る)。
     /// 戻り値: platform("ios"/"android") → リポジトリルート基準で解決した原本の絶対パス
@@ -901,6 +919,21 @@ public enum ProfileResolver {
             return trimmed.isEmpty ? nil : trimmed
         }
         return trimmedNonEmpty(override) ?? trimmedNonEmpty(declared)
+    }
+
+    /// `fileSync.workspace` の実効ルート(絶対パス解決済み)。優先順は
+    /// **override(`--workspace`) > declared(`fileSync.workspace`) > 既定**。
+    /// **既定は `"<projectRoot>/workspace"`**(2026-08-18。常に非 nil を返す ——
+    /// ワークスペースは常に有効。declared/override 省略時に repoRoot 基準へ戻すと、
+    /// 呼び出し側ごとに「省略時どう扱うか」の分岐が要る)。declared/override が相対パスなら
+    /// repoRoot 基準で解決する(絶対パスならそのまま)。純粋関数(I/O なし)
+    public static func resolveWorkspaceRoot(
+        declared: String?, override: String?, projectRoot: URL, repoRoot: URL
+    ) -> URL {
+        guard let raw = effectiveWorkspaceRaw(declared: declared, override: override) else {
+            return projectRoot.appendingPathComponent("workspace")
+        }
+        return URL(fileURLWithPath: resolvePath(raw, base: repoRoot))
     }
 
     /// 実行プロファイルを合成して ResolvedProfile を返す。
@@ -1022,25 +1055,29 @@ public enum ProfileResolver {
         // 5. アプリ解決(デバイスのある platform ごと。合成規則は AppProfileSection.merging 参照)
         // appPath の相対パスは常に「リポジトリルート」基準(project.rootURL =
         // <repoRoot>/TestProjects/<name> の2階層上。= アプリの原本の場所)。**ワークスペースの
-        // 宣言有無でこの基準は変えない**(以前は宣言時にワークスペース基準へ切り替えていたが、
-        // 原本の置き場所とインストールに使う場所を混同していた。docs/remote-runner.md §17)。
-        // packageRoot() の CWD 走査は使わない(単体テストでは CWD が本体リポジトリを指し誤基準に
-        // なる。project.rootURL からの決定的導出で統一)。reportDir だけはプロジェクト直下に出すため
-        // 下記で project.rootURL 基準のまま(基準が異なるので resolvePath の base で使い分ける)。
+        // 有無・既定/明示のどれでもこの基準は変えない**(以前は宣言時にワークスペース基準へ
+        // 切り替えていたが、原本の置き場所とインストールに使う場所を混同していた。
+        // docs/remote-runner.md §17)。packageRoot() の CWD 走査は使わない(単体テストでは CWD が
+        // 本体リポジトリを指し誤基準になる。project.rootURL からの決定的導出で統一)。
+        // reportDir だけはプロジェクト直下に出すため下記で project.rootURL 基準のまま
+        // (基準が異なるので resolvePath の base で使い分ける)。
         //
-        // **`fileSync.workspace` が宣言されていれば、インストールに使うパス(ResolvedAppTarget.
-        // appPath)だけが "<workspaceRoot>/apps/<原本のファイル名>" に切り替わる**(原本の
+        // **ワークスペースは常に有効**(既定 `"<project.rootURL>/workspace"`。2026-08-18)。
+        // インストールに使うパス(ResolvedAppTarget.appPath)は常に
+        // "<workspaceRoot>/apps/<原本のファイル名>" に切り替わる(原本の
         // ResolvedAppTarget.sourcePath は常にリポジトリルート基準のまま)。実体のコピー(ステージング)
         // はここでは行わない(純粋な path 計算のみ) —— 呼び出し側(ProfileRunner.run/ApiRunCommand/
         // RemoteRunDispatcher)が resolve() 直後に `WorkspaceAppStaging` を呼んで原本を運ぶ。
         // リモートへディスパッチすると appPath のアプリパッケージ自体は転送されない
-        // (RemoteTransferPlan は TestProjects/<project> しか rsync しない)ため、リポジトリルート
-        // 基準の絶対パスはリモートに存在しない。ワークスペースを別途ミラーすることで、手元でコピーした
-        // apps/<ファイル名> がリモートにも同じ相対位置で複製される(docs/remote-runner.md §17)
+        // (RemoteTransferPlan.rsyncArgs は TestProjects/<project> しか rsync しない)ため、
+        // リポジトリルート基準の絶対パスはリモートに存在しない。既定のワークスペースは
+        // project.rootURL 配下なので、その転送(rsyncArgs)自体がステージング済みの apps/ を
+        // 運ぶ ―― 明示指定でプロジェクト外を指したときだけ専用ミラーが要る
+        // (`WorkspaceRemoteDispatch.placement`。Sources/ftester/RemoteRunDispatcher.swift)
         let repoRoot = project.rootURL.deletingLastPathComponent().deletingLastPathComponent()
-        let workspaceRaw = effectiveWorkspaceRaw(
-            declared: runDoc.fileSync?.workspace, override: workspaceOverride)
-        let workspaceRoot = workspaceRaw.map { URL(fileURLWithPath: resolvePath($0, base: repoRoot)) }
+        let workspaceRoot = resolveWorkspaceRoot(
+            declared: runDoc.fileSync?.workspace, override: workspaceOverride,
+            projectRoot: project.rootURL, repoRoot: repoRoot)
         var apps: [String: ResolvedAppTarget] = [:]
         for platform in Set(devices.map(\.platform)) {
             let section = appProfile.section(for: platform)
@@ -1049,8 +1086,7 @@ public enum ProfileResolver {
             }
             let sourcePath = section.appPath.map { resolvePath($0, base: repoRoot) }
             let installPath = sourcePath.map { source in
-                workspaceRoot.map { WorkspaceAppStaging.installPath(source: source, workspaceRoot: $0) }
-                    ?? source
+                WorkspaceAppStaging.installPath(source: source, workspaceRoot: workspaceRoot)
             }
             apps[platform] = ResolvedAppTarget(
                 bundleID: bundleID,

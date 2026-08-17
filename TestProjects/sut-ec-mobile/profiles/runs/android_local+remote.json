@@ -38,8 +38,5 @@
   "wipeDataOnBloat": true,
   "containerInference": true,
   "updateWebView": true,
-  "homeOnStart": true,
-  "fileSync": {
-    "workspace": "../sut-ec-mobile-workspace"
-  }
+  "homeOnStart": true
 }

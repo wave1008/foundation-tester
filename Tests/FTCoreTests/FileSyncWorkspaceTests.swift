@@ -104,20 +104,75 @@ final class FileSyncWorkspaceTests: XCTestCase {
         XCTAssertNil(ProfileResolver.declaredWorkspace(project: project, runName: "nope"))
     }
 
-    // MARK: - resolve(): 未宣言は appPath の解決を1バイトも変えない(退行の砦)
+    // MARK: - resolve(): 未宣言は既定ワークスペース `<project.rootURL>/workspace` を使う
+    // (2026-08-18。ワークスペースは常に有効 —— appPath のインストール先は常にリダイレクトされる。
+    // 原本(sourcePath)の解決基準はリポジトリルートのまま不変)
 
-    func testUnspecifiedFileSyncKeepsAppPathRepoRootBased() throws {
+    func testUnspecifiedFileSyncDefaultsToProjectRootWorkspace() throws {
         try writeAppAndMachine()
         try write("""
         { "app": "sampleapp", "devices": [ { "name": "d1" } ] }
         """, to: project.runsDir, name: "r")
 
         let resolved = try ProfileResolver.resolve(project: project, runName: "r", machineName: "m")
-        XCTAssertNil(resolved.workspaceRoot)
-        XCTAssertEqual(resolved.apps["ios"]?.appPath,
+        XCTAssertEqual(resolved.workspaceRoot?.path,
+                       project.rootURL.appendingPathComponent("workspace").path)
+        XCTAssertEqual(resolved.apps["ios"]?.sourcePath,
                        tempDir.appendingPathComponent("apps/SampleApp.app").path)
-        // ワークスペース非経由では sourcePath(原本)と appPath(インストール先)は同値
-        XCTAssertEqual(resolved.apps["ios"]?.sourcePath, resolved.apps["ios"]?.appPath)
+        XCTAssertEqual(resolved.apps["ios"]?.appPath,
+                       project.rootURL.appendingPathComponent("workspace/apps/SampleApp.app").path)
+    }
+
+    // MARK: - ProfileResolver.resolveWorkspaceRoot(純粋関数。優先順位の3段: override > declared > 既定)
+
+    func testResolveWorkspaceRootDefaultsToProjectRootWorkspaceWhenNeitherGiven() {
+        let projectRoot = URL(fileURLWithPath: "/repo/TestProjects/SampleApp")
+        let repoRoot = URL(fileURLWithPath: "/repo")
+        XCTAssertEqual(
+            ProfileResolver.resolveWorkspaceRoot(
+                declared: nil, override: nil, projectRoot: projectRoot, repoRoot: repoRoot).path,
+            "/repo/TestProjects/SampleApp/workspace")
+    }
+
+    func testResolveWorkspaceRootDeclaredWinsOverDefault() {
+        let projectRoot = URL(fileURLWithPath: "/repo/TestProjects/SampleApp")
+        let repoRoot = URL(fileURLWithPath: "/repo")
+        XCTAssertEqual(
+            ProfileResolver.resolveWorkspaceRoot(
+                declared: "../ws", override: nil, projectRoot: projectRoot, repoRoot: repoRoot).path,
+            "/ws")
+    }
+
+    func testResolveWorkspaceRootOverrideWinsOverDeclaredAndDefault() {
+        let projectRoot = URL(fileURLWithPath: "/repo/TestProjects/SampleApp")
+        let repoRoot = URL(fileURLWithPath: "/repo")
+        XCTAssertEqual(
+            ProfileResolver.resolveWorkspaceRoot(
+                declared: "../ws", override: "/mnt/mirror",
+                projectRoot: projectRoot, repoRoot: repoRoot).path,
+            "/mnt/mirror")
+    }
+
+    // MARK: - ProfileResolver.effectiveWorkspaceRoot(軽量読み。RemoteRunDispatcher が
+    // マシン解決前にワークスペースの用意先を知るために使う。declaredWorkspace + 既定を合成する)
+
+    func testEffectiveWorkspaceRootDefaultsToProjectRootWorkspaceWhenUndeclared() throws {
+        try write("""
+        { "app": "sampleapp", "devices": [ { "name": "d1" } ] }
+        """, to: project.runsDir, name: "r")
+        XCTAssertEqual(
+            ProfileResolver.effectiveWorkspaceRoot(project: project, runName: "r").path,
+            project.rootURL.appendingPathComponent("workspace").path)
+    }
+
+    func testEffectiveWorkspaceRootUsesDeclaredValueWhenPresent() throws {
+        try write("""
+        { "app": "sampleapp", "devices": [ { "name": "d1" } ],
+          "fileSync": { "workspace": "../ws" } }
+        """, to: project.runsDir, name: "r")
+        let expected = tempDir.deletingLastPathComponent().appendingPathComponent("ws")
+        XCTAssertEqual(
+            ProfileResolver.effectiveWorkspaceRoot(project: project, runName: "r").path, expected.path)
     }
 
     // MARK: - resolve(): fileSync.workspace 宣言時は「インストールに使うパス」だけが

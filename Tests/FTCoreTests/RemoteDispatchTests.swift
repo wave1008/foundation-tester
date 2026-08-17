@@ -209,6 +209,70 @@ final class RemoteDispatchTests: XCTestCase {
             ])
     }
 
+    // MARK: - WorkspaceRemoteDispatch.placement(2026-08-18。ワークスペースが常に有効になったため、
+    // プロジェクトルート配下なら専用ミラーを組み立てない側の分岐を固定する)
+
+    func testPlacementDefaultWorkspaceIsWithinProject() {
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
+        let placement = WorkspaceRemoteDispatch.placement(
+            workspaceRoot: "/repo/TestProjects/E2E/workspace",
+            projectRoot: "/repo/TestProjects/E2E",
+            layout: layout, project: "E2E")
+        XCTAssertEqual(placement, .withinProject(
+            remotePath: "/Users/ci/ftester-runner/work/TestProjects/E2E/workspace"))
+    }
+
+    /// プロジェクトルートそのものを指したとき(相対パスが空文字列)は projectDir 自身を返す
+    func testPlacementWorkspaceEqualToProjectRootItself() {
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
+        let placement = WorkspaceRemoteDispatch.placement(
+            workspaceRoot: "/repo/TestProjects/E2E",
+            projectRoot: "/repo/TestProjects/E2E",
+            layout: layout, project: "E2E")
+        XCTAssertEqual(placement, .withinProject(
+            remotePath: "/Users/ci/ftester-runner/work/TestProjects/E2E"))
+    }
+
+    func testPlacementNestedCustomWorkspaceIsWithinProject() {
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
+        let placement = WorkspaceRemoteDispatch.placement(
+            workspaceRoot: "/repo/TestProjects/E2E/custom/ws",
+            projectRoot: "/repo/TestProjects/E2E",
+            layout: layout, project: "E2E")
+        XCTAssertEqual(placement, .withinProject(
+            remotePath: "/Users/ci/ftester-runner/work/TestProjects/E2E/custom/ws"))
+    }
+
+    func testPlacementExplicitOutsideProjectIsNotWithinProject() {
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
+        let placement = WorkspaceRemoteDispatch.placement(
+            workspaceRoot: "/shared/sut-workspace",
+            projectRoot: "/repo/TestProjects/E2E",
+            layout: layout, project: "E2E")
+        XCTAssertEqual(placement, .outsideProject)
+    }
+
+    /// 似た名前の兄弟ディレクトリを配下と誤判定しない(文字列前方一致だと
+    /// "…/E2E-Android-x" が "…/E2E-Android" の配下に見えてしまう)
+    func testPlacementDoesNotMatchSiblingDirectoryWithSimilarName() {
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
+        let placement = WorkspaceRemoteDispatch.placement(
+            workspaceRoot: "/repo/TestProjects/E2E-Android-x/workspace",
+            projectRoot: "/repo/TestProjects/E2E-Android",
+            layout: layout, project: "E2E-Android")
+        XCTAssertEqual(placement, .outsideProject)
+    }
+
+    /// 逆方向(projectRoot が子を含む長いパス)も配下と誤判定しない
+    func testPlacementDoesNotMatchWhenProjectRootIsLongerThanWorkspaceRoot() {
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
+        let placement = WorkspaceRemoteDispatch.placement(
+            workspaceRoot: "/repo/TestProjects",
+            projectRoot: "/repo/TestProjects/E2E",
+            layout: layout, project: "E2E")
+        XCTAssertEqual(placement, .outsideProject)
+    }
+
     // MARK: - RemoteArtifactsMode.parse
 
     func testArtifactsModeParseCollect() throws {

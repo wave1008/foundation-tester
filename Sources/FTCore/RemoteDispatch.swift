@@ -239,6 +239,55 @@ extension RemoteArtifactCollection {
     }
 }
 
+/// `fileSync.workspace` の実効ルートがプロジェクトルート配下かどうかで転送経路を分ける
+/// (docs/remote-runner.md §17。2026-08-18)。配下(既定 `<project.rootURL>/workspace` を含む)
+/// ならプロジェクト転送(`RemoteTransferPlan.rsyncArgs`。`TestProjects/<project>/` を丸ごと運ぶ)が
+/// そのまま運ぶので専用の rsync は要らない ―― 同じバイトを二度送らない。配下でない
+/// (明示指定でプロジェクト外を指した)ときだけ専用ミラー(`workspaceRsyncArgs`)が要る
+public enum WorkspaceRemotePlacement: Equatable, Sendable {
+    /// リモート絶対パス = `<RemoteLayout.projectDir(project)>` + (相対パスがあれば "/" + それ)
+    case withinProject(remotePath: String)
+    case outsideProject
+}
+
+public enum WorkspaceRemoteDispatch {
+
+    /// ワークスペースの絶対パスがプロジェクトルート配下かどうかを判定する。パス計算だけの
+    /// 純粋関数(I/O なし)。**判定はパス階層のコンポーネント単位で行う** —— 文字列の前方一致
+    /// (`hasPrefix`)だと、似た名前の兄弟ディレクトリ("…/E2E-Android-x" が "…/E2E-Android" の
+    /// 配下に誤判定される)を弾けない。プロジェクトルートそのものも「配下」(相対パス = 空文字列 →
+    /// remotePath はプロジェクトディレクトリそのもの)
+    public static func placement(
+        workspaceRoot: String, projectRoot: String, layout: RemoteLayout, project: String
+    ) -> WorkspaceRemotePlacement {
+        guard let relative = relativePath(of: workspaceRoot, under: projectRoot) else {
+            return .outsideProject
+        }
+        let remotePath = relative.isEmpty
+            ? layout.projectDir(project)
+            : layout.projectDir(project) + "/" + relative
+        return .withinProject(remotePath: remotePath)
+    }
+
+    /// child が base 自身、または base 配下にあるときだけ相対パス(空文字列 = base 自身)を返す。
+    /// nil = 配下でない。両辺とも standardizedFileURL のパスコンポーネントで比較する
+    /// (".." や連続スラッシュを畳んでから比較する ―― 生文字列の前方一致だと畳み込み前の表記差で
+    /// 誤判定する)
+    static func relativePath(of child: String, under base: String) -> String? {
+        let childComponents = normalizedComponents(child)
+        let baseComponents = normalizedComponents(base)
+        guard childComponents.count >= baseComponents.count,
+              Array(childComponents.prefix(baseComponents.count)) == baseComponents else {
+            return nil
+        }
+        return childComponents.dropFirst(baseComponents.count).joined(separator: "/")
+    }
+
+    private static func normalizedComponents(_ path: String) -> [String] {
+        URL(fileURLWithPath: path).standardizedFileURL.pathComponents.filter { $0 != "/" }
+    }
+}
+
 public enum RemoteArtifactsMode: String, Sendable, CaseIterable {
     case collect
     case onDemand = "on-demand"

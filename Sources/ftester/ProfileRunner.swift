@@ -50,9 +50,10 @@ enum ProfileRunner {
         let resolvedAll = try ProfileResolver.resolve(
             project: project, runName: profileName, machineName: machine.name,
             workspaceOverride: workspaceOverride)
-        // fileSync.workspace 初回宣言時の雛形作成(既に揃っていれば何もしない。WorkspaceScaffold の宣言)。
+        // ワークスペースは常に有効(既定 `<project.rootURL>/workspace`。docs/remote-runner.md §17・
+        // 2026-08-18)なので毎回雛形作成(既に揃っていれば何もしない。WorkspaceScaffold の宣言)。
         // リモートディスパッチはこれとは別に、ミラー前のローカル側で同じ呼び出しを行う
-        // (RemoteRunDispatcher.mirrorWorkspaceIfDeclared)。続けて appPath の原本を apps/ へ
+        // (RemoteRunDispatcher.prepareWorkspace)。続けて appPath の原本を apps/ へ
         // ステージング(WorkspaceAppStaging)。**dest も原本も無ければここで throw する**
         // (原本のパスを名指しする。呼び出し側で握り潰さない)
         if let workspaceRoot = resolvedAll.workspaceRoot {

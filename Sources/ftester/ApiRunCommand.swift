@@ -123,8 +123,8 @@ struct ApiRunCommand: AsyncParsableCommand {
     /// **手で打つものではない**。RunScenarios.workspace と同じ契約(RemoteRunDispatcher が
     /// ミラー後の絶対パスを渡す)
     @Option(help: ArgumentHelp(
-        "Override this run profile's fileSync.workspace (the root relative appPath resolves "
-        + "against). Set by the remote dispatcher on the far side; not for hand use",
+        "Override this run profile's fileSync.workspace (where the staged appPath package is "
+        + "installed from). Set by the remote dispatcher on the far side; not for hand use",
         visibility: .hidden))
     var workspace: String?
 
@@ -213,10 +213,12 @@ struct ApiRunCommand: AsyncParsableCommand {
             let resolvedAll = try ProfileResolver.resolve(
                 project: testProject, runName: profile, machineName: machine.name,
                 workspaceOverride: workspace)
-            // fileSync.workspace 初回宣言時の雛形作成(ProfileRunner.run と同じ規律。既に揃って
-            // いれば何もしない。リモートディスパッチは別途ミラー前のローカル側で同じ呼び出しを行う)。
-            // 続けて appPath の原本を apps/ へステージング(WorkspaceAppStaging。ProfileRunner.run
-            // と同じ規律 —— dest も原本も無ければ throw する)
+            // ワークスペースは常に有効(既定 `<project.rootURL>/workspace`。docs/remote-runner.md §17・
+            // 2026-08-18)なので毎回雛形作成(ProfileRunner.run と同じ規律。既に揃っていれば
+            // 何もしない。リモートディスパッチは別途ミラー前のローカル側で同じ呼び出しを行う
+            // = RemoteRunDispatcher.prepareWorkspace)。続けて appPath の原本を apps/ へ
+            // ステージング(WorkspaceAppStaging。ProfileRunner.run と同じ規律 ——
+            // dest も原本も無ければ throw する)
             if let workspaceRoot = resolvedAll.workspaceRoot {
                 let created = (try? WorkspaceScaffold.ensure(root: workspaceRoot)) ?? []
                 if !created.isEmpty {
