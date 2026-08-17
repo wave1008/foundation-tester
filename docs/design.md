@@ -3074,14 +3074,16 @@ executableTarget `ftester-scenarios-<name>`(path: `TestProjects/<name>/scenarios
 `TestProjects/<name>/profiles/` 配下。共通設定の継承ではなく**部品の参照合成**で表現する。
 
 **アプリケーションプロファイル** `apps/<name>.json` — common(共通)→ ios/android の後勝ちマージ。
-`appName`(表示名)と `autoInstall` は **common のみ**採用(`autoInstall` の未指定時の既定は
-`appPath` の有無 — パスを書いたのに入らない事故を避ける。止めたいときだけ `false` を明示する)、bundle ID(`app`)と `appPath` は
-**ios/android セクションのみ**採用(common に書くと merging で無視され validate が警告する):
+`autoInstall` は **common のみ**採用(未指定時の既定は
+`appPath` の有無 — パスを書いたのに入らない事故を避ける。止めたいときだけ `false` を明示する)、
+`appName`(表示名)・bundle ID(`app`)・`appPath` は
+**ios/android セクションのみ**採用(common に書くと merging で無視され validate が警告する。
+表示名を OS ごとに書き分けられるようにするため、common の `appName` は継承しない):
 
 ```json
-{ "common":  { "appName": "サンプルアプリ", "autoInstall": true },
-  "ios":     { "app": "com.example.sampleapp", "appPath": "~/builds/SampleApp.app" },
-  "android": { "app": "com.example.sampleapp", "appPath": "builds/app-debug.apk" } }
+{ "common":  { "autoInstall": true },
+  "ios":     { "appName": "サンプルアプリ", "app": "com.example.sampleapp", "appPath": "~/builds/SampleApp.app" },
+  "android": { "appName": "サンプルアプリ", "app": "com.example.sampleapp", "appPath": "builds/app-debug.apk" } }
 ```
 
 `appPath` の相対パスは**リポジトリルート**基準(上例の `builds/app-debug.apk` は `<repoRoot>/builds/...`)。

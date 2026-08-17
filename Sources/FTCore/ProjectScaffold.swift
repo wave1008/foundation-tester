@@ -280,12 +280,12 @@ public enum ProjectScaffold {
         `appPath` はセットアップでは**聞かない・書かない**(未設定なら自動インストールは無効 =
         インストール済みのアプリをそのまま使う)。自動インストールが必要になったら、後から
         `TestProjects/\(name)/profiles/apps/\(appRef).json` の `appPath` をビルド済みアプリへ向ける
-        (`appName`/`autoInstall` は common、bundle ID(`app`)と `appPath` は ios/android セクション)。
+        (`appName`・bundle ID(`app`)・`appPath` は ios/android セクション、`autoInstall` は common)。
         **ユーザーが自発的にパスを伝えてきた場合のみ書く。別リポジトリを覗いて確定値を書き込まない**:
 
         ```json
-        { "common": { "appName": "\(name)", "autoInstall": true },
-          "ios":    { "app": "<bundle id>", "appPath": "~/builds/\(name).app" } }
+        { "common": { "autoInstall": true },
+          "ios":    { "appName": "\(name)", "app": "<bundle id>", "appPath": "~/builds/\(name).app" } }
         ```
         `appPath` の相対パスはリポジトリルート基準(`builds/x.app` → `<repoRoot>/builds/x.app`)。`~`・絶対パスも可。
 
@@ -453,18 +453,17 @@ public enum ProjectScaffold {
     ```
     """
 
-    // 置き場所は固定: appName/autoInstall は common、app(ID)/appPath は platform セクション
+    // 置き場所は固定: appName/app(ID)/appPath は platform セクション、autoInstall は common
     // (AppProfileSection.merging 参照)
     public static func appProfileTemplate(appName: String, app: String) -> String {
         """
         {
-          "common": {
-            "appName": "\(appName)"
-          },
           "ios": {
+            "appName": "\(appName)",
             "app": "\(app)"
           },
           "android": {
+            "appName": "\(appName)",
             "app": "\(app)"
           }
         }

@@ -615,14 +615,11 @@ function isRemoteHostEntryLike(value: unknown): value is RemoteHostEntry {
   );
 }
 
-/** アプリプロファイル common セクション(表示名+自動インストール)の検証。autoInstall は
- * common に一本化されているため "true"/"false" の2値のみ受理する。 */
+/** アプリプロファイル common セクション(自動インストールのみ。表示名は ios/android のそれぞれで
+ * 持ち common からは継承しない)の検証。autoInstall は common に一本化されているため
+ * "true"/"false" の2値のみ受理する。 */
 function isAppProfileCommonFieldsLike(value: unknown): value is AppProfileCommonFields {
-  return (
-    isRecord(value) &&
-    typeof value.appName === "string" &&
-    (value.autoInstall === "true" || value.autoInstall === "false")
-  );
+  return isRecord(value) && (value.autoInstall === "true" || value.autoInstall === "false");
 }
 
 /** アプリプロファイル ios/android セクション(3項目)の検証。autoInstall は common 側で検証する。 */

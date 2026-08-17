@@ -512,7 +512,8 @@ export class MonitorProfilesController {
     try {
       fs.mkdirSync(appsDir, { recursive: true });
       // テンプレートは appName のみ(埋めるべき候補一覧が無く buildRunProfileTemplate とは異なる)。
-      const template = { android: {}, common: { appName: name }, ios: {} };
+      // 表示名は ios/android のそれぞれに書く(common からは継承しないため、common には appName を書かない)。
+      const template = { android: { appName: name }, common: {}, ios: { appName: name } };
       fs.writeFileSync(path.join(appsDir, `${name}.json`), `${JSON.stringify(template, null, 2)}\n`, "utf8");
       this.deps.outputChannel.appendLine(t("profiles.log.appProfileAdded", { name }));
       this.postProfileInfo();

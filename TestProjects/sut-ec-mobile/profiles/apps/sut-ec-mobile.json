@@ -1,14 +1,15 @@
 {
   "common": {
-    "appName": "sut-ec-mobile",
     "autoInstall": true,
     "healthCheckURL": "http://localhost:8090/"
   },
   "ios": {
+    "appName": "sut-ec-mobile",
     "app": "com.sutec.mobile",
     "appPath": "../sut-ec-mobile/dist/ios-simulator/SUTStore.app"
   },
   "android": {
+    "appName": "sut-ec-mobile",
     "app": "com.sutec.mobile",
     "appPath": "../sut-ec-mobile/dist/android/sut-store-debug.apk"
   }

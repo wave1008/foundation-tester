@@ -166,8 +166,7 @@ final class ProfileResolverMachineHostTests: XCTestCase {
 
     func testResolvedProfileCarriesNormalizedMachineHost() throws {
         try write("""
-        { "common": { "appName": "サンプル" },
-          "ios": { "app": "com.example.sampleapp" } }
+        { "ios": { "appName": "サンプル", "app": "com.example.sampleapp" } }
         """, to: project.appsDir, name: "sampleapp")
         try write("""
         { "host": "runner1",
@@ -183,8 +182,7 @@ final class ProfileResolverMachineHostTests: XCTestCase {
 
     func testResolvedProfileMachineHostIsNilWhenOmitted() throws {
         try write("""
-        { "common": { "appName": "サンプル" },
-          "ios": { "app": "com.example.sampleapp" } }
+        { "ios": { "appName": "サンプル", "app": "com.example.sampleapp" } }
         """, to: project.appsDir, name: "sampleapp")
         try write("""
         { "ios": { "devices": [ { "name": "メイン機", "simulator": "iPhone 17 Pro" } ] } }

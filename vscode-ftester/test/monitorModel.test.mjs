@@ -1551,13 +1551,12 @@ test("isMonitorFromWebviewMessage: appProfileCopy/appProfileRename/appProfileDel
 });
 
 // ---- isMonitorFromWebviewMessage: アプリプロファイル設定フォーム(appProfileLoad/appProfileSave) ----
-// common は表示名(appName)+自動インストール(autoInstall。"" は廃止済みで "true"/"false" の2値のみ)、
-// ios/android は表示名・アプリID・パッケージパスの3項目(autoInstall は common に一本化された
-// ため持たない。2026-07-11 指示)を持つ(monitorModel.ts の
+// common は自動インストール(autoInstall。"" は廃止済みで "true"/"false" の2値のみ)のみ(表示名は
+// 継承しないため common には無い)、ios/android は表示名・アプリID・パッケージパスの3項目
+// (autoInstall は common に一本化されたため持たない。2026-07-11 指示)を持つ(monitorModel.ts の
 // AppProfileCommonFields/AppProfilePlatformFields と同じ形)。
 
 const APP_PROFILE_COMMON_FIELDS = {
-  appName: "サンプル",
   autoInstall: "true",
 };
 
@@ -1587,11 +1586,11 @@ test("isMonitorFromWebviewMessage: appProfileLoad は profile 空文字/欠落/�
   assert.equal(isMonitorFromWebviewMessage({ type: "appProfileLoad", profile: 1 }), false);
 });
 
-test("isMonitorFromWebviewMessage: appProfileSave は profile 非空・fields(common=表示名+自動インストール、ios/android=3項目)の型が揃っていれば true", () => {
+test("isMonitorFromWebviewMessage: appProfileSave は profile 非空・fields(common=自動インストールのみ、ios/android=3項目)の型が揃っていれば true", () => {
   assert.equal(isMonitorFromWebviewMessage(VALID_APP_PROFILE_SAVE), true);
   // 各フィールドは空文字も(型としては)許容する。common の autoInstall は "true"/"false" の
   // 2値のみ("" は廃止)。
-  const emptyCommon = { appName: "", autoInstall: "false" };
+  const emptyCommon = { autoInstall: "false" };
   const emptyPlatform = { appName: "", app: "", appPath: "" };
   assert.equal(
     isMonitorFromWebviewMessage({
@@ -1608,21 +1607,28 @@ test("isMonitorFromWebviewMessage: appProfileSave は profile 空文字・fields
   assert.equal(
     isMonitorFromWebviewMessage({
       ...VALID_APP_PROFILE_SAVE,
-      fields: { ...VALID_APP_PROFILE_SAVE.fields, common: { appName: 1, autoInstall: "false" } }, // appName 非文字列
+      fields: { ...VALID_APP_PROFILE_SAVE.fields, ios: { ...APP_PROFILE_PLATFORM_FIELDS, appName: 1 } }, // appName 非文字列
     }),
     false,
   );
   assert.equal(
     isMonitorFromWebviewMessage({
       ...VALID_APP_PROFILE_SAVE,
-      fields: { ...VALID_APP_PROFILE_SAVE.fields, common: { ...APP_PROFILE_COMMON_FIELDS, autoInstall: "" } }, // "" は廃止済みで不正
+      fields: { ...VALID_APP_PROFILE_SAVE.fields, common: { autoInstall: "" } }, // "" は廃止済みで不正
     }),
     false,
   );
   assert.equal(
     isMonitorFromWebviewMessage({
       ...VALID_APP_PROFILE_SAVE,
-      fields: { ...VALID_APP_PROFILE_SAVE.fields, common: { ...APP_PROFILE_COMMON_FIELDS, autoInstall: "maybe" } }, // 2値以外
+      fields: { ...VALID_APP_PROFILE_SAVE.fields, common: { autoInstall: "maybe" } }, // 2値以外
+    }),
+    false,
+  );
+  assert.equal(
+    isMonitorFromWebviewMessage({
+      ...VALID_APP_PROFILE_SAVE,
+      fields: { ...VALID_APP_PROFILE_SAVE.fields, common: {} }, // autoInstall 欠落
     }),
     false,
   );
@@ -2580,13 +2586,14 @@ test("parseRunProfileForForm: トップレベルが非オブジェクト(配列�
 });
 
 // ---- parseAppProfileForForm ----
-// common は表示名(appName)+自動インストール(autoInstall。true のときだけ "true"、それ以外
-// [false/欠落/型不正]は既定=無効を表す "false")の2フィールド、ios/android は表示名・アプリID・
-// パッケージパスの3フィールド(autoInstall は common に一本化されたため持たない。2026-07-11 指示)。
+// common は自動インストール(autoInstall。true のときだけ "true"、それ以外[false/欠落/型不正]は
+// 既定=無効を表す "false")の1フィールドのみ(表示名は継承しないため common には無い)、
+// ios/android は表示名・アプリID・パッケージパスの3フィールド(autoInstall は common に一本化
+// されたため持たない。2026-07-11 指示)。
 
-test("parseAppProfileForForm: 正常な値を読み取る(common は表示名+自動インストール、ios/android は3フィールド)", () => {
+test("parseAppProfileForForm: 正常な値を読み取る(common は自動インストールのみ、ios/android は3フィールド)", () => {
   const parsed = parseAppProfileForForm({
-    common: { appName: "サンプルアプリ", app: "com.example.sampleapp", appPath: "path/to.app", autoInstall: true },
+    common: { appName: "廃止済み", app: "com.example.sampleapp", appPath: "path/to.app", autoInstall: true },
     ios: { appName: "サンプル(iOS)", app: "com.example.sampleapp.ios", appPath: "path/to-ios.app", autoInstall: false },
     android: {
       appName: "サンプル(Android)",
@@ -2596,8 +2603,8 @@ test("parseAppProfileForForm: 正常な値を読み取る(common は表示名+�
     },
   });
   assert.deepEqual(parsed, {
-    // common の app/appPath は廃止のため読み取らない(appName+autoInstall のみ反映される)。
-    common: { appName: "サンプルアプリ", autoInstall: "true" },
+    // common の appName/app/appPath は廃止のため読み取らない(autoInstall のみ反映される)。
+    common: { autoInstall: "true" },
     // ios/android の autoInstall は common に一本化されたため読み取らない(残っていても無視)。
     ios: { appName: "サンプル(iOS)", app: "com.example.sampleapp.ios", appPath: "path/to-ios.app" },
     android: {
@@ -2611,13 +2618,13 @@ test("parseAppProfileForForm: 正常な値を読み取る(common は表示名+�
 test("parseAppProfileForForm: セクション欠落は空のセクションとして読み取る(common の autoInstall は既定 'false')", () => {
   const parsed = parseAppProfileForForm({});
   const emptyPlatform = { appName: "", app: "", appPath: "" };
-  assert.deepEqual(parsed, { common: { appName: "", autoInstall: "false" }, ios: emptyPlatform, android: emptyPlatform });
+  assert.deepEqual(parsed, { common: { autoInstall: "false" }, ios: emptyPlatform, android: emptyPlatform });
 });
 
 test("parseAppProfileForForm: セクションが非オブジェクト(配列含む)なら空のセクション扱い", () => {
   const parsed = parseAppProfileForForm({ common: "invalid", ios: null, android: ["a"] });
   const emptyPlatform = { appName: "", app: "", appPath: "" };
-  assert.deepEqual(parsed, { common: { appName: "", autoInstall: "false" }, ios: emptyPlatform, android: emptyPlatform });
+  assert.deepEqual(parsed, { common: { autoInstall: "false" }, ios: emptyPlatform, android: emptyPlatform });
 });
 
 test("parseAppProfileForForm: フィールドの型不正は既定値扱い(appName が数値、app/appPath が欠落 等)", () => {
@@ -2625,7 +2632,7 @@ test("parseAppProfileForForm: フィールドの型不正は既定値扱い(appN
     common: { appName: 123, app: "irrelevant", autoInstall: "true" }, // autoInstall は文字列(型不正)なので既定 false 扱い
     ios: { appName: 123, app: null },
   });
-  assert.deepEqual(parsed.common, { appName: "", autoInstall: "false" });
+  assert.deepEqual(parsed.common, { autoInstall: "false" });
   assert.deepEqual(parsed.ios, { appName: "", app: "", appPath: "" });
 });
 
@@ -2902,50 +2909,59 @@ test("updateRunProfileInObject: トップレベルがオブジェクトでなけ
 });
 
 // ---- updateAppProfileInObject ----
-// common は表示名(appName)+自動インストール(autoInstall。"true" は boolean true をセット、
-// "false" は既定[無効]と同値なのでキー削除)を書き込む(app/appPath は廃止に伴い常に削除)。
-// ios/android は表示名・アプリID・パッケージパスのみを書き込む(autoInstall は common に
-// 一本化されたため、残っていても廃止に伴い常に削除する。2026-07-11 指示)。
+// common は自動インストール(autoInstall。"true" は boolean true をセット、"false" は既定[無効]と
+// 同値なのでキー削除)のみを書き込む(appName/app/appPath は廃止に伴い常に削除。表示名は
+// ios/android のそれぞれに書き、common からは継承しない)。ios/android は表示名・アプリID・
+// パッケージパスのみを書き込む(autoInstall は common に一本化されたため、残っていても廃止に
+// 伴い常に削除する。2026-07-11 指示)。
 
 const BASE_APP_PROFILE_FIELDS = {
-  common: { appName: "サンプルアプリ", autoInstall: "false" },
+  common: { autoInstall: "false" },
   ios: { appName: "", app: "", appPath: "" },
   android: { appName: "", app: "", appPath: "" },
 };
 
-test("updateAppProfileInObject: 基本更新(common は表示名+自動インストール)", () => {
-  const result = updateAppProfileInObject({}, BASE_APP_PROFILE_FIELDS);
+test("updateAppProfileInObject: 基本更新(common は自動インストールのみ)", () => {
+  const result = updateAppProfileInObject({}, { ...BASE_APP_PROFILE_FIELDS, common: { autoInstall: "true" } });
   assert.equal(result.ok, true);
-  // autoInstall は "false"(既定と同値)なのでキー自体を持たない。
-  assert.deepEqual(result.object.common, { appName: "サンプルアプリ" });
+  assert.deepEqual(result.object.common, { autoInstall: true });
 });
 
-test("updateAppProfileInObject: common の appName は空文字ならキー削除する", () => {
+test("updateAppProfileInObject: 既存の common.appName は保存のたびに削除される(Swift 側の未知キー警告を防ぐ)", () => {
   const result = updateAppProfileInObject(
     { common: { appName: "old" } },
-    { ...BASE_APP_PROFILE_FIELDS, common: { appName: "", autoInstall: "false" } },
+    BASE_APP_PROFILE_FIELDS,
   );
   assert.equal(result.ok, true);
   assert.deepEqual(result.object.common, {});
 });
 
-test("updateAppProfileInObject: common に残った app/appPath は廃止に伴い常に削除する", () => {
+test("updateAppProfileInObject: common に残った appName/app/appPath は廃止に伴い常に削除する", () => {
   const result = updateAppProfileInObject(
-    { common: { appName: "old", app: "old.app", appPath: "old/path" } },
-    BASE_APP_PROFILE_FIELDS,
+    { common: { appName: "old", app: "old.app", appPath: "old/path", autoInstall: true } },
+    { ...BASE_APP_PROFILE_FIELDS, common: { autoInstall: "true" } },
   );
   assert.equal(result.ok, true);
-  assert.deepEqual(result.object.common, { appName: "サンプルアプリ" });
+  assert.deepEqual(result.object.common, { autoInstall: true });
+});
+
+test("updateAppProfileInObject: common の autoInstall・healthCheckURL は appName 削除後も保たれる", () => {
+  const result = updateAppProfileInObject(
+    { common: { appName: "old", autoInstall: true, healthCheckURL: "http://localhost:8090/" } },
+    { ...BASE_APP_PROFILE_FIELDS, common: { autoInstall: "true" } },
+  );
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.object.common, { autoInstall: true, healthCheckURL: "http://localhost:8090/" });
 });
 
 test("updateAppProfileInObject: common の autoInstall は2値('true' は boolean true をセット/'false' はキー削除)", () => {
   const removed = updateAppProfileInObject(
     { common: { autoInstall: true } },
-    { ...BASE_APP_PROFILE_FIELDS, common: { appName: "", autoInstall: "false" } },
+    BASE_APP_PROFILE_FIELDS,
   );
   assert.equal("autoInstall" in removed.object.common, false);
 
-  const trueResult = updateAppProfileInObject({}, { ...BASE_APP_PROFILE_FIELDS, common: { appName: "", autoInstall: "true" } });
+  const trueResult = updateAppProfileInObject({}, { ...BASE_APP_PROFILE_FIELDS, common: { autoInstall: "true" } });
   assert.equal(trueResult.object.common.autoInstall, true);
 });
 
@@ -2967,8 +2983,8 @@ test("updateAppProfileInObject: ios/android に残った autoInstall は common 
   assert.deepEqual(result.object.ios, {});
 });
 
-test("updateAppProfileInObject: 元に無い common セクションは appName 空・autoInstall 'false' のままなら作らない", () => {
-  const result = updateAppProfileInObject({}, { ...BASE_APP_PROFILE_FIELDS, common: { appName: "", autoInstall: "false" } });
+test("updateAppProfileInObject: 元に無い common セクションは autoInstall 'false' のままなら作らない", () => {
+  const result = updateAppProfileInObject({}, BASE_APP_PROFILE_FIELDS);
   assert.equal(result.ok, true);
   assert.equal("common" in result.object, false);
 });
@@ -2980,13 +2996,10 @@ test("updateAppProfileInObject: 元に無い ios/android セクションは全�
   assert.equal("android" in result.object, false);
 });
 
-test("updateAppProfileInObject: 元に無いセクションでも1つでも値があれば作る(common は appName または autoInstall 'true'、ios/android は appName/app/appPath のいずれか)", () => {
-  const commonResult = updateAppProfileInObject({}, BASE_APP_PROFILE_FIELDS);
-  assert.deepEqual(commonResult.object.common, { appName: "サンプルアプリ" });
-
+test("updateAppProfileInObject: 元に無いセクションでも1つでも値があれば作る(common は autoInstall 'true'、ios/android は appName/app/appPath のいずれか)", () => {
   const byCommonAutoInstall = updateAppProfileInObject(
     {},
-    { ...BASE_APP_PROFILE_FIELDS, common: { appName: "", autoInstall: "true" } },
+    { ...BASE_APP_PROFILE_FIELDS, common: { autoInstall: "true" } },
   );
   assert.deepEqual(byCommonAutoInstall.object.common, { autoInstall: true });
 
@@ -3013,11 +3026,12 @@ test("updateAppProfileInObject: 未知キー(トップレベル)を保持する"
   assert.equal(result.object.customTopKey, "keep-me");
 });
 
-test("updateAppProfileInObject: 未知キー(セクション内)を保持する", () => {
+test("updateAppProfileInObject: 未知キー(セクション内)を保持する(appName は未知キーではなく廃止キーとして削除する)", () => {
   const profile = { common: { customKey: "keep-me", appName: "old" } };
   const result = updateAppProfileInObject(profile, BASE_APP_PROFILE_FIELDS);
   assert.equal(result.ok, true);
   assert.equal(result.object.common.customKey, "keep-me");
+  assert.equal("appName" in result.object.common, false);
 });
 
 test("updateAppProfileInObject: トップレベルがオブジェクトでなければ(配列含む)エラー", () => {

@@ -373,10 +373,10 @@ export function updateRunProfileInObject(
 // 変換の純粋関数(parseRunProfileForForm/updateRunProfileInObject と同じ方針)。
 // autoInstall は common に一本化済み(ios/android に残存していると Swift 側 validate が警告する)。
 
-/** アプリプロファイル common セクション。app/appPath は廃止済み(ランタイムは common のこれらを
- * 無視する)のため ios/android(AppProfilePlatformFields)と型を分離。 */
+/** アプリプロファイル common セクション。app/appPath/appName は廃止済み(ランタイムは common の
+ * これらを無視する。表示名は ios/android のそれぞれに書き、common からは継承しない)ため
+ * ios/android(AppProfilePlatformFields)と型を分離。 */
 export interface AppProfileCommonFields {
-  readonly appName: string;
   readonly autoInstall: "true" | "false";
 }
 
@@ -396,7 +396,6 @@ export interface AppProfileFormFields {
 }
 
 const EMPTY_APP_PROFILE_COMMON_FIELDS: AppProfileCommonFields = {
-  appName: "",
   autoInstall: "false",
 };
 
@@ -407,14 +406,14 @@ const EMPTY_APP_PROFILE_PLATFORM_FIELDS: AppProfilePlatformFields = {
 };
 
 /** apps/<name>.json の common セクションを許容的に読み取る(非オブジェクトなら空セクション扱い)。
- * app/appPath は common では廃止のため読み取らない(残っていても無視)。 */
+ * app/appPath/appName は common では廃止のため読み取らない(残っていても無視。表示名は
+ * ios/android のそれぞれで読む)。 */
 function parseAppProfileCommonSection(value: unknown): AppProfileCommonFields {
   if (!isRecord(value)) {
     return EMPTY_APP_PROFILE_COMMON_FIELDS;
   }
-  const appName = typeof value.appName === "string" ? value.appName : "";
   const autoInstall = value.autoInstall === true ? "true" : "false";
-  return { appName, autoInstall };
+  return { autoInstall };
 }
 
 /** apps/<name>.json の ios/android セクションを許容的に読み取る(非オブジェクトなら空セクション扱い)。
@@ -448,31 +447,28 @@ export type AppProfileUpdateResult =
 
 /**
  * common セクションを fields で更新した新オブジェクトを組み立てる(未知キー保持)。
- * autoInstall は "false" ならキー削除(既定と同値のため書かない)。app/appPath は廃止済みのため
- * 値に関わらず常に削除する(残存が「common でも効く」と読み手を誤解させるため)。
- * existing が undefined かつ appName空/autoInstall=false(値が何も無い)なら undefined を返し
- * セクション自体を作らない。existing が定義済み(空オブジェクト含む)ならセクションは保持する。
+ * autoInstall は "false" ならキー削除(既定と同値のため書かない)。app/appPath/appName は
+ * 廃止済みのため値に関わらず常に削除する(appName の残存は Swift 側で未知キー警告になる。
+ * 表示名は ios/android のそれぞれに書き、common からは継承しない)。
+ * existing が undefined かつ autoInstall=false(値が何も無い)なら undefined を返しセクション
+ * 自体を作らない。existing が定義済み(空オブジェクト含む)ならセクションは保持する
+ * (healthCheckURL 等の他キーはここで触れず existing のスプレッドで保たれる)。
  */
 function updateAppProfileCommonSection(
   existing: Record<string, unknown> | undefined,
   fields: AppProfileCommonFields,
 ): Record<string, unknown> | undefined {
-  const trimmedAppName = fields.appName.trim();
-  const hasAnyValue = trimmedAppName !== "" || fields.autoInstall === "true";
+  const hasAnyValue = fields.autoInstall === "true";
   if (existing === undefined && !hasAnyValue) {
     return undefined;
   }
   const result: Record<string, unknown> = { ...(existing ?? {}) };
-  if (trimmedAppName.length === 0) {
-    delete result.appName;
-  } else {
-    result.appName = trimmedAppName;
-  }
   if (fields.autoInstall === "true") {
     result.autoInstall = true;
   } else {
     delete result.autoInstall;
   }
+  delete result.appName;
   delete result.app;
   delete result.appPath;
   return result;

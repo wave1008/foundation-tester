@@ -345,7 +345,7 @@ export interface AppProfileDetail {
 }
 
 /** ライブ操作パネルの詳細表示用。readAppProfileTarget と違い bundle 欠落でも null にせず、
- * 表示名(common→platform マージ。RunProfile.swift の AppProfileSection.merging と同じく platform 側が優先)と
+ * 表示名(platform セクションのみ。common からは継承しない)と
  * platform セクションの app / appPath を個別に返す。ファイル未読/解析失敗のみ null。 */
 export function readAppProfileDetail(
   workspaceRoot: string,
@@ -360,12 +360,13 @@ export function readAppProfileDetail(
       return null;
     }
     const record = parsed as Record<string, unknown>;
-    const common = typeof record.common === "object" && record.common !== null
-      ? (record.common as Record<string, unknown>) : undefined;
     const section = typeof record[platform] === "object" && record[platform] !== null
       ? (record[platform] as Record<string, unknown>) : undefined;
     const str = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
-    const appName = str(section?.appName) ?? str(common?.appName);
+    // 表示名は platform セクションのみ。**common からは継承しない**(Sources/FTCore/RunProfile.swift
+    // の AppProfileSection.merging と同期。common に残っている appName は CLI 側が未知キーとして
+    // 警告する対象なので、ここで拾うと警告と表示が食い違う)
+    const appName = str(section?.appName);
     const bundle = str(section?.app);
     const rawAppPath = str(section?.appPath);
     let appPath: string | null = null;

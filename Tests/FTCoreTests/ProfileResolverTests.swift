@@ -24,11 +24,11 @@ final class ProfileResolverTests: XCTestCase {
     }
 
     private func writeStandardFixture() throws {
-        // common で有効なキーは appName と autoInstall。app/appPath は platform セクション
+        // common で有効なキーは autoInstall のみ。appName/app/appPath は platform セクション
         try write("""
-        { "common":  { "appName": "サンプルアプリ", "autoInstall": true },
-          "ios":     { "app": "com.example.sampleapp", "appPath": "builds/SampleApp.app" },
-          "android": { "app": "com.example.sampleapp", "appPath": "builds/app-debug.apk" } }
+        { "common":  { "autoInstall": true },
+          "ios":     { "appName": "サンプルアプリ", "app": "com.example.sampleapp", "appPath": "builds/SampleApp.app" },
+          "android": { "appName": "サンプルアプリ", "app": "com.example.sampleapp", "appPath": "builds/app-debug.apk" } }
         """, to: project.appsDir, name: "sampleapp")
         try write("""
         { "ios":     { "devices": [
@@ -96,8 +96,8 @@ final class ProfileResolverTests: XCTestCase {
     func testAppSectionOverridesCommon() throws {
         // common.app は廃止済みで resolve では無視される(validate は警告のみ)
         try write("""
-        { "common":  { "appName": "A", "app": "com.example.common" },
-          "android": { "app": "com.example.android" } }
+        { "common":  { "app": "com.example.common" },
+          "android": { "appName": "A", "app": "com.example.android" } }
         """, to: project.appsDir, name: "app2")
         try write("""
         { "android": { "devices": [ { "name": "d1", "avd": "Pixel_9" } ] } }
@@ -116,8 +116,8 @@ final class ProfileResolverTests: XCTestCase {
     /// false を明示したときだけ止まる(opt-out)
     func testExplicitFalseOptsOutEvenWithAppPath() throws {
         try write("""
-        { "common": { "appName": "アプリ", "autoInstall": false },
-          "android": { "app": "com.example.android", "appPath": "builds/app.apk" } }
+        { "common": { "autoInstall": false },
+          "android": { "appName": "アプリ", "app": "com.example.android", "appPath": "builds/app.apk" } }
         """, to: project.appsDir, name: "app4")
         try write("""
         { "android": { "devices": [ { "name": "d1", "avd": "Pixel_9" } ] } }
@@ -187,7 +187,7 @@ final class ProfileResolverTests: XCTestCase {
 
     func testValidateWarnsOnDeprecatedCommonAppAndAppPath() throws {
         let data = #"""
-        { "common": { "appName": "A", "app": "com.example.app", "appPath": "x.app" } }
+        { "common": { "app": "com.example.app", "appPath": "x.app" } }
         """#.data(using: .utf8)!
 
         let (errors, warnings) = ProfileResolver.validate(
@@ -199,14 +199,26 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertTrue(warnings.contains { $0.contains("common") && $0.contains("\"appPath\"")
                                           && $0.contains("deprecated") },
                       "common.appPath 廃止警告が出るはず: \(warnings)")
-        XCTAssertFalse(warnings.contains { $0.contains("appName") },
-                       "common の appName は有効なので警告は出ないはず: \(warnings)")
+    }
+
+    /// common.appName は廃止(この契約変更の核): 黙って無視せず、ios/android への移動を促す
+    /// 警告が出ること
+    func testValidateWarnsWhenAppNameInCommonSection() throws {
+        let data = #"""
+        { "common": { "appName": "A" }, "ios": { "app": "com.example.app" } }
+        """#.data(using: .utf8)!
+
+        let (errors, warnings) = ProfileResolver.validate(
+            kind: .app, data: data, context: "apps/app2.json", project: project)
+        XCTAssertTrue(errors.isEmpty, "警告のみでエラーにはしないはず: \(errors)")
+        XCTAssertTrue(warnings.contains { $0.contains("common") && $0.contains("\"appName\"")
+                                          && $0.contains("ios/android") },
+                      "common.appName は ios/android への移動を促す警告が出るはず: \(warnings)")
     }
 
     func testValidateNoWarningWhenAppAndAppPathInPlatformSection() throws {
         let data = #"""
-        { "common": { "appName": "A" },
-          "ios":    { "app": "com.example.app", "appPath": "x.app" } }
+        { "ios": { "appName": "A", "app": "com.example.app", "appPath": "x.app" } }
         """#.data(using: .utf8)!
 
         let (errors, warnings) = ProfileResolver.validate(
@@ -301,16 +313,42 @@ final class ProfileResolverTests: XCTestCase {
         let profile = AppProfile(common: AppProfileSection(
             appName: "A", app: "com.example.app", appPath: "x.app", autoInstall: true))
         let section = profile.section(for: "ios")
-        XCTAssertEqual(section.appName, "A", "appName は common から引き継ぐ")
+        XCTAssertNil(section.appName, "common の appName は引き継がれないはず(この契約変更の核)")
         XCTAssertNil(section.app, "common の app は引き継がれないはず")
         XCTAssertNil(section.appPath, "common の appPath は引き継がれないはず")
         XCTAssertEqual(section.autoInstall, true, "autoInstall は common から引き継ぐはず")
     }
 
+    /// appName は platform セクション自身の値が採用される(ios/android で異なる表示名を持てる)
+    func testSectionMergingUsesPlatformAppName() throws {
+        let profile = AppProfile(
+            common: AppProfileSection(autoInstall: true),
+            ios: AppProfileSection(appName: "iOS 版", app: "com.example.app"),
+            android: AppProfileSection(appName: "Android 版", app: "com.example.app"))
+        XCTAssertEqual(profile.section(for: "ios").appName, "iOS 版")
+        XCTAssertEqual(profile.section(for: "android").appName, "Android 版")
+    }
+
+    /// resolve() を経由した契約確認: common.appName は継承されず、appRef へフォールバックする
+    func testResolveDoesNotInheritAppNameFromCommon() throws {
+        try write("""
+        { "common": { "appName": "共通表示名" },
+          "ios":    { "app": "com.example.app" } }
+        """, to: project.appsDir, name: "app5")
+        try write("""
+        { "ios": { "devices": [ { "name": "d", "simulator": "iPhone Air" } ] } }
+        """, to: project.machinesDir, name: "m")
+        try write(#"{ "app": "app5", "devices": [ { "name": "d" } ] }"#,
+                  to: project.runsDir, name: "r")
+
+        let resolved = try ProfileResolver.resolve(project: project, runName: "r", machineName: "m")
+        XCTAssertEqual(resolved.appName, "app5",
+                       "common.appName は継承されないので、参照名 app5 にフォールバックするはず")
+    }
+
     func testValidateWarnsOnDeprecatedPlatformAutoInstall() throws {
         let data = #"""
-        { "common":  { "appName": "A" },
-          "ios":     { "app": "com.example.app", "autoInstall": true },
+        { "ios":     { "appName": "A", "app": "com.example.app", "autoInstall": true },
           "android": { "app": "com.example.app", "autoInstall": false } }
         """#.data(using: .utf8)!
 
@@ -327,8 +365,8 @@ final class ProfileResolverTests: XCTestCase {
 
     func testValidateNoWarningWhenAutoInstallInCommonSection() throws {
         let data = #"""
-        { "common": { "appName": "A", "autoInstall": true },
-          "ios":    { "app": "com.example.app" } }
+        { "common": { "autoInstall": true },
+          "ios":    { "appName": "A", "app": "com.example.app" } }
         """#.data(using: .utf8)!
 
         let (errors, warnings) = ProfileResolver.validate(
@@ -1087,7 +1125,7 @@ extension ProfileResolverTests {
 
     private func writeMixedHostFixture(runDevices: String) throws {
         try write("""
-        { "common": { "appName": "サンプル" }, "ios": { "app": "com.example.sampleapp" } }
+        { "ios": { "appName": "サンプル", "app": "com.example.sampleapp" } }
         """, to: project.appsDir, name: "sampleapp")
         try write("""
         { "ios": { "devices": [

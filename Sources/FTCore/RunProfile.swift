@@ -13,7 +13,7 @@ import Foundation
 // MARK: - JSON ドキュメント(ファイルの素の形)
 
 /// アプリケーションプロファイルの 1 セクション。フィールドごとに有効な記述場所が異なる
-/// (対応表は merging 参照): appName = common→platform マージ / app・appPath = platform のみ /
+/// (対応表は merging 参照): appName・app・appPath = platform のみ /
 /// autoInstall = common のみ(未指定なら appPath の有無で決まる。false 明示で opt-out)
 public struct AppProfileSection: Codable, Sendable, Equatable {
     /// ユーザーがアプリを識別するための表示名(レポート/ログで使用)
@@ -39,18 +39,25 @@ public struct AppProfileSection: Codable, Sendable, Equatable {
         self.healthCheckURL = healthCheckURL
     }
 
-    static let knownKeys: Set<String> = ["appName", "app", "appPath", "autoInstall", "healthCheckURL"]
+    /// common セクションで許容されるキー(appName は platform 専用のためここには含まない —
+    /// 含めると common.appName が「既知キー」に化けて checkAppProfileKeys の未知キー検出を
+    /// すり抜け、黙って無視される)
+    static let commonKnownKeys: Set<String> = ["app", "appPath", "autoInstall", "healthCheckURL"]
+    /// ios/android セクションで許容されるキー
+    static let platformKnownKeys: Set<String> = [
+        "appName", "app", "appPath", "autoInstall", "healthCheckURL",
+    ]
 
     /// common(self)と platform セクション(other)の合成(section(for:)専用)。フィールドごとに
-    /// 採用元が異なる: appName = common→platform 後勝ち(表示名は共通定義が自然なため) /
-    /// app・appPath = platform のみ(OS ごとに実体が異なるため) /
+    /// 採用元が異なる: appName・app・appPath = platform のみ(OS ごとに書き分けるため。
+    /// 表示名も common からは継承しない) /
     /// autoInstall = common のみ(未指定なら appPath の有無で決まる。false 明示で opt-out)(インストール可否は OS 間で揃えるべき運用設定のため)。
-    /// 廃止側のセクションに書かれた値はここで黙って無視される(validate が警告を出す)。
+    /// common セクションに appName/app/appPath が書かれていてもここで黙って無視される(validate が警告を出す)。
     /// other が nil(platform セクション自体が無い)場合も同じ規則で合成するため、
     /// early return せず常に other?.field / self.field を明示的に選ぶ
     func merging(_ other: AppProfileSection?) -> AppProfileSection {
         AppProfileSection(
-            appName: other?.appName ?? appName,
+            appName: other?.appName,
             app: other?.app,
             appPath: other?.appPath,
             autoInstall: autoInstall,
@@ -82,9 +89,9 @@ public struct AppProfile: Codable, Sendable, Equatable {
         }
     }
 
-    /// 表示名(common 優先。無ければどちらかのセクション)
+    /// 表示名(ios/android セクションのみ採用。common には appName を置けない — merging 参照)
     public var resolvedAppName: String? {
-        common?.appName ?? ios?.appName ?? android?.appName
+        ios?.appName ?? android?.appName
     }
 }
 
@@ -1304,6 +1311,7 @@ public enum ProfileResolver {
         let rules: [(section: String, key: String, moveTo: String, hint: String)] = [
             ("common", "app", "ios/android", ""),
             ("common", "appPath", "ios/android", ""),
+            ("common", "appName", "ios/android", " (the display name)"),
             ("ios", "autoInstall", "common", " (enabled by default when appPath is set)"),
             ("android", "autoInstall", "common", " (enabled by default when appPath is set)"),
         ]
@@ -1318,10 +1326,11 @@ public enum ProfileResolver {
     private static func checkAppProfileKeys(_ json: [String: Any], context: String) -> [String] {
         var warnings = checkKeys(json, allowed: AppProfile.knownKeys, context: context)
         for key in AppProfile.knownKeys {
-            if let section = json[key] as? [String: Any] {
-                warnings += checkKeys(section, allowed: AppProfileSection.knownKeys,
-                                      context: "\(context) \(key)")
-            }
+            guard let section = json[key] as? [String: Any] else { continue }
+            // common と ios/android で許容キーが違う(commonKnownKeys 参照)
+            let allowed = key == "common"
+                ? AppProfileSection.commonKnownKeys : AppProfileSection.platformKnownKeys
+            warnings += checkKeys(section, allowed: allowed, context: "\(context) \(key)")
         }
         return warnings
     }

@@ -171,7 +171,7 @@ Package.swift のマーカー区間を自動更新する(プロジェクト間�
 ```
 TestProjects/SampleApp/
 ├── profiles/
-│   ├── apps/sampleapp_ios.json    # アプリ: appName/autoInstall は common、bundle ID(app)と appPath は ios/android
+│   ├── apps/sampleapp_ios.json    # アプリ: autoInstall は common、appName/bundle ID(app)/appPath は ios/android
 │   ├── machines/M2Ultra.json     # マシン別デバイス定義(ファイル名 = マシン名)
 │   └── runs/ios.json              # 実行プロファイル(アプリ+デバイス名リスト+実行時設定)
 ├── scenarios/                     # Swift DSL(_Main.swift / Generated/ / _disabled/)

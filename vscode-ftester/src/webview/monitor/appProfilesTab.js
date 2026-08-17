@@ -19,11 +19,10 @@ const appProfileError = document.getElementById('app-profile-error');
 const appProfileConfirm = document.getElementById('app-profile-confirm');
 const appProfileCancel = document.getElementById('app-profile-cancel');
 
-// common: appName+autoInstall。ios/android: appName/app/appPath(autoInstallはcommonに一本化)。
-// この非対称性のため、以下2つの名前配列(全体/platformのみ)を用途に応じて使い分ける。
+// common: autoInstallのみ(表示名はios/androidそれぞれに持ち、commonからは継承しない)。
+// ios/android: appName/app/appPath(autoInstallはcommonに一本化)。
 const appProfileGroups = {
   common: {
-    appName: document.getElementById('app-profile-common-app-name'),
     autoInstall: document.getElementById('app-profile-common-auto-install'),
   },
   ios: {
@@ -37,7 +36,6 @@ const appProfileGroups = {
     appPath: document.getElementById('app-profile-android-app-path'),
   },
 };
-const APP_PROFILE_GROUP_NAMES = ['common', 'ios', 'android'];
 const APP_PROFILE_PLATFORM_GROUP_NAMES = ['ios', 'android'];
 
 // チェックボックス⇄"true"/"false"文字列(monitorProfileForms.ts AppProfileCommonFields.autoInstallと同じ)。
@@ -182,33 +180,20 @@ export function applyAppProfileData(message) {
   renderAppProfileEditor(message.fields);
 }
 
-// appNameは common→platform の順で後勝ちマージされる(platform側空欄=common値が実効値になる)。
-// プレースホルダーでその継承値をプレビュー表示する。
-function updateAppProfileNamePlaceholders() {
-  const inherited = appProfileGroups.common.appName.value;
-  for (const group of APP_PROFILE_PLATFORM_GROUP_NAMES) {
-    appProfileGroups[group].appName.placeholder = inherited;
-  }
-}
-
 // ロード済みの値でフォームを作り直す(編集途中の値は破棄する)。
 function renderAppProfileEditor(fields) {
   appProfileOriginalFields = fields;
   appProfileSubmitting = false;
   appProfileError.textContent = '';
 
-  for (const group of APP_PROFILE_GROUP_NAMES) {
-    appProfileGroups[group].appName.value = fields[group].appName;
-  }
   setAppProfileAutoInstall(appProfileGroups.common, fields.common.autoInstall);
   for (const group of APP_PROFILE_PLATFORM_GROUP_NAMES) {
     const dom = appProfileGroups[group];
     const values = fields[group];
+    dom.appName.value = values.appName;
     dom.app.value = values.app;
     dom.appPath.value = values.appPath;
   }
-  // プリフィル直後の共通表示名を反映してプレースホルダーを初期化する。
-  updateAppProfileNamePlaceholders();
 
   setAppProfileControlsEnabled(true);
   appProfileConfirm.textContent = t('wvMonitor2.common.confirm');
@@ -221,7 +206,6 @@ function renderAppProfileEditor(fields) {
 function collectAppProfileFields() {
   const fields = {
     common: {
-      appName: appProfileGroups.common.appName.value.trim(),
       autoInstall: getAppProfileAutoInstall(appProfileGroups.common),
     },
   };
@@ -238,10 +222,7 @@ function collectAppProfileFields() {
 
 function appProfileValuesEqual(fields) {
   const current = collectAppProfileFields();
-  if (
-    current.common.appName !== fields.common.appName ||
-    current.common.autoInstall !== fields.common.autoInstall
-  ) {
+  if (current.common.autoInstall !== fields.common.autoInstall) {
     return false;
   }
   return APP_PROFILE_PLATFORM_GROUP_NAMES.every((group) => {
@@ -260,25 +241,19 @@ function onAppProfileFormInput() {
   appProfileError.textContent = '';
 }
 
-for (const group of APP_PROFILE_GROUP_NAMES) {
-  appProfileGroups[group].appName.addEventListener('input', onAppProfileFormInput);
-}
 appProfileGroups.common.autoInstall.addEventListener('change', onAppProfileFormInput);
-// common表示名の編集ごとにios/androidのプレースホルダー(継承値プレビュー)を更新。
-appProfileGroups.common.appName.addEventListener('input', updateAppProfileNamePlaceholders);
 for (const group of APP_PROFILE_PLATFORM_GROUP_NAMES) {
   const dom = appProfileGroups[group];
+  dom.appName.addEventListener('input', onAppProfileFormInput);
   dom.app.addEventListener('input', onAppProfileFormInput);
   dom.appPath.addEventListener('input', onAppProfileFormInput);
 }
 
 function setAppProfileControlsEnabled(enabled) {
-  for (const group of APP_PROFILE_GROUP_NAMES) {
-    appProfileGroups[group].appName.disabled = !enabled;
-  }
   appProfileGroups.common.autoInstall.disabled = !enabled;
   for (const group of APP_PROFILE_PLATFORM_GROUP_NAMES) {
     const dom = appProfileGroups[group];
+    dom.appName.disabled = !enabled;
     dom.app.disabled = !enabled;
     dom.appPath.disabled = !enabled;
   }

@@ -1,13 +1,14 @@
 {
   "common": {
-    "appName": "FT E2E",
     "autoInstall": true
   },
   "ios": {
+    "appName": "FT E2E",
     "app": "com.ftester.e2e",
     "appPath": "E2EAppCMP/dist/ios-simulator/FTE2E.app"
   },
   "android": {
+    "appName": "FT E2E",
     "app": "com.ftester.e2e",
     "appPath": "E2EAppCMP/dist/android/ft-e2e-debug.apk"
   }

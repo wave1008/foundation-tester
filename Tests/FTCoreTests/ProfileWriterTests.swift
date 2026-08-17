@@ -47,13 +47,26 @@ final class ProfileWriterTests: XCTestCase {
             into: [:], platform: "ios", appName: "MyApp",
             appID: "com.example.myapp", appPath: "~/builds/MyApp.app")
         let common = object["common"] as? [String: Any]
-        XCTAssertEqual(common?["appName"] as? String, "MyApp")
+        XCTAssertNil(common?["appName"], "appName は common に書かない(platform セクションのみ)")
         XCTAssertNil(common?["autoInstall"],
                      "書かない(未指定 = appPath の有無で決まる。false を焼き付けない)")
         XCTAssertNil(common?["app"], "app は platform セクションにだけ置く")
         let ios = object["ios"] as? [String: Any]
+        XCTAssertEqual(ios?["appName"] as? String, "MyApp", "appName は platform セクションに書く")
         XCTAssertEqual(ios?["app"] as? String, "com.example.myapp")
         XCTAssertEqual(ios?["appPath"] as? String, "~/builds/MyApp.app")
+    }
+
+    /// ios と android を別々に呼べば、それぞれ別の表示名を持てる(この契約変更の核)
+    func testAppProfileAllowsDifferentAppNamePerPlatform() {
+        var object = ProfileWriter.mergingAppProfile(
+            into: [:], platform: "ios", appName: "MyApp (iOS)",
+            appID: "com.example.myapp", appPath: nil)
+        object = ProfileWriter.mergingAppProfile(
+            into: object, platform: "android", appName: "MyApp (Android)",
+            appID: "com.example.myapp", appPath: nil)
+        XCTAssertEqual((object["ios"] as? [String: Any])?["appName"] as? String, "MyApp (iOS)")
+        XCTAssertEqual((object["android"] as? [String: Any])?["appName"] as? String, "MyApp (Android)")
     }
 
     /// appPath を外したら残骸を残さない。autoInstall も書かない(あとで appPath を足したときに

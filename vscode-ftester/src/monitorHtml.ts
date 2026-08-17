@@ -299,14 +299,11 @@ function renderAppProfileSection(): string {
       <div id="app-profile-body" class="app-profile-body">
         <div id="app-profile-placeholder" class="profile-detail-placeholder" style="display: none;"></div>
         <div id="app-profile-editor" class="app-profile-editor" style="display: none;">
-          <!-- common.app/appPathは廃止済み(ランタイムが無視するため入力欄なし)。
+          <!-- common.app/appPath/appNameは廃止済み(ランタイムが無視するため入力欄なし。表示名は
+               ios/androidのみで指定し、commonからは継承しない)。
                autoInstallは共通でのみ設定可能。**未指定の既定はパッケージパスの有無**
                (RunProfile.swift の resolve と同期。片方だけ変えない)。 -->
           <div class="app-profile-group-title">${t("panels.appProfile.commonGroupTitle")}</div>
-          <div class="modal-row">
-            <label for="app-profile-common-app-name">${t("panels.appProfile.displayNameLabel")}</label>
-            <input type="text" id="app-profile-common-app-name">
-          </div>
           <div class="modal-row profile-checkbox-row">
             <input type="checkbox" id="app-profile-common-auto-install">
             <label for="app-profile-common-auto-install">${t("panels.appProfile.autoInstallLabel")}</label>

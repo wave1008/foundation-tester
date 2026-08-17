@@ -46,21 +46,15 @@ public enum ProfileWriter {
     }
 
     /// アプリプロファイルをマージする。フィールドの置き場所は固定(AppProfileSection.merging):
-    /// appName/autoInstall は common、app(ID)と appPath は platform セクション。
+    /// appName・app(ID)・appPath は platform セクション、autoInstall は common(こちらは触らない)。
     /// 既存の未知キーは温存し、指定した値だけを上書きする。
     public static func mergingAppProfile(
         into object: [String: Any], platform: String,
         appName: String, appID: String, appPath: String?
     ) -> [String: Any] {
         var object = object
-        var common = (object["common"] as? [String: Any]) ?? [:]
-        common["appName"] = appName
-        // **autoInstall は触らない**。未指定なら appPath の有無から決まる(ProfileResolver)ので
-        // 書く必要が無く、false を焼き付けるとあとから appPath を足しても入らない設定が残る。
-        // 既にある値は利用者の明示指定(opt-out)なので消さない
-        object["common"] = common
-
         var section = (object[platform] as? [String: Any]) ?? [:]
+        section["appName"] = appName
         section["app"] = appID
         if let appPath {
             section["appPath"] = appPath
