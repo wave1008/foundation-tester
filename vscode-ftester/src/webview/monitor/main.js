@@ -13,7 +13,7 @@ import { btnUp, btnDown, btnRestart, emptyMessage } from './domRefs.js';
 import {
   applyDevices,
   applyFrame,
-  applyH264Chunk,
+  applyH264Chunk, applyStreamUnavailable,
   applyDeviceError,
   showBanner,
   hideBanner,
@@ -81,6 +81,11 @@ window.addEventListener('message', (event) => {
       break;
     case 'h264Chunk':
       applyH264Chunk(message);
+      break;
+    // 契約: { type:'streamUnavailable', device, unavailable }
+    // (monitorDeviceStreamController.ts が配信を諦めたとき true)
+    case 'streamUnavailable':
+      applyStreamUnavailable(message);
       break;
     case 'deviceError':
       applyDeviceError(message);

@@ -40,10 +40,21 @@ export const webviewMonitorAStrings = {
   "wvMonitor.tile.physicalBadge": { ja: "実機", en: "Device" },
   // リモートのデバイスはモニターから状態を観測できない(simctl/adb は手元にしか効かない)。
   // 「未起動」と言うと、向こうで起動していても止まっているように見える
-  "wvMonitor.tile.stateUnknown": { ja: "(状態は取得できません)", en: "(state not observable)" },
+  // 配信を諦めた(ホストがエンコードをこなせない等)。待っても来ないので「接続中」とは言わない。
+  // **タイルは狭い(幅 60px 程度)ので短く** —— 理由と対処はツールチップへ
+  "wvMonitor.tile.streamUnavailable": { ja: "映像なし", en: "No video" },
+  "wvMonitor.tile.streamUnavailableTip": {
+    ja: "映像を取得できませんでした(ホストがエンコードをこなせていない可能性があります)。配信するタイルを減らすか、設定タブの「ポーリングモードを使用する」を有効にしてください。詳細は OUTPUT の ftester を参照。",
+    en: "Could not get video (the host may be unable to encode). Stream fewer tiles, or turn on \"Use polling mode\" in the settings tab. See the ftester OUTPUT channel for details.",
+  },
+  "wvMonitor.tile.stateUnknownTip": {
+    ja: "この機械からは状態を観測できません(simctl/adb は手元にしか効きません)。その機械の ftester の版が揃っているか確認してください。",
+    en: "This machine cannot observe the state (simctl/adb are local only). Check that the other machine's ftester is on the same version.",
+  },
+  "wvMonitor.tile.stateUnknown": { ja: "状態不明", en: "Unknown" },
   "wvMonitor.tile.remoteUnobservable": {
-    ja: "{host} に届いていません\n(状態は取得できません)",
-    en: "{host} is not answering\n(state not observable)",
+    ja: "{host}\n状態不明",
+    en: "{host}\nunknown",
   },
   // 登録はあるのに一覧に無いデバイス(実体を手で消した等)。リモートの実体は手元から見えないので、
   // ここで出さないと「実行して落ちるまで気付けない」

@@ -174,7 +174,11 @@ export type DeviceLifecycleJob =
   | { readonly kind: "device"; readonly name: string; readonly op: DeviceOpKind; readonly host?: string; readonly udid?: string; readonly serial?: string }
   | { readonly kind: "restartBatch"; readonly names: readonly string[] };
 
-/** device ジョブの同時実行上限(2台同時でホスト CPU がほぼ飽和する実測に基づくフリート共通の上限)。 */
+/** device ジョブの同時実行上限。**機械ごとに数える** —— 「2台同時でホスト CPU がほぼ飽和する」
+ * という実測は**その機械の CPU の話**で、別の機械の起動を止める理由が無い(起動は機械ごとに
+ * 独立した資源[CPU・GPU・ディスク]を使う。一括起動が RemoteDeviceFanout で機械ごとに
+ * 分散するのと同じ考え方)。全機で共有すると、M2Ultra の2台を起こしている間、
+ * M1Max の台が「起動待機」で止まる(2026-08-17 の実害)。 */
 export const DEVICE_LIFECYCLE_MAX_CONCURRENT = 2;
 
 /** スケジューラ状態(不変)。running が実行中、jobs が待機列(FIFO)。 */
@@ -195,10 +199,13 @@ export function enqueueDeviceLifecycleJob(
   return { running: state.running, jobs: [...state.jobs, job] };
 }
 
-/** ジョブの同一性(finish の running 照合用)。device は name+op、bulk は op、restartBatch は names。 */
+/** ジョブの同一性(finish の running 照合用)。device は (host, name)+op、bulk は op、
+ * restartBatch は names。**host を入れないと**、同名の台を2機で同時に操作したとき
+ * 片方の完了がもう片方を running から外し、残ったジョブのバッジが剥がれない・
+ * 二重に完了扱いになる(2026-08-17 に同型を掃討)。 */
 function sameLifecycleJob(a: DeviceLifecycleJob, b: DeviceLifecycleJob): boolean {
   if (a.kind === "device" && b.kind === "device") {
-    return a.name === b.name && a.op === b.op;
+    return a.name === b.name && a.op === b.op && a.host === b.host;
   }
   if (a.kind === "bulk" && b.kind === "bulk") {
     return a.op === b.op;
@@ -217,24 +224,44 @@ export function promoteDeviceLifecycleJobs(state: DeviceLifecycleQueueState): {
   const running = [...state.running];
   const jobs = [...state.jobs];
   const started: DeviceLifecycleJob[] = [];
+  /** その機械で走らせてよいか(上限は機械ごと・同じデバイスへの二重操作は避ける)。
+   * 判定は **(host, name)** —— 名前だけだと、別の機械の同名の台が「同じデバイス」に見える */
+  const canStart = (job: DeviceLifecycleJob): boolean => {
+    if (job.kind !== "device") {
+      return false;
+    }
+    const onSameMachine = running.filter((j) => j.kind === "device" && j.host === job.host);
+    if (onSameMachine.length >= DEVICE_LIFECYCLE_MAX_CONCURRENT) {
+      return false;
+    }
+    return !onSameMachine.some((j) => j.kind === "device" && j.name === job.name);
+  };
+
   while (jobs.length > 0) {
     const job = jobs[0];
     if (!job) {
       break;
     }
     if (job.kind === "device") {
-      if (running.length >= DEVICE_LIFECYCLE_MAX_CONCURRENT) {
-        break;
-      }
+      // bulk / restartBatch が走っている間は device ジョブを始めない(全機に触れうるため)
       if (running.some((j) => j.kind !== "device")) {
         break;
       }
-      if (running.some((j) => j.kind === "device" && j.name === job.name)) {
+      // **先頭が詰まっていても、空いている機械のジョブは進める** —— FIFO を機械をまたいで
+      // 守る意味は無い(それが「M2Ultra を起こす間 M1Max が待つ」の正体)。
+      // 走査は最初の非 device ジョブまで(bulk との前後関係は従来どおり守る)
+      const limit = jobs.findIndex((j) => j.kind !== "device");
+      const scanEnd = limit === -1 ? jobs.length : limit;
+      const index = jobs.slice(0, scanEnd).findIndex(canStart);
+      if (index === -1) {
         break;
       }
-      running.push(job);
-      started.push(job);
-      jobs.shift();
+      const [promoted] = jobs.splice(index, 1);
+      if (!promoted) {
+        break;
+      }
+      running.push(promoted);
+      started.push(promoted);
       continue;
     }
     if (running.length > 0) {
@@ -273,10 +300,17 @@ export function isDeviceLifecycleQueueBusy(state: DeviceLifecycleQueueState): bo
 }
 
 /** 指定デバイス名を対象にした device ジョブが既にキュー内(実行中含む)にあるか(連打防止に使う)。 */
-export function hasDeviceLifecycleJobFor(state: DeviceLifecycleQueueState, name: string): boolean {
+export function hasDeviceLifecycleJobFor(
+  state: DeviceLifecycleQueueState,
+  name: string,
+  /** そのデバイスが居る機械(手元は undefined)。**名前だけで見ると、別の機械の同名の台の
+   * ジョブが手元の操作を黙って握りつぶす**(2026-08-17 に同型を掃討)。
+   * bulk / restartBatch は全機に触れうるので名前だけで見てよい。 */
+  host?: string,
+): boolean {
   return [...state.running, ...state.jobs].some(
     (job) =>
-      (job.kind === "device" && job.name === name) ||
+      (job.kind === "device" && job.name === name && job.host === host) ||
       (job.kind === "restartBatch" && job.names.includes(name)) ||
       (job.kind === "bulk" && (job.restartNames?.includes(name) ?? false)),
   );
@@ -313,6 +347,10 @@ export function bulkLifecycleOp(state: DeviceLifecycleQueueState): "up" | "down"
 export function deviceLifecycleStatusFor(
   state: DeviceLifecycleQueueState,
   name: string,
+  /** そのデバイスが居る機械(手元は undefined)。**名前だけで引くと同名の別の機械のジョブに
+   * 当たる** —— 「M2Ultra の台を停止」が手元のタイルに「シャットダウン中」を出す
+   * (2026-08-17 の実害。bulk/restartBatch は手元専用なので name のままでよい)。 */
+  host?: string,
 ): DeviceOpBusyState | undefined {
   const all = [...state.running, ...state.jobs];
   // bulk up の restartNames(GPU 復帰対象)/ restartBatch は、ジョブが実行中でも CLI がその
@@ -324,11 +362,13 @@ export function deviceLifecycleStatusFor(
   if (all.some((job) => job.kind === "restartBatch" && job.names.includes(name))) {
     return { op: "down", status: "queued" };
   }
-  const runningJob = state.running.find((job) => job.kind === "device" && job.name === name);
+  const sameDevice = (job: DeviceLifecycleJob): boolean =>
+    job.kind === "device" && job.name === name && job.host === host;
+  const runningJob = state.running.find(sameDevice);
   if (runningJob && runningJob.kind === "device") {
     return { op: runningJob.op, status: "running" };
   }
-  const queuedJob = state.jobs.find((job) => job.kind === "device" && job.name === name);
+  const queuedJob = state.jobs.find(sameDevice);
   if (queuedJob && queuedJob.kind === "device") {
     return { op: queuedJob.op, status: "queued" };
   }

@@ -68,40 +68,57 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         ResidentProcessGuard.startOrphanWatchdog(logLabel: "monitor")
 
         let testProject = try ScenarioHost.project(named: project)
-        // --profile の machine 明示指定を最優先(ProfileResolver.resolve() と同じ優先順位)
-        let machine = try ProfileResolver.determineMachine(
-            project: testProject,
-            runProfileName: profile)
-        if machine.auto {
+        // --profile の machine 明示指定を最優先(ProfileResolver.resolve() と同じ優先順位)。
+        // **--profile 無しでマシンが確定しないのは失敗ではない** —— 実行プロファイル未選択は
+        // 拡張の「(起動中のデバイス)」= 登録に依らず動いている台を見る、の意味なので、
+        // machines/ が複数あって決められなくても**起動中の台だけを出して続ける**
+        // (2026-08-17 の実害: プロファイルの選択を外した瞬間にモニターが起動できなくなった)。
+        // --profile を渡しているときは従来どおり厳しく落とす(選んだ以上、その machine は要る)
+        let machine: (name: String, auto: Bool)?
+        do {
+            machine = try ProfileResolver.determineMachine(
+                project: testProject, runProfileName: profile)
+        } catch {
+            guard !Self.requiresMachineProfile(profile: profile) else { throw error }
+            machine = nil
+            logStderr("[monitor] No run profile is selected and the machine profile cannot be determined"
+                + " — monitoring only the devices that are currently running")
+        }
+        if let machine, machine.auto {
             logStderr("→ Using machine profile \(machine.name) automatically (it is the only one in machines/)")
         }
-        let machineURL = testProject.machinesDir.appendingPathComponent("\(machine.name).json")
-        guard FileManager.default.fileExists(atPath: machineURL.path) else {
-            throw ProfileError.machineProfileNotFound(
-                machine: machine.name,
-                available: ProfileResolver.machineNames(project: testProject))
-        }
-        let machineProfile: MachineProfile
-        do {
-            machineProfile = try JSONDecoder().decode(
-                MachineProfile.self, from: Data(contentsOf: machineURL))
-        } catch {
-            throw ProfileError.decodeFailed(machineURL, detail: "\(error)")
+        var machineProfile = MachineProfile(host: nil, ios: nil, android: nil)
+        if let machine {
+            let machineURL = testProject.machinesDir.appendingPathComponent("\(machine.name).json")
+            guard FileManager.default.fileExists(atPath: machineURL.path) else {
+                throw ProfileError.machineProfileNotFound(
+                    machine: machine.name,
+                    available: ProfileResolver.machineNames(project: testProject))
+            }
+            do {
+                machineProfile = try JSONDecoder().decode(
+                    MachineProfile.self, from: Data(contentsOf: machineURL))
+            } catch {
+                throw ProfileError.decodeFailed(machineURL, detail: "\(error)")
+            }
         }
 
         // --profile 指定時は、実行プロファイルが参照するデバイスのみに監視対象を絞り込む
         // (RunProfileScope.swift。ftester devices up/down --profile と共通のロジック)
-        let scoped = try profile.map { runProfile in
-            try RunProfileScope.filteredMachineProfile(
+        var scoped = machineProfile
+        if let profile, let machine {
+            scoped = try RunProfileScope.filteredMachineProfile(
                 project: testProject, machineName: machine.name, machineProfile: machineProfile,
-                runProfileName: runProfile, warn: logStderr)
-        } ?? machineProfile
+                runProfileName: profile, warn: logStderr)
+        }
         // **実効ホストを spec に焼き込んでから扱う**(プロファイル既定の host も反映される。
         // id・帰属判定・拡張へ出す machineHost がすべてこの1つの値を見る)
         let targets = DeviceHostGrouping.entries(machine: scoped).map {
             MonitorTarget(platform: $0.platform, spec: $0.spec)
         }
-        guard !targets.isEmpty else {
+        // **プロファイル未選択のときは0台でも続ける**(起動中の台が現れたら出す)。
+        // 選んでいるのに0台なのは設定の誤りなので落とす
+        if targets.isEmpty, Self.requiresMachineProfile(profile: profile), let machine {
             throw ValidationError("machine profile \(machine.name) defines no devices")
         }
 
@@ -330,6 +347,13 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             await Self.sleepInterruptible(seconds: interval, stop: stop)
         }
     }
+
+    /// マシンプロファイルの確定を要求するか。**実行プロファイルを選んでいるときだけ必須**
+    /// —— 未選択は拡張の「(起動中のデバイス)」= 登録に依らず動いている台を見る、の意味なので、
+    /// machines/ が複数あって決められなくても起動中の台だけを出して続ける
+    /// (2026-08-17 の実害: プロファイルの選択を外した瞬間にモニターが起動できなくなった)。
+    /// I/O を持たない pure 関数(MonitorHostScopeTests)
+    static func requiresMachineProfile(profile: String?) -> Bool { profile != nil }
 
     /// 監視対象の仕分け。**この機械が観測できるのは自分のデバイスだけ** —— 他の機械のぶんを
     /// simctl/adb で見ると、同名の手元のシミュレータに解決して**別の機械の台の状態と画面を出す**

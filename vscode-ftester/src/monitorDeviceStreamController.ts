@@ -43,10 +43,11 @@ interface StreamEntry {
   readonly pipeline: StreamPipeline;
 }
 
-/** MonitorTarget.id("<platform>:<name>" / リモートは "<platform>:<host>/<name>")の名前部分が
- * name と一致するか。**":name" の後方一致だけだとリモートに当たらない** —— 区切りが "/" になる */
-function matchesDeviceName(deviceId: string, name: string): boolean {
-  return deviceId.endsWith(`:${name}`) || deviceId.endsWith(`/${name}`);
+/** MonitorTarget.id("<platform>:<name>" / リモートは "<platform>:<host>/<name>")が
+ * (host, name) と一致するか。**名前だけで引かない** —— 同名の台が別の機械にも居るのは通常で、
+ * 手元の停止でリモートの配信まで畳む(逆も同じ)。host 省略は「手元」の意味 */
+function matchesDeviceName(deviceId: string, name: string, host?: string): boolean {
+  return deviceId.endsWith(host === undefined ? `:${name}` : `:${host}/${name}`);
 }
 
 export class MonitorDeviceStreamController {
@@ -227,6 +228,7 @@ export class MonitorDeviceStreamController {
     for (const deviceId of [...this.gaveUpDeviceIds]) {
       if (!qualifying.has(deviceId)) {
         this.gaveUpDeviceIds.delete(deviceId);
+        this.deps.post({ type: "streamUnavailable", device: deviceId, unavailable: false });
       }
     }
     for (const [deviceId, target] of qualifying) {
@@ -281,9 +283,9 @@ export class MonitorDeviceStreamController {
    * (リモートは "<platform>:<host>/<name>"。Swift 側 MonitorTarget.id)だがジョブは name しか
    * 持たないため、名前部分の一致で判定する(同名デバイスが ios/android 両方・複数の機械に
    * 存在する場合も全部破棄する)。 */
-  disposeForDeviceName(name: string): void {
+  disposeForDeviceName(name: string, host?: string): void {
     for (const deviceId of [...this.pipelines.keys()]) {
-      if (matchesDeviceName(deviceId, name)) {
+      if (matchesDeviceName(deviceId, name, host)) {
         this.disposeDevice(deviceId);
       }
     }
@@ -294,6 +296,7 @@ export class MonitorDeviceStreamController {
   restartForDeviceName(name: string): boolean {
     let found = false;
     for (const deviceId of [...this.pipelines.keys()]) {
+      // health watchdog は手元のデバイスにしか出さない(monitorHealthWatchdog.ts のガード)
       if (matchesDeviceName(deviceId, name)) {
         this.disposeDevice(deviceId);
         found = true;
@@ -325,12 +328,19 @@ export class MonitorDeviceStreamController {
         this.deps.post({ type: "h264Chunk", device: deviceId, keyframe, width, height, data: new Uint8Array(data) });
       },
       onConnectionOk: () => undefined,
+      // helper が「この機械では h264 が無理」と降りたら mjpeg へ張り替える(webview の
+      // codecError と同じ扱い。あちらは受け手の非対応、こちらは送り手の資源不足)
+      onCodecUnavailable: () => this.fallbackToMjpeg(deviceId),
       onFailure: (message) => {
         this.deps.outputChannel.appendLine(
           `[monitor-stream] ${deviceId}: ${message} ${t("monitor.deviceStream.fallbackToPolling")}`,
         );
         this.disposeDevice(deviceId);
         this.gaveUpDeviceIds.add(deviceId); // 2秒毎の applyDevices による再生成スパムを止める
+        // **タイルに黙って「接続中」を出し続けない** —— プロファイル未選択(未登録デバイス)の
+        // iOS はブリッジが無くポーリングのフレームも来ないので、諦めたことを伝えないと
+        // 永久に「接続中」に見える(2026-08-17 の実害)
+        this.deps.post({ type: "streamUnavailable", device: deviceId, unavailable: true });
       },
     });
     this.pipelines.set(deviceId, {

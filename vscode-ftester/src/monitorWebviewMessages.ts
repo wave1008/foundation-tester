@@ -36,6 +36,10 @@ export type MonitorToWebviewMessage =
        * ack でポーリング抑止を発動する契約は monitorDeviceStreamController.ts 冒頭参照) */
       readonly stream?: boolean;
     }
+  // 配信を諦めた(unavailable:true)/対象から外れて解除した(false)。
+  // monitorDeviceStreamController.ts の onFailure と対。**プロファイル未選択の iOS は
+  // ブリッジが無くポーリングのフレームも来ない**ので、伝えないとタイルが永久に「接続中」に見える
+  | { readonly type: "streamUnavailable"; readonly device: string; readonly unavailable: boolean }
   // H.264 AU 1件(deviceStream.ts v2 形式。monitorDeviceStreamController.ts の onChunk が post する。
   // data は構造化クローンで転送される Uint8Array、base64 化しない。webview 側は main.js の
   // 直下ディスパッチャから直接 applyH264Chunk へ渡す — "live" 封筒は経由しない)。

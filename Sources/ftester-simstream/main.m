@@ -31,6 +31,20 @@ static BOOL gCodecH264 = NO;
 static VTCompressionSessionRef gCompSession = NULL;
 static size_t gCompWidth = 0;
 static size_t gCompHeight = 0;
+// **エンコードの連続失敗回数**(AU を1本書けたら 0 に戻す)。gQueue 上でのみ触る。
+// kVTSessionMalfunctionErr(-17691)は「今は無理」ではなく**セッションが壊れた**状態で、
+// 放っておいても回復しない —— 実際 20 タイル構成で 10 本の圧縮セッションを張ると一部が壊れ、
+// **警告を出すだけだったので以後1バイトも出さず、タイルが永久に「接続中」になった**
+// (2026-08-17 の実害)。作り直す以外に回復手段が無いので、失敗したら作り直す
+static int gEncodeFailures = 0;
+// 何回連続で失敗したら h264 を諦めて MJPEG へ落ちるか。**2 の根拠**: 1回目は
+// そのセッション固有の malfunction かもしれない(作り直しで直る)。作り直した直後に
+// また壊れたなら、原因はセッションではなく**ホスト側の資源**なので、形式を落とすしかない。
+// 落ちた先の MJPEG は VideoToolbox を使わない(CIContext の JPEG 化)ので同じ壁に当たらない
+static const int kFtEncodeFailuresBeforeMJPEG = 2;
+// 「この機械では h264 でエンコードできない」を呼び出し側へ伝える exit code。
+// 契約の同期相手: vscode-ftester/src/deviceStream.ts の CODEC_UNAVAILABLE_EXIT_CODE
+static const int kFtExitCodecUnavailable = 3;
 
 static double ftNow(void) { return CACurrentMediaTime(); }
 
@@ -153,6 +167,8 @@ static void ftEmitNow(void) {
 
 #pragma mark - H.264 encode (--codec h264)
 
+static void ftNoteEncodeFailure(void);
+
 // gQueue 上でのみ呼ぶこと(gCompSession/gCompWidth/gCompHeight の直列性が前提)。
 static void ftInvalidateCompressionSession(void) {
     if (!gCompSession) return;
@@ -163,6 +179,24 @@ static void ftInvalidateCompressionSession(void) {
 
 static void ftCompressionOutputCB(void *outputCallbackRefCon, void *sourceFrameRefCon, OSStatus status,
                                    VTEncodeInfoFlags infoFlags, CMSampleBufferRef sampleBuffer);
+
+// gQueue 上で呼ぶこと。エンコード失敗を1回数え、セッションを捨てる(次フレームで作り直され、
+// VT が自動でキーフレームから始める)。作り直しても直らないなら **exit(3) で降りる**。
+//
+// **形式を途中で MJPEG へ切り替えてはいけない** —— 受け手(deviceStream.ts)は起動時の
+// codec でレコードを切り出すので、v2 の途中に v1 が現れると境界がずれて desync し、
+// helper を kill して再起動するループになる。プロセスの寿命の中で形式は変えず、
+// 「h264 は無理だった」を exit code で伝えて呼び出し側に mjpeg で張り直させる
+static void ftNoteEncodeFailure(void) {
+    gEncodeFailures += 1;
+    ftInvalidateCompressionSession();
+    if (gEncodeFailures < kFtEncodeFailuresBeforeMJPEG) return;
+    fprintf(stderr, "error: h264 encoding failed %d times in a row — this host cannot encode"
+                    " (exiting %d so the caller retries with --codec mjpeg)\n",
+            gEncodeFailures, kFtExitCodecUnavailable);
+    fflush(stderr);
+    exit(kFtExitCodecUnavailable);
+}
 
 // IOSurfaceサイズが変わったらInvalidateして作り直す(次フレームはVTが自動でキーフレームにする)。
 static void ftEnsureCompressionSession(size_t w, size_t h) {
@@ -175,6 +209,10 @@ static void ftEnsureCompressionSession(size_t w, size_t h) {
         kCMVideoCodecType_H264, NULL, NULL, kCFAllocatorDefault, ftCompressionOutputCB, NULL, &session);
     if (st != noErr || !session) {
         fprintf(stderr, "error: VTCompressionSessionCreate failed status=%d\n", (int)st);
+        // **生成失敗も「黙って何も出さない」に落ちる** —— gCompSession が NULL のままだと
+        // 下の encode を丸ごと飛ばすので、失敗として数えない限り永久に無フレームになる
+        // (encode 失敗と同じ穴。2026-08-17)
+        ftNoteEncodeFailure();
         return;
     }
     VTSessionSetProperty(session, kVTCompressionPropertyKey_RealTime, kCFBooleanTrue);
@@ -239,6 +277,7 @@ static void ftHandleEncodedSample(CMSampleBufferRef sampleBuffer) {
     }
 
     ftWriteH264AU(annexB, keyframe, (uint16_t)dims.width, (uint16_t)dims.height);
+    gEncodeFailures = 0;  // 1本書けたらセッションは生きている
 }
 
 // VTの出力コールバックはgQueueとは別スレッドから来る。書き込みの直列性を保つためgQueueへhopする。
@@ -246,6 +285,8 @@ static void ftCompressionOutputCB(void *outputCallbackRefCon, void *sourceFrameR
                                    VTEncodeInfoFlags infoFlags, CMSampleBufferRef sampleBuffer) {
     if (status != noErr) {
         fprintf(stderr, "warning: VTCompressionSession encode failed status=%d\n", (int)status);
+        // 状態は gQueue 上でだけ触る(VT のコールバックは別スレッド)
+        dispatch_async(gQueue, ^{ ftNoteEncodeFailure(); });
         return;
     }
     if (!sampleBuffer || !CMSampleBufferDataIsReady(sampleBuffer)) return;
@@ -272,7 +313,10 @@ static void ftEmitNowH264(void) {
     if (gCompSession) {
         CMTime pts = CMTimeMakeWithSeconds(CACurrentMediaTime(), 90000);
         OSStatus st = VTCompressionSessionEncodeFrame(gCompSession, pb, pts, kCMTimeInvalid, NULL, NULL, NULL);
-        if (st != noErr) fprintf(stderr, "warning: VTCompressionSessionEncodeFrame failed status=%d\n", (int)st);
+        if (st != noErr) {
+            fprintf(stderr, "warning: VTCompressionSessionEncodeFrame failed status=%d\n", (int)st);
+            ftNoteEncodeFailure();  // 既に gQueue 上
+        }
     }
     CVPixelBufferRelease(pb);
 }

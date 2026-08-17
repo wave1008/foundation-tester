@@ -100,7 +100,7 @@ export class MonitorDeviceOps {
    * ここに届く前に抑止される)。
    */
   enqueueLifecycleJob(job: DeviceLifecycleJob): void {
-    if (job.kind === "device" && hasDeviceLifecycleJobFor(this.lifecycleQueue, job.name)) {
+    if (job.kind === "device" && hasDeviceLifecycleJobFor(this.lifecycleQueue, job.name, job.host)) {
       return;
     }
     this.pushLifecycleJob(job);
@@ -214,7 +214,7 @@ export class MonitorDeviceOps {
   /** ジョブ対象デバイスの queued/running バッジを再送する(投入直後・開始直後の表示更新)。 */
   private postJobStatuses(job: DeviceLifecycleJob): void {
     if (job.kind === "device") {
-      this.postDeviceLifecycleStatus(job.name);
+      this.postDeviceLifecycleStatus(job.name, job.host);
     } else if (job.kind === "restartBatch") {
       for (const n of job.names) {
         this.postDeviceLifecycleStatus(n);
@@ -247,9 +247,13 @@ export class MonitorDeviceOps {
   }
 
   /** 指定デバイスの現在のキュー状態(実行中/待機中/なし)を deviceOpBusy として webview に送る。 */
-  private postDeviceLifecycleStatus(name: string): void {
-    const status = deviceLifecycleStatusFor(this.lifecycleQueue, name);
-    this.deps.post({ type: "deviceOpBusy", name, op: status?.op ?? null, status: status?.status ?? null });
+  private postDeviceLifecycleStatus(name: string, host?: string): void {
+    const status = deviceLifecycleStatusFor(this.lifecycleQueue, name, host);
+    // **host も載せる** —— 載せないと webview が同名の先頭のタイル(= 手元)を書き換え、
+    // 「M2Ultra の台を停止」が手元のタイルに「シャットダウン中」と出る(2026-08-17 の実害)
+    this.deps.post({
+      type: "deviceOpBusy", name, host, op: status?.op ?? null, status: status?.status ?? null,
+    });
   }
 
   /**
@@ -306,9 +310,9 @@ export class MonitorDeviceOps {
       this.executeRestartBatchJob(job.names);
     } else {
       // 「実行中」バッジへ更新(running へ昇格済みのため statusFor が running を返す)。
-      this.postDeviceLifecycleStatus(job.name);
+      this.postDeviceLifecycleStatus(job.name, job.host);
       if (job.op === "down") {
-        this.deps.stopDeviceStreams(job.name);
+        this.deps.stopDeviceStreams(job.name, job.host);
       }
       this.executeDeviceOpJob(job.name, job.op, job.udid, job.serial, job.host);
     }
@@ -327,7 +331,10 @@ export class MonitorDeviceOps {
       this.releaseMonitorPause();
     }
     if (finished.kind === "device") {
-      this.deps.post({ type: "deviceOpBusy", name: finished.name, op: null, status: null });
+      // **host も載せる**(表示の剥がしも宛先を間違えない。postDeviceLifecycleStatus と同じ理由)
+      this.deps.post({
+        type: "deviceOpBusy", name: finished.name, host: finished.host, op: null, status: null,
+      });
     } else if (finished.kind === "restartBatch") {
       // プロセスクラッシュ等で per-device の deviceFinished が欠けた場合の表示剥がし
       // (正常時は二重送信だが上書き描画のみなので無害)。
@@ -472,7 +479,7 @@ export class MonitorDeviceOps {
             // 殺される前にタイルを切断表示へ倒す。他デバイスのライブ映像は残す)、「シャットダウン中」に。
             // **host も渡す** —— 同名が別の機械にも居ると、名前だけでは別タイルを触ってしまう
             startedNames.add(value.name);
-            this.deps.stopDeviceStreams(value.name);
+            this.deps.stopDeviceStreams(value.name, value.host ?? undefined);
             this.deps.post({ type: "deviceOpBusy", name: value.name, host: value.host ?? undefined, op: "down", status: "running" });
             break;
           case "deviceStarting":
@@ -589,6 +596,7 @@ export class MonitorDeviceOps {
             // このデバイスの down が始まる。ストリームをここで止める(simctl/adb に殺される前に
             // タイルを切断表示へ倒す。バッチ開始時に全台止めない理由は runLifecycleQueueHead 参照)。
             busyNames.add(value.name);
+            // devices-restart(GPU 復帰)は手元の Android エミュレータ専用なので host を持たない
             this.deps.stopDeviceStreams(value.name);
             this.deps.post({ type: "deviceOpBusy", name: value.name, op: "down", status: "running" });
             break;
@@ -665,7 +673,9 @@ export class MonitorDeviceOps {
         return;
       }
       jobFinished = true;
-      this.finishLifecycleJob({ kind: "device", name, op });
+      // **host も入れる** —— sameLifecycleJob は (host, name, op) で照合するので、
+      // 落とすと「実行中に該当ジョブがありません」になる
+      this.finishLifecycleJob({ kind: "device", name, op, host });
     };
     this.runDeviceOpAttempt(name, op, 0, finishOnce, udid, serial, host);
   }

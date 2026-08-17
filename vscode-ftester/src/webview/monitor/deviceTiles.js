@@ -368,7 +368,21 @@ function renderFrame(entry) {
       icon.className = 'placeholder-icon remote';
       icon.innerHTML = '';
     }
-    labelSpan.textContent = unobservableRemote
+    // 配信を諦めた台は「接続中」と言わない(待っても来ない)
+    const streamUnavailable = !!entry.streamUnavailable && !shuttingDown && !waitingUp && !upRunning
+      && !offline;
+    if (streamUnavailable) {
+      icon.className = 'placeholder-icon remote';  // アイコンは出さない(display:none)
+      icon.innerHTML = '';
+    }
+    // **タイルの文言は短く**(幅は 60px 程度しかなく、長い文は1文字ずつ折り返して潰れる。
+    // 2026-08-17 に実際に読めない表示になった)。理由と対処はツールチップと OUTPUT へ
+    entry.placeholderEl.title = streamUnavailable
+      ? t('wvMonitor.tile.streamUnavailableTip')
+      : unobservableRemote ? t('wvMonitor.tile.stateUnknownTip') : t('wvMonitor.tile.title');
+    labelSpan.textContent = streamUnavailable
+      ? t('wvMonitor.tile.streamUnavailable')
+      : unobservableRemote
       ? (entry.device.machineHost
         ? t('wvMonitor.tile.remoteUnobservable', { host: entry.device.machineHost })
         : t('wvMonitor.tile.stateUnknown'))
@@ -611,15 +625,18 @@ window.addEventListener('resize', () => closeDeviceOpMenu());
 // タイル外の右クリック(OS既定メニューが開く場合)用。タイル上はstopPropagation済みで来ない。
 document.addEventListener('contextmenu', () => closeDeviceOpMenu());
 
-// 応答(deviceOpBusy 等)は名前で来る。**host が付いていればそれも見る** —— 同名のデバイスが
-// 別の機械にも居るのは通常で、名前だけだと別タイルの表示を書き換えてしまう
-// (host 省略の応答は従来どおり名前だけで引く=手元のみの構成では挙動が変わらない)。
+// 応答(deviceOpBusy 等)は (name, host) で引く。**host 省略は「手元」の意味**であって
+// 「どれでもよい」ではない —— 同名のデバイスが別の機械にも居るのは通常なので、省略を
+// ワイルドカードにすると**先頭のタイル(= 手元)を書き換える**。実際
+// 「M2Ultra の台を停止」で手元のタイルに「シャットダウン中」が出た(2026-08-17)。
+// 手元だけの構成では machineHost が全て undefined なので挙動は変わらない。
+// bridgeWatch/healthWatch/wipeStatus は手元のデバイスにしか出さないので host を持たない
 function findTileByName(name, host) {
   for (const entry of tiles.values()) {
     if (entry.device.name !== name) {
       continue;
     }
-    if (host !== undefined && (entry.device.machineHost ?? undefined) !== host) {
+    if ((entry.device.machineHost ?? undefined) !== (host ?? undefined)) {
       continue;
     }
     return entry;
@@ -746,6 +763,18 @@ function ackStreamRendered(entry) {
 
 // h264Chunk(タイル用ストリーム)。デバイス毎にレンダラ/canvas を遅延生成し、初回描画(onFirstFrame)
 // で img→canvas に切り替える。h264ErrorSent 済みなら以後は無視(host が mjpeg に切替済みの前提)。
+// 契約: { type:'streamUnavailable', device, unavailable }。配信を諦めた台は「接続中」を出さない
+// —— プロファイル未選択(未登録デバイス)の iOS はブリッジが無くポーリングのフレームも来ないので、
+// 黙っていると永久に「接続中」に見える(2026-08-17 の実害)
+export function applyStreamUnavailable(message) {
+  const entry = tiles.get(message.device);
+  if (!entry) {
+    return;
+  }
+  entry.streamUnavailable = !!message.unavailable;
+  renderFrame(entry);
+}
+
 export function applyH264Chunk(message) {
   const entry = tiles.get(message.device);
   if (!entry || entry.h264ErrorSent) {

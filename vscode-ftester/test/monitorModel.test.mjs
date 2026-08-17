@@ -537,6 +537,53 @@ function promoted(state) {
   return r;
 }
 
+// 同時実行の上限は**機械ごと**。「2台同時でホスト CPU がほぼ飽和する」という実測はその機械の
+// CPU の話で、別の機械の起動を止める理由が無い。全機で共有していたため、M2Ultra の2台を
+// 起こしている間 M1Max の台が「起動待機」で止まった(2026-08-17 の実害)。
+test("DeviceLifecycleQueue: 同時実行の上限は機械ごとに数える", () => {
+  let state = createDeviceLifecycleQueueState();
+  for (const job of [
+    { kind: "device", name: "A", op: "up", host: "M2Ultra" },
+    { kind: "device", name: "B", op: "up", host: "M2Ultra" },
+    { kind: "device", name: "C", op: "up", host: "M1Max" },
+    { kind: "device", name: "D", op: "up", host: "M1Max" },
+    { kind: "device", name: "E", op: "up", host: "M2Ultra" },
+  ]) {
+    state = enqueueDeviceLifecycleJob(state, job);
+  }
+  const result = promoteDeviceLifecycleJobs(state);
+  assert.deepEqual(
+    result.started.map((j) => `${j.host}/${j.name}`),
+    ["M2Ultra/A", "M2Ultra/B", "M1Max/C", "M1Max/D"],
+    "機械ごとに2台ずつ。3台目(M2Ultra/E)だけが待つ",
+  );
+});
+
+test("DeviceLifecycleQueue: 先頭が詰まっていても空いている機械のジョブは進む", () => {
+  let state = createDeviceLifecycleQueueState();
+  for (const job of [
+    { kind: "device", name: "A", op: "up", host: "M2Ultra" },
+    { kind: "device", name: "B", op: "up", host: "M2Ultra" },
+    { kind: "device", name: "C", op: "up", host: "M2Ultra" }, // ここで M2Ultra は満杯
+    { kind: "device", name: "D", op: "up", host: "M1Max" },
+  ]) {
+    state = enqueueDeviceLifecycleJob(state, job);
+  }
+  const started = promoteDeviceLifecycleJobs(state).started.map((j) => `${j.host}/${j.name}`);
+  assert.ok(started.includes("M1Max/D"),
+    "FIFO を機械をまたいで守る意味は無い(それが『起動待機』の正体)");
+  assert.ok(!started.includes("M2Ultra/C"), "満杯の機械の3台目は待つ");
+});
+
+test("DeviceLifecycleQueue: 手元だけの構成では従来どおり2台で頭打ち", () => {
+  let state = createDeviceLifecycleQueueState();
+  for (const name of ["A", "B", "C"]) {
+    state = enqueueDeviceLifecycleJob(state, { kind: "device", name, op: "up" });
+  }
+  assert.deepEqual(
+    promoteDeviceLifecycleJobs(state).started.map((j) => j.name), ["A", "B"]);
+});
+
 test("DeviceLifecycleQueue: 空のキューは busy:false・promote しても何も始まらない", () => {
   const state = createDeviceLifecycleQueueState();
   assert.equal(isDeviceLifecycleQueueBusy(state), false);

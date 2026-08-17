@@ -137,3 +137,58 @@ test("状態が届いているリモートのタイルは手元の台と同じ�
   assert.match(remote, /未起動/, "その機械の monitor が offline と言っているなら、それが事実");
   assert.doesNotMatch(remote, /取得できません/, "届いているのに「取得できません」は嘘になる");
 });
+
+// キュー状態(deviceOpBusy)の宛先。**host 省略は「手元」であって「どれでもよい」ではない** ——
+// ワイルドカードにすると先頭のタイル(= 手元)を書き換え、「M2Ultra の台を停止」で
+// 手元のタイルに「シャットダウン中」が出る(2026-08-17 の実害)。
+/** 「シャットダウン中」は稼働中の台にしか出ない(offline のタイルは別の表示になる)ので、
+ * この2本だけ connected の同名ペアを使う。
+ * **リモートを先に置く**のは意図的 —— 「host 省略 = どれでもよい」の実装は
+ * 先頭一致で当てるので、手元を先に置くと偶然正解してしまい欠陥を検出できない。 */
+function sendConnectedPair(window) {
+  post(window, {
+    type: "devices",
+    devices: [
+      {
+        id: "ios:M1Max/Dev 1", name: "Dev 1", platform: "ios", state: "connected", kind: "virtual",
+        udid: "UDID-R", recording: false, machineHost: "M1Max",
+      },
+      {
+        id: "ios:Dev 1", name: "Dev 1", platform: "ios", state: "connected", kind: "virtual",
+        udid: "UDID-L", recording: false,
+      },
+    ],
+  });
+}
+
+/** sendConnectedPair の並び(リモート, 手元)に対応する取り出し。 */
+function connectedPairTexts(document) {
+  const [remote, local] = placeholderTexts(document);
+  return { remote, local };
+}
+
+test("手元宛のキュー状態がリモートのタイルを書き換えない", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendConnectedPair(window);
+
+  // host を持たない = 手元宛
+  post(window, { type: "deviceOpBusy", name: "Dev 1", op: "down", status: "running" });
+
+  const { local, remote } = connectedPairTexts(document);
+  assert.match(local, /シャットダウン中/, "手元のタイルに出る");
+  assert.doesNotMatch(remote, /シャットダウン中/, "リモートのタイルは巻き込まれない");
+});
+
+test("リモート宛のキュー状態が手元のタイルを書き換えない", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendConnectedPair(window);
+
+  post(window, { type: "deviceOpBusy", name: "Dev 1", host: "M1Max", op: "down", status: "running" });
+
+  const { local, remote } = connectedPairTexts(document);
+  assert.match(remote, /シャットダウン中/, "リモートのタイルに出る");
+  assert.doesNotMatch(local, /シャットダウン中/,
+    "『M2Ultra の台を停止』で手元のタイルに『シャットダウン中』が出た形");
+});

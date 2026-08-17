@@ -97,7 +97,7 @@ export interface MonitorPanelDeps {
   notifyMachineProfilesChanged(): void;
   /** MonitorDeviceStreamController.disposeForDeviceNameへの委譲。MonitorDeviceOpsのdevice-downジョブが
    * 実行を開始する時点(simctl/adbで実際に殺す前)で呼び、タイルを即座に切断表示へ倒す。 */
-  stopDeviceStreams(name: string): void;
+  stopDeviceStreams(name: string, host?: string): void;
   /** MonitorDeviceStreamController.disposeAllForDownへの委譲。MonitorDeviceOpsの一括downジョブの
    * 実行開始時に呼ぶ(stopDeviceStreamsの全台版)。 */
   stopAllStreams(): void;
@@ -219,7 +219,7 @@ class MonitorPanelController implements vscode.Disposable {
         this.healthWatchdog.observe(devices);
       },
       isPollingMode: () => this.pollingMode,
-      stopDeviceStreams: (name) => this.deviceStream.disposeForDeviceName(name),
+      stopDeviceStreams: (name, host) => this.deviceStream.disposeForDeviceName(name, host),
       stopAllStreams: () => this.deviceStream.disposeAllForDown(),
       videoWebviewUri: (absPath) =>
         this.panel ? this.panel.webview.asWebviewUri(vscode.Uri.file(absPath)).toString() : null,

@@ -238,9 +238,21 @@ export class MonitorProcessManager {
       },
       (line) => this.deps.outputChannel.appendLine(`[monitor stdout] ${line}`),
     );
+    // **CLI が言っている理由を捨てない** —— 以前は exit code だけを見て「マシンプロファイル
+    // 未設定かも」と決め打ちしていたため、実際は「その実行プロファイルはこのプロジェクトに
+    // 無い」だったときに**見当違いの場所を調べさせた**(2026-08-17 の実害)。
+    // stderr の直近の Error 行を控えてバナーに載せる(全文は OUTPUT に残る)
+    let lastError: string | undefined;
+    const noteStderr = (line: string): void => {
+      this.deps.outputChannel.appendLine(`[monitor stderr] ${line}`);
+      // ArgumentParser / ValidationError は "Error: …" で始まる。進行ログ(==>/→)は拾わない
+      if (line.startsWith("Error:")) {
+        lastError = line.slice("Error:".length).trim();
+      }
+    };
     const stderrParser = new NdjsonParser(
       (value) => this.deps.outputChannel.appendLine(`[monitor stderr] ${JSON.stringify(value)}`),
-      (line) => this.deps.outputChannel.appendLine(`[monitor stderr] ${line}`),
+      noteStderr,
     );
 
     proc.stdout.on("data", (chunk: Buffer) => stdoutParser.push(chunk));
@@ -262,8 +274,10 @@ export class MonitorProcessManager {
       this.stoppingMonitor = false;
       if (!selfInitiated) {
         // exit 0 の予期しない終了(過去例: stdin の扱いの不備)も無言にせず必ず通知する。
-        const hint =
-          exitCode === 0
+        // **CLI が理由を言っていればそれを出す**(推測より事実。決め打ちの案内は最後の手段)
+        const hint = lastError
+          ? lastError
+          : exitCode === 0
             ? t("deviceOps.monitorExitedUnexpectedHint")
             : t("deviceOps.monitorExitedMachineHint");
         this.deps.post({

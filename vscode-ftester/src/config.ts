@@ -262,6 +262,27 @@ export function listRunProfileNames(workspaceRoot: string, project: string): str
   }
 }
 
+/**
+ * プロジェクト切替に追従して `ftester.profile` をどうするか。**実行プロファイルはプロジェクトに
+ * 属する**ので、切り替えたあとも前のプロジェクトの名前が残ると、その名前はもう存在せず
+ * CLI が「run profile not found」で落ちる(2026-08-17 の実害: project=E2E-Android /
+ * profile=local+remote でモニターが起動できなくなった)。
+ *
+ * - 新しいプロジェクトにその名前があるなら**そのまま**(同名のプロファイルを持つ構成は普通)
+ * - 無いなら **"" (未選択)** へ。**別の名前を勝手に選ばない** —— どのプロファイルで走るかは
+ *   デバイスとアプリを決める選択なので、黙って差し替えると別の対象を操作したことになる
+ * 戻り値 nil = 変更不要(書き込まない = 設定変更ループを起こさない)
+ */
+export function reconciledProfileForProject(
+  currentProfile: string,
+  availableProfiles: readonly string[],
+): string | undefined {
+  if (currentProfile === "" || availableProfiles.includes(currentProfile)) {
+    return undefined;
+  }
+  return "";
+}
+
 /** TestProjects/<project>/profiles/apps/ にあるアプリプロファイル名(拡張子なし)の一覧を返す。 */
 export function listAppProfileNames(workspaceRoot: string, project: string): string[] {
   const appsDir = path.join(workspaceRoot, "TestProjects", project, "profiles", "apps");

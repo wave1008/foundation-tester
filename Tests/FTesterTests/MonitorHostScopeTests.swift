@@ -58,6 +58,21 @@ final class MonitorHostScopeTests: XCTestCase {
         XCTAssertEqual(scope.foreignHosts, ["M1Ultra", "M1Max"], "1ホストにつき子は1本")
     }
 
+    // MARK: - requiresMachineProfile
+    //
+    // 実害(2026-08-17): 実行プロファイルの選択を外した瞬間にモニターが起動できなくなった
+    // (「machines/ が複数あるので決められない」で exit 1)。未選択は拡張の
+    // 「(起動中のデバイス)」= 動いている台を見る、の意味なので、確定できなくても続けるべき。
+    // **配線(その判断を実際に使っているか)は実走で確認する** —— この pure な述語だけでは、
+    // 呼び出しが消えても落ちない
+
+    func testMachineProfileIsRequiredOnlyWhenARunProfileIsSelected() {
+        XCTAssertTrue(ApiMonitorCommand.requiresMachineProfile(profile: "local+remote"),
+                      "選んだ以上、その machine が要る(誤設定を黙って通さない)")
+        XCTAssertFalse(ApiMonitorCommand.requiresMachineProfile(profile: nil),
+                       "未選択は「起動中の台を見る」の意味。確定できなくても続ける")
+    }
+
     // MARK: - mergedDevices
 
     private func info(id: String, state: String) -> ApiMonitorDeviceInfo {

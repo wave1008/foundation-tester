@@ -10,6 +10,7 @@ import {
   type FtesterConfig,
   listProjectCandidates,
   listRunProfileNames,
+  reconciledProfileForProject,
   readConfig,
   resolveProjectName,
   resolveWorkspaceRoot,
@@ -240,6 +241,28 @@ function registerCommands(
     );
   };
 
+  /** プロジェクト切替(コマンド経由・設定の直接編集の両方)で実行プロファイルを整合させる。
+   * 変更が要らないときは1バイトも書かない(設定変更の再帰を起こさない)。 */
+  const reconcileProfileWithProject = async (): Promise<void> => {
+    const config = getConfig();
+    const resolution = resolveProjectName(workspaceRoot, config);
+    if (resolution.kind !== "resolved") {
+      return;
+    }
+    const next = reconciledProfileForProject(
+      config.profile, listRunProfileNames(workspaceRoot, resolution.project));
+    if (next === undefined) {
+      return;
+    }
+    await vscode.workspace
+      .getConfiguration("ftester")
+      .update("profile", next, vscode.ConfigurationTarget.Workspace);
+    outputChannel.appendLine(
+      t("workbench.profile.clearedForProject", { profile: config.profile, project: resolution.project }));
+    void vscode.window.showWarningMessage(
+      t("workbench.profile.clearedForProject", { profile: config.profile, project: resolution.project }));
+  };
+
   context.subscriptions.push(
     // 対象プロジェクト切替(ftester.selectProject コマンド、または設定の直接編集)に追従。
     // シナリオ実体はプロジェクトごとに異なるため CLI 再実行の全再構築(refresh)が要る
@@ -248,6 +271,11 @@ function registerCommands(
       if (!e.affectsConfiguration("ftester.project")) {
         return;
       }
+      // **実行プロファイルの選択はプロジェクトに属する**。切替後も前のプロジェクトの名前が
+      // 残ると、その名前はもう存在せず CLI が「run profile not found」で落ちる
+      // (モニターが起動できなくなる。2026-08-17 の実害)。判定は
+      // config.ts の reconciledProfileForProject(勝手に別の名前を選ばない)
+      void reconcileProfileWithProject();
       if (!isRunActive()) {
         void testTree.refresh();
       }

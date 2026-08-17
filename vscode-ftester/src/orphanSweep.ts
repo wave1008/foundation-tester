@@ -50,7 +50,12 @@ export async function sweepOrphans(log: (message: string) => void): Promise<void
   let psOutput: string;
   try {
     psOutput = await new Promise<string>((resolve, reject) => {
-      execFile("ps", ["-axo", "pid=,ppid=,command="], (error, stdout) => {
+      // **maxBuffer を明示する** —— Node の既定は 1MB で、`ps -axo command=` は
+      // 引数の長い行(xcodebuild・emulator・ftester のサブプロセス)が並ぶと簡単に超える。
+      // 超えると ERR_CHILD_PROCESS_STDIO_MAXBUFFER で**掃除が黙って無効化される**
+      // (2026-08-17 の実害: 20台構成で毎回失敗していた)。監視対象が多い環境ほど
+      // 掃除が要るのに、多いほど効かなくなる向きだった。monitorPanel.ts の ps も同じ 8MB
+      execFile("ps", ["-axo", "pid=,ppid=,command="], { maxBuffer: 8 * 1024 * 1024 }, (error, stdout) => {
         if (error) {
           reject(error);
           return;
