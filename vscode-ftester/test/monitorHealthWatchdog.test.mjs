@@ -584,3 +584,49 @@ test("metal-errors と wifi-disabled の併発は wifi 修復が動く(wifi-only
   assert.deepEqual(h.wifiCalls, ["emulator-5554"]);
   assert.deepEqual(h.restarts, []);
 });
+
+// 「修復中」表示の後始末(monitorHealthWatchdog.ts の clearRepairingPhase)。
+// タイルは phase を受け取るまで前の表示を出し続けるので、修復の完了を post しないと
+// 「修復中」が残り続ける(修復は1エピソード1回なので、失敗時は永久に残っていた)。
+
+test("wifi 修復が成功して終わったら repairing を降ろす(異常が続いている間は unhealthy へ)", async () => {
+  const h = createHarness({ wifiResult: true });
+  h.watchdog.observe([device("Pixel1", "connected", ["wifi-disabled"], "emulator-5554")]);
+  assert.deepEqual(h.posts.at(-1), { type: "healthWatch", name: "Pixel1", phase: "repairing" });
+
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(h.posts.at(-1), { type: "healthWatch", name: "Pixel1", phase: "unhealthy" },
+    "修復が終わった時点で修復中を残さない");
+});
+
+test("wifi 修復が失敗して終わっても repairing を降ろす(再投入されないので放置すると永久に残る)", async () => {
+  const h = createHarness({ wifiResult: false });
+  h.watchdog.observe([device("Pixel1", "connected", ["wifi-disabled"], "emulator-5554")]);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(h.posts.at(-1), { type: "healthWatch", name: "Pixel1", phase: "unhealthy" });
+  // 以降 observe しても wifi 修復は再投入されない = この post を出さないと修復中のまま固まる
+  h.watchdog.observe([device("Pixel1", "connected", ["wifi-disabled"], "emulator-5554")]);
+  assert.equal(h.wifiCalls.length, 1);
+});
+
+test("修復の完了より先に正常判定が出ていたら何も被せない(ok のタイルを異常表示で固めない)", async () => {
+  const h = createHarness({ wifiResult: true });
+  h.watchdog.observe([device("Pixel1", "connected", ["wifi-disabled"], "emulator-5554")]);
+  // 修復コマンドの解決前に健全化を観測する(巡回と修復完了の競合)
+  h.watchdog.observe([device("Pixel1", "connected", undefined, "emulator-5554")]);
+  assert.deepEqual(h.posts.at(-1), { type: "healthWatch", name: "Pixel1", phase: "ok" });
+
+  const postsBefore = h.posts.length;
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(h.posts.length, postsBefore, "ok の後に unhealthy を被せない");
+});
+
+test("画面修復も終わったら displayRepairing を降ろす", async () => {
+  const h = createHarness({ displayResult: false });
+  h.watchdog.observe([device("Pixel1", "connected", ["blank-screen"], "emulator-5554")]);
+  assert.deepEqual(h.posts.at(-1), { type: "healthWatch", name: "Pixel1", phase: "displayRepairing" });
+
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(h.posts.at(-1), { type: "healthWatch", name: "Pixel1", phase: "unhealthy" });
+});
