@@ -140,6 +140,9 @@ export interface RunProfileFormFields {
   readonly recordFailuresOnly: boolean;
   readonly recordBitrateKbps: string;
   readonly recordFullResolution: boolean;
+  /** fileSync.workspace(ネストしたセクション。Sources/FTCore/RunProfile.swift の同名キーと同期)。
+   * アプリのバイナリ/実行スクリプトを置くフォルダ。リモートの Mac にはこのフォルダがミラーされる。 */
+  readonly workspace: string;
 }
 
 /**
@@ -199,6 +202,10 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
   const rawBitrate = source.recordBitrateKbps;
   const recordBitrateKbps =
     typeof rawBitrate === "number" ? String(rawBitrate) : typeof rawBitrate === "string" ? rawBitrate : "";
+  // fileSync はネストしたオブジェクト(他フィールドと違いトップレベル直下ではない)。
+  // 非オブジェクト・欠落は空セクション扱いにして workspace を既定 "" に落とす。
+  const workspace =
+    isRecord(source.fileSync) && typeof source.fileSync.workspace === "string" ? source.fileSync.workspace : "";
   return {
     machine,
     app,
@@ -223,6 +230,7 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
     recordFailuresOnly,
     recordBitrateKbps,
     recordFullResolution,
+    workspace,
   };
 }
 
@@ -308,6 +316,16 @@ export function updateRunProfileInObject(
     return { ok: false, error: t("monitor.runProfile.recordBitrateInvalid") };
   } else {
     result.recordBitrateKbps = Number(bitrateTrimmed);
+  }
+
+  // fileSync.workspace は空文字ならセクションごと削除する(既存プロファイルに空セクションを
+  // 増やさない)。既存セクションの他キー(将来の追加分)は保ったまま workspace だけ差し替える。
+  const workspaceTrimmed = fields.workspace.trim();
+  if (workspaceTrimmed.length === 0) {
+    delete result.fileSync;
+  } else {
+    const existingFileSync = isRecord(source.fileSync) ? source.fileSync : {};
+    result.fileSync = { ...existingFileSync, workspace: workspaceTrimmed };
   }
 
   const localeTrimmed = fields.locale.trim();

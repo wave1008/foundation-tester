@@ -35,6 +35,7 @@ enum ProfileRunner {
                     performanceMode: Bool = false,
                     deviceFilter: [String] = [],
                     deviceHost: String? = nil,
+                    workspaceOverride: String? = nil,
                     recorder: RunRecorder? = nil) async throws -> RunSummary {
         var items = rawItems
         let runClockStart = Date()
@@ -47,7 +48,17 @@ enum ProfileRunner {
             print("→ Using machine profile \(machine.name) automatically (it is the only one in machines/)")
         }
         let resolvedAll = try ProfileResolver.resolve(
-            project: project, runName: profileName, machineName: machine.name)
+            project: project, runName: profileName, machineName: machine.name,
+            workspaceOverride: workspaceOverride)
+        // fileSync.workspace 初回宣言時の雛形作成(既に揃っていれば何もしない。WorkspaceScaffold の宣言)。
+        // リモートディスパッチはこれとは別に、ミラー前のローカル側で同じ呼び出しを行う
+        // (RemoteRunDispatcher.mirrorWorkspaceIfDeclared)
+        if let workspaceRoot = resolvedAll.workspaceRoot {
+            let created = (try? WorkspaceScaffold.ensure(root: workspaceRoot)) ?? []
+            if !created.isEmpty {
+                print("→ Created workspace scaffold: " + created.map { "\($0)/" }.joined(separator: ", "))
+            }
+        }
         // --device / --device-host(ホスト別サブ実行が自分のぶんだけ回す)。**ホストで絞らないと
         // 別の機械の同名デバイスまで掴む**(filteringDevices の宣言)。0台になったら止める
         let full = resolvedAll.filteringDevices(names: deviceFilter, deviceHost: deviceHost)

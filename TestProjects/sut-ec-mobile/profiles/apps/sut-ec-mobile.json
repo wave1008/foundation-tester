@@ -10,6 +10,6 @@
   },
   "android": {
     "app": "com.sutec.mobile",
-    "appPath": "../sut-ec-mobile/dist/android/sut-store-debug.apk"
+    "appPath": "apps/sut-store-debug.apk"
   }
 }

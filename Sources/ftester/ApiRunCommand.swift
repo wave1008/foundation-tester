@@ -120,6 +120,14 @@ struct ApiRunCommand: AsyncParsableCommand {
                 visibility: .hidden))
     var deviceHost: String?
 
+    /// **手で打つものではない**。RunScenarios.workspace と同じ契約(RemoteRunDispatcher が
+    /// ミラー後の絶対パスを渡す)
+    @Option(help: ArgumentHelp(
+        "Override this run profile's fileSync.workspace (the root relative appPath resolves "
+        + "against). Set by the remote dispatcher on the far side; not for hand use",
+        visibility: .hidden))
+    var workspace: String?
+
     func run() async throws {
         // pause等のイベントが既定の全バッファに滞留すると読み手(VSCode拡張)と相互待ちになる
         // (ScenarioRunnerMain.swift の --debug 実装と同じ理由)。--debug 以外も常に行バッファにする
@@ -203,7 +211,17 @@ struct ApiRunCommand: AsyncParsableCommand {
                 logStderr("→ Using machine profile \(machine.name) automatically (it is the only one in machines/)")
             }
             let resolvedAll = try ProfileResolver.resolve(
-                project: testProject, runName: profile, machineName: machine.name)
+                project: testProject, runName: profile, machineName: machine.name,
+                workspaceOverride: workspace)
+            // fileSync.workspace 初回宣言時の雛形作成(ProfileRunner.run と同じ規律。既に揃って
+            // いれば何もしない。リモートディスパッチは別途ミラー前のローカル側で同じ呼び出しを行う)
+            if let workspaceRoot = resolvedAll.workspaceRoot {
+                let created = (try? WorkspaceScaffold.ensure(root: workspaceRoot)) ?? []
+                if !created.isEmpty {
+                    logStderr("→ Created workspace scaffold: "
+                        + created.map { "\($0)/" }.joined(separator: ", "))
+                }
+            }
             // --device / --device-host: ApiRunHostFanout の子(ホスト別サブ実行)が自分のぶんだけを
             // 回すのに使う(ProfileRunner.run と同じ順序・同じメッセージ規律 —— ホストで絞らないと
             // 別の機械の同名デバイスまで掴む。filteringDevices の宣言)

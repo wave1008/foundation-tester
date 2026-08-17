@@ -41,6 +41,7 @@ const runProfileRecordBitrate = document.getElementById('run-profile-record-bitr
 const runProfileRecordFullResolution = document.getElementById('run-profile-record-full-resolution');
 const runProfileWipeThreshold = document.getElementById('run-profile-wipe-threshold');
 const runProfileLocale = document.getElementById('run-profile-locale');
+const runProfileWorkspace = document.getElementById('run-profile-workspace');
 const runProfileReportDir = document.getElementById('run-profile-report-dir');
 const runProfileDefaultTimeout = document.getElementById('run-profile-default-timeout');
 const runProfileError = document.getElementById('run-profile-error');
@@ -231,6 +232,7 @@ function renderRunProfileEditor(fields) {
   updateRecordOptionsVisibility();
   runProfileWipeThreshold.value = fields.wipeDataThresholdGB;
   runProfileLocale.value = fields.locale;
+  runProfileWorkspace.value = fields.workspace;
   runProfileReportDir.value = fields.reportDir;
   runProfileDefaultTimeout.value = fields.defaultTimeout;
 
@@ -409,6 +411,7 @@ runProfileRecordBitrate.addEventListener('input', onRunProfileFormInput);
 runProfileRecordFullResolution.addEventListener('change', onRunProfileFormInput);
 runProfileWipeThreshold.addEventListener('input', onRunProfileFormInput);
 runProfileLocale.addEventListener('input', onRunProfileFormInput);
+runProfileWorkspace.addEventListener('input', onRunProfileFormInput);
 runProfileReportDir.addEventListener('input', onRunProfileFormInput);
 runProfileDefaultTimeout.addEventListener('input', onRunProfileFormInput);
 
@@ -445,6 +448,7 @@ function runProfileValuesEqual(fields) {
     runProfileRecordFullResolution.checked === fields.recordFullResolution &&
     runProfileWipeThreshold.value === fields.wipeDataThresholdGB &&
     runProfileLocale.value === fields.locale &&
+    runProfileWorkspace.value === fields.workspace &&
     runProfileReportDir.value === fields.reportDir &&
     runProfileDefaultTimeout.value === fields.defaultTimeout
   );
@@ -477,6 +481,7 @@ function setRunProfileControlsEnabled(enabled) {
   runProfileRecordFullResolution.disabled = !enabled;
   runProfileWipeThreshold.disabled = !enabled;
   runProfileLocale.disabled = !enabled;
+  runProfileWorkspace.disabled = !enabled;
   runProfileReportDir.disabled = !enabled;
   runProfileDefaultTimeout.disabled = !enabled;
   for (const checkbox of runProfileDevices.querySelectorAll('input[type="checkbox"]')) {
@@ -557,6 +562,7 @@ runProfileConfirm.addEventListener('click', () => {
       recordFullResolution: runProfileRecordFullResolution.checked,
       wipeDataThresholdGB: runProfileWipeThreshold.value.trim(),
       locale: runProfileLocale.value.trim(),
+      workspace: runProfileWorkspace.value.trim(),
       reportDir: runProfileReportDir.value.trim(),
       defaultTimeout: runProfileDefaultTimeout.value.trim(),
     },

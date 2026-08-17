@@ -245,6 +245,14 @@ function renderRunProfileSection(): string {
             </div>
           </div>
           <div class="run-profile-section-group">
+            <div class="run-profile-section-title">${t("panels.runProfile.fileSyncSectionTitle")}</div>
+            <div class="modal-row">
+              <label for="run-profile-workspace">${t("panels.runProfile.workspaceLabel")}</label>
+              <input type="text" id="run-profile-workspace">
+            </div>
+            <div class="modal-row profile-hint">${t("panels.runProfile.workspaceHint")}</div>
+          </div>
+          <div class="run-profile-section-group">
             <div class="run-profile-section-title">${t("panels.runProfile.miscSectionTitle")}</div>
             <div class="modal-row profile-checkbox-row">
               <input type="checkbox" id="run-profile-home-on-start">

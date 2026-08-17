@@ -38,12 +38,18 @@ struct RemoteRunDispatcher {
                   remoteTimeoutSeconds: Int?) async throws -> Int32 {
         let layout = try resolveLayout()
         try checkCompatibility(layout: layout)
-        log("note: app packages are not transferred — appPath in app profiles must be valid on the remote")
+        // fileSync.workspace 宣言時はミラーが appPath のパッケージを運ぶので、この注記は誤解を招く
+        // (transfer() より前なので declaredWorkspace の軽量読みで済ませる。フル resolve() は不要)
+        if ProfileResolver.declaredWorkspace(project: project, runName: profile) == nil {
+            log("note: app packages are not transferred — appPath in app profiles must be valid on the remote"
+                + " (declare fileSync.workspace in the run profile to mirror them; docs/remote-runner.md)")
+        }
 
         try acquireDispatchLock(layout: layout)
         defer { releaseDispatchLock(layout: layout) }
 
         try transfer(project: project, layout: layout)
+        let remoteWorkspace = try mirrorWorkspaceIfDeclared(project: project, profile: profile, layout: layout)
 
         let stamp = Self.makeStamp()
         let remoteReportDir = layout.dispatchReportDir(stamp: stamp)
@@ -55,7 +61,7 @@ struct RemoteRunDispatcher {
             heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
             fastInput: fastInput, enableAnimations: enableAnimations,
             performanceMode: performanceMode,
-            remoteJUnitPath: remoteJUnitPath, reportDir: remoteReportDir)
+            remoteJUnitPath: remoteJUnitPath, reportDir: remoteReportDir, workspace: remoteWorkspace)
         let timeoutSeconds = RemoteTimeout.seconds(
             explicit: remoteTimeoutSeconds, scenarioCount: scenarios.count)
         announceTimeout(timeoutSeconds)
@@ -85,12 +91,18 @@ struct RemoteRunDispatcher {
                      remoteTimeoutSeconds: Int?) async throws -> Int32 {
         let layout = try resolveLayout()
         try checkCompatibility(layout: layout)
-        log("note: app packages are not transferred — appPath in app profiles must be valid on the remote")
+        // fileSync.workspace 宣言時はミラーが appPath のパッケージを運ぶので、この注記は誤解を招く
+        // (transfer() より前なので declaredWorkspace の軽量読みで済ませる。フル resolve() は不要)
+        if ProfileResolver.declaredWorkspace(project: project, runName: profile) == nil {
+            log("note: app packages are not transferred — appPath in app profiles must be valid on the remote"
+                + " (declare fileSync.workspace in the run profile to mirror them; docs/remote-runner.md)")
+        }
 
         try acquireDispatchLock(layout: layout)
         defer { releaseDispatchLock(layout: layout) }
 
         try transfer(project: project, layout: layout)
+        let remoteWorkspace = try mirrorWorkspaceIfDeclared(project: project, profile: profile, layout: layout)
 
         let stamp = Self.makeStamp()
         let remoteReportDir = layout.dispatchReportDir(stamp: stamp)
@@ -99,7 +111,8 @@ struct RemoteRunDispatcher {
             deviceNames: deviceNames, deviceHost: deviceHost,
             heal: heal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
             performanceMode: performanceMode,
-            defaultTimeout: defaultTimeout, scenarioTimeout: scenarioTimeout, reportDir: remoteReportDir)
+            defaultTimeout: defaultTimeout, scenarioTimeout: scenarioTimeout, reportDir: remoteReportDir,
+            workspace: remoteWorkspace)
         let timeoutSeconds = RemoteTimeout.seconds(
             explicit: remoteTimeoutSeconds, scenarioCount: scenarios.count)
         announceTimeout(timeoutSeconds)
@@ -251,6 +264,37 @@ struct RemoteRunDispatcher {
         guard status == 0 else {
             throw RemoteDispatchError.remoteSetupFailed("rsync exited with status \(status)")
         }
+    }
+
+    /// 実行プロファイルが `fileSync.workspace` を宣言していれば、ローカルの中身をリモートへ
+    /// ミラーし、リモートの子へ渡す `--workspace` の値(ミラー先の絶対パス)を返す。宣言が無ければ
+    /// nil(appPath は従来どおりリポジトリルート基準のまま。何もしない)。
+    ///
+    /// project の rsync(transfer)とは別枠 —— ワークスペースはリポジトリ外(TestProjects/ の隣・
+    /// 上位等)に置くのが普通で、プロジェクト転送の対象に含まれない。**リモートの子へ必ず渡す**
+    /// (RemoteRunArgs.build/buildApi の workspace 引数)。渡さないと子は自分のリポジトリルート
+    /// 基準で appPath を解決し、転送していない絶対パスを見に行く(この機能の動機になった不具合)
+    private func mirrorWorkspaceIfDeclared(
+        project: TestProject, profile: String, layout: RemoteLayout
+    ) throws -> String? {
+        guard let raw = ProfileResolver.declaredWorkspace(project: project, runName: profile) else {
+            return nil
+        }
+        let localWorkspacePath = ProfileResolver.resolvePath(raw, base: localRepoRoot)
+        let created = (try? WorkspaceScaffold.ensure(
+            root: URL(fileURLWithPath: localWorkspacePath))) ?? []
+        for name in created {
+            log("==> created workspace/\(name)/ (missing scaffold directory)")
+        }
+        log("==> mirroring the workspace to \(host.sshTarget)")
+        let args = ["rsync"] + RemoteTransferPlan.workspaceRsyncArgs(
+            localWorkspaceDir: localWorkspacePath, project: project.name,
+            layout: layout, sshTarget: host.sshTarget)
+        let status = try runInherited(args)
+        guard status == 0 else {
+            throw RemoteDispatchError.remoteSetupFailed("workspace rsync exited with status \(status)")
+        }
+        return layout.workspaceDir(project.name)
     }
 
     // MARK: - 4. 実行(行単位で中継)

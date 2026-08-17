@@ -123,6 +123,12 @@ final class RemoteDispatchTests: XCTestCase {
         XCTAssertEqual(layout.projectDir("E2E"), "/Users/x/ftester-runner/work/TestProjects/E2E")
     }
 
+    /// fileSync.workspace のミラー先はプロジェクトごとに分ける(複数プロジェクトの衝突を防ぐ)
+    func testRemoteLayoutWorkspaceDir() {
+        let layout = RemoteLayout(base: "/Users/x/ftester-runner")
+        XCTAssertEqual(layout.workspaceDir("E2E"), "/Users/x/ftester-runner/work/workspace/E2E")
+    }
+
     func testRemoteLayoutDispatchReportDir() {
         let layout = RemoteLayout(base: "/Users/x/ftester-runner")
         XCTAssertEqual(layout.dispatchReportDir(stamp: "20260801-120000-42"),
@@ -182,6 +188,24 @@ final class RemoteDispatchTests: XCTestCase {
                 "--exclude", "/reports", "--exclude", "/results", "--exclude", "/.ftester",
                 "/local/Projects/E2E/",
                 "user@host:/Users/ci/ftester-runner/work/TestProjects/E2E/",
+            ])
+    }
+
+    // MARK: - RemoteTransferPlan.workspaceRsyncArgs
+
+    /// project の rsyncArgs(--exclude /reports 等)と別の除外集合(.git/.DS_Store/node_modules を
+    /// 階層を問わず除外)・別の宛先(workspaceDir)であることを固定する
+    func testWorkspaceRsyncArgs() {
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
+        XCTAssertEqual(
+            RemoteTransferPlan.workspaceRsyncArgs(
+                localWorkspaceDir: "/local/sut-ec-mobile-workspace", project: "E2E",
+                layout: layout, sshTarget: "user@host"),
+            [
+                "-az", "--delete",
+                "--exclude", ".git", "--exclude", ".DS_Store", "--exclude", "node_modules",
+                "/local/sut-ec-mobile-workspace/",
+                "user@host:/Users/ci/ftester-runner/work/workspace/E2E/",
             ])
     }
 
@@ -264,6 +288,28 @@ final class RemoteDispatchTests: XCTestCase {
             args,
             ["run", "--project", "E2E", "--profile", "mixed", "--quiet", "--host", "local",
              "--device", "iPhone-01", "iPhone-02", "--device-host", "M1Max"])
+    }
+
+    /// fileSync.workspace が宣言されているプロファイルだけ `--workspace` が付く(渡さないと
+    /// 子は自分のリポジトリルート基準で appPath を解決し、ミラーしていない絶対パスを見に行く)
+    func testRemoteRunArgsRelaysWorkspaceOnlyWhenGiven() {
+        let withWorkspace = RemoteRunArgs.build(
+            project: "E2E", profile: "p", scenarios: [], folders: [],
+            heal: false, noHeal: false, noLPT: false, lptHistoryRuns: nil,
+            fastInput: false, enableAnimations: false, performanceMode: false,
+            remoteJUnitPath: nil, reportDir: nil,
+            workspace: "/Users/ci/ftester-runner/work/workspace/E2E")
+        guard let index = withWorkspace.firstIndex(of: "--workspace") else {
+            return XCTFail("--workspace が無い: \(withWorkspace)")
+        }
+        XCTAssertEqual(withWorkspace[index + 1], "/Users/ci/ftester-runner/work/workspace/E2E")
+
+        let withoutWorkspace = RemoteRunArgs.build(
+            project: "E2E", profile: "p", scenarios: [], folders: [],
+            heal: false, noHeal: false, noLPT: false, lptHistoryRuns: nil,
+            fastInput: false, enableAnimations: false, performanceMode: false,
+            remoteJUnitPath: nil, reportDir: nil)
+        XCTAssertFalse(withoutWorkspace.contains("--workspace"), "\(withoutWorkspace)")
     }
 
     func testRemoteRunArgsEverything() {
@@ -504,6 +550,26 @@ final class RemoteDispatchTests: XCTestCase {
             ["api", "run", "--project", "E2E", "--profile", "mixed", "--host", "local",
              "--device", "iPhone-01", "iPhone-02", "--device-host", "M1Max",
              "--scenario", "Login.S0010"])
+    }
+
+    /// build() と対(testRemoteRunArgsRelaysWorkspaceOnlyWhenGiven)。`api run --host` にも
+    /// 同じ規律で --workspace が中継される
+    func testBuildApiRelaysWorkspaceOnlyWhenGiven() {
+        let withWorkspace = RemoteRunArgs.buildApi(
+            project: "E2E", profile: "p", scenarios: ["Login.S0010"],
+            heal: false, noLPT: false, lptHistoryRuns: nil,
+            performanceMode: false, defaultTimeout: nil, scenarioTimeout: nil, reportDir: nil,
+            workspace: "/Users/ci/ftester-runner/work/workspace/E2E")
+        guard let index = withWorkspace.firstIndex(of: "--workspace") else {
+            return XCTFail("--workspace が無い: \(withWorkspace)")
+        }
+        XCTAssertEqual(withWorkspace[index + 1], "/Users/ci/ftester-runner/work/workspace/E2E")
+
+        let withoutWorkspace = RemoteRunArgs.buildApi(
+            project: "E2E", profile: "p", scenarios: ["Login.S0010"],
+            heal: false, noLPT: false, lptHistoryRuns: nil,
+            performanceMode: false, defaultTimeout: nil, scenarioTimeout: nil, reportDir: nil)
+        XCTAssertFalse(withoutWorkspace.contains("--workspace"), "\(withoutWorkspace)")
     }
 
     // MARK: - StreamLineSplitter

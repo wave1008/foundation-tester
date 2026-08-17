@@ -2345,7 +2345,7 @@ test("syncDevicesInMachineProfile: remove のみ(add:[])は source:local でも�
 
 // ---- parseRunProfileForForm ----
 
-test("parseRunProfileForForm: 正常な値は22フィールドをそのまま読み取る", () => {
+test("parseRunProfileForForm: 正常な値は23フィールドをそのまま読み取る", () => {
   const parsed = parseRunProfileForForm({
     machine: "M1 Max",
     app: "sampleapp",
@@ -2370,6 +2370,7 @@ test("parseRunProfileForForm: 正常な値は22フィールドをそのまま読
     recordFailuresOnly: true,
     recordBitrateKbps: 2000,
     recordFullResolution: true,
+    fileSync: { workspace: "../sut-ec-mobile-workspace" },
   });
   assert.deepEqual(parsed, {
     machine: "M1 Max",
@@ -2395,10 +2396,11 @@ test("parseRunProfileForForm: 正常な値は22フィールドをそのまま読
     recordFailuresOnly: true,
     recordBitrateKbps: "2000",
     recordFullResolution: true,
+    workspace: "../sut-ec-mobile-workspace",
   });
 });
 
-test("parseRunProfileForForm: 欠落キーは既定値(machine/app/reportDir/locale/recordBitrateKbps=''、devices=[]、fm/heal/screenIs/containerInference=true、falsePositiveCheck=false、iosInappEngine=true、defaultTimeout=''、wipeDataOnBloat=true、wipeDataThresholdGB=''、record/recordFailuresOnly/recordFullResolution/iosFastInput/enableAnimations/recoverCpuFallbackToGpu=false)", () => {
+test("parseRunProfileForForm: 欠落キーは既定値(machine/app/reportDir/locale/recordBitrateKbps/workspace=''、devices=[]、fm/heal/screenIs/containerInference=true、falsePositiveCheck=false、iosInappEngine=true、defaultTimeout=''、wipeDataOnBloat=true、wipeDataThresholdGB=''、record/recordFailuresOnly/recordFullResolution/iosFastInput/enableAnimations/recoverCpuFallbackToGpu=false)", () => {
   const parsed = parseRunProfileForForm({});
   assert.deepEqual(parsed, {
     machine: "",
@@ -2424,10 +2426,11 @@ test("parseRunProfileForForm: 欠落キーは既定値(machine/app/reportDir/loc
     recordFailuresOnly: false,
     recordBitrateKbps: "",
     recordFullResolution: false,
+    workspace: "",
   });
 });
 
-test("parseRunProfileForForm: 型不正のキーは既定値扱い(machine が数値、heal が文字列、record/recordFailuresOnly/recordFullResolution/iosFastInput が文字列 等)", () => {
+test("parseRunProfileForForm: 型不正のキーは既定値扱い(machine が数値、heal が文字列、record/recordFailuresOnly/recordFullResolution/iosFastInput が文字列、fileSync が非オブジェクト 等)", () => {
   const parsed = parseRunProfileForForm({
     machine: 123,
     app: null,
@@ -2449,6 +2452,7 @@ test("parseRunProfileForForm: 型不正のキーは既定値扱い(machine が�
     recordFailuresOnly: "true",
     recordBitrateKbps: {},
     recordFullResolution: "true",
+    fileSync: "not-an-object",
   });
   assert.deepEqual(parsed, {
     machine: "",
@@ -2474,7 +2478,19 @@ test("parseRunProfileForForm: 型不正のキーは既定値扱い(machine が�
     recordFailuresOnly: false,
     recordBitrateKbps: "",
     recordFullResolution: false,
+    workspace: "",
   });
+});
+
+test("parseRunProfileForForm: fileSync.workspace はネストしたオブジェクトから読む(欠落/非オブジェクト/workspaceが非文字列 は既定値'')", () => {
+  assert.equal(parseRunProfileForForm({ fileSync: { workspace: "../ws" } }).workspace, "../ws");
+  assert.equal(parseRunProfileForForm({}).workspace, "");
+  assert.equal(parseRunProfileForForm({ fileSync: null }).workspace, "");
+  assert.equal(parseRunProfileForForm({ fileSync: [] }).workspace, "");
+  assert.equal(parseRunProfileForForm({ fileSync: {} }).workspace, "");
+  assert.equal(parseRunProfileForForm({ fileSync: { workspace: 123 } }).workspace, "");
+  // fileSync に workspace 以外のキーがあっても無視するだけで壊れない(将来の拡張キー)
+  assert.equal(parseRunProfileForForm({ fileSync: { workspace: "../ws", other: 1 } }).workspace, "../ws");
 });
 
 test("parseRunProfileForForm: fm/heal/screenIs/containerInference は boolean ならそのまま返し、欠落/非 boolean は既定値 true", () => {
@@ -2656,6 +2672,7 @@ const BASE_RUN_PROFILE_FIELDS = {
   recordFailuresOnly: false,
   recordBitrateKbps: "",
   recordFullResolution: false,
+  workspace: "",
 };
 
 test("updateRunProfileInObject: 基本更新(machine/app/fm/heal/falsePositiveCheck/screenIs/containerInference/iosInappEngine/wipeDataOnBloat/reportDir/defaultTimeout)", () => {
@@ -2682,6 +2699,35 @@ test("updateRunProfileInObject: 基本更新(machine/app/fm/heal/falsePositiveCh
   assert.equal("recordFullResolution" in result.object, false);
   assert.equal("iosFastInput" in result.object, false);
   assert.equal("enableAnimations" in result.object, false); // 既定(無効化)はキーを書かない
+  assert.equal("fileSync" in result.object, false); // workspace 未設定はセクション自体を書かない
+});
+
+test("updateRunProfileInObject: fileSync.workspace は空文字でセクション削除、値があれば { workspace } を書く、既存の他キーは保つ", () => {
+  const removed = updateRunProfileInObject(
+    { fileSync: { workspace: "../old-ws" } },
+    { ...BASE_RUN_PROFILE_FIELDS, workspace: "" },
+  );
+  assert.equal(removed.ok, true);
+  assert.equal("fileSync" in removed.object, false);
+
+  const addedFromScratch = updateRunProfileInObject(
+    {},
+    { ...BASE_RUN_PROFILE_FIELDS, workspace: "../sut-ec-mobile-workspace" },
+  );
+  assert.equal(addedFromScratch.ok, true);
+  assert.deepEqual(addedFromScratch.object.fileSync, { workspace: "../sut-ec-mobile-workspace" });
+
+  // trim される(前後空白は保存しない)
+  const trimmed = updateRunProfileInObject({}, { ...BASE_RUN_PROFILE_FIELDS, workspace: "  ../ws  " });
+  assert.equal(trimmed.object.fileSync.workspace, "../ws");
+
+  // 未知キー(将来の拡張分)は workspace 更新後も保たれる
+  const preserved = updateRunProfileInObject(
+    { fileSync: { workspace: "../old-ws", futureKey: true } },
+    { ...BASE_RUN_PROFILE_FIELDS, workspace: "../new-ws" },
+  );
+  assert.equal(preserved.ok, true);
+  assert.deepEqual(preserved.object.fileSync, { workspace: "../new-ws", futureKey: true });
 });
 
 test("updateRunProfileInObject: record/recordFailuresOnly/recordFullResolution/iosFastInput/enableAnimations は true のときのみ書き込み、false なら既存キーごと削除する", () => {

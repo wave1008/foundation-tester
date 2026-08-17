@@ -633,10 +633,11 @@ machines/apps/runs はプロジェクト資産で、ディスパッチのたび�
   相対 appPath は**リポジトリルート = ランナー機では `<base>/work`** に解決されるので、
   開発機が clone 構成(クローン = 作業ディレクトリ)だと**同じ文字列が別の場所を指す**。
   ツール自身の E2E プロジェクト(`E2EAppIOS/dist/…`)がまさにこれで、クローン側にある
-  ビルド成果物をランナー機の work からは見られない。**上書き機構は作らず**、
-  「`<base>/work` から見た位置に置く」を手順書に明記して運用で吸収する
-  足すのは「リモートに実在するか」の ssh 検証(`test -e`)による ⚠️ 表示のみ。
-  実際にパスが割れる利用者が現れたら再検討
+  ビルド成果物をランナー機の work からは見られない。加えて appPath のアプリパッケージ自体は
+  そもそも rsync の転送対象外(§13「原則: プロファイルの正はローカル・実行時に配布」は
+  `TestProjects/<project>` だけを運ぶ)なので、リモートにファイルが存在しなければ
+  「同一レイアウトにする」だけでは解決しない。**この2点は §17 の `fileSync.workspace` で解決した**
+  (appPath のマシン別上書きは今も作らない —— 基準ディレクトリを揃える方式のまま)
 
 ### デバイスタブの多ホスト監視(**状態と映像は実装済み: 2026-08-17**)
 
@@ -1022,6 +1023,44 @@ Xcode/macOS を更新すると ToolchainFingerprint が不一致になり**全�
 | 2 | 16.5 `remote status` | フリート運用の要。§13 の GUI 状態表示もこれを使う |
 | 3 | 16.4 `remote clean` | 運用開始と同時に必要(放置するとディスクフル) |
 | 4 | 16.6 カナリア更新の自動化・振り替え・ドライラン | 複数台の定常運用に入ってから |
+
+## 17. ファイル同期(ワークスペース。実装済み: 2026-08-17)
+
+§13「アプリプロファイル」で保留していた実害の解決: リモートへディスパッチすると、
+appPath の絶対パス(リポジトリルート基準)がランナー機に存在せず
+`package file not found` で必ずインストールに失敗していた
+(§13 が転送するのは `TestProjects/<project>/` だけで、アプリのパッケージ自体は運ばない)。
+
+- **スキーマ**: 実行プロファイルに任意で `"fileSync": { "workspace": "<絶対パス or リポジトリ
+  ルート相対パス>" }` を書く(`Sources/FTCore/RunProfile.swift` の `FileSyncSection`)。
+  省略時は従来どおり appPath はリポジトリルート基準(1バイトも挙動を変えない)。
+  同期相手: `vscode-ftester/schemas/run-profile.schema.json` と拡張のプロファイルフォーム
+- **appPath の解決基準の切り替え**: `fileSync.workspace` が宣言されている実行プロファイルは、
+  appPath の相対パスをリポジトリルートではなくワークスペースルート基準で解決する
+  (`ProfileResolver.resolve` / `ResolvedProfile.workspaceRoot`)。絶対パスの appPath は
+  従来どおり触らない。マシン別の appPath 上書きは今回も作らない ——
+  「基準ディレクトリを手元とリモートで揃える」方式を踏襲した
+- **雛形**: ワークスペース配下に `apps/` `scripts/` `data/` の3フォルダを規約として置く
+  (中身は自由・強制しない)。無ければ作る(`Sources/FTCore/WorkspaceScaffold.swift`)。
+  ローカル実行(`ProfileRunner.run`/`ApiRunCommand`)と、リモートディスパッチ直前の
+  ミラー元(下記)の両方で呼ぶ
+- **ミラー**: `--host` ディスパッチ時、`TestProjects/<project>/` の転送(§13)とは別枠で
+  ワークスペースを丸ごと rsync する(`RemoteTransferPlan.workspaceRsyncArgs` = `-az --delete`、
+  除外は `.git`/`.DS_Store`/`node_modules`)。ミラー先はプロジェクトごとに分ける
+  (`<remoteDir>/work/workspace/<project>/`。`RemoteLayout.workspaceDir`)
+- **`--workspace <path>`(hidden)**: `ftester run` / `ftester api run` の両方に持つ。
+  実行プロファイルの `fileSync.workspace` を1回限り上書きする(`ProfileResolver.
+  effectiveWorkspaceRaw` = override が非空なら常に勝つ)。**手で打つものではない** ——
+  リモートディスパッチ(`Sources/ftester/RemoteRunDispatcher.swift` の
+  `mirrorWorkspaceIfDeclared`)が、ミラーした絶対パスをリモートの子(`ftester run/api run
+  --host local …`)へ必ず渡す。渡し漏れると子は自分のリポジトリルート基準で appPath を
+  解決し、転送されていない絶対パスを見に行く(この節が解決した不具合そのものへ逆戻りする)
+- **`fileSync.workspace` が宣言されていれば**「app packages are not transferred」の注記
+  (§ ディスパッチ冒頭)は出さない(ミラーが運ぶため)
+- **多ホスト(§13 DeviceHostRunner/ApiRunHostFanout・フリート§8)への波及なし**: どちらも
+  ホストごとの子プロセスとして `ftester (api) run --host <label> …` を起動するだけで、
+  各子は自分自身が `RemoteRunDispatcher` を経由するときに独立してミラー判定を行う
+  (二重実装ではなく、既存の子プロセス起動経路にこの節の機構がそのまま乗る)
 
 ## 関連
 

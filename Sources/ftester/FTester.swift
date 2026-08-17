@@ -746,6 +746,16 @@ struct RunScenarios: AsyncParsableCommand {
                 visibility: .hidden))
     var deviceHost: String?
 
+    /// **手で打つものではない**。RemoteRunDispatcher がミラー後の絶対パスを渡す
+    /// (Sources/FTCore/RemoteDispatch.swift の RemoteRunArgs.build)。プロファイルの
+    /// `fileSync.workspace` を上書きし、appPath 相対パスの解決基準をそちらへ切り替える
+    /// (ProfileResolver.resolve の workspaceOverride 参照)
+    @Option(help: ArgumentHelp(
+        "Override this run profile's fileSync.workspace (the root relative appPath resolves "
+        + "against). Set by the remote dispatcher on the far side; not for hand use",
+        visibility: .hidden))
+    var workspace: String?
+
     @OptionGroup var driverOptions: DriverOptions
 
     func validate() throws {
@@ -902,6 +912,7 @@ struct RunScenarios: AsyncParsableCommand {
                 performanceMode: performanceMode,
                 deviceFilter: devices,
                 deviceHost: deviceHost,
+                workspaceOverride: workspace,
                 recorder: recorder)
             let failedCount = runSummary.failed
             PhaseLog.mark("profile-run-done")

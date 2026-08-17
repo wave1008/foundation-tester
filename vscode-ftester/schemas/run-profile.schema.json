@@ -139,6 +139,18 @@
       "type": "boolean",
       "description": "録画をデバイス画面のフル解像度で保存する(既定 false=縮小)。容量が増える。record が true のときのみ意味を持つ。",
       "default": false
+    },
+    "fileSync": {
+      "type": "object",
+      "description": "リモートのマシンへミラーするファイル同期設定。省略時は同期しない。",
+      "additionalProperties": true,
+      "properties": {
+        "workspace": {
+          "type": "string",
+          "description": "アプリのバイナリや実行スクリプトを置くフォルダ(絶対パス、またはリポジトリルート基準の相対パス)。リモートの Mac にはこのフォルダがミラーされる。",
+          "minLength": 1
+        }
+      }
     }
   }
 }

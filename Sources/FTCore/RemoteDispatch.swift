@@ -123,6 +123,14 @@ public struct RemoteLayout: Equatable, Sendable {
         workDir + "/" + Self.projectsDirName + "/" + project
     }
 
+    /// `fileSync.workspace` のミラー先(docs/remote-runner.md §ファイル同期(ワークスペース))。
+    /// プロジェクトごとに分ける(複数プロジェクトを同じランナーで回しても衝突しない)。
+    /// projectDir と違い `--delete` は付いていない側の呼び出し規約は無く、rsync 引数
+    /// (RemoteTransferPlan.workspaceRsyncArgs)側で --delete を明示する
+    public func workspaceDir(_ project: String) -> String {
+        workDir + "/workspace/" + project
+    }
+
     /// ディスパッチ1回分の隔離先(reports のみ。回収後にリモート側で削除する
     /// = RemoteRunDispatcher.cleanupDispatchDir)。stamp は呼び出し側が一意に払い出す
     public func dispatchReportDir(stamp: String) -> String {
@@ -182,6 +190,20 @@ public enum RemoteTransferPlan {
             "--exclude", "/reports", "--exclude", "/results", "--exclude", "/.ftester",
             "\(localProjectsDir)/\(project)/",
             "\(sshTarget):\(layout.projectDir(project))/",
+        ]
+    }
+
+    /// `fileSync.workspace` のミラー(RemoteRunDispatcher が宣言済みのときだけ呼ぶ)。
+    /// アプリのパッケージ(.app/.apk)を運ぶための rsync なので `-az --delete` で手元と揃える
+    /// (rsyncArgs と同じ規律)。除外は .git(ワークスペース自体を git 管理するケース)・
+    /// .DS_Store・node_modules(ビルドツール類の一時生成物)——先頭 "/" を付けず、階層を問わず除外する
+    public static func workspaceRsyncArgs(localWorkspaceDir: String, project: String,
+                                          layout: RemoteLayout, sshTarget: String) -> [String] {
+        [
+            "-az", "--delete",
+            "--exclude", ".git", "--exclude", ".DS_Store", "--exclude", "node_modules",
+            "\(localWorkspaceDir)/",
+            "\(sshTarget):\(layout.workspaceDir(project))/",
         ]
     }
 }
@@ -306,7 +328,7 @@ public enum RemoteRunArgs {
                              heal: Bool, noHeal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
                              fastInput: Bool, enableAnimations: Bool, performanceMode: Bool,
                              remoteJUnitPath: String?,
-                             reportDir: String?) -> [String] {
+                             reportDir: String?, workspace: String? = nil) -> [String] {
         // **リモート側は必ず「ここで走らせる」**(--host local)。省略すると、向こうの ftester が
         // 転送されたマシンプロファイルの host(= 自分のはずのホスト名)を読んで**もう一度
         // ディスパッチしようとする** —— 登録簿に無ければ「未登録のホスト」で落ち、あれば
@@ -319,6 +341,10 @@ public enum RemoteRunArgs {
         // (同名は別の機械にも居るのが通常。2026-08-17 に実走で確認)
         if !deviceNames.isEmpty { args += ["--device"] + deviceNames }
         if let deviceHost { args += ["--device-host", deviceHost] }
+        // **fileSync.workspace が宣言されているプロファイルだけ渡る**(RemoteRunDispatcher が
+        // ミラー後に埋める)。渡さないと子は自分のリポジトリルート基準で appPath を解決し、
+        // ミラーしていない絶対パスを見に行く(この機能の動機になった不具合そのもの)
+        if let workspace { args += ["--workspace", workspace] }
         for scenario in scenarios { args += ["--scenario", scenario] }
         for folder in folders { args += ["--folder", folder] }
         if heal { args.append("--heal") }
@@ -346,7 +372,7 @@ public enum RemoteRunArgs {
                                 heal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
                                 performanceMode: Bool,
                                 defaultTimeout: Double?, scenarioTimeout: Double?,
-                                reportDir: String?) -> [String] {
+                                reportDir: String?, workspace: String? = nil) -> [String] {
         // --host local の理由は build() のコメント(リモートでの再ディスパッチを止める)
         var args = ["api", "run", "--project", project, "--profile", profile, "--host", "local"]
         if let reportDir { args += ["--report-dir", reportDir] }
@@ -355,6 +381,8 @@ public enum RemoteRunArgs {
         // でも同名デバイスが別の機械に居りうる。2026-08-17)
         if !deviceNames.isEmpty { args += ["--device"] + deviceNames }
         if let deviceHost { args += ["--device-host", deviceHost] }
+        // 渡す条件・理由は build() の --workspace と同じ
+        if let workspace { args += ["--workspace", workspace] }
         for scenario in scenarios { args += ["--scenario", scenario] }
         if heal { args.append("--heal") }
         if noLPT { args.append("--no-lpt") }

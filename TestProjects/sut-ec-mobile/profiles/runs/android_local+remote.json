@@ -1,0 +1,45 @@
+{
+  "machine": "local+remote",
+  "app": "sut-ec-mobile",
+  "devices": [
+    {
+      "host": "local",
+      "name": "Pixel 10(Android 16(API 36) / arm64-v8a)-01"
+    },
+    {
+      "host": "local",
+      "name": "Pixel 10(Android 16(API 36) / arm64-v8a)-02"
+    },
+    {
+      "host": "M1Max",
+      "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-01"
+    },
+    {
+      "host": "M1Max",
+      "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-02"
+    },
+    {
+      "host": "M1Ultra",
+      "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-01"
+    },
+    {
+      "host": "M1Ultra",
+      "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-02"
+    }
+  ],
+  "falsePositiveCheck": false,
+  "fm": true,
+  "heal": false,
+  "iosInappEngine": true,
+  "record": true,
+  "recoverCpuFallbackToGpu": true,
+  "reportDir": "reports",
+  "screenIs": true,
+  "wipeDataOnBloat": true,
+  "containerInference": true,
+  "updateWebView": true,
+  "homeOnStart": true,
+  "fileSync": {
+    "workspace": "../sut-ec-mobile-workspace"
+  }
+}
