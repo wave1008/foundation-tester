@@ -178,13 +178,13 @@ struct ApiDevicesRestart: AsyncParsableCommand {
             for deviceName in name {
                 // machineProfile は MachineProfileLoad.load が deviceHost で絞った後なので、
                 // ここに残っているのは「この機械の台」だけ(entries が host を焼き込んでいる)
-                guard let found = ApiDeviceOperation.findDevice(
+                guard case .found(let spec, let platform) = ApiDeviceOperation.findDevice(
                     name: deviceName, deviceHost: deviceHost, in: machineProfile) else {
                     ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(
                         ok: false, error: "device not found: \(deviceName)"))
                     throw ExitCode(1)
                 }
-                items.append(RestartItem(spec: found.spec, platform: found.platform))
+                items.append(RestartItem(spec: spec, platform: platform))
             }
 
             let repoRoot = try? RepoRoot.find()
@@ -453,7 +453,7 @@ enum ApiDeviceDownDirectSpec {
 
 /// ftester api device-up / device-down 共通の実行ロジック
 /// (マシンプロファイル読み込み・--name 解決・NDJSON ストリーミング・エラー処理)
-private enum ApiDeviceOperation {
+enum ApiDeviceOperation {
     static func run(
         name: String, project: String?, profile: String?, deviceHost: String? = nil,
         body: @escaping @Sendable (
@@ -486,15 +486,27 @@ private enum ApiDeviceOperation {
             throw ProfileError.decodeFailed(machineURL, detail: "\(error)")
         }
 
-        guard let found = findDevice(name: name, deviceHost: deviceHost, in: machineProfile) else {
+        let spec: DeviceSpec
+        let platform: String
+        switch findDevice(name: name, deviceHost: deviceHost, in: machineProfile) {
+        case .found(let foundSpec, let foundPlatform):
+            spec = foundSpec
+            platform = foundPlatform
+        case .ambiguous(let hosts):
+            emitFinished(ok: false, error: "\(name) exists on more than one machine"
+                + " (\(hosts.joined(separator: ", "))) — pass --device-host to say which one"
+                + " (machine \(machine.name))")
+            throw ExitCode(1)
+        case .missing:
             emitFinished(ok: false, error: "device not found: \(name)"
-                + " on \(DeviceHostGrouping.display(MachineHostDispatch.normalize(deviceHost)))"
+                + (deviceHost == nil ? ""
+                   : " on \(DeviceHostGrouping.display(MachineHostDispatch.normalize(deviceHost)))")
                 + " (machine \(machine.name))")
             throw ExitCode(1)
         }
 
         do {
-            try await body(found.spec, found.platform) { message in emitLog(message) }
+            try await body(spec, platform) { message in emitLog(message) }
             emitFinished(ok: true, error: nil)
         } catch {
             emitFinished(ok: false, error: error.localizedDescription)
@@ -504,16 +516,35 @@ private enum ApiDeviceOperation {
 
     /// --name をマシンプロファイルの ios/android 両方から検索する(ApiDevicesRestart も利用するため fileprivate)。
     /// **一意なのは name 単体ではなく (host, name)** —— 名前だけで引くと、同名の台が別の機械にも
-    /// 居るとき(フリートでは通常)**別の機械のデバイス定義を手元で起こす**ことになる。
-    /// simctl は無ければ作るので、実害は「別の機械の設定でシミュレータが1台増える」
-    fileprivate static func findDevice(
+    /// 居るとき(フリートでは通常)**別の機械のつもりの操作が手元の台に当たる**。
+    ///
+    /// `deviceHost` を渡さない(= nil)ときは**候補が1つのときだけ**採る。2つ以上あれば
+    /// `.ambiguous` で止める —— 黙って手元を選ぶと「M1Max を止めたつもりで手元が止まる」に
+    /// なり、しかも成功したように見える(2026-08-17 に実際に起きた: 版の古い拡張が
+    /// `--device-host` を付けずに撃ち、手元の同名シミュレータが2台停止した)。
+    /// 実行プロファイルの参照解決(`DeviceHostGrouping.resolve`)と同じ規律
+    enum DeviceLookup {
+        case found(spec: DeviceSpec, platform: String)
+        case missing
+        case ambiguous(hosts: [String])
+    }
+
+    static func findDevice(
         name: String, deviceHost: String?, in machine: MachineProfile
-    ) -> (spec: DeviceSpec, platform: String)? {
+    ) -> DeviceLookup {
+        let entries = DeviceHostGrouping.entries(machine: machine).filter { $0.name == name }
+        guard deviceHost != nil else {
+            let hosts = DeviceHostGrouping.groups(entries, host: { MachineHostDispatch.normalize($0.spec.host) })
+            if hosts.count > 1 {
+                return .ambiguous(hosts: hosts.map { DeviceHostGrouping.display($0.host) })
+            }
+            guard let entry = entries.first else { return .missing }
+            return .found(spec: entry.spec, platform: entry.platform)
+        }
         let wanted = MachineHostDispatch.normalize(deviceHost)
-        let entries = DeviceHostGrouping.entries(machine: machine)
-            .filter { $0.name == name && MachineHostDispatch.normalize($0.spec.host) == wanted }
-        guard let entry = entries.first else { return nil }
-        return (entry.spec, entry.platform)
+        guard let entry = entries.first(where: { MachineHostDispatch.normalize($0.spec.host) == wanted })
+        else { return .missing }
+        return .found(spec: entry.spec, platform: entry.platform)
     }
 
     private static func emitLog(_ message: String) {
