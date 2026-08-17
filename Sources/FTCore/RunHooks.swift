@@ -180,8 +180,24 @@ public enum RunHookLease {
         return !isAlive(info.pid)
     }
 
-    /// 既定の生存判定(シグナル0)。自分自身の pid は常に生きているので回収されない
+    /// 既定の生存判定。**`kill(pid, 0)` では足りない** —— ゾンビ(終了済みだが親がまだ回収して
+    /// いないプロセス)にもシグナル0は成功するので、「生きている」と誤判定して**永久に回収され
+    /// なくなる**。ssh 越しに殺された run はまさにこの形で残る(2026-08-18 にリモートで実際に
+    /// 踏んだ: 中断した run の pid がゾンビのまま残り、その lease が回収されなかった)。
+    /// プロセスの状態まで見て SZOMB を死んだものとして扱う
     public static func processIsAlive(_ pid: Int32) -> Bool {
-        kill(pid, 0) == 0 || errno == EPERM
+        guard pid > 0 else { return false }
+        var info = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.stride
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+        // 居ないプロセスは「失敗」または「成功だが size 0」で返る(どちらも死んだ扱い)
+        guard sysctl(&mib, 4, &info, &size, nil, 0) == 0, size > 0 else { return false }
+        return isAliveState(Int32(info.kp_proc.p_stat))
+    }
+
+    /// プロセス状態(`kinfo_proc.kp_proc.p_stat`)の判定だけを切り出した純粋関数
+    /// (syscall 抜きでテストするため)
+    public static func isAliveState(_ pStat: Int32) -> Bool {
+        pStat != SZOMB
     }
 }

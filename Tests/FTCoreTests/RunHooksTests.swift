@@ -95,4 +95,20 @@ final class RunHookLeaseTests: XCTestCase {
     func testTheCurrentProcessIsAlive() {
         XCTAssertTrue(RunHookLease.processIsAlive(ProcessInfo.processInfo.processIdentifier))
     }
+
+    func testAProcessThatDoesNotExistIsNotAlive() {
+        // 使われていない大きな pid(macOS の既定上限 99999 の外)
+        XCTAssertFalse(RunHookLease.processIsAlive(999_999))
+        XCTAssertFalse(RunHookLease.processIsAlive(0))
+        XCTAssertFalse(RunHookLease.processIsAlive(-1))
+    }
+
+    /// **ゾンビは死んだ扱い**。`kill(pid, 0)` はゾンビにも成功するので、そこだけ見ていると
+    /// ssh 越しに殺された run の lease が永久に回収されない(2026-08-18 にリモートで実測)
+    func testAZombieIsNotAlive() {
+        XCTAssertFalse(RunHookLease.isAliveState(SZOMB))
+        XCTAssertTrue(RunHookLease.isAliveState(SRUN))
+        XCTAssertTrue(RunHookLease.isAliveState(SSLEEP))
+        XCTAssertTrue(RunHookLease.isAliveState(SSTOP), "停止中(SIGSTOP)は生きている = 回収しない")
+    }
 }
