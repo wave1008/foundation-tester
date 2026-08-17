@@ -5,11 +5,13 @@
 
 import { type ChildProcessByStdio, spawn } from "node:child_process";
 import type { Readable } from "node:stream";
+import * as vscode from "vscode";
 import { resolveProjectName } from "./config";
 import { t } from "./i18n";
 import {
   bulkLifecycleOp,
   createDeviceLifecycleQueueState,
+  deleteDeviceApiArgs,
   finishDeviceLifecycleJob,
   type DeviceLifecycleJob,
   type DeviceLifecycleQueueState,
@@ -20,6 +22,7 @@ import {
   enqueueDeviceLifecycleJob,
   hasDeviceLifecycleJobFor,
   isCreateDeviceEvent,
+  isDeleteDeviceEvent,
   isDeviceCatalogJson,
   isDeviceLifecycleQueueBusy,
   isDeviceOpEvent,
@@ -33,6 +36,7 @@ import {
 } from "./monitorModel";
 import { NdjsonParser } from "./ndjson";
 import type { MonitorPanelDeps } from "./monitorPanel";
+import { type DeviceCommandSource, deviceCommandArgs } from "./remoteRunArgs";
 
 /** stdin=ignore, stdout/stderr=pipe で spawn したプロセスの型(cli.ts の FtesterProcess と同じ形)。 */
 type PipeProcess = ChildProcessByStdio<null, Readable, Readable>;
@@ -40,10 +44,19 @@ type PipeProcess = ChildProcessByStdio<null, Readable, Readable>;
 /** webview からの "createDevice" メッセージの形(runCreateDevice で使う)。 */
 export type CreateDeviceMessage = Extract<MonitorFromWebviewMessage, { type: "createDevice" }>;
 
+/** webview からの "devicePickDeviceDelete" メッセージの形(runDeleteDevice で使う)。 */
+export type DevicePickDeviceDeleteMessage = Extract<MonitorFromWebviewMessage, { type: "devicePickDeviceDelete" }>;
+
 /** monitorProfilesController.ts の handleMachineDeviceRemove(複数選択一括除去の確認文言)で使う。 */
 export function summarizeDeviceNames(names: readonly string[]): string {
   const shown = names.slice(0, 3).join(t("deviceOps.nameSeparator"));
   return names.length > 3 ? t("deviceOps.nameListMore", { shown }) : shown;
+}
+
+/** エラーメッセージへホストホストを付記する(§13 段2「失敗時はホスト名込みのメッセージにする」)。
+ * ローカルは素通し(既存の文言を変えない)。 */
+function withSourceContext(message: string, source: DeviceCommandSource): string {
+  return source.kind === "remote" ? t("deviceOps.remoteHostSuffix", { host: source.host, message }) : message;
 }
 
 /** デバイスライフサイクルの直列キューおよび device-catalog/installed-devices/create-device の
@@ -60,6 +73,10 @@ export class MonitorDeviceOps {
   private lifecycleQueue: DeviceLifecycleQueueState = createDeviceLifecycleQueueState();
   /** create-device の多重実行ガード。true の間に来た createDevice リクエストは即座に失敗を返す。 */
   private creatingDevice = false;
+  /** delete-device の多重実行ガード(identifier 単位)。行ごとに独立して走らせるため creatingDevice と
+   * 違い Set にする(他の行の削除は妨げない。webview 側もその行の checkbox を disabled にして
+   * 連打を防ぐが、直後の再送・別経路からの二重送信に対する保険として持つ)。 */
+  private readonly deletingIdentifiers = new Set<string>();
   /** 実行中の bulk up(devices-up)プロセス。「デバイスの起動を中断」の kill 対象。close で undefined に戻す。 */
   private bulkUpProc: PipeProcess | undefined;
   /** 凍結が治らず CPU 描画(swiftshader)へフォールバックしたデバイス論理名。セッション中維持
@@ -83,7 +100,7 @@ export class MonitorDeviceOps {
    * ここに届く前に抑止される)。
    */
   enqueueLifecycleJob(job: DeviceLifecycleJob): void {
-    if (job.kind === "device" && hasDeviceLifecycleJobFor(this.lifecycleQueue, job.name)) {
+    if (job.kind === "device" && hasDeviceLifecycleJobFor(this.lifecycleQueue, job.name, job.host)) {
       return;
     }
     this.pushLifecycleJob(job);
@@ -197,7 +214,7 @@ export class MonitorDeviceOps {
   /** ジョブ対象デバイスの queued/running バッジを再送する(投入直後・開始直後の表示更新)。 */
   private postJobStatuses(job: DeviceLifecycleJob): void {
     if (job.kind === "device") {
-      this.postDeviceLifecycleStatus(job.name);
+      this.postDeviceLifecycleStatus(job.name, job.host);
     } else if (job.kind === "restartBatch") {
       for (const n of job.names) {
         this.postDeviceLifecycleStatus(n);
@@ -230,9 +247,13 @@ export class MonitorDeviceOps {
   }
 
   /** 指定デバイスの現在のキュー状態(実行中/待機中/なし)を deviceOpBusy として webview に送る。 */
-  private postDeviceLifecycleStatus(name: string): void {
-    const status = deviceLifecycleStatusFor(this.lifecycleQueue, name);
-    this.deps.post({ type: "deviceOpBusy", name, op: status?.op ?? null, status: status?.status ?? null });
+  private postDeviceLifecycleStatus(name: string, host?: string): void {
+    const status = deviceLifecycleStatusFor(this.lifecycleQueue, name, host);
+    // **host も載せる** —— 載せないと webview が同名の先頭のタイル(= 手元)を書き換え、
+    // 「M2Ultra の台を停止」が手元のタイルに「シャットダウン中」と出る(2026-08-17 の実害)
+    this.deps.post({
+      type: "deviceOpBusy", name, host, op: status?.op ?? null, status: status?.status ?? null,
+    });
   }
 
   /**
@@ -289,11 +310,11 @@ export class MonitorDeviceOps {
       this.executeRestartBatchJob(job.names);
     } else {
       // 「実行中」バッジへ更新(running へ昇格済みのため statusFor が running を返す)。
-      this.postDeviceLifecycleStatus(job.name);
+      this.postDeviceLifecycleStatus(job.name, job.host);
       if (job.op === "down") {
-        this.deps.stopDeviceStreams(job.name);
+        this.deps.stopDeviceStreams(job.name, job.host);
       }
-      this.executeDeviceOpJob(job.name, job.op, job.udid, job.serial);
+      this.executeDeviceOpJob(job.name, job.op, job.udid, job.serial, job.host);
     }
   }
 
@@ -310,7 +331,10 @@ export class MonitorDeviceOps {
       this.releaseMonitorPause();
     }
     if (finished.kind === "device") {
-      this.deps.post({ type: "deviceOpBusy", name: finished.name, op: null, status: null });
+      // **host も載せる**(表示の剥がしも宛先を間違えない。postDeviceLifecycleStatus と同じ理由)
+      this.deps.post({
+        type: "deviceOpBusy", name: finished.name, host: finished.host, op: null, status: null,
+      });
     } else if (finished.kind === "restartBatch") {
       // プロセスクラッシュ等で per-device の deviceFinished が欠けた場合の表示剥がし
       // (正常時は二重送信だが上書き描画のみなので無害)。
@@ -453,22 +477,23 @@ export class MonitorDeviceOps {
           case "deviceStopping":
             // down 開始(up では --restart 対象)。ストリームをこのデバイスだけ止め(simctl/adb に
             // 殺される前にタイルを切断表示へ倒す。他デバイスのライブ映像は残す)、「シャットダウン中」に。
+            // **host も渡す** —— 同名が別の機械にも居ると、名前だけでは別タイルを触ってしまう
             startedNames.add(value.name);
-            this.deps.stopDeviceStreams(value.name);
-            this.deps.post({ type: "deviceOpBusy", name: value.name, op: "down", status: "running" });
+            this.deps.stopDeviceStreams(value.name, value.host ?? undefined);
+            this.deps.post({ type: "deviceOpBusy", name: value.name, host: value.host ?? undefined, op: "down", status: "running" });
             break;
           case "deviceStarting":
             startedNames.add(value.name);
-            this.deps.post({ type: "deviceOpBusy", name: value.name, op: "up", status: "running" });
+            this.deps.post({ type: "deviceOpBusy", name: value.name, host: value.host ?? undefined, op: "up", status: "running" });
             break;
           case "deviceFinished":
             startedNames.delete(value.name);
             if (kind === "down") {
               // down 中はモニター pause で state 更新が来ないため、この per-device 通知でそのタイルを
               // 即「未起動」へ倒す(offline を先行反映。opBusy もここで解除される)。
-              this.deps.post({ type: "deviceDownFinished", name: value.name });
+              this.deps.post({ type: "deviceDownFinished", name: value.name, host: value.host ?? undefined });
             } else {
-              this.deps.post({ type: "deviceOpBusy", name: value.name, op: null, status: null });
+              this.deps.post({ type: "deviceOpBusy", name: value.name, host: value.host ?? undefined, op: null, status: null });
             }
             break;
           case "finished":
@@ -571,6 +596,7 @@ export class MonitorDeviceOps {
             // このデバイスの down が始まる。ストリームをここで止める(simctl/adb に殺される前に
             // タイルを切断表示へ倒す。バッチ開始時に全台止めない理由は runLifecycleQueueHead 参照)。
             busyNames.add(value.name);
+            // devices-restart(GPU 復帰)は手元の Android エミュレータ専用なので host を持たない
             this.deps.stopDeviceStreams(value.name);
             this.deps.post({ type: "deviceOpBusy", name: value.name, op: "down", status: "running" });
             break;
@@ -636,7 +662,9 @@ export class MonitorDeviceOps {
    * 失敗時(finished ok:false、または finished を出せずに落ちた場合を含む)は、バナーがパネルを
    * 閉じると消えるため、事後診断できるよう出力チャネルにも必ずログを残す。
    */
-  private executeDeviceOpJob(name: string, op: DeviceOpKind, udid?: string, serial?: string): void {
+  private executeDeviceOpJob(
+    name: string, op: DeviceOpKind, udid?: string, serial?: string, host?: string,
+  ): void {
     // spawn 失敗時の 'error'+'close' 二重発火・複数試行にまたがる finish の二重呼び出しを防ぐ
     // ジョブ単位のガード(finishLifecycleQueueHead は1ジョブにつき1回だけ呼ぶ)。
     let jobFinished = false;
@@ -645,9 +673,11 @@ export class MonitorDeviceOps {
         return;
       }
       jobFinished = true;
-      this.finishLifecycleJob({ kind: "device", name, op });
+      // **host も入れる** —— sameLifecycleJob は (host, name, op) で照合するので、
+      // 落とすと「実行中に該当ジョブがありません」になる
+      this.finishLifecycleJob({ kind: "device", name, op, host });
     };
-    this.runDeviceOpAttempt(name, op, 0, finishOnce, udid, serial);
+    this.runDeviceOpAttempt(name, op, 0, finishOnce, udid, serial, host);
   }
 
   /** device-up/down の1回分の実行。up が失敗し追加試行が残っていれば遅延後に再試行、
@@ -659,6 +689,7 @@ export class MonitorDeviceOps {
     finishOnce: () => void,
     udid?: string,
     serial?: string,
+    host?: string,
   ): void {
     const config = this.deps.getConfig();
     const resolution = resolveProjectName(this.deps.workspaceRoot, config);
@@ -668,7 +699,11 @@ export class MonitorDeviceOps {
     // up には direct モードが無い(未登録は起動をメニューに出さない。monitorDeviceLifecycle.ts の
     // udid/serial コメント参照)。
     const direct = op === "down" && (udid !== undefined || serial !== undefined);
-    const args: string[] = ["api", op === "up" ? "device-up" : "device-down"];
+    // **別の機械の台はその機械で操作する** —— 手元で `--name` を渡すと、手元のマシン
+    // プロファイルの同名エントリを引いて**別の機械の設定でこの Mac にシミュレータを作る**
+    // (simctl は無ければ作る)。一括起動が RemoteDeviceFanout で分散するのと同じ規律
+    const args: string[] = host ? ["remote", "exec", host, "--"] : [];
+    args.push("api", op === "up" ? "device-up" : "device-down");
     if (direct) {
       if (udid !== undefined) {
         args.push("--udid", udid);
@@ -686,6 +721,9 @@ export class MonitorDeviceOps {
       if (config.profile) {
         args.push("--profile", config.profile);
       }
+      // 向こうは「自分が誰か」を知らないので、どのホストの台かを明示する(--device-host)。
+      // 手元でも渡す = 同名のリモート機の台を引かないための絞り込み
+      args.push("--device-host", host ?? "local");
     }
     if (op === "up" && this.cpuRenderNames.has(name)) {
       args.push("--gpu", "swiftshader_indirect");
@@ -796,19 +834,26 @@ export class MonitorDeviceOps {
    * 多重リクエストはボタン側(モーダルは開いた直後に1回だけ送る)で抑止する前提のため、
    * ここでは単純に都度実行する。stdout を全量蓄積し、close 時にまとめて JSON.parse する
    * (単発 JSON 1行の出力なので NDJSON パーサは不要)。
+   * source が remote なら deviceCommandArgs が `remote exec <host> -- api device-catalog` に
+   * 組み立てる(§13 段2。個別 ssh 実装は書かない)。local は従来どおり `api device-catalog` のまま
+   * (deviceCommandArgs の local 分岐が apiArgs を素通しするため、挙動は1バイトも変わらない)。
    */
-  runDeviceCatalog(): void {
+  runDeviceCatalog(source: DeviceCommandSource): void {
     const config = this.deps.getConfig();
+    const args = deviceCommandArgs(source, ["api", "device-catalog"]);
 
     let proc: PipeProcess;
     try {
-      proc = spawn(config.binaryPath, ["api", "device-catalog"], {
+      proc = spawn(config.binaryPath, args, {
         cwd: this.deps.workspaceRoot,
         shell: false,
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (error) {
-      const message = t("deviceOps.cmdStartFailed", { cmd: "device-catalog", error: String(error) });
+      const message = withSourceContext(
+        t("deviceOps.cmdStartFailed", { cmd: "device-catalog", error: String(error) }),
+        source,
+      );
       this.deps.outputChannel.appendLine(`[ftester] ${message}`);
       this.deps.post({ type: "deviceCatalog", ok: false, catalog: null, error: message });
       return;
@@ -840,7 +885,10 @@ export class MonitorDeviceOps {
     };
 
     proc.on("error", (error) => {
-      const message = t("deviceOps.cmdRuntimeError", { cmd: "device-catalog", error: error.message });
+      const message = withSourceContext(
+        t("deviceOps.cmdRuntimeError", { cmd: "device-catalog", error: error.message }),
+        source,
+      );
       this.deps.outputChannel.appendLine(`[ftester] ${message}`);
       flushStderr();
       respond({ type: "deviceCatalog", ok: false, catalog: null, error: message });
@@ -848,7 +896,10 @@ export class MonitorDeviceOps {
     proc.on("close", (exitCode) => {
       flushStderr();
       if (exitCode !== 0) {
-        const message = t("deviceOps.cmdFailedExitCode", { cmd: "device-catalog", exitCode: String(exitCode) });
+        const message = withSourceContext(
+          t("deviceOps.cmdFailedExitCode", { cmd: "device-catalog", exitCode: String(exitCode) }),
+          source,
+        );
         this.deps.outputChannel.appendLine(`[ftester] ${message}`);
         respond({ type: "deviceCatalog", ok: false, catalog: null, error: message });
         return;
@@ -857,13 +908,16 @@ export class MonitorDeviceOps {
       try {
         parsed = JSON.parse(stdout);
       } catch (error) {
-        const message = t("deviceOps.cmdParseFailed", { cmd: "device-catalog", error: String(error) });
+        const message = withSourceContext(
+          t("deviceOps.cmdParseFailed", { cmd: "device-catalog", error: String(error) }),
+          source,
+        );
         this.deps.outputChannel.appendLine(`[ftester] ${message}`);
         respond({ type: "deviceCatalog", ok: false, catalog: null, error: message });
         return;
       }
       if (!isDeviceCatalogJson(parsed)) {
-        const message = t("deviceOps.cmdOutputInvalid", { cmd: "device-catalog" });
+        const message = withSourceContext(t("deviceOps.cmdOutputInvalid", { cmd: "device-catalog" }), source);
         this.deps.outputChannel.appendLine(`[ftester] ${message}`);
         respond({ type: "deviceCatalog", ok: false, catalog: null, error: message });
         return;
@@ -954,20 +1008,24 @@ export class MonitorDeviceOps {
    * `ftester api installed-devices` を短命プロセスとして実行し、結果を webview へ返す
    * (「+既存から選択」モーダルが開いた直後の installedDevicesRequest への応答。runDeviceCatalog と
    * 全く同じ短命 spawn パターン — 単発 JSON 1行の出力を全量蓄積して close 時にまとめて
-   * JSON.parse する)。
+   * JSON.parse する。source の扱いも runDeviceCatalog と同じ)。
    */
-  runInstalledDevices(): void {
+  runInstalledDevices(source: DeviceCommandSource): void {
     const config = this.deps.getConfig();
+    const args = deviceCommandArgs(source, ["api", "installed-devices"]);
 
     let proc: PipeProcess;
     try {
-      proc = spawn(config.binaryPath, ["api", "installed-devices"], {
+      proc = spawn(config.binaryPath, args, {
         cwd: this.deps.workspaceRoot,
         shell: false,
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (error) {
-      const message = t("deviceOps.cmdStartFailed", { cmd: "installed-devices", error: String(error) });
+      const message = withSourceContext(
+        t("deviceOps.cmdStartFailed", { cmd: "installed-devices", error: String(error) }),
+        source,
+      );
       this.deps.outputChannel.appendLine(`[ftester] ${message}`);
       this.deps.post({ type: "installedDevices", ok: false, data: null, error: message });
       return;
@@ -998,7 +1056,10 @@ export class MonitorDeviceOps {
     };
 
     proc.on("error", (error) => {
-      const message = t("deviceOps.cmdRuntimeError", { cmd: "installed-devices", error: error.message });
+      const message = withSourceContext(
+        t("deviceOps.cmdRuntimeError", { cmd: "installed-devices", error: error.message }),
+        source,
+      );
       this.deps.outputChannel.appendLine(`[ftester] ${message}`);
       flushStderr();
       respond({ type: "installedDevices", ok: false, data: null, error: message });
@@ -1006,7 +1067,10 @@ export class MonitorDeviceOps {
     proc.on("close", (exitCode) => {
       flushStderr();
       if (exitCode !== 0) {
-        const message = t("deviceOps.cmdFailedExitCode", { cmd: "installed-devices", exitCode: String(exitCode) });
+        const message = withSourceContext(
+          t("deviceOps.cmdFailedExitCode", { cmd: "installed-devices", exitCode: String(exitCode) }),
+          source,
+        );
         this.deps.outputChannel.appendLine(`[ftester] ${message}`);
         respond({ type: "installedDevices", ok: false, data: null, error: message });
         return;
@@ -1015,13 +1079,16 @@ export class MonitorDeviceOps {
       try {
         parsed = JSON.parse(stdout);
       } catch (error) {
-        const message = t("deviceOps.cmdParseFailed", { cmd: "installed-devices", error: String(error) });
+        const message = withSourceContext(
+          t("deviceOps.cmdParseFailed", { cmd: "installed-devices", error: String(error) }),
+          source,
+        );
         this.deps.outputChannel.appendLine(`[ftester] ${message}`);
         respond({ type: "installedDevices", ok: false, data: null, error: message });
         return;
       }
       if (!isInstalledDevicesJson(parsed)) {
-        const message = t("deviceOps.cmdOutputInvalid", { cmd: "installed-devices" });
+        const message = withSourceContext(t("deviceOps.cmdOutputInvalid", { cmd: "installed-devices" }), source);
         this.deps.outputChannel.appendLine(`[ftester] ${message}`);
         respond({ type: "installedDevices", ok: false, data: null, error: message });
         return;
@@ -1032,12 +1099,10 @@ export class MonitorDeviceOps {
 
   /**
    * `ftester api create-device` を短命プロセスとして実行する(デバイス追加モーダルの OK)。
-   * creatingDevice による多重実行防止(モーダル側のボタン無効化に加えた保険)。finished が来る前に
-   * プロセスが落ちた場合は合成の失敗結果を送る(executeDeviceOpJob と同じパターン)。成功時は
-   * FileSystemWatcher 経由でも postMachineProfileInfo() が呼ばれるが、反映を待たせないようここでも
-   * MonitorPanelDeps.notifyMachineProfilesChanged 経由で明示的に呼ぶ(冪等なので二重呼び出しは無害)。
-   * msg.register が false のときは `--no-register` を付与し物理作成のみ行う(マシンプロファイルには
-   * 追記しない。#device-pick-overlay の「+」新規作成モーダルが使う)。
+   * creatingDevice による多重実行防止(モーダル側のボタン無効化に加えた保険)。source が remote
+   * なら、実行環境を変え得る破壊的操作として先にホスト側 modal 確認を挟む(§13。照会系の
+   * device-catalog/installed-devices は確認不要)。確認を待つ間も多重実行防止は効かせる
+   * (creatingDevice を確認前に true にする)。
    */
   runCreateDevice(msg: CreateDeviceMessage): void {
     if (this.creatingDevice) {
@@ -1050,9 +1115,66 @@ export class MonitorDeviceOps {
       });
       return;
     }
+    this.creatingDevice = true;
+    // 上書き(既存の実体を消して作り直す)は破壊的なので、ローカル・リモートを問わず確認する。
+    // リモートの確認文はホスト名も出す(どの機械の実体を消すかが要点)
+    if (msg.overwrite) {
+      void this.confirmAndSpawnCreateDevice(msg, msg.source.kind === "remote" ? msg.source.host : null);
+      return;
+    }
+    if (msg.source.kind === "remote") {
+      void this.confirmAndSpawnCreateDevice(msg, msg.source.host);
+      return;
+    }
+    this.spawnCreateDevice(msg);
+  }
+
+  /** リモート作成の modal 確認(§11・§13 と同じ showWarningMessage({modal:true}) 方式。
+   * webview の window.confirm は効かないため必ずホスト側で行う)。 */
+  private async confirmAndSpawnCreateDevice(msg: CreateDeviceMessage, host: string | null): Promise<void> {
+    const overwrite = msg.overwrite === true;
+    const confirmLabel = overwrite
+      ? t("deviceOps.createOverwriteConfirmButton")
+      : t("deviceOps.createRemoteConfirmButton");
+    const where = host ?? t("deviceOps.createOverwriteLocalHost");
+    const message = overwrite
+      ? t("deviceOps.createOverwriteConfirmMessage", { host: where, name: msg.name })
+      : t("deviceOps.createRemoteConfirmMessage", { host: where, name: msg.name });
+    const choice = await vscode.window.showWarningMessage(
+      message,
+      { modal: true },
+      confirmLabel,
+    );
+    if (choice !== confirmLabel) {
+      this.creatingDevice = false;
+      this.deps.post({
+        type: "createDeviceResult",
+        ok: false,
+        name: msg.name,
+        error: t("deviceOps.createCancelled"),
+        device: null,
+      });
+      return;
+    }
+    this.spawnCreateDevice(msg);
+  }
+
+  /**
+   * runCreateDevice/confirmAndSpawnCreateDevice からの実処理。finished が来る前にプロセスが
+   * 落ちた場合は合成の失敗結果を送る(executeDeviceOpJob と同じパターン)。成功時は
+   * FileSystemWatcher 経由でも postMachineProfileInfo() が呼ばれるが、反映を待たせないようここでも
+   * MonitorPanelDeps.notifyMachineProfilesChanged 経由で明示的に呼ぶ(冪等なので二重呼び出しは無害)。
+   * msg.register が false、または source が remote のときは `--no-register` を付与し物理作成のみ
+   * 行う(マシンプロファイルには追記しない)。remote は register の値によらず強制する ——
+   * リモート側に登録してもプロファイルの正はローカルで、次回ディスパッチの rsync --delete で
+   * 消えるため(§13)。作成した1台は #device-pick-overlay の再取得→チェック→OK
+   * (machineDevicesSync。常にローカルへ書く既存経路)にそのまま乗せてローカル登録する。
+   */
+  private spawnCreateDevice(msg: CreateDeviceMessage): void {
     const config = this.deps.getConfig();
     const resolution = resolveProjectName(this.deps.workspaceRoot, config);
     if (resolution.kind !== "resolved") {
+      this.creatingDevice = false;
       this.deps.post({
         type: "createDeviceResult",
         ok: false,
@@ -1062,7 +1184,7 @@ export class MonitorDeviceOps {
       });
       return;
     }
-    const args = [
+    const apiArgs = [
       "api",
       "create-device",
       "--project",
@@ -1078,11 +1200,16 @@ export class MonitorDeviceOps {
       "--os",
       msg.os,
     ];
-    if (!msg.register) {
-      args.push("--no-register");
+    if (!msg.register || msg.source.kind === "remote") {
+      apiArgs.push("--no-register");
     }
+    // 上書き(既存の実体を消してから作る)。判定と確認は呼び出し側で済んでいる
+    if (msg.overwrite) {
+      apiArgs.push("--overwrite");
+    }
+    const args = deviceCommandArgs(msg.source, apiArgs);
+    const source = msg.source;
 
-    this.creatingDevice = true;
     let responded = false;
     const respond = (
       ok: boolean,
@@ -1094,7 +1221,7 @@ export class MonitorDeviceOps {
       }
       responded = true;
       this.creatingDevice = false;
-      this.deps.post({ type: "createDeviceResult", ok, name: msg.name, error, device });
+      this.deps.post({ type: "createDeviceResult", ok, name: msg.name, error: error ? withSourceContext(error, source) : error, device });
       if (ok) {
         this.deps.notifyMachineProfilesChanged();
       }
@@ -1139,9 +1266,24 @@ export class MonitorDeviceOps {
       },
       (line) => this.deps.outputChannel.appendLine(`[create-device ${msg.name} stdout] ${line}`),
     );
+    // stderr の末尾を保持する。**finished を経由せず落ちたときはこれが唯一の手掛かり** ——
+    // exit code だけ出しても「何が起きたか」は OUTPUT を開くまで分からない
+    // (実害: リモートの ftester が古く --overwrite を知らず exit 64。画面には数字しか出なかった)
+    let lastStderr = "";
+    const rememberStderr = (line: string): void => {
+      const trimmed = line.trim();
+      if (trimmed.length > 0) {
+        lastStderr = trimmed;
+      }
+    };
     const stderrParser = new NdjsonParser(
-      (value) => this.deps.outputChannel.appendLine(`[create-device ${msg.name} stderr] ${JSON.stringify(value)}`),
-      (line) => this.deps.outputChannel.appendLine(`[create-device ${msg.name} stderr] ${line}`),
+      (value) => {
+        this.deps.outputChannel.appendLine(`[create-device ${msg.name} stderr] ${JSON.stringify(value)}`);
+      },
+      (line) => {
+        rememberStderr(line);
+        this.deps.outputChannel.appendLine(`[create-device ${msg.name} stderr] ${line}`);
+      },
     );
 
     proc.stdout.on("data", (chunk: Buffer) => stdoutParser.push(chunk));
@@ -1160,7 +1302,155 @@ export class MonitorDeviceOps {
         t("deviceOps.log.createDeviceClosed", { name: msg.name, exitCode: String(exitCode) }),
       );
       // finished を経由せず落ちた場合の合成失敗(executeDeviceOpJob と同じパターン。responded ガードで二重防止)。
-      respond(false, t("deviceOps.processExitedWithCode", { exitCode: String(exitCode) }), null);
+      // **exit 64 = 引数エラー**(ArgumentParser)。リモートで出たなら、ほぼ「向こうの ftester が
+      // 古くてこのオプションを知らない」なので、版合わせの案内に変える(数字だけでは辿れない)
+      const detail = lastStderr.length > 0 ? `${t("deviceOps.processExitedWithCode", { exitCode: String(exitCode) })}: ${lastStderr}` : t("deviceOps.processExitedWithCode", { exitCode: String(exitCode) });
+      const staleRemote = exitCode === 64 && source.kind === "remote";
+      respond(false, staleRemote ? t("deviceOps.remoteCliTooOld", { host: source.host, detail: lastStderr }) : detail, null);
+    });
+  }
+
+  /**
+   * #device-pick-overlay の行右クリック「削除」: `ftester api delete-device` を実行し、ホスト上の
+   * 実体(シミュレータ/AVD)を消す(machineDeviceRemove のプロファイル除去とは別物。本体は残さない)。
+   * 破壊的・不可逆な操作なので、ローカル/リモートどちらでも必ずホスト側 modal 確認を挟む
+   * (§13・runCreateDevice のリモート確認と同じ showWarningMessage({modal:true}) 方式だが、
+   * こちらは常に確認する — create と違い「作るだけ」ではなく実体を消すため)。
+   */
+  async runDeleteDevice(msg: DevicePickDeviceDeleteMessage): Promise<void> {
+    if (this.deletingIdentifiers.has(msg.identifier)) {
+      this.deps.post({
+        type: "devicePickDeviceDeleteResult",
+        ok: false,
+        identifier: msg.identifier,
+        name: msg.name,
+        error: t("deviceOps.deleteAlreadyRunning"),
+        referencedBy: [],
+      });
+      return;
+    }
+    this.deletingIdentifiers.add(msg.identifier);
+    const hostLabel = msg.source.kind === "remote" ? msg.source.host : t("deviceOps.hostLocalLabel");
+    const deleteLabel = t("deviceOps.deleteConfirmButton");
+    const choice = await vscode.window.showWarningMessage(
+      t("deviceOps.deleteConfirmMessage", { name: msg.name, host: hostLabel }),
+      { modal: true },
+      deleteLabel,
+    );
+    if (choice !== deleteLabel) {
+      this.deletingIdentifiers.delete(msg.identifier);
+      this.deps.post({
+        type: "devicePickDeviceDeleteResult",
+        ok: false,
+        identifier: msg.identifier,
+        name: msg.name,
+        error: t("deviceOps.deleteCancelled"),
+        referencedBy: [],
+      });
+      return;
+    }
+    this.spawnDeleteDevice(msg);
+  }
+
+  /**
+   * runDeleteDevice からの実処理(confirm 済み)。finished が来る前にプロセスが落ちた場合は合成の
+   * 失敗結果を送る(spawnCreateDevice と同じパターン)。成功時、referencedBy が非空なら
+   * (削除した実体をまだ参照しているマシンプロファイルが残る)webview のダイアログが閉じていても
+   * 気付けるよう、別途 warning 通知も出す(devicePickDeviceDeleteResult はダイアログが開いている
+   * 間しか見えないため)。
+   */
+  private spawnDeleteDevice(msg: DevicePickDeviceDeleteMessage): void {
+    const config = this.deps.getConfig();
+    const args = deviceCommandArgs(msg.source, deleteDeviceApiArgs(msg.platform, msg.identifier));
+    const source = msg.source;
+
+    let responded = false;
+    const respond = (ok: boolean, error: string | null, referencedBy: readonly string[]): void => {
+      if (responded) {
+        return;
+      }
+      responded = true;
+      this.deletingIdentifiers.delete(msg.identifier);
+      const finalError = error ? withSourceContext(error, source) : error;
+      this.deps.post({
+        type: "devicePickDeviceDeleteResult",
+        ok,
+        identifier: msg.identifier,
+        name: msg.name,
+        error: finalError,
+        referencedBy,
+      });
+      if (ok) {
+        this.deps.outputChannel.appendLine(t("deviceOps.log.deleteDeviceSucceeded", { name: msg.name }));
+        if (referencedBy.length > 0) {
+          void vscode.window.showWarningMessage(
+            t("deviceOps.deleteReferencedByWarning", {
+              name: msg.name,
+              profiles: referencedBy.join(t("deviceOps.nameSeparator")),
+            }),
+          );
+        }
+      } else {
+        this.deps.outputChannel.appendLine(
+          t("deviceOps.log.deleteDeviceFailed", { name: msg.name, error: finalError ?? "" }),
+        );
+        void vscode.window.showErrorMessage(`ftester: ${finalError ?? t("deviceOps.deleteFailedGeneric")}`);
+      }
+    };
+
+    let proc: PipeProcess;
+    try {
+      proc = spawn(config.binaryPath, args, {
+        cwd: this.deps.workspaceRoot,
+        shell: false,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } catch (error) {
+      this.deps.outputChannel.appendLine(
+        t("deviceOps.log.deleteDeviceStartFailed", { name: msg.name, error: String(error) }),
+      );
+      respond(false, String(error), []);
+      return;
+    }
+
+    const stdoutParser = new NdjsonParser(
+      (value) => {
+        if (!isDeleteDeviceEvent(value)) {
+          this.deps.outputChannel.appendLine(
+            t("deviceOps.log.unknownLine", { label: `delete-device ${msg.name}`, value: JSON.stringify(value) }),
+          );
+          return;
+        }
+        if (value.kind === "log") {
+          this.deps.outputChannel.appendLine(`[delete-device ${msg.name}] ${value.message}`);
+        } else {
+          respond(value.ok, value.error, value.referencedBy ?? []);
+        }
+      },
+      (line) => this.deps.outputChannel.appendLine(`[delete-device ${msg.name} stdout] ${line}`),
+    );
+    const stderrParser = new NdjsonParser(
+      (value) => this.deps.outputChannel.appendLine(`[delete-device ${msg.name} stderr] ${JSON.stringify(value)}`),
+      (line) => this.deps.outputChannel.appendLine(`[delete-device ${msg.name} stderr] ${line}`),
+    );
+
+    proc.stdout.on("data", (chunk: Buffer) => stdoutParser.push(chunk));
+    proc.stderr.on("data", (chunk: Buffer) => stderrParser.push(chunk));
+
+    proc.on("error", (error) => {
+      this.deps.outputChannel.appendLine(
+        t("deviceOps.log.deleteDeviceRuntimeError", { name: msg.name, error: error.message }),
+      );
+      respond(false, error.message, []);
+    });
+    proc.on("close", (exitCode) => {
+      stdoutParser.end();
+      stderrParser.end();
+      this.deps.outputChannel.appendLine(
+        t("deviceOps.log.deleteDeviceClosed", { name: msg.name, exitCode: String(exitCode) }),
+      );
+      // finished を経由せず落ちた場合の合成失敗(spawnCreateDevice と同じパターン。responded ガードで二重防止)。
+      respond(false, t("deviceOps.processExitedWithCode", { exitCode: String(exitCode) }), []);
     });
   }
 }

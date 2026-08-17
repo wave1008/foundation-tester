@@ -28,11 +28,12 @@ struct FTester: AsyncParsableCommand {
             RunFileCommand.self,
             DraftScenarioCommand.self,
             ProjectCommand.self,
-            MachineCommand.self,
             ProfileCommand.self,
             DevicesCommand.self,
             ApiCommand.self,
             ResultsCommand.self,
+            RemoteCommand.self,
+            HooksCommand.self,
         ]
     )
 }
@@ -185,7 +186,7 @@ struct Doctor: AsyncParsableCommand {
             if let avdmanager = AndroidSDKLocator.findAVDManager() {
                 print("   ✅ avdmanager: \(avdmanager.path)")
             } else {
-                print("   ⚠️ \(AndroidSDKLocator.avdManagerMissingMessage)。"
+                print("   ⚠️ \(AndroidSDKLocator.avdManagerMissingMessage). "
                       + "New AVDs cannot be created (running on existing AVDs is unaffected). "
                       + AndroidSDKLocator.avdManagerInstallHint)
             }
@@ -687,6 +688,21 @@ struct RunScenarios: AsyncParsableCommand {
           help: "Enable fast input on the iOS xcuitest bridge (skips the quiescence wait). Can also be set via iosFastInput in the run profile")
     var fastInput = false
 
+    @Option(help: "Dispatch this run to a remote Mac over SSH: a registered name (ftester remote hosts) or a raw user@host/host. Requires --profile. Experimental (docs/remote-runner.md)")
+    var host: String?
+
+    @Option(name: .customLong("remote-dir"),
+            help: "Runner-only base directory on the remote host (holds its own clone and workspace; default: the host registry's entry, or ~/ftester-runner). Must NOT point at an existing local install of foundation-tester")
+    var remoteDir: String?
+
+    @Option(name: .customLong("remote-timeout"),
+            help: "Timeout in seconds for the whole remote dispatch (default: auto, sized from the scenario count; see docs/remote-runner.md)")
+    var remoteTimeout: Int?
+
+    @Option(name: .customLong("remote-artifacts"),
+            help: "Collect recordings and run logs (results/) from the remote after the run: collect (default) or on-demand (leave them on the remote; docs/remote-runner.md)")
+    var remoteArtifacts: String = "collect"
+
     @Flag(name: .customLong("enable-animations"),
           help: "Keep the app's animations instead of turning them off on the device. Can also be set via enableAnimations in the run profile")
     var enableAnimations = false
@@ -695,11 +711,76 @@ struct RunScenarios: AsyncParsableCommand {
           help: "Performance-testing mode (--profile only): if a dead lane cannot be revived before the run starts, fail instead of dropping it and continuing on the remaining lanes. iOS lanes are built before the run starts (no late join) so a missing one is reported before the run, not in the middle of it")
     var performanceMode = false
 
+    @Option(help: ArgumentHelp("Dispatch this run across a fleet of hosts in parallel: "
+        + "profiles/fleets/<name>.json (docs/remote-runner.md §13). Each entry runs as its own "
+        + "child process, with output lines prefixed by the entry's host name. Mutually exclusive "
+        + "with --host/--profile/--ports/--failed/--report-dir/--skip-build. --junit is supported: "
+        + "each entry's report is merged into one file (docs/remote-runner.md §8). Experimental"))
+    var fleet: String?
+
+    @Flag(help: ArgumentHelp("With --fleet: distribute the scenario set across the fleet's entries "
+        + "(LPT bin packing by past duration; docs/remote-runner.md §8) instead of running the same "
+        + "set on every entry. Requires a local build+scenario list to resolve the assignment "
+        + "(skipped by plain --fleet), and resolves each entry's platform from its run profile's "
+        + "devices. Entries assigned 0 scenarios are not dispatched. Experimental"))
+    var split = false
+
+    @Flag(name: .customLong("force-lock"),
+          help: ArgumentHelp("Steal a remote host's dispatch.lock instead of failing fast when another dispatch "
+            + "already holds it (docs/remote-runner.md §5). Needs a run profile, --host or --fleet"))
+    var forceLock = false
+
+    @Option(name: .customLong("device"), parsing: .upToNextOption,
+            help: ArgumentHelp("Run on only these devices of the run profile (device names as written in "
+                + "the machine profile). Repeatable; defaults to every device the run profile lists. "
+                + "Used by the per-host sub-runs when one run profile spans devices on several machines "
+                + "(docs/remote-runner.md §13)"))
+    var devices: [String] = []
+
+    /// **どの機械のデバイスを使うか**。`--device` は名前でしか絞れないが、一意なのは (host, name)
+    /// なので、名前だけだと別の機械の同名デバイスまで掴む(docs/remote-runner.md §13)。
+    /// ホスト別サブ実行が自分で付ける値で、手で打つものではない
+    @Option(name: .customLong("device-host"),
+            help: ArgumentHelp(
+                "Only use the devices assigned to this machine (\"local\" or a registered host name). "
+                + "Set by the per-host sub-runs; not for hand use",
+                visibility: .hidden))
+    var deviceHost: String?
+
+    /// **手で打つものではない**。RemoteRunDispatcher がミラー後の絶対パスを渡す
+    /// (Sources/FTCore/RemoteDispatch.swift の RemoteRunArgs.build)。プロファイルの
+    /// `remoteControl.workspace` を上書きし、appPath のインストール先(ステージ先。原本の解決基準は
+    /// 常にリポジトリルートで不変)をそちらへ切り替える(ProfileResolver.resolve の
+    /// workspaceOverride / WorkspaceAppStaging 参照)
+    @Option(help: ArgumentHelp(
+        "Override this run profile's remoteControl.workspace (where the staged appPath package is "
+        + "installed from). Set by the remote dispatcher on the far side; not for hand use",
+        visibility: .hidden))
+    var workspace: String?
+
     @OptionGroup var driverOptions: DriverOptions
 
     func validate() throws {
         if heal && noHeal {
             throw ValidationError("--heal and --no-heal cannot be used together")
+        }
+        if fleet != nil {
+            if host != nil { throw ValidationError("--fleet cannot be combined with --host") }
+            if profile != nil {
+                throw ValidationError(
+                    "--fleet cannot be combined with --profile (set profile per entry in the fleet file)")
+            }
+            if ports != nil { throw ValidationError("--fleet cannot be combined with --ports") }
+            if failed { throw ValidationError("--fleet cannot be combined with --failed") }
+            if reportDir != nil { throw ValidationError("--fleet cannot be combined with --report-dir") }
+            if skipBuild { throw ValidationError("--fleet cannot be combined with --skip-build") }
+        }
+        if split, fleet == nil {
+            throw ValidationError("--split requires --fleet")
+        }
+        if forceLock, let message = RemoteDispatchFlagPolicy.forceLockRejection(
+            host: host, fleet: fleet, profile: profile) {
+            throw ValidationError(message)
         }
     }
 
@@ -709,6 +790,41 @@ struct RunScenarios: AsyncParsableCommand {
         if fastInput { setenv("FT_FAST_INPUT", "1", 1) }
         // プロファイル指定分は ProfileRunner が注入する(こちらは ON 側の上書きのみ)
         if enableAnimations { setenv(AnimationPolicy.environmentKey, "1", 1) }
+        // リモート実行はここで打ち切る(以降はローカル実行の段取り。フラグはコマンドラインごと
+        // リモートへ中継されるので、向こう側の ftester が同じ env を自分で立てる)。
+        // dry-run だけは送らない(--host 明示・マシンプロファイルの host 自動のどちらも。
+        // 理由と罠は RemoteDispatchGate の宣言。優先順位・食い違いは resolveEffectiveHostDispatch
+        // → FTCore.MachineHostDispatch に委譲。ユーザー決定 2026-08-17: マシンプロファイルで
+        // host を持たせることで、実行プロファイル経由で間接的にリモートを指定できるようにした)
+        // デバイスが複数の機械にまたがる実行プロファイルは、ホストごとのサブ実行へ分ける
+        // (単一ディスパッチでは「そのホストに無いデバイス」が解決できない)。--host 明示や
+        // 全台が同じ機械なら nil が返り、従来の経路をそのまま通る
+        if !dryRun, fleet == nil, let profile,
+           let groups = try DeviceHostRunner.plan(
+               project: try ScenarioHost.project(named: project), profileName: profile,
+               explicitHost: host, deviceFilter: devices) {
+            let exitCode = try await DeviceHostRunner.run(
+                project: try ScenarioHost.project(named: project), profileName: profile,
+                groups: groups, scenarios: scenarios, folders: folders,
+                heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
+                fastInput: fastInput, enableAnimations: enableAnimations,
+                performanceMode: performanceMode, forceLock: forceLock,
+                remoteDir: remoteDir, remoteTimeout: remoteTimeout,
+                remoteArtifacts: remoteArtifacts, quiet: quiet, junit: junit)
+            if exitCode != 0 { throw ExitCode(exitCode) }
+            return
+        }
+        if !dryRun, let dispatch = try resolveEffectiveHostDispatch(
+            explicitHost: host, profile: profile, project: project,
+            requireMachineHost: true, warn: { print("⚠️ \($0)") }) {
+            try await dispatchToRemoteHost(dispatch)
+            return
+        }
+        // dry-run だけは送らない(--host と同じ規律。RemoteDispatchGate の宣言参照)
+        if let fleet, !dryRun {
+            try await dispatchToFleet(fleet)
+            return
+        }
         PhaseLog.mark("start")
         let testProject = try ScenarioHost.project(named: project)
         PhaseLog.mark("project-resolved")
@@ -762,6 +878,14 @@ struct RunScenarios: AsyncParsableCommand {
                 print("ℹ️ --dry-run touches no device, so --profile is not used"
                       + " (--platform decides which ios { } / android { } blocks run)")
             }
+            if host != nil {
+                print("ℹ️ --dry-run touches no device, so --host is not used"
+                      + " (the scenarios are validated locally, from the same source the remote would run)")
+            }
+            if fleet != nil {
+                print("ℹ️ --dry-run touches no device, so --fleet is not used"
+                      + " (the scenarios are validated locally, from the same source every fleet entry would run)")
+            }
             let failedCount = await runDryRun(items, project: testProject)
             print(failedCount == 0
                   ? "✅ All \(items.count) scenario(s) passed the dry-run"
@@ -789,6 +913,9 @@ struct RunScenarios: AsyncParsableCommand {
                 quiet: quiet, lpt: !noLPT,
                 lptHistoryRuns: lptHistoryRuns ?? LPTOrdering.defaultHistoryRuns,
                 performanceMode: performanceMode,
+                deviceFilter: devices,
+                deviceHost: deviceHost,
+                workspaceOverride: workspace,
                 recorder: recorder)
             let failedCount = runSummary.failed
             PhaseLog.mark("profile-run-done")
@@ -832,6 +959,89 @@ struct RunScenarios: AsyncParsableCommand {
               : "❌ \(failedCount) of \(items.count) scenario(s) failed")
         if failedCount > 0 {
             throw ExitCode(1)
+        }
+    }
+
+    /// `--host` または(自動)マシンプロファイルの `host`: ローカルビルド・実行をせず、対等ピア
+    /// (SSH 到達可能な foundation-tester clone)に丸ごとディスパッチする
+    /// (docs/remote-runner.md §3・§7・Phase 1)。デバイス割当競合を避けるためリモート1本での
+    /// 実行のみサポートし、ローカル専用オプションは併用不可にする
+    private func dispatchToRemoteHost(_ dispatch: EffectiveHostDispatch) async throws {
+        guard let profile else {
+            throw ValidationError("--host requires --profile")
+        }
+        // 拒否 or 注記の分岐は FTCore.RemoteDispatchFlagPolicy に委譲(欠陥1)。origin が
+        // 自動ディスパッチ(マシンプロファイルの host)なら --skip-build は注記のみで無視する
+        // (リモートは常に自前でビルドする)。他の3つは自動でも意味を持たせられないため拒否のまま
+        let origin = dispatch.origin
+        if ports != nil {
+            try applyFlagPolicy(RemoteDispatchFlagPolicy.rejected(flag: "--ports", origin: origin))
+        }
+        if reportDir != nil {
+            try applyFlagPolicy(RemoteDispatchFlagPolicy.rejected(flag: "--report-dir", origin: origin))
+        }
+        if failed {
+            try applyFlagPolicy(RemoteDispatchFlagPolicy.rejected(flag: "--failed", origin: origin))
+        }
+        if skipBuild {
+            try applyFlagPolicy(RemoteDispatchFlagPolicy.skipBuild(origin: origin))
+        }
+
+        let resolved = try resolveRemoteTarget(dispatch, remoteDirOverride: remoteDir)
+        resolved.announce()
+        let artifactsMode = try RemoteArtifactsMode.parse(remoteArtifacts)
+        let testProject = try ScenarioHost.project(named: project)
+        let localRoot = try RepoRoot.find()
+        let dispatcher = RemoteRunDispatcher(
+            host: resolved.hostSpec, remoteDirRaw: resolved.remoteDirRaw, localRepoRoot: localRoot,
+            artifacts: artifactsMode, forceLock: forceLock)
+        let exitCode = try await dispatcher.dispatch(
+            project: testProject, profile: profile, scenarios: scenarios, folders: folders,
+            deviceNames: devices, deviceHost: deviceHost,
+            heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
+            fastInput: fastInput, enableAnimations: enableAnimations,
+            performanceMode: performanceMode,
+            localJUnitPath: junit, remoteTimeoutSeconds: remoteTimeout)
+        if exitCode != 0 {
+            throw ExitCode(exitCode)
+        }
+    }
+
+    /// RemoteDispatchFlagPolicy.Decision の適用。注記は FileHandle 直書き(print を使わない —
+    /// RemoteRunDispatcher.log と同じ規律。stdout が端末でないと libc の行バッファが効かず
+    /// 出力が遅延・欠落しうる)
+    private func applyFlagPolicy(_ decision: RemoteDispatchFlagPolicy.Decision) throws {
+        switch decision {
+        case .allowed:
+            return
+        case .ignoredWithNote(let note):
+            FileHandle.standardOutput.write(Data((note + "\n").utf8))
+        case .rejected(let message):
+            throw ValidationError(message)
+        }
+    }
+
+    /// `--fleet`: profiles/fleets/<name>.json の全エントリを並行実行する(docs/remote-runner.md
+    /// §13)。検証は投入前に全部済ませる(FleetProfile.validate)。実体は FleetRunner
+    /// (エントリごとに子プロセスを起動し、出力を host 名で前置する)
+    private func dispatchToFleet(_ fleetName: String) async throws {
+        let testProject = try ScenarioHost.project(named: project)
+        let doc = try FleetProfile.load(project: testProject, name: fleetName)
+        let registeredNames = Set((LocalConfig.load().remoteHosts ?? []).map(\.name))
+        let issues = FleetProfile.validate(doc, project: testProject, registeredHostNames: registeredNames)
+        guard issues.isEmpty else {
+            throw ValidationError((["fleet \"\(fleetName)\" is invalid:"] + issues.map { "  - \($0)" })
+                .joined(separator: "\n"))
+        }
+        let exitCode = try await FleetRunner.run(
+            project: testProject, fleetName: fleetName, fleet: doc,
+            scenarios: scenarios, folders: folders,
+            heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
+            fastInput: fastInput, enableAnimations: enableAnimations, performanceMode: performanceMode,
+            forceLock: forceLock, remoteDir: remoteDir, remoteTimeout: remoteTimeout,
+            remoteArtifacts: remoteArtifacts, split: split, quiet: quiet, junit: junit)
+        if exitCode != 0 {
+            throw ExitCode(exitCode)
         }
     }
 

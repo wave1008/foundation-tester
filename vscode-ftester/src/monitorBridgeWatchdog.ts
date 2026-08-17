@@ -84,6 +84,13 @@ export class MonitorBridgeWatchdog {
       if (device.registered === false) {
         continue;
       }
+      // **リモートの台は見ない** —— 修復手段(ブリッジ再供給)は手元にしか効かず、
+      // かつ entries が name 単位なので、同名の台が別の機械にも居ると
+      // 「向こうの connected が手元のハングを隠す / 向こうの booted が手元の健全な台を再起動する」
+      // の両方が起きる(その機械の watchdog は未実装。docs/remote-runner.md §13)
+      if (device.machineHost !== undefined) {
+        continue;
+      }
       this.observeOne(device.name, device.state);
     }
   }
@@ -110,13 +117,14 @@ export class MonitorBridgeWatchdog {
       return;
     }
 
-    if (state === "offline") {
-      // 連続性が途切れるだけで、failed/attemptCount/cooldown は connected 観測まで保持する。
+    if (state !== "booted") {
+      // offline と unknown(観測できていない)。連続性が途切れるだけで、failed/attemptCount/
+      // cooldown は connected 観測まで保持する。**unknown で streak を積まない** —— 観測が
+      // 無いことを「ブリッジが応答しない」と読むと、届いていないだけのリモート機に復旧を撃つ
       entry.bootedStreak = 0;
       return;
     }
 
-    // state === "booted"
     if (entry.failed) {
       return;
     }

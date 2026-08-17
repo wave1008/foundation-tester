@@ -6,7 +6,9 @@
 import { t } from '../i18n.js';
 import { vscode } from './vscodeApi.js';
 import { cachePhysicalDeviceInfo } from './physicalDeviceCache.js';
+import { clampMenuPosition } from './menu.js';
 import { selectedMachine, findMachine, allDeviceNamesForSelectedMachine, btnDeviceAddExisting, refreshSelectedDeviceEditor } from './machineProfilesTab.js';
+import { currentDeviceSource, refreshDeviceAddBadge, resetDevicePickHost } from './devicePickHost.js';
 
 // ---- デバイス追加モーダル ---------------------------------------------------
 
@@ -121,16 +123,43 @@ function platformIssue(platform) {
   // 変えれば解決するので、カタログが空という言い方をしない)
   const serviceOnly = platform === 'android' && models.length > 0
     && deviceCatalog.android.systemImages.length > 0;
-  // side.error は CLI 由来の理由文(訳さず素通しする。枠だけ i18n)
+  // side.error は CLI 由来の理由文(訳さず素通しする。枠だけ i18n)。
+  // **解決手段は呼び手が足す** —— cmdline-tools の導入先はカタログを取った機械なので、
+  // リモートのときは remote exec の案内にする(ローカルは下の導入ボタンが出る)
+  const source = currentDeviceSource();
+  const remedy = side.errorCode === 'avdmanager-missing' && source.kind === 'remote'
+    ? ' ' + t('wvMonitor.deviceAdd.installCmdlineToolsOnRemote', { host: source.host })
+    : '';
   return {
     blocked,
     message: side.error
-      || (blocked
+      ? side.error + remedy
+      : (blocked
         ? t(serviceOnly ? 'wvMonitor.deviceAdd.noImageForService' : 'wvMonitor.deviceAdd.catalogEmpty')
         : ''),
-    // 導入で解消できる欠け方のときだけボタンを出す(文言では分岐しない)
-    installable: platform === 'android' && side.errorCode === 'avdmanager-missing',
+    // 導入で解消できる欠け方のときだけボタンを出す(文言では分岐しない)。導入は常にローカルで
+    // 実行するため(installCmdlineToolsRequest はホストセレクタの対象外)、ホストがリモートの
+    // ときは出さない — 出すと「別マシンの欠けを手元に導入するボタン」という誤動作になる。
+    installable: platform === 'android' && side.errorCode === 'avdmanager-missing'
+      && source.kind === 'local',
   };
+}
+
+// いま選んでいるホストで name が衝突するか(実体・登録のどちらか)。**別ホストの同名は衝突ではない**
+// (FTCore.DeviceHostGrouping と同じ「一意なのは (host, name)」)。
+function nameClashesOnCurrentHost(name, platform, source) {
+  const host = source.kind === 'remote' ? source.host : undefined;
+  if (allDeviceNamesForSelectedMachine(host).includes(name)) {
+    return true;
+  }
+  // 実体側(このホストから取得済みの一覧)。ピッカー経由で開いているので行が揃っている
+  const rows = platform === 'ios' ? devicePickIosRows : devicePickAndroidRows;
+  return rows.some((row) => {
+    if (row.missing) { return false; }         // 実体が無い行は衝突しない
+    if (row.device) { return row.device.name === name; }
+    if (row.avd) { return row.avd.displayName === name; }
+    return false;
+  });
 }
 
 function selectedOptionLabel(select) {
@@ -209,6 +238,7 @@ function openDeviceAddModal() {
   dlgNameDirty = false;
   dlgName.value = '';
   dlgService.value = DEFAULT_ANDROID_SERVICE;
+  refreshDeviceAddBadge();
   requestDeviceCatalog();
   dlgOk.textContent = 'OK';
   dlgCancel.disabled = false;
@@ -225,7 +255,7 @@ function requestDeviceCatalog() {
   dlgInstallRow.hidden = true;
   setDialogControlsEnabled(false);
   dlgOk.disabled = true;
-  vscode.postMessage({ type: 'deviceCatalogRequest' });
+  vscode.postMessage({ type: 'deviceCatalogRequest', source: currentDeviceSource() });
 }
 
 // 導入中(数分)は閉じられる: CLI が固まってもモーダルが永久に閉じなくなるのを避ける。
@@ -302,7 +332,9 @@ export function applyCreateDeviceResult(message) {
     closeDeviceAddModal();
     // pendingAutoCheck に識別子を保持(次の一覧再描画で自動チェックON。詳細は宣言箇所参照)。
     if (deviceAddFromPicker) {
-      pendingAutoCheck = message.device ? { udid: message.device.udid, avd: message.device.avd } : null;
+      pendingAutoCheck = message.device
+        ? { udid: message.device.udid, avd: message.device.avd, name: message.name }
+        : null;
     }
     reloadDevicePickIfOpen();
     return;
@@ -323,17 +355,36 @@ deviceAddOverlay.addEventListener('click', (event) => {
     closeDeviceAddModal();
   }
 });
+// Enter で OK。**入力欄・選択欄のどこにいても効かせる**(名前を打ってそのまま Enter が自然)。
+// ボタン上の Enter は既定のクリック動作に任せる(二重発火を避ける)。IME の変換確定 Enter は
+// 拾わない(isComposing / keyCode 229。liveTab.js と同じ規律 —— 日本語入力で確定した瞬間に
+// ダイアログが閉じると入力し直しになる)。
+deviceAddOverlay.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter' || event.isComposing || event.keyCode === 229) {
+    return;
+  }
+  if (event.target.closest('button') || dlgOk.disabled || deviceAddCreating) {
+    return;
+  }
+  event.preventDefault();
+  dlgOk.click();
+});
 dlgOk.addEventListener('click', () => {
   if (dlgOk.disabled || deviceAddCreating || !deviceCatalog) {
     return;
   }
   const name = dlgName.value.trim();
-  const error = validateNewDeviceName(name, allDeviceNamesForSelectedMachine());
-  if (error) {
+  const source = currentDeviceSource();
+  if (name.length === 0) {
     dlgError.classList.remove('info');
-    dlgError.textContent = error;
+    dlgError.textContent = t('wvMonitor.deviceAdd.nameRequired');
     return;
   }
+  // **同名は拒否せず「上書きするか」を聞く**(2026-08-17 指示)。判定は選択中のホストのぶんだけ
+  // (一意なのは (host, name)。別の機械の同名は衝突ではない)。実体と登録のどちらの衝突でも、
+  // 上書き = 実体を消して作り直す + 古い登録を新しい実体で置き換える。
+  // 確認ダイアログはホスト側(webview の window.confirm は効かない)。
+  const overwrite = nameClashesOnCurrentHost(name, getDialogPlatform(), source);
   deviceAddCreating = true;
   setDialogControlsEnabled(false);
   dlgOk.disabled = true;
@@ -348,14 +399,23 @@ dlgOk.addEventListener('click', () => {
     model: dlgModel.value,
     os: dlgOs.value,
     // ピッカー経由なら register:false(登録はピッカー側 OK の machineDevicesSync で行う)。
+    // source が remote のときはホスト側が register によらず --no-register を強制する(§13)。
     register: !deviceAddFromPicker,
+    overwrite: overwrite,
+    source: currentDeviceSource(),
   });
 });
-// closeDeviceAddModal は自分の状態のみ見るため、他の Esc ハンドラと独立して共存できる。
+// **Esc は手前の1枚だけ閉じる**。document 上に Esc ハンドラが3つ(この追加ダイアログ /
+// 削除メニュー / 選択ダイアログ)あり、**手前を閉じた時点でフラグが下りる**ため、後続の
+// ハンドラが「奥も閉じてよい」と誤判定して2枚同時に閉じていた(2026-08-17 実機で確認)。
+// 消費したら preventDefault で印を付け、奥のハンドラはそれを見て降りる
+// (フラグの読み合いだと登録順に依存する)。
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') {
-    closeDeviceAddModal();
+  if (event.key !== 'Escape' || !deviceAddOpen || deviceAddCreating) {
+    return;
   }
+  closeDeviceAddModal();
+  event.preventDefault();
 });
 
 // ---- 名前入力モーダル(#name-input-overlay) ----------------------------------------
@@ -488,6 +548,11 @@ const devicePickError = document.getElementById('device-pick-error');
 const devicePickCancel = document.getElementById('device-pick-cancel');
 const devicePickOk = document.getElementById('device-pick-ok');
 const devicePickAddNewBtn = document.getElementById('device-pick-add-new');
+const devicePickHostSelect = document.getElementById('device-pick-host-select');
+const devicePickList = document.getElementById('device-pick-list');
+const devicePickLoading = document.getElementById('device-pick-loading');
+const devicePickDeleteMenu = document.getElementById('device-pick-delete-menu');
+const devicePickDeleteMenuItemBtn = document.getElementById('device-pick-delete-menu-item');
 
 let devicePickOpen = false;
 let devicePickAdding = false;
@@ -498,29 +563,45 @@ let devicePickAndroidRows = [];
 // register:false で作成した直後、次の installedDevices 再描画で自動チェックONにしたい行の
 // 識別子(iOS=udid/Android=avd の id)。適用後は必ず null に戻す(一度きりの適用)。
 let pendingAutoCheck = null;
+// 行右クリック「削除」メニュー(#device-pick-delete-menu)を開いている対象
+// ({ platform, identifier, name, rowEl, checkbox })。未オープンなら null。実機行は対象外
+// (シミュレータ/AVD のような「削除できる実体」を持たない)。
+let devicePickDeleteMenuEntry = null;
+// devicePickDeviceDelete を送信中の identifier 集合。その行だけ操作不可にする(他行・OK/Cancel は
+// 引き続き操作できる)。応答は devicePickOpen の状態に関わらず届きうる(削除は数秒かかるため、
+// その間にダイアログを閉じられることがある)。
+const devicePickDeletingIdentifiers = new Set();
+
+// **いま選んでいるホストに居る登録済みデバイスだけ**を返す。ホストを跨いで見ると、
+// 別の機械の同じ AVD id(各機が同じ命名規則で作るので普通に一致する)を「登録済み」と
+// 誤判定し、チェックを外すと**別ホストの登録を消す**(FTCore.DeviceHostGrouping と同じ
+// 「一意なのは (host, name)」)。
+function registeredDevicesForCurrentHost() {
+  const machine = findMachine(selectedMachine);
+  if (!machine) {
+    return [];
+  }
+  const source = currentDeviceSource();
+  const host = source.kind === 'remote' ? source.host : undefined;
+  return machine.devices.filter((d) => (d.host ?? undefined) === host);
+}
 
 // 識別値→マシンプロファイル上の name の対応表(初期チェック判定・remove 対象名の特定に使う)。
 // Android は avd の id/displayName どちらの一致も登録済みとみなす。
 function registeredIosNameByUdid() {
-  const machine = findMachine(selectedMachine);
   const map = new Map();
-  if (machine) {
-    for (const d of machine.devices) {
-      if (d.platform === 'ios' && d.udid) {
-        map.set(d.udid, d.name);
-      }
+  for (const d of registeredDevicesForCurrentHost()) {
+    if (d.platform === 'ios' && d.udid) {
+      map.set(d.udid, d.name);
     }
   }
   return map;
 }
 function registeredAndroidNameByAvd() {
-  const machine = findMachine(selectedMachine);
   const map = new Map();
-  if (machine) {
-    for (const d of machine.devices) {
-      if (d.platform === 'android' && d.avd) {
-        map.set(d.avd, d.name);
-      }
+  for (const d of registeredDevicesForCurrentHost()) {
+    if (d.platform === 'android' && d.avd) {
+      map.set(d.avd, d.name);
     }
   }
   return map;
@@ -528,13 +609,10 @@ function registeredAndroidNameByAvd() {
 
 // 実機は serial で登録済みを判定する(AVD は持たないため registeredAndroidNameByAvd に載らない)。
 function registeredAndroidNameBySerial() {
-  const machine = findMachine(selectedMachine);
   const map = new Map();
-  if (machine) {
-    for (const d of machine.devices) {
-      if (d.platform === 'android' && d.serial) {
-        map.set(d.serial, d.name);
-      }
+  for (const d of registeredDevicesForCurrentHost()) {
+    if (d.platform === 'android' && d.serial) {
+      map.set(d.serial, d.name);
     }
   }
   return map;
@@ -624,6 +702,26 @@ function renderDevicePickGroups(data) {
   devicePickAndroidRows = [];
   devicePickIosBody.textContent = '';
   devicePickAndroidBody.textContent = '';
+  // 再描画で行 DOM を作り直すため、開いたままの削除メニューは対象行を失う(machineProfilesTab.js の
+  // renderMachineProfileBody と同じ理由)。
+  closeDevicePickDeleteMenu();
+
+  // 登録はあるのに一覧に無いデバイス(実体を手で消した等)。**出さないと気付けない** ——
+  // リモートの実体は手元から見えず、実行して「AVD が無い」で落ちるまで分からない。
+  // チェックを外して OK すれば登録だけ解除できる(実体は元から無い)
+  const missingRows = (bodyEl, rows, platform, installedIdentifiers, identifierOf) => {
+    for (const d of registeredDevicesForCurrentHost()) {
+      if (d.platform !== platform) { continue; }
+      const identifier = identifierOf(d);
+      if (!identifier || installedIdentifiers.has(identifier)) { continue; }
+      const row = buildMissingPickRow(platform, d.name, identifier);
+      bodyEl.appendChild(row.rowEl);
+      rows.push({
+        checkbox: row.checkbox, missing: true,
+        initialChecked: true, registeredName: d.name, rowEl: row.rowEl,
+      });
+    }
+  };
 
   const iosNameByUdid = registeredIosNameByUdid();
   const iosData = data.ios;
@@ -681,6 +779,17 @@ function renderDevicePickGroups(data) {
       row.append(checkbox, textWrap);
       attachDevicePickRowToggle(row, checkbox);
       syncDevicePickRowChecked(row, checkbox);
+      // シミュレータ本体(実体)の削除。実機行(buildPhysicalPickRow)には付けない —— 実機は
+      // 「削除できる実体」を持たない。
+      row.addEventListener('contextmenu', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openDevicePickDeleteMenu(
+          { platform: 'ios', identifier: device.udid, name: device.name, rowEl: row, checkbox: checkbox },
+          event.clientX,
+          event.clientY,
+        );
+      });
       devicePickIosBody.appendChild(row);
       devicePickIosRows.push({ checkbox: checkbox, device: device, initialChecked: registered, registeredName: registeredName, rowEl: row });
     }
@@ -742,10 +851,62 @@ function renderDevicePickGroups(data) {
       row.append(checkbox, textWrap);
       attachDevicePickRowToggle(row, checkbox);
       syncDevicePickRowChecked(row, checkbox);
+      // AVD 本体(実体)の削除。実機行には付けない(iOS ループと同じ理由)。
+      row.addEventListener('contextmenu', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openDevicePickDeleteMenu(
+          { platform: 'android', identifier: avd.id, name: avd.displayName, rowEl: row, checkbox: checkbox },
+          event.clientX,
+          event.clientY,
+        );
+      });
       devicePickAndroidBody.appendChild(row);
       devicePickAndroidRows.push({ checkbox: checkbox, avd: avd, initialChecked: registered, registeredName: registeredName, rowEl: row });
     }
   }
+
+  missingRows(devicePickIosBody, devicePickIosRows, 'ios',
+              new Set([...iosData.devices, ...iosPhysical].map((d) => d.udid).filter(Boolean)),
+              (d) => d.udid);
+  missingRows(devicePickAndroidBody, devicePickAndroidRows, 'android',
+              new Set([...androidData.avds.map((a) => a.id),
+                       ...androidData.avds.map((a) => a.displayName),
+                       ...androidPhysical.map((p) => p.serial)].filter(Boolean)),
+              (d) => d.avd || d.serial);
+}
+
+// 「登録はあるが実体が無い」行。チェックは ON(登録済み)で始まり、外して OK すると登録だけ消える。
+// 実体を指す操作(右クリック削除)は付けない —— 消す対象が無い
+function buildMissingPickRow(platform, name, identifier) {
+  const rowEl = document.createElement('div');
+  rowEl.className = 'device-pick-row device-pick-row-missing';
+  const checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  checkbox.checked = true;
+  checkbox.addEventListener('change', () => {
+    syncDevicePickRowChecked(rowEl, checkbox);
+    updateDevicePickOkState();
+  });
+  const textWrap = document.createElement('div');
+  textWrap.className = 'device-pick-row-text';
+  const nameRow = document.createElement('div');
+  nameRow.className = 'device-pick-row-name-line';
+  const badge = document.createElement('span');
+  badge.className = 'badge badge-missing';
+  badge.textContent = t('wvMonitor.devicePick.missingBadge');
+  const nameEl = document.createElement('span');
+  nameEl.className = 'device-pick-row-name tile-name tile-name-' + platform;
+  nameEl.textContent = name;
+  nameRow.append(badge, nameEl);
+  const detailEl = document.createElement('div');
+  detailEl.className = 'device-pick-row-detail';
+  detailEl.textContent = t('wvMonitor.devicePick.missingDetail', { identifier: identifier });
+  textWrap.append(nameRow, detailEl);
+  rowEl.append(checkbox, textWrap);
+  attachDevicePickRowToggle(rowEl, checkbox);
+  syncDevicePickRowChecked(rowEl, checkbox);
+  return { rowEl: rowEl, checkbox: checkbox };
 }
 
 // pendingAutoCheck が指す行の checkbox だけ ON にする(initialChecked は false のままなので
@@ -756,6 +917,16 @@ function applyPendingAutoCheck() {
   }
   const target = pendingAutoCheck;
   pendingAutoCheck = null;
+  // 上書きで作り直した場合、同名の古い登録が「実体なし」行として残る。**自動で外す** ——
+  // 外さないと OK を押しても古い登録が残り、同名2件(片方は実体なし)になる
+  if (target.name) {
+    for (const row of devicePickIosRows.concat(devicePickAndroidRows)) {
+      if (row.missing && row.registeredName === target.name && row.checkbox.checked) {
+        row.checkbox.checked = false;
+        syncDevicePickRowChecked(row.rowEl, row.checkbox);
+      }
+    }
+  }
   if (target.udid) {
     const row = devicePickIosRows.find((r) => r.device.udid === target.udid);
     if (row) {
@@ -779,15 +950,41 @@ function setDevicePickControlsEnabled(enabled) {
   }
 }
 
+/** 取得中の表示。**一覧は消さずに保つ** —— 空にするとダイアログが一度縮んでから
+ * 新しい一覧で伸び直し、切り替えのたびに画面が跳ねる(2026-08-17 ユーザー指摘)。
+ * 代わりに薄くして操作を止め、**ホストのリストボックスの右**に「読み込み中...」を出す
+ * (一覧側に出すと同じ理由で高さが変わる)。中身の入れ替えは応答が届いた1回だけ。
+ * 取得中はホスト選択も止める(往復が重なると、あとから来た応答がどちらのものか分からなくなる)。 */
+function beginDevicePickLoading() {
+  devicePickList.classList.add('loading');
+  for (const row of devicePickIosRows.concat(devicePickAndroidRows)) {
+    row.checkbox.disabled = true;
+  }
+  devicePickLoading.style.display = '';
+  devicePickOk.disabled = true;
+  devicePickHostSelect.disabled = true;
+}
+
+/** 応答(成功・失敗どちらでも)が届いたら操作を戻す。ここで戻さないとホストを二度と切り替えられない。 */
+function endDevicePickLoading() {
+  devicePickList.classList.remove('loading');
+  devicePickLoading.style.display = 'none';
+  devicePickHostSelect.disabled = false;
+  // **行のチェックも戻す**。begin 側で無効化しているので、ここで戻さないと取得に失敗したとき
+  // 見た目は通常なのに全行が反応しない状態が残る(2026-08-17 のレビュー指摘)。
+  // 応答が来て再描画される場合は新しい行に置き換わるため二重には効かない
+  for (const row of devicePickIosRows.concat(devicePickAndroidRows)) {
+    row.checkbox.disabled = false;
+  }
+}
+
 // 作成成功後、モーダルが開いていれば一覧を再取得する(他行の未確定差分は破棄される。単純さ優先)。
 function reloadDevicePickIfOpen() {
   if (!devicePickOpen) {
     return;
   }
-  devicePickError.classList.add('info');
-  devicePickError.textContent = t('wvMonitor.devicePick.loading');
-  devicePickOk.disabled = true;
-  vscode.postMessage({ type: 'installedDevicesRequest' });
+  beginDevicePickLoading();
+  vscode.postMessage({ type: 'installedDevicesRequest', source: currentDeviceSource() });
 }
 
 function openDevicePickModal() {
@@ -797,20 +994,14 @@ function openDevicePickModal() {
   devicePickOpen = true;
   devicePickAdding = false;
   pendingAutoCheck = null; // 前回開いた際の残留分があれば捨てて、新規セッションはクリーンに始める
-  devicePickIosRows = [];
-  devicePickAndroidRows = [];
-  devicePickIosBody.textContent = '';
-  devicePickAndroidBody.textContent = '';
-  // 台数確定前の見出し。確定後は renderDevicePickGroups が台数付きに差し替える
-  devicePickIosTitle.textContent = t('wvMonitor.devicePick.iosTitle');
-  devicePickAndroidTitle.textContent = t('wvMonitor.devicePick.androidTitle');
-  devicePickError.classList.add('info');
-  devicePickError.textContent = t('wvMonitor.devicePick.loading');
-  devicePickOk.disabled = true;
   devicePickOk.textContent = 'OK';
   devicePickCancel.disabled = false;
+  const machine = findMachine(selectedMachine);
+  // ホストを先に確定させてから取得表示を出す(表示に「どこから取るか」を載せるため)
+  resetDevicePickHost(machine ? machine.host ?? null : null);
+  beginDevicePickLoading();
   devicePickOverlay.classList.add('visible');
-  vscode.postMessage({ type: 'installedDevicesRequest' });
+  vscode.postMessage({ type: 'installedDevicesRequest', source: currentDeviceSource() });
 }
 
 function closeDevicePickModal() {
@@ -819,10 +1010,12 @@ function closeDevicePickModal() {
   }
   devicePickOpen = false;
   pendingAutoCheck = null; // 閉じた後に届く installedDevices 応答で誤適用しないようクリアする
+  closeDevicePickDeleteMenu();
   devicePickOverlay.classList.remove('visible');
 }
 
 export function applyInstalledDevices(message) {
+  endDevicePickLoading();
   if (message.ok && message.data) {
     // モーダルが閉じていてもキャッシュだけは更新する(編集フォームが使うため)
     cachePhysicalDeviceInfo(message.data);
@@ -861,9 +1054,95 @@ export function applyMachineDevicesSyncResult(message) {
   devicePickError.textContent = message.error || t('wvMonitor.devicePick.syncFailed');
 }
 
+// ---- 行の右クリックメニュー(削除。#device-pick-delete-menu) --------------------------
+// machineProfilesTab.js の #machine-device-menu(プロファイルからの除去)と見た目・挙動は同じ
+// パターンだが、DOM 要素・対象は独立させている(こちらはホスト上の実体を消す)。
+
+function closeDevicePickDeleteMenu() {
+  if (!devicePickDeleteMenuEntry) {
+    return;
+  }
+  devicePickDeleteMenuEntry = null;
+  devicePickDeleteMenu.classList.remove('visible');
+}
+
+function openDevicePickDeleteMenu(entry, clientX, clientY) {
+  devicePickDeleteMenuEntry = entry;
+  devicePickDeleteMenu.classList.add('visible');
+  clampMenuPosition(devicePickDeleteMenu, clientX, clientY);
+}
+
+// その行だけ操作不可にする(checkbox 無効化 + 薄く表示。他の行・OK/Cancel は引き続き操作できる)。
+function setDevicePickRowDeleting(rowEl, checkbox, deleting) {
+  rowEl.classList.toggle('deleting', deleting);
+  checkbox.disabled = deleting;
+}
+
+devicePickDeleteMenuItemBtn.addEventListener('click', (event) => {
+  event.stopPropagation();
+  const entry = devicePickDeleteMenuEntry;
+  closeDevicePickDeleteMenu();
+  if (!entry || devicePickDeletingIdentifiers.has(entry.identifier)) {
+    return;
+  }
+  devicePickDeletingIdentifiers.add(entry.identifier);
+  setDevicePickRowDeleting(entry.rowEl, entry.checkbox, true);
+  vscode.postMessage({
+    type: 'devicePickDeviceDelete',
+    platform: entry.platform,
+    identifier: entry.identifier,
+    name: entry.name,
+    source: currentDeviceSource(),
+  });
+});
+
+// devicePickDeviceDelete への応答。確認モーダル(ホスト側)を含めると数秒かかるため、その間に
+// ダイアログを閉じ直されうる(closeDevicePickModal は削除中でも通す設計)。行が現存すれば
+// 操作可能に戻し、モーダルが閉じていれば表示更新はしない(applyInstalledDevices と同じ方針。
+// 失敗・referencedBy の通知はホスト側の vscode 通知が担うため、閉じていても利用者に届く)。
+export function applyDevicePickDeviceDeleteResult(message) {
+  devicePickDeletingIdentifiers.delete(message.identifier);
+  const row =
+    devicePickIosRows.find((r) => r.device && r.device.udid === message.identifier) ||
+    devicePickAndroidRows.find((r) => r.avd && r.avd.id === message.identifier);
+  if (row) {
+    setDevicePickRowDeleting(row.rowEl, row.checkbox, false);
+  }
+  if (message.ok) {
+    // 削除できた実体を一覧から落とすため取り直す(reloadDevicePickIfOpen は devicePickOpen を
+    // 見て自分で no-op になる)。
+    reloadDevicePickIfOpen();
+    return;
+  }
+  if (!devicePickOpen) {
+    return;
+  }
+  devicePickError.classList.remove('info');
+  devicePickError.textContent = message.error || t('wvMonitor.devicePick.deleteFailed');
+}
+
+document.addEventListener('click', (event) => {
+  if (devicePickDeleteMenuEntry && !devicePickDeleteMenu.contains(event.target)) {
+    closeDevicePickDeleteMenu();
+  }
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || !devicePickDeleteMenuEntry) {
+    return;
+  }
+  closeDevicePickDeleteMenu();
+  event.preventDefault();   // メニューを閉じただけで、奥のダイアログは閉じない
+});
+document.addEventListener('scroll', () => closeDevicePickDeleteMenu(), true);
+window.addEventListener('resize', () => closeDevicePickDeleteMenu());
+// 行上の contextmenu は stopPropagation 済み。行外で右クリックした場合に残さないためのガード。
+document.addEventListener('contextmenu', () => closeDevicePickDeleteMenu());
+
 btnDeviceAddExisting.addEventListener('click', () => openDevicePickModal());
 devicePickAddNewBtn.addEventListener('click', () => openDeviceAddModal());
 devicePickCancel.addEventListener('click', () => closeDevicePickModal());
+// ホスト選択を開いたまま変更した場合、選び直したホストから一覧を取り直す。
+devicePickHostSelect.addEventListener('change', () => reloadDevicePickIfOpen());
 devicePickOverlay.addEventListener('click', (event) => {
   if (event.target === devicePickOverlay) {
     closeDevicePickModal();
@@ -913,15 +1192,14 @@ devicePickOk.addEventListener('click', () => {
   devicePickOk.textContent = t('wvMonitor.devicePick.applying');
   devicePickError.classList.remove('info');
   devicePickError.textContent = '';
-  vscode.postMessage({ type: 'machineDevicesSync', machine: selectedMachine, add: add, remove: remove });
+  vscode.postMessage({ type: 'machineDevicesSync', machine: selectedMachine, add: add, remove: remove, source: currentDeviceSource() });
 });
-// #device-add-overlay をこのモーダルの上に重ねて開けるため、deviceAddOpen 中は Esc で奥の
-// このモーダルまで閉じないよう先にチェックする(手前側は自身の Esc ハンドラで閉じる)。
+// 手前(追加ダイアログ・削除メニュー)が消費した Esc では閉じない。判定は
+// event.defaultPrevented ―― deviceAddOpen を見る形だと、手前が先に閉じてフラグを下ろした後に
+// ここが走り、2枚同時に閉じる(登録順に依存する読み合いになっていた)。
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') {
-    if (deviceAddOpen) {
-      return;
-    }
-    closeDevicePickModal();
+  if (event.key !== 'Escape' || event.defaultPrevented) {
+    return;
   }
+  closeDevicePickModal();
 });

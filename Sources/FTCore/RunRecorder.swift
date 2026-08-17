@@ -144,12 +144,15 @@ public final class RunRecorder: @unchecked Sendable {
         String(scenarioID.map { $0 == "/" || $0 == ":" ? "_" : $0 })
     }
 
-    /// 優先順位: LocalConfig.currentMachineName(FT_MACHINE > 登録名)> Host.current().localizedName
-    /// > "unknown"。ファイル名(runID)に使うため [A-Za-z0-9_-] 以外は "_" に置換
+    /// 結果に付ける「どの機械で走ったか」。優先順位: FT_MACHINE > **ホスト名** > "unknown"。
+    /// 登録名(config.json の machineName)は 2026-08-17 に廃止したので、既定はホスト名 ——
+    /// 人が登録する値ではないぶんズレようがなく、機械の身元としてはむしろ正確
+    /// (ファイル名(runID)に使うため [A-Za-z0-9_-] 以外は "_" に置換)
     private static func resolveMachine(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> String {
-        let raw = LocalConfig.currentMachineName(environment: environment)
+        let env = environment["FT_MACHINE"]
+        let raw = (env?.isEmpty == false ? env : nil)
             ?? Host.current().localizedName
             ?? "unknown"
         return sanitizeMachineName(raw)

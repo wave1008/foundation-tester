@@ -1,8 +1,6 @@
 {
-  "common": {
-    "appName": "設定"
-  },
   "android": {
+    "appName": "設定",
     "app": "com.android.settings"
   }
 }

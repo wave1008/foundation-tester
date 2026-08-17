@@ -21,13 +21,9 @@
   "definitions": {
     "commonSection": {
       "type": "object",
-      "description": "アプリケーションプロファイルの共通セクション(AppProfileSection)。app/appPath は廃止(ios/android 側で指定する。common に書いても実行時は無視される)。",
+      "description": "アプリケーションプロファイルの共通セクション(AppProfileSection)。app/appPath/appName は廃止(ios/android 側で指定する。common に書いても実行時は無視され、appName は未知キー警告の対象になる)。",
       "additionalProperties": true,
       "properties": {
-        "appName": {
-          "type": "string",
-          "description": "ユーザーがアプリを識別するための表示名(レポート/GUI/ログで使用)。"
-        },
         "autoInstall": {
           "type": "boolean",
           "description": "実行前に appPath を自動インストールするか。**未指定の既定は appPath の有無**(パスがあれば有効・中身が変わったときだけ入れ直す)。止めたいときだけ false を明示する。common でのみ指定可(ios/android 側の autoInstall は廃止)。"

@@ -37,6 +37,18 @@ const treeSplitter = document.getElementById('recordings-splitter-tree');
 const recordingsBody = playerView.querySelector('.recordings-body');
 const autoAdvanceCheckbox = document.getElementById('recordings-auto-advance');
 
+// monitorHtml.ts 側に「動画無し」用の静的要素は無いため、ここで1度だけ生成して差し込む
+// (video 直後 / コントロール群と同じ .recordings-video-pane 配下)。表示切替は applyVideoAvailability。
+const recordingsVideoPane = playerView.querySelector('.recordings-video-pane');
+const recordingsNowPlayingBlock = playerView.querySelector('.recordings-now-playing');
+const recordingsControlsBlock = playerView.querySelector('.recordings-controls');
+const noVideoMessage = document.createElement('div');
+noVideoMessage.className = 'recordings-no-video-message';
+video.insertAdjacentElement('afterend', noVideoMessage);
+const clipsFailedNotice = document.createElement('div');
+clipsFailedNotice.className = 'recordings-clips-failed-notice';
+recordingsVideoPane.insertBefore(clipsFailedNotice, video);
+
 // シークバーの内部分解能(0〜SEEK_RESOLUTIONの整数値をvideo.durationとの比率に変換する)。
 const SEEK_RESOLUTION = 1000;
 
@@ -67,6 +79,40 @@ function showListView() {
   errorsFilterChip.style.display = 'none';
   currentPlaybackEntry = null;
   clearNowPlaying();
+  resetVideoAvailability();
+}
+
+/** video/コントロール/両メッセージを初期状態(動画あり扱い・メッセージ非表示)に戻す。
+ * applyVideoAvailability が次のセッションを開くたびに正しい状態へ上書きする前提の下地。 */
+function resetVideoAvailability() {
+  video.style.display = '';
+  recordingsNowPlayingBlock.style.display = '';
+  recordingsControlsBlock.style.display = '';
+  noVideoMessage.style.display = 'none';
+  clipsFailedNotice.style.display = 'none';
+}
+
+/** 動画の有無/一部欠落に応じて再生ビューの表示を切り替える(死んだプレイヤーを見せない)。
+ * hasAnyVideo=false: video・再生中表示・コントロールを隠し、理由付きメッセージへ差し替える
+ * (clipsFailed>0なら切り出し失敗の件数付き、そうでなければ汎用の「録画がない」文言)。
+ * hasAnyVideo=true かつ clipsFailed>0: 通常表示のまま控えめな欠落件数の注記だけ足す。 */
+function applyVideoAvailability(hasAnyVideo, clipsFailed) {
+  resetVideoAvailability();
+  if (hasAnyVideo) {
+    if (clipsFailed !== null && clipsFailed > 0) {
+      clipsFailedNotice.textContent = t('recordings.player.someClipsFailed', { count: clipsFailed });
+      clipsFailedNotice.style.display = 'block';
+    }
+    return;
+  }
+  video.style.display = 'none';
+  recordingsNowPlayingBlock.style.display = 'none';
+  recordingsControlsBlock.style.display = 'none';
+  noVideoMessage.textContent =
+    clipsFailed !== null && clipsFailed > 0
+      ? t('recordings.player.allClipsFailed', { count: clipsFailed })
+      : t('recordings.player.noVideo');
+  noVideoMessage.style.display = 'flex';
 }
 
 function showPlayerView() {
@@ -111,6 +157,13 @@ function renderSessions(sessions) {
         failed: session.failed,
       });
       row.appendChild(counts);
+    }
+
+    if (session.clipsFailed !== null && session.clipsFailed > 0) {
+      const clipsFailed = document.createElement('span');
+      clipsFailed.className = 'recordings-session-counts recordings-session-counts-failed';
+      clipsFailed.textContent = t('recordings.sessions.clipsFailed', { count: session.clipsFailed });
+      row.appendChild(clipsFailed);
     }
 
     const open = () => vscode.postMessage({ type: 'recordingsOpen', project: session.project, runID: session.runID });
@@ -690,12 +743,16 @@ document.getElementById('recordings-prev-test').addEventListener('click', goToPr
 document.getElementById('recordings-next-test').addEventListener('click', goToNextTest);
 
 export function applyRecordingsSession(message) {
-  if (!message.ok || !message.videos || message.videos.length === 0) {
+  if (!message.ok) {
     showListView();
     return;
   }
+  // videos が空(全滅 run)/一部欠落でも一覧へは戻さない。ツリー・エラー一覧は scenarios/*.json 由来
+  // なので動画が無くても意味を持つ(仕様)。
+  const videos = message.videos || [];
+  const clipsFailed = typeof message.clipsFailed === 'number' ? message.clipsFailed : null;
   currentDetail = {
-    videosByScenario: new Map(message.videos.map((v) => [v.scenarioID, v.videoUri])),
+    videosByScenario: new Map(videos.map((v) => [v.scenarioID, v.videoUri])),
     selectedScenarioID: null,
     errors: message.errors || [],
   };
@@ -703,6 +760,7 @@ export function applyRecordingsSession(message) {
   setErrorFilter(null);
   renderTree(message.tree || []);
   showPlayerView();
+  applyVideoAvailability(currentDetail.videosByScenario.size > 0, clipsFailed);
   if (scenarioNav.length > 0) {
     seekToOffset(scenarioNav[0].scenarioID, 0);
   }

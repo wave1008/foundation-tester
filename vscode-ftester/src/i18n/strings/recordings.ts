@@ -18,8 +18,22 @@ export const recordingsStrings = {
   "recordings.errors.jumpTitle": { ja: "クリックで動画内の位置へジャンプ", en: "Click to jump to this position in the video" },
   // デバイスタイルの録画中バッジ(deviceTiles.js)。
   "recordings.deviceBadge": { ja: "録画", en: "REC" },
+  // セッション一覧の行チップ(クリップ切り出し失敗が1件以上あるセッション)。
+  "recordings.sessions.clipsFailed": { ja: "クリップ{count}件失敗", en: "{count} clip(s) failed" },
   // TEST EXPLORER 風ツリー(再生ビュー左ペイン)。
   "recordings.tree.empty": { ja: "タイムラインがありません。", en: "No timeline available." },
   "recordings.tree.sceneDefaultTitle": { ja: "シーン {n}", en: "Scene {n}" },
   "recordings.tree.noVideo": { ja: "録画なし", en: "No recording" },
+  // 再生ビュー: 動画が1本も無いセッションを開いたときの理由表示(死んだプレイヤーの代わり)。
+  "recordings.player.noVideo": {
+    ja: "このセッションに再生できる録画がありません。", en: "No recordings available to play in this session.",
+  },
+  "recordings.player.allClipsFailed": {
+    ja: "切り出しに失敗したため録画は残っていません({count}件)。",
+    en: "No recordings remain because clip extraction failed ({count}).",
+  },
+  // 一部だけ欠落しているセッション(動画はあるが失敗もある)向けの控えめな注記。
+  "recordings.player.someClipsFailed": {
+    ja: "{count}件のクリップが切り出しに失敗しました", en: "{count} clip(s) failed to extract",
+  },
 } satisfies MessageDict;

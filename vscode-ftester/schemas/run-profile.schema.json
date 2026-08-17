@@ -139,6 +139,18 @@
       "type": "boolean",
       "description": "録画をデバイス画面のフル解像度で保存する(既定 false=縮小)。容量が増える。record が true のときのみ意味を持つ。",
       "default": false
+    },
+    "remoteControl": {
+      "type": "object",
+      "description": "リモート実行の制御。ワークスペース(リモートのマシンへ運ぶ資材の置き場)。テストの前後で実行するスクリプトは、その scripts/setup.sh・scripts/teardown.sh が存在すれば自動的に実行される(宣言は不要)。",
+      "additionalProperties": true,
+      "properties": {
+        "workspace": {
+          "type": "string",
+          "description": "アプリのバイナリや実行スクリプトを置くフォルダ(絶対パス、またはリポジトリルート基準の相対パス)。省略時は TestProjects/<project>/workspace。リモートの Mac にはこのフォルダが運ばれる。",
+          "minLength": 1
+        }
+      }
     }
   }
 }

@@ -1,9 +1,9 @@
 {
   "common": {
-    "appName": "FT E2E iOS",
     "autoInstall": true
   },
   "ios": {
+    "appName": "FT E2E iOS",
     "app": "com.ftester.e2e.ios",
     "appPath": "E2EAppIOS/dist/ios-simulator/FTE2EIOS.app"
   }

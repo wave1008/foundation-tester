@@ -156,7 +156,7 @@ enum DeviceInventory {
         let machine: (name: String, auto: Bool)
         do {
             machine = try ProfileResolver.determineMachine(
-                project: testProject, registered: LocalConfig.currentMachineName(),
+                project: testProject,
                 runProfileName: profile)
         } catch {
             return .unavailable(describe(error))

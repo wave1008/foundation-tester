@@ -45,6 +45,13 @@ import { type HostMetricsToWebviewMessage, MonitorProcessManager } from "./monit
 import { MonitorProfilesController } from "./monitorProfilesController";
 import { MonitorRecordingsController } from "./monitorRecordingsController";
 import { MonitorUpdateController } from "./monitorUpdateController";
+import {
+  fetchRemoteHosts,
+  importRemoteHosts,
+  removeRemoteHost,
+  type RemoteHostsCliDeps,
+} from "./remoteHostsController";
+import { diffRemoteHostsForSync, type RemoteHostEntry } from "./remoteRunArgs";
 import { TYPE_ORDER, parseAndroidBridges, parseResidentProcesses, type ResidentProcess } from "./residentProcesses";
 import type { RunBusMessage, RunEventBus } from "./runEventBus";
 import {
@@ -90,7 +97,7 @@ export interface MonitorPanelDeps {
   notifyMachineProfilesChanged(): void;
   /** MonitorDeviceStreamController.disposeForDeviceNameへの委譲。MonitorDeviceOpsのdevice-downジョブが
    * 実行を開始する時点(simctl/adbで実際に殺す前)で呼び、タイルを即座に切断表示へ倒す。 */
-  stopDeviceStreams(name: string): void;
+  stopDeviceStreams(name: string, host?: string): void;
   /** MonitorDeviceStreamController.disposeAllForDownへの委譲。MonitorDeviceOpsの一括downジョブの
    * 実行開始時に呼ぶ(stopDeviceStreamsの全台版)。 */
   stopAllStreams(): void;
@@ -176,6 +183,10 @@ class MonitorPanelController implements vscode.Disposable {
   /** stopping/rebooting を post 済みで done/failed が未着のデバイス名。runEnded 時、キャンセル等で
    * done/failed が来ないまま残った名前にバッジ固着を防ぐため phase:"done" を post する。 */
   private readonly wipeInProgress = new Set<string>();
+  /** 直近に CLI(`ftester api remote-hosts`)から取得・同期した登録簿。setRemoteConfig の
+   * 差分計算(diffRemoteHostsForSync)の基準に使うだけで、これ自体が正ではない
+   * (docs/remote-runner.md §13「原則」。正は CLI の LocalConfig)。 */
+  private lastKnownRemoteHosts: RemoteHostEntry[] = [];
 
   constructor(
     private readonly workspaceRoot: string,
@@ -208,7 +219,7 @@ class MonitorPanelController implements vscode.Disposable {
         this.healthWatchdog.observe(devices);
       },
       isPollingMode: () => this.pollingMode,
-      stopDeviceStreams: (name) => this.deviceStream.disposeForDeviceName(name),
+      stopDeviceStreams: (name, host) => this.deviceStream.disposeForDeviceName(name, host),
       stopAllStreams: () => this.deviceStream.disposeAllForDown(),
       videoWebviewUri: (absPath) =>
         this.panel ? this.panel.webview.asWebviewUri(vscode.Uri.file(absPath)).toString() : null,
@@ -357,6 +368,58 @@ class MonitorPanelController implements vscode.Disposable {
     void this.panel?.webview.postMessage(message);
   }
 
+  private remoteHostsDeps(): RemoteHostsCliDeps {
+    return {
+      workspaceRoot: this.workspaceRoot,
+      outputChannel: this.outputChannel,
+      getConfig: this.getConfig,
+      // 参照/書き込みとも短命な単発コマンドのため、device-catalog 等と同じくパネル破棄時の
+      // キャンセル対象にはしない(登録せず終了を待つだけ)。
+      registerChild: () => {},
+    };
+  }
+
+  /**
+   * 設定タブのリモートホスト行編集(追加・削除・name/host/dir 変更)を CLI 登録簿へ反映する。
+   * lastKnownRemoteHosts との差分だけを送る(diffRemoteHostsForSync)ので、artifacts のみの
+   * 変更(hosts は不変)では CLI を叩かない。削除→追加(import は upsert)の順で送ることで、
+   * rename(同じ行の name 変更)も「旧名を消し新名を作る」として正しく扱える。
+   * CLI 呼び出しが失敗した行は lastKnownRemoteHosts に残らない(=書き込めなかったことが
+   * 次に webview へ返す一覧に反映される)。失敗理由は remoteConfig.error に乗せて webview へ返す
+   * (settingsTab.js が画面に出す。以前は OUTPUT へログするだけで、行が黙って消えて見えていた)。
+   */
+  private async syncRemoteHostsFromWebview(
+    hosts: readonly RemoteHostEntry[],
+    artifacts: "collect" | "on-demand",
+  ): Promise<void> {
+    const deps = this.remoteHostsDeps();
+    const { removedNames, upserts } = diffRemoteHostsForSync(this.lastKnownRemoteHosts, hosts);
+    let finalHosts = this.lastKnownRemoteHosts;
+    let error: string | undefined;
+    for (const name of removedNames) {
+      const result = await removeRemoteHost(deps, name);
+      if (result.hosts !== undefined) {
+        finalHosts = result.hosts;
+      } else {
+        error = result.error;
+      }
+    }
+    if (upserts.length > 0) {
+      const result = await importRemoteHosts(deps, upserts);
+      if (result.hosts !== undefined) {
+        finalHosts = result.hosts;
+      } else {
+        error = result.error;
+      }
+    }
+    this.lastKnownRemoteHosts = finalHosts;
+
+    const remoteConfiguration = vscode.workspace.getConfiguration("ftester");
+    void remoteConfiguration.update("remote.artifacts", artifacts, vscode.ConfigurationTarget.Global);
+    // CLI が返した確定形(書き込めなかった行の除外・machine の実値を含む)で webview を必ず作り直す。
+    this.post({ type: "remoteConfig", hosts: finalHosts, artifacts, error });
+  }
+
   private hydrateLaneUi(): void {
     if (this.laneSectionVisible) {
       this.post({ type: "laneSectionVisible", visible: true });
@@ -390,6 +453,10 @@ class MonitorPanelController implements vscode.Disposable {
           this.post({ type: "wipeStatus", name, phase: "done" });
         }
         this.wipeInProgress.clear();
+        // 録画タブを開いたまま実行すると、一覧の更新契機(タブ活性化・更新ボタン・再生からの戻る)
+        // がどれも起きず、終わった run が出ないままになる。runEnded は NDJSON プロセス終了後
+        // (= recordings/index.json 書き出し済み)なので、ここで取り直せば競合しない。
+        void this.recordings.refreshSessions();
         break;
     }
   }
@@ -439,7 +506,7 @@ class MonitorPanelController implements vscode.Disposable {
         break;
       case "deviceOp":
         this.deviceOps.enqueueLifecycleJob({
-          kind: "device", name: message.name, op: message.op,
+          kind: "device", name: message.name, op: message.op, host: message.host,
           udid: message.udid, serial: message.serial,
         });
         break;
@@ -483,7 +550,7 @@ class MonitorPanelController implements vscode.Disposable {
         void this.profiles.handleMachineProfileRename(message.machine);
         break;
       case "deviceCatalogRequest":
-        this.deviceOps.runDeviceCatalog();
+        this.deviceOps.runDeviceCatalog(message.source);
         break;
       case "installCmdlineToolsRequest":
         this.deviceOps.runInstallCmdlineTools();
@@ -492,7 +559,10 @@ class MonitorPanelController implements vscode.Disposable {
         this.deviceOps.runCreateDevice(message);
         break;
       case "installedDevicesRequest":
-        this.deviceOps.runInstalledDevices();
+        this.deviceOps.runInstalledDevices(message.source);
+        break;
+      case "devicePickDeviceDelete":
+        void this.deviceOps.runDeleteDevice(message);
         break;
       case "machineDevicesSync":
         this.profiles.handleMachineDevicesSync(message);
@@ -508,6 +578,9 @@ class MonitorPanelController implements vscode.Disposable {
         break;
       case "runProfileSave":
         this.profiles.handleRunProfileSave(message);
+        break;
+      case "runProfileHookScaffold":
+        void this.profiles.handleRunProfileHookScaffold(message);
         break;
       case "appProfileAdd":
         void this.profiles.handleAppProfileAdd();
@@ -567,6 +640,11 @@ class MonitorPanelController implements vscode.Disposable {
           .getConfiguration("ftester")
           .update("language", message.value, vscode.ConfigurationTarget.Global);
         break;
+      case "setRemoteConfig": {
+        const artifacts = message.artifacts === "on-demand" ? "on-demand" : "collect";
+        void this.syncRemoteHostsFromWebview(message.hosts, artifacts);
+        break;
+      }
       case "setTilePaneHeight":
         this.tilePaneHeight = message.value;
         void this.workspaceState.update("monitor.tilePaneHeight", message.value);
@@ -633,6 +711,18 @@ class MonitorPanelController implements vscode.Disposable {
       type: "language",
       value: vscode.workspace.getConfiguration("ftester").get<"auto" | "ja" | "en">("language", "auto"),
     });
+    {
+      // hosts の正は CLI の LocalConfig(docs/remote-runner.md §13「原則」)。artifacts は
+      // 引き続き VSCode 設定(config.ts の readConfig と同じ既定値)。fetch は非同期なので
+      // fire-and-forget で送り直す(失敗しても他の初期化を止めない。update-check と同じ方針)。
+      const remoteConfiguration = vscode.workspace.getConfiguration("ftester");
+      const artifacts =
+        remoteConfiguration.get<string>("remote.artifacts", "collect") === "on-demand" ? "on-demand" : "collect";
+      void fetchRemoteHosts(this.remoteHostsDeps()).then((result) => {
+        this.lastKnownRemoteHosts = result.hosts ?? [];
+        this.post({ type: "remoteConfig", hosts: this.lastKnownRemoteHosts, artifacts });
+      });
+    }
     if (this.tilePaneHeight !== undefined) {
       this.post({ type: "tilePaneHeight", value: this.tilePaneHeight });
     }

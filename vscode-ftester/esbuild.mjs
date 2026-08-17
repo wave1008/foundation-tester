@@ -10,6 +10,7 @@
 //                                実行できるようにする)
 
 import * as esbuild from "esbuild";
+import fs from "node:fs";
 import { readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -100,13 +101,25 @@ async function buildTests() {
     return;
   }
 
+  // **消したテストの成果物を残さない**。out-test/ は古いバンドルが残り続けるので、削除・改名した
+  // テストが「存在しないのに走る」(2026-08-17 の実害: 削除済みテストが out-test から実行されて落ちた)。
+  // entryPoints は test/ を列挙したものなので、それ以外の *.test.mjs は取り残し
+  const outTestDir = path.join(rootDir, "out-test");
+  const expected = new Set(entryPoints.map((p) => path.basename(p).replace(/\.mjs$/, "")));
+  for (const name of fs.existsSync(outTestDir) ? fs.readdirSync(outTestDir) : []) {
+    const base = name.replace(/\.mjs(\.map)?$/, "");
+    if (name.endsWith(".mjs") || name.endsWith(".mjs.map")) {
+      if (!expected.has(base)) fs.rmSync(path.join(outTestDir, name));
+    }
+  }
+
   await esbuild.build({
     entryPoints,
     bundle: true,
     platform: "node",
     format: "esm",
     target: "node18",
-    outdir: path.join(rootDir, "out-test"),
+    outdir: outTestDir,
     outExtension: { ".js": ".mjs" },
     sourcemap: true,
     logLevel: "info",

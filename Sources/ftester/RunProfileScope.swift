@@ -35,19 +35,40 @@ enum RunProfileScope {
             throw ProfileError.missingDevices(run: runProfileName)
         }
 
-        let requestedNames = Set(deviceRefs.map(\.name))
-        let iosDevices = machineProfile.ios?.devices ?? []
-        let androidDevices = machineProfile.android?.devices ?? []
-        let allNames = Set((iosDevices + androidDevices).map(\.name))
-        let missingNames = requestedNames.subtracting(allNames)
+        // **参照の同一性は (host, name)**(FTCore.DeviceHostGrouping)。名前だけで絞ると、
+        // 同名のデバイスが別のホストにも居るとき**選んでいない台まで混ざる**
+        // (モニターに未選択のタイルが並ぶ実害。2026-08-17)。実効ホストは entries が
+        // spec.host へ書き戻すので、以降の利用側(モニターのホスト表示)もそれを読める
+        let entries = DeviceHostGrouping.entries(machine: machineProfile)
+        // **並びはマシンプロファイル順**(実行プロファイルの記述順で並べ替えない。起動順の契約。
+        // testPreservesMachineProfileOrderNotRunProfileOrder)ので、採用は「印」で持つ
+        var matchedKeys = Set<String>()
+        var missingNames: [String] = []
+        for ref in deviceRefs {
+            switch DeviceHostGrouping.resolve(ref, in: entries) {
+            case .found(let entry):
+                matchedKeys.insert("\(DeviceHostGrouping.display(entry.host))\t\(entry.name)")
+            case .missing:
+                missingNames.append(ref.name)
+            case .ambiguous(let hosts):
+                // 曖昧な参照は**触らない**(どちらの機械の台か決まらないまま起動・監視しない)。
+                // run 側は同じ状況で中止する(ProfileError.ambiguousDeviceRef)
+                warn("⚠️ device \"\(ref.name)\" in run profile \(runProfileName) is ambiguous"
+                    + " (it exists on \(hosts.joined(separator: ", "))) — skipping it."
+                    + " Add \"host\" to the device entry to say which one")
+            }
+        }
         if !missingNames.isEmpty {
             warn(
                 "⚠️ Some devices referenced by run profile \(runProfileName) are missing from machine profile " +
-                "\(machineName): \(missingNames.sorted().joined(separator: ", "))")
+                "\(machineName): \(Set(missingNames).sorted().joined(separator: ", "))")
         }
 
-        let filteredIOS = iosDevices.filter { requestedNames.contains($0.name) }
-        let filteredAndroid = androidDevices.filter { requestedNames.contains($0.name) }
+        let matched = entries.filter {
+            matchedKeys.contains("\(DeviceHostGrouping.display($0.host))\t\($0.name)")
+        }
+        let filteredIOS = matched.filter { $0.platform == "ios" }.map(\.spec)
+        let filteredAndroid = matched.filter { $0.platform == "android" }.map(\.spec)
         guard !filteredIOS.isEmpty || !filteredAndroid.isEmpty else {
             throw ValidationError(
                 "none of the devices referenced by run profile \(runProfileName) " +

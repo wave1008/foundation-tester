@@ -70,6 +70,13 @@ export interface FtesterConfig {
   /** "auto": 起動時に upstream の更新有無を確認し、あれば通知する(updateCheck.ts)。"off": 確認しない。
    * 確認するだけで取り込みはしない(取り込みは /ftester-update)。 */
   updateCheck: UpdateCheckMode;
+  /** リモート実行結果の回収方針(docs/remote-runner.md §13「原則」)。artifacts はリモートの
+   * results/ を回収するか("collect" 既定 / "on-demand" は回収しない)。run がどのホストへ
+   * ディスパッチされるかはこの設定には無い —— CLI がマシンプロファイルの `host` フィールドから
+   * 判定する(拡張は関与しない)。登録簿(name→host/dir/machine)もここには持たない ——
+   * 正は CLI の LocalConfig で、remoteHostsController.ts が `ftester api remote-hosts` を読む
+   * (設定タブのホスト表を支えるためだけに使う)。 */
+  remote: { artifacts: "collect" | "on-demand" };
 }
 
 /** ワークスペースルート(Package.swift のあるフォルダ)を解決する。開いていなければ undefined。 */
@@ -110,6 +117,9 @@ export function readConfig(workspaceRoot: string): FtesterConfig {
     autoRepairDeviceHealth: configuration.get<boolean>("autoRepairDeviceHealth", false),
     liveControlOnRun: configuration.get<boolean>("liveControlOnRun", true),
     updateCheck: configuration.get<string>("updateCheck", "auto") === "off" ? "off" : "auto",
+    remote: {
+      artifacts: configuration.get<string>("remote.artifacts", "collect") === "on-demand" ? "on-demand" : "collect",
+    },
   };
 }
 
@@ -252,6 +262,27 @@ export function listRunProfileNames(workspaceRoot: string, project: string): str
   }
 }
 
+/**
+ * プロジェクト切替に追従して `ftester.profile` をどうするか。**実行プロファイルはプロジェクトに
+ * 属する**ので、切り替えたあとも前のプロジェクトの名前が残ると、その名前はもう存在せず
+ * CLI が「run profile not found」で落ちる(2026-08-17 の実害: project=E2E-Android /
+ * profile=local+remote でモニターが起動できなくなった)。
+ *
+ * - 新しいプロジェクトにその名前があるなら**そのまま**(同名のプロファイルを持つ構成は普通)
+ * - 無いなら **"" (未選択)** へ。**別の名前を勝手に選ばない** —— どのプロファイルで走るかは
+ *   デバイスとアプリを決める選択なので、黙って差し替えると別の対象を操作したことになる
+ * 戻り値 nil = 変更不要(書き込まない = 設定変更ループを起こさない)
+ */
+export function reconciledProfileForProject(
+  currentProfile: string,
+  availableProfiles: readonly string[],
+): string | undefined {
+  if (currentProfile === "" || availableProfiles.includes(currentProfile)) {
+    return undefined;
+  }
+  return "";
+}
+
 /** TestProjects/<project>/profiles/apps/ にあるアプリプロファイル名(拡張子なし)の一覧を返す。 */
 export function listAppProfileNames(workspaceRoot: string, project: string): string[] {
   const appsDir = path.join(workspaceRoot, "TestProjects", project, "profiles", "apps");
@@ -314,7 +345,7 @@ export interface AppProfileDetail {
 }
 
 /** ライブ操作パネルの詳細表示用。readAppProfileTarget と違い bundle 欠落でも null にせず、
- * 表示名(common→platform マージ。RunProfile.swift の AppProfileSection.merging と同じく platform 側が優先)と
+ * 表示名(platform セクションのみ。common からは継承しない)と
  * platform セクションの app / appPath を個別に返す。ファイル未読/解析失敗のみ null。 */
 export function readAppProfileDetail(
   workspaceRoot: string,
@@ -329,12 +360,13 @@ export function readAppProfileDetail(
       return null;
     }
     const record = parsed as Record<string, unknown>;
-    const common = typeof record.common === "object" && record.common !== null
-      ? (record.common as Record<string, unknown>) : undefined;
     const section = typeof record[platform] === "object" && record[platform] !== null
       ? (record[platform] as Record<string, unknown>) : undefined;
     const str = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
-    const appName = str(section?.appName) ?? str(common?.appName);
+    // 表示名は platform セクションのみ。**common からは継承しない**(Sources/FTCore/RunProfile.swift
+    // の AppProfileSection.merging と同期。common に残っている appName は CLI 側が未知キーとして
+    // 警告する対象なので、ここで拾うと警告と表示が食い違う)
+    const appName = str(section?.appName);
     const bundle = str(section?.app);
     const rawAppPath = str(section?.appPath);
     let appPath: string | null = null;
@@ -415,6 +447,9 @@ export function readMachineDeviceNames(workspaceRoot: string, project: string): 
 export interface MachineDeviceEntry {
   readonly name: string;
   readonly platform: Platform;
+  /** このデバイスが居る機械(登録名。省略=プロファイル直下の host、それも無ければ手元)。
+   * 一意なのは (host, name)(Sources/FTCore/DeviceHostGrouping.swift)。 */
+  readonly host?: string;
   readonly kind?: "virtual" | "physical";
   readonly simulator?: string;
   readonly os?: string;
@@ -430,6 +465,9 @@ export interface MachineDeviceEntry {
 export interface MachineProfileSummary {
   readonly name: string;
   readonly devices: readonly MachineDeviceEntry[];
+  /** 登録済みリモートホスト名(machines/<name>.json 直下の "host"。未設定/absent = ローカル)。
+   * CLI が run のディスパッチ先をここから判定する(この拡張は判定しない)。 */
+  readonly host?: string;
 }
 
 /** machines/<name>.json の devices[] 1要素を検証・変換する。name欠落/型不正は undefined(呼び出し側でスキップ)。 */
@@ -438,7 +476,7 @@ function toMachineDeviceEntry(value: unknown, platform: Platform): MachineDevice
     return undefined;
   }
   const record = value as Record<string, unknown>;
-  const { name, kind, simulator, os: osVersion, udid, port, avd, serial, model } = record;
+  const { name, host, kind, simulator, os: osVersion, udid, port, avd, serial, model } = record;
   if (typeof name !== "string") {
     return undefined;
   }
@@ -463,6 +501,9 @@ function toMachineDeviceEntry(value: unknown, platform: Platform): MachineDevice
   if (model !== undefined && typeof model !== "string") {
     return undefined;
   }
+  if (host !== undefined && typeof host !== "string") {
+    return undefined;
+  }
   // kind は省略可(未指定=virtual)。未知の値はこのエントリだけ捨てる
   // (Swift 側は DeviceKind の decode に失敗してプロファイル全体がエラーになる。
   // 拡張が勝手に virtual と解釈して表示すると、run では動かないものを動くように見せてしまう)
@@ -472,6 +513,7 @@ function toMachineDeviceEntry(value: unknown, platform: Platform): MachineDevice
   return {
     name,
     platform,
+    host: host as string | undefined,
     kind: kind as "virtual" | "physical" | undefined,
     simulator: simulator as string | undefined,
     os: osVersion as string | undefined,
@@ -509,6 +551,8 @@ export function listMachineProfiles(workspaceRoot: string, project: string): Mac
       if (typeof parsed !== "object" || parsed === null) {
         return { name, devices: [] };
       }
+      const rawHost = (parsed as Record<string, unknown>).host;
+      const host = typeof rawHost === "string" && rawHost.length > 0 ? rawHost : undefined;
       const devices: MachineDeviceEntry[] = [];
       for (const platform of ["ios", "android"] as const) {
         const section = (parsed as Record<string, unknown>)[platform];
@@ -526,66 +570,32 @@ export function listMachineProfiles(workspaceRoot: string, project: string): Mac
             sectionDevices.push(device);
           }
         }
-        sectionDevices.sort((a, b) => a.name.localeCompare(b.name));
+        // **機械ごとにまとめる**(2026-08-17 指示): 手元が先 → ホスト名順、その中で名前順。
+        // 同名が別ホストに並ぶのが通常なので、名前を第1キーにすると1台ずつ機械が入れ替わり、
+        // 「この機械には何が居るか」が読めない。実効ホスト(デバイス指定 > 直下の既定)で比べる
+        const hostKey = (device: MachineDeviceEntry): string => {
+          const raw = (device.host ?? "").trim();
+          if (raw === "local") {
+            return "";
+          }
+          return raw !== "" ? raw : (host ?? "");
+        };
+        sectionDevices.sort((a, b) => {
+          const [ha, hb] = [hostKey(a), hostKey(b)];
+          if (ha !== hb) {
+            return ha === "" ? -1 : hb === "" ? 1 : ha.localeCompare(hb);  // 手元が先
+          }
+          return a.name.localeCompare(b.name);
+        });
         devices.push(...sectionDevices);
       }
-      return { name, devices };
+      return { name, devices, ...(host !== undefined ? { host } : {}) };
     } catch {
       return { name, devices: [] };
     }
   });
 }
 
-/**
- * マシンローカル設定($XDG_CONFIG_HOME/ftester/config.json、既定 ~/.config/ftester/config.json。
- * Sources/FTCore/LocalConfig.swift と同じファイル場所・スキーマ)の machineName を読む。
- * 読めない/解析不可/machineName が string でなければ null。
- * (LocalConfig.swift は FT_MACHINE 環境変数を優先するが、この拡張はファイルの状態のみ反映する)。
- */
-export function readLocalMachineName(): string | null {
-  const xdg = process.env.XDG_CONFIG_HOME;
-  const base = xdg && xdg.length > 0 ? xdg : path.join(os.homedir(), ".config");
-  const configPath = path.join(base, "ftester", "config.json");
-  try {
-    const raw = fs.readFileSync(configPath, "utf8");
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null) {
-      return null;
-    }
-    const machineName = (parsed as Record<string, unknown>).machineName;
-    return typeof machineName === "string" ? machineName : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * readLocalMachineName と同じ config.json の machineName を書き換える(マシンプロファイル名変更時、
- * CLI `ftester machine set` が書いた登録名が旧名のままだと解決が壊れるため追随させる)。
- * machineName === oldName のときのみ newName に更新して true を返す(他キーは保持)。
- * 読み取り/解析失敗・オブジェクトでない・不一致なら false(例外は握りつぶす)。
- */
-export function updateLocalMachineName(oldName: string, newName: string): boolean {
-  const xdg = process.env.XDG_CONFIG_HOME;
-  const base = xdg && xdg.length > 0 ? xdg : path.join(os.homedir(), ".config");
-  const configPath = path.join(base, "ftester", "config.json");
-  try {
-    const raw = fs.readFileSync(configPath, "utf8");
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null) {
-      return false;
-    }
-    const record = parsed as Record<string, unknown>;
-    if (record.machineName !== oldName) {
-      return false;
-    }
-    const updated = { ...record, machineName: newName };
-    fs.writeFileSync(configPath, `${JSON.stringify(updated, null, 2)}\n`, "utf8");
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 export type ProjectResolution =
   | { kind: "resolved"; project: string }

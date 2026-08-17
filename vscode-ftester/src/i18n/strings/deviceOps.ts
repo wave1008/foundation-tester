@@ -84,6 +84,26 @@ export const deviceOpsStrings = {
     en: "Failed to parse {cmd} output: {error}",
   },
   "deviceOps.cmdOutputInvalid": { ja: "{cmd} の出力形式が不正です。", en: "{cmd} output format is invalid." },
+  // §13 段2「ホスト」セレクタ: リモート実行時のエラーへホスト名を付記する(withSourceContext)。
+  "deviceOps.remoteHostSuffix": { ja: "{message}(ホスト: {host})", en: "{message} (host: {host})" },
+  "deviceOps.createRemoteConfirmMessage": {
+    ja: "「{name}」を {host} 上に作成します。よろしいですか?",
+    en: "This creates \"{name}\" on {host}. Continue?",
+  },
+  "deviceOps.createRemoteConfirmButton": { ja: "作成", en: "Create" },
+  // 同名の実体があるときの上書き確認。**削除を伴う**ので、消える対象と機械を文中に出す
+  "deviceOps.createOverwriteConfirmMessage": {
+    ja: "{host} の「{name}」は既に存在します。削除して作り直しますか?(元に戻せません)",
+    en: "\"{name}\" already exists on {host}. Delete it and create it again? (cannot be undone)",
+  },
+  "deviceOps.createOverwriteConfirmButton": { ja: "削除して作り直す", en: "Delete and recreate" },
+  "deviceOps.createOverwriteLocalHost": { ja: "このマシン", en: "this machine" },
+  // exit 64 = 引数エラー。リモートで出たら「向こうの ftester が古い」がほぼ唯一の原因
+  "deviceOps.remoteCliTooOld": {
+    ja: "{host} の ftester がこの操作に対応していません(版が古い可能性があります)。{host} で版を揃えてください: ftester remote setup {host} — {detail}",
+    en: "The ftester on {host} does not support this operation (it is probably out of date). Align it with: ftester remote setup {host} — {detail}",
+  },
+  "deviceOps.createCancelled": { ja: "作成をキャンセルしました。", en: "Device creation was cancelled." },
   "deviceOps.createAlreadyRunning": {
     ja: "作成処理が既に実行中です。",
     en: "A create operation is already in progress.",
@@ -109,6 +129,47 @@ export const deviceOpsStrings = {
     en: "[ftester] create-device({name}) finished (exit code: {exitCode})",
   },
 
+  "deviceOps.hostLocalLabel": { ja: "ローカル", en: "the local machine" },
+  "deviceOps.deleteConfirmMessage": {
+    ja: "「{name}」を {host} から削除します。シミュレータ/AVD本体が削除されるため、元に戻せません。よろしいですか?",
+    en: "This deletes \"{name}\" from {host}. It removes the underlying simulator/AVD and cannot be undone. Continue?",
+  },
+  "deviceOps.deleteConfirmButton": { ja: "削除", en: "Delete" },
+  "deviceOps.deleteCancelled": { ja: "削除をキャンセルしました。", en: "Device deletion was cancelled." },
+  "deviceOps.deleteAlreadyRunning": {
+    ja: "削除処理が既に実行中です。",
+    en: "A delete operation is already in progress.",
+  },
+  "deviceOps.deleteFailedGeneric": { ja: "デバイスの削除に失敗しました。", en: "Failed to delete the device." },
+  "deviceOps.deleteReferencedByWarning": {
+    ja:
+      "「{name}」を削除しました。これを参照しているマシンプロファイルが残っています: {profiles}。" +
+      "次回の実行前に該当プロファイルのデバイス設定を見直してください。",
+    en:
+      "Deleted \"{name}\". The following machine profiles still reference it: {profiles}. " +
+      "Review their device settings before the next run.",
+  },
+  "deviceOps.log.deleteDeviceStartFailed": {
+    ja: "[ftester] delete-device({name})の起動に失敗しました: {error}",
+    en: "[ftester] Failed to start delete-device({name}): {error}",
+  },
+  "deviceOps.log.deleteDeviceSucceeded": {
+    ja: "[ftester] delete-device({name})が完了しました。",
+    en: "[ftester] delete-device({name}) finished.",
+  },
+  "deviceOps.log.deleteDeviceFailed": {
+    ja: "[ftester] delete-device({name})が失敗しました: {error}",
+    en: "[ftester] delete-device({name}) failed: {error}",
+  },
+  "deviceOps.log.deleteDeviceRuntimeError": {
+    ja: "[ftester] delete-device({name})の実行でエラーが発生しました: {error}",
+    en: "[ftester] An error occurred while running delete-device({name}): {error}",
+  },
+  "deviceOps.log.deleteDeviceClosed": {
+    ja: "[ftester] delete-device({name})が終了しました(exit code: {exitCode})",
+    en: "[ftester] delete-device({name}) finished (exit code: {exitCode})",
+  },
+
   "deviceOps.log.monitorStartFailed": {
     ja: "[ftester] monitor プロセスの起動に失敗しました: {error}",
     en: "[ftester] Failed to start the monitor process: {error}",
@@ -127,11 +188,11 @@ export const deviceOpsStrings = {
   },
   "deviceOps.monitorExitedMachineHint": {
     ja:
-      "マシンプロファイル未設定の可能性があります。「ftester machine set」の実行、または " +
-      "TestProjects/<project>/profiles/machines/ の内容を確認してください。",
+      "マシンプロファイル未設定の可能性があります。TestProjects/<project>/profiles/machines/ の " +
+      "内容と、実行プロファイルの machine を確認してください。",
     en:
-      "The machine profile might not be configured. Run \"ftester machine set\", or check " +
-      "TestProjects/<project>/profiles/machines/.",
+      "The machine profile might not be configured. Check TestProjects/<project>/profiles/machines/ " +
+      "and the run profile's machine.",
   },
   "deviceOps.monitorClosedMessage": {
     ja: "モニタープロセスが終了しました(exit code: {exitCode}, signal: {signal})。{hint}",

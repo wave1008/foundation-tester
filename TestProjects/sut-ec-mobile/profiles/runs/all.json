@@ -1,71 +1,66 @@
 {
+  "machine": "local+remote",
   "app": "sut-ec-mobile",
   "devices": [
     {
+      "host": "local",
       "name": "iPhone 17 Pro(iOS 27.0)-01"
     },
     {
+      "host": "local",
       "name": "iPhone 17 Pro(iOS 27.0)-02"
     },
     {
-      "name": "iPhone 17 Pro(iOS 27.0)-03"
+      "host": "M1Max",
+      "name": "iPhone 17 Pro(iOS 27.0)-01"
     },
     {
-      "name": "iPhone 17 Pro(iOS 27.0)-04"
+      "host": "M1Max",
+      "name": "iPhone 17 Pro(iOS 27.0)-02"
     },
     {
-      "name": "iPhone 17 Pro(iOS 27.0)-05"
+      "host": "M1Ultra",
+      "name": "iPhone 17 Pro(iOS 27.0)-01"
     },
     {
-      "name": "iPhone 17 Pro(iOS 27.0)-06"
+      "host": "M1Ultra",
+      "name": "iPhone 17 Pro(iOS 27.0)-02"
     },
     {
-      "name": "iPhone 17 Pro(iOS 27.0)-07"
-    },
-    {
-      "name": "iPhone 17 Pro(iOS 27.0)-08"
-    },
-    {
-      "name": "iPhone 17 Pro(iOS 27.0)-09"
-    },
-    {
-      "name": "iPhone 17 Pro(iOS 27.0)-10"
-    },
-    {
+      "host": "local",
       "name": "Pixel 9(Android 15)-01"
     },
     {
+      "host": "local",
       "name": "Pixel 9(Android 15)-02"
     },
     {
-      "name": "Pixel 9(Android 15)-03"
+      "host": "M1Max",
+      "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-01"
     },
     {
-      "name": "Pixel 9(Android 15)-04"
+      "host": "M1Max",
+      "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-02"
     },
     {
-      "name": "Pixel 9(Android 15)-05"
+      "host": "M1Ultra",
+      "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-01"
     },
     {
-      "name": "Pixel 9(Android 15)-06"
-    },
-    {
-      "name": "Pixel 9(Android 15)-07"
-    },
-    {
-      "name": "Pixel 9(Android 15)-08"
+      "host": "M1Ultra",
+      "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-02"
     }
   ],
+  "containerInference": true,
+  "falsePositiveCheck": false,
+  "fm": true,
   "heal": false,
-  "reportDir": "reports",
-  "machine": "M2Ultra",
+  "homeOnStart": true,
   "iosInappEngine": true,
-  "wipeDataOnBloat": true,
   "record": true,
   "recoverCpuFallbackToGpu": true,
-  "fm": true,
-  "falsePositiveCheck": false,
+  "reportDir": "reports",
   "screenIs": true,
-  "containerInference": true,
-  "homeOnStart": true
+  "updateWebView": true,
+  "wipeDataOnBloat": true
 }

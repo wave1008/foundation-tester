@@ -1,14 +1,15 @@
 // LocalConfig.swift
 // マシンローカル設定(~/.config/ftester/config.json)。
-// マシン名(machines/<マシン名>.json の選択キー)とデフォルトプロジェクトを保持する。
+// デフォルトプロジェクト・実機署名・リモートホスト登録簿を保持する。
+// **「このマシンの名前」は持たない**(2026-08-17 に廃止。理由は
+// ProfileResolver.determineMachine の宣言 —— プロファイル名と機械の身元が1つの値に
+// 載っていたため、マシンプロファイルを改名するとこの Mac の身元まで変わっていた)。
 // UserDefaults ではなくファイルにするのは、CLI / MCP の複数プロセスで
 // ドメインを揃えて共有するため。リポジトリ内 .ftester/(実行時状態)とも役割を分離する。
 
 import Foundation
 
 public struct LocalConfig: Codable, Sendable, Equatable {
-    /// このマシンの名前(profiles/machines/<マシン名>.json と一致させる)
-    public var machineName: String?
     /// --project 省略時に使うプロジェクト名
     public var defaultProject: String?
     /// 呼び出し側が最後に選択した実行プロファイル名(プロジェクト毎)
@@ -19,15 +20,20 @@ public struct LocalConfig: Codable, Sendable, Equatable {
     /// iOS 実機ブリッジの bundle id プレフィックス(既定 "com.example")。
     /// 既定のままだと他チームが登録済みの App ID と衝突して自動署名が失敗することがある
     public var bundleIDPrefix: String?
+    /// `--host` の論理名 → ssh 実体の登録簿(docs/remote-runner.md §13)。VSCode 設定
+    /// (`ftester.remote.hosts`)ではなくここに置くのは、①CLI が解決の主体になるため
+    /// ②ワークスペース設定でディスパッチ先を差し替えられる余地を消すため(§15.2)
+    public var remoteHosts: [RemoteHostEntry]?
 
-    public init(machineName: String? = nil, defaultProject: String? = nil,
+    public init(defaultProject: String? = nil,
                 lastRunProfile: [String: String]? = nil,
-                developmentTeam: String? = nil, bundleIDPrefix: String? = nil) {
-        self.machineName = machineName
+                developmentTeam: String? = nil, bundleIDPrefix: String? = nil,
+                remoteHosts: [RemoteHostEntry]? = nil) {
         self.defaultProject = defaultProject
         self.lastRunProfile = lastRunProfile
         self.developmentTeam = developmentTeam
         self.bundleIDPrefix = bundleIDPrefix
+        self.remoteHosts = remoteHosts
     }
 
     /// 実機署名の設定。優先順位: 環境変数 > 設定ファイル。
@@ -76,12 +82,4 @@ public struct LocalConfig: Codable, Sendable, Equatable {
         try encoder.encode(self).write(to: url)
     }
 
-    /// 現在のマシン名。優先順位: FT_MACHINE 環境変数 > 設定ファイル > nil(未登録)
-    public static func currentMachineName(
-        environment: [String: String] = ProcessInfo.processInfo.environment,
-        configURL: URL? = nil
-    ) -> String? {
-        if let env = environment["FT_MACHINE"], !env.isEmpty { return env }
-        return load(from: configURL ?? Self.url(environment: environment)).machineName
-    }
 }

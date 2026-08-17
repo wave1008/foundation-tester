@@ -54,56 +54,91 @@ struct ApiMonitorCommand: AsyncParsableCommand {
     @Option(help: "Run profile name (when given, only the devices that profile references are monitored; otherwise every device in the machine profile)")
     var profile: String?
 
+    /// **どの機械のデバイスを観測するか**。simctl/adb は手元にしか効かないので、既定(nil)では
+    /// この機械のデバイスだけを走査し、他の機械のぶんは `RemoteMonitorFanout` がその機械で
+    /// 1本ずつ `--device-host <host>` を走らせて合流させる。**この値が入っているのは子のとき** ——
+    /// 子は自分のぶんだけを見て、それ以上の fan-out はしない(入れ子のディスパッチを作らない)
+    @Option(name: .customLong("device-host"),
+            help: "Only observe the devices assigned to this machine, treating them as local (set by the parent monitor when it fans out; not for hand use)")
+    var deviceHost: String?
+
     func run() async throws {
         // ストリーミング読み取りが前提のため常に行バッファにする(ApiRunCommand.swift と同じ理由)
         setvbuf(stdout, nil, _IOLBF, 0)
         ResidentProcessGuard.startOrphanWatchdog(logLabel: "monitor")
 
         let testProject = try ScenarioHost.project(named: project)
-        // --profile の machine 明示指定を最優先(ProfileResolver.resolve() と同じ優先順位)
-        let machine = try ProfileResolver.determineMachine(
-            project: testProject, registered: LocalConfig.currentMachineName(),
-            runProfileName: profile)
-        if machine.auto {
+        // --profile の machine 明示指定を最優先(ProfileResolver.resolve() と同じ優先順位)。
+        // **--profile 無しでマシンが確定しないのは失敗ではない** —— 実行プロファイル未選択は
+        // 拡張の「(起動中のデバイス)」= 登録に依らず動いている台を見る、の意味なので、
+        // machines/ が複数あって決められなくても**起動中の台だけを出して続ける**
+        // (2026-08-17 の実害: プロファイルの選択を外した瞬間にモニターが起動できなくなった)。
+        // --profile を渡しているときは従来どおり厳しく落とす(選んだ以上、その machine は要る)
+        let machine: (name: String, auto: Bool)?
+        do {
+            machine = try ProfileResolver.determineMachine(
+                project: testProject, runProfileName: profile)
+        } catch {
+            guard !Self.requiresMachineProfile(profile: profile) else { throw error }
+            machine = nil
+            logStderr("[monitor] No run profile is selected and the machine profile cannot be determined"
+                + " — monitoring only the devices that are currently running")
+        }
+        if let machine, machine.auto {
             logStderr("→ Using machine profile \(machine.name) automatically (it is the only one in machines/)")
         }
-        let machineURL = testProject.machinesDir.appendingPathComponent("\(machine.name).json")
-        guard FileManager.default.fileExists(atPath: machineURL.path) else {
-            throw ProfileError.machineProfileNotFound(
-                machine: machine.name,
-                available: ProfileResolver.machineNames(project: testProject))
-        }
-        let machineProfile: MachineProfile
-        do {
-            machineProfile = try JSONDecoder().decode(
-                MachineProfile.self, from: Data(contentsOf: machineURL))
-        } catch {
-            throw ProfileError.decodeFailed(machineURL, detail: "\(error)")
-        }
-
-        var targets = (machineProfile.ios?.devices ?? []).map {
-            MonitorTarget(platform: "ios", spec: $0)
-        }
-        targets += (machineProfile.android?.devices ?? []).map {
-            MonitorTarget(platform: "android", spec: $0)
-        }
-        guard !targets.isEmpty else {
-            throw ValidationError("machine profile \(machine.name) defines no devices")
+        var machineProfile = MachineProfile(host: nil, ios: nil, android: nil)
+        if let machine {
+            let machineURL = testProject.machinesDir.appendingPathComponent("\(machine.name).json")
+            guard FileManager.default.fileExists(atPath: machineURL.path) else {
+                throw ProfileError.machineProfileNotFound(
+                    machine: machine.name,
+                    available: ProfileResolver.machineNames(project: testProject))
+            }
+            do {
+                machineProfile = try JSONDecoder().decode(
+                    MachineProfile.self, from: Data(contentsOf: machineURL))
+            } catch {
+                throw ProfileError.decodeFailed(machineURL, detail: "\(error)")
+            }
         }
 
         // --profile 指定時は、実行プロファイルが参照するデバイスのみに監視対象を絞り込む
         // (RunProfileScope.swift。ftester devices up/down --profile と共通のロジック)
-        if let profile {
-            let filtered = try RunProfileScope.filteredMachineProfile(
+        var scoped = machineProfile
+        if let profile, let machine {
+            scoped = try RunProfileScope.filteredMachineProfile(
                 project: testProject, machineName: machine.name, machineProfile: machineProfile,
                 runProfileName: profile, warn: logStderr)
-            targets = (filtered.ios?.devices ?? []).map { MonitorTarget(platform: "ios", spec: $0) }
-            targets += (filtered.android?.devices ?? []).map { MonitorTarget(platform: "android", spec: $0) }
         }
+        // **実効ホストを spec に焼き込んでから扱う**(プロファイル既定の host も反映される。
+        // id・帰属判定・拡張へ出す machineHost がすべてこの1つの値を見る)
+        let targets = DeviceHostGrouping.entries(machine: scoped).map {
+            MonitorTarget(platform: $0.platform, spec: $0.spec)
+        }
+        // **プロファイル未選択のときは0台でも続ける**(起動中の台が現れたら出す)。
+        // 選んでいるのに0台なのは設定の誤りなので落とす
+        if targets.isEmpty, Self.requiresMachineProfile(profile: profile), let machine {
+            throw ValidationError("machine profile \(machine.name) defines no devices")
+        }
+
+        let scope = Self.scope(targets: targets, deviceHost: deviceHost)
+        let ownedTargets = scope.owned
+        let listedTargets = scope.listed
+        let fanout: RemoteMonitorFanout? = {
+            guard !scope.foreignHosts.isEmpty else { return nil }
+            return RemoteMonitorFanout(
+                hosts: scope.foreignHosts, project: testProject.name, profile: profile,
+                interval: interval, maxWidth: maxWidth,
+                log: { message in MonitorOutput.shared.writeStderr(message) },
+                relayLine: { line in MonitorOutput.shared.writeLine(line) })
+        }()
+        fanout?.start()
+        defer { fanout?.stop() }
 
         let stop = StopFlag()
         let control = MonitorControl()
-        startStdinWatcher(stop: stop, control: control)
+        startStdinWatcher(stop: stop, control: control, fanout: fanout)
         // ループを抜けるまでシグナルソースを保持する(解放されるとハンドラが外れる)
         let signalSources = installSignalHandlers(stop: stop)
         defer { for source in signalSources { source.cancel() } }
@@ -149,7 +184,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             }
 
             // --profile 指定時はスコープを絞る意図のため未登録デバイスは合成しない
-            let observed = await Self.determineStates(targets: targets, includeUnregistered: profile == nil)
+            let observed = await Self.determineStates(targets: ownedTargets, includeUnregistered: profile == nil)
             let states = Self.debounce(observed, confirmed: &confirmed) { message in
                 self.logStderr(message)
             }
@@ -204,7 +239,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 }
             }
 
-            emitLine(ApiMonitorDevicesEvent(devices: states.map { state in
+            let observedInfos = states.map { state -> ApiMonitorDeviceInfo in
                 let confirmedIssues = state.androidSerial.map { healthDebounce.confirmed(serial: $0) } ?? []
                 let leaseKey = state.iosUdid ?? state.androidSerial
                 let inRun = leaseStateDir.flatMap { dir in
@@ -226,7 +261,10 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                                    renderMode: state.androidSerial.flatMap { renderModeCache[$0] },
                                    inRun: inRun, recording: recording, host: bridgeHost,
                                    frozen: frozenVerdict.isFrozen)
-            }))
+            }
+            emitLine(ApiMonitorDevicesEvent(devices: Self.mergedDevices(
+                listedTargets: listedTargets, observed: observedInfos,
+                remote: fanout?.snapshot() ?? [:])))
 
             // 接続が切れた機の記憶を落とす(次回同じエラーが起きても「状態変化」として扱えるように。
             // 凍結は**落ちている機を数え続けない**ので確定も捨てる)
@@ -308,6 +346,72 @@ struct ApiMonitorCommand: AsyncParsableCommand {
 
             await Self.sleepInterruptible(seconds: interval, stop: stop)
         }
+    }
+
+    /// マシンプロファイルの確定を要求するか。**実行プロファイルを選んでいるときだけ必須**
+    /// —— 未選択は拡張の「(起動中のデバイス)」= 登録に依らず動いている台を見る、の意味なので、
+    /// machines/ が複数あって決められなくても起動中の台だけを出して続ける
+    /// (2026-08-17 の実害: プロファイルの選択を外した瞬間にモニターが起動できなくなった)。
+    /// I/O を持たない pure 関数(MonitorHostScopeTests)
+    static func requiresMachineProfile(profile: String?) -> Bool { profile != nil }
+
+    /// 監視対象の仕分け。**この機械が観測できるのは自分のデバイスだけ** —— 他の機械のぶんを
+    /// simctl/adb で見ると、同名の手元のシミュレータに解決して**別の機械の台の状態と画面を出す**
+    /// ((host, name) が一意なら同名は正常な構成なので普通に起きる)
+    struct Scope {
+        /// この機械が simctl/adb で観測する台
+        let owned: [MonitorTarget]
+        /// 毎サイクル devices として出す台。親は全部(他の機械のぶんは fan-out か「取得できません」)、
+        /// **子(--device-host 付き)は自分のぶんだけ** —— 親も同じ台を並べるので、両方が出すと
+        /// 拡張の Map で潰し合う
+        let listed: [MonitorTarget]
+        /// fan-out 先(登場順・重複なし)
+        let foreignHosts: [String]
+    }
+
+    /// I/O を持たない pure 関数(MonitorHostScopeTests)
+    static func scope(targets: [MonitorTarget], deviceHost: String?) -> Scope {
+        let wanted = MachineHostDispatch.normalize(deviceHost)
+        let owned = targets.filter { MachineHostDispatch.normalize($0.spec.host) == wanted }
+        let foreign = targets.filter { MachineHostDispatch.normalize($0.spec.host) != wanted }
+        // **子は fan-out しない**(入れ子のディスパッチを作らない。`remote exec` も
+        // --host の relay を拒む = 経路は1段と決めてある)
+        let hosts = deviceHost == nil
+            ? DeviceHostGrouping.groups(foreign, host: { MachineHostDispatch.normalize($0.spec.host) })
+                .compactMap(\.host)
+            : []
+        return Scope(owned: owned, listed: deviceHost == nil ? targets : owned, foreignHosts: hosts)
+    }
+
+    /// 出す1サイクルぶんの devices を組み立てる。**並びはマシンプロファイルの順のまま**
+    /// (拡張も並べ替えるが、順序の正はここ = 手元とリモートで別扱いにしない)。
+    /// - observed: この機械が simctl/adb で観測した台(未登録の起動中デバイスを含みうる)
+    /// - remote: 子(その機械の monitor)が報告してきた台。id は (platform, host, name) 由来で
+    ///   親子で一致する
+    /// どちらにも無い台は **「状態を取得できない」** として出す —— 観測していないものを
+    /// offline と言うと、向こうで動いていても止まって見える(2026-08-17 の実害)。
+    /// I/O を持たない pure 関数(MonitorHostScopeTests)
+    static func mergedDevices(listedTargets: [MonitorTarget], observed: [ApiMonitorDeviceInfo],
+                              remote: [String: ApiMonitorDeviceInfo]) -> [ApiMonitorDeviceInfo] {
+        var observedByID: [String: ApiMonitorDeviceInfo] = [:]
+        for info in observed { observedByID[info.id] = info }
+        var merged = listedTargets.map { target in
+            observedByID[target.id] ?? remote[target.id] ?? unobservedInfo(target: target)
+        }
+        // マシンプロファイルに無い台(determineStates が合成した起動中デバイス)を後ろへ足す
+        let listedIDs = Set(listedTargets.map(\.id))
+        merged += observed.filter { !listedIDs.contains($0.id) }
+        return merged
+    }
+
+    /// 誰も観測していない台。**state は "unknown"** で、offline(= 止まっている)とは区別する
+    static func unobservedInfo(target: MonitorTarget) -> ApiMonitorDeviceInfo {
+        ApiMonitorDeviceInfo(
+            id: target.id, name: target.name, platform: target.platform,
+            state: "unknown", detail: "", udid: nil, serial: nil, health: nil, renderMode: nil,
+            inRun: false, kind: target.spec.isPhysical ? "physical" : "virtual",
+            host: nil, port: nil, recording: false, registered: target.registered,
+            machineHost: MachineHostDispatch.normalize(target.spec.host), frozen: false)
     }
 
     // MARK: - デバイス状態判定
@@ -740,12 +844,16 @@ struct ApiMonitorCommand: AsyncParsableCommand {
 
     /// EOF検知で停止フラグを立てる。readLine はブロッキングなので別スレッドで読み続ける
     /// (ApiRunCommand.swift の --debug stdin 制御読み取りと同じ方式)
-    private func startStdinWatcher(stop: StopFlag, control: MonitorControl) {
+    private func startStdinWatcher(stop: StopFlag, control: MonitorControl,
+                                  fanout: RemoteMonitorFanout?) {
         let thread = Thread {
             while let line = readLine(strippingNewline: true) {
                 guard let data = line.data(using: .utf8),
                       let command = try? JSONDecoder().decode(MonitorControlCommand.self, from: data)
                 else { continue }
+                // **子にもそのまま渡す** —— pause/resume/suppressFrames はどれも id の集合か
+                // 全体の状態で、自分の持たない id が混ざっていても害が無い
+                fanout?.forwardControl(line: line)
                 switch command.cmd {
                 case "pause":
                     control.pause()
@@ -793,11 +901,11 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         guard let data = try? encoder.encode(value),
               let line = String(data: data, encoding: .utf8) else { return }
-        print(line)
+        MonitorOutput.shared.writeLine(line)
     }
 
     private func logStderr(_ message: String) {
-        FileHandle.standardError.write(Data((message + "\n").utf8))
+        MonitorOutput.shared.writeStderr(message)
     }
 }
 
@@ -816,7 +924,13 @@ struct MonitorTarget {
     var name: String { spec.name }
     /// VSCode 拡張側の識別子("ios:simulator1" 等。論理名ベースなのでポート・serial の
     /// 再割当をまたいで安定する)
-    var id: String { "\(platform):\(spec.name)" }
+    /// タイル・ストリーミングの識別子。**ホストを含める** —— 同名のデバイスが別の機械に居るのは
+    /// 通常(一意なのは (host, name))で、含めないと拡張側の Map で1つに潰れ、12台の
+    /// プロファイルが6タイルになる(2026-08-17 の実害)。手元のデバイスは従来と同じ形にする
+    /// (単一マシン構成の id を変えない)
+    var id: String {
+        DeviceHostGrouping.workerID(platform: platform, host: spec.host, name: spec.name)
+    }
 }
 
 /// 1 サイクル分のデバイス判定結果。internal: determineStates と一緒に list-devices へ共有
@@ -844,10 +958,9 @@ struct DeviceRuntimeState {
         self.iosUdid = iosUdid
     }
 
-    /// fileprivate: 戻り値の型 ApiMonitorDeviceInfo がファイル限定の private 型のため
-    /// (list-devices は同じ情報を ApiDeviceEntry として別途組み立てる)。
     /// health・renderMode・inRun・recording・frozen は monitor ループだけが知る状態のため引数で受け取る
-    fileprivate func info(health: [String]?, renderMode: String?, inRun: Bool,
+    /// (list-devices は同じ情報を ApiDeviceEntry として別途組み立てる)
+    func info(health: [String]?, renderMode: String?, inRun: Bool,
                           recording: Bool, host: String? = nil,
                           frozen: Bool = false) -> ApiMonitorDeviceInfo {
         ApiMonitorDeviceInfo(id: target.id, name: target.name,
@@ -856,7 +969,9 @@ struct DeviceRuntimeState {
                              inRun: inRun,
                              kind: target.spec.isPhysical ? "physical" : "virtual",
                              host: host, port: iosPort,
-                             recording: recording, registered: target.registered, frozen: frozen)
+                             recording: recording, registered: target.registered,
+                             machineHost: MachineHostDispatch.normalize(target.spec.host),
+                             frozen: frozen)
     }
 }
 
@@ -941,6 +1056,25 @@ private struct MonitorControlCommand: Decodable {
     /// cmd == "suppressFrames" のときのみ使用
     let devices: [String]?
 }
+/// **stdout に書く口を1つにする**。子(RemoteMonitorFanout)の中継行は別スレッドから来るので、
+/// 親の emitLine と混ざると1行の途中で割り込まれて NDJSON が壊れる。stdio のバッファを
+/// 経由せず FileHandle へ直接書くのは、`print` と FileHandle 書き込みが混在すると
+/// **バッファの取り合いで行が入れ替わる**ため(どちらか片方に寄せる必要がある)
+final class MonitorOutput: @unchecked Sendable {
+    static let shared = MonitorOutput()
+    private let lock = NSLock()
+
+    func writeLine(_ line: String) {
+        lock.lock(); defer { lock.unlock() }
+        FileHandle.standardOutput.write(Data((line + "\n").utf8))
+    }
+
+    func writeStderr(_ message: String) {
+        lock.lock(); defer { lock.unlock() }
+        FileHandle.standardError.write(Data((message + "\n").utf8))
+    }
+}
+
 
 /// pause/resume コマンド(stdin 経由)の状態。stdin 読み取りスレッドとメインループの間で共有する
 /// (StopFlag と同様 NSLock で保護する)
@@ -1018,7 +1152,7 @@ private enum MonitorError: Error, LocalizedError {
 // MARK: - JSON イベント
 
 /// monitorDevices イベント: サイクル毎に1回、全デバイスの状態をまとめて出す
-private struct ApiMonitorDevicesEvent: Encodable {
+struct ApiMonitorDevicesEvent: Codable {
     let kind = "monitorDevices"
     let devices: [ApiMonitorDeviceInfo]
 }
@@ -1026,7 +1160,7 @@ private struct ApiMonitorDevicesEvent: Encodable {
 /// ftester api monitor の 1 デバイス分の状態。detail は補足が無ければ空文字列("")にする
 /// (VSCode 拡張側(monitorModel.ts)の契約が detail: string 固定のため null は使わない。
 /// ApiScenarioInfo 等の「省略可能フィールドは null を明示する」方針とは別)
-private struct ApiMonitorDeviceInfo: Encodable {
+struct ApiMonitorDeviceInfo: Codable {
     let id: String
     let name: String
     let platform: String
@@ -1060,6 +1194,12 @@ private struct ApiMonitorDeviceInfo: Encodable {
     /// 起動中デバイス(未登録)。追加フィールドのみで後方互換のため ProtocolVersion は不変
     /// (契約は vscode-ftester/src/monitorDeviceModel.ts の MonitorDevice.registered)
     let registered: Bool
+    /// **このデバイスが居る機械**(登録名。手元は nil)。`host` はブリッジ宛先の IP で別物 ——
+    /// 名前が近いので取り違えない。モニターは手元のデバイスしか触れないため、リモートのタイルは
+    /// 状態を観測できない。拡張はこの値でタイルにホスト名を出す
+    /// (契約は vscode-ftester/src/monitorDeviceModel.ts の MonitorDevice.machineHost)。
+    /// 追加フィールドのみで後方互換のため ProtocolVersion は不変
+    let machineHost: String?
     /// 画面が凍結している(一様フレームが2サイクル連続)。**この値は1サイクル遅れる** ——
     /// devices イベントはフレーム取得より前に出るため、判定に使うのは前サイクルの PNG。
     /// スクショを撮らないデバイス(未接続・タイルがストリーミング中で frame 抑止・

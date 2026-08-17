@@ -113,15 +113,15 @@ clone 構成(両方ある)の再実行は従来どおり冪等スキップで続
 | テスト対象アプリの表示名（プロファイルの `appName`） | App | フォルダ名から作った候補 / Other=自由入力 |
 | テスト対象のプラットフォーム | Platform | iOS / Android / 両方 |
 
-**マシン名と clone 先は聞かない**（マシン名は preflight の `machine_registered=` があればそれ、
-無ければ `computer_name=`。clone 先は preflight の `tool_root=`。どちらも完了報告で伝えれば足りる)。
+**マシン名(= マシンプロファイル名)と clone 先は聞かない**（マシン名は preflight の
+`computer_name=`、clone 先は `tool_root=`。どちらも完了報告で伝えれば足りる)。
 受け手が別の clone 先を明示した場合だけ追加で 1 問聞く。
 
 - bundle ID は**分からなくても中断しない**。「まだ分からない」ならプレースホルダ `com.example.myapp` の
   まま続行する（実IDが要るのは実行(launch)時だけ。後から `profiles/apps/<projectname>.json` の `app` を
   差し替えれば済む →ステップ6）。
 - **選択肢の候補は preflight の出力をそのまま使う**(`folder_name=` → プロジェクト名、
-  `computer_name=` → マシン名、`machine_registered=` → 既存の登録名)。
+  `computer_name=` → マシンプロファイル名の既定)。
   `scutil` や `basename` を別途実行しない(承認回数が増えるだけ)。**他リポジトリを探索して埋めない**。
 - clone 先は外部パッケージ構成のみ関係（→ステップ0.5）。指定があればそのパスが TOOL_ROOT。
 

@@ -116,7 +116,10 @@ struct ProfileSetupCommand: AsyncParsableCommand {
         let machineURL = testProject.machinesDir.appendingPathComponent("\(machineName).json")
         let machineObject = try readObject(machineURL)
 
-        var device: [String: Any] = ["name": deviceName]
+        // host は必ず書く(手元なら "local"。省略はプロファイル直下の既定を継ぐ意味になる)
+        var device: [String: Any] = [
+            "host": DeviceHostGrouping.localDisplayName, "name": deviceName,
+        ]
         if platform == "ios" {
             if let simulator { device["simulator"] = simulator }
             if let os { device["os"] = os }
@@ -243,21 +246,13 @@ struct ProfileSetupCommand: AsyncParsableCommand {
         return picked
     }
 
+    /// --machine が指定されていればそれ。無ければ通常の決定規則(実行プロファイルの machine >
+    /// FT_MACHINE > machines/ が1つ)。**「この Mac の登録名」は見ない**(2026-08-17 に廃止。
+    /// 理由は ProfileResolver.determineMachine の宣言)
     private func resolveMachineName(project: TestProject) throws -> String {
         if let machine, !machine.isEmpty {
-            // 未登録なら同時に登録する(別途 ftester machine set を打たせない)
-            if LocalConfig.currentMachineName()?.isEmpty ?? true {
-                var config = LocalConfig.load()
-                config.machineName = machine
-                try config.save()
-                print("   Registered this machine's name: \(machine) (~/.config/ftester/config.json)")
-            }
             return machine
         }
-        // machines/ が空の初回は登録名(ftester machine set)を使う。それも無ければ聞く側の責務
-        if let registered = LocalConfig.currentMachineName(), !registered.isEmpty {
-            return registered
-        }
-        return try ProfileResolver.determineMachine(project: project, registered: nil).name
+        return try ProfileResolver.determineMachine(project: project).name
     }
 }

@@ -73,8 +73,10 @@ export const panelsStrings = {
   "panels.runProfile.copyTitle": { ja: "実行プロファイルのコピー", en: "Copy run profile" },
   "panels.runProfile.removeTitle": { ja: "実行プロファイルの削除", en: "Delete run profile" },
   "panels.runProfile.renameTitle": { ja: "実行プロファイル名の変更", en: "Rename run profile" },
-  "panels.runProfile.machineLabel": { ja: "使用するマシンプロファイル", en: "Machine profile to use" },
-  "panels.runProfile.appLabel": { ja: "アプリ", en: "App" },
+  // {link} には該当セクションへジャンプする .profile-jump-link(HTML)が入る。プロファイル名は
+  // panels.common.{app,machine}Profile を再利用するので、語を変えるときは片方だけ直さない
+  "panels.runProfile.machineLabel": { ja: "参照する{link}", en: "{link} to reference" },
+  "panels.runProfile.appLabel": { ja: "参照する{link}", en: "{link} to reference" },
   "panels.runProfile.fmSectionTitle": { ja: "FM(Foundation Model)", en: "FM (Foundation Model)" },
   "panels.runProfile.fmLabel": { ja: "FMの機能を使用する", en: "Use FM features" },
   "panels.runProfile.healLabel": { ja: "自己修復(heal)を有効にする", en: "Enable self-heal" },
@@ -129,6 +131,16 @@ export const panelsStrings = {
     en: "Save at full resolution (larger files)",
   },
   "panels.runProfile.localeLabel": { ja: "ロケール", en: "Locale" },
+  "panels.runProfile.remoteControlSectionTitle": { ja: "リモート制御", en: "Remote control" },
+  "panels.runProfile.workspaceLabel": { ja: "ワークスペース", en: "Workspace" },
+  "panels.runProfile.workspaceHint": {
+    ja: "アプリのバイナリや資材を置くフォルダ。リモートの Mac にはこのフォルダが運ばれます",
+    en: "The folder that holds the app binary and other assets. This folder is carried to the remote Mac.",
+  },
+  "panels.runProfile.hookScaffoldButton": {
+    ja: "スクリプトの雛形を作成する",
+    en: "Create script templates",
+  },
 
   "panels.appProfile.noneSelected": { ja: "(アプリプロファイルなし)", en: "(No app profile)" },
   "panels.appProfile.addTitle": { ja: "アプリプロファイルの追加", en: "Add app profile" },
@@ -150,6 +162,9 @@ export const panelsStrings = {
   "panels.machineProfile.copyTitle": { ja: "マシンプロファイルのコピー", en: "Copy machine profile" },
   "panels.machineProfile.removeTitle": { ja: "マシンプロファイルの削除", en: "Delete machine profile" },
   "panels.machineProfile.renameTitle": { ja: "マシンプロファイル名の変更", en: "Rename machine profile" },
+  // マシンプロファイル側の見出し。実行プロファイルの「デバイス」(panels.common.devices)とは
+  // 用途が違う(あちらは選択済みの一覧、こちらは追加操作のラベル)ので別キーにする
+  "panels.machineProfile.addDevicesLabel": { ja: "デバイスを追加", en: "Add devices" },
   "panels.machineProfile.addExistingTitle": {
     ja: "インストール済みのシミュレータ/AVD・接続中の実機からマシンプロファイルに追加",
     en: "Add from installed simulators/AVDs or connected physical devices to the machine profile",
@@ -222,9 +237,29 @@ export const panelsStrings = {
   "panels.settings.languageJa": { ja: "日本語", en: "日本語" },
   "panels.settings.languageEn": { ja: "English", en: "English" },
 
+  // docs/remote-runner.md §12。実体は CLI のホスト登録簿(`ftester api remote-hosts`)+
+  // ftester.remote.artifacts 設定(config.ts)、このタブはもう1つの操作口。
+  // 行内容(削除ボタン)は settingsTab.js が動的生成するため webview 側辞書
+  // (i18n/strings/webviewMonitorB.ts の wvMonitor2.remote.*)を使う。ここは静的ラベルのみ。
+  "panels.settings.remoteSectionTitle": { ja: "リモート実行", en: "Remote execution" },
+  "panels.settings.remoteArtifactsLabel": { ja: "成果物(録画・ログ)", en: "Artifacts (recordings, logs)" },
+  "panels.settings.remoteArtifactsCollect": { ja: "回収する", en: "Collect" },
+  "panels.settings.remoteArtifactsOnDemand": { ja: "オンデマンド", en: "On demand" },
+  "panels.settings.remoteHostsHint": {
+    ja: "ディスパッチ先として使うホストを登録します。name はホストを選ぶとき(例: 「デバイスを追加」ダイアログでのホスト選択)に出る表示名(一意)、host は SSH 先(user@host または host)、dir は空欄で ~/ftester-runner(そのマシンの既存のローカルインストールと同じパスにしないこと)。",
+    en: "Register hosts to dispatch runs to. Name is the display name shown when picking a host (e.g. the source selector in the \"add device\" dialog; must be unique); host is the SSH target (user@host or host); dir blank = ~/ftester-runner (must not be an existing local install on that machine).",
+  },
+  "panels.settings.remoteHostsColName": { ja: "名前", en: "Name" },
+  "panels.settings.remoteHostsColHost": { ja: "ホスト", en: "Host" },
+  "panels.settings.remoteHostsColDir": { ja: "作業ベースディレクトリ", en: "Base directory" },
+  "panels.settings.remoteHostsAdd": { ja: "ホストを追加", en: "Add host" },
+
   "panels.deviceMenu.liveControl": { ja: "ライブ操作", en: "Live Control" },
   "panels.deviceMenu.restartWithGpu": { ja: "GPUで再起動", en: "Restart with GPU" },
   "panels.deviceMenu.remove": { ja: "除去", en: "Remove" },
+  // #device-pick-overlay の行専用。machineDeviceMenu の「除去」(プロファイルから外すだけ)と違い、
+  // ホスト上の実体(シミュレータ/AVD)そのものを削除する(devicePickDeviceDelete)。
+  "panels.deviceMenu.delete": { ja: "削除", en: "Delete" },
 
   "panels.deviceAdd.title": { ja: "デバイスを追加", en: "Add Device" },
   "panels.deviceAdd.osTypeLabel": { ja: "OS種別", en: "OS Type" },
@@ -241,8 +276,14 @@ export const panelsStrings = {
     en: "Downloads about 150 MB (a few minutes)",
   },
 
-  "panels.devicePick.title": { ja: "既存のデバイスから選択", en: "Select from Existing Devices" },
+  "panels.devicePick.title": { ja: "デバイスを選択", en: "Select Devices" },
   "panels.devicePick.addNewTitle": { ja: "デバイスを新規作成", en: "Create New Device" },
+  "panels.devicePick.addNewLabel": { ja: "デバイスを作成", en: "Create device" },
+  // タイトル行のホスト選択(#device-pick-host-select)の静的ラベル。選択肢自体は
+  // devicePickHost.js が remoteConfig を受けて動的生成する(panels.machineProfile.deviceSourceLabel
+  // と同じ役割・同じ文言だったが、常設セレクタを廃してこのダイアログの中だけに移した)。
+  "panels.devicePick.hostLabel": { ja: "ホスト:", en: "Host:" },
+  "panels.devicePick.loading": { ja: "読み込み中...", en: "Loading..." },
   // 見出しには接続中の実機も並ぶため「デバイス」と呼ぶ(台数は JS が確定後に付ける)
   "panels.devicePick.iosGroupTitle": { ja: "iOS デバイス", en: "iOS devices" },
   "panels.devicePick.androidGroupTitle": { ja: "Android デバイス", en: "Android devices" },

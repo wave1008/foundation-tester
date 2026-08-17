@@ -55,6 +55,8 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
 
   ${renderMachineDeviceMenu()}
 
+  ${renderDevicePickDeleteMenu()}
+
   ${renderDeviceAddOverlay()}
 
   ${renderNameInputOverlay()}
@@ -120,6 +122,13 @@ function renderDevicesPanel(): string {
   </div>`;
 }
 
+// 該当セクションへスクロールするインラインリンク(クリック処理は tabs.js が
+// .profile-jump-link 一括で張る)。label の中に置くが、interactive content なので
+// label の for による転送は起きない(HTML 仕様。押しても select にフォーカスは移らない)。
+function profileJumpLink(targetId: string, label: string): string {
+  return `<button type="button" class="profile-jump-link" data-target="${targetId}">${label}</button>`;
+}
+
 function renderRunProfileSection(): string {
   return `<div id="run-profile-section" class="profile-section run-profile-section">
       <div class="profile-toolbar">
@@ -144,12 +153,16 @@ function renderRunProfileSection(): string {
         <div id="run-profile-placeholder" class="profile-detail-placeholder" style="display: none;"></div>
         <div id="run-profile-editor" class="run-profile-editor" style="display: none;">
           <div class="modal-row">
-            <label for="run-profile-machine">${t("panels.runProfile.machineLabel")}</label>
-            <select id="run-profile-machine"></select>
+            <label for="run-profile-app">${t("panels.runProfile.appLabel", {
+              link: profileJumpLink("app-profile-section", t("panels.common.appProfile")),
+            })}</label>
+            <select id="run-profile-app"></select>
           </div>
           <div class="modal-row">
-            <label for="run-profile-app">${t("panels.runProfile.appLabel")}</label>
-            <select id="run-profile-app"></select>
+            <label for="run-profile-machine">${t("panels.runProfile.machineLabel", {
+              link: profileJumpLink("machine-profile-section", t("panels.common.machineProfile")),
+            })}</label>
+            <select id="run-profile-machine"></select>
           </div>
           <div class="modal-row run-profile-devices-row">
             <label>${t("panels.common.devices")}</label>
@@ -232,6 +245,17 @@ function renderRunProfileSection(): string {
             </div>
           </div>
           <div class="run-profile-section-group">
+            <div class="run-profile-section-title">${t("panels.runProfile.remoteControlSectionTitle")}</div>
+            <div class="modal-row">
+              <label for="run-profile-workspace">${t("panels.runProfile.workspaceLabel")}</label>
+              <input type="text" id="run-profile-workspace">
+            </div>
+            <div class="modal-row profile-hint">${t("panels.runProfile.workspaceHint")}</div>
+            <div class="modal-row">
+              <button id="btn-run-profile-hook-scaffold" class="secondary" type="button">${t("panels.runProfile.hookScaffoldButton")}</button>
+            </div>
+          </div>
+          <div class="run-profile-section-group">
             <div class="run-profile-section-title">${t("panels.runProfile.miscSectionTitle")}</div>
             <div class="modal-row profile-checkbox-row">
               <input type="checkbox" id="run-profile-home-on-start">
@@ -278,14 +302,11 @@ function renderAppProfileSection(): string {
       <div id="app-profile-body" class="app-profile-body">
         <div id="app-profile-placeholder" class="profile-detail-placeholder" style="display: none;"></div>
         <div id="app-profile-editor" class="app-profile-editor" style="display: none;">
-          <!-- common.app/appPathは廃止済み(ランタイムが無視するため入力欄なし)。
+          <!-- common.app/appPath/appNameは廃止済み(ランタイムが無視するため入力欄なし。表示名は
+               ios/androidのみで指定し、commonからは継承しない)。
                autoInstallは共通でのみ設定可能。**未指定の既定はパッケージパスの有無**
                (RunProfile.swift の resolve と同期。片方だけ変えない)。 -->
           <div class="app-profile-group-title">${t("panels.appProfile.commonGroupTitle")}</div>
-          <div class="modal-row">
-            <label for="app-profile-common-app-name">${t("panels.appProfile.displayNameLabel")}</label>
-            <input type="text" id="app-profile-common-app-name">
-          </div>
           <div class="modal-row profile-checkbox-row">
             <input type="checkbox" id="app-profile-common-auto-install">
             <label for="app-profile-common-auto-install">${t("panels.appProfile.autoInstallLabel")}</label>
@@ -343,7 +364,7 @@ function renderMachineProfileSection(): string {
       </div>
       <div class="profile-actions">
         <!-- 「+新規作成」ボタンは廃止済み。新規作成は#device-pick-overlay内の「+」(device-pick-add-new)から行う。 -->
-        <span class="profile-actions-label">${t("panels.common.devices")}</span>
+        <span class="profile-actions-label">${t("panels.machineProfile.addDevicesLabel")}</span>
         <button id="btn-device-add-existing" class="icon-button" title="${t("panels.machineProfile.addExistingTitle")}" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M14 7v1H8v6H7V8H1V7h6V1h1v6h6z"/></svg></button>
       </div>
       <div id="machine-profile-error" class="profile-error" style="display: none;"></div>
@@ -414,12 +435,6 @@ function renderMachineProfileSection(): string {
 
 function renderProfilesPanel(): string {
   return `<div id="panel-profiles" class="tab-panel" role="tabpanel" aria-labelledby="tab-profiles" style="display: none;">
-    <div id="profile-jump-header" class="profile-jump-header">
-      <button type="button" class="profile-jump-link" data-target="run-profile-section">${t("panels.common.runProfile")}</button>
-      <button type="button" class="profile-jump-link" data-target="app-profile-section">${t("panels.common.appProfile")}</button>
-      <button type="button" class="profile-jump-link" data-target="machine-profile-section">${t("panels.common.machineProfile")}</button>
-    </div>
-
     ${renderRunProfileSection()}
 
     ${renderAppProfileSection()}
@@ -555,6 +570,40 @@ function renderSettingsPanel(): string {
         <label class="settings-item"><input type="checkbox" id="settings-polling-mode"> ${t("panels.settings.pollingModeLabel")}</label>
         <div class="settings-hint">${t("panels.settings.pollingModeHint")}</div>
       </div>
+      <!-- 実体は CLI のホスト登録簿("ftester api remote-hosts")+ ftester.remote.artifacts 設定
+           (config.ts)。ここはもう1つの操作口(docs/remote-runner.md §12)。ホスト一覧
+           (#settings-remote-hosts-body)は行数が可変のため settingsTab.js が動的に組み立てる。
+           「追加」で足した行は name/host が埋まって行内の「確定」ボタンを押すまで CLI へ送らない
+           (未確定のまま送ると空の name を CLI が拒否し、失敗経路が旧一覧を再送して行が消える)。
+           artifacts セレクタは remoteConfig/setRemoteConfig に相乗り(専用メッセージ型は無い)。
+           #settings-remote-hosts-error は直前の同期が失敗したときの理由(remoteConfig.error)。
+           対向: settingsTab.js の applySettings / setRemoteConfig, monitorPanel.ts。 -->
+      <div class="settings-group">
+        <div class="settings-section-title">${t("panels.settings.remoteSectionTitle")}</div>
+        <label class="settings-item settings-item-inline" for="settings-remote-artifacts">
+          ${t("panels.settings.remoteArtifactsLabel")}
+          <select id="settings-remote-artifacts" class="settings-select">
+            <option value="collect">${t("panels.settings.remoteArtifactsCollect")}</option>
+            <option value="on-demand">${t("panels.settings.remoteArtifactsOnDemand")}</option>
+          </select>
+        </label>
+        <div class="settings-hint">${t("panels.settings.remoteHostsHint")}</div>
+        <table class="settings-remote-hosts-table">
+          <thead>
+            <tr>
+              <th>${t("panels.settings.remoteHostsColName")}</th>
+              <th>${t("panels.settings.remoteHostsColHost")}</th>
+              <th>${t("panels.settings.remoteHostsColDir")}</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="settings-remote-hosts-body"></tbody>
+        </table>
+        <div class="settings-remote-hosts-actions">
+          <button id="settings-remote-hosts-add" class="secondary" type="button">${t("panels.settings.remoteHostsAdd")}</button>
+        </div>
+        <div id="settings-remote-hosts-error" class="settings-hint settings-remote-hosts-error" hidden></div>
+      </div>
     </div>
   </div>`;
 }
@@ -577,10 +626,25 @@ function renderMachineDeviceMenu(): string {
   </div>`;
 }
 
+function renderDevicePickDeleteMenu(): string {
+  return `<!-- #device-op-menuとスタイルのみ共用する別要素。#device-pick-overlay の行専用。
+       machineDeviceMenu の「除去」(プロファイルから外すだけ)と違い、ホスト上の実体(シミュレータ/AVD)
+       そのものを ftester api delete-device で消す(modals.js が実機行にはこのメニューを出さない)。 -->
+  <div id="device-pick-delete-menu" class="device-op-menu" role="menu">
+    <button id="device-pick-delete-menu-item" class="device-op-menu-item" type="button" role="menuitem">${t("panels.deviceMenu.delete")}</button>
+  </div>`;
+}
+
 function renderDeviceAddOverlay(): string {
   return `<div id="device-add-overlay" class="modal-overlay">
     <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="device-add-title">
-      <div id="device-add-title" class="modal-title">${t("panels.deviceAdd.title")}</div>
+      <div class="modal-title device-pick-title-row">
+        <span id="device-add-title">${t("panels.deviceAdd.title")}</span>
+        <!-- どのホストから作成するかを常時表示(§13 段2。黙って別マシンを操作しない)。このダイアログは
+             常に #device-pick-overlay の中から開くので、読み取り専用でその時点の選択(host select)を
+             映すだけ(devicePickHost.js の refreshDeviceAddBadge)。 -->
+        <span id="device-add-source-badge" class="modal-hint"></span>
+      </div>
       <div class="modal-row">
         <label>${t("panels.deviceAdd.osTypeLabel")}</label>
         <div class="modal-radio-group">
@@ -648,11 +712,27 @@ function renderDevicePickOverlay(): string {
   return `<!-- 中身(#device-pick-ios-body/-android-body)はJSがinstalledDevices受信時に組み立てる。
        チェックボックスは「選択」ではなく登録状態そのもの(登録済み=初期チェック、disabled化しない)。
        OKは初期状態からの差分がある間だけ有効(JS側)。「+」(device-pick-add-new)はこのモーダルを
-       閉じずに#device-add-overlayを重ねて開く(z-indexは#device-add-overlayのCSSルール参照)。 -->
+       閉じずに#device-add-overlayを重ねて開く(z-indexは#device-add-overlayのCSSルール参照)。
+       #device-pick-host-select はこのダイアログのデバイス候補のホスト(ローカル/登録済みリモート
+       ホスト)。選択肢は devicePickHost.js が remoteConfig(設定タブと同じメッセージ)を購読して
+       組み立てる。初期値はダイアログを開いたときの編集対象マシンプロファイルの host フィールド
+       (未設定ならローカル)。変更すると installed-devices を選び直したホストから再取得する
+       (modals.js の change リスナー)。 -->
   <div id="device-pick-overlay" class="modal-overlay">
     <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="device-pick-title">
       <div class="modal-title device-pick-title-row">
         <span id="device-pick-title">${t("panels.devicePick.title")}</span>
+        <span class="device-pick-host-group">
+          <label for="device-pick-host-select">${t("panels.devicePick.hostLabel")}</label>
+          <select id="device-pick-host-select"></select>
+          <!-- ホスト切替中のインジケーター。**リストボックスの右に置く**(一覧側に出すと
+               ダイアログの高さが変わって画面が跳ねる。2026-08-17 ユーザー指示) -->
+          <span id="device-pick-loading" class="device-pick-loading" style="display: none;">
+            <span class="device-pick-spinner"></span>
+            <span>${t("panels.devicePick.loading")}</span>
+          </span>
+        </span>
+        <span class="device-pick-add-label">${t("panels.devicePick.addNewLabel")}</span>
         <button id="device-pick-add-new" class="icon-button" type="button" title="${t("panels.devicePick.addNewTitle")}"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M14 7v1H8v6H7V8H1V7h6V1h1v6h6z"/></svg></button>
       </div>
       <div id="device-pick-list" class="device-pick-list">

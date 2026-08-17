@@ -38,6 +38,37 @@ export const webviewMonitorAStrings = {
   "wvMonitor.tile.connecting": { ja: "接続中", en: "Connecting" },
   "wvMonitor.tile.cpuBadgeTitle": { ja: "CPU描画(swiftshader・フォールバック)", en: "CPU rendering (swiftshader fallback)" },
   "wvMonitor.tile.physicalBadge": { ja: "実機", en: "Device" },
+  // リモートのデバイスはモニターから状態を観測できない(simctl/adb は手元にしか効かない)。
+  // 「未起動」と言うと、向こうで起動していても止まっているように見える
+  // 配信を諦めた(ホストがエンコードをこなせない等)。待っても来ないので「接続中」とは言わない。
+  // **タイルは狭い(幅 60px 程度)ので短く** —— 理由と対処はツールチップへ
+  "wvMonitor.tile.streamUnavailable": { ja: "映像なし", en: "No video" },
+  "wvMonitor.tile.streamUnavailableTip": {
+    ja: "映像を取得できませんでした(ホストがエンコードをこなせていない可能性があります)。配信するタイルを減らすか、設定タブの「ポーリングモードを使用する」を有効にしてください。詳細は OUTPUT の ftester を参照。",
+    en: "Could not get video (the host may be unable to encode). Stream fewer tiles, or turn on \"Use polling mode\" in the settings tab. See the ftester OUTPUT channel for details.",
+  },
+  "wvMonitor.tile.stateUnknownTip": {
+    ja: "この機械からは状態を観測できません(simctl/adb は手元にしか効きません)。その機械の ftester の版が揃っているか確認してください。",
+    en: "This machine cannot observe the state (simctl/adb are local only). Check that the other machine's ftester is on the same version.",
+  },
+  "wvMonitor.tile.stateUnknown": { ja: "状態不明", en: "Unknown" },
+  "wvMonitor.tile.remoteUnobservable": {
+    ja: "{host}\n状態不明",
+    en: "{host}\nunknown",
+  },
+  // 登録はあるのに一覧に無いデバイス(実体を手で消した等)。リモートの実体は手元から見えないので、
+  // ここで出さないと「実行して落ちるまで気付けない」
+  "wvMonitor.devicePick.missingBadge": { ja: "実体なし", en: "Not installed" },
+  "wvMonitor.devicePick.missingDetail": {
+    ja: "登録: {identifier}(このホストに実体がありません。チェックを外すと登録を解除します)",
+    en: "Registered as {identifier} (no such device on this host; uncheck to unregister)",
+  },
+  // avdmanager 不在の解決手段。**導入先はカタログを取った機械**なので、ローカルは導入ボタン、
+  // リモートは remote exec の案内を出す(手元へ入れても向こうの欠けは埋まらない)
+  "wvMonitor.deviceAdd.installCmdlineToolsOnRemote": {
+    ja: "導入は {host} 側で行います: ftester remote exec {host} -- api install-cmdline-tools",
+    en: "Install it on {host}: ftester remote exec {host} -- api install-cmdline-tools",
+  },
   "wvMonitor.tile.physicalBadgeTitle": {
     ja: "実機(シミュレータ/エミュレータではありません)。起動・停止は行いません",
     en: "Physical device (not a simulator/emulator). It is never started or stopped.",
@@ -94,6 +125,13 @@ export const webviewMonitorAStrings = {
   "wvMonitor.deviceAdd.createFailed": { ja: "デバイスの作成に失敗しました。", en: "Failed to create the device." },
   "wvMonitor.deviceAdd.creating": { ja: "作成中...", en: "Creating..." },
 
+  // #device-pick-overlay 内のホスト選択(#device-pick-host-select・devicePickHost.js)。
+  // モーダルを開いている間、どのホストから取得しているかを常時表示するバッジにも使う
+  // (「黙って別マシンの一覧を出さない」ため。#device-add-source-badge はこのバッジの読み取り専用複製)。
+  "wvMonitor.devicePick.hostLocalOption": { ja: "ローカル(このマシン)", en: "Local (this machine)" },
+  "wvMonitor.devicePick.hostLocalShort": { ja: "ローカル", en: "local" },
+  "wvMonitor.devicePick.hostBadge": { ja: "ホスト: {source}", en: "Host: {source}" },
+
   "wvMonitor.nameInput.required": { ja: "{noun}を入力してください。", en: "Please enter {noun}." },
   "wvMonitor.nameInput.forbiddenChars": {
     ja: "{noun}に \"/\" や \"{backslash}\" は使えません。",
@@ -112,9 +150,11 @@ export const webviewMonitorAStrings = {
   "wvMonitor.devicePick.androidEmpty": { ja: "Android AVD も接続中の実機もありません。", en: "No Android AVDs or connected devices." },
   "wvMonitor.devicePick.iosTitle": { ja: "iOS デバイス", en: "iOS devices" },
   "wvMonitor.devicePick.androidTitle": { ja: "Android デバイス", en: "Android devices" },
-  "wvMonitor.devicePick.loading": { ja: "一覧を読み込み中...", en: "Loading list..." },
   "wvMonitor.devicePick.fetchFailed": { ja: "一覧の取得に失敗しました。", en: "Failed to retrieve the list." },
   "wvMonitor.devicePick.syncFailed": { ja: "デバイスの同期に失敗しました。", en: "Failed to sync devices." },
+  // devicePickDeviceDeleteResult の error が空(理論上想定外)のときだけ使うフォールバック。
+  // 通常はホスト側が理由文を必ず載せる(monitorDeviceOps.ts の deleteOps.deleteFailedGeneric)。
+  "wvMonitor.devicePick.deleteFailed": { ja: "デバイスの削除に失敗しました。", en: "Failed to delete the device." },
   "wvMonitor.devicePick.applying": { ja: "適用中...", en: "Applying..." },
   "wvMonitor.devicePick.detailSeparator": { ja: "・", en: "·" },
 

@@ -1130,6 +1130,9 @@ export class MonitorLiveController implements vscode.Disposable {
         this.deps.post({ type: "liveH264Chunk", keyframe, width, height, data: new Uint8Array(data) });
       },
       onConnectionOk: () => this.handleConnectionOk(),
+      // helper が「この機械では h264 が無理」と降りたら mjpeg で張り直す(タイル側と同じ扱い。
+      // 配線しないと同じ引数で再起動し続け、無フレームのまま諦めてポーリングへ落ちる)
+      onCodecUnavailable: () => this.fallbackToMjpeg(),
       onFailure: (message) => this.handleStreamGiveUp(message),
     });
     this.streamPipeline = pipeline;

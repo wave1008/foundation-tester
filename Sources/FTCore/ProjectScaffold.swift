@@ -266,7 +266,6 @@ public enum ProjectScaffold {
         `ftester doctor` を実行し、結果を要約して見せる。赤(未導入・無効)が残る項目は 0 に戻って対処を依頼。
 
         ### 2. マシンプロファイル(この Mac のデバイス定義)
-        - `ftester machine set "<マシン名>"`(machines/ に .json が1つだけなら自動採用で省略可)
         - `xcrun simctl list devices available` で使えるシミュレータ名を採取
         - 🧑 `TestProjects/\(name)/profiles/machines/<マシン名>.json` に使うデバイスを列挙(雛形は同ディレクトリの README.md):
 
@@ -281,12 +280,12 @@ public enum ProjectScaffold {
         `appPath` はセットアップでは**聞かない・書かない**(未設定なら自動インストールは無効 =
         インストール済みのアプリをそのまま使う)。自動インストールが必要になったら、後から
         `TestProjects/\(name)/profiles/apps/\(appRef).json` の `appPath` をビルド済みアプリへ向ける
-        (`appName`/`autoInstall` は common、bundle ID(`app`)と `appPath` は ios/android セクション)。
+        (`appName`・bundle ID(`app`)・`appPath` は ios/android セクション、`autoInstall` は common)。
         **ユーザーが自発的にパスを伝えてきた場合のみ書く。別リポジトリを覗いて確定値を書き込まない**:
 
         ```json
-        { "common": { "appName": "\(name)", "autoInstall": true },
-          "ios":    { "app": "<bundle id>", "appPath": "~/builds/\(name).app" } }
+        { "common": { "autoInstall": true },
+          "ios":    { "appName": "\(name)", "app": "<bundle id>", "appPath": "~/builds/\(name).app" } }
         ```
         `appPath` の相対パスはリポジトリルート基準(`builds/x.app` → `<repoRoot>/builds/x.app`)。`~`・絶対パスも可。
 
@@ -421,8 +420,17 @@ public enum ProjectScaffold {
     Android の `avd` は AVD の ID("Pixel_9_Android_16")と表示名("Pixel 9(Android 16)")の
     どちらでも書ける。
 
-    実行時のマシン選択: FT_MACHINE 環境変数 > `ftester machine set` の登録名 >
+    実行時のマシン選択: 実行プロファイルの `machine` > FT_MACHINE 環境変数 >
     ここに .json が 1 つだけならそれを自動採用。
+
+    `"host"` は**そのデバイスがある機械**。**手元でも省略せず `"local"` と書く**(省略は
+    「直下の既定を継ぐ」の意味になり、既定がリモートのときに別の機械のデバイス扱いになる)。
+    ツールが書き出すときは常に `host` → `name` の順で先頭に置く。
+    別の Mac(リモートランナー)を指すときは `ftester remote hosts` の登録名だけを書く
+    (ssh の宛先は書けない)。`host` を書いておくと `--host` を付けなくてもその機械へ
+    ディスパッチされる。**トップレベルにも devices の各要素にも書ける** —— トップレベルは既定で、
+    デバイス側が優先。**一意なのは (host, name)** なので、別の機械に同名のデバイスが居てよく、
+    1つの実行プロファイルで手元とリモートを同時に回せる(docs/remote-runner-setup.md)。
 
     iOS の `os`(例 `"26.0"`)は任意。**書かなければ名前一致の最新ランタイム**に解決されるので、
     複数ランタイムを使い分けるとき以外は省略する(このマシンに無い版を書くと解決不能になる)。
@@ -431,32 +439,31 @@ public enum ProjectScaffold {
     {
       "ios": {
         "devices": [
-          { "name": "simulator1", "simulator": "iPhone 17 Pro" },
-          { "name": "simulator2", "simulator": "iPhone Air", "udid": "XXXX-XXXX" }
+          { "host": "local", "name": "simulator1", "simulator": "iPhone 17 Pro" },
+          { "host": "local", "name": "simulator2", "simulator": "iPhone Air", "udid": "XXXX-XXXX" }
         ]
       },
       "android": {
         "devices": [
-          { "name": "emulator1", "avd": "Pixel 9(Android 16)" },
-          { "name": "emulator2", "avd": "Pixel_8_Android_14" }
+          { "host": "local", "name": "emulator1", "avd": "Pixel 9(Android 16)" },
+          { "host": "local", "name": "emulator2", "avd": "Pixel_8_Android_14" }
         ]
       }
     }
     ```
     """
 
-    // 置き場所は固定: appName/autoInstall は common、app(ID)/appPath は platform セクション
+    // 置き場所は固定: appName/app(ID)/appPath は platform セクション、autoInstall は common
     // (AppProfileSection.merging 参照)
     public static func appProfileTemplate(appName: String, app: String) -> String {
         """
         {
-          "common": {
-            "appName": "\(appName)"
-          },
           "ios": {
+            "appName": "\(appName)",
             "app": "\(app)"
           },
           "android": {
+            "appName": "\(appName)",
             "app": "\(app)"
           }
         }

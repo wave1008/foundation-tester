@@ -28,16 +28,16 @@ export const webviewMonitorBStrings = {
     en: "(Not in the machine profile)",
   },
   "wvMonitor2.runProfile.validation.machineRequired": {
-    ja: "使用するマシンプロファイルを指定してください。",
-    en: "Specify the machine profile to use.",
+    ja: "参照するマシンプロファイルを指定してください。",
+    en: "Specify the machine profile to reference.",
   },
   "wvMonitor2.runProfile.validation.machineNotFound": {
     ja: "マシンプロファイル「{machine}」が見つかりません。",
     en: "Machine profile \"{machine}\" was not found.",
   },
   "wvMonitor2.runProfile.validation.appRequired": {
-    ja: "アプリを指定してください。",
-    en: "Specify an app.",
+    ja: "参照するアプリプロファイルを指定してください。",
+    en: "Specify the app profile to reference.",
   },
   "wvMonitor2.runProfile.validation.deviceRequired": {
     ja: "デバイスを1台以上選択してください。",
@@ -176,4 +176,12 @@ export const webviewMonitorBStrings = {
     en: "Cannot check: no foundation-tester clone found",
   },
   "wvMonitor2.update.unknown": { ja: "確認できませんでした: {reason}", en: "Could not check: {reason}" },
+
+  // 設定タブ「リモート実行」セクションの動的表示(settingsTab.js。行を JS で組み立てるため
+  // 静的ラベルの panels.settings.remote* と違いこちら側に置く。docs/remote-runner.md §12)。
+  "wvMonitor2.remote.removeTitle": { ja: "このホストを削除", en: "Remove this host" },
+  "wvMonitor2.remote.syncFailed": {
+    ja: "ホスト登録簿への反映に失敗しました: {reason}",
+    en: "Failed to save the host registry: {reason}",
+  },
 } satisfies MessageDict;

@@ -41,6 +41,8 @@ const runProfileRecordBitrate = document.getElementById('run-profile-record-bitr
 const runProfileRecordFullResolution = document.getElementById('run-profile-record-full-resolution');
 const runProfileWipeThreshold = document.getElementById('run-profile-wipe-threshold');
 const runProfileLocale = document.getElementById('run-profile-locale');
+const runProfileWorkspace = document.getElementById('run-profile-workspace');
+const btnRunProfileHookScaffold = document.getElementById('btn-run-profile-hook-scaffold');
 const runProfileReportDir = document.getElementById('run-profile-report-dir');
 const runProfileDefaultTimeout = document.getElementById('run-profile-default-timeout');
 const runProfileError = document.getElementById('run-profile-error');
@@ -54,8 +56,9 @@ let runProfileApps = [];
 let selectedRunProfile = null;
 // 直近ロード(runProfileData ok:true)時点の19フィールド値。null の間はフォーム非表示。
 let runProfileOriginalFields = null;
-// 現在チェック済みのデバイス名(表示順。チェックボックス操作・machine切替の引き継ぎの正)。
-let runProfileCheckedNames = [];
+// 現在チェック済みのデバイス参照 { name, host }(表示順。チェックボックス操作・machine 切替の
+// 引き継ぎの正)。**一意なのは (host, name)** なので名前だけでは持てない
+let runProfileCheckedRefs = [];
 let runProfileDirty = false;
 let runProfileSubmitting = false;
 
@@ -97,6 +100,11 @@ export function applyRunProfileInfo(message) {
   runProfileNames = Array.isArray(message.profiles) ? message.profiles : [];
   // apps は後方互換(古いホストからは届かない)のため配列でなければ空扱い。
   runProfileApps = Array.isArray(message.apps) ? message.apps : [];
+  // ワークスペース未入力時の既定を透かしで出す。相対パスはリポジトリルート基準なので、
+  // この文字列はそのまま入力しても既定と同じ場所を指す(Sources/FTCore/RunProfile.swift の
+  // ProfileResolver.resolveWorkspaceRoot と同期)。project が解決できないホストでは出さない
+  const project = typeof message.project === 'string' ? message.project : '';
+  runProfileWorkspace.placeholder = project === '' ? '' : `TestProjects/${project}/workspace`;
   const current = typeof message.current === 'string' ? message.current : '';
 
   const previous = selectedRunProfile;
@@ -208,7 +216,7 @@ function renderRunProfileEditor(fields) {
 
   renderRunProfileMachineSelect(fields.machine);
   renderRunProfileAppSelect(fields.app);
-  runProfileCheckedNames = fields.devices.slice();
+  runProfileCheckedRefs = fields.devices.map((d) => ({ name: d.name, host: d.host }));
   renderRunProfileDevices();
   runProfileFm.checked = fields.fm;
   runProfileHeal.checked = fields.heal;
@@ -230,6 +238,7 @@ function renderRunProfileEditor(fields) {
   updateRecordOptionsVisibility();
   runProfileWipeThreshold.value = fields.wipeDataThresholdGB;
   runProfileLocale.value = fields.locale;
+  runProfileWorkspace.value = fields.workspace;
   runProfileReportDir.value = fields.reportDir;
   runProfileDefaultTimeout.value = fields.defaultTimeout;
 
@@ -306,21 +315,34 @@ function renderRunProfileDevices() {
     return;
   }
   const machine = findMachine(machineName);
+  // 並び順はマシンプロファイルと同じ(config.ts の listMachineProfiles が
+  // 手元 → ホスト名順、その中で名前順に並べたもの)。ここでは並べ替えない
   const machineDevices = machine ? machine.devices : [];
-  const machineDeviceNames = machineDevices.map((d) => d.name);
-  const appendRow = (name, platform, missing) => {
+  const appendRow = (name, host, platform, missing) => {
     const row = document.createElement('label');
     row.className = 'run-profile-device-row';
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
-    checkbox.checked = runProfileCheckedNames.includes(name);
+    checkbox.checked = runProfileCheckedRefs.some((r) => refKey(r) === refKey({ name, host }));
     checkbox.dataset.deviceName = name;
+    // **参照は (host, name)**。名前だけを保存すると、同名が別ホストに並ぶプロファイルで
+    // どちらのデバイスか決まらない(run が候補を挙げて止まる)
+    if (host) {
+      checkbox.dataset.deviceHost = host;
+    }
     checkbox.addEventListener('change', onRunProfileDeviceToggle);
     const pill = document.createElement('span');
     // タイル/レーンと同じ配色ピル。マシンに無い名前は不明色(tile-name-unknown)。
     pill.className = 'tile-name ' + (platform ? 'tile-name-' + platform : 'tile-name-unknown');
     pill.textContent = name;
     row.append(checkbox, pill);
+    // 手元でないデバイスは名前の右にホスト名(マシンプロファイルの一覧と同じバッジ)
+    if (host) {
+      const badge = document.createElement('span');
+      badge.className = 'badge badge-remote';
+      badge.textContent = host;
+      row.appendChild(badge);
+    }
     if (missing) {
       const note = document.createElement('span');
       note.className = 'run-profile-device-note';
@@ -329,14 +351,20 @@ function renderRunProfileDevices() {
     }
     runProfileDevices.appendChild(row);
   };
+  const machineKeys = new Set(machineDevices.map((d) => refKey({ name: d.name, host: d.host })));
   for (const device of machineDevices) {
-    appendRow(device.name, device.platform, false);
+    appendRow(device.name, device.host, device.platform, false);
   }
-  for (const name of runProfileCheckedNames) {
-    if (!machineDeviceNames.includes(name)) {
-      appendRow(name, null, true);
+  for (const ref of runProfileCheckedRefs) {
+    if (!machineKeys.has(refKey(ref))) {
+      appendRow(ref.name, ref.host, null, true);
     }
   }
+}
+
+// デバイス参照の同一性。**一意なのは (host, name)**(host 省略=手元)
+function refKey(ref) {
+  return `${ref.host ?? ''}\t${ref.name}`;
 }
 
 // チェックボックス操作: DOM の表示順(マシンのデバイス順+欠落分)で checked を集め直す。
@@ -344,14 +372,14 @@ function onRunProfileDeviceToggle() {
   const checked = [];
   for (const checkbox of runProfileDevices.querySelectorAll('input[type="checkbox"]')) {
     if (checkbox.checked) {
-      checked.push(checkbox.dataset.deviceName);
+      checked.push({ name: checkbox.dataset.deviceName, host: checkbox.dataset.deviceHost });
     }
   }
-  runProfileCheckedNames = checked;
+  runProfileCheckedRefs = checked;
   onRunProfileFormInput();
 }
 
-// マシン切替: チェック状態(runProfileCheckedNames)は名前で引き継いだまま一覧を作り直す。
+// マシン切替: チェック状態(runProfileCheckedRefs)は (host, name) で引き継いだまま一覧を作り直す。
 runProfileMachine.addEventListener('change', () => {
   renderRunProfileDevices();
   onRunProfileFormInput();
@@ -389,6 +417,20 @@ runProfileRecordBitrate.addEventListener('input', onRunProfileFormInput);
 runProfileRecordFullResolution.addEventListener('change', onRunProfileFormInput);
 runProfileWipeThreshold.addEventListener('input', onRunProfileFormInput);
 runProfileLocale.addEventListener('input', onRunProfileFormInput);
+runProfileWorkspace.addEventListener('input', onRunProfileFormInput);
+
+// 雛形の作成はフォームの値ではなくファイルを作る操作なので dirty にしない。ワークスペースは
+// **入力中の値**を送る(保存前に押しても、画面に見えている場所へ作られる)
+btnRunProfileHookScaffold.addEventListener('click', () => {
+  if (btnRunProfileHookScaffold.disabled || !selectedRunProfile) {
+    return;
+  }
+  vscode.postMessage({
+    type: 'runProfileHookScaffold',
+    profile: selectedRunProfile,
+    workspace: runProfileWorkspace.value.trim(),
+  });
+});
 runProfileReportDir.addEventListener('input', onRunProfileFormInput);
 runProfileDefaultTimeout.addEventListener('input', onRunProfileFormInput);
 
@@ -398,15 +440,15 @@ function runProfileDevicesEqual(a, b) {
   if (a.length !== b.length) {
     return false;
   }
-  const setB = new Set(b);
-  return a.every((name) => setB.has(name));
+  const setB = new Set(b.map(refKey));
+  return a.every((ref) => setB.has(refKey(ref)));
 }
 
 function runProfileValuesEqual(fields) {
   return (
     runProfileMachine.value === fields.machine &&
     runProfileApp.value === fields.app &&
-    runProfileDevicesEqual(runProfileCheckedNames, fields.devices) &&
+    runProfileDevicesEqual(runProfileCheckedRefs, fields.devices) &&
     runProfileFm.checked === fields.fm &&
     runProfileHeal.checked === fields.heal &&
     runProfileFalsePositiveCheck.checked === fields.falsePositiveCheck &&
@@ -425,6 +467,7 @@ function runProfileValuesEqual(fields) {
     runProfileRecordFullResolution.checked === fields.recordFullResolution &&
     runProfileWipeThreshold.value === fields.wipeDataThresholdGB &&
     runProfileLocale.value === fields.locale &&
+    runProfileWorkspace.value === fields.workspace &&
     runProfileReportDir.value === fields.reportDir &&
     runProfileDefaultTimeout.value === fields.defaultTimeout
   );
@@ -457,6 +500,8 @@ function setRunProfileControlsEnabled(enabled) {
   runProfileRecordFullResolution.disabled = !enabled;
   runProfileWipeThreshold.disabled = !enabled;
   runProfileLocale.disabled = !enabled;
+  runProfileWorkspace.disabled = !enabled;
+  btnRunProfileHookScaffold.disabled = !enabled;
   runProfileReportDir.disabled = !enabled;
   runProfileDefaultTimeout.disabled = !enabled;
   for (const checkbox of runProfileDevices.querySelectorAll('input[type="checkbox"]')) {
@@ -476,7 +521,7 @@ function validateRunProfileFields() {
   if (runProfileApp.value.trim() === '') {
     return t('wvMonitor2.runProfile.validation.appRequired');
   }
-  if (runProfileCheckedNames.length === 0) {
+  if (runProfileCheckedRefs.length === 0) {
     return t('wvMonitor2.runProfile.validation.deviceRequired');
   }
   const timeout = runProfileDefaultTimeout.value.trim();
@@ -518,7 +563,7 @@ runProfileConfirm.addEventListener('click', () => {
     fields: {
       machine: runProfileMachine.value.trim(),
       app: runProfileApp.value.trim(),
-      devices: runProfileCheckedNames.slice(),
+      devices: runProfileCheckedRefs.map((r) => (r.host ? { name: r.name, host: r.host } : { name: r.name })),
       fm: runProfileFm.checked,
       heal: runProfileHeal.checked,
       falsePositiveCheck: runProfileFalsePositiveCheck.checked,
@@ -537,6 +582,7 @@ runProfileConfirm.addEventListener('click', () => {
       recordFullResolution: runProfileRecordFullResolution.checked,
       wipeDataThresholdGB: runProfileWipeThreshold.value.trim(),
       locale: runProfileLocale.value.trim(),
+      workspace: runProfileWorkspace.value.trim(),
       reportDir: runProfileReportDir.value.trim(),
       defaultTimeout: runProfileDefaultTimeout.value.trim(),
     },

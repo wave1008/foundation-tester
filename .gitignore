@@ -10,6 +10,10 @@ reports/
 results/
 # ftester run-file の一時ステージ先(実行の前後で消える。残骸はコミットしない)
 TestProjects/*/scenarios/_runfile/
+# ワークスペース(remoteControl。既定 <project.rootURL>/workspace)のステージ済みアプリパッケージ。
+# 原本(appPath)からの複製で失っても再生成される(WorkspaceAppStaging)。scripts/・data/ は
+# 利用者が書くものなので無視しない(docs/remote-runner.md §17)
+TestProjects/*/workspace/apps/
 bench-results/
 *.log
 .vscode/

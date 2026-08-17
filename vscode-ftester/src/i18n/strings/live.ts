@@ -228,6 +228,18 @@ export const liveStrings = {
     ja: "[{prefix}] 予期しない終了({reason})。{delay}ms 後に再起動します。",
     en: "[{prefix}] Unexpected exit ({reason}). Restarting in {delay}ms.",
   },
+  "live.stream.noFrameGaveUp": {
+    ja: "[{prefix}] {seconds}秒×{count}回のあいだ1フレームも届かなかったため配信を諦めます(ホストがエンコードをこなせていない可能性があります。配信するタイルを減らしてください)",
+    en: "[{prefix}] No frame arrived across {count} × {seconds}s — giving up on streaming (the host may be unable to encode; stream fewer tiles)",
+  },
+  "live.stream.noFrameMessage": {
+    ja: "{seconds}秒待っても1フレームも届きませんでした",
+    en: "no frame arrived within {seconds}s",
+  },
+  "live.stream.codecUnavailable": {
+    ja: "この機械では h264 でエンコードできないため MJPEG で張り直します",
+    en: "This host cannot encode h264 — restarting the stream with MJPEG",
+  },
   "live.stream.wedgeRestart": {
     ja: "[{prefix}] {seconds}秒フレームが届かないため helper を再起動します。",
     en: "[{prefix}] No frame received for {seconds}s. Restarting helper.",

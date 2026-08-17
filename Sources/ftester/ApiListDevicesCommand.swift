@@ -33,7 +33,7 @@ struct ApiListDevices: AsyncParsableCommand {
         // runProfileName を渡さないと machines/ 複数時に「マシン名が未登録」で落ちる
         // (ApiDeviceCommands.swift と同経路。対向: monitorLiveController.ts)
         let machine = try ProfileResolver.determineMachine(
-            project: testProject, registered: LocalConfig.currentMachineName(),
+            project: testProject,
             runProfileName: profile)
         if machine.auto {
             logStderr("→ Using machine profile \(machine.name) automatically (it is the only one in machines/)")
@@ -52,14 +52,32 @@ struct ApiListDevices: AsyncParsableCommand {
             throw ProfileError.decodeFailed(machineURL, detail: "\(error)")
         }
 
-        var targets = (machineProfile.ios?.devices ?? []).map {
-            MonitorTarget(platform: "ios", spec: $0)
+        // --profile を渡されたら**そのプロファイルが参照するデバイスだけ**に絞る(モニターと
+        // 同じ RunProfileScope を通す。以前は「マシンの解決」にしか使っておらず、同じ --profile が
+        // モニターとここで別の集合を指していた)
+        var scoped = machineProfile
+        if let profile {
+            scoped = try RunProfileScope.filteredMachineProfile(
+                project: testProject, machineName: machine.name, machineProfile: machineProfile,
+                runProfileName: profile, warn: { logStderr($0) })
         }
-        targets += (machineProfile.android?.devices ?? []).map {
-            MonitorTarget(platform: "android", spec: $0)
+
+        // **このコマンドは「この機械で操作できるデバイス」を答える**(ライブ操作の対象選択に使う)。
+        // 別の機械のデバイスはここからは触れないので落とす —— 出すと選べてしまい、操作は必ず失敗する。
+        // モニターは表示だけなのでリモートも出す(そちらは machineHost をタイルに出して区別する)
+        let allDevices = (scoped.ios?.devices ?? []).map { (platform: "ios", spec: $0) }
+            + (scoped.android?.devices ?? []).map { (platform: "android", spec: $0) }
+        let localDevices = allDevices.filter {
+            DeviceHostGrouping.effectiveHost(device: $0.spec, machineHost: scoped.host) == nil
         }
+        if localDevices.count < allDevices.count {
+            logStderr("→ Skipped \(allDevices.count - localDevices.count) device(s) that live on"
+                + " another machine (they cannot be driven from here)")
+        }
+        let targets = localDevices.map { MonitorTarget(platform: $0.platform, spec: $0.spec) }
         guard !targets.isEmpty else {
-            throw ValidationError("machine profile \(machine.name) defines no devices")
+            throw ValidationError("machine profile \(machine.name) defines no devices"
+                + " on this machine\(profile.map { " for run profile \($0)" } ?? "")")
         }
 
         // ApiMonitorCommand と同じ判定ロジックを 1 回だけ実行する(debounce なし。

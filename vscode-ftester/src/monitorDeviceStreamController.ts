@@ -18,7 +18,7 @@
 // (Sources/ftester/ApiMonitorCommand.swift 同期)を送り、生成側でもポーリングを止める
 // (monitorProcessManager.ts の間引きは受信後の安全弁として残る)。
 
-import { resolveAdb, resolveAndroidStream, resolveDevicePoll, resolveSimStream } from "./config";
+import { resolveAdb, resolveAndroidStream, resolveDevicePoll, resolveProjectName, resolveSimStream } from "./config";
 import { StreamPipeline } from "./deviceStream";
 import { t } from "./i18n";
 import type { MonitorDevice, MonitorPlatform } from "./monitorModel";
@@ -41,6 +41,13 @@ interface StreamEntry {
   // するため、破棄判定で target.codec と比較する(不一致なら張り替え)。
   readonly codec: "mjpeg" | "h264";
   readonly pipeline: StreamPipeline;
+}
+
+/** MonitorTarget.id("<platform>:<name>" / リモートは "<platform>:<host>/<name>")が
+ * (host, name) と一致するか。**名前だけで引かない** —— 同名の台が別の機械にも居るのは通常で、
+ * 手元の停止でリモートの配信まで畳む(逆も同じ)。host 省略は「手元」の意味 */
+function matchesDeviceName(deviceId: string, name: string, host?: string): boolean {
+  return deviceId.endsWith(host === undefined ? `:${name}` : `:${host}/${name}`);
 }
 
 export class MonitorDeviceStreamController {
@@ -98,10 +105,25 @@ export class MonitorDeviceStreamController {
     // 実機はスクリーンショットのポーリング(ftester-devicepoll)。iOS/Android で共通の helper。
     // iOS 実機の有効/無効は iosStreamEnabled、Android 実機は androidStreamEnabled に従う
     const devicePollPath = resolveDevicePoll(config);
-    if (!simStreamPath && !(androidStreamPath && adbPath) && !devicePollPath) {
+    // **リモートは手元のヘルパーを使わない**(向こうの ftester が起こす)ので、手元に
+    // ヘルパーが1つも無くてもリモートのタイルは配信できる。ここで早期 return すると
+    // 「手元にビルドが無い機械ではリモート映像も出ない」になる
+    const hasRemote = devices.some((device) => device.machineHost !== undefined);
+    if (!simStreamPath && !(androidStreamPath && adbPath) && !devicePollPath && !hasRemote) {
       this.disposeAll();
       return;
     }
+
+    // リモートの device-stream は向こうでマシンプロファイルを引くのでプロジェクト名が要る
+    // (未解決なら省略 = 向こうの既定プロジェクトに委ねる)。**リモートが1台も無いなら引かない**
+    let projectArgs: string[] | undefined;
+    const remoteProjectArgs = (): string[] => {
+      if (!projectArgs) {
+        const resolution = resolveProjectName(this.deps.workspaceRoot, config);
+        projectArgs = resolution.kind === "resolved" ? ["--project", resolution.project] : [];
+      }
+      return projectArgs;
+    };
 
     const qualifying = new Map<string, QualifyingTarget>();
     for (const device of devices) {
@@ -111,6 +133,39 @@ export class MonitorDeviceStreamController {
       // codecError を受けたデバイスは設定値に関わらず mjpeg 固定(fallbackToMjpeg 参照)。
       const codec: "mjpeg" | "h264" = this.mjpegFallbackIds.has(device.id) ? "mjpeg" : config.streamCodec;
       const codecArgs = codec === "h264" ? ["--codec", "h264"] : [];
+      if (device.machineHost) {
+        // **別の機械のデバイス**。udid も adb serial も向こうのものなので、手元でヘルパーを
+        // 起こしても当たらない(同名の手元の台に当たると**別の機械の画面が映る**)。代わりに
+        // その機械で `api device-stream` を起こす —— 向こうは宛先を解決してヘルパーへ exec で
+        // 化けるので、**stdout に流れるバイト列はここで直接起こしたときと同じ**。だから
+        // StreamPipeline も codec の扱いも失敗時のポーリング復帰もそのまま使える
+        // (契約: Sources/ftester/ApiDeviceStreamCommand.swift)。
+        // 配信できないときは何も起こさない = そのタイルはリモート monitor のポーリング
+        // フレーム(2秒毎)で更新され続ける
+        const enabled = device.platform === "ios" ? config.iosStreamEnabled : config.androidStreamEnabled;
+        if (!enabled) {
+          continue;
+        }
+        qualifying.set(device.id, {
+          platform: device.platform,
+          key: `${device.machineHost}/${device.name}`,
+          // 手元と同じ規則: **実機は devicepoll(MJPEG 固定)** —— 向こうの
+          // ApiDeviceStreamCommand が実機で codec を落とすので、h264 を期待すると
+          // v1 レコードを v2 として読んで desync → kill/再起動のループになる
+          codec: device.kind === "physical" ? "mjpeg" : codec,
+          command: config.binaryPath,
+          args: [
+            "remote", "exec", device.machineHost, "--",
+            "api", "device-stream", "--device-host", device.machineHost,
+            "--platform", device.platform, "--name", device.name,
+            "--fps", String(config.liveFps), "--max-width", String(config.monitorMaxWidth),
+            ...remoteProjectArgs(),
+            ...(config.profile ? ["--profile", config.profile] : []),
+            ...(device.kind === "physical" ? [] : codecArgs),
+          ],
+        });
+        continue;
+      }
       // 実機は種別を問わず devicepoll(スクリーンショットのポーリング)。
       // iOS 実機に simstream は使えず(CoreSimulator 私有 API)、Android 実機は screenrecord だと
       // 静止画面でフレームが流れないため、両者ともこちらへ寄せる
@@ -173,6 +228,7 @@ export class MonitorDeviceStreamController {
     for (const deviceId of [...this.gaveUpDeviceIds]) {
       if (!qualifying.has(deviceId)) {
         this.gaveUpDeviceIds.delete(deviceId);
+        this.deps.post({ type: "streamUnavailable", device: deviceId, unavailable: false });
       }
     }
     for (const [deviceId, target] of qualifying) {
@@ -224,12 +280,12 @@ export class MonitorDeviceStreamController {
   }
 
   /** device-down ジョブ(monitorDeviceOps.ts)の実行開始時に呼ぶ。deviceId は "<platform>:<name>"
-   * (Swift 側 MonitorTarget.id)だがジョブは name しか持たないため、":name" サフィックス一致で
-   * 判定する(同名デバイスが ios/android 両方に存在する場合も両方破棄する)。 */
-  disposeForDeviceName(name: string): void {
-    const suffix = `:${name}`;
+   * (リモートは "<platform>:<host>/<name>"。Swift 側 MonitorTarget.id)だがジョブは name しか
+   * 持たないため、名前部分の一致で判定する(同名デバイスが ios/android 両方・複数の機械に
+   * 存在する場合も全部破棄する)。 */
+  disposeForDeviceName(name: string, host?: string): void {
     for (const deviceId of [...this.pipelines.keys()]) {
-      if (deviceId.endsWith(suffix)) {
+      if (matchesDeviceName(deviceId, name, host)) {
         this.disposeDevice(deviceId);
       }
     }
@@ -238,10 +294,10 @@ export class MonitorDeviceStreamController {
   /** health watchdog の blank-screen 軽量修復(monitorHealthWatchdog.ts)。name の稼働中パイプラインを
    * 破棄して即再生成する(restartDevice と同じ仕組み)。1本でも張り替えたら true。 */
   restartForDeviceName(name: string): boolean {
-    const suffix = `:${name}`;
     let found = false;
     for (const deviceId of [...this.pipelines.keys()]) {
-      if (deviceId.endsWith(suffix)) {
+      // health watchdog は手元のデバイスにしか出さない(monitorHealthWatchdog.ts のガード)
+      if (matchesDeviceName(deviceId, name)) {
         this.disposeDevice(deviceId);
         found = true;
       }
@@ -272,12 +328,19 @@ export class MonitorDeviceStreamController {
         this.deps.post({ type: "h264Chunk", device: deviceId, keyframe, width, height, data: new Uint8Array(data) });
       },
       onConnectionOk: () => undefined,
+      // helper が「この機械では h264 が無理」と降りたら mjpeg へ張り替える(webview の
+      // codecError と同じ扱い。あちらは受け手の非対応、こちらは送り手の資源不足)
+      onCodecUnavailable: () => this.fallbackToMjpeg(deviceId),
       onFailure: (message) => {
         this.deps.outputChannel.appendLine(
           `[monitor-stream] ${deviceId}: ${message} ${t("monitor.deviceStream.fallbackToPolling")}`,
         );
         this.disposeDevice(deviceId);
         this.gaveUpDeviceIds.add(deviceId); // 2秒毎の applyDevices による再生成スパムを止める
+        // **タイルに黙って「接続中」を出し続けない** —— プロファイル未選択(未登録デバイス)の
+        // iOS はブリッジが無くポーリングのフレームも来ないので、諦めたことを伝えないと
+        // 永久に「接続中」に見える(2026-08-17 の実害)
+        this.deps.post({ type: "streamUnavailable", device: deviceId, unavailable: true });
       },
     });
     this.pipelines.set(deviceId, {

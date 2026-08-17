@@ -38,6 +38,12 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
         + " (runtimes[].identifier / systemImages[].package from device-catalog)"))
     var os: String
 
+    @Flag(help: ArgumentHelp(
+        "Replace an existing simulator/AVD of the same name instead of creating a variant"
+        + " (deletes it first; refuses while it is running). Without this flag the new AVD gets a"
+        + " _2 / _3 ... suffix so both survive"))
+    var overwrite = false
+
     @Flag(name: .customLong("no-register"), help: ArgumentHelp(
         "Only create the simulator/AVD without appending it to the machine profile"
         + " (for the VSCode extension's pick-from-existing screen — registration happens on its OK)"))
@@ -93,11 +99,13 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
         }
 
         // 名前重複は物理作成前に検証する(作成後に addingDevice で発覚すると孤児シミュレータ/AVDが
-        // 残るため)。addingDevice 内の重複チェックは防御として残している
-        guard !MachineProfileEditor.deviceNames(inProfileObject: profileObject)
-            .contains(trimmedName) else {
+        // 残るため)。addingDevice 内の重複チェックは防御として残している。
+        // **このコマンドは手元にしか作らない**(リモートは --no-register)ので、比べる相手は
+        // 手元のデバイスだけ。別ホストの同名は重複ではない(FTCore.DeviceHostGrouping)
+        let localNames = MachineProfileEditor.localDeviceNames(inProfileObject: profileObject)
+        guard !localNames.contains(trimmedName) else {
             throw CreateDeviceError("duplicate device name: \(trimmedName)"
-                + " (names must be unique across ios and android)")
+                + " on this machine (names must be unique per host, across ios and android)")
         }
 
         let deviceEntry: [String: Any]
@@ -144,9 +152,8 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
                 + error.localizedDescription)
         }
         do {
-            let output = try JSONSerialization.data(
-                withJSONObject: updated, options: [.prettyPrinted, .sortedKeys])
-            try output.write(to: machineURL, options: .atomic)
+            // キー順は OrderedProfileJSON(host → name を先頭)。ProfileWriter.json と同じ口を通す
+            try ProfileWriter.json(updated).write(to: machineURL, options: .atomic)
         } catch {
             throw CreateDeviceError(
                 "the simulator/AVD was created, but writing the profile file failed: "
@@ -160,7 +167,7 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
     private func resolveMachineName(project: TestProject) throws -> String {
         if let machine, !machine.isEmpty { return machine }
         let determined = try ProfileResolver.determineMachine(
-            project: project, registered: LocalConfig.currentMachineName())
+            project: project)
         if determined.auto {
             logStderr("→ Using machine profile \(determined.name) automatically (it is the only one in machines/)")
         }
@@ -201,6 +208,12 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
             throw CreateDeviceError("runtime not found: \(os)")
         }
 
+        // **iOS は同名のシミュレータを何台でも作れる**(識別子は UDID)。--overwrite のときだけ、
+        // 同名の既存を消してから作る(付けなければ同名が並ぶ = simctl の既定のふるまい)
+        if overwrite {
+            try deleteExistingSimulators(named: name)
+        }
+
         emitLog("Creating the simulator: \(name) (\(deviceTypeName) / iOS \(runtimeVersion))...")
         let createResult = try Shell.run(["xcrun", "simctl", "create", name, model, os])
         guard createResult.status == 0 else {
@@ -212,11 +225,53 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
         }
         emitLog("Created the simulator (UDID: \(udid))")
 
+        // host は**必ず書く**(手元なら "local")。省略は「プロファイル直下の既定を継ぐ」の意味で、
+        // 既定がリモートのプロファイルだと手元で作った実体が別の機械のものとして扱われる
         let deviceEntry: [String: Any] = [
+            "host": DeviceHostGrouping.localDisplayName,
             "name": name, "simulator": deviceTypeName, "os": runtimeVersion, "udid": udid,
         ]
         let resultEntry = ApiCreateDeviceEntry(avd: nil, name: name, udid: udid)
         return (deviceEntry, resultEntry)
+    }
+
+    /// --overwrite で同名の既存シミュレータを消す。**判定は削除コマンドと同じ
+    /// FTCore.DeviceDeletion**(起動中は消さない)。同名が複数あれば全部消す ——
+    /// 1台だけ残すと「上書きしたのに古いのが残る」になる
+    private func deleteExistingSimulators(named name: String) throws {
+        let matches = ((try? SimulatorCatalog.devices()) ?? []).filter { $0.name == name }
+        guard !matches.isEmpty else { return }
+        for device in matches {
+            if let reason = DeviceDeletion.refusalReason(
+                isRunning: device.booted, exists: true, then: "create it again") {
+                throw CreateDeviceError("cannot overwrite \(name): \(reason)")
+            }
+        }
+        for device in matches {
+            emitLog("Deleting the existing simulator before recreating it: \(name) (\(device.udid))...")
+            let result = try Shell.run(DeviceDeletion.iosCommand(udid: device.udid))
+            guard result.status == 0 else {
+                throw CreateDeviceError("simctl delete failed: \(result.tail)")
+            }
+        }
+    }
+
+    /// --overwrite で既存 AVD を消す。**判定は削除コマンドと同じ FTCore.DeviceDeletion**
+    /// (起動中は消さない・存在しないものを消したと言わない)。ここで別の規則を書くと、
+    /// 「delete-device では拒否されるのに create --overwrite では消える」が起きる
+    private func deleteExistingAVD(_ avdID: String, avdmanagerPath: String) throws {
+        let running = (try? AndroidDeviceCatalog.runningAVDs()) ?? [:]
+        if let reason = DeviceDeletion.refusalReason(
+            isRunning: running.values.contains(avdID), exists: true, then: "create it again") {
+            throw CreateDeviceError("cannot overwrite \(avdID): \(reason)")
+        }
+        emitLog("Deleting the existing AVD before recreating it: \(avdID)...")
+        var command = DeviceDeletion.androidCommand(avd: avdID)
+        command[0] = avdmanagerPath
+        let result = try Shell.run(command)
+        guard result.status == 0 else {
+            throw CreateDeviceError("avdmanager delete avd failed: \(result.tail)")
+        }
     }
 
     // MARK: - Android
@@ -225,19 +280,25 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
         name: String
     ) throws -> (deviceEntry: [String: Any], resultEntry: ApiCreateDeviceEntry) {
         guard let avdmanagerURL = AndroidSDKLocator.findAVDManager() else {
-            throw CreateDeviceError(AndroidSDKLocator.avdManagerMissingMessage + "。"
+            throw CreateDeviceError(AndroidSDKLocator.avdManagerMissingMessage + ". "
                 + AndroidSDKLocator.avdManagerInstallHint)
         }
 
         // AVD ID はデバイス名から機械的に生成する(avdmanager -n の制約に合わせて英数字・._- のみ)。
-        // 既存 AVD と衝突する場合は _2, _3... を付けて回避する
+        // 既存 AVD と衝突したときの扱いは2通り: **--overwrite なら消して同じ ID で作り直す**、
+        // 付けなければ _2, _3... を足して両方残す(呼び出し側が「上書きするか」を人に聞ける
+        // ようにするため、ここでは黙って選ばない)
         let installedIDs = Set(AndroidDeviceCatalog.installedAVDs().map(\.id))
         let baseID = MachineProfileEditor.sanitizedAVDID(from: name)
         var avdID = baseID
-        var suffix = 2
-        while installedIDs.contains(avdID) {
-            avdID = "\(baseID)_\(suffix)"
-            suffix += 1
+        if installedIDs.contains(baseID), overwrite {
+            try deleteExistingAVD(baseID, avdmanagerPath: avdmanagerURL.path)
+        } else {
+            var suffix = 2
+            while installedIDs.contains(avdID) {
+                avdID = "\(baseID)_\(suffix)"
+                suffix += 1
+            }
         }
 
         emitLog("Creating the AVD: \(avdID) (\(model) / \(os))...")
@@ -247,7 +308,10 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
 
         updateDisplayName(avdID: avdID, displayName: name)
 
-        let deviceEntry: [String: Any] = ["name": name, "avd": avdID]
+        // host は必ず書く(理由は createSimulator 側のコメント)
+        let deviceEntry: [String: Any] = [
+            "host": DeviceHostGrouping.localDisplayName, "name": name, "avd": avdID,
+        ]
         let resultEntry = ApiCreateDeviceEntry(avd: avdID, name: name, udid: nil)
         return (deviceEntry, resultEntry)
     }

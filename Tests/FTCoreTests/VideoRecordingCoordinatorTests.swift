@@ -1,5 +1,6 @@
 // VideoRecordingCoordinator の判定ロジック(recordFailuresOnly の区間スキップ)と、
-// finalize のエクスポート制御(期限超過→残りクリップ断念・同時実行制限)を検証する。
+// finalize のエクスポート制御(ハードウェア→ソフトウェアへのフォールバック・断念判定・
+// 同時実行制限・attempted/failed 集計)を検証する。
 // 実セッション(simctl/adb)や実エンコードは makeSession/extractClip 注入で置き換える。
 
 import XCTest
@@ -56,13 +57,15 @@ private struct FixedSourceSession: DeviceVideoRecorderSession {
     func stop() async -> RecordingSource? { source }
 }
 
-/// extractClip 呼び出しの回数・同時実行数の観測
+/// extractClip 呼び出しの回数・同時実行数・ソフトウェアエンコーダでの呼び出し数の観測
 private actor ExportProbe {
     private(set) var calls = 0
+    private(set) var softwareCalls = 0
     private(set) var current = 0
     private(set) var maxConcurrent = 0
-    func began() {
+    func began(software: Bool = false) {
         calls += 1
+        if software { softwareCalls += 1 }
         current += 1
         maxConcurrent = max(maxConcurrent, current)
     }
@@ -108,16 +111,68 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
             passed: false)
     }
 
-    func testExportTimeoutAbandonsRemainingClips() async throws {
+    /// ハードウェアエンコーダが期限超過したら、同じクリップをソフトウェアで撮り直し、
+    /// この run の残りのクリップもソフトウェアで続行するはず(preferSoftwareEncoder==false
+    /// のときだけ無応答にして固着を再現する)
+    func testHardwareTimeoutFallsBackToSoftwareAndContinues() async throws {
         let tmp = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: tmp) }
         let probe = ExportProbe()
         let coordinator = VideoRecordingCoordinator(
             config: VideoRecordingConfig(runDir: tmp),
             makeSession: fixedSessionFactory(tmp: tmp),
-            extractClip: { _, _, _, _, _, _ in
+            extractClip: { _, _, _, _, _, _, preferSoftwareEncoder in
+                await probe.began(software: preferSoftwareEncoder)
+                guard preferSoftwareEncoder else {
+                    // 無応答ハードウェアエンコーダの再現(テスト終了まで返らない)
+                    try? await Task.sleep(nanoseconds: 3_600_000_000_000)
+                    return true
+                }
+                return true
+            },
+            exportDeadline: { _ in 0.2 })
+        let w1 = makeWorker(1)
+        let w2 = makeWorker(2)
+        let started1 = await coordinator.start(w1)
+        let started2 = await coordinator.start(w2)
+        XCTAssertTrue(started1)
+        XCTAssertTrue(started2)
+        await registerInterval(coordinator, worker: w1, scenarioID: "FallbackTest.S0010")
+        await registerInterval(coordinator, worker: w2, scenarioID: "FallbackTest.S0020")
+
+        let stopStart = Date()
+        await coordinator.stop(w1)  // ハードウェアが期限超過→ソフトウェアで撮り直して成功するはず
+        await coordinator.stop(w2)  // 既にソフトウェア切替済みなので最初からソフトウェアで試すはず
+        XCTAssertLessThan(Date().timeIntervalSince(stopStart), 5,
+                          "撮り直しはハードウェアの無応答を待たずに返るはず")
+
+        let calls = await probe.calls
+        let softwareCalls = await probe.softwareCalls
+        XCTAssertEqual(calls, 3, "w1: ハードウェア1回+ソフトウェア再試行1回、w2: ソフトウェア1回のはず")
+        XCTAssertEqual(softwareCalls, 2, "両クリップともソフトウェアで成功するはず")
+
+        await coordinator.finish()
+        let indexURL = tmp.appendingPathComponent("recordings/index.json")
+        let data = try Data(contentsOf: indexURL)
+        let decoded = try JSONDecoder().decode(RecordingIndex.self, from: data)
+        XCTAssertEqual(decoded.recordings.count, 2, "両方のクリップが取れるはず(断念しない)")
+        XCTAssertEqual(decoded.clipsAttempted, 2)
+        XCTAssertEqual(decoded.clipsFailed, 0)
+        XCTAssertEqual(decoded.encoderFallback, true, "ソフトウェアへ切り替えたことを記録するはず")
+    }
+
+    /// ソフトウェアエンコーダに切り替えた後もなお期限超過したら、そこで初めて本当に断念する
+    /// (残りのクリップは1件も試みない)はず
+    func testSoftwareTimeoutAbandonsRemainingClips() async throws {
+        let tmp = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let probe = ExportProbe()
+        let coordinator = VideoRecordingCoordinator(
+            config: VideoRecordingConfig(runDir: tmp),
+            makeSession: fixedSessionFactory(tmp: tmp),
+            extractClip: { _, _, _, _, _, _, _ in
                 await probe.began()
-                // 無応答エンコーダの再現(テスト終了まで返らない)
+                // ハードウェア・ソフトウェアとも無応答(テスト終了まで返らない)
                 try? await Task.sleep(nanoseconds: 3_600_000_000_000)
                 return true
             },
@@ -128,21 +183,86 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
         let started2 = await coordinator.start(w2)
         XCTAssertTrue(started1)
         XCTAssertTrue(started2)
-        await registerInterval(coordinator, worker: w1, scenarioID: "TimeoutTest.S0010")
-        await registerInterval(coordinator, worker: w2, scenarioID: "TimeoutTest.S0020")
+        await registerInterval(coordinator, worker: w1, scenarioID: "DoubleTimeoutTest.S0010")
+        await registerInterval(coordinator, worker: w2, scenarioID: "DoubleTimeoutTest.S0020")
 
         let stopStart = Date()
-        await coordinator.stop(w1)  // 期限 0.2 秒で戻り、以降のエクスポートを断念するはず
-        await coordinator.stop(w2)  // エクスポートに入らず即返るはず
+        await coordinator.stop(w1)  // ハードウェア→ソフトウェアとも期限超過し断念するはず
+        await coordinator.stop(w2)  // 断念済みなのでエクスポートに入らず即返るはず
         XCTAssertLessThan(Date().timeIntervalSince(stopStart), 5,
-                          "期限超過後の stop はエンコーダを待たずに返るはず")
+                          "ソフトウェアも期限超過したら残りを待たずに断念するはず")
         let calls = await probe.calls
-        XCTAssertEqual(calls, 1, "期限超過後は残りのクリップを断念するはず")
+        XCTAssertEqual(calls, 2, "1本目はハードウェア1回・ソフトウェア1回の計2回試すが、2本目は試さないはず")
 
         await coordinator.finish()
+        let indexURL = tmp.appendingPathComponent("recordings/index.json")
+        let data = try Data(contentsOf: indexURL)
+        let decoded = try JSONDecoder().decode(RecordingIndex.self, from: data)
+        XCTAssertEqual(decoded.recordings.count, 0, "クリップは1本も取れないはず")
+        XCTAssertEqual(decoded.clipsAttempted, 1, "断念した1本だけ attempted に数え、2本目は試みていないはず")
+        XCTAssertEqual(decoded.clipsFailed, 1)
+        XCTAssertEqual(decoded.encoderFallback, true, "断念する前にソフトウェアへ切り替えているはず")
+    }
+
+    /// ハードウェアが false(失敗)を返したら、ソフトウェアへ切り替えて同じクリップを
+    /// 再試行し、成功するはず
+    func testHardwareFailureFallsBackToSoftwareAndSucceeds() async throws {
+        let tmp = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let probe = ExportProbe()
+        let coordinator = VideoRecordingCoordinator(
+            config: VideoRecordingConfig(runDir: tmp),
+            makeSession: fixedSessionFactory(tmp: tmp),
+            extractClip: { _, _, _, _, _, _, preferSoftwareEncoder in
+                await probe.began(software: preferSoftwareEncoder)
+                return preferSoftwareEncoder  // ハードウェアは失敗・ソフトウェアは成功する
+            })
+        let worker = makeWorker(1)
+        let started = await coordinator.start(worker)
+        XCTAssertTrue(started)
+        await registerInterval(coordinator, worker: worker, scenarioID: "FailoverTest.S0010")
+        await coordinator.stop(worker)
+        await coordinator.finish()
+
+        let calls = await probe.calls
+        XCTAssertEqual(calls, 2, "ハードウェアの失敗後、ソフトウェアで1回だけ再試行するはず")
+        let indexURL = tmp.appendingPathComponent("recordings/index.json")
+        let data = try Data(contentsOf: indexURL)
+        let decoded = try JSONDecoder().decode(RecordingIndex.self, from: data)
+        XCTAssertEqual(decoded.recordings.count, 1, "ソフトウェアでの再試行が成功するはず")
+        XCTAssertEqual(decoded.clipsAttempted, 1)
+        XCTAssertEqual(decoded.clipsFailed, 0)
+        XCTAssertEqual(decoded.encoderFallback, true)
+    }
+
+    /// 切り出しを1件も試みなければ index.json は書かない(recordFailuresOnly かつ全シナリオ
+    /// 成功のケース。既存の掃除の維持)
+    func testFinishSkipsIndexWhenNoClipsAttempted() async throws {
+        let tmp = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let probe = ExportProbe()
+        let coordinator = VideoRecordingCoordinator(
+            config: VideoRecordingConfig(runDir: tmp, failuresOnly: true),
+            makeSession: fixedSessionFactory(tmp: tmp),
+            extractClip: { _, _, _, _, _, _, _ in
+                await probe.began()
+                return true
+            })
+        let worker = makeWorker(1)
+        let started = await coordinator.start(worker)
+        XCTAssertTrue(started)
+        await coordinator.scenarioStarted(workerLabel: worker.label, scenarioID: "SkipTest.S0010",
+                                          at: recordStart.addingTimeInterval(1))
+        await coordinator.scenarioFinished(workerLabel: worker.label,
+                                           at: recordStart.addingTimeInterval(5), passed: true)
+        await coordinator.stop(worker)
+        await coordinator.finish()
+
+        let calls = await probe.calls
+        XCTAssertEqual(calls, 0, "recordFailuresOnly かつ確実に成功したシナリオは切り出さないはず")
         XCTAssertFalse(FileManager.default.fileExists(
             atPath: tmp.appendingPathComponent("recordings/index.json").path),
-            "クリップが 1 本も取れなければ index.json は書かないはず")
+            "切り出しを1件も試みなければ index.json は書かないはず")
     }
 
     func testExportConcurrencyIsLimitedToTwo() async throws {
@@ -152,7 +272,7 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
         let coordinator = VideoRecordingCoordinator(
             config: VideoRecordingConfig(runDir: tmp),
             makeSession: fixedSessionFactory(tmp: tmp),
-            extractClip: { _, _, _, _, _, _ in
+            extractClip: { _, _, _, _, _, _, _ in
                 await probe.began()
                 try? await Task.sleep(nanoseconds: 150_000_000)
                 await probe.ended()
@@ -182,7 +302,7 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
         let coordinator = VideoRecordingCoordinator(
             config: VideoRecordingConfig(runDir: tmp),
             makeSession: fixedSessionFactory(tmp: tmp),
-            extractClip: { _, _, _, _, _, _ in
+            extractClip: { _, _, _, _, _, _, _ in
                 await probe.began()
                 await probe.ended()
                 return true

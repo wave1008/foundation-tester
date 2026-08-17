@@ -73,7 +73,8 @@ actor VideoRecordingCoordinator {
     /// クリップ切り出し関数(テスト注入用。既定は VideoRecordingFinalizer.extractClip)
     typealias ClipExtractor = @Sendable (
         _ sourceFiles: [URL], _ clipStartMs: Int, _ clipEndMs: Int,
-        _ bitrateKbps: Int, _ fullResolution: Bool, _ outputURL: URL) async -> Bool
+        _ bitrateKbps: Int, _ fullResolution: Bool, _ outputURL: URL,
+        _ preferSoftwareEncoder: Bool) async -> Bool
 
     private let config: VideoRecordingConfig
     /// セッション生成の差し替え(テスト注入用。引数は worker, recordingsDir, sourceStem)
@@ -87,9 +88,17 @@ actor VideoRecordingCoordinator {
     private static let maxConcurrentExports = 2
     private var runningExports = 0
     private var exportWaiters: [CheckedContinuation<Void, Never>] = []
-    /// エクスポートが期限超過したら true にし、この run の残りのクリップを断念する
+    /// この run の残りをソフトウェアエンコーダで切り出すか。ハードウェアエンコーダの応答不能
+    /// (期限超過)または失敗を1回検知したら true にし、以降は最初からソフトウェアで試す
+    /// (AppleAVE 不調時の実測: ハードウェア 2/8 成功・481s / ソフトウェア 8/8 成功・2.0s)
+    private var softwareEncoderOnly = false
+    /// ソフトウェアエンコーダでも期限超過したら true にし、この run の残りのクリップを断念する
     /// (無応答エンコーダへ投げ続けるとクリップ数 × 期限の待ちが積み上がるため)
     private var exportsAbandoned = false
+    /// 切り出しを試みた interval 数(1 interval につき1。ソフトウェアへの再試行で二重に数えない)
+    private var clipsAttempted = 0
+    /// clipsAttempted のうち使えるクリップが得られなかった数
+    private var clipsFailed = 0
 
     private var active: [String: ActiveEntry] = [:]  // key = worker.label(物理ワーカー単位)
     /// key = worker.label。superviseWorker の revive で worker.label が変わっても、
@@ -110,7 +119,7 @@ actor VideoRecordingCoordinator {
         self.extractClip = extractClip ?? {
             await VideoRecordingFinalizer.extractClip(
                 sourceFiles: $0, clipStartMs: $1, clipEndMs: $2,
-                bitrateKbps: $3, fullResolution: $4, to: $5)
+                bitrateKbps: $3, fullResolution: $4, to: $5, preferSoftwareEncoder: $6)
         }
         // extractClip は毎回ソース全域を読み直す設計のため、期限はクリップ長でなくソース総尺に
         // 比例させる(床 60 秒は負荷時の正当な遅延を誤タイムアウトさせないための余裕)
@@ -196,7 +205,15 @@ actor VideoRecordingCoordinator {
         for (label, entry) in remaining { await finalize(label, entry) }
         // 先頭 segment の startedAt 昇順(再生ビューの既定選択・一覧表示の安定順)
         entries.sort { ($0.segments.first?.startedAt ?? "") < ($1.segments.first?.startedAt ?? "") }
-        RecordingIndexIO.write(entries, runDir: config.runDir)
+        if clipsFailed > 0 {
+            let fallbackNote = softwareEncoderOnly ? " (fell back to the software encoder during this run)" : ""
+            FileHandle.standardError.write(Data(
+                ("⚠️ [recording] \(clipsFailed)/\(clipsAttempted) clips could not be extracted"
+                 + "\(fallbackNote)\n").utf8))
+        }
+        RecordingIndexIO.write(entries, runDir: config.runDir,
+                               clipsAttempted: clipsAttempted, clipsFailed: clipsFailed,
+                               encoderFallback: softwareEncoderOnly)
     }
 
     /// 1 ワーカーのフル録画を停止し、そのワーカーで実行された各シナリオの区間ごとに
@@ -226,37 +243,69 @@ actor VideoRecordingCoordinator {
             // シナリオ区間全体が録画の欠落(停止していた間)に落ちるとゼロ長になり得る
             guard clipEndMs > clipStartMs else { continue }
 
-            let fileStem = uniqueClipStem(for: interval.scenarioID)
-            let file = "\(RecordingIndexIO.directoryName)/\(fileStem).mp4"
-            let outputURL = config.runDir.appendingPathComponent(file)
+            clipsAttempted += 1
+            let deadline = exportDeadline(sourceTotalMs)
 
-            await acquireExportSlot()
-            if exportsAbandoned {  // スロット待ちの間に他のエクスポートが期限超過した場合
+            // 1 回分の切り出し試行(スロット取得→期限付き実行→解放)。呼ぶたびにファイル名を
+            // 採り直す(放置した敗者 task がまだ元のパスへ書いている可能性があるため、
+            // 再試行を同じパスへ書かせない)
+            func attemptExtract(preferSoftware: Bool) async -> (outcome: Bool?, file: String) {
+                let fileStem = uniqueClipStem(for: interval.scenarioID)
+                let file = "\(RecordingIndexIO.directoryName)/\(fileStem).mp4"
+                let outputURL = config.runDir.appendingPathComponent(file)
+                await acquireExportSlot()
+                if exportsAbandoned {  // スロット待ちの間に他のエクスポートが期限超過した場合
+                    releaseExportSlot()
+                    return (nil, file)
+                }
+                let extract = extractClip
+                let (files, bitrate, full) = (source.files, config.bitrateKbps, config.fullResolution)
+                let outcome: Bool? = await raceWithDeadline(
+                    seconds: deadline, onTimeout: Bool?.none) {
+                    await extract(files, clipStartMs, clipEndMs, bitrate, full, outputURL, preferSoftware)
+                }
                 releaseExportSlot()
+                return (outcome, file)
+            }
+
+            var (outcome, file) = await attemptExtract(preferSoftware: softwareEncoderOnly)
+            if exportsAbandoned {
+                clipsFailed += 1
                 break
             }
-            let deadline = exportDeadline(sourceTotalMs)
-            let extract = extractClip
-            let (files, bitrate, full) = (source.files, config.bitrateKbps, config.fullResolution)
-            let outcome: Bool? = await raceWithDeadline(
-                seconds: deadline, onTimeout: Bool?.none) {
-                await extract(files, clipStartMs, clipEndMs, bitrate, full, outputURL)
+
+            if outcome != true, !softwareEncoderOnly {
+                // ハードウェアエンコーダの期限超過/失敗を初めて検知。この run の残りは
+                // ソフトウェアへ切り替え、このクリップも1回だけソフトウェアで撮り直す
+                softwareEncoderOnly = true
+                FileHandle.standardError.write(Data(
+                    ("⚠️ [recording] hardware video encoder is unresponsive or failing; "
+                     + "falling back to the software encoder for the rest of this run\n").utf8))
+                (outcome, file) = await attemptExtract(preferSoftware: true)
+                if exportsAbandoned {
+                    clipsFailed += 1
+                    break
+                }
             }
-            releaseExportSlot()
-            guard let ok = outcome else {
-                // 期限超過。放置した敗者 task の writer/reader には触らない(固着した VT セッションの
-                // ロックで cancelWriting ごと共倒れし得る)。リークは finalize=run 終盤限定で
-                // プロセス終了時に回収される。書きかけ .mp4 は index.json が参照しないため無害
-                // (敗者 task がまだ書いている可能性があるので削除もしない)
+
+            guard outcome != nil else {
+                // ソフトウェアエンコーダでも期限超過 = 本当に断念する。放置した敗者 task の
+                // writer/reader には触らない(固着した VT セッションのロックで cancelWriting
+                // ごと共倒れし得る)。書きかけ .mp4 は index.json が参照しないため無害。
+                // exportsAbandoned チェックは、並走する別ワーカーの finalize が既に断念済みで
+                // このクリップも巻き添えで失敗しただけのとき、警告を二重に出さないため
                 if !exportsAbandoned {
                     exportsAbandoned = true
                     FileHandle.standardError.write(Data(
-                        ("⚠️ [recording] \(interval.scenarioID): clip extraction did not finish within \(Int(deadline))s. "
-                         + "Treating the encoder as unresponsive and giving up on the remaining clips of this run\n").utf8))
+                        ("⚠️ [recording] \(interval.scenarioID): clip extraction did not finish within "
+                         + "\(Int(deadline))s even with the software encoder. Giving up on the remaining "
+                         + "clips of this run\n").utf8))
                 }
+                clipsFailed += 1
                 break
             }
-            guard ok else {
+            guard outcome == true else {
+                clipsFailed += 1
                 FileHandle.standardError.write(Data(
                     "⚠️ [recording] \(interval.scenarioID): clip extraction failed\n".utf8))
                 continue

@@ -34,7 +34,10 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export type MonitorPlatform = "ios" | "android";
-export type MonitorDeviceState = "connected" | "booted" | "offline";
+/** "unknown" は**誰も観測していない**の意味(この機械のものではなく、その機械の monitor も
+ * 届いていない)。offline(= 止まっている)と区別する —— 向こうで動いていても手元の simctl/adb
+ * には映らないので、offline と言うと「起動したのに未起動のまま」に見える(2026-08-17 の実害)。 */
+export type MonitorDeviceState = "connected" | "booted" | "offline" | "unknown";
 /** デバイスの実体種別(ApiMonitorCommand の kind。旧 CLI 互換のため欠落時は virtual 扱い)。 */
 export type MonitorDeviceKind = "virtual" | "physical";
 
@@ -80,6 +83,11 @@ export interface MonitorDevice {
    * **1サイクル遅れる**(devices イベントはフレーム取得より前に出る)。欠落・非 bool は false
    * に正規化する(旧 CLI 互換)。ヘッダの Frozen カウンタとタイルのバッジが消費する。 */
   readonly frozen?: boolean;
+  /** このデバイスが居る機械(登録名。手元は undefined)。**`host` はブリッジ宛先の IP で別物**。
+   * モニターは手元のデバイスしか触れないので、リモートのタイルは状態を観測できない ——
+   * タイルにホスト名を出して「どの機械の台か」を分かるようにする
+   * (Sources/ftester/ApiMonitorCommand.swift の ApiMonitorDeviceInfo.machineHost と対)。 */
+  readonly machineHost?: string;
 }
 
 /** `ftester api monitor` の NDJSON 1行分のイベント(kind で判別)。 */
@@ -95,7 +103,7 @@ export type MonitorEvent =
   | { readonly kind: "monitorError"; readonly device?: string; readonly message: string };
 
 const PLATFORMS: ReadonlySet<string> = new Set<MonitorPlatform>(["ios", "android"]);
-const STATES: ReadonlySet<string> = new Set<MonitorDeviceState>(["connected", "booted", "offline"]);
+const STATES: ReadonlySet<string> = new Set<MonitorDeviceState>(["connected", "booted", "offline", "unknown"]);
 
 function isMonitorDevice(value: unknown): value is MonitorDevice {
   if (!isRecord(value)) {
@@ -191,15 +199,25 @@ export function isMonitorEvent(value: unknown): value is MonitorEvent {
 }
 
 /**
- * デバイス一覧をプロファイルタブの表示順(ios→android・各プラットフォーム内は name 順。
- * config.ts の listMachineProfiles と同じ規則 — 変更時は両方揃える)に整列する。
+ * デバイス一覧をプロファイルタブの表示順に整列する:
+ * **ios→android → 手元が先 → ホスト名順 → name 順**。
+ * プラットフォームが外側なのは、プロファイルタブが ios/android の別セクションを持ち、
+ * ホストでのまとまりはその中にあるため(config.ts の listMachineProfiles と同じ規則 —
+ * 変更時は両方揃える)。タイルは1列なので、外側=左右のかたまりになる。
  * monitorProcessManager.ts が monitorDevices 受信時に適用し、以降の全消費側
  * (デバイスタブのタイル)はこの順で受け取る。
  */
 export function sortMonitorDevices(devices: readonly MonitorDevice[]): MonitorDevice[] {
-  return [...devices].sort((a, b) =>
-    a.platform !== b.platform ? (a.platform === "ios" ? -1 : 1) : a.name.localeCompare(b.name),
-  );
+  return [...devices].sort((a, b) => {
+    if (a.platform !== b.platform) {
+      return a.platform === "ios" ? -1 : 1;
+    }
+    const [ha, hb] = [a.machineHost ?? "", b.machineHost ?? ""];
+    if (ha !== hb) {
+      return ha === "" ? -1 : hb === "" ? 1 : ha.localeCompare(hb);  // 手元が先
+    }
+    return a.name.localeCompare(b.name);
+  });
 }
 
 // ---- 「起動中のデバイス」(動的プロファイル)------------------------------------------------
@@ -231,6 +249,13 @@ export function filterMonitorDevices(
   filter: MonitorDeviceFilter,
 ): readonly MonitorDevice[] {
   return filter === "running"
-    ? devices.filter((device) => device.state !== "offline" && !iosPhysicalWithoutBridge(device))
+    // unknown(誰も観測していない)は running に含めない —— 動いている根拠が無いものを
+    // 「稼働中だけ」の一覧に出すと、その一覧の意味が「稼働中か、分からないもの」になる
+    ? devices.filter(
+        (device) =>
+          device.state !== "offline" &&
+          device.state !== "unknown" &&
+          !iosPhysicalWithoutBridge(device),
+      )
     : devices.filter((device) => device.registered !== false);
 }

@@ -136,6 +136,15 @@ extension AndroidDriver {
             Self.setRegistry(bridgeKey, nil)
             let retried = try await ensureBridge()
             return try await operation(retried)
+        } catch DriverError.bridgeUnreachable(let detail) {
+            // **接続が確立してから切れた**(instrumentation の死。コールドブート直後の
+            // 起動ストームで頻発する。実測 2026-08-01: 起動17s→21s で死亡)。
+            // 同じ操作は自動再試行しない — 届いた可能性があり tap/type の二重実行になる。
+            // ただし**レジストリは必ず捨てる**: .active は生存確認なしで即返す設計なので、
+            // 死んだクライアントを握ったままだと以後の全操作と worker の revive が
+            // 同じ死体に当たり続け、二度と復帰しない(復帰しなかった実害の根因)
+            Self.setRegistry(bridgeKey, nil)
+            throw DriverError.bridgeUnreachable(detail)
         }
     }
 

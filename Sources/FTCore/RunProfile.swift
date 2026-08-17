@@ -13,7 +13,7 @@ import Foundation
 // MARK: - JSON ドキュメント(ファイルの素の形)
 
 /// アプリケーションプロファイルの 1 セクション。フィールドごとに有効な記述場所が異なる
-/// (対応表は merging 参照): appName = common→platform マージ / app・appPath = platform のみ /
+/// (対応表は merging 参照): appName・app・appPath = platform のみ /
 /// autoInstall = common のみ(未指定なら appPath の有無で決まる。false 明示で opt-out)
 public struct AppProfileSection: Codable, Sendable, Equatable {
     /// ユーザーがアプリを識別するための表示名(レポート/ログで使用)
@@ -39,18 +39,25 @@ public struct AppProfileSection: Codable, Sendable, Equatable {
         self.healthCheckURL = healthCheckURL
     }
 
-    static let knownKeys: Set<String> = ["appName", "app", "appPath", "autoInstall", "healthCheckURL"]
+    /// common セクションで許容されるキー(appName は platform 専用のためここには含まない —
+    /// 含めると common.appName が「既知キー」に化けて checkAppProfileKeys の未知キー検出を
+    /// すり抜け、黙って無視される)
+    static let commonKnownKeys: Set<String> = ["app", "appPath", "autoInstall", "healthCheckURL"]
+    /// ios/android セクションで許容されるキー
+    static let platformKnownKeys: Set<String> = [
+        "appName", "app", "appPath", "autoInstall", "healthCheckURL",
+    ]
 
     /// common(self)と platform セクション(other)の合成(section(for:)専用)。フィールドごとに
-    /// 採用元が異なる: appName = common→platform 後勝ち(表示名は共通定義が自然なため) /
-    /// app・appPath = platform のみ(OS ごとに実体が異なるため) /
+    /// 採用元が異なる: appName・app・appPath = platform のみ(OS ごとに書き分けるため。
+    /// 表示名も common からは継承しない) /
     /// autoInstall = common のみ(未指定なら appPath の有無で決まる。false 明示で opt-out)(インストール可否は OS 間で揃えるべき運用設定のため)。
-    /// 廃止側のセクションに書かれた値はここで黙って無視される(validate が警告を出す)。
+    /// common セクションに appName/app/appPath が書かれていてもここで黙って無視される(validate が警告を出す)。
     /// other が nil(platform セクション自体が無い)場合も同じ規則で合成するため、
     /// early return せず常に other?.field / self.field を明示的に選ぶ
     func merging(_ other: AppProfileSection?) -> AppProfileSection {
         AppProfileSection(
-            appName: other?.appName ?? appName,
+            appName: other?.appName,
             app: other?.app,
             appPath: other?.appPath,
             autoInstall: autoInstall,
@@ -82,9 +89,9 @@ public struct AppProfile: Codable, Sendable, Equatable {
         }
     }
 
-    /// 表示名(common 優先。無ければどちらかのセクション)
+    /// 表示名(ios/android セクションのみ採用。common には appName を置けない — merging 参照)
     public var resolvedAppName: String? {
-        common?.appName ?? ios?.appName ?? android?.appName
+        ios?.appName ?? android?.appName
     }
 }
 
@@ -98,8 +105,14 @@ public enum DeviceKind: String, Codable, Sendable, Hashable {
 
 /// マシンプロファイル内の 1 デバイス定義
 public struct DeviceSpec: Codable, Sendable, Hashable {
-    /// ユーザーがデバイスを識別するための名前(実行プロファイルからの参照キー)
+    /// ユーザーがデバイスを識別するための名前(実行プロファイルからの参照キー)。
+    /// **一意なのは name 単体ではなく (host, name)** —— 別のホストに同名のデバイスが居てよい
+    /// (フリートの各機が同じ命名規則でシミュレータを作るため、同名は例外ではなく通常)
     public var name: String
+    /// このデバイスが居る機械。省略時はマシンプロファイルの host(そちらも省略なら手元)。
+    /// 書けるのは登録名だけ(ssh の実体は書けない。MachineProfile.host と同じ規律)。
+    /// 解決規則は DeviceHostGrouping、正規化は MachineHostDispatch.normalize
+    public var host: String?
     /// 実体種別(省略時 virtual)。実機の識別子は iOS=udid / Android=serial
     public var kind: DeviceKind?
     /// iOS: シミュレータのデバイス名(例 "iPhone 17 Pro"。実機では未使用)
@@ -126,10 +139,12 @@ public struct DeviceSpec: Codable, Sendable, Hashable {
     /// 同定には使わない(登録時に控えるだけ。端末を挿し替えても値は追随しない)
     public var model: String?
 
-    public init(name: String, kind: DeviceKind? = nil, simulator: String? = nil, os: String? = nil,
+    public init(name: String, host: String? = nil, kind: DeviceKind? = nil,
+                simulator: String? = nil, os: String? = nil,
                 udid: String? = nil, port: UInt16? = nil, engine: String? = nil,
                 avd: String? = nil, serial: String? = nil, model: String? = nil) {
         self.name = name
+        self.host = host
         self.kind = kind
         self.simulator = simulator
         self.os = os
@@ -145,7 +160,8 @@ public struct DeviceSpec: Codable, Sendable, Hashable {
     public var isPhysical: Bool { kind == .physical }
 
     static let knownKeys: Set<String> = [
-        "name", "kind", "simulator", "os", "udid", "port", "engine", "avd", "serial", "model",
+        "name", "host", "kind", "simulator", "os", "udid", "port", "engine", "avd", "serial",
+        "model",
     ]
 }
 
@@ -159,24 +175,100 @@ public struct MachineDeviceList: Codable, Sendable, Equatable {
 
 /// マシンプロファイル(profiles/machines/<マシン名>.json)。ファイル名がマシン名
 public struct MachineProfile: Codable, Sendable, Equatable {
+    /// このマシンの実行先(2026-08-17)。省略/"local" = このマシンでローカル実行(**既存プロファイルは
+    /// 無改修で動く**)。それ以外は `ftester remote hosts` の登録名でなければならない
+    /// (生の ssh 宛先は書けない — プロファイルはプロジェクト資産で、ssh の実体はローカル設定
+    /// = LocalConfig.remoteHosts にだけ置く規律。フリート定義と同じ)。優先順位・食い違いの扱いは
+    /// MachineHostDispatch、登録簿引きは Sources/ftester/RemoteCommands.swift
+    public var host: String?
     public var ios: MachineDeviceList?
     public var android: MachineDeviceList?
 
-    public init(ios: MachineDeviceList? = nil, android: MachineDeviceList? = nil) {
+    public init(host: String? = nil, ios: MachineDeviceList? = nil, android: MachineDeviceList? = nil) {
+        self.host = host
         self.ios = ios
         self.android = android
     }
 
-    static let knownKeys: Set<String> = ["ios", "android"]
+    static let knownKeys: Set<String> = ["host", "ios", "android"]
+}
+
+/// `MachineProfile.host` と `--host`(CLI 明示)の優先順位を1箇所に固定する純粋関数(2026-08-17)。
+/// マシンプロファイルに host を持たせたことで、実行プロファイル経由で間接的にリモートホストを
+/// 指定できるようにした(ユーザー決定)。呼び出し側(Sources/ftester/RemoteCommands.swift)は
+/// ここが返す名前を、由来に応じて登録簿引きするだけで if を散らさない。
+public enum MachineHostDispatch {
+    public struct Decision: Equatable {
+        /// 実際に使うべきホスト名(nil = ローカル実行)
+        public let host: String?
+        /// `--host` とマシン側 host が両方非ローカルで食い違うときの1行注記。無ければ nil
+        /// (黙って別のマシンへ送らない。既存の ResolvedRemoteHost.announce と同じ規律)
+        public let mismatchWarning: String?
+
+        public init(host: String? = nil, mismatchWarning: String? = nil) {
+            self.host = host
+            self.mismatchWarning = mismatchWarning
+        }
+    }
+
+    /// nil・空文字・trim 後 "local" は「ローカル」(nil に正規化)。MachineProfile.host と
+    /// --host の両方にこの規則を適用する
+    public static func normalize(_ raw: String?) -> String? {
+        guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty, trimmed != "local" else { return nil }
+        return trimmed
+    }
+
+    /// **`--host` が常に勝つ**。マシン側 host が別のリモートを指していれば `mismatchWarning` を
+    /// 返す(黙って上書きしない)。`--host` が無ければマシン側の値をそのまま自動採用する。
+    ///
+    /// **明示 `--host local` は「ここで走らせる」の指定であって「未指定」ではない**(欠陥3・
+    /// 2026-08-17)。`normalize` は "local" を nil に畳むため、素の `normalize(explicitHost)` だけで
+    /// 分岐すると "local" が「--host 未指定」と区別できず、マシン側の host へ自動ディスパッチして
+    /// しまう(`FleetRunner` の "local" エントリが実際にはリモートへ飛ぶ実害があった)。ここでだけ
+    /// 生の explicitHost を見て先に判定する。マシン側が別のリモートを指していれば、通常の食い違いと
+    /// 同じ規律で mismatchWarning を返す(黙って上書きしない)
+    public static func resolve(explicitHost: String?, machineHost: String?) -> Decision {
+        let machine = normalize(machineHost)
+        if isExplicitLocal(explicitHost) {
+            guard let machine else { return Decision(host: nil) }
+            return Decision(host: nil, mismatchWarning:
+                "--host local overrides the machine profile's host \"\(machine)\""
+                + " (the run stays local)")
+        }
+        guard let explicit = normalize(explicitHost) else {
+            return Decision(host: machine)
+        }
+        guard let machine, machine != explicit else {
+            return Decision(host: explicit)
+        }
+        return Decision(host: explicit, mismatchWarning:
+            "--host \(explicit) overrides the machine profile's host \"\(machine)\""
+            + " (they differ; the run continues on \(explicit))")
+    }
+
+    /// 生の(trim 前の)値が文字どおり "local" か。normalize 後の nil(= 未指定)とは区別する。
+    /// `--host local` と実行プロファイルの `"host": "local"` の両方が「ここで走らせる」の明示指定で、
+    /// 判定を写すと片方だけズレるのでここが唯一の定義元(呼び出し側は DeviceHostGrouping.resolve)
+    public static func isExplicitLocal(_ raw: String?) -> Bool {
+        guard let raw else { return false }
+        return raw.trimmingCharacters(in: .whitespacesAndNewlines) == "local"
+    }
 }
 
 /// 実行プロファイルのデバイス参照(name でマシンプロファイルを引く)
 public struct RunDeviceRef: Codable, Sendable, Equatable {
     public var name: String
+    /// 同名のデバイスが複数のホストに居るときの指定(省略可)。省略した参照が複数に当たると
+    /// **候補を挙げて中止する**(どちらか一方を黙って選ばない。解決規則は DeviceHostGrouping)
+    public var host: String?
 
-    public init(name: String) { self.name = name }
+    public init(name: String, host: String? = nil) {
+        self.name = name
+        self.host = host
+    }
 
-    static let knownKeys: Set<String> = ["name"]
+    static let knownKeys: Set<String> = ["name", "host"]
 }
 
 /// FM 機能の実行時トグル(実行プロファイル由来の実効値)。enabled=false のとき他フラグも
@@ -196,6 +288,29 @@ public struct FMConfig: Sendable, Equatable {
         self.falsePositiveCheck = falsePositiveCheck
         self.screenIs = screenIs
     }
+}
+
+/// リモート実行の制御(docs/remote-runner.md §17)。ワークスペース(アプリのパッケージと
+/// 資材を揃える共有ディレクトリ。中身の規約 apps/scripts/data は WorkspaceScaffold)の宣言。
+/// run 前後のスクリプトはここでは宣言しない —— ワークスペースの `scripts/setup.sh` /
+/// `scripts/teardown.sh` があれば実行される(`RunHookPlan`)。
+/// 同期相手: vscode-ftester/schemas/run-profile.schema.json と拡張のプロファイルフォーム
+public struct RemoteControlSection: Codable, Sendable, Equatable {
+    /// ワークスペースのルート。絶対パス、または**リポジトリルート基準**の相対パス。
+    /// appPath の解決基準には使わない(常にリポジトリルート基準のまま)——
+    /// 実行時に appPath の原本をここ配下の `apps/<ファイル名>` へコピー(ステージング)し、
+    /// インストールにはそちらを使う(`WorkspaceAppStaging`。docs/remote-runner.md §17)。
+    /// **省略時の既定は `<project.rootURL>/workspace`**(2026-08-18。ワークスペースは常に有効
+    /// —— ここを省略しても appPath はリポジトリルート基準のままではなく、既定ワークスペースの
+    /// `apps/` へ切り替わる)。優先順位・既定値の算出は `ProfileResolver.resolveWorkspaceRoot`。
+    /// `--workspace` で1回限り上書き可
+    public var workspace: String?
+
+    public init(workspace: String? = nil) {
+        self.workspace = workspace
+    }
+
+    static let knownKeys: Set<String> = ["workspace"]
 }
 
 /// 実行プロファイル(profiles/runs/<name>.json)
@@ -286,6 +401,8 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// true なら半分解像度化をスキップしフル解像度のまま出力する(既定 false)。
     /// Android は screenrecord 自体の --size 指定も省略する(録画元から既にフル解像度になる)
     public var recordFullResolution: Bool?
+    /// ワークスペース(ファイル同期)宣言。省略可(既定 = リポジトリルート基準の従来挙動)
+    public var remoteControl: RemoteControlSection?
 
     public init(app: String? = nil, devices: [RunDeviceRef]? = nil, fm: Bool? = nil,
                 heal: Bool? = nil, falsePositiveCheck: Bool? = nil, screenIs: Bool? = nil,
@@ -298,7 +415,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
                 containerInference: Bool? = nil,
                 enableAnimations: Bool? = nil, homeOnStart: Bool? = nil, record: Bool? = nil,
                 recordFailuresOnly: Bool? = nil, recordBitrateKbps: Int? = nil,
-                recordFullResolution: Bool? = nil) {
+                recordFullResolution: Bool? = nil, remoteControl: RemoteControlSection? = nil) {
         self.app = app
         self.devices = devices
         self.fm = fm
@@ -323,6 +440,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         self.recordFailuresOnly = recordFailuresOnly
         self.recordBitrateKbps = recordBitrateKbps
         self.recordFullResolution = recordFullResolution
+        self.remoteControl = remoteControl
     }
 
     static let knownKeys: Set<String> = [
@@ -331,7 +449,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         "machine", "iosInappEngine", "wipeDataOnBloat", "updateWebView", "wipeDataThresholdGB",
         "recoverCpuFallbackToGpu", "locale",
         "iosFastInput", "enableAnimations", "homeOnStart", "containerInference",
-        "record", "recordFailuresOnly", "recordBitrateKbps", "recordFullResolution",
+        "record", "recordFailuresOnly", "recordBitrateKbps", "recordFullResolution", "remoteControl",
     ]
 }
 
@@ -352,7 +470,16 @@ public struct ResolvedDevice: Sendable, Hashable {
 /// プラットフォーム毎に解決されたアプリ情報
 public struct ResolvedAppTarget: Sendable, Hashable {
     public let bundleID: String
-    /// 絶対パス解決済みのパッケージファイル(nil = インストールしない)
+    /// アプリの原本の絶対パス(常にリポジトリルート基準で解決済み。nil = appPath 未指定。
+    /// ワークスペースの宣言有無・既定/明示のどれでも基準は変わらない)。`WorkspaceAppStaging`
+    /// がここを読んでワークスペースへコピーする。「原本が見つからない」系のエラーはこちらを
+    /// 名指しする(インストール先を出しても何をビルドすればよいか分からないため)
+    public let sourcePath: String?
+    /// インストールに実際に使う絶対パス(nil = インストールしない)。**ワークスペースは常に
+    /// 有効**(既定 `<project.rootURL>/workspace`。2026-08-18)なので sourcePath と同値になるのは
+    /// appPath 自体が既にワークスペース配下を指している場合だけ。`WorkspaceAppStaging.installPath`
+    /// が決める "<workspaceRoot>/apps/<原本のファイル名>"(ProfileResolver.resolve が唯一の生成元)。
+    /// 呼び出し側(installApp・ProfileWorkerFactory 等)はこちらだけを見ればよい
     public let appPath: String?
     /// 実行前に appPath を自動インストールするか(既定 false = 無効。
     /// common セクションで明示的に true にした場合のみ有効)
@@ -360,9 +487,11 @@ public struct ResolvedAppTarget: Sendable, Hashable {
     /// バックエンド死活確認 URL(AppProfileSection.healthCheckURL)
     public let healthCheckURL: String?
 
-    public init(bundleID: String, appPath: String? = nil, autoInstall: Bool = false,
-                healthCheckURL: String? = nil) {
+    /// sourcePath 省略時は appPath と同値にする(ワークスペース非経由の既存呼び出しとの互換)
+    public init(bundleID: String, sourcePath: String? = nil, appPath: String? = nil,
+                autoInstall: Bool = false, healthCheckURL: String? = nil) {
         self.bundleID = bundleID
+        self.sourcePath = sourcePath ?? appPath
         self.appPath = appPath
         self.autoInstall = autoInstall
         self.healthCheckURL = healthCheckURL
@@ -374,6 +503,15 @@ public struct ResolvedProfile: Sendable {
     public let project: TestProject
     public let runName: String
     public let machineName: String
+    /// マシンプロファイルの host(MachineHostDispatch.normalize 済み。nil = ローカル実行)。
+    /// 表示用途(`ftester profile list`)。実際のディスパッチ判定・登録簿引きは呼び出し側
+    /// (Sources/ftester/RemoteCommands.swift)が `--host` と突き合わせて行う。
+    /// **`var` にする**(memberwise init を直に呼ぶ既存テスト
+    /// (Tests/FTAndroidTests/BuildAndroidWorkersPartialFailureTests.swift 等)が
+    /// この引数を知らないため既定値が要る。**既定値付きの `let` は memberwise init から
+    /// 除外されて渡せなくなる** —— `var` なら既定引数として残る(RemoteRunDispatcher.mode と同じ罠)。
+    /// 省略時 nil = ローカル扱いは仕様どおり)
+    public var machineHost: String? = nil
     /// アプリの表示名(apps/<name>.json の appName。無ければファイル名)
     public let appName: String
     /// platform("ios"/"android")→ アプリ情報(デバイスがある platform のみ)
@@ -417,6 +555,23 @@ public struct ResolvedProfile: Sendable {
     public let recordBitrateKbps: Int
     /// 半分解像度化をスキップするか(RunProfileDocument.recordFullResolution。既定 false)
     public let recordFullResolution: Bool
+    /// **絶対パス解決済みのワークスペースルート**(remoteControl.workspace / `--workspace` 上書きの
+    /// 実効値)。**常に非 nil**(2026-08-18。既定 `<project.rootURL>/workspace` —— ワークスペースは
+    /// 常に有効。`ProfileResolver.resolveWorkspaceRoot`)。appPath の原本の解決基準はこれの
+    /// 有無に関わらず常にリポジトリルート ―― `apps[platform].appPath`(インストール先)だけが
+    /// この配下の `apps/<ファイル名>` に切り替わる(ステージングは WorkspaceAppStaging)。
+    /// リモートディスパッチはこれがプロジェクトルート配下かどうかで転送経路を分ける
+    /// (`WorkspaceRemoteDispatch.placement`。配下ならプロジェクト転送がそのまま運ぶので専用
+    /// ミラーは不要。Sources/ftester/RemoteRunDispatcher.swift)。**`var` にする**(machineHost と
+    /// 同じ理由 —— 既定値付きの `let` は memberwise init から除外され、この引数を知らない
+    /// 既存テストの直接呼び出しが壊れる。型を Optional のまま残すのも同じ理由 ——
+    /// 非 Optional にすると同じ既存テストが nil を渡せなくなる)
+    public var workspaceRoot: URL? = nil
+    /// run の前後で走らせる利用者のスクリプト(`<workspace>/scripts/setup.sh`・`teardown.sh`)。
+    /// **workspaceRoot と同じく既定値付きの `var`**(memberwise init を直に呼ぶ既存テストのため)。
+    /// 実行するかどうかは**ファイルがあるかどうか**だけで決まる(`RunHookPlan.action`)
+    public var setupHook: RunHook? = nil
+    public var teardownHook: RunHook? = nil
     /// 解決中に出た警告(スキップしたデバイス・未知キー等)。呼び出し側が表示する
     public let warnings: [String]
 
@@ -435,6 +590,27 @@ public struct ResolvedProfile: Sendable {
     public static func deviceKeepCount(available: Int, scenarios: Int) -> Int {
         guard scenarios > 0 else { return available }
         return min(available, scenarios + 1)
+    }
+
+    /// `run --device` の絞り込み(ホスト別サブ実行が「自分のぶんのデバイス」だけを回すのに使う)。
+    /// 空配列は「絞らない」。**1台も残らない指定は呼び出し側でエラーにする** ——
+    /// ここで黙って全台に戻すと、名前を打ち間違えたときに意図しない台で走る
+    /// ホスト別サブ実行のスコープ。**一意なのは name 単体ではなく (host, name)** なので、
+    /// 名前だけで絞ると**別の機械の同名デバイスまで掴む**(フリートの各機は同じ命名規則で
+    /// シミュレータを作るので、同名は例外ではなく通常。2026-08-17 に実走で確認 ——
+    /// 手元のサブ実行が3機ぶんの "iPhone …-01" を全部拾って8台になった)。
+    /// - deviceHost: そのサブ実行が担当する機械("local" / 登録名。nil = ホストで絞らない)
+    public func filteringDevices(names: [String], deviceHost: String? = nil) -> ResolvedProfile {
+        guard !names.isEmpty || deviceHost != nil else { return self }
+        let wanted = Set(names)
+        let wantedHost = MachineHostDispatch.normalize(deviceHost)
+        var filtered = self
+        filtered.devices = devices.filter { device in
+            if !wanted.isEmpty, !wanted.contains(device.name) { return false }
+            guard deviceHost != nil else { return true }
+            return MachineHostDispatch.normalize(device.spec.host) == wantedHost
+        }
+        return filtered
     }
 
     public func limitingDevices(iosScenarios: Int, androidScenarios: Int) -> ResolvedProfile {
@@ -485,7 +661,10 @@ public enum ProfileError: Error, LocalizedError {
     case decodeFailed(URL, detail: String)
     case missingAppReference(run: String)
     case missingDevices(run: String)
-    case duplicateDeviceName(name: String, machine: String)
+    /// 同じ (host, name) が2つある。**別ホストの同名は重複ではない**(DeviceHostGrouping)
+    case duplicateDeviceName(name: String, host: String?, machine: String)
+    /// 実行プロファイルの参照が host を書いておらず、同名が複数ホストに居る
+    case ambiguousDeviceRef(name: String, hosts: [String], run: String, machine: String)
     case noDevicesResolved(run: String, machine: String, requested: [String], available: [String])
     case missingBundleID(platform: String, appProfile: String)
     case invalidWipeDataThreshold(run: String)
@@ -510,8 +689,9 @@ public enum ProfileError: Error, LocalizedError {
             return "the machine profile \"\(machine)\" referenced by run profile \(run) was not found"
                 + availableHint(available, empty: "profiles/machines/ is empty")
         case .machineUndetermined(let available):
-            return "no machine name is registered. Register one with: ftester machine set \"<name>\", "
-                + "or set the FT_MACHINE environment variable"
+            return "cannot tell which machine profile to use: the run profile does not set "
+                + "\"machine\" and profiles/machines/ holds more than one. Add \"machine\": "
+                + "\"<name>\" to the run profile (or set FT_MACHINE for a one-off run)"
                 + availableHint(available, empty: "profiles/machines/ is empty")
         case .decodeFailed(let url, let detail):
             return "cannot load the profile: \(url.path)\n\(detail)"
@@ -519,9 +699,14 @@ public enum ProfileError: Error, LocalizedError {
             return "run profile \(run) has no \"app\" (a reference into apps/)"
         case .missingDevices(let run):
             return "run profile \(run) has no \"devices\""
-        case .duplicateDeviceName(let name, let machine):
+        case .duplicateDeviceName(let name, let host, let machine):
             return "duplicate device name in machine profile \(machine): \(name)"
-                + " (names must be unique across ios and android)"
+                + " on host \(DeviceHostGrouping.display(host))"
+                + " (names must be unique per host, across ios and android)"
+        case .ambiguousDeviceRef(let name, let hosts, let run, let machine):
+            return "device \"\(name)\" in run profile \(run) is ambiguous on machine \(machine):"
+                + " it exists on \(hosts.joined(separator: ", "))."
+                + " Add \"host\" to the device entry in the run profile to say which one"
         case .noDevicesResolved(let run, let machine, let requested, let available):
             return "none of the devices in run profile \(run) resolve on machine \(machine)"
                 + " (requested: \(requested.joined(separator: ", ")) / "
@@ -581,11 +766,17 @@ public enum ProfileResolver {
     /// 明示指定された machine が machines/ に存在しない場合のみ、ここで
     /// runSpecifiedMachineNotFound を投げる(resolve() を経由しない呼び出し側でも
     /// 同じ明確なエラーになるようにするため)。
-    /// 戻り値 auto = 自動採用だったか(呼び出し側がログ表示に使う。明示指定/FT_MACHINE/登録名は false)
+    /// 戻り値 auto = 自動採用だったか(呼び出し側がログ表示に使う。明示指定/FT_MACHINE は false)
+    ///
+    /// **「この Mac の登録名」は見ない**(2026-08-17 にユーザー決定で廃止)。登録名は
+    /// 「複数ある machines/*.json のうちこの機械を表すのはどれか」を答えるためのものだったが、
+    /// ①ツールが書く実行プロファイルには必ず machine が入る(42本中 machine 未指定は3本だった)
+    /// ②デバイス側が host を持つようになり「どの機械のデバイスか」はプロファイル内で表現できる
+    /// ——の2点で役目を終えた。残すと「マシンプロファイルを改名したらこの Mac の身元が変わる」
+    /// (実際に project1 の解決が壊れた)ような、名前1つに2つの意味が載る構造が残る
     public static func determineMachine(
         project: TestProject,
         environment: [String: String] = ProcessInfo.processInfo.environment,
-        registered: String?,
         runProfileName: String? = nil
     ) throws -> (name: String, auto: Bool) {
         if let runProfileName,
@@ -598,10 +789,68 @@ public enum ProfileResolver {
             return (explicit, false)
         }
         if let env = environment["FT_MACHINE"], !env.isEmpty { return (env, false) }
-        if let registered, !registered.isEmpty { return (registered, false) }
         let machines = machineNames(project: project)
         if machines.count == 1 { return (machines[0], true) }
         throw ProfileError.machineUndetermined(available: machines)
+    }
+
+    /// マシンプロファイルの `host` だけを読む(実行前のディスパッチ判定用)。フルの resolve() は
+    /// デバイス解決まで行い重いので、host だけ知りたいホスト解決の前段はこちらを使う
+    /// (Sources/ftester/RemoteCommands.swift の EffectiveHostDispatch 解決)。
+    /// 戻り値は MachineHostDispatch.normalize 済み(nil = ローカル)
+    public static func machineHost(project: TestProject, machineName: String) throws -> String? {
+        let machineURL = project.machinesDir.appendingPathComponent("\(machineName).json")
+        guard FileManager.default.fileExists(atPath: machineURL.path) else {
+            throw ProfileError.machineProfileNotFound(
+                machine: machineName, available: machineNames(project: project))
+        }
+        let data: Data
+        do {
+            data = try Data(contentsOf: machineURL)
+        } catch {
+            throw ProfileError.decodeFailed(machineURL, detail: error.localizedDescription)
+        }
+        do {
+            let machine = try JSONDecoder().decode(MachineProfile.self, from: data)
+            return MachineHostDispatch.normalize(machine.host)
+        } catch {
+            throw ProfileError.decodeFailed(machineURL, detail: "\(error)")
+        }
+    }
+
+    /// 実行プロファイルが使うデバイスを「どの機械に居るか」付きで返す(ディスパッチ判定用。
+    /// フルの resolve() はアプリ解決まで行い、host を決める前に落ちうるのでこちらを使う)。
+    /// 解決できない参照は**黙って落とす** —— 警告と中止は resolve() が受け持ち、ここは
+    /// 「実際に走るデバイスがどの機械にあるか」だけを答える。曖昧な参照だけは resolve() を
+    /// 待たずに投げる(どのホストへ配るかがここで決まってしまうため)
+    public static func runDeviceHosts(project: TestProject, runProfileName: String,
+                                      machineName: String) throws -> [RunDeviceHost] {
+        let runURL = project.runsDir.appendingPathComponent("\(runProfileName).json")
+        guard let runData = try? Data(contentsOf: runURL),
+              let runDoc = try? JSONDecoder().decode(RunProfileDocument.self, from: runData),
+              let refs = runDoc.devices else {
+            return []
+        }
+        let machineURL = project.machinesDir.appendingPathComponent("\(machineName).json")
+        guard let machineData = try? Data(contentsOf: machineURL),
+              let machine = try? JSONDecoder().decode(MachineProfile.self, from: machineData) else {
+            return []
+        }
+        let entries = DeviceHostGrouping.entries(machine: machine)
+        var result: [RunDeviceHost] = []
+        for ref in refs {
+            switch DeviceHostGrouping.resolve(ref, in: entries) {
+            case .found(let entry):
+                result.append(RunDeviceHost(host: entry.host, name: entry.name,
+                                            platform: entry.platform))
+            case .missing:
+                continue
+            case .ambiguous(let hosts):
+                throw ProfileError.ambiguousDeviceRef(
+                    name: ref.name, hosts: hosts, run: runProfileName, machine: machineName)
+            }
+        }
+        return result
     }
 
     /// runProfileName の実行プロファイルが指定する machine(trim 後非空)を返す。
@@ -618,9 +867,90 @@ public enum ProfileResolver {
         return machine
     }
 
-    /// 実行プロファイルを合成して ResolvedProfile を返す
+    /// runProfileName の実行プロファイルが宣言する `remoteControl.workspace`(trim 後非空)を返す。
+    /// ファイルが無い/デコード不能/未宣言・空文字列なら nil。**マシン解決を必要としないので
+    /// フルの resolve() を経由しない** —— リモートディスパッチ(Sources/ftester/
+    /// RemoteRunDispatcher.swift)はミラーの要否だけを知りたく、実行するマシンはまだ決めていない
+    public static func declaredWorkspace(project: TestProject, runName: String) -> String? {
+        let runURL = project.runsDir.appendingPathComponent("\(runName).json")
+        guard let data = try? Data(contentsOf: runURL),
+              let doc = try? JSONDecoder().decode(RunProfileDocument.self, from: data),
+              let workspace = doc.remoteControl?.workspace?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !workspace.isEmpty else {
+            return nil
+        }
+        return workspace
+    }
+
+    /// `resolveWorkspaceRoot` の軽量版(declaredWorkspace を読むだけ。マシン/デバイス解決を
+    /// 経由しない —— RemoteRunDispatcher がミラー前に、実行するマシンを決める前に呼ぶ)。
+    /// override は渡さない(このホストがワークスペースを最初に組み立てる側 = `--workspace` は
+    /// 子プロセスへの中継専用で、ここでは常に無指定)
+    public static func effectiveWorkspaceRoot(project: TestProject, runName: String) -> URL {
+        let repoRoot = project.rootURL.deletingLastPathComponent().deletingLastPathComponent()
+        return resolveWorkspaceRoot(
+            declared: declaredWorkspace(project: project, runName: runName), override: nil,
+            projectRoot: project.rootURL, repoRoot: repoRoot)
+    }
+
+    /// ステージング対象(appPath の原本)だけを軽量に読む。マシン/デバイス解決を経由しない
+    /// (declaredWorkspace と同じ理由 —— RemoteRunDispatcher はミラー直前にここだけ要る)。
+    /// 戻り値: platform("ios"/"android") → リポジトリルート基準で解決した原本の絶対パス
+    /// (appPath 未指定の platform は含まない)。プロファイル/アプリ定義が読めなければ空を返す
+    public static func declaredAppPaths(project: TestProject, runName: String) -> [String: String] {
+        guard let runData = try? Data(
+                contentsOf: project.runsDir.appendingPathComponent("\(runName).json")),
+              let runDoc = try? JSONDecoder().decode(RunProfileDocument.self, from: runData),
+              let appRef = runDoc.app else { return [:] }
+        guard let appData = try? Data(
+                contentsOf: project.appsDir.appendingPathComponent("\(appRef).json")),
+              let appProfile = try? JSONDecoder().decode(AppProfile.self, from: appData) else { return [:] }
+        let repoRoot = project.rootURL.deletingLastPathComponent().deletingLastPathComponent()
+        var result: [String: String] = [:]
+        for platform in ["ios", "android"] {
+            if let raw = appProfile.section(for: platform).appPath {
+                result[platform] = resolvePath(raw, base: repoRoot)
+            }
+        }
+        return result
+    }
+
+    /// `remoteControl.workspace` 宣言と `--workspace` 上書きから実効の生値(未解決)を決める。
+    /// override が非空なら常に勝つ(中継されたリモートの子はこれで自分のリポジトリルート基準を
+    /// 上書きする)。両方無ければ nil(未宣言 = 従来どおりリポジトリルート基準)。
+    /// 純粋関数として切り出す(デバイス・ファイル I/O 不要のためテストが直接叩ける)
+    public static func effectiveWorkspaceRaw(declared: String?, override: String?) -> String? {
+        func trimmedNonEmpty(_ s: String?) -> String? {
+            guard let s else { return nil }
+            let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        return trimmedNonEmpty(override) ?? trimmedNonEmpty(declared)
+    }
+
+    /// `remoteControl.workspace` の実効ルート(絶対パス解決済み)。優先順は
+    /// **override(`--workspace`) > declared(`remoteControl.workspace`) > 既定**。
+    /// **既定は `"<projectRoot>/workspace"`**(2026-08-18。常に非 nil を返す ——
+    /// ワークスペースは常に有効。declared/override 省略時に repoRoot 基準へ戻すと、
+    /// 呼び出し側ごとに「省略時どう扱うか」の分岐が要る)。declared/override が相対パスなら
+    /// repoRoot 基準で解決する(絶対パスならそのまま)。純粋関数(I/O なし)
+    public static func resolveWorkspaceRoot(
+        declared: String?, override: String?, projectRoot: URL, repoRoot: URL
+    ) -> URL {
+        guard let raw = effectiveWorkspaceRaw(declared: declared, override: override) else {
+            return projectRoot.appendingPathComponent("workspace")
+        }
+        return URL(fileURLWithPath: resolvePath(raw, base: repoRoot))
+    }
+
+    /// 実行プロファイルを合成して ResolvedProfile を返す。
+    /// - workspaceOverride: `--workspace`(hidden)。実行プロファイルの `remoteControl.workspace` を
+    ///   上書きする。リモートディスパッチが、ミラー先を実行するマシンの子へ伝えるのに使う
+    ///   (RemoteRunDispatcher が必ず渡す。渡さないと子は自分のリポジトリルート基準で appPath を
+    ///   解決し、リモートに転送されていない絶対パスを見に行く)
     public static func resolve(project: TestProject, runName: String,
-                               machineName: String) throws -> ResolvedProfile {
+                               machineName: String,
+                               workspaceOverride: String? = nil) throws -> ResolvedProfile {
         var warnings: [String] = []
 
         // 1. 実行プロファイル
@@ -632,6 +962,7 @@ public enum ProfileResolver {
         let runDoc: RunProfileDocument = try load(runURL, warnings: &warnings) { json in
             checkKeys(json, allowed: RunProfileDocument.knownKeys, context: "runs/\(runName).json")
                 + checkDeviceRefKeys(json, context: "runs/\(runName).json")
+                + checkRemoteControlKeys(json, context: "runs/\(runName).json")
         }
         guard let appRef = runDoc.app else {
             throw ProfileError.missingAppReference(run: runName)
@@ -671,17 +1002,13 @@ public enum ProfileResolver {
             checkMachineProfileKeys(json, context: "machines/\(machineName).json")
         }
 
-        var catalog: [String: ResolvedDevice] = [:]
-        var catalogOrder: [String] = []
-        for (platform, list) in [("ios", machine.ios), ("android", machine.android)] {
-            for spec in list?.devices ?? [] {
-                guard catalog[spec.name] == nil else {
-                    throw ProfileError.duplicateDeviceName(name: spec.name, machine: machineName)
-                }
-                catalog[spec.name] = ResolvedDevice(platform: platform, spec: spec)
-                catalogOrder.append(spec.name)
-            }
+        // 一意なのは (host, name)。別ホストの同名は許す(DeviceHostGrouping にすべての規則がある)
+        let catalogEntries = DeviceHostGrouping.entries(machine: machine)
+        if let duplicate = DeviceHostGrouping.firstDuplicate(in: catalogEntries) {
+            throw ProfileError.duplicateDeviceName(
+                name: duplicate.name, host: duplicate.host, machine: machineName)
         }
+        let catalogOrder = catalogEntries.map(\.name)
 
         // 4. デバイス解決(このマシンに無い name はスキップ+警告)。
         // iOS 実効エンジン: 実行プロファイルの iosInappEngine(既定 true)で決める。
@@ -690,7 +1017,13 @@ public enum ProfileResolver {
         let iosEngine = (runDoc.iosInappEngine ?? true) ? "hybrid" : "xcuitest"
         var devices: [ResolvedDevice] = []
         for ref in deviceRefs {
-            if let device = catalog[ref.name] {
+            switch DeviceHostGrouping.resolve(ref, in: catalogEntries) {
+            case .ambiguous(let hosts):
+                // 片方を黙って選ぶと「別の機械のデバイスを操作した」になる。候補を挙げて止める
+                throw ProfileError.ambiguousDeviceRef(
+                    name: ref.name, hosts: hosts, run: runName, machine: machineName)
+            case .found(let entry):
+                let device = ResolvedDevice(platform: entry.platform, spec: entry.spec)
                 try validatePhysical(device, machine: machineName)
                 if device.spec.isPhysical, device.platform == "ios" {
                     // 実機は dylib 注入不可。iosInappEngine の既定(hybrid)を無視して固定する
@@ -713,9 +1046,11 @@ public enum ProfileResolver {
                     }
                     devices.append(device)
                 }
-            } else {
+            case .missing:
+                let onHost = ref.host.map { " on host \($0)" } ?? ""
                 warnings.append(
-                    "device \"\(ref.name)\" is not defined on machine \(machineName) — skipping it")
+                    "device \"\(ref.name)\"\(onHost) is not defined on machine \(machineName)"
+                    + " — skipping it")
             }
         }
         guard !devices.isEmpty else {
@@ -725,21 +1060,49 @@ public enum ProfileResolver {
         }
 
         // 5. アプリ解決(デバイスのある platform ごと。合成規則は AppProfileSection.merging 参照)
-        // appPath の相対パスは「リポジトリルート」基準(project.rootURL = <repoRoot>/TestProjects/<name> の
-        // 2 階層上)。ビルド成果物は TestProjects/ 外(リポジトリ直下の builds/ 等)に置くのが普通なため。
-        // packageRoot() の CWD 走査は使わない(単体テストでは CWD が本体リポジトリを指し誤基準になる。
-        // project.rootURL からの決定的導出で統一)。reportDir だけはプロジェクト直下に出すため下記で
-        // project.rootURL 基準のまま(基準が異なるので resolvePath の base で使い分ける)。
+        // appPath の相対パスは常に「リポジトリルート」基準(project.rootURL =
+        // <repoRoot>/TestProjects/<name> の2階層上。= アプリの原本の場所)。**ワークスペースの
+        // 有無・既定/明示のどれでもこの基準は変えない**(以前は宣言時にワークスペース基準へ
+        // 切り替えていたが、原本の置き場所とインストールに使う場所を混同していた。
+        // docs/remote-runner.md §17)。packageRoot() の CWD 走査は使わない(単体テストでは CWD が
+        // 本体リポジトリを指し誤基準になる。project.rootURL からの決定的導出で統一)。
+        // reportDir だけはプロジェクト直下に出すため下記で project.rootURL 基準のまま
+        // (基準が異なるので resolvePath の base で使い分ける)。
+        //
+        // **ワークスペースは常に有効**(既定 `"<project.rootURL>/workspace"`。2026-08-18)。
+        // インストールに使うパス(ResolvedAppTarget.appPath)は常に
+        // "<workspaceRoot>/apps/<原本のファイル名>" に切り替わる(原本の
+        // ResolvedAppTarget.sourcePath は常にリポジトリルート基準のまま)。実体のコピー(ステージング)
+        // はここでは行わない(純粋な path 計算のみ) —— 呼び出し側(ProfileRunner.run/ApiRunCommand/
+        // RemoteRunDispatcher)が resolve() 直後に `WorkspaceAppStaging` を呼んで原本を運ぶ。
+        // リモートへディスパッチすると appPath のアプリパッケージ自体は転送されない
+        // (RemoteTransferPlan.rsyncArgs は TestProjects/<project> しか rsync しない)ため、
+        // リポジトリルート基準の絶対パスはリモートに存在しない。既定のワークスペースは
+        // project.rootURL 配下なので、その転送(rsyncArgs)自体がステージング済みの apps/ を
+        // 運ぶ ―― 明示指定でプロジェクト外を指したときだけ専用ミラーが要る
+        // (`WorkspaceRemoteDispatch.placement`。Sources/ftester/RemoteRunDispatcher.swift)
         let repoRoot = project.rootURL.deletingLastPathComponent().deletingLastPathComponent()
+        let workspaceRoot = resolveWorkspaceRoot(
+            declared: runDoc.remoteControl?.workspace, override: workspaceOverride,
+            projectRoot: project.rootURL, repoRoot: repoRoot)
+        // 開始/終了スクリプト。パス計算だけで、ファイルの有無は見ない —— それは実行側
+        // (RunHookRunner)が action() で判定する(resolve は I/O を増やさない)
+        let setupHook = RunHookPlan.resolve(kind: .setup, workspaceRoot: workspaceRoot)
+        let teardownHook = RunHookPlan.resolve(kind: .teardown, workspaceRoot: workspaceRoot)
         var apps: [String: ResolvedAppTarget] = [:]
         for platform in Set(devices.map(\.platform)) {
             let section = appProfile.section(for: platform)
             guard let bundleID = section.app else {
                 throw ProfileError.missingBundleID(platform: platform, appProfile: appRef)
             }
+            let sourcePath = section.appPath.map { resolvePath($0, base: repoRoot) }
+            let installPath = sourcePath.map { source in
+                WorkspaceAppStaging.installPath(source: source, workspaceRoot: workspaceRoot)
+            }
             apps[platform] = ResolvedAppTarget(
                 bundleID: bundleID,
-                appPath: section.appPath.map { resolvePath($0, base: repoRoot) },
+                sourcePath: sourcePath,
+                appPath: installPath,
                 // **appPath があれば既定で有効**。パスを書いたのに入らない(既定 false)方が
                 // 事故で、警告を出さないと気付けない設計だった。止めたいときだけ
                 // autoInstall: false を明示する(opt-out)。実インストールは中身が変わったときだけ
@@ -773,6 +1136,7 @@ public enum ProfileResolver {
             project: project,
             runName: runName,
             machineName: machineName,
+            machineHost: MachineHostDispatch.normalize(machine.host),
             appName: appProfile.resolvedAppName ?? appRef,
             apps: apps,
             devices: devices,
@@ -794,6 +1158,9 @@ public enum ProfileResolver {
             // 0 以下は無意味な指定なので既定にフォールバック(run を止めるほどの問題ではない)
             recordBitrateKbps: (runDoc.recordBitrateKbps).map { $0 > 0 ? $0 : 1500 } ?? 1500,
             recordFullResolution: runDoc.recordFullResolution ?? false,
+            workspaceRoot: workspaceRoot,
+            setupHook: setupHook,
+            teardownHook: teardownHook,
             warnings: warnings)
     }
 
@@ -849,13 +1216,17 @@ public enum ProfileResolver {
             warnings += checkDeprecatedSectionKeys(json, context: context)
         case .machine:
             if let machine = try? decoder.decode(MachineProfile.self, from: data) {
-                var seen = Set<String>()
+                // **一意なのは (host, name)**(別の機械の同名は重複ではない)。判定は
+                // DeviceHostGrouping で resolve() と共有する —— 片方だけ厳しいと
+                // 「保存できるのに検証が赤い」(その逆も)になる
+                if let duplicate = DeviceHostGrouping.firstDuplicate(
+                    in: DeviceHostGrouping.entries(machine: machine)) {
+                    errors.append("duplicate device name: \(duplicate.name)"
+                                  + " on host \(DeviceHostGrouping.display(duplicate.host))"
+                                  + " (names must be unique per host, across ios and android)")
+                }
                 for (platform, list) in [("ios", machine.ios), ("android", machine.android)] {
                     for spec in list?.devices ?? [] {
-                        if !seen.insert(spec.name).inserted {
-                            errors.append("duplicate device name: \(spec.name)"
-                                          + " (names must be unique across ios and android)")
-                        }
                         errors += physicalDeviceErrors(spec, platform: platform)
                     }
                 }
@@ -879,6 +1250,7 @@ public enum ProfileResolver {
             }
             warnings += checkKeys(json, allowed: RunProfileDocument.knownKeys, context: context)
             warnings += checkDeviceRefKeys(json, context: context)
+            warnings += checkRemoteControlKeys(json, context: context)
             let (machineErrors, machineWarnings) = checkRunMachineField(json, project: project)
             errors += machineErrors
             warnings += machineWarnings
@@ -951,6 +1323,11 @@ public enum ProfileResolver {
         }
     }
 
+    private static func checkRemoteControlKeys(_ json: [String: Any], context: String) -> [String] {
+        guard let section = json["remoteControl"] as? [String: Any] else { return [] }
+        return checkKeys(section, allowed: RemoteControlSection.knownKeys, context: "\(context) remoteControl")
+    }
+
     /// 実行プロファイルの machine フィールドの検証(型・参照先の存在・未指定)。
     /// - 存在して string 型でない(JSON null は「未指定」と同義に扱う) → エラー
     /// - 非空文字列だが machines/<machine>.json が無い → エラー(明示指定なので明確に伝える)
@@ -983,6 +1360,7 @@ public enum ProfileResolver {
         let rules: [(section: String, key: String, moveTo: String, hint: String)] = [
             ("common", "app", "ios/android", ""),
             ("common", "appPath", "ios/android", ""),
+            ("common", "appName", "ios/android", " (the display name)"),
             ("ios", "autoInstall", "common", " (enabled by default when appPath is set)"),
             ("android", "autoInstall", "common", " (enabled by default when appPath is set)"),
         ]
@@ -997,10 +1375,11 @@ public enum ProfileResolver {
     private static func checkAppProfileKeys(_ json: [String: Any], context: String) -> [String] {
         var warnings = checkKeys(json, allowed: AppProfile.knownKeys, context: context)
         for key in AppProfile.knownKeys {
-            if let section = json[key] as? [String: Any] {
-                warnings += checkKeys(section, allowed: AppProfileSection.knownKeys,
-                                      context: "\(context) \(key)")
-            }
+            guard let section = json[key] as? [String: Any] else { continue }
+            // common と ios/android で許容キーが違う(commonKnownKeys 参照)
+            let allowed = key == "common"
+                ? AppProfileSection.commonKnownKeys : AppProfileSection.platformKnownKeys
+            warnings += checkKeys(section, allowed: allowed, context: "\(context) \(key)")
         }
         return warnings
     }

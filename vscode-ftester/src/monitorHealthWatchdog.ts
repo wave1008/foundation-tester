@@ -117,8 +117,27 @@ export class MonitorHealthWatchdog {
       if (device.registered === false) {
         continue;
       }
+      // リモートの台は見ない(理由は monitorBridgeWatchdog.ts の同じ位置)
+      if (device.machineHost !== undefined) {
+        continue;
+      }
       this.observeOne(device.name, device.state, device.health, device.serial, device.inRun);
     }
+  }
+
+  /**
+   * 「修復中」表示を修復の完了時点で降ろす(タイルは phase を受け取るまで前の表示を出し続けるため、
+   * 開始時に post しただけだと修復が終わっても・失敗しても「修復中」のまま残る。修復は1エピソード
+   * につき1回しか撃たないので、失敗した場合はデバイスが正常化するまで永久に残っていた)。
+   * まだ異常が続いているなら unhealthy へ、既に正常判定が出ている(degraded が降りている・
+   * エントリが消えている)なら何も出さない —— 後から unhealthy を被せると、正常に戻ったタイルが
+   * 異常表示のまま固まる(次の巡回は degraded が false のままなので ok を post し直さない)。
+   */
+  private clearRepairingPhase(name: string): void {
+    if (this.entries.get(name)?.degraded !== true) {
+      return;
+    }
+    this.deps.post({ type: "healthWatch", name, phase: "unhealthy" });
   }
 
   private observeOne(
@@ -205,6 +224,7 @@ export class MonitorHealthWatchdog {
             ? `[health-watch] ${name}: ${t("monitor.healthWatch.wifiRepairExecuted")}`
             : `[health-watch] ${name}: ${t("monitor.healthWatch.wifiRepairFailed")}`,
         );
+        this.clearRepairingPhase(name);
       });
       return;
     }
@@ -226,6 +246,7 @@ export class MonitorHealthWatchdog {
               ? `[health-watch] ${name}: ${t("monitor.healthWatch.displayRepairExecuted")}`
               : `[health-watch] ${name}: ${t("monitor.healthWatch.displayRepairFailed")}`,
           );
+          this.clearRepairingPhase(name);
         });
         return;
       }

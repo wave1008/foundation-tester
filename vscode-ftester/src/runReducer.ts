@@ -72,8 +72,10 @@ export function reduceRunEvent(
 
 function actionsFor(state: RunReducerState, event: RunEvent, nowMs: number): RunAction[] {
   switch (event.kind) {
-    case "runStarted":
-      return [{ type: "output", text: tLane("lane.runStarted", { total: event.total }) }];
+    case "runStarted": {
+      const heading = tLane("lane.runStarted", { total: event.total });
+      return [{ type: "output", text: heading }];
+    }
 
     case "workersReady":
       // 以降の全イベントに worker が付く合図。

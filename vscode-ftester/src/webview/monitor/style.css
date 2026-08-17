@@ -316,6 +316,19 @@ select:disabled { opacity: 0.5; cursor: default; }
   flex: 0 0 20px;
   height: 20px;
 }
+/* ホスト名バッジの段(デバイス名の下)。**グリッドに .with-host-row が付いたときだけ**出す ——
+   段の有無がタイルごとに混ざると、共通の --tile-image-h では高さが揃わない。
+   高さは deviceTiles.js の TILE_HOST_ROW_HEIGHT と一致させること */
+.tile-host-row {
+  display: none;
+}
+.grid.with-host-row .tile-host-row {
+  display: flex;
+  align-items: center;
+  flex: 0 0 16px;
+  height: 16px;
+  overflow: hidden;
+}
 .tile-name {
   font-weight: 600;
   font-size: 12px;
@@ -456,6 +469,16 @@ select:disabled { opacity: 0.5; cursor: default; }
 }
 .placeholder-icon.offline {
   color: var(--vscode-descriptionForeground);
+}
+/* リモート(状態を観測できない)はアイコンを置かない —— 電源アイコンは「止まっている」の意味に
+   読めるが、こちらは「分からない」。文字だけで伝える(deviceTiles.js の unobservableRemote) */
+.placeholder-icon.remote {
+  display: none;
+}
+/* 改行入りの文言(ホスト名 + 補足)をそのまま出す */
+.frame-placeholder span {
+  white-space: pre-line;
+  text-align: center;
 }
 /* 「待機中」の時計アイコン(.waiting)は専用の色を持たず .frame-placeholder の文字色を継承する
    (アイコンと文字を同色にする。ユーザー決定 2026-07-16)。 */
@@ -676,6 +699,12 @@ select:disabled { opacity: 0.5; cursor: default; }
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
 }
 .device-op-menu.visible { display: block; }
+/* #device-pick-overlay(z-index:2000)・#device-add-overlay(2010)の**上**に出す。
+   .device-op-menu の 1000 のままだとモーダルの背後に隠れて選べない(2026-08-17 実機で確認)。
+   hover-tip(10000)より下、モーダル群より上の帯に置く。 */
+#device-pick-delete-menu {
+  z-index: 2100;
+}
 .device-op-menu-item {
   display: flex;
   align-items: center;
@@ -710,9 +739,6 @@ select:disabled { opacity: 0.5; cursor: default; }
   min-height: 0;
   display: flex;
   flex-direction: column;
-  /* sticky な .profile-jump-header の裏に隠れないよう scrollIntoView 用の余白を確保
-     (ヘッダ実高さより大きい値にすること)。 */
-  scroll-margin-top: 40px;
 }
 .run-profile-section {
   flex: 0 0 auto;
@@ -729,17 +755,6 @@ select:disabled { opacity: 0.5; cursor: default; }
 }
 
 /* ---- プロファイルタブ: 固定ヘッダ(セクションジャンプリンク) ---- */
-.profile-jump-header {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  background-color: var(--vscode-editor-background);
-  border-bottom: 1px solid var(--vscode-panel-border, transparent);
-  padding: 6px 12px;
-  display: flex;
-  gap: 16px;
-  flex: 0 0 auto;
-}
 /* button 要素なのでグローバル button スタイルを打ち消す。hover は button:hover:not(:disabled)
    に詳細度で勝つよう要素セレクタ button を含めて揃える。 */
 button.profile-jump-link {
@@ -767,11 +782,9 @@ button.profile-jump-link:hover:not(:disabled) {
      不透明なエディタ背景の上に半透明グレーを重ねる(どのテーマでも破綻しない)。 */
   background-color: var(--vscode-editor-background);
   background-image: linear-gradient(rgba(128, 128, 128, 0.18), rgba(128, 128, 128, 0.18));
-  /* 確定/キャンセルを載せるため自セクション内で sticky にする。top はジャンプヘッダの実高さ
-     (フォント設定で変わるため tabs.js が --profile-jump-height を実測注入)。
-     z-index はジャンプヘッダ(10)より下に保つこと。 */
+  /* 確定/キャンセルを載せるため自セクション内で sticky にする。 */
   position: sticky;
-  top: var(--profile-jump-height, 30px);
+  top: 0;
   z-index: 9;
 }
 .profile-toolbar-buttons {
@@ -795,7 +808,9 @@ button.profile-jump-link:hover:not(:disabled) {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 12px 6px;
+  /* 上は 10px。ツールバー(マシン選択・確定)と地続きに見えると、「デバイスを追加」が
+     どちらの操作群に属するのか読めない(2026-08-17 指摘)。下 6px は一覧との距離 */
+  padding: 10px 12px 6px;
 }
 .profile-actions-label {
   font-weight: 600;
@@ -833,11 +848,21 @@ button.profile-jump-link:hover:not(:disabled) {
   max-width: calc(100% - 240px);
   border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
   border-radius: 4px;
+  /* **10台ぶんで頭打ちにして中でスクロールする**(台数が多いとセクションが画面外まで伸び、
+     プロファイルタブの他セクションへ辿り着けない。2026-08-17 指摘)。
+     max-height は machineProfilesTab.js が11行目の実位置から算出して設定する —— 1行の高さは
+     フォント設定・実機バッジの有無で変わるので、CSS に固定値を置くと行の下段(detail)が
+     切れる(実際に切れた)。 */
+  overflow-y: auto;
 }
 .machine-device-row {
+  /* 高さは中身(名前段 + detail 段)に任せる。固定値を入れないこと(上の max-height を参照) */
   padding: 8px 10px;
   border-bottom: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
   user-select: none; /* Shift+クリック範囲選択時のテキスト選択との競合を防ぐ */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .machine-device-row:last-child { border-bottom: none; }
 /* ホバー色は list-hoverBackground を 50% 透過して敷く(color-mix、テーマ変数のまま)。
@@ -847,10 +872,17 @@ button.profile-jump-link:hover:not(:disabled) {
   background-color: color-mix(in srgb, var(--vscode-list-hoverBackground) 50%, transparent);
   color: var(--vscode-list-hoverForeground, inherit);
 }
-/* 選択色は editorGroupHeader-tabsBackground で統一(.element-row.selected も同じ値。
-   variant として .device-pick-row.checked は別の値を意図的に使う)。 */
+/* 選択色は list-activeSelectionBackground で統一(.element-row.selected も同じ値。
+   variant として .device-pick-row.checked は別の値を意図的に使う)。
+   **editorGroupHeader-tabsBackground は使わない** —— 多くのテーマでエディタ背景と
+   ほぼ同色(Dark Modern は #181818 対 #1f1f1f)で、選択がほとんど見えなかった。
+   detail 段は自前の色を持つので、選択中は前景色を継承させて明度差を保つ。 */
 .machine-device-row.selected {
-  background-color: var(--vscode-editorGroupHeader-tabsBackground, rgba(128, 128, 128, 0.15));
+  background-color: var(--vscode-list-activeSelectionBackground, rgba(0, 122, 204, 0.35));
+  color: var(--vscode-list-activeSelectionForeground, inherit);
+}
+.machine-device-row.selected .machine-device-detail {
+  color: inherit;
 }
 .machine-device-detail {
   margin-top: 4px;
@@ -936,6 +968,33 @@ button.profile-jump-link:hover:not(:disabled) {
   font-weight: 600;
 }
 
+/* 「登録はあるが実体が無い」行。行全体を淡くし、バッジは注意色(枠線だけ)にする ——
+   実体を伴わない登録は run で必ず落ちるので、他の行と同じ見た目にしない */
+.device-pick-row-missing .device-pick-row-name {
+  opacity: 0.7;
+}
+.badge-missing {
+  flex: 0 0 auto;
+  background-color: transparent;
+  border: 1px solid var(--vscode-editorWarning-foreground, #cca700);
+  color: var(--vscode-editorWarning-foreground, #cca700);
+  font-weight: 600;
+}
+
+/* リモートのデバイス(マシンプロファイルの一覧行)。行の右端へ寄せる。
+   薄いグレー地に黒字(2026-08-17 指示)。**テーマ変数を使わない** —— 前景と背景の
+   組み合わせを固定したいので、ここだけはリテラル色にする(ダークテーマでも
+   薄いグレー地に黒字のまま。他のバッジは意味ごとの色を持つので変数のまま) */
+.badge-remote {
+  flex: 0 0 auto;
+  /* 名前ピルのすぐ右に置く(margin-left: auto で行の右端へ飛ばすと、名前との間が
+     行幅ぶん空いて「どのデバイスの札か」が読み取りにくい。2026-08-17 指示)。
+     間隔は .machine-device-name-line の gap(6px)に任せる */
+  background-color: #d4d4d4;
+  color: #1f1f1f;
+  font-weight: 600;
+}
+
 /* 編集フォームの実機バッジ。配色は .badge-kind と揃える(同じ意味のものを別色にしない) */
 .editor-kind-badge {
   font-size: 11px;
@@ -982,7 +1041,7 @@ button.profile-jump-link:hover:not(:disabled) {
   display: flex;
   flex-direction: column;
 }
-/* ラベルが長い("使用するマシンプロファイル"等)ため #id で .modal-row > label の
+/* ラベルが長い("参照するマシンプロファイル"等)ため #id で .modal-row > label の
    flex:0 0 90px をソース順に依存せず上書きする(具体度をID分上げる)。 */
 #run-profile-editor .modal-row > label {
   flex: 0 0 170px;
@@ -1313,6 +1372,12 @@ input[type="text"]::placeholder {
 .device-pick-row input[type="checkbox"] {
   margin: 0;
 }
+/* devicePickDeviceDelete 送信中〜応答待ちの間、その行だけ操作不可にする(他行・OK/Cancel は
+   引き続き操作できる。.device-pick-list.loading[全体薄く]とは独立した状態)。 */
+.device-pick-row.deleting {
+  opacity: 0.5;
+  pointer-events: none;
+}
 .device-pick-row-text {
   flex: 1 1 auto;
   min-width: 0;
@@ -1354,10 +1419,30 @@ input[type="text"]::placeholder {
   font-size: 12px;
   color: var(--vscode-descriptionForeground);
 }
+/* 見出し / ホスト選択 / 「+新規作成」。**ホストは見出しのすぐ右に詰める**(2026-08-17 指示)。
+   space-between で3つを散らすと、ホストが中央に浮いて見出しとの関係が読めない。
+   右端に寄せるのは「+新規作成」だけ(margin-left: auto)。 */
 .device-pick-title-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 12px;
+}
+/* 見出しとホストの間だけ広く空ける(全角2文字ぶん)。見出しに続けて読ませたくないため */
+.device-pick-title-row #device-pick-title {
+  margin-right: 2em;
+}
+.device-pick-title-row .device-pick-add-label {
+  margin-left: auto;
+  color: var(--vscode-descriptionForeground);
+}
+/* ラベルと「+」は1組。間を詰めて、どのボタンの説明かを見て分かるようにする */
+.device-pick-title-row .device-pick-add-label + #device-pick-add-new {
+  margin-left: -6px;
+}
+.device-pick-host-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 .device-pick-note {
   font-size: 11px;
@@ -1643,9 +1728,10 @@ input[type="text"]::placeholder {
 }
 /* .machine-device-row/.device-pick-row と同じ式(50%透過)。 */
 #panel-live .element-row:hover { background-color: color-mix(in srgb, var(--vscode-list-hoverBackground) 50%, transparent); }
-/* .machine-device-row.selected と同じ値(editorGroupHeader-tabsBackground)で統一。変更時は揃えること。 */
+/* .machine-device-row.selected と同じ値(list-activeSelectionBackground)で統一。変更時は揃えること。 */
 #panel-live .element-row.selected {
-  background-color: var(--vscode-editorGroupHeader-tabsBackground, rgba(128, 128, 128, 0.15));
+  background-color: var(--vscode-list-activeSelectionBackground, rgba(0, 122, 204, 0.35));
+  color: var(--vscode-list-activeSelectionForeground, inherit);
 }
 
 /* ---- 操作記録(要素一覧の下・スプリッターで上下比率を調整。#live-lists-splitter は既存 .splitter を流用) ---- */
@@ -1742,10 +1828,60 @@ input[type="text"]::placeholder {
   width: 80px;
   padding: 4px 8px; /* .settings-select と同じ高さに揃える */
 }
+.settings-text {
+  min-width: 220px;
+  max-width: 320px;
+  padding: 4px 8px; /* .settings-select と同じ高さに揃える */
+}
 .settings-hint {
   font-size: 12px;
   line-height: 1.5;
   color: var(--vscode-descriptionForeground);
+}
+/* リモート実行ホスト一覧(可変行数・settingsTab.js が組み立てる)。.resident-table と同じ
+   罫線方針(auto レイアウト、最右列は縦線なし)。 */
+.settings-remote-hosts-table {
+  border-collapse: collapse;
+  width: 100%;
+}
+.settings-remote-hosts-table th {
+  text-align: left;
+  font-weight: 600;
+  font-size: 12px;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.4));
+}
+.settings-remote-hosts-table td {
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.2));
+  vertical-align: middle;
+}
+.settings-remote-hosts-input {
+  width: 100%;
+  min-width: 90px;
+  box-sizing: border-box;
+  padding: 3px 6px;
+}
+.settings-remote-hosts-remove,
+.settings-remote-hosts-confirm {
+  padding: 2px 8px;
+  line-height: 1;
+}
+.settings-remote-hosts-actions-cell {
+  display: flex;
+  gap: 4px;
+  white-space: nowrap;
+}
+.settings-remote-hosts-actions {
+  display: flex;
+}
+/* 「追加」で足した未確定行(確定ボタンを押すまで CLI へ送らない)。settingsTab.js の
+   confirmHostRow がクラスを外す。 */
+.settings-remote-hosts-row-pending {
+  background: var(--vscode-list-inactiveSelectionBackground, rgba(128, 128, 128, 0.08));
+}
+.settings-remote-hosts-error {
+  color: var(--vscode-errorForeground, #f14c4c);
 }
 /* 更新セクション(設定タブ)。状態1行 → ボタン → 説明 の縦積み(実行ログは OUTPUT へ)。 */
 .settings-update-statusline {
@@ -1756,6 +1892,29 @@ input[type="text"]::placeholder {
 /* 確認中・更新中のインジケーター。デバイスタイルの起動スピナーと同じ形・同じ keyframes を使う
    (数分かかる更新で「進んでいる」ことを示す。ログ行だけだと止まったように見える)。 */
 .settings-update-spinner {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--vscode-foreground) 25%, transparent);
+  border-top-color: var(--vscode-charts-blue, #3794ff);
+  animation: ft-placeholder-spin 1s linear infinite;
+}
+/* デバイス選択ダイアログのホスト切替中インジケーター。リモートは ssh 1往復ぶん(数秒)待つので、
+   文字だけだと「効いていない」と見える。settings-update-spinner と同じ形・同じ keyframes。 */
+.device-pick-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+/* ホストの切り替え中。**一覧は残したまま**薄くして操作だけ止める(空にするとダイアログが
+   縮んでから伸び直し、切り替えのたびに画面が跳ねる)。入れ替えは応答が届いた1回だけ。 */
+.device-pick-list.loading {
+  opacity: 0.45;
+  pointer-events: none;
+}
+.device-pick-spinner {
   flex: 0 0 auto;
   box-sizing: border-box;
   width: 12px;
@@ -2156,6 +2315,26 @@ input[type="text"]::placeholder {
   flex-direction: column;
   gap: 6px;
 }
+/* 動画が1本も無いセッション用の理由表示(recordingsTab.js が video の代わりに差し込む。
+   死んだ<video>を見せないため、有効時は video/再生中表示/コントロールごと display:none にする)。 */
+.recordings-no-video-message {
+  display: none;
+  flex: 1 1 0;
+  min-height: 0;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 16px;
+  color: var(--vscode-descriptionForeground);
+  white-space: pre-line;
+}
+/* 動画はあるが一部クリップが欠落しているセッション向けの控えめな注記(video 上部)。 */
+.recordings-clips-failed-notice {
+  display: none;
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
 /* basis 0 で「コントロール行を除く残り高さ」ちょうどをボックスにし、上下フィットを保証する
    (auto だと動画の内在サイズが基準になり高さが余る/はみ出す)。中身は contain で収める。 */
 .recordings-video {
@@ -2384,4 +2563,10 @@ input[type="text"]::placeholder {
   border: 1px solid var(--vscode-editorHoverWidget-border, var(--vscode-widget-border, #454545));
   border-radius: 3px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+/* レーン見出しのホスト札(複数の機械にまたがる実行のときだけ出る)。地色・字色は
+   .badge-remote に任せ、ここは名前ピルとの間隔だけ持つ(.lane-header は gap を持たない) */
+.lane-host {
+  margin-left: 6px;
 }

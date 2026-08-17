@@ -1,6 +1,5 @@
 // テストプロジェクト・マシン名・実行プロファイルの管理 CLI。
 //   ftester project create/list/sync … TestProjects/<name>/ と Package.swift マーカー区間の管理
-//   ftester machine set/show         … このマシンの名前(~/.config/ftester/config.json)
 //   ftester profile list             … 実行プロファイルと部品プロファイルの一覧・整合チェック
 
 import ArgumentParser
@@ -187,64 +186,6 @@ struct ProjectCommand: AsyncParsableCommand {
     }
 }
 
-// MARK: - machine
-
-struct MachineCommand: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(
-        commandName: "machine",
-        abstract: "Manage this machine's name (the key that selects profiles/machines/<name>.json)",
-        subcommands: [SetName.self, Show.self])
-
-    struct SetName: AsyncParsableCommand {
-        static let configuration = CommandConfiguration(
-            commandName: "set", abstract: "Register this machine's name")
-
-        @Argument(help: "Machine name (e.g. \"M2 Ultra(192GB)\")")
-        var name: String
-
-        func run() async throws {
-            var config = LocalConfig.load()
-            config.machineName = name
-            try config.save()
-            print("✅ Registered this machine's name: \(name)")
-            print("   Stored at: \(LocalConfig.url().path)")
-        }
-    }
-
-    struct Show: AsyncParsableCommand {
-        static let configuration = CommandConfiguration(
-            commandName: "show", abstract: "Show the current machine name and how it resolves")
-
-        @Option(help: "Test project name (used to check whether a machine profile exists)")
-        var project: String?
-
-        func run() async throws {
-            let env = ProcessInfo.processInfo.environment["FT_MACHINE"]
-            let config = LocalConfig.load()
-            if let env, !env.isEmpty {
-                print("Machine name: \(env) (from the FT_MACHINE environment variable)")
-            } else if let name = config.machineName {
-                print("Machine name: \(name)")
-            } else {
-                print("Machine name: unregistered (register with: ftester machine set \"<name>\")")
-            }
-            print("Config file: \(LocalConfig.url().path)")
-
-            guard let testProject = try? ScenarioHost.project(named: project) else { return }
-            let machines = ProfileResolver.machineNames(project: testProject)
-            let current = LocalConfig.currentMachineName()
-            print("Machine profiles of project \(testProject.name): "
-                  + (machines.isEmpty ? "none" : machines.joined(separator: ", ")))
-            if let current {
-                print(machines.contains(current)
-                      ? "→ The \(current) profile applies"
-                      : "→ ⚠️ No profile for \(current)"
-                        + " (create profiles/machines/\(current).json)")
-            }
-        }
-    }
-}
-
 // MARK: - profile
 
 struct ProfileCommand: AsyncParsableCommand {
@@ -273,13 +214,13 @@ struct ProfileCommand: AsyncParsableCommand {
             }
 
             let ambientMachine = try? ProfileResolver.determineMachine(
-                project: testProject, registered: LocalConfig.currentMachineName())
+                project: testProject)
             if let ambientMachine {
                 print("Machine name: \(ambientMachine.name)\(ambientMachine.auto ? " (picked automatically)" : "")")
             } else {
                 print("Machine name: undecided (resolution checks are skipped for run profiles without an "
-                    + "explicit machine. Register one with ftester machine set, or set machine "
-                    + "in the run profile)")
+                    + "explicit machine. Set machine in the run profile, or keep a single "
+                    + "profiles/machines/*.json so it is picked automatically)")
             }
 
             print("Run profiles:")
@@ -288,14 +229,17 @@ struct ProfileCommand: AsyncParsableCommand {
                     // 実行プロファイル自身の machine 指定があれば最優先する(determineMachine の
                     // runProfileName 引数。ambientMachine が未決定でもこちらは解決できることがある)
                     let machine = try ProfileResolver.determineMachine(
-                        project: testProject, registered: LocalConfig.currentMachineName(),
+                        project: testProject,
                         runProfileName: run)
                     let resolved = try ProfileResolver.resolve(
                         project: testProject, runName: run, machineName: machine.name)
                     let devices = resolved.devices
                         .map { "\($0.name)(\($0.platform))" }
                         .joined(separator: ", ")
-                    print("・ \(run) — \(resolved.appName) / \(devices) @ \(resolved.machineName)")
+                    // マシンプロファイルの host はローカルのときだけ黙る(2026-08-17。ユーザー決定:
+                    // マシンプロファイルで実行プロファイル経由のリモートホスト指定を表せるようにした)
+                    let hostSuffix = resolved.machineHost.map { " (\($0))" } ?? ""
+                    print("・ \(run) — \(resolved.appName) / \(devices) @ \(resolved.machineName)\(hostSuffix)")
                     for warning in resolved.warnings { print("    ⚠️ \(warning)") }
                 } catch ProfileError.machineUndetermined {
                     print("・ \(run) — skipped the resolution check because the machine name is undecided")

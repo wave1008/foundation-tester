@@ -60,12 +60,28 @@ const RESTART_DELAY_MS = 1000;
 /** 無フレーム監視(wedge)の上限(ms)。これを超えて1フレームも届かなければ helper が固まったとみなし
  * 再起動する。静止画面は正当に長時間ほぼ0フレームになり得るため、短くすると健全な待機を
  * 誤検知する。15秒は「本当に固まった」場合だけを拾うための余裕。wedge 由来の kill は起動から
- * 15秒後=HEALTHY_WINDOW_MS 超なので、下の連続失敗カウントには載らず give-up を誘発しない。 */
+ * 15秒後=HEALTHY_WINDOW_MS 超なので、下の連続失敗カウントには載らず give-up を誘発しない
+ * (**ただし1枚も届いていない場合は別扱い**。NO_FRAME_WEDGE_LIMIT 参照)。 */
 const WEDGE_TIMEOUT_MS = 15000;
+/** **1フレームも受け取れないまま** wedge 再起動をこの回数繰り返したら諦める(→ onFailure)。
+ * 実害(2026-08-17): 20 タイル同時配信でホストがエンコードをこなせなくなり(h264 は
+ * kVTSessionMalfunctionErr、mjpeg は "JPEG encode failed")、**15秒ごとの再起動を無限に
+ * 繰り返した**。再起動そのものが CPU を食うので、資源不足が原因のときは事態を悪化させる。
+ * 「一度も映像が来ていない」= 一時的な固着ではなく構造的に無理、と判断してよい
+ * (一度でも届いた台はこれまでどおり何度でも張り直す —— そちらは本当の wedge だから)。
+ * **2 の根拠**: 1枚目は実測で約1秒(4秒で 8 AU)。15秒待って1枚も来ず、作り直してもまた
+ * 来ないなら、待てば直るものではない */
+const NO_FRAME_WEDGE_LIMIT = 2;
 /** 「起動直後の異常終了」を数える窓(ms)。この時間内での終了だけを連続失敗としてカウントする。 */
 const HEALTHY_WINDOW_MS = 10000;
 /** HEALTHY_WINDOW_MS 内の連続異常終了がこの回数に達したら諦めて onFailure(→ポーリングへ)。 */
 const MAX_QUICK_FAILURES = 3;
+/** helper が「この機械では h264 でエンコードできない」と判断して降りたときの exit code。
+ * 契約の同期相手: Sources/ftester-simstream/main.m の kFtExitCodecUnavailable。
+ * **同じ引数で再起動しても直らない**(2026-08-17 の実害: 20 タイル構成で VideoToolbox の
+ * 圧縮セッションが壊れ、15秒ごとの wedge 再起動を無限に繰り返してタイルが永久に
+ * 「接続中」になった)。呼び出し側に mjpeg で張り直させる。 */
+const CODEC_UNAVAILABLE_EXIT_CODE = 3;
 
 /** iOS/Android 共通のストリーミング helper 制御インターフェース(monitorLiveController.ts・
  * monitorDeviceStreamController.ts が両プラットフォームを1つのフィールド/Mapで扱えるようにする)。 */
@@ -95,6 +111,10 @@ export interface StreamPipelineOptions {
   onConnectionOk(): void;
   /** ストリーミングを継続できず諦めたときに1回だけ呼ぶ(呼び出し側はポーリングへフォールバック)。 */
   onFailure(message: string): void;
+  /** helper が「この機械では h264 が無理」と言って降りたとき(CODEC_UNAVAILABLE_EXIT_CODE)。
+   * **再起動はしない** —— 同じ引数では直らないので、呼び出し側が mjpeg で張り直す。
+   * 未定義なら通常の異常終了として扱う(再起動する)。 */
+  onCodecUnavailable?(): void;
 }
 
 function errorMessage(error: unknown): string {
@@ -214,6 +234,14 @@ export class StreamPipeline implements LiveStreamPipeline {
         this.stopping = false;
         return;
       }
+      // **h264 が無理だと言って降りた場合は再起動しない**(同じ引数では直らない)。
+      // 呼び出し側が mjpeg で張り直す = このパイプラインは破棄される
+      if (code === CODEC_UNAVAILABLE_EXIT_CODE && this.options.onCodecUnavailable) {
+        this.options.outputChannel.appendLine(
+          `[${this.options.logPrefix}] ${t("live.stream.codecUnavailable")}`);
+        this.options.onCodecUnavailable();
+        return;
+      }
       const reason = signal ? `signal ${signal}` : `exit code ${String(code)}`;
       this.handleUnexpectedExit(reason);
     });
@@ -265,6 +293,7 @@ export class StreamPipeline implements LiveStreamPipeline {
 
   private emitFrame(jpeg: Buffer, width: number, height: number): void {
     this.options.onConnectionOk();
+    this.everDeliveredFrame = true;
     this.armWedgeTimer(); // フレーム到達で無フレーム監視をリセット
     this.options.onFrame(jpeg.toString("base64"), width, height);
   }
@@ -290,6 +319,8 @@ export class StreamPipeline implements LiveStreamPipeline {
       if (kind === H264_KIND_AU) {
         this.emitChunk(data, (flags & 1) !== 0, width, height);
       } else if (kind === H264_KIND_PING) {
+        // **ping はフレームに数えない** —— 静止画面の Android は ping だけで正常なので、
+        // wedge のリセットには使うが「映像が来た」証拠にはしない
         this.options.onConnectionOk();
         this.armWedgeTimer();
       } else {
@@ -301,6 +332,7 @@ export class StreamPipeline implements LiveStreamPipeline {
 
   private emitChunk(data: Buffer, keyframe: boolean, width: number, height: number): void {
     this.options.onConnectionOk();
+    this.everDeliveredFrame = true;
     this.armWedgeTimer();
     this.options.onChunk?.(data, keyframe, width, height);
   }
@@ -337,6 +369,19 @@ export class StreamPipeline implements LiveStreamPipeline {
     if (this.disposed) {
       return;
     }
+    // **1枚も届かないまま wedge を繰り返しているなら諦める**(NO_FRAME_WEDGE_LIMIT の宣言参照)。
+    // 起動からの経過時間では判定できない —— wedge は必ず 15 秒後 = healthy 窓の外に出るため
+    if (!this.everDeliveredFrame && this.noFrameWedges >= NO_FRAME_WEDGE_LIMIT) {
+      this.gaveUp = true;
+      this.options.outputChannel.appendLine(
+        t("live.stream.noFrameGaveUp", {
+          prefix: this.options.logPrefix, count: this.noFrameWedges,
+          seconds: WEDGE_TIMEOUT_MS / 1000,
+        }),
+      );
+      this.options.onFailure(t("live.stream.noFrameMessage", { seconds: WEDGE_TIMEOUT_MS / 1000 }));
+      return;
+    }
     const elapsed = Date.now() - this.startedAt;
     if (elapsed < HEALTHY_WINDOW_MS) {
       this.failureStreak += 1;
@@ -368,6 +413,12 @@ export class StreamPipeline implements LiveStreamPipeline {
     }, RESTART_DELAY_MS);
   }
 
+  /** このパイプラインの寿命(再起動を跨ぐ)で1フレームでも受け取ったか。**wedge の扱いを
+   * 分けるために要る** —— 一度も来ていない台を無限に張り直しても直らない */
+  private everDeliveredFrame = false;
+  /** 1フレームも受け取れないまま wedge で kill した回数 */
+  private noFrameWedges = 0;
+
   private armWedgeTimer(): void {
     this.clearWedgeTimer();
     this.wedgeTimer = setTimeout(() => {
@@ -386,6 +437,9 @@ export class StreamPipeline implements LiveStreamPipeline {
     this.options.outputChannel.appendLine(
       t("live.stream.wedgeRestart", { prefix: this.options.logPrefix, seconds: WEDGE_TIMEOUT_MS / 1000 }),
     );
+    if (!this.everDeliveredFrame) {
+      this.noFrameWedges += 1;
+    }
     proc.stdin.end();
     killWithGrace(proc, KILL_GRACE_MS);
   }

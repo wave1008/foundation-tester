@@ -1,13 +1,14 @@
 {
   "common": {
-    "appName": "サンプルアプリ",
     "autoInstall": true
   },
   "ios": {
+    "appName": "サンプルアプリ",
     "app": "com.example.sampleapp",
     "appPath": ".ftester/DerivedData/Build/Products/Debug-iphonesimulator/SampleApp.app"
   },
   "android": {
+    "appName": "サンプルアプリ",
     "app": "com.example.sampleapp"
   }
 }

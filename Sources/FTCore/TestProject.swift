@@ -58,8 +58,7 @@ public enum ProjectStoreError: Error, LocalizedError {
         case .noProjects(let dir):
             return "no projects (\(dir.path)). Create one with: ftester project create <name>"
         case .ambiguous(let available):
-            return "multiple projects exist. Pick one with --project, "
-                + "or set defaultProject via ftester machine set / LocalConfig"
+            return "multiple projects exist. Pick one with --project"
                 + " (candidates: \(available.joined(separator: ", ")))"
         case .invalidName(let name):
             return "invalid project name: \(name) (allowed: letters, digits, _ and -, starting with a letter, digit or _. "

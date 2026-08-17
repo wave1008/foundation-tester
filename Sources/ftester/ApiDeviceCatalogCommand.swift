@@ -121,10 +121,11 @@ struct ApiDeviceCatalogCommand: AsyncParsableCommand {
         guard let avdmanagerURL = AndroidSDKLocator.findAVDManager() else {
             return ApiAndroidCatalog(
                 available: true,
-                // 拡張はこの文言の隣に導入ボタンを出す。CLI/スキルから叩いたときのために
-                // 解決手段も添える(ボタンを持たない読み手のほうが多い)
-                error: AndroidSDKLocator.avdManagerMissingMessage + "。"
-                    + AndroidSDKLocator.avdManagerInstallHint,
+                // **理由だけを返す**(解決手段は呼び手が足す)。カタログはリモートのホストからも
+                // 取るので、ここで "ftester api install-cmdline-tools" と書くと**読み手の手元へ
+                // 入れる案内**になり、欠けている機械とは別のマシンを直させることになる
+                // (拡張はローカルなら導入ボタン、リモートなら remote exec の案内を出す)
+                error: AndroidSDKLocator.avdManagerMissingMessage,
                 errorCode: "avdmanager-missing",
                 models: [], systemImages: systemImages)
         }

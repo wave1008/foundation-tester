@@ -23,6 +23,7 @@
   "ftester.config.showOnlyFailedTests.description": "Test Explorer のツリーを失敗したテストだけに絞り込みます(未実施・成功のテストは非表示)。Test Explorer タイトルバーのフィルターボタンでも切り替えられます。",
   "ftester.config.language.description": "拡張の UI 表示言語。auto は VS Code の表示言語に追従します(ja 系なら日本語、それ以外は英語)。",
   "ftester.config.updateCheck.description": "auto: 起動時(1日1回まで)に foundation-tester の更新有無を確認し、あれば通知します。確認するだけで取り込みは行いません(取り込みは /ftester-update)。off: 確認しません。",
+  "ftester.config.remoteArtifacts.description": "リモートディスパッチ後に、結果(録画・run ログ、results/)を回収するかどうか。\"collect\"(既定)はローカルの Projects/<project>/results/ へ自動で取り込みます。\"on-demand\" はリモートに残したままにします。後で必要になったら `ftester run --host` に `--remote-artifacts collect` を付けて(または手動で rsync して)取得してください。",
   "ftester.view.ftesterSteps.name": "ftester ステップ",
   "ftester.debugger.project.description": "対象のテストプロジェクト名(TestProjects/<name> の <name>)。省略時は ftester.project 設定や自動判定で補完されます。",
   "ftester.debugger.scenario.description": "デバッグ実行するシナリオ ID(クラス名.メソッド名)。1件のみ指定できます。",

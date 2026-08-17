@@ -345,6 +345,49 @@ public enum ProfileWorkerFactory {
         }
     }
 
+    /// **起動しただけでは run できない**: コールドブート直後の Android は起動ストームの間、
+    /// ブリッジ(ftbridge instrumentation)を立てても数秒で殺す(実測 2026-08-01:
+    /// 起動17s→21s で死亡)。sys.boot_completed / bootanim / PackageManager 応答 /
+    /// ランチャーの mCurrentFocus はどれもこの窓より手前で真になり、信号に使えなかった。
+    /// よって**「立てて、生き続けることを確認する」自己検証で待つ**。
+    /// これが機能する前提が AndroidBridge の .active 無効化(死んだクライアントを
+    /// 握り続けない)で、それ以前は何度再試行しても同じ死体に当たっていた。
+    ///
+    /// **起こす側は `AndroidLaneRecovery.bootMissingDevices`**(直列・再試行・locale 適用)。
+    /// ここはその直後に、**実際に起こせた分だけ**を渡して呼ぶ
+    /// (起こせなかったレーンの扱いは `FTCore.LaneGate` の責務なので待たない)。
+    /// buildAndroidWorkers より前に呼ぶこと
+    public static func awaitDurableAndroidBridges(
+        devices: [ResolvedDevice], log: @escaping @Sendable (String) -> Void) async {
+        for device in devices where !device.spec.isPhysical {
+            await waitForDurableBridge(spec: device.spec, name: device.name, log: log)
+        }
+    }
+
+    /// ブリッジが**定着する**まで待つ(上限 bridgeDurableTimeout)。status 応答 → dwell 待つ →
+    /// もう一度 status が通れば定着と判定する。期限切れは黙って返す(後段のワーカー生成が
+    /// 同じ経路で立て直し、そちらのエラーが正になる)
+    private static let bridgeDwellNs: UInt64 = 8_000_000_000
+    private static let bridgeDurableTimeout: TimeInterval = 300
+    private static func waitForDurableBridge(
+        spec: DeviceSpec, name: String, log: @escaping @Sendable (String) -> Void) async {
+        let deadline = Date().addingTimeInterval(bridgeDurableTimeout)
+        var announced = false
+        while Date() < deadline {
+            if let serial = try? AndroidDeviceCatalog.resolveSerial(spec: spec),
+               let driver = try? AndroidDriver(serial: serial),
+               (try? await driver.status()) != nil {
+                try? await Task.sleep(nanoseconds: bridgeDwellNs)
+                if (try? await driver.status()) != nil { return }
+            }
+            if !announced {
+                log("→ \(name): waiting for the bridge to stay up (a freshly booted guest kills it during the boot storm)")
+                announced = true
+            }
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+        }
+    }
+
     /// Android ワーカーのみ構築(serial 照合+ドライバ生成のみ=数秒)。
     /// アニメーション設定の同期もここで行う(run 開始の全経路がこの関数を通るため。
     /// Wipe Data / GPU 復帰の後に呼ぶこと = serial が確定している)。

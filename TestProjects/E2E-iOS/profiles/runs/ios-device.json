@@ -1,10 +1,13 @@
 {
+  "machine": "M2Ultra",
   "app": "ft_e2e_ios_device",
-  "machine": "M2 Ultra",
   "devices": [
-    { "name": "iPhone wave(実機)" }
+    {
+      "host": "local",
+      "name": "iPhone wave(実機)"
+    }
   ],
   "heal": false,
-  "reportDir": "reports",
-  "iosInappEngine": false
+  "iosInappEngine": false,
+  "reportDir": "reports"
 }

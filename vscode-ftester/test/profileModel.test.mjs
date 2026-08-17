@@ -311,3 +311,31 @@ test(
     }
   },
 );
+
+// ---- プロジェクト切替と実行プロファイルの整合(config.ts の reconciledProfileForProject) ----
+// 実害(2026-08-17): 設定が project=E2E-Android / profile=local+remote になり、その名前は
+// E2E-Android に無いので CLI が「run profile not found」で落ち、**モニターが起動できなくなった**。
+// 実行プロファイルの選択はプロジェクトに属するので、切替に追従させる必要がある。
+import { reconciledProfileForProject } from "../src/config";
+
+test("reconciledProfileForProject: 切替先に無い名前は未選択へ落とす", () => {
+  assert.equal(reconciledProfileForProject("local+remote", ["android", "android-device"]), "");
+});
+
+test("reconciledProfileForProject: 切替先にあるならそのまま(書き込まない)", () => {
+  assert.equal(reconciledProfileForProject("android", ["android", "android-device"]), undefined);
+});
+
+test("reconciledProfileForProject: 未選択はそのまま(書き込まない)", () => {
+  assert.equal(reconciledProfileForProject("", ["android"]), undefined);
+});
+
+test("reconciledProfileForProject: 別の名前を勝手に選ばない", () => {
+  // どのプロファイルで走るかはデバイスとアプリを決める選択。黙って差し替えると
+  // 別の対象を操作したことになる
+  assert.equal(reconciledProfileForProject("local+remote", ["android"]), "");
+});
+
+test("reconciledProfileForProject: プロファイルが1つも無いプロジェクトでも未選択へ", () => {
+  assert.equal(reconciledProfileForProject("local+remote", []), "");
+});

@@ -13,7 +13,7 @@ import { btnUp, btnDown, btnRestart, emptyMessage } from './domRefs.js';
 import {
   applyDevices,
   applyFrame,
-  applyH264Chunk,
+  applyH264Chunk, applyStreamUnavailable,
   applyDeviceError,
   showBanner,
   hideBanner,
@@ -55,10 +55,12 @@ import {
   applyInstallCmdlineToolsResult,
   applyCreateDeviceResult,
   applyInstalledDevices,
+  applyDevicePickDeviceDeleteResult,
   applyMachineDevicesSyncResult,
   applyNameInputOpen,
 } from './modals.js';
 import { applySettings } from './settingsTab.js';
+import { applyDevicePickHosts } from './devicePickHost.js';
 import { applyResidentMessage } from './processesTab.js';
 import { applyRecordingsSessions, applyRecordingsSession } from './recordingsTab.js';
 import { activateTab, TAB_IDS, switchTab } from './tabs.js';
@@ -79,6 +81,11 @@ window.addEventListener('message', (event) => {
       break;
     case 'h264Chunk':
       applyH264Chunk(message);
+      break;
+    // 契約: { type:'streamUnavailable', device, unavailable }
+    // (monitorDeviceStreamController.ts が配信を諦めたとき true)
+    case 'streamUnavailable':
+      applyStreamUnavailable(message);
       break;
     case 'deviceError':
       applyDeviceError(message);
@@ -152,6 +159,9 @@ window.addEventListener('message', (event) => {
     case 'installedDevices':
       applyInstalledDevices(message);
       break;
+    case 'devicePickDeviceDeleteResult':
+      applyDevicePickDeviceDeleteResult(message);
+      break;
     case 'machineDevicesSyncResult':
       applyMachineDevicesSyncResult(message);
       break;
@@ -194,6 +204,14 @@ window.addEventListener('message', (event) => {
     case 'language':
     case 'updateStatus':
       applySettings(message);
+      break;
+    // devicePickHost.js は remoteConfig(#device-pick-overlay 内のホスト選択の選択肢)を独立に
+    // 購読する(settingsTab.js の hostRows とは別モジュールの別コピー)。この case が無いと
+    // remoteConfig は default で握り潰され、設定タブのリモートホスト一覧も
+    // 「既存から選択」ダイアログのホスト選択も初期化されない。
+    case 'remoteConfig':
+      applySettings(message);
+      applyDevicePickHosts(message);
       break;
     case 'residentProcesses':
     case 'residentKillResult':

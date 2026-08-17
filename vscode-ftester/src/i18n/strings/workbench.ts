@@ -87,7 +87,11 @@ export const workbenchStrings = {
     en: "ftester: Could not resolve the target test project. Check the ftester.project setting.",
   },
 
-  "workbench.profile.none": {
+    "workbench.profile.clearedForProject": {
+    ja: "実行プロファイル「{profile}」は {project} に無いため選択を外しました。プロファイルを選び直してください。",
+    en: "Run profile \"{profile}\" does not exist in {project}, so the selection was cleared. Pick one again.",
+  },
+"workbench.profile.none": {
     ja: "(プロファイルなし)",
     en: "(No profile)",
   },

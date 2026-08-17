@@ -18,13 +18,15 @@ struct ApiCommand: AsyncParsableCommand {
                       ApiValidateProfile.self,
                       ApiLiveCommand.self,
                       ApiDeviceCatalogCommand.self, ApiCreateDeviceCommand.self,
+                      ApiDeleteDeviceCommand.self,
                       ApiInstalledDevicesCommand.self, ApiHostMetricsCommand.self,
                       ApiHostMetricsSummaryCommand.self,
                       ApiGenScenarioCommand.self, ApiDeleteScenarioCommand.self,
                       ApiResultsCommand.self, ApiVersionCommand.self,
                       ApiRepairDisplayCommand.self, ApiEnsureSettingsCommand.self,
                       ApiInstallCmdlineToolsCommand.self, ApiDslCommandsCommand.self,
-                      ApiBridgeSourcesCommand.self])
+                      ApiBridgeSourcesCommand.self, ApiRemoteHostsCommand.self,
+                      ApiDeviceStreamCommand.self])
 }
 
 struct ApiListScenarios: AsyncParsableCommand {

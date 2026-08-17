@@ -23,6 +23,7 @@ import { deviceOpsStrings } from "../src/i18n/strings/deviceOps";
 import { runStrings } from "../src/i18n/strings/run";
 import { workbenchStrings } from "../src/i18n/strings/workbench";
 import { exploreHealStrings } from "../src/i18n/strings/exploreHeal";
+import { hookScaffoldStrings } from "../src/i18n/strings/hookScaffold";
 import { webviewMonitorAStrings } from "../src/i18n/strings/webviewMonitorA";
 import { webviewMonitorBStrings } from "../src/i18n/strings/webviewMonitorB";
 import { webviewDashboardStrings } from "../src/i18n/strings/webviewDashboard";
@@ -43,6 +44,7 @@ const DICTS = [
   { name: "workbench", prefix: "workbench.", dict: workbenchStrings, side: "ext" },
   { name: "exploreHeal", prefix: "exploreHeal.", dict: exploreHealStrings, side: "ext" },
   { name: "compat", prefix: "compat.", dict: compatStrings, side: "ext" },
+  { name: "hookScaffold", prefix: "hookScaffold.", dict: hookScaffoldStrings, side: "ext" },
   { name: "update", prefix: "update.", dict: updateStrings, side: "ext" },
   { name: "webviewMonitorA", prefix: "wvMonitor.", dict: webviewMonitorAStrings, side: "webview" },
   { name: "webviewMonitorB", prefix: "wvMonitor2.", dict: webviewMonitorBStrings, side: "webview" },

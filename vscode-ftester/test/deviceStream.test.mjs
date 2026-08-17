@@ -202,3 +202,145 @@ test("mjpeg: JPEG でないペイロード(境界ズレ)は弾き、以後の同
     `desync のログが出力されていない: ${JSON.stringify(h.logLines)}`,
   );
 });
+
+// ---- helper が「この機械では h264 が無理」と降りたとき(exit 3) ----------------------------
+// 実害(2026-08-17): 20 タイル構成で VideoToolbox の圧縮セッションが壊れ(-17691
+// kVTSessionMalfunctionErr)、simstream は警告を出すだけで AU を1本も書かなくなった。
+// StreamPipeline は 15 秒の無フレーム監視で kill→再起動を繰り返すが、**同じ引数では直らない**
+// のでタイルが永久に「接続中」になった。exit 3 は「形式を変えて張り直せ」の合図で、
+// **再起動してはいけない**(同じ h264 でまた失敗する)。
+//
+// contract: Sources/ftester-simstream/main.m の kFtExitCodecUnavailable と同値
+
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+/** 指定の exit code で即終了するだけの mock helper を置く。 */
+function makeExitingHelper(code) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ftester-stream-exit-"));
+  const helper = path.join(dir, "helper");
+  fs.writeFileSync(helper, `#!/bin/sh\nexit ${code}\n`);
+  fs.chmodSync(helper, 0o755);
+  return { dir, helper };
+}
+
+async function waitFor(predicate, timeoutMs = 3000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) return true;
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  return false;
+}
+
+test("exit 3 は onCodecUnavailable を呼び、再起動しない", async () => {
+  const { dir, helper } = makeExitingHelper(3);
+  let codecUnavailable = 0;
+  let failures = 0;
+  const pipeline = new StreamPipeline({
+    command: helper, args: [], logPrefix: "ios-stream",
+    outputChannel: { appendLine() {} }, codec: "h264",
+    onFrame: () => {}, onChunk: () => {}, onConnectionOk: () => {},
+    onFailure: () => { failures += 1; },
+    onCodecUnavailable: () => { codecUnavailable += 1; },
+  });
+  try {
+    pipeline.start();
+    assert.ok(await waitFor(() => codecUnavailable > 0), "mjpeg で張り直させる合図が要る");
+    // 再起動していたら 2 回目以降の exit で加算される(RESTART_DELAY_MS 分待つ)
+    await new Promise((r) => setTimeout(r, 1200));
+    assert.equal(codecUnavailable, 1, "同じ引数で再起動しない(h264 でまた失敗するだけ)");
+    assert.equal(failures, 0, "諦めた扱いにはしない(mjpeg で張り直せる)");
+  } finally {
+    pipeline.dispose();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("それ以外の exit code は従来どおり再起動する(諦めまで数える)", async () => {
+  const { dir, helper } = makeExitingHelper(1);
+  let codecUnavailable = 0;
+  let failures = 0;
+  const pipeline = new StreamPipeline({
+    command: helper, args: [], logPrefix: "ios-stream",
+    outputChannel: { appendLine() {} }, codec: "h264",
+    onFrame: () => {}, onChunk: () => {}, onConnectionOk: () => {},
+    onFailure: () => { failures += 1; },
+    onCodecUnavailable: () => { codecUnavailable += 1; },
+  });
+  try {
+    pipeline.start();
+    assert.ok(await waitFor(() => failures > 0, 8000), "連続失敗で諦めてポーリングへ落ちる");
+    assert.equal(codecUnavailable, 0, "codec のせいだと決めつけない");
+  } finally {
+    pipeline.dispose();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// 1フレームも届かないまま wedge を繰り返す台は諦める。
+// 実害(2026-08-17): 20 タイル同時配信でホストがエンコードをこなせなくなり(h264 は
+// kVTSessionMalfunctionErr、mjpeg は "JPEG encode failed")、**15秒ごとの再起動を無限に
+// 繰り返した**。再起動そのものが CPU を食うので、資源不足が原因のときは事態を悪化させる。
+// wedge 由来の kill は必ず healthy 窓(10秒)の外なので、既存の連続失敗カウントでは
+// 永久に give-up に到達しない —— 「一度も届いていない」を別に数える必要がある。
+test("1フレームも届かないまま wedge を繰り返したら諦める(無限再起動を止める)", async () => {
+  // 何も出さずに生き続ける helper(= 無フレーム)。wedge の 15 秒を待たずに検証するため
+  // handleWedge を直接呼ぶ(private だが実行時は通常のメソッド。このファイルの方針参照)
+  const { dir } = makeExitingHelper(0);
+  const helper = path.join(dir, "silent");
+  fs.writeFileSync(helper, "#!/bin/sh\nexec sleep 120\n");
+  fs.chmodSync(helper, 0o755);
+  let failures = 0;
+  const pipeline = new StreamPipeline({
+    command: helper, args: [], logPrefix: "ios-stream",
+    outputChannel: { appendLine() {} }, codec: "h264",
+    onFrame: () => {}, onChunk: () => {}, onConnectionOk: () => {},
+    onFailure: () => { failures += 1; },
+  });
+  try {
+    pipeline.start();
+    // wedge 1回目: 再起動する(諦めない)
+    pipeline.handleWedge();
+    assert.ok(await waitFor(() => !pipeline.isRunning(), 3000), "前提: kill される");
+    assert.equal(failures, 0, "1回目は張り直して様子を見る");
+    assert.ok(await waitFor(() => pipeline.isRunning(), 4000), "再起動する");
+    // wedge 2回目: ここで諦める
+    pipeline.handleWedge();
+    assert.ok(await waitFor(() => failures > 0, 5000), "2回目で諦めてポーリングへ落ちる");
+  } finally {
+    pipeline.dispose();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ping(KIND=3)は「映像が来た」証拠にしない。**静止画面の Android は ping だけで正常**なので
+// 数えてしまうと、そこは救われる一方で「一度も届いていない」判定が効かなくなる
+// (= 無限再起動が復活する)。ping は wedge のリセットにだけ使う。
+test("ping はフレームに数えない(諦め判定を殺さない)", async () => {
+  const { dir } = makeExitingHelper(0);
+  const helper = path.join(dir, "silent");
+  fs.writeFileSync(helper, "#!/bin/sh\nexec sleep 120\n");
+  fs.chmodSync(helper, 0o755);
+  let failures = 0;
+  const pipeline = new StreamPipeline({
+    command: helper, args: [], logPrefix: "ios-stream",
+    outputChannel: { appendLine() {} }, codec: "h264",
+    onFrame: () => {}, onChunk: () => {}, onConnectionOk: () => {},
+    onFailure: () => { failures += 1; },
+  });
+  try {
+    pipeline.start();
+    pipeline.ingest(buildRecord(KIND_PING, 0, 0, 0, Buffer.alloc(0)));
+    pipeline.handleWedge();
+    assert.ok(await waitFor(() => pipeline.isRunning() === false, 3000));
+    assert.ok(await waitFor(() => pipeline.isRunning(), 4000));
+    pipeline.handleWedge();
+    assert.ok(await waitFor(() => failures > 0, 5000),
+      "ping しか来ていない台は「映像が来た」扱いにしてはいけない");
+  } finally {
+    pipeline.dispose();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

@@ -199,3 +199,115 @@ test("シミュレータは従来どおり simstream(実機振り分けの巻き
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// --- リモートのデバイス ---------------------------------------------------------------
+// 手元のヘルパーは udid/adb serial で当てるが、**それは向こうの機械の識別子**なので、
+// 同名の台が手元にあると**別の機械の画面が映る**((host, name) が一意なら同名は正常な構成)。
+// 代わりにその機械で `api device-stream` を起こし、向こうがヘルパーへ exec で化ける
+// (契約: Sources/ftester/ApiDeviceStreamCommand.swift)。stdout の形は同じなので
+// StreamPipeline も codec も失敗時のポーリング復帰もそのまま使える。
+
+const remoteDevice = {
+  id: "ios:M1Max/iPhone 17 Pro",
+  name: "iPhone 17 Pro",
+  platform: "ios",
+  state: "connected",
+  udid: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE", // 向こうの機械の udid。手元では当たらない
+  machineHost: "M1Max",
+  detail: "",
+};
+
+test("リモートのデバイスは remote exec 経由の device-stream で配信する", async () => {
+  // ftester 本体を mock にする(リモート経路はこれを spawn する)
+  const { dir, binaryPath } = makeMockBinaryDir(["ftester-simstream", "ftester"]);
+  const { deps } = makeDeps(binaryPath);
+  deps.getConfig = () => ({
+    binaryPath, iosStreamEnabled: true, androidStreamEnabled: false,
+    streamCodec: "h264", liveFps: 12, monitorMaxWidth: 960, project: "demo",
+  });
+  const controller = new MonitorDeviceStreamController(deps);
+  try {
+    controller.applyDevices([remoteDevice]);
+    const argv = await waitForArgv(dir, "ftester");
+    assert.ok(argv, "ftester(remote exec)が起動されること");
+    assert.match(argv, /remote exec M1Max -- api device-stream/, "その機械の上で解決させる");
+    assert.match(argv, /--device-host M1Max/, "向こうは自分が誰かを知らないので親が明示する");
+    assert.match(argv, /--platform ios --name iPhone 17 Pro/, "宛先は (platform, 名前) で指す");
+    assert.match(argv, /--codec h264/, "codec 設定はリモートにもそのまま効く");
+    assert.match(argv, /--project demo/, "向こうもマシンプロファイルを引くのでプロジェクトが要る");
+
+    const localArgv = await waitForArgv(dir, "ftester-simstream", 300);
+    assert.equal(localArgv, undefined,
+      "手元のヘルパーを起こしてはいけない(udid は向こうのもの。同名の手元の台に当たる)");
+  } finally {
+    controller.setVisible(false);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("プラットフォームの配信を切っていればリモートも起こさない(ポーリングに委ねる)", async () => {
+  const { dir, binaryPath } = makeMockBinaryDir(["ftester"]);
+  const { deps } = makeDeps(binaryPath);
+  deps.getConfig = () => ({
+    binaryPath, iosStreamEnabled: false, androidStreamEnabled: true,
+    streamCodec: "h264", liveFps: 12, monitorMaxWidth: 960,
+  });
+  const controller = new MonitorDeviceStreamController(deps);
+  try {
+    controller.applyDevices([remoteDevice]);
+    assert.equal(await waitForArgv(dir, "ftester", 300), undefined);
+  } finally {
+    controller.setVisible(false);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("リモートの実機は設定に関わらず MJPEG で張る — h264 を要求すると desync する", async () => {
+  // 向こう(ApiDeviceStreamCommand)は実機を devicepoll = MJPEG(v1)固定に落とす。
+  // こちらが h264(v2)のつもりで読むと、v1 レコードを v2 のレイアウトで解釈して
+  // 未知 KIND → kill → 再起動のループになる。
+  // **観測点は argv ではなくパイプラインの codec**: argv には元々 --codec を載せないので、
+  // argv だけ見るテストは「codec を h264 のままにする」変異を1つも殺せない(2026-08-17)。
+  // codec 設定を切り替えても張り替えが起きない = 実機は最初から mjpeg で固定されている。
+  const { dir, binaryPath } = makeMockBinaryDir(["ftester"]);
+  const { deps } = makeDeps(binaryPath);
+  let streamCodec = "h264";
+  deps.getConfig = () => ({
+    binaryPath, iosStreamEnabled: true, androidStreamEnabled: false,
+    streamCodec, liveFps: 12, monitorMaxWidth: 960, project: "demo",
+  });
+  const controller = new MonitorDeviceStreamController(deps);
+  const physicalRemote = { ...remoteDevice, kind: "physical", port: 8123 };
+  try {
+    controller.applyDevices([physicalRemote]);
+    controller.noteStreamRendered(physicalRemote.id);
+    assert.equal(controller.isStreaming(physicalRemote.id), true, "前提: 張れている");
+
+    streamCodec = "mjpeg";
+    controller.applyDevices([physicalRemote]);
+    assert.equal(controller.isStreaming(physicalRemote.id), true,
+      "実機が設定どおり h264 で張られていると、ここで mjpeg へ張り替わってしまう");
+  } finally {
+    controller.setVisible(false);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("手元に配信ヘルパーが1つも無くてもリモートは配信できる", async () => {
+  // ftester だけ置く(simstream/androidstream/devicepoll は無い)
+  const { dir, binaryPath } = makeMockBinaryDir(["ftester"]);
+  const { deps } = makeDeps(binaryPath);
+  deps.getConfig = () => ({
+    binaryPath, iosStreamEnabled: true, androidStreamEnabled: false,
+    streamCodec: "h264", liveFps: 12, monitorMaxWidth: 960, project: "demo",
+  });
+  const controller = new MonitorDeviceStreamController(deps);
+  try {
+    controller.applyDevices([remoteDevice]);
+    assert.ok(await waitForArgv(dir, "ftester"),
+      "リモートは向こうの ftester が起こすので、手元のビルドの有無に依存しない");
+  } finally {
+    controller.setVisible(false);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

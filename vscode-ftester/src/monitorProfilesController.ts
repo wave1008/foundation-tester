@@ -12,14 +12,13 @@ import {
   listMachineProfiles,
   listRunProfileNames,
   type MachineProfileSummary,
-  readLocalMachineName,
   readMachineDeviceNames,
   resolveProjectName,
-  updateLocalMachineName,
 } from "./config";
 import {
   type AppProfileFormFields,
   buildRunProfileTemplate,
+  effectiveDeviceHost,
   machineDeviceDetail,
   type MonitorFromWebviewMessage,
   parseAppProfileForForm,
@@ -36,11 +35,13 @@ import {
   validateNewRunProfileName,
 } from "./monitorModel";
 import { summarizeDeviceNames } from "./monitorDeviceOps";
+import { type HookScaffoldResult, resolveWorkspaceDir, writeHookScriptTemplates } from "./runHookScaffold";
 import type { MonitorPanelDeps } from "./monitorPanel";
 
 type MachineDeviceUpdateMessage = Extract<MonitorFromWebviewMessage, { type: "machineDeviceUpdate" }>;
 type MachineDevicesSyncMessage = Extract<MonitorFromWebviewMessage, { type: "machineDevicesSync" }>;
 type RunProfileSaveMessage = Extract<MonitorFromWebviewMessage, { type: "runProfileSave" }>;
+type RunProfileHookScaffoldMessage = Extract<MonitorFromWebviewMessage, { type: "runProfileHookScaffold" }>;
 type AppProfileSaveMessage = Extract<MonitorFromWebviewMessage, { type: "appProfileSave" }>;
 
 /**
@@ -133,19 +134,17 @@ export class MonitorProfilesController {
       current: config.profile,
       filter: config.monitorDeviceFilter,
       apps,
+      project: resolution.kind === "resolved" ? resolution.project : "",
     });
   }
 
   /**
-   * 現在使うべきマシンプロファイル名を決める(postMachineProfileInfo・handleProfileAdd 共通)。
-   * readLocalMachineName() の値が summaries に存在すればそれを、無ければ summaries が1件のときに
-   * 限り採用する(あいまいな場合は選ばない。readMachineDeviceNames と同じ方針 — 変更時は両方揃える)。
+   * 初期選択にするマシンプロファイル名(postMachineProfileInfo・handleProfileAdd 共通)。
+   * **1件のときだけ**選ぶ(あいまいな場合は選ばない。readMachineDeviceNames と同じ方針 —
+   * 変更時は両方揃える)。以前は「この Mac の登録名」を先に見ていたが、その概念は
+   * 2026-08-17 に廃止した(Sources/FTCore/RunProfile.swift の determineMachine)。
    */
   private resolveCurrentMachineName(summaries: readonly MachineProfileSummary[]): string | null {
-    const machineName = readLocalMachineName();
-    if (machineName !== null && summaries.some((summary) => summary.name === machineName)) {
-      return machineName;
-    }
     return summaries.length === 1 ? summaries[0]!.name : null;
   }
 
@@ -170,9 +169,13 @@ export class MonitorProfilesController {
     const current = this.resolveCurrentMachineName(summaries);
     const machines = summaries.map((summary) => ({
       name: summary.name,
+      host: summary.host,
       devices: summary.devices.map((device) => ({
         name: device.name,
         platform: device.platform,
+        // 実効ホスト(デバイス指定 > プロファイル直下の既定 > 手元)。同名は (host, name) で
+        // 区別されるので、重複判定と表示の両方がこれを見る
+        host: effectiveDeviceHost(device.host, summary.host),
         detail: machineDeviceDetail(device),
         // 右ペインの編集フォーム用の生フィールド。undefined は postMessage の JSON化で
         // 自然に省略される。
@@ -512,7 +515,8 @@ export class MonitorProfilesController {
     try {
       fs.mkdirSync(appsDir, { recursive: true });
       // テンプレートは appName のみ(埋めるべき候補一覧が無く buildRunProfileTemplate とは異なる)。
-      const template = { android: {}, common: { appName: name }, ios: {} };
+      // 表示名は ios/android のそれぞれに書く(common からは継承しないため、common には appName を書かない)。
+      const template = { android: { appName: name }, common: {}, ios: { appName: name } };
       fs.writeFileSync(path.join(appsDir, `${name}.json`), `${JSON.stringify(template, null, 2)}\n`, "utf8");
       this.deps.outputChannel.appendLine(t("profiles.log.appProfileAdded", { name }));
       this.postProfileInfo();
@@ -738,7 +742,7 @@ export class MonitorProfilesController {
 
   /**
    * マシン名横「✏」ボタン: machines/<machine>.json をリネームする。CLI 側の登録名
-   * (`ftester machine set` が書く ~/.config/ftester/config.json の machineName)が旧名と一致していれば
+   * (~/.config/ftester/config.json の machineName)が旧名と一致していれば
    * 追随して書き換える(一致させないと postMachineProfileInfo の current 決定が崩れる)。
    */
   async handleMachineProfileRename(machine: string): Promise<void> {
@@ -780,9 +784,6 @@ export class MonitorProfilesController {
     }
     try {
       fs.renameSync(oldPath, path.join(machinesDir, `${newName}.json`));
-      if (updateLocalMachineName(machine, newName)) {
-        this.deps.outputChannel.appendLine(t("profiles.log.registeredMachineNameUpdated", { name: newName }));
-      }
       this.deps.outputChannel.appendLine(t("profiles.log.machineProfileRenamed", { oldName: machine, newName }));
       this.postMachineProfileInfo();
       this.deps.post({ type: "machineProfileSelected", name: newName });
@@ -1000,7 +1001,7 @@ export class MonitorProfilesController {
       return;
     }
 
-    const result = syncDevicesInMachineProfile(parsed, message.add, message.remove);
+    const result = syncDevicesInMachineProfile(parsed, message.add, message.remove, message.source);
     if (!result.ok) {
       sendResult(false, 0, 0, result.error);
       return;
@@ -1118,6 +1119,58 @@ export class MonitorProfilesController {
     this.deps.outputChannel.appendLine(t("profiles.log.runProfileUpdated", { name: profile }));
     sendResult(true, null);
     this.handleRunProfileLoad(profile);
+  }
+
+  /**
+   * 「スクリプトの雛形を作成する」。ワークスペースの scripts/ に setup.sh / teardown.sh を置く
+   * (中身と「既存は触らない」規律は runHookScaffold.ts)。**プロファイルは書き換えない** ——
+   * スクリプトは宣言を持たず、あれば実行されるため(docs/remote-runner.md §17)。
+   * 結果は webview へ返さずホスト側の通知で出す(押した直後にしか意味が無い一過性の報告)。
+   */
+  async handleRunProfileHookScaffold(message: RunProfileHookScaffoldMessage): Promise<void> {
+    const resolution = resolveProjectName(this.deps.workspaceRoot, this.deps.getConfig());
+    if (resolution.kind !== "resolved") {
+      void vscode.window.showErrorMessage(t("profiles.error.projectUnresolved"));
+      return;
+    }
+    const workspaceDir = resolveWorkspaceDir(this.deps.workspaceRoot, resolution.project, message.workspace);
+    let result: HookScaffoldResult;
+    try {
+      result = writeHookScriptTemplates(workspaceDir);
+    } catch (error) {
+      this.deps.outputChannel.appendLine(
+        t("profiles.log.hookScaffoldFailed", { dir: workspaceDir, error: String(error) }),
+      );
+      void vscode.window.showErrorMessage(t("profiles.msg.hookScaffoldFailed", { dir: workspaceDir }));
+      return;
+    }
+
+    this.deps.outputChannel.appendLine(
+      t("profiles.log.hookScaffoldDone", {
+        dir: result.scriptsDir,
+        created: result.created.join(", ") || "-",
+        skipped: result.skipped.join(", ") || "-",
+      }),
+    );
+    if (result.created.length === 0) {
+      // 既にある = 何も作っていない。**上書きはしない**ので、そのことを言って開くだけにする
+      void vscode.window.showInformationMessage(
+        t("profiles.msg.hookScaffoldExists", { dir: result.scriptsDir }),
+      );
+    } else {
+      void vscode.window.showInformationMessage(
+        t("profiles.msg.hookScaffoldCreated", {
+          files: result.created.join(", "),
+          dir: result.scriptsDir,
+        }),
+      );
+    }
+    // 作った直後に中身(使い方のコメント)を読ませる。既にあった場合も現物を開く
+    const first = [...result.created, ...result.skipped][0];
+    if (first !== undefined) {
+      const document = await vscode.workspace.openTextDocument(path.join(result.scriptsDir, first));
+      void vscode.window.showTextDocument(document, { preview: false });
+    }
   }
 
   // ---- プロファイルタブ中段: アプリプロファイルの設定フォーム(appProfileLoad/appProfileSave) ----

@@ -62,7 +62,7 @@ function deviceOpMenuItem(state, busy, physical) {
   if (busy && busy.status === 'queued') { return { label: t('wvMonitor.deviceOpMenu.queued'), op: busy.op, disabled: true }; }
   if (busy && busy.op === 'up') { return { label: t('wvMonitor.deviceOpMenu.startingUp'), op: 'up', disabled: true }; }
   if (busy && busy.op === 'down') { return { label: t('wvMonitor.deviceOpMenu.stoppingDown'), op: 'down', disabled: true }; }
-  if (state === 'offline') {
+  if (state === 'offline' || state === 'unknown') {
     return {
       label: t(physical ? 'wvMonitor.deviceOpMenu.startBridge' : 'wvMonitor.deviceOpMenu.start'),
       op: 'up', disabled: false,
@@ -95,6 +95,12 @@ export const selectedDeviceIds = new Set();
 // タイル内の「画像以外」の高さの合計(px)。CSS の固定高と一致させること:
 // padding 上下 8+8 + header 20 + footer 18 + gap 6×2 = 66
 const TILE_CHROME_HEIGHT = 66;
+// ホスト名バッジの段(.tile-host-row)。**リモートのデバイスが1台でも居るときだけ**全タイルに
+// 確保する —— タイルの画像高さ(--tile-image-h)はグリッド共通の1値で、段の有無が混ざると
+// 高さが揃わない。手元だけの構成では従来と1px も変わらない。CSS の .tile-host-row と一致必須
+const TILE_HOST_ROW_HEIGHT = 16;
+// 直近の applyDevices が「リモート込み」だったか(chrome 高さの算出に使う)
+let hostRowReserved = false;
 
 // タイル幅は「--tile-image-h × --tile-aspect」で決まる(style.css の .frame-wrap)。
 // **実際にデコードできた画像の実寸からしか設定しない**: ストリームのヘッダ由来の寸法を信じると、
@@ -139,7 +145,8 @@ export function relayoutTiles() {
   if (probe.clientHeight === 0) {
     return;
   }
-  const imageHeight = Math.max(60, probe.clientHeight - TILE_CHROME_HEIGHT);
+  const chrome = TILE_CHROME_HEIGHT + (hostRowReserved ? TILE_HOST_ROW_HEIGHT + 6 : 0);  // +6 = gap
+  const imageHeight = Math.max(60, probe.clientHeight - chrome);
   grid.style.setProperty('--tile-image-h', imageHeight + 'px');
 }
 
@@ -159,6 +166,12 @@ function createTile(device) {
   header.className = 'tile-header';
   const name = document.createElement('span');
   name.className = 'tile-name';
+  // 手元でないデバイスのホスト名(マシンプロファイル/実行プロファイルの一覧と同じバッジ)。
+  // **モニターは手元のデバイスしか触れない**ので、リモートのタイルは状態を観測できない ——
+  // 「どの機械の台か」を出さないと、未起動表示の理由が分からない
+  const remoteBadge = document.createElement('span');
+  remoteBadge.className = 'badge badge-remote';
+  remoteBadge.style.display = 'none';
   const kindBadge = document.createElement('span');
   kindBadge.className = 'badge badge-kind';
   kindBadge.textContent = t('wvMonitor.tile.physicalBadge');
@@ -196,6 +209,11 @@ function createTile(device) {
   unregisteredBadge.style.display = 'none';
   // 実機バッジはデバイス名の左(ピッカー・一覧・編集フォームと同じ並び)
   header.append(kindBadge, name, unregisteredBadge);
+  // ホスト名は**名前の下の段**(2026-08-17 指示)。段の有無はグリッド単位で揃える(上記
+  // hostRowReserved)ので、手元のデバイスでも段自体は作る(中身が空になるだけ)
+  const hostRow = document.createElement('div');
+  hostRow.className = 'tile-host-row';
+  hostRow.appendChild(remoteBadge);
 
   const frameWrap = document.createElement('div');
   frameWrap.className = 'frame-wrap';
@@ -227,7 +245,7 @@ function createTile(device) {
   // 実行中/キュー待ち/録画中のバッジはタイル左下(フッター先頭)。録画は実行中の右(ユーザー指定)。
   footer.append(runningBadge, recordingBadge, frozenBadge, queuedBadge, stateBadge, error, renderBadge);
 
-  tile.append(header, frameWrap, footer);
+  tile.append(header, hostRow, frameWrap, footer);
   grid.appendChild(tile);
 
   const entry = {
@@ -244,6 +262,7 @@ function createTile(device) {
     frozenBadgeEl: frozenBadge,
     renderBadgeEl: renderBadge,
     kindBadgeEl: kindBadge,
+    remoteBadgeEl: remoteBadge,
     unregisteredBadgeEl: unregisteredBadge,
     frameWrapEl: frameWrap,
     imgEl: img,
@@ -286,7 +305,9 @@ function renderFrame(entry) {
   entry.frameWrapEl.textContent = '';
   // ブリッジ不在の実機は未起動と同じ扱い(bridgeNotRunning のコメント参照)。フレームも出さない:
   // 残っているのはブリッジが死ぬ前の古い1枚で、生きた画面と見分けがつかない
-  const offline = entry.device.state === 'offline' || bridgeNotRunning(entry.device);
+  // unknown(誰も観測していない)もフレームは来ないのでプレースホルダ側で扱う
+  const offline = entry.device.state === 'offline' || entry.device.state === 'unknown'
+    || bridgeNotRunning(entry.device);
   // 終了中(一括・個別とも)は最終フレームを凍結表示のまま見せず、プレースホルダに倒す
   // (ストリームは down 開始時に破棄済みで、以後フレームは更新されない)。
   // ただし個別 down が「キュー待ち(queued)」の間はまだ stopDeviceStreams 前=ストリーム生存中なので
@@ -338,13 +359,40 @@ function renderFrame(entry) {
       icon.className = 'placeholder-icon booting booting-' + entry.device.platform;
     }
     const labelSpan = document.createElement('span');
-    labelSpan.textContent = shuttingDown
-      ? t('wvMonitor.tile.shuttingDown')
-      : waitingUp
-        ? t('wvMonitor.tile.waiting')
-        : offline
-          ? (upRunning ? t('wvMonitor.deviceState.booting') : t('wvMonitor.deviceState.offline'))
-          : t('wvMonitor.tile.connecting');
+    // **リモートのデバイスは状態を観測できない**(モニターの判定は simctl/adb = 手元にしか効かない)。
+    // 起動していても offline のままなので「未起動」と言ってはいけない —— 操作中(起動中/待機中)の
+    // 表示は本物の進捗なのでそのまま出し、静止状態だけ「状態を取得できない」に置き換える
+    const unobservableRemote = entry.device.state === 'unknown'
+      && !shuttingDown && !waitingUp && !upRunning;
+    if (unobservableRemote) {
+      icon.className = 'placeholder-icon remote';
+      icon.innerHTML = '';
+    }
+    // 配信を諦めた台は「接続中」と言わない(待っても来ない)
+    const streamUnavailable = !!entry.streamUnavailable && !shuttingDown && !waitingUp && !upRunning
+      && !offline;
+    if (streamUnavailable) {
+      icon.className = 'placeholder-icon remote';  // アイコンは出さない(display:none)
+      icon.innerHTML = '';
+    }
+    // **タイルの文言は短く**(幅は 60px 程度しかなく、長い文は1文字ずつ折り返して潰れる。
+    // 2026-08-17 に実際に読めない表示になった)。理由と対処はツールチップと OUTPUT へ
+    entry.placeholderEl.title = streamUnavailable
+      ? t('wvMonitor.tile.streamUnavailableTip')
+      : unobservableRemote ? t('wvMonitor.tile.stateUnknownTip') : t('wvMonitor.tile.title');
+    labelSpan.textContent = streamUnavailable
+      ? t('wvMonitor.tile.streamUnavailable')
+      : unobservableRemote
+      ? (entry.device.machineHost
+        ? t('wvMonitor.tile.remoteUnobservable', { host: entry.device.machineHost })
+        : t('wvMonitor.tile.stateUnknown'))
+      : shuttingDown
+        ? t('wvMonitor.tile.shuttingDown')
+        : waitingUp
+          ? t('wvMonitor.tile.waiting')
+          : offline
+            ? (upRunning ? t('wvMonitor.deviceState.booting') : t('wvMonitor.deviceState.offline'))
+            : t('wvMonitor.tile.connecting');
     entry.placeholderEl.append(icon, labelSpan);
     entry.frameWrapEl.appendChild(entry.placeholderEl);
   }
@@ -388,6 +436,13 @@ function renderMeta(entry) {
     entry.device.frozen && entry.device.state === 'connected' ? 'inline-block' : 'none';
   // 実機は署名・接続の前提がシミュレータ/エミュレータと違うので取り違えないよう明示する
   entry.kindBadgeEl.style.display = entry.device.kind === 'physical' ? 'inline-block' : 'none';
+  // リモートのデバイスはホスト名を出す(手元は出さない = 既存の見た目のまま)
+  if (entry.device.machineHost) {
+    entry.remoteBadgeEl.textContent = entry.device.machineHost;
+    entry.remoteBadgeEl.style.display = 'inline-block';
+  } else {
+    entry.remoteBadgeEl.style.display = 'none';
+  }
   // マシンプロファイル未記載の合成デバイス(「(起動中のデバイス)」フィルタでのみ現れる)。
   // 起動(up)と GPU 再起動が成立しないことをタイル上でも明示する(停止・ライブ操作は可)
   entry.unregisteredBadgeEl.style.display = entry.device.registered === false ? 'inline-block' : 'none';
@@ -513,7 +568,12 @@ deviceOpMenuItemBtn.addEventListener('click', (event) => {
     return;
   }
   const device = deviceOpMenuEntry.device;
-  const message = { type: 'deviceOp', name: device.name, op: deviceOpMenuItemBtn.dataset.op };
+  // **host も載せる** —— 同名の台が別の機械にも居るのは通常で、名前だけだと
+  // 手元のマシンプロファイルの同名エントリを引いて**別の機械の設定でこの Mac に1台作る**
+  const message = {
+    type: 'deviceOp', name: device.name, op: deviceOpMenuItemBtn.dataset.op,
+    host: device.machineHost,
+  };
   // 未登録(registered:false)はマシンプロファイルに無いため --name で引けない。udid(iOS)/
   // serial(Android)を載せ、host 側(monitorDeviceOps.ts)が device-down --udid/--serial の
   // 直指定モードへ振り分ける(契約: monitorWebviewMessages.ts の "deviceOp")。
@@ -565,12 +625,21 @@ window.addEventListener('resize', () => closeDeviceOpMenu());
 // タイル外の右クリック(OS既定メニューが開く場合)用。タイル上はstopPropagation済みで来ない。
 document.addEventListener('contextmenu', () => closeDeviceOpMenu());
 
-// deviceOp は device.name(論理名)だけをhostに渡すため、host応答(deviceOpBusy等)もnameで来る。
-function findTileByName(name) {
+// 応答(deviceOpBusy 等)は (name, host) で引く。**host 省略は「手元」の意味**であって
+// 「どれでもよい」ではない —— 同名のデバイスが別の機械にも居るのは通常なので、省略を
+// ワイルドカードにすると**先頭のタイル(= 手元)を書き換える**。実際
+// 「M2Ultra の台を停止」で手元のタイルに「シャットダウン中」が出た(2026-08-17)。
+// 手元だけの構成では machineHost が全て undefined なので挙動は変わらない。
+// bridgeWatch/healthWatch/wipeStatus は手元のデバイスにしか出さないので host を持たない
+function findTileByName(name, host) {
   for (const entry of tiles.values()) {
-    if (entry.device.name === name) {
-      return entry;
+    if (entry.device.name !== name) {
+      continue;
     }
+    if ((entry.device.machineHost ?? undefined) !== (host ?? undefined)) {
+      continue;
+    }
+    return entry;
   }
   return undefined;
 }
@@ -588,6 +657,14 @@ function clearTileError(entry) {
 
 export function applyDevices(devices) {
   const previousTileCount = tiles.size;
+  // リモートのデバイスが混ざる構成でだけホスト名の段を出す(全タイルで高さを揃えるため
+  // グリッド単位のクラスで制御する。判定は machineHost の有無)
+  const nextHostRow = devices.some((device) => !!device.machineHost);
+  if (nextHostRow !== hostRowReserved) {
+    hostRowReserved = nextHostRow;
+    grid.classList.toggle('with-host-row', nextHostRow);
+    notifyTileLayoutChanged('deviceCount');
+  }
   const seen = new Set();
   for (const device of devices) {
     seen.add(device.id);
@@ -686,6 +763,18 @@ function ackStreamRendered(entry) {
 
 // h264Chunk(タイル用ストリーム)。デバイス毎にレンダラ/canvas を遅延生成し、初回描画(onFirstFrame)
 // で img→canvas に切り替える。h264ErrorSent 済みなら以後は無視(host が mjpeg に切替済みの前提)。
+// 契約: { type:'streamUnavailable', device, unavailable }。配信を諦めた台は「接続中」を出さない
+// —— プロファイル未選択(未登録デバイス)の iOS はブリッジが無くポーリングのフレームも来ないので、
+// 黙っていると永久に「接続中」に見える(2026-08-17 の実害)
+export function applyStreamUnavailable(message) {
+  const entry = tiles.get(message.device);
+  if (!entry) {
+    return;
+  }
+  entry.streamUnavailable = !!message.unavailable;
+  renderFrame(entry);
+}
+
 export function applyH264Chunk(message) {
   const entry = tiles.get(message.device);
   if (!entry || entry.h264ErrorSent) {
@@ -734,7 +823,7 @@ export function applyH264Chunk(message) {
 // op: 'up'|'down'|null、status: 'queued'|'running'|null)。一括起動時は executeBulkJob の
 // devices-up NDJSON 中継からも同形のメッセージが飛ぶ(op:'up'→null。由来は個別デバイスではなく一括起動)。
 export function applyDeviceOpBusy(message) {
-  const entry = findTileByName(message.name);
+  const entry = findTileByName(message.name, message.host);
   if (!entry) {
     return;
   }
@@ -763,7 +852,7 @@ export function applyDeviceOpBusy(message) {
 // 上書きされる)。opBusy も解除する。offline を立てることで renderFrame が凍結フレームを出さない
 // (applyDeviceOpBusy の「down 完了直後は再描画しない」フリッカ回避と同じ問題をここで解消する)。
 export function applyDeviceDownFinished(message) {
-  const entry = findTileByName(message.name);
+  const entry = findTileByName(message.name, message.host);
   if (!entry) {
     return;
   }

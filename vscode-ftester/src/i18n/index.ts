@@ -13,6 +13,7 @@ import { setLaneLocale } from "./strings/lane";
 import { compatStrings } from "./strings/compat";
 import { deviceOpsStrings } from "./strings/deviceOps";
 import { exploreHealStrings } from "./strings/exploreHeal";
+import { hookScaffoldStrings } from "./strings/hookScaffold";
 import { liveStrings } from "./strings/live";
 import { monitorStrings } from "./strings/monitor";
 import { panelsStrings } from "./strings/panels";
@@ -31,6 +32,7 @@ const merged = {
   ...runStrings,
   ...workbenchStrings,
   ...exploreHealStrings,
+  ...hookScaffoldStrings,
   ...compatStrings,
   ...updateStrings,
 };

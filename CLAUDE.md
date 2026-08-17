@@ -10,8 +10,13 @@
 ## ドキュメント
 
 - 受け手向けの導入(事前準備・インストール・更新・アンインストールだけ。使い方は README とスキル): docs/getting-started.md
-- 受け手の状態判定: `Scripts/preflight.sh`(引数なし・読み取りのみ。カレントを見て
-  ready=0 / installed=2 / blocked=1 を返す。SKILL.md ステップ0・0.5 と 1:1)
+- 受け手の状態判定: `Scripts/preflight.sh`(読み取りのみ。既定モードは引数なしでカレントを見て
+  ready=0 / installed=2 / blocked=1 を返す。SKILL.md ステップ0・0.5 と 1:1)。
+  **`--runner [--base <dir>]` はリモートランナー機としての判定**(ready=0 / needs-manual=2 /
+  blocked=1。`ftester remote setup` が scp して実行する)。**既定モードの出力は1バイトも変えない**
+  (共通判定は関数に括り出して両モードから呼ぶ)。**判定を足すときは blocked/needs-manual の
+  仕分けを間違えない** —— install.sh が自動導入するもの(xcodegen 等)を needs-manual にすると、
+  `remote setup` が install.sh に到達できず「入れれば直るのに入れる工程まで進めない」で詰まる
 - 受け手の一括導入: `Scripts/install.sh`(clone〜検証ゲートを冪等に実行)。**各手順は
   `.claude/skills/ftester-setup/SKILL.md` のステップ番号と 1:1**(失敗時に「→ SKILL.md ステップ N」を
   出してエージェントを手作業手順へ戻す設計)。**片方だけ変えない** — 手順の追加・番号の変更は両方に入れる
@@ -104,6 +109,49 @@
   増減を意識的な操作にする(予算を動かすには根拠を台帳へ書く)
 - CI 連携(`ftester run --junit` の JUnit 出力・GitHub Actions 例・flaky 方針): docs/ci.md
 - リリース(git タグ発行と版ピンの関係。配布はソースビルド前提): docs/releasing.md(`Scripts/release.sh`)
+- **リモートのデバイスの監視と配信**(2026-08-17): 手元の `api monitor` は simctl/adb =
+  **この機械しか観測できない**。別の機械のぶんは `RemoteMonitorFanout` が
+  `remote exec <host> -- api monitor --device-host <host>` を1本ずつ立てて合流させ、
+  ライブ映像は**1デバイス = 1本の ssh**(`api device-stream` が向こうで宛先を解決し配信
+  ヘルパーへ `execv` で化ける = stdout のバイト列が手元起動時と同一なので `StreamPipeline` を
+  そのまま使える)。**多重化の枠は作らない**(却下理由は docs/remote-runner.md §13)。
+  守る規律3つ: **①他の機械の台を走査しない**(同名の手元の台に解決して別の機械の状態と画面を出す。
+  仕分けは `ApiMonitorCommand.scope` が pure に持つ)/ **②観測していない台は `state:"unknown"`**
+  —— offline(止まっている)と別の値にする(同じにすると向こうで動いていても止まって見える。
+  拡張の `MonitorDeviceState` と対)/ **③配信が張れなければポーリングへ落ちる**(monitorFrame は
+  止めていないので、配信を止めるだけでフォールバックが成立する)。
+  **版が揃っていないと状態も映像も来ない**(`--device-host` は新しいので旧バイナリは即死 →
+  3回で諦め)。**操作も同じ規律** —— 一括だけでなく**タイル1枚の起動・停止もその機械へ回す**
+  (手元で `api device-up --name` を撃つと、同名の台が別の機械にも居るとき
+  **別の機械の設定でこの Mac にシミュレータが1台できる**。`findDevice` は (host, name) で引き、
+  `--device-host` の既定は手元)。**自動修復(watchdog)はリモートの台を見ない**
+  (修復手段が手元にしか効かず、記録が name 単位なので同名の台と混線する)
+- リモート実行(`run --host` の SSH ディスパッチ): **ssh 越しに何かを起動する経路を新設したら
+  非対話 PATH の補正(`/opt/homebrew:/usr/local/bin`)を必ず写す**(既存は `RemoteShell.remoteRunCommand`。
+  写し漏れで「入っているのに brew が無い」と落ちた実害)。**子プロセスを spawn する経路を足したら
+  中断のリレーも足す**(`InterruptRelay`)—— **親を殺しても子は死なない**ので、ssh が生き残って
+  リモートが走り続け、`dispatch.lock` も残る(2026-08-18 実測)。**SIGKILL へのエスカレートは
+  ssh にだけ**(自分の子に掛けるとロック解放と終了スクリプトを飛ばす)。設計・却下案・セキュリティ前提は docs/remote-runner.md /
+  **利用者向けの導入手順は docs/remote-runner-setup.md**(ランナー機の前提・install.sh の呼び方・
+  版の揃え方・トラブルシュート)/ **エージェント向けは `.claude/skills/ftester-remote-setup/SKILL.md`**
+  (機械作業は `ftester remote setup` に委ね、聞くこと・人手へ渡すこと・結果の読み方だけを持つ。
+  トラブル表は頻出3件だけで、詳細は docs を参照させる = 二重管理にしない)。
+  **片方だけ変えない** —— 手順に影響する変更(レイアウト・併用不可オプション・適合チェックの項目)は
+  docs とスキルの両方に入れる。**スキルを増やしたら `Scripts/install-skill.sh` の `SKILLS` にも足す**
+  (プラグイン経由は `.claude/skills/` を直接見るので不要だが、curl 版は列挙が唯一の定義元)
+- **リモート制御(実行プロファイルの `remoteControl`。旧 `fileSync`)**: ワークスペース(資材の
+  置き場。ステージングと転送)+ **run 前後のスクリプト**(依存 DB・スタブサーバの起動と片付け。
+  docs/remote-runner.md §17)。**スクリプトに宣言は無い** —— `<workspace>/scripts/setup.sh` /
+  `teardown.sh` が**あれば実行、無ければ何もしない**(名前も置き場所も固定。拡張のフォームにも
+  入力欄を置かない = 2026-08-18 ユーザー決定)。**呼ぶのは `ProfileRunner.run` と
+  `ApiRunCommand` の2箇所** —— リモートの子は `ftester run --host local` として向こうで同じ
+  コードを通るので `RemoteRunDispatcher` には足さない(手元とリモートで実装を割らない)。
+  守る規律3つ: **①setup の失敗は run を止める**(インフラ起因。シナリオ0本)/
+  **teardown の失敗は結果を変えない** / **②デバイスに触る前に撃つ**(渡すデバイス一覧は
+  絞り込み後のもの)/ **③片付けは defer だけに頼らない** —— setup の前に
+  `.ftester/hooks/<pid>.json` を置き、次の run 開始時と `ftester hooks reap`(`remote clean` が
+  撃つ)が死んだ pid のぶんを代わりに実行する(**生存判定は pid だけ。mtime を見ない** =
+  数十分の run を「古い」と誤判定して動いている DB を落とさない)
 - 設計書(アーキテクチャ・Swift DSL 仕様・セレクタ記法・プロファイル): docs/design.md
 - 性能チューニング(調整ノブ・不採用施策と再検討条件・計測手順): docs/performance-tuning.md
 - 検証の詳細(flake/性能の判定規律・ベータ整合・全滅時の切り分け・e2e.sh のオプション): docs/verification.md
@@ -142,7 +190,19 @@
   (反映は VSCode の Reload Window **+パネル開き直し**。Reload だけでは効かないことがある。code CLI は PATH に無い)。
   **package.json だけ手で書き換えない** — lock も version を内包しており、放置すると受け手の
   `npm install` が lock を書き換えてクローンが dirty になり、**次の更新が pull ガードで止まる**
-  (実害。`packageLockSync.test.mjs` が検出。既にズレたら `npm install --package-lock-only`)
+  (実害。`packageLockSync.test.mjs` が検出。既にズレたら `npm install --package-lock-only`)。
+  **jsdom を使う webview テストは `t.after(() => window.close())` で必ず閉じる** ——
+  `pretendToBeVisual` の rAF と `main.js` の `setInterval` が残るとプロセスが終了せず、
+  `node --test` はファイル単位の子プロセスの終了を待つので**1本の閉じ忘れでスイート全体が
+  止まる**(2026-08-17 の実害: 10本中1本の漏れで `npm test` が終わらなくなった。個々のテストは
+  1〜2秒で、遅いテストは1つも無かった)。二重に塞いである: `jsdomTeardown.test.mjs` が
+  閉じ忘れをソース走査で落とし(**コメント中の `window.close()` を実装と数えない** ——
+  規律はコメントで説明されているので素の一致だと素通しする)、`npm test` は
+  **`--test-force-exit`** を付けて漏れがあっても止まらないようにしてある。
+  **同型: `argumentHelpLiteral.test.mjs`**(`ArgumentHelp` は文字列リテラルからしか作れないので
+  `help: "…" + "…"` はコンパイルが通らない。4回踏んだ)。**Swift 側の「コンパイルで落ちる誤り」や
+  「テストが終わらない」型は、swift build/npm test を1回払うまで気付けないので、ソース走査で
+  秒未満に落とす**
 - Swift: **`swift test --parallel` だけでよい**(実測 127s → 34s。直列も緑のままだが、毎回の待ちが4倍違う)。
   **前に `swift build --build-tests` を打たない** —— `swift test` が同じビルドをやり直すので
   **無変更でも 12.3 秒を二重に払う**(実測: build 12.3s + test 37.9s = 50.2s / test 単独 37.9s)。

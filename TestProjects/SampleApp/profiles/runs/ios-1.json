@@ -1,13 +1,14 @@
 {
+  "machine": "M2Ultra",
   "app": "sampleapp_ios",
   "devices": [
     {
+      "host": "local",
       "name": "iPhone 17 Pro(iOS 27.0)"
     }
   ],
   "heal": true,
-  "reportDir": "reports",
-  "machine": "M2 Ultra",
   "iosInappEngine": true,
+  "reportDir": "reports",
   "wipeDataOnBloat": true
 }

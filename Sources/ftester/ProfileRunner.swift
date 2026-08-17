@@ -3,6 +3,7 @@
 //   自動インストール → RunOrchestrator で両OS同時並列実行。
 // ワーカー構築の実体は ProfileWorkerFactory。
 
+import ArgumentParser  // --device の指定違いを ValidationError で返す
 import Foundation
 import FTAgent
 import FTAndroid
@@ -32,19 +33,50 @@ enum ProfileRunner {
                     quiet: Bool = false, lpt: Bool = true,
                     lptHistoryRuns: Int = LPTOrdering.defaultHistoryRuns,
                     performanceMode: Bool = false,
+                    deviceFilter: [String] = [],
+                    deviceHost: String? = nil,
+                    workspaceOverride: String? = nil,
                     recorder: RunRecorder? = nil) async throws -> RunSummary {
         var items = rawItems
         let runClockStart = Date()
         // 1. マシン決定 → プロファイル合成(実行プロファイル自身の machine 指定があれば最優先)
         PhaseLog.mark("profile-runner-start")
         let machine = try ProfileResolver.determineMachine(
-            project: project, registered: LocalConfig.currentMachineName(),
+            project: project,
             runProfileName: profileName)
         if machine.auto {
             print("→ Using machine profile \(machine.name) automatically (it is the only one in machines/)")
         }
-        let full = try ProfileResolver.resolve(
-            project: project, runName: profileName, machineName: machine.name)
+        let resolvedAll = try ProfileResolver.resolve(
+            project: project, runName: profileName, machineName: machine.name,
+            workspaceOverride: workspaceOverride)
+        // ワークスペースは常に有効(既定 `<project.rootURL>/workspace`。docs/remote-runner.md §17・
+        // 2026-08-18)なので毎回雛形作成(既に揃っていれば何もしない。WorkspaceScaffold の宣言)。
+        // リモートディスパッチはこれとは別に、ミラー前のローカル側で同じ呼び出しを行う
+        // (RemoteRunDispatcher.prepareWorkspace)。続けて appPath の原本を apps/ へ
+        // ステージング(WorkspaceAppStaging)。**dest も原本も無ければここで throw する**
+        // (原本のパスを名指しする。呼び出し側で握り潰さない)
+        if let workspaceRoot = resolvedAll.workspaceRoot {
+            let created = (try? WorkspaceScaffold.ensure(root: workspaceRoot)) ?? []
+            if !created.isEmpty {
+                print("→ Created workspace scaffold: " + created.map { "\($0)/" }.joined(separator: ", "))
+            }
+            let staged = try WorkspaceAppStaging.stageWorkspaceApps(resolvedAll)
+            if !staged.isEmpty {
+                print("→ Staged app package(s) into the workspace: " + staged.joined(separator: ", "))
+            }
+        }
+        // --device / --device-host(ホスト別サブ実行が自分のぶんだけ回す)。**ホストで絞らないと
+        // 別の機械の同名デバイスまで掴む**(filteringDevices の宣言)。0台になったら止める
+        let full = resolvedAll.filteringDevices(names: deviceFilter, deviceHost: deviceHost)
+        if full.devices.isEmpty {
+            let scope = deviceFilter.isEmpty ? "--device-host \(deviceHost ?? "")"
+                : "--device \(deviceFilter.joined(separator: ", "))"
+                    + (deviceHost.map { " --device-host \($0)" } ?? "")
+            throw ValidationError(
+                "\(scope) matched no device in run profile \(profileName)"
+                + " (available: \(resolvedAll.devices.map(\.name).joined(separator: ", ")))")
+        }
         // **回す本数を超える台数を用意しない**(ResolvedProfile.limitingDevices の宣言参照)。
         // 本数はここで確定している(items は呼び出し側で解決済み)ので、ブリッジ供給・アプリ版チェック・
         // blank triage が丸ごと縮む。platform 未指定のシナリオは**両方**に数える(どちらでも走りうる)
@@ -56,6 +88,17 @@ enum ProfileRunner {
                 + " for \(items.count) scenario(s)")
         }
         for warning in resolved.warnings { print("⚠️ \(warning)") }
+
+        // 開始スクリプト(docs/remote-runner.md §17)。**デバイスに触る前**に撃つ ——
+        // 依存サービスが上がっていない状態でシミュレータを起こしてアプリを入れても、
+        // 全シナリオが「アプリの不具合」の顔で落ちるだけ。渡すのは絞り込み後の resolved
+        // (スクリプトが受け取るデバイス一覧を、この run が実際に使う台と一致させる)。
+        // 終了スクリプトは defer で必ず撃つ(途中の throw・シナリオの失敗のいずれでも)。
+        // プロセスごと殺された場合は lease が残り、次の run と `ftester hooks reap` が代わりに撃つ
+        let hookStateDir = (try? RepoRoot.find())?.appendingPathComponent(".ftester")
+        let hookSession = try RunHookRunner.begin(
+            resolved: resolved, stateDir: hookStateDir) { print($0) }
+        defer { RunHookRunner.end(hookSession) { print($0) } }
 
 
         // CLI の --heal override は master(fm.enabled)が有効な場合のみ heal を ON にする。
@@ -101,8 +144,13 @@ enum ProfileRunner {
             let laneTargets = AndroidLaneRecovery.plan(
                 devices: resolved.androidDevices, runningAVDIDs: Set(running.values))
             if !laneTargets.isEmpty {
-                _ = await AndroidLaneRecovery.bootMissingDevices(
+                let outcome = await AndroidLaneRecovery.bootMissingDevices(
                     devices: laneTargets.map(\.device), locale: resolved.locale) { print($0) }
+                // 起こせた分は、ブリッジが定着するまで待ってから先へ進む(理由は
+                // awaitDurableAndroidBridges の宣言)
+                await ProfileWorkerFactory.awaitDurableAndroidBridges(
+                    devices: laneTargets.map(\.device)
+                        .filter { outcome.booted.contains($0.name) }) { print($0) }
             }
         }
         // run-lease(.ftester/run-<key>.lease)。best-effort: リポジトリ外実行等で root が

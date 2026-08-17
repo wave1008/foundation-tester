@@ -508,6 +508,8 @@ async function executeRun(
   // --profile と --platform/--port/--serial は ftester api run 側で同時指定不可なので、liveTarget が
   // あれば最優先で使う(上のライブパネル連携)。無ければ既存どおり: profile が非空のときはそちらだけ、
   // 空なら platform/port/serial を渡す。liveTarget は profile 空のときだけ立つ(上の連動ガード)。
+  // リモートディスパッチの要否は CLI 側がマシンプロファイルの host フィールドから判定する
+  // (拡張は --host 等を組み立てない)。
   if (liveTarget) {
     args.push("--platform", liveTarget.platform);
     if (liveTarget.platform === "android" && liveTarget.serial) {

@@ -1,6 +1,7 @@
 // モニターパネル「設定」タブ(#panel-settings)。main.js が applySettings を message
 // ディスパッチャに組み込む。対向: src/monitorWebviewMessages.ts の setPollingMode/pollingMode・
 // setLanguage/language メッセージ、処理は src/monitorPanel.ts。常駐プロセス一覧は processesTab.js を参照。
+// リモート実行のホスト表と artifacts(results/ 回収モード)セレクタは remoteConfig/setRemoteConfig に相乗り。
 //
 // 更新セクション: checkUpdate/runUpdate を送り、updateStatus を受ける(実処理は
 // src/monitorUpdateController.ts → Scripts/update-check.sh / update.sh)。
@@ -16,6 +17,9 @@ const lptHistoryInput = document.getElementById('settings-lpt-history');
 // 拡張から届く既定値(空欄・不正値のときに戻す値)。届くまでは null。
 let lptHistoryDefault = null;
 const languageSelect = document.getElementById('settings-language');
+const remoteArtifactsSelect = document.getElementById('settings-remote-artifacts');
+const remoteHostsBody = document.getElementById('settings-remote-hosts-body');
+const remoteHostsAddButton = document.getElementById('settings-remote-hosts-add');
 const updateStatus = document.getElementById('settings-update-status');
 const updateSpinner = document.getElementById('settings-update-spinner');
 const updateCheckButton = document.getElementById('settings-update-check');
@@ -52,6 +56,176 @@ lptHistoryInput.addEventListener('change', () => {
 languageSelect.addEventListener('change', () => {
   vscode.postMessage({ type: 'setLanguage', value: languageSelect.value });
 });
+
+// ---- リモート実行(CLI のホスト登録簿・config.ts。docs/remote-runner.md §12) --------
+// ホスト一覧は行数が可変のため DOM を直接組み立てる。行の識別は name(変更され得る)ではなく
+// 使い捨ての rowId で行う。
+//
+// 「追加」で足す行は confirmed:false(未確定)で始まる。未確定行は name/host が両方埋まるまで
+// CLI へ送らない(空の name は CLI が拒否し、失敗経路が旧一覧を再送してテーブルを作り直すため、
+// 送った時点で消える)。埋まったら行内の「確定」ボタンで初めて送る(既存タブの
+// wvMonitor2.common.confirm と同じ語)。確定済み行は今まで通りフィールドの change で即同期する。
+const remoteHostsError = document.getElementById('settings-remote-hosts-error');
+let hostRows = []; // { id, tr, nameInput, hostInput, dirInput, machine, confirmed, confirmButton }
+let nextRowId = 0;
+
+function currentHostsPayload() {
+  // 未確定行(confirmed:false)は name/host が空のことがあるため、確定済み行だけを送る
+  // (「確定」ボタン自体は両方埋まるまで押せないが、ここでも二重に落として安全側に倒す)。
+  return hostRows
+    .filter((row) => row.confirmed)
+    .map((row) => ({
+      name: row.nameInput.value.trim(),
+      host: row.hostInput.value.trim(),
+      dir: row.dirInput.value.trim(),
+      // machine には入力欄が無い(§13 のフリート実装段で GUI から埋める想定)。他経路
+      // (`ftester remote setup` 等)が書いた値を編集のたびに消さないようパススルーするだけ。
+      machine: row.machine,
+    }));
+}
+
+function sendRemoteConfig() {
+  remoteHostsError.hidden = true;
+  vscode.postMessage({
+    type: 'setRemoteConfig',
+    hosts: currentHostsPayload(),
+    artifacts: remoteArtifactsSelect.value,
+  });
+}
+
+function onHostsChanged() {
+  sendRemoteConfig();
+}
+
+function removeHostRow(id) {
+  const index = hostRows.findIndex((r) => r.id === id);
+  if (index === -1) {
+    return;
+  }
+  const [row] = hostRows.splice(index, 1);
+  row.tr.remove();
+  // 未確定行はまだ CLI へ送っていないので、消すだけで同期は要らない。
+  if (row.confirmed) {
+    onHostsChanged();
+  }
+}
+
+function rowIsFillable(row) {
+  return row.nameInput.value.trim() !== '' && row.hostInput.value.trim() !== '';
+}
+
+function confirmHostRow(id) {
+  const row = hostRows.find((r) => r.id === id);
+  if (!row || row.confirmed || !rowIsFillable(row)) {
+    return;
+  }
+  row.confirmed = true;
+  row.confirmButton.remove();
+  row.confirmButton = null;
+  row.tr.classList.remove('settings-remote-hosts-row-pending');
+  onHostsChanged();
+}
+
+// host(省略時は空行=追加ボタン用)から1行分の DOM を組み立てて末尾に追加する。
+// confirmed=false の行は「確定」ボタンを押すまで CLI へ送らない(currentHostsPayload が除外する)。
+function addHostRow(host, confirmed) {
+  const id = nextRowId++;
+  const tr = document.createElement('tr');
+  const row = { id, tr, confirmed, machine: host && typeof host.machine === 'string' ? host.machine : '' };
+
+  const makeTextCell = (value, placeholder) => {
+    const td = document.createElement('td');
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'settings-text settings-remote-hosts-input';
+    input.value = value;
+    if (placeholder) {
+      input.placeholder = placeholder;
+    }
+    input.addEventListener('change', () => {
+      if (row.confirmed) {
+        onHostsChanged();
+      }
+    });
+    // 未確定行は入力のたびに「確定」ボタンの活性を更新する(name/host が揃うまで押せない)。
+    input.addEventListener('input', () => {
+      if (!row.confirmed && row.confirmButton) {
+        row.confirmButton.disabled = !rowIsFillable(row);
+      }
+    });
+    td.appendChild(input);
+    tr.appendChild(td);
+    return input;
+  };
+
+  row.nameInput = makeTextCell(host ? host.name : '');
+  row.hostInput = makeTextCell(host ? host.host : '', 'user@host');
+  row.dirInput = makeTextCell(host ? host.dir : '', '~/ftester-runner');
+
+  const actionsTd = document.createElement('td');
+  actionsTd.className = 'settings-remote-hosts-actions-cell';
+
+  if (!confirmed) {
+    tr.classList.add('settings-remote-hosts-row-pending');
+    const confirmButton = document.createElement('button');
+    confirmButton.type = 'button';
+    confirmButton.className = 'secondary settings-remote-hosts-confirm';
+    confirmButton.textContent = t('wvMonitor2.common.confirm');
+    confirmButton.disabled = !rowIsFillable(row);
+    confirmButton.addEventListener('click', () => confirmHostRow(id));
+    actionsTd.appendChild(confirmButton);
+    row.confirmButton = confirmButton;
+  }
+
+  const removeButton = document.createElement('button');
+  removeButton.type = 'button';
+  removeButton.className = 'secondary settings-remote-hosts-remove';
+  removeButton.textContent = '−';
+  removeButton.title = t('wvMonitor2.remote.removeTitle');
+  // 削除は破壊的操作だが、ホスト登録は再入力が容易な小データなので modal 確認は不要
+  // (プロファイル削除の modal 方式はここには適用しない)。
+  removeButton.addEventListener('click', () => removeHostRow(id));
+  actionsTd.appendChild(removeButton);
+  tr.appendChild(actionsTd);
+
+  remoteHostsBody.appendChild(tr);
+  hostRows.push(row);
+}
+
+remoteHostsAddButton.addEventListener('click', () => {
+  addHostRow(null, false);
+});
+
+remoteArtifactsSelect.addEventListener('change', () => {
+  sendRemoteConfig();
+});
+
+// remoteConfig 受信(ready 直後 / setRemoteConfig の応答)で確定済み行を作り直す。
+// 未確定行(「追加」を押してまだ確定していない入力中の行)は CLI へ一度も送っていないため
+// message.hosts には含まれない。ここで作り直すと消えてしまうので、DOM ごと退避して後ろへ戻す。
+function applyRemoteConfig(message) {
+  const pending = hostRows.filter((row) => !row.confirmed);
+  for (const row of hostRows) {
+    if (row.confirmed) {
+      row.tr.remove();
+    }
+  }
+  hostRows = [];
+  for (const host of Array.isArray(message.hosts) ? message.hosts : []) {
+    addHostRow(host, true);
+  }
+  for (const row of pending) {
+    remoteHostsBody.appendChild(row.tr);
+    hostRows.push(row);
+  }
+  remoteArtifactsSelect.value = message.artifacts === 'on-demand' ? 'on-demand' : 'collect';
+  if (typeof message.error === 'string' && message.error !== '') {
+    remoteHostsError.textContent = t('wvMonitor2.remote.syncFailed', { reason: message.error });
+    remoteHostsError.hidden = false;
+  } else {
+    remoteHostsError.hidden = true;
+  }
+}
 
 updateCheckButton.addEventListener('click', () => {
   vscode.postMessage({ type: 'checkUpdate' });
@@ -130,6 +304,8 @@ export function applySettings(message) {
     lptHistoryInput.value = String(message.value);
   } else if (message.type === 'language') {
     languageSelect.value = message.value;
+  } else if (message.type === 'remoteConfig') {
+    applyRemoteConfig(message);
   } else if (message.type === 'updateStatus') {
     applyUpdateStatus(message);
   }
