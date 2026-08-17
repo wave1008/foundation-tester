@@ -90,6 +90,20 @@ final class DeviceHostGroupingTests: XCTestCase {
                                                   in: entries), .missing)
     }
 
+    // MARK: - workerID(ApiMonitorCommand.MonitorTarget.id / ApiRunHostFanout が共有する規則)
+
+    func testWorkerIDOmitsTheHostWhenLocal() {
+        XCTAssertEqual(DeviceHostGrouping.workerID(platform: "ios", host: nil, name: "iPhone A"),
+                       "ios:iPhone A")
+        XCTAssertEqual(DeviceHostGrouping.workerID(platform: "ios", host: "local", name: "iPhone A"),
+                       "ios:iPhone A", "\"local\" は normalize で nil に畳まれるので手元と同じ形")
+    }
+
+    func testWorkerIDIncludesTheHostWhenRemote() {
+        XCTAssertEqual(DeviceHostGrouping.workerID(platform: "android", host: "M1Max", name: "Pixel 10"),
+                       "android:M1Max/Pixel 10")
+    }
+
     func testGroupsKeepFirstAppearanceOrderAndSeparateLocalFromRemote() {
         let entries = DeviceHostGrouping.entries(machine: machine(
             ios: [DeviceSpec(name: "r1", host: "M1Ultra"), DeviceSpec(name: "l1"),

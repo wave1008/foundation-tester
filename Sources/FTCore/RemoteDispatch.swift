@@ -342,6 +342,7 @@ public enum RemoteRunArgs {
     /// `api run` に `--enable-animations` は無い(アニメーションは実行プロファイルの
     /// enableAnimations と環境変数から解決する)ので、中継するのは `--performance` だけ
     public static func buildApi(project: String, profile: String, scenarios: [String],
+                                deviceNames: [String] = [], deviceHost: String? = nil,
                                 heal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
                                 performanceMode: Bool,
                                 defaultTimeout: Double?, scenarioTimeout: Double?,
@@ -349,8 +350,11 @@ public enum RemoteRunArgs {
         // --host local の理由は build() のコメント(リモートでの再ディスパッチを止める)
         var args = ["api", "run", "--project", project, "--profile", profile, "--host", "local"]
         if let reportDir { args += ["--report-dir", reportDir] }
-        // デバイスの絞り込みは中継しない —— `api run` は混在プロファイルを明示的に拒否するので
-        // (NDJSON 中継が1本しか無い)、ここに来る時点で全台が同じ機械にある
+        // **デバイスの絞り込みは中継しないと効かない**(build() と同じ理由。ApiRunHostFanout が
+        // 複数機械にまたがるプロファイルをホストごとの子へ分けるようになったため、`api run --host`
+        // でも同名デバイスが別の機械に居りうる。2026-08-17)
+        if !deviceNames.isEmpty { args += ["--device"] + deviceNames }
+        if let deviceHost { args += ["--device-host", deviceHost] }
         for scenario in scenarios { args += ["--scenario", scenario] }
         if heal { args.append("--heal") }
         if noLPT { args.append("--no-lpt") }

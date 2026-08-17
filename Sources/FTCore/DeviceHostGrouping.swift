@@ -30,6 +30,16 @@ public enum DeviceHostGrouping {
         host ?? localDisplayName
     }
 
+    /// ワーカー/監視タイルの識別子(手元は "<platform>:<name>"・ホストありは
+    /// "<platform>:<host>/<name>")。同名デバイスは別ホストに居るのが普通で、host を含めないと
+    /// 拡張側の Map(id が鍵)で複数台が1つに潰れる。**判定はここだけ**
+    /// (ApiMonitorCommand.MonitorTarget.id / ApiRunHostFanout が両方これを呼ぶ)。
+    /// 手元の id は "<platform>:<name>" のまま変えないこと(1台構成の既存契約)
+    public static func workerID(platform: String, host: String?, name: String) -> String {
+        guard let host = MachineHostDispatch.normalize(host) else { return "\(platform):\(name)" }
+        return "\(platform):\(host)/\(name)"
+    }
+
     /// マシンプロファイル1件ぶんのデバイス。spec.host には**実効ホスト**(デバイス指定 →
     /// マシンプロファイルの既定 → ローカル、を正規化した値)が入っている
     public struct CatalogEntry: Equatable, Sendable {

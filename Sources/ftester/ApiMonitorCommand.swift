@@ -929,10 +929,7 @@ struct MonitorTarget {
     /// プロファイルが6タイルになる(2026-08-17 の実害)。手元のデバイスは従来と同じ形にする
     /// (単一マシン構成の id を変えない)
     var id: String {
-        guard let host = MachineHostDispatch.normalize(spec.host) else {
-            return "\(platform):\(spec.name)"
-        }
-        return "\(platform):\(host)/\(spec.name)"
+        DeviceHostGrouping.workerID(platform: platform, host: spec.host, name: spec.name)
     }
 }
 

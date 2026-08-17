@@ -22,6 +22,9 @@ export interface LaneInfo {
   readonly name: string;
   readonly platform: "ios" | "android" | undefined;
   readonly detail: string | undefined;
+  /** 複数の機械にまたがる実行でこのレーンが居る機械(手元は undefined)。同名のデバイスが
+   * 別の機械にも居るため、見出しに出さないとレーンを区別できない(model.ts の WorkerInfo)。 */
+  readonly machineHost: string | undefined;
 }
 
 /** webview へ転送するレーン更新アクション。webview はこれをそのまま描画に反映する。 */
@@ -129,8 +132,9 @@ function ensureLane(state: RunLaneState, laneId: string): LaneEntry {
   }
   const info: LaneInfo =
     laneId === OVERALL_LANE_ID
-      ? { id: OVERALL_LANE_ID, name: overallLaneName(), platform: undefined, detail: undefined }
-      : { id: laneId, name: laneId, platform: undefined, detail: undefined };
+      ? { id: OVERALL_LANE_ID, name: overallLaneName(), platform: undefined, detail: undefined,
+          machineHost: undefined }
+      : { id: laneId, name: laneId, platform: undefined, detail: undefined, machineHost: undefined };
   const entry: LaneEntry = { info, lines: [] };
   state.lanes.set(laneId, entry);
   return entry;
@@ -163,6 +167,7 @@ function applyWorkers(state: RunLaneState, workers: readonly WorkerInfo[]): Lane
       name: worker.name,
       platform: worker.platform,
       detail: worker.detail,
+      machineHost: worker.machineHost,
     };
     state.lanes.set(worker.id, { info, lines: [] });
     lanes.push(info);

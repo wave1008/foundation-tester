@@ -94,6 +94,11 @@ export interface WorkerInfo {
   name: string;
   platform: "ios" | "android";
   detail: string;
+  /** このワーカーが居る機械(手元は省略)。実行プロファイルが複数の機械にまたがるとき、
+   * 同名のデバイスが別の機械にも居るのでレーンの見出しに出す。名前・意味は
+   * monitorDeviceModel.ts の MonitorDevice.machineHost と同じ(対向は
+   * Sources/ftester/ApiRunCommand.swift の ApiWorkerInfo)。 */
+  machineHost?: string;
 }
 
 /**

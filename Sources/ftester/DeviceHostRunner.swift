@@ -143,9 +143,10 @@ enum DeviceHostRunner {
 
     /// 実績(results)からの見積りで LPT 分割する。**重みは台数**(同時に回せる本数)——
     /// 総量で均すと台数の少ないホストが最後まで残る。実績が1件も無ければ全員同じ重みになり、
-    /// 台数比での本数割りに退化する(FleetRunner.unknownDurationUnitWeight と同じ考え方)
-    private static func assign(project: TestProject, groups: [Group],
-                               selected: [ScenarioInfo], lptHistoryRuns: Int?)
+    /// 台数比での本数割りに退化する(FleetRunner.unknownDurationUnitWeight と同じ考え方)。
+    /// internal: ApiRunHostFanout も同じ割り当てを使う(二重実装しない)
+    static func assign(project: TestProject, groups: [Group],
+                       selected: [ScenarioInfo], lptHistoryRuns: Int?)
         throws -> [FleetSplit.Bucket] {
         let historyRuns = max(1, lptHistoryRuns ?? LPTOrdering.defaultHistoryRuns)
         let resultsDir = RunResultsStore.resultsDir(projectRoot: project.rootURL)

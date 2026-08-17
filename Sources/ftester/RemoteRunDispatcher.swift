@@ -78,6 +78,7 @@ struct RemoteRunDispatcher {
     /// だが JUnit は扱わない(拡張連携は NDJSON 中継のみで完結する)。戻り値 = リモート
     /// `ftester api run` の exit code
     func dispatchApi(project: TestProject, profile: String, scenarios: [String],
+                     deviceNames: [String] = [], deviceHost: String? = nil,
                      heal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
                      performanceMode: Bool,
                      defaultTimeout: Double?, scenarioTimeout: Double?,
@@ -95,6 +96,7 @@ struct RemoteRunDispatcher {
         let remoteReportDir = layout.dispatchReportDir(stamp: stamp)
         let ftesterArgs = RemoteRunArgs.buildApi(
             project: project.name, profile: profile, scenarios: scenarios,
+            deviceNames: deviceNames, deviceHost: deviceHost,
             heal: heal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
             performanceMode: performanceMode,
             defaultTimeout: defaultTimeout, scenarioTimeout: scenarioTimeout, reportDir: remoteReportDir)

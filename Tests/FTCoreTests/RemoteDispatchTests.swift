@@ -489,6 +489,23 @@ final class RemoteDispatchTests: XCTestCase {
             ])
     }
 
+    /// ApiRunHostFanout がホストごとの子(`api run --host <label>`)を立てるようになったため、
+    /// `api run --host` のリモート実行にも `run --host` と同じデバイス絞り込みの中継が要る
+    /// (testRemoteRunArgsRelaysTheDeviceScope と対。渡さないと向こうが全ホストぶんの台を掴む)
+    func testBuildApiRelaysTheDeviceScope() {
+        let args = RemoteRunArgs.buildApi(
+            project: "E2E", profile: "mixed", scenarios: ["Login.S0010"],
+            deviceNames: ["iPhone-01", "iPhone-02"], deviceHost: "M1Max",
+            heal: false, noLPT: false, lptHistoryRuns: nil,
+            performanceMode: false,
+            defaultTimeout: nil, scenarioTimeout: nil, reportDir: nil)
+        XCTAssertEqual(
+            args,
+            ["api", "run", "--project", "E2E", "--profile", "mixed", "--host", "local",
+             "--device", "iPhone-01", "iPhone-02", "--device-host", "M1Max",
+             "--scenario", "Login.S0010"])
+    }
+
     // MARK: - StreamLineSplitter
 
     func testFeedReturnsAllLinesInOneChunk() {

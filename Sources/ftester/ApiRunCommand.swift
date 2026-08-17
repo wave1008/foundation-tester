@@ -103,6 +103,23 @@ struct ApiRunCommand: AsyncParsableCommand {
           help: "Performance-testing mode (--profile only): if a dead lane cannot be revived before the run starts, fail instead of dropping it and continuing on the remaining lanes. iOS lanes are built before the run starts (no late join) so a missing one is reported before the run, not in the middle of it")
     var performanceMode = false
 
+    @Option(name: .customLong("device"), parsing: .upToNextOption,
+            help: ArgumentHelp("Run on only these devices of the run profile (device names as written in "
+                + "the machine profile). Repeatable; defaults to every device the run profile lists. "
+                + "Used by the per-host sub-runs when one run profile spans devices on several machines "
+                + "(docs/remote-runner.md §13)"))
+    var devices: [String] = []
+
+    /// **どの機械のデバイスを使うか**。`--device` は名前でしか絞れないが、一意なのは (host, name)
+    /// なので、名前だけだと別の機械の同名デバイスまで掴む(run の同名オプションと同じ規律)。
+    /// ホスト別サブ実行(ApiRunHostFanout)が自分で付ける値で、手で打つものではない
+    @Option(name: .customLong("device-host"),
+            help: ArgumentHelp(
+                "Only use the devices assigned to this machine (\"local\" or a registered host name). "
+                + "Set by the per-host sub-runs; not for hand use",
+                visibility: .hidden))
+    var deviceHost: String?
+
     func run() async throws {
         // pause等のイベントが既定の全バッファに滞留すると読み手(VSCode拡張)と相互待ちになる
         // (ScenarioRunnerMain.swift の --debug 実装と同じ理由)。--debug 以外も常に行バッファにする
@@ -126,17 +143,27 @@ struct ApiRunCommand: AsyncParsableCommand {
         // 拒否する(既存どおり)ため常に解決へ進める一方、自動側(host 未指定)は dry-run のとき
         // マシン側 host を見ない(requireMachineHost: !dryRun)= ローカルで dry-run が走る。
         // 優先順位・食い違いは FTCore.MachineHostDispatch に委譲(ユーザー決定 2026-08-17)
-        // デバイスが複数の機械にまたがる実行プロファイルは、この経路(NDJSON 1本の中継)では
-        // 扱えない —— レーンはホストを跨いで一意でなく、中継も1接続ぶんしか無い。
-        // **黙って一部の台だけ走らせない**(そのほうが「全部走った」と誤読されるので危険)
+        // デバイスが複数の機械にまたがる実行プロファイルは、ホストごとの子プロセス(`ftester api
+        // run --host <label>`)へ分け、NDJSON を ApiRunHostFanout が1本へ多重化する
+        // (docs/remote-runner.md §13)。--host 明示や全台が同じ機械なら nil が返り従来経路のまま。
+        // --debug は子プロセスの stdin へ橋渡しする経路が無いため、ここでだけ明示的に拒否する
+        // (単一ホストの --host + --debug は dispatchToRemoteHost が同様に拒否している)
         if !dryRun, let profile,
            let groups = try DeviceHostRunner.plan(
-               project: testProject, profileName: profile, explicitHost: host, deviceFilter: []) {
-            throw ValidationError(
-                "run profile \(profile) spans \(groups.count) machines"
-                + " (\(groups.map(\.hostLabel).joined(separator: ", ")))."
-                + " Running one profile across several machines is CLI-only for now:"
-                + " ftester run --profile \(profile)")
+               project: testProject, profileName: profile, explicitHost: host, deviceFilter: devices) {
+            if debug {
+                throw ValidationError(
+                    "--debug is not supported with a profile that spans multiple machines"
+                    + " (\(groups.map(\.hostLabel).joined(separator: ", ")))")
+            }
+            let exitCode = try await ApiRunHostFanout.run(
+                project: testProject, profileName: profile, groups: groups, scenarios: scenarios,
+                options: ApiRunHostFanout.Options(
+                    heal: heal, defaultTimeout: defaultTimeout, scenarioTimeout: scenarioTimeout,
+                    noLPT: noLPT, lptHistoryRuns: lptHistoryRuns, performanceMode: performanceMode,
+                    remoteDir: remoteDir, remoteTimeout: remoteTimeout, remoteArtifacts: remoteArtifacts))
+            if exitCode != 0 { throw ExitCode(exitCode) }
+            return
         }
         if let dispatch = try resolveEffectiveHostDispatch(
             explicitHost: host, profile: profile, project: project,
@@ -175,8 +202,22 @@ struct ApiRunCommand: AsyncParsableCommand {
             if machine.auto {
                 logStderr("→ Using machine profile \(machine.name) automatically (it is the only one in machines/)")
             }
-            let full = try ProfileResolver.resolve(
+            let resolvedAll = try ProfileResolver.resolve(
                 project: testProject, runName: profile, machineName: machine.name)
+            // --device / --device-host: ApiRunHostFanout の子(ホスト別サブ実行)が自分のぶんだけを
+            // 回すのに使う(ProfileRunner.run と同じ順序・同じメッセージ規律 —— ホストで絞らないと
+            // 別の機械の同名デバイスまで掴む。filteringDevices の宣言)
+            let full = resolvedAll.filteringDevices(names: devices, deviceHost: deviceHost)
+            // 絞り込みを指定したときだけ「合致0」を報告する。指定していないのに0台なのは
+            // プロファイル自体の誤りで、それは resolve 側が自分の言葉で報告する
+            if full.devices.isEmpty, !devices.isEmpty || deviceHost != nil {
+                let scope = [devices.isEmpty ? nil : "--device \(devices.joined(separator: ", "))",
+                             deviceHost.map { "--device-host \($0)" }]
+                    .compactMap { $0 }.joined(separator: " ")
+                throw ValidationError(
+                    "\(scope) matched no device in run profile \(profile)"
+                    + " (available: \(resolvedAll.devices.map(\.name).joined(separator: ", ")))")
+            }
             // **回す本数を超える台数を用意しない**(ResolvedProfile.limitingDevices)。
             // ここではシナリオ一覧がまだ無い(ビルドと並行に解決するため。下の先行構築のコメント参照)
             // ので、**確定している情報だけ**で絞る —— 明示 ID(`Class.method`)だけの指定なら
@@ -468,6 +509,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             mode: .apiRun, artifacts: artifactsMode)
         let exitCode = try await dispatcher.dispatchApi(
             project: project, profile: profile, scenarios: scenarios,
+            deviceNames: devices, deviceHost: deviceHost,
             heal: heal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
             performanceMode: performanceMode,
             defaultTimeout: defaultTimeout, scenarioTimeout: scenarioTimeout.map(Double.init),
@@ -1095,8 +1137,8 @@ private final class DebugControlBox: @unchecked Sendable {
     }
 }
 
-/// ftester api run の冒頭イベント
-private struct ApiRunStartedEvent: Encodable {
+/// ftester api run の冒頭イベント。internal: ApiRunHostFanout が複数機械分をまとめて1回だけ emit する
+struct ApiRunStartedEvent: Encodable {
     let kind = "runStarted"
     let total: Int
 }
@@ -1122,23 +1164,39 @@ private struct ApiScenarioRequeuedEvent: Encodable {
 
 /// --profile 指定(ワーカー並列実行時)のみ、runStarted 直後に 1 回 emit するイベント。
 /// id は "<platform>:<デバイス論理名>"(ApiMonitorCommand.swift の monitorDevices の id と
-/// 同一規則。VSCode 拡張がモニタータイルと突合するため)
-private struct ApiWorkersReadyEvent: Encodable {
+/// 同一規則。VSCode 拡張がモニタータイルと突合するため)。internal: 複数機械にまたがる
+/// プロファイルでは ApiRunHostFanout が各子ぶんを合流させて1回だけ emit する
+struct ApiWorkersReadyEvent: Encodable {
     let kind = "workersReady"
     let workers: [ApiWorkerInfo]
 }
 
-/// ApiWorkersReadyEvent の 1 ワーカー分
-private struct ApiWorkerInfo: Encodable {
+/// ApiWorkersReadyEvent の 1 ワーカー分。同期相手: vscode-ftester/src/model.ts の WorkerInfo
+/// (id/name/platform/detail。machineHost は 2026-08-17 時点で未追随)。machineHost は
+/// src/monitorDeviceModel.ts の MonitorDevice.machineHost と同じ名前・同じ意味(手元は省略・
+/// リモートはホスト名)で揃える。表示の組み立ては拡張側(src/runLaneModel.ts の workersReady
+/// 処理・laneLog.js の .lane-name)の責務なので、name 自体は加工しない
+struct ApiWorkerInfo: Encodable {
     let id: String
     let name: String
     let platform: String
     let detail: String
+    /// 複数機械にまたがるプロファイルでこのワーカーが居る機械(手元は nil = キー省略)
+    let machineHost: String?
+
+    init(id: String, name: String, platform: String, detail: String, machineHost: String? = nil) {
+        self.id = id
+        self.name = name
+        self.platform = platform
+        self.detail = detail
+        self.machineHost = machineHost
+    }
 }
 
 /// ftester api run の末尾イベント。vscode-ftester/src/model.ts の RunFinishedEvent と
-/// フィールド名を同期(testSeconds/scenarioTotalSeconds のリネーム不可)
-private struct ApiRunFinishedEvent: Encodable {
+/// フィールド名を同期(testSeconds/scenarioTotalSeconds のリネーム不可)。internal: 複数機械に
+/// またがるプロファイルでは ApiRunHostFanout が全ホストの合計を1回だけ emit する
+struct ApiRunFinishedEvent: Encodable {
     let kind = "runFinished"
     let passed: Int
     let failed: Int
