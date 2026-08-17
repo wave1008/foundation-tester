@@ -99,6 +99,11 @@ export function applyRunProfileInfo(message) {
   runProfileNames = Array.isArray(message.profiles) ? message.profiles : [];
   // apps は後方互換(古いホストからは届かない)のため配列でなければ空扱い。
   runProfileApps = Array.isArray(message.apps) ? message.apps : [];
+  // ワークスペース未入力時の既定を透かしで出す。相対パスはリポジトリルート基準なので、
+  // この文字列はそのまま入力しても既定と同じ場所を指す(Sources/FTCore/RunProfile.swift の
+  // ProfileResolver.resolveWorkspaceRoot と同期)。project が解決できないホストでは出さない
+  const project = typeof message.project === 'string' ? message.project : '';
+  runProfileWorkspace.placeholder = project === '' ? '' : `TestProjects/${project}/workspace`;
   const current = typeof message.current === 'string' ? message.current : '';
 
   const previous = selectedRunProfile;

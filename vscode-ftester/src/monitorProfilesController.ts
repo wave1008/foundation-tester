@@ -132,6 +132,7 @@ export class MonitorProfilesController {
       current: config.profile,
       filter: config.monitorDeviceFilter,
       apps,
+      project: resolution.kind === "resolved" ? resolution.project : "",
     });
   }
 

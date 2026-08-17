@@ -90,6 +90,10 @@ export type MonitorToWebviewMessage =
       /** 対象プロジェクトのアプリプロファイル名一覧(profiles/apps/ 直下)。既存の applyProfileInfo は
        * このフィールドを無視するだけなので後方互換。 */
       readonly apps: readonly string[];
+      /** 対象プロジェクト名(解決できなければ "")。ワークスペース欄の既定値
+       * "TestProjects/<project>/workspace" を透かしで出すのに使う(相対パスはリポジトリルート
+       * 基準なので、この文字列はそのまま入力しても既定と同じ場所を指す)。 */
+      readonly project: string;
     }
   | {
       readonly type: "machineProfileInfo";
