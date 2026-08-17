@@ -310,7 +310,7 @@ export class MonitorDeviceOps {
       if (job.op === "down") {
         this.deps.stopDeviceStreams(job.name);
       }
-      this.executeDeviceOpJob(job.name, job.op, job.udid, job.serial);
+      this.executeDeviceOpJob(job.name, job.op, job.udid, job.serial, job.host);
     }
   }
 
@@ -654,7 +654,9 @@ export class MonitorDeviceOps {
    * 失敗時(finished ok:false、または finished を出せずに落ちた場合を含む)は、バナーがパネルを
    * 閉じると消えるため、事後診断できるよう出力チャネルにも必ずログを残す。
    */
-  private executeDeviceOpJob(name: string, op: DeviceOpKind, udid?: string, serial?: string): void {
+  private executeDeviceOpJob(
+    name: string, op: DeviceOpKind, udid?: string, serial?: string, host?: string,
+  ): void {
     // spawn 失敗時の 'error'+'close' 二重発火・複数試行にまたがる finish の二重呼び出しを防ぐ
     // ジョブ単位のガード(finishLifecycleQueueHead は1ジョブにつき1回だけ呼ぶ)。
     let jobFinished = false;
@@ -665,7 +667,7 @@ export class MonitorDeviceOps {
       jobFinished = true;
       this.finishLifecycleJob({ kind: "device", name, op });
     };
-    this.runDeviceOpAttempt(name, op, 0, finishOnce, udid, serial);
+    this.runDeviceOpAttempt(name, op, 0, finishOnce, udid, serial, host);
   }
 
   /** device-up/down の1回分の実行。up が失敗し追加試行が残っていれば遅延後に再試行、
@@ -677,6 +679,7 @@ export class MonitorDeviceOps {
     finishOnce: () => void,
     udid?: string,
     serial?: string,
+    host?: string,
   ): void {
     const config = this.deps.getConfig();
     const resolution = resolveProjectName(this.deps.workspaceRoot, config);
@@ -686,7 +689,11 @@ export class MonitorDeviceOps {
     // up には direct モードが無い(未登録は起動をメニューに出さない。monitorDeviceLifecycle.ts の
     // udid/serial コメント参照)。
     const direct = op === "down" && (udid !== undefined || serial !== undefined);
-    const args: string[] = ["api", op === "up" ? "device-up" : "device-down"];
+    // **別の機械の台はその機械で操作する** —— 手元で `--name` を渡すと、手元のマシン
+    // プロファイルの同名エントリを引いて**別の機械の設定でこの Mac にシミュレータを作る**
+    // (simctl は無ければ作る)。一括起動が RemoteDeviceFanout で分散するのと同じ規律
+    const args: string[] = host ? ["remote", "exec", host, "--"] : [];
+    args.push("api", op === "up" ? "device-up" : "device-down");
     if (direct) {
       if (udid !== undefined) {
         args.push("--udid", udid);
@@ -704,6 +711,9 @@ export class MonitorDeviceOps {
       if (config.profile) {
         args.push("--profile", config.profile);
       }
+      // 向こうは「自分が誰か」を知らないので、どのホストの台かを明示する(--device-host)。
+      // 手元でも渡す = 同名のリモート機の台を引かないための絞り込み
+      args.push("--device-host", host ?? "local");
     }
     if (op === "up" && this.cpuRenderNames.has(name)) {
       args.push("--gpu", "swiftshader_indirect");

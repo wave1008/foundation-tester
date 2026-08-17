@@ -661,6 +661,15 @@ const IPHONE_PHYSICAL_NO_BRIDGE = {
   id: "ios:実機1", name: "実機1", platform: "ios", state: "booted", detail: "", kind: "physical",
 };
 
+test("filterMonitorDevices: 'running' は unknown(誰も観測していない)を含めない", () => {
+  const devices = [
+    { id: "ios:A", name: "A", platform: "ios", state: "connected", detail: "", kind: "virtual" },
+    { id: "ios:M1Max/A", name: "A", platform: "ios", state: "unknown", detail: "", kind: "virtual",
+      machineHost: "M1Max" },
+  ];
+  assert.deepEqual(filterMonitorDevices(devices, "running").map((d) => d.id), ["ios:A"]);
+});
+
 test("filterMonitorDevices: filter='all' は素通し(同一内容・順序)", () => {
   const devices = [SIM1, SIM3_OFFLINE, EMU1];
   assert.deepEqual(filterMonitorDevices(devices, "all"), devices);

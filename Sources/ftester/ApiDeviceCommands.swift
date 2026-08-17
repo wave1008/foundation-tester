@@ -31,6 +31,10 @@ struct ApiDeviceUp: AsyncParsableCommand {
     @Option(help: "Android GPU rendering mode (host / swiftshader_indirect; default host). Used as the CPU-rendering fallback for devices that freeze")
     var gpu: String?
 
+    @Option(name: .customLong("device-host"),
+            help: "Only match devices assigned to this machine (\"local\" or a registered host name). Set by the caller on the other end of ssh")
+    var deviceHost: String?
+
     func run() async throws {
         let resolvedGpu: String
         switch gpu {
@@ -42,7 +46,9 @@ struct ApiDeviceUp: AsyncParsableCommand {
             FileHandle.standardError.write(Data("⚠️ Unknown --gpu value — falling back to host: \(gpu!)\n".utf8))
             resolvedGpu = "host"
         }
-        try await ApiDeviceOperation.run(name: name, project: project, profile: profile) { spec, platform, log in
+        try await ApiDeviceOperation.run(
+            name: name, project: project, profile: profile, deviceHost: deviceHost
+        ) { spec, platform, log in
             try await DeviceBooter.bootOne(spec: spec, platform: platform, gpuMode: resolvedGpu, log: log)
             // iOS はブリッジも供給する(稼働中ブリッジがあれば再利用。供給しないと画面が取れず
             // 「起動済み(ブリッジ未接続)」のままになる)
@@ -170,7 +176,10 @@ struct ApiDevicesRestart: AsyncParsableCommand {
 
             var items: [RestartItem] = []
             for deviceName in name {
-                guard let found = ApiDeviceOperation.findDevice(name: deviceName, in: machineProfile) else {
+                // machineProfile は MachineProfileLoad.load が deviceHost で絞った後なので、
+                // ここに残っているのは「この機械の台」だけ(entries が host を焼き込んでいる)
+                guard let found = ApiDeviceOperation.findDevice(
+                    name: deviceName, deviceHost: deviceHost, in: machineProfile) else {
                     ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(
                         ok: false, error: "device not found: \(deviceName)"))
                     throw ExitCode(1)
@@ -342,10 +351,16 @@ struct ApiDeviceDown: AsyncParsableCommand {
     @Option(help: "Run profile name, used to resolve the machine. When given, that profile's machine wins; otherwise FT_MACHINE, the registered machine, or the only entry in machines/. Ignored in direct (--udid/--serial) mode")
     var profile: String?
 
+    @Option(name: .customLong("device-host"),
+            help: "Only match devices assigned to this machine (\"local\" or a registered host name). Set by the caller on the other end of ssh")
+    var deviceHost: String?
+
     func run() async throws {
         switch try ApiDeviceDownDirectTarget.resolve(name: name, udid: udid, serial: serial) {
         case .name(let name):
-            try await ApiDeviceOperation.run(name: name, project: project, profile: profile) { spec, platform, log in
+            try await ApiDeviceOperation.run(
+                name: name, project: project, profile: profile, deviceHost: deviceHost
+            ) { spec, platform, log in
                 // iOS はシミュレータ停止前に稼働ブリッジも探して停止する(ゾンビ化防止。
                 // BridgeProvisioner.provision の失敗時後始末と対)。repoRoot 未検出時は nil のまま
                 // 渡しブリッジ停止をスキップして simctl shutdown のみ行う
@@ -440,7 +455,7 @@ enum ApiDeviceDownDirectSpec {
 /// (マシンプロファイル読み込み・--name 解決・NDJSON ストリーミング・エラー処理)
 private enum ApiDeviceOperation {
     static func run(
-        name: String, project: String?, profile: String?,
+        name: String, project: String?, profile: String?, deviceHost: String? = nil,
         body: @escaping @Sendable (
             DeviceSpec, String, @escaping @Sendable (String) -> Void
         ) async throws -> Void
@@ -471,8 +486,10 @@ private enum ApiDeviceOperation {
             throw ProfileError.decodeFailed(machineURL, detail: "\(error)")
         }
 
-        guard let found = findDevice(name: name, in: machineProfile) else {
-            emitFinished(ok: false, error: "device not found: \(name) (machine \(machine.name))")
+        guard let found = findDevice(name: name, deviceHost: deviceHost, in: machineProfile) else {
+            emitFinished(ok: false, error: "device not found: \(name)"
+                + " on \(DeviceHostGrouping.display(MachineHostDispatch.normalize(deviceHost)))"
+                + " (machine \(machine.name))")
             throw ExitCode(1)
         }
 
@@ -485,17 +502,18 @@ private enum ApiDeviceOperation {
         }
     }
 
-    /// --name をマシンプロファイルの ios/android 両方から検索する(ApiDevicesRestart も利用するため fileprivate)
+    /// --name をマシンプロファイルの ios/android 両方から検索する(ApiDevicesRestart も利用するため fileprivate)。
+    /// **一意なのは name 単体ではなく (host, name)** —— 名前だけで引くと、同名の台が別の機械にも
+    /// 居るとき(フリートでは通常)**別の機械のデバイス定義を手元で起こす**ことになる。
+    /// simctl は無ければ作るので、実害は「別の機械の設定でシミュレータが1台増える」
     fileprivate static func findDevice(
-        name: String, in machine: MachineProfile
+        name: String, deviceHost: String?, in machine: MachineProfile
     ) -> (spec: DeviceSpec, platform: String)? {
-        if let spec = (machine.ios?.devices ?? []).first(where: { $0.name == name }) {
-            return (spec, "ios")
-        }
-        if let spec = (machine.android?.devices ?? []).first(where: { $0.name == name }) {
-            return (spec, "android")
-        }
-        return nil
+        let wanted = MachineHostDispatch.normalize(deviceHost)
+        let entries = DeviceHostGrouping.entries(machine: machine)
+            .filter { $0.name == name && MachineHostDispatch.normalize($0.spec.host) == wanted }
+        guard let entry = entries.first else { return nil }
+        return (entry.spec, entry.platform)
     }
 
     private static func emitLog(_ message: String) {

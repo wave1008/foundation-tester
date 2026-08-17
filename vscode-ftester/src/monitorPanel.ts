@@ -502,7 +502,7 @@ class MonitorPanelController implements vscode.Disposable {
         break;
       case "deviceOp":
         this.deviceOps.enqueueLifecycleJob({
-          kind: "device", name: message.name, op: message.op,
+          kind: "device", name: message.name, op: message.op, host: message.host,
           udid: message.udid, serial: message.serial,
         });
         break;

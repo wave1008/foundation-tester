@@ -17,13 +17,18 @@ import path from "node:path";
 import { test } from "node:test";
 import { MonitorDeviceOps } from "../src/monitorDeviceOps";
 
-/** dirname(binaryPath) に、引数を無視して即 exit 0 するだけの mock ftester を置く。 */
+/** dirname(binaryPath) に、引数を argv ファイルへ落として即 exit 0 する mock ftester を置く。 */
 function makeMockBinary() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ftester-deviceops-test-"));
   const binaryPath = path.join(dir, "ftester");
-  fs.writeFileSync(binaryPath, "#!/bin/sh\nexit 0\n");
+  fs.writeFileSync(binaryPath, `#!/bin/sh\necho "$@" >> "${path.join(dir, "argv")}"\nexit 0\n`);
   fs.chmodSync(binaryPath, 0o755);
   return { dir, binaryPath };
+}
+
+function argvLines(dir) {
+  const file = path.join(dir, "argv");
+  return fs.existsSync(file) ? fs.readFileSync(file, "utf8").trim().split("\n") : [];
 }
 
 /** MonitorDeviceOps に渡す最小 fake deps。stopDeviceStreams/stopAllStreams の呼び出しを記録する。 */
@@ -245,4 +250,41 @@ test("syncCpuRenderNames: ライフサイクルジョブ進行中の個体は落
   fs.rmSync(argsLog, { force: true });
   assert.match(await runBulkUpAndReadArgs(deviceOps, argsLog), /--cpu-render Pixel1/);
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// --- 別の機械のデバイスの単体操作 ---------------------------------------------------------
+// 実害の形(2026-08-17 のレビュー): `api device-up --name X` は**手元の**マシンプロファイルを
+// 名前だけで引く(ApiDeviceOperation.findDevice)。同名の台が別の機械にも居るのは通常なので、
+// リモートのタイルから起動すると**別の機械の設定でこの Mac にシミュレータが1台できる**
+// (simctl は無ければ作る)。一括起動が RemoteDeviceFanout で分散するのと同じ規律に揃える。
+
+test("リモートのデバイスの起動はその機械で実行する(remote exec + --device-host)", async () => {
+  const { dir, binaryPath } = makeMockBinary();
+  const { deps } = makeDeps(binaryPath);
+  const deviceOps = new MonitorDeviceOps(deps);
+  try {
+    deviceOps.enqueueLifecycleJob({ kind: "device", name: "シミュ1", op: "up", host: "M1Max" });
+    await waitUntilIdle(deviceOps);
+    const line = argvLines(dir).at(-1);
+    assert.match(line, /^remote exec M1Max -- api device-up/, "その機械で起こす");
+    assert.match(line, /--device-host M1Max/, "向こうは自分が誰かを知らない");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("手元のデバイスは remote exec を経由せず、手元の台に絞られる", async () => {
+  const { dir, binaryPath } = makeMockBinary();
+  const { deps } = makeDeps(binaryPath);
+  const deviceOps = new MonitorDeviceOps(deps);
+  try {
+    deviceOps.enqueueLifecycleJob({ kind: "device", name: "シミュ1", op: "up" });
+    await waitUntilIdle(deviceOps);
+    const line = argvLines(dir).at(-1);
+    assert.match(line, /^api device-up/);
+    assert.doesNotMatch(line, /remote exec/);
+    assert.match(line, /--device-host local/, "同名のリモートの台を引かないための絞り込み");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

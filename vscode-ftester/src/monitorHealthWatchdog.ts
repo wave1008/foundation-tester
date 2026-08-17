@@ -117,6 +117,10 @@ export class MonitorHealthWatchdog {
       if (device.registered === false) {
         continue;
       }
+      // リモートの台は見ない(理由は monitorBridgeWatchdog.ts の同じ位置)
+      if (device.machineHost !== undefined) {
+        continue;
+      }
       this.observeOne(device.name, device.state, device.health, device.serial, device.inRun);
     }
   }

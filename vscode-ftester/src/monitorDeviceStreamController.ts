@@ -104,7 +104,11 @@ export class MonitorDeviceStreamController {
     // 実機はスクリーンショットのポーリング(ftester-devicepoll)。iOS/Android で共通の helper。
     // iOS 実機の有効/無効は iosStreamEnabled、Android 実機は androidStreamEnabled に従う
     const devicePollPath = resolveDevicePoll(config);
-    if (!simStreamPath && !(androidStreamPath && adbPath) && !devicePollPath) {
+    // **リモートは手元のヘルパーを使わない**(向こうの ftester が起こす)ので、手元に
+    // ヘルパーが1つも無くてもリモートのタイルは配信できる。ここで早期 return すると
+    // 「手元にビルドが無い機械ではリモート映像も出ない」になる
+    const hasRemote = devices.some((device) => device.machineHost !== undefined);
+    if (!simStreamPath && !(androidStreamPath && adbPath) && !devicePollPath && !hasRemote) {
       this.disposeAll();
       return;
     }
@@ -144,6 +148,10 @@ export class MonitorDeviceStreamController {
         qualifying.set(device.id, {
           platform: device.platform,
           key: `${device.machineHost}/${device.name}`,
+          // 手元と同じ規則: **実機は devicepoll(MJPEG 固定)** —— 向こうの
+          // ApiDeviceStreamCommand が実機で codec を落とすので、h264 を期待すると
+          // v1 レコードを v2 として読んで desync → kill/再起動のループになる
+          codec: device.kind === "physical" ? "mjpeg" : codec,
           command: config.binaryPath,
           args: [
             "remote", "exec", device.machineHost, "--",
@@ -152,9 +160,8 @@ export class MonitorDeviceStreamController {
             "--fps", String(config.liveFps), "--max-width", String(config.monitorMaxWidth),
             ...remoteProjectArgs(),
             ...(config.profile ? ["--profile", config.profile] : []),
-            ...codecArgs,
+            ...(device.kind === "physical" ? [] : codecArgs),
           ],
-          codec,
         });
         continue;
       }

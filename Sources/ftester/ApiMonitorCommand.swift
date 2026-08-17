@@ -345,7 +345,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         let foreignHosts: [String]
     }
 
-    /// I/O を持たない pure 関数(ApiMonitorScopeTests)
+    /// I/O を持たない pure 関数(MonitorHostScopeTests)
     static func scope(targets: [MonitorTarget], deviceHost: String?) -> Scope {
         let wanted = MachineHostDispatch.normalize(deviceHost)
         let owned = targets.filter { MachineHostDispatch.normalize($0.spec.host) == wanted }
@@ -366,7 +366,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
     ///   親子で一致する
     /// どちらにも無い台は **「状態を取得できない」** として出す —— 観測していないものを
     /// offline と言うと、向こうで動いていても止まって見える(2026-08-17 の実害)。
-    /// I/O を持たない pure 関数(ApiMonitorMergeTests)
+    /// I/O を持たない pure 関数(MonitorHostScopeTests)
     static func mergedDevices(listedTargets: [MonitorTarget], observed: [ApiMonitorDeviceInfo],
                               remote: [String: ApiMonitorDeviceInfo]) -> [ApiMonitorDeviceInfo] {
         var observedByID: [String: ApiMonitorDeviceInfo] = [:]
@@ -1035,9 +1035,6 @@ private struct MonitorControlCommand: Decodable {
     /// cmd == "suppressFrames" のときのみ使用
     let devices: [String]?
 }
-
-/// pause/resume コマンド(stdin 経由)の状態。stdin 読み取りスレッドとメインループの間で共有する
-/// (StopFlag と同様 NSLock で保護する)
 /// **stdout に書く口を1つにする**。子(RemoteMonitorFanout)の中継行は別スレッドから来るので、
 /// 親の emitLine と混ざると1行の途中で割り込まれて NDJSON が壊れる。stdio のバッファを
 /// 経由せず FileHandle へ直接書くのは、`print` と FileHandle 書き込みが混在すると
@@ -1057,6 +1054,9 @@ final class MonitorOutput: @unchecked Sendable {
     }
 }
 
+
+/// pause/resume コマンド(stdin 経由)の状態。stdin 読み取りスレッドとメインループの間で共有する
+/// (StopFlag と同様 NSLock で保護する)
 private final class MonitorControl: @unchecked Sendable {
     private let lock = NSLock()
     private var paused = false

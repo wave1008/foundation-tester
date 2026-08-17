@@ -261,3 +261,53 @@ test("プラットフォームの配信を切っていればリモートも起�
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("リモートの実機は設定に関わらず MJPEG で張る — h264 を要求すると desync する", async () => {
+  // 向こう(ApiDeviceStreamCommand)は実機を devicepoll = MJPEG(v1)固定に落とす。
+  // こちらが h264(v2)のつもりで読むと、v1 レコードを v2 のレイアウトで解釈して
+  // 未知 KIND → kill → 再起動のループになる。
+  // **観測点は argv ではなくパイプラインの codec**: argv には元々 --codec を載せないので、
+  // argv だけ見るテストは「codec を h264 のままにする」変異を1つも殺せない(2026-08-17)。
+  // codec 設定を切り替えても張り替えが起きない = 実機は最初から mjpeg で固定されている。
+  const { dir, binaryPath } = makeMockBinaryDir(["ftester"]);
+  const { deps } = makeDeps(binaryPath);
+  let streamCodec = "h264";
+  deps.getConfig = () => ({
+    binaryPath, iosStreamEnabled: true, androidStreamEnabled: false,
+    streamCodec, liveFps: 12, monitorMaxWidth: 960, project: "demo",
+  });
+  const controller = new MonitorDeviceStreamController(deps);
+  const physicalRemote = { ...remoteDevice, kind: "physical", port: 8123 };
+  try {
+    controller.applyDevices([physicalRemote]);
+    controller.noteStreamRendered(physicalRemote.id);
+    assert.equal(controller.isStreaming(physicalRemote.id), true, "前提: 張れている");
+
+    streamCodec = "mjpeg";
+    controller.applyDevices([physicalRemote]);
+    assert.equal(controller.isStreaming(physicalRemote.id), true,
+      "実機が設定どおり h264 で張られていると、ここで mjpeg へ張り替わってしまう");
+  } finally {
+    controller.setVisible(false);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("手元に配信ヘルパーが1つも無くてもリモートは配信できる", async () => {
+  // ftester だけ置く(simstream/androidstream/devicepoll は無い)
+  const { dir, binaryPath } = makeMockBinaryDir(["ftester"]);
+  const { deps } = makeDeps(binaryPath);
+  deps.getConfig = () => ({
+    binaryPath, iosStreamEnabled: true, androidStreamEnabled: false,
+    streamCodec: "h264", liveFps: 12, monitorMaxWidth: 960, project: "demo",
+  });
+  const controller = new MonitorDeviceStreamController(deps);
+  try {
+    controller.applyDevices([remoteDevice]);
+    assert.ok(await waitForArgv(dir, "ftester"),
+      "リモートは向こうの ftester が起こすので、手元のビルドの有無に依存しない");
+  } finally {
+    controller.setVisible(false);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

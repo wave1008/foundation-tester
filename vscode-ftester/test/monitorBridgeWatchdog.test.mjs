@@ -10,6 +10,11 @@ function device(name, state, registered) {
   return { id: name, name, platform: "ios", state, detail: "", ...(registered === undefined ? {} : { registered }) };
 }
 
+/** 別の機械の同名デバイス(フリートでは通常の構成)。 */
+function remoteDevice(name, state, host = "M1Max") {
+  return { id: `ios:${host}/${name}`, name, platform: "ios", state, detail: "", machineHost: host };
+}
+
 /** テスト用ハーネス。posts/logs/jobs を配列に記録し、now/autoRepair/runActive を手元で操作できる。 */
 function createHarness(options = {}) {
   const posts = [];
@@ -244,4 +249,33 @@ test("複数デバイスは独立して状態管理される", () => {
     { type: "bridgeWatch", name: "Sim1", phase: "repairing" },
   ]);
   assert.deepEqual(h.jobs, [{ kind: "device", name: "Sim1", op: "up" }]);
+});
+
+// 別の機械の台は見ない。**修復手段が手元にしか効かない**のに加え、entries が name 単位なので
+// 同名の台が2機にあると「向こうの connected が手元のハングを隠す」「向こうの booted が
+// 手元の健全な台を再起動する」の両方が起きる(2026-08-17 のレビュー指摘)。
+test("リモートのデバイスは観測しない(同名の手元の台と混線させない)", () => {
+  const h = createHarness();
+  // 手元の台が booted のまま張り付く = 本来なら修復が積まれる状況
+  for (let i = 0; i < 6; i++) {
+    h.watchdog.observe([device("Sim1", "connected")]);
+    break;
+  }
+  h.jobs.length = 0;
+  // ここで「向こうの Sim1 は connected」を毎回混ぜても、手元の booted 連続は途切れない
+  for (let i = 0; i < 6; i++) {
+    h.watchdog.observe([device("Sim1", "booted"), remoteDevice("Sim1", "connected")]);
+    h.advance(60_000);
+  }
+  assert.ok(h.jobs.length > 0, "向こうの connected が手元のハングを隠してはいけない");
+});
+
+test("リモートのデバイスだけでは修復ジョブを積まない(別の機械は直せない)", () => {
+  const h = createHarness();
+  h.watchdog.observe([remoteDevice("Sim9", "connected")]);
+  for (let i = 0; i < 6; i++) {
+    h.watchdog.observe([remoteDevice("Sim9", "booted")]);
+    h.advance(60_000);
+  }
+  assert.deepEqual(h.jobs, [], "手元の同名の台を巻き添えに再起動してしまう");
 });

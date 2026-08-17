@@ -168,7 +168,10 @@ export type DeviceLifecycleJob =
   // monitorDeviceOps.ts executeDeviceOpJob が --name の代わりに --udid/--serial を渡す(対向:
   // Sources/ftester/ApiDeviceCommands.swift ApiDeviceDownDirectTarget)。name はタイル特定・
   // 重複排除キーとして直指定時も引き続き使う。
-  | { readonly kind: "device"; readonly name: string; readonly op: DeviceOpKind; readonly udid?: string; readonly serial?: string }
+  // host: そのデバイスが居る機械(手元は undefined)。**名前だけで CLI に渡さない** ——
+  // 同名の台が別の機械にも居るのは通常で、手元の同名エントリを引いて別の機械の設定で
+  // シミュレータを1台作ってしまう(simctl は無ければ作る)
+  | { readonly kind: "device"; readonly name: string; readonly op: DeviceOpKind; readonly host?: string; readonly udid?: string; readonly serial?: string }
   | { readonly kind: "restartBatch"; readonly names: readonly string[] };
 
 /** device ジョブの同時実行上限(2台同時でホスト CPU がほぼ飽和する実測に基づくフリート共通の上限)。 */

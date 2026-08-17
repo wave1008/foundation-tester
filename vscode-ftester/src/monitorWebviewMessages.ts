@@ -368,6 +368,9 @@ export type MonitorFromWebviewMessage =
       readonly type: "deviceOp";
       readonly name: string;
       readonly op: DeviceOpKind;
+      // host: そのデバイスが居る機械(手元は省略)。一意なのは (host, name) なので、
+      // 名前だけで CLI へ渡すと別の機械のエントリを手元で起こしてしまう
+      readonly host?: string;
       readonly udid?: string;
       readonly serial?: string;
       readonly registered?: boolean;
@@ -644,6 +647,7 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
       return (
         typeof value.name === "string" &&
         (value.op === "up" || value.op === "down") &&
+        (value.host === undefined || (typeof value.host === "string" && value.host !== "")) &&
         (value.udid === undefined || typeof value.udid === "string") &&
         (value.serial === undefined || typeof value.serial === "string") &&
         (value.registered === undefined || typeof value.registered === "boolean")

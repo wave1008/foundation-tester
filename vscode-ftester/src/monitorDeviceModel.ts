@@ -249,6 +249,13 @@ export function filterMonitorDevices(
   filter: MonitorDeviceFilter,
 ): readonly MonitorDevice[] {
   return filter === "running"
-    ? devices.filter((device) => device.state !== "offline" && !iosPhysicalWithoutBridge(device))
+    // unknown(誰も観測していない)は running に含めない —— 動いている根拠が無いものを
+    // 「稼働中だけ」の一覧に出すと、その一覧の意味が「稼働中か、分からないもの」になる
+    ? devices.filter(
+        (device) =>
+          device.state !== "offline" &&
+          device.state !== "unknown" &&
+          !iosPhysicalWithoutBridge(device),
+      )
     : devices.filter((device) => device.registered !== false);
 }

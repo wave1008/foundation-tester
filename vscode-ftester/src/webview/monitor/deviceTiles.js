@@ -554,7 +554,12 @@ deviceOpMenuItemBtn.addEventListener('click', (event) => {
     return;
   }
   const device = deviceOpMenuEntry.device;
-  const message = { type: 'deviceOp', name: device.name, op: deviceOpMenuItemBtn.dataset.op };
+  // **host も載せる** —— 同名の台が別の機械にも居るのは通常で、名前だけだと
+  // 手元のマシンプロファイルの同名エントリを引いて**別の機械の設定でこの Mac に1台作る**
+  const message = {
+    type: 'deviceOp', name: device.name, op: deviceOpMenuItemBtn.dataset.op,
+    host: device.machineHost,
+  };
   // 未登録(registered:false)はマシンプロファイルに無いため --name で引けない。udid(iOS)/
   // serial(Android)を載せ、host 側(monitorDeviceOps.ts)が device-down --udid/--serial の
   // 直指定モードへ振り分ける(契約: monitorWebviewMessages.ts の "deviceOp")。
