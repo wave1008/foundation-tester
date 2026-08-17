@@ -15,6 +15,11 @@ export interface RecordingSessionSummary {
   readonly startedAt: string;
   readonly passed: number | null;
   readonly failed: number | null;
+  /** recordings/index.json の同名フィールド(任意。無ければ null)。 */
+  readonly clipsAttempted: number | null;
+  readonly clipsFailed: number | null;
+  /** 同上。無ければ false(フォールバックしていないと同じ扱い)。 */
+  readonly encoderFallback: boolean;
 }
 
 /** 一覧の表示上限(新しい順)。 */
@@ -50,6 +55,11 @@ function numberField(obj: Record<string, unknown> | null, key: string): number |
   return typeof v === "number" ? v : undefined;
 }
 
+function booleanField(obj: Record<string, unknown> | null, key: string): boolean | undefined {
+  const v = obj?.[key];
+  return typeof v === "boolean" ? v : undefined;
+}
+
 /**
  * run.json 配置規則(Sources/FTCore/RunResultsStore.swift の runDir(resultsDir:runID:)と同じ導出。
  * 変更時は両方揃えること)。runID 先頭6桁が yyyyMM で無い(不正な runID)場合は "unknown" 配下。
@@ -77,6 +87,10 @@ export async function listRecordingSessions(workspaceRoot: string): Promise<Reco
         if (!isRecordingIndex(indexRaw)) {
           continue;
         }
+        // isRecordingIndex は clipsAttempted/clipsFailed/encoderFallback の型を検証しない(型不一致でも
+        // index 全体は有効なまま)ため、ここで record として再取得し stringField/numberField と同じ
+        // 寛容さで読む。
+        const indexRecord = indexRaw as unknown as Record<string, unknown>;
         const metaRaw = await readJson(path.join(runDir, "run.json"));
         const meta = isRecord(metaRaw) ? metaRaw : null;
         sessions.push({
@@ -85,6 +99,9 @@ export async function listRecordingSessions(workspaceRoot: string): Promise<Reco
           startedAt: stringField(meta, "startedAt") ?? runID,
           passed: numberField(meta, "passed") ?? null,
           failed: numberField(meta, "failed") ?? null,
+          clipsAttempted: numberField(indexRecord, "clipsAttempted") ?? null,
+          clipsFailed: numberField(indexRecord, "clipsFailed") ?? null,
+          encoderFallback: booleanField(indexRecord, "encoderFallback") ?? false,
         });
       }
     }

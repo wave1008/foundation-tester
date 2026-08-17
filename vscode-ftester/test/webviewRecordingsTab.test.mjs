@@ -318,3 +318,59 @@ test("連続再生 OFF なら 'ended' で動画を切り替えない", (t) => {
   video.dispatchEvent(new window.Event("ended"));
   assert.equal(video.getAttribute("src"), "https://localhost/videos/S0010.mp4");
 });
+
+// 切り出し失敗の可視化(Sources/FTCore/RecordingIndex.swift の clipsAttempted/clipsFailed 由来)。
+// 全滅した run も一覧に出す契約なので、動画0本のセッションを開いても一覧へ戻さないこと自体が仕様。
+
+test("一覧: clipsFailed>0 のセッション行に欠落チップが出る(0/未指定では出ない)", (t) => {
+  const { window, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  sendToWebview({
+    type: "recordingsSessions",
+    sessions: [
+      { project: "SampleApp", runID: "20260817-000001", startedAt: "2026-08-17T00:00:01Z",
+        passed: 3, failed: 0, clipsAttempted: 5, clipsFailed: 2, encoderFallback: true },
+      { project: "SampleApp", runID: "20260817-000002", startedAt: "2026-08-17T00:00:02Z",
+        passed: 3, failed: 0, clipsAttempted: 5, clipsFailed: 0, encoderFallback: false },
+      { project: "SampleApp", runID: "20260817-000003", startedAt: "2026-08-17T00:00:03Z",
+        passed: 3, failed: 0, clipsAttempted: null, clipsFailed: null, encoderFallback: false },
+    ],
+  });
+
+  const rows = window.document.querySelectorAll(".recordings-session-item");
+  assert.equal(rows.length, 3);
+  const chipTexts = [...rows].map((row) => {
+    const chips = [...row.querySelectorAll(".recordings-session-counts")];
+    return chips.map((c) => c.textContent).join("|");
+  });
+  assert.match(chipTexts[0], /2/, "clipsFailed=2 の行は件数を出す");
+  assert.equal(/クリップ/.test(chipTexts[1]), false, "clipsFailed=0 の行には出さない");
+  assert.equal(/クリップ/.test(chipTexts[2]), false, "古い index(フィールド無し)でも出さない");
+});
+
+test("再生: 動画0本でも一覧へ戻らず、理由と件数を出してプレイヤーを隠す", (t) => {
+  const { window, video, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  sendToWebview({ ...SESSION_MESSAGE, videos: [], clipsAttempted: 3, clipsFailed: 3, encoderFallback: true });
+
+  const playerView = window.document.getElementById("recordings-player-view");
+  assert.notEqual(playerView.style.display, "none", "動画が無くても再生ビューに留まる");
+  assert.equal(video.style.display, "none", "死んだプレイヤーを見せない");
+  const message = window.document.querySelector(".recordings-no-video-message");
+  assert.notEqual(message.style.display, "none");
+  assert.match(message.textContent, /3/, "失敗件数を出す");
+  // ツリーは scenarios/*.json 由来なので動画が無くても描く
+  assert.ok(window.document.querySelectorAll(".recordings-tree-row").length > 0);
+});
+
+test("再生: 一部だけ欠落しているときはプレイヤーを出したまま注記を添える", (t) => {
+  const { window, video, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  sendToWebview({ ...SESSION_MESSAGE, clipsAttempted: 5, clipsFailed: 2, encoderFallback: true });
+
+  assert.notEqual(video.style.display, "none", "動画があるならプレイヤーは出す");
+  const notice = window.document.querySelector(".recordings-clips-failed-notice");
+  assert.notEqual(notice.style.display, "none");
+  assert.match(notice.textContent, /2/);
+  assert.equal(window.document.querySelector(".recordings-no-video-message").style.display, "none");
+});

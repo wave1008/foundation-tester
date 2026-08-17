@@ -28,7 +28,7 @@ enum VideoRecordingFinalizer {
     /// clipStartMs/clipEndMs はソース内(gapless)の位置(RecordingWallClock.offsetMs 参照)
     static func extractClip(sourceFiles: [URL], clipStartMs: Int, clipEndMs: Int,
                             bitrateKbps: Int, fullResolution: Bool,
-                            to outputURL: URL) async -> Bool {
+                            to outputURL: URL, preferSoftwareEncoder: Bool = false) async -> Bool {
         guard clipEndMs > clipStartMs, !sourceFiles.isEmpty else { return false }
         try? FileManager.default.removeItem(at: outputURL)
 
@@ -65,19 +65,31 @@ enum VideoRecordingFinalizer {
         ])
         guard reader.canAdd(readerOutput) else { return false }
         reader.add(readerOutput)
-        let writerInput = AVAssetWriterInput(mediaType: .video, outputSettings: [
+        var outputSettings: [String: Any] = [
             AVVideoCodecKey: AVVideoCodecType.h264,
             AVVideoWidthKey: scaledEven(naturalSize.width),
             AVVideoHeightKey: scaledEven(naturalSize.height),
             AVVideoScalingModeKey: AVVideoScalingModeResizeAspect,
             AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: bitrateKbps * 1000],
-        ])
+        ]
+        if preferSoftwareEncoder {
+            outputSettings[AVVideoEncoderSpecificationKey] = [
+                kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder as String: false,
+            ]
+        }
+        let writerInput = AVAssetWriterInput(mediaType: .video, outputSettings: outputSettings)
         writerInput.expectsMediaDataInRealTime = false
         guard writer.canAdd(writerInput) else { return false }
         writer.add(writerInput)
-        guard reader.startReading() else { return false }
+        // 失敗した書きかけは index が参照しないまま結果ディレクトリに溜まるため、以降の失敗経路は
+        // すべて outputURL を消してから return する
+        guard reader.startReading() else {
+            try? FileManager.default.removeItem(at: outputURL)
+            return false
+        }
         guard writer.startWriting() else {
             reader.cancelReading()
+            try? FileManager.default.removeItem(at: outputURL)
             return false
         }
         writer.startSession(atSourceTime: clipStart)
@@ -137,6 +149,8 @@ enum VideoRecordingFinalizer {
                 ("⚠️ [recording] extractClip reader failed: status=\(reader.status.rawValue) "
                  + "error=\(String(describing: reader.error))\n").utf8))
             writer.cancelWriting()
+            // cancelWriting はファイルの削除を保証しないため明示的に消す
+            try? FileManager.default.removeItem(at: outputURL)
             return false
         }
         // simctl/screenrecord の VFR ソースは「最後に画面が変化した時点」以降のフレームを持たない。
@@ -148,6 +162,7 @@ enum VideoRecordingFinalizer {
             FileHandle.standardError.write(Data(
                 ("⚠️ [recording] extractClip writer failed: status=\(writer.status.rawValue) "
                  + "error=\(String(describing: writer.error))\n").utf8))
+            try? FileManager.default.removeItem(at: outputURL)
         }
         return writer.status == .completed
     }

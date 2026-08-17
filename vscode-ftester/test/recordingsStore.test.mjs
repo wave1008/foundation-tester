@@ -119,6 +119,82 @@ test("listRecordingSessions: 上限50件を超える場合は新しい順に50�
   }
 });
 
+// 全滅run(切り出しを試みたが1本も残らなかった)の契約。recordings:[] でも clipsAttempted>0 なら
+// index.json が書かれる(isRecordingIndex は recordings の中身を問わないので TS 側は空配列を素通しする)。
+const EMPTY_INDEX_WITH_ATTEMPT_STATS = {
+  schemaVersion: 2,
+  recordings: [],
+  clipsAttempted: 24,
+  clipsFailed: 18,
+  encoderFallback: true,
+};
+
+test("listRecordingSessions: recordings が空でもclipsAttempted>0のindex.jsonは一覧に出る(全滅run)", async () => {
+  const root = makeWorkspace();
+  try {
+    writeJson(
+      path.join(runDir(root, "SampleApp", "20260723-000000"), "recordings", "index.json"),
+      EMPTY_INDEX_WITH_ATTEMPT_STATS,
+    );
+    const sessions = await listRecordingSessions(root);
+    assert.deepEqual(
+      sessions.map((s) => s.runID),
+      ["20260723-000000"],
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("listRecordingSessions: clipsAttempted/clipsFailed/encoderFallback をsummaryへ載せる", async () => {
+  const root = makeWorkspace();
+  try {
+    writeJson(
+      path.join(runDir(root, "SampleApp", "20260723-000000"), "recordings", "index.json"),
+      EMPTY_INDEX_WITH_ATTEMPT_STATS,
+    );
+    const sessions = await listRecordingSessions(root);
+    assert.equal(sessions[0].clipsAttempted, 24);
+    assert.equal(sessions[0].clipsFailed, 18);
+    assert.equal(sessions[0].encoderFallback, true);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("listRecordingSessions: 新フィールドが無い(古い)index.jsonでもclipsAttempted/clipsFailedはnull・encoderFallbackはfalse", async () => {
+  const root = makeWorkspace();
+  try {
+    writeJson(path.join(runDir(root, "SampleApp", "20260723-000000"), "recordings", "index.json"), SAMPLE_INDEX);
+    const sessions = await listRecordingSessions(root);
+    assert.equal(sessions[0].clipsAttempted, null);
+    assert.equal(sessions[0].clipsFailed, null);
+    assert.equal(sessions[0].encoderFallback, false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("listRecordingSessions: 新フィールドの型が不正でも壊れず「無い」として扱う", async () => {
+  const root = makeWorkspace();
+  try {
+    writeJson(path.join(runDir(root, "SampleApp", "20260723-000000"), "recordings", "index.json"), {
+      schemaVersion: 2,
+      recordings: [],
+      clipsAttempted: "24", // 文字列(不正型)
+      clipsFailed: null,
+      encoderFallback: "true", // 文字列(不正型)
+    });
+    const sessions = await listRecordingSessions(root);
+    assert.equal(sessions.length, 1);
+    assert.equal(sessions[0].clipsAttempted, null);
+    assert.equal(sessions[0].clipsFailed, null);
+    assert.equal(sessions[0].encoderFallback, false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("listRecordingSessions: schemaVersion:1(v1)の古いセッションは一覧に出さない", async () => {
   const root = makeWorkspace();
   try {

@@ -2315,6 +2315,26 @@ input[type="text"]::placeholder {
   flex-direction: column;
   gap: 6px;
 }
+/* 動画が1本も無いセッション用の理由表示(recordingsTab.js が video の代わりに差し込む。
+   死んだ<video>を見せないため、有効時は video/再生中表示/コントロールごと display:none にする)。 */
+.recordings-no-video-message {
+  display: none;
+  flex: 1 1 0;
+  min-height: 0;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 16px;
+  color: var(--vscode-descriptionForeground);
+  white-space: pre-line;
+}
+/* 動画はあるが一部クリップが欠落しているセッション向けの控えめな注記(video 上部)。 */
+.recordings-clips-failed-notice {
+  display: none;
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
 /* basis 0 で「コントロール行を除く残り高さ」ちょうどをボックスにし、上下フィットを保証する
    (auto だと動画の内在サイズが基準になり高さが余る/はみ出す)。中身は contain で収める。 */
 .recordings-video {

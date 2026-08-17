@@ -333,6 +333,12 @@ export type MonitorToWebviewMessage =
       readonly videos: readonly RecordingScenarioVideo[] | null;
       readonly errors: readonly RecordingErrorEntry[] | null;
       readonly tree: readonly RecordingTreeClass[] | null;
+      // recordings/index.json の同名フィールド(RecordingSessionSummary と同じ意味・寛容さ)。videos が
+      // 空/一部欠落のとき、webview の再生ビューが理由を出すのに使う。省略時は webview 側が「無い」
+      // として扱う(旧ホスト実装との互換)。
+      readonly clipsAttempted?: number | null;
+      readonly clipsFailed?: number | null;
+      readonly encoderFallback?: boolean;
     };
 
 /** 検証済みの MonitorEvent を、webview へそのまま postMessage できる形に変換する。 */

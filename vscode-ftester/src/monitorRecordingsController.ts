@@ -57,6 +57,20 @@ export class MonitorRecordingsController {
       .map(extractScenarioTreeSource)
       .filter((s): s is NonNullable<typeof s> => s !== null);
     const tree = groupTreeByClass(buildRecordingTree(treeSources, detail.index.recordings));
-    this.deps.post({ type: "recordingsSession", ok: true, project, runID, error: null, videos, errors, tree });
+    // 切り出しの集計は index.json にしか無い(recordings が空でも run は一覧に出る契約。
+    // recordingsModel.ts の RecordingIndex 参照)。再生ビューの「録画が無い理由」に使う
+    this.deps.post({
+      type: "recordingsSession",
+      ok: true,
+      project,
+      runID,
+      error: null,
+      videos,
+      errors,
+      tree,
+      clipsAttempted: detail.index.clipsAttempted ?? null,
+      clipsFailed: detail.index.clipsFailed ?? null,
+      encoderFallback: detail.index.encoderFallback ?? false,
+    });
   }
 }

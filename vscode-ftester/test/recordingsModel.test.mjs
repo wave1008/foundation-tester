@@ -105,6 +105,36 @@ test("isRecordingIndex: schemaVersion が2以外(v1等)はfalse(一覧に出さ�
   assert.equal(isRecordingIndex({ recordings: [] }), false); // schemaVersion 欠落
 });
 
+test("isRecordingIndex: recordings が空配列でもtrue(全滅runでindex.jsonが書かれる契約)", () => {
+  assert.equal(isRecordingIndex({ schemaVersion: 2, recordings: [] }), true);
+});
+
+test("isRecordingIndex: clipsAttempted/clipsFailed/encoderFallback が正しい型ならtrue", () => {
+  assert.equal(
+    isRecordingIndex({
+      schemaVersion: 2,
+      recordings: [],
+      clipsAttempted: 24,
+      clipsFailed: 18,
+      encoderFallback: true,
+    }),
+    true,
+  );
+});
+
+test("isRecordingIndex: clipsAttempted/clipsFailed/encoderFallback の型が違ってもindex全体は無効にしない", () => {
+  assert.equal(
+    isRecordingIndex({
+      schemaVersion: 2,
+      recordings: [],
+      clipsAttempted: "24",
+      clipsFailed: null,
+      encoderFallback: "yes",
+    }),
+    true,
+  );
+});
+
 test("isRecordingIndex: scenarioID/platform 不正・segments欠落はfalse", () => {
   assert.equal(
     isRecordingIndex({ schemaVersion: 2, recordings: [{ worker: "w", platform: "ios", file: "f", segments: [] }] }), // scenarioID 欠落

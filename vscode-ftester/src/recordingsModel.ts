@@ -4,12 +4,18 @@
 //
 // 契約(録画側実装。runDir = <workspaceRoot>/TestProjects/<project>/results/runs/<YYYY-MM>/<runID>/):
 // - recordings/index.json は schemaVersion 2: { schemaVersion:2, recordings: [{ scenarioID, worker,
-//   platform, file, segments }] }。**1エントリ = 1テスト関数(scenarioID)の mp4**(v1 の1ワーカー
+//   platform, file, segments }], clipsAttempted?, clipsFailed?, encoderFallback? }(Sources/FTCore/
+//   RecordingIndex.swift と同期)。**1エントリ = 1テスト関数(scenarioID)の mp4**(v1 の1ワーカー
 //   1動画とは異なる)。file は runDir 相対。動画の0秒 = 先頭 segment の startedAt(クリップ自体が
 //   そのテストの録画区間なので、壁時計→クリップ内位置は既存 offsetMsForWallClock がそのまま使える)。
 //   エントリは開始時刻昇順。同一 scenarioID が複数(revive 再実行)ありうるが対応は最初にマッチした
 //   エントリでよい(firstRecordingEntryByScenario)。schemaVersion!==2 の古い(v1)セッションは
 //   isRecordingIndex が弾く(一覧に出さない)。
+// - clipsAttempted/clipsFailed/encoderFallback は任意(ハードウェアエンコーダ不調時の切り出し失敗を
+//   利用者へ伝えるための追加情報)。**recordings は全滅時に空配列になりうる**(clipsAttempted>0 なら
+//   recordings が空でも書き出される契約。isRecordingIndex は空配列を弾かない — every は空配列で
+//   true になる)。3フィールドとも欠落・型不一致は「無い」として扱う(呼び出し側が数値/真偽値
+//   チェックした上で読む。recordingsStore.ts の stringField/numberField と同じ寛容さ)。
 // - scenarios/<name>.json (ScenarioRunRecord, Sources/FTCore/RunRecord.swift): startedAt/worker/passed/
 //   failedSteps[]/errorLogs のみ参照。failedSteps[].at(失敗確定の壁時計時刻)は古い記録には無い。
 // - 同ファイルの optional `timeline`(全ステップがイベント順)は TEST EXPLORER 風ツリー用。
@@ -32,6 +38,12 @@ export interface RecordingEntry {
 export interface RecordingIndex {
   readonly schemaVersion: number;
   readonly recordings: readonly RecordingEntry[];
+  /** 切り出しを試みたシナリオ数(任意。無ければ undefined)。 */
+  readonly clipsAttempted?: number;
+  /** 使えるクリップが得られなかった数(任意)。 */
+  readonly clipsFailed?: number;
+  /** ハードウェアエンコーダを諦めソフトウェアへ切り替えたか(任意)。 */
+  readonly encoderFallback?: boolean;
 }
 
 /** recordingsSession 応答でwebviewへ渡す1シナリオ分の動画情報。videoUri は webview.asWebviewUri 済み。 */
@@ -93,7 +105,9 @@ function isRecordingEntry(value: unknown): value is RecordingEntry {
 }
 
 /** recordings/index.json の生 JSON(JSON.parse 済み unknown)の検証。schemaVersion===2 必須
- * (v1 の1ワーカー1動画セッションは scenarioID を持たないため、ここで弾いて一覧に出さない)。 */
+ * (v1 の1ワーカー1動画セッションは scenarioID を持たないため、ここで弾いて一覧に出さない)。
+ * recordings は空配列でも通す(全滅 run の契約)。clipsAttempted/clipsFailed/encoderFallback は
+ * ここでは検証しない(型が違っても index 全体を無効にしない。読み手が個別に型チェックする)。 */
 export function isRecordingIndex(value: unknown): value is RecordingIndex {
   return (
     isRecord(value) &&
