@@ -199,19 +199,10 @@ struct RemoteRunDispatcher {
         // fetch するので、押していないコミットへは remote setup でも合わせられない
         // (そのままだと checkout が exit 128 で落ちるだけ。2026-08-16 に実際に踏んだ)
         if reasons.contains(where: { $0.hasPrefix("git revision") }), let localRevision,
-           !revisionIsPublished(revision: localRevision) {
+           !revisionIsPublished(repoRoot: localRepoRoot, revision: localRevision) {
             reasons.append(RemoteSetupPlan.unpublishedRevisionMessage(revision: localRevision))
         }
         guard reasons.isEmpty else { throw RemoteDispatchError.incompatible(reasons) }
-    }
-
-    /// そのコミットがリモート追跡ブランチに含まれるか。判定不能なら published 扱い
-    /// (助言を足すかどうかの判断であって、実行を止める判定ではない)
-    private func revisionIsPublished(revision: String) -> Bool {
-        guard let result = try? Shell.run(
-            ["git", "-C", localRepoRoot.path, "branch", "-r", "--contains", revision]),
-              result.status == 0 else { return true }
-        return !result.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private func remoteToolchainFingerprint() throws -> String {

@@ -77,6 +77,9 @@ export interface FtesterConfig {
    * 正は CLI の LocalConfig で、remoteHostsController.ts が `ftester api remote-hosts` を読む
    * (設定タブのホスト表を支えるためだけに使う)。 */
   remote: { artifacts: "collect" | "on-demand" };
+  /** true の場合、実行(dry-run・ライブ操作パネル連動を除く)開始前に `ftester api remote-compat` で
+   * リモート機の版ズレを照合し、ズレていれば確認ダイアログを出す(runHandler.ts executeRun)。 */
+  remoteCompatCheck: boolean;
 }
 
 /** ワークスペースルート(Package.swift のあるフォルダ)を解決する。開いていなければ undefined。 */
@@ -120,6 +123,7 @@ export function readConfig(workspaceRoot: string): FtesterConfig {
     remote: {
       artifacts: configuration.get<string>("remote.artifacts", "collect") === "on-demand" ? "on-demand" : "collect",
     },
+    remoteCompatCheck: configuration.get<boolean>("remoteCompatCheck", true),
   };
 }
 

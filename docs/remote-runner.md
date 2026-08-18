@@ -217,6 +217,11 @@ Android は `no running emulator for AVD ...` で失敗する)。`ftester device
 - リモートの **TOOL_ROOT 解決は既存4箇所の規則を再利用**する(preflight.sh / update.sh /
   toolRootResolve.ts / Package.swift 宣言。`toolRootContract.test.mjs` の対象)。
   ディスパッチ用の独自解決を新設しない
+- **実行前に版ズレだけを問い合わせる口は `ftester api remote-compat --project <P> --profile <X>`**
+  (JSON。人が読む表は `ftester remote status`)。拡張はこれで実行プロファイルのリモートホスト
+  全部の rev/toolchain 適合を見て、ズレていれば「更新して実行 / そのまま実行 / キャンセル」を
+  ダイアログで聞く。ズレの解消(揃えるだけ)は `ftester remote align <host>` —
+  `remote setup` の align ステップだけを単独で実行する軽量版(preflight/install は通さない)
 
 ## 8. マルチマシン分散(**実装済み: 2026-08-16**。`run --fleet --split`)
 

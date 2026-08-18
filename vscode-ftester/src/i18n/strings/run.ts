@@ -144,4 +144,42 @@ export const runStrings = {
     ja: "[ftester] live: stdout を JSON として解析できませんでした: {text}",
     en: "[ftester] live: Could not parse stdout as JSON: {text}",
   },
+
+  "run.remoteCompat.checkSkippedLog": {
+    ja: "[ftester] リモート機の版ズレ確認に失敗したためスキップします: {message}",
+    en: "[ftester] Skipping the remote version-mismatch check because it failed: {message}",
+  },
+  "run.remoteCompat.dialogMessage": {
+    ja: "リモート機の版が手元と違います",
+    en: "The remote runner machines are out of date.",
+  },
+  "run.remoteCompat.revisionUnpublishedNote": {
+    ja: "手元の HEAD が push されていないため更新できません(先に push してください)。",
+    en: "Cannot update because the local HEAD hasn't been pushed yet (push first).",
+  },
+  "run.remoteCompat.localDirtyNote": {
+    ja: "未コミットの変更はリモートへ届きません。",
+    en: "Uncommitted changes will not reach the remote.",
+  },
+  "run.remoteCompat.updateAndRun": { ja: "更新して実行", en: "Update and run" },
+  "run.remoteCompat.runAnyway": { ja: "そのまま実行", en: "Run anyway" },
+  "run.remoteCompat.cancelledLog": {
+    ja: "リモート機の版ズレ確認でキャンセルされたため実行を中止しました。",
+    en: "The run was cancelled at the remote version-mismatch confirmation.",
+  },
+  "run.remoteCompat.alignProgressTitle": {
+    ja: "リモート機を更新しています…",
+    en: "Updating remote machines…",
+  },
+  "run.remoteCompat.alignProgressHost": { ja: "{name} を更新中…", en: "Updating {name}…" },
+  "run.remoteCompat.alignFailed": {
+    ja: "{name} の更新に失敗しました(exit {exitCode})。出力パネル「ftester」を確認してください。",
+    en: 'Failed to update {name} (exit {exitCode}). Check the "ftester" output panel.',
+  },
+  "run.remoteCompat.hostUnreachable": { ja: "到達不可", en: "unreachable" },
+  "run.remoteCompat.hostRevisionUnknown": { ja: "revision 不明", en: "unknown revision" },
+  "run.remoteCompat.hostToolchainMismatch": {
+    ja: "toolchain 不一致 ({toolchain})",
+    en: "toolchain mismatch ({toolchain})",
+  },
 } satisfies MessageDict;

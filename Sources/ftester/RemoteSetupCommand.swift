@@ -41,6 +41,32 @@ private func runInheritedSSH(_ argv: [String]) throws -> Int32 {
     return process.terminationStatus
 }
 
+/// `echo $HOME; stat -f%Su /dev/console; id -un` の到達確認(RemoteRunDispatcher.resolveLayout
+/// と同じ規律だが private のため複製する)。session が nil でも home が取れていれば
+/// ログイン判定だけスキップして続行する(古い macOS 等の想定外出力への fallback)。
+/// `Setup` と `Align` が共有する
+private func remoteReach(hostSpec: RemoteHostSpec)
+    -> (session: RemoteSessionInfo?, home: String?, error: String?) {
+    guard let result = try? Shell.run(
+        setupSSHBase + [hostSpec.sshTarget, "echo $HOME; stat -f%Su /dev/console; id -un"]) else {
+        return (nil, nil, "ssh failed to run")
+    }
+    guard result.status == 0 else {
+        return (nil, nil, "cannot reach \(hostSpec.sshTarget) over ssh (status \(result.status))"
+            + " — check the host name and keys; BatchMode disables password prompts\n\(result.tail)")
+    }
+    if let session = RemoteProbe.parseSessionInfo(result.output) {
+        return (session, session.home, nil)
+    }
+    let firstLine = (result.output.split(separator: "\n", maxSplits: 1,
+                                          omittingEmptySubsequences: false).first ?? "")
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !firstLine.isEmpty else {
+        return (nil, nil, "could not determine $HOME on \(hostSpec.sshTarget)")
+    }
+    return (nil, firstLine, nil)
+}
+
 extension RemoteCommand {
 
     struct Setup: AsyncParsableCommand {
@@ -135,7 +161,7 @@ extension RemoteCommand {
             }
 
             say("==> reach: checking \(hostSpec.sshTarget)...")
-            let (session, home, reachError) = Self.reach(hostSpec: hostSpec)
+            let (session, home, reachError) = remoteReach(hostSpec: hostSpec)
             guard let home else {
                 emit("reach", .fail, reachError ?? "unreachable")
                 try summarizeAndExit()
@@ -258,7 +284,7 @@ extension RemoteCommand {
                     + "\(localRevision.prefix(7)))")
             }
             // push 前だと checkout が exit 128 で落ちるだけで理由が読めない。ssh を張る前に落とす
-            if !Self.revisionIsPublished(repoRoot: repoRoot, revision: localRevision) {
+            if !revisionIsPublished(repoRoot: repoRoot, revision: localRevision) {
                 emit("align", .fail, RemoteSetupPlan.unpublishedRevisionMessage(revision: localRevision))
                 try summarizeAndExit()
             }
@@ -305,41 +331,6 @@ extension RemoteCommand {
             try summarizeAndExit()
         }
 
-        /// `echo $HOME; stat -f%Su /dev/console; id -un` の到達確認(RemoteRunDispatcher.resolveLayout
-        /// と同じ規律だが private のため複製する)。session が nil でも home が取れていれば
-        /// ログイン判定だけスキップして続行する(古い macOS 等の想定外出力への fallback)
-        private static func reach(hostSpec: RemoteHostSpec)
-            -> (session: RemoteSessionInfo?, home: String?, error: String?) {
-            guard let result = try? Shell.run(
-                setupSSHBase + [hostSpec.sshTarget, "echo $HOME; stat -f%Su /dev/console; id -un"]) else {
-                return (nil, nil, "ssh failed to run")
-            }
-            guard result.status == 0 else {
-                return (nil, nil, "cannot reach \(hostSpec.sshTarget) over ssh (status \(result.status))"
-                    + " — check the host name and keys; BatchMode disables password prompts\n\(result.tail)")
-            }
-            if let session = RemoteProbe.parseSessionInfo(result.output) {
-                return (session, session.home, nil)
-            }
-            let firstLine = (result.output.split(separator: "\n", maxSplits: 1,
-                                                  omittingEmptySubsequences: false).first ?? "")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !firstLine.isEmpty else {
-                return (nil, nil, "could not determine $HOME on \(hostSpec.sshTarget)")
-            }
-            return (nil, firstLine, nil)
-        }
-
-        /// そのコミットがリモート追跡ブランチのどれかに含まれるか(= push 済みか)。
-        /// 判定できないとき(git の失敗)は**published 扱い**にする —— ここで止めるのは
-        /// 「押していないと分かっているとき」だけで、判定不能を理由に足止めしない
-        private static func revisionIsPublished(repoRoot: URL, revision: String) -> Bool {
-            guard let result = try? Shell.run(
-                ["git", "-C", repoRoot.path, "branch", "-r", "--contains", revision]),
-                  result.status == 0 else { return true }
-            return !result.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        }
-
         /// `--yes` があれば無条件に許可。無ければ TTY からのみ確認を取る(非対話セッションは
         /// 確認できないので拒否する。破壊的操作は必ず人の確認を経る)
         private func confirmUninstall(base: String, host: String) -> Bool {
@@ -350,6 +341,70 @@ extension RemoteCommand {
                 Data("This permanently deletes \(base) on \(host). Type 'yes' to continue: ".utf8))
             guard let line = readLine() else { return false }
             return line.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "yes"
+        }
+    }
+
+    struct Align: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "align",
+            abstract: "Fetch, checkout and build the local HEAD revision on a runner"
+                + " (the align step of `remote setup` alone; docs/remote-runner.md §14)")
+
+        @Argument(help: "Remote host to align: a registered name (ftester remote hosts) or a raw user@host/host")
+        var host: String
+
+        @Option(name: .customLong("remote-dir"),
+                help: "Runner-only base directory on the remote host (default: the host registry's entry, or ~/ftester-runner)")
+        var remoteDir: String?
+
+        func run() async throws {
+            let resolved = try RemoteHostResolver.resolve(rawHost: host, remoteDirOverride: remoteDir)
+            let hostSpec = resolved.hostSpec
+            resolved.announce()
+
+            guard let repoRoot = try? RepoRoot.find() else {
+                throw RemoteDispatchError.remoteSetupFailed(
+                    "cannot resolve the local tool root (run this inside the foundation-tester repo)")
+            }
+            guard let localRevision = (try? Shell.run(["git", "-C", repoRoot.path, "rev-parse", "HEAD"]))
+                .map({ $0.output.trimmingCharacters(in: .whitespacesAndNewlines) }), !localRevision.isEmpty else {
+                throw RemoteDispatchError.remoteSetupFailed("could not determine the local git revision")
+            }
+            try RemoteSetupPlan.validateRevision(localRevision)
+            if let statusResult = try? Shell.run(["git", "-C", repoRoot.path, "status", "--porcelain"]),
+               !statusResult.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                say("⚠️ local uncommitted changes will NOT reach the remote (aligning to the last commit, "
+                    + "\(localRevision.prefix(7)))")
+            }
+            // push 前だと checkout が exit 128 で落ちるだけで理由が読めない。ssh を張る前に落とす
+            // (RemoteSetupCommand.Setup の align ステップと同じ規律)
+            guard revisionIsPublished(repoRoot: repoRoot, revision: localRevision) else {
+                say(RemoteSetupPlan.unpublishedRevisionMessage(revision: localRevision))
+                throw ExitCode(1)
+            }
+
+            say("==> reach: checking \(hostSpec.sshTarget)...")
+            let (session, home, reachError) = remoteReach(hostSpec: hostSpec)
+            guard let home else {
+                say(reachError ?? "unreachable")
+                throw ExitCode(1)
+            }
+            if let session, !session.isLoggedIn {
+                say("\(hostSpec.sshTarget) is sitting at the login window (console user: "
+                    + "\(session.consoleUser), expected: \(session.sshUser)) — unlock and log in on the "
+                    + "runner, then retry (docs/remote-runner.md §5)")
+                throw ExitCode(1)
+            }
+            let layout = RemoteLayout(base: RemoteLayout.resolveBase(resolved.remoteDirRaw, home: home))
+
+            say("==> align: fetching and building the remote clone...")
+            let alignCmd = RemoteSetupPlan.alignRevisionCommand(layout: layout, revision: localRevision)
+            let alignStatus = (try? runInheritedSSH(setupSSHBase + [hostSpec.sshTarget, alignCmd])) ?? -1
+            guard alignStatus == 0 else {
+                say("git fetch/checkout/build failed (exit \(alignStatus); see output above)")
+                throw ExitCode(1)
+            }
+            say("✅ aligned to \(localRevision.prefix(7)) and built")
         }
     }
 

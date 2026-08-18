@@ -2,7 +2,7 @@
   "name": "vscode-ftester",
   "displayName": "ftester",
   "description": "%ftester.extension.description%",
-  "version": "0.0.534",
+  "version": "0.0.535",
   "private": true,
   "publisher": "wave1008",
   "license": "MIT",
@@ -170,6 +170,11 @@
           ],
           "default": "auto",
           "description": "%ftester.config.updateCheck.description%"
+        },
+        "ftester.remoteCompatCheck": {
+          "type": "boolean",
+          "default": true,
+          "description": "%ftester.config.remoteCompatCheck.description%"
         },
         "ftester.remote.artifacts": {
           "type": "string",

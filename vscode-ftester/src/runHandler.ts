@@ -11,6 +11,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { spawn } from "node:child_process";
 import * as vscode from "vscode";
 import { type FtesterCli } from "./cli";
 import { type FtesterConfig, resolveProjectName } from "./config";
@@ -18,6 +19,8 @@ import { resolveEntryAtCursor, truncateForStatusBar, type TreeItemEntry } from "
 import { t } from "./i18n";
 import { lastResultsDir, lookupKey, readFailedScenarioIds } from "./lastResults";
 import type { LiveRunTarget } from "./liveRunTarget";
+import { runOneShot } from "./oneShotCli";
+import { decideRemoteCompat, type RemoteCompatHost, type RemoteCompatReport } from "./remoteCompatGate";
 import { findLatestReport, listRecentReports, reportsDir } from "./scenarioReports";
 import type { ScenarioFinishedEventBody } from "./debugAdapter";
 import { isRunEvent } from "./model";
@@ -361,6 +364,68 @@ function resolveTargetPlatform(targets: Map<string, vscode.TestItem>): "ios" | "
   }
 }
 
+/** リモート版ズレダイアログの1ホスト分の値(revision 先頭7桁 / エラー / toolchain 不一致)。
+ * error・revision は CLI からの英語値をそのまま出す(枠だけ ja/en。CLAUDE.md の方針)。 */
+function formatHostDetailValue(host: RemoteCompatHost): string {
+  if (!host.reachable) {
+    return host.error ?? t("run.remoteCompat.hostUnreachable");
+  }
+  if (host.revisionCompatible === false) {
+    const short = host.revision?.slice(0, 7);
+    return short && short.length > 0 ? short : t("run.remoteCompat.hostRevisionUnknown");
+  }
+  if (host.toolchainCompatible === false) {
+    return t("run.remoteCompat.hostToolchainMismatch", { toolchain: host.toolchain ?? "?" });
+  }
+  return host.error ?? t("run.remoteCompat.hostUnreachable");
+}
+
+/** `ftester remote align <name>` を単発 spawn し、stdout/stderr を `[<name>]` 接頭辞付きで
+ * outputChannel へ流す(monitorUpdateController.ts の run() と同方式)。FtesterCli の直列
+ * キューには乗せない(直後の `ftester api run` とは別の単発コマンドのため待つ必要が無い)。 */
+function runRemoteAlign(
+  binaryPath: string,
+  workspaceRoot: string,
+  hostName: string,
+  outputChannel: vscode.OutputChannel,
+): Promise<number | null> {
+  return new Promise((resolve) => {
+    let proc: ReturnType<typeof spawn>;
+    try {
+      proc = spawn(binaryPath, ["remote", "align", hostName], {
+        cwd: workspaceRoot,
+        shell: false,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } catch (error) {
+      outputChannel.appendLine(`[${hostName}] ${t("run.cli.spawnFailed", { error: String(error) })}`);
+      resolve(-1);
+      return;
+    }
+    let pending = "";
+    const emit = (chunk: Buffer): void => {
+      pending += chunk.toString("utf8");
+      const lines = pending.split("\n");
+      pending = lines.pop() ?? "";
+      for (const line of lines) {
+        outputChannel.appendLine(`[${hostName}] ${line}`);
+      }
+    };
+    proc.stdout?.on("data", emit);
+    proc.stderr?.on("data", emit);
+    proc.on("error", (error) => {
+      outputChannel.appendLine(`[${hostName}] ${t("run.cli.executionError", { message: error.message })}`);
+      resolve(-1);
+    });
+    proc.on("close", (exitCode) => {
+      if (pending.length > 0) {
+        outputChannel.appendLine(`[${hostName}] ${pending}`);
+      }
+      resolve(exitCode);
+    });
+  });
+}
+
 async function executeRun(
   controller: vscode.TestController,
   cli: FtesterCli,
@@ -493,6 +558,92 @@ async function executeRun(
         }
       });
     return;
+  }
+
+  // リモート機の版ズレ確認(dry-run・liveTarget は対象外。上のプロファイル必須チェックと同じ除外)。
+  // CLI 呼び出しが失敗してもチェックだけスキップし、実行は止めない(最終ゲートはディスパッチ側に残る)。
+  if (!dryRun && !liveTarget && profile.length > 0 && config.remoteCompatCheck) {
+    let report: RemoteCompatReport | undefined;
+    try {
+      const result = await runOneShot(
+        config.binaryPath,
+        workspaceRoot,
+        ["api", "remote-compat", "--project", resolution.project, "--profile", profile],
+        outputChannel,
+        () => {},
+      );
+      if (result.exitCode === 0) {
+        report = result.json as RemoteCompatReport | undefined;
+      } else {
+        outputChannel.appendLine(
+          t("run.remoteCompat.checkSkippedLog", {
+            message: result.stderrTail || `exit ${String(result.exitCode)}`,
+          }),
+        );
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      outputChannel.appendLine(t("run.remoteCompat.checkSkippedLog", { message }));
+    }
+    const decision = decideRemoteCompat(report ?? null);
+    if (decision.kind === "ask") {
+      const detailLines = decision.incompatible.map((host) => `${host.name}: ${formatHostDetailValue(host)}`);
+      if (decision.revisionUnpublished) {
+        detailLines.push(t("run.remoteCompat.revisionUnpublishedNote"));
+      }
+      if (decision.localDirty) {
+        detailLines.push(t("run.remoteCompat.localDirtyNote"));
+      }
+      const updateItem = t("run.remoteCompat.updateAndRun");
+      const runAnywayItem = t("run.remoteCompat.runAnyway");
+      const items = decision.canUpdate ? [updateItem, runAnywayItem] : [runAnywayItem];
+      const picked = await vscode.window.showWarningMessage(
+        t("run.remoteCompat.dialogMessage"),
+        { modal: true, detail: detailLines.join("\n") },
+        ...items,
+      );
+      if (picked === undefined) {
+        // キャンセル≠エラー。項目はマークせず未実行のまま終える
+        run.appendOutput(`${t("run.remoteCompat.cancelledLog")}\r\n`);
+        run.end();
+        return;
+      }
+      if (picked === updateItem) {
+        const failure = await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: t("run.remoteCompat.alignProgressTitle"),
+            cancellable: false,
+          },
+          async (progress) => {
+            for (const hostName of decision.updatableHosts) {
+              const label = t("run.remoteCompat.alignProgressHost", { name: hostName });
+              progress.report({ message: label });
+              outputChannel.appendLine(`[${hostName}] ${label}`);
+              const exitCode = await runRemoteAlign(config.binaryPath, workspaceRoot, hostName, outputChannel);
+              if (exitCode !== 0) {
+                return { hostName, exitCode };
+              }
+            }
+            return undefined;
+          },
+        );
+        if (failure) {
+          const message = t("run.remoteCompat.alignFailed", {
+            name: failure.hostName,
+            exitCode: String(failure.exitCode),
+          });
+          run.appendOutput(`${message}\r\n`);
+          outputChannel.appendLine(message);
+          for (const item of targets.values()) {
+            run.errored(item, new vscode.TestMessage(message));
+          }
+          void vscode.window.showErrorMessage(`ftester: ${message}`);
+          run.end();
+          return;
+        }
+      }
+    }
   }
 
   const args = ["api", "run", "--project", resolution.project];

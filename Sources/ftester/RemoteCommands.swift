@@ -25,7 +25,7 @@ struct RemoteCommand: AsyncParsableCommand {
         commandName: "remote",
         abstract: "Fleet operations for --host dispatch: provision, diagnose, clean up and query remote runners "
             + "(docs/remote-runner.md §14/§16.4/§16.5)",
-        subcommands: [Status.self, Clean.self, Setup.self, Exec.self, Hosts.self])
+        subcommands: [Status.self, Clean.self, Setup.self, Align.self, Exec.self, Hosts.self])
 
     // MARK: - status
 
@@ -73,7 +73,7 @@ struct RemoteCommand: AsyncParsableCommand {
             let probed: [HostRow] = await withTaskGroup(of: (Int, HostRow).self) { group in
                 for (index, entry) in targets.enumerated() {
                     group.addTask {
-                        (index, await Self.probe(entry.resolved, wantFM: wantFM))
+                        (index, await RemoteStatusProbing.probe(entry.resolved, wantFM: wantFM))
                     }
                 }
                 var collected: [Int: HostRow] = [:]
@@ -97,42 +97,6 @@ struct RemoteCommand: AsyncParsableCommand {
             if reports.contains(where: { !$0.reachable || !$0.compatible }) {
                 throw ExitCode(1)
             }
-        }
-
-        /// 1ホスト分の到達性・rev・toolchain・binary・空き容量をまとめて取る(ssh 1回)。
-        /// layout.base はここでは $HOME を未解決のまま埋め込んだ式になり得る
-        /// (RemoteLayout.resolveBase(raw, home: "$HOME") — remote status は全ホスト並列・
-        /// 1 ssh 呼び出しに収める設計のため、$HOME 解決だけの往復を別に持たない。
-        /// リモートシェルが実行時に自分の $HOME で展開する。RemoteStatusProbe.command が
-        /// 二重引用符で包むのはこのため)
-        private static func probe(_ resolved: ResolvedRemoteHost, wantFM: Bool) async -> HostRow {
-            let target = resolved.hostSpec.sshTarget
-            let layout = RemoteLayout(base: RemoteLayout.resolveBase(resolved.remoteDirRaw, home: "$HOME"))
-            let command = RemoteStatusProbe.command(layout: layout)
-            do {
-                let result = try Shell.run(remoteSSHBase + [target, command])
-                // ssh は自身の接続失敗(DNS/認証/タイムアウト等)だけ 255 を返す規約 — リモート
-                // コマンドの終了コードはそのまま通るため、df 等が失敗しても到達はしている
-                guard result.status != 255 else {
-                    return HostRow(sshTarget: target, reachable: false,
-                                   detail: "ssh connection failed (status 255)\n\(result.tail)",
-                                   status: nil, fmOK: nil)
-                }
-                let status = RemoteStatusProbe.parse(result.output)
-                let fmOK = wantFM ? await probeFM(target: target, layout: layout) : nil
-                return HostRow(sshTarget: target, reachable: true, detail: nil, status: status, fmOK: fmOK)
-            } catch {
-                return HostRow(sshTarget: target, reachable: false,
-                               detail: "\(error)", status: nil, fmOK: nil)
-            }
-        }
-
-        private static func probeFM(target: String, layout: RemoteLayout) async -> Bool? {
-            let binary = RemoteStatusProbe.dquote(layout.binary)
-            guard let result = try? Shell.run(remoteSSHBase + [target, "\(binary) doctor --fm-only"]) else {
-                return nil
-            }
-            return result.status == 0
         }
 
         private func emitTable(_ reports: [HostReport]) {
@@ -612,9 +576,48 @@ func hostScopedDeviceFilter(
     }
 }
 
+/// 1ホスト分のプローブ(ssh 1回)。`remote status` と `api remote-compat`(拡張の実行前チェック)が
+/// 共有する ―― 挙動は変えず、`remote status` の private 実装をそのまま外出しした
+enum RemoteStatusProbing {
+    /// 到達性・rev・toolchain・binary・空き容量をまとめて取る。layout.base はここでは $HOME を
+    /// 未解決のまま埋め込んだ式になり得る(RemoteLayout.resolveBase(raw, home: "$HOME") —
+    /// 全ホスト並列・1 ssh 呼び出しに収める設計のため、$HOME 解決だけの往復を別に持たない。
+    /// リモートシェルが実行時に自分の $HOME で展開する。RemoteStatusProbe.command が
+    /// 二重引用符で包むのはこのため)
+    static func probe(_ resolved: ResolvedRemoteHost, wantFM: Bool) async -> HostRow {
+        let target = resolved.hostSpec.sshTarget
+        let layout = RemoteLayout(base: RemoteLayout.resolveBase(resolved.remoteDirRaw, home: "$HOME"))
+        let command = RemoteStatusProbe.command(layout: layout)
+        do {
+            let result = try Shell.run(remoteSSHBase + [target, command])
+            // ssh は自身の接続失敗(DNS/認証/タイムアウト等)だけ 255 を返す規約 — リモート
+            // コマンドの終了コードはそのまま通るため、df 等が失敗しても到達はしている
+            guard result.status != 255 else {
+                return HostRow(sshTarget: target, reachable: false,
+                               detail: "ssh connection failed (status 255)\n\(result.tail)",
+                               status: nil, fmOK: nil)
+            }
+            let status = RemoteStatusProbe.parse(result.output)
+            let fmOK = wantFM ? await probeFM(target: target, layout: layout) : nil
+            return HostRow(sshTarget: target, reachable: true, detail: nil, status: status, fmOK: fmOK)
+        } catch {
+            return HostRow(sshTarget: target, reachable: false,
+                           detail: "\(error)", status: nil, fmOK: nil)
+        }
+    }
+
+    private static func probeFM(target: String, layout: RemoteLayout) async -> Bool? {
+        let binary = RemoteStatusProbe.dquote(layout.binary)
+        guard let result = try? Shell.run(remoteSSHBase + [target, "\(binary) doctor --fm-only"]) else {
+            return nil
+        }
+        return result.status == 0
+    }
+}
+
 /// remote status の1ホスト分の生行(mismatch 判定前)。Sendable なのはタスクグループの
-/// 境界を越えて返すため
-private struct HostRow: Sendable {
+/// 境界を越えて返すため。`api remote-compat` も同じ形を使う
+struct HostRow: Sendable {
     let sshTarget: String
     let reachable: Bool
     let detail: String?
@@ -623,8 +626,9 @@ private struct HostRow: Sendable {
 }
 
 /// HostRow にローカル値との適合判定を添えたもの(表示直前に1回だけ計算する。
-/// タスクグループはローカル値を必要としないため HostRow には含めない)
-private struct HostReport {
+/// タスクグループはローカル値を必要としないため HostRow には含めない)。
+/// `api remote-compat` も同じ mismatchReasons を使って revisionCompatible/toolchainCompatible を出す
+struct HostReport {
     let sshTarget: String
     let reachable: Bool
     let detail: String?
@@ -666,12 +670,24 @@ private struct StatusJSON: Encodable {
     let hosts: [StatusHostJSON]
 }
 
-private func localGitRevision() -> String? {
+/// `remote status` と `api remote-compat` が共有(`api remote-compat` はホストが1台も無いときも
+/// ローカル revision を出すため呼ぶ)
+func localGitRevision() -> String? {
     guard let root = try? RepoRoot.find(),
           let result = try? Shell.run(["git", "-C", root.path, "rev-parse", "HEAD"]),
           result.status == 0 else { return nil }
     let output = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
     return output.isEmpty ? nil : output
+}
+
+/// そのコミットがリモート追跡ブランチに含まれるか(= push 済みか)。判定不能なら published 扱い
+/// (助言を足すかどうかの判断であって、実行を止める判定ではない)。RemoteRunDispatcher /
+/// RemoteSetupCommand.Setup / ApiRemoteCompatCommand が共有する
+func revisionIsPublished(repoRoot: URL, revision: String) -> Bool {
+    guard let result = try? Shell.run(
+        ["git", "-C", repoRoot.path, "branch", "-r", "--contains", revision]),
+          result.status == 0 else { return true }
+    return !result.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 }
 
 private func formatFreeSpace(_ kb: Int) -> String {

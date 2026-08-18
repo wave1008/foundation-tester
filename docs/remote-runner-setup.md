@@ -137,6 +137,9 @@ ssh <ホスト> 'cd ~/ftester-runner/foundation-tester && git fetch origin && gi
 - **手元の未コミットの変更は届かない**(警告が出る)。ツール本体の変更を試すなら、
   コミットして push し、ランナー機をそのコミットに合わせる
 - Xcode や macOS を更新したら**両方**を更新する。片方だけだと全ディスパッチが止まる
+- `ftester remote align <ホスト>` だけでも揃う(`remote setup` の align ステップ単体。
+  preflight/install は通さない軽量版)。VSCode 拡張は実行開始時に版ズレを自動検出し、
+  「更新して実行 / そのまま実行 / キャンセル」のダイアログから更新できる
 
 ## ステップ4: マシン名とプロファイル
 
