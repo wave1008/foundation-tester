@@ -125,9 +125,13 @@ struct ProfileSetupCommand: AsyncParsableCommand {
             if platform == "ios" {
                 let picked = try Self.pickSimulator()
                 device["simulator"] = picked.name
-                device["os"] = picked.os
+                // プロファイルの os は接頭辞なし("27.0")が規約。SimDeviceInfo.os は "iOS 27.0"
+                // 形式なので剥がして書く(表示側とリゾルバが "iOS " を付けるため、
+                // そのまま書くと「iOS iOS 27.0」と二重表示になる。2026-08-19 の実害)
+                let os = ApiInstalledDevicesCommand.normalizeOS(picked.os)
+                device["os"] = os
                 device["udid"] = picked.udid
-                print("   Auto-picked (ios): \(picked.name) / \(picked.os) / \(picked.udid)")
+                print("   Auto-picked (ios): \(picked.name) / \(os) / \(picked.udid)")
             } else {
                 let picked = try Self.pickAVD()
                 device["avd"] = picked
