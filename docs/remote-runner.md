@@ -219,8 +219,11 @@ Android は `no running emulator for AVD ...` で失敗する)。`ftester device
   ディスパッチ用の独自解決を新設しない
 - **実行前に版ズレだけを問い合わせる口は `ftester api remote-compat --project <P> --profile <X>`**
   (JSON。人が読む表は `ftester remote status`)。拡張はこれで実行プロファイルのリモートホスト
-  全部の rev/toolchain 適合を見て、ズレていれば「更新して実行 / そのまま実行 / キャンセル」を
-  ダイアログで聞く。ズレの解消(揃えるだけ)は `ftester remote align <host>` —
+  全部の rev/toolchain 適合を見て、ズレていれば「更新して実行 / キャンセル」をダイアログで聞く
+  (**「そのまま実行」は置かない** —— ズレたまま走らせるとリモート担当分は必ず
+  checkCompatibility に弾かれ、部分失敗の run にしかならない。align で直せないズレ
+  = 未 push・到達不能・toolchain 不一致は実行を止めて理由を出す。チェック自体を外すのは
+  設定 `ftester.remoteCompatCheck`)。ズレの解消(揃えるだけ)は `ftester remote align <host>` —
   `remote setup` の align ステップだけを単独で実行する軽量版(preflight/install は通さない)
 
 ## 8. マルチマシン分散(**実装済み: 2026-08-16**。`run --fleet --split`)

@@ -139,7 +139,8 @@ ssh <ホスト> 'cd ~/ftester-runner/foundation-tester && git fetch origin && gi
 - Xcode や macOS を更新したら**両方**を更新する。片方だけだと全ディスパッチが止まる
 - `ftester remote align <ホスト>` だけでも揃う(`remote setup` の align ステップ単体。
   preflight/install は通さない軽量版)。VSCode 拡張は実行開始時に版ズレを自動検出し、
-  「更新して実行 / そのまま実行 / キャンセル」のダイアログから更新できる
+  「更新して実行 / キャンセル」のダイアログから更新できる(ズレたまま実行する選択肢は無い。
+  更新で直せないズレ = 未 push・到達不能・toolchain 不一致は実行を止めて理由を出す)
 
 ## ステップ4: マシン名とプロファイル
 

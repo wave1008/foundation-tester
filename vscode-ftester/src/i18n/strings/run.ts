@@ -162,7 +162,10 @@ export const runStrings = {
     en: "Uncommitted changes will not reach the remote.",
   },
   "run.remoteCompat.updateAndRun": { ja: "更新して実行", en: "Update and run" },
-  "run.remoteCompat.runAnyway": { ja: "そのまま実行", en: "Run anyway" },
+  "run.remoteCompat.blockedMessage": {
+    ja: "リモートのftesterを更新できないため実行できません",
+    en: "Cannot run: the remote runners' ftester cannot be updated from here.",
+  },
   "run.remoteCompat.cancelledLog": {
     ja: "リモート機の版ズレ確認でキャンセルされたため実行を中止しました。",
     en: "The run was cancelled at the remote version-mismatch confirmation.",

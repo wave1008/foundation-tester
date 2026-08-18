@@ -594,13 +594,23 @@ async function executeRun(
       if (decision.localDirty) {
         detailLines.push(t("run.remoteCompat.localDirtyNote"));
       }
+      // 「そのまま実行」は置かない —— ダイアログが出た時点でリモート担当分は必ず
+      // checkCompatibility に弾かれて failed になるので、続行は常に部分失敗の run にしかならない
+      // (2026-08-18 ユーザー決定。チェック自体を外す逃げ道は設定 ftester.remoteCompatCheck)。
+      // align で直せないズレ(未 push・到達不能・toolchain 不一致)は実行を止めて理由を出す
+      if (!decision.canUpdate) {
+        const message = t("run.remoteCompat.blockedMessage");
+        await vscode.window.showErrorMessage(message, { modal: true, detail: detailLines.join("\n") });
+        run.appendOutput(`${message}\r\n`);
+        outputChannel.appendLine(`${message} / ${detailLines.join(" / ")}`);
+        run.end();
+        return;
+      }
       const updateItem = t("run.remoteCompat.updateAndRun");
-      const runAnywayItem = t("run.remoteCompat.runAnyway");
-      const items = decision.canUpdate ? [updateItem, runAnywayItem] : [runAnywayItem];
       const picked = await vscode.window.showWarningMessage(
         t("run.remoteCompat.dialogMessage"),
         { modal: true, detail: detailLines.join("\n") },
-        ...items,
+        updateItem,
       );
       if (picked === undefined) {
         // キャンセル≠エラー。項目はマークせず未実行のまま終える
