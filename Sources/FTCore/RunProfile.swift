@@ -159,6 +159,13 @@ public struct DeviceSpec: Codable, Sendable, Hashable {
     /// 実機か(kind 省略時は virtual)。デバイス種別の分岐はすべてこれを見ること
     public var isPhysical: Bool { kind == .physical }
 
+    /// 「どの台か」が1つも書かれていない(name と host だけの登録)。iOS はこの状態でも
+    /// SimulatorCatalog の既定名に落ちるので**黙って別の台で走る**(Android は起動時に落ちる)。
+    /// 見るキーは ProfileWriter.deviceBodyKeys と同集合(DeviceSpecBodyKeysSyncTests が照合)
+    public var lacksConcreteTarget: Bool {
+        simulator == nil && os == nil && udid == nil && avd == nil && serial == nil
+    }
+
     static let knownKeys: Set<String> = [
         "name", "host", "kind", "simulator", "os", "udid", "port", "engine", "avd", "serial",
         "model",
@@ -1023,6 +1030,15 @@ public enum ProfileResolver {
                 throw ProfileError.ambiguousDeviceRef(
                     name: ref.name, hosts: hosts, run: runName, machine: machineName)
             case .found(let entry):
+                // 実体の無い登録は走る前に言う(iOS は既定名へ落ちて別の台で黙って走る)。
+                // 止めはしない —— 既定に頼っている既存プロファイルを赤にしない
+                if entry.spec.lacksConcreteTarget {
+                    warnings.append(
+                        "device \"\(ref.name)\" on machine \(machineName) has no concrete target"
+                        + " (ios: simulator/udid, android: avd/serial)"
+                        + " — re-run `ftester profile setup --auto-device`,"
+                        + " or fill it in in profiles/machines/\(machineName).json")
+                }
                 let device = ResolvedDevice(platform: entry.platform, spec: entry.spec)
                 try validatePhysical(device, machine: machineName)
                 if device.spec.isPhysical, device.platform == "ios" {

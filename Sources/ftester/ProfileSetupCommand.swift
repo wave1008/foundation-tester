@@ -116,25 +116,19 @@ struct ProfileSetupCommand: AsyncParsableCommand {
         let machineURL = testProject.machinesDir.appendingPathComponent("\(machineName).json")
         let machineObject = try readObject(machineURL)
 
-        // host は必ず書く(手元なら "local"。省略はプロファイル直下の既定を継ぐ意味になる)
-        var device: [String: Any] = [
-            "host": DeviceHostGrouping.localDisplayName, "name": deviceName,
-        ]
-        if platform == "ios" {
-            if let simulator { device["simulator"] = simulator }
-            if let os { device["os"] = os }
-            if let udid { device["udid"] = udid }
-            if device.count == 1, autoDevice {
+        var device = Self.deviceEntry(platform: platform, name: deviceName,
+                                      simulator: simulator, os: os, udid: udid,
+                                      avd: avd, serial: serial)
+        // 実体が1つも指定されていないときだけ自動選定する。**キー数では判定しない**
+        // (host/name は常に入っている。ProfileWriter.hasDeviceBody の宣言を参照)
+        if !ProfileWriter.hasDeviceBody(device), autoDevice {
+            if platform == "ios" {
                 let picked = try Self.pickSimulator()
                 device["simulator"] = picked.name
                 device["os"] = picked.os
                 device["udid"] = picked.udid
                 print("   Auto-picked (ios): \(picked.name) / \(picked.os) / \(picked.udid)")
-            }
-        } else {
-            if let avd { device["avd"] = avd }
-            if let serial { device["serial"] = serial }
-            if device.count == 1, autoDevice {
+            } else {
                 let picked = try Self.pickAVD()
                 device["avd"] = picked
                 print("   Auto-picked (android): \(picked)")
@@ -151,7 +145,7 @@ struct ProfileSetupCommand: AsyncParsableCommand {
             device["kind"] = "physical"
         }
 
-        if device.count > 1 {
+        if ProfileWriter.hasDeviceBody(device) {
             let updatedMachine = try ProfileWriter.upsertingDevice(
                 inProfileObject: machineObject, platform: platform, device: device)
             try ProfileWriter.json(updatedMachine).write(to: machineURL, options: .atomic)
@@ -197,6 +191,25 @@ struct ProfileSetupCommand: AsyncParsableCommand {
         print("   Resolved: \(resolved.appName) @ \(machineName) / \(devices)")
         print("   To run: ftester run --project \(testProject.name) --profile \(runName)")
         return deviceName
+    }
+
+    /// マシンプロファイルへ書く1件を組み立てる(I/O 無し。自動選定と kind の判定は呼び出し側)。
+    /// host は必ず書く(手元なら "local"。省略はプロファイル直下の既定を継ぐ意味になり、
+    /// 既定がリモートのプロファイルでは手元のデバイスが別の機械のもの扱いになる)
+    static func deviceEntry(platform: String, name: String, simulator: String?, os: String?,
+                            udid: String?, avd: String?, serial: String?) -> [String: Any] {
+        var device: [String: Any] = [
+            "host": DeviceHostGrouping.localDisplayName, "name": name,
+        ]
+        if platform == "ios" {
+            if let simulator { device["simulator"] = simulator }
+            if let os { device["os"] = os }
+            if let udid { device["udid"] = udid }
+        } else {
+            if let avd { device["avd"] = avd }
+            if let serial { device["serial"] = serial }
+        }
+        return device
     }
 
     private func readObject(_ url: URL) throws -> [String: Any] {

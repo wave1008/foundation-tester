@@ -16,6 +16,19 @@ public enum ProfileWriter {
         platform == "android" ? "emulator1" : "simulator1"
     }
 
+    /// デバイス「実体」を表すキー(host / name は**論理名と所在**であって実体ではない)。
+    /// **キー数で実体の有無を判定しない** —— 2026-08-17 に host を常に書くようにした時点で
+    /// `profile setup` の `device.count == 1` という番兵が恒真になり、`--auto-device` が
+    /// 一度も発火しないまま実体の無い simulator1 / emulator1 が受け手のマシンプロファイルへ
+    /// 書かれた(しかも既に実体付きで登録されていた同名デバイスを実体なしで上書きした)。
+    /// engine / port のような**実体を指さないキー**が増えても false のままであること
+    public static let deviceBodyKeys: Set<String> = ["simulator", "os", "udid", "avd", "serial"]
+
+    /// デバイスの実体(機種/OS/UDID/AVD/シリアル)が1つでも入っているか
+    public static func hasDeviceBody(_ device: [String: Any]) -> Bool {
+        device.keys.contains(where: deviceBodyKeys.contains)
+    }
+
     /// マシンプロファイルへデバイスを upsert する(同名があれば置換・無ければ追加)。
     /// 同名が**別プラットフォーム**に居る場合は名前の一意性が崩れるので置換せず throw する。
     public static func upsertingDevice(

@@ -115,4 +115,48 @@ final class ProfileWriterTests: XCTestCase {
         XCTAssertEqual(ProfileWriter.defaultDeviceName(platform: "ios"), "simulator1")
         XCTAssertEqual(ProfileWriter.defaultDeviceName(platform: "android"), "emulator1")
     }
+
+    // MARK: - 実体の有無(キー数で判定してはいけない)
+
+    /// **本丸**: host + name だけの1件は「実体なし」。ここが true になった 2026-08-17〜08-19 の間、
+    /// `profile setup --auto-device` は一度も発火せず、機種も OS も UDID も無い simulator1 /
+    /// emulator1 が受け手のマシンプロファイルへ書かれていた
+    func testHostAndNameAloneIsNotADeviceBody() {
+        XCTAssertFalse(ProfileWriter.hasDeviceBody(["host": "local", "name": "simulator1"]))
+        XCTAssertFalse(ProfileWriter.hasDeviceBody([:]))
+    }
+
+    /// 実体を指さないキーが増えても「実体なし」のまま(キー数で数えると false → true に化ける)
+    func testNonBodyKeysDoNotCountAsADeviceBody() {
+        XCTAssertFalse(ProfileWriter.hasDeviceBody(
+            ["host": "local", "name": "simulator1", "engine": "inapp", "port": 8100]))
+    }
+
+    /// JSON 側(deviceBodyKeys)と型側(DeviceSpec.lacksConcreteTarget)は同じ集合を見る。
+    /// 片方だけにキーを足すと、書くときは実体扱い・走るときは「実体なし」の警告(または逆)になる
+    func testDeviceSpecAndBodyKeysAgree() {
+        XCTAssertTrue(DeviceSpec(name: "d", host: "local").lacksConcreteTarget)
+        XCTAssertTrue(DeviceSpec(name: "d", host: "local", port: 8100, engine: "inapp")
+            .lacksConcreteTarget, "port/engine は実体ではない")
+        let specs: [String: DeviceSpec] = [
+            "simulator": DeviceSpec(name: "d", simulator: "iPhone 17 Pro"),
+            "os": DeviceSpec(name: "d", os: "27.0"),
+            "udid": DeviceSpec(name: "d", udid: "XXXX"),
+            "avd": DeviceSpec(name: "d", avd: "Pixel_9"),
+            "serial": DeviceSpec(name: "d", serial: "emulator-5554"),
+        ]
+        XCTAssertEqual(Set(specs.keys), ProfileWriter.deviceBodyKeys)
+        for (key, spec) in specs {
+            XCTAssertFalse(spec.lacksConcreteTarget, "\(key) は実体")
+        }
+    }
+
+    func testConcreteDeviceIsADeviceBody() {
+        for body in [["simulator": "iPhone 17 Pro"], ["os": "27.0"], ["udid": "XXXX"],
+                     ["avd": "Pixel_9"], ["serial": "emulator-5554"]] {
+            var device: [String: Any] = ["host": "local", "name": "device1"]
+            for (key, value) in body { device[key] = value }
+            XCTAssertTrue(ProfileWriter.hasDeviceBody(device), "\(body) は実体")
+        }
+    }
 }
