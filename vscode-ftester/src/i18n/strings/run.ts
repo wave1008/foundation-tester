@@ -150,8 +150,8 @@ export const runStrings = {
     en: "[ftester] Skipping the remote version-mismatch check because it failed: {message}",
   },
   "run.remoteCompat.dialogMessage": {
-    ja: "リモート機の版が手元と違います",
-    en: "The remote runner machines are out of date.",
+    ja: "リモートのftesterのバージョンが本機と異なります",
+    en: "The remote runners' ftester version differs from this machine's.",
   },
   "run.remoteCompat.revisionUnpublishedNote": {
     ja: "手元の HEAD が push されていないため更新できません(先に push してください)。",
