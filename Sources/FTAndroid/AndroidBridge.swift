@@ -351,7 +351,11 @@ extension AndroidDriver {
             return "bridge not installed (installed automatically on first use)"
         }
         var summary = "bridge v\(version)"
-        if version != Self.expectedBridgeVersionCode {
+        if version > Self.expectedBridgeVersionCode {
+            // 引き下げは自動更新できない(downgradeRefusal が fail fast する)ので「自動で直る」と言わない
+            summary += " (newer than this build expects, v\(Self.expectedBridgeVersionCode);"
+                + " cannot auto-downgrade — update this machine or `adb uninstall \(Self.bridgePackage)`)"
+        } else if version != Self.expectedBridgeVersionCode {
             summary += " (update required → v\(Self.expectedBridgeVersionCode); updated automatically on next use)"
         }
         let pid = (try? adb(["shell", "pidof", Self.bridgePackage]))?
@@ -379,8 +383,28 @@ extension AndroidDriver {
             + "Unless the run profile sets enableAnimations, the next run turns them off automatically"
     }
 
+    /// installed が expected より新しいときだけ拒否理由を返す(等しい/古い/未インストールは
+    /// nil = 通常の自動更新経路を塞がない)。Android は versionCode の引き下げインストールを
+    /// 拒否するため、adb install を試みる前に fail fast させる(docs/remote-runner.md §18.5)
+    static func downgradeRefusal(installed: Int?, expected: Int, serial: String? = nil) -> String? {
+        guard let installed, installed > expected else { return nil }
+        let uninstall = serial.map { "adb -s \($0) uninstall \(Self.bridgePackage)" }
+            ?? "adb uninstall \(Self.bridgePackage)"
+        return "the device has bridge v\(installed) installed, but this build expects v\(expected). "
+            + "Android refuses to install a lower versionCode, so this cannot auto-update. "
+            + "This means a newer ftester has already used this device. Fix it by either "
+            + "(1) updating this machine's ftester (`git pull` + rebuild, or Scripts/update.sh), or "
+            + "(2) removing the newer bridge from the device (`\(uninstall)`)."
+    }
+
     func installBridgeIfNeeded() throws {
-        if installedBridgeVersionCode() == Self.expectedBridgeVersionCode { return }
+        let installed = installedBridgeVersionCode()
+        if installed == Self.expectedBridgeVersionCode { return }
+        if let refusal = Self.downgradeRefusal(installed: installed,
+                                                expected: Self.expectedBridgeVersionCode,
+                                                serial: serial) {
+            throw DriverError.badResponse(status: 0, body: refusal)
+        }
         let apk = try Self.locateBridgeAPK()
         var result = try adb(["install", "-r", apk.path])
         if result.output.contains("INSTALL_FAILED_UPDATE_INCOMPATIBLE") {
@@ -389,6 +413,13 @@ extension AndroidDriver {
             result = try adb(["install", apk.path])
         }
         guard result.output.contains("Success") else {
+            // チェックとインストールの間に別ホストが新版を入れたレース。読み直せなければ従来メッセージ
+            if result.output.contains("INSTALL_FAILED_VERSION_DOWNGRADE"),
+               let refusal = Self.downgradeRefusal(installed: installedBridgeVersionCode(),
+                                                    expected: Self.expectedBridgeVersionCode,
+                                                    serial: serial) {
+                throw DriverError.badResponse(status: Int(result.status), body: refusal)
+            }
             throw DriverError.badResponse(status: Int(result.status),
                 body: "failed to install the bridge APK: \(result.tail)")
         }
