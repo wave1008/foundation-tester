@@ -72,11 +72,13 @@ public struct RemoteSetupSummary: Equatable, Sendable {
 public enum RemoteSetupPlan {
 
     /// `Scripts/install.sh` へ渡す引数列(docs/remote-runner.md §14「構成」の並びのまま)。
-    /// `--tool-root` は渡さない — 既定の `<work-dir>/../foundation-tester` が
-    /// `RemoteLayout.toolRoot` とちょうど一致する(§12 の layout 設計。RemoteLayout.swift 参照)
-    public static func installArgs(workDir: String, projectName: String) -> [String] {
+    /// **`--tool-root` を明示する**(§18.2: work が `<base>/users/<issuer>/work` へ2階層深くなり、
+    /// install.sh の既定 `<work-dir>/../foundation-tester` が `RemoteLayout.toolRoot`
+    /// (`<base>/foundation-tester`)と一致しなくなったため)
+    public static func installArgs(workDir: String, projectName: String, toolRoot: String) -> [String] {
         [
             "--work-dir", workDir,
+            "--tool-root", toolRoot,
             "--name", projectName,
             "--skip-extension",
             "--skip-mcp",
@@ -85,9 +87,10 @@ public enum RemoteSetupPlan {
         ]
     }
 
-    /// `Scripts/preflight.sh` へ渡す引数列
-    public static func preflightArgs(base: String) -> [String] {
-        ["--runner", "--base", base]
+    /// `Scripts/preflight.sh` へ渡す引数列。`--work-dir` は §18.2 で work が発行者ごとに分かれた
+    /// ため必須(既定の `<base>/work` は見に行かない)
+    public static func preflightArgs(base: String, workDir: String) -> [String] {
+        ["--runner", "--base", base, "--work-dir", workDir]
     }
 
     public static func preflightVerdict(exitCode: Int32) -> RemotePreflightVerdict {

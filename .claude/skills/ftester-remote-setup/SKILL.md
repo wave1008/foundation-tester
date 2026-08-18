@@ -118,7 +118,7 @@ ftester remote exec <宛先> -- api installed-devices
 ### 5. アプリをランナー機へ置く
 
 **アプリのバイナリは転送されない。** アプリプロファイルの `appPath` は、
-**相対パスなら `<ベースディレクトリ>/work` からの位置**に解決される(クローンの中は見ない)。
+**相対パスなら自分の WORK_DIR(`<ベースディレクトリ>/users/<issuerId>/work`)からの位置**に解決される(クローンの中は見ない)。
 ランナー機のその位置にビルド済みのアプリを置く(`rsync`/`scp` で送るか、ランナー機でビルドする)。
 
 ### 6. 実ディスパッチ1本で検証する(ここが成功の定義)
@@ -163,7 +163,7 @@ ftester run --project <プロジェクト> --profile <実行プロファイル>
 | `git revision mismatch` | 手元とランナー機の版が違う | 手元をコミット&push してから `ftester remote setup <宛先>` を流し直す(align が合わせる)。**手元の未コミットの変更は届かない** |
 | `toolchain mismatch` | Xcode / macOS の版が違う | **`remote setup` では直らない**(Xcode の導入は GUI と sudo が要る)。🧑 に両機を同じ版へ揃えてもらう。どちらを動かすかは人の判断 —— 片方を更新した時点で**全ディスパッチが止まる**ので、フリートでは1台だけ更新して検証してから残りへ広げる |
 | `is sitting at the login window` | ランナー機がログイン画面 | 🧑 に解錠+ログインを依頼(画面共有で可) |
-| `Couldn't fetch updates from remote repositories` / `Recv failure: Operation timed out` | 回線が細く SPM の依存取得が落ちた | **再実行する**(取得済みは残るので数回で通る)。ランナー機で `cd ~/ftester-runner/work && swift package resolve` を先に通しても良い |
+| `Couldn't fetch updates from remote repositories` / `Recv failure: Operation timed out` | 回線が細く SPM の依存取得が落ちた | **再実行する**(取得済みは残るので数回で通る)。ランナー機で `cd ~/ftester-runner/users/<issuerId>/work && swift package resolve` を先に通しても良い |
 
 これ以外は docs/remote-runner-setup.md の「うまくいかないとき」を読む。
 切り分けは**ランナー機で手で実行してみる**のが早い(リモート実行は「向こうで普通に

@@ -217,7 +217,15 @@ extension RemoteCommand {
                 emit("reach", .warn, "could not determine the remote console login state — skipping the login check")
             }
 
-            let layout = RemoteLayout(base: RemoteLayout.resolveBase(resolved.remoteDirRaw, home: home))
+            let issuer: String
+            do {
+                issuer = try resolveLayoutIssuer()
+            } catch {
+                emit("issuer", .fail, error.localizedDescription)
+                try summarizeAndExit()
+            }
+            let layout = RemoteLayout(base: RemoteLayout.resolveBase(resolved.remoteDirRaw, home: home),
+                                      issuer: issuer)
 
             if uninstall {
                 do {
@@ -258,7 +266,8 @@ extension RemoteCommand {
                 try summarizeAndExit()
             }
             let preflightCmd = RemoteSetupPlan.runAndCleanupCommand(
-                remotePath: remotePreflight, args: RemoteSetupPlan.preflightArgs(base: layout.base))
+                remotePath: remotePreflight,
+                args: RemoteSetupPlan.preflightArgs(base: layout.base, workDir: layout.workDir))
             let preflightStatus = (try? runInheritedSSH(setupSSHBase + [hostSpec.sshTarget, preflightCmd])) ?? -1
             switch RemoteSetupPlan.preflightVerdict(exitCode: preflightStatus) {
             case .ready:
@@ -309,7 +318,8 @@ extension RemoteCommand {
                 emit("install", .fail, "failed to copy Scripts/install.sh to the remote (scp exited \(installScpStatus))")
                 try summarizeAndExit()
             }
-            let installArgs = RemoteSetupPlan.installArgs(workDir: layout.workDir, projectName: resolvedProject.name)
+            let installArgs = RemoteSetupPlan.installArgs(
+                workDir: layout.workDir, projectName: resolvedProject.name, toolRoot: layout.toolRoot)
             let installCmd = RemoteSetupPlan.runAndCleanupCommand(remotePath: remoteInstall, args: installArgs)
             let installStatus = (try? runInheritedSSH(setupSSHBase + [hostSpec.sshTarget, installCmd])) ?? -1
             guard installStatus == 0 else {
@@ -451,7 +461,14 @@ extension RemoteCommand {
                     + "runner, then retry (docs/remote-runner.md §5)")
                 throw ExitCode(1)
             }
-            let layout = RemoteLayout(base: RemoteLayout.resolveBase(resolved.remoteDirRaw, home: home))
+            let layout: RemoteLayout
+            do {
+                layout = RemoteLayout(base: RemoteLayout.resolveBase(resolved.remoteDirRaw, home: home),
+                                      issuer: try resolveLayoutIssuer())
+            } catch {
+                say(error.localizedDescription)
+                throw ExitCode(1)
+            }
 
             // align は稼働中バイナリを差し替えるので、走っている dispatch と衝突しないことを
             // 先に確かめる(docs/remote-runner.md §18.3 規則2)
@@ -518,13 +535,18 @@ extension RemoteCommand {
             guard !home.isEmpty else {
                 throw RemoteDispatchError.remoteSetupFailed("could not determine $HOME on \(hostSpec.sshTarget)")
             }
-            let layout = RemoteLayout(base: RemoteLayout.resolveBase(resolved.remoteDirRaw, home: home))
+            let layout = RemoteLayout(base: RemoteLayout.resolveBase(resolved.remoteDirRaw, home: home),
+                                      issuer: try resolveLayoutIssuer())
             let command = RemoteShell.remoteExecCommand(layout: layout, args: relayed)
             let status = try runInheritedSSH(setupSSHBase + [hostSpec.sshTarget, command])
             if status == 90 {
                 FileHandle.standardError.write(Data(
                     "the remote ftester binary is missing — run `ftester remote setup \(hostSpec.sshTarget)` first\n"
                         .utf8))
+            } else if status == 91 {
+                FileHandle.standardError.write(Data(
+                    ("this issuer has no runner workspace on \(hostSpec.sshTarget) yet — run `ftester remote setup "
+                        + "\(hostSpec.sshTarget)` once for this issuer (docs/remote-runner.md §18)\n").utf8))
             }
             if status != 0 {
                 throw ExitCode(status)

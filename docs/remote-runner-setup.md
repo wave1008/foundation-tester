@@ -30,8 +30,8 @@
 ```
 発行側の Mac(手元)                     ランナー機
 ftester run --host mac2 …               ~/ftester-runner/               ← 専用ベースディレクトリ
-  ├ 適合チェック(rev・Xcode)   ssh     ├── foundation-tester/          ← ツール本体のクローン(名前固定)
-  ├ 転送(rsync: シナリオ・設定) ────>  └── work/                        ← 実行の作業場所
+  ├ 適合チェック(rev・Xcode)   ssh     ├── foundation-tester/          ← ツール本体のクローン(名前固定・共有)
+  ├ 転送(rsync: シナリオ・設定) ────>  └── users/<issuerId>/work/      ← あなたの作業場所(発行者ごと)
   ├ 出力を受け取って表示                     ├── TestProjects/<プロジェクト>/
   └ 成果物を回収 <───────────────────      └── .build/
 ```
@@ -105,7 +105,7 @@ ftester remote setup <ユーザー>@<ホスト> --project <プロジェクト名
 | local | 手元のプロジェクト解決(ここで落ちれば ssh に行かない) |
 | reach | 到達確認とログイン状態の確認 |
 | preflight | **手元の `Scripts/preflight.sh` を送って `--runner` で判定**。人手が要る項目が残っていれば、その一覧を出して止まる(直して同じコマンドを再実行) |
-| install | **手元の `Scripts/install.sh` を送って**実行(`~/ftester-runner/work` に受け手パッケージを作る)。初回はコールドビルドで数分 |
+| install | **手元の `Scripts/install.sh` を送って**実行(`~/ftester-runner/users/<issuerId>/work` に**あなたの**受け手パッケージを作る。複数人で共有する場合は各自の分が並ぶ)。初回はコールドビルドで数分 |
 | align | ランナー機のクローンを**手元と同じコミット**へ合わせて `swift build`(下記) |
 | verify | `--profile`(と任意の `--scenario`)を渡すと**実ディスパッチを1本走らせる**。ここが通って初めてセットアップ成功 |
 
@@ -119,7 +119,7 @@ ftester remote setup <ユーザー>@<ホスト> --project <プロジェクト名
 - 撤去は `ftester remote setup <ホスト> --uninstall`(確認あり。`--yes` で無確認)
 
 > 手で入れたい場合は、上の install ステップと同じことを ssh して実行すればよい:
-> `bash install.sh --work-dir ~/ftester-runner/work --name <プロジェクト名> --skip-extension --skip-mcp --skip-claude-md`。
+> `bash install.sh --work-dir ~/ftester-runner/users/<issuerId>/work --tool-root ~/ftester-runner/foundation-tester --name <プロジェクト名> --skip-extension --skip-mcp --skip-claude-md`。
 > クローン先の**ディレクトリ名 `foundation-tester` は変えない**(SPM がパッケージ名をディレクトリ名から決めるため)。
 
 ## ステップ3: 版を揃える
@@ -220,14 +220,15 @@ ftester remote exec <ホスト> -- doctor --fm-only      # FM が使えるか
 ```
 
 **アプリのバイナリは転送されない。** アプリプロファイルの `appPath` は、ランナー機で解決できる
-パスにしておく。**相対パスの基準は「リポジトリルート」= ランナー機では `<base>/work`** で、
+パスにしておく。**相対パスの基準は「リポジトリルート」= ランナー機では自分の WORK_DIR
+(`<base>/users/<issuerId>/work`)** で、
 **クローン(`<base>/foundation-tester`)の中は見ない**。
 
 > ここは手元とランナー機で意味が変わる箇所。手元がツールのクローンで作業する構成
 > (クローン = 作業ディレクトリ)だと `E2EAppIOS/dist/...` のような相対パスがリポジトリ内を
 > 指すが、**ランナー機は外部構成**(クローンと作業ディレクトリが別)なので同じ文字列が
-> `<base>/work/E2EAppIOS/dist/...` に解決される。ビルド済みのアプリは
-> **`<base>/work` から見た位置**に置く(rsync/scp で置くか、ランナー機でビルドしてそこへ出す)。
+> `<base>/users/<issuerId>/work/E2EAppIOS/dist/...` に解決される。ビルド済みのアプリは
+> **自分の WORK_DIR から見た位置**に置く(rsync/scp で置くか、ランナー機でビルドしてそこへ出す)。
 
 ## ステップ5: 疎通を確認する
 
@@ -259,7 +260,7 @@ ftester run --host <ユーザー>@<ホスト> --profile <実行プロファイ�
   `Recv failure: Operation timed out`)。ランナー機の回線が細いと出る。**再実行すれば進む**
   (取得済みの分は残る)。確実にやるなら先に
   `ftester remote exec <ホスト> -- ...` ではなく、ランナー機で
-  `cd ~/ftester-runner/work && swift package resolve` を通しておく
+  `cd ~/ftester-runner/users/<issuerId>/work && swift package resolve` を通しておく
 - **Android を回すときは、先にエミュレータを起こしておく**(iOS と違い自動では起きない):
   `ftester remote exec <ホスト> -- devices up --profile <実行プロファイル>`
 - `--host` と併用できないもの: `--ports` / `--report-dir` / `--failed` / `--skip-build`
@@ -491,6 +492,15 @@ ssh-ed25519 AAAA… suzuki@dev-mba
 ロックの保持者表示と実行結果(run.json の `issuer`)に載る —— 「今誰が使っているか」
 「これは誰の run か」をチーム内で見分けるためのもの。
 
+**ランナー上の作業場所の名前にもなる**(`~/ftester-runner/users/<issuerId>/work`)ので、
+**明示設定を強く推奨** —— 既定値はホスト名を含み、ホスト名はネットワークで変わることがある。
+変わると次のディスパッチが**別人扱い**になり、ランナー上に新しい作業場所が作られてしまう
+(未設定のまま使うと警告が出る)。使える文字は英数と `@ . _ -` だけ。
+
+**各自が `ftester remote setup <ホスト>` を1回流す**(自分の作業場所を作るため。tool は
+共有済みなので数秒で終わる)。setup していない人のディスパッチは
+「no runner workspace — run: ftester remote setup」で止まる。
+
 ### 順番待ち(ロック)
 
 同じランナーには同時に1つのディスパッチしか走れない。取れないときは誰がいつから
@@ -545,8 +555,9 @@ FileVault 有効のランナーは**再起動のたびに誰かが解錠+ログ�
 | `ftester binary not found on remote` | ビルドされていない | ランナー機で `swift build --product ftester` |
 | `unknown package` | クローンのディレクトリ名を変えた | `~/ftester-runner/foundation-tester` に戻す |
 | `no running emulator for AVD …` | Android のエミュレータが未起動 | ステップ6 の `devices up` |
+| `no runner workspace at …`(exit 91) | あなたの issuerId の作業場所がまだ無い(未 setup / issuerId が変わった) | `ftester remote setup <ホスト>` を1回。issuerId は明示設定にする(「複数人でフリートを共有する」) |
 | シナリオが0本 / 見つからない | プロジェクト名が手元と違う | ステップ2 の `--name` を手元と揃える |
-| アプリのインストールに失敗する | `appPath` がランナー機で解決できない | ステップ4（相対パスは `<base>/work` 基準。バイナリは転送されない） |
+| アプリのインストールに失敗する | `appPath` がランナー機で解決できない | ステップ4（相対パスは自分の WORK_DIR = `<base>/users/<issuerId>/work` 基準。バイナリは転送されない） |
 | `Couldn't fetch updates from remote repositories` / `Recv failure: Operation timed out` | ランナー機の回線が細く SPM の依存取得が落ちた | 再実行する（取得済みは残るので数回で通る）。事前に `swift package resolve` を通しておくと確実 |
 | `Foundation Models unavailable` の警告 | ランナー機で Apple Intelligence が無効 | heal / screenIs / トリアージを使わないなら無視してよい（実行は続く）。使うならシステム言語を英語にして有効化 |
 | `--ports is not supported with --host` 等 | 併用できない指定 | ステップ6 の一覧 |
@@ -562,7 +573,7 @@ FileVault 有効のランナーは**再起動のたびに誰かが解錠+ログ�
 
 ```bash
 ssh <ホスト>
-cd ~/ftester-runner/work
+cd ~/ftester-runner/users/<自分の issuerId>/work
 ~/ftester-runner/foundation-tester/.build/debug/ftester run --profile <実行プロファイル>
 ```
 

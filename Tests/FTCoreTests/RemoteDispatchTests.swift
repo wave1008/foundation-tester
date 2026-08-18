@@ -163,32 +163,64 @@ final class RemoteDispatchTests: XCTestCase {
     // MARK: - RemoteLayout
 
     func testRemoteLayoutStripsTrailingSlashFromBase() {
-        let layout = RemoteLayout(base: "/Users/x/ftester-runner/")
+        let layout = RemoteLayout(base: "/Users/x/ftester-runner/", issuer: "alice")
         XCTAssertEqual(layout.base, "/Users/x/ftester-runner")
     }
 
     func testRemoteLayoutToolRootWorkDirBinary() {
-        let layout = RemoteLayout(base: "/Users/x/ftester-runner")
+        let layout = RemoteLayout(base: "/Users/x/ftester-runner", issuer: "alice")
         XCTAssertEqual(layout.toolRoot, "/Users/x/ftester-runner/foundation-tester")
-        XCTAssertEqual(layout.workDir, "/Users/x/ftester-runner/work")
+        XCTAssertEqual(layout.workDir, "/Users/x/ftester-runner/users/alice/work")
         XCTAssertEqual(layout.binary, "/Users/x/ftester-runner/foundation-tester/.build/debug/ftester")
     }
 
+    /// ツールクローンと dispatch.lock はホスト共有のまま(base 基準)。work だけが発行者ごとに分かれる
+    func testRemoteLayoutUsersDir() {
+        let layout = RemoteLayout(base: "/Users/x/ftester-runner", issuer: "alice")
+        XCTAssertEqual(layout.usersDir, "/Users/x/ftester-runner/users")
+    }
+
     func testRemoteLayoutProjectDir() {
-        let layout = RemoteLayout(base: "/Users/x/ftester-runner")
-        XCTAssertEqual(layout.projectDir("E2E"), "/Users/x/ftester-runner/work/TestProjects/E2E")
+        let layout = RemoteLayout(base: "/Users/x/ftester-runner", issuer: "alice")
+        XCTAssertEqual(layout.projectDir("E2E"), "/Users/x/ftester-runner/users/alice/work/TestProjects/E2E")
     }
 
     /// remoteControl.workspace のミラー先はプロジェクトごとに分ける(複数プロジェクトの衝突を防ぐ)
     func testRemoteLayoutWorkspaceDir() {
-        let layout = RemoteLayout(base: "/Users/x/ftester-runner")
-        XCTAssertEqual(layout.workspaceDir("E2E"), "/Users/x/ftester-runner/work/workspace/E2E")
+        let layout = RemoteLayout(base: "/Users/x/ftester-runner", issuer: "alice")
+        XCTAssertEqual(layout.workspaceDir("E2E"), "/Users/x/ftester-runner/users/alice/work/workspace/E2E")
     }
 
     func testRemoteLayoutDispatchReportDir() {
-        let layout = RemoteLayout(base: "/Users/x/ftester-runner")
+        let layout = RemoteLayout(base: "/Users/x/ftester-runner", issuer: "alice")
         XCTAssertEqual(layout.dispatchReportDir(stamp: "20260801-120000-42"),
-                       "/Users/x/ftester-runner/work/.ftester/dispatch/20260801-120000-42/reports")
+                       "/Users/x/ftester-runner/users/alice/work/.ftester/dispatch/20260801-120000-42/reports")
+    }
+
+    // MARK: - RemoteLayout.validateIssuerKey
+
+    func testValidateIssuerKeyAcceptsOrdinaryValues() throws {
+        try RemoteLayout.validateIssuerKey("alice")
+        try RemoteLayout.validateIssuerKey("tanaka@dev-mbp")
+        try RemoteLayout.validateIssuerKey("bob.smith-1_2")
+    }
+
+    func testValidateIssuerKeyRejectsEmpty() {
+        XCTAssertThrowsError(try RemoteLayout.validateIssuerKey("")) { error in
+            guard case RemoteDispatchError.invalidIssuer = error else {
+                return XCTFail("expected invalidIssuer, got \(error)")
+            }
+        }
+    }
+
+    func testValidateIssuerKeyRejectsDisallowedCharacters() {
+        for bad in ["alice/bob", "alice bob", "alice$HOME", "alice;rm -rf /", "alice`id`"] {
+            XCTAssertThrowsError(try RemoteLayout.validateIssuerKey(bad), bad) { error in
+                guard case RemoteDispatchError.invalidIssuer = error else {
+                    return XCTFail("expected invalidIssuer for \(bad), got \(error)")
+                }
+            }
+        }
     }
 
     /// 次に改名する人をここで止める: `RemoteLayout.projectsDirName` は
@@ -235,7 +267,7 @@ final class RemoteDispatchTests: XCTestCase {
     // MARK: - RemoteTransferPlan.rsyncArgs
 
     func testRsyncArgs() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
         XCTAssertEqual(
             RemoteTransferPlan.rsyncArgs(project: "E2E", localProjectsDir: "/local/Projects",
                                         layout: layout, sshTarget: "user@host"),
@@ -243,7 +275,7 @@ final class RemoteDispatchTests: XCTestCase {
                 "-az", "--delete",
                 "--exclude", "/reports", "--exclude", "/results", "--exclude", "/.ftester",
                 "/local/Projects/E2E/",
-                "user@host:/Users/ci/ftester-runner/work/TestProjects/E2E/",
+                "user@host:/Users/ci/ftester-runner/users/alice/work/TestProjects/E2E/",
             ])
     }
 
@@ -252,7 +284,7 @@ final class RemoteDispatchTests: XCTestCase {
     /// project の rsyncArgs(--exclude /reports 等)と別の除外集合(.git/.DS_Store/node_modules を
     /// 階層を問わず除外)・別の宛先(workspaceDir)であることを固定する
     func testWorkspaceRsyncArgs() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
         XCTAssertEqual(
             RemoteTransferPlan.workspaceRsyncArgs(
                 localWorkspaceDir: "/local/sut-ec-mobile-workspace", project: "E2E",
@@ -261,7 +293,7 @@ final class RemoteDispatchTests: XCTestCase {
                 "-az", "--delete",
                 "--exclude", ".git", "--exclude", ".DS_Store", "--exclude", "node_modules",
                 "/local/sut-ec-mobile-workspace/",
-                "user@host:/Users/ci/ftester-runner/work/workspace/E2E/",
+                "user@host:/Users/ci/ftester-runner/users/alice/work/workspace/E2E/",
             ])
     }
 
@@ -269,38 +301,38 @@ final class RemoteDispatchTests: XCTestCase {
     // プロジェクトルート配下なら専用ミラーを組み立てない側の分岐を固定する)
 
     func testPlacementDefaultWorkspaceIsWithinProject() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
         let placement = WorkspaceRemoteDispatch.placement(
             workspaceRoot: "/repo/TestProjects/E2E/workspace",
             projectRoot: "/repo/TestProjects/E2E",
             layout: layout, project: "E2E")
         XCTAssertEqual(placement, .withinProject(
-            remotePath: "/Users/ci/ftester-runner/work/TestProjects/E2E/workspace"))
+            remotePath: "/Users/ci/ftester-runner/users/alice/work/TestProjects/E2E/workspace"))
     }
 
     /// プロジェクトルートそのものを指したとき(相対パスが空文字列)は projectDir 自身を返す
     func testPlacementWorkspaceEqualToProjectRootItself() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
         let placement = WorkspaceRemoteDispatch.placement(
             workspaceRoot: "/repo/TestProjects/E2E",
             projectRoot: "/repo/TestProjects/E2E",
             layout: layout, project: "E2E")
         XCTAssertEqual(placement, .withinProject(
-            remotePath: "/Users/ci/ftester-runner/work/TestProjects/E2E"))
+            remotePath: "/Users/ci/ftester-runner/users/alice/work/TestProjects/E2E"))
     }
 
     func testPlacementNestedCustomWorkspaceIsWithinProject() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
         let placement = WorkspaceRemoteDispatch.placement(
             workspaceRoot: "/repo/TestProjects/E2E/custom/ws",
             projectRoot: "/repo/TestProjects/E2E",
             layout: layout, project: "E2E")
         XCTAssertEqual(placement, .withinProject(
-            remotePath: "/Users/ci/ftester-runner/work/TestProjects/E2E/custom/ws"))
+            remotePath: "/Users/ci/ftester-runner/users/alice/work/TestProjects/E2E/custom/ws"))
     }
 
     func testPlacementExplicitOutsideProjectIsNotWithinProject() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
         let placement = WorkspaceRemoteDispatch.placement(
             workspaceRoot: "/shared/sut-workspace",
             projectRoot: "/repo/TestProjects/E2E",
@@ -311,7 +343,7 @@ final class RemoteDispatchTests: XCTestCase {
     /// 似た名前の兄弟ディレクトリを配下と誤判定しない(文字列前方一致だと
     /// "…/E2E-Android-x" が "…/E2E-Android" の配下に見えてしまう)
     func testPlacementDoesNotMatchSiblingDirectoryWithSimilarName() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
         let placement = WorkspaceRemoteDispatch.placement(
             workspaceRoot: "/repo/TestProjects/E2E-Android-x/workspace",
             projectRoot: "/repo/TestProjects/E2E-Android",
@@ -321,7 +353,7 @@ final class RemoteDispatchTests: XCTestCase {
 
     /// 逆方向(projectRoot が子を含む長いパス)も配下と誤判定しない
     func testPlacementDoesNotMatchWhenProjectRootIsLongerThanWorkspaceRoot() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
         let placement = WorkspaceRemoteDispatch.placement(
             workspaceRoot: "/repo/TestProjects",
             projectRoot: "/repo/TestProjects/E2E",
@@ -359,14 +391,14 @@ final class RemoteDispatchTests: XCTestCase {
     // MARK: - RemoteArtifactCollection.resultsRsyncArgs
 
     func testResultsRsyncArgs() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
         XCTAssertEqual(
             RemoteArtifactCollection.resultsRsyncArgs(
                 project: "E2E", layout: layout, sshTarget: "user@host",
                 localProjectsDir: "/local/Projects"),
             [
                 "-az",
-                "user@host:/Users/ci/ftester-runner/work/TestProjects/E2E/results/",
+                "user@host:/Users/ci/ftester-runner/users/alice/work/TestProjects/E2E/results/",
                 "/local/Projects/E2E/results/",
             ])
     }
@@ -374,7 +406,7 @@ final class RemoteDispatchTests: XCTestCase {
     /// --delete が無いこと(ローカルの results を巻き添えで消さない)と、両パスとも末尾スラッシュを
     /// 保つこと(rsync のディレクトリ中身コピー契約)を確認
     func testResultsRsyncArgsOmitsDeleteAndKeepsTrailingSlashes() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
         let args = RemoteArtifactCollection.resultsRsyncArgs(
             project: "E2E", layout: layout, sshTarget: "user@host",
             localProjectsDir: "/local/Projects")
@@ -388,13 +420,13 @@ final class RemoteDispatchTests: XCTestCase {
     /// 録画(recordings/)だけを除外し、src/dst は resultsRsyncArgs と同一であること —— on-demand
     /// でも実績 JSON は resultsRsyncArgs と同じ場所から同じ場所へ回収されることを固定する
     func testRecordsOnlyRsyncArgsExcludesRecordingsAndOmitsDelete() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
         let args = RemoteArtifactCollection.recordsOnlyRsyncArgs(
             project: "E2E", layout: layout, sshTarget: "user@host",
             localProjectsDir: "/local/Projects")
         XCTAssertEqual(args, [
             "-az", "--exclude", "recordings/",
-            "user@host:/Users/ci/ftester-runner/work/TestProjects/E2E/results/",
+            "user@host:/Users/ci/ftester-runner/users/alice/work/TestProjects/E2E/results/",
             "/local/Projects/E2E/results/",
         ])
         XCTAssertFalse(args.contains("--delete"), "\(args)")
@@ -604,22 +636,40 @@ final class RemoteDispatchTests: XCTestCase {
     // MARK: - RemoteShell.remoteRunCommand
 
     func testRemoteRunCommand() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
         let command = RemoteShell.remoteRunCommand(
             layout: layout,
             ftesterArgs: ["run", "--project", "E2E", "--profile", "ios-inapp", "--quiet"])
+        let workDir = "/Users/ci/ftester-runner/users/alice/work"
         let binary = "/Users/ci/ftester-runner/foundation-tester/.build/debug/ftester"
         XCTAssertEqual(command,
-            "cd '/Users/ci/ftester-runner/work' && export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\" && test -x '\(binary)' || "
+            "cd '\(workDir)' 2>/dev/null && test -f Package.swift || "
+            + "{ echo \"no runner workspace at \(workDir) — run: ftester remote setup"
+            + " <this host> once for this issuer (docs/remote-runner.md §18)\" >&2; exit 91; } && "
+            + "export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\" && test -x '\(binary)' || "
             + "{ echo \"ftester binary not found on remote — run: swift build --product ftester\" >&2; exit 90; } && "
             + "'\(binary)' project sync >/dev/null 2>&1 || true && "
             + "'\(binary)' 'run' '--project' 'E2E' '--profile' 'ios-inapp' '--quiet'")
     }
 
+    /// 未 setup の発行者(work が無い)は exit 91 の専用ガードで fail fast する(§18.2)。
+    /// バイナリ不在(exit 90)より手前に置く —— workspace 自体が無ければバイナリの有無を
+    /// 問うても意味が無い
+    func testRemoteRunCommandGuardsMissingIssuerWorkspaceBeforeBinaryGuard() {
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
+        let command = RemoteShell.remoteRunCommand(layout: layout, ftesterArgs: ["run"])
+        guard let workspaceGuardRange = command.range(of: "exit 91"),
+              let binaryGuardRange = command.range(of: "exit 90") else {
+            return XCTFail("expected both guards present: \(command)")
+        }
+        XCTAssertTrue(workspaceGuardRange.lowerBound < binaryGuardRange.lowerBound, command)
+        XCTAssertTrue(command.contains("ftester remote setup"), command)
+    }
+
     /// 発行者はディスパッチ側から FT_ISSUER で運ぶ(LocalConfig.resolveIssuerId が最優先で読む
     /// 契約)。ランナー機側で解決させると全員が共有アカウントの同じ値になり帰属が消える
     func testRemoteRunCommandExportsIssuerWhenGiven() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
         let command = RemoteShell.remoteRunCommand(
             layout: layout, ftesterArgs: ["run", "--quiet"], issuer: "tanaka@dev-mbp")
         XCTAssertTrue(command.contains("export FT_ISSUER='tanaka@dev-mbp' && "), command)
@@ -636,7 +686,7 @@ final class RemoteDispatchTests: XCTestCase {
     }
 
     func testRemoteRunCommandQuotesIssuerAgainstShellInjection() {
-        let layout = RemoteLayout(base: "/b")
+        let layout = RemoteLayout(base: "/b", issuer: "alice")
         let command = RemoteShell.remoteRunCommand(
             layout: layout, ftesterArgs: ["run"], issuer: "a'; rm -rf /; '")
         XCTAssertTrue(command.contains("export FT_ISSUER='a'\\''; rm -rf /; '\\'''"), command)
@@ -1040,7 +1090,7 @@ final class RemoteDispatchTests: XCTestCase {
     // MARK: - RemoteStatusProbe.command
 
     func testStatusProbeCommand() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
         let tool = "\"/Users/ci/ftester-runner/foundation-tester\""
         let binary = "\"/Users/ci/ftester-runner/foundation-tester/.build/debug/ftester\""
         let base = "\"/Users/ci/ftester-runner\""
@@ -1057,7 +1107,7 @@ final class RemoteDispatchTests: XCTestCase {
     /// $HOME を未解決のまま埋め込んだ layout(remote status の実運用形)でも
     /// 二重引用符で包むだけで壊れない(単一引用符と違い変数展開を妨げない)ことを確認
     func testStatusProbeCommandQuotesDoNotSuppressHomeExpansion() {
-        let layout = RemoteLayout(base: RemoteLayout.resolveBase("~/ftester-runner", home: "$HOME"))
+        let layout = RemoteLayout(base: RemoteLayout.resolveBase("~/ftester-runner", home: "$HOME"), issuer: "alice")
         XCTAssertTrue(RemoteStatusProbe.command(layout: layout).contains("\"$HOME/ftester-runner/foundation-tester\""))
     }
 
@@ -1142,9 +1192,9 @@ final class RemoteDispatchTests: XCTestCase {
     // MARK: - RemoteCleanPlan.commands
 
     func testCleanPlanDryRunUsesPrint() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
         let commands = RemoteCleanPlan.commands(layout: layout, keepDays: 7, dryRun: true)
-        XCTAssertEqual(commands.count, 3)
+        XCTAssertEqual(commands.count, 6)
         for command in commands {
             XCTAssertTrue(command.hasSuffix("-print"), command)
             XCTAssertFalse(command.contains("-exec"), command)
@@ -1152,7 +1202,7 @@ final class RemoteDispatchTests: XCTestCase {
     }
 
     func testCleanPlanNonDryRunUsesExecRm() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
         let commands = RemoteCleanPlan.commands(layout: layout, keepDays: 7, dryRun: false)
         for command in commands {
             XCTAssertTrue(command.hasSuffix("-exec rm -rf {} +"), command)
@@ -1160,19 +1210,25 @@ final class RemoteDispatchTests: XCTestCase {
     }
 
     func testCleanPlanKeepDaysReflected() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
         let commands = RemoteCleanPlan.commands(layout: layout, keepDays: 30, dryRun: true)
         for command in commands {
             XCTAssertTrue(command.contains("-mtime +30"), command)
         }
     }
 
-    func testCleanPlanCoversDispatchReportsAndResults() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
+    /// 全発行者(`users/*/work`)+ 旧レイアウト(`work`)を横断する(§18.2)。ディスクはホスト共有
+    /// 資源なので保持ポリシーは全員分に掛ける
+    func testCleanPlanCoversAllIssuersAndTheLegacyLayout() {
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
         let commands = RemoteCleanPlan.commands(layout: layout, keepDays: 7, dryRun: true)
-        XCTAssertTrue(commands[0].contains("'/Users/ci/ftester-runner/work'/.ftester/dispatch"), commands[0])
-        XCTAssertTrue(commands[1].contains("'/Users/ci/ftester-runner/work'/TestProjects/*/reports"), commands[1])
-        XCTAssertTrue(commands[2].contains("'/Users/ci/ftester-runner/work'/TestProjects/*/results"), commands[2])
+        let base = "'/Users/ci/ftester-runner'"
+        XCTAssertTrue(commands[0].contains("\(base)/users/*/work/.ftester/dispatch"), commands[0])
+        XCTAssertTrue(commands[1].contains("\(base)/users/*/work/TestProjects/*/reports"), commands[1])
+        XCTAssertTrue(commands[2].contains("\(base)/users/*/work/TestProjects/*/results"), commands[2])
+        XCTAssertTrue(commands[3].contains("\(base)/work/.ftester/dispatch"), commands[3])
+        XCTAssertTrue(commands[4].contains("\(base)/work/TestProjects/*/reports"), commands[4])
+        XCTAssertTrue(commands[5].contains("\(base)/work/TestProjects/*/results"), commands[5])
     }
 
     /// `--dry-run` は**何も変えない**。`devices down` は走っている run を巻き添えにする破壊的操作
@@ -1183,10 +1239,10 @@ final class RemoteDispatchTests: XCTestCase {
         XCTAssertTrue(RemoteCleanPlan.stopsDevices(dryRun: false))
     }
 
-    func testCleanPlanQuotesTheWorkDirPortion() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester runner")
+    func testCleanPlanQuotesTheBasePortion() {
+        let layout = RemoteLayout(base: "/Users/ci/ftester runner", issuer: "alice")
         let commands = RemoteCleanPlan.commands(layout: layout, keepDays: 7, dryRun: true)
-        XCTAssertTrue(commands[0].contains("'/Users/ci/ftester runner/work'"), commands[0])
+        XCTAssertTrue(commands[0].contains("'/Users/ci/ftester runner'/users/*/work"), commands[0])
     }
 
     // MARK: - RemoteLayout.validateBase(コマンド置換の入口ガード)
@@ -1295,11 +1351,15 @@ final class RemoteDispatchTests: XCTestCase {
     }
 
     func testRemoteExecCommand() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
         let command = RemoteShell.remoteExecCommand(layout: layout, args: ["doctor", "--fm-only"])
+        let workDir = "/Users/ci/ftester-runner/users/alice/work"
         let binary = "/Users/ci/ftester-runner/foundation-tester/.build/debug/ftester"
         XCTAssertEqual(command,
-            "cd '/Users/ci/ftester-runner/work' && export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\" && test -x '\(binary)' || "
+            "cd '\(workDir)' 2>/dev/null && test -f Package.swift || "
+            + "{ echo \"no runner workspace at \(workDir) — run: ftester remote setup"
+            + " <this host> once for this issuer (docs/remote-runner.md §18)\" >&2; exit 91; } && "
+            + "export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\" && test -x '\(binary)' || "
             + "{ echo \"ftester binary not found on remote — run: swift build --product ftester\" >&2; exit 90; } && "
             + "'\(binary)' 'doctor' '--fm-only'")
     }
@@ -1307,14 +1367,22 @@ final class RemoteDispatchTests: XCTestCase {
     /// 照会・単発操作が目的で、run 専用の `project sync` を混ぜてはいけない
     /// (remoteRunCommand との唯一の差分。壊すと remote exec のたびに無駄な sync が走る)
     func testRemoteExecCommandDoesNotSyncProject() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
         let command = RemoteShell.remoteExecCommand(layout: layout, args: ["devices", "down"])
         XCTAssertFalse(command.contains("project sync"), command)
     }
 
     func testRemoteExecCommandQuotesEachArgumentIndependently() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
         let command = RemoteShell.remoteExecCommand(layout: layout, args: ["api", "device-catalog"])
         XCTAssertTrue(command.hasSuffix("'api' 'device-catalog'"), command)
+    }
+
+    /// exec も未 setup の発行者を exit 91 で fail fast する(remoteRunCommand と同じガード)
+    func testRemoteExecCommandGuardsMissingIssuerWorkspace() {
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
+        let command = RemoteShell.remoteExecCommand(layout: layout, args: ["doctor"])
+        XCTAssertTrue(command.contains("exit 91"), command)
+        XCTAssertTrue(command.contains("ftester remote setup"), command)
     }
 }

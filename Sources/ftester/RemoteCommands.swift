@@ -215,14 +215,7 @@ struct RemoteCommand: AsyncParsableCommand {
                 // デバイスを止める前に片付ける(docs/remote-runner.md §17)。順序は逆にしない ——
                 // 終了スクリプトはデバイスに触りうる(adb reverse の解除など)
                 print("→ running teardown scripts left behind by dead runs")
-                let reapCommand = RemoteShell.remoteRunCommand(
-                    layout: layout, ftesterArgs: ["hooks", "reap"])
-                let reapResult = try Shell.run(remoteSSHBase + [target, reapCommand])
-                if reapResult.status != 0 {
-                    print("warning: `hooks reap` exited with status \(reapResult.status)\n\(reapResult.tail)")
-                } else {
-                    print(reapResult.output.trimmingCharacters(in: .whitespacesAndNewlines))
-                }
+                runReapAcrossIssuers(target: target, layout: layout)
                 print("→ stopping bridges and shutting down simulators/emulators")
                 let devicesDownCommand = RemoteShell.remoteRunCommand(
                     layout: layout, ftesterArgs: ["devices", "down"])
@@ -275,7 +268,57 @@ struct RemoteCommand: AsyncParsableCommand {
             guard !home.isEmpty else {
                 throw RemoteDispatchError.remoteSetupFailed("could not determine $HOME on \(target)")
             }
-            return RemoteLayout(base: RemoteLayout.resolveBase(remoteDirRaw, home: home))
+            return RemoteLayout(base: RemoteLayout.resolveBase(remoteDirRaw, home: home),
+                               issuer: try resolveLayoutIssuer())
+        }
+
+        /// `hooks reap` を全発行者(`users/*`)+ 旧レイアウト(`work`)へ横断させる(§18.2)。
+        /// ディスクはホスト共有資源なので、他の発行者が残した孤児 hooks も片付ける対象になる
+        /// (RemoteCleanPlan.commands の reports/results 横断と同じ思想)
+        private func runReapAcrossIssuers(target: String, layout: RemoteLayout) {
+            let listResult = try? Shell.run(
+                remoteSSHBase + [target, "ls -1 \(RemoteShell.quote(layout.usersDir)) 2>/dev/null"])
+            let issuers = (listResult?.output ?? "")
+                .split(separator: "\n")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+            for issuer in issuers {
+                guard (try? RemoteLayout.validateIssuerKey(issuer)) != nil else { continue }
+                runReap(target: target, layout: RemoteLayout(base: layout.base, issuer: issuer))
+            }
+            runLegacyReap(target: target, layout: layout)
+        }
+
+        /// **cd 失敗(その発行者の work がまだ無い)は exit 91 = skip として扱う**(エラーではない —
+        /// 変更4の workspace ガードが返すだけの正常系。RemoteShell.remoteRunCommand 参照)
+        private func runReap(target: String, layout: RemoteLayout) {
+            let reapCommand = RemoteShell.remoteRunCommand(layout: layout, ftesterArgs: ["hooks", "reap"])
+            guard let reapResult = try? Shell.run(remoteSSHBase + [target, reapCommand]) else {
+                print("warning: failed to run `hooks reap` for issuer \(layout.issuer) (could not run ssh)")
+                return
+            }
+            guard reapResult.status != 91 else { return }
+            if reapResult.status != 0 {
+                print("warning: `hooks reap` (issuer \(layout.issuer)) exited with status \(reapResult.status)\n\(reapResult.tail)")
+                return
+            }
+            let trimmed = reapResult.output.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { print(trimmed) }
+        }
+
+        /// 旧レイアウト(`<base>/work`。発行者ネームスペース化前)の掃除。移行期だけの経路なので
+        /// RemoteLayout.workDir(常に `users/<issuer>/work`)は使えない —— 存在しない/バイナリ未整備は
+        /// 静かに無視する(ベストエフォート。ここで警告を出すと発行者ネームスペース化前の環境が
+        /// 無かっただけの受け手にまでノイズが出る)
+        private func runLegacyReap(target: String, layout: RemoteLayout) {
+            let legacyWorkDir = layout.base + "/work"
+            let binary = RemoteShell.quote(layout.binary)
+            let command = "cd \(RemoteShell.quote(legacyWorkDir)) 2>/dev/null && test -f Package.swift && "
+                + "export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\" && "
+                + "test -x \(binary) && \(binary) 'hooks' 'reap'"
+            guard let result = try? Shell.run(remoteSSHBase + [target, command]), result.status == 0 else { return }
+            let trimmed = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { print(trimmed) }
         }
     }
 
@@ -384,6 +427,38 @@ struct RemoteCommand: AsyncParsableCommand {
 /// `ftester remote hosts list --json` の出力全体
 private struct HostsListJSON: Encodable {
     let hosts: [RemoteHostEntry]
+}
+
+// MARK: - issuer resolution (choke point for every RemoteLayout construction; §18.2)
+
+/// プロセス内で1回だけ、既定 issuer(USER@hostname フォールバック)を使った旨を stderr へ警告する
+/// (actor は使わない: probe() が並列に呼ぶため NSLock で足りる最小限の排他だけ持つ)
+private final class IssuerFallbackWarning: @unchecked Sendable {
+    private let lock = NSLock()
+    private var warned = false
+    func shouldWarn() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !warned else { return false }
+        warned = true
+        return true
+    }
+}
+private let issuerFallbackWarning = IssuerFallbackWarning()
+
+/// リモートレイアウト用の issuer。検証し、明示設定でなければプロセスごとに1回だけ stderr へ警告する
+/// (RemoteLayout を組み立てる全箇所がここを通る choke point。個別に LocalConfig.resolveIssuer を
+/// 呼ばない)
+func resolveLayoutIssuer() throws -> String {
+    let (id, explicit) = LocalConfig.resolveIssuer()
+    try RemoteLayout.validateIssuerKey(id)
+    if !explicit, issuerFallbackWarning.shouldWarn() {
+        FileHandle.standardError.write(Data(
+            ("warning: using default issuer '\(id)' for the remote workspace namespace"
+                + " — the default is derived from this machine's hostname, which can change on the network;"
+                + " set issuerId in ~/.config/ftester/config.json (docs/remote-runner-setup.md)\n").utf8))
+    }
+    return id
 }
 
 // MARK: - --host resolution (shared by run/api run/remote status・clean・setup・exec)
@@ -586,9 +661,10 @@ enum RemoteStatusProbing {
     /// 二重引用符で包むのはこのため)
     static func probe(_ resolved: ResolvedRemoteHost, wantFM: Bool) async -> HostRow {
         let target = resolved.hostSpec.sshTarget
-        let layout = RemoteLayout(base: RemoteLayout.resolveBase(resolved.remoteDirRaw, home: "$HOME"))
-        let command = RemoteStatusProbe.command(layout: layout)
         do {
+            let layout = RemoteLayout(base: RemoteLayout.resolveBase(resolved.remoteDirRaw, home: "$HOME"),
+                                      issuer: try resolveLayoutIssuer())
+            let command = RemoteStatusProbe.command(layout: layout)
             let result = try Shell.run(remoteSSHBase + [target, command])
             // ssh は自身の接続失敗(DNS/認証/タイムアウト等)だけ 255 を返す規約 — リモート
             // コマンドの終了コードはそのまま通るため、df 等が失敗しても到達はしている

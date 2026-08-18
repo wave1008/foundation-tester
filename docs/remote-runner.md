@@ -1278,11 +1278,9 @@ Aqua セッション(コンソールログイン)は1つしか立たず、シミ
   §15.1 の「適合チェックは認証ではない」と同じ規律の調整用)/ `--wait-lock [秒]`
   (バックオフ付きポーリング。**時刻での自動奪取は入れない** —— 奪うのは `--force-lock`
   明示だけ、の既存決定を維持)/ 1人1鍵と失効・ランナーの解錠当番の文書化
-- **M1(共有が日常化したら)**: 発行者ネームスペース(WORK_DIR を
-  `<base>/users/<issuerId>/work` に分割。`dispatch.lock` は**ホスト全体で1本のまま** ——
-  競合の実体はデバイスというホスト資源。hooks の控えもホスト全域走査のまま ——
-  ポートはホスト全体の資源)/ machineName の正をランナー側へ移す(§14 決定4の反転。
-  初回 setup が書き、以後は既存値を発行側へ逆キャッシュ)
+- **M1(共有が日常化したら)**: 発行者ネームスペース(**実装済み: 2026-08-18。仕様は §18.6**)/
+  machineName の正をランナー側へ移す(§14 決定4の反転。初回 setup が書き、以後は既存値を
+  発行側へ逆キャッシュ。**こちらは未実装**)
 - **M2(需要の実証後)**: 破壊的操作前の占有表示(`dispatch.lock` と hooks 控えを読んで
   「〜の run が実行中」を modal に出す)/ 配信の自動退避(`RemoteMonitorFanout` がロック
   保持を検知したらポーリングモードへ落とす。フォールバック機構は既存なので「止める判断」の
@@ -1345,6 +1343,48 @@ upstream main を clone して update.sh で追従するので、2人の rev は
 | 4 | `--wait-lock [秒]` | 済(2026-08-18。奪わない・`--force-lock` と排他・ssh 到達不能は待たない。ポーリング10秒/経過ログ約60秒 = `WaitLockPolling` に根拠コメント付きで1箇所) |
 | 5 | 祖先関係判定 + 案内の向き + 拡張ダイアログの選択肢制御 | 済(2026-08-18。判定は `RemoteCompat.classifyRelation`(pure)+ `revisionRelation`(RemoteCommands.swift の I/O。**fetch しない** — ランナーの rev がこの clone に無ければ unknown)。checkCompatibility は **published のときだけ**向き付き advice を append(未 push は unpublishedRevisionMessage のみ — align 案内が誤誘導になる)。`api remote-compat` に `revisionRelation` フィールド(追加 = 後方互換・ProtocolVersion 不変)。拡張は localBehind/diverged/unknown が1機でも居たら「更新して実行」を出さず理由の行を足す(remoteCompatGate.ts。拡張 0.0.538)) |
 | 6 | 運用 docs(1人1鍵と失効・当番・カナリア手順)を remote-runner-setup.md へ | 済(2026-08-18。remote-runner-setup.md「複数人でフリートを共有する」+ トラブル表2行) |
+
+### 18.6 発行者ネームスペース(M1。実装済み: 2026-08-18)
+
+18.1 の #3(rsync `--delete` の相互上書き・results 混在・collect の他人分引き込み)の解消。
+**事故の分離であってセキュリティ隔離ではない**(全員が同じ UNIX アカウント。§15.3 のまま)。
+
+```
+<base>/
+├── foundation-tester/          ← tool。共有(§18.4 — 分けない)
+├── .ftester/dispatch.lock      ← ホストに1本(競合の実体はデバイス = ホスト資源)
+└── users/<issuerId>/work/      ← 発行者ごとの WORK_DIR(TestProjects・results・.build・workspace)
+```
+
+- **これが唯一のレイアウト**(二重サポートしない — モードが2つあると版スキューと同型の
+  恒常バグ族になる)。既存利用者の移行は `ftester remote setup <host>` を1回再実行
+  (tool は既存なのでコールドビルド無し)。旧 `<base>/work` は手で消してよい
+  (`remote clean` の保持ポリシー掃除は移行期の間、旧レイアウトも対象に含める)
+- **鍵は issuerId**。パスに使うので文字種を入口で検証する(`RemoteLayout.validateIssuerKey`:
+  英数と `@ . _ -` のみ。黙って正規化しない)。**明示設定を推奨** —— 既定の
+  `USER@hostname` はホスト名を含み、ホスト名は mDNS/DHCP でネットワークごとに変わり得る。
+  鍵が変わると**ランナー上に新しいネームスペースが黙って生える**(work 再構築・履歴分断)ので、
+  未設定のまま使うと `resolveLayoutIssuer` がプロセスごとに1回警告する
+- **tool root は明示で渡す**: work が2階層深くなり、install.sh の既定
+  `<work-dir>/../foundation-tester` が `<base>/foundation-tester` と一致しなくなったため、
+  `remote setup` は `--tool-root` を明示で渡す(受け手 Package.swift のパス依存はそこを指す。
+  ディレクトリ名 `foundation-tester` 固定の SPM 制約は共有クローンがそのまま満たす)
+- **未 setup の発行者は fail fast(2段)**: ①ディスパッチは**転送より前**に
+  `test -f <workDir>/Package.swift` を ssh で確かめて止める(`RemoteRunDispatcher.
+  checkCompatibility` 末尾)—— 91 ガードに任せると、その前の rsync が
+  `users/<issuer>/work/TestProjects/…` を**部分的に作ってしまい**、後の remote setup の
+  プロジェクト作成がディレクトリ存在でスキップされて壊れる(§12 の既知の罠と同型。
+  2026-08-18 に実ディスパッチで確認)②`remoteRunCommand`/`remoteExecCommand` の先頭にも
+  同じガード(無ければ案内を出して **exit 91**。remote exec・monitor fan-out と、
+  チェックと実行の間のレース用の防御。90 = バイナリ不在の隣の契約)
+- **ホスト全体に残るもの**: dispatch.lock(1本)/ tool + .build(共有・ピン運用)/
+  デバイス側状態(ブリッジ・シミュレータ。降版ガードが防御)。
+  **hooks の控えは各自の work 配下のままだが、`remote clean` の reap は全発行者分を横断する**
+  (ポートはホスト全体の資源。run 開始時の代行 reap は自分のネームスペースだけ —— 他人の
+  死んだ run の片付けは clean の責務とする)。frozen 台帳も work 配下で人ごとに分かれるが、
+  助言的トリアージで run ごとに再判定されるため実害なし
+- **remote clean は全発行者+旧レイアウトを対象にする**(ディスクはホスト共有資源。
+  `RemoteCleanPlan` が `users/*/work/…` と旧 `work/…` の両方を掃く)
 
 ## 関連
 

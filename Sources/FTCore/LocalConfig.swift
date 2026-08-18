@@ -63,10 +63,21 @@ public struct LocalConfig: Codable, Sendable, Equatable {
         environment: [String: String] = ProcessInfo.processInfo.environment,
         configURL: URL? = nil
     ) -> String {
-        if let env = environment["FT_ISSUER"], !env.isEmpty { return env }
+        resolveIssuer(environment: environment, configURL: configURL).id
+    }
+
+    /// resolveIssuerId と同じ優先順位だが、値が明示設定(FT_ISSUER/config の issuerId)由来か
+    /// USER@hostname フォールバックかを併せて返す。§18.2: フォールバックはネットワークで
+    /// 変わり得るホスト名を含むため、リモートのネームスペース鍵として使うときは
+    /// 呼び出し側(resolveLayoutIssuer)が explicit==false のときだけ1回警告する
+    public static func resolveIssuer(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        configURL: URL? = nil
+    ) -> (id: String, explicit: Bool) {
+        if let env = environment["FT_ISSUER"], !env.isEmpty { return (env, true) }
         let config = load(from: configURL ?? Self.url(environment: environment))
-        if let issuer = config.issuerId, !issuer.isEmpty { return issuer }
-        return "\(NSUserName())@\(ProcessInfo.processInfo.hostName)"
+        if let issuer = config.issuerId, !issuer.isEmpty { return (issuer, true) }
+        return ("\(NSUserName())@\(ProcessInfo.processInfo.hostName)", false)
     }
 
     /// 設定ファイルの場所: $XDG_CONFIG_HOME/ftester/config.json(既定 ~/.config/ftester/config.json)

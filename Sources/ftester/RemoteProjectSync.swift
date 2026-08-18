@@ -16,11 +16,13 @@ enum RemoteProjectSync {
     /// (呼び出し側はその機械のぶんを諦め、他のホストと手元の処理は続ける)
     static func run(project: String, host: String) -> String? {
         guard let repoRoot = try? RepoRoot.find(),
-              let resolved = try? RemoteHostResolver.resolve(rawHost: host, remoteDirOverride: nil)
+              let resolved = try? RemoteHostResolver.resolve(rawHost: host, remoteDirOverride: nil),
+              let issuer = try? resolveLayoutIssuer()
         else {
-            return "\(host): cannot resolve the host or the repository root"
+            return "\(host): cannot resolve the host, the repository root, or the issuer"
         }
-        let layout = RemoteLayout(base: RemoteLayout.resolveBase(resolved.remoteDirRaw, home: "$HOME"))
+        let layout = RemoteLayout(base: RemoteLayout.resolveBase(resolved.remoteDirRaw, home: "$HOME"),
+                                  issuer: issuer)
         let args = RemoteTransferPlan.rsyncArgs(
             project: project,
             localProjectsDir: repoRoot.appendingPathComponent("TestProjects").path,

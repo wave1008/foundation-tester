@@ -10,6 +10,7 @@ public enum RemoteDispatchError: Error, LocalizedError {
     case invalidArtifactsMode(String)
     case incompatible([String])
     case remoteSetupFailed(String)
+    case invalidIssuer(String)
 
     public var errorDescription: String? {
         switch self {
@@ -24,6 +25,8 @@ public enum RemoteDispatchError: Error, LocalizedError {
                 .joined(separator: "\n")
         case .remoteSetupFailed(let detail):
             return "remote setup failed: \(detail)"
+        case .invalidIssuer(let detail):
+            return "invalid issuer: \(detail)"
         }
     }
 }
@@ -141,19 +144,28 @@ public enum RemoteCompat {
 /// ユーザー資産の消失・SPM ビルドロック競合・results DB 混在を避ける
 public struct RemoteLayout: Equatable, Sendable {
     public let base: String
+    /// 発行者ネームスペースの鍵(§18.2)。resolveLayoutIssuer が検証済みの値を渡す契約
+    /// (validateIssuerKey を通していない値をここへ入れない)
+    public let issuer: String
 
-    public init(base: String) {
+    public init(base: String, issuer: String) {
         self.base = Self.stripTrailingSlash(base)
+        self.issuer = issuer
     }
 
     /// **ディレクトリ名は "foundation-tester" 固定**(短くしない)。SPM はパス依存の
     /// パッケージ名をディレクトリ名から導出するため、受け手 Package.swift が宣言する
     /// `package: "foundation-tester"` と一致しないと "unknown package" でマニフェストが
     /// 壊れる(2026-07-31 の localhost E2E で実測)。install.sh の既定
-    /// TOOL_ROOT(= WORK_DIR/../foundation-tester)とも揃う
+    /// TOOL_ROOT(= WORK_DIR/../foundation-tester)とも揃う。**ツールクローンは
+    /// ホスト共有のまま**(発行者ごとに分けない。§18.2/§18.4)
     public var toolRoot: String { base + "/foundation-tester" }
-    public var workDir: String { base + "/work" }
+    /// 発行者ごとの WORK_DIR(§18.2)。rsync --delete・results・録画の混線を
+    /// ネームスペースで構造的に消す(旧 `<base>/work` は移行期の掃除対象としてのみ RemoteCleanPlan が触る)
+    public var workDir: String { base + "/users/" + issuer + "/work" }
     public var binary: String { toolRoot + "/.build/debug/ftester" }
+    /// clean の横断走査(全発行者の work を列挙する)専用
+    public var usersDir: String { base + "/users" }
 
     /// `ProjectStore.projectsDir` が解決する現行の名前と一致必須。片方だけ変えない
     /// (`RemoteDispatchTests.testProjectsDirNameMatchesProjectStore` が固定する)。
@@ -192,6 +204,19 @@ public struct RemoteLayout: Equatable, Sendable {
         guard trimmed.unicodeScalars.allSatisfy(allowedBaseCharacters.contains) else {
             throw RemoteDispatchError.invalidRemoteDir(
                 "must contain only letters, digits and / . _ - ~ : \"\(raw)\"")
+        }
+    }
+
+    /// `users/<issuer>/` へパスの一部として埋め込む前の文字種検証。base と違い空を許さない
+    /// (issuer 不明のまま layout を組み立てさせない = resolveLayoutIssuer が fail fast する契約)
+    private static let allowedIssuerCharacters = CharacterSet(
+        charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@._-")
+
+    public static func validateIssuerKey(_ raw: String) throws {
+        guard !raw.isEmpty, raw.unicodeScalars.allSatisfy(allowedIssuerCharacters.contains) else {
+            throw RemoteDispatchError.invalidIssuer(
+                "\"\(raw)\" — must be non-empty and contain only letters, digits and @ . _ -"
+                + " (set issuerId in ~/.config/ftester/config.json)")
         }
     }
 
@@ -755,17 +780,23 @@ public enum RemoteCleanPlan {
     public static func stopsDevices(dryRun: Bool) -> Bool { !dryRun }
 
     /// keepDays より古いエントリを消す(dryRun なら列挙するだけの)find コマンド一覧。
-    /// `TestProjects/*/reports`・`TestProjects/*/results` はシェルのグロブ展開に任せる(呼び出し側は
-    /// 単一プロジェクトへ絞り込まない)ため、workDir 部分だけ `RemoteShell.quote` し
-    /// グロブ部分は非クォートのまま連結する(引用符の直後に続く非クォート文字列は
-    /// シェル上で1語に結合される。丸ごとクォートするとグロブが展開されなくなる)
+    /// **全発行者(`users/*/work`)+ 旧レイアウト(`work`)を横断する**(§18.2) —— ディスクは
+    /// ホスト共有資源なので保持ポリシーは全員分に掛ける。旧レイアウトの掃除は移行期のためだけ
+    /// (存在しなければ find が対象0件で終わるだけで、呼び出し側の扱いは他のターゲットと同じ)。
+    /// グロブ部分はシェル展開に任せる(呼び出し側は単一プロジェクト/発行者へ絞り込まない)ため、
+    /// `base` 部分だけ `RemoteShell.quote` しグロブ部分は非クォートのまま連結する(引用符の直後に
+    /// 続く非クォート文字列はシェル上で1語に結合される。丸ごとクォートするとグロブが展開されない)
     public static func commands(layout: RemoteLayout, keepDays: Int, dryRun: Bool) -> [String] {
         let action = dryRun ? "-print" : "-exec rm -rf {} +"
-        let base = RemoteShell.quote(layout.workDir)
+        let base = RemoteShell.quote(layout.base)
+        let projects = RemoteLayout.projectsDirName
         let targets = [
-            base + "/.ftester/dispatch",
-            base + "/\(RemoteLayout.projectsDirName)/*/reports",
-            base + "/\(RemoteLayout.projectsDirName)/*/results",
+            base + "/users/*/work/.ftester/dispatch",
+            base + "/users/*/work/\(projects)/*/reports",
+            base + "/users/*/work/\(projects)/*/results",
+            base + "/work/.ftester/dispatch",
+            base + "/work/\(projects)/*/reports",
+            base + "/work/\(projects)/*/results",
         ]
         return targets.map { "find \($0) -mindepth 1 -maxdepth 1 -mtime +\(keepDays) \(action)" }
     }
@@ -804,12 +835,15 @@ public enum RemoteShell {
         // 発行者はディスパッチ側から運ぶ(LocalConfig.resolveIssuerId が FT_ISSUER を最優先で
         // 読む契約)。ランナー機側で解決させると全員が共有アカウントの同じ値になる
         let issuerCmd = issuer.map { "export FT_ISSUER=\(quote($0)) && " } ?? ""
-        return "cd \(quote(layout.workDir)) && \(pathCmd) && \(issuerCmd)\(guardCmd) && \(syncCmd) && \(launch)"
+        return "cd \(quote(layout.workDir)) 2>/dev/null && test -f Package.swift || "
+            + "{ echo \"no runner workspace at \(layout.workDir) — run: ftester remote setup"
+            + " <this host> once for this issuer (docs/remote-runner.md §18)\" >&2; exit 91; } && "
+            + "\(pathCmd) && \(issuerCmd)\(guardCmd) && \(syncCmd) && \(launch)"
     }
 
     /// `ftester remote exec`(docs/remote-runner.md §14「単発コマンドの転送は汎用化する」)。
-    /// remoteRunCommand と同じ PATH 補正・バイナリ不在 exit 90 の規律を踏襲するが、
-    /// **project sync は撃たない** — 照会・単発操作が目的で、同期は run 専用の前処理だから
+    /// remoteRunCommand と同じ PATH 補正・バイナリ不在 exit 90・workspace 不在 exit 91 の規律を
+    /// 踏襲するが、**project sync は撃たない** — 照会・単発操作が目的で、同期は run 専用の前処理だから
     public static func remoteExecCommand(layout: RemoteLayout, args: [String]) -> String {
         let binary = quote(layout.binary)
         let guardCmd = "test -x \(binary) || { echo \"ftester binary not found on remote"
@@ -817,7 +851,10 @@ public enum RemoteShell {
         let quotedArgs = args.map(quote).joined(separator: " ")
         let launch = "\(binary) \(quotedArgs)"
         let pathCmd = "export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\""
-        return "cd \(quote(layout.workDir)) && \(pathCmd) && \(guardCmd) && \(launch)"
+        return "cd \(quote(layout.workDir)) 2>/dev/null && test -f Package.swift || "
+            + "{ echo \"no runner workspace at \(layout.workDir) — run: ftester remote setup"
+            + " <this host> once for this issuer (docs/remote-runner.md §18)\" >&2; exit 91; } && "
+            + "\(pathCmd) && \(guardCmd) && \(launch)"
     }
 }
 

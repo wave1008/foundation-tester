@@ -64,6 +64,55 @@ final class LocalConfigIssuerIdTests: XCTestCase {
         XCTAssertEqual(LocalConfig.resolveIssuerId(environment: [:], configURL: url), fallback)
     }
 
+    // MARK: - resolveIssuer (explicit フラグ付き。§18.2: resolveLayoutIssuer が USER@hostname
+    // フォールバックのときだけ1回警告するための出所判定)
+
+    func testResolveIssuerExplicitTrueForEnvironment() throws {
+        let url = tempConfigURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        try LocalConfig().save(to: url)
+
+        let (id, explicit) = LocalConfig.resolveIssuer(environment: ["FT_ISSUER": "tanaka@dev-mbp"], configURL: url)
+        XCTAssertEqual(id, "tanaka@dev-mbp")
+        XCTAssertTrue(explicit)
+    }
+
+    func testResolveIssuerExplicitTrueForConfigFile() throws {
+        let url = tempConfigURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        var config = LocalConfig()
+        config.issuerId = "alice@ci-runner"
+        try config.save(to: url)
+
+        let (id, explicit) = LocalConfig.resolveIssuer(environment: [:], configURL: url)
+        XCTAssertEqual(id, "alice@ci-runner")
+        XCTAssertTrue(explicit)
+    }
+
+    func testResolveIssuerExplicitFalseForFallback() throws {
+        let url = tempConfigURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        try LocalConfig().save(to: url)
+
+        let (id, explicit) = LocalConfig.resolveIssuer(environment: [:], configURL: url)
+        XCTAssertEqual(id, fallback)
+        XCTAssertFalse(explicit)
+    }
+
+    /// resolveIssuerId は resolveIssuer(...).id へ畳んだ実装(重複実装を持たない)。
+    /// 同じ入力で常に一致することを固定する
+    func testResolveIssuerIdMatchesResolveIssuerID() throws {
+        let url = tempConfigURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        var config = LocalConfig()
+        config.issuerId = "bob@laptop"
+        try config.save(to: url)
+
+        XCTAssertEqual(
+            LocalConfig.resolveIssuerId(environment: [:], configURL: url),
+            LocalConfig.resolveIssuer(environment: [:], configURL: url).id)
+    }
+
     // MARK: - LocalConfig round-trip / back-compat
 
     func testLocalConfigRoundTripsIssuerId() throws {

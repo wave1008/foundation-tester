@@ -11,9 +11,12 @@ final class RemoteSetupTests: XCTestCase {
 
     func testInstallArgs() {
         XCTAssertEqual(
-            RemoteSetupPlan.installArgs(workDir: "/Users/ci/ftester-runner/work", projectName: "E2E"),
+            RemoteSetupPlan.installArgs(
+                workDir: "/Users/ci/ftester-runner/users/alice/work", projectName: "E2E",
+                toolRoot: "/Users/ci/ftester-runner/foundation-tester"),
             [
-                "--work-dir", "/Users/ci/ftester-runner/work",
+                "--work-dir", "/Users/ci/ftester-runner/users/alice/work",
+                "--tool-root", "/Users/ci/ftester-runner/foundation-tester",
                 "--name", "E2E",
                 "--skip-extension",
                 "--skip-mcp",
@@ -22,18 +25,26 @@ final class RemoteSetupTests: XCTestCase {
             ])
     }
 
-    /// `--tool-root` は渡さない — 既定の `<work-dir>/../foundation-tester` が
-    /// RemoteLayout.toolRoot とちょうど一致するため(§12 の layout 設計)
-    func testInstallArgsOmitsToolRoot() {
-        let args = RemoteSetupPlan.installArgs(workDir: "/x/work", projectName: "E2E")
-        XCTAssertFalse(args.contains("--tool-root"), "\(args)")
+    /// `--tool-root` を明示する — work が `<base>/users/<issuer>/work` へ2階層深くなり、
+    /// install.sh の既定 `<work-dir>/../foundation-tester` が RemoteLayout.toolRoot と
+    /// もう一致しないため(§18.2)
+    func testInstallArgsIncludesToolRoot() {
+        let args = RemoteSetupPlan.installArgs(workDir: "/x/users/alice/work", projectName: "E2E",
+                                                toolRoot: "/x/foundation-tester")
+        guard let index = args.firstIndex(of: "--tool-root") else {
+            return XCTFail("--tool-root が無い: \(args)")
+        }
+        XCTAssertEqual(args[index + 1], "/x/foundation-tester")
     }
 
     // MARK: - RemoteSetupPlan.preflightArgs / preflightVerdict
 
     func testPreflightArgs() {
-        XCTAssertEqual(RemoteSetupPlan.preflightArgs(base: "/Users/ci/ftester-runner"),
-                       ["--runner", "--base", "/Users/ci/ftester-runner"])
+        XCTAssertEqual(
+            RemoteSetupPlan.preflightArgs(
+                base: "/Users/ci/ftester-runner", workDir: "/Users/ci/ftester-runner/users/alice/work"),
+            ["--runner", "--base", "/Users/ci/ftester-runner",
+             "--work-dir", "/Users/ci/ftester-runner/users/alice/work"])
     }
 
     func testPreflightVerdictReady() {
@@ -55,9 +66,9 @@ final class RemoteSetupTests: XCTestCase {
     // MARK: - RemoteSetupPlan.ensureWorkDirCommand
 
     func testEnsureWorkDirCommand() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
         XCTAssertEqual(RemoteSetupPlan.ensureWorkDirCommand(layout: layout),
-                       "mkdir -p '/Users/ci/ftester-runner/work'")
+                       "mkdir -p '/Users/ci/ftester-runner/users/alice/work'")
     }
 
     // MARK: - RemoteSetupPlan.runAndCleanupCommand
@@ -151,7 +162,7 @@ final class RemoteSetupTests: XCTestCase {
     // MARK: - RemoteSetupPlan.alignRevisionCommand
 
     func testAlignRevisionCommand() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
         XCTAssertEqual(
             RemoteSetupPlan.alignRevisionCommand(layout: layout, revision: "9655a21"),
             "cd '/Users/ci/ftester-runner/foundation-tester' && git fetch origin && "

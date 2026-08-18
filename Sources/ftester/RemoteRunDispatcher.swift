@@ -164,7 +164,8 @@ struct RemoteRunDispatcher {
                     "could not determine $HOME on \(host.sshTarget)")
             }
             log("warning: could not determine the remote console login state — skipping the login check")
-            return (RemoteLayout(base: RemoteLayout.resolveBase(remoteDirRaw, home: firstLine)), nil)
+            return (RemoteLayout(base: RemoteLayout.resolveBase(remoteDirRaw, home: firstLine),
+                                 issuer: try resolveLayoutIssuer()), nil)
         }
         guard session.isLoggedIn else {
             throw RemoteDispatchError.remoteSetupFailed(
@@ -172,7 +173,8 @@ struct RemoteRunDispatcher {
                 + "expected: \(session.sshUser)) — unlock and log in on the runner, then retry"
                 + " (docs/remote-runner.md §5)")
         }
-        return (RemoteLayout(base: RemoteLayout.resolveBase(remoteDirRaw, home: session.home)), session)
+        return (RemoteLayout(base: RemoteLayout.resolveBase(remoteDirRaw, home: session.home),
+                             issuer: try resolveLayoutIssuer()), session)
     }
 
     /// ディスパッチ単位の一意ディレクトリ名(reports/junit の隔離・回収後の削除に使う)
@@ -213,6 +215,19 @@ struct RemoteRunDispatcher {
             reasons.append(RemoteCompat.relationAdvice(relation))
         }
         guard reasons.isEmpty else { throw RemoteDispatchError.incompatible(reasons) }
+
+        // ワークスペースの実在は転送より前に確かめる(§18.6)。remoteRunCommand の 91 ガードに
+        // 任せると、その前の rsync が users/<issuer>/work/TestProjects/… を部分的に作ってしまい、
+        // 後から remote setup してもプロジェクト作成がディレクトリ存在でスキップされて壊れる
+        // (§12 の既知の罠と同型。2026-08-18 に実ディスパッチで確認)
+        let workspaceProbe = try sshCapture(
+            "test -f \(RemoteShell.quote(layout.workDir))/Package.swift && echo yes || echo no")
+        guard workspaceProbe.trimmingCharacters(in: .whitespacesAndNewlines) == "yes" else {
+            throw RemoteDispatchError.remoteSetupFailed(
+                "no runner workspace at \(layout.workDir) on \(host.sshTarget)"
+                + " — run `ftester remote setup \(host.sshTarget)` once for this issuer"
+                + " (docs/remote-runner.md §18)")
+        }
     }
 
     private func remoteToolchainFingerprint() throws -> String {
@@ -385,6 +400,9 @@ struct RemoteRunDispatcher {
         if status == 90 {
             log("==> the remote ftester binary is missing — build it on the remote first"
                 + " (swift build --product ftester)")
+        } else if status == 91 {
+            log("==> this issuer has no runner workspace on \(host.sshTarget) yet"
+                + " — run `ftester remote setup \(host.sshTarget)` once for this issuer (docs/remote-runner.md §18)")
         }
         return status
     }

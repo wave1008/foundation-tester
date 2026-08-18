@@ -36,6 +36,10 @@ MODE=default
 # `--remote-dir` の既定値(Sources/ftester/FTester.swift・ApiRunCommand.swift・RemoteCommands.swift)と
 # 揃える。ズレるとディスパッチ側とランナー判定が別ディレクトリを見る
 BASE="~/ftester-runner"
+# --runner 専用。発行者ネームスペース化(§18.2)で work は `$BASE/users/<issuer>/work` になり
+# 既定の `$BASE/work` と一致しなくなったため、呼び出し側(RemoteSetupPlan.preflightArgs)が
+# 実際の WORK_DIR を渡す。未指定なら旧来どおり `$BASE/work` にフォールバックする(古い呼び手互換)
+RUNNER_WORK_DIR=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --runner)
@@ -43,13 +47,20 @@ while [ $# -gt 0 ]; do
       shift ;;
     --base)
       if [ $# -lt 2 ]; then
-        printf 'usage: %s [--runner] [--base <dir>]\n' "$0" >&2
+        printf 'usage: %s [--runner] [--base <dir>] [--work-dir <dir>]\n' "$0" >&2
         exit 1
       fi
       BASE="$2"
       shift 2 ;;
+    --work-dir)
+      if [ $# -lt 2 ]; then
+        printf 'usage: %s [--runner] [--base <dir>] [--work-dir <dir>]\n' "$0" >&2
+        exit 1
+      fi
+      RUNNER_WORK_DIR="$2"
+      shift 2 ;;
     *)
-      printf 'usage: %s [--runner] [--base <dir>]\n' "$0" >&2
+      printf 'usage: %s [--runner] [--base <dir>] [--work-dir <dir>]\n' "$0" >&2
       exit 1 ;;
   esac
 done
@@ -197,7 +208,7 @@ PMSET_OUT
 
   # ---- ツール本体・作業場所(§14「構成」)。未導入は `ftester remote setup` が作るので情報のみ ----
   tool_root="$BASE/foundation-tester"
-  work_dir="$BASE/work"
+  work_dir="${RUNNER_WORK_DIR:-$BASE/work}"
   kv tool_root "$tool_root"
   kv work_dir "$work_dir"
   # **kv に直値を渡さず変数に入れてから出す**。judgement 文(ready 行)が同じ値を参照するので、
