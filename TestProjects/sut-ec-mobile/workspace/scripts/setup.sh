@@ -43,8 +43,6 @@ SERVER_REPO="${SUTEC_SERVER_REPO:-$HOME/github/wave1008/sut-ec-mobile}"
 SERVER_GIT_URL="${SUTEC_SERVER_GIT_URL:-https://github.com/wave1008/sut-ec-mobile.git}"
 HEALTH_URL="http://127.0.0.1:8090/health"
 SERVER_LOG="/tmp/dev-server.log"
-# 目印の置き場所。機械ごとにローカルで、かつ転送の対象外(理由は下の書き込み箇所)
-MARKER="${TMPDIR:-/tmp}/sutec-dev-server-started-by-setup"
 # 起動待ちの上限(秒)。**効くのは初回だけ**(2回目以降は数十秒で上がる)。初回は clone +
 # gradle の依存解決 + Kotlin ビルド + コンテナのカーネル導入まで入るので、短く切ると
 # 「まだ進んでいる途中」を失敗と誤判定する。長すぎる害は下の fail-fast で潰してある
@@ -55,8 +53,9 @@ server_is_up() {
   curl -sf -m 3 "$HEALTH_URL" 2>/dev/null | grep -q '"status":"ok"'
 }
 
-# 既に上がっていれば何もしない(起動に時間がかかるので、連続実行では使い回す)。
-# **ここで起こさなかったサーバは teardown.sh も止めない**(目印は下で置く)
+# 既に上がっていれば何もしない。**teardown.sh はサーバを止めない**(2026-08-18 ユーザー決定)ので、
+# 2回目以降は常にここで済む —— run のたびに Terminal のウィンドウが増えない・起動待ちも無い。
+# サーバ側のコードを更新したときは手で止める(`kill $(lsof -ti tcp:8090)` か、ウィンドウを閉じる)
 if server_is_up; then
   echo "dev server is already healthy — reusing it ($HEALTH_URL)"
   exit 0
@@ -121,16 +120,12 @@ cd "$SERVER_REPO"
 exec ./scripts/dev-server.sh 2>&1 | tee "$SERVER_LOG"
 EOS
   chmod +x "$LAUNCHER"
+  # -g = 前面に出さない(実行のたびにフォーカスを奪わない)。ウィンドウは閉じずに残す ——
+  # この窓こそが「ローカルネットワーク」権限の担い手で、teardown も止めないので、
+  # 生きた1枚が背面に残るだけ(以後の run は上の reuse で済み、新しい窓は開かない)
   echo "starting the sut-ec-mobile dev server via Terminal.app ($SERVER_REPO)"
-  open -a Terminal "$LAUNCHER"
+  open -g -a Terminal "$LAUNCHER"
 fi
-
-# このスクリプトが起こしたことの目印。teardown.sh はこれがあるときだけサーバを止める。
-# **ワークスペースの中には置かない** —— ワークスペースはディスパッチのたびに手元から
-# rsync(--delete)で上書きされるので、リモートで書いた目印は次の転送で消える。
-# そうなると、異常終了した run の片付け(hooks reap)が「自分が起こしたものではない」と
-# 判断してサーバを残してしまう(2026-08-18 にリモートで実際に踏んだ)
-: > "$MARKER"
 
 # 5. 秒数で待たず、/health が ok を返すことを待つ。**上限まで黙って待たない** ——
 # 起動が「進んでいない」形(権限で詰まる・ビルドが落ちる・プロセスが消える)は待っても直らないので、
