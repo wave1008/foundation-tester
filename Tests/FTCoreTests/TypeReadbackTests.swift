@@ -149,4 +149,30 @@ final class TypeReadbackTests: XCTestCase {
         XCTAssertFalse(TypeReadback.isTextInput(element(ref: 1, type: "button")))
         XCTAssertFalse(TypeReadback.isTextInput(element(ref: 1, type: "staticText")))
     }
+
+    // MARK: - 空白だけの入力(2026-08-18 実測: a11y は空白のみの値を返さない)
+
+    /// 空欄に見えるからと追送すると、**毎周同じ空白が積まれて欄が壊れる**(実測: 4周で12個)。
+    /// 打鍵が落ちた場合と区別できないので検証を諦める
+    func testWhitespaceOnlyExpectedIsUnverifiableWhenNothingIsRead() {
+        XCTAssertEqual(TypeReadback.plan(expected: "   ", actual: ""), .unverifiable)
+        XCTAssertEqual(TypeReadback.plan(expected: "\t", actual: ""), .unverifiable)
+    }
+
+    /// 空白**だけ**のときの話。見える文字が混じっていれば従来どおり追送する
+    /// (打鍵落ちの検出はこちらが本体)
+    func testTextWithVisibleCharactersStillResends() {
+        XCTAssertEqual(TypeReadback.plan(expected: " a ", actual: ""), .resend(" a "))
+        XCTAssertEqual(TypeReadback.plan(expected: "abc", actual: ""), .resend("abc"))
+    }
+
+    /// 既存値に空白を足す形は「全体が空白」ではないので影響を受けない
+    func testAppendingSpacesToExistingTextIsUnaffected() {
+        XCTAssertEqual(TypeReadback.plan(expected: "abc  ", actual: "abc"), .resend("  "))
+    }
+
+    /// 空白が実際に読めたなら普通に一致する(この規則は読めないときだけ効く)
+    func testWhitespaceThatIsActuallyReadBackIsDone() {
+        XCTAssertEqual(TypeReadback.plan(expected: "   ", actual: "   "), .done)
+    }
 }

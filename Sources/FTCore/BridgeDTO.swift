@@ -190,7 +190,7 @@ public enum BridgeAPI {
     /// `Find the Application` for ~45s and then **took the runner down**, losing the bridge for
     /// good (measured 6/6 on 2026-08-15). A stale bridge still wedges and dies, so the host must
     /// not keep using one → bump.
-    public static let bridgeProtocolVersion = 69
+    public static let bridgeProtocolVersion = 70
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の

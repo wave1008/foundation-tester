@@ -25,6 +25,13 @@ public enum TypeReadback {
 
     public static func plan(expected: String, actual: String) -> Plan {
         if actual == expected { return .done }
+        // **空白だけの期待値は読み返せない**(2026-08-18 実測): a11y は空白のみの値を「値なし」で
+        // 返す —— Compose iOS の欄へ "   " を入れると value は nil のまま、そこへ "abc" を足すと
+        // "            abc" と**溜まった空白ごと**見えた = 打鍵は届いており、読み返しに現れないだけ。
+        // これを resend の入口(actual が空 = 前方一致)に落とすと、**同じ空白を毎周追送して欄を壊す**
+        // (4周で12個の空白が入った)うえ、値は永久に一致しないので最後は「settle しない」で失敗する。
+        // 打鍵が本当に落ちた場合と区別できないので、**検証を諦める側に倒す**(unverifiable の既定の考え方)
+        if actual.isEmpty, !expected.isEmpty, expected.allSatisfy(\.isWhitespace) { return .unverifiable }
         if expected.hasPrefix(actual) { return .resend(String(expected.dropFirst(actual.count))) }
         if actual.hasPrefix(expected) { return .deleteExcess(actual.count - expected.count) }
         return .unverifiable
