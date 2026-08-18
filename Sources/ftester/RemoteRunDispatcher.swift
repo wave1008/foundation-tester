@@ -26,6 +26,9 @@ struct RemoteRunDispatcher {
     /// `--force-lock`: 既存の dispatch.lock を奪ってから取得する(docs/remote-runner.md §5)。
     /// 既定では奪わない(stuck なロックを機械的に stale 判定しない)
     var forceLock: Bool = false
+    /// `--wait-lock <秒>`: 取得できない間、解放をポーリングして待つ(forceLock と併用不可 ——
+    /// FTCore.RemoteDispatchFlagPolicy.waitLockConflictsWithForceLock が入口で弾く)
+    var waitLock: Int? = nil
     /// `--host` の生値(登録簿名 or 生 ssh 宛先)。RemoteHostFactsStore の鍵として使う
     /// (FleetSplit の機械別見積りの供給源。docs/remote-runner.md §13)。nil のまま渡された
     /// 構築箇所(facts を書く必要のない経路)では facts の保存をスキップする
@@ -219,11 +222,16 @@ struct RemoteRunDispatcher {
     private func acquireDispatchLock(layout: RemoteLayout) throws {
         log("==> acquiring dispatch lock on \(host.sshTarget)")
         let info = RemoteDispatchLockInfo.now(
-            issuerHost: ProcessInfo.processInfo.hostName, pid: ProcessInfo.processInfo.processIdentifier)
+            issuerHost: ProcessInfo.processInfo.hostName, pid: ProcessInfo.processInfo.processIdentifier,
+            issuer: LocalConfig.resolveIssuerId())
         if forceLock {
             log("warning: --force-lock is stealing the dispatch lock on \(host.sshTarget)"
                 + " (any dispatch it was protecting may still be running)")
             _ = try sshCapture(RemoteDispatchLock.forceAcquireCommand(base: layout.base, info: info))
+            return
+        }
+        if let waitLock {
+            try acquireDispatchLockWithWait(layout: layout, info: info, limitSeconds: waitLock)
             return
         }
         let result = try Shell.run(sshBase + [host.sshTarget, RemoteDispatchLock.acquireCommand(
@@ -236,6 +244,39 @@ struct RemoteRunDispatcher {
             let existing = try? sshCapture(RemoteDispatchLock.readCommand(base: layout.base))
             let existingInfo = existing.flatMap(RemoteDispatchLock.decode)
             throw RemoteDispatchError.remoteSetupFailed(RemoteDispatchLock.heldMessage(existingInfo))
+        }
+    }
+
+    /// `--wait-lock`: 取得できない間、解放をポーリングして待つ(奪わない。時刻での自動奪取は無い)。
+    /// ssh 到達不能(255)は待たずに即 throw ―― 待って直る種類の失敗ではない。同じ `info`
+    /// (acquiredAt はこのディスパッチが待ち始めた時刻)を毎回の再試行で使い回す
+    private func acquireDispatchLockWithWait(
+        layout: RemoteLayout, info: RemoteDispatchLockInfo, limitSeconds: Int
+    ) throws {
+        var elapsed = 0
+        while true {
+            let result = try Shell.run(sshBase + [host.sshTarget, RemoteDispatchLock.acquireCommand(
+                base: layout.base, info: info)])
+            if result.status == 0 { return }
+            guard result.status != 255 else {
+                throw RemoteDispatchError.remoteSetupFailed(
+                    "cannot reach \(host.sshTarget) over ssh (status 255)\n\(result.tail)")
+            }
+            let existing = try? sshCapture(RemoteDispatchLock.readCommand(base: layout.base))
+            let existingInfo = existing.flatMap(RemoteDispatchLock.decode)
+            if elapsed == 0 {
+                log("==> dispatch lock on \(host.sshTarget) is \(RemoteDispatchLock.holderSummary(existingInfo))"
+                    + " — waiting up to \(limitSeconds)s")
+            }
+            guard WaitLockPolling.decide(elapsedSeconds: elapsed, limitSeconds: limitSeconds) == .retry else {
+                throw RemoteDispatchError.remoteSetupFailed(
+                    RemoteDispatchLock.heldMessage(existingInfo) + " (waited \(elapsed)s)")
+            }
+            Thread.sleep(forTimeInterval: Double(WaitLockPolling.pollIntervalSeconds))
+            elapsed += WaitLockPolling.pollIntervalSeconds
+            if elapsed > 0, WaitLockPolling.shouldLogProgress(elapsedSeconds: elapsed) {
+                log("==> still waiting on \(host.sshTarget)'s dispatch lock (\(elapsed)s of \(limitSeconds)s)")
+            }
         }
     }
 
@@ -330,7 +371,8 @@ struct RemoteRunDispatcher {
     private func runRemoteAndRelay(ftesterArgs: [String], layout: RemoteLayout,
                                    timeoutSeconds: Int?) throws -> Int32 {
         log("==> running on \(host.sshTarget): ftester \(ftesterArgs.joined(separator: " "))")
-        let command = RemoteShell.remoteRunCommand(layout: layout, ftesterArgs: ftesterArgs)
+        let command = RemoteShell.remoteRunCommand(layout: layout, ftesterArgs: ftesterArgs,
+                                                   issuer: LocalConfig.resolveIssuerId())
         let status = try runInheritedWithLineRewrite(
             sshRunBase + [host.sshTarget, command], layout: layout, timeoutSeconds: timeoutSeconds)
         if status == 90 {

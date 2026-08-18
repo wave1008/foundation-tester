@@ -16,6 +16,13 @@ final class RemoteDispatchLockTests: XCTestCase {
         XCTAssertEqual(info.acquiredAt, "2025-08-12T12:00:00Z")
         XCTAssertEqual(info.issuerHost, "wave1008-mbp")
         XCTAssertEqual(info.pid, 4242)
+        XCTAssertNil(info.issuer)
+    }
+
+    func testNowSetsIssuerWhenGiven() {
+        let info = RemoteDispatchLockInfo.now(issuerHost: "wave1008-mbp", pid: 4242,
+                                              issuer: "wave8san@wave1008-mbp", date: fixedDate)
+        XCTAssertEqual(info.issuer, "wave8san@wave1008-mbp")
     }
 
     // MARK: - encode/decode round trip
@@ -41,6 +48,25 @@ final class RemoteDispatchLockTests: XCTestCase {
 
     func testDecodeReturnsNilForEmptyString() {
         XCTAssertNil(RemoteDispatchLock.decode(""))
+    }
+
+    /// issuer 付きの encode(_:) は sortedKeys で "issuer" < "issuerHost" の順に来る
+    func testEncodeWithIssuerProducesSortedKeysIncludingIssuer() throws {
+        let info = RemoteDispatchLockInfo(issuerHost: "h", pid: 1,
+                                          acquiredAt: "2025-08-12T13:20:00Z", issuer: "alice@h")
+        let encoded = try XCTUnwrap(RemoteDispatchLock.encode(info))
+        XCTAssertEqual(encoded,
+            "{\"acquiredAt\":\"2025-08-12T13:20:00Z\",\"issuer\":\"alice@h\","
+            + "\"issuerHost\":\"h\",\"pid\":1}")
+    }
+
+    /// 旧 info.json(issuer キーが無い)を素朴な Optional Codable がそのまま decode できること
+    func testDecodeOldInfoJsonWithoutIssuerKey() throws {
+        let raw = "{\"acquiredAt\":\"2025-08-12T13:20:00Z\",\"issuerHost\":\"h\",\"pid\":1}"
+        let decoded = try XCTUnwrap(RemoteDispatchLock.decode(raw))
+        XCTAssertNil(decoded.issuer)
+        XCTAssertEqual(decoded.issuerHost, "h")
+        XCTAssertEqual(decoded.pid, 1)
     }
 
     // MARK: - paths
@@ -70,6 +96,56 @@ final class RemoteDispatchLockTests: XCTestCase {
         let message = RemoteDispatchLock.heldMessage(nil)
         XCTAssertTrue(message.contains("holder unknown"), message)
         XCTAssertTrue(message.contains("--force-lock"), message)
+    }
+
+    /// issuer 付き info は「started by <issuer>」を先頭に出し、issuerHost/pid は "(from X, pid N)" で残す
+    func testHeldMessageWithIssuerIncludesIssuerAndStillIncludesHostAndPid() {
+        let info = RemoteDispatchLockInfo(issuerHost: "wave1008-mbp", pid: 4242,
+                                          acquiredAt: "2025-08-12T13:20:00Z", issuer: "alice@wave1008-mbp")
+        let message = RemoteDispatchLock.heldMessage(info)
+        XCTAssertTrue(message.contains("started by alice@wave1008-mbp"), message)
+        XCTAssertTrue(message.contains("(from wave1008-mbp, pid 4242)"), message)
+        XCTAssertTrue(message.contains("2025-08-12T13:20:00Z"), message)
+    }
+
+    /// issuer nil の既存挙動は1バイトも変わらない(旧 info.json の表示互換)
+    func testHeldMessageWithoutIssuerIsByteIdenticalToPriorText() {
+        let info = RemoteDispatchLockInfo(issuerHost: "wave1008-mbp", pid: 4242, acquiredAt: "2025-08-12T13:20:00Z")
+        let message = RemoteDispatchLock.heldMessage(info)
+        XCTAssertEqual(message,
+            "another dispatch is already running on this remote host"
+            + " (started by wave1008-mbp (pid 4242) at 2025-08-12T13:20:00Z)"
+            + " — wait for it to finish, or pass --force-lock if it is stuck"
+            + " (docs/remote-runner.md §5)")
+    }
+
+    // MARK: - alignHeldMessage
+
+    func testAlignHeldMessageIncludesIssuerPidAndTimestamp() {
+        let info = RemoteDispatchLockInfo(issuerHost: "wave1008-mbp", pid: 4242, acquiredAt: "2025-08-12T13:20:00Z")
+        let message = RemoteDispatchLock.alignHeldMessage(info)
+        XCTAssertTrue(message.contains("wave1008-mbp"), message)
+        XCTAssertTrue(message.contains("4242"), message)
+        XCTAssertTrue(message.contains("2025-08-12T13:20:00Z"), message)
+    }
+
+    func testAlignHeldMessageWithIssuerIncludesIssuerAndStillIncludesHostAndPid() {
+        let info = RemoteDispatchLockInfo(issuerHost: "wave1008-mbp", pid: 4242,
+                                          acquiredAt: "2025-08-12T13:20:00Z", issuer: "alice@wave1008-mbp")
+        let message = RemoteDispatchLock.alignHeldMessage(info)
+        XCTAssertTrue(message.contains("started by alice@wave1008-mbp"), message)
+        XCTAssertTrue(message.contains("(from wave1008-mbp, pid 4242)"), message)
+    }
+
+    func testAlignHeldMessageHandlesUnreadableInfo() {
+        let message = RemoteDispatchLock.alignHeldMessage(nil)
+        XCTAssertTrue(message.contains("holder unknown"), message)
+    }
+
+    func testAlignHeldMessageDoesNotMentionForceLock() {
+        let info = RemoteDispatchLockInfo(issuerHost: "wave1008-mbp", pid: 4242, acquiredAt: "2025-08-12T13:20:00Z")
+        XCTAssertFalse(RemoteDispatchLock.alignHeldMessage(info).contains("--force-lock"))
+        XCTAssertFalse(RemoteDispatchLock.alignHeldMessage(nil).contains("--force-lock"))
     }
 
     // MARK: - ssh コマンド文字列(完全一致で固定)

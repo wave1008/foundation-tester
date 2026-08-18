@@ -41,6 +41,9 @@ public struct RunMetaRecord: Codable, Sendable {
     public var measurementInvalid: Bool?
     /// measurementInvalid=true のときの理由(英語、人間可読)。measurementInvalid が無ければ nil。
     public var measurementInvalidReasons: [String]?
+    /// 自己申告のディスパッチ発行者(LocalConfig.resolveIssuerId)。認証ではない(帰属の記録のみ)。
+    /// 旧レコードにはキーが無いので Optional のまま decode できる(schemaVersion は上げない)
+    public var issuer: String?
 
     public init(schemaVersion: Int = RunRecordSchema.current, runID: String, project: String,
                 profile: String?, machine: String, trigger: String, startedAt: String,
@@ -48,7 +51,8 @@ public struct RunMetaRecord: Codable, Sendable {
                 failed: Int? = nil, degradedWorkers: [String]? = nil,
                 freezeRetries: [String]? = nil,
                 blankRepairs: [String]? = nil, blankExclusions: [String]? = nil,
-                measurementInvalid: Bool? = nil, measurementInvalidReasons: [String]? = nil) {
+                measurementInvalid: Bool? = nil, measurementInvalidReasons: [String]? = nil,
+                issuer: String? = nil) {
         self.schemaVersion = schemaVersion
         self.runID = runID
         self.project = project
@@ -66,6 +70,7 @@ public struct RunMetaRecord: Codable, Sendable {
         self.blankExclusions = blankExclusions
         self.measurementInvalid = measurementInvalid
         self.measurementInvalidReasons = measurementInvalidReasons
+        self.issuer = issuer
     }
 }
 

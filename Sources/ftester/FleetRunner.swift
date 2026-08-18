@@ -28,7 +28,7 @@ enum FleetRunner {
         scenarios: [String], folders: [String],
         heal: Bool, noHeal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
         fastInput: Bool, enableAnimations: Bool, performanceMode: Bool,
-        forceLock: Bool, remoteDir: String?, remoteTimeout: Int?, remoteArtifacts: String,
+        forceLock: Bool, waitLock: Int?, remoteDir: String?, remoteTimeout: Int?, remoteArtifacts: String,
         split: Bool, quiet: Bool, junit: String?
     ) async throws -> Int32 {
         try preflightFolders(folders, project: project, fleetName: fleetName)
@@ -47,7 +47,7 @@ enum FleetRunner {
                 scenarios: scenarios, folders: folders,
                 heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
                 fastInput: fastInput, enableAnimations: enableAnimations, performanceMode: performanceMode,
-                forceLock: forceLock, remoteDir: remoteDir, remoteTimeout: remoteTimeout,
+                forceLock: forceLock, waitLock: waitLock, remoteDir: remoteDir, remoteTimeout: remoteTimeout,
                 remoteArtifacts: remoteArtifacts, quiet: quiet, junit: junit, junitTempDir: junitTempDir)
         }
 
@@ -63,7 +63,7 @@ enum FleetRunner {
                         scenarios: scenarios, folders: folders,
                         heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
                         fastInput: fastInput, enableAnimations: enableAnimations,
-                        performanceMode: performanceMode, forceLock: forceLock,
+                        performanceMode: performanceMode, forceLock: forceLock, waitLock: waitLock,
                         remoteDir: remoteDir, remoteTimeout: remoteTimeout,
                         remoteArtifacts: remoteArtifacts, quiet: quiet,
                         junitPath: entryJUnitPath(tempDir: junitTempDir, index: index))
@@ -110,7 +110,7 @@ enum FleetRunner {
         scenarios: [String], folders: [String],
         heal: Bool, noHeal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
         fastInput: Bool, enableAnimations: Bool, performanceMode: Bool,
-        forceLock: Bool, remoteDir: String?, remoteTimeout: Int?, remoteArtifacts: String,
+        forceLock: Bool, waitLock: Int?, remoteDir: String?, remoteTimeout: Int?, remoteArtifacts: String,
         quiet: Bool, junit: String?, junitTempDir: URL?
     ) async throws -> Int32 {
         log("==> fleet \"\(fleetName)\" --split: building \(project.name) locally to resolve"
@@ -180,7 +180,7 @@ enum FleetRunner {
                         scenarios: ids, folders: [],
                         heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
                         fastInput: fastInput, enableAnimations: enableAnimations,
-                        performanceMode: performanceMode, forceLock: forceLock,
+                        performanceMode: performanceMode, forceLock: forceLock, waitLock: waitLock,
                         remoteDir: remoteDir, remoteTimeout: remoteTimeout,
                         remoteArtifacts: remoteArtifacts, quiet: quiet,
                         junitPath: entryJUnitPath(tempDir: junitTempDir, index: index))
@@ -375,7 +375,7 @@ enum FleetRunner {
         scenarios: [String], folders: [String],
         heal: Bool, noHeal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
         fastInput: Bool, enableAnimations: Bool, performanceMode: Bool,
-        forceLock: Bool, remoteDir: String?, remoteTimeout: Int?, remoteArtifacts: String,
+        forceLock: Bool, waitLock: Int?, remoteDir: String?, remoteTimeout: Int?, remoteArtifacts: String,
         quiet: Bool, junitPath: String?
     ) -> [String] {
         var args = ["run", "--project", project, "--profile", profile]
@@ -384,10 +384,12 @@ enum FleetRunner {
         // entry.profile が引くマシンプロファイルに host が設定されていると子がそこへ自動
         // ディスパッチしてしまい、{"host":"local"} と書いた意味が失われる(重複ホスト拒否も
         // 無意味になる)。"local" を明示すれば MachineHostDispatch.resolve がそこで止める
-        // (RunProfile.swift 参照)。--force-lock 等のリモート専用フラグは引き続きリモートのみ
+        // (RunProfile.swift 参照)。--force-lock/--wait-lock 等のリモート専用フラグは引き続きリモートのみ
+        // (ロックは発行側の関心。"local" 子には転送しない)
         if host != "local" {
             args += ["--host", host]
             if forceLock { args += ["--force-lock"] }
+            if let waitLock { args += ["--wait-lock", String(waitLock)] }
             if let remoteDir { args += ["--remote-dir", remoteDir] }
             if let remoteTimeout { args += ["--remote-timeout", String(remoteTimeout)] }
             if remoteArtifacts != "collect" { args += ["--remote-artifacts", remoteArtifacts] }

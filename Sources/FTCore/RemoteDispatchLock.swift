@@ -19,17 +19,23 @@ public struct RemoteDispatchLockInfo: Codable, Equatable, Sendable {
     /// 取得時刻(UTC, ISO8601)。表示専用 ―― stale 判定に時刻を機械的には使わない
     /// (docs/remote-runner.md §5「既定では奪わない」。長時間 run を誤って殺さないため)
     public let acquiredAt: String
+    /// 自己申告の帰属(LocalConfig.resolveIssuerId)。表示専用。旧 info.json にはキーが無いので
+    /// Optional のまま(decodeIfPresent で自動的に nil になる ―― Codable を手書きしない)
+    public let issuer: String?
 
-    public init(issuerHost: String, pid: Int32, acquiredAt: String) {
+    public init(issuerHost: String, pid: Int32, acquiredAt: String, issuer: String? = nil) {
         self.issuerHost = issuerHost
         self.pid = pid
         self.acquiredAt = acquiredAt
+        self.issuer = issuer
     }
 
-    public static func now(issuerHost: String, pid: Int32, date: Date = Date()) -> RemoteDispatchLockInfo {
+    public static func now(issuerHost: String, pid: Int32, issuer: String? = nil,
+                           date: Date = Date()) -> RemoteDispatchLockInfo {
         let formatter = ISO8601DateFormatter()
         formatter.timeZone = TimeZone(identifier: "UTC")
-        return RemoteDispatchLockInfo(issuerHost: issuerHost, pid: pid, acquiredAt: formatter.string(from: date))
+        return RemoteDispatchLockInfo(issuerHost: issuerHost, pid: pid,
+                                      acquiredAt: formatter.string(from: date), issuer: issuer)
     }
 }
 
@@ -60,11 +66,32 @@ public enum RemoteDispatchLock {
     /// 取得失敗時に出す1行。「誰がいつから掴んでいるか」+ どうすればよいか
     /// (相手の完了を待つ / stuck なら --force-lock で奪う)を必ず含める
     public static func heldMessage(_ info: RemoteDispatchLockInfo?) -> String {
-        let holder = info.map { "started by \($0.issuerHost) (pid \($0.pid)) at \($0.acquiredAt)" }
-            ?? "holder unknown (its lock info could not be read)"
-        return "another dispatch is already running on this remote host (\(holder))"
+        "another dispatch is already running on this remote host (\(holderDescription(info)))"
             + " — wait for it to finish, or pass --force-lock if it is stuck"
             + " (docs/remote-runner.md §5)"
+    }
+
+    /// align/setup 用の取得失敗メッセージ(docs/remote-runner.md §18.3 規則2)。align/install は
+    /// 実行中バイナリを差し替えるので、稼働中の dispatch へ重ねると SIGKILL する。align/setup に
+    /// `--force-lock` は無い(stale 判定を機械的に行わない既定を、稼働中バイナリの差し替えという
+    /// 一段重い操作でまで崩さない)ので、heldMessage と違い --force-lock は案内しない
+    public static func alignHeldMessage(_ info: RemoteDispatchLockInfo?) -> String {
+        "another dispatch is running on this remote host (\(holderDescription(info)))"
+            + " — aligning now would replace the binary under the running dispatch and kill it."
+            + " Wait for it to finish and retry (docs/remote-runner.md §18.3)"
+    }
+
+    private static func holderDescription(_ info: RemoteDispatchLockInfo?) -> String {
+        guard let info else { return "holder unknown (its lock info could not be read)" }
+        if let issuer = info.issuer {
+            return "started by \(issuer) (from \(info.issuerHost), pid \(info.pid)) at \(info.acquiredAt)"
+        }
+        return "started by \(info.issuerHost) (pid \(info.pid)) at \(info.acquiredAt)"
+    }
+
+    /// wait-lock の初回・進捗ログ用(heldMessage/alignHeldMessage と同じ holder 表現を再利用する)
+    public static func holderSummary(_ info: RemoteDispatchLockInfo?) -> String {
+        holderDescription(info)
     }
 
     // MARK: - ssh コマンド組み立て(純粋関数。$ とバッククォートは RemoteShell.quote が

@@ -67,6 +67,44 @@ private func remoteReach(hostSpec: RemoteHostSpec)
     return (nil, firstLine, nil)
 }
 
+// MARK: - dispatch.lock (docs/remote-runner.md §18.3 規則2)
+//
+// align/install はリモートの `<base>/tool/.build` バイナリを再ビルドで差し替えるため、
+// 稼働中の dispatch へ重ねるとその dispatch を SIGKILL する(「E2E 中に swift build を
+// 打たない」と同型)。align/setup に `--force-lock` は無いので
+// RemoteRunDispatcher.acquireDispatchLock と違い強制取得の分岐を持たない。
+
+/// 取得。成功なら nil、失敗ならそのまま表示できるメッセージ文字列を返す
+/// (RemoteRunDispatcher.acquireDispatchLock と同じ status 判定: 255 = ssh 到達不能、
+/// それ以外の非0 = ロック保持中 → readCommand で保持者を読んで alignHeldMessage を組み立てる)
+private func acquireRemoteDispatchLock(hostSpec: RemoteHostSpec, layout: RemoteLayout) -> String? {
+    let info = RemoteDispatchLockInfo.now(
+        issuerHost: ProcessInfo.processInfo.hostName, pid: ProcessInfo.processInfo.processIdentifier,
+        issuer: LocalConfig.resolveIssuerId())
+    guard let result = try? Shell.run(setupSSHBase + [hostSpec.sshTarget,
+        RemoteDispatchLock.acquireCommand(base: layout.base, info: info)]) else {
+        return "ssh failed to run"
+    }
+    guard result.status == 0 else {
+        guard result.status != 255 else {
+            return "cannot reach \(hostSpec.sshTarget) over ssh (status 255)\n\(result.tail)"
+        }
+        let existing = try? Shell.run(setupSSHBase + [hostSpec.sshTarget, RemoteDispatchLock.readCommand(base: layout.base)])
+        let existingInfo = existing.flatMap { RemoteDispatchLock.decode($0.output.trimmingCharacters(in: .whitespacesAndNewlines)) }
+        return RemoteDispatchLock.alignHeldMessage(existingInfo)
+    }
+    return nil
+}
+
+/// 解放。失敗しても警告1行(run の成否を変えない。RemoteRunDispatcher.releaseDispatchLock と同じ規律)
+private func releaseRemoteDispatchLock(hostSpec: RemoteHostSpec, layout: RemoteLayout) {
+    let result = try? Shell.run(setupSSHBase + [hostSpec.sshTarget, RemoteDispatchLock.releaseCommand(base: layout.base)])
+    if result?.status != 0 {
+        say("warning: failed to release the dispatch lock on \(hostSpec.sshTarget)"
+            + " — clear it manually if the next align/setup is refused")
+    }
+}
+
 extension RemoteCommand {
 
     struct Setup: AsyncParsableCommand {
@@ -241,6 +279,22 @@ extension RemoteCommand {
 
             say("==> install: copying and running Scripts/install.sh on \(hostSpec.sshTarget)"
                 + " (first run can take several minutes)...")
+
+            // install/align は稼働中バイナリを差し替えるので、走っている dispatch と衝突しない
+            // ことを先に確かめる(docs/remote-runner.md §18.3 規則2)。verify の dispatcher が
+            // 同じロックを自分で取るので、verify より前に必ず解放する
+            var dispatchLockHeld = false
+            defer {
+                if dispatchLockHeld {
+                    releaseRemoteDispatchLock(hostSpec: hostSpec, layout: layout)
+                }
+            }
+            if let failure = acquireRemoteDispatchLock(hostSpec: hostSpec, layout: layout) {
+                emit("install", .fail, failure)
+                try summarizeAndExit()
+            }
+            dispatchLockHeld = true
+
             let mkdirStatus = (try? Shell.run(
                 setupSSHBase + [hostSpec.sshTarget, RemoteSetupPlan.ensureWorkDirCommand(layout: layout)]))?.status ?? -1
             guard mkdirStatus == 0 else {
@@ -295,6 +349,8 @@ extension RemoteCommand {
                 try summarizeAndExit()
             }
             emit("align", .ok, "aligned to \(localRevision.prefix(7)) and built")
+            releaseRemoteDispatchLock(hostSpec: hostSpec, layout: layout)
+            dispatchLockHeld = false
 
             // MARK: verify
 
@@ -396,6 +452,14 @@ extension RemoteCommand {
                 throw ExitCode(1)
             }
             let layout = RemoteLayout(base: RemoteLayout.resolveBase(resolved.remoteDirRaw, home: home))
+
+            // align は稼働中バイナリを差し替えるので、走っている dispatch と衝突しないことを
+            // 先に確かめる(docs/remote-runner.md §18.3 規則2)
+            if let failure = acquireRemoteDispatchLock(hostSpec: hostSpec, layout: layout) {
+                say(failure)
+                throw ExitCode(1)
+            }
+            defer { releaseRemoteDispatchLock(hostSpec: hostSpec, layout: layout) }
 
             say("==> align: fetching and building the remote clone...")
             let alignCmd = RemoteSetupPlan.alignRevisionCommand(layout: layout, revision: localRevision)

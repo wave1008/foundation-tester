@@ -385,6 +385,21 @@ public enum RemoteDispatchFlagPolicy {
             + " (it releases the dispatch lock on a remote host)"
     }
 
+    /// `--wait-lock`(dispatch.lock の解放をポーリングして待つ)を受け付けてよいか。
+    /// forceLockRejection と同じ理由・同じ判定(リモートへ行きうる指定が1つでもあれば受ける)
+    public static func waitLockRejection(host: String?, fleet: String?, profile: String?) -> String? {
+        let hasRemoteRoute = host != nil || fleet != nil || profile != nil
+        guard !hasRemoteRoute else { return nil }
+        return "--wait-lock requires a run profile, --host or --fleet"
+            + " (it waits for the dispatch lock on a remote host)"
+    }
+
+    /// --wait-lock(待つ)と --force-lock(奪う)は同時指定できない(意味が矛盾する)
+    public static func waitLockConflictsWithForceLock(forceLock: Bool, waitLock: Int?) -> String? {
+        guard forceLock, waitLock != nil else { return nil }
+        return "--wait-lock and --force-lock cannot be used together"
+    }
+
     /// `--report-dir` / `--failed` / `--ports`: どちらの origin でも拒否する(意味を持たせられない
     /// のは skipBuild と違い自動側でも変わらない)。文言だけ origin で変える —— 自動ディスパッチの
     /// 拒否理由を「--host と併用できない」のままにすると、利用者は打ってもいない `--host` を
@@ -397,6 +412,31 @@ public enum RemoteDispatchFlagPolicy {
             return .rejected("\(flag) cannot be used: this profile automatically dispatches to"
                 + " machine \"\(machine)\"'s host \"\(host)\" — pass --host local to run it here instead")
         }
+    }
+}
+
+/// `--wait-lock` のポーリング判断(純粋関数。ssh 発行・Thread.sleep は RemoteRunDispatcher 側)
+public enum WaitLockPolling {
+    /// ロック保持は分単位の run なので、待ち全体に対する上乗せは高々1間隔。
+    /// 1回の試行は ssh 1本で安い
+    public static let pollIntervalSeconds = 10
+    /// 経過ログの間引き間隔。pollIntervalSeconds の倍数であること(でないと elapsed が
+    /// ちょうど割り切れる瞬間が来ず、経過ログが一度も出ない)
+    public static let progressIntervalSeconds = 60
+
+    public enum Decision: Equatable {
+        case retry
+        case giveUp
+    }
+
+    /// elapsedSeconds は次の試行**前**の既経過時間(まだ0回待っていなければ0)
+    public static func decide(elapsedSeconds: Int, limitSeconds: Int) -> Decision {
+        elapsedSeconds < limitSeconds ? .retry : .giveUp
+    }
+
+    /// 経過ログを出すか。elapsedSeconds==0(初回試行時点)は常に true
+    public static func shouldLogProgress(elapsedSeconds: Int) -> Bool {
+        elapsedSeconds == 0 || elapsedSeconds % progressIntervalSeconds == 0
     }
 }
 
@@ -707,7 +747,8 @@ public enum RemoteShell {
     /// SSH の Background セッションのまま直接実行する(ユーザーの launchd ドメインへ昇格させる
     /// 処理は挟まない)。コンソールにログインしている限りそのままで launchd ドメイン
     /// (CoreSimulator 等)へ到達できる(2026-07-31 実測)
-    public static func remoteRunCommand(layout: RemoteLayout, ftesterArgs: [String]) -> String {
+    public static func remoteRunCommand(layout: RemoteLayout, ftesterArgs: [String],
+                                        issuer: String? = nil) -> String {
         let binary = quote(layout.binary)
         let guardCmd = "test -x \(binary) || { echo \"ftester binary not found on remote"
             + " — run: swift build --product ftester\" >&2; exit 90; }"
@@ -719,7 +760,10 @@ public enum RemoteShell {
         // 落ちる(2026-07-31 の localhost E2E で実測)。ログインシェルに頼ると受け手の
         // シェル設定に依存するので、ここで明示的に足す
         let pathCmd = "export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\""
-        return "cd \(quote(layout.workDir)) && \(pathCmd) && \(guardCmd) && \(syncCmd) && \(launch)"
+        // 発行者はディスパッチ側から運ぶ(LocalConfig.resolveIssuerId が FT_ISSUER を最優先で
+        // 読む契約)。ランナー機側で解決させると全員が共有アカウントの同じ値になる
+        let issuerCmd = issuer.map { "export FT_ISSUER=\(quote($0)) && " } ?? ""
+        return "cd \(quote(layout.workDir)) && \(pathCmd) && \(issuerCmd)\(guardCmd) && \(syncCmd) && \(launch)"
     }
 
     /// `ftester remote exec`(docs/remote-runner.md §14「単発コマンドの転送は汎用化する」)。

@@ -24,16 +24,20 @@ public struct LocalConfig: Codable, Sendable, Equatable {
     /// (`ftester.remote.hosts`)ではなくここに置くのは、①CLI が解決の主体になるため
     /// ②ワークスペース設定でディスパッチ先を差し替えられる余地を消すため(§15.2)
     public var remoteHosts: [RemoteHostEntry]?
+    /// 自己申告の帰属(認証ではない)。run.json/dispatch.lock に「誰が起動したか」を記す。
+    /// 空文字列は未設定と同じ扱い(resolveIssuerId が既定値へフォールバックする)
+    public var issuerId: String?
 
     public init(defaultProject: String? = nil,
                 lastRunProfile: [String: String]? = nil,
                 developmentTeam: String? = nil, bundleIDPrefix: String? = nil,
-                remoteHosts: [RemoteHostEntry]? = nil) {
+                remoteHosts: [RemoteHostEntry]? = nil, issuerId: String? = nil) {
         self.defaultProject = defaultProject
         self.lastRunProfile = lastRunProfile
         self.developmentTeam = developmentTeam
         self.bundleIDPrefix = bundleIDPrefix
         self.remoteHosts = remoteHosts
+        self.issuerId = issuerId
     }
 
     /// 実機署名の設定。優先順位: 環境変数 > 設定ファイル。
@@ -49,6 +53,20 @@ public struct LocalConfig: Codable, Sendable, Equatable {
             ?? config.bundleIDPrefix.flatMap { $0.isEmpty ? nil : $0 }
             ?? "com.example"
         return (team, prefix)
+    }
+
+    /// 自己申告の帰属(認証ではない。docs/remote-runner.md §15.1 の適合チェックと同じ規律)。
+    /// 優先順位: 環境変数 FT_ISSUER > 設定ファイル > USER@hostname(codeSigning と同じ規律)。
+    /// FT_ISSUER はリモートディスパッチが子へ発行者を運ぶ口(RemoteShell.remoteRunCommand が
+    /// export する)—— ランナー機側で解決すると全員が共有アカウントの同じ値になり、帰属が消える
+    public static func resolveIssuerId(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        configURL: URL? = nil
+    ) -> String {
+        if let env = environment["FT_ISSUER"], !env.isEmpty { return env }
+        let config = load(from: configURL ?? Self.url(environment: environment))
+        if let issuer = config.issuerId, !issuer.isEmpty { return issuer }
+        return "\(NSUserName())@\(ProcessInfo.processInfo.hostName)"
     }
 
     /// 設定ファイルの場所: $XDG_CONFIG_HOME/ftester/config.json(既定 ~/.config/ftester/config.json)

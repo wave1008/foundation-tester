@@ -276,6 +276,30 @@ final class RunResultsStoreTests: XCTestCase {
         XCTAssertFalse(meta?.machine.isEmpty ?? true)
     }
 
+    /// issuer は begin() 時点で焼き込まれ、finish() でも同じ値が引き継がれる
+    func testBeginAndFinishRecordIssuer() {
+        let recorder = RunRecorder.begin(project: project, profile: "default", trigger: "cli", captureHostMetrics: false)
+        let runDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: recorder.runID)
+        let expected = LocalConfig.resolveIssuerId()
+
+        let beginMeta = (try? Data(contentsOf: runDir.appendingPathComponent("run.json")))
+            .flatMap { try? JSONDecoder().decode(RunMetaRecord.self, from: $0) }
+        XCTAssertEqual(beginMeta?.issuer, expected)
+
+        recorder.finish(total: 1, passed: 1, failed: 0)
+        let finishMeta = (try? Data(contentsOf: runDir.appendingPathComponent("run.json")))
+            .flatMap { try? JSONDecoder().decode(RunMetaRecord.self, from: $0) }
+        XCTAssertEqual(finishMeta?.issuer, expected)
+    }
+
+    /// 旧 run.json(issuer キーが無い)も引き続き decode できる(schemaVersion は上げていない)
+    func testRunMetaRecordDecodesOldJsonWithoutIssuerKey() throws {
+        let raw = "{\"schemaVersion\":1,\"runID\":\"x\",\"project\":\"SampleApp\",\"machine\":\"m\","
+            + "\"trigger\":\"cli\",\"startedAt\":\"2026-01-01T00:00:00Z\"}"
+        let decoded = try XCTUnwrap(try? JSONDecoder().decode(RunMetaRecord.self, from: Data(raw.utf8)))
+        XCTAssertNil(decoded.issuer)
+    }
+
     /// measurementInvalid=false/未指定は run.json に一切書かれない(既存レコードと同じ形を保つ
     /// 契約。RunRecorder.finish の "false は nil で渡す" を確かめる)
     func testFinishOmitsMeasurementInvalidKeysWhenValid() {

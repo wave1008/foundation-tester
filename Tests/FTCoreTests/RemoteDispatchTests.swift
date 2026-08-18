@@ -560,6 +560,32 @@ final class RemoteDispatchTests: XCTestCase {
             + "'\(binary)' 'run' '--project' 'E2E' '--profile' 'ios-inapp' '--quiet'")
     }
 
+    /// 発行者はディスパッチ側から FT_ISSUER で運ぶ(LocalConfig.resolveIssuerId が最優先で読む
+    /// 契約)。ランナー機側で解決させると全員が共有アカウントの同じ値になり帰属が消える
+    func testRemoteRunCommandExportsIssuerWhenGiven() {
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
+        let command = RemoteShell.remoteRunCommand(
+            layout: layout, ftesterArgs: ["run", "--quiet"], issuer: "tanaka@dev-mbp")
+        XCTAssertTrue(command.contains("export FT_ISSUER='tanaka@dev-mbp' && "), command)
+        // 位置は PATH 補正の後・バイナリ存在ガードの前(run 本体より先に環境が立っていること)。
+        // 強制アンラップしない ―― 変異で FT_ISSUER が消えたとき、クラッシュはこのプロセスの
+        // 後続テスト全部を巻き添えにする(失敗で止まる形に保つ)
+        guard let issuerRange = command.range(of: "FT_ISSUER"),
+              let pathRange = command.range(of: "export PATH"),
+              let guardRange = command.range(of: "test -x") else {
+            return XCTFail("expected markers missing: \(command)")
+        }
+        XCTAssertTrue(pathRange.lowerBound < issuerRange.lowerBound, command)
+        XCTAssertTrue(issuerRange.lowerBound < guardRange.lowerBound, command)
+    }
+
+    func testRemoteRunCommandQuotesIssuerAgainstShellInjection() {
+        let layout = RemoteLayout(base: "/b")
+        let command = RemoteShell.remoteRunCommand(
+            layout: layout, ftesterArgs: ["run"], issuer: "a'; rm -rf /; '")
+        XCTAssertTrue(command.contains("export FT_ISSUER='a'\\''; rm -rf /; '\\'''"), command)
+    }
+
     // MARK: - RemotePathRewrite
 
     func testRewriteReplacesMultipleOccurrences() {
@@ -754,6 +780,63 @@ final class RemoteDispatchTests: XCTestCase {
         let message = RemoteDispatchFlagPolicy.forceLockRejection(host: nil, fleet: nil, profile: nil)
         XCTAssertNotNil(message)
         XCTAssertTrue(message?.contains("--force-lock") == true, message ?? "")
+    }
+
+    // MARK: - RemoteDispatchFlagPolicy.waitLockRejection(forceLockRejection と同じ判定)
+
+    func testWaitLockIsAcceptedWithAnExplicitHostOrFleetOrProfileAlone() {
+        XCTAssertNil(RemoteDispatchFlagPolicy.waitLockRejection(host: "M1Max", fleet: nil, profile: nil))
+        XCTAssertNil(RemoteDispatchFlagPolicy.waitLockRejection(host: nil, fleet: "nightly", profile: nil))
+        XCTAssertNil(RemoteDispatchFlagPolicy.waitLockRejection(
+            host: nil, fleet: nil, profile: "android_local+remote"))
+    }
+
+    func testWaitLockIsRejectedWhenNothingCanDispatchRemotely() {
+        let message = RemoteDispatchFlagPolicy.waitLockRejection(host: nil, fleet: nil, profile: nil)
+        XCTAssertNotNil(message)
+        XCTAssertTrue(message?.contains("--wait-lock") == true, message ?? "")
+    }
+
+    // MARK: - RemoteDispatchFlagPolicy.waitLockConflictsWithForceLock(待つと奪うは矛盾)
+
+    func testWaitLockAndForceLockDoNotConflictWhenOnlyOneIsSet() {
+        XCTAssertNil(RemoteDispatchFlagPolicy.waitLockConflictsWithForceLock(forceLock: false, waitLock: 30))
+        XCTAssertNil(RemoteDispatchFlagPolicy.waitLockConflictsWithForceLock(forceLock: true, waitLock: nil))
+    }
+
+    func testWaitLockAndForceLockDoNotConflictWhenNeitherIsSet() {
+        XCTAssertNil(RemoteDispatchFlagPolicy.waitLockConflictsWithForceLock(forceLock: false, waitLock: nil))
+    }
+
+    func testWaitLockAndForceLockConflictWhenBothAreSet() {
+        let message = RemoteDispatchFlagPolicy.waitLockConflictsWithForceLock(forceLock: true, waitLock: 30)
+        XCTAssertNotNil(message)
+        XCTAssertTrue(message?.contains("--wait-lock") == true, message ?? "")
+        XCTAssertTrue(message?.contains("--force-lock") == true, message ?? "")
+    }
+
+    // MARK: - WaitLockPolling(純粋なポーリング判断)
+
+    func testWaitLockPollingRetriesBelowLimit() {
+        XCTAssertEqual(WaitLockPolling.decide(elapsedSeconds: 0, limitSeconds: 30), .retry)
+        XCTAssertEqual(WaitLockPolling.decide(elapsedSeconds: 20, limitSeconds: 30), .retry)
+    }
+
+    func testWaitLockPollingGivesUpAtOrAboveLimit() {
+        XCTAssertEqual(WaitLockPolling.decide(elapsedSeconds: 30, limitSeconds: 30), .giveUp)
+        XCTAssertEqual(WaitLockPolling.decide(elapsedSeconds: 40, limitSeconds: 30), .giveUp)
+    }
+
+    func testWaitLockPollingLogsProgressAtStartAndEveryProgressInterval() {
+        XCTAssertTrue(WaitLockPolling.shouldLogProgress(elapsedSeconds: 0))
+        XCTAssertTrue(WaitLockPolling.shouldLogProgress(elapsedSeconds: 60))
+        XCTAssertTrue(WaitLockPolling.shouldLogProgress(elapsedSeconds: 120))
+    }
+
+    func testWaitLockPollingSkipsProgressBetweenIntervals() {
+        XCTAssertFalse(WaitLockPolling.shouldLogProgress(elapsedSeconds: 10))
+        XCTAssertFalse(WaitLockPolling.shouldLogProgress(elapsedSeconds: 30))
+        XCTAssertFalse(WaitLockPolling.shouldLogProgress(elapsedSeconds: 50))
     }
 
     // MARK: - RemoteDispatchFlagPolicy(欠陥1: --host 明示 vs マシンプロファイル自動での併用不可フラグ)

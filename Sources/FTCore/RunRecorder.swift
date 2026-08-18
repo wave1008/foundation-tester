@@ -28,6 +28,9 @@ public final class RunRecorder: @unchecked Sendable {
     private let machine: String
     private let trigger: String
     private let startedAt: String
+    /// 自己申告のディスパッチ発行者(LocalConfig.resolveIssuerId)。begin() で1回だけ解決し、
+    /// begin/finish 両方の RunMetaRecord へ同じ値を焼き込む
+    private let issuer: String?
     /// 動画録画(record:true)が recordings/index.json を書く場所。RunOrchestrator への
     /// VideoRecordingConfig 注入に呼び出し側(ApiRunCommand/ProfileRunner)が使う
     public let runDir: URL
@@ -39,7 +42,7 @@ public final class RunRecorder: @unchecked Sendable {
 
     private init(runID: String, projectName: String, profile: String?, machine: String,
                 trigger: String, startedAt: String, runDir: URL,
-                hostMetrics: HostMetricsRecorder?) {
+                hostMetrics: HostMetricsRecorder?, issuer: String?) {
         self.runID = runID
         self.projectName = projectName
         self.profile = profile
@@ -48,6 +51,7 @@ public final class RunRecorder: @unchecked Sendable {
         self.startedAt = startedAt
         self.runDir = runDir
         self.hostMetrics = hostMetrics
+        self.issuer = issuer
     }
 
     public static func begin(project: TestProject, profile: String?, trigger: String,
@@ -65,13 +69,15 @@ public final class RunRecorder: @unchecked Sendable {
                 logFailure: { FileHandle.standardError.write(Data(("[RunRecorder] " + $0 + "\n").utf8)) })
             : nil
 
+        let issuer = LocalConfig.resolveIssuerId()
         let recorder = RunRecorder(
             runID: runID, projectName: project.name, profile: profile, machine: machine,
-            trigger: trigger, startedAt: startedAt, runDir: runDir, hostMetrics: hostMetrics)
+            trigger: trigger, startedAt: startedAt, runDir: runDir, hostMetrics: hostMetrics,
+            issuer: issuer)
 
         let meta = RunMetaRecord(
             runID: runID, project: project.name, profile: profile, machine: machine,
-            trigger: trigger, startedAt: startedAt)
+            trigger: trigger, startedAt: startedAt, issuer: issuer)
         RunResultsStore.writeMeta(meta, runDir: runDir)
         return recorder
     }
@@ -126,7 +132,8 @@ public final class RunRecorder: @unchecked Sendable {
             // performanceMode オフか、performanceMode でもレーンが安定していた run)
             measurementInvalid: measurementInvalid ? true : nil,
             measurementInvalidReasons: measurementInvalid && !measurementInvalidReasons.isEmpty
-                ? measurementInvalidReasons : nil)
+                ? measurementInvalidReasons : nil,
+            issuer: issuer)
         RunResultsStore.writeMeta(meta, runDir: runDir)
     }
 

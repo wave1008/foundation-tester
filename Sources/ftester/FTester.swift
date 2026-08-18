@@ -730,6 +730,12 @@ struct RunScenarios: AsyncParsableCommand {
             + "already holds it (docs/remote-runner.md §5). Needs a run profile, --host or --fleet"))
     var forceLock = false
 
+    @Option(name: .customLong("wait-lock"),
+            help: ArgumentHelp("Instead of failing fast, poll until a remote host's dispatch.lock is released, "
+              + "up to this many seconds (docs/remote-runner.md §5). Needs a run profile, --host or --fleet. "
+              + "Cannot be combined with --force-lock"))
+    var waitLock: Int?
+
     @Option(name: .customLong("device"), parsing: .upToNextOption,
             help: ArgumentHelp("Run on only these devices of the run profile (device names as written in "
                 + "the machine profile). Repeatable; defaults to every device the run profile lists. "
@@ -782,6 +788,14 @@ struct RunScenarios: AsyncParsableCommand {
             host: host, fleet: fleet, profile: profile) {
             throw ValidationError(message)
         }
+        if let message = RemoteDispatchFlagPolicy.waitLockConflictsWithForceLock(
+            forceLock: forceLock, waitLock: waitLock) {
+            throw ValidationError(message)
+        }
+        if waitLock != nil, let message = RemoteDispatchFlagPolicy.waitLockRejection(
+            host: host, fleet: fleet, profile: profile) {
+            throw ValidationError(message)
+        }
     }
 
     func run() async throws {
@@ -808,7 +822,7 @@ struct RunScenarios: AsyncParsableCommand {
                 groups: groups, scenarios: scenarios, folders: folders,
                 heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
                 fastInput: fastInput, enableAnimations: enableAnimations,
-                performanceMode: performanceMode, forceLock: forceLock,
+                performanceMode: performanceMode, forceLock: forceLock, waitLock: waitLock,
                 remoteDir: remoteDir, remoteTimeout: remoteTimeout,
                 remoteArtifacts: remoteArtifacts, quiet: quiet, junit: junit)
             if exitCode != 0 { throw ExitCode(exitCode) }
@@ -1000,7 +1014,7 @@ struct RunScenarios: AsyncParsableCommand {
         let localRoot = try RepoRoot.find()
         let dispatcher = RemoteRunDispatcher(
             host: resolved.hostSpec, remoteDirRaw: resolved.remoteDirRaw, localRepoRoot: localRoot,
-            artifacts: artifactsMode, forceLock: forceLock, hostLabel: dispatch.rawHost)
+            artifacts: artifactsMode, forceLock: forceLock, waitLock: waitLock, hostLabel: dispatch.rawHost)
         var scopedDevices = devices
         var scopedDeviceHost = deviceHost
         if devices.isEmpty, deviceHost == nil {
@@ -1050,7 +1064,7 @@ struct RunScenarios: AsyncParsableCommand {
             scenarios: scenarios, folders: folders,
             heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
             fastInput: fastInput, enableAnimations: enableAnimations, performanceMode: performanceMode,
-            forceLock: forceLock, remoteDir: remoteDir, remoteTimeout: remoteTimeout,
+            forceLock: forceLock, waitLock: waitLock, remoteDir: remoteDir, remoteTimeout: remoteTimeout,
             remoteArtifacts: remoteArtifacts, split: split, quiet: quiet, junit: junit)
         if exitCode != 0 {
             throw ExitCode(exitCode)

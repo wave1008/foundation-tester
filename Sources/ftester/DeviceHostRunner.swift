@@ -58,7 +58,7 @@ enum DeviceHostRunner {
         scenarios: [String], folders: [String],
         heal: Bool, noHeal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
         fastInput: Bool, enableAnimations: Bool, performanceMode: Bool,
-        forceLock: Bool, remoteDir: String?, remoteTimeout: Int?, remoteArtifacts: String,
+        forceLock: Bool, waitLock: Int?, remoteDir: String?, remoteTimeout: Int?, remoteArtifacts: String,
         quiet: Bool, junit: String?
     ) async throws -> Int32 {
         let junitTempDir = try FleetRunner.makeJUnitTempDir(requested: junit)
@@ -111,7 +111,7 @@ enum DeviceHostRunner {
                         scenarios: ids, folders: [],
                         heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
                         fastInput: fastInput, enableAnimations: enableAnimations,
-                        performanceMode: performanceMode, forceLock: forceLock,
+                        performanceMode: performanceMode, forceLock: forceLock, waitLock: waitLock,
                         remoteDir: remoteDir, remoteTimeout: remoteTimeout,
                         remoteArtifacts: remoteArtifacts, quiet: quiet,
                         junitPath: FleetRunner.entryJUnitPath(tempDir: junitTempDir, index: index))
