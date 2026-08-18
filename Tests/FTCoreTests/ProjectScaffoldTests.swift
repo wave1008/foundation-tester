@@ -187,6 +187,32 @@ final class ProjectScaffoldTests: XCTestCase {
                        [ProfileWriter.defaultDeviceName(platform: "android")])
     }
 
+    /// 導入時から既定ワークスペースの規約フォルダを置く(run 時の ensure だけに任せると、
+    /// 初回実行まで scripts/ = setup.sh の置き場所が見えない)。名前の正は WorkspaceScaffold
+    func testCreatePlacesDefaultWorkspaceFolders() throws {
+        let project = makeProject()
+        try ProjectScaffold.create(project: project, app: "com.example.myapp", platforms: ["ios"])
+        let workspace = project.rootURL
+            .appendingPathComponent(WorkspaceScaffold.defaultRootName)
+        for name in WorkspaceScaffold.directoryNames {
+            var isDirectory: ObjCBool = false
+            let exists = FileManager.default.fileExists(
+                atPath: workspace.appendingPathComponent(name).path, isDirectory: &isDirectory)
+            XCTAssertTrue(exists && isDirectory.boolValue, "workspace/\(name) が無い")
+        }
+    }
+
+    /// 既定ワークスペースの root 名はリゾルバと同じ1箇所から来る(ズレると scaffold が
+    /// 作ったフォルダと run が使う場所が別になり、規約フォルダが二重にできる)
+    func testDefaultWorkspaceNameMatchesResolver() {
+        let projectRoot = URL(fileURLWithPath: "/tmp/p")
+        XCTAssertEqual(
+            ProfileResolver.resolveWorkspaceRoot(
+                declared: nil, override: nil, projectRoot: projectRoot,
+                repoRoot: URL(fileURLWithPath: "/tmp")).lastPathComponent,
+            WorkspaceScaffold.defaultRootName)
+    }
+
     // MARK: - .claude/settings.json(Bash 承認を減らす許可リスト)
 
     private var claudeSettingsURL: URL {

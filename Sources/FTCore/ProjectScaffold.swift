@@ -348,6 +348,10 @@ public enum ProjectScaffold {
                     project.reportsDir, project.testbasesDir] {
             try fm.createDirectory(at: dir, withIntermediateDirectories: true)
         }
+        // 既定ワークスペースの規約フォルダ(apps/scripts/data)も導入時から置く。
+        // run 時の ensure だけに任せると、初回実行まで scripts/(setup.sh の置き場所)が
+        // 見えず、受け手がどこに置けばよいか分からない
+        try WorkspaceScaffold.ensureDefault(projectRoot: project.rootURL)
 
         try mainSwift.write(to: project.scenariosDir.appendingPathComponent("_Main.swift"),
                             atomically: true, encoding: .utf8)

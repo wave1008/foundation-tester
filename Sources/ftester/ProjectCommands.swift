@@ -90,6 +90,16 @@ struct ProjectCommand: AsyncParsableCommand {
         func run() async throws {
             let root = try ftesterRepoRoot()
             try syncManifest(repoRoot: root, verbose: true)
+            // 既定ワークスペースの規約フォルダを既存プロジェクトへも補完する
+            // (scaffold 導入以前に作られた受け手には create が走らない。update.sh が
+            // 毎回 project sync を呼ぶのでここが既存受け手への配達口)
+            for project in ProjectStore.all(repoRoot: root) {
+                let created = try WorkspaceScaffold.ensureDefault(projectRoot: project.rootURL)
+                if !created.isEmpty {
+                    print("   workspace: created TestProjects/\(project.name)/workspace/"
+                          + "{\(created.joined(separator: ","))}")
+                }
+            }
         }
     }
 

@@ -1168,7 +1168,11 @@ appPath の原本をワークスペースの `apps/<原本のファイル名>` �
   (中身は自由・強制しない)。無ければ作る(`Sources/FTCore/WorkspaceScaffold.swift`)。
   `apps/` はステージング済みバイナリの複製なので `.gitignore`(`TestProjects/*/workspace/apps/`)
   で無視する。`scripts/`・`data/` は利用者が書くものなので無視しない
-- **呼び出し場所**(3箇所。プロファイル解決の直後): ローカル実行 `ProfileRunner.run` /
+- **呼び出し場所**(run 時3箇所 + 導入時2箇所): 導入時は `ProjectScaffold.create`
+  (project create / init)と `ftester project sync`(update.sh が毎回呼ぶ = 既存の受け手への
+  配達口)が**既定ワークスペースにだけ**置く(宣言されたワークスペースは実行プロファイルの
+  属性で、導入時点では存在しないため run 時の ensure が受け持つ)。
+  run 時(プロファイル解決の直後): ローカル実行 `ProfileRunner.run` /
   `ApiRunCommand`(自分自身の `resolved.apps` を `WorkspaceAppStaging.stageWorkspaceApps` で揃える)、
   および `RemoteRunDispatcher.prepareWorkspace`(project の rsync 直前、ローカル側の
   ワークスペースへ揃える。マシン/デバイス解決を経由しない軽量読み `ProfileResolver.

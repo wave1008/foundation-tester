@@ -945,7 +945,7 @@ public enum ProfileResolver {
         declared: String?, override: String?, projectRoot: URL, repoRoot: URL
     ) -> URL {
         guard let raw = effectiveWorkspaceRaw(declared: declared, override: override) else {
-            return projectRoot.appendingPathComponent("workspace")
+            return projectRoot.appendingPathComponent(WorkspaceScaffold.defaultRootName)
         }
         return URL(fileURLWithPath: resolvePath(raw, base: repoRoot))
     }
