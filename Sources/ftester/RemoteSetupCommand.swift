@@ -278,9 +278,12 @@ extension RemoteCommand {
                 let dispatcher = RemoteRunDispatcher(
                     host: hostSpec, remoteDirRaw: resolved.remoteDirRaw, localRepoRoot: repoRoot)
                 do {
+                    let (scopedNames, scopedHost) = try hostScopedDeviceFilter(
+                        project: resolvedProject, profile: profile, targetHost: host)
                     let exitCode = try await dispatcher.dispatch(
                         project: resolvedProject, profile: profile,
                         scenarios: scenario.map { [$0] } ?? [], folders: [],
+                        deviceNames: scopedNames, deviceHost: scopedHost,
                         heal: false, noHeal: false, noLPT: false, lptHistoryRuns: nil,
                         fastInput: false, enableAnimations: false, performanceMode: false,
                         localJUnitPath: nil, remoteTimeoutSeconds: nil)

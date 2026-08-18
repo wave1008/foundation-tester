@@ -234,7 +234,14 @@ struct ApiRunCommand: AsyncParsableCommand {
             // --device / --device-host: ApiRunHostFanout の子(ホスト別サブ実行)が自分のぶんだけを
             // 回すのに使う(ProfileRunner.run と同じ順序・同じメッセージ規律 —— ホストで絞らないと
             // 別の機械の同名デバイスまで掴む。filteringDevices の宣言)
-            let full = resolvedAll.filteringDevices(names: devices, deviceHost: deviceHost)
+            //
+            // 明示 --host local はこの機械で走らせる指定なので、ホスト混在プロファイルでは
+            // local 枠だけに絞る(他ホスト担当分まで手元で解決すると存在しない台を掴む。
+            // ホスト別サブ実行は --device/--device-host を持つのでこの分岐に入らない)
+            let effectiveDeviceHost = deviceHost
+                ?? ((devices.isEmpty && MachineHostDispatch.isExplicitLocal(host))
+                    ? DeviceHostGrouping.localDisplayName : nil)
+            let full = resolvedAll.filteringDevices(names: devices, deviceHost: effectiveDeviceHost)
             // 絞り込みを指定したときだけ「合致0」を報告する。指定していないのに0台なのは
             // プロファイル自体の誤りで、それは resolve 側が自分の言葉で報告する
             if full.devices.isEmpty, !devices.isEmpty || deviceHost != nil {
@@ -548,9 +555,15 @@ struct ApiRunCommand: AsyncParsableCommand {
         let dispatcher = RemoteRunDispatcher(
             host: resolved.hostSpec, remoteDirRaw: resolved.remoteDirRaw, localRepoRoot: localRoot,
             mode: .apiRun, artifacts: artifactsMode)
+        var scopedDevices = devices
+        var scopedDeviceHost = deviceHost
+        if devices.isEmpty, deviceHost == nil {
+            (scopedDevices, scopedDeviceHost) = try hostScopedDeviceFilter(
+                project: project, profile: profile, targetHost: dispatch.rawHost)
+        }
         let exitCode = try await dispatcher.dispatchApi(
             project: project, profile: profile, scenarios: scenarios,
-            deviceNames: devices, deviceHost: deviceHost,
+            deviceNames: scopedDevices, deviceHost: scopedDeviceHost,
             heal: heal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
             performanceMode: performanceMode,
             defaultTimeout: defaultTimeout, scenarioTimeout: scenarioTimeout.map(Double.init),

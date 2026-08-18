@@ -906,6 +906,12 @@ struct RunScenarios: AsyncParsableCommand {
         PhaseLog.mark("recorder-begin")
 
         if let profile {
+            // 明示 --host local はこの機械で走らせる指定なので、ホスト混在プロファイルでは
+            // local 枠だけに絞る(他ホスト担当分まで手元で解決すると存在しない台を掴む。
+            // ホスト別サブ実行は --device/--device-host を持つのでこの分岐に入らない)
+            let effectiveDeviceHost = deviceHost
+                ?? ((devices.isEmpty && MachineHostDispatch.isExplicitLocal(host))
+                    ? DeviceHostGrouping.localDisplayName : nil)
             let runSummary = try await ProfileRunner.run(
                 project: testProject, profileName: profile, items: items,
                 healOverride: ProfileRunner.healOverride(heal: heal, noHeal: noHeal),
@@ -914,7 +920,7 @@ struct RunScenarios: AsyncParsableCommand {
                 lptHistoryRuns: lptHistoryRuns ?? LPTOrdering.defaultHistoryRuns,
                 performanceMode: performanceMode,
                 deviceFilter: devices,
-                deviceHost: deviceHost,
+                deviceHost: effectiveDeviceHost,
                 workspaceOverride: workspace,
                 recorder: recorder)
             let failedCount = runSummary.failed
@@ -995,9 +1001,15 @@ struct RunScenarios: AsyncParsableCommand {
         let dispatcher = RemoteRunDispatcher(
             host: resolved.hostSpec, remoteDirRaw: resolved.remoteDirRaw, localRepoRoot: localRoot,
             artifacts: artifactsMode, forceLock: forceLock)
+        var scopedDevices = devices
+        var scopedDeviceHost = deviceHost
+        if devices.isEmpty, deviceHost == nil {
+            (scopedDevices, scopedDeviceHost) = try hostScopedDeviceFilter(
+                project: testProject, profile: profile, targetHost: dispatch.rawHost)
+        }
         let exitCode = try await dispatcher.dispatch(
             project: testProject, profile: profile, scenarios: scenarios, folders: folders,
-            deviceNames: devices, deviceHost: deviceHost,
+            deviceNames: scopedDevices, deviceHost: scopedDeviceHost,
             heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
             fastInput: fastInput, enableAnimations: enableAnimations,
             performanceMode: performanceMode,

@@ -587,6 +587,31 @@ func resolveRemoteTarget(_ dispatch: EffectiveHostDispatch, remoteDirOverride: S
 
 // MARK: - shared helpers
 
+/// ホスト混在プロファイルの単一ホストディスパッチに付ける --device/--device-host を決める
+/// (判定は FTCore.RemoteDispatchDeviceScope)。呼び出し側が既に --device/--device-host を
+/// 持つときは呼ばないこと。プロファイル/マシンが読めないときは従来どおり丸ごと(空を返す)
+func hostScopedDeviceFilter(
+    project: TestProject, profile: String, targetHost: String
+) throws -> (deviceNames: [String], deviceHost: String?) {
+    guard let machine = try? ProfileResolver.determineMachine(project: project, runProfileName: profile) else {
+        return ([], nil)
+    }
+    let devices = (try? ProfileResolver.runDeviceHosts(
+        project: project, runProfileName: profile, machineName: machine.name)) ?? []
+    switch RemoteDispatchDeviceScope.resolve(targetHost: targetHost, devices: devices) {
+    case .wholeProfile:
+        return ([], nil)
+    case .filtered(let names):
+        return (names, targetHost)
+    case .noneForHost(let hosts):
+        throw RemoteDispatchError.invalidHost(
+            "profile \"\(profile)\" assigns no devices to host \"\(targetHost)\""
+            + " (its devices are pinned to: \(hosts.joined(separator: ", ")))"
+            + " — add devices for \(targetHost) to the machine profile,"
+            + " or pass --device/--device-host explicitly")
+    }
+}
+
 /// remote status の1ホスト分の生行(mismatch 判定前)。Sendable なのはタスクグループの
 /// 境界を越えて返すため
 private struct HostRow: Sendable {
