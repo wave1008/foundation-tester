@@ -157,8 +157,11 @@ export function resetRunLaneState(state: RunLaneState): LaneAction[] {
   return [{ type: "cleared" }];
 }
 
-/** workersReady 受信時にレーン構成を作り直す。 */
+/** workersReady 受信時にレーン構成を作り直す。同じ id のレーンの lines は維持する
+ * (workersReady は累積再送される —— 複数マシン実行では準備できた機械から順に
+ * ワーカーが増える。ApiRunHostFanout.swift の HostFanoutMultiplexer と対)。 */
 function applyWorkers(state: RunLaneState, workers: readonly WorkerInfo[]): LaneAction[] {
+  const kept = new Map(state.lanes);
   state.lanes.clear();
   const lanes: LaneInfo[] = [];
   for (const worker of workers) {
@@ -169,7 +172,8 @@ function applyWorkers(state: RunLaneState, workers: readonly WorkerInfo[]): Lane
       detail: worker.detail,
       machineHost: worker.machineHost,
     };
-    state.lanes.set(worker.id, { info, lines: [] });
+    const existing = kept.get(worker.id);
+    state.lanes.set(worker.id, { info, lines: existing ? existing.lines : [] });
     lanes.push(info);
   }
   return [{ type: "lanesConfigured", lanes }];

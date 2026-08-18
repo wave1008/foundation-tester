@@ -102,8 +102,11 @@ export interface WorkerInfo {
 }
 
 /**
- * `runStarted` 直後、並列実行(`--profile` 指定・非dry-run・非debug)のときだけ出力される。
- * 以降の全イベントに `worker` フィールド(この workers[].id のいずれか)が付く合図。
+ * 並列実行(`--profile` 指定・非dry-run・非debug)で出力される。複数回出てよい ——
+ * 複数マシン実行では準備できた機械から順にワーカーが増え、そのたびに毎回その時点の
+ * 全構成(累積)を運ぶ。受け手は全置換してよいが、同じ id のレーンのログは維持すること
+ * (runLaneModel.ts の applyWorkers)。以降の全イベントに付く `worker` フィールドは、
+ * その時点までに宣言された workers[].id のいずれか。
  */
 export interface WorkersReadyEvent {
   kind: "workersReady";

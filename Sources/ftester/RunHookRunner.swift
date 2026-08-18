@@ -160,7 +160,8 @@ enum RunHookRunner {
         DispatchQueue.global(qos: .utility).async {
             let splitter = StreamLineSplitter()
             while true {
-                let chunk = readHandle.readData(ofLength: 65536)
+                // availableData = 届いた分だけ返す(readData(ofLength:) は EOF まで貯める)
+                let chunk = readHandle.availableData
                 if chunk.isEmpty { break }   // 子の終了で書込端が閉じ EOF
                 sink.append(splitter.feed(chunk))
             }

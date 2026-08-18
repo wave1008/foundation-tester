@@ -1,6 +1,7 @@
 // 複数機械にまたがる実行プロファイルを `ftester api run` で走らせるときの多重化規則
 // (ApiRunHostFanout.swift)。ここは HostFanoutMultiplexer(純粋・プロセス非依存)だけを叩く ——
 // 子プロセスを立てずに「NDJSON の行の並びを渡すとどう変換されるか」を等号で固定する。
+// workersReady はバッファせず子ごとに累積再送・他のイベントも即時中継(2026-08-18 契約変更)。
 
 import XCTest
 @testable import ftester
@@ -25,57 +26,54 @@ final class ApiRunHostFanoutMultiplexerTests: XCTestCase {
 
     func testRunFinishedIsDroppedAndSummedAcrossHosts() {
         var mux = HostFanoutMultiplexer(groupHosts: [nil, "M1Max"])
-        // 揃うまでの経路を通す(workersReady を先に両方出す)
-        _ = mux.ingest(childIndex: 0, line: #"{"kind":"workersReady","workers":[]}"#)
-        _ = mux.ingest(childIndex: 1, line: #"{"kind":"workersReady","workers":[]}"#)
-
         XCTAssertEqual(mux.ingest(childIndex: 0, line: #"{"kind":"runFinished","passed":2,"failed":1}"#), [])
         XCTAssertEqual(mux.ingest(childIndex: 1, line: #"{"kind":"runFinished","passed":5,"failed":0}"#), [])
         XCTAssertEqual(mux.totalPassed, 7)
         XCTAssertEqual(mux.totalFailed, 1)
     }
 
-    // MARK: - workersReady は揃うまで合成しない。揃うまでの他イベントは順序を保って後に流れる
+    // MARK: - workersReady は子ごとに届くたび累積で再送する(バッファしない)
 
-    func testWorkersReadyMergesOnceAllChildrenSettleAndFlushesBufferedLinesInOrder() {
+    func testWorkersReadyResendsCumulativelyPerChild() {
         var mux = HostFanoutMultiplexer(groupHosts: [nil, "M1Max"])
 
-        // child 1(M1Max)の step が child 1 の workersReady より先に届く —— まだ揃っていないので貯める
-        let preReadyLine = #"{"kind":"step","worker":"android:Pixel 10","description":"tap #foo"}"#
-        XCTAssertEqual(mux.ingest(childIndex: 1, line: preReadyLine), [])
-
-        // child 0(手元)が先に揃う。まだ child 1 が来ていないので何も出さない
         let localReady = #"{"kind":"workersReady","workers":[{"name":"iPhone A","platform":"ios","detail":"port 8123"}]}"#
-        XCTAssertEqual(mux.ingest(childIndex: 0, line: localReady), [])
+        let first = mux.ingest(childIndex: 0, line: localReady)
+        XCTAssertEqual(first.count, 1)
+        let firstWorkers = jsonObject(first[0])["workers"] as? [[String: Any]] ?? []
+        XCTAssertEqual(firstWorkers.count, 1, "child0 だけの再送(child1 はまだ届いていない)")
+        XCTAssertEqual(firstWorkers.first?["id"] as? String, "ios:iPhone A")
 
-        // child 1 が揃って初めて合成 workersReady + 貯めていた行(順序どおり)が出る
         let remoteReady = #"{"kind":"workersReady","workers":[{"name":"Pixel 10","platform":"android","detail":"serial X"}]}"#
-        let flushed = mux.ingest(childIndex: 1, line: remoteReady)
+        let second = mux.ingest(childIndex: 1, line: remoteReady)
+        XCTAssertEqual(second.count, 1)
+        let secondObj = jsonObject(second[0])
+        XCTAssertEqual(secondObj["kind"] as? String, "workersReady")
+        let secondWorkers = secondObj["workers"] as? [[String: Any]] ?? []
+        XCTAssertEqual(secondWorkers.count, 2, "child0 + child1 の累積(子 index 順)")
 
-        XCTAssertEqual(flushed.count, 2, "合成 workersReady 1行 + 貯めていた step 1行")
-        let merged = jsonObject(flushed[0])
-        XCTAssertEqual(merged["kind"] as? String, "workersReady")
-        let workers = merged["workers"] as? [[String: Any]] ?? []
-        XCTAssertEqual(workers.count, 2)
-
-        let local = workers.first { ($0["platform"] as? String) == "ios" }
+        let local = secondWorkers.first { ($0["platform"] as? String) == "ios" }
         XCTAssertEqual(local?["id"] as? String, "ios:iPhone A", "手元の id は host 無しのまま")
         XCTAssertNil(local?["machineHost"], "手元のワーカーに machineHost は載らない")
 
-        let remote = workers.first { ($0["platform"] as? String) == "android" }
+        let remote = secondWorkers.first { ($0["platform"] as? String) == "android" }
         XCTAssertEqual(remote?["id"] as? String, "android:M1Max/Pixel 10", "リモートの id は host 付き")
         XCTAssertEqual(remote?["machineHost"] as? String, "M1Max", "リモートのワーカーには machineHost が載る")
+    }
 
-        let flushedStep = jsonObject(flushed[1])
-        XCTAssertEqual(flushedStep["worker"] as? String, "android:M1Max/Pixel 10",
-                       "貯めていた行の worker も合成の直後にホスト付きへ書き換わっている")
+    /// workersReady を出していない子の行も待たせず、その場で(rehost だけして)返る
+    func testOtherEventsAreRelayedImmediatelyWithoutWaitingForWorkersReady() {
+        var mux = HostFanoutMultiplexer(groupHosts: [nil, "M1Max"])
+        let line = #"{"kind":"step","worker":"android:Pixel 10","description":"tap #foo"}"#
+        let out = mux.ingest(childIndex: 1, line: line)
+        XCTAssertEqual(out.count, 1, "workersReady を待たず即時に返る")
+        XCTAssertEqual(jsonObject(out[0])["worker"] as? String, "android:M1Max/Pixel 10")
     }
 
     // MARK: - worker フィールドの書き換え
 
     func testWorkerFieldIsRehostedForRemoteGroup() {
         var mux = HostFanoutMultiplexer(groupHosts: ["M1Max"])
-        _ = mux.ingest(childIndex: 0, line: #"{"kind":"workersReady","workers":[]}"#)  // ready にしておく
         let line = #"{"kind":"log","worker":"ios:iPhone 17 Pro","message":"hello"}"#
         let out = mux.ingest(childIndex: 0, line: line)
         XCTAssertEqual(out.count, 1)
@@ -85,33 +83,50 @@ final class ApiRunHostFanoutMultiplexerTests: XCTestCase {
     /// 手元(host == nil)の id は既存契約どおり1バイトも変えない —— 行そのものが無加工で通ること
     func testWorkerFieldIsUntouchedForLocalGroup() {
         var mux = HostFanoutMultiplexer(groupHosts: [nil])
-        _ = mux.ingest(childIndex: 0, line: #"{"kind":"workersReady","workers":[]}"#)
         let line = #"{"kind":"log","worker":"ios:iPhone 17 Pro","message":"hello"}"#
-        let out = mux.ingest(childIndex: 0, line: line)
-        XCTAssertEqual(out, [line], "手元は書き換えず元の行をそのまま通す")
+        XCTAssertEqual(mux.ingest(childIndex: 0, line: line), [line], "手元は書き換えず元の行をそのまま通す")
     }
 
     /// worker を持たない行(wipeStatus 等)はそのまま素通しする
     func testLinesWithoutAWorkerFieldPassThroughUnchanged() {
         var mux = HostFanoutMultiplexer(groupHosts: ["M1Max"])
-        _ = mux.ingest(childIndex: 0, line: #"{"kind":"workersReady","workers":[]}"#)
         let line = #"{"kind":"wipeStatus","device":"Pixel 10","phase":"rebooting"}"#
         XCTAssertEqual(mux.ingest(childIndex: 0, line: line), [line])
     }
 
-    // MARK: - workersReady を出さずに終了した子で止まらない
+    // MARK: - 子が担当シナリオを残して終了したら failed を合成する
 
-    func testChildThatExitsWithoutWorkersReadyDoesNotBlockTheOthers() {
-        var mux = HostFanoutMultiplexer(groupHosts: [nil, "M1Max"])
-        XCTAssertEqual(mux.ingest(childIndex: 0, line:
-            #"{"kind":"workersReady","workers":[{"name":"iPhone A","platform":"ios","detail":""}]}"#), [])
+    func testChildExitLeavesUnfinishedScenariosSynthesizedAsFailed() {
+        var mux = HostFanoutMultiplexer(
+            groupHosts: [nil, "M1Max"],
+            assignedScenarioIDs: [["A.S1"], ["B.S1", "B.S2"]])
 
-        // child 1 は起動に失敗するなどして workersReady を1度も出さずに終了する
-        let out = mux.childExited(1)
-        XCTAssertEqual(out.count, 1, "child 0 だけの workersReady が合成されて出る")
-        let merged = jsonObject(out[0])
-        let workers = merged["workers"] as? [[String: Any]] ?? []
-        XCTAssertEqual(workers.count, 1)
-        XCTAssertEqual(workers.first?["id"] as? String, "ios:iPhone A")
+        XCTAssertEqual(mux.ingest(childIndex: 1, line:
+            #"{"kind":"scenarioFinished","scenario":"B.S1","passed":true}"#).count, 1)
+
+        let out = mux.childExited(1, exitCode: 1)
+        XCTAssertEqual(out.count, 3, "log 1 + B.S2 の step failed + scenarioFinished passed:false")
+
+        let log = jsonObject(out[0])
+        XCTAssertEqual(log["kind"] as? String, "log")
+
+        let step = jsonObject(out[1])
+        XCTAssertEqual(step["kind"] as? String, "step")
+        XCTAssertEqual(step["scenario"] as? String, "B.S2")
+        XCTAssertEqual(step["status"] as? String, "failed")
+
+        let finished = jsonObject(out[2])
+        XCTAssertEqual(finished["kind"] as? String, "scenarioFinished")
+        XCTAssertEqual(finished["scenario"] as? String, "B.S2")
+        XCTAssertEqual(finished["passed"] as? Bool, false)
+
+        XCTAssertEqual(mux.totalFailed, 1, "B.S1 は完了済みなので合成されない")
+    }
+
+    func testChildExitWithAllScenariosFinishedSynthesizesNothing() {
+        var mux = HostFanoutMultiplexer(groupHosts: [nil], assignedScenarioIDs: [["A.S1"]])
+        _ = mux.ingest(childIndex: 0, line: #"{"kind":"scenarioFinished","scenario":"A.S1","passed":true}"#)
+        XCTAssertEqual(mux.childExited(0, exitCode: 0), [])
+        XCTAssertEqual(mux.totalFailed, 0)
     }
 }

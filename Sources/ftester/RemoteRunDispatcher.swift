@@ -552,7 +552,9 @@ struct RemoteRunDispatcher {
         try process.run()
         DispatchQueue.global(qos: .utility).async {
             while true {
-                let chunk = readHandle.readData(ofLength: 65536)
+                // availableData = 届いた分だけ返す(readData(ofLength:) は length か EOF まで
+                // 貯めるので、NDJSON 中継が ssh の終了時の一括になる。2026-08-18 実測)
+                let chunk = readHandle.availableData
                 if chunk.isEmpty { break }   // 子の終了/kill による書込端クローズで EOF
                 for line in splitter.feed(chunk) { relayLine(line) }
             }

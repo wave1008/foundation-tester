@@ -7,8 +7,10 @@
 // 拡張(vscode-ftester/src/model.ts)は「1本の NDJSON = runStarted → workersReady →
 // (各種イベント) → runFinished」という契約しか知らない。子1つにつき1本ずつ来る同じ形の
 // ストリームを、runStarted/runFinished は集計してこちらが1回だけ出し、workersReady は
-// 全子ぶん揃うまで待って合成し、それ以外は worker フィールドをホスト付き id
-// (FTCore.DeviceHostGrouping.workerID)へ書き換えて素通しする。
+// **子ごとに届くたび**それまでの累積(子 index 順)で合成して出し直し、それ以外は worker
+// フィールドをホスト付き id(FTCore.DeviceHostGrouping.workerID)へ書き換えて**即時**中継する
+// (バッファしない = リモート機の準備待ちでローカル分の表示が止まらない。2026-08-18)。
+// 子が担当シナリオを残して終了したら、そのシナリオを failed として合成イベントで報告する。
 
 import ArgumentParser
 import FTCore
@@ -82,8 +84,6 @@ enum ApiRunHostFanout {
         let (stream, continuation) = AsyncStream<ChildEvent>.makeStream()
         let groupHosts = active.map { $0.group.host }
 
-        async let multiplexed = consume(stream: stream, groupHosts: groupHosts)
-
         // 拡張のキャンセル(SIGTERM/SIGINT)・stdin EOF のどちらでも全子へ SIGTERM を送る。
         // 子(単発の `ftester api run --host <label>`)は自分ではシグナルを捕まえないので既定の
         // 即時終了になり、リモート子はその内部の ssh(-tt 付き)が親の死で SIGHUP を孫プロセスへ
@@ -91,6 +91,14 @@ enum ApiRunHostFanout {
         // 自分自身が拡張の直接の子なので OS がこの経路で保護するが、ここは**この fanout が
         // 増やした孫プロセス**を対象にする(既存の保護の外側)
         let registry = ChildProcessRegistry()
+
+        // assignedScenarioIDs は active と同じ並び(下の taskGroup が position をそのまま
+        // childIndex として runChild へ渡すのと同じ基準)。isCancelled はキャンセル後の
+        // 合成 failed を抑止する(キャンセルで子は非0終了するため、抑止しないと中断した
+        // シナリオが failed として赤く出る。キャンセル≠失敗)
+        async let multiplexed = consume(
+            stream: stream, groupHosts: groupHosts, assignedScenarioIDs: active.map { $0.ids },
+            isCancelled: { registry.isCancelled })
         let cancelSources = installCancellation(registry: registry)
         defer { for source in cancelSources { source.cancel() } }
 
@@ -172,7 +180,7 @@ enum ApiRunHostFanout {
 
     private enum ChildEvent {
         case line(index: Int, text: String)
-        case exited(index: Int)
+        case exited(index: Int, status: Int32)
     }
 
     /// 子1体ぶん。stdout(NDJSON)は行単位で continuation へ、stderr(診断)はホスト名を前置して
@@ -194,7 +202,7 @@ enum ApiRunHostFanout {
             try process.run()
         } catch {
             logStderr("[\(hostLabel)] error: failed to launch subprocess: \(error.localizedDescription)")
-            continuation.yield(.exited(index: index))
+            continuation.yield(.exited(index: index, status: 127))
             return 127
         }
         registry.register(process)
@@ -208,7 +216,10 @@ enum ApiRunHostFanout {
 
         DispatchQueue.global(qos: .utility).async {
             while true {
-                let chunk = stdoutHandle.readData(ofLength: 65536)
+                // readData(ofLength:) は length か EOF まで返らない(パイプでは子の終了まで
+                // 全量が貯まり、ライブ中継が子の exit 時の一括になる。availableData は
+                // 届いた分だけ返す。2026-08-18 実測)
+                let chunk = stdoutHandle.availableData
                 if chunk.isEmpty { break }
                 for line in stdoutSplitter.feed(chunk) { continuation.yield(.line(index: index, text: line)) }
             }
@@ -216,7 +227,7 @@ enum ApiRunHostFanout {
         }
         DispatchQueue.global(qos: .utility).async {
             while true {
-                let chunk = stderrHandle.readData(ofLength: 65536)
+                let chunk = stderrHandle.availableData  // 上と同じ理由(readData は EOF まで貯める)
                 if chunk.isEmpty { break }
                 for line in stderrSplitter.feed(chunk) { logStderr("[\(hostLabel)] \(line)") }
             }
@@ -228,7 +239,7 @@ enum ApiRunHostFanout {
         stderrDone.wait()
         if let remaining = stdoutSplitter.flush() { continuation.yield(.line(index: index, text: remaining)) }
         if let remaining = stderrSplitter.flush() { logStderr("[\(hostLabel)] \(remaining)") }
-        continuation.yield(.exited(index: index))
+        continuation.yield(.exited(index: index, status: process.terminationStatus))
         return process.terminationStatus
     }
 
@@ -256,6 +267,12 @@ enum ApiRunHostFanout {
             lock.unlock()
             for process in toKill where process.isRunning { process.terminate() }
         }
+
+        var isCancelled: Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            return cancelled
+        }
     }
 
     /// SIGTERM・SIGINT で registry.terminateAll() を呼ぶ(ApiLiveServe/ApiMonitorCommand と
@@ -282,15 +299,18 @@ enum ApiRunHostFanout {
     // MARK: - 多重化(I/O 側。純粋な状態機械は HostFanoutMultiplexer)
 
     private static func consume(
-        stream: AsyncStream<ChildEvent>, groupHosts: [String?]
+        stream: AsyncStream<ChildEvent>, groupHosts: [String?], assignedScenarioIDs: [[String]],
+        isCancelled: @escaping @Sendable () -> Bool
     ) async -> (passed: Int, failed: Int) {
-        var multiplexer = HostFanoutMultiplexer(groupHosts: groupHosts)
+        var multiplexer = HostFanoutMultiplexer(groupHosts: groupHosts, assignedScenarioIDs: assignedScenarioIDs)
         for await event in stream {
             switch event {
             case .line(let index, let text):
                 for line in multiplexer.ingest(childIndex: index, line: text) { writeLine(line) }
-            case .exited(let index):
-                for line in multiplexer.childExited(index) { writeLine(line) }
+            case .exited(let index, let status):
+                // キャンセルで殺された子の未完了は合成しない(キャンセル≠失敗)
+                guard !isCancelled() else { continue }
+                for line in multiplexer.childExited(index, exitCode: status) { writeLine(line) }
             }
         }
         return (multiplexer.totalPassed, multiplexer.totalFailed)
@@ -325,27 +345,32 @@ enum ApiRunHostFanout {
 }
 
 /// 子の NDJSON を1本へ多重化する状態機械(純粋・プロセス非依存。ApiRunHostFanoutMultiplexerTests が
-/// 直接叩く)。runStarted/runFinished は集計して捨て、workersReady は groupHosts.count 個ぶん
-/// (workersReady を出した子・出さずに終了した子のどちらも1個と数える)揃うまで待って1回だけ
-/// 合成し、揃うまでの他イベントは到着順のまま貯めて合成の直後に流す。
+/// 直接叩く)。runStarted/runFinished は集計して捨てる。workersReady は**子ごとに届くたび**、
+/// それまでに判明している全ワーカー(子 index 順の累積)で合成して出し直す —— 拡張側の
+/// レーン構成は全置換だが同一 id のログは維持されるため、再送は増分の追加として映る
+/// (vscode-ftester/src/runLaneModel.ts applyWorkers と対)。他のイベントはバッファせず
+/// 即時中継する(貯めると複数マシン実行の進行表示が最後に一括更新になる。2026-08-18)。
+/// 子が担当シナリオを残して終了したら、そのシナリオを failed の合成イベントで報告する
+/// (沈黙のまま「走っていない」を作らない)。
 struct HostFanoutMultiplexer {
     private let groupHosts: [String?]
-    private var settled: [Bool]
-    private var settledCount = 0
-    private var readyEmitted = false
+    /// 子 index → 担当シナリオ ID(合成 failed の対象を知るため)
+    private let assignedScenarioIDs: [[String]]
     private var workersByIndex: [[ApiWorkerInfo]]
-    private var buffer: [String] = []
+    private var finishedByIndex: [Set<String>]
     private(set) var totalPassed = 0
     private(set) var totalFailed = 0
 
-    init(groupHosts: [String?]) {
+    init(groupHosts: [String?], assignedScenarioIDs: [[String]] = []) {
         self.groupHosts = groupHosts
-        self.settled = Array(repeating: false, count: groupHosts.count)
+        self.assignedScenarioIDs = assignedScenarioIDs.isEmpty
+            ? Array(repeating: [], count: groupHosts.count)
+            : assignedScenarioIDs
         self.workersByIndex = Array(repeating: [], count: groupHosts.count)
+        self.finishedByIndex = Array(repeating: [], count: groupHosts.count)
     }
 
-    /// 子(childIndex)からの1行。即座に relay してよい行を返す(まだ揃っていなければ空配列を
-    /// 返し、行は内部バッファへ積む)
+    /// 子(childIndex)からの1行。バッファせず、relay してよい行をそのまま返す
     mutating func ingest(childIndex: Int, line: String) -> [String] {
         switch Self.classify(line, host: groupHosts[childIndex]) {
         case .runStarted:
@@ -353,43 +378,51 @@ struct HostFanoutMultiplexer {
         case .runFinished(let passed, let failed):
             totalPassed += passed
             totalFailed += failed
-            return settle(childIndex)
+            return []
         case .workersReady(let workers):
             workersByIndex[childIndex] = workers
-            return settle(childIndex)
-        case .other(let rewritten):
-            guard readyEmitted else {
-                buffer.append(rewritten)
-                return []
-            }
+            let merged = groupHosts.indices.flatMap { workersByIndex[$0] }
+            return [Self.encode(ApiWorkersReadyEvent(workers: merged))]
+        case .other(let rewritten, let finishedScenario):
+            if let scenario = finishedScenario { finishedByIndex[childIndex].insert(scenario) }
             return [rewritten]
         }
     }
 
-    /// 子プロセスの終了(workersReady を出さずに終わった場合の安全弁。待ち続けない)
-    mutating func childExited(_ index: Int) -> [String] {
-        settle(index)
-    }
+    /// 子プロセスの終了。担当していたが scenarioFinished が来ないまま終わったシナリオを
+    /// failed として合成する(正常に全部完了していれば空配列)
+    mutating func childExited(_ index: Int, exitCode: Int32) -> [String] {
+        let unfinished = assignedScenarioIDs[index].filter { !finishedByIndex[index].contains($0) }
+        guard !unfinished.isEmpty else { return [] }
+        totalFailed += unfinished.count
+        let hostLabel = DeviceHostGrouping.display(groupHosts[index])
+        var log = ScenarioEvent(kind: "log")
+        log.message = "[\(hostLabel)] sub-run exited (status \(exitCode)) — marking "
+            + "\(unfinished.count) unfinished scenario(s) as failed"
+        var lines = [log.encodedLine()]
+        for scenario in unfinished {
+            var step = ScenarioEvent(kind: "step")
+            step.scenario = scenario
+            step.status = "failed"
+            step.description = "the sub-run on \(hostLabel) exited (status \(exitCode)) before this "
+                + "scenario finished — see the ftester OUTPUT panel for the dispatch error"
+            lines.append(step.encodedLine())
 
-    private mutating func settle(_ index: Int) -> [String] {
-        if !settled[index] {
-            settled[index] = true
-            settledCount += 1
+            var finished = ScenarioEvent(kind: "scenarioFinished")
+            finished.scenario = scenario
+            finished.passed = false
+            lines.append(finished.encodedLine())
         }
-        guard !readyEmitted, settledCount == groupHosts.count else { return [] }
-        readyEmitted = true
-        let workers = groupHosts.indices.flatMap { workersByIndex[$0] }
-        let readyLine = Self.encode(ApiWorkersReadyEvent(workers: workers))
-        let flushed = buffer
-        buffer.removeAll()
-        return [readyLine] + flushed
+        return lines
     }
 
     private enum ClassifiedLine {
         case runStarted
         case runFinished(passed: Int, failed: Int)
         case workersReady([ApiWorkerInfo])
-        case other(String)
+        /// finishedScenario: kind == scenarioFinished のときだけシナリオ ID(childExited の
+        /// 未完了判定に使う)
+        case other(String, finishedScenario: String?)
     }
 
     /// **worker フィールドの書き換えは JSON を構造として読み書きする**(文字列置換にすると、
@@ -401,7 +434,7 @@ struct HostFanoutMultiplexer {
         guard let data = line.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let kind = obj["kind"] as? String else {
-            return .other(line)
+            return .other(line, finishedScenario: nil)
         }
         switch kind {
         case "runStarted":
@@ -420,18 +453,23 @@ struct HostFanoutMultiplexer {
             }
             return .workersReady(workers)
         default:
+            let finishedScenario = kind == "scenarioFinished" ? obj["scenario"] as? String : nil
             guard let worker = obj["worker"] as? String,
-                  let colon = worker.firstIndex(of: ":") else { return .other(line) }
+                  let colon = worker.firstIndex(of: ":") else {
+                return .other(line, finishedScenario: finishedScenario)
+            }
             let platform = String(worker[..<colon])
             let name = String(worker[worker.index(after: colon)...])
             let rehosted = DeviceHostGrouping.workerID(platform: platform, host: host, name: name)
             // 手元(host == nil)は常に無変化 —— 既存の id を1バイトも変えない契約をここで満たす
-            guard rehosted != worker else { return .other(line) }
+            guard rehosted != worker else { return .other(line, finishedScenario: finishedScenario) }
             var mutated = obj
             mutated["worker"] = rehosted
             guard let out = try? JSONSerialization.data(withJSONObject: mutated, options: [.sortedKeys]),
-                  let text = String(data: out, encoding: .utf8) else { return .other(line) }
-            return .other(text)
+                  let text = String(data: out, encoding: .utf8) else {
+                return .other(line, finishedScenario: finishedScenario)
+            }
+            return .other(text, finishedScenario: finishedScenario)
         }
     }
 

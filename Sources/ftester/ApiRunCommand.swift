@@ -771,9 +771,10 @@ struct ApiRunCommand: AsyncParsableCommand {
         await ProfileRunner.warnIfHealDegraded(heal: fm.heal) { logStderr($0) }
         let reportDirURL = reportDir.map { URL(fileURLWithPath: $0) } ?? resolved.reportDir
 
-        // workersReady はレーン構成の全置換(runLaneModel.applyWorkers が lanes.clear する)ため
-        // 1回だけ・全ワーカー分を宣言する。iOS はブリッジ供給前でも id("ios:論理名")が確定する
-        // ので、供給待ちを表す detail 付きのプレースホルダで先に載せる(port は表示のみの情報)。
+        // workersReady はレーン構成の全置換(同一 id のログは維持。複数回出してよい ——
+        // ApiRunHostFanout は累積再送する)。単体実行は1回・全ワーカー分を宣言する。iOS はブリッジ
+        // 供給前でも id("ios:論理名")が確定するので、供給待ちを表す detail 付きのプレースホルダで
+        // 先に載せる(port は表示のみの情報)。
         var readyInfo = workersReadyInfo(workers)
         if iosWorkersTask != nil {
             readyInfo += resolved.iosDevices.map {

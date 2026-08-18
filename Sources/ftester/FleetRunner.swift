@@ -440,7 +440,8 @@ enum FleetRunner {
         let splitter = StreamLineSplitter()
         DispatchQueue.global(qos: .utility).async {
             while true {
-                let chunk = readHandle.readData(ofLength: 65536)
+                // availableData = 届いた分だけ返す(readData(ofLength:) は EOF まで貯める)
+                let chunk = readHandle.availableData
                 if chunk.isEmpty { break }   // 子の終了による書込端クローズで EOF
                 for line in splitter.feed(chunk) { logLine(host: hostLabel, line: line) }
             }

@@ -54,6 +54,36 @@ test("workersReady: lanesConfigured アクションでレーン構成が反映�
   assert.equal(configured.lanes[0].platform, "ios");
 });
 
+test("workersReady: 累積再送でも同じ id のレーンの lines は維持される(複数マシン実行のライブ化)", () => {
+  const state = createRunLaneState();
+  feed(state, [
+    { kind: "workersReady", workers: [{ id: "ios:シミュ1", name: "シミュ1", platform: "ios", detail: "" }] },
+    { kind: "scenarioStarted", scenario: "S.A", title: "A", worker: "ios:シミュ1" },
+  ]);
+
+  // 2回目の workersReady: 1回目のワーカーに加えて新しいワーカーが増える(累積)
+  const actions = feed(state, [
+    {
+      kind: "workersReady",
+      workers: [
+        { id: "ios:シミュ1", name: "シミュ1", platform: "ios", detail: "" },
+        { id: "android:エミュ1", name: "エミュ1", platform: "android", detail: "" },
+      ],
+    },
+  ]);
+
+  const configured = actions.find((a) => a.type === "lanesConfigured");
+  assert.ok(configured);
+  assert.deepEqual(
+    configured.lanes.map((l) => l.id),
+    ["ios:シミュ1", "android:エミュ1"],
+  );
+
+  const snapshot = snapshotRunLaneState(state);
+  assert.ok(snapshot.linesByLane["ios:シミュ1"].some((line) => line.includes("A")));
+  assert.deepEqual(snapshot.linesByLane["android:エミュ1"], []);
+});
+
 test("worker フィールドが無いイベント(逐次実行)は全体レーン(OVERALL_LANE_ID)に集約される", () => {
   const state = createRunLaneState();
   const actions = feed(state, [
