@@ -260,9 +260,13 @@ Android は `no running emulator for AVD ...` で失敗する)。`ftester device
 シナリオの比の中央値)> 1.0** の順で決め、`RemoteHostFactsStore` が持つ実測固定費
 (`.ftester/remote-hosts/<host>.json`。`RemoteRunDispatcher` がディスパッチのたびに書く)を
 見込み終了時刻へ足す。**初回(キャッシュ無し)は従来と同一の混合見積り**に退化する ——
-facts が無いエントリは machine=nil・offset=0 として扱われる。実行後の集計表には **IDLE 列**
+facts が無いエントリは machine=nil・offset=0 として扱われる。**実績が1件も無い run は
+facts があっても均等割りのまま**(見積りが単位重みへ退化するので、ms の固定費を同じ比較に
+載せない。`FleetSplit.machineContext(_:ifHistoryExists:)` が落とす)。実行後の集計表には **IDLE 列**
 (そのエントリの最長 duration との差)を追加した — 静的割り当ての偏り(ストラグラー)を
 再配分機構を作る前に実測で貯めるためで、割り当てそのものはまだ実行後にフィードバックしない。
+効果の実測(3機械12台での収束データと、初回 run を効果の基線にしない理由)は
+docs/performance-tuning.md §3.7 の 7。
 
 ## 9. 未検証事項(実装前に潰す)
 

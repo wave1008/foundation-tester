@@ -39,7 +39,9 @@ public enum FleetSplit {
         /// 実績レコードの machine と同じ語彙の識別子。不明なら nil(そのエントリは混合見積りのまま)
         public let entryMachines: [String?]
         /// そのエントリが払うディスパッチ固定費(実測。ローカルは 0)。台数で割らず
-        /// 見込み終了時刻へそのまま足す(デバイスが走り出す前の壁時計)
+        /// 見込み終了時刻へそのまま足す(デバイスが走り出す前の壁時計)。
+        /// **durations と同じ単位(ms)であること** —— 実績ゼロで見積りが単位重みへ退化する
+        /// 呼び出しは machineContext(_:ifHistoryExists:) で context ごと落とす
         public let entryFixedOffsetsMs: [Double]
         /// LPTScheduler.machineDurations(from:) の出力
         public let machineDurations: [LPTScheduler.MachineDuration]
@@ -154,6 +156,19 @@ public enum FleetSplit {
         return entryPlatforms.indices.map {
             Bucket(entryIndex: $0, scenarioIDs: scenarioIDs[$0], estimatedMs: totals[$0])
         }
+    }
+
+    /// 呼び出し側の共通ガード: **実績が1件も無いときは machineContext を渡さない**。
+    /// 実績ゼロだと呼び出し側の unknownDuration は単位重み(1.0。ms ではない)へ退化するが、
+    /// entryFixedOffsetsMs は実測ミリ秒のままなので、比較の中で offset が重みを支配して
+    /// **facts を持つエントリへは数千本積むまで1本も行かず、全シナリオが facts の無い
+    /// エントリ(local)へ寄る**(単位の混在は黙って誤る。2026-08-18 のレビューで検出)。
+    /// 実績ゼロなら machineDurations も空で context の効きどころは offset だけなので、
+    /// context ごと nil に落とすのが最小で正確
+    public static func machineContext(
+        _ context: MachineContext, ifHistoryExists durations: [LPTScheduler.Duration]
+    ) -> MachineContext? {
+        durations.isEmpty ? nil : context
     }
 
     /// 速度係数(machine → 比の中央値)。「sameMs と混合中央値の両方があるシナリオ」の

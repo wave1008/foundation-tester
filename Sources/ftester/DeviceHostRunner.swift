@@ -176,7 +176,8 @@ enum DeviceHostRunner {
                 entryPlatforms: groups.map(\.platforms),
                 unknownDurationMs: unknown,
                 entryCapacities: groups.map { Double($0.deviceNames.count) },
-                machineContext: machineContext)
+                // 実績ゼロ = unknown が単位重みのときは context を落とす(FleetRunner と同じ理由)
+                machineContext: FleetSplit.machineContext(machineContext, ifHistoryExists: durations))
         } catch let error as FleetSplit.FleetSplitError {
             throw ValidationError("profile \"\(project.name)\": \(error.localizedDescription)")
         }

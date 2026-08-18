@@ -312,4 +312,30 @@ extension FleetSplitTests {
         let factors = FleetSplit.speedFactors(machineDurations: machineDurations, durations: durations)
         XCTAssertTrue(factors.isEmpty, "共通観測が無い machine は係数なし")
     }
+
+    /// 実績ゼロのガード: 単位重み(1.0)と ms の offset を同じ比較に載せない
+    /// (FleetSplit.machineContext の宣言)。ガードなしだと offset が重みを支配して
+    /// 全シナリオが offset の無いエントリへ寄る —— その状態も陽性対照として固定する
+    func testMachineContextIsDroppedWhenThereIsNoHistory() throws {
+        let context = FleetSplit.MachineContext(
+            entryMachines: [nil, "M"], entryFixedOffsetsMs: [0, 2_500], machineDurations: [])
+        XCTAssertNil(FleetSplit.machineContext(context, ifHistoryExists: []))
+        let kept = FleetSplit.machineContext(context, ifHistoryExists: [duration("A.one", 5_000)])
+        XCTAssertEqual(kept?.entryMachines, [nil, "M"])
+        XCTAssertEqual(kept?.entryFixedOffsetsMs, [0, 2_500])
+
+        let scenarios: [(id: String, platform: String?)] = [
+            ("A.S0010", nil), ("B.S0010", nil), ("C.S0010", nil), ("D.S0010", nil),
+        ]
+        let skewed = try FleetSplit.partition(
+            scenarios: scenarios, durations: [], entryPlatforms: [["ios"], ["ios"]],
+            unknownDurationMs: 1.0, machineContext: context)
+        XCTAssertEqual(skewed.map(\.scenarioIDs.count), [4, 0],
+                       "ガードを通さない実績ゼロ + ms offset は全シナリオが片側へ寄る(これが守っている事故)")
+        let guarded = try FleetSplit.partition(
+            scenarios: scenarios, durations: [], entryPlatforms: [["ios"], ["ios"]],
+            unknownDurationMs: 1.0,
+            machineContext: FleetSplit.machineContext(context, ifHistoryExists: []))
+        XCTAssertEqual(guarded.map(\.scenarioIDs.count), [2, 2], "ガードを通せば本数の均等割りが保たれる")
+    }
 }

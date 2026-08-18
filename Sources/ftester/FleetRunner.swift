@@ -149,7 +149,9 @@ enum FleetRunner {
             buckets = try FleetSplit.partition(
                 scenarios: selected.map { (id: $0.id, platform: $0.platform) },
                 durations: durations, entryPlatforms: entryPlatforms, unknownDurationMs: unknownDurationMs,
-                machineContext: machineContext)
+                // 実績ゼロ = unknownDurationMs が単位重みのときは context を落とす(ms の offset が
+                // 重み1.0を支配して全シナリオが local へ寄る。FleetSplit.machineContext の宣言)
+                machineContext: FleetSplit.machineContext(machineContext, ifHistoryExists: durations))
         } catch let error as FleetSplit.FleetSplitError {
             throw ValidationError("fleet \"\(fleetName)\" --split: \(error.localizedDescription)")
         }
