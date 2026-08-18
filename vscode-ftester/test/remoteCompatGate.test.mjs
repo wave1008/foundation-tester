@@ -82,6 +82,65 @@ test("revisionPublished=false: ask かつ canUpdate=false・revisionUnpublished=
   assert.equal(decision.localDirty, true);
 });
 
+test("revisionRelation=localBehind: ask かつ canUpdate=false・localBehindHosts に名前が入る(この機械が古い側は align で直せない)", () => {
+  const host = { ...okHost("M1Max"), revisionCompatible: false, revisionRelation: "localBehind" };
+  const decision = decideRemoteCompat({ hosts: [host], revisionPublished: true });
+  assert.equal(decision.kind, "ask");
+  assert.equal(decision.canUpdate, false);
+  assert.deepEqual(decision.updatableHosts, []);
+  assert.deepEqual(decision.localBehindHosts, ["M1Max"]);
+  assert.deepEqual(decision.divergedHosts, []);
+  assert.deepEqual(decision.unknownRelationHosts, []);
+});
+
+test("revisionRelation=diverged: ask かつ canUpdate=false・divergedHosts に名前が入る", () => {
+  const host = { ...okHost("M1Max"), revisionCompatible: false, revisionRelation: "diverged" };
+  const decision = decideRemoteCompat({ hosts: [host], revisionPublished: true });
+  assert.equal(decision.kind, "ask");
+  assert.equal(decision.canUpdate, false);
+  assert.deepEqual(decision.updatableHosts, []);
+  assert.deepEqual(decision.divergedHosts, ["M1Max"]);
+});
+
+test("revisionRelation=unknown: ask かつ canUpdate=false・unknownRelationHosts に名前が入る", () => {
+  const host = { ...okHost("M1Max"), revisionCompatible: false, revisionRelation: "unknown" };
+  const decision = decideRemoteCompat({ hosts: [host], revisionPublished: true });
+  assert.equal(decision.kind, "ask");
+  assert.equal(decision.canUpdate, false);
+  assert.deepEqual(decision.updatableHosts, []);
+  assert.deepEqual(decision.unknownRelationHosts, ["M1Max"]);
+});
+
+test("revisionRelation=remoteBehind(複数ホスト): canUpdate=true(従来条件を満たす場合)", () => {
+  const host1 = { ...okHost("M1Max"), revisionCompatible: false, revisionRelation: "remoteBehind" };
+  const host2 = { ...okHost("M1Ultra"), revisionCompatible: false, revisionRelation: "remoteBehind" };
+  const decision = decideRemoteCompat({ hosts: [host1, host2], revisionPublished: true });
+  assert.equal(decision.kind, "ask");
+  assert.equal(decision.canUpdate, true);
+  assert.deepEqual(decision.updatableHosts, ["M1Max", "M1Ultra"]);
+});
+
+test("revisionRelation フィールドが無い(旧 CLI の)JSON: 従来と同じ判定(後方互換)", () => {
+  const host = { ...okHost("M1Max"), revisionCompatible: false };
+  delete host.revisionRelation;
+  const decision = decideRemoteCompat({ hosts: [host], revisionPublished: true });
+  assert.equal(decision.kind, "ask");
+  assert.equal(decision.canUpdate, true);
+  assert.deepEqual(decision.updatableHosts, ["M1Max"]);
+  assert.deepEqual(decision.localBehindHosts, []);
+  assert.deepEqual(decision.divergedHosts, []);
+  assert.deepEqual(decision.unknownRelationHosts, []);
+});
+
+test("localBehind と remoteBehind が混在: canUpdate=false(1機でも align で直らないなら全体を止める)", () => {
+  const behind = { ...okHost("M1Max"), revisionCompatible: false, revisionRelation: "remoteBehind" };
+  const localBehind = { ...okHost("M1Ultra"), revisionCompatible: false, revisionRelation: "localBehind" };
+  const decision = decideRemoteCompat({ hosts: [behind, localBehind], revisionPublished: true });
+  assert.equal(decision.canUpdate, false);
+  assert.deepEqual(decision.updatableHosts, []);
+  assert.deepEqual(decision.localBehindHosts, ["M1Ultra"]);
+});
+
 test("壊れた入力(hosts が配列でない/report が null): proceed", () => {
   assert.deepEqual(decideRemoteCompat(null), { kind: "proceed" });
   assert.deepEqual(decideRemoteCompat(undefined), { kind: "proceed" });

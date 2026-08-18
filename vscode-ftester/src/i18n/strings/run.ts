@@ -161,6 +161,18 @@ export const runStrings = {
     ja: "未コミットの変更はリモートへ届きません。",
     en: "Uncommitted changes will not reach the remote.",
   },
+  "run.remoteCompat.localBehindNote": {
+    ja: "{names}: この機械のftesterが古いため更新できません。Scripts/update.sh で本機を更新してください。",
+    en: "{names}: Cannot update — this machine's ftester is behind. Run Scripts/update.sh to update this machine.",
+  },
+  "run.remoteCompat.divergedNote": {
+    ja: "{names}: リビジョンが分岐しているため更新できません。共有ランナーでのブランチ検証はできません(専用機を使用してください)。",
+    en: "{names}: Cannot update — revisions have diverged. Branch verification is not possible on a shared runner (use a dedicated machine).",
+  },
+  "run.remoteCompat.unknownRelationNote": {
+    ja: "{names}: どちらが古いか判定できないため更新できません。git fetch 後に再実行してください(多くの場合この機械が古い側です)。",
+    en: "{names}: Cannot update — could not determine which side is behind. Run git fetch and try again (this machine is behind in most cases).",
+  },
   "run.remoteCompat.updateAndRun": { ja: "更新して実行", en: "Update and run" },
   "run.remoteCompat.blockedMessage": {
     ja: "リモートのftesterを更新できないため実行できません",

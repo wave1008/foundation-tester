@@ -594,6 +594,17 @@ async function executeRun(
       if (decision.localDirty) {
         detailLines.push(t("run.remoteCompat.localDirtyNote"));
       }
+      if (decision.localBehindHosts.length > 0) {
+        detailLines.push(t("run.remoteCompat.localBehindNote", { names: decision.localBehindHosts.join(", ") }));
+      }
+      if (decision.divergedHosts.length > 0) {
+        detailLines.push(t("run.remoteCompat.divergedNote", { names: decision.divergedHosts.join(", ") }));
+      }
+      if (decision.unknownRelationHosts.length > 0) {
+        detailLines.push(
+          t("run.remoteCompat.unknownRelationNote", { names: decision.unknownRelationHosts.join(", ") }),
+        );
+      }
       // 「そのまま実行」は置かない —— ダイアログが出た時点でリモート担当分は必ず
       // checkCompatibility に弾かれて failed になるので、続行は常に部分失敗の run にしかならない
       // (2026-08-18 ユーザー決定。チェック自体を外す逃げ道は設定 ftester.remoteCompatCheck)。

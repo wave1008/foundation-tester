@@ -104,6 +104,62 @@ final class RemoteDispatchTests: XCTestCase {
         XCTAssertTrue(reasons[0].contains("remote=abc"), reasons[0])
     }
 
+    // MARK: - RemoteCompat.classifyRelation
+
+    func testClassifyRelationLocalBehind() {
+        XCTAssertEqual(RemoteCompat.classifyRelation(
+            localIsAncestorOfRemote: true, remoteIsAncestorOfLocal: false), .localBehind)
+    }
+
+    func testClassifyRelationRemoteBehind() {
+        XCTAssertEqual(RemoteCompat.classifyRelation(
+            localIsAncestorOfRemote: false, remoteIsAncestorOfLocal: true), .remoteBehind)
+    }
+
+    func testClassifyRelationDiverged() {
+        XCTAssertEqual(RemoteCompat.classifyRelation(
+            localIsAncestorOfRemote: false, remoteIsAncestorOfLocal: false), .diverged)
+    }
+
+    func testClassifyRelationUnknownWhenEitherSideNil() {
+        XCTAssertEqual(RemoteCompat.classifyRelation(
+            localIsAncestorOfRemote: nil, remoteIsAncestorOfLocal: true), .unknown)
+        XCTAssertEqual(RemoteCompat.classifyRelation(
+            localIsAncestorOfRemote: false, remoteIsAncestorOfLocal: nil), .unknown)
+        XCTAssertEqual(RemoteCompat.classifyRelation(
+            localIsAncestorOfRemote: nil, remoteIsAncestorOfLocal: nil), .unknown)
+    }
+
+    /// 呼び手は rev が異なるときだけ呼ぶ契約なので本来起きないが、防御として unknown に落とす
+    func testClassifyRelationBothTrueFallsBackToUnknown() {
+        XCTAssertEqual(RemoteCompat.classifyRelation(
+            localIsAncestorOfRemote: true, remoteIsAncestorOfLocal: true), .unknown)
+    }
+
+    // MARK: - RemoteCompat.relationAdvice
+
+    /// localBehind は自分を更新する経路(update.sh)だけを案内する ―― align を実行手順として出さない
+    func testRelationAdviceLocalBehindPointsToUpdateNotAlign() {
+        let advice = RemoteCompat.relationAdvice(.localBehind)
+        XCTAssertTrue(advice.contains("update"), advice)
+        XCTAssertTrue(advice.contains("Scripts/update.sh"), advice)
+        XCTAssertFalse(advice.contains("ftester remote align"), advice)
+    }
+
+    func testRelationAdviceRemoteBehindPointsToAlignWithCanary() {
+        let advice = RemoteCompat.relationAdvice(.remoteBehind)
+        XCTAssertTrue(advice.contains("ftester remote align"), advice)
+        XCTAssertTrue(advice.contains("canary"), advice)
+    }
+
+    func testRelationAdviceDivergedPointsToDedicatedMachine() {
+        XCTAssertTrue(RemoteCompat.relationAdvice(.diverged).contains("dedicated machine"))
+    }
+
+    func testRelationAdviceUnknownPointsToGitFetch() {
+        XCTAssertTrue(RemoteCompat.relationAdvice(.unknown).contains("git fetch"))
+    }
+
     // MARK: - RemoteLayout
 
     func testRemoteLayoutStripsTrailingSlashFromBase() {

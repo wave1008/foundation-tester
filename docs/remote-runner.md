@@ -1297,7 +1297,7 @@ upstream main を clone して update.sh で追従するので、2人の rev は
 真の分岐(ブランチ)はツール本体の開発時だけ。よって**ランナーは main の特定 rev に留め、
 遅れている側の人間が自分を上げる**のが原則。規則は3つ:
 
-1. **解消の向きを祖先関係で判定して案内に出す**(未実装): 適合チェックが落ちたとき
+1. **解消の向きを祖先関係で判定して案内に出す**(実装済み: 2026-08-18): 適合チェックが落ちたとき
    `git merge-base --is-ancestor` で3分類 —— 発行側が祖先 = **自分が古い**(update.sh を
    案内。align は勧めない)/ ランナーが祖先 = フリート更新が必要(規則3へ)/
    どちらでもない = ブランチ検証(共有ランナー不可・専用機を案内)。拡張の
@@ -1343,8 +1343,8 @@ upstream main を clone して update.sh で追従するので、2人の rev は
 | 2 | Android ブリッジ版のデバイス側ガード(台の versionCode が期待より新しければ fail fast。大小比較 = 契約チェックなので「警告から」規律の対象外) | 済(2026-08-18。`AndroidDriver.downgradeRefusal`。install 前 + INSTALL_FAILED_VERSION_DOWNGRADE のレース + doctor サマリの3箇所) |
 | 3 | issuerId + ロック info / run 実績への帰属 | 済(2026-08-18。`LocalConfig.issuerId` / 解決は `resolveIssuerId` の1箇所: **FT_ISSUER > 設定 > USER@hostname**。dispatch.lock の info.json と run.json の `issuer` に記録。**リモートの子へは `RemoteShell.remoteRunCommand` が `export FT_ISSUER` で運ぶ** —— ランナー機側で解決させると全員が共有アカウントの同じ値になり帰属が消える) |
 | 4 | `--wait-lock [秒]` | 済(2026-08-18。奪わない・`--force-lock` と排他・ssh 到達不能は待たない。ポーリング10秒/経過ログ約60秒 = `WaitLockPolling` に根拠コメント付きで1箇所) |
-| 5 | 祖先関係判定 + 案内の向き + 拡張ダイアログの選択肢制御 | 未(2人目が見えてからで可) |
-| 6 | 運用 docs(1人1鍵と失効・当番・カナリア手順)を remote-runner-setup.md へ | 未(5 と同時期) |
+| 5 | 祖先関係判定 + 案内の向き + 拡張ダイアログの選択肢制御 | 済(2026-08-18。判定は `RemoteCompat.classifyRelation`(pure)+ `revisionRelation`(RemoteCommands.swift の I/O。**fetch しない** — ランナーの rev がこの clone に無ければ unknown)。checkCompatibility は **published のときだけ**向き付き advice を append(未 push は unpublishedRevisionMessage のみ — align 案内が誤誘導になる)。`api remote-compat` に `revisionRelation` フィールド(追加 = 後方互換・ProtocolVersion 不変)。拡張は localBehind/diverged/unknown が1機でも居たら「更新して実行」を出さず理由の行を足す(remoteCompatGate.ts。拡張 0.0.538)) |
+| 6 | 運用 docs(1人1鍵と失効・当番・カナリア手順)を remote-runner-setup.md へ | 済(2026-08-18。remote-runner-setup.md「複数人でフリートを共有する」+ トラブル表2行) |
 
 ## 関連
 

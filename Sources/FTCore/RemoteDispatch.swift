@@ -57,7 +57,48 @@ public struct RemoteHostSpec: Equatable, Sendable {
     }
 }
 
+/// rev 不一致の解消の向き(docs/remote-runner.md §18.3 規則1)。配布モデル上、2人の rev は
+/// ほぼ常に祖先関係にある(全員が同じ upstream main を追従)ので、祖先判定だけで向きを決められる
+public enum RevisionRelation: String, Sendable {
+    case localBehind    // ローカルがランナーの祖先 = この機械が古い
+    case remoteBehind   // ランナーがローカルの祖先 = ランナーが古い
+    case diverged        // どちらでもない = ブランチ作業
+    case unknown         // 判定不能(git を実行できない・ランナーの rev がこの clone に無い等)
+}
+
 public enum RemoteCompat {
+
+    /// 呼び手は rev が異なるときだけ呼ぶ契約なので (true, true) は本来起きないが、防御として
+    /// .unknown に落とす(default 分岐が nil の組も含めすべて拾う)
+    public static func classifyRelation(
+        localIsAncestorOfRemote: Bool?, remoteIsAncestorOfLocal: Bool?
+    ) -> RevisionRelation {
+        switch (localIsAncestorOfRemote, remoteIsAncestorOfLocal) {
+        case (true, false): return .localBehind
+        case (false, true): return .remoteBehind
+        case (false, false): return .diverged
+        default: return .unknown
+        }
+    }
+
+    /// 向き付きの案内(英語1文)。**localBehind は align を実行手順として案内しない** ——
+    /// ランナーはピン運用(§18.3)なので、遅れている側の人間が自分を上げる
+    public static func relationAdvice(_ relation: RevisionRelation) -> String {
+        switch relation {
+        case .localBehind:
+            return "This machine is behind the runner: update yourself (Scripts/update.sh, or git pull + rebuild)"
+                + " — do NOT align the runner backward to match (pinned deployment; docs/remote-runner.md §18.3)."
+        case .remoteBehind:
+            return "The runner is behind: update it with `ftester remote align <host>`"
+                + " (for a fleet, verify on one host first per the §16.6 canary procedure, then roll out to the rest)."
+        case .diverged:
+            return "Local and runner revisions have diverged (branch work) — a shared runner cannot track"
+                + " both branches; use a dedicated machine for branch verification (docs/remote-runner.md §18.3)."
+        case .unknown:
+            return "Cannot tell which side is behind (the runner's revision is not in this clone)."
+                + " Run `git fetch` and retry — in most cases this machine is the one that is behind."
+        }
+    }
 
     /// fail-closed: 片方でも取得できなければ(nil)不一致に含める(古い/未検証の組で
     /// 黙って走らせない。CLAUDE.md「片方だけ変えない」規律をマシン間に広げる)。

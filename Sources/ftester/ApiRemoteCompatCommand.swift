@@ -46,7 +46,7 @@ struct ApiRemoteCompatCommand: AsyncParsableCommand {
             } catch {
                 hosts[index] = RemoteCompatHostJSON(
                     name: name, sshTarget: name, reachable: false, revision: nil,
-                    revisionCompatible: nil, toolchain: nil, toolchainCompatible: nil,
+                    revisionCompatible: nil, revisionRelation: nil, toolchain: nil, toolchainCompatible: nil,
                     error: error.localizedDescription)
             }
         }
@@ -61,11 +61,20 @@ struct ApiRemoteCompatCommand: AsyncParsableCommand {
         }
         for (index, row) in probed {
             let report = HostReport(row: row, localRevision: localRevision, localToolchain: localToolchain)
+            let revisionCompatible = report.reachable
+                ? !report.mismatchReasons.contains(where: { $0.hasPrefix("git revision") }) : nil
+            let remoteRevision = report.status?.revision
+            // published のときだけ向きを出す(未 push は align 案内が誤誘導になる。checkCompatibility と同じ規律)
+            let relation: RevisionRelation? = {
+                guard revisionCompatible == false, published,
+                      let localRevision, let remoteRevision, let repoRoot else { return nil }
+                return revisionRelation(repoRoot: repoRoot, localRevision: localRevision, remoteRevision: remoteRevision)
+            }()
             hosts[index] = RemoteCompatHostJSON(
                 name: hostNames[index], sshTarget: report.sshTarget, reachable: report.reachable,
-                revision: report.status?.revision,
-                revisionCompatible: report.reachable
-                    ? !report.mismatchReasons.contains(where: { $0.hasPrefix("git revision") }) : nil,
+                revision: remoteRevision,
+                revisionCompatible: revisionCompatible,
+                revisionRelation: relation?.rawValue,
                 toolchain: report.status?.toolchain,
                 toolchainCompatible: report.reachable
                     ? !report.mismatchReasons.contains(where: { $0.hasPrefix("toolchain") }) : nil,
@@ -137,12 +146,17 @@ private struct RemoteCompatHostJSON: Encodable {
     let reachable: Bool
     let revision: String?
     let revisionCompatible: Bool?
+    /// `RevisionRelation.rawValue`。revisionCompatible == false かつ published(未 push でない)かつ
+    /// local/remote 両 rev が取れているときだけ non-nil(§18.3 規則1)。後方互換フィールドなので
+    /// ProtocolVersion は上げない
+    let revisionRelation: String?
     let toolchain: String?
     let toolchainCompatible: Bool?
     let error: String?
 
     private enum CodingKeys: String, CodingKey {
-        case name, sshTarget, reachable, revision, revisionCompatible, toolchain, toolchainCompatible, error
+        case name, sshTarget, reachable, revision, revisionCompatible, revisionRelation,
+             toolchain, toolchainCompatible, error
     }
 
     func encode(to encoder: Encoder) throws {
@@ -152,6 +166,7 @@ private struct RemoteCompatHostJSON: Encodable {
         try container.encode(reachable, forKey: .reachable)
         try container.encode(revision, forKey: .revision)
         try container.encode(revisionCompatible, forKey: .revisionCompatible)
+        try container.encode(revisionRelation, forKey: .revisionRelation)
         try container.encode(toolchain, forKey: .toolchain)
         try container.encode(toolchainCompatible, forKey: .toolchainCompatible)
         try container.encode(error, forKey: .error)

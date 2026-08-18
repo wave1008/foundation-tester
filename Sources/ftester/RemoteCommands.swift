@@ -690,6 +690,36 @@ func revisionIsPublished(repoRoot: URL, revision: String) -> Bool {
     return !result.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 }
 
+/// rev 不一致の解消の向き(docs/remote-runner.md §18.3 規則1)。**fetch はしない**
+/// (チェック経路にネットワーク副作用を持ち込まない。update-check.sh と同じ思想) ——
+/// remoteRevision がこの clone に無ければ .unknown。RemoteRunDispatcher.checkCompatibility /
+/// ApiRemoteCompatCommand が共有する
+func revisionRelation(repoRoot: URL, localRevision: String, remoteRevision: String) -> RevisionRelation {
+    guard let existsResult = try? Shell.run(
+        ["git", "-C", repoRoot.path, "cat-file", "-e", "\(remoteRevision)^{commit}"]),
+          existsResult.status == 0 else {
+        return .unknown
+    }
+    let localIsAncestor = isAncestorRevision(repoRoot: repoRoot, ancestor: localRevision, descendant: remoteRevision)
+    let remoteIsAncestor = isAncestorRevision(repoRoot: repoRoot, ancestor: remoteRevision, descendant: localRevision)
+    return RemoteCompat.classifyRelation(
+        localIsAncestorOfRemote: localIsAncestor, remoteIsAncestorOfLocal: remoteIsAncestor)
+}
+
+/// `git merge-base --is-ancestor` の exit code: 0=true / 1=false / それ以外(不正な rev・
+/// git 自体が起動できない等)は判定不能として nil
+private func isAncestorRevision(repoRoot: URL, ancestor: String, descendant: String) -> Bool? {
+    guard let result = try? Shell.run(
+        ["git", "-C", repoRoot.path, "merge-base", "--is-ancestor", ancestor, descendant]) else {
+        return nil
+    }
+    switch result.status {
+    case 0: return true
+    case 1: return false
+    default: return nil
+    }
+}
+
 private func formatFreeSpace(_ kb: Int) -> String {
     String(format: "%.1f GB", Double(kb) / 1024 / 1024)
 }

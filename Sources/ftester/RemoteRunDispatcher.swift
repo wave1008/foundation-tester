@@ -204,6 +204,13 @@ struct RemoteRunDispatcher {
         if reasons.contains(where: { $0.hasPrefix("git revision") }), let localRevision,
            !revisionIsPublished(repoRoot: localRepoRoot, revision: localRevision) {
             reasons.append(RemoteSetupPlan.unpublishedRevisionMessage(revision: localRevision))
+        } else if reasons.contains(where: { $0.hasPrefix("git revision") }),
+                  let localRevision, let remoteRevision {
+            // published のときだけ向きの案内を出す(未 push なら上の unpublishedRevisionMessage だけ ——
+            // このケースで align を案内すると誤誘導になる)
+            let relation = revisionRelation(
+                repoRoot: localRepoRoot, localRevision: localRevision, remoteRevision: remoteRevision)
+            reasons.append(RemoteCompat.relationAdvice(relation))
         }
         guard reasons.isEmpty else { throw RemoteDispatchError.incompatible(reasons) }
     }
