@@ -49,6 +49,42 @@ final class RemoteHostFactsTests: XCTestCase {
         XCTAssertEqual(loaded, facts)
         XCTAssertNil(loaded?.machine)
         XCTAssertNil(loaded?.dispatchOverheadSeconds)
+        XCTAssertNil(loaded?.processorModel)
+        XCTAssertNil(loaded?.coreCount)
+        XCTAssertNil(loaded?.concurrentDevices)
+    }
+
+    // MARK: - ハードウェア・同時起動デバイス数フィールド
+
+    func testHardwareAndConcurrentDevicesFieldsRoundTrip() {
+        let facts = RemoteHostFacts(
+            machine: "M1Max", dispatchOverheadSeconds: 4.2,
+            processorModel: "Apple M1 Max", coreCount: 10, concurrentDevices: 3,
+            updatedAt: "2026-08-18T00:00:00Z")
+        RemoteHostFactsStore.save(facts, dir: dir, hostLabel: "runner-2")
+        let loaded = RemoteHostFactsStore.load(dir: dir, hostLabel: "runner-2")
+        XCTAssertEqual(loaded, facts)
+        XCTAssertEqual(loaded?.processorModel, "Apple M1 Max")
+        XCTAssertEqual(loaded?.coreCount, 10)
+        XCTAssertEqual(loaded?.concurrentDevices, 3)
+    }
+
+    /// 新フィールドを持たない旧形式の JSON(採取側の更新前に書かれたキャッシュ)も decode できる
+    /// ―― 欠けているキーは Optional として nil に落ちる(Codable の既定挙動)
+    func testDecodesLegacyJSONWithoutNewFields() throws {
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let legacyJSON = """
+            {"machine":"M1Max","dispatchOverheadSeconds":4.2,"updatedAt":"2026-08-18T00:00:00Z"}
+            """
+        try legacyJSON.write(
+            to: dir.appendingPathComponent(RemoteHostFactsStore.fileKey(hostLabel: "legacy") + ".json"),
+            atomically: true, encoding: .utf8)
+        let loaded = RemoteHostFactsStore.load(dir: dir, hostLabel: "legacy")
+        XCTAssertEqual(loaded?.machine, "M1Max")
+        XCTAssertEqual(loaded?.dispatchOverheadSeconds, 4.2)
+        XCTAssertNil(loaded?.processorModel)
+        XCTAssertNil(loaded?.coreCount)
+        XCTAssertNil(loaded?.concurrentDevices)
     }
 
     // MARK: - fileKey のサニタイズ
@@ -68,5 +104,14 @@ final class RemoteHostFactsTests: XCTestCase {
             RemoteHostFacts(machine: "A", updatedAt: "2026-08-18T00:00:00Z"),
             dir: dir, hostLabel: "user@host")
         XCTAssertEqual(RemoteHostFactsStore.load(dir: dir, hostLabel: "user@host")?.machine, "A")
+    }
+
+    // MARK: - MachineHardware.current()
+
+    /// この機械上での sanity チェック(具体値は環境依存なので形だけ確認する)
+    func testMachineHardwareCurrentReturnsSaneValues() {
+        let hardware = MachineHardware.current()
+        XCTAssertGreaterThan(hardware.coreCount, 0)
+        XCTAssertFalse(hardware.processorModel.isEmpty)
     }
 }

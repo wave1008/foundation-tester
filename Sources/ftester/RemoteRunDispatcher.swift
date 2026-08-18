@@ -40,7 +40,7 @@ struct RemoteRunDispatcher {
                   localJUnitPath: String?,
                   remoteTimeoutSeconds: Int?) async throws -> Int32 {
         let setupStart = Date()
-        let layout = try resolveLayout()
+        let (layout, session) = try resolveLayout()
         try checkCompatibility(layout: layout)
 
         try acquireDispatchLock(layout: layout)
@@ -77,7 +77,7 @@ struct RemoteRunDispatcher {
         collectArtifactsIfRequested(project: project, layout: layout)
         // relink より先に撃つ(relink が reportPath を書き換えると stamp がファイルから消え、
         // stamp 走査で machine を採れなくなる。2026-08-18 に実ディスパッチで machine 欠落を確認)
-        saveHostFacts(project: project, stamp: stamp, overheadSeconds: overheadSeconds)
+        saveHostFacts(project: project, stamp: stamp, overheadSeconds: overheadSeconds, session: session)
         relinkCollectedReports(project: project, stamp: stamp)
         cleanupDispatchDir(layout: layout, stamp: stamp)
 
@@ -95,7 +95,7 @@ struct RemoteRunDispatcher {
                      defaultTimeout: Double?, scenarioTimeout: Double?,
                      remoteTimeoutSeconds: Int?) async throws -> Int32 {
         let setupStart = Date()
-        let layout = try resolveLayout()
+        let (layout, session) = try resolveLayout()
         try checkCompatibility(layout: layout)
 
         try acquireDispatchLock(layout: layout)
@@ -125,7 +125,7 @@ struct RemoteRunDispatcher {
         collectArtifactsIfRequested(project: project, layout: layout)
         // relink より先に撃つ(relink が reportPath を書き換えると stamp がファイルから消え、
         // stamp 走査で machine を採れなくなる。2026-08-18 に実ディスパッチで machine 欠落を確認)
-        saveHostFacts(project: project, stamp: stamp, overheadSeconds: overheadSeconds)
+        saveHostFacts(project: project, stamp: stamp, overheadSeconds: overheadSeconds, session: session)
         relinkCollectedReports(project: project, stamp: stamp)
         cleanupDispatchDir(layout: layout, stamp: stamp)
 
@@ -135,15 +135,17 @@ struct RemoteRunDispatcher {
 
     // MARK: - 0. レイアウト解決
 
-    /// remoteDirRaw を絶対パスへ解決する。`ssh <host> 'echo $HOME; stat -f%Su /dev/console; id -un'`
-    /// を到達性プローブ兼用にする(以前の "true" プローブを置き換え。rev/toolchain は
-    /// fail-closed で nil = 不一致扱いになるため、到達不能はここで先に切り分けないと compat
-    /// mismatch と誤報する)。コンソールユーザー(§16.3)も同じ往復に相乗りさせて取得する
-    /// — 素の $HOME だけの ssh 1本を別に足すと往復が倍になる
-    private func resolveLayout() throws -> RemoteLayout {
+    /// remoteDirRaw を絶対パスへ解決する。到達性プローブ兼用の1往復
+    /// (`echo $HOME; stat -f%Su /dev/console; id -un; sysctl -n machdep.cpu.brand_string 2>/dev/null;
+    /// sysctl -n hw.ncpu 2>/dev/null`)に相乗りさせて、コンソールユーザー(§16.3)と CPU 情報
+    /// (RemoteHostFacts の processorModel/coreCount。§8 の事前係数)を同時に取る —— 別の ssh を
+    /// 足すと往復が増える。戻り値の session は 3行形(古い macOS 等・parseSessionInfo が判定不能で
+    /// ログインチェックだけスキップした経路)では nil になり、saveHostFacts は既存値を保持する
+    private func resolveLayout() throws -> (layout: RemoteLayout, session: RemoteSessionInfo?) {
         log("==> checking compatibility with \(host.sshTarget)")
         let result = try Shell.run(
-            sshBase + [host.sshTarget, "echo $HOME; stat -f%Su /dev/console; id -un"])
+            sshBase + [host.sshTarget, "echo $HOME; stat -f%Su /dev/console; id -un; "
+                + "sysctl -n machdep.cpu.brand_string 2>/dev/null; sysctl -n hw.ncpu 2>/dev/null"])
         guard result.status == 0 else {
             throw RemoteDispatchError.remoteSetupFailed(
                 "cannot reach \(host.sshTarget) over ssh (status \(result.status))"
@@ -159,7 +161,7 @@ struct RemoteRunDispatcher {
                     "could not determine $HOME on \(host.sshTarget)")
             }
             log("warning: could not determine the remote console login state — skipping the login check")
-            return RemoteLayout(base: RemoteLayout.resolveBase(remoteDirRaw, home: firstLine))
+            return (RemoteLayout(base: RemoteLayout.resolveBase(remoteDirRaw, home: firstLine)), nil)
         }
         guard session.isLoggedIn else {
             throw RemoteDispatchError.remoteSetupFailed(
@@ -167,7 +169,7 @@ struct RemoteRunDispatcher {
                 + "expected: \(session.sshUser)) — unlock and log in on the runner, then retry"
                 + " (docs/remote-runner.md §5)")
         }
-        return RemoteLayout(base: RemoteLayout.resolveBase(remoteDirRaw, home: session.home))
+        return (RemoteLayout(base: RemoteLayout.resolveBase(remoteDirRaw, home: session.home)), session)
     }
 
     /// ディスパッチ単位の一意ディレクトリ名(reports/junit の隔離・回収後の削除に使う)
@@ -443,29 +445,47 @@ struct RemoteRunDispatcher {
         return String(rest[open.upperBound..<close.lowerBound])
     }
 
-    /// FleetSplit の機械別見積り(ディスパッチ固定費・実績のホスト解決)の供給源として、
+    /// FleetSplit の機械別見積り(ディスパッチ固定費・実績のホスト解決・§8 の事前係数)の供給源として、
     /// このディスパッチが分かったホストの事実をキャッシュする。machine はプローブでなく
     /// 回収済みレコードから採る —— プローブの推測は FT_MACHINE 上書きやホスト名変化とズレるが、
-    /// レコードの値は実績照合そのものに使われている正だから。レコードが見つからない
-    /// (run がレコードを書く前に落ちた等)ときは既存の facts の machine を保持する(上書きで消さない)。
+    /// レコードの値は実績照合そのものに使われている正だから。**CPU 情報(processorModel/coreCount)は
+    /// これと逆にプローブ由来**(machdep.cpu.brand_string/hw.ncpu はレコードに乗らない)。
+    /// いずれも今回採れなかった項目は既存の facts の値を保持する(上書きで消さない)。
+    /// concurrentDevices はレコードの "worker" の相異なる値の個数(この stamp のぶんだけ)。
     /// hostLabel が無い構築箇所(旧経路)では何もしない。失敗は黙って握る(advisory キャッシュ。
     /// run の成否・ログを汚さない)
-    private func saveHostFacts(project: TestProject, stamp: String, overheadSeconds: Double) {
+    private func saveHostFacts(project: TestProject, stamp: String, overheadSeconds: Double,
+                               session: RemoteSessionInfo?) {
         guard let hostLabel else { return }
         let dir = RemoteHostFactsStore.dir(project: project)
         let existing = RemoteHostFactsStore.load(dir: dir, hostLabel: hostLabel)
-        let machine = recordedMachine(project: project, stamp: stamp) ?? existing?.machine
+        let texts = collectedScenarioTexts(project: project, stamp: stamp)
+        let machine = recordedMachine(texts: texts) ?? existing?.machine
+        let concurrentDevices = recordedConcurrentDevices(texts: texts) ?? existing?.concurrentDevices
         let facts = RemoteHostFacts(
             machine: machine, dispatchOverheadSeconds: overheadSeconds,
+            processorModel: session?.processorModel ?? existing?.processorModel,
+            coreCount: session?.coreCount ?? existing?.coreCount,
+            concurrentDevices: concurrentDevices,
             updatedAt: ISO8601DateFormatter().string(from: Date()))
         RemoteHostFactsStore.save(facts, dir: dir, hostLabel: hostLabel)
     }
 
-    private func recordedMachine(project: TestProject, stamp: String) -> String? {
-        for (_, text) in collectedScenarioTexts(project: project, stamp: stamp) {
+    private func recordedMachine(texts: [(url: URL, text: String)]) -> String? {
+        for (_, text) in texts {
             if let machine = Self.recordedField(in: text, key: "machine") { return machine }
         }
         return nil
+    }
+
+    /// この stamp の回収済みレコードに乗っている "worker" の相異なる値の個数
+    /// (worker はデバイスごとの実行スロット。0 = 何も取れなかった = 呼び出し側で既存値を保持させる)
+    private func recordedConcurrentDevices(texts: [(url: URL, text: String)]) -> Int? {
+        var workers = Set<String>()
+        for (_, text) in texts {
+            if let worker = Self.recordedField(in: text, key: "worker") { workers.insert(worker) }
+        }
+        return workers.isEmpty ? nil : workers.count
     }
 
     /// 回収の rsync。**転送元不在(= run が成果物を作る前に落ちた)は警告にしない** ——

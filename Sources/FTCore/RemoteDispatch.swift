@@ -514,6 +514,21 @@ public struct RemoteSessionInfo: Equatable, Sendable {
     public let home: String
     public let consoleUser: String
     public let sshUser: String
+    /// プローブが同じ ssh 往復で追加取得した CPU 情報(RemoteProbe.parseSessionInfo の5行形のみ)。
+    /// 3行形の出力からは取れないので nil
+    public let processorModel: String?
+    public let coreCount: Int?
+
+    /// 新フィールドは既定値 nil ―― 既存の3引数呼び出し(セッション情報だけの構築)を壊さない
+    public init(home: String, consoleUser: String, sshUser: String,
+               processorModel: String? = nil, coreCount: Int? = nil) {
+        self.home = home
+        self.consoleUser = consoleUser
+        self.sshUser = sshUser
+        self.processorModel = processorModel
+        self.coreCount = coreCount
+    }
+
     /// 大文字小文字は区別する(macOS のユーザー名はケースセンシティブではないが、
     /// ここでは stat/id の生出力をそのまま突き合わせるだけに留める)
     public var isLoggedIn: Bool { consoleUser == sshUser }
@@ -521,17 +536,29 @@ public struct RemoteSessionInfo: Equatable, Sendable {
 
 public enum RemoteProbe {
 
-    /// "echo $HOME; stat -f%Su /dev/console; id -un" の3行出力を解析する。末尾の改行1個は
-    /// 許容するが、行が3本ぴったりでない・いずれかの行が空(トリム後)なら nil
-    /// (古い macOS 等で `/dev/console` が想定外を返す場合を想定。呼び出し側は nil を
-    /// 「判定不能」として扱い、ログインチェックだけスキップする)
+    /// "echo $HOME; stat -f%Su /dev/console; id -un" の3行出力(hardware なし)、または
+    /// これに "sysctl -n machdep.cpu.brand_string; sysctl -n hw.ncpu" を足した5行出力
+    /// (4行目 = CPU モデル・5行目 = コア数)を解析する。末尾の改行1個は許容する。
+    /// **先頭3行の妥当性判定は行数によらず同一**(3本ぴったり・いずれも空でない、が前提)。
+    /// 行数が3でも5でもなければ nil(古い macOS 等で `/dev/console` が想定外を返す場合を想定。
+    /// 呼び出し側は nil を「判定不能」として扱い、ログインチェックだけスキップする)。
+    /// 5行形では、4行目が空(トリム後)なら processorModel は nil、5行目が Int にパース
+    /// できなければ coreCount は nil(hardware だけ判定不能でもセッション情報は活かす)
     public static func parseSessionInfo(_ output: String) -> RemoteSessionInfo? {
+
         var lines = output.components(separatedBy: "\n")
         if lines.last == "" { lines.removeLast() }
-        guard lines.count == 3 else { return nil }
+        guard lines.count == 3 || lines.count == 5 else { return nil }
         let trimmed = lines.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-        guard trimmed.allSatisfy({ !$0.isEmpty }) else { return nil }
-        return RemoteSessionInfo(home: trimmed[0], consoleUser: trimmed[1], sshUser: trimmed[2])
+        guard trimmed[0...2].allSatisfy({ !$0.isEmpty }) else { return nil }
+        var processorModel: String?
+        var coreCount: Int?
+        if trimmed.count == 5 {
+            processorModel = trimmed[3].isEmpty ? nil : trimmed[3]
+            coreCount = Int(trimmed[4])
+        }
+        return RemoteSessionInfo(home: trimmed[0], consoleUser: trimmed[1], sshUser: trimmed[2],
+                                 processorModel: processorModel, coreCount: coreCount)
     }
 }
 

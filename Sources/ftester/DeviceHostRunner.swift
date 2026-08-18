@@ -157,7 +157,9 @@ enum DeviceHostRunner {
         let unknown = durations.isEmpty ? 1.0
             : (durations.map(\.medianMs).sorted()[durations.count / 2])
         // facts はディスパッチのたびに RemoteRunDispatcher が書く。初回(キャッシュ無し)は
-        // machine=nil・offset=0 で MachineContext が従来の混合見積りへ退化する(FleetRunner と同じ)
+        // machine=nil・offset=0 で MachineContext が従来の混合見積りへ退化する(FleetRunner と同じ)。
+        // entryFallbackFactors(実績が無い機械の事前係数)の考え方は FleetRunner.buildMachineContext
+        // のコメント参照(二重に書かない)
         let factsDir = RemoteHostFactsStore.dir(project: project)
         let groupFacts: [RemoteHostFacts?] = groups.map { group in
             group.host == nil ? nil : RemoteHostFactsStore.load(dir: factsDir, hostLabel: group.hostLabel)
@@ -166,9 +168,17 @@ enum DeviceHostRunner {
             group.host == nil ? RunRecorder.currentMachine() : facts?.machine
         }
         let entryFixedOffsetsMs = groupFacts.map { ($0?.dispatchOverheadSeconds ?? 0) * 1000 }
+        let localHardware = MachineHardware.current()
+        let entryFallbackFactors: [Double] = zip(groups, groupFacts).map { group, facts in
+            guard group.host != nil else { return 1.0 }
+            guard let coreCount = facts?.coreCount, coreCount > 0 else { return 1.0 }
+            return Double(localHardware.coreCount) / Double(coreCount)
+        }
+        saveLocalHostFacts(project: project, hardware: localHardware, groups: groups)
         let machineContext = FleetSplit.MachineContext(
             entryMachines: entryMachines, entryFixedOffsetsMs: entryFixedOffsetsMs,
-            machineDurations: LPTScheduler.machineDurations(from: records))
+            machineDurations: LPTScheduler.machineDurations(from: records),
+            entryFallbackFactors: entryFallbackFactors)
         do {
             return try FleetSplit.partition(
                 scenarios: selected.map { (id: $0.id, platform: $0.platform) },
@@ -181,6 +191,22 @@ enum DeviceHostRunner {
         } catch let error as FleetSplit.FleetSplitError {
             throw ValidationError("profile \"\(project.name)\": \(error.localizedDescription)")
         }
+    }
+
+    /// FleetRunner.buildMachineContext の同名ヘルパと同じ規律(local 鍵で facts を保存、
+    /// dispatchOverheadSeconds は既存値を保持)。こちらは local グループの台数が分かるので
+    /// concurrentDevices も埋める
+    private static func saveLocalHostFacts(project: TestProject, hardware: MachineHardware, groups: [Group]) {
+        let dir = RemoteHostFactsStore.dir(project: project)
+        let existing = RemoteHostFactsStore.load(dir: dir, hostLabel: "local")
+        let localDeviceCount = groups.first(where: { $0.host == nil })?.deviceNames.count
+        let facts = RemoteHostFacts(
+            machine: RunRecorder.currentMachine(),
+            dispatchOverheadSeconds: existing?.dispatchOverheadSeconds,
+            processorModel: hardware.processorModel, coreCount: hardware.coreCount,
+            concurrentDevices: localDeviceCount ?? existing?.concurrentDevices,
+            updatedAt: ISO8601DateFormatter().string(from: Date()))
+        RemoteHostFactsStore.save(facts, dir: dir, hostLabel: "local")
     }
 
     private static func estimateText(_ estimatedMs: Double, devices: Int) -> String {

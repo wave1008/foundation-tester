@@ -41,16 +41,25 @@ public enum FleetSplit {
         /// そのエントリが払うディスパッチ固定費(実測。ローカルは 0)。台数で割らず
         /// 見込み終了時刻へそのまま足す(デバイスが走り出す前の壁時計)。
         /// **durations と同じ単位(ms)であること** —— 実績ゼロで見積りが単位重みへ退化する
-        /// 呼び出しは machineContext(_:ifHistoryExists:) で context ごと落とす
+        /// 呼び出しは machineContext(_:ifHistoryExists:) が offsets だけ 0 化して届ける
+        /// (単位重み(1.0)と ms が同じ比較に混ざると offset が支配して壊れるため)
         public let entryFixedOffsetsMs: [Double]
         /// LPTScheduler.machineDurations(from:) の出力
         public let machineDurations: [LPTScheduler.MachineDuration]
+        /// 実績の無い機械向けの事前係数(無次元。呼び出し側がコア数比等から算出する)。
+        /// **無次元なので単位重み(unknownDurationMs)とも ms 実績とも安全に混ざる**
+        /// (entryFixedOffsetsMs と違い、実績ゼロのガードで潰す必要が無い)。
+        /// nil(省略)は全員 1.0 = 従来どおり混合見積りをそのまま使う
+        public let entryFallbackFactors: [Double]
 
         public init(entryMachines: [String?], entryFixedOffsetsMs: [Double],
-                    machineDurations: [LPTScheduler.MachineDuration]) {
+                    machineDurations: [LPTScheduler.MachineDuration],
+                    entryFallbackFactors: [Double]? = nil) {
             self.entryMachines = entryMachines
             self.entryFixedOffsetsMs = entryFixedOffsetsMs
             self.machineDurations = machineDurations
+            self.entryFallbackFactors = entryFallbackFactors
+                ?? [Double](repeating: 1.0, count: entryMachines.count)
         }
     }
 
@@ -101,10 +110,14 @@ public enum FleetSplit {
             ?? [String?](repeating: nil, count: entryPlatforms.count)
         let entryOffsets = machineContext?.entryFixedOffsetsMs
             ?? [Double](repeating: 0, count: entryPlatforms.count)
+        let entryFallback = machineContext?.entryFallbackFactors
+            ?? [Double](repeating: 1.0, count: entryPlatforms.count)
         precondition(entryMachines.count == entryPlatforms.count,
                      "machineContext.entryMachines must line up with entryPlatforms")
         precondition(entryOffsets.count == entryPlatforms.count,
                      "machineContext.entryFixedOffsetsMs must line up with entryPlatforms")
+        precondition(entryFallback.count == entryPlatforms.count,
+                     "machineContext.entryFallbackFactors must line up with entryPlatforms")
 
         let mixedByScenario = maxAcrossPlatform(durations)
         func mixedMs(_ id: String) -> Double { mixedByScenario[id] ?? unknownDurationMs }
@@ -114,12 +127,15 @@ public enum FleetSplit {
             speedFactors(machineDurations: $0.machineDurations, durations: durations)
         } ?? [:]
 
-        // エントリ別見積り: 同一機の実績があればそれ、無ければ混合見積り × 速度係数
-        // (machine 不明・係数不明はどちらも 1.0 相当 = 混合見積りへ落ちる)
+        // エントリ別見積り優先順: ①同一機の実績(sameMs) ②実測速度係数(factors)
+        // ③事前係数(entryFallbackFactors)。machine 不明(nil)でも fallback は使う ——
+        // ハードウェアの事前係数はプローブ由来で、レコード由来の machine 名が無くても得られる
         func estimatedMs(_ id: String, forEntry index: Int) -> Double {
-            guard let machine = entryMachines[index] else { return mixedMs(id) }
+            guard let machine = entryMachines[index] else {
+                return mixedMs(id) * entryFallback[index]
+            }
             if let sameMachineMs = sameMsByMachine[machine]?[id] { return sameMachineMs }
-            return mixedMs(id) * (factors[machine] ?? 1.0)
+            return mixedMs(id) * (factors[machine] ?? entryFallback[index])
         }
 
         // 見積り降順、同着は scenario ID 昇順(決定的)。machine 非依存の混合見積りで決める
@@ -158,17 +174,27 @@ public enum FleetSplit {
         }
     }
 
-    /// 呼び出し側の共通ガード: **実績が1件も無いときは machineContext を渡さない**。
-    /// 実績ゼロだと呼び出し側の unknownDuration は単位重み(1.0。ms ではない)へ退化するが、
-    /// entryFixedOffsetsMs は実測ミリ秒のままなので、比較の中で offset が重みを支配して
-    /// **facts を持つエントリへは数千本積むまで1本も行かず、全シナリオが facts の無い
-    /// エントリ(local)へ寄る**(単位の混在は黙って誤る。2026-08-18 のレビューで検出)。
-    /// 実績ゼロなら machineDurations も空で context の効きどころは offset だけなので、
-    /// context ごと nil に落とすのが最小で正確
+    /// 呼び出し側の共通ガード: **実績が1件も無いときは entryFixedOffsetsMs を全 0 にした
+    /// context を返す**(context ごと nil に落としていた旧仕様から変更)。
+    ///
+    /// ms の offset は単位重み(1.0)と混ぜると支配して壊れる —— 実績ゼロだと呼び出し側の
+    /// unknownDuration は単位重みへ退化するが、entryFixedOffsetsMs は実測ミリ秒のままなので、
+    /// 比較の中で offset が重みを支配して**facts を持つエントリへは数千本積むまで1本も行かず、
+    /// 全シナリオが facts の無いエントリ(local)へ寄る**(単位の混在は黙って誤る。2026-08-18 の
+    /// レビューで検出)。
+    ///
+    /// **entryFallbackFactors は無次元なので単位重みと安全に併用できる** —— コア数の事前係数は
+    /// むしろ実績ゼロのときにこそ効かせたいので、machineDurations/entryFallbackFactors は保持し、
+    /// offsets だけを 0 化する(context ごと落とすのをやめた理由)
     public static func machineContext(
         _ context: MachineContext, ifHistoryExists durations: [LPTScheduler.Duration]
-    ) -> MachineContext? {
-        durations.isEmpty ? nil : context
+    ) -> MachineContext {
+        guard durations.isEmpty else { return context }
+        return MachineContext(
+            entryMachines: context.entryMachines,
+            entryFixedOffsetsMs: [Double](repeating: 0, count: context.entryFixedOffsetsMs.count),
+            machineDurations: context.machineDurations,
+            entryFallbackFactors: context.entryFallbackFactors)
     }
 
     /// 速度係数(machine → 比の中央値)。「sameMs と混合中央値の両方があるシナリオ」の

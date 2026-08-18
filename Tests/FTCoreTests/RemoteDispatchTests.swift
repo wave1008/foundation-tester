@@ -840,6 +840,47 @@ final class RemoteDispatchTests: XCTestCase {
         XCTAssertEqual(info?.isLoggedIn, true)
     }
 
+    /// 5行形(4行目 = CPU モデル・5行目 = コア数)。先頭3行の妥当性判定は3行形と同一
+    func testParseSessionInfoFiveLinesIncludesHardware() {
+        let info = RemoteProbe.parseSessionInfo("/Users/ci\nalice\nalice\nApple M1 Max\n10")
+        XCTAssertEqual(info, RemoteSessionInfo(home: "/Users/ci", consoleUser: "alice", sshUser: "alice",
+                                               processorModel: "Apple M1 Max", coreCount: 10))
+    }
+
+    func testParseSessionInfoFiveLinesAcceptsTrailingNewline() {
+        let info = RemoteProbe.parseSessionInfo("/Users/ci\nalice\nalice\nApple M1 Max\n10\n")
+        XCTAssertEqual(info?.processorModel, "Apple M1 Max")
+        XCTAssertEqual(info?.coreCount, 10)
+    }
+
+    /// 4行目が空(トリム後)なら processorModel は nil。セッション情報自体は活かす
+    func testParseSessionInfoFiveLinesEmptyProcessorModelBecomesNil() {
+        let info = RemoteProbe.parseSessionInfo("/Users/ci\nalice\nalice\n \n10")
+        XCTAssertNotNil(info)
+        XCTAssertNil(info?.processorModel)
+        XCTAssertEqual(info?.coreCount, 10)
+    }
+
+    /// 5行目が Int にパースできなければ coreCount は nil
+    func testParseSessionInfoFiveLinesNonIntegerCoreCountBecomesNil() {
+        let info = RemoteProbe.parseSessionInfo("/Users/ci\nalice\nalice\nApple M1 Max\nnot-a-number")
+        XCTAssertNotNil(info)
+        XCTAssertEqual(info?.processorModel, "Apple M1 Max")
+        XCTAssertNil(info?.coreCount)
+    }
+
+    /// 行数が3でも5でもなければ従来どおり nil(4行・6行等)
+    func testParseSessionInfoFourLinesReturnsNil() {
+        XCTAssertNil(RemoteProbe.parseSessionInfo("/Users/ci\nalice\nalice\nApple M1 Max"))
+    }
+
+    /// 3行形は5行形の追加ロジックの影響を受けない(hardware は nil のまま)
+    func testParseSessionInfoThreeLinesHasNilHardware() {
+        let info = RemoteProbe.parseSessionInfo("/Users/ci\nalice\nalice")
+        XCTAssertNil(info?.processorModel)
+        XCTAssertNil(info?.coreCount)
+    }
+
     // MARK: - StreamLineSplitter (CR handling)
 
     func testFlushStripsTrailingCarriageReturn() {

@@ -224,7 +224,11 @@ enum FleetRunner {
 
     /// エントリごとの machine 識別子と固定オフセット(ディスパッチ経路の平均秒 × 1000)。
     /// facts はディスパッチのたびに RemoteRunDispatcher が書く。初回(キャッシュ無し)は
-    /// machine=nil・offset=0 で FleetSplit.MachineContext が従来の混合見積りへ退化する
+    /// machine=nil・offset=0 で FleetSplit.MachineContext が従来の混合見積りへ退化する。
+    /// **entryFallbackFactors**(§8): 実績が無い機械の事前係数(コア数の逆比、単位なし)。
+    /// FleetSplit の優先順は 同一機実績 → 実測係数(speedFactors=共通観測)→ この事前係数 なので、
+    /// 観測が貯まり次第そちらへ自然に置き換わる。基準はローカル機(混合中央値の実績は主に
+    /// ローカルに貯まるため、ローカルを 1.0 として相対化するのが最も実績と整合する)
     private static func buildMachineContext(
         fleet: FleetProfileDocument, project: TestProject, records: [ScenarioRunRecord]
     ) -> FleetSplit.MachineContext {
@@ -236,9 +240,33 @@ enum FleetRunner {
             entry.host == "local" ? RunRecorder.currentMachine() : facts?.machine
         }
         let entryFixedOffsetsMs = entryFacts.map { ($0?.dispatchOverheadSeconds ?? 0) * 1000 }
+        let localHardware = MachineHardware.current()
+        let entryFallbackFactors: [Double] = zip(fleet.runs, entryFacts).map { entry, facts in
+            guard entry.host != "local" else { return 1.0 }
+            guard let coreCount = facts?.coreCount, coreCount > 0 else { return 1.0 }
+            return Double(localHardware.coreCount) / Double(coreCount)
+        }
+        saveLocalHostFacts(project: project, hardware: localHardware)
         return FleetSplit.MachineContext(
             entryMachines: entryMachines, entryFixedOffsetsMs: entryFixedOffsetsMs,
-            machineDurations: LPTScheduler.machineDurations(from: records))
+            machineDurations: LPTScheduler.machineDurations(from: records),
+            entryFallbackFactors: entryFallbackFactors)
+    }
+
+    /// "local" 鍵で facts を保存する(ローカル機の CPU 情報は RemoteRunDispatcher の
+    /// プローブ経路を通らないので、ここでこの run のたびに書く)。dispatchOverheadSeconds/
+    /// concurrentDevices は分からないので触らない(既存値を保持。RemoteHostFactsStore.save は
+    /// 全置換なので既存値は読み直して埋める)。best-effort(失敗しても run の成否を変えない)
+    private static func saveLocalHostFacts(project: TestProject, hardware: MachineHardware) {
+        let dir = RemoteHostFactsStore.dir(project: project)
+        let existing = RemoteHostFactsStore.load(dir: dir, hostLabel: "local")
+        let facts = RemoteHostFacts(
+            machine: RunRecorder.currentMachine(),
+            dispatchOverheadSeconds: existing?.dispatchOverheadSeconds,
+            processorModel: hardware.processorModel, coreCount: hardware.coreCount,
+            concurrentDevices: existing?.concurrentDevices,
+            updatedAt: ISO8601DateFormatter().string(from: Date()))
+        RemoteHostFactsStore.save(facts, dir: dir, hostLabel: "local")
     }
 
     private static func medianMs(_ values: [Double]) -> Double? {

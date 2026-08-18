@@ -256,17 +256,29 @@ Android は `no running emulator for AVD ...` で失敗する)。`ftester device
 
 **machine 別見積りとディスパッチ固定費(2026-08-18)**: 機械ごとの速度差(手元と各リモート機で
 異なる)とディスパッチ経路の固定費(SSH 接続・転送・増分ビルド)を割り当てに織り込む
-(`FleetSplit.MachineContext`)。見積りは**同一機の実績 > 混合中央値 × 速度係数(共通観測
-シナリオの比の中央値)> 1.0** の順で決め、`RemoteHostFactsStore` が持つ実測固定費
-(`.ftester/remote-hosts/<host>.json`。`RemoteRunDispatcher` がディスパッチのたびに書く)を
-見込み終了時刻へ足す。**初回(キャッシュ無し)は従来と同一の混合見積り**に退化する ——
-facts が無いエントリは machine=nil・offset=0 として扱われる。**実績が1件も無い run は
-facts があっても均等割りのまま**(見積りが単位重みへ退化するので、ms の固定費を同じ比較に
-載せない。`FleetSplit.machineContext(_:ifHistoryExists:)` が落とす)。実行後の集計表には **IDLE 列**
-(そのエントリの最長 duration との差)を追加した — 静的割り当ての偏り(ストラグラー)を
-再配分機構を作る前に実測で貯めるためで、割り当てそのものはまだ実行後にフィードバックしない。
-効果の実測(3機械12台での収束データと、初回 run を効果の基線にしない理由)は
-docs/performance-tuning.md §3.7 の 7。
+(`FleetSplit.MachineContext`)。`RemoteHostFactsStore`(`.ftester/remote-hosts/<host>.json`)は
+machine 識別子・実測固定費に加え **CPU モデル・論理コア数・直近 run の同時起動デバイス数**も
+持つ。CPU 情報はディスパッチの到達性プローブ(`RemoteRunDispatcher.resolveLayout`)に相乗りした
+`sysctl` の実測、machine とデバイス数は回収した実績レコード(`machine`/`worker`)由来 ——
+書き手が違う(前者はプローブ、後者はレコード)ので、片方だけ取れなかったときも他方は上書きで
+消さない。ローカル機の facts も同じ鍵("local")で `FleetRunner.buildMachineContext` /
+`DeviceHostRunner.assign` が毎回書く(こちらは SSH プローブを経由しないので `MachineHardware.current()`
+を直接使う)。
+
+見積りは**同一機の実績 > 混合中央値 × 速度係数(共通観測シナリオの比の中央値)>
+コア数の逆比(ローカル基準の事前係数)> 1.0** の順で決める。実績の無い機械には、
+共通観測が貯まるまでの間 `entryFallbackFactors`(ローカルのコア数 ÷ 相手のコア数)を暫定係数として
+使う ―― 観測が増えて速度係数が求まり次第、そちらへ自然に置き換わる(FleetSplit の優先順が
+決める。facts に coreCount が無ければ 1.0 = 従来どおり均等)。**初回(キャッシュ無し)は
+従来と同一の混合見積り**に退化する —— facts が無いエントリは machine=nil・offset=0・factor=1.0
+として扱われる。**実績が1件も無い run は ms の固定費だけを落とす**(見積りが単位重みへ
+退化するので、ms の固定費を同じ比較に載せると単位重みを支配してしまう)が、**コア数の逆比の
+係数は効いたまま**にする(単位重み自体に掛かる比率なので単位を汚さない。
+`FleetSplit.machineContext(_:ifHistoryExists:)` が offsets だけ 0 化して返す)。
+実行後の集計表には **IDLE 列**(そのエントリの最長 duration との差)を追加した —
+静的割り当ての偏り(ストラグラー)を再配分機構を作る前に実測で貯めるためで、割り当てそのものは
+まだ実行後にフィードバックしない。効果の実測(3機械12台での収束データと、初回 run を効果の
+基線にしない理由)は docs/performance-tuning.md §3.7 の 7。
 
 ## 9. 未検証事項(実装前に潰す)
 

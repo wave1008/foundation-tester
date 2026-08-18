@@ -13,11 +13,22 @@ public struct RemoteHostFacts: Codable, Equatable, Sendable {
     public var machine: String?
     /// 直近ディスパッチのセットアップ固定費(プローブ〜リモート run 開始前)の実測秒
     public var dispatchOverheadSeconds: Double?
+    /// プローブの実測(sysctl machdep.cpu.brand_string)
+    public var processorModel: String?
+    /// プローブの実測(sysctl hw.ncpu。論理コア)
+    public var coreCount: Int?
+    /// 直近の run で同時に使ったデバイス数の観測値
+    public var concurrentDevices: Int?
     public var updatedAt: String
 
-    public init(machine: String? = nil, dispatchOverheadSeconds: Double? = nil, updatedAt: String) {
+    public init(machine: String? = nil, dispatchOverheadSeconds: Double? = nil,
+               processorModel: String? = nil, coreCount: Int? = nil, concurrentDevices: Int? = nil,
+               updatedAt: String) {
         self.machine = machine
         self.dispatchOverheadSeconds = dispatchOverheadSeconds
+        self.processorModel = processorModel
+        self.coreCount = coreCount
+        self.concurrentDevices = concurrentDevices
         self.updatedAt = updatedAt
     }
 }

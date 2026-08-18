@@ -314,15 +314,20 @@ extension FleetSplitTests {
     }
 
     /// 実績ゼロのガード: 単位重み(1.0)と ms の offset を同じ比較に載せない
-    /// (FleetSplit.machineContext の宣言)。ガードなしだと offset が重みを支配して
-    /// 全シナリオが offset の無いエントリへ寄る —— その状態も陽性対照として固定する
-    func testMachineContextIsDroppedWhenThereIsNoHistory() throws {
+    /// (FleetSplit.machineContext の宣言)。**旧仕様は context ごと nil に落としていたが、
+    /// 現仕様は entryFixedOffsetsMs だけ 0 化した MachineContext を返す**
+    /// (無次元の entryFallbackFactors は単位重みと安全に混ざるので保持したまま渡せる)。
+    /// ガードなしの偏り(offset が重みを支配する事故)は陽性対照として維持する
+    func testOffsetsAreZeroedWhenThereIsNoHistory() throws {
         let context = FleetSplit.MachineContext(
             entryMachines: [nil, "M"], entryFixedOffsetsMs: [0, 2_500], machineDurations: [])
-        XCTAssertNil(FleetSplit.machineContext(context, ifHistoryExists: []))
+        let dropped = FleetSplit.machineContext(context, ifHistoryExists: [])
+        XCTAssertEqual(dropped.entryMachines, [nil, "M"])
+        XCTAssertEqual(dropped.entryFixedOffsetsMs, [0, 0], "実績ゼロなら offsets は全 0 化される")
+
         let kept = FleetSplit.machineContext(context, ifHistoryExists: [duration("A.one", 5_000)])
-        XCTAssertEqual(kept?.entryMachines, [nil, "M"])
-        XCTAssertEqual(kept?.entryFixedOffsetsMs, [0, 2_500])
+        XCTAssertEqual(kept.entryMachines, [nil, "M"])
+        XCTAssertEqual(kept.entryFixedOffsetsMs, [0, 2_500], "実績があれば offsets はそのまま")
 
         let scenarios: [(id: String, platform: String?)] = [
             ("A.S0010", nil), ("B.S0010", nil), ("C.S0010", nil), ("D.S0010", nil),
@@ -337,5 +342,67 @@ extension FleetSplitTests {
             unknownDurationMs: 1.0,
             machineContext: FleetSplit.machineContext(context, ifHistoryExists: []))
         XCTAssertEqual(guarded.map(\.scenarioIDs.count), [2, 2], "ガードを通せば本数の均等割りが保たれる")
+    }
+}
+
+// MARK: - entryFallbackFactors(実績が無い機械の事前係数。ハードウェアのコア数比等)
+
+extension FleetSplitTests {
+
+    /// 実績ゼロ + fallback 係数([1.0, 2.0])で、係数の大きい(遅い想定の)エントリへ行く本数が減る
+    func testFallbackFactorSendsFewerScenariosToTheSlowerEntry() throws {
+        let context = FleetSplit.MachineContext(
+            entryMachines: ["fast", "slow"], entryFixedOffsetsMs: [0, 0], machineDurations: [],
+            entryFallbackFactors: [1.0, 2.0])
+        let scenarios: [(id: String, platform: String?)] = (1...8).map { ("S.\($0)", nil) }
+        let guardedContext = FleetSplit.machineContext(context, ifHistoryExists: [])
+
+        let buckets = try FleetSplit.partition(
+            scenarios: scenarios, durations: [], entryPlatforms: [["ios"], ["ios"]],
+            unknownDurationMs: 1_000, machineContext: guardedContext)
+
+        XCTAssertGreaterThan(buckets[0].scenarioIDs.count, buckets[1].scenarioIDs.count,
+                             "\(buckets)")
+    }
+
+    /// 実測係数(speedFactors が立つ入力)があるときは fallback より優先される
+    func testMeasuredSpeedFactorTakesPriorityOverFallback() throws {
+        // "Common" の実測比較から machine "M" の speedFactor = 0.5(速い)が立つ。
+        // fallback は 4.0(遅い想定)だが、同一機の速度係数があるシナリオではそちらを使うので
+        // "NoHistory"(mixed 10,000ms)の見積りは 10,000 × 0.5 = 5,000 になるはず
+        let durations = [duration("Common", 10_000, "ios"), duration("NoHistory", 10_000, "ios")]
+        let machineDurations = [machineDuration("Common", 5_000, machine: "M")]
+        let context = FleetSplit.MachineContext(
+            entryMachines: ["M"], entryFixedOffsetsMs: [0], machineDurations: machineDurations,
+            entryFallbackFactors: [4.0])
+
+        let buckets = try FleetSplit.partition(
+            scenarios: [("NoHistory", nil)], durations: durations,
+            entryPlatforms: [["ios"]], unknownDurationMs: 1_000, machineContext: context)
+
+        XCTAssertEqual(buckets, [
+            FleetSplit.Bucket(entryIndex: 0, scenarioIDs: ["NoHistory"], estimatedMs: 5_000),
+        ])
+    }
+
+    /// fallback 省略(nil)は従来挙動と同一(全員 1.0 = 混合見積りそのまま)
+    func testOmittedFallbackFactorsMatchAllOnes() throws {
+        let scenarios: [(id: String, platform: String?)] = (1...6).map { ("S.\($0)", nil) }
+        let entryPlatforms: [Set<String>] = [["ios"], ["ios"]]
+
+        let omitted = FleetSplit.MachineContext(
+            entryMachines: [nil, nil], entryFixedOffsetsMs: [0, 0], machineDurations: [])
+        let explicitOnes = FleetSplit.MachineContext(
+            entryMachines: [nil, nil], entryFixedOffsetsMs: [0, 0], machineDurations: [],
+            entryFallbackFactors: [1.0, 1.0])
+        XCTAssertEqual(omitted.entryFallbackFactors, [1.0, 1.0])
+
+        let a = try FleetSplit.partition(
+            scenarios: scenarios, durations: [], entryPlatforms: entryPlatforms,
+            unknownDurationMs: 1_000, machineContext: omitted)
+        let b = try FleetSplit.partition(
+            scenarios: scenarios, durations: [], entryPlatforms: entryPlatforms,
+            unknownDurationMs: 1_000, machineContext: explicitOnes)
+        XCTAssertEqual(a, b)
     }
 }
