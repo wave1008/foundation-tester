@@ -11,6 +11,11 @@
 //     (RunResultsStore.scanRecords の maxObservationsPerScenario)。run で数えると、
 //     調査中の 1 シナリオだけの run が窓を食い潰して直前のフル run の実績が消える。
 //     platform 別に数えるので、混在プロジェクトで他 platform に窓を食われることも無い
+//   - **machine 優先**(2026-08-18): リモート実行の回収記録(machine = 相手のホスト名)が
+//     混ざるため、並べ替えは同一 machine の実績を優先し、無ければ全 machine 混合へフォールバック
+//     する(LPTScheduler.durations の preferringMachine)。観測窓も machine 別に数える
+//     (RunResultsStore.scanRecords)。FleetSplit(フリート割り当て)側は MachineContext 経由で
+//     machine 別見積りを使う
 
 import FTCore
 import Foundation
@@ -33,8 +38,12 @@ enum LPTOrdering {
     ///   別 platform の実績で並べてしまう。
     /// - historyRuns: シナリオ1本あたり新しい方から何件の実績を読むか。1 未満は 1 に丸める
     ///   (0 や負値を渡されても「実績なし = 元の順序」で安全側に倒れる)。
+    /// - machine: 中央値の算出で優先する machine(既定は RunRecorder.currentMachine() =
+    ///   この呼び出しが走っている機械自身)。同一 machine の実績が無いシナリオは全 machine 混合の
+    ///   中央値へフォールバックする。
     static func apply(_ items: [ScenarioRunItem], project: TestProject, defaultPlatform: String,
                       enabled: Bool, historyRuns: Int = defaultHistoryRuns,
+                      machine: String = RunRecorder.currentMachine(),
                       log: (String) -> Void) -> [ScenarioRunItem] {
         guard enabled, items.count > 1 else { return items }
 
@@ -50,7 +59,7 @@ enum LPTOrdering {
                                                   maxObservationsPerScenario: maxRuns)
         guard !records.isEmpty else { return items }
 
-        let durations = LPTScheduler.durations(from: records)
+        let durations = LPTScheduler.durations(from: records, preferringMachine: machine)
         guard !durations.isEmpty else { return items }
 
         let ordered = LPTScheduler.order(items, durations: durations,
@@ -61,7 +70,8 @@ enum LPTOrdering {
         }.count
         log("🔀 LPT ordering: \(withHistory)/\(items.count) with history"
             + " (up to \(maxRuns) run(s) per scenario in the last \(Int(historyDays)) day(s), "
-            + "descending per-platform median; scenarios without history go first)")
+            + "descending per-platform median (same-machine runs preferred); "
+            + "scenarios without history go first)")
         return ordered
     }
 }

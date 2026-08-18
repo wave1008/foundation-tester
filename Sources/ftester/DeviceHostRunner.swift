@@ -156,13 +156,27 @@ enum DeviceHostRunner {
         let durations = LPTScheduler.durations(from: records)
         let unknown = durations.isEmpty ? 1.0
             : (durations.map(\.medianMs).sorted()[durations.count / 2])
+        // facts はディスパッチのたびに RemoteRunDispatcher が書く。初回(キャッシュ無し)は
+        // machine=nil・offset=0 で MachineContext が従来の混合見積りへ退化する(FleetRunner と同じ)
+        let factsDir = RemoteHostFactsStore.dir(project: project)
+        let groupFacts: [RemoteHostFacts?] = groups.map { group in
+            group.host == nil ? nil : RemoteHostFactsStore.load(dir: factsDir, hostLabel: group.hostLabel)
+        }
+        let entryMachines: [String?] = zip(groups, groupFacts).map { group, facts in
+            group.host == nil ? RunRecorder.currentMachine() : facts?.machine
+        }
+        let entryFixedOffsetsMs = groupFacts.map { ($0?.dispatchOverheadSeconds ?? 0) * 1000 }
+        let machineContext = FleetSplit.MachineContext(
+            entryMachines: entryMachines, entryFixedOffsetsMs: entryFixedOffsetsMs,
+            machineDurations: LPTScheduler.machineDurations(from: records))
         do {
             return try FleetSplit.partition(
                 scenarios: selected.map { (id: $0.id, platform: $0.platform) },
                 durations: durations,
                 entryPlatforms: groups.map(\.platforms),
                 unknownDurationMs: unknown,
-                entryCapacities: groups.map { Double($0.deviceNames.count) })
+                entryCapacities: groups.map { Double($0.deviceNames.count) },
+                machineContext: machineContext)
         } catch let error as FleetSplit.FleetSplitError {
             throw ValidationError("profile \"\(project.name)\": \(error.localizedDescription)")
         }
@@ -176,10 +190,13 @@ enum DeviceHostRunner {
     private static func printSummary(profileName: String, outcomes: [FleetEntryOutcome]) {
         FleetRunner.log("")
         FleetRunner.log("=== profile \"\(profileName)\" across machines ===")
+        // 静的割り当ての偏り(ストラグラー)を再配分機構を作る前に実測で貯める
+        let maxDuration = outcomes.map(\.duration).max() ?? 0
         for outcome in outcomes {
             let mark = outcome.exitCode == 0 ? "✅" : "❌"
-            FleetRunner.log(String(format: "%@ %-20@ exit=%d  %.1fs", mark, outcome.host as NSString,
-                                   outcome.exitCode, outcome.duration))
+            FleetRunner.log(String(format: "%@ %-20@ exit=%d  %.1fs idle=%.1fs", mark,
+                                   outcome.host as NSString, outcome.exitCode, outcome.duration,
+                                   maxDuration - outcome.duration))
         }
     }
 }

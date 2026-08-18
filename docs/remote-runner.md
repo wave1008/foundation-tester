@@ -254,6 +254,16 @@ Android は `no running emulator for AVD ...` で失敗する)。`ftester device
 - デバイス選定は**リモート側のマシンプロファイルで解決**する(machines/ が既に
   マシン単位の概念を持つ)
 
+**machine 別見積りとディスパッチ固定費(2026-08-18)**: 機械ごとの速度差(手元と各リモート機で
+異なる)とディスパッチ経路の固定費(SSH 接続・転送・増分ビルド)を割り当てに織り込む
+(`FleetSplit.MachineContext`)。見積りは**同一機の実績 > 混合中央値 × 速度係数(共通観測
+シナリオの比の中央値)> 1.0** の順で決め、`RemoteHostFactsStore` が持つ実測固定費
+(`.ftester/remote-hosts/<host>.json`。`RemoteRunDispatcher` がディスパッチのたびに書く)を
+見込み終了時刻へ足す。**初回(キャッシュ無し)は従来と同一の混合見積り**に退化する ——
+facts が無いエントリは machine=nil・offset=0 として扱われる。実行後の集計表には **IDLE 列**
+(そのエントリの最長 duration との差)を追加した — 静的割り当ての偏り(ストラグラー)を
+再配分機構を作る前に実測で貯めるためで、割り当てそのものはまだ実行後にフィードバックしない。
+
 ## 9. 未検証事項(実装前に潰す)
 
 ### 実験①の結果(2026-07-31 localhost E2E で実測・確定)
@@ -438,8 +448,10 @@ SSH 側のプロセスからでもユーザーの launchd ドメインのサー�
   (`collect` 既定 / `on-demand`)で選ぶ。GUI は設定タブの「成果物(録画・ログ)」。
   `collect` はローカルの `Projects/<name>/results/` へ rsync(**`--delete` は付けない** —
   ローカルで別に走った run の results を巻き添えで消さない。差分転送なので再ディスパッチは安い)。
-  `on-demand` は回収せず、リモートのパスを1行案内する。拡張連携(`ftester api run` の
-  NDJSON 中継)は §12 末尾のとおり後日実装
+  `on-demand` でも実績 JSON(run.json/scenarios/*.json/host-metrics.ndjson)は常に回収する ——
+  回収しないと LPT(投入順・フリート割り当て)がリモートで走ったシナリオを永久に「実績なし」として
+  扱う(2026-08-18)。重いのは録画だけなので、`on-demand` はそれだけリモートに残し、パスを1行案内する。
+  拡張連携(`ftester api run` の NDJSON 中継)は §12 末尾のとおり後日実装
 - **レポート回収はディスパッチ単位に隔離**(2026-07-31)。run に
   `--report-dir <base>/work/.ftester/dispatch/<stamp>/reports` を内部で渡し、
   **そのディレクトリだけを回収して、回収後にリモートから削除**する
@@ -753,8 +765,8 @@ M1Ultra / M1Max の run が machine 名付きで並ぶ)。「マージの実装�
 
 ただし**レポートへのリンクだけは壊れていた** —— リモートの run が記録する `reportPath` は
 ディスパッチ単位の隔離先(回収後に削除される)を指すため。回収後に記録側を回収先へ
-向け直す(`FTCore.RemoteReportLink`)。`on-demand` を選ぶと results を回収しないので、
-そのぶんは集計に載らない(それが選択の意味)。
+向け直す(`FTCore.RemoteReportLink`)。`on-demand` でも録画以外(実績 JSON)は回収されるので
+集計には載る。載らないのは録画だけ。
 
 ## 14. ランナー機の前提とインストーラー(実装済み: 2026-08-16)
 

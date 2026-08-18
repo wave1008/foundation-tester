@@ -34,6 +34,24 @@ public enum FleetSplit {
         }
     }
 
+    /// エントリごとの機械情報。すべて entryPlatforms と同じ並び・同じ本数(省略時は全員 nil/0/[])。
+    public struct MachineContext: Sendable {
+        /// 実績レコードの machine と同じ語彙の識別子。不明なら nil(そのエントリは混合見積りのまま)
+        public let entryMachines: [String?]
+        /// そのエントリが払うディスパッチ固定費(実測。ローカルは 0)。台数で割らず
+        /// 見込み終了時刻へそのまま足す(デバイスが走り出す前の壁時計)
+        public let entryFixedOffsetsMs: [Double]
+        /// LPTScheduler.machineDurations(from:) の出力
+        public let machineDurations: [LPTScheduler.MachineDuration]
+
+        public init(entryMachines: [String?], entryFixedOffsetsMs: [Double],
+                    machineDurations: [LPTScheduler.MachineDuration]) {
+            self.entryMachines = entryMachines
+            self.entryFixedOffsetsMs = entryFixedOffsetsMs
+            self.machineDurations = machineDurations
+        }
+    }
+
     public enum FleetSplitError: Error, LocalizedError, Equatable {
         /// scenario の platform に適合するエントリが1つも無い
         case noFittingEntry(scenarioID: String, platform: String)
@@ -62,26 +80,49 @@ public enum FleetSplit {
     ///   **台数が違うホストへ同じ量を配ると台数の少ない側が終わらない**。総量ではなく
     ///   「見込み終了時刻 = 負荷合計 / 台数」で比べる。全員同じ値なら比較順序は変わらないので、
     ///   既定(全員 1)の割り当ては従来と1バイトも変わらない
+    /// - machineContext: 機械ごとの速度差・ディスパッチ固定費を見積りへ反映する(リモート実行)。
+    ///   **投入順(降順ソート)は machineContext の有無によらず混合見積りで決める**
+    ///   (機械非依存 = 決定的。エントリごとに順序が割れない)。nil(既定)は従来と完全一致
+    ///   (offsets 全 0・machine 全 nil と同じ経路を通る)。
     public static func partition(
         scenarios: [(id: String, platform: String?)],
         durations: [LPTScheduler.Duration],
         entryPlatforms: [Set<String>],
         unknownDurationMs: Double,
-        entryCapacities: [Double]? = nil
+        entryCapacities: [Double]? = nil,
+        machineContext: MachineContext? = nil
     ) throws -> [Bucket] {
         let capacities = entryCapacities ?? [Double](repeating: 1, count: entryPlatforms.count)
         precondition(capacities.count == entryPlatforms.count,
                      "entryCapacities must line up with entryPlatforms")
-        var medianByScenario: [String: Double] = [:]
-        for duration in durations {
-            medianByScenario[duration.scenarioID] =
-                max(medianByScenario[duration.scenarioID] ?? 0, duration.medianMs)
-        }
-        func estimatedMs(_ id: String) -> Double { medianByScenario[id] ?? unknownDurationMs }
+        let entryMachines = machineContext?.entryMachines
+            ?? [String?](repeating: nil, count: entryPlatforms.count)
+        let entryOffsets = machineContext?.entryFixedOffsetsMs
+            ?? [Double](repeating: 0, count: entryPlatforms.count)
+        precondition(entryMachines.count == entryPlatforms.count,
+                     "machineContext.entryMachines must line up with entryPlatforms")
+        precondition(entryOffsets.count == entryPlatforms.count,
+                     "machineContext.entryFixedOffsetsMs must line up with entryPlatforms")
 
-        // 見積り降順、同着は scenario ID 昇順(決定的)
+        let mixedByScenario = maxAcrossPlatform(durations)
+        func mixedMs(_ id: String) -> Double { mixedByScenario[id] ?? unknownDurationMs }
+
+        let sameMsByMachine = machineContext.map { maxAcrossPlatformByMachine($0.machineDurations) } ?? [:]
+        let factors = machineContext.map {
+            speedFactors(machineDurations: $0.machineDurations, durations: durations)
+        } ?? [:]
+
+        // エントリ別見積り: 同一機の実績があればそれ、無ければ混合見積り × 速度係数
+        // (machine 不明・係数不明はどちらも 1.0 相当 = 混合見積りへ落ちる)
+        func estimatedMs(_ id: String, forEntry index: Int) -> Double {
+            guard let machine = entryMachines[index] else { return mixedMs(id) }
+            if let sameMachineMs = sameMsByMachine[machine]?[id] { return sameMachineMs }
+            return mixedMs(id) * (factors[machine] ?? 1.0)
+        }
+
+        // 見積り降順、同着は scenario ID 昇順(決定的)。machine 非依存の混合見積りで決める
         let ordered = scenarios.sorted { lhs, rhs in
-            let l = estimatedMs(lhs.id), r = estimatedMs(rhs.id)
+            let l = mixedMs(lhs.id), r = mixedMs(rhs.id)
             if l != r { return l > r }
             return lhs.id < rhs.id
         }
@@ -94,9 +135,11 @@ public enum FleetSplit {
                 guard let platform = scenario.platform else { return !entryPlatforms[index].isEmpty }
                 return entryPlatforms[index].contains(platform)
             }
-            // 見込み終了時刻(負荷合計 / 台数)が最小のエントリへ。同着は entryIndex 昇順(決定的)
+            // 見込み終了時刻(固定費 + 負荷合計 / 台数)が最小のエントリへ。同着は entryIndex 昇順(決定的)。
+            // 固定費は台数で割らない(デバイスが走り出す前の壁時計はデバイス数と無関係)
             func finishIfAssigned(_ index: Int) -> Double {
-                (totals[index] + estimatedMs(scenario.id)) / max(capacities[index], 1)
+                entryOffsets[index]
+                    + (totals[index] + estimatedMs(scenario.id, forEntry: index)) / max(capacities[index], 1)
             }
             guard let target = fitting.min(by: {
                 (finishIfAssigned($0), $0) < (finishIfAssigned($1), $1)
@@ -105,11 +148,59 @@ public enum FleetSplit {
                     scenarioID: scenario.id, platform: scenario.platform ?? "ios/android")
             }
             scenarioIDs[target].append(scenario.id)
-            totals[target] += estimatedMs(scenario.id)
+            totals[target] += estimatedMs(scenario.id, forEntry: target)
         }
 
         return entryPlatforms.indices.map {
             Bucket(entryIndex: $0, scenarioIDs: scenarioIDs[$0], estimatedMs: totals[$0])
         }
+    }
+
+    /// 速度係数(machine → 比の中央値)。「sameMs と混合中央値の両方があるシナリオ」の
+    /// sameMs/mixedMs を machine ごとに集め、その中央値を係数とする。共通観測が1本も無い
+    /// machine は載らない(呼び出し側は `?? 1.0` で扱う)。分母は unknownDurationMs ではなく
+    /// durations の実績中央値だけを使う(実績ゼロのシナリオで係数を作らない)。
+    public static func speedFactors(machineDurations: [LPTScheduler.MachineDuration],
+                                    durations: [LPTScheduler.Duration]) -> [String: Double] {
+        let mixed = maxAcrossPlatform(durations)
+        let byMachine = maxAcrossPlatformByMachine(machineDurations)
+        var factors: [String: Double] = [:]
+        for (machine, sameMsByScenario) in byMachine {
+            let ratios = sameMsByScenario.compactMap { scenarioID, sameMs -> Double? in
+                guard let mixedMs = mixed[scenarioID], mixedMs > 0 else { return nil }
+                return sameMs / mixedMs
+            }
+            guard !ratios.isEmpty else { continue }
+            factors[machine] = median(of: ratios)
+        }
+        return factors
+    }
+
+    /// scenarioID ごとの max-across-platform(大きい方を安全側として採る。partition の
+    /// durations 引数の doc コメントと同じ規律)
+    private static func maxAcrossPlatform(_ durations: [LPTScheduler.Duration]) -> [String: Double] {
+        var result: [String: Double] = [:]
+        for duration in durations {
+            result[duration.scenarioID] = max(result[duration.scenarioID] ?? 0, duration.medianMs)
+        }
+        return result
+    }
+
+    /// machine → scenarioID → max-across-platform
+    private static func maxAcrossPlatformByMachine(
+        _ machineDurations: [LPTScheduler.MachineDuration]
+    ) -> [String: [String: Double]] {
+        var result: [String: [String: Double]] = [:]
+        for duration in machineDurations {
+            let existing = result[duration.machine]?[duration.scenarioID] ?? 0
+            result[duration.machine, default: [:]][duration.scenarioID] = max(existing, duration.medianMs)
+        }
+        return result
+    }
+
+    private static func median(of values: [Double]) -> Double {
+        let sorted = values.sorted()
+        let middle = sorted.count / 2
+        return sorted.count % 2 == 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle]
     }
 }

@@ -185,6 +185,10 @@ public enum RunResultsStore {
     ///   丸ごと消える —— 2026-08-11 のフル E2E で iOS 側が軒並み `1/N with history` に落ちていた。
     ///   遡る run ディレクトリ数は `observationScanLimitFactor` 倍で頭打ち(I/O の上限)。
     ///   打ち切っても集まった分だけで並べる = 従来と同じ安全側。
+    ///   窓は **machine 別にも**数える(2026-08-18)。リモート実行の回収記録は machine が
+    ///   相手のホスト名で、新しい側に並ぶ。machine 非対応で数えると、その記録がこの機械の
+    ///   実績を窓から押し出し、LPT の同一 machine 優先(LPTScheduler.durations)が常に
+    ///   空振りして混合中央値へ後退する —— platform 押し出しと同型の失敗。
     public static func scanRecords(resultsDir: URL, since: Date? = nil, until: Date? = nil,
                                    maxRuns: Int? = nil,
                                    countingPlatform: String? = nil,
@@ -244,7 +248,7 @@ public enum RunResultsStore {
                     continue
                 }
                 if let cap = maxObservationsPerScenario {
-                    let key = "\(record.scenarioID)\u{1}\(record.platform)"
+                    let key = "\(record.scenarioID)\u{1}\(record.platform)\u{1}\(record.machine)"
                     let seen = observations[key] ?? 0
                     if seen >= cap { continue }
                     observations[key] = seen + 1

@@ -36,6 +36,7 @@ final class LPTOrderingTests: XCTestCase {
     private func writeRecord(scenarioID: String, durationMs: Int,
                              startedAt: String = "2026-07-29T00:00:00Z",
                              platform: String = "android",
+                             machine: String = "TEST",
                              runID: String = "20260729-000000Z-TEST-0001") throws {
         let runDir = project.rootURL
             .appendingPathComponent("results/runs/2026-07/\(runID)/scenarios")
@@ -43,7 +44,7 @@ final class LPTOrderingTests: XCTestCase {
         let record: [String: Any] = [
             "schemaVersion": 1, "scenarioID": scenarioID, "title": scenarioID,
             "durationMs": durationMs, "passed": true, "timedOut": false,
-            "platform": platform, "profile": "android", "machine": "TEST",
+            "platform": platform, "profile": "android", "machine": machine,
             "worker": "エミュ1(android:emulator-5554)",
             "runID": runID, "startedAt": startedAt,
             "reportPath": "reports/x.md", "scenes": [],
@@ -54,14 +55,18 @@ final class LPTOrderingTests: XCTestCase {
         try data.write(to: runDir.appendingPathComponent("\(scenarioID).json"))
     }
 
+    /// machine は既定で RunRecorder.currentMachine()(このテスト実行機のホスト名相当)。
+    /// writeRecord の既定 machine は "TEST" なので、machine を明示しないテストは
+    /// 「同一 machine の実績なし → 混合中央値へフォールバック」を通る(従来と同一の並び)。
     private func apply(_ items: [ScenarioRunItem], enabled: Bool = true,
-                       historyRuns: Int = LPTOrdering.defaultHistoryRuns) -> (
+                       historyRuns: Int = LPTOrdering.defaultHistoryRuns,
+                       machine: String = RunRecorder.currentMachine()) -> (
         items: [ScenarioRunItem], logs: [String]
     ) {
         var logs: [String] = []
         let result = LPTOrdering.apply(items, project: project, defaultPlatform: "android",
                                        enabled: enabled, historyRuns: historyRuns,
-                                       log: { logs.append($0) })
+                                       machine: machine, log: { logs.append($0) })
         return (result, logs)
     }
 
@@ -250,5 +255,32 @@ final class LPTOrderingTests: XCTestCase {
         let (result, logs) = apply([item("短"), item("長")])
         XCTAssertEqual(ids(result), ["短", "長"], "古い実績は使わないので元の順序のまま")
         XCTAssertTrue(logs.isEmpty)
+    }
+
+    // MARK: - machine 優先(2026-08-18・リモート実行の回収記録との混在)
+
+    /// 同一 machine の実績があればそれだけで並べる。他機のほうが件数が多くても混ざらない
+    func testSameMachinePreferredOverMixedHistory() throws {
+        try writeRecord(scenarioID: "S", durationMs: 1_000, machine: "この機械",
+                        runID: "20260729-000001Z-TEST-0001")
+        try writeRecord(scenarioID: "S", durationMs: 90_000, machine: "リモート機",
+                        runID: "20260729-000002Z-TEST-0002")
+        try writeRecord(scenarioID: "T", durationMs: 5_000, machine: "リモート機",
+                        runID: "20260729-000002Z-TEST-0002")
+
+        let (result, logs) = apply([item("T"), item("S")], machine: "この機械")
+        XCTAssertEqual(ids(result), ["T", "S"],
+                       "S は同一機の実績(1,000ms)で評価され、リモート機の90,000msに引きずられない")
+        XCTAssertTrue(logs[0].contains("(same-machine runs preferred)"))
+    }
+
+    /// 同一 machine の実績が無いシナリオは全 machine 混合の中央値へフォールバックする
+    func testFallsBackToMixedHistoryWhenNoSameMachineRecords() throws {
+        try writeRecord(scenarioID: "S", durationMs: 30_000, machine: "リモート機")
+        try writeRecord(scenarioID: "T", durationMs: 1_000, machine: "リモート機")
+
+        let (result, logs) = apply([item("T"), item("S")], machine: "この機械")
+        XCTAssertEqual(ids(result), ["S", "T"], "この機械の実績が無いので混合(リモート機)の中央値で並ぶ")
+        XCTAssertTrue(logs[0].contains("2/2"))
     }
 }

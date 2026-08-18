@@ -327,6 +327,28 @@ final class RemoteDispatchTests: XCTestCase {
         XCTAssertTrue(args[2].hasSuffix("/"), args[2])
     }
 
+    // MARK: - RemoteArtifactCollection.recordsOnlyRsyncArgs
+
+    /// 録画(recordings/)だけを除外し、src/dst は resultsRsyncArgs と同一であること —— on-demand
+    /// でも実績 JSON は resultsRsyncArgs と同じ場所から同じ場所へ回収されることを固定する
+    func testRecordsOnlyRsyncArgsExcludesRecordingsAndOmitsDelete() {
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
+        let args = RemoteArtifactCollection.recordsOnlyRsyncArgs(
+            project: "E2E", layout: layout, sshTarget: "user@host",
+            localProjectsDir: "/local/Projects")
+        XCTAssertEqual(args, [
+            "-az", "--exclude", "recordings/",
+            "user@host:/Users/ci/ftester-runner/work/TestProjects/E2E/results/",
+            "/local/Projects/E2E/results/",
+        ])
+        XCTAssertFalse(args.contains("--delete"), "\(args)")
+
+        let resultsArgs = RemoteArtifactCollection.resultsRsyncArgs(
+            project: "E2E", layout: layout, sshTarget: "user@host",
+            localProjectsDir: "/local/Projects")
+        XCTAssertEqual(args.filter { $0 != "--exclude" && $0 != "recordings/" }, resultsArgs)
+    }
+
     // MARK: - RemoteRunArgs.build
 
     func testRemoteRunArgsMinimal() {

@@ -141,6 +141,31 @@ final class RunResultsStoreTests: XCTestCase {
                       "iOS の観測で枠が尽きて android が読めていない")
     }
 
+    /// 記録を1件書く(machine を指定できる版)
+    private func write(scenario: String, runID: String, machine: String, platform: String = "ios",
+                       durationMs: Int = 100) {
+        let runDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: runID)
+        var record = makeScenarioRecord(scenarioID: scenario, runID: runID)
+        record.platform = platform
+        record.machine = machine
+        record.durationMs = durationMs
+        RunResultsStore.writeScenario(record, runDir: runDir, fileName: scenario)
+    }
+
+    /// machine ごとに別々に数える(2026-08-18)。リモート実行の回収記録が新しい側に並んでも、
+    /// この機械の観測は cap 件ぶん別枠で確保され押し出されない
+    func testObservationsAreCountedPerMachine() {
+        for i in 1...5 {
+            write(scenario: "A", runID: String(format: "202601%02d-000000Z-mach-750%d", i + 1, i),
+                 machine: "リモート機")
+        }
+        write(scenario: "A", runID: "20260101-000000Z-mach-0001", machine: "この機械")
+        let records = RunResultsStore.scanRecords(resultsDir: resultsDir,
+                                                  maxObservationsPerScenario: 5)
+        XCTAssertTrue(records.contains { $0.machine == "この機械" },
+                      "リモート機の観測で枠が尽きてこの機械が読めていない")
+    }
+
     /// 遡りには上限がある(結果 JSON 全件を毎 run 読まない)。
     /// 満たされないシナリオが1本でもあると遡り続けるので、ここが唯一の歯止め
     func testScanStopsAtTheDirectoryLimit() {

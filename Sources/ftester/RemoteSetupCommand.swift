@@ -276,7 +276,8 @@ extension RemoteCommand {
                 let what = scenario.map { "scenario \($0)" } ?? "profile \(profile)"
                 say("==> verify: dispatching \(what) to \(hostSpec.sshTarget) (this is the real success gate)...")
                 let dispatcher = RemoteRunDispatcher(
-                    host: hostSpec, remoteDirRaw: resolved.remoteDirRaw, localRepoRoot: repoRoot)
+                    host: hostSpec, remoteDirRaw: resolved.remoteDirRaw, localRepoRoot: repoRoot,
+                    hostLabel: host)
                 do {
                     let (scopedNames, scopedHost) = try hostScopedDeviceFilter(
                         project: resolvedProject, profile: profile, targetHost: host)

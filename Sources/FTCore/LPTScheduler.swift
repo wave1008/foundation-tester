@@ -14,6 +14,11 @@
 // **実績は platform ごとに分ける**。同じシナリオを iOS と Android の両プロファイルで走らせる
 // 構成(このリポジトリの TestProjects/E2E-CMP 等)では 1 つの results/ に両方の記録が溜まり、iOS は
 // Android の数倍遅いため、混ぜると中央値が両者の中間に均されて順序判断が歪む。
+//
+// **実績は machine ごとにも優先して分ける**(2026-08-18)。リモート実行(remote runner)で
+// 走った記録が回収されて手元の results/ に混ざるようになったため、機械ごとの速度差が同じ理由で
+// 中央値を歪める。同一 machine の記録があればそれだけで中央値を作り、無ければ従来どおり
+// 全 machine 混合の中央値へフォールバックする(相対順は機械を跨いでもおおむね保たれるため)。
 
 import Foundation
 
@@ -36,6 +41,35 @@ public enum LPTScheduler {
     private struct Key: Hashable {
         let scenarioID: String
         let platform: String
+    }
+
+    /// (scenarioID, platform, machine) ごとの実績の代表値。FleetSplit の機械別見積りに使う。
+    public struct MachineDuration: Sendable, Equatable {
+        public let scenarioID: String
+        public let platform: String
+        public let machine: String
+        public let medianMs: Double
+
+        public init(scenarioID: String, platform: String, machine: String, medianMs: Double) {
+            self.scenarioID = scenarioID
+            self.platform = platform
+            self.machine = machine
+            self.medianMs = medianMs
+        }
+    }
+
+    private struct MachineKey: Hashable {
+        let scenarioID: String
+        let platform: String
+        let machine: String
+    }
+
+    private static func median(of values: [Double]) -> Double {
+        let sorted = values.sorted()
+        let middle = sorted.count / 2
+        return sorted.count % 2 == 0
+            ? (sorted[middle - 1] + sorted[middle]) / 2
+            : sorted[middle]
     }
 
     /// items を LPT 順に並べ替える。
@@ -84,7 +118,12 @@ public enum LPTScheduler {
     /// - skipped 合成レコード(platform 不一致等)は除く — durationMs=0 として混ざると中央値が
     ///   落ちて「短いシナリオ」と誤認し、末尾へ回ってしまう。
     /// - platform 空の記録も除く(どの platform の実績か決められない)。
-    public static func durations(from records: [ScenarioRunRecord]) -> [Duration] {
+    /// - machine: 指定すると、(scenarioID, platform) グループ内に record.machine == machine の
+    ///   記録が1件以上あるとき**その部分集合だけ**で中央値を作る(機械ごとの速度差で歪めない)。
+    ///   無ければグループ全体(全 machine 混合)の中央値へフォールバックする。nil(既定)は
+    ///   常に混合 = 従来と同一挙動。
+    public static func durations(from records: [ScenarioRunRecord],
+                                 preferringMachine machine: String? = nil) -> [Duration] {
         let usable = records.filter {
             !RunResultsQuery.isSkippedSynthetic($0) && $0.durationMs > 0 && !$0.platform.isEmpty
         }
@@ -92,16 +131,40 @@ public enum LPTScheduler {
             Key(scenarioID: $0.scenarioID, platform: $0.platform)
         }
         return grouped.compactMap { key, group -> Duration? in
-            let sorted = group.map { Double($0.durationMs) }.sorted()
-            guard !sorted.isEmpty else { return nil }
-            let middle = sorted.count / 2
-            let median = sorted.count % 2 == 0
-                ? (sorted[middle - 1] + sorted[middle]) / 2
-                : sorted[middle]
-            return Duration(scenarioID: key.scenarioID, platform: key.platform, medianMs: median)
+            var group = group
+            if let machine {
+                let sameMachine = group.filter { $0.machine == machine }
+                if !sameMachine.isEmpty { group = sameMachine }
+            }
+            guard !group.isEmpty else { return nil }
+            return Duration(scenarioID: key.scenarioID, platform: key.platform,
+                            medianMs: median(of: group.map { Double($0.durationMs) }))
         }
         // 集計順は Dictionary 由来で不定なので、呼び出し側が決定的に扱えるよう並べておく
         .sorted { $0.scenarioID == $1.scenarioID ? $0.platform < $1.platform
                                                  : $0.scenarioID < $1.scenarioID }
+    }
+
+    /// (scenarioID, platform, machine) ごとの中央値。durations(from:) と同じフィルタ
+    /// (skipped 合成・durationMs<=0・platform 空を除外)に加え、machine 空の記録も除く
+    /// (どの機械の実績か決められない)。FleetSplit.speedFactors / MachineContext が使う。
+    public static func machineDurations(from records: [ScenarioRunRecord]) -> [MachineDuration] {
+        let usable = records.filter {
+            !RunResultsQuery.isSkippedSynthetic($0) && $0.durationMs > 0 && !$0.platform.isEmpty
+                && !$0.machine.isEmpty
+        }
+        let grouped = Dictionary(grouping: usable) {
+            MachineKey(scenarioID: $0.scenarioID, platform: $0.platform, machine: $0.machine)
+        }
+        return grouped.map { key, group in
+            MachineDuration(scenarioID: key.scenarioID, platform: key.platform, machine: key.machine,
+                            medianMs: median(of: group.map { Double($0.durationMs) }))
+        }
+        // 集計順は Dictionary 由来で不定なので、呼び出し側が決定的に扱えるよう並べておく
+        .sorted {
+            if $0.scenarioID != $1.scenarioID { return $0.scenarioID < $1.scenarioID }
+            if $0.platform != $1.platform { return $0.platform < $1.platform }
+            return $0.machine < $1.machine
+        }
     }
 }

@@ -215,11 +215,29 @@ public enum RemoteArtifactCollection {
     /// results を巻き添えで消してはいけない)。差分のみ転送するので繰り返し呼んでも安い
     public static func resultsRsyncArgs(project: String, layout: RemoteLayout,
                                         sshTarget: String, localProjectsDir: String) -> [String] {
-        [
-            "-az",
+        rsyncArgs(excludes: [], project: project, layout: layout,
+                 sshTarget: sshTarget, localProjectsDir: localProjectsDir)
+    }
+
+    /// results/ 回収のうち録画(runs/<runID>/recordings/)だけを除いた rsync 引数。
+    /// on-demand モードでも実績 JSON(run.json / scenarios/*.json / host-metrics.ndjson)は
+    /// 常に回収する —— 回収しないと LPT(投入順・フリート割り当て)がリモートで走った
+    /// シナリオを永久に「実績なし」として扱う。--delete を付けない理由は resultsRsyncArgs と同じ
+    public static func recordsOnlyRsyncArgs(project: String, layout: RemoteLayout,
+                                            sshTarget: String, localProjectsDir: String) -> [String] {
+        rsyncArgs(excludes: ["recordings/"], project: project, layout: layout,
+                 sshTarget: sshTarget, localProjectsDir: localProjectsDir)
+    }
+
+    private static func rsyncArgs(excludes: [String], project: String, layout: RemoteLayout,
+                                  sshTarget: String, localProjectsDir: String) -> [String] {
+        var args = ["-az"]
+        for exclude in excludes { args += ["--exclude", exclude] }
+        args += [
             "\(sshTarget):\(layout.projectDir(project))/results/",
             "\(localProjectsDir)/\(project)/results/",
         ]
+        return args
     }
 }
 

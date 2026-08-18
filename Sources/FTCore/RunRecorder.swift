@@ -158,6 +158,15 @@ public final class RunRecorder: @unchecked Sendable {
         return sanitizeMachineName(raw)
     }
 
+    /// 実績の読み手(LPT の同一 machine 優先)が「この機械」を判定するための識別子。
+    /// **記録時(resolveMachine)と同じ規則**(FT_MACHINE > ホスト名 > "unknown"、同じ正規化)
+    /// でなければ照合できないので、別の規則を作らずここを呼ぶこと
+    public static func currentMachine(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> String {
+        resolveMachine(environment: environment)
+    }
+
     private static func sanitizeMachineName(_ name: String) -> String {
         let sanitized = String(name.map { char -> Character in
             if char.isASCII, char.isLetter || char.isNumber || char == "_" || char == "-" {

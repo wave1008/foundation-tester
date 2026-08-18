@@ -142,12 +142,14 @@ enum FleetRunner {
         // 実績ゼロ = 全員同じ重み → LPT は本数の均等割りに退化する(unknownDurationUnitWeight の項)
         let hasHistory = !durations.isEmpty
         let unknownDurationMs = medianMs(durations.map(\.medianMs)) ?? unknownDurationUnitWeight
+        let machineContext = buildMachineContext(fleet: fleet, project: project, records: records)
 
         let buckets: [FleetSplit.Bucket]
         do {
             buckets = try FleetSplit.partition(
                 scenarios: selected.map { (id: $0.id, platform: $0.platform) },
-                durations: durations, entryPlatforms: entryPlatforms, unknownDurationMs: unknownDurationMs)
+                durations: durations, entryPlatforms: entryPlatforms, unknownDurationMs: unknownDurationMs,
+                machineContext: machineContext)
         } catch let error as FleetSplit.FleetSplitError {
             throw ValidationError("fleet \"\(fleetName)\" --split: \(error.localizedDescription)")
         }
@@ -218,6 +220,25 @@ enum FleetRunner {
         return Set(resolved.devices.map(\.platform))
     }
 
+    /// エントリごとの machine 識別子と固定オフセット(ディスパッチ経路の平均秒 × 1000)。
+    /// facts はディスパッチのたびに RemoteRunDispatcher が書く。初回(キャッシュ無し)は
+    /// machine=nil・offset=0 で FleetSplit.MachineContext が従来の混合見積りへ退化する
+    private static func buildMachineContext(
+        fleet: FleetProfileDocument, project: TestProject, records: [ScenarioRunRecord]
+    ) -> FleetSplit.MachineContext {
+        let factsDir = RemoteHostFactsStore.dir(project: project)
+        let entryFacts: [RemoteHostFacts?] = fleet.runs.map { entry in
+            entry.host == "local" ? nil : RemoteHostFactsStore.load(dir: factsDir, hostLabel: entry.host)
+        }
+        let entryMachines: [String?] = zip(fleet.runs, entryFacts).map { entry, facts in
+            entry.host == "local" ? RunRecorder.currentMachine() : facts?.machine
+        }
+        let entryFixedOffsetsMs = entryFacts.map { ($0?.dispatchOverheadSeconds ?? 0) * 1000 }
+        return FleetSplit.MachineContext(
+            entryMachines: entryMachines, entryFixedOffsetsMs: entryFixedOffsetsMs,
+            machineDurations: LPTScheduler.machineDurations(from: records))
+    }
+
     private static func medianMs(_ values: [Double]) -> Double? {
         guard !values.isEmpty else { return nil }
         let sorted = values.sorted()
@@ -262,16 +283,19 @@ enum FleetRunner {
     ) {
         let byIndex = Dictionary(uniqueKeysWithValues: buckets.map { ($0.entryIndex, $0.scenarioIDs.count) })
         let outcomeByHost = Dictionary(uniqueKeysWithValues: outcomes.map { ($0.host, $0) })
-        let header = ["HOST", "PROFILE", "SCENARIOS", "RESULT", "TIME"]
+        // 静的割り当ての偏り(ストラグラー)を再配分機構を作る前に実測で貯める
+        let maxDuration = outcomes.map(\.duration).max() ?? 0
+        let header = ["HOST", "PROFILE", "SCENARIOS", "RESULT", "TIME", "IDLE"]
         var rows = [header]
         for (index, entry) in fleet.runs.enumerated() {
             let count = byIndex[index] ?? 0
             if let outcome = outcomeByHost[entry.host] {
                 rows.append([entry.host, entry.profile, String(count),
                              outcome.exitCode == 0 ? "✅ pass" : "❌ fail (exit \(outcome.exitCode))",
-                             String(format: "%.1fs", outcome.duration)])
+                             String(format: "%.1fs", outcome.duration),
+                             String(format: "%.1fs", maxDuration - outcome.duration)])
             } else {
-                rows.append([entry.host, entry.profile, "0", "⏭️ skip (0 scenarios assigned)", "-"])
+                rows.append([entry.host, entry.profile, "0", "⏭️ skip (0 scenarios assigned)", "-", "-"])
             }
         }
         let widths = (0..<header.count).map { col in rows.map { $0[col].count }.max() ?? 0 }

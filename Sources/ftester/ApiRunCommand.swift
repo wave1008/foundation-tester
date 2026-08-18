@@ -554,7 +554,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         let localRoot = try RepoRoot.find()
         let dispatcher = RemoteRunDispatcher(
             host: resolved.hostSpec, remoteDirRaw: resolved.remoteDirRaw, localRepoRoot: localRoot,
-            mode: .apiRun, artifacts: artifactsMode)
+            mode: .apiRun, artifacts: artifactsMode, hostLabel: dispatch.rawHost)
         var scopedDevices = devices
         var scopedDeviceHost = deviceHost
         if devices.isEmpty, deviceHost == nil {

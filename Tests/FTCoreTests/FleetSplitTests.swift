@@ -189,3 +189,127 @@ extension FleetSplitTests {
         XCTAssertEqual(buckets[1].scenarioIDs, ["C.android"])
     }
 }
+
+// MARK: - machineContext(機械ごとの速度差・ディスパッチ固定費。リモート実行)
+
+extension FleetSplitTests {
+
+    private func machineDuration(_ id: String, _ ms: Double, machine: String,
+                                 platform: String = "ios") -> LPTScheduler.MachineDuration {
+        LPTScheduler.MachineDuration(scenarioID: id, platform: platform, machine: machine, medianMs: ms)
+    }
+
+    /// machineContext: nil(省略・明示 nil どちらも)は既存呼び出しと同一の Bucket 列を返す
+    func testMachineContextNilMatchesExistingBuckets() throws {
+        let durations = [
+            duration("A.one", 5_000), duration("B.two", 3_000), duration("C.three", 4_000, "android"),
+        ]
+        let scenarios: [(id: String, platform: String?)] = [
+            ("A.one", nil), ("B.two", nil), ("C.three", nil), ("D.four", nil), ("E.five", nil),
+        ]
+        let entryPlatforms: [Set<String>] = [["ios", "android"], ["ios", "android"]]
+
+        let omitted = try FleetSplit.partition(
+            scenarios: scenarios, durations: durations,
+            entryPlatforms: entryPlatforms, unknownDurationMs: 1_000)
+        let explicitNil = try FleetSplit.partition(
+            scenarios: scenarios, durations: durations,
+            entryPlatforms: entryPlatforms, unknownDurationMs: 1_000, machineContext: nil)
+
+        XCTAssertEqual(omitted, explicitNil)
+        XCTAssertEqual(omitted, [
+            FleetSplit.Bucket(entryIndex: 0, scenarioIDs: ["A.one", "D.four", "E.five"], estimatedMs: 7_000),
+            FleetSplit.Bucket(entryIndex: 1, scenarioIDs: ["C.three", "B.two"], estimatedMs: 7_000),
+        ])
+    }
+
+    /// sameMs がある machine のエントリはその値で積まれる(混合中央値 10,000 ではない)
+    func testSameMachineDurationOverridesMixedEstimate() throws {
+        let durations = [duration("S", 10_000, "ios")]
+        let machineDurations = [machineDuration("S", 2_000, machine: "fast")]
+        let context = FleetSplit.MachineContext(
+            entryMachines: ["fast", nil], entryFixedOffsetsMs: [0, 0], machineDurations: machineDurations)
+
+        let buckets = try FleetSplit.partition(
+            scenarios: [("S", nil)], durations: durations,
+            entryPlatforms: [["ios"], ["ios"]], unknownDurationMs: 1_000, machineContext: context)
+
+        // entry0(同一機の実測 2,000ms)が entry1(混合中央値 10,000ms)より軽く見積もられて S を引き受ける
+        XCTAssertEqual(buckets[0], FleetSplit.Bucket(entryIndex: 0, scenarioIDs: ["S"], estimatedMs: 2_000))
+        XCTAssertEqual(buckets[1], FleetSplit.Bucket(entryIndex: 1, scenarioIDs: [], estimatedMs: 0))
+    }
+
+    /// 同一機の実績が無いシナリオは mixed × factor で見積もる(factor は他シナリオの共通観測から)
+    func testSpeedFactorAppliesToScenarioWithoutSameMachineHistory() throws {
+        // 共通観測: "Common" は mixed 10,000ms・機械 "slow" では 20,000ms → factor(slow) = 2.0
+        // "NoHistory" は mixed だけ 5,000ms(slow の実測なし)→ est = 5,000 × 2.0 = 10,000
+        let durations = [duration("Common", 10_000, "ios"), duration("NoHistory", 5_000, "ios")]
+        let machineDurations = [machineDuration("Common", 20_000, machine: "slow")]
+        let context = FleetSplit.MachineContext(
+            entryMachines: ["slow"], entryFixedOffsetsMs: [0], machineDurations: machineDurations)
+
+        let buckets = try FleetSplit.partition(
+            scenarios: [("NoHistory", nil)], durations: durations,
+            entryPlatforms: [["ios"]], unknownDurationMs: 1_000, machineContext: context)
+
+        XCTAssertEqual(buckets, [
+            FleetSplit.Bucket(entryIndex: 0, scenarioIDs: ["NoHistory"], estimatedMs: 10_000),
+        ])
+    }
+
+    /// 固定費が大きいエントリは避けられる。オフセットは台数で割られない
+    /// (割ってしまうと台数の多いエントリの固定費が過小評価される)
+    func testFixedOffsetAvoidsAssignmentAndIsNotDividedByCapacity() throws {
+        // entry0: 固定費 50,000ms・台数3 → 50,000 + 10,000/3 ≈ 53,333
+        // entry1: 固定費 0・台数1 → 0 + 10,000/1 = 10,000(軽いのでこちらへ)
+        let context = FleetSplit.MachineContext(
+            entryMachines: [nil, nil], entryFixedOffsetsMs: [50_000, 0], machineDurations: [])
+        let buckets = try FleetSplit.partition(
+            scenarios: [("S", nil)], durations: [duration("S", 10_000)],
+            entryPlatforms: [["ios"], ["ios"]], unknownDurationMs: 1_000,
+            entryCapacities: [3, 1], machineContext: context)
+
+        XCTAssertEqual(buckets[0].scenarioIDs, [])
+        XCTAssertEqual(buckets[1].scenarioIDs, ["S"])
+    }
+
+    func testMachineContextProducesDeterministicOutput() throws {
+        let durations = [duration("A", 5_000), duration("B", 3_000)]
+        let machineDurations = [machineDuration("A", 10_000, machine: "M")]
+        let context = FleetSplit.MachineContext(
+            entryMachines: ["M", nil], entryFixedOffsetsMs: [1_000, 0], machineDurations: machineDurations)
+        let scenarios: [(id: String, platform: String?)] = [("A", nil), ("B", nil), ("C", nil)]
+
+        let first = try FleetSplit.partition(
+            scenarios: scenarios, durations: durations, entryPlatforms: [["ios"], ["ios"]],
+            unknownDurationMs: 1_000, machineContext: context)
+        let second = try FleetSplit.partition(
+            scenarios: scenarios, durations: durations, entryPlatforms: [["ios"], ["ios"]],
+            unknownDurationMs: 1_000, machineContext: context)
+
+        XCTAssertEqual(first, second)
+    }
+}
+
+// MARK: - speedFactors 単体
+
+extension FleetSplitTests {
+
+    func testSpeedFactorsIsMedianOfCommonScenarioRatios() {
+        // 2つの共通観測: 20,000/10,000=2.0 と 8,000/4,000=2.0 → 中央値 2.0
+        let durations = [duration("A", 10_000, "ios"), duration("B", 4_000, "ios")]
+        let machineDurations = [
+            machineDuration("A", 20_000, machine: "M"), machineDuration("B", 8_000, machine: "M"),
+        ]
+        let factors = FleetSplit.speedFactors(machineDurations: machineDurations, durations: durations)
+        XCTAssertEqual(factors, ["M": 2.0])
+    }
+
+    func testSpeedFactorsExcludesMachinesWithNoCommonObservation() {
+        // "M" の実績シナリオ("B")は durations 側("A"のみ)に対応する記録が無い
+        let durations = [duration("A", 10_000, "ios")]
+        let machineDurations = [machineDuration("B", 5_000, machine: "M")]
+        let factors = FleetSplit.speedFactors(machineDurations: machineDurations, durations: durations)
+        XCTAssertTrue(factors.isEmpty, "共通観測が無い machine は係数なし")
+    }
+}

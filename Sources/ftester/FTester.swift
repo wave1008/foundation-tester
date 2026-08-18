@@ -1000,7 +1000,7 @@ struct RunScenarios: AsyncParsableCommand {
         let localRoot = try RepoRoot.find()
         let dispatcher = RemoteRunDispatcher(
             host: resolved.hostSpec, remoteDirRaw: resolved.remoteDirRaw, localRepoRoot: localRoot,
-            artifacts: artifactsMode, forceLock: forceLock)
+            artifacts: artifactsMode, forceLock: forceLock, hostLabel: dispatch.rawHost)
         var scopedDevices = devices
         var scopedDeviceHost = deviceHost
         if devices.isEmpty, deviceHost == nil {

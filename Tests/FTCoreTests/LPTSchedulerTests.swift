@@ -108,6 +108,80 @@ final class LPTSchedulerTests: XCTestCase {
                            [duration("A", 30_000, "ios"), duration("B", 1_000, "android")])
         XCTAssertEqual(ids(result), ["A", "B"], "A は android の実績が無いので先頭")
     }
+
+    // MARK: - machine 別の実績(durations(from:preferringMachine:))
+
+    private func record(_ id: String, _ ms: Int, machine: String,
+                        platform: String = "android") -> ScenarioRunRecord {
+        ScenarioRunRecord(scenarioID: id, platform: platform, machine: machine, passed: true,
+                          startedAt: "2026-08-18T00:00:00Z", durationMs: ms,
+                          steps: StepCountsRecord(total: 1, passed: 1))
+    }
+
+    func testPreferringMachineUsesOnlyThatMachinesRecords() {
+        // "B" は他機の実績のほうが多いが、同一機(A)の実績があればそちらだけで中央値を作る
+        let records = [
+            record("S", 1_000, machine: "A"),
+            record("S", 90_000, machine: "他機"),
+            record("S", 95_000, machine: "他機"),
+        ]
+        let durations = LPTScheduler.durations(from: records, preferringMachine: "A")
+        XCTAssertEqual(durations.map(\.medianMs), [1_000], "他機の遅い実績が混ざらない")
+    }
+
+    func testPreferringMachineFallsBackToMixedWhenAbsent() {
+        // 対象 machine の実績が無いシナリオは全 machine 混合の中央値へフォールバックする
+        let records = [record("S", 10_000, machine: "他機A"), record("S", 20_000, machine: "他機B")]
+        let durations = LPTScheduler.durations(from: records, preferringMachine: "このマシン")
+        XCTAssertEqual(durations.map(\.medianMs), [15_000], "混合中央値へフォールバック")
+    }
+
+    func testPreferringMachineNilMatchesLegacyBehavior() {
+        let records = [record("S", 10_000, machine: "A"), record("S", 20_000, machine: "B")]
+        XCTAssertEqual(LPTScheduler.durations(from: records),
+                       LPTScheduler.durations(from: records, preferringMachine: nil),
+                       "既定引数と明示 nil は同一(常に混合)")
+        XCTAssertEqual(LPTScheduler.durations(from: records).map(\.medianMs), [15_000])
+    }
+
+    // MARK: - machineDurations((scenarioID, platform, machine) 別の中央値)
+
+    func testMachineDurationsSplitsMedianByMachine() {
+        let records = [
+            record("S", 1_000, machine: "A"), record("S", 3_000, machine: "A"),
+            record("S", 90_000, machine: "B"),
+        ]
+        let result = LPTScheduler.machineDurations(from: records)
+        XCTAssertEqual(result, [
+            LPTScheduler.MachineDuration(scenarioID: "S", platform: "android", machine: "A", medianMs: 2_000),
+            LPTScheduler.MachineDuration(scenarioID: "S", platform: "android", machine: "B", medianMs: 90_000),
+        ])
+    }
+
+    func testMachineDurationsDropsRecordsWithEmptyMachine() {
+        let records = [record("S", 1_000, machine: "A"), record("S", 5_000, machine: "")]
+        let result = LPTScheduler.machineDurations(from: records)
+        XCTAssertEqual(result, [
+            LPTScheduler.MachineDuration(scenarioID: "S", platform: "android", machine: "A", medianMs: 1_000),
+        ], "machine 空の記録は落ちる(A の中央値だけが残る)")
+    }
+
+    func testMachineDurationsAppliesSameFiltersAsDurations() {
+        let records = [record("S", 0, machine: "A"), record("S", -1, machine: "A")]
+        XCTAssertTrue(LPTScheduler.machineDurations(from: records).isEmpty,
+                     "durationMs<=0 は除外(durations(from:) と同じフィルタ)")
+    }
+
+    func testMachineDurationsOutputOrderIsDeterministic() {
+        let records = [
+            record("Z", 1_000, machine: "B"), record("A", 1_000, machine: "B", platform: "ios"),
+            record("A", 1_000, machine: "A"),
+        ]
+        let result = LPTScheduler.machineDurations(from: records)
+        XCTAssertEqual(result.map { "\($0.scenarioID)/\($0.platform)/\($0.machine)" },
+                       ["A/android/A", "A/ios/B", "Z/android/B"],
+                       "scenarioID → platform → machine の順で決定的")
+    }
 }
 
 /// LPT は「items 全体を並べれば platform 別キューも LPT 順になる」ことに依存している。
