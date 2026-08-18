@@ -461,6 +461,74 @@ ftester remote exec <ホスト> -- <サブコマンド>               # 単発�
 - **ランナー機を再起動したら、1回ログインし直す**。ログイン画面のままだとディスパッチは
   「ログイン画面で待機中」と言って止まる(シミュレータの謎の失敗として現れないようにするため)
 
+## 複数人でフリートを共有する
+
+前提は**同一の信頼グループ**(同じチーム)での共有。認証・隔離の仕組みはない —
+ssh で入れる人はそのランナーで何でもできる。チームを跨いだ隔離が要るなら、
+**機械ごと割り当てる**(チーム A は mac-a、チーム B は mac-b。フリート定義で表現できる)。
+設計の背景は [remote-runner.md](remote-runner.md) §18。
+
+### 1人1鍵(失効できるようにする)
+
+ランナーの `~/.ssh/authorized_keys` には**1人1行**で鍵を足し、行末コメントを本人の識別子にする:
+
+```
+ssh-ed25519 AAAA… tanaka@dev-mbp
+ssh-ed25519 AAAA… suzuki@dev-mba
+```
+
+鍵を共有しない。**失効 = その行を消すだけ**(退職・端末紛失時に個別に取り消せる)。
+
+### 名乗る(issuerId)
+
+各自の発行側 Mac で `~/.config/ftester/config.json` に自分の識別子を書く:
+
+```jsonc
+{ "issuerId": "tanaka@dev-mbp" }
+```
+
+未設定なら `ユーザー名@ホスト名` が自動で使われる。この値は**自己申告**(認証ではない)で、
+ロックの保持者表示と実行結果(run.json の `issuer`)に載る —— 「今誰が使っているか」
+「これは誰の run か」をチーム内で見分けるためのもの。
+
+### 順番待ち(ロック)
+
+同じランナーには同時に1つのディスパッチしか走れない。取れないときは誰がいつから
+掴んでいるかが表示される。**待つなら `--wait-lock <秒>`**:
+
+```bash
+ftester run --profile <名前> --wait-lock 600   # 最大10分、解放を待って自動で続行
+```
+
+`--force-lock`(奪う)は相手の run を壊すので、表示された相手に確認してから。
+時間で自動的に奪う仕組みは意図的に無い。
+
+### 版はフリートで揃える(ピン運用)
+
+原則: **ランナーの版は動かさず、遅れている人が自分を更新する**。版ズレで止まったときの
+メッセージは向きを教えてくれる:
+
+| 案内 | 意味 | やること |
+|---|---|---|
+| この機械が古い(update…) | 自分が pull していない | 手元で `Scripts/update.sh`(ランナーは触らない) |
+| ランナーが古い(remote align…) | フリートの版上げが必要 | 当番が **1台だけ** align → 検証ディスパッチ1本 → 通ってから残りへ(カナリア。Xcode/macOS 更新も同じ手順) |
+| 分岐している(diverged) | ブランチ作業 | 共有ランナーでは実行しない。専用機か手元で検証する |
+
+VSCode 拡張の「更新して実行」も、自分が古いケースではランナー更新を提案しない。
+
+### 当番を決める(モード A のランナー)
+
+FileVault 有効のランナーは**再起動のたびに誰かが解錠+ログイン**する必要がある
+(ステップ0)。「誰かがやるだろう」で全員が止まるので、機械ごとに当番を決めて
+チームの目に見える場所(README 等)に書いておく。
+
+### 他人の run を壊さない
+
+- `remote clean` / `devices down` / デバイス削除は**他人の実行中 run を殺し得る**。
+  ロックの保持者表示(誰がいつから)を見てから
+- モニターのライブ配信はテスト実行と干渉する(特に Android)。**他人が run 中の
+  ランナーのタイルを開いたままにしない**
+
 ## うまくいかないとき
 
 | 症状・メッセージ | 原因 | 対処 |
@@ -471,7 +539,8 @@ ftester remote exec <ホスト> -- <サブコマンド>               # 単発�
 | `unknown or unsupported macOS version` / `brew install xcodegen failed` | Homebrew がその macOS を知らない古い版（brew が1つも動かない） | `git -C /opt/homebrew fetch origin && git -C /opt/homebrew reset --hard origin/master` |
 | `cannot resolve the local project` | 手元にプロジェクトが複数 | `--project <名前>` を付ける |
 | `is sitting at the login window` | ランナー機がログイン画面 | 解錠してログイン(画面共有) |
-| `git revision mismatch` | 版がズレている | ステップ3 |
+| `git revision mismatch` | 版がズレている | メッセージの向き付き案内に従う(「複数人でフリートを共有する」の表。単独利用ならステップ3) |
+| `another dispatch is already running on this remote host` | 別のディスパッチ(他の人・別ターミナル)が実行中 | 待つ(`--wait-lock <秒>`)。表示された保持者に確認できたときだけ `--force-lock` |
 | `toolchain mismatch` | Xcode / macOS が違う | 両機を同じ版に |
 | `ftester binary not found on remote` | ビルドされていない | ランナー機で `swift build --product ftester` |
 | `unknown package` | クローンのディレクトリ名を変えた | `~/ftester-runner/foundation-tester` に戻す |
