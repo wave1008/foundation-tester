@@ -1,13 +1,12 @@
 // モニターパネル「プロセス」タブ(#panel-processes)。main.js が applyResidentMessage を message
 // ディスパッチャに組み込む。対向: src/monitorWebviewMessages.ts の refreshResidentProcesses/
-// killAllResidentProcesses/residentProcesses/residentKillResult、処理は src/monitorPanel.ts。
+// killAllResidentProcessesAndClose/residentProcesses、処理は src/monitorPanel.ts。
 
 import { vscode } from './vscodeApi.js';
 import { t } from '../i18n.js';
 
 const processesPanel = document.getElementById('panel-processes');
-const residentKillAllBtn = document.getElementById('resident-kill-all');
-const residentStatus = document.getElementById('resident-status');
+const residentKillCloseBtn = document.getElementById('resident-kill-close');
 const residentTbody = document.getElementById('resident-tbody');
 const residentUpdated = document.getElementById('resident-updated');
 
@@ -148,20 +147,7 @@ export function applyResidentMessage(message) {
     }
     lastSignature = signature;
     renderResidentList(message.items);
-    residentStatus.textContent =
-      message.items.length > 0 ? t('wvMonitor2.process.statusCount', { count: message.items.length }) : '';
     residentUpdated.textContent = t('wvMonitor2.process.lastUpdated', { time: formatUpdatedAt(message.ts) });
-    return;
-  }
-  if (message.type === 'residentKillResult') {
-    residentKillAllBtn.disabled = false;
-    if (message.status === 'done') {
-      residentStatus.textContent = t('wvMonitor2.process.killedCount', { count: message.killed ?? 0 });
-    } else if (message.status === 'cancelled') {
-      residentStatus.textContent = '';
-    } else {
-      residentStatus.textContent = t('wvMonitor2.process.killFailed', { error: message.error ?? '' });
-    }
   }
 }
 
@@ -169,10 +155,9 @@ function requestRefresh() {
   vscode.postMessage({ type: 'refreshResidentProcesses' });
 }
 
-residentKillAllBtn.addEventListener('click', () => {
-  residentKillAllBtn.disabled = true;
-  residentStatus.textContent = t('wvMonitor2.process.running');
-  vscode.postMessage({ type: 'killAllResidentProcesses' });
+residentKillCloseBtn.addEventListener('click', () => {
+  residentKillCloseBtn.disabled = true; // 二重送信防止。掃討完了とともにパネルごと閉じるので復帰は不要
+  vscode.postMessage({ type: 'killAllResidentProcessesAndClose' });
 });
 
 // ヘッダクリックで昇順⇄降順トグル。別列クリックでその列の昇順から。状態は自動更新をまたいで保持し、

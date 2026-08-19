@@ -201,7 +201,7 @@ export const panelsStrings = {
   },
 
   "panels.processes.title": { ja: "常駐プロセス", en: "Resident Processes" },
-  "panels.processes.killAll": { ja: "すべて強制終了", en: "Force Stop All" },
+  "panels.processes.killAllAndClose": { ja: "プロセスを終了してタブを閉じる", en: "Stop Processes and Close Tab" },
   "panels.processes.colType": { ja: "種別", en: "Type" },
   "panels.processes.colDetail": { ja: "識別子", en: "Identifier" },
   "panels.processes.colParentPid": { ja: "親PID", en: "Parent PID" },

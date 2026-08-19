@@ -285,11 +285,9 @@ export type MonitorToWebviewMessage =
   // **実行ログは webview に送らない**(VSCode の OUTPUT へ出す。monitorUpdateController.ts 冒頭)。
   | { readonly type: "updateStatus"; readonly state: string; readonly localHead: string;
       readonly remoteHead: string; readonly reason: string }
-  // 設定タブ「常駐プロセス」一覧。refreshResidentProcesses 受信時と killAllResidentProcesses 完了後に送る。
-  // 対向: settingsTab.js の applyResidentMessage。
+  // プロセスタブ「常駐プロセス」一覧。refreshResidentProcesses 受信時に送る。
+  // 対向: processesTab.js の applyResidentMessage。
   | { readonly type: "residentProcesses"; readonly items: readonly ResidentProcess[]; readonly ts: number }
-  // 強制終了の結果(ボタン再活性化・ステータス表示用)
-  | { readonly type: "residentKillResult"; readonly status: "done" | "cancelled" | "error"; readonly killed?: number; readonly error?: string }
   // デバイスタブのスプリッター位置(タイルペイン高さ px)。ready 直後に workspaceState の永続値を反映する。
   // webview の getState はパネルを閉じると失われるため host 側で永続化する(setTilePaneHeight と対の契約)。
   // webview 側は splitter.js の setTilePaneHeight へ渡す。
@@ -557,7 +555,10 @@ export type MonitorFromWebviewMessage =
   // (対向: src/webview/monitor/tabs.js の switchTab)。パネル自体の表示可否とは別軸で、
   // ホスト側は両方の AND を deviceStream.setVisible へ渡す
   | { readonly type: "devicesTabVisible"; readonly visible: boolean }
-  | { readonly type: "killAllResidentProcesses" }
+  // 常駐プロセス(モニター/host-metrics/配信・ブリッジ・workspace 由来の残余)を掃討したあと、
+  // 再起動せずにモニターパネル(タブ)を閉じる。確認ダイアログは出さず即実行。応答は返さない
+  // (成功時は webview ごと消える。掃討の失敗はホスト側の showErrorMessage で通知しつつ閉じる)
+  | { readonly type: "killAllResidentProcessesAndClose" }
   // デバイスタブのスプリッターをドラッグ終了した時のタイルペイン高さ(px)。monitorPanel.ts が
   // workspaceState へ永続化し、パネル再作成時に "tilePaneHeight" メッセージで復元する。
   | { readonly type: "setTilePaneHeight"; readonly value: number }
@@ -842,7 +843,7 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         (typeof value.value === "number" && Number.isInteger(value.value) && value.value >= 1)
       );
     case "refreshResidentProcesses":
-    case "killAllResidentProcesses":
+    case "killAllResidentProcessesAndClose":
     case "checkUpdate":
     case "runUpdate":
       return true;

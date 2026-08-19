@@ -161,13 +161,9 @@ export const monitorStrings = {
     ja: "起動失敗: {error}",
     en: "Launch failed: {error}",
   },
-  "monitor.residentKill.confirmButton": {
-    ja: "強制終了",
-    en: "Force quit",
-  },
-  "monitor.residentKill.warningBody": {
-    ja: "この workspace の ftester 常駐プロセスを停止します。\n\niOS ブリッジ/ランナー・in-app ブリッジ・モニター/ホストメトリクス/画面ストリームを停止し、Android ブリッジは am/adb で停止します。\n\niOS シミュレータと Android エミュレータ本体・MCP サーバ・他 workspace のプロセスは停止しません。一部のプロセスは自動復帰します。",
-    en: "This will stop this workspace's resident ftester processes.\n\nIt stops the iOS bridge/runner, in-app bridge, monitor/host-metrics, and screen streaming, and stops the Android bridge via am/adb.\n\nIt does not stop the iOS simulator or Android emulator itself, the MCP server, or other workspaces' processes. Some processes will restart automatically.",
+  "monitor.residentKillClose.error": {
+    ja: "常駐プロセスの停止に失敗しました: {error}",
+    en: "Failed to stop resident processes: {error}",
   },
   "monitor.log.residentKillFailed": {
     ja: "常駐プロセス(PID {pid})の終了に失敗: {error}",

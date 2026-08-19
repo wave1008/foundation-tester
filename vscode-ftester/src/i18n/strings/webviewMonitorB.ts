@@ -72,11 +72,7 @@ export const webviewMonitorBStrings = {
     en: "A defunct process not yet reaped by its parent",
   },
   "wvMonitor2.process.pendingLaunch": { ja: "(遅延起動)", en: "(Deferred launch)" },
-  "wvMonitor2.process.statusCount": { ja: "{count}件", en: "{count} processes" },
   "wvMonitor2.process.lastUpdated": { ja: "前回更新: {time}", en: "Last updated: {time}" },
-  "wvMonitor2.process.killedCount": { ja: "強制終了しました({count}件)", en: "Force-stopped ({count})" },
-  "wvMonitor2.process.killFailed": { ja: "失敗: {error}", en: "Failed: {error}" },
-  "wvMonitor2.process.running": { ja: "実行中…", en: "Running…" },
 
   // machineProfilesTab.js
   "wvMonitor2.common.remove": { ja: "除去", en: "Remove" },

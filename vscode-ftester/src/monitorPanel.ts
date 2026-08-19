@@ -501,8 +501,8 @@ class MonitorPanelController implements vscode.Disposable {
       case "refreshResidentProcesses":
         void this.refreshResidentProcesses();
         break;
-      case "killAllResidentProcesses":
-        void this.killAllResidentProcesses();
+      case "killAllResidentProcessesAndClose":
+        void this.killAllResidentProcessesAndClose();
         break;
       case "deviceOp":
         this.deviceOps.enqueueLifecycleJob({
@@ -935,62 +935,53 @@ class MonitorPanelController implements vscode.Disposable {
     return path.isAbsolute(binaryDir) && command.includes(binaryDir);
   }
 
-  private async killAllResidentProcesses(): Promise<void> {
-    const CONFIRM = t("monitor.residentKill.confirmButton");
-    const choice = await vscode.window.showWarningMessage(
-      t("monitor.residentKill.warningBody"),
-      { modal: true },
-      CONFIRM,
-    );
-    if (choice !== CONFIRM) {
-      this.post({ type: "residentKillResult", status: "cancelled" });
-      return;
+  // 掃討本体(確認ダイアログ・掃討後の後始末は killAllResidentProcessesAndClose が持つ)。
+  private async killResidentProcessesCore(): Promise<void> {
+    // 1) 自分の常駐子を respawn 抑止して停止(生 SIGKILL による respawn churn を防ぐため先に)。
+    this.deviceStream.disposeAllForDown();
+    this.processManager.stopMonitorProcess();
+    this.processManager.stopHostMetricsProcess();
+    // 2) iOS ブリッジをシミュレータ本体を残してクリーン停止(xcuitest+inapp。pid/inapp ファイル基準で
+    //    SIGTERM→simctl terminate。simctl shutdown はしない=デバイスタブの領域)。
+    await this.runFtester(["bridge", "down", "--all"]);
+    // 3) Android ブリッジを am force-stop + adb forward --remove で停止(qemu=エミュレータ本体は残す)。
+    //    adb 未検出環境ではスキップ(出力ノイズを避ける)。
+    if (resolveAdb()) {
+      await this.runFtester(["bridge", "down", "--platform", "android"]);
     }
+    // 4) 残余のホスト常駐を SIGKILL 掃討。この workspace 由来のものだけに限定する
+    //    (machine-wide の巻き込み・別 repo の同種プロセスへの誤爆を避ける)。除外:
+    //    Android エミュ本体(emulator)/ PID 無しの情報行 / MCP サーバ(mcp)/ 拡張ホスト自身。
+    const remaining = await this.listResidentProcesses();
+    for (const p of remaining) {
+      if (p.pid <= 0 || p.pid === process.pid || p.type === "emulator" || p.type === "mcp") {
+        continue;
+      }
+      if (!this.isWorkspaceOwned(p.command)) {
+        continue;
+      }
+      try {
+        process.kill(p.pid, "SIGKILL");
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException)?.code !== "ESRCH") {
+          this.outputChannel.appendLine(
+            `[ftester] ${t("monitor.log.residentKillFailed", { pid: p.pid, error: String(e) })}`,
+          );
+        }
+      }
+    }
+  }
+
+  private async killAllResidentProcessesAndClose(): Promise<void> {
     try {
-      // 1) 自分の常駐子を respawn 抑止して停止(生 SIGKILL による respawn churn を防ぐため先に)。
-      this.deviceStream.disposeAllForDown();
-      this.processManager.stopMonitorProcess();
-      this.processManager.stopHostMetricsProcess();
-      // 2) iOS ブリッジをシミュレータ本体を残してクリーン停止(xcuitest+inapp。pid/inapp ファイル基準で
-      //    SIGTERM→simctl terminate。simctl shutdown はしない=デバイスタブの領域)。
-      await this.runFtester(["bridge", "down", "--all"]);
-      // 3) Android ブリッジを am force-stop + adb forward --remove で停止(qemu=エミュレータ本体は残す)。
-      //    adb 未検出環境ではスキップ(出力ノイズを避ける)。
-      if (resolveAdb()) {
-        await this.runFtester(["bridge", "down", "--platform", "android"]);
-      }
-      // 4) 残余のホスト常駐を SIGKILL 掃討。この workspace 由来のものだけに限定する
-      //    (machine-wide の巻き込み・別 repo の同種プロセスへの誤爆を避ける)。除外:
-      //    Android エミュ本体(emulator)/ PID 無しの情報行 / MCP サーバ(mcp)/ 拡張ホスト自身。
-      const remaining = await this.listResidentProcesses();
-      let killed = 0;
-      for (const p of remaining) {
-        if (p.pid <= 0 || p.pid === process.pid || p.type === "emulator" || p.type === "mcp") {
-          continue;
-        }
-        if (!this.isWorkspaceOwned(p.command)) {
-          continue;
-        }
-        try {
-          process.kill(p.pid, "SIGKILL");
-          killed++;
-        } catch (e) {
-          if ((e as NodeJS.ErrnoException)?.code !== "ESRCH") {
-            this.outputChannel.appendLine(
-              `[ftester] ${t("monitor.log.residentKillFailed", { pid: p.pid, error: String(e) })}`,
-            );
-          }
-        }
-      }
-      this.post({ type: "residentKillResult", status: "done", killed });
+      await this.killResidentProcessesCore();
     } catch (e) {
-      this.post({ type: "residentKillResult", status: "error", error: String(e) });
-    } finally {
-      // step 1 でモニター/host-metrics を止めている。デバイスタブはモニターが供給する状態でしか
-      // タイルを更新できず、止めたままだと「シャットダウン中」等で固まる。掃討後に自動再起動して
-      // 復帰させる(手動「モニター再起動」不要)。restartAll は失敗カウンタもリセットする。
-      this.processManager.restartAll();
-      await this.refreshResidentProcesses();
+      // 掃討が途中で失敗してもタブは閉じる(core の step 1 でモニターは既に停止済みで、
+      // 開いたままでもデバイスタブは固まるだけ)。失敗はダイアログで知らせる。
+      void vscode.window.showErrorMessage(t("monitor.residentKillClose.error", { error: String(e) }));
     }
+    // restartAll はしない(「終了して閉じる」なので自動復帰させない)。タブを閉じる。
+    // onDidDispose がモニター/配信の停止と後始末を行う(掃討済みなので実質 no-op)。
+    this.panel?.dispose();
   }
 }

@@ -449,8 +449,7 @@ function renderProcessesPanel(): string {
       <div class="processes-title">${t("panels.processes.title")}</div>
       <div id="resident-updated" class="resident-updated"></div>
       <div class="resident-toolbar">
-        <button id="resident-kill-all" class="resident-danger" type="button">${t("panels.processes.killAll")}</button>
-        <span id="resident-status" class="resident-status"></span>
+        <button id="resident-kill-close" class="resident-danger" type="button">${t("panels.processes.killAllAndClose")}</button>
       </div>
       <div id="resident-list" class="resident-list">
         <table class="resident-table">

@@ -1976,10 +1976,6 @@ input[type="text"]::placeholder {
 .resident-danger:hover:not(:disabled) {
   background-color: color-mix(in srgb, var(--vscode-inputValidation-errorBorder, #be1100) 85%, #fff 15%);
 }
-.resident-status {
-  font-size: 11px;
-  color: var(--vscode-descriptionForeground);
-}
 .resident-list {
   flex: 1 1 auto;
   min-height: 0;

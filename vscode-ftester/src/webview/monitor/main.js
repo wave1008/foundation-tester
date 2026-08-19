@@ -214,7 +214,6 @@ window.addEventListener('message', (event) => {
       applyDevicePickHosts(message);
       break;
     case 'residentProcesses':
-    case 'residentKillResult':
       applyResidentMessage(message);
       break;
     case 'recordingsSessions':

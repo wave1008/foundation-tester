@@ -3548,12 +3548,14 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
 - **「プロセス」タブ(常駐プロセス一覧・停止)**(2026-07-19): `ps` の ftester 関連常駐を分類表示
   (`residentProcesses.ts`)。Android ブリッジは**エミュレータ内 `am instrument`= ホスト `ps` に出ない**ため
   `adb forward --list` から情報行を合成(ホスト PID 無し→PID 列は `(遅延起動)`/デバイス内 PID `(12345)`)。
-  「すべて強制終了」の掃討スコープは**ユーザー決定**で: ① iOS ブリッジ/ランナー・in-app・モニター/
+  停止ボタンは「プロセスを終了してタブを閉じる」の1つ(2026-08-19 に「すべて強制終了」を廃止して
+  置き換え)。掃討スコープは**ユーザー決定**で: ① iOS ブリッジ/ランナー・in-app・モニター/
   host-metrics/stream を停止し **iOS シミュレータと Android エミュ本体(qemu)は残す**(デバイスタブの領域。
   `bridge down --all`=sim を残す/`bridge down --platform android`=qemu を残す/残余 SIGKILL は
   **この workspace 由来のみ**=workspaceRoot/binaryDir を含むコマンド。machine-wide 巻き込み回避)、
-  ② **MCP サーバ(mcp)は表示・掃討とも対象外**(セッション保護)、③ 掃討後に `restartAll()` で
-  monitor/host-metrics を**自動再起動**(止めたままだとデバイスタブが状態更新を失い凍結するため)
+  ② **MCP サーバ(mcp)は表示・掃討とも対象外**(セッション保護)、③ 掃討後は**再起動せず
+  モニターパネルを閉じる**(モニターを止めたままタブを開いておくとデバイスタブが状態更新を失い
+  凍結するため、「止める=閉じる」を1操作にする。再開はパネルを開き直すだけ)
 
 - **監視と実行の協調(run-lease)**(2026-07-18): monitor(watchdog)と run は別プロセスで無協調のため、
   watchdog が実行中デバイスに破壊的再起動をかけて run のワーカーを壊していた。対策として run→monitor 方向の
