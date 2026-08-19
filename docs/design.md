@@ -3757,14 +3757,24 @@ adb へ自動フォールバックする(ユーザー決定 2026-07-25)。動機
 - gRPC 化済み: blank プローブ/sleep-wake 修復(AndroidHealthProbe)・停止=setVmState SHUTDOWN
   (DeviceBooter/DataWiper/DevicesCommand)・serial→AVD 名=ディスカバリ読み・bootCompleted
   (booted=true のみ確定、他は getprop 再確認)・難治型 reboot の adb 不達時 RESET・
-  home「GoHome」/appSwitcher「AppSwitch」/drag・press のタッチ合成(AndroidDriver)
+  drag・press のタッチ合成(AndroidDriver)
 - adb 残存(原理的に置き換え不可): ブリッジ到達の `adb forward`+localhost HTTP・shell 系
   (am/pm/settings/getprop/cmd wifi/dumpsys)・install・pull・実機の全操作
+- **キー系は adb keyevent 固定**(home/back/appSwitcher/pressEnter)。gRPC のキー注入は
+  §16.3 のとおり届かない(2026-07-25 の PoC が測ったのは送出 1.2ms vs 215ms = 往復の速さで、
+  効いたかではない)
 
 ### 16.3 罠(実測で確定・変更時に踏み直さないこと)
 
-- **wake は KEY_POWER(evdev 116)**。KEY_WAKEUP(143) は emulator のキー変換欠落で不発。
-  sleep は KEY_SLEEP(142・非トグル)→直後の POWER トグルは安全
+- **キー注入(sendKey)は guest に入力デバイスがあるキーしか届かない。無いキーは RPC だけ成功して
+  黙って捨てられる**(2026-08-19。emulator 36.5.10 / API 36 arm64 の 2 AVD で確認: 名前付きキー
+  "GoHome"/"AppSwitch" は成功を返すのに前面が変わらず、`adb shell input keyevent` なら戻る。
+  送出中の `getevent` は1イベントも受けず、guest の入力デバイスは **gpio-keys と
+  virtio_input_multi_touch だけ**でキーボードが無い)。**キー系は adb keyevent 固定**にしてある
+  (`AndroidDriver` の home/back/appSwitcher/pressEnter。名前付きキーの API は両層とも置いていない)。
+  gpio-keys に載る **KEY_POWER(116)/KEY_SLEEP(142)** だけは届くので sleep-wake 修復は gRPC のまま。
+  KEY_WAKEUP(143) の不発(2026-07-25 実測)も同じ機序。sleep は KEY_SLEEP(非トグル)→直後の
+  POWER トグルは安全
 - **blank 判定に gRPC PNG のサイズ閾値を使わない**(emulator エンコーダは一様黒でも 51KB。
   30KB 閾値は adb 較正)。gRPC 経路は ImageIO デコード+`uniformFrame` の画素一様判定
 - **grpc-swift は約10MB の単一メッセージ受信で接続切断される**(RGBA 直取り不可。PNG で受けて

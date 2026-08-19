@@ -283,39 +283,36 @@ public final class AndroidDriver: AppDriver {
         persistState()
     }
 
-    /// タスク一覧(最近使ったアプリ)を開く。gRPC "AppSwitch"(proto が Overview 動作を明記)優先・
-    /// adb keyevent フォールバック。
+    /// タスク一覧(最近使ったアプリ)を開く。**gRPC の名前付きキーは使わない**(理由は home())。
+    /// adb keyevent 直行。
     public func openAppSwitcher() async throws {
-        if let serial, await EmulatorControl.namedKeypress(serial: serial, key: "AppSwitch") {
-            // gRPC 成功
-        } else {
-            let result = try adb(["shell", "input", "keyevent", "KEYCODE_APP_SWITCH"])
-            guard result.status == 0 else {
-                throw DriverError.badResponse(status: Int(result.status),
-                    body: "failed to open the app switcher: \(result.tail)")
-            }
+        let result = try adb(["shell", "input", "keyevent", "KEYCODE_APP_SWITCH"])
+        guard result.status == 0 else {
+            throw DriverError.badResponse(status: Int(result.status),
+                body: "failed to open the app switcher: \(result.tail)")
         }
         // keyevent は遷移完了を待たないため、直後の snapshot 用の整定待ち(activate と同様)
         await settleViaBridge()
     }
 
-    /// ホーム画面に戻る。gRPC "GoHome" 優先・adb keyevent フォールバック。
+    /// ホーム画面に戻る。**gRPC の名前付きキー("GoHome" 等)は使わない** — 成功を返すのに
+    /// キーが届かない無音 no-op(2026-08-19 に emulator 36.5.10 / API 36 の2台で確認。
+    /// GoHome も AppSwitch も前面が変わらず、adb keyevent なら戻る。送出中の getevent は1イベントも
+    /// 受けず、guest の入力デバイスは gpio-keys と multi-touch だけ = キーの載る先が無い。
+    /// gpio-keys に載る KEY_POWER/KEY_SLEEP = sleepWake だけは届く。docs/design.md §16.3)。
+    /// adb keyevent 直行。
     public func home() async throws {
-        if let serial, await EmulatorControl.namedKeypress(serial: serial, key: "GoHome") {
-            // gRPC 成功
-        } else {
-            let result = try adb(["shell", "input", "keyevent", "KEYCODE_HOME"])
-            guard result.status == 0 else {
-                throw DriverError.badResponse(status: Int(result.status),
-                    body: "failed to go to the home screen: \(result.tail)")
-            }
+        let result = try adb(["shell", "input", "keyevent", "KEYCODE_HOME"])
+        guard result.status == 0 else {
+            throw DriverError.badResponse(status: Int(result.status),
+                body: "failed to go to the home screen: \(result.tail)")
         }
         // keyevent は遷移完了を待たないため、直後の snapshot 用の整定待ち(openAppSwitcher と同様)
         await settleViaBridge()
     }
 
     /// 前の画面へ戻る。**gRPC "GoBack" は使わない** — 成功を返すのにキーが届かない
-    /// (2026-07-30 実機で確認。KEY_WAKEUP 不発と同型の無音 no-op)。adb keyevent 直行。
+    /// (2026-07-30 実機で確認。KEY_WAKEUP 不発と同型の無音 no-op。機序は home())。adb keyevent 直行。
     public func back() async throws {
         let result = try adb(["shell", "input", "keyevent", "KEYCODE_BACK"])
         guard result.status == 0 else {
@@ -560,17 +557,13 @@ public final class AndroidDriver: AppDriver {
         } catch let error as DriverError {
             if let abort = Self.pressEnterAbort(after: error) { throw abort }
         }
-        // gRPC KeyboardEvent.key は w3c 名(home()/openAppSwitcher() と同じ振り分け)。"Enter" は
-        // w3c UIEvents キー値だが emulator gRPC 側の対応は未確認 — EmulatorControl.perform は
-        // 失敗時 false を返すだけなので、未対応でも adb フォールバックへ落ちるだけで安全
-        if let serial, await EmulatorControl.namedKeypress(serial: serial, key: "Enter") {
-            // gRPC 成功
-        } else {
-            let result = try adb(["shell", "input", "keyevent", "66"])
-            guard result.status == 0 else {
-                throw DriverError.badResponse(status: Int(result.status),
-                    body: "failed to send the Enter key: \(result.tail)")
-            }
+        // gRPC の名前付きキーは使わない(理由は home())。"Enter" は GoHome/AppSwitch と同じ
+        // sendKey なので同型の無音 no-op になる — ここは成功が返ると adb へ落ちない救済経路で、
+        // 失敗の型が沈黙(誤った成功)なので単独では再現していないが塞ぐ
+        let result = try adb(["shell", "input", "keyevent", "66"])
+        guard result.status == 0 else {
+            throw DriverError.badResponse(status: Int(result.status),
+                body: "failed to send the Enter key: \(result.tail)")
         }
         // keyevent は遷移完了を待たないため、直後の snapshot 用の整定待ち(home() と同様)。
         // ブリッジ経路はサーバ側 settle() 込みで応答するため不要

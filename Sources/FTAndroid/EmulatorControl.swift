@@ -45,12 +45,9 @@ public enum EmulatorControl {
         await perform(serial: serial) { try await EmulatorGrpcSession.reset(endpoint: $0) } != nil
     }
 
-    /// 名前付きキー keypress("GoHome"/"AppSwitch" 等)。false = gRPC 不可
-    public static func namedKeypress(serial: String, key: String) async -> Bool {
-        await perform(serial: serial) {
-            try await EmulatorGrpcSession.sendNamedKeypress(endpoint: $0, key: key)
-        } != nil
-    }
+    // 名前付きキーの keypress は置かない — emulator は sendKey を成功で受けてキーを捨てる
+    // (無音 no-op。AndroidDriver.home() と docs/design.md §16.3)。キー系は adb keyevent。
+    // gpio-keys に載る KEY_POWER/KEY_SLEEP だけは届くので sleepWake は gRPC のまま
 
     /// 2点間ドラッグ(座標は screencap と同じ物理ピクセル)。false = gRPC 不可
     public static func drag(serial: String, fromX: Int32, fromY: Int32,

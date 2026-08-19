@@ -26,8 +26,10 @@ public enum EmulatorGrpcSession {
     }
 
     /// evdev キーコードの keypress(down+up)。
-    /// 罠: KEY_WAKEUP(143) は emulator のキー変換で欠落し不発(2026-07-25 実測)。
-    /// wake には KEY_POWER(116) を使うこと(sleepWake() が正しい並びを内蔵)
+    /// 罠: **届くのは guest に入力デバイスがあるキーだけ** — gpio-keys の KEY_POWER(116)/
+    /// KEY_SLEEP(142) は届き、KEY_WAKEUP(143) は不発(2026-07-25 実測)。API 36 arm64 の AVD は
+    /// キーボードデバイスを持たないので HOME/APP_SWITCH/ENTER 相当も届かない(2026-08-19 実測。
+    /// docs/design.md §16.3)。wake には KEY_POWER を使うこと(sleepWake() が正しい並びを内蔵)
     public static func sendEvdevKeypress(endpoint: EmulatorEndpoint, keyCode: Int32,
                                          timeout: Duration = defaultTimeout) async throws {
         try await withController(endpoint: endpoint, timeout: timeout) { client, metadata, options in
@@ -47,17 +49,9 @@ public enum EmulatorGrpcSession {
         try await sendEvdevKeypress(endpoint: endpoint, keyCode: 116)
     }
 
-    /// w3c 名前付きキーの keypress。"GoHome"(ホーム)/"AppSwitch"(タスク一覧)は proto が
-    /// Android 固有動作を明記している(evdev 番号の変換欠落リスクを避けられる)
-    public static func sendNamedKeypress(endpoint: EmulatorEndpoint, key: String,
-                                         timeout: Duration = defaultTimeout) async throws {
-        try await withController(endpoint: endpoint, timeout: timeout) { client, metadata, options in
-            var event = Android_Emulation_Control_KeyboardEvent()
-            event.eventType = .keypress
-            event.key = key
-            _ = try await client.sendKey(event, metadata: metadata, options: options)
-        }
-    }
+    // 名前付きキー(KeyboardEvent.key = "GoHome"/"AppSwitch"/"Enter")の keypress は置かない —
+    // proto は Android 固有動作を明記しているが guest には届かず、RPC だけ成功する
+    // (2026-08-19 実測。FTAndroid.AndroidDriver.home() と docs/design.md §16.3)
 
     /// 2点間ドラッグ(`input swipe` の代替)。down → ~16ms 刻みの補間 move → up を
     /// 1接続内で送る(pressure 0 の up を必ず送らないと identifier が残留する。proto 契約)。

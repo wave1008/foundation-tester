@@ -470,8 +470,8 @@ XCUITest ランナーは「画面を変えうる操作(`/session` `/tap` `/type`
 
 ### 3.9 Android の固定 sleep 800ms×4 をブリッジの静穏待ちへ(2026-07-30 実装)
 
-`AndroidDriver` の 4 経路(`activate` の monkey intent / `home` `openAppSwitcher` の keyevent /
-`pressEnter` の adb・gRPC フォールバック)は**ブリッジを経由しない**ため、ブリッジ側の
+`AndroidDriver` の 4 経路(`activate` の monkey intent / `home` `openAppSwitcher` `pressEnter` の
+adb keyevent)は**ブリッジを経由しない**ため、ブリッジ側の
 `settle()`(QuietWaiter = a11y イベント駆動)が走らない。そこを一律 **800ms の固定 sleep** で
 代替していた — 2026-07-12 に固定 sleep を静穏検知へ置換したときの取り残し。
 
