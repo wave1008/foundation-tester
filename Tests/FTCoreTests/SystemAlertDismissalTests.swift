@@ -56,6 +56,31 @@ final class SystemAlertDismissalTests: XCTestCase {
         XCTAssertNil(SystemAlertDismissal.buttonToTap(in: tree, labels: ["許可"]))
     }
 
+    /// 押した記録は**何を押したか**まで出す。出さないと、無関係のアプリのアラートを
+    /// 押していても後から気付けない(受け手報告: マップのアラートが対象アプリの前面に出た)
+    func test押した記録はアラートの題とボタン名を両方出す() {
+        let tree = [
+            ElementInfo(ref: 1, type: "alert", identifier: nil,
+                        label: "“マップ”に位置情報の使用を許可しますか?", value: nil,
+                        placeholder: nil, enabled: true,
+                        frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 1),
+            button("アプリの使用中は許可"),
+        ]
+        let described = SystemAlertDismissal.actionDescription(pressed: tree[1], in: tree)
+        XCTAssertTrue(described.contains("アプリの使用中は許可"), described)
+        XCTAssertTrue(described.contains("“マップ”"), "どのアラートを押したかが要る: \(described)")
+        XCTAssertTrue(described.contains("iosSystemAlertButtons"),
+                      "誰が押したのか(設定由来)も出すこと: \(described)")
+    }
+
+    /// 題の無いアラートでも「押した」ことは残す(題が無いから黙る、にしない)
+    func test題が無くても押したことは残す() {
+        let target = button("OK")
+        let described = SystemAlertDismissal.actionDescription(pressed: target, in: [target])
+        XCTAssertTrue(described.contains("OK"), described)
+        XCTAssertTrue(described.contains("iosSystemAlertButtons"), described)
+    }
+
     func test一覧に無いラベルのボタンは押さない() {
         let tree = [button("あとで")]
         XCTAssertNil(SystemAlertDismissal.buttonToTap(in: tree, labels: ["許可", "OK"]))

@@ -519,10 +519,16 @@ async function executeRun(
   // のときだけライブ連動する。複数クラス(Test Explorer の一括等)は --profile 並列を優先し連動しない:
   // liveTarget は単一デバイスで --profile と排他(下の args 分岐)のため、連動させると並列が単一に潰れる。
   // クラス内の複数シナリオは連動対象(ユーザー決定。シナリオ数ではなくクラス数で判定)。
+  //
+  // **実行プロファイルが設定されていたら連動しない**(2026-08-20。受け手報告の回帰)。
+  // liveTarget は --profile と排他なので、連動すると**プロファイルが黙って捨てられる**:
+  // 対象アプリが解決できず app 省略シナリオが全滅し(「no app could be resolved」)、
+  // scenarioTimeout / record / iosSystemAlertButtons も効かず、複数デバイスの並列も1台に潰れる。
+  // 下の args 分岐のコメントは元からこの条件を前提に書かれていたが、**実装だけが抜けていた**。
   const profile = config.profile.trim();
   const singleClass = new Set([...targets.keys()].map((id) => id.split(".")[0])).size === 1;
   let liveTarget: LiveRunTarget | undefined;
-  if (!dryRun && singleClass && prepareLiveForRun && targets.size > 0) {
+  if (!dryRun && singleClass && profile.length === 0 && prepareLiveForRun && targets.size > 0) {
     const platform = resolveTargetPlatform(targets);
     if (platform) {
       run.appendOutput(`${t("run.live.preparing")}\r\n`);
@@ -679,7 +685,8 @@ async function executeRun(
   }
   // --profile と --platform/--port/--serial は ftester api run 側で同時指定不可なので、liveTarget が
   // あれば最優先で使う(上のライブパネル連携)。無ければ既存どおり: profile が非空のときはそちらだけ、
-  // 空なら platform/port/serial を渡す。liveTarget は profile 空のときだけ立つ(上の連動ガード)。
+  // 空なら platform/port/serial を渡す。**liveTarget は profile 空のときだけ立つ**(上の連動ガード。
+  // ここの前提が実装から抜けていて、プロファイルが黙って捨てられていた時期がある)。
   // リモートディスパッチの要否は CLI 側がマシンプロファイルの host フィールドから判定する
   // (拡張は --host 等を組み立てない)。
   if (liveTarget) {
