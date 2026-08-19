@@ -269,7 +269,6 @@ struct ApiRunCommand: AsyncParsableCommand {
             // 既に ON なら尊重する(`ftester run --enable-animations` と手動 export の上書き)
             let animations = resolved.enableAnimations || AnimationPolicy.animationsEnabled()
             setenv(AnimationPolicy.environmentKey, animations ? "1" : "0", 1)
-            await BackendHealthCheck.warnIfUnreachable(resolved: resolved) { logStderr($0) }
             resolvedProfile = resolved
         }
 
@@ -285,6 +284,13 @@ struct ApiRunCommand: AsyncParsableCommand {
         }
         defer {
             if let hookSession { RunHookRunner.end(hookSession) { logStderr($0) } }
+        }
+
+        // **死活確認は開始スクリプトの後**(2026-08-19。ProfileRunner.run と同じ順序)。
+        // 依存サービスを setup.sh が起動する構成では、先に撃つと毎回必ず「到達できない」と
+        // 警告することになり、**本当に落ちているときの警告が埋もれる**(受け手からの報告)
+        if let resolved = resolvedProfile {
+            await BackendHealthCheck.warnIfUnreachable(resolved: resolved) { logStderr($0) }
         }
 
         // ワーカー並列実行経路のときだけビルドと並行してワーカー(iOSブリッジ起動/Android照合+
@@ -388,8 +394,8 @@ struct ApiRunCommand: AsyncParsableCommand {
                             nudge: { @Sendable [bundleID = ProfileWorkerFactory.iosBundleID(apps: resolved.apps)] in
                                 await ProfileWorkerFactory.nudgeIOSScreen(worker: $0, restoring: bundleID) },
                             log: { logStderr($0) }).workers
-                        await ProfileWorkerFactory.pressHomeOnStart(
-                            workers, enabled: resolved.homeOnStart) { logStderr($0) }
+                        await ProfileWorkerFactory.prepareDevicesOnStart(
+                            workers, homeOnStart: resolved.homeOnStart) { logStderr($0) }
                         logStderr("🚀 \(workers.count) iOS worker(s) joined")
                         return workers
                     } catch {
@@ -703,8 +709,8 @@ struct ApiRunCommand: AsyncParsableCommand {
                                 await ProfileWorkerFactory.nudgeIOSScreen(worker: $0, restoring: bundleID) },
                 log: { logStderr($0) })
             workers = iosTriage.workers
-            await ProfileWorkerFactory.pressHomeOnStart(
-                workers, enabled: resolved.homeOnStart) { logStderr($0) }
+            await ProfileWorkerFactory.prepareDevicesOnStart(
+                workers, homeOnStart: resolved.homeOnStart) { logStderr($0) }
             blankTriage = (triage.repaired, triage.excluded + iosTriage.excluded)
             workers = try await ProfileWorkerFactory.installIfNeeded(
                 apps: resolved.apps, workers: workers,
@@ -761,7 +767,8 @@ struct ApiRunCommand: AsyncParsableCommand {
                 debug: debugOptions, recording: recording,
                 appPath: dryRun ? nil : resolved.apps[scenarioPlatform]?.appPath,
                 appName: resolved.appName,
-                appBundleID: resolved.apps[scenarioPlatform]?.bundleID) { event in
+                appBundleID: resolved.apps[scenarioPlatform]?.bundleID,
+                iosSystemAlertButtons: resolved.iosSystemAlertButtons) { event in
                 var event = event
                 if event.scenario == nil { event.scenario = info.id }
                 writeLine(event.encodedLine())
@@ -940,7 +947,8 @@ struct ApiRunCommand: AsyncParsableCommand {
             },
             installHandler: InstallHandlerFactory.make(apps: resolved.apps),
             appName: resolved.appName,
-            appBundleIDs: resolved.apps.mapValues(\.bundleID))
+            appBundleIDs: resolved.apps.mapValues(\.bundleID),
+            iosSystemAlertButtons: resolved.iosSystemAlertButtons)
         async let summary = orchestrator.run(items: items, defaultPlatform: defaultPlatform)
 
         var timing = ScenarioTimingTracker()

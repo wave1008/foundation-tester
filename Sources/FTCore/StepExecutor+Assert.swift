@@ -391,6 +391,10 @@ extension StepExecutor {
                         if let fallback { return .passedViaFallback(fallback) }
                         return .passed
                     }
+                    // 待っている要素がどちらにも居ないなら、システム許可アラートが被さって
+                    // いないかを見る(閉じたら次の周回で普通に解決される)。
+                    // **解決できたときは通らない** = シナリオ自身のアラート操作を奪わない
+                    _ = await dismissSystemAlert(in: fsnap, via: fb)
                 }
             }
             if Date() >= deadline {   // 初回照会後にここで離脱(timeout==0 も含む)

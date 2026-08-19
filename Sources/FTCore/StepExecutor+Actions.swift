@@ -586,8 +586,19 @@ extension StepExecutor {
             let primaryQuality = resolved == nil ? nil : Self.resolveDetailed(step: step, in: snapshot)?.quality
             if resolved == nil || primaryQuality == .substring {
                 start = clock.now
-                let fsnap = try await fb.snapshot()
+                var fsnap = try await fb.snapshot()
                 phase.snapshotMs += Self.ms(clock.now - start)
+                // **どちらでも解決できないときだけ**システム許可アラートを閉じる(閉じたら
+                // 木を取り直して1回やり直す)。解決できているならシナリオ自身がそのアラートを
+                // 操作しようとしているので奪わない(dismissSystemAlert の宣言)
+                if resolved == nil, Self.resolveDetailed(step: step, in: fsnap) == nil,
+                   await dismissSystemAlert(in: fsnap, via: fb) {
+                    start = clock.now
+                    fsnap = (try? await fb.snapshot()) ?? fsnap
+                    phase.snapshotMs += Self.ms(clock.now - start)
+                    snapshot = (try? await driver.snapshot()) ?? snapshot
+                    resolved = Self.resolve(step: step, in: snapshot)
+                }
                 if let r = Self.resolveDetailed(step: step, in: fsnap),
                    resolved == nil || r.quality == .exact {
                     resolved = (r.element, r.usedFallback)
@@ -1573,6 +1584,25 @@ extension StepExecutor {
                           toX: to.frame.centerX, toY: to.frame.centerY,
                           pressSeconds: 0.05, durationSeconds: durationSeconds)
         phase.actionMs += Self.ms(clock.now - start)
+        return true
+    }
+}
+
+extension StepExecutor {
+    /// **fallback の木にシステム許可アラートが居たら、プロファイルが指定したボタンを押す**。
+    /// 押したら true(呼び出し側は木を取り直して解決をやり直す)。
+    ///
+    /// 呼ぶのは「**要求された要素が primary でも fallback でも解決できなかった**」ときだけ ——
+    /// 解決できているなら、シナリオ自身がそのアラートを操作しようとしている(`tap("許可")` /
+    /// `ifCanSelect("許可")`)ので、自動処理が横から奪ってはいけない。
+    /// 判断は FTCore.SystemAlertDismissal の1箇所(推測しない理由もそこ)。
+    func dismissSystemAlert(in snapshot: SnapshotResponse, via fallback: AppDriver) async -> Bool {
+        guard !systemAlertButtons.isEmpty,
+              let button = SystemAlertDismissal.buttonToTap(in: snapshot.elements,
+                                                            labels: systemAlertButtons) else {
+            return false
+        }
+        do { try await fallback.tap(ref: button.ref) } catch { return false }
         return true
     }
 }
