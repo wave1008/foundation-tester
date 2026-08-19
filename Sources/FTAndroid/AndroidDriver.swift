@@ -33,6 +33,8 @@ public final class AndroidDriver: AppDriver {
     private var captureKeyboardOnNextSnapshot = false
     /// 空白キャプチャを補えなかったことの警告を出したか(1プロセス1回)
     private var warnedAboutBlankCapture = false
+    /// CDP の端送りが使えなかったアプリ(ネイティブ画面で毎回ソケットを探さないための記憶)
+    private var webViewEdgeJumpUnavailableFor: String?
 
     /// raiseElementLimitOnNextSnapshot() が立てる1回限りの要素上限(nil = 既定)
     private var pendingElementLimit: Int?
@@ -597,10 +599,76 @@ public final class AndroidDriver: AppDriver {
     }
 
     /// 用途つき版。**Android は用途でジェスチャが変わる**(edge は強いフリング)ので、
-    /// 既定実装に落として用途を捨ててはいけない
+    /// 既定実装に落として用途を捨ててはいけない。
+    ///
+    /// **端送り(edge)で中身が WebView なら、スワイプを1本も撃たずに CDP で飛ばす**
+    /// (`AndroidWebViewDOM.scrollToEdge`。実測 28ms)。Android のスワイプは1本 ≒ 6 行しか
+    /// 進まないので、長文では往復回数がそのまま所要になる(受け手の実文書で 19.2s)。
+    /// iOS の in-app が `contentOffset` で同じことをしているのと揃える。
+    /// **飛ばせなければ従来のジェスチャへ落ちる**(判定は1インスタンスにつき1回だけ試す)
     public func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent,
                       path: FTSwipePath?) async throws {
+        if intent == .edge, await webViewJumpToEdge(direction) { return }
+        if intent == .edge, let stroke = edgeStroke(direction, path: path) {
+            try await drag(fromX: stroke.fromX, fromY: stroke.fromY,
+                           toX: stroke.toX, toY: stroke.toY,
+                           pressSeconds: 0, durationSeconds: Self.edgeStrokeSeconds)
+            return
+        }
         try await withBridge { try await $0.swipe(direction, intent: intent, path: path) }
+    }
+
+    /// 端送りのストローク。**ブリッジの `/swipe` ではなく drag(注入器直結)で撃つ**理由は2つ:
+    ///
+    /// - **1本で進む距離が違う**(2026-08-20 実測・40 行リスト): `/swipe`(画面比 0.4 + fling)は
+    ///   1本 **約 6 行**しか進まないのに、中央→端のストローク(0.25s)は **14 行**進む。
+    ///   端送りは往復回数がそのまま所要になるので、ここが倍違うと所要も倍違う
+    /// - **`/swipe` はブリッジ内で静穏を待ってから返す**(中央値 233ms)。ホストも同じ整定を
+    ///   待つので二重になる。drag 経路はブリッジを通らないため、待ちはホストの1回だけになる
+    ///
+    /// **探索(search)には使わない** —— 1回の移動量がビューポートを超えると要素を飛び越す。
+    /// 端送りは行き過ぎても端で止まるので安全(§3.16 と同じ線引き)
+    private func edgeStroke(_ direction: FTSwipeDirection,
+                            path: FTSwipePath?) -> FTSwipePath? {
+        Self.edgeStroke(direction, path: path, screen: screen)
+    }
+
+    /// 上のストロークの決め方(I/O 抜き・単体テスト対象)
+    static func edgeStroke(_ direction: FTSwipeDirection, path: FTSwipePath?,
+                           screen: FTRect) -> FTSwipePath? {
+        if let path { return path }   // 領域指定はホストが計算済み(ScrollGeometry)
+        // 画面の大きさが分からないとき(snapshot 前)は ScrollGeometry が nil を返し、
+        // 呼び手は従来の /swipe へ落ちる。**ここで別途ガードしない**(同じ判定を2箇所に置くと、
+        // 変異テストで「殺せない条件」として残るだけで何も守らない)
+        let kind: FlickKind
+        switch direction {
+        case .up: kind = .centerToTop
+        case .down: kind = .centerToBottom
+        case .left: kind = .centerToLeft
+        case .right: kind = .centerToRight
+        }
+        return ScrollGeometry.flickPath(
+            container: screen, viewport: screen, kind: kind,
+            startMarginRatio: FTScrollDefaults.startMarginRatio(
+                intent: .gesture, vertical: kind.isVertical))
+    }
+
+    /// 端送りストロークの所要(秒)。**flick の既定と同じ値**にしてある ——
+    /// この値で「1本 14 行」を実測した(短くすると距離が伸びる可能性はあるが、
+    /// §3.16 の較正をやり直す話になるので別立て)
+    private static let edgeStrokeSeconds: Double = FlowStep.defaultFlickDurationSeconds
+
+    /// CDP でページを端まで飛ばせたか。**使えないと分かったら以後は試さない**
+    /// (ネイティブ画面で毎回 adb のソケット探索を払わないため。アプリが変わればやり直す)
+    private func webViewJumpToEdge(_ direction: FTSwipeDirection) async -> Bool {
+        guard AndroidWebViewDOM.isAppWebViewDOMEnabled,
+              let package = currentPackage,
+              webViewEdgeJumpUnavailableFor != package else { return false }
+        let ok = await AndroidWebViewDOM.scrollToEdge(
+            serial: serial ?? "", packageID: package, route: .appWebView,
+            finger: direction, adb: { try self.adb($0).output })
+        if !ok { webViewEdgeJumpUnavailableFor = package }
+        return ok
     }
 
     /// ダブルタップ・ピンチは**ブリッジ apk 経由だけ**(gRPC の道は作らない)。

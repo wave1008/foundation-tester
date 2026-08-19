@@ -107,7 +107,7 @@ final class BridgeContractTests: XCTestCase {
         .inApp: [
             "InAppBridge/Sources/Bridging.h": "08799e6d190f958eed7c6bb4406f1cbbfea1bed1d252ce4572636273c65a5aad",
             "InAppBridge/Sources/DisplayHeartbeat.swift": "ae6873fdbe87d898cbd8818dddb70a5b11e1ff49e1fa189a29d66d0b2af3da18",
-            "InAppBridge/Sources/InAppBridge.swift": "eee004c3aa82eb8f626af2815ddac33bb49804e1373dc72620d04a92cb126ff4",
+            "InAppBridge/Sources/InAppBridge.swift": "4674894076359c86ef4d6b7f3470e7123f61ba1d2ee94a7501976e3065eec826",
             "InAppBridge/Sources/InAppHTTPServer.swift": "0c5402ec749354725ef5a9b13d2e7b42cef11488a56f969d7dbe6667f79a5aea",
             "InAppBridge/Sources/InAppInput.h": "cb980dcf8b80c38a97a841946354460ce6fd960baf53ada67aa939e16e373a65",
             "InAppBridge/Sources/InAppInput.m": "ea5a619f2b945e078af3bea394cb6d73a7e405c7509586389e427951d9b2f601",
@@ -116,7 +116,7 @@ final class BridgeContractTests: XCTestCase {
             "InAppBridge/Sources/InAppWebViewDOM.swift": "ef4df4ffbbcb41adab67e3c257d8de5bcb2ac73b39c7e4e5a2e8305db37a34b6",
             "InAppBridge/Sources/boot.m": "b23fc93fbc99ce2579c9fd8ae75a6f9bbfd0ec6122bec60eb6cd00775dd635ef",
             "InAppBridge/build.sh": "73f53b3434d29114cf1bd0fd68264d373dc2730585d9f0c001d750dfd2844794",
-            "Sources/FTCore/BridgeDTO.swift": "7faef9b640840aa7fb5b164afbe775e3b7c597615da99886ccf9939f1548d44a",
+            "Sources/FTCore/BridgeDTO.swift": "c23653178db48c0115fa654efdeedf43fc6a4f6e03ca938966af59a2f5fbb67b",
             "Sources/FTCore/WebViewDOMSnapshot.swift": "2d989286ece73949a866af8b2196e6ed95628159bad1ba1166a4f87d03a511f1",
         ],
         .xcuitest: [
@@ -128,7 +128,7 @@ final class BridgeContractTests: XCTestCase {
             "Runner/FTesterRunnerUITests/FastInput.swift": "18b54340c404eac53736675763fad8e291b08e2f1f1ba96d696172698aa83bc1",
             "Runner/FTesterRunnerUITests/ObjCExceptionCatcher.h": "5a98cdbeefb031137a985b2f4430a5e12fec447a492599f8f4da1bd2c7101edc",
             "Runner/FTesterRunnerUITests/ObjCExceptionCatcher.m": "8b41a8a81bc8199bca13a364717614684f8003999c7675d9a63242c8e74c26be",
-            "Sources/FTCore/BridgeDTO.swift": "7faef9b640840aa7fb5b164afbe775e3b7c597615da99886ccf9939f1548d44a",
+            "Sources/FTCore/BridgeDTO.swift": "c23653178db48c0115fa654efdeedf43fc6a4f6e03ca938966af59a2f5fbb67b",
             "Sources/FTCore/SnapshotDedupe.swift": "01912610b9bbf66f1fcf6cecc8c3d51d3fedc836c24d1a9ba8689a2538227b17",
             "Sources/FTCore/TypeReadback.swift": "a9e331686c7304988c12da4773af5706c755ad6c61b501280ec6e7f09070298e",
         ],

@@ -202,7 +202,12 @@ public enum BridgeAPI {
     /// and scrollToEdge is "move once, then confirm the edge a few times" — so the confirmations
     /// were the whole cost (measured on a consumer app: `scrollToBottom`/`scrollToTop` pinned at
     /// 8.0s regardless of distance or screen). A stale bridge keeps waiting → bump.
-    public static let bridgeProtocolVersion = 72
+    /// 73: the in-app engine no longer waits for the screen to settle after an `edge` scroll
+    /// **even when it moved**. scrollToEdge always follows with the host's own settle
+    /// (`settledSignature`), so the bridge-side wait is the second one; on a screen that never
+    /// goes quiet it burns the whole 2,500ms cap per request (the remaining 3.0s of the consumer
+    /// report). Search and plain swipes still wait. A stale bridge keeps waiting → bump.
+    public static let bridgeProtocolVersion = 73
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の
