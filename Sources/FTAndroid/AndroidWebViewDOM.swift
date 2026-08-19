@@ -396,6 +396,62 @@ public extension AndroidWebViewDOM {
         }
     }
 
+    /// **端まで一発で飛ばす**(CDP)。戻り値 = ページを動かす手段が使えたか
+    /// (既に端に居て動かなかった場合も true = 「ジェスチャは要らなかった」)。
+    ///
+    /// **これが効く画面ではスワイプを1本も撃たない**。Android の端送りは 1 本 ≒ 6 行しか進まず、
+    /// 長文では往復回数がそのまま所要になる(受け手の実文書で 19.2s)。ページの中身は
+    /// **DOM を持っているので位置を代入できる** —— iOS の in-app が `WKScrollView.contentOffset` で
+    /// 既にやっているのと同じ判断(docs/performance-tuning.md §3.22 / §3.27)。実測 28ms。
+    ///
+    /// 対象の選び方: `document.scrollingElement` にその向きの余地があればそれ。無ければ
+    /// **面積が最大でスクロール余地のある要素**(独自のスクロール容器を持つページ用)。
+    /// どちらも見つからなければ false を返して**呼び手はジェスチャへ落ちる**
+    static func scrollToEdge(serial: String, packageID: String, route: Route,
+                             finger: FTSwipeDirection,
+                             adb: (_ args: [String]) throws -> String) async -> Bool {
+        let axis = (finger == .up || finger == .down) ? "v" : "h"
+        // 指の向きとコンテンツの向きは逆(指を上へ = 末尾へ送る)
+        let toEnd = (finger == .up || finger == .left)
+        let javaScript = """
+        (function(){
+          var axis = "\(axis)", toEnd = \(toEnd);
+          function room(e){
+            return axis === "v" ? e.scrollHeight - e.clientHeight : e.scrollWidth - e.clientWidth;
+          }
+          var target = document.scrollingElement || document.documentElement;
+          if (!target || room(target) <= 4) {
+            var best = null, bestArea = 0, nodes = document.querySelectorAll("*");
+            var limit = Math.min(nodes.length, 2000);
+            for (var i = 0; i < limit; i++) {
+              var e = nodes[i];
+              if (room(e) <= 4) continue;
+              var area = e.clientWidth * e.clientHeight;
+              if (area > bestArea) { best = e; bestArea = area; }
+            }
+            target = best;
+          }
+          if (!target) return "none";
+          var before = axis === "v" ? target.scrollTop : target.scrollLeft;
+          var end = toEnd ? room(target) : 0;
+          if (axis === "v") { target.scrollTop = end; } else { target.scrollLeft = end; }
+          var after = axis === "v" ? target.scrollTop : target.scrollLeft;
+          return before + "|" + after;
+        })()
+        """
+        let reply = await withRankedTabs(serial: serial, packageID: packageID, route: route,
+                                         webViewLabel: nil, urlBarValue: nil, adb: adb) { tabs in
+            for webSocket in tabs {
+                if let value = await evaluate(webSocket: webSocket, javaScript: javaScript),
+                   value != "none" {
+                    return value
+                }
+            }
+            return nil
+        }
+        return reply != nil
+    }
+
     static func read(serial: String, packageID: String, route: Route,
                      webViewLabel: String?, urlBarValue: String?,
                      adb: (_ args: [String]) throws -> String) async -> WebViewDOM.Payload? {
