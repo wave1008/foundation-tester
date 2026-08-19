@@ -677,18 +677,20 @@ final class FTInAppBridge {
                     + " area). hybrid falls back to XCUITest")
             }
             var scrolled = false
-            try performWithSettle { window in
+            try performSettlingIfMoved { window -> Bool in
                 if let webScroll = Self.webContentScrollView(in: window, at: req.path) {
                     // 端に達しているだけなら no-op で 200(UIKit 経路と同じ理由。501 を返すと
-                    // XCUITest の実スワイプへ切り替わり、以降のジェスチャがラッチで全部 XCUITest 化する)
-                    if Self.hasRoom(webScroll, req.direction) {
-                        Self.scroll(webScroll, direction: req.direction, path: req.path,
-                                    toEdge: req.edge == true)
-                    }
+                    // XCUITest の実スワイプへ切り替わり、以降のジェスチャがラッチで全部 XCUITest 化する)。
+                    // **動かしていないので整定も待たない**(performWithSettle の Bool 版)
                     scrolled = true
-                    return
+                    guard Self.hasRoom(webScroll, req.direction) else { return false }
+                    Self.scroll(webScroll, direction: req.direction, path: req.path,
+                                toEdge: req.edge == true)
+                    return true
                 }
+                // AX 経路は端でも true を返すフレームワークがある(Compose)ので「動いた」と扱う
                 scrolled = Self.scrollViaAccessibility(window, finger: req.direction)
+                return scrolled
             }
             guard scrolled else {
                 // 501 = このエンジンでは未対応(/terminate と同じ慣習)。409(Conflict)はキーウィンドウ
@@ -706,7 +708,7 @@ final class FTInAppBridge {
                 + " (self-rendered without UIScrollView, and synthetic drags are not accepted)."
                 + " hybrid falls back to XCUITest")
         }
-        try performWithSettle { window in
+        try performSettlingIfMoved { window -> Bool in
             // UIKit/SwiftUI のスクロールは合成タッチでは駆動できない(ジェスチャ認識器が受理しない)ため、
             // contentOffset を直接動かす(accessibilityScroll は SwiftUI List で片方向しか効かず不安定
             // だった。setContentOffset は決定的・双方向)。
@@ -725,11 +727,12 @@ final class FTInAppBridge {
                     + " (synthetic drags are not accepted by gesture recognizers)."
                     + " hybrid falls back to XCUITest")
             }
-            if let scrollView = Self.target(scrollViews, direction: req.direction, path: req.path) {
-                Self.scroll(scrollView, direction: req.direction, path: req.path,
-                            toEdge: req.edge == true)
-            }
-            // 余地なし = 端。no-op で 200 を返す
+            // 余地なし = 端。no-op で 200 を返し、**動かしていないので整定も待たない**
+            guard let scrollView = Self.target(scrollViews, direction: req.direction,
+                                               path: req.path) else { return false }
+            Self.scroll(scrollView, direction: req.direction, path: req.path,
+                        toEdge: req.edge == true)
+            return true
         }
         return ok()
     }
@@ -1057,6 +1060,22 @@ final class FTInAppBridge {
     /// semaphore タイムアウト = blockBudgetMs + capMs + 余裕 とし、settle 完了前の早期打ち切りを防ぐ。
     private func performWithSettle(capMs: Int = 2500, blockBudgetMs: Int = 0,
                                    _ block: @escaping (UIWindow) throws -> Void) throws {
+        try performSettlingIfMoved(capMs: capMs, blockBudgetMs: blockBudgetMs) { window -> Bool in
+            try block(window)
+            return true
+        }
+    }
+
+    /// **block が「何も動かしていない」と申告したら整定を待たない**版。
+    /// 端に達した後のスクロール要求(余地が無い = no-op)がこれを使う。
+    ///
+    /// 自分が動かしていない画面の整定を待っても**収束は自分とは無関係**で、
+    /// 常にアニメーションしている画面では毎回 cap(2,500ms)を丸ごと捨てる ——
+    /// 端送りは「動かす1回 + 端を確認する数回」なので、確認のぶんがそのまま所要になる
+    /// (受け手の実アプリで `scrollToBottom`/`scrollToTop` が距離にも画面にも依存せず
+    /// 8.0s 固定になっていた。2026-08-20 報告)。
+    private func performSettlingIfMoved(capMs: Int = 2500, blockBudgetMs: Int = 0,
+                                        _ block: @escaping (UIWindow) throws -> Bool) throws {
         let sem = DispatchSemaphore(value: 0)
         var thrown: Error?
         DispatchQueue.main.async {
@@ -1065,13 +1084,15 @@ final class FTInAppBridge {
                 sem.signal()
                 return
             }
+            let moved: Bool
             do {
-                try block(window)
+                moved = try block(window)
             } catch {
                 thrown = error
                 sem.signal()
                 return
             }
+            guard moved else { sem.signal(); return }
             InAppSettle.waitOnMain(capMs: capMs) { converged in
                 if !converged { self.lastSettleCapped = true }
                 sem.signal()
