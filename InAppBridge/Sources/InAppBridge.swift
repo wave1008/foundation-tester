@@ -71,10 +71,10 @@ final class FTInAppBridge {
 
     /// 応答を作る。整定が打ち切られていたら note に足す(ホストは driverFallback として記録する)。
     /// 打ち切りは失敗ではないので status は 200 のまま
-    private func ok(_ note: String? = nil) -> InAppHTTPServer.Response {
-        guard lastSettleCapped else { return .json(OKResponse(note: note)) }
+    private func ok(_ note: String? = nil, atEdge: Bool? = nil) -> InAppHTTPServer.Response {
+        guard lastSettleCapped else { return .json(OKResponse(note: note, atEdge: atEdge)) }
         let capped = "settle capped (screen kept animating)"
-        return .json(OKResponse(note: note.map { "\($0) / \(capped)" } ?? capped))
+        return .json(OKResponse(note: note.map { "\($0) / \(capped)" } ?? capped, atEdge: atEdge))
     }
 
     private func handle(_ req: InAppHTTPServer.Request) -> InAppHTTPServer.Response {
@@ -636,6 +636,8 @@ final class FTInAppBridge {
 
     private func handleSwipe(_ body: Data) throws -> InAppHTTPServer.Response {
         let req = try decode(SwipeRequest.self, body)
+        // 端送りで動かせなかった(= もう端)ことをホストへ返すための箱
+        var atEdge: Bool?
         // **スクロール領域の指定(SwipeRequest.path)は「座標を撃つ指示」ではなく
         // 「どこを・どれだけ動かすか」の指示として読む**。合成タッチの drag は受理されないので
         // 座標そのものは注入できないが、
@@ -727,9 +729,13 @@ final class FTInAppBridge {
                     + " (synthetic drags are not accepted by gesture recognizers)."
                     + " hybrid falls back to XCUITest")
             }
-            // 余地なし = 端。no-op で 200 を返し、**動かしていないので整定も待たない**
+            // 余地なし = 端。no-op で 200 を返し、**動かしていないので整定も待たない**。
+            // **端送りならその事実を返す**(ホストが署名の2回不変を待たずに切り上げられる)
             guard let scrollView = Self.target(scrollViews, direction: req.direction,
-                                               path: req.path) else { return false }
+                                               path: req.path) else {
+                atEdge = req.edge == true
+                return false
+            }
             Self.scroll(scrollView, direction: req.direction, path: req.path,
                         toEdge: req.edge == true)
             // **端送りは動かした後も待たない**(2026-08-20): 端送りの後にホストは必ず
@@ -740,7 +746,7 @@ final class FTInAppBridge {
             // 動いている木を掴む(XCUITest ブリッジが `/swipe` を整定対象から外したのと同じ線引き)
             return req.edge != true
         }
-        return ok()
+        return ok(atEdge: atEdge)
     }
 
     /// UIAccessibility の scroll アクションでスクロールする(Compose / Flutter 専用)。

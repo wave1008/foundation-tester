@@ -769,6 +769,19 @@ S0030 型(type が成功扱いなのに後段の検証で値が空)の再発ゼ�
   同一個体でのタップ無反応集中」まで幅がある — **失敗が1台に集中していたら
   まずこのクラスを疑い、その個体を shutdown/boot してから裁定する**
 
+## 検証は重ねない —— デバイス実行中に本線をビルドしない(2026-08-20 に再発)
+
+**変異テストは worktree(専用の `.build`)で隔離済み**なので本線の run とは衝突しない
+(`Scripts/mutation-check.sh` は `.build` と `.ftester` を除いて同期し、worktree の中で
+`swift test` する)。**危ないのは本線で打つ `swift build` / `swift test`** —— 実行中の
+`ftester` バイナリが差し替わって run が SIGKILL される(CLAUDE.md の実害。2026-08-20 に
+フル E2E の最中に単体テストを打って1回ぶん捨てた)。
+
+**ガード**: `mutation-check.sh` は `Scripts/e2e.sh` / `ftester run` / `ftester api run` が
+走っている間は起動を拒む(承知のうえで重ねるときだけ `MUT_ALLOW_DURING_RUN=1`)。
+**本線の `swift test` は誰も止められない**ので、E2E を投げたら**ビルドを伴う作業は止める**。
+待っている間にやってよいのは docs とメモの編集だけ。
+
 ## in-app ブリッジの A/B は「dylib が本当に入れ替わったか」を先に確かめる(2026-08-20)
 
 **稼働中の in-app ブリッジは再利用される**ので、ソースを差し替えても**同じ dylib のまま**

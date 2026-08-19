@@ -113,6 +113,7 @@ public final class SessionRecoveryDriver: AppDriver {
     /// a11y の一時停止で撃ち直したことは**必ず見せる**(黙って遅くなるだけだと、
     /// 8 秒級の遅れの理由が読めない)。base の注記があればそちらを優先する
     public var lastActionNote: String? { base.lastActionNote ?? accessibilityOutageNote }
+    public var reachedEdgeOnLastSwipe: Bool? { base.reachedEdgeOnLastSwipe }
     public var lastLaunchTiming: LaunchTiming? { base.lastLaunchTiming }
 
     public func launch(bundleID: String) async throws {

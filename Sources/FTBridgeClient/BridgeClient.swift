@@ -640,9 +640,15 @@ public final class BridgeClient: AppDriver {
         try await swipe(direction, intent: .gesture)
     }
 
+    /// 直前の端送りで「もう端」とブリッジが答えたか(`AppDriver.reachedEdgeOnLastSwipe`)。
+    /// **答えない旧ブリッジでは nil のまま** = ホストは従来どおり木の署名で判定する
+    public private(set) var atEdgeOnLastSwipe: Bool?
+    public var reachedEdgeOnLastSwipe: Bool? { atEdgeOnLastSwipe }
+
     public func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent,
                       path: FTSwipePath? = nil) async throws {
-        let _: OKResponse = try await post(
+        atEdgeOnLastSwipe = nil
+        let response: OKResponse = try await post(
             "/swipe",
             body: SwipeRequest(direction: direction, fast: fastFlag,
                                scroll: intent == .gesture ? nil : true,
@@ -652,6 +658,7 @@ public final class BridgeClient: AppDriver {
                                path: path,
                                edge: intent == .edge ? true : nil),
             timeout: interactionTimeout)
+        atEdgeOnLastSwipe = response.atEdge
     }
 
     /// scrollToEdge のジェスチャ(Android)。**行き過ぎても無害な用途にだけ使う**(探索に使うと
