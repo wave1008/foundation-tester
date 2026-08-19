@@ -186,6 +186,21 @@ Shirates 準拠のコマンド名(`flick*`)。**画面(または `scrollFrame`)�
 - `scrollableElement` 引数は無い(`scrollFrame` のセレクタ式で足りる)
 - Shirates の `flickAndGo*` 一族(画面遷移トリガ)・要素基点の `TestElement.flickTo*`/`flickOut*` は未実装(docs/shirates-parity.md)
 
+### Android の WebView はスクリーンショットに写らないことがある
+
+**端末のキャプチャが WebView の層を落とす**ことがある(2026-08-20 に自前 SUT で再現。
+木には WebView の全要素が実座標で載っているのに、ブリッジの `UiAutomation.takeScreenshot`・
+`adb exec-out screencap`・エミュレータの gRPC の**3経路とも同じ空白**を返した)。
+**撮り方を替えても直らない**ので、その場合だけ **CDP(`Page.captureScreenshot`)から撮った
+ページ画像を、空白の領域へ貼って1枚に合成**する。
+
+- 発動するのは「画面の 45% 以上が1色の帯になっている」ときだけ。写っている画面では何もしない
+  (実測: 写っている画面 0.23s / 補完した画面 1.1〜2.2s / 帯のない通常画面 +0.1s)
+- **縦横比が合わないときは貼らない**(たまたま余白が大きいだけの画面に無関係な画像を貼らない)
+- 殺しスイッチは `FT_WEBVIEW_DOM=off`(DOM 読みと同じ口)
+- **写らないのは間欠的**: 同じ画面でもアプリを起動し直すと写ることがある。到達確認は
+  スクリーンショットではなく木のアサーション(`exist` / `notExist`)で書くのが確実
+
 ## 存在・状態の検証
 
 | コマンド | 説明 |
@@ -482,7 +497,7 @@ inconclusive はシナリオを中断しない。レポート・ログには ❓
 | `appSwitcher()` | アプリスイッチャーを開く |
 | `rotateTo(.landscape)` | 画面を回す。向きは **`.portrait` / `.landscape` の2つだけ**。**契約は「アプリの UI がその向きになること」**で、デバイスがどう傾いているかではない —— テストが観測できる frame と画面サイズは iOS / Android とも、Compose / SwiftUI / View-XML / Flutter / React Native のどれでもアプリ座標系で返るので、跨いで同じ意味を持つのはここまで(左右の区別は観測できないので語彙に置かない)。回した後は**向きが実際に変わるまで待ってから返る**(要求直後は古い向きが読める)。**回転を使ったシナリオは終了時に元の向きへ自動で戻る**(Android は自動回転の設定も戻す)。**アプリが横向きを許可していないと回らない**(iOS は Info.plist の `UISupportedInterfaceOrientations`、Android は `screenOrientation`)。iOS はその接続が使っているエンジンで回し、Android はホスト側の adb(`user_rotation`)で回すので実機でも効く。**Android は自動回転を切る**(切らないと角度が保持されない。実測)。MCP の `ft_rotate` は戻さないので、探索の後は自分で戻すか端末を初期化する |
 | `tapAppIcon(name?)` | ホーム画面のアプリアイコンをタップ(Shirates の `auto` 相当のみ。`tapAppIconMethod` 等のマクロ機構は無い)。**名前省略時はアプリプロファイルの `appName`**(親が解決して渡す。無ければ明示エラー)。手順: `home()`(iOS はもう1回)→ 現在画面で探索 → 見つからなければ Android はドロワーを開いて `flickCenterToTop` で最大8回スクロール探索、iOS は `flickRightToLeft` で最大5ページ送り(2回連続不変化でも打ち切り)。最後まで見つからなければ失敗(`"App icon not found.(name)"`) |
-| `screenshot(filename:?)` | 現在の画面を撮り、レポートのこのステップ直後に埋め込む。ファイル名省略時はステップ連番(`.png`)。Shirates の `force`/`onChangedOnly`/`withXmlSource` は無い |
+| `screenshot(filename:?)` | 現在の画面を撮り、レポートのこのステップ直後に埋め込む。ファイル名省略時はステップ連番(`.png`)。Shirates の `force`/`onChangedOnly`/`withXmlSource` は無い。**Android の WebView 画面**は端末のキャプチャに中身が写らないことがあり、その場合だけ CDP から撮ったページ画像を合成する(下記) |
 
 ## 待機・分岐・反復
 
