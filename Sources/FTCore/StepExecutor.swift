@@ -209,6 +209,9 @@ public final class StepExecutor {
     /// 解決を試す(アプリ上に載ったシステム UI=別プロセスのダイアログ等を XCUITest で拾う)。
     /// 解決に使った driver でそのまま act するので ref 名前空間の混同はない。
     public let fallbackDriver: AppDriver?
+    /// システム許可アラートを自動で押すボタンラベル(実行プロファイルの iosSystemAlertButtons)。
+    /// 空 = 何もしない。**fallbackDriver がある(hybrid)ときだけ効く**
+    public let systemAlertButtons: [String]
     /// hybrid 用: type アクションを XCUITest(アプリ attach)で実行する代替ドライバ。inapp が
     /// UIKit 非依存アプリ(Compose 等)で type 不能(409)なときの経路。fallbackDriver(springboard
     /// 参照・システム UI 用)とは別物。
@@ -337,6 +340,7 @@ public final class StepExecutor {
     }
 
     public init(driver: AppDriver, fallbackDriver: AppDriver? = nil,
+                systemAlertButtons: [String] = [],
                 typeDriver: AppDriver? = nil, preferTypeDriver: Bool = false,
                 typeDriverGestures: Set<String> = [],
                 delegate: ReplayDelegate? = nil, healingEnabled: Bool = false,
@@ -352,6 +356,7 @@ public final class StepExecutor {
         self.defersPartialSheetRecovery = defersPartialSheetRecovery
         self.driver = driver
         self.fallbackDriver = fallbackDriver
+        self.systemAlertButtons = systemAlertButtons
         self.typeDriver = typeDriver
         self.preferTypeDriver = preferTypeDriver
         self.typeDriverGestures = typeDriverGestures

@@ -77,6 +77,60 @@ public enum ProfileWorkerFactory {
         }
     }
 
+    /// run 開始時のデバイス準備を**1箇所に束ねる**。iOS ワーカーの供給口は3つあり、
+    /// 個別に足すと必ずどれかを落とすので、開始時にやることはここへ集める
+    public static func prepareDevicesOnStart(_ workers: [RunWorker], homeOnStart: Bool,
+                                             log: @escaping @Sendable (String) -> Void) async {
+        await pressHomeOnStart(workers, enabled: homeOnStart, log: log)
+        await warnOnResidualSystemAlerts(workers, log: log)
+    }
+
+    /// run 開始時点で画面に残っているアラートを**警告する**(閉じない。理由と背景は
+    /// FTCore.ResidualSystemAlertTriage)。閉じたいなら実行プロファイルの `iosSystemAlertButtons`。
+    ///
+    /// **SpringBoard を見られる接続でしか判定できない**ので、engine=inapp 単独の台は黙って飛ばす
+    /// (in-app ブリッジは注入先アプリのプロセスしか見えない = 「アラートが無い」と誤って言える)。
+    /// 固定費は iOS ワーカーあたり snapshot 1枚で、全台並行に撃つ。
+    /// **失敗は握りつぶす** —— これは診断であって run を止める理由にはしない
+    public static func warnOnResidualSystemAlerts(
+        _ workers: [RunWorker], log: @escaping @Sendable (String) -> Void
+    ) async {
+        let targets: [(String, BridgeClient)] = workers.compactMap { worker in
+            guard worker.platform == "ios" else { return nil }
+            let host = worker.connection.host ?? BridgeEndpoint.loopbackHost
+            // 実機/シミュレータの UDID はここで分かっているので渡し切る
+            // (PhysicalUDIDPlumbingTests の規律。渡さないと実機が名前引きの simctl 経路へ落ちる)
+            let physicalUDID = worker.connection.physical ? worker.connection.udid : nil
+            let simulatorUDID = worker.connection.physical ? nil : worker.connection.udid
+            if let xcuiPort = worker.connection.xcuiPort {
+                return (worker.label, BridgeClient(port: xcuiPort, host: host,
+                                                   physicalUDID: physicalUDID,
+                                                   simulatorUDID: simulatorUDID))
+            }
+            let engine = worker.connection.engine
+            guard engine == nil || engine == "xcuitest", let port = worker.connection.port else {
+                return nil
+            }
+            return (worker.label, BridgeClient(port: port, host: host,
+                                               physicalUDID: physicalUDID,
+                                               simulatorUDID: simulatorUDID))
+        }
+        guard !targets.isEmpty else { return }
+        await withTaskGroup(of: String?.self) { group in
+            for (label, client) in targets {
+                group.addTask {
+                    guard let snapshot = try? await client.snapshot(),
+                          let described = ResidualSystemAlertTriage.describe(
+                            elements: snapshot.elements) else { return nil }
+                    return "⚠️ \(label): an alert is already on screen before the run starts —"
+                        + " \(described). It is drawn by another process, so it survives"
+                        + " terminate/uninstall and will swallow every step until it is dismissed"
+                }
+            }
+            for await line in group { if let line { log(line) } }
+        }
+    }
+
     /// **画面を必ず変える無害な入力**を送り、その後のフレームを返す(iOS シミュレータ)。
     /// `BlankWorkerTriage` の能動プローブ用。
     ///
@@ -456,8 +510,12 @@ public enum ProfileWorkerFactory {
         RunWorker(
             label: RunWorker.makeLabel(deviceName: device.name, platform: "ios", id: "\(device.port)"),
             platform: "ios",
+            // **シミュレータでも UDID を渡す**: install/uninstall/clearAppData の対象特定が
+            // ブリッジの status() に落ちると、removeApp() でアプリごとブリッジを消した直後の
+            // installApp() が接続拒否で失敗する(BridgeClient.knownTarget の宣言)
             driver: BridgeClient(port: device.port, host: device.host,
-                                 physicalUDID: device.physical ? device.udid : nil),
+                                 physicalUDID: device.physical ? device.udid : nil,
+                                 simulatorUDID: device.physical ? nil : device.udid),
             connection: iosConnection(device: device, iosApp: iosApp),
             logicalName: device.name)
     }

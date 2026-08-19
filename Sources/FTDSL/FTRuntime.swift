@@ -354,6 +354,7 @@ public final class FTDriveCore {
     public private(set) var deviceFrozen = false
 
     public init(driver: AppDriver, platform: String, app: String,
+                systemAlertButtons: [String] = [],
                 scenarioID: String, scenarioTitle: String,
                 delegate: ReplayDelegate?, healingEnabled: Bool,
                 falsePositiveCheckEnabled: Bool = true, screenIsEnabled: Bool = true,
@@ -381,6 +382,7 @@ public final class FTDriveCore {
         self.appBundleID = app
         self.homeScreenDriverOverride = homeScreenDriver
         self.executor = StepExecutor(driver: driver, fallbackDriver: fallbackDriver,
+                                     systemAlertButtons: systemAlertButtons,
                                      typeDriver: typeDriver, preferTypeDriver: preferTypeDriver,
                                      typeDriverGestures: typeDriverGestures,
                                      delegate: delegate, healingEnabled: healingEnabled,
@@ -1039,6 +1041,18 @@ public final class FTDriveCore {
                 Thread.sleep(forTimeInterval: min(remaining, 0.25))
             }
         } while Date() < deadline
+        // **「無い」を確定する側で fallbackDriver を1回だけ照会する**(2026-08-19)。
+        // hybrid では SpringBoard のダイアログ(位置情報・通知の許可)が primary の snapshot に
+        // 映らないので、ここを通さないと `ifCanSelect("許可")` が**原理的に成立しない** ——
+        // tap(StepExecutor+Actions)と exist(同+Assert)は既に照会しているのに、
+        // **docs が勧めていた ifCanSelect だけが唯一届かない書き方**だった(受け手報告)。
+        // 規律は notExists の照会と同じ: **不成立が確定した1回だけ**払う(毎周回だと
+        // springboard 再session の数百 ms が待ちを支配する)
+        if let fb = executor.fallbackDriver,
+           let fsnap = FTSync.run({ try? await fb.snapshot() }) ?? nil,
+           StepExecutor.resolve(step: step, in: fsnap, strictForAssert: true) != nil {
+            return true
+        }
         return false
     }
 

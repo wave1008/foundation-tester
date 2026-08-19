@@ -14,6 +14,11 @@ public final class BridgeClient: AppDriver {
     let fastInput: Bool
     /// 実機の UDID(nil = シミュレータ)。install の simctl / devicectl 分岐にのみ使う
     let physicalUDID: String?
+    /// 既知のシミュレータ UDID(ワーカー構築時に分かっている場合だけ入る。nil = ブリッジに聞く)。
+    /// **これが無いと removeApp() の直後に installApp() できない** —— 対象の特定が `status()` に
+    /// 依存するため、アプリごと in-app ブリッジを消した後は「入れる先を教えてくれる相手」が
+    /// 居なくなる(2026-08-19 の受け手報告)
+    let simulatorUDID: String?
     /// リクエストに載せる値(未使用時はキーごと省略 → 旧ランナーと byte 互換)。
     ///
     /// **探索のスワイプだけ quiescence を飛ばす案は不採用**(2026-08-04 実測)。
@@ -49,11 +54,12 @@ public final class BridgeClient: AppDriver {
     /// monitor/list-devices のスキャンが毎回 45s 待った。2026-07-25)
     public convenience init(port: UInt16 = BridgeAPI.defaultPort, timeoutSeconds: TimeInterval = 120,
                             host: String = BridgeEndpoint.loopbackHost,
-                            physicalUDID: String? = nil) {
+                            physicalUDID: String? = nil,
+                            simulatorUDID: String? = nil) {
         self.init(port: port, timeoutSeconds: timeoutSeconds,
                   interactionTimeout: min(Timeout.interaction, timeoutSeconds),
                   sessionTimeout: min(Timeout.session, timeoutSeconds),
-                  host: host, physicalUDID: physicalUDID)
+                  host: host, physicalUDID: physicalUDID, simulatorUDID: simulatorUDID)
     }
 
     /// テスト専用 seam: interaction/session の予算を短縮注入する(未応答ブリッジのタイムアウト
@@ -63,9 +69,11 @@ public final class BridgeClient: AppDriver {
     init(port: UInt16, timeoutSeconds: TimeInterval = 120,
         interactionTimeout: TimeInterval, sessionTimeout: TimeInterval,
         host: String = BridgeEndpoint.loopbackHost,
-        physicalUDID: String? = nil) {
+        physicalUDID: String? = nil,
+        simulatorUDID: String? = nil) {
         self.baseURL = URL(string: "http://\(host):\(port)")!
         self.physicalUDID = physicalUDID
+        self.simulatorUDID = simulatorUDID
         // 高速入力(quiescence スキップ)はプロセス単位の環境変数で有効化する
         // (実行プロファイル iosFastInput / CLI --fast-input が FT_FAST_INPUT=1 を注入。
         //  BridgeClient は hybrid のフォールバック経路でも生成されるため init 引数ではなく env で統一)
@@ -145,6 +153,16 @@ public final class BridgeClient: AppDriver {
         return .unknown(name: device)
     }
 
+    /// **ブリッジに聞かずに決まる対象**(呼び出し側が UDID を知っている場合)。nil = 聞くしかない。
+    /// install/uninstall/clearAppData の対象特定が `status()` に依存していると、
+    /// `removeApp()` でアプリごと in-app ブリッジを消した直後の `installApp()` が
+    /// 「接続拒否」で落ちる。親(ワーカー)は UDID を知っているので、ここで使い切る
+    static func knownTarget(physicalUDID: String?, simulatorUDID: String?) -> ResolvedTarget? {
+        if let physicalUDID { return .physical(udid: physicalUDID) }
+        if let simulatorUDID { return .simulator(udid: simulatorUDID) }
+        return nil
+    }
+
     /// 実行時の既定の引き当て(実機一覧は必要になったときだけ devicectl を叩く)
     static func resolveTarget(named device: String) -> ResolvedTarget {
         resolveTarget(named: device, simulators: try? SimulatorCatalog.devices(),
@@ -153,8 +171,14 @@ public final class BridgeClient: AppDriver {
 
     /// simctl 系の対象特定。**実機は 501**(devicectl に同等手段が無い)
     func simctlTarget(_ operation: String) async throws -> String {
-        let current = try await status()
-        switch Self.resolveTarget(named: current.device) {
+        // 既知の UDID があればブリッジに聞かない(knownTarget の宣言)
+        let resolved: ResolvedTarget
+        if let known = Self.knownTarget(physicalUDID: physicalUDID, simulatorUDID: simulatorUDID) {
+            resolved = known
+        } else {
+            resolved = Self.resolveTarget(named: try await status().device)
+        }
+        switch resolved {
         case .simulator(let udid): return udid
         case .physical:
             throw DriverError.badResponse(status: 501,
@@ -178,7 +202,9 @@ public final class BridgeClient: AppDriver {
     /// (profile 経由なら physicalUDID が来るが、MCP のポート直指定では来ないので
     /// カタログからも引く。引けなければ simctl の対象として扱う)
     func installTarget() async throws -> ResolvedTarget {
-        if let physicalUDID { return .physical(udid: physicalUDID) }
+        if let known = Self.knownTarget(physicalUDID: physicalUDID, simulatorUDID: simulatorUDID) {
+            return known
+        }
         let current = try await status()
         return Self.resolveTarget(named: current.device)
     }
