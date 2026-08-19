@@ -84,6 +84,14 @@ struct ApiRunCommand: AsyncParsableCommand {
     @Option(help: "Android device serial (adb -s; defaults to the only connected device. Cannot be combined with --profile)")
     var serial: String?
 
+    /// `ftester run --app` と揃える。**揃えないと逃げ道の案内が届かない** ——
+    /// 「app が解決できない」のエラーは --app を勧めるが、拡張は api run を使うので、
+    /// こちらに無いと「言われたとおりにしたらオプションが無い」で行き止まりになる
+    /// (2026-08-20 の受け手報告)
+    @Option(name: .customLong("app"),
+            help: "Default app (bundle ID / package name) for scenarios that declare no @TestClass(app:). Only needed without --profile; with --profile the app profile supplies it")
+    var app: String?
+
     @Option(help: "Dispatch this run to a remote Mac over SSH: a registered name (ftester remote hosts) or a raw user@host/host. Relays its NDJSON stream. Requires --profile. Experimental (docs/remote-runner.md)")
     var host: String?
 
@@ -626,7 +634,8 @@ struct ApiRunCommand: AsyncParsableCommand {
                 project: project, scenarioID: info.id, connection: connection,
                 fm: FMConfig(heal: heal), reportDir: reportDirPath, defaultTimeout: defaultTimeout,
                 scenarioTimeout: scenarioTimeout,
-                dryRun: dryRun, debug: debugOptions, recording: recording) { event in
+                dryRun: dryRun, debug: debugOptions, recording: recording,
+                appBundleID: app) { event in
                 // host 発の log イベント等、scenario 未設定のものは現在のシナリオ ID を補う
                 var event = event
                 if event.scenario == nil { event.scenario = info.id }
