@@ -117,8 +117,11 @@ public struct InAppLauncher {
         let waitStart = clock.now
         try await waitUntilReady()
         let waitMs = continuousClockMs(clock.now - waitStart)
-        // pid ファイルを持たない in-app ブリッジを bridge down 系コマンドが後始末できるよう記録
-        InAppBridgeState.write(stateDir: stateDir, port: port, udid: udid, bundleID: bundleID)
+        // pid ファイルを持たない in-app ブリッジを bridge down 系コマンドが後始末できるよう記録。
+        // **sourceDigest も残す**: これが無いと、次の run が「ソースが変わったのに稼働中の
+        // ブリッジを再利用する」= 変更が1度も実行されないまま緑になる(InAppBridgeState 冒頭)
+        InAppBridgeState.write(stateDir: stateDir, port: port, udid: udid, bundleID: bundleID,
+                               sourceDigest: try? BridgeSourceSet.inApp.digest(repoRoot: repoRoot))
         return LaunchTiming(actionMs: actionMs, waitMs: waitMs)
     }
 
