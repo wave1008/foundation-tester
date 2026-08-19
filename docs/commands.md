@@ -106,7 +106,7 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 | `scrollTo(sel, direction: .down, maxSwipes: 8, containerInference:)` | 要素が見つかるまでスクロール(見つかったら成功。タップはしない)。`containerInference:` は下記「容器の推測に依存する補正」参照 |
 | `scrollDown(repeat: 1)` / `scrollUp` / `scrollRight` / `scrollLeft` | 1 画面ぶんスクロール(`repeat:` 回繰り返す) |
 | `scrollFrame:` / `startMarginRatio:` / `endMarginRatio:`(`scroll*` / `scrollToBottom` 等 / `scrollTo` の引数。`withScroll*` は `scrollFrame:` のみ取る) | **スクロールさせたい領域**をセレクタ式で指定する(Shirates 準拠)。例: `scrollTo("#row_40", scrollFrame: "#list_rows")`。**どれが容器かは MCP の `ft_snapshot` が行末に出す `scroll` 印**で分かる(2つ以上あるときは先頭でも名指しする。ただし**印が無い = スクロールしない、ではない** —— Compose / Flutter は xcuitest エンジンでは申告できない(in-app は版57から申告できる))。**省略時は画面中央基準の全画面スワイプ**(マージン指定も無視)。`withScrollDown(scrollFrame:) { }` に渡すとブロック内の探索が継承する。**Compose / Flutter の in-app エンジンは領域を切り分けられないため XCUITest へ自動フォールバックする**(そのぶん遅い)。**スクロールできない領域を指定すると、スワイプは成功するが何も動かない** —— 気付けるようにステップへ注記が付く(`the specified scrollFrame is not scrollable` / margin で動かせる幅が潰れた場合は `resolved but leaves nothing to move`)。**画面に1件も無い scrollFrame を指定すると、スワイプを1本も送らずに失敗する**(2026-08-08。`scrollTo` の探索だけでなく `scroll*` / `scrollTo*Edge` 系 / `flick*` / `withScroll*` 配下の探索も同じ。**`select` 系だけは例外**で、掴めなければ空要素を返す契約が優先し skipped になる。以前は黙って全画面スワイプへ退化し、カード上のボタンを発火させる実害があった。探索中に容器が木から消えた場合も失敗になる)。**Compose(CMP)で領域指定が必須だった制限は 2026-08-03 に解消**(容器の外に出る ghost 要素を掴んでいた。docs/verification.md「Compose の探索直後タップ」)|
-| `scrollToBottom(maxSwipes: 50)` / `scrollToTop` / `scrollToRightEdge` / `scrollToLeftEdge` | 端まで送る(**画面が変化しなくなるまで**。maxSwipes は暴走を止める上限で、上限で打ち切ったときはステップに注記が付く) |
+| `scrollToBottom(maxSwipes: 50)` / `scrollToTop` / `scrollToRightEdge` / `scrollToLeftEdge` | 端まで送る(**画面が変化しなくなるまで**。maxSwipes は暴走を止める上限で、上限で打ち切ったときはステップに注記が付く)。**iOS の in-app エンジンは1回で端まで寄せる** —— 下記「端送りの速さはエンジンで決まる」 |
 | `withScrollDown { … }` / `withScrollUp` / `withScrollRight` / `withScrollLeft` | ブロック内の `tap` / `type` / `clearInput` / `select` / `exist` / `notExist` を**すべてスクロール探索**にする(明示の `scroll:` があればそちらが優先)。**`notExist` は意味が変わる** — 探索中に見つかった時点で失敗になる |
 | `withoutScroll { … }` | 外側の `withScroll*` を打ち消し、ブロック内は現在画面だけで解決する |
 | `withoutContainerInference { … }` | ブロック内のすべてのコマンドで、容器の推測に依存する補正を止める(下記) |
@@ -130,6 +130,22 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 | `stopped at the limit of N (may not have reached the edge yet)` | `maxSwipes` で打ち切った = 端に着いたとは限らない | **する**。`maxSwipes` を増やすか、そもそも端に着けない画面かを疑う |
 | `the screen did not settle (poll limit)` | スワイプ後 600ms 待っても画面の動きが止まらなかった(慣性が長い等)。操作自体は送られている | 通常は不要。**同じ箇所で毎回出るなら**、静止前の座標でタップして flake る余地があるので調べる価値がある |
 | `fell back to XCUITest` | in-app エンジンで実行できずフォールバックした(1回あたり数百 ms 遅い) | 通常は不要。多発するなら実行プロファイルのエンジン選択を見直す |
+
+### 端送りの速さはエンジンで決まる
+
+`scrollToBottom` 等は「1本振る → 木を読んで動きが止まったか見る」の繰り返しで、
+**1ページ進むごとの往復**が所要になる。長文(利用規約・長い規程)ではここがページ数に比例する。
+**1ページで進む量と、そもそも往復が要るかはエンジンで違う**:
+
+| エンジン | 1回の送り | 長文の所要 |
+|---|---|---|
+| iOS in-app(UIKit/SwiftUI・WebView) | **端まで一度に寄せる**(`contentOffset` を直接動かす経路で、ジェスチャも慣性も無いため刻む理由が無い) | **文書の長さに依存しない**(実測: 40 行リストの `scrollToTop` が 2.0s → 0.8s) |
+| iOS in-app(Compose / Flutter) | 1回 = 1ページ(UIAccessibility の scroll。刻み幅を選べない API) | ページ数に比例 |
+| iOS xcuitest | 実スワイプ(velocity 1500 のフリング。約 1.1 画面) | ページ数に比例 |
+| Android | 実スワイプ(フリング。約 0.5 画面) | ページ数に比例。**`maxSwipes` の既定 50 で届かない文書もある**(その場合は上限打ち切りの注記が出る) |
+
+実ジェスチャのエンジンで長文を送るときは `maxSwipes` を上げる。**`flick*` を並べて速くしようとしない** ——
+flick は**ジェスチャそのものが目的**のコマンドで端の判定を持たない(着いたかどうかは自分で確かめることになる)。
 
 ```swift
 tap("設定", scroll: .down)          // 折り返しの下にある項目を探索してからタップ
