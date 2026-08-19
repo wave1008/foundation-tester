@@ -31,6 +31,8 @@ public final class AndroidDriver: AppDriver {
     /// 大きいため毎 snapshot では叩かず、StepExecutor が keyboardShown/keyboardNotShown アサートの
     /// 直前に立てたときだけ払う(snapshot() 側で読み捨てる)
     private var captureKeyboardOnNextSnapshot = false
+    /// 空白キャプチャを補えなかったことの警告を出したか(1プロセス1回)
+    private var warnedAboutBlankCapture = false
 
     /// raiseElementLimitOnNextSnapshot() が立てる1回限りの要素上限(nil = 既定)
     private var pendingElementLimit: Int?
@@ -731,25 +733,48 @@ public final class AndroidDriver: AppDriver {
     /// 貼れない・貼る必要が無いときは nil = 端末の画像をそのまま使う。
     ///
     /// 順序は**安い順**: ①画像に全幅の大きな1色の帯があるか(数ミリ秒。通常の画面はここで終わる)
-    /// → ②CDP でページを撮る → ③縦横比が帯と合うときだけ貼る。
+    /// → ②木を読んで `webView` の矩形を採る → ③CDP でページを撮る → ④貼れる形なら貼る。
     ///
-    /// **貼る位置は a11y の webView ノードではなく帯**。Android は WebView の a11y サブツリーを
-    /// 出したり出さなかったりする(2026-08-20 に同じ画面で「木に居る/居ない」の両方を実測)ので、
-    /// 木の有無を門にすると出ないときに黙って何もしないことになる
+    /// **貼る位置は木の `webView` ノードを優先し、無ければ帯**(2026-08-20 の受け手報告で修正)。
+    /// 当初は帯だけで決めていたが、**アプリの chrome ごと写らずに画面全体が1色になる端末**では
+    /// 帯 = 画面全体になり、ページ画像と縦横比が合わず**1枚も貼れなかった**。
+    /// ノードがあれば「どこからどこまでが WebView か」が分かるので、その矩形へ貼る。
+    /// ノードが出ないことも実際にある(同じ画面で「木に居る/居ない」の両方を実測)ので、
+    /// その場合だけ帯へ落ち、**縦横比がほぼ一致するときに限って**貼る
     private func webViewComposited(_ devicePNG: Data) async -> Data? {
         guard AndroidWebViewDOM.isAppWebViewDOMEnabled,
               let base = WebViewShotComposite.cgImage(fromPNG: devicePNG),
               let band = WebViewShotComposite.largestUniformBand(base) else { return nil }
-        var package = currentPackage
-        if package == nil { package = (try? await snapshot())?.sessionBundleID }
-        guard let package else { return nil }
+        let snapshot = try? await snapshot()
+        guard let package = snapshot?.sessionBundleID ?? currentPackage else { return nil }
+        // 木の webView ノード(あれば正確な矩形)。無ければ帯で代用する
+        let nodeRect = snapshot.flatMap { tree -> CGRect? in
+            guard let node = WebViewDOM.webViewElement(in: tree.elements) else { return nil }
+            return WebViewShotComposite.imageRect(
+                frame: (node.frame.x, node.frame.y, node.frame.width, node.frame.height),
+                screen: (tree.screen.width, tree.screen.height),
+                imageWidth: base.width, imageHeight: base.height)
+        }
         guard let pagePNG = await AndroidWebViewDOM.capturePagePNG(
                 serial: serial ?? "", packageID: package, route: .appWebView,
                 webViewLabel: nil, urlBarValue: nil, adb: { try self.adb($0).output }),
               let overlay = WebViewShotComposite.cgImage(fromPNG: pagePNG),
-              WebViewShotComposite.fits(band: band, pageWidth: overlay.width,
-                                        pageHeight: overlay.height) else { return nil }
-        return WebViewShotComposite.composite(base: base, overlay: overlay, rect: band)
+              let rect = WebViewShotComposite.pasteRect(
+                in: nodeRect ?? band, pageWidth: overlay.width, pageHeight: overlay.height,
+                known: nodeRect != nil) else {
+            warnBlankCaptureOnce(hasWebViewNode: nodeRect != nil)
+            return nil
+        }
+        return WebViewShotComposite.composite(base: base, overlay: overlay, rect: rect)
+    }
+
+    /// 補えなかったことを1プロセスに1回だけ知らせる(毎枚出すと騒がしい)。
+    /// 文言と切り分け方は WebViewShotComposite.blankCaptureWarning
+    private func warnBlankCaptureOnce(hasWebViewNode: Bool) {
+        guard !warnedAboutBlankCapture else { return }
+        warnedAboutBlankCapture = true
+        let text = WebViewShotComposite.blankCaptureWarning(hasWebViewNode: hasWebViewNode)
+        FileHandle.standardError.write(Data((text + "\n").utf8))
     }
 
     public func terminate() async throws {
