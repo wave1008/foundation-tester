@@ -159,7 +159,8 @@ struct ApiListScenarios: AsyncParsableCommand {
 private struct ApiScenarioInfo: Encodable {
     let id: String
     let title: String
-    let app: String
+    /// `@TestClass(app:)` の明示値。null = 未指定 = 実行プロファイルで解決される
+    let app: String?
     let platform: String?
     let deleted: Bool
     /// クラスを定義する .swift の絶対パス(見つからなければ nil)

@@ -15,28 +15,40 @@ public struct FTScenarioDescriptor {
     public let title: String
     /// @Deleted(クラスまたはメソッド)による論理削除。一括実行から除外される
     public let deleted: Bool
+    /// @Test(platform:)。"ios" / "android" / nil(クラスの platform: に従う)。
+    /// **実効値はクラス側との合成**なので、読むときは effectivePlatform(classPlatform:) を通す
+    public let platform: String?
     /// テストクラスの新規インスタンスを作ってメソッドを呼ぶクロージャ(マクロ生成)
     public let run: () -> Void
 
     public init(name: String, title: String, deleted: Bool = false,
+                platform: String? = nil,
                 run: @escaping () -> Void) {
         self.name = name
         self.title = title
         self.deleted = deleted
+        self.platform = platform
         self.run = run
+    }
+
+    /// メソッド側 ?? クラス側。どちらも無ければ nil(= 両OS対応 = run の既定 platform で走る)
+    public func effectivePlatform(classPlatform: String?) -> String? {
+        platform ?? classPlatform
     }
 }
 
 /// テストクラス(@TestClass)のメタデータ
 public struct FTTestClassDescriptor {
     public let className: String
-    /// 対象アプリの bundle ID / パッケージ名
-    public let app: String
+    /// 対象アプリの bundle ID / パッケージ名。nil = `@TestClass(app:)` 未指定 =
+    /// 実行プロファイルから解決する(FTCore.ScenarioAppResolution)
+    public let app: String?
     /// "ios" / "android" / nil(両OS対応)
     public let platform: String?
     public let scenarios: [FTScenarioDescriptor]
 
-    public init(className: String, app: String, platform: String?, scenarios: [FTScenarioDescriptor]) {
+    public init(className: String, app: String? = nil, platform: String? = nil,
+                scenarios: [FTScenarioDescriptor]) {
         self.className = className
         self.app = app
         self.platform = platform

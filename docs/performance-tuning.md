@@ -1587,7 +1587,8 @@ window/transition/animator の `*_scale` はチューニングノブではなく
        働いた確証。既存 `ログインテスト.S0010` も hybrid で全 passed(通常シナリオに非回帰)。
        **アラート文言はロケール依存**(この個体は英語 "Allow"/"Don't Allow")。
      - **シナリオ単位の自動ルーティング**(ScenarioRunnerMain のドライバ構築): シナリオの対象アプリ
-       (`@TestClass(app:)`)が in-app 注入先(in-app /status の sessionBundleID)と**異なる**とき、
+       (解決済みの既定アプリ。`FTCore.ScenarioAppResolution`)が in-app 注入先
+       (in-app /status の sessionBundleID)と**異なる**とき、
        hybrid はそのシナリオを**丸ごと XCUITest ブリッジで駆動**(iOS設定アプリ等のシナリオが既定 ON でも
        動く)。engine=inapp(明示)は明示エラー。**この分岐が無いと別アプリの注入起動がポート衝突で
        旧ブリッジの偽成功応答になり「裏のアプリを操作して失敗」する**(E2E で実際に発生)。

@@ -361,4 +361,97 @@ final class TestClassMacroTests: XCTestCase {
         )
     }
 
+    /// `app:` を書かないと descriptor は nil を持つ = 実行プロファイルから解決される
+    /// (FTCore.ScenarioAppResolution)。空文字にすると「未指定」と「空文字指定」が区別できず
+    /// プロファイルへ落ちなくなるので、**nil であることが契約**
+    func testApp未指定は展開でnilになる() {
+        assertMacroExpansion(
+            """
+            @TestClass
+            class T {
+                @Test("t")
+                func S0010() {
+                }
+            }
+            """,
+            expandedSource:
+            """
+            class T {
+                func S0010() {
+                }
+            }
+
+            final class __FTReg_T: FTDSL.FTScenarioRegistration {
+                override class var descriptor: FTDSL.FTTestClassDescriptor {
+                    T.ftDescriptor
+                }
+            }
+
+            extension T: FTDSL.FTTestClassDefinition {
+                public static var ftDescriptor: FTDSL.FTTestClassDescriptor {
+                    FTDSL.FTTestClassDescriptor(
+                        className: "T",
+                        app: nil,
+                        platform: nil,
+                        scenarios: [
+                        FTDSL.FTScenarioDescriptor(
+                            name: "S0010",
+                            title: "t",
+                            run: {
+                                T().S0010()
+                            }),
+                        ])
+                }
+            }
+            """,
+            macroSpecs: macros
+        )
+    }
+
+    /// @Test(platform:) はメソッド単位の対象OS宣言(クラスの platform: より優先)
+    func testTestのplatform引数が展開される() {
+        assertMacroExpansion(
+            """
+            @TestClass(platform: "ios")
+            class T {
+                @Test("t", platform: "android")
+                func S0010() {
+                }
+            }
+            """,
+            expandedSource:
+            """
+            class T {
+                func S0010() {
+                }
+            }
+
+            final class __FTReg_T: FTDSL.FTScenarioRegistration {
+                override class var descriptor: FTDSL.FTTestClassDescriptor {
+                    T.ftDescriptor
+                }
+            }
+
+            extension T: FTDSL.FTTestClassDefinition {
+                public static var ftDescriptor: FTDSL.FTTestClassDescriptor {
+                    FTDSL.FTTestClassDescriptor(
+                        className: "T",
+                        app: nil,
+                        platform: "ios",
+                        scenarios: [
+                        FTDSL.FTScenarioDescriptor(
+                            name: "S0010",
+                            title: "t",
+                            platform: "android",
+                            run: {
+                                T().S0010()
+                            }),
+                        ])
+                }
+            }
+            """,
+            macroSpecs: macros
+        )
+    }
+
 }

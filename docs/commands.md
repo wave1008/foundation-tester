@@ -434,11 +434,29 @@ inconclusive はシナリオを中断しない。レポート・ログには ❓
 
 ## アプリ・OS 操作
 
+### 既定アプリ(bundleID を省略したとき)
+
+`launchApp()` / `restartApp()` / `terminateApp()` / `removeApp()` / `clearAppData()` / `appIs()` が
+引数を省略したときの対象は、次の順で決まる:
+
+1. `@TestClass(app: "...")` の明示(**書いてあればこれが勝つ**)
+2. 実行プロファイル(`runs/<name>.json` の `app`)→ アプリプロファイル(`apps/<name>.json`)→
+   **実行中 platform の `ios.app` / `android.app`**
+
+**通常は `app:` を書かない**。書かなければ同じシナリオが `--profile ios` と `--profile android` で
+それぞれのアプリを対象に走る(OS で bundle ID が違っていてもクラスを複製しなくてよい)。
+`app:` を書くのは、1プロジェクトに複数アプリのシナリオが混在していてシナリオ側で固定したいときだけ。
+明示とプロファイルが食い違うと、明示を採ったうえで run ログに警告が1行出る。
+
+どちらからも決まらないとき(実行プロファイル無しの単独実行など)は明示エラーになる。
+`ftester run --app <bundleID>` で渡すか、`--profile` を使う。
+`installApp()` の `appPath` も同じくアプリプロファイルの `<platform>.appPath` から解決される。
+
 | コマンド | 説明 |
 |---|---|
-| `launchApp(bundleID?, url:?)` | 起動(省略時は `@TestClass(app:)` のアプリ)。**起動済みでも前面化ではなく、常にプロセスを終了してから起動し直す**(Android はブリッジが force-stop+起動、iOS は terminate 込み launch。エントリー画面から始まる)。`url:` を渡すと起動直後にその URL を配送する(配送の詳細・制約は `openURL` を参照) |
+| `launchApp(bundleID?, url:?)` | 起動(省略時は**この run の既定アプリ** = 実行プロファイル → アプリプロファイルの `<platform>.app`。`@TestClass(app:)` が書かれていればそちらが勝つ)。**起動済みでも前面化ではなく、常にプロセスを終了してから起動し直す**(Android はブリッジが force-stop+起動、iOS は terminate 込み launch。エントリー画面から始まる)。`url:` を渡すと起動直後にその URL を配送する(配送の詳細・制約は `openURL` を参照) |
 | `openURL(url)` | 起動済みのアプリへ URL(ディープリンク)を配送し、今の画面の上に遷移を積む(**アプリを再起動しない** = warm 配送。`launchApp(url:)` は逆に先にプロセスを再起動してから配送する)。配送はホスト側の外部コマンドで行う(ブリッジは経由しない): iOS シミュレータ = `simctl openurl` / iOS 実機 = `devicectl device process openURL` / Android = `adb shell am start -W -a android.intent.action.VIEW -d '<url>' <package>`。**カスタムスキーム前提** —— Universal Links/App Links(`https://`)は AASA/assetlinks.json の取得状態に左右され、シミュレータでは Safari に流れることがある。未起動のアプリに撃つと OS がアプリを起動して開くが、想定用途ではない。**iOS の in-app エンジンでは未起動のまま撃つと dylib が注入されずブリッジが死ぬ**ため、ドライバがブリッジ無応答を検知して注入起動してから配送し直す(利用者が意識する必要はないが、**cold start 検証そのものは in-app エンジンでは表現できない**)。iOS シミュレータでは配送直後に SpringBoard が出す初回の確認アラート(「"<表示名>"で開きますか?」。以後は端末+アプリの組で同意が永続する)を xcuitest/hybrid エンジンでは自動了承するが、**in-app エンジン単独では SpringBoard を見られないため自動了承できない**(初回は手動でアラートを閉じるか、事前に一度 xcuitest/hybrid で同意を済ませておく)。遷移は非同期なので直後の検証は通常どおりポーリングで待つ |
-| `restartApp(bundleID?)` | 終了してから起動(プロセス内状態のリセットに) |
+| `restartApp(bundleID?)` | 終了してから起動(プロセス内状態のリセットに)。省略時の既定アプリは `launchApp()` と同じ解決 |
 | `terminateApp()` | 終了 |
 | `installApp(path?)` | アプリをインストール(iOS: `.app` / Android: `.apk` または `.apks`。`.apks` は bundletool が要る)。**実行はオーケストレータ(親プロセス)が行う**。パス省略時は実行プロファイルの `appPath` を親が解決する(明示引数 > プロファイル)。プロファイルにも `appPath` が無ければ明示エラー。iOS の in-app/hybrid エンジンでは simctl install で常駐ブリッジが道連れに終了するが、直後の `launchApp()` が再注入し直すので、続けて `launchApp()` を呼べば問題ない。オーケストレータ無しの単独実行(`ftester-scenarios run` を直接叩く等)では従来どおり明示引数が必須(省略時は明示エラー) |
 | `removeApp(id?)` | アプリをアンインストール。省略時は起動中アプリの既定 bundleID/package(`launchApp()` 引数なしと同じ解決)。**自分自身の SUT を消すと、以降のシナリオ実行と in-app ブリッジが壊れる**ので、テスト対象アプリに対して呼ぶのは慎重に |
@@ -467,6 +485,7 @@ inconclusive はシナリオを中断しない。レポート・ログには ❓
 | `group("名前") { … }` | 記録に `[名前]` を前置するだけのまとまり(実行・失敗の扱いは素の列と同じ) |
 | `procedure("説明") { try await … }` | 任意の Swift(データ投入等)を 1 ステップとして記録。throw は NG としてシナリオ中断 |
 | `func setUp()` / `func tearDown()` | テストクラスに書くと各 `@Test` の前後で自動実行。**tearDown は失敗後でも実行される** |
+| `@TestClass(platform:)` / `@Test(platform:)` | **対象 OS の宣言**(`"ios"` / `"android"`)。両方あるとメソッド側が勝つ。宣言した OS を回さない実行プロファイルでは**そのシナリオを実行せず skipped(対象外)として記録する**(失敗ではなく、exit code も汚さない)。「iOS では意味がないテスト」(Wi-Fi プロキシ設定など)を、`ios { }` を空にして緑にする代わりに意図として残すためのもの。**実行プロファイルを使う run でだけ効く** —— `--ports` / `--serial` の直指定は「この run が回す OS の集合」を宣言しないので従来どおり |
 | `@Deleted("理由")` | テストクラスまたは `@Test` メソッドに付けて**論理削除**する。一覧には「削除済み」として残り(GUI は「削除済みを非表示にする」で切替)、全実行・フォルダ実行・クラス名指定の一括実行から**除外**される。完全一致 ID の明示指定でだけ実行できる。コードは残るので復活はアノテーションを外すだけ |
 | `irregularHandler(検出sel, dismiss: 閉じるsel?)` | **出るか不定のアプリ内メッセージ**(お知らせ・キャンペーン)を宣言すると、以降どのステップでも出た時点で自動的に閉じる。`dismiss` 省略時は検出したものをタップ。setUp で 1 回宣言するのが定石。閉じたことはステップの注記に残る。**OS のシステムダイアログ(権限の許可等)はこれでは閉じない** —— 下の §システムダイアログ(iOS)参照 |
 

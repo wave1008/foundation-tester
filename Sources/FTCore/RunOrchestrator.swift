@@ -330,6 +330,7 @@ public enum ScenarioRunner {
                               installHandler: (@Sendable (RunWorker, String?) async
                                                -> (ok: Bool, message: String))? = nil,
                               appName: String? = nil,
+                              appBundleID: String? = nil,
                               onEvent: @escaping (RunEvent) -> Void) async -> ScenarioOutcome {
         onEvent(.flowStarted(worker: worker.label, flowURL: item.url,
                              flowName: item.info.id, isDirty: false))
@@ -353,7 +354,7 @@ public enum ScenarioRunner {
             installHandler: installHandler.map { handler in
                 { (path: String?) async -> (ok: Bool, message: String) in await handler(worker, path) }
             },
-            appName: appName) { event in
+            appName: appName, appBundleID: appBundleID) { event in
             switch event.kind {
             case "sceneStarted":
                 onEvent(.sceneStarted(worker: worker.label, flowURL: item.url,
@@ -529,6 +530,9 @@ public final class RunOrchestrator {
     private let installHandler: (@Sendable (RunWorker, String?) async -> (ok: Bool, message: String))?
     /// アプリの表示名(プロファイルの appName)。tapAppIcon() の引数省略時の既定として子へ渡す
     private let appName: String?
+    /// 実行プロファイルが解決した bundle ID。**platform 別**(appName と違い ios/android で
+    /// 別の ID になりうるので単一値にできない)。`@TestClass(app:)` 未指定シナリオの既定アプリ
+    private let appBundleIDs: [String: String]
     /// 劣化・離脱したワーカーの収集(summary/レポートの degradedWorkers に載せる)。
     private let degraded = NoteCollector()
     /// 振り直し(結果取り消し+requeue)の監査記録(summary/レポートの freezeRetries に載せる)。
@@ -558,7 +562,8 @@ public final class RunOrchestrator {
                 lateWorkers: (platforms: Set<String>, provider: @Sendable () async -> [RunWorker])? = nil,
                 installHandler: (@Sendable (RunWorker, String?) async
                                   -> (ok: Bool, message: String))? = nil,
-                appName: String? = nil) {
+                appName: String? = nil,
+                appBundleIDs: [String: String] = [:]) {
         (self.events, self.continuation) = AsyncStream.makeStream(of: RunEvent.self)
         self.workers = workers
         self.fm = fm
@@ -583,6 +588,7 @@ public final class RunOrchestrator {
         self.lateWorkers = lateWorkers
         self.installHandler = installHandler
         self.appName = appName
+        self.appBundleIDs = appBundleIDs
     }
 
     private func deviceUnreachable(_ serial: String) async -> Bool {
@@ -884,6 +890,7 @@ public final class RunOrchestrator {
                 defaultTimeout: defaultTimeout, containerInference: containerInference,
                 scenarioTimeout: scenarioTimeout, debug: debug,
                 recorder: recorder, installHandler: installHandler, appName: appName,
+                appBundleID: appBundleIDs[worker.platform],
                 onEvent: { [continuation] in continuation.yield($0) })
             await videoRecording?.scenarioFinished(
                 workerLabel: worker.label, at: Date(), passed: outcome == .passed)

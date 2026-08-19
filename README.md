@@ -263,11 +263,17 @@ Android シナリオも iOS と同様に `--platform android` を付けて実行
 テストは Shirates 風の Swift DSL で書く。**`try await` もクロージャ引数も不要** —
 コマンドは同期・非 throw の自由関数で、`scenario → scene → condition/action/expectation`(CAE)
 の3層構造を持つ。プロジェクトの `scenarios/` に .swift を置いて `swift build` すれば自動発見される。
+**対象アプリはコードに書かない** —— 実行プロファイル(`runs/<name>.json`)→ アプリプロファイル
+(`apps/<name>.json`)→ 実行中 platform の `ios.app` / `android.app` から解決されるので、
+OS で bundle ID が違っても同じシナリオを `--profile ios` / `--profile android` で回せる
+(コード側で固定したいときだけ `@TestClass(app: "...")` と書く。そちらが勝つ)。
 
 ```swift
 import FTDSL
 
-@TestClass(app: "com.example.sampleapp")        // platform: "ios"/"android"(省略 = 両OS対応)
+@TestClass                                      // 対象アプリは実行プロファイルが決める
+                                                // platform: "ios"/"android"(省略 = 両OS対応。
+                                                // 宣言した OS を回さない run では skipped 扱い)
 class ログインテスト {
 
     @Test("ログインとエラー表示")

@@ -415,7 +415,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             throw ValidationError(
                 "no scenarios (add a @TestClass under TestProjects/\(testProject.name)/scenarios/)")
         }
-        let selected = try RunScenarios.resolve(scenarios, from: all)
+        var selected = try RunScenarios.resolve(scenarios, from: all)
         guard !selected.isEmpty else {
             throw ValidationError("nothing to run (every scenario is marked @Deleted)")
         }
@@ -424,6 +424,28 @@ struct ApiRunCommand: AsyncParsableCommand {
         let recorder: RunRecorder? = (!dryRun && debugOptions == nil)
             ? RunRecorder.begin(project: testProject, profile: profile, trigger: "api")
             : nil
+
+        // OS 対象外(`@TestClass(platform:)` / `@Test(platform:)`)をキュー投入前に外す。
+        // **dry-run では外さない** —— デバイスに触らないので全件を構文検査したい。
+        // --platform/--port/--serial 直指定(resolvedProfile == nil)も対象外 ——
+        // その経路は「この run が回す OS の集合」を宣言していないので、判定材料が無い
+        if let resolvedProfile, !dryRun {
+            let runPlatforms = Set(resolvedProfile.devices.map(\.platform))
+            let applicability = PlatformApplicability.partition(selected,
+                                                                runPlatforms: runPlatforms) {
+                $0.platform
+            }
+            for info in applicability.notApplicable {
+                let declared = info.platform ?? ""
+                let reason = PlatformApplicability.reason(declared: declared,
+                                                          runPlatforms: runPlatforms)
+                logStderr("→ \(info.id): \(reason)")
+                recorder?.recordSkipped(scenarioID: info.id, title: info.title,
+                                        platform: declared, worker: nil, reason: reason,
+                                        kind: .notApplicable)
+            }
+            selected = applicability.runnable
+        }
 
         emitLine(ApiRunStartedEvent(total: selected.count))
 
@@ -738,7 +760,8 @@ struct ApiRunCommand: AsyncParsableCommand {
                 scenarioTimeout: resolved.scenarioTimeout, dryRun: dryRun,
                 debug: debugOptions, recording: recording,
                 appPath: dryRun ? nil : resolved.apps[scenarioPlatform]?.appPath,
-                appName: resolved.appName) { event in
+                appName: resolved.appName,
+                appBundleID: resolved.apps[scenarioPlatform]?.bundleID) { event in
                 var event = event
                 if event.scenario == nil { event.scenario = info.id }
                 writeLine(event.encodedLine())
@@ -916,7 +939,8 @@ struct ApiRunCommand: AsyncParsableCommand {
                 })
             },
             installHandler: InstallHandlerFactory.make(apps: resolved.apps),
-            appName: resolved.appName)
+            appName: resolved.appName,
+            appBundleIDs: resolved.apps.mapValues(\.bundleID))
         async let summary = orchestrator.run(items: items, defaultPlatform: defaultPlatform)
 
         var timing = ScenarioTimingTracker()

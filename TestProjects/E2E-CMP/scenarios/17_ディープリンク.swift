@@ -4,7 +4,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e")
+@TestClass
 class ディープリンクで画面遷移と受信記録が正しく働くこと {
 
     @Test("launchApp(url:) で目的の画面から始まる")

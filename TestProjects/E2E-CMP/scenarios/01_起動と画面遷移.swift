@@ -5,7 +5,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e")
+@TestClass
 class 起動と画面遷移が正しく行われること {
 
     @Test("起動・下位画面遷移・タブ切替の一連が正しく動く")

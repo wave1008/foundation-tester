@@ -18,7 +18,7 @@
 import Foundation
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e")
+@TestClass
 class 掴んだ要素の値を読んで後段で使えること {
 
     @Test("画面から採った値をそのまま次の検証に使える")

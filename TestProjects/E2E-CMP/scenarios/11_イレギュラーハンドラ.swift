@@ -5,7 +5,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e")
+@TestClass
 class イレギュラーハンドラが自動でダイアログを閉じること {
 
     // 宣言の寿命はシナリオ1本なので setUp に置くのが定石(docs/commands.md)

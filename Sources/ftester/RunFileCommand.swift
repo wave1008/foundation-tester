@@ -41,6 +41,12 @@ struct RunFileCommand: AsyncParsableCommand {
     @Option(help: "Comma-separated bridge ports for running iOS scenarios in parallel")
     var ports: String?
 
+    /// `@TestClass(app:)` を書かないシナリオを --profile 無しで回すときの逃げ道
+    /// (--profile があればアプリプロファイルから解決されるので不要)
+    @Option(name: .customLong("app"),
+            help: "Default app (bundle ID / package name) for scenarios that declare no @TestClass(app:). Only needed without --profile")
+    var app: String?
+
     @OptionGroup var driverOptions: DriverOptions
 
     func run() async throws {
@@ -91,6 +97,7 @@ struct RunFileCommand: AsyncParsableCommand {
         if heal { arguments.append("--heal") }
         if let reportDir { arguments += ["--report-dir", reportDir] }
         if let ports { arguments += ["--ports", ports] }
+        if let app { arguments += ["--app", app] }
         arguments += ["--platform", driverOptions.platform, "--port", String(driverOptions.port)]
         if let serial = driverOptions.serial { arguments += ["--serial", serial] }
         let command = try RunScenarios.parse(arguments)
