@@ -190,7 +190,13 @@ public enum BridgeAPI {
     /// `Find the Application` for ~45s and then **took the runner down**, losing the bridge for
     /// good (measured 6/6 on 2026-08-15). A stale bridge still wedges and dies, so the host must
     /// not keep using one → bump.
-    public static let bridgeProtocolVersion = 70
+    /// 71: POST /swipe accepts `edge` (the swipe is part of scrollToEdge). The in-app engine
+    /// does not send a gesture at all — it moves `contentOffset` by 85% of the viewport per
+    /// request — so a long document cost one request **per page**. With `edge` it clamps to the
+    /// content edge in one request. A stale bridge ignores the field and keeps paging, which is
+    /// correct but leaves the speed-up silently unapplied (and would make an A/B read as "no
+    /// effect") → bump.
+    public static let bridgeProtocolVersion = 71
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の
@@ -934,9 +940,19 @@ public struct SwipeRequest: Codable {
     /// 内側にある(ホストがマージンを内側に取る)ので動かすスクロールビュー/AX 要素の特定に使い、
     /// 始点と終点の差を contentOffset の移動量に使う。これで in-app でもマージンが効く
     public var path: FTSwipePath?
+    /// **端まで送るのが目的**の swipe か(scrollToEdge が立てる。`scroll` と必ず同時に立つ)。
+    /// **contentOffset を直接動かすエンジンだけが読む** = in-app の UIKit/SwiftUI と WKScrollView。
+    /// あの経路にジェスチャは無く慣性も無いので「1回 = ビューポートの 85%」を刻む理由が無く、
+    /// 長文(利用規約等)では**ページ数ぶんの往復**をホストに払わせていた。立っていれば
+    /// コンテンツの端まで1回で寄せる。
+    ///
+    /// 実ジェスチャを撃つエンジン(XCUITest・Android)は**読まない** —— あちらは指を動かす以上の
+    /// ことはできないので、端の判定は従来どおりホストのループが持つ(`velocity`/`fling` が
+    /// 速さのノブ)。旧ブリッジは無視して従来どおりページ送りする(正しいが遅いまま)
+    public var edge: Bool?
     public init(direction: FTSwipeDirection, fast: Bool? = nil, scroll: Bool? = nil,
                 distance: Double? = nil, durationMs: Int? = nil, fling: Bool? = nil,
-                velocity: Double? = nil, path: FTSwipePath? = nil) {
+                velocity: Double? = nil, path: FTSwipePath? = nil, edge: Bool? = nil) {
         self.path = path
         self.direction = direction
         self.fast = fast
@@ -945,6 +961,7 @@ public struct SwipeRequest: Codable {
         self.durationMs = durationMs
         self.fling = fling
         self.velocity = velocity
+        self.edge = edge
     }
 }
 
