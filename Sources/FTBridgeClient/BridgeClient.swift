@@ -649,7 +649,8 @@ public final class BridgeClient: AppDriver {
                                durationMs: Self.strokeMs(for: intent, path: path),
                                fling: intent == .edge ? true : nil,
                                velocity: Self.velocity(for: intent, path: path),
-                               path: path),
+                               path: path,
+                               edge: intent == .edge ? true : nil),
             timeout: interactionTimeout)
     }
 

@@ -682,7 +682,8 @@ final class FTInAppBridge {
                     // 端に達しているだけなら no-op で 200(UIKit 経路と同じ理由。501 を返すと
                     // XCUITest の実スワイプへ切り替わり、以降のジェスチャがラッチで全部 XCUITest 化する)
                     if Self.hasRoom(webScroll, req.direction) {
-                        Self.scroll(webScroll, direction: req.direction, path: req.path)
+                        Self.scroll(webScroll, direction: req.direction, path: req.path,
+                                    toEdge: req.edge == true)
                     }
                     scrolled = true
                     return
@@ -725,7 +726,8 @@ final class FTInAppBridge {
                     + " hybrid falls back to XCUITest")
             }
             if let scrollView = Self.target(scrollViews, direction: req.direction, path: req.path) {
-                Self.scroll(scrollView, direction: req.direction, path: req.path)
+                Self.scroll(scrollView, direction: req.direction, path: req.path,
+                            toEdge: req.edge == true)
             }
             // 余地なし = 端。no-op で 200 を返す
         }
@@ -791,12 +793,32 @@ final class FTInAppBridge {
     /// 指の向き=コンテンツと逆(上スワイプ=下方向へスクロール=offset.y 増)。範囲外はクランプ。
     /// 1回ぶんのスクロール。**領域指定(path)があればホストが意図した移動量をそのまま使う**
     /// (= マージン指定が in-app でも効く)。無ければ従来どおりビューポートの 85%。
-    /// 移動の向きは指の向きと逆
-    private static func scroll(_ sv: UIScrollView, direction: FTSwipeDirection, path: FTSwipePath?) {
+    /// 移動の向きは指の向きと逆。
+    ///
+    /// **`toEdge`(= SwipeRequest.edge)のときは刻まずに端まで寄せる**: この経路にジェスチャは
+    /// 無いので「1回ぶん」を刻む理由は実機の体感に合わせること以外に無く、scrollToEdge の
+    /// 目的は端そのもの。長文(利用規約等)では往復回数がページ数に比例していた
+    private static func scroll(_ sv: UIScrollView, direction: FTSwipeDirection,
+                               path: FTSwipePath?, toEdge: Bool = false) {
+        if toEdge { scrollToEdge(sv, direction: direction); return }
         guard let path else { scrollByPage(sv, direction: direction); return }
         var offset = sv.contentOffset
         offset.x += path.fromX - path.toX
         offset.y += path.fromY - path.toY
+        clampAndApply(sv, offset)
+    }
+
+    /// 指の向きに対応するコンテンツの端まで一度に寄せる(clampAndApply が実際の限界へ丸める =
+    /// 端の値をここで持たない)。**領域指定(path)は対象の選択にだけ使われ、移動量は無視される**
+    /// —— 端まで送るのだから途中の量に意味が無い
+    private static func scrollToEdge(_ sv: UIScrollView, direction: FTSwipeDirection) {
+        var offset = sv.contentOffset
+        switch direction {
+        case .up:    offset.y = .greatestFiniteMagnitude
+        case .down:  offset.y = -.greatestFiniteMagnitude
+        case .left:  offset.x = .greatestFiniteMagnitude
+        case .right: offset.x = -.greatestFiniteMagnitude
+        }
         clampAndApply(sv, offset)
     }
 
