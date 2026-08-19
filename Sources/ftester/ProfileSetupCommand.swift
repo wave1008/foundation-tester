@@ -51,7 +51,7 @@ struct ProfileSetupCommand: AsyncParsableCommand {
     @Option(name: .customLong("app-id"), help: "App bundle ID / package name")
     var appID: String
 
-    @Option(help: "Path to a built .app/.apk (setting it enables autoInstall)")
+    @Option(help: "Path to a built .app/.apk/.apks (setting it enables autoInstall)")
     var appPath: String?
 
     @Option(help: "Run profile name (profiles/runs/<name>.json; defaults to the platform name)")

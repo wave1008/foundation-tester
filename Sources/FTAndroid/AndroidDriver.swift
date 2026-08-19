@@ -197,10 +197,30 @@ public final class AndroidDriver: AppDriver {
     }
 
     public func install(packagePath: String) async throws {
+        // .apks(App Bundle 由来のスプリット)は adb install に渡せない(単一 APK ではない)
+        if ApksBundle.isApks(path: packagePath) {
+            try installSplitBundle(apksPath: packagePath)
+            return
+        }
         let result = try adb(["install", "-r", packagePath])
         guard result.output.contains("Success") else {
             throw DriverError.badResponse(status: Int(result.status),
                 body: "failed to install the app: \(result.tail)")
+        }
+    }
+
+    /// .apks は bundletool へ委譲する(スプリットの選別は toc.pb の targeting = ApksBundle 参照)。
+    /// 端末の指定は `--device-id`(serial 無し = 接続が1台のときだけ通る adb と同じ意味論)
+    private func installSplitBundle(apksPath: String) throws {
+        guard let bundletool = ApksBundle.findBundletool() else {
+            throw DriverError.badResponse(status: 127,
+                body: ApksBundle.missingBundletoolMessage(apksPath: apksPath))
+        }
+        let result = try Shell.run(ApksBundle.installArgs(
+            bundletool: bundletool, apksPath: apksPath, serial: serial))
+        guard result.status == 0 else {
+            throw DriverError.badResponse(status: Int(result.status),
+                body: "failed to install the split bundle (.apks): \(result.tail)")
         }
     }
 
@@ -718,6 +738,9 @@ public final class AndroidDriver: AppDriver {
     /// ため md5 一致で判定できる。autoInstall の差分スキップ用)。未インストール・判定不能は
     /// false(=要インストール)。
     public func installedPackageIsCurrent(packageID: String, apkPath: String) -> Bool {
+        if ApksBundle.isApks(path: apkPath) {
+            return installedSplitsAreCurrent(packageID: packageID, apksPath: apkPath)
+        }
         guard let pathResult = try? adb(["shell", "pm", "path", packageID]),
               pathResult.status == 0 else { return false }
         guard let remote = pathResult.output.split(separator: "\n")
@@ -731,6 +754,19 @@ public final class AndroidDriver: AppDriver {
         guard let localData = try? Data(contentsOf: URL(fileURLWithPath: apkPath)) else { return false }
         let localHash = Insecure.MD5.hash(data: localData).map { String(format: "%02x", $0) }.joined()
         return remoteHash.lowercased() == localHash
+    }
+
+    /// .apks 版の差分判定: 端末に入っている base/split の全ファイルがこの .apks のエントリ由来か
+    /// (規則と限界は ApksBundle.installedIsFromBundle)
+    private func installedSplitsAreCurrent(packageID: String, apksPath: String) -> Bool {
+        let entries = ApksBundle.listEntries(apksPath: apksPath)
+        guard !entries.isEmpty else { return false }
+        guard let probe = try? adb(["shell", ApksBundle.installedFilesScript(packageID: packageID)]),
+              probe.status == 0,
+              let installed = ApksBundle.parseInstalledFiles(probe.output) else { return false }
+        return ApksBundle.installedIsFromBundle(installed: installed, entries: entries) {
+            ApksBundle.entryMD5(apksPath: apksPath, entry: $0)
+        }
     }
 
     /// インストール済みのユーザーアプリ(third-party)のパッケージ名一覧。

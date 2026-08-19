@@ -26,7 +26,7 @@
 //   {"cmd":"terminate"}                                 対象アプリを終了
 //   {"cmd":"clearAppData","bundle":<String省略可>}       アプリは残しデータだけ消す(省略時は現在の
 //                                                        セッションが指すアプリ。iOS はシミュレータ専用)
-//   {"cmd":"install","path":<String>}                   パッケージファイル(iOS: .app / Android: .apk)
+//   {"cmd":"install","path":<String>}                   パッケージファイル(iOS: .app / Android: .apk/.apks)
 //                                                        からインストール
 //   {"cmd":"refresh"}                                   操作は行わず観測のみ
 //   {"cmd":"frame"}                                     スクリーンショットのみ取得(AXツリーは取らない)

@@ -468,9 +468,9 @@ enum AndroidBridgeCLI {
 
 struct Install: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        abstract: "Install an app from a package file (iOS: .app bundle / Android: .apk)")
+        abstract: "Install an app from a package file (iOS: .app bundle / Android: .apk or .apks)")
 
-    @Argument(help: "Path to the package file (iOS: .app bundle / Android: .apk)")
+    @Argument(help: "Path to the package file (iOS: .app bundle / Android: .apk, or .apks via bundletool)")
     var packagePath: String
 
     @OptionGroup var driverOptions: DriverOptions

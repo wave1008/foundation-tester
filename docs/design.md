@@ -3089,6 +3089,16 @@ executableTarget `ftester-scenarios-<name>`(path: `TestProjects/<name>/scenarios
 `appPath` の相対パスは**リポジトリルート**基準(上例の `builds/app-debug.apk` は `<repoRoot>/builds/...`)。
 `~` 展開・絶対パスも可。ビルド成果物は TestProjects/ 外に置くのが普通なためプロジェクト基準にしていない。
 
+**Android は `.apk` のほかに `.apks`(App Bundle 由来のスプリット束)も書ける**(2026-08-19)。
+`.apks` は単一 APK ではないので `adb install` に渡せず、**インストールは bundletool へ委譲する**
+(`ApksBundle`。無ければ「`brew install bundletool` するか `FT_BUNDLETOOL` を指す」で落ちる)。
+選別を自前でやらない理由は実測 —— 実物の `.apks` には variant 違いの master が2つ
+(`base-master.apk` / `base-master_2.apk`)あり、正しい方は名前ではなく `toc.pb` の targeting で決まる。
+差分判定(下の 4.)は bundletool 抜きで効く: 端末に入っている base/split の**各ファイルの md5 が
+この `.apks` のエントリのどれかと一致するか**を見る(大きさで候補を絞ってから展開するので、
+79MB を毎回ほどかない)。限界は**足りない split を見つけられない**こと(何が入るべきかは
+targeting = bundletool にしか決められない。feature module を足した回だけ入れ直しを取りこぼす)。
+
 `healthCheckURL`(common のみ・任意)— アプリが依存するバックエンドの死活確認 URL。実行開始前に
 3秒タイムアウトで到達確認し、不達なら警告する(実行はブロックしない)。バックエンド停止中は
 アプリが非同期処理でクラッシュし「Application is not running」で全滅して原因が見えにくいため

@@ -197,7 +197,7 @@ extension MCPServer {
             "sinceSeconds": ["type": "integer", "description": "How far back to look (default 300)"],
             "all": ["type": "boolean", "description": "Android: read the main buffer too, not just crashes"],
         ], scope: .none),
-        tool("ft_install", "Install an app from a package file (iOS: .app bundle / Android: .apk)", [
+        tool("ft_install", "Install an app from a package file (iOS: .app bundle / Android: .apk, or .apks — a split bundle, installed via bundletool)", [
             "packagePath": ["type": "string", "description": "Absolute path of the package file"],
         ], required: ["packagePath"]),
         tool("ft_launch", "Launch the app (terminating it first if it is already running). The app "

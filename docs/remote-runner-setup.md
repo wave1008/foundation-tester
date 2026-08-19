@@ -558,6 +558,7 @@ FileVault 有効のランナーは**再起動のたびに誰かが解錠+ログ�
 | `no runner workspace at …`(exit 91) | あなたの issuerId の作業場所がまだ無い(未 setup / issuerId が変わった) | `ftester remote setup <ホスト>` を1回。issuerId は明示設定にする(「複数人でフリートを共有する」) |
 | シナリオが0本 / 見つからない | プロジェクト名が手元と違う | ステップ2 の `--name` を手元と揃える |
 | アプリのインストールに失敗する | `appPath` がランナー機で解決できない | ステップ4（相対パスは自分の WORK_DIR = `<base>/users/<issuerId>/work` 基準。バイナリは転送されない） |
+| `.apks` のインストールで `needs bundletool` | ランナー機に bundletool が無い | ランナー機で `brew install bundletool`（`.apks` を使うときだけ要る。単一 `.apk` なら不要） |
 | `Couldn't fetch updates from remote repositories` / `Recv failure: Operation timed out` | ランナー機の回線が細く SPM の依存取得が落ちた | 再実行する（取得済みは残るので数回で通る）。事前に `swift package resolve` を通しておくと確実 |
 | `Foundation Models unavailable` の警告 | ランナー機で Apple Intelligence が無効 | heal / screenIs / トリアージを使わないなら無視してよい（実行は続く）。使うならシステム言語を英語にして有効化 |
 | `--ports is not supported with --host` 等 | 併用できない指定 | ステップ6 の一覧 |

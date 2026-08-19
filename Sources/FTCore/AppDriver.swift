@@ -20,7 +20,7 @@ public struct LaunchTiming: Sendable {
 
 public protocol AppDriver {
     func status() async throws -> StatusResponse
-    /// パッケージファイル(iOS: .app バンドル / Android: .apk)からアプリをインストールする
+    /// パッケージファイル(iOS: .app バンドル / Android: .apk / .apks)からアプリをインストールする
     func install(packagePath: String) async throws
     /// アプリをアンインストールする(DSL の removeApp)。**プロトコル要件として宣言すること**
     /// (install(packagePath:) と同じ理由。extension だけに置くと存在型越しの呼び出しが

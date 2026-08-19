@@ -20,7 +20,7 @@ public struct AppProfileSection: Codable, Sendable, Equatable {
     public var appName: String?
     /// bundle identifier / パッケージ名
     public var app: String?
-    /// パッケージファイル(.app / .apk)のパス。プロジェクトルート相対 or 絶対 or ~
+    /// パッケージファイル(.app / .apk / .apks)のパス。プロジェクトルート相対 or 絶対 or ~
     public var appPath: String?
     /// 実行前に appPath を自動インストールするか(既定 false = 無効)
     public var autoInstall: Bool?
