@@ -214,7 +214,8 @@ enum ProfileRunner {
             apps: resolved.apps, workers: workers,
             forceAndroidInstall: !wipedAndroid.isEmpty) { print($0) }
         // 一斉 launch 直後の黒画面を作らないための予防(ProfileWorkerFactory.pressHomeOnStart)
-        await ProfileWorkerFactory.pressHomeOnStart(workers, enabled: resolved.homeOnStart) { print($0) }
+        await ProfileWorkerFactory.prepareDevicesOnStart(
+            workers, homeOnStart: resolved.homeOnStart) { print($0) }
         let iosDevicesExist = !resolved.iosDevices.isEmpty
 
         // performanceMode では iOS の late join をやめて開始前に建てる。**理由は計測の歪みではなく
@@ -367,7 +368,8 @@ enum ProfileRunner {
             }) : nil,
             installHandler: InstallHandlerFactory.make(apps: resolved.apps),
             appName: resolved.appName,
-            appBundleIDs: resolved.apps.mapValues(\.bundleID))
+            appBundleIDs: resolved.apps.mapValues(\.bundleID),
+            iosSystemAlertButtons: resolved.iosSystemAlertButtons)
         PhaseLog.mark("orchestrator-setup")
         async let summary = orchestrator.run(items: items, defaultPlatform: defaultPlatform)
 
@@ -499,7 +501,8 @@ enum ProfileRunner {
                         await ProfileWorkerFactory.nudgeIOSScreen(worker: $0, restoring: bundleID) },
                 log: { print($0) }).workers
             ws = recovered ?? ws
-            await ProfileWorkerFactory.pressHomeOnStart(ws, enabled: resolved.homeOnStart) { print($0) }
+            await ProfileWorkerFactory.prepareDevicesOnStart(
+                ws, homeOnStart: resolved.homeOnStart) { print($0) }
             return ws
         } catch {
             // iOS 供給失敗は run 全体を落とさない(iOS シナリオはワーカー不在ドレインで失敗確定)

@@ -168,6 +168,10 @@ struct RunScenario: AsyncParsableCommand {
             help: "Default app (bundle ID / package name) resolved from the run profile, used when the scenario declares no @TestClass(app:). Always passed when known: a mismatch with an explicit @TestClass(app:) is reported")
     var app: String?
 
+    @Option(name: .customLong("ios-system-alert-button"),
+            help: "Button label to press when an iOS system permission alert blocks a step (run profile iosSystemAlertButtons). Repeatable; tried in order. Only effective with engine=hybrid")
+    var iosSystemAlertButton: [String] = []
+
     @Flag(help: "Emit NDJSON events (for the host)")
     var json = false
 
@@ -409,6 +413,7 @@ struct RunScenario: AsyncParsableCommand {
         // 技術識別子: Android は adb serial、iOS はシミュレータ UDID(共に既存のドライバ構築引数の再利用)
         let deviceIdentifier = runPlatform == "android" ? serial : udid
         let core = FTDriveCore(driver: driver, platform: runPlatform, app: appBundleID,
+                               systemAlertButtons: iosSystemAlertButton,
                                scenarioID: scenarioID, scenarioTitle: descriptor.title,
                                delegate: delegate, healingEnabled: heal && !noFM,
                                falsePositiveCheckEnabled: !noFalsePositiveCheck,

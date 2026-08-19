@@ -255,6 +255,7 @@ public enum ScenarioHost {
                            appPath: String? = nil,
                            appName: String? = nil,
                            appBundleID: String? = nil,
+                           iosSystemAlertButtons: [String] = [],
                            onEvent: @escaping (ScenarioEvent) -> Void) async -> Bool {
         let startedAt = Date()
         let clock = ContinuousClock()
@@ -314,6 +315,7 @@ public enum ScenarioHost {
         }
         if let appName { args += ["--app-name", appName] }
         if let appBundleID { args += ["--app", appBundleID] }
+        for label in iosSystemAlertButtons { args += ["--ios-system-alert-button", label] }
         process.arguments = args
 
         let stdout = Pipe()

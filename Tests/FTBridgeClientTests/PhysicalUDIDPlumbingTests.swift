@@ -36,6 +36,31 @@ final class PhysicalUDIDPlumbingTests: FTBridgeClientSourceScanCase {
                       + " 名前引きの simctl 経路へ誤って落ち、Invalid device の的外れな失敗になる): \(offenders)")
     }
 
+    /// **シミュレータの UDID も同じく渡し切ること**(2026-08-19)。
+    /// 渡さないと install/uninstall/clearAppData の対象特定が `status()` に落ち、
+    /// **`removeApp()` の直後の `installApp()` が「接続拒否」で失敗する** ——
+    /// アプリごと in-app ブリッジを消した後は「入れる先を教えてくれる相手」が居ない
+    /// (受け手報告で実際に踏んだ。BridgeClient.knownTarget の宣言)。
+    /// 対象は**ワーカーを組み立てるファイルだけ**: そこは device.udid が既にスコープに来ている。
+    /// MCP のポート直指定や runner の駆動用クライアントは UDID を持たないので対象にしない
+    /// (対象にすると意図的な設計を誤検知する)
+    func testWorkerBridgeClientsForwardTheSimulatorUDID() throws {
+        let relativePath = "Sources/FTAndroid/ProfileWorkerFactory.swift"
+        let source = try Self.readSource(relativePath)
+        var checked = 0
+        var offenders: [String] = []
+        for range in Self.argumentRanges(in: source, callPrefix: "BridgeClient(port:") {
+            checked += 1
+            if !source[range].contains("simulatorUDID") {
+                offenders.append("\(relativePath):\(Self.lineNumber(of: range.lowerBound, in: source))")
+            }
+        }
+        XCTAssertGreaterThan(checked, 0, "走査対象が見つからない = パスかシグネチャの書式が変わった")
+        XCTAssertTrue(offenders.isEmpty,
+                      "ワーカーの BridgeClient(port: ...) は simulatorUDID: も渡すこと"
+                      + "(渡さないと removeApp() の直後の installApp() が接続拒否で落ちる): \(offenders)")
+    }
+
     /// **稼働ブリッジ → 端末の引き当ては共有規則を通すこと**(2026-08-14)。
     /// `scanRunningBridges` はここが名前引きだけだったため、udid を申告しない実機のブリッジが
     /// **生きていても端末に紐付かず**、planBridge の同一デバイス判定に一度も当たらないまま
