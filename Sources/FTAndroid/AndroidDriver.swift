@@ -722,7 +722,34 @@ public final class AndroidDriver: AppDriver {
     }
 
     public func screenshot() async throws -> Data {
-        try await withBridge { try await $0.screenshot() }
+        let device = try await withBridge { try await $0.screenshot() }
+        return await webViewComposited(device) ?? device
+    }
+
+    /// **端末のキャプチャが WebView の層を取り逃したときだけ**、CDP から撮ったページ画像を
+    /// その領域へ貼って返す(何が起きているかと実測は WebViewShotComposite の冒頭)。
+    /// 貼れない・貼る必要が無いときは nil = 端末の画像をそのまま使う。
+    ///
+    /// 順序は**安い順**: ①画像に全幅の大きな1色の帯があるか(数ミリ秒。通常の画面はここで終わる)
+    /// → ②CDP でページを撮る → ③縦横比が帯と合うときだけ貼る。
+    ///
+    /// **貼る位置は a11y の webView ノードではなく帯**。Android は WebView の a11y サブツリーを
+    /// 出したり出さなかったりする(2026-08-20 に同じ画面で「木に居る/居ない」の両方を実測)ので、
+    /// 木の有無を門にすると出ないときに黙って何もしないことになる
+    private func webViewComposited(_ devicePNG: Data) async -> Data? {
+        guard AndroidWebViewDOM.isAppWebViewDOMEnabled,
+              let base = WebViewShotComposite.cgImage(fromPNG: devicePNG),
+              let band = WebViewShotComposite.largestUniformBand(base) else { return nil }
+        var package = currentPackage
+        if package == nil { package = (try? await snapshot())?.sessionBundleID }
+        guard let package else { return nil }
+        guard let pagePNG = await AndroidWebViewDOM.capturePagePNG(
+                serial: serial ?? "", packageID: package, route: .appWebView,
+                webViewLabel: nil, urlBarValue: nil, adb: { try self.adb($0).output }),
+              let overlay = WebViewShotComposite.cgImage(fromPNG: pagePNG),
+              WebViewShotComposite.fits(band: band, pageWidth: overlay.width,
+                                        pageHeight: overlay.height) else { return nil }
+        return WebViewShotComposite.composite(base: base, overlay: overlay, rect: band)
     }
 
     public func terminate() async throws {
