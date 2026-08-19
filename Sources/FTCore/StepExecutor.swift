@@ -266,6 +266,10 @@ public final class StepExecutor {
     var lastGuardFrameRecord: StaleFrameDetector.Record?
     /// 白フレーム確定時に呼ぶ。FTDriveCore が凍結中断+deviceFrozen emit を行う
     public var onDeviceFrozen: (@Sendable () -> Void)?
+    /// システム許可アラートを自動で押したときに呼ぶ(FTDriveCore が run ログへ流す)。
+    /// **報告は判定の中(dismissSystemAlert)で1回だけ**行う —— 呼び出し側3箇所に書くと
+    /// どれかが落ちて「押したのに記録が無い」に戻る
+    public var onSystemAlertDismissed: (@Sendable (String) -> Void)?
     /// 割り込みハンドラ(アプリ内メッセージ・自前のお知らせダイアログ用)。
     /// **閉じ方はアプリ作者しか知らない**ので、ツールが推測せずプロジェクト側で1回宣言してもらう
     /// (DSL の `irregularHandler`)。detect が現在のスナップショットで解決できたら dismiss をタップし、

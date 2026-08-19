@@ -32,4 +32,20 @@ public enum SystemAlertDismissal {
         }
         return nil
     }
+
+    /// 押したことを run ログへ残す文言。**記録が無いのは沈黙**である ——
+    /// 権限という後に響く状態を自動で変えている以上、「何を押したか」はレポートから
+    /// 読めなければならない。受け手報告(2026-08-20): テスト対象アプリの前面に
+    /// **マップの**許可アラートが出た = 一覧のラベルが一致すれば**無関係のアプリの権限を
+    /// 自動で許可し得る**。ラベルの選び方(推測しない)は誤爆の確率を下げるだけで、
+    /// 誤爆したときに気付ける保証は別に要る
+    public static func actionDescription(pressed button: ElementInfo,
+                                         in elements: [ElementInfo]) -> String {
+        let label = button.label ?? "(no label)"
+        guard let title = elements.first(where: { $0.type == "alert" })?.label,
+              !title.isEmpty else {
+            return "pressed \"\(label)\" on a system alert (iosSystemAlertButtons)"
+        }
+        return "pressed \"\(label)\" on the system alert \"\(title)\" (iosSystemAlertButtons)"
+    }
 }

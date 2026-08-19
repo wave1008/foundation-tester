@@ -406,6 +406,11 @@ public final class FTDriveCore {
                                          app: app, platform: platform,
                                          deviceName: deviceName, deviceIdentifier: deviceIdentifier)
         self.executor.onDeviceFrozen = { [weak self] in self?.markDeviceFrozen() }
+        // 自動押下は権限という後に響く状態を変えるので、必ず run ログに残す
+        // (installApp の再注入の注記と同じ ℹ️ 経路)
+        self.executor.onSystemAlertDismissed = { [weak self] message in
+            self?.emit(.log("ℹ️ \(message)"))
+        }
     }
 
     /// ランナーがシナリオ終了後に読む。**違反スレッドがまだ記録している可能性がある**ので

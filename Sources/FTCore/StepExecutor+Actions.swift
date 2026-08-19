@@ -1604,6 +1604,8 @@ extension StepExecutor {
             return false
         }
         do { try await fallback.tap(ref: button.ref) } catch { return false }
+        onSystemAlertDismissed?(
+            SystemAlertDismissal.actionDescription(pressed: button, in: snapshot.elements))
         return true
     }
 }
