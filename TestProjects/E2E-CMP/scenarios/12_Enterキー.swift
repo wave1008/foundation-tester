@@ -10,7 +10,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e")
+@TestClass
 class EnterキーでIMEアクションが発火すること {
 
     @Test("pressEnter と type の末尾改行がどちらも IME アクションになる")

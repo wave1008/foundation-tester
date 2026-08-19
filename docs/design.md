@@ -1158,8 +1158,25 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
 
 ### 記述形式
 
-- `@TestClass(app:platform:)` クラス + `@Test` メソッド + `scene(n)`(Shirates の case 相当)
+- `@TestClass(app:platform:)` クラス + `@Test(_:platform:)` メソッド + `scene(n)`(Shirates の case 相当)
   + `condition/action/expectation`(CAE)の3層構造
+- **`app:` は通常書かない**(2026-08-19)。既定アプリは
+  **実行プロファイル → アプリプロファイル → 実行中 platform の `ios.app` / `android.app`** から
+  解決される(`FTCore.ScenarioAppResolution` が唯一の定義元。親が `--app` で子へ渡す)。
+  これで**同じシナリオを `--profile ios` と `--profile android` で別 bundle ID の
+  アプリに対して回せる**(OS で ID が違うアプリのためにクラスを複製しなくてよい)。
+  `app:` を書いた場合は**そちらが勝つ** —— 1プロジェクトに複数アプリのシナリオが混在する構成を
+  壊さないため(実行プロファイル側にシナリオを絞り込む仕組みが無く、プロファイルを常に勝たせると
+  別アプリのシナリオが**黙って**誤ったアプリを起動する)。食い違いは警告1行だけ出す。
+  どちらからも決まらなければ明示エラー(`ftester run --app <bundleID>` が逃げ道。
+  **dry-run だけは代替表記で通す** —— デバイスに触らず bundle ID を使わないので、
+  ここで落とすと「実行プロファイル無しでは構文検査もできない」になる)
+- **`@Test(platform:)`** はメソッド単位の対象 OS 宣言(クラスの `platform:` より優先)。
+  宣言した OS を回さない実行プロファイルでは**キュー投入前に外して skipped(対象外)として記録する**
+  (`FTCore.PlatformApplicability`)。**失敗に数えない** —— 以前はクラス側の `platform:` すら
+  「担当ワーカーなし」に落ちて失敗として数えられており、「そのOSでは対象外」を表現する手段が
+  無かった。記録は `ScenarioSkipKind` で**意図された対象外**と**インフラ都合の未実行**を
+  区別する(混ぜると「緑だが1本も走っていない」run を見分けられなくなる)
 - `@Deleted("コメント")` で論理削除(Shirates の @Deleted 相当)。テストクラスまたは
   `@Test` メソッドに付与する。一覧には「削除済み」として残り(GUI は「削除済みを非表示にする」で
   非表示切替可)、全実行・フォルダ実行・クラス名指定の一括実行から除外される。
@@ -1480,7 +1497,7 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
 
 - `launchApp(bundleID?)` / `restartApp(bundleID?)` / `terminateApp()` / `clearAppData(bundleID?)`
   はロケータを取らず、`FTDriveCore.performCustom` でドライバを直接呼ぶ(スナップショットも
-  セレクタ解決も挟まない)。bundleID 省略時は `@TestClass(app:)` のアプリ。
+  セレクタ解決も挟まない)。bundleID 省略時はこの run の既定アプリ(上記 ScenarioAppResolution)。
   `restartApp` は terminate の失敗を無視して launch する(既に落ちている状態から呼べる)
 - **器のディレクトリ名は `TestProjects/<name>/scenarios/`**(2026-08-05 に `Projects/` /
   `Scenarios/` から改名。profiles / reports / results / docs と大小を揃えた)。
@@ -3271,7 +3288,10 @@ DeviceBooter.defaultLocale(実行プロファイルの locale が届くのは wi
 3. **アプリ解決**: common → デバイスの platform セクションの後勝ちマージ。`app`(bundle ID)必須
 4. **並列数 = 解決後のデバイス数**(maxParallel は存在しない)。プラットフォーム毎にワーカーを立て、
    RunOrchestrator の platform 別キューで両OS同時並列実行
-5. platform 未指定(@TestClass 両対応)のシナリオは iOS ワーカーがいれば ios キューへ
+5. platform 未指定(@TestClass / @Test 両対応)のシナリオは iOS ワーカーがいれば ios キューへ。
+   **platform を宣言していて、この run がその OS を回さないシナリオはキューに入れず skipped**
+   (`PlatformApplicability`。ProfileRunner / `api run` の profile 経路だけ。
+   `--ports` / `--serial` 直指定は回す OS の集合を宣言しないので対象外)
 6. 未知キーは警告(タイポ検出)。相対パスのチルダ展開あり。基準は用途で異なる:
    `appPath` はリポジトリルート基準、`reportDir` はプロジェクトルート基準(RunProfile.resolve)
 7. 合成後は必須検証済みの `ResolvedProfile` になり、実行コードはこれだけを見る

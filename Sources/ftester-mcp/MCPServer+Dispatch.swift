@@ -2159,7 +2159,7 @@ extension MCPServer {
         let lines = scenarios.map { info in
             "\(info.id)"
                 + (info.title.isEmpty ? "" : " — \(info.title)")
-                + " (\(info.platform ?? "ios/android"), app: \(info.app))"
+                + " (\(info.platform ?? "ios/android"), app: \(info.app ?? "from the run profile"))"
                 + (info.deleted ? " [deleted @Deleted — excluded from bulk runs]" : "")
         }
         return text(lines.isEmpty

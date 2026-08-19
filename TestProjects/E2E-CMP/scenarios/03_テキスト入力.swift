@@ -4,7 +4,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e")
+@TestClass
 class テキスト入力が正しくechoされること {
 
     @Test("単一行・パスワードの入力値が echo され送信/クリアが効く")

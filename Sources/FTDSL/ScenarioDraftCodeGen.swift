@@ -17,7 +17,11 @@ public enum ScenarioDraftCodeGen {
     /// 実セレクタが決まっていないことを示すプレースホルダ(解決不能な id)
     public static let placeholder = "#TODO"
 
-    public static func render(draft: ScenarioDraft, className: String, app: String,
+    /// app: nil = `@TestClass(app:)` を書かない(実行プロファイルから解決させる)。
+    /// **アプリプロファイルから導いた値のときは nil を渡す** —— 同じ値を写しても意味が無く、
+    /// 別ビルドのプロファイルへ差し替えたときにコード側が黙って勝ってしまう。
+    /// 利用者が `--app` で明示した値だけは、書き手の意図として残す
+    public static func render(draft: ScenarioDraft, className: String, app: String?,
                               platform: String?, source: String, generatedBy: String) -> String {
         var lines: [String] = []
         lines.append("// \(className).swift")
@@ -29,10 +33,10 @@ public enum ScenarioDraftCodeGen {
         lines.append("import FTDSL")
         lines.append("")
 
-        var attr = "@TestClass(app: \(literal(app))"
-        if let platform, !platform.isEmpty { attr += ", platform: \(literal(platform))" }
-        attr += ")"
-        lines.append(attr)
+        var parts: [String] = []
+        if let app, !app.isEmpty { parts.append("app: \(literal(app))") }
+        if let platform, !platform.isEmpty { parts.append("platform: \(literal(platform))") }
+        lines.append(parts.isEmpty ? "@TestClass" : "@TestClass(\(parts.joined(separator: ", ")))")
         lines.append("@Deleted(\"draft — delete this line once \(placeholder) is replaced with real selectors\")")
         lines.append("class \(className) {")
         lines.append("")

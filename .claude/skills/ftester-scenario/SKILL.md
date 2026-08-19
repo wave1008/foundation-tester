@@ -59,7 +59,10 @@ README.md「Swift DSL」節。ここはエージェントが順に実行する�
 - **ftester CLI の在り処**: clone 構成は `swift run ftester ...`、外部パッケージ構成は
   `../foundation-tester/.build/debug/ftester ...`(判定は `Sources/FTScenarioRunner/` の有無)。
   以降 `ftester` はこれを指す。MCP(`ft_*`)が使えるならそちらを優先。
-- **プラットフォーム**: iOS か Android か。両対応なら @TestClass の platform を決める(下記)。
+- **プラットフォーム**: iOS か Android か。**両対応なら platform は書かない**(同じコードが
+  `--profile ios` と `--profile android` の両方で走る)。片方の OS でしか意味を持たないときだけ
+  `@TestClass(platform: "ios")` / `@Test(..., platform: "android")` を書く ——
+  宣言した OS を回さない run では skipped(対象外)として記録され、失敗にならない。
 
 ## 手順
 
@@ -70,7 +73,10 @@ README.md「Swift DSL」節。ここはエージェントが順に実行する�
 1. `TestProjects/<proj>/profiles/apps/*.json` を列挙する(または `ftester profile list`)。各ファイルの
    `common.appName`(表示名)と `ios.app` / `android.app`(bundle ID・パッケージ名)を読む。
 2. 🧑 **どのアプリプロファイルを対象にするかをユーザーに確認**する(AskUserQuestion。候補が
-   1つでも確認する)。選ばれたプロファイルの `app` を @TestClass の `app:` に使う。
+   1つでも確認する)。**確認した bundle ID をコードに書いてはいけない** —— 対象アプリは
+   実行プロファイル(`profiles/runs/<name>.json` → アプリプロファイル → 実行中 platform の
+   `ios.app` / `android.app`)から解決される。ここで確認するのは、**実行時にどの実行プロファイルを
+   使うか**と、スナップショット採取をどのアプリに対して行うかを決めるため。
 3. アプリプロファイルが1つも無い、または対象アプリが未登録なら**ここで停止**し、`/ftester-profiles`
    でプロファイルを作るよう案内する(bundle ID を勝手に発明しない)。
 
@@ -127,7 +133,8 @@ README.md「Swift DSL」節。ここはエージェントが順に実行する�
 // <ファイル名>.swift
 import FTDSL
 
-@TestClass(app: "com.example.myapp", platform: "ios")   // app = 手順1で確認したアプリプロファイルの bundle ID。platform は "ios"/"android"、両対応なら省略
+@TestClass                                 // 対象アプリは実行プロファイルが決める(app: は書かない)
+                                           // その OS でしか意味を持たないなら @TestClass(platform: "ios")
 class ログインできること {
 
     @Test("メールとパスワードでログインできる")
@@ -135,7 +142,7 @@ class ログインできること {
         scenario {
             scene(1, "ログイン画面を開く") {
                 condition {
-                    launchApp()                      // 引数省略 = @TestClass の app
+                    launchApp()                      // 引数省略 = 実行プロファイルが決めた対象アプリ
                 }.expectation {
                     exist("#email")                  // 実 snapshot の id を使う
                     exist("#password")
@@ -225,7 +232,7 @@ testbase(SC/TC 等の仕様書)を根拠にシナリオを書く場合、実行�
 
 ### 構造
 
-- `@TestClass(app:platform:)` クラス → `@Test("説明")` メソッド(ID は `S0010` 形式)→ `scenario { }`
+- `@TestClass` クラス → `@Test("説明")` メソッド(ID は `S0010` 形式)→ `scenario { }`
   → `scene(n, "題")` → **condition / action / expectation**(CAE)の3層。
   - `condition` = 前提(通常 `launchApp()`)、`action` = 操作、`expectation` = 検証。
   - チェーンで書く: `condition { … }.action { … }.expectation { … }`。不要な層は省略可。

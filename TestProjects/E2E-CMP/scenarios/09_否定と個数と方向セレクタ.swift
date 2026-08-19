@@ -5,7 +5,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e")
+@TestClass
 class 否定と個数と方向セレクタが正しく動くこと {
 
     // 各 @Test の前に自動実行される。セッションカウンタを1つ進めておき、

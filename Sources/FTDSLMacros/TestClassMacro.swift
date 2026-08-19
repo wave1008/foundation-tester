@@ -27,6 +27,8 @@ public struct TestClassMacro {
         let name: String
         /// @Test の第1引数(文字列リテラル式をそのまま転写)。省略時は nil
         let titleExpr: String?
+        /// @Test(platform:) の引数式(verbatim 転写)。省略時は nil = クラス側に従う
+        let platformExpr: String?
         /// メソッドに @Deleted が付いている(クラス側の @Deleted は展開時に OR する)
         let deleted: Bool
     }
@@ -59,15 +61,21 @@ public struct TestClassMacro {
         for member in declaration.memberBlock.members {
             guard let fn = member.decl.as(FunctionDeclSyntax.self) else { continue }
             var titleExpr: String?
+            var platformExpr: String?
             var isScenario = false
             for attr in fn.attributes {
                 guard let attrSyntax = attr.as(AttributeSyntax.self) else { continue }
                 let name = attrSyntax.attributeName.trimmedDescription
                 guard name == "Test" || name.hasSuffix(".Test") else { continue }
                 isScenario = true
-                if let args = attrSyntax.arguments?.as(LabeledExprListSyntax.self),
-                   let first = args.first {
-                    titleExpr = first.expression.trimmedDescription
+                guard let args = attrSyntax.arguments?.as(LabeledExprListSyntax.self) else { continue }
+                for arg in args {
+                    // title はラベル無しの第1引数、platform はラベル付き
+                    switch arg.label?.text {
+                    case nil: titleExpr = arg.expression.trimmedDescription
+                    case "platform": platformExpr = arg.expression.trimmedDescription
+                    default: break
+                    }
                 }
             }
             guard isScenario else { continue }
@@ -85,14 +93,17 @@ public struct TestClassMacro {
                 continue
             }
             result.append(ScenarioMethod(name: fn.name.text, titleExpr: titleExpr,
+                                         platformExpr: platformExpr,
                                          deleted: hasDeleted(fn.attributes)))
         }
         return result
     }
 
-    /// @TestClass(app: "...", platform: "...") の引数式を取り出す(式は verbatim 転写)
+    /// @TestClass(app: "...", platform: "...") の引数式を取り出す(式は verbatim 転写)。
+    /// 省略時は "nil" ―― 空文字にすると「アプリ未指定」と「空文字を指定した」が descriptor で
+    /// 区別できなくなり、実行プロファイルからの解決へ落ちない
     static func arguments(of node: AttributeSyntax) -> (app: String, platform: String) {
-        var app = "\"\""
+        var app = "nil"
         var platform = "nil"
         if let args = node.arguments?.as(LabeledExprListSyntax.self) {
             for arg in args {
@@ -153,10 +164,11 @@ extension TestClassMacro: ExtensionMacro {
                 body += "ftInstance.\(m.name)()"
                 if hasTearDown { body += "; FTDSL.ftRunTearDown { ftInstance.tearDown() }" }
             }
+            let platformArg = m.platformExpr.map { "\n                platform: \($0)," } ?? ""
             return """
                         FTDSL.FTScenarioDescriptor(
                             name: \(literalString(m.name)),
-                            title: \(m.titleExpr ?? "\"\""),\(deletedArg)
+                            title: \(m.titleExpr ?? "\"\""),\(deletedArg)\(platformArg)
                             run: { \(body) }),
             """
         }.joined(separator: "\n")

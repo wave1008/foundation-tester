@@ -1,6 +1,6 @@
 // ユーザー向けアノテーション(マクロ)の宣言。実装は FTDSLMacros ターゲット。
 //
-// @TestClass(app: "com.example.sampleapp")
+// @TestClass
 // class ログインテスト {
 //     @Test("ログインとエラー表示")
 //     func S0010() { scenario { scene(1) { ... } } }
@@ -13,18 +13,26 @@
 /// objc ランタイム発見用の登録クラス(__FTReg_<クラス名>)を追加する。
 /// 付与先クラスには引数なし init() が必要(シナリオ毎に新しいインスタンスが作られる)。
 ///
+/// 対象アプリは既定で**実行プロファイル**(runs/<name>.json → apps/<name>.json の
+/// `<platform>.app`)から解決される。`app:` は書かなくてよく、書いた場合はそちらが勝つ
+/// (1プロジェクトに複数アプリのシナリオが混在する構成のための上書き。食い違いは警告が出る)。
+///
 /// 同じクラスに `func setUp()` / `func tearDown()`(引数なし・非async・非throws)を書くと、
 /// 各 @Test の前後で自動実行される(基底クラスからの継承は見ない)。
 /// setUp の失敗はそのシナリオを中断し、tearDown は**失敗後でも実行される**。
 @attached(extension, conformances: FTTestClassDefinition, names: named(ftDescriptor))
 @attached(peer, names: prefixed(__FTReg_))
-public macro TestClass(app: String, platform: String? = nil) =
+public macro TestClass(app: String? = nil, platform: String? = nil) =
     #externalMacro(module: "FTDSLMacros", type: "TestClassMacro")
 
 /// シナリオメソッドに付与するマーカー。
 /// メソッドは引数なし・非async・非throws で宣言する(命名慣習: S0010, S0020, …)。
+///
+/// `platform:`("ios" / "android")を書くとそのOSでだけ実行され、他方の OS の run では
+/// **skipped(対象外)として記録される**(失敗ではない)。クラス全体に効かせるなら
+/// `@TestClass(platform:)`。両方あるときはメソッド側が勝つ。
 @attached(peer)
-public macro Test(_ title: String = "") =
+public macro Test(_ title: String = "", platform: String? = nil) =
     #externalMacro(module: "FTDSLMacros", type: "TestMacro")
 
 /// 論理削除マーカー。テストクラスまたは @Test メソッドに付与する。

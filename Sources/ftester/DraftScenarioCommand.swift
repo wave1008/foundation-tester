@@ -61,13 +61,16 @@ struct DraftScenarioCommand: AsyncParsableCommand {
         }
         let outline = draft ?? TestbaseOutline.parse(markdown: markdown, fallbackTitle: fallbackTitle)
 
+        // プロファイルから導いた値は生成コードに焼かない(実行プロファイルで解決させる)。
+        // --app で明示された値だけは書き手の意図として残す
         let bundleID = try resolveApp(in: testProject)
+        let declaredApp = app == nil ? nil : bundleID
         let className = ScenarioCodeGen.suggestedClassName(
             fromName: name ?? outline.title,
             existing: name == nil
                 ? ScenarioCodeGen.existingClassNames(in: [testProject.scenariosDir]) : [])
         let code = ScenarioDraftCodeGen.render(
-            draft: outline, className: className, app: bundleID, platform: platform,
+            draft: outline, className: className, app: declaredApp, platform: platform,
             source: source.lastPathComponent, generatedBy: "ftester draft-scenario")
 
         if dryRun {

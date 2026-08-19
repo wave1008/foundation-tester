@@ -91,14 +91,19 @@ public final class RunRecorder: @unchecked Sendable {
         write(record)
     }
 
+    /// 実行に至らなかったシナリオの合成レコード。kind の既定は `.noWorker`(インフラ都合)で、
+    /// **`.notApplicable`(platform 宣言による対象外)は呼び出し側が明示する** ——
+    /// 取り違えると意図された未実行と事故が同じ顔になる(ScenarioSkipKind の宣言)
     public func recordSkipped(scenarioID: String, title: String?, platform: String,
-                              worker: String?, reason: String) {
+                              worker: String?, reason: String,
+                              kind: ScenarioSkipKind = .noWorker) {
         let record = ScenarioRunRecord(
             runID: runID, scenarioID: scenarioID, title: title, platform: platform, worker: worker,
             machine: machine, profile: profile, passed: false, timedOut: false,
             startedAt: ISO8601DateFormatter().string(from: Date()), durationMs: 0,
             steps: StepCountsRecord(total: 1, skipped: 1),
-            failedSteps: [FailedStepRecord(index: 0, description: reason)])
+            failedSteps: [FailedStepRecord(index: 0, description: reason)],
+            skipKind: kind)
         write(record)
     }
 

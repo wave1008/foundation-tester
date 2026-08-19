@@ -77,6 +77,33 @@ enum ProfileRunner {
                 "\(scope) matched no device in run profile \(profileName)"
                 + " (available: \(resolvedAll.devices.map(\.name).joined(separator: ", ")))")
         }
+        // OS 対象外(`@TestClass(platform:)` / `@Test(platform:)` がこの run に無い OS を指す)は
+        // **キューへ入れる前に外す** —— 入れると RunOrchestrator の「担当ワーカーなし」に落ち、
+        // 意図された対象外が失敗として数えられる(PlatformApplicability の宣言)。
+        // 台数の見積り(この下)より前に行う: 外した分の台は用意しなくてよい
+        let runPlatforms = Set(full.devices.map(\.platform))
+        let applicability = PlatformApplicability.partition(items, runPlatforms: runPlatforms) {
+            $0.info.platform
+        }
+        if !applicability.notApplicable.isEmpty {
+            for item in applicability.notApplicable {
+                let declared = item.info.platform ?? ""
+                recorder?.recordSkipped(
+                    scenarioID: item.info.id, title: item.info.title, platform: declared,
+                    worker: nil,
+                    reason: PlatformApplicability.reason(declared: declared,
+                                                         runPlatforms: runPlatforms),
+                    kind: .notApplicable)
+            }
+            print("→ Skipped \(applicability.notApplicable.count) scenario(s) declared for another"
+                  + " platform (this run covers \(runPlatforms.sorted().joined(separator: ", ")))")
+            items = applicability.runnable
+        }
+        // 全部が対象外ならデバイスを起こす意味がない(0 失敗で終える = 正しく緑)
+        if items.isEmpty {
+            return RunSummary(total: 0, failed: 0)
+        }
+
         // **回す本数を超える台数を用意しない**(ResolvedProfile.limitingDevices の宣言参照)。
         // 本数はここで確定している(items は呼び出し側で解決済み)ので、ブリッジ供給・アプリ版チェック・
         // blank triage が丸ごと縮む。platform 未指定のシナリオは**両方**に数える(どちらでも走りうる)
@@ -339,7 +366,8 @@ enum ProfileRunner {
                 return ws
             }) : nil,
             installHandler: InstallHandlerFactory.make(apps: resolved.apps),
-            appName: resolved.appName)
+            appName: resolved.appName,
+            appBundleIDs: resolved.apps.mapValues(\.bundleID))
         PhaseLog.mark("orchestrator-setup")
         async let summary = orchestrator.run(items: items, defaultPlatform: defaultPlatform)
 

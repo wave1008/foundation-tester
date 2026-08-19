@@ -45,7 +45,7 @@ struct ListScenarios: AsyncParsableCommand {
                         id: "\(testClass.className).\(scenario.name)",
                         title: scenario.title,
                         app: testClass.app,
-                        platform: testClass.platform,
+                        platform: scenario.effectivePlatform(classPlatform: testClass.platform),
                         deleted: scenario.deleted))
                 }
             }
@@ -61,11 +61,14 @@ struct ListScenarios: AsyncParsableCommand {
             }
             for testClass in classes {
                 let platform = testClass.platform ?? "ios/android"
-                print("\(testClass.className) [\(platform)] app=\(testClass.app)")
+                let app = testClass.app ?? "(from the run profile)"
+                print("\(testClass.className) [\(platform)] app=\(app)")
                 for scenario in testClass.scenarios {
                     let title = scenario.title.isEmpty ? "" : " — \(scenario.title)"
                     let deleted = scenario.deleted ? " (deleted)" : ""
-                    print("  ・ \(testClass.className).\(scenario.name)\(title)\(deleted)")
+                    // クラスと違う platform を宣言しているメソッドだけ明示する
+                    let only = scenario.platform.map { " [\($0) only]" } ?? ""
+                    print("  ・ \(testClass.className).\(scenario.name)\(title)\(only)\(deleted)")
                 }
             }
         }
@@ -161,6 +164,10 @@ struct RunScenario: AsyncParsableCommand {
             help: "App display name from the run profile (appName), used by tapAppIcon() when the argument is omitted")
     var appName: String?
 
+    @Option(name: .customLong("app"),
+            help: "Default app (bundle ID / package name) resolved from the run profile, used when the scenario declares no @TestClass(app:). Always passed when known: a mismatch with an explicit @TestClass(app:) is reported")
+    var app: String?
+
     @Flag(help: "Emit NDJSON events (for the host)")
     var json = false
 
@@ -195,7 +202,22 @@ struct RunScenario: AsyncParsableCommand {
         }
 
         let scenarioID = "\(testClass.className).\(descriptor.name)"
-        let runPlatform = testClass.platform ?? platform
+        let runPlatform = descriptor.effectivePlatform(classPlatform: testClass.platform) ?? platform
+
+        // 既定アプリ(bundle ID)。優先順・警告文・未解決時の文言は FTCore.ScenarioAppResolution が
+        // 唯一の定義元で、ここは転写するだけ(MCP・他経路と判断を割らないため)
+        let appBundleID: String
+        switch ScenarioAppResolution.resolve(declared: testClass.app, fromProfile: app,
+                                             scenarioID: scenarioID, dryRun: dryRun) {
+        case .resolved(let bundleID, let warning):
+            appBundleID = bundleID
+            if let warning {
+                FileHandle.standardError.write(Data((warning + "\n").utf8))
+            }
+        case .unresolved(let message):
+            FileHandle.standardError.write(Data((message + "\n").utf8))
+            throw ExitCode(64)
+        }
 
         // ドライバ構築(FTester.swift の DriverOptions と同じパターン)。
         // hybrid: primary=in-app、fallback=XCUITest ブリッジ(springboard 参照)を StepExecutor へ。
@@ -253,12 +275,12 @@ struct RunScenario: AsyncParsableCommand {
                     // バンドルのマーカーはデバイスの応答が要らないので受け皿にできる
                     uiFrameworkHint = probeStatus?.uiFramework
                         ?? AppBundleInspector.detect(appPath: appPath, udid: udid,
-                                                     bundleID: testClass.app, physical: physical)
+                                                     bundleID: appBundleID, physical: physical)
                     let injected = probeStatus?.sessionBundleID ?? inappApp
-                    if let injected, injected != testClass.app {
+                    if let injected, injected != appBundleID {
                         guard engine == "hybrid", let xcuiPort else {
                             throw ValidationError(
-                                "scenario \(scenarioID) targets \(testClass.app), which differs from the app the "
+                                "scenario \(scenarioID) targets \(appBundleID), which differs from the app the "
                                 + "in-app bridge is injected into (\(injected)), so it cannot run with engine=inapp. "
                                 + "On a device without an explicit engine (run-profile iosInappEngine defaults "
                                 + "to hybrid) it is driven automatically via XCUITest"
@@ -270,14 +292,14 @@ struct RunScenario: AsyncParsableCommand {
                         // 上で採った自己申告は**注入先アプリ**のもの。ここは別アプリを XCUITest で
                         // 駆動する分岐なので、対象アプリのマーカーで判定し直す(取れなければ不明)
                         uiFrameworkHint = AppBundleInspector.detect(
-                            appPath: appPath, udid: udid, bundleID: testClass.app, physical: physical)
+                            appPath: appPath, udid: udid, bundleID: appBundleID, physical: physical)
                     } else {
                         // in-app は launch=simctl 再起動+dylib 注入(自己再起動できないため)
                         let repoRoot = try RepoRoot.find()
                         let inapp = InAppDriver(repoRoot: repoRoot, udid: udid ?? "booted", port: port)
                         if engine == "hybrid", let xcuiPort {
                             fallbackDriver = SystemUIDriver(port: xcuiPort)
-                            let attach = AppAttachDriver(port: xcuiPort, bundleID: testClass.app)
+                            let attach = AppAttachDriver(port: xcuiPort, bundleID: appBundleID)
                             typeDriver = attach
                             // WebView 画面だけドライバごと XCUITest へ委譲する(in-app は WKWebView の
                             // 中身を原理的に採れない)。attach は typeDriver と**同じインスタンス**を
@@ -332,7 +354,7 @@ struct RunScenario: AsyncParsableCommand {
                     // シナリオプロセスごとに払わない)。無ければ simctl へ落ちる
                     // (コマンド失敗・実機・udid 不明は nil のまま = 従来どおり空打ちを打つ)
                     uiFrameworkHint = AppBundleInspector.detect(
-                        appPath: appPath, udid: udid, bundleID: testClass.app, physical: physical)
+                        appPath: appPath, udid: udid, bundleID: appBundleID, physical: physical)
                 }
             case "android":
                 driver = try AndroidDriver(serial: serial)
@@ -355,7 +377,7 @@ struct RunScenario: AsyncParsableCommand {
             // "⚠️ " 付きの log イベントへ変換する
             if runPlatform == "ios", uiFrameworkHint == nil {
                 FileHandle.standardError.write(Data(
-                    ("could not determine the UI framework of \(testClass.app) (the bridge did not"
+                    ("could not determine the UI framework of \(appBundleID) (the bridge did not"
                      + " report it and no app bundle was available), so the empty drag after a"
                      + " scroll search is fired blind — on React Native that can select a row."
                      + " Pass --app-path (the run profile's appPath) to settle it.\n").utf8))
@@ -386,7 +408,7 @@ struct RunScenario: AsyncParsableCommand {
         }
         // 技術識別子: Android は adb serial、iOS はシミュレータ UDID(共に既存のドライバ構築引数の再利用)
         let deviceIdentifier = runPlatform == "android" ? serial : udid
-        let core = FTDriveCore(driver: driver, platform: runPlatform, app: testClass.app,
+        let core = FTDriveCore(driver: driver, platform: runPlatform, app: appBundleID,
                                scenarioID: scenarioID, scenarioTitle: descriptor.title,
                                delegate: delegate, healingEnabled: heal && !noFM,
                                falsePositiveCheckEnabled: !noFalsePositiveCheck,
@@ -408,7 +430,7 @@ struct RunScenario: AsyncParsableCommand {
 
         // 失敗時に「アプリより手前の別 window」を添える(Android のみ。adb を叩くのでここで注入する)
         if runPlatform == "android", let serial {
-            let package = testClass.app
+            let package = appBundleID
             core.foregroundOverlays = {
                 AndroidForegroundWindows.query(package: package, serial: serial)
             }

@@ -8,7 +8,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e")
+@TestClass
 class 横向きでも操作できること {
 
     @Test("横向きにしてもタップが正しい要素に当たる")

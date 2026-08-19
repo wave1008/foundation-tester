@@ -198,6 +198,17 @@ public struct FixSuggestionRecord: Codable, Sendable {
 }
 
 /// results/runs/<YYYY-MM>/<runID>/scenarios/<シナリオID>.json
+/// `RunRecorder.recordSkipped` が書いた合成レコードの理由。**混ぜてはいけない2種**:
+/// 意図された対象外と、実行できなかった事故。同じ顔にすると「緑だが1本も走っていない」run を
+/// 見分けられなくなる。nil = 通常実行のレコード(または旧形式)
+public enum ScenarioSkipKind: String, Codable, Sendable {
+    /// 実行プロファイルの platform に対して対象外(`@TestClass(platform:)` / `@Test(platform:)`)。
+    /// **意図された未実行**なので run の失敗数には数えない
+    case notApplicable
+    /// 担当ワーカー不在・全滅・振り直し上限などのインフラ都合。従来どおり失敗として数える
+    case noWorker
+}
+
 public struct ScenarioRunRecord: Codable, Sendable {
     public var schemaVersion: Int
     /// Builder 段階では ""。RunRecorder.record が焼き込む
@@ -232,6 +243,8 @@ public struct ScenarioRunRecord: Codable, Sendable {
     /// 全ステップのタイムライン(録画再生 UI のステップツリー用。イベント到着順)。
     /// failedSteps と異なり成否によらず記録する。ステップが1つも無ければ nil
     public var timeline: [TimelineStepRecord]?
+    /// recordSkipped の合成レコードだけが持つ理由の種別(通常実行は nil。旧レコードも nil)
+    public var skipKind: ScenarioSkipKind?
 
     public init(schemaVersion: Int = RunRecordSchema.current, runID: String = "",
                 scenarioID: String, title: String? = nil, platform: String, worker: String? = nil,
@@ -242,8 +255,10 @@ public struct ScenarioRunRecord: Codable, Sendable {
                 fixSuggestions: [FixSuggestionRecord]? = nil,
                 errorLogs: [String]? = nil,
                 fm: FMUsageRecord? = nil,
-                timeline: [TimelineStepRecord]? = nil) {
+                timeline: [TimelineStepRecord]? = nil,
+                skipKind: ScenarioSkipKind? = nil) {
         self.fm = fm
+        self.skipKind = skipKind
         self.schemaVersion = schemaVersion
         self.runID = runID
         self.scenarioID = scenarioID

@@ -5,7 +5,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.ftester.e2e")
+@TestClass
 class スクロール探索が要素を飛び越す現象を再現できること {
 
     @Test("scrollFrame を指定すれば今日でも #jrow_05 に到達できる")

@@ -11,13 +11,15 @@ public struct ScenarioInfo: Codable, Sendable, Hashable {
     /// クラス名.メソッド名
     public let id: String
     public let title: String
-    public let app: String
+    /// `@TestClass(app:)` の明示値。nil = 未指定 = 実行プロファイルから解決する
+    /// (FTCore.ScenarioAppResolution)
+    public let app: String?
     /// "ios" / "android" / nil(両OS対応)
     public let platform: String?
     /// @Deleted(論理削除)。一覧に残るが一括実行から除外される
     public let deleted: Bool
 
-    public init(id: String, title: String, app: String, platform: String?,
+    public init(id: String, title: String, app: String? = nil, platform: String? = nil,
                 deleted: Bool = false) {
         self.id = id
         self.title = title
@@ -26,14 +28,15 @@ public struct ScenarioInfo: Codable, Sendable, Hashable {
         self.deleted = deleted
     }
 
-    // deleted キーを出さない旧ランナーの JSON も読めるようにしておく
+    // deleted キーを出さない旧ランナーの JSON も読めるようにしておく。
+    // app は null / キー欠落のどちらも「未指定」として読む
     private enum CodingKeys: String, CodingKey { case id, title, app, platform, deleted }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
         title = try container.decode(String.self, forKey: .title)
-        app = try container.decode(String.self, forKey: .app)
+        app = try container.decodeIfPresent(String.self, forKey: .app)
         platform = try container.decodeIfPresent(String.self, forKey: .platform)
         deleted = try container.decodeIfPresent(Bool.self, forKey: .deleted) ?? false
     }
@@ -235,7 +238,10 @@ public enum ScenarioHost {
     /// フォールバック(子へ `--app-path` として渡す。プロファイルの appPath 等、呼び出し側が
     /// 解決できた値があれば渡す。無ければ渡さない = 子は明示引数のみで解決する)。
     /// appName はアプリの表示名(プロファイルの appName)。子へ `--app-name` として渡し、
-    /// tapAppIcon() の引数省略時の既定になる(installHandler と無関係に常に渡す)
+    /// tapAppIcon() の引数省略時の既定になる(installHandler と無関係に常に渡す)。
+    /// appBundleID は実行プロファイルが解決した bundle ID。子へ `--app` として渡し、
+    /// `@TestClass(app:)` 未指定のシナリオの既定アプリになる。**明示があっても常に渡す** ——
+    /// 渡さないと食い違いの警告が原理的に出せない(FTCore.ScenarioAppResolution)
     @discardableResult
     public static func run(project: TestProject, scenarioID: String,
                            connection: DriverConnection,
@@ -248,6 +254,7 @@ public enum ScenarioHost {
                            installHandler: ((String?) async -> (ok: Bool, message: String))? = nil,
                            appPath: String? = nil,
                            appName: String? = nil,
+                           appBundleID: String? = nil,
                            onEvent: @escaping (ScenarioEvent) -> Void) async -> Bool {
         let startedAt = Date()
         let clock = ContinuousClock()
@@ -306,6 +313,7 @@ public enum ScenarioHost {
             args += ["--app-path", appPath]
         }
         if let appName { args += ["--app-name", appName] }
+        if let appBundleID { args += ["--app", appBundleID] }
         process.arguments = args
 
         let stdout = Pipe()

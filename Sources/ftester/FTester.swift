@@ -764,6 +764,12 @@ struct RunScenarios: AsyncParsableCommand {
         visibility: .hidden))
     var workspace: String?
 
+    /// `@TestClass(app:)` を書かないシナリオを **実行プロファイル無し**で回すときの逃げ道。
+    /// --profile があればそちらのアプリプロファイルから解決されるのでこれは要らない
+    @Option(name: .customLong("app"),
+            help: "Default app (bundle ID / package name) for scenarios that declare no @TestClass(app:). Only needed without --profile; with --profile the app profile supplies it")
+    var app: String?
+
     @OptionGroup var driverOptions: DriverOptions
 
     func validate() throws {
@@ -938,8 +944,13 @@ struct RunScenarios: AsyncParsableCommand {
                 workspaceOverride: workspace,
                 recorder: recorder)
             let failedCount = runSummary.failed
+            // **回した本数は items.count ではない** —— ProfileRunner が OS 対象外
+            // (`@TestClass(platform:)` / `@Test(platform:)`)を投入前に外すので、
+            // ここで items.count を使うと「12本全部成功」と出しつつ10本しか走っていない、になる
+            let ranCount = runSummary.total
+            let notApplicable = items.count - ranCount
             PhaseLog.mark("profile-run-done")
-            recorder.finish(total: items.count, passed: items.count - failedCount, failed: failedCount,
+            recorder.finish(total: ranCount, passed: ranCount - failedCount, failed: failedCount,
                             degradedWorkers: runSummary.degradedWorkers,
                             freezeRetries: runSummary.freezeRetries,
                             blankRepairs: runSummary.blankRepairs,
@@ -948,9 +959,11 @@ struct RunScenarios: AsyncParsableCommand {
                             measurementInvalidReasons: runSummary.measurementInvalidReasons)
             PhaseLog.mark("recorder-finish")
             try writeJUnitIfRequested(project: testProject, recorder: recorder)
+            let skippedSuffix = notApplicable > 0
+                ? " (\(notApplicable) skipped: declared for another platform)" : ""
             print(failedCount == 0
-                  ? "✅ All \(items.count) scenario(s) passed"
-                  : "❌ \(failedCount) of \(items.count) scenario(s) failed")
+                  ? "✅ All \(ranCount) scenario(s) passed\(skippedSuffix)"
+                  : "❌ \(failedCount) of \(ranCount) scenario(s) failed\(skippedSuffix)")
             if failedCount > 0 { throw ExitCode(1) }
             return
         }
@@ -1163,6 +1176,13 @@ struct RunScenarios: AsyncParsableCommand {
     /// MCP の `ft_dry_run` と同じ扱い。案内すると開けないパスを渡すことになるので report 行も落とす)。
     /// 接続情報は NullDriver 固定のため使われず、**platform だけが `ios { }` / `android { }` の
     /// 分岐と `#id` 台帳の照合に効く**。整形は MCP・サブプロセスと同じ `ScenarioLogFormatter`
+    /// `--app` は platform 別に書き分けられないので両 platform に同じ値を配る
+    /// (書き分けが要るなら実行プロファイルを使う)。nil なら空 = 子が明示エラーを出す
+    static func appBundleIDs(_ app: String?) -> [String: String] {
+        guard let app else { return [:] }
+        return ["ios": app, "android": app]
+    }
+
     private func runDryRun(_ items: [ScenarioRunItem], project: TestProject) async -> Int {
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("ftester-dryrun-\(UUID().uuidString)", isDirectory: true)
@@ -1179,7 +1199,7 @@ struct RunScenarios: AsyncParsableCommand {
                 // **`enabled: false`(= 子へ --no-fm)**。heal だけ切ると失敗のたびに triage が
                 // 走り、デバイスも画面も無いのに FM の直列化待ちを払う(数秒。実測で確認)
                 fm: FMConfig(enabled: false, heal: false), reportDir: tempDir.path,
-                dryRun: true) { event in
+                dryRun: true, appBundleID: app) { event in
                 let lines = ScenarioLogFormatter.lines(for: event)
                     .filter { !$0.contains("→ report:") }
                 if quiet {
@@ -1220,7 +1240,8 @@ struct RunScenarios: AsyncParsableCommand {
             var buffer: [String] = []
             let outcome = await ScenarioRunner.runOne(
                 project: project, item: item, worker: worker, fm: FMConfig(heal: heal && !noHeal),
-                reportDir: URL(fileURLWithPath: reportDir), recorder: recorder) { event in
+                reportDir: URL(fileURLWithPath: reportDir), recorder: recorder,
+                appBundleID: app) { event in
                 let lines = RunLogFormatter.lines(for: event)
                 if quiet {
                     buffer.append(contentsOf: lines)
@@ -1278,7 +1299,8 @@ struct RunScenarios: AsyncParsableCommand {
         let orchestrator = RunOrchestrator(project: project, workers: workers,
                                            fm: FMConfig(heal: heal && !noHeal),
                                            reportDir: URL(fileURLWithPath: reportDir),
-                                           recorder: recorder)
+                                           recorder: recorder,
+                                           appBundleIDs: Self.appBundleIDs(app))
         async let summary = orchestrator.run(items: items, defaultPlatform: defaultPlatform)
 
         // シナリオ毎にバッファして完了時に一括表示(並列時のステップ行の混線防止)。
