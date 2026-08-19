@@ -1596,7 +1596,8 @@ extension StepExecutor {
     /// 解決できているなら、シナリオ自身がそのアラートを操作しようとしている(`tap("許可")` /
     /// `ifCanSelect("許可")`)ので、自動処理が横から奪ってはいけない。
     /// 判断は FTCore.SystemAlertDismissal の1箇所(推測しない理由もそこ)。
-    func dismissSystemAlert(in snapshot: SnapshotResponse, via fallback: AppDriver) async -> Bool {
+    public func dismissSystemAlert(in snapshot: SnapshotResponse,
+                                   via fallback: AppDriver) async -> Bool {
         guard !systemAlertButtons.isEmpty,
               let button = SystemAlertDismissal.buttonToTap(in: snapshot.elements,
                                                             labels: systemAlertButtons) else {
