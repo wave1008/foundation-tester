@@ -575,6 +575,11 @@ extension MCPServer {
         if let hint = partialMatchFormHint(locator, in: snapshot.elements) {
             parts.append(hint)
         }
+        // 「画面には出ているのに当たらない」の残りの形: **本文が複数ノードに割れている**。
+        // 判定は DSL と同じ StepExecutor.splitTextHint(素で当たるものがあれば黙る)
+        if let hint = StepExecutor.splitTextHint(for: locator, in: snapshot.elements) {
+            parts.append(" \(hint.prefix(1).uppercased())\(hint.dropFirst()).")
+        }
         return parts.joined()
     }
 
