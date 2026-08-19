@@ -686,7 +686,7 @@ final class FTInAppBridge {
                     guard Self.hasRoom(webScroll, req.direction) else { return false }
                     Self.scroll(webScroll, direction: req.direction, path: req.path,
                                 toEdge: req.edge == true)
-                    return true
+                    return req.edge != true   // 端送りは待たない(下の UIKit 経路と同じ理由)
                 }
                 // AX 経路は端でも true を返すフレームワークがある(Compose)ので「動いた」と扱う
                 scrolled = Self.scrollViaAccessibility(window, finger: req.direction)
@@ -732,7 +732,13 @@ final class FTInAppBridge {
                                                path: req.path) else { return false }
             Self.scroll(scrollView, direction: req.direction, path: req.path,
                         toEdge: req.edge == true)
-            return true
+            // **端送りは動かした後も待たない**(2026-08-20): 端送りの後にホストは必ず
+            // `settledSignature`(署名が2回続けて一致)で整定を待つので、ここで待つのは二重。
+            // 常にアニメーションし続ける画面ではこの cap(2.5s)がそのまま所要になり、
+            // 受け手の実文書で端送りが 3.0s 固定になっていた残りがこれ。
+            // **探索や単発の swipe では従来どおり待つ** —— あちらは待たないと次の解決が
+            // 動いている木を掴む(XCUITest ブリッジが `/swipe` を整定対象から外したのと同じ線引き)
+            return req.edge != true
         }
         return ok()
     }
