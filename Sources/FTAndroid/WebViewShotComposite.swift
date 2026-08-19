@@ -47,13 +47,34 @@ enum WebViewShotComposite {
                       width: Double(pixels.width), height: Double(best.height))
     }
 
-    /// 貼ってよいか。**帯とページ画像の縦横比が合わないなら貼らない** ——
-    /// 帯は「たまたま1色だっただけの領域」のこともあるので、無関係な画像を貼らないための門。
-    /// 比較は幅を合わせたときの高さで行う(単位: 画像の px)
-    static func fits(band: CGRect, pageWidth: Int, pageHeight: Int, tolerance: Double = 0.1) -> Bool {
-        guard pageWidth > 0, pageHeight > 0, band.width > 0, band.height > 0 else { return false }
-        let scaled = band.width * Double(pageHeight) / Double(pageWidth)
-        return abs(scaled - band.height) <= band.height * tolerance
+    /// どこへ貼るか。**領域の幅にページを合わせ、上端から貼る**。貼れないときは nil。
+    ///
+    /// 領域の出どころで許容が違う:
+    /// - `known: true`(木の `webView` ノードの矩形) … そこが WebView だと**分かっている**ので、
+    ///   高さのずれは広めに許す(スクロール位置やアドレスバーの分だけページ画像と食い違う)
+    /// - `known: false`(画像から拾った1色の帯) … 帯は「たまたま1色だった領域」のこともあり、
+    ///   **WebView がどこから始まるかも分からない**ので、縦横比がほぼ一致するときだけ貼る。
+    ///   画面全体が真っ黒(= アプリの chrome ごと写っていない)ときはここで弾かれる ——
+    ///   上端から貼るとナビゲーションバーの上にページを重ねてしまうため
+    static func pasteRect(in region: CGRect, pageWidth: Int, pageHeight: Int,
+                          known: Bool) -> CGRect? {
+        guard pageWidth > 0, pageHeight > 0, region.width > 0, region.height > 0 else { return nil }
+        let height = region.width * Double(pageHeight) / Double(pageWidth)
+        let tolerance = known ? 0.35 : 0.1
+        guard abs(height - region.height) <= region.height * tolerance else { return nil }
+        return CGRect(x: region.minX, y: region.minY, width: region.width, height: height)
+    }
+
+    /// 木の座標(px)を画像の座標へ移す。**スクリーンショットが縮小されている端末**では
+    /// 木の screen と画像の大きさが一致しないので、必ず比で合わせる
+    static func imageRect(frame: (x: Double, y: Double, width: Double, height: Double),
+                          screen: (width: Double, height: Double),
+                          imageWidth: Int, imageHeight: Int) -> CGRect? {
+        guard screen.width > 0, screen.height > 0, frame.width > 0, frame.height > 0 else { return nil }
+        let sx = Double(imageWidth) / screen.width
+        let sy = Double(imageHeight) / screen.height
+        return CGRect(x: frame.x * sx, y: frame.y * sy,
+                      width: frame.width * sx, height: frame.height * sy)
     }
 
     /// `overlay` を `rect`(画像の座標系・原点は左上)へ引き伸ばして `base` の上に描く
@@ -71,6 +92,20 @@ enum WebViewShotComposite {
         context.draw(overlay, in: flipped)
         guard let composed = context.makeImage() else { return nil }
         return png(from: composed)
+    }
+
+    /// 補えなかったときに出す説明。**黙って空白の画像を返さない**ためのもので、
+    /// 読み手には理由が見えない(画像は真っ白/真っ黒なだけ)。最頻の原因は
+    /// **アプリ側で WebView のデバッグが有効になっていない**こと ——
+    /// `setWebContentsDebuggingEnabled(true)` が無いビルドには devtools のソケットが無く、
+    /// ページを撮る手段が存在しない。**確かめ方まで書く**(原因の切り分けが利用者側にしかできない)
+    static func blankCaptureWarning(hasWebViewNode: Bool) -> String {
+        let area = hasWebViewNode ? "the WebView area" : "most of the screen"
+        return "⚠️ the screen capture is blank across \(area), and the page could not be read"
+            + " back over CDP. On Android the device capture can miss the WebView layer; ftester"
+            + " fills it in from the page itself, which needs WebView debugging enabled in the app"
+            + " under test (WebView.setWebContentsDebuggingEnabled(true), usually debug builds"
+            + " only). Check with: adb -s <serial> shell cat /proc/net/unix | grep devtools_remote"
     }
 
     static func cgImage(fromPNG data: Data) -> CGImage? {
