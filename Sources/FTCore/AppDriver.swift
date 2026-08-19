@@ -94,6 +94,15 @@ public protocol AppDriver {
     /// **包むドライバは必ず素通しすること**(既定実装は自分の swipe(_:) を呼ぶので、受けないと
     /// 最初のラッパーで用途と座標が落ちる)
     func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent, path: FTSwipePath?) async throws
+    /// 直前の**端送り**(`intent: .edge`)で「もう端に着いている」とドライバが**確信できた**か。
+    /// 既定 nil = 分からない(ホストは従来どおり木の署名が2回続けて不変になるまで読む)。
+    ///
+    /// 端送りの所要は、スクロールそのものではなく**この判定のための読み**が支配する
+    /// (ページを1回で飛ばせる画面では 2.3s のほぼ全部。docs/performance-tuning.md §3.27)。
+    /// 位置を直接動かせるドライバは「余地が無い」を**事実として**知っているので、
+    /// 推測(署名の比較)より強い。**プロトコル要件として宣言すること**(既定実装だけだと
+    /// 存在型越しの呼び出しが静的ディスパッチで既定へ落ち、ドライバの答えが捨てられる)
+    var reachedEdgeOnLastSwipe: Bool? { get }
     /// 2点間ドラッグ(座標は snapshot の screen と同じ座標系)。pressSeconds=押下静止時間、
     /// durationSeconds=移動時間(実機ジェスチャの速度・長押しに反映される)。
     func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
@@ -214,6 +223,10 @@ public enum DriverError: Error, LocalizedError {
 /// activate 未対応ドライバ(InAppDriver/SystemUIDriver 等)は launch(再起動)にフォールバックする。
 public extension AppDriver {
     var lastActionNote: String? { nil }
+    /// 既定は「分からない」。答えられるのは**位置を直接動かせる**ドライバ(AndroidDriver の
+    /// CDP 経路・in-app の contentOffset 経路)だけ。**包むドライバは中のドライバの答えを
+    /// 素通しすること**(捨てると端送りが毎回ホストの署名判定まで回る)
+    var reachedEdgeOnLastSwipe: Bool? { nil }
     /// 既定は「答えられない」。答えられるのは XCUITest ブリッジを話す BridgeClient だけ
     func hittable(ref: Int) async throws -> Bool? { nil }
     var lastLaunchTiming: LaunchTiming? { nil }

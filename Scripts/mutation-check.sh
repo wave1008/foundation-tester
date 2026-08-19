@@ -38,6 +38,24 @@ mutations = json.load(open(sys.argv[1]))
 if not isinstance(mutations, list) or not mutations:
     sys.exit("mutations.json must be a non-empty array")
 
+# **デバイス実行の最中は走らせない**(2026-08-20)。変異自体は worktree(専用の .build)で
+# 隔離されているが、同じ機械の CPU とシミュレータ/エミュレータを取り合うと、走っている
+# run の所要が伸びて計測が濁る。**本線の swift test/build は論外**(実行中のバイナリが
+# 差し替わって run のプロセスが SIGKILL される。CLAUDE.md の実害)。
+# 承知のうえで重ねるときだけ MUT_ALLOW_DURING_RUN=1。
+def device_run_in_progress():
+    # 自分のコマンドラインにこの文字列は載らないので自己一致しない(pgrep の罠は CLAUDE.md)
+    for pattern in ("Scripts/e2e.sh", "ftester run ", "ftester api run"):
+        if subprocess.run(["pgrep", "-f", pattern], capture_output=True).returncode == 0:
+            return pattern
+    return None
+
+if os.environ.get("MUT_ALLOW_DURING_RUN") != "1":
+    busy = device_run_in_progress()
+    if busy:
+        sys.exit(f"device run in progress ({busy}). Wait for it, or set MUT_ALLOW_DURING_RUN=1"
+                 " if you know the two will not compete for the same devices.")
+
 repo = os.getcwd()
 name = os.path.basename(repo)
 root = os.environ.get("MUT_WORKTREE_ROOT", os.path.join(os.path.dirname(repo), f"{name}-mutwt"))

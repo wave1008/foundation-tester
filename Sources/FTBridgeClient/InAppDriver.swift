@@ -217,6 +217,8 @@ public final class InAppDriver: AppDriver {
 
     public func screenshot() async throws -> Data { try await withCrashContext { try await client.screenshot() } }
     public var lastActionNote: String? { client.lastActionNote }
+    /// 端の申告は素通し(捨てると端送りが毎回ホストの署名判定まで回る)
+    public var reachedEdgeOnLastSwipe: Bool? { client.reachedEdgeOnLastSwipe }
     public var lastLaunchTiming: LaunchTiming? { lastLaunchTimingValue }
 
     /// 接続系エラーに、直近クラッシュレポートの有無に応じた切り分け情報を detail 末尾に付与して

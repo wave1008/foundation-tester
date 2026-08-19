@@ -270,4 +270,5 @@ public final class AppAttachDriver: AppDriver {
     }
     public func foregroundAppID() async throws -> String? { try await client.foregroundAppID() }
     public var lastActionNote: String? { client.lastActionNote }
+    public var reachedEdgeOnLastSwipe: Bool? { client.reachedEdgeOnLastSwipe }
 }

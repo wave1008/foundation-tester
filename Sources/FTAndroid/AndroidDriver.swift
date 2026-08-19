@@ -608,6 +608,7 @@ public final class AndroidDriver: AppDriver {
     /// **飛ばせなければ従来のジェスチャへ落ちる**(判定は1インスタンスにつき1回だけ試す)
     public func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent,
                       path: FTSwipePath?) async throws {
+        atEdgeOnLastSwipe = nil
         if intent == .edge, await webViewJumpToEdge(direction) { return }
         if intent == .edge, let stroke = edgeStroke(direction, path: path) {
             try await drag(fromX: stroke.fromX, fromY: stroke.fromY,
@@ -664,12 +665,18 @@ public final class AndroidDriver: AppDriver {
         guard AndroidWebViewDOM.isAppWebViewDOMEnabled,
               let package = currentPackage,
               webViewEdgeJumpUnavailableFor != package else { return false }
-        let ok = await AndroidWebViewDOM.scrollToEdge(
+        let outcome = await AndroidWebViewDOM.scrollToEdge(
             serial: serial ?? "", packageID: package, route: .appWebView,
             finger: direction, adb: { try self.adb($0).output })
-        if !ok { webViewEdgeJumpUnavailableFor = package }
-        return ok
+        guard let outcome else { webViewEdgeJumpUnavailableFor = package; return false }
+        // **動かなかった = もう端**。ホストはこれを受けて署名の2回不変を待たずに切り上げる
+        atEdgeOnLastSwipe = !outcome.moved
+        return true
     }
+
+    /// 直前の端送りで「もう端」と分かったか(`AppDriver.reachedEdgeOnLastSwipe`)
+    public private(set) var atEdgeOnLastSwipe: Bool?
+    public var reachedEdgeOnLastSwipe: Bool? { atEdgeOnLastSwipe }
 
     /// ダブルタップ・ピンチは**ブリッジ apk 経由だけ**(gRPC の道は作らない)。
     /// gRPC は `EmulatorController` = エミュレータ専用で実機に無く、一方 apk の
