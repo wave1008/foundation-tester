@@ -1048,12 +1048,23 @@ public final class FTDriveCore {
         // **docs が勧めていた ifCanSelect だけが唯一届かない書き方**だった(受け手報告)。
         // 規律は notExists の照会と同じ: **不成立が確定した1回だけ**払う(毎周回だと
         // springboard 再session の数百 ms が待ちを支配する)
-        if let fb = executor.fallbackDriver,
-           let fsnap = FTSync.run({ try? await fb.snapshot() }) ?? nil,
-           StepExecutor.resolve(step: step, in: fsnap, strictForAssert: true) != nil {
+        guard let fb = executor.fallbackDriver,
+              let fsnap = FTSync.run({ try? await fb.snapshot() }) ?? nil else { return false }
+        if StepExecutor.resolve(step: step, in: fsnap, strictForAssert: true) != nil {
             return true
         }
-        return false
+        // **どちらにも無いなら、システム許可アラートが被さっていないかを見る**(2026-08-20)。
+        // 閉じたら primary を1枚撮り直して見直す —— 閉じる前の答え(不成立)をそのまま返すと、
+        // **`ifCanSelect` のガード列がアラートの上を素通りして全部 not met になる**。
+        // one-shot のガードは窓が過ぎたら戻ってこないので、後続の exist 系で自動押下が効いた頃には
+        // 手遅れになる(受け手が実際に踏んだ形。Warmup のオンボーディング列が全滅した)。
+        // **要求された要素が解決できたときはここへ来ない** = シナリオ自身のアラート操作は奪わない
+        let executor = self.executor
+        guard FTSync.run({ await executor.dismissSystemAlert(in: fsnap, via: fb) }) == true else {
+            return false
+        }
+        guard let after = FTSync.run({ try? await driver.snapshot() }) ?? nil else { return false }
+        return StepExecutor.resolve(step: step, in: after, strictForAssert: true) != nil
     }
 
     // MARK: - スレッド安全性(DSL スレッド外からの誤呼び出し対策)
