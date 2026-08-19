@@ -308,7 +308,8 @@ public enum DSLCommandIndex {
         .init("tapAppIcon", "app", "tapAppIcon(name?)",
               "Finds and taps the app icon on the home screen."),
         .init("screenshot", "app", "screenshot(filename:?)",
-              "Captures the screen and embeds it in the report after this step."),
+              "Captures the screen and embeds it in the report after this step."
+              + " The file name can also be passed positionally: screenshot(\"a.png\")."),
 
         // MARK: control
         .init("wait", "control", "wait(seconds)",

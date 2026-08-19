@@ -196,7 +196,13 @@ public enum BridgeAPI {
     /// content edge in one request. A stale bridge ignores the field and keeps paging, which is
     /// correct but leaves the speed-up silently unapplied (and would make an A/B read as "no
     /// effect") → bump.
-    public static let bridgeProtocolVersion = 71
+    /// 72: the in-app engine no longer waits for the screen to settle on a scroll request that
+    /// **moved nothing** (already at the edge / no scroll view with room). Waiting for a screen
+    /// this bridge did not disturb burns the whole 2,500ms cap on apps that animate continuously,
+    /// and scrollToEdge is "move once, then confirm the edge a few times" — so the confirmations
+    /// were the whole cost (measured on a consumer app: `scrollToBottom`/`scrollToTop` pinned at
+    /// 8.0s regardless of distance or screen). A stale bridge keeps waiting → bump.
+    public static let bridgeProtocolVersion = 72
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の

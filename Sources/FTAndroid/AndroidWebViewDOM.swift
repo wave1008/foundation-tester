@@ -343,9 +343,14 @@ public extension AndroidWebViewDOM {
     /// この nil を「従来どおり a11y のまま」に読み替える)。
     /// **経路の判定はここでしない**(`route` で済ませて渡す)
 
-    static func read(serial: String, packageID: String, route: Route,
-                     webViewLabel: String?, urlBarValue: String?,
-                     adb: (_ args: [String]) throws -> String) async -> WebViewDOM.Payload? {
+    /// ソケット解決 → port forward → タブ一覧 → 順位付け までを1箇所に置き、
+    /// **繋いだ状態のまま** body へ候補の WebSocket URL を渡す(forward は body の間だけ張る)。
+    /// DOM 読みとページ画像の取得が同じ経路を通るための土台
+    private static func withRankedTabs<T>(
+        serial: String, packageID: String, route: Route,
+        webViewLabel: String?, urlBarValue: String?,
+        adb: (_ args: [String]) throws -> String,
+        _ body: ([String]) async -> T?) async -> T? {
         let socket: String
         // ブラウザは serial だけで port を決める(既存の値を動かさない。portSeed の宣言参照)
         let appSocket: String?
@@ -366,13 +371,48 @@ public extension AndroidWebViewDOM {
         guard (try? adb(["forward", "tcp:\(port)", "localabstract:\(socket)"])) != nil else { return nil }
         defer { _ = try? adb(["forward", "--remove", "tcp:\(port)"]) }
         guard let list = await getJSON(port: port) else { return nil }
+        let ranked = rankedTabs(webViewLabel: webViewLabel, urlBarValue: urlBarValue, targets: list)
+        return await body(Array(ranked.prefix(maxTabAttempts)))
+    }
+
+    /// **ページの画像を CDP から撮る**(`Page.captureScreenshot`)。
+    /// Android の端末側キャプチャ(`UiAutomation.takeScreenshot` / `adb screencap` /
+    /// エミュレータ gRPC のいずれも)は **WebView のレイヤを取り逃すことがある**
+    /// (2026-08-20 に E2E-Android の WebView 画面で再現。木には全要素が居るのに
+    /// 3経路とも同じ空白を返し、CDP だけが中身を返した)。失敗は握って nil
+    static func capturePagePNG(serial: String, packageID: String, route: Route,
+                               webViewLabel: String?, urlBarValue: String?,
+                               adb: (_ args: [String]) throws -> String) async -> Data? {
+        await withRankedTabs(serial: serial, packageID: packageID, route: route,
+                             webViewLabel: webViewLabel, urlBarValue: urlBarValue, adb: adb) { tabs in
+            for webSocket in tabs {
+                guard let result = await call(webSocket: webSocket, method: "Page.captureScreenshot",
+                                              params: ["format": "png"]),
+                      let base64 = result["data"] as? String,
+                      let png = Data(base64Encoded: base64), !png.isEmpty else { continue }
+                return png
+            }
+            return nil
+        }
+    }
+
+    static func read(serial: String, packageID: String, route: Route,
+                     webViewLabel: String?, urlBarValue: String?,
+                     adb: (_ args: [String]) throws -> String) async -> WebViewDOM.Payload? {
+        await withRankedTabs(serial: serial, packageID: packageID, route: route,
+                             webViewLabel: webViewLabel, urlBarValue: urlBarValue,
+                             adb: adb) { tabs in
+            await readFromTabs(tabs, route: route)
+        }
+    }
+
+    private static func readFromTabs(_ tabs: [String], route: Route) async -> WebViewDOM.Payload? {
         // **応答したタブを能動タブとみなす**(順序の推測では決めない。rankedTabs の宣言参照)。
         // 背面タブは JS が止まっていて返らないので、締切で切って次の候補へ移る。
         // **試す数を絞る**: 上限が無いと、タブを大量に開いた端末で snapshot が候補数×締切だけ延びる
         // **生死を先に安く見る**(凍ったタブは待っても答えない。livenessTimeout の宣言参照)。
         // 当たったタブにだけ本命の JS を撃つ
-        let ranked = rankedTabs(webViewLabel: webViewLabel, urlBarValue: urlBarValue, targets: list)
-        for webSocket in ranked.prefix(maxTabAttempts) {
+        for webSocket in tabs {
             // **生死の事前確認はブラウザだけ**(2026-08-15)。これは凍った背面タブを安く見切る
             // ための仕掛けで、`livenessTimeout` は「答えないタブ」を諦める締切として 0.4s に
             // 詰めてある。**アプリ内 WebView はページが1枚しかなく飛ばす相手が居ない**うえ、
@@ -411,10 +451,20 @@ public extension AndroidWebViewDOM {
     /// タブを大量に開いた端末で snapshot が候補数 × 3秒だけ延びる
     static let maxTabAttempts = 3
 
-    /// `Runtime.evaluate` を1回だけ撃つ。**WebSocket は Foundation 標準**を使う
-    /// (依存を足さない。CDP に要るのは送信1件・受信1件だけ)
+    /// `Runtime.evaluate` を1回だけ撃つ(戻り値は評価結果の文字列)
     private static func evaluate(webSocket: String, javaScript: String,
                                  timeout: Double = evaluateTimeout) async -> String? {
+        let result = await call(webSocket: webSocket, method: "Runtime.evaluate",
+                                params: ["expression": javaScript, "returnByValue": true,
+                                         "awaitPromise": false],
+                                timeout: timeout)
+        return ((result?["result"] as? [String: Any])?["value"]) as? String
+    }
+
+    /// CDP を1往復。**WebSocket は Foundation 標準**を使う
+    /// (依存を足さない。CDP に要るのは送信1件・受信1件だけ)。戻り値は `result` の中身
+    private static func call(webSocket: String, method: String, params: [String: Any],
+                             timeout: Double = evaluateTimeout) async -> [String: Any]? {
         guard let url = URL(string: webSocket) else { return nil }
         let task = URLSession.shared.webSocketTask(with: url)
         task.resume()
@@ -428,10 +478,7 @@ public extension AndroidWebViewDOM {
             task.cancel(with: .goingAway, reason: nil)
         }
         defer { watchdog.cancel() }
-        let request: [String: Any] = [
-            "id": 1, "method": "Runtime.evaluate",
-            "params": ["expression": javaScript, "returnByValue": true, "awaitPromise": false],
-        ]
+        let request: [String: Any] = ["id": 1, "method": method, "params": params]
         guard let body = try? JSONSerialization.data(withJSONObject: request),
               let text = String(data: body, encoding: .utf8),
               (try? await task.send(.string(text))) != nil else { return nil }
@@ -442,8 +489,7 @@ public extension AndroidWebViewDOM {
                   let object = (try? JSONSerialization.jsonObject(with: Data(reply.utf8)))
                       as? [String: Any] else { continue }
             guard (object["id"] as? Int) == 1 else { continue }
-            let result = (object["result"] as? [String: Any])?["result"] as? [String: Any]
-            return result?["value"] as? String
+            return object["result"] as? [String: Any]
         }
         return nil
     }

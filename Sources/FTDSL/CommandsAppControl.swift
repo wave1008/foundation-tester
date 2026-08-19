@@ -168,6 +168,14 @@ public func screenshot(filename: String? = nil,
         filename: filename, file: file, line: line)
 }
 
+/// ラベル無しでファイル名を渡す形。**Shirates(Kotlin)では位置引数で `screenshot("a.png")` と
+/// 書ける**ので、そのまま移してきたシナリオが通るようにこちらも受ける
+/// (他の1引数コマンドがラベル省略形なので、`filename:` が必須なのは取り違えの元にもなっていた)
+public func screenshot(_ filename: String,
+                       file: StaticString = #filePath, line: UInt = #line) {
+    screenshot(filename: filename, file: file, line: line)
+}
+
 /// ホーム画面へ戻る
 public func home(file: StaticString = #filePath, line: UInt = #line) {
     let core = FTRuntime.requireCore(command: "home")

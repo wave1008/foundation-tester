@@ -227,6 +227,9 @@ public struct BridgeProvisioner {
         var usedPorts = Set(running.keys)
         var claimed = Set<UInt16>()  // 1回の provision 内で同じ稼働ブリッジを二重占有しないため
         var plans: [DevicePlan] = []
+        // 今このツリーの in-app ソースが作る dylib の digest(再利用判定に使う。
+        // 計算できない構成では nil = 従来どおり版と注入先だけで判定する)
+        let inappSourceDigest = try? BridgeSourceSet.inApp.digest(repoRoot: repoRoot)
         for (index, target) in targets.enumerated() {
             let engine = target.spec.engine ?? "xcuitest"
             var bridges: [(engine: String, plan: EnginePlan)] = []
@@ -237,12 +240,14 @@ public struct BridgeProvisioner {
                     sim: target.sim, bundleID: bundleID, appIsCurrent: appIsCurrent,
                     preinstallAppPath: preinstallAppPath,
                     running: running, starting: startingByUDID,
+                    inappSourceDigest: inappSourceDigest,
                     claimed: &claimed, usedPorts: &usedPorts)))
                 bridges.append(("xcuitest", try planBridge(
                     engine: "xcuitest", preferred: nil, name: target.name,
                     sim: target.sim, bundleID: bundleID, appIsCurrent: appIsCurrent,
                     preinstallAppPath: preinstallAppPath,
                     running: running, starting: startingByUDID,
+                    inappSourceDigest: inappSourceDigest,
                     claimed: &claimed, usedPorts: &usedPorts)))
             } else {
                 bridges.append((engine, try planBridge(
@@ -250,6 +255,7 @@ public struct BridgeProvisioner {
                     sim: target.sim, bundleID: bundleID, appIsCurrent: appIsCurrent,
                     preinstallAppPath: preinstallAppPath,
                     running: running, starting: startingByUDID,
+                    inappSourceDigest: inappSourceDigest,
                     claimed: &claimed, usedPorts: &usedPorts)))
             }
             plans.append(DevicePlan(index: index, name: target.name, sim: target.sim,
@@ -363,6 +369,7 @@ public struct BridgeProvisioner {
                             preinstallAppPath: String?,
                             running: [UInt16: RunningBridge],
                             starting: [String: [UInt16]] = [:],
+                            inappSourceDigest: String? = nil,
                             claimed: inout Set<UInt16>,
                             usedPorts: inout Set<UInt16>) throws -> EnginePlan {
         // autoInstall(preinstallAppPath)付き inapp は「インストールファイルが更新されているとき
@@ -387,6 +394,15 @@ public struct BridgeProvisioner {
         // 旧アプリが握ったままのポートで relaunch → bind 失敗し、以降のリクエストは suspend した
         // 旧ブリッジへ(TCP 受理・HTTP 無応答の 20s タイムアウト)。2026-07-23 に E2E → E2E-iOS の
         // 連続実行で 14/20 失敗として実害化した連鎖の根がここ
+        // **inapp は dylib の出所も一致しないと再利用しない**(2026-08-20)。版一致だけでは
+        // 「版を上げ忘れた変更」も「決定するプロセスが1ビルド古い場合」も素通りし、**変更が
+        // 1度も実行されないまま緑になる**(実測は InAppBridgeState 冒頭)。digest はその場の
+        // ソースから計算するのでどちらにも掛かる。**計算できないとき(nil)は従来どおり**
+        // = 判定材料が無いことを理由に毎回建て直さない
+        func inappSourcesMatch(_ rb: RunningBridge) -> Bool {
+            guard engine == "inapp", let current = inappSourceDigest else { return true }
+            return rb.sourceDigest == current
+        }
         if !(engine == "inapp" && inappNeedsInstall),
            let port = running.first(where: {
             sameDevice($0.value) && $0.value.engine == engine && !claimed.contains($0.key)
@@ -394,6 +410,7 @@ public struct BridgeProvisioner {
                 // 再利用すると新エンドポイントが 404 になり、フォールバックも効かない)
                 && $0.value.protocolVersion == BridgeAPI.bridgeProtocolVersion
                 && (engine != "inapp" || $0.value.sessionBundleID == bundleID)
+                && inappSourcesMatch($0.value)
            })?.key {
             claimed.insert(port)
             return .reuse(port: port)
@@ -425,7 +442,8 @@ public struct BridgeProvisioner {
         if engine == "inapp", let stale = running.first(where: {
             sameDevice($0.value) && $0.value.engine == "inapp" && !claimed.contains($0.key)
                 && ($0.value.sessionBundleID != bundleID
-                    || $0.value.protocolVersion != BridgeAPI.bridgeProtocolVersion)
+                    || $0.value.protocolVersion != BridgeAPI.bridgeProtocolVersion
+                    || !inappSourcesMatch($0.value))
         }) {
             claimed.insert(stale.key)
             stopStalePort = stale.key
@@ -736,6 +754,19 @@ public struct BridgeProvisioner {
         /// /status の sessionBundleID。in-app ブリッジは注入先アプリ固有のため、
         /// 再利用は「同じアプリに注入済み」のときだけ許す(inapp の再利用判定に使う)。
         let sessionBundleID: String?
+        /// **注入済み dylib の出所**(`.inapp` 状態ファイルに残した BridgeSourceSet.inApp の digest)。
+        /// nil = 旧版が書いた記録 or 記録なし = 出所不明。inapp の再利用判定に使う
+        let sourceDigest: String?
+
+        init(udid: String?, name: String?, engine: String, protocolVersion: Int?,
+             sessionBundleID: String?, sourceDigest: String? = nil) {
+            self.udid = udid
+            self.name = name
+            self.engine = engine
+            self.protocolVersion = protocolVersion
+            self.sessionBundleID = sessionBundleID
+            self.sourceDigest = sourceDigest
+        }
     }
 
     /// provision の再利用判定用。engine・protocolVersion は /status のもの(旧ブリッジはどちらも
@@ -777,7 +808,11 @@ public struct BridgeProvisioner {
                     return (port, RunningBridge(udid: udid, name: status.device,
                                                 engine: status.engine ?? "xcuitest",
                                                 protocolVersion: status.protocolVersion,
-                                                sessionBundleID: status.sessionBundleID))
+                                                sessionBundleID: status.sessionBundleID,
+                                                sourceDigest: InAppBridgeState.sourceDigest(
+                                                    stateDir: self.repoRoot
+                                                        .appendingPathComponent(".ftester"),
+                                                    port: port)))
                 }
             }
             var result: [UInt16: RunningBridge] = [:]
