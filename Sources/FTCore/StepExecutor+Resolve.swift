@@ -398,6 +398,7 @@ extension StepExecutor {
             hints.append("near matches: \(summaries.joined(separator: " / "))")
         }
         if let hint = partialMatchHint(for: locator, in: elements) { hints.append(hint) }
+        if let hint = splitTextHint(for: locator, in: elements) { hints.append(hint) }
         if let hint = clampedStackHint(for: locator, in: elements) { hints.append(hint) }
         // 候補の区切りが " / " なので、ヒント同士は別の記号で割る(読み手が機械でも人でも混ざらない)
         return hints.isEmpty ? nil : hints.joined(separator: "。")
@@ -454,6 +455,72 @@ extension StepExecutor {
         }
         return nil
     }
+
+    /// 探している文字列が**隣り合う複数の要素に割れている**ときに、そのことを言う。
+    ///
+    /// Web の本文は `<span>` や強調で普通に割れる(受け手報告 2026-08-20:
+    /// 画面には出ている「2026年2月18日 改訂」が木では3ノードで、`*2026年2月18日*` が
+    /// 両 OS とも空振りした)。**DOM 側はインラインだけの塊なら1ノードへ畳んでいる**
+    /// (`WebViewDOMSnapshot.isInlineTextBlock`)が、間に役割を持つ要素やブロック級の子が
+    /// 挟まると畳めない。**畳めないものを無理に畳むと操作対象を潰す**ので、
+    /// 木は変えずに「割れている」と言う。
+    ///
+    /// 出す条件は2つだけ: **①素の一致が1件も無い ②文書順で連続する 2〜4 件を繋ぐと含む**。
+    /// 連結は「そのまま」と「空白を1つ挟む」の両方を見る(`<span>2026年</span><span>2月</span>` は
+    /// 前者、`<b>改訂</b> <span>2026年</span>` は後者)
+    public static func splitTextHint(for locator: FlowLocator,
+                                     in elements: [ElementInfo]) -> String? {
+        guard let needle = locator.label, !needle.isEmpty else { return nil }
+        let target = FlowMatchMode.normalizeInvisibleCharacters(needle)
+        guard !target.isEmpty else { return nil }
+        // 素で当たるものがあるなら「割れている」の話ではない(近傍候補や部分一致ヒントの領分)
+        let labels = elements.map { FlowMatchMode.normalizeInvisibleCharacters($0.label ?? "") }
+        if labels.contains(where: { $0.contains(target) }) { return nil }
+
+        // 文書順で連続する(空ラベルは飛ばす)要素の並び
+        let sequence = elements.filter {
+            !FlowMatchMode.normalizeInvisibleCharacters($0.label ?? "").isEmpty
+        }
+        func text(_ element: ElementInfo) -> String {
+            FlowMatchMode.normalizeInvisibleCharacters(element.label ?? "")
+        }
+        // **少ない件数から探す**: 3件で足りるところを「先頭から4件」で答えると、
+        // 関係の無い見出しまで「割れている部品」として名指ししてしまう
+        for size in 2...Self.splitTextMaxPieces {
+            guard sequence.count >= size else { break }
+            for start in 0...(sequence.count - size) {
+                let pieces = Array(sequence[start..<(start + size)])
+                let texts = pieces.map(text)
+                guard texts.joined().contains(target)
+                        || texts.joined(separator: " ").contains(target) else { continue }
+                let shown = texts.map { "\"\(SnapshotRenderer.truncate($0, 16))\"" }
+                    .joined(separator: " + ")
+                // **「まとめている要素に書け」と言わない**: ここへ来た時点で、全体を含む
+                // ラベルを持つ要素は木に1つも無い(上のガード)。実例は表組みの行で、
+                // 行そのものは要素として出ない(セルが別々に出る)。存在しない逃げ道を
+                // 勧めると、利用者はそれを探して時間を捨てる(2026-08-20 の受け手データで判明)
+                let sameLine = pieces.allSatisfy {
+                    abs($0.frame.y - pieces[0].frame.y) <= Self.splitTextSameLineTolerance
+                }
+                let where_ = sameLine
+                    ? " they sit on one line (separate cells of a row, most likely)"
+                    : " they are separate elements"
+                return "the text is split across \(size) elements (\(shown));"
+                    + "\(where_), and no single element holds all of it"
+                    + " — assert on one of them instead"
+            }
+        }
+        return nil
+    }
+
+    /// 「割れている」と言うために繋いでみる最大件数。**多くすると偶然の連結で当たる** ——
+    /// 4 件は「年 / 月日 / 改訂」のような分かれ方(受け手の実例は3件)を拾える最小限
+    static let splitTextMaxPieces = 4
+
+    /// 「同じ行に並んでいる」とみなす y のずれ(px/pt)。**行の高さより十分小さく**とる
+    /// (受け手の実例はセル高 74 に対してずれ 0)。ここは見た目の説明にしか使わないので、
+    /// 外しても照合の結果は変わらない
+    static let splitTextSameLineTolerance: Double = 4
 
     /// 要素の子孫(スナップショットは pre-order + 元ツリーの depth を保つため、
     /// 直後から depth がその要素以下になるまでが子孫。3 ブリッジとも同じ規約で組み立てる
