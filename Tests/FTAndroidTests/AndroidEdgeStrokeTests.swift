@@ -36,3 +36,22 @@ final class AndroidEdgeStrokeTests: XCTestCase {
                                               screen: FTRect(x: 0, y: 0, width: 0, height: 0)))
     }
 }
+
+/// CDP で飛ばした結果の読み取り(純粋)。**「動かなかった」と読めたときだけ**端の確定を早める。
+/// 読めない形を「動いていない」に倒すと、まだ途中なのに端と判断して止まる
+final class AndroidScrollJumpReplyTests: XCTestCase {
+
+    func testReadsWhetherThePageMoved() {
+        XCTAssertTrue(AndroidWebViewDOM.scrollMoved("0|2255"), "動いたのに動いていないと読んでいる")
+        XCTAssertFalse(AndroidWebViewDOM.scrollMoved("2255|2255"), "もう端なのに動いたと読んでいる")
+        // 1px 未満のずれは動いていない扱い(小数の丸め)
+        XCTAssertFalse(AndroidWebViewDOM.scrollMoved("2254.86|2255"))
+    }
+
+    /// **読めない形は「動いた」に倒す** —— 早く切り上げる側へ倒さない
+    func testUnparseableRepliesCountAsMoved() {
+        XCTAssertTrue(AndroidWebViewDOM.scrollMoved("none"))
+        XCTAssertTrue(AndroidWebViewDOM.scrollMoved(""))
+        XCTAssertTrue(AndroidWebViewDOM.scrollMoved("0|"))
+    }
+}

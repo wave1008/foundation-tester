@@ -49,6 +49,7 @@ public final class LaunchPreflightDriver: AppDriver {
     }
     public func foregroundAppID() async throws -> String? { try await base.foregroundAppID() }
     public var lastActionNote: String? { base.lastActionNote }
+    public var reachedEdgeOnLastSwipe: Bool? { base.reachedEdgeOnLastSwipe }
     public var lastLaunchTiming: LaunchTiming? { base.lastLaunchTiming }
 
     public func launch(bundleID: String) async throws {

@@ -261,5 +261,7 @@ public final class HybridFallbackDriver: AppDriver {
     /// フォールバックしたことは注記として見せる(黙って別経路へ回ると挙動差の原因が読めない)。
     /// primary 自身の注記があればそちらを優先する(最内の観測を潰さない)
     public var lastActionNote: String? { primary.lastActionNote ?? fallbackNote }
+    /// 端の申告は**素通し**(捨てると端送りが毎回ホストの署名判定まで回る)
+    public var reachedEdgeOnLastSwipe: Bool? { primary.reachedEdgeOnLastSwipe }
     public var lastLaunchTiming: LaunchTiming? { primary.lastLaunchTiming }
 }
