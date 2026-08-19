@@ -80,8 +80,8 @@ final class IfCanSelectSystemAlertTests: XCTestCase {
         func terminate() async throws {}
     }
 
-    private func makeCore(app: AppDriver, alert: AppDriver,
-                          buttons: [String]) -> FTDriveCore {
+    private func makeCore(app: AppDriver, alert: AppDriver, buttons: [String],
+                          emit: @escaping (ScenarioEvent) -> Void = { _ in }) -> FTDriveCore {
         FTDriveCore(driver: app, platform: "ios", app: "com.example.app",
                     systemAlertButtons: buttons,
                     scenarioID: "T.S0010", scenarioTitle: "t",
@@ -89,7 +89,31 @@ final class IfCanSelectSystemAlertTests: XCTestCase {
                     healCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
                         .appendingPathComponent("ft-ifcanselect-alert-test.json"),
                     fallbackDriver: alert,
-                    emit: { _ in })
+                    emit: emit)
+    }
+
+    /// **押したら必ず run ログに残ること**。文言が正しくても配線が無ければ記録は出ない
+    /// (権限を自動で変えておいて痕跡が無いのは沈黙)
+    func test自動押下はrunログに残る() {
+        let app = AppDriverStub()
+        let alert = AlertDriverStub(app: app)
+        var messages: [String] = []
+        let core = makeCore(app: app, alert: alert, buttons: ["アプリの使用中は許可"]) { event in
+            if event.kind == "log", let message = event.message { messages.append(message) }
+        }
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario { scene(1, "s") { action { ifCanSelect("#btnStart") { } } } }
+
+        let pressed = messages.filter { $0.contains("pressed") }
+        // **添字で触らない**: 記録が0件の変異でプロセスごと落ち、失敗が「検出」ではなく
+        // 「クラッシュ」に化けて後続テストまで隠れる(CLAUDE.md の罠。実際に踏んだ)
+        guard pressed.count == 1, let only = pressed.first else {
+            return XCTFail("押したら1回だけ記録すること(実際は \(pressed.count) 件): \(messages)")
+        }
+        XCTAssertTrue(only.contains("アプリの使用中は許可"), only)
+        XCTAssertTrue(only.contains("位置情報"), "どのアラートかも出すこと: \(only)")
     }
 
     /// 本命: アラートに阻まれたガードが、閉じたうえで**成立する**こと
