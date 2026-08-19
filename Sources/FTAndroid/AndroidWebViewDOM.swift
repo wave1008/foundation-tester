@@ -409,7 +409,7 @@ public extension AndroidWebViewDOM {
     /// どちらも見つからなければ false を返して**呼び手はジェスチャへ落ちる**
     static func scrollToEdge(serial: String, packageID: String, route: Route,
                              finger: FTSwipeDirection,
-                             adb: (_ args: [String]) throws -> String) async -> Bool {
+                             adb: (_ args: [String]) throws -> String) async -> ScrollJump? {
         let axis = (finger == .up || finger == .down) ? "v" : "h"
         // 指の向きとコンテンツの向きは逆(指を上へ = 末尾へ送る)
         let toEnd = (finger == .up || finger == .left)
@@ -449,7 +449,23 @@ public extension AndroidWebViewDOM {
             }
             return nil
         }
-        return reply != nil
+        guard let reply else { return nil }
+        return ScrollJump(moved: scrollMoved(reply))
+    }
+
+    /// CDP で飛ばした結果。`moved == false` = **もう端に着いていた**
+    struct ScrollJump {
+        let moved: Bool
+    }
+
+    /// `"<before>|<after>"` を読んで動いたかを返す(純粋)。**読めない形は「動いた」に倒す** ——
+    /// 端の確定を早めるのは「動かなかった」と読めたときだけにする(誤って早く切り上げない)
+    static func scrollMoved(_ reply: String) -> Bool {
+        let parts = reply.split(separator: "|")
+        guard parts.count == 2, let before = Double(parts[0]), let after = Double(parts[1]) else {
+            return true
+        }
+        return abs(after - before) > 1
     }
 
     static func read(serial: String, packageID: String, route: Route,

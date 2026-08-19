@@ -378,6 +378,7 @@ public final class WebViewDelegatingDriver: AppDriver {
 
     /// 委譲中は自分の注記を優先し、無ければ実行したドライバのものを透過する
     public var lastActionNote: String? { note ?? screenDriver.lastActionNote }
+    public var reachedEdgeOnLastSwipe: Bool? { screenDriver.reachedEdgeOnLastSwipe }
     /// launch は常に primary(in-app)固定(launch(bundleID:) 参照)。screenDriver/mode の状態には無関係
     public var lastLaunchTiming: LaunchTiming? { primary.lastLaunchTiming }
 }

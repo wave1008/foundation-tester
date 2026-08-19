@@ -105,8 +105,17 @@ extension StepExecutor {
             let limit = max(1, step.maxSwipes ?? FlowStep.defaultMaxEdgeSwipes)
             var hintJumps = 0
             var sentSwipes = 0
+            // ドライバの端申告を確かめた読みは**次の周回の読みとして使い回す**
+            // (捨てて撮り直すと、端の確定のために木を1周ぶん余計に読む)
+            var carried: (signature: String, snapshot: SnapshotResponse, settled: Bool)?
             for _ in 0..<limit {
-                let settled = try await settledSignature(phase: &phase)
+                let settled: (signature: String, snapshot: SnapshotResponse, settled: Bool)
+                if let carried {
+                    settled = carried
+                } else {
+                    settled = try await settledSignature(phase: &phase)
+                }
+                carried = nil
                 if !settled.settled { sawUnsettled = true }
                 unchanged = settled.signature == previous ? unchanged + 1 : 0
                 // ヒント跳躍(WebView): 端までの残り距離が分かるときは長距離ドラッグで寄せる
@@ -136,6 +145,18 @@ extension StepExecutor {
                                                                 in: settled.snapshot),
                                                phase: &phase) { viaXCUITest = true }
                 sentSwipes += 1
+                // **ドライバが「もう端」と言えるなら、署名の2回不変を待たない**(2026-08-20)。
+                // 位置を直接動かせる経路(Android の CDP・in-app の contentOffset)は
+                // 「余地が無い」を**事実として**知っており、こちらの推測より強い。
+                // それでも**確認の読みを1回だけ入れる**: 端に着いた後に内容が伸びる画面
+                // (遅延読み込み)があるので、木が変わっていたらループへ戻る
+                if driver.reachedEdgeOnLastSwipe == true {
+                    let confirm = try await settledSignature(phase: &phase)
+                    if !confirm.settled { sawUnsettled = true }
+                    if confirm.signature == previous { reachedEdge = true; break }
+                    previous = confirm.signature
+                    carried = confirm
+                }
             }
             // 上限で抜けたら**端に着いたとは限らない**。黙って成功にすると
             // 「scrollToBottom したのに末尾が無い」の原因が読めなくなる

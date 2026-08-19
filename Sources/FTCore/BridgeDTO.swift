@@ -207,7 +207,12 @@ public enum BridgeAPI {
     /// (`settledSignature`), so the bridge-side wait is the second one; on a screen that never
     /// goes quiet it burns the whole 2,500ms cap per request (the remaining 3.0s of the consumer
     /// report). Search and plain swipes still wait. A stale bridge keeps waiting → bump.
-    public static let bridgeProtocolVersion = 73
+    /// 74: POST /swipe answers with `atEdge` when an `edge` scroll could not move (already at the
+    /// end). The host then stops instead of waiting for two identical tree signatures — the reads
+    /// are what edge scrolling costs once the scroll itself is a single jump. A stale bridge omits
+    /// the field and the host falls back to the signature rule → additive, but bump so the faster
+    /// path is not silently skipped.
+    public static let bridgeProtocolVersion = 74
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の
@@ -1026,9 +1031,15 @@ public struct OKResponse: Codable {
     /// 通常と違う経路を通ったときの短い説明(既定 nil)。失敗ではなく観測用(例: InAppBridge.handleTap の
     /// activate 不発→合成タッチ)。throw にしない代わりに StepExecutor.driverFallback へ載せて可視化する。
     public var note: String?
-    public init(ok: Bool = true, note: String? = nil) {
+    /// **端送り(`SwipeRequest.edge`)で「もう端に着いていた」**(= 動かせなかった)。
+    /// 位置を直接動かすエンジンだけが答えられる事実で、ホストはこれを受けて
+    /// 「署名が2回続けて不変」を待たずに切り上げる(`AppDriver.reachedEdgeOnLastSwipe`)。
+    /// 旧ブリッジは返さない → nil = 分からない = 従来どおりの判定
+    public var atEdge: Bool?
+    public init(ok: Bool = true, note: String? = nil, atEdge: Bool? = nil) {
         self.ok = ok
         self.note = note
+        self.atEdge = atEdge
     }
 }
 
