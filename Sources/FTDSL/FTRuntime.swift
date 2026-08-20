@@ -1044,18 +1044,45 @@ public final class FTDriveCore {
 
     /// 分岐評価(記録のみ、実行はしない): セレクタが現在画面で解決できるか。
     /// waitSeconds: 0 = 即時1回判定(repeat-while が最低1回は回る契約は変えない)
-    func canSelect(_ selector: FTSelector, waitSeconds: Double) -> Bool {
-        if dryRun { return true }  // dry-run では分岐内側も記録するため常に成立扱い
-        if scenarioAborted { return false }
+    /// 条件判定の結果。**閉じた割り込みも運ぶ** —— 不成立の記録に注記を残さないと、
+    /// 「本当に無い」のか「覆われていた」のかを読み手が区別できない(2026-08-20)
+    struct CanSelectOutcome {
+        let found: Bool
+        /// 判定中に閉じた割り込み(検出セレクタの要約と回数)。閉じていなければ nil
+        let dismissed: (key: String, count: Int)?
+    }
+
+    func canSelect(_ selector: FTSelector, waitSeconds: Double) -> CanSelectOutcome {
+        if dryRun { return CanSelectOutcome(found: true, dismissed: nil) }  // dry-run では分岐内側も記録する
+        if scenarioAborted { return CanSelectOutcome(found: false, dismissed: nil) }
         let step = FlowStep(locator: selector.primary,
                             fallbacks: selector.fallbacks.isEmpty ? nil : selector.fallbacks)
         let driver = self.driver
+        let executor = self.executor
+        // 判定1回 = 1ステップとして数え直す(直前のステップの回数を引き継がない)
+        executor.beginInterruptionScope()
+        var dismissed: (key: String, count: Int)?
+        func result(_ found: Bool) -> CanSelectOutcome {
+            CanSelectOutcome(found: found, dismissed: dismissed)
+        }
         let deadline = Date().addingTimeInterval(waitSeconds)
         repeat {
             let snapshot = FTSync.run { try? await driver.snapshot() } ?? nil
             if let snapshot,
                StepExecutor.resolve(step: step, in: snapshot, strictForAssert: true) != nil {
-                return true
+                return result(true)
+            }
+            // **宣言された割り込みが覆っていたら閉じて見直す**(2026-08-20 の受け手報告)。
+            // 覆われた要素は木から落ちるので、閉じずに不成立を確定すると**分岐が黙って飛ぶ** ——
+            // 失敗ではなく誤った経路として現れるため、注記が無いと気付けない。
+            // **撮り足さない**: いま撮った木で照合するだけなので、宣言が無ければコストゼロ
+            if let snapshot,
+               let closed = FTSync.run({ await executor.dismissDeclaredInterruption(in: snapshot) }) ?? nil {
+                dismissed = (closed.key, closed.count)
+                if StepExecutor.resolve(step: step, in: closed.snapshot,
+                                        strictForAssert: true) != nil {
+                    return result(true)
+                }
             }
             // サブ秒の待ちが 0.5 秒刻みに丸められないよう、残り時間と 0.25 秒の小さい方で待つ
             let remaining = deadline.timeIntervalSinceNow
@@ -1071,9 +1098,9 @@ public final class FTDriveCore {
         // 規律は notExists の照会と同じ: **不成立が確定した1回だけ**払う(毎周回だと
         // springboard 再session の数百 ms が待ちを支配する)
         guard let fb = executor.fallbackDriver,
-              let fsnap = FTSync.run({ try? await fb.snapshot() }) ?? nil else { return false }
+              let fsnap = FTSync.run({ try? await fb.snapshot() }) ?? nil else { return result(false) }
         if StepExecutor.resolve(step: step, in: fsnap, strictForAssert: true) != nil {
-            return true
+            return result(true)
         }
         // **どちらにも無いなら、システム許可アラートが被さっていないかを見る**(2026-08-20)。
         // 閉じたら primary を1枚撮り直して見直す —— 閉じる前の答え(不成立)をそのまま返すと、
@@ -1081,12 +1108,11 @@ public final class FTDriveCore {
         // one-shot のガードは窓が過ぎたら戻ってこないので、後続の exist 系で自動押下が効いた頃には
         // 手遅れになる(受け手が実際に踏んだ形。Warmup のオンボーディング列が全滅した)。
         // **要求された要素が解決できたときはここへ来ない** = シナリオ自身のアラート操作は奪わない
-        let executor = self.executor
         guard FTSync.run({ await executor.dismissSystemAlert(in: fsnap, via: fb) }) == true else {
-            return false
+            return result(false)
         }
-        guard let after = FTSync.run({ try? await driver.snapshot() }) ?? nil else { return false }
-        return StepExecutor.resolve(step: step, in: after, strictForAssert: true) != nil
+        guard let after = FTSync.run({ try? await driver.snapshot() }) ?? nil else { return result(false) }
+        return result(StepExecutor.resolve(step: step, in: after, strictForAssert: true) != nil)
     }
 
     // MARK: - スレッド安全性(DSL スレッド外からの誤呼び出し対策)

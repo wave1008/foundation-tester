@@ -376,13 +376,17 @@ private func ifCanSelectImpl(_ selector: FTSelector, waitSeconds: Double,
         core.handleFailure(stepDescription: "ifCanSelect \"\(selector.text)\"", reason: reason)
         return FTBranch(taken: false)
     }
-    let found = core.canSelect(selector, waitSeconds: waitSeconds)
+    let outcome = core.canSelect(selector, waitSeconds: waitSeconds)
+    let found = outcome.found
     // 不成立は **skipped** で記録する(passed にすると「セレクタが腐って毎回飛んでいる」状態が
     // 緑のまま見えなくなる)。run 終了時のサマリにも不成立を残す
     let description = "ifCanSelect \"\(selector.text)\" → \(found ? "ran" : "not met")"
+        + interruptSuffix(outcome)
     core.recordStep(description: description,
                     status: found ? .passed : .skipped("condition not met"),
-                    file: "\(file)", line: Int(line))
+                    file: "\(file)", line: Int(line),
+                    notes: outcome.dismissed == nil ? [] : [.interruptionDismissed],
+                    command: "ifCanSelect")
     core.noteBranchOutcome(selector: selector.text, met: found)
     if found { body() } else { core.noteUnexecutedBlock() }
     return FTBranch(taken: found)
@@ -391,6 +395,16 @@ private func ifCanSelectImpl(_ selector: FTSelector, waitSeconds: Double,
 /// perform を通らないコマンド(ifCanSelect / repeatWhileCanSelect)用。判定は perform と同じ源
 private func validationError(_ selector: FTSelector) -> String? {
     selector.preflightError
+}
+
+/// 条件判定の最中に割り込みを閉じたことを説明文へ足す。**文言は perform 経路と同じ形**
+/// (StepExecutor.noteWithInterrupt。読み手が同じものだと分かるように揃える)。
+/// **不成立でも必ず出す** —— 「覆いを閉じたうえで無かった」と「覆われたまま無いことにした」は
+/// 読み手にとって別物で、後者を黙って返していたのが 2026-08-20 の不具合
+private func interruptSuffix(_ outcome: FTDriveCore.CanSelectOutcome) -> String {
+    guard let dismissed = outcome.dismissed else { return "" }
+    let times = dismissed.count > 1 ? " ×\(dismissed.count)" : ""
+    return "(dismissed the interruption \(dismissed.key)\(times))"
 }
 
 public struct FTBranch {
@@ -458,7 +472,12 @@ private func repeatWhileCanSelectImpl(_ selector: FTSelector, max: Int, waitSeco
     }
     let label = title ?? "repeat \"\(selector.text)\""
     var iterations = 0
-    while iterations < max, core.canSelect(selector, waitSeconds: waitSeconds) {
+    var dismissedInterruption: FTDriveCore.CanSelectOutcome = .init(found: false, dismissed: nil)
+    while iterations < max {
+        let outcome = core.canSelect(selector, waitSeconds: waitSeconds)
+        // 閉じた事実は**最後に閉じた周回のもの**を残す(周回ごとに記録を増やさない)
+        if outcome.dismissed != nil { dismissedInterruption = outcome }
+        guard outcome.found else { break }
         iterations += 1
         core.runGroup("\(label) #\(iterations)", body)
         // dry-run は canSelect が常に true を返すため、1 周だけ回してステップ列挙に留める
@@ -471,8 +490,11 @@ private func repeatWhileCanSelectImpl(_ selector: FTSelector, max: Int, waitSeco
     // 0 周 = 本体を一度も実行していない(ios/android の不一致と同じ扱い。runSection 参照)
     if iterations == 0 { core.noteUnexecutedBlock() }
     let suffix = reachedMax ? " (stopped at the limit; more may remain)" : ""
-    core.recordStep(description: "repeatWhileCanSelect \"\(selector.text)\" → \(iterations) time(s)\(suffix)",
-                    status: .passed, file: "\(file)", line: Int(line))
+    core.recordStep(description: "repeatWhileCanSelect \"\(selector.text)\" → \(iterations) time(s)\(suffix)"
+                        + interruptSuffix(dismissedInterruption),
+                    status: .passed, file: "\(file)", line: Int(line),
+                    notes: dismissedInterruption.dismissed == nil ? [] : [.interruptionDismissed],
+                    command: "repeatWhileCanSelect")
 }
 
 // MARK: - 共通ステップ・ライフサイクル
