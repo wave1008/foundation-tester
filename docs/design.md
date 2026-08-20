@@ -2331,6 +2331,14 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
   の不透明な飾り窓は背面を残す(触れる以上、操作の前提としては正しい側)。
   witness は `E2EAppIOS` の `OverlayWindow`(全画面モーダル / 上部バナーの2形)と
   `TestProjects/E2E-iOS/scenarios/15_別ウィンドウのモーダル.swift`
+- **操作の宛先も窓で決める**(2026-08-20 の追加報告。版 76)。木だけ複数窓にすると
+  **見えているのに閉じられない**が残る —— `activate` が不発で合成タッチへ落ちた瞬間に
+  **キーウィンドウ(= 背面のアプリ)へ撃つ**ため。ref を持つ操作は
+  **その要素が載っている窓**(`InAppBridge.window(of:)`。`accessibilityContainer` を辿る。
+  **`value(forKey:)` は使わない** —— 未定義キーの例外は Swift で捕まえられず対象アプリを落とす)、
+  座標だけの操作とスクロールは**いま指が当たる窓**(`frontmostTouchableWindow`)へ送る。
+  **スクリーンショットも可視な窓を重ねて描く** —— キーウィンドウ1枚だけだと
+  「モーダルが写っていない証跡」を残すことになる
 - **inapp は Compose Multiplatform(iOS)の swipe/scrollTo/press を駆動できない**
   (2026-07-22・`TestProjects/E2E-CMP` で切り分け確定)。同一アプリ・同一シナリオの両エンジン差分:
   - inapp: `tap`/`type` は通る。`swipe` 4方向・`scrollTo`・`press`(長押し)が**すべて無反応**
