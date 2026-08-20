@@ -5,6 +5,7 @@ struct DialogScreen: View {
     @State private var dialogOpen = false
     @State private var maybeCount = 0
     @State private var auto = Prefs.getBool("auto_dialog", false)
+    @State private var overlayResult = Prefs.getString("overlay_result", "none")
 
     var body: some View {
         ScreenColumn {
@@ -23,6 +24,23 @@ struct DialogScreen: View {
                     .onChange(of: auto) { newValue in Prefs.setBool("auto_dialog", newValue) }
             }
             TaggedText(tag: Tags.txtAutoDialog, text: "auto=\(auto ? "on" : "off")")
+            // **別 UIWindow のモーダル**(アプリ内メッセージ SDK 相当)。1.5 秒後に湧く =
+            // 操作の途中で現れる形を作る。詳細は OverlayWindow
+            TaggedButton(tag: Tags.btnShowOverlay, label: "別ウィンドウのモーダル") {
+                Prefs.setString("overlay_result", "none")
+                overlayResult = "none"
+                OverlayWindow.show(after: 1.5)
+            }
+            TaggedButton(tag: Tags.btnShowBanner, label: "上部バナー") {
+                Prefs.setString("overlay_result", "none")
+                overlayResult = "none"
+                OverlayWindow.showBanner(after: 1.5)
+            }
+            TaggedText(tag: Tags.txtOverlayResult, text: "overlay=\(overlayResult)")
+        }
+        .onReceive(Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()) { _ in
+            // 別ウィンドウ側の結果を拾う(窓を跨ぐので状態は Prefs 経由)
+            overlayResult = Prefs.getString("overlay_result", "none")
         }
         // auto=on のとき、この画面に入るたびダイアログを自動で開く。
         .onAppear { if auto { dialogOpen = true } }
