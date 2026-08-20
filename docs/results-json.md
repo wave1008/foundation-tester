@@ -34,6 +34,12 @@ results/runs/<YYYY-MM>/<runID>/
 | デバイスが飛んだ run か | `run.json` の `workerAnomalies`(構造化)/ `degradedWorkers`・`freezeRetries`(表示用) |
 
 ```bash
+# 割り込みを閉じたステップで落ちた = 操作が吸われた可能性がある
+jq -r 'select(.passed==false) | .failedSteps[]
+       | select((.notes // []) | index("interruption-dismissed"))
+       | "\(.section)\t\(.command)\t\(.description)"' \
+  results/runs/2026-08/*/scenarios/*.json
+
 # 落ちたシナリオを「フェーズ × 素性」で数える
 jq -r 'select(.passed==false) | .failedSteps[0]
        | "\(.section // "-")\t\(.failureKind // "-")\t\(.command // "-")\t\(.description)"' \
