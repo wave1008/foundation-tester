@@ -529,13 +529,37 @@ public final class AndroidDriver: AppDriver {
         restoreStateIfNeeded()
         let target = bridgeRef(ref)
         let (main, hasTrailingNewline) = Self.splitTrailingNewline(text)
-        guard hasTrailingNewline else {
-            try await withBridge { try await $0.type(ref: target, text: text) }
-            return
+        do {
+            guard hasTrailingNewline else {
+                try await withBridge { try await $0.type(ref: target, text: text) }
+                return
+            }
+            // 本文が空でも ref があれば SET_TEXT を通し、対象ノードへのフォーカス確立を維持する
+            try await withBridge { try await $0.type(ref: target, text: main) }
+        } catch let error as DriverError {
+            throw Self.typeNoFocusAdvice(after: error, hadRef: ref != nil) ?? error
         }
-        // 本文が空でも ref があれば SET_TEXT を通し、対象ノードへのフォーカス確立を維持する
-        try await withBridge { try await $0.type(ref: target, text: main) }
         try await pressEnter()
+    }
+
+    /// **ref 無しの type がフォーカス不在で落ちたとき**の書き換え(純関数 = 単体テストで固定)。
+    /// nil = そのままのエラーでよい。
+    ///
+    /// ブリッジの文面は「tap the field by ref first」だが、**その tap が効かなかったからここに来る**
+    /// (2026-08-21 の受け手報告)。Android の入力欄は容器(TextInputLayout 等)と中身
+    /// (TextInputEditText)に分かれることがあり、**容器を叩いても入力フォーカスは中身へ移らない** ——
+    /// しかも容器のほうが id を持つので、`#id` を書くと容器に解決する。
+    /// 読み手が次に打つ手が分かる形にする = **セレクタを取る `type` へ寄せる**
+    /// (解決とフォーカスをツール側が引き受ける)。ref 付きで落ちた場合は別の話なので触らない
+    static func typeNoFocusAdvice(after error: DriverError, hadRef: Bool) -> DriverError? {
+        guard !hadRef, case .badResponse(let status, let body) = error,
+              body.contains(noInputFocusMarker) else { return nil }
+        return DriverError.badResponse(status: status, body: body
+            + " — nothing was tapped into focus. On Android an input is often a container"
+            + " (TextInputLayout) wrapping the editable field (TextInputEditText), and the id"
+            + " usually sits on the container, so tapping it does not move input focus."
+            + " Write type(<selector>, \"…\") instead: it resolves the editable field and"
+            + " focuses it (e.g. type(\".textField[1]\", \"…\"))")
     }
 
     /// 末尾の改行1つだけを分離する(text 全体が "\n" のときは分離しない=本文なしの pressEnter 相当に

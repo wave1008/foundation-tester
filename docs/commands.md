@@ -57,6 +57,26 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 | `pinchOut(sel?, scale: 2.0, durationSeconds: 0.5)` | 2本指を開く = **拡大**。`scale` は 1 より大きい値のみ |
 | `pinchIn(sel?, scale: 0.5, durationSeconds: 0.5)` | 2本指を閉じる = **縮小**。`scale` は 0 より大きく 1 未満のみ |
 
+### 入力は `type(sel, "文字列")` で書く(`tap` してから `type` にしない)
+
+**セレクタを取る形が既定**。要素の解決・フォーカス・読み返しまでツール側が引き受ける。
+
+```swift
+type(".textField[1]", "ldi001@example.com")     // ○ これでよい
+tap("#txtMailAddress"); type("ldi001@…")        // △ Android では通らないことがある
+```
+
+理由は **Android の入力欄が容器と中身に分かれる**こと(2026-08-21 の受け手報告)。
+Material の `TextInputLayout`(外側)と `TextInputEditText`(中身)の組み合わせでは、
+**id は容器側に付くことが多い**ので `#id` は容器に解決し、そこを叩いても
+**入力フォーカスは中身へ移らない** → 次の `type` が「フォーカスが無い」で落ちる。
+iOS は同じ書き方が通るので**Android だけで落ちる**形になる。
+
+**`||` の連鎖は「先に書いたほうが勝つ」**(フォールバックは前が解決できなかったときだけ)。
+`#txtMailAddress||.textField[1]` は容器の id が引ける限り**常に容器**に解決するので、
+中身を狙うなら `.textField[1]` を単独で書く。**注記が出るときはツールが解決先を名乗る**
+(`resolved to #txtMailAddress (other)`)ので、どちらを掴んだかはそこで読める。
+
 **`type` の中の `\n`**: **OS 既定の挙動**になる。iOS は Return キー押下として届くので、
 複数行の欄なら改行が入り、単一行の欄なら確定アクション(検索・完了など)が発火する
 = **どちらになるかはフィールドが決める**。Android も末尾の改行は Enter として送る。

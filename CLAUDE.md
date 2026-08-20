@@ -188,7 +188,8 @@
 
   **iOS だけが持つ witness**: `E2EAppIOS/Sources/UI/OverlayWindow.swift` = **キーウィンドウに
   しない別 UIWindow のモーダル**(全画面 / 上部バナーの2形)。覆い・別ウィンドウに関わる変更は
-  `TestProjects/E2E-iOS/scenarios/15_別ウィンドウのモーダル.swift` の3本で対照を取る(docs/verification.md)。
+  `TestProjects/E2E-iOS/scenarios/15_別ウィンドウのモーダル.swift` の4本で対照を取る(docs/verification.md)。
+  **4本目は条件判定**(`ifCanSelect`)—— **perform を通らないので操作・検証を直しても守られない**
 
   **要素の testTag/`#id`/ラベルの唯一の正は `E2EAppCMP/docs/ui-contract.md`**(全 SUT とシナリオがこれを参照。
   片方だけ変えない。`uiContractSync.test.mjs` が「SUT 側の `#id` が母体に実在するか」を検出)。
