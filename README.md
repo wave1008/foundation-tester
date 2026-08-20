@@ -394,7 +394,9 @@ exist(.type(.button).text("保存", .contains))    // .button&&textContains=保�
   **iOS はエンジンで成否が分かれるジェスチャがある**(既定の hybrid なら全て動く。
   `xcuitest` 単独と実機に残る穴は docs/commands.md の表)
 - **出るか不定のアプリ内メッセージ**は `irregularHandler` を setUp で1回宣言すると自動で閉じる
-  (OS 側のダイアログは書かなくてよい — ツール側で吸収する)
+  (OS 側のダイアログは書かなくてよい — ツール側で吸収する)。**1ステップで最大10回**まで閉じ、
+  回数は `maxDismissals:` で変えられる。**アプリ本体とは別の `UIWindow` に載るモーダル**も
+  木に載り、**覆われた背面は木から消える**(覆われたまま緑になるのを防ぐ。docs/commands.md)
 - テストクラスの `func setUp()` / `func tearDown()` は各 `@Test` の前後で自動実行。
   **tearDown は失敗後でも実行される**
 
