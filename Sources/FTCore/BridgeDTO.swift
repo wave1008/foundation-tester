@@ -218,7 +218,14 @@ public enum BridgeAPI {
     /// scrolling writes `contentOffset`, neither of which hit-tests, and `irregularHandler` had
     /// nothing to match — **a covered screen kept passing** (consumer report 2026-08-20,
     /// reproduced with E2EAppIOS `OverlayWindow`). A stale bridge keeps hiding it → bump.
-    public static let bridgeProtocolVersion = 75
+    /// 76: the in-app engine **operates on the window that owns the target**, not on the key
+    /// window. The tree already walked every visible window (75), but taps fell back to a
+    /// synthetic touch **into the key window**, so a modal in its own UIWindow was visible yet
+    /// could not be closed — the touch went to the app behind it (consumer report 2026-08-20).
+    /// Scrolls and coordinate taps now go to the frontmost touch-receiving window, and the
+    /// screenshot draws every visible window (a screenshot that omits the modal is a misleading
+    /// piece of evidence). A stale bridge keeps aiming at the key window → bump.
+    public static let bridgeProtocolVersion = 76
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の
