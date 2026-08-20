@@ -328,7 +328,7 @@ extension StepExecutor {
             scrollSearchNote = recordedScrollSearchNote(result)
             guard result.found else { return failed(.notFound, Self.scrollNotFoundMessage(step, result)) }
         }
-        let deadline = Date().addingTimeInterval(step.timeout ?? 5)
+        let deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
         var freshRetry = AssertFreshRetry()
         var backoff = PollBackoff()
         var primaryMisses = 0
@@ -409,7 +409,7 @@ extension StepExecutor {
         }
         // timeout: 覆われ続けた occlusion があればそれを、無ければ未発見を返す
         if let lastOcclusion { return lastOcclusion }
-        return failed(.notFound, "element not found: \(step.locatorSummary) (timeout \(FTSeconds.format(step.timeout ?? 5))s)"
+        return failed(.notFound, "element not found: \(step.locatorSummary) (timeout \(FTSeconds.format(step.timeout ?? FlowStep.defaultWaitSeconds))s)"
                        + Self.truncationHint(lastSnapshot)
                        + tapDiagnosisHint(lastSnapshot?.elements)
                        + Self.webViewPathHint(lastSnapshot))
@@ -422,7 +422,7 @@ extension StepExecutor {
         guard let expected = step.expected else {
             return .skipped("expected was not specified")
         }
-        let deadline = Date().addingTimeInterval(step.timeout ?? 5)
+        let deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
         var freshRetry = AssertFreshRetry()
         var lastActual: String?
         var found = false
@@ -589,7 +589,7 @@ extension StepExecutor {
         }
         // 「消えるまで待つ」。初回で不在なら即 pass、在るならタイムアウトまで消滅を待つ。
         // 可視性(occlusion)は見ない: ツリーから消えたことが唯一の判定。
-        let deadline = Date().addingTimeInterval(step.timeout ?? 5)
+        let deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
         var freshRetry = AssertFreshRetry()
         // 否定形を通す前の確認は1周だけ(上の continue が deadline 検査を飛ばすため)
         var passConfirmed = false
@@ -663,7 +663,7 @@ extension StepExecutor {
             try await Task.sleep(for: backoff.nextDelay())
             phase.waitMs += Self.ms(clock.now - waitStart)
         }
-        return .failed("element still exists: \(step.locatorSummary) (timeout \(FTSeconds.format(step.timeout ?? 5))s)"
+        return .failed("element still exists: \(step.locatorSummary) (timeout \(FTSeconds.format(step.timeout ?? FlowStep.defaultWaitSeconds))s)"
                        + tapDiagnosisHint(lastElements))
     }
 
@@ -678,7 +678,7 @@ extension StepExecutor {
            step.expected == nil {
             return .skipped("expected was not specified")
         }
-        let deadline = Date().addingTimeInterval(step.timeout ?? 5)
+        let deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
         var freshRetry = AssertFreshRetry()
         // 否定形を通す前の確認は1周だけ(上の continue が deadline 検査を飛ばすため)
         var passConfirmed = false
@@ -785,7 +785,7 @@ extension StepExecutor {
         phase: inout PhaseAccumulator) async throws -> StepResult.Status {
         let clock = ContinuousClock()
         let wantEnabled = assert == "enabled"
-        let deadline = Date().addingTimeInterval(step.timeout ?? 5)
+        let deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
         var freshRetry = AssertFreshRetry()
         var backoff = PollBackoff()
         var found = false
@@ -840,7 +840,7 @@ extension StepExecutor {
         phase: inout PhaseAccumulator) async throws -> StepResult.Status {
         let clock = ContinuousClock()
         let wantShown = assert == "keyboardShown"
-        let deadline = Date().addingTimeInterval(step.timeout ?? 5)
+        let deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
         var freshRetry = AssertFreshRetry()
         // 否定形を通す前の確認は1周だけ(上の continue が deadline 検査を飛ばすため)
         var passConfirmed = false
@@ -877,8 +877,8 @@ extension StepExecutor {
             return .failed("cannot determine the keyboard state (the bridge may be outdated)")
         }
         return .failed(wantShown
-            ? "keyboard is not shown (timeout \(FTSeconds.format(step.timeout ?? 5))s)"
-            : "keyboard is still shown (timeout \(FTSeconds.format(step.timeout ?? 5))s)")
+            ? "keyboard is not shown (timeout \(FTSeconds.format(step.timeout ?? FlowStep.defaultWaitSeconds))s)"
+            : "keyboard is still shown (timeout \(FTSeconds.format(step.timeout ?? FlowStep.defaultWaitSeconds))s)")
     }
 
     private func executeAssertChecked(
@@ -888,7 +888,7 @@ extension StepExecutor {
         // checked は true のときだけブリッジが送る(省略 = オフ / 状態を持たない要素)。
         // 「状態が違う」と「見つからない」を別メッセージにするのは enabled と同じ規律
         let wantChecked = assert == "checked"
-        let deadline = Date().addingTimeInterval(step.timeout ?? 5)
+        let deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
         var freshRetry = AssertFreshRetry()
         var backoff = PollBackoff()
         var found = false
@@ -946,7 +946,7 @@ extension StepExecutor {
         // `||` は**候補集合の和**(Shirates 準拠)。全節の候補を合わせ、同じ要素は1度だけ数える。
         // 節の優先順位が効くのは要素を1つ選ぶときだけで、数えるときは節を跨いで合計する
         let chain = [locator] + (step.fallbacks ?? [])
-        let deadline = Date().addingTimeInterval(step.timeout ?? 5)
+        let deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
         var freshRetry = AssertFreshRetry()
         var backoff = PollBackoff()
         var actual = 0

@@ -120,6 +120,21 @@ class ライフサイクルとコントロールが正しく働くこと {
                     select("#btn_toggle_target").enabledIsFalse()
                 }
             }
+            // **出た直後はまだ触れないボタン**(`#btn_enables_late` は 1.5 秒後に有効)。
+            // 要素は最初から木に居るので `waitForDisplay` では待ち切れない —— `tap` が
+            // 操作可能になるまで待つことの witness(2026-08-21。受け手の実アプリで
+            // 「読み込み中の入力欄を叩いて空振り」を踏んだ形の再現)。
+            // 待たない実装だと無効なまま撃って `late=-` のままになる
+            scene(51, "出た直後はまだ無効なボタンでも tap が届く") {
+                condition {
+                    tap("#tab_home")
+                    tap("#tab_controls")
+                }.action {
+                    tap("#btn_enables_late")
+                }.expectation {
+                    select("#txt_late_result").textIs("late=tapped")
+                }
+            }
             scene(6, "同意すると条件付きボタンだけが有効になる") {
                 action {
                     tap("#cb_agree")

@@ -144,6 +144,15 @@ API 30 未満のときだけ `keyevent 66` に落ちる。`OnEditorActionListene
 - 中身は `findViewById` で引けない = **シナリオ側も `#id` では指せない**。
   指すなら祖先スコープ(`#field_wrapped>>.textField`)か型+順序
 
+## 出た直後だけ無効なボタン(`#btn_enables_late`)
+
+**この SUT だけが持つ**。コントロール画面に入ってから **1.5 秒間 disabled**、その後 enabled。
+押すと `#txt_late_result` が `late=tapped`。
+
+- **要素は最初から木に居る**ので `waitForDisplay` では待ち切れない = `tap` が
+  「操作可能になるまで待つ」ことの witness(待たない実装だと `late=-` のまま緑にならない)
+- 1.5 秒は `OverlayWindow`(iOS)と同じ間で揃えてある
+
 ## 画面回転
 
 **回転しても画面は保たれる**(2026-08-11)。Android は回転で Activity を作り直すため、素のままだと

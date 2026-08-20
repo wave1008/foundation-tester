@@ -422,6 +422,8 @@ in-app 経路のソース走査テスト(`InAppGestureRoutingTests`)が担う。
 | `#btn_always_disabled` | Button | `無効ボタン` | **常に disabled**。押しても何も起きない |
 | `#btn_toggle_target` | Button | `切替対象` | **`#cb_agree` が true のときだけ enabled**(初期 disabled)。押しても何も起きない |
 | `#btn_controls_reset` | Button | `コントロールリセット` | 全て初期値へ |
+| `#btn_enables_late` | Button | `あとで有効` | **Android だけが持つ**。画面に入ってから **1.5 秒間だけ disabled**、その後 enabled。押すと `#txt_late_result` が `late=tapped`。要素は最初から木に居るので `waitForDisplay` では待ち切れない = **`tap` が操作可能になるまで待つ**ことの witness |
+| `#txt_late_result` | Text | `late=<v>` 初期 `late=-` | **Android だけが持つ**。v ∈ `-`/`tapped` |
 
 **disabled の 2 ボタンは `enabledIsTrue`/`enabledIsFalse` の検証材料**(ftester 側の唯一の disabled 供給源)。
 - **無効でもアクセシビリティツリーから消さない**(消えると「要素が見つかりません」になり
