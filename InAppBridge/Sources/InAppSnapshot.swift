@@ -33,13 +33,37 @@ enum InAppSnapshot {
     /// (規則と根拠は BridgeSnapshotThinning。XCUITest 版 BridgeRouter.collect と同じ形)
     /// `max` は要求ごとの要素上限(既定 BridgeAPI.maxSnapshotElements。`?max=` で引き上げる)
     static func capture(window: UIWindow, max limit: Int = BridgeAPI.maxSnapshotElements) -> Result {
-        let screen = window.bounds
+        capture(windows: [window], max: limit)
+    }
+
+    /// **可視な窓を奥から手前へ歩き、手前の窓に覆われた要素は落とす**(2026-08-20)。
+    ///
+    /// キーウィンドウ1枚に決め打っていたため、**別 UIWindow に載るモーダル**
+    /// (アプリ内メッセージ SDK 等。`makeKey` しない)が木に載らず、画面を覆っているのに
+    /// テストが何も失敗しなかった = **偽陽性で緑になる**(受け手報告。自前 SUT で再現)。
+    ///
+    /// **「手前だけ見せる」ではなく「覆われたものを落とす」**を選んだ理由:
+    /// 画面の一部だけを覆う形(上部のバナー・半分のシート)では、**見えている背面は
+    /// 見えていなければならない**。手前の窓だけに切り替えると、バナー1枚でアプリ本体が
+    /// 丸ごと木から消える(逆に、バナーを選ばない安全弁を入れるとバナー自体が見えず
+    /// `irregularHandler` で閉じられない)。
+    ///
+    /// 判定は**その窓が実際にタッチを受ける位置か**(`hitTest`)。全画面の暗幕は受けるので
+    /// 背面は落ち、素通しの窓(`isUserInteractionEnabled = false`)は受けないので背面は残る。
+    /// **並びは奥から手前**(ホストの遮蔽判定が「後に出るものが上」を前提にしている)
+    static func capture(windows: [UIWindow],
+                        max limit: Int = BridgeAPI.maxSnapshotElements) -> Result {
+        let screen = windows.first?.bounds ?? .zero
         // 同じオブジェクトが2経路から届くことがある(Compose iOS の interop は WKWebView を
         // accessibilityElements と subviews の両方から見せ、同じ WebView が2度出た。2026-07-29 実測)。
         // 重複すると同じラベルが並んでセレクタが曖昧になり、DOM も2回読むことになる
         var visited = Set<ObjectIdentifier>()
         var gathered: [Gathered] = []
-        collect(window, depth: 0, screen: screen, visited: &visited, gathered: &gathered)
+        let ordered = windows.sorted(by: { $0.windowLevel < $1.windowLevel })   // 奥 → 手前
+        for (index, window) in ordered.enumerated() {
+            collect(window, depth: 0, screen: screen, front: Array(ordered[(index + 1)...]),
+                    visited: &visited, gathered: &gathered)
+        }
 
         let keptIndices: [Int]
         var truncatedTiers: [String: Int] = [:]
@@ -74,7 +98,19 @@ enum InAppSnapshot {
             truncatedTiers: truncatedTiers, bulkExempt: bulkExempt)
     }
 
-    private static func collect(_ node: NSObject, depth: Int, screen: CGRect,
+    /// 手前の窓に覆われているか。**手前の窓が無ければ即 false**(通常画面のコストはゼロ)
+    private static func isCovered(_ frame: CGRect, by front: [UIWindow]) -> Bool {
+        guard !front.isEmpty else { return false }
+        let center = CGPoint(x: frame.midX, y: frame.midY)
+        for window in front {
+            let local = window.convert(center, from: nil)
+            guard window.bounds.contains(local) else { continue }
+            if window.hitTest(local, with: nil) != nil { return true }
+        }
+        return false
+    }
+
+    private static func collect(_ node: NSObject, depth: Int, screen: CGRect, front: [UIWindow],
                                 visited: inout Set<ObjectIdentifier>, gathered: inout [Gathered]) {
         guard visited.insert(ObjectIdentifier(node)).inserted else { return }
         // 非表示サブツリーは丸ごと除外
@@ -87,7 +123,8 @@ enum InAppSnapshot {
         // 判定は InAppBridge.keyboardIsVisible)
         if type == .keyboardKey { return }
 
-        if let info = shouldInclude(node, type: type, screen: screen) {
+        if let info = shouldInclude(node, type: type, screen: screen),
+           !isCovered(info.frame, by: front) {
             gathered.append(Gathered(
                 info: makeInfo(node, type: type, ref: 0, depth: depth, frame: info.frame),
                 frame: info.frame, node: node))
@@ -102,7 +139,8 @@ enum InAppSnapshot {
         if let view = node as? UIView, view.isAccessibilityElement { return }
         let children = axChildren(node)
         for child in children {
-            collect(child, depth: depth + 1, screen: screen, visited: &visited, gathered: &gathered)
+            collect(child, depth: depth + 1, screen: screen, front: front,
+                    visited: &visited, gathered: &gathered)
         }
     }
 

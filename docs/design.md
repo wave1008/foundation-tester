@@ -2303,6 +2303,26 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
   行ったうえで**中止・破棄**した: Android は `am start --activity-clear-task` で成立するが、
   **iOS には起動済みプロセスをエントリー画面へ戻す OS 機構が無く**、前面化(activate)だけでは
   「起動直後の最初の画面」という契約を満たせない(片 OS のみの機能では意味が無いという判断)
+- **in-app の木は可視な窓を全部歩く**(2026-08-20。それまではキーウィンドウ1枚だけ)。
+  **別 UIWindow に載るモーダル**(アプリ内メッセージ SDK 等)が木から見えないと、
+  画面を覆っているのにテストは何も失敗しない —— タップは `activate`、スクロールは
+  `contentOffset` の直接書き込みで**どちらも hitTest を経由しない**ので**覆いが障害物にならず**、
+  `irregularHandler` も照合対象が無いので発動しない = **偽陽性で緑になる**
+  (受け手報告。自前 SUT の `OverlayWindow` で再現 → `bridgeProtocolVersion` 75 で修正)。
+  **`UIAlertController` は自分の窓を key にする**ので以前から載っていた。載らなかったのは
+  **key にしない**窓で、そこが SDK 系オーバーレイの形。
+  並びは **windowLevel の昇順**(手前を後ろに置く。ホストの遮蔽判定が「後に出るものが上」を
+  前提にしているため)。**キーボードの窓だけは除く**(キーが大量に写り込むうえ、表示判定と
+  実矩形は `keyboardIsVisible` / `keyboardFrameIfVisible` が別に申告する既存の設計)。
+  **覆われた要素は落とす**(`InAppSnapshot.isCovered`): 前後の窓を両方載せると
+  「覆われているのに `exist` が通る」が残る。判定は**その位置で手前の窓がタッチを受けるか**
+  (`hitTest`)。**「手前の窓だけ見せる」にはしない** —— 画面の一部だけを覆う形(上部バナー・
+  ハーフシート)で**触れる背面まで消える**か、逆にバナー自体が見えず `irregularHandler` で
+  閉じられなくなる(2026-08-20 に両形の witness で確認)。
+  限界: 判定は**タッチが届くか**であって**目に見えるか**ではない —— `isUserInteractionEnabled = false`
+  の不透明な飾り窓は背面を残す(触れる以上、操作の前提としては正しい側)。
+  witness は `E2EAppIOS` の `OverlayWindow`(全画面モーダル / 上部バナーの2形)と
+  `TestProjects/E2E-iOS/scenarios/15_別ウィンドウのモーダル.swift`
 - **inapp は Compose Multiplatform(iOS)の swipe/scrollTo/press を駆動できない**
   (2026-07-22・`TestProjects/E2E-CMP` で切り分け確定)。同一アプリ・同一シナリオの両エンジン差分:
   - inapp: `tap`/`type` は通る。`swipe` 4方向・`scrollTo`・`press`(長押し)が**すべて無反応**

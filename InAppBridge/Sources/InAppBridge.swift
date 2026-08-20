@@ -187,7 +187,7 @@ final class FTInAppBridge {
             // 0 要素になる(_AXSSetAutomationEnabled は Flutter engine に効かない)。冪等・非 Flutter は no-op。
             // 起動直後は FlutterViewController が未生成のことがあるため boot 時でなく snapshot ごとに呼ぶ
             FTEnsureFlutterSemantics()
-            return InAppSnapshot.capture(window: window, max: limit)
+            return InAppSnapshot.capture(windows: Self.visibleWindows(keyWindow: window), max: limit)
         }
         // **キーボードはキーウィンドウの外**(UITextEffectsWindow)に載るため、AX ツリー走査
         // (InAppSnapshot の sawKeyboard)では見つからない。表示中かと実矩形を同一時点で読むため
@@ -1133,6 +1133,22 @@ final class FTInAppBridge {
         }
     }
 
+
+    /// 木に載せる窓 = **キーウィンドウ + その上に重なっている可視の窓**(2026-08-20)。
+    /// **覆われた要素を落とすのは `InAppSnapshot.isCovered`**(理由はそちらの宣言)。
+    /// **キーボードの窓は常に除く**(キーは大量に写り込み、表示判定と実矩形は
+    /// keyboardIsVisible / keyboardFrameIfVisible が別に申告する既存の設計)
+    static func visibleWindows(keyWindow: UIWindow) -> [UIWindow] {
+        var result = [keyWindow]
+        for window in UIApplication.shared.windows where window !== keyWindow {
+            let name = NSStringFromClass(type(of: window))
+            guard !name.contains("TextEffects"), !name.contains("RemoteKeyboard") else { continue }
+            guard !window.isHidden, window.alpha > 0.01,
+                  window.bounds.width > 0, window.bounds.height > 0 else { continue }
+            result.append(window)
+        }
+        return result
+    }
 
     private func keyWindow() -> UIWindow? {
         for scene in UIApplication.shared.connectedScenes {

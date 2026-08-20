@@ -212,7 +212,13 @@ public enum BridgeAPI {
     /// are what edge scrolling costs once the scroll itself is a single jump. A stale bridge omits
     /// the field and the host falls back to the signature rule → additive, but bump so the faster
     /// path is not silently skipped.
-    public static let bridgeProtocolVersion = 74
+    /// 75: the in-app snapshot walks **every visible window**, not just the key window.
+    /// A modal presented in its own UIWindow (in-app message SDKs do this, and they do not make
+    /// it key) was missing from the tree, so it blocked nothing: taps go through `activate` and
+    /// scrolling writes `contentOffset`, neither of which hit-tests, and `irregularHandler` had
+    /// nothing to match — **a covered screen kept passing** (consumer report 2026-08-20,
+    /// reproduced with E2EAppIOS `OverlayWindow`). A stale bridge keeps hiding it → bump.
+    public static let bridgeProtocolVersion = 75
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の
