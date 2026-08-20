@@ -211,6 +211,8 @@ Android は intent に package を明示するので影響しないが、**契�
 | `#btn_input_submit` | Button | `送信` | `#txt_input_submitted` を更新 |
 | `#txt_input_submitted` | Text | `submitted=<v>` 初期 `submitted=-` | |
 | `#btn_input_clear` | Button | `入力クリア` | 3フィールドと echo を初期状態へ(`ime=0` を含む) |
+| `#field_wrapped` | (容器) | — | **Android だけが持つ**。id は**容器**に付き、**中身の入力欄に id は無い**(Material の TextInputLayout / TextInputEditText と同じ形)。容器は clickable でタップを吸うが**入力フォーカスは中身へ移らない** —— `tap("#field_wrapped")` → `type("…")` が成立することの witness |
+| `#txt_echo_wrapped` | Text | `wrapped=<v>` 初期 `wrapped=` | **Android だけが持つ**。`#field_wrapped` の中身の入力値 |
 
 **IME アクション(`#field_single`)**: Enter / 送信キーで発火し `#txt_ime_action` が +1 される
 (シナリオ 18 が `pressEnter()` と `type("…\n")` の両方で検証する)。

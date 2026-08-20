@@ -63,6 +63,11 @@ fun buildInputScreen(activity: Activity, parent: ViewGroup): View {
         echoSingle.text = "single=$it"
         echoLength.text = "len=${it.length}"
     }
+    // 容器つきの欄(id は容器側・中身の EditText に id は無い)。**入れ子の中身は
+    // findViewById で引けない**ので子から取る = テスト側も同じ制約に置かれる
+    val wrapped = (v.findViewById<ViewGroup>(R.id.field_wrapped).getChildAt(0) as EditText)
+    val echoWrapped = v.findViewById<TextView>(R.id.txt_echo_wrapped)
+    wrapped.onTextChanged { echoWrapped.text = "wrapped=$it" }
     // パスワードは平文で echo する(検証用。実アプリでは絶対にやらない)。
     password.onTextChanged { echoPassword.text = "password=$it" }
     multiline.onTextChanged { echoMultiline.text = "multiline=${it.replace("\n", " ")}" }

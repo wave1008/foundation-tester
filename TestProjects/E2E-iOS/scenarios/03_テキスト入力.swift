@@ -204,6 +204,22 @@ class テキスト入力が正しくechoされること {
                     tap("#tab_home")
                 }
             }
+            // **Shirates 伝統の書き方**(タップして焦点を作り、ロケータ無しで打つ)が
+            // そのまま通ること。iOS は素直に通る側だが、**焦点の確認が誤って救済へ落ちない**
+            // ことを守る対照でもある(注記が出たら誤発火。Android 側の witness は
+            // `#field_wrapped` = 容器がタッチを吸う形)
+            scene(16, "タップしてからロケータ無しの type が入る") {
+                condition {
+                    // 直前の scene がホームへ戻しているので入り直す
+                    tap("#nav_input")
+                    tap("#btn_input_clear")
+                }.action {
+                    tap("#field_single")
+                    type("abc")
+                }.expectation {
+                    select("#txt_echo_single").textIs("single=abc")
+                }
+            }
         }
     }
 }

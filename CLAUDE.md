@@ -118,6 +118,11 @@
   `command` を description から切り出さない・`failureKind` をエラー文言の一致で決めない
   (どちらも書式を変えた瞬間に静かに壊れる。仕分けは `DriverError` の case で行う)。
   渡し忘れはコンパイルも実行も通るので `CommandNamePlumbingTests` がソース走査で落とす。
+  **`tap(入力欄)` → `type("文字列")`(Shirates 伝統形)は支えるべき書き方**(2026-08-21 ユーザー指示)——
+  容器を叩いて焦点が立たなかったときは `InputFocusRescue` が入力欄を名指しして入れ直す
+  (払うのはタップ直後の木1枚だけ・入れ先が一意に決まらなければ何もしない・注記
+  `type-focus-recovered` に残す)。**witness は `E2EAppAndroid` の `#field_wrapped`**
+  (容器に id・中身の EditText に id 無し・透明な clickable がタッチを吸う)。
   **割り込みに吸われた操作は撃ち直さない**(届いていた場合に二重実行 = 送信・購入で取り返しが
   つかない)。ツールが閉じるのは**ステップ開始時点で出ている割り込み**までで、閉じた後は
   整定を待って木を取り直す。**間に湧いた分の復帰はシナリオ側**(docs/commands.md
