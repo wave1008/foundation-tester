@@ -575,8 +575,11 @@ final class AssertKindsTests: XCTestCase {
         XCTAssertEqual(outcome.driverFallback?.contains("interruption"), true)
     }
 
-    /// ポーリングを何周しても**タップは1回だけ**(閉じても消えない相手でタップの雨を降らせない)
-    func testInterruptHandlerTapsOnceEvenWhenModalNeverGoesAway() async {
+    /// ポーリングを何周しても**タップの雨を降らせない**。閉じても消えない相手には
+    /// **2回で見切る**(1回目は閉じ損ねかもしれない = 閉じるアニメーションの最中に撮った木でも
+    /// 早合点しないため。2回目も残っていたら dismiss が効いていないと判断して打ち切る)。
+    /// **1ステップ1回**だった頃の固定を 2026-08-20 に更新した(受け手要望で複数回に緩めたため)
+    func testInterruptHandlerStopsHammeringWhenModalNeverGoesAway() async {
         let modal = node(9, id: "promo_modal", label: "お知らせ")
         let close = node(8, id: "btn_promo_close", label: "閉じる")
         // 何度閉じても消えない = 全フレームに出続ける。対象は最後まで現れない
@@ -588,7 +591,7 @@ final class AssertKindsTests: XCTestCase {
         let outcome = await executor.execute(
             FlowStep(assert: "exists", locator: FlowLocator(id: "txt_result"), timeout: 1))
         XCTAssertFalse(isPassed(outcome.status))
-        XCTAssertEqual(driver.tapped, [8], "ポーリングのたびに叩かないこと")
+        XCTAssertEqual(driver.tapped, [8, 8], "ポーリングのたびに叩かないこと(2回で見切る)")
     }
 
     // MARK: - 内蔵スクロール探索(tap(scroll:) / exist(scroll:))
