@@ -526,7 +526,8 @@ struct ApiRunCommand: AsyncParsableCommand {
                          blankRepairs: outcome.blankRepairs,
                          blankExclusions: outcome.blankExclusions,
                          measurementInvalid: validity.invalid,
-                         measurementInvalidReasons: validity.reasons)
+                         measurementInvalidReasons: validity.reasons,
+                         workerAnomalies: outcome.workerAnomalies)
         if !outcome.degradedWorkers.isEmpty {
             logStderr("⚠️ Degraded or dropped workers (\(outcome.degradedWorkers.count)):")
             for entry in outcome.degradedWorkers { logStderr("   - \(entry)") }
@@ -973,7 +974,8 @@ struct ApiRunCommand: AsyncParsableCommand {
                           testSeconds: timing.testSeconds,
                           scenarioTotalSeconds: timing.scenarioTotalSeconds,
                           degradedWorkers: result.degradedWorkers,
-                          freezeRetries: result.freezeRetries)
+                          freezeRetries: result.freezeRetries,
+                          workerAnomalies: result.workerAnomalies)
     }
 
     /// workersReady の devices 配列を組み立てる(id 形式は ApiWorkersReadyEvent 参照)
@@ -1341,6 +1343,8 @@ struct RunOutcome {
     /// run 前の blank 判定で修復/除外されたワーカー label(RunMetaRecord へ記録)。
     var blankRepairs: [String] = []
     var blankExclusions: [String] = []
+    /// 上2つ(degraded/freeze)と同じ事象の構造化版(run.json の workerAnomalies)
+    var workerAnomalies: [WorkerAnomalyRecord] = []
 }
 
 /// 並列ワーカー構築 Task から blank triage を run() へ運ぶ入れ物

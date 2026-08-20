@@ -584,7 +584,8 @@ public final class FTDriveCore {
     /// (selectorError は "invalid selector syntax: " を前置するので用途が違う)
     /// heldElement: **既に掴んである要素**(FTElement のチェーンだけが渡す)。満たしていれば
     /// デバイスを見ずに通す(下記の高速経路)。満たしていなければ従来どおり実機で取り直す
-    func perform(step: FlowStep, description: String, selectorText: String? = nil,
+    func perform(step: FlowStep, description: String, command: String? = nil,
+                 selectorText: String? = nil,
                  selectorError: String? = nil, commandError: String? = nil,
                  heldElement: ElementInfo? = nil,
                  file: StaticString, line: UInt) -> PerformResult {
@@ -602,7 +603,8 @@ public final class FTDriveCore {
         debugCheckpoint(description: description, file: filePath, line: Int(line))
         if scenarioAborted {
             let status = StepResult.Status.skipped(skipReason)
-            recordStep(description: description, status: status, file: filePath, line: Int(line))
+            recordStep(description: description, status: status, file: filePath, line: Int(line),
+                       command: command)
             return PerformResult(status: status, element: nil)
         }
         // 構文検証はデバイスに触る前(dry-run でも)に行う。パースは失敗しない契約のため、
@@ -611,7 +613,10 @@ public final class FTDriveCore {
         if let error = selectorError ?? commandError {
             let reason = selectorError == nil ? error : "invalid selector syntax: \(error)"
             let status = StepResult.Status.failed(reason)
-            recordStep(description: description, status: status, file: filePath, line: Int(line))
+            // **デバイスには1度も触っていない**失敗(実行前の構文検証)。端末の状態と無関係だと
+            // 読み手が機械的に言い切れるよう素性を付ける
+            recordStep(description: description, status: status, file: filePath, line: Int(line),
+                       command: command, failureKind: .selectorSyntax)
             handleFailure(stepDescription: description, reason: reason)
             return PerformResult(status: status, element: nil)
         }
@@ -621,7 +626,8 @@ public final class FTDriveCore {
             let clock = ContinuousClock()
             let start = clock.now
             recordStep(description: description, status: .passed, file: filePath, line: Int(line),
-                       durationMs: continuousClockMilliseconds(clock.now - start))
+                       durationMs: continuousClockMilliseconds(clock.now - start),
+                       command: command)
             return PerformResult(status: .passed, element: nil)
         }
 
@@ -641,7 +647,7 @@ public final class FTDriveCore {
                                        element: heldElement) == true {
             recordStep(description: description + "(\(StepNote.heldValue.text))", status: .passed,
                        file: filePath, line: Int(line), durationMs: 0,
-                       notes: [.heldValue])
+                       notes: [.heldValue], command: command)
             trackIDResolution(step: step, status: .passed, description: description)
             return PerformResult(status: .passed, element: heldElement)
         }
@@ -661,6 +667,8 @@ public final class FTDriveCore {
         let outcome = FTSync.run { await executor.execute(step, cached: cachedLocators) }
         let status = outcome?.status
             ?? .failed("the command timed out (\(Int(FTSync.commandTimeout))s)")
+        // outcome が nil = FTSync が打ち切った(StepExecutor は素性を返せていない)
+        let failureKind = outcome?.failureKind ?? .timeout
         // driverFallback はロケータの .passedViaFallback とは別物(セレクタは正しくドライバが
         // 変わっただけ、または無言 no-op になり得る経路の注記)。修正提案は出さず、説明文に
         // 括弧書きで付けるだけ。値は表示済み文言(StepExecutor.StepOutcome.driverFallback 参照)。
@@ -676,7 +684,8 @@ public final class FTDriveCore {
                    actionMs: outcome?.timing?.actionMs,
                    waitMs: outcome?.timing?.waitMs,
                    at: outcome?.at,
-                   notes: outcome?.notes ?? [])
+                   notes: outcome?.notes ?? [],
+                   command: command, failureKind: failureKind)
 
         // 修正提案とヒールキャッシュの更新
         if let outcome, let selectorText {
@@ -896,7 +905,8 @@ public final class FTDriveCore {
     /// isAssertion は **appIs だけ** true(FlowStep を持たない唯一の検証コマンドで、
     /// 渡さないと verify も expectation も「検証0本」と数えてしまう)
     @discardableResult
-    func performCustom(description: String, file: StaticString, line: UInt,
+    func performCustom(description: String, command: String? = nil,
+                       file: StaticString, line: UInt,
                        launchTiming: (() -> LaunchTiming?)? = nil,
                        isAssertion: Bool = false,
                        note: (() -> StepNote?)? = nil,
@@ -926,13 +936,17 @@ public final class FTDriveCore {
         let result = FTSync.runThrowing { try await body() }
         let elapsedMs = continuousClockMilliseconds(clock.now - start)
         let status: StepResult.Status
+        // 素性は**エラーの型**から採る(文言一致で仕分けない。StepExecutor.failureKind(thrown:))
+        var failureKind: StepFailureKind?
         switch result {
         case .success:
             status = .passed
         case .failure(let error):
             status = .failed(error.localizedDescription)
+            failureKind = StepExecutor.failureKind(thrown: error)
         case nil:
             status = .failed("the operation timed out (\(Int(FTSync.commandTimeout))s)")
+            failureKind = .timeout
         }
         let timing = launchTiming?()
         // note は perform() の driverFallback と同じ見せ方(括弧書き)。StepNote.notes へも積むのは
@@ -942,7 +956,8 @@ public final class FTDriveCore {
         recordStep(description: recordedDescription, status: status, file: "\(file)", line: Int(line),
                    durationMs: elapsedMs, actionMs: timing?.actionMs, waitMs: timing?.waitMs,
                    at: ISO8601Millis.string(from: Date()),
-                   notes: resolvedNote.map { [$0] } ?? [])
+                   notes: resolvedNote.map { [$0] } ?? [],
+                   command: command, failureKind: failureKind)
 
         if case .failed(let reason) = status {
             handleFailure(stepDescription: description, reason: reason)
@@ -1106,10 +1121,13 @@ public final class FTDriveCore {
     /// **DSL スレッドと違反スレッドが同時に呼び得るため stateLock で直列化する**(stepCounter/
     /// record 追記/emit を含む一体の操作。emit は呼び出し側が print 等で組んでおり FTDriveCore へ
     /// 再入しないことを確認済み = デッドロックしない)
+    /// command: DSL のコマンド名(`tap` / `exist` …)。**説明文から切り出さない**ために運ぶ。
+    /// failureKind: 失敗の素性(`StepFailureKind`)。failed 以外では常に nil
     func recordStep(description: String, status: StepResult.Status, file: String, line: Int,
                     durationMs: Int? = nil, snapshotMs: Int? = nil,
                     actionMs: Int? = nil, waitMs: Int? = nil, at: String? = nil,
                     notes: [StepNote] = [],
+                    command: String? = nil, failureKind: StepFailureKind? = nil,
                     screenshotData: Data? = nil, screenshotLabel: String? = nil) {
         stateLock.lock()
         defer { stateLock.unlock() }
@@ -1141,6 +1159,9 @@ public final class FTDriveCore {
         event.waitMs = waitMs
         event.at = at
         event.notes = notes.isEmpty ? nil : notes.map(\.rawValue)
+        event.command = command
+        // 素性は失敗にだけ付ける(呼び出し側が誤って渡しても落とす)
+        if case .failed = status { event.failureKind = failureKind?.rawValue }
         emit(event)
     }
 

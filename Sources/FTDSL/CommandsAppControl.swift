@@ -16,7 +16,7 @@ public func launchApp(_ bundleID: String? = nil, url: String? = nil,
     let bundle = bundleID ?? core.appBundleID
     let driver = core.driver
     let description = url.map { "launch \(bundle) and open \($0)" } ?? "launch \(bundle)"
-    core.performCustom(description: description, file: file, line: line,
+    core.performCustom(description: description, command: "launchApp", file: file, line: line,
                        launchTiming: { driver.lastLaunchTiming }) {
         try await driver.launch(bundleID: bundle)
         if let url {
@@ -30,7 +30,7 @@ public func launchApp(_ bundleID: String? = nil, url: String? = nil,
 public func openURL(_ url: String, file: StaticString = #filePath, line: UInt = #line) {
     let core = FTRuntime.requireCore(command: "openURL")
     let driver = core.driver
-    core.performCustom(description: "openURL \"\(url)\"", file: file, line: line) {
+    core.performCustom(description: "openURL \"\(url)\"", command: "openURL", file: file, line: line) {
         try await driver.openURL(url, bundleID: core.appBundleID)
     }
 }
@@ -42,7 +42,7 @@ public func restartApp(_ bundleID: String? = nil,
     let core = FTRuntime.requireCore(command: "restartApp")
     let bundle = bundleID ?? core.appBundleID
     let driver = core.driver
-    core.performCustom(description: "restart \(bundle)", file: file, line: line,
+    core.performCustom(description: "restart \(bundle)", command: "restartApp", file: file, line: line,
                        launchTiming: { driver.lastLaunchTiming }) {
         try? await driver.terminate()
         try await driver.launch(bundleID: bundle)
@@ -57,7 +57,7 @@ public func clearAppData(_ bundleID: String? = nil,
     let core = FTRuntime.requireCore(command: "clearAppData")
     let bundle = bundleID ?? core.appBundleID
     let driver = core.driver
-    core.performCustom(description: "clearAppData \(bundle)", file: file, line: line) {
+    core.performCustom(description: "clearAppData \(bundle)", command: "clearAppData", file: file, line: line) {
         try await driver.clearAppData(bundleID: bundle)
     }
 }
@@ -65,7 +65,7 @@ public func clearAppData(_ bundleID: String? = nil,
 public func terminateApp(file: StaticString = #filePath, line: UInt = #line) {
     let core = FTRuntime.requireCore(command: "terminateApp")
     let driver = core.driver
-    core.performCustom(description: "terminate", file: file, line: line) {
+    core.performCustom(description: "terminate", command: "terminateApp", file: file, line: line) {
         try await driver.terminate()
     }
 }
@@ -80,7 +80,7 @@ public func installApp(_ appPackageFile: String? = nil,
     let core = FTRuntime.requireCore(command: "installApp")
     let driver = core.driver
     let description = appPackageFile.map { "installApp \"\($0)\"" } ?? "installApp"
-    core.performCustom(description: description, file: file, line: line) {
+    core.performCustom(description: description, command: "installApp", file: file, line: line) {
         if let installControl = core.installControl {
             // 110s: FTSync.commandTimeout(120s。performCustom を包む外枠)より内側に収め、
             // ここで先に installApp 固有の理由を返す(外枠だと汎用の "operation timed out" になる)
@@ -117,7 +117,7 @@ public func removeApp(_ packageOrBundleId: String? = nil,
     let core = FTRuntime.requireCore(command: "removeApp")
     let driver = core.driver
     let target = packageOrBundleId ?? core.appBundleID
-    core.performCustom(description: "removeApp \"\(target)\"", file: file, line: line) {
+    core.performCustom(description: "removeApp \"\(target)\"", command: "removeApp", file: file, line: line) {
         try await driver.uninstall(bundleID: target)
     }
 }
@@ -143,7 +143,7 @@ public func appIs(_ appNameOrAppId: String, waitSeconds: Double = FlowStep.defau
                   file: StaticString = #filePath, line: UInt = #line) {
     let core = FTRuntime.requireCore(command: "appIs")
     let driver = core.driver
-    core.performCustom(description: "appIs \"\(appNameOrAppId)\"", file: file, line: line,
+    core.performCustom(description: "appIs \"\(appNameOrAppId)\"", command: "appIs", file: file, line: line,
                        isAssertion: true) {
         let matched = try await pollForegroundMatch(
             driver: driver, target: appNameOrAppId, waitSeconds: waitSeconds)
@@ -180,7 +180,7 @@ public func screenshot(_ filename: String,
 public func home(file: StaticString = #filePath, line: UInt = #line) {
     let core = FTRuntime.requireCore(command: "home")
     let driver = core.systemDriver
-    core.performCustom(description: "home", file: file, line: line) {
+    core.performCustom(description: "home", command: "home", file: file, line: line) {
         try await driver.home()
     }
 }
@@ -202,7 +202,7 @@ public func back(file: StaticString = #filePath, line: UInt = #line) {
     // 読めなければ黙る(判定材料が無いのに断定しない = MCP の ft_navigate と同じ規律)
     let observer = core.driver
     var observedNote: StepNote?
-    core.performCustom(description: "back", file: file, line: line, note: { observedNote }) {
+    core.performCustom(description: "back", command: "back", file: file, line: line, note: { observedNote }) {
         let before = try? await observer.snapshot()
         try await driver.back()
         guard let before, let after = try? await observer.snapshot() else { return }
@@ -217,7 +217,7 @@ public func back(file: StaticString = #filePath, line: UInt = #line) {
 public func hideKeyboard(file: StaticString = #filePath, line: UInt = #line) {
     let core = FTRuntime.requireCore(command: "hideKeyboard")
     let driver = core.driver
-    core.performCustom(description: "hideKeyboard", file: file, line: line) {
+    core.performCustom(description: "hideKeyboard", command: "hideKeyboard", file: file, line: line) {
         try await driver.hideKeyboard()
     }
 }
@@ -226,7 +226,7 @@ public func hideKeyboard(file: StaticString = #filePath, line: UInt = #line) {
 public func appSwitcher(file: StaticString = #filePath, line: UInt = #line) {
     let core = FTRuntime.requireCore(command: "appSwitcher")
     let driver = core.systemDriver
-    core.performCustom(description: "appSwitcher", file: file, line: line) {
+    core.performCustom(description: "appSwitcher", command: "appSwitcher", file: file, line: line) {
         try await driver.openAppSwitcher()
     }
 }
@@ -253,7 +253,7 @@ public func tapAppIcon(_ appIconName: String? = nil,
     let platform = core.platform
     let resolvedName = appIconName ?? core.appDisplayName
     let description = resolvedName.map { "tapAppIcon \"\($0)\"" } ?? "tapAppIcon"
-    core.performCustom(description: description, file: file, line: line) {
+    core.performCustom(description: description, command: "tapAppIcon", file: file, line: line) {
         // 親(プロファイルの appName)からも取れないときだけ明示エラー
         guard let appIconName = resolvedName else {
             throw FTCommandError.message(
@@ -338,7 +338,7 @@ func ftSleepNanoseconds(_ seconds: Double) -> UInt64 {
 public func wait(_ seconds: Double,
                  file: StaticString = #filePath, line: UInt = #line) {
     FTRuntime.requireCore(command: "wait")
-        .performCustom(description: "wait \(FTSeconds.format(seconds))s", file: file, line: line) {
+        .performCustom(description: "wait \(FTSeconds.format(seconds))s", command: "wait", file: file, line: line) {
             try await Task.sleep(nanoseconds: ftSleepNanoseconds(seconds))
         }
 }
@@ -540,7 +540,7 @@ public func doUntilTrue(_ title: String, waitSeconds: Double = 10, intervalSecon
                         file: StaticString = #filePath, line: UInt = #line,
                         _ action: @escaping () async throws -> Bool) {
     FTRuntime.requireCore(command: "doUntilTrue")
-        .performCustom(description: "doUntilTrue \"\(title)\"", file: file, line: line) {
+        .performCustom(description: "doUntilTrue \"\(title)\"", command: "doUntilTrue", file: file, line: line) {
             let deadline = Date().addingTimeInterval(waitSeconds)
             var loops = 0
             while true {
@@ -577,6 +577,6 @@ public func procedure(_ title: String,
                       file: StaticString = #filePath, line: UInt = #line,
                       _ body: @escaping () async throws -> Void) {
     FTRuntime.requireCore(command: "procedure")
-        .performCustom(description: "procedure \"\(title)\"", file: file, line: line, body)
+        .performCustom(description: "procedure \"\(title)\"", command: "procedure", file: file, line: line, body)
 }
 

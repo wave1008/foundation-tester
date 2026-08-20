@@ -122,7 +122,8 @@ public final class RunRecorder: @unchecked Sendable {
     public func finish(total: Int, passed: Int, failed: Int, degradedWorkers: [String] = [],
                        freezeRetries: [String] = [],
                        blankRepairs: [String] = [], blankExclusions: [String] = [],
-                       measurementInvalid: Bool = false, measurementInvalidReasons: [String] = []) {
+                       measurementInvalid: Bool = false, measurementInvalidReasons: [String] = [],
+                       workerAnomalies: [WorkerAnomalyRecord] = []) {
         hostMetrics?.stop()
         let meta = RunMetaRecord(
             runID: runID, project: projectName, profile: profile, machine: machine,
@@ -138,6 +139,7 @@ public final class RunRecorder: @unchecked Sendable {
             measurementInvalid: measurementInvalid ? true : nil,
             measurementInvalidReasons: measurementInvalid && !measurementInvalidReasons.isEmpty
                 ? measurementInvalidReasons : nil,
+            workerAnomalies: workerAnomalies.isEmpty ? nil : workerAnomalies,
             issuer: issuer)
         RunResultsStore.writeMeta(meta, runDir: runDir)
     }

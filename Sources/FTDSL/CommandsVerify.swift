@@ -251,6 +251,7 @@ private func expectedLooksLikeSelector(_ expected: String, verb: String,
     guard FTSelector.selectorLikeInputError(expected) != nil else { return nil }
     let core = FTRuntime.requireCore(command: verb)
     core.perform(step: FlowStep(assert: verb), description: "\(verb) \"\(expected)\"",
+                 command: verb,
                  commandError: "`\(verb)(\"\(expected)\")` checks the text of the element grabbed last"
                      + " — the single-argument form takes an expected value, not a selector."
                      + " Write select(\"\(expected)\") first, or use select(<selector>).\(verb)(<expected>).",
@@ -752,7 +753,7 @@ public func screenIs(_ expected: String,
                      file: StaticString = #filePath, line: UInt = #line) {
     let step = FlowStep(assert: "screenMatches", expected: expected)
     FTRuntime.requireCore(command: "screenIs")
-        .perform(step: step, description: "screenIs \"\(expected)\"", file: file, line: line)
+        .perform(step: step, description: "screenIs \"\(expected)\"", command: "screenIs", file: file, line: line)
 }
 
 /// キーボードが表示されていることの検証。開閉はアニメーションを伴うためタイムアウトまでポーリングする
@@ -761,7 +762,7 @@ public func keyboardIsShown(timeout: Double? = nil,
                             file: StaticString = #filePath, line: UInt = #line) {
     let core = FTRuntime.requireCore(command: "keyboardIsShown")
     let step = FlowStep(assert: "keyboardShown", timeout: timeout ?? core.defaultTimeout)
-    core.perform(step: step, description: "keyboardIsShown", file: file, line: line)
+    core.perform(step: step, description: "keyboardIsShown", command: "keyboardIsShown", file: file, line: line)
 }
 
 /// キーボードが表示されていないことの検証(タイムアウトまでポーリング。理由は keyboardIsShown 参照)
@@ -769,7 +770,7 @@ public func keyboardIsNotShown(timeout: Double? = nil,
                                file: StaticString = #filePath, line: UInt = #line) {
     let core = FTRuntime.requireCore(command: "keyboardIsNotShown")
     let step = FlowStep(assert: "keyboardNotShown", timeout: timeout ?? core.defaultTimeout)
-    core.perform(step: step, description: "keyboardIsNotShown", file: file, line: line)
+    core.perform(step: step, description: "keyboardIsNotShown", command: "keyboardIsNotShown", file: file, line: line)
 }
 
 /// exist の戻り値。検証をチェーンできる。

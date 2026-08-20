@@ -3490,4 +3490,70 @@ final class StepExecutorTests: XCTestCase {
                      placeholder: nil, enabled: true,
                      frame: FTRect(x: 16, y: y, width: 370, height: 56), depth: 0)]
     }
+
+    // MARK: - 失敗の素性(結果 JSON の failureKind)
+
+    /// 解決できないロケータは `not-found`。**「画面が違う」と「セレクタが古い」は区別しない**
+    /// (どちらもこの経路。事実だけを言う)
+    func testUnresolvableLocatorIsMarkedNotFound() async throws {
+        let primary = FakeAppDriver(name: "primary", log: CallLog(),
+                                    snapshotElements: [[element(ref: 1, id: "other")]])
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(action: "tap", locator: FlowLocator(id: "missing"), timeout: 1)
+
+        let outcome = await executor.execute(step)
+
+        XCTAssertEqual(outcome.failureKind, .notFound)
+    }
+
+    /// 掴めたが期待値と違うのは `assertion`(見つからない・到達できないと分けられること)
+    func testValueMismatchIsMarkedAssertion() async throws {
+        let primary = FakeAppDriver(name: "primary", log: CallLog(),
+                                    snapshotElements: [[textElement(id: "msg", label: "こんにちは")]])
+        let executor = StepExecutor(driver: primary)
+        var step = FlowStep(assert: "textEquals", locator: FlowLocator(id: "msg"), timeout: 1)
+        step.expected = "さようなら"
+
+        let outcome = await executor.execute(step)
+
+        XCTAssertEqual(outcome.failureKind, .assertion)
+    }
+
+    /// 同じ assert でも**要素が居ない**なら not-found(assertion で塗り潰さない)
+    func testMissingElementInAnAssertIsStillNotFound() async throws {
+        let primary = FakeAppDriver(name: "primary", log: CallLog(), snapshotElements: [[]])
+        let executor = StepExecutor(driver: primary)
+        var step = FlowStep(assert: "textEquals", locator: FlowLocator(id: "msg"), timeout: 1)
+        step.expected = "なんでも"
+
+        let outcome = await executor.execute(step)
+
+        XCTAssertEqual(outcome.failureKind, .notFound)
+    }
+
+    /// ブリッジへ到達できない失敗は `driver-unreachable`(ステップの内容と独立に起きる形)
+    func testUnreachableDriverIsMarkedDriverUnreachable() async throws {
+        let primary = FakeAppDriver(name: "primary", log: CallLog(),
+                                    snapshotElements: [[element(ref: 1, id: "btn")]])
+        primary.swipeError = DriverError.bridgeUnreachable("connection reset")
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(action: "swipe", direction: "up")
+
+        let outcome = await executor.execute(step)
+
+        XCTAssertEqual(outcome.failureKind, .driverUnreachable)
+    }
+
+    /// 成功したステップに素性は付かない(「失敗の内訳」に成功が混ざらない)
+    func testSuccessfulStepsCarryNoFailureKind() async throws {
+        let primary = FakeAppDriver(name: "primary", log: CallLog(),
+                                    snapshotElements: [[element(ref: 1, id: "btn")]])
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(action: "tap", locator: FlowLocator(id: "btn"), timeout: 1)
+
+        let outcome = await executor.execute(step)
+
+        XCTAssertNil(outcome.failureKind)
+    }
+
 }

@@ -11,6 +11,33 @@ public enum RunRecordSchema {
     public static let current = 1
 }
 
+/// run 中に起きたワーカーの異常。**prose の degradedWorkers / freezeRetries と同じ事実を
+/// 機械可読な形で持つ**(あちらは人が読む1行。こちらは「この run を除外するか」を
+/// コードで判断するための欄)。**判定はしない** —— 起きた事実だけを置く。
+public struct WorkerAnomalyRecord: Codable, Sendable {
+    /// "degraded"(劣化・離脱)/ "requeued"(結果取り消し+振り直し)/
+    /// "retryLimit"(振り直しの上限に達し、失敗として記録した)
+    public var kind: String
+    /// ScenarioRunRecord.worker と**同じ規則**("<platform>:<デバイス論理名>")。
+    /// 論理名を持たない経路(--ports 等)では nil = label だけで照合する
+    public var worker: String?
+    /// 表示上の識別子(degradedWorkers の1行に出るものと同一)
+    public var label: String
+    /// requeued / retryLimit のときの対象シナリオ ID
+    public var scenarioID: String?
+    /// 英語・人間可読(prose 側と同じ文)
+    public var reason: String
+
+    public init(kind: String, worker: String?, label: String,
+                scenarioID: String? = nil, reason: String) {
+        self.kind = kind
+        self.worker = worker
+        self.label = label
+        self.scenarioID = scenarioID
+        self.reason = reason
+    }
+}
+
 /// results/runs/<YYYY-MM>/<runID>/run.json
 public struct RunMetaRecord: Codable, Sendable {
     public var schemaVersion: Int
@@ -26,6 +53,7 @@ public struct RunMetaRecord: Codable, Sendable {
     public var passed: Int?
     public var failed: Int?
     /// 実行中に劣化・離脱したワーカー(「label: 理由」)。空/未発生は nil で省略。連鎖失敗の事後診断用。
+    /// **機械的な除外には `workerAnomalies` を見る**(こちらは表示用の1行)
     public var degradedWorkers: [String]?
     /// 凍結等による結果取り消し+振り直しの監査記録(成功した振り直しはシナリオ記録に痕跡を
     /// 残さないため、ここが唯一の証跡)。空/未発生は nil で省略。
@@ -41,6 +69,9 @@ public struct RunMetaRecord: Codable, Sendable {
     public var measurementInvalid: Bool?
     /// measurementInvalid=true のときの理由(英語、人間可読)。measurementInvalid が無ければ nil。
     public var measurementInvalidReasons: [String]?
+    /// degradedWorkers / freezeRetries と同じ事実の構造化版(join できる worker id 付き)。
+    /// 空/未発生は nil で省略。**後発追加の Optional なので旧レコードもそのまま読める**
+    public var workerAnomalies: [WorkerAnomalyRecord]?
     /// 自己申告のディスパッチ発行者(LocalConfig.resolveIssuerId)。認証ではない(帰属の記録のみ)。
     /// 旧レコードにはキーが無いので Optional のまま decode できる(schemaVersion は上げない)
     public var issuer: String?
@@ -52,6 +83,7 @@ public struct RunMetaRecord: Codable, Sendable {
                 freezeRetries: [String]? = nil,
                 blankRepairs: [String]? = nil, blankExclusions: [String]? = nil,
                 measurementInvalid: Bool? = nil, measurementInvalidReasons: [String]? = nil,
+                workerAnomalies: [WorkerAnomalyRecord]? = nil,
                 issuer: String? = nil) {
         self.schemaVersion = schemaVersion
         self.runID = runID
@@ -70,6 +102,7 @@ public struct RunMetaRecord: Codable, Sendable {
         self.blankExclusions = blankExclusions
         self.measurementInvalid = measurementInvalid
         self.measurementInvalidReasons = measurementInvalidReasons
+        self.workerAnomalies = workerAnomalies
         self.issuer = issuer
     }
 }
@@ -123,8 +156,20 @@ public struct FailedStepRecord: Codable, Sendable {
     public var index: Int
     public var scene: Int?
     public var sceneTitle: String?
+    /// **どのフェーズで落ちたか**: condition / action / expectation(CAE ブロック)、
+    /// setUp / tearDown(ライフサイクル)、いずれの外なら nil。
+    /// 「共有フローや端末の準備で落ちた」と「テスト内容で落ちた」を機械的に分けるための一次情報
     public var section: String?
     public var description: String
+    /// DSL のコマンド名(`tap` / `exist` …)。**description から切り出さずに運ぶ**
+    /// (説明文には group の前置や注記の括弧書きが付くため。ScenarioEvent.command 参照)
+    public var command: String?
+    /// どの経路で落ちたか(`StepFailureKind` の rawValue)。**言えないときは nil**。
+    /// 原因の推定ではない —— 「環境要因か否か」の判断は読み手が持つ情報と合わせて行うもの
+    public var failureKind: String?
+    /// このステップに付いた注記(`StepNote` の rawValue)。割り込みを閉じた・整定を打ち切った等、
+    /// 失敗の読み解きに要る事実。注記が無ければ nil
+    public var notes: [String]?
     public var detail: String?
     public var file: String?
     public var line: Int?
@@ -134,13 +179,18 @@ public struct FailedStepRecord: Codable, Sendable {
     public var at: String?
 
     public init(index: Int, scene: Int? = nil, sceneTitle: String? = nil, section: String? = nil,
-                description: String, detail: String? = nil, file: String? = nil,
+                description: String, command: String? = nil, failureKind: String? = nil,
+                notes: [String]? = nil,
+                detail: String? = nil, file: String? = nil,
                 line: Int? = nil, durationMs: Int? = nil, at: String? = nil) {
         self.index = index
         self.scene = scene
         self.sceneTitle = sceneTitle
         self.section = section
         self.description = description
+        self.command = command
+        self.failureKind = failureKind
+        self.notes = notes
         self.detail = detail
         self.file = file
         self.line = line
@@ -372,6 +422,8 @@ public struct ScenarioRecordBuilder {
                 index: event.index ?? 0, scene: event.scene,
                 sceneTitle: event.sceneTitle ?? event.scene.flatMap { sceneTitles[$0] },
                 section: event.section, description: event.description ?? "",
+                command: event.command, failureKind: event.failureKind,
+                notes: event.notes?.isEmpty == true ? nil : event.notes,
                 detail: event.detail, file: event.file, line: event.line,
                 durationMs: event.durationMs, at: event.at))
         default:
