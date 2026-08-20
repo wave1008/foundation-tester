@@ -31,6 +31,16 @@ export interface RunMetaRecord {
   /** run 前の blank 判定で修復不発により除外したワーカー label(guest reboot 発行済み)。
    * Swift 側 RunMetaRecord.blankExclusions と対。 */
   readonly blankExclusions?: readonly string[] | null;
+  /** degradedWorkers / freezeRetries と**同じ事象**の構造化版(Swift 側 RunMetaRecord.workerAnomalies)。
+   * worker は "<platform>:<デバイス論理名>" で ScenarioRunRecord.worker と join できる。
+   * 現状はダッシュボード未表示・run.json 永続化のみ(スキーマは docs/results-json.md)。 */
+  readonly workerAnomalies?: readonly {
+    readonly kind: string;
+    readonly worker?: string | null;
+    readonly label: string;
+    readonly scenarioID?: string | null;
+    readonly reason: string;
+  }[] | null;
 }
 
 export interface ScenarioSummaryRow {

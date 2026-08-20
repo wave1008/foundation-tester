@@ -108,6 +108,16 @@
   止める機構が無い。当面は `NoteBudgetTests` が**本数と鍵の集合を等号で固定**し、
   増減を意識的な操作にする(予算を動かすには根拠を台帳へ書く)
 - CI 連携(`ftester run --junit` の JUnit 出力・GitHub Actions 例・flaky 方針): docs/ci.md
+- **結果 JSON のスキーマ**(run.json / scenarios/*.json の全欄と、落ちた run の仕分けレシピ):
+  docs/results-json.md(**唯一の定義元**。`results/` は .gitignore なので**その中に README を置いても
+  受け手に届かない** —— 2026-08-20 まで design.md がそこを指していた)。
+  **失敗の記録に置くのは事実だけ** —— フェーズ(`section`)・コマンド名(`command`)・
+  経路(`failureKind`)・注記(`notes`)。**「環境要因の失敗」という分類は置かない**
+  (アプリが重いのかマシンが混んでいるのかツールには区別できず、推測は誤った緑・赤を作る。
+  2026-08-20 受け手方針)。**言えないときは欄ごと省く**(「その他」に丸めない)。
+  `command` を description から切り出さない・`failureKind` をエラー文言の一致で決めない
+  (どちらも書式を変えた瞬間に静かに壊れる。仕分けは `DriverError` の case で行う)。
+  渡し忘れはコンパイルも実行も通るので `CommandNamePlumbingTests` がソース走査で落とす
 - リリース(git タグ発行と版ピンの関係。配布はソースビルド前提): docs/releasing.md(`Scripts/release.sh`)
 - **リモートのデバイスの監視と配信**(2026-08-17): 手元の `api monitor` は simctl/adb =
   **この機械しか観測できない**。別の機械のぶんは `RemoteMonitorFanout` が

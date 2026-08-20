@@ -106,6 +106,8 @@ CI 用のシナリオ単位リトライは**実装していない**。自動リ�
 ## 関連
 
 - 検証の詳細な罠(flake 判定の規律・ベータ整合): [docs/verification.md](verification.md)
+- 結果 JSON のスキーマと、落ちた run の仕分け(フェーズ・素性・ワーカー異常):
+  [docs/results-json.md](results-json.md)
 - 結果 DB の分析コマンド: `ftester results --help`(サブコマンドの一覧は
   [README「コマンド一覧」](../README.md#コマンド一覧)。docs/commands.md は**シナリオ用 DSL** の
   リファレンスなので `results` は載っていない)

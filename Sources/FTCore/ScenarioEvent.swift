@@ -65,6 +65,14 @@ public struct ScenarioEvent: Codable, Sendable {
     /// 再生位置ジャンプ用(録画の startedAt と突き合わせる)。failed 以外も付与されるが、
     /// 永続化(FailedStepRecord.at)は失敗ステップのみ
     public var at: String?
+    /// kind == step。**DSL のコマンド名**(`tap` / `exist` / `textIs` …)。
+    /// description から切り出さずに運ぶ —— 説明文は group の前置や注記の括弧書きが付くので、
+    /// 文字列を割って数えると書式を変えた瞬間に静かに壊れる(notes と同じ理由)。
+    /// 名前の集合は `CommandIndex`
+    public var command: String?
+    /// kind == step かつ status == failed。**どの経路で落ちたか**(`StepFailureKind` の rawValue)。
+    /// 言えないときはキーごと省略 = 推測で埋めない
+    public var failureKind: String?
     /// kind == installRequest。子→親 RPC の相関 id(ScenarioInstallControl が発番)
     public var requestID: Int?
     /// kind == installRequest。installApp() の明示引数(nil = 親が実行プロファイルの appPath を解決する)

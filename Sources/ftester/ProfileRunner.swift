@@ -446,7 +446,8 @@ enum ProfileRunner {
                           blankRepairs: triage.repaired, blankExclusions: triage.excluded,
                           measurementInvalid: validity.invalid,
                           measurementInvalidReasons: validity.reasons,
-                          fmUnavailableScenarios: finalSummary.fmUnavailableScenarios)
+                          fmUnavailableScenarios: finalSummary.fmUnavailableScenarios,
+                          workerAnomalies: finalSummary.workerAnomalies)
     }
 
     /// heal 有効 run の開始前に FM の実呼び出し可否を確認して警告する。availability は嘘をつく
