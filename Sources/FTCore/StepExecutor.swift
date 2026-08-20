@@ -278,9 +278,15 @@ public final class StepExecutor {
     public struct InterruptHandler: Sendable {
         public let detect: FlowLocator
         public let dismiss: FlowLocator
-        public init(detect: FlowLocator, dismiss: FlowLocator) {
+        /// **1ステップで閉じる上限**(既定 `maxInterruptDismissalsPerStep`)。
+        /// 宣言ごとに変えられる —— 湧く頻度は配信側の設定次第で、こちらからは決められない。
+        /// 上限そのものを外せないのは、**閉じても消えない相手に無限に付き合わない**ため
+        public let maxDismissals: Int
+        public init(detect: FlowLocator, dismiss: FlowLocator,
+                    maxDismissals: Int = StepExecutor.maxInterruptDismissalsPerStep) {
             self.detect = detect
             self.dismiss = dismiss
+            self.maxDismissals = max(1, maxDismissals)
         }
     }
 
@@ -384,7 +390,8 @@ public final class StepExecutor {
         let start = clock.now
         var phase = PhaseAccumulator()
         interruptNote = nil   // 回数の起点(dismissInterruption が見る)
-        interruptDismissals = 0
+        interruptDismissals = [:]
+        interruptDismissalTotal = 0
         lastDismissedInterrupt = nil
         interruptStuck = false
         observedCheckedThisStep = nil
@@ -526,8 +533,10 @@ public final class StepExecutor {
     /// **1ステップにつき1回だけ**発火させるための状態でもある(閉じても消えない相手に対して
     /// アサーションのポーリングごとにタップし続けるのを防ぐ)
     private var interruptNote: String?
-    /// このステップで割り込みを閉じた回数(上限は `Self.maxInterruptDismissalsPerStep`)
-    private var interruptDismissals = 0
+    /// このステップで割り込みを閉じた回数(**宣言ごと**。上限は `InterruptHandler.maxDismissals`)
+    private var interruptDismissals: [String: Int] = [:]
+    /// 注記用の合計(複数の宣言が発動したときも「何回閉じたか」を1つで言う)
+    private var interruptDismissalTotal = 0
     /// 直前に閉じた割り込みの detect(閉じた直後にまた一致したかを見る)
     private var lastDismissedInterrupt: String?
     /// 閉じたのに消えない相手を諦めたか(注記に残す)
@@ -723,24 +732,25 @@ public final class StepExecutor {
     private func noteWithInterrupt(_ base: String?) -> String? {
         var parts = [base, scrollSearchNote].compactMap { $0 }
         if let interruptNote {
-            let times = interruptDismissals > 1 ? " ×\(interruptDismissals)" : ""
+            let times = interruptDismissalTotal > 1 ? " ×\(interruptDismissalTotal)" : ""
             parts.append("dismissed the interruption \(interruptNote)\(times)")
         }
         if interruptStuck {
-            parts.append("the interruption came back after"
-                + " \(Self.maxInterruptDismissalsPerStep) dismissals and is still on screen"
+            parts.append("the interruption is still on screen after being dismissed"
                 + " — the dismiss selector may not close it")
         }
         return parts.isEmpty ? nil : parts.joined(separator: " / ")
     }
 
-    /// 1ステップで割り込みを閉じる上限。**1回きりでは足りない**(2026-08-20 の受け手要望):
-    /// 長いステップの最中に2度目の配信が湧くと、閉じ切れないまま待ち続ける。
-    /// 上限を置くのは、**閉じても消えない相手に無限に付き合わない**ため ——
-    /// 尽きたら諦めて注記に残す(`interruptStuck`)。3 は「湧いた回数」ではなく
-    /// 「同じステップの中で人が許容できる再出現の回数」の目安で、
-    /// 尽きるときは dismiss セレクタが効いていない疑いの方が濃い
-    static let maxInterruptDismissalsPerStep = 3
+    /// 1ステップで割り込みを閉じる上限の**既定値**(宣言ごとに `maxDismissals` で変えられる)。
+    /// **1回きりでは足りない**(2026-08-20 の受け手要望): 長いステップの最中に2度目の配信が
+    /// 湧くと、閉じ切れないまま待ち続ける。
+    ///
+    /// 上限を残すのは**閉じても消えない相手に無限に付き合わない**ためだが、
+    /// **その役目はもう「閉じたのに残っている」の打ち切りが担っている**(2回で見切る)。
+    /// ここは「湧く回数」の上限でしかないので、**素直に湧く相手を取りこぼさない側へ寄せて 10**
+    /// (2026-08-20 ユーザー指定)。尽きたときは注記に残るので、黙って待ち続けることはない
+    public static let maxInterruptDismissalsPerStep = 10
 
     /// 宣言された割り込み(アプリ内メッセージ等)が現在の画面に出ていれば閉じる。
     /// **アクションでも検証でも**呼ぶ(割り込みは待機中にこそ出るため、アクション側だけだと
@@ -751,10 +761,11 @@ public final class StepExecutor {
     /// StepExecutor+Assert.swift の executeAssert 系すべてから呼ぶため internal。
     func dismissInterruption(in snapshot: inout SnapshotResponse,
                              phase: inout PhaseAccumulator) async throws {
-        guard !interruptHandlers.isEmpty,
-              interruptDismissals < Self.maxInterruptDismissalsPerStep else { return }
+        guard !interruptHandlers.isEmpty else { return }
         let clock = ContinuousClock()
         for handler in interruptHandlers {
+            let key = handler.detect.summary
+            guard (interruptDismissals[key] ?? 0) < handler.maxDismissals else { continue }
             guard Self.match(handler.detect, in: snapshot) != nil,
                   let target = Self.match(handler.dismiss, in: snapshot) else { continue }
             let start = clock.now
@@ -763,16 +774,17 @@ public final class StepExecutor {
             let shotStart = clock.now
             snapshot = try await driver.snapshot()
             phase.snapshotMs += Self.ms(clock.now - shotStart)
-            interruptNote = handler.detect.summary
-            interruptDismissals += 1
+            interruptNote = key
+            interruptDismissals[key, default: 0] += 1
+            interruptDismissalTotal += 1
             // **閉じた直後にまだ居る = 閉じられていない**。同じ相手に上限まで付き合わず、
-            // その場で打ち切って注記に残す(dismiss セレクタが効いていない疑い)
-            if Self.match(handler.detect, in: snapshot) != nil,
-               lastDismissedInterrupt == handler.detect.summary {
+            // その場で打ち切って注記に残す(dismiss セレクタが効いていない疑い)。
+            // **1回目では切らない** —— 閉じるアニメーションの最中に撮った木で早合点しないため
+            if Self.match(handler.detect, in: snapshot) != nil, lastDismissedInterrupt == key {
                 interruptStuck = true
-                interruptDismissals = Self.maxInterruptDismissalsPerStep
+                interruptDismissals[key] = handler.maxDismissals
             }
-            lastDismissedInterrupt = handler.detect.summary
+            lastDismissedInterrupt = key
             return
         }
     }
