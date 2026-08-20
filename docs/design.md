@@ -3728,6 +3728,12 @@ runID = `<yyyyMMdd-HHmmss(UTC)>Z-<マシン名>-<乱数4hex>` をディレクト
 - スキーマ詳細・フィールド一覧は **docs/results-json.md**(唯一の定義元。DTO は `RunRecord.swift`)。
   **`results/` は .gitignore なので、その中に置いた README は受け手に届かない**
   (2026-08-20 まで design.md はそこを指していた)。ドキュメントは docs/ に置く
+- **宣言された割り込みを閉じるのは `StepExecutor.dismissInterruption` の1箇所**(2026-08-20)。
+  `perform` を通らない条件判定(`ifCanSelect` / `repeatWhileCanSelect` = `FTDriveCore.canSelect`)は
+  `dismissDeclaredInterruption(in:)` から**同じ実装**を呼ぶ。**2つ目の実装を書かない** ——
+  判定が割れると「操作は閉じるのに条件判定は閉じない」という、失敗ではなく**誤った経路**として
+  現れる形になる(受け手が実際に踏んだ)。条件判定は**1回を1ステップとして数え直す**
+  (`beginInterruptionScope`)—— 直前のステップが上限まで閉じていると1回も閉じられない
 - **失敗の素性は事実だけ**(2026-08-20): `failedSteps` に `section`(フェーズ)・`command`・
   `failureKind`(`StepFailureKind`)・`notes` を載せ、run.json に `workerAnomalies` を載せる。
   **「環境要因の失敗」の分類は置かない** —— アプリが重いのかマシンが混んでいるのかツールには

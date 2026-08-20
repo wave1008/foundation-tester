@@ -250,6 +250,29 @@ final class InterruptDismissalCapTests: XCTestCase {
     }
 
     /// **上限は効く**。湧き続ける相手でも1ステップ 10 回まで(既定)
+    /// **条件判定は1回を1ステップとして数え直す**(`beginInterruptionScope`)。
+    /// 呼ばないと直前のステップで上限まで閉じた状態を引き継ぎ、`ifCanSelect` が
+    /// **1回も閉じられないまま不成立を確定する** = 分岐が黙って飛ぶ
+    func testStandaloneScopeStartsTheCountOver() async throws {
+        let driver = InterruptingDriver(appearances: 30)
+        let executor = executor(driver)
+        _ = await executor.execute(waitForTarget(timeout: 30))
+        let afterStep = driver.taps
+        XCTAssertGreaterThan(afterStep, 0, "前提: このステップで上限まで閉じていること")
+
+        // 前提: 上限で打ち切ったので割り込みはまだ画面に出ている
+        let covered = try await driver.snapshot()
+        XCTAssertNotNil(covered.elements.first { $0.identifier == "promo_modal" },
+                        "前提: 上限に当たって閉じ切れていない状態であること")
+
+        // 上限に達したまま条件判定へ来ても、数え直せばまた閉じられる
+        executor.beginInterruptionScope()
+        let dismissal = await executor.dismissDeclaredInterruption(in: covered)
+
+        XCTAssertNotNil(dismissal, "数え直していないので1回も閉じられない")
+        XCTAssertGreaterThan(driver.taps, afterStep)
+    }
+
     func testCapsTheNumberOfDismissalsPerStep() async throws {
         let driver = InterruptingDriver(appearances: 30)
         _ = await executor(driver).execute(waitForTarget(timeout: 30))

@@ -393,11 +393,7 @@ public final class StepExecutor {
         let clock = ContinuousClock()
         let start = clock.now
         var phase = PhaseAccumulator()
-        interruptNote = nil   // 回数の起点(dismissInterruption が見る)
-        interruptDismissals = [:]
-        interruptDismissalTotal = 0
-        lastDismissedInterrupt = nil
-        interruptStuck = false
+        resetInterruptScope()
         observedCheckedThisStep = nil
         resolvedElementThisStep = nil
         scrollSwipesThisStep = nil
@@ -848,6 +844,45 @@ public final class StepExecutor {
         }
     }
 
+
+    /// 割り込みの数え直し(1ステップ = 1スコープ)。`execute` と、`perform` を通らない
+    /// 条件判定の入口(`beginInterruptionScope`)が共有する
+    private func resetInterruptScope() {
+        interruptNote = nil
+        interruptDismissals = [:]
+        interruptDismissalTotal = 0
+        lastDismissedInterrupt = nil
+        interruptStuck = false
+    }
+
+    /// `perform` を通らない条件判定(`ifCanSelect` / `repeatWhileCanSelect`)が
+    /// **判定1回を1ステップとして**扱うための起点。呼ばないと直前のステップの回数を引き継ぎ、
+    /// 上限に達していると1回も閉じられない
+    public func beginInterruptionScope() { resetInterruptScope() }
+
+    /// 閉じた割り込みと、閉じた**後**の画面。閉じていなければ nil
+    public struct InterruptDismissal: Sendable {
+        /// 検出セレクタの要約(ステップの注記に出す文言と同じもの)
+        public let key: String
+        /// このスコープで閉じた回数(注記の ×N)
+        public let count: Int
+        /// 整定を待って撮り直した木
+        public let snapshot: SnapshotResponse
+    }
+
+    /// 宣言された割り込みが写っていれば閉じて、整定後の木を返す(`dismissInterruption` と同じ実装)。
+    /// **条件判定から使う** —— 覆いを閉じずに不成立を確定すると、分岐が黙って飛ぶ
+    /// (2026-08-20 の受け手報告。失敗ではなく**誤った経路**として現れるので気付けない)。
+    /// 宣言が無ければ何もしない = コストゼロ
+    public func dismissDeclaredInterruption(in snapshot: SnapshotResponse) async -> InterruptDismissal? {
+        guard !interruptHandlers.isEmpty else { return nil }
+        var current = snapshot
+        var phase = PhaseAccumulator()
+        let before = interruptDismissalTotal
+        try? await dismissInterruption(in: &current, phase: &phase)
+        guard interruptDismissalTotal > before, let key = lastDismissedInterrupt else { return nil }
+        return InterruptDismissal(key: key, count: interruptDismissalTotal, snapshot: current)
+    }
 
     /// scrollFrame の空振り申告(ステップの注記へ載せる)。**「1ステップ1回」は nil 判定だけで
     /// 表現できる**(2026-08-08: 別に立てていた `reportedScrollFrameNote` フラグは、唯一の代入元が
