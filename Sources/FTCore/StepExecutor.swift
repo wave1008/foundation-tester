@@ -383,7 +383,10 @@ public final class StepExecutor {
         let clock = ContinuousClock()
         let start = clock.now
         var phase = PhaseAccumulator()
-        interruptNote = nil   // 「1ステップにつき1回だけ」の起点(dismissInterruption が見る)
+        interruptNote = nil   // 回数の起点(dismissInterruption が見る)
+        interruptDismissals = 0
+        lastDismissedInterrupt = nil
+        interruptStuck = false
         observedCheckedThisStep = nil
         resolvedElementThisStep = nil
         scrollSwipesThisStep = nil
@@ -523,6 +526,12 @@ public final class StepExecutor {
     /// **1ステップにつき1回だけ**発火させるための状態でもある(閉じても消えない相手に対して
     /// アサーションのポーリングごとにタップし続けるのを防ぐ)
     private var interruptNote: String?
+    /// このステップで割り込みを閉じた回数(上限は `Self.maxInterruptDismissalsPerStep`)
+    private var interruptDismissals = 0
+    /// 直前に閉じた割り込みの detect(閉じた直後にまた一致したかを見る)
+    private var lastDismissedInterrupt: String?
+    /// 閉じたのに消えない相手を諦めたか(注記に残す)
+    private var interruptStuck = false
 
     /// 直前の「画面を変えるはずの操作」の記録。**失敗の診断にだけ使い、判定は変えない**。
     ///
@@ -713,19 +722,37 @@ public final class StepExecutor {
     /// ステップ横断の注記(内蔵スクロール探索・割り込み)を既存の driverFallback へ合流させる
     private func noteWithInterrupt(_ base: String?) -> String? {
         var parts = [base, scrollSearchNote].compactMap { $0 }
-        if let interruptNote { parts.append("dismissed the interruption \(interruptNote)") }
+        if let interruptNote {
+            let times = interruptDismissals > 1 ? " ×\(interruptDismissals)" : ""
+            parts.append("dismissed the interruption \(interruptNote)\(times)")
+        }
+        if interruptStuck {
+            parts.append("the interruption came back after"
+                + " \(Self.maxInterruptDismissalsPerStep) dismissals and is still on screen"
+                + " — the dismiss selector may not close it")
+        }
         return parts.isEmpty ? nil : parts.joined(separator: " / ")
     }
 
+    /// 1ステップで割り込みを閉じる上限。**1回きりでは足りない**(2026-08-20 の受け手要望):
+    /// 長いステップの最中に2度目の配信が湧くと、閉じ切れないまま待ち続ける。
+    /// 上限を置くのは、**閉じても消えない相手に無限に付き合わない**ため ——
+    /// 尽きたら諦めて注記に残す(`interruptStuck`)。3 は「湧いた回数」ではなく
+    /// 「同じステップの中で人が許容できる再出現の回数」の目安で、
+    /// 尽きるときは dismiss セレクタが効いていない疑いの方が濃い
+    static let maxInterruptDismissalsPerStep = 3
+
     /// 宣言された割り込み(アプリ内メッセージ等)が現在の画面に出ていれば閉じる。
     /// **アクションでも検証でも**呼ぶ(割り込みは待機中にこそ出るため、アクション側だけだと
-    /// `exist`/`textIs` の待ち中に出たものを閉じられない)。既に1回閉じていれば何もしない。
+    /// `exist`/`textIs` の待ち中に出たものを閉じられない)。
+    /// **1ステップで最大 `maxInterruptDismissalsPerStep` 回まで**閉じる。
     /// スナップショットは呼び手が持っているものを使い、閉じた後だけ取り直す
     /// (**追加のスナップショットを取らない** = 宣言が無ければコストゼロ)
     /// StepExecutor+Assert.swift の executeAssert 系すべてから呼ぶため internal。
     func dismissInterruption(in snapshot: inout SnapshotResponse,
                              phase: inout PhaseAccumulator) async throws {
-        guard !interruptHandlers.isEmpty, interruptNote == nil else { return }
+        guard !interruptHandlers.isEmpty,
+              interruptDismissals < Self.maxInterruptDismissalsPerStep else { return }
         let clock = ContinuousClock()
         for handler in interruptHandlers {
             guard Self.match(handler.detect, in: snapshot) != nil,
@@ -737,6 +764,15 @@ public final class StepExecutor {
             snapshot = try await driver.snapshot()
             phase.snapshotMs += Self.ms(clock.now - shotStart)
             interruptNote = handler.detect.summary
+            interruptDismissals += 1
+            // **閉じた直後にまだ居る = 閉じられていない**。同じ相手に上限まで付き合わず、
+            // その場で打ち切って注記に残す(dismiss セレクタが効いていない疑い)
+            if Self.match(handler.detect, in: snapshot) != nil,
+               lastDismissedInterrupt == handler.detect.summary {
+                interruptStuck = true
+                interruptDismissals = Self.maxInterruptDismissalsPerStep
+            }
+            lastDismissedInterrupt = handler.detect.summary
             return
         }
     }
