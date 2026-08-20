@@ -87,4 +87,33 @@ class 別ウィンドウのモーダルが木に載ること {
             }
         }
     }
+
+    // **条件判定は perform を通らない**ので、操作・検証を直しても自動では守られない
+    // (2026-08-20 の受け手報告: `ifCanSelect` だけが割り込みを閉じずに答えていた)。
+    // 覆いに関わる変更を入れたらこの本数で対照を取ること。
+    // 修正前の出方は「not met + 注記ゼロ + 離れた場所で失敗」= **分岐が黙って飛ぶ**形で、
+    // 失敗しないぶん気付けない —— だからここで赤くする
+    @Test("覆われていても条件判定は割り込みを閉じてから答える")
+    func S0040() {
+        scenario {
+            scene(1, "全画面モーダルの下の要素を ifCanSelect で引く") {
+                condition {
+                    irregularHandler("#txt_overlay_title", dismiss: "#btn_overlay_close")
+                    launchApp()
+                    tap("#nav_dialog")
+                }.action {
+                    tap("#btn_show_overlay")
+                    // 湧くのは 1.5 秒後。覆われた状態で判定へ入るために待つ
+                    wait(2.5)
+                }.expectation {
+                    ifCanSelect("#btn_show_dialog", waitSeconds: 5) {
+                        exist("#btn_show_dialog")
+                    }.ifElse {
+                        // 不成立 = 覆いを閉じずに答えている(実在しない id で必ず落とす)
+                        existWithoutScroll("#ifcanselect_answered_while_covered")
+                    }
+                }
+            }
+        }
+    }
 }

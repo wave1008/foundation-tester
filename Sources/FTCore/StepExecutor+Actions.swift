@@ -748,6 +748,22 @@ extension StepExecutor {
             // 飲まれたタップの証跡(LastInteraction 参照)。**操作の前**に採る = 比較の基準は
             // 「この操作を撃つ直前の画面」でなければ意味がない
             recordInteraction(step: step, element: element, in: snapshot)
+            // **注記が出るときは解決先を1回だけ名乗る**(2026-08-21 の受け手報告)。
+            // 連鎖(`A||B`)や型+順序(`.textField[1]`)では**書いた文字列から解決先が読めない**ので、
+            // 「無効だ」「覆われている」と言われても**どの要素の話か分からない**
+            // (Material の TextInputLayout/TextInputEditText のように、同じ矩形に容器と
+            // 入力欄が重なる画面で実際に詰まった)。型も出す = 容器と中身を見分ける鍵はそこ。
+            // **注記が1つも無いステップには付けない** = 通常の出力量は変わらない
+            var namedTarget = false
+            func adviseTarget(_ advisory: String?) {
+                guard let advisory else { return }
+                if !namedTarget {
+                    namedTarget = true
+                    driverFallback = Self.joinNotes(driverFallback,
+                        "resolved to \(TapTargetGeometry.describe(element)) (\(element.type))")
+                }
+                driverFallback = Self.joinNotes(driverFallback, advisory)
+            }
             // **撃つ前に言えることは言う**(判定は MCP と共有。TapTargetGeometry.advisory)。
             // 失敗にはしない —— 無効な要素をわざと叩いて反応しないことを確かめる書き方は正当で、
             // `enabledIsFalse` も用意されている。**注記に混ぜて、後段の失敗から原因へ辿れるようにする**
@@ -766,10 +782,9 @@ extension StepExecutor {
             // 部分木(地球儀キー等)は除外して渡す(KeyboardOcclusion の doc。MCP 側も同じ型で揃える)
             let tapKeyboardOcclusion = KeyboardOcclusion.resolve(
                 reported: snapshot.keyboardFrame, in: snapshot.elements)
-            driverFallback = Self.joinNotes(driverFallback,
-                tapKeyboardOcclusion.advisory(for: element),
-                TapTargetGeometry.disabledAdvisory(for: element))
-            driverFallback = Self.joinNotes(driverFallback, duplicateRegionAdvisory(element, in: snapshot))
+            adviseTarget(tapKeyboardOcclusion.advisory(for: element))
+            adviseTarget(TapTargetGeometry.disabledAdvisory(for: element))
+            adviseTarget(duplicateRegionAdvisory(element, in: snapshot))
             // **長押しは tap の引数**(Shirates 準拠。`tap(sel, holdSeconds:)`)。0 より大きいときだけ
             // ブリッジの /press へ回す。in-app は座標ジェスチャを持たない(501)ので XCUITest へ
             // フォールバックする経路も長押し側だけが必要
@@ -778,9 +793,8 @@ extension StepExecutor {
                 // 長押しは press(ref:) = ブリッジが frame の中心へ解決するので、座標に依る
                 // チェーン(画面外・遮蔽・中身外し等)が言える。**keyboard/disabled はここでは
                 // 足さない**(上ですでに1回付けている。ここで足すと同文が2回付く)
-                driverFallback = Self.joinNotes(driverFallback,
-                    TapTargetGeometry.occlusionAdvisory(
-                        for: element, in: snapshot.elements, screen: snapshot.screen))
+                adviseTarget(TapTargetGeometry.occlusionAdvisory(
+                    for: element, in: snapshot.elements, screen: snapshot.screen))
                 if typeDriverGestures.contains("press") || gestureFallbackLatched, let td = typeDriver,
                    try await pressViaTypeDriver(td, step: step, phase: &phase) {
                     return StepOutcome(status: .passed, healedStep: healedStep,
@@ -816,9 +830,8 @@ extension StepExecutor {
                 // 寄せずに frame の中心を撃つ = 座標に依るチェーンが言える経路。
                 // **keyboard/disabled はここでは足さない**(上ですでに1回付けている。
                 // ここで足すと同文が2回付く)
-                driverFallback = Self.joinNotes(driverFallback,
-                    TapTargetGeometry.occlusionAdvisory(
-                        for: element, in: snapshot.elements, screen: snapshot.screen))
+                adviseTarget(TapTargetGeometry.occlusionAdvisory(
+                    for: element, in: snapshot.elements, screen: snapshot.screen))
                 try await actingDriver.tap(ref: element.ref)
             }
             phase.actionMs += Self.ms(clock.now - start)

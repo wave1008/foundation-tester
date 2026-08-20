@@ -1083,3 +1083,93 @@ final class TapAdvisoryKindPriorityTests: XCTestCase {
         }
     }
 }
+
+/// **注記が出るときは解決先を名乗る**(2026-08-21 の受け手報告)。
+/// 連鎖セレクタ(`#id||.textField[1]`)や型+順序では、書いた文字列から解決先が読めないので、
+/// 「無効だ」と言われてもどの要素の話か分からない —— 容器と入力欄が同じ矩形に重なる画面
+/// (Material の TextInputLayout / TextInputEditText)で実際に詰まった。
+/// **注記が無いステップには付けない**(通常の出力量を増やさない)
+final class TapResolvedTargetNamingTests: XCTestCase {
+
+    private final class TapDriver: AppDriver, @unchecked Sendable {
+        let elements: [ElementInfo]
+        /// ブリッジ申告のキーボード矩形(2つ目の注記を出すために使う)
+        let keyboardFrame: FTRect?
+        init(elements: [ElementInfo], keyboardFrame: FTRect? = nil) {
+            self.elements = elements
+            self.keyboardFrame = keyboardFrame
+        }
+        func status() async throws -> StatusResponse {
+            StatusResponse(ready: true, device: "-", osVersion: "-", sessionBundleID: nil)
+        }
+        func install(packagePath: String) async throws {}
+        func uninstall(bundleID: String) async throws {}
+        func launch(bundleID: String) async throws {}
+        func isAppForeground(bundleID: String) async throws -> Bool { true }
+        func foregroundAppID() async throws -> String? { nil }
+        func snapshot() async throws -> SnapshotResponse {
+            SnapshotResponse(sessionBundleID: nil,
+                             screen: FTRect(x: 0, y: 0, width: 1080, height: 2400),
+                             elements: elements, truncatedCount: 0,
+                             keyboardFrame: keyboardFrame)
+        }
+        func tap(ref: Int) async throws {}
+        func tap(x: Double, y: Double) async throws {}
+        func type(ref: Int?, text: String) async throws {}
+        func swipe(_ direction: FTSwipeDirection) async throws {}
+        func press(ref: Int, duration: Double) async throws {}
+        func screenshot() async throws -> Data { Data() }
+        func terminate() async throws {}
+    }
+
+    private func field(ref: Int, id: String, type: String, enabled: Bool) -> ElementInfo {
+        ElementInfo(ref: ref, type: type, identifier: id, label: nil, value: nil,
+                    placeholder: nil, enabled: enabled,
+                    frame: FTRect(x: 42, y: 417, width: 996, height: 147), depth: 1)
+    }
+
+    /// 無効な要素を叩いたときは「どれを掴んだか」まで出す
+    func testNamesTheResolvedTargetWhenAnAdvisoryFires() async throws {
+        let driver = TapDriver(elements: [field(ref: 8, id: "txtMailAddress",
+                                                type: "other", enabled: false)])
+        let executor = StepExecutor(driver: driver)
+        let step = FlowStep(action: "tap", locator: FlowLocator(id: "txtMailAddress"), timeout: 1)
+
+        let note = await executor.execute(step).driverFallback ?? ""
+
+        XCTAssertTrue(note.contains("resolved to #txtMailAddress (other)"),
+                      "解決先と型を名乗ること: \(note)")
+        XCTAssertTrue(note.contains("disabled"), note)
+    }
+
+    /// **1回だけ**名乗る。**注記が2つ出る木で確かめる** —— 1つしか出ない木だと
+    /// 「毎回名乗る」実装でも通ってしまい判定にならない(受け手の実例は
+    /// 「無効」+「中心が覆われている」の2つが同時に出ていた)
+    func testNamesTheTargetOnlyOnce() async throws {
+        let target = field(ref: 8, id: "txtMailAddress", type: "other", enabled: false)
+        // キーボードの下 = 座標に依らず言える2つ目の注記(遮蔽判定は木の形に依存するので、
+        // ここではブリッジ申告のキーボード矩形を使って確実に2本出す)
+        let driver = TapDriver(elements: [target],
+                               keyboardFrame: FTRect(x: 0, y: 380, width: 1080, height: 2020))
+        let executor = StepExecutor(driver: driver)
+        let step = FlowStep(action: "tap", locator: FlowLocator(id: "txtMailAddress"), timeout: 1)
+
+        let note = await executor.execute(step).driverFallback ?? ""
+
+        XCTAssertTrue(note.contains("disabled"), "前提: 無効の注記: \(note)")
+        XCTAssertTrue(note.contains("keyboard"), "前提: 2つ目の注記も出ること: \(note)")
+        XCTAssertEqual(note.components(separatedBy: "resolved to").count - 1, 1, note)
+    }
+
+    /// 陰性対照: 注記が無ければ名乗らない(通常のタップの出力は増えない)
+    func testStaysSilentWithoutAnAdvisory() async throws {
+        let driver = TapDriver(elements: [field(ref: 9, id: "textInputEditText",
+                                                type: "textField", enabled: true)])
+        let executor = StepExecutor(driver: driver)
+        let step = FlowStep(action: "tap", locator: FlowLocator(id: "textInputEditText"), timeout: 1)
+
+        let note = await executor.execute(step).driverFallback ?? ""
+
+        XCTAssertFalse(note.contains("resolved to"), note)
+    }
+}
