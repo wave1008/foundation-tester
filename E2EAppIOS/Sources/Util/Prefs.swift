@@ -1,6 +1,7 @@
 import Foundation
 
-// 永続化キーは "launch_count" / "auto_dialog" / "heal_schema_v1" の3つのみ(docs/ui-contract.md §永続化する値)。
+// 永続化キーは "launch_count" / "auto_dialog" / "heal_schema_v1" / "overlay_result" の4つのみ
+// (docs/ui-contract.md §永続化する値)。
 // launchApp はアプリのデータを消さないため、これ以外を永続化するとシナリオの前提が崩れる。
 enum Prefs {
     static func getInt(_ key: String, _ def: Int) -> Int {
@@ -13,6 +14,12 @@ enum Prefs {
         UserDefaults.standard.object(forKey: key) as? Bool ?? def
     }
     static func setBool(_ key: String, _ value: Bool) {
+        UserDefaults.standard.set(value, forKey: key)
+    }
+    static func getString(_ key: String, _ def: String) -> String {
+        UserDefaults.standard.string(forKey: key) ?? def
+    }
+    static func setString(_ key: String, _ value: String) {
         UserDefaults.standard.set(value, forKey: key)
     }
 }

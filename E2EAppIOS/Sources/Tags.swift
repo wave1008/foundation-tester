@@ -110,6 +110,15 @@ enum Tags {
     static let btnDialogOK = "btn_dialog_ok"
     static let btnDialogCancel = "btn_dialog_cancel"
     static let swAutoDialog = "sw_auto_dialog"
+    // 別 UIWindow に載るモーダル(OverlayWindow。key にしない = 今日の木には載らない witness)
+    static let btnShowOverlay = "btn_show_overlay"
+    static let txtOverlayResult = "txt_overlay_result"
+    static let txtOverlayTitle = "txt_overlay_title"
+    static let btnOverlayAction = "btn_overlay_action"
+    static let btnOverlayClose = "btn_overlay_close"
+    static let btnShowBanner = "btn_show_banner"
+    static let txtBannerTitle = "txt_banner_title"
+    static let btnBannerClose = "btn_banner_close"
     static let txtAutoDialog = "txt_auto_dialog"
 
     // コントロール
