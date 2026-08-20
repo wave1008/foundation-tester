@@ -16,6 +16,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -28,6 +29,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
 
 // この画面だけ Compose(他は View/XML)。View 中心アプリに ComposeView が混ざったときの
 // スナップショット差(型語彙・testTagsAsResourceId の要否)を検証するために意図的に混ぜている。
@@ -42,6 +44,14 @@ private fun ControlsContent() {
     var agree by remember { mutableStateOf(false) }
     var plan by remember { mutableStateOf("A") }
     var volume by remember { mutableStateOf(50f) }
+    // **画面に出た直後だけ無効**(`#btn_enables_late`)。1.5 秒は OverlayWindow と同じ間で、
+    // 「操作が始まる頃にはまだ無効・少し待てば有効」を作るための値
+    var lateEnabled by remember { mutableStateOf(false) }
+    var lateResult by remember { mutableStateOf("-") }
+    LaunchedEffect(Unit) {
+        delay(1500)
+        lateEnabled = true
+    }
 
     MaterialTheme {
         // testTagsAsResourceId が無いと Compose 部分だけ #id を一切引けない
@@ -97,6 +107,16 @@ private fun ControlsContent() {
                 modifier = Modifier.testTag("btn_always_disabled")) {
                 Text("無効ボタン")
             }
+
+            // **画面に出た直後だけ無効**(1.5 秒後に有効になる)。実アプリで最も多い
+            // 「読み込み中は触れない」の再現で、**要素は最初から木に居る**ため
+            // `waitForDisplay` では待ち切れない —— `tap` が操作可能になるまで待つことの witness。
+            // **この SUT だけが持つ**(2026-08-21 追加。ui-contract の `#btn_enables_late`)
+            Button(onClick = { lateResult = "tapped" }, enabled = lateEnabled,
+                modifier = Modifier.testTag("btn_enables_late")) {
+                Text("あとで有効")
+            }
+            Text("late=$lateResult", modifier = Modifier.testTag("txt_late_result"))
             Button(onClick = {}, enabled = agree,
                 modifier = Modifier.testTag("btn_toggle_target")) {
                 Text("切替対象")

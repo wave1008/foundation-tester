@@ -750,6 +750,23 @@ extension StepExecutor {
             }
         }
 
+        // **無効な対象は操作可能になるまで待ってから撃つ**(2026-08-21 ユーザー決定)。
+        // 画面が出た直後は、要素は木に居るのに**まだ触れない**ことがある(受け手の実アプリ:
+        // ログインフォームが読み込み中は入力欄が無効で、id を持たない透明な clickable が
+        // 覆っていた)。従来は警告を出してそのまま撃っており、**空振りしたことは
+        // 後段のアサーションが落ちて初めて分かる** = 原因から遠い。
+        // **待ち切れなくても撃つ** —— 無効な要素をわざと叩いて「反応しない」ことを確かめる
+        // 書き方は正当なので、失敗にはしない(注記は従来どおり出る)
+        var enabledWaitNote: String?
+        if action == "tap", !element.enabled,
+           let waited = try await waitUntilEnabled(step: step, phase: &phase) {
+            snapshot = waited.snapshot
+            element = waited.element
+            resolvedElementThisStep = element
+            noteCodesThisStep.insert(.waitedForEnabled)
+            enabledWaitNote = "waited \(waited.waitedMs)ms for the target to become enabled"
+        }
+
         switch action {
         case "select":
             // 掴むだけでデバイス操作はしない。ただし**可視性は exist と同じ規律で確かめる**
@@ -771,6 +788,7 @@ extension StepExecutor {
             // 「この操作を撃つ直前の画面」でなければ意味がない
             recordInteraction(step: step, element: element, in: snapshot)
             lastTapTarget = element
+            driverFallback = Self.joinNotes(driverFallback, enabledWaitNote)
             // **注記が出るときは解決先を1回だけ名乗る**(2026-08-21 の受け手報告)。
             // 連鎖(`A||B`)や型+順序(`.textField[1]`)では**書いた文字列から解決先が読めない**ので、
             // 「無効だ」「覆われている」と言われても**どの要素の話か分からない**
@@ -1668,6 +1686,36 @@ extension StepExecutor {
         onSystemAlertDismissed?(
             SystemAlertDismissal.actionDescription(pressed: button, in: snapshot.elements))
         return true
+    }
+
+    /// 対象が**操作可能になるまで**待つ(`tap` だけ)。戻り値 nil = 待たなかった/待ち切れなかった
+    /// (呼び手はそのまま撃つ)。予算はステップの `timeout`、無ければ既定の待ち
+    /// (`FlowStep.defaultWaitSeconds`。**新しい数字は作らない**)。
+    ///
+    /// **`enabled` を明示したセレクタでは待たない** —— `&&enabled=false` は
+    /// 「無効なものを狙って掴む」宣言なので、待つと必ず予算を捨てる
+    func waitUntilEnabled(step: FlowStep, phase: inout PhaseAccumulator) async throws
+        -> (element: ElementInfo, snapshot: SnapshotResponse, waitedMs: Int)? {
+        let constrained = ([step.locator] + (step.fallbacks ?? []))
+            .contains { $0?.enabled != nil }
+        guard !constrained else { return nil }
+        let clock = ContinuousClock()
+        let began = clock.now
+        let deadline = began.advanced(by: .seconds(step.timeout ?? FlowStep.defaultWaitSeconds))
+        var backoff = PollBackoff()
+        while clock.now < deadline {
+            var start = clock.now
+            try await Task.sleep(for: backoff.nextDelay())
+            phase.waitMs += Self.ms(clock.now - start)
+            start = clock.now
+            let snapshot = try await freshSnapshot(.afterOwnMove)
+            phase.snapshotMs += Self.ms(clock.now - start)
+            guard let (element, _) = Self.resolve(step: step, in: snapshot) else { continue }
+            if element.enabled {
+                return (element, snapshot, Self.ms(clock.now - began))
+            }
+        }
+        return nil
     }
 
     /// 直前のタップが**焦点を立てられていなかった**ときに、入れ直す先を決める。

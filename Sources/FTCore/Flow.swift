@@ -72,6 +72,9 @@ public struct FlowStep: Codable, Sendable {
 
     /// `tap(holdSeconds:)` の既定。**0 = 通常タップ**(Shirates の `tapHoldSeconds` 準拠)。
     /// 0 より大きいときだけ長押しとしてブリッジの /press へ回す(StepExecutor)
+    /// ステップが待ち時間を明示しないときの既定(秒)。**新しく決めた数字ではない** ——
+    /// `exist` 系がずっと使ってきた既定をここに集約しただけ(散らばった `?? 5` の唯一の定義元)
+    public static let defaultWaitSeconds: Double = 5
     public static let defaultTapHoldSeconds: Double = 0
 
     /// スクロール探索(`scrollTo` / `tap(scroll:)` / `exist(scroll:)`)の既定スワイプ上限。

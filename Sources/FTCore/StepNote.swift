@@ -99,6 +99,11 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// `#id` が容器を指している(セレクタを取る `type` へ寄せる判断材料になる)
     case typeFocusRecovered = "type-focus-recovered"
 
+    /// `tap` の対象が**まだ無効**だったので、操作可能になるまで待ってから撃った。
+    /// **率を見たい注記**: 増えている画面は「出た直後はまだ触れない」ので、
+    /// 到達待ちの書き方(`waitForDisplay` の対象)を見直す材料になる
+    case waitedForEnabled = "waited-for-enabled"
+
     /// 人間向けの文言(FTRuntime がステップ説明へ括弧書きで付ける)
     public var text: String {
         switch self {
@@ -119,6 +124,8 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
                 + " absence here is not evidence"
         case .backIneffective: return BackEffect.note(advice: BackEffect.dslAdvice)
         case .interruptionDismissed: return "dismissed a declared interruption during this step"
+        case .waitedForEnabled:
+            return "the target was still disabled, so the tap waited for it to become enabled"
         case .typeFocusRecovered:
             return "the preceding tap did not put a field in focus, so the text went to the"
                 + " field it resolved to"

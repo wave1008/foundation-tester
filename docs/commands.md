@@ -39,7 +39,7 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 
 | コマンド | 説明 |
 |---|---|
-| `tap(sel, holdSeconds: 0, timeout:scroll:maxSwipes:containerInference:)` | タップ。`holdSeconds` を 0 より大きくすると長押し(既定 0 = 通常タップ)。`containerInference:` は下記「容器の推測に依存する補正」参照 |
+| `tap(sel, holdSeconds: 0, timeout:scroll:maxSwipes:containerInference:)` | タップ。`holdSeconds` を 0 より大きくすると長押し(既定 0 = 通常タップ)。**対象がまだ無効なら操作可能になるまで待ってから撃つ**(下記)。`containerInference:` は下記「容器の推測に依存する補正」参照 |
 | `select(sel, timeout:requireVisible:scroll:maxSwipes:)` | 要素を**掴むだけ**(デバイス操作なし)。`exist` と違い**検証ではない**ので、レポートに検証ステップとして残らない。値の読み出し(`.text`/`.value`/`.id`)や検証コマンドへのチェーンの起点に使う。**掴めなければ失敗させず空要素を返す** — 「見つからない」も「見つかったが見えない(覆われ・見切れ)」も同じ形で返るので、呼び出し側は `.isEmpty` で分岐する(`exist` はどちらも失敗へ反転するので意味が違う)。**在ることを保証したいなら `exist`**。`requireVisible: false` で可視性照合自体を外す |
 | `lastElement` | **直前に掴んだ要素**(引数なし。Shirates(Classic) の `TestDriver.lastElement` 相当)。要素を1つに定めて解決したコマンド(`select` / `exist` / `tap` / `type` / `waitForDisplay` / テキスト・値の検証など)が通るたびに差し替わる。差し替えないのは**要素を1つに定めない** `notExist` / `countIs` と、**セレクタを取らない** `swipe` / `launchApp` 等。**値は掴んだ時点の凍結値**で、掴んだ後にスクロールやタップを挟むと古い値を読む(下記「掴んだ要素の値を読む」)。**scene を跨ぐと空**・**掴めなかったコマンドは空で上書き**・**一度も掴んでいなければ空+警告** |
 | `type("文字列", replace: false)` | **フォーカス中の要素**へ入力(直前に `tap(入力欄)` でフォーカスしてから使う)。改行の扱いは下記。**引数はテキストであってセレクタではない** — `type("#email")` のようにセレクタらしい1語(`#` + 識別子・`\|\|` や `>>` を含む)を渡すと実行前に失敗する(黙って `#email` と打ち込んで後段の検証で落ちると原因から遠いため)。その文字列を本当に入力したいなら2引数形 `type("#field", "#email")` を使う。`replace: true` で撃つ前に `clearInput` 相当のクリアをしてから入力する(セレクタ解決が1回で済む) |
@@ -56,6 +56,23 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 | `doubleTap(sel?)` | ダブルタップ。セレクタ省略 = 画面中心。**`tap` を2回書いても代用できない**(往復で OS のダブルタップ判定時間を超える) |
 | `pinchOut(sel?, scale: 2.0, durationSeconds: 0.5)` | 2本指を開く = **拡大**。`scale` は 1 より大きい値のみ |
 | `pinchIn(sel?, scale: 0.5, durationSeconds: 0.5)` | 2本指を閉じる = **縮小**。`scale` は 0 より大きく 1 未満のみ |
+
+### まだ触れない画面を叩かない(`tap` は操作可能になるまで待つ)
+
+画面が出た直後は、**要素は木に居るのにまだ触れない**ことがある(読み込み中のフォーム・
+検証が通るまで無効なボタン)。`waitForDisplay` は「出たか」しか見ないので待ち切れない。
+
+`tap` は対象が `enabled` でなければ**操作可能になるまで待ってから**撃つ。
+待った事実は注記に残る(`waited 1730ms for the target to become enabled` /
+機械可読は `waited-for-enabled`)。
+
+- **待ち切れなくても撃つ**。無効な要素をわざと叩いて「反応しない」ことを確かめる書き方は
+  正当なので失敗にはしない(従来どおり `the target is disabled …` の注記が出る)
+- 予算はステップの `timeout:`、省略時は既定の待ち(5秒)。**待ちたくないときは `timeout: 0`**
+- **`&&enabled=` を明示したセレクタでは待たない** —— `#btn&&enabled=false` は
+  「無効なものを狙って掴む」宣言なので、待つと必ず予算を捨てる
+
+これが無いと、空振りしたタップは**後段のアサーションが落ちて初めて**分かる(原因から遠い)。
 
 ### `tap(入力欄)` → `type("文字列")`(Shirates 伝統の書き方)
 
