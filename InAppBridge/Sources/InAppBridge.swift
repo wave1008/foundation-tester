@@ -469,15 +469,19 @@ final class FTInAppBridge {
         }
 
         DispatchQueue.main.async {
-            guard let window = self.keyWindow() else {
+            guard let keyWindow = self.keyWindow() else {
                 thrown = InAppError(409, "no key window")
                 sem.signal()
                 return
             }
             guard let node = self.nodes.object(forKey: NSNumber(value: ref)) as? NSObject else {
-                synthFallback(window)   // 保持ノードが無い(従来と同じく座標へ)
+                // 保持ノードが無い(従来と同じく座標へ)。宛先は**いま指が当たる窓**
+                synthFallback(Self.frontmostTouchableWindow(keyWindow: keyWindow))
                 return
             }
+            // **合成タッチは対象が載っている窓へ撃つ**(別 UIWindow のモーダルを閉じられない
+            // 原因がこれだった。Self.window(of:) の宣言参照)
+            let window = Self.window(of: node) ?? Self.frontmostTouchableWindow(keyWindow: keyWindow)
             if node.accessibilityActivate() {
                 finish(window)
                 return
@@ -1044,12 +1048,19 @@ final class FTInAppBridge {
 
     private func handleScreenshot() throws -> InAppHTTPServer.Response {
         try mainSync {
-            guard let window = self.keyWindow() else {
+            guard let key = self.keyWindow() else {
                 throw InAppError(409, "no key window")
             }
-            let renderer = UIGraphicsImageRenderer(bounds: window.bounds)
+            // **可視な窓を奥から手前へ重ねて描く**(2026-08-20)。キーウィンドウ1枚だけ描くと、
+            // 別 UIWindow のモーダルが**写らない**画像を証跡として残すことになる
+            // (木は載せるようになったのに画像だけ食い違う)
+            let windows = Self.visibleWindows(keyWindow: key)
+                .sorted { $0.windowLevel < $1.windowLevel }
+            let renderer = UIGraphicsImageRenderer(bounds: key.bounds)
             let image = renderer.image { _ in
-                window.drawHierarchy(in: window.bounds, afterScreenUpdates: false)
+                for window in windows {
+                    window.drawHierarchy(in: window.frame, afterScreenUpdates: false)
+                }
             }
             guard let png = image.pngData() else {
                 throw InAppError(500, "PNG encoding failed")
@@ -1091,11 +1102,14 @@ final class FTInAppBridge {
         let sem = DispatchSemaphore(value: 0)
         var thrown: Error?
         DispatchQueue.main.async {
-            guard let window = self.keyWindow() else {
+            guard let key = self.keyWindow() else {
                 thrown = InAppError(409, "no key window")
                 sem.signal()
                 return
             }
+            // **操作の宛先は「いま指が当たる窓」**(2026-08-20)。keyWindow 固定だと、
+            // 別 UIWindow のモーダルが出ている間にスクロールや座標タップが**背面へ抜ける**
+            let window = Self.frontmostTouchableWindow(keyWindow: key)
             let moved: Bool
             do {
                 moved = try block(window)
@@ -1148,6 +1162,50 @@ final class FTInAppBridge {
             result.append(window)
         }
         return result
+    }
+
+    /// **その要素が載っている窓**。合成タッチはこの窓へ撃つ(2026-08-20 の受け手報告)。
+    ///
+    /// 木は可視な窓を歩くようになったのに(bridgeProtocolVersion 75)、**タップは keyWindow
+    /// 固定のまま**だった。別 UIWindow のモーダル(SDK のカード)では、activate が不発で
+    /// 合成タッチへ落ちた瞬間に**背面のアプリ側へ撃つ**ことになり、「見えているのに閉じられない」。
+    /// a11y 要素は `UIView` とは限らないので `accessibilityContainer` も辿る
+    static func window(of node: NSObject) -> UIWindow? {
+        // **`value(forKey:)` は使わない** —— 未定義キーで NSUnknownKeyException が飛び、
+        // Swift では捕まえられないので**テスト対象アプリを落とす**。
+        // セレクタの有無を確かめてから呼ぶ(親を辿れない型はそこで打ち切る)
+        let containerSelector = NSSelectorFromString("accessibilityContainer")
+        var current: NSObject? = node
+        var hops = 0
+        while let object = current, hops < 20 {
+            if let window = object as? UIWindow { return window }
+            if let view = object as? UIView, let window = view.window { return window }
+            guard object.responds(to: containerSelector),
+                  let next = object.perform(containerSelector)?.takeUnretainedValue() as? NSObject
+            else { return nil }
+            current = next
+            hops += 1
+        }
+        return nil
+    }
+
+    /// 座標だけで撃つ操作の宛先 = **一番手前の、タッチを受ける窓**。
+    /// ref が無い操作(座標タップ・向き指定のスワイプ)は対象ノードを持たないので、
+    /// 「いま指が当たる窓」を選ぶ(木が覆いを落とす規則と揃う)
+    static func frontmostTouchableWindow(keyWindow: UIWindow) -> UIWindow {
+        let center = CGPoint(x: keyWindow.bounds.midX, y: keyWindow.bounds.midY)
+        var best = keyWindow
+        for window in UIApplication.shared.windows where window !== keyWindow {
+            let name = NSStringFromClass(type(of: window))
+            guard !name.contains("TextEffects"), !name.contains("RemoteKeyboard") else { continue }
+            guard !window.isHidden, window.alpha > 0.01,
+                  window.windowLevel > best.windowLevel else { continue }
+            let local = window.convert(center, from: nil)
+            guard window.bounds.contains(local),
+                  window.hitTest(local, with: nil) != nil else { continue }
+            best = window
+        }
+        return best
     }
 
     private func keyWindow() -> UIWindow? {
