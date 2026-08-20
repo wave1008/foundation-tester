@@ -175,11 +175,19 @@ public struct RunSummary: Sendable {
     /// (ProfileRunner/ApiRunCommand)が blankExclusions 判明後に自分で構築した RunSummary へ埋める。
     public let measurementInvalid: Bool
     public let measurementInvalidReasons: [String]
+    /// **FM の実呼び出しが全滅したまま走ったシナリオ数**(呼び出しが1件でもあり、その全部が失敗)。
+    /// FM が死んでいると occlusion-guard(`exist` の既定 requireVisible)・自己修復・`screenIs` が
+    /// **黙って素通り**する = その run の緑は「守りが効いた緑」ではない。
+    /// **合否は変えない**(FM と無関係な失敗を隠す方が危険)。読み手に劣化を伝えるためだけの数。
+    /// 各シナリオの警告は子プロセスの stderr にも出るが、**run のまとめには出ていなかった**ので、
+    /// 赤を見るたびに「自分の変更か FM か」を人が切り分ける羽目になっていた(2026-08-20)
+    public let fmUnavailableScenarios: Int
 
     public init(total: Int, failed: Int, degradedWorkers: [String] = [],
                 freezeRetries: [String] = [],
                 blankRepairs: [String] = [], blankExclusions: [String] = [],
-                measurementInvalid: Bool = false, measurementInvalidReasons: [String] = []) {
+                measurementInvalid: Bool = false, measurementInvalidReasons: [String] = [],
+                fmUnavailableScenarios: Int = 0) {
         self.total = total
         self.failed = failed
         self.degradedWorkers = degradedWorkers
@@ -188,6 +196,13 @@ public struct RunSummary: Sendable {
         self.blankExclusions = blankExclusions
         self.measurementInvalid = measurementInvalid
         self.measurementInvalidReasons = measurementInvalidReasons
+        self.fmUnavailableScenarios = fmUnavailableScenarios
+    }
+
+    /// FM の呼び出しが**全部失敗した**か(呼び出しが1件も無いときは false = 使っていないだけ)
+    public static func fmUnavailable(_ usage: FMUsageRecord?) -> Bool {
+        guard let usage, usage.calls > 0 else { return false }
+        return usage.failures == usage.calls
     }
 }
 
@@ -239,6 +254,13 @@ private actor NoteCollector {
     private var entries: [String] = []
     func add(_ entry: String) { entries.append(entry) }
     func snapshot() -> [String] { entries }
+}
+
+/// 並列ワーカーから数える用の素朴なカウンタ
+private actor Counter {
+    private var value = 0
+    func increment() { value += 1 }
+    func snapshot() -> Int { value }
 }
 
 /// 1 シナリオあたりの凍結再実行上限。ポイズンシナリオのフリート全滅を防ぐ
@@ -541,6 +563,9 @@ public final class RunOrchestrator {
     private let degraded = NoteCollector()
     /// 振り直し(結果取り消し+requeue)の監査記録(summary/レポートの freezeRetries に載せる)。
     private let retries = NoteCollector()
+    /// FM の実呼び出しが全滅したまま走ったシナリオ数(summary の fmUnavailableScenarios)。
+    /// **合否には使わない** —— 読み手に「この緑は守りが効いていない」と伝えるための数
+    private let fmUnavailable = Counter()
 
     /// ワーカー離脱を通知(イベント yield + 劣化ワーカー収集)を1箇所に集約する。
     private func reportWorkerFailed(_ label: String, _ message: String) async {
@@ -783,7 +808,8 @@ public final class RunOrchestrator {
 
         let summary = RunSummary(total: items.count, failed: failed,
                                  degradedWorkers: await degraded.snapshot(),
-                                 freezeRetries: await retries.snapshot())
+                                 freezeRetries: await retries.snapshot(),
+                                 fmUnavailableScenarios: await fmUnavailable.snapshot())
         continuation.yield(.runFinished(passed: summary.passed, failed: summary.failed))
         continuation.finish()
         return summary
@@ -898,7 +924,16 @@ public final class RunOrchestrator {
                 recorder: recorder, installHandler: installHandler, appName: appName,
                 appBundleID: appBundleIDs[worker.platform],
                 iosSystemAlertButtons: iosSystemAlertButtons,
-                onEvent: { [continuation] in continuation.yield($0) })
+                onEvent: { [continuation, fmCounter = self.fmUnavailable] event in
+                    // **FM 全滅のまま走ったシナリオを数える**(合否は変えない。summary の
+                    // fmUnavailableScenarios。ここで数えるのは、実行結果に FM の可否が
+                    // 現れないため —— 失敗は各呼び出し箇所が握って素通りさせる契約)
+                    if case .flowFinished(_, _, _, _, _, let fm) = event,
+                       RunSummary.fmUnavailable(fm) {
+                        Task { await fmCounter.increment() }
+                    }
+                    continuation.yield(event)
+                })
             await videoRecording?.scenarioFinished(
                 workerLabel: worker.label, at: Date(), passed: outcome == .passed)
             if outcome == .passed {

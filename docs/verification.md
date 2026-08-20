@@ -769,6 +769,28 @@ S0030 型(type が成功扱いなのに後段の検証で値が空)の再発ゼ�
   同一個体でのタップ無反応集中」まで幅がある — **失敗が1台に集中していたら
   まずこのクラスを疑い、その個体を shutdown/boot してから裁定する**
 
+## FM が死んでいる run は「守りが効いていない run」(2026-08-20 に可視化)
+
+FM の実呼び出しが全滅していると、**occlusion-guard(`exist` の既定 requireVisible)・自己修復・
+`screenIs` は黙って素通りする**(各呼び出し箇所が nil を返して通す契約)。つまりその run の緑は
+**「守りが効いた緑」ではない**し、赤は FM 起因かもしれない。
+
+これは各シナリオの stderr には出ていたが、**run のまとめには出ていなかった**ため、赤を見るたびに
+「自分の変更か FM か」を人が HEAD 対照で切り分けていた(2026-08-20 に何度も払った)。
+いまは `ftester run` のまとめに1行出る:
+
+```
+⚠️ FM unavailable: 3 scenario(s) ran with occlusion-guard / self-healing / screenIs
+   silently disabled. Read this run's result with that in mind (confirm with: ftester doctor --fm-only)
+```
+
+**合否は変えない**(FM と無関係な失敗を隠す方が危険)。数えるのは
+「**呼び出しが1件以上あり、その全部が失敗**」のときだけ —— FM を使っていないだけの run で出すと、
+警告の意味が薄れて誰も読まなくなる。
+
+**この行が出ている run では**: ①緑を「守りが効いた」と読まない ②赤は必ず HEAD 対照を取る
+(同じ負荷条件で。docs/verification.md の flake の節)。
+
 ## 覆い(別ウィンドウのモーダル)の witness は E2EAppIOS にある(2026-08-20)
 
 **自前 SUT に1つも無かった形**を足した: `E2EAppIOS` の `OverlayWindow` が
