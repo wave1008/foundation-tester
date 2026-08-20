@@ -612,6 +612,10 @@ public final class StepExecutor {
     /// 直前の操作(tap / 長押し)の記録。**読むのは失敗文言の組み立てだけ**。
     /// StepExecutor+Assert.swift の各失敗経路から読むため internal
     var lastInteraction: LastInteraction?
+    /// **直前のアクションが tap だったときの対象**(`type`(セレクタ無し)の焦点救済に使う)。
+    /// `lastInteraction` は次のアクションの入口で捨てられるので流用できない。
+    /// tap 以外のアクションが走ったら捨てる = 「直前」の意味を保つ(`executeAction` の入口)
+    var lastTapTarget: ElementInfo?
 
     /// 容器の外に居る要素を可視域へ戻すのに必要な移動量(`hintDrag` の jump 規約 = 正なら指を上へ)。
     /// 収まっている/測れないときは nil。

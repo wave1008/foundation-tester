@@ -93,6 +93,12 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// StepExecutor.dismissInterruption がコードだけ立てる(text は集計表示用の既定文)
     case interruptionDismissed = "interruption-dismissed"
 
+    /// `tap(入力欄)` → `type("文字列")` の並びで、**タップが焦点を立てられていなかった**ので
+    /// ツールが入力欄を名指しして入れ直した(`InputFocusRescue`)。
+    /// **率を見たい注記**: 増えているなら、その画面の入力欄は容器と中身に分かれていて
+    /// `#id` が容器を指している(セレクタを取る `type` へ寄せる判断材料になる)
+    case typeFocusRecovered = "type-focus-recovered"
+
     /// 人間向けの文言(FTRuntime がステップ説明へ括弧書きで付ける)
     public var text: String {
         switch self {
@@ -113,6 +119,9 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
                 + " absence here is not evidence"
         case .backIneffective: return BackEffect.note(advice: BackEffect.dslAdvice)
         case .interruptionDismissed: return "dismissed a declared interruption during this step"
+        case .typeFocusRecovered:
+            return "the preceding tap did not put a field in focus, so the text went to the"
+                + " field it resolved to"
         case .healUnwritable:
             return "self-heal found a stand-in element but no selector picks it out uniquely on this"
                 + " screen, so the fix was not written back — give the element a stable id"

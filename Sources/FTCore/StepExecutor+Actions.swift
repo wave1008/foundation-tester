@@ -15,6 +15,8 @@ extension StepExecutor {
         // `select` は掴むだけでデバイス操作が無いので例外 —— `tap → select → textIs` という
         // 一番ありふれた形で、落ちるのは textIs 側だから、ここで消すと肝心なときに証跡が無くなる
         if action != "select" { lastInteraction = nil }
+        // 焦点救済の「直前」は tap → type の並びだけ(select は掴むだけで焦点を動かさない)
+        if action != "select", action != "type" { lastTapTarget = nil }
         pendingScrollFrameNote = nil
         spanScale = 1
         // ロケータ不要のアクション
@@ -314,8 +316,28 @@ extension StepExecutor {
                     return StepOutcome(status: .failed(message))
                 }
             }
-            let start = clock.now
             let text = step.text ?? ""
+            // **`tap(入力欄)` → `type("文字列")` を成立させる**(2026-08-21。Shirates 伝統の書き方)。
+            // Android の入力欄は容器(TextInputLayout)と中身(TextInputEditText)に分かれ、
+            // **id は容器側に付くことが多い** —— 容器を叩いても入力フォーカスは中身へ移らないので、
+            // 素直に書くと次の type が「フォーカスが無い」で落ちていた。
+            // **払うのは tap の直後だけ**(木を1枚読む)。自動フォーカスに任せる書き方や、
+            // pressEnter で欄を移った直後の type は従来どおり読み足さない。
+            // 改行入りは typeDriver(XCUITest)へ回す経路があり ref の体系が別なので触らない
+            if let tapped = lastTapTarget, !text.contains("\n"),
+               let recovered = try await retypeTargetIfUnfocused(after: tapped, phase: &phase) {
+                let start = clock.now
+                try await driver.type(ref: recovered.ref, text: text)
+                phase.actionMs += Self.ms(clock.now - start)
+                // 文言は動的(入れた先を名指しする)のでコードだけ立てる
+                // —— 外側の execute が collectedNotes() で拾う(StepOutcome.notes の doc)
+                noteCodesThisStep.insert(.typeFocusRecovered)
+                return StepOutcome(status: .passed,
+                                   driverFallback: Self.joinNotes(replaceFallbackNote,
+                                       "typed into \(TapTargetGeometry.describe(recovered))"
+                                           + " (the preceding tap did not put a field in focus)"))
+            }
+            let start = clock.now
             // ロケータ有り type(下記 case "type")と同じ規則: "\n" を含むときだけ
             // typeDriver(XCUITest)へ回し、iOS の Return キー既定挙動に揃える(理由は同 case のコメント参照)。
             if text.contains("\n"), let td = typeDriver {
@@ -748,6 +770,7 @@ extension StepExecutor {
             // 飲まれたタップの証跡(LastInteraction 参照)。**操作の前**に採る = 比較の基準は
             // 「この操作を撃つ直前の画面」でなければ意味がない
             recordInteraction(step: step, element: element, in: snapshot)
+            lastTapTarget = element
             // **注記が出るときは解決先を1回だけ名乗る**(2026-08-21 の受け手報告)。
             // 連鎖(`A||B`)や型+順序(`.textField[1]`)では**書いた文字列から解決先が読めない**ので、
             // 「無効だ」「覆われている」と言われても**どの要素の話か分からない**
@@ -1646,4 +1669,19 @@ extension StepExecutor {
             SystemAlertDismissal.actionDescription(pressed: button, in: snapshot.elements))
         return true
     }
+
+    /// 直前のタップが**焦点を立てられていなかった**ときに、入れ直す先を決める。
+    /// nil = 従来どおりフォーカス中要素へ送ってよい(焦点がある / 先が一意に決まらない)。
+    /// **木は撮り直す** —— ref は木ごとに振り直されるので、タップ時の ref は使えない。
+    /// 判定と選び方は `InputFocusRescue`(純関数)に置く
+    func retypeTargetIfUnfocused(after tapped: ElementInfo,
+                                 phase: inout PhaseAccumulator) async throws -> ElementInfo? {
+        let clock = ContinuousClock()
+        let start = clock.now
+        let snapshot = try await freshSnapshot(.afterOwnMove)
+        phase.snapshotMs += Self.ms(clock.now - start)
+        guard InputFocusRescue.nothingHasFocus(snapshot.elements) else { return nil }
+        return InputFocusRescue.fieldToType(after: tapped, in: snapshot.elements)
+    }
+
 }

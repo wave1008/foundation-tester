@@ -132,6 +132,18 @@ API 30 未満のときだけ `keyevent 66` に落ちる。`OnEditorActionListene
   `textIs` だけ古い値で落ちる)。ブリッジが WebView 内ノードを `refresh()` してから読むことで
   1 秒未満に短縮している(コストは snapshot 1 回あたり +20ms)。
 
+## 容器つきの入力欄(`#field_wrapped`)
+
+**この SUT だけが持つ**(Material の `TextInputLayout` / `TextInputEditText` と同じ形の再現)。
+`FrameLayout`(id 付き・`clickable="true"`)が **id を持たない `EditText`** を包む。
+
+- **容器をタップしても入力フォーカスは中身へ移らない**(容器がタップを吸うだけ)。
+  そのため `tap("#field_wrapped")` の直後の `type("…")` は、素朴に実装すると
+  「フォーカスが無い」で落ちる —— ツールは焦点が立っていなければ**中身の欄へ入れ直す**
+  (`InputFocusRescue`。注記 `type-focus-recovered`)
+- 中身は `findViewById` で引けない = **シナリオ側も `#id` では指せない**。
+  指すなら祖先スコープ(`#field_wrapped>>.textField`)か型+順序
+
 ## 画面回転
 
 **回転しても画面は保たれる**(2026-08-11)。Android は回転で Activity を作り直すため、素のままだと

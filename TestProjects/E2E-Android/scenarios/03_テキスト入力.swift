@@ -209,6 +209,27 @@ class テキスト入力が正しくechoされること {
                     tap("#tab_home")
                 }
             }
+            // **容器に id・中身の入力欄に id 無し**(Material の TextInputLayout /
+            // TextInputEditText と同じ形。ui-contract の `#field_wrapped`)。
+            // 容器はタップを吸うが**入力フォーカスは中身へ移らない**ので、素朴に実装すると
+            // ここが「フォーカスが無い」で落ちる —— `tap` → `type` は Shirates 伝統の書き方なので
+            // ツール側が中身へ入れ直す(注記 `type-focus-recovered`)。
+            // **この形は他の SUT に無い**(2026-08-21 に受け手の実アプリで踏んで追加)
+            scene(18, "容器を叩いてからの type が中身の欄へ入る") {
+                condition {
+                    // 直前の scene がホームへ戻しているので入り直す
+                    tap("#nav_input")
+                    tap("#btn_input_clear")
+                }.action {
+                    tap("#field_wrapped")
+                    type("abc")
+                }.expectation {
+                    select("#txt_echo_wrapped").textIs("wrapped=abc")
+                }.action {
+                    hideKeyboard()
+                    tap("#tab_home")
+                }
+            }
         }
     }
 }
