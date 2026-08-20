@@ -16,7 +16,7 @@ private final class InterruptingDriver: AppDriver {
     private let dismissible: Bool
     private var dismissed = 0
     private var shown = true
-    /// 閉じた直後の1枚は**モーダルが消えた木**を返す(実機の見え方。ここを省くと
+    /// 閉じた直後の数枚は**モーダルが消えた木**を返す(実機の見え方。ここを省くと
     /// 「閉じたのに即再一致」= 閉じられない相手と区別が付かず、打ち切り判定に当たってしまう)
     private var cleanSnapshotsLeft = 0
     private(set) var taps = 0
@@ -42,7 +42,10 @@ private final class InterruptingDriver: AppDriver {
         guard dismissible else { return }
         dismissed += 1
         shown = false
-        cleanSnapshotsLeft = 1
+        // **実物は「次の1枚」で戻ってこない**。閉じた後の整定(木を数枚読む)を跨いでから
+        // 次が湧く形にする —— 1枚で戻す作りにすると、整定の最中に再一致して
+        // 「閉じられない相手」と区別が付かなくなる(テスト側の作り物の都合で打ち切りが出る)
+        cleanSnapshotsLeft = 3
     }
     func tap(x: Double, y: Double) async throws {}
     func press(ref: Int, duration: Double) async throws {}
@@ -73,6 +76,64 @@ private final class InterruptingDriver: AppDriver {
     }
 }
 
+/// 閉じるボタンを叩いた**直後の1枚ではまだモーダルが写っている**(消えるアニメーション)。
+/// 実機の見え方で、これが受け手報告の形
+private final class ClosingAnimationDriver: AppDriver {
+    private var dismissed = false
+    private var snapshotsSinceDismiss = 0
+    private(set) var tappedTarget = false
+
+    func status() async throws -> StatusResponse {
+        StatusResponse(ready: true, device: "fake", osVersion: "-", sessionBundleID: nil)
+    }
+    func install(packagePath: String) async throws {}
+    func uninstall(bundleID: String) async throws {}
+    func launch(bundleID: String) async throws {}
+    func isAppForeground(bundleID: String) async throws -> Bool { true }
+    func foregroundAppID() async throws -> String? { nil }
+    func terminate() async throws {}
+    func screenshot() async throws -> Data { Data() }
+    func type(ref: Int?, text: String) async throws {}
+    func tap(ref: Int) async throws {
+        if ref == 2 { dismissed = true; snapshotsSinceDismiss = 0 }
+        if ref == 3 { tappedTarget = true }
+    }
+    func tap(x: Double, y: Double) async throws {}
+    func press(ref: Int, duration: Double) async throws {}
+    func swipe(_ direction: FTSwipeDirection) async throws {}
+    func snapshot() async throws -> SnapshotResponse {
+        func element(_ ref: Int, _ id: String) -> ElementInfo {
+            ElementInfo(ref: ref, type: "button", identifier: id, label: nil, value: nil,
+                        placeholder: nil, enabled: true,
+                        frame: FTRect(x: 0, y: Double(ref) * 50, width: 200, height: 40), depth: 1)
+        }
+        if dismissed { snapshotsSinceDismiss += 1 }
+        // **閉じるアニメーションの最中は木が動く**(カードが消えていく)。静止した木で模すと
+        // 整定判定が即成立してしまい、「整定を待つ / 待たない」の差が出ない。
+        // 長さは**操作側のリトライ予算(3回)より長く、整定のポーリング上限(6回)より短く**
+        // 取る —— そうしないと「どちらでも通る」か「どちらでも落ちる」になり判定にならない
+        let stillClosing = dismissed && snapshotsSinceDismiss <= 5
+        if !dismissed || stillClosing {
+            let slide = Double(snapshotsSinceDismiss) * 12   // 消えていく途中の位置
+            return SnapshotResponse(
+                sessionBundleID: nil,
+                screen: FTRect(x: 0, y: 0, width: 402, height: 874),
+                elements: [
+                    ElementInfo(ref: 1, type: "button", identifier: "promo_modal", label: nil,
+                                value: nil, placeholder: nil, enabled: true,
+                                frame: FTRect(x: 0, y: 50 + slide, width: 200, height: 40), depth: 1),
+                    ElementInfo(ref: 2, type: "button", identifier: "btn_promo_close", label: nil,
+                                value: nil, placeholder: nil, enabled: true,
+                                frame: FTRect(x: 0, y: 100 + slide, width: 200, height: 40), depth: 1),
+                ], truncatedCount: 0)
+        }
+        let elements = [element(3, "target")]
+        return SnapshotResponse(sessionBundleID: nil,
+                                screen: FTRect(x: 0, y: 0, width: 402, height: 874),
+                                elements: elements, truncatedCount: 0)
+    }
+}
+
 final class InterruptDismissalCapTests: XCTestCase {
 
     private func executor(_ driver: AppDriver, maxDismissals: Int? = nil) -> StepExecutor {
@@ -87,8 +148,10 @@ final class InterruptDismissalCapTests: XCTestCase {
         return executor
     }
 
-    private func waitForTarget() -> FlowStep {
-        FlowStep(assert: "exists", locator: FlowLocator(id: "target"), timeout: 5)
+    /// 既定の待ちは5秒。**閉じるたびに整定を待つ**ので、回数を試すテストは長めに取る
+    /// (閉じる回数 × 整定 が既定の待ちに収まらないと、上限ではなく時間切れを測ることになる)
+    private func waitForTarget(timeout: Double = 5) -> FlowStep {
+        FlowStep(assert: "exists", locator: FlowLocator(id: "target"), timeout: timeout)
     }
 
     /// **2度目の割り込みも閉じる**(ここが要望の本体)。注記には回数が出る
@@ -128,11 +191,50 @@ final class InterruptDismissalCapTests: XCTestCase {
         XCTAssertTrue(message.contains("target"), message)
     }
 
+    /// **閉じた直後の取り直しは整定してから**(2026-08-20 の受け手報告)。
+    /// 閉じるアニメーションの最中の1枚を掴むと、**同じステップの中で割り込みを閉じたのに
+    /// 直後の解決が失敗する**。
+    ///
+    /// **待ちのある検証ではなく `tap` で見る** —— 検証はポーリングするので、
+    /// 取り直しが1枚早くても次の周回で拾ってしまい、この退行を殺せない。
+    /// 操作は**その場の1枚で解決して失敗が確定する**ので、ここが本番の形
+    func testResolvesTheBackgroundRightAfterDismissing() async throws {
+        let driver = ClosingAnimationDriver()
+        let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"))
+        let outcome = await executor(driver).execute(step)
+
+        guard case .passed = outcome.status else {
+            return XCTFail("閉じた後に整定を待てば背面を掴めるはず: \(outcome.status)")
+        }
+        XCTAssertEqual(driver.tappedTarget, true, "背面を叩いていない")
+    }
+
+    /// **閉じたのに落ちたときは、直前の操作が吸われたかもしれないと言う**(撃ち直しはしない ——
+    /// 既に届いていた場合に二重実行になる)。ここが黙ると、ログからは
+    /// 「割り込みは閉じたのになぜ落ちたのか」が読み取れない
+    func testFailedStepsSayTheInteractionMayHaveBeenSwallowed() async throws {
+        let driver = InterruptingDriver(appearances: 9, dismissible: false)
+        let outcome = await executor(driver).execute(waitForTarget())
+
+        guard case .failed = outcome.status else { return XCTFail("\(outcome.status)") }
+        let note = outcome.driverFallback ?? ""
+        XCTAssertTrue(note.contains("may have been swallowed"), note)
+        XCTAssertTrue(note.contains("double-fire"), "撃ち直さない理由が書かれていない: \(note)")
+    }
+
+    /// **通ったステップでは言わない**(毎回出すと注記が騒がしくなり、本当に効く場面で読まれない)
+    func testPassingStepsDoNotMentionSwallowing() async throws {
+        let driver = InterruptingDriver(appearances: 1)
+        let outcome = await executor(driver).execute(waitForTarget())
+        XCTAssertFalse((outcome.driverFallback ?? "").contains("swallowed"),
+                       outcome.driverFallback ?? "")
+    }
+
     /// **上限は宣言ごとに指定できる**(2026-08-20 の受け手要望)。湧く頻度は配信側の設定次第で
     /// こちらからは決められないので、既定の3で足りないシナリオは自分で上げられる
     func testHonoursThePerHandlerLimit() async throws {
         let driver = InterruptingDriver(appearances: 9)
-        _ = await executor(driver, maxDismissals: 5).execute(waitForTarget())
+        _ = await executor(driver, maxDismissals: 5).execute(waitForTarget(timeout: 20))
         XCTAssertEqual(driver.taps, 5, "宣言した上限(5)まで閉じていない(\(driver.taps) 回)")
 
         let low = InterruptingDriver(appearances: 9)
@@ -150,7 +252,7 @@ final class InterruptDismissalCapTests: XCTestCase {
     /// **上限は効く**。湧き続ける相手でも1ステップ 10 回まで(既定)
     func testCapsTheNumberOfDismissalsPerStep() async throws {
         let driver = InterruptingDriver(appearances: 30)
-        _ = await executor(driver).execute(waitForTarget())
+        _ = await executor(driver).execute(waitForTarget(timeout: 30))
 
         // **定数ではなく実数で固定する**: 定数で書くと、上限を上げる変異でテストの期待値も
         // 一緒に動いて素通しする(2026-08-20 の変異テストで実際に生き残った)。

@@ -407,7 +407,9 @@ public final class StepExecutor {
                                    timing: StepTiming(durationMs: Self.ms(clock.now - start),
                                                       snapshotMs: phase.snapshotMs,
                                                       actionMs: phase.actionMs, waitMs: phase.waitMs),
-                                   driverFallback: noteWithInterrupt(outcome.driverFallback),
+                                   driverFallback: noteWithInterrupt(
+                                       outcome.driverFallback,
+                                       failed: !Self.isSuccess(outcome.status)),
                                    notes: collectedNotes(),
                                    // アクションは**解決した時点**で立てる(操作の成否より前)ため、
                                    // 失敗した操作の要素を持ち帰らないようここで落とす
@@ -421,7 +423,8 @@ public final class StepExecutor {
                                    timing: StepTiming(durationMs: Self.ms(clock.now - start),
                                                       snapshotMs: phase.snapshotMs,
                                                       actionMs: phase.actionMs, waitMs: phase.waitMs),
-                                   driverFallback: noteWithInterrupt(nil),
+                                   driverFallback: noteWithInterrupt(nil,
+                                                                     failed: !Self.isSuccess(status)),
                                    notes: collectedNotes(),
                                    observedChecked: observedCheckedThisStep,
                                    resolvedElement: resolvedElementThisStep,
@@ -728,8 +731,9 @@ public final class StepExecutor {
         return elements.first { $0.type == target.type && $0.label == label }
     }
 
-    /// ステップ横断の注記(内蔵スクロール探索・割り込み)を既存の driverFallback へ合流させる
-    private func noteWithInterrupt(_ base: String?) -> String? {
+    /// ステップ横断の注記(内蔵スクロール探索・割り込み)を既存の driverFallback へ合流させる。
+    /// `failed` のときは**読み手が原因に辿り着けるように**割り込みの意味を書き足す
+    private func noteWithInterrupt(_ base: String?, failed: Bool = false) -> String? {
         var parts = [base, scrollSearchNote].compactMap { $0 }
         if let interruptNote {
             let times = interruptDismissalTotal > 1 ? " ×\(interruptDismissalTotal)" : ""
@@ -738,6 +742,14 @@ public final class StepExecutor {
         if interruptStuck {
             parts.append("the interruption is still on screen after being dismissed"
                 + " — the dismiss selector may not close it")
+        }
+        // **閉じたのに落ちた**ときは、割り込みが「出ていた」ことより「**直前の操作を吸った
+        // かもしれない**」ことの方が読み手に要る情報(2026-08-20 の受け手報告)。
+        // 撃ち直しはしない —— 既に届いていた場合に二重実行になる(報告者の指摘どおり)
+        if failed, interruptDismissalTotal > 0 {
+            parts.append("the interruption appeared during this step"
+                + " — an interaction sent just before it may have been swallowed by it"
+                + " (nothing was re-sent: repeating it could double-fire)")
         }
         return parts.isEmpty ? nil : parts.joined(separator: " / ")
     }
@@ -771,9 +783,12 @@ public final class StepExecutor {
             let start = clock.now
             try await driver.tap(ref: target.ref)
             phase.actionMs += Self.ms(clock.now - start)
-            let shotStart = clock.now
-            snapshot = try await driver.snapshot()
-            phase.snapshotMs += Self.ms(clock.now - shotStart)
+            // **整定してから取り直す**(2026-08-20 の受け手報告)。閉じた直後の1枚は
+            // **消えるアニメーションの最中**のことがあり、そのとき背面はまだ覆われている扱い =
+            // 「同じステップの中で割り込みを閉じたのに、直後の解決が失敗する」が起きる。
+            // 追加コストは**閉じたときだけ**(宣言が無ければ従来どおりゼロ)
+            let settled = try await settledSignature(phase: &phase)
+            snapshot = settled.snapshot
             interruptNote = key
             interruptDismissals[key, default: 0] += 1
             interruptDismissalTotal += 1
