@@ -383,6 +383,28 @@ in-app 経路のソース走査テスト(`InAppGestureRoutingTests`)が担う。
 
 `#btn_maybe_dialog` は乱数を使わず**決定的に交互**(奇数回目に開く)。カウンタは画面離脱で 0 に戻す。
 
+### 別ウィンドウのモーダル(**iOS SUT だけが持つ**)
+
+アプリ内メッセージ SDK 相当の witness。**キーウィンドウにしない別 UIWindow** に載せる
+(`UIAlertController` は自分の窓を key にするので今日でも木に載る。載らない側を再現する形)。
+**他の SUT には無い**(この形は iOS 固有で、Android のダイアログは a11y が別ウィンドウごと出す)。
+
+| tag | 種別 | ラベル/テキスト | 備考 |
+|---|---|---|---|
+| `#btn_show_overlay` | Button | `別ウィンドウのモーダル` | 押すと **1.5 秒後**に湧く(操作の途中で現れる形) |
+| `#txt_overlay_result` | Text | `overlay=<v>` 初期 `overlay=none` | v ∈ `none`/`action`/`closed`。**永続**(窓を跨ぐので Prefs 経由) |
+| `#txt_overlay_title` | Text | `アプリ内メッセージ` | モーダル内 |
+| `#btn_overlay_action` | Button | `詳細を見る` | モーダル内。押すと `overlay=action` |
+| `#btn_overlay_close` | Button | `閉じる` | モーダル内。押すと `overlay=closed` |
+| `#btn_show_banner` | Button | `上部バナー` | 押すと **1.5 秒後**に画面上部だけを覆うバナー窓が湧く |
+| `#txt_banner_title` | Text | `お知らせバナー` | バナー内 |
+| `#btn_banner_close` | Button | `バナーを閉じる` | バナー内。押すと `overlay=banner_closed` |
+
+**バナーは「覆いの判定」を分ける witness**: 全画面モーダルは背面を隠すが、**バナーは隠さない**
+(下のボタンは触れる)。木も同じでなければならない —— 「手前の窓だけ見せる」実装だと
+バナー1枚でアプリ本体が丸ごと消えるので、**要素ごとに「手前の窓がタッチを受ける位置か」で
+判定する**(docs/design.md)。
+
 ## コントロールタブ(タイトル `コントロール`)
 
 | tag | 種別 | ラベル/テキスト | 備考 |
