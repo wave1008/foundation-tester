@@ -167,13 +167,17 @@ public struct StepOutcome: Sendable {
     /// スクロール探索で実際に撃ったスワイプ数(runScrollSearch を経由したときだけ非nil。
     /// scrollSwipesThisStep と同じ受け渡し形)。MCP の ft_scroll_to が所要時間の内訳に使う
     public let scrollSwipes: Int?
+    /// 失敗したときの素性(`StepFailureKind`)。**言えない失敗では nil のまま**。
+    /// notes と同じ累積器方式(`failureKindThisStep`)で内側から立て、`execute` の出口で載せる
+    public let failureKind: StepFailureKind?
 
     public init(status: StepResult.Status, healedStep: FlowStep? = nil, healedByCache: Bool = false,
                timing: StepTiming? = nil, driverFallback: String? = nil,
                notes: [StepNote] = [],
                observedChecked: Bool? = nil, resolvedElement: ElementInfo? = nil,
-               scrollSwipes: Int? = nil,
+               scrollSwipes: Int? = nil, failureKind: StepFailureKind? = nil,
                at: String = ISO8601Millis.string(from: Date())) {
+        self.failureKind = failureKind
         self.observedChecked = observedChecked
         self.resolvedElement = resolvedElement
         self.scrollSwipes = scrollSwipes
@@ -398,6 +402,7 @@ public final class StepExecutor {
         resolvedElementThisStep = nil
         scrollSwipesThisStep = nil
         noteCodesThisStep = []
+        failureKindThisStep = nil
         elementLimitCeilingLatchedThisStep = false
         do {
             if let action = step.action {
@@ -415,10 +420,14 @@ public final class StepExecutor {
                                    // 失敗した操作の要素を持ち帰らないようここで落とす
                                    resolvedElement: Self.isSuccess(outcome.status)
                                        ? resolvedElementThisStep : nil,
-                                   scrollSwipes: scrollSwipesThisStep)
+                                   scrollSwipes: scrollSwipesThisStep,
+                                   failureKind: failureKind(for: outcome.status))
             }
             if let assert = step.assert {
                 let status = try await executeAssert(assert, step: step, phase: &phase)
+                // **アサートが落ちて素性が立っていなければ「期待と違った」**(定義上そう) ——
+                // 見つからない・到達できないは内側で先に立っているので上書きされない
+                if case .failed = status { markFailure(.assertion) }
                 return StepOutcome(status: status,
                                    timing: StepTiming(durationMs: Self.ms(clock.now - start),
                                                       snapshotMs: phase.snapshotMs,
@@ -428,7 +437,8 @@ public final class StepExecutor {
                                    notes: collectedNotes(),
                                    observedChecked: observedCheckedThisStep,
                                    resolvedElement: resolvedElementThisStep,
-                                   scrollSwipes: scrollSwipesThisStep)
+                                   scrollSwipes: scrollSwipesThisStep,
+                                   failureKind: failureKind(for: status))
             }
             return StepOutcome(status: .skipped("step has neither an action nor an assertion"))
         } catch {
@@ -437,7 +447,11 @@ public final class StepExecutor {
                                                   snapshotMs: phase.snapshotMs,
                                                   actionMs: phase.actionMs, waitMs: phase.waitMs),
                                notes: collectedNotes(),
-                               scrollSwipes: scrollSwipesThisStep)
+                               scrollSwipes: scrollSwipesThisStep,
+                               // 投げられたエラーは**型で**仕分ける(文言一致で数えない)。
+                               // 分からない型は nil のまま = 推測しない
+                               failureKind: Self.failureKind(thrown: error)
+                                   ?? failureKindThisStep)
         }
     }
 
@@ -464,6 +478,20 @@ public final class StepExecutor {
 
     /// このステップで立った注記。順序を rawValue 固定にするのは、記録が run 間で決定的に
     /// 比較できるようにするため(Set の反復順はプロセスごとに変わる)
+    /// **failed のときだけ**素性を載せる。skipped / inconclusive は「落ちた」ではないので
+    /// 素性を付けない(付けると読み手の「失敗の内訳」に走っていないステップが混ざる)
+    private func failureKind(for status: StepResult.Status) -> StepFailureKind? {
+        if case .failed = status { return failureKindThisStep }
+        return nil
+    }
+
+    /// 投げられたエラーの素性。**エラーの型が名乗るものだけを見る**
+    /// (`StepFailureKindProviding`。localizedDescription の文言一致で仕分けると、
+    /// 文言を直した瞬間に静かに分類が消える)。名乗らない型は nil = 推測しない
+    public static func failureKind(thrown error: Error) -> StepFailureKind? {
+        (error as? StepFailureKindProviding)?.stepFailureKind
+    }
+
     private func collectedNotes() -> [StepNote] {
         noteCodesThisStep.sorted { $0.rawValue < $1.rawValue }
     }
@@ -506,6 +534,9 @@ public final class StepExecutor {
     /// (scrollSearchNote / observedCheckedThisStep と同じ受け渡し形)。
     /// StepExecutor+Assert.swift からも書くため internal
     var noteCodesThisStep: Set<StepNote> = []
+    /// このステップの失敗の素性。**最初に立てたものを残す**(内側の救済経路が後から
+    /// 別の理由で落ちても、読み手が知りたいのは最初に何が起きたか)
+    var failureKindThisStep: StepFailureKind?
 
     /// 天井の撮り直しで対象を拾ったステップの**後続読み**も天井にする per-step ラッチ。
     /// 立てるのは StepExecutor+Actions.swift の撮り直し呼び出し箇所だけ(Assert のループは
@@ -521,6 +552,17 @@ public final class StepExecutor {
     func note(_ code: StepNote, into parts: inout [String]) {
         noteCodesThisStep.insert(code)
         parts.append(code.text)
+    }
+
+    /// 失敗の素性を立てる。**上書きしない** = 最初の理由が残る(failureKindThisStep の doc)
+    func markFailure(_ kind: StepFailureKind) {
+        if failureKindThisStep == nil { failureKindThisStep = kind }
+    }
+
+    /// 素性を立てつつ失敗を返す。`return .failed(…)` の形を保ったまま素性だけ足せる
+    func failed(_ kind: StepFailureKind, _ message: String) -> StepResult.Status {
+        markFailure(kind)
+        return .failed(message)
     }
 
     /// 「掴めた」と言い切れる状態か(StepOutcome.resolvedElement を載せてよいかの判定)。
@@ -790,6 +832,8 @@ public final class StepExecutor {
             let settled = try await settledSignature(phase: &phase)
             snapshot = settled.snapshot
             interruptNote = key
+            // 文言は動的なのでコードだけ立てる(StepNote.interruptionDismissed の doc)
+            noteCodesThisStep.insert(.interruptionDismissed)
             interruptDismissals[key, default: 0] += 1
             interruptDismissalTotal += 1
             // **閉じた直後にまだ居る = 閉じられていない**。同じ相手に上限まで付き合わず、

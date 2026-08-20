@@ -3725,7 +3725,16 @@ runID = `<yyyyMMdd-HHmmss(UTC)>Z-<マシン名>-<乱数4hex>` をディレクト
   (月別シャーディングで走査範囲を限定。間引きは月ディレクトリごと git rm)
 - run.json のみ実行完了時に同一プロセスが 1 回上書き(finishedAt・集計)。finishedAt 欠落=
   未完了 run(クラッシュ検出に利用)。scenarios/ は追加専用(同一 run 内の再実行は `~2` 連番)
-- スキーマ詳細・フィールド一覧は `TestProjects/SampleApp/results/README.md`(データと同居させる)
+- スキーマ詳細・フィールド一覧は **docs/results-json.md**(唯一の定義元。DTO は `RunRecord.swift`)。
+  **`results/` は .gitignore なので、その中に置いた README は受け手に届かない**
+  (2026-08-20 まで design.md はそこを指していた)。ドキュメントは docs/ に置く
+- **失敗の素性は事実だけ**(2026-08-20): `failedSteps` に `section`(フェーズ)・`command`・
+  `failureKind`(`StepFailureKind`)・`notes` を載せ、run.json に `workerAnomalies` を載せる。
+  **「環境要因の失敗」の分類は置かない** —— アプリが重いのかマシンが混んでいるのかツールには
+  区別できず、推測を混ぜると誤った緑・誤った赤を作る(受け手の方針。仕分けは読み手が行う)。
+  `command` は**説明文から切り出さない**(group の前置・注記の括弧書きが付くので、書式を
+  変えた瞬間に静かに壊れる)。渡し忘れはコンパイルも実行も通るので
+  `CommandNamePlumbingTests` がソース走査で落とす
 
 ### 14.2 記録パス
 

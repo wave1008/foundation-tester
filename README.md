@@ -570,6 +570,12 @@ JUnit XML を出す。self-hosted の Mac(Jenkins・AWS EC2 Mac 等)前提・
 Apple Intelligence 不要(FM 系は自動スキップ。GitHub ホストランナーはサポート外)。
 Jenkins の例と flaky の扱いは [docs/ci.md](docs/ci.md)。
 
+実行結果は `<project>/results/runs/<年月>/<runID>/` に JSON で貯まる。
+落ちた run を「条件フェーズ(共有フローや端末の準備)で落ちたのか / 検証フェーズ
+(テスト内容)で落ちたのか」で仕分けるための欄 —— `failedSteps[].section` / `command` /
+`failureKind` / `notes`、run.json の `workerAnomalies` —— は
+[docs/results-json.md](docs/results-json.md)(jq のレシピつき)。
+
 ## パフォーマンス(実測値)
 
 | 操作 | 実測 | 補足 |

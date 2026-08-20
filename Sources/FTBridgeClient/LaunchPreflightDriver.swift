@@ -24,6 +24,16 @@ public enum LaunchPreflightError: Error, LocalizedError {
     }
 }
 
+extension LaunchPreflightError: StepFailureKindProviding {
+    /// checkFailed は**入っているか分からない**ので名乗らない(nil = 言えない)
+    public var stepFailureKind: StepFailureKind? {
+        switch self {
+        case .appNotInstalled: return .appNotInstalled
+        case .checkFailed: return nil
+        }
+    }
+}
+
 public final class LaunchPreflightDriver: AppDriver {
     private let base: AppDriver
     private let udid: String

@@ -113,7 +113,8 @@ func perform(_ command: String, _ selector: FTSelector, step: FlowStep,
                      description: String, held: ElementInfo? = nil,
                      file: StaticString, line: UInt) -> PerformResult {
     let core = FTRuntime.requireCore(command: command)
-    let result = core.perform(step: step, description: description, selectorText: selector.text,
+    let result = core.perform(step: step, description: description, command: command,
+                              selectorText: selector.text,
                               selectorError: selector.preflightError, heldElement: held,
                               file: file, line: line)
     if definesSingleElement(step) {
@@ -198,6 +199,7 @@ public func type(_ text: String, replace: Bool = false,
     let suffix = replace ? " (replace)" : ""
     FTRuntime.requireCore(command: "type")
         .perform(step: step, description: "type \"\(text)\"\(suffix)",
+                 command: "type",
                  commandError: FTSelector.selectorLikeInputError(text),
                  file: file, line: line)
 }
@@ -207,14 +209,14 @@ public func type(_ text: String, replace: Bool = false,
 public func pressEnter(file: StaticString = #filePath, line: UInt = #line) {
     let step = FlowStep(action: "pressEnter")
     FTRuntime.requireCore(command: "pressEnter")
-        .perform(step: step, description: "pressEnter", file: file, line: line)
+        .perform(step: step, description: "pressEnter", command: "pressEnter", file: file, line: line)
 }
 
 /// フォーカス中の入力欄を空にする(ref なし。ブリッジがフォーカス中要素へ作用する)。
 public func clearInput(file: StaticString = #filePath, line: UInt = #line) {
     let step = FlowStep(action: "clearInput")
     FTRuntime.requireCore(command: "clearInput")
-        .perform(step: step, description: "clearInput", file: file, line: line)
+        .perform(step: step, description: "clearInput", command: "clearInput", file: file, line: line)
 }
 
 /// timeout: 要素解決を待つ上限秒(0 = 初回スナップショットのみ)。省略時は既定の再試行(約0.7秒)
@@ -283,7 +285,7 @@ public func swipe(_ direction: FTSwipeDirection,
                   file: StaticString = #filePath, line: UInt = #line) {
     let step = FlowStep(action: "swipe", direction: direction.rawValue)
     FTRuntime.requireCore(command: "swipe")
-        .perform(step: step, description: "swipe \(direction.rawValue)", file: file, line: line)
+        .perform(step: step, description: "swipe \(direction.rawValue)", command: "swipe", file: file, line: line)
 }
 
 /// Rotates the app UI to the given orientation (`.portrait` / `.landscape` — the contract is what
@@ -293,7 +295,7 @@ public func rotateTo(_ orientation: FTOrientation,
                      file: StaticString = #filePath, line: UInt = #line) {
     let step = FlowStep(action: "rotateTo", direction: orientation.rawValue)
     FTRuntime.requireCore(command: "rotateTo")
-        .perform(step: step, description: "rotateTo \(orientation.rawValue)", file: file, line: line)
+        .perform(step: step, description: "rotateTo \(orientation.rawValue)", command: "rotateTo", file: file, line: line)
 }
 
 /// **座標を直接タップする**(Shirates(Classic) の `tap(x:y:)` 準拠)。
@@ -314,7 +316,7 @@ public func tap(x: Double, y: Double, holdSeconds: Double = FlowStep.defaultTapH
     let core = FTRuntime.requireCore(command: "tap")
     let driver = core.driver
     let typeDriver = core.executor.typeDriver
-    core.performCustom(description: "tap (\(x), \(y))", file: file, line: line) {
+    core.performCustom(description: "tap (\(x), \(y))", command: "tap", file: file, line: line) {
         // 長押しだけ経路が分かれるのは `tap(sel, holdSeconds:)` と同じ(StepExecutor+Actions)。
         // in-app は座標ジェスチャを持たない(501)ので hybrid では XCUITest へ回す
         do {
@@ -345,7 +347,7 @@ public func swipePointToPoint(startX: Double, startY: Double, endX: Double, endY
     let typeDriver = core.executor.typeDriver
     core.performCustom(
         description: "swipePointToPoint (\(startX), \(startY)) → (\(endX), \(endY))",
-        file: file, line: line) {
+        command: "swipePointToPoint", file: file, line: line) {
         do {
             try await driver.drag(fromX: startX, fromY: startY, toX: endX, toY: endY,
                                   pressSeconds: 0.05, durationSeconds: durationSeconds)
@@ -379,7 +381,7 @@ public func swipeBy(dxRatio: Double, dyRatio: Double,
                         dxRatio: dxRatio, dyRatio: dyRatio)
     FTRuntime.requireCore(command: "swipeBy")
         .perform(step: step, description: "swipeBy (\(dxRatio), \(dyRatio))",
-                 file: file, line: line)
+                 command: "swipeBy", file: file, line: line)
 }
 
 public func swipeBy(_ selector: String, dxRatio: Double, dyRatio: Double,
@@ -417,7 +419,7 @@ private func swipeByImpl(_ selector: FTSelector, dxRatio: Double, dyRatio: Doubl
 public func doubleTap(file: StaticString = #filePath, line: UInt = #line) {
     FTRuntime.requireCore(command: "doubleTap")
         .perform(step: FlowStep(action: "doubleTap"), description: "doubleTap",
-                 file: file, line: line)
+                 command: "doubleTap", file: file, line: line)
 }
 
 public func doubleTap(_ selector: String, timeout: Double? = nil,
@@ -507,7 +509,7 @@ private func pinchImpl(_ selector: FTSelector?, action: String, scale: Double,
     let description = selector.map { "\(action) \"\($0.text)\" x\(scale)" } ?? "\(action) x\(scale)"
     guard let selector else {
         FTRuntime.requireCore(command: action)
-            .perform(step: step, description: description, file: file, line: line)
+            .perform(step: step, description: description, command: action, file: file, line: line)
         return
     }
     perform(action, selector, step: step, description: description, file: file, line: line)
@@ -659,7 +661,7 @@ private func flickImpl(_ kind: FlickKind, scrollFrame: String?, startMarginRatio
                         intervalSeconds: intervalSeconds == FlowStep.defaultFlickIntervalSeconds
                             ? nil : intervalSeconds)
     core.perform(step: step, description: name + (times > 1 ? " ×\(times)" : ""),
-                file: file, line: line)
+                command: name, file: file, line: line)
 }
 
 // MARK: - スクロール(Shirates 準拠のコマンド名)
@@ -713,7 +715,7 @@ private func scrollImpl(_ direction: FTScrollDirection, scrollFrame: String?,
     core.perform(step: step,
                  description: "scroll\(direction.rawValue.capitalized)"
                      + (times > 1 ? " ×\(times)" : ""),
-                 file: file, line: line)
+                 command: "scroll\(direction.rawValue.capitalized)", file: file, line: line)
 }
 
 /// スクロール領域の端まで送る(**画面が変化しなくなるまで**。maxSwipes は暴走を止める上限で、
@@ -763,7 +765,7 @@ private func scrollToEdgeImpl(_ direction: FTScrollDirection, scrollFrame: Strin
                         scrollFrame: core.effectiveScrollFrame(scrollFrame).map(FTSelector.parse)?.primary,
                         startMarginRatio: startMarginRatio, endMarginRatio: endMarginRatio)
     core.perform(step: step, description: names[direction] ?? "scrollToEdge",
-                 file: file, line: line)
+                 command: names[direction] ?? "scrollToEdge", file: file, line: line)
 }
 
 /// ブロック内の `tap` / `exist` を**スクロールしながら**解決する(明示の `scroll:` があればそちらが優先)。

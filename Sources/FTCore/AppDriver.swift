@@ -170,6 +170,16 @@ public protocol AppDriver {
     var verifiesTypedText: Bool { get }
 }
 
+extension DriverError: StepFailureKindProviding {
+    /// 到達できなかった(接続拒否・応答なし・アプリのプロセス死)/ 到達したがエラー応答、の2つ
+    public var stepFailureKind: StepFailureKind? {
+        switch self {
+        case .bridgeUnreachable, .bridgeConnectionRefused: return .driverUnreachable
+        case .badResponse: return .driverError
+        }
+    }
+}
+
 public enum DriverError: Error, LocalizedError {
     case bridgeUnreachable(String)
     /// URLSession レベルで「リクエストがサーバに届いていないことが確実」なエラー

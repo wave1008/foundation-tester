@@ -182,12 +182,16 @@ public struct RunSummary: Sendable {
     /// 各シナリオの警告は子プロセスの stderr にも出るが、**run のまとめには出ていなかった**ので、
     /// 赤を見るたびに「自分の変更か FM か」を人が切り分ける羽目になっていた(2026-08-20)
     public let fmUnavailableScenarios: Int
+    /// degradedWorkers / freezeRetries と**同じ事実の構造化版**(run.json の workerAnomalies)。
+    /// 表示は prose 側、機械的な除外はこちら(片方だけ足さない)
+    public let workerAnomalies: [WorkerAnomalyRecord]
 
     public init(total: Int, failed: Int, degradedWorkers: [String] = [],
                 freezeRetries: [String] = [],
                 blankRepairs: [String] = [], blankExclusions: [String] = [],
                 measurementInvalid: Bool = false, measurementInvalidReasons: [String] = [],
-                fmUnavailableScenarios: Int = 0) {
+                fmUnavailableScenarios: Int = 0,
+                workerAnomalies: [WorkerAnomalyRecord] = []) {
         self.total = total
         self.failed = failed
         self.degradedWorkers = degradedWorkers
@@ -197,6 +201,7 @@ public struct RunSummary: Sendable {
         self.measurementInvalid = measurementInvalid
         self.measurementInvalidReasons = measurementInvalidReasons
         self.fmUnavailableScenarios = fmUnavailableScenarios
+        self.workerAnomalies = workerAnomalies
     }
 
     /// FM の呼び出しが**全部失敗した**か(呼び出しが1件も無いときは false = 使っていないだけ)
@@ -254,6 +259,12 @@ private actor NoteCollector {
     private var entries: [String] = []
     func add(_ entry: String) { entries.append(entry) }
     func snapshot() -> [String] { entries }
+}
+
+private actor AnomalyCollector {
+    private var entries: [WorkerAnomalyRecord] = []
+    func add(_ entry: WorkerAnomalyRecord) { entries.append(entry) }
+    func snapshot() -> [WorkerAnomalyRecord] { entries }
 }
 
 /// 並列ワーカーから数える用の素朴なカウンタ
@@ -563,14 +574,24 @@ public final class RunOrchestrator {
     private let degraded = NoteCollector()
     /// 振り直し(結果取り消し+requeue)の監査記録(summary/レポートの freezeRetries に載せる)。
     private let retries = NoteCollector()
+    /// 上2つと**同じ事象**の構造化版(run.json の workerAnomalies)。prose と別に持つのではなく
+    /// 同じ場所で同時に足す —— 片方だけ足すと「表示には出るが機械可読には無い」に戻る
+    private let anomalies = AnomalyCollector()
     /// FM の実呼び出しが全滅したまま走ったシナリオ数(summary の fmUnavailableScenarios)。
     /// **合否には使わない** —— 読み手に「この緑は守りが効いていない」と伝えるための数
     private let fmUnavailable = Counter()
 
     /// ワーカー離脱を通知(イベント yield + 劣化ワーカー収集)を1箇所に集約する。
-    private func reportWorkerFailed(_ label: String, _ message: String) async {
-        continuation.yield(.workerFailed(worker: label, message: message))
-        await degraded.add("\(label): \(message)")
+    private func reportWorkerFailed(_ worker: RunWorker, _ message: String) async {
+        continuation.yield(.workerFailed(worker: worker.label, message: message))
+        await degraded.add("\(worker.label): \(message)")
+        await anomalies.add(WorkerAnomalyRecord(
+            kind: "degraded", worker: Self.workerID(worker), label: worker.label, reason: message))
+    }
+
+    /// シナリオ記録(ScenarioRunRecord.worker)と join できる形。論理名が無い経路では nil
+    static func workerID(_ worker: RunWorker) -> String? {
+        worker.logicalName.map { "\(worker.platform):\($0)" }
     }
 
     public init(project: TestProject, workers: [RunWorker], fm: FMConfig,
@@ -809,7 +830,8 @@ public final class RunOrchestrator {
         let summary = RunSummary(total: items.count, failed: failed,
                                  degradedWorkers: await degraded.snapshot(),
                                  freezeRetries: await retries.snapshot(),
-                                 fmUnavailableScenarios: await fmUnavailable.snapshot())
+                                 fmUnavailableScenarios: await fmUnavailable.snapshot(),
+                                 workerAnomalies: await anomalies.snapshot())
         continuation.yield(.runFinished(passed: summary.passed, failed: summary.failed))
         continuation.finish()
         return summary
@@ -827,12 +849,19 @@ public final class RunOrchestrator {
         }
         if let attempt = await queue.requeue(item) {
             await retries.add("\(item.info.id): \(reason) (requeued from \(worker.label), \(attempt)/\(MAX_FREEZE_RETRIES))")
+            await anomalies.add(WorkerAnomalyRecord(
+                kind: "requeued", worker: Self.workerID(worker), label: worker.label,
+                scenarioID: item.info.id,
+                reason: "\(reason) (attempt \(attempt)/\(MAX_FREEZE_RETRIES))"))
             continuation.yield(.flowRequeued(worker: worker.label, flowURL: item.url,
                                              reason: reason, attempt: attempt,
                                              limit: MAX_FREEZE_RETRIES))
             return true
         }
         await retries.add("\(item.info.id): \(reason) (\(worker.label); retry limit reached, recorded as failed)")
+        await anomalies.add(WorkerAnomalyRecord(
+            kind: "retryLimit", worker: Self.workerID(worker), label: worker.label,
+            scenarioID: item.info.id, reason: "\(reason); retry limit reached, recorded as failed"))
         recorder?.recordSkipped(scenarioID: item.info.id, title: item.info.title,
             platform: worker.platform, worker: worker.label,
             reason: "\(reason) did not clear and the retry limit was reached")
@@ -880,7 +909,7 @@ public final class RunOrchestrator {
     private func runWorker(_ worker: RunWorker, queue: ScenarioQueue) async -> WorkerExit {
         // 期限付き(ウェッジしたブリッジで 120s×N 待たないため。withDeadline 参照)。
         guard await withDeadline(seconds: 10, { try await worker.driver.status() }) != nil else {
-            await reportWorkerFailed(worker.label, "cannot connect (no response to status)")
+            await reportWorkerFailed(worker, "cannot connect (no response to status)")
             // leaseKey 未取得(まだ何もしていない)なので releaseLease は呼ばない。
             // 接続不能もデバイス使用不能の一種として復帰トライの対象にする(監視側の再起動待ち等)。
             return .retired(failed: 0, worker: worker)
@@ -981,7 +1010,7 @@ public final class RunOrchestrator {
             if let reason = unusableReason {
                 let requeued = await discardAndRequeue(item, worker: worker, queue: queue, reason: reason)
                 if !requeued { failed += 1 }
-                await reportWorkerFailed(worker.label, "dropped out because of \(reason)")
+                await reportWorkerFailed(worker, "dropped out because of \(reason)")
                 await releaseLease(leaseKey)
                 await stopRecording(worker, leaseKey: leaseKey)
                 return .retired(failed: failed, worker: worker)
