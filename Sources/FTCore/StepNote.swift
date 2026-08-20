@@ -86,6 +86,13 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// **率が上がったら id/ラベルの一意性を疑う**: この状態が続く限り毎回 FM を呼び直す
     case healUnwritable = "heal-unwritable"
 
+    /// このステップの途中で**宣言済みの割り込み**(`irregularHandler`)を実際に閉じた。
+    /// 失敗の読み解きに要る事実 —— 割り込みは直前に送った操作を吸うことがあるので、
+    /// 「閉じたステップが落ちた」と「もともと落ちるステップだった」を読み手が分けられる。
+    /// **文言は動的**(閉じたセレクタと回数を含む)ため `note(_:into:)` は通さず、
+    /// StepExecutor.dismissInterruption がコードだけ立てる(text は集計表示用の既定文)
+    case interruptionDismissed = "interruption-dismissed"
+
     /// 人間向けの文言(FTRuntime がステップ説明へ括弧書きで付ける)
     public var text: String {
         switch self {
@@ -105,6 +112,7 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
             return "the tree did not appear to cover the whole screen when this was judged, so an"
                 + " absence here is not evidence"
         case .backIneffective: return BackEffect.note(advice: BackEffect.dslAdvice)
+        case .interruptionDismissed: return "dismissed a declared interruption during this step"
         case .healUnwritable:
             return "self-heal found a stand-in element but no selector picks it out uniquely on this"
                 + " screen, so the fix was not written back — give the element a stable id"

@@ -326,7 +326,7 @@ extension StepExecutor {
         if step.direction != nil, step.locator != nil {
             let result = try await runScrollSearch(step: step, phase: &phase)
             scrollSearchNote = recordedScrollSearchNote(result)
-            guard result.found else { return .failed(Self.scrollNotFoundMessage(step, result)) }
+            guard result.found else { return failed(.notFound, Self.scrollNotFoundMessage(step, result)) }
         }
         let deadline = Date().addingTimeInterval(step.timeout ?? 5)
         var freshRetry = AssertFreshRetry()
@@ -409,7 +409,7 @@ extension StepExecutor {
         }
         // timeout: 覆われ続けた occlusion があればそれを、無ければ未発見を返す
         if let lastOcclusion { return lastOcclusion }
-        return .failed("element not found: \(step.locatorSummary) (timeout \(FTSeconds.format(step.timeout ?? 5))s)"
+        return failed(.notFound, "element not found: \(step.locatorSummary) (timeout \(FTSeconds.format(step.timeout ?? 5))s)"
                        + Self.truncationHint(lastSnapshot)
                        + tapDiagnosisHint(lastSnapshot?.elements)
                        + Self.webViewPathHint(lastSnapshot))
@@ -529,7 +529,7 @@ extension StepExecutor {
                                           screen: lastScreen)
                       + tapDiagnosisHint(lastSnapshot?.elements)
                       + Self.webViewPathHint(lastSnapshot))
-            : .failed("element not found: \(step.locatorSummary)"
+            : failed(.notFound, "element not found: \(step.locatorSummary)"
                       + Self.truncationHint(lastSnapshot)
                       + tapDiagnosisHint(lastSnapshot?.elements)
                       + Self.webViewPathHint(lastSnapshot))
@@ -574,7 +574,7 @@ extension StepExecutor {
             // 探索していない(2026-08-08)。exist 側(executeAssertExists)と同じく
             // scrollNotFoundMessage 経由の文言でその場に失敗させる
             if result.scrollFrameMissing {
-                return .failed(Self.scrollNotFoundMessage(step, result))
+                return failed(.notFound, Self.scrollNotFoundMessage(step, result))
             }
             // **探索中に上限で切り詰められていたら「無い」を結論にしない**(同じ理由。
             // `truncatedDuringSearch` の注記だけでは**検証は通ってしまう**)。通り過ぎた
@@ -744,7 +744,7 @@ extension StepExecutor {
             phase.waitMs += Self.ms(clock.now - waitStart)
         }
         guard found else {
-            return .failed("element not found: \(step.locatorSummary)"
+            return failed(.notFound, "element not found: \(step.locatorSummary)"
                            + Self.truncationHint(lastSnapshot)
                            + tapDiagnosisHint(lastSeenElements))
         }
@@ -826,7 +826,7 @@ extension StepExecutor {
         }
         return found
             ? .failed("the element is \(wantEnabled ? "disabled" : "enabled"): \(step.locatorSummary)")
-            : .failed("element not found: \(step.locatorSummary)" + Self.truncationHint(lastSnapshot))
+            : failed(.notFound, "element not found: \(step.locatorSummary)" + Self.truncationHint(lastSnapshot))
     }
 
     /// キーボード開閉はアニメーションを伴うため単発チェックはフレークする → notExists と同じ
@@ -931,7 +931,7 @@ extension StepExecutor {
         }
         return found
             ? .failed("the element is \(wantChecked ? "off" : "on"): \(step.locatorSummary)")
-            : .failed("element not found: \(step.locatorSummary)" + Self.truncationHint(lastSnapshot))
+            : failed(.notFound, "element not found: \(step.locatorSummary)" + Self.truncationHint(lastSnapshot))
     }
 
     private func executeAssertCount(step: FlowStep,

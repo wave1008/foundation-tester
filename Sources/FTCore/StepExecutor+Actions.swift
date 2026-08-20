@@ -67,7 +67,8 @@ extension StepExecutor {
                 // 黙って全画面スワイプへ退化させない(runScrollSearch の fail-fast と同じ理由。2026-08-08)
                 if let latest, Self.scrollFrameUnresolved(step, in: latest) {
                     noteCodesThisStep.insert(.scrollFrameMissing)
-                    return StepOutcome(status: .failed(
+                    return StepOutcome(status: failed(
+                        .notFound,
                         Self.scrollFrameFailFastMessage(step, action: "swipe", swipes: sentSwipes)))
                 }
                 let path = latest.flatMap { scrollPath(step: step, intent: .search, in: $0) }
@@ -129,7 +130,8 @@ extension StepExecutor {
                 // 黙って全画面スワイプへ退化させない(2026-08-08)
                 if Self.scrollFrameUnresolved(step, in: settled.snapshot) {
                     noteCodesThisStep.insert(.scrollFrameMissing)
-                    return StepOutcome(status: .failed(
+                    return StepOutcome(status: failed(
+                        .notFound,
                         Self.scrollFrameFailFastMessage(step, action: "swipe", swipes: sentSwipes)))
                 }
                 previous = settled.signature
@@ -198,7 +200,8 @@ extension StepExecutor {
                 // rect は常に解決済みなのでこの分岐に来ない
                 if step.scrollFrame != nil, container == nil {
                     noteCodesThisStep.insert(.scrollFrameMissing)
-                    return StepOutcome(status: .failed(
+                    return StepOutcome(status: failed(
+                        .notFound,
                         Self.scrollFrameFailFastMessage(step, action: "flick", swipes: 0)))
                 }
                 if let container {
@@ -289,7 +292,7 @@ extension StepExecutor {
             let result = try await runScrollSearch(step: step, phase: &phase)
             let note = recordedScrollSearchNote(result, scrollFrameNote: pendingScrollFrameNote)
             guard result.found else {
-                return StepOutcome(status: .failed(Self.scrollNotFoundMessage(step, result)))
+                return StepOutcome(status: failed(.notFound, Self.scrollNotFoundMessage(step, result)))
             }
             if let fallback = result.fallback {
                 return StepOutcome(status: .passedViaFallback(fallback), driverFallback: note)
@@ -397,7 +400,7 @@ extension StepExecutor {
                 // 実測(2026-08-07): 同名 `#recycler_view` が4つある画面で先頭の横チップ行を
                 // 掴んだまま「element not found」としか言わず、曖昧だったことが伝わらなかった
                 let why = pendingScrollFrameNote.map { " (\($0))" } ?? ""
-                return StepOutcome(status: .failed(Self.scrollNotFoundMessage(step, result) + why))
+                return StepOutcome(status: failed(.notFound, Self.scrollNotFoundMessage(step, result) + why))
             }
             searchSwiped = true
         }
@@ -691,7 +694,8 @@ extension StepExecutor {
             // 惜しい候補を添える。これが無いと直すために snapshot を取り直す往復が必要になる
             // (レポート側の全要素一覧は ScenarioReportWriter が別途出す)
             let hint = Self.candidateHint(for: step, in: snapshot)
-            return StepOutcome(status: .failed(
+            return StepOutcome(status: failed(
+                .notFound,
                 "cannot resolve the locator: \(step.locatorSummary)" + (hint.map { ". \($0)" } ?? "")
                     + Self.truncationHint(snapshot)
                     + Self.webViewPathHint(snapshot)))
