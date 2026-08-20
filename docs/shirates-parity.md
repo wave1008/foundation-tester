@@ -195,7 +195,7 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `silent` / `info` / `warn` | — | ➖ |
 | `manual` / `knownIssue` | — | ➖ **入れない**(生成側が赤を黙らせる逃げ道になり、「失敗はシナリオ全体を中断」の規律と衝突する) |
 | `must` / `should` / `want`、`SKIP` / `MANUAL` / `NOTIMPL` | — | ➖ 運用の話でコード生成の能力と無関係(**`@TestClass(platform:)` / `@Test(platform:)` はこれとは別物** —— 赤を黙らせる逃げ道ではなく、既にある platform 軸の粒度を細かくしたもの) |
-| `irregularHandler`(lambda 登録) | `irregularHandler(検出sel, dismiss:)` | 🟡 宣言形が違う |
+| `irregularHandler`(lambda 登録) | `irregularHandler(検出sel, dismiss:, maxDismissals: 10)` | 🟡 宣言形が違う |
 | `onScreen` ハンドラ / `onError` ハンドラ | — | ❌ |
 | — | `group("名前") { }` / `setUp()` / `tearDown()` / `@Test(platform:)`(対象OS宣言。対象外は skipped 記録) | 🟢 |
 

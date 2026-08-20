@@ -172,6 +172,10 @@
   | `E2EAppFlutter/` | Flutter | TestProjects/E2E-Flutter | ios + android |
   | `E2EAppRN/` | React Native | TestProjects/E2E-RN | ios + android |
 
+  **iOS だけが持つ witness**: `E2EAppIOS/Sources/UI/OverlayWindow.swift` = **キーウィンドウに
+  しない別 UIWindow のモーダル**(全画面 / 上部バナーの2形)。覆い・別ウィンドウに関わる変更は
+  `TestProjects/E2E-iOS/scenarios/15_別ウィンドウのモーダル.swift` の3本で対照を取る(docs/verification.md)。
+
   **要素の testTag/`#id`/ラベルの唯一の正は `E2EAppCMP/docs/ui-contract.md`**(全 SUT とシナリオがこれを参照。
   片方だけ変えない。`uiContractSync.test.mjs` が「SUT 側の `#id` が母体に実在するか」を検出)。
   **型語彙・OS/フレームワーク固有の罠だけ**は各 SUT の `<SUT>/docs/ui-contract.md` に置く
