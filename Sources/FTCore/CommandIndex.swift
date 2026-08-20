@@ -59,7 +59,7 @@ public enum DSLCommandIndex {
               "Runs arbitrary async Swift as one step. A throw fails the scenario."),
         .init("verify", "structure", "verify(message) { }",
               "Records the block as one check step. Zero assertions inside is inconclusive."),
-        .init("irregularHandler", "structure", "irregularHandler(detect, dismiss:)",
+        .init("irregularHandler", "structure", "irregularHandler(detect, dismiss:, maxDismissals:?)",
               "Declares an in-app message to close automatically whenever it appears."),
 
         // MARK: operation

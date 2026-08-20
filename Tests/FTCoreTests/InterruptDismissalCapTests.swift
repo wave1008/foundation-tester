@@ -16,6 +16,9 @@ private final class InterruptingDriver: AppDriver {
     private let dismissible: Bool
     private var dismissed = 0
     private var shown = true
+    /// 閉じた直後の1枚は**モーダルが消えた木**を返す(実機の見え方。ここを省くと
+    /// 「閉じたのに即再一致」= 閉じられない相手と区別が付かず、打ち切り判定に当たってしまう)
+    private var cleanSnapshotsLeft = 0
     private(set) var taps = 0
 
     init(appearances: Int, dismissible: Bool = true) {
@@ -38,20 +41,32 @@ private final class InterruptingDriver: AppDriver {
         taps += 1
         guard dismissible else { return }
         dismissed += 1
-        shown = dismissed < appearances   // 次の湧きが残っていれば、また出てくる
+        shown = false
+        cleanSnapshotsLeft = 1
     }
     func tap(x: Double, y: Double) async throws {}
     func press(ref: Int, duration: Double) async throws {}
     func swipe(_ direction: FTSwipeDirection) async throws {}
     func snapshot() async throws -> SnapshotResponse {
+        if !shown, dismissed < appearances {
+            // 1枚だけ「消えた画面」を見せてから、次の湧きを出す
+            if cleanSnapshotsLeft > 0 { cleanSnapshotsLeft -= 1 } else { shown = true }
+        }
         func element(_ ref: Int, _ id: String) -> ElementInfo {
             ElementInfo(ref: ref, type: "button", identifier: id, label: nil, value: nil,
                         placeholder: nil, enabled: true,
                         frame: FTRect(x: 0, y: Double(ref) * 50, width: 200, height: 40), depth: 1)
         }
-        let elements = shown
-            ? [element(1, "promo_modal"), element(2, "btn_promo_close")]
-            : [element(1, "target")]
+        // 途中の「消えた画面」では**まだ対象を出さない**(出すとそこで検証が通ってしまい、
+        // 2度目以降の割り込みを閉じる場面に入らない)
+        let elements: [ElementInfo]
+        if shown {
+            elements = [element(1, "promo_modal"), element(2, "btn_promo_close")]
+        } else if dismissed >= appearances {
+            elements = [element(1, "target")]
+        } else {
+            elements = [element(1, "filler")]
+        }
         return SnapshotResponse(sessionBundleID: nil,
                                 screen: FTRect(x: 0, y: 0, width: 402, height: 874),
                                 elements: elements, truncatedCount: 0)
@@ -60,12 +75,15 @@ private final class InterruptingDriver: AppDriver {
 
 final class InterruptDismissalCapTests: XCTestCase {
 
-    private func executor(_ driver: AppDriver) -> StepExecutor {
+    private func executor(_ driver: AppDriver, maxDismissals: Int? = nil) -> StepExecutor {
         let executor = StepExecutor(driver: driver)
-        executor.interruptHandlers = [
+        let handler = maxDismissals.map {
             StepExecutor.InterruptHandler(detect: FlowLocator(id: "promo_modal"),
-                                          dismiss: FlowLocator(id: "btn_promo_close")),
-        ]
+                                          dismiss: FlowLocator(id: "btn_promo_close"),
+                                          maxDismissals: $0)
+        } ?? StepExecutor.InterruptHandler(detect: FlowLocator(id: "promo_modal"),
+                                           dismiss: FlowLocator(id: "btn_promo_close"))
+        executor.interruptHandlers = [handler]
         return executor
     }
 
@@ -110,15 +128,34 @@ final class InterruptDismissalCapTests: XCTestCase {
         XCTAssertTrue(message.contains("target"), message)
     }
 
-    /// **上限は効く**。湧き続ける相手でも1ステップ3回まで
-    func testCapsTheNumberOfDismissalsPerStep() async throws {
+    /// **上限は宣言ごとに指定できる**(2026-08-20 の受け手要望)。湧く頻度は配信側の設定次第で
+    /// こちらからは決められないので、既定の3で足りないシナリオは自分で上げられる
+    func testHonoursThePerHandlerLimit() async throws {
         let driver = InterruptingDriver(appearances: 9)
+        _ = await executor(driver, maxDismissals: 5).execute(waitForTarget())
+        XCTAssertEqual(driver.taps, 5, "宣言した上限(5)まで閉じていない(\(driver.taps) 回)")
+
+        let low = InterruptingDriver(appearances: 9)
+        _ = await executor(low, maxDismissals: 1).execute(waitForTarget())
+        XCTAssertEqual(low.taps, 1, "宣言した上限(1)を超えて閉じている(\(low.taps) 回)")
+    }
+
+    /// **0 以下は 1 に丸める**(「閉じない宣言」は宣言しないのと同じ。書き間違いを黙って通さない)
+    func testClampsNonPositiveLimits() async throws {
+        let driver = InterruptingDriver(appearances: 9)
+        _ = await executor(driver, maxDismissals: 0).execute(waitForTarget())
+        XCTAssertEqual(driver.taps, 1, "0 指定で1回も閉じていない")
+    }
+
+    /// **上限は効く**。湧き続ける相手でも1ステップ 10 回まで(既定)
+    func testCapsTheNumberOfDismissalsPerStep() async throws {
+        let driver = InterruptingDriver(appearances: 30)
         _ = await executor(driver).execute(waitForTarget())
 
         // **定数ではなく実数で固定する**: 定数で書くと、上限を上げる変異でテストの期待値も
         // 一緒に動いて素通しする(2026-08-20 の変異テストで実際に生き残った)。
         // 上限を変えるときはここも意識して直すこと
-        XCTAssertLessThanOrEqual(driver.taps, 3, "上限を超えて閉じている(\(driver.taps) 回)")
-        XCTAssertEqual(StepExecutor.maxInterruptDismissalsPerStep, 3, "上限の既定が変わっている")
+        XCTAssertLessThanOrEqual(driver.taps, 10, "上限を超えて閉じている(\(driver.taps) 回)")
+        XCTAssertEqual(StepExecutor.maxInterruptDismissalsPerStep, 10, "上限の既定が変わっている")
     }
 }

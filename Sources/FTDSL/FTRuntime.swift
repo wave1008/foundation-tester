@@ -340,9 +340,11 @@ public final class FTDriveCore {
     /// tapAppIcon() 引数省略時の既定(Shirates の appIconName 既定=プロファイル、に相当)
     public var appDisplayName: String?
     /// DSL の `irregularHandler` が宣言した割り込み(アプリ内メッセージ)を実行器へ渡す
-    func addInterruptHandler(detect: FlowLocator, dismiss: FlowLocator) {
+    func addInterruptHandler(detect: FlowLocator, dismiss: FlowLocator,
+                             maxDismissals: Int = StepExecutor.maxInterruptDismissalsPerStep) {
         executor.interruptHandlers.append(
-            StepExecutor.InterruptHandler(detect: detect, dismiss: dismiss))
+            StepExecutor.InterruptHandler(detect: detect, dismiss: dismiss,
+                                          maxDismissals: maxDismissals))
     }
 
     /// 失敗時に「アプリより手前にある別プロセスの window」を問い合わせる(Android のみ設定される)。
