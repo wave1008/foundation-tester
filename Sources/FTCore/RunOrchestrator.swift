@@ -364,7 +364,7 @@ public enum ScenarioRunner {
                                                -> (ok: Bool, message: String))? = nil,
                               appName: String? = nil,
                               appBundleID: String? = nil,
-                              iosSystemAlertButtons: [String] = [],
+                              iosSystemAlertButtons: [SystemAlertRule] = [],
                               onEvent: @escaping (RunEvent) -> Void) async -> ScenarioOutcome {
         onEvent(.flowStarted(worker: worker.label, flowURL: item.url,
                              flowName: item.info.id, isDirty: false))
@@ -569,7 +569,7 @@ public final class RunOrchestrator {
     /// 別の ID になりうるので単一値にできない)。`@TestClass(app:)` 未指定シナリオの既定アプリ
     private let appBundleIDs: [String: String]
     /// システム許可アラートを自動で押すボタンラベル(実行プロファイル由来。空 = 何もしない)
-    private let iosSystemAlertButtons: [String]
+    private let iosSystemAlertButtons: [SystemAlertRule]
     /// 劣化・離脱したワーカーの収集(summary/レポートの degradedWorkers に載せる)。
     private let degraded = NoteCollector()
     /// 振り直し(結果取り消し+requeue)の監査記録(summary/レポートの freezeRetries に載せる)。
@@ -614,7 +614,7 @@ public final class RunOrchestrator {
                                   -> (ok: Bool, message: String))? = nil,
                 appName: String? = nil,
                 appBundleIDs: [String: String] = [:],
-                iosSystemAlertButtons: [String] = []) {
+                iosSystemAlertButtons: [SystemAlertRule] = []) {
         (self.events, self.continuation) = AsyncStream.makeStream(of: RunEvent.self)
         self.workers = workers
         self.fm = fm

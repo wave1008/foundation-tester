@@ -83,7 +83,7 @@ final class IfCanSelectSystemAlertTests: XCTestCase {
     private func makeCore(app: AppDriver, alert: AppDriver, buttons: [String],
                           emit: @escaping (ScenarioEvent) -> Void = { _ in }) -> FTDriveCore {
         FTDriveCore(driver: app, platform: "ios", app: "com.example.app",
-                    systemAlertButtons: buttons,
+                    systemAlertRules: buttons.map { .button($0) },
                     scenarioID: "T.S0010", scenarioTitle: "t",
                     delegate: nil, healingEnabled: false, dryRun: false,
                     healCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())

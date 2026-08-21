@@ -356,7 +356,7 @@ public final class FTDriveCore {
     public private(set) var deviceFrozen = false
 
     public init(driver: AppDriver, platform: String, app: String,
-                systemAlertButtons: [String] = [],
+                systemAlertRules: [SystemAlertRule] = [],
                 scenarioID: String, scenarioTitle: String,
                 delegate: ReplayDelegate?, healingEnabled: Bool,
                 falsePositiveCheckEnabled: Bool = true, screenLooksLikeEnabled: Bool = true,
@@ -384,7 +384,7 @@ public final class FTDriveCore {
         self.appBundleID = app
         self.homeScreenDriverOverride = homeScreenDriver
         self.executor = StepExecutor(driver: driver, fallbackDriver: fallbackDriver,
-                                     systemAlertButtons: systemAlertButtons,
+                                     systemAlertRules: systemAlertRules,
                                      typeDriver: typeDriver, preferTypeDriver: preferTypeDriver,
                                      typeDriverGestures: typeDriverGestures,
                                      delegate: delegate, healingEnabled: healingEnabled,

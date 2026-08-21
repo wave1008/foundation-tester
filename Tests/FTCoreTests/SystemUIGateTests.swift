@@ -12,6 +12,64 @@
 import XCTest
 @testable import FTCore
 
+/// `iosSystemAlertButtons` のエントリ(素のラベル / アラートの名指し)の読み書きと選定
+final class SystemAlertRuleTests: XCTestCase {
+
+    /// プロファイル JSON の2形を読めること(混在・順序維持)。書き出しは往復で同じ形に戻る
+    func testDecodesBareLabelsAndNamedAlertsInOrder() throws {
+        let json = """
+        ["アプリの使用中は許可", {"alert": "トラッキング", "button": "許可"}]
+        """.data(using: .utf8)!
+        let rules = try JSONDecoder().decode([SystemAlertRule].self, from: json)
+        XCTAssertEqual(rules, [.button("アプリの使用中は許可"),
+                               .alert(titleContains: "トラッキング", button: "許可")])
+        let out = try JSONEncoder().encode(rules)
+        XCTAssertEqual(try JSONDecoder().decode([SystemAlertRule].self, from: out), rules,
+                       "往復して同じ意味に戻ること")
+    }
+
+    /// 名指しは**題名の部分一致**(題名にはアプリ名が埋め込まれるので完全一致は書けない)。
+    /// ボタンは従来どおり完全一致(「許可」が「許可しない」を押さない)
+    func testNamedRuleMatchesByTitleSubstringAndExactButton() {
+        func el(_ type: String, _ label: String, ref: Int = 1) -> ElementInfo {
+            ElementInfo(ref: ref, type: type, identifier: nil, label: label, value: nil,
+                        placeholder: nil, enabled: true,
+                        frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 0)
+        }
+        let att = [el("alert", "“ローソン.stub”が他社のアプリを横断してトラッキングすることを許可しますか?"),
+                   el("button", "アプリにトラッキングしないように要求", ref: 2),
+                   el("button", "許可", ref: 3)]
+        let rules: [SystemAlertRule] = [.alert(titleContains: "トラッキング", button: "許可")]
+
+        let hit = SystemAlertDismissal.ruleToApply(in: att, rules: rules, handled: [])
+        XCTAssertEqual(hit?.button.ref, 3)
+        XCTAssertEqual(hit?.ruleIndex, 0)
+
+        // 題名が一致しないアラートには(同じボタンがあっても)当てない
+        let location = [el("alert", "位置情報の利用を許可しますか?"),
+                        el("button", "許可", ref: 3)]
+        XCTAssertNil(SystemAlertDismissal.ruleToApply(in: location, rules: rules, handled: []))
+
+        // 消費済みの名指しはもう当てない
+        XCTAssertNil(SystemAlertDismissal.ruleToApply(in: att, rules: rules, handled: [0]))
+    }
+
+    /// **題名が読めないアラートに名指しは当てない**(どのアラートか確かめようがないのに
+    /// 押すと、意図しないアラートを閉じ得る)。素のラベルなら当たる
+    func testNamedRuleNeedsAReadableTitle() {
+        func el(_ type: String, _ label: String?, ref: Int = 1) -> ElementInfo {
+            ElementInfo(ref: ref, type: type, identifier: nil, label: label, value: nil,
+                        placeholder: nil, enabled: true,
+                        frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 0)
+        }
+        let titleless = [el("button", "許可", ref: 3)]
+        XCTAssertNil(SystemAlertDismissal.ruleToApply(
+            in: titleless, rules: [.alert(titleContains: "トラッキング", button: "許可")], handled: []))
+        XCTAssertEqual(SystemAlertDismissal.ruleToApply(
+            in: titleless, rules: [.button("許可")], handled: [])?.button.ref, 3)
+    }
+}
+
 final class SystemUIGateTests: XCTestCase {
 
     /// **申告が present:true のときだけ**覆われている扱い。nil(ランナーが居ない構成)は
