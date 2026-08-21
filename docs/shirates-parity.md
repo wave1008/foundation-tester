@@ -207,7 +207,7 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `manual` / `knownIssue` | — | ➖ **入れない**(生成側が赤を黙らせる逃げ道になり、「失敗はシナリオ全体を中断」の規律と衝突する) |
 | `must` / `should` / `want`、`SKIP` / `MANUAL` / `NOTIMPL` | — | ➖ 運用の話でコード生成の能力と無関係(**`@TestClass(platform:)` / `@Test(platform:)` はこれとは別物** —— 赤を黙らせる逃げ道ではなく、既にある platform 軸の粒度を細かくしたもの) |
 | `irregularHandler`(lambda 登録) | `irregularHandler(検出sel, dismiss:, maxDismissals: 10)` | 🟡 宣言形が違う |
-| — | `systemAlertHandler(button)` / `systemAlertHandler(alert:, button:)` | 🟢 OS のシステムアラート(権限・ATT = SpringBoard の別プロセス)を1枚ずつ予告して押す。in-app の木に載らないので `irregularHandler` では扱えない形。押せたら登録が外れ、全部外れたら監視も止まる |
+| — | `systemAlertHandler(alert:, button:)` | 🟢 OS のシステムアラート(権限・ATT = SpringBoard の別プロセス)を1枚ずつ予告して押す。in-app の木に載らないので `irregularHandler` では扱えない形。押せたら登録が外れ、全部外れたら監視も止まる |
 | `onScreen` ハンドラ / `onError` ハンドラ | — | ➖ **失敗時の収集はツールが持つ**(2026-08-21 判定)。`onError` 相当(スクショ・木・ログ末尾・FM トリアージ)は失敗経路が自動で残すので、利用者が書く余地は無い。`onScreen`(画面ごとの前処理)はニックネーム/画面定義の機構込みで、ftester は画面を宣言しない |
 | — | `group("名前") { }` / `setUp()` / `tearDown()` / `@Test(platform:)`(対象OS宣言。対象外は skipped 記録) | 🟢 |
 
