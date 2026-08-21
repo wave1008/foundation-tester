@@ -26,7 +26,7 @@ final class SystemAlertRuleTests: XCTestCase {
         let att = [el("alert", "“ローソン.stub”が他社のアプリを横断してトラッキングすることを許可しますか?"),
                    el("button", "アプリにトラッキングしないように要求", ref: 2),
                    el("button", "許可", ref: 3)]
-        let rules: [SystemAlertRule] = [.alert(titleContains: "*トラッキング*", button: "許可")]
+        let rules: [SystemAlertRule] = [SystemAlertRule(alert: "*トラッキング*", button: "許可")]
 
         let hit = SystemAlertDismissal.ruleToApply(in: att, rules: rules)
         XCTAssertEqual(hit?.button.ref, 3)
@@ -50,7 +50,7 @@ final class SystemAlertRuleTests: XCTestCase {
         // `*` の解釈はセレクタと同一: bare = 完全一致なので、題名(アプリ名が埋め込まれた
         // 長文)には `*x*` を書く。分岐は**実際の題名に含まれる語**で書く(英語の ATT は
         // "…to track your activity…" で "Tracking" という語は含まれない)
-        let rules: [SystemAlertRule] = [.alert(titleContains: "*トラッキング*||*track your activity*",
+        let rules: [SystemAlertRule] = [SystemAlertRule(alert: "*トラッキング*||*track your activity*",
                                                button: "許可||Allow")]
         let ja = [el("alert", "“ローソン.stub”がトラッキングすることを許可しますか?"),
                   el("button", "許可", ref: 3)]
@@ -76,18 +76,18 @@ final class SystemAlertRuleTests: XCTestCase {
         }
         let tree = [el("alert", "無関係のアラート"), el("button", "OK", ref: 2)]
         XCTAssertNil(SystemAlertDismissal.ruleToApply(
-            in: tree, rules: [.alert(titleContains: "*トラッキング*||", button: "OK")]),
+            in: tree, rules: [SystemAlertRule(alert: "*トラッキング*||", button: "OK")]),
             "空分岐が「どのアラートでも」に化けてはいけない")
         XCTAssertNil(SystemAlertDismissal.ruleToApply(
-            in: tree, rules: [.alert(titleContains: "*", button: "OK")]),
+            in: tree, rules: [SystemAlertRule(alert: "*", button: "OK")]),
             "`*` 単体が「どのアラートでも」に化けてはいけない")
         XCTAssertEqual(SystemAlertDismissal.alternatives("トラッキング || Tracking"),
                        ["トラッキング", "Tracking"], "分岐の前後の空白は落とす")
     }
 
-    /// **題名が読めないアラートに名指しは当てない**(どのアラートか確かめようがないのに
-    /// 押すと、意図しないアラートを閉じ得る)。素のラベルなら当たる
-    func testNamedRuleNeedsAReadableTitle() {
+    /// **題名が読めないアラートには当てない**(どのアラートか確かめようがないのに
+    /// 押すと、意図しないアラートを閉じ得る。alert が必須なのはこのため)
+    func testARuleNeedsAReadableTitle() {
         func el(_ type: String, _ label: String?, ref: Int = 1) -> ElementInfo {
             ElementInfo(ref: ref, type: type, identifier: nil, label: label, value: nil,
                         placeholder: nil, enabled: true,
@@ -95,9 +95,10 @@ final class SystemAlertRuleTests: XCTestCase {
         }
         let titleless = [el("button", "許可", ref: 3)]
         XCTAssertNil(SystemAlertDismissal.ruleToApply(
-            in: titleless, rules: [.alert(titleContains: "*トラッキング*", button: "許可")]))
-        XCTAssertEqual(SystemAlertDismissal.ruleToApply(
-            in: titleless, rules: [.button("許可")])?.button.ref, 3)
+            in: titleless, rules: [SystemAlertRule(alert: "*トラッキング*", button: "許可")]))
+        XCTAssertNil(SystemAlertDismissal.ruleToApply(
+            in: titleless, rules: [SystemAlertRule(alert: "*許可*", button: "許可")]),
+            "パターンが緩くても、題名の無い木には当てない")
     }
 }
 
@@ -113,8 +114,8 @@ final class SystemAlertWatchlistTests: XCTestCase {
 
     /// 名指しを全部処理したら isWatching が落ちる(= 監視の解除)。処理前は見張る
     func testNamedRulesReleaseTheWatchOnceAllArePressed() {
-        var list = SystemAlertWatchlist(rules: [.alert(titleContains: "*写真*", button: "許可しない"),
-                                                .alert(titleContains: "*トラッキング*", button: "許可")])
+        var list = SystemAlertWatchlist(rules: [SystemAlertRule(alert: "*写真*", button: "許可しない"),
+                                                SystemAlertRule(alert: "*トラッキング*", button: "許可")])
         XCTAssertTrue(list.isWatching)
         let photos = [el("alert", "写真ライブラリへのアクセス"), el("button", "許可しない", ref: 2)]
         guard let first = list.buttonToTap(in: photos) else { XCTFail("1枚目が選ばれること"); return }
@@ -131,7 +132,8 @@ final class SystemAlertWatchlistTests: XCTestCase {
     /// 同じラベルを2枚待つなら**2回登録**すればよい —— 登録は枚数ぶんあるので、
     /// `許可` のような汎用ラベルを複数のアラートが使っても取り合いにならない
     func testOneRegistrationServesOneAlert() {
-        var list = SystemAlertWatchlist(rules: [.button("許可"), .button("許可")])
+        var list = SystemAlertWatchlist(rules: [SystemAlertRule(alert: "*何かの許可*", button: "許可"),
+                                                SystemAlertRule(alert: "*何かの許可*", button: "許可")])
         let alert = [el("alert", "何かの許可"), el("button", "許可", ref: 2)]
         guard let first = list.buttonToTap(in: alert) else { XCTFail(); return }
         list.notePressed(first.index)
@@ -148,13 +150,13 @@ final class SystemAlertWatchlistTests: XCTestCase {
     func testRegistrationCanHappenMidScenario() {
         var list = SystemAlertWatchlist()
         XCTAssertFalse(list.isWatching, "登録が無い間は監視しない")
-        list.register(.button("許可"))
+        list.register(SystemAlertRule(alert: "*何か*", button: "許可"))
         XCTAssertTrue(list.isWatching)
     }
 
     /// 消費済みの名指しは選定から外れる(同じアラートを二度押さない)
     func testAHandledNamedRuleIsNotSelectedAgain() {
-        var list = SystemAlertWatchlist(rules: [.alert(titleContains: "*写真*", button: "許可しない")])
+        var list = SystemAlertWatchlist(rules: [SystemAlertRule(alert: "*写真*", button: "許可しない")])
         let photos = [el("alert", "写真ライブラリへのアクセス"), el("button", "許可しない", ref: 2)]
         guard let first = list.buttonToTap(in: photos) else { XCTFail(); return }
         list.notePressed(first.index)
@@ -163,7 +165,7 @@ final class SystemAlertWatchlistTests: XCTestCase {
 
     /// 範囲外の index は黙って無視する(クラッシュさせない)
     func testAnOutOfRangeIndexIsIgnored() {
-        var list = SystemAlertWatchlist(rules: [.button("許可")])
+        var list = SystemAlertWatchlist(rules: [SystemAlertRule(alert: "*何か*", button: "許可")])
         list.notePressed(99)
         XCTAssertTrue(list.isWatching)
     }

@@ -11,17 +11,14 @@
 
 import Foundation
 
-/// `systemAlertHandler`(DSL)の登録1件。2つの形を取る:
+/// `systemAlertHandler`(DSL)の登録1件 = **1枚のアラートの予告**。
+/// `alert`(どのアラートか)は必須 —— ボタンのラベルだけでは「なんのウィンドウの
+/// 許可ボタンか」が読めず、無関係のアラート(別アプリの許可要求が前面に出る形)を
+/// 押し得る。押せたら台帳から外れる(`SystemAlertWatchlist`)。
+/// 同じアラートを2枚待つなら2回登録する。台帳が空の間は監視そのものが走らない
+/// = 判定の往復(約 73ms/ステップ)を払わない。
 ///
-/// - `systemAlertHandler("許可")`(素のラベル)= **次に出たアラートがどれでも**このボタンを押す
-/// - `systemAlertHandler(alert: "トラッキング", button: "許可")` = **題名がこの文字列を含む
-///   アラート**にだけこのボタンを押す
-///
-/// どちらも**1回の登録 = 1枚のアラートの予告**で、押せたら台帳から外れる
-/// (`SystemAlertWatchlist`)。同じアラートを2枚待つなら2回登録する。
-/// 台帳が空の間は監視そのものが走らない = 判定の往復(約 73ms/ステップ)を払わない。
-///
-/// **alert も button もセレクタと同じ記法**: `||` で候補を並べ(日英両対応)、
+/// **`alert` も `button` もセレクタと同じ記法**: `||` で候補を並べ(日英両対応)、
 /// `*` で一致方法を選ぶ(bare = 完全一致 / `x*` = 前方 / `*x` = 後方 / `*x*` = 部分)。
 ///
 ///     alert: "*トラッキング*||*track your activity*", button: "許可||Allow"
@@ -30,25 +27,19 @@ import Foundation
 /// 実用上 alert は `*x*` で書くことになる。button の bare = 完全一致は
 /// `"許可"` が「許可しない」を押す事故を防ぐ —— `*許可*` と書けば部分一致になるが、
 /// その危険も含めて書き手の選択になる(セレクタと同じ)
-public enum SystemAlertRule: Sendable, Equatable {
-    case button(String)
-    case alert(titleContains: String, button: String)
+public struct SystemAlertRule: Sendable, Equatable {
+    /// アラートの題名に当てるパターン
+    public let alert: String
+    /// 押すボタンのラベルに当てるパターン
+    public let button: String
 
-    /// 押すボタンのラベル
-    public var buttonLabel: String {
-        switch self {
-        case .button(let label): return label
-        case .alert(_, let button): return button
-        }
+    public init(alert: String, button: String) {
+        self.alert = alert
+        self.button = button
     }
 
     /// 失敗メッセージ・ログ用の表示形
-    public var described: String {
-        switch self {
-        case .button(let label): return label
-        case .alert(let title, let button): return "\(title)→\(button)"
-        }
-    }
+    public var described: String { "\(alert)→\(button)" }
 }
 
 /// `systemAlertHandler` の登録と発火をまとめて持つ台帳。
@@ -119,20 +110,15 @@ public enum SystemAlertDismissal {
     }
 
     /// 登録の列から押すべきボタンを1つ選ぶ(登録された順・先に成立したものを採る)。
-    /// 名指し形は**アラートの題名が読めて、パターンが当たるときだけ**成立する ——
-    /// 題名が読めないアラートに名指しを当てると、意図しないアラートを閉じ得る
+    /// **アラートの題名が読めて、パターンが当たるときだけ**成立する ——
+    /// 題名が読めないアラートに当てると、意図しないアラートを閉じ得る
     public static func ruleToApply(in elements: [ElementInfo], rules: [SystemAlertRule])
         -> (button: ElementInfo, ruleIndex: Int)? {
-        guard !rules.isEmpty else { return nil }
-        let title = elements.first { $0.type == "alert" }?.label
+        guard !rules.isEmpty,
+              let title = elements.first(where: { $0.type == "alert" })?.label else { return nil }
         for (index, rule) in rules.enumerated() {
-            switch rule {
-            case .button(let pattern):
-                if let hit = buttonToTap(in: elements, pattern: pattern) { return (hit, index) }
-            case .alert(let titlePattern, let button):
-                guard let title, patternMatches(titlePattern, value: title) else { continue }
-                if let hit = buttonToTap(in: elements, pattern: button) { return (hit, index) }
-            }
+            guard patternMatches(rule.alert, value: title) else { continue }
+            if let hit = buttonToTap(in: elements, pattern: rule.button) { return (hit, index) }
         }
         return nil
     }

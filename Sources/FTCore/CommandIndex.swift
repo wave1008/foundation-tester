@@ -61,8 +61,9 @@ public enum DSLCommandIndex {
               "Records the block as one check step. Zero assertions inside is inconclusive."),
         .init("irregularHandler", "structure", "irregularHandler(detect, dismiss:, maxDismissals:?)",
               "Declares an in-app message to close automatically whenever it appears."),
-        .init("systemAlertHandler", "structure", "systemAlertHandler(button) / systemAlertHandler(alert:, button:)",
+        .init("systemAlertHandler", "structure", "systemAlertHandler(alert:, button:)",
               "Announces ONE upcoming OS system alert (permission / ATT) and the button to press on it."
+                  + " alert: (which alert, matched against its title) is mandatory."
                   + " Register before the action that triggers it; the entry is removed once pressed."
                   + " Both fields use selector syntax: || alternatives (ja/en devices) and *"
                   + " for the match mode (bare = exact, *x* = contains)."

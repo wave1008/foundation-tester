@@ -100,32 +100,31 @@ public func irregularHandler(_ detect: Sel, dismiss: Sel? = nil,
 /// ものを閉じるが、**OS のアラートは別プロセス(SpringBoard)でアプリの木に載らない**ので、
 /// XCUITest ランナー経由の別の監視(SystemUIGate)が要る。engine=hybrid のときだけ効く。
 ///
-///     systemAlertHandler("アプリの使用中は許可")                       // 次に出たアラートがどれでも
-///     systemAlertHandler(alert: "*トラッキング*", button: "許可")      // 題名で名指し
+///     systemAlertHandler(alert: "*写真ライブラリ*", button: "許可しない")
 ///     systemAlertHandler(alert: "*トラッキング*||*track your activity*",
 ///                        button: "許可||Allow")                        // 日英両対応(`||` で候補)
 ///
+/// **`alert`(どのアラートか)は必須** —— ボタンのラベルだけでは「なんのウィンドウの
+/// ボタンか」が読めず、無関係のアラート(別アプリの許可要求が前面に出る形)を押し得る。
 /// `alert` も `button` も**セレクタと同じ記法**: `||` = 候補の和 /
 /// `*` = 一致方法(bare = 完全一致・`x*` = 前方・`*x` = 後方・`*x*` = 部分)。
-/// 題名にはアプリ名が埋め込まれるので、実用上 `alert` は `*x*` で書くことになる
+/// 題名にはアプリ名が埋め込まれるので、実用上 `alert` は `*x*` で書くことになる。
 ///
 /// **1回の呼び出し = 1枚のアラートの予告**。押せたら登録は外れ、全部外れたら監視も止まる
 /// (登録が無い間は判定の往復を1回も払わない)。同じアラートを2枚待つなら2回呼ぶ。
 /// アラートが出る操作の**前に**呼ぶこと(setUp() に書けば各 @Test の前に登録される)。
 ///
-/// ボタンのラベルは**各分岐の完全一致**で、ツールは既定ボタンを推測しない(取り違えると意図しない
-/// 権限のまま run が緑で進む)。押したことは必ず run ログに残る。
+/// ボタンのラベルは**各分岐の完全一致**で、ツールは既定ボタンを推測しない(取り違えると
+/// 意図しない権限のまま run が緑で進む)。押したことは必ず run ログに残る。
 /// 登録があるのにアラートを覆ったまま押せなければ、そのステップは
 /// `system-ui-covered` で失敗し、**実際に画面に在るボタン名**をメッセージに出す
-public func systemAlertHandler(_ button: String) {
+public func systemAlertHandler(alert: String, button: String) {
     let core = FTRuntime.requireCore(command: "systemAlertHandler")
-    core.addSystemAlertRule(.button(button))
+    core.addSystemAlertRule(SystemAlertRule(alert: alert, button: button))
 }
 
-public func systemAlertHandler(alert titleContains: String, button: String) {
-    let core = FTRuntime.requireCore(command: "systemAlertHandler")
-    core.addSystemAlertRule(.alert(titleContains: titleContains, button: button))
-}
+@available(*, unavailable, message: "specify which alert this button belongs to: systemAlertHandler(alert: \"*title part*\", button: \"label\") — a bare button label can press the wrong window's button")
+public func systemAlertHandler(_ button: String) { fatalError() }
 
 // MARK: - セレクタを取るコマンドの共通経路
 
