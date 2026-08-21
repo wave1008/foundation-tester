@@ -1,11 +1,11 @@
 // Shirates 準拠表(docs/shirates-parity.md)に**判定していない行**を残さない。
 //
-// 以前の ❌ は「検討して見送った」と「見ていない」が混ざっており、`disableHandler` は
-// **理由が1行も無い ❌** のまま置かれていて、実際には CAE を跨ぐ制御に必要だった
+// 以前の ⏳(当時は ❌)は「検討して見送った」と「見ていない」が混ざっており、`disableHandler` は
+// **理由が1行も無い**まま置かれていて、実際には CAE を跨ぐ制御に必要だった
 // (2026-08-21 にユーザー指摘で採用)。表の役目は「何を持たないか」を**判定済みの形**で
 // 残すことなので、印だけの行を機械で落とす。
 //
-// 規約: ➖(意図的に持たない)と ❌(足す価値ありと判定済み)は**必ず理由/条件を伴う**。
+// 規約: ➖(意図的に持たない)と ⏳(足す価値ありと判定済み・着手が保留)は**必ず理由/条件を伴う**。
 // ✅ / 🟡 / 🟢 は印だけでよい(実装があるので、読み手は docs/commands.md へ行ける)。
 //
 // process.cwd() は npm test 実行時に vscode-ftester ルート(他の doc 同期テストと同じ前提)。
@@ -17,7 +17,7 @@ import { test } from "node:test";
 
 const DOC = path.join(process.cwd(), "..", "docs", "shirates-parity.md");
 /** 判定に理由が要る印 */
-const NEEDS_REASON = ["➖", "❌"];
+const NEEDS_REASON = ["➖", "⏳"];
 
 /** セル区切りは `\|`(セレクタ記法の OR を書くためのエスケープ)を跨がない。
  * 素の split("|") だと `(a\|b)` を含む行がセル数を余分に持ち、末尾から数える判定セルが
@@ -43,11 +43,11 @@ function verdictCells(source) {
   return rows;
 }
 
-test("➖ / ❌ の行は必ず理由(または足す条件)を書いている", () => {
+test("➖ / ⏳ の行は必ず理由(または足す条件)を書いている", () => {
   const rows = verdictCells(readFileSync(DOC, "utf8"));
   assert.ok(rows.length > 10, `判定行を抽出できていない(${rows.length} 行)`);
   const bare = rows.filter(({ verdict }) => {
-    const rest = verdict.replace(/^[➖❌]/u, "").trim();
+    const rest = verdict.replace(/^[➖⏳]/u, "").trim();
     return rest.length < 10;   // 印だけ・記号だけの行を落とす
   });
   assert.deepEqual(
@@ -58,10 +58,10 @@ test("➖ / ❌ の行は必ず理由(または足す条件)を書いている",
 });
 
 test("判定を壊したら落ちることの確認(理由の無い行を混ぜる)", () => {
-  const broken = "| `foo` | — | ❌ |\n";
+  const broken = "| `foo` | — | ⏳ |\n";
   const rows = verdictCells(broken);
   assert.equal(rows.length, 1);
-  assert.ok(rows[0].verdict.replace(/^[➖❌]/u, "").trim().length < 10);
+  assert.ok(rows[0].verdict.replace(/^[➖⏳]/u, "").trim().length < 10);
 });
 
 test("セレクタ記法の `\\|` を含む行も判定対象に残る", () => {
