@@ -1,5 +1,5 @@
 // BroadcastPlan.swift
-// `ftester run --each-device`(ブロードキャスト実行)の分配計画。RunOrchestrator が
+// `ftester run --broadcast`(ブロードキャスト実行)の分配計画。RunOrchestrator が
 // 「platform 別の共有キュー」の代わりに「レーン(デバイス)別のキュー」を作るための純粋関数。
 // 供給・インストール・フック・スタッガ・復帰・レポートは通常 run と同じ経路を通す(変えるのは
 // キューの切り方だけ。RunOrchestrator.run の dispatch 分岐参照)。
@@ -10,7 +10,7 @@ import Foundation
 public enum ScenarioDispatch: Sendable {
     /// platform 別の共有キューから各ワーカーが早い者勝ちで取る(各シナリオは1台で1回)
     case shared
-    /// 各レーンが同じセットを1回ずつ回す(`ftester run --each-device`)。lanes = 回るべき
+    /// 各レーンが同じセットを1回ずつ回す(`ftester run --broadcast`)。lanes = 回るべき
     /// デバイス。**レーンとワーカーの突き合わせは `BroadcastPlan.laneKey(of:)`**(論理名)
     case broadcast(lanes: [BroadcastLane])
 }

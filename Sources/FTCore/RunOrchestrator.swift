@@ -743,7 +743,7 @@ public final class RunOrchestrator {
     }
 
     /// - dispatch: `.shared`(既定。platform 別の共有キュー)/ `.broadcast`(レーン別キュー。
-    ///   `ftester run --each-device`)。**違うのはキューの切り方と、ワーカーがどのキューを
+    ///   `ftester run --broadcast`)。**違うのはキューの切り方と、ワーカーがどのキューを
     ///   取るかだけ** —— スタッガ・CPU 門・復帰・lease・録画・ドレインは同じ経路を通る
     public func run(items: [ScenarioRunItem], defaultPlatform: String,
                     dispatch: ScenarioDispatch = .shared) async -> RunSummary {

@@ -347,7 +347,7 @@ final class RunResultsStoreTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: scenariosDir.appendingPathComponent("Foo.bar~2.json").path))
     }
 
-    /// **worker を名指しした取り消しは、その台の記録だけを消す**。`--each-device` では同じ ID を
+    /// **worker を名指しした取り消しは、その台の記録だけを消す**。`--broadcast` では同じ ID を
     /// N 台が同時に書くので、「この ID の最新」を消すと別の台の記録が消える
     func testDiscardLastWithWorkerRemovesOnlyThatWorkersRecord() throws {
         let recorder = RunRecorder.begin(project: project, profile: "default", trigger: "cli", captureHostMetrics: false)

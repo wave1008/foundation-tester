@@ -59,7 +59,7 @@ enum DeviceHostRunner {
         heal: Bool, noHeal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
         fastInput: Bool, enableAnimations: Bool, performanceMode: Bool,
         forceLock: Bool, waitLock: Int?, remoteDir: String?, remoteTimeout: Int?, remoteArtifacts: String,
-        quiet: Bool, junit: String?, eachDevice: Bool = false
+        quiet: Bool, junit: String?, broadcast: Bool = false
     ) async throws -> Int32 {
         let junitTempDir = try FleetRunner.makeJUnitTempDir(requested: junit)
         defer { if let junitTempDir { try? FileManager.default.removeItem(at: junitTempDir) } }
@@ -86,14 +86,14 @@ enum DeviceHostRunner {
         }
 
         let active: [(Int, Group, [String])]
-        if eachDevice {
+        if broadcast {
             // ブロードキャストは分割しない —— 各機械の各台が全件を回す(分けると「全台で1回ずつ」が
             // 機械ごとの部分集合に化ける)
             let ids = selected.map(\.id)
             active = groups.indices.map { ($0, groups[$0], ids) }
             for (_, group, ids) in active {
                 FleetRunner.log("    \(group.hostLabel): \(ids.count) scenario(s)"
-                    + " on each of \(group.deviceNames.count) device(s) (--each-device)")
+                    + " on each of \(group.deviceNames.count) device(s) (--broadcast)")
             }
         } else {
             let buckets = try assign(project: project, groups: groups, selected: selected,
@@ -127,7 +127,7 @@ enum DeviceHostRunner {
                         remoteDir: remoteDir, remoteTimeout: remoteTimeout,
                         remoteArtifacts: remoteArtifacts, quiet: quiet,
                         junitPath: FleetRunner.entryJUnitPath(tempDir: junitTempDir, index: index),
-                        eachDevice: eachDevice)
+                        broadcast: broadcast)
                     let start = Date()
                     let exitCode = await FleetRunner.runEntry(
                         binary: binary, args: args, hostLabel: group.hostLabel)

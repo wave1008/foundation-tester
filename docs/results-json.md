@@ -110,7 +110,7 @@ jq -r 'select(.workerAnomalies == null) | .runID' results/runs/2026-08/*/run.jso
 | schemaVersion / runID / scenarioID | | シナリオ ID = クラス名.メソッド名 |
 | title | String? | `@Test` のタイトル |
 | platform | String | `ios` / `android` |
-| worker | String? | `"<platform>:<デバイス論理名>"`(並列実行時)。**`ftester run --each-device`(ブロードキャスト)では同じ `scenarioID` が台数ぶん並ぶ**(ファイルは `~N` 連番)ので、台ごとの合否はこの欄で引く |
+| worker | String? | `"<platform>:<デバイス論理名>"`(並列実行時)。**`ftester run --broadcast`(ブロードキャスト)では同じ `scenarioID` が台数ぶん並ぶ**(ファイルは `~N` 連番)ので、台ごとの合否はこの欄で引く |
 | machine / profile | String / String? | |
 | passed | Bool | シナリオ全体の成否 |
 | timedOut | Bool? | タイムアウトで強制終了したか |
@@ -162,7 +162,7 @@ jq -r 'select(.workerAnomalies == null) | .runID' results/runs/2026-08/*/run.jso
 
 - **上書きされるのは `run.json` の1回だけ**(実行完了時に `finishedAt` と集計を追記)。
   `scenarios/*.json` は追加専用 —— 同一 run 内の再実行は `~2` 連番で足す(振り直しで消した
-  番号は**欠番のまま**。`--each-device` では別の台が同じ ID を同時に書くので、詰めると次の
+  番号は**欠番のまま**。`--broadcast` では別の台が同じ ID を同時に書くので、詰めると次の
   書き込みが残っている番号を上書きする)
 - **コミット単位**はコード変更と混ぜず `results/` だけの独立コミットにする(レビュー不要・revert しやすい)
 - **間引き**は月ディレクトリごと(`git rm -r '<project>/results/runs/2026-07'`)。月単位以外の部分削除はしない

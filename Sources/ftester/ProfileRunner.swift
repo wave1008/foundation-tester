@@ -28,7 +28,7 @@ enum ProfileRunner {
     /// 戻り値: 実行サマリ(失敗数+劣化ワーカー)
     /// - lpt: LPT 投入順を使うか。並べ替えは defaultPlatform が確定してからでないと
     ///   別 platform の実績で並べてしまうため、この関数の中で行う(呼び出し側では順序を触らない)。
-    /// - eachDevice: `--each-device`(ブロードキャスト)。items を**各デバイスで1回ずつ**回す
+    /// - broadcast: `--broadcast`(ブロードキャスト)。items を**各デバイスで1回ずつ**回す
     ///   (`ScenarioDispatch.broadcast`)。変わるのは台数を絞らないことと分配だけで、供給・
     ///   インストール・フック(run で1回)・スタッガ・復帰・レポートは通常 run と同じ経路
     static func run(project: TestProject, profileName: String, items rawItems: [ScenarioRunItem],
@@ -40,7 +40,7 @@ enum ProfileRunner {
                     deviceHost: String? = nil,
                     workspaceOverride: String? = nil,
                     recorder: RunRecorder? = nil,
-                    eachDevice: Bool = false) async throws -> RunSummary {
+                    broadcast: Bool = false) async throws -> RunSummary {
         var items = rawItems
         let runClockStart = Date()
         // 1. マシン決定 → プロファイル合成(実行プロファイル自身の machine 指定があれば最優先)
@@ -111,12 +111,12 @@ enum ProfileRunner {
         // **回す本数を超える台数を用意しない**(ResolvedProfile.limitingDevices の宣言参照)。
         // 本数はここで確定している(items は呼び出し側で解決済み)ので、ブリッジ供給・アプリ版チェック・
         // blank triage が丸ごと縮む。platform 未指定のシナリオは**両方**に数える(どちらでも走りうる)。
-        // **--each-device は絞らない** —— 各台で1回ずつ走らせるのが目的なので、絞ると回るべき台が落ちる
+        // **--broadcast は絞らない** —— 各台で1回ずつ走らせるのが目的なので、絞ると回るべき台が落ちる
         let resolved: ResolvedProfile
-        if eachDevice {
+        if broadcast {
             resolved = full
             print("→ Broadcasting \(items.count) scenario(s) to each of \(full.devices.count) device(s)"
-                + " (--each-device)")
+                + " (--broadcast)")
         } else {
             let iosCount = items.filter { $0.info.platform != "android" }.count
             let androidCount = items.filter { $0.info.platform != "ios" }.count
@@ -384,7 +384,7 @@ enum ProfileRunner {
         PhaseLog.mark("orchestrator-setup")
         // レーン = 絞り込み後の全デバイス(供給に失敗して参加しなかった台のぶんは、orchestrator が
         // 「never joined」でそのレーンの本数を失敗として残す = 準備できなかった台が緑に紛れない)
-        let dispatch: ScenarioDispatch = eachDevice
+        let dispatch: ScenarioDispatch = broadcast
             ? .broadcast(lanes: resolved.devices.map { BroadcastLane(key: $0.name, platform: $0.platform) })
             : .shared
         async let summary = orchestrator.run(items: items, defaultPlatform: defaultPlatform,
