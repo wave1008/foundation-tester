@@ -3,8 +3,8 @@
 // **ツールは推測しない**(2026-08-19)。位置情報の許可は「1回だけ許可 / Appの使用中は許可 /
 // 許可しない」のように**どれが是認かが文脈で変わる**うえ、並び順もラベルもロケールと OS 版で
 // 変わる。既定ボタンを当てにいくと、取り違えたときの症状が「テストが意図しない権限状態で
-// 走り続ける」= 沈黙になる。だから押してよいラベルは**実行プロファイルに書かれた分だけ**
-// とし、書かれていなければ何もしない(従来どおりシナリオが自分で閉じる)。
+// 走り続ける」= 沈黙になる。だから押してよいラベルは**登録(iosAlertHandler)された分だけ**
+// とし、登録が無ければ何もしない(従来どおりシナリオが自分で閉じる)。
 //
 // 「自動許可」も「自動拒否」もこの1つの仕組みで書ける ——
 // 並べるラベルを是認側にするか拒否側にするかの違いしかない。
@@ -110,15 +110,20 @@ public enum SystemAlertDismissal {
     }
 
     /// 登録の列から押すべきボタンを1つ選ぶ(登録された順・先に成立したものを採る)。
-    /// **アラートの題名が読めて、パターンが当たるときだけ**成立する ——
-    /// 題名が読めないアラートに当てると、意図しないアラートを閉じ得る
+    /// **題名が読めるアラート**にだけ当てる(題名が読めないアラートに当てると意図しない
+    /// アラートを閉じ得る)。押すボタンは**題名が一致したアラートの枠の中**から選ぶ ——
+    /// アラートが重なっているとき(位置情報の直後に ATT など)、木の全ボタンから選ぶと
+    /// 「題名は A に一致したのに B のボタンを押す」= `alert:` を必須にした意味が消える
     public static func ruleToApply(in elements: [ElementInfo], rules: [SystemAlertRule])
         -> (button: ElementInfo, ruleIndex: Int)? {
-        guard !rules.isEmpty,
-              let title = elements.first(where: { $0.type == "alert" })?.label else { return nil }
+        guard !rules.isEmpty else { return nil }
+        let alerts = elements.filter { $0.type == "alert" && !($0.label ?? "").isEmpty }
+        guard !alerts.isEmpty else { return nil }
         for (index, rule) in rules.enumerated() {
-            guard patternMatches(rule.alert, value: title) else { continue }
-            if let hit = buttonToTap(in: elements, pattern: rule.button) { return (hit, index) }
+            for alert in alerts where patternMatches(rule.alert, value: alert.label) {
+                let scoped = elements.filter { alert.frame.contains($0.frame) }
+                if let hit = buttonToTap(in: scoped, pattern: rule.button) { return (hit, index) }
+            }
         }
         return nil
     }

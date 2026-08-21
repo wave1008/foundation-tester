@@ -208,6 +208,20 @@ final class ProfileResolverTests: XCTestCase {
                       "common.appPath 廃止警告が出るはず: \(warnings)")
     }
 
+    /// 読まなくなった `iosSystemAlertButtons` は、**validate 経路でも**行き先を案内する
+    /// (resolve だけだと `profile check`/エディタで沈黙する ← レビュー指摘 2026-08-22)
+    func testValidateWarnsWhenLegacySystemAlertKeyPresent() throws {
+        let data = #"""
+        { "app": "sampleapp", "devices": [{ "name": "x" }],
+          "iosSystemAlertButtons": ["許可"] }
+        """#.data(using: .utf8)!
+        let (_, warnings) = ProfileResolver.validate(
+            kind: .run, data: data, context: "runs/legacy.json", project: project)
+        XCTAssertTrue(warnings.contains { $0.contains("iosSystemAlertButtons")
+                                          && $0.contains("iosAlertHandler") },
+                      "旧キーの行き先(iosAlertHandler)を案内する警告が出るはず: \(warnings)")
+    }
+
     /// common.appName は廃止(この契約変更の核): 黙って無視せず、ios/android への移動を促す
     /// 警告が出ること
     func testValidateWarnsWhenAppNameInCommonSection() throws {

@@ -3,7 +3,7 @@
 // liveTarget は --platform/--serial を渡し、api run 側で --profile と排他なので、
 // **プロファイル設定時に連動すると --profile が黙って捨てられる**。実害(2026-08-20 の受け手報告):
 //   - 対象アプリが解決できず、app 省略シナリオが全滅する(「no app could be resolved」)
-//   - scenarioTimeout / record / iosSystemAlertButtons などプロファイルの設定が一切効かない
+//   - scenarioTimeout / record / defaultTimeout などプロファイルの設定が一切効かない
 //   - 複数デバイスの並列実行が単一デバイスに潰れる
 // args 分岐のコメントは元からこの条件を前提に書かれていたのに、**ガードの実装だけが抜けていた**。
 // runHandler.ts は import できない(testTree.ts のトップレベル new vscode.TestTag がスタブで落ちる)

@@ -288,19 +288,20 @@ extension StepExecutor {
     /// assert ディスパッチャ。判定ロジックはグループ単位の executeAssert* へ切り出し、ここは
     /// 振り分けだけ行う。
     ///
-    /// **成功したときだけ、OS のシステム UI に覆われていなかったかを確かめる**(SystemUIGate)。
-    /// 覆われている画面で緑になるのは、別ウィンドウのモーダルと同じ形の偽陽性 ——
-    /// 人手には見えていないものを「見えた」と言っていることになる。
-    /// 判定は**1ステップにつき1往復**(約 73ms)。ポーリングの周回ごとには払わない ——
-    /// 誤りは「緑になったこと」に宿るので、緑になった瞬間に1度確かめれば足りる。
-    /// **失敗したときは聞かない**(既にシナリオは止まるので、往復を足す価値がない)。
+    /// **OS のシステム UI に覆われていたら、登録があれば閉じて判定し直す**(SystemUIGate)。
+    /// 2つの偽りを同時に断つ:
+    ///   - 覆いの下で出した**緑**(見えていないものを「見えた」と言う偽陽性)
+    ///   - 覆いの下で出した**赤**(アラートを答えていないから値が更新されない = 誤った不一致。
+    ///     `tap(#request) → textIs(結果)` の自然な並びがこれ。閉じてから読み直せば通る)
+    /// なので成功・失敗どちらの後でも門を通す。**登録が残っていて覆われているときだけ**
+    /// 往復を払う(約 73ms)—— 登録の無い実行・覆われていない普通の合否は素通り。
     /// **`iosAlertHandler` の登録が残っているときだけ**(操作側と同じ。waitOutSystemUI の doc)
     func executeAssert(_ assert: String, step: FlowStep,
                        phase: inout PhaseAccumulator) async throws -> StepResult.Status {
         resolvedViaSystemUIThisStep = false
         let status = try await dispatchAssert(assert, step: step, phase: &phase)
         // シナリオ自身がアラートを検証しているなら奪わない(操作側の①と同じ規律)
-        guard Self.isSuccess(status), !resolvedViaSystemUIThisStep,
+        guard !resolvedViaSystemUIThisStep,
               systemAlertWatchlist.isWatching, let fb = fallbackDriver else { return status }
         let clock = ContinuousClock()
         var start = clock.now

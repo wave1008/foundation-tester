@@ -381,12 +381,6 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// 実行環境に注入する(伝搬経路は BridgeClient.fastInput 参照)。動きの激しい画面では
     /// 整定前タップのフレークリスクを伴う(既定 false)
     public var iosFastInput: Bool?
-    /// **iOS のシステム許可アラートを自動で押すときのボタンラベル**(順に試し、先に見つかった
-    /// ものを押す)。省略/空 = 何もしない(従来どおりシナリオが `ifCanSelect` で閉じる)。
-    /// 自動許可も自動拒否もこれ1つで書ける —— 並べるラベルが是認側か拒否側かの違いだけ。
-    /// **ラベルは完全一致**で、ツールは既定ボタンを推測しない(理由は FTCore.SystemAlertDismissal)。
-    /// engine=hybrid のときだけ効く(SpringBoard を見る参照セッションが要る)。
-    /// 同期相手: vscode-ftester/schemas/run-profile.schema.json
     /// **容器の推測に依存する補正**を行うか(既定 true)。false にすると見切れ判定・掴み直し・
     /// 救済ドラッグ・見えている部分を撃つ座標補正・壊れた座標の候補除外が止まり、
     /// 推測を持たなかった頃の挙動へ戻る。**FM とは無関係**(幾何ヒューリスティック)。
@@ -989,14 +983,7 @@ public enum ProfileResolver {
             checkKeys(json, allowed: RunProfileDocument.knownKeys, context: "runs/\(runName).json")
                 + checkDeviceRefKeys(json, context: "runs/\(runName).json")
                 + checkRemoteControlKeys(json, context: "runs/\(runName).json")
-                // 黙って無視すると「宣言したのに押されない」が沈黙になるので、
-                // 行き先まで書いて案内する
-                + (json["iosSystemAlertButtons"] != nil
-                    ? ["runs/\(runName).json: \"iosSystemAlertButtons\" is no longer read —"
-                       + " register in the scenario instead: iosAlertHandler(\"<button label>\")"
-                       + " or iosAlertHandler(alert: \"<title part>\", button: \"<label>\")"
-                       + " (docs/commands.md)"]
-                    : [])
+                + legacyKeyWarnings(json, context: "runs/\(runName).json")
         }
         guard let appRef = runDoc.app else {
             throw ProfileError.missingAppReference(run: runName)
@@ -1294,6 +1281,7 @@ public enum ProfileResolver {
             warnings += checkKeys(json, allowed: RunProfileDocument.knownKeys, context: context)
             warnings += checkDeviceRefKeys(json, context: context)
             warnings += checkRemoteControlKeys(json, context: context)
+            warnings += legacyKeyWarnings(json, context: context)
             let (machineErrors, machineWarnings) = checkRunMachineField(json, project: project)
             errors += machineErrors
             warnings += machineWarnings
@@ -1350,6 +1338,16 @@ public enum ProfileResolver {
             warnings.append(contentsOf: keyCheck(json))
         }
         return value
+    }
+
+    /// 読まなくなったキーは、黙って無視すると「宣言したのに効かない」が沈黙になるので、
+    /// 行き先まで書いて案内する(unknown-key 警告より具体的に)。resolve と単体 validate の
+    /// **両方**から呼ぶ —— 片方だけだと `profile check`/エディタ経路で沈黙する
+    static func legacyKeyWarnings(_ json: [String: Any], context: String) -> [String] {
+        guard json["iosSystemAlertButtons"] != nil else { return [] }
+        return ["\(context): \"iosSystemAlertButtons\" is no longer read —"
+                + " register in the scenario instead:"
+                + " iosAlertHandler(alert: \"<title part>\", button: \"<label>\") (docs/commands.md)"]
     }
 
     private static func checkKeys(_ json: [String: Any], allowed: Set<String>,

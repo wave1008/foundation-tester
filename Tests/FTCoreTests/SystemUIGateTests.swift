@@ -85,6 +85,33 @@ final class SystemAlertRuleTests: XCTestCase {
                        ["トラッキング", "Tracking"], "分岐の前後の空白は落とす")
     }
 
+    /// **押すボタンは題名が一致したアラートの枠の中から選ぶ**。アラートが重なっているとき、
+    /// 木の全ボタンから選ぶと「題名は A に一致したのに B のボタンを押す」= alert を必須に
+    /// した意味が消える(2026-08-22 レビュー指摘)
+    func testTheButtonIsScopedToTheMatchedAlertFrame() {
+        func el(_ type: String, _ label: String, _ f: FTRect, ref: Int) -> ElementInfo {
+            ElementInfo(ref: ref, type: type, identifier: nil, label: label, value: nil,
+                        placeholder: nil, enabled: true, frame: f, depth: 0)
+        }
+        // 位置情報アラート(上)と ATT アラート(下)が重なり、どちらにも「許可」ボタンがある
+        let location = el("alert", "位置情報の利用を許可しますか?", FTRect(x: 0, y: 0, width: 300, height: 200), ref: 1)
+        let locAllow = el("button", "許可", FTRect(x: 50, y: 150, width: 200, height: 40), ref: 2)
+        let att = el("alert", "トラッキングを許可しますか?", FTRect(x: 0, y: 300, width: 300, height: 200), ref: 3)
+        let attAllow = el("button", "許可", FTRect(x: 50, y: 450, width: 200, height: 40), ref: 4)
+        let tree = [location, locAllow, att, attAllow]
+
+        // 位置情報を名指し → 位置情報の枠内の「許可」(ref 2)を押す。ATT の「許可」(ref 4)ではない
+        XCTAssertEqual(
+            SystemAlertDismissal.ruleToApply(
+                in: tree, rules: [SystemAlertRule(alert: "*位置情報*", button: "許可")])?.button.ref,
+            2, "題名が一致したアラートの枠の中のボタンを押すこと")
+        // ATT を名指し → ATT の枠内の「許可」(ref 4)
+        XCTAssertEqual(
+            SystemAlertDismissal.ruleToApply(
+                in: tree, rules: [SystemAlertRule(alert: "*トラッキング*", button: "許可")])?.button.ref,
+            4)
+    }
+
     /// **題名が読めないアラートには当てない**(どのアラートか確かめようがないのに
     /// 押すと、意図しないアラートを閉じ得る。alert が必須なのはこのため)
     func testARuleNeedsAReadableTitle() {

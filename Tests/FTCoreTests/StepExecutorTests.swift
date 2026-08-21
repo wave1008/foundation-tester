@@ -113,9 +113,14 @@ private final class FakeAppDriver: AppDriver {
     /// snapshotElements へ追記して表現するために使う(呼び出し時点までの列は変えず追記するだけなので、
     /// まだ訂正前の周回が読む値には影響しない)
     var onMutatingCall: (() -> Void)?
+    /// tap(ref:) が呼ばれた後に実行するフック。**アラートのボタンを押した結果として
+    /// アプリの状態が変わる**因果を模す(このフックが無いと fake は snapshot ごとに
+    /// フレームを進めるので、覆いの下でも値が勝手に更新され Fix B を検証できない)
+    var afterTap: (() -> Void)?
 
     func tap(ref: Int) async throws {
         log.entries.append("\(name).tap(ref:\(ref))")
+        afterTap?()
     }
 
     func tap(x: Double, y: Double) async throws {}
@@ -814,6 +819,60 @@ final class StepExecutorTests: XCTestCase {
         XCTAssertEqual(outcome.failureKind, .systemUICovered)
     }
 
+    /// **ロケータを取らないアクション(swipe 等)も覆いの間は撃たない**(2026-08-22 レビュー指摘)。
+    /// これらは executeAction の早期 return を通るので、門を先頭に置かないと素通りしていた
+    func testLocatorlessActionIsAlsoRefusedWhileCovered() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
+        let fallback = FakeAppDriver(name: "fallback", log: log, snapshotElements: [[]])
+        fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true, title: "権限")]
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback)
+        executor.systemAlertWatchlist.register(SystemAlertRule(alert: "*一致しない*", button: "許可"))
+        // locator を一切取らない swipe。覆われている間は失敗すること
+        let step = FlowStep(action: "swipe", direction: "up", timeout: 1)
+
+        let outcome = await executor.execute(step)
+
+        guard case .failed = outcome.status else {
+            XCTFail("覆われている間の swipe は失敗にすること: \(outcome.status)"); return
+        }
+        XCTAssertEqual(outcome.failureKind, .systemUICovered)
+        XCTAssertFalse(log.entries.contains { $0.contains("swipe") },
+                       "1回もスワイプしてはいけない: \(log.entries)")
+    }
+
+    /// **値検証が覆いの下で赤になったら、閉じて判定し直す**(2026-08-22 レビュー指摘)。
+    /// `tap(#request) → textIs(結果)` の自然な並びは、アラートを答えるまで値が更新されない ——
+    /// 成功時の偽陽性取り消しだけでなく、この「誤った不一致」も門が拾う
+    func testFailingValueAssertDismissesAndRejudges() async throws {
+        let log = CallLog()
+        // primary は**押されるまで none のまま**(覆いの下でいくら読んでも denied にならない)。
+        // fallback の press で初めて denied へ切り替わる = アラートを答えた因果
+        let primary = FakeAppDriver(name: "primary", log: log,
+            snapshotElements: [[textElement(id: "result", label: "photos=none")]])
+        let fallback = FakeAppDriver(name: "fallback", log: log,
+                                     snapshotElements: [[alertTitled("写真ライブラリ"),
+                                                         labeled(ref: 9, label: "許可しない")]])
+        fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true, title: "写真ライブラリ"),
+                                      SystemAlertProbeResponse(present: false)]
+        fallback.afterTap = { [weak primary] in
+            primary?.snapshotElements = [[ElementInfo(
+                ref: 1, type: "staticText", identifier: "result", label: "photos=denied",
+                value: nil, placeholder: nil, enabled: true,
+                frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 0)]]
+        }
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback)
+        executor.systemAlertWatchlist.register(SystemAlertRule(alert: "*写真ライブラリ*", button: "許可しない"))
+        let step = FlowStep(assert: "textEquals", locator: FlowLocator(id: "result"),
+                            expected: "photos=denied", timeout: 2)
+
+        guard case .passed = await executor.execute(step).status else {
+            XCTFail("閉じて読み直したら通ること"); return
+        }
+        XCTAssertTrue(log.entries.contains { $0.hasPrefix("fallback.tap") },
+                      "アラートを閉じること: \(log.entries)")
+    }
+
     /// **アラート自身の検証は取り消さない**(`exist("許可しない")` が書けなくなる)
     func testAssertOnTheAlertItselfStaysGreen() async throws {
         let log = CallLog()
@@ -830,19 +889,25 @@ final class StepExecutorTests: XCTestCase {
         }
     }
 
-    /// **失敗したときは聞かない**(既にシナリオは止まるので往復を足す価値がない)
-    func testAFailingAssertDoesNotPayForTheProbe() async throws {
+    /// **覆われていない普通の失敗はそのまま失敗**。門は「覆いのせいで赤くなったのか」を
+    /// 1往復で確かめるが、覆われていなければ元の失敗を返す(誤って緑にしない)。
+    /// 登録が無ければその1往復も払わない(testNoProbeWithoutRegisteredHandlers)
+    func testAGenuineUncoveredFailureStaysFailed() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
         let fallback = FakeAppDriver(name: "fallback", log: log, snapshotElements: [[]])
+        // 覆われていない(presentを返さない)
         let executor = StepExecutor(driver: primary, fallbackDriver: fallback)
         executor.systemAlertWatchlist.register(SystemAlertRule(alert: "*権限*", button: "許可"))
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "missing"), timeout: 1)
 
-        _ = await executor.execute(step)
+        let outcome = await executor.execute(step)
 
-        XCTAssertFalse(log.entries.contains { $0.hasSuffix(".systemAlert") },
-                       "失敗した検証で往復を足してはいけない: \(log.entries)")
+        guard case .failed = outcome.status else {
+            XCTFail("覆われていない要素なしは失敗のままにすること: \(outcome.status)"); return
+        }
+        XCTAssertEqual(outcome.failureKind, .notFound,
+                       "覆いのせいにせず、本来の not-found を返すこと")
     }
 
     /// `許可` のような汎用ラベルを複数のアラートが使う場合は**枚数ぶん登録する**
