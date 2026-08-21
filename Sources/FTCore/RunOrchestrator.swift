@@ -176,7 +176,7 @@ public struct RunSummary: Sendable {
     public let measurementInvalid: Bool
     public let measurementInvalidReasons: [String]
     /// **FM の実呼び出しが全滅したまま走ったシナリオ数**(呼び出しが1件でもあり、その全部が失敗)。
-    /// FM が死んでいると occlusion-guard(`exist` の既定 requireVisible)・自己修復・`screenIs` が
+    /// FM が死んでいると occlusion-guard(`exist` の既定 requireVisible)・自己修復・`screenLooksLike` が
     /// **黙って素通り**する = その run の緑は「守りが効いた緑」ではない。
     /// **合否は変えない**(FM と無関係な失敗を隠す方が危険)。読み手に劣化を伝えるためだけの数。
     /// 各シナリオの警告は子プロセスの stderr にも出るが、**run のまとめには出ていなかった**ので、

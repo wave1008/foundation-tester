@@ -116,7 +116,7 @@ final class StepDescriptionTests: XCTestCase {
     }
 
     func testScreenIs() {
-        XCTAssertEqual(StepDescription.describe(command: "screenIs \"ホーム画面が表示されている\""),
+        XCTAssertEqual(StepDescription.describe(command: "screenLooksLike \"ホーム画面が表示されている\""),
                        "画面が\"ホーム画面が表示されている\"であること")
     }
 

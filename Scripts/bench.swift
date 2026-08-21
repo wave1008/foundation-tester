@@ -502,7 +502,7 @@ md += "- メモリ使用: 平均 \(gigabytesText(hostSummary.memUsedMeanBytes))"
 
 if hostSummary.aneActiveSamples > 0 && aggregator.healedCount == 0 {
     md += "\n⚠️ 注意: 実行中に ANE 活動(> 1%)が \(hostSummary.aneActiveSamples) サンプル検知されましたが、"
-        + "heal イベントは 0 件でした。healLocator 以外の用途(screenIs の画面検証や失敗時の"
+        + "heal イベントは 0 件でした。healLocator 以外の用途(screenLooksLike の画面検証や失敗時の"
         + "トリアージ等)で Foundation Models が稼働した可能性があります(FM介入検知)。\n"
 }
 

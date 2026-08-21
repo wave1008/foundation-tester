@@ -51,7 +51,7 @@ ftester run --host mac2 …               ~/ftester-runner/               ← �
 | Homebrew | **その macOS を知っている版であること**(古い brew は `unknown or unsupported macOS version` で**起動自体が失敗**し、`xcodegen` を入れられない) | `brew --version` が動くこと |
 | ネットワーク | git が GitHub へ直接出られること(社内プロキシ設定が残っていると clone で数十秒待たされて失敗する) | `git config --global --get-regexp '^https?\.'` が空 |
 | Android | Android SDK と AVD(Android を回すときだけ) | `ftester doctor` |
-| FM | システム言語が**英語** + Apple Intelligence 有効(`screenIs` や自己修復を使うときだけ) | `ftester doctor --fm-only` |
+| FM | システム言語が**英語** + Apple Intelligence 有効(`screenLooksLike` や自己修復を使うときだけ) | `ftester doctor --fm-only` |
 
 **画面ロックはかけたままでよい**(セッションは消えない)。消えるのは再起動と電源断だけで、
 そのときは人が1回ログインし直す必要がある(画面共有でよい)。
@@ -560,7 +560,7 @@ FileVault 有効のランナーは**再起動のたびに誰かが解錠+ログ�
 | アプリのインストールに失敗する | `appPath` がランナー機で解決できない | ステップ4（相対パスは自分の WORK_DIR = `<base>/users/<issuerId>/work` 基準。バイナリは転送されない） |
 | `.apks` のインストールで `needs bundletool` | ランナー機に bundletool が無い | ランナー機で `brew install bundletool`（`.apks` を使うときだけ要る。単一 `.apk` なら不要） |
 | `Couldn't fetch updates from remote repositories` / `Recv failure: Operation timed out` | ランナー機の回線が細く SPM の依存取得が落ちた | 再実行する（取得済みは残るので数回で通る）。事前に `swift package resolve` を通しておくと確実 |
-| `Foundation Models unavailable` の警告 | ランナー機で Apple Intelligence が無効 | heal / screenIs / トリアージを使わないなら無視してよい（実行は続く）。使うならシステム言語を英語にして有効化 |
+| `Foundation Models unavailable` の警告 | ランナー機で Apple Intelligence が無効 | heal / screenLooksLike / トリアージを使わないなら無視してよい（実行は続く）。使うならシステム言語を英語にして有効化 |
 | `--ports is not supported with --host` 等 | 併用できない指定 | ステップ6 の一覧 |
 | 手元で走ってほしいのにリモートへ飛ぶ / その逆 | 実行プロファイルが指す**マシンプロファイルの `host`** が効いている | ステップ4。今回だけ変えるなら `--host local` / `--host <名前>`(明示が勝つ) |
 | `--host … overrides the machine profile's host …` | `--host` とマシン側の `host` が違う機械を指している | 警告どおり `--host` が使われる。意図と違えばどちらかを直す |

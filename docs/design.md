@@ -31,7 +31,7 @@ iOS / Android 両対応のアプリ E2E テストツール。iOS を先行実装
 実際に1回推論する `FMDoctor.checkLive()` を使う(`ftester doctor` / MCP の `ft_doctor` が採用)。
 同期の `FMDoctor.check()` はホットパス用で**可否を保証しない**。
 
-**FM 失敗は握りつぶされる**: occlusion-guard・heal・screenIs はいずれも FM 失敗時に nil を返して
+**FM 失敗は握りつぶされる**: occlusion-guard・heal・screenLooksLike はいずれも FM 失敗時に nil を返して
 素通りする契約なので、FM が全滅してもテストは緑のまま**機能だけ無効**になる。
 `FMHealth`(Sources/FTCore/FMHealth.swift)が呼び出しの回数・レイテンシ・成否を計上し、
 実行後に stderr へ警告する。結果 JSON の `fm` にも載る(performance-tuning.md §4.2)。
@@ -904,7 +904,7 @@ FM がアプリを自律探索してシナリオを生成する explore モー�
 - **マルチモーダルAPI**(macOS 27+): `Attachment(cgImage)` が `PromptRepresentable` なので
   Promptビルダーに画像を直接混ぜられる。`session.respond(generating:options:) { "説明文"; Attachment(cgImage) }`。
   **Attachment だけが macOS 27+ で、FM 本体(テキスト・`@Generable`)は macOS 26+**。Package の最低は
-  macOS 26 に置き、視覚系(occlusion-guard / screenIs)を実行時に落とす:
+  macOS 26 に置き、視覚系(occlusion-guard / screenLooksLike)を実行時に落とす:
   判定の単一点は `FTCore/FMVisionSupport.swift`(StepExecutor が呼ぶ前に skip/素通りへ)で、
   実 API 側は `FTAgent` の `#available(macOS 27, *)` が保険。triage はテキストのみで継続する
 - **screenMatches(視覚検証)は実用レベル**: 「果物の商品名と価格が並ぶリスト」の一致/不一致を
@@ -1752,7 +1752,7 @@ select(.id("txt_result")).textIs("dialog=none")   // 検証はセレクタを取
 - 経路: `StepExecutor.resolvedElementThisStep`(`observedCheckedThisStep` と**同じ受け渡し形**)
   → `StepOutcome.resolvedElement` → `FTDriveCore.perform` が返す `PerformResult.element` →
   `FTElement.matched`。**成功時しか立てない** — 失敗・スキップ・dry-run・
-  対象が1つに定まらない assert(`notExist` / `countIs` / `screenIs`)では nil。
+  対象が1つに定まらない assert(`notExist` / `countIs` / `screenLooksLike`)では nil。
   アクション(tap 等)は解決時点で立ててしまうので `execute` が `isSuccess` で落とす
   (「掴めなかったのに値が読める」を作らないための契約)
 - **再取得しない**(値の出所は最初の `exist` に固定)。最新の値が要るなら `exist` を書き直す
@@ -1762,7 +1762,7 @@ select(.id("txt_result")).textIs("dialog=none")   // 検証はセレクタを取
 - **チェーンは網羅する**(2026-07-30): セレクタを取り「その要素」を検証する自由関数は
   **すべて同名で `FTElement` にも生やす**。一部だけだと「どれがチェーンできるか」に規則が無く、
   書いてみてコンパイルエラーで気付くことになる。例外は要素を1つに定めない
-  `notExist` / `countIs` / `screenIs` のみ。**検証コマンドを足すときは両方に足す** —
+  `notExist` / `countIs` / `screenLooksLike` のみ。**検証コマンドを足すときは両方に足す** —
   取りこぼしは `vscode-ftester/test/ftElementChainSync.test.mjs` が検出し、
   繋ぎ先の取り違え(`textContains` が `textStartsWith` を呼ぶ等)は
   `Tests/FTDSLTests/FTElementChainTests.swift` が実行して検出する(**形と挙動で担当が違う**)
@@ -1820,7 +1820,7 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
 ```
 
 - **対象は31コマンド**(text/value の全対称26 + `enabledIsTrue/False` + `checkIsON/OFF` + `idIs`)。
-  **`exist` / `notExist` / `countIs` / `screenIs` はセレクタを取り続ける** —— 要素を1つに定めない
+  **`exist` / `notExist` / `countIs` / `screenLooksLike` はセレクタを取り続ける** —— 要素を1つに定めない
   (`exist` は掴む側なので当然セレクタが要る)
 - **判定の実体は `FTElement` のメソッド1か所**。自由関数は `lastElement.<同名>` へ委譲するだけで、
   ステップ記録も往復回数も一致する(`HeldValueAssertTests.testTheThreeFormsAreEquivalent` が固定)
@@ -3246,10 +3246,10 @@ machines/ が1つのときだけ自動採用)。
 ```
 
 `fm`(既定 true)は FM(Foundation Models)機能の親スイッチ。false にすると自己修復(heal)・
-偽陽性検証(exist 等の FM 視覚照合)・`screenIs`・失敗時トリアージを含む FM 呼び出しを一切行わない
-(子ランナーへは `--no-fm` 等で伝搬し、delegate 自体を作らない)。個別トグルは `heal` / `screenIs`
+偽陽性検証(exist 等の FM 視覚照合)・`screenLooksLike`・失敗時トリアージを含む FM 呼び出しを一切行わない
+(子ランナーへは `--no-fm` 等で伝搬し、delegate 自体を作らない)。個別トグルは `heal` / `screenLooksLike`
 (既定 true)と `falsePositiveCheck`(偽陽性検証。**既定 false** — FM コストと誤反転リスクのため
-オプトイン)。親が false なら個別指定に関わらず全て無効。screenIs を無効にした run では該当ステップは
+オプトイン)。親が false なら個別指定に関わらず全て無効。screenLooksLike を無効にした run では該当ステップは
 skip(素通り)になり、FM 利用不可時と同じ扱い。UI はデバイスタブの実行プロファイル設定
 「FM(Foundation Model)」セクション(親チェックボックス ON のときだけ個別トグルを表示)。
 

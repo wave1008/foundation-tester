@@ -281,19 +281,19 @@ public struct RunDeviceRef: Codable, Sendable, Equatable {
 /// FM 機能の実行時トグル(実行プロファイル由来の実効値)。enabled=false のとき他フラグも
 /// resolve 側で false に落とす(利用側は個別フラグだけ見ればよい)
 public struct FMConfig: Sendable, Equatable {
-    /// FM を使用するか(false = heal/偽陽性検証/screenIs/triage を一切呼ばない)
+    /// FM を使用するか(false = heal/偽陽性検証/screenLooksLike/triage を一切呼ばない)
     public var enabled: Bool
     public var heal: Bool
     /// 偽陽性検証(occlusion guard)。プロファイル既定 false(FM コストと誤反転リスクのためオプトイン)
     public var falsePositiveCheck: Bool
-    public var screenIs: Bool
+    public var screenLooksLike: Bool
 
     public init(enabled: Bool = true, heal: Bool = false,
-                falsePositiveCheck: Bool = false, screenIs: Bool = true) {
+                falsePositiveCheck: Bool = false, screenLooksLike: Bool = true) {
         self.enabled = enabled
         self.heal = heal
         self.falsePositiveCheck = falsePositiveCheck
-        self.screenIs = screenIs
+        self.screenLooksLike = screenLooksLike
     }
 }
 
@@ -326,13 +326,17 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     public var app: String?
     /// 実行に使うデバイス(name 参照。iOS/Android 混在可 = 両OS同時実行)
     public var devices: [RunDeviceRef]?
-    /// FM 機能を使用するか(既定 true)。false なら heal/偽陽性検証/screenIs/triage を一切呼ばない
+    /// FM 機能を使用するか(既定 true)。false なら heal/偽陽性検証/screenLooksLike/triage を一切呼ばない
     public var fm: Bool?
     /// FM によるロケータ自己修復を許可するか(既定 true)
     public var heal: Bool?
     /// 偽陽性検証(occlusion guard)を有効にするか(既定 false)
     public var falsePositiveCheck: Bool?
-    /// screenIs(screenMatches)を有効にするか(既定 true。無効時は該当ステップを skip)
+    /// screenLooksLike(screenMatches)を有効にするか(既定 true。無効時は該当ステップを skip)
+    public var screenLooksLike: Bool?
+    /// 旧名 `screenIs` の受け口(コマンドの改名前に書かれた受け手のプロファイルが動き続けるため)。
+    /// **読むのは screenLooksLike が未指定のときだけ**(effectiveScreenLooksLike)。書き出す側は
+    /// 新キーだけを書く。この欄を消すと既存のプロファイルが黙って既定値に戻る
     public var screenIs: Bool?
     /// レポート出力先(プロジェクトルート相対 or 絶対。既定 "reports")
     public var reportDir: String?
@@ -419,7 +423,8 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     public var remoteControl: RemoteControlSection?
 
     public init(app: String? = nil, devices: [RunDeviceRef]? = nil, fm: Bool? = nil,
-                heal: Bool? = nil, falsePositiveCheck: Bool? = nil, screenIs: Bool? = nil,
+                heal: Bool? = nil, falsePositiveCheck: Bool? = nil, screenLooksLike: Bool? = nil,
+                screenIs: Bool? = nil,
                 reportDir: String? = nil, defaultTimeout: Double? = nil, scenarioTimeout: Int? = nil,
                 machine: String? = nil, iosInappEngine: Bool? = nil,
                 wipeDataOnBloat: Bool? = nil, updateWebView: Bool? = nil,
@@ -435,6 +440,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         self.fm = fm
         self.heal = heal
         self.falsePositiveCheck = falsePositiveCheck
+        self.screenLooksLike = screenLooksLike
         self.screenIs = screenIs
         self.reportDir = reportDir
         self.defaultTimeout = defaultTimeout
@@ -457,8 +463,12 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         self.remoteControl = remoteControl
     }
 
+    /// screenLooksLike の実効値。新キーが優先、無ければ旧キー `screenIs`、どちらも無ければ既定 true
+    public var effectiveScreenLooksLike: Bool { screenLooksLike ?? screenIs ?? true }
+
     static let knownKeys: Set<String> = [
-        "app", "devices", "fm", "heal", "falsePositiveCheck", "screenIs",
+        "app", "devices", "fm", "heal", "falsePositiveCheck", "screenLooksLike",
+        "screenIs",  // 旧名。effectiveScreenLooksLike が拾う(未知キー警告を出さないため残す)
         "reportDir", "defaultTimeout", "scenarioTimeout",
         "machine", "iosInappEngine", "wipeDataOnBloat", "updateWebView", "wipeDataThresholdGB",
         "recoverCpuFallbackToGpu", "locale",
@@ -533,7 +543,7 @@ public struct ResolvedProfile: Sendable {
     public let apps: [String: ResolvedAppTarget]
     /// 実行に使うデバイス。**limitingDevices が本数に合わせて絞る**ので var
     public var devices: [ResolvedDevice]
-    /// FM 機能の実効設定(RunProfileDocument の fm/heal/falsePositiveCheck/screenIs を合成)
+    /// FM 機能の実効設定(RunProfileDocument の fm/heal/falsePositiveCheck/screenLooksLike を合成)
     public let fm: FMConfig
     /// FM によるロケータ自己修復を許可するか(fm.heal のエイリアス。既存呼び出し互換のため維持)
     public var heal: Bool { fm.heal }
@@ -1159,7 +1169,7 @@ public enum ProfileResolver {
             enabled: fmEnabled,
             heal: fmEnabled && (runDoc.heal ?? true),
             falsePositiveCheck: fmEnabled && (runDoc.falsePositiveCheck ?? false),
-            screenIs: fmEnabled && (runDoc.screenIs ?? true))
+            screenLooksLike: fmEnabled && runDoc.effectiveScreenLooksLike)
 
         return ResolvedProfile(
             project: project,

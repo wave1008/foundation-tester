@@ -38,7 +38,7 @@ UI は VSCode 拡張(`vscode-ftester/`)に一本化している(セットアッ�
 | Android(任意) | Android SDK(adb)、エミュレータまたは実機 |
 
 > macOS 26 では FM の**視覚検証だけ**が使えない(画像入力 API が macOS 27+)。
-> occlusion-guard(偽陽性チェック)と `screenIs` は自動で無効になり、他は制限なく動く。
+> occlusion-guard(偽陽性チェック)と `screenLooksLike` は自動で無効になり、他は制限なく動く。
 
 ## インストール(使う: 自分のアプリのテストを書く)
 
@@ -184,7 +184,7 @@ TestProjects/SampleApp/
 
 ```jsonc
 // profiles/runs/all.json
-// FM 機能のトグル: fm(親スイッチ)/ heal / screenIs は既定 true、
+// FM 機能のトグル: fm(親スイッチ)/ heal / screenLooksLike は既定 true、
 // falsePositiveCheck(偽陽性検証)だけ既定 false(詳細は docs/design.md §11.2)
 { "app": "sampleapp",
   "devices": [ { "name": "simulator1" }, { "name": "simulator2" }, { "name": "emulator1" } ],
@@ -291,7 +291,7 @@ class ログインテスト {
                     }
                 }.expectation {
                     exist("#welcome_text||ようこそ")
-                    screenIs("ログイン後のホーム画面が表示されている")  // FM マルチモーダル検証
+                    screenLooksLike("ログイン後のホーム画面が表示されている")  // FM マルチモーダル検証
                 }
             }
             scene(2, "誤ったパスワードはエラー表示") {
@@ -375,7 +375,7 @@ exist(.type(.button).text("保存", .contains))    // .button&&textContains=保�
 
 **コマンド**の一覧・引数・挙動は **docs/commands.md** を参照(操作 `tap` `type` `swipe` `flick` 系 `pressEnter` /
 スクロール `scrollTo`・`scrollDown` 系・`withScrollDown { }` / 検証 `exist` `notExist` `countIs` `appIs`・
-`textIs`/`valueIs` の全対称(否定 `…Not`・`…IsEmpty`・`…MatchesDateFormat`。**セレクタは取らず直前に掴んだ要素を見る**)・`screenIs`(FM 視覚検証)・
+`textIs`/`valueIs` の全対称(否定 `…Not`・`…IsEmpty`・`…MatchesDateFormat`。**セレクタは取らず直前に掴んだ要素を見る**)・`screenLooksLike`(FM 視覚検証)・
 `verify(message) { }`(アサーション集約)/ 素の値の検証 `thisIs` 系 / アプリ制御・待機
 (`waitForDisplay`/`waitForClose` 含む)・分岐・反復 / `procedure` `group` `irregularHandler` 等)。
 特に効く規約だけ抜粋:
@@ -469,7 +469,7 @@ Android: `ftester-androidstream`)経由でほぼリアルタイムに更新す�
 | ツール | 内容 |
 |---|---|
 | `ft_status` | 接続確認。**宛先**(どのシミュレータ/エミュレータか。Android は serial と AVD 名)と、**session のアプリが今も前面か**まで返す(session はブリッジが掴んでいるアプリで、ホームへ戻っても変わらない)。Android で `serial` を省略して複数台つながっているときは、失敗せず**全台を一覧**で返す(読み取り専用なので。操作系は従来どおり曖昧なら断る) |
-| `ft_doctor` | FM 可用性。使えないときは**止まる機能(self-healing / triage / screenIs / occlusion-guard)と代わりの書き方**まで返す |
+| `ft_doctor` | FM 可用性。使えないときは**止まる機能(self-healing / triage / screenLooksLike / occlusion-guard)と代わりの書き方**まで返す |
 | `ft_launch` / `ft_terminate` | アプリ起動・終了 |
 | `ft_install` | アプリをパッケージファイルからインストールする(iOS: `.app` バンドル / Android: `.apk`) |
 | `ft_snapshot` | 画面要素一覧(set-of-mark 圧縮形式)。**`waitFor` を渡すと出るまでホスト側で待つ**(セレクタ記法は DSL と同じ。既定 5 秒)。**対象アプリが前面に居なければ先頭で警告する**(XCUITest の木はセッションのアプリに閉じているので、別アプリが前面でも同じ木を返してしまう。**iOS 実機では OS が前面状態を正しく申告しないため警告は出ない**)。**スクロール容器の外に取り残された要素(ghost)は先頭と各行で名指しする**(`⚠️scroll-leftover`) —— 一覧の見た目は普通の行と同じだが、その座標には別のものが描かれていることがある。**スクロール容器の行には `scroll` を付ける**(`scrollFrame:` に指定できる領域。**2つ以上あるときだけ**先頭でも名指しする)—— ただし**印が無い = スクロールしない、ではない**(Compose / Flutter の in-app は自前描画で申告できない)。撮った `#id` は `<プロジェクト>/.ftester/selector-inventory.json` に貯まり、`ft_dry_run` の綴り誤り照合に使われる。**同じ id の大群(地図の POI など。非操作の葉が20件以上)は1行に畳む** —— 見出しに続けて「ラベル[ref]」の索引が出るので ref では撃てる。frame まで要るときは `expandBulk: true`。**上限で要素が落ちたときは先頭で言う**(何件・何が落ちたか。内訳は iOS のブリッジが申告する) —— 落ちた要素は木から消えているので `waitFor` も `ft_scroll_to` も一生見つけられない。**ラベルも id も無い clickable には `#容器 >> .clickable[n]` を添える**(id を持つ祖先があるときだけ。無ければ従来どおり「ref か座標しかない」)。**同じラベルが複数に当たるときは「代わりに書けるセレクタ」を一致ごとに出す**(`#id` > 一意ラベル > `#容器 >> .型[n]`。書けないものは「—」で明示する = 無言のケースを作らない。**勧める前にサーバ自身が引いて当人が返ることを確かめている**)。**打ち切ったときは枠を食っている id 群まで名指しする**(`#VKPointFeature が 119 件中 87 件` のように)—— 読み手にできる手は「それを描いている物を畳む」なので、原因を当てさせない。**`interactiveOnly: true` でレイアウト専用の行を隠す**(ラベルも値も持たず、操作もスクロールもしない要素。密な画面では半分以上が消える)—— ref も frame も変わらず、隠れた行も ref では撃てる |

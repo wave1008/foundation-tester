@@ -1,6 +1,6 @@
 // 「FM の実呼び出しが全滅したまま走った」の判定を固定する(2026-08-20)。
 //
-// FM が死んでいると occlusion-guard(`exist` の既定 requireVisible)・自己修復・`screenIs` は
+// FM が死んでいると occlusion-guard(`exist` の既定 requireVisible)・自己修復・`screenLooksLike` は
 // **黙って素通り**する契約なので、**結果には現れない**。run のまとめに出さないと、赤を見るたびに
 // 「自分の変更か FM か」を人が HEAD 対照で切り分ける羽目になる(2026-08-20 に何度も払った)。
 //

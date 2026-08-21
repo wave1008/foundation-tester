@@ -16,7 +16,7 @@
 - CI は self-hosted Jenkins / EC2 Mac([ci.md](ci.md))。**ジョブ粒度のリモート実行は
   CI が既に担っている**ため、本構想の固有価値は CI を経由しない対話的用途に限られる:
   1. **Mac フリートへのシナリオ並列分散**(夜間回帰のスループット。FM はホスト全体で
-     直列化 ≈1回/秒 のため、screenIs 多用スイートは台数分の実質短縮になる)
+     直列化 ≈1回/秒 のため、screenLooksLike 多用スイートは台数分の実質短縮になる)
   2. **デバイス/実機ラボの共有**(iOS 実機は元々 LAN/iproxy の2択で相性は悪くない)
 - 着手判断の鍵は**上記需要が実在するか**。Phase 0 で確かめてから実装に進む
 
@@ -388,7 +388,7 @@ SSH 側のプロセスからでもユーザーの launchd ドメインのサー�
   FM 可否 をホストヘッダに表示(compatCheck / protocolVersion の照合をホスト単位へ拡張)。
   §7 の fail fast の理由を GUI で見せる場所
 - 「このホストを更新」は既存方針どおり**設定タブ1箇所**(monitorUpdateController の拡張)
-- FM 可否(`doctor --fm-only` 結果)はホスト別に常設表示(screenIs を含むスイートの
+- FM 可否(`doctor --fm-only` 結果)はホスト別に常設表示(screenLooksLike を含むスイートの
   振り分け判断に直結)
 
 ### ストリーミングの帯域制御と stale の意味論変更(最重要)
@@ -710,7 +710,7 @@ machines/apps/runs はプロジェクト資産で、ディスパッチのたび�
 - ssh 常駐の respawn は**ホスト単位のバックオフ**を付ける(ネットワーク断で
   respawn 連打にしない。レビュー指摘)。プロセスタブのリモート分は状態表示のみで
   kill ボタンを出さない(§11)
-- 実行の集約通知に **FM 不可ホストでの screenIs 素通り**を明記する(run 末尾の FM 警告の
+- 実行の集約通知に **FM 不可ホストでの screenLooksLike 素通り**を明記する(run 末尾の FM 警告の
   中継だけでは複数ホストの出力に埋もれる。レビュー指摘)
 
 ### リモートのデバイスの状態と画面(2026-08-17 実装)
@@ -809,7 +809,7 @@ M1Ultra / M1Max の run が machine 名付きで並ぶ)。「マージの実装�
 | ネットワーク | リモートログイン ON・発行側からの鍵認証(BatchMode)・**画面共有 ON**(モード A の再起動後の解錠に使う。モード B では任意だが復旧用に推奨) | 必須 | 到達性プローブ(実装済み)+ ポート応答 |
 | ツール本体 | **専用ベースディレクトリ配下**(`<base>/tool` = クローン・`<base>/work` = WORK_DIR)に導入済みで `swift build` 済み。CLI のみ(拡張・MCP・モニター不要 = CI ランナーと同型)。**マシン自身のローカルインストールとは別物**(§12) | 必須 | `test -x <base>/tool/.build/debug/ftester` |
 | Android | Android SDK + AVD | レーン使用時 | 既存 preflight 流用 |
-| FM | システム言語**英語** + Apple Intelligence 有効化 | screenIs/heal 使用時 | `doctor --fm-only`(実呼び出し) |
+| FM | システム言語**英語** + Apple Intelligence 有効化 | screenLooksLike/heal 使用時 | `doctor --fm-only`(実呼び出し) |
 
 **旧版からの変更(2026-07-31 セキュリティレビュー)**: 「自動ログイン+ロック無効」を
 無条件必須から外し、**モード A/B の選択+Aqua セッション在否の実測**に置き換えた(§5)。

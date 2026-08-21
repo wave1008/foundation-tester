@@ -63,7 +63,7 @@ export function buildRunProfileTemplate(
   template.fm = true;
   template.heal = true;
   template.falsePositiveCheck = false;
-  template.screenIs = true;
+  template.screenLooksLike = true;
   template.iosInappEngine = true;
   template.updateWebView = true;   // 既定 ON(WebView の版差でシナリオが端末ごとに落ちるため)
   template.wipeDataOnBloat = true;
@@ -105,7 +105,7 @@ export function validateNewAppProfileName(name: string, existing: readonly strin
 
 /** 実行プロファイル設定フォームの21フィールド(全て文字列/配列/真偽値化済み。空文字は未設定)。
  * recordFailuresOnly/recordBitrateKbps/recordFullResolution は「録画セクション」、heal/
- * falsePositiveCheck/screenIs は「FM」セクション、iosFastInput は「iOS」セクションのサブオプション
+ * falsePositiveCheck/screenLooksLike は「FM」セクション、iosFastInput は「iOS」セクションのサブオプション
  * (親チェックボックスの状態に関わらず独立して保持・保存する。表示上の非表示切替は
  * runProfilesTab.js の責務)。containerInference は独立トグル(FM とは無関係の幾何ヒューリスティック)。 */
 /** 実行プロファイルのデバイス参照。**一意なのは (host, name)** なので host も持つ
@@ -122,7 +122,7 @@ export interface RunProfileFormFields {
   readonly fm: boolean;
   readonly heal: boolean;
   readonly falsePositiveCheck: boolean;
-  readonly screenIs: boolean;
+  readonly screenLooksLike: boolean;
   readonly containerInference: boolean;
   readonly iosInappEngine: boolean;
   readonly iosFastInput: boolean;
@@ -152,7 +152,7 @@ export interface RunProfileFormFields {
  * defaultTimeout/wipeDataThresholdGB/recordBitrateKbps は number ならそのまま String() 化する
  * (0.5 のようなスキーマ違反値もそのまま表示し、整数化はしない)。record/recordFailuresOnly/
  * recordFullResolution/iosFastInput/enableAnimations は既定 false、recordBitrateKbps は既定 ""(未設定=CLI側既定1500)。
- * fm/heal/screenIs/containerInference/homeOnStart はスキーマ既定と合わせ既定 true、falsePositiveCheck は既定 false。
+ * fm/heal/screenLooksLike/containerInference/homeOnStart はスキーマ既定と合わせ既定 true、falsePositiveCheck は既定 false。
  */
 export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFields | null {
   // 配列も typeof "object" だが、トップレベルとしては不正なので弾く(他の同様関数と同じ判定)。
@@ -167,7 +167,11 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
   const fm = typeof source.fm === "boolean" ? source.fm : true;
   const heal = typeof source.heal === "boolean" ? source.heal : true;
   const falsePositiveCheck = typeof source.falsePositiveCheck === "boolean" ? source.falsePositiveCheck : false;
-  const screenIs = typeof source.screenIs === "boolean" ? source.screenIs : true;
+  // screenIs は改名前の旧キー。新キーが無いときだけ読む(Sources/FTCore/RunProfile.swift の
+  // effectiveScreenLooksLike と同じ優先順。保存時は updateRunProfileInObject が旧キーを落とす)
+  const screenLooksLike = typeof source.screenLooksLike === "boolean"
+    ? source.screenLooksLike
+    : typeof source.screenIs === "boolean" ? source.screenIs : true;
   const containerInference = typeof source.containerInference === "boolean" ? source.containerInference : true;
   const iosInappEngine = typeof source.iosInappEngine === "boolean" ? source.iosInappEngine : true;
   const iosFastInput = typeof source.iosFastInput === "boolean" ? source.iosFastInput : false;
@@ -213,7 +217,7 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
     fm,
     heal,
     falsePositiveCheck,
-    screenIs,
+    screenLooksLike,
     containerInference,
     iosInappEngine,
     iosFastInput,
@@ -273,7 +277,8 @@ export function updateRunProfileInObject(
   result.fm = fields.fm;
   result.heal = fields.heal;
   result.falsePositiveCheck = fields.falsePositiveCheck;
-  result.screenIs = fields.screenIs;
+  result.screenLooksLike = fields.screenLooksLike;
+  delete result.screenIs;  // 旧キーを残すと同じ設定が2つのキーに現れ、片方だけ直す事故になる
   result.containerInference = fields.containerInference;
   result.iosInappEngine = fields.iosInappEngine;
   result.updateWebView = fields.updateWebView;

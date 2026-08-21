@@ -253,7 +253,7 @@ public enum ProjectScaffold {
         - Apple Intelligence: `ftester doctor --fm-only`(exit 0 で可。**exit 1 でも中断せず続行** —
           FM は heal・視覚検証・シナリオ生成にだけ必要な任意機能。使いたくなったら System 設定で
           有効化して本コマンドが ✅ になればそのまま使える。完了報告に要有効化の旨を残す)
-          なお **macOS 26 では FM の視覚検証(occlusion-guard / screenIs)だけが使えない**
+          なお **macOS 26 では FM の視覚検証(occlusion-guard / screenLooksLike)だけが使えない**
           (画像入力は macOS 27+)。他の機能は制限なく動く
 
         セットアップ値は 🧑 に冒頭の1回でまとめて質問する(以降のステップで再質問しない):

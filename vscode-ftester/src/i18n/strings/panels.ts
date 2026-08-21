@@ -81,7 +81,7 @@ export const panelsStrings = {
   "panels.runProfile.fmLabel": { ja: "FMの機能を使用する", en: "Use FM features" },
   "panels.runProfile.healLabel": { ja: "自己修復(heal)を有効にする", en: "Enable self-heal" },
   "panels.runProfile.falsePositiveCheckLabel": { ja: "偽陽性検証を有効にする", en: "Enable false-positive verification" },
-  "panels.runProfile.screenIsLabel": { ja: "screenIsを有効にする", en: "Enable screenIs" },
+  "panels.runProfile.screenLooksLikeLabel": { ja: "screenLooksLikeを有効にする", en: "Enable screenLooksLike" },
   "panels.runProfile.iosSectionTitle": { ja: "iOS", en: "iOS" },
   "panels.runProfile.inappEngineLabel": {
     ja: "高速なinappエンジンを使用する",

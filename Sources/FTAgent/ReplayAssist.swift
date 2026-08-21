@@ -152,11 +152,11 @@ public final class FMReplayDelegate: ReplayDelegate {
                 "Expected screen state: \(expected)\nDecide whether the screenshot below matches this state."
                 Attachment(cgImage)
             }.content
-            FMHealth.record(kind: "screenIs", ms: OcclusionVerifier.elapsedMs(screenStartedAt), ok: true)
+            FMHealth.record(kind: "screenLooksLike", ms: OcclusionVerifier.elapsedMs(screenStartedAt), ok: true)
             return (verdict.pass, String(verdict.reason.prefix(200)))
         } catch {
-            FMHealth.record(kind: "screenIs", ms: OcclusionVerifier.elapsedMs(screenStartedAt),
-                            ok: false, error: "screenIs: \(FMHealth.describe(error))")
+            FMHealth.record(kind: "screenLooksLike", ms: OcclusionVerifier.elapsedMs(screenStartedAt),
+                            ok: false, error: "screenLooksLike: \(FMHealth.describe(error))")
             return nil
         }
     }
@@ -207,7 +207,7 @@ public final class FMReplayDelegate: ReplayDelegate {
         // マルチモーダル失敗時のフォールバックとしてテキストのみでも再試行する
         // (Attachment は macOS 27+。26 では常にテキストのみの経路を通る)
         //
-        // **試行ごとに FMHealth へ記録する**(heal / screenIs と同じ規約)。記録は失敗率の分母と
+        // **試行ごとに FMHealth へ記録する**(heal / screenLooksLike と同じ規約)。記録は失敗率の分母と
         // FMBreaker の両方を養う(FMHealth.record → FMBreaker.recordSuccess/Failure)ので、
         // 記録を欠くと ①結果 JSON の fm に triage が出ず「呼ばれていない」と誤読され
         // ②triage の失敗がブレーカを進めないため、FM が死んだホストで失敗するシナリオが

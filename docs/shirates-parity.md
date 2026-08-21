@@ -16,8 +16,13 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | ✅ | 同名・同義 |
 | 🟡 | 相当する機能はあるが名前・形が違う |
 | ➖ | **意図的に持たない**(理由は各行。再提案しない) |
-| ❌ | 未実装(足す余地がある) |
+| ❌ | **未実装だが足す価値があると判定済み**(各行に**足す条件**を書く) |
 | 🟢 | ftester 独自(Shirates に無い) |
+
+**❌ に「まだ検討していない」を置かない**(2026-08-21)。以前の ❌ は「検討して見送った」と
+「見ていない」が混ざっており、`disableHandler` は**理由が1行も無い ❌** のまま置かれていて、
+実際には**CAE を跨ぐ制御に必要**だった(ユーザー指摘で採用)。**判定していない行を作らない**のが
+この表の役目 —— 見送るなら ➖ に理由を、足すなら ❌ に条件を書く。
 
 ## 何を足すかの判断基準
 
@@ -43,14 +48,14 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `TestDriver.lastElement` / `it` | `lastElement` | ✅ 2026-08-04 ユーザー決定で実装(それ以前は「概念を持たない」が承認済み差分)。要素を1つに定めて解決したコマンドが差し替える(`notExist` / `countIs` とセレクタを取らないコマンドは差し替えない)。**値は掴んだ時点の凍結値**・**掴めなければ空で上書き**・**scene を跨ぐと空**・一度も掴んでいない読み出しは空+警告。`it` の別名は置かない(Swift では読み手が識別子を追えない) |
 | `canSelect` / `canSelectWithScroll*` / `canSelectNot` | 単独コマンドは無い(`ifCanSelect` / `repeatWhileCanSelect` に内包) | 🟡 |
 | `existAll` / `canSelectAll` / `dontExistAll` | — | ➖ **実装しない**(ユーザー決定 2026-07-31)。`exist` のチェーンで書く方が保守しやすく、要素ごとに `timeout:` / `scroll:` 等のオプションも指定できる。**再提案しない** |
-| `scanElements` / `*InScanResults` | — | ❌ |
+| `scanElements` / `*InScanResults` | — | ➖ **画面全体の棚卸しはシナリオの仕事ではない**(2026-08-21 判定)。要素一覧は `ftester api snapshot` と MCP の `ft_snapshot` にあり、そちらは**書く前に調べる**側の道具。シナリオ内で全要素を走査して条件分岐すると、木の揺れがそのまま実行の揺れになる |
 | `tapAppIcon` | `tapAppIcon(name?)` | ✅ 2026-08-03 **`auto` 相当のみ**(`tapAppIconMethod`・マクロ機構は持たない)。名前省略はプロファイルの `appName`(Shirates の `appIconName` 既定=プロファイル、と同義。親が解決して子へ渡す) |
 | `tap(x, y)`(座標) | `tap(x:y:holdSeconds:)` | 🟡 2026-08-16 実装。**承認済み差分**: 座標は `Int` ではなく `Double`(ftester の座標コマンドは全部 `Double`。`swipePointToPoint` と揃える)/ `repeat:` `safeMode:` は持たない(Shirates は tap を swipe で合成するための引数だが、ftester はドライバに座標タップの口がある)。単位は iOS = pt / Android = px |
-| `tapCenterOfScreen` / `tapTopOfScreen` / `tapCenterOf` / `tapOffset` / `tapDefault` | — | ❌ **`tap(x:y:)` の上に組めるものばかり**(前2つは画面基準、後3つは要素基準)。必要になった時点で足す |
+| `tapCenterOfScreen` / `tapTopOfScreen` / `tapCenterOf` / `tapOffset` / `tapDefault` | — | ❌ **足す**(基準②)。`tap(x:y:)` の上に組めるものばかり(前2つは画面基準、後3つは要素基準)だが、**生成側が座標を自前で計算する**のは脆い。**足す条件**: 座標計算をシナリオに書いた例が出たとき |
 | `tapSoftwareKey` | — | ➖ キーボード要素を snapshot から除外しているため tap できない |
 | `widget` | セレクタの型語彙 `.widget` | 🟡 |
 | `tempSelector` / `tempValue` | — | ➖ 生成側がセレクタを直書きするので間接参照は読みにくさが勝つ |
-| `allElements` / `findElements` / `findWebElement(s)` | — | ❌(スナップショットは `ftester api` / MCP 側) |
+| `allElements` / `findElements` / `findWebElement(s)` | — | ➖ 同上(2026-08-21 判定)。スナップショットは `ftester api` / MCP 側にあり、DSL からは `countIs` と `exist` の連鎖で表明する |
 
 ## 入力・キーボード
 
@@ -63,8 +68,8 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `keyboardIsShown` / `keyboardIsNotShown` | 同名 | ✅ 取得元は OS で違う(下記) |
 | `pressHome` | `home()` | 🟡 OS 共通で提供 |
 | `pressBack` | `back()` | 🟡 **両 OS で提供**(iOS はエッジスワイプ) |
-| `pressSearch` / `pressTab` / `pressKeys` / `pressAndroid` | — | ❌ |
-| `typeChars` | — | ❌ |
+| `pressSearch` / `pressTab` / `pressKeys` / `pressAndroid` | — | ❌ **足す**(2026-08-21 判定。基準①=今は書けない)。`pressEnter` しか無いので **Tab によるフォーム移動・任意キー・Android のハードキー**が表現できない。`pressSearch` は実質カバー済み(`pressEnter` が `ACTION_IME_ENTER` を撃ち検索アクションとして発火する)。**足す条件**: 受け手がキー操作を要る画面に当たったとき、または Tab 移動を含むフォームが出たとき。ブリッジは既にキー注入を持つので薄く載る |
+| `typeChars` | — | ➖ **要らない**(2026-08-21 判定)。1文字ずつ打つのは IME の取りこぼし対策だが、ftester は**読み返して足りない分だけ打ち直す**(`InputInjector` / `verifiesTypedText`)ので、同じ問題を別の層で解いている |
 
 ## スクロール・スワイプ
 
@@ -78,10 +83,10 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `swipeElementToElement` | 同名 | ✅ 終点はヒール対象外 |
 | `swipeCenterToTop/Bottom/Left/Right` ほか swipe 一族 | `swipe(.up/.down/.left/.right)` 1本 | 🟡 集約 |
 | `swipeElementToElementAdjust`、および `swipePointToPoint` / `swipeElementToElement` の `withOffset` `offsetY` `intervalSeconds` `repeat` `safeMode` `marginRatio` `adjust` | — | ➖ ブリッジの drag が**単発ジェスチャ**のため(承認済み差分) |
-| `TestElement.swipeTo*` / `swipeOut*`(要素基点) | — | ❌ |
+| `TestElement.swipeTo*` / `swipeOut*`(要素基点) | — | ➖ **`swipeElementToElement` / `swipeBy(sel, …)` で書ける**(2026-08-21 判定)。要素を掴んでから方角へ振る糖衣で、生成側は始点・終点を明示するほうが読める |
 | `flickCenterToTop/Bottom/Left/Right` `flickLeftToRight/RightToLeft` `flickBottomToTop/TopToBottom`(8種) | 同名 | ✅ 2026-08-03 **画面基点のみ**。`scrollableElement`/`safeMode` 引数は無い(`scrollFrame` で足りる) |
 | `flickAndGo*` 一族 | `scroll*`/`scrollTo` 系で代替 | ➖ 画面遷移トリガの糖衣は生成側の語彙を増やすだけ |
-| 要素基点 `TestElement.flickTo*` / `flickOut*` | — | ❌ |
+| 要素基点 `TestElement.flickTo*` / `flickOut*` | — | ➖ 同上(2026-08-21 判定)。flick 8種は画面基準で移植済みで、要素基点は `swipeBy(sel, …)` が担う |
 | `scrollFrame` | 同名(`scroll*` / `scrollTo` / `withScroll*` / `flick*` の引数。セレクタ式) | ✅ 2026-08-02。**型付きセレクタ(`Sel`)版は持たない = 文字列のみ**(ユーザー決定 2026-08-04・**再提案しない**。1対1を保証するのは対象セレクタまで。理由は design.md) |
 | `startMarginRatio` / `endMarginRatio` | 同名 | ✅ **既定値は ftester の実測値**(承認済み差分) |
 | `scrollableElement` | — | ➖ `scrollFrame` のセレクタ式で足りる |
@@ -102,14 +107,14 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `existWithoutScroll` | 同名 | ✅ |
 | `dontExist` | `notExist(sel, timeout:scroll:maxSwipes:)` | 🟡 **名前が違う** |
 | `dontExistWithScrollDown/Up` / `dontExistWithoutScroll` | `notExist(scroll:)` に集約 | 🟡 別名は無い |
-| `screenIs` | 同名だが **FM の視覚照合**(Shirates は画面ニックネームの識別要素) | 🟡 意味が違う |
-| `screenIsOf` / `isScreen(Of)` / `waitScreen(Of)` / `switchScreen` | — | ➖ 画面ニックネーム機構を持たない |
+| `screenIs` / `screenIsOf` / `isScreen(Of)` / `waitScreen(Of)` / `switchScreen` | — | ➖ 画面ニックネーム機構を持たない。**`screenIs` は `UnavailableCommands` が受け止める**(同名だった FM の視覚照合は 2026-08-21 に `screenLooksLike` へ改名した) |
+| — | `screenLooksLike(説明文)` | 🟢 FM の視覚照合(スクリーンショットと自然文の照合)。Shirates に対応物は無い |
 | `cell` / `cellOf` / `getCell` | セレクタのスコープ `>>` | 🟡 |
 | `appIs` | `appIs(id, waitSeconds: 15)` | ✅ 2026-08-03 **ニックネーム機構が無く ID を直接書く**(Shirates はニックネーム解決込み)。Android は失敗時 actual を付ける |
 | `packageIs` | `appIs` で代用 | ➖ **実装しない**(ユーザー決定 2026-08-03。いったん実装後に削除)。ニックネームが無い ftester では `appIs` が ID 直指定のため Android で**完全に同じ検査**になる。**再提案しない** |
-| `isApp` | — | ❌ |
+| `isApp` | — | ➖ **`appIs` と重複**(2026-08-21 判定)。Shirates の `isApp` は真偽を返す形だが、ftester は分岐に `ifCanSelect` / Swift を使うので、検証は `appIs`(失敗させる)側に一本化する |
 | `verify`(任意内容の検証) | `verify(message) { }` | ✅ 2026-08-03 ブロック内のアサーション1つ以上が全成功で passed。**アサーション0個は inconclusive**(passed でも failed でもない・シナリオは中断しない。Shirates の `MANUAL` 相当は持たない。ユーザー決定 2026-08-03) |
-| `existImage` / `dontExistImage` / `findImage*` / `imageIs` / `imageContains` | — | ➖ 画像テンプレートマッチングは非対応(切り出し画像の管理が生成に向かない。FM の `screenIs` が代替) |
+| `existImage` / `dontExistImage` / `findImage*` / `imageIs` / `imageContains` | — | ➖ 画像テンプレートマッチングは非対応(切り出し画像の管理が生成に向かない。FM の `screenLooksLike` が代替) |
 | — | `countIs(sel, n)`(節ごとの内訳付き) | 🟢 |
 
 ## 属性の検証
@@ -126,7 +131,7 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `selectedIs(True/False)` | — | ➖ iOS の selected trait は `checked` に写像している |
 | `displayedIs` | `requireVisible:` + `falsePositiveCheck` | 🟡 |
 | `classIs(Not)` | セレクタの `.型` で絞る | 🟡 |
-| `attributeIs(Not)` / `buttonIsActive(Not)` | — | ❌ |
+| `attributeIs(Not)` / `buttonIsActive(Not)` | — | ➖ **木が持つ属性は固定集合**(2026-08-21 判定)。`ElementInfo` にある物は専用の検証(`textIs`/`valueIs`/`enabledIs*`/`checkIs*`)で表明でき、無い属性は**任意名で聞かれてもブリッジが答えられない**。新しい属性が要るなら、まず供給側(ブリッジ)に足す話になる |
 
 ## 任意の値の検証(thisIs 系)
 
@@ -136,7 +141,7 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `thisIsEmpty/NotEmpty/Blank/NotBlank` | 同名 | ✅ |
 | `thisContains(Not)/StartsWith(Not)/EndsWith(Not)/Matches(Not)/MatchesDateFormat` | 同名 | ✅ |
 | `thisIsGreaterThan(OrEqual)/LessThan(OrEqual)` | 同名 | ✅ |
-| `assertEquals` / `assertEqualsNot` | — | ❌ `thisIs` と重複 |
+| `assertEquals` / `assertEqualsNot` | — | ➖ **`thisIs` と重複**(2026-08-21 判定)。同じことを2通りで書けると生成側の語彙が揺れる |
 
 **この群だけは完全準拠**(Swift の言語制約を `FTValue` 転送で吸収した点だけが差分)。
 
@@ -149,12 +154,12 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `doUntilTrue` | 同名(引数名も準拠) | ✅ |
 | `android` / `ios` | 同名 | ✅ |
 | `ifTrue` / `ifFalse`(Boolean) | 素の Swift `if` | ➖ 分岐の語彙を増やすと生成側の誤選択が増える |
-| `ifScreenIs(Not)` / `ifStringIs` / `ifContains` 等 | — | ➖ 同上 |
-| `ifCheckON/OFF` | — | ➖ 同上 |
-| `ifImageExist(Not)` / `ifImageIs(Not)` | — | ➖ 画像非対応 |
+| `ifScreenIs(Not)` / `ifStringIs` / `ifContains` 等 | — | ➖ 分岐の語彙を増やすと生成側の誤選択が増える(`ifTrue` と同じ理由)。条件は素の Swift `if` と `ifCanSelect` の2つに絞る |
+| `ifCheckON/OFF` | — | ➖ 同上(分岐の語彙を増やさない)。チェック状態で分ける必要があるなら `ifCanSelect(":checked" 相当のセレクタ)` か Swift 側で書く |
+| `ifImageExist(Not)` / `ifImageIs(Not)` | — | ➖ **画像マッチングを持たない**(テンプレート画像の管理と閾値調整が要り、端末差で腐る)。見た目の検証は `screenLooksLike`(FM)と要素の検証で書く |
 | `emulator` / `simulator` / `virtualDevice` / `realDevice` | — | ➖ 実機/仮想の差はツール側で吸収する方針 |
-| `platformName` / `isAndroid` / `isiOS` ほかプロパティ | — | ❌ |
-| `osaifuKeitai(Not)` / `specialTag` / `stub(Not)` / `arm64` / `intel` | — | ➖ 対象外 |
+| `platformName` / `isAndroid` / `isiOS` ほかプロパティ | — | ➖ **`ios { }` / `android { }` で足りる**(2026-08-21 判定)。値が要る場面は Swift 側で書ける。真偽値を配ると「片方だけ通る」書き方が増え、どの OS で何を検証したかが読めなくなる |
+| `osaifuKeitai(Not)` / `specialTag` / `stub(Not)` / `arm64` / `intel` | — | ➖ **Shirates 固有の運用タグ**(特定端末機能・スタブ構成・CPU 種別で実行を分ける)。ftester の実行の絞り込みは実行プロファイルと `@Test(platform:)` が担う |
 | — | `repeatWhileCanSelect(sel, max:)` | 🟢 |
 
 ## 同期
@@ -174,9 +179,9 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `launchApp` / `terminateApp` | 同名 | ✅ |
 | `restartApp` | 同名 | ✅ 旧名 `relaunchApp` から改名済み(2026-07-31。下記「名前の相違」) |
 | `installApp` / `removeApp` | `installApp(path?)` / `removeApp(id?)` | ✅ 2026-08-03 DSL 化。`installApp` は実行をオーケストレータ(親プロセス)へ委譲し、パス省略時は実行プロファイルの `appPath` を解決する(Shirates の `appPackageFile` 既定に一致)。オーケストレータ無しの単独実行だけ引数必須(省略時は明示エラー)。`removeApp` は id 省略を実行中アプリの既定 bundleID/package に解決する |
-| `isAppInstalled` / `launchAppByShell` | CLI 側(`ftester install`)。DSL には無い | ❌ |
+| `isAppInstalled` / `launchAppByShell` | CLI 側(`ftester install`)。DSL には無い | ➖ **導入はシナリオの外**(2026-08-21 判定)。実行プロファイルの `appPath` + `autoInstall` が run の前に面倒を見るので、シナリオが導入状態を分岐に使う形は増やさない(`installApp` / `removeApp` は明示的に操作したいとき用に既にある) |
 | `goPreviousApp` | `appSwitcher()`(スイッチャーを開くだけ) | 🟡 |
-| `internetOn/Off` / `wiFiOn/Off` / `mobileOn/Off` | — | ❌ |
+| `internetOn/Off` / `wiFiOn/Off` / `mobileOn/Off` | — | ❌ **足す**(2026-08-21 判定。基準①=回避策が無い唯一の項目)。**通信断の状態を作れない**ので、オフライン時の表示・再試行・エラーダイアログを検証できない。**実害**: 受け手のアプリは規約画面を外部サイトから読み、通信が失敗するとエラーダイアログを出す —— それが偶発的にテストを落とすのに、**意図的に再現することも防ぐこともできない**。**Android のみ**(`adb shell svc wifi/data`)で、**iOS シミュレータはホストのネットワークを共有するため同等の手段が無い**(実機も同様)。足すときは 🟡(Android 限定)として書く |
 | `shell` / `shellAsync` | `procedure { }` 内で任意 Swift | 🟡 |
 | `screenshot` | `screenshot(filename:?)` / `screenshot(_:)` | ✅ 2026-08-03(位置引数版は 2026-08-20 追加。Kotlin は名前付き引数を位置でも渡せるので `screenshot("a.png")` がそのまま通る)**`filename` のみ**(他3引数は Shirates の auto-screenshot 機構の制御で、ftester は毎操作の自動撮影を持たない)。画像はレポートの該当ステップ直後に埋め込む。失敗時の証跡・MCP `ft_screenshot` とは別経路 |
 | — | `home()` / `back()` | 🟢 OS 差を吸収した1コマンド |
@@ -191,24 +196,24 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `procedure` | 同名(1ステップとして記録) | ✅ |
 | `@Deleted` | 同名マクロ | ✅ |
 | `describe` / `caption` / `comment` / `target` / `output` / `codeblock` | `scene` の説明文に集約 | 🟡 |
-| `macro` | Swift の関数 | ➖ |
-| `silent` / `info` / `warn` | — | ➖ |
+| `macro` | Swift の関数 | ➖ **Swift の関数で足りる**(手順のまとまりは `group("名") { }` が記録側を担う)。独自のマクロ機構は間接参照が増えるだけ |
+| `silent` / `info` / `warn` | — | ➖ **ログの出し分けは持たない**。レポートに残るのは**ステップ**で、任意の情報行を足せると「検証していないのに書いてある」記録が増える |
 | `manual` / `knownIssue` | — | ➖ **入れない**(生成側が赤を黙らせる逃げ道になり、「失敗はシナリオ全体を中断」の規律と衝突する) |
 | `must` / `should` / `want`、`SKIP` / `MANUAL` / `NOTIMPL` | — | ➖ 運用の話でコード生成の能力と無関係(**`@TestClass(platform:)` / `@Test(platform:)` はこれとは別物** —— 赤を黙らせる逃げ道ではなく、既にある platform 軸の粒度を細かくしたもの) |
 | `irregularHandler`(lambda 登録) | `irregularHandler(検出sel, dismiss:, maxDismissals: 10)` | 🟡 宣言形が違う |
-| `onScreen` ハンドラ / `onError` ハンドラ | — | ❌ |
+| `onScreen` ハンドラ / `onError` ハンドラ | — | ➖ **失敗時の収集はツールが持つ**(2026-08-21 判定)。`onError` 相当(スクショ・木・ログ末尾・FM トリアージ)は失敗経路が自動で残すので、利用者が書く余地は無い。`onScreen`(画面ごとの前処理)はニックネーム/画面定義の機構込みで、ftester は画面を宣言しない |
 | — | `group("名前") { }` / `setUp()` / `tearDown()` / `@Test(platform:)`(対象OS宣言。対象外は skipped 記録) | 🟢 |
 
 ## データストレージ・キャッシュ
 
 | Shirates | ftester | |
 |---|---|---|
-| `writeMemo` / `readMemo` / `clearMemo` / `memoTextAs` | Swift 変数 + `exist().text` | ➖ |
-| `account` / `app` / `data` / `dataPattern` | — | ➖ |
-| `clipboard` / `readClipboard` / `writeClipboard` | — | ❌ コピー機能自体をテストする時だけ必要 |
+| `writeMemo` / `readMemo` / `clearMemo` / `memoTextAs` | Swift 変数 + `exist().text` | ➖ **Swift の変数で足りる**(掴んだ値は `select(…).text` で読める)。専用の記憶域はスコープが曖昧になり、どこで書いた値かを追えなくなる |
+| `account` / `app` / `data` / `dataPattern` | — | ➖ **テストデータの外部化は持たない**(Shirates は JSON のデータセットを引く)。ftester は Swift のリテラル・定数で書く —— 生成側が直書きでき、間接参照は読み取りコストが勝つ |
+| `clipboard` / `readClipboard` / `writeClipboard` | — | ❌ **足す**(2026-08-21 判定。基準①)。コピー・ペースト機能そのものを検証する画面でだけ要る。**足す条件**: そういう画面が受け手に出たとき(それまでは無くても回る) |
 | `disableCache` / `refreshCache` / `syncCache` / `onDirectAccess` 等 | 内部で自動管理(利用者に露出しない) | ➖ 露出すると生成側が性能問題を誤った手段で解こうとする |
 | `disableHandler` / `enableHandler` / `suppressHandler` / `useHandler` | 同名4つ | ✅ 2026-08-21。**両方要る**: ブロック形は出口で必ず戻る一方、**1つの CAE ブロックの内側にしか置けない** —— `condition` で止めて `expectation` で戻す形は命令形でしか書けない(ユーザー指摘)。入れ子可・抑止したまま落ちたら注記に出る |
-| `withContext` | — | ❌ |
+| `withContext` | — | ➖ **概念ごと要らない**(2026-08-21 判定)。Appium の native/web コンテキスト切替に相当するが、ftester は**WebView を透過的に扱う**(木は a11y、足りなければ DOM。docs/design.md §木はどこから来るか)ので、利用者が切り替える場面が無い |
 
 ## セレクタ記法
 
@@ -219,12 +224,12 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | 否定フィルタ `属性!=値` / 短縮形 `!値` | 同名記法 | ✅ ただし**序数は否定できない**(`pos!=n` も短縮形 `![2]` も実行前エラー。候補集合を絞れず黙って無視されるため) |
 | 相対セレクタ(方向ベース `:right` `:above` + `Button/Image/Input/Label/Switch`) | 同等(`:rightSwitch` 等) | ✅ |
 | 相対セレクタ(`:inner*`) | スコープ `>>` | 🟡 |
-| 相対セレクタ(`:next*` / `:pre*`) | — | ❌ |
+| 相対セレクタ(`:next*` / `:pre*`) | — | ❌ **足す**(2026-08-21 判定。基準②)。「同じ行の次のセル」は方向セレクタ(`:right` 等)で幾何的に近似できるが、**折り返す一覧や段組では別の行を掴む**ので、生成側が座標感覚で書いた脆いセレクタになりやすい。**足す条件**: 木の順序で隣を指したい実例が出たとき(方向セレクタで外した報告が1件でも来たら) |
 | 相対セレクタ(フローベース `:flow` `:vflow`) | — | ➖ 根拠の無い調整値を要求する(2026-07-26 決定) |
-| 相対セレクタ(XML ベース `:parent` `:child` `:sibling` `:ancestor` `:descendant`) | — | ❌ **祖先方向**は行単位の検証で効く |
+| 相対セレクタ(XML ベース `:parent` `:child` `:sibling` `:ancestor` `:descendant`) | — | 🟡 **祖先方向はスコープ `>>` で書ける**(2026-08-21 判定)。`#row_3>>.button` が `:descendant` 相当。**残る穴は `:parent`(子から親を指す)**で、行の一部(ラベル)を起点に行全体を掴む形が書けない —— **足す条件**は `:next*` と同じ(実例が出たとき) |
 | ニックネーム(セレクタ/画面/データセット) | — | ➖ 生成側は直書きでき、腐ってもヒールと再採取で直る。間接参照は読み取りコストが勝つ |
 | クラスエイリアス・スペシャルフィルタ | 型語彙 `SelType` で部分的に | 🟡 |
-| タイトルセレクタ / Web タイトルセレクタ | — | ❌ |
+| タイトルセレクタ / Web タイトルセレクタ | — | ➖ **`screenLooksLike` と `exist` で足りる**(2026-08-21 判定)。画面の同定は `screenLooksLike`(FM)か、その画面にしか無い要素の `exist` で書く。タイトル文字列は言語・A/B で変わるため、指定の軸としては弱い |
 | — | 型付きセレクタ `Sel`(`.id("x").right(.switch)`) | 🟢 |
 | `#x` = アクセシビリティ id のみ | `#x` は **identifier で1件も引けなければ placeholder** を引く | 🟢 **意図的に広げた**(2026-08-15 ユーザー指示)。入力欄は指す手段が経路で割れる —— HTML の id は XCUITest が読む a11y に出ないが placeholder は出る / Android は WebView の版で id と placeholder が**入れ替わる**。Shirates は Appium 一本で経路が割れないためこの問題を持たない。**identifier が当たったらそちらだけ**を使うので、`#x[2]` の序数と `countIs` は経路で変わらない |
 

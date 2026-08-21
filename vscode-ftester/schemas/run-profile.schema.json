@@ -40,7 +40,7 @@
     },
     "fm": {
       "type": "boolean",
-      "description": "FM(Foundation Model)の機能を使用するか。false で自己修復・偽陽性検証・screenIs・失敗時トリアージを含む FM 呼び出しを行わない(既定 true)。",
+      "description": "FM(Foundation Model)の機能を使用するか。false で自己修復・偽陽性検証・screenLooksLike・失敗時トリアージを含む FM 呼び出しを行わない(既定 true)。",
       "default": true
     },
     "heal": {
@@ -53,10 +53,15 @@
       "description": "FM による偽陽性検証(occlusion guard)を有効にするか(既定 false)。",
       "default": false
     },
+    "screenLooksLike": {
+      "type": "boolean",
+      "description": "screenLooksLike コマンド(FM による画面判定)を有効にするか(既定 true)。",
+      "default": true
+    },
     "screenIs": {
       "type": "boolean",
-      "description": "screenIs コマンド(FM による画面判定)を有効にするか(既定 true)。",
-      "default": true
+      "deprecated": true,
+      "description": "旧名。screenLooksLike が未指定のときだけ読まれる。新しく書くときは screenLooksLike を使う。"
     },
     "containerInference": {
       "type": "boolean",

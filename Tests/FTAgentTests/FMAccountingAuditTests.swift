@@ -1,12 +1,12 @@
 // FM 呼び出しの計測漏れを検出するソース監査。
 //
-// 実行時の FM 経路(occlusion / heal / screenIs / triage)は **FMHealth.record を必ず呼ぶ**のが不変条件。
+// 実行時の FM 経路(occlusion / heal / screenLooksLike / triage)は **FMHealth.record を必ず呼ぶ**のが不変条件。
 // 記録は①結果 JSON の fm(呼び出し回数・失敗・レイテンシ)②FMBreaker(連続失敗で打ち切り)の
 // 両方を養うため、欠けると「fm が空 = 呼ばれていない」と誤読され、かつ FM が死んだホストで
 // 失敗が延々と時間を捨てる。実害: triage が記録を欠いたまま入っていた(2026-07-30 に発見)。
 //
 // **判定は関数単位**。ファイル単位で「どこかに record があるか」を見る作りでは、上記の triage 欠落
-// (同一ファイルの heal / screenIs は記録済み)を検出できない。
+// (同一ファイルの heal / screenLooksLike は記録済み)を検出できない。
 
 import XCTest
 

@@ -1024,16 +1024,16 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertTrue(resolved.warnings.isEmpty, "model は既知キー: \(resolved.warnings)")
     }
 
-    // MARK: - FM トグル(fm/heal/falsePositiveCheck/screenIs)
+    // MARK: - FM トグル(fm/heal/falsePositiveCheck/screenLooksLike)
 
     func testFMTogglesDefaultsWhenUnspecified() throws {
-        try writeStandardFixture()  // "all" は heal:true 明示。fm/falsePositiveCheck/screenIs は未指定
+        try writeStandardFixture()  // "all" は heal:true 明示。fm/falsePositiveCheck/screenLooksLike は未指定
         let resolved = try ProfileResolver.resolve(
             project: project, runName: "all", machineName: "M1 Max(64GB)")
         XCTAssertTrue(resolved.fm.enabled)
         XCTAssertTrue(resolved.fm.heal, "heal 明示 true")
         XCTAssertFalse(resolved.fm.falsePositiveCheck, "偽陽性検証は既定 false(オプトイン)のはず")
-        XCTAssertTrue(resolved.fm.screenIs, "省略時は既定 true のはず")
+        XCTAssertTrue(resolved.fm.screenLooksLike, "省略時は既定 true のはず")
     }
 
     func testHealDefaultsToTrueWhenFullyUnspecified() throws {
@@ -1049,7 +1049,7 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertTrue(resolved.fm.enabled)
         XCTAssertTrue(resolved.fm.heal, "heal の既定は true(既定 false→true への変更)")
         XCTAssertFalse(resolved.fm.falsePositiveCheck, "偽陽性検証の既定は false")
-        XCTAssertTrue(resolved.fm.screenIs)
+        XCTAssertTrue(resolved.fm.screenLooksLike)
         XCTAssertTrue(resolved.heal, "heal エイリアスも同じ値を返す")
     }
 
@@ -1057,29 +1057,55 @@ final class ProfileResolverTests: XCTestCase {
         try writeStandardFixture()
         try write("""
         { "app": "sampleapp", "devices": [ { "name": "メイン機" } ],
-          "fm": false, "heal": true, "falsePositiveCheck": true, "screenIs": true }
+          "fm": false, "heal": true, "falsePositiveCheck": true, "screenLooksLike": true }
         """, to: project.runsDir, name: "fmoff")
         let resolved = try ProfileResolver.resolve(
             project: project, runName: "fmoff", machineName: "M1 Max(64GB)")
         XCTAssertFalse(resolved.fm.enabled)
         XCTAssertFalse(resolved.fm.heal, "fm:false は個別の heal:true より優先される")
         XCTAssertFalse(resolved.fm.falsePositiveCheck)
-        XCTAssertFalse(resolved.fm.screenIs)
+        XCTAssertFalse(resolved.fm.screenLooksLike)
     }
 
     func testIndividualSubFlagsFollowExplicitValues() throws {
         try writeStandardFixture()
-        // 既定と逆向きの明示指定(heal/screenIs=OFF・falsePositiveCheck=ON)が個別に効くこと
+        // 既定と逆向きの明示指定(heal/screenLooksLike=OFF・falsePositiveCheck=ON)が個別に効くこと
         try write("""
         { "app": "sampleapp", "devices": [ { "name": "メイン機" } ],
-          "heal": false, "falsePositiveCheck": true, "screenIs": false }
+          "heal": false, "falsePositiveCheck": true, "screenLooksLike": false }
         """, to: project.runsDir, name: "subsoff")
         let resolved = try ProfileResolver.resolve(
             project: project, runName: "subsoff", machineName: "M1 Max(64GB)")
         XCTAssertTrue(resolved.fm.enabled, "fm 自体は既定 true のまま")
         XCTAssertFalse(resolved.fm.heal)
         XCTAssertTrue(resolved.fm.falsePositiveCheck, "明示 true で有効化できること")
-        XCTAssertFalse(resolved.fm.screenIs)
+        XCTAssertFalse(resolved.fm.screenLooksLike)
+    }
+
+    /// 改名前の旧キー `screenIs` を書いた受け手のプロファイルが動き続けること。
+    /// **未知キー警告も出さない**(knownKeys に残してある)
+    func testLegacyScreenIsKeyStillDisablesScreenLooksLike() throws {
+        try writeStandardFixture()
+        try write("""
+        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ], "screenIs": false }
+        """, to: project.runsDir, name: "legacykey")
+        let resolved = try ProfileResolver.resolve(
+            project: project, runName: "legacykey", machineName: "M1 Max(64GB)")
+        XCTAssertFalse(resolved.fm.screenLooksLike, "旧キーを読み落とすと設定が黙って既定へ戻る")
+        XCTAssertTrue(resolved.fm.enabled)
+    }
+
+    /// 新旧が両方書かれていたら**新キーが勝つ**(拡張は保存時に旧キーを落とすので、
+    /// 両方あるのは手で足した場合だけ。優先順を決めておかないと画面と実行が食い違う)
+    func testNewKeyWinsOverLegacyScreenIsKey() throws {
+        try writeStandardFixture()
+        try write("""
+        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ],
+          "screenLooksLike": true, "screenIs": false }
+        """, to: project.runsDir, name: "bothkeys")
+        let resolved = try ProfileResolver.resolve(
+            project: project, runName: "bothkeys", machineName: "M1 Max(64GB)")
+        XCTAssertTrue(resolved.fm.screenLooksLike)
     }
 
     // MARK: - containerInference(FM とは独立。既定 true)

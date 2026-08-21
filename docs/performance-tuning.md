@@ -1257,7 +1257,7 @@ python3 Scripts/stream_vs_poll_bench.py --boot-ios-name シミュ1 --boot-androi
 ### 4.2 FM 呼び出しの実測(回数・レイテンシ)
 
 FM はホスト全体で直列化する共有資源(§3.5)なので、コストは**回数と時間**で測る。
-`FMHealth`(Sources/FTCore/FMHealth.swift)が用途別(occlusion / heal / screenIs)に計上し、
+`FMHealth`(Sources/FTCore/FMHealth.swift)が用途別(occlusion / heal / screenLooksLike)に計上し、
 シナリオ毎の結果 JSON の `fm` に載る。実行中は各シナリオ終了時に stderr へも1行出る。
 
 ```bash
@@ -1273,7 +1273,7 @@ print('呼び出し', sum(f['calls'] for f in fs), '合計秒', sum(f['totalMs']
 - **FM 合計時間 ÷ 壁時計**が判断軸。FM は約1回/秒で頭打ちなので、合計時間がそのまま実行時間の
   下限に効く。これが壁時計に近づくほど FM 律速で、**デバイスを増やしても縮まない**
 - モニターパネルの **FM グラフ**(数値=累計回数、線=tick 毎の増分)でも実行中に見える
-- FM が全滅すると occlusion-guard・heal・screenIs は**握りつぶされて素通り**する(テストは緑のまま
+- FM が全滅すると occlusion-guard・heal・screenLooksLike は**握りつぶされて素通り**する(テストは緑のまま
   機能だけ無効になる)。`FMHealth` が失敗を数えて実行後に警告するので、これを見逃さないこと
 
 ### 4.3 in-app dylib の内側を測る(整定ループ等)

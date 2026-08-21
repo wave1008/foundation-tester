@@ -227,7 +227,7 @@ public enum DSLCommandIndex {
               "Asserts the soft keyboard is shown."),
         .init("keyboardIsNotShown", "existence", "keyboardIsNotShown(timeout:)",
               "Asserts the soft keyboard is hidden."),
-        .init("screenIs", "existence", "screenIs(description)",
+        .init("screenLooksLike", "existence", "screenLooksLike(description)",
               "Visual screen check by Foundation Models. Skipped when fm is off."),
         .init("appIs", "existence", "appIs(id, waitSeconds:)",
               "Asserts the foreground app is the given bundle ID / package name."),

@@ -1011,8 +1011,8 @@ extension StepExecutor {
     private func executeAssertScreenMatches(
         step: FlowStep, phase: inout PhaseAccumulator) async throws -> StepResult.Status {
         let clock = ContinuousClock()
-        guard screenIsEnabled else {
-            return .skipped("screenIs is disabled (run profile setting)")
+        guard screenLooksLikeEnabled else {
+            return .skipped("screenLooksLike is disabled (run profile setting)")
         }
         guard let expected = step.expected, !expected.isEmpty else {
             return .skipped("expected was not specified")
@@ -1035,7 +1035,7 @@ extension StepExecutor {
         }
         if verdict.pass { return .passed }
         // **不一致なら1回だけ撮り直して判定し直す**。他の検証は timeout までポーリングして遷移の
-        // 整定を吸収するが、screenIs にそれを許すと FM 照合(ホスト全体で直列・約1回/秒)を
+        // 整定を吸収するが、screenLooksLike にそれを許すと FM 照合(ホスト全体で直列・約1回/秒)を
         // 何度も焼くので、**回数を1回に固定**する(正常系のコストは増えない・失敗系で +1 回)。
         // 狙いは「遷移直後のまだ描き終わっていない画面」の1件だけを救うこと
         let start = clock.now

@@ -878,7 +878,7 @@ test("buildRunProfileTemplate: apps/devices 候補ありなら先頭のappと全
     fm: true,
     heal: true,
     falsePositiveCheck: false,
-    screenIs: true,
+    screenLooksLike: true,
     iosInappEngine: true,
     updateWebView: true,
     wipeDataOnBloat: true,
@@ -896,7 +896,7 @@ test("buildRunProfileTemplate: 候補が無ければ app は空文字、devices 
     fm: true,
     heal: true,
     falsePositiveCheck: false,
-    screenIs: true,
+    screenLooksLike: true,
     iosInappEngine: true,
     updateWebView: true,
     wipeDataOnBloat: true,
@@ -914,7 +914,7 @@ test("buildRunProfileTemplate: machine が空文字なら machine キー自体�
     fm: true,
     heal: true,
     falsePositiveCheck: false,
-    screenIs: true,
+    screenLooksLike: true,
     iosInappEngine: true,
     updateWebView: true,
     wipeDataOnBloat: true,
@@ -1339,7 +1339,7 @@ const VALID_RUN_PROFILE_SAVE = {
     fm: true,
     heal: false,
     falsePositiveCheck: true,
-    screenIs: true,
+    screenLooksLike: true,
     containerInference: true,
     iosInappEngine: true,
     iosFastInput: false,
@@ -1387,7 +1387,7 @@ test("isMonitorFromWebviewMessage: runProfileSave は profile 非空・fields21�
         fm: false,
         heal: true,
         falsePositiveCheck: false,
-        screenIs: false,
+        screenLooksLike: false,
         containerInference: false,
         iosInappEngine: false,
         iosFastInput: true,
@@ -1444,7 +1444,7 @@ test("isMonitorFromWebviewMessage: runProfileSave は profile 空文字・fields
   assert.equal(
     isMonitorFromWebviewMessage({
       ...VALID_RUN_PROFILE_SAVE,
-      fields: { ...VALID_RUN_PROFILE_SAVE.fields, screenIs: "true" }, // boolean でない
+      fields: { ...VALID_RUN_PROFILE_SAVE.fields, screenLooksLike: "true" }, // boolean でない
     }),
     false,
   );
@@ -2359,7 +2359,7 @@ test("parseRunProfileForForm: 正常な値は23フィールドをそのまま読
     fm: false,
     heal: true,
     falsePositiveCheck: false,
-    screenIs: false,
+    screenLooksLike: false,
     containerInference: false,
     iosInappEngine: false,
     iosFastInput: true,
@@ -2385,7 +2385,7 @@ test("parseRunProfileForForm: 正常な値は23フィールドをそのまま読
     fm: false,
     heal: true,
     falsePositiveCheck: false,
-    screenIs: false,
+    screenLooksLike: false,
     containerInference: false,
     iosInappEngine: false,
     iosFastInput: true,
@@ -2406,7 +2406,7 @@ test("parseRunProfileForForm: 正常な値は23フィールドをそのまま読
   });
 });
 
-test("parseRunProfileForForm: 欠落キーは既定値(machine/app/reportDir/locale/recordBitrateKbps/workspace=''、devices=[]、fm/heal/screenIs/containerInference=true、falsePositiveCheck=false、iosInappEngine=true、defaultTimeout=''、wipeDataOnBloat=true、wipeDataThresholdGB=''、record/recordFailuresOnly/recordFullResolution/iosFastInput/enableAnimations/recoverCpuFallbackToGpu=false)", () => {
+test("parseRunProfileForForm: 欠落キーは既定値(machine/app/reportDir/locale/recordBitrateKbps/workspace=''、devices=[]、fm/heal/screenLooksLike/containerInference=true、falsePositiveCheck=false、iosInappEngine=true、defaultTimeout=''、wipeDataOnBloat=true、wipeDataThresholdGB=''、record/recordFailuresOnly/recordFullResolution/iosFastInput/enableAnimations/recoverCpuFallbackToGpu=false)", () => {
   const parsed = parseRunProfileForForm({});
   assert.deepEqual(parsed, {
     machine: "",
@@ -2415,7 +2415,7 @@ test("parseRunProfileForForm: 欠落キーは既定値(machine/app/reportDir/loc
     fm: true,
     heal: true,
     falsePositiveCheck: false,
-    screenIs: true,
+    screenLooksLike: true,
     containerInference: true,
     iosInappEngine: true,
     iosFastInput: false,
@@ -2444,7 +2444,7 @@ test("parseRunProfileForForm: 型不正のキーは既定値扱い(machine が�
     fm: "false",
     heal: "true",
     falsePositiveCheck: "false",
-    screenIs: "false",
+    screenLooksLike: "false",
     containerInference: "false",
     iosInappEngine: "false",
     iosFastInput: "true",
@@ -2467,7 +2467,7 @@ test("parseRunProfileForForm: 型不正のキーは既定値扱い(machine が�
     fm: true,
     heal: true,
     falsePositiveCheck: false,
-    screenIs: true,
+    screenLooksLike: true,
     containerInference: true,
     iosInappEngine: true,
     iosFastInput: false,
@@ -2488,6 +2488,24 @@ test("parseRunProfileForForm: 型不正のキーは既定値扱い(machine が�
   });
 });
 
+test("parseRunProfileForForm: 旧キー screenIs は新キーが無いときだけ読む(改名前のプロファイル)", () => {
+  // 優先順は Sources/FTCore/RunProfile.swift の effectiveScreenLooksLike と同じ。
+  // 読み落とすと、受け手が OFF にしていた設定が画面上だけ ON へ戻る
+  assert.equal(parseRunProfileForForm({ screenIs: false }).screenLooksLike, false);
+  assert.equal(parseRunProfileForForm({ screenLooksLike: true, screenIs: false }).screenLooksLike, true);
+  assert.equal(parseRunProfileForForm({ screenIs: "false" }).screenLooksLike, true, "型不正は既定 true");
+  assert.equal(parseRunProfileForForm({}).screenLooksLike, true);
+});
+
+test("updateRunProfileInObject: 保存すると旧キー screenIs は消える(同じ設定が2つのキーに残らない)", () => {
+  const saved = updateRunProfileInObject(
+    { screenIs: false, app: "a" },
+    { ...BASE_RUN_PROFILE_FIELDS, screenLooksLike: true });
+  assert.equal(saved.ok, true);
+  assert.equal(saved.object.screenLooksLike, true);
+  assert.ok(!("screenIs" in saved.object), `旧キーが残っている: ${JSON.stringify(saved.object)}`);
+});
+
 test("parseRunProfileForForm: remoteControl はネストしたオブジェクトから読む(欠落/非オブジェクト/非文字列 は既定値'')", () => {
   assert.equal(parseRunProfileForForm({ remoteControl: { workspace: "../ws" } }).workspace, "../ws");
   assert.equal(parseRunProfileForForm({}).workspace, "");
@@ -2499,8 +2517,8 @@ test("parseRunProfileForForm: remoteControl はネストしたオブジェクト
   assert.equal(parseRunProfileForForm({ remoteControl: { workspace: "../ws", other: 1 } }).workspace, "../ws");
 });
 
-test("parseRunProfileForForm: fm/heal/screenIs/containerInference は boolean ならそのまま返し、欠落/非 boolean は既定値 true", () => {
-  for (const key of ["fm", "heal", "screenIs", "containerInference"]) {
+test("parseRunProfileForForm: fm/heal/screenLooksLike/containerInference は boolean ならそのまま返し、欠落/非 boolean は既定値 true", () => {
+  for (const key of ["fm", "heal", "screenLooksLike", "containerInference"]) {
     assert.equal(parseRunProfileForForm({ [key]: false })[key], false);
     assert.equal(parseRunProfileForForm({ [key]: true })[key], true);
     assert.equal(parseRunProfileForForm({})[key], true);
@@ -2663,7 +2681,7 @@ const BASE_RUN_PROFILE_FIELDS = {
   fm: true,
   heal: false,
   falsePositiveCheck: true,
-  screenIs: true,
+  screenLooksLike: true,
   containerInference: true,
   iosInappEngine: true,
   iosFastInput: false,
@@ -2682,7 +2700,7 @@ const BASE_RUN_PROFILE_FIELDS = {
   workspace: "",
 };
 
-test("updateRunProfileInObject: 基本更新(machine/app/fm/heal/falsePositiveCheck/screenIs/containerInference/iosInappEngine/wipeDataOnBloat/reportDir/defaultTimeout)", () => {
+test("updateRunProfileInObject: 基本更新(machine/app/fm/heal/falsePositiveCheck/screenLooksLike/containerInference/iosInappEngine/wipeDataOnBloat/reportDir/defaultTimeout)", () => {
   const result = updateRunProfileInObject({ app: "old", devices: [], heal: false, reportDir: "old" }, BASE_RUN_PROFILE_FIELDS);
   assert.equal(result.ok, true);
   assert.equal(result.object.machine, "M1 Max");
@@ -2690,7 +2708,7 @@ test("updateRunProfileInObject: 基本更新(machine/app/fm/heal/falsePositiveCh
   assert.equal(result.object.fm, true);
   assert.equal(result.object.heal, false);
   assert.equal(result.object.falsePositiveCheck, true);
-  assert.equal(result.object.screenIs, true);
+  assert.equal(result.object.screenLooksLike, true);
   assert.equal(result.object.containerInference, true);
   assert.equal(result.object.iosInappEngine, true);
   assert.equal(result.object.wipeDataOnBloat, true);
@@ -2753,8 +2771,8 @@ test("updateRunProfileInObject: record/recordFailuresOnly/recordFullResolution/i
   }
 });
 
-test("updateRunProfileInObject: fm/heal/falsePositiveCheck/screenIs/containerInference は heal と同様に true/false どちらも常時書き込む(キー削除しない)", () => {
-  for (const key of ["fm", "heal", "falsePositiveCheck", "screenIs", "containerInference"]) {
+test("updateRunProfileInObject: fm/heal/falsePositiveCheck/screenLooksLike/containerInference は heal と同様に true/false どちらも常時書き込む(キー削除しない)", () => {
+  for (const key of ["fm", "heal", "falsePositiveCheck", "screenLooksLike", "containerInference"]) {
     const enabled = updateRunProfileInObject({}, { ...BASE_RUN_PROFILE_FIELDS, [key]: true });
     assert.equal(enabled.object[key], true, `${key}: true で書き込まれるべき`);
 

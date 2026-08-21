@@ -25,7 +25,7 @@ const runProfileFm = document.getElementById('run-profile-fm');
 const runProfileFmOptions = document.getElementById('run-profile-fm-options');
 const runProfileHeal = document.getElementById('run-profile-heal');
 const runProfileFalsePositiveCheck = document.getElementById('run-profile-false-positive-check');
-const runProfileScreenIs = document.getElementById('run-profile-screen-is');
+const runProfileScreenLooksLike = document.getElementById('run-profile-screen-looks-like');
 const runProfileContainerInference = document.getElementById('run-profile-container-inference');
 const runProfileIosInappEngine = document.getElementById('run-profile-ios-inapp-engine');
 const runProfileIosFastInput = document.getElementById('run-profile-ios-fast-input');
@@ -221,7 +221,7 @@ function renderRunProfileEditor(fields) {
   runProfileFm.checked = fields.fm;
   runProfileHeal.checked = fields.heal;
   runProfileFalsePositiveCheck.checked = fields.falsePositiveCheck;
-  runProfileScreenIs.checked = fields.screenIs;
+  runProfileScreenLooksLike.checked = fields.screenLooksLike;
   updateFmOptionsVisibility();
   runProfileIosInappEngine.checked = fields.iosInappEngine;
   runProfileIosFastInput.checked = fields.iosFastInput;
@@ -385,7 +385,7 @@ runProfileMachine.addEventListener('change', () => {
   onRunProfileFormInput();
 });
 runProfileApp.addEventListener('change', onRunProfileFormInput);
-// fm ON のときだけ配下のサブオプション(heal/falsePositiveCheck/screenIs)を表示する
+// fm ON のときだけ配下のサブオプション(heal/falsePositiveCheck/screenLooksLike)を表示する
 // (値そのものは fm の状態に関わらず保持・保存する)。
 function updateFmOptionsVisibility() {
   runProfileFmOptions.style.display = runProfileFm.checked ? '' : 'none';
@@ -396,7 +396,7 @@ runProfileFm.addEventListener('change', () => {
 });
 runProfileHeal.addEventListener('change', onRunProfileFormInput);
 runProfileFalsePositiveCheck.addEventListener('change', onRunProfileFormInput);
-runProfileScreenIs.addEventListener('change', onRunProfileFormInput);
+runProfileScreenLooksLike.addEventListener('change', onRunProfileFormInput);
 runProfileIosInappEngine.addEventListener('change', onRunProfileFormInput);
 runProfileIosFastInput.addEventListener('change', onRunProfileFormInput);
 runProfileEnableAnimations.addEventListener('change', onRunProfileFormInput);
@@ -452,7 +452,7 @@ function runProfileValuesEqual(fields) {
     runProfileFm.checked === fields.fm &&
     runProfileHeal.checked === fields.heal &&
     runProfileFalsePositiveCheck.checked === fields.falsePositiveCheck &&
-    runProfileScreenIs.checked === fields.screenIs &&
+    runProfileScreenLooksLike.checked === fields.screenLooksLike &&
     runProfileIosInappEngine.checked === fields.iosInappEngine &&
     runProfileIosFastInput.checked === fields.iosFastInput &&
     runProfileHomeOnStart.checked === fields.homeOnStart &&
@@ -488,7 +488,7 @@ function setRunProfileControlsEnabled(enabled) {
   runProfileFm.disabled = !enabled;
   runProfileHeal.disabled = !enabled;
   runProfileFalsePositiveCheck.disabled = !enabled;
-  runProfileScreenIs.disabled = !enabled;
+  runProfileScreenLooksLike.disabled = !enabled;
   runProfileIosInappEngine.disabled = !enabled;
   runProfileIosFastInput.disabled = !enabled;
   runProfileContainerInference.disabled = !enabled;
@@ -567,7 +567,7 @@ runProfileConfirm.addEventListener('click', () => {
       fm: runProfileFm.checked,
       heal: runProfileHeal.checked,
       falsePositiveCheck: runProfileFalsePositiveCheck.checked,
-      screenIs: runProfileScreenIs.checked,
+      screenLooksLike: runProfileScreenLooksLike.checked,
       iosInappEngine: runProfileIosInappEngine.checked,
       iosFastInput: runProfileIosFastInput.checked,
       homeOnStart: runProfileHomeOnStart.checked,

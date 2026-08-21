@@ -194,7 +194,7 @@ final class AuthoringGuardTests: XCTestCase {
                     select("#field").checkIsOFF()
                     keyboardIsShown()
                     keyboardIsNotShown()
-                    screenIs("何かの画面")
+                    screenLooksLike("何かの画面")
                     appIs("com.example.app")
 
                     select("#field").textIs("x")
