@@ -736,6 +736,18 @@ struct RunScenarios: AsyncParsableCommand {
               + "Cannot be combined with --force-lock"))
     var waitLock: Int?
 
+    /// ブロードキャスト実行(2026-08-22)。warmup のように「全デバイスがそれぞれ準備される」
+    /// ことが目的の run 向け。分配だけを `ScenarioDispatch.broadcast` に差し替え、他は通常 run
+    /// (ProfileRunner.run)と同じ経路。**--profile が要る**(レーン = プロファイルのデバイス)
+    @Flag(name: .customLong("each-device"),
+          help: ArgumentHelp("Run the selected scenarios once on EVERY device of the run profile "
+            + "(broadcast) instead of sharing them out across the devices — e.g. a warm-up that must "
+            + "touch each device. Needs --profile; --device narrows the set of devices. Provisioning, "
+            + "auto-install, setup/teardown hooks (once per run), staggered start, lane revival and "
+            + "reports are the same as a normal run. Results: one scenarios/*.json per (scenario, device), "
+            + "told apart by their worker field"))
+    var eachDevice = false
+
     @Option(name: .customLong("device"), parsing: .upToNextOption,
             help: ArgumentHelp("Run on only these devices of the run profile (device names as written in "
                 + "the machine profile). Repeatable; defaults to every device the run profile lists. "
@@ -790,6 +802,11 @@ struct RunScenarios: AsyncParsableCommand {
         if split, fleet == nil {
             throw ValidationError("--split requires --fleet")
         }
+        if eachDevice {
+            // 黙って無視しない(fleet の子へは中継していない。ports 経路にはレーンの名が無い)
+            if fleet != nil { throw ValidationError("--each-device cannot be combined with --fleet") }
+            if profile == nil { throw ValidationError("--each-device requires --profile") }
+        }
         if forceLock, let message = RemoteDispatchFlagPolicy.forceLockRejection(
             host: host, fleet: fleet, profile: profile) {
             throw ValidationError(message)
@@ -830,7 +847,8 @@ struct RunScenarios: AsyncParsableCommand {
                 fastInput: fastInput, enableAnimations: enableAnimations,
                 performanceMode: performanceMode, forceLock: forceLock, waitLock: waitLock,
                 remoteDir: remoteDir, remoteTimeout: remoteTimeout,
-                remoteArtifacts: remoteArtifacts, quiet: quiet, junit: junit)
+                remoteArtifacts: remoteArtifacts, quiet: quiet, junit: junit,
+                eachDevice: eachDevice)
             if exitCode != 0 { throw ExitCode(exitCode) }
             return
         }
@@ -942,13 +960,16 @@ struct RunScenarios: AsyncParsableCommand {
                 deviceFilter: devices,
                 deviceHost: effectiveDeviceHost,
                 workspaceOverride: workspace,
-                recorder: recorder)
+                recorder: recorder,
+                eachDevice: eachDevice)
             let failedCount = runSummary.failed
             // **回した本数は items.count ではない** —— ProfileRunner が OS 対象外
             // (`@TestClass(platform:)` / `@Test(platform:)`)を投入前に外すので、
             // ここで items.count を使うと「12本全部成功」と出しつつ10本しか走っていない、になる
             let ranCount = runSummary.total
-            let notApplicable = items.count - ranCount
+            // --each-device の total は (本数 × 台数) なので items.count との差は対象外の数にならない
+            // (対象外の件数は ProfileRunner が「Skipped N scenario(s) …」で出している)
+            let notApplicable = eachDevice ? 0 : items.count - ranCount
             PhaseLog.mark("profile-run-done")
             recorder.finish(total: ranCount, passed: ranCount - failedCount, failed: failedCount,
                             degradedWorkers: runSummary.degradedWorkers,
@@ -962,9 +983,12 @@ struct RunScenarios: AsyncParsableCommand {
             try writeJUnitIfRequested(project: testProject, recorder: recorder)
             let skippedSuffix = notApplicable > 0
                 ? " (\(notApplicable) skipped: declared for another platform)" : ""
+            // --each-device は (シナリオ × デバイス) を数える。単位を言わないと「3本のはずが
+            // 24 passed」に見える
+            let unit = eachDevice ? "scenario run(s) (one per scenario per device)" : "scenario(s)"
             print(failedCount == 0
-                  ? "✅ All \(ranCount) scenario(s) passed\(skippedSuffix)"
-                  : "❌ \(failedCount) of \(ranCount) scenario(s) failed\(skippedSuffix)")
+                  ? "✅ All \(ranCount) \(unit) passed\(skippedSuffix)"
+                  : "❌ \(failedCount) of \(ranCount) \(unit) failed\(skippedSuffix)")
             // **合否は変えず、劣化だけ伝える**(2026-08-20)。FM が死んでいると occlusion-guard・
             // 自己修復・screenLooksLike が黙って素通りするので、緑は「守りが効いた緑」ではない。
             // 赤のときも、切り分けの出発点として先に知りたい情報(自分の変更か FM か)
@@ -1049,7 +1073,7 @@ struct RunScenarios: AsyncParsableCommand {
             deviceNames: scopedDevices, deviceHost: scopedDeviceHost,
             heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
             fastInput: fastInput, enableAnimations: enableAnimations,
-            performanceMode: performanceMode,
+            performanceMode: performanceMode, eachDevice: eachDevice,
             localJUnitPath: junit, remoteTimeoutSeconds: remoteTimeout)
         if exitCode != 0 {
             throw ExitCode(exitCode)

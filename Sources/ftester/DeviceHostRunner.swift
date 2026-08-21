@@ -59,7 +59,7 @@ enum DeviceHostRunner {
         heal: Bool, noHeal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
         fastInput: Bool, enableAnimations: Bool, performanceMode: Bool,
         forceLock: Bool, waitLock: Int?, remoteDir: String?, remoteTimeout: Int?, remoteArtifacts: String,
-        quiet: Bool, junit: String?
+        quiet: Bool, junit: String?, eachDevice: Bool = false
     ) async throws -> Int32 {
         let junitTempDir = try FleetRunner.makeJUnitTempDir(requested: junit)
         defer { if let junitTempDir { try? FileManager.default.removeItem(at: junitTempDir) } }
@@ -85,20 +85,32 @@ enum DeviceHostRunner {
             throw ValidationError("no scenarios to run after filtering")
         }
 
-        let buckets = try assign(project: project, groups: groups, selected: selected,
-                                 lptHistoryRuns: lptHistoryRuns)
-        let active = groups.indices.compactMap { index -> (Int, Group, [String])? in
-            let ids = buckets[index].scenarioIDs
-            return ids.isEmpty ? nil : (index, groups[index], ids)
-        }
-        guard !active.isEmpty else {
-            FleetRunner.log("==> no machine was assigned a scenario; nothing to run")
-            return 0
-        }
-        for (index, group, ids) in active {
-            FleetRunner.log("    \(group.hostLabel): \(ids.count) scenario(s)"
-                + " on \(group.deviceNames.count) device(s)"
-                + " [\(buckets[index].estimatedMs > 0 ? estimateText(buckets[index].estimatedMs, devices: group.deviceNames.count) : "no history")]")
+        let active: [(Int, Group, [String])]
+        if eachDevice {
+            // ブロードキャストは分割しない —— 各機械の各台が全件を回す(分けると「全台で1回ずつ」が
+            // 機械ごとの部分集合に化ける)
+            let ids = selected.map(\.id)
+            active = groups.indices.map { ($0, groups[$0], ids) }
+            for (_, group, ids) in active {
+                FleetRunner.log("    \(group.hostLabel): \(ids.count) scenario(s)"
+                    + " on each of \(group.deviceNames.count) device(s) (--each-device)")
+            }
+        } else {
+            let buckets = try assign(project: project, groups: groups, selected: selected,
+                                     lptHistoryRuns: lptHistoryRuns)
+            active = groups.indices.compactMap { index -> (Int, Group, [String])? in
+                let ids = buckets[index].scenarioIDs
+                return ids.isEmpty ? nil : (index, groups[index], ids)
+            }
+            guard !active.isEmpty else {
+                FleetRunner.log("==> no machine was assigned a scenario; nothing to run")
+                return 0
+            }
+            for (index, group, ids) in active {
+                FleetRunner.log("    \(group.hostLabel): \(ids.count) scenario(s)"
+                    + " on \(group.deviceNames.count) device(s)"
+                    + " [\(buckets[index].estimatedMs > 0 ? estimateText(buckets[index].estimatedMs, devices: group.deviceNames.count) : "no history")]")
+            }
         }
 
         let binary = FleetRunner.selfBinaryPath()
@@ -114,7 +126,8 @@ enum DeviceHostRunner {
                         performanceMode: performanceMode, forceLock: forceLock, waitLock: waitLock,
                         remoteDir: remoteDir, remoteTimeout: remoteTimeout,
                         remoteArtifacts: remoteArtifacts, quiet: quiet,
-                        junitPath: FleetRunner.entryJUnitPath(tempDir: junitTempDir, index: index))
+                        junitPath: FleetRunner.entryJUnitPath(tempDir: junitTempDir, index: index),
+                        eachDevice: eachDevice)
                     let start = Date()
                     let exitCode = await FleetRunner.runEntry(
                         binary: binary, args: args, hostLabel: group.hostLabel)

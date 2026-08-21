@@ -142,7 +142,7 @@ swift run ftester run --profile ios           # 実行プロファイル(ブリ�
 |---|---|
 | `doctor` | FM・Xcode・シミュレータ・adb の事前診断 |
 | `bridge up / down / status` | iOS ブリッジ(常駐 XCUITest ランナー)の管理 |
-| `run [--scenario <id>...]` | シナリオの決定的実行(`--project`、`--profile` プロファイル実行、`--folder` フォルダ指定、`--failed` 失敗のみ、`--heal` 自己修復、`--report-dir`、`--ports` 並列、`--skip-build`、`--no-lpt` 投入順を ID 順に固定、`--lpt-history-runs` 実績を読む run 数、`--quiet`/`--junit` CI 向け出力、`--enable-animations` アプリのアニメーションを残す、`--fast-input` iOS xcuitest の quiescence 待ちを飛ばす)。**`--dry-run` はデバイスに触れずステップを列挙・検証する**(下記「dry-run」) |
+| `run [--scenario <id>...]` | シナリオの決定的実行(`--project`、`--profile` プロファイル実行、`--folder` フォルダ指定、`--failed` 失敗のみ、`--heal` 自己修復、`--report-dir`、`--ports` 並列、`--skip-build`、`--no-lpt` 投入順を ID 順に固定、`--lpt-history-runs` 実績を読む run 数、`--each-device` 選んだシナリオを実行プロファイルの**全デバイスで1回ずつ**回す(ブロードキャスト。warmup 向け。供給・フック・復帰・レポートは通常 run と同じで、結果は台ごとに `worker` で区別)、`--quiet`/`--junit` CI 向け出力、`--enable-animations` アプリのアニメーションを残す、`--fast-input` iOS xcuitest の quiescence 待ちを飛ばす)。**`--dry-run` はデバイスに触れずステップを列挙・検証する**(下記「dry-run」) |
 | `run-file <path.swift>...` | Package.swift に**登録していない** .swift をそのまま実行(プロファイル・レポート・自己修復は `--project` のものを借りる。`--profile`、`--scenario`、`--heal`、`--ports`) |
 | `project create / list / sync` | テストプロジェクトの作成・一覧・Package.swift 再整合 |
 | `devices up / down` | 実行プロファイルのデバイスを一括起動・停止(ブリッジ供給込み) |

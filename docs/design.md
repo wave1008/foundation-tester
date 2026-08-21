@@ -3519,6 +3519,23 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
   縮小スクショでも誤検知しない): テスト実行の失敗時証跡スクショ(`FTRuntime.handleFailure`、Android のみ)が
   白フレームなら最大3回撮り直し、それでも白ければ `evidenceBlank` を立ててレポートに警告表示。実行前は
   恒常白のデバイスをワーカーからディスパッチ除外(`ProfileRunner`、短時間の連続 probe でフラップと区別)
+- **ブロードキャスト実行**(`ftester run --each-device`。2026-08-22): 選んだシナリオを実行プロファイルの
+  **各デバイスで1回ずつ**回す(warmup 向け。受け手が `--device` を台数ぶん外部ループで撃っていたのを
+  run 基盤に載せた)。**差し替えるのは分配だけ** —— `ScenarioDispatch.broadcast` で `RunOrchestrator.run`
+  が platform 別の共有キューの代わりに**レーン(デバイス論理名)別のキュー**を作り(`BroadcastPlan` =
+  純粋関数。platform 未指定のシナリオは全レーンへ・明示は同 platform のレーンだけ)、ワーカーは
+  `BroadcastPlan.laneKey(of:)`(= `logicalName`。復帰でポートが変わっても同じ台は同じキューに戻る)で
+  自分のキューを取る。供給・インストール・フック(run で1回)・スタッガ・CPU 門・復帰・lease・録画・
+  レポートは同じ経路。`ProfileRunner` は **`limitingDevices` を通さない**(各台で回すのが目的)。
+  `ScenarioRunItem` は `lane` を持ち **URL に `?lane=` を付けて (シナリオ × デバイス) を別キー**にする
+  (表示バッファ・稼働集計・requeue 回数は URL で持つ。`lastPathComponent` は ID のまま)。
+  結果は台ごとに `worker` で区別(同じ ID が `~N` 連番で並ぶ)。**`RunRecorder.discardLast` は worker を
+  名指しする**(同じ ID を別の台が同時に書いているので、「この ID の最新」では別の台の記録を消す。
+  欠番は詰めない)。参加しなかった台のぶんは「device … never joined the run」、離脱して復帰できなかった
+  台のぶんは「… dropped out and could not be revived」で失敗として残す(準備できなかった台が緑に紛れない)。
+  ホスト混在プロファイルは `DeviceHostRunner` が**分割せず全ホストへ全件**を渡し、`--host` は
+  `RemoteRunArgs.build` が中継する。`--fleet` とは併用不可(中継していないので黙って分配になる)。
+  `api run`(拡張)には載せていない(Test Explorer は flowURL = シナリオ1項目の前提)
 - **実行中の凍結による結果取り消し+別デバイス再実行**(`RunOrchestrator.runWorker`。2026-07-17):
   シナリオが失敗した直後にそのワーカーの Android デバイスを `isDeviceFrozen`(注入プローブ=
   `AndroidHealthProbe.isPersistentlyBlank`。FTCore→FTAndroid は循環のため呼び出し側=ftester ターゲットが注入。

@@ -24,9 +24,10 @@ final class RunResultsStoreTests: XCTestCase {
             machine: "testmachine", trigger: "cli", startedAt: startedAt)
     }
 
-    private func makeScenarioRecord(scenarioID: String, runID: String, passed: Bool = true) -> ScenarioRunRecord {
+    private func makeScenarioRecord(scenarioID: String, runID: String, passed: Bool = true,
+                                    worker: String? = nil) -> ScenarioRunRecord {
         ScenarioRunRecord(
-            runID: runID, scenarioID: scenarioID, platform: "ios", machine: "testmachine",
+            runID: runID, scenarioID: scenarioID, platform: "ios", worker: worker, machine: "testmachine",
             passed: passed, startedAt: "2026-01-01T00:00:00Z", durationMs: 100,
             steps: StepCountsRecord(total: 1, passed: passed ? 1 : 0, failed: passed ? 0 : 1))
     }
@@ -344,6 +345,43 @@ final class RunResultsStoreTests: XCTestCase {
         recorder.record(makeScenarioRecord(scenarioID: "Foo.bar", runID: "", passed: true))
         XCTAssertTrue(FileManager.default.fileExists(atPath: scenariosDir.appendingPathComponent("Foo.bar.json").path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: scenariosDir.appendingPathComponent("Foo.bar~2.json").path))
+    }
+
+    /// **worker を名指しした取り消しは、その台の記録だけを消す**。`--each-device` では同じ ID を
+    /// N 台が同時に書くので、「この ID の最新」を消すと別の台の記録が消える
+    func testDiscardLastWithWorkerRemovesOnlyThatWorkersRecord() throws {
+        let recorder = RunRecorder.begin(project: project, profile: "default", trigger: "cli", captureHostMetrics: false)
+        recorder.record(makeScenarioRecord(scenarioID: "Warm.up", runID: "", passed: false, worker: "ios:A"))
+        recorder.record(makeScenarioRecord(scenarioID: "Warm.up", runID: "", passed: true, worker: "ios:B"))
+        let scenariosDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: recorder.runID)
+            .appendingPathComponent("scenarios")
+        func exists(_ name: String) -> Bool {
+            FileManager.default.fileExists(atPath: scenariosDir.appendingPathComponent(name).path)
+        }
+        XCTAssertTrue(exists("Warm.up.json") && exists("Warm.up~2.json"))
+
+        // A(先に書いた方)の取り消し: B の ~2 は残る
+        recorder.discardLast(scenarioID: "Warm.up", worker: "ios:A")
+        XCTAssertFalse(exists("Warm.up.json"), "A の記録が消えていない")
+        XCTAssertTrue(exists("Warm.up~2.json"), "B の記録が巻き添えで消えた")
+
+        // 途中を消したので連番は巻き戻さない(巻き戻すと次の A の再実行が B の ~2 を上書きする)
+        recorder.record(makeScenarioRecord(scenarioID: "Warm.up", runID: "", passed: true, worker: "ios:A"))
+        XCTAssertTrue(exists("Warm.up~3.json"), "A の再実行は欠番の次に書く")
+        let b = try JSONDecoder().decode(ScenarioRunRecord.self,
+                                         from: Data(contentsOf: scenariosDir.appendingPathComponent("Warm.up~2.json")))
+        XCTAssertEqual(b.worker, "ios:B")
+        XCTAssertTrue(b.passed, "B の記録が A の再実行で上書きされた")
+    }
+
+    /// 記録していない worker を名指しした取り消しは何も消さない(別の台の記録を消すくらいなら黙る)
+    func testDiscardLastWithUnknownWorkerIsNoop() {
+        let recorder = RunRecorder.begin(project: project, profile: "default", trigger: "cli", captureHostMetrics: false)
+        recorder.record(makeScenarioRecord(scenarioID: "Warm.up", runID: "", passed: true, worker: "ios:A"))
+        recorder.discardLast(scenarioID: "Warm.up", worker: "ios:Z")
+        let scenariosDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: recorder.runID)
+            .appendingPathComponent("scenarios")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: scenariosDir.appendingPathComponent("Warm.up.json").path))
     }
 
     func testDiscardLastOnUnrecordedScenarioIsNoop() {

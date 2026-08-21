@@ -40,6 +40,7 @@ struct RemoteRunDispatcher {
                   deviceNames: [String] = [], deviceHost: String? = nil,
                   heal: Bool, noHeal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
                   fastInput: Bool, enableAnimations: Bool, performanceMode: Bool,
+                  eachDevice: Bool = false,
                   localJUnitPath: String?,
                   remoteTimeoutSeconds: Int?) async throws -> Int32 {
         let setupStart = Date()
@@ -64,7 +65,7 @@ struct RemoteRunDispatcher {
             deviceNames: deviceNames, deviceHost: deviceHost,
             heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
             fastInput: fastInput, enableAnimations: enableAnimations,
-            performanceMode: performanceMode,
+            performanceMode: performanceMode, eachDevice: eachDevice,
             remoteJUnitPath: remoteJUnitPath, reportDir: remoteReportDir, workspace: remoteWorkspace)
         let timeoutSeconds = RemoteTimeout.seconds(
             explicit: remoteTimeoutSeconds, scenarioCount: scenarios.count)

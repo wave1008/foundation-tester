@@ -464,6 +464,22 @@ final class RemoteDispatchTests: XCTestCase {
              "--device", "iPhone-01", "iPhone-02", "--device-host", "M1Max"])
     }
 
+    /// `--each-device` は中継しないとリモートが共有キューで走る(「全台で1回ずつ」が黙って分配に化ける)
+    func testRemoteRunArgsRelaysEachDevice() {
+        let args = RemoteRunArgs.build(
+            project: "E2E", profile: "p", scenarios: ["Warm.up"], folders: [],
+            heal: false, noHeal: false, noLPT: false, lptHistoryRuns: nil,
+            fastInput: false, enableAnimations: false, performanceMode: false, eachDevice: true,
+            remoteJUnitPath: nil, reportDir: nil)
+        XCTAssertTrue(args.contains("--each-device"), "\(args)")
+        let without = RemoteRunArgs.build(
+            project: "E2E", profile: "p", scenarios: ["Warm.up"], folders: [],
+            heal: false, noHeal: false, noLPT: false, lptHistoryRuns: nil,
+            fastInput: false, enableAnimations: false, performanceMode: false,
+            remoteJUnitPath: nil, reportDir: nil)
+        XCTAssertFalse(without.contains("--each-device"))
+    }
+
     /// remoteControl.workspace が宣言されているプロファイルだけ `--workspace` が付く(渡さないと
     /// 子は自分のリポジトリルート基準で appPath を解決し、ミラーしていない絶対パスを見に行く)
     func testRemoteRunArgsRelaysWorkspaceOnlyWhenGiven() {

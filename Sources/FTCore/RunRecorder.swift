@@ -36,8 +36,13 @@ public final class RunRecorder: @unchecked Sendable {
     public let runDir: URL
 
     private let lock = NSLock()
-    /// ファイル名(sanitize 済み scenarioID)ごとの記録回数。2 回目以降は `~<回数>` を付与
+    /// ファイル名(sanitize 済み scenarioID)ごとの**高水位**(これまでに振った最大の連番)。
+    /// 2 回目以降は `~<回数>` を付与。discardLast で巻き戻すのは「消したのが最新」のときだけ
     private var fileNameCounts: [String: Int] = [:]
+    /// baseName ごとの、いま残っているファイル名と書き手(ScenarioRunRecord.worker)。書いた順。
+    /// **discardLast(worker:) がその書き手のぶんだけを消す**ための台帳 —— ブロードキャスト実行は
+    /// 同じ ID を N 台が同時に書くので、「この ID の最新」では別の台の記録を消す
+    private var liveFiles: [String: [(fileName: String, worker: String?)]] = [:]
     private let hostMetrics: HostMetricsRecorder?
 
     private init(runID: String, projectName: String, profile: String?, machine: String,
@@ -107,16 +112,28 @@ public final class RunRecorder: @unchecked Sendable {
         write(record)
     }
 
-    /// 凍結による再実行時に直前の記録を取り消す。連番カウンタも巻き戻す
-    public func discardLast(scenarioID: String) {
+    /// 凍結・環境エラーによる再実行時に直前の記録を取り消す。
+    /// - worker: 消してよい書き手(`ScenarioRunner.recordingWorker` = 記録の `worker` と同じ文字列)。
+    ///   **並列の呼び手は必ず渡す** —— nil は「この ID の最新」を消す(逐次実行・旧呼び手向け)。
+    /// 連番は「消したのが最新」のときだけ巻き戻す(途中を消したときは欠番のまま残す。巻き戻すと
+    /// 次の書き込みが残っている番号と衝突して上書きする)
+    public func discardLast(scenarioID: String, worker: String? = nil) {
         let baseName = Self.sanitizeFileName(scenarioID)
         lock.lock()
-        let count = fileNameCounts[baseName] ?? 0
-        guard count > 0 else { lock.unlock(); return }
-        let fileName = count == 1 ? baseName : "\(baseName)~\(count)"
-        fileNameCounts[baseName] = count - 1
+        guard var entries = liveFiles[baseName],
+              let index = worker == nil ? entries.indices.last
+                                        : entries.lastIndex(where: { $0.worker == worker }) else {
+            lock.unlock()
+            return
+        }
+        let removed = entries.remove(at: index)
+        liveFiles[baseName] = entries
+        if index == entries.count, let count = fileNameCounts[baseName], count > 0,
+           removed.fileName == Self.fileName(baseName, count: count) {
+            fileNameCounts[baseName] = count - 1
+        }
         lock.unlock()
-        RunResultsStore.removeScenario(runDir: runDir, fileName: fileName)
+        RunResultsStore.removeScenario(runDir: runDir, fileName: removed.fileName)
     }
 
     public func finish(total: Int, passed: Int, failed: Int, degradedWorkers: [String] = [],
@@ -149,9 +166,14 @@ public final class RunRecorder: @unchecked Sendable {
         lock.lock()
         let count = (fileNameCounts[baseName] ?? 0) + 1
         fileNameCounts[baseName] = count
+        let fileName = Self.fileName(baseName, count: count)
+        liveFiles[baseName, default: []].append((fileName, record.worker))
         lock.unlock()
-        let fileName = count == 1 ? baseName : "\(baseName)~\(count)"
         RunResultsStore.writeScenario(record, runDir: runDir, fileName: fileName)
+    }
+
+    private static func fileName(_ baseName: String, count: Int) -> String {
+        count == 1 ? baseName : "\(baseName)~\(count)"
     }
 
     private static func sanitizeFileName(_ scenarioID: String) -> String {
