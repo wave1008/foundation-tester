@@ -61,6 +61,10 @@ public enum DSLCommandIndex {
               "Records the block as one check step. Zero assertions inside is inconclusive."),
         .init("irregularHandler", "structure", "irregularHandler(detect, dismiss:, maxDismissals:?)",
               "Declares an in-app message to close automatically whenever it appears."),
+        .init("systemAlertHandler", "structure", "systemAlertHandler(button) / systemAlertHandler(alert:, button:)",
+              "Announces ONE upcoming OS system alert (permission / ATT) and the button to press on it."
+                  + " Register before the action that triggers it; the entry is removed once pressed."
+                  + " With alert:, only an alert whose title contains that text is matched. hybrid engine only."),
         .init("suppressHandler", "structure", "suppressHandler { }",
               "Runs the block without closing declared interruptions, so the scenario can"
                   + " check or operate the modal itself. It does not stop the app from showing one."),

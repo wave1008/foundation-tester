@@ -364,7 +364,6 @@ public enum ScenarioRunner {
                                                -> (ok: Bool, message: String))? = nil,
                               appName: String? = nil,
                               appBundleID: String? = nil,
-                              iosSystemAlertButtons: [SystemAlertRule] = [],
                               onEvent: @escaping (RunEvent) -> Void) async -> ScenarioOutcome {
         onEvent(.flowStarted(worker: worker.label, flowURL: item.url,
                              flowName: item.info.id, isDirty: false))
@@ -388,8 +387,7 @@ public enum ScenarioRunner {
             installHandler: installHandler.map { handler in
                 { (path: String?) async -> (ok: Bool, message: String) in await handler(worker, path) }
             },
-            appName: appName, appBundleID: appBundleID,
-            iosSystemAlertButtons: iosSystemAlertButtons) { event in
+            appName: appName, appBundleID: appBundleID) { event in
             switch event.kind {
             case "sceneStarted":
                 onEvent(.sceneStarted(worker: worker.label, flowURL: item.url,
@@ -568,8 +566,6 @@ public final class RunOrchestrator {
     /// 実行プロファイルが解決した bundle ID。**platform 別**(appName と違い ios/android で
     /// 別の ID になりうるので単一値にできない)。`@TestClass(app:)` 未指定シナリオの既定アプリ
     private let appBundleIDs: [String: String]
-    /// システム許可アラートを自動で押すボタンラベル(実行プロファイル由来。空 = 何もしない)
-    private let iosSystemAlertButtons: [SystemAlertRule]
     /// 劣化・離脱したワーカーの収集(summary/レポートの degradedWorkers に載せる)。
     private let degraded = NoteCollector()
     /// 振り直し(結果取り消し+requeue)の監査記録(summary/レポートの freezeRetries に載せる)。
@@ -613,8 +609,7 @@ public final class RunOrchestrator {
                 installHandler: (@Sendable (RunWorker, String?) async
                                   -> (ok: Bool, message: String))? = nil,
                 appName: String? = nil,
-                appBundleIDs: [String: String] = [:],
-                iosSystemAlertButtons: [SystemAlertRule] = []) {
+                appBundleIDs: [String: String] = [:]) {
         (self.events, self.continuation) = AsyncStream.makeStream(of: RunEvent.self)
         self.workers = workers
         self.fm = fm
@@ -640,7 +635,6 @@ public final class RunOrchestrator {
         self.installHandler = installHandler
         self.appName = appName
         self.appBundleIDs = appBundleIDs
-        self.iosSystemAlertButtons = iosSystemAlertButtons
     }
 
     private func deviceUnreachable(_ serial: String) async -> Bool {
@@ -952,7 +946,6 @@ public final class RunOrchestrator {
                 scenarioTimeout: scenarioTimeout, debug: debug,
                 recorder: recorder, installHandler: installHandler, appName: appName,
                 appBundleID: appBundleIDs[worker.platform],
-                iosSystemAlertButtons: iosSystemAlertButtons,
                 onEvent: { [continuation, fmCounter = self.fmUnavailable] event in
                     // **FM 全滅のまま走ったシナリオを数える**(合否は変えない。summary の
                     // fmUnavailableScenarios。ここで数えるのは、実行結果に FM の可否が

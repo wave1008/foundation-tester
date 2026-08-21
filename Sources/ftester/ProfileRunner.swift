@@ -368,8 +368,7 @@ enum ProfileRunner {
             }) : nil,
             installHandler: InstallHandlerFactory.make(apps: resolved.apps),
             appName: resolved.appName,
-            appBundleIDs: resolved.apps.mapValues(\.bundleID),
-            iosSystemAlertButtons: resolved.iosSystemAlertButtons)
+            appBundleIDs: resolved.apps.mapValues(\.bundleID))
         PhaseLog.mark("orchestrator-setup")
         async let summary = orchestrator.run(items: items, defaultPlatform: defaultPlatform)
 

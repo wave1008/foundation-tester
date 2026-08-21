@@ -12,7 +12,7 @@
 import XCTest
 @testable import FTCore
 
-/// `iosSystemAlertButtons` のエントリ(素のラベル / アラートの名指し)の読み書きと選定
+/// `systemAlertHandler` の登録(素のラベル / アラートの名指し)の読み書きと選定
 final class SystemAlertRuleTests: XCTestCase {
 
     /// プロファイル JSON の2形を読めること(混在・順序維持)。書き出しは往復で同じ形に戻る
@@ -41,17 +41,15 @@ final class SystemAlertRuleTests: XCTestCase {
                    el("button", "許可", ref: 3)]
         let rules: [SystemAlertRule] = [.alert(titleContains: "トラッキング", button: "許可")]
 
-        let hit = SystemAlertDismissal.ruleToApply(in: att, rules: rules, handled: [])
+        let hit = SystemAlertDismissal.ruleToApply(in: att, rules: rules)
         XCTAssertEqual(hit?.button.ref, 3)
         XCTAssertEqual(hit?.ruleIndex, 0)
 
         // 題名が一致しないアラートには(同じボタンがあっても)当てない
         let location = [el("alert", "位置情報の利用を許可しますか?"),
                         el("button", "許可", ref: 3)]
-        XCTAssertNil(SystemAlertDismissal.ruleToApply(in: location, rules: rules, handled: []))
+        XCTAssertNil(SystemAlertDismissal.ruleToApply(in: location, rules: rules))
 
-        // 消費済みの名指しはもう当てない
-        XCTAssertNil(SystemAlertDismissal.ruleToApply(in: att, rules: rules, handled: [0]))
     }
 
     /// **題名が読めないアラートに名指しは当てない**(どのアラートか確かめようがないのに
@@ -64,9 +62,9 @@ final class SystemAlertRuleTests: XCTestCase {
         }
         let titleless = [el("button", "許可", ref: 3)]
         XCTAssertNil(SystemAlertDismissal.ruleToApply(
-            in: titleless, rules: [.alert(titleContains: "トラッキング", button: "許可")], handled: []))
+            in: titleless, rules: [.alert(titleContains: "トラッキング", button: "許可")]))
         XCTAssertEqual(SystemAlertDismissal.ruleToApply(
-            in: titleless, rules: [.button("許可")], handled: [])?.button.ref, 3)
+            in: titleless, rules: [.button("許可")])?.button.ref, 3)
     }
 }
 
@@ -96,15 +94,29 @@ final class SystemAlertWatchlistTests: XCTestCase {
         XCTAssertFalse(list.isWatching, "全部処理したら監視を解除すること")
     }
 
-    /// **素のラベルは notePressed でも使い切れない**。押した後も選ばれ続け、監視も続く ——
-    /// 「実装が handled を読まないから安全」ではなく、挙動として固定する
-    func testABareLabelSurvivesNotePressed() {
-        var list = SystemAlertWatchlist(rules: [.button("許可")])
+    /// **1回の登録 = 1枚のアラート**。押したら外れ、台帳が空になれば監視も止まる。
+    /// 同じラベルを2枚待つなら**2回登録**すればよい —— 登録は枚数ぶんあるので、
+    /// `許可` のような汎用ラベルを複数のアラートが使っても取り合いにならない
+    func testOneRegistrationServesOneAlert() {
+        var list = SystemAlertWatchlist(rules: [.button("許可"), .button("許可")])
         let alert = [el("alert", "何かの許可"), el("button", "許可", ref: 2)]
         guard let first = list.buttonToTap(in: alert) else { XCTFail(); return }
         list.notePressed(first.index)
-        XCTAssertTrue(list.isWatching, "素のラベルは監視を解除しない")
-        XCTAssertNotNil(list.buttonToTap(in: alert), "押した後も同じラベルを使えること")
+        XCTAssertTrue(list.isWatching, "2枚目の登録が残っている")
+        guard let second = list.buttonToTap(in: alert) else {
+            XCTFail("2回登録したら2枚目にも使えること"); return
+        }
+        list.notePressed(second.index)
+        XCTAssertFalse(list.isWatching, "全部発火したら監視を止めること")
+        XCTAssertNil(list.buttonToTap(in: alert), "空の台帳は何も押さない")
+    }
+
+    /// 登録は後からでも足せる(シナリオの途中で「次の操作でアラートが出る」と予告する形)
+    func testRegistrationCanHappenMidScenario() {
+        var list = SystemAlertWatchlist()
+        XCTAssertFalse(list.isWatching, "登録が無い間は監視しない")
+        list.register(.button("許可"))
+        XCTAssertTrue(list.isWatching)
     }
 
     /// 消費済みの名指しは選定から外れる(同じアラートを二度押さない)

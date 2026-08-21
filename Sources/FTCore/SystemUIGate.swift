@@ -18,10 +18,11 @@
 // 聞く口は XCUITest ランナーの `GET /systemalert`(`SystemAlertProbeResponse`)。
 // 木を全部撮ると約 185ms のところ、**アラート無しで約 73ms**(実測 2026-08-21)。
 //
-// **働くのは `iosSystemAlertButtons` を宣言した実行だけ**(2026-08-21 ユーザー決定)。
-// アラートが出る画面は書き手が知っているので宣言できるはずで、宣言しない実行に
-// 毎ステップの往復を負わせない。呼び出し側(StepExecutor)が宣言の有無で門を閉じるので、
-// この型自体は宣言を見ない(判定と方針を混ぜない)。
+// **働くのは `systemAlertHandler` の登録が残っている間だけ**。アラートが出る操作は
+// 書き手が知っているので直前に登録でき、登録の無い実行・発火し終えた後には
+// 毎ステップの往復を負わせない。
+// 呼び出し側(StepExecutor)が台帳(`SystemAlertWatchlist`)の空で門を閉じるので、
+// この型自体は登録を見ない(判定と方針を混ぜない)。
 
 import Foundation
 
@@ -45,9 +46,9 @@ public enum SystemUIGate {
 
     /// 待ち切れなかったときの失敗の言い分。
     ///
-    /// **この機構は `iosSystemAlertButtons` を宣言したときだけ働く**ので、ここに来た時点で
-    /// 宣言は必ずある。一致しなかったのだから、次の一手に要るのは
-    /// **「宣言した名前」と「実際にそのアラートに在る名前」の両方**(2026-08-20 受け手依頼)。
+    /// **この機構は `systemAlertHandler` の登録が残っているときだけ働く**ので、ここに来た
+    /// 時点で登録は必ずある。一致しなかったのだから、次の一手に要るのは
+    /// **「登録した名前」と「実際にそのアラートに在る名前」の両方**(2026-08-20 受け手依頼)。
     ///
     /// 実際の名前を出さなかった頃は、受け手が**シミュレータの画面を連続撮影して**
     /// 正解のラベルを探すしかなかった(数秒で消えるアラートもあり捕まらない)。
@@ -61,7 +62,7 @@ public enum SystemUIGate {
         if let covering { message += " (\(covering))" }
         message += ". The in-app engine could still reach the app, but a person could not,"
             + " so the step was not performed."
-        message += " None of iosSystemAlertButtons"
+        message += " None of the registered systemAlertHandler entries"
             + " (\(declaredButtons.joined(separator: " / "))) matched a button on it."
         let actual = actualButtons.filter { !$0.isEmpty }
         if actual.isEmpty {
@@ -70,7 +71,7 @@ public enum SystemUIGate {
         } else {
             message += " Buttons on this alert: "
                 + actual.map { "「\($0)」" }.joined(separator: " / ")
-                + ". Add the one you want pressed to iosSystemAlertButtons,"
+                + ". Register the one you want pressed with systemAlertHandler(...),"
                 + " or dismiss it in the scenario."
         }
         return message
