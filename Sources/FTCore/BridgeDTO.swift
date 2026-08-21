@@ -225,7 +225,12 @@ public enum BridgeAPI {
     /// Scrolls and coordinate taps now go to the frontmost touch-receiving window, and the
     /// screenshot draws every visible window (a screenshot that omits the modal is a misleading
     /// piece of evidence). A stale bridge keeps aiming at the key window → bump.
-    public static let bridgeProtocolVersion = 76
+    /// 77: `GET /systemalert` on the XCUITest runner — is a SpringBoard alert on top, and if so
+    /// its title and buttons. A **new route**, so a stale runner answers 404 → bump.
+    /// It exists because the full springboard `/snapshot` costs ~185ms (measured 2026-08-21),
+    /// far too much to pay per step, while the in-app tree cannot see the alert at all
+    /// (another process) and `applicationState` turned out not to track it (see the route's doc).
+    public static let bridgeProtocolVersion = 77
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の
@@ -778,6 +783,24 @@ public struct SnapshotResponse: Codable, Sendable {
         self.keyboardFrame = keyboardFrame
         self.truncatedTiers = truncatedTiers
         self.bulkExemptCount = bulkExemptCount
+    }
+}
+
+/// `GET /systemalert`(XCUITest ランナーのみ)。**SpringBoard のアラートが載っているか**と、
+/// 載っているならその題名とボタン。
+///
+/// なぜ専用の口があるか: in-app の木は自プロセスしか見えず、SpringBoard の木を丸ごと撮ると
+/// 約 185ms かかる(実測 2026-08-21)。この口は `alerts.firstMatch.exists` の1問だけなので
+/// **アラート無しで約 73ms・表示中で約 146ms**(題名とボタンの読み出し込み)。
+/// **セッションを変えない**ので、操作の途中で呼んでも直前の snapshot の ref が生き残る。
+public struct SystemAlertProbeResponse: Codable, Sendable {
+    public var present: Bool
+    public var title: String?
+    public var buttons: [String]
+    public init(present: Bool, title: String? = nil, buttons: [String] = []) {
+        self.present = present
+        self.title = title
+        self.buttons = buttons
     }
 }
 

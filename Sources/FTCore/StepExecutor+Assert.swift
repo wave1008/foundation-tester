@@ -287,8 +287,32 @@ extension StepExecutor {
 
     /// assert ディスパッチャ。判定ロジックはグループ単位の executeAssert* へ切り出し、ここは
     /// 振り分けだけ行う。
+    ///
+    /// **成功したときだけ、OS のシステム UI に覆われていなかったかを確かめる**(SystemUIGate)。
+    /// 覆われている画面で緑になるのは、別ウィンドウのモーダルと同じ形の偽陽性 ——
+    /// 人手には見えていないものを「見えた」と言っていることになる。
+    /// 判定は**1ステップにつき1往復**(約 73ms)。ポーリングの周回ごとには払わない ——
+    /// 誤りは「緑になったこと」に宿るので、緑になった瞬間に1度確かめれば足りる。
+    /// **失敗したときは聞かない**(既にシナリオは止まるので、往復を足す価値がない)
     func executeAssert(_ assert: String, step: FlowStep,
                        phase: inout PhaseAccumulator) async throws -> StepResult.Status {
+        resolvedViaSystemUIThisStep = false
+        let status = try await dispatchAssert(assert, step: step, phase: &phase)
+        // シナリオ自身がアラートを検証しているなら奪わない(操作側の①と同じ規律)
+        guard Self.isSuccess(status), !resolvedViaSystemUIThisStep,
+              let fb = fallbackDriver else { return status }
+        let start = ContinuousClock().now
+        let probe = try? await fb.systemAlert()
+        phase.snapshotMs += Self.ms(ContinuousClock().now - start)
+        guard SystemUIGate.isCovered(probe) else { return status }
+        return failed(.systemUICovered,
+                      SystemUIGate.failureMessage(
+                          covering: SystemUIGate.describeCovering(probe),
+                          declaredButtons: systemAlertButtons))
+    }
+
+    private func dispatchAssert(_ assert: String, step: FlowStep,
+                                phase: inout PhaseAccumulator) async throws -> StepResult.Status {
         switch assert {
         case "exists":
             return try await executeAssertExists(step: step, phase: &phase)
@@ -388,6 +412,8 @@ extension StepExecutor {
                     phase.snapshotMs += Self.ms(clock.now - start)
                     if let (element, fallback) = Self.resolve(step: step, in: fsnap, strictForAssert: true) {
                         resolvedElementThisStep = element
+                        // **SpringBoard 側で解決した** = この検証はアラート自身が対象
+                        resolvedViaSystemUIThisStep = true
                         if let fallback { return .passedViaFallback(fallback) }
                         return .passed
                     }

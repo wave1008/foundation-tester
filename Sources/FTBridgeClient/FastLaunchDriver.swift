@@ -72,6 +72,7 @@ public final class FastLaunchDriver: AppDriver {
         try await base.isAppForeground(bundleID: bundleID)
     }
     public func foregroundAppID() async throws -> String? { try await base.foregroundAppID() }
+    public func systemAlert() async throws -> SystemAlertProbeResponse? { try await base.systemAlert() }
     public func activate(bundleID: String) async throws { try await base.activate(bundleID: bundleID) }
     public func openAppSwitcher() async throws { try await base.openAppSwitcher() }
     public func home() async throws { try await base.home() }

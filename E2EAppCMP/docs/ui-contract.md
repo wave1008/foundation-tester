@@ -476,6 +476,17 @@ FM が修復できるかを検証する。
 | `#btn_crash_confirm` | Button | `本当にクラッシュ` | **即プロセス異常終了**(通常シナリオでは押さない) |
 | `#btn_crash_cancel` | Button | `やめる` | |
 
+**iOS SUT だけが持つ**(OS の権限アラートを出す witness。他 SUT には無い):
+
+| tag | 種別 | ラベル/テキスト | 備考 |
+|---|---|---|---|
+| `#txt_photos_result` | Text | `photos=<v>` 初期 `photos=none` | v ∈ `none`/`authorized`/`limited`/`denied`/`restricted`/`notDetermined` |
+| `#btn_request_photos` | Button | `写真へのアクセスを要求` | 押すと **SpringBoard の権限アラート**が出る。**in-app の木には載らない**(別プロセス)ので fallback 経由でだけ見える |
+
+`#btn_request_photos` は「OS のアラートがアプリを覆う」形の唯一の witness。
+**ATT ではなく写真**なのは、ATT が `simctl privacy` に該当サービスを持たず一度答えると
+再現できないため。写真は `clearAppData()`(内部で `simctl privacy reset all`)で再武装できる。
+
 `#btn_crash_confirm` はブリッジ切断・クラッシュレポート添付の検証専用。
 通常実行に載せる `scenarios/` 直下には置かず `_disabled/` に置く。
 

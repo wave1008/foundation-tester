@@ -24,6 +24,9 @@ targets:
         CFBundleVersion: "1"
         UILaunchScreen: {}
         UIApplicationSupportsIndirectInputEvents: true
+        # 写真の権限ダイアログ(OS のアラートが被さる witness)。宣言が無いと
+        # requestAuthorization は即クラッシュする
+        NSPhotoLibraryUsageDescription: 権限ダイアログを出すための E2E witness です(実際には読みません)
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft

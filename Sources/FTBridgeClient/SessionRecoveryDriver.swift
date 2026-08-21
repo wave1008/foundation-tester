@@ -110,6 +110,7 @@ public final class SessionRecoveryDriver: AppDriver {
         try await base.isAppForeground(bundleID: bundleID)
     }
     public func foregroundAppID() async throws -> String? { try await base.foregroundAppID() }
+    public func systemAlert() async throws -> SystemAlertProbeResponse? { try await base.systemAlert() }
     /// a11y の一時停止で撃ち直したことは**必ず見せる**(黙って遅くなるだけだと、
     /// 8 秒級の遅れの理由が読めない)。base の注記があればそちらを優先する
     public var lastActionNote: String? { base.lastActionNote ?? accessibilityOutageNote }

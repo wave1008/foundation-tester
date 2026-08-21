@@ -435,6 +435,11 @@ extension StepExecutor {
         // 行う: 覆われているだけで要素自体は解決できてしまい、タップが吸われる形があるため
         // (層3 の coveringHint と同じ事象。あちらは診断、こちらは宣言があるときの自動処理)
         try await dismissInterruption(in: &snapshot, phase: &phase)
+        // **OS のシステム UI が被さっている間は撃たない**(SystemUIGate)。宣言された割り込みを
+        // 閉じた後・解決の前に置く: 解決できてしまうことが問題なので、解決の後では遅い
+        if let blocked = try await waitOutSystemUI(step: step, snapshot: &snapshot, phase: &phase) {
+            return StepOutcome(status: blocked)
+        }
         var resolved = Self.resolve(step: step, in: snapshot)
         // **切り詰めが原因の未発見に、リトライ/ghost 救済の予算を燃やさない**(2026-08-15)。
         // ここで撮り直さないと、下のリトライループが全予算(バックオフ3回 or step.timeout 全部)を
@@ -1668,6 +1673,72 @@ extension StepExecutor {
 }
 
 extension StepExecutor {
+    /// **OS のシステム UI が被さっている間は操作させない**(`FTCore.SystemUIGate`)。
+    /// 戻り値 nil = 進んでよい / 非 nil = そのままステップの結果にする(失敗)。
+    ///
+    /// in-app の注入は OS のイベント経路を通らないので、覆われていても届いてしまう
+    /// (= 人手では不可能な操作)。判定は XCUITest ランナーの `GET /systemalert` だけを見る
+    /// (**約 73ms**。木を全部撮る 185ms は毎ステップ払えない。`applicationState` は
+    /// 端末で割れて使えなかった —— SystemUIGate の doc)。
+    ///
+    /// 順序は3つ。**今の挙動を包含する**ように並べてある:
+    ///   ① 対象が fallback(SpringBoard)の木で解決できる → 何もしない
+    ///      = シナリオ自身がそのアラートを操作している。下のドライバ切替がそのまま拾う
+    ///   ② 宣言済みの `iosSystemAlertButtons` で閉じられる → 閉じて木を取り直す
+    ///   ③ どちらでもない → **撃たずに待つ**。消えたら進み、待ち切れなければ失敗
+    ///
+    /// 予算はステップの `timeout`、無ければ既定の待ち(**新しい数字は作らない**。
+    /// `waitUntilEnabled` と同じ規律)。**fallback が無ければ 1 往復も払わない**
+    /// (engine=inapp 固定・Android・旧ランナーは判定自体を持たない)
+    func waitOutSystemUI(step: FlowStep, snapshot: inout SnapshotResponse,
+                         phase: inout PhaseAccumulator) async throws -> StepResult.Status? {
+        guard let fb = fallbackDriver else { return nil }
+        let clock = ContinuousClock()
+        var start = clock.now
+        var probe = try? await fb.systemAlert()
+        phase.snapshotMs += Self.ms(clock.now - start)
+        guard SystemUIGate.isCovered(probe) else { return nil }
+
+        let deadline = clock.now.advanced(by: .seconds(step.timeout ?? FlowStep.defaultWaitSeconds))
+        var backoff = PollBackoff()
+        var covering = SystemUIGate.describeCovering(probe)
+        while true {
+            start = clock.now
+            let fsnap = try await fb.snapshot()
+            phase.snapshotMs += Self.ms(clock.now - start)
+            // ① シナリオ自身がアラートを操作している
+            if Self.resolveDetailed(step: step, in: fsnap) != nil { return nil }
+            // ② 宣言があれば閉じる
+            if await dismissSystemAlert(in: fsnap, via: fb) {
+                start = clock.now
+                snapshot = (try? await driver.snapshot(bypassingCache: true)) ?? snapshot
+                phase.snapshotMs += Self.ms(clock.now - start)
+                noteCodesThisStep.insert(.waitedForSystemUI)
+                return nil
+            }
+            // ③ 撃たずに待つ
+            guard clock.now < deadline else {
+                return failed(.systemUICovered,
+                              SystemUIGate.failureMessage(covering: covering,
+                                                          declaredButtons: systemAlertButtons))
+            }
+            start = clock.now
+            try await Task.sleep(for: backoff.nextDelay())
+            phase.waitMs += Self.ms(clock.now - start)
+            start = clock.now
+            probe = try? await fb.systemAlert()
+            phase.snapshotMs += Self.ms(clock.now - start)
+            covering = SystemUIGate.describeCovering(probe) ?? covering
+            if !SystemUIGate.isCovered(probe) {
+                start = clock.now
+                snapshot = (try? await driver.snapshot(bypassingCache: true)) ?? snapshot
+                phase.snapshotMs += Self.ms(clock.now - start)
+                noteCodesThisStep.insert(.waitedForSystemUI)
+                return nil
+            }
+        }
+    }
+
     /// **fallback の木にシステム許可アラートが居たら、プロファイルが指定したボタンを押す**。
     /// 押したら true(呼び出し側は木を取り直して解決をやり直す)。
     ///

@@ -159,6 +159,8 @@ enum Tags {
     static let btnCrash = "btn_crash"
     static let btnCrashConfirm = "btn_crash_confirm"
     static let btnCrashCancel = "btn_crash_cancel"
+    static let btnRequestPhotos = "btn_request_photos"
+    static let txtPhotosResult = "txt_photos_result"
 
     // 情報
     static let txtAboutMarker = "txt_about_marker"

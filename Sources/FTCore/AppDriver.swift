@@ -133,6 +133,10 @@ public protocol AppDriver {
     /// フォアグラウンドのアプリが bundleID(iOS)/ package(Android)と一致しているか(DSL の appIs)。
     /// **プロトコル要件として宣言すること**(install(packagePath:) と同じ理由)
     func isAppForeground(bundleID: String) async throws -> Bool
+    /// **OS のシステム UI(SpringBoard のアラート)が載っているか**。分からないドライバは nil。
+    /// **プロトコル要件として宣言すること**(install(packagePath:) と同じ理由 ——
+    /// 要件でないと存在型越しの呼び出しが静的ディスパッチで既定実装に落ち、黙って nil になる)
+    func systemAlert() async throws -> SystemAlertProbeResponse?
     /// 現在フォアグラウンドのアプリの bundleID/package(分かるプラットフォームだけ実値。
     /// 分からなければ nil。DSL の appIs の失敗メッセージが actual として使う)。
     /// **プロトコル要件として宣言すること**(install(packagePath:) と同じ理由)
@@ -232,6 +236,10 @@ public enum DriverError: Error, LocalizedError {
 
 /// activate 未対応ドライバ(InAppDriver/SystemUIDriver 等)は launch(再起動)にフォールバックする。
 public extension AppDriver {
+    /// 既定は nil(= 判定しない)。**答えられるのは XCUITest ランナーを包むドライバだけ**で、
+    /// in-app は自プロセスしか見えず、Android は木の根が active window なので判定自体が要らない
+    public func systemAlert() async throws -> SystemAlertProbeResponse? { nil }
+
     var lastActionNote: String? { nil }
     /// 既定は「分からない」。答えられるのは**位置を直接動かせる**ドライバ(AndroidDriver の
     /// CDP 経路・in-app の contentOffset 経路)だけ。**包むドライバは中のドライバの答えを
