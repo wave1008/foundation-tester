@@ -172,6 +172,24 @@ struct RunScenario: AsyncParsableCommand {
             help: "Button label to press when an iOS system permission alert blocks a step (run profile iosSystemAlertButtons). Repeatable; tried in order. Only effective with engine=hybrid")
     var iosSystemAlertButton: [String] = []
 
+    @Option(name: .customLong("ios-system-alert-rule"),
+            help: "One iosSystemAlertButtons entry as JSON (a bare string, or {\"alert\":…,\"button\":…}). Repeatable; tried in order. The host sends every entry through this one flag so the declared order survives")
+    var iosSystemAlertRule: [String] = []
+
+    /// 新旧フラグの合成(旧 --ios-system-alert-button は素のラベルのみ)。JSON が読めない
+    /// エントリは**黙って捨てずに落とす** —— 宣言の一部だけで走ると「見張っているつもり」になる
+    func systemAlertRules() throws -> [SystemAlertRule] {
+        var rules = iosSystemAlertButton.map { SystemAlertRule.button($0) }
+        for json in iosSystemAlertRule {
+            guard let data = json.data(using: .utf8),
+                  let rule = try? JSONDecoder().decode(SystemAlertRule.self, from: data) else {
+                throw ValidationError("--ios-system-alert-rule is not a valid entry: \(json)")
+            }
+            rules.append(rule)
+        }
+        return rules
+    }
+
     @Flag(help: "Emit NDJSON events (for the host)")
     var json = false
 
@@ -413,7 +431,7 @@ struct RunScenario: AsyncParsableCommand {
         // 技術識別子: Android は adb serial、iOS はシミュレータ UDID(共に既存のドライバ構築引数の再利用)
         let deviceIdentifier = runPlatform == "android" ? serial : udid
         let core = FTDriveCore(driver: driver, platform: runPlatform, app: appBundleID,
-                               systemAlertButtons: iosSystemAlertButton,
+                               systemAlertRules: try systemAlertRules(),
                                scenarioID: scenarioID, scenarioTitle: descriptor.title,
                                delegate: delegate, healingEnabled: heal && !noFM,
                                falsePositiveCheckEnabled: !noFalsePositiveCheck,

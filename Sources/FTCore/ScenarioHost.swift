@@ -255,7 +255,7 @@ public enum ScenarioHost {
                            appPath: String? = nil,
                            appName: String? = nil,
                            appBundleID: String? = nil,
-                           iosSystemAlertButtons: [String] = [],
+                           iosSystemAlertButtons: [SystemAlertRule] = [],
                            onEvent: @escaping (ScenarioEvent) -> Void) async -> Bool {
         let startedAt = Date()
         let clock = ContinuousClock()
@@ -315,7 +315,13 @@ public enum ScenarioHost {
         }
         if let appName { args += ["--app-name", appName] }
         if let appBundleID { args += ["--app", appBundleID] }
-        for label in iosSystemAlertButtons { args += ["--ios-system-alert-button", label] }
+        // 宣言順を保つため、素のラベルも名指し形も**同じ1つのフラグ**で運ぶ(JSON 1個ずつ)。
+        // 2つのフラグに分けると ArgumentParser がフラグごとに配列を作り、混在時の順序が落ちる
+        for rule in iosSystemAlertButtons {
+            if let data = try? JSONEncoder().encode(rule), let json = String(data: data, encoding: .utf8) {
+                args += ["--ios-system-alert-rule", json]
+            }
+        }
         process.arguments = args
 
         let stdout = Pipe()

@@ -933,6 +933,90 @@ final class StepExecutorTests: XCTestCase {
         XCTAssertEqual(outcome.failureKind, .systemUICovered)
     }
 
+    /// **名指し宣言(`.alert`)は処理したら消費され、全部処理し終えたら監視を解除する**
+    /// (ユーザー決定 2026-08-21 の「宣言したアラートを処理したら監視を解除」は、待っている
+    /// アラートの集合を言える名指し形でだけ成立する)。解除後は1往復も払わない
+    func testNamedDeclarationsReleaseTheWatchOnceAllAreHandled() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element(ref: 1, id: "target")]])
+        let fallback = FakeAppDriver(name: "fallback", log: log,
+                                     snapshotElements: [[alertTitled("トラッキングの許可"),
+                                                         labeled(ref: 9, label: "許可")]])
+        fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true, title: "トラッキングの許可"),
+                                      SystemAlertProbeResponse(present: false)]
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback,
+                                    systemAlertRules: [.alert(titleContains: "トラッキング",
+                                                              button: "許可")])
+        let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"), timeout: 5)
+
+        guard case .passed = await executor.execute(step).status else {
+            XCTFail("名指しが当たったら閉じて進むこと"); return
+        }
+        XCTAssertTrue(log.entries.contains { $0.hasPrefix("fallback.tap") }, "\(log.entries)")
+        let afterFirst = fallback.systemAlertCallCount
+        XCTAssertGreaterThan(afterFirst, 0)
+
+        guard case .passed = await executor.execute(step).status else {
+            XCTFail("2ステップ目も通ること"); return
+        }
+        XCTAssertEqual(fallback.systemAlertCallCount, afterFirst,
+                       "名指しを全部処理したら監視を解除する(1往復も払わない): \(log.entries)")
+    }
+
+    /// 名指し宣言は**題名が部分一致するアラートにだけ**効く。別のアラートには
+    /// (同じボタンがあっても)押さない —— 名指しは「このアラートが出る」という表明であって、
+    /// どのアラートにでも押してよいという意味ではない
+    func testANamedDeclarationDoesNotFireOnADifferentAlert() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element(ref: 1, id: "target")]])
+        let fallback = FakeAppDriver(name: "fallback", log: log,
+                                     snapshotElements: [[alertTitled("位置情報の利用"),
+                                                         labeled(ref: 9, label: "許可")]])
+        fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true, title: "位置情報の利用",
+                                                               buttons: ["許可"])]
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback,
+                                    systemAlertRules: [.alert(titleContains: "トラッキング",
+                                                              button: "許可")])
+        let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"), timeout: 1)
+
+        let outcome = await executor.execute(step)
+
+        guard case .failed = outcome.status else {
+            XCTFail("名指しと違うアラートには押さず、止まること: \(outcome.status)"); return
+        }
+        XCTAssertFalse(log.entries.contains { $0.hasPrefix("fallback.tap") },
+                       "別のアラートを閉じてはいけない: \(log.entries)")
+    }
+
+    /// 素のラベルと名指しの**混在**では、素のラベルが残る限り監視は解除されない
+    func testABareLabelKeepsTheWatchAliveEvenAfterNamedOnesAreHandled() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element(ref: 1, id: "target")]])
+        let fallback = FakeAppDriver(name: "fallback", log: log,
+                                     snapshotElements: [[alertTitled("トラッキングの許可"),
+                                                         labeled(ref: 9, label: "許可")]])
+        fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true, title: "トラッキングの許可"),
+                                      SystemAlertProbeResponse(present: false)]
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback,
+                                    systemAlertRules: [.alert(titleContains: "トラッキング",
+                                                              button: "許可"),
+                                                       .button("OK")])
+        let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"), timeout: 5)
+
+        guard case .passed = await executor.execute(step).status else {
+            XCTFail("閉じて進むこと"); return
+        }
+        let afterFirst = fallback.systemAlertCallCount
+        guard case .passed = await executor.execute(step).status else {
+            XCTFail("2ステップ目も通ること"); return
+        }
+        XCTAssertGreaterThan(fallback.systemAlertCallCount, afterFirst,
+                             "素のラベルが残っている限り見張り続けること")
+    }
+
     /// **検証側も監視を続ける**(宣言がある限り毎ステップ確かめる)
     func testAssertKeepsProbingAfterAnAlertHasBeenDismissed() async throws {
         let log = CallLog()

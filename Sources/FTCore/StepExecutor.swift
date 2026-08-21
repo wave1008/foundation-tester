@@ -213,14 +213,37 @@ public final class StepExecutor {
     /// 解決を試す(アプリ上に載ったシステム UI=別プロセスのダイアログ等を XCUITest で拾う)。
     /// 解決に使った driver でそのまま act するので ref 名前空間の混同はない。
     public let fallbackDriver: AppDriver?
-    /// システム許可アラートを自動で押すボタンラベル(実行プロファイルの iosSystemAlertButtons)。
-    /// 空 = 何もしない。**fallbackDriver がある(hybrid)ときだけ効く**
-    public let systemAlertButtons: [String]
-    // **宣言は毎回そのまま使う**(ユーザー指摘 2026-08-22)。押したラベルもアラートも
-    // 消費しない —— 消費は「使い切ったら監視を解除する」ための道具だったが、
-    // 汎用の文言(`許可`)は**複数のアラートが共有する**ので、1度使うと後から出る別の
-    // アラートに押すラベルが残らなかった(受け手報告 2026-08-22)。
-    // 「同じアラートを二度押さない」だけなら waitOutSystemUI の予算チェックが守っている
+    /// システム許可アラートを自動で押す宣言(実行プロファイルの iosSystemAlertButtons)。
+    /// 空 = 何もしない。**fallbackDriver がある(hybrid)ときだけ効く**。
+    /// 形の意味(素のラベル / アラートの名指し)は `SystemAlertRule` の doc
+    public let systemAlertRules: [SystemAlertRule]
+
+    /// 消費済みの**名指し宣言**の添字(`.alert` 形だけが入る。`.button` は消費しない ——
+    /// `許可` のような汎用の文言は複数のアラートが共有するので、消費すると後から出る別の
+    /// アラートに押すラベルが残らない。2026-08-22 の実害)。
+    /// StepExecutor はシナリオ1本につき1つなので、寿命がそのままシナリオの範囲になる
+    private var handledAlertRuleIndices: Set<Int> = []
+
+    /// まだ見張る必要があるか。**素のラベルがある限り true**(どのアラートに何回使うかを
+    /// 言っていない = 解除の根拠が無い)。名指し宣言だけなら、全部消費した時点で false =
+    /// 以後 `/systemalert` に1往復も払わない(「宣言したアラートを処理したら監視を解除する」
+    /// ユーザー決定 2026-08-21 は、待っている集合を言える名指し形でだけ成立する)
+    var watchesSystemAlerts: Bool {
+        systemAlertRules.enumerated().contains { index, rule in
+            switch rule {
+            case .button: return true
+            case .alert: return !handledAlertRuleIndices.contains(index)
+            }
+        }
+    }
+
+    /// 名指し宣言を消費済みにする(`dismissSystemAlert` からのみ呼ぶ)
+    func markAlertRuleHandled(_ index: Int) {
+        handledAlertRuleIndices.insert(index)
+    }
+
+    /// 消費済みの添字(dismissSystemAlert が選定に渡す)
+    var handledAlertRules: Set<Int> { handledAlertRuleIndices }
     /// hybrid 用: type アクションを XCUITest(アプリ attach)で実行する代替ドライバ。inapp が
     /// UIKit 非依存アプリ(Compose 等)で type 不能(409)なときの経路。fallbackDriver(springboard
     /// 参照・システム UI 用)とは別物。
@@ -382,6 +405,7 @@ public final class StepExecutor {
 
     public init(driver: AppDriver, fallbackDriver: AppDriver? = nil,
                 systemAlertButtons: [String] = [],
+                systemAlertRules: [SystemAlertRule]? = nil,
                 typeDriver: AppDriver? = nil, preferTypeDriver: Bool = false,
                 typeDriverGestures: Set<String> = [],
                 delegate: ReplayDelegate? = nil, healingEnabled: Bool = false,
@@ -397,7 +421,8 @@ public final class StepExecutor {
         self.defersPartialSheetRecovery = defersPartialSheetRecovery
         self.driver = driver
         self.fallbackDriver = fallbackDriver
-        self.systemAlertButtons = systemAlertButtons
+        // systemAlertButtons は素のラベルだけの旧形(既存テストの互換)。rules 指定が優先
+        self.systemAlertRules = systemAlertRules ?? systemAlertButtons.map { .button($0) }
         self.typeDriver = typeDriver
         self.preferTypeDriver = preferTypeDriver
         self.typeDriverGestures = typeDriverGestures

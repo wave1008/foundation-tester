@@ -11,6 +11,67 @@
 
 import Foundation
 
+/// 実行プロファイル `iosSystemAlertButtons` の1エントリ。2つの形を取る:
+///
+/// - `"許可"`(素のラベル)= **どのアラートに出ても押してよい**。監視は解除されない
+///   (どんなアラートが何回来るかを言っていないので、解除の根拠が無い)
+/// - `{"alert": "トラッキング", "button": "許可"}` = **題名がこの文字列を含むアラート**にだけ
+///   このボタンを押す。**処理したら消費**され、名指しの宣言を全部処理し終えたら
+///   (素のラベルが無ければ)監視そのものを解除する = 以後1往復も払わない。
+///   「宣言したアラートを処理したら監視を解除する」(ユーザー決定 2026-08-21)は
+///   この形でだけ成立する —— 解除には「待っているアラートの集合」が要り、
+///   ラベルの列はそれを言えない(`許可` は複数のアラートが共有する。2026-08-22 の実害)
+///
+/// **題名は部分一致・ボタンは完全一致**。題名にはアプリ名が埋め込まれる
+/// (「“サンプル.stub”が…トラッキングすることを…」)ので完全一致は書けない。
+/// ボタンの完全一致は従来どおり(`"許可"` が「許可しない」を押す事故を防ぐ)
+public enum SystemAlertRule: Sendable, Equatable {
+    case button(String)
+    case alert(titleContains: String, button: String)
+
+    /// 押すボタンのラベル
+    public var buttonLabel: String {
+        switch self {
+        case .button(let label): return label
+        case .alert(_, let button): return button
+        }
+    }
+
+    /// 失敗メッセージ・ログ用の表示形
+    public var described: String {
+        switch self {
+        case .button(let label): return label
+        case .alert(let title, let button): return "\(title)→\(button)"
+        }
+    }
+}
+
+extension SystemAlertRule: Codable {
+    private enum ObjectKeys: String, CodingKey { case alert, button }
+
+    public init(from decoder: Decoder) throws {
+        if let single = try? decoder.singleValueContainer(), let label = try? single.decode(String.self) {
+            self = .button(label)
+            return
+        }
+        let object = try decoder.container(keyedBy: ObjectKeys.self)
+        self = .alert(titleContains: try object.decode(String.self, forKey: .alert),
+                      button: try object.decode(String.self, forKey: .button))
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        switch self {
+        case .button(let label):
+            var single = encoder.singleValueContainer()
+            try single.encode(label)
+        case .alert(let title, let button):
+            var object = encoder.container(keyedBy: ObjectKeys.self)
+            try object.encode(title, forKey: .alert)
+            try object.encode(button, forKey: .button)
+        }
+    }
+}
+
 public enum SystemAlertDismissal {
     /// fallback(SpringBoard 参照セッション)の木から押すべきボタンを1つ選ぶ。
     /// labels は実行プロファイルに書かれた順で、**先に見つかったものを採る**
@@ -29,6 +90,27 @@ public enum SystemAlertDismissal {
             let wanted = label.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !wanted.isEmpty else { continue }
             if let hit = candidates.first(where: { $0.label == wanted }) { return hit }
+        }
+        return nil
+    }
+
+    /// 規則の列から押すべきボタンを1つ選ぶ(宣言された順・先に成立したものを採る)。
+    /// `handled` は消費済みの規則の添字(名指し形だけが入る)。
+    /// 名指し形は**アラートの題名が読めて、部分一致するときだけ**成立する ——
+    /// 題名が読めないアラートに名指しを当てると、意図しないアラートを閉じ得る
+    public static func ruleToApply(in elements: [ElementInfo], rules: [SystemAlertRule],
+                                   handled: Set<Int>) -> (button: ElementInfo, ruleIndex: Int)? {
+        guard !rules.isEmpty else { return nil }
+        let title = elements.first { $0.type == "alert" }?.label
+        for (index, rule) in rules.enumerated() {
+            switch rule {
+            case .button(let label):
+                if let hit = buttonToTap(in: elements, labels: [label]) { return (hit, index) }
+            case .alert(let titleContains, let button):
+                guard !handled.contains(index),
+                      let title, title.contains(titleContains) else { continue }
+                if let hit = buttonToTap(in: elements, labels: [button]) { return (hit, index) }
+            }
         }
         return nil
     }
