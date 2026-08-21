@@ -776,16 +776,22 @@ ifCanSelect("#btnAgree||同意する") { tap("#btnAgree||同意する") }
 
 ### 覆われている間は操作しない(2026-08-21)
 
-**OS のアラートがアプリを覆っている間、そのアプリへの操作と検証は通らない**。
-覆いが消えるのを待ち、待ち切れなければ `failureKind=system-ui-covered` で落ちる:
+**`iosSystemAlertButtons` を宣言した実行でだけ働く。** 宣言があるとき、OS のアラートが
+アプリを覆っている間はそのアプリへの操作と検証が通らない。覆いが消える(または宣言した
+ボタンで閉じられる)のを待ち、待ち切れなければ `failureKind=system-ui-covered` で落ちる:
 
 ```
 ❌ 6. [action] tap "#btn_freeze_3s"
    system UI is covering the app (“FT E2E iOS”に写真ライブラリへのアクセスを許可しますか?).
    The in-app engine could still reach the app, but a person could not, so the step was not
-   performed. Add the button label to iosSystemAlertButtons in the run profile to dismiss it
-   automatically, or dismiss it in the scenario.
+   performed. None of iosSystemAlertButtons (Appの使用中は許可) matched a button on it —
+   add the label you want pressed, or dismiss it in the scenario.
 ```
+
+**宣言しない実行は1往復も払わない**(ユーザー決定 2026-08-21)。アラートが出る画面は
+書き手が知っているので宣言できるはずで、宣言しない実行に毎ステップの費用を負わせない。
+言い換えると、**宣言は「押すラベル」であると同時に「この run ではアラートを見張る」という
+表明**でもある。宣言したのに一致するボタンが無ければ、素通りさせずに止める。
 
 **なぜ要るか**: in-app のタップは `accessibilityActivate`(要素への直接のメソッド呼び出し)か
 自プロセスの窓への合成タッチで、**OS のイベント経路を通らない**。だからアラートが覆っていても
@@ -799,9 +805,11 @@ in-app の木は自プロセスしか見えないのでレポートにも痕跡�
 1本も書けなくなる。`iosSystemAlertButtons` の宣言で閉じられる場合も、閉じてから先へ進む
 (注記 `waited-for-system-ui`)。
 
-**判定は XCUITest ランナーに聞く**(`GET /systemalert`)ので、**ランナーが居る構成でだけ効く**
+**判定は XCUITest ランナーに聞く**(`GET /systemalert`)ので、**ランナーが居る構成が要る**
 (`engine=hybrid` / `xcuitest`)。`engine=inapp` 単独は判定を持たない = 従来どおり通る。
-1ステップあたり約 73ms(アラート無しのとき。実測 2026-08-21)。
+費用は1往復あたり約 73ms(アラート無しのとき。実測 2026-08-21)で、払うのは
+**操作の直前**と**検証が緑になったとき**の各1回。ポーリングの周回ごとには払わず、
+**検証が失敗したときは聞かない**(既に止まるので往復を足す価値がない)。
 **`applicationState` では判定できない** —— アラート表示中でも `active` を返す端末があり、
 同じアラートで端末により割れることを実測した。
 

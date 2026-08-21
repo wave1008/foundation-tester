@@ -688,7 +688,8 @@ final class StepExecutorTests: XCTestCase {
         let fallback = FakeAppDriver(name: "fallback", log: log, snapshotElements: [[]])
         fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true, title: "権限",
                                                                buttons: ["許可"])]
-        let executor = StepExecutor(driver: primary, fallbackDriver: fallback)
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback,
+                                    systemAlertButtons: ["許可"])
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"), timeout: 1)
 
         let outcome = await executor.execute(step)
@@ -711,7 +712,8 @@ final class StepExecutorTests: XCTestCase {
         let fallback = FakeAppDriver(name: "fallback", log: log, snapshotElements: [[]])
         fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true),
                                       SystemAlertProbeResponse(present: false)]
-        let executor = StepExecutor(driver: primary, fallbackDriver: fallback)
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback,
+                                    systemAlertButtons: ["一致しないラベル"])
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"), timeout: 5)
 
         let outcome = await executor.execute(step)
@@ -724,13 +726,34 @@ final class StepExecutorTests: XCTestCase {
                       "待ったことを黙ってはいけない: \(outcome.notes)")
     }
 
-    /// **ランナーが居ない構成では1往復も払わない**。ここが止まると engine=inapp 固定と
-    /// Android が全滅するうえ、毎ステップ約 73ms の無駄になる
+    /// **`iosSystemAlertButtons` を宣言していない実行では1往復も払わない**
+    /// (2026-08-21 ユーザー決定)。アラートが出る画面は書き手が知っているので宣言できる
+    /// はずで、宣言しない実行に毎ステップ約 73ms を負わせない
+    func testNoProbeWithoutDeclaredAlertButtons() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element(ref: 1, id: "target")]])
+        let fallback = FakeAppDriver(name: "fallback", log: log, snapshotElements: [[]])
+        fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true, title: "権限")]
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback)   // 宣言なし
+        let tap = FlowStep(action: "tap", locator: FlowLocator(id: "target"), timeout: 1)
+        let exists = FlowStep(assert: "exists", locator: FlowLocator(id: "target"), timeout: 1)
+
+        guard case .passed = await executor.execute(tap).status,
+              case .passed = await executor.execute(exists).status else {
+            XCTFail("宣言が無い実行は従来どおり通すこと"); return
+        }
+        XCTAssertFalse(log.entries.contains { $0.hasSuffix(".systemAlert") },
+                       "宣言が無いのに聞いてはいけない: \(log.entries)")
+    }
+
+    /// **ランナーが居ない構成でも1往復も払わない**。ここが止まると engine=inapp 固定と
+    /// Android が全滅する
     func testActionCostsNothingWithoutAFallbackBridge() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,
                                     snapshotElements: [[element(ref: 1, id: "target")]])
-        let executor = StepExecutor(driver: primary)   // fallback 無し
+        let executor = StepExecutor(driver: primary, systemAlertButtons: ["許可"])   // fallback 無し
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"), timeout: 1)
 
         guard case .passed = await executor.execute(step).status else {
@@ -748,7 +771,8 @@ final class StepExecutorTests: XCTestCase {
         let fallback = FakeAppDriver(name: "fallback", log: log,
                                      snapshotElements: [[labeled(ref: 9, label: "許可")]])
         fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true)]
-        let executor = StepExecutor(driver: primary, fallbackDriver: fallback)
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback,
+                                    systemAlertButtons: ["一致しないラベル"])
         let step = FlowStep(action: "tap", locator: FlowLocator(label: "許可"), timeout: 1)
 
         let outcome = await executor.execute(step)
@@ -767,7 +791,8 @@ final class StepExecutorTests: XCTestCase {
                                     snapshotElements: [[element(ref: 1, id: "target")]])
         let fallback = FakeAppDriver(name: "fallback", log: log, snapshotElements: [[]])
         fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true, title: "権限")]
-        let executor = StepExecutor(driver: primary, fallbackDriver: fallback)
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback,
+                                    systemAlertButtons: ["一致しないラベル"])
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "target"), timeout: 1)
 
         let outcome = await executor.execute(step)
@@ -785,7 +810,8 @@ final class StepExecutorTests: XCTestCase {
         let fallback = FakeAppDriver(name: "fallback", log: log,
                                      snapshotElements: [[labeled(ref: 9, label: "許可しない")]])
         fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true)]
-        let executor = StepExecutor(driver: primary, fallbackDriver: fallback)
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback,
+                                    systemAlertButtons: ["一致しないラベル"])
         let step = FlowStep(assert: "exists", locator: FlowLocator(label: "許可しない"), timeout: 2)
 
         guard case .passed = await executor.execute(step).status else {
@@ -798,7 +824,8 @@ final class StepExecutorTests: XCTestCase {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
         let fallback = FakeAppDriver(name: "fallback", log: log, snapshotElements: [[]])
-        let executor = StepExecutor(driver: primary, fallbackDriver: fallback)
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback,
+                                    systemAlertButtons: ["許可"])
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "missing"), timeout: 1)
 
         _ = await executor.execute(step)

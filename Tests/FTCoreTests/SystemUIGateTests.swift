@@ -43,18 +43,14 @@ final class SystemUIGateTests: XCTestCase {
                      "空の題名と空ラベルのボタンだけでは名指しにならない")
     }
 
-    /// 失敗の言い分は**次の一手**まで書く。宣言が無いときと、宣言はあるが当たらなかったときで
-    /// 手が違うので分ける(前者は「宣言しろ」、後者は「そのラベルでは当たっていない」)
-    func testFailureMessageTellsTheReaderWhatToDo() {
-        let none = SystemUIGate.failureMessage(covering: "写真ライブラリ", declaredButtons: [])
-        XCTAssertTrue(none.contains("写真ライブラリ"), none)
-        XCTAssertTrue(none.contains("iosSystemAlertButtons"), none)
-        XCTAssertTrue(none.contains("a person could not"),
-                      "「人手では不可能」がこの失敗の理由そのもの: \(none)")
-
-        let declared = SystemUIGate.failureMessage(covering: nil, declaredButtons: ["許可", "OK"])
-        XCTAssertTrue(declared.contains("許可 / OK"), declared)
-        XCTAssertTrue(declared.contains("None of"),
-                      "宣言があるのに閉じられなかったことを言うこと: \(declared)")
+    /// 失敗の言い分は**次の一手**まで書く。ここに来るのは「宣言はあるが当たらなかった」
+    /// ときだけなので、**何を宣言していて何が出ていたか**を両方書く
+    func testFailureMessageNamesBothTheAlertAndTheDeclaredLabels() {
+        let message = SystemUIGate.failureMessage(covering: "写真ライブラリ",
+                                                  declaredButtons: ["許可", "OK"])
+        XCTAssertTrue(message.contains("写真ライブラリ"), "何が覆っているかを名指しすること: \(message)")
+        XCTAssertTrue(message.contains("許可 / OK"), "何を宣言していたかを出すこと: \(message)")
+        XCTAssertTrue(message.contains("a person could not"),
+                      "「人手では不可能」がこの失敗の理由そのもの: \(message)")
     }
 }

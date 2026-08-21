@@ -1688,11 +1688,16 @@ extension StepExecutor {
     ///   ③ どちらでもない → **撃たずに待つ**。消えたら進み、待ち切れなければ失敗
     ///
     /// 予算はステップの `timeout`、無ければ既定の待ち(**新しい数字は作らない**。
-    /// `waitUntilEnabled` と同じ規律)。**fallback が無ければ 1 往復も払わない**
-    /// (engine=inapp 固定・Android・旧ランナーは判定自体を持たない)
+    /// `waitUntilEnabled` と同じ規律)。
+    ///
+    /// **`iosSystemAlertButtons` を宣言したときだけ働く**(2026-08-21 ユーザー決定)。
+    /// アラートが出る画面は書き手が知っているので宣言できるはずで、**宣言しない実行に
+    /// 1往復(約 73ms)も払わせない**。宣言があるのに一致するボタンが無いときは③で止める ——
+    /// 宣言は「この run ではアラートを見張る」という表明でもあるため。
+    /// fallback(XCUITest ランナー)が無い構成も同様に何もしない
     func waitOutSystemUI(step: FlowStep, snapshot: inout SnapshotResponse,
                          phase: inout PhaseAccumulator) async throws -> StepResult.Status? {
-        guard let fb = fallbackDriver else { return nil }
+        guard !systemAlertButtons.isEmpty, let fb = fallbackDriver else { return nil }
         let clock = ContinuousClock()
         var start = clock.now
         var probe = try? await fb.systemAlert()
