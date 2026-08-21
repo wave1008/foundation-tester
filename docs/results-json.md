@@ -60,7 +60,7 @@ jq -r 'select(.workerAnomalies == null) | .runID' results/runs/2026-08/*/run.jso
 | `driver-error` | ドライバは応答したがエラーを返した(HTTP エラー応答) |
 | `timeout` | ステップが制限時間内に返らなかった |
 | `app-not-installed` | 対象アプリがデバイスに入っていなかった(起動前の検査で確定) |
-| `system-ui-covered` | **OS のシステム UI(権限アラート等)がアプリを覆っていた**。XCUITest ランナーの `GET /systemalert` の申告で、**`systemAlertHandler` の登録が残っている間だけ**出る |
+| `system-ui-covered` | **OS のシステム UI(権限アラート等)がアプリを覆っていた**。XCUITest ランナーの `GET /systemalert` の申告で、**`iosAlertHandler` の登録が残っている間だけ**出る |
 | (欄が無い) | **言えない** —— 推測で埋めない |
 
 `not-found` は「画面が違う」と「セレクタが古い」を区別しない(どちらもこの経路)。

@@ -101,7 +101,7 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
 
     /// OS のシステム UI(権限アラート等)がアプリを覆っていたので、**消えるまで待ってから**
     /// 操作した(`SystemUIGate`)。**率を見たい注記**: 増えているなら、そのシナリオは
-    /// 権限を事前付与するか `systemAlertHandler` を登録するべき画面を通っている
+    /// 権限を事前付与するか `iosAlertHandler` を登録するべき画面を通っている
     case waitedForSystemUI = "waited-for-system-ui"
 
     /// `tap` の対象が**まだ無効**だったので、操作可能になるまで待ってから撃った。

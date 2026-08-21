@@ -89,7 +89,7 @@ final class IfCanSelectSystemAlertTests: XCTestCase {
                         .appendingPathComponent("ft-ifcanselect-alert-test.json"),
                     fallbackDriver: alert,
                     emit: emit)
-        // DSL の systemAlertHandler と同じ登録経路(addSystemAlertRule → 台帳)を通す。
+        // DSL の iosAlertHandler と同じ登録経路(addSystemAlertRule → 台帳)を通す。
         // stub のアラート題名は「位置情報の使用を許可しますか?」
         for label in buttons {
             core.addSystemAlertRule(SystemAlertRule(alert: "*位置情報*", button: label))

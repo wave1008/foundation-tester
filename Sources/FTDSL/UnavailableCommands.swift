@@ -154,3 +154,6 @@ public func swipeRight() { fatalError() }
 
 @available(*, unavailable, message: "ftester has no screen nickname mechanism. To check the screen by sight, write screenLooksLike(description) (Foundation Models). To identify a screen deterministically, write exist() on an element unique to it")
 public func screenIs(_ nickname: String) { fatalError() }
+
+@available(*, unavailable, message: "ftester spells this iosAlertHandler(alert:button:)")
+public func systemAlertHandler(alert: String, button: String) { fatalError() }

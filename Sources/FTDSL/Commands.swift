@@ -100,8 +100,8 @@ public func irregularHandler(_ detect: Sel, dismiss: Sel? = nil,
 /// ものを閉じるが、**OS のアラートは別プロセス(SpringBoard)でアプリの木に載らない**ので、
 /// XCUITest ランナー経由の別の監視(SystemUIGate)が要る。engine=hybrid のときだけ効く。
 ///
-///     systemAlertHandler(alert: "*写真ライブラリ*", button: "許可しない")
-///     systemAlertHandler(alert: "*トラッキング*||*track your activity*",
+///     iosAlertHandler(alert: "*写真ライブラリ*", button: "許可しない")
+///     iosAlertHandler(alert: "*トラッキング*||*track your activity*",
 ///                        button: "許可||Allow")                        // 日英両対応(`||` で候補)
 ///
 /// **`alert`(どのアラートか)は必須** —— ボタンのラベルだけでは「なんのウィンドウの
@@ -118,13 +118,13 @@ public func irregularHandler(_ detect: Sel, dismiss: Sel? = nil,
 /// 意図しない権限のまま run が緑で進む)。押したことは必ず run ログに残る。
 /// 登録があるのにアラートを覆ったまま押せなければ、そのステップは
 /// `system-ui-covered` で失敗し、**実際に画面に在るボタン名**をメッセージに出す
-public func systemAlertHandler(alert: String, button: String) {
-    let core = FTRuntime.requireCore(command: "systemAlertHandler")
+public func iosAlertHandler(alert: String, button: String) {
+    let core = FTRuntime.requireCore(command: "iosAlertHandler")
     core.addSystemAlertRule(SystemAlertRule(alert: alert, button: button))
 }
 
-@available(*, unavailable, message: "specify which alert this button belongs to: systemAlertHandler(alert: \"*title part*\", button: \"label\") — a bare button label can press the wrong window's button")
-public func systemAlertHandler(_ button: String) { fatalError() }
+@available(*, unavailable, message: "specify which alert this button belongs to: iosAlertHandler(alert: \"*title part*\", button: \"label\") — a bare button label can press the wrong window's button")
+public func iosAlertHandler(_ button: String) { fatalError() }
 
 // MARK: - セレクタを取るコマンドの共通経路
 

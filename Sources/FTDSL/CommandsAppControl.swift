@@ -404,7 +404,7 @@ private func ifCanSelectImpl(_ selector: FTSelector, waitSeconds: Double,
 /// `disableHandler()` / `enableHandler()` でしか書けない(2026-08-21 ユーザー指摘)。
 ///
 /// **OS のシステムダイアログ(権限の許可等)はここでは止まらない** —— あちらは実行プロファイルの
-/// `systemAlertHandler` による自動押下で、別の機構(そもそも要求した要素が解決できるときは
+/// `iosAlertHandler` による自動押下で、別の機構(そもそも要求した要素が解決できるときは
 /// 自動押下は走らない = シナリオの操作を奪わない)
 public func suppressHandler(_ body: () -> Void) {
     let core = FTRuntime.requireCore(command: "suppressHandler")

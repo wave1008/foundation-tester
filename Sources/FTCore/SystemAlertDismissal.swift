@@ -11,7 +11,7 @@
 
 import Foundation
 
-/// `systemAlertHandler`(DSL)の登録1件 = **1枚のアラートの予告**。
+/// `iosAlertHandler`(DSL)の登録1件 = **1枚のアラートの予告**。
 /// `alert`(どのアラートか)は必須 —— ボタンのラベルだけでは「なんのウィンドウの
 /// 許可ボタンか」が読めず、無関係のアラート(別アプリの許可要求が前面に出る形)を
 /// 押し得る。押せたら台帳から外れる(`SystemAlertWatchlist`)。
@@ -42,7 +42,7 @@ public struct SystemAlertRule: Sendable, Equatable {
     public var described: String { "\(alert)→\(button)" }
 }
 
-/// `systemAlertHandler` の登録と発火をまとめて持つ台帳。
+/// `iosAlertHandler` の登録と発火をまとめて持つ台帳。
 /// StepExecutor はこれを1つ持つだけで、登録の列・除去・監視判定を個別に持たない。
 ///
 /// **1回の登録 = 1枚のアラートの予告**。押せたら外れる。台帳が**空なら監視しない**
@@ -59,7 +59,7 @@ public struct SystemAlertWatchlist: Sendable {
         watches = rules
     }
 
-    /// 登録(DSL の `systemAlertHandler` から。宣言順を保って末尾へ足す)
+    /// 登録(DSL の `iosAlertHandler` から。宣言順を保って末尾へ足す)
     public mutating func register(_ rule: SystemAlertRule) {
         watches.append(rule)
     }
@@ -150,8 +150,8 @@ public enum SystemAlertDismissal {
         let label = button.label ?? "(no label)"
         guard let title = elements.first(where: { $0.type == "alert" })?.label,
               !title.isEmpty else {
-            return "pressed \"\(label)\" on a system alert (systemAlertHandler)"
+            return "pressed \"\(label)\" on a system alert (iosAlertHandler)"
         }
-        return "pressed \"\(label)\" on the system alert \"\(title)\" (systemAlertHandler)"
+        return "pressed \"\(label)\" on the system alert \"\(title)\" (iosAlertHandler)"
     }
 }

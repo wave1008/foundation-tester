@@ -18,7 +18,7 @@
 // 聞く口は XCUITest ランナーの `GET /systemalert`(`SystemAlertProbeResponse`)。
 // 木を全部撮ると約 185ms のところ、**アラート無しで約 73ms**(実測 2026-08-21)。
 //
-// **働くのは `systemAlertHandler` の登録が残っている間だけ**。アラートが出る操作は
+// **働くのは `iosAlertHandler` の登録が残っている間だけ**。アラートが出る操作は
 // 書き手が知っているので直前に登録でき、登録の無い実行・発火し終えた後には
 // 毎ステップの往復を負わせない。
 // 呼び出し側(StepExecutor)が台帳(`SystemAlertWatchlist`)の空で門を閉じるので、
@@ -46,7 +46,7 @@ public enum SystemUIGate {
 
     /// 待ち切れなかったときの失敗の言い分。
     ///
-    /// **この機構は `systemAlertHandler` の登録が残っているときだけ働く**ので、ここに来た
+    /// **この機構は `iosAlertHandler` の登録が残っているときだけ働く**ので、ここに来た
     /// 時点で登録は必ずある。一致しなかったのだから、次の一手に要るのは
     /// **「登録した名前」と「実際にそのアラートに在る名前」の両方**(2026-08-20 受け手依頼)。
     ///
@@ -62,7 +62,7 @@ public enum SystemUIGate {
         if let covering { message += " (\(covering))" }
         message += ". The in-app engine could still reach the app, but a person could not,"
             + " so the step was not performed."
-        message += " None of the registered systemAlertHandler entries"
+        message += " None of the registered iosAlertHandler entries"
             + " (\(declaredButtons.joined(separator: " / "))) matched a button on it."
         let actual = actualButtons.filter { !$0.isEmpty }
         if actual.isEmpty {
@@ -71,7 +71,7 @@ public enum SystemUIGate {
         } else {
             message += " Buttons on this alert: "
                 + actual.map { "「\($0)」" }.joined(separator: " / ")
-                + ". Register the one you want pressed with systemAlertHandler(...),"
+                + ". Register the one you want pressed with iosAlertHandler(...),"
                 + " or dismiss it in the scenario."
         }
         return message

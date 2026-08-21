@@ -294,7 +294,7 @@ extension StepExecutor {
     /// 判定は**1ステップにつき1往復**(約 73ms)。ポーリングの周回ごとには払わない ——
     /// 誤りは「緑になったこと」に宿るので、緑になった瞬間に1度確かめれば足りる。
     /// **失敗したときは聞かない**(既にシナリオは止まるので、往復を足す価値がない)。
-    /// **`systemAlertHandler` の登録が残っているときだけ**(操作側と同じ。waitOutSystemUI の doc)
+    /// **`iosAlertHandler` の登録が残っているときだけ**(操作側と同じ。waitOutSystemUI の doc)
     func executeAssert(_ assert: String, step: FlowStep,
                        phase: inout PhaseAccumulator) async throws -> StepResult.Status {
         resolvedViaSystemUIThisStep = false
