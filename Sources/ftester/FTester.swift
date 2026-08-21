@@ -739,14 +739,14 @@ struct RunScenarios: AsyncParsableCommand {
     /// ブロードキャスト実行(2026-08-22)。warmup のように「全デバイスがそれぞれ準備される」
     /// ことが目的の run 向け。分配だけを `ScenarioDispatch.broadcast` に差し替え、他は通常 run
     /// (ProfileRunner.run)と同じ経路。**--profile が要る**(レーン = プロファイルのデバイス)
-    @Flag(name: .customLong("each-device"),
+    @Flag(name: .customLong("broadcast"),
           help: ArgumentHelp("Run the selected scenarios once on EVERY device of the run profile "
             + "(broadcast) instead of sharing them out across the devices — e.g. a warm-up that must "
             + "touch each device. Needs --profile; --device narrows the set of devices. Provisioning, "
             + "auto-install, setup/teardown hooks (once per run), staggered start, lane revival and "
             + "reports are the same as a normal run. Results: one scenarios/*.json per (scenario, device), "
             + "told apart by their worker field"))
-    var eachDevice = false
+    var broadcast = false
 
     @Option(name: .customLong("device"), parsing: .upToNextOption,
             help: ArgumentHelp("Run on only these devices of the run profile (device names as written in "
@@ -802,10 +802,10 @@ struct RunScenarios: AsyncParsableCommand {
         if split, fleet == nil {
             throw ValidationError("--split requires --fleet")
         }
-        if eachDevice {
+        if broadcast {
             // 黙って無視しない(fleet の子へは中継していない。ports 経路にはレーンの名が無い)
-            if fleet != nil { throw ValidationError("--each-device cannot be combined with --fleet") }
-            if profile == nil { throw ValidationError("--each-device requires --profile") }
+            if fleet != nil { throw ValidationError("--broadcast cannot be combined with --fleet") }
+            if profile == nil { throw ValidationError("--broadcast requires --profile") }
         }
         if forceLock, let message = RemoteDispatchFlagPolicy.forceLockRejection(
             host: host, fleet: fleet, profile: profile) {
@@ -848,7 +848,7 @@ struct RunScenarios: AsyncParsableCommand {
                 performanceMode: performanceMode, forceLock: forceLock, waitLock: waitLock,
                 remoteDir: remoteDir, remoteTimeout: remoteTimeout,
                 remoteArtifacts: remoteArtifacts, quiet: quiet, junit: junit,
-                eachDevice: eachDevice)
+                broadcast: broadcast)
             if exitCode != 0 { throw ExitCode(exitCode) }
             return
         }
@@ -961,15 +961,15 @@ struct RunScenarios: AsyncParsableCommand {
                 deviceHost: effectiveDeviceHost,
                 workspaceOverride: workspace,
                 recorder: recorder,
-                eachDevice: eachDevice)
+                broadcast: broadcast)
             let failedCount = runSummary.failed
             // **回した本数は items.count ではない** —— ProfileRunner が OS 対象外
             // (`@TestClass(platform:)` / `@Test(platform:)`)を投入前に外すので、
             // ここで items.count を使うと「12本全部成功」と出しつつ10本しか走っていない、になる
             let ranCount = runSummary.total
-            // --each-device の total は (本数 × 台数) なので items.count との差は対象外の数にならない
+            // --broadcast の total は (本数 × 台数) なので items.count との差は対象外の数にならない
             // (対象外の件数は ProfileRunner が「Skipped N scenario(s) …」で出している)
-            let notApplicable = eachDevice ? 0 : items.count - ranCount
+            let notApplicable = broadcast ? 0 : items.count - ranCount
             PhaseLog.mark("profile-run-done")
             recorder.finish(total: ranCount, passed: ranCount - failedCount, failed: failedCount,
                             degradedWorkers: runSummary.degradedWorkers,
@@ -983,9 +983,9 @@ struct RunScenarios: AsyncParsableCommand {
             try writeJUnitIfRequested(project: testProject, recorder: recorder)
             let skippedSuffix = notApplicable > 0
                 ? " (\(notApplicable) skipped: declared for another platform)" : ""
-            // --each-device は (シナリオ × デバイス) を数える。単位を言わないと「3本のはずが
+            // --broadcast は (シナリオ × デバイス) を数える。単位を言わないと「3本のはずが
             // 24 passed」に見える
-            let unit = eachDevice ? "scenario run(s) (one per scenario per device)" : "scenario(s)"
+            let unit = broadcast ? "scenario run(s) (one per scenario per device)" : "scenario(s)"
             print(failedCount == 0
                   ? "✅ All \(ranCount) \(unit) passed\(skippedSuffix)"
                   : "❌ \(failedCount) of \(ranCount) \(unit) failed\(skippedSuffix)")
@@ -1073,7 +1073,7 @@ struct RunScenarios: AsyncParsableCommand {
             deviceNames: scopedDevices, deviceHost: scopedDeviceHost,
             heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
             fastInput: fastInput, enableAnimations: enableAnimations,
-            performanceMode: performanceMode, eachDevice: eachDevice,
+            performanceMode: performanceMode, broadcast: broadcast,
             localJUnitPath: junit, remoteTimeoutSeconds: remoteTimeout)
         if exitCode != 0 {
             throw ExitCode(exitCode)

@@ -515,7 +515,7 @@ public enum RemoteRunArgs {
                              deviceNames: [String] = [], deviceHost: String? = nil,
                              heal: Bool, noHeal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
                              fastInput: Bool, enableAnimations: Bool, performanceMode: Bool,
-                             eachDevice: Bool = false,
+                             broadcast: Bool = false,
                              remoteJUnitPath: String?,
                              reportDir: String?, workspace: String? = nil) -> [String] {
         // **リモート側は必ず「ここで走らせる」**(--host local)。省略すると、向こうの ftester が
@@ -549,7 +549,7 @@ public enum RemoteRunArgs {
         if enableAnimations { args.append("--enable-animations") }
         if performanceMode { args.append("--performance") }
         // 中継しないとリモートは共有キューで走る = 「全台で1回ずつ」が黙って「分配」に化ける
-        if eachDevice { args.append("--each-device") }
+        if broadcast { args.append("--broadcast") }
         if let remoteJUnitPath { args += ["--junit", remoteJUnitPath] }
         return args
     }

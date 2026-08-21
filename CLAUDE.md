@@ -275,7 +275,7 @@
 - **1シナリオの確認にフリート全台を用意しない**。`ProfileRunner` は回す本数から台数を絞る
   (`ResolvedProfile.deviceKeepCount` = 本数 + 予備1台)。実測で iOS の1本実行が 21.8s → 9.3s
   (固定費 14.8s → 2.9s)。**予備1台は必須**(用意した台が blank/frozen で弾かれると run ごと落ちる)。
-  **例外は `--each-device`(ブロードキャスト。2026-08-22)** —— 各台で1回ずつ回すのが目的なので
+  **例外は `--broadcast`(ブロードキャスト。2026-08-22)** —— 各台で1回ずつ回すのが目的なので
   絞らない(分配だけ `ScenarioDispatch.broadcast` に差し替え、他は同じ経路。docs/design.md)。
   `ftester api run`(拡張の並列経路)は**シナリオ一覧をビルドと並行に解決する**ので一覧を待てない ——
   確定している `--scenario` の指定だけで判断する(`ApiRun.exactScenarioCount`。

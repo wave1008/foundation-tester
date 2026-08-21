@@ -376,7 +376,7 @@ enum FleetRunner {
         heal: Bool, noHeal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
         fastInput: Bool, enableAnimations: Bool, performanceMode: Bool,
         forceLock: Bool, waitLock: Int?, remoteDir: String?, remoteTimeout: Int?, remoteArtifacts: String,
-        quiet: Bool, junitPath: String?, eachDevice: Bool = false
+        quiet: Bool, junitPath: String?, broadcast: Bool = false
     ) -> [String] {
         var args = ["run", "--project", project, "--profile", profile]
         // "local" エントリも常に --host を渡す(欠陥3・2026-08-17)。子プロセスは自分自身が
@@ -409,8 +409,8 @@ enum FleetRunner {
         if fastInput { args += ["--fast-input"] }
         if enableAnimations { args += ["--enable-animations"] }
         if performanceMode { args += ["--performance"] }
-        // DeviceHostRunner のホスト別サブ実行だけが渡す(--fleet は --each-device と併用不可)
-        if eachDevice { args += ["--each-device"] }
+        // DeviceHostRunner のホスト別サブ実行だけが渡す(--fleet は --broadcast と併用不可)
+        if broadcast { args += ["--broadcast"] }
         if quiet { args += ["--quiet"] }
         // リモートエントリでも同じ --junit 中継でよい: RemoteRunDispatcher.dispatch が
         // localJUnitPath(= このパス)へリモートの JUnit を回収して書く(RemoteRunDispatcher.swift)

@@ -3519,7 +3519,7 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
   縮小スクショでも誤検知しない): テスト実行の失敗時証跡スクショ(`FTRuntime.handleFailure`、Android のみ)が
   白フレームなら最大3回撮り直し、それでも白ければ `evidenceBlank` を立ててレポートに警告表示。実行前は
   恒常白のデバイスをワーカーからディスパッチ除外(`ProfileRunner`、短時間の連続 probe でフラップと区別)
-- **ブロードキャスト実行**(`ftester run --each-device`。2026-08-22): 選んだシナリオを実行プロファイルの
+- **ブロードキャスト実行**(`ftester run --broadcast`。2026-08-22): 選んだシナリオを実行プロファイルの
   **各デバイスで1回ずつ**回す(warmup 向け。受け手が `--device` を台数ぶん外部ループで撃っていたのを
   run 基盤に載せた)。**差し替えるのは分配だけ** —— `ScenarioDispatch.broadcast` で `RunOrchestrator.run`
   が platform 別の共有キューの代わりに**レーン(デバイス論理名)別のキュー**を作り(`BroadcastPlan` =
