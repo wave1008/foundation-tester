@@ -297,6 +297,28 @@ public final class StepExecutor {
     /// 宣言順に評価する。1ステップにつき**1回だけ**発火する(閉じても消えない相手で無限に回らないため)
     public var interruptHandlers: [InterruptHandler] = []
 
+    /// **自動クローズを止めている入れ子の深さ**(`suppressHandler { }`。Shirates 準拠の名前)。
+    /// 0 より大きい間は宣言済みハンドラを閉じない —— **シナリオ自身がそのモーダルを
+    /// 検証・操作したいとき**のためのもの(宣言する場所をずらす回避策を書かせない)。
+    ///
+    /// **止まるのは「こちらが閉じること」だけ**: 割り込みが出ること自体はアプリの都合なので、
+    /// 抑止しても「送った操作が吸われる」形は変わらない(責務表は docs/commands.md)
+    public var handlerSuppressionDepth = 0
+
+    /// `disableHandler()` で止めているか(`enableHandler()` で戻す)。
+    /// **ブロック形と別に持つ理由は CAE**(2026-08-21 ユーザー指摘): `suppressHandler { }` は
+    /// **1つの CAE ブロックの内側にしか置けない**ので、`condition` で止めて `expectation` で
+    /// 戻す、という書き方ができない。命令形の対だけが**ブロックを跨いで**制御できる
+    public var handlersDisabled = false
+
+    /// いま自動クローズを止めているか(ブロック形と命令形の**どちらか**が効いていれば止める)
+    public var handlersSuppressed: Bool { handlerSuppressionDepth > 0 || handlersDisabled }
+
+    /// **抑止中に、宣言した割り込みが画面に出ていた**か(そのステップだけの記録)。
+    /// 抑止の最大の危険は「抑止したまま忘れる」なので、**失敗したときにだけ**注記へ出す
+    /// (成功しているステップには何も足さない = 正常な使い方の出力を増やさない)
+    var suppressedInterruptionSeenThisStep = false
+
     /// スクロール探索の直後に「空打ち」の極小ドラッグを入れるか(**iOS だけ true**)。
     /// iOS(Compose)のスクロール容器は次の1タッチを消費してタップが効かないため必要だが、
     /// **Android では 2pt のドラッグがクリックとして発火してしまう**(タップしていないのに
@@ -394,6 +416,7 @@ public final class StepExecutor {
         let start = clock.now
         var phase = PhaseAccumulator()
         resetInterruptScope()
+        suppressedInterruptionSeenThisStep = false
         observedCheckedThisStep = nil
         resolvedElementThisStep = nil
         scrollSwipesThisStep = nil
@@ -788,6 +811,14 @@ public final class StepExecutor {
         // **閉じたのに落ちた**ときは、割り込みが「出ていた」ことより「**直前の操作を吸った
         // かもしれない**」ことの方が読み手に要る情報(2026-08-20 の受け手報告)。
         // 撃ち直しはしない —— 既に届いていた場合に二重実行になる(報告者の指摘どおり)
+        // **抑止したまま忘れた**ときに気付けるようにする。出ていたのに閉じなかったのは
+        // 宣言どおりの動作なので、**落ちたときにだけ**言う(成功していれば意図どおり)
+        if failed, suppressedInterruptionSeenThisStep {
+            // **どちらの止め方かは書かない**(suppressHandler / disableHandler の両方があり、
+            // 実行器はどちらで止まっているかを区別しても読み手の役に立たない)
+            parts.append("a declared interruption was on screen but automatic closing is"
+                + " suppressed here — close it in the scenario, or narrow the suppressed range")
+        }
         if failed, interruptDismissalTotal > 0 {
             parts.append("the interruption appeared during this step"
                 + " — an interaction sent just before it may have been swallowed by it"
@@ -816,6 +847,13 @@ public final class StepExecutor {
     func dismissInterruption(in snapshot: inout SnapshotResponse,
                              phase: inout PhaseAccumulator) async throws {
         guard !interruptHandlers.isEmpty else { return }
+        // 抑止中は閉じない。ただし**出ていた事実は覚える**(失敗したときだけ注記に出す)
+        guard !handlersSuppressed else {
+            if interruptHandlers.contains(where: { Self.match($0.detect, in: snapshot) != nil }) {
+                suppressedInterruptionSeenThisStep = true
+            }
+            return
+        }
         let clock = ContinuousClock()
         for handler in interruptHandlers {
             let key = handler.detect.summary

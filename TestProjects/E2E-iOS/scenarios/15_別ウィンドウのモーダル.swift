@@ -70,6 +70,9 @@ class 別ウィンドウのモーダルが木に載ること {
                 condition {
                     // **この @Test だけに効かせる**(setUp に置くと S0010 のモーダルも
                     // 湧いた瞬間に閉じられ、「木に載る」の検証ができなくなる)。
+                    // **2026-08-21 以降は `suppressHandler { }` でも書ける** —— setUp に
+                    // 宣言を置いたまま、検証したい区間だけ自動クローズを止める(S0050 が witness)。
+                    // ここは「宣言が効くこと自体」の対照なので従来の形のまま残す
                     // **木に載らなければ照合できないので発動しない** —— この宣言が効くこと自体が、
                     // 別ウィンドウが木に載っていることの裏返しになる
                     irregularHandler("アプリ内メッセージ", dismiss: "#btn_overlay_close")
@@ -93,6 +96,39 @@ class 別ウィンドウのモーダルが木に載ること {
     // 覆いに関わる変更を入れたらこの本数で対照を取ること。
     // 修正前の出方は「not met + 注記ゼロ + 離れた場所で失敗」= **分岐が黙って飛ぶ**形で、
     // 失敗しないぶん気付けない —— だからここで赤くする
+    // `suppressHandler { }` の witness(2026-08-21)。**宣言はしてあるのに閉じない**ことと、
+    // **ブロックを出たら閉じる**ことを1本で対照する。これが無いと「宣言する場所をずらす」
+    // 回避策(この @Test だけに宣言する / setUp に置かない)を書き続けることになる
+    @Test("suppressHandler の中では宣言済みの割り込みを閉じない")
+    func S0050() {
+        scenario {
+            scene(1, "抑止中はモーダルが残り、シナリオが自分で操作できる") {
+                condition {
+                    irregularHandler("アプリ内メッセージ", dismiss: "#btn_overlay_close")
+                    launchApp()
+                    tap("#nav_dialog")
+                    tap("#btn_show_overlay")
+                    wait(2.5)
+                }.expectation {
+                    suppressHandler {
+                        // 抑止していなければ**1つ目のステップで閉じられて**ここが落ちる。
+                        // 複数ステップ置くのは「1回だけ見逃す」実装と区別するため
+                        existWithoutScroll("#txt_overlay_title")
+                        existWithoutScroll("#btn_overlay_close")
+                        existWithoutScroll("#txt_overlay_title")
+                    }
+                }
+            }
+            scene(2, "ブロックを出たらハンドラが閉じる") {
+                expectation {
+                    // 抑止が戻っていなければモーダルは残り続けてここが落ちる
+                    notExist("#btn_overlay_close", timeout: 10)
+                    select("#txt_overlay_result").textIs("overlay=closed")
+                }
+            }
+        }
+    }
+
     @Test("覆われていても条件判定は割り込みを閉じてから答える")
     func S0040() {
         scenario {

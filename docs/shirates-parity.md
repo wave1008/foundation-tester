@@ -207,7 +207,7 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `account` / `app` / `data` / `dataPattern` | — | ➖ |
 | `clipboard` / `readClipboard` / `writeClipboard` | — | ❌ コピー機能自体をテストする時だけ必要 |
 | `disableCache` / `refreshCache` / `syncCache` / `onDirectAccess` 等 | 内部で自動管理(利用者に露出しない) | ➖ 露出すると生成側が性能問題を誤った手段で解こうとする |
-| `disableHandler` / `enableHandler` / `suppressHandler` / `useHandler` | — | ❌ |
+| `disableHandler` / `enableHandler` / `suppressHandler` / `useHandler` | 同名4つ | ✅ 2026-08-21。**両方要る**: ブロック形は出口で必ず戻る一方、**1つの CAE ブロックの内側にしか置けない** —— `condition` で止めて `expectation` で戻す形は命令形でしか書けない(ユーザー指摘)。入れ子可・抑止したまま落ちたら注記に出る |
 | `withContext` | — | ❌ |
 
 ## セレクタ記法
