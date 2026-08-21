@@ -44,13 +44,32 @@ final class SystemUIGateTests: XCTestCase {
     }
 
     /// 失敗の言い分は**次の一手**まで書く。ここに来るのは「宣言はあるが当たらなかった」
-    /// ときだけなので、**何を宣言していて何が出ていたか**を両方書く
-    func testFailureMessageNamesBothTheAlertAndTheDeclaredLabels() {
-        let message = SystemUIGate.failureMessage(covering: "写真ライブラリ",
-                                                  declaredButtons: ["許可", "OK"])
-        XCTAssertTrue(message.contains("写真ライブラリ"), "何が覆っているかを名指しすること: \(message)")
-        XCTAssertTrue(message.contains("許可 / OK"), "何を宣言していたかを出すこと: \(message)")
+    /// ときだけなので、**宣言した名前**と**実際にそのアラートに在る名前**の両方を書く。
+    /// 実際の名前が無いと、受け手はシミュレータの画面を連続撮影して正解を探すしかない
+    /// (2026-08-20 受け手依頼。数秒で消えるアラートは捕まらない)
+    func testFailureMessageNamesTheActualButtonsToo() {
+        let message = SystemUIGate.failureMessage(
+            covering: "トラッキングを許可しますか?",
+            actualButtons: ["Appにトラッキングしないよう要求", "許可"],
+            declaredButtons: ["アプリの使用中は許可", "許可"])
+        XCTAssertTrue(message.contains("トラッキングを許可しますか?"),
+                      "何が覆っているかを名指しすること: \(message)")
+        XCTAssertTrue(message.contains("アプリの使用中は許可 / 許可"),
+                      "何を宣言していたかを出すこと: \(message)")
+        XCTAssertTrue(message.contains("「Appにトラッキングしないよう要求」"),
+                      "**実際に在るボタン**を出すこと(これが無いと次の一手が決まらない): \(message)")
         XCTAssertTrue(message.contains("a person could not"),
                       "「人手では不可能」がこの失敗の理由そのもの: \(message)")
+    }
+
+    /// **読めなかったときは黙らずにそう言う**。「出していない」のか「読めなかった」のかで
+    /// 受け手の次の一手が変わる(前者ならラベルを足す・後者はシナリオで閉じるしかない)
+    func testFailureMessageSaysSoWhenNoButtonLabelsCouldBeRead() {
+        let message = SystemUIGate.failureMessage(covering: "何か", actualButtons: ["", ""],
+                                                  declaredButtons: ["許可"])
+        XCTAssertTrue(message.contains("no button labels"),
+                      "読めなかったことを明示すること: \(message)")
+        XCTAssertFalse(message.contains("Buttons on this alert"),
+                       "空の一覧を出さないこと: \(message)")
     }
 }

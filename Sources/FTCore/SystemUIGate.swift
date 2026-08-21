@@ -46,16 +46,33 @@ public enum SystemUIGate {
     /// 待ち切れなかったときの失敗の言い分。
     ///
     /// **この機構は `iosSystemAlertButtons` を宣言したときだけ働く**ので、ここに来た時点で
-    /// 宣言は必ずある。**一致しなかったこと自体**が次の一手の手掛かりなので、
-    /// 何を宣言していて何が画面に出ていたかを両方書く
-    public static func failureMessage(covering: String?, declaredButtons: [String]) -> String {
+    /// 宣言は必ずある。一致しなかったのだから、次の一手に要るのは
+    /// **「宣言した名前」と「実際にそのアラートに在る名前」の両方**(2026-08-20 受け手依頼)。
+    ///
+    /// 実際の名前を出さなかった頃は、受け手が**シミュレータの画面を連続撮影して**
+    /// 正解のラベルを探すしかなかった(数秒で消えるアラートもあり捕まらない)。
+    /// ボタンは `GET /systemalert` が題名と同じ1往復で返しているので、出さない理由が無い。
+    ///
+    /// **読めなかったときは黙らずにそう言う** —— 「出していない」のか「読めなかった」のかで
+    /// 受け手の次の一手が変わる
+    public static func failureMessage(covering: String?, actualButtons: [String],
+                                      declaredButtons: [String]) -> String {
         var message = "system UI is covering the app"
         if let covering { message += " (\(covering))" }
         message += ". The in-app engine could still reach the app, but a person could not,"
             + " so the step was not performed."
         message += " None of iosSystemAlertButtons"
-            + " (\(declaredButtons.joined(separator: " / "))) matched a button on it —"
-            + " add the label you want pressed, or dismiss it in the scenario."
+            + " (\(declaredButtons.joined(separator: " / "))) matched a button on it."
+        let actual = actualButtons.filter { !$0.isEmpty }
+        if actual.isEmpty {
+            message += " This alert reported no button labels, so there is nothing to match"
+                + " — dismiss it in the scenario instead."
+        } else {
+            message += " Buttons on this alert: "
+                + actual.map { "「\($0)」" }.joined(separator: " / ")
+                + ". Add the one you want pressed to iosSystemAlertButtons,"
+                + " or dismiss it in the scenario."
+        }
         return message
     }
 }

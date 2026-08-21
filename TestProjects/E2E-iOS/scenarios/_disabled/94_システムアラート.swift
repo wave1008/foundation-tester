@@ -28,8 +28,10 @@
 //   cp _disabled/94_システムアラート.swift ../ && \
 //   ftester run --project E2E-iOS --profile ios-alertguard --scenario システムアラートの陽性対照.S0010
 //
-// 期待する結果: **ステップ6で失敗**。メッセージに "system UI is covering the app" が出て、
-// 覆っているアラートが名指しされること(failureKind=system-ui-covered)。
+// 期待する結果: **背面を撃つステップ以降で失敗**(操作側で止まるか、検証側で緑を取り消すかは
+// 整定の間合いで変わる)。メッセージに "system UI is covering the app" が出て、
+// **覆っているアラートの題名と、そのアラートに実際に在るボタン**が名指しされること
+// (failureKind=system-ui-covered)。
 // **緑になったらゲートが効いていない**(受け手報告 2026-08-20 の状態に戻っている)。
 
 import FTDSL
