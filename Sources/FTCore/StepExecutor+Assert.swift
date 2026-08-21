@@ -301,7 +301,7 @@ extension StepExecutor {
         let status = try await dispatchAssert(assert, step: step, phase: &phase)
         // シナリオ自身がアラートを検証しているなら奪わない(操作側の①と同じ規律)
         guard Self.isSuccess(status), !resolvedViaSystemUIThisStep,
-              !pendingSystemAlertButtons.isEmpty, let fb = fallbackDriver else { return status }
+              !systemAlertButtons.isEmpty, let fb = fallbackDriver else { return status }
         let clock = ContinuousClock()
         var start = clock.now
         var probe = try? await fb.systemAlert()
@@ -338,7 +338,7 @@ extension StepExecutor {
                       SystemUIGate.failureMessage(
                           covering: SystemUIGate.describeCovering(probe),
                           actualButtons: actualButtons,
-                          declaredButtons: pendingSystemAlertButtons))
+                          declaredButtons: systemAlertButtons))
     }
 
     private func dispatchAssert(_ assert: String, step: FlowStep,

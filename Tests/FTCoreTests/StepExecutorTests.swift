@@ -391,6 +391,13 @@ final class StepExecutorTests: XCTestCase {
                    frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 0)
     }
 
+    /// SpringBoard の木に載るアラート本体(題名を持つ)
+    private func alertTitled(_ title: String) -> ElementInfo {
+        ElementInfo(ref: 100, type: "alert", identifier: nil, label: title, value: nil,
+                   placeholder: nil, enabled: true,
+                   frame: FTRect(x: 0, y: 0, width: 300, height: 200), depth: 0)
+    }
+
     private func labeled(ref: Int, label: String) -> ElementInfo {
         ElementInfo(ref: ref, type: "button", identifier: nil, label: label, value: nil,
                    placeholder: nil, enabled: true,
@@ -838,17 +845,44 @@ final class StepExecutorTests: XCTestCase {
                        "失敗した検証で往復を足してはいけない: \(log.entries)")
     }
 
-    /// **押した宣言は消費され、使い切ったら監視を解除する**(ユーザー決定 2026-08-21 ——
-    /// 同じアラートはそのシナリオで二度出ないものとする)。解除後は1往復も払わない
-    func testMonitoringStopsOnceEveryDeclaredButtonHasBeenUsed() async throws {
+    /// **宣言は毎回そのまま使う**(ユーザー指摘 2026-08-22)。`許可` のような汎用の文言は
+    /// 複数のアラートが共有するので、消費すると**後から出た別のアラートに押すラベルが残らない**
+    /// (受け手報告 2026-08-22: 位置情報で1回使うと、後の ATT が閉じられなくなった)
+    func testTheSameLabelStaysUsableForALaterDifferentAlert() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element(ref: 1, id: "target")]])
+        // 1枚目(位置情報)と2枚目(ATT)は別のアラートだが、押すラベルはどちらも「許可」
+        let fallback = FakeAppDriver(name: "fallback", log: log,
+                                     snapshotElements: [[alertTitled("位置情報"),
+                                                         labeled(ref: 9, label: "許可")],
+                                                        [alertTitled("トラッキング"),
+                                                         labeled(ref: 8, label: "許可")]])
+        fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true, title: "位置情報"),
+                                      SystemAlertProbeResponse(present: true, title: "トラッキング"),
+                                      SystemAlertProbeResponse(present: false)]
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback,
+                                    systemAlertButtons: ["許可"])
+        let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"), timeout: 5)
+
+        guard case .passed = await executor.execute(step).status else {
+            XCTFail("2枚とも閉じて進むこと"); return
+        }
+        XCTAssertEqual(log.entries.filter { $0.hasPrefix("fallback.tap") },
+                       ["fallback.tap(ref:9)", "fallback.tap(ref:8)"],
+                       "別のアラートには同じラベルをもう一度使えること: \(log.entries)")
+    }
+
+    /// **監視は解除しない**。宣言がある限り毎ステップ確かめる —— 解除の根拠だった
+    /// 「宣言を使い切る」が消えたので、勝手に見張りをやめない
+    func testMonitoringKeepsGoingAfterAnAlertHasBeenDismissed() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,
                                     snapshotElements: [[element(ref: 1, id: "target")]])
         let fallback = FakeAppDriver(name: "fallback", log: log,
-                                     snapshotElements: [[labeled(ref: 9, label: "許可")]])
-        // 1回目: アラートあり → 閉じた後は消えている。2回目以降も「あり」を返すが、
-        // 監視が解除されていれば**そもそも聞かない**ので観測されないはず
-        fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true, title: "権限"),
+                                     snapshotElements: [[alertTitled("位置情報"),
+                                                         labeled(ref: 9, label: "許可")]])
+        fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true, title: "位置情報"),
                                       SystemAlertProbeResponse(present: false)]
         let executor = StepExecutor(driver: primary, fallbackDriver: fallback,
                                     systemAlertButtons: ["許可"])
@@ -858,67 +892,11 @@ final class StepExecutorTests: XCTestCase {
             XCTFail("閉じたら進むこと"); return
         }
         let afterFirst = fallback.systemAlertCallCount
-        XCTAssertGreaterThan(afterFirst, 0, "1ステップ目は聞くこと")
-
         guard case .passed = await executor.execute(step).status else {
             XCTFail("2ステップ目も通ること"); return
         }
-        XCTAssertEqual(fallback.systemAlertCallCount, afterFirst,
-                       "使い切った後は1往復も払ってはいけない")
-    }
-
-    /// **アラートは重なり得る**(位置情報の直後に通知など)。1枚閉じただけで進むと
-    /// 2枚目に覆われたまま撃つことになるので、閉じたら確かめ直してから進む
-    func testStackedAlertsAreDismissedOneAfterAnother() async throws {
-        let log = CallLog()
-        let primary = FakeAppDriver(name: "primary", log: log,
-                                    snapshotElements: [[element(ref: 1, id: "target")]])
-        // **2枚目にも「許可」を置く**: 消費済みを候補から外していないと、2枚目でも先頭の
-        // 「許可」を押してしまう(=同じラベルを二度押す)。ここで両方を出さないと、
-        // 「未消費だけを渡す」実装と「全部渡す」実装が同じ結果になり判別できない
-        let fallback = FakeAppDriver(name: "fallback", log: log,
-                                     snapshotElements: [[labeled(ref: 9, label: "許可")],
-                                                        [labeled(ref: 9, label: "許可"),
-                                                         labeled(ref: 8, label: "OK")]])
-        // 1枚目を閉じた直後もまだ覆われている(2枚目)→ 3回目の照会で晴れる
-        fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true, title: "1枚目"),
-                                      SystemAlertProbeResponse(present: true, title: "2枚目"),
-                                      SystemAlertProbeResponse(present: false)]
-        let executor = StepExecutor(driver: primary, fallbackDriver: fallback,
-                                    systemAlertButtons: ["許可", "OK"])
-        let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"), timeout: 5)
-
-        guard case .passed = await executor.execute(step).status else {
-            XCTFail("2枚とも閉じて進むこと"); return
-        }
-        let taps = log.entries.filter { $0.hasPrefix("fallback.tap") }
-        XCTAssertEqual(taps, ["fallback.tap(ref:9)", "fallback.tap(ref:8)"],
-                       "1枚目は「許可」・2枚目は**消費済みを避けて**「OK」を押すこと: \(log.entries)")
-        XCTAssertTrue(log.entries.contains { $0.hasPrefix("primary.tap") }, "\(log.entries)")
-    }
-
-    /// **消費済みのラベルは二度と押さない**。同じアラートが再び出た前提は置かないので、
-    /// 2枚目が同じラベルなら③(撃たずに待って落ちる)へ行く
-    func testAConsumedLabelIsNotPressedAgain() async throws {
-        let log = CallLog()
-        let primary = FakeAppDriver(name: "primary", log: log,
-                                    snapshotElements: [[element(ref: 1, id: "target")]])
-        let fallback = FakeAppDriver(name: "fallback", log: log,
-                                     snapshotElements: [[labeled(ref: 9, label: "許可")]])
-        fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true, title: "権限",
-                                                               buttons: ["許可"])]
-        let executor = StepExecutor(driver: primary, fallbackDriver: fallback,
-                                    systemAlertButtons: ["許可"])
-        let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"), timeout: 1)
-
-        let outcome = await executor.execute(step)
-
-        guard case .failed = outcome.status else {
-            XCTFail("閉じても覆われたままなら止めること: \(outcome.status)"); return
-        }
-        XCTAssertEqual(outcome.failureKind, .systemUICovered)
-        XCTAssertEqual(log.entries.filter { $0.hasPrefix("fallback.tap") }.count, 1,
-                       "同じラベルを二度押してはいけない: \(log.entries)")
+        XCTAssertGreaterThan(fallback.systemAlertCallCount, afterFirst,
+                             "閉じた後も見張り続けること(宣言がある限り)")
     }
 
     /// **閉じても消えない画面でも予算内で終わる**。②(閉じる)が成功し続ける限りループが
@@ -955,18 +933,18 @@ final class StepExecutorTests: XCTestCase {
         XCTAssertEqual(outcome.failureKind, .systemUICovered)
     }
 
-    /// **監視の解除は検証側にも効く**(操作側だけだと、消費後も緑のたびに1往復払い続ける)
-    func testAssertStopsProbingOnceEveryDeclaredButtonHasBeenUsed() async throws {
+    /// **検証側も監視を続ける**(宣言がある限り毎ステップ確かめる)
+    func testAssertKeepsProbingAfterAnAlertHasBeenDismissed() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,
                                     snapshotElements: [[element(ref: 1, id: "target")]])
         let fallback = FakeAppDriver(name: "fallback", log: log,
-                                     snapshotElements: [[labeled(ref: 9, label: "許可")]])
-        fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true, title: "権限"),
+                                     snapshotElements: [[alertTitled("位置情報"),
+                                                         labeled(ref: 9, label: "許可")]])
+        fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true, title: "位置情報"),
                                       SystemAlertProbeResponse(present: false)]
         let executor = StepExecutor(driver: primary, fallbackDriver: fallback,
                                     systemAlertButtons: ["許可"])
-        // 1本目(操作)で宣言を使い切る
         guard case .passed = await executor.execute(
             FlowStep(action: "tap", locator: FlowLocator(id: "target"), timeout: 5)).status else {
             XCTFail("閉じたら進むこと"); return
@@ -977,58 +955,8 @@ final class StepExecutorTests: XCTestCase {
             FlowStep(assert: "exists", locator: FlowLocator(id: "target"), timeout: 1)).status else {
             XCTFail("検証も通ること"); return
         }
-        XCTAssertEqual(fallback.systemAlertCallCount, afterAction,
-                       "使い切った後は検証でも1往復も払ってはいけない")
-    }
-
-    /// **検証側も宣言で閉じる**(受け手報告 2026-08-22)。6c1d4dd7 までこの経路は
-    /// **一度も照合せずに**「どの宣言も一致しなかった」と書いており、アラートにも宣言にも
-    /// 「許可」があるのに落ち続けた = 設定では直せない状態を作っていた
-    func testAssertDismissesTheAlertWithADeclaredLabelInsteadOfFailing() async throws {
-        let log = CallLog()
-        let primary = FakeAppDriver(name: "primary", log: log,
-                                    snapshotElements: [[element(ref: 1, id: "target")]])
-        let fallback = FakeAppDriver(name: "fallback", log: log,
-                                     snapshotElements: [[labeled(ref: 9, label: "許可")]])
-        fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true, title: "トラッキング",
-                                                               buttons: ["許可しない", "許可"]),
-                                      SystemAlertProbeResponse(present: false)]
-        let executor = StepExecutor(driver: primary, fallbackDriver: fallback,
-                                    systemAlertButtons: ["許可"])
-        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "target"), timeout: 1)
-
-        let outcome = await executor.execute(step)
-
-        guard case .passed = outcome.status else {
-            XCTFail("宣言で閉じられるなら閉じて判定し直すこと: \(outcome.status)"); return
-        }
-        XCTAssertTrue(log.entries.contains { $0.hasPrefix("fallback.tap") },
-                      "閉じるボタンを押すこと: \(log.entries)")
-        XCTAssertTrue(outcome.notes.contains(.waitedForSystemUI), "\(outcome.notes)")
-    }
-
-    /// 閉じたあとは**判定し直す**。覆いの下で出した緑は根拠にならないので、
-    /// 晴れた画面で答えが変わるならそちらを返す
-    func testAssertIsRejudgedAfterTheAlertIsDismissed() async throws {
-        let log = CallLog()
-        // 1枚目(覆われている間)は見えていたが、閉じたあとの画面には居ない
-        let primary = FakeAppDriver(name: "primary", log: log,
-                                    snapshotElements: [[element(ref: 1, id: "target")], []])
-        let fallback = FakeAppDriver(name: "fallback", log: log,
-                                     snapshotElements: [[labeled(ref: 9, label: "許可")]])
-        fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true, buttons: ["許可"]),
-                                      SystemAlertProbeResponse(present: false)]
-        let executor = StepExecutor(driver: primary, fallbackDriver: fallback,
-                                    systemAlertButtons: ["許可"])
-        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "target"), timeout: 1)
-
-        let outcome = await executor.execute(step)
-
-        guard case .failed = outcome.status else {
-            XCTFail("晴れた画面に居ないなら緑にしてはいけない: \(outcome.status)"); return
-        }
-        XCTAssertEqual(outcome.failureKind, .notFound,
-                       "判定し直した結果の失敗であること(覆いのせいにしない)")
+        XCTAssertGreaterThan(fallback.systemAlertCallCount, afterAction,
+                             "検証側も見張り続けること")
     }
 
     /// screenLooksLikeEnabled=false(実行プロファイルの screenLooksLike:false)は screenMatches を skip し、

@@ -1701,7 +1701,7 @@ extension StepExecutor {
     /// **アラートは重なり得る**ので、閉じたあとは戻らずに**もう一度確かめてから**進む
     func waitOutSystemUI(step: FlowStep, snapshot: inout SnapshotResponse,
                          phase: inout PhaseAccumulator) async throws -> StepResult.Status? {
-        guard !pendingSystemAlertButtons.isEmpty, let fb = fallbackDriver else { return nil }
+        guard !systemAlertButtons.isEmpty, let fb = fallbackDriver else { return nil }
         let clock = ContinuousClock()
         var start = clock.now
         var probe = try? await fb.systemAlert()
@@ -1722,7 +1722,7 @@ extension StepExecutor {
                 return failed(.systemUICovered,
                               SystemUIGate.failureMessage(covering: covering,
                                                           actualButtons: actualButtons,
-                                                          declaredButtons: pendingSystemAlertButtons))
+                                                          declaredButtons: systemAlertButtons))
             }
             start = clock.now
             let fsnap = try await fb.snapshot()
@@ -1773,21 +1773,23 @@ extension StepExecutor {
     /// 解決できているなら、シナリオ自身がそのアラートを操作しようとしている(`tap("許可")` /
     /// `ifCanSelect("許可")`)ので、自動処理が横から奪ってはいけない。
     /// 判断は FTCore.SystemAlertDismissal の1箇所(推測しない理由もそこ)。
-    /// 戻り値 = 押したラベル(nil = 押していない)。**押した宣言はそのシナリオで消費される**
-    /// (`pendingSystemAlertButtons`)。候補に渡すのも未消費の分だけなので、同じアラートが
-    /// 二度出る前提は置かない = 二度目は押さずに③(撃たずに待つ)へ行く
+    /// 戻り値 = 押したラベル(nil = 押していない)。
+    ///
+    /// **宣言は毎回そのまま使う**(ユーザー指摘 2026-08-22)。ラベルもアラートも消費しない ——
+    /// `許可` のような汎用の文言は**複数のアラートが共有する**ので、消費すると
+    /// 「位置情報で1回使ったら、後から出る ATT に押すラベルが残らない」形になる
+    /// (受け手報告 2026-08-22)。同じアラートが本当に二度出るなら、人も二度押す。
+    /// 押し続けても終わらない画面は `waitOutSystemUI` の予算が打ち切る
     @discardableResult
     public func dismissSystemAlert(in snapshot: SnapshotResponse,
                                    via fallback: AppDriver) async -> String? {
-        let pending = pendingSystemAlertButtons
-        guard !pending.isEmpty,
+        guard !systemAlertButtons.isEmpty,
               let button = SystemAlertDismissal.buttonToTap(in: snapshot.elements,
-                                                            labels: pending),
+                                                            labels: systemAlertButtons),
               let label = button.label else {
             return nil
         }
         do { try await fallback.tap(ref: button.ref) } catch { return nil }
-        markAlertButtonDismissed(label)
         onSystemAlertDismissed?(
             SystemAlertDismissal.actionDescription(pressed: button, in: snapshot.elements))
         return label
