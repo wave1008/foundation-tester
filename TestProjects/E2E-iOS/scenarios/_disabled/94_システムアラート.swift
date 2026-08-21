@@ -9,7 +9,7 @@
 //     自プロセスの窓への合成タッチで、**OS のイベント経路を通らない**
 //   - in-app の木は自プロセスしか見えないので、SpringBoard のアラートは載らない
 //   - `systemAlertButtons` の自動クローズは「対象がどちらの木でも解決できないとき」だけ
-//     呼ばれるので、背面が解決できてしまうこの形では一度も発火しない
+//     呼ばれていたので、背面が解決できてしまうこの形では一度も発火しなかった
 //   - **Android は影響を受けない**: 木の根が `getRootInActiveWindow()` なので、権限ダイアログが
 //     出るとアプリの要素が木から丸ごと消え、既存の経路が正しく働く
 //
@@ -18,9 +18,15 @@
 //   同じ写真の権限アラートで **-01 は inactive・-02 は active**(0.3 秒刻み 42 サンプル)と
 //   割れた。判定は XCUITest ランナーの `GET /systemalert` に一本化してある。
 //
+// **プロファイルは ios-alertguard**(`iosSystemAlertButtons` を宣言してある)。
+// ゲートは**宣言があるときだけ働く**(2026-08-21 ユーザー決定)ので、既定の ios-inapp では
+// 何も起きずに緑になる。宣言するラベル(「Appの使用中は許可」)は写真のアラートの
+// ボタン(写真を選択 / フルアクセスを許可 / 許可しない)と**わざと一致させていない** ——
+// 一致すると自動で閉じてしまい、③(撃たずに待って落ちる)を観測できない。
+//
 // 回し方:
 //   cp _disabled/94_システムアラート.swift ../ && \
-//   ftester run --project E2E-iOS --profile ios-inapp --scenario システムアラートの陽性対照.S0010
+//   ftester run --project E2E-iOS --profile ios-alertguard --scenario システムアラートの陽性対照.S0010
 //
 // 期待する結果: **ステップ6で失敗**。メッセージに "system UI is covering the app" が出て、
 // 覆っているアラートが名指しされること(failureKind=system-ui-covered)。

@@ -17,6 +17,11 @@
 //
 // 聞く口は XCUITest ランナーの `GET /systemalert`(`SystemAlertProbeResponse`)。
 // 木を全部撮ると約 185ms のところ、**アラート無しで約 73ms**(実測 2026-08-21)。
+//
+// **働くのは `iosSystemAlertButtons` を宣言した実行だけ**(2026-08-21 ユーザー決定)。
+// アラートが出る画面は書き手が知っているので宣言できるはずで、宣言しない実行に
+// 毎ステップの往復を負わせない。呼び出し側(StepExecutor)が宣言の有無で門を閉じるので、
+// この型自体は宣言を見ない(判定と方針を混ぜない)。
 
 import Foundation
 
@@ -40,21 +45,17 @@ public enum SystemUIGate {
 
     /// 待ち切れなかったときの失敗の言い分。
     ///
-    /// **逃げ道まで書く**: 受け手はここで初めてこの機構の存在を知るので、「何が起きたか」
-    /// だけでは次の一手が分からない。宣言済みのラベルがあるのに閉じられなかった場合は
-    /// **一致しなかったこと自体**が手掛かりなので、そう言う
+    /// **この機構は `iosSystemAlertButtons` を宣言したときだけ働く**ので、ここに来た時点で
+    /// 宣言は必ずある。**一致しなかったこと自体**が次の一手の手掛かりなので、
+    /// 何を宣言していて何が画面に出ていたかを両方書く
     public static func failureMessage(covering: String?, declaredButtons: [String]) -> String {
         var message = "system UI is covering the app"
         if let covering { message += " (\(covering))" }
         message += ". The in-app engine could still reach the app, but a person could not,"
             + " so the step was not performed."
-        if declaredButtons.isEmpty {
-            message += " Add the button label to iosSystemAlertButtons in the run profile"
-                + " to dismiss it automatically, or dismiss it in the scenario."
-        } else {
-            message += " None of iosSystemAlertButtons"
-                + " (\(declaredButtons.joined(separator: " / "))) matched a button on it."
-        }
+        message += " None of iosSystemAlertButtons"
+            + " (\(declaredButtons.joined(separator: " / "))) matched a button on it —"
+            + " add the label you want pressed, or dismiss it in the scenario."
         return message
     }
 }

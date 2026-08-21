@@ -293,14 +293,15 @@ extension StepExecutor {
     /// 人手には見えていないものを「見えた」と言っていることになる。
     /// 判定は**1ステップにつき1往復**(約 73ms)。ポーリングの周回ごとには払わない ——
     /// 誤りは「緑になったこと」に宿るので、緑になった瞬間に1度確かめれば足りる。
-    /// **失敗したときは聞かない**(既にシナリオは止まるので、往復を足す価値がない)
+    /// **失敗したときは聞かない**(既にシナリオは止まるので、往復を足す価値がない)。
+    /// **`iosSystemAlertButtons` を宣言したときだけ**(操作側と同じ。waitOutSystemUI の doc)
     func executeAssert(_ assert: String, step: FlowStep,
                        phase: inout PhaseAccumulator) async throws -> StepResult.Status {
         resolvedViaSystemUIThisStep = false
         let status = try await dispatchAssert(assert, step: step, phase: &phase)
         // シナリオ自身がアラートを検証しているなら奪わない(操作側の①と同じ規律)
         guard Self.isSuccess(status), !resolvedViaSystemUIThisStep,
-              let fb = fallbackDriver else { return status }
+              !systemAlertButtons.isEmpty, let fb = fallbackDriver else { return status }
         let start = ContinuousClock().now
         let probe = try? await fb.systemAlert()
         phase.snapshotMs += Self.ms(ContinuousClock().now - start)
