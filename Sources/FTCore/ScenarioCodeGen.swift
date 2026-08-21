@@ -270,7 +270,7 @@ public enum ScenarioCodeGen {
             case "count":
                 return "countIs(\(literal(selector)), \(step.expectedCount ?? 0)\(timeoutArg(step)))"
             case "screenMatches":
-                return "screenIs(\(literal(step.expected ?? "")))"
+                return "screenLooksLike(\(literal(step.expected ?? "")))"
             case "keyboardShown":
                 return "keyboardIsShown(\(bareTimeoutArg(step)))"
             case "keyboardNotShown":

@@ -147,3 +147,10 @@ public func swipeLeft() { fatalError() }
 
 @available(*, unavailable, message: "Write swipe(.right) for the raw finger gesture, or scrollLeft() to go back left in the content (the two are the same motion, opposite naming)")
 public func swipeRight() { fatalError() }
+
+// Shirates の `screenIs` は**画面ニックネームの同定**(識別要素の宣言に照らす)。ftester は
+// ニックネーム機構を持たず、同名だった `screenIs` は FM の**見た目の照合**だったので改名した
+// (docs/shirates-parity.md)。移行してきた書き手が最初に打つ名前なので、両方の行き先を出す
+
+@available(*, unavailable, message: "ftester has no screen nickname mechanism. To check the screen by sight, write screenLooksLike(description) (Foundation Models). To identify a screen deterministically, write exist() on an element unique to it")
+public func screenIs(_ nickname: String) { fatalError() }

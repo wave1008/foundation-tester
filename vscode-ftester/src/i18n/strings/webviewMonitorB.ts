@@ -139,8 +139,8 @@ export const webviewMonitorBStrings = {
     en: "FM calls {total} / {totalSec}s total (last 1s: {delta})",
   },
   "wvMonitor2.hostCharts.fmDeadLine": {
-    ja: "✕ FM 全滅: {failures}回すべて失敗(偽陽性検証・自己修復・screenIs はこの実行では無効)",
-    en: "✕ FM dead: all {failures} calls failed (occlusion verify / heal / screenIs are disabled in this run)",
+    ja: "✕ FM 全滅: {failures}回すべて失敗(偽陽性検証・自己修復・screenLooksLike はこの実行では無効)",
+    en: "✕ FM dead: all {failures} calls failed (occlusion verify / heal / screenLooksLike are disabled in this run)",
   },
   "wvMonitor2.hostCharts.fmWarnLine": {
     ja: "⚠ FM 失敗 {failures}回 / 成功 {successes}回(失敗したステップのガードは素通り)",

@@ -11,7 +11,7 @@
 import Foundation
 
 public enum FMVisionSupport {
-    /// FM に画像を渡せるか(macOS 27+)。false のとき occlusion-guard と screenIs は無効。
+    /// FM に画像を渡せるか(macOS 27+)。false のとき occlusion-guard と screenLooksLike は無効。
     public static let isSupported: Bool = {
         if #available(macOS 27, *) { return true }
         return false

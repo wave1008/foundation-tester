@@ -104,7 +104,7 @@ const RUN_PROFILE_FIELDS = {
   fm: true,
   heal: true,
   falsePositiveCheck: false,
-  screenIs: true,
+  screenLooksLike: true,
   containerInference: true,
   iosInappEngine: true,
   iosFastInput: false,

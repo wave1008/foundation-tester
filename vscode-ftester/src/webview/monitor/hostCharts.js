@@ -46,7 +46,7 @@ const HM_ALL_ENTRIES = [hmEntries.cpu, hmEntries.gpu, hmEntries.fm, hmEntries.me
 // FM は割合ではなく件数。実行開始からの累計と、hostMetrics tick 間の増分を持つ。
 // スパークラインは他系列と同じ 0..1 座標系なので、直近バッファ内の最大増分で正規化する
 // (固定上限だと実測レンジ[0〜数件/秒]で潰れて読めないため)。
-// failures は FM 死活の検知用。FM 失敗は呼び出し側(occlusion-guard/heal/screenIs)が
+// failures は FM 死活の検知用。FM 失敗は呼び出し側(occlusion-guard/heal/screenLooksLike)が
 // 握りつぶして素通りする契約なので、ここで可視化しないと全滅が正常時と区別できない。
 const fmState = { total: 0, totalMs: 0, failures: 0, pendingCalls: 0, lastDelta: 0 };
 

@@ -359,7 +359,7 @@ public final class FTDriveCore {
                 systemAlertButtons: [String] = [],
                 scenarioID: String, scenarioTitle: String,
                 delegate: ReplayDelegate?, healingEnabled: Bool,
-                falsePositiveCheckEnabled: Bool = true, screenIsEnabled: Bool = true,
+                falsePositiveCheckEnabled: Bool = true, screenLooksLikeEnabled: Bool = true,
                 // 容器の推測に依存する補正の既定(実行プロファイル由来。**FM とは無関係**)
                 containerInference: Bool = true,
                 dryRun: Bool = false,
@@ -389,7 +389,7 @@ public final class FTDriveCore {
                                      typeDriverGestures: typeDriverGestures,
                                      delegate: delegate, healingEnabled: healingEnabled,
                                      occlusionGuardEnabled: falsePositiveCheckEnabled,
-                                     screenIsEnabled: screenIsEnabled,
+                                     screenLooksLikeEnabled: screenLooksLikeEnabled,
                                      releasesScrollTouch: platform == "ios",
                                      uiFramework: uiFramework,
                                      containerInference: containerInference)

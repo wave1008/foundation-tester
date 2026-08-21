@@ -5,7 +5,7 @@
 # 全緑の E2E では FM 経路はほぼ検証できない:
 #   - occlusion(偽陽性検証)は実行プロファイル既定 OFF
 #   - heal は失敗しないと呼ばれない上、ヒールキャッシュが命中すると FM なしで解決する
-#   - screenIs は使うシナリオが _disabled(生きた FM は非決定的でフレーク源になるため)
+#   - screenLooksLike は使うシナリオが _disabled(生きた FM は非決定的でフレーク源になるため)
 #   - triage は失敗しないと呼ばれない
 # どれも**死んでいても素通りして緑になる**(結果 JSON の fm フィールドだけが手がかり)。
 #
@@ -36,7 +36,7 @@ done
 SCEN_DIR="$ROOT/TestProjects/$PROJECT/scenarios"
 DISABLED="$SCEN_DIR/_disabled"
 # FM を要するシナリオ(_disabled にある = 既定スイートには載らない)
-FM_FILES=(90_自己修復.swift 92_screenIs.swift 93_triage.swift)
+FM_FILES=(90_自己修復.swift 92_screenLooksLike.swift 93_triage.swift)
 HEAL_CACHE="$ROOT/TestProjects/$PROJECT/.ftester/heal-cache.json"
 
 restore() {  # 途中で落ちても必ず元へ戻す(_disabled から出したまま = 既定スイートを汚す)
@@ -91,8 +91,8 @@ for kind in sorted(agg):
 if not agg:
     print("  (1件も呼ばれていない)")
 
-# heal / screenIs / triage は決定的に発火する。occlusion は疑いが立った時だけなので警告に留める
-required = ["heal", "screenIs", "triage"]
+# heal / screenLooksLike / triage は決定的に発火する。occlusion は疑いが立った時だけなので警告に留める
+required = ["heal", "screenLooksLike", "triage"]
 missing = [k for k in required if k not in agg]
 failed = {k: v["failures"] for k, v in agg.items() if v["failures"]}
 if "occlusion" not in agg:

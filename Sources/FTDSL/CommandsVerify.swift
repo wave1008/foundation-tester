@@ -231,7 +231,7 @@ public var lastElement: FTElement {
 // **セレクタを取る版(`textIs("#btn_ok", "OK")`)は置かない**(未リリースで移行案内は不要・
 // ユーザー決定 2026-08-04。コンパイラの素のエラーになる)。対象を暗黙にしたのは、検証のたびにセレクタを書くと
 // 「どの要素を見ているか」が select と検証で二重に現れ、片方だけ直す事故が起きるため。
-// **要素を1つに定めないコマンド(`exist` / `notExist` / `countIs` / `screenIs`)はセレクタを取り続ける**。
+// **要素を1つに定めないコマンド(`exist` / `notExist` / `countIs` / `screenLooksLike`)はセレクタを取り続ける**。
 //
 // 共通の規律(以下 31 関数すべてに効く):
 // - **`scroll:` は足さない**(ユーザー決定 2026-07-27)。これらは静止した画面を詳細に検証する
@@ -749,11 +749,12 @@ private func countIsImpl(_ selector: FTSelector, _ expected: Int, timeout: Doubl
 }
 
 /// 画面全体の検証(自然言語+Foundation Models のマルチモーダル判定)
-public func screenIs(_ expected: String,
-                     file: StaticString = #filePath, line: UInt = #line) {
+public func screenLooksLike(_ expected: String,
+                            file: StaticString = #filePath, line: UInt = #line) {
     let step = FlowStep(assert: "screenMatches", expected: expected)
-    FTRuntime.requireCore(command: "screenIs")
-        .perform(step: step, description: "screenIs \"\(expected)\"", command: "screenIs", file: file, line: line)
+    FTRuntime.requireCore(command: "screenLooksLike")
+        .perform(step: step, description: "screenLooksLike \"\(expected)\"",
+                 command: "screenLooksLike", file: file, line: line)
 }
 
 /// キーボードが表示されていることの検証。開閉はアニメーションを伴うためタイムアウトまでポーリングする
@@ -777,7 +778,7 @@ public func keyboardIsNotShown(timeout: Double? = nil,
 /// **網羅の規則**: セレクタを取り「その要素」を検証する自由関数は**すべて同名でここにも生える**
 /// (text/value の全対称 + `enabledIsTrue` / `enabledIsFalse` / `checkIsON` / `checkIsOFF` + `idIs`)。
 /// 一部だけ生やすと「どれがチェーンできるか」が覚えられず、書いてみるまで分からない。
-/// **例外は要素を1つに定めないコマンド**(`notExist` / `countIs` / `screenIs`)で、これらは
+/// **例外は要素を1つに定めないコマンド**(`notExist` / `countIs` / `screenLooksLike`)で、これらは
 /// 掴んだ要素に対する検証ではないのでチェーンにしない。新しい検証コマンドを足すときは両方に足す
 public struct FTElement {
     let selector: FTSelector

@@ -46,13 +46,13 @@ public enum FMDoctor {
     }
 
     /// 画像入力(Attachment)の可否。FM 本体が使えても macOS 26 では視覚系
-    /// (occlusion-guard / screenIs)だけが無効になるため、テキスト系とは別に報告する。
+    /// (occlusion-guard / screenLooksLike)だけが無効になるため、テキスト系とは別に報告する。
     public static var visionReport: Report {
         FMVisionSupport.isSupported
             ? Report(available: true, detail: "FM visual verification (image input): available")
             : Report(available: false,
                      detail: "FM visual verification (image input): unavailable (\(FMVisionSupport.requirement))"
-                         + ". occlusion-guard (false-positive check) and screenIs are disabled"
+                         + ". occlusion-guard (false-positive check) and screenLooksLike are disabled"
                          + " (heal, triage and scenario naming keep working — they are text-only)")
     }
 
@@ -60,9 +60,9 @@ public enum FMDoctor {
     /// 「unavailable」だけでは、シナリオの書き方をどう変えればよいか分からない
     /// (外部フィードバック 2026-08-06)。visionReport が視覚系について同じことをしている。
     public static let unavailableImpact =
-        "Disabled: self-healing (--heal), failure triage, screenIs, and the occlusion-guard"
+        "Disabled: self-healing (--heal), failure triage, screenLooksLike, and the occlusion-guard"
         + " (the requireVisible check of exist). Everything deterministic keeps working —"
-        + " write textIs / valueIs / exist assertions instead of screenIs, and pin elements"
+        + " write textIs / valueIs / exist assertions instead of screenLooksLike, and pin elements"
         + " by #id rather than relying on healing."
 
     static func describe(_ reason: SystemLanguageModel.Availability.UnavailableReason) -> String {

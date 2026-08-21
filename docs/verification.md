@@ -780,7 +780,7 @@ S0030 型(type が成功扱いなのに後段の検証で値が空)の再発ゼ�
 ## FM が死んでいる run は「守りが効いていない run」(2026-08-20 に可視化)
 
 FM の実呼び出しが全滅していると、**occlusion-guard(`exist` の既定 requireVisible)・自己修復・
-`screenIs` は黙って素通りする**(各呼び出し箇所が nil を返して通す契約)。つまりその run の緑は
+`screenLooksLike` は黙って素通りする**(各呼び出し箇所が nil を返して通す契約)。つまりその run の緑は
 **「守りが効いた緑」ではない**し、赤は FM 起因かもしれない。
 
 これは各シナリオの stderr には出ていたが、**run のまとめには出ていなかった**ため、赤を見るたびに
@@ -788,7 +788,7 @@ FM の実呼び出しが全滅していると、**occlusion-guard(`exist` の既
 いまは `ftester run` のまとめに1行出る:
 
 ```
-⚠️ FM unavailable: 3 scenario(s) ran with occlusion-guard / self-healing / screenIs
+⚠️ FM unavailable: 3 scenario(s) ran with occlusion-guard / self-healing / screenLooksLike
    silently disabled. Read this run's result with that in mind (confirm with: ftester doctor --fm-only)
 ```
 
@@ -2346,7 +2346,7 @@ RN のディープリンク不達を「JS 購読前の競合」と誤診し、�
 
 ## FM(Foundation Models)が全滅したら
 
-occlusion-guard・自己修復・screenIs は FM 失敗時に nil を返して**素通りする**(呼び出し側が握りつぶす)。
+occlusion-guard・自己修復・screenLooksLike は FM 失敗時に nil を返して**素通りする**(呼び出し側が握りつぶす)。
 run 終了時の「FM 呼び出しが全て失敗しました」警告と結果 JSON の `fm` フィールドだけが手がかり。
 
 - **切り分けの起点は `ftester doctor`**。availability は「端末が対応しているか」しか見ておらず、
@@ -2359,11 +2359,11 @@ run 終了時の「FM 呼び出しが全て失敗しました」警告と結果 
   **空振りする**(実害: セレクタ画面・テキスト入力のシナリオで2回続けて空振りし、検証したつもりになった)。
   実測で FM 呼び出しが最も多いのは `ジェスチャが正しく検出されること`。
   確認は結果 JSON の `fm` フィールドで行う(警告が出ない = 成功、ではない。**呼ばれていない**かもしれない)
-- **実行時の FM 経路は `FMHealth.record` を必ず呼ぶ**(occlusion / heal / screenIs / triage)。記録は
+- **実行時の FM 経路は `FMHealth.record` を必ず呼ぶ**(occlusion / heal / screenLooksLike / triage)。記録は
   `fm` フィールドと `FMBreaker` の両方を養うので、欠けると①`fm` に出ず「呼ばれていない」と誤読され
   ②失敗がブレーカを進めず、死んだホストで時間を捨て続ける。実害: **triage が記録を欠いていた**
   (2026-07-30 修正。`fm.calls` に一切現れず、動作確認はレポートの「トリアージ」節でしか取れなかった)。
-  監査は `FMAccountingAuditTests`(**関数単位**。ファイル単位だと同一ファイルの heal / screenIs に
+  監査は `FMAccountingAuditTests`(**関数単位**。ファイル単位だと同一ファイルの heal / screenLooksLike に
   一致して triage の欠落を見逃す。判定前にコメントを落とすのも必須 —
   記録の必要性を説明したコメント自身に一致して一度素通りした)。
   作成時の経路(FMDoctor / ScenarioNamer / TestbaseDrafter)は run の実績ではないので免除リスト
@@ -2374,7 +2374,7 @@ run 終了時の「FM 呼び出しが全て失敗しました」警告と結果 
 ### FM が全滅している間の E2E は「弱い緑」(2026-08-03)
 
 FM(オンデバイスモデル)が死んでいると、**occlusion-guard(`exist` の既定 `requireVisible`)・
-自己修復・`screenIs`・triage が実質無効のまま緑になる**(失敗は飲み込まれて pass 扱い)。
+自己修復・`screenLooksLike`・triage が実質無効のまま緑になる**(失敗は飲み込まれて pass 扱い)。
 run のログに `Every FM call failed` が出ていたら、その run は**偽陽性(覆われているのに exist が
 通る)を検出できていない**と読むこと。`ftester doctor` の「On-device model」で確認できる。
 
@@ -2395,14 +2395,14 @@ Scripts/fm-verify.sh                    # 既定 TestProjects/E2E-CMP・プロ�
 ```
 
 - FM 専用シナリオは `TestProjects/E2E-CMP/scenarios/_disabled/` に置く(`90_自己修復` = heal /
-  `92_screenIs` = screenIs / `93_triage` = **意図的に失敗**して triage を発火)。
+  `92_screenLooksLike` = screenLooksLike / `93_triage` = **意図的に失敗**して triage を発火)。
   **既定スイートに入れない**: 生きた FM の判定は非決定的でフレーク源になり、
   かつ FM が死んでいる間は skip されるので緑のまま気付けない
 - スクリプトは `trap` で必ず `_disabled/` へ戻し、退避したヒールキャッシュも復元する
   (出したままだと既定スイートを汚す)
-- `heal` / `screenIs` / `triage` の欠落は失敗扱い。**`occlusion` は疑いが立った時だけ発火する**ので
+- `heal` / `screenLooksLike` / `triage` の欠落は失敗扱い。**`occlusion` は疑いが立った時だけ発火する**ので
   警告に留める(呼ばれないことと FM の死を区別できない)
-- 実測(2026-07-30・再起動直後): occlusion 13 / heal 2 / screenIs 2 / triage 1 呼び出し・失敗 0。
+- 実測(2026-07-30・再起動直後): occlusion 13 / heal 2 / screenLooksLike 2 / triage 1 呼び出し・失敗 0。
   **occlusion は `ジェスチャが正しく検出されること` が大半**(docs の「最も呼ばれる」の裏取り)
 - **occlusion-guard は長期間 死んだままでも E2E は緑になる**。実績値では
   6066 呼び出し中 5673 失敗(**93.5%**)で、成功を含む run は 582 中 58 だけだった。
@@ -2448,7 +2448,7 @@ FM は**ホスト全体で直列化される資源**(スループットは並列
 増える。そこで呼び出し側でも待ち行列を作る(`FMLock`。~/Library/Caches/ftester/fm.lock への flock)。
 
 - **リポジトリ単位ではなくホスト単位**。別リポジトリの ftester とも直列化する
-- **全ての FM 呼び出しがこのロックを通る**のが不変条件(occlusion / heal / screenIs / triage /
+- **全ての FM 呼び出しがこのロックを通る**のが不変条件(occlusion / heal / screenLooksLike / triage /
   ScenarioNamer / TestbaseDrafter)。新しい FM 呼び出しを足すときは必ず通すこと。
   監査は `grep -n "LanguageModelSession" Sources/FTAgent/*.swift`(FMDoctor は可用性判定なので対象外)
 - **取れなければ FM をスキップする**(既定 20 秒)。全ワーカーが並ぶと最後尾の待ちが積み上がり

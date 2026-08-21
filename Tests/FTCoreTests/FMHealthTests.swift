@@ -54,7 +54,7 @@ final class FMHealthTests: XCTestCase {
     /// 部分失敗は allFailed にしない(全滅と区別する)が、警告は出す
     func testPartialFailureWarnsButIsNotAllFailed() {
         FMHealth.record(kind: "occlusion", ms: 1000, ok: true)
-        FMHealth.record(kind: "screenIs", ms: 50, ok: false, error: "boom")
+        FMHealth.record(kind: "screenLooksLike", ms: 50, ok: false, error: "boom")
         XCTAssertFalse(FMHealth.snapshot().allFailed)
         XCTAssertTrue(FMHealth.warningText()!.contains("Some FM calls failed"))
     }
@@ -72,7 +72,7 @@ final class FMHealthTests: XCTestCase {
         XCTAssertEqual(usage.byKind["occlusion"]?.totalMs, 4000)
         XCTAssertEqual(usage.byKind["occlusion"]?.maxMs, 3000)
         XCTAssertEqual(usage.byKind["heal"]?.calls, 1)
-        XCTAssertNil(usage.byKind["screenIs"])
+        XCTAssertNil(usage.byKind["screenLooksLike"])
     }
 
     /// p50 / max がレイテンシ分布を反映する

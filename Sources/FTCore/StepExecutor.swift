@@ -243,9 +243,9 @@ public final class StepExecutor {
     /// 実行プロファイルの falsePositiveCheck に対応するマスタースイッチ(既定 true)。false なら
     /// occlusionGuard/perStepGuard の値に関わらず occlusion-guard 自体を無効化する
     public var occlusionGuardEnabled: Bool
-    /// 実行プロファイルの screenIs に対応するマスタースイッチ(既定 true)。false なら
+    /// 実行プロファイルの screenLooksLike に対応するマスタースイッチ(既定 true)。false なら
     /// screenMatches ステップを skip する
-    public var screenIsEnabled: Bool
+    public var screenLooksLikeEnabled: Bool
     /// [PoC occlusion-guard] true のとき、exists/textEquals がツリー一致で pass した直後に
     /// FM で「その要素がスクショ上で実際に見えているか」を1回照合し、覆われ/切れ/減光/不在なら
     /// 偽陽性として失敗へ反転する。delegate が verifyElementVisible を実装していなければ無効。
@@ -381,7 +381,7 @@ public final class StepExecutor {
                 typeDriverGestures: Set<String> = [],
                 delegate: ReplayDelegate? = nil, healingEnabled: Bool = false,
                 occlusionGuard: Bool = false, occlusionInkThreshold: Double = 12,
-                occlusionGuardEnabled: Bool = true, screenIsEnabled: Bool = true,
+                occlusionGuardEnabled: Bool = true, screenLooksLikeEnabled: Bool = true,
                 releasesScrollTouch: Bool = false,
                 uiFramework: String? = nil,
                 containerInference: Bool = true,
@@ -401,7 +401,7 @@ public final class StepExecutor {
         self.occlusionGuard = occlusionGuard
         self.occlusionInkThreshold = occlusionInkThreshold
         self.occlusionGuardEnabled = occlusionGuardEnabled
-        self.screenIsEnabled = screenIsEnabled
+        self.screenLooksLikeEnabled = screenLooksLikeEnabled
     }
 
     /// cached: ヒールキャッシュ由来のロケータ連鎖。解決順は

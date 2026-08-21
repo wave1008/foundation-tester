@@ -180,8 +180,8 @@ function renderRunProfileSection(): string {
                 <label for="run-profile-heal">${t("panels.runProfile.healLabel")}</label>
               </div>
               <div class="modal-row profile-checkbox-row">
-                <input type="checkbox" id="run-profile-screen-is">
-                <label for="run-profile-screen-is">${t("panels.runProfile.screenIsLabel")}</label>
+                <input type="checkbox" id="run-profile-screen-looks-like">
+                <label for="run-profile-screen-looks-like">${t("panels.runProfile.screenLooksLikeLabel")}</label>
               </div>
               <div class="modal-row profile-checkbox-row">
                 <input type="checkbox" id="run-profile-false-positive-check">

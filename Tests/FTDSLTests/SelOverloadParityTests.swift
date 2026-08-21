@@ -17,7 +17,7 @@ final class SelOverloadParityTests: XCTestCase {
         "openURL",          // ディープリンクの URL
         "tapAppIcon",       // アプリ表示名
         "screenshot",       // ファイル名
-        "screenIs",         // 画面の説明文(FM の視覚照合)
+        "screenLooksLike",         // 画面の説明文(FM の視覚照合)
         "group", "procedure", "scene", "verify", "doUntilTrue",  // 記録用のタイトル・説明
     ]
 

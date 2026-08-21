@@ -11,9 +11,9 @@
   (実体が macOS VM のため FM が使えず、動作検証もしていない)
 - **ログイン済みの GUI セッションのユーザーで実行する**(シミュレータ実行の一般則。
   LaunchDaemon や ssh 直のヘッドレス実行はシミュレータが不安定になる)
-- **Apple Intelligence は不要**。CI に無くても heal・screenIs・偽陽性検証が自動スキップされるだけで、
+- **Apple Intelligence は不要**。CI に無くても heal・screenLooksLike・偽陽性検証が自動スキップされるだけで、
   決定的実行(タップ・検証)は全機能動く(`ftester run` が起動時に ⚠️ を1行出す)。
-  **ただし `screenIs`・`requireVisible` を使うシナリオは、FM 無しでは検証されずに素通り(pass)になる**
+  **ただし `screenLooksLike`・`requireVisible` を使うシナリオは、FM 無しでは検証されずに素通り(pass)になる**
   (run 末尾の FM 警告が申告する)。画面照合を CI でも効かせる場合は
   下の「Apple Intelligence を CI で使う」
 - Xcode・(Android を回すなら)Android SDK がランナーに導入済みであること。
@@ -80,7 +80,7 @@ pipeline {
 
 ベアメタルで有効化する場合の条件と罠:
 
-- Apple silicon + macOS 26+。**screenIs・偽陽性検証(画像入力)は macOS 27+**
+- Apple silicon + macOS 26+。**screenLooksLike・偽陽性検証(画像入力)は macOS 27+**
 - **システム言語が日本語だと Apple Intelligence 自体が出現しない**(macOS 27 beta 実測)。
   CI 機のシステム言語は英語にする
 - 有効化は GUI で1回(システム設定 → Apple Intelligence と Siri。ヘッドレス機は画面共有経由。
@@ -88,7 +88,7 @@ pipeline {
   有効化後にカスタム AMI を焼くか、プロビジョニングに有効化を含める
 - **確認はジョブ先頭に `ftester doctor --fm-only`(exit code)**。availability フラグは
   「使える」と嘘をつくことがあるため、doctor は実呼び出しで確認する
-- FM はホスト全体で直列化される(約1回/秒)。screenIs を多用するスイートは壁時計が伸びる
+- FM はホスト全体で直列化される(約1回/秒)。screenLooksLike を多用するスイートは壁時計が伸びる
 - heal を CI で有効にするかはチーム方針: 有効なら UI 変更起因の失敗は減るが、セレクタ陳腐化が
   隠れやすい。延命中のシナリオは `ftester results insights` が検出する
 

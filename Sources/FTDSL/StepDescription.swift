@@ -148,7 +148,7 @@ public enum StepDescription {
             return isJapanese(obj, expected)
                 ? "\"\(obj)\"の値が\"\(expected)\"であること"
                 : "\"\(obj)\" value is \"\(expected)\""
-        case "screenIs":
+        case "screenLooksLike":
             guard let expected = unquote(rest) else { return nil }
             return isJapanese(expected)
                 ? "画面が\"\(expected)\"であること"

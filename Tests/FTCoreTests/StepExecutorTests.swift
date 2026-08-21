@@ -281,7 +281,7 @@ private final class ScriptedScreenDelegate: ReplayDelegate {
 }
 
 /// screenMatches 検証用: verifyScreen が常に pass を返し、呼び出し回数を数える
-/// (screenIsEnabled=false で呼ばれないことの検証用)
+/// (screenLooksLikeEnabled=false で呼ばれないことの検証用)
 private final class CountingScreenDelegate: ReplayDelegate {
     private(set) var verifyScreenCalls = 0
     func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealProposal? { nil }
@@ -665,24 +665,24 @@ final class StepExecutorTests: XCTestCase {
         XCTAssertEqual(delegate.visibleCalls, 0, "マスタースイッチ OFF で FM を呼んではいけない")
     }
 
-    /// screenIsEnabled=false(実行プロファイルの screenIs:false)は screenMatches を skip し、
+    /// screenLooksLikeEnabled=false(実行プロファイルの screenLooksLike:false)は screenMatches を skip し、
     /// delegate の verifyScreen を呼ばない
     func testScreenMatchesSkippedWhenScreenIsDisabled() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log)
         let delegate = CountingScreenDelegate()
-        let executor = StepExecutor(driver: primary, delegate: delegate, screenIsEnabled: false)
+        let executor = StepExecutor(driver: primary, delegate: delegate, screenLooksLikeEnabled: false)
         let step = FlowStep(assert: "screenMatches", expected: "ホーム画面")
 
         guard case .skipped(let msg) = await executor.execute(step).status else {
-            XCTFail("screenIs 無効なら skip のはず"); return
+            XCTFail("screenLooksLike 無効なら skip のはず"); return
         }
-        XCTAssertTrue(msg.contains("screenIs is disabled"), "skip 理由に無効化を明示すること: \(msg)")
+        XCTAssertTrue(msg.contains("screenLooksLike is disabled"), "skip 理由に無効化を明示すること: \(msg)")
         XCTAssertEqual(delegate.verifyScreenCalls, 0, "無効時は verifyScreen を呼んではいけない")
         XCTAssertEqual(primary.screenshotCallCount, 0, "無効時はスクショも撮らないはず")
     }
 
-    /// screenIsEnabled 既定(true)では screenMatches が delegate の判定どおりに動く(退行検知)
+    /// screenLooksLikeEnabled 既定(true)では screenMatches が delegate の判定どおりに動く(退行検知)
     func testScreenMatchesRunsWhenScreenIsEnabled() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log)
@@ -696,7 +696,7 @@ final class StepExecutorTests: XCTestCase {
         XCTAssertEqual(delegate.verifyScreenCalls, 1)
     }
 
-    /// **screenIs は不一致なら1回だけ撮り直す**(遷移直後のまだ描き終わっていない画面を救う)。
+    /// **screenLooksLike は不一致なら1回だけ撮り直す**(遷移直後のまだ描き終わっていない画面を救う)。
     /// 他の検証のような timeout ポーリングにしないのは、FM 照合がホスト全体で直列(約1回/秒)だから
     func testScreenMatchesRetriesOnceOnMismatch() async throws {
         let log = CallLog()

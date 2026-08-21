@@ -915,9 +915,9 @@ struct RunScenarios: AsyncParsableCommand {
         }
 
         if FMDoctor.check().available == false {
-            print("⚠️ Foundation Models unavailable: self-healing, screenIs and triage are disabled")
+            print("⚠️ Foundation Models unavailable: self-healing, screenLooksLike and triage are disabled")
         } else if !FMVisionSupport.isSupported {
-            print("⚠️ \(FMVisionSupport.requirement): screenIs and occlusion-guard are disabled"
+            print("⚠️ \(FMVisionSupport.requirement): screenLooksLike and occlusion-guard are disabled"
                   + " (self-healing and triage stay enabled)")
         }
 
@@ -966,11 +966,11 @@ struct RunScenarios: AsyncParsableCommand {
                   ? "✅ All \(ranCount) scenario(s) passed\(skippedSuffix)"
                   : "❌ \(failedCount) of \(ranCount) scenario(s) failed\(skippedSuffix)")
             // **合否は変えず、劣化だけ伝える**(2026-08-20)。FM が死んでいると occlusion-guard・
-            // 自己修復・screenIs が黙って素通りするので、緑は「守りが効いた緑」ではない。
+            // 自己修復・screenLooksLike が黙って素通りするので、緑は「守りが効いた緑」ではない。
             // 赤のときも、切り分けの出発点として先に知りたい情報(自分の変更か FM か)
             if runSummary.fmUnavailableScenarios > 0 {
                 print("⚠️ FM unavailable: \(runSummary.fmUnavailableScenarios) scenario(s) ran"
-                    + " with occlusion-guard / self-healing / screenIs silently disabled."
+                    + " with occlusion-guard / self-healing / screenLooksLike silently disabled."
                     + " Read this run's result with that in mind"
                     + " (confirm with: ftester doctor --fm-only)")
             }

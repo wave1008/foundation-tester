@@ -95,7 +95,7 @@ clone 構成(両方ある)の再実行は従来どおり冪等スキップで続
 **環境は機械判定する（人間に「入っているか」を聞かない）**。失敗した項目だけ 🧑 停止して対処を依頼する
 （導入・license 同意はエージェントでは代行不可）:
 
-- macOS 26+: `sw_vers -productVersion`（macOS 26 では FM の視覚検証 = occlusion-guard / screenIs
+- macOS 26+: `sw_vers -productVersion`（macOS 26 では FM の視覚検証 = occlusion-guard / screenLooksLike
   だけが使えない。画像入力が macOS 27+ のため。中断せず続行し、完了報告にその旨を残す）
 - Xcode 26+: `xcodebuild -version`（コマンド自体が license 未同意エラーで落ちたら 🧑 に
   `sudo xcodebuild -license accept` を依頼。sudo は代行不可）
@@ -224,7 +224,7 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scr
 
 **TOOL_ROOT で** `swift run ftester doctor --fm-only` を実行する。これは `SystemLanguageModel.default.availability`
 （オンデバイス FM／Apple Intelligence の可否）だけを見て **exit code で返す**（可=0／不可=1）。
-**FM は必須ではない** — 使うのは heal（自己修復）・FM 視覚検証（`screenIs` 等）・シナリオ生成/探索
+**FM は必須ではない** — 使うのは heal（自己修復）・FM 視覚検証（`screenLooksLike` 等）・シナリオ生成/探索
 （`/ftester-scenario` の頭脳）だけで、決定的なシナリオ実行・VSCode 拡張・MCP のデバイス操作・dry-run は
 FM 無しで動く。**人間に「有効か」を聞かない**：
 

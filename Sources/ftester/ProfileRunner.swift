@@ -459,9 +459,9 @@ enum ProfileRunner {
         let fm = await FMDoctor.checkLive()
         if !fm.available {
             log("⚠️ heal is enabled but live FM calls are failing, so "
-                + "self-healing, occlusion-guard and screenIs are disabled for this run")
+                + "self-healing, occlusion-guard and screenLooksLike are disabled for this run")
         } else if !FMVisionSupport.isSupported {
-            log("⚠️ \(FMVisionSupport.requirement): occlusion-guard and screenIs are disabled for this run"
+            log("⚠️ \(FMVisionSupport.requirement): occlusion-guard and screenLooksLike are disabled for this run"
                 + " (self-healing and triage stay enabled)")
         }
     }

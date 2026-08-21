@@ -1,7 +1,7 @@
 // FM(Foundation Models)呼び出しの回数・レイテンシ・成否をプロセス内で集計する。
 //
 // 目的は2つ:
-// (1) FM が全滅していても機能が黙って無効化されることの検知。occlusion-guard・heal・screenIs は
+// (1) FM が全滅していても機能が黙って無効化されることの検知。occlusion-guard・heal・screenLooksLike は
 //     いずれも FM 失敗時に nil を返して素通りする契約(呼び出し側が失敗を握りつぶす)なので、
 //     集計しないと実行結果からは正常時と区別できない。
 // (2) FM の実行コストの可視化。実測(2026-07-22 M2 Ultra)で FM はホスト全体で直列化しており、
@@ -18,7 +18,7 @@
 
 import Foundation
 
-/// FM 呼び出しの用途別実測。用途キーは "occlusion" / "heal" / "screenIs"
+/// FM 呼び出しの用途別実測。用途キーは "occlusion" / "heal" / "screenLooksLike"
 public struct FMKindUsage: Codable, Sendable {
     public var calls: Int
     public var failures: Int
@@ -81,7 +81,7 @@ public enum FMHealth {
     private static var firstError: String?
     private static var skipped = 0
 
-    /// FM 呼び出し1件を記録する。kind は "occlusion" / "heal" / "screenIs"
+    /// FM 呼び出し1件を記録する。kind は "occlusion" / "heal" / "screenLooksLike"
     public static func record(kind: String, ms: Double, ok: Bool, error: String? = nil) {
         lock.lock()
         defer { lock.unlock() }
@@ -171,7 +171,7 @@ public enum FMHealth {
         }
         if s.allFailed {
             text = "⚠️ Every FM call failed (\(s.failures)). "
-                + "occlusion-guard (the default requireVisible of exist), self-healing and screenIs were "
+                + "occlusion-guard (the default requireVisible of exist), self-healing and screenLooksLike were "
                 + "effectively disabled for this run (failures are swallowed and treated as pass)"
         } else {
             text = "⚠️ Some FM calls failed (\(s.failures) failed / \(s.successes) succeeded). "
