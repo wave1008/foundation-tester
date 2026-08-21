@@ -8,19 +8,30 @@ import Foundation
 /// 実行対象シナリオ。URL(scenario:// スキーム)が一意キー(呼び出し側の実行レーン管理と互換)
 public struct ScenarioRunItem: Identifiable, Sendable {
     public let info: ScenarioInfo
+    /// ブロードキャスト実行(`ScenarioDispatch.broadcast`)で「どのレーン(デバイス)のぶんか」。
+    /// 通常の共有キューでは nil。**URL のクエリに載る**ので、同じシナリオ ID が N 台で
+    /// 同時に走っても (シナリオ × デバイス) が別キーになり、URL で状態を持つ側(表示バッファ・
+    /// 稼働集計・キューの再実行回数)が混線しない。`lastPathComponent` は ID のまま
+    public let lane: String?
     public let url: URL
     public var id: URL { url }
 
-    public init(info: ScenarioInfo) {
+    public init(info: ScenarioInfo, lane: String? = nil) {
         self.info = info
-        self.url = Self.url(for: info.id)
+        self.lane = lane
+        self.url = Self.url(for: info.id, lane: lane)
     }
 
-    /// シナリオ ID(日本語可)→ 一意キー URL
-    public static func url(for scenarioID: String) -> URL {
+    /// シナリオ ID(日本語可)→ 一意キー URL。lane があれば `?lane=<名>` を付ける
+    public static func url(for scenarioID: String, lane: String? = nil) -> URL {
         let encoded = scenarioID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
             ?? "scenario"
-        return URL(string: "scenario://run/\(encoded)") ?? URL(fileURLWithPath: "/scenario")
+        var string = "scenario://run/\(encoded)"
+        if let lane {
+            // デバイス名は "(" ")" ":" "&" を含みうるので英数字以外は全部エスケープする
+            string += "?lane=" + (lane.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? "lane")
+        }
+        return URL(string: string) ?? URL(fileURLWithPath: "/scenario")
     }
 }
 
@@ -370,8 +381,7 @@ public enum ScenarioRunner {
 
         // worker id 形式は ApiRunCommand.swift の workerID 変換表・workersReadyInfo と同一規則
         let recording = recorder.map {
-            ScenarioRecording(recorder: $0,
-                              worker: "\(worker.platform):\(worker.logicalName ?? worker.label)",
+            ScenarioRecording(recorder: $0, worker: Self.recordingWorker(worker),
                               title: item.info.title)
         }
         var reportURL: URL?
@@ -445,6 +455,12 @@ public enum ScenarioRunner {
         onEvent(.flowFinished(worker: worker.label, flowURL: item.url, passed: frozen ? false : passed,
                               triage: nil, reportURL: reportURL, fm: fmUsage))
         return outcome
+    }
+
+    /// 結果 JSON(`ScenarioRunRecord.worker`)に載る書き手の名。**`RunRecorder.discardLast(worker:)` に
+    /// 渡すのもこれ**(同じ文字列でないと、取り消しが別のデバイスの記録を消す)
+    public static func recordingWorker(_ worker: RunWorker) -> String {
+        "\(worker.platform):\(worker.logicalName ?? worker.label)"
     }
 
     /// 実行結果の確定(純粋関数)。**優先順位に意味がある**: 画面凍結 > 環境の一過性エラー >
@@ -726,28 +742,68 @@ public final class RunOrchestrator {
         return await probe(serial)
     }
 
-    public func run(items: [ScenarioRunItem], defaultPlatform: String) async -> RunSummary {
-        let grouped = Dictionary(grouping: items) { $0.info.platform ?? defaultPlatform }
-        // 遅延参加分の platform も含める(含めないと初期ワーカー不在の platform のシナリオが
-        // 供給完了を待たず「担当ワーカーなし」で即失敗する)
-        let workerPlatforms = Set(workers.map(\.platform)).union(lateWorkers?.platforms ?? [])
+    /// - dispatch: `.shared`(既定。platform 別の共有キュー)/ `.broadcast`(レーン別キュー。
+    ///   `ftester run --each-device`)。**違うのはキューの切り方と、ワーカーがどのキューを
+    ///   取るかだけ** —— スタッガ・CPU 門・復帰・lease・録画・ドレインは同じ経路を通る
+    public func run(items: [ScenarioRunItem], defaultPlatform: String,
+                    dispatch: ScenarioDispatch = .shared) async -> RunSummary {
         var failed = 0
+        /// キューの key(shared = platform / broadcast = レーン key)。ワーカーがどれを取るかは queueKey
+        let queues: [String: ScenarioQueue]
+        let total: Int
+        let queueKey: @Sendable (RunWorker) -> String
+        /// ドレイン(残ったまま終わった item)の記録に載せる (platform, worker, 理由)
+        let drainInfo: (String, Bool) -> (platform: String, worker: String?, reason: String)
+        switch dispatch {
+        case .shared:
+            let grouped = Dictionary(grouping: items) { $0.info.platform ?? defaultPlatform }
+            // 遅延参加分の platform も含める(含めないと初期ワーカー不在の platform のシナリオが
+            // 供給完了を待たず「担当ワーカーなし」で即失敗する)
+            let workerPlatforms = Set(workers.map(\.platform)).union(lateWorkers?.platforms ?? [])
 
-        // 担当ワーカーのない platform のシナリオは即スキップ(失敗扱い)
-        for (platform, list) in grouped where !workerPlatforms.contains(platform) {
-            for item in list {
-                let reason = "no worker available (platform: \(platform))"
+            // 担当ワーカーのない platform のシナリオは即スキップ(失敗扱い)
+            for (platform, list) in grouped where !workerPlatforms.contains(platform) {
+                for item in list {
+                    let reason = "no worker available (platform: \(platform))"
+                    continuation.yield(.flowSkipped(flowURL: item.url, reason: reason))
+                    recorder?.recordSkipped(scenarioID: item.info.id, title: item.info.title,
+                                            platform: platform, worker: nil, reason: reason)
+                }
+                failed += list.count
+            }
+            queues = grouped.filter { workerPlatforms.contains($0.key) }
+                .mapValues { ScenarioQueue($0) }
+            total = items.count
+            queueKey = { $0.platform }
+            drainInfo = { platform, _ in (platform, nil, "no usable workers") }
+        case .broadcast(let lanes):
+            let plan = BroadcastPlan.make(items: items, lanes: lanes)
+            for item in plan.unassigned {
+                let platform = item.info.platform ?? defaultPlatform
+                let reason = "no device available (platform: \(platform))"
                 continuation.yield(.flowSkipped(flowURL: item.url, reason: reason))
                 recorder?.recordSkipped(scenarioID: item.info.id, title: item.info.title,
                                         platform: platform, worker: nil, reason: reason)
+                failed += 1
             }
-            failed += list.count
+            queues = plan.queues.mapValues { ScenarioQueue($0) }
+            total = plan.total
+            queueKey = { BroadcastPlan.laneKey(of: $0) }
+            let lanePlatform = Dictionary(lanes.map { ($0.key, $0.platform) },
+                                          uniquingKeysWith: { first, _ in first })
+            drainInfo = { key, joined in
+                let platform = lanePlatform[key] ?? "?"
+                // 台ごとの事実だけ言う(never joined = 供給・triage で落ちて1度も参加しなかった /
+                // joined = 参加したが離脱し、復帰できないまま自分のぶんが残った)
+                return (platform, "\(platform):\(key)",
+                        joined ? "device \(key) dropped out and could not be revived"
+                               : "device \(key) never joined the run")
+            }
         }
+        /// broadcast のドレイン文言用(参加したレーンの key)。shared では使わない
+        let joinedKeys = RunLeaseKeys()
 
-        let queues = grouped.filter { workerPlatforms.contains($0.key) }
-            .mapValues { ScenarioQueue($0) }
-
-        continuation.yield(.runStarted(total: items.count, workerLabels: workers.map(\.label)))
+        continuation.yield(.runStarted(total: total, workerLabels: workers.map(\.label)))
 
         // run-lease/recording-lease ハートビート: mtime を stalenessSeconds(15s)以内に保つため
         // 5s 毎に再書き込み。録画は videoRecording?.start(_:) が成功した時だけ recordingLeaseKeys に
@@ -785,21 +841,25 @@ public final class RunOrchestrator {
                 })
                 group.addTask { await self.superviseWorker(worker, queue: queue) }
             }
+            // キューが無いワーカー(shared: その platform のシナリオが無い / broadcast: レーンの
+            // ぶんが 0 本、または計画に無い台)は参加させない
             for worker in workers {
-                guard let queue = queues[worker.platform] else { continue }
+                guard let queue = queues[queueKey(worker)] else { continue }
+                await joinedKeys.insert(queueKey(worker))
                 await admit(worker, queue)
             }
             // 遅延参加(iOS ブリッジ供給待ち)。この await の間も上で積んだ初期ワーカーの子タスクは
             // 並行実行される(group スコープ内の await は子を止めない)ため、Android は先に走り出す。
             if let late = lateWorkers {
                 for worker in await late.provider() {
-                    guard let queue = queues[worker.platform] else { continue }
+                    guard let queue = queues[queueKey(worker)] else { continue }
+                    await joinedKeys.insert(queueKey(worker))
                     await admit(worker, queue)
                 }
             }
-            var total = 0
-            for await workerFailed in group { total += workerFailed }
-            return total
+            var failedAcrossWorkers = 0
+            for await workerFailed in group { failedAcrossWorkers += workerFailed }
+            return failedAcrossWorkers
         }
 
         heartbeat?.cancel()
@@ -810,18 +870,20 @@ public final class RunOrchestrator {
         // 全ワーカー終了後に 1 回だけ index.json を書く(拡張側との契約。RecordingIndexIO 参照)
         await videoRecording?.finish()
 
-        // ワーカー全滅でキューに残ったシナリオは失敗扱い
-        for (platform, queue) in queues {
+        // ワーカー全滅(broadcast: そのレーンの台が不在・復帰不能)でキューに残ったシナリオは失敗扱い
+        let joined = await joinedKeys.snapshot()
+        for (key, queue) in queues {
+            let drain = drainInfo(key, joined.contains(key))
             while let item = await queue.next() {
-                let reason = "no usable workers"
-                continuation.yield(.flowSkipped(flowURL: item.url, reason: reason))
+                continuation.yield(.flowSkipped(flowURL: item.url, reason: drain.reason))
                 recorder?.recordSkipped(scenarioID: item.info.id, title: item.info.title,
-                                        platform: platform, worker: nil, reason: reason)
+                                        platform: drain.platform, worker: drain.worker,
+                                        reason: drain.reason)
                 failed += 1
             }
         }
 
-        let summary = RunSummary(total: items.count, failed: failed,
+        let summary = RunSummary(total: total, failed: failed,
                                  degradedWorkers: await degraded.snapshot(),
                                  freezeRetries: await retries.snapshot(),
                                  fmUnavailableScenarios: await fmUnavailable.snapshot(),
@@ -839,7 +901,9 @@ public final class RunOrchestrator {
                                    queue: ScenarioQueue, reason: String,
                                    discardRecord: Bool = true) async -> Bool {
         if discardRecord {
-            recorder?.discardLast(scenarioID: item.info.id)
+            // **worker を名指しして消す** —— broadcast では同じ ID を別の台が同時に書いている
+            recorder?.discardLast(scenarioID: item.info.id,
+                                  worker: ScenarioRunner.recordingWorker(worker))
         }
         if let attempt = await queue.requeue(item) {
             await retries.add("\(item.info.id): \(reason) (requeued from \(worker.label), \(attempt)/\(MAX_FREEZE_RETRIES))")
