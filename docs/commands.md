@@ -784,9 +784,16 @@ ifCanSelect("#btnAgree||同意する") { tap("#btnAgree||同意する") }
 ❌ 6. [action] tap "#btn_freeze_3s"
    system UI is covering the app (“FT E2E iOS”に写真ライブラリへのアクセスを許可しますか?).
    The in-app engine could still reach the app, but a person could not, so the step was not
-   performed. None of iosSystemAlertButtons (Appの使用中は許可) matched a button on it —
-   add the label you want pressed, or dismiss it in the scenario.
+   performed. None of iosSystemAlertButtons (Appの使用中は許可) matched a button on it.
+   Buttons on this alert: 「写真を選択」 / 「フルアクセスを許可」 / 「許可しない」.
+   Add the one you want pressed to iosSystemAlertButtons, or dismiss it in the scenario.
 ```
+
+**そのアラートに実際に在るボタン**を出す(2026-08-20 受け手依頼)。ラベルは完全一致なので、
+これが無いと**正解の文字列を知る手段が画面の連続撮影しかない**(数秒で消えるアラートは
+捕まらない)。ボタンは題名と同じ1往復で読めているので、出さない理由が無い。
+読めなかったときは黙らず「読めなかった」と書く —— 「出していない」のか「読めなかった」のかで
+次の一手が変わる。
 
 **宣言しない実行は1往復も払わない**(ユーザー決定 2026-08-21)。アラートが出る画面は
 書き手が知っているので宣言できるはずで、宣言しない実行に毎ステップの費用を負わせない。

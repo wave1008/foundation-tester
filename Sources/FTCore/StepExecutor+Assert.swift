@@ -309,6 +309,7 @@ extension StepExecutor {
         return failed(.systemUICovered,
                       SystemUIGate.failureMessage(
                           covering: SystemUIGate.describeCovering(probe),
+                          actualButtons: probe?.buttons ?? [],
                           declaredButtons: pendingSystemAlertButtons))
     }
 

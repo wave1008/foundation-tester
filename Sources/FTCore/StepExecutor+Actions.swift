@@ -1711,6 +1711,9 @@ extension StepExecutor {
         let deadline = clock.now.advanced(by: .seconds(step.timeout ?? FlowStep.defaultWaitSeconds))
         var backoff = PollBackoff()
         var covering = SystemUIGate.describeCovering(probe)
+        // **最後に読めたボタンの並び**を持ち回る(失敗の言い分に実際の名前を出すため。
+        // 読めた回のものを残す = 消えかけの1枚で空になっても直前の観測を捨てない)
+        var actualButtons = probe?.buttons ?? []
         while true {
             // **予算は毎周確かめる**(②で閉じ続けられる限り回るので、③だけに置くと
             // 「閉じても消えない」画面で無限に回る ——
@@ -1718,6 +1721,7 @@ extension StepExecutor {
             guard clock.now < deadline else {
                 return failed(.systemUICovered,
                               SystemUIGate.failureMessage(covering: covering,
+                                                          actualButtons: actualButtons,
                                                           declaredButtons: pendingSystemAlertButtons))
             }
             start = clock.now
@@ -1734,6 +1738,7 @@ extension StepExecutor {
                 probe = try? await fb.systemAlert()
                 phase.snapshotMs += Self.ms(clock.now - start)
                 covering = SystemUIGate.describeCovering(probe) ?? covering
+                if let read = probe?.buttons, !read.isEmpty { actualButtons = read }
                 if !SystemUIGate.isCovered(probe) {
                     start = clock.now
                     snapshot = (try? await driver.snapshot(bypassingCache: true)) ?? snapshot
@@ -1750,6 +1755,7 @@ extension StepExecutor {
             probe = try? await fb.systemAlert()
             phase.snapshotMs += Self.ms(clock.now - start)
             covering = SystemUIGate.describeCovering(probe) ?? covering
+            if let read = probe?.buttons, !read.isEmpty { actualButtons = read }
             if !SystemUIGate.isCovered(probe) {
                 start = clock.now
                 snapshot = (try? await driver.snapshot(bypassingCache: true)) ?? snapshot
