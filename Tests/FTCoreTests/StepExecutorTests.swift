@@ -981,6 +981,56 @@ final class StepExecutorTests: XCTestCase {
                        "使い切った後は検証でも1往復も払ってはいけない")
     }
 
+    /// **検証側も宣言で閉じる**(受け手報告 2026-08-22)。6c1d4dd7 までこの経路は
+    /// **一度も照合せずに**「どの宣言も一致しなかった」と書いており、アラートにも宣言にも
+    /// 「許可」があるのに落ち続けた = 設定では直せない状態を作っていた
+    func testAssertDismissesTheAlertWithADeclaredLabelInsteadOfFailing() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element(ref: 1, id: "target")]])
+        let fallback = FakeAppDriver(name: "fallback", log: log,
+                                     snapshotElements: [[labeled(ref: 9, label: "許可")]])
+        fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true, title: "トラッキング",
+                                                               buttons: ["許可しない", "許可"]),
+                                      SystemAlertProbeResponse(present: false)]
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback,
+                                    systemAlertButtons: ["許可"])
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "target"), timeout: 1)
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("宣言で閉じられるなら閉じて判定し直すこと: \(outcome.status)"); return
+        }
+        XCTAssertTrue(log.entries.contains { $0.hasPrefix("fallback.tap") },
+                      "閉じるボタンを押すこと: \(log.entries)")
+        XCTAssertTrue(outcome.notes.contains(.waitedForSystemUI), "\(outcome.notes)")
+    }
+
+    /// 閉じたあとは**判定し直す**。覆いの下で出した緑は根拠にならないので、
+    /// 晴れた画面で答えが変わるならそちらを返す
+    func testAssertIsRejudgedAfterTheAlertIsDismissed() async throws {
+        let log = CallLog()
+        // 1枚目(覆われている間)は見えていたが、閉じたあとの画面には居ない
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element(ref: 1, id: "target")], []])
+        let fallback = FakeAppDriver(name: "fallback", log: log,
+                                     snapshotElements: [[labeled(ref: 9, label: "許可")]])
+        fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true, buttons: ["許可"]),
+                                      SystemAlertProbeResponse(present: false)]
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback,
+                                    systemAlertButtons: ["許可"])
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "target"), timeout: 1)
+
+        let outcome = await executor.execute(step)
+
+        guard case .failed = outcome.status else {
+            XCTFail("晴れた画面に居ないなら緑にしてはいけない: \(outcome.status)"); return
+        }
+        XCTAssertEqual(outcome.failureKind, .notFound,
+                       "判定し直した結果の失敗であること(覆いのせいにしない)")
+    }
+
     /// screenLooksLikeEnabled=false(実行プロファイルの screenLooksLike:false)は screenMatches を skip し、
     /// delegate の verifyScreen を呼ばない
     func testScreenMatchesSkippedWhenScreenIsDisabled() async throws {

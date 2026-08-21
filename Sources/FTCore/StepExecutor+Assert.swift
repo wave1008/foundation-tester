@@ -302,14 +302,42 @@ extension StepExecutor {
         // シナリオ自身がアラートを検証しているなら奪わない(操作側の①と同じ規律)
         guard Self.isSuccess(status), !resolvedViaSystemUIThisStep,
               !pendingSystemAlertButtons.isEmpty, let fb = fallbackDriver else { return status }
-        let start = ContinuousClock().now
-        let probe = try? await fb.systemAlert()
-        phase.snapshotMs += Self.ms(ContinuousClock().now - start)
+        let clock = ContinuousClock()
+        var start = clock.now
+        var probe = try? await fb.systemAlert()
+        phase.snapshotMs += Self.ms(clock.now - start)
         guard SystemUIGate.isCovered(probe) else { return status }
+
+        // **宣言があるなら、まず閉じてみる**(受け手報告 2026-08-22)。
+        // ここは 6c1d4dd7 まで**一度も照合せずに**「どの宣言も一致しなかった」と書いていた ——
+        // アラートにも宣言にも「許可」があるのに一致しないと報告され、受け手は
+        // 設定では直せない状態に置かれた。**やっていないことをやったと書かない**。
+        // 重なりもあるので、閉じられる限り繰り返す(操作側②と同じ)
+        var actualButtons = probe?.buttons ?? []
+        var dismissedAny = false
+        while SystemUIGate.isCovered(probe) {
+            start = clock.now
+            guard let fsnap = try? await fb.snapshot() else { break }
+            phase.snapshotMs += Self.ms(clock.now - start)
+            guard await dismissSystemAlert(in: fsnap, via: fb) != nil else { break }
+            dismissedAny = true
+            noteCodesThisStep.insert(.waitedForSystemUI)
+            start = clock.now
+            probe = try? await fb.systemAlert()
+            phase.snapshotMs += Self.ms(clock.now - start)
+            if let read = probe?.buttons, !read.isEmpty { actualButtons = read }
+        }
+        // **覆いの下で出した緑は捨てて判定し直す**: 人手には見えていない画面で下した判定は
+        // 根拠にならない。閉じたあとの画面で改めて答えを出す(検証は読み取りだけなので
+        // 撃ち直しの危険は無い)。やり直しは1回だけ = ここから先は再入しない
+        if dismissedAny, !SystemUIGate.isCovered(probe) {
+            resolvedViaSystemUIThisStep = false
+            return try await dispatchAssert(assert, step: step, phase: &phase)
+        }
         return failed(.systemUICovered,
                       SystemUIGate.failureMessage(
                           covering: SystemUIGate.describeCovering(probe),
-                          actualButtons: probe?.buttons ?? [],
+                          actualButtons: actualButtons,
                           declaredButtons: pendingSystemAlertButtons))
     }
 
