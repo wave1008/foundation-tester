@@ -15,19 +15,6 @@ import XCTest
 /// `systemAlertHandler` の登録(素のラベル / アラートの名指し)の読み書きと選定
 final class SystemAlertRuleTests: XCTestCase {
 
-    /// プロファイル JSON の2形を読めること(混在・順序維持)。書き出しは往復で同じ形に戻る
-    func testDecodesBareLabelsAndNamedAlertsInOrder() throws {
-        let json = """
-        ["アプリの使用中は許可", {"alert": "トラッキング", "button": "許可"}]
-        """.data(using: .utf8)!
-        let rules = try JSONDecoder().decode([SystemAlertRule].self, from: json)
-        XCTAssertEqual(rules, [.button("アプリの使用中は許可"),
-                               .alert(titleContains: "トラッキング", button: "許可")])
-        let out = try JSONEncoder().encode(rules)
-        XCTAssertEqual(try JSONDecoder().decode([SystemAlertRule].self, from: out), rules,
-                       "往復して同じ意味に戻ること")
-    }
-
     /// 名指しは**題名の部分一致**(題名にはアプリ名が埋め込まれるので完全一致は書けない)。
     /// ボタンは従来どおり完全一致(「許可」が「許可しない」を押さない)
     func testNamedRuleMatchesByTitleSubstringAndExactButton() {
@@ -39,7 +26,7 @@ final class SystemAlertRuleTests: XCTestCase {
         let att = [el("alert", "“サンプル.stub”が他社のアプリを横断してトラッキングすることを許可しますか?"),
                    el("button", "アプリにトラッキングしないように要求", ref: 2),
                    el("button", "許可", ref: 3)]
-        let rules: [SystemAlertRule] = [.alert(titleContains: "トラッキング", button: "許可")]
+        let rules: [SystemAlertRule] = [.alert(titleContains: "*トラッキング*", button: "許可")]
 
         let hit = SystemAlertDismissal.ruleToApply(in: att, rules: rules)
         XCTAssertEqual(hit?.button.ref, 3)
@@ -52,6 +39,52 @@ final class SystemAlertRuleTests: XCTestCase {
 
     }
 
+    /// **`||` は日英の候補を並べる**(端末の言語で題名もボタンも変わる)。
+    /// 分岐ごとの意味は従来どおり: 題名 = 部分一致 / ボタン = 完全一致
+    func testAlternativesServeBothLocales() {
+        func el(_ type: String, _ label: String, ref: Int = 1) -> ElementInfo {
+            ElementInfo(ref: ref, type: type, identifier: nil, label: label, value: nil,
+                        placeholder: nil, enabled: true,
+                        frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 0)
+        }
+        // `*` の解釈はセレクタと同一: bare = 完全一致なので、題名(アプリ名が埋め込まれた
+        // 長文)には `*x*` を書く。分岐は**実際の題名に含まれる語**で書く(英語の ATT は
+        // "…to track your activity…" で "Tracking" という語は含まれない)
+        let rules: [SystemAlertRule] = [.alert(titleContains: "*トラッキング*||*track your activity*",
+                                               button: "許可||Allow")]
+        let ja = [el("alert", "“サンプル.stub”がトラッキングすることを許可しますか?"),
+                  el("button", "許可", ref: 3)]
+        XCTAssertEqual(SystemAlertDismissal.ruleToApply(in: ja, rules: rules)?.button.ref, 3)
+
+        let en = [el("alert", "Allow “Sample.stub” to track your activity?"),
+                  el("button", "Allow", ref: 4)]
+        XCTAssertEqual(SystemAlertDismissal.ruleToApply(in: en, rules: rules)?.button.ref, 4,
+                       "英語端末でも同じ登録で押せること")
+
+        // ボタンの分岐は**完全一致のまま**: 「許可しない」を「許可」の分岐で押さない
+        let deny = [el("alert", "トラッキングの許可"), el("button", "許可しない", ref: 5)]
+        XCTAssertNil(SystemAlertDismissal.ruleToApply(in: deny, rules: rules))
+    }
+
+    /// **空の分岐と `*` 単体は落とす**。`"a||"` や `"*"` の書き間違いを
+    /// 「どの題名にも当たる」に化けさせない
+    func testEmptyAlternativesDoNotMatchEverything() {
+        func el(_ type: String, _ label: String, ref: Int = 1) -> ElementInfo {
+            ElementInfo(ref: ref, type: type, identifier: nil, label: label, value: nil,
+                        placeholder: nil, enabled: true,
+                        frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 0)
+        }
+        let tree = [el("alert", "無関係のアラート"), el("button", "OK", ref: 2)]
+        XCTAssertNil(SystemAlertDismissal.ruleToApply(
+            in: tree, rules: [.alert(titleContains: "*トラッキング*||", button: "OK")]),
+            "空分岐が「どのアラートでも」に化けてはいけない")
+        XCTAssertNil(SystemAlertDismissal.ruleToApply(
+            in: tree, rules: [.alert(titleContains: "*", button: "OK")]),
+            "`*` 単体が「どのアラートでも」に化けてはいけない")
+        XCTAssertEqual(SystemAlertDismissal.alternatives("トラッキング || Tracking"),
+                       ["トラッキング", "Tracking"], "分岐の前後の空白は落とす")
+    }
+
     /// **題名が読めないアラートに名指しは当てない**(どのアラートか確かめようがないのに
     /// 押すと、意図しないアラートを閉じ得る)。素のラベルなら当たる
     func testNamedRuleNeedsAReadableTitle() {
@@ -62,7 +95,7 @@ final class SystemAlertRuleTests: XCTestCase {
         }
         let titleless = [el("button", "許可", ref: 3)]
         XCTAssertNil(SystemAlertDismissal.ruleToApply(
-            in: titleless, rules: [.alert(titleContains: "トラッキング", button: "許可")]))
+            in: titleless, rules: [.alert(titleContains: "*トラッキング*", button: "許可")]))
         XCTAssertEqual(SystemAlertDismissal.ruleToApply(
             in: titleless, rules: [.button("許可")])?.button.ref, 3)
     }
@@ -80,8 +113,8 @@ final class SystemAlertWatchlistTests: XCTestCase {
 
     /// 名指しを全部処理したら isWatching が落ちる(= 監視の解除)。処理前は見張る
     func testNamedRulesReleaseTheWatchOnceAllArePressed() {
-        var list = SystemAlertWatchlist(rules: [.alert(titleContains: "写真", button: "許可しない"),
-                                                .alert(titleContains: "トラッキング", button: "許可")])
+        var list = SystemAlertWatchlist(rules: [.alert(titleContains: "*写真*", button: "許可しない"),
+                                                .alert(titleContains: "*トラッキング*", button: "許可")])
         XCTAssertTrue(list.isWatching)
         let photos = [el("alert", "写真ライブラリへのアクセス"), el("button", "許可しない", ref: 2)]
         guard let first = list.buttonToTap(in: photos) else { XCTFail("1枚目が選ばれること"); return }
@@ -121,7 +154,7 @@ final class SystemAlertWatchlistTests: XCTestCase {
 
     /// 消費済みの名指しは選定から外れる(同じアラートを二度押さない)
     func testAHandledNamedRuleIsNotSelectedAgain() {
-        var list = SystemAlertWatchlist(rules: [.alert(titleContains: "写真", button: "許可しない")])
+        var list = SystemAlertWatchlist(rules: [.alert(titleContains: "*写真*", button: "許可しない")])
         let photos = [el("alert", "写真ライブラリへのアクセス"), el("button", "許可しない", ref: 2)]
         guard let first = list.buttonToTap(in: photos) else { XCTFail(); return }
         list.notePressed(first.index)

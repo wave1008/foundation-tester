@@ -15,45 +15,48 @@ final class SystemAlertDismissalTests: XCTestCase {
     func test並べた順で先に見つかったものを採る() {
         let tree = [button("許可しない"), button("Appの使用中は許可"), button("1回だけ許可")]
         let hit = SystemAlertDismissal.buttonToTap(
-            in: tree, labels: ["Appの使用中は許可", "1回だけ許可"])
+            in: tree, pattern: "Appの使用中は許可||1回だけ許可")
         XCTAssertEqual(hit?.label, "Appの使用中は許可")
     }
 
     func test前のラベルが無ければ次のラベルへ落ちる() {
         let tree = [button("許可しない"), button("1回だけ許可")]
         let hit = SystemAlertDismissal.buttonToTap(
-            in: tree, labels: ["Appの使用中は許可", "1回だけ許可"])
+            in: tree, pattern: "Appの使用中は許可||1回だけ許可")
         XCTAssertEqual(hit?.label, "1回だけ許可")
     }
 
-    /// **これが最重要**: 部分一致にすると "許可" の指定で "許可しない" を押してしまう
-    func test部分一致では押さない() {
+    /// **これが最重要**: bare の分岐は完全一致 —— "許可" の指定で "許可しない" を押さない。
+    /// 部分一致が要るなら書き手が `*許可*` と**明示する**(セレクタと同じ `*` 記法)
+    func test素の分岐は部分一致しない() {
         let tree = [button("許可しない")]
-        XCTAssertNil(SystemAlertDismissal.buttonToTap(in: tree, labels: ["許可"]))
+        XCTAssertNil(SystemAlertDismissal.buttonToTap(in: tree, pattern: "許可"))
+        XCTAssertEqual(SystemAlertDismissal.buttonToTap(in: tree, pattern: "*許可*")?.label,
+                       "許可しない", "`*` を書いたときだけ部分一致になる")
     }
 
     func test前後の空白は落として比較する() {
         let tree = [button("Allow")]
-        XCTAssertEqual(SystemAlertDismissal.buttonToTap(in: tree, labels: ["  Allow  "])?.label,
+        XCTAssertEqual(SystemAlertDismissal.buttonToTap(in: tree, pattern: "  Allow  ")?.label,
                        "Allow")
     }
 
     /// 一覧が空 = 機能オフ。何があっても押さない
     func testラベル未指定なら何も押さない() {
         let tree = [button("許可"), button("OK")]
-        XCTAssertNil(SystemAlertDismissal.buttonToTap(in: tree, labels: []))
-        XCTAssertNil(SystemAlertDismissal.buttonToTap(in: tree, labels: ["   "]))
+        XCTAssertNil(SystemAlertDismissal.buttonToTap(in: tree, pattern: ""))
+        XCTAssertNil(SystemAlertDismissal.buttonToTap(in: tree, pattern: "   "))
     }
 
     /// ボタン以外は押さない(同じ文言の見出し・説明文を叩かない)
     func testボタン以外の型は押さない() {
         let tree = [button("許可", type: "staticText")]
-        XCTAssertNil(SystemAlertDismissal.buttonToTap(in: tree, labels: ["許可"]))
+        XCTAssertNil(SystemAlertDismissal.buttonToTap(in: tree, pattern: "許可"))
     }
 
     func test無効なボタンは押さない() {
         let tree = [button("許可", enabled: false)]
-        XCTAssertNil(SystemAlertDismissal.buttonToTap(in: tree, labels: ["許可"]))
+        XCTAssertNil(SystemAlertDismissal.buttonToTap(in: tree, pattern: "許可"))
     }
 
     /// 押した記録は**何を押したか**まで出す。出さないと、無関係のアプリのアラートを
@@ -83,6 +86,6 @@ final class SystemAlertDismissalTests: XCTestCase {
 
     func test一覧に無いラベルのボタンは押さない() {
         let tree = [button("あとで")]
-        XCTAssertNil(SystemAlertDismissal.buttonToTap(in: tree, labels: ["許可", "OK"]))
+        XCTAssertNil(SystemAlertDismissal.buttonToTap(in: tree, pattern: "許可||OK"))
     }
 }

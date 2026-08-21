@@ -21,9 +21,15 @@ import Foundation
 /// (`SystemAlertWatchlist`)。同じアラートを2枚待つなら2回登録する。
 /// 台帳が空の間は監視そのものが走らない = 判定の往復(約 73ms/ステップ)を払わない。
 ///
-/// **題名は部分一致・ボタンは完全一致**。題名にはアプリ名が埋め込まれる
-/// (「“サンプル.stub”が…トラッキングすることを…」)ので完全一致は書けない。
-/// ボタンの完全一致は従来どおり(`"許可"` が「許可しない」を押す事故を防ぐ)
+/// **alert も button もセレクタと同じ記法**: `||` で候補を並べ(日英両対応)、
+/// `*` で一致方法を選ぶ(bare = 完全一致 / `x*` = 前方 / `*x` = 後方 / `*x*` = 部分)。
+///
+///     alert: "*トラッキング*||*track your activity*", button: "許可||Allow"
+///
+/// 題名にはアプリ名が埋め込まれる(「“サンプル.stub”が…トラッキングすることを…」)ので、
+/// 実用上 alert は `*x*` で書くことになる。button の bare = 完全一致は
+/// `"許可"` が「許可しない」を押す事故を防ぐ —— `*許可*` と書けば部分一致になるが、
+/// その危険も含めて書き手の選択になる(セレクタと同じ)
 public enum SystemAlertRule: Sendable, Equatable {
     case button(String)
     case alert(titleContains: String, button: String)
@@ -41,32 +47,6 @@ public enum SystemAlertRule: Sendable, Equatable {
         switch self {
         case .button(let label): return label
         case .alert(let title, let button): return "\(title)→\(button)"
-        }
-    }
-}
-
-extension SystemAlertRule: Codable {
-    private enum ObjectKeys: String, CodingKey { case alert, button }
-
-    public init(from decoder: Decoder) throws {
-        if let single = try? decoder.singleValueContainer(), let label = try? single.decode(String.self) {
-            self = .button(label)
-            return
-        }
-        let object = try decoder.container(keyedBy: ObjectKeys.self)
-        self = .alert(titleContains: try object.decode(String.self, forKey: .alert),
-                      button: try object.decode(String.self, forKey: .button))
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        switch self {
-        case .button(let label):
-            var single = encoder.singleValueContainer()
-            try single.encode(label)
-        case .alert(let title, let button):
-            var object = encoder.container(keyedBy: ObjectKeys.self)
-            try object.encode(title, forKey: .alert)
-            try object.encode(button, forKey: .button)
         }
     }
 }
@@ -115,29 +95,31 @@ public struct SystemAlertWatchlist: Sendable {
 }
 
 public enum SystemAlertDismissal {
-    /// fallback(SpringBoard 参照セッション)の木から押すべきボタンを1つ選ぶ。
-    /// labels は実行プロファイルに書かれた順で、**先に見つかったものを採る**
-    /// (「Appの使用中は許可」を「許可」より前に置けば、両方あるときは前者が選ばれる)。
-    ///
-    /// **完全一致だけ**。部分一致にすると `"許可"` の指定が **"許可しない" を押す** ——
-    /// 自動化が正反対の権限を与える形の事故になり、しかも run は緑のまま進む。
-    ///
-    /// 型は `button` に限る。別の型で出るアラートでは**発火しない**が、
-    /// 縮退の向きはそれでよい(押さなければ従来どおりシナリオが失敗して気付ける。
-    /// 押し間違えると気付けない)。
-    public static func buttonToTap(in elements: [ElementInfo], labels: [String]) -> ElementInfo? {
-        guard !labels.isEmpty else { return nil }
-        let candidates = elements.filter { $0.enabled && $0.type == "button" }
-        for label in labels {
-            let wanted = label.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !wanted.isEmpty else { continue }
-            if let hit = candidates.first(where: { $0.label == wanted }) { return hit }
-        }
-        return nil
+    /// セレクタの `||` 記法を候補の列に割る(`"許可||Allow"` → `["許可", "Allow"]`)。
+    /// 空の分岐(`"a||"` の末尾など)は落とす —— 空文字は `*` の解釈で「常に一致」に
+    /// 化け得るので、書き間違いを黙って通さない
+    static func alternatives(_ pattern: String) -> [String] {
+        pattern.components(separatedBy: "||")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    /// 分岐1つが値に当たるか。**`*` の解釈はセレクタと同一**(`FTSelector.partialMatch` の
+    /// 4形: bare = 完全一致 / `x*` = 前方 / `*x` = 後方 / `*x*` = 部分)。
+    /// 判定も `FlowMatchMode.matches` を使う = セレクタと同じ正規化で比較する。
+    /// `"*"` 単体が全一致に化けないのは partialMatch の性質(リテラル `*` の完全一致になる)
+    static func branchMatches(_ branch: String, value: String?) -> Bool {
+        let parsed = FTSelector.partialMatch(branch)
+        return parsed.mode.matches(value, parsed.text)
+    }
+
+    /// パターン(`||` 分岐 + `*`)が値に当たるか
+    static func patternMatches(_ pattern: String, value: String?) -> Bool {
+        alternatives(pattern).contains { branchMatches($0, value: value) }
     }
 
     /// 登録の列から押すべきボタンを1つ選ぶ(登録された順・先に成立したものを採る)。
-    /// 名指し形は**アラートの題名が読めて、部分一致するときだけ**成立する ——
+    /// 名指し形は**アラートの題名が読めて、パターンが当たるときだけ**成立する ——
     /// 題名が読めないアラートに名指しを当てると、意図しないアラートを閉じ得る
     public static func ruleToApply(in elements: [ElementInfo], rules: [SystemAlertRule])
         -> (button: ElementInfo, ruleIndex: Int)? {
@@ -145,11 +127,27 @@ public enum SystemAlertDismissal {
         let title = elements.first { $0.type == "alert" }?.label
         for (index, rule) in rules.enumerated() {
             switch rule {
-            case .button(let label):
-                if let hit = buttonToTap(in: elements, labels: [label]) { return (hit, index) }
-            case .alert(let titleContains, let button):
-                guard let title, title.contains(titleContains) else { continue }
-                if let hit = buttonToTap(in: elements, labels: [button]) { return (hit, index) }
+            case .button(let pattern):
+                if let hit = buttonToTap(in: elements, pattern: pattern) { return (hit, index) }
+            case .alert(let titlePattern, let button):
+                guard let title, patternMatches(titlePattern, value: title) else { continue }
+                if let hit = buttonToTap(in: elements, pattern: button) { return (hit, index) }
+            }
+        }
+        return nil
+    }
+
+    /// パターン(`||` 分岐 + `*`)で押すボタンを1つ選ぶ。分岐の順に試し、先に当たったものを
+    /// 採る(「Appの使用中は許可」を「許可」より前に置けば、両方あるときは前者)。
+    ///
+    /// 型は `button`・enabled だけが対象。別の型で出るアラートでは**発火しない**が、
+    /// 縮退の向きはそれでよい(押さなければシナリオが失敗して気付ける。押し間違えると
+    /// 気付けない)。bare の分岐が完全一致なのも同じ理由(`"許可"` が「許可しない」を押さない)
+    public static func buttonToTap(in elements: [ElementInfo], pattern: String) -> ElementInfo? {
+        let candidates = elements.filter { $0.enabled && $0.type == "button" }
+        for branch in alternatives(pattern) {
+            if let hit = candidates.first(where: { branchMatches(branch, value: $0.label) }) {
+                return hit
             }
         }
         return nil
