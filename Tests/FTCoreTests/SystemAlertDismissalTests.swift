@@ -69,7 +69,7 @@ final class SystemAlertDismissalTests: XCTestCase {
         let described = SystemAlertDismissal.actionDescription(pressed: tree[1], in: tree)
         XCTAssertTrue(described.contains("アプリの使用中は許可"), described)
         XCTAssertTrue(described.contains("“マップ”"), "どのアラートを押したかが要る: \(described)")
-        XCTAssertTrue(described.contains("iosSystemAlertButtons"),
+        XCTAssertTrue(described.contains("systemAlertHandler"),
                       "誰が押したのか(設定由来)も出すこと: \(described)")
     }
 
@@ -78,7 +78,7 @@ final class SystemAlertDismissalTests: XCTestCase {
         let target = button("OK")
         let described = SystemAlertDismissal.actionDescription(pressed: target, in: [target])
         XCTAssertTrue(described.contains("OK"), described)
-        XCTAssertTrue(described.contains("iosSystemAlertButtons"), described)
+        XCTAssertTrue(described.contains("systemAlertHandler"), described)
     }
 
     func test一覧に無いラベルのボタンは押さない() {

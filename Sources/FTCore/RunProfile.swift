@@ -387,10 +387,6 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// **ラベルは完全一致**で、ツールは既定ボタンを推測しない(理由は FTCore.SystemAlertDismissal)。
     /// engine=hybrid のときだけ効く(SpringBoard を見る参照セッションが要る)。
     /// 同期相手: vscode-ftester/schemas/run-profile.schema.json
-    /// システム許可アラートを自動で押す宣言。各エントリは素のラベル(`"許可"`)か、
-    /// アラートを名指しする形(`{"alert": "<題名の一部>", "button": "<ラベル>"}`)。
-    /// 形の意味と解除の規則は `SystemAlertRule` の doc
-    public var iosSystemAlertButtons: [SystemAlertRule]?
     /// **容器の推測に依存する補正**を行うか(既定 true)。false にすると見切れ判定・掴み直し・
     /// 救済ドラッグ・見えている部分を撃つ座標補正・壊れた座標の候補除外が止まり、
     /// 推測を持たなかった頃の挙動へ戻る。**FM とは無関係**(幾何ヒューリスティック)。
@@ -475,6 +471,8 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         "reportDir", "defaultTimeout", "scenarioTimeout",
         "machine", "iosInappEngine", "wipeDataOnBloat", "updateWebView", "wipeDataThresholdGB",
         "recoverCpuFallbackToGpu", "locale",
+        // iosSystemAlertButtons はもう読まない(→ シナリオの systemAlertHandler)。
+        // knownKeys に残すのは、一般の unknown-key 警告ではなく resolve の専用警告で案内するため
         "iosFastInput", "iosSystemAlertButtons", "enableAnimations", "homeOnStart",
         "containerInference",
         "record", "recordFailuresOnly", "recordBitrateKbps", "recordFullResolution", "remoteControl",
@@ -569,11 +567,6 @@ public struct ResolvedProfile: Sendable {
     public let locale: String
     /// iOS xcuitest ブリッジの高速入力(RunProfileDocument.iosFastInput。既定 false)
     public let iosFastInput: Bool
-    /// システム許可アラートを自動で押すボタンラベル(RunProfileDocument.iosSystemAlertButtons。
-    /// 既定 [] = 何もしない)。**`var` + 既定値**にするのは memberwise init を壊さないため ——
-    /// 既定値付きの `let` は memberwise init から除外され、直に呼ぶ既存テストが渡せなくなる
-    /// (CLAUDE.md / machineHost と同じ罠)
-    public var iosSystemAlertButtons: [SystemAlertRule] = []
     /// 容器の推測に依存する補正(RunProfileDocument.containerInference。**既定 true**)
     public let containerInference: Bool
     /// アプリのアニメーションを残すか(RunProfileDocument.enableAnimations。既定 false=無効化)
@@ -996,6 +989,14 @@ public enum ProfileResolver {
             checkKeys(json, allowed: RunProfileDocument.knownKeys, context: "runs/\(runName).json")
                 + checkDeviceRefKeys(json, context: "runs/\(runName).json")
                 + checkRemoteControlKeys(json, context: "runs/\(runName).json")
+                // 黙って無視すると「宣言したのに押されない」が沈黙になるので、
+                // 行き先まで書いて案内する
+                + (json["iosSystemAlertButtons"] != nil
+                    ? ["runs/\(runName).json: \"iosSystemAlertButtons\" is no longer read —"
+                       + " register in the scenario instead: systemAlertHandler(\"<button label>\")"
+                       + " or systemAlertHandler(alert: \"<title part>\", button: \"<label>\")"
+                       + " (docs/commands.md)"]
+                    : [])
         }
         guard let appRef = runDoc.app else {
             throw ProfileError.missingAppReference(run: runName)
@@ -1192,7 +1193,6 @@ public enum ProfileResolver {
             recoverCpuFallbackToGpu: runDoc.recoverCpuFallbackToGpu ?? false,
             locale: locale,
             iosFastInput: runDoc.iosFastInput ?? false,
-            iosSystemAlertButtons: runDoc.iosSystemAlertButtons ?? [],
             containerInference: runDoc.containerInference ?? true,
             enableAnimations: runDoc.enableAnimations ?? false,
             homeOnStart: runDoc.homeOnStart ?? true,

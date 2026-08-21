@@ -95,6 +95,32 @@ public func irregularHandler(_ detect: Sel, dismiss: Sel? = nil,
                              maxDismissals: maxDismissals)
 }
 
+/// **出たら押してほしい OS のシステムアラート**(権限ダイアログ・ATT 等)を1枚ぶん予告する。
+/// `irregularHandler`(アプリ内メッセージ用)の OS アラート版 —— あちらはアプリの木に載る
+/// ものを閉じるが、**OS のアラートは別プロセス(SpringBoard)でアプリの木に載らない**ので、
+/// XCUITest ランナー経由の別の監視(SystemUIGate)が要る。engine=hybrid のときだけ効く。
+///
+///     systemAlertHandler("アプリの使用中は許可")                      // 次に出たアラートがどれでも
+///     systemAlertHandler(alert: "トラッキング", button: "許可")       // 題名で名指し(部分一致)
+///
+/// **1回の呼び出し = 1枚のアラートの予告**。押せたら登録は外れ、全部外れたら監視も止まる
+/// (登録が無い間は判定の往復を1回も払わない)。同じアラートを2枚待つなら2回呼ぶ。
+/// アラートが出る操作の**前に**呼ぶこと(setUp() に書けば各 @Test の前に登録される)。
+///
+/// ボタンのラベルは**完全一致**で、ツールは既定ボタンを推測しない(取り違えると意図しない
+/// 権限のまま run が緑で進む)。押したことは必ず run ログに残る。
+/// 登録があるのにアラートを覆ったまま押せなければ、そのステップは
+/// `system-ui-covered` で失敗し、**実際に画面に在るボタン名**をメッセージに出す
+public func systemAlertHandler(_ button: String) {
+    let core = FTRuntime.requireCore(command: "systemAlertHandler")
+    core.addSystemAlertRule(.button(button))
+}
+
+public func systemAlertHandler(alert titleContains: String, button: String) {
+    let core = FTRuntime.requireCore(command: "systemAlertHandler")
+    core.addSystemAlertRule(.alert(titleContains: titleContains, button: button))
+}
+
 // MARK: - セレクタを取るコマンドの共通経路
 
 extension FTSelector {

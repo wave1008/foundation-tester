@@ -82,14 +82,16 @@ final class IfCanSelectSystemAlertTests: XCTestCase {
 
     private func makeCore(app: AppDriver, alert: AppDriver, buttons: [String],
                           emit: @escaping (ScenarioEvent) -> Void = { _ in }) -> FTDriveCore {
-        FTDriveCore(driver: app, platform: "ios", app: "com.example.app",
-                    systemAlertRules: buttons.map { .button($0) },
+        let core = FTDriveCore(driver: app, platform: "ios", app: "com.example.app",
                     scenarioID: "T.S0010", scenarioTitle: "t",
                     delegate: nil, healingEnabled: false, dryRun: false,
                     healCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
                         .appendingPathComponent("ft-ifcanselect-alert-test.json"),
                     fallbackDriver: alert,
                     emit: emit)
+        // DSL の systemAlertHandler と同じ登録経路(addSystemAlertRule → 台帳)を通す
+        for label in buttons { core.addSystemAlertRule(.button(label)) }
+        return core
     }
 
     /// **押したら必ず run ログに残ること**。文言が正しくても配線が無ければ記録は出ない

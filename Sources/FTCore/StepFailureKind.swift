@@ -41,7 +41,7 @@ public enum StepFailureKind: String, Sendable, Codable, CaseIterable {
 
     /// **OS のシステム UI(SpringBoard のアラート)がアプリを覆っていた**。XCUITest ランナーの
     /// `GET /systemalert` の申告であって推測ではない。
-    /// **`iosSystemAlertButtons` を宣言した実行でだけ**出る(判定の費用を宣言した人だけが払う)
+    /// **`systemAlertHandler` の登録が残っている間だけ**出る(判定の費用を登録した人だけが払う)
     case systemUICovered = "system-ui-covered"
 }
 

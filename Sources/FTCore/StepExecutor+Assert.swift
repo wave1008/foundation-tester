@@ -294,7 +294,7 @@ extension StepExecutor {
     /// 判定は**1ステップにつき1往復**(約 73ms)。ポーリングの周回ごとには払わない ——
     /// 誤りは「緑になったこと」に宿るので、緑になった瞬間に1度確かめれば足りる。
     /// **失敗したときは聞かない**(既にシナリオは止まるので、往復を足す価値がない)。
-    /// **未消費の `iosSystemAlertButtons` があるときだけ**(操作側と同じ。waitOutSystemUI の doc)
+    /// **`systemAlertHandler` の登録が残っているときだけ**(操作側と同じ。waitOutSystemUI の doc)
     func executeAssert(_ assert: String, step: FlowStep,
                        phase: inout PhaseAccumulator) async throws -> StepResult.Status {
         resolvedViaSystemUIThisStep = false
@@ -308,10 +308,9 @@ extension StepExecutor {
         phase.snapshotMs += Self.ms(clock.now - start)
         guard SystemUIGate.isCovered(probe) else { return status }
 
-        // **宣言があるなら、まず閉じてみる**(受け手報告 2026-08-22)。
-        // ここは 6c1d4dd7 まで**一度も照合せずに**「どの宣言も一致しなかった」と書いていた ——
-        // アラートにも宣言にも「許可」があるのに一致しないと報告され、受け手は
-        // 設定では直せない状態に置かれた。**やっていないことをやったと書かない**。
+        // **登録があるなら、まず閉じてみる**。照合せずに失敗へ落とすと、失敗メッセージの
+        // 「どの登録も一致しなかった」が**やっていないことをやったと書く**ことになる
+        // (アラートにも登録にも「許可」があるのに一致しないと報告される)。
         // 重なりもあるので、閉じられる限り繰り返す(操作側②と同じ)
         var actualButtons = probe?.buttons ?? []
         var dismissedAny = false

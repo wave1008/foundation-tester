@@ -11,16 +11,15 @@
 
 import Foundation
 
-/// 実行プロファイル `iosSystemAlertButtons` の1エントリ。2つの形を取る:
+/// `systemAlertHandler`(DSL)の登録1件。2つの形を取る:
 ///
-/// - `"許可"`(素のラベル)= **どのアラートに出ても押してよい**。監視は解除されない
-///   (どんなアラートが何回来るかを言っていないので、解除の根拠が無い)
-/// - `{"alert": "トラッキング", "button": "許可"}` = **題名がこの文字列を含むアラート**にだけ
-///   このボタンを押す。**処理したら消費**され、名指しの宣言を全部処理し終えたら
-///   (素のラベルが無ければ)監視そのものを解除する = 以後1往復も払わない。
-///   「宣言したアラートを処理したら監視を解除する」(ユーザー決定 2026-08-21)は
-///   この形でだけ成立する —— 解除には「待っているアラートの集合」が要り、
-///   ラベルの列はそれを言えない(`許可` は複数のアラートが共有する。2026-08-22 の実害)
+/// - `systemAlertHandler("許可")`(素のラベル)= **次に出たアラートがどれでも**このボタンを押す
+/// - `systemAlertHandler(alert: "トラッキング", button: "許可")` = **題名がこの文字列を含む
+///   アラート**にだけこのボタンを押す
+///
+/// どちらも**1回の登録 = 1枚のアラートの予告**で、押せたら台帳から外れる
+/// (`SystemAlertWatchlist`)。同じアラートを2枚待つなら2回登録する。
+/// 台帳が空の間は監視そのものが走らない = 判定の往復(約 73ms/ステップ)を払わない。
 ///
 /// **題名は部分一致・ボタンは完全一致**。題名にはアプリ名が埋め込まれる
 /// (「“サンプル.stub”が…トラッキングすることを…」)ので完全一致は書けない。
@@ -72,56 +71,47 @@ extension SystemAlertRule: Codable {
     }
 }
 
-/// `iosSystemAlertButtons` の宣言と**その消費状態**をまとめて持つ台帳。
-/// StepExecutor はこれを1つ持つだけで、規則の列・消費済み集合・監視判定・
-/// 「名指しだけ消費する」という知識を個別に持たない(2026-08-22 ユーザー提案で集約)。
+/// `systemAlertHandler` の登録と発火をまとめて持つ台帳。
+/// StepExecutor はこれを1つ持つだけで、登録の列・除去・監視判定を個別に持たない。
+///
+/// **1回の登録 = 1枚のアラートの予告**。押せたら外れる。台帳が**空なら監視しない**
+/// = 判定の往復を1回も払わない。シナリオの書き手はアラートが出る操作の**前に**登録し、
+/// 同じアラートを2枚待つなら2回登録する —— `許可` のような汎用ラベルを複数のアラートが
+/// 使う場合も、登録が枚数ぶんあるので取り合いにならない。
 ///
 /// 値型で実装する(状態を共有する必要が無く、持ち主は StepExecutor の1箇所だけ)。
-/// 寿命は StepExecutor と同じ = シナリオ1本。次のシナリオでは作り直されて消費が戻る
+/// 寿命は StepExecutor と同じ = シナリオ1本。`setUp()` に書けば各 @Test の前に登録される
 public struct SystemAlertWatchlist: Sendable {
-    /// 宣言1つと、その消費状態
-    private struct Watch {
-        let rule: SystemAlertRule
-        var handled = false
-        /// まだ見張る理由になるか。**素のラベルは常に true**(どのアラートが何回来るかを
-        /// 言っていない = やめてよい根拠が無い)。名指しは処理するまで
-        var isActive: Bool {
-            switch rule {
-            case .button: return true
-            case .alert: return !handled
-            }
-        }
+    private var watches: [SystemAlertRule]
+
+    public init(rules: [SystemAlertRule] = []) {
+        watches = rules
     }
 
-    private var watches: [Watch]
-
-    public init(rules: [SystemAlertRule]) {
-        watches = rules.map { Watch(rule: $0) }
+    /// 登録(DSL の `systemAlertHandler` から。宣言順を保って末尾へ足す)
+    public mutating func register(_ rule: SystemAlertRule) {
+        watches.append(rule)
     }
 
-    /// まだ見張る必要があるか。false = 監視を解除してよい(判定の往復を払わない)。
-    /// 名指しだけの宣言を全部処理し終えたときだけ false になる
-    public var isWatching: Bool { watches.contains { $0.isActive } }
+    /// まだ見張る必要があるか。**空 = 監視しない**(判定の往復を払わない)
+    public var isWatching: Bool { !watches.isEmpty }
 
-    /// この木で押すべきボタン(宣言順・先に成立したもの)。消費はしない ——
-    /// タップは失敗し得るので、**押せたと確定してから** `notePressed` で記録する
+    /// この木で押すべきボタン(登録順・先に成立したもの)。除去はしない ——
+    /// タップは失敗し得るので、**押せたと確定してから** `notePressed` で外す
     public func buttonToTap(in elements: [ElementInfo]) -> (button: ElementInfo, index: Int)? {
-        SystemAlertDismissal.ruleToApply(
-            in: elements, rules: watches.map { $0.rule },
-            handled: Set(watches.indices.filter { watches[$0].handled }))
+        SystemAlertDismissal.ruleToApply(in: elements, rules: watches)
             .map { ($0.button, $0.ruleIndex) }
     }
 
-    /// 押せたことを記録する。**消費されるのは名指し(`.alert`)だけ** —— 素のラベルは
-    /// 汎用の文言(`許可`)を複数のアラートが共有するので、使い切る扱いにできない
-    /// (2026-08-22 の実害)。この分岐を呼び手に持たせないことがこの型の存在理由
+    /// 押せたことを記録し、**その登録を台帳から外す**(発火して不要になった)。
+    /// 同じアラートがもう1枚来る前提は残らない —— 待つなら書き手がもう1回登録する
     public mutating func notePressed(_ index: Int) {
         guard watches.indices.contains(index) else { return }
-        if case .alert = watches[index].rule { watches[index].handled = true }
+        watches.remove(at: index)
     }
 
-    /// 失敗メッセージ用の表示形(宣言順)
-    public var describedRules: [String] { watches.map { $0.rule.described } }
+    /// 失敗メッセージ用の表示形(登録順)
+    public var describedRules: [String] { watches.map { $0.described } }
 }
 
 public enum SystemAlertDismissal {
@@ -146,12 +136,11 @@ public enum SystemAlertDismissal {
         return nil
     }
 
-    /// 規則の列から押すべきボタンを1つ選ぶ(宣言された順・先に成立したものを採る)。
-    /// `handled` は消費済みの規則の添字(名指し形だけが入る)。
+    /// 登録の列から押すべきボタンを1つ選ぶ(登録された順・先に成立したものを採る)。
     /// 名指し形は**アラートの題名が読めて、部分一致するときだけ**成立する ——
     /// 題名が読めないアラートに名指しを当てると、意図しないアラートを閉じ得る
-    public static func ruleToApply(in elements: [ElementInfo], rules: [SystemAlertRule],
-                                   handled: Set<Int>) -> (button: ElementInfo, ruleIndex: Int)? {
+    public static func ruleToApply(in elements: [ElementInfo], rules: [SystemAlertRule])
+        -> (button: ElementInfo, ruleIndex: Int)? {
         guard !rules.isEmpty else { return nil }
         let title = elements.first { $0.type == "alert" }?.label
         for (index, rule) in rules.enumerated() {
@@ -159,8 +148,7 @@ public enum SystemAlertDismissal {
             case .button(let label):
                 if let hit = buttonToTap(in: elements, labels: [label]) { return (hit, index) }
             case .alert(let titleContains, let button):
-                guard !handled.contains(index),
-                      let title, title.contains(titleContains) else { continue }
+                guard let title, title.contains(titleContains) else { continue }
                 if let hit = buttonToTap(in: elements, labels: [button]) { return (hit, index) }
             }
         }
@@ -178,8 +166,8 @@ public enum SystemAlertDismissal {
         let label = button.label ?? "(no label)"
         guard let title = elements.first(where: { $0.type == "alert" })?.label,
               !title.isEmpty else {
-            return "pressed \"\(label)\" on a system alert (iosSystemAlertButtons)"
+            return "pressed \"\(label)\" on a system alert (systemAlertHandler)"
         }
-        return "pressed \"\(label)\" on the system alert \"\(title)\" (iosSystemAlertButtons)"
+        return "pressed \"\(label)\" on the system alert \"\(title)\" (systemAlertHandler)"
     }
 }

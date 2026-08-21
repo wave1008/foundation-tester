@@ -59,7 +59,6 @@ final class SuppressHandlerTests: XCTestCase {
     private func makeCore(_ driver: AppDriver,
                           emit: @escaping (ScenarioEvent) -> Void = { _ in }) -> FTDriveCore {
         FTDriveCore(driver: driver, platform: "ios", app: "com.example.app",
-                    systemAlertRules: [],
                     scenarioID: "T.S0010", scenarioTitle: "t",
                     delegate: nil, healingEnabled: false, dryRun: false,
                     healCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())

@@ -18,15 +18,15 @@
 //   同じ写真の権限アラートで **-01 は inactive・-02 は active**(0.3 秒刻み 42 サンプル)と
 //   割れた。判定は XCUITest ランナーの `GET /systemalert` に一本化してある。
 //
-// **プロファイルは ios-alertguard**(`iosSystemAlertButtons` を宣言してある)。
-// ゲートは**宣言があるときだけ働く**(2026-08-21 ユーザー決定)ので、既定の ios-inapp では
-// 何も起きずに緑になる。宣言するラベル(「Appの使用中は許可」)は写真のアラートの
-// ボタン(写真を選択 / フルアクセスを許可 / 許可しない)と**わざと一致させていない** ——
-// 一致すると自動で閉じてしまい、③(撃たずに待って落ちる)を観測できない。
+// **登録はシナリオ自身が行う**(`systemAlertHandler`)。
+// ゲートは**登録が残っているときだけ働く**。登録するラベル(「Appの使用中は許可」)は
+// 写真のアラートのボタン(写真を選択 / フルアクセスを許可 / 許可しない)と
+// **わざと一致させていない** —— 一致すると自動で閉じてしまい、③(撃たずに待って落ちる)を
+// 観測できない。
 //
 // 回し方:
 //   cp _disabled/94_システムアラート.swift ../ && \
-//   ftester run --project E2E-iOS --profile ios-alertguard --scenario システムアラートの陽性対照.S0010
+//   ftester run --project E2E-iOS --profile ios-inapp --scenario システムアラートの陽性対照.S0010
 //
 // 期待する結果: **背面を撃つステップ以降で失敗**(操作側で止まるか、検証側で緑を取り消すかは
 // 整定の間合いで変わる)。メッセージに "system UI is covering the app" が出て、
@@ -44,6 +44,8 @@ class システムアラートの陽性対照 {
         scenario {
             scene(1, "権限アラートを出したまま背面のボタンを撃つ") {
                 condition {
+                    // 一致しないラベルの予告 = ゲートは働くが自動では閉じられない(③の観測)
+                    systemAlertHandler("Appの使用中は許可")
                     clearAppData()
                     launchApp()
                     tap("#nav_diagnostics", scroll: .down)

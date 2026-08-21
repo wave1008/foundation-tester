@@ -114,24 +114,6 @@
       "type": "boolean",
       "description": "iOS xcuitest ブリッジの高速入力(quiescence 待ちスキップ)。動きの激しい画面ではフレークリスクあり(既定 false)"
     },
-    "iosSystemAlertButtons": {
-      "type": "array",
-      "items": {
-        "oneOf": [
-          { "type": "string" },
-          {
-            "type": "object",
-            "required": ["alert", "button"],
-            "properties": {
-              "alert": { "type": "string", "description": "アラートの題名に含まれる文字列(部分一致。題名にはアプリ名が埋め込まれるため)" },
-              "button": { "type": "string", "description": "押すボタンのラベル(完全一致)" }
-            },
-            "additionalProperties": false
-          }
-        ]
-      },
-      "description": "iOS のシステム許可アラート(位置情報・通知・ATT など)を自動で押す宣言。順に試し、先に成立したものを押す。省略/空 = 何もしない(監視自体が無効 = 判定の往復も払わない)。各エントリは2形: 素のラベル(\"許可\")= どのアラートに出ても押してよく、run の間ずっと見張る / 名指し({\"alert\": \"トラッキング\", \"button\": \"許可\"})= 題名がその文字列を含むアラートにだけ押し、処理したら消費される。名指しだけを並べた場合、全部処理し終えた時点でそのシナリオの監視は解除される(以後の判定往復もゼロ)。ボタンのラベルは完全一致で、ツールは既定ボタンを推測しない(取り違えると意図しない権限のまま run が緑で進む)。engine=hybrid のときだけ効く。例: [{\"alert\": \"トラッキング\", \"button\": \"許可\"}, \"Appの使用中は許可\"]"
-    },
     "homeOnStart": {
       "type": "boolean",
       "description": "run 開始時に各デバイスへ home() を1回撃つ(既定 true = 撃つ)。一斉に launch した直後の端末は「描画要求が無いだけ」で画面が黒いまま止まることがあり、そのままだと凍結と見分けが付かない。入力を1回入れておくと描画が動き出すので予防になる。デバイスあたり1回だけなので実行時間への影響はほぼ無い。",

@@ -777,8 +777,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                 debug: debugOptions, recording: recording,
                 appPath: dryRun ? nil : resolved.apps[scenarioPlatform]?.appPath,
                 appName: resolved.appName,
-                appBundleID: resolved.apps[scenarioPlatform]?.bundleID,
-                iosSystemAlertButtons: resolved.iosSystemAlertButtons) { event in
+                appBundleID: resolved.apps[scenarioPlatform]?.bundleID) { event in
                 var event = event
                 if event.scenario == nil { event.scenario = info.id }
                 writeLine(event.encodedLine())
@@ -957,8 +956,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             },
             installHandler: InstallHandlerFactory.make(apps: resolved.apps),
             appName: resolved.appName,
-            appBundleIDs: resolved.apps.mapValues(\.bundleID),
-            iosSystemAlertButtons: resolved.iosSystemAlertButtons)
+            appBundleIDs: resolved.apps.mapValues(\.bundleID))
         async let summary = orchestrator.run(items: items, defaultPlatform: defaultPlatform)
 
         var timing = ScenarioTimingTracker()
