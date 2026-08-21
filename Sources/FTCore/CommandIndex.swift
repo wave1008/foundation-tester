@@ -61,6 +61,16 @@ public enum DSLCommandIndex {
               "Records the block as one check step. Zero assertions inside is inconclusive."),
         .init("irregularHandler", "structure", "irregularHandler(detect, dismiss:, maxDismissals:?)",
               "Declares an in-app message to close automatically whenever it appears."),
+        .init("suppressHandler", "structure", "suppressHandler { }",
+              "Runs the block without closing declared interruptions, so the scenario can"
+                  + " check or operate the modal itself. It does not stop the app from showing one."),
+        .init("useHandler", "structure", "useHandler { }",
+              "Inside suppressHandler or disableHandler, restores automatic closing for the block."),
+        .init("disableHandler", "structure", "disableHandler()",
+              "Stops closing declared interruptions until enableHandler(). Unlike suppressHandler,"
+                  + " this spans condition/action/expectation blocks."),
+        .init("enableHandler", "structure", "enableHandler()",
+              "Resumes what disableHandler() stopped."),
 
         // MARK: operation
         .init("tap", "operation",

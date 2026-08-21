@@ -392,6 +392,58 @@ private func ifCanSelectImpl(_ selector: FTSelector, waitSeconds: Double,
     return FTBranch(taken: found)
 }
 
+/// **宣言済みの割り込みを自動で閉じない区間**(Shirates 準拠の名前)。
+/// シナリオ自身がそのモーダルを検証・操作したいときに使う —— これが無いと
+/// 「`irregularHandler` を宣言する場所をずらす」という回避策になる(自前 E2E でも実際にそうしていた)。
+///
+/// **止まるのは「ツールが閉じること」だけ**: 割り込みが出ること自体はアプリの都合なので、
+/// 抑止しても「送った操作が吸われる」形は変わらない(責務は docs/commands.md の表)。
+///
+/// **ブロック形と命令形の使い分け**: こちらは**出口で必ず戻る**(途中で失敗しても戻る)が、
+/// **1つの CAE ブロックの内側にしか置けない**。`condition` で止めて `expectation` で戻す形は
+/// `disableHandler()` / `enableHandler()` でしか書けない(2026-08-21 ユーザー指摘)。
+///
+/// **OS のシステムダイアログ(権限の許可等)はここでは止まらない** —— あちらは実行プロファイルの
+/// `iosSystemAlertButtons` による自動押下で、別の機構(そもそも要求した要素が解決できるときは
+/// 自動押下は走らない = シナリオの操作を奪わない)
+public func suppressHandler(_ body: () -> Void) {
+    let core = FTRuntime.requireCore(command: "suppressHandler")
+    core.executor.handlerSuppressionDepth += 1
+    defer { core.executor.handlerSuppressionDepth -= 1 }
+    body()
+}
+
+/// `suppressHandler { }` / `disableHandler()` の内側で**一時的に自動クローズを戻す**。
+/// 抑止していない場所で呼んでも何も変わらない
+public func useHandler(_ body: () -> Void) {
+    let core = FTRuntime.requireCore(command: "useHandler")
+    let savedDepth = core.executor.handlerSuppressionDepth
+    let savedDisabled = core.executor.handlersDisabled
+    core.executor.handlerSuppressionDepth = 0
+    core.executor.handlersDisabled = false
+    defer {
+        core.executor.handlerSuppressionDepth = savedDepth
+        core.executor.handlersDisabled = savedDisabled
+    }
+    body()
+}
+
+/// **CAE のブロックを跨いで**自動クローズを止める(Shirates 準拠。`enableHandler()` で戻す)。
+/// `suppressHandler { }` は1つの CAE ブロックの内側にしか置けないので、
+/// 「`condition` で止めて `expectation` で戻す」はこちらでしか書けない(2026-08-21 ユーザー指摘)。
+///
+/// **戻し忘れはシナリオの終わりまで効く**。中断した場合、以降の画面操作は tearDown だけなので、
+/// 片付けが割り込みに吸われうる点だけ意識する(気になるなら `suppressHandler { }` を使う)
+public func disableHandler() {
+    FTRuntime.requireCore(command: "disableHandler").executor.handlersDisabled = true
+}
+
+/// `disableHandler()` を戻す。`suppressHandler { }` の抑止には影響しない
+/// (ブロック形はブロックの出口で必ず戻るため)
+public func enableHandler() {
+    FTRuntime.requireCore(command: "enableHandler").executor.handlersDisabled = false
+}
+
 /// perform を通らないコマンド(ifCanSelect / repeatWhileCanSelect)用。判定は perform と同じ源
 private func validationError(_ selector: FTSelector) -> String? {
     selector.preflightError

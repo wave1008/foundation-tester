@@ -3728,6 +3728,11 @@ runID = `<yyyyMMdd-HHmmss(UTC)>Z-<マシン名>-<乱数4hex>` をディレクト
 - スキーマ詳細・フィールド一覧は **docs/results-json.md**(唯一の定義元。DTO は `RunRecord.swift`)。
   **`results/` は .gitignore なので、その中に置いた README は受け手に届かない**
   (2026-08-20 まで design.md はそこを指していた)。ドキュメントは docs/ に置く
+- **自動クローズの抑止は `StepExecutor.handlersSuppressed` の1箇所で判定する**(2026-08-21)。
+  ブロック形(`handlerSuppressionDepth`)と命令形(`handlersDisabled`)を**別に持つ**のは、
+  ブロック形が**1つの CAE ブロックの内側にしか置けない**ため —— 「`condition` で止めて
+  `expectation` で戻す」は命令形でしか書けない。`enableHandler()` はブロック形を解除しない
+  (ブロックは出口で必ず戻るので、内側から外すと入れ子の意味が壊れる)
 - **宣言された割り込みを閉じるのは `StepExecutor.dismissInterruption` の1箇所**(2026-08-20)。
   `perform` を通らない条件判定(`ifCanSelect` / `repeatWhileCanSelect` = `FTDriveCore.canSelect`)は
   `dismissDeclaredInterruption(in:)` から**同じ実装**を呼ぶ。**2つ目の実装を書かない** ——
