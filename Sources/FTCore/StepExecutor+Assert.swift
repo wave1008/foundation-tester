@@ -294,14 +294,14 @@ extension StepExecutor {
     /// 判定は**1ステップにつき1往復**(約 73ms)。ポーリングの周回ごとには払わない ——
     /// 誤りは「緑になったこと」に宿るので、緑になった瞬間に1度確かめれば足りる。
     /// **失敗したときは聞かない**(既にシナリオは止まるので、往復を足す価値がない)。
-    /// **`iosSystemAlertButtons` を宣言したときだけ**(操作側と同じ。waitOutSystemUI の doc)
+    /// **未消費の `iosSystemAlertButtons` があるときだけ**(操作側と同じ。waitOutSystemUI の doc)
     func executeAssert(_ assert: String, step: FlowStep,
                        phase: inout PhaseAccumulator) async throws -> StepResult.Status {
         resolvedViaSystemUIThisStep = false
         let status = try await dispatchAssert(assert, step: step, phase: &phase)
         // シナリオ自身がアラートを検証しているなら奪わない(操作側の①と同じ規律)
         guard Self.isSuccess(status), !resolvedViaSystemUIThisStep,
-              !systemAlertButtons.isEmpty, let fb = fallbackDriver else { return status }
+              !pendingSystemAlertButtons.isEmpty, let fb = fallbackDriver else { return status }
         let start = ContinuousClock().now
         let probe = try? await fb.systemAlert()
         phase.snapshotMs += Self.ms(ContinuousClock().now - start)
@@ -309,7 +309,7 @@ extension StepExecutor {
         return failed(.systemUICovered,
                       SystemUIGate.failureMessage(
                           covering: SystemUIGate.describeCovering(probe),
-                          declaredButtons: systemAlertButtons))
+                          declaredButtons: pendingSystemAlertButtons))
     }
 
     private func dispatchAssert(_ assert: String, step: FlowStep,
@@ -421,7 +421,7 @@ extension StepExecutor {
                     // 待っている要素がどちらにも居ないなら、システム許可アラートが被さって
                     // いないかを見る(閉じたら次の周回で普通に解決される)。
                     // **解決できたときは通らない** = シナリオ自身のアラート操作を奪わない
-                    _ = await dismissSystemAlert(in: fsnap, via: fb)
+                    await dismissSystemAlert(in: fsnap, via: fb)
                 }
             }
             if Date() >= deadline {   // 初回照会後にここで離脱(timeout==0 も含む)
