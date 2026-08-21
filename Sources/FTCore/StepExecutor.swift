@@ -216,6 +216,24 @@ public final class StepExecutor {
     /// システム許可アラートを自動で押すボタンラベル(実行プロファイルの iosSystemAlertButtons)。
     /// 空 = 何もしない。**fallbackDriver がある(hybrid)ときだけ効く**
     public let systemAlertButtons: [String]
+    /// **このシナリオで既に押した**システムアラートのラベル。押した分は
+    /// `pendingSystemAlertButtons` から落ち、**全部使い切ったら監視そのものを止める**
+    /// (ユーザー決定 2026-08-21:「宣言したアラートを処理したら、同じアラートはその
+    /// シナリオでは再度出現しないものとし、監視を解除する」)。
+    /// StepExecutor はシナリオ1本につき1つなので、寿命がそのままシナリオの範囲になる
+    private var dismissedAlertButtons: Set<String> = []
+
+    /// まだ押していない宣言。**順序は宣言のまま**(先に書いたものを優先する契約は
+    /// SystemAlertDismissal.buttonToTap が持つので、ここで並べ替えない)。
+    /// **空 = 監視しない** —— 覆いの判定に1往復も払わなくなる
+    var pendingSystemAlertButtons: [String] {
+        systemAlertButtons.filter { !dismissedAlertButtons.contains($0) }
+    }
+
+    /// 押したラベルを消費済みにする(`dismissSystemAlert` からのみ呼ぶ)
+    func markAlertButtonDismissed(_ label: String) {
+        dismissedAlertButtons.insert(label)
+    }
     /// hybrid 用: type アクションを XCUITest(アプリ attach)で実行する代替ドライバ。inapp が
     /// UIKit 非依存アプリ(Compose 等)で type 不能(409)なときの経路。fallbackDriver(springboard
     /// 参照・システム UI 用)とは別物。

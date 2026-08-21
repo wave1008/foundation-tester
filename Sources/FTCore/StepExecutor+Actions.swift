@@ -643,7 +643,7 @@ extension StepExecutor {
                 // 木を取り直して1回やり直す)。解決できているならシナリオ自身がそのアラートを
                 // 操作しようとしているので奪わない(dismissSystemAlert の宣言)
                 if resolved == nil, Self.resolveDetailed(step: step, in: fsnap) == nil,
-                   await dismissSystemAlert(in: fsnap, via: fb) {
+                   await dismissSystemAlert(in: fsnap, via: fb) != nil {
                     start = clock.now
                     fsnap = (try? await fb.snapshot()) ?? fsnap
                     phase.snapshotMs += Self.ms(clock.now - start)
@@ -1694,10 +1694,14 @@ extension StepExecutor {
     /// アラートが出る画面は書き手が知っているので宣言できるはずで、**宣言しない実行に
     /// 1往復(約 73ms)も払わせない**。宣言があるのに一致するボタンが無いときは③で止める ——
     /// 宣言は「この run ではアラートを見張る」という表明でもあるため。
-    /// fallback(XCUITest ランナー)が無い構成も同様に何もしない
+    /// fallback(XCUITest ランナー)が無い構成も同様に何もしない。
+    ///
+    /// **使い切ったら監視を解除する**: 押した宣言は消費され、全部消費したら以後この関数は
+    /// 即 nil を返す(ユーザー決定 2026-08-21 —— 同じアラートはそのシナリオで二度出ない)。
+    /// **アラートは重なり得る**ので、閉じたあとは戻らずに**もう一度確かめてから**進む
     func waitOutSystemUI(step: FlowStep, snapshot: inout SnapshotResponse,
                          phase: inout PhaseAccumulator) async throws -> StepResult.Status? {
-        guard !systemAlertButtons.isEmpty, let fb = fallbackDriver else { return nil }
+        guard !pendingSystemAlertButtons.isEmpty, let fb = fallbackDriver else { return nil }
         let clock = ContinuousClock()
         var start = clock.now
         var probe = try? await fb.systemAlert()
@@ -1708,25 +1712,37 @@ extension StepExecutor {
         var backoff = PollBackoff()
         var covering = SystemUIGate.describeCovering(probe)
         while true {
+            // **予算は毎周確かめる**(②で閉じ続けられる限り回るので、③だけに置くと
+            // 「閉じても消えない」画面で無限に回る ——
+            // 変異テストで実際にハングして見つけた。消費が有限なのは偶然の歯止めであって設計ではない)
+            guard clock.now < deadline else {
+                return failed(.systemUICovered,
+                              SystemUIGate.failureMessage(covering: covering,
+                                                          declaredButtons: pendingSystemAlertButtons))
+            }
             start = clock.now
             let fsnap = try await fb.snapshot()
             phase.snapshotMs += Self.ms(clock.now - start)
             // ① シナリオ自身がアラートを操作している
             if Self.resolveDetailed(step: step, in: fsnap) != nil { return nil }
-            // ② 宣言があれば閉じる
-            if await dismissSystemAlert(in: fsnap, via: fb) {
-                start = clock.now
-                snapshot = (try? await driver.snapshot(bypassingCache: true)) ?? snapshot
-                phase.snapshotMs += Self.ms(clock.now - start)
+            // ② 宣言があれば閉じる。**閉じたら戻らずに確かめ直す** —— 権限アラートは
+            //    重なることがあり(位置情報の直後に通知など)、1枚閉じただけで進むと
+            //    2枚目に覆われたまま撃つことになる
+            if await dismissSystemAlert(in: fsnap, via: fb) != nil {
                 noteCodesThisStep.insert(.waitedForSystemUI)
-                return nil
+                start = clock.now
+                probe = try? await fb.systemAlert()
+                phase.snapshotMs += Self.ms(clock.now - start)
+                covering = SystemUIGate.describeCovering(probe) ?? covering
+                if !SystemUIGate.isCovered(probe) {
+                    start = clock.now
+                    snapshot = (try? await driver.snapshot(bypassingCache: true)) ?? snapshot
+                    phase.snapshotMs += Self.ms(clock.now - start)
+                    return nil
+                }
+                continue   // 次の1枚を同じ順序で扱う
             }
-            // ③ 撃たずに待つ
-            guard clock.now < deadline else {
-                return failed(.systemUICovered,
-                              SystemUIGate.failureMessage(covering: covering,
-                                                          declaredButtons: systemAlertButtons))
-            }
+            // ③ 撃たずに待つ(予算の確認はループ先頭)
             start = clock.now
             try await Task.sleep(for: backoff.nextDelay())
             phase.waitMs += Self.ms(clock.now - start)
@@ -1751,17 +1767,24 @@ extension StepExecutor {
     /// 解決できているなら、シナリオ自身がそのアラートを操作しようとしている(`tap("許可")` /
     /// `ifCanSelect("許可")`)ので、自動処理が横から奪ってはいけない。
     /// 判断は FTCore.SystemAlertDismissal の1箇所(推測しない理由もそこ)。
+    /// 戻り値 = 押したラベル(nil = 押していない)。**押した宣言はそのシナリオで消費される**
+    /// (`pendingSystemAlertButtons`)。候補に渡すのも未消費の分だけなので、同じアラートが
+    /// 二度出る前提は置かない = 二度目は押さずに③(撃たずに待つ)へ行く
+    @discardableResult
     public func dismissSystemAlert(in snapshot: SnapshotResponse,
-                                   via fallback: AppDriver) async -> Bool {
-        guard !systemAlertButtons.isEmpty,
+                                   via fallback: AppDriver) async -> String? {
+        let pending = pendingSystemAlertButtons
+        guard !pending.isEmpty,
               let button = SystemAlertDismissal.buttonToTap(in: snapshot.elements,
-                                                            labels: systemAlertButtons) else {
-            return false
+                                                            labels: pending),
+              let label = button.label else {
+            return nil
         }
-        do { try await fallback.tap(ref: button.ref) } catch { return false }
+        do { try await fallback.tap(ref: button.ref) } catch { return nil }
+        markAlertButtonDismissed(label)
         onSystemAlertDismissed?(
             SystemAlertDismissal.actionDescription(pressed: button, in: snapshot.elements))
-        return true
+        return label
     }
 
     /// 対象が**操作可能になるまで**待つ(`tap` だけ)。戻り値 nil = 待たなかった/待ち切れなかった

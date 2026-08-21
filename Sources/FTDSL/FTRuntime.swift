@@ -1108,7 +1108,7 @@ public final class FTDriveCore {
         // one-shot のガードは窓が過ぎたら戻ってこないので、後続の exist 系で自動押下が効いた頃には
         // 手遅れになる(受け手が実際に踏んだ形。Warmup のオンボーディング列が全滅した)。
         // **要求された要素が解決できたときはここへ来ない** = シナリオ自身のアラート操作は奪わない
-        guard FTSync.run({ await executor.dismissSystemAlert(in: fsnap, via: fb) }) == true else {
+        guard FTSync.run({ await executor.dismissSystemAlert(in: fsnap, via: fb) }) ?? nil != nil else {
             return result(false)
         }
         guard let after = FTSync.run({ try? await driver.snapshot() }) ?? nil else { return result(false) }
