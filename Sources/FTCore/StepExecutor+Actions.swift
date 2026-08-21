@@ -1708,8 +1708,13 @@ extension StepExecutor {
             try await Task.sleep(for: backoff.nextDelay())
             phase.waitMs += Self.ms(clock.now - start)
             start = clock.now
-            let snapshot = try await freshSnapshot(.afterOwnMove)
+            var snapshot = try await freshSnapshot(.afterOwnMove)
             phase.snapshotMs += Self.ms(clock.now - start)
+            // **待っている間に湧いた割り込みはここで閉じる**(2026-08-21)。待ちは
+            // 「撃つまでの時間」を伸ばすので、閉じないと**モーダルが被さる窓を自分で広げる**
+            // ことになる(有効になった瞬間に覆いの上を撃つ)。解決の前に閉じるのは
+            // executeAction 入口と同じ規律。宣言が無ければコストゼロ
+            try await dismissInterruption(in: &snapshot, phase: &phase)
             guard let (element, _) = Self.resolve(step: step, in: snapshot) else { continue }
             if element.enabled {
                 return (element, snapshot, Self.ms(clock.now - began))
@@ -1726,8 +1731,11 @@ extension StepExecutor {
                                  phase: inout PhaseAccumulator) async throws -> ElementInfo? {
         let clock = ContinuousClock()
         let start = clock.now
-        let snapshot = try await freshSnapshot(.afterOwnMove)
+        var snapshot = try await freshSnapshot(.afterOwnMove)
         phase.snapshotMs += Self.ms(clock.now - start)
+        // 焦点が無い理由が**割り込みに持っていかれた**ことなら、閉じてから見る
+        // (閉じずに入れ先を選ぶと、覆いの下の欄を名指しして ref で撃つことになる)
+        try await dismissInterruption(in: &snapshot, phase: &phase)
         guard InputFocusRescue.nothingHasFocus(snapshot.elements) else { return nil }
         return InputFocusRescue.fieldToType(after: tapped, in: snapshot.elements)
     }

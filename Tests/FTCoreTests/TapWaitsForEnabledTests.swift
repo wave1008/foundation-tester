@@ -46,6 +46,58 @@ final class TapWaitsForEnabledTests: XCTestCase {
         func terminate() async throws {}
     }
 
+    /// 待っている最中に割り込みが湧くドライバ(閉じられるまで居座る)
+    private final class LateEnableWithModalDriver: AppDriver, @unchecked Sendable {
+        let enabledFrom: Int
+        let modalFrom: Int
+        private var modalClosed = false
+        private(set) var snapshotCount = 0
+        private(set) var tappedRefs: [Int] = []
+        init(enabledFrom: Int, modalFrom: Int) {
+            self.enabledFrom = enabledFrom
+            self.modalFrom = modalFrom
+        }
+
+        func status() async throws -> StatusResponse {
+            StatusResponse(ready: true, device: "-", osVersion: "-", sessionBundleID: nil)
+        }
+        func install(packagePath: String) async throws {}
+        func uninstall(bundleID: String) async throws {}
+        func launch(bundleID: String) async throws {}
+        func isAppForeground(bundleID: String) async throws -> Bool { true }
+        func foregroundAppID() async throws -> String? { nil }
+        func snapshot() async throws -> SnapshotResponse {
+            snapshotCount += 1
+            var elements = [ElementInfo(ref: 1, type: "button", identifier: "btnLogin", label: nil,
+                                        value: nil, placeholder: nil,
+                                        enabled: snapshotCount >= enabledFrom,
+                                        frame: FTRect(x: 0, y: 0, width: 100, height: 40), depth: 0)]
+            if snapshotCount >= modalFrom, !modalClosed {
+                elements.append(ElementInfo(ref: 2, type: "button", identifier: "btn_promo_close",
+                                            label: nil, value: nil, placeholder: nil, enabled: true,
+                                            frame: FTRect(x: 0, y: 200, width: 100, height: 40),
+                                            depth: 1))
+                elements.append(ElementInfo(ref: 3, type: "other", identifier: "promo_modal",
+                                            label: nil, value: nil, placeholder: nil, enabled: true,
+                                            frame: FTRect(x: 0, y: 100, width: 400, height: 300),
+                                            depth: 1))
+            }
+            return SnapshotResponse(sessionBundleID: nil,
+                                    screen: FTRect(x: 0, y: 0, width: 400, height: 800),
+                                    elements: elements, truncatedCount: 0)
+        }
+        func tap(ref: Int) async throws {
+            tappedRefs.append(ref)
+            if ref == 2 { modalClosed = true }
+        }
+        func tap(x: Double, y: Double) async throws {}
+        func type(ref: Int?, text: String) async throws {}
+        func swipe(_ direction: FTSwipeDirection) async throws {}
+        func press(ref: Int, duration: Double) async throws {}
+        func screenshot() async throws -> Data { Data() }
+        func terminate() async throws {}
+    }
+
     /// 本命: 有効になってから撃つ(注記も残る)
     func testWaitsUntilTheTargetBecomesEnabled() async throws {
         let driver = LateEnableDriver(enabledFrom: 3)
@@ -69,6 +121,24 @@ final class TapWaitsForEnabledTests: XCTestCase {
         XCTAssertEqual(driver.tappedRefs, [1], "撃たずに終わってはいけない")
         XCTAssertTrue((outcome.driverFallback ?? "").contains("is disabled"),
                       "従来どおり警告は出す: \(outcome.driverFallback ?? "")")
+    }
+
+    /// **待っている間に湧いた割り込みは閉じる**。待ちは「撃つまでの時間」を伸ばすので、
+    /// 閉じないと**モーダルが被さる窓を自分で広げる**(有効になった瞬間に覆いの上を撃つ)
+    func testDismissesInterruptionsWhileWaiting() async throws {
+        let driver = LateEnableWithModalDriver(enabledFrom: 3, modalFrom: 2)
+        let executor = StepExecutor(driver: driver)
+        executor.interruptHandlers = [
+            StepExecutor.InterruptHandler(detect: FlowLocator(id: "promo_modal"),
+                                          dismiss: FlowLocator(id: "btn_promo_close")),
+        ]
+
+        let outcome = await executor.execute(
+            FlowStep(action: "tap", locator: FlowLocator(id: "btnLogin"), timeout: 3))
+
+        guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
+        XCTAssertTrue(driver.tappedRefs.contains(2), "待っている間の割り込みを閉じていない")
+        XCTAssertEqual(driver.tappedRefs.last, 1, "最後に本命を撃つこと")
     }
 
     /// 最初から有効なら待たない(正常系のコストを増やさない)
