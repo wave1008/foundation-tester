@@ -1701,7 +1701,7 @@ extension StepExecutor {
     /// **アラートは重なり得る**ので、閉じたあとは戻らずに**もう一度確かめてから**進む
     func waitOutSystemUI(step: FlowStep, snapshot: inout SnapshotResponse,
                          phase: inout PhaseAccumulator) async throws -> StepResult.Status? {
-        guard watchesSystemAlerts, let fb = fallbackDriver else { return nil }
+        guard systemAlertWatchlist.isWatching, let fb = fallbackDriver else { return nil }
         let clock = ContinuousClock()
         var start = clock.now
         var probe = try? await fb.systemAlert()
@@ -1722,7 +1722,7 @@ extension StepExecutor {
                 return failed(.systemUICovered,
                               SystemUIGate.failureMessage(covering: covering,
                                                           actualButtons: actualButtons,
-                                                          declaredButtons: systemAlertRules.map { $0.described }))
+                                                          declaredButtons: systemAlertWatchlist.describedRules))
             }
             start = clock.now
             let fsnap = try await fb.snapshot()
@@ -1775,22 +1775,19 @@ extension StepExecutor {
     /// 判断は FTCore.SystemAlertDismissal の1箇所(推測しない理由もそこ)。
     /// 戻り値 = 押したラベル(nil = 押していない)。
     ///
-    /// **素のラベルは毎回そのまま使う**(ユーザー指摘 2026-08-22)—— `許可` のような汎用の
-    /// 文言は複数のアラートが共有するので、消費すると後から出る別のアラートに押すラベルが
-    /// 残らない(受け手報告 2026-08-22)。**消費するのは名指し形(`.alert`)だけ**で、
-    /// あれは「このアラートが1回出る」という表明なので、処理したら待ち集合から外れる
-    /// (全部外れたら watchesSystemAlerts が監視を解除する)。
+    /// どれを押すか・押した後の消費(名指しだけ・素のラベルは使い切らない)は
+    /// **台帳(`SystemAlertWatchlist`)が全部持つ**。ここは選定 → タップ → 確定記録の順序だけ:
+    /// タップは失敗し得るので、押せたと確定してから記録する。
     /// 押し続けても終わらない画面は `waitOutSystemUI` の予算が打ち切る
     @discardableResult
     public func dismissSystemAlert(in snapshot: SnapshotResponse,
                                    via fallback: AppDriver) async -> String? {
-        guard let (button, ruleIndex) = SystemAlertDismissal.ruleToApply(
-                  in: snapshot.elements, rules: systemAlertRules, handled: handledAlertRules),
+        guard let (button, index) = systemAlertWatchlist.buttonToTap(in: snapshot.elements),
               let label = button.label else {
             return nil
         }
         do { try await fallback.tap(ref: button.ref) } catch { return nil }
-        if case .alert = systemAlertRules[ruleIndex] { markAlertRuleHandled(ruleIndex) }
+        systemAlertWatchlist.notePressed(index)
         onSystemAlertDismissed?(
             SystemAlertDismissal.actionDescription(pressed: button, in: snapshot.elements))
         return label

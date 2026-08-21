@@ -70,6 +70,60 @@ final class SystemAlertRuleTests: XCTestCase {
     }
 }
 
+/// 宣言と消費状態の台帳。選定・消費・監視解除の知識をここに集約してあることの検証
+/// (呼び手が「名指しだけ消費する」を知らなくてよいのがこの型の存在理由)
+final class SystemAlertWatchlistTests: XCTestCase {
+
+    private func el(_ type: String, _ label: String, ref: Int = 1) -> ElementInfo {
+        ElementInfo(ref: ref, type: type, identifier: nil, label: label, value: nil,
+                    placeholder: nil, enabled: true,
+                    frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 0)
+    }
+
+    /// 名指しを全部処理したら isWatching が落ちる(= 監視の解除)。処理前は見張る
+    func testNamedRulesReleaseTheWatchOnceAllArePressed() {
+        var list = SystemAlertWatchlist(rules: [.alert(titleContains: "写真", button: "許可しない"),
+                                                .alert(titleContains: "トラッキング", button: "許可")])
+        XCTAssertTrue(list.isWatching)
+        let photos = [el("alert", "写真ライブラリへのアクセス"), el("button", "許可しない", ref: 2)]
+        guard let first = list.buttonToTap(in: photos) else { XCTFail("1枚目が選ばれること"); return }
+        list.notePressed(first.index)
+        XCTAssertTrue(list.isWatching, "まだ2枚目が残っている")
+
+        let att = [el("alert", "トラッキングの許可"), el("button", "許可", ref: 3)]
+        guard let second = list.buttonToTap(in: att) else { XCTFail("2枚目が選ばれること"); return }
+        list.notePressed(second.index)
+        XCTAssertFalse(list.isWatching, "全部処理したら監視を解除すること")
+    }
+
+    /// **素のラベルは notePressed でも使い切れない**。押した後も選ばれ続け、監視も続く ——
+    /// 「実装が handled を読まないから安全」ではなく、挙動として固定する
+    func testABareLabelSurvivesNotePressed() {
+        var list = SystemAlertWatchlist(rules: [.button("許可")])
+        let alert = [el("alert", "何かの許可"), el("button", "許可", ref: 2)]
+        guard let first = list.buttonToTap(in: alert) else { XCTFail(); return }
+        list.notePressed(first.index)
+        XCTAssertTrue(list.isWatching, "素のラベルは監視を解除しない")
+        XCTAssertNotNil(list.buttonToTap(in: alert), "押した後も同じラベルを使えること")
+    }
+
+    /// 消費済みの名指しは選定から外れる(同じアラートを二度押さない)
+    func testAHandledNamedRuleIsNotSelectedAgain() {
+        var list = SystemAlertWatchlist(rules: [.alert(titleContains: "写真", button: "許可しない")])
+        let photos = [el("alert", "写真ライブラリへのアクセス"), el("button", "許可しない", ref: 2)]
+        guard let first = list.buttonToTap(in: photos) else { XCTFail(); return }
+        list.notePressed(first.index)
+        XCTAssertNil(list.buttonToTap(in: photos), "処理済みの名指しをもう一度当ててはいけない")
+    }
+
+    /// 範囲外の index は黙って無視する(クラッシュさせない)
+    func testAnOutOfRangeIndexIsIgnored() {
+        var list = SystemAlertWatchlist(rules: [.button("許可")])
+        list.notePressed(99)
+        XCTAssertTrue(list.isWatching)
+    }
+}
+
 final class SystemUIGateTests: XCTestCase {
 
     /// **申告が present:true のときだけ**覆われている扱い。nil(ランナーが居ない構成)は

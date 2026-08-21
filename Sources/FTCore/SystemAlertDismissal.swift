@@ -72,6 +72,58 @@ extension SystemAlertRule: Codable {
     }
 }
 
+/// `iosSystemAlertButtons` の宣言と**その消費状態**をまとめて持つ台帳。
+/// StepExecutor はこれを1つ持つだけで、規則の列・消費済み集合・監視判定・
+/// 「名指しだけ消費する」という知識を個別に持たない(2026-08-22 ユーザー提案で集約)。
+///
+/// 値型で実装する(状態を共有する必要が無く、持ち主は StepExecutor の1箇所だけ)。
+/// 寿命は StepExecutor と同じ = シナリオ1本。次のシナリオでは作り直されて消費が戻る
+public struct SystemAlertWatchlist: Sendable {
+    /// 宣言1つと、その消費状態
+    private struct Watch {
+        let rule: SystemAlertRule
+        var handled = false
+        /// まだ見張る理由になるか。**素のラベルは常に true**(どのアラートが何回来るかを
+        /// 言っていない = やめてよい根拠が無い)。名指しは処理するまで
+        var isActive: Bool {
+            switch rule {
+            case .button: return true
+            case .alert: return !handled
+            }
+        }
+    }
+
+    private var watches: [Watch]
+
+    public init(rules: [SystemAlertRule]) {
+        watches = rules.map { Watch(rule: $0) }
+    }
+
+    /// まだ見張る必要があるか。false = 監視を解除してよい(判定の往復を払わない)。
+    /// 名指しだけの宣言を全部処理し終えたときだけ false になる
+    public var isWatching: Bool { watches.contains { $0.isActive } }
+
+    /// この木で押すべきボタン(宣言順・先に成立したもの)。消費はしない ——
+    /// タップは失敗し得るので、**押せたと確定してから** `notePressed` で記録する
+    public func buttonToTap(in elements: [ElementInfo]) -> (button: ElementInfo, index: Int)? {
+        SystemAlertDismissal.ruleToApply(
+            in: elements, rules: watches.map { $0.rule },
+            handled: Set(watches.indices.filter { watches[$0].handled }))
+            .map { ($0.button, $0.ruleIndex) }
+    }
+
+    /// 押せたことを記録する。**消費されるのは名指し(`.alert`)だけ** —— 素のラベルは
+    /// 汎用の文言(`許可`)を複数のアラートが共有するので、使い切る扱いにできない
+    /// (2026-08-22 の実害)。この分岐を呼び手に持たせないことがこの型の存在理由
+    public mutating func notePressed(_ index: Int) {
+        guard watches.indices.contains(index) else { return }
+        if case .alert = watches[index].rule { watches[index].handled = true }
+    }
+
+    /// 失敗メッセージ用の表示形(宣言順)
+    public var describedRules: [String] { watches.map { $0.rule.described } }
+}
+
 public enum SystemAlertDismissal {
     /// fallback(SpringBoard 参照セッション)の木から押すべきボタンを1つ選ぶ。
     /// labels は実行プロファイルに書かれた順で、**先に見つかったものを採る**
