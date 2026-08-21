@@ -19,6 +19,14 @@ extension StepExecutor {
         if action != "select", action != "type" { lastTapTarget = nil }
         pendingScrollFrameNote = nil
         spanScale = 1
+        // **OS のシステム UI が被さっている間は、どのアクションも撃たない**(SystemUIGate)。
+        // ロケータ不要のアクション(swipe / scroll / tap(x:y:) / pressEnter / type(文字列) 等)は
+        // 下で早期 return するので、ここで通さないと覆いを素通りする。①(シナリオ自身が
+        // アラートを操作している)の判定は step.locator が要るので、locator を取らない
+        // アクションでは②③(閉じる/待って落ちる)だけが働く = 正しい
+        if let blocked = try await waitOutSystemUI(step: step, phase: &phase) {
+            return StepOutcome(status: blocked)
+        }
         // ロケータ不要のアクション
         if action == "swipe" {
             let direction = FTSwipeDirection(rawValue: step.direction ?? "") ?? .up
@@ -435,11 +443,6 @@ extension StepExecutor {
         // 行う: 覆われているだけで要素自体は解決できてしまい、タップが吸われる形があるため
         // (層3 の coveringHint と同じ事象。あちらは診断、こちらは宣言があるときの自動処理)
         try await dismissInterruption(in: &snapshot, phase: &phase)
-        // **OS のシステム UI が被さっている間は撃たない**(SystemUIGate)。宣言された割り込みを
-        // 閉じた後・解決の前に置く: 解決できてしまうことが問題なので、解決の後では遅い
-        if let blocked = try await waitOutSystemUI(step: step, snapshot: &snapshot, phase: &phase) {
-            return StepOutcome(status: blocked)
-        }
         var resolved = Self.resolve(step: step, in: snapshot)
         // **切り詰めが原因の未発見に、リトライ/ghost 救済の予算を燃やさない**(2026-08-15)。
         // ここで撮り直さないと、下のリトライループが全予算(バックオフ3回 or step.timeout 全部)を
@@ -1699,7 +1702,7 @@ extension StepExecutor {
     /// **発火した登録は台帳から外れる**(1回の登録 = 1枚のアラート)。全部外れたら
     /// 以後この関数は即 nil を返す = 監視の解除。
     /// **アラートは重なり得る**ので、閉じたあとは戻らずに**もう一度確かめてから**進む
-    func waitOutSystemUI(step: FlowStep, snapshot: inout SnapshotResponse,
+    func waitOutSystemUI(step: FlowStep,
                          phase: inout PhaseAccumulator) async throws -> StepResult.Status? {
         guard systemAlertWatchlist.isWatching, let fb = fallbackDriver else { return nil }
         let clock = ContinuousClock()
@@ -1739,12 +1742,7 @@ extension StepExecutor {
                 phase.snapshotMs += Self.ms(clock.now - start)
                 covering = SystemUIGate.describeCovering(probe) ?? covering
                 if let read = probe?.buttons, !read.isEmpty { actualButtons = read }
-                if !SystemUIGate.isCovered(probe) {
-                    start = clock.now
-                    snapshot = (try? await driver.snapshot(bypassingCache: true)) ?? snapshot
-                    phase.snapshotMs += Self.ms(clock.now - start)
-                    return nil
-                }
+                if !SystemUIGate.isCovered(probe) { return nil }
                 continue   // 次の1枚を同じ順序で扱う
             }
             // ③ 撃たずに待つ(予算の確認はループ先頭)
@@ -1757,28 +1755,23 @@ extension StepExecutor {
             covering = SystemUIGate.describeCovering(probe) ?? covering
             if let read = probe?.buttons, !read.isEmpty { actualButtons = read }
             if !SystemUIGate.isCovered(probe) {
-                start = clock.now
-                snapshot = (try? await driver.snapshot(bypassingCache: true)) ?? snapshot
-                phase.snapshotMs += Self.ms(clock.now - start)
                 noteCodesThisStep.insert(.waitedForSystemUI)
                 return nil
             }
         }
     }
 
-    /// **fallback の木にシステム許可アラートが居たら、プロファイルが指定したボタンを押す**。
-    /// 押したら true(呼び出し側は木を取り直して解決をやり直す)。
+    /// **fallback の木にシステム許可アラートが居たら、登録(iosAlertHandler)のボタンを押す**。
+    /// 戻り値 = 押したラベル(nil = 押していない)。呼び出し側は木を取り直して解決をやり直す。
     ///
     /// 呼ぶのは「**要求された要素が primary でも fallback でも解決できなかった**」ときだけ ——
     /// 解決できているなら、シナリオ自身がそのアラートを操作しようとしている(`tap("許可")` /
     /// `ifCanSelect("許可")`)ので、自動処理が横から奪ってはいけない。
     /// 判断は FTCore.SystemAlertDismissal の1箇所(推測しない理由もそこ)。
-    /// 戻り値 = 押したラベル(nil = 押していない)。
     ///
-    /// どれを押すか・押した後の消費(名指しだけ・素のラベルは使い切らない)は
-    /// **台帳(`SystemAlertWatchlist`)が全部持つ**。ここは選定 → タップ → 確定記録の順序だけ:
-    /// タップは失敗し得るので、押せたと確定してから記録する。
-    /// 押し続けても終わらない画面は `waitOutSystemUI` の予算が打ち切る
+    /// どれを押すか・押した後の台帳からの除去は **台帳(`SystemAlertWatchlist`)が全部持つ**。
+    /// ここは選定 → タップ → 確定記録の順序だけ: タップは失敗し得るので、押せたと確定してから
+    /// 記録する。押し続けても終わらない画面は `waitOutSystemUI` の予算が打ち切る
     @discardableResult
     public func dismissSystemAlert(in snapshot: SnapshotResponse,
                                    via fallback: AppDriver) async -> String? {

@@ -403,7 +403,7 @@ private func ifCanSelectImpl(_ selector: FTSelector, waitSeconds: Double,
 /// **1つの CAE ブロックの内側にしか置けない**。`condition` で止めて `expectation` で戻す形は
 /// `disableHandler()` / `enableHandler()` でしか書けない(2026-08-21 ユーザー指摘)。
 ///
-/// **OS のシステムダイアログ(権限の許可等)はここでは止まらない** —— あちらは実行プロファイルの
+/// **OS のシステムダイアログ(権限の許可等)はここでは止まらない** —— あちらはシナリオの
 /// `iosAlertHandler` による自動押下で、別の機構(そもそも要求した要素が解決できるときは
 /// 自動押下は走らない = シナリオの操作を奪わない)
 public func suppressHandler(_ body: () -> Void) {

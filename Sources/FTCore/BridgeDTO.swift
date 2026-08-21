@@ -487,6 +487,13 @@ public struct FTRect: Codable, Equatable, Sendable {
 
     public var centerX: Double { x + width / 2 }
     public var centerY: Double { y + height / 2 }
+
+    /// inner の中心がこの矩形の内側にあるか(1px の丸めに強い中心点判定)。
+    /// システムアラートの「そのアラートに属するボタンか」の絞り込みに使う
+    public func contains(_ inner: FTRect) -> Bool {
+        inner.centerX >= x && inner.centerX <= x + width
+            && inner.centerY >= y && inner.centerY <= y + height
+    }
 }
 
 public struct StatusResponse: Codable, Sendable {

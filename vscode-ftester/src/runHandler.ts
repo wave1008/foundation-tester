@@ -523,7 +523,7 @@ async function executeRun(
   // **実行プロファイルが設定されていたら連動しない**(2026-08-20。受け手報告の回帰)。
   // liveTarget は --profile と排他なので、連動すると**プロファイルが黙って捨てられる**:
   // 対象アプリが解決できず app 省略シナリオが全滅し(「no app could be resolved」)、
-  // scenarioTimeout / record / iosSystemAlertButtons も効かず、複数デバイスの並列も1台に潰れる。
+  // scenarioTimeout / record / defaultTimeout も効かず、複数デバイスの並列も1台に潰れる。
   // 下の args 分岐のコメントは元からこの条件を前提に書かれていたが、**実装だけが抜けていた**。
   const profile = config.profile.trim();
   const singleClass = new Set([...targets.keys()].map((id) => id.split(".")[0])).size === 1;

@@ -655,7 +655,7 @@ suppressHandler {
 - **抑止したまま落ちた**ときだけ、失敗の注記に
   `a declared interruption was on screen but automatic closing is suppressed here` が出る
   (抑止の危険は「抑止したまま忘れる」。成功しているステップには何も足さない)
-- **OS のシステムダイアログ(権限の許可等)はこれでは止まらない** —— あちらは実行プロファイルの
+- **OS のシステムダイアログ(権限の許可等)はこれでは止まらない** —— あちらはシナリオの
   `iosAlertHandler` による自動押下で別の機構(§システムダイアログ)。
   そもそも要求した要素が解決できるときは自動押下は走らない = シナリオの操作は奪われない
 
@@ -806,8 +806,8 @@ ifCanSelect("#btnAgree||同意する") { tap("#btnAgree||同意する") }
 ❌ 6. [action] tap "#btn_freeze_3s"
    system UI is covering the app (“FT E2E iOS”に写真ライブラリへのアクセスを許可しますか?).
    The in-app engine could still reach the app, but a person could not, so the step was not
-   performed. None of the registered iosAlertHandler entries (Appの使用中は許可)
-   matched a button on it.
+   performed. None of the registered iosAlertHandler entries
+   (*写真ライブラリ*→Appの使用中は許可) matched a button on it.
    Buttons on this alert: 「写真を選択」 / 「フルアクセスを許可」 / 「許可しない」.
    Register the one you want pressed with iosAlertHandler(...), or dismiss it in the scenario.
 ```
