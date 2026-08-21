@@ -947,7 +947,7 @@ final class StepExecutorTests: XCTestCase {
         fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true, title: "トラッキングの許可"),
                                       SystemAlertProbeResponse(present: false)]
         let executor = StepExecutor(driver: primary, fallbackDriver: fallback)
-        executor.systemAlertWatchlist.register(.alert(titleContains: "トラッキング",
+        executor.systemAlertWatchlist.register(.alert(titleContains: "*トラッキング*",
                                                       button: "許可"))
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"), timeout: 5)
 
@@ -978,7 +978,7 @@ final class StepExecutorTests: XCTestCase {
         fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true, title: "位置情報の利用",
                                                                buttons: ["許可"])]
         let executor = StepExecutor(driver: primary, fallbackDriver: fallback)
-        executor.systemAlertWatchlist.register(.alert(titleContains: "トラッキング",
+        executor.systemAlertWatchlist.register(.alert(titleContains: "*トラッキング*",
                                                       button: "許可"))
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"), timeout: 1)
 
@@ -1002,7 +1002,7 @@ final class StepExecutorTests: XCTestCase {
         fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true, title: "トラッキングの許可"),
                                       SystemAlertProbeResponse(present: false)]
         let executor = StepExecutor(driver: primary, fallbackDriver: fallback)
-        executor.systemAlertWatchlist.register(.alert(titleContains: "トラッキング", button: "許可"))
+        executor.systemAlertWatchlist.register(.alert(titleContains: "*トラッキング*", button: "許可"))
         executor.systemAlertWatchlist.register(.button("OK"))
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"), timeout: 5)
 

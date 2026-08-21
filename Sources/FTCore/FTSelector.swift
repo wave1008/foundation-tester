@@ -590,7 +590,9 @@ public struct FTSelector {
         return FlowLocator(id: parsed.text, idMatch: parsed.mode == .exact ? nil : parsed.mode)
     }
 
-    static func partialMatch(_ raw: String) -> (text: String, mode: FlowMatchMode) {
+    /// public: システムアラートの照合(SystemAlertDismissal)が同じ `*` 解釈を使う
+    /// (別実装を持つと「セレクタと同じ記法」という契約が2箇所でズレる)
+    public static func partialMatch(_ raw: String) -> (text: String, mode: FlowMatchMode) {
         let lead = raw.hasPrefix("*")
         let trail = raw.hasSuffix("*")
         if lead, trail, raw.count >= 3 { return (String(raw.dropFirst().dropLast()), .contains) }

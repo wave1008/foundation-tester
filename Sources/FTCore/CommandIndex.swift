@@ -64,7 +64,11 @@ public enum DSLCommandIndex {
         .init("systemAlertHandler", "structure", "systemAlertHandler(button) / systemAlertHandler(alert:, button:)",
               "Announces ONE upcoming OS system alert (permission / ATT) and the button to press on it."
                   + " Register before the action that triggers it; the entry is removed once pressed."
-                  + " With alert:, only an alert whose title contains that text is matched. hybrid engine only."),
+                  + " Both fields use selector syntax: || alternatives (ja/en devices) and *"
+                  + " for the match mode (bare = exact, *x* = contains)."
+                  + " Titles embed the app name, so alert: is written *x* in practice"
+                  + " (alert: \"*トラッキング*||*track your activity*\", button: \"許可||Allow\")."
+                  + " hybrid engine only."),
         .init("suppressHandler", "structure", "suppressHandler { }",
               "Runs the block without closing declared interruptions, so the scenario can"
                   + " check or operate the modal itself. It does not stop the app from showing one."),
