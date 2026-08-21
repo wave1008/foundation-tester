@@ -18,7 +18,7 @@ final class SelOverloadParityTests: XCTestCase {
         "tapAppIcon",       // アプリ表示名
         "screenshot",       // ファイル名
         "screenLooksLike",         // 画面の説明文(FM の視覚照合)
-        "systemAlertHandler",      // OS アラートのボタンラベル(SpringBoard 側。アプリのセレクタではない)
+        "iosAlertHandler",      // OS アラートのボタンラベル(SpringBoard 側。アプリのセレクタではない)
         "group", "procedure", "scene", "verify", "doUntilTrue",  // 記録用のタイトル・説明
     ]
 

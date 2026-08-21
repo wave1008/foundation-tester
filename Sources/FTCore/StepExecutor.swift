@@ -213,7 +213,7 @@ public final class StepExecutor {
     /// 解決を試す(アプリ上に載ったシステム UI=別プロセスのダイアログ等を XCUITest で拾う)。
     /// 解決に使った driver でそのまま act するので ref 名前空間の混同はない。
     public let fallbackDriver: AppDriver?
-    /// システム許可アラートの登録台帳(DSL の `systemAlertHandler` が登録する)。
+    /// システム許可アラートの登録台帳(DSL の `iosAlertHandler` が登録する)。
     /// 空 = 監視しない。**fallbackDriver がある(hybrid)ときだけ効く**。
     /// 登録の形・発火で外れる規則は `SystemAlertRule` / `SystemAlertWatchlist` の doc
     public var systemAlertWatchlist = SystemAlertWatchlist()

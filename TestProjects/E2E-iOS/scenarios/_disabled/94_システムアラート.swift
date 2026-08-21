@@ -18,7 +18,7 @@
 //   同じ写真の権限アラートで **-01 は inactive・-02 は active**(0.3 秒刻み 42 サンプル)と
 //   割れた。判定は XCUITest ランナーの `GET /systemalert` に一本化してある。
 //
-// **登録はシナリオ自身が行う**(`systemAlertHandler`)。
+// **登録はシナリオ自身が行う**(`iosAlertHandler`)。
 // ゲートは**登録が残っているときだけ働く**。登録の button(「Appの使用中は許可」)は
 // 写真のアラートのボタン(写真を選択 / フルアクセスを許可 / 許可しない)と
 // **わざと一致させていない** —— 一致すると自動で閉じてしまい、③(撃たずに待って落ちる)を
@@ -45,7 +45,7 @@ class システムアラートの陽性対照 {
             scene(1, "権限アラートを出したまま背面のボタンを撃つ") {
                 condition {
                     // ボタンが一致しない予告 = ゲートは働くが自動では閉じられない(③の観測)
-                    systemAlertHandler(alert: "*写真ライブラリ*", button: "Appの使用中は許可")
+                    iosAlertHandler(alert: "*写真ライブラリ*", button: "Appの使用中は許可")
                     clearAppData()
                     launchApp()
                     tap("#nav_diagnostics", scroll: .down)

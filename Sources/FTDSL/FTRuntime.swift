@@ -340,7 +340,7 @@ public final class FTDriveCore {
     /// tapAppIcon() 引数省略時の既定(Shirates の appIconName 既定=プロファイル、に相当)
     public var appDisplayName: String?
     /// DSL の `irregularHandler` が宣言した割り込み(アプリ内メッセージ)を実行器へ渡す
-    /// DSL の `systemAlertHandler` からの登録(発火したら台帳から外れる。
+    /// DSL の `iosAlertHandler` からの登録(発火したら台帳から外れる。
     /// 規則の意味は FTCore.SystemAlertRule)
     func addSystemAlertRule(_ rule: SystemAlertRule) {
         executor.systemAlertWatchlist.register(rule)

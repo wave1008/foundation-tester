@@ -86,7 +86,7 @@ public enum ProfileWorkerFactory {
     }
 
     /// run 開始時点で画面に残っているアラートを**警告する**(閉じない。理由と背景は
-    /// FTCore.ResidualSystemAlertTriage)。閉じたいならシナリオの `systemAlertHandler`。
+    /// FTCore.ResidualSystemAlertTriage)。閉じたいならシナリオの `iosAlertHandler`。
     ///
     /// **SpringBoard を見られる接続でしか判定できない**ので、engine=inapp 単独の台は黙って飛ばす
     /// (in-app ブリッジは注入先アプリのプロセスしか見えない = 「アラートが無い」と誤って言える)。

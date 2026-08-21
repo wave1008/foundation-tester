@@ -471,7 +471,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         "reportDir", "defaultTimeout", "scenarioTimeout",
         "machine", "iosInappEngine", "wipeDataOnBloat", "updateWebView", "wipeDataThresholdGB",
         "recoverCpuFallbackToGpu", "locale",
-        // iosSystemAlertButtons はもう読まない(→ シナリオの systemAlertHandler)。
+        // iosSystemAlertButtons はもう読まない(→ シナリオの iosAlertHandler)。
         // knownKeys に残すのは、一般の unknown-key 警告ではなく resolve の専用警告で案内するため
         "iosFastInput", "iosSystemAlertButtons", "enableAnimations", "homeOnStart",
         "containerInference",
@@ -993,8 +993,8 @@ public enum ProfileResolver {
                 // 行き先まで書いて案内する
                 + (json["iosSystemAlertButtons"] != nil
                     ? ["runs/\(runName).json: \"iosSystemAlertButtons\" is no longer read —"
-                       + " register in the scenario instead: systemAlertHandler(\"<button label>\")"
-                       + " or systemAlertHandler(alert: \"<title part>\", button: \"<label>\")"
+                       + " register in the scenario instead: iosAlertHandler(\"<button label>\")"
+                       + " or iosAlertHandler(alert: \"<title part>\", button: \"<label>\")"
                        + " (docs/commands.md)"]
                     : [])
         }

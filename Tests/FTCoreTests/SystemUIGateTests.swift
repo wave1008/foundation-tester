@@ -12,7 +12,7 @@
 import XCTest
 @testable import FTCore
 
-/// `systemAlertHandler` の登録(素のラベル / アラートの名指し)の読み書きと選定
+/// `iosAlertHandler` の登録(素のラベル / アラートの名指し)の読み書きと選定
 final class SystemAlertRuleTests: XCTestCase {
 
     /// 名指しは**題名の部分一致**(題名にはアプリ名が埋め込まれるので完全一致は書けない)。

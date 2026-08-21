@@ -656,7 +656,7 @@ suppressHandler {
   `a declared interruption was on screen but automatic closing is suppressed here` が出る
   (抑止の危険は「抑止したまま忘れる」。成功しているステップには何も足さない)
 - **OS のシステムダイアログ(権限の許可等)はこれでは止まらない** —— あちらは実行プロファイルの
-  `systemAlertHandler` による自動押下で別の機構(§システムダイアログ)。
+  `iosAlertHandler` による自動押下で別の機構(§システムダイアログ)。
   そもそも要求した要素が解決できるときは自動押下は走らない = シナリオの操作は奪われない
 
 これが無いと「`irregularHandler` を宣言する場所をずらす」回避策になる。
@@ -739,15 +739,15 @@ ifCanSelect("Appの使用中は許可", waitSeconds: 3) {
 }
 ```
 
-### 自動で押す(`systemAlertHandler`)
+### 自動で押す(`iosAlertHandler`)
 
 **シナリオの中で、出るアラートを1枚ずつ予告する**(2026-08-22 に登録関数方式へ。
 実行プロファイルの JSON 宣言 `iosSystemAlertButtons` は廃止 —— 残っていれば
 プロファイル検証が警告で行き先を案内する):
 
 ```swift
-systemAlertHandler(alert: "*写真ライブラリ*", button: "許可しない")
-systemAlertHandler(alert: "*トラッキング*||*track your activity*",
+iosAlertHandler(alert: "*写真ライブラリ*", button: "許可しない")
+iosAlertHandler(alert: "*トラッキング*||*track your activity*",
                    button: "許可||Allow")                        // 日英両対応(`||` で候補)
 ```
 
@@ -793,12 +793,12 @@ ifCanSelect("#btnAgree||同意する") { tap("#btnAgree||同意する") }
 キューされていて前面に出ることがある)を押していても、記録が無ければ後から気付けない:
 
 ```
-ℹ️ pressed "アプリの使用中は許可" on the system alert "“マップ”に位置情報の使用を許可しますか?" (systemAlertHandler)
+ℹ️ pressed "アプリの使用中は許可" on the system alert "“マップ”に位置情報の使用を許可しますか?" (iosAlertHandler)
 ```
 
 ### 覆われている間は操作しない(2026-08-21)
 
-**`systemAlertHandler` の登録が残っている間だけ働く。** 登録があるとき、OS のアラートが
+**`iosAlertHandler` の登録が残っている間だけ働く。** 登録があるとき、OS のアラートが
 アプリを覆っている間はそのアプリへの操作と検証が通らない。覆いが消える(または登録した
 ボタンで閉じられる)のを待ち、待ち切れなければ `failureKind=system-ui-covered` で落ちる:
 
@@ -806,10 +806,10 @@ ifCanSelect("#btnAgree||同意する") { tap("#btnAgree||同意する") }
 ❌ 6. [action] tap "#btn_freeze_3s"
    system UI is covering the app (“FT E2E iOS”に写真ライブラリへのアクセスを許可しますか?).
    The in-app engine could still reach the app, but a person could not, so the step was not
-   performed. None of the registered systemAlertHandler entries (Appの使用中は許可)
+   performed. None of the registered iosAlertHandler entries (Appの使用中は許可)
    matched a button on it.
    Buttons on this alert: 「写真を選択」 / 「フルアクセスを許可」 / 「許可しない」.
-   Register the one you want pressed with systemAlertHandler(...), or dismiss it in the scenario.
+   Register the one you want pressed with iosAlertHandler(...), or dismiss it in the scenario.
 ```
 
 **そのアラートに実際に在るボタン**を出す(2026-08-20 受け手依頼)。ラベルは完全一致なので、
@@ -839,7 +839,7 @@ in-app の木は自プロセスしか見えないのでレポートにも痕跡�
 
 **奪わない**: 対象が SpringBoard 側の木で解決できるとき(`tap("許可")` / `exist("許可しない")`)は
 止めない。シナリオ自身がアラートを操作しているので、これを止めると権限アラートを扱うシナリオが
-1本も書けなくなる。`systemAlertHandler` の登録で閉じられる場合も、閉じてから先へ進む
+1本も書けなくなる。`iosAlertHandler` の登録で閉じられる場合も、閉じてから先へ進む
 (注記 `waited-for-system-ui`)。
 
 **判定は XCUITest ランナーに聞く**(`GET /systemalert`)ので、**ランナーが居る構成が要る**
