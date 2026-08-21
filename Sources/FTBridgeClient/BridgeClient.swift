@@ -400,6 +400,16 @@ public final class BridgeClient: AppDriver {
         return res.foreground
     }
 
+    /// SpringBoard のアラートが載っているか(`GET /systemalert`。XCUITest ランナーのみ)。
+    /// **旧ランナーは 404 を返す** → nil(不明)で返し、呼び手は判定しない
+    public func systemAlert() async throws -> SystemAlertProbeResponse? {
+        do {
+            return try await get("/systemalert", timeout: sessionTimeout) as SystemAlertProbeResponse
+        } catch DriverError.badResponse(let status, _) where status == 404 {
+            return nil
+        }
+    }
+
     /// iOS は任意の前面 bundle ID を取得する手段を持たない(XCUITest は他アプリの状態を見れず、
     /// in-app は自分自身しか知らない)。appIs の失敗メッセージは actual なしで表示する
     public func foregroundAppID() async throws -> String? { nil }

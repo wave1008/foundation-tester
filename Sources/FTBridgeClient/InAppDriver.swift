@@ -55,6 +55,8 @@ public final class InAppDriver: AppDriver {
     /// 自分自身の bundleID しか分からず、それを「今フォアグラウンドのアプリ」として名乗る根拠が
     /// 無い(自分が active でない可能性がある)ため、XCUITest 側と同じく nil(不明)を返す
     public func foregroundAppID() async throws -> String? { nil }
+    /// **in-app は答えられない**(自プロセスの外にあるものは見えない)。判定は XCUITest 側が持つ
+    public func systemAlert() async throws -> SystemAlertProbeResponse? { nil }
     /// **対象を先に採ってから自前で終了させる**: in-app ブリッジは対象アプリのプロセス内に
     /// 住むので、終了するとデバイス名を採れなくなる。また BridgeClient 側の終了は in-app では
     /// 501 で効かない(プロセス制御は launcher = simctl が唯一の経路)。

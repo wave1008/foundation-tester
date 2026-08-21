@@ -204,7 +204,9 @@
   | `E2EAppRN/` | React Native | TestProjects/E2E-RN | ios + android |
 
   **iOS だけが持つ witness**: `E2EAppIOS/Sources/UI/OverlayWindow.swift` = **キーウィンドウに
-  しない別 UIWindow のモーダル**(全画面 / 上部バナーの2形)。覆い・別ウィンドウに関わる変更は
+  しない別 UIWindow のモーダル**(全画面 / 上部バナーの2形)と、診断画面の `#btn_request_photos`
+  = **OS(SpringBoard)の権限アラートがアプリを覆う形**(別プロセスなので in-app の木に載らない。
+  緑の回帰は `scenarios/16_システムアラート.swift`・**陽性対照は `_disabled/94_システムアラート.swift`**)。覆い・別ウィンドウに関わる変更は
   `TestProjects/E2E-iOS/scenarios/15_別ウィンドウのモーダル.swift` の4本で対照を取る(docs/verification.md)。
   **4本目は条件判定**(`ifCanSelect`)—— **perform を通らないので操作・検証を直しても守られない**
 

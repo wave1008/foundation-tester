@@ -774,8 +774,42 @@ ifCanSelect("#btnAgree||同意する") { tap("#btnAgree||同意する") }
 ℹ️ pressed "アプリの使用中は許可" on the system alert "“マップ”に位置情報の使用を許可しますか?" (iosSystemAlertButtons)
 ```
 
+### 覆われている間は操作しない(2026-08-21)
+
+**OS のアラートがアプリを覆っている間、そのアプリへの操作と検証は通らない**。
+覆いが消えるのを待ち、待ち切れなければ `failureKind=system-ui-covered` で落ちる:
+
+```
+❌ 6. [action] tap "#btn_freeze_3s"
+   system UI is covering the app (“FT E2E iOS”に写真ライブラリへのアクセスを許可しますか?).
+   The in-app engine could still reach the app, but a person could not, so the step was not
+   performed. Add the button label to iosSystemAlertButtons in the run profile to dismiss it
+   automatically, or dismiss it in the scenario.
+```
+
+**なぜ要るか**: in-app のタップは `accessibilityActivate`(要素への直接のメソッド呼び出し)か
+自プロセスの窓への合成タッチで、**OS のイベント経路を通らない**。だからアラートが覆っていても
+届いてしまい、**人手では不可能な操作**が通ったまま run が緑になる(受け手報告 2026-08-20)。
+in-app の木は自プロセスしか見えないのでレポートにも痕跡が残らなかった。
+**Android は元から影響を受けない**(木の根が active window なので、ダイアログが出ると
+アプリの要素が木から消える)。
+
+**奪わない**: 対象が SpringBoard 側の木で解決できるとき(`tap("許可")` / `exist("許可しない")`)は
+止めない。シナリオ自身がアラートを操作しているので、これを止めると権限アラートを扱うシナリオが
+1本も書けなくなる。`iosSystemAlertButtons` の宣言で閉じられる場合も、閉じてから先へ進む
+(注記 `waited-for-system-ui`)。
+
+**判定は XCUITest ランナーに聞く**(`GET /systemalert`)ので、**ランナーが居る構成でだけ効く**
+(`engine=hybrid` / `xcuitest`)。`engine=inapp` 単独は判定を持たない = 従来どおり通る。
+1ステップあたり約 73ms(アラート無しのとき。実測 2026-08-21)。
+**`applicationState` では判定できない** —— アラート表示中でも `active` を返す端末があり、
+同じアラートで端末により割れることを実測した。
+
+**アラートを出すシナリオは、そのシナリオ内で閉じること。** 閉じずに終わると SpringBoard 側に
+残り、**同じデバイスに載る後続シナリオが全部この失敗になる**(下記)。
+
 **残ったアラートは run を跨ぐ**。SpringBoard が描くので、アプリを終了しても
-アンインストールしても画面に残り、次の run の全ステップを空振りさせる。run 開始時に
+アンインストールしても画面に残る。run 開始時に
 画面にアラートが居ると**警告が出る**(自動では閉じない):
 
 ```

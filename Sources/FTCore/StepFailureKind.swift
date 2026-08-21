@@ -38,6 +38,10 @@ public enum StepFailureKind: String, Sendable, Codable, CaseIterable {
 
     /// 対象アプリがデバイスに入っていなかった(起動前の検査で確定した事実)
     case appNotInstalled = "app-not-installed"
+
+    /// **OS のシステム UI(SpringBoard のアラート)がアプリを覆っていた**。XCUITest ランナーの
+    /// `GET /systemalert` の申告であって推測ではない。ランナーが居ない構成では出ない
+    case systemUICovered = "system-ui-covered"
 }
 
 /// **エラー自身が素性を名乗る**。`failureKind(thrown:)` が文言ではなくこれを見るので、

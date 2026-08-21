@@ -254,6 +254,7 @@ public final class HybridFallbackDriver: AppDriver {
         try await active.isAppForeground(bundleID: bundleID)
     }
     public func foregroundAppID() async throws -> String? { try await active.foregroundAppID() }
+    public func systemAlert() async throws -> SystemAlertProbeResponse? { try await active.systemAlert() }
     public func captureKeyboardStateOnNextSnapshot() {
         primary.captureKeyboardStateOnNextSnapshot()
     }

@@ -76,6 +76,7 @@ final class BridgeRouter {
             case ("POST", "/session"): response = try handleLaunch(request.body)
             case ("GET", "/snapshot"): response = try handleSnapshot(request)
             case ("GET", "/hittable"): response = try handleHittable(request)
+            case ("GET", "/systemalert"): response = handleSystemAlert()
             case ("POST", "/tap"): response = try handleTap(request.body)
             case ("POST", "/type"): response = try handleType(request.body)
             case ("POST", "/clear"): response = try handleClear(request.body)
@@ -322,6 +323,31 @@ final class BridgeRouter {
     /// 引き当ては identifier → label の順で、**候補が1つに絞れて frame も一致するときだけ**
     /// 答える(`hittable` が nil = 「引き当てられなかった」で、呼び手は黙る)。
     /// 曖昧なまま別要素の可否を返すと、木の限界を別の嘘で置き換えるだけになる
+    /// **システム UI(SpringBoard のアラート)が載っているかだけ**を返す軽い口。
+    ///
+    /// `GET /snapshot` は木を全部歩いて直列化するので約 185ms(実測 2026-08-21・ホーム画面)
+    /// かかり、ステップごとに払える値ではない。ここは `alerts.firstMatch.exists` の1問だけで
+    /// 済ませる。**ボタンの読み出しは載っているときだけ**行う(名指しが要るのは出たときだけ)。
+    ///
+    /// **セッションを変えない**のが要点: `POST /session springboard` は refFrames を消すので、
+    /// 操作の途中で呼ぶと直前の snapshot の ref が無効になる。ここは springboard を
+    /// **その場で参照するだけ**で、`app` / `sessionBundleID` / `refFrames` に一切触らない。
+    private func handleSystemAlert() -> BridgeHTTPServer.Response {
+        struct Out: Encodable {
+            let present: Bool
+            let title: String?
+            let buttons: [String]
+        }
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let alert = springboard.alerts.firstMatch
+        guard alert.exists else { return .json(Out(present: false, title: nil, buttons: [])) }
+        let buttons = alert.buttons.allElementsBoundByIndex
+            .map { $0.label }
+            .filter { !$0.isEmpty }
+        let title = alert.label.isEmpty ? nil : alert.label
+        return .json(Out(present: true, title: title, buttons: buttons))
+    }
+
     private func handleHittable(_ request: BridgeHTTPServer.Request) throws
         -> BridgeHTTPServer.Response {
         let app = try requireForegroundApp()

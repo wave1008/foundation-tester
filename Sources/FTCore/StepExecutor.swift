@@ -540,6 +540,11 @@ public final class StepExecutor {
     /// executeAssert は Status しか返さないためインスタンス変数で受け渡す
     /// (StepExecutor+Assert.swift の executeAssertChecked から書くため internal)。
     var observedCheckedThisStep: Bool?
+    /// このステップの assert が **SpringBoard 側の木**で解決したか(= シナリオ自身が
+    /// システムアラートを検証している)。立っていれば SystemUIGate は緑を取り消さない ——
+    /// 取り消すと `exist("許可しない")` のような、アラートを対象にした検証が一切書けなくなる。
+    /// **executeAssert が毎ステップ false へ戻す**(立てっぱなしにすると次のステップが素通りする)
+    var resolvedViaSystemUIThisStep = false
     /// exist/textIs 等の assert・tap/type/press 等のアクションが**成功時**に実際に照合した要素
     /// (execute が StepOutcome.resolvedElement に載せる)。observedCheckedThisStep と同じ受け渡し形
     /// (StepExecutor+Assert.swift の各 executeAssert* から書くため internal)。失敗時は立てない。

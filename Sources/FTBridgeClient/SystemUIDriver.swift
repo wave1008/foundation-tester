@@ -91,5 +91,6 @@ public final class SystemUIDriver: AppDriver {
         try await client.isAppForeground(bundleID: bundleID)
     }
     public func foregroundAppID() async throws -> String? { try await client.foregroundAppID() }
+    public func systemAlert() async throws -> SystemAlertProbeResponse? { try await client.systemAlert() }
     public var lastActionNote: String? { client.lastActionNote }
 }

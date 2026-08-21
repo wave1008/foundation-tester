@@ -46,6 +46,18 @@ private final class FakeAppDriver: AppDriver {
         self.screenshots = screenshots
     }
 
+    /// `GET /systemalert` の擬似。nil = 申告なし(既定 = ゲートは何もしない)。
+    /// 「呼び出し回数ぶんの列(尽きたら最後を繰り返す)」規約は snapshotElements と同じ
+    var systemAlertFrames: [SystemAlertProbeResponse]?
+    private(set) var systemAlertCallCount = 0
+
+    func systemAlert() async throws -> SystemAlertProbeResponse? {
+        systemAlertCallCount += 1
+        log.entries.append("\(name).systemAlert")
+        guard let frames = systemAlertFrames, !frames.isEmpty else { return nil }
+        return frames[min(systemAlertCallCount - 1, frames.count - 1)]
+    }
+
     func status() async throws -> StatusResponse {
         StatusResponse(ready: true, device: name, osVersion: "-", sessionBundleID: nil)
     }
@@ -663,6 +675,136 @@ final class StepExecutorTests: XCTestCase {
             XCTFail("マスタースイッチ OFF ならツリー一致だけで pass のはず"); return
         }
         XCTAssertEqual(delegate.visibleCalls, 0, "マスタースイッチ OFF で FM を呼んではいけない")
+    }
+
+    // MARK: - システム UI の覆い(SystemUIGate)
+
+    /// **覆われている間は撃たない**。要素は木に居て解決できてしまうが、人手では触れないので
+    /// 操作させてはいけない(受け手報告 2026-08-20 の症状そのもの)
+    func testActionIsRefusedWhileSystemUICoversTheApp() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element(ref: 1, id: "target")]])
+        let fallback = FakeAppDriver(name: "fallback", log: log, snapshotElements: [[]])
+        fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true, title: "権限",
+                                                               buttons: ["許可"])]
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback)
+        let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"), timeout: 1)
+
+        let outcome = await executor.execute(step)
+
+        guard case .failed(let msg) = outcome.status else {
+            XCTFail("覆われている間のタップは失敗にすること: \(outcome.status)"); return
+        }
+        XCTAssertEqual(outcome.failureKind, .systemUICovered, msg)
+        XCTAssertTrue(msg.contains("権限"), "覆っているものを名指しすること: \(msg)")
+        XCTAssertFalse(log.entries.contains { $0.hasPrefix("primary.tap") },
+                       "1回も撃ってはいけない: \(log.entries)")
+    }
+
+    /// 覆いが**消えれば普通に撃つ**(即失敗にしない = 過渡的なアラートで赤くしない)。
+    /// 待ったことは注記に残す
+    func testActionProceedsOnceTheSystemUIGoesAway() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element(ref: 1, id: "target")]])
+        let fallback = FakeAppDriver(name: "fallback", log: log, snapshotElements: [[]])
+        fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true),
+                                      SystemAlertProbeResponse(present: false)]
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback)
+        let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"), timeout: 5)
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("覆いが消えたら撃つこと: \(outcome.status)"); return
+        }
+        XCTAssertTrue(log.entries.contains { $0.hasPrefix("primary.tap") }, "\(log.entries)")
+        XCTAssertTrue(outcome.notes.contains(.waitedForSystemUI),
+                      "待ったことを黙ってはいけない: \(outcome.notes)")
+    }
+
+    /// **ランナーが居ない構成では1往復も払わない**。ここが止まると engine=inapp 固定と
+    /// Android が全滅するうえ、毎ステップ約 73ms の無駄になる
+    func testActionCostsNothingWithoutAFallbackBridge() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element(ref: 1, id: "target")]])
+        let executor = StepExecutor(driver: primary)   // fallback 無し
+        let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"), timeout: 1)
+
+        guard case .passed = await executor.execute(step).status else {
+            XCTFail("fallback が無いなら従来どおり撃つこと"); return
+        }
+        XCTAssertFalse(log.entries.contains { $0.hasSuffix(".systemAlert") },
+                       "fallback が無いのに聞いてはいけない: \(log.entries)")
+    }
+
+    /// **シナリオ自身がアラートを操作しているときは奪わない**: 対象が fallback(SpringBoard)の
+    /// 木で解決できるなら、覆われていても止めない
+    func testActionOnTheAlertItselfIsNotBlocked() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
+        let fallback = FakeAppDriver(name: "fallback", log: log,
+                                     snapshotElements: [[labeled(ref: 9, label: "許可")]])
+        fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true)]
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback)
+        let step = FlowStep(action: "tap", locator: FlowLocator(label: "許可"), timeout: 1)
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("アラート自身への操作は止めてはいけない: \(outcome.status)"); return
+        }
+        XCTAssertTrue(log.entries.contains { $0.hasPrefix("fallback.tap") }, "\(log.entries)")
+    }
+
+    /// **覆われている間の緑は取り消す**。木には居るが人手には見えていないので、
+    /// 「見えた」と言うのは別ウィンドウのモーダルと同じ形の偽陽性になる
+    func testPassingAssertIsRevokedWhileSystemUICoversTheApp() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element(ref: 1, id: "target")]])
+        let fallback = FakeAppDriver(name: "fallback", log: log, snapshotElements: [[]])
+        fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true, title: "権限")]
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback)
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "target"), timeout: 1)
+
+        let outcome = await executor.execute(step)
+
+        guard case .failed = outcome.status else {
+            XCTFail("覆われている間に exist を通してはいけない: \(outcome.status)"); return
+        }
+        XCTAssertEqual(outcome.failureKind, .systemUICovered)
+    }
+
+    /// **アラート自身の検証は取り消さない**(`exist("許可しない")` が書けなくなる)
+    func testAssertOnTheAlertItselfStaysGreen() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
+        let fallback = FakeAppDriver(name: "fallback", log: log,
+                                     snapshotElements: [[labeled(ref: 9, label: "許可しない")]])
+        fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true)]
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback)
+        let step = FlowStep(assert: "exists", locator: FlowLocator(label: "許可しない"), timeout: 2)
+
+        guard case .passed = await executor.execute(step).status else {
+            XCTFail("アラート自身の検証は通すこと"); return
+        }
+    }
+
+    /// **失敗したときは聞かない**(既にシナリオは止まるので往復を足す価値がない)
+    func testAFailingAssertDoesNotPayForTheProbe() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
+        let fallback = FakeAppDriver(name: "fallback", log: log, snapshotElements: [[]])
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback)
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "missing"), timeout: 1)
+
+        _ = await executor.execute(step)
+
+        XCTAssertFalse(log.entries.contains { $0.hasSuffix(".systemAlert") },
+                       "失敗した検証で往復を足してはいけない: \(log.entries)")
     }
 
     /// screenLooksLikeEnabled=false(実行プロファイルの screenLooksLike:false)は screenMatches を skip し、

@@ -99,6 +99,11 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// `#id` が容器を指している(セレクタを取る `type` へ寄せる判断材料になる)
     case typeFocusRecovered = "type-focus-recovered"
 
+    /// OS のシステム UI(権限アラート等)がアプリを覆っていたので、**消えるまで待ってから**
+    /// 操作した(`SystemUIGate`)。**率を見たい注記**: 増えているなら、そのシナリオは
+    /// 権限を事前付与するか `iosSystemAlertButtons` を宣言するべき画面を通っている
+    case waitedForSystemUI = "waited-for-system-ui"
+
     /// `tap` の対象が**まだ無効**だったので、操作可能になるまで待ってから撃った。
     /// **率を見たい注記**: 増えている画面は「出た直後はまだ触れない」ので、
     /// 到達待ちの書き方(`waitForDisplay` の対象)を見直す材料になる
@@ -126,6 +131,8 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
         case .interruptionDismissed: return "dismissed a declared interruption during this step"
         case .waitedForEnabled:
             return "the target was still disabled, so the tap waited for it to become enabled"
+        case .waitedForSystemUI:
+            return "system UI was covering the app, so this waited for it to go away before acting"
         case .typeFocusRecovered:
             return "the preceding tap did not put a field in focus, so the text went to the"
                 + " field it resolved to"
