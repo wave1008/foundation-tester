@@ -266,6 +266,22 @@ private final class FakeVisibilityDelegate: ReplayDelegate {
     }
 }
 
+/// FM が判定を返せない(実呼び出しの失敗・ブレーカ開・直列化待ちの期限切れ)ときの delegate。
+/// `verifyElementVisible` は nil を返す = 実装(ReplayAssist)が FM 失敗時に返す形そのもの
+private final class NoVerdictVisibilityDelegate: ReplayDelegate {
+    private(set) var visibleCalls = 0
+    func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealProposal? { nil }
+    func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? { nil }
+    func triage(goal: String?, stepDescription: String, failureReason: String,
+                snapshot: SnapshotResponse?, screenshotPNG: Data?) async -> TriageInfo? { nil }
+    func verifyElementVisible(expectedText: String, frame: FTRect, screen: FTRect,
+                              screenshotPNG: Data) async
+        -> (visible: Bool, state: String, reason: String, observedText: String)? {
+        visibleCalls += 1
+        return nil
+    }
+}
+
 /// verifyElementVisible が呼び出しごとに指定の visible 列を返す(尽きたら最後を繰り返す)。
 /// 過渡的オーバーレイ(covered→visible)の poll-until-visible 検証用。
 private final class SequenceVisibilityDelegate: ReplayDelegate {
@@ -691,6 +707,130 @@ final class StepExecutorTests: XCTestCase {
             XCTFail("マスタースイッチ OFF ならツリー一致だけで pass のはず"); return
         }
         XCTAssertEqual(delegate.visibleCalls, 0, "マスタースイッチ OFF で FM を呼んではいけない")
+    }
+
+    // MARK: - 可視性照合の幾何 Tier-0 と、FM が答えないときの注記
+
+    /// 幾何 Tier-0 の witness: 中心が画面(400x800)の外にある要素。横軸は収まる(幅234)
+    /// ので、その軸で中心 x=518 が画面外 = 「木に居るが見えていない」形(iOS の木は画面外の
+    /// 要素も frame ごと残す)
+    private func offscreenTextElement() -> ElementInfo {
+        ElementInfo(ref: 1, type: "staticText", identifier: "msg", label: "こんにちは", value: nil,
+                    placeholder: nil, enabled: true,
+                    frame: FTRect(x: 401, y: 300, width: 234, height: 20), depth: 0)
+    }
+
+    /// **FM に訊いたのに答えが無かった**ステップは、素通り(pass)のまま機械可読な注記を残す。
+    /// シナリオ側からは「判定能力が欠けている」ことを観測できないので、知っているツールが言う
+    func testVisibilityGuardNotesWhenTheFMGivesNoVerdict() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[textElement(id: "msg", label: "こんにちは")]])
+        let delegate = NoVerdictVisibilityDelegate()
+        let executor = StepExecutor(driver: primary, delegate: delegate)
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                            timeout: 1, occlusionGuard: true)
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("FM が答えないときは従来どおり素通りのはず: \(outcome.status)"); return
+        }
+        XCTAssertGreaterThanOrEqual(delegate.visibleCalls, 1, "FM まで到達していない(注記の前提が崩れる)")
+        XCTAssertTrue(outcome.notes.contains(.visibilityGuardSkipped),
+                      "FM が答えなかったのに注記が無い: \(outcome.notes)")
+    }
+
+    /// **答えが返った回には立てない**(毎回出る注記にしない)
+    func testVisibilityGuardDoesNotNoteWhenTheFMAnswers() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[textElement(id: "msg", label: "こんにちは")]])
+        let delegate = FakeVisibilityDelegate(visible: true)
+        let executor = StepExecutor(driver: primary, delegate: delegate)
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                            timeout: 1, occlusionGuard: true)
+
+        let outcome = await executor.execute(step)
+
+        XCTAssertGreaterThanOrEqual(delegate.visibleCalls, 1)
+        XCTAssertFalse(outcome.notes.contains(.visibilityGuardSkipped),
+                       "FM が答えたのに skip の注記が立っている: \(outcome.notes)")
+    }
+
+    /// **中心が画面外の一致は、FM が「見える」と言う前に幾何で不可視にする**。FM は crop が
+    /// 画像の外に落ちると nil(素通り)なので、この形は FM では塞がらない —— 幾何が先に答え、
+    /// FM にもスクショにも触らない
+    func testVisibilityGuardFailsAnOffscreenMatchBeforeAskingTheFM() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[offscreenTextElement()]])
+        let delegate = FakeVisibilityDelegate(visible: true)
+        let executor = StepExecutor(driver: primary, delegate: delegate)
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                            timeout: 1, occlusionGuard: true)
+
+        let outcome = await executor.execute(step)
+
+        guard case .failed(let msg) = outcome.status else {
+            XCTFail("中心が画面外の一致を可視と呼んでいる: \(outcome.status)"); return
+        }
+        XCTAssertTrue(msg.contains("offscreen"), "失敗理由に offscreen を含むこと: \(msg)")
+        XCTAssertEqual(delegate.visibleCalls, 0, "幾何で決まる形で FM を呼んではいけない")
+        XCTAssertEqual(primary.screenshotCallCount, 0, "幾何で決まる形でスクショを撮ってはいけない")
+    }
+
+    /// 幾何 Tier-0 は **FM が無くても効く**(delegate nil = FM 未配線/死亡と同じ入口)。
+    /// これが無いと、FM の無いホストでは requireVisible が何も保証しない
+    func testVisibilityGuardGeometryWorksWithoutAnFMDelegate() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[offscreenTextElement()]])
+        let executor = StepExecutor(driver: primary, delegate: nil)
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                            timeout: 1, occlusionGuard: true)
+
+        guard case .failed(let msg) = await executor.execute(step).status else {
+            XCTFail("delegate 無しでは幾何も効いていない"); return
+        }
+        XCTAssertTrue(msg.contains("offscreen"), "失敗理由に offscreen を含むこと: \(msg)")
+    }
+
+    /// 幾何 Tier-0 も `requireVisible` の一部なので、**マスタースイッチ OFF と per-step の
+    /// requireVisible:false では素通り**(ツリー存在だけを見る従来の契約を変えない)
+    func testOffscreenMatchPassesWhenTheVisibilityGuardIsOff() async throws {
+        for (master, perStep) in [(false, true), (true, false)] {
+            let log = CallLog()
+            let primary = FakeAppDriver(name: "primary", log: log,
+                                        snapshotElements: [[offscreenTextElement()]])
+            let executor = StepExecutor(driver: primary, delegate: FakeVisibilityDelegate(visible: true),
+                                        occlusionGuardEnabled: master)
+            let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                                timeout: 1, occlusionGuard: perStep)
+
+            guard case .passed = await executor.execute(step).status else {
+                XCTFail("ガード無効(master=\(master) perStep=\(perStep))で画面外を失敗にしている"); return
+            }
+        }
+    }
+
+    /// `select` は exist と同じ規律で見えていない要素を**空要素**として返す(失敗にしない)
+    func testSelectReturnsAnEmptyElementForAnOffscreenMatch() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[offscreenTextElement()]])
+        let executor = StepExecutor(driver: primary, delegate: nil)
+        let step = FlowStep(action: "select", locator: FlowLocator(id: "msg"),
+                            timeout: 1, occlusionGuard: true)
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("select は掴めなくても失敗にしない契約: \(outcome.status)"); return
+        }
+        XCTAssertNil(outcome.resolvedElement, "見えていない要素を掴んだことにしている")
+        XCTAssertTrue(outcome.driverFallback?.contains("not visible") == true,
+                      "空要素を返した理由が注記に無い: \(outcome.driverFallback ?? "nil")")
     }
 
     // MARK: - システム UI の覆い(SystemUIGate)

@@ -799,6 +799,15 @@ FM の実呼び出しが全滅していると、**occlusion-guard(`exist` の既
 **この行が出ている run では**: ①緑を「守りが効いた」と読まない ②赤は必ず HEAD 対照を取る
 (同じ負荷条件で。docs/verification.md の flake の節)。
 
+**ステップ単位では `notes` の `visibility-guard-skipped`**(2026-08-23)。occlusion-guard が FM に
+訊いたのに判定が返らなかったステップに立つ(scenarios/*.json の `timeline[].notes` /
+`failedSteps[].notes`)。run の1行より粒度が細かく、「どの exist が幾何だけで通ったか」まで追える。
+**幾何の段(中心が画面外なら不可視)は FM が死んでいても効いている**ので、この注記が付いた緑は
+「木に居て画面内」までは確かめた緑。
+幾何の段の**陽性対照は `TestProjects/E2E-iOS/scenarios/_disabled/95_可視性の幾何.swift`**
+(プロファイル `ios-fpc`。S0010 が `false positive (offscreen)` で落ちるのが正常。既定スイートは
+falsePositiveCheck が OFF なので、この経路は緑の run では1度も実行されない)。
+
 ## 覆い(別ウィンドウのモーダル)の witness は E2EAppIOS にある(2026-08-20)
 
 **自前 SUT に1つも無かった形**を足した: `E2EAppIOS` の `OverlayWindow` が
@@ -2347,7 +2356,8 @@ RN のディープリンク不達を「JS 購読前の競合」と誤診し、�
 ## FM(Foundation Models)が全滅したら
 
 occlusion-guard・自己修復・screenLooksLike は FM 失敗時に nil を返して**素通りする**(呼び出し側が握りつぶす)。
-run 終了時の「FM 呼び出しが全て失敗しました」警告と結果 JSON の `fm` フィールドだけが手がかり。
+run 終了時の「FM 呼び出しが全て失敗しました」警告と結果 JSON の `fm` フィールド、それに
+ステップ単位の `notes: ["visibility-guard-skipped"]`(occlusion-guard だけ)が手がかり。
 
 - **切り分けの起点は `ftester doctor`**。availability は「端末が対応しているか」しか見ておらず、
   資産側の理由で全滅していても `available` を返すので、**実呼び出し(checkLive)の結果で判断する**

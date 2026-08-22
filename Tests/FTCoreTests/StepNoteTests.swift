@@ -13,6 +13,7 @@ final class StepNoteTests: XCTestCase {
     func testRawValuesArePersistedIdentifiers() {
         XCTAssertEqual(StepNote.settleCapped.rawValue, "settle-capped")
         XCTAssertEqual(StepNote.heldValue.rawValue, "held-value")
+        XCTAssertEqual(StepNote.visibilityGuardSkipped.rawValue, "visibility-guard-skipped")
     }
 
     // MARK: - 永続化(results/ まで運ばれるか)

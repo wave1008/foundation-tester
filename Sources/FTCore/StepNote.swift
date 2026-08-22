@@ -109,6 +109,15 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// 到達待ちの書き方(`waitForDisplay` の対象)を見直す材料になる
     case waitedForEnabled = "waited-for-enabled"
 
+    /// 可視性照合(`requireVisible`。実行プロファイル `falsePositiveCheck` で有効)が **FM まで
+    /// 到達したのに判定が返らなかった**(実呼び出しの失敗・ブレーカ開・直列化待ちの期限切れ・
+    /// 画像の不正)。このステップは幾何の Tier-0(中心が画面外でないこと)だけで通っている。
+    /// **立てるのは FM に訊いた回だけ** —— マスタースイッチ OFF・macOS 26・インクゲートで
+    /// 省いた回は「訊く必要が無かった」のであって skip ではない(毎回出る注記にしない)。
+    /// run 横断で率を見ると**環境側の FM 不調**が拾える(2026-08-20 受け手報告: availability は
+    /// available なのに実呼び出しが ModelManagerError(1001) で落ち、可視判定が黙って通っていた)
+    case visibilityGuardSkipped = "visibility-guard-skipped"
+
     /// 人間向けの文言(FTRuntime がステップ説明へ括弧書きで付ける)
     public var text: String {
         switch self {
@@ -136,6 +145,9 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
         case .typeFocusRecovered:
             return "the preceding tap did not put a field in focus, so the text went to the"
                 + " field it resolved to"
+        case .visibilityGuardSkipped:
+            return "the FM visibility check gave no verdict, so this passed on tree presence and"
+                + " on-screen geometry alone"
         case .healUnwritable:
             return "self-heal found a stand-in element but no selector picks it out uniquely on this"
                 + " screen, so the fix was not written back — give the element a stable id"

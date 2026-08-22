@@ -15,7 +15,7 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 | 引数 | 意味 |
 |---|---|
 | `timeout: 秒` | ロケータ解決の再試行上限。**小数可**(`timeout: 1.2`)。**操作系の省略時は約 0.7 秒**、**`select` と検証系の省略時は 5 秒**(実行プロファイルの `defaultTimeout` で変更可。これも小数可)。`0` = 初回スナップショットのみ(出るか不定な要素を `ifCanSelect` で見るときの空振り短縮に) |
-| `requireVisible: false` | FM による可視性確認(覆われ・見切れの検出)を省く。**`exist` は覆われていると失敗へ反転し、`select` は空要素を返す**(意味が違う)。既定 true だが、FM 照合が実際に走るのは実行プロファイルで `falsePositiveCheck: true`(既定 false)にした run のみ(FM 未配線時・`fm:false` 時も自動で素通り) |
+| `requireVisible: false` | 可視性確認を省く。**`exist` は見えていないと失敗へ反転し、`select` は空要素を返す**(意味が違う)。既定 true だが、確認が実際に走るのは実行プロファイルで `falsePositiveCheck: true`(既定 false)にした run のみ。確認は2段: **①幾何(FM 不要・決定的)** — 木に居ても**収まる軸の中心が画面外**なら不可視(iOS の木は画面外の要素も frame ごと残すので、通り過ぎた要素への `exist` がこれで止まる。`scroll:` 探索の「見つかった」判定と同じ述語)/ **②FM の視覚照合** — 覆われ・減光・不在。FM が判定を返さなかったステップ(実呼び出しの失敗・ブレーカ開)は①だけで通り、結果 JSON の `notes` に **`visibility-guard-skipped`** が残る(「検証したつもりで検証していない緑」を run 横断で拾える。macOS 26 / `fm:false` の静的に無効な構成では出ない) |
 | `scroll: .down` / `maxSwipes:` | 実行前に**その方向へスクロールしながら要素を探す**(後述「スクロール」)。省略時は現在画面のみ |
 
 - **要素が見つからなければ失敗**(シナリオ中断)。**唯一の例外は `select`** で、掴めなければ
@@ -298,7 +298,7 @@ Shirates 準拠のコマンド名(`flick*`)。**画面(または `scrollFrame`)�
 
 | コマンド | 説明 |
 |---|---|
-| `exist(sel, timeout:requireVisible:scroll:maxSwipes:)` | 存在検証。偽陽性検証を有効にした run(実行プロファイル `falsePositiveCheck: true`)では**実際に見えていること**も確認する。戻り値にチェーン可(後述) |
+| `exist(sel, timeout:requireVisible:scroll:maxSwipes:)` | 存在検証。偽陽性検証を有効にした run(実行プロファイル `falsePositiveCheck: true`)では**実際に見えていること**も確認する(幾何 → FM の2段。§共通の引数 `requireVisible`)。戻り値にチェーン可(後述) |
 | `waitForDisplay(sel, waitSeconds: 15)` | 要素が表示されるまで待つ(**スクロールしない**)。戻り値は `FTElement`(`exist` と同様チェーン可)。見つからなければ失敗しシナリオ中断。**判定は `exist` と同じ可視性込み**(コマンド名 displayed の意味に沿わせている)で、**`exist` の `requireVisible: false` に当たる逃げ道は無い** — 覆われ検出を外したいなら `exist(sel, requireVisible: false, timeout: 15)` を使う |
 | `waitForClose(sel, waitSeconds: 15)` | 要素が消えるまで待つ(**スクロールしない**)。`sel` は省略不可(Shirates の直前セレクタ再利用の省略形は無い。`lastElement` はあるが、待ち対象がソース上で読めなくなるため引数は必須のまま) |
 | `notExist(sel, timeout:scroll:maxSwipes:)` | **消えるまで待つ**(初回で不在なら即成功)。ダイアログ・ローディングが閉じた確認に。`scroll:` 指定時は**その方向へスクロールしながら探し、見つかった時点で不在検証を失敗させる**(`exist(scroll:)` の裏返し。見つからなければ従来どおり現在のビューポートでの消滅待ちに進む) |
@@ -309,8 +309,9 @@ Shirates 準拠のコマンド名(`flick*`)。**画面(または `scrollFrame`)�
 | `screenLooksLike("画面の説明文")` | FM による**見た目の**画面検証(スクリーンショットと説明文の照合)。実行プロファイルで `fm:false` / `screenLooksLike:false` の場合はスキップ(素通り) |
 | `appIs(id, waitSeconds: 15)` | フォアグラウンドのアプリが `id`(iOS=bundle ID / Android=package 名)と一致することの検証。**ニックネーム機構は無く ID を直接書く**(Shirates 準拠だが引数の意味だけ異なる)。`waitSeconds` までポーリング。**Android は失敗時に actual の package 名をメッセージへ含める**(iOS は前面 bundle ID を取得する手段が無いため含まれない) |
 
-> `screenLooksLike` と偽陽性検証(`requireVisible` / `falsePositiveCheck`)は FM に画像を渡すため
+> `screenLooksLike` と偽陽性検証の FM 段(`requireVisible` / `falsePositiveCheck`)は FM に画像を渡すため
 > **macOS 27+ が必要**。macOS 26 では自動でスキップ/素通りになる(現在の可否は `ftester doctor`)。
+> 偽陽性検証の**幾何の段(中心が画面外の一致を可視と呼ばない)は FM 無しでも効く**。
 
 ## テキスト・値の検証
 

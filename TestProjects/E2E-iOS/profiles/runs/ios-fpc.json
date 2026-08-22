@@ -1,0 +1,13 @@
+{
+  "machine": "M2Ultra",
+  "app": "ft_e2e_ios",
+  "devices": [
+    { "host": "local", "name": "iPhone 17 Pro(iOS 27.0)-01" }
+  ],
+  "falsePositiveCheck": true,
+  "heal": false,
+  "iosInappEngine": true,
+  "reportDir": "reports",
+  "scenarioTimeout": 180,
+  "wipeDataOnBloat": false
+}

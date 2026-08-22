@@ -640,12 +640,10 @@ public final class FTDriveCore {
         // 判定できるアサートの範囲と除外理由は HeldElementAssert。
         // **可視性照合(occlusion-guard)が走る設定では高速経路に入らない** —— 見えているかは
         // 保持値から言えないので、飛ばすと falsePositiveCheck 有効の run で検査が1つ静かに消える。
-        // 条件は StepExecutor.occlusionFlip の入口(ステップ非依存の部分)と同じものを見る。
+        // 条件は StepExecutor.occlusionFlip の入口と同じ述語(`visibilityGuardActive`)。
+        // **FM の有無で絞らない** —— 幾何の Tier-0 は FM 無しで効く。
         // 注記を description に足すのは、レポートで「取り直していない判定」を見分けられるようにするため
-        let visibilityWouldBeChecked = executor.occlusionGuardEnabled
-            && (step.occlusionGuard ?? executor.occlusionGuard)
-            && executor.delegate != nil
-            && FMVisionSupport.isSupported
+        let visibilityWouldBeChecked = executor.visibilityGuardActive(perStepGuard: step.occlusionGuard)
         if let heldElement, let assert = step.assert, !visibilityWouldBeChecked,
            HeldElementAssert.satisfied(assert: assert, expected: step.expected,
                                        element: heldElement) == true {

@@ -33,6 +33,17 @@ iOS / Android 両対応のアプリ E2E テストツール。iOS を先行実装
 
 **FM 失敗は握りつぶされる**: occlusion-guard・heal・screenLooksLike はいずれも FM 失敗時に nil を返して
 素通りする契約なので、FM が全滅してもテストは緑のまま**機能だけ無効**になる。
+**ただし黙らない**(2026-08-23): occlusion-guard(`exist` の既定 `requireVisible`)は **FM に訊いたのに
+判定が返らなかったステップ**に `StepNote.visibilityGuardSkipped`(`visibility-guard-skipped`)を立て、
+結果 JSON の `notes` から run 横断で数えられる(立てるのは FM まで到達した回だけ。マスタースイッチ OFF・
+macOS 26・インクゲートで省いた回は「訊く必要が無かった」)。同時に **requireVisible は2段**になった:
+Tier-0 幾何 = 収まる軸の中心が画面外なら不可視(`TapTargetGeometry.offscreenScrollGateCentre`。
+スクロール探索の「見つかった」ゲート・逆走査 `reverseSweep`・MCP の `ft_scroll_to` 再照合と同じ述語で、
+**文言は呼び手ごと**)→ Tier-1〜 FM。iOS の木は画面外の要素も frame ごと残し、FM 側は crop が
+画像の外に落ちると nil(素通り)なので、**通り過ぎた要素への exist は FM が生きていても FM では
+塞がらなかった**(2026-08-20 受け手報告・横スクロール区画)。幾何の段は FM の有無に依らず
+`falsePositiveCheck` の下で効く(`StepExecutor.visibilityGuardActive` が唯一の入口。FTRuntime の
+保持値の高速経路もこれを見る)。
 `FMHealth`(Sources/FTCore/FMHealth.swift)が呼び出しの回数・レイテンシ・成否を計上し、
 実行後に stderr へ警告する。結果 JSON の `fm` にも載る(performance-tuning.md §4.2)。
 **これは理論上の話ではない**: 実績値では 6066 呼び出し中 5673 失敗(93.5%)で、

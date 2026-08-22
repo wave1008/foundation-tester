@@ -82,6 +82,41 @@ private final class NudgeIntoViewDriver: AppDriver {
     }
 }
 
+/// drag を受け付けるが何も動かない偽ドライバ(逆走査 `reverseSweep` の経路専用。
+/// StaticFrameDriver は drag を持たず 501 で slowDrag が false になり、逆走査に入れない)
+private final class DraggableStaticFrameDriver: AppDriver {
+    private let elements: [ElementInfo]
+    private let screen: FTRect
+    private(set) var drags = 0
+
+    init(frame: FTRect, screen: FTRect) {
+        self.screen = screen
+        elements = [ElementInfo(ref: 1, type: "cell", identifier: "target", label: "58分",
+                                value: nil, placeholder: nil, enabled: true, frame: frame, depth: 1)]
+    }
+
+    func status() async throws -> StatusResponse {
+        StatusResponse(ready: true, device: "fake", osVersion: "-", sessionBundleID: nil)
+    }
+    func install(packagePath: String) async throws {}
+    func uninstall(bundleID: String) async throws {}
+    func launch(bundleID: String) async throws {}
+    func isAppForeground(bundleID: String) async throws -> Bool { true }
+    func foregroundAppID() async throws -> String? { nil }
+    func terminate() async throws {}
+    func screenshot() async throws -> Data { Data() }
+    func type(ref: Int?, text: String) async throws {}
+    func tap(ref: Int) async throws {}
+    func tap(x: Double, y: Double) async throws {}
+    func press(ref: Int, duration: Double) async throws {}
+    func swipe(_ direction: FTSwipeDirection) async throws {}
+    func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
+              pressSeconds: Double, durationSeconds: Double) async throws { drags += 1 }
+    func snapshot() async throws -> SnapshotResponse {
+        SnapshotResponse(sessionBundleID: nil, screen: screen, elements: elements, truncatedCount: 0)
+    }
+}
+
 final class ScrollSearchOffscreenGateTests: XCTestCase {
 
     private let screen = FTRect(x: 0, y: 0, width: 402, height: 874)
@@ -192,5 +227,41 @@ final class ScrollSearchOffscreenGateTests: XCTestCase {
         guard case .failed = outcome.status else {
             return XCTFail("横が oversized なだけで縦の画面外まで免除している: \(outcome.status)")
         }
+    }
+
+    // MARK: - 逆走査(reverseSweep)にも同じゲートが要る
+
+    /// **不変条件7**: 逆走査の拾い直しも本編と同じ画面外ゲートを通す。縦が oversized で
+    /// `isClippedByViewport` の免除に当たり、横は画面の外(x=800・幅234・画面幅402)の要素を
+    /// 「拾い直した」と返してはいけない(受け手報告 2026-08-20: 通り過ぎた横スクロール区画への
+    /// exist(scroll:) が遅い成功になる経路)。ドライバは動かないので、ゲートが効けば
+    /// 内容署名の不変で nil に到達する
+    func testReverseSweepDoesNotRecoverAnElementWhoseCentreIsOffscreen() async throws {
+        let driver = DraggableStaticFrameDriver(
+            frame: FTRect(x: 800, y: -2500, width: 234, height: 3000), screen: screen)
+        let executor = StepExecutor(driver: driver)
+        var phase = StepExecutor.PhaseAccumulator()
+
+        let recovered = try await executor.reverseSweep(
+            step: scrollTo(direction: "right", maxSwipes: 0),
+            container: screen, searching: .right, phase: &phase)
+
+        XCTAssertNil(recovered, "中心が画面外の要素を逆走査が拾い直したことにしている")
+        XCTAssertGreaterThan(driver.drags, 0, "逆走査のドラッグが1本も出ていない(経路に入っていない)")
+    }
+
+    /// **不変条件8(陰性対照)**: 同じ oversized の縦でも横が画面内なら、逆走査は従来どおり拾う
+    /// (ゲートを足したことで逆走査そのものを潰していないことの確認)
+    func testReverseSweepStillRecoversAnOversizedElementWhoseCentreIsOnscreen() async throws {
+        let driver = DraggableStaticFrameDriver(
+            frame: FTRect(x: 60, y: -2500, width: 234, height: 3000), screen: screen)
+        let executor = StepExecutor(driver: driver)
+        var phase = StepExecutor.PhaseAccumulator()
+
+        let recovered = try await executor.reverseSweep(
+            step: scrollTo(direction: "right", maxSwipes: 0),
+            container: screen, searching: .right, phase: &phase)
+
+        XCTAssertNotNil(recovered, "画面内にある要素まで逆走査が拾わなくなっている")
     }
 }

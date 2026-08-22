@@ -138,8 +138,14 @@ extension StepExecutor {
                                                      strictForAssert: true) {
                 // **見つけただけでは足りない**(本編の探索と同じ規則): 容器の縁で見切れている
                 // 要素は frame がクランプされていてタップが外れる。まだ戻せるなら送り続ける
-                // (iOS/Compose は可視域の外の行も木に残すので、ここを省くと ghost を掴む)
-                if !Self.isClippedByViewport(element, screen: container) {
+                // (iOS/Compose は可視域の外の行も木に残すので、ここを省くと ghost を掴む)。
+                // **画面外ゲートも本編と同じ**(offscreenScrollGateCentre): isClippedByViewport は
+                // 容器より大きい/ゼロサイズの要素を意図的に false にするので、縦が oversized なだけで
+                // 横に完全に画面外の要素を「拾い直した」と返していた(探索本体は 81db3385 で塞いだが、
+                // この逆走査には無かった = 通り過ぎた要素への exist(scroll:) が遅い成功に化ける経路)
+                if !Self.isClippedByViewport(element, screen: container),
+                   TapTargetGeometry.offscreenScrollGateCentre(for: element,
+                                                              screen: snapshot.screen) == nil {
                     _ = try await settleAfterFind(step: step, element: element,
                                                   snapshot: snapshot, phase: &phase)
                     // **連続2回一致まで待つ**(settleAfterScroll より強い)。逆走査のドラッグは

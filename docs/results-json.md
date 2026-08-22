@@ -139,7 +139,7 @@ jq -r 'select(.workerAnomalies == null) | .runID' results/runs/2026-08/*/run.jso
 | description | String | 人間可読なステップ説明(group の前置・注記の括弧書きを含む) |
 | command | String? | DSL のコマンド名。**`description` を割って作らないこと** |
 | failureKind | String? | 上表 |
-| notes | [String]? | `StepNote` の rawValue(`interruption-dismissed` / `settle-capped` 等) |
+| notes | [String]? | `StepNote` の rawValue(`interruption-dismissed` / `settle-capped` / `visibility-guard-skipped` 等。全部の定義は `Sources/FTCore/StepNote.swift`) |
 | detail | String? | 失敗理由(英語・人間可読) |
 | file / line | String? / Int? | ソース位置 |
 | durationMs | Int? | 所要 |

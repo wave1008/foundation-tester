@@ -424,6 +424,17 @@ public enum TapTargetGeometry {
     /// 判定材料が無いので nil(従来の全体免除と同じ帰結)。MCP 側の scroll_to 再照合
     /// (`MCPServer+Snapshot.swift`)もこれへ揃える(単独の `offscreenAdvisory` ではなくこちら)
     public static func offscreenScrollGateAdvisory(for element: ElementInfo, screen: FTRect) -> String? {
+        guard let c = offscreenScrollGateCentre(for: element, screen: screen) else { return nil }
+        return "its centre (\(Int(c.x)), \(Int(c.y))) is outside the visible screen,"
+            + " so this almost certainly did nothing"
+    }
+
+    /// `offscreenScrollGateAdvisory` の**判定だけ**(文言を持たない)。ゲートが効くとき要素の中心を返す。
+    /// **共有するのは判定であって文言ではない**: 探索の「見つかった」ゲート・MCP の再照合・
+    /// `requireVisible` の幾何 Tier-0(`StepExecutor.occlusionFlip`)が同じ述語を使い、
+    /// 「撃っても何も起きない」「見えていない」は呼び手が自分の言葉で書く
+    public static func offscreenScrollGateCentre(for element: ElementInfo,
+                                                 screen: FTRect) -> (x: Double, y: Double)? {
         guard screen.width > 0, screen.height > 0 else { return nil }
         let frame = element.frame
         let widthFits = frame.width > 0 && frame.width <= screen.width
@@ -435,8 +446,7 @@ public enum TapTargetGeometry {
         let xInside = cx >= screen.x - pad && cx <= screen.x + screen.width + pad
         let yInside = cy >= screen.y - pad && cy <= screen.y + screen.height + pad
         guard (widthFits && !xInside) || (heightFits && !yInside) else { return nil }
-        return "its centre (\(Int(cx)), \(Int(cy))) is outside the visible screen,"
-            + " so this almost certainly did nothing"
+        return (cx, cy)
     }
 
     /// 「中心が中身のどこにも乗らない」。**frame の中心を撃つときにしか言えない** ——

@@ -480,6 +480,12 @@
     MCP は「スクロールしても戻ってこない」と書いており、同じ画面で逆のことを言っていた
     (MCP のコメントは「文言だけ揃えて複製する」と書いてあったが揃っていなかった)。
     落ちた要素は配列から抜けているので MCP が正しい。**天井まで来ていたら「上げろ」と言わない**
+  - 画面外の一致 = `TapTargetGeometry.offscreenScrollGateCentre`(収まる軸の中心が画面外)。
+    探索の「見つかった」ゲート・逆走査 `reverseSweep`・MCP の `ft_scroll_to` 再照合・
+    **`requireVisible` の幾何 Tier-0**(`StepExecutor.occlusionFlip`。FM より前・FM 無しでも効く)の
+    4箇所が同じ述語を呼ぶ。2026-08-23 まで逆走査と requireVisible には無く、iOS の木に残る
+    通り過ぎた要素への `exist(scroll:)` が成功していた(受け手報告)。**FM に訊いて答えが無かった
+    ステップは `visibility-guard-skipped`** を立てる(FM が死んでいることを知っているのはツールだけ)
 - **「木が画面を代表していない」判定は `FTCore.TreeCoverage` の1箇所**(2026-08-15)。
   webView の内側に大きな空白帯が残る形(Android の Chrome が a11y を部分的にしか公開しない)と、
   アドレス欄はあるのにページ本体が1要素も無い形の2つ。**失敗の型は打ち切りと同じ**

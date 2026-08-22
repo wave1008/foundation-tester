@@ -50,19 +50,39 @@ struct AssertFreshRetry {
 extension StepExecutor {
     // MARK: - アサーション
 
-    /// [occlusion-guard] ツリー一致した要素を FM でスクショ照合し、覆われ/切れ/減光/不在なら
+    /// 可視性照合(`requireVisible`)がこのステップで効くか。ステップ指定(DSL の requireVisible)
+    /// 優先、無ければ executor 既定。`occlusionGuardEnabled` はどちらより上位の実行プロファイル由来
+    /// マスタースイッチ(`falsePositiveCheck`)。**FM の有無は含めない** —— 幾何の Tier-0 は FM 無しで
+    /// 効くので、FTRuntime の保持値の高速経路もこれを見て「照合が走る設定なら実機を見に行く」と決める
+    /// (FM 前提の条件で判定すると、FM の無いホストで幾何の照合が静かに1つ消える)
+    public func visibilityGuardActive(perStepGuard: Bool?) -> Bool {
+        occlusionGuardEnabled && (perStepGuard ?? occlusionGuard)
+    }
+
+    /// [occlusion-guard] ツリー一致した要素が**見えているか**を2段で確かめ、見えていなければ
     /// 偽陽性として反転する失敗ステータスを返す。反転不要(可視 or 判定不能 or 無効)なら nil。
-    /// 呼び出し側(exists/textEquals)は覆いを即失敗にせず timeout まで可視化を待つ(poll-until-visible)。
+    ///   Tier-0 幾何(FM 不要・決定的): 収まる軸の中心が画面外なら不可視
+    ///     (`TapTargetGeometry.offscreenScrollGateCentre`。スクロール探索の「見つかった」ゲートと
+    ///     同じ述語)。iOS の木は画面外の要素も frame ごと残すので、これが無いと通り過ぎた要素への
+    ///     exist が通る。FM 側は crop が画像の外に落ちると nil = 素通りなので、**FM が生きていても
+    ///     この形は FM では塞がらない**(2026-08-20 受け手報告・E2E-sampleapp の横スクロール区画)
+    ///   Tier-1〜 FM: 覆われ/減光/不在(従来)。判定が返らなければ `visibilityGuardSkipped` を立てて素通り
+    /// 呼び出し側(exists/textEquals)は不可視を即失敗にせず timeout まで可視化を待つ(poll-until-visible)。
     /// コストは足切り+低インクゲートで抑制(可視な高インク領域は FM を呼ばず nil で即通過)。
     func occlusionFlip(element: ElementInfo, expectedText: String, elements: [ElementInfo],
                               screen: FTRect, looseMatch: Bool, perStepGuard: Bool?,
                               expectedIsUserText: Bool = false,
                               phase: inout PhaseAccumulator) async throws -> StepResult.Status? {
-        // 有効化はステップ指定(DSL の visible())優先、無ければ executor 既定。
-        // occlusionGuardEnabled はどちらより上位の実行プロファイル由来マスタースイッチ
+        guard visibilityGuardActive(perStepGuard: perStepGuard) else { return nil }
+        // Tier-0: 画面外は見えていない。**スクショも FM も要らない**ので最初に置く。
+        // 足切り(型・ラベル)より前 —— アイコンや無ラベル要素は FM 照合の対象外でも、画面外なのは同じ
+        if let c = TapTargetGeometry.offscreenScrollGateCentre(for: element, screen: screen) {
+            return .failed("false positive (offscreen): present in the tree but its centre"
+                           + " (\(Int(c.x)), \(Int(c.y))) is outside the screen, so it is not visible"
+                           + " (scroll it into view before this step)")
+        }
         // FMVisionSupport が false(macOS 26)なら FM に画像を渡せないため、スクショを撮る前に素通り。
-        guard occlusionGuardEnabled, (perStepGuard ?? occlusionGuard), let delegate,
-              FMVisionSupport.isSupported else { return nil }
+        guard let delegate, FMVisionSupport.isSupported else { return nil }
         // 退化 frame(サイズ 0・クランプで潰れた等)は視覚照合の意味がないのでスキップ(素通り)
         guard element.frame.width >= 1, element.frame.height >= 1, !expectedText.isEmpty else { return nil }
         // 足切り: label が verbatim 描画されない要素(アイコン/画像/絵文字/結合セマンティクス)は
@@ -109,7 +129,13 @@ extension StepExecutor {
         }
         guard let v = await delegate.verifyElementVisible(
             expectedText: expectedText, frame: element.frame, screen: screen, screenshotPNG: screenshot)
-        else { return nil }
+        else {
+            // **訊いたのに答えが無い**(FM の失敗・ブレーカ開・直列化待ちの期限切れ・画像不正)。
+            // 素通りは従来どおりだが、**黙らない** —— シナリオ側からは「判定能力が欠けている」ことを
+            // 観測できず、知っているのはここだけ。結果 JSON の notes から run 横断で数えられる
+            noteCodesThisStep.insert(.visibilityGuardSkipped)
+            return nil
+        }
         if v.visible { return nil }
         // observedText は原因切り分けの鍵: 空なら「FM に画像が渡っていない/白紙を見た」
         // (SCA 劣化で添付が落ちる仮説・起動遷移画面)、期待どおりの文字列なら「読めたのに

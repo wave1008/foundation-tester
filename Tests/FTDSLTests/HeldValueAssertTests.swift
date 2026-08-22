@@ -226,6 +226,19 @@ final class HeldValueAssertTests: XCTestCase {
                        "可視性照合が走る設定なのに掴んだ値で通している")
     }
 
+    /// **FM が無くても(delegate nil)可視性照合が走る設定なら実機を見に行く** —— 幾何の Tier-0
+    /// (中心が画面外なら不可視)は FM 無しで効くので、FM の有無で高速経路に入ると
+    /// FM の無いホストで幾何の検査が静かに1つ消える
+    func testVisibilityCheckedRunReadsTheDeviceEvenWithoutAnFMDelegate() {
+        let driver = MutatingDriver()
+        let core = run(driver: driver, delegate: nil, falsePositiveCheck: true) {
+            select("#total").textIs("1,200")
+        }
+        assertAllPassed(core)
+        XCTAssertEqual(driver.snapshotCount, 2,
+                       "FM が無いだけで可視性照合の設定を無視して掴んだ値で通している")
+    }
+
     /// idIs も掴んだ値で判定する(id は画面に描かれず古くなりようがない)
     func testIdIsUsesTheGrabbedValue() {
         let driver = MutatingDriver()
