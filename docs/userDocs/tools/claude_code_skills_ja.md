@@ -1,0 +1,65 @@
+# Claude Code スキル
+
+foundation-tester プラグインは、導入・プロファイル設定・シナリオ作成を自動化する Claude Code
+スキル群を提供します。いずれも人が手で打つのと同じスクリプト・CLI コマンドを裏で呼び出し、
+検証ゲートと、判断や承認が本当に人手を要する箇所だけの人間チェックポイントを備えています。
+
+## プラグインの導入
+
+```bash
+claude plugin marketplace add wave1008/foundation-tester
+claude plugin install ftester@foundation-tester --scope user
+```
+
+`main` を追従せず版を固定したい場合は、タグ付きの URL でマーケットプレイスを追加します。
+
+```bash
+claude plugin marketplace add https://github.com/wave1008/foundation-tester.git#<tag>
+```
+
+プラグイン機構が無い環境では、同等のスキル群を直接インストールできます。
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install-skill.sh | sh
+```
+
+## スキル一覧
+
+| スキル | コマンド | 役割 |
+|---|---|---|
+| `ftester-setup` | `/ftester:ftester-setup` | 初回導入一式(未クローンなら clone・ビルド・環境検証・プロジェクト作成・マシン/アプリのプロファイル設定・VSCode 拡張のインストール) |
+| `ftester-update` | `/ftester:ftester-update` | upstream の更新取り込み(git pull → `TestProjects/`/`Package.swift` の再整合 → 再ビルド → VSCode 拡張の再インストール → 反映) |
+| `ftester-profiles` | `/ftester:ftester-profiles` | マシン/アプリ/実行プロファイルを1回のフローでまとめて作成(iOS/Android の確認、アプリの表示名/アプリID を聞き、デバイスは既存を選ぶか新規作成) |
+| `ftester-scenario` | `/ftester:ftester-scenario` | セットアップ済みプロジェクトに Swift DSL のシナリオ(`.swift`)を1本作成(ライブ探索からコンパイル検証まで) |
+| `ftester-mcp` | `/ftester:ftester-mcp` | MCP サーバ(`ftester-mcp`)だけを Claude Code に登録(VSCode 拡張・プロジェクト作成・プロファイル設定は行わない) |
+| `ftester-remote-setup` | `/ftester:ftester-remote-setup` | 別の Mac をランナー機として用意し、手元から SSH 経由でシナリオをディスパッチできるようにする |
+
+`ftester-setup` が初回導入の入口で、他のスキルはこれ(または同等の手動セットアップ)が
+済んでいることを前提にしています。
+
+## `ftester-scenario` の流れ
+
+`/ftester:ftester-scenario` は次の順で進みます。
+
+1. **対象アプリ(アプリプロファイル)を確認** — 人間チェックポイント。
+2. **デバイスを用意してライブ探索**し、動いているアプリから実セレクタを採取する。
+3. **シナリオ(`.swift`)を書く**。
+4. **コンパイル検証ゲート。**
+5. **dry-run ゲート** — デバイス不要・数秒。
+6. **デバイスで実行し、意図通りか確認** — 人間チェックポイント。
+
+書いてすぐデバイス実行に進むと、誤りに気付くのはデバイス実行1回分の待ち時間の後になります。
+コンパイルと dry-run のゲートを挟むことで、ほとんどの誤りを数秒で捕まえられます。
+
+## 更新
+
+```bash
+claude plugin marketplace update foundation-tester
+claude plugin update ftester@foundation-tester
+```
+
+どちらも必要です(マーケットプレイスの一覧を更新するだけでは、導入済みのプラグインは
+更新されません)。反映には Claude Code の再起動が必要です。
+
+### Link
+- [index](../index_ja.md)

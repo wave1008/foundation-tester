@@ -133,3 +133,6 @@ pkill  -f 'ftester-mcp|/ftester (api|run|bridge|devices)|ftester-(simstream|andr
 ## 6. トラブルシュート
 
 - 問題が発生した場合、Claude Codeに相談してください
+
+### Link
+- [index](index_ja.md)

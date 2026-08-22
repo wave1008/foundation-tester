@@ -64,8 +64,8 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scr
   プラグイン機構が無い環境向けの代替は
   `curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install-skill.sh | sh`。
 - 既定は**外部パッケージ構成**: ツール(この clone)と、あなたの `TestProjects/` が住むテスト用フォルダを分ける。
-- 事前準備・インストール・更新・アンインストールの手順は [docs/getting-started.md](docs/getting-started.md)。
-  導入後の使い方(プロファイル・シナリオ・実行)は本 README の以降の節と [docs/commands.md](docs/commands.md)。
+- 事前準備・インストール・更新・アンインストールの手順は [docs/userDocs/getting-started_ja.md](docs/userDocs/getting-started_ja.md)。
+  導入後の使い方(プロファイル・シナリオ・実行)は**利用者向けドキュメント [docs/userDocs/index_ja.md](docs/userDocs/index_ja.md)**([English](docs/userDocs/index.md))と [docs/commands.md](docs/commands.md)。
 
 > **配布はソースビルド前提**(バイナリ配布はしない)。CLI も VSCode 拡張(.vsix)も clone から
 > `swift build` / `npm run install-local` でビルドして入れる。下記「セットアップ(クローン直後)」は
