@@ -41,3 +41,11 @@ public macro Test(_ title: String = "", platform: String? = nil) =
 @attached(peer)
 public macro Deleted(_ comment: String = "") =
     #externalMacro(module: "FTDSLMacros", type: "DeletedMacro")
+
+/// 実装中(未完成)マーカー。テストクラスまたは @Test メソッドに付与する。
+/// 一括実行から除外されるが、完全一致 ID の明示指定なら実行できる(実装しながら個別に回す運用)。
+/// 出来上がったらアノテーションを外せば通常のシナリオに戻る。
+/// `@Deleted`(論理削除)との違いは意味だけ(こちらは「これから使う」、あちらは「もう使わない」)。
+@attached(peer)
+public macro Draft(_ comment: String = "") =
+    #externalMacro(module: "FTDSLMacros", type: "DraftMacro")

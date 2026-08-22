@@ -28,6 +28,8 @@ export interface ScenarioInfo {
   id: string;
   title: string;
   deleted: boolean;
+  /** @Draft(実装中)。一括実行から除外。対向: Sources/ftester/ApiCommands.swift ApiScenarioInfo。 */
+  draft: boolean;
   file: string;
   classLine: number | null;
   methodLine: number | null;

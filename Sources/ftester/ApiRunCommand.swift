@@ -31,7 +31,7 @@ struct ApiRunCommand: AsyncParsableCommand {
     var profile: String?
 
     @Option(name: .customLong("scenario"), parsing: .upToNextOption,
-            help: "Scenario IDs to run (Class.method; a class name alone runs all of its scenarios). Repeatable, at least one required. @Deleted scenarios run only on an exact match")
+            help: "Scenario IDs to run (Class.method; a class name alone runs all of its scenarios). Repeatable, at least one required. @Deleted / @Draft scenarios run only on an exact match")
     var scenarios: [String] = []
 
     @Flag(help: "Allow FM-based locator self-healing (with --profile it overrides the profile heal setting only when true)")
@@ -431,7 +431,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         }
         var selected = try RunScenarios.resolve(scenarios, from: all)
         guard !selected.isEmpty else {
-            throw ValidationError("nothing to run (every scenario is marked @Deleted)")
+            throw ValidationError("nothing to run (every scenario is marked @Deleted or @Draft)")
         }
 
         // dry-run/debug は実測にならない(dry-run はデバイス未接続、debug は人間介入前提)ため記録しない

@@ -2160,7 +2160,8 @@ extension MCPServer {
             "\(info.id)"
                 + (info.title.isEmpty ? "" : " — \(info.title)")
                 + " (\(info.platform ?? "ios/android"), app: \(info.app ?? "from the run profile"))"
-                + (info.deleted ? " [deleted @Deleted — excluded from bulk runs]" : "")
+                + (info.deleted ? " [deleted @Deleted — excluded from bulk runs]"
+                   : (info.draft ? " [draft @Draft — excluded from bulk runs]" : ""))
         }
         return text(lines.isEmpty
                     ? "No scenarios (add a @TestClass under TestProjects/\(project.name)/scenarios/)"

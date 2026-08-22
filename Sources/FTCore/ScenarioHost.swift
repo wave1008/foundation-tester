@@ -18,19 +18,23 @@ public struct ScenarioInfo: Codable, Sendable, Hashable {
     public let platform: String?
     /// @Deleted(論理削除)。一覧に残るが一括実行から除外される
     public let deleted: Bool
+    /// @Draft(実装中マーク)。一覧に残るが一括実行から除外される
+    /// (@Deleted との違いは意味だけ。両方付いていれば deleted の表示を優先する)
+    public let draft: Bool
 
     public init(id: String, title: String, app: String? = nil, platform: String? = nil,
-                deleted: Bool = false) {
+                deleted: Bool = false, draft: Bool = false) {
         self.id = id
         self.title = title
         self.app = app
         self.platform = platform
         self.deleted = deleted
+        self.draft = draft
     }
 
-    // deleted キーを出さない旧ランナーの JSON も読めるようにしておく。
+    // deleted/draft キーを出さない旧ランナーの JSON も読めるようにしておく。
     // app は null / キー欠落のどちらも「未指定」として読む
-    private enum CodingKeys: String, CodingKey { case id, title, app, platform, deleted }
+    private enum CodingKeys: String, CodingKey { case id, title, app, platform, deleted, draft }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -39,6 +43,7 @@ public struct ScenarioInfo: Codable, Sendable, Hashable {
         app = try container.decodeIfPresent(String.self, forKey: .app)
         platform = try container.decodeIfPresent(String.self, forKey: .platform)
         deleted = try container.decodeIfPresent(Bool.self, forKey: .deleted) ?? false
+        draft = try container.decodeIfPresent(Bool.self, forKey: .draft) ?? false
     }
 }
 

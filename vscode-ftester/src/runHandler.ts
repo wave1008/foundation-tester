@@ -31,7 +31,7 @@ import {
   type RunAction,
   type RunLocation,
 } from "./runReducer";
-import { DELETED_TAG, type FtesterTestTree } from "./testTree";
+import { DELETED_TAG, DRAFT_TAG, type FtesterTestTree } from "./testTree";
 import type { ScenarioFileWatcher } from "./watcher";
 
 // lastResultsSync.ts の isGuiRunActive が参照する(GUI 実行中はツリーへの反映を譲る)。
@@ -276,10 +276,11 @@ async function openReportForScenarios(
 
 /**
  * request.include/exclude を対象シナリオ leaf(TestItem、id=シナリオID)の Map<id, TestItem> に解決する。
- * include 未指定なら全 leaf(@Deleted 除外)。folder/class の include は配下 leaf に展開(@Deleted 除外、
- * CLI の「クラス名指定では削除済みを実行しない」規則と一致)。leaf 自体が明示 include されたときは
- * @Deleted でも対象にする(CLI の「完全一致指定のときだけ削除済みを実行する」規則と一致)。
- * exclude は leaf 単位で除去(folder/class の exclude は配下 leaf を丸ごと除外)。
+ * include 未指定なら全 leaf(@Deleted/@Draft 除外)。folder/class の include は配下 leaf に展開
+ * (@Deleted/@Draft 除外、CLI の「クラス名指定では削除済み/作業中を実行しない」規則と一致)。
+ * leaf 自体が明示 include されたときは @Deleted/@Draft でも対象にする(CLI の「完全一致指定のときだけ
+ * 削除済み/作業中を実行する」規則と一致)。exclude は leaf 単位で除去(folder/class の exclude は
+ * 配下 leaf を丸ごと除外)。
  */
 function resolveTargets(
   controller: vscode.TestController,
@@ -289,8 +290,8 @@ function resolveTargets(
 
   const addSubtree = (item: vscode.TestItem, explicit: boolean): void => {
     if (item.children.size === 0) {
-      // explicit(この item 自体が include 指定)のときのみ @Deleted でも対象にする。
-      if (explicit || !isDeleted(item)) {
+      // explicit(この item 自体が include 指定)のときのみ @Deleted/@Draft でも対象にする。
+      if (explicit || !isExcludedFromBulk(item)) {
         result.set(item.id, item);
       }
       return;
@@ -320,8 +321,9 @@ function resolveTargets(
   return result;
 }
 
-function isDeleted(item: vscode.TestItem): boolean {
-  return item.tags.some((tag) => tag.id === DELETED_TAG.id);
+/** 一括実行(非明示 include)から除外する対象か(@Deleted または @Draft)。 */
+function isExcludedFromBulk(item: vscode.TestItem): boolean {
+  return item.tags.some((tag) => tag.id === DELETED_TAG.id || tag.id === DRAFT_TAG.id);
 }
 
 /** targets の先頭1件のファイルから @TestClass(...) の platform を読み取る(ftester.liveControlOnRun

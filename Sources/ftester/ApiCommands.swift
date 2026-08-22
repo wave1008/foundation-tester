@@ -66,7 +66,7 @@ struct ApiListScenarios: AsyncParsableCommand {
                 logStderr("⚠️ Scenario source file not found: \(info.id)")
                 scenarioOutputs.append(ApiScenarioInfo(
                     id: info.id, title: info.title, app: info.app, platform: info.platform,
-                    deleted: info.deleted, file: nil, classLine: nil, methodLine: nil,
+                    deleted: info.deleted, draft: info.draft, file: nil, classLine: nil, methodLine: nil,
                     folder: nil))
                 continue
             }
@@ -100,7 +100,7 @@ struct ApiListScenarios: AsyncParsableCommand {
 
             scenarioOutputs.append(ApiScenarioInfo(
                 id: info.id, title: info.title, app: info.app, platform: info.platform,
-                deleted: info.deleted, file: sourceURL.path, classLine: classLine,
+                deleted: info.deleted, draft: info.draft, file: sourceURL.path, classLine: classLine,
                 methodLine: methodLine, folder: folder))
         }
 
@@ -163,6 +163,8 @@ private struct ApiScenarioInfo: Encodable {
     let app: String?
     let platform: String?
     let deleted: Bool
+    /// @Draft(実装中マーク)。加算フィールドなので ProtocolVersion は変えない
+    let draft: Bool
     /// クラスを定義する .swift の絶対パス(見つからなければ nil)
     let file: String?
     /// class 宣言の行番号(1 起点、解決不能なら nil)
@@ -173,7 +175,7 @@ private struct ApiScenarioInfo: Encodable {
     let folder: String?
 
     private enum CodingKeys: String, CodingKey {
-        case id, title, app, platform, deleted, file, classLine, methodLine, folder
+        case id, title, app, platform, deleted, draft, file, classLine, methodLine, folder
     }
 
     func encode(to encoder: Encoder) throws {
@@ -183,6 +185,7 @@ private struct ApiScenarioInfo: Encodable {
         try container.encode(app, forKey: .app)
         try container.encode(platform, forKey: .platform)
         try container.encode(deleted, forKey: .deleted)
+        try container.encode(draft, forKey: .draft)
         try container.encode(file, forKey: .file)
         try container.encode(classLine, forKey: .classLine)
         try container.encode(methodLine, forKey: .methodLine)

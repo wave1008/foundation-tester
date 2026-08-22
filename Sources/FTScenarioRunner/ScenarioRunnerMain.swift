@@ -46,7 +46,7 @@ struct ListScenarios: AsyncParsableCommand {
                         title: scenario.title,
                         app: testClass.app,
                         platform: scenario.effectivePlatform(classPlatform: testClass.platform),
-                        deleted: scenario.deleted))
+                        deleted: scenario.deleted, draft: scenario.draft))
                 }
             }
             struct ListResponse: Codable { let scenarios: [ScenarioInfo] }
@@ -65,10 +65,11 @@ struct ListScenarios: AsyncParsableCommand {
                 print("\(testClass.className) [\(platform)] app=\(app)")
                 for scenario in testClass.scenarios {
                     let title = scenario.title.isEmpty ? "" : " — \(scenario.title)"
-                    let deleted = scenario.deleted ? " (deleted)" : ""
+                    // 両方付いていれば deleted の表示を優先する(@Deleted が勝つ)
+                    let status = scenario.deleted ? " (deleted)" : (scenario.draft ? " (draft)" : "")
                     // クラスと違う platform を宣言しているメソッドだけ明示する
                     let only = scenario.platform.map { " [\($0) only]" } ?? ""
-                    print("  ・ \(testClass.className).\(scenario.name)\(title)\(only)\(deleted)")
+                    print("  ・ \(testClass.className).\(scenario.name)\(title)\(only)\(status)")
                 }
             }
         }
