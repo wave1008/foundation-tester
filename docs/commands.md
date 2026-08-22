@@ -387,7 +387,7 @@ var 注文番号: String?
 scene(2, "注文を確定して注文番号を控える") {
     action { tap("#btn_order") }
     .expectation {
-        textStartsWith("#txt_order_id", "注文番号:")   // ← 先に**値を確定させてから**読む
+        select("#txt_order_id").textStartsWith("注文番号:")   // ← 先に**値を確定させてから**読む
         注文番号 = exist("#txt_order_id").text
     }
 }

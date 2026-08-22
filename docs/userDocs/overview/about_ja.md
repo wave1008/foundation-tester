@@ -1,0 +1,52 @@
+# Ftester とは
+
+Ftester は Claude Code を前提とした macOS 専用の iOS / Android アプリの E2E テストツールです。
+
+## 設計思想: 「AI がテストを作り、コードが決定的に再生する」
+
+- **生成**: VSCode 拡張のライブ操作パネルで操作を録画すると **Swift のテストシナリオ
+  (Shirates 風 DSL)** を生成します。複雑なものは Claude Code(MCP 経由)に作らせる、または
+  手書きします。イレギュラー処理やテストデータ投入は Swift でそのまま書けます。
+- **実行**: シナリオは LLM なしで決定的に実行します。高速・安定で CI 向きです。
+- **失敗時のみ AI が介入**: ロケータの自己修復(ヒールキャッシュ付き)、スクリーンショットの
+  視覚検証(マルチモーダル)、失敗原因のトリアージと修正提案。**これらはすべてオンデバイスで
+  動作**します —— アプリの画面情報が Mac の外に出ることはありません。
+
+## 4つの入口
+
+同じコア(Swift DSL + AppDriver + StepExecutor + Foundation Models エージェント)の上に、
+用途別の入口が4つあります。UI は VSCode 拡張に一本化されています。
+
+| 入口 | 起動 | 向いている用途 |
+|---|---|---|
+| **CLI** `ftester` | `swift run ftester ...`(clone 内)、またはビルド済み `.build/debug/ftester` | CI・回帰テストの定期実行(決定的・無料・exit code) |
+| **VSCode 拡張** | VSCode 拡張(デバイスモニター・ライブ操作・結果ダッシュボード) | 人間の対話操作: シナリオ実行・デバッグ実行・ライブ操作(録画→生成)・デバイスモニター・結果ダッシュボード |
+| **MCP サーバ** | Claude Code が自動起動 | エージェント連携: AI によるテスト作成・デバッグ・探索的テスト |
+| **Swift DSL** | `TestProjects/<name>/scenarios/*.swift` | テスト資産そのもの。どの入口で作っても同じ形式で保存・実行される |
+
+## 役割分担
+
+**探索・判断(知能)はエージェント、操作・実行・検証(決定性)は ftester** が担います。
+テスト作成は VSCode 拡張のライブ操作録画(操作を Swift シナリオに変換)か、複雑なものは
+Claude Code(MCP 経由)で行い、できた Swift シナリオを CLI や CI で決定的に実行します。
+
+## アーキテクチャ
+
+```
+ftester CLI / MCP ──(サブプロセス)──▶ ftester-scenarios-<project>(プロジェクトのシナリオを発見・実行)
+      │                                        │  FTDSL   (Swift DSL: @TestClass/@Test マクロ・コマンド・レポート)
+      │                                        │  FTAgent (Foundation Models: 視覚検証 / 修復 / トリアージ)
+      │                                        │  FTCore  (ステップモデル / AppDriver 抽象 / StepExecutor)
+      │                                        ▼
+      ├─ HTTP (localhost:8123) ──▶ iOS シミュレータ内の常駐 XCUITest プロセス
+      │                            (WebDriverAgent 方式・依存ゼロの自作ブリッジ)
+      └─ adb forward ⇄ 常駐ブリッジ ──▶ Android エミュレータ / 実機
+```
+
+- プラットフォーム境界は `AppDriver` プロトコルのみです。Foundation Models エージェントと
+  再生器は iOS/Android で完全に共通です。
+- スナップショットはドライバ側でフィルタし、`[3] Button "ログイン" id=login_btn` 形式の
+  圧縮テキストに変換します(オンデバイスモデルのトークン制約対策)。
+
+### Link
+- [index](../index_ja.md)

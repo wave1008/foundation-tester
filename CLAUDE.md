@@ -3,13 +3,14 @@
 ## 読者の分岐(最初に判定する)
 
 - **このツールを「使う」だけ**(自分のアプリのシナリオを書いて実行したい。ツール本体は改造しない):
-  `/ftester-setup` スキルに従ってセットアップする。手順の全体像は docs/getting-started.md。
+  `/ftester-setup` スキルに従ってセットアップする。手順の全体像は docs/userDocs/getting-started_ja.md。
   **以下の保守者向けルール(委譲方針・コメント規約・i18n・ソース分割等)は適用しない。**
 - **このツール本体を「改造する」保守者**: 以下すべてが適用対象。
 
 ## ドキュメント
 
-- 受け手向けの導入(事前準備・インストール・更新・アンインストールだけ。使い方は README とスキル): docs/getting-started.md
+- **利用者向けドキュメント(Shirates 流の en/ja 対)は docs/userDocs/**(入口は `index.md` / `index_ja.md`。1ページ = `<name>.md`(英)+ `<name>_ja.md`(日)で**片方だけ変えない**。`userDocsIntegrity.test.mjs` が対の欠落・切れたリンク・言語の混線・index 未掲載を検出)。DSL の挙動を変えたら docs/commands.md と併せて該当ページも直す
+- 受け手向けの導入(事前準備・インストール・更新・アンインストールだけ。使い方は docs/userDocs とスキル): docs/userDocs/getting-started_ja.md
 - 受け手の状態判定: `Scripts/preflight.sh`(読み取りのみ。既定モードは引数なしでカレントを見て
   ready=0 / installed=2 / blocked=1 を返す。SKILL.md ステップ0・0.5 と 1:1)。
   **`--runner [--base <dir>]` はリモートランナー機としての判定**(ready=0 / needs-manual=2 /
