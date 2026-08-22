@@ -210,6 +210,7 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | — | `iosAlertHandler(alert:, button:)` | 🟢 OS のシステムアラート(権限・ATT = SpringBoard の別プロセス)を1枚ずつ予告して押す。in-app の木に載らないので `irregularHandler` では扱えない形。押せたら登録が外れ、全部外れたら監視も止まる |
 | `onScreen` ハンドラ / `onError` ハンドラ | — | ➖ **失敗時の収集はツールが持つ**(2026-08-21 判定)。`onError` 相当(スクショ・木・ログ末尾・FM トリアージ)は失敗経路が自動で残すので、利用者が書く余地は無い。`onScreen`(画面ごとの前処理)はニックネーム/画面定義の機構込みで、ftester は画面を宣言しない |
 | — | `group("名前") { }` / `setUp()` / `tearDown()` / `@Test(platform:)`(対象OS宣言。対象外は skipped 記録) | 🟢 |
+| — | `@Draft`(実装中マーク。一括実行から除外・ID 明示で実行可) | 🟢 |
 
 ## データストレージ・キャッシュ
 

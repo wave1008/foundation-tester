@@ -187,6 +187,10 @@ export const workbenchStrings = {
     ja: "(削除済み)",
     en: "(Deleted)",
   },
+  "workbench.testTree.draftDescription": {
+    ja: "(作業中)",
+    en: "(Draft)",
+  },
 
   "workbench.profileDiag.unresolvedProjectLog": {
     ja: "[ftester] プロファイル検証: 対象のテストプロジェクトを解決できませんでした。",

@@ -15,18 +15,22 @@ public struct FTScenarioDescriptor {
     public let title: String
     /// @Deleted(クラスまたはメソッド)による論理削除。一括実行から除外される
     public let deleted: Bool
+    /// @Draft(クラスまたはメソッド)による実装中マーク。一括実行から除外される
+    /// (@Deleted との違いは意味だけ。両方付いているときは deleted を優先表示する)
+    public let draft: Bool
     /// @Test(platform:)。"ios" / "android" / nil(クラスの platform: に従う)。
     /// **実効値はクラス側との合成**なので、読むときは effectivePlatform(classPlatform:) を通す
     public let platform: String?
     /// テストクラスの新規インスタンスを作ってメソッドを呼ぶクロージャ(マクロ生成)
     public let run: () -> Void
 
-    public init(name: String, title: String, deleted: Bool = false,
+    public init(name: String, title: String, deleted: Bool = false, draft: Bool = false,
                 platform: String? = nil,
                 run: @escaping () -> Void) {
         self.name = name
         self.title = title
         self.deleted = deleted
+        self.draft = draft
         self.platform = platform
         self.run = run
     }

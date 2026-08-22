@@ -14,6 +14,9 @@ import type { ListScenariosResult, ScenarioInfo } from "./model";
 
 /** @Deleted シナリオに付与する TestTag(runHandler.ts の対象解決でも参照する)。 */
 export const DELETED_TAG = new vscode.TestTag("deleted");
+/** @Draft シナリオに付与する TestTag(runHandler.ts の対象解決でも参照する)。一括実行からの除外は
+ * @Deleted と同じだが、ツリーでは通常どおり表示する(隠さない)。 */
+export const DRAFT_TAG = new vscode.TestTag("draft");
 
 /** VSCode 本体の「Hide Test」の実質無効化。メニュー項目は拡張から除去できないため、非表示状態を
  * 常時解除する(activate 時の初回 refresh とツリー再構築のたび。extension.ts の結果反映時も呼ぶ)。 */
@@ -232,6 +235,9 @@ export class FtesterTestTree implements vscode.Disposable {
       if (scenario.deleted) {
         leaf.description = t("workbench.testTree.deletedDescription");
         leaf.tags = [DELETED_TAG];
+      } else if (scenario.draft) {
+        leaf.description = t("workbench.testTree.draftDescription");
+        leaf.tags = [DRAFT_TAG];
       }
       classNode.children.add(leaf);
     }

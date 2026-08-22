@@ -13,6 +13,7 @@ final class TestClassMacroTests: XCTestCase {
                                conformances: ["FTDSL.FTTestClassDefinition"]),
         "Test": MacroSpec(type: TestMacro.self),
         "Deleted": MacroSpec(type: DeletedMacro.self),
+        "Draft": MacroSpec(type: DraftMacro.self),
     ]
 
     func test日本語クラスとシナリオの展開() {
@@ -234,6 +235,128 @@ final class TestClassMacroTests: XCTestCase {
             diagnostics: [
                 DiagnosticSpec(
                     message: "@Deleted can only be attached to a test class or a @Test method",
+                    line: 1, column: 1),
+            ],
+            macroSpecs: macros
+        )
+    }
+
+    func testDraftクラスは全シナリオが実装中() {
+        assertMacroExpansion(
+            """
+            @Draft("未実装")
+            @TestClass(app: "com.app")
+            class 新テスト {
+                @Test
+                func S0010() {
+                }
+            }
+            """,
+            expandedSource:
+            """
+            class 新テスト {
+                func S0010() {
+                }
+            }
+
+            final class __FTReg_新テスト: FTDSL.FTScenarioRegistration {
+                override class var descriptor: FTDSL.FTTestClassDescriptor {
+                    新テスト.ftDescriptor
+                }
+            }
+
+            extension 新テスト: FTDSL.FTTestClassDefinition {
+                public static var ftDescriptor: FTDSL.FTTestClassDescriptor {
+                    FTDSL.FTTestClassDescriptor(
+                        className: "新テスト",
+                        app: "com.app",
+                        platform: nil,
+                        scenarios: [
+                        FTDSL.FTScenarioDescriptor(
+                            name: "S0010",
+                            title: "",
+                            draft: true,
+                            run: {
+                                新テスト().S0010()
+                            }),
+                        ])
+                }
+            }
+            """,
+            macroSpecs: macros
+        )
+    }
+
+    func testDraftメソッドは当該シナリオのみ実装中() {
+        assertMacroExpansion(
+            """
+            @TestClass(app: "com.app")
+            class 混在 {
+                @Test
+                func S0010() {
+                }
+                @Draft
+                @Test("実装中")
+                func S0020() {
+                }
+            }
+            """,
+            expandedSource:
+            """
+            class 混在 {
+                func S0010() {
+                }
+                func S0020() {
+                }
+            }
+
+            final class __FTReg_混在: FTDSL.FTScenarioRegistration {
+                override class var descriptor: FTDSL.FTTestClassDescriptor {
+                    混在.ftDescriptor
+                }
+            }
+
+            extension 混在: FTDSL.FTTestClassDefinition {
+                public static var ftDescriptor: FTDSL.FTTestClassDescriptor {
+                    FTDSL.FTTestClassDescriptor(
+                        className: "混在",
+                        app: "com.app",
+                        platform: nil,
+                        scenarios: [
+                        FTDSL.FTScenarioDescriptor(
+                            name: "S0010",
+                            title: "",
+                            run: {
+                                混在().S0010()
+                            }),
+                        FTDSL.FTScenarioDescriptor(
+                            name: "S0020",
+                            title: "実装中",
+                            draft: true,
+                            run: {
+                                混在().S0020()
+                            }),
+                        ])
+                }
+            }
+            """,
+            macroSpecs: macros
+        )
+    }
+
+    func testDraftをクラスとメソッド以外へ付与はエラー() {
+        assertMacroExpansion(
+            """
+            @Draft
+            var x = 1
+            """,
+            expandedSource:
+            """
+            var x = 1
+            """,
+            diagnostics: [
+                DiagnosticSpec(
+                    message: "@Draft can only be attached to a test class or a @Test method",
                     line: 1, column: 1),
             ],
             macroSpecs: macros

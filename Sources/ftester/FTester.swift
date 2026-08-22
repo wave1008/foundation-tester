@@ -639,7 +639,7 @@ struct RunScenarios: AsyncParsableCommand {
     var profile: String?
 
     @Option(name: .customLong("scenario"), parsing: .upToNextOption,
-            help: "Scenario IDs to run (Class.method; a class name alone runs all of its scenarios). Repeatable; defaults to all. @Deleted scenarios run only on an exact match")
+            help: "Scenario IDs to run (Class.method; a class name alone runs all of its scenarios). Repeatable; defaults to all. @Deleted / @Draft scenarios run only on an exact match")
     var scenarios: [String] = []
 
     @Option(name: .customLong("folder"), parsing: .upToNextOption,
@@ -885,6 +885,11 @@ struct RunScenarios: AsyncParsableCommand {
             if deletedCount > 0 {
                 print("→ Excluded \(deletedCount) deleted (@Deleted) scenario(s)")
             }
+            // deleted 側と二重計上しないよう、deleted も付いているものは deleted のほうで数える
+            let draftCount = all.filter { $0.draft && !$0.deleted }.count
+            if draftCount > 0 {
+                print("→ Excluded \(draftCount) draft (@Draft) scenario(s)")
+            }
         }
         if !folders.isEmpty {
             selected = try Self.filterByFolders(selected, folders: folders,
@@ -900,7 +905,7 @@ struct RunScenarios: AsyncParsableCommand {
             print("→ Re-running the \(selected.count) scenario(s) that failed last time")
         }
         guard !selected.isEmpty else {
-            print("Nothing to run (every scenario is marked @Deleted)")
+            print("Nothing to run (every scenario is marked @Deleted or @Draft)")
             return
         }
         // LPT 投入順の適用は実行経路ごとに行う(実効 platform が確定してからでないと
@@ -1136,20 +1141,25 @@ struct RunScenarios: AsyncParsableCommand {
         }
     }
 
-    /// @Deleted(論理削除)は全件実行・クラス名展開から除外(完全一致の明示指定のみ実行可)
+    /// @Deleted(論理削除)/ @Draft(実装中)は全件実行・クラス名展開から除外
+    /// (完全一致の明示指定のみ実行可。実装しながら個別に回す運用のため)
     static func resolve(_ ids: [String], from all: [ScenarioInfo]) throws -> [ScenarioInfo] {
-        guard !ids.isEmpty else { return all.filter { !$0.deleted } }
+        guard !ids.isEmpty else { return all.filter { !$0.deleted && !$0.draft } }
         var result: [ScenarioInfo] = []
         for id in ids {
             if let exact = all.first(where: { $0.id == id }) {
                 result.append(exact)
                 continue
             }
-            let classMatches = all.filter { $0.id.hasPrefix(id + ".") && !$0.deleted }
+            let classMatches = all.filter { $0.id.hasPrefix(id + ".") && !$0.deleted && !$0.draft }
             guard !classMatches.isEmpty else {
                 if all.contains(where: { $0.id.hasPrefix(id + ".") }) {
+                    let allDeleted = all.filter { $0.id.hasPrefix(id + ".") }.allSatisfy(\.deleted)
+                    let reason = allDeleted
+                        ? "is deleted (@Deleted)"
+                        : "is deleted (@Deleted) or a draft (@Draft)"
                     throw ValidationError(
-                        "every scenario of \(id) is deleted (@Deleted)"
+                        "every scenario of \(id) \(reason)"
                         + " (an exact Class.method reference still runs it)")
                 }
                 throw ValidationError(

@@ -31,6 +31,8 @@ public struct TestClassMacro {
         let platformExpr: String?
         /// メソッドに @Deleted が付いている(クラス側の @Deleted は展開時に OR する)
         let deleted: Bool
+        /// メソッドに @Draft が付いている(クラス側の @Draft は展開時に OR する)
+        let draft: Bool
     }
 
     /// 属性リストに @Deleted(FTDSL.Deleted も可)が含まれるか
@@ -39,6 +41,15 @@ public struct TestClassMacro {
             guard let attrSyntax = attr.as(AttributeSyntax.self) else { return false }
             let name = attrSyntax.attributeName.trimmedDescription
             return name == "Deleted" || name.hasSuffix(".Deleted")
+        }
+    }
+
+    /// 属性リストに @Draft(FTDSL.Draft も可)が含まれるか
+    static func hasDraft(_ attributes: AttributeListSyntax) -> Bool {
+        attributes.contains { attr in
+            guard let attrSyntax = attr.as(AttributeSyntax.self) else { return false }
+            let name = attrSyntax.attributeName.trimmedDescription
+            return name == "Draft" || name.hasSuffix(".Draft")
         }
     }
 
@@ -94,7 +105,8 @@ public struct TestClassMacro {
             }
             result.append(ScenarioMethod(name: fn.name.text, titleExpr: titleExpr,
                                          platformExpr: platformExpr,
-                                         deleted: hasDeleted(fn.attributes)))
+                                         deleted: hasDeleted(fn.attributes),
+                                         draft: hasDraft(fn.attributes)))
         }
         return result
     }
@@ -149,6 +161,8 @@ extension TestClassMacro: ExtensionMacro {
         let methods = scenarioMethods(in: declaration, context: context)
         // クラスに @Deleted が付いていれば全シナリオが削除済み扱い
         let classDeleted = hasDeleted(cls.attributes)
+        // クラスに @Draft が付いていれば全シナリオが実装中扱い
+        let classDraft = hasDraft(cls.attributes)
 
         // setUp/tearDown があれば run クロージャに織り込む。ftRunSetUp/ftRunTearDown で包むのは
         // 記録のセクション分けと、失敗時の扱い(setUp 失敗=シナリオ中断 / tearDown=失敗後も実行)のため
@@ -156,6 +170,7 @@ extension TestClassMacro: ExtensionMacro {
         let hasTearDown = hasLifecycleMethod("tearDown", in: declaration)
         let entries = methods.map { m in
             let deletedArg = (classDeleted || m.deleted) ? "\n                deleted: true," : ""
+            let draftArg = (classDraft || m.draft) ? "\n                draft: true," : ""
             // ライフサイクル無しのときは従来どおり 1 式のまま(生成コードを増やさない)
             var body = "\(className)().\(m.name)()"
             if hasSetUp || hasTearDown {
@@ -168,7 +183,7 @@ extension TestClassMacro: ExtensionMacro {
             return """
                         FTDSL.FTScenarioDescriptor(
                             name: \(literalString(m.name)),
-                            title: \(m.titleExpr ?? "\"\""),\(deletedArg)\(platformArg)
+                            title: \(m.titleExpr ?? "\"\""),\(deletedArg)\(draftArg)\(platformArg)
                             run: { \(body) }),
             """
         }.joined(separator: "\n")
@@ -257,6 +272,26 @@ public struct DeletedMacro: PeerMacro {
                 message: FTDSLDiagnostic(
                     "@Deleted can only be attached to a test class or a @Test method",
                     id: "deleted-target")))
+            return []
+        }
+        return []
+    }
+}
+
+// MARK: - @Draft(実装中マーカー。@TestClass 側が読むだけで何も生成しない)
+
+public struct DraftMacro: PeerMacro {
+    public static func expansion(
+        of node: AttributeSyntax,
+        providingPeersOf declaration: some DeclSyntaxProtocol,
+        in context: some MacroExpansionContext
+    ) throws -> [DeclSyntax] {
+        guard declaration.is(ClassDeclSyntax.self) || declaration.is(FunctionDeclSyntax.self) else {
+            context.diagnose(Diagnostic(
+                node: Syntax(node),
+                message: FTDSLDiagnostic(
+                    "@Draft can only be attached to a test class or a @Test method",
+                    id: "draft-target")))
             return []
         }
         return []

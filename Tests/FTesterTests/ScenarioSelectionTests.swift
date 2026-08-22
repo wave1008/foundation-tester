@@ -8,8 +8,8 @@ import FTCore
 
 final class ScenarioSelectionTests: XCTestCase {
 
-    private func info(_ id: String, deleted: Bool = false) -> ScenarioInfo {
-        ScenarioInfo(id: id, title: id, app: "SampleApp", platform: nil, deleted: deleted)
+    private func info(_ id: String, deleted: Bool = false, draft: Bool = false) -> ScenarioInfo {
+        ScenarioInfo(id: id, title: id, app: "SampleApp", platform: nil, deleted: deleted, draft: draft)
     }
 
     private lazy var all: [ScenarioInfo] = [
@@ -62,6 +62,36 @@ final class ScenarioSelectionTests: XCTestCase {
         XCTAssertThrowsError(try RunScenarios.resolve(["下書き"], from: onlyDeleted)) { error in
             let message = "\(error)"
             XCTAssertTrue(message.contains("deleted"), message)
+            XCTAssertTrue(message.contains("exact Class.method"), "回避方法を示すこと: \(message)")
+        }
+    }
+
+    // MARK: - @Draft
+
+    func testEmptySelectionExcludesDraft() throws {
+        let withDraft = all + [info("実装中.S0010", draft: true)]
+        let result = try RunScenarios.resolve([], from: withDraft)
+        XCTAssertFalse(result.map(\.id).contains("実装中.S0010"))
+    }
+
+    func testExactIDIsSelectedEvenWhenDraft() throws {
+        // 完全指定は @Draft でも実行できる(実装しながら個別に試す運用のため)
+        let withDraft = all + [info("実装中.S0010", draft: true)]
+        let result = try RunScenarios.resolve(["実装中.S0010"], from: withDraft)
+        XCTAssertEqual(result.map(\.id), ["実装中.S0010"])
+    }
+
+    func testClassNameExpandsToItsScenariosExcludingDraft() throws {
+        let withDraft = [info("実装中.S0010"), info("実装中.S0020", draft: true)]
+        let result = try RunScenarios.resolve(["実装中"], from: withDraft)
+        XCTAssertEqual(result.map(\.id), ["実装中.S0010"], "クラス指定では @Draft を含めない")
+    }
+
+    func testClassWhoseScenariosAreAllDraftThrowsMessageMentioningDraft() {
+        let onlyDraft = [info("実装中.S0010", draft: true)]
+        XCTAssertThrowsError(try RunScenarios.resolve(["実装中"], from: onlyDraft)) { error in
+            let message = "\(error)"
+            XCTAssertTrue(message.contains("draft"), message)
             XCTAssertTrue(message.contains("exact Class.method"), "回避方法を示すこと: \(message)")
         }
     }

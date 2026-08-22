@@ -2,7 +2,7 @@ import XCTest
 @testable import FTDSL
 import FTCore
 
-/// テストベース下書き → Swift DSL コード。生成物の性質(@Deleted・TODO プレースホルダ・
+/// テストベース下書き → Swift DSL コード。生成物の性質(@Draft・TODO プレースホルダ・
 /// 手順文の保存)と、自然言語 → コマンド候補の写像規則を固定する。
 final class ScenarioDraftCodeGenTests: XCTestCase {
 
@@ -12,14 +12,15 @@ final class ScenarioDraftCodeGenTests: XCTestCase {
                                     generatedBy: "test")
     }
 
-    func testGeneratedClassIsDeletedAndUsesPlaceholder() {
+    func testGeneratedClassIsDraftAndUsesPlaceholder() {
         let draft = ScenarioDraft(title: "ログイン", scenes: [
             DraftScene(number: 1, title: "成功", condition: ["アプリを起動する"],
                        action: ["ログインボタンを押す"], expectation: ["ホームが表示されること"]),
         ])
         let code = render(draft)
         XCTAssertTrue(code.contains("@TestClass(app: \"com.example.app\", platform: \"ios\")"))
-        XCTAssertTrue(code.contains("@Deleted("), "下書きは一括実行から外す")
+        XCTAssertTrue(code.contains("@Draft("), "下書きは一括実行から外す")
+        XCTAssertFalse(code.contains("@Deleted("), "下書きは @Deleted ではなく @Draft を使う")
         XCTAssertTrue(code.contains("@Test(\"ログイン\")"))
         XCTAssertTrue(code.contains("scene(1, \"成功\")"))
         XCTAssertTrue(code.contains("tap(\"#TODO\")"))

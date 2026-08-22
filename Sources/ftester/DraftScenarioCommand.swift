@@ -1,5 +1,5 @@
 // テスト設計の元資料(TestProjects/<name>/docs/testbases/*.md)から Swift シナリオの**下書き**を作る。
-// 生成物は @Deleted 付き = 一括実行の対象外(セレクタが TODO のままなので当然落ちる)。
+// 生成物は @Draft 付き = 一括実行の対象外(セレクタが TODO のままなので当然落ちる)。
 // 構造化は FM(TestbaseDrafter)→ 失敗時は決定的パーサ(TestbaseOutline.parse)へフォールバックする。
 
 import ArgumentParser
@@ -7,7 +7,7 @@ import Foundation
 import FTAgent
 import FTCore
 // 下書きの生成器(ScenarioDraftCodeGen)だけは FTDSL に残る —— 出力が DSL の構文そのもので、
-// プレースホルダの規約も DSL 側の運用(@Deleted を外す手順)と一体だから
+// プレースホルダの規約も DSL 側の運用(@Draft を外す手順)と一体だから
 import FTDSL
 
 struct DraftScenarioCommand: AsyncParsableCommand {
@@ -89,7 +89,7 @@ struct DraftScenarioCommand: AsyncParsableCommand {
             quarantineDir: testProject.disabledDir, project: testProject)
         print("✅ Generated the draft: \(url.path)")
         print("   \(outline.scenes.count) scene(s) / selectors are still \(ScenarioDraftCodeGen.placeholder)")
-        print("   Next: ft_snapshot on a device, replace with real selectors, then remove the class @Deleted")
+        print("   Next: ft_snapshot on a device, replace with real selectors, then remove the class @Draft")
     }
 
     /// --testbase 明示 > docs/testbases/ に 1 ファイル > 候補を並べてエラー

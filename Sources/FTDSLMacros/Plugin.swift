@@ -7,5 +7,6 @@ struct FTDSLPlugin: CompilerPlugin {
         TestClassMacro.self,
         TestMacro.self,
         DeletedMacro.self,
+        DraftMacro.self,
     ]
 }
