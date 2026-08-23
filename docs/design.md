@@ -211,6 +211,20 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
   provision の reclaim 側)。自主終了はホスト側の pid ファイルを消せないため、provision が
   採番前に死んだランナーの pid ファイルを回収する(`BridgeLauncher.sweepStalePidFiles`。
   残すと `assignPort` が使用中とみなし採番がドリフトする)。
+- **容器推定は scrollable 申告の祖先を優先する(2026-08-23)**: `StepExecutor.clippingContainer` は
+  「同じ深さの子を2つ以上持つ直近の祖先」を容器とみなす規則(Compose iOS は xcuitest で scrollable を
+  申告できないための近似)だが、申告のある木ではそれが**カード**を容器に選ぶ(カルーセル > カード >
+  ラベル+バッジ)。クリップするのはカードではなくスクロール容器なので、祖先の連鎖に
+  `scrollable == true` があれば最も近いそれを正とする(`nearestScrollableAncestor`)。申告の無い木は
+  従来どおり。見切れ判定・回復ドラッグ・タップの座標補正・ghost 判定・MCP の RefGuard が同じ関数を
+  使うので、変えるときは 5 SUT のフル E2E で退行を見る(受け手の最小再現: 横カルーセルの右縁で
+  見切れた項目への `exist(scroll: .right)` がカードを viewport にして送れず not-found になっていた)。
+  **同じ最小再現で見つかった第2の穴**: 見切れ回復の `slowDrag` とヒント跳躍の `hintDrag` が
+  `driver.drag` を直に呼んでいて、in-app エンジンは drag を実装しない(501)ので失敗扱い → 全画面
+  スワイプに落ちていた = **利用者の既定 hybrid では見切れ回復のドラッグが一度も出ていなかった**
+  (MCP は `HybridFallbackDriver` が drag を転送するので `ft_scroll_to` は同じ画面で通った。
+  run と MCP で結果が割れたらドライバ合成の差を疑う)。座標ドラッグは
+  `StepExecutor.dragWithFallback` が唯一の入口(501 → typeDriver へ latch。空打ち emptyDrag と同じ規律)
 - **起動前にポートの LISTEN 実体を確かめる(2026-08-23)**: `scanRunningBridges` は /status 応答で
   稼働中を数えるが、in-app ブリッジは注入先アプリが背面だと TCP は受け付けて HTTP に答えない
   = ポートを掴んだまま「空き」に見える(全シミュレータはホストの loopback を共有するので

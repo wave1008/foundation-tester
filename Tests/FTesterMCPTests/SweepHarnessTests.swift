@@ -294,10 +294,13 @@ final class SweepHarnessTests: XCTestCase {
         // overlay 64 のうち 55 はカード群(#favoritesItemIdentifierContent 33 /
         // #resumeBrowsingItemIdentifierContent 9 / onboarding 6 / #reading-list 3 ほか)で、
         // **背後の要素は木に残ったまま**タップできない = 真陽性。keyboard 55 も同じ背後の本文。
-        // ghost 2(ページ冒頭の button 2つ)も同じ被覆によるもの。
         // **この画面は「オーバーレイ配下を1件ずつしか言えない」ことの witness**でもある
         // (まとめて1行で言う要約は未実装。docs/mcp-audit-rounds.md の台帳を参照)
-        "ios-browser_startpage": Counts(ghost: 2, overlay: 64, stacked: 0, misses: 0, disabled: 1,
+        // 2026-08-23: ghost 2→0 / overlay 64→66。ページ冒頭の button 2つ(通知・メニュー)は
+        // 旧の容器推定が `link (140,65 134x17)` を容器と取り違えて立てていた**誤検知**で、
+        // 容器推定が scrollable 申告の祖先(scrollView)を優先するようになって消えた。
+        // 同じ2件は被覆(overlay)として残る = 件数の移動であって検知の消失ではない
+        "ios-browser_startpage": Counts(ghost: 0, overlay: 66, stacked: 0, misses: 0, disabled: 1,
                                         offscreen: 4, warnedTappable: 67, keyboard: 55, sliver: 0,
                                         nested: 13, scrolledOut: 0),
         // Android の web は検知がほとんど出ない(a11y 木が浅く、覆う要素が申告されない)。
@@ -361,7 +364,10 @@ final class SweepHarnessTests: XCTestCase {
         // 依るもので、a11y 上の本当の親ではない可能性が高い。**判定の当否ではなく助言の当否で
         // 真陽性とした**(同型が増えたら親の復元のほうを見直すこと)。
         // overlay 14 も同じ広告と「さらに表示」による被覆で、iOS 側と同じ原因
-        "and-browser_weather_weekly": Counts(ghost: 1, overlay: 14, stacked: 0, misses: 0,
+        // 2026-08-23: ghost 1→0 / overlay 14→15。上で「親の復元に依る」と注記していた ghost は、
+        // 容器推定が scrollable 申告の祖先(WebView)を優先するようになって消えた(旧は
+        // `Link (540,2184 517x97)` を容器と取り違えていた = 同型が増えたら見直す、と書いた当のもの)
+        "and-browser_weather_weekly": Counts(ghost: 0, overlay: 15, stacked: 0, misses: 0,
                                              disabled: 0, offscreen: 0, warnedTappable: 2,
                                              keyboard: 0, sliver: 0, nested: 0, scrolledOut: 0),
         // 2026-08-13 採取(監査ラウンド5・jma.go.jp)。missingPageContentNote /
@@ -373,8 +379,11 @@ final class SweepHarnessTests: XCTestCase {
         // ⑵ **この木が持つ前後コピーの重なりそのもの**(18件。旧コピー x=349 と実体 x=359 のような
         //    ずれた二重、および x=0 へクランプされたセル同士の積み上がり)。
         //    duplicateRegionNote が名指しするのと同じ欠陥を、幾何側から数えている
-        // ghost=4 は ⚠️scroll-leftover の4行 / offscreen=5 は y<0 の行 /
-        // disabled=1・warnedTappable=1 はどちらも履歴なしの「戻る」
+        // offscreen=5 は y<0 の行 / disabled=1・warnedTappable=1 はどちらも履歴なしの「戻る」。
+        // 2026-08-23: ghost 4→0 / overlay 33→37。旧の ghost=4(「scroll-leftover の4行」と読んでいた)は
+        // 容器推定が行見出しの `staticText (0,627 27x19)` を容器と取り違えて、**画面内に描かれている
+        // 表のセル**に立てていた誤検知。scrollable 申告の祖先(scrollView)を優先して消えた。
+        // 4件は前後コピーの重なり(上の ⑵)として overlay に残る
         "and-browser_jma_notree": Counts(),
         // 2026-08-15 の監査(ブラウザ・格子)。Chrome の DNS エラーページ =
         // **ページが viewport に収まりきる**形(webViewGapNote の誤検知 witness。
@@ -386,7 +395,7 @@ final class SweepHarnessTests: XCTestCase {
         "and-browser_error_page": Counts(ghost: 0, overlay: 1, stacked: 0, misses: 0,
                                          disabled: 0, offscreen: 0, warnedTappable: 0,
                                          keyboard: 0, sliver: 0, nested: 0, scrolledOut: 0),
-        "ios-browser_jma_hscroll": Counts(ghost: 4, overlay: 33, stacked: 0, misses: 0,
+        "ios-browser_jma_hscroll": Counts(ghost: 0, overlay: 37, stacked: 0, misses: 0,
                                           disabled: 1, offscreen: 5, warnedTappable: 1,
                                           keyboard: 0, sliver: 0, nested: 0, scrolledOut: 0),
         // 2026-08-13 の監査(長い再利用リスト)。Android 設定の「すべてのアプリ」——

@@ -283,8 +283,9 @@ extension StepExecutor {
         let start = clock.now
         let duration = min(max(abs(g.toY - g.fromY) / 2500, 0.3), 0.7)
         do {
-            try await driver.drag(fromX: g.fromX, fromY: g.fromY, toX: g.toX, toY: g.toY,
-                                  pressSeconds: 0.08, durationSeconds: duration)
+            // **driver.drag を直に呼ばない**(in-app は 501。StepExecutor+Settle の dragWithFallback)
+            try await dragWithFallback(fromX: g.fromX, fromY: g.fromY, toX: g.toX, toY: g.toY,
+                                       pressSeconds: 0.08, durationSeconds: duration)
             phase.actionMs += Self.ms(clock.now - start)
             return true
         } catch {
@@ -307,8 +308,9 @@ extension StepExecutor {
         let duration = min(max(distance / Self.reverseSweepDragSpeed, 0.6), 3.0)
         defer { phase.actionMs += Self.ms(clock.now - start) }
         do {
-            try await driver.drag(fromX: g.fromX, fromY: g.fromY, toX: g.toX, toY: g.toY,
-                                  pressSeconds: 0.15, durationSeconds: duration)
+            // **driver.drag を直に呼ばない**(in-app は 501。StepExecutor+Settle の dragWithFallback)
+            try await dragWithFallback(fromX: g.fromX, fromY: g.fromY, toX: g.toX, toY: g.toY,
+                                       pressSeconds: 0.15, durationSeconds: duration)
             return true
         } catch {
             return false

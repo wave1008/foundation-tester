@@ -76,16 +76,46 @@ extension StepExecutor {
     /// `#list_rows` が y 230..692 のとき `#row_30` が `(16,206 370x43)` = **中心 227.5 が容器の外**
     /// になる。画面基準では「見えている」と判定されて探索が止まり、隙間をタップして飲まれていた
     /// (S0110 の失敗 21 件中 **12 件**がこの形)。
+    ///
+    /// **scrollable を申告している祖先があればそれを優先する**(2026-08-23・受け手の最小再現):
+    /// 横カルーセル(`other scroll`)> カード(`clickable`)> ラベル+バッジ、の木では上の規則が
+    /// **カード自身**を容器に選ぶ(同じ深さの子を2つ持つ直近の祖先だから)。右にはみ出したカードを
+    /// 画面と交差させると幅 42pt しか残らず、幅 98pt のラベルが「viewport より大きい」扱いになって
+    /// 見切れ判定が免除され、回復ドラッグに入らないまま既定の全画面スワイプ(縦容器基準)が
+    /// 横カルーセルに届かず `nothing moved` で落ちた。クリップするのはカードではなくスクロール容器
+    /// なので、**申告があるときはそれが正**。申告の無い木(Compose iOS は xcuitest で申告できない)は
+    /// 従来の規則のまま = 挙動は変わらない
     static func clippingContainer(of element: ElementInfo, in elements: [ElementInfo],
                                   inferring enabled: Bool = containerInferenceEnabled) -> FTRect? {
         guard enabled,
-              let index = elements.firstIndex(where: { $0.ref == element.ref }),
-              let ancestor = elements[..<index].last(where: { $0.depth < element.depth }),
+              let index = elements.firstIndex(where: { $0.ref == element.ref }) else { return nil }
+        if let scroller = nearestScrollableAncestor(of: element, at: index, in: elements) {
+            return scroller.frame
+        }
+        guard let ancestor = elements[..<index].last(where: { $0.depth < element.depth }),
               ancestor.frame.width > 0, ancestor.frame.height > 0
         else { return nil }
         let siblings = descendants(of: ancestor, in: elements).filter { $0.depth == element.depth }
         let inside = siblings.filter { ScrollGeometry.intersection($0.frame, ancestor.frame) != nil }
         return inside.count >= 2 ? ancestor.frame : nil
+    }
+
+    /// 祖先の連鎖(pre-order + depth: 手前に遡って depth が下がるたびに1段上の祖先)を辿り、
+    /// `scrollable == true` を申告する**最も近い**ものを返す。サイズ 0 の申告は容器として無意味なので飛ばす
+    static func nearestScrollableAncestor(of element: ElementInfo, at index: Int,
+                                          in elements: [ElementInfo]) -> ElementInfo? {
+        var depth = element.depth
+        var cursor = index
+        while cursor > 0 {
+            cursor -= 1
+            let candidate = elements[cursor]
+            guard candidate.depth < depth else { continue }
+            depth = candidate.depth
+            if candidate.scrollable == true, candidate.frame.width > 0, candidate.frame.height > 0 {
+                return candidate
+            }
+        }
+        return nil
     }
 
     /// 要素が**容器の完全に外**に報告されているか(ghost)。`clippingContainer` と違い
@@ -449,20 +479,34 @@ extension StepExecutor {
     /// 直後の tap/press が空振りする)。空打ちは補助でありこれ自体の失敗はステップの失敗にしない
     /// (両経路とも失敗したら黙って進む = 従来の `try?` と同じ扱い)
     func emptyDrag(x: Double, y: Double, toX: Double) async {
+        try? await dragWithFallback(fromX: x, fromY: y, toX: toX, toY: y,
+                                    pressSeconds: 0.05, durationSeconds: Self.emptyDragSeconds)
+    }
+
+    /// **座標ドラッグの唯一の入口**(空打ち・見切れ回復の slowDrag・ヒント跳躍の hintDrag)。
+    /// in-app エンジンは drag を一切実装しない(501)ので、hybrid では typeDriver=XCUITest へ回す。
+    /// 2026-08-23 まで slowDrag / hintDrag は `driver.drag` を直に呼んで 501 を「失敗」として
+    /// 握りつぶしていた = **in-app 主の run(利用者の既定 hybrid)では見切れ回復のドラッグが
+    /// 一度も出ていなかった**(受け手の最小再現 R0020: 容器推定を直しても全画面スワイプに落ちて
+    /// 届かず not-found。MCP は HybridFallbackDriver が drag を転送するので同じ探索が通った)。
+    /// 501 を見たら以後は latch して typeDriver から撃つ(emptyDrag と同じ規律)。
+    /// typeDriver が無いエンジン非対応はそのまま投げる(呼び手が「ドラッグできない」として扱う)
+    func dragWithFallback(fromX: Double, fromY: Double, toX: Double, toY: Double,
+                          pressSeconds: Double, durationSeconds: Double) async throws {
         func drag(_ target: AppDriver) async throws {
-            try await target.drag(fromX: x, fromY: y, toX: toX, toY: y,
-                                  pressSeconds: 0.05, durationSeconds: Self.emptyDragSeconds)
+            try await target.drag(fromX: fromX, fromY: fromY, toX: toX, toY: toY,
+                                  pressSeconds: pressSeconds, durationSeconds: durationSeconds)
         }
         if dragFallbackLatched, let td = typeDriver {
-            try? await drag(td)
+            try await drag(td)
             return
         }
         do {
             try await drag(driver)
         } catch {
-            guard DriverError.isEngineIncapable(error), let td = typeDriver else { return }
+            guard DriverError.isEngineIncapable(error), let td = typeDriver else { throw error }
             dragFallbackLatched = true
-            try? await drag(td)
+            try await drag(td)
         }
     }
 

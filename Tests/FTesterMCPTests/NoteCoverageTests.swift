@@ -156,7 +156,10 @@ final class NoteCoverageTests: XCTestCase {
         // and-overflow(0.564 まで達するが URL バーが無いので黙る=browser 限定の理由)
         "missingPageContentNote": Coverage(fixtures: ["and-browser_jma_notree"], bytes: 458),
 
-        "ghostNote": Coverage(fixtures: ["and-browser_weather_weekly", "ios-browser_jma_hscroll", "ios-browser_startpage", "ios-maps_transit_steps", "ios-maps_transit_steps_expanded", "ios-news_feed", "ios-place_guides_scrolled"], bytes: 2734),
+        // 2026-08-23: ブラウザ3画面が抜けた(7→4)。容器推定が scrollable 申告の祖先を優先するように
+        // なり、旧規則が小さな link / staticText を容器と取り違えて立てていた ghost が消えたため
+        // (SweepHarnessTests の同日の注記。残る4画面は容器の外へ出た行群の真陽性)
+        "ghostNote": Coverage(fixtures: ["ios-maps_transit_steps", "ios-maps_transit_steps_expanded", "ios-news_feed", "ios-place_guides_scrolled"], bytes: 1699),
         // 横スクロール後の前後コピーが両方木に残る形の witness(ios-browser_jma_hscroll。
         // refs 72-81 vs 158-167 = 同じ行で x が定数200ptずれた10ペア)。他の全画面は最大3
         // (and-home)で、単純なキーだけの一致では別々の表の同名見出しに誤発火するため
