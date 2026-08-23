@@ -10,7 +10,12 @@
 // flake 調査で「前回と同じ割り当て」を再現できなくなる。
 //
 // platform 適合を守らない割り当ては「走ったつもりで走っていない」を静かに作るので、
-// 適合するエントリが1つも無いシナリオは黙って落とさず throw する。
+// 適合するエントリが1つも無いシナリオは黙って落とさず throw する。**ただし「宣言した platform の
+// 台が fleet に1台も無い」シナリオは対象外**(単機の run と同じ PlatformApplicability の規律)——
+// 呼び手は partition の前に `applicability(scenarios:entryPlatforms:)` で外し、notApplicable を
+// スキップとして出す。ここで throw するのは設定ミス(platform 未宣言なのに受けるエントリが無い)だけ。
+// 2026-08-23 まで対象外も throw していたため、iOS だけの混在プロファイルに Android 宣言が1本あると
+// 1本も走らなかった(受け手報告)
 //
 // 実績が無いシナリオの見積り(unknownDurationMs)は呼び出し側が決める。プロジェクトごとに
 // 実行速度が大きく違うので、固定の秒数をここに埋め込まない(別の文脈で調整した定数の流用は
@@ -75,6 +80,23 @@ public enum FleetSplit {
                     + " or move the scenario off this fleet)"
             }
         }
+    }
+
+    /// fleet のどのエントリも持たない platform を宣言したシナリオを、partition の前に外す
+    /// (単機の run の PlatformApplicability と同じ判定を、fleet 全体の platform 和集合で掛ける)。
+    /// 全エントリが空集合なら runPlatforms が空 = 全件 runnable のまま partition へ渡り、
+    /// 設定ミスとして throw される(黙って全件スキップの緑にしない)
+    public static func applicability(
+        scenarios: [(id: String, platform: String?)], entryPlatforms: [Set<String>]
+    ) -> PlatformApplicability.Partition<(id: String, platform: String?)> {
+        PlatformApplicability.partition(scenarios, runPlatforms: runPlatforms(entryPlatforms: entryPlatforms)) {
+            $0.platform
+        }
+    }
+
+    /// fleet 全体が回す platform の和集合(スキップ理由文 PlatformApplicability.reason に渡す)
+    public static func runPlatforms(entryPlatforms: [Set<String>]) -> Set<String> {
+        entryPlatforms.reduce(into: Set<String>()) { $0.formUnion($1) }
     }
 
     /// LPT で貪欲に詰める。

@@ -96,13 +96,15 @@ enum DeviceHostRunner {
                     + " on each of \(group.deviceNames.count) device(s) (--broadcast)")
             }
         } else {
-            let buckets = try assign(project: project, groups: groups, selected: selected,
-                                     lptHistoryRuns: lptHistoryRuns)
+            let (buckets, notApplicable) = try assign(project: project, groups: groups, selected: selected,
+                                                      lptHistoryRuns: lptHistoryRuns)
+            for line in notApplicableLines(notApplicable, groups: groups) { FleetRunner.log(line) }
             active = groups.indices.compactMap { index -> (Int, Group, [String])? in
                 let ids = buckets[index].scenarioIDs
                 return ids.isEmpty ? nil : (index, groups[index], ids)
             }
             guard !active.isEmpty else {
+                // 全部が対象外なら単機と同じく 0 失敗で終える(正しく緑)
                 FleetRunner.log("==> no machine was assigned a scenario; nothing to run")
                 return 0
             }
@@ -157,10 +159,20 @@ enum DeviceHostRunner {
     /// 実績(results)からの見積りで LPT 分割する。**重みは台数**(同時に回せる本数)——
     /// 総量で均すと台数の少ないホストが最後まで残る。実績が1件も無ければ全員同じ重みになり、
     /// 台数比での本数割りに退化する(FleetRunner.unknownDurationUnitWeight と同じ考え方)。
-    /// internal: ApiRunHostFanout も同じ割り当てを使う(二重実装しない)
+    /// internal: ApiRunHostFanout も同じ割り当てを使う(二重実装しない)。
+    /// **宣言 platform の台がどの機械にも無いシナリオは対象外**(notApplicable)として割り当てから
+    /// 外して返す(単機の ProfileRunner と同じ規律。FleetSplit.applicability の宣言)。呼び手は
+    /// 単機と同じ文言でスキップを出す。子 run には渡さない —— api 経路の HostFanoutMultiplexer は
+    /// 子に渡した ID のうちイベントが来なかったものを failed に合成するため、渡すと赤になる
     static func assign(project: TestProject, groups: [Group],
                        selected: [ScenarioInfo], lptHistoryRuns: Int?)
-        throws -> [FleetSplit.Bucket] {
+        throws -> (buckets: [FleetSplit.Bucket], notApplicable: [ScenarioInfo]) {
+        let split = FleetSplit.applicability(
+            scenarios: selected.map { (id: $0.id, platform: $0.platform) },
+            entryPlatforms: groups.map(\.platforms))
+        let runnableIDs = Set(split.runnable.map(\.id))
+        let runnable = selected.filter { runnableIDs.contains($0.id) }
+        let notApplicable = selected.filter { !runnableIDs.contains($0.id) }
         let historyRuns = max(1, lptHistoryRuns ?? LPTOrdering.defaultHistoryRuns)
         let resultsDir = RunResultsStore.resultsDir(projectRoot: project.rootURL)
         let since = Date().addingTimeInterval(-30 * 24 * 60 * 60)  // LPTOrdering.historyDays と同じ窓
@@ -193,17 +205,31 @@ enum DeviceHostRunner {
             machineDurations: LPTScheduler.machineDurations(from: records),
             entryFallbackFactors: entryFallbackFactors)
         do {
-            return try FleetSplit.partition(
-                scenarios: selected.map { (id: $0.id, platform: $0.platform) },
+            let buckets = try FleetSplit.partition(
+                scenarios: runnable.map { (id: $0.id, platform: $0.platform) },
                 durations: durations,
                 entryPlatforms: groups.map(\.platforms),
                 unknownDurationMs: unknown,
                 entryCapacities: groups.map { Double($0.deviceNames.count) },
                 // 実績ゼロ = unknown が単位重みのときは context を落とす(FleetRunner と同じ理由)
                 machineContext: FleetSplit.machineContext(machineContext, ifHistoryExists: durations))
+            return (buckets, notApplicable)
         } catch let error as FleetSplit.FleetSplitError {
             throw ValidationError("profile \"\(project.name)\": \(error.localizedDescription)")
         }
+    }
+
+    /// 単機の ProfileRunner が出すスキップ行と同じ内容(1行の集計 + 1本ずつの理由)
+    static func notApplicableLines(_ notApplicable: [ScenarioInfo], groups: [Group]) -> [String] {
+        guard !notApplicable.isEmpty else { return [] }
+        let runPlatforms = FleetSplit.runPlatforms(entryPlatforms: groups.map(\.platforms))
+        var lines = ["→ Skipped \(notApplicable.count) scenario(s) declared for another platform"
+            + " (this profile covers \(runPlatforms.sorted().joined(separator: ", ")))"]
+        for info in notApplicable {
+            lines.append("    \(info.id): "
+                + PlatformApplicability.reason(declared: info.platform ?? "", runPlatforms: runPlatforms))
+        }
+        return lines
     }
 
     /// FleetRunner.buildMachineContext の同名ヘルパと同じ規律(local 鍵で facts を保存、

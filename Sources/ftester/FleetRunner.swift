@@ -144,10 +144,23 @@ enum FleetRunner {
         let unknownDurationMs = medianMs(durations.map(\.medianMs)) ?? unknownDurationUnitWeight
         let machineContext = buildMachineContext(fleet: fleet, project: project, records: records)
 
+        // 宣言 platform の台が fleet のどのエントリにも無いシナリオは対象外(単機と同じ規律)
+        let split = FleetSplit.applicability(
+            scenarios: selected.map { (id: $0.id, platform: $0.platform) }, entryPlatforms: entryPlatforms)
+        if !split.notApplicable.isEmpty {
+            let runPlatforms = FleetSplit.runPlatforms(entryPlatforms: entryPlatforms)
+            log("→ Skipped \(split.notApplicable.count) scenario(s) declared for another platform"
+                + " (this fleet covers \(runPlatforms.sorted().joined(separator: ", ")))")
+            for scenario in split.notApplicable {
+                log("    \(scenario.id): "
+                    + PlatformApplicability.reason(declared: scenario.platform ?? "", runPlatforms: runPlatforms))
+            }
+        }
+
         let buckets: [FleetSplit.Bucket]
         do {
             buckets = try FleetSplit.partition(
-                scenarios: selected.map { (id: $0.id, platform: $0.platform) },
+                scenarios: split.runnable,
                 durations: durations, entryPlatforms: entryPlatforms, unknownDurationMs: unknownDurationMs,
                 // 実績ゼロ = unknownDurationMs が単位重みのときは context を落とす(ms の offset が
                 // 重み1.0を支配して全シナリオが local へ寄る。FleetSplit.machineContext の宣言)

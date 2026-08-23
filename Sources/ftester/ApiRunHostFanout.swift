@@ -58,27 +58,31 @@ enum ApiRunHostFanout {
             throw ValidationError("no scenarios to run after filtering")
         }
 
-        let buckets = try DeviceHostRunner.assign(
+        let (buckets, notApplicable) = try DeviceHostRunner.assign(
             project: project, groups: groups, selected: selected,
             lptHistoryRuns: options.lptHistoryRuns)
+        for line in DeviceHostRunner.notApplicableLines(notApplicable, groups: groups) { logStderr(line) }
         let active = groups.indices.compactMap { index -> (index: Int, group: DeviceHostRunner.Group, ids: [String])? in
             let ids = buckets[index].scenarioIDs
             return ids.isEmpty ? nil : (index, groups[index], ids)
         }
-        // FleetSplit.partition は各エントリの platform 集合に合う本数だけ割り当てる。全滅は
-        // 「このプロファイルのどのホストもこのシナリオ集合の platform を持たない」という設定ミスで、
-        // NDJSON を1行も出さず即座に落とすほうが「全部走った」という誤読より安全
+        let dispatchStart = Date()
+        // 全部が宣言 platform の対象外なら単機の run と同じく 0/0 で終える(正しく緑)。
+        // それ以外で全滅(= 対象外でもないのに割り当て 0)は FleetSplit.partition が設定ミスとして
+        // throw 済みなので、ここへは来ない
         guard !active.isEmpty else {
-            throw ValidationError(
-                "profile \"\(profileName)\": every machine was assigned 0 scenarios"
-                + " (\(hostList)) — check that some machine's devices match the scenarios' platform")
+            writeLine(encode(ApiRunStartedEvent(total: 0)))
+            writeLine(encode(ApiRunFinishedEvent(
+                passed: 0, failed: 0,
+                testSeconds: Date().timeIntervalSince(dispatchStart), scenarioTotalSeconds: nil)))
+            return 0
         }
         for (_, group, ids) in active {
             logStderr("    \(group.hostLabel): \(ids.count) scenario(s) on \(group.deviceNames.count) device(s)")
         }
 
-        writeLine(encode(ApiRunStartedEvent(total: selected.count)))
-        let dispatchStart = Date()
+        // total は対象外を除いた本数(単機の ApiRunCommand と同じ: スキップは runStarted に数えない)
+        writeLine(encode(ApiRunStartedEvent(total: selected.count - notApplicable.count)))
 
         let binary = FleetRunner.selfBinaryPath()
         let (stream, continuation) = AsyncStream<ChildEvent>.makeStream()

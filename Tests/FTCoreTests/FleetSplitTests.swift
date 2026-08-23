@@ -65,6 +65,30 @@ final class FleetSplitTests: XCTestCase {
         }
     }
 
+    // MARK: - 対象外(宣言 platform の台が fleet に無い)
+
+    func testApplicabilitySkipsDeclaredPlatformsTheFleetCannotRun() {
+        let split = FleetSplit.applicability(
+            scenarios: [("X.android", "android"), ("X.ios", "ios"), ("X.any", nil)],
+            entryPlatforms: [["ios"], ["ios"]])
+        XCTAssertEqual(split.runnable.map(\.id), ["X.ios", "X.any"],
+                       "platform 未宣言は常に runnable・fleet が持つ platform の宣言も runnable")
+        XCTAssertEqual(split.notApplicable.map(\.id), ["X.android"],
+                       "iOS だけの fleet に Android 宣言 = 単機の run と同じく対象外(throw しない)")
+        XCTAssertNoThrow(try FleetSplit.partition(
+            scenarios: split.runnable, durations: [], entryPlatforms: [["ios"], ["ios"]],
+            unknownDurationMs: 1_000))
+    }
+
+    func testApplicabilityKeepsEverythingWhenNoEntryHasAnyPlatform() {
+        // 全エントリ空 = runPlatforms 空 → 全件 runnable のまま partition が設定ミスとして throw する
+        let split = FleetSplit.applicability(scenarios: [("X.one", "android")], entryPlatforms: [[], []])
+        XCTAssertEqual(split.runnable.map(\.id), ["X.one"])
+        XCTAssertTrue(split.notApplicable.isEmpty)
+        XCTAssertThrowsError(try FleetSplit.partition(
+            scenarios: split.runnable, durations: [], entryPlatforms: [[], []], unknownDurationMs: 1_000))
+    }
+
     func testThrowsWhenNoEntriesExistAtAll() {
         XCTAssertThrowsError(try FleetSplit.partition(
             scenarios: [("X.one", nil)], durations: [],
