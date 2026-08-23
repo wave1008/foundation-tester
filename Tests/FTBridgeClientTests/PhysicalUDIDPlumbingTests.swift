@@ -44,15 +44,21 @@ final class PhysicalUDIDPlumbingTests: FTBridgeClientSourceScanCase {
     /// 対象は**ワーカーを組み立てるファイルだけ**: そこは device.udid が既にスコープに来ている。
     /// MCP のポート直指定や runner の駆動用クライアントは UDID を持たないので対象にしない
     /// (対象にすると意図的な設計を誤検知する)
+    /// **シナリオ側も同じ**(2026-08-23): ホスト側(ProfileWorkerFactory)だけ直しても、
+    /// DSL の removeApp が通るのはシナリオプロセスの InAppDriver が持つ client で、そこが
+    /// UDID 無しだと前のシナリオがアプリを終了した直後の removeApp が同じ形で落ちる(受け手報告)
     func testWorkerBridgeClientsForwardTheSimulatorUDID() throws {
-        let relativePath = "Sources/FTAndroid/ProfileWorkerFactory.swift"
-        let source = try Self.readSource(relativePath)
         var checked = 0
         var offenders: [String] = []
-        for range in Self.argumentRanges(in: source, callPrefix: "BridgeClient(port:") {
-            checked += 1
-            if !source[range].contains("simulatorUDID") {
-                offenders.append("\(relativePath):\(Self.lineNumber(of: range.lowerBound, in: source))")
+        for relativePath in ["Sources/FTAndroid/ProfileWorkerFactory.swift",
+                             "Sources/FTScenarioRunner/ScenarioRunnerMain.swift",
+                             "Sources/FTBridgeClient/InAppDriver.swift"] {
+            let source = try Self.readSource(relativePath)
+            for range in Self.argumentRanges(in: source, callPrefix: "BridgeClient(port:") {
+                checked += 1
+                if !source[range].contains("simulatorUDID") {
+                    offenders.append("\(relativePath):\(Self.lineNumber(of: range.lowerBound, in: source))")
+                }
             }
         }
         XCTAssertGreaterThan(checked, 0, "走査対象が見つからない = パスかシグネチャの書式が変わった")

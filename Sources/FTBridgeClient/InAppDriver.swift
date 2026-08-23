@@ -12,8 +12,13 @@ public final class InAppDriver: AppDriver {
     private var lastBundleID: String?
     private var lastLaunchTimingValue: LaunchTiming?
 
+    /// **simulatorUDID を渡し切る**: install/uninstall/clearAppData は simctl 経路で、宛先を
+    /// 知らないと `/status` に聞きに行く。in-app ブリッジは対象アプリのプロセス内に住むので、
+    /// 前のシナリオがアプリを終了した直後の `removeApp` は「接続拒否」で落ちる
+    /// (受け手報告 2026-08-23: シナリオ先頭の removeApp が同じ台で連続して driver-unreachable)。
+    /// "booted" は UDID ではないので渡さない(台が複数 booted だと simctl の宛先として曖昧)
     public init(repoRoot: URL, udid: String, port: UInt16) {
-        self.client = BridgeClient(port: port)
+        self.client = BridgeClient(port: port, simulatorUDID: udid == "booted" ? nil : udid)
         self.launcher = InAppLauncher(repoRoot: repoRoot, udid: udid, port: port)
     }
 

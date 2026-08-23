@@ -266,7 +266,8 @@ struct RunScenario: AsyncParsableCommand {
                     // **uiFramework をこの締切に預けない**のは下の受け皿参照(外れても判断は変わらない)
                     let probe = BridgeClient(port: port, timeoutSeconds: Self.injectedAppProbeTimeout,
                                              host: bridgeHost ?? BridgeEndpoint.loopbackHost,
-                                             physicalUDID: physical ? udid : nil)
+                                             physicalUDID: physical ? udid : nil,
+                                             simulatorUDID: physical ? nil : udid)
                     let probeStatus = try? await probe.status(timeout: Self.injectedAppProbeTimeout)
                     // in-app/hybrid はブリッジの自己申告を使うが、**プローブの締切に判断を
                     // 預けない**(2026-08-15): この 4 秒は「suspend したアプリは答えない」を
@@ -288,7 +289,8 @@ struct RunScenario: AsyncParsableCommand {
                                 + " (iosInappEngine does not apply to devices that explicitly set engine=inapp)")
                         }
                         let client = BridgeClient(port: xcuiPort, host: bridgeHost ?? BridgeEndpoint.loopbackHost,
-                                                  physicalUDID: physical ? udid : nil)
+                                                  physicalUDID: physical ? udid : nil,
+                                                  simulatorUDID: physical ? nil : udid)
                         driver = udid.map { LaunchPreflightDriver(base: client, udid: $0) } ?? client
                         // 上で採った自己申告は**注入先アプリ**のもの。ここは別アプリを XCUITest で
                         // 駆動する分岐なので、対象アプリのマーカーで判定し直す(取れなければ不明)
@@ -331,7 +333,8 @@ struct RunScenario: AsyncParsableCommand {
                     // ホスト側の RunWorker は渡しているので install だけ成功し、シナリオ中の
                     // 実機分岐(openURL 等)だけが黙って壊れる
                     let client = BridgeClient(port: port, host: bridgeHost ?? BridgeEndpoint.loopbackHost,
-                                              physicalUDID: physical ? udid : nil)
+                                              physicalUDID: physical ? udid : nil,
+                                              simulatorUDID: physical ? nil : udid)
                     // launch は既定で simctl 化(FastLaunchDriver。実測 -14〜19%)。
                     // FT_NO_FAST_LAUNCH=1 で従来の XCUIApplication.launch() に戻せる。
                     // preflight(未インストール検査)は fast launch の外側に置く。
