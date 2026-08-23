@@ -316,8 +316,9 @@ public enum BridgeProbeOutcome: Sendable {
 }
 
 /// ワーカー・サーキットブレーカ: 同一ワーカーで通常失敗(凍結/消失に該当しない)が連続でこの回数に
-/// 達したら、原因不明でも「不調ワーカー」とみなして離脱させ現シナリオを振り直す。凍結/消失の個別
-/// プローブで拾えない不良(ブリッジのウェッジ・ANR 連発等)で死んだワーカーへ投げ続ける事故を防ぐ。
+/// 達し、**かつその間に別のレーンが通っていたら**、原因不明でも「不調ワーカー」とみなして離脱させ
+/// 現シナリオを振り直す(判定は WorkerCircuitBreaker)。凍結/消失の個別プローブで拾えない不良
+/// (ブリッジのウェッジ・ANR 連発等)で死んだワーカーへ投げ続ける事故を防ぐ
 private let WORKER_FAILURE_CIRCUIT_THRESHOLD = 3
 
 /// 1論理デバイスの復帰試行上限。復帰→即死→復帰の暴走防止
@@ -604,6 +605,9 @@ public final class RunOrchestrator {
     /// FM の実呼び出しが全滅したまま走ったシナリオ数(summary の fmUnavailableScenarios)。
     /// **合否には使わない** —— 読み手に「この緑は守りが効いていない」と伝えるための数
     private let fmUnavailable = Counter()
+    /// run 全体で通ったシナリオ数(全レーン合計)。ワーカー・サーキットブレーカの「離脱の証拠」
+    /// (WorkerCircuitBreaker の冒頭)。自レーンの通過は streak を切るので、streak 中の増分は他レーンの通過
+    private let runPasses = Counter()
 
     /// ワーカー離脱を通知(イベント yield + 劣化ワーカー収集)を1箇所に集約する。
     private func reportWorkerFailed(_ worker: RunWorker, _ message: String) async {
@@ -1005,7 +1009,7 @@ public final class RunOrchestrator {
         }
 
         var failed = 0
-        var consecutiveFailures = 0
+        var breaker = WorkerCircuitBreaker(threshold: WORKER_FAILURE_CIRCUIT_THRESHOLD)
         // 実行前のブリッジ疎通確認(プレフライト)は不採用(ユーザー決定 2026-07-18)。
         // 「取ってから判定」版は一過性の AX スパイクで9台一斉離脱、「取る前に2sで即断」版も
         // 負荷時の誤判定で品質が安定しなかった。ウェッジは失敗後の事後チェック
@@ -1035,7 +1039,8 @@ public final class RunOrchestrator {
             await videoRecording?.scenarioFinished(
                 workerLabel: worker.label, at: Date(), passed: outcome == .passed)
             if outcome == .passed {
-                consecutiveFailures = 0
+                breaker.recordPass()
+                await runPasses.increment()
                 continue
             }
             // **デバイス基盤の一過性エラー**(kAXErrorAPIDisabled 等)は結果を捨てて振り直す。
@@ -1069,11 +1074,25 @@ public final class RunOrchestrator {
                await bridgeUnreachable(worker) {
                 unusableReason = "an unreachable bridge"
             }
-            // サーキットブレーカ: 凍結/消失に当てはまらなくても連続失敗が閾値に達したら不調ワーカーとして離脱。
+            // サーキットブレーカ: 凍結/消失に当てはまらなくても連続失敗が閾値に達し、その間に別の
+            // レーンが通っていれば不調ワーカーとして離脱。誰も通っていなければ残す(全レーンが同時に
+            // 落ちている = 台ではなく run の問題。離脱させると revive を使い切って残りが未実行で赤になる)
             if unusableReason == nil {
-                consecutiveFailures += 1
-                if consecutiveFailures >= WORKER_FAILURE_CIRCUIT_THRESHOLD {
-                    unusableReason = "\(consecutiveFailures) consecutive worker failures"
+                switch breaker.recordFailure(runPasses: await runPasses.snapshot()) {
+                case .keep:
+                    break
+                case .trip(let consecutive):
+                    unusableReason = "\(consecutive) consecutive worker failures"
+                case .held(let consecutive, let announce):
+                    if announce {
+                        let message = "\(consecutive) consecutive failures on this lane while no other lane"
+                            + " has passed since the streak began — keeping the lane (a lane is retired"
+                            + " for consecutive failures only when another lane passed meanwhile)"
+                        continuation.yield(.workerLog(worker: worker.label, message: "⚠️ \(message)"))
+                        await anomalies.add(WorkerAnomalyRecord(
+                            kind: "circuitHeld", worker: Self.workerID(worker), label: worker.label,
+                            scenarioID: item.info.id, reason: message))
+                    }
                 }
             }
             if let reason = unusableReason {

@@ -92,7 +92,7 @@ jq -r 'select(.workerAnomalies == null) | .runID' results/runs/2026-08/*/run.jso
 
 | フィールド | 型 | 意味 |
 |---|---|---|
-| kind | String | `degraded`(劣化・離脱)/ `requeued`(振り直し)/ `retryLimit`(上限到達で失敗記録) |
+| kind | String | `degraded`(劣化・離脱)/ `requeued`(振り直し)/ `retryLimit`(上限到達で失敗記録)/ `circuitHeld`(連続失敗が閾値に達したが、その間に他のレーンが1本も通っていないので離脱させなかった。streak ごとに1件) |
 | worker | String? | `"<platform>:<デバイス論理名>"`。**`scenarios/*.json` の `worker` と同じ規則 = join できる** |
 | label | String | 表示用の識別子(`degradedWorkers` の1行と同一) |
 | scenarioID | String? | `requeued` / `retryLimit` の対象 |
