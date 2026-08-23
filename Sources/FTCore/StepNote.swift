@@ -118,6 +118,15 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// available なのに実呼び出しが ModelManagerError(1001) で落ち、可視判定が黙って通っていた)
     case visibilityGuardSkipped = "visibility-guard-skipped"
 
+    /// **`iosAlertHandler` の登録が無い**のに、OS のシステムアラートがアプリの前面に出ていた
+    /// (SpringBoard への1問 `GET /systemalert` で確認した事実)。in-app の操作は OS のイベント経路を
+    /// 通らないので**背面のアプリに届いてしまう** = 人手では不可能な操作が通る(受け手報告 2026-08-22)。
+    /// 聞くのは安い契機だけ: ①launch 系の直後の最初の触る操作 ②ステップが失敗したとき(1回ずつ)。
+    /// 常時監視はしない(登録がある間の毎ステップの往復は SystemUIGate が別に担う)。
+    /// 判定は変えず注記(+ 失敗文言に題名)に留める —— 閉じるのはシナリオの責務のまま。
+    /// **率が上がったら登録漏れ**: 文言に出る題名とボタンをそのまま iosAlertHandler に書ける
+    case systemAlertPresent = "system-alert-present"
+
     /// 人間向けの文言(FTRuntime がステップ説明へ括弧書きで付ける)
     public var text: String {
         switch self {
@@ -145,6 +154,9 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
         case .typeFocusRecovered:
             return "the preceding tap did not put a field in focus, so the text went to the"
                 + " field it resolved to"
+        case .systemAlertPresent:
+            return "a system alert was in front of the app with no iosAlertHandler registered for it,"
+                + " so the app behind it was operated anyway"
         case .visibilityGuardSkipped:
             return "the FM visibility check gave no verdict, so this passed on tree presence and"
                 + " on-screen geometry alone"

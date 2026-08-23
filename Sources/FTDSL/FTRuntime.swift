@@ -476,6 +476,9 @@ public final class FTDriveCore {
         currentSection = name
         sectionAssertionCount = 0
         sectionUnexecutedBlocks = 0
+        // フェーズの先頭で「登録の無いシステムアラート」を1回だけ見る契機を立てる
+        // (StepExecutor.armUnregisteredSystemAlertProbe の doc)
+        executor.armUnregisteredSystemAlertProbe()
         body()
         if name == "expectation", sectionAssertionCount == 0, sectionUnexecutedBlocks == 0 {
             warnSectionWithoutAssertions()
@@ -933,6 +936,11 @@ public final class FTDriveCore {
 
         // launch/wait/procedure 等は画面を変え得る → occlusion-guard のスクショ再利用を無効化
         executor.invalidateScreenshotCache()
+        // launch 系の直後は OS のアラート(通知・ATT・権限)が出やすい。登録の無い run でも
+        // **次の触る操作で1回だけ**前面を確かめる(StepExecutor.systemAlertProbePending)
+        if let command, ["launchApp", "restartApp", "clearAppData", "installApp"].contains(command) {
+            executor.noteAppLaunched()
+        }
         let clock = ContinuousClock()
         let start = clock.now
         let result = FTSync.runThrowing { try await body() }

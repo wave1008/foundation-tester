@@ -14,6 +14,7 @@ final class StepNoteTests: XCTestCase {
         XCTAssertEqual(StepNote.settleCapped.rawValue, "settle-capped")
         XCTAssertEqual(StepNote.heldValue.rawValue, "held-value")
         XCTAssertEqual(StepNote.visibilityGuardSkipped.rawValue, "visibility-guard-skipped")
+        XCTAssertEqual(StepNote.systemAlertPresent.rawValue, "system-alert-present")
     }
 
     // MARK: - 永続化(results/ まで運ばれるか)

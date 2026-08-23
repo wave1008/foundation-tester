@@ -765,7 +765,19 @@ iosAlertHandler(alert: "*トラッキング*||*track your activity*",
 対して意味を持たない)。
 
 **1回の呼び出し = 1枚のアラートの予告**。押せたら登録は外れ、全部外れたら監視も止まる
-(登録が無い間は判定の往復を1回も払わない)。同じアラートを2枚待つなら2回呼ぶ。
+(登録が無い間は毎ステップの往復を払わない)。同じアラートを2枚待つなら2回呼ぶ。
+
+**登録が無いときの防御(2026-08-23)**: 登録漏れでアラートが前面にあっても in-app の操作は
+背面のアプリに届いてしまうので、ツールが安い契機で1回だけ SpringBoard に聞く ——
+①`launchApp` / `restartApp` / `clearAppData` / `installApp` の直後の**最初の触る操作**
+②**ステップが失敗したとき**(時間切れ・見つからない等)。前面にあれば、操作は止めずに
+注記 `system-alert-present` を立て、文言に題名とボタンを出す(失敗なら失敗理由の末尾に
+「— a system alert (「…」, buttons: 「…」/「…」) is in front of the app and no iosAlertHandler is
+registered for it …」)。**その題名とボタンをそのまま `iosAlertHandler(alert:button:)` に書けば
+次の run から自動で押せる**。閉じるのはシナリオの責務のまま(自動では押さない)。
+確かめるのは**触る瞬間**なので、要求の直後に非同期で出るアラートと同じ瞬間に触ると「まだ無い」に
+なる —— その場合は次のフェーズの最初の操作か、失敗時の1往復で名指しされる(陽性対照:
+`TestProjects/E2E-iOS/scenarios/_disabled/96_未登録のシステムアラート.swift`)。
 **アラートが出る操作の前に呼ぶ**こと
 (`setUp()` に書けば各 `@Test` の前に登録される。`irregularHandler` と同じ寿命 = シナリオ1本)。
 

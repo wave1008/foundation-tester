@@ -234,6 +234,12 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
   `StaleBridgeStop.decide`(.inapp 記録 → simctl terminate / .pid → ランナー停止 / 記録無し →
   PortHolder)。`.inapp` の記録は ready 待ちの**前**に書く(中断で記録の無い残骸を作らない)。
   切り分けは docs/verification.md「never joined」の節
+- **登録の無いシステムアラートも黙らない(2026-08-23)**: `SystemUIGate` の毎ステップ判定は
+  `iosAlertHandler` の登録がある間だけ(費用を登録した人だけが払う。0ec9b245)。登録漏れは
+  人為ミスとして起こり続けるので、**launch 系の直後の最初の触る操作**と**ステップの失敗時**に
+  限って1回 `GET /systemalert` を聞き、前面にあれば注記 `system-alert-present` と文言(題名・
+  ボタン)を残す。止めない・閉じない(新しい検知は警告から。閉じるのはシナリオの責務)。
+  失敗文言に題名が出るので、時間切れの仕分けが「アラートだった」で即決まる
 - **起動元の自己申告と doctor の刈り取り(2026-07-30)**: 3ブリッジとも `/status` で起動元
   (`ownerRepo`。iOS xcuitest はホスト上で停止できる `ownerPid` も)と直前の無通信秒数
   (`idleSeconds`)を申告する(注入経路: xctestrun 環境変数 / `-e owner` / SIMCTL_CHILD)。

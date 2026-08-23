@@ -18,9 +18,13 @@
 // 聞く口は XCUITest ランナーの `GET /systemalert`(`SystemAlertProbeResponse`)。
 // 木を全部撮ると約 185ms のところ、**アラート無しで約 73ms**(実測 2026-08-21)。
 //
-// **働くのは `iosAlertHandler` の登録が残っている間だけ**。アラートが出る操作は
+// **毎ステップ働くのは `iosAlertHandler` の登録が残っている間だけ**。アラートが出る操作は
 // 書き手が知っているので直前に登録でき、登録の無い実行・発火し終えた後には
 // 毎ステップの往復を負わせない。
+// **登録が無いときは安い契機で1回だけ聞く**(2026-08-23・受け手報告 2026-08-22: 登録漏れのまま
+// 背面の操作が緑になった): launch 系の直後の最初の触る操作と、ステップの失敗時。
+// 止めない・閉じない。注記 `system-alert-present` と文言(題名・ボタン)だけ
+// (`StepExecutor.unregisteredSystemAlert` / `annotatedWithSystemAlert`)。
 // 呼び出し側(StepExecutor)が台帳(`SystemAlertWatchlist`)の空で門を閉じるので、
 // この型自体は登録を見ない(判定と方針を混ぜない)。
 
@@ -42,6 +46,31 @@ public enum SystemUIGate {
         let buttons = probe.buttons.filter { !$0.isEmpty }
         guard !buttons.isEmpty else { return nil }
         return "buttons: " + buttons.prefix(4).joined(separator: " / ")
+    }
+
+    /// **登録が無いとき**の名指し(題名とボタンを1つの短い句に)。受け手がそのまま
+    /// `iosAlertHandler(alert:button:)` に写せる形で出す。読めなければ nil
+    public static func describeUnregistered(_ probe: SystemAlertProbeResponse?) -> String? {
+        guard let probe, probe.present else { return nil }
+        let title = (probe.title?.isEmpty == false) ? "「\(probe.title!)」" : nil
+        let buttons = probe.buttons.filter { !$0.isEmpty }
+        let buttonText = buttons.isEmpty ? nil
+            : "buttons: " + buttons.prefix(4).map { "「\($0)」" }.joined(separator: " / ")
+        switch (title, buttonText) {
+        case (nil, nil): return nil
+        case (let t?, nil): return t
+        case (nil, let b?): return b
+        case (let t?, let b?): return "\(t), \(b)"
+        }
+    }
+
+    /// 登録が無いのに前面に出ていたときの助言(操作を止めない側の文言。失敗文言にも足す)
+    public static func unregisteredAdvice(_ described: String?) -> String {
+        let what = described.map { "a system alert (\($0))" } ?? "a system alert"
+        return "\(what) is in front of the app and no iosAlertHandler is registered for it"
+            + " — the in-app engine still reaches the app behind it, but a person could not."
+            + " Register iosAlertHandler(alert: \"*…*\", button: \"…\") before the step that"
+            + " triggers it, or dismiss it in the scenario"
     }
 
     /// 待ち切れなかったときの失敗の言い分。

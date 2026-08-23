@@ -217,6 +217,46 @@ public final class StepExecutor {
     /// 空 = 監視しない。**fallbackDriver がある(hybrid)ときだけ効く**。
     /// 登録の形・発火で外れる規則は `SystemAlertRule` / `SystemAlertWatchlist` の doc
     public var systemAlertWatchlist = SystemAlertWatchlist()
+    /// **登録の無い**システムアラートを1回だけ確かめる契機(launch 系の直後)。FTRuntime が
+    /// launchApp / restartApp 等の後に立て、次の触る操作が消費する。登録がある間は
+    /// SystemUIGate(毎ステップ)が担うのでこちらは見ない
+    public var systemAlertProbePending = false
+    /// このステップで「登録の無いアラートが前面にあった」事実(StepOutcome の注記に合流)
+    var systemAlertAdvisoryThisStep: String?
+
+    /// 次の触る操作で1回だけ SpringBoard に聞く契機を立てる。呼ぶのは FTRuntime の2箇所:
+    /// launch 系コマンドの直後(performCustom)と **CAE の各フェーズ(condition / action /
+    /// expectation)の先頭**。OS のアラートは起動直後だけでなくオンボーディングの途中
+    /// (アプリ内の事前説明を閉じた直後の通知許可・ATT)でも出るので、フェーズ単位で
+    /// 1回だけ見る(シーンあたり高々3往復 ≈ 0.2s。毎ステップの往復は登録がある間だけ)
+    public func armUnregisteredSystemAlertProbe() { systemAlertProbePending = true }
+    /// launch 系の直後(後方互換の別名)
+    public func noteAppLaunched() { armUnregisteredSystemAlertProbe() }
+
+    /// **登録が無いときだけ**1回 SpringBoard に聞き、前面に出ていれば名指しを返す。
+    /// 登録がある間は `waitOutSystemUI` / `SystemUIGate` が担うので nil(二重に聞かない)。
+    /// XCUITest ランナー(fallback)が無い構成も nil(聞く口が無い)。
+    /// 契機は2つだけ(安さのため): launch 直後の最初の触る操作 / ステップの失敗。
+    /// **操作は止めない**(閉じるのはシナリオの責務。新しい検知は警告から)
+    func unregisteredSystemAlert(phase: inout PhaseAccumulator) async -> String? {
+        guard !systemAlertWatchlist.isWatching, let fb = fallbackDriver else { return nil }
+        let clock = ContinuousClock()
+        let start = clock.now
+        let probe = try? await fb.systemAlert()
+        phase.snapshotMs += Self.ms(clock.now - start)
+        guard SystemUIGate.isCovered(probe) else { return nil }
+        noteCodesThisStep.insert(.systemAlertPresent)
+        return SystemUIGate.describeUnregistered(probe)
+    }
+
+    /// 失敗ステータスに「前面のシステムアラート」を添える(登録が無いときだけ・1往復)。
+    /// 時間切れ・操作が効かなかった失敗の原因がアラートなら、その題名が失敗文言に出る
+    func annotatedWithSystemAlert(_ status: StepResult.Status,
+                                  phase: inout PhaseAccumulator) async -> StepResult.Status {
+        guard case .failed(let message) = status else { return status }
+        guard let described = await unregisteredSystemAlert(phase: &phase) else { return status }
+        return .failed(message + " — " + SystemUIGate.unregisteredAdvice(described))
+    }
     /// hybrid 用: type アクションを XCUITest(アプリ attach)で実行する代替ドライバ。inapp が
     /// UIKit 非依存アプリ(Compose 等)で type 不能(409)なときの経路。fallbackDriver(springboard
     /// 参照・システム UI 用)とは別物。
@@ -422,17 +462,20 @@ public final class StepExecutor {
         noteCodesThisStep = []
         failureKindThisStep = nil
         elementLimitCeilingLatchedThisStep = false
+        systemAlertAdvisoryThisStep = nil
         do {
             if let action = step.action {
                 let outcome = try await executeAction(action, step: step, cached: cached, phase: &phase)
-                return StepOutcome(status: outcome.status, healedStep: outcome.healedStep,
+                // 失敗したなら、登録の無いシステムアラートが前面に無いかを1回だけ聞いて文言に添える
+                let status = await annotatedWithSystemAlert(outcome.status, phase: &phase)
+                return StepOutcome(status: status, healedStep: outcome.healedStep,
                                    healedByCache: outcome.healedByCache,
                                    timing: StepTiming(durationMs: Self.ms(clock.now - start),
                                                       snapshotMs: phase.snapshotMs,
                                                       actionMs: phase.actionMs, waitMs: phase.waitMs),
                                    driverFallback: noteWithInterrupt(
-                                       outcome.driverFallback,
-                                       failed: !Self.isSuccess(outcome.status)),
+                                       Self.joinNotes(outcome.driverFallback, systemAlertAdvisoryThisStep),
+                                       failed: !Self.isSuccess(status)),
                                    notes: collectedNotes(),
                                    // アクションは**解決した時点**で立てる(操作の成否より前)ため、
                                    // 失敗した操作の要素を持ち帰らないようここで落とす
@@ -442,10 +485,12 @@ public final class StepExecutor {
                                    failureKind: failureKind(for: outcome.status))
             }
             if let assert = step.assert {
-                let status = try await executeAssert(assert, step: step, phase: &phase)
+                var status = try await executeAssert(assert, step: step, phase: &phase)
                 // **アサートが落ちて素性が立っていなければ「期待と違った」**(定義上そう) ——
                 // 見つからない・到達できないは内側で先に立っているので上書きされない
                 if case .failed = status { markFailure(.assertion) }
+                // 時間切れの原因が前面のシステムアラートなら題名を添える(登録が無いときだけ・1往復)
+                status = await annotatedWithSystemAlert(status, phase: &phase)
                 return StepOutcome(status: status,
                                    timing: StepTiming(durationMs: Self.ms(clock.now - start),
                                                       snapshotMs: phase.snapshotMs,

@@ -27,6 +27,17 @@ extension StepExecutor {
         if let blocked = try await waitOutSystemUI(step: step, phase: &phase) {
             return StepOutcome(status: blocked)
         }
+        // **登録が無いとき**の安い防御: launch 系の直後の**最初の触る操作**で1回だけ SpringBoard に
+        // 聞き、前面にアラートがあれば注記と助言(題名・ボタン)を残す。操作は止めない
+        // (閉じるのはシナリオの責務)。2026-08-22 受け手報告: 再インストール後の通知 → ATT の
+        // 2枚が登録漏れのまま前面にあり、背面の操作が緑になっていた
+        if systemAlertProbePending,
+           Self.interactsByTouch(action) || action == "type" || action == "swipe" {
+            systemAlertProbePending = false
+            if let described = await unregisteredSystemAlert(phase: &phase) {
+                systemAlertAdvisoryThisStep = SystemUIGate.unregisteredAdvice(described)
+            }
+        }
         // ロケータ不要のアクション
         if action == "swipe" {
             let direction = FTSwipeDirection(rawValue: step.direction ?? "") ?? .up

@@ -859,6 +859,94 @@ final class StepExecutorTests: XCTestCase {
                        "1回も撃ってはいけない: \(log.entries)")
     }
 
+    // MARK: - 登録の無いシステムアラート(注記と題名。止めない)
+
+    /// **登録が無くても黙らない**: launch 直後の最初の触る操作で1回だけ SpringBoard に聞き、
+    /// 前面にあれば注記 system-alert-present と題名・ボタンを残す。操作自体は止めない
+    /// (閉じるのはシナリオの責務。受け手報告 2026-08-22: 通知 → ATT の登録漏れで背面操作が緑)
+    func testUnregisteredSystemAlertIsNotedOnTheFirstTouchAfterLaunch() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element(ref: 1, id: "target")]])
+        let fallback = FakeAppDriver(name: "fallback", log: log, snapshotElements: [[]])
+        fallback.systemAlertFrames = [SystemAlertProbeResponse(
+            present: true, title: "“App”は通知を送信します。よろしいですか？", buttons: ["許可しない", "許可"])]
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback)
+        executor.noteAppLaunched()
+        let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"), timeout: 1)
+
+        let first = await executor.execute(step)
+        let second = await executor.execute(step)
+
+        guard case .passed = first.status else {
+            return XCTFail("登録が無いときは止めない(注記だけ): \(first.status)")
+        }
+        XCTAssertTrue(first.notes.contains(.systemAlertPresent), "\(first.notes)")
+        XCTAssertTrue(first.driverFallback?.contains("通知を送信します") == true, first.driverFallback ?? "nil")
+        XCTAssertTrue(first.driverFallback?.contains("許可しない") == true, first.driverFallback ?? "nil")
+        XCTAssertTrue(log.entries.contains { $0.hasPrefix("primary.tap") }, "撃ってはいる: \(log.entries)")
+        // 契機は launch 直後の1回だけ(常時監視にしない)
+        XCTAssertEqual(fallback.systemAlertCallCount, 1, "2回目の操作で再び聞いている")
+        XCTAssertFalse(second.notes.contains(.systemAlertPresent))
+    }
+
+    /// **失敗の原因がアラートなら題名を添える**: 時間切れ(not found)のとき、登録が無くても
+    /// 1回だけ聞いて、失敗文言に題名とボタンを出す(仕分けが速くなる)
+    func testTimeoutFailureNamesTheUnregisteredSystemAlert() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
+        let fallback = FakeAppDriver(name: "fallback", log: log, snapshotElements: [[]])
+        fallback.systemAlertFrames = [SystemAlertProbeResponse(
+            present: true, title: "トラッキング", buttons: ["Appにトラッキングしないように要求", "許可"])]
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback)
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "home"), timeout: 0)
+
+        let outcome = await executor.execute(step)
+
+        guard case .failed(let msg) = outcome.status else { return XCTFail("\(outcome.status)") }
+        XCTAssertTrue(msg.contains("element not found"), msg)
+        XCTAssertTrue(msg.contains("トラッキング"), "題名が無い: \(msg)")
+        XCTAssertTrue(msg.contains("iosAlertHandler"), "次の一手(登録)を示していない: \(msg)")
+        XCTAssertTrue(outcome.notes.contains(.systemAlertPresent), "\(outcome.notes)")
+        XCTAssertEqual(outcome.failureKind, .notFound, "素性は最初の理由のまま(推測で上書きしない)")
+    }
+
+    /// 前面に何も無ければ文言も注記も変わらない(失敗時の1往復だけで、誤検知の余地を作らない)
+    func testFailureIsUnchangedWhenNoSystemAlertIsPresent() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
+        let fallback = FakeAppDriver(name: "fallback", log: log, snapshotElements: [[]])
+        fallback.systemAlertFrames = [SystemAlertProbeResponse(present: false)]
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback)
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "home"), timeout: 0)
+
+        let outcome = await executor.execute(step)
+
+        guard case .failed(let msg) = outcome.status else { return XCTFail("\(outcome.status)") }
+        XCTAssertFalse(msg.contains("iosAlertHandler"), msg)
+        XCTAssertFalse(outcome.notes.contains(.systemAlertPresent))
+    }
+
+    /// 登録がある間は既存のゲート(SystemUIGate)が担う = 二重に聞かない・注記も system-alert-present
+    /// ではなく waited-for-system-ui / system-ui-covered の側に出る
+    func testRegisteredWatchlistKeepsTheExistingGateAndDoesNotDoubleProbe() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element(ref: 1, id: "target")]])
+        let fallback = FakeAppDriver(name: "fallback", log: log, snapshotElements: [[]])
+        fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true, title: "権限",
+                                                               buttons: ["許可"])]
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback)
+        executor.systemAlertWatchlist.register(SystemAlertRule(alert: "*権限*", button: "一致しない"))
+        executor.noteAppLaunched()
+        let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"), timeout: 1)
+
+        let outcome = await executor.execute(step)
+
+        XCTAssertEqual(outcome.failureKind, .systemUICovered)
+        XCTAssertFalse(outcome.notes.contains(.systemAlertPresent), "登録がある間は既存ゲートの注記だけ")
+    }
+
     /// 覆いが**消えれば普通に撃つ**(即失敗にしない = 過渡的なアラートで赤くしない)。
     /// 待ったことは注記に残す
     func testActionProceedsOnceTheSystemUIGoesAway() async throws {
