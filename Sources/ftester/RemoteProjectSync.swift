@@ -25,7 +25,8 @@ enum RemoteProjectSync {
                                   issuer: issuer)
         let args = RemoteTransferPlan.rsyncArgs(
             project: project, localProjectsDir: localProjectsDir,
-            layout: layout, sshTarget: resolved.hostSpec.sshTarget)
+            layout: layout, sshTarget: resolved.hostSpec.sshTarget,
+            ignore: RemoteTransferPlan.projectIgnore(project: project, localProjectsDir: localProjectsDir))
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/rsync")
         process.arguments = args

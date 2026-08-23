@@ -33,7 +33,9 @@ export const hookScaffoldStrings = {
 #   FT_ANDROID_DEVICES  同上、Android のぶん
 #
 # ワークスペースは丸ごとランナー機へ運ばれる。compose ファイルや初期データは ../data/ に
-# 置いておけば向こうにも届く。
+# 置いておけば向こうにも届く。逆に、起こしたサービスが状態やログをワークスペースの中に書くなら、
+# そのパスをワークスペースの .ftester-transfer-ignore に書く(rsync の --exclude の書き方。
+# 置いたディレクトリ起点)。書かないと次のディスパッチで手元の内容がランナー機のものを上書きする。
 #
 # テスト対象アプリからサービスへ届かせる方法: iOS シミュレータからはこの機械が 127.0.0.1、
 # Android エミュレータからは 10.0.2.2 に見える。Android 実機は
@@ -77,7 +79,10 @@ set -eu
 #   FT_ANDROID_DEVICES  same, for Android
 #
 # The whole workspace is copied to the remote runner, so keep compose files and fixtures
-# under ../data/ and they will be there too.
+# under ../data/ and they will be there too. Conversely, if a service you start writes its
+# state or logs inside the workspace, list those paths in the workspace's
+# .ftester-transfer-ignore (rsync --exclude syntax, relative to the file's directory) —
+# otherwise the next dispatch overwrites the runner's copy with this machine's.
 #
 # Reaching the service from the app under test: an iOS simulator sees this machine as
 # 127.0.0.1, an Android emulator as 10.0.2.2, and a physical Android device needs

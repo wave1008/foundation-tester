@@ -318,10 +318,12 @@ struct RemoteRunDispatcher {
 
     private func transfer(project: TestProject, layout: RemoteLayout) throws {
         log("==> transferring \(project.name) to \(host.sshTarget)")
+        let localProjectsDir = project.rootURL.deletingLastPathComponent().path
+        let ignore = RemoteTransferPlan.projectIgnore(project: project.name, localProjectsDir: localProjectsDir)
+        logTransferIgnore(ignore)
         let args = ["rsync"] + RemoteTransferPlan.rsyncArgs(
-            project: project.name,
-            localProjectsDir: project.rootURL.deletingLastPathComponent().path,
-            layout: layout, sshTarget: host.sshTarget)
+            project: project.name, localProjectsDir: localProjectsDir,
+            layout: layout, sshTarget: host.sshTarget, ignore: ignore)
         let status = try runInherited(args)
         guard status == 0 else {
             throw RemoteDispatchError.remoteSetupFailed("rsync exited with status \(status)")
@@ -366,15 +368,25 @@ struct RemoteRunDispatcher {
             return remotePath
         case .outsideProject:
             log("==> mirroring the workspace to \(host.sshTarget)")
+            let ignore = RemoteTransferPlan.workspaceIgnore(localWorkspaceDir: localWorkspaceURL.path)
+            logTransferIgnore(ignore)
             let args = ["rsync"] + RemoteTransferPlan.workspaceRsyncArgs(
                 localWorkspaceDir: localWorkspaceURL.path, project: project.name,
-                layout: layout, sshTarget: host.sshTarget)
+                layout: layout, sshTarget: host.sshTarget, ignore: ignore)
             let status = try runInherited(args)
             guard status == 0 else {
                 throw RemoteDispatchError.remoteSetupFailed("workspace rsync exited with status \(status)")
             }
             return layout.workspaceDir(project.name)
         }
+    }
+
+    /// 除外が効いているかを受け手が転送ログで確かめられるようにする(宣言があるときだけ1行。
+    /// 黙って効くと「ランナーの台帳がまだ上書きされる」ときに宣言が読まれたのか分からない)
+    private func logTransferIgnore(_ ignore: TransferIgnore.Scan) {
+        guard !ignore.files.isEmpty else { return }
+        log("==> \(TransferIgnore.fileName): \(ignore.excludePatterns.count) exclude pattern(s)"
+            + " from \(ignore.files.joined(separator: ", ")) (kept out of the transfer and of --delete)")
     }
 
     // MARK: - 4. 実行(行単位で中継)

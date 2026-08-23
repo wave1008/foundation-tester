@@ -246,31 +246,59 @@ public struct RemoteLayout: Equatable, Sendable {
 
 public enum RemoteTransferPlan {
 
+    /// プロジェクト転送がルート直下で除外する名前(成果物側。実行のたびにリモートで再生成される・
+    /// 回収は別経路)。rsyncArgs の `--exclude /<名前>` と projectIgnore の走査の両方がこれを使う
+    public static let projectTopLevelExcludes = ["reports", "results", ".ftester"]
+    /// ワークスペースのミラーが階層を問わず除外する名前(.git = ワークスペース自体を git 管理する
+    /// ケース / .DS_Store・node_modules = ビルドツール類の一時生成物)
+    public static let workspaceExcludesAnywhere = [".git", ".DS_Store", "node_modules"]
+
+    /// プロジェクト転送の対象ツリーにある `.ftester-transfer-ignore` を読む(rsyncArgs の `ignore`
+    /// に渡す)。**3つの呼び手(run のディスパッチ・モニター/デバイスの fan-out・ミラー)が
+    /// 同じ走査を使う** —— 片方だけ読まないと「run では残るのに fan-out の転送で台帳が消える」になる
+    public static func projectIgnore(project: String, localProjectsDir: String) -> TransferIgnore.Scan {
+        TransferIgnore.scan(
+            transferRoot: URL(fileURLWithPath: "\(localProjectsDir)/\(project)"),
+            skipTopLevel: Set(projectTopLevelExcludes), skipAnywhere: [])
+    }
+
+    public static func workspaceIgnore(localWorkspaceDir: String) -> TransferIgnore.Scan {
+        TransferIgnore.scan(
+            transferRoot: URL(fileURLWithPath: localWorkspaceDir),
+            skipTopLevel: [], skipAnywhere: Set(workspaceExcludesAnywhere))
+    }
+
     /// rsync 引数(実行ファイル名は含まない)。順序・末尾スラッシュの有無は rsync の
-    /// ディレクトリ同一視の契約なので厳守する。reports/results/.ftester は成果物側
-    /// (実行のたびにリモートで再生成される・回収は別経路)なので除外する
+    /// ディレクトリ同一視の契約なので厳守する。`ignore` は projectIgnore で読んだ結果
+    /// (既定値を置かない = 呼び手が読み忘れるとコンパイルで止まる)。**除外は受け側の同じパスを
+    /// `--delete` から守る**(TransferIgnore の冒頭。ここが `--exclude` に翻訳する理由)
     public static func rsyncArgs(project: String, localProjectsDir: String,
-                                 layout: RemoteLayout, sshTarget: String) -> [String] {
-        [
-            "-az", "--delete",
-            "--exclude", "/reports", "--exclude", "/results", "--exclude", "/.ftester",
+                                 layout: RemoteLayout, sshTarget: String,
+                                 ignore: TransferIgnore.Scan) -> [String] {
+        var args = ["-az", "--delete"]
+        for name in projectTopLevelExcludes { args += ["--exclude", "/" + name] }
+        for pattern in ignore.excludePatterns { args += ["--exclude", pattern] }
+        args += [
             "\(localProjectsDir)/\(project)/",
             "\(sshTarget):\(layout.projectDir(project))/",
         ]
+        return args
     }
 
     /// `remoteControl.workspace` のミラー(RemoteRunDispatcher が宣言済みのときだけ呼ぶ)。
     /// アプリのパッケージ(.app/.apk)を運ぶための rsync なので `-az --delete` で手元と揃える
-    /// (rsyncArgs と同じ規律)。除外は .git(ワークスペース自体を git 管理するケース)・
-    /// .DS_Store・node_modules(ビルドツール類の一時生成物)——先頭 "/" を付けず、階層を問わず除外する
+    /// (rsyncArgs と同じ規律)。`ignore` は workspaceIgnore で読んだ結果
     public static func workspaceRsyncArgs(localWorkspaceDir: String, project: String,
-                                          layout: RemoteLayout, sshTarget: String) -> [String] {
-        [
-            "-az", "--delete",
-            "--exclude", ".git", "--exclude", ".DS_Store", "--exclude", "node_modules",
+                                          layout: RemoteLayout, sshTarget: String,
+                                          ignore: TransferIgnore.Scan) -> [String] {
+        var args = ["-az", "--delete"]
+        for name in workspaceExcludesAnywhere { args += ["--exclude", name] }
+        for pattern in ignore.excludePatterns { args += ["--exclude", pattern] }
+        args += [
             "\(localWorkspaceDir)/",
             "\(sshTarget):\(layout.workspaceDir(project))/",
         ]
+        return args
     }
 }
 

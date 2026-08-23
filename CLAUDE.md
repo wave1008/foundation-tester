@@ -189,7 +189,13 @@
   絞り込み後のもの)/ **③片付けは defer だけに頼らない** —— setup の前に
   `.ftester/hooks/<pid>.json` を置き、次の run 開始時と `ftester hooks reap`(`remote clean` が
   撃つ)が死んだ pid のぶんを代わりに実行する(**生存判定は pid だけ。mtime を見ない** =
-  数十分の run を「古い」と誤判定して動いている DB を落とさない)
+  数十分の run を「古い」と誤判定して動いている DB を落とさない)。
+  **転送から外すのは `.ftester-transfer-ignore`**(2026-08-23。転送対象ツリーのどこにでも置ける・
+  rsync の `--exclude` 書式・置いたディレクトリ起点。`FTCore.TransferIgnore`)。**rsync の `-F`
+  (dir-merge)は使わない** —— macOS の openrsync では dir-merge が `--delete` から受け側を守らず、
+  ランナー機の台帳が消える(実験で確認)。**3つの転送(run ディスパッチ・fan-out の
+  `RemoteProjectSync`・プロジェクト外ミラー)が同じ走査を通る**(`rsyncArgs` の `ignore:` は
+  既定値無し = 読み忘れはコンパイルで止まる)
 - 設計書(アーキテクチャ・Swift DSL 仕様・セレクタ記法・プロファイル): docs/design.md
 - 性能チューニング(調整ノブ・不採用施策と再検討条件・計測手順): docs/performance-tuning.md
 - 検証の詳細(flake/性能の判定規律・ベータ整合・全滅時の切り分け・e2e.sh のオプション): docs/verification.md

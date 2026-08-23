@@ -270,12 +270,41 @@ final class RemoteDispatchTests: XCTestCase {
         let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
         XCTAssertEqual(
             RemoteTransferPlan.rsyncArgs(project: "E2E", localProjectsDir: "/local/Projects",
-                                        layout: layout, sshTarget: "user@host"),
+                                        layout: layout, sshTarget: "user@host", ignore: .none),
             [
                 "-az", "--delete",
                 "--exclude", "/reports", "--exclude", "/results", "--exclude", "/.ftester",
                 "/local/Projects/E2E/",
                 "user@host:/Users/ci/ftester-runner/users/alice/work/TestProjects/E2E/",
+            ])
+    }
+
+    /// `.ftester-transfer-ignore` の翻訳結果は固定除外の**後・送り元/宛先パスの前**に並ぶ
+    func testRsyncArgsAppendsTransferIgnorePatternsAfterFixedExcludes() {
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
+        let ignore = TransferIgnore.Scan(files: ["workspace/.ftester-transfer-ignore"],
+                                         excludePatterns: ["/workspace/*.log", "/workspace/**/*.log"])
+        XCTAssertEqual(
+            RemoteTransferPlan.rsyncArgs(project: "E2E", localProjectsDir: "/local/Projects",
+                                        layout: layout, sshTarget: "user@host", ignore: ignore),
+            [
+                "-az", "--delete",
+                "--exclude", "/reports", "--exclude", "/results", "--exclude", "/.ftester",
+                "--exclude", "/workspace/*.log", "--exclude", "/workspace/**/*.log",
+                "/local/Projects/E2E/",
+                "user@host:/Users/ci/ftester-runner/users/alice/work/TestProjects/E2E/",
+            ])
+        XCTAssertEqual(
+            RemoteTransferPlan.workspaceRsyncArgs(
+                localWorkspaceDir: "/local/ws", project: "E2E", layout: layout, sshTarget: "user@host",
+                ignore: TransferIgnore.Scan(files: [".ftester-transfer-ignore"],
+                                            excludePatterns: ["/.stub-leases/", "/**/.stub-leases/"])),
+            [
+                "-az", "--delete",
+                "--exclude", ".git", "--exclude", ".DS_Store", "--exclude", "node_modules",
+                "--exclude", "/.stub-leases/", "--exclude", "/**/.stub-leases/",
+                "/local/ws/",
+                "user@host:/Users/ci/ftester-runner/users/alice/work/workspace/E2E/",
             ])
     }
 
@@ -288,7 +317,7 @@ final class RemoteDispatchTests: XCTestCase {
         XCTAssertEqual(
             RemoteTransferPlan.workspaceRsyncArgs(
                 localWorkspaceDir: "/local/sut-ec-mobile-workspace", project: "E2E",
-                layout: layout, sshTarget: "user@host"),
+                layout: layout, sshTarget: "user@host", ignore: .none),
             [
                 "-az", "--delete",
                 "--exclude", ".git", "--exclude", ".DS_Store", "--exclude", "node_modules",
