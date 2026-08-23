@@ -2539,6 +2539,32 @@ FM は死んだら**再起動まで回復しない**ので、死んだ後も呼�
 - **Android エミュレータは run が自動起動しない**(iOS シミュレータは供給が起こす)。
   再起動後は `ftester devices up --project <名> --profile <名>` を先に回す
 
+## iOS が `never joined the run` / 「the in-app bridge did not respond in time」で供給に失敗したら
+
+**まず残骸の in-app ブリッジを疑う**(受け手報告 2026-08-22・こちらでも 2026-08-23 に再現)。
+全シミュレータはホストの loopback を共有するのでブリッジのポートは**台を跨いで一意**だが、
+in-app ブリッジは注入先アプリが**前面のときしか /status に答えない**。別の台・別のクローン・
+中断された前の run のアプリが背面でポートを掴んだままだと、`scanRunningBridges` に映らず
+採番では空きに見え、新しい注入が bind できずに「did not respond in time: The network
+connection was lost」で落ちる(その台は never joined = 準備できていない台を緑にしない正しい挙動)。
+
+2026-08-23 からツールが自分で扱う(`BridgeProvisioner.executeBridge`):
+- **これから使うポートを LISTEN している実体を記録の有無に関わらず `PortHolder` で確かめ**、
+  シミュレータ内アプリ/残骸ランナー/iproxy なら止めてから注入する
+  (ログ `🔧 … stopped a leftover bridge holding port N (pid M: …)`)
+- 止められない無関係プロセスなら **in-app は撃たずに落とす**(`port N is in use by another
+  process (pid M: …)`)。xcuitest は従来どおり bindFailed の検知に任せる
+- 再利用できない旧ブリッジの停止手段は `StaleBridgeStop.decide`(記録無し → PortHolder。
+  以前は `.pid` 経路へ流して「no .ftester/bridge.pid」で止めそこねていた)
+- 注入後に ready にならなかったときは**占有者を名指し**して落とす(`PortHolder.describe`)。
+  起動したアプリは terminate し記録も消す
+- `.inapp` の記録は **ready を待つ前に書く**(待っている間に run が中断されても記録が残る)
+
+それでも手で見るなら `lsof -nP -iTCP:<port> -sTCP:LISTEN` で占有 pid を出し、シミュレータ内
+アプリなら `xcrun simctl terminate <udid> <bundleID>`(`pkill -f <アプリ名>` でも止まるが、
+同名アプリの現役ブリッジを巻き添えにする)。**`port` はデバイス指定のキーではない**
+(`runs/*.json` の devices に書いても "unknown key" で無視される。採番は自動)。
+
 ## macOS / Xcode ベータの整合
 
 - macOS ベータを更新したら Xcode も同じベータへ揃えてフルリビルド。FoundationModels の ABI 不整合で

@@ -522,6 +522,11 @@
   凍結機をレーンから外して残りで走るのと同じ思想で、**供給は部分失敗を許容し全滅のときだけ throw**
   する(`BridgeProvisioner.resolveOutcomes` = 純粋関数・規則はテストで固定)。
   同型は「N個中1個の失敗を致命にしていないか」——供給・インストール・回復の各段で確認する
+- **ブリッジを起動する前に「そのポートを今 LISTEN している実体」を確かめる**(2026-08-23)。
+  `/status` 応答だけで稼働中を数えると、背面に回った in-app ブリッジ(TCP 受付・HTTP 無応答)が
+  掴んだポートを「空き」と採番して新しい注入が衝突する(全シミュレータは loopback を共有 =
+  ポートは台を跨いで一意)。`PortHolder.stopIfOwnedBridge` / `describe` と `StaleBridgeStop.decide`
+  が定義元。**失敗は占有者を名指しして落とす**(「応答が無い」だけでは残骸が原因だと分からない)
 - **回復のたびに label(ポート)は変わる**。回復を注入するときは**その時点のワーカー一覧を渡す**
   (`BlankWorkerTriage` の `recover` は第2引数で現在の一覧を渡す)。最初の一覧を捕まえたままだと
   2回目の試行で新しい label を引けず、`frozen devices have no iOS simulator udid` で必ず失敗する

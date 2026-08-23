@@ -211,6 +211,15 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
   provision の reclaim 側)。自主終了はホスト側の pid ファイルを消せないため、provision が
   採番前に死んだランナーの pid ファイルを回収する(`BridgeLauncher.sweepStalePidFiles`。
   残すと `assignPort` が使用中とみなし採番がドリフトする)。
+- **起動前にポートの LISTEN 実体を確かめる(2026-08-23)**: `scanRunningBridges` は /status 応答で
+  稼働中を数えるが、in-app ブリッジは注入先アプリが背面だと TCP は受け付けて HTTP に答えない
+  = ポートを掴んだまま「空き」に見える(全シミュレータはホストの loopback を共有するので
+  ポートは台を跨いで一意)。`executeBridge` は記録の有無に関わらず `PortHolder.stopIfOwnedBridge`
+  で占有者を確かめ、自分たちの資産(シミュレータ内アプリ・残骸ランナー・iproxy)なら止め、
+  無関係なら in-app は撃たずに `portInUse` で名指しして落とす。旧ブリッジの停止手段は
+  `StaleBridgeStop.decide`(.inapp 記録 → simctl terminate / .pid → ランナー停止 / 記録無し →
+  PortHolder)。`.inapp` の記録は ready 待ちの**前**に書く(中断で記録の無い残骸を作らない)。
+  切り分けは docs/verification.md「never joined」の節
 - **起動元の自己申告と doctor の刈り取り(2026-07-30)**: 3ブリッジとも `/status` で起動元
   (`ownerRepo`。iOS xcuitest はホスト上で停止できる `ownerPid` も)と直前の無通信秒数
   (`idleSeconds`)を申告する(注入経路: xctestrun 環境変数 / `-e owner` / SIMCTL_CHILD)。

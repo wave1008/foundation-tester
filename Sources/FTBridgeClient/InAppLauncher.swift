@@ -114,14 +114,18 @@ public struct InAppLauncher {
         let actionStart = clock.now
         try launchViaCoreSimOrSimctl(bundleID: bundleID, environment: env)
         let actionMs = continuousClockMs(clock.now - actionStart)
-        let waitStart = clock.now
-        try await waitUntilReady()
-        let waitMs = continuousClockMs(clock.now - waitStart)
         // pid ファイルを持たない in-app ブリッジを bridge down 系コマンドが後始末できるよう記録。
+        // **ready を待つ前に書く**(2026-08-23): 待っている間に run が中断される・アプリの起動が
+        // 遅れて期限を超えると、注入済みで後から待受を始めるアプリが**記録の無い残骸**として
+        // 残り、次の供給がそのポートを空きと誤認して衝突する(受け手報告の never joined)。
+        // 失敗時は呼び手(BridgeProvisioner)が terminate と記録の削除まで行う。
         // **sourceDigest も残す**: これが無いと、次の run が「ソースが変わったのに稼働中の
         // ブリッジを再利用する」= 変更が1度も実行されないまま緑になる(InAppBridgeState 冒頭)
         InAppBridgeState.write(stateDir: stateDir, port: port, udid: udid, bundleID: bundleID,
                                sourceDigest: try? BridgeSourceSet.inApp.digest(repoRoot: repoRoot))
+        let waitStart = clock.now
+        try await waitUntilReady()
+        let waitMs = continuousClockMs(clock.now - waitStart)
         return LaunchTiming(actionMs: actionMs, waitMs: waitMs)
     }
 

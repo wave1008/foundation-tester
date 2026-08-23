@@ -13,6 +13,28 @@ public enum PortHolderOutcome {
 }
 
 public enum PortHolder {
+    /// port を LISTEN しているプロセスの説明("pid N: <command>")。**止めない**(原因の名指し専用)。
+    /// 誰も LISTEN していなければ nil。
+    /// in-app ブリッジは注入先アプリが背面に回ると TCP は受け付けるが HTTP に答えないので、
+    /// 注入の失敗を「応答が無い」とだけ言うと残骸が原因だと分からない(受け手報告 2026-08-22/23)
+    public static func describe(port: UInt16) -> String? {
+        lookup(port: port).map { "pid \($0.pid): \($0.command)" }
+    }
+
+    /// lsof → ps で LISTEN しているプロセスを引く。lsof が見つけた直後に死んだ等は nil
+    private static func lookup(port: UInt16) -> (pid: Int32, command: String)? {
+        guard let lsof = try? Shell.run(["lsof", "-nP", "-tiTCP:\(port)", "-sTCP:LISTEN"]),
+              lsof.status == 0,
+              let pidLine = lsof.output.split(separator: "\n")
+                .first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }),
+              let pid = Int32(pidLine.trimmingCharacters(in: .whitespaces)) else {
+            return nil
+        }
+        guard let ps = try? Shell.run(["ps", "-p", String(pid), "-o", "command="]),
+              ps.status == 0 else { return nil }
+        return (pid, ps.output.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
     /// port を LISTEN しているプロセスを特定し、以下のどちらかに一致する場合だけ後始末する:
     /// - シミュレータ内アプリ(コマンドパスが CoreSimulator/Devices と data/Containers/Bundle を
     ///   両方含む)。同ポートの .inapp があれば simctl terminate(in-app ブリッジの正しい後始末。
@@ -21,19 +43,7 @@ public enum PortHolder {
     /// それ以外(.foreign)は kill しない。
     public static func stopIfOwnedBridge(port: UInt16, stateDir: URL,
                                          derivedDataPath: URL) -> PortHolderOutcome {
-        guard let lsof = try? Shell.run(["lsof", "-nP", "-tiTCP:\(port)", "-sTCP:LISTEN"]),
-              lsof.status == 0,
-              let pidLine = lsof.output.split(separator: "\n")
-                .first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }),
-              let pid = Int32(pidLine.trimmingCharacters(in: .whitespaces)) else {
-            return .notFound
-        }
-        guard let ps = try? Shell.run(["ps", "-p", String(pid), "-o", "command="]),
-              ps.status == 0 else {
-            // lsof が見つけた直後に死んだ等。占有者は既にいない
-            return .notFound
-        }
-        let command = ps.output.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let (pid, command) = lookup(port: port) else { return .notFound }
         let description = "pid \(pid): \(command)"
 
         if command.contains("/CoreSimulator/Devices/"), command.contains("/data/Containers/Bundle/") {

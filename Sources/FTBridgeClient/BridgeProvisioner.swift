@@ -559,15 +559,22 @@ public struct BridgeProvisioner {
                     preinstallAppPath: preinstallAppPath, log: log)
             }
         case .launch(let port, let needsInstall, let stopStalePort, let reclaimInApp):
+            let stateDir = repoRoot.appendingPathComponent(".ftester")
             if let stopStalePort {
-                // inapp(pid ファイル無し・.inapp 状態ファイルあり)は simctl terminate で、
-                // xcuitest(pid ファイルあり)は stopAndWait で止める
-                let stalePath = InAppBridgeState.url(
-                    stateDir: repoRoot.appendingPathComponent(".ftester"), port: stopStalePort)
-                if FileManager.default.fileExists(atPath: stalePath.path) {
+                // 止める手段は記録の有無で決める(StaleBridgeStop。純粋関数でテスト固定):
+                // inapp(.inapp あり)は simctl terminate / xcuitest(.pid あり)は stopAndWait /
+                // **どちらの記録も無い**= 別クローンが起動した・記録前に中断された in-app ブリッジは
+                // ポートの LISTEN 実体を PortHolder で止める(以前はここを .pid 経路へ流して
+                // 「no .ftester/bridge.pid」で止めそこね、掴んだままのポートと衝突していた)
+                let stalePath = InAppBridgeState.url(stateDir: stateDir, port: stopStalePort)
+                let pidPath = stateDir.appendingPathComponent("bridge-\(stopStalePort).pid")
+                switch StaleBridgeStop.decide(
+                    hasInAppRecord: FileManager.default.fileExists(atPath: stalePath.path),
+                    hasPidFile: FileManager.default.fileExists(atPath: pidPath.path)) {
+                case .terminateRecordedInApp:
                     log("→ \(name): terminating an in-app bridge injected into a different app (port \(stopStalePort)) and restarting")
                     InAppBridgeState.terminateAndRemove(at: stalePath)
-                } else {
+                case .stopRunner:
                     log("→ \(name): stopping a bridge from an older build (port \(stopStalePort)) and restarting")
                     do {
                         try await BridgeLauncher(repoRoot: repoRoot, device: sim.udid,
@@ -576,25 +583,45 @@ public struct BridgeProvisioner {
                     } catch {
                         log("⚠️ \(name): failed to stop the stale bridge (port \(stopStalePort)): \(error.localizedDescription)")
                     }
+                case .stopPortHolder:
+                    switch PortHolder.stopIfOwnedBridge(
+                        port: stopStalePort, stateDir: stateDir,
+                        derivedDataPath: stateDir.appendingPathComponent("DerivedData")) {
+                    case .stopped(let holder):
+                        log("🔧 \(name): stopped an untracked bridge from an older build on port \(stopStalePort) (\(holder))")
+                    case .notFound:
+                        log("→ \(name): the older bridge on port \(stopStalePort) is no longer listening")
+                    case .foreign(let holder):
+                        log("⚠️ \(name): could not stop the older bridge on port \(stopStalePort) — it is held by \(holder)")
+                    }
                 }
             }
-            if reclaimInApp {
-                // stale .inapp の記録は「今このポートを掴んでいる」保証がない(同アプリが別ポートの
-                // 現役ブリッジとして生きていることがあり、記録どおりに terminate すると稼働中ブリッジを
-                // 誤殺して実行中ワーカーが連鎖死する。実害あり)。実際に LISTEN されている場合のみ
-                // PortHolder が占有者の実体を確認して停止し、無人なら記録ファイルの削除だけ行う
-                let stateDir = repoRoot.appendingPathComponent(".ftester")
-                switch PortHolder.stopIfOwnedBridge(
-                    port: port, stateDir: stateDir,
-                    derivedDataPath: stateDir.appendingPathComponent("DerivedData")) {
-                case .stopped(let holder):
-                    log("🔧 \(name): stopped a leftover in-app bridge on port \(port) (\(holder))")
-                case .notFound:
-                    break
-                case .foreign(let holder):
-                    // 起動は bindFailed → portInUse 経路が拾って明示エラーになる
-                    log("⚠️ \(name): port \(port) is held by an unrelated process (\(holder))")
+            // **これから使うポートを今 LISTEN しているプロセス**を、記録の有無に関わらず確かめる。
+            // 以前は stale .inapp の記録があるときだけ見ていたが、記録の無い残骸(別クローン・
+            // 別デバイスで背面に回った in-app ブリッジ)は /status に答えないので scan に映らず、
+            // 採番では空きに見える(全シミュレータはホストの loopback を共有するのでポートは台を跨いで
+            // 一意)。そのまま注入すると bind できず「did not respond in time」で落ち、原因が残骸だと
+            // 分からない(受け手報告 2026-08-22/23)。
+            // 記録の有無に関わらず、実際に LISTEN されている場合のみ占有者の実体を確認して停止する
+            // (記録どおりに blind に terminate すると同アプリの別ポートの現役ブリッジを誤殺する実害あり)
+            switch PortHolder.stopIfOwnedBridge(
+                port: port, stateDir: stateDir,
+                derivedDataPath: stateDir.appendingPathComponent("DerivedData")) {
+            case .stopped(let holder):
+                log("🔧 \(name): stopped a leftover bridge holding port \(port) (\(holder))")
+            case .notFound:
+                break
+            case .foreign(let holder):
+                // xcuitest は bindFailed → portInUse 経路が拾って明示エラーになる。
+                // **in-app には bind 失敗の検知が無い**(注入先アプリの中で黙って失敗する)ので、
+                // 撃たずにここで原因を名指しして落とす
+                if engine == "inapp" {
+                    throw BridgeProvisionerError.notReady(
+                        port: port, underlying: LauncherError.portInUse(port: port, holder: holder))
                 }
+                log("⚠️ \(name): port \(port) is held by an unrelated process (\(holder))")
+            }
+            if reclaimInApp {
                 try? FileManager.default.removeItem(
                     at: InAppBridgeState.url(stateDir: stateDir, port: port))
             }
@@ -619,7 +646,23 @@ public struct BridgeProvisioner {
                                                 preinstallAppPath: preinstallAppPath,
                                                 needsInstall: needsInstall, log: log)
                 }.value
-                try await launcher.relaunch(bundleID: bundleID)
+                do {
+                    try await launcher.relaunch(bundleID: bundleID)
+                } catch {
+                    // 起動したアプリを残さない(ブリッジの無いアプリが前面に残ると次の run でも
+                    // 残骸になる)。記録は relaunch が ready 前に書いているのでここで消す
+                    launcher.terminate(bundleID: bundleID)
+                    try? FileManager.default.removeItem(
+                        at: InAppBridgeState.url(stateDir: stateDir, port: port))
+                    // **原因を名指しする**: 同じポートを別プロセスが掴んでいたなら、それが答え。
+                    // 「応答が無い」だけでは残骸が原因だと分からず、人がノートに書き残して初めて
+                    // 次の人が気付ける状態だった(受け手報告)
+                    if let holder = PortHolder.describe(port: port) {
+                        throw BridgeProvisionerError.notReady(
+                            port: port, underlying: LauncherError.portInUse(port: port, holder: holder))
+                    }
+                    throw error
+                }
             } else {
                 let launcher = BridgeLauncher(repoRoot: repoRoot, device: sim.udid, port: port,
                                               physical: sim.physical)
