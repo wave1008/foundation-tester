@@ -64,6 +64,27 @@ final class LaneUtilizationTests: XCTestCase {
         XCTAssertEqual(ios.utilization, 0.75, accuracy: 0.001, "150 ÷ (2 レーン × 100s)")
     }
 
+    func testRecoveredBridgeWithNewPortIsStillTheSameLane() {
+        // iOS の label はブリッジのポートを含み、回復のたびに変わる。同じ台の新旧 label を
+        // 別レーンに数えると分母が増えて稼働率が下がって見える(2台が「3 lane(s), 66%」)
+        var tracker = ScenarioTimingTracker()
+        run(&tracker, "A", worker: "iPhone 17 Pro(iOS 27.0)-02(ios:8123)", from: 0, to: 50)
+        run(&tracker, "B", worker: "iPhone 17 Pro(iOS 27.0)-02(ios:8131)", from: 50, to: 100)
+        run(&tracker, "C", worker: "iPhone 17 Pro(iOS 27.0)-01(ios:8124)", from: 0, to: 100)
+        let ios = tracker.laneUtilizations[0]
+        XCTAssertEqual(ios.lanes, 2, "同じデバイス名の label はポートが違っても1レーン")
+        XCTAssertEqual(ios.utilization, 1.0, accuracy: 0.001)
+    }
+
+    func testLaneKeyDropsOnlyTheTrailingPlatformGroup() {
+        XCTAssertEqual(RunWorker.laneKey(fromLabel: "iPhone 17 Pro(iOS 27.0)-02(ios:8123)"),
+                       "iPhone 17 Pro(iOS 27.0)-02")
+        XCTAssertEqual(RunWorker.laneKey(fromLabel: "Pixel 9(Android 15)-01(android:emulator-5554)"),
+                       "Pixel 9(Android 15)-01")
+        XCTAssertEqual(RunWorker.laneKey(fromLabel: "ios:8123"), "ios:8123", "非プロファイル経路は label のまま")
+        XCTAssertEqual(RunWorker.laneKey(fromLabel: "android"), "android")
+    }
+
     func testLanesCountOnlyWorkersThatActuallyRan() {
         // 供給されただけで1本も実行しなかったデバイスは分母に入らない
         // (入れると「増やしたのに稼働率が下がった」と誤読させる)

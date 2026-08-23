@@ -1388,7 +1388,8 @@ struct ScenarioTimingTracker {
     private var startedAt: [URL: (at: Date, worker: String)] = [:]
     private var scenarioTotal: TimeInterval = 0
     private var hasScenario = false
-    /// platform → (稼働したワーカー label, 実行時間の総和, 最後の終了時刻)
+    /// platform → (稼働したレーン = RunWorker.laneKey(デバイス単位。label はポートで変わる),
+    /// 実行時間の総和, 最後の終了時刻)
     private var lanesByPlatform: [String: Set<String>] = [:]
     private var busyByPlatform: [String: TimeInterval] = [:]
     private var lastFinishByPlatform: [String: Date] = [:]
@@ -1413,14 +1414,14 @@ struct ScenarioTimingTracker {
             lastFinish = max(lastFinish ?? now, now)
             let platform = Self.platform(ofWorker: worker)
             lastFinishByPlatform[platform] = max(lastFinishByPlatform[platform] ?? now, now)
-            lanesByPlatform[platform, default: []].insert(worker)
+            lanesByPlatform[platform, default: []].insert(RunWorker.laneKey(fromLabel: worker))
             if let start = startedAt.removeValue(forKey: flowURL) {
                 let elapsed = now.timeIntervalSince(start.at)
                 scenarioTotal += elapsed
                 // 実行したのは開始時のワーカー(振り直しで別デバイスに移ることがある)
                 let busyPlatform = Self.platform(ofWorker: start.worker)
                 busyByPlatform[busyPlatform, default: 0] += elapsed
-                lanesByPlatform[busyPlatform, default: []].insert(start.worker)
+                lanesByPlatform[busyPlatform, default: []].insert(RunWorker.laneKey(fromLabel: start.worker))
             }
         default:
             break

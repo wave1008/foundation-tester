@@ -537,12 +537,15 @@ struct RemoteRunDispatcher {
         return nil
     }
 
-    /// この stamp の回収済みレコードに乗っている "worker" の相異なる値の個数
-    /// (worker はデバイスごとの実行スロット。0 = 何も取れなかった = 呼び出し側で既存値を保持させる)
+    /// この stamp の回収済みレコードに乗っている "worker" の相異なる**デバイス**の個数
+    /// (worker label はブリッジのポートを含み回復で変わるので RunWorker.laneKey で台に寄せる。
+    /// 0 = 何も取れなかった = 呼び出し側で既存値を保持させる)
     private func recordedConcurrentDevices(texts: [(url: URL, text: String)]) -> Int? {
         var workers = Set<String>()
         for (_, text) in texts {
-            if let worker = Self.recordedField(in: text, key: "worker") { workers.insert(worker) }
+            if let worker = Self.recordedField(in: text, key: "worker") {
+                workers.insert(RunWorker.laneKey(fromLabel: worker))
+            }
         }
         return workers.isEmpty ? nil : workers.count
     }

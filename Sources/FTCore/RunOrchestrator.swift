@@ -117,6 +117,18 @@ public struct RunWorker {
         return knownPlatforms.contains(candidate) ? candidate : nil
     }
 
+    /// label からレーン(= デバイス)の識別子を戻す。プロファイル経路の label は末尾に
+    /// "(<platform>:<id>)" を持ち、**iOS の id はブリッジのポートで回復のたびに変わる**ので、
+    /// label そのものでレーンを数えると同じ台が2レーンになる(リモート2台の run が
+    /// 「3 lane(s), 66% busy」と出た。受け手報告 2026-08-23)。末尾の括弧群を落とした
+    /// デバイス名をレーンの鍵にする。非プロファイル経路("ios:<port>")は label のまま
+    public static func laneKey(fromLabel label: String) -> String {
+        guard label.hasSuffix(")"), let open = label.lastIndex(of: "("),
+              platform(fromLabel: label) != nil, open > label.startIndex
+        else { return label }
+        return String(label[..<open])
+    }
+
     public init(label: String, platform: String, driver: AppDriver, connection: DriverConnection,
                 logicalName: String? = nil) {
         self.label = label
