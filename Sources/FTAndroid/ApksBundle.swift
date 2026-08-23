@@ -41,8 +41,13 @@ public enum ApksBundle {
         return nil
     }
 
-    public static func installArgs(bundletool: [String], apksPath: String, serial: String?) -> [String] {
-        var args = bundletool + ["install-apks", "--apks=\(apksPath)"]
+    /// `--adb` は必ず渡す: bundletool は adb を ANDROID_HOME か PATH からしか探さず、ssh 越しの
+    /// 非対話シェル(~/.zshrc を読まない)では "Unable to determine the location of ADB" で落ちる。
+    /// ツール側は AndroidDriver.findADB が既定パスも見て解決済みなので、それを渡せば
+    /// ランナー機のシェル設定に依存しない(受け手の --host ディスパッチで実際に踏んだ)
+    public static func installArgs(bundletool: [String], apksPath: String, serial: String?,
+                                   adb: String) -> [String] {
+        var args = bundletool + ["install-apks", "--apks=\(apksPath)", "--adb=\(adb)"]
         if let serial { args.append("--device-id=\(serial)") }
         return args
     }

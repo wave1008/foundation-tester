@@ -221,7 +221,7 @@ public final class AndroidDriver: AppDriver {
                 body: ApksBundle.missingBundletoolMessage(apksPath: apksPath))
         }
         let result = try Shell.run(ApksBundle.installArgs(
-            bundletool: bundletool, apksPath: apksPath, serial: serial))
+            bundletool: bundletool, apksPath: apksPath, serial: serial, adb: adbPath))
         guard result.status == 0 else {
             throw DriverError.badResponse(status: Int(result.status),
                 body: "failed to install the split bundle (.apks): \(result.tail)")

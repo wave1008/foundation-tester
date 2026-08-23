@@ -114,13 +114,17 @@ final class ApksBundleTests: XCTestCase {
     func testInstallArgs() {
         XCTAssertEqual(
             ApksBundle.installArgs(bundletool: ["/opt/homebrew/bin/bundletool"],
-                                   apksPath: "/apps/a b.apks", serial: "emulator-5554"),
+                                   apksPath: "/apps/a b.apks", serial: "emulator-5554",
+                                   adb: "/Users/r/Library/Android/sdk/platform-tools/adb"),
             ["/opt/homebrew/bin/bundletool", "install-apks", "--apks=/apps/a b.apks",
-             "--device-id=emulator-5554"])
+             "--adb=/Users/r/Library/Android/sdk/platform-tools/adb",
+             "--device-id=emulator-5554"],
+            "--adb は常に渡す(ssh の非対話シェルでは ANDROID_HOME も PATH も無く bundletool が adb を見つけられない)")
         XCTAssertEqual(
             ApksBundle.installArgs(bundletool: ["java", "-jar", "/t/bundletool.jar"],
-                                   apksPath: "/apps/a.apks", serial: nil),
-            ["java", "-jar", "/t/bundletool.jar", "install-apks", "--apks=/apps/a.apks"],
+                                   apksPath: "/apps/a.apks", serial: nil, adb: "/sdk/platform-tools/adb"),
+            ["java", "-jar", "/t/bundletool.jar", "install-apks", "--apks=/apps/a.apks",
+             "--adb=/sdk/platform-tools/adb"],
             "serial 無しは --device-id を付けない(接続1台のときだけ通る adb と同じ意味論)")
     }
 

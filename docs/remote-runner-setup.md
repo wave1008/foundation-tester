@@ -50,7 +50,7 @@ ftester run --host mac2 …               ~/ftester-runner/               ← �
 | ネットワーク | リモートログイン ON・鍵で入れる。画面共有 ON を推奨 | 下のステップ1 |
 | Homebrew | **その macOS を知っている版であること**(古い brew は `unknown or unsupported macOS version` で**起動自体が失敗**し、`xcodegen` を入れられない) | `brew --version` が動くこと |
 | ネットワーク | git が GitHub へ直接出られること(社内プロキシ設定が残っていると clone で数十秒待たされて失敗する) | `git config --global --get-regexp '^https?\.'` が空 |
-| Android | Android SDK と AVD(Android を回すときだけ) | `ftester doctor` |
+| Android | Android SDK と AVD(Android を回すときだけ)。SDK は `~/Library/Android/sdk` か `ANDROID_HOME` で見つける(**シェルの rc は読まれない** —— ディスパッチは非対話 ssh なので `~/.zshrc` の PATH/ANDROID_SDK_ROOT は効かない。ツールは adb・emulator・bundletool の `--adb` を自力で解決するので、標準の場所にある限り設定は要らない) | `ftester doctor` |
 | FM | システム言語が**英語** + Apple Intelligence 有効(`screenLooksLike` や自己修復を使うときだけ) | `ftester doctor --fm-only` |
 
 **画面ロックはかけたままでよい**(セッションは消えない)。消えるのは再起動と電源断だけで、
