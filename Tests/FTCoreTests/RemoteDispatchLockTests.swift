@@ -115,7 +115,8 @@ final class RemoteDispatchLockTests: XCTestCase {
         XCTAssertEqual(message,
             "another dispatch is already running on this remote host"
             + " (started by wave1008-mbp (pid 4242) at 2025-08-12T13:20:00Z)"
-            + " — wait for it to finish, or pass --force-lock if it is stuck"
+            + " — wait for it to finish, run `ftester remote unlock --host <host>` if it is your own"
+            + " dispatch that died, or pass --force-lock if it is stuck"
             + " (docs/remote-runner.md §5)")
     }
 
@@ -197,5 +198,80 @@ final class RemoteDispatchLockTests: XCTestCase {
         let payload = try XCTUnwrap(RemoteDispatchLock.encode(info))
         let command = RemoteDispatchLock.acquireCommand(base: "/Users/tester/ftester-runner", info: info)
         XCTAssertTrue(command.contains(RemoteShell.quote(payload)), command)
+    }
+}
+
+/// `remote unlock` の判定(RemoteDispatchUnlock)。自分の死んだディスパッチだけを外す
+final class RemoteDispatchUnlockTests: XCTestCase {
+    private let mine = RemoteDispatchLockInfo(issuerHost: "my-mac", pid: 4242,
+                                              acquiredAt: "2026-08-23T12:00:23Z", issuer: "wave1008")
+
+    func testAbsentLockIsNothingToDo() {
+        XCTAssertEqual(RemoteDispatchUnlock.decide(probe: .absent, myIssuer: "wave1008", myHost: "my-mac",
+                                                   pidAlive: { _ in true }), .nothingToDo)
+    }
+
+    func testUnreadableInfoIsRefused() {
+        guard case .refuse = RemoteDispatchUnlock.decide(probe: .held(nil), myIssuer: "wave1008",
+                                                         myHost: "my-mac", pidAlive: { _ in false })
+        else { return XCTFail("unreadable info must not be released") }
+    }
+
+    func testOtherIssuerIsRefusedEvenIfPidIsDead() {
+        let theirs = RemoteDispatchLockInfo(issuerHost: "my-mac", pid: 1, acquiredAt: "x", issuer: "alice")
+        guard case .refuse(let reason) = RemoteDispatchUnlock.decide(
+            probe: .held(theirs), myIssuer: "wave1008", myHost: "my-mac", pidAlive: { _ in false })
+        else { return XCTFail("another issuer's lock must not be released") }
+        XCTAssertTrue(reason.contains("alice"), reason)
+    }
+
+    func testLegacyInfoWithoutIssuerIsRefused() {
+        let legacy = RemoteDispatchLockInfo(issuerHost: "my-mac", pid: 1, acquiredAt: "x")
+        guard case .refuse = RemoteDispatchUnlock.decide(
+            probe: .held(legacy), myIssuer: "wave1008", myHost: "my-mac", pidAlive: { _ in false })
+        else { return XCTFail("a lock with no issuer cannot be proven to be mine") }
+    }
+
+    func testMyLiveDispatchOnThisMachineIsRefused() {
+        guard case .refuse(let reason) = RemoteDispatchUnlock.decide(
+            probe: .held(mine), myIssuer: "wave1008", myHost: "my-mac", pidAlive: { $0 == 4242 })
+        else { return XCTFail("a running dispatch of mine must not lose its lock") }
+        XCTAssertTrue(reason.contains("4242"), reason)
+    }
+
+    /// ProcessInfo.hostName(小文字)と `hostname`(大文字)が同じ機械で食い違う実測に合わせる
+    func testHostComparisonIsCaseInsensitive() {
+        guard case .refuse = RemoteDispatchUnlock.decide(
+            probe: .held(mine), myIssuer: "wave1008", myHost: "MY-MAC", pidAlive: { $0 == 4242 })
+        else { return XCTFail("the same machine spelled in another case must still see the live pid") }
+    }
+
+    func testMyDeadDispatchOnThisMachineIsReleased() {
+        guard case .release = RemoteDispatchUnlock.decide(
+            probe: .held(mine), myIssuer: "wave1008", myHost: "my-mac", pidAlive: { _ in false })
+        else { return XCTFail("my dead dispatch's lock must be released") }
+    }
+
+    func testMyDispatchFromAnotherMachineIsReleasedWithoutPidCheck() {
+        var pidChecked = false
+        guard case .release = RemoteDispatchUnlock.decide(
+            probe: .held(mine), myIssuer: "wave1008", myHost: "other-mac",
+            pidAlive: { _ in pidChecked = true; return true })
+        else { return XCTFail("my lock from another machine is released on my say-so") }
+        XCTAssertFalse(pidChecked)
+    }
+
+    func testProbeCommandAndParse() {
+        XCTAssertEqual(RemoteDispatchLock.parseProbe("absent\n"), .absent)
+        XCTAssertEqual(RemoteDispatchLock.parseProbe("held\n"), .held(nil))
+        let info = RemoteDispatchLockInfo(issuerHost: "h", pid: 7, acquiredAt: "t", issuer: "i")
+        XCTAssertEqual(RemoteDispatchLock.parseProbe("held\n" + RemoteDispatchLock.encode(info)! + "\n"),
+                       .held(info))
+        XCTAssertNil(RemoteDispatchLock.parseProbe(""))
+        XCTAssertEqual(
+            RemoteDispatchLock.probeCommand(base: "/Users/ci/ftester-runner"),
+            "if [ -d '/Users/ci/ftester-runner/.ftester/dispatch.lock' ]; then echo held;"
+            + " cat '/Users/ci/ftester-runner/.ftester/dispatch.lock/info.json' 2>/dev/null || true;"
+            + " else echo absent; fi")
     }
 }

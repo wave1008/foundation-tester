@@ -162,7 +162,12 @@
   写し漏れで「入っているのに brew が無い」と落ちた実害)。**子プロセスを spawn する経路を足したら
   中断のリレーも足す**(`InterruptRelay`)—— **親を殺しても子は死なない**ので、ssh が生き残って
   リモートが走り続け、`dispatch.lock` も残る(2026-08-18 実測)。**SIGKILL へのエスカレートは
-  ssh にだけ**(自分の子に掛けるとロック解放と終了スクリプトを飛ばす)。
+  ssh にだけ**(自分の子に掛けるとロック解放と終了スクリプトを飛ばす)。**シグナルソースは
+  1プロセスに1組**(2026-08-24)—— relay ごとに立てて `stop()` で SIG_DFL を戻すと、並行する子の
+  うち先に終わったものの stop() が残りの横取りまで解き、`kill -INT` で親だけ死ぬ(受け手報告)。
+  `ftester remote unlock` は自分の死んだディスパッチのロックだけを外す(`RemoteDispatchUnlock`)。
+  **`--host H` + 明示 `--device` は H の台に限定**(`RemoteDispatchExplicitDeviceScope`。同名の台が
+  複数機にあると名前だけでは全機ぶんを拾う)。
   **LPT はリモートでも実績で回る**(2026-08-18): 実績 JSON は on-demand でも常に回収・
   実績と観測窓は machine 別(platform 分離と同型)・フリート割り当ては facts キャッシュ
   (`.ftester/remote-hosts/<host>.json`。ディスパッチのたびに machine と固定費実測を書く)で

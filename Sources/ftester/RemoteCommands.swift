@@ -25,7 +25,7 @@ struct RemoteCommand: AsyncParsableCommand {
         commandName: "remote",
         abstract: "Fleet operations for --host dispatch: provision, diagnose, clean up and query remote runners "
             + "(docs/remote-runner.md §14/§16.4/§16.5)",
-        subcommands: [Status.self, Clean.self, Setup.self, Align.self, Exec.self, Hosts.self])
+        subcommands: [Status.self, Clean.self, Unlock.self, Setup.self, Align.self, Exec.self, Hosts.self])
 
     // MARK: - status
 
@@ -162,6 +162,76 @@ struct RemoteCommand: AsyncParsableCommand {
         }
     }
 
+    // MARK: - unlock
+
+    /// 自分の死んだディスパッチが残した dispatch.lock だけを外す(判定は FTCore.RemoteDispatchUnlock)。
+    /// `--force-lock` と違い他人の(走っているかもしれない)ロックは絶対に触らない
+    struct Unlock: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "unlock",
+            abstract: "Release the dispatch lock a dispatch of yours left behind on a remote host"
+                + " (never touches another issuer's lock; docs/remote-runner.md §5)")
+
+        @Option(name: .customLong("host"), parsing: .upToNextOption,
+                help: "Remote host: a registered name (ftester remote hosts) or a raw user@host/host. Repeatable, required")
+        var hosts: [String] = []
+
+        @Option(name: .customLong("remote-dir"),
+                help: "Runner-only base directory on the remote host (default: the host registry's entry, or ~/ftester-runner)")
+        var remoteDir: String?
+
+        func run() async throws {
+            guard !hosts.isEmpty else {
+                throw ValidationError("no hosts specified (pass --host <name-or-user@host>)")
+            }
+            var failures = 0
+            for raw in hosts {
+                print("== \(raw) ==")
+                do {
+                    try unlockOne(raw)
+                } catch {
+                    print("error: \(error.localizedDescription)")
+                    failures += 1
+                }
+            }
+            if failures > 0 { throw ExitCode(1) }
+        }
+
+        private func unlockOne(_ raw: String) throws {
+            let resolved = try RemoteHostResolver.resolve(rawHost: raw, remoteDirOverride: remoteDir)
+            resolved.announce()
+            let target = resolved.hostSpec.sshTarget
+            let layout = try Clean.resolveLayout(target: target, remoteDirRaw: resolved.remoteDirRaw)
+            let probeResult = try Shell.run(remoteSSHBase + [target, RemoteDispatchLock.probeCommand(base: layout.base)])
+            guard probeResult.status == 0, let probe = RemoteDispatchLock.parseProbe(probeResult.output) else {
+                throw RemoteDispatchError.remoteSetupFailed(
+                    "could not read the dispatch lock on \(target) (status \(probeResult.status))\n\(probeResult.tail)")
+            }
+            let decision = RemoteDispatchUnlock.decide(
+                probe: probe, myIssuer: LocalConfig.resolveIssuerId(),
+                myHost: ProcessInfo.processInfo.hostName, pidAlive: { kill($0, 0) == 0 })
+            switch decision {
+            case .nothingToDo:
+                print("→ no dispatch lock on \(target); nothing to do")
+            case .refuse(let reason):
+                throw UnlockRefused(reason: reason)
+            case .release(let reason):
+                let release = try Shell.run(remoteSSHBase + [target, RemoteDispatchLock.releaseCommand(base: layout.base)])
+                guard release.status == 0 else {
+                    throw RemoteDispatchError.remoteSetupFailed(
+                        "failed to remove the lock (status \(release.status))\n\(release.tail)")
+                }
+                print("→ released the dispatch lock on \(target) (\(reason))")
+            }
+        }
+    }
+
+    /// `remote unlock` が外さなかった理由(run() が localizedDescription を出すので LocalizedError)
+    private struct UnlockRefused: LocalizedError {
+        let reason: String
+        var errorDescription: String? { "not released: \(reason)" }
+    }
+
     // MARK: - clean
 
     struct Clean: AsyncParsableCommand {
@@ -255,7 +325,7 @@ struct RemoteCommand: AsyncParsableCommand {
         /// `<remote-dir>` の $HOME を実際に取得して絶対パスへ解決する(RemoteRunDispatcher.resolveLayout
         /// と同じ規律だが private のため複製・簡略化。clean は1台ずつ順に実行するため remote status
         /// と違い「1 ssh に収める」制約が無く、通常どおり事前解決してから RemoteShell.quote できる)
-        private static func resolveLayout(target: String, remoteDirRaw: String) throws -> RemoteLayout {
+        static func resolveLayout(target: String, remoteDirRaw: String) throws -> RemoteLayout {
             // 実行時の失敗は ValidationError にしない — ArgumentParser の ValidationError は
             // LocalizedError を実装しておらず、catch 側の localizedDescription が
             // "The operation couldn't be completed" に化けて原因が消える(実測)
@@ -627,16 +697,36 @@ func resolveRemoteTarget(_ dispatch: EffectiveHostDispatch, remoteDirOverride: S
 // MARK: - shared helpers
 
 /// ホスト混在プロファイルの単一ホストディスパッチに付ける --device/--device-host を決める
-/// (判定は FTCore.RemoteDispatchDeviceScope)。呼び出し側が既に --device/--device-host を
-/// 持つときは呼ばないこと。プロファイル/マシンが読めないときは従来どおり丸ごと(空を返す)
+/// (判定は FTCore.RemoteDispatchDeviceScope / 明示 --device 付きは RemoteDispatchExplicitDeviceScope)。
+/// 呼び出し側が既に --device-host を持つときは呼ばないこと。`requestedDevices` は利用者の
+/// 明示 `--device`(空 = 無し)—— 混在プロファイルではそのホストの台に限定して渡す
+/// (同名の台が他の機械にもあると、名前だけでは全機械ぶんを拾う)。
+/// プロファイル/マシンが読めないときは従来どおり丸ごと(名前はそのまま・host は付けない)
 func hostScopedDeviceFilter(
-    project: TestProject, profile: String, targetHost: String
+    project: TestProject, profile: String, targetHost: String, requestedDevices: [String] = []
 ) throws -> (deviceNames: [String], deviceHost: String?) {
     guard let machine = try? ProfileResolver.determineMachine(project: project, runProfileName: profile) else {
-        return ([], nil)
+        return (requestedDevices, nil)
     }
     let devices = (try? ProfileResolver.runDeviceHosts(
         project: project, runProfileName: profile, machineName: machine.name)) ?? []
+    if !requestedDevices.isEmpty {
+        switch RemoteDispatchExplicitDeviceScope.resolve(
+            targetHost: targetHost, requested: requestedDevices, devices: devices) {
+        case .passThrough:
+            return (requestedDevices, nil)
+        case .pinned:
+            return (requestedDevices, targetHost)
+        case .notOnHost(let missing, let available):
+            throw RemoteDispatchError.invalidDevice(
+                "\(missing.map { "\"\($0)\"" }.joined(separator: ", ")) is not assigned to host"
+                + " \"\(targetHost)\" in profile \"\(profile)\""
+                + (available.isEmpty ? " (it has no devices there)"
+                   : " (its devices there: \(available.map { "\"\($0)\"" }.joined(separator: ", ")))")
+                + " — with --host, --device is limited to that host's devices;"
+                + " pass --device-host to target another machine's device of the same name")
+        }
+    }
     switch RemoteDispatchDeviceScope.resolve(targetHost: targetHost, devices: devices) {
     case .wholeProfile:
         return ([], nil)

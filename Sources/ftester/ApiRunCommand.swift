@@ -594,9 +594,9 @@ struct ApiRunCommand: AsyncParsableCommand {
             mode: .apiRun, artifacts: artifactsMode, hostLabel: dispatch.rawHost)
         var scopedDevices = devices
         var scopedDeviceHost = deviceHost
-        if devices.isEmpty, deviceHost == nil {
+        if deviceHost == nil {
             (scopedDevices, scopedDeviceHost) = try hostScopedDeviceFilter(
-                project: project, profile: profile, targetHost: dispatch.rawHost)
+                project: project, profile: profile, targetHost: dispatch.rawHost, requestedDevices: devices)
         }
         let exitCode = try await dispatcher.dispatchApi(
             project: project, profile: profile, scenarios: scenarios,

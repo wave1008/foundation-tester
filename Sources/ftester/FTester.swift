@@ -1069,9 +1069,9 @@ struct RunScenarios: AsyncParsableCommand {
             artifacts: artifactsMode, forceLock: forceLock, waitLock: waitLock, hostLabel: dispatch.rawHost)
         var scopedDevices = devices
         var scopedDeviceHost = deviceHost
-        if devices.isEmpty, deviceHost == nil {
+        if deviceHost == nil {
             (scopedDevices, scopedDeviceHost) = try hostScopedDeviceFilter(
-                project: testProject, profile: profile, targetHost: dispatch.rawHost)
+                project: testProject, profile: profile, targetHost: dispatch.rawHost, requestedDevices: devices)
         }
         let exitCode = try await dispatcher.dispatch(
             project: testProject, profile: profile, scenarios: scenarios, folders: folders,

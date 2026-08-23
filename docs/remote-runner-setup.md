@@ -344,7 +344,13 @@ ftester run --project <プロジェクト> --fleet <名前> --split --junit repo
 「そのホストのぶんは全部通った」に見えてしまうためです。
 
 **同一ホストへ二重に投げると、後から来たほうが止まります**(誰がいつから掴んでいるかを表示)。
-止まったまま解放されない場合だけ `--force-lock` で奪えます(警告が出ます)。
+自分のディスパッチが死んで残ったロックは `ftester remote unlock --host <ホスト>` で外します
+(他の人のロックは外しません)。他の人のものが止まったまま解放されない場合だけ `--force-lock` で
+奪えます(警告が出ます)。
+
+**`--host <ホスト>` に `--device <名前>` を付けると、その名前はそのホストの台に限定されます**
+(同名の台が複数の機械にあるプロファイルでも1台に絞れる)。そのホストに無い名前は、
+そのホストの台を列挙して手元で止まります。
 
 ## VSCode 拡張から使う
 
@@ -539,7 +545,9 @@ ftester run --profile <名前> --wait-lock 600   # 最大10分、解放を待っ
 ```
 
 `--force-lock`(奪う)は相手の run を壊すので、表示された相手に確認してから。
-時間で自動的に奪う仕組みは意図的に無い。
+時間で自動的に奪う仕組みは意図的に無い。**自分のディスパッチが死んで残ったロック**は
+`ftester remote unlock --host <ホスト>` で外す(自分のものだけ。動いている自分の run のロックや
+他の人のロックは外さない)。
 
 ### 版はフリートで揃える(ピン運用)
 
@@ -578,7 +586,7 @@ FileVault 有効のランナーは**再起動のたびに誰かが解錠+ログ�
 | `cannot resolve the local project` | 手元にプロジェクトが複数 | `--project <名前>` を付ける |
 | `is sitting at the login window` | ランナー機がログイン画面 | 解錠してログイン(画面共有) |
 | `git revision mismatch` | 版がズレている | メッセージの向き付き案内に従う(「複数人でフリートを共有する」の表。単独利用ならステップ3) |
-| `another dispatch is already running on this remote host` | 別のディスパッチ(他の人・別ターミナル)が実行中 | 待つ(`--wait-lock <秒>`)。表示された保持者に確認できたときだけ `--force-lock` |
+| `another dispatch is already running on this remote host` | 別のディスパッチ(他の人・別ターミナル)が実行中、または自分のディスパッチが死んでロックが残った | 待つ(`--wait-lock <秒>`)。保持者が自分で死んでいるなら `ftester remote unlock --host <ホスト>`。他の人のもので確認できたときだけ `--force-lock` |
 | `toolchain mismatch` | Xcode / macOS が違う | 両機を同じ版に |
 | `ftester binary not found on remote` | ビルドされていない | ランナー機で `swift build --product ftester` |
 | `unknown package` | クローンのディレクトリ名を変えた | `~/ftester-runner/foundation-tester` に戻す |

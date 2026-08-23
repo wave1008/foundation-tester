@@ -6,6 +6,7 @@ import Foundation
 
 public enum RemoteDispatchError: Error, LocalizedError {
     case invalidHost(String)
+    case invalidDevice(String)
     case invalidRemoteDir(String)
     case invalidArtifactsMode(String)
     case incompatible([String])
@@ -16,6 +17,8 @@ public enum RemoteDispatchError: Error, LocalizedError {
         switch self {
         case .invalidHost(let detail):
             return "invalid --host: \(detail)"
+        case .invalidDevice(let detail):
+            return "invalid --device: \(detail)"
         case .invalidRemoteDir(let detail):
             return "invalid --remote-dir: \(detail)"
         case .invalidArtifactsMode(let detail):

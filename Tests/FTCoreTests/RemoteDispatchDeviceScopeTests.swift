@@ -51,3 +51,49 @@ final class RemoteDispatchDeviceScopeTests: XCTestCase {
         XCTAssertEqual(result, .noneForHost(available: ["local", "M1Max", "M1Ultra"]))
     }
 }
+
+/// `--host H --device <名前>`(--device-host 無し)は H の台に限定する。同名の台が3機に
+/// あるプロファイルで名前だけを渡すと、子が3機ぶんを拾って手元の UDID を向こうで探す
+/// (受け手報告 2026-08-23)
+final class RemoteDispatchExplicitDeviceScopeTests: XCTestCase {
+    private func sameNameOnThreeHosts() -> [RunDeviceHost] {
+        [
+            RunDeviceHost(host: nil, name: "iPhone 17 Pro(iOS 27.0)-01", platform: "ios"),
+            RunDeviceHost(host: "M1Max", name: "iPhone 17 Pro(iOS 27.0)-01", platform: "ios"),
+            RunDeviceHost(host: "M1Max", name: "Pixel-01", platform: "android"),
+            RunDeviceHost(host: "M1Ultra", name: "iPhone 17 Pro(iOS 27.0)-01", platform: "ios"),
+        ]
+    }
+
+    func testSameNameOnSeveralHostsIsPinnedToTheTargetHost() {
+        XCTAssertEqual(
+            RemoteDispatchExplicitDeviceScope.resolve(
+                targetHost: "M1Max", requested: ["iPhone 17 Pro(iOS 27.0)-01"], devices: sameNameOnThreeHosts()),
+            .pinned)
+    }
+
+    func testNameMissingOnTheTargetHostListsThatHostsDevices() {
+        XCTAssertEqual(
+            RemoteDispatchExplicitDeviceScope.resolve(
+                targetHost: "M1Ultra", requested: ["Pixel-01", "iPhone 17 Pro(iOS 27.0)-01"],
+                devices: sameNameOnThreeHosts()),
+            .notOnHost(missing: ["Pixel-01"], available: ["iPhone 17 Pro(iOS 27.0)-01"]))
+    }
+
+    func testUnhostedProfilePassesNamesThrough() {
+        let devices = [RunDeviceHost(host: nil, name: "iPhone-1", platform: "ios")]
+        XCTAssertEqual(
+            RemoteDispatchExplicitDeviceScope.resolve(targetHost: "M1Max", requested: ["iPhone-1"], devices: devices),
+            .passThrough)
+        XCTAssertEqual(
+            RemoteDispatchExplicitDeviceScope.resolve(targetHost: "M1Max", requested: ["iPhone-1"], devices: []),
+            .passThrough)
+    }
+
+    func testHostWithNoDevicesAtAllReportsEmptyAvailable() {
+        XCTAssertEqual(
+            RemoteDispatchExplicitDeviceScope.resolve(
+                targetHost: "M2", requested: ["iPhone 17 Pro(iOS 27.0)-01"], devices: sameNameOnThreeHosts()),
+            .notOnHost(missing: ["iPhone 17 Pro(iOS 27.0)-01"], available: []))
+    }
+}

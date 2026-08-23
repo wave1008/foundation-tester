@@ -67,7 +67,8 @@ public enum RemoteDispatchLock {
     /// (相手の完了を待つ / stuck なら --force-lock で奪う)を必ず含める
     public static func heldMessage(_ info: RemoteDispatchLockInfo?) -> String {
         "another dispatch is already running on this remote host (\(holderDescription(info)))"
-            + " — wait for it to finish, or pass --force-lock if it is stuck"
+            + " — wait for it to finish, run `ftester remote unlock --host <host>` if it is your own"
+            + " dispatch that died, or pass --force-lock if it is stuck"
             + " (docs/remote-runner.md §5)"
     }
 
@@ -129,8 +130,81 @@ public enum RemoteDispatchLock {
         "rm -rf \(RemoteShell.quote(lockDirPath(base: base)))"
     }
 
+    /// `remote unlock` 用: ロックの有無と中身を1往復で読む。1行目が `absent`(ロック無し)か
+    /// `held`(有り。2行目以降が info.json。読めなければ空)
+    public static func probeCommand(base: String) -> String {
+        let dir = RemoteShell.quote(lockDirPath(base: base))
+        let info = RemoteShell.quote(infoFilePath(base: base))
+        return "if [ -d \(dir) ]; then echo held; cat \(info) 2>/dev/null || true; else echo absent; fi"
+    }
+
     private static func writeInfoCommand(base: String, info: RemoteDispatchLockInfo) -> String {
         let payload = encode(info) ?? "{}"
         return "printf '%s' \(RemoteShell.quote(payload)) > \(RemoteShell.quote(infoFilePath(base: base)))"
+    }
+
+    public enum Probe: Equatable, Sendable {
+        case absent
+        case held(RemoteDispatchLockInfo?)
+    }
+
+    public static func parseProbe(_ output: String) -> Probe? {
+        var lines = output.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        guard let first = lines.first?.trimmingCharacters(in: .whitespaces) else { return nil }
+        lines.removeFirst()
+        switch first {
+        case "absent": return .absent
+        case "held": return .held(decode(lines.joined(separator: "\n")))
+        default: return nil
+        }
+    }
+}
+
+/// `ftester remote unlock`: **自分の死んだディスパッチが残したロックだけ**を外す判定(純粋関数)。
+/// `--force-lock` は他人の走っている run を奪えるので、残ったロックの片付けにそれを使わせない
+/// (受け手要望 2026-08-23: 複数人でフリートを共有すると、残ったロック + --force-lock が事故になる)。
+///
+/// 規則(上から順に最初に当たったもの):
+/// - ロック無し → 何もしない
+/// - info が読めない → 外さない(「情報が読めなくてもロック自体は尊重する」の既存規則)
+/// - 発行者が違う(issuer 不一致、または旧 info で issuer 無し) → 外さない
+/// - 同じ発行者で、発行元がこの機械(issuerHost 一致)かつその pid がまだ生きている → 外さない
+///   (動いている自分の run のロック。止めれば自分で解放する)
+/// - それ以外(同じ発行者で、pid が死んでいる / 別の機械から発行した) → 外す
+///   **別の機械の pid の生死はここからは見えない**ので、発行者が自分なら本人の申告として外す
+public enum RemoteDispatchUnlock {
+    public enum Decision: Equatable, Sendable {
+        case nothingToDo
+        case release(reason: String)
+        case refuse(reason: String)
+    }
+
+    public static func decide(probe: RemoteDispatchLock.Probe, myIssuer: String, myHost: String,
+                              pidAlive: (Int32) -> Bool) -> Decision {
+        switch probe {
+        case .absent:
+            return .nothingToDo
+        case .held(nil):
+            return .refuse(reason: "the lock's info.json could not be read, so its owner is unknown"
+                + " — if you are sure no dispatch is running there, pass --force-lock on your next dispatch")
+        case .held(let info?):
+            guard let issuer = info.issuer, issuer == myIssuer else {
+                let holder = info.issuer.map { "\($0) (from \(info.issuerHost), pid \(info.pid))" }
+                    ?? "\(info.issuerHost) (pid \(info.pid), no issuer recorded)"
+                return .refuse(reason: "the lock is held by \(holder), not by you (\(myIssuer))"
+                    + " — only the owner can unlock it; --force-lock steals it and may kill their run")
+            }
+            // ホスト名は大文字小文字を区別しない(ProcessInfo.hostName は小文字・`hostname` は
+            // 大文字で返すことがある。同じ機械を別物と見ると、生きている自分の run のロックを外す)
+            let sameHost = info.issuerHost.caseInsensitiveCompare(myHost) == .orderedSame
+            if sameHost, pidAlive(info.pid) {
+                return .refuse(reason: "your dispatch (pid \(info.pid)) is still running on this machine"
+                    + " — stop it and it releases the lock itself")
+            }
+            let why = sameHost
+                ? "your dispatch (pid \(info.pid)) is no longer running on this machine"
+                : "it was acquired by you from \(info.issuerHost) (pid \(info.pid) — not checkable from here)"
+            return .release(reason: why)
+        }
     }
 }
