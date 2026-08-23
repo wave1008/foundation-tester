@@ -134,6 +134,9 @@ ftester remote setup <ユーザー>@<ホスト> --project <プロジェクト名
 ssh <ホスト> 'cd ~/ftester-runner/foundation-tester && git fetch origin && git checkout <コミット> && swift build --product ftester'
 ```
 
+- **照合はコミットの一致だけで、変更の中身は見ない** —— 手元(親)側にしか効かない修正
+  (モニターの fan-out・結果の回収など)を取り込んだときも、**手元を更新したらランナーも align する**。
+  「ランナーの挙動は変わらないから」と飛ばすと `remote status` が ⚠️ になり、ディスパッチは止まる
 - **手元の未コミットの変更は届かない**(警告が出る)。ツール本体の変更を試すなら、
   コミットして push し、ランナー機をそのコミットに合わせる
 - Xcode や macOS を更新したら**両方**を更新する。片方だけだと全ディスパッチが止まる
