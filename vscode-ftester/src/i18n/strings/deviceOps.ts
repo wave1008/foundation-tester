@@ -32,6 +32,18 @@ export const deviceOpsStrings = {
     en: "[{label}] Ignored a line with an unknown format: {value}",
   },
   "deviceOps.detailUnknown": { ja: "(詳細不明)", en: "(details unknown)" },
+  "deviceOps.log.monitorRestartScheduled": {
+    ja: "[monitor] 5秒後に自動再起動します",
+    en: "[monitor] Restarting automatically in 5 seconds",
+  },
+  "deviceOps.log.monitorGaveUp": {
+    ja: "[monitor] 起動直後の異常終了が3回続いたため自動再起動を停止しました(「モニター再起動」ボタンかパネルの開き直しで再挑戦できます)",
+    en: "[monitor] Gave up automatic restarts after 3 consecutive early exits (retry with the restart button or by reopening the panel)",
+  },
+  "deviceOps.log.monitorClosed": {
+    ja: "[monitor] プロセスが終了しました(exit code: {exitCode} / signal: {signal} / {initiated})。signal=SIGKILL は再ビルドによるバイナリ差し替えの署名",
+    en: "[monitor] The process exited (exit code: {exitCode} / signal: {signal} / {initiated}). signal=SIGKILL is the signature of a rebuild replacing the binary",
+  },
   "deviceOps.log.monitorHoldActive": {
     ja: "[monitor] ftester monitor pause による保持中 — 観測と配信を停止しました(解除: ftester monitor resume)",
     en: "[monitor] Held by ftester monitor pause — observation and streaming stopped (release with: ftester monitor resume)",

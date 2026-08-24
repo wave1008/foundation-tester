@@ -87,6 +87,14 @@ export class MonitorProcessManager {
    * stopXProcess は SIGTERM 後 2s で SIGKILL するため close は通常 ~2-3s で来る。8s は余裕を持たせた上限。 */
   private static readonly RESTART_CLOSE_TIMEOUT_MS = 8000;
   private restartPending = false;
+  /** monitor の予期しない終了後の自動再起動タイマー(5秒後)。dispose/stop 時に必ずクリアする。 */
+  private monitorRestartTimer: ReturnType<typeof setTimeout> | undefined;
+  /** monitor の直近の起動時刻(ms)。「起動後10秒未満での異常終了」判定用(host-metrics と同型)。 */
+  private monitorStartedAt: number | undefined;
+  /** monitor の「起動後10秒未満での異常終了」の連続回数(host-metrics と同型の give-up 用)。 */
+  private monitorFailureStreak = 0;
+  /** monitor の自動再起動を諦めた状態か。リセット条件も host-metrics と同じ(show()/再起動ボタン)。 */
+  private monitorGaveUp = false;
   /** host-metrics プロセス(常駐。monitor プロセスとは独立に管理する)。 */
   private hostMetricsProcess: MonitorProcess | undefined;
   /** stopHostMetricsProcess() 経由による意図した終了かどうか(stoppingMonitor と同じ役割)。 */
@@ -128,6 +136,8 @@ export class MonitorProcessManager {
    * 開き直したときは素直に起動を試みる。hostMetricsGaveUp 宣言部参照)。
    */
   startAll(): void {
+    this.monitorFailureStreak = 0;
+    this.monitorGaveUp = false;
     this.startMonitorProcess();
     this.hostMetricsFailureStreak = 0;
     this.hostMetricsGaveUp = false;
@@ -140,6 +150,8 @@ export class MonitorProcessManager {
    * ボタン一つで復帰できるようにするため)。
    */
   restartAll(): void {
+    this.monitorFailureStreak = 0;
+    this.monitorGaveUp = false;
     this.restartMonitorProcess();
     this.hostMetricsFailureStreak = 0;
     this.hostMetricsGaveUp = false;
@@ -147,6 +159,12 @@ export class MonitorProcessManager {
   }
 
   startMonitorProcess(): void {
+    // 予約済みの自動再起動があれば無効化する(startHostMetricsProcess と同じ理由 — どの経路から
+    // 起動する場合も、close ハンドラが積んだ自動再起動と二重起動しないよう先にタイマーを消す)
+    if (this.monitorRestartTimer) {
+      clearTimeout(this.monitorRestartTimer);
+      this.monitorRestartTimer = undefined;
+    }
     this.latestDevices = undefined;
     const config = this.deps.getConfig();
     const resolution = resolveProjectName(this.deps.workspaceRoot, config);
@@ -198,6 +216,7 @@ export class MonitorProcessManager {
 
     this.stoppingMonitor = false;
     this.monitorProcess = proc;
+    this.monitorStartedAt = Date.now();
     // 再起動(プロファイル切り替え含む)でプロセス側の抑制状態は失われるため、既にストリーミング中の
     // デバイスがあれば suppressFrames を再送する(MonitorDeviceStreamController.streamingIds 参照)。
     const streamingIds = this.deps.getStreamingDeviceIds();
@@ -280,6 +299,16 @@ export class MonitorProcessManager {
       // stdin EOF 経由で終了した場合は signal が null になるため、signal では判定できない。
       const selfInitiated = this.stoppingMonitor;
       this.stoppingMonitor = false;
+      // **OUTPUT にも必ず1行残す**(webview バナーはパネルの開き直しで消えるため、これが無いと
+      // monitor がいつ・どう死んだかが後から一切追えない。受け手報告 2026-08-24: silent 死に見えた。
+      // signal=SIGKILL はバイナリ差し替え(update.sh の再ビルド)の署名)
+      this.deps.outputChannel.appendLine(
+        t("deviceOps.log.monitorClosed", {
+          exitCode: String(exitCode),
+          signal: String(signal),
+          initiated: selfInitiated ? "self" : "unexpected",
+        }),
+      );
       if (!selfInitiated) {
         // exit 0 の予期しない終了(過去例: stdin の扱いの不備)も無言にせず必ず通知する。
         // **CLI が理由を言っていればそれを出す**(推測より事実。決め打ちの案内は最後の手段)
@@ -296,12 +325,46 @@ export class MonitorProcessManager {
             hint,
           }),
         });
+        this.scheduleMonitorRestart();
       }
     });
   }
 
+  /**
+   * monitor プロセスの予期しない終了を受けて、再起動するか諦めるかを決める(host-metrics と同型。
+   * 2026-08-24 追加 — それまで monitor は死ぬとバナー通知のみで、パネルの開き直しまで戻らなかった。
+   * 実害: update.sh の再ビルドが稼働中バイナリを差し替えて SIGKILL → 無人計測の監視が止まりっぱなし)。
+   */
+  private scheduleMonitorRestart(): void {
+    const elapsedMs = Date.now() - (this.monitorStartedAt ?? Date.now());
+    if (elapsedMs < 10000) {
+      this.monitorFailureStreak += 1;
+    } else {
+      this.monitorFailureStreak = 0;
+    }
+    if (this.monitorFailureStreak >= 3) {
+      if (!this.monitorGaveUp) {
+        this.monitorGaveUp = true;
+        this.deps.outputChannel.appendLine(t("deviceOps.log.monitorGaveUp"));
+      }
+      return;
+    }
+    this.deps.outputChannel.appendLine(t("deviceOps.log.monitorRestartScheduled"));
+    this.monitorRestartTimer = setTimeout(() => {
+      this.monitorRestartTimer = undefined;
+      // 5秒待つ間にパネルが閉じられていたら何もしない(host-metrics と同じ)。
+      if (this.deps.isPanelActive()) {
+        this.startMonitorProcess();
+      }
+    }, 5000);
+  }
+
   /** 実行中の monitor プロセスがあれば SIGTERM(2秒後 SIGKILL)で止める。無ければ何もしない。 */
   stopMonitorProcess(): void {
+    if (this.monitorRestartTimer) {
+      clearTimeout(this.monitorRestartTimer);
+      this.monitorRestartTimer = undefined;
+    }
     const proc = this.monitorProcess;
     if (!proc || proc.exitCode !== null || proc.signalCode !== null) {
       return;

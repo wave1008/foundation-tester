@@ -135,3 +135,68 @@ test("CLI が何も言わずに落ちたときは従来の案内へ戻る", () =
   const down = posts.filter((m) => m.type === "processDown").at(-1);
   assert.match(down.message, /マシンプロファイル未設定/);
 });
+
+// ---- monitor の自動再起動(2026-08-24 追加。host-metrics と同型の give-up 付き) ----
+// タイマーは node:test の mock.timers で進める(実時間の 5 秒を待たない)
+
+test("monitor の予期しない close は5秒後に自動再起動する", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"], now: 0 });
+  const calls = [];
+  let current;
+  const spawnFn = (command, args) => {
+    calls.push(args);
+    current = makeFakeProc();
+    return current;
+  };
+  const manager = new MonitorProcessManager(makeDeps(), spawnFn);
+  manager.startMonitorProcess();
+  assert.equal(calls.length, 1);
+
+  // 10 秒以上動いてからの予期しない終了(streak リセット側)
+  t.mock.timers.setTime(15000);
+  current.emit("close", null, "SIGKILL");
+  t.mock.timers.tick(5000);
+  assert.equal(calls.length, 2, "close の5秒後に再 spawn される");
+});
+
+test("起動10秒未満の異常終了が3連続すると諦め、それ以上再起動しない", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"], now: 0 });
+  const calls = [];
+  let current;
+  const spawnFn = (command, args) => {
+    calls.push(args);
+    current = makeFakeProc();
+    return current;
+  };
+  const manager = new MonitorProcessManager(makeDeps(), spawnFn);
+  manager.startMonitorProcess();
+
+  for (let i = 0; i < 3; i += 1) {
+    // 起動直後(10秒未満)に死ぬ
+    t.mock.timers.tick(1000);
+    current.emit("close", 1, null);
+    t.mock.timers.tick(5000);
+  }
+  // 3回目の close で give-up: 2回分の再起動 spawn(初回 + 2)で止まる
+  assert.equal(calls.length, 3, "give-up 後は再 spawn されない");
+  t.mock.timers.tick(60000);
+  assert.equal(calls.length, 3);
+});
+
+test("stopMonitorProcess 経由の意図した終了では自動再起動しない", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"], now: 0 });
+  const calls = [];
+  let current;
+  const spawnFn = () => {
+    calls.push(1);
+    current = makeFakeProc();
+    return current;
+  };
+  const manager = new MonitorProcessManager(makeDeps(), spawnFn);
+  manager.startMonitorProcess();
+  t.mock.timers.setTime(15000);
+  manager.stopMonitorProcess();
+  current.emit("close", 0, null);
+  t.mock.timers.tick(10000);
+  assert.equal(calls.length, 1, "意図した停止では再 spawn しない");
+});
