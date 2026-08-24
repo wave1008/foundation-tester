@@ -8,7 +8,7 @@
 import { t } from '../i18n.js';
 import { vscode } from './vscodeApi.js';
 import { grid, emptyMessage, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuItemBtn, deviceOpMenuItemLabel, deviceOpMenuLiveBtn, deviceOpMenuGpuBtn, profileSelect } from './domRefs.js';
-import { updateLaneVisibility, syncLanesToDevices, runningWorkers } from './laneLog.js';
+import { updateLaneVisibility, syncLanesToDevices, runningWorkers, relayoutPreviewsForResize } from './laneLog.js';
 import { createH264Renderer } from './h264Decoder.js';
 import { clampMenuPosition } from './menu.js';
 import { setHoverTip } from './hoverTip.js';
@@ -92,6 +92,12 @@ let bulkOpActive = null;
 // 空 = 全ワーカー表示(絞り込みなし)
 export const selectedDeviceIds = new Set();
 
+// 出力ペインの拡大表示(選択したデバイスぶん。DOM は laneLog.js が用意し attach/detach を呼ぶ)。
+// canvas も img も DOM の2箇所には置けないので「複製」で描く: mjpeg は同じ data URL を別の img へ、
+// h264 はタイルの canvas を drawImage でコピーする(デコードは1回だけ。2重デコードはしない)。
+// device id -> { wrapEl, imgEl, canvasEl }
+const deviceMirrors = new Map();
+
 // タイル内の「画像以外」の高さの合計(px)。CSS の固定高と一致させること:
 // padding 上下 8+8 + header 20 + footer 18 + gap 6×2 = 66
 const TILE_CHROME_HEIGHT = 66;
@@ -113,6 +119,8 @@ function setTileAspect(entry, aspect) {
   if (entry.tileAspect === value) { return; }
   entry.tileAspect = value;
   entry.tile.style.setProperty('--tile-aspect', value);
+  // 拡大表示の段組みは縦横比から決まる(初回フレームで確定・解像度変更でも変わる)
+  relayoutPreviewsForResize();
   notifyTileLayoutChanged('aspect');
 }
 
@@ -252,6 +260,9 @@ function createTile(device) {
     device,
     tile,
     nameEl: name,
+    // 拡大表示(出力ペイン)のタグ段はこの2つの複製で作る(renderMirrorHeader)
+    headerEl: header,
+    hostRowEl: hostRow,
     // そのデバイスの直列キュー上の状態({ op: 'up'|'down', status: 'queued'|'running' })。
     // キューに入っていなければ undefined。
     opBusy: undefined,
@@ -396,6 +407,103 @@ function renderFrame(entry) {
     entry.placeholderEl.append(icon, labelSpan);
     entry.frameWrapEl.appendChild(entry.placeholderEl);
   }
+  renderMirror(entry);
+}
+
+// ---- 拡大表示(出力ペイン)----
+// 「絵かプレースホルダか」はタイルの描画結果(frameWrapEl の中身)をそのまま写す。判定を
+// 書き直すと renderFrame の分岐(未起動・終了中・観測不能・配信断念…)と食い違う。
+function renderMirror(entry) {
+  const mirror = deviceMirrors.get(entry.device.id);
+  if (!mirror) {
+    return;
+  }
+  renderMirrorHeader(entry, mirror);
+  mirror.frameEl.textContent = '';
+  if (entry.frameWrapEl.contains(entry.placeholderEl)) {
+    mirror.frameEl.appendChild(entry.placeholderEl.cloneNode(true));
+    return;
+  }
+  if (entry.usingH264 && entry.canvasEl) {
+    mirror.frameEl.appendChild(mirror.canvasEl);
+    copyMirrorFrame(entry);
+    return;
+  }
+  if (entry.frameSrc) {
+    mirror.imgEl.src = entry.frameSrc;
+    mirror.imgEl.alt = entry.device.name;
+    mirror.frameEl.appendChild(mirror.imgEl);
+  }
+}
+
+// 絵の上のタグ段。タイルのヘッダ(実機バッジ・デバイス名のピル・未登録バッジ)をそのまま複製する
+// —— フリートと同じ見た目・同じ内容にするため(組み立て直すと renderMeta の切替と食い違う)。
+// ホスト名の段はリモートの台にしか無いので、出ているときだけ足す(空の段を作らない)。
+function renderMirrorHeader(entry, mirror) {
+  mirror.headerEl.textContent = '';
+  mirror.headerEl.appendChild(entry.headerEl.cloneNode(true));
+  if (entry.remoteBadgeEl.style.display !== 'none') {
+    mirror.headerEl.appendChild(entry.hostRowEl.cloneNode(true));
+  }
+}
+
+// h264 は1フレーム描画するたびに呼ぶ(タイルの canvas → 拡大表示の canvas への転写)。
+// 転写元はデコード実寸の canvas なので、拡大表示でも解像度は落ちない。
+function copyMirrorFrame(entry) {
+  const mirror = deviceMirrors.get(entry.device.id);
+  if (!mirror || !entry.usingH264 || !entry.canvasEl) {
+    return;
+  }
+  const source = entry.canvasEl;
+  if (!(source.width > 0) || !(source.height > 0)) {
+    return;
+  }
+  if (mirror.canvasEl.width !== source.width || mirror.canvasEl.height !== source.height) {
+    mirror.canvasEl.width = source.width;
+    mirror.canvasEl.height = source.height;
+  }
+  // jsdom(テスト)には 2d コンテキストが無い
+  const ctx = mirror.canvasEl.getContext('2d');
+  if (!ctx) {
+    return;
+  }
+  ctx.drawImage(source, 0, 0);
+}
+
+// laneLog.js から: 選択デバイスのレーンに拡大表示を付ける/外す。同じ wrapEl への再 attach は
+// 要素を作り直さない(devices サイクルのたびに呼ばれるため)。
+// 登録の寿命はレーンの寿命と同じ(タイルが消えた台は laneLog.js の removeLane が detach する)。
+// ここで tiles の削除に合わせて外すと所有者が2つになる。
+export function attachDeviceMirror(deviceId, wrapEl) {
+  const entry = tiles.get(deviceId);
+  if (!entry) {
+    return;
+  }
+  let mirror = deviceMirrors.get(deviceId);
+  if (!mirror || mirror.wrapEl !== wrapEl) {
+    const imgEl = document.createElement('img');
+    imgEl.className = 'lane-preview-media';
+    const canvasEl = document.createElement('canvas');
+    canvasEl.className = 'lane-preview-media';
+    const headerEl = document.createElement('div');
+    headerEl.className = 'lane-preview-header';
+    const frameEl = document.createElement('div');
+    frameEl.className = 'lane-preview-frame';
+    wrapEl.textContent = '';
+    wrapEl.append(headerEl, frameEl);
+    mirror = { wrapEl, headerEl, frameEl, imgEl, canvasEl };
+    deviceMirrors.set(deviceId, mirror);
+  }
+  renderMirror(entry);
+}
+
+export function detachDeviceMirror(deviceId) {
+  const mirror = deviceMirrors.get(deviceId);
+  if (!mirror) {
+    return;
+  }
+  mirror.wrapEl.textContent = '';
+  deviceMirrors.delete(deviceId);
 }
 
 // GPU/CPU はゲスト OS 異常ではなく構成情報のため device.state に関わらず表示してよい
@@ -806,6 +914,7 @@ export function applyH264Chunk(message) {
         setTileAspect(entry, dims.width / dims.height);
       },
       onFrameRendered: () => {
+        copyMirrorFrame(entry);
         ackStreamRendered(entry);
       },
       onError: () => {

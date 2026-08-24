@@ -2,7 +2,7 @@
   "name": "vscode-ftester",
   "displayName": "ftester",
   "description": "%ftester.extension.description%",
-  "version": "0.0.558",
+  "version": "0.0.563",
   "private": true,
   "publisher": "wave1008",
   "license": "MIT",

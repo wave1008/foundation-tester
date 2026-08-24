@@ -608,6 +608,74 @@ select:disabled { opacity: 0.5; cursor: default; }
   gap: 10px;
   /* align-content は既定 stretch のまま維持(start にすると下半分が余白になる) */
 }
+/* 拡大表示中は段組み(grid-template-columns/rows)を laneLog.js が実測から決め、ちょうど
+   収まる大きさにする。スクロールは出ない = 常時表示のスクロールバーぶんの幅も絵に使う。 */
+.lanes-grid.previewing {
+  overflow: hidden;
+}
+/* lanes-grid の1列 = 1デバイス。中身は選択の有無で入れ替わる:
+   選択中は拡大表示(動画)だけ・選択なしは従来どおり実行ログだけ(laneLog.js の
+   updateLaneVisibility が display と .preview-only を切り替える)。 */
+.lane-pair {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+}
+.lane-pair > .lane {
+  flex: 1 1 auto;
+}
+/* 拡大表示(上=タグ段 / 下=絵)。列いっぱいを使い、絵の縦横比は CSS で組み立てず
+   実寸 + max-width/max-height に任せる(縦横比を CSS で作ると、高さが確定する前に幅を
+   決めようとして潰れる形がある)。 */
+.lane-preview {
+  flex: 1 1 auto;
+  display: none; /* 選択したデバイスのぶんだけ laneLog.js が flex にする */
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  min-height: 0;
+}
+/* タグ段。中身はタイルのヘッダ(実機・デバイス名・未登録)とホスト名の段の複製なので、
+   見た目はフリートのタイルと同じ CSS(.tile-name/.badge)がそのまま効く。タイル側の
+   固定高・幅(タイル幅を膨らませないための width:0)だけはここで打ち消す。 */
+.lane-preview-header {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.lane-preview-header .tile-header,
+.lane-preview-header .tile-host-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 0;
+  height: auto;
+}
+.lane-preview-frame {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+  border-radius: 4px;
+  background-color: var(--vscode-input-background, #1e1e1e);
+  overflow: hidden;
+}
+/* 置換要素の min/max 規則で縦横比を保ったまま枠に収める(width/height は auto のまま) */
+.lane-preview-media {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  display: block;
+}
 .lane {
   display: flex;
   flex-direction: column;

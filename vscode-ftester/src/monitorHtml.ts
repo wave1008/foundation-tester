@@ -112,7 +112,7 @@ function renderDevicesPanel(): string {
 
     <div id="output-pane" class="output-pane">
       <div class="lanes-header">
-        <span class="lanes-title">${t("panels.common.runLog")}</span>
+        <span id="lanes-title" class="lanes-title">${t("panels.common.runLog")}</span>
         <span id="lanes-selection-status"></span>
         <span id="lanes-run-status"></span>
       </div>
