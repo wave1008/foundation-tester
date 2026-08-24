@@ -652,9 +652,10 @@ select:disabled { opacity: 0.5; cursor: default; }
   min-width: 0;
   min-height: 0;
 }
-/* タグ段。中身はタイルのヘッダ(実機・デバイス名・未登録)とホスト名の段の複製なので、
-   見た目はフリートのタイルと同じ CSS(.tile-name/.badge)がそのまま効く。タイル側の
-   固定高・幅(タイル幅を膨らませないための width:0)だけはここで打ち消す。 */
+/* タグ段(上=実機・デバイス名・未登録 / 下=ホスト名)。段数は台によらず常に2段
+   —— 手元の台には見えないダミーのバッジが入る(deviceTiles.js renderMirrorHeader)。
+   中身はタイルのヘッダの複製なので、見た目はフリートのタイルと同じ CSS(.tile-name/.badge)が
+   そのまま効く。タイル側の固定高・幅(タイル幅を膨らませないための width:0)だけ打ち消す。 */
 .lane-preview-header {
   flex: 0 0 auto;
   display: flex;
@@ -803,6 +804,12 @@ select:disabled { opacity: 0.5; cursor: default; }
   background: transparent;
   color: inherit;
   cursor: pointer;
+}
+/* デバイスの項目と全体の項目(すべて選択・すべて解除)の区切り */
+.device-op-menu-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background-color: color-mix(in srgb, var(--vscode-foreground) 20%, transparent);
 }
 .device-op-menu-item .op-icon { flex: none; }
 /* up/downアイコンはdata-op(deviceTiles.jsが設定)で切替 */

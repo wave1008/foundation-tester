@@ -617,6 +617,11 @@ function renderDeviceOpMenu(): string {
     <button id="device-op-menu-item" class="device-op-menu-item" type="button" role="menuitem"><svg class="op-icon op-icon-up" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4.74514 3.06414C4.41183 2.87665 4 3.11751 4 3.49993V12.5002C4 12.8826 4.41182 13.1235 4.74512 12.936L12.7454 8.43601C13.0852 8.24486 13.0852 7.75559 12.7454 7.56443L4.74514 3.06414ZM3 3.49993C3 2.35268 4.2355 1.63011 5.23541 2.19257L13.2357 6.69286C14.2551 7.26633 14.2551 8.73415 13.2356 9.30759L5.23537 13.8076C4.23546 14.37 3 13.6474 3 12.5002V3.49993Z"/></svg><svg class="op-icon op-icon-down" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M12.5 3.5V12.5H3.5V3.5H12.5ZM12.5 2H3.5C2.672 2 2 2.672 2 3.5V12.5C2 13.328 2.672 14 3.5 14H12.5C13.328 14 14 13.328 14 12.5V3.5C14 2.672 13.328 2 12.5 2Z"/></svg><span id="device-op-menu-item-label"></span></button>
     <!-- CPU 描画フォールバックを解除して host GPU で再起動。deviceTiles.js が CPU バッジのタイルでのみ表示。 -->
     <button id="device-op-menu-gpu" class="device-op-menu-item" type="button" role="menuitem"><svg class="op-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4.681 3H2V2h3.5l.5.5V6H5V4a5 5 0 1 0 4.53-.635l.418-.909A6 6 0 1 1 4.681 3z"/></svg><span>${t("panels.deviceMenu.restartWithGpu")}</span></button>
+    <!-- ここから下はデバイスに紐づかない項目(空きエリアの右クリックでも出る)。区切りは
+         上のデバイス項目が1つでも出ているときだけ deviceTiles.js が表示する。 -->
+    <div id="device-op-menu-sep" class="device-op-menu-sep"></div>
+    <button id="device-op-menu-select-all" class="device-op-menu-item" type="button" role="menuitem"><svg class="op-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M2 2h12v12H2V2zm1 1v10h10V3H3z"/><path d="M6.9 11.2 4 8.3l.7-.7 2.2 2.2 4.4-4.4.7.7-5.1 5.1z"/></svg><span>${t("panels.deviceMenu.selectAll")}</span></button>
+    <button id="device-op-menu-deselect-all" class="device-op-menu-item" type="button" role="menuitem"><svg class="op-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M2 2h12v12H2V2zm1 1v10h10V3H3z"/></svg><span>${t("panels.deviceMenu.deselectAll")}</span></button>
   </div>`;
 }
 

@@ -210,13 +210,35 @@ test("実機・未登録・ホスト名のタグもフリートと同じに出�
   assert.ok(visibleBadges.some((el) => el.textContent === "m1max"), "ホスト名のタグを出すこと");
 });
 
-test("手元のデバイスにはホスト名の空段を作らない", (t) => {
+// 段数が台で変わると、その台だけ絵の上端が下がる(手元とリモートを並べると揃わない。
+// 2026-08-24 のユーザー指摘)。段は常に2つで、手元にはダミーのバッジを入れて高さを合わせる。
+test("タグの段数は手元でもリモートでも同じ(絵の上端を揃える)", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
-  sendDevices(window, [{}]);
+  const devices = [
+    { id: "d0", name: "Dev 0", platform: "ios", state: "connected", detail: "",
+      kind: "virtual", udid: "UDID-0", recording: false, registered: true },
+    { id: "d1", name: "Dev 1", platform: "ios", state: "connected", detail: "",
+      kind: "virtual", udid: "UDID-1", recording: false, registered: true, machineHost: "m1max" },
+  ];
+  window.dispatchEvent(new window.MessageEvent("message", { data: { type: "devices", devices } }));
   clickTile(document, 0);
-  const header = visiblePreviews(document)[0].querySelector(".lane-preview-header");
-  assert.equal(header.querySelectorAll(".tile-host-row").length, 0);
+  clickTile(document, 1);
+  const headers = [...document.querySelectorAll("#lanes-grid .lane-preview-header")];
+  assert.equal(headers.length, 2);
+  for (const header of headers) {
+    assert.equal(header.querySelectorAll(".tile-header").length, 1);
+    assert.equal(header.querySelectorAll(".tile-host-row").length, 1, "ホスト名の段は常に置く");
+  }
+  const hostBadgeOf = (header) => header.querySelector(".tile-host-row .badge-remote");
+  // リモートはホスト名がそのまま見える
+  assert.equal(hostBadgeOf(headers[1]).textContent, "m1max");
+  assert.equal(hostBadgeOf(headers[1]).style.visibility, "");
+  // 手元は見えないダミー(段の高さだけを作る)。空文字だと高さが 0 になるので中身を入れる
+  const dummy = hostBadgeOf(headers[0]);
+  assert.equal(dummy.style.visibility, "hidden");
+  assert.equal(dummy.style.display, "inline-block");
+  assert.notEqual(dummy.textContent, "");
 });
 
 test("mjpeg のフレームはタイルと同じ絵が拡大表示にも出る", (t) => {

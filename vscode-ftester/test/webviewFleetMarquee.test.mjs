@@ -387,3 +387,73 @@ test("範囲選択も左右の余白を含む(画像に触れなくても帯に�
   drag(window, document, 95, 100, 118, 120);
   assert.deepEqual(selectedNames(document), ["Dev 0", "Dev 1"]);
 });
+
+// ---- 右クリックの「すべて選択」「すべて解除」 ----
+
+function rightClick(window, target, x, y) {
+  target.dispatchEvent(new window.MouseEvent("contextmenu", {
+    bubbles: true, cancelable: true, clientX: x, clientY: y, button: 2,
+  }));
+}
+const menu = (document) => document.getElementById("device-op-menu");
+const selectAllBtn = (document) => document.getElementById("device-op-menu-select-all");
+const deselectAllBtn = (document) => document.getElementById("device-op-menu-deselect-all");
+const clickMenuItem = (window, button) =>
+  button.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
+
+test("タイルの右クリックのメニューからすべて選択・すべて解除できる", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, 3);
+  layoutTiles(document, 3);
+  rightClick(window, tileOf(document, 0), 50, 100);
+  assert.ok(menu(document).classList.contains("visible"));
+  clickMenuItem(window, selectAllBtn(document));
+  assert.deepEqual(selectedNames(document), ["Dev 0", "Dev 1", "Dev 2"]);
+  assert.equal(menu(document).classList.contains("visible"), false, "選んだらメニューを閉じること");
+
+  rightClick(window, tileOf(document, 0), 50, 100);
+  clickMenuItem(window, deselectAllBtn(document));
+  assert.deepEqual(selectedNames(document), []);
+});
+
+test("タイルの外(空きエリア)の右クリックでも出る(デバイスの項目は出さない)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, 3);
+  layoutTiles(document, 3);
+  rightClick(window, document.getElementById("grid"), 500, 250);
+  assert.ok(menu(document).classList.contains("visible"));
+  assert.equal(document.getElementById("device-op-menu-item").style.display, "none");
+  assert.equal(document.getElementById("device-op-menu-live").style.display, "none");
+  assert.equal(document.getElementById("device-op-menu-gpu").style.display, "none");
+  assert.equal(document.getElementById("device-op-menu-sep").style.display, "none");
+  clickMenuItem(window, selectAllBtn(document));
+  assert.deepEqual(selectedNames(document), ["Dev 0", "Dev 1", "Dev 2"]);
+});
+
+test("結果が変わらない項目は押せない(全選択済み/未選択)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, 2);
+  layoutTiles(document, 2);
+  rightClick(window, tileOf(document, 0), 50, 100);
+  assert.equal(selectAllBtn(document).disabled, false);
+  assert.equal(deselectAllBtn(document).disabled, true, "未選択なら「すべて解除」は押せない");
+  clickMenuItem(window, selectAllBtn(document));
+  rightClick(window, tileOf(document, 0), 50, 100);
+  assert.equal(selectAllBtn(document).disabled, true, "全選択済みなら「すべて選択」は押せない");
+  assert.equal(deselectAllBtn(document).disabled, false);
+});
+
+test("空きエリアの右クリックはメニューを開いたまま(開いた直後に閉じない)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, 1);
+  layoutTiles(document, 1);
+  // 実ブラウザ同様、document までバブリングさせる
+  document.getElementById("grid").dispatchEvent(new window.MouseEvent("contextmenu", {
+    bubbles: true, cancelable: true, clientX: 500, clientY: 250, button: 2,
+  }));
+  assert.ok(menu(document).classList.contains("visible"));
+});

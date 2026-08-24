@@ -26,3 +26,6 @@ export const deviceOpMenuItemBtn = document.getElementById('device-op-menu-item'
 export const deviceOpMenuItemLabel = document.getElementById('device-op-menu-item-label');
 export const deviceOpMenuLiveBtn = document.getElementById('device-op-menu-live');
 export const deviceOpMenuGpuBtn = document.getElementById('device-op-menu-gpu');
+export const deviceOpMenuSep = document.getElementById('device-op-menu-sep');
+export const deviceOpMenuSelectAllBtn = document.getElementById('device-op-menu-select-all');
+export const deviceOpMenuDeselectAllBtn = document.getElementById('device-op-menu-deselect-all');

@@ -256,6 +256,9 @@ export const panelsStrings = {
 
   "panels.deviceMenu.liveControl": { ja: "ライブ操作", en: "Live Control" },
   "panels.deviceMenu.restartWithGpu": { ja: "GPUで再起動", en: "Restart with GPU" },
+  // フリートの右クリック(タイルの上でも空きエリアでも出る。deviceTiles.js openDeviceOpMenu)
+  "panels.deviceMenu.selectAll": { ja: "すべて選択", en: "Select All" },
+  "panels.deviceMenu.deselectAll": { ja: "すべて解除", en: "Deselect All" },
   "panels.deviceMenu.remove": { ja: "除去", en: "Remove" },
   // #device-pick-overlay の行専用。machineDeviceMenu の「除去」(プロファイルから外すだけ)と違い、
   // ホスト上の実体(シミュレータ/AVD)そのものを削除する(devicePickDeviceDelete)。

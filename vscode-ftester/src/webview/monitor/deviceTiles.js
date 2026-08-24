@@ -7,7 +7,7 @@
 
 import { t } from '../i18n.js';
 import { vscode } from './vscodeApi.js';
-import { grid, emptyMessage, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuItemBtn, deviceOpMenuItemLabel, deviceOpMenuLiveBtn, deviceOpMenuGpuBtn, profileSelect, tilePane, tileMarquee } from './domRefs.js';
+import { grid, emptyMessage, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuItemBtn, deviceOpMenuItemLabel, deviceOpMenuLiveBtn, deviceOpMenuGpuBtn, deviceOpMenuSep, deviceOpMenuSelectAllBtn, deviceOpMenuDeselectAllBtn, profileSelect, tilePane, tileMarquee } from './domRefs.js';
 import { updateLaneVisibility, syncLanesToDevices, runningWorkers, relayoutPreviewsForResize } from './laneLog.js';
 import { createH264Renderer } from './h264Decoder.js';
 import { clampMenuPosition } from './menu.js';
@@ -441,13 +441,20 @@ function renderMirror(entry) {
 
 // 絵の上のタグ段。タイルのヘッダ(実機バッジ・デバイス名のピル・未登録バッジ)をそのまま複製する
 // —— フリートと同じ見た目・同じ内容にするため(組み立て直すと renderMeta の切替と食い違う)。
-// ホスト名の段はリモートの台にしか無いので、出ているときだけ足す(空の段を作らない)。
+// ホスト名の段(タイルと同じく名前の下)は**常に置く**。リモートの台にだけ段を足すと、
+// その台だけ絵の上端が下がって手元と高さが揃わない(2026-08-24 のユーザー指摘)。
+// 手元の台には**見えないダミーのバッジ**を入れて高さだけ合わせる(中身が空の段は高さ 0)。
 function renderMirrorHeader(entry, mirror) {
   mirror.headerEl.textContent = '';
   mirror.headerEl.appendChild(entry.headerEl.cloneNode(true));
-  if (entry.remoteBadgeEl.style.display !== 'none') {
-    mirror.headerEl.appendChild(entry.hostRowEl.cloneNode(true));
+  const hostRow = entry.hostRowEl.cloneNode(true);
+  const badge = hostRow.querySelector('.badge-remote');
+  if (badge && entry.remoteBadgeEl.style.display === 'none') {
+    badge.textContent = '\u00a0';
+    badge.style.display = 'inline-block';
+    badge.style.visibility = 'hidden';
   }
+  mirror.headerEl.appendChild(hostRow);
 }
 
 // h264 は1フレーム描画するたびに呼ぶ(タイルの canvas → 拡大表示の canvas への転写)。
@@ -646,16 +653,34 @@ export function renderDeviceOpMenuItem() {
   deviceOpMenuItemBtn.dataset.op = item.op;
 }
 
+// 「開いているか」は entry では判定できない —— 空きエリアの右クリックでは entry が無いまま開く。
+let deviceOpMenuOpen = false;
+
 export function closeDeviceOpMenu() {
-  if (!deviceOpMenuEntry) {
+  if (!deviceOpMenuOpen) {
     return;
   }
+  deviceOpMenuOpen = false;
   deviceOpMenuEntry = null;
   deviceOpMenu.classList.remove('visible');
 }
 
+// entry=null はグリッドの空きエリアでの右クリック(デバイスの項目は出さず、全体の項目だけ)。
 function openDeviceOpMenu(entry, clientX, clientY) {
   deviceOpMenuEntry = entry;
+  deviceOpMenuOpen = true;
+  renderSelectionMenuItems();
+  if (!entry) {
+    deviceOpMenuItemBtn.style.display = 'none';
+    deviceOpMenuLiveBtn.style.display = 'none';
+    deviceOpMenuGpuBtn.style.display = 'none';
+    deviceOpMenuSep.style.display = 'none';
+    deviceOpMenu.classList.add('visible');
+    clampMenuPosition(deviceOpMenu, clientX, clientY);
+    return;
+  }
+  deviceOpMenuItemBtn.style.display = '';
+  deviceOpMenuSep.style.display = '';
   renderDeviceOpMenuItem();
   // GPU再起動はマシンプロファイル前提(name 解決)のため未登録では出さない
   // (起動/停止項目は renderDeviceOpMenuItem 側、ライブ操作は下で個別に扱う)。
@@ -673,6 +698,34 @@ function openDeviceOpMenu(entry, clientX, clientY) {
   deviceOpMenu.classList.add('visible');
   clampMenuPosition(deviceOpMenu, clientX, clientY);
 }
+
+// 「すべて選択」「すべて解除」は今の状態で押せるかが決まる(結果が変わらないなら押させない)。
+function renderSelectionMenuItems() {
+  deviceOpMenuSelectAllBtn.disabled = tiles.size === 0 || selectedDeviceIds.size === tiles.size;
+  deviceOpMenuDeselectAllBtn.disabled = selectedDeviceIds.size === 0;
+}
+
+deviceOpMenuSelectAllBtn.addEventListener('click', (event) => {
+  event.stopPropagation();
+  if (deviceOpMenuSelectAllBtn.disabled) {
+    return;
+  }
+  for (const id of tiles.keys()) {
+    selectedDeviceIds.add(id);
+  }
+  updateSelectionUi();
+  closeDeviceOpMenu();
+});
+
+deviceOpMenuDeselectAllBtn.addEventListener('click', (event) => {
+  event.stopPropagation();
+  if (deviceOpMenuDeselectAllBtn.disabled) {
+    return;
+  }
+  selectedDeviceIds.clear();
+  updateSelectionUi();
+  closeDeviceOpMenu();
+});
 
 deviceOpMenuItemBtn.addEventListener('click', (event) => {
   event.stopPropagation();
@@ -1193,6 +1246,14 @@ function tileHitAtPoint(event) {
   }
   return { tile: true, entry: null };
 }
+
+// タイルの外(空きエリア)の右クリック。stopPropagation しないと、下の document の
+// contextmenu リスナが開いた直後に閉じる(タイル側と同じ理由)。
+grid.addEventListener('contextmenu', (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  openDeviceOpMenu(null, event.clientX, event.clientY);
+});
 
 // ---- 範囲選択(左ドラッグの矩形。中ボタンの掴んで横スクロールとは別) ----
 // しきい値を超えるまでは何も出さない = 動かさなければ従来どおりタイルのクリック(選択トグル)。
