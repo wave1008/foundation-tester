@@ -96,8 +96,8 @@ enum DeviceHostRunner {
                     + " on each of \(group.deviceNames.count) device(s) (--broadcast)")
             }
         } else {
-            let (buckets, notApplicable) = try assign(project: project, groups: groups, selected: selected,
-                                                      lptHistoryRuns: lptHistoryRuns)
+            let (buckets, basis, notApplicable) = try assign(
+                project: project, groups: groups, selected: selected, lptHistoryRuns: lptHistoryRuns)
             for line in notApplicableLines(notApplicable, groups: groups) { FleetRunner.log(line) }
             active = groups.indices.compactMap { index -> (Int, Group, [String])? in
                 let ids = buckets[index].scenarioIDs
@@ -109,9 +109,12 @@ enum DeviceHostRunner {
                 return 0
             }
             for (index, group, ids) in active {
+                // 推定に続けて**その推定が何に基づいたか**を出す(2026-08-24 受け手要望)。
+                // 係数だけ出しても由来が分からないと、遅い機に偏った run を後から検証できない
                 FleetRunner.log("    \(group.hostLabel): \(ids.count) scenario(s)"
                     + " on \(group.deviceNames.count) device(s)"
-                    + " [\(buckets[index].estimatedMs > 0 ? estimateText(buckets[index].estimatedMs, devices: group.deviceNames.count) : "no history")]")
+                    + " [\(buckets[index].estimatedMs > 0 ? estimateText(buckets[index].estimatedMs, devices: group.deviceNames.count) : "no history")"
+                    + "; \(basis[index].summary)]")
             }
         }
 
@@ -166,7 +169,8 @@ enum DeviceHostRunner {
     /// 子に渡した ID のうちイベントが来なかったものを failed に合成するため、渡すと赤になる
     static func assign(project: TestProject, groups: [Group],
                        selected: [ScenarioInfo], lptHistoryRuns: Int?)
-        throws -> (buckets: [FleetSplit.Bucket], notApplicable: [ScenarioInfo]) {
+        throws -> (buckets: [FleetSplit.Bucket], basis: [FleetSplit.EstimateBasis],
+                   notApplicable: [ScenarioInfo]) {
         let split = FleetSplit.applicability(
             scenarios: selected.map { (id: $0.id, platform: $0.platform) },
             entryPlatforms: groups.map(\.platforms))
@@ -205,7 +209,7 @@ enum DeviceHostRunner {
             machineDurations: LPTScheduler.machineDurations(from: records),
             entryFallbackFactors: entryFallbackFactors)
         do {
-            let buckets = try FleetSplit.partition(
+            let plan = try FleetSplit.plan(
                 scenarios: runnable.map { (id: $0.id, platform: $0.platform) },
                 durations: durations,
                 entryPlatforms: groups.map(\.platforms),
@@ -213,7 +217,7 @@ enum DeviceHostRunner {
                 entryCapacities: groups.map { Double($0.deviceNames.count) },
                 // 実績ゼロ = unknown が単位重みのときは context を落とす(FleetRunner と同じ理由)
                 machineContext: FleetSplit.machineContext(machineContext, ifHistoryExists: durations))
-            return (buckets, notApplicable)
+            return (plan.buckets, plan.basis, notApplicable)
         } catch let error as FleetSplit.FleetSplitError {
             throw ValidationError("profile \"\(project.name)\": \(error.localizedDescription)")
         }

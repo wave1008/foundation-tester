@@ -430,3 +430,175 @@ extension FleetSplitTests {
         XCTAssertEqual(a, b)
     }
 }
+
+// MARK: - platform スコープ(機械別実績が別 platform から来る事故)
+
+extension FleetSplitTests {
+
+    /// **witness**: 機械 M は直近 android でしか回しておらず、同じシナリオの android 実績(30秒)しか
+    /// 持たない。ios だけを回すエントリでこれを「同一機の実績」として使うと、実際は 120 秒かかる
+    /// ios のシナリオを 30 秒と見積もって M へ積み続ける —— 受け手の 98 本 iOS run で M1Ultra だけが
+    /// 最後まで走る極になった形(ファイル冒頭の項)。ios スコープなら混合の ios 実績 120 秒を使う。
+    func testMachineHistoryFromAnotherPlatformDoesNotFeedASinglePlatformEntry() throws {
+        let durations = [duration("Long.one", 120_000, "ios"), duration("Long.one", 30_000, "android")]
+        let machineDurations = [machineDuration("Long.one", 30_000, machine: "M", platform: "android")]
+        let context = FleetSplit.MachineContext(
+            entryMachines: ["M"], entryFixedOffsetsMs: [0], machineDurations: machineDurations)
+
+        let iosOnly = try FleetSplit.partition(
+            scenarios: [("Long.one", nil)], durations: durations,
+            entryPlatforms: [["ios"]], unknownDurationMs: 1_000, machineContext: context)
+        XCTAssertEqual(iosOnly[0].estimatedMs, 120_000,
+                       "ios しか回せないエントリに android の中央値を使ってはいけない")
+
+        // 両方回すエントリでは scope が両 platform = 従来どおり max(安全側)。ここが変わると
+        // 既存の --fleet --split の割り当てが黙って動く
+        let both = try FleetSplit.partition(
+            scenarios: [("Long.one", nil)], durations: durations,
+            entryPlatforms: [["ios", "android"]], unknownDurationMs: 1_000, machineContext: context)
+        XCTAssertEqual(both[0].estimatedMs, 30_000,
+                       "両 platform を回すエントリは同一機の実績をそのまま使う(従来と同一)")
+    }
+
+    /// 宣言 platform はエントリの platform 集合より強い(その platform でしか走らないので)
+    func testDeclaredPlatformNarrowsTheScopeEvenOnAMixedEntry() throws {
+        let durations = [duration("S.one", 90_000, "ios"), duration("S.one", 20_000, "android")]
+        let machineDurations = [
+            machineDuration("S.one", 20_000, machine: "M", platform: "android"),
+            machineDuration("S.one", 90_000, machine: "M", platform: "ios"),
+        ]
+        let context = FleetSplit.MachineContext(
+            entryMachines: ["M"], entryFixedOffsetsMs: [0], machineDurations: machineDurations)
+        let buckets = try FleetSplit.partition(
+            scenarios: [("S.one", "android")], durations: durations,
+            entryPlatforms: [["ios", "android"]], unknownDurationMs: 1_000, machineContext: context)
+        XCTAssertEqual(buckets[0].estimatedMs, 20_000)
+    }
+
+    /// scope 内に実績が1件も無いときは全 platform へ退化する(その platform を1度も回していない
+    /// プロジェクトで実績を捨てない)。**退化してよいのは混合側だけ** —— 同一機側で退化すると
+    /// 上の witness が復活する
+    func testMixedEstimateFallsBackAcrossPlatformsWhenTheScopeHasNoHistory() throws {
+        let durations = [duration("S.one", 45_000, "android")]
+        let buckets = try FleetSplit.partition(
+            scenarios: [("S.one", nil)], durations: durations,
+            entryPlatforms: [["ios"]], unknownDurationMs: 1_000)
+        XCTAssertEqual(buckets[0].estimatedMs, 45_000,
+                       "ios の実績が無ければ android の実績を使う(unknown へ落とさない)")
+    }
+
+    /// 投入順(降順ソート)も scope を通す。ios だけを回す fleet で、android でだけ長いシナリオが
+    /// 先頭に来ると LPT の狙いが外れる
+    func testOrderingUsesTheScopedEstimate() throws {
+        let durations = [
+            duration("A.short", 10_000, "ios"), duration("A.short", 99_000, "android"),
+            duration("B.long", 50_000, "ios"), duration("B.long", 1_000, "android"),
+        ]
+        let buckets = try FleetSplit.partition(
+            scenarios: [("A.short", nil), ("B.long", nil)], durations: durations,
+            entryPlatforms: [["ios"], ["ios"]], unknownDurationMs: 1_000)
+        XCTAssertEqual(buckets[0].scenarioIDs, ["B.long"], "ios の実績で長い方が先に配られる")
+        XCTAssertEqual(buckets[1].scenarioIDs, ["A.short"])
+    }
+}
+
+// MARK: - EstimateBasis(見積りの根拠。ディスパッチのログ1行)
+
+extension FleetSplitTests {
+
+    func testPlanCountsWhereEachEstimateCameFrom() throws {
+        // "Own" は M の ios 実績あり / "Scaled" は混合実績のみ / "Unknown" は実績なし。
+        // M の係数は "Own" の共通観測から 6,000/12,000 = 0.5
+        let durations = [duration("Own", 12_000), duration("Scaled", 20_000)]
+        let machineDurations = [machineDuration("Own", 6_000, machine: "M")]
+        let context = FleetSplit.MachineContext(
+            entryMachines: ["M"], entryFixedOffsetsMs: [0], machineDurations: machineDurations)
+
+        let plan = try FleetSplit.plan(
+            scenarios: [("Own", nil), ("Scaled", nil), ("Unknown", nil)], durations: durations,
+            entryPlatforms: [["ios"]], unknownDurationMs: 1_000, machineContext: context)
+
+        XCTAssertEqual(plan.basis, [FleetSplit.EstimateBasis(
+            entryIndex: 0, machine: "M", ownHistory: 1, scaled: 1, unknown: 1,
+            coefficient: 0.5, coefficientSource: .measured)])
+        XCTAssertEqual(plan.basis[0].summary, "1 from M history, 2 scaled x0.50 (measured)")
+        // 見積り: 6,000(同一機) + 20,000×0.5 + 1,000×0.5
+        XCTAssertEqual(plan.buckets[0].estimatedMs, 16_500)
+    }
+
+    /// 実測比が無い機械は事前係数(コア数比)を使い、由来も hardware と名乗る
+    func testBasisNamesTheHardwareFallbackWhenThereIsNoMeasuredRatio() throws {
+        let context = FleetSplit.MachineContext(
+            entryMachines: ["M"], entryFixedOffsetsMs: [0], machineDurations: [],
+            entryFallbackFactors: [2.5])
+        let plan = try FleetSplit.plan(
+            scenarios: [("S.one", nil)], durations: [duration("S.one", 4_000)],
+            entryPlatforms: [["ios"]], unknownDurationMs: 1_000, machineContext: context)
+        XCTAssertEqual(plan.basis[0].coefficientSource, .hardware)
+        XCTAssertEqual(plan.basis[0].coefficient, 2.5)
+        XCTAssertEqual(plan.basis[0].summary, "1 scaled x2.50 (hardware)")
+    }
+
+    /// machineContext 無し = 補正なし。summary も係数を主張しない
+    func testBasisSaysNoneWithoutAMachineContext() throws {
+        let plan = try FleetSplit.plan(
+            scenarios: [("S.one", nil)], durations: [duration("S.one", 4_000)],
+            entryPlatforms: [["ios"]], unknownDurationMs: 1_000)
+        XCTAssertEqual(plan.basis[0].coefficientSource, .none)
+        XCTAssertEqual(plan.basis[0].summary, "1 scaled x1.00 (none)")
+        XCTAssertNil(plan.basis[0].machine)
+    }
+
+    /// partition は plan の buckets そのもの(2つの割り当て実装を持たない)
+    func testPartitionReturnsThePlansBuckets() throws {
+        let durations = [duration("A", 5_000), duration("B", 3_000)]
+        let scenarios: [(id: String, platform: String?)] = [("A", nil), ("B", nil), ("C", nil)]
+        let platforms: [Set<String>] = [["ios"], ["ios"]]
+        let buckets = try FleetSplit.partition(
+            scenarios: scenarios, durations: durations, entryPlatforms: platforms,
+            unknownDurationMs: 1_000)
+        let plan = try FleetSplit.plan(
+            scenarios: scenarios, durations: durations, entryPlatforms: platforms,
+            unknownDurationMs: 1_000)
+        XCTAssertEqual(buckets, plan.buckets)
+    }
+}
+
+// MARK: - speedFactors の platform 対応
+
+extension FleetSplitTests {
+
+    /// **分子と分母は同じ platform で取る**。機械 M の android 実績を全 platform max の混合
+    /// (= ios の 100,000)で割ると 0.2 になり、機械が5倍速いという誤った係数が立つ
+    func testSpeedFactorsMatchesPlatformsBetweenNumeratorAndDenominator() {
+        let durations = [
+            duration("S.one", 100_000, "ios"), duration("S.one", 20_000, "android"),
+        ]
+        let machineDurations = [machineDuration("S.one", 20_000, machine: "M", platform: "android")]
+        let factors = FleetSplit.speedFactors(machineDurations: machineDurations, durations: durations)
+        XCTAssertEqual(factors, ["M": 1.0], "android 同士の比 = 1.0(platform 差を係数にしない)")
+    }
+
+    /// scope 内に比があればそれだけを使う(今回の run が回す platform の速度差を優先)
+    func testSpeedFactorsPrefersRatiosInsideTheScope() {
+        let durations = [
+            duration("A", 10_000, "ios"), duration("B", 10_000, "android"),
+        ]
+        let machineDurations = [
+            machineDuration("A", 20_000, machine: "M", platform: "ios"),
+            machineDuration("B", 5_000, machine: "M", platform: "android"),
+        ]
+        XCTAssertEqual(FleetSplit.speedFactors(machineDurations: machineDurations,
+                                               durations: durations, scope: ["ios"]), ["M": 2.0])
+        XCTAssertEqual(FleetSplit.speedFactors(machineDurations: machineDurations,
+                                               durations: durations, scope: ["android"]), ["M": 0.5])
+    }
+
+    /// scope 内に比が1本も無い機械は全 platform の比へ退化する(係数を捨てない)
+    func testSpeedFactorsFallsBackToEveryPlatformWhenTheScopeIsEmptyForThatMachine() {
+        let durations = [duration("B", 10_000, "android")]
+        let machineDurations = [machineDuration("B", 5_000, machine: "M", platform: "android")]
+        XCTAssertEqual(FleetSplit.speedFactors(machineDurations: machineDurations,
+                                               durations: durations, scope: ["ios"]), ["M": 0.5])
+    }
+}

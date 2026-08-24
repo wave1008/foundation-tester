@@ -158,8 +158,9 @@ enum FleetRunner {
         }
 
         let buckets: [FleetSplit.Bucket]
+        let basis: [FleetSplit.EstimateBasis]
         do {
-            buckets = try FleetSplit.partition(
+            (buckets, basis) = try FleetSplit.plan(
                 scenarios: split.runnable,
                 durations: durations, entryPlatforms: entryPlatforms, unknownDurationMs: unknownDurationMs,
                 // 実績ゼロ = unknownDurationMs が単位重みのときは context を落とす(ms の offset が
@@ -169,7 +170,8 @@ enum FleetRunner {
             throw ValidationError("fleet \"\(fleetName)\" --split: \(error.localizedDescription)")
         }
 
-        printAssignment(fleetName: fleetName, fleet: fleet, buckets: buckets, hasHistory: hasHistory)
+        printAssignment(fleetName: fleetName, fleet: fleet, buckets: buckets, basis: basis,
+                        hasHistory: hasHistory)
 
         let byEntryIndex = Dictionary(uniqueKeysWithValues: buckets.map { ($0.entryIndex, $0.scenarioIDs) })
         let active = fleet.runs.enumerated().compactMap { index, entry -> (Int, FleetRunEntry, [String])? in
@@ -294,15 +296,21 @@ enum FleetRunner {
     /// **実績が1件も無いときは推定を出さない**(重みは「1本ぶん」であって秒ではないので、
     /// 秒として見せると読み手が実時間と誤読する。`unknownDurationUnitWeight` の項)
     private static func printAssignment(fleetName: String, fleet: FleetProfileDocument,
-                                        buckets: [FleetSplit.Bucket], hasHistory: Bool) {
+                                        buckets: [FleetSplit.Bucket],
+                                        basis: [FleetSplit.EstimateBasis], hasHistory: Bool) {
         let byIndex = Dictionary(uniqueKeysWithValues: buckets.map { ($0.entryIndex, $0) })
-        let header = hasHistory ? ["HOST", "PROFILE", "SCENARIOS", "EST."] : ["HOST", "PROFILE", "SCENARIOS"]
+        let basisByIndex = Dictionary(uniqueKeysWithValues: basis.map { ($0.entryIndex, $0) })
+        // BASIS = その推定が何に基づいたか(同一機の実績 / 混合実績 × 係数)。係数だけでは
+        // 由来が分からず、遅い機に偏った run を後から検証できない(2026-08-24 受け手要望)
+        let header = hasHistory ? ["HOST", "PROFILE", "SCENARIOS", "EST.", "BASIS"]
+                                : ["HOST", "PROFILE", "SCENARIOS"]
         var rows = [header]
         for (index, entry) in fleet.runs.enumerated() {
             let count = byIndex[index]?.scenarioIDs.count ?? 0
             var row = [entry.host, entry.profile, count == 0 ? "0 (skip)" : String(count)]
             if hasHistory {
                 row.append(String(format: "%.1fs", (byIndex[index]?.estimatedMs ?? 0) / 1000))
+                row.append(basisByIndex[index]?.summary ?? "")
             }
             rows.append(row)
         }

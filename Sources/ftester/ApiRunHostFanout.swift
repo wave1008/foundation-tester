@@ -58,13 +58,18 @@ enum ApiRunHostFanout {
             throw ValidationError("no scenarios to run after filtering")
         }
 
-        let (buckets, notApplicable) = try DeviceHostRunner.assign(
+        let (buckets, basis, notApplicable) = try DeviceHostRunner.assign(
             project: project, groups: groups, selected: selected,
             lptHistoryRuns: options.lptHistoryRuns)
         for line in DeviceHostRunner.notApplicableLines(notApplicable, groups: groups) { logStderr(line) }
         let active = groups.indices.compactMap { index -> (index: Int, group: DeviceHostRunner.Group, ids: [String])? in
             let ids = buckets[index].scenarioIDs
             return ids.isEmpty ? nil : (index, groups[index], ids)
+        }
+        // CLI と同じ「見積りの根拠」を拡張の OUTPUT にも出す(片方だけ見える情報を作らない)
+        for (index, group, ids) in active {
+            logStderr("    \(group.hostLabel): \(ids.count) scenario(s)"
+                + " on \(group.deviceNames.count) device(s) [\(basis[index].summary)]")
         }
         let dispatchStart = Date()
         // 全部が宣言 platform の対象外なら単機の run と同じく 0/0 で終える(正しく緑)。
