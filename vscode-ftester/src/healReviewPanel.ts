@@ -83,12 +83,15 @@ export function registerHealReviewPanel(
   outputChannel: vscode.OutputChannel,
   eventBus: RunEventBus,
   cli: FtesterCli,
-): void {
+): { relocalize(): void } {
   const controller = new HealReviewController(workspaceRoot, getConfig, outputChannel, cli, eventBus);
   context.subscriptions.push(controller);
+  return { relocalize: () => controller.relocalize() };
 }
 
-class HealReviewController implements vscode.Disposable {
+/** export はテスト(panelRelocalize.test.mjs)が relocalize() を直接検証するため。
+ * 生成経路は registerHealReviewPanel のみ(シングルトン方針は変えない)。 */
+export class HealReviewController implements vscode.Disposable {
   private panel: vscode.WebviewPanel | undefined;
   private readonly collector = new HealFixCollector();
   /** パネルに表示中(未解決)の候補。適用成功分をここから取り除く。 */
@@ -253,6 +256,16 @@ class HealReviewController implements vscode.Disposable {
 
   private post(message: HealToWebviewMessage): void {
     void this.panel?.webview.postMessage(message);
+  }
+
+  /** ftester.language 変更で extension.ts から呼ぶ。this.items(未解決候補)を埋め込んだ静的 HTML を
+   * 組み直すだけでよい(状態を watch していない・"ready" 相当のイベントも持たない)。
+   * パネル未生成時は何もしない。 */
+  relocalize(): void {
+    if (!this.panel) {
+      return;
+    }
+    this.panel.webview.html = renderHtml(this.items);
   }
 }
 

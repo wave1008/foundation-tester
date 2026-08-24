@@ -247,9 +247,4 @@ export const workbenchStrings = {
     ja: "❌ 前回失敗 — レポートを開く",
     en: "❌ Failed last run — Open report",
   },
-  "workbench.language.reloadPrompt": {
-    ja: "ftester: 表示言語の設定を変更しました。ウィンドウを再読み込みすると完全に反映されます。",
-    en: "ftester: The display language setting changed. Reload the window to fully apply it.",
-  },
-  "workbench.language.reloadButton": { ja: "再読み込み", en: "Reload Window" },
 } satisfies MessageDict;

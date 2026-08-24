@@ -19,6 +19,7 @@ import { registerDashboardPanel } from "./dashboardPanel";
 import { registerDebugAdapter } from "./debugConfig";
 import { registerHealReviewPanel } from "./healReviewPanel";
 import { initI18n, setLocaleFromConfig, t } from "./i18n";
+import { handleLanguageChange } from "./languageChangeHandler";
 import { registerLastResultsSync } from "./lastResultsSync";
 import { registerLivePanel } from "./livePanel";
 import { registerMonitorPanel } from "./monitorPanel";
@@ -143,10 +144,32 @@ export function activate(context: vscode.ExtensionContext): void {
   );
   registerDebugAdapter(context, workspaceRoot, getConfig, outputChannel);
   registerStepsView(context, cli, workspaceRoot, getConfig, testTree, watcher, outputChannel);
-  registerMonitorPanel(context, workspaceRoot, getConfig, outputChannel, runEventBus, livePanel.openForDevice);
-  registerHealReviewPanel(context, workspaceRoot, getConfig, outputChannel, runEventBus, cli);
-  registerDashboardPanel(context, workspaceRoot, getConfig, outputChannel, runEventBus);
+  const monitorPanel = registerMonitorPanel(
+    context, workspaceRoot, getConfig, outputChannel, runEventBus, livePanel.openForDevice);
+  const healReviewPanel = registerHealReviewPanel(context, workspaceRoot, getConfig, outputChannel, runEventBus, cli);
+  const dashboardPanel = registerDashboardPanel(context, workspaceRoot, getConfig, outputChannel, runEventBus);
   registerProfileDiagnostics(context, cli, workspaceRoot, getConfig, outputChannel);
+
+  // 表示言語(ftester.language)変更。パネル群の登録後に置く(relocalizePanels がその時点の
+  // 各パネルの relocalize() を束ねるため)。
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (!e.affectsConfiguration("ftester.language")) {
+        return;
+      }
+      handleLanguageChange({
+        setLocale: setLocaleFromConfig,
+        isRunActive,
+        rebuildTestTree: () => testTree.rebuildFromLastData(),
+        relocalizePanels: [
+          livePanel.relocalize,
+          monitorPanel.relocalize,
+          healReviewPanel.relocalize,
+          dashboardPanel.relocalize,
+        ],
+      });
+    }),
+  );
 
   void testTree.refresh();
 }
@@ -303,25 +326,6 @@ function registerCommands(
       if (!isRunActive()) {
         testTree.rebuildFromLastData();
       }
-    }),
-    // 表示言語(ftester.language)変更: locale を切り替え、テストツリーは即時に再翻訳する。
-    // webview パネルや package.nls(コマンド/設定説明)は再レンダー配線を持たないため、完全反映には
-    // ウィンドウ再読み込みが要る。案内を出してユーザーに委ねる。
-    vscode.workspace.onDidChangeConfiguration((e) => {
-      if (!e.affectsConfiguration("ftester.language")) {
-        return;
-      }
-      setLocaleFromConfig();
-      if (!isRunActive()) {
-        testTree.rebuildFromLastData();
-      }
-      void vscode.window
-        .showInformationMessage(t("workbench.language.reloadPrompt"), t("workbench.language.reloadButton"))
-        .then((picked) => {
-          if (picked === t("workbench.language.reloadButton")) {
-            void vscode.commands.executeCommand("workbench.action.reloadWindow");
-          }
-        });
     }),
     vscode.commands.registerCommand("ftester.enableFailedTestsFilter", () => {
       void setFailedFilter(true);

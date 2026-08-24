@@ -686,7 +686,13 @@
 - **module-level の表示 const 禁止**(import 時=initI18n 前に "ja" で固定される)。関数化する(例 livePanelHtml.ts の `livePanelTitle()`)。
 - package.json の contributes(コマンド名・設定説明)だけは別系統: `%key%` + `package.nls.json`(英)/`package.nls.ja.json`(日)で **VSCode 表示言語連動**(ftester.language ではない)。両 nls はキー集合一致。
 - 検証は `test/i18n.test.mjs`(辞書パリティ・**残存日本語の AST 走査**[HTML コメントは除外]・webview/lane キー存在・nls 整合)。正当に日本語を残す文字列(非表示の内部 throw 等)は同ファイルの `RESIDUAL_ALLOWLIST` に登録。
-- webview パネルの relocalize は未配線。`ftester.language` 変更時の反映はテストツリー再翻訳のみで、パネル・コマンド名・設定説明は Reload Window が必要(extension.ts が案内を出す)。
+- `ftester.language` 変更は各 webview パネル(Monitor/Live/Dashboard/HealReview)の `relocalize()` が
+  `webview.html` を再代入して即時反映する(`extension.ts` が呼ぶ `languageChangeHandler.ts` の
+  `handleLanguageChange` が束ねる。vscode 非依存に切り出してあるのはテストのため。パネル未生成時は
+  no-op)。Monitor/Live は html 再代入(webview 再読込)でブラウザ側デコーダが失われるため、直後に
+  `restartAllStreams()`/`restartStream()` でライブ配信を新キーフレームから張り直す。
+  Reload Window が必要なのは package.nls(コマンド名・設定説明。VSCode 表示言語連動で
+  `ftester.language` とは無関係)だけ。
 
 ## コメント規約
 

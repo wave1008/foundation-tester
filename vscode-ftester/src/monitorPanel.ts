@@ -115,7 +115,7 @@ export function registerMonitorPanel(
   outputChannel: vscode.OutputChannel,
   eventBus: RunEventBus,
   openLiveForDevice: (id: string) => void,
-): void {
+): { relocalize(): void } {
   const controller = new MonitorPanelController(
     workspaceRoot,
     getConfig,
@@ -139,9 +139,13 @@ export function registerMonitorPanel(
     // 引数のタブ名は更新通知(updateCheck.ts)が "settings" を渡す。省略時は現在のタブのまま。
     vscode.commands.registerCommand("ftester.showDeviceMonitor", (tab?: string) => controller.show(tab)),
   );
+
+  return { relocalize: () => controller.relocalize() };
 }
 
-class MonitorPanelController implements vscode.Disposable {
+/** export はテスト(panelRelocalize.test.mjs)が relocalize() を直接検証するため。
+ * 生成経路は registerMonitorPanel のみ(シングルトン方針は変えない)。 */
+export class MonitorPanelController implements vscode.Disposable {
   private panel: vscode.WebviewPanel | undefined;
   private readonly deps: MonitorPanelDeps;
   private readonly processManager: MonitorProcessManager;
@@ -349,6 +353,19 @@ class MonitorPanelController implements vscode.Disposable {
     this.processManager.startAll();
     // 初期状態はここで送らない: html設定直後のpostMessageはwebview側のmessageリスナー登録前に
     // 届き握りつぶされる(VS Code既知のレース)。webviewからの"ready"を受けてsendInitialState()で送る。
+  }
+
+  /** ftester.language 変更で extension.ts から呼ぶ。webview.html の再代入は webview を再読込するため
+   * (JS 再実行・"ready" 再送。sendInitialState() は冪等なので状態は追いつく)、稼働中のライブ配信は
+   * ブラウザ側デコーダごと失われる。restartMonitor と同じ理由で再読込後にストリームを張り直し、
+   * 新キーフレームからタイル餓死無しに再開させる(restartAllStreams のコメント参照)。
+   * パネル未生成時は何もしない。 */
+  relocalize(): void {
+    if (!this.panel) {
+      return;
+    }
+    this.panel.webview.html = renderHtml(this.panel.webview, this.extensionUri);
+    this.deviceStream.restartAllStreams();
   }
 
   dispose(): void {

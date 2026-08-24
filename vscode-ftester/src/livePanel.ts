@@ -29,7 +29,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-class LivePanelController implements vscode.Disposable {
+/** export はテスト(panelRelocalize.test.mjs)が relocalize() を直接検証するため。
+ * 生成経路は registerLivePanel のみ(シングルトン方針は変えない)。 */
+export class LivePanelController implements vscode.Disposable {
   private panel: vscode.WebviewPanel | undefined;
   private readonly deps: LiveDeps;
   private readonly live: MonitorLiveController;
@@ -235,6 +237,18 @@ class LivePanelController implements vscode.Disposable {
     }
   }
 
+  /** ftester.language 変更で extension.ts から呼ぶ。webview.html の再代入は webview を再読込するが、
+   * 再読込直後の initLive() が refreshDevices/refreshAppProfiles を能動的に要求するため host 側の
+   * 再送は不要(main.js 冒頭コメント参照)。稼働中のライブ配信はブラウザ側デコーダごと失われるため、
+   * restartStream() で新キーフレームから再開させる(streamStall と同型)。パネル未生成時は何もしない。 */
+  relocalize(): void {
+    if (!this.panel) {
+      return;
+    }
+    this.panel.webview.html = renderLiveHtml(this.panel.webview, this.context.extensionUri);
+    this.live.restartStream();
+  }
+
   dispose(): void {
     this.unsubscribeBus();
     this.live.dispose();
@@ -255,6 +269,7 @@ export function registerLivePanel(
 ): {
   openForDevice(id: string): void;
   prepareForRun(platform: "ios" | "android"): Promise<LiveRunTarget | undefined>;
+  relocalize(): void;
 } {
   const controller = new LivePanelController(
     context,
@@ -281,5 +296,6 @@ export function registerLivePanel(
   return {
     openForDevice: (id) => controller.openForDevice(id),
     prepareForRun: (platform) => controller.prepareForRun(platform),
+    relocalize: () => controller.relocalize(),
   };
 }

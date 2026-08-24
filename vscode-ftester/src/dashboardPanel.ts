@@ -37,7 +37,7 @@ export function registerDashboardPanel(
   getConfig: () => FtesterConfig,
   outputChannel: vscode.OutputChannel,
   eventBus: RunEventBus,
-): void {
+): { relocalize(): void } {
   const controller = new DashboardPanelController(
     workspaceRoot,
     getConfig,
@@ -49,13 +49,16 @@ export function registerDashboardPanel(
     controller,
     vscode.commands.registerCommand("ftester.showResultsDashboard", () => controller.show()),
   );
+  return { relocalize: () => controller.relocalize() };
 }
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-class DashboardPanelController implements vscode.Disposable {
+/** export はテスト(panelRelocalize.test.mjs)が relocalize() を直接検証するため。
+ * 生成経路は registerDashboardPanel のみ(シングルトン方針は変えない)。 */
+export class DashboardPanelController implements vscode.Disposable {
   private panel: vscode.WebviewPanel | undefined;
   private readonly deps: DashboardPanelDeps;
   /** results のワンショット spawn(専用。runOneShot 経由)。 */
@@ -112,6 +115,16 @@ class DashboardPanelController implements vscode.Disposable {
 
   private post(message: DashboardToWebviewMessage): void {
     void this.panel?.webview.postMessage(message);
+  }
+
+  /** ftester.language 変更で extension.ts から呼ぶ。webview.html の再代入は webview を再読込するが、
+   * "ready" ハンドラが refresh() で結果を叩き直して埋め直すため host 側の追加処理は不要
+   * (handleWebviewMessage の "ready"/"refresh" 分岐参照)。パネル未生成時は何もしない。 */
+  relocalize(): void {
+    if (!this.panel) {
+      return;
+    }
+    this.panel.webview.html = renderHtml(this.panel.webview, this.extensionUri);
   }
 
   /** パネル close 時・dispose 時に results 実行中プロセスを止める(oneShotCli.ts 呼び出し側共通の
