@@ -40,6 +40,30 @@ final class SimulatorCrashReportTests: XCTestCase {
         XCTAssertEqual(result?.reason, "Namespace SIGNAL SIGKILL")
     }
 
+    // dyld 即死(例: ランタイム共有キャッシュ破損)は exception が EXC_CRASH SIGABRT にしか
+    // ならず、読めなかった dylib と理由は termination(namespace=DYLD)の reasons にだけ出る。
+    // 受け手報告 2026-08-24: この欄を落とすと「did not respond in time」の一次原因が消える
+    func testSummarizeAppendsDyldTerminationDetail() {
+        let header = #"{"bundleID":"com.sutec.mobile"}"#
+        let payload = #"{"exception":{"type":"EXC_CRASH","signal":"SIGABRT"},"termination":{"namespace":"DYLD","indicator":"Library missing","reasons":["Library not loaded: /usr/lib/libSystem.B.dylib","Reason: no dyld cache"]}}"#
+
+        let result = SimulatorCrashReport.summarize(headerLine: header, payload: payload)
+
+        XCTAssertEqual(result?.reason,
+            "EXC_CRASH SIGABRT / DYLD Library missing:"
+            + " Library not loaded: /usr/lib/libSystem.B.dylib; Reason: no dyld cache")
+    }
+
+    // 通常のクラッシュ(namespace が DYLD でなく reasons も無い)では従来の文言を変えない
+    func testSummarizeKeepsPlainExceptionReasonWithoutDyld() {
+        let header = #"{"bundleID":"com.sutec.mobile"}"#
+        let payload = #"{"exception":{"type":"EXC_CRASH","signal":"SIGABRT"},"termination":{"namespace":"SIGNAL","indicator":"Namespace SIGNAL, Code 6"}}"#
+
+        let result = SimulatorCrashReport.summarize(headerLine: header, payload: payload)
+
+        XCTAssertEqual(result?.reason, "EXC_CRASH SIGABRT")
+    }
+
     func testSummarizeReturnsNilForMalformedHeader() {
         let result = SimulatorCrashReport.summarize(headerLine: "not json", payload: #"{"exception":{"type":"EXC_CRASH"}}"#)
         XCTAssertNil(result)

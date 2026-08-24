@@ -399,7 +399,18 @@ extension AndroidDriver {
 
     func installBridgeIfNeeded() throws {
         let installed = installedBridgeVersionCode()
-        if installed == Self.expectedBridgeVersionCode { return }
+        // **版が合っていても code path の実在まで見る** —— `pm list packages -u` と
+        // `dumpsys package` にはレコードが残るのに `pm path` が空、という中途半端な install が
+        // あり、この形だと `am instrument` が黙って失敗して「cannot connect」がレーン復帰でも
+        // 直らない(受け手報告 2026-08-24: 4 run 連続。`pm uninstall` → 再インストールで回復)。
+        // 壊れたレコードは `install -r` を弾きうるので、先に剥がしてから通常の導入経路へ落とす
+        if installed != nil, bridgeCodePathPresent() == false {
+            logStderr("⚠️ the bridge package record is present but has no code path"
+                      + " (pm path is empty) — removing the broken install and reinstalling")
+            _ = try? adb(["uninstall", Self.bridgePackage])
+        } else if installed == Self.expectedBridgeVersionCode {
+            return
+        }
         if let refusal = Self.downgradeRefusal(installed: installed,
                                                 expected: Self.expectedBridgeVersionCode,
                                                 serial: serial) {
@@ -423,6 +434,30 @@ extension AndroidDriver {
             throw DriverError.badResponse(status: Int(result.status),
                 body: "failed to install the bridge APK: \(result.tail)")
         }
+    }
+
+    /// ブリッジ APK の code path が実在するか。**判定できないときは nil**
+    /// (adb 不調で「壊れている」と断じない = 健全な端末を剥がして入れ直さない)。
+    /// `pm path` は未インストールでも非0で終わるため、**終端マーカーを必ず出す形**で撃ち、
+    /// マーカーが返ったときだけ判定を下す(非0 = adb 不調、と読み違えない)
+    func bridgeCodePathPresent() -> Bool? {
+        guard let result = try? adb(
+            ["shell", "pm path \(Self.bridgePackage) 2>/dev/null; echo \(Self.pmPathMarker)"])
+        else { return nil }
+        return Self.codePathVerdict(output: result.output, status: result.status)
+    }
+
+    static let pmPathMarker = "FT_PM_PATH_DONE"
+
+    /// pm path 出力 → 実在/欠落/判定不能。純粋関数(BridgeCodePathVerdictTests)
+    static func codePathVerdict(output: String, status: Int32) -> Bool? {
+        guard status == 0, output.contains(pmPathMarker) else { return nil }
+        return output.split(separator: "\n")
+            .contains { $0.trimmingCharacters(in: .whitespaces).hasPrefix("package:") }
+    }
+
+    private func logStderr(_ message: String) {
+        FileHandle.standardError.write(Data(("\(serial.map { "\($0): " } ?? "")\(message)\n").utf8))
     }
 
     public func installedBridgeVersionCode() -> Int? {

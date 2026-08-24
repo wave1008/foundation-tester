@@ -124,9 +124,30 @@ public struct InAppLauncher {
         InAppBridgeState.write(stateDir: stateDir, port: port, udid: udid, bundleID: bundleID,
                                sourceDigest: try? BridgeSourceSet.inApp.digest(repoRoot: repoRoot))
         let waitStart = clock.now
-        try await waitUntilReady()
+        do {
+            try await waitUntilReady()
+        } catch let InAppLauncherError.notReady(detail) {
+            // **一次原因を添える**: 「did not respond in time: bridgeConnectionRefused」の裏が
+            // アプリの即死(例: ランタイム共有キャッシュ破損の dyld エラー = OS_REASON_DYLD。
+            // simctl shutdown→boot で回復)でも、素の文言からは見えず simctl のログを手で
+            // 掘ることになる(受け手報告 2026-08-24)。ここは bundleID を知っている唯一の層。
+            // 30 秒待った後なので .ips の書き込み遅延(約2秒)はもう待たなくてよい
+            throw InAppLauncherError.notReady(crashAnnotated(detail, bundleID: bundleID))
+        }
         let waitMs = continuousClockMs(clock.now - waitStart)
         return LaunchTiming(actionMs: actionMs, waitMs: waitMs)
+    }
+
+    /// InAppDriver.crashAnnotated と同型(あちらは切断直後なのでポーリングが要る。こちらは
+    /// waitUntilReady のタイムアウト後 = クラッシュから数十秒経っているので1回だけ引く。
+    /// 窓は待った時間ぶん広くとる — 即死は待ちの先頭で起きている)
+    private func crashAnnotated(_ detail: String, bundleID: String) -> String {
+        guard let hit = SimulatorCrashReport.findRecent(bundleID: bundleID, within: 60) else {
+            return detail + " (no recent crash report for \(bundleID) —"
+                + " the app process may have been killed without one, or never launched)"
+        }
+        let suffix = hit.reason.map { " (\($0))" } ?? ""
+        return detail + " / the app crashed on launch: \(hit.path)\(suffix)"
     }
 
     /// CoreSimulator 直叩き優先(simctl launch 883〜909ms → ほぼ0ms・2026-08-02実測)。

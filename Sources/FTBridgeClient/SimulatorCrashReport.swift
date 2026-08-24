@@ -21,16 +21,34 @@ public enum SimulatorCrashReport {
     }
 
     private static func extractReason(from body: [String: Any]) -> String? {
+        var parts: [String] = []
         if let exception = body["exception"] as? [String: Any] {
-            let parts = [exception["type"] as? String, exception["signal"] as? String].compactMap { $0 }
-            if !parts.isEmpty { return oneLine(parts.joined(separator: " ")) }
+            let fields = [exception["type"] as? String, exception["signal"] as? String].compactMap { $0 }
+            if !fields.isEmpty { parts.append(fields.joined(separator: " ")) }
         }
-        if let termination = body["termination"] as? [String: Any] {
+        // dyld 由来の即死は exception が EXC_CRASH SIGABRT にしかならず、**何が読めなかったのか**は
+        // termination.reasons にしか出ない(実害: シミュレータのランタイム共有キャッシュ破損で
+        // "Library not loaded: libSystem.B.dylib / no dyld cache"。受け手報告 2026-08-24)
+        if let dyld = dyldDetail(from: body) { parts.append(dyld) }
+        if parts.isEmpty, let termination = body["termination"] as? [String: Any] {
             let name = termination["name"] as? String ?? (termination["signal"] as? Int).map { "signal \($0)" }
-            let parts = [termination["indicator"] as? String, name].compactMap { $0 }
-            if !parts.isEmpty { return oneLine(parts.joined(separator: " ")) }
+            let fields = [termination["indicator"] as? String, name].compactMap { $0 }
+            if !fields.isEmpty { parts.append(fields.joined(separator: " ")) }
         }
-        return nil
+        return parts.isEmpty ? nil : oneLine(parts.joined(separator: " / "))
+    }
+
+    /// termination が DYLD 名前空間か reasons を持つときだけ返す(通常のクラッシュでは nil =
+    /// 既存の文言を変えない)。reasons は「読めなかった dylib」と「なぜ」が別の行に来るので2行まで
+    private static func dyldDetail(from body: [String: Any]) -> String? {
+        guard let termination = body["termination"] as? [String: Any] else { return nil }
+        let namespace = termination["namespace"] as? String
+        let reasons = (termination["reasons"] as? [String])?.filter { !$0.isEmpty } ?? []
+        guard namespace == "DYLD" || !reasons.isEmpty else { return nil }
+        let head = [namespace, termination["indicator"] as? String]
+            .compactMap { $0 }.joined(separator: " ")
+        let detail = reasons.prefix(2).joined(separator: "; ")
+        return [head, detail].filter { !$0.isEmpty }.joined(separator: ": ")
     }
 
     private static func oneLine(_ s: String) -> String? {
