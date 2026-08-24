@@ -106,6 +106,8 @@ function renderDevicesPanel(): string {
     <div id="tile-pane" class="tile-pane">
       <div id="grid" class="grid"></div>
       <div id="empty" class="empty">${t("panels.devices.emptyMessage")}</div>
+      <!-- 範囲選択の矩形(ドラッグ中だけ deviceTiles.js が位置と大きさを書く) -->
+      <div id="tile-marquee" class="tile-marquee"></div>
     </div>
 
     <div id="splitter" class="splitter" role="separator" aria-orientation="horizontal" aria-label="${t("panels.devices.splitterAriaLabel")}"></div>

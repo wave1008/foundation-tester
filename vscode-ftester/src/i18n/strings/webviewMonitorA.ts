@@ -28,9 +28,10 @@ export const webviewMonitorAStrings = {
   "wvMonitor.deviceOpMenu.startBridge": { ja: "ブリッジを起動", en: "Start bridge" },
   "wvMonitor.deviceOpMenu.stopBridge": { ja: "ブリッジを停止", en: "Stop bridge" },
 
+  // 選択の当たりは画像だけ(画像の外側のクリックは全解除。deviceTiles.js の click 委譲)
   "wvMonitor.tile.title": {
-    ja: "クリックで選択 / 右クリックで起動・停止・ライブ操作",
-    en: "Click to select / right-click to Start, Stop, or open Live Control",
+    ja: "画像をクリックで選択 / 右クリックで起動・停止・ライブ操作",
+    en: "Click the screen to select / right-click to Start, Stop, or open Live Control",
   },
   "wvMonitor.tile.running": { ja: "実行中", en: "Running" },
   "wvMonitor.tile.shuttingDown": { ja: "シャットダウン中", en: "Shutting down" },

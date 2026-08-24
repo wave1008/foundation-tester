@@ -13,6 +13,7 @@ export const profileSelect = document.getElementById('profile-select');
 
 export const devicesPanel = document.getElementById('panel-devices');
 export const tilePane = document.getElementById('tile-pane');
+export const tileMarquee = document.getElementById('tile-marquee');
 export const splitter = document.getElementById('splitter');
 export const lanesTitle = document.getElementById('lanes-title');
 export const lanesPlaceholder = document.getElementById('lanes-placeholder');

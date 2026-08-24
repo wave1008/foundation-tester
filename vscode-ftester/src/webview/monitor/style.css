@@ -294,6 +294,22 @@ select:disabled { opacity: 0.5; cursor: default; }
   gap: 6px;
   /* クリックで選択可能だが cursor は意図的に変えない */
 }
+/* 範囲選択の矩形(#tile-pane の中に絶対配置。位置と表示は deviceTiles.js)。
+   pointer-events:none = 矩形自身がドラッグ中のポインタを奪わない。 */
+.tile-marquee {
+  position: absolute;
+  display: none;
+  z-index: 5;
+  pointer-events: none;
+  border: 1px solid var(--vscode-focusBorder, #007acc);
+  border-radius: 2px;
+  background-color: color-mix(in srgb, var(--vscode-focusBorder, #007acc) 18%, transparent);
+}
+/* ドラッグ中はタイルの文字が選択されないようにする(pointerdown の preventDefault は
+   click まで消してしまうので使えない)。 */
+.grid.marquee-dragging {
+  user-select: none;
+}
 .tile.selected {
   border-color: var(--vscode-focusBorder, #007acc);
   border-width: 2px;

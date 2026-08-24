@@ -7,11 +7,12 @@
 
 import { t } from '../i18n.js';
 import { vscode } from './vscodeApi.js';
-import { grid, emptyMessage, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuItemBtn, deviceOpMenuItemLabel, deviceOpMenuLiveBtn, deviceOpMenuGpuBtn, profileSelect } from './domRefs.js';
+import { grid, emptyMessage, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuItemBtn, deviceOpMenuItemLabel, deviceOpMenuLiveBtn, deviceOpMenuGpuBtn, profileSelect, tilePane, tileMarquee } from './domRefs.js';
 import { updateLaneVisibility, syncLanesToDevices, runningWorkers, relayoutPreviewsForResize } from './laneLog.js';
 import { createH264Renderer } from './h264Decoder.js';
 import { clampMenuPosition } from './menu.js';
 import { setHoverTip } from './hoverTip.js';
+import { isDragDistance, marqueeRect, idsInMarquee, mergeMarqueeSelection, rectContains } from './marqueeModel.js';
 
 // bridgeWatch(拡張ホストの自動修復ウォッチドッグ、契約は main.js の 'bridgeWatch' ケース参照)の
 // phase→footer表示。'ok'はここに含めず通常表示へフォールバックさせる。
@@ -162,7 +163,7 @@ function createTile(device) {
   const tile = document.createElement('div');
   tile.className = 'tile';
   tile.title = t('wvMonitor.tile.title');
-  tile.addEventListener('click', () => toggleDeviceSelection(device.id));
+  // 選択のクリックはタイルごとに張らず grid へ委譲する(当たりの規則はそちらのコメント)。
   tile.addEventListener('contextmenu', (event) => {
     // 既定メニュー抑止+タイルクリック(選択トグル)への波及防止。
     event.preventDefault();
@@ -226,6 +227,8 @@ function createTile(device) {
   const frameWrap = document.createElement('div');
   frameWrap.className = 'frame-wrap';
   const img = document.createElement('img');
+  // 既定のままだと画像を掴んだ時点でブラウザのドラッグが始まり、範囲選択のドラッグが途切れる
+  img.draggable = false;
   // アスペクト比はデコードできた画像の実寸だけから決める(下の setTileAspect のコメント参照)。
   img.addEventListener('load', () => {
     if (img.naturalWidth > 0 && img.naturalHeight > 0) {
@@ -483,6 +486,7 @@ export function attachDeviceMirror(deviceId, wrapEl) {
   if (!mirror || mirror.wrapEl !== wrapEl) {
     const imgEl = document.createElement('img');
     imgEl.className = 'lane-preview-media';
+    imgEl.draggable = false;  // タイルの img と同じ(ネイティブの画像ドラッグを止める)
     const canvasEl = document.createElement('canvas');
     canvasEl.className = 'lane-preview-media';
     const headerEl = document.createElement('div');
@@ -1130,13 +1134,178 @@ function updateSelectionUi() {
   updateLaneVisibility();
 }
 
-// event.target===grid は「タイル自体ではなく空きエリア」をクリックした場合の判定。
+// クリックの当たり(ユーザー決定 2026-08-24)。タイルごとに張らず委譲するのは判定を1箇所に持つため。
+//  - 「画像の高さの帯 × タイルの幅」= そのデバイスの選択トグル
+//    (画像の左右の余白を押しても押したことにする)
+//  - タイルの中でその帯の外(見出し・ホスト名の段・脚、およびその左右)= **何もしない**
+//    (押し損ねで選択を全部失わないため)
+//  - タイルの外(タイルとタイルの間・右端の余り)でも、**画像の高さに収まっていれば何もしない**
+//    —— タイルの隙間は 8px しかなく、狙って押すものではない
+//  - 解除は「画像の高さの外」を押したときだけ(グリッドの上下の余白・タイルの見出しや脚の高さ)
 grid.addEventListener('click', (event) => {
-  if (event.target === grid && selectedDeviceIds.size > 0) {
+  const hit = tileHitAtPoint(event);
+  if (hit.tile) {
+    if (hit.entry) {
+      toggleDeviceSelection(hit.entry.device.id);
+    }
+    return;
+  }
+  if (deviceBandContainsY(event.clientY)) {
+    return;
+  }
+  if (selectedDeviceIds.size > 0) {
     selectedDeviceIds.clear();
     updateSelectionUi();
   }
 });
+
+// クリックの高さがどれかのデバイスの画像の高さに収まっているか(タイルの外で使う)。
+// 画像の高さはグリッド共通(--tile-image-h)だが、1台ずつ見て一致を取る。
+function deviceBandContainsY(y) {
+  for (const entry of tiles.values()) {
+    const rect = entry.frameWrapEl.getBoundingClientRect();
+    if (rect.height > 0 && y >= rect.top && y <= rect.top + rect.height) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// 当たり矩形: 横はタイル幅いっぱい・縦は画像の高さだけ。範囲選択(marqueeSelect)も同じものを使う。
+function deviceHitRect(entry) {
+  const tileRect = entry.tile.getBoundingClientRect();
+  const frameRect = entry.frameWrapEl.getBoundingClientRect();
+  return { left: tileRect.left, width: tileRect.width, top: frameRect.top, height: frameRect.height };
+}
+
+// { tile: タイルの中か, entry: 当たり矩形の中ならそのタイル }。2つに分けるのは、タイルの中の
+// 帯の外(何もしない)とタイルの外(全解除)を区別するため。
+function tileHitAtPoint(event) {
+  const tileEl = event.target && event.target.closest ? event.target.closest('.tile') : null;
+  if (!tileEl) {
+    return { tile: false, entry: null };
+  }
+  for (const entry of tiles.values()) {
+    if (entry.tile === tileEl) {
+      const inside = rectContains(deviceHitRect(entry), { x: event.clientX, y: event.clientY });
+      return { tile: true, entry: inside ? entry : null };
+    }
+  }
+  return { tile: true, entry: null };
+}
+
+// ---- 範囲選択(左ドラッグの矩形。中ボタンの掴んで横スクロールとは別) ----
+// しきい値を超えるまでは何も出さない = 動かさなければ従来どおりタイルのクリック(選択トグル)。
+// 超えたらその時点から矩形を出し、**重なったタイルだけの選択に置き換える**(Ctrl/Cmd を
+// 押している間だけ前の選択を残して足す。空振りのドラッグは全解除)。
+let marqueePointerId = null;
+let marqueeOrigin = null;
+let marqueeActive = false;
+// ドラッグを始めた時点の選択(Ctrl/Cmd を押しながらのときはこれを残して足す)。
+let marqueeBaseIds = [];
+// ドラッグの終わりに来る click を1回だけ捨てるための旗(下の capture リスナが読む)。
+let marqueeSuppressClick = false;
+
+// additive は pointermove ごとに見る(ドラッグ中に押した・離したがそのまま効く)。
+function marqueeSelect(rect, additive) {
+  // 重なりを見るのはクリックと同じ当たり矩形(画像の高さの帯。見出し・脚をかすめても選ばない)
+  const items = [...tiles].map(([id, entry]) => ({ id, rect: deviceHitRect(entry) }));
+  const hit = idsInMarquee(rect, items);
+  // 消えたデバイスの id は捨てる(ドラッグ中に devices サイクルで居なくなることがある)。
+  const next = mergeMarqueeSelection(marqueeBaseIds, hit, additive).filter((id) => tiles.has(id));
+  // 同じ集合なら何もしない: ドラッグ中は毎フレーム来るので、変わっていないのに
+  // 選択を作り直すと拡大表示の付け直しと段組みの再計算を無駄に払う。
+  if (next.length === selectedDeviceIds.size && next.every((id) => selectedDeviceIds.has(id))) {
+    return;
+  }
+  selectedDeviceIds.clear();
+  for (const id of next) {
+    selectedDeviceIds.add(id);
+  }
+  updateSelectionUi();
+}
+
+function renderMarquee(rect) {
+  const paneRect = tilePane.getBoundingClientRect();
+  tileMarquee.style.left = (rect.left - paneRect.left) + 'px';
+  tileMarquee.style.top = (rect.top - paneRect.top) + 'px';
+  tileMarquee.style.width = rect.width + 'px';
+  tileMarquee.style.height = rect.height + 'px';
+}
+
+function endMarquee() {
+  marqueeOrigin = null;
+  marqueePointerId = null;
+  if (!marqueeActive) {
+    return;
+  }
+  marqueeActive = false;
+  marqueeSuppressClick = true;
+  tileMarquee.style.display = 'none';
+  grid.classList.remove('marquee-dragging');
+}
+
+grid.addEventListener('pointerdown', (event) => {
+  // 前のドラッグの取り残し。**その click は必ずこの pointerdown より前に来る**ので、ここで
+  // 落としてよい。落とさないと、グリッドの外(ペイン・セパレーター等)で離したドラッグの
+  // click は grid に来ない = 旗が立ったまま残り、**次の普通のクリックを1回飲み込む**
+  // (範囲選択の直後に未選択のデバイスを押しても選ばれず、2回目で選ばれる。実害 2026-08-24)。
+  marqueeSuppressClick = false;
+  if (event.button !== 0) {
+    return;
+  }
+  marqueePointerId = event.pointerId;
+  marqueeOrigin = { x: event.clientX, y: event.clientY };
+  marqueeBaseIds = [...selectedDeviceIds];
+});
+grid.addEventListener('pointermove', (event) => {
+  if (marqueePointerId !== event.pointerId || !marqueeOrigin) {
+    return;
+  }
+  const point = { x: event.clientX, y: event.clientY };
+  if (!marqueeActive) {
+    if (!isDragDistance(point.x - marqueeOrigin.x, point.y - marqueeOrigin.y)) {
+      return;
+    }
+    marqueeActive = true;
+    // 捕捉はドラッグと分かってから(pointerdown で捕らえると、ただのクリックの当たり先が
+    // タイルから grid へ移ってしまう)。掴んだ時点で選択中の文字列は捨てる。
+    grid.setPointerCapture(event.pointerId);
+    grid.classList.add('marquee-dragging');
+    tileMarquee.style.display = 'block';
+    const selection = window.getSelection();
+    if (selection) {
+      selection.removeAllRanges();
+    }
+  }
+  const rect = marqueeRect(marqueeOrigin, point);
+  renderMarquee(rect);
+  marqueeSelect(rect, event.ctrlKey || event.metaKey);
+});
+grid.addEventListener('pointerup', (event) => {
+  if (marqueePointerId !== event.pointerId) {
+    return;
+  }
+  if (marqueeActive) {
+    grid.releasePointerCapture(event.pointerId);
+  }
+  endMarquee();
+});
+grid.addEventListener('pointercancel', (event) => {
+  if (marqueePointerId === event.pointerId) {
+    endMarquee();
+  }
+});
+// ドラッグ直後の click を止める(capture = タイル側・grid 側どちらのハンドラより先)。
+// 止めないと、掴んだタイルの選択トグルや空きエリアの全解除が範囲選択を上書きする。
+grid.addEventListener('click', (event) => {
+  if (!marqueeSuppressClick) {
+    return;
+  }
+  marqueeSuppressClick = false;
+  event.stopPropagation();
+  event.preventDefault();
+}, true);
 
 // deltaX(トラックパッド横)+deltaY(ホイール縦)を横スクロールに変換。preventDefault に passive:false が必須。
 grid.addEventListener(

@@ -94,9 +94,10 @@ function decodeFrame(window, document, index, jpegBase64, naturalWidth, naturalH
   img.dispatchEvent(new window.Event("load"));
 }
 
+// 選択の当たりはタイルの画像(.frame-wrap)。タイルの見出し・脚のクリックは全解除になる。
 function clickTile(document, index) {
-  const tile = document.querySelectorAll("#grid .tile")[index];
-  tile.dispatchEvent(new document.defaultView.MouseEvent("click", { bubbles: true }));
+  const frame = document.querySelectorAll("#grid .tile .frame-wrap")[index];
+  frame.dispatchEvent(new document.defaultView.MouseEvent("click", { bubbles: true }));
 }
 
 const visiblePairs = (document) =>
