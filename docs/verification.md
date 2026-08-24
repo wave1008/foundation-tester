@@ -125,16 +125,25 @@ step 4 の `type "abc"` が IME に飲まれて届かず、欄が**空のまま*
 失敗はすべて `Cannot reach the driver` / `adb: device offline` /
 `the device disappeared (offline/not found)` で、**アサーション失敗は1件も無い**。
 
-**`ftester api monitor` を kill しても配信は8台ぶん全部生き残る。**
-`ftester-androidstream --serial …` と、その子の
-`adb -s emulator-XXXX exec-out screenrecord --output-format=h264` がデバイスを掴み続ける。
-止めるのは3つ:
+**止め方は `ftester monitor pause`(2026-08-24 追加)。** kill では止まらない ——
+拡張が `api monitor` も配信ヘルパーも数秒で再起動する(受け手はこれで無人計測の条件が
+作れなかった)。保持ファイル(`.ftester/monitor-hold.json` = `FTCore.MonitorHold`)を
+`api monitor` が毎周期見て、hold 中は観測を止め全タイルを state:"unknown" で出す。
+unknown のタイルには拡張が配信ヘルパーを張らない(qualifying 判定)ので、ヘルパーも
+子の screenrecord も畳まれる。解除は `ftester monitor resume` か `--for <分>` の期限:
 
 ```
-pkill -f "ftester api monitor"
-pkill -f "ftester-androidstream"                  # ← これを忘れると競合が残る
-pkill -f "screenrecord --output-format=h264"
+ftester monitor pause --for 30   # 30分。省略すると resume まで
+# … 計測 …
+ftester monitor resume
 ```
+
+**効くのはこの機械の monitor だけ**(fan-out の子 = `--device-host` 付きは hold を見ない。
+リモートランナー機で pause しても、そこへ接続している別の機械の配信は止まらない)。
+
+拡張が動いていない(パネルを開いていない)ときの旧手段は pkill 3連打
+(`ftester api monitor` / `ftester-androidstream` / `screenrecord --output-format=h264`。
+1つ目だけだと配信が8台ぶん全部生き残る)。
 
 **中途半端に止めた対照からは誤った結論が出る。** 観測ループだけ止めた回で接続断が 11→2 に減り、
 残り2件が1台(emulator-5558)に集中していたので「その個体の問題」と報告した ——

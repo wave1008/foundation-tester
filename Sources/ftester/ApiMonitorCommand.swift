@@ -167,7 +167,35 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         let monitorRepoRoot = try? RepoRoot.find()
         let leaseStateDir = monitorRepoRoot?.appendingPathComponent(".ftester")
 
+        // 直近の hold 状態(変化したときだけ monitorHold イベントと stderr を出す)
+        var lastHoldActive = false
         while !stop.isSet {
+            // **保持ファイル(`ftester monitor pause`)は毎周期の頭で見る** —— kill と違い
+            // 拡張に再起動されない止め方(FTCore.MonitorHold)。手元スコープのときだけ:
+            // fan-out の子(--device-host 付き)はランナー機側の hold を親の拡張へ波及させない。
+            // hold 中も monitorDevices は出す(全台 state:"unknown")—— タイルが最後の絵で
+            // 固まると「止めた」ことが見えない。unknown はリモートの未観測と同じ既存表現
+            if deviceHost == nil, let dir = leaseStateDir {
+                let holdActive = MonitorHold.load(stateDir: dir)?.isActive() ?? false
+                if holdActive != lastHoldActive {
+                    lastHoldActive = holdActive
+                    emitLine(ApiMonitorHoldEvent(active: holdActive))
+                    logStderr(holdActive
+                        ? "[monitor] Hold active (`ftester monitor pause`) — observation and"
+                          + " frame delivery stop; tiles show state \"unknown\""
+                        : "[monitor] Hold released — resuming observation")
+                }
+                if holdActive {
+                    let held = ownedTargets.map {
+                        Self.unobservedInfo(target: $0, detail: "held (ftester monitor resume)")
+                    }
+                    emitLine(ApiMonitorDevicesEvent(devices: Self.mergedDevices(
+                        listedTargets: listedTargets, observed: held,
+                        remote: fanout?.snapshot() ?? [:])))
+                    await Self.sleepInterruptible(seconds: Self.pausedPollSeconds, stop: stop)
+                    continue
+                }
+            }
             if control.autoResumeIfStale(limit: Self.pauseSafetyValveSeconds) {
                 logStderr(
                     "[monitor] Auto-resumed \(Int(Self.pauseSafetyValveSeconds))s after the pause" +
@@ -404,11 +432,12 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         return merged
     }
 
-    /// 誰も観測していない台。**state は "unknown"** で、offline(= 止まっている)とは区別する
-    static func unobservedInfo(target: MonitorTarget) -> ApiMonitorDeviceInfo {
+    /// 誰も観測していない台。**state は "unknown"** で、offline(= 止まっている)とは区別する。
+    /// detail は hold(`ftester monitor pause`)が理由を載せるための口(既定は従来どおり空)
+    static func unobservedInfo(target: MonitorTarget, detail: String = "") -> ApiMonitorDeviceInfo {
         ApiMonitorDeviceInfo(
             id: target.id, name: target.name, platform: target.platform,
-            state: "unknown", detail: "", udid: nil, serial: nil, health: nil, renderMode: nil,
+            state: "unknown", detail: detail, udid: nil, serial: nil, health: nil, renderMode: nil,
             inRun: false, kind: target.spec.isPhysical ? "physical" : "virtual",
             host: nil, port: nil, recording: false, registered: target.registered,
             machineHost: MachineHostDispatch.normalize(target.spec.host), frozen: false)
@@ -1152,6 +1181,13 @@ private enum MonitorError: Error, LocalizedError {
 // MARK: - JSON イベント
 
 /// monitorDevices イベント: サイクル毎に1回、全デバイスの状態をまとめて出す
+/// hold(`ftester monitor pause`)の状態変化。拡張はこれで配信ヘルパーを畳む/戻す
+/// (vscode-ftester/src/monitorProcessManager.ts と同期)
+struct ApiMonitorHoldEvent: Encodable {
+    let kind = "monitorHold"
+    let active: Bool
+}
+
 struct ApiMonitorDevicesEvent: Codable {
     let kind = "monitorDevices"
     let devices: [ApiMonitorDeviceInfo]

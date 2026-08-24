@@ -100,7 +100,11 @@ export type MonitorEvent =
       readonly width: number;
       readonly height: number;
     }
-  | { readonly kind: "monitorError"; readonly device?: string; readonly message: string };
+  | { readonly kind: "monitorError"; readonly device?: string; readonly message: string }
+  // `ftester monitor pause` の保持状態の変化(ApiMonitorHoldEvent)。webview へは送らず
+  // OUTPUT ログだけ(配信の停止自体は、hold 中の全タイル state:"unknown" 化で
+  // monitorDeviceStreamController の既存の qualifying 判定が畳む)
+  | { readonly kind: "monitorHold"; readonly active: boolean };
 
 const PLATFORMS: ReadonlySet<string> = new Set<MonitorPlatform>(["ios", "android"]);
 const STATES: ReadonlySet<string> = new Set<MonitorDeviceState>(["connected", "booted", "offline", "unknown"]);
@@ -193,6 +197,8 @@ export function isMonitorEvent(value: unknown): value is MonitorEvent {
         typeof value.message === "string" &&
         (value.device === undefined || typeof value.device === "string")
       );
+    case "monitorHold":
+      return typeof value.active === "boolean";
     default:
       return false;
   }

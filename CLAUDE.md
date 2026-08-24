@@ -302,10 +302,12 @@
 - **モニターを止めるのは性能を測るときだけ**(2026-08-21 ユーザー決定で運用変更。
   以前は「E2E の前に必ず止める」だった)。止めている間の利便性の損失が大きいという判断で、
   **合否を見るだけの実行では止めない**。問題が出たらそのとき見直す。
-  **止めるときは3つ打つ**(`ftester api monitor` を kill しても配信は台数ぶん残る ——
-  `ftester-androidstream` と子の `adb … exec-out screenrecord` がデバイスを掴み続ける):
-  `pkill -f "ftester api monitor"` / `pkill -f "ftester-androidstream"` /
-  `pkill -f "screenrecord --output-format=h264"`。
+  **止めるのは `ftester monitor pause [--for <分>]` / 再開は `resume`**(2026-08-24 追加。
+  kill では止まらない —— 拡張が monitor も配信ヘルパーも数秒で再起動する。保持ファイルを
+  `api monitor` が毎周期見て観測を止め、全タイルを unknown で出す = 拡張が配信を畳む。
+  効くのはこの機械だけ。docs/verification.md §モニターと E2E)。拡張が動いていないときの
+  旧手段は pkill 3連打(`ftester api monitor` / `ftester-androidstream` /
+  `screenrecord --output-format=h264` —— 1つ目だけだと配信が台数ぶん残る)。
   **中途半端に止めた対照は誤った結論を出す**(観測だけ止めて残った失敗を「特定の個体の問題」と
   報告したが、実際はその台の配信が生きていただけだった)。
   **捨ててはいけない実測**(2026-08-13 の3条件対照): 8台すべてに配信を張った状態のフル E2E は

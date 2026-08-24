@@ -344,7 +344,11 @@ export type MonitorToWebviewMessage =
     };
 
 /** 検証済みの MonitorEvent を、webview へそのまま postMessage できる形に変換する。 */
-export function toWebviewMessage(event: MonitorEvent): MonitorToWebviewMessage {
+// monitorHold は webview へ送らない(monitorProcessManager.ts が OUTPUT ログで処理して return する)
+// ため、ここでは型から除外して switch の網羅性を保つ
+export function toWebviewMessage(
+  event: Exclude<MonitorEvent, { kind: "monitorHold" }>,
+): MonitorToWebviewMessage {
   switch (event.kind) {
     case "monitorDevices":
       return { type: "devices", devices: event.devices };

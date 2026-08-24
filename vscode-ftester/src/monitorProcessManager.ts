@@ -214,6 +214,14 @@ export class MonitorProcessManager {
           return;
         }
         let value = rawValue;
+        if (value.kind === "monitorHold") {
+          // webview へは送らない: 配信の停止は hold 中の全タイル state:"unknown" 化で
+          // applyDevices の qualifying 判定(state !== "connected")が畳む。ここはログだけ
+          this.deps.outputChannel.appendLine(
+            t(value.active ? "deviceOps.log.monitorHoldActive" : "deviceOps.log.monitorHoldReleased"),
+          );
+          return;
+        }
         if (value.kind === "monitorDevices") {
           // プロファイルタブの表示順に整列してから全消費側へ配る(sortMonitorDevices 参照)。
           this.latestDevices = sortMonitorDevices(value.devices);

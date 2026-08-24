@@ -32,6 +32,14 @@ export const deviceOpsStrings = {
     en: "[{label}] Ignored a line with an unknown format: {value}",
   },
   "deviceOps.detailUnknown": { ja: "(詳細不明)", en: "(details unknown)" },
+  "deviceOps.log.monitorHoldActive": {
+    ja: "[monitor] ftester monitor pause による保持中 — 観測と配信を停止しました(解除: ftester monitor resume)",
+    en: "[monitor] Held by ftester monitor pause — observation and streaming stopped (release with: ftester monitor resume)",
+  },
+  "deviceOps.log.monitorHoldReleased": {
+    ja: "[monitor] 保持が解除されました — 観測を再開します",
+    en: "[monitor] The hold was released — resuming observation",
+  },
   "deviceOps.log.bulkOpFailed": {
     ja: "[ftester] {label} が失敗しました: {error}",
     en: "[ftester] {label} failed: {error}",
