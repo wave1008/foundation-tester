@@ -245,14 +245,20 @@ struct ApiRunCommand: AsyncParsableCommand {
             //
             // 明示 --host local はこの機械で走らせる指定なので、ホスト混在プロファイルでは
             // local 枠だけに絞る(他ホスト担当分まで手元で解決すると存在しない台を掴む。
-            // ホスト別サブ実行は --device/--device-host を持つのでこの分岐に入らない)
-            let effectiveDeviceHost = deviceHost
-                ?? ((devices.isEmpty && MachineHostDispatch.isExplicitLocal(host))
-                    ? DeviceHostGrouping.localDisplayName : nil)
-            let full = resolvedAll.filteringDevices(names: devices, deviceHost: effectiveDeviceHost)
+            // ホスト別サブ実行は --device/--device-host を持つのでこの分岐に入らない)。
+            // **明示 --device があっても絞る**(RunScenarios.run と同型。受け手報告 2026-08-24:
+            // 名前だけでは同名の台が別の機械のエントリに解決し、向こうの UDID を手元で探す)
+            var effectiveDevices = devices
+            var effectiveDeviceHost = deviceHost
+            if deviceHost == nil, MachineHostDispatch.isExplicitLocal(host) {
+                (effectiveDevices, effectiveDeviceHost) = try hostScopedDeviceFilter(
+                    project: testProject, profile: profile,
+                    targetHost: DeviceHostGrouping.localDisplayName, requestedDevices: devices)
+            }
+            let full = resolvedAll.filteringDevices(names: effectiveDevices, deviceHost: effectiveDeviceHost)
             // 絞り込みを指定したときだけ「合致0」を報告する。指定していないのに0台なのは
             // プロファイル自体の誤りで、それは resolve 側が自分の言葉で報告する
-            if full.devices.isEmpty, !devices.isEmpty || deviceHost != nil {
+            if full.devices.isEmpty, !effectiveDevices.isEmpty || effectiveDeviceHost != nil {
                 let scope = [devices.isEmpty ? nil : "--device \(devices.joined(separator: ", "))",
                              deviceHost.map { "--device-host \($0)" }]
                     .compactMap { $0 }.joined(separator: " ")

@@ -34,6 +34,7 @@ struct FTester: AsyncParsableCommand {
             ResultsCommand.self,
             RemoteCommand.self,
             HooksCommand.self,
+            MonitorCommand.self,
         ]
     )
 }
@@ -951,10 +952,18 @@ struct RunScenarios: AsyncParsableCommand {
         if let profile {
             // 明示 --host local はこの機械で走らせる指定なので、ホスト混在プロファイルでは
             // local 枠だけに絞る(他ホスト担当分まで手元で解決すると存在しない台を掴む。
-            // ホスト別サブ実行は --device/--device-host を持つのでこの分岐に入らない)
-            let effectiveDeviceHost = deviceHost
-                ?? ((devices.isEmpty && MachineHostDispatch.isExplicitLocal(host))
-                    ? DeviceHostGrouping.localDisplayName : nil)
+            // ホスト別サブ実行は --device/--device-host を持つのでこの分岐に入らない)。
+            // **明示 --device があっても絞る** —— 名前だけでは同名の台が別の機械にもあるとき
+            // そちらのエントリに解決し、向こうの UDID を手元で探して
+            // "no simulator with that UDID" で止まる(受け手報告 2026-08-24)。判定は
+            // --host <リモート> と同じ hostScopedDeviceFilter(RemoteDispatchExplicitDeviceScope)
+            var effectiveDeviceFilter = devices
+            var effectiveDeviceHost = deviceHost
+            if deviceHost == nil, MachineHostDispatch.isExplicitLocal(host) {
+                (effectiveDeviceFilter, effectiveDeviceHost) = try hostScopedDeviceFilter(
+                    project: testProject, profile: profile,
+                    targetHost: DeviceHostGrouping.localDisplayName, requestedDevices: devices)
+            }
             let runSummary = try await ProfileRunner.run(
                 project: testProject, profileName: profile, items: items,
                 healOverride: ProfileRunner.healOverride(heal: heal, noHeal: noHeal),
@@ -962,7 +971,7 @@ struct RunScenarios: AsyncParsableCommand {
                 quiet: quiet, lpt: !noLPT,
                 lptHistoryRuns: lptHistoryRuns ?? LPTOrdering.defaultHistoryRuns,
                 performanceMode: performanceMode,
-                deviceFilter: devices,
+                deviceFilter: effectiveDeviceFilter,
                 deviceHost: effectiveDeviceHost,
                 workspaceOverride: workspace,
                 recorder: recorder,

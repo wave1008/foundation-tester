@@ -167,7 +167,9 @@
   うち先に終わったものの stop() が残りの横取りまで解き、`kill -INT` で親だけ死ぬ(受け手報告)。
   `ftester remote unlock` は自分の死んだディスパッチのロックだけを外す(`RemoteDispatchUnlock`)。
   **`--host H` + 明示 `--device` は H の台に限定**(`RemoteDispatchExplicitDeviceScope`。同名の台が
-  複数機にあると名前だけでは全機ぶんを拾う)。
+  複数機にあると名前だけでは全機ぶんを拾う)。**`--host local` も同じ判定を通す**(2026-08-24。
+  run / api run の2経路 —— 絞らないと別ホストのエントリの UDID を手元で探して
+  `no simulator with that UDID` で止まる。受け手報告)。
   **LPT はリモートでも実績で回る**(2026-08-18): 実績 JSON は on-demand でも常に回収・
   実績と観測窓は machine 別(platform 分離と同型)・フリート割り当ては facts キャッシュ
   (`.ftester/remote-hosts/<host>.json`。ディスパッチのたびに machine と固定費実測を書く)で

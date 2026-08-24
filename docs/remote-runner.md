@@ -587,7 +587,10 @@ target が hosts に無い/host 未設定を指す場合は**黙ってローカ�
   `no simulator with that UDID` で落ちた(受け手報告 2026-08-23: local/M1Max/M1Ultra の同名
   iPhone で `--device` 1台 → Devices に3台)。子には `--device-host H` を付けて渡し、
   名前が H に無ければ**H の台を列挙して手元で止める**(遠い失敗にしない)。別の機械の同名を
-  指したいときは `--device-host` を明示する。host 未指定のプロファイルは従来どおり名前を素通し
+  指したいときは `--device-host` を明示する。host 未指定のプロファイルは従来どおり名前を素通し。
+  **`--host local` も同じ判定を通す**(2026-08-24。`run` / `api run` の2経路。手元実行だからと
+  素通しにすると、名前が別ホストのエントリに解決して手元でそのホストの UDID を探し
+  `no simulator with that UDID` で止まる — 受け手報告)
 - **ディスパッチ先はデバイスの居場所が優先**(`machineProfileHostAndName`)。既定だけを見ると、
   `host` を書いていないマシンプロファイルにリモートのデバイスだけを並べた形が**黙って手元で走る**
 - **`api run`(拡張の実行経路)は混在プロファイルを扱えない**ので、明示的にエラーで止めて CLI を
