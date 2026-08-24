@@ -22,9 +22,7 @@ import XCTest
 final class MCPAuditFixes20260814ConnectionRecoveryTests: XCTestCase {
 
     private static func dispatchSource() throws -> String {
-        try String(contentsOf: URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Sources/ftester-mcp/MCPServer+Dispatch.swift"), encoding: .utf8)
+        try MCPServerSourceText.combined()
     }
 
     private static func driverSource() throws -> String {

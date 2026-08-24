@@ -122,9 +122,7 @@ final class DeviceStateInvalidationTests: XCTestCase {
         let declarations = try String(
             contentsOf: root.appendingPathComponent("Sources/ftester-mcp/MCPServer.swift"),
             encoding: .utf8)
-        let body = try String(
-            contentsOf: root.appendingPathComponent("Sources/ftester-mcp/MCPServer+Dispatch.swift"),
-            encoding: .utf8)
+        let body = try MCPServerSourceText.combined()
         guard let purge = body.range(of: "func forgetDeviceState(_ key: String) {"),
               let end = body.range(of: "\n    }", range: purge.upperBound..<body.endIndex) else {
             return XCTFail("forgetDeviceState が見つからない — 改名したらこのテストも直す")

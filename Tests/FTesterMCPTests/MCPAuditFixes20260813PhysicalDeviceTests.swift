@@ -116,11 +116,7 @@ final class MCPAuditFixes20260813PhysicalDeviceTests: XCTestCase {
     /// 実機の有無に依存するのでテストからは踏めない(欠陥⑤: 実機 udid を simctl へ素通しすると
     /// `Invalid device` で死ぬ)
     func testListAppsRoutesPhysicalDevicesAwayFromSimctl() throws {
-        let source = try String(
-            contentsOf: URL(fileURLWithPath: #filePath)
-                .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-                .appendingPathComponent("Sources/ftester-mcp/MCPServer+Dispatch.swift"),
-            encoding: .utf8)
+        let source = try MCPServerSourceText.combined()
         let start = try XCTUnwrap(source.range(of: "case \"ft_list_apps\":"),
                                   "ft_list_apps の分岐が見つからない")
         let tail = source[start.upperBound...]
@@ -233,11 +229,7 @@ final class MCPAuditFixes20260813PhysicalDeviceTests: XCTestCase {
     /// 両方へ渡していること。純粋関数だけを固定すると「呼び出し側が ownerAlive を渡すのをやめる」
     /// 変異が生き残る(この台帳が繰り返し踏んでいる型)
     func testIosConnectionLostHintWiresOwnerAliveIntoBothDecisions() throws {
-        let source = try String(
-            contentsOf: URL(fileURLWithPath: #filePath)
-                .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-                .appendingPathComponent("Sources/ftester-mcp/MCPServer+Dispatch.swift"),
-            encoding: .utf8)
+        let source = try MCPServerSourceText.combined()
         let start = try XCTUnwrap(source.range(of: "func iosConnectionLostHint("),
                                   "iosConnectionLostHint が見つからない")
         let tail = source[start.upperBound...]
