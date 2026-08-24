@@ -60,7 +60,7 @@
   "record": true,
   "recoverCpuFallbackToGpu": true,
   "reportDir": "reports",
-  "screenIs": true,
   "updateWebView": true,
-  "wipeDataOnBloat": true
+  "wipeDataOnBloat": true,
+  "screenLooksLike": true
 }
