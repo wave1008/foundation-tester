@@ -23,7 +23,7 @@ import {
   type MonitorFromWebviewMessage,
   parseAppProfileForForm,
   parseRunProfileForForm,
-  removeDeviceFromMachineProfile,
+  removeDevicesFromMachineProfile,
   RUNNING_DEVICES_PROFILE_VALUE,
   syncDevicesInMachineProfile,
   type RunProfileFormFields,
@@ -34,7 +34,6 @@ import {
   validateNewMachineProfileName,
   validateNewRunProfileName,
 } from "./monitorModel";
-import { summarizeDeviceNames } from "./monitorDeviceOps";
 import { type HookScaffoldResult, resolveWorkspaceDir, writeHookScriptTemplates } from "./runHookScaffold";
 import type { MonitorPanelDeps } from "./monitorPanel";
 
@@ -829,27 +828,35 @@ export class MonitorProfilesController {
   }
 
   /**
-   * デバイス行右クリック「除去」: machines/<machine>.json から names に一致するデバイスを
+   * デバイス行右クリック「除去」: machines/<machine>.json から devices に一致するデバイスを
    * プロファイル上だけ取り除く(シミュレータ/AVD 本体は操作しない)。ユーザー可視文言は
    * この操作に限り「削除」ではなく「除去」を使う(仮想マシン本体を消す「削除」と紛らわしいため)。
-   * removeDeviceFromMachineProfile を names へ順次適用し1回の書き戻しにまとめる。1件も除去
-   * できなければ書き戻さない。
+   * removeDevicesFromMachineProfile へ渡し1回の書き戻しにまとめる。1件も除去
+   * できなければ書き戻さない。**引き当ては (host, name)**(host 省略=手元) —— 名前だけで消すと
+   * 別の機械の同名デバイスが巻き添えになる(mixed プロファイルでは同名が普通)。
    */
-  async handleMachineDeviceRemove(machine: string, names: readonly string[]): Promise<void> {
+  async handleMachineDeviceRemove(
+    machine: string,
+    devices: readonly { readonly name: string; readonly host?: string }[],
+  ): Promise<void> {
+    // **ログには必ずホストを添える**(同名の台が別の機械に並ぶのは通常で、どの Mac の台かを
+    // 名前だけからは決められない)。確認ダイアログは選択そのものを指すので名指ししない。
+    const names = devices.map((device) =>
+      t("profiles.deviceHostQualified", {
+        name: device.name,
+        host: device.host ?? t("deviceOps.hostLocalLabel"),
+      }),
+    );
     const project = this.resolveProjectOrWarn();
     if (!project) {
       return;
     }
-    const confirmMessage =
-      names.length === 1
-        ? t("profiles.confirm.removeDeviceSingle", { machine, name: names[0]! })
-        : t("profiles.confirm.removeDeviceMultiple", {
-            machine,
-            count: names.length,
-            names: summarizeDeviceNames(names),
-          });
     const removeLabel = t("profiles.button.remove");
-    const choice = await vscode.window.showWarningMessage(confirmMessage, { modal: true }, removeLabel);
+    const choice = await vscode.window.showWarningMessage(
+      t("profiles.confirm.removeDevices"),
+      { modal: true },
+      removeLabel,
+    );
     if (choice !== removeLabel) {
       return;
     }
@@ -867,24 +874,18 @@ export class MonitorProfilesController {
         );
         return;
       }
-      let current: unknown = parsed;
-      let removedCount = 0;
-      for (const name of names) {
-        const result = removeDeviceFromMachineProfile(current, name);
-        if (!result) {
-          this.deps.outputChannel.appendLine(
-            t("profiles.log.machineProfileInvalidFormatRemoveAborted", { name: machine }),
-          );
-          void vscode.window.showWarningMessage(
-            `ftester: ${t("profiles.msg.machineProfileLoadFailed", { name: machine })}`,
-          );
-          return;
-        }
-        current = result.object;
-        if (result.removed) {
-          removedCount += 1;
-        }
+      const removal = removeDevicesFromMachineProfile(parsed, devices);
+      if (!removal) {
+        this.deps.outputChannel.appendLine(
+          t("profiles.log.machineProfileInvalidFormatRemoveAborted", { name: machine }),
+        );
+        void vscode.window.showWarningMessage(
+          `ftester: ${t("profiles.msg.machineProfileLoadFailed", { name: machine })}`,
+        );
+        return;
       }
+      const current = removal.object;
+      const removedCount = removal.removed;
       if (removedCount === 0) {
         this.deps.outputChannel.appendLine(
           t("profiles.log.machineProfileDeviceNotFoundRemoveFailed", { name: machine }),
@@ -944,7 +945,13 @@ export class MonitorProfilesController {
       return;
     }
 
-    const result = updateDeviceInMachineProfile(parsed, message.platform, message.originalName, message.fields);
+    const result = updateDeviceInMachineProfile(
+      parsed,
+      message.platform,
+      message.originalName,
+      message.fields,
+      message.host ?? "local",
+    );
     if (!result.ok) {
       sendResult(false, message.originalName, result.error);
       return;

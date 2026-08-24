@@ -585,7 +585,7 @@ export class MonitorPanelController implements vscode.Disposable {
         this.profiles.handleMachineDevicesSync(message);
         break;
       case "machineDeviceRemove":
-        void this.profiles.handleMachineDeviceRemove(message.machine, message.names);
+        void this.profiles.handleMachineDeviceRemove(message.machine, message.devices);
         break;
       case "machineDeviceUpdate":
         this.profiles.handleMachineDeviceUpdate(message);

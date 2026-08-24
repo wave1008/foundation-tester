@@ -461,9 +461,14 @@ export type MonitorFromWebviewMessage =
        * remote のときだけ monitorProfileForms.ts がマシンプロファイルの host キーへ書き込む。 */
       readonly source: DeviceCommandSource;
     }
-  // デバイス行の右クリック「削除」。names は複数選択の一括削除に対応する配列(単一削除も1件配列)。
-  // 空配列は「対象なし」として不正扱い。
-  | { readonly type: "machineDeviceRemove"; readonly machine: string; readonly names: readonly string[] }
+  // デバイス行の右クリック「削除」。devices は複数選択の一括削除に対応する配列(単一削除も1件配列)。
+  // 空配列は「対象なし」として不正扱い。**参照は (host, name)**(host 省略=手元) —— 名前だけだと
+  // 別の機械の同名デバイスまで巻き添えで消える。
+  | {
+      readonly type: "machineDeviceRemove";
+      readonly machine: string;
+      readonly devices: readonly { readonly name: string; readonly host?: string }[];
+    }
   // #device-pick-overlay の行右クリック「削除」: マシンプロファイルからの除去(machineDeviceRemove)
   // とは別に、ホスト上の実体(シミュレータ/AVD)そのものを `ftester api delete-device` で消す。
   // identifier は iOS=udid/Android=avd id(実機行にはこのメニュー自体を出さない)。name は確認
@@ -482,6 +487,9 @@ export type MonitorFromWebviewMessage =
       readonly machine: string;
       readonly platform: MonitorPlatform;
       readonly originalName: string;
+      /** 対象が居る機械(省略=手元)。引き当ては (host, name) —— 名前だけだと別の機械の
+       * 同名デバイスを書き換える。 */
+      readonly host?: string;
       readonly fields: {
         readonly name: string;
         readonly simulator: string;
@@ -731,9 +739,15 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
       return (
         typeof value.machine === "string" &&
         value.machine !== "" &&
-        Array.isArray(value.names) &&
-        value.names.length > 0 &&
-        value.names.every((name) => typeof name === "string" && name !== "")
+        Array.isArray(value.devices) &&
+        value.devices.length > 0 &&
+        value.devices.every(
+          (device) =>
+            isRecord(device) &&
+            typeof device.name === "string" &&
+            device.name !== "" &&
+            (device.host === undefined || (typeof device.host === "string" && device.host !== "")),
+        )
       );
     case "devicePickDeviceDelete":
       return (
@@ -751,6 +765,7 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         (value.platform === "ios" || value.platform === "android") &&
         typeof value.originalName === "string" &&
         value.originalName !== "" &&
+        (value.host === undefined || (typeof value.host === "string" && value.host !== "")) &&
         isRecord(value.fields) &&
         typeof value.fields.name === "string" &&
         typeof value.fields.simulator === "string" &&

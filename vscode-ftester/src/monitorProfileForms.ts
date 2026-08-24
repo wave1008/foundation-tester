@@ -1087,6 +1087,31 @@ export function removeDeviceFromMachineProfile(
   return { object: result, removed };
 }
 
+/**
+ * removeDeviceFromMachineProfile を devices へ順次適用し、1つの新オブジェクトにまとめる
+ * (handleMachineDeviceRemove の本体。ファイル I/O は呼び出し側)。**引き当ては (host, name)**
+ * —— host 省略は手元("local")として引く。名前だけで消すと別の機械の同名デバイスが巻き添えになる。
+ * 途中で不正形式に当たったら null(呼び出し側は書き戻さない)。removed は実際に取り除けた件数。
+ */
+export function removeDevicesFromMachineProfile(
+  profileObject: unknown,
+  devices: readonly { readonly name: string; readonly host?: string }[],
+): { readonly object: unknown; readonly removed: number } | null {
+  let current: unknown = profileObject;
+  let removed = 0;
+  for (const device of devices) {
+    const result = removeDeviceFromMachineProfile(current, device.name, device.host ?? "local");
+    if (!result) {
+      return null;
+    }
+    current = result.object;
+    if (result.removed) {
+      removed += 1;
+    }
+  }
+  return { object: current, removed };
+}
+
 // ---- プロファイルタブ右ペインの編集フォーム「確定」(machineDeviceUpdate) -----------------------
 // handleMachineDeviceUpdate(monitorPanel.ts)が使う純粋関数(ファイル I/O は呼び出し側)。
 
@@ -1117,12 +1142,17 @@ function isDeviceEntryLike(value: unknown): value is Record<string, unknown> {
  * devices[]/該当エントリ無し、新名が空、新名が他デバイス(対象自身除く)と重複、のいずれかで ok:false。
  * port は 0〜65535 の整数文字列以外はエラー。反対プラットフォームのフィールドには触れない(理由は
  * 下の port 処理コメント参照)。
+ *
+ * **host を渡すとその機械のぶんだけを対象にする**(手元は "local")。一意なのは (host, name) で、
+ * 別の機械の同名デバイスは別物 —— 引き当ても重複判定もホストで絞らないと、別の機械のエントリを
+ * 書き換える/正当なリネームを重複として弾く。省略時は名前だけで引く(全ホスト横断)。
  */
 export function updateDeviceInMachineProfile(
   profileObject: unknown,
   platform: MonitorPlatform,
   originalName: string,
   fields: MachineDeviceUpdateFields,
+  host?: string,
 ): MachineDeviceUpdateResult {
   if (typeof profileObject !== "object" || profileObject === null || Array.isArray(profileObject)) {
     return { ok: false, error: t("monitor.machineProfile.invalidFormat") };
@@ -1141,7 +1171,17 @@ export function updateDeviceInMachineProfile(
   if (!Array.isArray(devices)) {
     return notFoundError;
   }
-  const index = devices.findIndex((device) => isDeviceEntryLike(device) && device.name === originalName);
+  // エントリの実効ホスト(デバイス指定 > プロファイル直下の既定 > 手元)。host 引数と同じ土俵に乗せる。
+  const entryHost = (device: Record<string, unknown>): string =>
+    effectiveDeviceHost(
+      typeof device.host === "string" ? device.host : undefined,
+      typeof source.host === "string" ? source.host : undefined,
+    ) ?? "local";
+  const hostMatches = (device: Record<string, unknown>): boolean =>
+    host === undefined || entryHost(device) === host;
+  const index = devices.findIndex(
+    (device) => isDeviceEntryLike(device) && device.name === originalName && hostMatches(device),
+  );
   if (index === -1) {
     return notFoundError;
   }
@@ -1159,6 +1199,9 @@ export function updateDeviceInMachineProfile(
     for (const device of otherSection.devices) {
       if (device === target || !isDeviceEntryLike(device)) {
         continue; // 対象エントリ自身は重複チェックから除く
+      }
+      if (!hostMatches(device)) {
+        continue; // 別の機械の同名は重複ではない
       }
       if (device.name === newName) {
         return { ok: false, error: t("monitor.validation.nameAlreadyExists", { name: newName }) };

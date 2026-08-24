@@ -41,6 +41,7 @@ import {
   parseAppProfileForForm,
   parseRunProfileForForm,
   removeDeviceFromMachineProfile,
+  removeDevicesFromMachineProfile,
   removeQueuedBulkUpJob,
   RUNNING_DEVICES_PROFILE_VALUE,
   syncDevicesInMachineProfile,
@@ -1063,29 +1064,50 @@ test("isMonitorFromWebviewMessage: devicePickDeviceDelete はフィールド欠�
   assert.equal(isMonitorFromWebviewMessage(missingIdentifier), false);
 });
 
-test("isMonitorFromWebviewMessage: machineDeviceRemove は machine 非空文字列・names 非空配列(各要素非空文字列)なら true", () => {
+test("isMonitorFromWebviewMessage: machineDeviceRemove は machine 非空文字列・devices 非空配列(各要素 name 非空文字列)なら true", () => {
   assert.equal(
-    isMonitorFromWebviewMessage({ type: "machineDeviceRemove", machine: "M1", names: ["シミュ1"] }),
+    isMonitorFromWebviewMessage({ type: "machineDeviceRemove", machine: "M1", devices: [{ name: "シミュ1" }] }),
     true,
   );
-  // 複数選択の一括削除(要件5)。
+  // host は省略可(=手元)。指定があれば非空文字列。
   assert.equal(
-    isMonitorFromWebviewMessage({ type: "machineDeviceRemove", machine: "M1", names: ["シミュ1", "エミュ1"] }),
+    isMonitorFromWebviewMessage({
+      type: "machineDeviceRemove",
+      machine: "M1",
+      devices: [{ name: "シミュ1", host: "M1Max" }],
+    }),
+    true,
+  );
+  // 複数選択の一括削除(要件5)。同名が別ホストに並ぶのは通常。
+  assert.equal(
+    isMonitorFromWebviewMessage({
+      type: "machineDeviceRemove",
+      machine: "M1",
+      devices: [{ name: "シミュ1" }, { name: "シミュ1", host: "M1Max" }],
+    }),
     true,
   );
 });
 
-test("isMonitorFromWebviewMessage: machineDeviceRemove は machine 空文字/names 空配列・欠落・要素が空文字/非文字列なら false", () => {
-  assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceRemove", machine: "", names: ["シミュ1"] }), false);
-  assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceRemove", machine: "M1", names: [] }), false);
-  assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceRemove", machine: "M1", names: [""] }), false);
-  assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceRemove", machine: "M1", names: ["OK", 1] }), false);
-  assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceRemove", names: ["シミュ1"] }), false);
+test("isMonitorFromWebviewMessage: machineDeviceRemove は machine 空文字/devices 空配列・欠落・要素不正なら false", () => {
+  const devices = [{ name: "シミュ1" }];
+  assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceRemove", machine: "", devices }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceRemove", machine: "M1", devices: [] }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceRemove", machine: "M1", devices: [{ name: "" }] }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceRemove", machine: "M1", devices: [{ name: 1 }] }), false);
+  assert.equal(
+    isMonitorFromWebviewMessage({ type: "machineDeviceRemove", machine: "M1", devices: [{ name: "OK", host: "" }] }),
+    false, // host は指定するなら非空("" は「手元」ではなく不正)
+  );
+  assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceRemove", machine: "M1", devices: ["シミュ1"] }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceRemove", devices }), false);
   assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceRemove", machine: "M1" }), false);
   assert.equal(
-    isMonitorFromWebviewMessage({ type: "machineDeviceRemove", machine: "M1", names: "シミュ1" }),
-    false, // names は配列必須(文字列単体は不可)
+    isMonitorFromWebviewMessage({ type: "machineDeviceRemove", machine: "M1", devices: { name: "シミュ1" } }),
+    false, // devices は配列必須(単体オブジェクトは不可)
   );
+  // 旧 webview の names 形は受け付けない(パネルを開き直せば新しいバンドルになる)。
+  assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceRemove", machine: "M1", names: ["シミュ1"] }), false);
 });
 
 // ---- isMonitorFromWebviewMessage: machineDevicesSync(「+既存から選択」モーダルの OK) ----
@@ -1777,6 +1799,114 @@ test("removeDeviceFromMachineProfile: トップレベルがオブジェクトで
   assert.equal(removeDeviceFromMachineProfile("not-an-object", "x"), null);
   assert.equal(removeDeviceFromMachineProfile(42, "x"), null);
   assert.equal(removeDeviceFromMachineProfile(["ios", "android"], "x"), null);
+});
+
+// ---- (host, name) での引き当て(別の機械の同名デバイスを巻き添えにしない) ----
+
+// 同じ機械プロファイルに手元と M1Max の同名デバイスが居る形(各機が同じ命名規則で作るので通常)。
+const PROFILE_SAME_NAME_ON_TWO_HOSTS = {
+  ios: {
+    devices: [
+      { host: "local", name: "シミュ1", udid: "UDID-LOCAL" },
+      { host: "M1Max", name: "シミュ1", udid: "UDID-M1MAX" },
+    ],
+  },
+};
+
+test("removeDeviceFromMachineProfile: host を渡すとその機械のぶんだけ消す", () => {
+  const result = removeDeviceFromMachineProfile(PROFILE_SAME_NAME_ON_TWO_HOSTS, "シミュ1", "M1Max");
+  assert.equal(result.removed, true);
+  assert.deepEqual(result.object.ios.devices, [{ host: "local", name: "シミュ1", udid: "UDID-LOCAL" }]);
+
+  const local = removeDeviceFromMachineProfile(PROFILE_SAME_NAME_ON_TWO_HOSTS, "シミュ1", "local");
+  assert.deepEqual(local.object.ios.devices, [{ host: "M1Max", name: "シミュ1", udid: "UDID-M1MAX" }]);
+});
+
+test("removeDeviceFromMachineProfile: host 省略のエントリはプロファイル直下の既定に従う", () => {
+  const profile = {
+    host: "M1Max",
+    ios: { devices: [{ name: "シミュ1", udid: "UDID-M1MAX" }, { host: "local", name: "シミュ1", udid: "UDID-LOCAL" }] },
+  };
+  const result = removeDeviceFromMachineProfile(profile, "シミュ1", "M1Max");
+  assert.deepEqual(result.object.ios.devices, [{ host: "local", name: "シミュ1", udid: "UDID-LOCAL" }]);
+});
+
+test("removeDevicesFromMachineProfile: 各 (host, name) だけを消す(host 省略=手元)", () => {
+  const profile = {
+    ios: {
+      devices: [
+        { host: "local", name: "シミュ1" },
+        { host: "M1Max", name: "シミュ1" },
+        { host: "M1Max", name: "シミュ2" },
+      ],
+    },
+  };
+  const result = removeDevicesFromMachineProfile(profile, [{ name: "シミュ1", host: "M1Max" }, { name: "シミュ2" }]);
+  assert.equal(result.removed, 1); // シミュ2 は手元に居ないので消えない
+  assert.deepEqual(result.object.ios.devices, [{ host: "local", name: "シミュ1" }, { host: "M1Max", name: "シミュ2" }]);
+
+  const local = removeDevicesFromMachineProfile(profile, [{ name: "シミュ1" }]);
+  assert.equal(local.removed, 1);
+  assert.deepEqual(local.object.ios.devices, [{ host: "M1Max", name: "シミュ1" }, { host: "M1Max", name: "シミュ2" }]);
+});
+
+test("removeDevicesFromMachineProfile: 不正形式は null(呼び出し側は書き戻さない)", () => {
+  assert.equal(removeDevicesFromMachineProfile("not-an-object", [{ name: "x" }]), null);
+});
+
+test("updateDeviceInMachineProfile: host を渡すとその機械のエントリだけを書き換える", () => {
+  const remote = updateDeviceInMachineProfile(
+    PROFILE_SAME_NAME_ON_TWO_HOSTS,
+    "ios",
+    "シミュ1",
+    iosFields({ name: "シミュ1-改", udid: "UDID-M1MAX" }),
+    "M1Max",
+  );
+  assert.equal(remote.ok, true);
+  assert.deepEqual(remote.object.ios.devices, [
+    { host: "local", name: "シミュ1", udid: "UDID-LOCAL" },
+    { host: "M1Max", name: "シミュ1-改", udid: "UDID-M1MAX" },
+  ]);
+
+  const local = updateDeviceInMachineProfile(
+    PROFILE_SAME_NAME_ON_TWO_HOSTS,
+    "ios",
+    "シミュ1",
+    iosFields({ name: "シミュ1-改", udid: "UDID-LOCAL" }),
+    "local",
+  );
+  assert.equal(local.ok, true);
+  assert.deepEqual(local.object.ios.devices, [
+    { host: "local", name: "シミュ1-改", udid: "UDID-LOCAL" },
+    { host: "M1Max", name: "シミュ1", udid: "UDID-M1MAX" },
+  ]);
+});
+
+test("updateDeviceInMachineProfile: 別の機械の同名へのリネームは重複ではない(同じ機械なら重複)", () => {
+  const profile = {
+    ios: {
+      devices: [
+        { host: "local", name: "シミュA" },
+        { host: "M1Max", name: "シミュB" },
+        { host: "M1Max", name: "シミュC" },
+      ],
+    },
+  };
+  const crossHost = updateDeviceInMachineProfile(profile, "ios", "シミュB", iosFields({ name: "シミュA" }), "M1Max");
+  assert.equal(crossHost.ok, true);
+
+  const sameHost = updateDeviceInMachineProfile(profile, "ios", "シミュB", iosFields({ name: "シミュC" }), "M1Max");
+  assert.equal(sameHost.ok, false);
+});
+
+test("updateDeviceInMachineProfile: host を渡さなければ従来どおり名前だけで引く", () => {
+  const result = updateDeviceInMachineProfile(
+    PROFILE_SAME_NAME_ON_TWO_HOSTS,
+    "ios",
+    "シミュ1",
+    iosFields({ name: "シミュ1", udid: "UDID-LOCAL" }),
+  );
+  assert.equal(result.ok, false); // 同名が2件あるので重複判定に当たる
 });
 
 // ---- updateDeviceInMachineProfile ----

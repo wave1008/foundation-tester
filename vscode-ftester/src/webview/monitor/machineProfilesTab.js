@@ -1,6 +1,6 @@
 // machineProfilesTab.js
 // 「プロファイル」タブの「マシンプロファイル」節を担う。
-// machineProfiles・selectedMachine・selectedDeviceNames の書き込みはこのモジュールのみで行う。
+// machineProfiles・selectedMachine・selectedDeviceKeys の書き込みはこのモジュールのみで行う。
 // runProfilesTab.js・modals.js からは machineProfiles/findMachine/selectedMachine を読み取り専用で参照する。
 
 import { vscode } from './vscodeApi.js';
@@ -54,20 +54,20 @@ export let machineProfiles = [];
 let machineProfileHasError = false;
 // select の値。machines が0件なら null。
 export let selectedMachine = null;
-// 選択中デバイス名(Set、複数選択、Finder/VSCode 標準セマンティクス)。
-// マシン切替・一覧再描画時は validateSelectedDeviceName で存在しない名前を除去する。
+// 選択中デバイスの**キー**(deviceKey。Set、複数選択、Finder/VSCode 標準セマンティクス)。
+// マシン切替・一覧再描画時は validateSelectedDeviceKeys で存在しないキーを除去する。
 // 右ペインの編集フォームは size===1 のときだけ表示する。
-let selectedDeviceNames = new Set();
-// 範囲選択(Shift+クリック)の起点。Shift+クリック自体ではアンカーを動かさない
+let selectedDeviceKeys = new Set();
+// 範囲選択(Shift+クリック)の起点(deviceKey)。Shift+クリック自体ではアンカーを動かさない
 // (連続 Shift+クリックで同じ起点から範囲を伸縮できる)。一覧から消えたら null に戻す。
 let deviceSelectionAnchor = null;
 // macOS 判定(行の contextmenu で Ctrl+クリックを選択トグルへ振り分けるのに使う)。
 const isMacPlatform = /^Mac/.test(navigator.platform || '');
-// 直近描画したデバイス行(name -> row)。挿入順=表示順で、範囲選択(Shift+クリック)の
+// 直近描画したデバイス行(deviceKey -> row)。挿入順=表示順で、範囲選択(Shift+クリック)の
 // 順序計算に使う。
 let deviceRowElements = new Map();
 // 右クリックメニュー(#machine-device-menu)を開いている対象(未オープンなら null)。
-// { machine, names } の形。
+// { machine, devices } の形(devices は行そのもの = (host, name) を持つ)。
 let machineDeviceMenuEntry = null;
 // 右ペインの編集フォームの対象({ machine, platform, originalName }。未選択なら null)。
 let editorTarget = null;
@@ -81,16 +81,29 @@ export function findMachine(name) {
   return machineProfiles.find((m) => m.name === name);
 }
 
-function validateSelectedDeviceName() {
+// デバイス行の同一性。**一意なのは (host, name)** —— 各機械が同じ命名規則でシミュレータを作るので
+// 別ホストに同名が並ぶのが通常で、名前だけで持つと行・選択・除去対象が別ホストの同名行に化ける。
+// host 省略=手元(判定の正は Sources/FTCore/DeviceHostGrouping.swift)。runProfilesTab.js の refKey と同形。
+function deviceKey(device) {
+  return `${device.host ?? ''}\t${device.name}`;
+}
+
+/** 選択中マシンの devices からキーで引く(一覧に無ければ null)。 */
+function findDeviceByKey(key) {
   const machine = findMachine(selectedMachine);
-  const names = new Set(machine ? machine.devices.map((d) => d.name) : []);
-  for (const name of selectedDeviceNames) {
-    if (!names.has(name)) {
-      selectedDeviceNames.delete(name);
+  return (machine ? machine.devices.find((d) => deviceKey(d) === key) : null) || null;
+}
+
+function validateSelectedDeviceKeys() {
+  const machine = findMachine(selectedMachine);
+  const keys = new Set(machine ? machine.devices.map(deviceKey) : []);
+  for (const key of selectedDeviceKeys) {
+    if (!keys.has(key)) {
+      selectedDeviceKeys.delete(key);
     }
   }
   // アンカーが消えていれば null に戻す(不在時の Shift+クリックは通常クリック扱いになる)。
-  if (deviceSelectionAnchor !== null && !names.has(deviceSelectionAnchor)) {
+  if (deviceSelectionAnchor !== null && !keys.has(deviceSelectionAnchor)) {
     deviceSelectionAnchor = null;
   }
 }
@@ -109,7 +122,7 @@ export function applyMachineProfileInfo(message) {
     }
   }
 
-  validateSelectedDeviceName();
+  validateSelectedDeviceKeys();
   renderMachineSelect();
   renderMachineProfileBody(error);
   refreshEditorAfterProfileInfo();
@@ -179,28 +192,28 @@ btnMachineRename.addEventListener('click', () => {
 
 // 行クリックの選択(Finder/VSCode 標準セマンティクス)。判定順は
 // shiftKey → metaKey/ctrlKey → 通常(Shift+Cmd 同時は Shift 扱い)。
-function toggleDeviceRowSelection(name, event) {
+function toggleDeviceRowSelection(key, event) {
   const anchorValid = deviceSelectionAnchor !== null && deviceRowElements.has(deviceSelectionAnchor);
   if (event.shiftKey && anchorValid) {
     const order = [...deviceRowElements.keys()];
     const anchorIndex = order.indexOf(deviceSelectionAnchor);
-    const clickedIndex = order.indexOf(name);
+    const clickedIndex = order.indexOf(key);
     const start = Math.min(anchorIndex, clickedIndex);
     const end = Math.max(anchorIndex, clickedIndex);
-    selectedDeviceNames = new Set(order.slice(start, end + 1));
+    selectedDeviceKeys = new Set(order.slice(start, end + 1));
   } else if (!event.shiftKey && (event.metaKey || event.ctrlKey)) {
-    if (selectedDeviceNames.has(name)) {
-      selectedDeviceNames.delete(name);
+    if (selectedDeviceKeys.has(key)) {
+      selectedDeviceKeys.delete(key);
     } else {
-      selectedDeviceNames.add(name);
+      selectedDeviceKeys.add(key);
     }
-    deviceSelectionAnchor = name;
-  } else if (selectedDeviceNames.size === 1 && selectedDeviceNames.has(name)) {
-    selectedDeviceNames.clear();
+    deviceSelectionAnchor = key;
+  } else if (selectedDeviceKeys.size === 1 && selectedDeviceKeys.has(key)) {
+    selectedDeviceKeys.clear();
     deviceSelectionAnchor = null;
   } else {
-    selectedDeviceNames = new Set([name]);
-    deviceSelectionAnchor = name;
+    selectedDeviceKeys = new Set([key]);
+    deviceSelectionAnchor = key;
   }
   updateDeviceSelectionUi();
   // 選択変更は明示操作なので、編集途中の値を破棄してフォームを作り直す。
@@ -208,8 +221,8 @@ function toggleDeviceRowSelection(name, event) {
 }
 
 function updateDeviceSelectionUi() {
-  for (const [name, row] of deviceRowElements) {
-    row.classList.toggle('selected', selectedDeviceNames.has(name));
+  for (const [key, row] of deviceRowElements) {
+    row.classList.toggle('selected', selectedDeviceKeys.has(key));
   }
 }
 
@@ -266,24 +279,25 @@ function renderMachineProfileBody(error) {
       // ホスト名は上のバッジに出るので、ここでは繰り返さない
       detail.textContent = device.detail;
       row.append(nameLine, detail);
-      row.addEventListener('click', (event) => toggleDeviceRowSelection(device.name, event));
+      const key = deviceKey(device);
+      row.addEventListener('click', (event) => toggleDeviceRowSelection(key, event));
       row.addEventListener('contextmenu', (event) => {
         event.preventDefault();
         event.stopPropagation();
         // mac は Ctrl+クリックが click ではなく contextmenu として届くため、ここで選択トグルへ
         // 振り分ける(Win/Linux は通常の click で対応済み)。
         if (isMacPlatform && event.ctrlKey) {
-          toggleDeviceRowSelection(device.name, event);
+          toggleDeviceRowSelection(key, event);
           return;
         }
         // 複数選択(2台以上)に含まれる行なら選択中全台、それ以外はクリックした行単体を対象にする。
-        const names =
-          selectedDeviceNames.size >= 2 && selectedDeviceNames.has(device.name)
-            ? [...selectedDeviceNames]
-            : [device.name];
-        openMachineDeviceMenu({ machine: selectedMachine, names }, event.clientX, event.clientY);
+        const devices =
+          selectedDeviceKeys.size >= 2 && selectedDeviceKeys.has(key)
+            ? [...selectedDeviceKeys].map(findDeviceByKey).filter((d) => d !== null)
+            : [device];
+        openMachineDeviceMenu({ machine: selectedMachine, devices }, event.clientX, event.clientY);
       });
-      deviceRowElements.set(device.name, row);
+      deviceRowElements.set(key, row);
       machineDeviceList.appendChild(row);
     }
     applyDeviceListHeightCap();
@@ -292,7 +306,7 @@ function renderMachineProfileBody(error) {
   if (
     machineDeviceMenuEntry &&
     (machineDeviceMenuEntry.machine !== selectedMachine ||
-      !machineDeviceMenuEntry.names.every((name) => deviceRowElements.has(name)))
+      !machineDeviceMenuEntry.devices.every((d) => deviceRowElements.has(deviceKey(d))))
   ) {
     closeMachineDeviceMenu();
   }
@@ -471,7 +485,7 @@ function renderDeviceEditor(machine, device) {
   // spawn する(devicectl + adb getprop で数秒)。実機が未接続・AVD の config.ini に
   // hw.device.name が無い等で値が埋まらないケースでは、応答→再描画→再要求が
   // 永久ループになり CLI を叩き続ける(2026-07-25 のレビューで検出)
-  const infoKey = machine + '\u0000' + device.name;
+  const infoKey = machine + '\u0000' + deviceKey(device);
   if (!ownsInfoRows && !hasModel && !hasOs && !deviceInfoRequested.has(infoKey)) {
     deviceInfoRequested.add(infoKey);
     vscode.postMessage({ type: 'installedDevicesRequest' });
@@ -498,15 +512,11 @@ function clearDeviceEditor(text) {
 
 // 選択中デバイスがちょうど1台なら返す(それ以外は null)。
 function singleSelectedDevice() {
-  if (selectedDeviceNames.size !== 1) {
+  if (selectedDeviceKeys.size !== 1) {
     return null;
   }
-  const machine = findMachine(selectedMachine);
-  if (!machine) {
-    return null;
-  }
-  const [name] = selectedDeviceNames;
-  return machine.devices.find((d) => d.name === name) || null;
+  const [key] = selectedDeviceKeys;
+  return findDeviceByKey(key);
 }
 
 // 選択変更・マシン切替用。1台選択ならフォームを作り直し、それ以外はプレースホルダーに戻す。
@@ -523,8 +533,8 @@ export function refreshSelectedDeviceEditor() {
 }
 
 function rebuildEditorForSelection() {
-  if (selectedDeviceNames.size >= 2) {
-    clearDeviceEditor(t('wvMonitor2.machine.multiSelected', { count: selectedDeviceNames.size }));
+  if (selectedDeviceKeys.size >= 2) {
+    clearDeviceEditor(t('wvMonitor2.machine.multiSelected', { count: selectedDeviceKeys.size }));
     return;
   }
   const device = singleSelectedDevice();
@@ -541,11 +551,11 @@ function refreshEditorAfterProfileInfo() {
     clearDeviceEditor();
     return;
   }
-  if (selectedDeviceNames.size >= 2) {
-    clearDeviceEditor(t('wvMonitor2.machine.multiSelected', { count: selectedDeviceNames.size }));
+  if (selectedDeviceKeys.size >= 2) {
+    clearDeviceEditor(t('wvMonitor2.machine.multiSelected', { count: selectedDeviceKeys.size }));
     return;
   }
-  if (selectedDeviceNames.size === 0) {
+  if (selectedDeviceKeys.size === 0) {
     clearDeviceEditor();
     return;
   }
@@ -635,6 +645,8 @@ editorConfirm.addEventListener('click', () => {
     machine: editorTarget.machine,
     platform: editorTarget.platform,
     originalName: editorTarget.originalName,
+    // 引き当ては (host, name)。省略=手元(ホスト側が "local" として引く)。
+    ...(editorTarget.host ? { host: editorTarget.host } : {}),
     fields: {
       name: name,
       // 編集不可フィールドはラベル表示(span)の textContent = 元の値をそのまま往復させる。
@@ -654,7 +666,9 @@ export function applyMachineDeviceUpdateResult(message) {
   editorSubmitting = false;
   editorConfirm.textContent = t('wvMonitor2.common.confirm');
   if (message.ok) {
-    selectedDeviceNames = new Set([message.name]);
+    // リネームで名前が変わるのでキーを作り直す。**ホストは編集対象のもの**(名前だけだと
+    // 別ホストの同名行が選択される)。
+    selectedDeviceKeys = new Set([deviceKey({ host: editorTarget?.host, name: message.name })]);
     editorError.textContent = '';
     setEditorDirty(false);
   } else {
@@ -674,12 +688,12 @@ export function closeMachineDeviceMenu() {
   machineDeviceMenu.classList.remove('visible');
 }
 
-// entry は { machine, names }(1件以上)。2台以上なら項目ラベルを「選択した<N>台を除去」に変える。
+// entry は { machine, devices }(1件以上)。2台以上なら項目ラベルを「選択した<N>台を除去」に変える。
 function openMachineDeviceMenu(entry, clientX, clientY) {
   machineDeviceMenuEntry = entry;
   machineDeviceMenuItemBtn.textContent =
-    entry.names.length >= 2
-      ? t('wvMonitor2.machine.removeSelectedCount', { count: entry.names.length })
+    entry.devices.length >= 2
+      ? t('wvMonitor2.machine.removeSelectedCount', { count: entry.devices.length })
       : t('wvMonitor2.common.remove');
   machineDeviceMenu.classList.add('visible');
   clampMenuPosition(machineDeviceMenu, clientX, clientY);
@@ -693,7 +707,9 @@ machineDeviceMenuItemBtn.addEventListener('click', (event) => {
   vscode.postMessage({
     type: 'machineDeviceRemove',
     machine: machineDeviceMenuEntry.machine,
-    names: machineDeviceMenuEntry.names,
+    // **(host, name) で送る**(host 省略=手元)。名前だけだと、ホスト側が別の機械の同名
+    // デバイスまで巻き添えで消す。
+    devices: machineDeviceMenuEntry.devices.map((d) => (d.host ? { name: d.name, host: d.host } : { name: d.name })),
   });
   closeMachineDeviceMenu();
 });

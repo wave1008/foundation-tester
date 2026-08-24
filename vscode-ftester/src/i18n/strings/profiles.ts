@@ -83,13 +83,16 @@ export const profilesStrings = {
     ja: "マシンプロファイル「{name}」を削除しますか?この操作は元に戻せません(プロファイルファイルのみ削除され、シミュレータ/AVD 本体は削除されません)。",
     en: "Delete machine profile \"{name}\"? This action cannot be undone (only the profile file is deleted; the simulator/AVD itself is not).",
   },
-  "profiles.confirm.removeDeviceSingle": {
-    ja: "マシンプロファイル「{machine}」からデバイス「{name}」を除去しますか?プロファイルからの除去のみで、シミュレータ/AVD 本体は削除されません。",
-    en: "Remove device \"{name}\" from machine profile \"{machine}\"? This only removes it from the profile; the simulator/AVD itself is not deleted.",
+  // 除去ログでデバイスを名指しするときの表記。**必ずホストを添える** —— 同名のデバイスが別の
+  // 機械に並ぶのは通常で、名前だけでは「どの Mac の台か」が分からない(一意なのは (host, name))。
+  // ホストの語は deviceOps.hostLocalLabel と共有する(実体削除の確認と同じ語彙にする)。
+  "profiles.deviceHostQualified": {
+    ja: "{name}({host})",
+    en: "{name} ({host})",
   },
-  "profiles.confirm.removeDeviceMultiple": {
-    ja: "マシンプロファイル「{machine}」から{count}台のデバイス({names})を除去しますか?プロファイルからの除去のみで、シミュレータ/AVD 本体は削除されません。",
-    en: "Remove {count} device(s) ({names}) from machine profile \"{machine}\"? This only removes them from the profile; the simulator/AVD itself is not deleted.",
+  "profiles.confirm.removeDevices": {
+    ja: "選択したデバイスを除去しますか?",
+    en: "Remove the selected device(s)?",
   },
 
   // ---- 実行プロファイル ----
