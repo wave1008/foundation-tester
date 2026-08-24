@@ -153,6 +153,31 @@ export type MonitorToWebviewMessage =
       // installedDevices 再読込後の該当行自動チェック(pendingAutoCheck)に使う。
       readonly device: { readonly avd: string | null; readonly udid: string | null } | null;
     }
+  // バッチ作成(#device-batch-overlay)。3通で1つの流れを表す:
+  //   started  … 確認をすべて通り、作成を開始した(webview は「デバイスを追加」を閉じ進行窓を開く)
+  //   progress … 1台ごとの状態遷移(running → ok/failed)
+  //   finished … 全件終了、または started に至らず終わった場合(started:false + error)
+  // **started を出す前に終わる形がある**(確認のキャンセル・多重実行)ので、webview は
+  // finished.started を見て「進行窓を閉じる」か「追加ダイアログを元に戻す」かを決める。
+  | { readonly type: "batchCreateStarted"; readonly names: readonly string[] }
+  | {
+      readonly type: "batchCreateProgress";
+      readonly index: number;
+      readonly name: string;
+      readonly state: "running" | "ok" | "failed";
+      readonly error: string | null;
+    }
+  | {
+      readonly type: "batchCreateFinished";
+      readonly started: boolean;
+      readonly created: readonly {
+        readonly name: string;
+        readonly avd: string | null;
+        readonly udid: string | null;
+      }[];
+      readonly failed: readonly { readonly name: string; readonly error: string | null }[];
+      readonly error: string | null;
+    }
   // 「+既存から選択」モーダル(#device-pick-overlay)が開いた直後に送る installedDevicesRequest
   // への応答(runInstalledDevices)。deviceCatalog と同じ形。
   | {
@@ -445,6 +470,22 @@ export type MonitorFromWebviewMessage =
       readonly overwrite?: boolean;
       readonly source: DeviceCommandSource;
     }
+  // 「デバイスを追加」左下の「バッチ作成」。names は webview が「デバイス名+連番2桁(01 始まり)」で
+  // 組んだ完成形(ホストは組み立て直さない = 表示と作られる名前を必ず一致させる)。
+  // overwriteNames は names のうち現ホストで衝突しているぶん(判定は webview 側 ――
+  // 一覧を持っているのはあちら。ホストは「消して作り直してよいか」を聞くのに使う)。
+  // register は送らない: このダイアログはピッカーからしか開かないので常に物理作成のみで、
+  // 登録はピッカーの OK(machineDevicesSync)が行う。
+  | {
+      readonly type: "batchCreateDevices";
+      readonly machine: string;
+      readonly platform: MonitorPlatform;
+      readonly names: readonly string[];
+      readonly model: string;
+      readonly os: string;
+      readonly overwriteNames: readonly string[];
+      readonly source: DeviceCommandSource;
+    }
   // 「+既存から選択」モーダル(#device-pick-overlay)が開いた直後に送る、
   // `ftester api installed-devices` の再取得リクエスト(deviceCatalogRequest と同じ趣旨)。
   | { readonly type: "installedDevicesRequest"; readonly source: DeviceCommandSource }
@@ -722,6 +763,23 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         typeof value.os === "string" &&
         value.os !== "" &&
         typeof value.register === "boolean" &&
+        isDeviceCommandSourceLike(value.source)
+      );
+    case "batchCreateDevices":
+      return (
+        typeof value.machine === "string" &&
+        value.machine !== "" &&
+        (value.platform === "ios" || value.platform === "android") &&
+        Array.isArray(value.names) &&
+        value.names.length > 0 &&
+        value.names.length <= 99 &&
+        value.names.every((name) => typeof name === "string" && name !== "") &&
+        typeof value.model === "string" &&
+        value.model !== "" &&
+        typeof value.os === "string" &&
+        value.os !== "" &&
+        Array.isArray(value.overwriteNames) &&
+        value.overwriteNames.every((name) => typeof name === "string" && name !== "") &&
         isDeviceCommandSourceLike(value.source)
       );
     case "machineDevicesSync":

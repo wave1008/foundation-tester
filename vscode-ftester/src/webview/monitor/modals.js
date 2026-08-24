@@ -1,6 +1,6 @@
 // modals.js
 // 「プロファイル」タブの3モーダル(デバイス追加/名前入力/既存デバイスから選択)をまとめる。
-// applyCreateDeviceResult が既存選択モーダルの pendingAutoCheck を直接書き換えるため、
+// applyCreateDeviceResult が既存選択モーダルの pendingAutoChecks を直接書き換えるため、
 // setter を挟まず同一モジュールに置いている。
 
 import { t } from '../i18n.js';
@@ -38,6 +38,13 @@ const dlgCancel = document.getElementById('dlg-cancel');
 const dlgOk = document.getElementById('dlg-ok');
 const dlgInstallRow = document.getElementById('dlg-install-row');
 const dlgInstall = document.getElementById('dlg-install');
+const dlgBatch = document.getElementById('dlg-batch');
+const dlgBatchCount = document.getElementById('dlg-batch-count');
+const batchOverlay = document.getElementById('device-batch-overlay');
+const batchStatus = document.getElementById('device-batch-status');
+const batchList = document.getElementById('device-batch-list');
+const batchError = document.getElementById('device-batch-error');
+const batchOk = document.getElementById('device-batch-ok');
 
 let deviceAddOpen = false;
 let deviceAddCreating = false;
@@ -46,12 +53,16 @@ let installingCmdlineTools = false;
 // 「サービス」の既定(monitorHtml.ts の #dlg-service の selected と一致させる)。Play Store 版は
 // Play 保護の分だけ重く、テスト用途では Google APIs で足りることが多いためこちらを既定にする。
 const DEFAULT_ANDROID_SERVICE = 'google_apis';
+// バッチ作成の既定台数と範囲(monitorHtml.ts の #dlg-batch-count の value/min/max と一致させる)
+const DEFAULT_BATCH_COUNT = 2;
+const MIN_BATCH_COUNT = 1;
+const MAX_BATCH_COUNT = 99;
 // deviceCatalogRequest の応答(deviceCatalog.ok:true の catalog)。未着/失敗中は null。
 let deviceCatalog = null;
 // デバイス名をユーザーが手で編集したか(true の間は自動生成に追従しない)。
 let dlgNameDirty = false;
 // #device-pick-overlay の「+」から開いたか(devicePickOpen をそのまま流用して判定)。
-// true なら createDevice は register:false(物理作成のみ)、成功時 pendingAutoCheck で自動チェック。
+// true なら createDevice は register:false(物理作成のみ)、成功時 pendingAutoChecks で自動チェック。
 let deviceAddFromPicker = false;
 
 // ラジオ2つ(dlg-platform-ios/-android)で1つの select 相当を表す。読み書きをここに集約する。
@@ -64,6 +75,8 @@ function setDialogPlatform(value) {
 }
 
 function setDialogControlsEnabled(enabled) {
+  dlgBatch.disabled = !enabled;
+  dlgBatchCount.disabled = !enabled;
   dlgPlatformIos.disabled = !enabled;
   dlgPlatformAndroid.disabled = !enabled;
   dlgModel.disabled = !enabled;
@@ -237,6 +250,7 @@ function openDeviceAddModal() {
   deviceAddCreating = false;
   dlgNameDirty = false;
   dlgName.value = '';
+  dlgBatchCount.value = String(DEFAULT_BATCH_COUNT);
   dlgService.value = DEFAULT_ANDROID_SERVICE;
   refreshDeviceAddBadge();
   requestDeviceCatalog();
@@ -330,11 +344,11 @@ export function applyCreateDeviceResult(message) {
   dlgOk.textContent = 'OK';
   if (message.ok) {
     closeDeviceAddModal();
-    // pendingAutoCheck に識別子を保持(次の一覧再描画で自動チェックON。詳細は宣言箇所参照)。
+    // pendingAutoChecks に識別子を保持(次の一覧再描画で自動チェックON。詳細は宣言箇所参照)。
     if (deviceAddFromPicker) {
-      pendingAutoCheck = message.device
-        ? { udid: message.device.udid, avd: message.device.avd, name: message.name }
-        : null;
+      pendingAutoChecks = message.device
+        ? [{ udid: message.device.udid, avd: message.device.avd, name: message.name }]
+        : [];
     }
     reloadDevicePickIfOpen();
     return;
@@ -405,6 +419,183 @@ dlgOk.addEventListener('click', () => {
     source: currentDeviceSource(),
   });
 });
+
+// ---- バッチ作成 -------------------------------------------------------------
+
+/** 「デバイス名+連番2桁」。**01 始まり**(2026-08-25 指示。既存フリートの -01 と同じ数え方)で、
+ *  #dlg-batch-count の上限 99 とあわせて 01〜99 の範囲に収まる。 */
+export function batchDeviceNames(base, count) {
+  const names = [];
+  for (let i = 1; i <= count; i += 1) {
+    names.push(base + String(i).padStart(2, '0'));
+  }
+  return names;
+}
+
+/** #dlg-batch-count の値。**number 入力の min/max に任せない** —— 手打ちの範囲外や空欄は
+ *  そのまま読めてしまうので、ここで弾いて null を返す。 */
+export function parseBatchCount(raw) {
+  const value = Number(String(raw).trim());
+  if (!Number.isInteger(value) || value < MIN_BATCH_COUNT || value > MAX_BATCH_COUNT) {
+    return null;
+  }
+  return value;
+}
+
+// 進行窓に出す行(index → { row, state })。started で組み直す
+let batchRows = [];
+let batchTotal = 0;
+let batchDone = 0;
+
+function openBatchModal(names) {
+  batchRows = [];
+  batchTotal = names.length;
+  batchDone = 0;
+  batchList.textContent = '';
+  batchError.textContent = '';
+  batchOk.disabled = true;
+  batchStatus.textContent = t('wvMonitor.deviceBatch.progress', { done: '0', total: String(batchTotal) });
+  for (const name of names) {
+    const row = document.createElement('div');
+    row.className = 'device-batch-row';
+    const nameEl = document.createElement('span');
+    nameEl.className = 'device-batch-name';
+    nameEl.textContent = name;
+    const stateEl = document.createElement('span');
+    stateEl.className = 'device-batch-state';
+    stateEl.textContent = t('wvMonitor.deviceBatch.waiting');
+    row.appendChild(nameEl);
+    row.appendChild(stateEl);
+    batchList.appendChild(row);
+    batchRows.push(stateEl);
+  }
+  batchOverlay.classList.add('visible');
+}
+
+/** 追加ダイアログを操作できる状態へ戻す(確認をキャンセルされた・多重実行で弾かれた場合)。 */
+function restoreDeviceAddAfterBatch(error) {
+  deviceAddCreating = false;
+  setDialogControlsEnabled(true);
+  applyPlatformAvailability();
+  dlgOk.disabled = false;
+  dlgCancel.disabled = false;
+  dlgError.classList.remove('info');
+  dlgError.textContent = error || '';
+}
+
+dlgBatch.addEventListener('click', () => {
+  if (dlgBatch.disabled || deviceAddCreating || !deviceCatalog) {
+    return;
+  }
+  const base = dlgName.value.trim();
+  if (base.length === 0) {
+    dlgError.classList.remove('info');
+    dlgError.textContent = t('wvMonitor.deviceAdd.nameRequired');
+    return;
+  }
+  const count = parseBatchCount(dlgBatchCount.value);
+  if (count === null) {
+    dlgError.classList.remove('info');
+    dlgError.textContent = t('wvMonitor.deviceAdd.batchCountInvalid');
+    return;
+  }
+  const platform = getDialogPlatform();
+  const source = currentDeviceSource();
+  const names = batchDeviceNames(base, count);
+  // 上書きの確認はホスト側(webview の window.confirm は効かない)。衝突の判定はこちら ――
+  // 一覧(登録済み+実体)を持っているのは webview だけ。単発 OK と同じ規則を名前ごとに当てる
+  const overwriteNames = names.filter((name) => nameClashesOnCurrentHost(name, platform, source));
+  // 確認中も追加ダイアログを固める(Enter 連打・×での取り消しを止める)。
+  // 開始できなければ batchCreateFinished(started:false)で元に戻す
+  deviceAddCreating = true;
+  setDialogControlsEnabled(false);
+  dlgOk.disabled = true;
+  dlgCancel.disabled = true;
+  dlgError.textContent = '';
+  vscode.postMessage({
+    type: 'batchCreateDevices',
+    machine: selectedMachine,
+    platform: platform,
+    names: names,
+    model: dlgModel.value,
+    os: dlgOs.value,
+    overwriteNames: overwriteNames,
+    source: source,
+  });
+});
+
+export function applyBatchCreateStarted(message) {
+  // 「デバイスを追加」を閉じ、代わりに進行窓を出す。deviceAddCreating を先に下ろさないと閉じられない
+  deviceAddCreating = false;
+  closeDeviceAddModal();
+  openBatchModal(message.names || []);
+}
+
+export function applyBatchCreateProgress(message) {
+  const stateEl = batchRows[message.index];
+  if (!stateEl) {
+    return;
+  }
+  if (message.state === 'running') {
+    stateEl.textContent = t('wvMonitor.deviceBatch.creating');
+    stateEl.className = 'device-batch-state running';
+    return;
+  }
+  const ok = message.state === 'ok';
+  stateEl.textContent = ok
+    ? t('wvMonitor.deviceBatch.done')
+    : t('wvMonitor.deviceBatch.failed') + (message.error ? ': ' + message.error : '');
+  stateEl.className = 'device-batch-state ' + (ok ? 'ok' : 'failed');
+  batchDone += 1;
+  batchStatus.textContent = t('wvMonitor.deviceBatch.progress', {
+    done: String(batchDone),
+    total: String(batchTotal),
+  });
+}
+
+export function applyBatchCreateFinished(message) {
+  if (!message.started) {
+    // 確認をキャンセルされた等。進行窓は開いていないので追加ダイアログを元に戻すだけ
+    restoreDeviceAddAfterBatch(message.error);
+    return;
+  }
+  const created = message.created || [];
+  const failed = message.failed || [];
+  batchStatus.textContent = failed.length === 0
+    ? t('wvMonitor.deviceBatch.finishedAllOk', { created: String(created.length) })
+    : t('wvMonitor.deviceBatch.finished', { created: String(created.length), failed: String(failed.length) });
+  batchOk.disabled = false;
+  batchOk.focus();
+  // OK を押したときに #device-pick-overlay の該当行へチェックを入れる(単発作成と同じ仕掛け)
+  pendingAutoChecks = created.map((device) => ({
+    udid: device.udid,
+    avd: device.avd,
+    name: device.name,
+  }));
+}
+
+// **Esc は進行窓が食う**。奥の「デバイスを選択」の Esc ハンドラは defaultPrevented を見るので、
+// ここで消費しないと**手前の進行窓を残したまま奥だけ閉じる**(追加ダイアログと同じ規律)。
+// 作成中は何もしない(閉じ先が無い)。終わっていれば OK と同じ扱い
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || !batchOverlay.classList.contains('visible')) {
+    return;
+  }
+  event.preventDefault();
+  if (!batchOk.disabled) {
+    batchOk.click();
+  }
+});
+
+batchOk.addEventListener('click', () => {
+  if (batchOk.disabled) {
+    return;
+  }
+  batchOverlay.classList.remove('visible');
+  // 「デバイスを選択」へ戻り、作成できたぶんへチェックを入れる(再取得後に applyPendingAutoCheck)
+  reloadDevicePickIfOpen();
+});
+
 // **Esc は手前の1枚だけ閉じる**。document 上に Esc ハンドラが3つ(この追加ダイアログ /
 // 削除メニュー / 選択ダイアログ)あり、**手前を閉じた時点でフラグが下りる**ため、後続の
 // ハンドラが「奥も閉じてよい」と誤判定して2枚同時に閉じていた(2026-08-17 実機で確認)。
@@ -561,8 +752,9 @@ let devicePickAdding = false;
 let devicePickIosRows = [];
 let devicePickAndroidRows = [];
 // register:false で作成した直後、次の installedDevices 再描画で自動チェックONにしたい行の
-// 識別子(iOS=udid/Android=avd の id)。適用後は必ず null に戻す(一度きりの適用)。
-let pendingAutoCheck = null;
+// 識別子(iOS=udid/Android=avd の id)。適用後は必ず空にする(一度きりの適用)。
+// **配列**なのはバッチ作成のため(単発作成は1件だけ入れる)。
+let pendingAutoChecks = [];
 // 行右クリック「削除」メニュー(#device-pick-delete-menu)を開いている対象
 // ({ platform, identifier, name, rowEl, checkbox })。未オープンなら null。実機行は対象外
 // (シミュレータ/AVD のような「削除できる実体」を持たない)。
@@ -909,37 +1101,50 @@ function buildMissingPickRow(platform, name, identifier) {
   return { rowEl: rowEl, checkbox: checkbox };
 }
 
-// pendingAutoCheck が指す行の checkbox だけ ON にする(initialChecked は false のままなので
+// pendingAutoChecks が指す行の checkbox だけ ON にする(initialChecked は false のままなので
 // 差分としてカウントされ OK が有効になる)。renderDevicePickGroups 直後に呼ぶこと。
 function applyPendingAutoCheck() {
-  if (!pendingAutoCheck) {
+  if (pendingAutoChecks.length === 0) {
     return;
   }
-  const target = pendingAutoCheck;
-  pendingAutoCheck = null;
-  // 上書きで作り直した場合、同名の古い登録が「実体なし」行として残る。**自動で外す** ——
-  // 外さないと OK を押しても古い登録が残り、同名2件(片方は実体なし)になる
-  if (target.name) {
-    for (const row of devicePickIosRows.concat(devicePickAndroidRows)) {
-      if (row.missing && row.registeredName === target.name && row.checkbox.checked) {
-        row.checkbox.checked = false;
+  const targets = pendingAutoChecks;
+  pendingAutoChecks = [];
+  // **チェックだけでは足りない** —— 一覧は端末が数百行あり、作った行が画面外だと
+  // 「作ったのに出てこない」と読める(2026-08-25 の報告)。最初の1行を見える位置へ運び、
+  // 作った行には印を付ける
+  let firstChecked = null;
+  for (const target of targets) {
+    // 上書きで作り直した場合、同名の古い登録が「実体なし」行として残る。**自動で外す** ——
+    // 外さないと OK を押しても古い登録が残り、同名2件(片方は実体なし)になる
+    if (target.name) {
+      for (const row of devicePickIosRows.concat(devicePickAndroidRows)) {
+        if (row.missing && row.registeredName === target.name && row.checkbox.checked) {
+          row.checkbox.checked = false;
+          syncDevicePickRowChecked(row.rowEl, row.checkbox);
+        }
+      }
+    }
+    if (target.udid) {
+      const row = devicePickIosRows.find((r) => r.device.udid === target.udid);
+      if (row) {
+        row.checkbox.checked = true;
         syncDevicePickRowChecked(row.rowEl, row.checkbox);
+        row.rowEl.classList.add('just-created');
+        firstChecked = firstChecked || row.rowEl;
+      }
+    }
+    if (target.avd) {
+      const row = devicePickAndroidRows.find((r) => r.avd.id === target.avd);
+      if (row) {
+        row.checkbox.checked = true;
+        syncDevicePickRowChecked(row.rowEl, row.checkbox);
+        row.rowEl.classList.add('just-created');
+        firstChecked = firstChecked || row.rowEl;
       }
     }
   }
-  if (target.udid) {
-    const row = devicePickIosRows.find((r) => r.device.udid === target.udid);
-    if (row) {
-      row.checkbox.checked = true;
-      syncDevicePickRowChecked(row.rowEl, row.checkbox);
-    }
-  }
-  if (target.avd) {
-    const row = devicePickAndroidRows.find((r) => r.avd.id === target.avd);
-    if (row) {
-      row.checkbox.checked = true;
-      syncDevicePickRowChecked(row.rowEl, row.checkbox);
-    }
+  if (firstChecked && typeof firstChecked.scrollIntoView === 'function') {
+    firstChecked.scrollIntoView({ block: 'center' });
   }
 }
 
@@ -993,7 +1198,7 @@ function openDevicePickModal() {
   }
   devicePickOpen = true;
   devicePickAdding = false;
-  pendingAutoCheck = null; // 前回開いた際の残留分があれば捨てて、新規セッションはクリーンに始める
+  pendingAutoChecks = []; // 前回開いた際の残留分があれば捨てて、新規セッションはクリーンに始める
   devicePickOk.textContent = 'OK';
   devicePickCancel.disabled = false;
   const machine = findMachine(selectedMachine);
@@ -1009,7 +1214,7 @@ function closeDevicePickModal() {
     return;
   }
   devicePickOpen = false;
-  pendingAutoCheck = null; // 閉じた後に届く installedDevices 応答で誤適用しないようクリアする
+  pendingAutoChecks = []; // 閉じた後に届く installedDevices 応答で誤適用しないようクリアする
   closeDevicePickDeleteMenu();
   devicePickOverlay.classList.remove('visible');
 }

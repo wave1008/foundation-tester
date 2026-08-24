@@ -115,6 +115,27 @@ export const webviewMonitorAStrings = {
     ja: "選択したサービスのシステムイメージがありません(別のサービスを選ぶか、Android Studio の SDK Manager で追加してください)。",
     en: "No system image for the selected services (pick another one, or add it in Android Studio's SDK Manager).",
   },
+  // バッチ作成(modals.js)。件数は number 入力の min/max だけに任せない(手打ちで通る)
+  "wvMonitor.deviceAdd.batchCountInvalid": {
+    ja: "台数は 1〜99 で入力してください。",
+    en: "Enter a number between 1 and 99.",
+  },
+  "wvMonitor.deviceBatch.creating": { ja: "作成中...", en: "Creating..." },
+  "wvMonitor.deviceBatch.waiting": { ja: "待機中", en: "Waiting" },
+  "wvMonitor.deviceBatch.done": { ja: "作成しました", en: "Created" },
+  "wvMonitor.deviceBatch.failed": { ja: "失敗", en: "Failed" },
+  "wvMonitor.deviceBatch.progress": {
+    ja: "{done}/{total} 台",
+    en: "{done}/{total} devices",
+  },
+  "wvMonitor.deviceBatch.finished": {
+    ja: "{created} 台を作成しました({failed} 台が失敗)。OK を押すと作成したデバイスにチェックが入ります。",
+    en: "Created {created} device(s), {failed} failed. Pressing OK checks the created devices.",
+  },
+  "wvMonitor.deviceBatch.finishedAllOk": {
+    ja: "{created} 台を作成しました。OK を押すと作成したデバイスにチェックが入ります。",
+    en: "Created {created} device(s). Pressing OK checks the created devices.",
+  },
   "wvMonitor.deviceAdd.installing": {
     ja: "導入中... (進捗は OUTPUT の ftester)",
     en: "Installing... (progress in the ftester OUTPUT channel)",

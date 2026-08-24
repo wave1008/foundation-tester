@@ -1286,6 +1286,19 @@ input[type="text"]::placeholder {
 #device-add-overlay {
   z-index: 2010;
 }
+/* バッチ作成の進行窓。**#device-pick-overlay(2000)より上**に置くこと ——
+   既定の 2000 のままだと同じ重なり順で後ろの DOM が勝ち、進行窓が「デバイスを選択」の
+   背後に隠れる(2026-08-25 に実際に隠れた。作成は成功しているのに何も見えない)。
+   帯: モーダル群(2000/2010) < ここ(2020) < 右クリックメニュー(2100) < hover-tip(10000) */
+#device-batch-overlay {
+  z-index: 2020;
+}
+/* バッチ作成の直後だけ付く印。**数百行の一覧で「どれを作ったか」が分かる唯一の手掛かり** ――
+   チェックだけでは画面外にあると気付けない(applyPendingAutoCheck が scrollIntoView も行う) */
+.device-pick-row.just-created {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
 /* Android選択肢の長さで iOS⇄Android 切替時に幅が暴れないよう min-width を広げる。
    max-width で画面内に収める(select は min-width:0 なので上限到達時は自身が縮む)。 */
 #device-add-overlay .modal-dialog {
@@ -1399,6 +1412,47 @@ input[type="text"]::placeholder {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+/* 「デバイスを追加」左下のバッチ作成。margin-right:auto で左端へ寄せ、OK/キャンセルは右端のまま */
+.modal-buttons-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: auto;
+}
+.modal-buttons-left input[type="number"] {
+  width: 56px;
+}
+/* バッチ作成の進行窓。台数が多いと縦に伸び続けるので上限を切ってスクロールさせる */
+.device-batch-list {
+  max-height: 320px;
+  overflow-y: auto;
+  margin: 8px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.device-batch-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 4px;
+}
+.device-batch-name {
+  font-family: var(--vscode-editor-font-family, monospace);
+}
+.device-batch-state {
+  color: var(--vscode-descriptionForeground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.device-batch-state.ok {
+  color: var(--vscode-testing-iconPassed, var(--vscode-charts-green));
+}
+.device-batch-state.failed {
+  color: var(--vscode-errorForeground);
+  white-space: normal;
 }
 /* .modal-row の display:flex は UA の [hidden]{display:none} に勝つため、hidden 属性で
    隠す行にはこの打ち消しが要る(#dlg-install-row が常時見えてしまう)。 */

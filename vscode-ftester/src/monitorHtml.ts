@@ -58,6 +58,7 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
   ${renderDevicePickDeleteMenu()}
 
   ${renderDeviceAddOverlay()}
+  ${renderDeviceBatchOverlay()}
 
   ${renderNameInputOverlay()}
 
@@ -688,8 +689,32 @@ function renderDeviceAddOverlay(): string {
         <span class="modal-hint">${t("panels.deviceAdd.installCmdlineToolsHint")}</span>
       </div>
       <div class="modal-buttons">
+        <!-- 左下。同じ設定(OS種別/モデル/OSバージョン)で「デバイス名+連番2桁(01 始まり)」を一括作成する。
+             件数は 1-99(min/max は JS 側でも検証する ―― number 入力は手打ちで範囲外を通す)。 -->
+        <div class="modal-buttons-left">
+          <button id="dlg-batch" class="secondary" type="button">${t("panels.deviceAdd.batchCreate")}</button>
+          <input type="number" id="dlg-batch-count" min="1" max="99" step="1" value="2"
+                 title="${t("panels.deviceAdd.batchCountTitle")}">
+        </div>
         <button id="dlg-cancel" class="secondary" type="button">${t("panels.common.cancel")}</button>
         <button id="dlg-ok" type="button">OK</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+/** バッチ作成の進行ウィンドウ。「デバイスを追加」を閉じた直後に開き、1台ずつの結果を並べる。
+ *  OK は全件終わるまで無効(途中で閉じると進行中の作成の行き先が無くなる)。押すと
+ *  #device-pick-overlay へ戻り、作成できたデバイスに自動でチェックが入る(modals.js)。 */
+function renderDeviceBatchOverlay(): string {
+  return `<div id="device-batch-overlay" class="modal-overlay">
+    <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="device-batch-title">
+      <div class="modal-title" id="device-batch-title">${t("panels.deviceBatch.title")}</div>
+      <div id="device-batch-status" class="modal-hint"></div>
+      <div id="device-batch-list" class="device-batch-list"></div>
+      <div id="device-batch-error" class="modal-error"></div>
+      <div class="modal-buttons">
+        <button id="device-batch-ok" type="button" disabled>OK</button>
       </div>
     </div>
   </div>`;

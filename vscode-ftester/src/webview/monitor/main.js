@@ -54,6 +54,9 @@ import {
   applyDeviceCatalog,
   applyInstallCmdlineToolsResult,
   applyCreateDeviceResult,
+  applyBatchCreateStarted,
+  applyBatchCreateProgress,
+  applyBatchCreateFinished,
   applyInstalledDevices,
   applyDevicePickDeviceDeleteResult,
   applyMachineDevicesSyncResult,
@@ -155,6 +158,15 @@ window.addEventListener('message', (event) => {
       break;
     case 'createDeviceResult':
       applyCreateDeviceResult(message);
+      break;
+    case 'batchCreateStarted':
+      applyBatchCreateStarted(message);
+      break;
+    case 'batchCreateProgress':
+      applyBatchCreateProgress(message);
+      break;
+    case 'batchCreateFinished':
+      applyBatchCreateFinished(message);
       break;
     case 'installedDevices':
       applyInstalledDevices(message);

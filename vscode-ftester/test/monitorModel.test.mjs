@@ -305,6 +305,32 @@ test("isMonitorFromWebviewMessage: ready/devicesUp/devicesDown/restartMonitor �
   assert.equal(isMonitorFromWebviewMessage({ type: "restartMonitor" }), true);
 });
 
+test("isMonitorFromWebviewMessage: batchCreateDevices は names を検証する(空・99超・空文字は false)", () => {
+  const base = {
+    type: "batchCreateDevices",
+    machine: "M1",
+    platform: "ios",
+    names: ["dev00", "dev01"],
+    model: "iPhone 17 Pro",
+    os: "iOS 27.0",
+    overwriteNames: [],
+    source: { kind: "local" },
+  };
+  assert.equal(isMonitorFromWebviewMessage(base), true);
+  assert.equal(isMonitorFromWebviewMessage({ ...base, names: [] }), false, "0台は受けない");
+  assert.equal(
+    isMonitorFromWebviewMessage({ ...base, names: Array.from({ length: 100 }, (_v, i) => `d${i}`) }),
+    false,
+    "上限 99 を超えたら受けない(UI の max と同じ)",
+  );
+  assert.equal(isMonitorFromWebviewMessage({ ...base, names: ["dev00", ""] }), false, "空文字の名前は受けない");
+  assert.equal(isMonitorFromWebviewMessage({ ...base, overwriteNames: [""] }), false);
+  assert.equal(isMonitorFromWebviewMessage({ ...base, platform: "windows" }), false);
+  assert.equal(isMonitorFromWebviewMessage({ ...base, model: "" }), false);
+  assert.equal(isMonitorFromWebviewMessage({ ...base, os: "" }), false);
+  assert.equal(isMonitorFromWebviewMessage({ ...base, machine: "" }), false);
+});
+
 test("isMonitorFromWebviewMessage: 未知の type や不正値は false", () => {
   assert.equal(isMonitorFromWebviewMessage({ type: "unknown" }), false);
   assert.equal(isMonitorFromWebviewMessage({}), false);

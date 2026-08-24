@@ -44,6 +44,18 @@ type PipeProcess = ChildProcessByStdio<null, Readable, Readable>;
 /** webview からの "createDevice" メッセージの形(runCreateDevice で使う)。 */
 export type CreateDeviceMessage = Extract<MonitorFromWebviewMessage, { type: "createDevice" }>;
 
+/** webview からの "batchCreateDevices" メッセージの形(runBatchCreateDevices で使う)。 */
+export type BatchCreateDevicesMessage = Extract<MonitorFromWebviewMessage, { type: "batchCreateDevices" }>;
+
+/** spawnCreateDevice の1台ぶんの結果。バッチが1台ずつ受け取るために使う
+ *  (単発は従来どおり createDeviceResult を post するので渡さない)。 */
+type CreateDeviceOutcome = {
+  readonly ok: boolean;
+  readonly error: string | null;
+  readonly device: { readonly avd: string | null; readonly udid: string | null } | null;
+};
+type CreateDeviceOutcomeHandler = (outcome: CreateDeviceOutcome) => void;
+
 /** webview からの "devicePickDeviceDelete" メッセージの形(runDeleteDevice で使う)。 */
 export type DevicePickDeviceDeleteMessage = Extract<MonitorFromWebviewMessage, { type: "devicePickDeviceDelete" }>;
 
@@ -1129,6 +1141,110 @@ export class MonitorDeviceOps {
     this.spawnCreateDevice(msg);
   }
 
+  /**
+   * 「デバイスを追加」左下の「バッチ作成」: 同じ設定で names を**1台ずつ順に**作る。
+   *
+   * **並列にしない** —— simctl/avdmanager は同時実行で相互に失敗し得るうえ、進行窓は
+   * 「いま何台目か」を示すのが役目なので、順に確定させたほうが読める。
+   *
+   * 確認は **1枚だけ**(webview では出せないのでホスト側 modal)。何台をどこへ作るかを聞き、
+   * 既存を消して作り直すぶんがあれば同じ文面に書き足してボタンの文言を変える。
+   * 断られたら **started を出さずに** finished(started:false)で戻す
+   * (webview は追加ダイアログを開いたまま元に戻す)。
+   *
+   * 1台でも失敗しても残りは続ける(N 台中1台の失敗を致命にしない)。結果は finished の
+   * created/failed に分けて返し、webview が一覧に出す。
+   */
+  async runBatchCreateDevices(msg: BatchCreateDevicesMessage): Promise<void> {
+    const abort = (error: string): void => {
+      this.deps.post({
+        type: "batchCreateFinished",
+        started: false,
+        created: [],
+        failed: [],
+        error,
+      });
+    };
+    if (this.creatingDevice) {
+      abort(t("deviceOps.batchAlreadyRunning"));
+      return;
+    }
+    this.creatingDevice = true;
+    try {
+      const host = msg.source.kind === "remote" ? msg.source.host : t("deviceOps.createOverwriteLocalHost");
+      // 検証(isMonitorFromWebviewMessage)で names.length > 0 は保証済み。?? は型のためだけ
+      const first = msg.names[0] ?? "";
+      const last = msg.names[msg.names.length - 1] ?? "";
+      // **確認は1回だけ**(2026-08-25 指示)。上書きが要るときは同じ文面に書き足し、
+      // ボタンの文言を「削除して作り直す」に変える —— 2枚に分けると、
+      // 2枚目を断ったときに**衝突していないぶんまで巻き添えで中止**になり、
+      // 「どこまで作られたのか」が押した人にも分からない
+      const overwriteNote = msg.overwriteNames.length > 0
+        ? t("deviceOps.batchOverwriteNote", {
+            host,
+            count: String(msg.overwriteNames.length),
+            names: msg.overwriteNames.join(", "),
+          })
+        : "";
+      const confirmLabel = msg.overwriteNames.length > 0
+        ? t("deviceOps.batchOverwriteConfirmButton")
+        : t("deviceOps.batchConfirmButton");
+      const choice = await vscode.window.showWarningMessage(
+        t("deviceOps.batchConfirmMessage", {
+          host,
+          count: String(msg.names.length),
+          first,
+          last,
+        }) + overwriteNote,
+        { modal: true },
+        confirmLabel,
+      );
+      if (choice !== confirmLabel) {
+        abort(t("deviceOps.createCancelled"));
+        return;
+      }
+      this.deps.post({ type: "batchCreateStarted", names: msg.names });
+      const overwrite = new Set(msg.overwriteNames);
+      const created: { name: string; avd: string | null; udid: string | null }[] = [];
+      const failed: { name: string; error: string | null }[] = [];
+      for (const [index, name] of msg.names.entries()) {
+        this.deps.post({ type: "batchCreateProgress", index, name, state: "running", error: null });
+        const outcome = await new Promise<CreateDeviceOutcome>((resolve) => {
+          this.spawnCreateDevice(
+            {
+              type: "createDevice",
+              machine: msg.machine,
+              platform: msg.platform,
+              name,
+              model: msg.model,
+              os: msg.os,
+              // 登録はピッカーの OK(machineDevicesSync)が行う。ここは物理作成だけ
+              register: false,
+              overwrite: overwrite.has(name),
+              source: msg.source,
+            },
+            resolve,
+          );
+        });
+        if (outcome.ok) {
+          created.push({ name, avd: outcome.device?.avd ?? null, udid: outcome.device?.udid ?? null });
+        } else {
+          failed.push({ name, error: outcome.error });
+        }
+        this.deps.post({
+          type: "batchCreateProgress",
+          index,
+          name,
+          state: outcome.ok ? "ok" : "failed",
+          error: outcome.error,
+        });
+      }
+      this.deps.post({ type: "batchCreateFinished", started: true, created, failed, error: null });
+    } finally {
+      this.creatingDevice = false;
+    }
+  }
+
   /** リモート作成の modal 確認(§11・§13 と同じ showWarningMessage({modal:true}) 方式。
    * webview の window.confirm は効かないため必ずホスト側で行う)。 */
   private async confirmAndSpawnCreateDevice(msg: CreateDeviceMessage, host: string | null): Promise<void> {
@@ -1170,10 +1286,14 @@ export class MonitorDeviceOps {
    * 消えるため(§13)。作成した1台は #device-pick-overlay の再取得→チェック→OK
    * (machineDevicesSync。常にローカルへ書く既存経路)にそのまま乗せてローカル登録する。
    */
-  private spawnCreateDevice(msg: CreateDeviceMessage): void {
+  private spawnCreateDevice(msg: CreateDeviceMessage, onResult?: CreateDeviceOutcomeHandler): void {
     const config = this.deps.getConfig();
     const resolution = resolveProjectName(this.deps.workspaceRoot, config);
     if (resolution.kind !== "resolved") {
+      if (onResult) {
+        onResult({ ok: false, error: t("deviceOps.projectUnresolved"), device: null });
+        return;
+      }
       this.creatingDevice = false;
       this.deps.post({
         type: "createDeviceResult",
@@ -1220,8 +1340,18 @@ export class MonitorDeviceOps {
         return;
       }
       responded = true;
+      const detail = error ? withSourceContext(error, source) : error;
+      // **バッチのときは creatingDevice を落とさない**(1台ごとに落とすと、次の1台の
+      // 多重実行ガードが素通りする)。解除はループを回している runBatchCreateDevices の責任
+      if (onResult) {
+        if (ok) {
+          this.deps.notifyMachineProfilesChanged();
+        }
+        onResult({ ok, error: detail, device });
+        return;
+      }
       this.creatingDevice = false;
-      this.deps.post({ type: "createDeviceResult", ok, name: msg.name, error: error ? withSourceContext(error, source) : error, device });
+      this.deps.post({ type: "createDeviceResult", ok, name: msg.name, error: detail, device });
       if (ok) {
         this.deps.notifyMachineProfilesChanged();
       }

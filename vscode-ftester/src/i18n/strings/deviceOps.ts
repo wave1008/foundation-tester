@@ -124,6 +124,24 @@ export const deviceOpsStrings = {
     en: "The ftester on {host} does not support this operation (it is probably out of date). Align it with: ftester remote setup {host} — {detail}",
   },
   "deviceOps.createCancelled": { ja: "作成をキャンセルしました。", en: "Device creation was cancelled." },
+  // バッチ作成の確認(webview の window.confirm は効かないのでホスト側 modal で聞く)。
+  // **1枚だけ**出す —— 上書きが要るときは batchOverwriteNote を同じ文面へ書き足す
+  "deviceOps.batchConfirmMessage": {
+    ja: "{host} に {count} 台のデバイスを作成します({first} 〜 {last})。よろしいですか?",
+    en: "This creates {count} devices on {host} ({first} - {last}). Continue?",
+  },
+  "deviceOps.batchConfirmButton": { ja: "作成", en: "Create" },
+  // **確認ダイアログ1枚に書き足す文**(別のダイアログにしない)。先頭の改行は本文と離すため
+  "deviceOps.batchOverwriteNote": {
+    ja: "\n\nうち {count} 台は {host} に既に存在します({names})。削除して作り直します(元に戻せません)。",
+    en: "\n\n{count} of them already exist on {host} ({names}) and will be deleted and recreated (cannot be undone).",
+  },
+  "deviceOps.batchOverwriteConfirmButton": { ja: "削除して作り直す", en: "Delete and recreate" },
+  "deviceOps.batchAlreadyRunning": {
+    ja: "デバイスの作成が実行中です。",
+    en: "A create operation is already in progress.",
+  },
+
   "deviceOps.createAlreadyRunning": {
     ja: "作成処理が既に実行中です。",
     en: "A create operation is already in progress.",

@@ -575,6 +575,9 @@ export class MonitorPanelController implements vscode.Disposable {
       case "createDevice":
         this.deviceOps.runCreateDevice(message);
         break;
+      case "batchCreateDevices":
+        void this.deviceOps.runBatchCreateDevices(message);
+        break;
       case "installedDevicesRequest":
         this.deviceOps.runInstalledDevices(message.source);
         break;
