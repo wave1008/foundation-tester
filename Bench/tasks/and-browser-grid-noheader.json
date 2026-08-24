@@ -1,0 +1,8 @@
+{
+  "id": "and-browser-grid-noheader",
+  "archetype": "browser",
+  "requires": "盤面は `Bench/boards/grid-noheader.html`。ホストで `cd Bench/boards && python3 -m http.server 8791 --bind 127.0.0.1` を立て、**エミュレータごとに `adb -s <serial> reverse tcp:8791 tcp:8791`** を張ってから `localhost:8791` で引く(10.0.2.2 はこの Mac では届かなかった。Bench/README の「盤面の立て方」参照)。Chrome の初回ダイアログは先に消しておく。**見出し行は a11y ツリーに出ない**ので、列(地点)を同定するには ft_screenshot が要る —— 回す前にその機械で**キャプチャが実際に取れている**ことを確かめること(フリートの表示が凍結していると黒画像・古い画像が返り、タスクが原理的に解けなくなる)",
+  "maxTurns": 60,
+  "expect": "RESULT:\\s*28",
+  "prompt": "ftester の MCP ツール(ft_*)だけを使って、Android エミュレータ上の Chrome を操作してください。あなたはこのページを初めて見ます。\n\nゴール: http://localhost:8791/grid-noheader.html を開き、**那覇**の**最低**気温を読み取ること。\n\n手順や使うツールは自分で決めてください。デバイスは ft_list_devices で選びます。\n\n最後に必ず1行だけ次の形式で出力してください: RESULT: <数値のみ。単位は付けない>\n読み取れなかった場合は RESULT: unknown と出力してください。"
+}

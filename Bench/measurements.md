@@ -7,6 +7,39 @@
 
 ---
 
+## 2026-08-24 実ブラウザ側の「見出しが落ちる格子」盤面を足した(発火まで。A/B は未実施)
+
+**穴**: `gridWithoutHeaderNote` の offline 盤面は `cmp-webview-grid`(アプリ内 WebView)しか
+無く、**注記が実際に生まれた経路**(Android Chrome が a11y へ一部しか出さない形)では測れて
+いなかった。README には「offline の盤面がまだ無い / 埋めるなら 5 SUT を動かす」と残っていたが、
+これは 2026-08-13 に `cmp-webview-grid` として埋め済みで**記述が古いだけ**だった(直した)。
+
+**足したもの**: `Bench/boards/grid-noheader.html` + `Bench/tasks/and-browser-grid-noheader.json`。
+見出し行(地点名)を `aria-hidden="true"` にして描画だけ残し、`padding: 44px` で
+「直上の空き ÷ 行間の中央値 >= 2.0」に届かせている。値は `33℃` `20%` のように**数字だけにしない**
+(全列が「最上が非数字・以下が数字」だと `chainsHaveHeaderTopRow` が黙る)。
+
+**発火の実測**(Pixel_10 / Android 16 / Chrome、`localhost:8791` 経由):
+
+```
+note: inside webView "地点別の天気", a 6x4 grid of values starts at y=845, but nothing is
+listed above its columns (y=520-845) — its header row (e.g. column labels) may be missing …
+```
+
+木に出るのは行ラベル(天気/最高/最低/降水)と値 20 個だけで、**地点名は1つも出ない**。
+3台(emulator-5554 / -5568 / -5570)で同じ発火を確認した。
+
+**未了(回す前にやること)**:
+- **A/B は未実施**。`--variant full= --variant no-grid=gridWithoutHeaderNote` で最低3周。
+  2026-08-13 の `cmp-webview-grid` では手数が動かず note B が判断材料だったので、**同じ結論に
+  なるかどうか**がこの盤面の問い
+- **キャプチャが取れる機械で回すこと**。この日は 9 台のエミュレータをモニターが配信中で、
+  触った3台とも `ft_screenshot` が黒画像・39分前の別画面・白ベタを返した(`adb exec-out
+  screencap` でも同じ = 端末側の表示が wedge。[[emulator-display-freeze-wedge]] の形)。
+  **この盤面は見出しをスクショでしか読めない**ので、その状態では原理的に解けない
+
+---
+
 ## 2026-08-16(5) 「明細だけ畳む」を測ろうとして、盤面が用途を通していないことが分かった
 
 **問い**(外部評価4人目・Apple マップの乗換案内): 「ft_snapshot の出力が非常に長い。重複ID・

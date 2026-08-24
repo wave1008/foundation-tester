@@ -104,9 +104,12 @@
   検出できなかった。**天気サイトはもう足さない**
 - MCP の使い勝手の計測(**まっさらなエージェントがタスクを終えられたか・何手かかったか**。
   注記の A/B の回し方と判定の規律): Bench/README.md(`Scripts/mcp-bench.sh`)。
-  **実 web ページの形はここで測れない**(offline の盤面が無い)ので、注記が最も増える形に
-  止める機構が無い。当面は `NoteBudgetTests` が**本数と鍵の集合を等号で固定**し、
-  増減を意識的な操作にする(予算を動かすには根拠を台帳へ書く)
+  **実 web ページの形も盤面で測れる**(`Bench/boards/` に実ブラウザ用の HTML を置き、
+  ホストで配信して Chrome から引く。**ライブの web は叩かない** = 盤面が毎日変わると
+  手数の差が注記の効果と混ざる)。ただし 2026-08-13 の A/B で**手数は注記の有無で動かない**
+  ことが分かっており(代替手段の無い盤面でも 5/5 完了。measurements.md)、**足す/消すの
+  判断材料は note B(実現バイト)**。`NoteBudgetTests` の**本数と鍵の集合の等号固定**は
+  引き続き効かせる(予算を動かすには根拠を台帳へ書く)
 - CI 連携(`ftester run --junit` の JUnit 出力・GitHub Actions 例・flaky 方針): docs/ci.md
 - **結果 JSON のスキーマ**(run.json / scenarios/*.json の全欄と、落ちた run の仕分けレシピ):
   docs/results-json.md(**唯一の定義元**。`results/` は .gitignore なので**その中に README を置いても

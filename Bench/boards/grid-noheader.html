@@ -1,0 +1,68 @@
+<!doctype html>
+<!--
+  ベンチ盤面: **見出し行が a11y ツリーから落ちた格子**を offline で決定的に再現する。
+
+  なぜ要るか: `gridWithoutHeaderNote` / `webViewGapNote` は「a11y が実際に取りこぼす形」の
+  注記で、実ページ(tenki.jp の2週間天気・J1順位表)でしか出ないため、**手数で効果を測れない
+  まま入っている**(根拠は実機の witness と固定コーパスの誤検知0だけ)。ここが盤面で埋まると、
+  注記を落とした版との A/B が browser アーキタイプの本丸で回せる。
+
+  仕掛け(2026-08-13 に使い捨てページで確認した手):
+    ・見出し行に `aria-hidden="true"` を付けると、描画は残したまま a11y から消える。
+      値のセルはそのまま木に出るので「見出しだけ落ちる格子」になる
+    ・発火には**直上の空き ÷ 行間の中央値 >= 2.0**(MCPServer+Hints.gridHeaderRoomRatio)が要る。
+      素直に組むと 1.9 前後で発火しないので、見出し行に厚み(padding)を与えて空きを広げる
+    ・値のセルは**数字だけにしない**(「28℃」「20%」)。全列が「最上が非数字・以下が数字」だと
+      chainsHaveHeaderTopRow が「最上行こそ見出し」と読んで黙る
+
+  盤面としての契約(タスクの expect はここから決める。動かしたら Bench/tasks も直す):
+    ・列 = 地点(福岡・札幌・大阪・那覇・仙台)。**地点名は見出し行にしか無い**ので、木だけでは
+      列を同定できない。**並びは地理でも五十音でもない** —— 順序から当てられると、
+      「見出しを読まないと解けない」という盤面の目的が消える(日付列にしない理由)
+    ・行 = 天気 / 最高 / 最低 / 降水。行ラベルは木に出る(= 行は分かるが列が分からない形)
+    ・最低気温は 5 列すべて異なる(24/19/26/28/21)ので、列を取り違えた答えは別の値になる
+
+  実ページと違って中身が変わらないのがこのファイルの存在理由。配信は Bench/README 参照。
+-->
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>地点別の天気</title>
+<style>
+  body { font-family: -apple-system, system-ui, sans-serif; font-size: 15px; margin: 0; padding: 12px; }
+  h1 { font-size: 18px; }
+  table { border-collapse: collapse; width: 100%; table-layout: fixed; margin-top: 12px; }
+  th, td { text-align: center; border: 1px solid #999; font-size: 15px; }
+  /* 見出し行の厚み = 直上の空き。薄いと room/pitch が 2.0 に届かず注記が発火しない */
+  thead th { padding: 44px 0; background: #eef; }
+  tbody td { padding: 14px 0; }
+  tbody td.rowlabel { text-align: left; padding-left: 6px; }
+</style>
+</head>
+<body>
+<h1>地点別の天気</h1>
+<p id="issued">31日 17時00分発表</p>
+<table>
+  <thead aria-hidden="true">
+    <tr>
+      <th>項目</th><th>福岡</th><th>札幌</th><th>大阪</th><th>那覇</th><th>仙台</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="rowlabel">天気</td><td>曇り</td><td>曇り</td><td>晴れ</td><td>曇り</td><td>晴れ</td>
+    </tr>
+    <tr>
+      <td class="rowlabel">最高</td><td>33℃</td><td>27℃</td><td>32℃</td><td>31℃</td><td>29℃</td>
+    </tr>
+    <tr>
+      <td class="rowlabel">最低</td><td>24℃</td><td>19℃</td><td>26℃</td><td>28℃</td><td>21℃</td>
+    </tr>
+    <tr>
+      <td class="rowlabel">降水</td><td>20%</td><td>40%</td><td>10%</td><td>60%</td><td>10%</td>
+    </tr>
+  </tbody>
+</table>
+</body>
+</html>
