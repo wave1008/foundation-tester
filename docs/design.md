@@ -653,6 +653,11 @@ WebView(iOS=WKWebView / Android=android.webkit.WebView)の中身は、経路ご�
 - **a11y ツリーは in-app からは見えない**(Web コンテンツの AX は WebContent プロセスが提供する)。
   そこで in-app は `evaluateJavaScript` で DOM を1往復読み、a11y 経路と同じ DTO へ写す。
   可視性(display/visibility/aria-hidden/0px/画面外/`elementFromPoint` の被り)は JS 側で自前判定する。
+  **被りを見る点は「見えている部分」の中心**(素の中心ではない。2026-08-25)——
+  ページがスクロールして上端に少しだけ残った入力欄は素の中心が viewport の外にあり、
+  `elementFromPoint` は viewport 外の点に null を返すので、**触れる要素が木から丸ごと落ちる**。
+  a11y 経路は残すので、それは「同じページで経路により見え方が割れる」= この経路が
+  避けるために存在する状態そのものになる(witness: E2E-CMP の WebView シナリオが5回中4回赤)。
 - **操作は DOM でやらない**。`element.click()` や value 代入は user activation・IME・`:active` を壊すので、
   DOM から得た矩形を画面座標へ変換して**合成タッチ**を打つ(ref に AX ノードを紐付けない =
   `tapByRef` が座標へ落ちる、という既存経路をそのまま使う)。

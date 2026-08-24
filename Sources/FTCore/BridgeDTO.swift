@@ -230,7 +230,13 @@ public enum BridgeAPI {
     /// It exists because the full springboard `/snapshot` costs ~185ms (measured 2026-08-21),
     /// far too much to pay per step, while the in-app tree cannot see the alert at all
     /// (another process) and `applicationState` turned out not to track it (see the route's doc).
-    public static let bridgeProtocolVersion = 77
+    /// 78: the WebView DOM read probes the centre of the element's **visible part** instead of
+    /// its raw centre. A field left half-cut at the top edge by a page scroll had its centre
+    /// outside the viewport, so `elementFromPoint` was never even asked and the element was
+    /// dropped from the tree entirely — while the a11y path keeps it, which is exactly the
+    /// split this path exists to avoid (witness: E2E-CMP `WebViewの中身を操作できること.S0010`,
+    /// failing 4 runs out of 5). A stale bridge keeps dropping it → bump.
+    public static let bridgeProtocolVersion = 78
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の

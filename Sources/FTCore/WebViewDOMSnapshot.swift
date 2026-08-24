@@ -113,12 +113,21 @@ public enum WebViewDOM {
           return (el.textContent || "").replace(/\\s+/g, " ").trim() !== "";
         }
 
-        // 中心点が別要素に取られている = 見えていない。祖先/子孫に当たるのは正常(重なりではない)
+        // 中心点が別要素に取られている = 見えていない。祖先/子孫に当たるのは正常(重なりではない)。
+        //
+        // **撃つ点は「見えている部分」の中心**(素の中心ではない)。ページがスクロールして
+        // 上端に半分だけ残った入力欄は、素の中心が viewport の外へ出る ——
+        // 中心で判定すると**触れる要素が木から丸ごと落ちる**(a11y 経路は残すので、
+        // 同じページで経路により見え方が割れる = この経路が守るべき不変条件が壊れる)。
+        // **交差が空(完全に画面外)のための分岐は置かない** —— elementFromPoint は viewport の
+        // 外の点に null を返す規定なので、寄せた点がそのまま false を導く。分岐を足すと
+        // 呼び出し側の矩形ゲートに阻まれて**到達しない行**になり、変異で殺せない砦になる
         function hittable(el, rect) {
-          var cx = rect.left + rect.width / 2;
-          var cy = rect.top + rect.height / 2;
-          if (cx < 0 || cy < 0 || cx > viewport.width || cy > viewport.height) return false;
-          var hit = document.elementFromPoint(cx, cy);
+          var left = Math.max(rect.left, 0);
+          var right = Math.min(rect.right, viewport.width);
+          var top = Math.max(rect.top, 0);
+          var bottom = Math.min(rect.bottom, viewport.height);
+          var hit = document.elementFromPoint((left + right) / 2, (top + bottom) / 2);
           if (!hit) return false;
           return hit === el || el.contains(hit) || hit.contains(el);
         }
