@@ -1491,7 +1491,9 @@ export class MonitorDeviceOps {
    */
   private spawnDeleteDevice(msg: DevicePickDeviceDeleteMessage): void {
     const config = this.deps.getConfig();
-    const args = deviceCommandArgs(msg.source, deleteDeviceApiArgs(msg.platform, msg.identifier));
+    const resolution = resolveProjectName(this.deps.workspaceRoot, config);
+    const project = resolution.kind === "resolved" ? resolution.project : undefined;
+    const args = deviceCommandArgs(msg.source, deleteDeviceApiArgs(msg.platform, msg.identifier, project));
     const source = msg.source;
 
     let responded = false;
@@ -1512,13 +1514,34 @@ export class MonitorDeviceOps {
       });
       if (ok) {
         this.deps.outputChannel.appendLine(t("deviceOps.log.deleteDeviceSucceeded", { name: msg.name }));
-        if (referencedBy.length > 0) {
-          void vscode.window.showWarningMessage(
-            t("deviceOps.deleteReferencedByWarning", {
-              name: msg.name,
-              profiles: referencedBy.join(t("deviceOps.nameSeparator")),
-            }),
-          );
+        // **実体が消えたら登録も外す**(2026-08-25 の報告)。「デバイスを選択」の OK 側の同期
+        // (machineDevicesSync)に任せると、**キャンセルしたときに実体の無い登録が残る**。
+        // 消えた事実に台帳を合わせるだけなので確認は聞かない(削除自体は確認済み)。
+        // 引き当ては (host, name) —— 別の機械の同名を巻き添えにしない
+        // **referencedBy が空でも呼ぶ** —— あれはマシンプロファイルしか見ておらず、
+        // 実行プロファイル側の掃除はこの中で全件走査する
+        {
+          const host = source.kind === "remote" ? source.host : undefined;
+          const updated = this.deps.unregisterDeletedDevice(msg.name, host);
+          const touched = [...updated.machines, ...updated.runs];
+          if (touched.length > 0) {
+            this.deps.outputChannel.appendLine(
+              t("deviceOps.log.deleteDeviceUnregistered", {
+                name: msg.name,
+                profiles: touched.join(t("deviceOps.nameSeparator")),
+              }),
+            );
+          }
+          // 外せなかったぶんだけ従来どおり警告する(形式不正・読めない等)
+          const remaining = referencedBy.filter((machine) => !updated.machines.includes(machine));
+          if (remaining.length > 0) {
+            void vscode.window.showWarningMessage(
+              t("deviceOps.deleteReferencedByWarning", {
+                name: msg.name,
+                profiles: remaining.join(t("deviceOps.nameSeparator")),
+              }),
+            );
+          }
         }
       } else {
         this.deps.outputChannel.appendLine(

@@ -270,7 +270,7 @@ export const panelsStrings = {
   "panels.deviceAdd.osVersionLabel": { ja: "OSバージョン", en: "OS Version" },
   "panels.deviceAdd.servicesLabel": { ja: "サービス", en: "Services" },
   "panels.deviceAdd.nameLabel": { ja: "デバイス名", en: "Device Name" },
-  // 左下のバッチ作成(同じ設定で「デバイス名+連番2桁(01 始まり)」をまとめて作る)
+  // 左下のバッチ作成(同じ設定で「デバイス名-連番2桁(-01 始まり)」をまとめて作る)
   "panels.deviceAdd.batchCreate": { ja: "バッチ作成", en: "Batch create" },
   "panels.deviceAdd.batchCountTitle": {
     ja: "作成する台数(1-99)",
@@ -288,7 +288,9 @@ export const panelsStrings = {
   "panels.deviceBatch.title": { ja: "バッチ作成", en: "Batch Create" },
 
   "panels.devicePick.title": { ja: "デバイスを選択", en: "Select Devices" },
-  "panels.devicePick.addNewTitle": { ja: "デバイスを新規作成", en: "Create New Device" },
+  // 各グループ見出しの右端の「+」。**OS 種別ごと**にあり、押した側で「デバイスを追加」が開く
+  "panels.devicePick.addNewIosTitle": { ja: "iOS デバイスを新規作成", en: "Create New iOS Device" },
+  "panels.devicePick.addNewAndroidTitle": { ja: "Android デバイスを新規作成", en: "Create New Android Device" },
   "panels.devicePick.addNewLabel": { ja: "デバイスを作成", en: "Create device" },
   // タイトル行のホスト選択(#device-pick-host-select)の静的ラベル。選択肢自体は
   // devicePickHost.js が remoteConfig を受けて動的生成する(panels.machineProfile.deviceSourceLabel

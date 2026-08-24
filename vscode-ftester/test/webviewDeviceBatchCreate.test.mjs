@@ -3,7 +3,7 @@
 // webviewDeviceAddModal.test.mjs と同じ(実 HTML + 実バンドルを jsdom で動かす)。
 //
 // 守るのは4つ:
-//   ①送る名前が「デバイス名+連番2桁・01 始まり」であること(表示と作られる名前がズレると上書き確認が嘘になる)
+//   ①送る名前が「デバイス名-連番2桁・-01 始まり」であること(表示と作られる名前がズレると上書き確認が嘘になる)
 //   ②台数の範囲(1-99)を **JS でも** 弾くこと(number 入力は手打ちで範囲外を通す)
 //   ③衝突している名前だけ overwriteNames に載ること(ホスト側の上書き確認の入力そのもの)
 //   ④開始→進行→完了→OK で「デバイスを選択」へ戻り、**作成できた台すべて**にチェックが入ること
@@ -111,7 +111,7 @@ function openAddModal(window, document, devices = []) {
   post(window, { type: "machineProfileInfo", machines: [{ name: "M1", devices: [] }], current: "M1", error: null });
   click(window, document.getElementById("btn-device-add-existing"));
   post(window, installedDevices(devices));
-  click(window, document.getElementById("device-pick-add-new"));
+  click(window, document.getElementById("device-pick-ios-add-new"));
   post(window, { type: "deviceCatalog", ok: true, catalog: READY_CATALOG, error: null });
 }
 
@@ -125,7 +125,7 @@ function batchStates(document) {
     .map((el) => el.textContent);
 }
 
-test("既定は2台で、「デバイス名+連番2桁(01 始まり)」の名前を batchCreateDevices で送る", (t) => {
+test("既定は2台で、「デバイス名-連番2桁(-01 始まり)」の名前を batchCreateDevices で送る", (t) => {
   const posted = [];
   const { window, document } = createWebview((message) => posted.push(message));
   t.after(() => window.close());
@@ -137,7 +137,7 @@ test("既定は2台で、「デバイス名+連番2桁(01 始まり)」の名前
 
   const message = posted.find((m) => m.type === "batchCreateDevices");
   assert.ok(message, "batchCreateDevices を送る");
-  assert.deepEqual(Array.from(message.names), ["iPhone 17 Pro(iOS 27.0)01", "iPhone 17 Pro(iOS 27.0)02"]);
+  assert.deepEqual(Array.from(message.names), ["iPhone 17 Pro(iOS 27.0)-01", "iPhone 17 Pro(iOS 27.0)-02"]);
   assert.equal(message.platform, "ios");
   assert.equal(message.machine, "M1");
   assert.deepEqual(Array.from(message.overwriteNames), [], "衝突が無ければ空");
@@ -163,8 +163,8 @@ test("台数は 1-99 の外だと送らずエラーを出す(number 入力の mi
   click(window, document.getElementById("dlg-batch"));
   const message = posted.find((m) => m.type === "batchCreateDevices");
   assert.equal(message.names.length, 99, "上限ちょうどは通る");
-  assert.equal(message.names[0], "iPhone 17 Pro(iOS 27.0)01", "先頭は 01");
-  assert.equal(message.names[98], "iPhone 17 Pro(iOS 27.0)99", "末尾は 99(2桁に収まる)");
+  assert.equal(message.names[0], "iPhone 17 Pro(iOS 27.0)-01", "先頭は -01");
+  assert.equal(message.names[98], "iPhone 17 Pro(iOS 27.0)-99", "末尾は -99(2桁に収まる)");
 });
 
 test("既存と同名になるぶんだけ overwriteNames に載る", (t) => {
@@ -173,16 +173,16 @@ test("既存と同名になるぶんだけ overwriteNames に載る", (t) => {
   t.after(() => window.close());
 
   openAddModal(window, document, [
-    { name: "iPhone 17 Pro(iOS 27.0)02", udid: "SIM-1", os: "27.0" },
+    { name: "iPhone 17 Pro(iOS 27.0)-02", udid: "SIM-1", os: "27.0" },
   ]);
   document.getElementById("dlg-batch-count").value = "3";
   click(window, document.getElementById("dlg-batch"));
 
   const message = posted.find((m) => m.type === "batchCreateDevices");
   assert.deepEqual(Array.from(message.names), [
-    "iPhone 17 Pro(iOS 27.0)01", "iPhone 17 Pro(iOS 27.0)02", "iPhone 17 Pro(iOS 27.0)03",
+    "iPhone 17 Pro(iOS 27.0)-01", "iPhone 17 Pro(iOS 27.0)-02", "iPhone 17 Pro(iOS 27.0)-03",
   ]);
-  assert.deepEqual(Array.from(message.overwriteNames), ["iPhone 17 Pro(iOS 27.0)02"], "衝突した1台だけ");
+  assert.deepEqual(Array.from(message.overwriteNames), ["iPhone 17 Pro(iOS 27.0)-02"], "衝突した1台だけ");
 });
 
 test("開始で追加ダイアログが閉じて進行窓が開き、進行→完了で OK が押せるようになる", (t) => {
@@ -328,4 +328,151 @@ test("進行窓が出ている間の Esc は「デバイスを選択」を閉じ
   esc(); // 完了後: OK と同じ扱いで進行窓だけ閉じる
   assert.ok(!document.getElementById("device-batch-overlay").classList.contains("visible"), "進行窓は閉じる");
   assert.ok(document.getElementById("device-pick-overlay").classList.contains("visible"), "「デバイスを選択」は開いたまま");
+});
+
+test("OK を押す前に別経路の installedDevices が届いても、自動チェックは使い切られない", (t) => {
+  const posted = [];
+  const { window, document } = createWebview((message) => posted.push(message));
+  t.after(() => window.close());
+
+  openAddModal(window, document);
+  click(window, document.getElementById("dlg-batch"));
+  post(window, { type: "batchCreateStarted", names: ["dev01", "dev02"] });
+  post(window, {
+    type: "batchCreateFinished",
+    started: true,
+    created: [
+      { name: "dev01", udid: "SIM-A", avd: null },
+      { name: "dev02", udid: "SIM-B", avd: null },
+    ],
+    failed: [],
+    error: null,
+  });
+
+  // machineProfilesTab の機種/OS 取得など、**こちらが投げていない再取得**の応答。
+  // ここで自動チェックを使い切ると、OK の再取得で行が作り直されてチェックが消える(実害)
+  post(window, installedDevices([
+    { name: "dev01", udid: "SIM-A", os: "27.0" },
+    { name: "dev02", udid: "SIM-B", os: "27.0" },
+  ]));
+
+  click(window, document.getElementById("device-batch-ok"));
+  post(window, installedDevices([
+    { name: "dev01", udid: "SIM-A", os: "27.0" },
+    { name: "dev02", udid: "SIM-B", os: "27.0" },
+    { name: "無関係", udid: "SIM-C", os: "27.0" },
+  ]));
+
+  const checked = [...document.querySelectorAll("#device-pick-ios-body .device-pick-row")]
+    .filter((row) => row.querySelector("input[type=checkbox]").checked);
+  assert.equal(checked.length, 2, "OK 後の一覧でもチェックが入っている");
+});
+
+test("一覧にまだ出ていない台のぶんは持ち越す(次の再描画で入る)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  openAddModal(window, document);
+  click(window, document.getElementById("dlg-batch"));
+  post(window, { type: "batchCreateStarted", names: ["dev01"] });
+  post(window, {
+    type: "batchCreateFinished",
+    started: true,
+    created: [{ name: "dev01", udid: "SIM-A", avd: null }],
+    failed: [],
+    error: null,
+  });
+  click(window, document.getElementById("device-batch-ok"));
+
+  // 取得の行き違いで、作った台がまだ載っていない一覧が返ってきた場合
+  post(window, installedDevices([{ name: "無関係", udid: "SIM-C", os: "27.0" }]));
+  assert.equal(
+    [...document.querySelectorAll("#device-pick-ios-body .device-pick-row")]
+      .filter((row) => row.querySelector("input[type=checkbox]").checked).length,
+    0,
+  );
+
+  post(window, installedDevices([
+    { name: "無関係", udid: "SIM-C", os: "27.0" },
+    { name: "dev01", udid: "SIM-A", os: "27.0" },
+  ]));
+  const checked = [...document.querySelectorAll("#device-pick-ios-body .device-pick-row")]
+    .filter((row) => row.querySelector("input[type=checkbox]").checked);
+  assert.equal(checked.length, 1, "次の再描画でチェックが入る");
+});
+
+test("続けてデバイスを作っても、まだ OK していないチェックは残る", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  // 1回目のバッチ: dev-01 を作ってチェックが入る
+  openAddModal(window, document);
+  click(window, document.getElementById("dlg-batch"));
+  post(window, { type: "batchCreateStarted", names: ["dev-01"] });
+  post(window, {
+    type: "batchCreateFinished",
+    started: true,
+    created: [{ name: "dev-01", udid: "SIM-A", avd: null }],
+    failed: [],
+    error: null,
+  });
+  click(window, document.getElementById("device-batch-ok"));
+  post(window, installedDevices([{ name: "dev-01", udid: "SIM-A", os: "27.0" }]));
+
+  // 手でもう1台チェックしておく(登録済みでは無いので「まだ OK していない編集」)
+  post(window, installedDevices([
+    { name: "dev-01", udid: "SIM-A", os: "27.0" },
+    { name: "既存", udid: "SIM-X", os: "27.0" },
+  ]));
+  const manual = [...document.querySelectorAll("#device-pick-ios-body .device-pick-row")]
+    .find((row) => row.textContent.includes("既存"));
+  manual.querySelector("input[type=checkbox]").click();
+
+  // 2回目のバッチ: 一覧が作り直される
+  click(window, document.getElementById("device-pick-ios-add-new"));
+  post(window, { type: "deviceCatalog", ok: true, catalog: READY_CATALOG, error: null });
+  click(window, document.getElementById("dlg-batch"));
+  post(window, { type: "batchCreateStarted", names: ["dev-02"] });
+  post(window, {
+    type: "batchCreateFinished",
+    started: true,
+    created: [{ name: "dev-02", udid: "SIM-B", avd: null }],
+    failed: [],
+    error: null,
+  });
+  click(window, document.getElementById("device-batch-ok"));
+  post(window, installedDevices([
+    { name: "dev-01", udid: "SIM-A", os: "27.0" },
+    { name: "既存", udid: "SIM-X", os: "27.0" },
+    { name: "dev-02", udid: "SIM-B", os: "27.0" },
+  ]));
+
+  const checked = [...document.querySelectorAll("#device-pick-ios-body .device-pick-row")]
+    .filter((row) => row.querySelector("input[type=checkbox]").checked)
+    .map((row) => row.textContent);
+  assert.equal(checked.length, 3, `1回目の作成分・手作業のチェック・2回目の作成分が全部残る: ${JSON.stringify(checked)}`);
+});
+
+test("外したチェックも再描画で戻らない(両方向に効く)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  // 登録済み(= 初期チェック ON)のデバイスを1台用意する
+  post(window, {
+    type: "machineProfileInfo",
+    machines: [{ name: "M1", devices: [{ platform: "ios", name: "登録済み", udid: "SIM-R" }] }],
+    current: "M1",
+    error: null,
+  });
+  click(window, document.getElementById("btn-device-add-existing"));
+  post(window, installedDevices([{ name: "登録済み", udid: "SIM-R", os: "27.0" }]));
+
+  const row = document.querySelector("#device-pick-ios-body .device-pick-row");
+  const checkbox = row.querySelector("input[type=checkbox]");
+  assert.equal(checkbox.checked, true, "登録済みなので初期はチェック ON");
+  checkbox.click(); // 登録解除するつもりで外す(まだ OK していない)
+
+  post(window, installedDevices([{ name: "登録済み", udid: "SIM-R", os: "27.0" }]));
+  const after = document.querySelector("#device-pick-ios-body .device-pick-row input[type=checkbox]");
+  assert.equal(after.checked, false, "再描画で ON に戻らない");
 });

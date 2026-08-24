@@ -470,7 +470,7 @@ export type MonitorFromWebviewMessage =
       readonly overwrite?: boolean;
       readonly source: DeviceCommandSource;
     }
-  // 「デバイスを追加」左下の「バッチ作成」。names は webview が「デバイス名+連番2桁(01 始まり)」で
+  // 「デバイスを追加」左下の「バッチ作成」。names は webview が「デバイス名-連番2桁(-01 始まり)」で
   // 組んだ完成形(ホストは組み立て直さない = 表示と作られる名前を必ず一致させる)。
   // overwriteNames は names のうち現ホストで衝突しているぶん(判定は webview 側 ――
   // 一覧を持っているのはあちら。ホストは「消して作り直してよいか」を聞くのに使う)。

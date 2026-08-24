@@ -241,9 +241,14 @@ dlgName.addEventListener('input', () => {
   }
 });
 
-function openDeviceAddModal() {
+/** `platform` を渡すと OS 種別をそれで開く。**カタログ受信前に決める** ――
+ *  受信後の applyPlatformAvailability が「その OS が使えない」ときだけ他方へ倒す。 */
+function openDeviceAddModal(platform) {
   if (!selectedMachine) {
     return;
+  }
+  if (platform) {
+    setDialogPlatform(platform);
   }
   deviceAddFromPicker = devicePickOpen;
   deviceAddOpen = true;
@@ -422,12 +427,12 @@ dlgOk.addEventListener('click', () => {
 
 // ---- バッチ作成 -------------------------------------------------------------
 
-/** 「デバイス名+連番2桁」。**01 始まり**(2026-08-25 指示。既存フリートの -01 と同じ数え方)で、
- *  #dlg-batch-count の上限 99 とあわせて 01〜99 の範囲に収まる。 */
+/** 「デバイス名 + `-` + 連番2桁」。**`-01` 始まり**(2026-08-25 指示。既存フリートの命名と同じ)で、
+ *  #dlg-batch-count の上限 99 とあわせて -01〜-99 の範囲に収まる。 */
 export function batchDeviceNames(base, count) {
   const names = [];
   for (let i = 1; i <= count; i += 1) {
-    names.push(base + String(i).padStart(2, '0'));
+    names.push(base + '-' + String(i).padStart(2, '0'));
   }
   return names;
 }
@@ -444,6 +449,8 @@ export function parseBatchCount(raw) {
 
 // 進行窓に出す行(index → { row, state })。started で組み直す
 let batchRows = [];
+// finished で受けた「作れた台」。OK を押した時点で pendingAutoChecks へ移す
+let batchCreatedDevices = [];
 let batchTotal = 0;
 let batchDone = 0;
 
@@ -566,8 +573,11 @@ export function applyBatchCreateFinished(message) {
     : t('wvMonitor.deviceBatch.finished', { created: String(created.length), failed: String(failed.length) });
   batchOk.disabled = false;
   batchOk.focus();
-  // OK を押したときに #device-pick-overlay の該当行へチェックを入れる(単発作成と同じ仕掛け)
-  pendingAutoChecks = created.map((device) => ({
+  // **ここでは pendingAutoChecks を立てない**(2026-08-25 の実害)。立てると、OK を押すまでの間に
+  // 別経路の installedDevices 応答(machineProfilesTab の機種/OS 取得)が届いた時点で
+  // **一度きりの適用を使い切り**、そのあと OK の再取得で行が作り直されてチェックが消える。
+  // 立てるのは OK を押して再取得を投げる直前(batchOk のリスナー)
+  batchCreatedDevices = created.map((device) => ({
     udid: device.udid,
     avd: device.avd,
     name: device.name,
@@ -592,7 +602,10 @@ batchOk.addEventListener('click', () => {
     return;
   }
   batchOverlay.classList.remove('visible');
-  // 「デバイスを選択」へ戻り、作成できたぶんへチェックを入れる(再取得後に applyPendingAutoCheck)
+  // 「デバイスを選択」へ戻り、作成できたぶんへチェックを入れる(再取得後に applyPendingAutoCheck)。
+  // **再取得を投げる直前に立てる** —— 先に立てると別経路の応答に食われる(宣言箇所参照)
+  pendingAutoChecks = batchCreatedDevices;
+  batchCreatedDevices = [];
   reloadDevicePickIfOpen();
 });
 
@@ -738,7 +751,8 @@ const devicePickAndroidBody = document.getElementById('device-pick-android-body'
 const devicePickError = document.getElementById('device-pick-error');
 const devicePickCancel = document.getElementById('device-pick-cancel');
 const devicePickOk = document.getElementById('device-pick-ok');
-const devicePickAddNewBtn = document.getElementById('device-pick-add-new');
+const devicePickIosAddNewBtn = document.getElementById('device-pick-ios-add-new');
+const devicePickAndroidAddNewBtn = document.getElementById('device-pick-android-add-new');
 const devicePickHostSelect = document.getElementById('device-pick-host-select');
 const devicePickList = document.getElementById('device-pick-list');
 const devicePickLoading = document.getElementById('device-pick-loading');
@@ -752,8 +766,9 @@ let devicePickAdding = false;
 let devicePickIosRows = [];
 let devicePickAndroidRows = [];
 // register:false で作成した直後、次の installedDevices 再描画で自動チェックONにしたい行の
-// 識別子(iOS=udid/Android=avd の id)。適用後は必ず空にする(一度きりの適用)。
-// **配列**なのはバッチ作成のため(単発作成は1件だけ入れる)。
+// 識別子(iOS=udid/Android=avd の id)。**当たった行のぶんだけ**空にする(一度きりの適用だが、
+// まだ一覧に出ていない台は次の再描画まで残す)。**配列**なのはバッチ作成のため
+// (単発作成は1件だけ入れる)。
 let pendingAutoChecks = [];
 // 行右クリック「削除」メニュー(#device-pick-delete-menu)を開いている対象
 // ({ platform, identifier, name, rowEl, checkbox })。未オープンなら null。実機行は対象外
@@ -889,7 +904,46 @@ function buildPhysicalPickRow(spec) {
 }
 
 // installedDevices(InstalledDevices の形)から2グループ分の行を組み立てる。
+/** 再描画をまたいで行を突き合わせる鍵。実体の識別子(udid / avd id / serial)を使い、
+ *  実体の無い「登録だけ残っている行」は登録名で引く。 */
+function devicePickRowKey(row) {
+  if (row.missing) { return 'missing\u0000' + (row.registeredName || ''); }
+  if (row.device) { return 'ios\u0000' + row.device.udid; }
+  if (row.physicalDevice) { return 'android\u0000' + row.physicalDevice.serial; }
+  if (row.avd) { return 'android\u0000' + row.avd.id; }
+  return '';
+}
+
+/** **まだ OK していない手作業のチェック**(登録状態と食い違っている行)を鍵ごとに控える。
+ *  一覧はデバイスを作るたびに取り直して行 DOM を作り直すので、控えて戻さないと
+ *  「作成を続けざまにやると前のチェックが外れる」(2026-08-25 の報告)。
+ *  **initialChecked と一致する行は控えない** —— 登録状態そのものは新しい一覧の値が正しく、
+ *  古い値で上書きすると別経路の登録変更を打ち消してしまう。 */
+function capturePendingDevicePickEdits() {
+  const pending = new Map();
+  for (const row of devicePickIosRows.concat(devicePickAndroidRows)) {
+    if (row.checkbox.checked === row.initialChecked) { continue; }
+    const key = devicePickRowKey(row);
+    if (key) { pending.set(key, row.checkbox.checked); }
+  }
+  return pending;
+}
+
+/** capturePendingDevicePickEdits で控えた手作業のチェックを、作り直した行へ戻す。 */
+function restorePendingDevicePickEdits(pending) {
+  if (pending.size === 0) { return; }
+  for (const row of devicePickIosRows.concat(devicePickAndroidRows)) {
+    const key = devicePickRowKey(row);
+    if (!key || !pending.has(key)) { continue; }
+    const checked = pending.get(key);
+    if (row.checkbox.checked === checked) { continue; }
+    row.checkbox.checked = checked;
+    syncDevicePickRowChecked(row.rowEl, row.checkbox);
+  }
+}
+
 function renderDevicePickGroups(data) {
+  const pendingEdits = capturePendingDevicePickEdits();
   devicePickIosRows = [];
   devicePickAndroidRows = [];
   devicePickIosBody.textContent = '';
@@ -1066,6 +1120,9 @@ function renderDevicePickGroups(data) {
                        ...androidData.avds.map((a) => a.displayName),
                        ...androidPhysical.map((p) => p.serial)].filter(Boolean)),
               (d) => d.avd || d.serial);
+
+  // **手作業のチェックは再描画をまたいで残す**(デバイスを続けて作ると一覧を取り直すため)
+  restorePendingDevicePickEdits(pendingEdits);
 }
 
 // 「登録はあるが実体が無い」行。チェックは ON(登録済み)で始まり、外して OK すると登録だけ消える。
@@ -1108,7 +1165,10 @@ function applyPendingAutoCheck() {
     return;
   }
   const targets = pendingAutoChecks;
+  // **当たった行のぶんだけ消費する**。一覧にまだ出ていない台(取得の行き違い)を
+  // 消してしまうと、次の再描画で永久にチェックが入らない
   pendingAutoChecks = [];
+  const unmatched = [];
   // **チェックだけでは足りない** —— 一覧は端末が数百行あり、作った行が画面外だと
   // 「作ったのに出てこない」と読める(2026-08-25 の報告)。最初の1行を見える位置へ運び、
   // 作った行には印を付ける
@@ -1124,25 +1184,32 @@ function applyPendingAutoCheck() {
         }
       }
     }
+    let matched = false;
     if (target.udid) {
-      const row = devicePickIosRows.find((r) => r.device.udid === target.udid);
+      const row = devicePickIosRows.find((r) => r.device && r.device.udid === target.udid);
       if (row) {
         row.checkbox.checked = true;
         syncDevicePickRowChecked(row.rowEl, row.checkbox);
         row.rowEl.classList.add('just-created');
         firstChecked = firstChecked || row.rowEl;
+        matched = true;
       }
     }
     if (target.avd) {
-      const row = devicePickAndroidRows.find((r) => r.avd.id === target.avd);
+      const row = devicePickAndroidRows.find((r) => r.avd && r.avd.id === target.avd);
       if (row) {
         row.checkbox.checked = true;
         syncDevicePickRowChecked(row.rowEl, row.checkbox);
         row.rowEl.classList.add('just-created');
         firstChecked = firstChecked || row.rowEl;
+        matched = true;
       }
     }
+    if (!matched) {
+      unmatched.push(target);
+    }
   }
+  pendingAutoChecks = unmatched;
   if (firstChecked && typeof firstChecked.scrollIntoView === 'function') {
     firstChecked.scrollIntoView({ block: 'center' });
   }
@@ -1215,6 +1282,7 @@ function closeDevicePickModal() {
   }
   devicePickOpen = false;
   pendingAutoChecks = []; // 閉じた後に届く installedDevices 応答で誤適用しないようクリアする
+  batchCreatedDevices = [];
   closeDevicePickDeleteMenu();
   devicePickOverlay.classList.remove('visible');
 }
@@ -1344,7 +1412,9 @@ window.addEventListener('resize', () => closeDevicePickDeleteMenu());
 document.addEventListener('contextmenu', () => closeDevicePickDeleteMenu());
 
 btnDeviceAddExisting.addEventListener('click', () => openDevicePickModal());
-devicePickAddNewBtn.addEventListener('click', () => openDeviceAddModal());
+// 見出しの「+」は**押した側の OS 種別**で開く(どちらを増やしたいかは見出しで表明済み)
+devicePickIosAddNewBtn.addEventListener('click', () => openDeviceAddModal('ios'));
+devicePickAndroidAddNewBtn.addEventListener('click', () => openDeviceAddModal('android'));
 devicePickCancel.addEventListener('click', () => closeDevicePickModal());
 // ホスト選択を開いたまま変更した場合、選び直したホストから一覧を取り直す。
 devicePickHostSelect.addEventListener('change', () => reloadDevicePickIfOpen());

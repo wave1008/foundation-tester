@@ -41,6 +41,8 @@ import {
   parseAppProfileForForm,
   parseRunProfileForForm,
   removeDeviceFromMachineProfile,
+  removeDeviceFromRunProfile,
+  removeDevicesFromRunProfileOfMachine,
   removeDevicesFromMachineProfile,
   removeQueuedBulkUpJob,
   RUNNING_DEVICES_PROFILE_VALUE,
@@ -1752,6 +1754,101 @@ test("validateNewDeviceName: 既存(ios/android横断)と重複するならエ�
   assert.notEqual(validateNewDeviceName("  シミュ1  ", ["シミュ1"]), null); // trim後に比較
 });
 
+// ---- removeDeviceFromRunProfile ----
+// 実体(シミュレータ/AVD)を消したあと、実行プロファイルが指す台も外すための関数。
+// マシンプロファイルと形が違う(devices は平らな配列で host は各エントリが持つ)。
+
+test("removeDeviceFromRunProfile: (host, name) 一致だけを外し、他ホストの同名は残す", () => {
+  const profile = {
+    machine: "local+remote",
+    app: "sut",
+    devices: [
+      { host: "local", name: "iPhone(iOS 27.0)01" },
+      { host: "M1Max", name: "iPhone(iOS 27.0)01" },
+      { host: "local", name: "iPhone(iOS 27.0)02" },
+    ],
+  };
+  const result = removeDeviceFromRunProfile(profile, "iPhone(iOS 27.0)01", "local");
+  assert.equal(result.removed, 1);
+  assert.deepEqual(result.object.devices, [
+    { host: "M1Max", name: "iPhone(iOS 27.0)01" },
+    { host: "local", name: "iPhone(iOS 27.0)02" },
+  ]);
+  assert.equal(result.object.machine, "local+remote", "他のキーは保持する");
+});
+
+test("removeDeviceFromRunProfile: host 省略のエントリは local として引く", () => {
+  const result = removeDeviceFromRunProfile(
+    { devices: [{ name: "Pixel(Android 15)01" }, { host: "M1Ultra", name: "Pixel(Android 15)01" }] },
+    "Pixel(Android 15)01",
+    "local",
+  );
+  assert.equal(result.removed, 1);
+  assert.deepEqual(result.object.devices, [{ host: "M1Ultra", name: "Pixel(Android 15)01" }]);
+});
+
+test("removeDeviceFromRunProfile: 対象が無ければ removed:0(書き戻さない判断に使う)", () => {
+  const result = removeDeviceFromRunProfile({ devices: [{ host: "local", name: "他" }] }, "対象", "local");
+  assert.equal(result.removed, 0);
+});
+
+test("removeDeviceFromRunProfile: devices が無い/不正形式でも壊さない", () => {
+  assert.equal(removeDeviceFromRunProfile({ machine: "M1" }, "x", "local").removed, 0);
+  assert.equal(removeDeviceFromRunProfile(null, "x", "local"), null);
+  assert.equal(removeDeviceFromRunProfile([], "x", "local"), null);
+  // 型不正の要素は対象外として保持する(消す方に倒すと利用者の記述を落とす)
+  const odd = removeDeviceFromRunProfile({ devices: ["文字列", { host: "local", name: "x" }] }, "x", "local");
+  assert.equal(odd.removed, 1);
+  assert.deepEqual(odd.object.devices, ["文字列"]);
+});
+
+// ---- removeDevicesFromRunProfileOfMachine ----
+// 「マシンプロファイルから外す」操作の前段。**そのマシンを使う実行プロファイルだけ**を掃く。
+
+test("removeDevicesFromRunProfileOfMachine: machine が一致する実行プロファイルだけ掃く", () => {
+  const profile = {
+    machine: "M2Ultra",
+    devices: [
+      { host: "local", name: "iPhone-01" },
+      { host: "local", name: "iPhone-02" },
+    ],
+  };
+  const hit = removeDevicesFromRunProfileOfMachine(profile, "M2Ultra", [{ name: "iPhone-01", host: "local" }]);
+  assert.equal(hit.removed, 1);
+  assert.deepEqual(hit.object.devices, [{ host: "local", name: "iPhone-02" }]);
+
+  // 別のマシンプロファイルを使う実行プロファイルは触らない(同じ台が別構成に居ることがある)
+  const miss = removeDevicesFromRunProfileOfMachine(profile, "M1Max", [{ name: "iPhone-01", host: "local" }]);
+  assert.equal(miss.removed, 0);
+  assert.deepEqual(miss.object.devices, profile.devices, "中身はそのまま");
+});
+
+test("removeDevicesFromRunProfileOfMachine: 複数台をまとめて外し、host 違いの同名は残す", () => {
+  const result = removeDevicesFromRunProfileOfMachine(
+    {
+      machine: "M2Ultra",
+      devices: [
+        { host: "local", name: "iPhone-01" },
+        { host: "M1Max", name: "iPhone-01" },
+        { host: "local", name: "iPhone-02" },
+        { host: "local", name: "Pixel-01" },
+      ],
+    },
+    "M2Ultra",
+    [{ name: "iPhone-01", host: "local" }, { name: "iPhone-02" }],
+  );
+  assert.equal(result.removed, 2, "host 省略は local として引く");
+  assert.deepEqual(result.object.devices, [
+    { host: "M1Max", name: "iPhone-01" },
+    { host: "local", name: "Pixel-01" },
+  ]);
+});
+
+test("removeDevicesFromRunProfileOfMachine: 不正形式は null(呼び出し側は書き戻さない)", () => {
+  assert.equal(removeDevicesFromRunProfileOfMachine(null, "M1", [{ name: "x" }]), null);
+  assert.equal(removeDevicesFromRunProfileOfMachine([], "M1", [{ name: "x" }]), null);
+});
+
 // ---- removeDeviceFromMachineProfile ----
 
 test("removeDeviceFromMachineProfile: name一致のデバイスを取り除き removed:true を返す", () => {
@@ -3389,6 +3486,18 @@ test("deleteDeviceApiArgs: iOS は --udid、Android は --avd を渡す", () => 
   );
   assert.deepEqual(
     deleteDeviceApiArgs("android", "Pixel_9_API_37"),
+    ["api", "delete-device", "--platform", "android", "--avd", "Pixel_9_API_37"],
+  );
+});
+
+test("deleteDeviceApiArgs: プロジェクトを渡したら --project を付ける(referencedBy の解決を運任せにしない)", () => {
+  assert.deepEqual(
+    deleteDeviceApiArgs("ios", "ABCDEFGH-1234", "sut-ec-mobile"),
+    ["api", "delete-device", "--platform", "ios", "--udid", "ABCDEFGH-1234", "--project", "sut-ec-mobile"],
+  );
+  // 解決できなかったときは付けない(CLI 側の推測に任せる。削除自体は続行される)
+  assert.deepEqual(
+    deleteDeviceApiArgs("android", "Pixel_9_API_37", ""),
     ["api", "delete-device", "--platform", "android", "--avd", "Pixel_9_API_37"],
   );
 });

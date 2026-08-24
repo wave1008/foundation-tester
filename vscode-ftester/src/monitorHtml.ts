@@ -366,7 +366,7 @@ function renderMachineProfileSection(): string {
         </div>
       </div>
       <div class="profile-actions">
-        <!-- 「+新規作成」ボタンは廃止済み。新規作成は#device-pick-overlay内の「+」(device-pick-add-new)から行う。 -->
+        <!-- 「+新規作成」ボタンは廃止済み。新規作成は#device-pick-overlayの各グループ見出しの「+」から行う。 -->
         <span class="profile-actions-label">${t("panels.machineProfile.addDevicesLabel")}</span>
         <button id="btn-device-add-existing" class="icon-button" title="${t("panels.machineProfile.addExistingTitle")}" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M14 7v1H8v6H7V8H1V7h6V1h1v6h6z"/></svg></button>
       </div>
@@ -689,7 +689,7 @@ function renderDeviceAddOverlay(): string {
         <span class="modal-hint">${t("panels.deviceAdd.installCmdlineToolsHint")}</span>
       </div>
       <div class="modal-buttons">
-        <!-- 左下。同じ設定(OS種別/モデル/OSバージョン)で「デバイス名+連番2桁(01 始まり)」を一括作成する。
+        <!-- 左下。同じ設定(OS種別/モデル/OSバージョン)で「デバイス名-連番2桁(-01 始まり)」を一括作成する。
              件数は 1-99(min/max は JS 側でも検証する ―― number 入力は手打ちで範囲外を通す)。 -->
         <div class="modal-buttons-left">
           <button id="dlg-batch" class="secondary" type="button">${t("panels.deviceAdd.batchCreate")}</button>
@@ -742,8 +742,11 @@ function renderNameInputOverlay(): string {
 function renderDevicePickOverlay(): string {
   return `<!-- 中身(#device-pick-ios-body/-android-body)はJSがinstalledDevices受信時に組み立てる。
        チェックボックスは「選択」ではなく登録状態そのもの(登録済み=初期チェック、disabled化しない)。
-       OKは初期状態からの差分がある間だけ有効(JS側)。「+」(device-pick-add-new)はこのモーダルを
-       閉じずに#device-add-overlayを重ねて開く(z-indexは#device-add-overlayのCSSルール参照)。
+       OKは初期状態からの差分がある間だけ有効(JS側)。各グループ見出しの右端の「+」
+       (device-pick-ios-add-new / -android-add-new)はこのモーダルを閉じずに
+       #device-add-overlayを重ねて開く(z-indexは#device-add-overlayのCSSルール参照)。
+       **押した見出しのOS種別で開く** — 一覧のどちら側を増やしたいかは見出しで表明済みなので、
+       ダイアログでもう一度選ばせない。
        #device-pick-host-select はこのダイアログのデバイス候補のホスト(ローカル/登録済みリモート
        ホスト)。選択肢は devicePickHost.js が remoteConfig(設定タブと同じメッセージ)を購読して
        組み立てる。初期値はダイアログを開いたときの編集対象マシンプロファイルの host フィールド
@@ -763,16 +766,24 @@ function renderDevicePickOverlay(): string {
             <span>${t("panels.devicePick.loading")}</span>
           </span>
         </span>
-        <span class="device-pick-add-label">${t("panels.devicePick.addNewLabel")}</span>
-        <button id="device-pick-add-new" class="icon-button" type="button" title="${t("panels.devicePick.addNewTitle")}"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M14 7v1H8v6H7V8H1V7h6V1h1v6h6z"/></svg></button>
       </div>
       <div id="device-pick-list" class="device-pick-list">
         <div id="device-pick-ios-group" class="device-pick-group">
-          <div class="device-pick-group-title" id="device-pick-ios-title">${t("panels.devicePick.iosGroupTitle")}</div>
+          <!-- 見出しの文言は JS が台数付きで差し替えるので、**内側の span を名前付きにする**
+               (見出し div へ直接書くと textContent の代入で「デバイスを作成 +」ごと消える)。 -->
+          <div class="device-pick-group-title">
+            <span id="device-pick-ios-title">${t("panels.devicePick.iosGroupTitle")}</span>
+            <span class="device-pick-add-label">${t("panels.devicePick.addNewLabel")}</span>
+            <button id="device-pick-ios-add-new" class="icon-button" type="button" title="${t("panels.devicePick.addNewIosTitle")}"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M14 7v1H8v6H7V8H1V7h6V1h1v6h6z"/></svg></button>
+          </div>
           <div id="device-pick-ios-body" class="device-pick-group-body"></div>
         </div>
         <div id="device-pick-android-group" class="device-pick-group">
-          <div class="device-pick-group-title" id="device-pick-android-title">${t("panels.devicePick.androidGroupTitle")}</div>
+          <div class="device-pick-group-title">
+            <span id="device-pick-android-title">${t("panels.devicePick.androidGroupTitle")}</span>
+            <span class="device-pick-add-label">${t("panels.devicePick.addNewLabel")}</span>
+            <button id="device-pick-android-add-new" class="icon-button" type="button" title="${t("panels.devicePick.addNewAndroidTitle")}"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M14 7v1H8v6H7V8H1V7h6V1h1v6h6z"/></svg></button>
+          </div>
           <div id="device-pick-android-body" class="device-pick-group-body"></div>
         </div>
       </div>

@@ -24,6 +24,8 @@ import {
   parseAppProfileForForm,
   parseRunProfileForForm,
   removeDevicesFromMachineProfile,
+  removeDeviceFromRunProfile,
+  removeDevicesFromRunProfileOfMachine,
   RUNNING_DEVICES_PROFILE_VALUE,
   syncDevicesInMachineProfile,
   type RunProfileFormFields,
@@ -835,6 +837,108 @@ export class MonitorProfilesController {
    * できなければ書き戻さない。**引き当ては (host, name)**(host 省略=手元) —— 名前だけで消すと
    * 別の機械の同名デバイスが巻き添えになる(mixed プロファイルでは同名が普通)。
    */
+  /**
+   * 実体(シミュレータ/AVD)を消したあとの後始末: **その実体を参照しているマシンプロファイルから
+   * 登録も外す**(`ftester api delete-device` の finished.referencedBy が対象の一覧)。
+   *
+   * **確認は聞かない** —— 削除そのものを確認済みで、ここは実体が消えた事実に台帳を合わせるだけ。
+   * 聞かずに残すと「デバイスを選択」でキャンセルした場合に**実体の無い登録が残り**、
+   * 次の run が「その台が無い」で落ちるまで気付けない(2026-08-25 の報告)。
+   * OK 側の同期(machineDevicesSync)には乗らない = キャンセルでも必ず消える、が要点。
+   *
+   * **引き当ては (host, name)**(host 省略=手元)。名前だけで消すと別の機械の同名が巻き添えになる。
+   * 書き戻せた名前を返す(呼び出し側が通知に使う)。
+   */
+  /**
+   * `machine` を使う実行プロファイル(runs/<name>.json の machine が一致するもの)から、
+   * devices の (host, name) 一致を取り除く。**マシンプロファイルより先に呼ぶ** ——
+   * 参照する側から外さないと、途中で失敗したときに「マシンに居ない台を指す実行プロファイル」
+   * が残る。書き換えた実行プロファイル名を返す(ログ用)。
+   */
+  private removeDevicesFromRunProfilesOfMachine(
+    project: string,
+    machine: string,
+    devices: readonly { readonly name: string; readonly host?: string }[],
+  ): readonly string[] {
+    const updated: string[] = [];
+    for (const run of listRunProfileNames(this.deps.workspaceRoot, project)) {
+      const runPath = path.join(this.runsDir(project), `${run}.json`);
+      try {
+        const parsed: unknown = JSON.parse(fs.readFileSync(runPath, "utf8"));
+        const removal = removeDevicesFromRunProfileOfMachine(parsed, machine, devices);
+        if (!removal || removal.removed === 0) {
+          continue;
+        }
+        fs.writeFileSync(runPath, `${JSON.stringify(removal.object, null, 2)}\n`, "utf8");
+        updated.push(run);
+      } catch (error) {
+        // 1つ失敗しても残りは続ける(N 個中1個の失敗を致命にしない)。理由は OUTPUT へ
+        this.deps.outputChannel.appendLine(
+          t("profiles.log.runProfileLoadFailed", { name: run, error: String(error) }),
+        );
+      }
+    }
+    return updated;
+  }
+
+  unregisterDeletedDevice(
+    name: string,
+    host: string | undefined,
+  ): { readonly machines: readonly string[]; readonly runs: readonly string[] } {
+    const resolution = resolveProjectName(this.deps.workspaceRoot, this.deps.getConfig());
+    if (resolution.kind !== "resolved") {
+      return { machines: [], runs: [] };
+    }
+    const project = resolution.project;
+    const effectiveHost = host ?? "local";
+    // **全件を自分で走査する**。`delete-device` の finished.referencedBy には頼らない ——
+    // あれはマシンプロファイルしか見ず、しかも CLI 側のプロジェクト解決が外れると黙って空になる。
+    // 実体が消えた以上、(host, name) が一致する登録はどれも宙ぶらりんなので全部外す
+    // **順番は「参照する側」から**(2026-08-25 指示)。実行プロファイルはマシンプロファイルの台を
+    // 指すので、先にマシン側を消すと、途中で失敗したときに**実体もマシン登録も無い台を指す
+    // 実行プロファイル**が残る。参照する側から外せば、途中で止まっても残るのは
+    // 「マシンには居るがどこからも使われていない台」で害が小さい
+    const updatedRuns: string[] = [];
+    for (const run of listRunProfileNames(this.deps.workspaceRoot, project)) {
+      const runPath = path.join(this.runsDir(project), `${run}.json`);
+      try {
+        const parsed: unknown = JSON.parse(fs.readFileSync(runPath, "utf8"));
+        const removal = removeDeviceFromRunProfile(parsed, name, effectiveHost);
+        if (!removal || removal.removed === 0) {
+          continue;
+        }
+        fs.writeFileSync(runPath, `${JSON.stringify(removal.object, null, 2)}\n`, "utf8");
+        updatedRuns.push(run);
+      } catch (error) {
+        // 1つ失敗しても残りは続ける(N 個中1個の失敗を致命にしない)。理由は OUTPUT へ
+        this.deps.outputChannel.appendLine(
+          t("profiles.log.runProfileLoadFailed", { name: run, error: String(error) }),
+        );
+      }
+    }
+    const updatedMachines: string[] = [];
+    for (const machine of listMachineProfiles(this.deps.workspaceRoot, project).map((s) => s.name)) {
+      const machinePath = path.join(this.machinesDir(project), `${machine}.json`);
+      try {
+        const parsed: unknown = JSON.parse(fs.readFileSync(machinePath, "utf8"));
+        const removal = removeDevicesFromMachineProfile(parsed, [{ name, host }]);
+        if (!removal || removal.removed === 0) {
+          continue;
+        }
+        fs.writeFileSync(machinePath, `${JSON.stringify(removal.object, null, 2)}\n`, "utf8");
+        updatedMachines.push(machine);
+      } catch (error) {
+        this.deps.outputChannel.appendLine(
+          t("profiles.log.machineProfileLoadFailed", { name: machine, error: String(error) }),
+        );
+      }
+    }
+    if (updatedMachines.length > 0) {
+      this.postMachineProfileInfo();
+    }
+    return { machines: updatedMachines, runs: updatedRuns };
+  }
+
   async handleMachineDeviceRemove(
     machine: string,
     devices: readonly { readonly name: string; readonly host?: string }[],
@@ -860,6 +964,11 @@ export class MonitorProfilesController {
     if (choice !== removeLabel) {
       return;
     }
+    // **先に実行プロファイルから外す**(2026-08-25 指示)。実行プロファイルはマシンプロファイルの
+    // 台を指すので、マシン側を先に消すと「マシンに居ない台を指す実行プロファイル」が生まれ、
+    // 次の run が落ちるまで気付けない。対象は**このマシンプロファイルを使う実行プロファイルだけ**
+    // (別のマシンプロファイルにも同じ台が居る構成があるため、machine 一致で絞る)
+    const removedFromRuns = this.removeDevicesFromRunProfilesOfMachine(project, machine, devices);
     const machinePath = path.join(this.machinesDir(project), `${machine}.json`);
     try {
       let parsed: unknown;
@@ -903,6 +1012,14 @@ export class MonitorProfilesController {
           names: names.join("、"),
         }),
       );
+      if (removedFromRuns.length > 0) {
+        this.deps.outputChannel.appendLine(
+          t("profiles.log.runProfileDevicesRemoved", {
+            names: names.join("、"),
+            profiles: removedFromRuns.join("、"),
+          }),
+        );
+      }
       // FileSystemWatcher(onDidChange)経由でも postMachineProfileInfo() が呼ばれるが、
       // 反映を待たせないようここでも明示的に呼ぶ(冪等)。
       this.postMachineProfileInfo();
@@ -1014,6 +1131,19 @@ export class MonitorProfilesController {
       return;
     }
 
+    // **登録を外す台は、先に実行プロファイルからも外す**(2026-08-25 指示)。
+    // マシン側を先に書くと「マシンに居ない台を指す実行プロファイル」が生まれ、
+    // 次の run が落ちるまで気付けない(handleMachineDeviceRemove と同じ規律)。
+    // 対象はこのマシンプロファイルを使う実行プロファイルだけ
+    const removedHost = message.source.kind === "remote" ? message.source.host : "local";
+    const removedFromRuns = message.remove.length > 0
+      ? this.removeDevicesFromRunProfilesOfMachine(
+          resolution.project,
+          message.machine,
+          message.remove.map((name) => ({ name, host: removedHost })),
+        )
+      : [];
+
     try {
       fs.writeFileSync(machinePath, `${JSON.stringify(result.object, null, 2)}\n`, "utf8");
     } catch (error) {
@@ -1034,6 +1164,14 @@ export class MonitorProfilesController {
         removeList: message.remove.length > 0 ? message.remove.join("、") : noneLabel,
       }),
     );
+    if (removedFromRuns.length > 0) {
+      this.deps.outputChannel.appendLine(
+        t("profiles.log.runProfileDevicesRemoved", {
+          names: message.remove.join("、"),
+          profiles: removedFromRuns.join("、"),
+        }),
+      );
+    }
     sendResult(true, result.added.length, result.removed, null);
     // FileSystemWatcher 経由でも呼ばれるが、反映を待たせないようここでも明示的に呼ぶ
     // (handleMachineDeviceRemove と同じ理由)。

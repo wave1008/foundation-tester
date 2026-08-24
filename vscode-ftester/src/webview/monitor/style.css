@@ -1489,10 +1489,21 @@ input[type="text"]::placeholder {
 }
 .device-pick-group-title {
   flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
   padding: 6px 10px;
   font-size: 12px;
   font-weight: 600;
   color: var(--vscode-descriptionForeground);
+}
+/* 「デバイスを作成 +」は見出しの右端へ。ラベルと「+」は1組(間を詰める) */
+.device-pick-group-title .device-pick-add-label {
+  margin-left: auto;
+  font-weight: 400;
+}
+.device-pick-group-title .icon-button {
+  margin-left: -2px;
 }
 .device-pick-group-body {
   flex: 1 1 auto;
@@ -1575,14 +1586,6 @@ input[type="text"]::placeholder {
 /* 見出しとホストの間だけ広く空ける(全角2文字ぶん)。見出しに続けて読ませたくないため */
 .device-pick-title-row #device-pick-title {
   margin-right: 2em;
-}
-.device-pick-title-row .device-pick-add-label {
-  margin-left: auto;
-  color: var(--vscode-descriptionForeground);
-}
-/* ラベルと「+」は1組。間を詰めて、どのボタンの説明かを見て分かるようにする */
-.device-pick-title-row .device-pick-add-label + #device-pick-add-new {
-  margin-left: -6px;
 }
 .device-pick-host-group {
   display: flex;

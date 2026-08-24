@@ -63,8 +63,8 @@ function post(window, data) {
   window.dispatchEvent(new window.MessageEvent("message", { data }));
 }
 
-/** モーダルは #device-pick-overlay の「+」からしか開かないので、その導線をたどる */
-function openDeviceAddModal(window, document) {
+/** モーダルは #device-pick-overlay のグループ見出しの「+」からしか開かないので、その導線をたどる */
+function openDeviceAddModal(window, document, platform = "ios") {
   post(window, {
     type: "machineProfileInfo",
     machines: [{ name: "M1", devices: [] }],
@@ -72,7 +72,8 @@ function openDeviceAddModal(window, document) {
     error: null,
   });
   document.getElementById("btn-device-add-existing").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-  document.getElementById("device-pick-add-new").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  document.getElementById(`device-pick-${platform}-add-new`)
+    .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 }
 
 function switchTo(window, document, platform) {
@@ -361,4 +362,41 @@ test("error が無くても両リストが空なら OK は無効(理由は既定
   assert.equal(document.getElementById("dlg-error").textContent,
     "この OS 種別で選べるモデル/OSバージョンがありません。");
   assert.equal(document.getElementById("dlg-ok").disabled, true);
+});
+
+test("グループ見出しの「+」は押した側の OS 種別で開く(右上の「+」は廃止)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  assert.equal(document.getElementById("device-pick-add-new"), null, "右上の「+」は無い");
+
+  openDeviceAddModal(window, document, "android");
+  applyCatalog(window, readyCatalog());
+  assert.equal(document.getElementById("dlg-platform-android").checked, true, "Android で開く");
+  assert.equal(document.getElementById("dlg-service-row").hidden, false, "Android の行が出ている");
+});
+
+test("iOS 見出しの「+」は iOS で開く(前回 Android で開いた後でも)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  openDeviceAddModal(window, document, "android");
+  applyCatalog(window, readyCatalog());
+  document.getElementById("dlg-cancel").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+
+  document.getElementById("device-pick-ios-add-new").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  applyCatalog(window, readyCatalog());
+  assert.equal(document.getElementById("dlg-platform-ios").checked, true, "iOS で開く");
+  assert.equal(document.getElementById("dlg-service-row").hidden, true, "Android の行は隠れる");
+});
+
+test("選べない OS 種別の「+」は、使える側へ倒れる(カタログ受信後の可用性が優先)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  openDeviceAddModal(window, document, "android");
+  const catalog = readyCatalog();
+  catalog.android.available = false;
+  applyCatalog(window, catalog);
+  assert.equal(document.getElementById("dlg-platform-ios").checked, true, "iOS へ倒れる");
 });

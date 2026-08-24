@@ -191,6 +191,10 @@ export const deviceOpsStrings = {
     ja: "[ftester] delete-device({name})の起動に失敗しました: {error}",
     en: "[ftester] Failed to start delete-device({name}): {error}",
   },
+  "deviceOps.log.deleteDeviceUnregistered": {
+    ja: "[ftester] {name}をマシンプロファイルから外しました: {profiles}",
+    en: "[ftester] Unregistered {name} from machine profile(s): {profiles}",
+  },
   "deviceOps.log.deleteDeviceSucceeded": {
     ja: "[ftester] delete-device({name})が完了しました。",
     en: "[ftester] delete-device({name}) finished.",

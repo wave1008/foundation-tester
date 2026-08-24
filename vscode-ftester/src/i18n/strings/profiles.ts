@@ -160,6 +160,10 @@ export const profilesStrings = {
     ja: "実行プロファイル「{name}」を読み込めませんでした。",
     en: "Could not load run profile \"{name}\".",
   },
+  "profiles.log.runProfileDevicesRemoved": {
+    ja: "[ftester] {names}を実行プロファイルからも外しました: {profiles}",
+    en: "[ftester] Also removed {names} from run profile(s): {profiles}",
+  },
   "profiles.log.runProfileLoadFailed": {
     ja: "[ftester] 実行プロファイル「{name}」の読み込みに失敗しました: {error}",
     en: "[ftester] Failed to load run profile \"{name}\": {error}",

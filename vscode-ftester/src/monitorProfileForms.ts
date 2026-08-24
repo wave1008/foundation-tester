@@ -905,8 +905,20 @@ export function isCreateDeviceEvent(value: unknown): value is CreateDeviceEvent 
  * ホスト上の実体[シミュレータ/AVD]を直接消すだけで、どのマシンプロファイルが参照しているかは
  * finished イベントの referencedBy で返ってくる)。
  */
-export function deleteDeviceApiArgs(platform: MonitorPlatform, identifier: string): string[] {
-  return ["api", "delete-device", "--platform", platform, platform === "ios" ? "--udid" : "--avd", identifier];
+export function deleteDeviceApiArgs(
+  platform: MonitorPlatform,
+  identifier: string,
+  project?: string,
+): string[] {
+  const args = ["api", "delete-device", "--platform", platform,
+                platform === "ios" ? "--udid" : "--avd", identifier];
+  // **解決済みのプロジェクト名を必ず渡す**。省略すると CLI 側は「TestProjects/ に1つだけなら
+  // それ、無ければ既定」で推測し、複数プロジェクトがあると解決できず referencedBy が
+  // 黙って空になる(= 参照が残っている警告が出なくなる)
+  if (project !== undefined && project !== "") {
+    args.push("--project", project);
+  }
+  return args;
 }
 
 export interface DeleteDeviceLogEvent {
@@ -1085,6 +1097,75 @@ export function removeDeviceFromMachineProfile(
   }
 
   return { object: result, removed };
+}
+
+/**
+ * runs/<name>.json の devices[] から (host, name) が一致するエントリを取り除いた新オブジェクトを
+ * 返す(未知キー保持)。**実体を消したあとの後始末専用** —— 実行プロファイルが指す台が消えると
+ * run はその台を起動できずに落ちるので、台帳から外す。
+ *
+ * マシンプロファイルと形が違う: 実行プロファイルの devices は ios/android で分かれておらず
+ * 平らな配列で、host は各エントリが持つ(省略は "local")。そのため専用の関数にする。
+ * 非オブジェクトなら null(「不正なファイル」)、removed は取り除いた件数。
+ */
+export function removeDeviceFromRunProfile(
+  profileObject: unknown,
+  name: string,
+  host: string,
+): { readonly object: Record<string, unknown>; readonly removed: number } | null {
+  if (typeof profileObject !== "object" || profileObject === null || Array.isArray(profileObject)) {
+    return null;
+  }
+  const source = profileObject as Record<string, unknown>;
+  const devices = source.devices;
+  if (!Array.isArray(devices)) {
+    return { object: { ...source }, removed: 0 };
+  }
+  const filtered = devices.filter((device) => {
+    if (typeof device !== "object" || device === null || Array.isArray(device)) {
+      return true; // 型不正の要素はこの操作の対象外として保持する
+    }
+    const record = device as Record<string, unknown>;
+    if (record.name !== name) {
+      return true;
+    }
+    const entryHost = typeof record.host === "string" && record.host !== "" ? record.host : "local";
+    return entryHost !== host;
+  });
+  if (filtered.length === devices.length) {
+    return { object: { ...source }, removed: 0 };
+  }
+  return { object: { ...source, devices: filtered }, removed: devices.length - filtered.length };
+}
+
+/**
+ * `machine` を使う実行プロファイルからだけ devices の (host, name) 一致を取り除く
+ * (machine が違えば removed:0 でそのまま返す)。**マシンプロファイルの登録を外す前に呼ぶ** ——
+ * 参照する側から外さないと「マシンに居ない台を指す実行プロファイル」が残る。
+ * 非オブジェクトなら null(「不正なファイル」)。
+ */
+export function removeDevicesFromRunProfileOfMachine(
+  profileObject: unknown,
+  machine: string,
+  devices: readonly { readonly name: string; readonly host?: string }[],
+): { readonly object: unknown; readonly removed: number } | null {
+  if (typeof profileObject !== "object" || profileObject === null || Array.isArray(profileObject)) {
+    return null;
+  }
+  if ((profileObject as Record<string, unknown>).machine !== machine) {
+    return { object: profileObject, removed: 0 };
+  }
+  let current: unknown = profileObject;
+  let removed = 0;
+  for (const device of devices) {
+    const result = removeDeviceFromRunProfile(current, device.name, device.host ?? "local");
+    if (!result) {
+      return null;
+    }
+    current = result.object;
+    removed += result.removed;
+  }
+  return { object: current, removed };
 }
 
 /**

@@ -122,7 +122,7 @@ test("host 未設定のマシンは既定でローカル(installedDevicesRequest
   assertLocalSource(installedReq.source);
   assert.equal(document.getElementById("device-pick-host-select").value, "");
 
-  document.getElementById("device-pick-add-new").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  document.getElementById("device-pick-ios-add-new").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
   const catalogReq = posted.find((m) => m.type === "deviceCatalogRequest");
   assertLocalSource(catalogReq.source);
 });
@@ -139,7 +139,7 @@ test("マシンの host が登録済みホスト名なら、それが初期値�
   const installedReq = posted.find((m) => m.type === "installedDevicesRequest");
   assertRemoteSource(installedReq.source, "M1Max");
 
-  document.getElementById("device-pick-add-new").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  document.getElementById("device-pick-ios-add-new").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
   const catalogReq = posted.find((m) => m.type === "deviceCatalogRequest");
   assertRemoteSource(catalogReq.source, "M1Max");
 });
@@ -180,14 +180,14 @@ test("ホストバッジ(#device-add-source-badge)に現在の選択が出る", 
 
   // ローカルのまま: バッジは「ローカル」
   openDevicePickModal(window, document, { name: "M1", devices: [] });
-  document.getElementById("device-pick-add-new").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  document.getElementById("device-pick-ios-add-new").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
   assert.equal(document.getElementById("device-add-source-badge").textContent, "ホスト: ローカル");
   document.getElementById("dlg-cancel").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
   document.getElementById("device-pick-cancel").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 
   // host: M1Max のマシンを開き直す: バッジは「M1Max」
   openDevicePickModal(window, document, { name: "M1", devices: [], host: "M1Max" });
-  document.getElementById("device-pick-add-new").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  document.getElementById("device-pick-ios-add-new").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
   assert.equal(document.getElementById("device-add-source-badge").textContent, "ホスト: M1Max");
 });
 
