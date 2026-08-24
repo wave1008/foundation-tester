@@ -2,6 +2,7 @@
 // 蓄積する。閾値(metalErrorWarnThreshold)調整・劣化速度分析用。書き込みは observeIssues
 // からのみ(呼び出し頻度契約は AndroidHealthProbe.swift 側のコメント参照)。
 
+import FTCore
 import Foundation
 
 public enum MetalErrorHistory {

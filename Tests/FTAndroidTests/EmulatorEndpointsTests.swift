@@ -2,6 +2,7 @@
 // FT_LIVE_EMULATOR=1 のときだけ、稼働中エミュレータへの実 gRPC スモーク(getStatus/screenshot)も回す。
 
 import XCTest
+import FTCore  // EmulatorLog(パス契約は FTCore に居る — RunOrchestrator が離脱理由に使うため)
 import FTEmulatorGrpc
 @testable import FTAndroid
 import FTTestSupport

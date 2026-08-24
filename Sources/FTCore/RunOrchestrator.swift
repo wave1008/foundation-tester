@@ -1062,8 +1062,13 @@ public final class RunOrchestrator {
             if unusableReason == nil, outcome == .failed, worker.platform == "android",
                let serial = worker.connection.serial {
                 if await deviceUnreachable(serial) {
-                    // 消失判定(adb devices)は実機でも有効。USB 抜け・WiFi 断の検知に使える
+                    // 消失判定(adb devices)は実機でも有効。USB 抜け・WiFi 断の検知に使える。
+                    // **エミュレータなら自分のログを名指しする** —— qemu 自身が FATAL 終了した
+                    // ときの理由(Vulkan 等)はこのログの末尾にしか出ず、案内が無いと
+                    // DiagnosticReports 側を掘る遠回りになる(受け手報告 2026-08-24)
                     unusableReason = "the device disappeared (offline/not found)"
+                        + (worker.connection.physical ? ""
+                           : EmulatorLog.dropoutHint(deviceName: worker.connection.deviceName))
                 } else if !worker.connection.physical, await deviceFrozen(serial) {
                     // 凍結判定はエミュレータ限定(閾値が解像度依存。ProfileWorkerFactory の
                     // excludeOrRepairBlankScreenWorkers と同じ理由)
