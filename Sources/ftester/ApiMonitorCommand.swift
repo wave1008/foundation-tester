@@ -192,7 +192,12 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                     emitLine(ApiMonitorDevicesEvent(devices: Self.mergedDevices(
                         listedTargets: listedTargets, observed: held,
                         remote: fanout?.snapshot() ?? [:])))
-                    await Self.sleepInterruptible(seconds: Self.pausedPollSeconds, stop: stop)
+                    // **interval で寝る(pausedPollSeconds を使わない)** —— あの 0.2s は
+                    // pause 分岐が emit せずに resume を素早く検知するための値で、emit を伴う
+                    // このループへ流用すると 0.2s ごとに全台ぶんの devices を出し続ける
+                    // (受け手の無人計測 = 数十分で数千イベントの洪水。2026-08-24 実害)。
+                    // resume の反映が最大 interval 秒遅れるのは許容(既定 2s)
+                    await Self.sleepInterruptible(seconds: max(interval, 1), stop: stop)
                     continue
                 }
             }
