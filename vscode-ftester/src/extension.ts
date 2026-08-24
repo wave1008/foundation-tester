@@ -28,6 +28,7 @@ import { registerReportCodeLens } from "./reportCodeLens";
 import { RunEventBus } from "./runEventBus";
 import { isRunActive, registerRunHandler } from "./runHandler";
 import { registerStepsView } from "./stepsView";
+import { createTimestampedAppender } from "./timestampedOutput";
 import { FtesterTestTree, unhideAllTests } from "./testTree";
 import { checkFtesterUpdate, checkFtesterUpdateNow } from "./updateCheck";
 import { ScenarioFileWatcher } from "./watcher";
@@ -36,8 +37,20 @@ export function activate(context: vscode.ExtensionContext): void {
   // UI 文字列の locale を確定してから各コンポーネントを組み立てる(以降の t() が正しい言語を返す)。
   initI18n();
 
-  const outputChannel = vscode.window.createOutputChannel("ftester");
-  context.subscriptions.push(outputChannel);
+  // **全行に時刻を付ける**(timestampedOutput.ts が唯一の定義元)。呼び出し側は appendLine の
+  // ままなので、ライフサイクル行を足すたびに付け忘れることがない。dispose 等は素通しする
+  const rawOutputChannel = vscode.window.createOutputChannel("ftester");
+  context.subscriptions.push(rawOutputChannel);
+  const appendTimestamped = createTimestampedAppender(rawOutputChannel);
+  const outputChannel = new Proxy(rawOutputChannel, {
+    get(target, prop, receiver) {
+      if (prop === "appendLine") {
+        return appendTimestamped;
+      }
+      const value = Reflect.get(target, prop, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
 
   // 孤児化した常駐プロセス(reload window 等で拡張ホストが即死し PPID=1 になったもの)の掃除。
   // best-effort・fire-and-forget(失敗しても activate を止めない。orphanSweep.ts 参照)。
