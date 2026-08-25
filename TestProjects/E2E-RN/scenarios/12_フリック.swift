@@ -1,5 +1,5 @@
 // 12_フリック.swift
-// ftester 機能: flick(画面基点の生ジェスチャ)8方向がスクロール容器と横カルーセルを実際に動かす。
+// fleetest 機能: flick(画面基点の生ジェスチャ)8方向がスクロール容器と横カルーセルを実際に動かす。
 // installApp/removeApp/tapAppIcon は意図的にここへ含めない(removeApp は自 SUT を消すと以降のシナリオと
 // in-app ブリッジが壊れる。tapAppIcon はホーム画面依存で flake リスクが高く実行での検証は別途行う)。
 //

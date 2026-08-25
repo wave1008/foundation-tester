@@ -415,14 +415,14 @@ final class PhysicalSafariInspectorTests: XCTestCase {
     /// 作れるか。実機の鍵の代わりに openssl でその場生成した自己署名鍵を使う —— 形式
     /// (PEM 証明書 + PEM 秘密鍵)が同じなので、実機無しでもインポート経路そのものを検証できる
     func testImportIdentityFromASelfSignedKeyPair() throws {
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("ftester-test-\(UUID().uuidString)")
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("fleetest-test-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
         let keyPath = dir.appendingPathComponent("key.pem").path
         let certPath = dir.appendingPathComponent("cert.pem").path
         let generated = try Shell.run(["openssl", "req", "-x509", "-newkey", "ec", "-pkeyopt",
                                        "ec_paramgen_curve:prime256v1", "-nodes", "-keyout", keyPath,
-                                       "-out", certPath, "-days", "1", "-subj", "/CN=ftester-test"])
+                                       "-out", certPath, "-days", "1", "-subj", "/CN=fleetest-test"])
         try XCTSkipUnless(generated.status == 0, "openssl が使えない環境: \(generated.tail)")
 
         let certData = try Data(contentsOf: URL(fileURLWithPath: certPath))
@@ -456,7 +456,7 @@ final class PhysicalSafariInspectorTests: XCTestCase {
                           + "\(device.name) / \(device.udid), \(elapsedMs)ms)")
         }
         let nodeCount = payload.nodes?.count ?? 0
-        print("ftester [live physical]: \(device.name) (\(device.udid)) から DOM を読めた — "
+        print("fleetest [live physical]: \(device.name) (\(device.udid)) から DOM を読めた — "
               + "\(nodeCount) nodes, \(elapsedMs)ms")
         XCTAssertGreaterThan(nodeCount, 0)
     }

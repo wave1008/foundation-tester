@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
-# ftester の git タグ(semver)を発行するリリースヘルパー(版ピン用)。
+# fleetest の git タグ(semver)を発行するリリースヘルパー(版ピン用)。
 #
 # このタグは特定版に固定したい受け手が参照する:
-#   受け手: git checkout <version>(clone 後)/ ftester init --ftester-version <version>
+#   受け手: git checkout <version>(clone 後)/ fleetest init --fleetest-version <version>
 # タグは SPM が解釈できる semver(v プレフィックス無し。例 0.1.0)。
 #
 # 使い方:
@@ -11,8 +11,8 @@
 #   Scripts/release.sh 0.1.0 --push     # 上記に加えて origin へ push(= 公開)
 #
 # 版の関係(docs/releasing.md 参照):
-#   - この git タグ         = 版ピン用のタグ(clone/checkout や ftester init --ftester-version が参照)
-#   - vscode-ftester/package.json の version = 拡張(VSIX)の版(別系統・別途 publish)
+#   - この git タグ         = 版ピン用のタグ(clone/checkout や fleetest init --fleetest-version が参照)
+#   - vscode-fleetest/package.json の version = 拡張(VSIX)の版(別系統・別途 publish)
 #   - Sources/FTCore/ProtocolVersion.swift   = 拡張↔CLI プロトコル版(契約非互換時のみ +1)
 set -euo pipefail
 
@@ -49,7 +49,7 @@ swift build
 echo "==> swift test"
 swift test
 
-git tag -a "$VERSION" -m "ftester $VERSION"
+git tag -a "$VERSION" -m "fleetest $VERSION"
 echo "✅ タグ $VERSION を作成しました(HEAD: $(git rev-parse --short HEAD))"
 
 if [[ "$PUSH" == "--push" ]]; then

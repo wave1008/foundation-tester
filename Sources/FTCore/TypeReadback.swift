@@ -2,7 +2,7 @@
 // XCUITest ランナー /type の読み返し判定(純粋ロジック)。
 // 実行系は BridgeRouter.handleType(Runner は SPM ターゲットではなく単体テストできないため、
 // 判定だけをここへ切り出して FTCoreTests でテストする)。
-// Runner/project.yml の FTesterRunnerUITests.sources と BridgeSourceSet.xcuitest の
+// Runner/project.yml の FleetestRunnerUITests.sources と BridgeSourceSet.xcuitest の
 // 両方に載せること(片方だけ変えない)。Foundation のみに依存すること。
 
 import Foundation

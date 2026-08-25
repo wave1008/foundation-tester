@@ -1,6 +1,6 @@
 // TransferIgnore.swift
 // `--host` ディスパッチの転送(rsync)から外すパスを、転送対象のツリーの中の
-// `.ftester-transfer-ignore` で宣言する口(docs/remote-runner.md §17「転送から外す」)。
+// `.fleetest-transfer-ignore` で宣言する口(docs/remote-runner.md §17「転送から外す」)。
 //
 // rsync 自身にも同じ機構(`-F` = dir-merge `.rsync-filter`)があるのに自前で読む理由:
 // **macOS 標準の rsync(openrsync)では dir-merge の規則が `--delete` から受け側を守らない**
@@ -8,7 +8,7 @@
 // なら守る(同日、M1Max への ssh 越しでも確認: 除外パスは送られず・受け側の既存ファイルは
 // 残り・除外していない残骸だけ消えた)。受け手の実害は「ランナー機の台帳が手元の内容で
 // 上書きされる」なので、**送らないだけでなく向こうの物を消さない**ことが要件。
-// よってファイルは ftester が読み、すべて `--exclude` に翻訳して渡す。
+// よってファイルは fleetest が読み、すべて `--exclude` に翻訳して渡す。
 //
 // 翻訳の規則(rsync の `--exclude` の書き方をそのまま、**ファイルを置いたディレクトリ起点**で
 // 読む = dir-merge と同じ感覚):
@@ -26,7 +26,7 @@ import Foundation
 
 public enum TransferIgnore {
 
-    public static let fileName = ".ftester-transfer-ignore"
+    public static let fileName = ".fleetest-transfer-ignore"
 
     /// 1回の転送で読んだ結果。`files` は転送ルートからの相対パス(ログ表示・テスト用)、
     /// `excludePatterns` は rsync の `--exclude` へそのまま渡す
@@ -58,7 +58,7 @@ public enum TransferIgnore {
         return out
     }
 
-    /// 転送ルート配下の `.ftester-transfer-ignore` を全部読む。`skipTopLevel` は転送が除外する
+    /// 転送ルート配下の `.fleetest-transfer-ignore` を全部読む。`skipTopLevel` は転送が除外する
     /// ルート直下の名前(そこは送られないので読まない)、`skipAnywhere` は階層を問わず除外する
     /// 名前(同じ理由 + `.git`/`node_modules` の走査を払わない)。`.app` 等のパッケージの中は
     /// 歩かない(`workspace/apps/` のステージング済みバンドルは数千ファイル)。見つけた順は

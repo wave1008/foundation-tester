@@ -37,7 +37,7 @@ expectation {
   [`irregularHandler`](./irregular_handler.md) covers the target element, `ifCanSelect` closes
   it first and then judges — otherwise a covered element would silently read as "not found" and
   the scenario would take the wrong branch instead of failing loudly.
-- foundation-tester does not have Shirates's `ifTrue` / `ifFalse` / `ifScreenIs` family.
+- fleetest does not have Shirates's `ifTrue` / `ifFalse` / `ifScreenIs` family.
   Branching is deliberately kept to two forms: plain Swift `if` (for values you already read)
   and `ifCanSelect` (for "is this on screen").
 - `ios { }` / `android { }` are for scenarios shared between both platforms where a small piece

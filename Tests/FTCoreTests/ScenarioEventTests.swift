@@ -1,4 +1,4 @@
-// NDJSON イベントの直列化。ftester-scenarios(サブプロセス)→ ホスト(CLI/MCP)→ VSCode 拡張の
+// NDJSON イベントの直列化。fleetest-scenarios(サブプロセス)→ ホスト(CLI/MCP)→ VSCode 拡張の
 // 3者が行単位で読む唯一の経路で、ここが崩れると実行中の表示が丸ごと壊れる。
 // これまで encodedLine/decode は FMHealthTests が fm フィールドのついでに1回通すだけだった。
 
@@ -107,7 +107,7 @@ final class ScenarioEventTests: XCTestCase {
     // MARK: - status 語彙
 
     /// status 文字列は拡張側 model.ts の StepStatus と同じ集合でなければならない
-    /// (集合そのものの照合は vscode-ftester/test/stepStatusSync.test.mjs)
+    /// (集合そのものの照合は vscode-fleetest/test/stepStatusSync.test.mjs)
     func testEventStatusVocabulary() {
         let locator = FlowLocator(id: "ok")
         XCTAssertEqual(StepResult.Status.passed.eventStatus.status, "passed")

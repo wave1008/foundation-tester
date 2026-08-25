@@ -65,7 +65,7 @@ public enum AndroidSerialResolver {
 
     public static let noDeviceMessage =
         "no Android device is connected (`adb devices` lists none)."
-        + " Start an emulator with `ftester devices up`, or connect a device with USB debugging enabled."
+        + " Start an emulator with `fleetest devices up`, or connect a device with USB debugging enabled."
 
     public static func ambiguousMessage(_ devices: [Device]) -> String {
         "several Android devices are connected: \(devices.map(\.label).joined(separator: ", "))."

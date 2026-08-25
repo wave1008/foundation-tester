@@ -13,8 +13,8 @@ final class PackageManifestEditorTests: XCTestCase {
         name: "fixture",
         targets: [
             .target(name: "Core"),
-            // === ftester projects begin(ftester project create/sync が自動生成。手編集禁止)===
-            // === ftester projects end ===
+            // === fleetest projects begin(fleetest project create/sync が自動生成。手編集禁止)===
+            // === fleetest projects end ===
             .testTarget(name: "CoreTests"),
         ]
     )
@@ -36,7 +36,7 @@ final class PackageManifestEditorTests: XCTestCase {
         try PackageManifestEditor.updateProjects(
             manifestURL: manifestURL, projectNames: ["SampleApp", "Demo"], verify: false)
         let content = try String(contentsOf: manifestURL, encoding: .utf8)
-        XCTAssertTrue(content.contains(#"name: "ftester-scenarios-SampleApp""#))
+        XCTAssertTrue(content.contains(#"name: "fleetest-scenarios-SampleApp""#))
         XCTAssertTrue(content.contains(#"path: "TestProjects/Demo/scenarios""#))
         XCTAssertTrue(content.contains(#"exclude: ["_disabled"]"#))
         XCTAssertTrue(content.contains(".target(name: \"Core\"),"))
@@ -54,7 +54,7 @@ final class PackageManifestEditorTests: XCTestCase {
             manifestURL: manifestURL, projectNames: [], verify: false)
         XCTAssertEqual(try PackageManifestEditor.registeredProjects(manifestURL: manifestURL), [])
         XCTAssertFalse(try String(contentsOf: manifestURL, encoding: .utf8)
-            .contains("ftester-scenarios-"))
+            .contains("fleetest-scenarios-"))
     }
 
     func testMarkersMissingThrows() throws {

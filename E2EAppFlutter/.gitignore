@@ -44,7 +44,7 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
-# ftester 自身の SUT のビルド成果物(配布はソースビルド前提)
+# fleetest 自身の SUT のビルド成果物(配布はソースビルド前提)
 dist/
 
 # xcodebuild の derivedData(scripts/build-ios.sh)。旧版が ios/build-ios へ出していたため保険で残す

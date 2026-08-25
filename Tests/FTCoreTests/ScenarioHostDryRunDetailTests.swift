@@ -1,8 +1,8 @@
 // dry-run 失敗時の本文組み立て(ScenarioHost.dryRunFailureDetail)の検証。
 // 実害(2026-07-28): 失敗理由は step イベントの detail に載るのに message(kind == log =
 // 利用者の print 専用)だけを見ていたため、セレクタの構文エラーのように利用者が何も print
-// しない失敗では `ftester api steps` が「dry-run が失敗しました」しか出さなかった
-// (同じシナリオを ftester run で流すと本文が出るので、api steps だけ原因が読めなかった)。
+// しない失敗では `fleetest api steps` が「dry-run が失敗しました」しか出さなかった
+// (同じシナリオを fleetest run で流すと本文が出るので、api steps だけ原因が読めなかった)。
 
 import XCTest
 @testable import FTCore

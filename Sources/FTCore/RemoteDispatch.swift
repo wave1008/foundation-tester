@@ -1,6 +1,6 @@
 // RemoteDispatch.swift
-// `ftester run --host` (docs/remote-runner.md §3・§7・Phase 1) の純粋ロジック。
-// プロセス起動・ネットワーク I/O はここに置かない(呼び出し側 = Sources/ftester/RemoteRunDispatcher.swift)。
+// `fleetest run --host` (docs/remote-runner.md §3・§7・Phase 1) の純粋ロジック。
+// プロセス起動・ネットワーク I/O はここに置かない(呼び出し側 = Sources/fleetest/RemoteRunDispatcher.swift)。
 
 import Foundation
 
@@ -95,7 +95,7 @@ public enum RemoteCompat {
             return "This machine is behind the runner: update yourself (Scripts/update.sh, or git pull + rebuild)"
                 + " — do NOT align the runner backward to match (pinned deployment; docs/remote-runner.md §18.3)."
         case .remoteBehind:
-            return "The runner is behind: update it with `ftester remote align <host>`"
+            return "The runner is behind: update it with `fleetest remote align <host>`"
                 + " (for a fleet, verify on one host first per the §16.6 canary procedure, then roll out to the rest)."
         case .diverged:
             return "Local and runner revisions have diverged (branch work) — a shared runner cannot track"
@@ -165,7 +165,7 @@ public struct RemoteLayout: Equatable, Sendable {
     /// 発行者ごとの WORK_DIR(§18.2)。rsync --delete・results・録画の混線を
     /// ネームスペースで構造的に消す(旧 `<base>/work` は移行期の掃除対象としてのみ RemoteCleanPlan が触る)
     public var workDir: String { base + "/users/" + issuer + "/work" }
-    public var binary: String { toolRoot + "/.build/debug/ftester" }
+    public var binary: String { toolRoot + "/.build/debug/fleetest" }
     /// clean の横断走査(全発行者の work を列挙する)専用
     public var usersDir: String { base + "/users" }
 
@@ -189,7 +189,7 @@ public struct RemoteLayout: Equatable, Sendable {
     /// ディスパッチ1回分の隔離先(reports のみ。回収後にリモート側で削除する
     /// = RemoteRunDispatcher.cleanupDispatchDir)。stamp は呼び出し側が一意に払い出す
     public func dispatchReportDir(stamp: String) -> String {
-        workDir + "/.ftester/dispatch/" + stamp + "/reports"
+        workDir + "/.fleetest/dispatch/" + stamp + "/reports"
     }
 
     /// `--remote-dir` として受け付ける文字種。**`$` とバッククォートを弾くのが要点** —
@@ -218,17 +218,17 @@ public struct RemoteLayout: Equatable, Sendable {
         guard !raw.isEmpty, raw.unicodeScalars.allSatisfy(allowedIssuerCharacters.contains) else {
             throw RemoteDispatchError.invalidIssuer(
                 "\"\(raw)\" — must be non-empty and contain only letters, digits and @ . _ -"
-                + " (set issuerId in ~/.config/ftester/config.json)")
+                + " (set issuerId in ~/.config/fleetest/config.json)")
         }
     }
 
-    /// `--remote-dir` の生値(既定 "~/ftester-runner")を絶対パスへ解決する。チルダはリモートの
+    /// `--remote-dir` の生値(既定 "~/fleetest-runner")を絶対パスへ解決する。チルダはリモートの
     /// シェルが展開するものであり、ここではローカルで文字列として畳み込む(ssh 越しの `$HOME`
     /// 展開に頼るとコマンド合成が複雑になるため、呼び出し側が事前に1回 `echo $HOME` で取得した
     /// 値をここに渡す)。空/空白のみは既定値にフォールバックする
     public static func resolveBase(_ raw: String, home: String) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        let value = trimmed.isEmpty ? "~/ftester-runner" : trimmed
+        let value = trimmed.isEmpty ? "~/fleetest-runner" : trimmed
         let strippedHome = stripTrailingSlash(home)
         if value == "~" {
             return strippedHome
@@ -250,12 +250,12 @@ public enum RemoteTransferPlan {
 
     /// プロジェクト転送がルート直下で除外する名前(成果物側。実行のたびにリモートで再生成される・
     /// 回収は別経路)。rsyncArgs の `--exclude /<名前>` と projectIgnore の走査の両方がこれを使う
-    public static let projectTopLevelExcludes = ["reports", "results", ".ftester"]
+    public static let projectTopLevelExcludes = ["reports", "results", ".fleetest"]
     /// ワークスペースのミラーが階層を問わず除外する名前(.git = ワークスペース自体を git 管理する
     /// ケース / .DS_Store・node_modules = ビルドツール類の一時生成物)
     public static let workspaceExcludesAnywhere = [".git", ".DS_Store", "node_modules"]
 
-    /// プロジェクト転送の対象ツリーにある `.ftester-transfer-ignore` を読む(rsyncArgs の `ignore`
+    /// プロジェクト転送の対象ツリーにある `.fleetest-transfer-ignore` を読む(rsyncArgs の `ignore`
     /// に渡す)。**3つの呼び手(run のディスパッチ・モニター/デバイスの fan-out・ミラー)が
     /// 同じ走査を使う** —— 片方だけ読まないと「run では残るのに fan-out の転送で台帳が消える」になる
     public static func projectIgnore(project: String, localProjectsDir: String) -> TransferIgnore.Scan {
@@ -538,7 +538,7 @@ public enum WaitLockPolling {
 
 public enum RemoteRunArgs {
 
-    /// リモートで実行する `ftester run` の引数列("ftester" 自体は含まない)。reportDir は
+    /// リモートで実行する `fleetest run` の引数列("fleetest" 自体は含まない)。reportDir は
     /// ディスパッチ単位の隔離先(non-nil のときのみ付与。RemoteRunDispatcher が常に渡す)
     public static func build(project: String, profile: String,
                              scenarios: [String], folders: [String],
@@ -548,7 +548,7 @@ public enum RemoteRunArgs {
                              broadcast: Bool = false,
                              remoteJUnitPath: String?,
                              reportDir: String?, workspace: String? = nil) -> [String] {
-        // **リモート側は必ず「ここで走らせる」**(--host local)。省略すると、向こうの ftester が
+        // **リモート側は必ず「ここで走らせる」**(--host local)。省略すると、向こうの fleetest が
         // 転送されたマシンプロファイルの host(= 自分のはずのホスト名)を読んで**もう一度
         // ディスパッチしようとする** —— 登録簿に無ければ「未登録のホスト」で落ち、あれば
         // 自分自身へ ssh する。"local" は MachineHostDispatch.resolve が明示指定として止める
@@ -584,7 +584,7 @@ public enum RemoteRunArgs {
         return args
     }
 
-    /// リモートで実行する `ftester api run` の引数列("ftester" 自体は含まない)。JUnit は
+    /// リモートで実行する `fleetest api run` の引数列("fleetest" 自体は含まない)。JUnit は
     /// 扱わない(拡張連携は NDJSON 中継のみで完結する)
     /// `api run` に `--enable-animations` は無い(アニメーションは実行プロファイルの
     /// enableAnimations と環境変数から解決する)ので、中継するのは `--performance` だけ
@@ -701,7 +701,7 @@ public enum RemoteProbe {
     }
 }
 
-/// `ftester remote status`(docs/remote-runner.md §16.5)の1ホスト分の生取得結果。
+/// `fleetest remote status`(docs/remote-runner.md §16.5)の1ホスト分の生取得結果。
 /// 個々のフィールドは独立にパース失敗し得る(壊れた出力でも取れた分だけ埋める。全体を
 /// nil にすると「到達したが1項目読めなかった」場合に他の全項目まで失う)
 public struct RemoteHostStatus: Equatable, Sendable {
@@ -712,7 +712,7 @@ public struct RemoteHostStatus: Equatable, Sendable {
     public let freeKB: Int?
 }
 
-/// `ftester remote status` 用の1コマンド組み立て・パース(ssh 1回で全項目を取る。往復を
+/// `fleetest remote status` 用の1コマンド組み立て・パース(ssh 1回で全項目を取る。往復を
 /// ホスト数×項目数に増やさないための設計 = RemoteCommands.swift が全ホストへ並列に投げる)。
 /// **`RemoteShell.quote` は使わない**: layout の base/toolRoot/binary はこのユースケースでは
 /// $HOME を未解決のまま埋め込んだ式(RemoteLayout.resolveBase(raw, home: "$HOME"))であり得る
@@ -801,7 +801,7 @@ public enum RemoteStatusProbe {
     }
 }
 
-/// `ftester remote clean`(docs/remote-runner.md §16.4)の削除対象・削除コマンド。
+/// `fleetest remote clean`(docs/remote-runner.md §16.4)の削除対象・削除コマンド。
 /// dispatch(実行中に残った孤児)/ 各プロジェクトの reports・results の3系統を対象にする
 public enum RemoteCleanPlan {
 
@@ -824,10 +824,10 @@ public enum RemoteCleanPlan {
         let base = RemoteShell.quote(layout.base)
         let projects = RemoteLayout.projectsDirName
         let targets = [
-            base + "/users/*/work/.ftester/dispatch",
+            base + "/users/*/work/.fleetest/dispatch",
             base + "/users/*/work/\(projects)/*/reports",
             base + "/users/*/work/\(projects)/*/results",
-            base + "/work/.ftester/dispatch",
+            base + "/work/.fleetest/dispatch",
             base + "/work/\(projects)/*/reports",
             base + "/work/\(projects)/*/results",
         ]
@@ -852,13 +852,13 @@ public enum RemoteShell {
     /// SSH の Background セッションのまま直接実行する(ユーザーの launchd ドメインへ昇格させる
     /// 処理は挟まない)。コンソールにログインしている限りそのままで launchd ドメイン
     /// (CoreSimulator 等)へ到達できる(2026-07-31 実測)
-    public static func remoteRunCommand(layout: RemoteLayout, ftesterArgs: [String],
+    public static func remoteRunCommand(layout: RemoteLayout, fleetestArgs: [String],
                                         issuer: String? = nil) -> String {
         let binary = quote(layout.binary)
-        let guardCmd = "test -x \(binary) || { echo \"ftester binary not found on remote"
-            + " — run: swift build --product ftester\" >&2; exit 90; }"
+        let guardCmd = "test -x \(binary) || { echo \"fleetest binary not found on remote"
+            + " — run: swift build --product fleetest\" >&2; exit 90; }"
         let syncCmd = "\(binary) project sync >/dev/null 2>&1 || true"
-        let args = ftesterArgs.map(quote).joined(separator: " ")
+        let args = fleetestArgs.map(quote).joined(separator: " ")
         let launch = "\(binary) \(args)"
         // 非対話 ssh の PATH は /usr/bin:/bin:/usr/sbin:/sbin だけで Homebrew が入らない。
         // xcodegen(iOS ワーカーのビルドに必須)・adb などが見えず「No such file or directory」で
@@ -869,23 +869,23 @@ public enum RemoteShell {
         // 読む契約)。ランナー機側で解決させると全員が共有アカウントの同じ値になる
         let issuerCmd = issuer.map { "export FT_ISSUER=\(quote($0)) && " } ?? ""
         return "cd \(quote(layout.workDir)) 2>/dev/null && test -f Package.swift || "
-            + "{ echo \"no runner workspace at \(layout.workDir) — run: ftester remote setup"
+            + "{ echo \"no runner workspace at \(layout.workDir) — run: fleetest remote setup"
             + " <this host> once for this issuer (docs/remote-runner.md §18)\" >&2; exit 91; } && "
             + "\(pathCmd) && \(issuerCmd)\(guardCmd) && \(syncCmd) && \(launch)"
     }
 
-    /// `ftester remote exec`(docs/remote-runner.md §14「単発コマンドの転送は汎用化する」)。
+    /// `fleetest remote exec`(docs/remote-runner.md §14「単発コマンドの転送は汎用化する」)。
     /// remoteRunCommand と同じ PATH 補正・バイナリ不在 exit 90・workspace 不在 exit 91 の規律を
     /// 踏襲するが、**project sync は撃たない** — 照会・単発操作が目的で、同期は run 専用の前処理だから
     public static func remoteExecCommand(layout: RemoteLayout, args: [String]) -> String {
         let binary = quote(layout.binary)
-        let guardCmd = "test -x \(binary) || { echo \"ftester binary not found on remote"
-            + " — run: swift build --product ftester\" >&2; exit 90; }"
+        let guardCmd = "test -x \(binary) || { echo \"fleetest binary not found on remote"
+            + " — run: swift build --product fleetest\" >&2; exit 90; }"
         let quotedArgs = args.map(quote).joined(separator: " ")
         let launch = "\(binary) \(quotedArgs)"
         let pathCmd = "export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\""
         return "cd \(quote(layout.workDir)) 2>/dev/null && test -f Package.swift || "
-            + "{ echo \"no runner workspace at \(layout.workDir) — run: ftester remote setup"
+            + "{ echo \"no runner workspace at \(layout.workDir) — run: fleetest remote setup"
             + " <this host> once for this issuer (docs/remote-runner.md §18)\" >&2; exit 91; } && "
             + "\(pathCmd) && \(guardCmd) && \(launch)"
     }
@@ -894,7 +894,7 @@ public enum RemoteShell {
 public enum RemoteReportLink {
 
     /// 回収済みレポートへの貼り直し。リモートの run が記録する `reportPath` は
-    /// **ディスパッチ単位の隔離先**(`.ftester/dispatch/<stamp>/reports/…`)を指すが、そこは
+    /// **ディスパッチ単位の隔離先**(`.fleetest/dispatch/<stamp>/reports/…`)を指すが、そこは
     /// 回収後に削除される(`RemoteRunDispatcher.cleanupDispatchDir`)。回収先はローカルの
     /// `TestProjects/<project>/reports/` で、**ファイル名は rsync がそのまま保つ**ので、
     /// 記録側を回収先へ向け直せば results から辿れるようになる。
@@ -909,7 +909,7 @@ public enum RemoteReportLink {
     public static func rewrittenReportPath(
         recorded: String, stamp: String, projectReportsPathFromRepoRoot: String
     ) -> String? {
-        let marker = ".ftester/dispatch/\(stamp)/reports/"
+        let marker = ".fleetest/dispatch/\(stamp)/reports/"
         guard let range = recorded.range(of: marker) else { return nil }
         let fileName = String(recorded[range.upperBound...])
         guard !fileName.isEmpty, !fileName.contains("/") else { return nil }

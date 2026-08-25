@@ -11,7 +11,7 @@ final class AssignPortTests: XCTestCase {
         repoRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("ftbridge-assignport-\(UUID().uuidString)")
         try FileManager.default.createDirectory(
-            at: repoRoot.appendingPathComponent(".ftester"), withIntermediateDirectories: true)
+            at: repoRoot.appendingPathComponent(".fleetest"), withIntermediateDirectories: true)
     }
 
     override func tearDownWithError() throws {
@@ -20,13 +20,13 @@ final class AssignPortTests: XCTestCase {
 
     private func writePidFile(port: UInt16) throws {
         try "12345".write(
-            to: repoRoot.appendingPathComponent(".ftester/bridge-\(port).pid"),
+            to: repoRoot.appendingPathComponent(".fleetest/bridge-\(port).pid"),
             atomically: true, encoding: .utf8)
     }
 
     private func writeInAppFile(port: UInt16) throws {
         try "11111111-2222-3333-4444-555555555555 com.example.app".write(
-            to: repoRoot.appendingPathComponent(".ftester/bridge-\(port).inapp"),
+            to: repoRoot.appendingPathComponent(".fleetest/bridge-\(port).inapp"),
             atomically: true, encoding: .utf8)
     }
 
@@ -128,8 +128,8 @@ final class AssignPortTests: XCTestCase {
     func testStopIfOwnedBridgeNotFoundForUnusedPort() throws {
         // 誰も LISTEN していない高番ポート。lsof が見つけられなければ .notFound
         let outcome = PortHolder.stopIfOwnedBridge(
-            port: 59_999, stateDir: repoRoot.appendingPathComponent(".ftester"),
-            derivedDataPath: repoRoot.appendingPathComponent(".ftester/DerivedData"))
+            port: 59_999, stateDir: repoRoot.appendingPathComponent(".fleetest"),
+            derivedDataPath: repoRoot.appendingPathComponent(".fleetest/DerivedData"))
         guard case .notFound = outcome else {
             return XCTFail(".notFound を期待: \(outcome)")
         }

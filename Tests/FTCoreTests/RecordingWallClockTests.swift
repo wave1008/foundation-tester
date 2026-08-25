@@ -1,5 +1,5 @@
 // RecordingWallClock の区分計算(壁時計⇔録画位置)の契約を検証する。
-// vscode-ftester/src/recordingsModel.ts の offsetMsForWallClock と同じ規則を Swift 側で
+// vscode-fleetest/src/recordingsModel.ts の offsetMsForWallClock と同じ規則を Swift 側で
 // 再実装したもの(単一/複数スパン・欠落・clamp)。
 
 import XCTest

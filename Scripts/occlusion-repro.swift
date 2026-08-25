@@ -1,8 +1,8 @@
 // occlusion-guard(FM 視覚照合)の判定を、保存済みの crop に対して再現・再判定する単体ツール。
-// Apple へ不具合報告する際の最小再現コードも兼ねる(ftester に依存せず FoundationModels だけを使う)。
+// Apple へ不具合報告する際の最小再現コードも兼ねる(fleetest に依存せず FoundationModels だけを使う)。
 //
 // 使い道: 実行中に guard が反転すると OcclusionVerifier が FM へ渡した crop を
-//   ~/Library/Logs/ftester/occlusion/occlusion-<時刻>.png (+ .txt = 期待テキスト)
+//   ~/Library/Logs/fleetest/occlusion/occlusion-<時刻>.png (+ .txt = 期待テキスト)
 // に保存する。それをこのツールに食わせて、同じ instructions / prompt / @Generable 型 /
 // GenerationOptions(greedy) で何度も再判定し、誤判定が決定的か揺らぎかを切り分ける。
 //
@@ -90,7 +90,7 @@ if argv.first == "--crop" {
 let iterations = argv.first.flatMap { Int($0) } ?? 10
 if !argv.isEmpty { argv.removeFirst() }
 let pngURL = URL(fileURLWithPath: pngPath)
-// 期待テキストはダンプの隣に置かれる .txt が既定(ftester が一緒に書き出す)
+// 期待テキストはダンプの隣に置かれる .txt が既定(fleetest が一緒に書き出す)
 let sidecar = try? String(contentsOf: pngURL.deletingPathExtension().appendingPathExtension("txt"),
                           encoding: .utf8)
 guard let expectedText = argv.first ?? sidecar else {
@@ -111,7 +111,7 @@ print("")
 var counts: [String: Int] = [:]
 var errors = 0
 for i in 1...iterations {
-    // ftester と同じく 1 呼び出し = 1 セッション(会話履歴を持ち回さない)
+    // fleetest と同じく 1 呼び出し = 1 セッション(会話履歴を持ち回さない)
     let session = LanguageModelSession(instructions: instructions)
     do {
         let verdict = try await session.respond(

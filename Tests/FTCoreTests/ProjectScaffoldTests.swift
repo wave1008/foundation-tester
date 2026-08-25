@@ -19,19 +19,19 @@ final class ProjectScaffoldTests: XCTestCase {
 
     func testFreshGeneratesProjectAndBinaryPath() throws {
         XCTAssertTrue(try ProjectScaffold.writeVSCodeSettings(
-            packageRoot: packageRoot, ftesterPath: "../foundation-tester", projectName: "MyApp"))
+            packageRoot: packageRoot, fleetestPath: "../foundation-tester", projectName: "MyApp"))
         let settings = try readSettings()
-        XCTAssertEqual(settings["ftester.project"] as? String, "MyApp")
-        XCTAssertEqual(settings["ftester.binaryPath"] as? String,
-                       "../foundation-tester/.build/debug/ftester")
+        XCTAssertEqual(settings["fleetest.project"] as? String, "MyApp")
+        XCTAssertEqual(settings["fleetest.binaryPath"] as? String,
+                       "../foundation-tester/.build/debug/fleetest")
     }
 
-    func testNilFtesterPathOmitsBinaryPath() throws {
+    func testNilFleetestPathOmitsBinaryPath() throws {
         XCTAssertTrue(try ProjectScaffold.writeVSCodeSettings(
-            packageRoot: packageRoot, ftesterPath: nil, projectName: "MyApp"))
+            packageRoot: packageRoot, fleetestPath: nil, projectName: "MyApp"))
         let settings = try readSettings()
-        XCTAssertEqual(settings["ftester.project"] as? String, "MyApp")
-        XCTAssertNil(settings["ftester.binaryPath"])
+        XCTAssertEqual(settings["fleetest.project"] as? String, "MyApp")
+        XCTAssertNil(settings["fleetest.binaryPath"])
     }
 
     func testMergeKeepsOtherKeysAndOverwritesOwnKeys() throws {
@@ -40,18 +40,18 @@ final class ProjectScaffoldTests: XCTestCase {
         let existing = """
         {
           "editor.fontSize": 14,
-          "ftester.project": "OldProject"
+          "fleetest.project": "OldProject"
         }
         """
         try existing.write(to: settingsURL, atomically: true, encoding: .utf8)
 
         XCTAssertTrue(try ProjectScaffold.writeVSCodeSettings(
-            packageRoot: packageRoot, ftesterPath: "../foundation-tester", projectName: "NewProject"))
+            packageRoot: packageRoot, fleetestPath: "../foundation-tester", projectName: "NewProject"))
         let settings = try readSettings()
         XCTAssertEqual(settings["editor.fontSize"] as? Int, 14, "他キーは温存")
-        XCTAssertEqual(settings["ftester.project"] as? String, "NewProject", "自キーは上書き")
-        XCTAssertEqual(settings["ftester.binaryPath"] as? String,
-                       "../foundation-tester/.build/debug/ftester")
+        XCTAssertEqual(settings["fleetest.project"] as? String, "NewProject", "自キーは上書き")
+        XCTAssertEqual(settings["fleetest.binaryPath"] as? String,
+                       "../foundation-tester/.build/debug/fleetest")
     }
 
     func testInvalidJSONLeavesFileUntouched() throws {
@@ -66,7 +66,7 @@ final class ProjectScaffoldTests: XCTestCase {
         try invalid.write(to: settingsURL, atomically: true, encoding: .utf8)
 
         XCTAssertFalse(try ProjectScaffold.writeVSCodeSettings(
-            packageRoot: packageRoot, ftesterPath: "../foundation-tester", projectName: "MyApp"))
+            packageRoot: packageRoot, fleetestPath: "../foundation-tester", projectName: "MyApp"))
 
         XCTAssertEqual(try String(contentsOf: settingsURL, encoding: .utf8), invalid,
                        "パース不能なら触らない")
@@ -85,7 +85,7 @@ final class ProjectScaffoldTests: XCTestCase {
 
     func testGitignoreFreshCreatesBothEntries() throws {
         let added = try ProjectScaffold.ensureGitignore(packageRoot: packageRoot)
-        XCTAssertEqual(added, [".build/", ".ftester/", "TestProjects/*/reports/"])
+        XCTAssertEqual(added, [".build/", ".fleetest/", "TestProjects/*/reports/"])
         let content = try String(contentsOf: gitignoreURL, encoding: .utf8)
         XCTAssertTrue(content.contains(".build/"))
         XCTAssertTrue(content.contains("TestProjects/*/reports/"))
@@ -107,12 +107,12 @@ final class ProjectScaffoldTests: XCTestCase {
         try existing.write(to: gitignoreURL, atomically: true, encoding: .utf8)
 
         let added = try ProjectScaffold.ensureGitignore(packageRoot: packageRoot)
-        XCTAssertEqual(added, [".ftester/", "TestProjects/*/reports/"])
+        XCTAssertEqual(added, [".fleetest/", "TestProjects/*/reports/"])
 
         let content = try String(contentsOf: gitignoreURL, encoding: .utf8)
         XCTAssertTrue(content.contains("*.log"), "既存行は保持")
         XCTAssertTrue(content.contains(".build"), "既存行は保持")
-        XCTAssertTrue(content.contains("# ftester"))
+        XCTAssertTrue(content.contains("# fleetest"))
         XCTAssertTrue(content.contains("TestProjects/*/reports/"))
     }
 
@@ -128,7 +128,7 @@ final class ProjectScaffoldTests: XCTestCase {
     }
 
     func testGitignoreRecognizesAlternateSpellingsAsPresent() throws {
-        let existing = "/.build/\n.ftester\n./TestProjects/*/reports\n"
+        let existing = "/.build/\n.fleetest\n./TestProjects/*/reports\n"
         try existing.write(to: gitignoreURL, atomically: true, encoding: .utf8)
 
         let added = try ProjectScaffold.ensureGitignore(packageRoot: packageRoot)
@@ -219,23 +219,23 @@ final class ProjectScaffoldTests: XCTestCase {
         packageRoot.appendingPathComponent(".claude/settings.json")
     }
 
-    /// 許可するのは ftester 由来のコマンドだけ。汎用の全許可を書かない
-    func testClaudeSettingsAddsOnlyFtesterEntries() throws {
+    /// 許可するのは fleetest 由来のコマンドだけ。汎用の全許可を書かない
+    func testClaudeSettingsAddsOnlyFleetestEntries() throws {
         let added = try ProjectScaffold.writeClaudeSettings(packageRoot: packageRoot,
                                                             toolRoot: "/tools/ft")
         XCTAssertFalse(added.isEmpty)
         for entry in added {
             XCTAssertTrue(entry.hasPrefix("Bash("), "許可するのは Bash のみ: \(entry)")
             XCTAssertNotEqual(entry, "Bash(*)")
-            // 許可範囲はツールのクローン配下か ftester CLI か読み取り専用の simctl list に限る
-            XCTAssertTrue(entry.contains("/tools/ft") || entry.contains("ftester")
+            // 許可範囲はツールのクローン配下か fleetest CLI か読み取り専用の simctl list に限る
+            XCTAssertTrue(entry.contains("/tools/ft") || entry.contains("fleetest")
                           || entry.contains("xcrun simctl list"),
-                          "ftester 由来のコマンドだけを許可する: \(entry)")
+                          "fleetest 由来のコマンドだけを許可する: \(entry)")
         }
     }
 
     /// 更新系スクリプトも許可対象に入れる(入っていないと更新のたびに承認が増える。
-    /// 既存の受け手には `ftester api ensure-settings` = install.sh 経由で後から届く)
+    /// 既存の受け手には `fleetest api ensure-settings` = install.sh 経由で後から届く)
     func testClaudeSettingsAllowsUpdateScripts() throws {
         let added = try ProjectScaffold.writeClaudeSettings(packageRoot: packageRoot,
                                                             toolRoot: "/tools/ft")

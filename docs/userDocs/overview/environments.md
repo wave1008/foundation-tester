@@ -13,7 +13,7 @@
 > macOS 27+). occlusion-guard (false-positive checking) and `screenLooksLike` are automatically
 > disabled; everything else works without restriction.
 
-Run `ftester doctor` (or the `ft_doctor` MCP tool) at any time to check what's available on this
+Run `fleetest doctor` (or the `ft_doctor` MCP tool) at any time to check what's available on this
 machine — Foundation Models availability, Xcode, xcodegen, simulators, and adb.
 
 ## What Apple Intelligence is used for
@@ -31,7 +31,7 @@ None of this leaves the Mac — Foundation Models runs entirely on-device.
 
 ## Supported UI frameworks
 
-Ftester has been verified against apps built with:
+Fleetest has been verified against apps built with:
 
 | Framework | Platforms |
 |---|---|

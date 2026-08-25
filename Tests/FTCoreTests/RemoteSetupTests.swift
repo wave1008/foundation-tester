@@ -1,4 +1,4 @@
-// `ftester remote setup` (docs/remote-runner.md §14) の純粋ロジック。
+// `fleetest remote setup` (docs/remote-runner.md §14) の純粋ロジック。
 // scp/ssh 越しの結合は e2e に残す(ここは文字列合成・判定のみ)。
 
 import Foundation
@@ -12,11 +12,11 @@ final class RemoteSetupTests: XCTestCase {
     func testInstallArgs() {
         XCTAssertEqual(
             RemoteSetupPlan.installArgs(
-                workDir: "/Users/ci/ftester-runner/users/alice/work", projectName: "E2E",
-                toolRoot: "/Users/ci/ftester-runner/foundation-tester"),
+                workDir: "/Users/ci/fleetest-runner/users/alice/work", projectName: "E2E",
+                toolRoot: "/Users/ci/fleetest-runner/foundation-tester"),
             [
-                "--work-dir", "/Users/ci/ftester-runner/users/alice/work",
-                "--tool-root", "/Users/ci/ftester-runner/foundation-tester",
+                "--work-dir", "/Users/ci/fleetest-runner/users/alice/work",
+                "--tool-root", "/Users/ci/fleetest-runner/foundation-tester",
                 "--name", "E2E",
                 "--skip-extension",
                 "--skip-mcp",
@@ -42,9 +42,9 @@ final class RemoteSetupTests: XCTestCase {
     func testPreflightArgs() {
         XCTAssertEqual(
             RemoteSetupPlan.preflightArgs(
-                base: "/Users/ci/ftester-runner", workDir: "/Users/ci/ftester-runner/users/alice/work"),
-            ["--runner", "--base", "/Users/ci/ftester-runner",
-             "--work-dir", "/Users/ci/ftester-runner/users/alice/work"])
+                base: "/Users/ci/fleetest-runner", workDir: "/Users/ci/fleetest-runner/users/alice/work"),
+            ["--runner", "--base", "/Users/ci/fleetest-runner",
+             "--work-dir", "/Users/ci/fleetest-runner/users/alice/work"])
     }
 
     func testPreflightVerdictReady() {
@@ -66,9 +66,9 @@ final class RemoteSetupTests: XCTestCase {
     // MARK: - RemoteSetupPlan.ensureWorkDirCommand
 
     func testEnsureWorkDirCommand() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
         XCTAssertEqual(RemoteSetupPlan.ensureWorkDirCommand(layout: layout),
-                       "mkdir -p '/Users/ci/ftester-runner/users/alice/work'")
+                       "mkdir -p '/Users/ci/fleetest-runner/users/alice/work'")
     }
 
     // MARK: - RemoteSetupPlan.runAndCleanupCommand
@@ -162,21 +162,21 @@ final class RemoteSetupTests: XCTestCase {
     // MARK: - RemoteSetupPlan.alignRevisionCommand
 
     func testAlignRevisionCommand() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
         XCTAssertEqual(
             RemoteSetupPlan.alignRevisionCommand(layout: layout, revision: "9655a21"),
-            "cd '/Users/ci/ftester-runner/foundation-tester' && git fetch origin && "
-                + "git checkout '9655a21' && swift build --product ftester")
+            "cd '/Users/ci/fleetest-runner/foundation-tester' && git fetch origin && "
+                + "git checkout '9655a21' && swift build --product fleetest")
     }
 
     // MARK: - RemoteSetupPlan.validateUninstallBase
 
     func testValidateUninstallBaseAcceptsDefaultLayout() throws {
-        try RemoteSetupPlan.validateUninstallBase("/Users/ci/ftester-runner", home: "/Users/ci")
+        try RemoteSetupPlan.validateUninstallBase("/Users/ci/fleetest-runner", home: "/Users/ci")
     }
 
     func testValidateUninstallBaseAcceptsTwoLevelCustomPath() throws {
-        try RemoteSetupPlan.validateUninstallBase("/opt/ftester-runner", home: "/Users/ci")
+        try RemoteSetupPlan.validateUninstallBase("/opt/fleetest-runner", home: "/Users/ci")
     }
 
     func testValidateUninstallBaseRejectsEmpty() {
@@ -189,7 +189,7 @@ final class RemoteSetupTests: XCTestCase {
 
     func testValidateUninstallBaseRejectsRelativePath() {
         XCTAssertThrowsError(
-            try RemoteSetupPlan.validateUninstallBase("ftester-runner", home: "/Users/ci")) { error in
+            try RemoteSetupPlan.validateUninstallBase("fleetest-runner", home: "/Users/ci")) { error in
             guard case RemoteSetupError.unsafeUninstallBase = error else {
                 return XCTFail("expected unsafeUninstallBase, got \(error)")
             }
@@ -236,8 +236,8 @@ final class RemoteSetupTests: XCTestCase {
     // MARK: - RemoteSetupPlan.uninstallCommand
 
     func testUninstallCommand() {
-        XCTAssertEqual(RemoteSetupPlan.uninstallCommand(base: "/Users/ci/ftester-runner"),
-                       "rm -rf '/Users/ci/ftester-runner'")
+        XCTAssertEqual(RemoteSetupPlan.uninstallCommand(base: "/Users/ci/fleetest-runner"),
+                       "rm -rf '/Users/ci/fleetest-runner'")
     }
 
     // MARK: - RemoteSetupStepLine.render

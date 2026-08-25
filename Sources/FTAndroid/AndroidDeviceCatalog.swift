@@ -17,7 +17,7 @@ public enum AndroidDeviceCatalogError: Error, LocalizedError {
             let list = running.isEmpty ? "none"
                 : running.map { "\($0.value)(\($0.key))" }.sorted().joined(separator: ", ")
             return "no running emulator for AVD \"\(avd)\" (running: \(list)). "
-                + "Start one with: ftester devices up, or emulator -avd <ID>"
+                + "Start one with: fleetest devices up, or emulator -avd <ID>"
         case .noIdentifier(let name):
             return "device \"\(name)\" has no avd (add it to the machine profile)"
         case .deviceNotConnected(let name, let serial, let connected):

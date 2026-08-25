@@ -1,5 +1,5 @@
 {
-  "name": "ftester",
-  "description": "foundation-tester(オンデバイス FM 内蔵の iOS/Android E2E テストツール)の導入・更新・プロファイル作成・シナリオ作成スキル。導入は /ftester:ftester-setup から。",
+  "name": "fleetest",
+  "description": "fleetest mobile(オンデバイス FM 内蔵の iOS/Android E2E テストツール)の導入・更新・プロファイル作成・シナリオ作成スキル。導入は /fleetest:fleetest-setup から。",
   "skills": "./.claude/skills/"
 }

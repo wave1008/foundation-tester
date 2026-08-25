@@ -123,7 +123,7 @@ final class TapTargetAdvisoryTests: XCTestCase {
     // 無いままズレていた(zeroFrame・sliver の2形が MCP のタップ時に出ていなかった)。
     // 今は両者が `TapTargetGeometry.advisoryKind` を呼ぶので、順序はここでしか変えられない。
     // 優先順そのものの固定は下の TapAdvisoryKindPriorityTests、DSL/MCP が同じ kind を
-    // 経由することの固定は Tests/FTesterMCPTests/TapAdvisoryKindSharedTests.swift 側にある。
+    // 経由することの固定は Tests/FleetestMCPTests/TapAdvisoryKindSharedTests.swift 側にある。
 
     func testZeroWidthFrameIsCalledOutByChain() {
         let e = element(1, "z", "button", 100, 100, 0, 40)

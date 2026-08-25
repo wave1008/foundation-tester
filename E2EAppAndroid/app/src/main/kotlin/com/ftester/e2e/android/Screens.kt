@@ -73,7 +73,7 @@ fun buildInputScreen(activity: Activity, parent: ViewGroup): View {
     multiline.onTextChanged { echoMultiline.text = "multiline=${it.replace("\n", " ")}" }
 
     single.setOnEditorActionListener { _, actionId, event ->
-        // ハードウェア Enter(ftester ドライバ経由)は actionId=IME_NULL で届く。ソフトキーボード
+        // ハードウェア Enter(fleetest ドライバ経由)は actionId=IME_NULL で届く。ソフトキーボード
         // の検索キー押下は actionId=IME_ACTION_SEARCH。両方受理する。
         val fired = actionId == EditorInfo.IME_ACTION_SEARCH || actionId == EditorInfo.IME_NULL
         if (fired) {

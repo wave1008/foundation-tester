@@ -1,12 +1,12 @@
 # Shirates 利用者向け
 
-Ftester の Swift DSL は Shirates(Classic)の慣習に準拠しています —— コマンド名・引数名・
+Fleetest の Swift DSL は Shirates(Classic)の慣習に準拠しています —— コマンド名・引数名・
 既定値・挙動をそのまま踏襲し、独自の「改良」はしていません。このページは Shirates で
-知っている知識を ftester に対応づけ、意図的に違う点・持たない点を一覧にします。
+知っている知識を fleetest に対応づけ、意図的に違う点・持たない点を一覧にします。
 
 ## 構造の対応
 
-| Shirates | ftester |
+| Shirates | fleetest |
 |---|---|
 | `scenario` / `case` / `condition` / `action` / `expectation` | `scenario` / `scene` / `condition` / `action` / `expectation` |
 | `UITest` クラス | `@TestClass` を付けたクラス |
@@ -31,7 +31,7 @@ Ftester の Swift DSL は Shirates(Classic)の慣習に準拠しています —
 
 ## 名前・形が違うもの
 
-| Shirates | ftester | 備考 |
+| Shirates | fleetest | 備考 |
 |---|---|---|
 | `dontExist` | `notExist(sel, timeout:scroll:maxSwipes:)` | `exist` の否定として読みやすい |
 | `sendKeys` | `type("…")` / `type(sel, "…")` | `type(sel, "…", replace: true)` で「クリアしてから入力」を1コマンドに畳める(Shirates は2コマンドに分かれる) |
@@ -43,7 +43,7 @@ Ftester の Swift DSL は Shirates(Classic)の慣習に準拠しています —
 
 ## 持たないもの — 代わりにこう書く
 
-| Shirates | ftester での代替 |
+| Shirates | fleetest での代替 |
 |---|---|
 | ニックネーム(セレクタ/画面/データセットのニックネーム) | セレクタを直接書く(間接参照の機構は無い) |
 | `screenIs` / `screenIsOf` / `isScreen(Of)` / `waitScreen(Of)` / `switchScreen` | `screenLooksLike("説明文")`(FM 視覚検証)、またはその画面にしか無い要素への `exist(sel)` |
@@ -57,7 +57,7 @@ Ftester の Swift DSL は Shirates(Classic)の慣習に準拠しています —
 | `tempSelector` / `tempValue` | 呼び出し箇所にセレクタを直接書く |
 | `withContext`(native/web コンテキスト切替) | 不要 —— WebView の中身も同じセレクタ・同じコマンドで透過的に読める |
 
-## ftester 独自のコマンド
+## fleetest 独自のコマンド
 
 Shirates に対応物が無いもの:
 

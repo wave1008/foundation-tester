@@ -1,5 +1,5 @@
 // 15_フリック.swift
-// ftester 機能: `flick`(画面基点の生ジェスチャ・8方向)。
+// fleetest 機能: `flick`(画面基点の生ジェスチャ・8方向)。
 // waitForDisplay/waitForClose/verify/screenshot/appIs(旧 S0010)は
 // 06_待機とタイムアウト.swift(08.S0010→21.S0010→20.S0020)へ、waitForClose(旧 S0060)は
 // 07_条件分岐とダイアログ.swift(09.S0010→S0020→S0040→14.S0020→21.S0060)へ移設した。

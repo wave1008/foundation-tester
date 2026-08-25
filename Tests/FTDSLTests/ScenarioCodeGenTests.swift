@@ -3,7 +3,7 @@ import XCTest
 @testable import FTDSL
 import FTCore
 
-/// Flow → Swift DSL コードの生成(`ftester api gen-scenario` が使う)。
+/// Flow → Swift DSL コードの生成(`fleetest api gen-scenario` が使う)。
 /// **生成物は利用者がそのまま実行するコード**なので、秒引数が Double 化された後も
 /// `duration: 1` / `timeout: 1.2` の形で出る(`1.0` や `1.2000000000000002` にしない)ことを固定する。
 final class ScenarioCodeGenTests: XCTestCase {

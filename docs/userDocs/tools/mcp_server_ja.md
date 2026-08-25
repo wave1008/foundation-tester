@@ -1,15 +1,15 @@
 # MCP サーバ
 
-`ftester-mcp` はデバイス操作・シナリオ実行・シナリオ作成を `ft_*` ツールとして公開する stdio
+`fleetest-mcp` はデバイス操作・シナリオ実行・シナリオ作成を `ft_*` ツールとして公開する stdio
 [MCP](https://modelcontextprotocol.io) サーバです。CLI・VSCode 拡張と同じ機能を、人間の代わりに
 エージェントから呼び出せるようにしたものです。
 
 ## セットアップ
 
 `foundation-tester` リポジトリのルートで Claude Code を開くと、リポジトリ同梱の `.mcp.json`
-により `ftester` サーバが自動的に登録されます(初回呼び出し時にビルドが走ります)。VSCode
+により `fleetest` サーバが自動的に登録されます(初回呼び出し時にビルドが走ります)。VSCode
 拡張やプロジェクト作成を伴わず、別のプロジェクトに MCP サーバだけを追加したい場合は
-[Claude Code スキル](./claude_code_skills_ja.md)(`/ftester:ftester-mcp`)を参照してください。
+[Claude Code スキル](./claude_code_skills_ja.md)(`/fleetest:fleetest-mcp`)を参照してください。
 
 ## 共通引数
 
@@ -70,7 +70,7 @@ hybrid(in-app が実装できない操作 = ホーム/タスク切替/ドラッ�
 ## 役割分担
 
 意図的に「探索」ツールは用意していません。探索・判断は呼び出し元のエージェントに残し
-(スナップショットと操作プリミティブがあれば自分で探索できるため)、`ftester` は決定性 ——
+(スナップショットと操作プリミティブがあれば自分で探索できるため)、`fleetest` は決定性 ——
 操作・再生・検証を担います。
 
 ### Link

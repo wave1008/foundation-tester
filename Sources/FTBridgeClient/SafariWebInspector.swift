@@ -146,12 +146,12 @@ public enum SafariWebInspector {
     ///   登録されない**(実測。デーモンだけが並ぶ)。起動し直せば載る
     static func inspectorHint(handshakeRefused: Bool, apps: [String: [String: Any]]) -> String? {
         if handshakeRefused {
-            return "ftester: the Safari web inspector refused the connection."
+            return "fleetest: the Safari web inspector refused the connection."
                 + " On a physical device, enable Settings > Safari > Advanced > Web Inspector."
                 + " (falling back to the accessibility tree)"
         }
         guard !apps.isEmpty, pickSafariApplicationId(apps) == nil else { return nil }
-        return "ftester: Safari is not registered with the web inspector."
+        return "fleetest: Safari is not registered with the web inspector."
             + " Relaunch Safari — enabling Web Inspector does not apply to an app that was"
             + " already running. (falling back to the accessibility tree)"
     }

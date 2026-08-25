@@ -1,5 +1,5 @@
 // DevicePicker.swift
-// `ftester profile setup --auto-device` のデバイス選定規則(純粋ロジック)。
+// `fleetest profile setup --auto-device` のデバイス選定規則(純粋ロジック)。
 // 実機・シミュレータを用意しないと確かめられない部分と切り離し、規則だけを単体テストで固める。
 //
 // 呼び出し側(ProfileSetupCommand)が simctl / emulator から一覧を取り、ここが「どれを選ぶか」を決める。

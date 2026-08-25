@@ -1,10 +1,10 @@
 // ScenarioEvent.swift
-// ftester-scenarios(サブプロセス)とホスト(CLI/MCP)の間で交わす NDJSON イベントの DTO。
+// fleetest-scenarios(サブプロセス)とホスト(CLI/MCP)の間で交わす NDJSON イベントの DTO。
 // Foundation 以外に依存しないこと(ホスト側の軽量パースを保つ)。
 // kind: scenarioStarted / sceneStarted / step / sceneFinished / fixSuggestion / scenarioFinished / log / deviceFrozen / installRequest
 // step は tap/exist 等 1 操作の結果(既存 StepResult と同語彙)。
 // installRequest は installApp() の子→親 RPC 専用(ScenarioInstall.swift)。ScenarioHost.run が
-// 横取りして stdin へ応答を書き、呼び出し側の emit へは渡さない — **ftester api の NDJSON 契約には
+// 横取りして stdin へ応答を書き、呼び出し側の emit へは渡さない — **fleetest api の NDJSON 契約には
 // 現れない**(ProtocolVersion の対象外)。
 
 import Foundation
@@ -12,8 +12,8 @@ import Foundation
 public struct ScenarioEvent: Codable, Sendable {
     public var kind: String
     /// このイベントを処理したワーカーの識別子("<platform>:<デバイス論理名>"。
-    /// ftester api monitor の monitorDevices の id と同一規則)。--profile 指定時の並列実行
-    /// (ftester api run)でのみ設定、逐次実行では nil(エンコード時にキーごと省略)
+    /// fleetest api monitor の monitorDevices の id と同一規則)。--profile 指定時の並列実行
+    /// (fleetest api run)でのみ設定、逐次実行では nil(エンコード時にキーごと省略)
     public var worker: String?
     /// シナリオ ID(クラス名.メソッド名)
     public var scenario: String?

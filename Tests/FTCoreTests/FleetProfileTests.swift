@@ -1,5 +1,5 @@
 // フリート定義(docs/remote-runner.md §13)の純粋ロジック。
-// ssh・プロセス起動は Sources/ftester/FleetRunner.swift 側(e2e に残す)。
+// ssh・プロセス起動は Sources/fleetest/FleetRunner.swift 側(e2e に残す)。
 
 import Foundation
 import XCTest

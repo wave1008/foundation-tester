@@ -1,0 +1,1074 @@
+// runHandler.ts
+// Test Explorer の Run プロファイル(「実行」「実行 (dry-run)」「デバッグ」)を登録する。
+//
+// 「実行」系は1回の `fleetest api run` に対象シナリオ ID を全て --scenario で渡す
+// (CLI 側が逐次実行する)。runReducer.ts(vscode 非依存の純粋ロジック)が NDJSON イベントを
+// アクション列に変換し、ここではそれを vscode.TestRun API 呼び出しへ適用するだけを担当する。
+//
+// 「デバッグ」プロファイルは vscode.debug.startDebugging で debugConfig.ts/debugAdapter.ts に
+// 委譲する(詳細は executeDebugRun 参照)。結果はカスタムイベント `fleetest.scenarioFinished`
+// (debugAdapter.ts が中継)を購読して run.passed/failed に反映する。
+
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { spawn } from "node:child_process";
+import * as vscode from "vscode";
+import { type FleetestCli } from "./cli";
+import { type FleetestConfig, resolveProjectName } from "./config";
+import { resolveEntryAtCursor, truncateForStatusBar, type TreeItemEntry } from "./copyTestName";
+import { t } from "./i18n";
+import { lastResultsDir, lookupKey, readFailedScenarioIds } from "./lastResults";
+import type { LiveRunTarget } from "./liveRunTarget";
+import { runOneShot } from "./oneShotCli";
+import { decideRemoteCompat, type RemoteCompatHost, type RemoteCompatReport } from "./remoteCompatGate";
+import { findLatestReport, listRecentReports, reportsDir } from "./scenarioReports";
+import type { ScenarioFinishedEventBody } from "./debugAdapter";
+import { isRunEvent } from "./model";
+import { type RunEventBus } from "./runEventBus";
+import {
+  createRunReducerState,
+  reduceRunEvent,
+  type RunAction,
+  type RunLocation,
+} from "./runReducer";
+import { DELETED_TAG, DRAFT_TAG, type FleetestTestTree } from "./testTree";
+import type { ScenarioFileWatcher } from "./watcher";
+
+// lastResultsSync.ts の isGuiRunActive が参照する(GUI 実行中はツリーへの反映を譲る)。
+let activeRunCount = 0;
+export function isRunActive(): boolean {
+  return activeRunCount > 0;
+}
+
+// コントローラ行(ルートの「fleetest」)の右クリックは TestItem でない内部オブジェクト
+// (id が undefined)が渡る。TestItem として妥当なものだけ採用し、それ以外は全体扱い
+export function isTestItem(x: unknown): x is vscode.TestItem {
+  return typeof x === "object" && x !== null
+    && typeof (x as vscode.TestItem).id === "string"
+    && typeof (x as vscode.TestItem).children === "object";
+}
+
+export function registerRunHandler(
+  context: vscode.ExtensionContext,
+  cli: FleetestCli,
+  workspaceRoot: string,
+  getConfig: () => FleetestConfig,
+  testTree: FleetestTestTree,
+  watcher: ScenarioFileWatcher,
+  outputChannel: vscode.OutputChannel,
+  eventBus: RunEventBus,
+  // GUI 実行(実行/デバッグ)が終わるたびに実行対象シナリオIDを渡して呼ぶ(reportCodeLens.ts の
+  // refresh と lastResultsSync.ts の absorb 用。last-results が変化し得るタイミング)。
+  onRunFinished?: (executedScenarioIds: string[]) => void,
+  // fleetest.liveControlOnRun 用: 実行(dry-run 以外)の前にライブ操作パネルを対象 platform の
+  // デバイスへ合わせる(livePanel.ts の prepareForRun)。デバッグ実行には渡さない。
+  prepareLiveForRun?: (platform: "ios" | "android") => Promise<LiveRunTarget | undefined>,
+): void {
+  const controller = testTree.controller;
+
+  const makeHandler = (dryRun: boolean, failedOnly = false) =>
+    (request: vscode.TestRunRequest, token: vscode.CancellationToken): Thenable<void> =>
+      executeRun(
+        controller,
+        cli,
+        workspaceRoot,
+        getConfig,
+        watcher,
+        outputChannel,
+        eventBus,
+        request,
+        token,
+        dryRun,
+        failedOnly,
+        onRunFinished,
+        prepareLiveForRun,
+      );
+
+  // fleetest.rerunFailedTests(testing/item/context)と「失敗のみ実行」プロファイルは同じ handler を
+  // 共有する(パイプライン重複を避けるため)。
+  const failedOnlyHandler = makeHandler(false, true);
+  const failedOnlyProfile = controller.createRunProfile(
+    t("run.profile.failedOnly"),
+    vscode.TestRunProfileKind.Run,
+    failedOnlyHandler,
+    false,
+  );
+
+  context.subscriptions.push(
+    controller.createRunProfile(t("run.profile.run"), vscode.TestRunProfileKind.Run, makeHandler(false), true),
+    controller.createRunProfile(
+      t("run.profile.dryRun"),
+      vscode.TestRunProfileKind.Run,
+      makeHandler(true),
+      false,
+    ),
+    failedOnlyProfile,
+    controller.createRunProfile(
+      t("run.profile.debug"),
+      vscode.TestRunProfileKind.Debug,
+      (request, token) =>
+        executeDebugRun(controller, workspaceRoot, getConfig, watcher, request, token, onRunFinished),
+      true,
+    ),
+    vscode.commands.registerCommand(
+      "fleetest.rerunFailedTests",
+      (item?: unknown, items?: unknown) => {
+        const multi = Array.isArray(items) ? items.filter(isTestItem) : [];
+        const include = multi.length > 0 ? multi : isTestItem(item) ? [item] : undefined;
+        outputChannel.appendLine(
+          `[rerunFailed] include=${include ? include.map((i) => i.id).join(",") : t("run.label.all")}`);
+        const request = new vscode.TestRunRequest(include, undefined, failedOnlyProfile);
+        const tokenSource = new vscode.CancellationTokenSource();
+        void Promise.resolve(failedOnlyHandler(request, tokenSource.token)).finally(() =>
+          tokenSource.dispose(),
+        );
+      },
+    ),
+    vscode.commands.registerCommand(
+      "fleetest.copyTestName",
+      (item?: unknown, items?: unknown) => {
+        const multi = Array.isArray(items) ? items.filter(isTestItem) : [];
+        const include = multi.length > 0 ? multi : isTestItem(item) ? [item] : undefined;
+
+        if (include && include.length > 0) {
+          void copyAndNotify(include.map((i) => i.label).join("\n"));
+          return;
+        }
+
+        const notFound = () =>
+          vscode.window.setStatusBarMessage(t("run.copy.notFound"), 3000);
+
+        const activeEditor = vscode.window.activeTextEditor;
+        if (!activeEditor) {
+          notFound();
+          return;
+        }
+        const entries: TreeItemEntry[] = [];
+        const collect = (treeItem: vscode.TestItem, depth: number): void => {
+          if (treeItem.uri && treeItem.range) {
+            entries.push({
+              id: treeItem.id,
+              label: treeItem.label,
+              uriKey: treeItem.uri.toString(),
+              startLine: treeItem.range.start.line,
+              depth,
+            });
+          }
+          treeItem.children.forEach((child) => collect(child, depth + 1));
+        };
+        controller.items.forEach((treeItem) => collect(treeItem, 0));
+
+        const cursor = {
+          uriKey: activeEditor.document.uri.toString(),
+          line: activeEditor.selection.active.line,
+        };
+        const resolved = resolveEntryAtCursor(entries, cursor);
+        if (!resolved) {
+          notFound();
+          return;
+        }
+        void copyAndNotify(resolved.label);
+      },
+    ),
+    vscode.commands.registerCommand(
+      "fleetest.openScenarioReport",
+      // item が string: lastResultsSync.ts の markdown リンク(command:fleetest.openScenarioReport)
+      // からのシナリオID直渡し。leaf TestItem: children.size===0(resolveTargets と同じ leaf 規則)。
+      // それ以外(class/folder の TestItem、または未指定=ルート右クリック)は配下 leaf を全展開する。
+      async (item?: unknown, ..._args: unknown[]) => {
+        if (typeof item === "string") {
+          await openLatestReportForScenario(workspaceRoot, getConfig, item);
+          return;
+        }
+        if (isTestItem(item) && item.children.size === 0) {
+          await openLatestReportForScenario(workspaceRoot, getConfig, item.id);
+          return;
+        }
+        const leafIds: string[] = [];
+        collectLeafScenarioIds(isTestItem(item) ? item.children : controller.items, leafIds);
+        await openReportForScenarios(workspaceRoot, getConfig, leafIds);
+      },
+    ),
+  );
+}
+
+async function copyAndNotify(text: string): Promise<void> {
+  await vscode.env.clipboard.writeText(text);
+  vscode.window.setStatusBarMessage(t("run.copy.copied", { text: truncateForStatusBar(text) }), 3000);
+}
+
+/** 失敗メッセージ末尾に添える「レポートを開く」リンク(lastResultsSync.ts の CLI 反映側と同じ
+ * コマンド URI。レポートはクリック時に最新を解決するため、イベント時点でのパス解決は不要)。 */
+export function buildReportLinkMessage(scenarioId: string): vscode.TestMessage {
+  const args = encodeURIComponent(JSON.stringify([scenarioId]));
+  const markdown = new vscode.MarkdownString(
+    `[${t("run.report.openLink")}](command:fleetest.openScenarioReport?${args})`,
+  );
+  markdown.isTrusted = { enabledCommands: ["fleetest.openScenarioReport"] };
+  return new vscode.TestMessage(markdown);
+}
+
+async function openReport(reportPath: string): Promise<void> {
+  try {
+    // markdown プレビューはレポート埋め込みの screenshot 画像リンクを描画できる。ToSide で
+    // CodeLens/失敗メッセージのあるエディタを隠さず横に開く。
+    await vscode.commands.executeCommand("markdown.showPreviewToSide", vscode.Uri.file(reportPath));
+  } catch {
+    await vscode.window.showTextDocument(vscode.Uri.file(reportPath));
+  }
+}
+
+function collectLeafScenarioIds(items: vscode.TestItemCollection, out: string[]): void {
+  items.forEach((item) => {
+    if (item.children.size === 0) {
+      out.push(item.id);
+    } else {
+      collectLeafScenarioIds(item.children, out);
+    }
+  });
+}
+
+async function openLatestReportForScenario(
+  workspaceRoot: string,
+  getConfig: () => FleetestConfig,
+  scenarioId: string,
+): Promise<void> {
+  const resolution = resolveProjectName(workspaceRoot, getConfig());
+  if (resolution.kind !== "resolved") {
+    void vscode.window.showInformationMessage(t("run.project.unresolved"));
+    return;
+  }
+  const found = findLatestReport(reportsDir(workspaceRoot, resolution.project), scenarioId);
+  if (!found) {
+    void vscode.window.showInformationMessage(t("run.report.notFoundFor", { scenarioId }));
+    return;
+  }
+  await openReport(found);
+}
+
+async function openReportForScenarios(
+  workspaceRoot: string,
+  getConfig: () => FleetestConfig,
+  scenarioIds: string[],
+): Promise<void> {
+  const resolution = resolveProjectName(workspaceRoot, getConfig());
+  if (resolution.kind !== "resolved") {
+    void vscode.window.showInformationMessage(t("run.project.unresolved"));
+    return;
+  }
+  const reports = listRecentReports(reportsDir(workspaceRoot, resolution.project), new Set(scenarioIds));
+  if (reports.length === 0) {
+    void vscode.window.showInformationMessage(t("run.report.notFound"));
+    return;
+  }
+  if (reports.length === 1) {
+    await openReport(reports[0]!.path);
+    return;
+  }
+  const picked = await vscode.window.showQuickPick(
+    reports.map((r) => ({ label: r.scenarioId, description: r.fileName, reportPath: r.path })),
+    { placeHolder: t("run.report.pickPlaceholder") },
+  );
+  if (picked) {
+    await openReport(picked.reportPath);
+  }
+}
+
+/**
+ * request.include/exclude を対象シナリオ leaf(TestItem、id=シナリオID)の Map<id, TestItem> に解決する。
+ * include 未指定なら全 leaf(@Deleted/@Draft 除外)。folder/class の include は配下 leaf に展開
+ * (@Deleted/@Draft 除外、CLI の「クラス名指定では削除済み/作業中を実行しない」規則と一致)。
+ * leaf 自体が明示 include されたときは @Deleted/@Draft でも対象にする(CLI の「完全一致指定のときだけ
+ * 削除済み/作業中を実行する」規則と一致)。exclude は leaf 単位で除去(folder/class の exclude は
+ * 配下 leaf を丸ごと除外)。
+ */
+function resolveTargets(
+  controller: vscode.TestController,
+  request: vscode.TestRunRequest,
+): Map<string, vscode.TestItem> {
+  const result = new Map<string, vscode.TestItem>();
+
+  const addSubtree = (item: vscode.TestItem, explicit: boolean): void => {
+    if (item.children.size === 0) {
+      // explicit(この item 自体が include 指定)のときのみ @Deleted/@Draft でも対象にする。
+      if (explicit || !isExcludedFromBulk(item)) {
+        result.set(item.id, item);
+      }
+      return;
+    }
+    item.children.forEach((child) => addSubtree(child, false));
+  };
+
+  if (request.include && request.include.length > 0) {
+    for (const item of request.include) {
+      addSubtree(item, true);
+    }
+  } else {
+    controller.items.forEach((item) => addSubtree(item, false));
+  }
+
+  const removeSubtree = (item: vscode.TestItem): void => {
+    if (item.children.size === 0) {
+      result.delete(item.id);
+      return;
+    }
+    item.children.forEach((child) => removeSubtree(child));
+  };
+  for (const item of request.exclude ?? []) {
+    removeSubtree(item);
+  }
+
+  return result;
+}
+
+/** 一括実行(非明示 include)から除外する対象か(@Deleted または @Draft)。 */
+function isExcludedFromBulk(item: vscode.TestItem): boolean {
+  return item.tags.some((tag) => tag.id === DELETED_TAG.id || tag.id === DRAFT_TAG.id);
+}
+
+/** targets の先頭1件のファイルから @TestClass(...) の platform を読み取る(fleetest.liveControlOnRun
+ * 用。実行対象は単一 platform 前提のため先頭のみで足りる)。クラス名スコープの一致を優先し、
+ * 無ければファイル内最初の platform 指定にフォールバックする。読めない/見つからなければ
+ * undefined(呼び出し元が既存のフォールバックへ進む)。 */
+function resolveTargetPlatform(targets: Map<string, vscode.TestItem>): "ios" | "android" | undefined {
+  const first = [...targets.entries()][0];
+  if (!first) {
+    return undefined;
+  }
+  const [id, item] = first;
+  const filePath = item.uri?.fsPath;
+  if (!filePath) {
+    return undefined;
+  }
+  try {
+    const text = fs.readFileSync(filePath, "utf8");
+    const className = id.split(".")[0] ?? "";
+    // クラス名を正規表現へ埋め込まず、@TestClass(...) 直後の class 宣言を全て列挙してから比較する
+    // (埋め込み+固定長の先読みだと、対象クラスより手前にある無関係な @TestClass の属性を誤って
+    // スコープと誤認する早期一致バグになる。日本語クラス名を含むため \w ではなく \p{L}\p{N}_ で拾う)。
+    const classRe = /@TestClass\(([^)]*)\)[\s\S]{0,300}?\bclass\s+([\p{L}\p{N}_]+)/gu;
+    let match: RegExpExecArray | null;
+    let scopedAttrs: string | undefined;
+    while ((match = classRe.exec(text))) {
+      if (match[2] === className) {
+        scopedAttrs = match[1];
+        break;
+      }
+    }
+    const scoped = scopedAttrs ? /platform:\s*"(ios|android)"/.exec(scopedAttrs)?.[1] : undefined;
+    if (scoped === "ios" || scoped === "android") {
+      return scoped;
+    }
+    const fallback = /platform:\s*"(ios|android)"/.exec(text)?.[1];
+    return fallback === "ios" || fallback === "android" ? fallback : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** リモート版ズレダイアログの1ホスト分の値(revision 先頭7桁 / エラー / toolchain 不一致)。
+ * error・revision は CLI からの英語値をそのまま出す(枠だけ ja/en。CLAUDE.md の方針)。 */
+function formatHostDetailValue(host: RemoteCompatHost): string {
+  if (!host.reachable) {
+    return host.error ?? t("run.remoteCompat.hostUnreachable");
+  }
+  if (host.revisionCompatible === false) {
+    const short = host.revision?.slice(0, 7);
+    return short && short.length > 0 ? short : t("run.remoteCompat.hostRevisionUnknown");
+  }
+  if (host.toolchainCompatible === false) {
+    return t("run.remoteCompat.hostToolchainMismatch", { toolchain: host.toolchain ?? "?" });
+  }
+  return host.error ?? t("run.remoteCompat.hostUnreachable");
+}
+
+/** `fleetest remote align <name>` を単発 spawn し、stdout/stderr を `[<name>]` 接頭辞付きで
+ * outputChannel へ流す(monitorUpdateController.ts の run() と同方式)。FleetestCli の直列
+ * キューには乗せない(直後の `fleetest api run` とは別の単発コマンドのため待つ必要が無い)。 */
+function runRemoteAlign(
+  binaryPath: string,
+  workspaceRoot: string,
+  hostName: string,
+  outputChannel: vscode.OutputChannel,
+): Promise<number | null> {
+  return new Promise((resolve) => {
+    let proc: ReturnType<typeof spawn>;
+    try {
+      proc = spawn(binaryPath, ["remote", "align", hostName], {
+        cwd: workspaceRoot,
+        shell: false,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } catch (error) {
+      outputChannel.appendLine(`[${hostName}] ${t("run.cli.spawnFailed", { error: String(error) })}`);
+      resolve(-1);
+      return;
+    }
+    let pending = "";
+    const emit = (chunk: Buffer): void => {
+      pending += chunk.toString("utf8");
+      const lines = pending.split("\n");
+      pending = lines.pop() ?? "";
+      for (const line of lines) {
+        outputChannel.appendLine(`[${hostName}] ${line}`);
+      }
+    };
+    proc.stdout?.on("data", emit);
+    proc.stderr?.on("data", emit);
+    proc.on("error", (error) => {
+      outputChannel.appendLine(`[${hostName}] ${t("run.cli.executionError", { message: error.message })}`);
+      resolve(-1);
+    });
+    proc.on("close", (exitCode) => {
+      if (pending.length > 0) {
+        outputChannel.appendLine(`[${hostName}] ${pending}`);
+      }
+      resolve(exitCode);
+    });
+  });
+}
+
+async function executeRun(
+  controller: vscode.TestController,
+  cli: FleetestCli,
+  workspaceRoot: string,
+  getConfig: () => FleetestConfig,
+  watcher: ScenarioFileWatcher,
+  outputChannel: vscode.OutputChannel,
+  eventBus: RunEventBus,
+  request: vscode.TestRunRequest,
+  token: vscode.CancellationToken,
+  dryRun: boolean,
+  failedOnly: boolean,
+  onRunFinished?: (executedScenarioIds: string[]) => void,
+  prepareLiveForRun?: (platform: "ios" | "android") => Promise<LiveRunTarget | undefined>,
+): Promise<void> {
+  const config = getConfig();
+  let targets = resolveTargets(controller, request);
+  let runRequest = request;
+
+  const resolution = resolveProjectName(workspaceRoot, config);
+  // 前回 failed のシナリオ集合(failedOnly の絞り込みと、投入時のスピナー表示判定に使う)
+  const lastFailed =
+    resolution.kind === "resolved"
+      ? readFailedScenarioIds(lastResultsDir(workspaceRoot, resolution.project))
+      : new Set<string>();
+
+  if (failedOnly) {
+    outputChannel.appendLine(
+      t("run.log.rerunFailedSummary", {
+        project: resolution.kind === "resolved" ? resolution.project : resolution.kind,
+        expanded: String(targets.size),
+        failedCount: String(lastFailed.size),
+        target: String([...targets.keys()].filter((id) => lastFailed.has(lookupKey(id))).length),
+      }));
+    targets = new Map([...targets].filter(([id]) => lastFailed.has(lookupKey(id))));
+    // 元 request の include(folder/class/全体)のまま TestRun を作ると、実際には走らない
+    // 非対象テストまで実行単位として表示される。実対象 leaf だけの request に差し替える。
+    if (targets.size > 0) {
+      runRequest = new vscode.TestRunRequest([...targets.values()], undefined, request.profile);
+    }
+  }
+
+  const run = controller.createTestRun(runRequest);
+  // ロード中の拡張バージョンを明示する(vsix 更新後に Reload Window を忘れると旧版が動き続け、
+  // 「修正が効いていない」調査が空転する事故が実際に多発)。ID は package.json の publisher.name
+  const loadedVersion = (vscode.extensions.getExtension("wave1008.vscode-fleetest")?.packageJSON as
+    { version?: string } | undefined)?.version;
+  if (loadedVersion) {
+    run.appendOutput(`vscode-fleetest v${loadedVersion}\r\n`);
+  }
+  const runStartedAt = Date.now();
+  // runFinished(NDJSON)で埋まる。ApiRunCommand.swift の ApiRunFinishedEvent と同期(model.ts の RunFinishedEvent)。
+  let testSeconds: number | undefined;
+  let scenarioTotalSeconds: number | undefined;
+
+  if (targets.size === 0) {
+    if (failedOnly) {
+      run.appendOutput(`${t("run.noFailedScenarios")}\r\n`);
+      // 実行が一瞬で終わり run 出力は見落としやすいため、可視の通知も出す
+      void vscode.window.showInformationMessage(`fleetest: ${t("run.noFailedScenarios")}`);
+    }
+    run.end();
+    return;
+  }
+
+  // キュー投入時点で前回の合否アイコンをリセットする。前回 failed のシナリオ(=失敗テストの
+  // 再実行)は準備中からスピナー表示にする — VS Code の TestRun に「準備中」状態は無く、
+  // スピナーは started のみのため started で積む(実行開始時の scenarioStarted 再送は無害)。
+  // それ以外は enqueued(待機アイコン)にし、各シナリオの started を待つ。
+  for (const [id, item] of targets) {
+    if (lastFailed.has(lookupKey(id))) {
+      run.started(item);
+    } else {
+      run.enqueued(item);
+    }
+  }
+
+  if (resolution.kind !== "resolved") {
+    run.appendOutput(`${t("run.project.unresolvedHint")}\r\n`);
+    for (const item of targets.values()) {
+      run.errored(item, new vscode.TestMessage(t("run.project.unresolved")));
+    }
+    run.end();
+    return;
+  }
+
+  // fleetest.liveControlOnRun 用: dry-run 以外はライブ操作パネルを対象 platform のデバイスへ合わせ、
+  // 成功すればそのデバイスを直接実行対象にする(liveTarget)。platform 不明・パネル側が対象なしを
+  // 返す・機能 OFF のいずれでも liveTarget は undefined のままで、既存の分岐(下)にフォールバックする。
+  // 単一クラス実行(=全 target が同一クラス。id は "クラス名.シナリオ名"、resolveTargetPlatform と同じ抽出)
+  // のときだけライブ連動する。複数クラス(Test Explorer の一括等)は --profile 並列を優先し連動しない:
+  // liveTarget は単一デバイスで --profile と排他(下の args 分岐)のため、連動させると並列が単一に潰れる。
+  // クラス内の複数シナリオは連動対象(ユーザー決定。シナリオ数ではなくクラス数で判定)。
+  //
+  // **実行プロファイルが設定されていたら連動しない**(2026-08-20。受け手報告の回帰)。
+  // liveTarget は --profile と排他なので、連動すると**プロファイルが黙って捨てられる**:
+  // 対象アプリが解決できず app 省略シナリオが全滅し(「no app could be resolved」)、
+  // scenarioTimeout / record / defaultTimeout も効かず、複数デバイスの並列も1台に潰れる。
+  // 下の args 分岐のコメントは元からこの条件を前提に書かれていたが、**実装だけが抜けていた**。
+  const profile = config.profile.trim();
+  const singleClass = new Set([...targets.keys()].map((id) => id.split(".")[0])).size === 1;
+  let liveTarget: LiveRunTarget | undefined;
+  if (!dryRun && singleClass && profile.length === 0 && prepareLiveForRun && targets.size > 0) {
+    const platform = resolveTargetPlatform(targets);
+    if (platform) {
+      run.appendOutput(`${t("run.live.preparing")}\r\n`);
+      try {
+        liveTarget = await prepareLiveForRun(platform);
+      } catch (error) {
+        outputChannel.appendLine(
+          t("run.live.prepareFailed", {
+            message: error instanceof Error ? error.message : String(error),
+          }),
+        );
+      }
+    }
+  }
+
+  // プロファイル未指定は「ブリッジを自動供給しない直接ポート接続」モードに落ちる。事前に
+  // `fleetest bridge up` を回していない限り全シナリオが接続拒否で即失敗するため、走らせずに止める
+  // (実害 2026-07-26: 19 シナリオが 2 秒で全滅し、原因が設定だと分からなかった)。
+  // 除外2件: dry-run はデバイスに触れない / liveTarget はライブ操作パネルが実デバイスを解決済み。
+  if (!dryRun && !liveTarget && profile.length === 0) {
+    const message = t("run.profileRequired.message");
+    run.appendOutput(`${message}\r\n`);
+    outputChannel.appendLine(message);
+    for (const item of targets.values()) {
+      run.errored(item, new vscode.TestMessage(message));
+    }
+    run.end();
+    void vscode.window
+      .showErrorMessage(`fleetest: ${message}`, t("run.profileRequired.openDeviceTab"))
+      .then((picked) => {
+        if (picked !== undefined) {
+          void vscode.commands.executeCommand("fleetest.showDeviceMonitor");
+        }
+      });
+    return;
+  }
+
+  // リモート機の版ズレ確認(dry-run・liveTarget は対象外。上のプロファイル必須チェックと同じ除外)。
+  // CLI 呼び出しが失敗してもチェックだけスキップし、実行は止めない(最終ゲートはディスパッチ側に残る)。
+  if (!dryRun && !liveTarget && profile.length > 0 && config.remoteCompatCheck) {
+    let report: RemoteCompatReport | undefined;
+    try {
+      const result = await runOneShot(
+        config.binaryPath,
+        workspaceRoot,
+        ["api", "remote-compat", "--project", resolution.project, "--profile", profile],
+        outputChannel,
+        () => {},
+      );
+      if (result.exitCode === 0) {
+        report = result.json as RemoteCompatReport | undefined;
+      } else {
+        outputChannel.appendLine(
+          t("run.remoteCompat.checkSkippedLog", {
+            message: result.stderrTail || `exit ${String(result.exitCode)}`,
+          }),
+        );
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      outputChannel.appendLine(t("run.remoteCompat.checkSkippedLog", { message }));
+    }
+    const decision = decideRemoteCompat(report ?? null);
+    if (decision.kind === "ask") {
+      const detailLines = decision.incompatible.map((host) => `${host.name}: ${formatHostDetailValue(host)}`);
+      if (decision.revisionUnpublished) {
+        detailLines.push(t("run.remoteCompat.revisionUnpublishedNote"));
+      }
+      if (decision.localDirty) {
+        detailLines.push(t("run.remoteCompat.localDirtyNote"));
+      }
+      if (decision.localBehindHosts.length > 0) {
+        detailLines.push(t("run.remoteCompat.localBehindNote", { names: decision.localBehindHosts.join(", ") }));
+      }
+      if (decision.divergedHosts.length > 0) {
+        detailLines.push(t("run.remoteCompat.divergedNote", { names: decision.divergedHosts.join(", ") }));
+      }
+      if (decision.unknownRelationHosts.length > 0) {
+        detailLines.push(
+          t("run.remoteCompat.unknownRelationNote", { names: decision.unknownRelationHosts.join(", ") }),
+        );
+      }
+      // 「そのまま実行」は置かない —— ダイアログが出た時点でリモート担当分は必ず
+      // checkCompatibility に弾かれて failed になるので、続行は常に部分失敗の run にしかならない
+      // (ユーザー決定。チェック自体を外す逃げ道は設定 fleetest.remoteCompatCheck)。
+      // align で直せないズレ(未 push・到達不能・toolchain 不一致)は実行を止めて理由を出す
+      if (!decision.canUpdate) {
+        const message = t("run.remoteCompat.blockedMessage");
+        await vscode.window.showErrorMessage(message, { modal: true, detail: detailLines.join("\n") });
+        run.appendOutput(`${message}\r\n`);
+        outputChannel.appendLine(`${message} / ${detailLines.join(" / ")}`);
+        run.end();
+        return;
+      }
+      const updateItem = t("run.remoteCompat.updateAndRun");
+      const picked = await vscode.window.showWarningMessage(
+        t("run.remoteCompat.dialogMessage"),
+        { modal: true, detail: detailLines.join("\n") },
+        updateItem,
+      );
+      if (picked === undefined) {
+        // キャンセル≠エラー。項目はマークせず未実行のまま終える
+        run.appendOutput(`${t("run.remoteCompat.cancelledLog")}\r\n`);
+        run.end();
+        return;
+      }
+      if (picked === updateItem) {
+        const failure = await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: t("run.remoteCompat.alignProgressTitle"),
+            cancellable: false,
+          },
+          async (progress) => {
+            for (const hostName of decision.updatableHosts) {
+              const label = t("run.remoteCompat.alignProgressHost", { name: hostName });
+              progress.report({ message: label });
+              outputChannel.appendLine(`[${hostName}] ${label}`);
+              const exitCode = await runRemoteAlign(config.binaryPath, workspaceRoot, hostName, outputChannel);
+              if (exitCode !== 0) {
+                return { hostName, exitCode };
+              }
+            }
+            return undefined;
+          },
+        );
+        if (failure) {
+          const message = t("run.remoteCompat.alignFailed", {
+            name: failure.hostName,
+            exitCode: String(failure.exitCode),
+          });
+          run.appendOutput(`${message}\r\n`);
+          outputChannel.appendLine(message);
+          for (const item of targets.values()) {
+            run.errored(item, new vscode.TestMessage(message));
+          }
+          void vscode.window.showErrorMessage(`fleetest: ${message}`);
+          run.end();
+          return;
+        }
+      }
+    }
+  }
+
+  const args = ["api", "run", "--project", resolution.project];
+  // 既定は LPT(CLI 側の既定も ON)。設定でオフのときだけ明示的に切る
+  if (!config.lptScheduling) {
+    args.push("--no-lpt");
+  } else {
+    args.push("--lpt-history-runs", String(config.lptHistoryRuns));
+  }
+  for (const id of targets.keys()) {
+    args.push("--scenario", id);
+  }
+  // --profile と --platform/--port/--serial は fleetest api run 側で同時指定不可なので、liveTarget が
+  // あれば最優先で使う(上のライブパネル連携)。無ければ既存どおり: profile が非空のときはそちらだけ、
+  // 空なら platform/port/serial を渡す。**liveTarget は profile 空のときだけ立つ**(上の連動ガード。
+  // ここの前提が実装から抜けていて、プロファイルが黙って捨てられていた時期がある)。
+  // リモートディスパッチの要否は CLI 側がマシンプロファイルの host フィールドから判定する
+  // (拡張は --host 等を組み立てない)。
+  if (liveTarget) {
+    args.push("--platform", liveTarget.platform);
+    if (liveTarget.platform === "android" && liveTarget.serial) {
+      args.push("--serial", liveTarget.serial);
+    } else if (liveTarget.platform === "ios" && liveTarget.port !== undefined) {
+      args.push("--port", String(liveTarget.port));
+    }
+  } else if (profile.length > 0) {
+    args.push("--profile", profile);
+  } else {
+    args.push("--platform", config.platform);
+    if (config.port > 0) {
+      args.push("--port", String(config.port));
+    }
+    if (config.serial.trim().length > 0) {
+      args.push("--serial", config.serial);
+    }
+  }
+  if (!config.buildBeforeRun) {
+    args.push("--skip-build");
+  }
+  // --heal は dry-run には付与しない(dry-run はワーカー構築自体を省略するデバイス不要の
+  // 検証実行であり、自己修復の対象になる実機動作が発生しないため)。
+  if (config.heal && !dryRun) {
+    args.push("--heal");
+  }
+  if (dryRun) {
+    args.push("--dry-run");
+  }
+
+  watcher.setSuspended(true);
+  activeRunCount += 1;
+
+  // finished は「現在 終端状態(passed/failed)にある」シナリオ。started で解除する:
+  // 振り直し(凍結/ブリッジ離脱→別デバイス再実行)は同一シナリオに scenarioStarted を再度出し
+  // VS Code の項目を「完了→再び実行中」へ戻すため、add-only だと最終状態を取りこぼす。
+  const finished = new Set<string>();
+  // 各シナリオの直近の終端結果を再適用するクロージャ(reconcile で未終端項目を埋める)。
+  const reapplyTerminal = new Map<string, () => void>();
+  let sawEnd = false;
+  // 異常終了・キャンセル時に未終端項目へ付けるメッセージ(正常終了時は undefined)。
+  let abnormalMessage: string | undefined;
+  let reducerState = createRunReducerState();
+  // workersReady(並列実行時のみ)で埋まる worker id → デバイス名。output のプレフィックスに使う。
+  const workerNames = new Map<string, string>();
+  const stderrTail: string[] = [];
+
+  const toLocation = (location: RunLocation | undefined): vscode.Location | undefined => {
+    if (!location) {
+      return undefined;
+    }
+    const absolute = path.isAbsolute(location.file)
+      ? location.file
+      : path.join(workspaceRoot, location.file);
+    const line = Math.max(0, location.line - 1); // 1起点 → 0起点
+    return new vscode.Location(vscode.Uri.file(absolute), new vscode.Position(line, 0));
+  };
+
+  const applyAction = (action: RunAction): void => {
+    switch (action.type) {
+      case "started": {
+        const item = targets.get(action.scenario);
+        // 振り直しで再開したシナリオは「実行中」へ戻す(最終結果は次の passed/failed で確定する)。
+        finished.delete(action.scenario);
+        if (item) {
+          run.started(item);
+        }
+        break;
+      }
+      case "output": {
+        const item = action.scenario ? targets.get(action.scenario) : undefined;
+        const prefix = action.worker ? `[${workerNames.get(action.worker) ?? action.worker}] ` : "";
+        run.appendOutput(`${prefix}${action.text}\r\n`, toLocation(action.location), item);
+        break;
+      }
+      case "passed": {
+        finished.add(action.scenario);
+        const item = targets.get(action.scenario);
+        if (item) {
+          const durationMs = action.durationMs;
+          reapplyTerminal.set(action.scenario, () => run.passed(item, durationMs));
+          run.passed(item, durationMs);
+        }
+        break;
+      }
+      case "failed": {
+        finished.add(action.scenario);
+        const item = targets.get(action.scenario);
+        if (item) {
+          const messages = action.messages.map((m) => {
+            const message = new vscode.TestMessage(m.text);
+            message.location = toLocation(m.location);
+            return message;
+          });
+          // dry-run はレポートを出力しないためリンクを付けない
+          if (!dryRun) {
+            const link = buildReportLinkMessage(action.scenario);
+            link.location = messages[0]?.location
+              ?? (item.uri && item.range ? new vscode.Location(item.uri, item.range) : undefined);
+            messages.push(link);
+          }
+          const durationMs = action.durationMs;
+          reapplyTerminal.set(action.scenario, () => run.failed(item, messages, durationMs));
+          run.failed(item, messages, durationMs);
+        }
+        break;
+      }
+      case "requeued": {
+        // 振り直し: 前回の結果アイコン(✗ 等)のまま放置すると「全部終わっているのに run が
+        // 終わらない」ように見えるため、再実行待ち(準備中)としてスピナー(started)にする。
+        // 再実行されないまま run が終わった場合は reconcile が errored にする(直前の結果は取り消し
+        // 済みのため再適用しない)。
+        finished.delete(action.scenario);
+        reapplyTerminal.delete(action.scenario);
+        const item = targets.get(action.scenario);
+        if (item) {
+          run.started(item);
+        }
+        break;
+      }
+      case "end":
+        sawEnd = true;
+        break;
+      case "workers":
+        for (const worker of action.workers) {
+          workerNames.set(worker.id, worker.name);
+        }
+        break;
+    }
+  };
+
+  const cancelListener = token.onCancellationRequested(() => {
+    cli.cancelCurrent();
+  });
+
+  // liveFollow: livePanel.ts が単一クラス実行のときだけ自動追従する判定(runHandler が liveTarget を用意したか)。
+  const runId = eventBus.beginRun(dryRun, liveTarget !== undefined);
+
+  try {
+    const result = await cli.invoke(config.binaryPath, workspaceRoot, {
+      args,
+      onNdjsonValue: (value) => {
+        if (isRunEvent(value)) {
+          eventBus.publish(runId, value);
+          if (value.kind === "runFinished") {
+            testSeconds = value.testSeconds;
+            scenarioTotalSeconds = value.scenarioTotalSeconds;
+          }
+        }
+        const { state, actions } = reduceRunEvent(reducerState, value, Date.now());
+        reducerState = state;
+        for (const action of actions) {
+          applyAction(action);
+        }
+      },
+      onLog: (line, stream) => {
+        outputChannel.appendLine(`[${stream}] ${line}`);
+        if (stream === "stderr") {
+          stderrTail.push(line);
+          if (stderrTail.length > 8) {
+            stderrTail.shift();
+          }
+        }
+      },
+    });
+
+    if (!sawEnd && result.exitCode !== 0) {
+      // runFinished を受信しないまま(異常終了 / デバイス切断など)プロセスが終了した。
+      const tail = stderrTail.length > 0 ? `\n--- ${t("run.process.stderrTailHeader")} ---\n${stderrTail.join("\n")}` : "";
+      abnormalMessage = result.cancelled
+        ? t("run.cancelled")
+        : t("run.process.abnormalExit", { exitCode: String(result.exitCode), tail });
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    outputChannel.appendLine(`[fleetest] ${message}`);
+    void vscode.window.showWarningMessage(t("run.cli.invokeFailed", { message }));
+    abnormalMessage = message;
+  } finally {
+    // 未終端(振り直しでイベントを取りこぼした・異常終了で結果未着)の項目を必ず終端化する。
+    // これをしないと VS Code の進捗が 70/75 のように途中で止まって見える。直近の終端結果が
+    // あれば再適用、無ければ errored にする(正常終了時も含めて常に実行)。
+    for (const [id, item] of targets) {
+      if (finished.has(id)) {
+        continue;
+      }
+      const reapply = reapplyTerminal.get(id);
+      if (reapply) {
+        reapply();
+      } else {
+        run.errored(
+          item,
+          new vscode.TestMessage(abnormalMessage ?? t("run.result.missing")),
+        );
+      }
+    }
+    eventBus.endRun(runId);
+    cancelListener.dispose();
+    watcher.setSuspended(false);
+    activeRunCount -= 1;
+    // キャンセル・異常終了でも経過は出す(TEST RESULTS の末尾行)
+    const totalSeconds = ((Date.now() - runStartedAt) / 1000).toFixed(1);
+    const parts = [t("run.summary.total", { seconds: totalSeconds })];
+    if (testSeconds != null) {
+      parts.push(t("run.summary.testTime", { seconds: testSeconds.toFixed(1) }));
+    }
+    if (scenarioTotalSeconds != null) {
+      parts.push(t("run.summary.scenarioTotal", { seconds: scenarioTotalSeconds.toFixed(1) }));
+    }
+    run.appendOutput(`\r\n${parts.join(" / ")}\r\n`);
+    run.end();
+    onRunFinished?.([...targets.keys()]);
+  }
+}
+
+/**
+ * デバッグ実行(vscode.debug.startDebugging 経由で debugConfig.ts/debugAdapter.ts に委譲)。
+ * 1件の leaf のみ対応する(複数・folder/class を選択した場合は先頭の leaf のみ実行し警告する)。
+ */
+async function executeDebugRun(
+  controller: vscode.TestController,
+  workspaceRoot: string,
+  getConfig: () => FleetestConfig,
+  watcher: ScenarioFileWatcher,
+  request: vscode.TestRunRequest,
+  token: vscode.CancellationToken,
+  onRunFinished?: (executedScenarioIds: string[]) => void,
+): Promise<void> {
+  const config = getConfig();
+  const targets = resolveTargets(controller, request);
+  const run = controller.createTestRun(request);
+
+  if (targets.size === 0) {
+    run.end();
+    return;
+  }
+  if (targets.size > 1) {
+    void vscode.window.showWarningMessage(t("run.debug.multipleSelected"));
+  }
+  const [id, item] = [...targets.entries()][0]!;
+
+  const resolution = resolveProjectName(workspaceRoot, config);
+  // キュー投入時点で前回の合否アイコンをリセットする。前回 failed の再実行は準備中から
+  // スピナー表示(理由は executeRun の同処理を参照)。
+  if (resolution.kind === "resolved"
+      && readFailedScenarioIds(lastResultsDir(workspaceRoot, resolution.project))
+        .has(lookupKey(id))) {
+    run.started(item);
+  } else {
+    run.enqueued(item);
+  }
+
+  if (resolution.kind !== "resolved") {
+    run.appendOutput(`${t("run.project.unresolvedHint")}\r\n`);
+    run.errored(item, new vscode.TestMessage(t("run.project.unresolved")));
+    run.end();
+    return;
+  }
+
+  // プロファイル未指定で走らせない理由・除外条件は executeRun の同ガード参照
+  // (デバッグ実行に dry-run / liveTarget は無いので無条件)。
+  const profile = config.profile.trim();
+  if (profile.length === 0) {
+    const message = t("run.profileRequired.message");
+    run.appendOutput(`${message}\r\n`);
+    run.errored(item, new vscode.TestMessage(message));
+    run.end();
+    void vscode.window
+      .showErrorMessage(`fleetest: ${message}`, t("run.profileRequired.openDeviceTab"))
+      .then((picked) => {
+        if (picked !== undefined) {
+          void vscode.commands.executeCommand("fleetest.showDeviceMonitor");
+        }
+      });
+    return;
+  }
+
+  const debugConfig: vscode.DebugConfiguration = {
+    type: "fleetest",
+    request: "launch",
+    name: id,
+    project: resolution.project,
+    scenario: id,
+    skipBuild: !config.buildBeforeRun,
+    heal: config.heal,
+    profile,
+  };
+
+  const workspaceFolder = vscode.workspace.getWorkspaceFolder(
+    item.uri ?? vscode.Uri.file(workspaceRoot),
+  );
+
+  const matchesThisRun = (candidate: vscode.DebugSession): boolean =>
+    candidate.type === "fleetest" && candidate.configuration.scenario === id;
+
+  let session: vscode.DebugSession | undefined;
+  let outcome: { passed: boolean; reportPath?: string } | undefined;
+
+  const startListener = vscode.debug.onDidStartDebugSession((started) => {
+    if (matchesThisRun(started)) {
+      session = started;
+    }
+  });
+  const customEventListener = vscode.debug.onDidReceiveDebugSessionCustomEvent((e) => {
+    if (!matchesThisRun(e.session) || e.event !== "fleetest.scenarioFinished") {
+      return;
+    }
+    const body = e.body as ScenarioFinishedEventBody | undefined;
+    outcome = { passed: body?.passed === true, reportPath: body?.reportPath };
+  });
+  const cancelListener = token.onCancellationRequested(() => {
+    if (session) {
+      void vscode.debug.stopDebugging(session);
+    }
+  });
+
+  watcher.setSuspended(true);
+  activeRunCount += 1;
+  run.started(item);
+
+  try {
+    const started = await vscode.debug.startDebugging(workspaceFolder, debugConfig);
+    if (!started) {
+      run.errored(item, new vscode.TestMessage(t("run.debug.sessionStartFailed")));
+      return;
+    }
+
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      let graceTimer: ReturnType<typeof setTimeout> | undefined;
+      const finish = () => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        terminateListener.dispose();
+        clearInterval(poll);
+        if (graceTimer) {
+          clearTimeout(graceTimer);
+        }
+        resolve();
+      };
+      const terminateListener = vscode.debug.onDidTerminateDebugSession((terminated) => {
+        if (matchesThisRun(terminated)) {
+          finish();
+        }
+      });
+      // フェイルセーフ: アダプタが terminate イベントを発火せずに死ぬ/固まると、この Promise が
+      // 永久に解決せず finally が走らない(watcher 停止・activeRunCount 詰まり・スピナー残留が全体に波及)。
+      // キャンセル要求後、または完了イベント(outcome)受領後に terminate が来なければ猶予後に解放する。
+      // 正常時は terminateListener が先に発火するためこの経路は使わない。
+      const GRACE_MS = 10_000;
+      const poll = setInterval(() => {
+        if ((token.isCancellationRequested || outcome !== undefined) && !graceTimer) {
+          graceTimer = setTimeout(finish, GRACE_MS);
+        }
+      }, 500);
+    });
+
+    if (outcome) {
+      if (outcome.passed) {
+        run.passed(item);
+      } else {
+        const message = outcome.reportPath
+          ? t("run.debug.scenarioFailedWithReport", { reportPath: outcome.reportPath })
+          : t("run.debug.scenarioFailed");
+        run.failed(item, new vscode.TestMessage(message));
+      }
+    } else {
+      run.errored(item, new vscode.TestMessage(t("run.debug.resultMissing")));
+    }
+  } finally {
+    startListener.dispose();
+    customEventListener.dispose();
+    cancelListener.dispose();
+    watcher.setSuspended(false);
+    activeRunCount -= 1;
+    run.end();
+    onRunFinished?.([id]);
+  }
+}

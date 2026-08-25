@@ -1,7 +1,7 @@
 // SelectorLint.swift
 // シナリオ(.swift)の "#id" セレクタと SUT 契約書(ui-contract.md)のドリフト検査。
 // 対象は #id のみ(ラベルはローカライズで揺れるため対象外)。CLI 側は
-// Sources/ftester/ProjectCommands.swift の LintSelectors(`ftester project lint-selectors`)。
+// Sources/fleetest/ProjectCommands.swift の LintSelectors(`fleetest project lint-selectors`)。
 
 import Foundation
 

@@ -1,8 +1,8 @@
 // DeviceDeletion.swift
-// シミュレータ/AVD の実体削除(ftester api delete-device)の純粋ロジック。
+// シミュレータ/AVD の実体削除(fleetest api delete-device)の純粋ロジック。
 // コマンド組み立て・入口検証・起動中/不存在の拒否判定・マシンプロファイル参照の洗い出しを
 // ここへ集約し、ファイル I/O(simctl/avdmanager 実行・プロファイル読み込み・起動中判定の実照会)は
-// 呼び出し側(Sources/ftester/ApiDeleteDeviceCommand.swift)に置く(MachineProfileEditor と同方針)。
+// 呼び出し側(Sources/fleetest/ApiDeleteDeviceCommand.swift)に置く(MachineProfileEditor と同方針)。
 
 import Foundation
 
@@ -61,7 +61,7 @@ public enum DeviceDeletion {
     public static func refusalReason(isRunning: Bool, exists: Bool,
                                      then: String = "delete it") -> String? {
         if isRunning {
-            return "the device is currently running — stop it first (ftester devices down, "
+            return "the device is currently running — stop it first (fleetest devices down, "
                 + "or the monitor), then \(then)"
         }
         if !exists {

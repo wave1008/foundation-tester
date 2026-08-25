@@ -1,4 +1,4 @@
-// マシン/アプリ/実行プロファイルを揃えて書く純粋ロジック(`ftester profile setup` の中身)。
+// マシン/アプリ/実行プロファイルを揃えて書く純粋ロジック(`fleetest profile setup` の中身)。
 // 手書き運用で「machines の device 名と runs の参照名がずれる」「指示していない
 // プラットフォームの run が残る」不整合が起きたため、書き手を1箇所にした経緯がある。
 import XCTest

@@ -65,17 +65,17 @@ public enum AndroidWebViewUpdate {
               targetVersions.contains(where: { isNewer(newestTarget, than: $0) })
         else { return nil }   // 対象が揃っている = 何も言わない
         guard !candidates.values.contains(where: { isNewer($0, than: newestTarget) }) else { return nil }
-        return "ftester: WebView versions differ but no connected device has a newer build to copy from."
+        return "fleetest: WebView versions differ but no connected device has a newer build to copy from."
             + " There is no adb command that updates WebView — it ships through the Play Store."
             + " Update one device (Play Store) or connect one that is already newer, then run again."
     }
 
     /// 吸い出した APK の置き場。**265MB あるので一時ディレクトリには置かない**
     /// (OS に消されると毎回 pull し直す)。**リポジトリにも置かない**(受け手が clone する
-    /// ツリーを太らせない)。`SharedResource` と同じ `~/Library/Caches/ftester` 配下にする。
+    /// ツリーを太らせない)。`SharedResource` と同じ `~/Library/Caches/fleetest` 配下にする。
     /// **版ごとにファイルを分け、古い版は消す**(放置すると 265MB ずつ積み上がる)
     static func cacheDirectory(home: URL = URL(fileURLWithPath: NSHomeDirectory())) -> URL {
-        home.appendingPathComponent("Library/Caches/ftester/webview")
+        home.appendingPathComponent("Library/Caches/fleetest/webview")
     }
 
     static func cachedAPK(version: String, in directory: URL) -> URL {

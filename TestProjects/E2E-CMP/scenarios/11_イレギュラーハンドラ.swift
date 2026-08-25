@@ -1,5 +1,5 @@
 // 11_イレギュラーハンドラ.swift
-// ftester 機能: `irregularHandler`(出るか不定なアプリ内メッセージの検出・自動終了)。
+// fleetest 機能: `irregularHandler`(出るか不定なアプリ内メッセージの検出・自動終了)。
 // 07_条件分岐とダイアログ.swift はハンドラなしでのダイアログ操作(ifCanSelect/select)を検証しており、
 // 干渉させないためこちらは分けて irregularHandler 専用に検証する。
 

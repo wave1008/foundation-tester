@@ -23,7 +23,7 @@ OUT_DIR="dist/ios-simulator"
 mkdir -p "$OUT_DIR"
 APP_SRC="build/ios-derived/Build/Products/Debug-iphonesimulator/Runner.app"
 APP_DST="$OUT_DIR/FTE2EFlutter.app"
-# .app 名は cosmetic。ftester/simctl の install 判定は中身の Info.plist の bundle id で行う。
+# .app 名は cosmetic。fleetest/simctl の install 判定は中身の Info.plist の bundle id で行う。
 rsync -a --delete "$APP_SRC/" "$APP_DST/"
 # rsync -a は mtime を保存するので成果物の時刻が進まず、Scripts/e2e.sh の needs_rebuild が
 # 毎回真になる(ソースが常に新しく見える)。touch を消すと実行のたびに再ビルドが走る。

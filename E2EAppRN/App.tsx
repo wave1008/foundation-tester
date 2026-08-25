@@ -1,5 +1,5 @@
 /**
- * FT E2E RN — foundation-tester 用の SUT アプリ。
+ * FT E2E RN — fleetest 用の SUT アプリ。
  * 契約(#id・ラベル・画面構成)の唯一の正は E2EAppCMP/docs/ui-contract.md。
  *
  * @format

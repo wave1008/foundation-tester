@@ -1,6 +1,6 @@
 // RemoteSetup.swift
-// `ftester remote setup` (docs/remote-runner.md §14) の純粋ロジック。
-// scp/ssh の起動・確認プロンプトは Sources/ftester/RemoteSetupCommand.swift 側(単体テスト対象外)。
+// `fleetest remote setup` (docs/remote-runner.md §14) の純粋ロジック。
+// scp/ssh の起動・確認プロンプトは Sources/fleetest/RemoteSetupCommand.swift 側(単体テスト対象外)。
 // RemoteShell/RemoteLayout/RemoteProbe 等は Sources/FTCore/RemoteDispatch.swift(同じ規律を踏襲する)。
 
 import Foundation
@@ -141,12 +141,12 @@ public enum RemoteSetupPlan {
 
     private static let hexDigits = CharacterSet(charactersIn: "0123456789abcdefABCDEF")
 
-    /// リモートのクローンを発行側と同じコミットへ合わせ、`ftester` バイナリを作り直す
+    /// リモートのクローンを発行側と同じコミットへ合わせ、`fleetest` バイナリを作り直す
     /// (docs/remote-runner.md §14 ステップ3 相当)。呼び出し側は `validateRevision` を先に通すこと
     /// (ここでは検証しない — 検証は1箇所、埋め込みは複数箇所から呼ばれ得るため分離してある)
     public static func alignRevisionCommand(layout: RemoteLayout, revision: String) -> String {
         "cd \(RemoteShell.quote(layout.toolRoot)) && git fetch origin && "
-            + "git checkout \(RemoteShell.quote(revision)) && swift build --product ftester"
+            + "git checkout \(RemoteShell.quote(revision)) && swift build --product fleetest"
     }
 
     /// `--uninstall` が base ごと削除してよいかの判定(docs/remote-runner.md §14 撤去)。

@@ -1,11 +1,11 @@
-# foundation-tester
+# fleetest mobile
 
 Claude Codeを前提とした macOS専用の iOS / Android アプリの E2E テストツール。
 
 **設計思想: 「AI がテストを作り、コードが決定的に再生する」**
 
 - **生成**: VSCode 拡張のライブ操作パネルで操作を録画すると **Swift のテストシナリオ
-  (Shirates 風 DSL)**を生成する(`ftester api gen-scenario`)。複雑なものは Claude Code
+  (Shirates 風 DSL)**を生成する(`fleetest api gen-scenario`)。複雑なものは Claude Code
   (MCP 経由)に作らせる・手書きする。イレギュラー処理・データ投入は Swift でそのまま書ける
 - **実行**: シナリオは LLM なしで決定的に実行する。高速・安定で CI 向き
 - **失敗時のみ FM が介入**: ロケータ自己修復(+ヒールキャッシュ)/ スクリーンショットの
@@ -15,17 +15,17 @@ Claude Codeを前提とした macOS専用の iOS / Android アプリの E2E テ�
 ## 4つのインターフェース
 
 同じコア(Swift DSL + AppDriver + StepExecutor + FM エージェント)の上に、用途別の入口が4つある。
-UI は VSCode 拡張(`vscode-ftester/`)に一本化している(セットアップ・機能の詳細は
-[vscode-ftester/README.md](vscode-ftester/README.md))。
+UI は VSCode 拡張(`vscode-fleetest/`)に一本化している(セットアップ・機能の詳細は
+[vscode-fleetest/README.md](vscode-fleetest/README.md))。
 
 | 入口 | 起動 | 向いている用途 |
 |---|---|---|
-| **CLI** `ftester` | `swift run ftester ...`(clone 内)/ ビルド済み `.build/debug/ftester` | CI・回帰テストの定期実行(決定的・無料・exit code) |
-| **VSCode 拡張** | [vscode-ftester/](vscode-ftester/README.md)(F5 起動 または .vsix インストール) | 人間の対話操作: シナリオ実行・デバッグ実行・ライブ操作(録画→生成)・デバイスモニター・結果ダッシュボード |
+| **CLI** `fleetest` | `swift run fleetest ...`(clone 内)/ ビルド済み `.build/debug/fleetest` | CI・回帰テストの定期実行(決定的・無料・exit code) |
+| **VSCode 拡張** | [vscode-fleetest/](vscode-fleetest/README.md)(F5 起動 または .vsix インストール) | 人間の対話操作: シナリオ実行・デバッグ実行・ライブ操作(録画→生成)・デバイスモニター・結果ダッシュボード |
 | **MCP** サーバ | Claude Code が自動起動([.mcp.json](.mcp.json)) | エージェント連携: AIによるテスト作成・デバッグ・探索的テスト |
 | **Swift DSL** | `TestProjects/<name>/scenarios/*.swift` | テスト資産。どの入口で作っても同じ形式で保存・実行される |
 
-役割分担の原則: **探索・判断(知能)はエージェント、操作・実行・検証(決定性)は ftester**。
+役割分担の原則: **探索・判断(知能)はエージェント、操作・実行・検証(決定性)は fleetest**。
 テスト作成は VSCode 拡張のライブ操作録画(操作を Swift シナリオに変換)か、複雑なものは Claude Code
 (MCP 経由)で行い、できた Swift シナリオを CLI/CI で決定的に回す。
 
@@ -43,11 +43,11 @@ UI は VSCode 拡張(`vscode-ftester/`)に一本化している(セットアッ�
 ## インストール(使う: 自分のアプリのテストを書く)
 
 **Claude Code に任せる(推奨)**: ターミナルでプラグインを入れ、テスト用の新規フォルダを VSCode で開いて
-`/ftester:ftester-setup` を呼ぶ(`claude` CLI が無ければ `brew install claude-code`):
+`/fleetest:fleetest-setup` を呼ぶ(`claude` CLI が無ければ `brew install claude-code`):
 
 ```bash
 claude plugin marketplace add wave1008/foundation-tester
-claude plugin install ftester@foundation-tester --scope user
+claude plugin install fleetest@foundation-tester --scope user
 ```
 
 **エージェント無しで入れる**: 同じ機械作業を1コマンドで行うインストーラ(冪等):
@@ -58,8 +58,8 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scr
   | bash -s -- --name MyApp --app com.example.myapp
 ```
 
-- プラグインが提供するスキル: `ftester-setup`(初回導入)・`ftester-update`(更新)・`ftester-profiles`
-  (マシン/アプリ/実行プロファイル)・`ftester-scenario`(シナリオ作成)・`ftester-mcp`(MCP のみ)。
+- プラグインが提供するスキル: `fleetest-setup`(初回導入)・`fleetest-update`(更新)・`fleetest-profiles`
+  (マシン/アプリ/実行プロファイル)・`fleetest-scenario`(シナリオ作成)・`fleetest-mcp`(MCP のみ)。
   版を固定するなら `claude plugin marketplace add https://github.com/wave1008/foundation-tester.git#<tag>`。
   プラグイン機構が無い環境向けの代替は
   `curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install-skill.sh | sh`。
@@ -73,19 +73,19 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scr
 
 ## セットアップ(新しい環境へクローンした直後)
 
-`doctor` が各ステップの導入状況を確認できるので、詰まったら随時 `swift run ftester doctor` を実行する。
+`doctor` が各ステップの導入状況を確認できるので、詰まったら随時 `swift run fleetest doctor` を実行する。
 
 ```bash
 # 1. iOS ブリッジ生成に必要な xcodegen を入れる(未導入だと bridge/device-up が
 #    「xcodegen: No such file or directory」で失敗する)
 brew install xcodegen
 
-# 2. 本体をビルド(全プロダクト。ftester 本体＋映像ストリーミングヘルパー
-#    ftester-simstream / ftester-androidstream ＋ MCP サーバをまとめて生成)
+# 2. 本体をビルド(全プロダクト。fleetest 本体＋映像ストリーミングヘルパー
+#    fleetest-simstream / fleetest-androidstream ＋ MCP サーバをまとめて生成)
 swift build
 
 # 3. 事前診断(FM 可用性・Xcode・xcodegen・シミュレータ・adb をまとめて確認)
-swift run ftester doctor
+swift run fleetest doctor
 
 # 4. (プロファイル実行や VSCode 拡張を使う場合)デバイス定義を用意する
 #    profiles/machines/<名前>.json に UDID/AVD などの実体を書き(既存例をコピーして編集)、
@@ -95,13 +95,13 @@ swift run ftester doctor
 VSCode 拡張(デバイスモニター・ライブ操作・結果ダッシュボードなどの UI)を使う場合は、続けて拡張をビルド・インストールする(Node.js v24 系 / npm v11 系):
 
 ```bash
-cd vscode-ftester
+cd vscode-fleetest
 npm install
 npm run install-local   # パッケージ(.vsix)化 → インストール → 反映には VSCode の Reload Window が必要
 ```
 
 拡張の開発(F5 で Extension Development Host を起動)やデバッグの詳細は
-[vscode-ftester/README.md](vscode-ftester/README.md) を参照。
+[vscode-fleetest/README.md](vscode-fleetest/README.md) を参照。
 
 Android(任意)を使う場合の追加手順:
 
@@ -113,16 +113,16 @@ bash AndroidRunner/build.sh                  # 常駐ブリッジ APK を生成(
 - macOS ベータを使う場合は **Xcode を同じベータへ揃えてフルリビルド**する
   (FoundationModels の ABI 不整合で全バイナリが dyld クラッシュするため)
 - 手動コピー・別リポジトリからの移行などで `TestProjects/` を持ち込んだ場合は
-  `swift run ftester project sync` で Package.swift のマーカー区間を再生成する
+  `swift run fleetest project sync` で Package.swift のマーカー区間を再生成する
 
 ## クイックスタート
 
 ```bash
 # 1. 事前チェック(FM 可用性・Xcode・シミュレータ・adb)
-swift run ftester doctor
+swift run fleetest doctor
 
 # 2. iOS ブリッジを常駐させる(初回は数分。--with-sample-app でデモアプリ付き)
-swift run ftester bridge up --with-sample-app
+swift run fleetest bridge up --with-sample-app
 
 # 3. シナリオを用意する(下記いずれか)
 #    - VSCode 拡張のライブ操作パネルで操作を録画 → TestProjects/<name>/scenarios/Generated/*.swift を生成
@@ -131,9 +131,9 @@ swift run ftester bridge up --with-sample-app
 #    - Claude Code(MCP 経由)に作らせる
 
 # 4. 決定的実行(LLM なし。失敗があれば exit code 1)
-swift run ftester run                         # 全シナリオ(プロジェクトが1つなら --project 省略可)
-swift run ftester run --scenario ログインテスト  # クラス名 or クラス名.メソッド名で指定
-swift run ftester run --profile ios           # 実行プロファイル(ブリッジ供給・自動インストール込み)
+swift run fleetest run                         # 全シナリオ(プロジェクトが1つなら --project 省略可)
+swift run fleetest run --scenario ログインテスト  # クラス名 or クラス名.メソッド名で指定
+swift run fleetest run --profile ios           # 実行プロファイル(ブリッジ供給・自動インストール込み)
 ```
 
 ## コマンド一覧
@@ -148,7 +148,7 @@ swift run ftester run --profile ios           # 実行プロファイル(ブリ�
 | `devices up / down` | 実行プロファイルのデバイスを一括起動・停止(ブリッジ供給込み) |
 | `results list / summary / flaky / trend / devices / slow / insights` | 実行結果の集約・分析(reports/ を横断) |
 | `draft-scenario` | テストベース(`docs/testbases/*.md`)からシナリオの下書きを生成(`--testbase`、`--app`、`--platform`、`--no-fm` で FM 不使用、`--dry-run`) |
-| `init` | 外部パッケージ構成の scaffold(`--platform` で作る run 雛形を絞る)(受け手ディレクトリを ftester テストパッケージ化。スキル入口 `/ftester-setup` の既定経路) |
+| `init` | 外部パッケージ構成の scaffold(`--platform` で作る run 雛形を絞る)(受け手ディレクトリを fleetest テストパッケージ化。スキル入口 `/fleetest-setup` の既定経路) |
 | `profile setup` | マシン/アプリ/実行プロファイルを整合させて作成(冪等。`--platform`、`--device-name`、`--simulator`/`--avd`、`--app-id`、`--auto-device` は既存デバイスから自動選定(iOS は iPad を除外)) |
 | `profile list` | 実行プロファイルの一覧と現在マシンでの解決チェック |
 | `install <パッケージパス>` | .app / .apk のインストール |
@@ -165,7 +165,7 @@ swift run ftester run --profile ios           # 実行プロファイル(ブリ�
 ## テストプロジェクトと実行プロファイル
 
 テストは **テストプロジェクト**(`TestProjects/<name>/` = シナリオ+プロファイル+レポートの器)で管理する。
-プロジェクト毎に SPM ターゲット `ftester-scenarios-<name>` が対応し、`ftester project create/sync` が
+プロジェクト毎に SPM ターゲット `fleetest-scenarios-<name>` が対応し、`fleetest project create/sync` が
 Package.swift のマーカー区間を自動更新する(プロジェクト間はビルド隔離)。
 
 ```
@@ -176,7 +176,7 @@ TestProjects/SampleApp/
 │   └── runs/ios.json              # 実行プロファイル(アプリ+デバイス名リスト+実行時設定)
 ├── scenarios/                     # Swift DSL(_Main.swift / Generated/ / _disabled/)
 ├── reports/                       # 実行レポート(プロジェクト別)
-└── .ftester/heal-cache.json       # ヒールキャッシュ(プロジェクト別)
+└── .fleetest/heal-cache.json       # ヒールキャッシュ(プロジェクト別)
 ```
 
 **実行プロファイル**はアプリとデバイスの組み合わせ。デバイスはマシンプロファイルの `name` で参照し、
@@ -197,7 +197,7 @@ TestProjects/SampleApp/
 ```
 
 ```bash
-swift run ftester run --project SampleApp --profile all   # 解決 → ブリッジ供給 → 自動インストール → 並列実行
+swift run fleetest run --project SampleApp --profile all   # 解決 → ブリッジ供給 → 自動インストール → 並列実行
 ```
 
 - マシン決定: 実行プロファイルの `machine` > `FT_MACHINE` 環境変数 > machines/ に 1 ファイルならそれ
@@ -220,12 +220,12 @@ Android シナリオがあれば専用ワーカーも同時に走る(1シナリ�
 
 ```bash
 # デバイス毎にブリッジを起動(ビルドは1回で共有される)
-swift run ftester bridge up --device "iPhone 17 Pro"                          # port 8123
-swift run ftester bridge up --device "iPhone 17 Pro Max" --port 8124 --skip-build
+swift run fleetest bridge up --device "iPhone 17 Pro"                          # port 8123
+swift run fleetest bridge up --device "iPhone 17 Pro Max" --port 8124 --skip-build
 xcrun simctl install "iPhone 17 Pro Max" <対象アプリ.app>   # 各デバイスにアプリを入れる
 
-swift run ftester run --ports 8123,8124          # シナリオをワーカーに自動分配
-swift run ftester bridge down --all              # 全ブリッジ停止
+swift run fleetest run --ports 8123,8124          # シナリオをワーカーに自動分配
+swift run fleetest bridge down --all              # 全ブリッジ停止
 ```
 
 - 実測(M1 Max): 3本逐次 55.2秒 → 2+1並列 31.2秒(壁時間 ≒ 最長シナリオ)
@@ -233,8 +233,8 @@ swift run ftester bridge down --all              # 全ブリッジ停止
 - 注意: **コールドブート直後のシミュレータはアクセシビリティ IPC がタイムアウトしやすい**
   (kAXErrorIPCTimeout でランナーが落ちる)。ワーカーは開始時に snapshot ウォームアップを
   自動で行うが、それでも落ちる場合は `bridge up` 後に一度 `launch`+`snapshot` してから実行する
-- VSCode 拡張(`vscode-ftester/`)でも実行プロファイル(`ftester.profile`)経由で同じ並列実行が
-  できる(詳細は [vscode-ftester/README.md](vscode-ftester/README.md) の「並列実行とログレーン」)
+- VSCode 拡張(`vscode-fleetest/`)でも実行プロファイル(`fleetest.profile`)経由で同じ並列実行が
+  できる(詳細は [vscode-fleetest/README.md](vscode-fleetest/README.md) の「並列実行とログレーン」)
 - 決定的再生は FM を呼ばないため並列スケールする。screenMatches・トリアージは
   オンデバイス FM(マシンに1本)に律速される点に注意
 
@@ -245,14 +245,14 @@ swift run ftester bridge down --all              # 全ブリッジ停止
 iOS ブリッジとプロトコル互換の instrumentation サーバ)が自動インストール・自動起動され、
 snapshot が uiautomator dump の約2秒からミリ秒オーダーになる。
 
-- 手動管理(任意): `ftester bridge up|down|status --platform android [--serial S]`
+- 手動管理(任意): `fleetest bridge up|down|status --platform android [--serial S]`
   (`up` は接続中全デバイスへのプリウォームにも使える)。`doctor` が導入状況を表示
 - ブリッジ起動時に window/transition/animator アニメーションを自動で無効化する
   (screenshot が静穏判定後も古い絵を掴む問題の回避)
 - 注意: ブリッジ稼働中は `uiautomator dump` を手で叩けない(a11y 接続は実質1本の排他)
 
 Android シナリオも iOS と同様に `--platform android` を付けて実行する
-(`swift run ftester run --platform android` / 実行プロファイルにエミュレータ name を含める)。
+(`swift run fleetest run --platform android` / 実行プロファイルにエミュレータ name を含める)。
 
 #### 日本語入力(非 ASCII テキスト)
 
@@ -420,27 +420,27 @@ condition {
 - レポートは成否問わず `TestProjects/<name>/reports/scenario-*.md` に出力(scene → CAE → ステップ階層、
   トリアージ、失敗スクリーンショット、**修正提案**)
 - **自己修復とヒールキャッシュ**: 自己修復が有効な実行(**`--profile` 実行では実行プロファイルの
-  `heal` が既定 ON** / **プロファイルを使わない `ftester run` は既定 OFF**。CLI からは
+  `heal` が既定 ON** / **プロファイルを使わない `fleetest run` は既定 OFF**。CLI からは
   `--heal` で ON・`--no-heal` で OFF に上書きできる。両方の同時指定はエラー)では、
   壊れたセレクタは FM が修復して続行し、
-  結果は `TestProjects/<name>/.ftester/heal-cache.json` に保存される。**2回目以降は FM なしで決定的に通過**し、
+  結果は `TestProjects/<name>/.fleetest/heal-cache.json` に保存される。**2回目以降は FM なしで決定的に通過**し、
   レポートに「`TestProjects/SampleApp/scenarios/LoginTest.swift:17` — セレクタ "#email_input" を
   "#email||.textField[0]" に変更してください」のようなソース位置付き修正提案を出し続ける
   (ソースの自動書換はしない。人がソースを直すとキー不一致でキャッシュは自然に無効化される)
-- **dry-run**: `ftester run --dry-run`(Shirates の No-Load-Run 相当)。**デバイスにも FM にも
+- **dry-run**: `fleetest run --dry-run`(Shirates の No-Load-Run 相当)。**デバイスにも FM にも
   触れず**、セレクタの構文誤り・到達しない scene・アサーション0の `expectation`・
   **撮った画面に実在しない `#id`** を数秒で落とす(実測: 76 シナリオで 3.4 秒)。
   `--scenario` / `--folder` / `--project` / `--quiet` はそのまま効き、**失敗があれば exit code 1**。
   デバイスを1台も使わないので `--profile` は使われない(`--platform` だけが
   `ios { }` / `android { }` の分岐を決める)。レポートは書かず、`--failed` の判断材料にもならない。
-  MCP は `ft_dry_run`、VSCode 拡張は `ftester api run --dry-run` 経由で同じ検証を行う
+  MCP は `ft_dry_run`、VSCode 拡張は `fleetest api run --dry-run` 経由で同じ検証を行う
 
 ## UI(VSCode 拡張)
 
 シナリオ実行・デバッグ実行(ブレークポイント/ステップ実行)・ライブ操作・デバイスモニター・
 ライブ操作(録画→シナリオ生成)・結果ダッシュボード・自己修復候補の確認・プロファイル編集支援と
-いった対話的な UI は、VSCode 拡張(`vscode-ftester/`)に一本化している。CLI と同じ `ftester api ...` サブコマンド経由で
-ftester 本体を呼び出すため、挙動は CLI・MCP と共通のモジュールに基づく。
+いった対話的な UI は、VSCode 拡張(`vscode-fleetest/`)に一本化している。CLI と同じ `fleetest api ...` サブコマンド経由で
+fleetest 本体を呼び出すため、挙動は CLI・MCP と共通のモジュールに基づく。
 
 **ライブ操作の割り当て**: 画面をクリック = タップ / 500ms 以上ホールド = 長押し /
 ドラッグ = スワイプ / **Alt(Option)+クリック = ダブルタップ** / ツールバーの **拡大・縮小** =
@@ -450,21 +450,21 @@ ftester 本体を呼び出すため、挙動は CLI・MCP と共通のモジュ�
 (docs/commands.md の表。ライブ操作は実行プロファイルのエンジンに従う)。
 
 **デバイス画面はヘッドレス映像ストリーミングで表示する**: デバイスモニター・ライブ操作の
-画面は、変化駆動でフレーム(JPEG)を配信する常駐ヘルパー(iOS: `ftester-simstream` /
-Android: `ftester-androidstream`)経由でほぼリアルタイムに更新する。ScreenCaptureKit を
+画面は、変化駆動でフレーム(JPEG)を配信する常駐ヘルパー(iOS: `fleetest-simstream` /
+Android: `fleetest-androidstream`)経由でほぼリアルタイムに更新する。ScreenCaptureKit を
 使わずシミュレータ/エミュレータの画面を低負荷で流すヘッドレス方式で、静止画面では
 フレームをほぼ出さない。設定タブのトグル(`monitor.pollingMode`)で従来のポーリング
 (一定間隔の静止画取得)方式にも切り替えられる(ヘルパー未ビルド時は自動でポーリングに
 フォールバック)。
 
-セットアップ手順・各機能の詳細・設定一覧(`ftester.*`)は
-[vscode-ftester/README.md](vscode-ftester/README.md) を参照。
+セットアップ手順・各機能の詳細・設定一覧(`fleetest.*`)は
+[vscode-fleetest/README.md](vscode-fleetest/README.md) を参照。
 
 ## MCP サーバ(エージェント連携)
 
-`ftester-mcp` は同じ機能を MCP(Model Context Protocol)ツールとして公開する stdio サーバ。
+`fleetest-mcp` は同じ機能を MCP(Model Context Protocol)ツールとして公開する stdio サーバ。
 リポジトリ直下の [.mcp.json](.mcp.json) に登録済みのため、**このディレクトリで Claude Code を
-開くと自動で `ftester` サーバが使える**(初回はビルドが走る)。
+開くと自動で `fleetest` サーバが使える**(初回はビルドが走る)。
 
 | ツール | 内容 |
 |---|---|
@@ -472,7 +472,7 @@ Android: `ftester-androidstream`)経由でほぼリアルタイムに更新す�
 | `ft_doctor` | FM 可用性。使えないときは**止まる機能(self-healing / triage / screenLooksLike / occlusion-guard)と代わりの書き方**まで返す |
 | `ft_launch` / `ft_terminate` | アプリ起動・終了 |
 | `ft_install` | アプリをパッケージファイルからインストールする(iOS: `.app` バンドル / Android: `.apk`) |
-| `ft_snapshot` | 画面要素一覧(set-of-mark 圧縮形式)。**`waitFor` を渡すと出るまでホスト側で待つ**(セレクタ記法は DSL と同じ。既定 5 秒)。**対象アプリが前面に居なければ先頭で警告する**(XCUITest の木はセッションのアプリに閉じているので、別アプリが前面でも同じ木を返してしまう。**iOS 実機では OS が前面状態を正しく申告しないため警告は出ない**)。**スクロール容器の外に取り残された要素(ghost)は先頭と各行で名指しする**(`⚠️scroll-leftover`) —— 一覧の見た目は普通の行と同じだが、その座標には別のものが描かれていることがある。**スクロール容器の行には `scroll` を付ける**(`scrollFrame:` に指定できる領域。**2つ以上あるときだけ**先頭でも名指しする)—— ただし**印が無い = スクロールしない、ではない**(Compose / Flutter の in-app は自前描画で申告できない)。撮った `#id` は `<プロジェクト>/.ftester/selector-inventory.json` に貯まり、`ft_dry_run` の綴り誤り照合に使われる。**同じ id の大群(地図の POI など。非操作の葉が20件以上)は1行に畳む** —— 見出しに続けて「ラベル[ref]」の索引が出るので ref では撃てる。frame まで要るときは `expandBulk: true`。**上限で要素が落ちたときは先頭で言う**(何件・何が落ちたか。内訳は iOS のブリッジが申告する) —— 落ちた要素は木から消えているので `waitFor` も `ft_scroll_to` も一生見つけられない。**ラベルも id も無い clickable には `#容器 >> .clickable[n]` を添える**(id を持つ祖先があるときだけ。無ければ従来どおり「ref か座標しかない」)。**同じラベルが複数に当たるときは「代わりに書けるセレクタ」を一致ごとに出す**(`#id` > 一意ラベル > `#容器 >> .型[n]`。書けないものは「—」で明示する = 無言のケースを作らない。**勧める前にサーバ自身が引いて当人が返ることを確かめている**)。**打ち切ったときは枠を食っている id 群まで名指しする**(`#VKPointFeature が 119 件中 87 件` のように)—— 読み手にできる手は「それを描いている物を畳む」なので、原因を当てさせない。**`interactiveOnly: true` でレイアウト専用の行を隠す**(ラベルも値も持たず、操作もスクロールもしない要素。密な画面では半分以上が消える)—— ref も frame も変わらず、隠れた行も ref では撃てる |
+| `ft_snapshot` | 画面要素一覧(set-of-mark 圧縮形式)。**`waitFor` を渡すと出るまでホスト側で待つ**(セレクタ記法は DSL と同じ。既定 5 秒)。**対象アプリが前面に居なければ先頭で警告する**(XCUITest の木はセッションのアプリに閉じているので、別アプリが前面でも同じ木を返してしまう。**iOS 実機では OS が前面状態を正しく申告しないため警告は出ない**)。**スクロール容器の外に取り残された要素(ghost)は先頭と各行で名指しする**(`⚠️scroll-leftover`) —— 一覧の見た目は普通の行と同じだが、その座標には別のものが描かれていることがある。**スクロール容器の行には `scroll` を付ける**(`scrollFrame:` に指定できる領域。**2つ以上あるときだけ**先頭でも名指しする)—— ただし**印が無い = スクロールしない、ではない**(Compose / Flutter の in-app は自前描画で申告できない)。撮った `#id` は `<プロジェクト>/.fleetest/selector-inventory.json` に貯まり、`ft_dry_run` の綴り誤り照合に使われる。**同じ id の大群(地図の POI など。非操作の葉が20件以上)は1行に畳む** —— 見出しに続けて「ラベル[ref]」の索引が出るので ref では撃てる。frame まで要るときは `expandBulk: true`。**上限で要素が落ちたときは先頭で言う**(何件・何が落ちたか。内訳は iOS のブリッジが申告する) —— 落ちた要素は木から消えているので `waitFor` も `ft_scroll_to` も一生見つけられない。**ラベルも id も無い clickable には `#容器 >> .clickable[n]` を添える**(id を持つ祖先があるときだけ。無ければ従来どおり「ref か座標しかない」)。**同じラベルが複数に当たるときは「代わりに書けるセレクタ」を一致ごとに出す**(`#id` > 一意ラベル > `#容器 >> .型[n]`。書けないものは「—」で明示する = 無言のケースを作らない。**勧める前にサーバ自身が引いて当人が返ることを確かめている**)。**打ち切ったときは枠を食っている id 群まで名指しする**(`#VKPointFeature が 119 件中 87 件` のように)—— 読み手にできる手は「それを描いている物を畳む」なので、原因を当てさせない。**`interactiveOnly: true` でレイアウト専用の行を隠す**(ラベルも値も持たず、操作もスクロールもしない要素。密な画面では半分以上が消える)—— ref も frame も変わらず、隠れた行も ref では撃てる |
 | `ft_tap` / `ft_type` / `ft_swipe` / `ft_long_press` | 画面操作(`ft_type` は `pressEnter: true` で入力後に Enter/IME アクションまで撃つ。`text` を省けば Enter だけ)。**ref は撃つ直前に撮り直して照合する** —— 動いていれば今の位置へ撃ち直し、消えていれば撃たずに理由を返す。スクロール残像は撃つが、**何に当たったかもしれないかを警告に添える**(黙って別の要素を叩かない)。**ref を撃つ操作系は「その操作を再現するセレクタ」を必ず返す**(`tap [40] done (selector: #btn_add)`)—— ref はセッション限りの番号でシナリオには書けないため。安定セレクタが無ければ「無い」と明示し、座標には出さない(再現できる根拠が無い)。**操作7ツール(`ft_tap` / `ft_type` / `ft_swipe` / `ft_drag` / `ft_double_tap` / `ft_long_press` / `ft_pinch`)は `snapshotAfter: true` で結果の一覧まで一緒に返す** —— 操作のたびに `ft_snapshot` を撃つ往復が消える(`waitFor` を併せて渡せば、結果の画面に目的のセレクタが出るまで待ってから返す)。長押しの秒数は DSL と同語彙の `holdSeconds`(`ft_long_press`) |
 | `ft_scroll_to` | セレクタが出るまでスクロールして、**撮り直した一覧を返す**。`ft_swipe` + `ft_snapshot` の繰り返しより確実で、探索そのものは DSL の `scrollTo` と同じ実装(整定・容器基準の刻み・飛び越しの拾い直し)。`scrollFrame` でスクロールする容器を指定できる(候補は `ft_snapshot` の `scroll` 印)。**半開きのシートの中でリストが動かなくなったら、グラバーを引き上げて1度だけやり直す**(判定は DSL と共有の `StepNote.sheetCollapsed`。やり直したことは note で言う)—— グラバーを名前で特定できないときは何もしない(当てずっぽうのドラッグで地図やリストを動かさない) |
 | `ft_batch` | **DSL の手を並べて1回の承認で実行する**(`"steps": "tap '#a'; type '#field' 'abc'; scrollTo '#btn' direction: .down"`)。構文は最小記述の1つだけ —— 引数は引用符(`'…'`/`"…"` 等価)+空白区切り・手は `;` か改行。正形の括弧・カンマ・配列は書き換え方を添えて拒否する。operation/scroll コマンドのみ(launchApp 等は `ft_launch` へ誘導)・対象はセレクタ指定(ref 不可)・全手を実行前に検証し、最初の失敗で止まってその画面を返す(成功時は最後の画面を1回だけ)。通ったバッチは `ft_draft_scenario` がそのまま正形の DSL にする |
@@ -510,12 +510,12 @@ XCUITest ブリッジ側へ寄る**(読みが少し遅くなるだけで止ま�
 
 全ツールに `platform: ios|android` を指定可能。**`profile` を渡すと実行プロファイルのエンジン(既定 hybrid = in-app 優先)で動く** —— 探索と実行で snapshot の内容もジェスチャの成否も揃うので、マップ系を触るときは必ず渡す。探索(explore 相当)はツール化していない —
 スナップショットと操作プリミティブがあれば、クライアント側のエージェント自身が探索できるため。
-役割分担は「エージェント=知能(探索・判断)、ftester=決定性(操作・再生・検証)」。
+役割分担は「エージェント=知能(探索・判断)、fleetest=決定性(操作・再生・検証)」。
 
 ## アーキテクチャ
 
 ```
-ftester CLI / MCP ──(サブプロセス)──▶ ftester-scenarios-<project>(プロジェクトのシナリオを発見・実行)
+fleetest CLI / MCP ──(サブプロセス)──▶ fleetest-scenarios-<project>(プロジェクトのシナリオを発見・実行)
       │                                        │  FTDSL   (Swift DSL: @TestClass/@Test マクロ・コマンド・レポート)
       │                                        │  FTAgent (FoundationModels: 視覚検証 / 修復 / トリアージ)
       │                                        │  FTCore  (ステップモデル / AppDriver 抽象 / StepExecutor)
@@ -544,28 +544,28 @@ TestProjects/          テストプロジェクト(コミットして資産化�
       Generated/       ライブ操作の録画(gen-scenario)が生成したシナリオ
       _disabled/       コンパイル対象外の退避場所(並列デモ・生成失敗コードの隔離先)
     reports/         実行レポート(プロジェクト別)
-    .ftester/        ヒールキャッシュ等(プロジェクト別)
+    .fleetest/        ヒールキャッシュ等(プロジェクト別)
 Sources/
-  ftester/         CLI(swift-argument-parser。project/machine/profile コマンド含む)
-  ftester-mcp/     MCP サーバ(stdio / JSON-RPC、自前実装)
-  ftester-simstream/     iOS シミュレータ画面のヘッドレス映像ストリーミング(変化駆動で JPEG を stdout 配信)
-  ftester-androidstream/ Android 画面のヘッドレス映像ストリーミング(iOS 版とフレームプロトコル互換)
+  fleetest/         CLI(swift-argument-parser。project/machine/profile コマンド含む)
+  fleetest-mcp/     MCP サーバ(stdio / JSON-RPC、自前実装)
+  fleetest-simstream/     iOS シミュレータ画面のヘッドレス映像ストリーミング(変化駆動で JPEG を stdout 配信)
+  fleetest-androidstream/ Android 画面のヘッドレス映像ストリーミング(iOS 版とフレームプロトコル互換)
   FTDSL/           Swift DSL 本体(コマンド・セレクタ式・発見・レポート・コード生成・ヒールキャッシュ)
   FTDSLMacros/     @TestClass / @Test マクロ実装(swift-syntax はここに閉じる)
-  FTScenarioRunner/ ftester-scenarios-<project> の CLI 実装(list / run・NDJSON イベント)
+  FTScenarioRunner/ fleetest-scenarios-<project> の CLI 実装(list / run・NDJSON イベント)
   FTCore/          ステップモデル / AppDriver / StepExecutor / プロジェクト・プロファイルモデル(FM 非依存・外部依存ゼロ)
   FTAgent/         FM エージェント(Explorer / Healer / Verifier / Triager)
   FTBridgeClient/  iOS ブリッジの HTTP クライアントと起動管理・SimulatorCatalog・BridgeProvisioner
   FTAndroid/       Android ドライバ(常駐ブリッジ)・AndroidDeviceCatalog・ProfileWorkerFactory
 Runner/            xcodegen 定義 + ブリッジ本体(HTTP サーバ内蔵 UI テスト)
 SampleApp/         検証用 SwiftUI デモアプリ(test@example.com / password123)
-vscode-ftester/    VSCode 拡張(UI 入口。詳細は vscode-ftester/README.md)
+vscode-fleetest/    VSCode 拡張(UI 入口。詳細は vscode-fleetest/README.md)
 docs/              設計書・実装知見
 ```
 
 ## CI で回す
 
-`ftester run --profile <名前> --quiet --junit reports/junit.xml` が exit code(0/1)と
+`fleetest run --profile <名前> --quiet --junit reports/junit.xml` が exit code(0/1)と
 JUnit XML を出す。self-hosted の Mac(Jenkins・AWS EC2 Mac 等)前提・
 Apple Intelligence 不要(FM 系は自動スキップ。GitHub ホストランナーはサポート外)。
 Jenkins の例と flaky の扱いは [docs/ci.md](docs/ci.md)。
@@ -586,8 +586,8 @@ Jenkins の例と flaky の扱いは [docs/ci.md](docs/ci.md)。
 | MCP ツール呼び出し | +0ms 相当 | ブリッジ直叩きと差なし(常駐プロセス) |
 | シナリオ実行(launch+タップ+検証×2、Android) | 約 2.2秒 | 整定はブリッジの a11y イベント静穏検知(固定待ちなし。2026-07 高速化で 4.9秒→2.2秒) |
 
-- `swift run ftester ...` は毎回 SwiftPM のチェックで **約1.6秒** 上乗せされる。
-  連続実行するときは `.build/debug/ftester ...` を直接叩くと速い(MCP は常駐なので無関係)
+- `swift run fleetest ...` は毎回 SwiftPM のチェックで **約1.6秒** 上乗せされる。
+  連続実行するときは `.build/debug/fleetest ...` を直接叩くと速い(MCP は常駐なので無関係)
 - FM の応答時間: screenMatches(視覚検証)数秒、修復・トリアージ数秒(すべてオンデバイス・無料)
 - 計測手順・調整ノブ・設計原則(不採用の施策含む)は
   [パフォーマンスチューニングガイド](docs/performance-tuning.md)を参照
@@ -595,15 +595,15 @@ Jenkins の例と flaky の扱いは [docs/ci.md](docs/ci.md)。
 ## トラブルシューティング
 
 - **オンデバイスモデル: 利用不可** → システム設定で Apple Intelligence を有効化(`doctor` が理由を表示)
-- **ドライバに接続できません** → iOS: `bridge up` を先に実行(ログは `.ftester/bridge-<ポート>.log`)。
+- **ドライバに接続できません** → iOS: `bridge up` を先に実行(ログは `.fleetest/bridge-<ポート>.log`)。
   Android: `adb devices` で接続確認
-- **シナリオのコンパイルエラーで実行できない** → `swift build --product ftester-scenarios-<プロジェクト名>`
+- **シナリオのコンパイルエラーで実行できない** → `swift build --product fleetest-scenarios-<プロジェクト名>`
   のエラーを修正する。ライブ操作録画(gen-scenario)の生成不良は scenarios/_disabled/ に自動隔離される
-- **プロジェクトが認識されない(手動コピーや git pull 後)** → `ftester project sync` で
+- **プロジェクトが認識されない(手動コピーや git pull 後)** → `fleetest project sync` で
   Package.swift のマーカー区間を再生成する(`project list` が未登録を警告する)
 - **マシンプロファイルが見つからない** → 実行プロファイルの `"machine"` が
   `profiles/machines/<名前>.json` と一致しているか確認する
-- **Android の snapshot が遅い** → `ftester bridge status --platform android`・`doctor` で
-  ブリッジの導入・起動状況を確認。`ftester bridge up --platform android` で強制再セットアップできる
+- **Android の snapshot が遅い** → `fleetest bridge status --platform android`・`doctor` で
+  ブリッジの導入・起動状況を確認。`fleetest bridge up --platform android` で強制再セットアップできる
 - **Android の日本語入力が入らない** → ブリッジが `ACTION_SET_TEXT` で入力するため通常は IME 不要。
   入らない場合はブリッジの導入状況(`doctor`)を確認

@@ -5,7 +5,7 @@
 // 読み手: デバイスモニター(タイルとカウンタ)。将来 MCP から見せるときも同じ口を使う。
 //
 // **なぜファイル越しなのか**: run とモニターは別プロセスで、互いに接続していない。
-// `.ftester/run-<key>.lease` / `recording-<key>.lease` が既に同じ形(pid + mtime で鮮度を見る)
+// `.fleetest/run-<key>.lease` / `recording-<key>.lease` が既に同じ形(pid + mtime で鮮度を見る)
 // で動いており、モニターはそれを毎サイクル読んでいる(ApiMonitorCommand の inRun/recording)。
 // 同じ棚に置くのが最も配線が少ない。RunLease.swift の姉妹型。
 //

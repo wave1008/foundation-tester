@@ -1,5 +1,5 @@
 // 04_ジェスチャ.swift
-// ftester 機能: `tap` の連打カウント / `tap(holdSeconds:)`(長押し)と通常タップの区別 / `swipe` 4方向 /
+// fleetest 機能: `tap` の連打カウント / `tap(holdSeconds:)`(長押し)と通常タップの区別 / `swipe` 4方向 /
 // `swipePointToPoint` / ピンチ・ダブルタップ・斜めドラッグ(`pinchOut`/`pinchIn`/`doubleTap`/`swipeBy`)。
 // SUT 側は View の OnTouchListener / OnLongClickListener で検出する。swipe は要素を狙わず
 // 画面比率の固定座標(縦 0.3h↔0.7h / 横 0.2w↔0.8w)で撃たれるため、#pad_swipe / #pad_map を

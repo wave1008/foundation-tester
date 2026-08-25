@@ -1,5 +1,5 @@
 // 09_否定と個数と方向セレクタ.swift
-// ftester 機能: notExist / countIs / enabledIsTrue / enabledIsFalse / checkIsON / checkIsOFF / 相対セレクタ `基準:below(...)` `基準:above(...)` /
+// fleetest 機能: notExist / countIs / enabledIsTrue / enabledIsFalse / checkIsON / checkIsOFF / 相対セレクタ `基準:below(...)` `基準:above(...)` /
 // 共通ステップ group / クラスの setUp・tearDown の検証。
 // 型を使うセレクタは OS 共通で書ける(ブリッジが役割へ正規化するため。ui-contract.md 全体規約)。
 

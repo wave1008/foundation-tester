@@ -8,7 +8,7 @@ and only starts what's missing. A run profile can mix iOS and Android devices in
 `devices` list to test both OSes in one run — see [profiles.md](../project/profiles.md).
 
 ```bash
-ftester run --project SampleApp --profile all
+fleetest run --project SampleApp --profile all
 ```
 
 A scenario declared with no `platform:` runs on whichever OS is the run's default (the first
@@ -22,12 +22,12 @@ platform-agnostic scenario on both OSes, run `--profile ios` and `--profile andr
 Start one bridge per simulator, on separate ports, then hand `run` the port list:
 
 ```bash
-ftester bridge up --device "iPhone 17 Pro"                          # port 8123
-ftester bridge up --device "iPhone 17 Pro Max" --port 8124 --skip-build
+fleetest bridge up --device "iPhone 17 Pro"                          # port 8123
+fleetest bridge up --device "iPhone 17 Pro Max" --port 8124 --skip-build
 xcrun simctl install "iPhone 17 Pro Max" <path/to/App.app>           # install on each device
 
-ftester run --ports 8123,8124          # scenarios are auto-distributed to the workers
-ftester bridge down --all              # stop every bridge
+fleetest run --ports 8123,8124          # scenarios are auto-distributed to the workers
+fleetest bridge down --all              # stop every bridge
 ```
 
 Android scenarios in the same run get their own worker automatically (each scenario runs in its
@@ -52,9 +52,9 @@ by their `worker` field, since the same `scenarioID` appears once per device (se
 
 ## Other places parallel execution shows up
 
-- The VS Code extension runs the same parallel execution through the `ftester.profile` setting
+- The VS Code extension runs the same parallel execution through the `fleetest.profile` setting
   (see the "並列実行とログレーン" section of
-  [vscode-ftester/README.md](../../../vscode-ftester/README.md) (Japanese)).
+  [vscode-fleetest/README.md](../../../vscode-fleetest/README.md) (Japanese)).
 - LPT ordering (longest-past-runtime-first dispatch) balances the queue across workers using
   recent run history; `--no-lpt`/`--lpt-history-runs` control it (see
   [running_scenarios.md](./running_scenarios.md)).

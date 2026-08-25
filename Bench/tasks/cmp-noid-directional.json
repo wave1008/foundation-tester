@@ -4,5 +4,5 @@
   "requires": "iOS シミュレータ1台にブリッジ + com.ftester.e2e(E2EAppCMP)がインストール済み",
   "maxTurns": 60,
   "expect": "(?=[\\s\\S]*notify=on)[\\s\\S]*qty=3",
-  "prompt": "ftester の MCP ツール(ft_*)だけを使って、iOS シミュレータ上のアプリ com.ftester.e2e を操作してください。あなたはこのアプリを初めて触ります。\n\nゴール: 「ID なし」画面を開き、(1)「通知」のスイッチを ON にする、(2)「数量」を 3 にする。この画面の要素には id が付いていません。終わったら画面上の notify=… と qty=… の2つの表示を読み取ってください。\n\n手順や使うツールは自分で決めてください。デバイスは ft_list_devices で選びます。\n\n最後に必ず1行だけ次の形式で出力してください: RESULT: <notify=… の値> <qty=… の値>\n読み取れなかった場合は RESULT: unknown と出力してください。"
+  "prompt": "fleetest の MCP ツール(ft_*)だけを使って、iOS シミュレータ上のアプリ com.ftester.e2e を操作してください。あなたはこのアプリを初めて触ります。\n\nゴール: 「ID なし」画面を開き、(1)「通知」のスイッチを ON にする、(2)「数量」を 3 にする。この画面の要素には id が付いていません。終わったら画面上の notify=… と qty=… の2つの表示を読み取ってください。\n\n手順や使うツールは自分で決めてください。デバイスは ft_list_devices で選びます。\n\n最後に必ず1行だけ次の形式で出力してください: RESULT: <notify=… の値> <qty=… の値>\n読み取れなかった場合は RESULT: unknown と出力してください。"
 }

@@ -2,7 +2,7 @@ import FTCore
 import Foundation
 import XCTest
 
-/// `.ftester-transfer-ignore` → rsync `--exclude` の翻訳(TransferIgnore の冒頭が規則の定義元)。
+/// `.fleetest-transfer-ignore` → rsync `--exclude` の翻訳(TransferIgnore の冒頭が規則の定義元)。
 /// 期待値は openrsync で実験した形をそのまま書く —— 非固定パターンは
 /// `<dir>/P` と `<dir>/**/P` の2本でないと `<dir>/P` 自身に当たらない
 final class TransferIgnoreTests: XCTestCase {
@@ -51,19 +51,19 @@ final class TransferIgnoreTests: XCTestCase {
     /// 転送が除外する場所(ルート直下の results 等・階層を問わない node_modules)は読まない
     func testScanFindsFilesAtAnyDepthAndSkipsExcludedPlaces() throws {
         let root = try makeTree([
-            "workspace/.ftester-transfer-ignore": "*.log\n",
-            "workspace/appstub/.ftester-transfer-ignore": "/data/temp/\n*.log\n",
-            "results/.ftester-transfer-ignore": "everything\n",
-            "workspace/node_modules/.ftester-transfer-ignore": "everything\n",
-            "workspace/results/.ftester-transfer-ignore": "nested-results\n",
+            "workspace/.fleetest-transfer-ignore": "*.log\n",
+            "workspace/appstub/.fleetest-transfer-ignore": "/data/temp/\n*.log\n",
+            "results/.fleetest-transfer-ignore": "everything\n",
+            "workspace/node_modules/.fleetest-transfer-ignore": "everything\n",
+            "workspace/results/.fleetest-transfer-ignore": "nested-results\n",
             "scenarios/a.swift": "",
         ])
         let scan = TransferIgnore.scan(transferRoot: root,
                                        skipTopLevel: ["results"], skipAnywhere: ["node_modules"])
         XCTAssertEqual(scan.files, [
-            "workspace/.ftester-transfer-ignore",
-            "workspace/appstub/.ftester-transfer-ignore",
-            "workspace/results/.ftester-transfer-ignore",
+            "workspace/.fleetest-transfer-ignore",
+            "workspace/appstub/.fleetest-transfer-ignore",
+            "workspace/results/.fleetest-transfer-ignore",
         ])
         XCTAssertEqual(scan.excludePatterns, [
             "/workspace/*.log", "/workspace/**/*.log",
@@ -83,7 +83,7 @@ final class TransferIgnoreTests: XCTestCase {
 
     /// 名前が同じでもディレクトリなら読まない(ファイルだけ)
     func testScanIgnoresADirectoryNamedLikeTheFile() throws {
-        let root = try makeTree(["workspace/.ftester-transfer-ignore/inner.txt": "x"])
+        let root = try makeTree(["workspace/.fleetest-transfer-ignore/inner.txt": "x"])
         XCTAssertEqual(TransferIgnore.scan(transferRoot: root, skipTopLevel: [], skipAnywhere: []), .none)
     }
 }

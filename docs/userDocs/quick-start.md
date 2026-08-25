@@ -1,22 +1,22 @@
 # Quick Start
 
 The shortest path from a completed setup to running your first scenario. This assumes
-`/ftester:ftester-setup` (see [Getting Started](getting-started.md)) has already been run; if you
+`/fleetest:fleetest-setup` (see [Getting Started](getting-started.md)) has already been run; if you
 haven't set up yet, start there.
 
 ## 1. Prerequisite: setup is done
 
 You should already have a work folder with a `TestProjects/` directory (created by
-`/ftester:ftester-setup`). If not, go to [Getting Started](getting-started.md) first.
+`/fleetest:fleetest-setup`). If not, go to [Getting Started](getting-started.md) first.
 
 ## 2. Prepare a profile
 
 You need an app profile (target app), a machine profile (device), and a run profile (the
-combination of app + devices) before you can run anything. Use the `/ftester:ftester-profiles`
+combination of app + devices) before you can run anything. Use the `/fleetest:fleetest-profiles`
 skill in Claude Code, or run the underlying command directly:
 
 ```bash
-ftester profile setup --platform ios --app-id com.example.myapp --auto-device
+fleetest profile setup --platform ios --app-id com.example.myapp --auto-device
 ```
 
 `--auto-device` picks an available simulator/emulator on this machine automatically. See
@@ -27,7 +27,7 @@ ftester profile setup --platform ios --app-id com.example.myapp --auto-device
 Any of the following three paths produce the same kind of Swift file under
 `TestProjects/<project>/scenarios/`:
 
-- Ask Claude Code to write it (`/ftester:ftester-scenario`) — it explores the real screens with
+- Ask Claude Code to write it (`/fleetest:fleetest-scenario`) — it explores the real screens with
   you and captures real selectors before writing the file.
 - Record it live from the VSCode extension's live-control panel (operate the app; a scenario is
   generated for you).
@@ -61,7 +61,7 @@ class LoginTest {
 ```
 
 Selectors (`#email`, `#login_btn`, …) must come from the real screen — see
-[Selector Expression](./selector/selector_expression.md) or use `/ftester:ftester-scenario`,
+[Selector Expression](./selector/selector_expression.md) or use `/fleetest:fleetest-scenario`,
 which captures them for you.
 
 ## 4. Verify without a device (dry-run)
@@ -70,17 +70,17 @@ Before touching a device, run a dry-run — it checks selector syntax, unreachab
 `expectation` blocks with no assertions, in a few seconds:
 
 ```bash
-ftester run --dry-run --scenario LoginTest
+fleetest run --dry-run --scenario LoginTest
 ```
 
 ## 5. Run it on a device
 
 ```bash
 # Clone layout (working inside the foundation-tester clone)
-swift run ftester run --profile <run-profile-name>
+swift run fleetest run --profile <run-profile-name>
 
 # External package layout (a separate TestProjects/ work folder)
-../foundation-tester/.build/debug/ftester run --profile <run-profile-name>
+../foundation-tester/.build/debug/fleetest run --profile <run-profile-name>
 ```
 
 `--profile` resolves the app, the devices, and the run-time settings (self-healing, timeouts,

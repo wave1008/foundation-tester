@@ -171,7 +171,7 @@ class _MapScreenState extends State<MapScreen> {
     return '-';
   }
 
-  /// 指の移動方向。両軸とも非 none なら斜め(ftester の swipeBy の検証材料)
+  /// 指の移動方向。両軸とも非 none なら斜め(fleetest の swipeBy の検証材料)
   String get _panLabel {
     if (_panX.abs() < _panThreshold && _panY.abs() < _panThreshold) return '-';
     final h = _panX.abs() < _panThreshold ? 'none' : (_panX < 0 ? 'left' : 'right');

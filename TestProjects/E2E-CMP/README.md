@@ -1,6 +1,6 @@
 # TestProjects/E2E-CMP
 
-ftester 自身の機能を検証する E2E テストプロジェクト。対象アプリはリポジトリ同梱の
+fleetest 自身の機能を検証する E2E テストプロジェクト。対象アプリはリポジトリ同梱の
 Compose Multiplatform アプリ `E2EAppCMP/`(iOS/Android 両対応、bundle id / package =
 `com.ftester.e2e`)。testTag(`#id`)と表示ラベルの唯一の正は `E2EAppCMP/docs/ui-contract.md`。
 
@@ -21,10 +21,10 @@ cd E2EAppCMP
 ## 実行
 
 ```sh
-ftester run --project E2E-CMP --profile ios        # iPhone 17 Pro(iOS 27.0)・xcuitest エンジン(全件グリーンの基準)
-ftester run --project E2E-CMP --profile ios-inapp  # 同じ端末を inapp エンジンで(エンジン差分の観測用)
-ftester run --project E2E-CMP --profile android    # Pixel 9(Android 15)-01
-ftester run --project E2E-CMP --profile heal       # --heal(_disabled/90 を有効化して回すとき)
+fleetest run --project E2E-CMP --profile ios        # iPhone 17 Pro(iOS 27.0)・xcuitest エンジン(全件グリーンの基準)
+fleetest run --project E2E-CMP --profile ios-inapp  # 同じ端末を inapp エンジンで(エンジン差分の観測用)
+fleetest run --project E2E-CMP --profile android    # Pixel 9(Android 15)-01
+fleetest run --project E2E-CMP --profile heal       # --heal(_disabled/90 を有効化して回すとき)
 ```
 
 ### iOS のエンジン選択
@@ -98,7 +98,7 @@ E2E のシナリオは全て `@TestClass(app: "com.ftester.e2e")` で `platform:
 (ui-contract.md「テキスト入力画面」)ため、境界で `#tab_home` を確実に叩ける決定的なキーボード
 消去手段が iOS 側に無い(Android の `hideKeyboard()` に相当するものが無い)。
 
-| ファイル | 検証する ftester 機能 |
+| ファイル | 検証する fleetest 機能 |
 |---|---|
 | `01_起動と画面遷移.swift` | `launchApp` / タブ切替 / 下位画面遷移+`戻る` / タブ切替時にスタックが持ち越されないこと |
 | `02_セレクタ画面.swift` | `#id`・ラベル一致規則・`.Type[n]` 系・`\|\|` フォールバック・フィルタ OR・対称アサーション・型付きセレクタ(Sel)(旧 02/03/04/16.S0010/15.S0010 を統合) |
@@ -117,7 +117,7 @@ E2E のシナリオは全て `@TestClass(app: "com.ftester.e2e")` で `platform:
 ## `_disabled/`(通常実行に含めない)
 
 **`_disabled/` は SPM のビルド対象外**(`Package.swift` の `exclude`)。回すときは
-`scenarios/` 直下へ移動 → `swift build --product ftester-scenarios-E2E-CMP` → 実行 → 元に戻す。
+`scenarios/` 直下へ移動 → `swift build --product fleetest-scenarios-E2E-CMP` → 実行 → 元に戻す。
 
 - `90_自己修復.swift` — FM 呼び出しを要するため通常実行には載せない。`heal` プロファイルで実行。
   **2026-07-22 検証済み**: FM 経路(14.5s)で `#btn_heal_v1` → `#btn_heal_v2||修復対象` に修復し、
@@ -126,7 +126,7 @@ E2E のシナリオは全て `@TestClass(app: "com.ftester.e2e")` で `platform:
   (クラッシュレポート添付は inapp 固有。xcuitest はブリッジが別プロセスなので切断しない)。
   **2026-07-22 検証済み**: エラー行に `.ips` のパスと終了理由が付くことを確認。
 
-この2本の検証で ftester 側のバグを2件発見・修正した(FM rationale へのトランスクリプト混入、
+この2本の検証で fleetest 側のバグを2件発見・修正した(FM rationale へのトランスクリプト混入、
 操作起因クラッシュでレポートが添付されない件)。
 
 ## 注意

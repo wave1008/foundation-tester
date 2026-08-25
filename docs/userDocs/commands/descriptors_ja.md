@@ -60,7 +60,7 @@ class ログインフロー {
   作業中であることを示します。どちらも一括実行(全件・フォルダ・クラス名指定)からは除外され、
   完全一致 ID を明示したときだけ実行できます。アノテーションの一覧は
   [テストクラスの作成](../testclass/creating_testclass_ja.md) を参照してください。
-- foundation-tester は Shirates の `describe` / `caption` / `manual` / `knownIssue` を持ちません
+- fleetest は Shirates の `describe` / `caption` / `manual` / `knownIssue` を持ちません
   —— この種の説明は scene の題名に書きます。
 
 ### Link

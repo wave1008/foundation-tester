@@ -1,5 +1,5 @@
 // 14_画面回転.swift
-// ftester 機能: `rotateTo(.portrait / .landscape)`。**契約は「アプリの UI がその向きになること」**
+// fleetest 機能: `rotateTo(.portrait / .landscape)`。**契約は「アプリの UI がその向きになること」**
 // で、デバイスがどう傾いているかではない(docs/commands.md)。左右の区別は語彙に無い。
 // SUT は View/XML(一部 Compose)の E2EAppAndroid。**Android はホスト側の adb(`user_rotation`)で
 // 回し、そのために自動回転を切る**(切らないと角度が保持されない = 実測)。切った設定は

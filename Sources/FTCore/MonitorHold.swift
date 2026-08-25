@@ -1,5 +1,5 @@
-// モニターの観測・配信を CLI から止める保持ファイル(.ftester/monitor-hold.json)。
-// 書き込み: `ftester monitor pause/resume` / 読み取り: ApiMonitorCommand(各周期の頭)と
+// モニターの観測・配信を CLI から止める保持ファイル(.fleetest/monitor-hold.json)。
+// 書き込み: `fleetest monitor pause/resume` / 読み取り: ApiMonitorCommand(各周期の頭)と
 // 拡張(monitorHold イベント経由で配信ヘルパーを畳む)。
 // **kill ではなくファイルで伝える** —— `api monitor` を kill しても拡張が数秒で再起動する
 // (配信ヘルパーも同様)ので、プロセスの生死では計測条件が作れない(受け手報告 2026-08-24)。
@@ -48,7 +48,7 @@ public struct MonitorHold: Codable, Equatable, Sendable {
 
     /// 人向けの1行(status と monitor の stderr が共用)
     public func describe(now: Date = Date()) -> String {
-        guard let until else { return "held until `ftester monitor resume`" }
+        guard let until else { return "held until `fleetest monitor resume`" }
         let remaining = Int(until - now.timeIntervalSince1970)
         return remaining > 0
             ? "held for another \(remaining)s (until \(Date(timeIntervalSince1970: until)))"

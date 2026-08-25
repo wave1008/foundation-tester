@@ -1,7 +1,7 @@
 # VSCode 拡張
 
-`vscode-ftester` 拡張は、シナリオを VSCode の Test Explorer に表示し、その周りにデバイス操作・
-ライブ確認・結果レビューの機能を追加します。ターミナルと同じ `ftester` CLI を spawn して動くため、
+`vscode-fleetest` 拡張は、シナリオを VSCode の Test Explorer に表示し、その周りにデバイス操作・
+ライブ確認・結果レビューの機能を追加します。ターミナルと同じ `fleetest` CLI を spawn して動くため、
 挙動は CLI・MCP と同じになります。
 
 ## Test Explorer
@@ -16,31 +16,31 @@ folder → class → `@Test` メソッドの3階層ツリーとして Testing �
 - **デバッグ** — DAP(Debug Adapter Protocol)アダプタ経由で実行します。`action { }` ブロック内の
   コマンド行にブレークポイントを設定し、デバッグツールバーでステップオーバー・続行・停止ができます。
 
-`ftester.profile` を設定すると、実行・実行(dry-run)・デバッグはいずれも生の
-`ftester.platform`/`ftester.port`/`ftester.serial` ではなく `ftester api run --profile <name>`
+`fleetest.profile` を設定すると、実行・実行(dry-run)・デバッグはいずれも生の
+`fleetest.platform`/`fleetest.port`/`fleetest.serial` ではなく `fleetest api run --profile <name>`
 経由になります。デバイスの供給とアプリの自動インストールは実行プロファイル側が行います。
 dry-run 以外の実行では対象デバイスがあらかじめ起動済みである必要があります。dry-run はデバイス
 不要です。
 
 ## ステップ一覧
 
-読み取り専用の **ftester ステップ** TreeView(Testing ビューコンテナ内)がカーソル位置に追従します。
+読み取り専用の **fleetest ステップ** TreeView(Testing ビューコンテナ内)がカーソル位置に追従します。
 `@Test` メソッドの本体内にカーソルを置くと、そのシナリオの `scene` グループとステップの一覧が
 表示されます。ステップをクリックすると対応するソース行にジャンプします。シナリオの右クリック
-メニュー(「ftester: ステップ一覧を表示」)からも開けます。
+メニュー(「fleetest: ステップ一覧を表示」)からも開けます。
 
 ## デバイスモニター
 
-コマンド **「ftester: デバイスモニターを表示」** を実行すると、デバイスタイルの一覧を表示する
+コマンド **「fleetest: デバイスモニターを表示」** を実行すると、デバイスタイルの一覧を表示する
 Webview パネルが開きます(1ワークスペースにつき1枚)。各タイルにはデバイス名・プラットフォーム
 バッジ(iOS/Android)・状態バッジ・現在の画面が表示され、画面は既定でヘッドレス映像ストリーミング
-(`ftester-simstream`/`ftester-androidstream`)によりほぼリアルタイムに更新されます
+(`fleetest-simstream`/`fleetest-androidstream`)によりほぼリアルタイムに更新されます
 (ストリーミングが使えない場合は定期的なスクリーンショット取得にフォールバックします)。
 
 - 状態バッジ: **接続済み**(緑) — ブリッジ接続済みで操作可能 / **起動中**(黄) — デバイスは
   起動しているがブリッジ未接続 / **未起動**(灰) — デバイス停止中。
 - タイルを右クリックするとそのデバイス1台だけを起動/停止できます
-  (`ftester api device-up`/`device-down`)。デバイス操作は共有の1本のキューで1件ずつ実行される
+  (`fleetest api device-up`/`device-down`)。デバイス操作は共有の1本のキューで1件ずつ実行される
   ため、順番待ちのタイルには「待機中...」バッジが表示されます。
 - ツールバーのボタンでマシンプロファイルの全デバイスの起動/停止、モニタープロセスの再起動が
   できます。
@@ -51,7 +51,7 @@ Webview パネルが開きます(1ワークスペースにつき1枚)。各タ�
 
 ## ライブ操作
 
-コマンド **「ftester: ライブ操作を表示」** を実行すると、デバイスの画面を直接操作する独立パネルが
+コマンド **「fleetest: ライブ操作を表示」** を実行すると、デバイスの画面を直接操作する独立パネルが
 開きます。
 
 | 操作 | 動作 |
@@ -66,15 +66,15 @@ Webview パネルが開きます(1ワークスペースにつき1枚)。各タ�
 入力欄は、直前にタップした要素(無ければフォーカス中の要素)へ入力を送ります。
 
 **レコーディング**: 「レコーディング開始」で操作の記録を始め、一連の操作を行ってから
-「レコーディング終了」を押すと、記録した操作が `ftester api gen-scenario` により
+「レコーディング終了」を押すと、記録した操作が `fleetest api gen-scenario` により
 `TestProjects/<project>/scenarios/Generated/` 配下の Swift シナリオに変換されます。生成直後に
 ビルド検証が行われ、コンパイルに失敗した場合はツリーに追加されず `scenarios/_disabled/` へ
 隔離されます。
 
 ## 結果ダッシュボード
 
-コマンド **「ftester: 結果ダッシュボードを開く」** を実行すると、プロジェクトの
-`ftester api results` の集計を表示するパネルが開きます。直近の実行一覧・シナリオ別の成功率と
+コマンド **「fleetest: 結果ダッシュボードを開く」** を実行すると、プロジェクトの
+`fleetest api results` の集計を表示するパネルが開きます。直近の実行一覧・シナリオ別の成功率と
 実行時間・不安定(flaky)シナリオ・デバイス/ワーカー別集計・日次の推移・実行時間が長いシナリオ・
 その他の注意喚起(insights)が表示されます。
 
@@ -88,7 +88,7 @@ Webview パネルが開きます(1ワークスペースにつき1枚)。各タ�
 
 ## 自己修復の確認
 
-`ftester.heal` を `true` にすると、**実行**(dry-run を除く)と**デバッグ**に `--heal` が付与され、
+`fleetest.heal` を `true` にすると、**実行**(dry-run を除く)と**デバッグ**に `--heal` が付与され、
 ロケータの自己修復が有効になります。実行結果に修復候補が含まれると、終了後に確認パネルが
 自動的に開きます。各候補には file:line・変更前/変更後セレクタ(変更後は編集可)・任意の説明・
 ライブに追従する diff プレビューが表示されます。承認するとシナリオソースへ直接反映されます。
@@ -102,31 +102,31 @@ Webview パネルが開きます(1ワークスペースにつき1枚)。各タ�
   (読み取りのみでリポジトリは変更しません)。
 - **「更新する」** は更新があるときだけタブの隣に現れ、押すと pull → 再ビルド → 拡張の
   再インストールを行い、完了後に再読み込みを促します。
-- コマンド **「ftester: 更新を確認」**(`ftester.checkForUpdate`)は、1日1回の間隔・「通知しない」・
-  `ftester.updateCheck: off` を無視して必ず結果を返します。
+- コマンド **「fleetest: 更新を確認」**(`fleetest.checkForUpdate`)は、1日1回の間隔・「通知しない」・
+  `fleetest.updateCheck: off` を無視して必ず結果を返します。
 
-`ftester.updateCheck`(`auto`/`off`)は起動時(1日1回まで)の自動確認を制御し、`git ls-remote`
+`fleetest.updateCheck`(`auto`/`off`)は起動時(1日1回まで)の自動確認を制御し、`git ls-remote`
 だけを行ってリポジトリを一切変更しません。
 
 ## 表示言語
 
-`ftester.language`(`auto`/`ja`/`en`)は拡張自体の UI 表示言語を制御します。`auto` は VSCode の
+`fleetest.language`(`auto`/`ja`/`en`)は拡張自体の UI 表示言語を制御します。`auto` は VSCode の
 表示言語に追従します。
 
 ## 主要設定
 
 | 設定 | 既定値 | 説明 |
 |---|---|---|
-| `ftester.binaryPath` | `.build/debug/ftester` | `ftester` バイナリのパス。見つからなければ `PATH` から探す |
-| `ftester.project` | `""` | 対象のテストプロジェクト名。空でプロジェクトが1つなら自動判定 |
-| `ftester.profile` | `""` | 使用する実行プロファイル名。設定するとデバイス/アプリの決定がこちらに委ねられる |
-| `ftester.heal` | `false` | 実行/デバッグで `--heal` を有効にし、自己修復の確認パネルを開く |
-| `ftester.buildBeforeRun` | `true` | 実行前に Swift プロジェクトをビルドする |
-| `ftester.lptScheduling` | `true` | 過去の実測から実行時間の長いシナリオを先に投入する(LPT) |
-| `ftester.monitorInterval` | `2` | デバイスモニターのポーリング間隔(秒) |
-| `ftester.liveControlOnRun` | `true` | テスト実行(dry-run 以外)開始時にライブ操作を自動表示する |
-| `ftester.language` | `"auto"` | 拡張の UI 表示言語 |
-| `ftester.updateCheck` | `"auto"` | 起動時(1日1回まで)の自動更新チェック |
+| `fleetest.binaryPath` | `.build/debug/fleetest` | `fleetest` バイナリのパス。見つからなければ `PATH` から探す |
+| `fleetest.project` | `""` | 対象のテストプロジェクト名。空でプロジェクトが1つなら自動判定 |
+| `fleetest.profile` | `""` | 使用する実行プロファイル名。設定するとデバイス/アプリの決定がこちらに委ねられる |
+| `fleetest.heal` | `false` | 実行/デバッグで `--heal` を有効にし、自己修復の確認パネルを開く |
+| `fleetest.buildBeforeRun` | `true` | 実行前に Swift プロジェクトをビルドする |
+| `fleetest.lptScheduling` | `true` | 過去の実測から実行時間の長いシナリオを先に投入する(LPT) |
+| `fleetest.monitorInterval` | `2` | デバイスモニターのポーリング間隔(秒) |
+| `fleetest.liveControlOnRun` | `true` | テスト実行(dry-run 以外)開始時にライブ操作を自動表示する |
+| `fleetest.language` | `"auto"` | 拡張の UI 表示言語 |
+| `fleetest.updateCheck` | `"auto"` | 起動時(1日1回まで)の自動更新チェック |
 
 ### Link
 - [index](../index_ja.md)

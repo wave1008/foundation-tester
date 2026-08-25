@@ -82,7 +82,7 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// 自己修復が代わりの要素を見つけたのに、**この画面でそれを一意に指せる書き方が無い**
     /// (`SelectorNaming.graded` が nil)。操作はその要素で続けるが、修正提案もヒールキャッシュも
     /// 作らない —— 書けないセレクタを利用者の .swift へ書き戻さないため
-    /// (`ftester api apply-heal` が直接書き込む経路がある)。
+    /// (`fleetest api apply-heal` が直接書き込む経路がある)。
     /// **率が上がったら id/ラベルの一意性を疑う**: この状態が続く限り毎回 FM を呼び直す
     case healUnwritable = "heal-unwritable"
 

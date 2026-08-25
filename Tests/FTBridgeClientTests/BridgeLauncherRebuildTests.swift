@@ -10,12 +10,12 @@ final class BridgeLauncherRebuildTests: XCTestCase {
     override func setUpWithError() throws {
         root = FileManager.default.temporaryDirectory
             .appendingPathComponent("ft-launcher-rebuild-\(UUID().uuidString)")
-        for dir in ["Runner/FTesterRunnerUITests", "Runner/FTesterRunnerApp", "Sources/FTCore"] {
+        for dir in ["Runner/FleetestRunnerUITests", "Runner/FleetestRunnerApp", "Sources/FTCore"] {
             try FileManager.default.createDirectory(
                 at: root.appendingPathComponent(dir), withIntermediateDirectories: true)
         }
-        for file in ["Runner/project.yml", "Runner/FTesterRunnerUITests/BridgeRouter.swift",
-                     "Runner/FTesterRunnerApp/App.swift", "Sources/FTCore/BridgeDTO.swift"] {
+        for file in ["Runner/project.yml", "Runner/FleetestRunnerUITests/BridgeRouter.swift",
+                     "Runner/FleetestRunnerApp/App.swift", "Sources/FTCore/BridgeDTO.swift"] {
             try Data("x".utf8).write(to: root.appendingPathComponent(file))
         }
     }
@@ -27,7 +27,7 @@ final class BridgeLauncherRebuildTests: XCTestCase {
     private let toolchain = "Xcode X / sdk Y"
 
     private func makeXCTestRun(modified: Date) throws -> URL {
-        let url = root.appendingPathComponent("FTesterRunner_x.xctestrun")
+        let url = root.appendingPathComponent("FleetestRunner_x.xctestrun")
         try Data("r".utf8).write(to: url)
         try FileManager.default.setAttributes([.modificationDate: modified], ofItemAtPath: url.path)
         // 成果物と同じ場所にツールチェーンの指紋を置く(実運用では DerivedData ルート)
@@ -48,8 +48,8 @@ final class BridgeLauncherRebuildTests: XCTestCase {
 
     func testFreshXCTestRunDoesNotRebuild() throws {
         let xctestrun = try makeXCTestRun(modified: Date())
-        for file in ["Runner/project.yml", "Runner/FTesterRunnerUITests/BridgeRouter.swift",
-                     "Runner/FTesterRunnerApp/App.swift", "Sources/FTCore/BridgeDTO.swift"] {
+        for file in ["Runner/project.yml", "Runner/FleetestRunnerUITests/BridgeRouter.swift",
+                     "Runner/FleetestRunnerApp/App.swift", "Sources/FTCore/BridgeDTO.swift"] {
             try setModified(file, Date(timeIntervalSinceNow: -3600))
         }
         XCTAssertFalse(needsRebuild(xctestrun))
@@ -57,7 +57,7 @@ final class BridgeLauncherRebuildTests: XCTestCase {
 
     func testNewerSourceTriggersRebuild() throws {
         let xctestrun = try makeXCTestRun(modified: Date(timeIntervalSinceNow: -3600))
-        try setModified("Runner/FTesterRunnerUITests/BridgeRouter.swift", Date())
+        try setModified("Runner/FleetestRunnerUITests/BridgeRouter.swift", Date())
         XCTAssertTrue(needsRebuild(xctestrun))
     }
 
@@ -70,7 +70,7 @@ final class BridgeLauncherRebuildTests: XCTestCase {
     func testUnreadableInputsTriggerRebuild() throws {
         let xctestrun = try makeXCTestRun(modified: Date())
         try FileManager.default.removeItem(
-            at: root.appendingPathComponent("Runner/FTesterRunnerUITests"))
+            at: root.appendingPathComponent("Runner/FleetestRunnerUITests"))
         XCTAssertTrue(needsRebuild(xctestrun))
     }
 
@@ -78,8 +78,8 @@ final class BridgeLauncherRebuildTests: XCTestCase {
     /// (旧 Xcode のランナーを新ランタイムに載せると実行中に落ちる)
     func testToolchainChangeTriggersRebuild() throws {
         let xctestrun = try makeXCTestRun(modified: Date())
-        for file in ["Runner/project.yml", "Runner/FTesterRunnerUITests/BridgeRouter.swift",
-                     "Runner/FTesterRunnerApp/App.swift", "Sources/FTCore/BridgeDTO.swift"] {
+        for file in ["Runner/project.yml", "Runner/FleetestRunnerUITests/BridgeRouter.swift",
+                     "Runner/FleetestRunnerApp/App.swift", "Sources/FTCore/BridgeDTO.swift"] {
             try setModified(file, Date(timeIntervalSinceNow: -3600))
         }
         XCTAssertTrue(needsRebuild(xctestrun, toolchain: "Xcode 27.1 / sdk 27B2"))
@@ -112,7 +112,7 @@ final class StaleRunnerToolchainTests: XCTestCase {
 
     private func storeFingerprint(_ value: String, physical: Bool = false) {
         let derivedData = root.appendingPathComponent(
-            ".ftester/\(physical ? "DerivedData-device" : "DerivedData")")
+            ".fleetest/\(physical ? "DerivedData-device" : "DerivedData")")
         ToolchainFingerprint.store(
             at: BridgeLauncher.runnerFingerprintPath(derivedDataPath: derivedData), current: value)
     }

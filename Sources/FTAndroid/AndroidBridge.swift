@@ -20,7 +20,7 @@ extension AndroidDriver {
     enum BridgeState {
         case active(BridgeClient)
         /// retryAfter まで再試行しない(嵐防止)。期限後の ensureBridge が自動で再試行するため、
-        /// 長寿命プロセス(ftester-mcp / api monitor)でもデバイス復旧後に自動回復する。
+        /// 長寿命プロセス(fleetest-mcp / api monitor)でもデバイス復旧後に自動回復する。
         /// detail は初回失敗の原因(期限内の再 throw に引き継ぐ)
         case unavailable(retryAfter: Date, detail: String?)
     }
@@ -105,22 +105,22 @@ extension AndroidDriver {
     /// - `cachedSecondsRemaining`: 失敗キャッシュ(`.unavailable`)を再生しているときだけ非 nil。
     ///   **キャッシュだと名乗らせる**: 再生された文はライブの失敗と1バイトも
     ///   違わなかったので、読み手は「今まさに adb forward が落ちた」と読む。実際、手で
-    ///   `adb forward` を打って成功し `ftester bridge status` も通るのに MCP だけが同じ文言を
+    ///   `adb forward` を打って成功し `fleetest bridge status` も通るのに MCP だけが同じ文言を
     ///   返し続ける状況で、原因をブリッジ側だと誤認して調査に数分溶かした(2026-08-13 に実際に踏んだ)。
     ///   嵐防止としてのキャッシュ自体は残す価値がある(失敗1回は probe 2s + 起動待ち最大 10s)
     ///   ので、消さずに**残り時間と抜け道**を添える
     static func unreachableError(detail: String?,
                                  cachedSecondsRemaining: TimeInterval? = nil) -> DriverError {
-        let base = "cannot reach the Android bridge. Check the environment with `ftester doctor`, "
-            + "or try `ftester bridge up --platform android`"
+        let base = "cannot reach the Android bridge. Check the environment with `fleetest doctor`, "
+            + "or try `fleetest bridge up --platform android`"
         // **他プロセスで直しても、この文が消えるのは期限後**(2026-08-13 のレビュー指摘):
         // `.unavailable` はプロセスごとの static なので、CLI の `bridge up` が成功しても
-        // **この長寿命プロセス(ftester-mcp / monitor)の記憶は消えない**。
+        // **この長寿命プロセス(fleetest-mcp / monitor)の記憶は消えない**。
         // 「すぐ再試行できる」と書くと、直したのに同じ文が返る次の混乱を作る
         let cached = cachedSecondsRemaining.map {
             " [cached: this is the FIRST failure replayed, not a fresh attempt —"
                 + " the next try in \(max(1, Int($0.rounded(.up))))s will actually re-probe."
-                + " Fixing the device now (e.g. `ftester bridge up --platform android`) does NOT"
+                + " Fixing the device now (e.g. `fleetest bridge up --platform android`) does NOT"
                 + " clear this: the cache is per-process, so this same text replays until then]"
         } ?? ""
         return .bridgeUnreachable((detail.map { "\(base)(\($0))" } ?? base) + cached)
@@ -331,7 +331,7 @@ extension AndroidDriver {
 
     // MARK: - CLI(bridge down / status / doctor)用
 
-    /// ブリッジ停止 + forward 解放(ftester bridge down --platform android)
+    /// ブリッジ停止 + forward 解放(fleetest bridge down --platform android)
     public func stopBridge() {
         _ = try? adb(["shell", "am", "force-stop", Self.bridgePackage])
         if let list = try? adb(["forward", "--list"]) {
@@ -392,8 +392,8 @@ extension AndroidDriver {
             ?? "adb uninstall \(Self.bridgePackage)"
         return "the device has bridge v\(installed) installed, but this build expects v\(expected). "
             + "Android refuses to install a lower versionCode, so this cannot auto-update. "
-            + "This means a newer ftester has already used this device. Fix it by either "
-            + "(1) updating this machine's ftester (`git pull` + rebuild, or Scripts/update.sh), or "
+            + "This means a newer fleetest has already used this device. Fix it by either "
+            + "(1) updating this machine's fleetest (`git pull` + rebuild, or Scripts/update.sh), or "
             + "(2) removing the newer bridge from the device (`\(uninstall)`)."
     }
 
@@ -467,14 +467,14 @@ extension AndroidDriver {
         return Int(dump.output[range].dropFirst("versionCode=".count))
     }
 
-    /// 探索順: 環境変数 → リポジトリの prebuilt → ~/.ftester キャッシュ
+    /// 探索順: 環境変数 → リポジトリの prebuilt → ~/.fleetest キャッシュ
     public static func locateBridgeAPK() throws -> URL {
         let fm = FileManager.default
         if let env = ProcessInfo.processInfo.environment["FT_ANDROID_BRIDGE_APK"],
            fm.isReadableFile(atPath: env) {
             return URL(fileURLWithPath: env)
         }
-        let cache = fm.homeDirectoryForCurrentUser.appendingPathComponent(".ftester/ftbridge.apk")
+        let cache = fm.homeDirectoryForCurrentUser.appendingPathComponent(".fleetest/ftbridge.apk")
         if let root = try? RepoRoot.find() {
             let repoAPK = root.appendingPathComponent("AndroidRunner/prebuilt/ftbridge.apk")
             if fm.isReadableFile(atPath: repoAPK.path) {

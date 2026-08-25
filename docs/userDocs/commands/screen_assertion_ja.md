@@ -18,7 +18,7 @@ expectation {
 
 ## 注意点
 
-- **macOS 27+ が必要**です。macOS 26 では自動でスキップされます。現在の可否は `ftester doctor` で確認できます。
+- **macOS 27+ が必要**です。macOS 26 では自動でスキップされます。現在の可否は `fleetest doctor` で確認できます。
 - Shirates(Classic)の `screenIs` のような画面ニックネーム機構は持ちません — 画面がどう見えるべきかを
   呼び出しごとに説明文で書きます。
 

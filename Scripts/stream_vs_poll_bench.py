@@ -2,14 +2,14 @@
 """デバイス画面配信の「ストリーミング vs ポーリング」キャプチャ負荷ベンチ。
 
 計測対象(vscode 拡張の monitor.pollingMode トグルの2方式に対応):
-  - ストリーミング: ftester-simstream(iOS) / ftester-androidstream(Android)。
+  - ストリーミング: fleetest-simstream(iOS) / fleetest-androidstream(Android)。
     変化駆動でフレームを stdout に長さ前置 JPEG で流す。
-  - ポーリング: `ftester api live serve` に {"cmd":"frame"} を fps 間隔で送る画面取得経路。
+  - ポーリング: `fleetest api live serve` に {"cmd":"frame"} を fps 間隔で送る画面取得経路。
     iOS はブリッジ /screenshot、Android は adb exec-out screencap。
 
 各ワークロードを 静止/モーション × 隣接ベースライン で計測し、以下を JSON + 表で出す:
   - proc_cpu: キャプチャプロセス(ツリー)の CPU。cputime デルタ/実時間で 1コア=100%。**主指標**
-  - host delta: ftester api host-metrics(GUI モニタと同一計測系)の Mac 全体 CPU の
+  - host delta: fleetest api host-metrics(GUI モニタと同一計測系)の Mac 全体 CPU の
     「ワークロード時 − 直前 ambient」。device 側込みだが 10 コア分母で小信号はノイズに埋もれる。**補助**
   - fps: 実達成フレームレート。stream_kbps: ストリーミングの JPEG 出力帯域
 
@@ -37,7 +37,7 @@
   Scripts/stream_vs_poll_bench.py --platform ios --conditions static --out /tmp/r.json
   Scripts/stream_vs_poll_bench.py --ios-udid <UDID> --android-serial emulator-5554
   Scripts/stream_vs_poll_bench.py --boot-ios-name シミュ1 --boot-android-name エミュ1 --project SampleApp
-デバイスが無ければ --boot-*-name(+ --project)で `ftester api device-up` 起動、または事前に手動起動。
+デバイスが無ければ --boot-*-name(+ --project)で `fleetest api device-up` 起動、または事前に手動起動。
 """
 import argparse, json, os, struct, subprocess, sys, threading, time
 
@@ -45,10 +45,10 @@ import argparse, json, os, struct, subprocess, sys, threading, time
 def find_repo_root():
     d = os.path.dirname(os.path.abspath(__file__))
     while d != "/":
-        if os.path.exists(os.path.join(d, ".build/debug/ftester")):
+        if os.path.exists(os.path.join(d, ".build/debug/fleetest")):
             return d
         d = os.path.dirname(d)
-    sys.exit("error: .build/debug/ftester が見つからない。swift build 後に実行するか --repo-root 指定")
+    sys.exit("error: .build/debug/fleetest が見つからない。swift build 後に実行するか --repo-root 指定")
 
 def resolve_adb(cli):
     cands = []
@@ -182,7 +182,7 @@ class StreamWorkload:
                 self.proc.kill()
 
 class ServeWorkload:
-    """`ftester api live serve` に {"cmd":"frame"} を fps 間隔で送る=ポーリング経路。
+    """`fleetest api live serve` に {"cmd":"frame"} を fps 間隔で送る=ポーリング経路。
     serve は元々 stdin=PIPE 前提(コマンド送信)なので罠1は自然回避。iOS は refresh 先行でブリッジ ready 待ち。"""
     def __init__(self, root, argv, stderr_path, ios=False, fps=12):
         self.root = root; self.argv = argv; self.stderr_path = stderr_path; self.ios = ios; self.fps = fps
@@ -348,7 +348,7 @@ class Bench:
         if a.ios_udid and a.platform in ("ios", "both"):
             u = a.ios_udid; W = str(a.max_width); F = str(a.fps)
             def s_cap(tag):
-                return lambda: StreamWorkload(self.root, [f"{self.root}/.build/debug/ftester-simstream",
+                return lambda: StreamWorkload(self.root, [f"{self.root}/.build/debug/fleetest-simstream",
                     "--udid", u, "--fps", F, "--max-width", W], self._p(tag))
             def p_cap(tag):
                 return lambda: ServeWorkload(self.root, [self.bin, "api", "live", "serve", "--platform", "ios",
@@ -364,7 +364,7 @@ class Bench:
         if a.android_serial and a.platform in ("android", "both"):
             s = a.android_serial; W = str(a.max_width); F = str(a.fps)
             def as_cap(tag):
-                return lambda: StreamWorkload(self.root, [f"{self.root}/.build/debug/ftester-androidstream",
+                return lambda: StreamWorkload(self.root, [f"{self.root}/.build/debug/fleetest-androidstream",
                     "--serial", s, "--adb", self.adb, "--fps", F, "--max-width", W], self._p(tag))
             def ap_cap(tag):
                 return lambda: ServeWorkload(self.root, [self.bin, "api", "live", "serve", "--platform", "android",
@@ -414,7 +414,7 @@ def main():
     args = ap.parse_args()
 
     root = args.repo_root or find_repo_root()
-    binary = f"{root}/.build/debug/ftester"
+    binary = f"{root}/.build/debug/fleetest"
     adb = resolve_adb(args.adb)
     outdir = os.path.join(root, "bench-results", "stream-vs-poll")
     os.makedirs(outdir, exist_ok=True)

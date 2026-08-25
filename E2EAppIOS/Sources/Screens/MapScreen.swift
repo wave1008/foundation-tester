@@ -72,7 +72,7 @@ struct MapScreen: View {
 
     private var formattedZoom: String { String(format: "%.1f", zoom) }
 
-    /// 指の移動方向。両軸とも非 none なら斜め(ftester の swipeBy の検証材料)
+    /// 指の移動方向。両軸とも非 none なら斜め(fleetest の swipeBy の検証材料)
     private var panLabel: String {
         if abs(panX) < panThreshold && abs(panY) < panThreshold { return "-" }
         let horizontal = abs(panX) < panThreshold ? "none" : (panX < 0 ? "left" : "right")

@@ -1,6 +1,6 @@
 #!/usr/bin/env swift
 // bench.swift
-// 計測基盤: ftester のベンチハーネス。
+// 計測基盤: fleetest のベンチハーネス。
 // `<binary> api host-metrics` をホスト負荷の記録用に常駐させたまま、
 // `<binary> api run --profile ...` を N 回繰り返し実行し、各回の NDJSON(ScenarioEvent 相当)を
 // 保存しつつ、壁時計・ステップ時間内訳(durationMs/snapshotMs/actionMs/waitMs。StepExecutor が
@@ -11,19 +11,19 @@
 //
 // 使い方:
 //   Scripts/bench.swift --project <名前> --profile <名前> [--iterations <N>] \
-//       [--binary <ftesterパス>] [--out <出力dir>] [--scenario <ID> ...]
+//       [--binary <fleetestパス>] [--out <出力dir>] [--scenario <ID> ...]
 //
 //   --project <名前>      テストプロジェクト名(必須。TestProjects/<名前>)
 //   --profile <名前>      実行プロファイル名(必須。profiles/runs/<名前>.json。デバイス供給込み)
 //   --iterations <N>      繰り返し回数(既定 3)
-//   --binary <パス>       ftester 実行ファイルのパス(既定 .build/debug/ftester)
+//   --binary <パス>       fleetest 実行ファイルのパス(既定 .build/debug/fleetest)
 //   --out <ディレクトリ>  出力先(既定 bench-results/<タイムスタンプ>)
 //   --scenario <ID>       対象シナリオ ID(複数可。省略時はプロジェクトの全シナリオ
 //                         [削除済み(@Deleted)を除く]を 1 回の api run にまとめて渡す)
 //
 // 出力(--out 配下):
 //   host-metrics.ndjson   ベンチ全体を通したホスト CPU/GPU/ANE/メモリのサンプリング
-//   run-<i>.ndjson        i 回目のイテレーションの生 NDJSON(ftester api run の出力そのもの)
+//   run-<i>.ndjson        i 回目のイテレーションの生 NDJSON(fleetest api run の出力そのもの)
 //   summary.md            上記から集計したサマリ
 
 import Foundation
@@ -44,7 +44,7 @@ struct Args {
     var project: String
     var profile: String
     var iterations = 3
-    var binary = ".build/debug/ftester"
+    var binary = ".build/debug/fleetest"
     var out: String?
     var scenarios: [String] = []
 }
@@ -59,7 +59,7 @@ func printUsage() {
 
     オプション:
       --iterations <N>        繰り返し回数(既定 3)
-      --binary <パス>         ftester 実行ファイルのパス(既定 .build/debug/ftester)
+      --binary <パス>         fleetest 実行ファイルのパス(既定 .build/debug/fleetest)
       --out <ディレクトリ>    出力先(既定 bench-results/<タイムスタンプ>)
       --scenario <ID>          対象シナリオ ID(複数可。省略時は全シナリオ)
       -h, --help               このヘルプを表示
@@ -78,7 +78,7 @@ func parseArgs(_ arguments: [String]) -> Args {
     var project: String?
     var profile: String?
     var iterations = 3
-    var binary = ".build/debug/ftester"
+    var binary = ".build/debug/fleetest"
     var out: String?
     var scenarios: [String] = []
 
@@ -390,7 +390,7 @@ func runIteration(index: Int, binaryPath: String, arguments: [String], outputURL
 let args = parseArgs(Array(CommandLine.arguments.dropFirst()))
 
 guard FileManager.default.isExecutableFile(atPath: args.binary) else {
-    fail("ftester バイナリが見つからないか実行できません: \(args.binary)"
+    fail("fleetest バイナリが見つからないか実行できません: \(args.binary)"
         + "(先に swift build を実行するか --binary で指定してください)")
 }
 
@@ -412,7 +412,7 @@ print("→ 出力先: \(outDir.path)")
 print("→ シナリオ一覧を取得中(ビルド含む)...")
 let listResult = runCapturing(args.binary, ["api", "list-scenarios", "--project", args.project])
 guard listResult.exitCode == 0 else {
-    fail("ftester api list-scenarios が失敗しました(exit \(listResult.exitCode))")
+    fail("fleetest api list-scenarios が失敗しました(exit \(listResult.exitCode))")
 }
 guard let listJSON = try? JSONSerialization.jsonObject(with: listResult.stdout) as? [String: Any],
       let scenarioDicts = listJSON["scenarios"] as? [[String: Any]] else {
@@ -454,7 +454,7 @@ let hostSummary = summarizeHostMetrics(url: hostMetricsURL)
 
 // MARK: - summary.md 生成
 
-var md = "# ftester ベンチマーク結果\n\n"
+var md = "# fleetest ベンチマーク結果\n\n"
 md += "- プロジェクト: \(args.project)\n"
 md += "- プロファイル: \(args.profile)\n"
 md += "- 対象シナリオ: \(scenarioIDs.count) 件(\(scenarioIDs.joined(separator: ", ")))\n"

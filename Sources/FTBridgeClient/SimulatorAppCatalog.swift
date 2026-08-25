@@ -1,5 +1,5 @@
-// iOS シミュレータのインストール済みアプリ一覧。`ftester api list-apps`(Sources/ftester/
-// ApiListAppsCommand.swift)と MCP の ft_list_apps(Sources/ftester-mcp/DeviceInventory.swift)が
+// iOS シミュレータのインストール済みアプリ一覧。`fleetest api list-apps`(Sources/fleetest/
+// ApiListAppsCommand.swift)と MCP の ft_list_apps(Sources/fleetest-mcp/DeviceInventory.swift)が
 // 共有する。移設元は ApiListAppsCommand.swift の旧 private iosApps/bootedSimulatorUDID —
 // 挙動は変えていない。
 //

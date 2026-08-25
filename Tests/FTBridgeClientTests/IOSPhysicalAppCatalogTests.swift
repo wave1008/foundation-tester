@@ -14,7 +14,7 @@ final class IOSPhysicalAppCatalogTests: XCTestCase {
          "result": ["apps": apps]]
     }
 
-    private static let ftesterEntry: [String: Any] = [
+    private static let fleetestEntry: [String: Any] = [
         "bundleIdentifier": "com.ftester.e2e.ios", "name": "FT E2E iOS",
         "url": "file:///private/var/containers/Bundle/Application/AAAA/E2EAppIOS.app",
         "internalApp": false, "hidden": false, "removable": true, "builtByDeveloper": true,
@@ -40,7 +40,7 @@ final class IOSPhysicalAppCatalogTests: XCTestCase {
     /// 同じ /private/var/containers に居るので、bundleIdentifier だけを見ること
     func testClassifiesAppleBundlesAsSystemAndOthersAsUser() throws {
         let json = Self.devicectlJSON(apps: [
-            Self.ftesterEntry, Self.safariEntry, Self.appleMapsEntry, Self.googleMapsEntry,
+            Self.fleetestEntry, Self.safariEntry, Self.appleMapsEntry, Self.googleMapsEntry,
         ])
         let apps = try XCTUnwrap(IOSPhysicalAppCatalog.parse(json: json))
         let byID = Dictionary(uniqueKeysWithValues: apps.map { ($0.id, $0) })
@@ -62,7 +62,7 @@ final class IOSPhysicalAppCatalogTests: XCTestCase {
     // MARK: - パース
 
     func testParseReadsNameAndBundleIdentifier() throws {
-        let apps = try XCTUnwrap(IOSPhysicalAppCatalog.parse(json: Self.devicectlJSON(apps: [Self.ftesterEntry])))
+        let apps = try XCTUnwrap(IOSPhysicalAppCatalog.parse(json: Self.devicectlJSON(apps: [Self.fleetestEntry])))
         let app = try XCTUnwrap(apps.first)
         XCTAssertEqual(app.id, "com.ftester.e2e.ios")
         XCTAssertEqual(app.name, "FT E2E iOS")
@@ -80,7 +80,7 @@ final class IOSPhysicalAppCatalogTests: XCTestCase {
     func testParseDropsEntriesWithoutBundleIdentifier() throws {
         let broken: [String: Any] = ["name": "no id"]
         let apps = try XCTUnwrap(
-            IOSPhysicalAppCatalog.parse(json: Self.devicectlJSON(apps: [broken, Self.ftesterEntry])))
+            IOSPhysicalAppCatalog.parse(json: Self.devicectlJSON(apps: [broken, Self.fleetestEntry])))
         XCTAssertEqual(apps.map(\.id), ["com.ftester.e2e.ios"])
     }
 

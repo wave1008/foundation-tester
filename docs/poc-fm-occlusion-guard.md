@@ -22,7 +22,7 @@ hittable は無く、②Compose iOS では `isHittable` 自体が壊れている
 | `OcclusionVerifier` | [Sources/FTAgent/OcclusionVerifier.swift](../Sources/FTAgent/OcclusionVerifier.swift) | FM 視覚照合器。`@Generable VisibilityVerdict{ visible, state, observedText, reason }` を greedy で生成 |
 | `ReplayDelegate.verifyElementVisible` | [Sources/FTCore/StepExecutor.swift](../Sources/FTCore/StepExecutor.swift) | FM 非依存の delegate フック(既定実装 nil)。FTCore を FM から切り離したまま結線 |
 | `StepExecutor.occlusionGuard` + `occlusionFlip()` | ノブは同上。`occlusionFlip` の現在の実体は [Sources/FTCore/StepExecutor+Assert.swift](../Sources/FTCore/StepExecutor+Assert.swift) | ノブ。exists/textEquals がツリー一致した**一点で1回だけ** FM 照合し、`visible==false` なら `.failed("偽陽性(occlusion)…")` へ反転 |
-| 計測ハーネス | `ftester-poc-occlusion`(PoC ブランチ履歴・§8) | 正解ラベル付き合成フィクスチャで正確性・速度を計測 |
+| 計測ハーネス | `fleetest-poc-occlusion`(PoC ブランチ履歴・§8) | 正解ラベル付き合成フィクスチャで正確性・速度を計測 |
 
 検証器は 2 アームを実装して比較した:
 
@@ -134,8 +134,8 @@ hittable は無く、②Compose iOS では `isHittable` 自体が壊れている
 ## 5.7 実 UI(Simulator)再計測 — 合成では見えなかった重大な誤反転(2026-07-21)
 
 空きデバイス **A012ADD8**(iPhone 17 Pro/iOS 27、モニター占有外)に inapp ブリッジを注入起動し、
-**sut-ec-mobile** の実画面で計測(ハーネス `ftester-poc-occlusion` の Live.swift・§8、
-`ftester-poc-occlusion live <udid> <bundle> <port> <dir>`)。ground truth はスクショ目視で確定。
+**sut-ec-mobile** の実画面で計測(ハーネス `fleetest-poc-occlusion` の Live.swift・§8、
+`fleetest-poc-occlusion live <udid> <bundle> <port> <dir>`)。ground truth はスクショ目視で確定。
 
 ### 結果: unconditional FM は実 UI で**約50%の有害誤反転**
 
@@ -414,17 +414,17 @@ performance-tuning.md §6)。
 
 ## 8. 再現手順(計測ハーネス)
 
-計測に使った単体ハーネス `ftester-poc-occlusion`(合成フィクスチャ計測+デバイス駆動の
+計測に使った単体ハーネス `fleetest-poc-occlusion`(合成フィクスチャ計測+デバイス駆動の
 live/dump/explore/occtest/e2e モード)は **main の履歴に保存**され(追加コミットで導入 → cleanup
 コミットで除去)、working tree(現行の main)には含めない(デバイスを hardcoded フローで駆動する調査
 足場のため)。再計測が必要なら履歴から復元する:
 
 ```
-git log --oneline -- Sources/ftester-poc-occlusion/         # 追加/除去コミットを探す
-git checkout <追加コミット> -- Sources/ftester-poc-occlusion/ Package.swift
-swift build --product ftester-poc-occlusion
-.build/debug/ftester-poc-occlusion <出力ディレクトリ>          # 合成計測
-.build/debug/ftester-poc-occlusion e2e <udid> <bundleID> <port>   # デバイス E2E
+git log --oneline -- Sources/fleetest-poc-occlusion/         # 追加/除去コミットを探す
+git checkout <追加コミット> -- Sources/fleetest-poc-occlusion/ Package.swift
+swift build --product fleetest-poc-occlusion
+.build/debug/fleetest-poc-occlusion <出力ディレクトリ>          # 合成計測
+.build/debug/fleetest-poc-occlusion e2e <udid> <bundleID> <port>   # デバイス E2E
 ```
 
 [compose-ios-ax-frame-clamp]: ./design.md

@@ -1,14 +1,17 @@
 .DS_Store
 .build/
+.fleetest/
+# 改名前(fleetest 以前)の状態ディレクトリ。既存の導入環境には残るので、
+# 取り違えてコミットしないよう ignore し続ける(読み書きはしない)
 .ftester/
 .swiftpm/
 xcuserdata/
 DerivedData/
 # xcodegen が project.yml から生成する(コミットしない)
-Runner/FTesterRunner.xcodeproj
+Runner/FleetestRunner.xcodeproj
 reports/
 results/
-# ftester run-file の一時ステージ先(実行の前後で消える。残骸はコミットしない)
+# fleetest run-file の一時ステージ先(実行の前後で消える。残骸はコミットしない)
 TestProjects/*/scenarios/_runfile/
 # ワークスペース(remoteControl。既定 <project.rootURL>/workspace)のステージ済みアプリパッケージ。
 # 原本(appPath)からの複製で失っても再生成される(WorkspaceAppStaging)。scripts/・data/ は

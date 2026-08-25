@@ -6,7 +6,7 @@
 ## ファイルの置き場所
 
 `TestProjects/<プロジェクト>/scenarios/` 配下に `.swift` ファイルを置きます(サブフォルダも可。
-例: `scenarios/Login/`)。`swift build`(または任意の `ftester run`)を実行すると新しいファイルは
+例: `scenarios/Login/`)。`swift build`(または任意の `fleetest run`)を実行すると新しいファイルは
 自動で発見されます。登録の手続きは不要です。
 
 ## 最小の例

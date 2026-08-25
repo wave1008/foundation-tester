@@ -44,7 +44,7 @@ final class HealFixApplierTests: XCTestCase {
     }
 
     /// **利用者の .swift へ不正な Swift を書き込まない**。ここは
-    /// `ftester api apply-heal` が**利用者のファイルを直接書き換える唯一の経路**で、
+    /// `fleetest api apply-heal` が**利用者のファイルを直接書き換える唯一の経路**で、
     /// 素の `"\(selector)"` で綴っていた版は `"` を含むラベルで
     /// `tap("*【速報】"特価"セール*")` を書き、**プロジェクトがコンパイルできなくなる**。
     ///

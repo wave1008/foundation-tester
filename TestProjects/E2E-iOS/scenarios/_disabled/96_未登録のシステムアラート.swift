@@ -2,7 +2,7 @@
 // **陽性対照**(既定スイートには載せない): `iosAlertHandler` の登録が無いまま OS のアラート
 // (写真の権限)が前面に出ているとき、ツールが①次のフェーズの最初の触る操作で注記
 // `system-alert-present` を残し ②失敗文言に題名とボタンを添えることを確かめる。
-// 回し方: scenarios/ 直下へ一時的に出し `ftester run --project E2E-iOS --profile ios-fpc --scenario 未登録のシステムアラート`
+// 回し方: scenarios/ 直下へ一時的に出し `fleetest run --project E2E-iOS --profile ios-fpc --scenario 未登録のシステムアラート`
 // (hybrid = XCUITest フォールバックがある構成でだけ判定できる)。**S0010 は落ちるのが正常**
 // (最後の exist が時間切れ。失敗理由に「a system alert (「…写真…」, buttons: …) is in front of the app
 // and no iosAlertHandler is registered」が出る)。scene 2 の tap には注記が付く。

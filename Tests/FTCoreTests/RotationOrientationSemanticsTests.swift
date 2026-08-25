@@ -38,7 +38,7 @@ final class RotationOrientationSemanticsTests: XCTestCase {
     /// **読み側は左右をまとめる**。片側しか landscape と認めないと、OS がもう一方を選んだ回に
     /// 整定が永久に一致せず 422 になる(要求と同じ側かは契約に無い)
     func testBothBridgesReadEitherLandscapeAsLandscape() throws {
-        for path in ["Runner/FTesterRunnerUITests/BridgeRouter.swift",
+        for path in ["Runner/FleetestRunnerUITests/BridgeRouter.swift",
                      "InAppBridge/Sources/InAppBridge.swift"] {
             let text = try source(path)
             XCTAssertTrue(text.contains("case .landscapeLeft, .landscapeRight: return .landscape"),
@@ -53,7 +53,7 @@ final class RotationOrientationSemanticsTests: XCTestCase {
         XCTAssertTrue(android.contains("(screen.width > screen.height) == wantsLandscape"),
                       "Android はスナップショットの画面サイズで判定すること")
 
-        let runner = try source("Runner/FTesterRunnerUITests/BridgeRouter.swift")
+        let runner = try source("Runner/FleetestRunnerUITests/BridgeRouter.swift")
         XCTAssertTrue(runner.contains("if appOrientation() == req.orientation"),
                       "XCUITest はアプリの窓で判定すること(XCUIDevice の向きではない)")
         XCTAssertFalse(runner.contains("if XCUIDevice.shared.orientation.ftOrientation == req.orientation"),

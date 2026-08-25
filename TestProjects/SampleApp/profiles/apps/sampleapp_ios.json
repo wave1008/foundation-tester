@@ -5,7 +5,7 @@
   "ios": {
     "appName": "サンプルアプリ",
     "app": "com.example.sampleapp",
-    "appPath": ".ftester/DerivedData/Build/Products/Debug-iphonesimulator/SampleApp.app"
+    "appPath": ".fleetest/DerivedData/Build/Products/Debug-iphonesimulator/SampleApp.app"
   },
   "android": {
     "appName": "サンプルアプリ",

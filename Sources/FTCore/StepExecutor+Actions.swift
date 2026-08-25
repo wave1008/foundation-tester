@@ -702,7 +702,7 @@ extension StepExecutor {
                   let proposal = await delegate.healLocator(step: step, snapshot: snapshot),
                   proposal.confidence == "high" {
             // 自己修復: 新しいロケータ連鎖に置き換えたステップを返す(永続化は呼び出し側 →
-            // `ftester api apply-heal` が利用者の .swift ソースへ直接書き込む経路がある)。
+            // `fleetest api apply-heal` が利用者の .swift ソースへ直接書き込む経路がある)。
             // **書けるセレクタは `SelectorNaming` にだけ決めさせる**(2026-08-15。旧実装
             // `FlowLocatorBuilder.chain` は一意性を見ずに id/label をそのまま採っていたため、
             // 同じ id を複数持つ画面では書いたセレクタが別要素に解決していた)。

@@ -1,6 +1,6 @@
 // RecordingWallClock.swift
 // 壁時計⇔録画位置の区分計算(AVFoundation 非依存の純粋関数)。
-// contract: 拡張側(vscode-ftester/src/recordingsModel.ts)の offsetMsForWallClock と
+// contract: 拡張側(vscode-fleetest/src/recordingsModel.ts)の offsetMsForWallClock と
 // 同一規則で実装すること(スパン内は先行スパン合計+差分、欠落は次スパン先頭、
 // 全区間より前/空は 0、全区間より後は総尺にclamp)。文言はそちらのコメントを踏襲。
 

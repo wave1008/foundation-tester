@@ -79,10 +79,10 @@ class E2EApp extends StatelessWidget {
         title: 'FT E2E Flutter',
         debugShowCheckedModeBanner: false,
         // **Material 3 の既定配色(淡い着色)をそのまま使う**。ここを白背景・黒文字の
-        // 高コントラストに変えると、ftester の occlusion-guard(FM 視覚照合)が
+        // 高コントラストに変えると、fleetest の occlusion-guard(FM 視覚照合)が
         // 低コントラスト画面で誤判定する欠陥を SUT が踏まなくなり、**検出器を潰す**ことになる。
         // M3 既定はごく普通の実アプリの見た目であり、そこで落ちるなら SUT ではなく
-        // ftester 側の問題(docs/design.md §5・Projects/E2E-Flutter/README.md の既知欠陥)。
+        // fleetest 側の問題(docs/design.md §5・Projects/E2E-Flutter/README.md の既知欠陥)。
         home: const AppShell(),
       );
 }

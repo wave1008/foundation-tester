@@ -1,6 +1,6 @@
 # Claude Code スキル
 
-foundation-tester プラグインは、導入・プロファイル設定・シナリオ作成を自動化する Claude Code
+fleetest プラグインは、導入・プロファイル設定・シナリオ作成を自動化する Claude Code
 スキル群を提供します。いずれも人が手で打つのと同じスクリプト・CLI コマンドを裏で呼び出し、
 検証ゲートと、判断や承認が本当に人手を要する箇所だけの人間チェックポイントを備えています。
 
@@ -8,7 +8,7 @@ foundation-tester プラグインは、導入・プロファイル設定・シ�
 
 ```bash
 claude plugin marketplace add wave1008/foundation-tester
-claude plugin install ftester@foundation-tester --scope user
+claude plugin install fleetest@foundation-tester --scope user
 ```
 
 `main` を追従せず版を固定したい場合は、タグ付きの URL でマーケットプレイスを追加します。
@@ -27,19 +27,19 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scr
 
 | スキル | コマンド | 役割 |
 |---|---|---|
-| `ftester-setup` | `/ftester:ftester-setup` | 初回導入一式(未クローンなら clone・ビルド・環境検証・プロジェクト作成・マシン/アプリのプロファイル設定・VSCode 拡張のインストール) |
-| `ftester-update` | `/ftester:ftester-update` | upstream の更新取り込み(git pull → `TestProjects/`/`Package.swift` の再整合 → 再ビルド → VSCode 拡張の再インストール → 反映) |
-| `ftester-profiles` | `/ftester:ftester-profiles` | マシン/アプリ/実行プロファイルを1回のフローでまとめて作成(iOS/Android の確認、アプリの表示名/アプリID を聞き、デバイスは既存を選ぶか新規作成) |
-| `ftester-scenario` | `/ftester:ftester-scenario` | セットアップ済みプロジェクトに Swift DSL のシナリオ(`.swift`)を1本作成(ライブ探索からコンパイル検証まで) |
-| `ftester-mcp` | `/ftester:ftester-mcp` | MCP サーバ(`ftester-mcp`)だけを Claude Code に登録(VSCode 拡張・プロジェクト作成・プロファイル設定は行わない) |
-| `ftester-remote-setup` | `/ftester:ftester-remote-setup` | 別の Mac をランナー機として用意し、手元から SSH 経由でシナリオをディスパッチできるようにする |
+| `fleetest-setup` | `/fleetest:fleetest-setup` | 初回導入一式(未クローンなら clone・ビルド・環境検証・プロジェクト作成・マシン/アプリのプロファイル設定・VSCode 拡張のインストール) |
+| `fleetest-update` | `/fleetest:fleetest-update` | upstream の更新取り込み(git pull → `TestProjects/`/`Package.swift` の再整合 → 再ビルド → VSCode 拡張の再インストール → 反映) |
+| `fleetest-profiles` | `/fleetest:fleetest-profiles` | マシン/アプリ/実行プロファイルを1回のフローでまとめて作成(iOS/Android の確認、アプリの表示名/アプリID を聞き、デバイスは既存を選ぶか新規作成) |
+| `fleetest-scenario` | `/fleetest:fleetest-scenario` | セットアップ済みプロジェクトに Swift DSL のシナリオ(`.swift`)を1本作成(ライブ探索からコンパイル検証まで) |
+| `fleetest-mcp` | `/fleetest:fleetest-mcp` | MCP サーバ(`fleetest-mcp`)だけを Claude Code に登録(VSCode 拡張・プロジェクト作成・プロファイル設定は行わない) |
+| `fleetest-remote-setup` | `/fleetest:fleetest-remote-setup` | 別の Mac をランナー機として用意し、手元から SSH 経由でシナリオをディスパッチできるようにする |
 
-`ftester-setup` が初回導入の入口で、他のスキルはこれ(または同等の手動セットアップ)が
+`fleetest-setup` が初回導入の入口で、他のスキルはこれ(または同等の手動セットアップ)が
 済んでいることを前提にしています。
 
-## `ftester-scenario` の流れ
+## `fleetest-scenario` の流れ
 
-`/ftester:ftester-scenario` は次の順で進みます。
+`/fleetest:fleetest-scenario` は次の順で進みます。
 
 1. **対象アプリ(アプリプロファイル)を確認** — 人間チェックポイント。
 2. **デバイスを用意してライブ探索**し、動いているアプリから実セレクタを採取する。
@@ -55,7 +55,7 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scr
 
 ```bash
 claude plugin marketplace update foundation-tester
-claude plugin update ftester@foundation-tester
+claude plugin update fleetest@foundation-tester
 ```
 
 どちらも必要です(マーケットプレイスの一覧を更新するだけでは、導入済みのプラグインは

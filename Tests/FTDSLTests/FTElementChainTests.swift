@@ -4,7 +4,7 @@ import XCTest
 import FTCore
 
 /// `exist` の戻り値へのチェーン。**自由関数と同じ assert に繋がっていること**を実行して固定する。
-/// 「どれがチェーンできるか」の網羅は vscode-ftester/test/ftElementChainSync.test.mjs が見張るが、
+/// 「どれがチェーンできるか」の網羅は vscode-fleetest/test/ftElementChainSync.test.mjs が見張るが、
 /// そちらはソースの形しか見ないので、**繋ぎ先を取り違えても気付けない**(textContains が
 /// textStartsWith を呼んでいても網羅としては成立してしまう)。ここは実際に判定させて分ける。
 final class FTElementChainTests: XCTestCase {

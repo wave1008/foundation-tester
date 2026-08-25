@@ -1,5 +1,5 @@
 // 02_セレクタ画面.swift
-// ftester 機能: セレクタ画面で解決できる記法をまとめて検証する
+// fleetest 機能: セレクタ画面で解決できる記法をまとめて検証する
 // (#id 完全一致 / ラベルの一致規則 / 型・序数・フォールバック連鎖 / OR・否定フィルタ・対称アサーション・scroll:)。
 // View 系は android:id の resource-id が自動で #id になる。ComposeView(コントロール画面)の中だけは
 // testTagsAsResourceId を立てないと引けない(E2EAppAndroid/docs/ui-contract.md)。

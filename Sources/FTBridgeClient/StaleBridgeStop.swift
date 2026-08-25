@@ -10,9 +10,9 @@ public enum StaleBridgeStop: Equatable {
     /// `.pid` ファイルあり → XCUITest ランナーを停止(`BridgeLauncher.stopAndWait`)
     case stopRunner
     /// どちらの記録も無い → **ポートを LISTEN している実体**を `PortHolder` で特定して止める。
-    /// 記録の無い in-app ブリッジ(別クローンの `.ftester` が起動した・記録前に run が中断された)は
+    /// 記録の無い in-app ブリッジ(別クローンの `.fleetest` が起動した・記録前に run が中断された)は
     /// ここでしか止められない。2026-08-23 まではこの形を `.pid` 経路へ流して
-    /// 「the bridge is not running (no .ftester/bridge.pid)」で止めそこね、旧ブリッジが
+    /// 「the bridge is not running (no .fleetest/bridge.pid)」で止めそこね、旧ブリッジが
     /// 掴んだままのポートへ新しい注入が衝突していた(受け手報告の never joined)
     case stopPortHolder
 

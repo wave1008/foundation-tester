@@ -6,7 +6,7 @@
 Android の `avd` は AVD の ID("Pixel_9_Android_16")と表示名("Pixel 9(Android 16)")の
 どちらでも書ける。
 
-実行時のマシン選択: FT_MACHINE 環境変数 > `ftester machine set` の登録名 >
+実行時のマシン選択: FT_MACHINE 環境変数 > `fleetest machine set` の登録名 >
 ここに .json が 1 つだけならそれを自動採用。
 
 iOS の `os`(例 `"26.0"`)は任意。**書かなければ名前一致の最新ランタイム**に解決されるので、

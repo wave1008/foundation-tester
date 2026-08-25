@@ -1,10 +1,10 @@
-# AndroidRunner — ftester Android ブリッジ
+# AndroidRunner — fleetest Android ブリッジ
 
 iOS の `Runner/`(XCUITest ランナー)と対になる、Android デバイス常駐の HTTP サーバ。
 uiautomator dump(約2秒)の代わりに AccessibilityNodeInfo を直接走査して
 スナップショットをミリ秒オーダーで返す。HTTP プロトコルは iOS ブリッジと互換
 (DTO 形は `Sources/FTCore/BridgeDTO.swift`、ルーティングは `AndroidRunner/src/.../BridgeRouter.java` /
-iOS 側 `Runner/FTesterRunnerUITests/BridgeRouter.swift`)なので、ホスト側は `BridgeClient` をそのまま使う。
+iOS 側 `Runner/FleetestRunnerUITests/BridgeRouter.swift`)なので、ホスト側は `BridgeClient` をそのまま使う。
 一部(`home`/`drag`)は Android では adb で肩代わりする(`Sources/FTAndroid/AndroidDriver.swift`)。
 
 - 純フレームワーク API の Java のみ(androidx / gradle / Kotlin 不使用)
@@ -21,7 +21,7 @@ iOS 側 `Runner/FTesterRunnerUITests/BridgeRouter.swift`)なので、ホスト�
 - 起動: `adb shell "am instrument -w -e port 8123 com.example.ftbridge/.BridgeInstrumentation </dev/null >/dev/null 2>&1 &"`
   - **-w は必須**(UiAutomationConnection は am プロセス側に生成される)。
     デバイス内でバックグラウンド化するので adb 切断後も常駐する
-- 停止: `adb shell am force-stop com.example.ftbridge`(`ftester bridge down --platform android`)。
+- 停止: `adb shell am force-stop com.example.ftbridge`(`fleetest bridge down --platform android`)。
   加えて `-e ttl <秒>` の無通信 TTL(design.md §4.1)で自主終了する。判定は accept の
   60s 周期起床なので検出は最大 +60s 遅れる(2h の既定に対して許容)
 - 注意: ブリッジ稼働中は `uiautomator dump` が使えない(a11y 接続は実質1本。dump 側が

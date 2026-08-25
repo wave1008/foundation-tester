@@ -1,7 +1,7 @@
 # 実行結果の分析
 
-`ftester run`(CLI・`ftester api run` とも)は実行のたびに結果を
-`TestProjects/<name>/results/` へ追記します。このページでは `ftester results` コマンドと
+`fleetest run`(CLI・`fleetest api run` とも)は実行のたびに結果を
+`TestProjects/<name>/results/` へ追記します。このページでは `fleetest results` コマンドと
 失敗の読み方を説明します。JSON スキーマの唯一の定義元は
 [../../results-json.md](../../results-json.md)(日本語)です。
 
@@ -18,21 +18,21 @@ results/runs/<YYYY-MM>/<runID>/
 `results/` は追加専用で git と相性の良いレイアウトです。`runID` にマシン名+乱数を含むため、
 別マシン・別ブランチの結果もコンフリクトなくマージできます。
 
-## `ftester results` コマンド
+## `fleetest results` コマンド
 
 | コマンド | 説明 |
 |---|---|
-| `ftester results list [--since <期間>] [--limit <n>]` | run を新しい順に一覧する |
-| `ftester results summary [--scenario <id>]` | シナリオ別の実行回数・成功率・所要時間を集計する(成功率が低い順) |
-| `ftester results flaky [--min-runs <n>]` | 成功も失敗もするシナリオを、不安定な順に一覧する |
-| `ftester results trend --scenario <id>` | 1シナリオの実行履歴を時系列で表示する |
-| `ftester results devices` | ワーカー(デバイス)別・プラットフォーム別の実行回数と成功率を集計する |
-| `ftester results slow [--limit <n>]` | シナリオを平均所要時間が長い順に一覧する |
-| `ftester results insights` | 実行履歴に対する10種の検査 —— [`insights` が検知するもの](#insights-が検知するもの)を参照 |
+| `fleetest results list [--since <期間>] [--limit <n>]` | run を新しい順に一覧する |
+| `fleetest results summary [--scenario <id>]` | シナリオ別の実行回数・成功率・所要時間を集計する(成功率が低い順) |
+| `fleetest results flaky [--min-runs <n>]` | 成功も失敗もするシナリオを、不安定な順に一覧する |
+| `fleetest results trend --scenario <id>` | 1シナリオの実行履歴を時系列で表示する |
+| `fleetest results devices` | ワーカー(デバイス)別・プラットフォーム別の実行回数と成功率を集計する |
+| `fleetest results slow [--limit <n>]` | シナリオを平均所要時間が長い順に一覧する |
+| `fleetest results insights` | 実行履歴に対する10種の検査 —— [`insights` が検知するもの](#insights-が検知するもの)を参照 |
 
 すべて `--project`、`--since <期間>`(`30d`/`12h` のような相対値、または `YYYY-MM-DD`。既定
 `90d`)、単一行 JSON で出す `--json` を受け付けます。正確なフラグは
-`ftester results <サブコマンド> --help` で確認してください。
+`fleetest results <サブコマンド> --help` で確認してください。
 
 ## `insights` が検知するもの
 
@@ -89,15 +89,15 @@ jq -r 'select(.passed==false) | .failedSteps[0]
 
 ## VSCode で見る
 
-コマンドパレットの **「ftester: 結果ダッシュボードを開く」** で、直近の実行一覧・シナリオ別の
+コマンドパレットの **「fleetest: 結果ダッシュボードを開く」** で、直近の実行一覧・シナリオ別の
 成功率と所要時間・不安定(flaky)シナリオ・デバイス/ワーカー別集計・日次推移・注意喚起を表示する
-パネルが開きます(データは `ftester results` と同じ集計を使います)。詳細は
-[vscode-ftester/README.md](../../../vscode-ftester/README.md)の「結果ダッシュボード」を
+パネルが開きます(データは `fleetest results` と同じ集計を使います)。詳細は
+[vscode-fleetest/README.md](../../../vscode-fleetest/README.md)の「結果ダッシュボード」を
 参照してください。
 
 ## CI
 
-`ftester run --junit <path>` は JSON の結果に加えて JUnit XML レポートを出力します
+`fleetest run --junit <path>` は JSON の結果に加えて JUnit XML レポートを出力します
 (CI のテストレポート向け)。詳細は [ci_ja.md](../in_action/ci_ja.md) を参照してください。
 
 ### Link

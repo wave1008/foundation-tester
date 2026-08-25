@@ -23,7 +23,7 @@ final class RunWorkerLabelTests: XCTestCase {
     }
 
     func testParsesNonProfileLabels() {
-        // --port/--serial 経路(FTester.swift)が作る形式
+        // --port/--serial 経路(Fleetest.swift)が作る形式
         XCTAssertEqual(RunWorker.platform(fromLabel: "ios:8123"), "ios")
         XCTAssertEqual(RunWorker.platform(fromLabel: "android"), "android")
     }

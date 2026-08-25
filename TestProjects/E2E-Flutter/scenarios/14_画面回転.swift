@@ -1,5 +1,5 @@
 // 14_画面回転.swift
-// ftester 機能: `rotateTo(.portrait / .landscape)`。**契約は「アプリの UI がその向きになること」**
+// fleetest 機能: `rotateTo(.portrait / .landscape)`。**契約は「アプリの UI がその向きになること」**
 // で、デバイスがどう傾いているかではない(docs/commands.md)。左右の区別は語彙に無い。
 // SUT は Flutter の E2EAppFlutter。**自前描画のフレームワークでも再レイアウトされ、a11y ツリーが
 // 新座標系で追随することの回帰**をここで守る(Compose と並ぶ2つ目の自前描画。観測側はホスト

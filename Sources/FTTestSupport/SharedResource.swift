@@ -18,7 +18,7 @@ public struct SharedResource: Sendable {
     public static let iosSimulatorHost = SharedResource(key: "ios-simulator-host")
     /// adb / emulator gRPC
     public static let androidEmulatorHost = SharedResource(key: "android-emulator-host")
-    /// ~/Library/Caches/ftester 配下(隔離できないときの受け皿)
+    /// ~/Library/Caches/fleetest 配下(隔離できないときの受け皿)
     public static let hostCaches = SharedResource(key: "host-caches")
 
     private init(key: String) {
@@ -35,7 +35,7 @@ public struct SharedResource: Sendable {
 
     private static let lockDirectory: URL =
         FileManager.default.temporaryDirectory
-            .appendingPathComponent("ftester-test-locks", isDirectory: true)
+            .appendingPathComponent("fleetest-test-locks", isDirectory: true)
 
     private var lockFileURL: URL {
         Self.lockDirectory.appendingPathComponent("\(key).lock")

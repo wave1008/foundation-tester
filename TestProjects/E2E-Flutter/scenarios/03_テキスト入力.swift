@@ -1,5 +1,5 @@
 // 03_テキスト入力.swift
-// ftester 機能: `type` コマンドと入力値の echo 検証(単一行/パスワード/送信/クリア/clearInput/
+// fleetest 機能: `type` コマンドと入力値の echo 検証(単一行/パスワード/送信/クリア/clearInput/
 // キーボード表示状態/pressEnter・末尾改行の IME アクション)をまとめて検証する
 // (旧: 05_テキスト入力 の S0010〜S0030 / 18_Enterキー)。
 // Flutter の `obscureText: true` は **`SecureTextField` にならない**(iOS/Android とも `TextField`)。
@@ -35,7 +35,7 @@ class テキスト入力が正しくechoされること {
                     // FM はホスト全体で直列化(約1回/秒)されるため、全 launchApp で FM を
                     // 呼ぶとコストだけが乗る。**可視性の検証と、occlusion-guard の誤判定を
                     // 検出する役目は 01_起動と画面遷移 が既定(true)のまま担う**
-                    // (README「既知の ftester 欠陥」参照。ここで guard を切っても検出器は死なない)。
+                    // (README「既知の fleetest 欠陥」参照。ここで guard を切っても検出器は死なない)。
                     exist("#txt_home_marker", requireVisible: false)
                 }.action {
                     tap("#nav_input")

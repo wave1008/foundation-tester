@@ -36,7 +36,7 @@ final class AndroidWebViewUpdateTests: XCTestCase {
     /// キャッシュは**版ごとに別ファイル**(古い版を消す判断ができる)
     func testCachesTheAPKPerVersionOutsideTheRepository() {
         let dir = AndroidWebViewUpdate.cacheDirectory(home: URL(fileURLWithPath: "/Users/x"))
-        XCTAssertEqual(dir.path, "/Users/x/Library/Caches/ftester/webview")
+        XCTAssertEqual(dir.path, "/Users/x/Library/Caches/fleetest/webview")
         let a = AndroidWebViewUpdate.cachedAPK(version: "150.0.1.1", in: dir)
         let b = AndroidWebViewUpdate.cachedAPK(version: "124.0.1.1", in: dir)
         XCTAssertNotEqual(a, b)

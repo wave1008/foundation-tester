@@ -3,9 +3,9 @@
   "owner": { "name": "wave1008" },
   "plugins": [
     {
-      "name": "ftester",
+      "name": "fleetest",
       "source": "./",
-      "description": "foundation-tester のセットアップ(clone→build→プロジェクト作成)・更新・プロファイル一括作成・シナリオ作成・MCP 登録を Claude Code のスキルとして提供する。"
+      "description": "fleetest mobile のセットアップ(clone→build→プロジェクト作成)・更新・プロファイル一括作成・シナリオ作成・MCP 登録を Claude Code のスキルとして提供する。"
     }
   ]
 }

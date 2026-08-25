@@ -4,7 +4,7 @@
 このマシンで使えるデバイスを ios / android セクションに `name` 付きで列挙する。
 実行プロファイル(runs/)はデバイスを `name` で参照するため、name は ios/android 横断で一意にすること。
 
-実行時のマシン選択: FT_MACHINE 環境変数 > `ftester machine set` の登録名 >
+実行時のマシン選択: FT_MACHINE 環境変数 > `fleetest machine set` の登録名 >
 ここに .json が 1 つだけならそれを自動採用。
 
 ```json

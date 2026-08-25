@@ -2,7 +2,7 @@
 // (PortHolder.describe / portInUse の文言)の固定。
 //
 // 2026-08-22/23 の受け手報告: 前の run の in-app ブリッジ(iosApp)が記録無しでポートに居座り、
-// 供給が「the bridge is not running (no .ftester/bridge.pid)」で止めそこねたまま新規注入へ進んで
+// 供給が「the bridge is not running (no .fleetest/bridge.pid)」で止めそこねたまま新規注入へ進んで
 // 「did not respond in time」で never joined になった。残骸が原因だとメッセージからは分からなかった。
 
 import XCTest

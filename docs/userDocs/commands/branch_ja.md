@@ -36,7 +36,7 @@ expectation {
   [`irregularHandler`](./irregular_handler_ja.md) の対象に覆われている場合、`ifCanSelect` は
   先にそれを閉じてから判定します — 閉じずに判定すると、覆われた要素が黙って「無い」と
   読まれ、失敗ではなく誤った分岐として現れてしまうためです。
-- foundation-tester は Shirates の `ifTrue` / `ifFalse` / `ifScreenIs` 系を持ちません。
+- fleetest は Shirates の `ifTrue` / `ifFalse` / `ifScreenIs` 系を持ちません。
   分岐は意図的に2つだけに絞られています — 既に読んだ値に対する素の Swift `if` と、
   「画面に出ているか」に対する `ifCanSelect` です。
 - `ios { }` / `android { }` は、両 OS で共有するシナリオの中に片方の OS だけに当てはまる

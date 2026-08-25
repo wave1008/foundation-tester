@@ -13,7 +13,7 @@
 #   - このファイルがあるときだけ実行される。要らなければ削除してよい。
 #   - 終了コードは run の合否を変えない(失敗は警告として出るだけ)。
 #   - setup.sh が失敗したときも実行されるので、途中まで起きた状態にも耐えること。
-#   - "ftester hooks reap" / "ftester remote clean" からの代理実行では run の文脈が無いため、
+#   - "fleetest hooks reap" / "fleetest remote clean" からの代理実行では run の文脈が無いため、
 #     FT_MACHINE・FT_REPORT_DIR・デバイス一覧は空になる。
 
 set -u

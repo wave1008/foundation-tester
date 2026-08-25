@@ -19,7 +19,7 @@ set -uo pipefail
 
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
-FTESTER="$ROOT/.build/debug/ftester"
+FLEETEST="$ROOT/.build/debug/fleetest"
 PROJECT="E2E-CMP"
 PROFILE="ios-fm"
 
@@ -31,13 +31,13 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-[ -x "$FTESTER" ] || { echo "❌ $FTESTER がありません(swift build --product ftester)" >&2; exit 1; }
+[ -x "$FLEETEST" ] || { echo "❌ $FLEETEST がありません(swift build --product fleetest)" >&2; exit 1; }
 
 SCEN_DIR="$ROOT/TestProjects/$PROJECT/scenarios"
 DISABLED="$SCEN_DIR/_disabled"
 # FM を要するシナリオ(_disabled にある = 既定スイートには載らない)
 FM_FILES=(90_自己修復.swift 92_screenLooksLike.swift 93_triage.swift)
-HEAL_CACHE="$ROOT/TestProjects/$PROJECT/.ftester/heal-cache.json"
+HEAL_CACHE="$ROOT/TestProjects/$PROJECT/.fleetest/heal-cache.json"
 
 restore() {  # 途中で落ちても必ず元へ戻す(_disabled から出したまま = 既定スイートを汚す)
   for f in "${FM_FILES[@]}"; do
@@ -58,13 +58,13 @@ done
 
 echo "═══ $PROJECT / $PROFILE(FM 経路の検証)═══"
 # occlusion は「疑い」が立ったときだけ発火するので、実測で最も呼ばれる2本を含める
-"$FTESTER" run --project "$PROJECT" --profile "$PROFILE" \
+"$FLEETEST" run --project "$PROJECT" --profile "$PROFILE" \
   --scenario 自己修復でid変更を追従できること \
   --scenario 画面全体をFMで検証できること \
   --scenario スクロールで折り返し下の要素に到達できること \
   --scenario ジェスチャが正しく検出されること
 echo "--- 意図的に失敗させて triage を発火させる(失敗が正常)---"
-"$FTESTER" run --project "$PROJECT" --profile "$PROFILE" --skip-build \
+"$FLEETEST" run --project "$PROJECT" --profile "$PROFILE" --skip-build \
   --scenario triage経路を検証できること || true
 
 restore

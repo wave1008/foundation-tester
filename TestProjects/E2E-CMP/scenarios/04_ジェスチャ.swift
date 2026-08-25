@@ -1,5 +1,5 @@
 // 04_ジェスチャ.swift
-// ftester 機能: `tap` の連打カウント / `tap(holdSeconds:)`(長押し)と通常タップの区別 / `swipe` 4方向 /
+// fleetest 機能: `tap` の連打カウント / `tap(holdSeconds:)`(長押し)と通常タップの区別 / `swipe` 4方向 /
 // `swipePointToPoint`(座標スワイプ)/ `pinchOut`/`pinchIn`(2本指ズーム)/ `doubleTap` /
 // `swipeBy`(斜めを含む相対ドラッグ)をまとめて検証する。
 // 旧シナリオ境界は tap("#tab_home") でホームへ戻ってから叩き直す形に置き換えてある

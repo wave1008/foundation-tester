@@ -1,4 +1,4 @@
-// DSL コマンドの機械可読な索引(`ftester api dsl-commands`)。読者は**コードを生成する側**で、
+// DSL コマンドの機械可読な索引(`fleetest api dsl-commands`)。読者は**コードを生成する側**で、
 // 「その名前は在るか・引数は何か・exist の戻り値に繋げられるか」を実行前に確かめるためのもの。
 //
 // **表は手書きで、`CommandIndexSyncTests` がソースと突き合わせる**(Commands.swift ほかコマンド定義3ファイルの

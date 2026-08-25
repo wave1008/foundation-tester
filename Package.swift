@@ -13,13 +13,13 @@ let package = Package(
         // ここを 27 に上げると macOS 26 でビルドすら通らなくなる。
         .macOS("26.0"),
     ],
-    // 外部パッケージ(ftester init が生成する受け手の Package.swift)が依存する公開 product。
+    // 外部パッケージ(fleetest init が生成する受け手の Package.swift)が依存する公開 product。
     // 受け手のシナリオターゲットは .product(name: "FTScenarioRunner"/"FTDSL", package: "foundation-tester")
     // を dependencies に持つ(対向: Sources/FTCore/PackageManifestEditor.swift の external モード)。
     // FTScenarioRunner が FTCore/FTBridgeClient/FTAgent/FTAndroid を、FTDSL が FTDSLMacros を
-    // 推移的に引くため、公開が要るのはこの3つだけ。ftester は CLI ツール本体。
+    // 推移的に引くため、公開が要るのはこの3つだけ。fleetest は CLI ツール本体。
     products: [
-        .executable(name: "ftester", targets: ["ftester"]),
+        .executable(name: "fleetest", targets: ["fleetest"]),
         .library(name: "FTScenarioRunner", targets: ["FTScenarioRunner"]),
         .library(name: "FTDSL", targets: ["FTDSL"]),
         .library(name: "FTCore", targets: ["FTCore"]),
@@ -85,7 +85,7 @@ let package = Package(
         ),
         // MCP サーバ(stdio)。Claude Code 等のエージェントからブリッジ操作・フロー実行を使えるようにする
         .executableTarget(
-            name: "ftester-mcp",
+            name: "fleetest-mcp",
             // FTDSL は意図して外してある: セレクタ文法(FTSelector)・コマンド索引(DSLCommandIndex)・
             // コード生成(ScenarioCodeGen)は FTCore に住み、この target が使うのはそれだけ
             // (DSL ランタイム本体は使わない)。ft_dsl_commands が返す索引の出典は Sources/FTCore/CommandIndex.swift
@@ -98,7 +98,7 @@ let package = Package(
             swiftSettings: swift5Mode
         ),
         .executableTarget(
-            name: "ftester",
+            name: "fleetest",
             dependencies: [
                 "FTCore",
                 "FTBridgeClient",
@@ -124,7 +124,7 @@ let package = Package(
             dependencies: ["FTCore", "FTDSLMacros"],
             swiftSettings: swift5Mode
         ),
-        // ftester-scenarios の CLI 実装(list/run・NDJSON イベント出力)
+        // fleetest-scenarios の CLI 実装(list/run・NDJSON イベント出力)
         .target(
             name: "FTScenarioRunner",
             dependencies: [
@@ -139,67 +139,67 @@ let package = Package(
         ),
         // テストプロジェクト(TestProjects/<name>/scenarios/)のシナリオ実行ターゲット。
         // _disabled/ は退避場所(コンパイル対象外。並列デモ等をここに置く)
-        // === ftester projects begin(ftester project create/sync が自動生成。手編集禁止)===
+        // === fleetest projects begin(fleetest project create/sync が自動生成。手編集禁止)===
         .executableTarget(
-            name: "ftester-scenarios-E2E-Android",
+            name: "fleetest-scenarios-E2E-Android",
             dependencies: ["FTScenarioRunner", "FTDSL"],
             path: "TestProjects/E2E-Android/scenarios",
             exclude: ["_disabled"],
             swiftSettings: swift5Mode
         ),
         .executableTarget(
-            name: "ftester-scenarios-E2E-CMP",
+            name: "fleetest-scenarios-E2E-CMP",
             dependencies: ["FTScenarioRunner", "FTDSL"],
             path: "TestProjects/E2E-CMP/scenarios",
             exclude: ["_disabled"],
             swiftSettings: swift5Mode
         ),
         .executableTarget(
-            name: "ftester-scenarios-E2E-Flutter",
+            name: "fleetest-scenarios-E2E-Flutter",
             dependencies: ["FTScenarioRunner", "FTDSL"],
             path: "TestProjects/E2E-Flutter/scenarios",
             exclude: ["_disabled"],
             swiftSettings: swift5Mode
         ),
         .executableTarget(
-            name: "ftester-scenarios-E2E-RN",
+            name: "fleetest-scenarios-E2E-RN",
             dependencies: ["FTScenarioRunner", "FTDSL"],
             path: "TestProjects/E2E-RN/scenarios",
             exclude: ["_disabled"],
             swiftSettings: swift5Mode
         ),
         .executableTarget(
-            name: "ftester-scenarios-E2E-iOS",
+            name: "fleetest-scenarios-E2E-iOS",
             dependencies: ["FTScenarioRunner", "FTDSL"],
             path: "TestProjects/E2E-iOS/scenarios",
             exclude: ["_disabled"],
             swiftSettings: swift5Mode
         ),
         .executableTarget(
-            name: "ftester-scenarios-SampleApp",
+            name: "fleetest-scenarios-SampleApp",
             dependencies: ["FTScenarioRunner", "FTDSL"],
             path: "TestProjects/SampleApp/scenarios",
             exclude: ["_disabled"],
             swiftSettings: swift5Mode
         ),
         .executableTarget(
-            name: "ftester-scenarios-project1",
+            name: "fleetest-scenarios-project1",
             dependencies: ["FTScenarioRunner", "FTDSL"],
             path: "TestProjects/project1/scenarios",
             exclude: ["_disabled"],
             swiftSettings: swift5Mode
         ),
         .executableTarget(
-            name: "ftester-scenarios-sut-ec-mobile",
+            name: "fleetest-scenarios-sut-ec-mobile",
             dependencies: ["FTScenarioRunner", "FTDSL"],
             path: "TestProjects/sut-ec-mobile/scenarios",
             exclude: ["_disabled"],
             swiftSettings: swift5Mode
         ),
-        // === ftester projects end ===
+        // === fleetest projects end ===
         // headless iOS シミュレータ画面キャプチャ(ObjC単体・CoreSimulator/SimulatorKitはdlopen)
         .executableTarget(
-            name: "ftester-simstream",
+            name: "fleetest-simstream",
             linkerSettings: [
                 .linkedFramework("Foundation"), .linkedFramework("CoreImage"),
                 .linkedFramework("CoreVideo"), .linkedFramework("IOSurface"),
@@ -209,7 +209,7 @@ let package = Package(
         ),
         // Android実機/エミュレータ画面ストリーミング(adb screenrecord H.264 -> VideoToolboxデコード)
         .executableTarget(
-            name: "ftester-androidstream",
+            name: "fleetest-androidstream",
             linkerSettings: [
                 .linkedFramework("Foundation"), .linkedFramework("CoreImage"),
                 .linkedFramework("CoreVideo"), .linkedFramework("CoreMedia"),
@@ -220,7 +220,7 @@ let package = Package(
         // 実機(iOS/Android)画面ストリーミング(スクリーンショットのポーリング -> MJPEG)。
         // simstream(シミュレータ専用)・androidstream(静止画面でフレームが出ない)の実機向け代替
         .executableTarget(
-            name: "ftester-devicepoll",
+            name: "fleetest-devicepoll",
             dependencies: ["FTCore"],
             linkerSettings: [
                 .linkedFramework("Foundation"), .linkedFramework("CoreGraphics"),
@@ -252,22 +252,22 @@ let package = Package(
             dependencies: ["FTTestSupport"],
             swiftSettings: swift5Mode
         ),
-        // ftester-mcp は executableTarget だが @testable import 可能(モジュール名は c99name の
-        // ftester_mcp)。toolDefinitions のスキーマ宣言と drivers キャッシュキーの純関数のみ対象。
+        // fleetest-mcp は executableTarget だが @testable import 可能(モジュール名は c99name の
+        // fleetest_mcp)。toolDefinitions のスキーマ宣言と drivers キャッシュキーの純関数のみ対象。
         // FTCore は ft_batch の往復テスト用(BatchLineParserTests が @testable import FTCore で
         // ScenarioCodeGen.command(for:) を直接叩き、「ft_draft_scenario が描く行を ft_batch の
         // パーサへ戻せるか」を検証する。移動前は FTDSL 側のこの関数を叩いていた)
         .testTarget(
-            name: "FTesterMCPTests",
-            dependencies: ["ftester-mcp", "FTCore", "FTTestSupport"],
+            name: "FleetestMCPTests",
+            dependencies: ["fleetest-mcp", "FTCore", "FTTestSupport"],
             swiftSettings: swift5Mode
         ),
-        // CLI 本体(executableTarget)の純粋ロジック。FTesterMCPTests と同じく @testable import で
+        // CLI 本体(executableTarget)の純粋ロジック。FleetestMCPTests と同じく @testable import で
         // 入る。対象は外部プロセス・デバイスに触らない部分だけ(カタログのパースと整列・集計・
         // 実行プロファイルによる絞り込み・表示整形)
         .testTarget(
-            name: "FTesterTests",
-            dependencies: ["ftester", "FTCore", "FTAndroid", "FTBridgeClient"],
+            name: "FleetestTests",
+            dependencies: ["fleetest", "FTCore", "FTAndroid", "FTBridgeClient"],
             swiftSettings: swift5Mode
         ),
         .testTarget(

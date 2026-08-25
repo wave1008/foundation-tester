@@ -1,5 +1,5 @@
 // BridgeHttpServer.java
-// 依存ゼロのハンドロール HTTP/1.1 サーバ(Runner/FTesterRunnerUITests/BridgeHTTPServer.swift の Java 版)。
+// 依存ゼロのハンドロール HTTP/1.1 サーバ(Runner/FleetestRunnerUITests/BridgeHTTPServer.swift の Java 版)。
 // 1接続ずつ逐次処理、Connection: close、Content-Length ボディのみ対応。
 package com.example.ftbridge;
 

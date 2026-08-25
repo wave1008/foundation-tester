@@ -3,7 +3,7 @@
 //
 // `SelTests` は個別ケースの列挙なので、**String 版だけ足しても落ちない**(構文ごとの等価は見るが、
 // コマンドの集合は見ない)。ここはソース走査で集合一致を固定する
-// (FTElement のチェーン側は vscode-ftester/test/ftElementChainSync.test.mjs が同じ役割)。
+// (FTElement のチェーン側は vscode-fleetest/test/ftElementChainSync.test.mjs が同じ役割)。
 
 import XCTest
 

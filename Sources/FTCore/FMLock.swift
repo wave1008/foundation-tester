@@ -6,7 +6,7 @@
 // 呼び出し側で待ち行列を明示して、その積み降ろしを止めるのがこのロックの目的。
 //
 // ロックは**リポジトリ単位ではなくホスト単位**(FM がホスト単位の資源のため。別リポジトリの
-// ftester プロセスとも直列化する必要がある)。ファイルは ~/Library/Caches/ftester/fm.lock。
+// fleetest プロセスとも直列化する必要がある)。ファイルは ~/Library/Caches/fleetest/fm.lock。
 //
 // 取得できないまま timeout したら **FM 呼び出しをスキップする**(呼び出し側は nil を返して
 // ガードを素通りさせる = 失敗時と同じ振る舞い)。全ワーカーが待ち行列に並ぶと最後尾の待ちが
@@ -33,7 +33,7 @@ public enum FMLock {
     private static var lockURL: URL {
         let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSTemporaryDirectory())
-        return base.appendingPathComponent("ftester", isDirectory: true)
+        return base.appendingPathComponent("fleetest", isDirectory: true)
             .appendingPathComponent("fm.lock")
     }
 

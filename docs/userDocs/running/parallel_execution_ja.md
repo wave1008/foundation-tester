@@ -8,7 +8,7 @@
 ([profiles_ja.md](../project/profiles_ja.md)参照)。
 
 ```bash
-ftester run --project SampleApp --profile all
+fleetest run --project SampleApp --profile all
 ```
 
 `platform:` を宣言していないシナリオは、その実行の既定 OS(ワーカーが居る最初のプラットフォーム。
@@ -22,12 +22,12 @@ ftester run --project SampleApp --profile all
 シミュレータごとに別ポートでブリッジを起動し、ポート一覧を `run` に渡します。
 
 ```bash
-ftester bridge up --device "iPhone 17 Pro"                          # port 8123
-ftester bridge up --device "iPhone 17 Pro Max" --port 8124 --skip-build
+fleetest bridge up --device "iPhone 17 Pro"                          # port 8123
+fleetest bridge up --device "iPhone 17 Pro Max" --port 8124 --skip-build
 xcrun simctl install "iPhone 17 Pro Max" <対象アプリ.app>            # 各デバイスにアプリを入れる
 
-ftester run --ports 8123,8124          # シナリオをワーカーに自動分配
-ftester bridge down --all              # 全ブリッジ停止
+fleetest run --ports 8123,8124          # シナリオをワーカーに自動分配
+fleetest bridge down --all              # 全ブリッジ停止
 ```
 
 同じ実行に Android シナリオがあれば専用ワーカーが自動で立ちます(1シナリオ=1サブプロセスで
@@ -50,8 +50,8 @@ ftester bridge down --all              # 全ブリッジ停止
 
 ## 並列実行が関わる他の場所
 
-- VSCode 拡張も `ftester.profile` 設定を通じて同じ並列実行を行います
-  ([vscode-ftester/README.md](../../../vscode-ftester/README.md)の「並列実行とログレーン」参照)。
+- VSCode 拡張も `fleetest.profile` 設定を通じて同じ並列実行を行います
+  ([vscode-fleetest/README.md](../../../vscode-fleetest/README.md)の「並列実行とログレーン」参照)。
 - LPT 順序付け(実績時間の長い順に投入)は直近の実行履歴でワーカー間の負荷を均します。
   `--no-lpt`/`--lpt-history-runs` で制御できます([running_scenarios_ja.md](./running_scenarios_ja.md)参照)。
 - 決定的再生は FM を呼ばないため並列にスケールします。`screenLooksLike` と失敗時トリアージは

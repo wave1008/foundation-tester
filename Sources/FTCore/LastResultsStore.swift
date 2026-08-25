@@ -1,5 +1,5 @@
 // LastResultsStore.swift
-// シナリオの直近実行結果を1ファイル/シナリオで記録する(`ftester run --failed` の絞り込み用)。
+// シナリオの直近実行結果を1ファイル/シナリオで記録する(`fleetest run --failed` の絞り込み用)。
 // ファイルはシナリオIDそのもの(拡張子なし・日本語可)で内容は "passed"/"failed"。
 // 異なるシナリオは別ファイルなのでロック不要。同一シナリオの同時実行は元々非対応
 // (1シナリオ1プロセスの原則。ScenarioHost.run 参照)。
@@ -8,13 +8,13 @@ import Foundation
 
 public enum LastResultsStore {
 
-    /// 受け手パッケージ直下 .ftester/last-results/<projectName>/(packageRoot 優先、
+    /// 受け手パッケージ直下 .fleetest/last-results/<projectName>/(packageRoot 優先、
     /// 無ければ rootURL から2階層遡る)。TestProjects/ を持つ側が正で、ツール本体の
     /// RepoRoot.find()(ブリッジ資産の在り処)とは別物。
     static func stateDir(project: TestProject) -> URL {
         let root = ScenarioHost.packageRoot() ?? project.rootURL
             .deletingLastPathComponent().deletingLastPathComponent()
-        return root.appendingPathComponent(".ftester/last-results")
+        return root.appendingPathComponent(".fleetest/last-results")
             .appendingPathComponent(project.name)
     }
 

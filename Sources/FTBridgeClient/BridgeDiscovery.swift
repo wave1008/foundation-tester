@@ -154,7 +154,7 @@ public enum BridgeDiscovery {
 
     public static func noBridgeMessage(preferred: UInt16) -> String {
         "no iOS bridge is running (scanned ports \(portRange.lowerBound)-\(portRange.upperBound))."
-            + " Start one with `ftester bridge up --device \"<simulator name>\"`,"
+            + " Start one with `fleetest bridge up --device \"<simulator name>\"`,"
             + " or pass profile: to use a run profile's device."
     }
 

@@ -1,15 +1,15 @@
 # MCP Server
 
-`ftester-mcp` is a stdio [MCP](https://modelcontextprotocol.io) server that exposes device
+`fleetest-mcp` is a stdio [MCP](https://modelcontextprotocol.io) server that exposes device
 operations, scenario execution and scenario authoring as `ft_*` tools for Claude Code. It is the
 same functionality as the CLI and VS Code extension, called by an agent instead of a human.
 
 ## Setup
 
-Opening Claude Code at the root of the `foundation-tester` repository registers the `ftester`
+Opening Claude Code at the root of the `foundation-tester` repository registers the `fleetest`
 server automatically via the repository's `.mcp.json` (the first call triggers a build). To add
 just the MCP server to a different project — without the VS Code extension or project scaffolding
-— see [Claude Code Skills](./claude_code_skills.md) (`/ftester:ftester-mcp`).
+— see [Claude Code Skills](./claude_code_skills.md) (`/fleetest:fleetest-mcp`).
 
 ## Common Arguments
 
@@ -74,7 +74,7 @@ uses the XCUITest engine.
 
 The tools intentionally do not include an "explore" tool: exploration and judgment stay with the
 calling agent (it already has a snapshot and operation primitives to explore with), while
-`ftester` supplies determinism — operate, replay, verify.
+`fleetest` supplies determinism — operate, replay, verify.
 
 ### Link
 - [index](../index.md)

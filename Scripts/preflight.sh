@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # 状態判定(読み取りのみ・何も変更しない)。既定モードはインストール前の判定(カレント = WORK_DIR
-# 候補)。`--runner` はランナー機(`ftester run --host` / docs/remote-runner.md §5・§14)としての判定。
+# 候補)。`--runner` はランナー機(`fleetest run --host` / docs/remote-runner.md §5・§14)としての判定。
 #
 #   curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/preflight.sh | bash
 #   bash Scripts/preflight.sh
-#   bash Scripts/preflight.sh --runner [--base <dir>]   # --base 既定は ~/ftester-runner
+#   bash Scripts/preflight.sh --runner [--base <dir>]   # --base 既定は ~/fleetest-runner
 #
 # 既定モード: **カレントディレクトリだけを判定対象**にする(どこで実行したかが答えを変えるため)。
 # --runner モード: `<base>/foundation-tester`(クローン)・`<base>/work`(WORK_DIR)を判定対象にする
@@ -12,14 +12,14 @@
 # 自動ログイン・スリープ・sshd の有効化はここでは行わず、人間がやる手順を案内するだけ。
 #
 # 出力は `key=value` 行(機械可読)+ 末尾の判定。判定は verdict= と終了コードの両方に出る:
-#   既定モード: 0 = ready      … 未導入。ここに install.sh / ftester-setup で導入できる
-#               2 = installed  … 導入済み(外部パッケージ構成が確立済み)。更新は /ftester-update
-#               1 = blocked    … ここには導入できない(ftester と無関係の Package.swift・必須環境の欠落)
+#   既定モード: 0 = ready      … 未導入。ここに install.sh / fleetest-setup で導入できる
+#               2 = installed  … 導入済み(外部パッケージ構成が確立済み)。更新は /fleetest-update
+#               1 = blocked    … ここには導入できない(fleetest と無関係の Package.swift・必須環境の欠落)
 #   --runner:   0 = ready        … ランナーとして使える
 #               2 = needs-manual … 人手の手順が残っている(列挙する)
 #               1 = blocked      … 必須トールチェーンが欠落
 #
-# 契約: 既定モードの判定分岐は .claude/skills/ftester-setup/SKILL.md のステップ0(再実行ガード・
+# 契約: 既定モードの判定分岐は .claude/skills/fleetest-setup/SKILL.md のステップ0(再実行ガード・
 #       環境判定)と 0.5(構成判定)と 1:1。片方だけ変えない。**既定モードの出力は1バイトも変えない**。
 set -uo pipefail
 
@@ -33,9 +33,9 @@ first_line() { printf '%s' "${1%%$'\n'*}"; }
 
 # ---- 引数解析 -------------------------------------------------------------------
 MODE=default
-# `--remote-dir` の既定値(Sources/ftester/FTester.swift・ApiRunCommand.swift・RemoteCommands.swift)と
+# `--remote-dir` の既定値(Sources/fleetest/Fleetest.swift・ApiRunCommand.swift・RemoteCommands.swift)と
 # 揃える。ズレるとディスパッチ側とランナー判定が別ディレクトリを見る
-BASE="~/ftester-runner"
+BASE="~/fleetest-runner"
 # --runner 専用。発行者ネームスペース化(§18.2)で work は `$BASE/users/<issuer>/work` になり
 # 既定の `$BASE/work` と一致しなくなったため、呼び出し側(RemoteSetupPlan.preflightArgs)が
 # 実際の WORK_DIR を渡す。未指定なら旧来どおり `$BASE/work` にフォールバックする(古い呼び手互換)
@@ -206,7 +206,7 @@ PMSET_OUT
   fi
   check_adb
 
-  # ---- ツール本体・作業場所(§14「構成」)。未導入は `ftester remote setup` が作るので情報のみ ----
+  # ---- ツール本体・作業場所(§14「構成」)。未導入は `fleetest remote setup` が作るので情報のみ ----
   tool_root="$BASE/foundation-tester"
   work_dir="${RUNNER_WORK_DIR:-$BASE/work}"
   kv tool_root "$tool_root"
@@ -222,7 +222,7 @@ PMSET_OUT
     if [ -d "$tool_root/.git" ]; then
       tool_root_head="$(git -C "$tool_root" rev-parse --short HEAD 2>/dev/null || echo unknown)"
     fi
-    [ -x "$tool_root/.build/debug/ftester" ] && cli_built=yes
+    [ -x "$tool_root/.build/debug/fleetest" ] && cli_built=yes
   fi
   kv tool_root_exists "$tool_root_exists"
   kv tool_root_head "$tool_root_head"
@@ -292,17 +292,17 @@ missing=()
 
 # ---- 構成の判定(SKILL ステップ0 の再実行ガード / 0.5 の構成判定) ---------------
 # clone 構成 = Package.swift と Sources/FTScenarioRunner が揃う(この2つが揃うのはクローンだけ)
-# 外部パッケージ構成 = Package.swift の中身に ftester マーカーか foundation-tester 依存がある
-# 無関係パッケージ = Package.swift はあるがどちらも無い(ftester init が拒否する)
+# 外部パッケージ構成 = Package.swift の中身に fleetest マーカーか foundation-tester 依存がある
+# 無関係パッケージ = Package.swift はあるがどちらも無い(fleetest init が拒否する)
 layout="external-new"
 if [ -f "$WORK_DIR/Package.swift" ]; then
   if [ -d "$WORK_DIR/Sources/FTScenarioRunner" ]; then
     layout="clone"
-  elif grep -q "ftester projects begin\|foundation-tester" "$WORK_DIR/Package.swift" 2>/dev/null; then
+  elif grep -q "fleetest projects begin\|foundation-tester" "$WORK_DIR/Package.swift" 2>/dev/null; then
     layout="external-installed"
   else
     layout="foreign-package"
-    blocked_reasons+=("the current directory is a Swift package unrelated to ftester (run this in a fresh, test-only directory)")
+    blocked_reasons+=("the current directory is a Swift package unrelated to fleetest (run this in a fresh, test-only directory)")
   fi
 fi
 kv work_dir "$WORK_DIR"
@@ -336,7 +336,7 @@ if [ -n "$tool_root" ]; then
     [ -n "$(git -C "$tool_root" status --porcelain 2>/dev/null)" ] \
       && kv tool_root_dirty yes || kv tool_root_dirty no
   fi
-  [ -x "$tool_root/.build/debug/ftester" ] && kv cli_built yes || kv cli_built no
+  [ -x "$tool_root/.build/debug/fleetest" ] && kv cli_built yes || kv cli_built no
 else
   kv tool_root "$WORK_DIR/../foundation-tester"
   kv tool_root_exists no
@@ -354,12 +354,12 @@ if [ -n "$PROJECTS_DIR" ]; then
 else
   kv projects ""
 fi
-if [ -f "$WORK_DIR/.mcp.json" ] && grep -q '"ftester"' "$WORK_DIR/.mcp.json" 2>/dev/null; then
+if [ -f "$WORK_DIR/.mcp.json" ] && grep -q '"fleetest"' "$WORK_DIR/.mcp.json" 2>/dev/null; then
   kv mcp_registered yes
 else
   kv mcp_registered no
 fi
-if ls -d "$HOME/.vscode/extensions/"*ftester* >/dev/null 2>&1; then
+if ls -d "$HOME/.vscode/extensions/"*fleetest* >/dev/null 2>&1; then
   kv vscode_extension yes
 else
   kv vscode_extension no
@@ -391,12 +391,12 @@ say ""
 case "$verdict" in
   ready)
     say "✅ Not installed. It can be installed here ($layout)."
-    say "   Claude Code: /ftester-setup / manual: Scripts/install.sh --name <ProjectName>"
+    say "   Claude Code: /fleetest-setup / manual: Scripts/install.sh --name <ProjectName>"
     [ "${#missing[@]}" -gt 0 ] && printf '   Missing (installed automatically): %s\n' "${missing[*]}"
     exit 0 ;;
   installed)
     say "ℹ️ Already installed (external-package layout). Do not run setup again."
-    say "   Update → /ftester-update / add profiles → /ftester-profiles / scenarios → /ftester-scenario"
+    say "   Update → /fleetest-update / add profiles → /fleetest-profiles / scenarios → /fleetest-scenario"
     say "   To reinstall, uninstall first (docs/userDocs/getting-started.md, the uninstall section)."
     say "   See projects= / mcp_registered= / vscode_extension= above for what already exists."
     exit 2 ;;

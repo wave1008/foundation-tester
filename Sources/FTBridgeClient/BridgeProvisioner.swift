@@ -1,5 +1,5 @@
 // 実行プロファイルの iOS デバイス指定 → 稼働ブリッジの照合・不足分の起動。
-// 稼働中ブリッジのスキャン(/status)と .ftester/bridge-<port>.pid を唯一の状態源として、
+// 稼働中ブリッジのスキャン(/status)と .fleetest/bridge-<port>.pid を唯一の状態源として、
 // 同時に動く他プロセスのブリッジ管理と競合しないポート割当を行う。
 
 import Foundation
@@ -71,9 +71,9 @@ public enum BridgeProvisionerError: Error, LocalizedError {
     }
 }
 
-/// provision() のプランニング〜起動を跨いだクロスプロセス排他(.ftester/provision.lock への flock 助言ロック)。
+/// provision() のプランニング〜起動を跨いだクロスプロセス排他(.fleetest/provision.lock への flock 助言ロック)。
 /// ポート予約は pid ファイル存在で判定するが pid ファイルは起動フェーズまで書かれないため、複数の
-/// ftester プロセスが同時に provision すると同じ空きポートを選び bindFailed(48) を起こす。provision()
+/// fleetest プロセスが同時に provision すると同じ空きポートを選び bindFailed(48) を起こす。provision()
 /// 全体をこのロックで直列化して防ぐ(pid 予約ロジックには手を入れない)。flock はプロセス終了で
 /// 自動解放されるためデッドロックしない。1 プロセス内の複数デバイス並列起動は provision 内部で維持される。
 public final class ProvisionLock {
@@ -176,8 +176,8 @@ public struct BridgeProvisioner {
         }
 
         // クロスプロセス排他: scan→採番→起動(pid ファイル書き込み)を跨いで直列化する。
-        // 他 ftester プロセスと同じ空きポートを取り合う bindFailed(48) を防ぐ(ProvisionLock 参照)。
-        let provisionLock = try ProvisionLock(stateDir: repoRoot.appendingPathComponent(".ftester"))
+        // 他 fleetest プロセスと同じ空きポートを取り合う bindFailed(48) を防ぐ(ProvisionLock 参照)。
+        let provisionLock = try ProvisionLock(stateDir: repoRoot.appendingPathComponent(".fleetest"))
         await provisionLock.acquire()
         defer { provisionLock.release() }
 
@@ -459,7 +459,7 @@ public struct BridgeProvisioner {
         // assignPort が .inapp 残留ポートを回収して返した場合(preferred 経由も含む)。
         // executeBridge が起動前に simctl terminate する
         let inappStatePath = InAppBridgeState.url(
-            stateDir: repoRoot.appendingPathComponent(".ftester"), port: port)
+            stateDir: repoRoot.appendingPathComponent(".fleetest"), port: port)
         let reclaimInApp = FileManager.default.fileExists(atPath: inappStatePath.path)
         return .launch(port: port, needsInstall: inappNeedsInstall, stopStalePort: stopStalePort,
                        reclaimInApp: reclaimInApp)
@@ -559,13 +559,13 @@ public struct BridgeProvisioner {
                     preinstallAppPath: preinstallAppPath, log: log)
             }
         case .launch(let port, let needsInstall, let stopStalePort, let reclaimInApp):
-            let stateDir = repoRoot.appendingPathComponent(".ftester")
+            let stateDir = repoRoot.appendingPathComponent(".fleetest")
             if let stopStalePort {
                 // 止める手段は記録の有無で決める(StaleBridgeStop。純粋関数でテスト固定):
                 // inapp(.inapp あり)は simctl terminate / xcuitest(.pid あり)は stopAndWait /
                 // **どちらの記録も無い**= 別クローンが起動した・記録前に中断された in-app ブリッジは
                 // ポートの LISTEN 実体を PortHolder で止める(以前はここを .pid 経路へ流して
-                // 「no .ftester/bridge.pid」で止めそこね、掴んだままのポートと衝突していた)
+                // 「no .fleetest/bridge.pid」で止めそこね、掴んだままのポートと衝突していた)
                 let stalePath = InAppBridgeState.url(stateDir: stateDir, port: stopStalePort)
                 let pidPath = stateDir.appendingPathComponent("bridge-\(stopStalePort).pid")
                 switch StaleBridgeStop.decide(
@@ -699,7 +699,7 @@ public struct BridgeProvisioner {
                     // 失敗した試行の pid ファイルを掃除してから占有者を特定・後始末を試みる
                     try? launcher.stop()
                     let outcome = PortHolder.stopIfOwnedBridge(
-                        port: port, stateDir: repoRoot.appendingPathComponent(".ftester"),
+                        port: port, stateDir: repoRoot.appendingPathComponent(".fleetest"),
                         derivedDataPath: launcher.derivedDataPath)
                     let description: String
                     switch outcome {
@@ -744,7 +744,7 @@ public struct BridgeProvisioner {
     /// 稼働中ブリッジは殺さない。ファイルは全ケースで削除する(stale 記録を残さない)。
     private func reclaimInAppOrphans(udid: String, exceptPort: UInt16, name: String,
                                     log: (String) -> Void) {
-        let stateDir = repoRoot.appendingPathComponent(".ftester")
+        let stateDir = repoRoot.appendingPathComponent(".fleetest")
         guard let entries = try? FileManager.default.contentsOfDirectory(
             at: stateDir, includingPropertiesForKeys: nil) else { return }
         for entry in entries where entry.lastPathComponent.hasPrefix("bridge-")
@@ -854,7 +854,7 @@ public struct BridgeProvisioner {
                                                 sessionBundleID: status.sessionBundleID,
                                                 sourceDigest: InAppBridgeState.sourceDigest(
                                                     stateDir: self.repoRoot
-                                                        .appendingPathComponent(".ftester"),
+                                                        .appendingPathComponent(".fleetest"),
                                                     port: port)))
                 }
             }
@@ -876,11 +876,11 @@ public struct BridgeProvisioner {
         func isPidFree(_ port: UInt16) -> Bool {
             port == ignoringPidFileFor
                 || !FileManager.default.fileExists(
-                    atPath: repoRoot.appendingPathComponent(".ftester/bridge-\(port).pid").path)
+                    atPath: repoRoot.appendingPathComponent(".fleetest/bridge-\(port).pid").path)
         }
         func hasInApp(_ port: UInt16) -> Bool {
             FileManager.default.fileExists(atPath: InAppBridgeState.url(
-                stateDir: repoRoot.appendingPathComponent(".ftester"), port: port).path)
+                stateDir: repoRoot.appendingPathComponent(".fleetest"), port: port).path)
         }
         // preferred も pid ファイル(=別ブリッジ稼働/stale)があれば honor しない(自動採番と同じ空き判定)。
         // .inapp のみは 2nd パス同様に許可(呼び出し元 planBridge が reclaimInApp で回収する)。

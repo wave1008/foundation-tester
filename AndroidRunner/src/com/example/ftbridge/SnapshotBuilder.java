@@ -1,7 +1,7 @@
 // SnapshotBuilder.java
 // AccessibilityNodeInfo ツリー → BridgeDTO.SnapshotResponse 互換 JSON。
 // フィルタ・型語彙マップ・テキスト昇格・ref 採番の**唯一の実装**(ホスト側に揃えるべき相方は
-// 無い。iOS 側との型語彙の対応は Runner/FTesterRunnerUITests を参照)。
+// 無い。iOS 側との型語彙の対応は Runner/FleetestRunnerUITests を参照)。
 package com.example.ftbridge;
 
 import android.app.UiAutomation;

@@ -1,6 +1,6 @@
 # Running Scenarios
 
-`ftester run` executes Swift DSL scenarios deterministically (no FM involved unless a step
+`fleetest run` executes Swift DSL scenarios deterministically (no FM involved unless a step
 fails and self-healing or triage is enabled). This page covers the CLI options; see
 [dry_run.md](./dry_run.md) for `--dry-run` and [self_healing.md](./self_healing.md) for
 `--heal`.
@@ -9,10 +9,10 @@ fails and self-healing or triage is enabled). This page covers the CLI options; 
 
 ```bash
 # Clone configuration (working inside the foundation-tester clone)
-swift run ftester run --profile ios
+swift run fleetest run --profile ios
 
 # External package configuration (a separate work folder with TestProjects/)
-../foundation-tester/.build/debug/ftester run --profile ios
+../foundation-tester/.build/debug/fleetest run --profile ios
 ```
 
 ## Common options
@@ -23,7 +23,7 @@ swift run ftester run --profile ios
 | `--profile <profile>` | Run profile name (`profiles/runs/<name>.json`). Includes device provisioning and auto-install |
 | `--scenario <id>` | Scenario ID: a class name alone runs every scenario in it, or `Class.method` for one. Repeatable; defaults to all. `@Deleted`/`@Draft` scenarios only run on an exact match |
 | `--folder <folder>` | Scenario folders to run (subfolders directly under `scenarios/`). Repeatable; combinable with `--scenario`/`--failed` |
-| `--failed` | Run only the scenarios that failed last time (results are recorded in `.ftester/last-results/` on every run) |
+| `--failed` | Run only the scenarios that failed last time (results are recorded in `.fleetest/last-results/` on every run) |
 | `--heal` / `--no-heal` | Force self-healing on/off, overriding the run profile's `heal` setting |
 | `--dry-run` | Validate steps without touching a device (see [dry_run.md](./dry_run.md)) |
 | `--report-dir <dir>` | Directory to write reports to (default: `TestProjects/<name>/reports`) |
@@ -41,18 +41,18 @@ swift run ftester run --profile ios
 | `--app <bundleID>` | Default app for scenarios with no `@TestClass(app:)`, only needed without `--profile` |
 | `--port <n>` / `--serial <s>` | Bridge port (iOS) / device serial (Android) without `--profile` |
 
-Run `ftester run --help` for the full, current list.
+Run `fleetest run --help` for the full, current list.
 
 ## `run-file`
 
-`ftester run-file <path.swift>...` runs one or more `.swift` files that are **not** registered
+`fleetest run-file <path.swift>...` runs one or more `.swift` files that are **not** registered
 in `Package.swift` (profiles, reports and self-healing are borrowed from an existing project via
 `--project`). Useful for a throwaway scenario you do not want to add to the project yet. Accepts
 `--profile`, `--scenario`, `--heal`, `--ports`.
 
 ## Exit code and failure semantics
 
-`ftester run` exits `0` when everything passed, `1` if anything failed. Inside a scenario, a
+`fleetest run` exits `0` when everything passed, `1` if anything failed. Inside a scenario, a
 failing command aborts the rest of that scenario (all remaining scenes and steps are skipped) â€”
 `tearDown()` still runs. See [testcode_structure.md](../testclass/testcode_structure.md) for the
 full failure model.
@@ -64,15 +64,15 @@ emulator device `name` in the run profile. No separate setup step is required â€
 bridge (`AndroidRunner`) installs and starts itself on first use.
 
 ```bash
-ftester run --platform android
+fleetest run --platform android
 ```
 
 ## Device and bridge management
 
 | Command | Description |
 |---|---|
-| `ftester devices up` / `devices down` | Start/stop every device in the machine profile (or only a run profile's devices with `--profile`) |
-| `ftester bridge up` / `bridge down` / `bridge status` | Manage the resident bridge (iOS: XCUITest runner / Android: on-device server) |
+| `fleetest devices up` / `devices down` | Start/stop every device in the machine profile (or only a run profile's devices with `--profile`) |
+| `fleetest bridge up` / `bridge down` / `bridge status` | Manage the resident bridge (iOS: XCUITest runner / Android: on-device server) |
 
 ### Link
 - [index](../index.md)

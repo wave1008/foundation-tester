@@ -1,7 +1,7 @@
 // FleetProfile.swift
 // フリート定義(TestProjects/<project>/profiles/fleets/<name>.json。docs/remote-runner.md
 // §13「フリート実行」)。ssh・プロセス起動はここに置かない(呼び出し側 =
-// Sources/ftester/FleetRunner.swift)。ここは読み込み・検証・exit code 集約だけの純粋関数。
+// Sources/fleetest/FleetRunner.swift)。ここは読み込み・検証・exit code 集約だけの純粋関数。
 
 import Foundation
 
@@ -65,7 +65,7 @@ public enum FleetValidationIssue: Equatable, Sendable, CustomStringConvertible {
                 + " (dispatching to both fights over the same devices; docs/remote-runner.md §13)"
         case .unregisteredHost(let host):
             return "host \"\(host)\" is neither \"local\" nor a registered host"
-                + " (register it with: ftester remote hosts add \(host) --host <user@host>;"
+                + " (register it with: fleetest remote hosts add \(host) --host <user@host>;"
                 + " a fleet never falls back to running an unresolved entry locally)"
         case .unknownRunProfile(let host, let profile, let available):
             return "run profile \"\(profile)\" (entry \"\(host)\") not found"

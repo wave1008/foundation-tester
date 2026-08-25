@@ -1,6 +1,6 @@
 // RemoteHostRegistry.swift
 // `--host` の論理名登録簿(LocalConfig.remoteHosts。docs/remote-runner.md §13)。
-// ssh/ファイル I/O はここに置かない(呼び出し側 = Sources/ftester/RemoteCommands.swift の
+// ssh/ファイル I/O はここに置かない(呼び出し側 = Sources/fleetest/RemoteCommands.swift の
 // RemoteHostResolver)。ここは名前の妥当性・解決規則・並び順だけを扱う純粋関数。
 
 import Foundation
@@ -13,7 +13,7 @@ public struct RemoteHostEntry: Codable, Equatable, Sendable {
     public let name: String
     /// ssh 宛先("user@host" または "host")
     public let host: String
-    /// ベースディレクトリ。nil なら CLI 既定("~/ftester-runner")
+    /// ベースディレクトリ。nil なら CLI 既定("~/fleetest-runner")
     public let dir: String?
 
     public init(name: String, host: String, dir: String? = nil) {

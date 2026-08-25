@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# foundation-tester の更新。/ftester-update スキルの「機械作業」を1コマンドに固めたもの。
+# fleetest の更新。/fleetest-update スキルの「機械作業」を1コマンドに固めたもの。
 #
 #   curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/update.sh | bash
 #   bash <TOOL_ROOT>/Scripts/update.sh [--work-dir <dir>] [--tool-root <dir>] [--skip-extension] [--skip-plugin]
 #
 # やること: install.sh(pull → swift build → 拡張 → .mcp.json → 検証ゲート)を再実行し、
-#           更新固有の作業を足す: ftester project sync / Claude Code プラグインの更新と版照合。
+#           更新固有の作業を足す: fleetest project sync / Claude Code プラグインの更新と版照合。
 #           **先に update-check.sh で判定し、up-to-date なら何もせず終える**(全工程は更新が
 #           無くても約30秒かかる。壊れた導入を入れ直すときは --force)。
 # やらないこと: プロファイルの作り直し(既存を尊重)・受け手パッケージの作成(それは install.sh)。
 #
-# 契約: 手順は .claude/skills/ftester-update/SKILL.md と 1:1。片方だけ変えない。
+# 契約: 手順は .claude/skills/fleetest-update/SKILL.md と 1:1。片方だけ変えない。
 #       重複を避けるため、共通部分は install.sh を呼ぶ(pull の確認・ログ・検証ゲートも同じものが効く)。
 # 終了コード: 0=完了 / 1=必須ステップの失敗 / 2=任意ステップのみ失敗
 set -uo pipefail
@@ -33,13 +33,13 @@ Usage: update.sh [options]
   --force            Run everything even without an update (to redo a broken install)
   --skip-extension   Do not reinstall the VSCode extension
   --skip-plugin      Do not update the Claude Code plugin (skills)
-  --doctor           Print the environment report (ftester doctor) at the end (off by default)
+  --doctor           Print the environment report (fleetest doctor) at the end (off by default)
   --keep-local       Do not auto-discard local changes in the clone
   --verbose          Also print the raw swift build / npm logs to the screen
   -h, --help         This help
 
 What it does: re-runs install.sh (git pull → swift build → extension → .mcp.json → verification gates)
-         + ftester project sync + plugin update with version cross-check
+         + fleetest project sync + plugin update with version cross-check
          **Exits without doing anything when there is no update** (decided by update-check.sh; use --force to run everything)
 EOF
 }
@@ -81,7 +81,7 @@ resolve_tool_root() {
 TOOL_ROOT="$(resolve_tool_root)"
 if [ -z "$TOOL_ROOT" ]; then
   echo "❌ No foundation-tester clone found (WORK_DIR=$WORK_DIR)." >&2
-  echo "   If not installed yet: /ftester-setup (or Scripts/install.sh). If it lives elsewhere, pass --tool-root." >&2
+  echo "   If not installed yet: /fleetest-setup (or Scripts/install.sh). If it lives elsewhere, pass --tool-root." >&2
   echo "   **Do not go hunting through nearby directories** — ask the human instead." >&2
   exit 1
 fi
@@ -142,10 +142,10 @@ fi
 # 外部構成の受け手だけ Package.swift が旧名のまま取り残され、
 # `invalid custom path 'Projects/<name>/Scenarios'` でビルドが落ちた(外部フィードバック)。
 # syncManifest は external を明示的に扱う実装なので、両構成でそのまま安全に走る。
-FT="$TOOL_ROOT/.build/debug/ftester"
+FT="$TOOL_ROOT/.build/debug/fleetest"
 if [ -x "$FT" ]; then
   echo ""
-  echo "==> ftester project sync (resyncing TestProjects/ ↔ Package.swift)"
+  echo "==> fleetest project sync (resyncing TestProjects/ ↔ Package.swift)"
   ( cd "$WORK_DIR" && "$FT" project sync ) || echo "⚠️ project sync failed (check it by hand)"
 fi
 
@@ -155,17 +155,17 @@ fi
 PLUGIN_RESULT="skip"
 plugin_installed_version() {
   claude plugin list 2>/dev/null \
-    | awk '/ftester@foundation-tester/{f=1} f&&/Version:/{print $2; exit}'
+    | awk '/fleetest@foundation-tester/{f=1} f&&/Version:/{print $2; exit}'
 }
 if [ "$DO_PLUGIN" = "1" ] && command -v claude >/dev/null 2>&1; then
-  if claude plugin list 2>/dev/null | grep -q "ftester@foundation-tester"; then
+  if claude plugin list 2>/dev/null | grep -q "fleetest@foundation-tester"; then
     echo ""
     echo "==> Updating the Claude Code plugin (skills)"
     # 更新前の版を控える。**入れ替わっていなければ Claude Code の再起動は要らない**
     # (「一致した」だけで再起動を案内すると、不要な人間作業を毎回1つ増やす)
     plugin_before="$(plugin_installed_version)"
     claude plugin marketplace update foundation-tester >/dev/null 2>&1
-    claude plugin update ftester@foundation-tester >/dev/null 2>&1
+    claude plugin update fleetest@foundation-tester >/dev/null 2>&1
     # 「実行した」ではなく「HEAD と一致した」で判定する
     plugin_version="$(plugin_installed_version)"
     # 空だと下の case のパターンが `*` になり、**何であれ「一致」と誤判定する**(false green)
@@ -194,7 +194,7 @@ echo "──────── Next steps ────────"
 # install.sh には --no-next-steps を渡しているので、ログの場所はここで案内する
 # (更新の詳細ログを人が後から確認できるように)。名前が install-<日時>.log なので
 # **辞書順の最後が最新**。`ls | head` は使わない(pipefail 下の SIGPIPE 誤判定)
-update_logs=("$WORK_DIR"/.ftester/install-*.log)
+update_logs=("$WORK_DIR"/.fleetest/install-*.log)
 last_log="${update_logs[${#update_logs[@]} - 1]}"
 [ -f "$last_log" ] && echo "・Detailed log: $last_log"
 echo "・In VSCode, run Developer: Reload Window (required for the extension; reopen the monitor panel)"

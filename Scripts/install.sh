@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
-# foundation-tester インストーラ。/ftester-setup スキルの「機械作業」だけを1コマンドに固めたもの。
+# fleetest インストーラ。/fleetest-setup スキルの「機械作業」だけを1コマンドに固めたもの。
 #
 #   bash Scripts/install.sh --work-dir <受け手ディレクトリ> --name <ProjectName> [--app <bundleID>]
 #   curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install.sh \
 #     | bash -s -- --name <ProjectName>          # clone から丸ごと(TOOL_ROOT は隣に作られる)
 #
 # やること: clone(既存クローンは git pull --ff-only で更新)/ swift build /
-#           ftester init(または project create)/ .gitignore 整備 / VSCode 拡張 / .mcp.json /
+#           fleetest init(または project create)/ .gitignore 整備 / VSCode 拡張 / .mcp.json /
 #           検証ゲート。**冪等**(済んだ手順は skip)。
 #           --machine と --app-name があればプロファイル作成(profile setup --auto-device)も。
 # やらないこと: appPath や bundle ID の探索
 #           (値は引数で受けるだけ。スキルの「探索禁止」原則と対)。
 #
-# 契約: 各手順は .claude/skills/ftester-setup/SKILL.md のステップ番号と 1:1。失敗時は
+# 契約: 各手順は .claude/skills/fleetest-setup/SKILL.md のステップ番号と 1:1。失敗時は
 #       「→ SKILL.md ステップ N」を出すので、エージェントはそこだけ手作業で直して再実行する
 #       (この対応表を崩すときは SKILL.md 側も一緒に直す)。
-# ログ: 全出力を <WORK_DIR>/.ftester/install-<日時>.log にも落とす(実行ごとに別ファイル)。
+# ログ: 全出力を <WORK_DIR>/.fleetest/install-<日時>.log にも落とす(実行ごとに別ファイル)。
 #       画面に出すのは**各ステップの1行(その場で逐次)+ 見出し + 最後の集計**だけ。
 #       swift build・npm・vsce の生ログはファイルへ(画面に出すと呼び出し元のエージェントで
 #       切られ、結果を探す grep が承認を増やす)。--verbose で従来どおり画面にも出す。
@@ -24,8 +24,8 @@
 # 終了コード: 0=完了 / 1=必須ステップの失敗 / 2=任意ステップのみ失敗(CLI は使える)
 set -euo pipefail
 
-# FTESTER_REPO_URL はフォーク・ローカル検証用の差し替え口(既定は本家)
-REPO_URL="${FTESTER_REPO_URL:-https://github.com/wave1008/foundation-tester.git}"
+# FLEETEST_REPO_URL はフォーク・ローカル検証用の差し替え口(既定は本家)
+REPO_URL="${FLEETEST_REPO_URL:-https://github.com/wave1008/foundation-tester.git}"
 WORK_DIR="$PWD"
 TOOL_ROOT_ARG=""
 PROJECT_NAME=""
@@ -60,8 +60,8 @@ Usage: install.sh [options]
   --skip-extension   Do not install the VSCode extension
   --skip-project     Do not create a project (TestProjects/<name>/) — e.g. MCP-only installs
   --skip-mcp         Do not generate/merge .mcp.json
-  --skip-claude-md   Do not write the ftester block into <work-dir>/CLAUDE.md
-  --no-doctor        Skip the final environment report (ftester doctor)
+  --skip-claude-md   Do not write the fleetest block into <work-dir>/CLAUDE.md
+  --no-doctor        Skip the final environment report (fleetest doctor)
   --no-next-steps    Do not print "next steps" (when the caller, e.g. update.sh, guides instead)
   --keep-local       Do not auto-discard local changes in the clone (auto-discard is the default in the external layout)
   --verbose          Also print the raw swift build / npm logs to the screen (default: log file only)
@@ -160,7 +160,7 @@ die() {
   record "$1" fail "$2"
   print_summary
   echo ""
-  echo "❌ Aborted. → Complete .claude/skills/ftester-setup/SKILL.md step $3 by hand, then"
+  echo "❌ Aborted. → Complete .claude/skills/fleetest-setup/SKILL.md step $3 by hand, then"
   echo "   re-run install.sh with the same arguments (finished steps are skipped)." >&2
   [ -n "${LOG_FILE:-}" ] && echo "   Log: $LOG_FILE"
   exit 1
@@ -179,7 +179,7 @@ abspath() { (cd "$1" 2>/dev/null && pwd); }
 # みなして黙って復元する。**それ以外の差分(依存の追加・更新)には触らない**。
 # 根治は保守者側の版上げを `npm version --no-git-tag-version` にすること(CLAUDE.md)
 restore_lock_version_churn() {
-  local lock="vscode-ftester/package-lock.json" pkg="vscode-ftester/package.json" stat want added
+  local lock="vscode-fleetest/package-lock.json" pkg="vscode-fleetest/package.json" stat want added
   [ -d "$TOOL_ROOT/.git" ] || return 0
   git -C "$TOOL_ROOT" diff --quiet -- "$lock" 2>/dev/null && return 0
   # package.json も変わっているなら**保守者の版上げ**(npm version)。lock はそれに追随した正しい
@@ -214,8 +214,8 @@ if [ -n "${FT_INSTALL_LOG:-}" ]; then
   # 再 exec された2周目。1周目と同じログへ続けて書く
   LOG_FILE="$FT_INSTALL_LOG"
   exec > >(tee -a "$LOG_FILE") 2>&1
-elif mkdir -p "$WORK_DIR/.ftester" 2>/dev/null; then
-  LOG_FILE="$WORK_DIR/.ftester/install-$(date +%Y%m%d-%H%M%S).log"
+elif mkdir -p "$WORK_DIR/.fleetest" 2>/dev/null; then
+  LOG_FILE="$WORK_DIR/.fleetest/install-$(date +%Y%m%d-%H%M%S).log"
   exec > >(tee -a "$LOG_FILE") 2>&1
   echo "==> Log: $LOG_FILE"
   echo "    (build details are not shown on screen; follow them with tail -f '$LOG_FILE' in another terminal)"
@@ -378,7 +378,7 @@ if [ "$WORK_DIR" = "$TOOL_ROOT" ]; then
 fi
 record "layout" ok "$LAYOUT (TOOL_ROOT=$TOOL_ROOT / WORK_DIR=$WORK_DIR)"
 
-FT="$TOOL_ROOT/.build/debug/ftester"
+FT="$TOOL_ROOT/.build/debug/fleetest"
 
 # ---- 1. xcodegen(SKILL ステップ1) --------------------------------------------
 if command -v xcodegen >/dev/null 2>&1; then
@@ -402,13 +402,13 @@ step_started=$SECONDS
   || { show_log_tail; die "build" "swift build failed" 2; }
 [ -x "$FT" ] || die "build" "the CLI was not produced: $FT" 2
 # MCP サーバは .mcp.json が起動のたびにビルドし直すが、初回だけ先に通しておく(初回起動の失敗回避)
-( cd "$TOOL_ROOT" && swift build --product ftester-mcp ) >/dev/null 2>&1 || true
+( cd "$TOOL_ROOT" && swift build --product fleetest-mcp ) >/dev/null 2>&1 || true
 record "build" ok "$FT ($(elapsed_since $step_started))"
 
 # ---- 4 の前: Bash 許可リストの補修(承認回数を減らす) --------------------------
-# **毎回呼ぶ**。許可リストは従来 `ftester init` でしか書かれず、更新は --skip-project で init を
+# **毎回呼ぶ**。許可リストは従来 `fleetest init` でしか書かれず、更新は --skip-project で init を
 # 回さないため、エントリを増やしても**既存の受け手には一生届かなかった**(実害: 更新のたびに
-# update.sh の承認が出る)。冪等・追加のみ・ftester 由来のコマンドだけ(ProjectScaffold が保証)
+# update.sh の承認が出る)。冪等・追加のみ・fleetest 由来のコマンドだけ(ProjectScaffold が保証)
 if perms_out="$( "$FT" api ensure-settings --work-dir "$WORK_DIR" --tool-root "$TOOL_ROOT" 2>&1 )"; then
   record "permissions" ok "$perms_out"
 else
@@ -434,26 +434,26 @@ elif project_exists; then
   record "project" skip "TestProjects/$PROJECT_NAME already exists"
 elif [ "$LAYOUT" = "clone" ]; then
   [ -n "$PROJECT_NAME" ] || die "project" "--name is required in the clone layout" 4
-  echo "==> ftester project create $PROJECT_NAME"
+  echo "==> fleetest project create $PROJECT_NAME"
   ( cd "$WORK_DIR" && "$FT" project create "$PROJECT_NAME" "${APP_ARGS[@]+"${APP_ARGS[@]}"}" \
       "${PLATFORM_ARGS[@]}" ) || die "project" "project create failed" 4
   record "project" ok "TestProjects/$PROJECT_NAME"
 elif [ -f "$WORK_DIR/Package.swift" ]; then
-  # ftester と無関係の既存パッケージへの導入は事故になる(init も拒否する)
-  grep -q "ftester projects begin\|foundation-tester" "$WORK_DIR/Package.swift" \
-    || die "project" "$WORK_DIR/Package.swift is not an ftester package (run this in an empty, test-only directory)" 0
+  # fleetest と無関係の既存パッケージへの導入は事故になる(init も拒否する)
+  grep -q "fleetest projects begin\|foundation-tester" "$WORK_DIR/Package.swift" \
+    || die "project" "$WORK_DIR/Package.swift is not an fleetest package (run this in an empty, test-only directory)" 0
   # 受け手パッケージは確立済み。プロジェクトだけ追加する
   [ -n "$PROJECT_NAME" ] || die "project" "--name is required to add to an existing package" 4
-  echo "==> ftester project create $PROJECT_NAME"
+  echo "==> fleetest project create $PROJECT_NAME"
   ( cd "$WORK_DIR" && "$FT" project create "$PROJECT_NAME" "${APP_ARGS[@]+"${APP_ARGS[@]}"}" \
       "${PLATFORM_ARGS[@]}" ) || die "project" "project create failed" 4
   record "project" ok "TestProjects/$PROJECT_NAME (added to the existing package)"
 else
   # 新規の受け手パッケージ。TOOL_ROOT はローカルパス依存で引く(git 依存は手動・SKILL ステップ4参照)
-  echo "==> ftester init($WORK_DIR)"
-  ( cd "$WORK_DIR" && "$FT" init --ftester-path "$TOOL_ROOT" \
+  echo "==> fleetest init($WORK_DIR)"
+  ( cd "$WORK_DIR" && "$FT" init --fleetest-path "$TOOL_ROOT" \
       "${NAME_ARGS[@]+"${NAME_ARGS[@]}"}" "${APP_ARGS[@]+"${APP_ARGS[@]}"}" "${PLATFORM_ARGS[@]}" ) \
-    || die "project" "ftester init failed" 4
+    || die "project" "fleetest init failed" 4
   record "project" ok "created the consumer package${PROJECT_NAME:+ (TestProjects/$PROJECT_NAME)}"
 fi
 
@@ -464,8 +464,8 @@ if [ "$LAYOUT" = "clone" ]; then
   record ".gitignore" skip "clone layout (managed by the repository)"
 elif [ -d "$WORK_DIR/.git" ]; then
   added=""
-  # 対の実装: FTCore.ProjectScaffold.ensureGitignore(ftester init が使う)。片方だけ変えない
-  for line in ".build/" ".ftester/" "TestProjects/*/reports/"; do
+  # 対の実装: FTCore.ProjectScaffold.ensureGitignore(fleetest init が使う)。片方だけ変えない
+  for line in ".build/" ".fleetest/" "TestProjects/*/reports/"; do
     if ! grep -qxF "$line" "$WORK_DIR/.gitignore" 2>/dev/null; then
       printf '%s\n' "$line" >> "$WORK_DIR/.gitignore"
       added="$added $line"
@@ -484,11 +484,11 @@ fi
 if [ "$DO_EXTENSION" = "0" ]; then
   record "extension" skip "--skip-extension"
 elif ! command -v npm >/dev/null 2>&1; then
-  soft_fail "extension" "npm is missing (install Node.js, then run npm run install-local in vscode-ftester)" 7
+  soft_fail "extension" "npm is missing (install Node.js, then run npm run install-local in vscode-fleetest)" 7
 else
   echo "==> Building and installing the VSCode extension"
   step_started=$SECONDS
-  if ( cd "$TOOL_ROOT/vscode-ftester" && npm install && npm run install-local ) >>"$RAW_SINK" 2>&1; then
+  if ( cd "$TOOL_ROOT/vscode-fleetest" && npm install && npm run install-local ) >>"$RAW_SINK" 2>&1; then
     record "extension" ok "installed (takes effect after Reload Window; $(elapsed_since $step_started))"
   else
     show_log_tail
@@ -520,13 +520,13 @@ if os.path.exists(path):
             print("INVALID %s" % e, end="")
             sys.exit(3)
 servers = data.setdefault("mcpServers", {})
-previous = servers.get("ftester", {}).get("env", {}).get("FT_TOOL_ROOT")
+previous = servers.get("fleetest", {}).get("env", {}).get("FT_TOOL_ROOT")
 # cwd は受け手パッケージ(TestProjects/ の在り処)、FT_TOOL_ROOT はツール本体(ブリッジ資産)。
 # ビルドのため TOOL_ROOT へ cd したあと exec 前に元の cwd へ戻すのが必須。
 # ランチャは Scripts/mcp-server.sh(鮮度判定・ログ・失敗の可視化はあちら)。
 # **1行のシェル式を埋め込まない**: 起動のたびに約8秒の no-op ビルドを払い、失敗しても
 # /dev/null で黙って起動しなかった(2026-08-06 の外部フィードバック)
-servers["ftester"] = {
+servers["fleetest"] = {
     "command": "bash",
     "args": ["-lc", 'exec "%s/Scripts/mcp-server.sh"' % tool_root],
     "env": {"FT_TOOL_ROOT": tool_root},
@@ -542,7 +542,7 @@ PY
   ); then
     case "$merge_out" in
       REPLACED*) record "MCP" ok "updated .mcp.json (replaced the old TOOL_ROOT ${merge_out#REPLACED }; delete the old clone if unneeded)" ;;
-      *) record "MCP" ok "registered ftester in .mcp.json" ;;
+      *) record "MCP" ok "registered fleetest in .mcp.json" ;;
     esac
   else
     soft_fail "MCP" "failed to merge .mcp.json ($merge_out)" 7.5
@@ -580,14 +580,14 @@ import os, re, sys
 path = sys.argv[1]
 # **マーカーは最短・不変にする**。説明文をマーカー行に埋めると、文言を変えた瞬間に
 # 既存ブロックを見失って**二重に追記される**。前置き一致で拾い、説明は本文の側に置く。
-BEGIN = "<!-- ftester:begin -->"
-END = "<!-- ftester:end -->"
-BODY = """## テスト(foundation-tester)
+BEGIN = "<!-- fleetest:begin -->"
+END = "<!-- fleetest:end -->"
+BODY = """## テスト(fleetest)
 
 <!-- この範囲は Scripts/install.sh が管理しており、更新のたび上書きされます。
      不要なら begin〜end ごと削除するか、インストーラに --skip-claude-md を渡してください。 -->
 
-- シナリオ作成は `/ftester-scenario`、対象アプリ/デバイスの追加は `/ftester-profiles`、更新は `/ftester-update`
+- シナリオ作成は `/fleetest-scenario`、対象アプリ/デバイスの追加は `/fleetest-profiles`、更新は `/fleetest-update`
 - 画面の探索・操作は `ft_*` ツール。**長いリストは `ft_swipe` の繰り返しでなく `ft_scroll_to`**
 - DSL のコマンド名は推測せず `ft_dsl_commands` で索引を引く(無いコマンドを書かないため)
 - シナリオは `TestProjects/<プロジェクト>/scenarios/*.swift`。実行は `ft_run_scenario` か VSCode 拡張"""
@@ -603,11 +603,11 @@ if os.path.exists(path):
 # 1回目に2つ目のブロックを追記 → 2回目に**間に挟まれた利用者の記述ごと**置換して消す。
 # 受け手の資産を黙って壊すくらいなら、案内を諦めて人に直してもらうほうがよい。
 # 行頭に限って数える(散文やコード例の中の言及に反応しないため)。
-begins = len(re.findall(r"(?m)^[ \t]*<!--\s*ftester:begin", existing))
-ends = len(re.findall(r"(?m)^[ \t]*<!--\s*ftester:end\s*-->", existing))
+begins = len(re.findall(r"(?m)^[ \t]*<!--\s*fleetest:begin", existing))
+ends = len(re.findall(r"(?m)^[ \t]*<!--\s*fleetest:end\s*-->", existing))
 span = None
 if begins == 1 and ends == 1:
-    span = re.search(r"(?ms)^[ \t]*<!--\s*ftester:begin.*?<!--\s*ftester:end\s*-->", existing)
+    span = re.search(r"(?ms)^[ \t]*<!--\s*fleetest:begin.*?<!--\s*fleetest:end\s*-->", existing)
 
 if begins == 0 and ends == 0:
     if existing.strip():
@@ -632,10 +632,10 @@ GUIDE
   ); then
     case "$guide_out" in
       damaged)
-        record "CLAUDE.md" warn "the ftester markers in CLAUDE.md are not a single begin/end pair"\
+        record "CLAUDE.md" warn "the fleetest markers in CLAUDE.md are not a single begin/end pair"\
 " — left the file untouched (fix or remove them by hand, then re-run)" ;;
       *)
-        record "CLAUDE.md" ok "$guide_out CLAUDE.md (delete the ftester block, or pass --skip-claude-md, to opt out)" ;;
+        record "CLAUDE.md" ok "$guide_out CLAUDE.md (delete the fleetest block, or pass --skip-claude-md, to opt out)" ;;
     esac
   else
     record "CLAUDE.md" warn "could not write the entry point (agents may miss ft_*)"
@@ -648,15 +648,15 @@ fi
 if [ "$DO_PROJECT" = "0" ]; then
   record "profiles" skip "--skip-project"
 elif [ -z "$MACHINE" ] || [ -z "$APP_NAME" ]; then
-  record "profiles" skip "not created without --machine and --app-name (use /ftester-profiles)"
+  record "profiles" skip "not created without --machine and --app-name (use /fleetest-profiles)"
 else
-  echo "==> ftester profile setup (--auto-device)"
+  echo "==> fleetest profile setup (--auto-device)"
   if ( cd "$WORK_DIR" && "$FT" profile setup --platform "$PLATFORM" --auto-device \
         --machine "$MACHINE" --app-name "$APP_NAME" \
         ${PROJECT_NAME:+--project "$PROJECT_NAME"} --app-id "${APP_ID:-com.example.myapp}" ); then
     record "profiles" ok "machines/$MACHINE.json + apps + runs ($PLATFORM)"
   else
-    soft_fail "profiles" "profile setup failed (no devices etc.; /ftester-profiles can redo it)" 5
+    soft_fail "profiles" "profile setup failed (no devices etc.; /fleetest-profiles can redo it)" 5
   fi
 fi
 
@@ -701,15 +701,15 @@ fi
 # ---- 3. 環境レポート(SKILL ステップ3。ゲートではない) ------------------------
 if [ "$DO_DOCTOR" = "1" ]; then
   echo ""
-  echo "==> ftester doctor (environment report)"
+  echo "==> fleetest doctor (environment report)"
   ( cd "$WORK_DIR" && "$FT" doctor ) || true
 fi
 
 # ---- 導入時点の版を記録(判定には使わない。更新が反映されないときの切り分け用) ----------
 # 更新チェック本体(Scripts/update-check.sh)は git を直接見るのでこのファイルに依存しない。
 # ここに書くのは「いつ・どの版を入れたか」だけ。書けなくてもインストールは成功扱い
-if [ -d "$WORK_DIR/.ftester" ]; then
-  cat >"$WORK_DIR/.ftester/state.json" 2>/dev/null <<EOF || true
+if [ -d "$WORK_DIR/.fleetest" ]; then
+  cat >"$WORK_DIR/.fleetest/state.json" 2>/dev/null <<EOF || true
 {
   "installedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "toolRoot": "$TOOL_ROOT",
@@ -722,7 +722,7 @@ fi
 NEXT_PROFILES=""
 case " ${STEPS[*]} " in
   *"profiles|ok"*) : ;;
-  *) NEXT_PROFILES="・Create the profiles (machine/app/run) → /ftester-profiles in Claude Code
+  *) NEXT_PROFILES="・Create the profiles (machine/app/run) → /fleetest-profiles in Claude Code
 " ;;
 esac
 
@@ -732,10 +732,10 @@ print_summary
 
 ──────── Next steps ────────
 ${NEXT_PROFILES}・Open $WORK_DIR in VSCode and run Developer: Reload Window (required for the extension)
-・When Claude Code asks to approve the ftester MCP server, allow it (enables the ft_* tools)
+・When Claude Code asks to approve the fleetest MCP server, allow it (enables the ft_* tools)
 
-Updates: the VSCode extension checks automatically on start-up (disable via the ftester.updateCheck setting).
-      Check manually → bash $TOOL_ROOT/Scripts/update-check.sh / apply → /ftester-update
+Updates: the VSCode extension checks automatically on start-up (disable via the fleetest.updateCheck setting).
+      Check manually → bash $TOOL_ROOT/Scripts/update-check.sh / apply → /fleetest-update
 Install log: ${LOG_FILE:-(could not be written)}
 EOF
 

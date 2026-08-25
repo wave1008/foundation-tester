@@ -1,5 +1,5 @@
 // 03_テキスト入力.swift
-// ftester 機能: `type` コマンドと入力値の echo 検証(単一行/パスワード/送信/クリア)、
+// fleetest 機能: `type` コマンドと入力値の echo 検証(単一行/パスワード/送信/クリア)、
 // value* 検証系(valueIs 以下の対称形一式と、exist チェーンの .valueIs)。
 
 import FTDSL

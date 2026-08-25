@@ -26,7 +26,7 @@
 //
 // 回し方:
 //   cp _disabled/94_システムアラート.swift ../ && \
-//   ftester run --project E2E-iOS --profile ios-inapp --scenario システムアラートの陽性対照.S0010
+//   fleetest run --project E2E-iOS --profile ios-inapp --scenario システムアラートの陽性対照.S0010
 //
 // 期待する結果: **背面を撃つステップ以降で失敗**(操作側で止まるか、検証側で緑を取り消すかは
 // 整定の間合いで変わる)。メッセージに "system UI is covering the app" が出て、

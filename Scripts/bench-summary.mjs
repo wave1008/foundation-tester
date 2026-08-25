@@ -98,10 +98,10 @@ export function metricsFromTranscript(lines, expect) {
       for (const block of contentBlocks(event)) {
         if (block.type !== 'tool_use') continue
         const name = String(block.name ?? '')
-        // ftester の ft_* だけを数える(他サーバの道具が混ざる構成でも指標がぶれない)
-        if (!name.startsWith('mcp__ftester__')) continue
+        // fleetest の ft_* だけを数える(他サーバの道具が混ざる構成でも指標がぶれない)
+        if (!name.startsWith('mcp__fleetest__')) continue
         toolCalls += 1
-        const short = name.slice('mcp__ftester__'.length)
+        const short = name.slice('mcp__fleetest__'.length)
         byTool[short] = (byTool[short] ?? 0) + 1
       }
     } else if (event.type === 'user') {

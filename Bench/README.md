@@ -15,7 +15,7 @@ Scripts/mcp-bench.sh --task cmp-scroll-find --repeat 5 \
   --variant full= --variant no-dupids=duplicateIDsNote
 ```
 
-生の記録は `.ftester/bench/<日時>/`(stream-json・`summary.json`・`bench.log`)。そこは
+生の記録は `.fleetest/bench/<日時>/`(stream-json・`summary.json`・`bench.log`)。そこは
 `.gitignore` されているので、**回したら結論を Bench/measurements.md へ1節書く**
 (判定に使った陽性対照まで)。
 
@@ -45,7 +45,7 @@ Scripts/mcp-bench.sh --task cmp-scroll-find --repeat 5 \
 - **記録が空の run(`!! 記録が空`)が出たら、その回の集計は読まない**。それは
   タスクの失敗ではなく台本の失敗(claude が起動していない)なので、`bench.log` の
   `Error:` を先に潰す
-- **差が出ないときは実験系を疑う**。ビルドは毎回 `swift build --product ftester-mcp` を通すが、
+- **差が出ないときは実験系を疑う**。ビルドは毎回 `swift build --product fleetest-mcp` を通すが、
   タスク・盤面・デバイスが変わっていれば手数は簡単に動く
 - **CLAUDE.md の無い作業ディレクトリで走らせている**(`<out>/cwd`)。保守者向けの指示を
   読んだエージェントは「まっさらな読み手」ではない

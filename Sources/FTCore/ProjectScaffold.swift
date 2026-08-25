@@ -1,5 +1,5 @@
 // ProjectScaffold.swift
-// ftester project create のテストプロジェクト雛形生成。
+// fleetest project create のテストプロジェクト雛形生成。
 // scenarios/(_Main.swift・Generated/・_disabled/)、profiles/(apps/machines/runs)、reports/ を作る。
 
 import Foundation
@@ -18,7 +18,7 @@ public enum ProjectScaffoldError: Error, LocalizedError {
 public enum ProjectScaffold {
 
     /// 名前検証 → 雛形生成 → Package.swift マーカー区間更新までを一括で行う
-    /// (ftester project create から使う)
+    /// (fleetest project create から使う)
     @discardableResult
     public static func createAndRegister(name: String, app: String, repoRoot: URL,
                                          platforms: [String] = ["ios", "android"]) throws -> TestProject {
@@ -39,7 +39,7 @@ public enum ProjectScaffold {
         return project
     }
 
-    /// 受け手のパッケージ(ftester を SPM 依存として引く)か、ftester 本体リポジトリかを判定する。
+    /// 受け手のパッケージ(fleetest を SPM 依存として引く)か、fleetest 本体リポジトリかを判定する。
     /// 本体だけが Sources/FTScenarioRunner を持つ。project create/sync がマーカー区間を
     /// 内部ターゲット参照(本体)/ .product 参照(受け手)のどちらで生成するかの分岐に使う。
     public static func isExternalPackage(repoRoot: URL) -> Bool {
@@ -47,7 +47,7 @@ public enum ProjectScaffold {
             atPath: repoRoot.appendingPathComponent("Sources/FTScenarioRunner").path)
     }
 
-    /// ftester init が生成する受け手の Package.swift。空のマーカー区間を持ち、直後に
+    /// fleetest init が生成する受け手の Package.swift。空のマーカー区間を持ち、直後に
     /// createAndRegister(external 自動判定)が最初のプロジェクトを登録する。
     /// dependencyLine は `.package(path: "...")` か `.package(url: "...", from: "...")`。
     public static func externalManifest(packageName: String, dependencyLine: String) -> String {
@@ -60,7 +60,7 @@ public enum ProjectScaffold {
         let package = Package(
             name: "\(packageName)",
             platforms: [
-                // ftester 本体の Package.swift と一致させる(本体より低いと解決に失敗する)。
+                // fleetest 本体の Package.swift と一致させる(本体より低いと解決に失敗する)。
                 // Foundation Models の視覚検証だけは macOS 27+ で有効になる
                 .macOS("26.0"),
             ],
@@ -75,27 +75,27 @@ public enum ProjectScaffold {
         """
     }
 
-    /// 受け手のパッケージに Claude Code スキル `.claude/skills/ftester-setup/SKILL.md` を書く
-    /// (ftester init から呼ぶ)。受け手が自分のプロジェクトを Claude Code で開いて `/ftester-setup`
+    /// 受け手のパッケージに Claude Code スキル `.claude/skills/fleetest-setup/SKILL.md` を書く
+    /// (fleetest init から呼ぶ)。受け手が自分のプロジェクトを Claude Code で開いて `/fleetest-setup`
     /// で残りのセットアップ(デバイス定義・アプリパス・実行)を駆動できるようにする。clone 構成の
     /// foundation-tester 同梱スキルは受け手のパッケージには届かないため、init で scaffold する。
     public static func writeRecipientSkill(packageRoot: URL, projectName: String) throws {
-        let dir = packageRoot.appendingPathComponent(".claude/skills/ftester-setup")
+        let dir = packageRoot.appendingPathComponent(".claude/skills/fleetest-setup")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         try recipientSetupSkill(projectName: projectName).write(
             to: dir.appendingPathComponent("SKILL.md"), atomically: true, encoding: .utf8)
     }
 
-    /// 受け手のパッケージに `.claude/settings.json` を書く(ftester init から呼ぶ)。
-    /// **ftester の CLI とスクリプトだけ**を許可リストに載せ、セットアップ〜実行のたびに
+    /// 受け手のパッケージに `.claude/settings.json` を書く(fleetest init から呼ぶ)。
+    /// **fleetest の CLI とスクリプトだけ**を許可リストに載せ、セットアップ〜実行のたびに
     /// Bash の承認を求められる状態を避ける(承認回数を減らしたいという受け手の要望。2026-07-29)。
     /// 既存の設定は温存し、重複しないエントリだけ足す(他ツールの許可を消さない)。
     /// 追加するのはこのツール由来のコマンドに限る — 汎用の `Bash(*)` は絶対に書かない。
     @discardableResult
     public static func writeClaudeSettings(packageRoot: URL, toolRoot: String?) throws -> [String] {
-        let ftester = (toolRoot.map { "\($0)/.build/debug/ftester" }) ?? "ftester"
+        let fleetest = (toolRoot.map { "\($0)/.build/debug/fleetest" }) ?? "fleetest"
         var entries = [
-            "Bash(\(ftester):*)",
+            "Bash(\(fleetest):*)",
             "Bash(xcrun simctl list:*)",
         ]
         if let toolRoot {
@@ -133,12 +133,12 @@ public enum ProjectScaffold {
         return added
     }
 
-    /// 受け手のパッケージに `.vscode/settings.json` を書く(ftester init から呼ぶ)。
-    /// `ftester.project`/`ftester.binaryPath` を自動設定し、受け手の手動設定を不要にする。
+    /// 受け手のパッケージに `.vscode/settings.json` を書く(fleetest init から呼ぶ)。
+    /// `fleetest.project`/`fleetest.binaryPath` を自動設定し、受け手の手動設定を不要にする。
     /// 既存ファイルが JSON としてパースできない(VSCode の settings.json は JSONC のことがある)場合は
     /// 触らず警告のみ出して false を返す(init 全体を失敗させない)
     public static func writeVSCodeSettings(
-        packageRoot: URL, ftesterPath: String?, projectName: String
+        packageRoot: URL, fleetestPath: String?, projectName: String
     ) throws -> Bool {
         let dir = packageRoot.appendingPathComponent(".vscode")
         let url = dir.appendingPathComponent("settings.json")
@@ -148,16 +148,16 @@ public enum ProjectScaffold {
             let data = try Data(contentsOf: url)
             guard let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 let warning = "⚠️ Could not parse \(url.path) as JSON — "
-                    + "skipped the automatic ftester.project/ftester.binaryPath setup (set them by hand)\n"
+                    + "skipped the automatic fleetest.project/fleetest.binaryPath setup (set them by hand)\n"
                 FileHandle.standardError.write(Data(warning.utf8))
                 return false
             }
             settings = parsed
         }
 
-        settings["ftester.project"] = projectName
-        if let ftesterPath {
-            settings["ftester.binaryPath"] = "\(ftesterPath)/.build/debug/ftester"
+        settings["fleetest.project"] = projectName
+        if let fleetestPath {
+            settings["fleetest.binaryPath"] = "\(fleetestPath)/.build/debug/fleetest"
         }
 
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -168,11 +168,11 @@ public enum ProjectScaffold {
     }
 
     /// 受け手のパッケージの .gitignore に SwiftPM ビルド成果物と実行レポートの ignore を冪等に足す
-    /// (ftester init から呼ぶ)。無ければ作成、あれば欠けている行だけ追記。戻り値は追記した行(全部揃って
+    /// (fleetest init から呼ぶ)。無ければ作成、あれば欠けている行だけ追記。戻り値は追記した行(全部揃って
     /// いれば空 = 何も書かない)
     @discardableResult
     public static func ensureGitignore(packageRoot: URL) throws -> [String] {
-        let entries = [".build/", ".ftester/", "TestProjects/*/reports/"]
+        let entries = [".build/", ".fleetest/", "TestProjects/*/reports/"]
         let url = packageRoot.appendingPathComponent(".gitignore")
 
         // 先頭の "/"・"./"、末尾の "/" を無視して同一視する(.build / /.build/ / .build/ はどれも同じ扱い)
@@ -211,7 +211,7 @@ public enum ProjectScaffold {
         if !content.hasSuffix("\n") {
             content += "\n"
         }
-        content += "# ftester\n" + missing.joined(separator: "\n") + "\n"
+        content += "# fleetest\n" + missing.joined(separator: "\n") + "\n"
         try content.write(to: url, atomically: true, encoding: .utf8)
         return missing
     }
@@ -220,18 +220,18 @@ public enum ProjectScaffold {
         let appRef = name.lowercased()
         return """
         ---
-        name: ftester-setup
-        description: この ftester テストパッケージのセットアップを仕上げて実行できる状態にする。環境検証(doctor)・この Mac のデバイス定義(マシンプロファイル)・デバイス不要の動作確認までを、検証ゲートと人間チェックポイント付きで行う。「セットアップして」「動かせるようにして」「テストを実行できるようにして」等の依頼で使う。
+        name: fleetest-setup
+        description: この fleetest テストパッケージのセットアップを仕上げて実行できる状態にする。環境検証(doctor)・この Mac のデバイス定義(マシンプロファイル)・デバイス不要の動作確認までを、検証ゲートと人間チェックポイント付きで行う。「セットアップして」「動かせるようにして」「テストを実行できるようにして」等の依頼で使う。
         ---
 
-        # ftester セットアップ(このパッケージ)
+        # fleetest セットアップ(このパッケージ)
 
-        このパッケージは `ftester init` で作られた ftester テストプロジェクト。ftester CLI は foundation-tester
+        このパッケージは `fleetest init` で作られた fleetest テストプロジェクト。fleetest CLI は foundation-tester
         を clone して `swift build` 済みであることが前提(未ビルドなら
         `git clone https://github.com/wave1008/foundation-tester.git ../foundation-tester` して
         `swift build`。clone 先は任意 — 既定はこのパッケージの**隣**で、パッケージの下にネストさせない)。
-        TOOL_ROOT = Package.swift の `.package(path:)` が指す clone。以降 `ftester ...` は
-        `<TOOL_ROOT>/.build/debug/ftester ...`(既定 `../foundation-tester/.build/debug/ftester ...`)を
+        TOOL_ROOT = Package.swift の `.package(path:)` が指す clone。以降 `fleetest ...` は
+        `<TOOL_ROOT>/.build/debug/fleetest ...`(既定 `../foundation-tester/.build/debug/fleetest ...`)を
         指す(PATH 登録は不要)。
         自分のアプリのシナリオを書いて実行できる状態まで仕上げる。
 
@@ -250,7 +250,7 @@ public enum ProjectScaffold {
         環境は機械判定する(人間に「入っているか」を聞かない)。失敗した項目だけ 🧑 停止して対処を依頼(代行不可):
         - macOS 26+: `sw_vers -productVersion` / Xcode 26+: `xcodebuild -version`(license 未同意エラーで
           落ちたら 🧑 に `sudo xcodebuild -license accept` を依頼)
-        - Apple Intelligence: `ftester doctor --fm-only`(exit 0 で可。**exit 1 でも中断せず続行** —
+        - Apple Intelligence: `fleetest doctor --fm-only`(exit 0 で可。**exit 1 でも中断せず続行** —
           FM は heal・視覚検証・シナリオ生成にだけ必要な任意機能。使いたくなったら System 設定で
           有効化して本コマンドが ✅ になればそのまま使える。完了報告に要有効化の旨を残す)
           なお **macOS 26 では FM の視覚検証(occlusion-guard / screenLooksLike)だけが使えない**
@@ -263,7 +263,7 @@ public enum ProjectScaffold {
         **対象アプリ(.app / .apk)のパスは聞かない**(→ステップ3。後から設定できる)。
 
         ### 1. 環境検証
-        `ftester doctor` を実行し、結果を要約して見せる。赤(未導入・無効)が残る項目は 0 に戻って対処を依頼。
+        `fleetest doctor` を実行し、結果を要約して見せる。赤(未導入・無効)が残る項目は 0 に戻って対処を依頼。
 
         ### 2. マシンプロファイル(この Mac のデバイス定義)
         - `xcrun simctl list devices available` で使えるシミュレータ名を採取
@@ -297,13 +297,13 @@ public enum ProjectScaffold {
 
         ### 5. デバイス不要の動作確認(まずここまで)
         ```bash
-        swift build --product ftester-scenarios-\(name)
-        ftester api list-scenarios --project \(name)
-        ftester api run --project \(name) --scenario <クラス名> --dry-run --skip-build
+        swift build --product fleetest-scenarios-\(name)
+        fleetest api list-scenarios --project \(name)
+        fleetest api run --project \(name) --scenario <クラス名> --dry-run --skip-build
         ```
 
         ### 5.5 git 管理(このパッケージを自分のリポジトリで管理する場合)
-        `.gitignore` は init が整備済み(`.build/`・`.ftester/`・`TestProjects/*/reports/`)。コミットするのは
+        `.gitignore` は init が整備済み(`.build/`・`.fleetest/`・`TestProjects/*/reports/`)。コミットするのは
         Package.swift・TestProjects/(シナリオ・プロファイル)・.claude/・.gitignore。Package.resolved は
         コミット推奨(依存の版固定)。.vscode/settings.json は binaryPath が相対ならコミット可。
         .mcp.json は絶対パスを含むためマシン固有(コミットするならチームでパス規約を揃える)。
@@ -312,14 +312,14 @@ public enum ProjectScaffold {
         Claude Code がアプリを直接操作してシナリオを生成したいとき登録する(VSCode 拡張とは別の消費面)。
         このパッケージのルートに `.mcp.json` を書く(claude CLI 不要・ただの JSON)。`<CLONE_ABS>` は
         clone した foundation-tester の**絶対パス**(`cd <clone> && pwd` で得る)に置換。既存 `.mcp.json` が
-        あれば `mcpServers.ftester` キーだけマージする:
+        あれば `mcpServers.fleetest` キーだけマージする:
 
         ```json
         {
           "mcpServers": {
-            "ftester": {
+            "fleetest": {
               "command": "bash",
-              "args": ["-lc", "WD=\\"$PWD\\"; cd \\"<CLONE_ABS>\\" && swift build --product ftester-mcp >/dev/null 2>&1 && cd \\"$WD\\" && exec \\"<CLONE_ABS>/.build/debug/ftester-mcp\\""]
+              "args": ["-lc", "WD=\\"$PWD\\"; cd \\"<CLONE_ABS>\\" && swift build --product fleetest-mcp >/dev/null 2>&1 && cd \\"$WD\\" && exec \\"<CLONE_ABS>/.build/debug/fleetest-mcp\\""]
             }
           }
         }
@@ -327,9 +327,9 @@ public enum ProjectScaffold {
 
         rebuild-on-start なので clone を `git pull` しても版ズレしない。build 出力は `/dev/null`
         (JSON-RPC は stdout 専用)。Claude Code はプロジェクトスコープの MCP を初回に承認確認する
-        → 許可すると `ft_*` ツールが使え、`/ftester-scenario` が MCP 経由で動く。
+        → 許可すると `ft_*` ツールが使え、`/fleetest-scenario` が MCP 経由で動く。
         **ビルドのため clone へ `cd` した後、`exec` 前に元のパッケージルートへ戻す**(cwd は
-        `ftester-mcp` がパッケージルートを特定する入力。cd したままだと `TestProjects/` が見えなくなる)。
+        `fleetest-mcp` がパッケージルートを特定する入力。cd したままだと `TestProjects/` が見えなくなる)。
 
         ## 更新(新しい版が出たとき)
         clone した foundation-tester で `git pull`(または `git checkout <新version>`)して `swift build`
@@ -386,7 +386,7 @@ public enum ProjectScaffold {
 
     static let mainSwift = """
     // _Main.swift
-    // ftester-scenarios のエントリポイント(編集不要)。
+    // fleetest-scenarios のエントリポイント(編集不要)。
     // このディレクトリ(scenarios/)に .swift を置いて swift build すればシナリオが認識される。
 
     import FTScenarioRunner
@@ -430,7 +430,7 @@ public enum ProjectScaffold {
     `"host"` は**そのデバイスがある機械**。**手元でも省略せず `"local"` と書く**(省略は
     「直下の既定を継ぐ」の意味になり、既定がリモートのときに別の機械のデバイス扱いになる)。
     ツールが書き出すときは常に `host` → `name` の順で先頭に置く。
-    別の Mac(リモートランナー)を指すときは `ftester remote hosts` の登録名だけを書く
+    別の Mac(リモートランナー)を指すときは `fleetest remote hosts` の登録名だけを書く
     (ssh の宛先は書けない)。`host` を書いておくと `--host` を付けなくてもその機械へ
     ディスパッチされる。**トップレベルにも devices の各要素にも書ける** —— トップレベルは既定で、
     デバイス側が優先。**一意なのは (host, name)** なので、別の機械に同名のデバイスが居てよく、

@@ -20,7 +20,7 @@ final class InAppSourceDigestReuseTests: XCTestCase {
         repoRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("ftinappdigest-\(UUID().uuidString)")
         try FileManager.default.createDirectory(
-            at: repoRoot.appendingPathComponent(".ftester"), withIntermediateDirectories: true)
+            at: repoRoot.appendingPathComponent(".fleetest"), withIntermediateDirectories: true)
     }
 
     override func tearDownWithError() throws {
@@ -86,7 +86,7 @@ final class InAppSourceDigestReuseTests: XCTestCase {
     /// 状態ファイルの往復と**旧形式(2語)の後方互換**。読めなくなると全ブリッジが毎回
     /// 建て直しになる(遅くなるだけだが、原因が読めない)
     func testStateFileRoundTripAndLegacyTwoFieldRecord() throws {
-        let dir = repoRoot.appendingPathComponent(".ftester")
+        let dir = repoRoot.appendingPathComponent(".fleetest")
         InAppBridgeState.write(stateDir: dir, port: 8123, udid: "UDID-A",
                                bundleID: "com.example.app", sourceDigest: "digest-1")
         XCTAssertEqual(InAppBridgeState.sourceDigest(stateDir: dir, port: 8123), "digest-1")

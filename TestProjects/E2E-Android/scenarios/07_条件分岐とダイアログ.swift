@@ -1,5 +1,5 @@
 // 07_条件分岐とダイアログ.swift
-// ftester 機能: ダイアログの OK/キャンセル・`ifCanSelect`(出るか不定な要素への条件分岐)・
+// fleetest 機能: ダイアログの OK/キャンセル・`ifCanSelect`(出るか不定な要素への条件分岐)・
 // `select`(掴めなければ空要素を返す)・back でのダイアログクローズ・`repeatWhileCanSelect`・
 // `waitForClose` をまとめて検証する。
 // #btn_maybe_dialog は奇数回目だけダイアログを開く決定的仕様のため、ifCanSelect / repeatWhileCanSelect の

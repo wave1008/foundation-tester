@@ -1,6 +1,6 @@
 // JUnitReportWriter.swift
 // run の結果(ScenarioRunRecord)→ JUnit XML。CI(GitHub Actions / Jenkins 等)のテストレポート
-// 取り込み用で、`ftester run --junit <path>` が run 終了時に書き出す。
+// 取り込み用で、`fleetest run --junit <path>` が run 終了時に書き出す。
 // 3つの実行経路(逐次 / --ports 並列 / --profile 並列)すべてが RunRecorder 経由で
 // runDir/scenarios/*.json を書くため、そこを唯一の入力にする(経路ごとの集計を持たない)。
 //

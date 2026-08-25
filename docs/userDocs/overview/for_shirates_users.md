@@ -1,12 +1,12 @@
 # For Shirates Users
 
-Ftester's Swift DSL follows Shirates (Classic) conventions — command names, argument names,
+Fleetest's Swift DSL follows Shirates (Classic) conventions — command names, argument names,
 defaults, and behavior are carried over rather than reinvented. This page maps what you already
-know from Shirates onto ftester, and lists what's deliberately different or missing.
+know from Shirates onto fleetest, and lists what's deliberately different or missing.
 
 ## Structure
 
-| Shirates | ftester |
+| Shirates | fleetest |
 |---|---|
 | `scenario` / `case` / `condition` / `action` / `expectation` | `scenario` / `scene` / `condition` / `action` / `expectation` |
 | a `UITest` class | a class annotated `@TestClass` |
@@ -31,7 +31,7 @@ know from Shirates onto ftester, and lists what's deliberately different or miss
 
 ## Renamed / different form
 
-| Shirates | ftester | Note |
+| Shirates | fleetest | Note |
 |---|---|---|
 | `dontExist` | `notExist(sel, timeout:scroll:maxSwipes:)` | reads more clearly as a negation of `exist` |
 | `sendKeys` | `type("…")` / `type(sel, "…")` | `type(sel, "…", replace: true)` also folds in a clear-before-type, which Shirates does as two separate calls |
@@ -43,7 +43,7 @@ know from Shirates onto ftester, and lists what's deliberately different or miss
 
 ## Not present — write it this way instead
 
-| Shirates | Write it in ftester as |
+| Shirates | Write it in fleetest as |
 |---|---|
 | Nicknames (selector / screen / dataset nicknames) | selectors written directly; no indirection layer |
 | `screenIs` / `screenIsOf` / `isScreen(Of)` / `waitScreen(Of)` / `switchScreen` | `screenLooksLike("description")` (FM visual check), or `exist(sel)` on an element unique to that screen |
@@ -57,7 +57,7 @@ know from Shirates onto ftester, and lists what's deliberately different or miss
 | `tempSelector` / `tempValue` | write the selector directly at the call site |
 | `withContext` (native/web context switching) | not needed — WebView content is read transparently through the same selectors and commands |
 
-## ftester-only additions
+## fleetest-only additions
 
 Shirates has no equivalent for these:
 

@@ -382,8 +382,8 @@ public final class BridgeClient: AppDriver {
 
     /// bundleID → 表示名(CFBundleDisplayName、無ければ CFBundleName)。アラート同定に使う
     /// (ラベル文字列は端末ロケールで変わるため使えない)。取れなければ nil(呼び出し側は同意
-    /// ステップごと諦める)。`ftester api list-apps`(Sources/ftester/ApiListAppsCommand.swift)と
-    /// 同じ simctl listapps 経由だが、Sources/ftester からは呼べないためここに最小限だけ複製する
+    /// ステップごと諦める)。`fleetest api list-apps`(Sources/fleetest/ApiListAppsCommand.swift)と
+    /// 同じ simctl listapps 経由だが、Sources/fleetest からは呼べないためここに最小限だけ複製する
     static func appDisplayName(bundleID: String, target: String) -> String? {
         guard let result = try? Shell.run(["xcrun", "simctl", "listapps", target]), result.status == 0,
               let data = result.output.data(using: .utf8),

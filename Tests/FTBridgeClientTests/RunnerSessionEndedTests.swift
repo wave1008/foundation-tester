@@ -21,7 +21,7 @@ final class RunnerSessionEndedTests: XCTestCase {
             BridgeLauncher.runnerSessionEnded(inLog: "…\n** BUILD INTERRUPTED **\n"),
             "** BUILD INTERRUPTED **")
         XCTAssertEqual(
-            BridgeLauncher.runnerSessionEnded(inLog: "Testing failed:\n\tFTesterBridgeTests…"),
+            BridgeLauncher.runnerSessionEnded(inLog: "Testing failed:\n\tFleetestBridgeTests…"),
             "Testing failed:")
     }
 
@@ -31,7 +31,7 @@ final class RunnerSessionEndedTests: XCTestCase {
         let root = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("ft-ended-\(UUID().uuidString)")
         try FileManager.default.createDirectory(
-            at: root.appendingPathComponent(".ftester"), withIntermediateDirectories: true)
+            at: root.appendingPathComponent(".fleetest"), withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
         // 誰も listen していないポート(接続拒否ですぐ返る)
         let launcher = BridgeLauncher(repoRoot: root, device: "UDID-1", port: 8199)

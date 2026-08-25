@@ -92,7 +92,7 @@ public struct StepResult: Sendable {
     /// scene の外で発生した情報行は nil)
     public let section: String?
     /// true = fixSuggestion に伴う合成行(「💡 修正提案: …」固定文言。ScenarioRunner.runOne
-    /// 参照)。実際のコマンド実行結果ではないため、機械可読 NDJSON(ftester api run)では
+    /// 参照)。実際のコマンド実行結果ではないため、機械可読 NDJSON(fleetest api run)では
     /// 除外する目印として使う(人間向けの表示には含める)
     public let synthetic: Bool
     /// ステップの所要時間内訳。--profile 並列実行ではサブプロセスの
@@ -634,7 +634,7 @@ public final class StepExecutor {
     }
 
     /// 「掴めた」と言い切れる状態か(StepOutcome.resolvedElement を載せてよいかの判定)。
-    /// **public**: MCP(ftester-mcp)の ft_scroll_to も同じ判定を使う(2つ目の実装を作らない)
+    /// **public**: MCP(fleetest-mcp)の ft_scroll_to も同じ判定を使う(2つ目の実装を作らない)
     public static func isSuccess(_ status: StepResult.Status) -> Bool {
         switch status {
         case .passed, .passedViaFallback, .healed: return true

@@ -1,5 +1,5 @@
 // 14_画面回転.swift
-// ftester 機能: `rotateTo(.portrait / .landscape)`。**契約は「アプリの UI がその向きになること」**
+// fleetest 機能: `rotateTo(.portrait / .landscape)`。**契約は「アプリの UI がその向きになること」**
 // で、デバイスがどう傾いているかではない(docs/commands.md)。左右の区別は語彙に無い。
 // SUT は iOS ネイティブ(SwiftUI+UIKit)の E2EAppIOS。**iOS は接続が使っているエンジンで回す**
 // (in-app = シーンの geometry / XCUITest = XCUIDevice)ので、この1本が両エンジンの回帰を兼ねる

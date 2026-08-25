@@ -61,7 +61,7 @@ public enum PortHolder {
 
         // killOrphanRunners と同じ照合(ポートごとに別ファイルなので他ポートは誤爆しない)
         let xctestrunPath = derivedDataPath
-            .appendingPathComponent("Build/Products/FTesterRunner-\(port).xctestrun").path
+            .appendingPathComponent("Build/Products/FleetestRunner-\(port).xctestrun").path
         if command.contains("xcodebuild"), command.contains(xctestrunPath) {
             terminateThenKill(pid: pid)
             return waitForRelease(port: port, description: description)

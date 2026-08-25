@@ -1,5 +1,5 @@
 // 12_フリック.swift
-// ftester 機能: `flick` 8方向(画面基点の生ジェスチャ)がスクロール容器と横カルーセルを動かすことの検証。
+// fleetest 機能: `flick` 8方向(画面基点の生ジェスチャ)がスクロール容器と横カルーセルを動かすことの検証。
 // appIs/screenshot/waitForDisplay/verify は 06_待機とタイムアウト.swift、
 // waitForClose は 07_条件分岐とダイアログ.swift へ統合済み(同じ画面の launchApp を共有するため)。
 

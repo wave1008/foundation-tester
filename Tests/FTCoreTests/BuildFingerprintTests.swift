@@ -60,9 +60,9 @@ final class BuildFingerprintTests: XCTestCase {
     }
 
     func testStoreAndStoredRoundTrip() {
-        BuildFingerprint.store("abc123", productName: "ftester-scenarios-Sample", repoRoot: repoRoot)
+        BuildFingerprint.store("abc123", productName: "fleetest-scenarios-Sample", repoRoot: repoRoot)
         let stored = BuildFingerprint.stored(
-            productName: "ftester-scenarios-Sample", repoRoot: repoRoot)
+            productName: "fleetest-scenarios-Sample", repoRoot: repoRoot)
         XCTAssertEqual(stored, "abc123")
     }
 

@@ -1,6 +1,6 @@
-// フリート実行の JUnit 集約(`ftester run --fleet --junit`)。各エントリの --junit 出力を
+// フリート実行の JUnit 集約(`fleetest run --fleet --junit`)。各エントリの --junit 出力を
 // 結合する純粋ロジックを、期待値の完全一致で固める。実 I/O(一時ファイルの読み書き・
-// 子プロセスへの --junit 中継)は Sources/ftester/FleetRunner.swift 側で、ここは対象外。
+// 子プロセスへの --junit 中継)は Sources/fleetest/FleetRunner.swift 側で、ここは対象外。
 
 import XCTest
 @testable import FTCore

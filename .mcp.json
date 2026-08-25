@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "ftester": {
+    "fleetest": {
       "command": "bash",
       "args": ["-lc", "exec \"$PWD/Scripts/mcp-server.sh\""]
     }

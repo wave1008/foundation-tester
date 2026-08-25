@@ -7,8 +7,8 @@ Android Emulator の gRPC(EmulatorController)proto の vendored コピー。
 利用箇所(この proto と同期する相手):
 - Swift: `Sources/FTEmulatorGrpc/Generated/`(protoc 生成物をコミット。受け手ビルドに protoc を要求しないため)
 
-gRPC を話すのは Swift だけ。拡張は `ftester api repair-display` 経由で CLI に委譲するため proto のコピーを持たない
-(以前あった `vscode-ftester/assets/emulator_controller.proto` は撤去済み。再導入しないこと)。
+gRPC を話すのは Swift だけ。拡張は `fleetest api repair-display` 経由で CLI に委譲するため proto のコピーを持たない
+(以前あった `vscode-fleetest/assets/emulator_controller.proto` は撤去済み。再導入しないこと)。
 
 ## Swift スタブの再生成手順
 

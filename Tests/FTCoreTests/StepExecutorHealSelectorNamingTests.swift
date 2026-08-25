@@ -1,7 +1,7 @@
 import XCTest
 @testable import FTCore
 
-/// 自己修復(`healLocator`)の結果は `ftester api apply-heal` が利用者の .swift ソースへ
+/// 自己修復(`healLocator`)の結果は `fleetest api apply-heal` が利用者の .swift ソースへ
 /// 書き戻す(FTRuntime.perform → FixSuggestion → apply-heal)。書き戻すセレクタの選び方は
 /// `SelectorNaming`(MCP と共有)に一本化されており、**一意に書けるセレクタが無い要素では
 /// ヒールを成立させてはいけない**。

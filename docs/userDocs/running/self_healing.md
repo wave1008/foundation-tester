@@ -2,22 +2,22 @@
 
 When self-healing is enabled and a selector fails to resolve during a device run, FM (Foundation
 Models) repairs the locator on the fly so the run continues, instead of failing the scenario
-outright. This requires FM to be available (see `ftester doctor`).
+outright. This requires FM to be available (see `fleetest doctor`).
 
 ## Enabling it
 
-- **`--profile` runs default `heal` to ON.** A plain `ftester run` without a profile defaults it
-  to OFF. `ftester run --heal` / `--no-heal` override either default (mutually exclusive).
+- **`--profile` runs default `heal` to ON.** A plain `fleetest run` without a profile defaults it
+  to OFF. `fleetest run --heal` / `--no-heal` override either default (mutually exclusive).
 - In the run profile itself, `heal` (default `true`) is one of the FM toggles under the parent
   switch `fm` — see [run_profile.md](../project/run_profile.md).
-- In the VS Code extension, the `ftester.heal` setting appends `--heal` to Test Explorer's "Run"
+- In the VS Code extension, the `fleetest.heal` setting appends `--heal` to Test Explorer's "Run"
   and "Debug" actions (not "Run (dry-run)", since dry-run never touches a device). When
-  `ftester.heal` is `false` (the default) and you're using `ftester.profile`, the run profile's
+  `fleetest.heal` is `false` (the default) and you're using `fleetest.profile`, the run profile's
   own `heal` setting is used instead.
 
 ## What happens on a repair
 
-- The healed selector is cached per project in `TestProjects/<name>/.ftester/heal-cache.json`,
+- The healed selector is cached per project in `TestProjects/<name>/.fleetest/heal-cache.json`,
   keyed to the source location. **On the next run, the same step passes deterministically from
   the cache — FM is not called again** for that step, unless the surrounding source changes (a
   changed key naturally invalidates the cache entry).
@@ -33,7 +33,7 @@ outright. This requires FM to be available (see `ftester doctor`).
 ## Reviewing and applying fix suggestions (VS Code)
 
 When a `--heal`-enabled run produces one or more fix suggestions, the VS Code extension
-automatically opens a **"ftester self-healing review"** panel (dry-run runs never trigger it).
+automatically opens a **"fleetest self-healing review"** panel (dry-run runs never trigger it).
 For each candidate you can see:
 
 - The current ("before") selector, read-only, and the proposed ("after") selector, editable.
@@ -42,7 +42,7 @@ For each candidate you can see:
   opened enough that the before-selector no longer appears exactly once — those are disabled).
 
 Clicking "Apply selected" writes the accepted fixes into your scenario source via
-`ftester api apply-heal`. Fixes that fail to apply stay in the list with a reason; the panel
+`fleetest api apply-heal`. Fixes that fail to apply stay in the list with a reason; the panel
 closes automatically once every remaining fix has succeeded. Closing without applying leaves the
 heal cache intact, so the same candidates are proposed again on the next `--heal` run.
 

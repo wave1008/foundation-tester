@@ -1,14 +1,14 @@
 # dry-run
 
-`ftester run --dry-run`(Shirates の No-Load-Run 相当)は、**デバイスにも FM にも触れず**、
+`fleetest run --dry-run`(Shirates の No-Load-Run 相当)は、**デバイスにも FM にも触れず**、
 シナリオのステップを列挙・検証します。デバイス実行の最中や後でしか気づけない誤りを、数秒で
 検知できます。
 
 ```bash
-ftester run --dry-run --scenario ログインテスト
+fleetest run --dry-run --scenario ログインテスト
 ```
 
-MCP は同じ検証を `ft_dry_run` で提供し、VSCode 拡張は `ftester api run --dry-run`
+MCP は同じ検証を `ft_dry_run` で提供し、VSCode 拡張は `fleetest api run --dry-run`
 (Test Explorer の「実行 (dry-run)」)経由で実行します。
 
 ## 検知できるもの
@@ -18,7 +18,7 @@ MCP は同じ検証を `ft_dry_run` で提供し、VSCode 拡張は `ftester api
 | セレクタの構文誤り | どのデバイス呼び出しよりも先にセレクタ式のパーサが走る |
 | 到達しない scene・分岐 | シナリオ構造の静的な到達可能性チェック |
 | `expectation { }` にアサーションが1つも無い | `verify` がアサーションを数える方法と同じ(`exist`/`notExist`/`textIs` 以下・`thisIs` 系・`appIs`。`select` は数えない)。シナリオ全体でアサーションが**0本**ならさらに強い警告になる |
-| 撮った画面のどこにも存在しない `#id` | プロジェクトのセレクタ台帳(`<プロジェクト>/.ftester/selector-inventory.json`。シナリオ執筆中の `ft_snapshot` 呼び出しで貯まる)と突き合わせて判定する |
+| 撮った画面のどこにも存在しない `#id` | プロジェクトのセレクタ台帳(`<プロジェクト>/.fleetest/selector-inventory.json`。シナリオ執筆中の `ft_snapshot` 呼び出しで貯まる)と突き合わせて判定する |
 
 最後の項目の補足: 実際に撮った画面についてしか警告しません — 対象の画面(あるいはプラットフォーム)の
 記録が台帳に無ければ、推測せず黙ります。台帳が薄いうちも黙ります — 警告が出るのはそのシナリオが
@@ -38,7 +38,7 @@ MCP は同じ検証を `ft_dry_run` で提供し、VSCode 拡張は `ftester api
 - レポートは書かず、結果は後で `--failed` が拾う対象にもなりません。
 
 `--scenario` / `--folder` / `--project` / `--quiet` は通常実行と同じように効き、検証に失敗すれば
-exit code `1` になります。そのため `--scenario` を付けない `ftester run --dry-run` は、
+exit code `1` になります。そのため `--scenario` を付けない `fleetest run --dry-run` は、
 プロジェクト全体をデバイス実行の前に安く通す関門として使えます。
 
 ### Link

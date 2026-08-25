@@ -4,7 +4,7 @@
 // APK 自体が旧版なので永久に一致しない(受け手側で無限に再インストールが走る)。
 // 逆に片方の定数だけ上げると、稼働中の旧ブリッジが「版一致」と見なされて再利用され、
 // 追加したエンドポイントが 404 になる(dylib 側で同じ形の事故を実際に踏んだ)。
-// ftester api の ProtocolVersion を protocolVersion.test.mjs が守っているのと同じ役割。
+// fleetest api の ProtocolVersion を protocolVersion.test.mjs が守っているのと同じ役割。
 
 import XCTest
 import FTAndroid

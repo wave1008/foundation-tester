@@ -1,5 +1,5 @@
 // 07_条件分岐とダイアログ.swift
-// ftester 機能: `ifCanSelect`(出るか不定な要素への条件分岐)・`select`(掴めなければ空要素を返す)・
+// fleetest 機能: `ifCanSelect`(出るか不定な要素への条件分岐)・`select`(掴めなければ空要素を返す)・
 // `back` でのダイアログ閉じ(Android のみ)・`repeatWhileCanSelect`(14.S0020)・
 // `waitForClose`(21.S0060)をまとめて検証する。
 // #btn_maybe_dialog は奇数回目だけダイアログを開く決定的仕様。**カウンタは画面離脱で 0 に戻る**

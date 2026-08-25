@@ -24,7 +24,7 @@ final class ScenarioHostPackageRootTests: XCTestCase {
     /// 有効なパッケージディレクトリを指す場合はそれが返る(cwd 探索より優先)
     func testValidOverrideIsUsed() throws {
         let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("ftester-pkgroot-valid-\(UUID().uuidString)")
+            .appendingPathComponent("fleetest-pkgroot-valid-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tempDir) }
         try "// swift-tools-version: 6.0".write(
@@ -39,7 +39,7 @@ final class ScenarioHostPackageRootTests: XCTestCase {
     /// 無効なディレクトリ(Package.swift 無し)を指す場合は cwd 探索へフォールバックせず nil
     func testInvalidOverrideReturnsNil() throws {
         let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("ftester-pkgroot-invalid-\(UUID().uuidString)")
+            .appendingPathComponent("fleetest-pkgroot-invalid-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tempDir) }
 

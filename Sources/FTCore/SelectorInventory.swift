@@ -1,4 +1,4 @@
-// 「そのプロジェクトで実際に観測された `#id`」の台帳(`<プロジェクト>/.ftester/selector-inventory.json`)。
+// 「そのプロジェクトで実際に観測された `#id`」の台帳(`<プロジェクト>/.fleetest/selector-inventory.json`)。
 //
 // 目的は**シナリオ生成の誤りをデバイス実行の前に落とす**こと1点:
 // セレクタの綴り誤り・でっち上げはコンパイルも構文検証も通り、実行して初めて「見つからない」になる。
@@ -41,9 +41,9 @@ public struct SelectorInventory: Codable, Sendable {
         self.platforms = platforms
     }
 
-    /// 台帳の置き場所。ヒールキャッシュ(`.ftester/heal-cache.json`)と同じディレクトリ
+    /// 台帳の置き場所。ヒールキャッシュ(`.fleetest/heal-cache.json`)と同じディレクトリ
     public static func url(projectRoot: URL) -> URL {
-        projectRoot.appendingPathComponent(".ftester/selector-inventory.json")
+        projectRoot.appendingPathComponent(".fleetest/selector-inventory.json")
     }
 
     public static func load(at url: URL) -> SelectorInventory? {

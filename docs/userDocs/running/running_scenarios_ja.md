@@ -1,6 +1,6 @@
 # シナリオの実行
 
-`ftester run` は Swift DSL シナリオを決定的に実行します(ステップが失敗し自己修復・トリアージが
+`fleetest run` は Swift DSL シナリオを決定的に実行します(ステップが失敗し自己修復・トリアージが
 有効なとき以外は FM を呼びません)。このページでは CLI オプションを説明します。`--dry-run` は
 [dry_run_ja.md](./dry_run_ja.md)、`--heal` は [self_healing_ja.md](./self_healing_ja.md) を
 参照してください。
@@ -9,10 +9,10 @@
 
 ```bash
 # クローン構成(foundation-tester のクローン内で作業している場合)
-swift run ftester run --profile ios
+swift run fleetest run --profile ios
 
 # 外部パッケージ構成(TestProjects/ を持つ別の作業フォルダ)
-../foundation-tester/.build/debug/ftester run --profile ios
+../foundation-tester/.build/debug/fleetest run --profile ios
 ```
 
 ## 主なオプション
@@ -23,7 +23,7 @@ swift run ftester run --profile ios
 | `--profile <profile>` | 実行プロファイル名(`profiles/runs/<name>.json`)。ブリッジ供給と自動インストールを含む |
 | `--scenario <id>` | シナリオ ID。クラス名だけならそのクラスの全シナリオ、`Class.method` で1本を指定。複数回指定可・既定は全件。`@Deleted`/`@Draft` シナリオは完全一致のときだけ実行される |
 | `--folder <folder>` | 実行するシナリオフォルダ(`scenarios/` 直下のサブフォルダ)。複数回指定可、`--scenario`/`--failed` と併用可 |
-| `--failed` | 前回失敗したシナリオだけ実行する(結果は毎回 `.ftester/last-results/` に記録される) |
+| `--failed` | 前回失敗したシナリオだけ実行する(結果は毎回 `.fleetest/last-results/` に記録される) |
 | `--heal` / `--no-heal` | 実行プロファイルの `heal` 設定を上書きし、自己修復を強制的に ON/OFF にする |
 | `--dry-run` | デバイスに触れずステップを検証する([dry_run_ja.md](./dry_run_ja.md)参照) |
 | `--report-dir <dir>` | レポート出力先(既定: `TestProjects/<name>/reports`) |
@@ -41,18 +41,18 @@ swift run ftester run --profile ios
 | `--app <bundleID>` | `@TestClass(app:)` 未指定シナリオの既定アプリ。`--profile` 無しのときだけ必要 |
 | `--port <n>` / `--serial <s>` | `--profile` 無しでのブリッジポート(iOS)/デバイス serial(Android) |
 
-最新の全一覧は `ftester run --help` を実行してください。
+最新の全一覧は `fleetest run --help` を実行してください。
 
 ## `run-file`
 
-`ftester run-file <path.swift>...` は `Package.swift` に**登録していない** `.swift` を1本以上
+`fleetest run-file <path.swift>...` は `Package.swift` に**登録していない** `.swift` を1本以上
 そのまま実行します(プロファイル・レポート・自己修復は `--project` で指定した既存プロジェクトから
 借ります)。プロジェクトに足す前の使い捨てシナリオに便利です。`--profile`・`--scenario`・
 `--heal`・`--ports` を受け付けます。
 
 ## exit code と失敗セマンティクス
 
-`ftester run` は全て成功なら `0`、1つでも失敗すれば `1` を返します。シナリオ内では、コマンドが
+`fleetest run` は全て成功なら `0`、1つでも失敗すれば `1` を返します。シナリオ内では、コマンドが
 失敗すると**そのシナリオの以降のステップは全て中断**されます(残る scene・ステップは全て
 スキップ)。`tearDown()` だけは失敗後も実行されます。失敗モデルの詳細は
 [testcode_structure_ja.md](../testclass/testcode_structure_ja.md) を参照してください。
@@ -64,15 +64,15 @@ swift run ftester run --profile ios
 (端末常駐ブリッジ `AndroidRunner` が初回操作時に自動でインストール・起動します)。
 
 ```bash
-ftester run --platform android
+fleetest run --platform android
 ```
 
 ## デバイス・ブリッジの管理
 
 | コマンド | 説明 |
 |---|---|
-| `ftester devices up` / `devices down` | マシンプロファイルの全デバイスを起動・停止する(`--profile` を付けるとそのプロファイルのデバイスだけ) |
-| `ftester bridge up` / `bridge down` / `bridge status` | 常駐ブリッジ(iOS: XCUITest ランナー / Android: 端末常駐サーバ)を管理する |
+| `fleetest devices up` / `devices down` | マシンプロファイルの全デバイスを起動・停止する(`--profile` を付けるとそのプロファイルのデバイスだけ) |
+| `fleetest bridge up` / `bridge down` / `bridge status` | 常駐ブリッジ(iOS: XCUITest ランナー / Android: 端末常駐サーバ)を管理する |
 
 ### Link
 - [index](../index_ja.md)

@@ -2,7 +2,7 @@
 # E2EAppIOS(iOS ネイティブ SUT)を **実機向け** Debug ビルドし dist/ios-device/ へ配置する。
 # シミュレータ版は build-ios.sh(-sdk iphonesimulator・署名なし)。実機は署名が要るので別スクリプト。
 #
-# Team ID は環境変数 FT_DEVELOPMENT_TEAM、無ければ ~/.config/ftester/config.json の developmentTeam。
+# Team ID は環境変数 FT_DEVELOPMENT_TEAM、無ければ ~/.config/fleetest/config.json の developmentTeam。
 # **Team ID は署名証明書の OU**(`security find-identity` の括弧内は証明書 ID であって Team ID ではない)。
 #   security find-certificate -c "Apple Development: <you>" -p | openssl x509 -noout -subject
 # bundle id プレフィックスは FT_BUNDLE_ID_PREFIX(既定はプロジェクト定義の com.ftester のまま)。
@@ -16,12 +16,12 @@ if ! command -v xcodegen >/dev/null 2>&1; then
 fi
 
 TEAM="${FT_DEVELOPMENT_TEAM:-}"
-if [ -z "$TEAM" ] && [ -f "$HOME/.config/ftester/config.json" ]; then
-  TEAM=$(python3 -c 'import json,os,sys;print(json.load(open(os.path.expanduser("~/.config/ftester/config.json"))).get("developmentTeam",""))')
+if [ -z "$TEAM" ] && [ -f "$HOME/.config/fleetest/config.json" ]; then
+  TEAM=$(python3 -c 'import json,os,sys;print(json.load(open(os.path.expanduser("~/.config/fleetest/config.json"))).get("developmentTeam",""))')
 fi
 if [ -z "$TEAM" ]; then
   echo "❌ Team ID がありません。FT_DEVELOPMENT_TEAM を設定するか、" >&2
-  echo "   ~/.config/ftester/config.json に developmentTeam を設定してください。" >&2
+  echo "   ~/.config/fleetest/config.json に developmentTeam を設定してください。" >&2
   exit 1
 fi
 

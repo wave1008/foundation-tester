@@ -26,7 +26,7 @@ CI; see [docs/ci.md](../../ci.md) for the full write-up.
 bash foundation-tester/Scripts/install.sh --work-dir "$PWD" --skip-extension --skip-mcp --no-doctor
 
 # Run: --quiet suppresses per-step lines, --junit writes JUnit XML
-ftester run --profile ios-xcuitest --quiet --junit reports/junit.xml
+fleetest run --profile ios-xcuitest --quiet --junit reports/junit.xml
 ```
 
 - **Exit code**: `0` = every scenario passed, `1` = at least one failure (JUnit is still written
@@ -51,7 +51,7 @@ pipeline {
       steps { sh 'bash ../foundation-tester/Scripts/install.sh --work-dir "$PWD" --skip-extension --skip-mcp --no-doctor' }
     }
     stage('Run scenarios') {
-      steps { sh '../foundation-tester/.build/debug/ftester run --profile ios-xcuitest --quiet --junit reports/junit.xml' }
+      steps { sh '../foundation-tester/.build/debug/fleetest run --profile ios-xcuitest --quiet --junit reports/junit.xml' }
     }
   }
   post {
@@ -63,7 +63,7 @@ pipeline {
 
 - Device provisioning (simulator boot, bridge) is handled automatically by a `--profile` run.
   Consecutive jobs reuse an already-running bridge; only the first run pays the cold-start cost.
-- To clean up between jobs, add `ftester devices down` (stops every bridge and shuts down every
+- To clean up between jobs, add `fleetest devices down` (stops every bridge and shuts down every
   simulator/emulator) at the end of the job.
 
 ## Flaky scenarios (no retry mechanism, by design)
@@ -71,10 +71,10 @@ pipeline {
 There is no built-in per-scenario retry in CI: automatic retries hide flakiness and let it rot.
 Instead:
 
-- **Detection**: `ftester results flaky` lists scenarios with mixed pass/fail history, ranked by
-  instability (`ftester results insights` also flags regressions, infrastructure-caused failures,
+- **Detection**: `fleetest results flaky` lists scenarios with mixed pass/fail history, ranked by
+  instability (`fleetest results insights` also flags regressions, infrastructure-caused failures,
   and stale selectors).
-- **Local reproduction**: `ftester run --failed` re-runs only the scenarios that failed last time.
+- **Local reproduction**: `fleetest run --failed` re-runs only the scenarios that failed last time.
 - Infrastructure-caused failures (e.g. a frozen device) are automatically requeued *within* a run
   — the failed result is discarded and the scenario reruns on another device, so only the final
   result reaches JUnit. This is a recovery mechanism, not a retry policy.

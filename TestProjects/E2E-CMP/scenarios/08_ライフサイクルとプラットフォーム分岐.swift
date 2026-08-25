@@ -1,5 +1,5 @@
 // 08_ライフサイクルとプラットフォーム分岐.swift
-// ftester 機能: `restartApp`(terminate+launch でのプロセス内状態リセット・永続カウンタは残る)/
+// fleetest 機能: `restartApp`(terminate+launch でのプロセス内状態リセット・永続カウンタは残る)/
 // `terminateApp`(落としたことは次の launchApp の launch カウンタでのみ観測できる)と
 // `ios {}` / `android {}` によるプラットフォーム分岐・**ブリッジが要素の状態を供給していること**
 // (24.S0010。Slider の value は AccessibilityNodeInfo.getRangeInfo() が唯一の供給源で、

@@ -163,7 +163,7 @@ public struct OcclusionVerifier {
         return clamped
     }
 
-    /// FM が不可視と判定した crop を ~/Library/Logs/ftester/occlusion/ へ保存する
+    /// FM が不可視と判定した crop を ~/Library/Logs/fleetest/occlusion/ へ保存する
     /// (環境変数 FT_OCCLUSION_DUMP_DIR で変更可、"off" で無効)。
     /// 保存した PNG は Scripts/occlusion-repro.swift にそのまま食わせて再判定できる。
     /// 真の陽性(実際に覆われている過渡状態)でも保存されるため、7日より古いものは書き込み時に掃除する。
@@ -172,7 +172,7 @@ public struct OcclusionVerifier {
         if env == "off" { return nil }
         let dir = env.map { URL(fileURLWithPath: $0) }
             ?? FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent("Library/Logs/ftester/occlusion")
+                .appendingPathComponent("Library/Logs/fleetest/occlusion")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         pruneOldDumps(in: dir)
         // FM はホスト全体で直列化(約1回/秒)されるが並列ワーカーで同秒が起き得るため ms まで入れる

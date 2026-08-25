@@ -102,7 +102,7 @@ enum WebViewShotComposite {
     static func blankCaptureWarning(hasWebViewNode: Bool) -> String {
         let area = hasWebViewNode ? "the WebView area" : "most of the screen"
         return "⚠️ the screen capture is blank across \(area), and the page could not be read"
-            + " back over CDP. On Android the device capture can miss the WebView layer; ftester"
+            + " back over CDP. On Android the device capture can miss the WebView layer; fleetest"
             + " fills it in from the page itself, which needs WebView debugging enabled in the app"
             + " under test (WebView.setWebContentsDebuggingEnabled(true), usually debug builds"
             + " only). Check with: adb -s <serial> shell cat /proc/net/unix | grep devtools_remote"

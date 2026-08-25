@@ -10,7 +10,7 @@
 //
 // 判定を FTCore に置くのは**単体テストで固めるため**(Runner は SPM のターゲットではなく、
 // BridgeContractTests の指紋しか掛からない)。呼び出し側は
-// Runner/FTesterRunnerUITests/BridgeRouter.swift の collect。
+// Runner/FleetestRunnerUITests/BridgeRouter.swift の collect。
 
 public enum SnapshotDedupe {
 

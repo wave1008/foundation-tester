@@ -65,7 +65,7 @@ android {
     }
 
     buildTypes {
-        // simctl/adb install は署名なし debug 前提。release も ftester 検証用に minify は無効のまま。
+        // simctl/adb install は署名なし debug 前提。release も fleetest 検証用に minify は無効のまま。
         getByName("release") {
             isMinifyEnabled = false
         }

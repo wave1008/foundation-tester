@@ -1,5 +1,5 @@
 // 06_待機とタイムアウト.swift
-// ftester 機能: 暗黙待ち(exist/textIs の既定タイムアウト再試行)と `timeout:` 引数 / notExist(未配置と
+// fleetest 機能: 暗黙待ち(exist/textIs の既定タイムアウト再試行)と `timeout:` 引数 / notExist(未配置と
 // 不在の判定)/ countIs / 相対セレクタ `基準:below(...)` `基準:above(...)` / スコープ `祖先 >> 子孫` /
 // 状態フィルタ(enabled) / appIs / screenshot / waitForDisplay / verify をまとめて検証する
 // (旧: 08_待機とタイムアウト の S0010 / 12_セレクタ拡張 / 21_新規コマンド の S0010)。
@@ -29,7 +29,7 @@ class 待機とタイムアウトが正しく効くこと {
                     // FM はホスト全体で直列化(約1回/秒)されるため、全 launchApp で FM を
                     // 呼ぶとコストだけが乗る。**可視性の検証と、occlusion-guard の誤判定を
                     // 検出する役目は 01_起動と画面遷移 が既定(true)のまま担う**
-                    // (README「既知の ftester 欠陥」参照。ここで guard を切っても検出器は死なない)。
+                    // (README「既知の fleetest 欠陥」参照。ここで guard を切っても検出器は死なない)。
                     exist("#txt_home_marker", requireVisible: false)
                 }.action {
                     tap("#nav_async")
@@ -186,7 +186,7 @@ class 待機とタイムアウトが正しく効くこと {
                     // FM はホスト全体で直列化(約1回/秒)されるため、全 launchApp で FM を
                     // 呼ぶとコストだけが乗る。**可視性の検証と、occlusion-guard の誤判定を
                     // 検出する役目は 01_起動と画面遷移 が既定(true)のまま担う**
-                    // (README「既知の ftester 欠陥」参照。ここで guard を切っても検出器は死なない)。
+                    // (README「既知の fleetest 欠陥」参照。ここで guard を切っても検出器は死なない)。
                     exist("#txt_home_marker", requireVisible: false)
                 }.action {
                     tap("#nav_async")

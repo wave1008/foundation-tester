@@ -1,4 +1,4 @@
-// VSCode拡張向け API `ftester api list-scenarios` のソース位置解決に使われる
+// VSCode拡張向け API `fleetest api list-scenarios` のソース位置解決に使われる
 import XCTest
 @testable import FTCore
 

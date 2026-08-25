@@ -9,7 +9,7 @@ import Foundation
 public enum EmulatorLog {
     public static var directory: URL {
         FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Logs/ftester/emulator")
+            .appendingPathComponent("Library/Logs/fleetest/emulator")
     }
 
     public static func url(avdID: String) -> URL {

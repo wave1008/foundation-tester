@@ -1,5 +1,5 @@
 // 05_スクロール.swift
-// ftester 機能: `scrollTo` による要素到達と、「exist/textIs は非スクロール(現在画面のみ判定)」の
+// fleetest 機能: `scrollTo` による要素到達と、「exist/textIs は非スクロール(現在画面のみ判定)」の
 // 契約検証(docs/design.md §10)・ラベルセレクタでの行タップ・`swipeElementToElement` /
 // `notExist(scroll:)` / 固定ヘッダを指定した `scrollFrame` / `textContains`・`textMatches` /
 // Shirates 準拠のスクロールコマンド(`scrollToBottom`/`scrollToTop`/`scrollDown(repeat:)`/
@@ -36,7 +36,7 @@ class スクロールで折り返し下の要素に到達できること {
                     // FM はホスト全体で直列化(約1回/秒)されるため、全 launchApp で FM を
                     // 呼ぶとコストだけが乗る。**可視性の検証と、occlusion-guard の誤判定を
                     // 検出する役目は 01_起動と画面遷移 が既定(true)のまま担う**
-                    // (README「既知の ftester 欠陥」参照。ここで guard を切っても検出器は死なない)。
+                    // (README「既知の fleetest 欠陥」参照。ここで guard を切っても検出器は死なない)。
                     exist("#txt_home_marker", requireVisible: false)
                 }.action {
                     tap("#nav_scroll")
@@ -389,7 +389,7 @@ class スクロールで折り返し下の要素に到達できること {
                     // FM はホスト全体で直列化(約1回/秒)されるため、全 launchApp で FM を
                     // 呼ぶとコストだけが乗る。**可視性の検証と、occlusion-guard の誤判定を
                     // 検出する役目は 01_起動と画面遷移 が既定(true)のまま担う**
-                    // (README「既知の ftester 欠陥」参照。ここで guard を切っても検出器は死なない)。
+                    // (README「既知の fleetest 欠陥」参照。ここで guard を切っても検出器は死なない)。
                     exist("#txt_home_marker", requireVisible: false)
                 }.action {
                     tap("#nav_scroll")

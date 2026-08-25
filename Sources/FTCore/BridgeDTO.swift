@@ -1,6 +1,6 @@
 // BridgeDTO.swift
 // ホスト(macOS CLI)とXCUITestランナー(iOSシミュレータ)の間で共有するAPI型。
-// このファイルは Runner/FTesterRunnerUITests ターゲットにも直接コンパイルされるため、
+// このファイルは Runner/FleetestRunnerUITests ターゲットにも直接コンパイルされるため、
 // Foundation 以外に依存してはならない。
 
 import Foundation
@@ -947,7 +947,7 @@ public enum RotationSettle {
 }
 
 /// **スクロールの向き**(コンテンツ基準。標準用語どおり `.down` = 下に読み進める)。
-/// Shirates の `ScrollDirection` と同じ構成(`None` は ftester では Optional が担うため持たない)。
+/// Shirates の `ScrollDirection` と同じ構成(`None` は fleetest では Optional が担うため持たない)。
 /// **指の動きとは逆**なので、ジェスチャへの写像はここに1箇所だけ置く
 public enum FTScrollDirection: String, Codable, CaseIterable, Sendable {
     case down, up, right, left
@@ -1106,7 +1106,7 @@ public struct OKResponse: Codable {
 }
 
 /// POST /appstate(DSL の appIs)。読み取り専用でセッション不要
-/// (両ブリッジとも requireApp() を経由しない。同期相手: Runner/FTesterRunnerUITests/BridgeRouter.swift handleAppState /
+/// (両ブリッジとも requireApp() を経由しない。同期相手: Runner/FleetestRunnerUITests/BridgeRouter.swift handleAppState /
 /// InAppBridge/Sources/InAppBridge.swift handleAppState)。
 public struct AppStateRequest: Codable {
     public var bundleID: String

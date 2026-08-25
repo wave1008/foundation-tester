@@ -1,4 +1,4 @@
-// ftester-scenarios(scenarios/ ターゲット)の CLI 実装。
+// fleetest-scenarios(scenarios/ ターゲット)の CLI 実装。
 //   list [--json]                       … シナリオ一覧
 //   run --scenario <クラス名.メソッド名>  … 1 シナリオを実行(1 プロセス = 1 シナリオ)
 // --json 指定時は NDJSON イベント(FTCore/ScenarioEvent)を stdout に流す。
@@ -20,8 +20,8 @@ public enum ScenarioRunnerMain {
 
 struct Root: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        commandName: "ftester-scenarios",
-        abstract: "List and run Swift DSL scenarios (the runner invoked by ftester run)",
+        commandName: "fleetest-scenarios",
+        abstract: "List and run Swift DSL scenarios (the runner invoked by fleetest run)",
         subcommands: [ListScenarios.self, RunScenario.self]
     )
 }
@@ -220,7 +220,7 @@ struct RunScenario: AsyncParsableCommand {
             throw ExitCode(64)
         }
 
-        // ドライバ構築(FTester.swift の DriverOptions と同じパターン)。
+        // ドライバ構築(Fleetest.swift の DriverOptions と同じパターン)。
         // hybrid: primary=in-app、fallback=XCUITest ブリッジ(springboard 参照)を StepExecutor へ。
         let driver: AppDriver
         var fallbackDriver: AppDriver?
@@ -411,7 +411,7 @@ struct RunScenario: AsyncParsableCommand {
         emit(started)
 
         let healCacheURL = projectDir.map {
-            URL(fileURLWithPath: $0).appendingPathComponent(".ftester/heal-cache.json")
+            URL(fileURLWithPath: $0).appendingPathComponent(".fleetest/heal-cache.json")
         }
         // `#id` の実在照合に使う台帳(dry-run 専用。ft_snapshot が貯める。SelectorInventory)
         let selectorInventoryURL = projectDir.map {
@@ -474,7 +474,7 @@ struct RunScenario: AsyncParsableCommand {
                     }
                 }
             }
-            reader.name = "ftester-control"
+            reader.name = "fleetest-control"
             reader.start()
         }
 
@@ -484,7 +484,7 @@ struct RunScenario: AsyncParsableCommand {
                 descriptor.run()
                 continuation.resume()
             }
-            thread.name = "ftester-dsl"
+            thread.name = "fleetest-dsl"
             thread.stackSize = 4 << 20
             FTRuntime.bootstrap(core: core, dslThread: thread)
             thread.start()

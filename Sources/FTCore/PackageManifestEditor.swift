@@ -1,7 +1,7 @@
 // PackageManifestEditor.swift
-// Package.swift のマーカー区間(ftester projects begin/end)を全置換で更新する。
-// プロジェクト毎の executableTarget "ftester-scenarios-<name>" はこの区間に自動生成され、
-// ftester project create/sync だけが書き換える(手編集禁止)。
+// Package.swift のマーカー区間(fleetest projects begin/end)を全置換で更新する。
+// プロジェクト毎の executableTarget "fleetest-scenarios-<name>" はこの区間に自動生成され、
+// fleetest project create/sync だけが書き換える(手編集禁止)。
 // 書換後は swift package dump-package で構文検証し、失敗時は元の内容へロールバックする。
 
 import Foundation
@@ -28,12 +28,12 @@ public enum PackageManifestEditorError: Error, LocalizedError {
 
 public enum PackageManifestEditor {
     public static let beginMarker =
-        "// === ftester projects begin(ftester project create/sync が自動生成。手編集禁止)==="
+        "// === fleetest projects begin(fleetest project create/sync が自動生成。手編集禁止)==="
     public static let endMarker =
-        "// === ftester projects end ==="
+        "// === fleetest projects end ==="
 
     /// 1 プロジェクト分の executableTarget エントリ(targets 配列内、8 スペースインデント)。
-    /// external = true(ftester init が生成する受け手のパッケージ)では FTScenarioRunner/FTDSL を
+    /// external = true(fleetest init が生成する受け手のパッケージ)では FTScenarioRunner/FTDSL を
     /// 内部ターゲット参照ではなく `.product(name:..., package: "foundation-tester")` で引く。
     public static func targetEntry(for name: String, external: Bool = false) -> String {
         // deps は literal に補間されるため 8 スペースのストリップ対象外。最終ファイルの
@@ -46,7 +46,7 @@ public enum PackageManifestEditor {
             : #"["FTScenarioRunner", "FTDSL"]"#
         return """
                 .executableTarget(
-                    name: "ftester-scenarios-\(name)",
+                    name: "fleetest-scenarios-\(name)",
                     dependencies: \(deps),
                     path: "TestProjects/\(name)/scenarios",
                     exclude: ["_disabled"],
@@ -110,7 +110,7 @@ public enum PackageManifestEditor {
         }
         let sectionText = String(content[beginRange.upperBound..<endRange.lowerBound])
         let regex = try NSRegularExpression(
-            pattern: #"name:\s*"ftester-scenarios-([A-Za-z0-9_-]+)""#)
+            pattern: #"name:\s*"fleetest-scenarios-([A-Za-z0-9_-]+)""#)
         let range = NSRange(sectionText.startIndex..., in: sectionText)
         return regex.matches(in: sectionText, range: range).compactMap { match in
             Range(match.range(at: 1), in: sectionText).map { String(sectionText[$0]) }

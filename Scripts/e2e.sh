@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# ftester 自身の E2E を全 SUT で回す。
+# fleetest 自身の E2E を全 SUT で回す。
 #
 # SUT は UI フレームワークごとに5つある(どれも画面・#id・ラベルは同じ契約。
 # 唯一の正は E2EAppCMP/docs/ui-contract.md、各 SUT の差分は <SUT>/docs/ui-contract.md):
@@ -44,13 +44,13 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
-FTESTER="$ROOT/.build/debug/ftester"
+FLEETEST="$ROOT/.build/debug/fleetest"
 
 FORCE_REBUILD=0
 RUN_IOS=1
 RUN_ANDROID=1
 RECORD=0
-# 性能計測モード(各 run へ --performance を渡す。ftester 側が run 開始前にレーンを揃える)
+# 性能計測モード(各 run へ --performance を渡す。fleetest 側が run 開始前にレーンを揃える)
 PERFORMANCE=0
 # エンジンを明示した(--ios-inapp / --ios-xcuitest)= iOS のエンジン検証が目的。Android は回さない
 IOS_ENGINE_ONLY=0
@@ -85,7 +85,7 @@ if [ "$IOS_ENGINE_ONLY" = 1 ] && [ "$RUN_IOS" = 0 ]; then
   exit 2
 fi
 
-[ -x "$FTESTER" ] || { echo "❌ $FTESTER がありません(swift build --product ftester)" >&2; exit 1; }
+[ -x "$FLEETEST" ] || { echo "❌ $FLEETEST がありません(swift build --product fleetest)" >&2; exit 1; }
 if [ "$RECORD" = 1 ]; then
   command -v jq >/dev/null || { echo "❌ --record には jq が必要です" >&2; exit 1; }
   command -v python3 >/dev/null || { echo "❌ --record には python3 が必要です" >&2; exit 1; }
@@ -105,8 +105,8 @@ needs_rebuild() {  # $1 = 成果物パス, $2.. = 監視するソースディレ
 # in-app/xcuitest 両方変えた回の E2E 254 本が全部 engine=xcuitest だった)。
 # **警告だけで落とさない** —— 検知は警告から始める、が本リポジトリの方針。
 # 一覧の定義元は Sources/FTCore/BridgeSourceSet.swift(ここに二重に書かない)
-engine_digest() { "$FTESTER" api bridge-sources --set "$1" --digest 2>/dev/null; }
-engine_marker() { echo "$ROOT/.ftester/$1-e2e-verified"; }
+engine_digest() { "$FLEETEST" api bridge-sources --set "$1" --digest 2>/dev/null; }
+engine_marker() { echo "$ROOT/.fleetest/$1-e2e-verified"; }
 # このスイートが回す iOS エンジンと、回さない側
 RUN_ENGINE=inapp; SKIP_ENGINE=xcuitest
 # **`[ … ] && { … }` の形にしない**(偽のとき終了ステータス 1 を残す。末尾の exit の項も参照)
@@ -146,7 +146,7 @@ run_profile() {  # $1 = プロジェクト名, $2 = プロファイル名
   # 値は空白を含まない固定の1語なので、未クォートの変数展開で「空なら消える」を使う
   local perf_flag=""
   [ "$PERFORMANCE" = 1 ] && perf_flag="--performance"
-  if "$FTESTER" run --project "$1" --profile "$profile" $perf_flag; then
+  if "$FLEETEST" run --project "$1" --profile "$profile" $perf_flag; then
     echo "✅ $1 / $profile"
   else
     echo "❌ $1 / $profile"

@@ -12,7 +12,7 @@ final class PlanBridgeTests: XCTestCase {
         repoRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("ftplanbridge-\(UUID().uuidString)")
         try FileManager.default.createDirectory(
-            at: repoRoot.appendingPathComponent(".ftester"), withIntermediateDirectories: true)
+            at: repoRoot.appendingPathComponent(".fleetest"), withIntermediateDirectories: true)
     }
 
     override func tearDownWithError() throws {

@@ -1,12 +1,12 @@
 // ScenarioHost.swift
-// ftester-scenarios(シナリオランナー)をサブプロセスとして起動するホスト側クライアント。
+// fleetest-scenarios(シナリオランナー)をサブプロセスとして起動するホスト側クライアント。
 // CLI / MCP はこれを通してシナリオの一覧取得・実行を行う。
 // サブプロセス方式の利点: シナリオのコンパイルエラー/クラッシュがホストを巻き添えにしない、
 // ホスト常駐中も再ビルドだけで反映、1シナリオ1プロセスの分離。
 
 import Foundation
 
-/// シナリオのメタデータ(ftester-scenarios list --json の1エントリ)
+/// シナリオのメタデータ(fleetest-scenarios list --json の1エントリ)
 public struct ScenarioInfo: Codable, Sendable, Hashable {
     /// クラス名.メソッド名
     public let id: String
@@ -154,13 +154,13 @@ public enum ScenarioHost {
     /// 受け手は原因(改名の取り残し)に辿り着けない(外部フィードバック 2026-08-06)。
     /// 器のディレクトリは 2026-08-05 に `Projects/`→`TestProjects/` /
     /// `Scenarios/`→`scenarios/` へ改名しており、Package.swift が旧名のまま残ると
-    /// `invalid custom path` で落ちる。直すのは `ftester project sync` の1手。
+    /// `invalid custom path` で落ちる。直すのは `fleetest project sync` の1手。
     static func buildHint(_ tail: String, project: TestProject) -> String {
         guard tail.contains("invalid custom path") else { return "" }
         return "\n\nHint: Package.swift still points at a path that no longer exists."
             + " The scenario directory is TestProjects/\(project.name)/scenarios"
             + " (renamed from Projects/…/Scenarios on 2026-08-05)."
-            + " Run `ftester project sync` to rewrite the ftester-managed region of Package.swift."
+            + " Run `fleetest project sync` to rewrite the fleetest-managed region of Package.swift."
     }
 
     public static func build(project: TestProject, log: ((String) -> Void)? = nil) throws {
@@ -188,7 +188,7 @@ public enum ScenarioHost {
     /// ランナー実行ファイルの場所: packageRoot/.build/debug(そのプロジェクトを所有する repo)→
     /// 自 executable と同ディレクトリ(release ビルドや別 build-path のフォールバック)→
     /// swift build --show-bin-path。前2つは swift を呼ばないファイル確認のみ。
-    /// packageRoot を最優先にするのは、外部パッケージ構成で ftester バイナリ(TOOL_ROOT/.build/debug)の
+    /// packageRoot を最優先にするのは、外部パッケージ構成で fleetest バイナリ(TOOL_ROOT/.build/debug)の
     /// 隣にクローンの同名 product が居ると誤ってそれを実行するため(受け手の product は
     /// WORK_DIR/.build/debug に建つ。所有 repo = packageRoot が正)。
     /// --show-bin-path(swift 起動)は最後: swift test 実行中(SPM ビルドロック保持中)に呼ぶと
@@ -470,7 +470,7 @@ public enum ScenarioHost {
     public static func dryRunSteps(project: TestProject,
                                    scenarioID: String) async throws -> [ScenarioEvent] {
         let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("ftester-dryrun-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("fleetest-dryrun-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: tempDir) }
 
         var events: [ScenarioEvent] = []

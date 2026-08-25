@@ -1,5 +1,5 @@
 // 03_テキスト入力.swift
-// ftester 機能: `type` コマンドと入力値の echo 検証(単一行/パスワード/型セレクタ/clearInput/
+// fleetest 機能: `type` コマンドと入力値の echo 検証(単一行/パスワード/型セレクタ/clearInput/
 // キーボード表示状態/pressEnter・末尾改行の IME アクション)をまとめて検証する。
 // SUT の入力欄は **UIKit の UITextField / UITextView**(SwiftUI TextField ではない)。
 // ツリー上の型は TextField / SecureTextField / TextView に分かれるため、型セレクタでも引ける。

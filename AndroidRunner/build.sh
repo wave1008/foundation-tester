@@ -1,5 +1,5 @@
 #!/bin/bash
-# ftester Android ブリッジ APK のビルド(gradle 不要、Android SDK 付属ツールのみ)。
+# fleetest Android ブリッジ APK のビルド(gradle 不要、Android SDK 付属ツールのみ)。
 # 使い方:
 #   ./build.sh              ビルドして prebuilt/ftbridge.apk を更新
 #   ./build.sh --install    さらに接続中の全デバイスへ adb install -r

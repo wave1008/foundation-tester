@@ -1,4 +1,4 @@
-// run(ftester api run)がデバイスを使用中であることを示すハートビート lease。
+// run(fleetest api run)がデバイスを使用中であることを示すハートビート lease。
 // 書き手: RunOrchestrator(FTCore、closure 注入経由)。読み手: ApiMonitorCommand(watchdog の
 // inRun 判定)。RecordingLease.swift の姉妹型(同じ pid+mtime 鮮度の lease。示す事象が違うだけ)。
 

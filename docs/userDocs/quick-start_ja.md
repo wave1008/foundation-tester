@@ -1,21 +1,21 @@
 # クイックスタート
 
-セットアップ完了後、最初の1本を実行するまでの最短手順です。`/ftester:ftester-setup`
+セットアップ完了後、最初の1本を実行するまでの最短手順です。`/fleetest:fleetest-setup`
 ([はじめに](getting-started_ja.md)参照)が完了している前提です。未導入の場合は先にそちらを行ってください。
 
 ## 1. 前提: セットアップ済みであること
 
-`TestProjects/` ディレクトリを含む作業フォルダが既にあるはずです(`/ftester:ftester-setup`
+`TestProjects/` ディレクトリを含む作業フォルダが既にあるはずです(`/fleetest:fleetest-setup`
 が作成します)。無ければ先に[はじめに](getting-started_ja.md)を行ってください。
 
 ## 2. プロファイルを用意する
 
 何かを実行する前に、アプリプロファイル(対象アプリ)・マシンプロファイル(デバイス)・
 実行プロファイル(アプリ+デバイスの組み合わせ)が必要です。Claude Code で
-`/ftester:ftester-profiles` スキルを使うか、次のコマンドを直接実行します。
+`/fleetest:fleetest-profiles` スキルを使うか、次のコマンドを直接実行します。
 
 ```bash
-ftester profile setup --platform ios --app-id com.example.myapp --auto-device
+fleetest profile setup --platform ios --app-id com.example.myapp --auto-device
 ```
 
 `--auto-device` を付けると、このマシンで利用可能なシミュレータ/エミュレータを自動で選定します。
@@ -25,7 +25,7 @@ ftester profile setup --platform ios --app-id com.example.myapp --auto-device
 
 次の3つの経路はいずれも `TestProjects/<プロジェクト>/scenarios/` 配下に同じ形の Swift ファイルを作ります。
 
-- Claude Code に書かせる(`/ftester:ftester-scenario`)—— 実画面を一緒に探索しながら実セレクタを
+- Claude Code に書かせる(`/fleetest:fleetest-scenario`)—— 実画面を一緒に探索しながら実セレクタを
   採取してファイルを書きます。
 - VSCode 拡張のライブ操作パネルで録画する(アプリを操作すると自動でシナリオが生成されます)。
 - 手書きする。
@@ -59,7 +59,7 @@ class ログインテスト {
 
 セレクタ(`#email`・`#login_btn` 等)は実画面から採る必要があります。
 [セレクタ記法](./selector/selector_expression_ja.md)を参照するか、実画面から自動で採取してくれる
-`/ftester:ftester-scenario` を使ってください。
+`/fleetest:fleetest-scenario` を使ってください。
 
 ## 4. デバイス無しで検証する(dry-run)
 
@@ -67,17 +67,17 @@ class ログインテスト {
 アサーション0個の `expectation` を数秒で検知します。
 
 ```bash
-ftester run --dry-run --scenario ログインテスト
+fleetest run --dry-run --scenario ログインテスト
 ```
 
 ## 5. デバイスで実行する
 
 ```bash
 # クローン構成(foundation-tester のクローン内で作業している場合)
-swift run ftester run --profile <実行プロファイル名>
+swift run fleetest run --profile <実行プロファイル名>
 
 # 外部パッケージ構成(TestProjects/ を持つ別の作業フォルダ)
-../foundation-tester/.build/debug/ftester run --profile <実行プロファイル名>
+../foundation-tester/.build/debug/fleetest run --profile <実行プロファイル名>
 ```
 
 `--profile` を渡すと、ステップ2で用意した実行プロファイルからアプリ・デバイス・

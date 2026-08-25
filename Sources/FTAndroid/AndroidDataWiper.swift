@@ -26,7 +26,7 @@ public enum AndroidDataWiper {
     /// (GUI は stderr を出力チャネルへ逐次表示する。runHandler.ts 参照)。
     /// status はデバイス単位のフェーズ通知(デバイス名, "stopping"|"rebooting"|"done"|"failed")。
     /// ApiRunCommand が NDJSON の wipeStatus イベントに変換する(同期相手:
-    /// vscode-ftester/src/model.ts の WipeStatusEvent)
+    /// vscode-fleetest/src/model.ts の WipeStatusEvent)
     public static func wipeBloatedAVDs(
         devices: [ResolvedDevice], thresholdGB: Double, locale: String,
         status: (@Sendable (String, String) -> Void)? = nil,

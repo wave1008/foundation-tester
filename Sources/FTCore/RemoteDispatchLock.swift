@@ -2,13 +2,13 @@
 // 同一リモートホストへの二重ディスパッチ防止(docs/remote-runner.md §5「ジョブは直列化」)。
 // フリート内の重複は FleetProfile.validate で防げるが、別フリート・別人・CLI/GUI 併走による
 // 同一ホストへの二重実行は防げない ―― そこをリモート側のロックファイルで塞ぐ。
-// ssh 実行・プロセス起動はここに置かない(呼び出し側 = Sources/ftester/RemoteRunDispatcher.swift)。
+// ssh 実行・プロセス起動はここに置かない(呼び出し側 = Sources/fleetest/RemoteRunDispatcher.swift)。
 // ここは①ロックの中身の組み立て・解析②ssh で叩く1本のコマンド文字列の組み立て、だけを行う
 // 純粋関数(結果は完全一致でテストする)。
 
 import Foundation
 
-/// ロック取得側(ローカル)の情報。`<base>/.ftester/dispatch.lock/info.json` の中身
+/// ロック取得側(ローカル)の情報。`<base>/.fleetest/dispatch.lock/info.json` の中身
 public struct RemoteDispatchLockInfo: Codable, Equatable, Sendable {
     /// 発行側(ローカル、= ディスパッチを実行しているマシン)のホスト名。
     /// 「誰が掴んでいるか」を人間へ示すための表示専用の値で、照合には使わない
@@ -41,10 +41,10 @@ public struct RemoteDispatchLockInfo: Codable, Equatable, Sendable {
 
 public enum RemoteDispatchLock {
 
-    /// **プロジェクト非依存・ホストに1本**(TestProject.stateDir 配下の per-project `.ftester/`
+    /// **プロジェクト非依存・ホストに1本**(TestProject.stateDir 配下の per-project `.fleetest/`
     /// とは別物 ―― 競合はデバイスというホスト全体の資源を巡るもので、プロジェクト単位ではない)
     public static func lockDirPath(base: String) -> String {
-        base + "/.ftester/dispatch.lock"
+        base + "/.fleetest/dispatch.lock"
     }
 
     public static func infoFilePath(base: String) -> String {
@@ -67,7 +67,7 @@ public enum RemoteDispatchLock {
     /// (相手の完了を待つ / stuck なら --force-lock で奪う)を必ず含める
     public static func heldMessage(_ info: RemoteDispatchLockInfo?) -> String {
         "another dispatch is already running on this remote host (\(holderDescription(info)))"
-            + " — wait for it to finish, run `ftester remote unlock --host <host>` if it is your own"
+            + " — wait for it to finish, run `fleetest remote unlock --host <host>` if it is your own"
             + " dispatch that died, or pass --force-lock if it is stuck"
             + " (docs/remote-runner.md §5)"
     }
@@ -99,12 +99,12 @@ public enum RemoteDispatchLock {
     // シングルクォートで無害化する ―― JSON 本文にそれらの文字が来ても展開されない)
 
     /// 取得コマンド。**`mkdir <leaf>` の原子性がロックの実体**(`test -e` → 作成の2段は
-    /// 競合に対して無意味 ―― docs/remote-runner.md §5)。親ディレクトリ(.ftester/)だけは
+    /// 競合に対して無意味 ―― docs/remote-runner.md §5)。親ディレクトリ(.fleetest/)だけは
     /// `mkdir -p` で先に用意する(-p は「既存なら成功」なので、こちらに原子性を持たせては
     /// いけない。leaf の `mkdir` に -p を付けないのはそのため)。mkdir が失敗(既存)すれば
     /// この1本のコマンド全体が非0で終わり、info.json は書かれない
     public static func acquireCommand(base: String, info: RemoteDispatchLockInfo) -> String {
-        let parent = RemoteShell.quote(base + "/.ftester")
+        let parent = RemoteShell.quote(base + "/.fleetest")
         let leaf = RemoteShell.quote(lockDirPath(base: base))
         let writeInfo = writeInfoCommand(base: base, info: info)
         return "mkdir -p \(parent) && mkdir \(leaf) 2>/dev/null && \(writeInfo)"
@@ -160,7 +160,7 @@ public enum RemoteDispatchLock {
     }
 }
 
-/// `ftester remote unlock`: **自分の死んだディスパッチが残したロックだけ**を外す判定(純粋関数)。
+/// `fleetest remote unlock`: **自分の死んだディスパッチが残したロックだけ**を外す判定(純粋関数)。
 /// `--force-lock` は他人の走っている run を奪えるので、残ったロックの片付けにそれを使わせない
 /// (受け手要望 2026-08-23: 複数人でフリートを共有すると、残ったロック + --force-lock が事故になる)。
 ///

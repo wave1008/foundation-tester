@@ -2,7 +2,7 @@
 // 「この要素をセレクタとしてどう綴るか」の唯一の実装。**MCP(ft_tap 等の推奨セレクタ・注記)と
 // DSL/StepExecutor(自己修復の書き戻し)の両方が使う** —— 別々に持つと、同じ画面で
 // 「書けるセレクタ」の判定が食い違う(幾何を TapTargetGeometry へ寄せたのと同じ理由)。
-// 元は ftester-mcp/MCPServer+Hints.swift にあったが、自己修復(StepExecutor+Actions.swift)が
+// 元は fleetest-mcp/MCPServer+Hints.swift にあったが、自己修復(StepExecutor+Actions.swift)が
 // 修復結果を利用者の .swift ソースへ書き戻す経路でも同じ「書けるか」の判定が要るため
 // FTCore へ移した。MCPServer 側は typealias + 転送だけを残す
 // (RefGuard.swift が TapTargetGeometry/OcclusionGeometry へ転送しているのと同じ形)。

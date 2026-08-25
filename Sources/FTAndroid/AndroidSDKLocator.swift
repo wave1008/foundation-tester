@@ -45,7 +45,7 @@ public enum AndroidSDKLocator {
     /// 上の理由文に添える解決手段。モニターのダイアログは導入ボタンを併記するので使わない
     /// (ボタンの隣に同じ案内が並ぶため)
     public static let avdManagerInstallHint =
-        "they can be installed with `ftester api install-cmdline-tools`"
+        "they can be installed with `fleetest api install-cmdline-tools`"
 
     /// cmdline-tools/latest → cmdline-tools/*(名前順)→ tools(旧レイアウト)の順
     public static func findAVDManager() -> URL? {

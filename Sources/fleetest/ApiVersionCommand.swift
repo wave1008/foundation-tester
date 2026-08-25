@@ -1,0 +1,25 @@
+// VSCode拡張の起動時プレフライト向け: プロトコル版(FTCore.fleetestProtocolVersion)を1行JSONで
+// stdout に出力する(fleetest api version)。診断メッセージは無い(stderr にも何も出さない)。
+// 対向: vscode-fleetest/src/compatCheck.ts。
+
+import ArgumentParser
+import Foundation
+import FTCore
+
+struct ApiVersionCommand: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "version",
+        abstract: "Print the protocol version as {\"protocol\": <version>} JSON on stdout")
+
+    func run() async throws {
+        let output = ApiVersionOutput(protocol: fleetestProtocolVersion)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let data = try encoder.encode(output)
+        print(String(data: data, encoding: .utf8)!)
+    }
+}
+
+private struct ApiVersionOutput: Encodable {
+    let `protocol`: Int
+}

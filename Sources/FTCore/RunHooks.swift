@@ -5,7 +5,7 @@
 // 存在すれば実行する、それだけ(プロファイルに書く項目を増やさない)。
 //
 // ここは**パス解決と実行可否の判定だけ**を行う純粋関数(I/O なし)。実際の起動・環境変数の
-// 組み立て・孤児の回収は Sources/ftester/RunHookRunner.swift。
+// 組み立て・孤児の回収は Sources/fleetest/RunHookRunner.swift。
 
 import Foundation
 
@@ -150,7 +150,7 @@ public struct RunHookLeaseInfo: Codable, Equatable, Sendable {
 
 public enum RunHookLease {
 
-    /// `<stateDir>/hooks/`(stateDir = リポジトリルートの `.ftester`)。**プロジェクト非依存**
+    /// `<stateDir>/hooks/`(stateDir = リポジトリルートの `.fleetest`)。**プロジェクト非依存**
     /// —— 孤児が掴んでいるのはポートというホスト全体の資源で、次に走る run が別プロジェクトでも
     /// 同じ衝突を起こす(RemoteDispatchLock がホストに1本なのと同じ理由)
     public static func directory(stateDir: URL) -> URL {

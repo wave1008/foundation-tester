@@ -1,5 +1,5 @@
 // 04_ジェスチャ.swift
-// ftester 機能: `tap` の連打カウント / `tap(holdSeconds:)`(長押し)と通常タップの区別 /
+// fleetest 機能: `tap` の連打カウント / `tap(holdSeconds:)`(長押し)と通常タップの区別 /
 // `swipe` 4方向・`swipePointToPoint` / `pinchOut`・`pinchIn`(2本指ズーム)・`doubleTap`・
 // `swipeBy`(斜めを含む相対ドラッグ)をまとめて検証する。
 // SUT 側は SwiftUI の DragGesture / onLongPressGesture / MagnificationGesture / TapGesture で検出する。

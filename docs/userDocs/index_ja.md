@@ -1,8 +1,8 @@
-# ftester (foundation-tester) ドキュメント
+# fleetest mobile ドキュメント
 
 [in English](index.md)
 
-ftester は macOS 上で動く iOS / Android アプリの E2E テストツールです。シナリオは Shirates 風の
+fleetest は macOS 上で動く iOS / Android アプリの E2E テストツールです。シナリオは Shirates 風の
 Swift DSL で書き、LLM なしで決定的に再生します。Foundation Models(オンデバイス)が介入するのは
 ステップが失敗したときだけです。テストは Claude Code(MCP)に作らせる・VSCode 拡張で録画する・
 手書きする、の3通りで作れ、どれも同じ `.swift` シナリオになります。
@@ -13,7 +13,7 @@ Swift DSL で書き、LLM なしで決定的に再生します。Foundation Mode
 
 ## 概要
 
-- [ftester とは](overview/about_ja.md)
+- [fleetest とは](overview/about_ja.md)
 - [動作環境](overview/environments_ja.md)
 - [はじめに(インストール)](getting-started_ja.md)
 - [クイックスタート](quick-start_ja.md)
@@ -95,11 +95,11 @@ Swift DSL で書き、LLM なしで決定的に再生します。Foundation Mode
 
 ### 実行
 
-- [シナリオの実行(ftester run)](running/running_scenarios_ja.md)
+- [シナリオの実行(fleetest run)](running/running_scenarios_ja.md)
 - [dry-run(No-Load-Run)](running/dry_run_ja.md)
 - [自己修復とヒールキャッシュ](running/self_healing_ja.md)
 - [並列実行](running/parallel_execution_ja.md)
-- [結果の分析(ftester results・ダッシュボード)](running/results_analysis_ja.md)
+- [結果の分析(fleetest results・ダッシュボード)](running/results_analysis_ja.md)
 
 ### ツール
 

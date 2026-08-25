@@ -3,10 +3,10 @@
 //
 //   lan … ランナーを 0.0.0.0 に bind させ(FT_BIND_ALL=1 を xctestrun に注入)、ランナーが
 //         自分の LAN IPv4 を "FT_BRIDGE_ADDR=<ip>:<port>" として標準出力に 1 行出す。
-//         ホストは既存の .ftester/bridge-<port>.log を読んで宛先を得る(新しい探索機構を作らない)。
+//         ホストは既存の .fleetest/bridge-<port>.log を読んで宛先を得る(新しい探索機構を作らない)。
 //         Mac と端末が同じネットワークに居ること。クライアント分離 WiFi では使えない。
 //   usb … iproxy(brew install libimobiledevice)で USB トンネルを張り 127.0.0.1 を維持する。
-//         LAN 不通の環境向け。iproxy は常駐プロセスなので pid を .ftester に置いて後始末する。
+//         LAN 不通の環境向け。iproxy は常駐プロセスなので pid を .fleetest に置いて後始末する。
 //
 // 選択: FT_IOS_DEVICE_TRANSPORT=lan|usb で明示。未指定なら iproxy があれば usb、無ければ lan
 // (LAN は追加依存が要らないぶん確実に動くので最後の砦にする)。
@@ -54,7 +54,7 @@ public enum IOSDeviceTransportError: Error, LocalizedError {
 public enum IOSDeviceTransport {
 
     /// ランナーが LAN モードで 1 行だけ出す宣言。同期相手:
-    /// Runner/FTesterRunnerUITests/BridgeHTTPServer.swift の announceAddress()
+    /// Runner/FleetestRunnerUITests/BridgeHTTPServer.swift の announceAddress()
     public static let addressMarker = "FT_BRIDGE_ADDR="
 
     /// 選択された方式(環境変数 > iproxy の有無)
@@ -119,7 +119,7 @@ public enum IOSDeviceTransport {
     static func waitForAnnouncedAddress(port: UInt16, repoRoot: URL,
                                         timeoutSeconds: TimeInterval,
                                         log: @escaping (String) -> Void = { _ in }) async throws -> String {
-        let logURL = repoRoot.appendingPathComponent(".ftester/bridge-\(port).log")
+        let logURL = repoRoot.appendingPathComponent(".fleetest/bridge-\(port).log")
         let deadline = Date().addingTimeInterval(timeoutSeconds)
         var blocker: String?
         while Date() < deadline {
@@ -223,7 +223,7 @@ public enum IOSDeviceTransport {
     }
 
     static func pidURL(hostPort: UInt16, repoRoot: URL) -> URL {
-        repoRoot.appendingPathComponent(".ftester/iproxy-\(hostPort).pid")
+        repoRoot.appendingPathComponent(".fleetest/iproxy-\(hostPort).pid")
     }
 
     /// 既存トンネルが生きていれば再利用、無ければ起動して pid を残す
@@ -231,7 +231,7 @@ public enum IOSDeviceTransport {
                             deviceUDID: String, repoRoot: URL) throws {
         if isIproxyRunning(hostPort: hostPort, repoRoot: repoRoot) { return }
         guard let iproxy = iproxyPath() else { throw IOSDeviceTransportError.iproxyMissing }
-        let stateDir = repoRoot.appendingPathComponent(".ftester")
+        let stateDir = repoRoot.appendingPathComponent(".fleetest")
         try? FileManager.default.createDirectory(at: stateDir, withIntermediateDirectories: true)
 
         let process = Process()

@@ -1,11 +1,11 @@
 // LocalConfig.swift
-// マシンローカル設定(~/.config/ftester/config.json)。
+// マシンローカル設定(~/.config/fleetest/config.json)。
 // デフォルトプロジェクト・実機署名・リモートホスト登録簿を保持する。
 // **「このマシンの名前」は持たない**(理由は ProfileResolver.determineMachine の宣言 ——
 // プロファイル名と機械の身元を1つの値に載せると、マシンプロファイルを改名しただけで
 // この Mac の身元まで変わる)。
 // UserDefaults ではなくファイルにするのは、CLI / MCP の複数プロセスで
-// ドメインを揃えて共有するため。リポジトリ内 .ftester/(実行時状態)とも役割を分離する。
+// ドメインを揃えて共有するため。リポジトリ内 .fleetest/(実行時状態)とも役割を分離する。
 
 import Foundation
 
@@ -21,7 +21,7 @@ public struct LocalConfig: Codable, Sendable, Equatable {
     /// 既定のままだと他チームが登録済みの App ID と衝突して自動署名が失敗することがある
     public var bundleIDPrefix: String?
     /// `--host` の論理名 → ssh 実体の登録簿(docs/remote-runner.md §13)。VSCode 設定
-    /// (`ftester.remote.hosts`)ではなくここに置くのは、①CLI が解決の主体になるため
+    /// (`fleetest.remote.hosts`)ではなくここに置くのは、①CLI が解決の主体になるため
     /// ②ワークスペース設定でディスパッチ先を差し替えられる余地を消すため(§15.2)
     public var remoteHosts: [RemoteHostEntry]?
     /// 自己申告の帰属(認証ではない)。run.json/dispatch.lock に「誰が起動したか」を記す。
@@ -80,7 +80,7 @@ public struct LocalConfig: Codable, Sendable, Equatable {
         return ("\(NSUserName())@\(ProcessInfo.processInfo.hostName)", false)
     }
 
-    /// 設定ファイルの場所: $XDG_CONFIG_HOME/ftester/config.json(既定 ~/.config/ftester/config.json)
+    /// 設定ファイルの場所: $XDG_CONFIG_HOME/fleetest/config.json(既定 ~/.config/fleetest/config.json)
     public static func url(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> URL {
@@ -91,7 +91,7 @@ public struct LocalConfig: Codable, Sendable, Equatable {
             base = FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent(".config")
         }
-        return base.appendingPathComponent("ftester/config.json")
+        return base.appendingPathComponent("fleetest/config.json")
     }
 
     /// 読み込み(無い・壊れている場合は空設定)

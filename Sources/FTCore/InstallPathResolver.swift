@@ -1,6 +1,6 @@
 // InstallPathResolver.swift
 // installApp() RPC の親側(オーケストレータ)パス解決。実機・プロセスに触れない純粋ロジックなので
-// ここに切り出して単体テストで固める(実インストール実行は呼び出し側 [ftester ターゲットの
+// ここに切り出して単体テストで固める(実インストール実行は呼び出し側 [fleetest ターゲットの
 // InstallHandlerFactory] が ProfileWorkerFactory.installOne を呼んで行う)。
 
 import Foundation

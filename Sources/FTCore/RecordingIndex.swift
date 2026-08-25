@@ -1,5 +1,5 @@
 // RecordingIndex.swift
-// <runDir>/recordings/index.json の DTO と書き出し。拡張側(vscode-ftester)との契約。
+// <runDir>/recordings/index.json の DTO と書き出し。拡張側(vscode-fleetest)との契約。
 // schemaVersion 2(v1 からの破壊的変更: エントリがワーカー単位→シナリオ単位。拡張側は
 // schemaVersion===2 のみ受け付ける):
 //   { "schemaVersion": 2, "recordings": [ { "scenarioID", "worker", "platform", "file",
@@ -9,7 +9,7 @@
 // 含まれる実録画区間(壁時計。ワーカーの録画区間とシナリオ区間の交差。Android は複数になり得る)。
 // clipsAttempted/clipsFailed/encoderFallback は run 全体の集計(optional。エンコーダ不調で
 // 1本もクリップが取れなかった run も、recordings が空のまま clipsAttempted > 0 で書き出す
-// = その run を拡張の録画タブから消さないため。vscode-ftester/src/recordingsModel.ts と同期)。
+// = その run を拡張の録画タブから消さないため。vscode-fleetest/src/recordingsModel.ts と同期)。
 // フィールド追加のみ(optional)なら ProtocolVersion 不要。この形自体を変える場合は
 // 拡張側の対応するパーサも合わせて直すこと。
 

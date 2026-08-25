@@ -4,5 +4,5 @@
   "requires": "iOS シミュレータ1台にブリッジ + com.ftester.e2e(E2EAppCMP)がインストール済み",
   "maxTurns": 60,
   "expect": "submitted=bench42",
-  "prompt": "ftester の MCP ツール(ft_*)だけを使って、iOS シミュレータ上のアプリ com.ftester.e2e を操作してください。あなたはこのアプリを初めて触ります。\n\nゴール: 「テキスト入力」画面を開き、単一行の入力欄に bench42 と入力してから「送信」ボタンを押し、その画面に表示される submitted= で始まるテキストの値を読み取ること。\n\n手順や使うツールは自分で決めてください。デバイスは ft_list_devices で選びます。\n\n最後に必ず1行だけ次の形式で出力してください: RESULT: <読み取った submitted=… の文字列>\n読み取れなかった場合は RESULT: unknown と出力してください。"
+  "prompt": "fleetest の MCP ツール(ft_*)だけを使って、iOS シミュレータ上のアプリ com.ftester.e2e を操作してください。あなたはこのアプリを初めて触ります。\n\nゴール: 「テキスト入力」画面を開き、単一行の入力欄に bench42 と入力してから「送信」ボタンを押し、その画面に表示される submitted= で始まるテキストの値を読み取ること。\n\n手順や使うツールは自分で決めてください。デバイスは ft_list_devices で選びます。\n\n最後に必ず1行だけ次の形式で出力してください: RESULT: <読み取った submitted=… の文字列>\n読み取れなかった場合は RESULT: unknown と出力してください。"
 }

@@ -36,7 +36,7 @@ final class HTTPTimingCollector: NSObject, URLSessionTaskDelegate, @unchecked Se
         let path: String = task.originalRequest?.url?.path ?? "?"
         // fetchStart→connectEnd = 接続確立(Android は adb forward 越し・応答ごとに切断される)
         // requestEnd→responseStart = 送信完了〜最初のバイト(= ブリッジが accept して処理し終えるまで)
-        var parts: [String] = ["[ftester] httpTiming \(path)"]
+        var parts: [String] = ["[fleetest] httpTiming \(path)"]
         parts.append("total=" + String(format: "%.0f", totalMs))
         parts.append("queue=" + gap(metrics.taskInterval.start, tx.fetchStartDate))
         parts.append("connect=" + gap(tx.connectStartDate, tx.connectEndDate))

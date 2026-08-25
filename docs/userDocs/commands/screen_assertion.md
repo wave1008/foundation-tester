@@ -19,7 +19,7 @@ expectation {
 ## Notes
 
 - Requires **macOS 27+** — on macOS 26 this check is automatically skipped. Check current
-  availability with `ftester doctor`.
+  availability with `fleetest doctor`.
 - Unlike Shirates(Classic)'s `screenIs`, there is no screen-nickname mechanism — you always
   describe what the screen should look like in the call itself.
 

@@ -6,7 +6,7 @@ methods. This page covers where to put the file and the minimal shape it needs.
 ## Where the file goes
 
 Place `.swift` files under `TestProjects/<project>/scenarios/` (any subfolder is fine,
-e.g. `scenarios/Login/`). Running `swift build` (or any `ftester run`) auto-discovers new
+e.g. `scenarios/Login/`). Running `swift build` (or any `fleetest run`) auto-discovers new
 files — there is no registration step.
 
 ## Minimal example

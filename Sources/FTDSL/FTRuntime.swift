@@ -1,4 +1,4 @@
-// DSL のプロセスグローバル実行状態。ftester-scenarios は 1 プロセス = 1 シナリオ実行なので
+// DSL のプロセスグローバル実行状態。fleetest-scenarios は 1 プロセス = 1 シナリオ実行なので
 // カレントコンテキストは 1 個でよい。シナリオ本体は専用スレッド上で同期実行され、
 // コマンドはこのスレッド以外から呼べない(Task 内等からの誤用は明示エラー)。
 
@@ -139,7 +139,7 @@ public final class FTRuntime {
         let (core, thread) = shared.current   // lock は抜けてから core を触る(ロック順序)
         guard let core else {
             fatalError("FTDSL: \(command) was called outside a scenario run"
-                + " (it can only be called during a scenario run via ftester-scenarios run)")
+                + " (it can only be called during a scenario run via fleetest-scenarios run)")
         }
         if let thread, Thread.current !== thread {
             core.recordThreadViolation(command: command)
@@ -401,7 +401,7 @@ public final class FTDriveCore {
         self.scenarioTitle = scenarioTitle
         self.dryRun = dryRun
         self.healCache = HealCache(
-            url: healCacheURL ?? URL(fileURLWithPath: ".ftester/heal-cache.json"))
+            url: healCacheURL ?? URL(fileURLWithPath: ".fleetest/heal-cache.json"))
         // 台帳の照合は dry-run 専用(実行なら解決の成否が答えを出すので、二重に言う意味が無い)
         self.knownIDs = dryRun
             ? selectorInventoryURL.flatMap { SelectorInventory.load(at: $0) }?.ids(platform: platform)

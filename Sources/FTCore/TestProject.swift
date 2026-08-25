@@ -1,6 +1,6 @@
 // TestProject.swift
 // テストプロジェクト = TestProjects/<name>/ 配下のシナリオ+プロファイル+レポートの器。
-// SPM の executableTarget "ftester-scenarios-<name>"(path: TestProjects/<name>/scenarios)と 1:1 対応する。
+// SPM の executableTarget "fleetest-scenarios-<name>"(path: TestProjects/<name>/scenarios)と 1:1 対応する。
 
 import Foundation
 
@@ -16,7 +16,7 @@ public struct TestProject: Sendable, Hashable, Identifiable {
         self.rootURL = rootURL
     }
 
-    public var productName: String { "ftester-scenarios-\(name)" }
+    public var productName: String { "fleetest-scenarios-\(name)" }
 
     /// **小文字 `scenarios/` が正**(2026-08-05 に `Scenarios/` から統一。他の器 —— profiles /
     /// reports / results / docs —— と揃える)。**旧名も受ける**: 既存の受け手のプロジェクトは
@@ -39,7 +39,7 @@ public struct TestProject: Sendable, Hashable, Identifiable {
     /// テスト設計の元資料(仕様・観点)置き場。シナリオの根拠ドキュメント
     public var testbasesDir: URL { docsDir.appendingPathComponent("testbases") }
     /// プロジェクト別の実行時状態(ヒールキャッシュ等)
-    public var stateDir: URL { rootURL.appendingPathComponent(".ftester") }
+    public var stateDir: URL { rootURL.appendingPathComponent(".fleetest") }
 }
 
 public enum ProjectStoreError: Error, LocalizedError {
@@ -52,11 +52,11 @@ public enum ProjectStoreError: Error, LocalizedError {
         switch self {
         case .notFound(let name, let available):
             let hint = available.isEmpty
-                ? "(TestProjects/ is empty — create one with ftester project create)"
+                ? "(TestProjects/ is empty — create one with fleetest project create)"
                 : "(available: \(available.joined(separator: ", ")))"
             return "project not found: \(name) \(hint)"
         case .noProjects(let dir):
-            return "no projects (\(dir.path)). Create one with: ftester project create <name>"
+            return "no projects (\(dir.path)). Create one with: fleetest project create <name>"
         case .ambiguous(let available):
             return "multiple projects exist. Pick one with --project"
                 + " (candidates: \(available.joined(separator: ", ")))"

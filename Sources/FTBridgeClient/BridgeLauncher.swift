@@ -13,7 +13,7 @@ public struct BridgeLauncher {
     /// 36 文字・ダッシュ 5 分割の判定を外れて name= に化ける)ため呼び出し側が明示する
     public let physical: Bool
 
-    var stateDir: URL { repoRoot.appendingPathComponent(".ftester") }
+    var stateDir: URL { repoRoot.appendingPathComponent(".fleetest") }
     /// 実機とシミュレータでビルド成果物(Debug-iphoneos / Debug-iphonesimulator)も
     /// xctestrun も別物なので DerivedData ごと分ける(混在すると findXCTestRun が誤った方を掴む)
     var derivedDataPath: URL {
@@ -22,7 +22,7 @@ public struct BridgeLauncher {
     // ポート別に分離(複数ブリッジ=複数シミュレータの並列運用のため)
     var logPath: URL { stateDir.appendingPathComponent("bridge-\(port).log") }
     var pidPath: URL { stateDir.appendingPathComponent("bridge-\(port).pid") }
-    var projectPath: URL { repoRoot.appendingPathComponent("Runner/FTesterRunner.xcodeproj") }
+    var projectPath: URL { repoRoot.appendingPathComponent("Runner/FleetestRunner.xcodeproj") }
 
     /// --device には名前("iPhone 17")と UDID のどちらも渡せる(シミュレータのみ。実機は UDID 必須)
     var destination: String {
@@ -71,7 +71,7 @@ public struct BridgeLauncher {
             return false
         }
         if let manifestDate = modified(manifest), manifestDate > projectDate { return true }
-        let sourceDir = repoRoot.appendingPathComponent("Runner/FTesterRunnerUITests")
+        let sourceDir = repoRoot.appendingPathComponent("Runner/FleetestRunnerUITests")
         let contents = (try? FileManager.default.contentsOfDirectory(
             at: sourceDir, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
         return contents.contains { (modified($0) ?? .distantPast) > projectDate }
@@ -82,7 +82,7 @@ public struct BridgeLauncher {
         let result = try Shell.run([
             "xcodebuild", "build-for-testing",
             "-project", projectPath.path,
-            "-scheme", "FTesterRunner",
+            "-scheme", "FleetestRunner",
             "-destination", destination,
             "-derivedDataPath", derivedDataPath.path,
         ] + (try codeSigningArguments()), cwd: repoRoot)
@@ -131,7 +131,7 @@ public struct BridgeLauncher {
         return nil
     }
 
-    /// 実機ビルドは署名が要る。team は ~/.config/ftester/config.json の developmentTeam か
+    /// 実機ビルドは署名が要る。team は ~/.config/fleetest/config.json の developmentTeam か
     /// FT_DEVELOPMENT_TEAM。-allowProvisioningUpdates で App ID/プロファイルの自動登録を許す。
     /// シミュレータでは空(署名不要のまま従来どおり)
     func codeSigningArguments() throws -> [String] {
@@ -211,7 +211,7 @@ public struct BridgeLauncher {
             // 起動元の自己申告(/status の ownerRepo。doctor の刈り取り判定が依存)
             env["FT_OWNER_REPO"] = repoRoot.path
             // 実機はデバイス内ループバックがホストから見えないので全インターフェースに開く。
-            // 同期相手: Runner/FTesterRunnerUITests/BridgeHTTPServer.swift の start()
+            // 同期相手: Runner/FleetestRunnerUITests/BridgeHTTPServer.swift の start()
             if physical { env["FT_BIND_ALL"] = "1" }
             // ブリッジ内の所要内訳ログ(既定 off)。ホスト側の FT_HTTP_TIMING と対で使い、
             // 「ホストの actionMs とブリッジのハンドラ計時の差」を突き合わせるためだけのもの
@@ -241,7 +241,7 @@ public struct BridgeLauncher {
         // __TESTROOT__ は xctestrun ファイルのあるディレクトリ基準で解決されるため、
         // コピーは必ず元ファイルと同じディレクトリ(Build/Products/)に置く
         let output = xctestrun.deletingLastPathComponent()
-            .appendingPathComponent("FTesterRunner-\(port).xctestrun")
+            .appendingPathComponent("FleetestRunner-\(port).xctestrun")
         let outData = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
         try outData.write(to: output)
         return output
@@ -250,11 +250,11 @@ public struct BridgeLauncher {
     /// HTTP サーバだけ死んで親 xcodebuild が残留するケースの後始末。起動前に走らせないと
     /// pid ファイルが新プロセスの PID で上書きされ、旧プロセスがどの pid ファイルからも
     /// 参照されない残骸になる。マッチはこのポート専用の xctestrun ファイル名
-    /// (FTesterRunner-<port>.xctestrun。ポートごとに別ファイルなので他ポートは誤爆しない)を
+    /// (FleetestRunner-<port>.xctestrun。ポートごとに別ファイルなので他ポートは誤爆しない)を
     /// コマンドラインに含む xcodebuild のみ対象にする。
     func killOrphanRunners() {
         let xctestrunPath = derivedDataPath
-            .appendingPathComponent("Build/Products/FTesterRunner-\(port).xctestrun").path
+            .appendingPathComponent("Build/Products/FleetestRunner-\(port).xctestrun").path
         guard let ps = try? Shell.run(["ps", "-axo", "pid=,command="]), ps.status == 0 else { return }
         var pids: [Int32] = []
         for line in ps.output.split(separator: "\n") {
@@ -329,11 +329,11 @@ public struct BridgeLauncher {
         return result
     }
 
-    /// doctor の刈り取り用: pid が FTesterRunner のランナーであることを ps で確認してから
+    /// doctor の刈り取り用: pid が FleetestRunner のランナーであることを ps で確認してから
     /// SIGTERM する(PID 再利用で無関係なプロセスを撃たないため)。戻り値 = 停止したか
     public static func reapRunnerProcess(pid: Int32) -> Bool {
         let ps = try? Shell.run(["ps", "-ww", "-p", String(pid), "-o", "command="])
-        guard let ps, ps.status == 0, ps.output.contains("FTesterRunner") else { return false }
+        guard let ps, ps.status == 0, ps.output.contains("FleetestRunner") else { return false }
         kill(pid, SIGTERM)
         confirmDeaths(pids: [pid], timeout: 5)
         return true
@@ -399,7 +399,7 @@ public struct BridgeLauncher {
     /// 特定は stopMatching と同じくプロセスの起動引数(-destination ... id=<UDID>)照合。
     /// stale な pid ファイルはここでは消さない(読み取り専用に徹する。掃除は stopMatching の役割)
     public static func portsMatching(udid: String, repoRoot: URL) -> [UInt16] {
-        let stateDir = repoRoot.appendingPathComponent(".ftester")
+        let stateDir = repoRoot.appendingPathComponent(".fleetest")
         guard let entries = try? FileManager.default.contentsOfDirectory(
             at: stateDir, includingPropertiesForKeys: nil) else { return [] }
         var portByPID: [Int32: UInt16] = [:]
@@ -434,7 +434,7 @@ public struct BridgeLauncher {
     /// (announce 済みブリッジしか見ない scanRunningBridges では、別プロセスが起動した直後の
     /// ランナーが見えず、空きポートに 2 本目を立てて OS の 1 デバイス 1 ランナー制約で全滅する)。
     public static func portsByUDID(_ udids: [String], repoRoot: URL) -> [String: [UInt16]] {
-        let stateDir = repoRoot.appendingPathComponent(".ftester")
+        let stateDir = repoRoot.appendingPathComponent(".fleetest")
         guard !udids.isEmpty,
               let entries = try? FileManager.default.contentsOfDirectory(
                 at: stateDir, includingPropertiesForKeys: nil) else { return [:] }
@@ -467,7 +467,7 @@ public struct BridgeLauncher {
     /// xcodebuild は HTTP スキャンに映らないがこれなら殺せる(生きた XCUITest セッションを残すと
     /// シミュレータが再ブートされ「停止したのに起動中に戻る」症状になる)。戻り値=停止ポート一覧
     public static func stopMatching(udid: String, repoRoot: URL) -> [String] {
-        let stateDir = repoRoot.appendingPathComponent(".ftester")
+        let stateDir = repoRoot.appendingPathComponent(".fleetest")
         guard let entries = try? FileManager.default.contentsOfDirectory(
             at: stateDir, includingPropertiesForKeys: nil) else { return [] }
         var stopped: [String] = []
@@ -509,7 +509,7 @@ public struct BridgeLauncher {
     /// ホスト側の pid ファイルを消せないため、放置すると assignPort がそのポートを使用中と
     /// みなし採番がドリフトする。provision のプランニング前(ProvisionLock 内)から呼ぶ
     public static func sweepStalePidFiles(repoRoot: URL) {
-        let stateDir = repoRoot.appendingPathComponent(".ftester")
+        let stateDir = repoRoot.appendingPathComponent(".fleetest")
         guard let entries = try? FileManager.default.contentsOfDirectory(
             at: stateDir, includingPropertiesForKeys: nil) else { return }
         for entry in entries where entry.lastPathComponent.hasPrefix("bridge-")
@@ -520,7 +520,7 @@ public struct BridgeLauncher {
             if let pidString = try? String(contentsOf: entry, encoding: .utf8),
                let pid = Int32(pidString.trimmingCharacters(in: .whitespacesAndNewlines)) {
                 let ps = try? Shell.run(["ps", "-ww", "-p", String(pid), "-o", "command="])
-                if let ps, ps.status == 0, ps.output.contains("FTesterRunner-\(port).xctestrun") {
+                if let ps, ps.status == 0, ps.output.contains("FleetestRunner-\(port).xctestrun") {
                     continue
                 }
             }
@@ -528,10 +528,10 @@ public struct BridgeLauncher {
         }
     }
 
-    /// .ftester/bridge-*.pid(xcuitest)と bridge-*.inapp(dylib 注入)を走査して全ブリッジを
+    /// .fleetest/bridge-*.pid(xcuitest)と bridge-*.inapp(dylib 注入)を走査して全ブリッジを
     /// 停止する。戻り値は停止したポート一覧
     public static func stopAll(repoRoot: URL) -> [String] {
-        let stateDir = repoRoot.appendingPathComponent(".ftester")
+        let stateDir = repoRoot.appendingPathComponent(".fleetest")
         guard let entries = try? FileManager.default.contentsOfDirectory(
             at: stateDir, includingPropertiesForKeys: nil) else { return [] }
         var stopped: [String] = []
@@ -547,7 +547,7 @@ public struct BridgeLauncher {
                     // 殺す(stopMatching/killOrphanRunners と同方針)。-ww で cmdline 切り詰めを防ぎ、
                     // -xctestrun のポート専用ファイル名で同定する。無関係な再利用 PID は撃たない。
                     let ps = try? Shell.run(["ps", "-ww", "-p", String(pid), "-o", "command="])
-                    if let ps, ps.status == 0, ps.output.contains("FTesterRunner-\(port).xctestrun") {
+                    if let ps, ps.status == 0, ps.output.contains("FleetestRunner-\(port).xctestrun") {
                         kill(pid, SIGTERM)
                         terminated.append(pid)
                         stopped.append(port)
@@ -645,7 +645,7 @@ public struct BridgeLauncher {
         throw LauncherError.timedOut(lastError.map { "\($0)" } ?? "no response", logPath.path)
     }
 
-    /// 検知文字列 "bindFailed(" は Runner/FTesterRunnerUITests/BridgeHTTPServer.swift の
+    /// 検知文字列 "bindFailed(" は Runner/FleetestRunnerUITests/BridgeHTTPServer.swift の
     /// ServerError.bindFailed(errno)(XCTest 失敗ログに Swift 既定の記述で出力される)との言語間契約。
     /// 変更する場合は両方を同期させること。
     private func logTailContainsBindFailed() -> Bool {
@@ -681,9 +681,9 @@ public struct BridgeLauncher {
         }
         let candidates = entries.filter {
             $0.pathExtension == "xctestrun"
-                && $0.lastPathComponent.contains("FTesterRunner")
-                // 自分が生成したポート注入コピー(FTesterRunner-<port>.xctestrun)は除外
-                && !($0.lastPathComponent.hasPrefix("FTesterRunner-"))
+                && $0.lastPathComponent.contains("FleetestRunner")
+                // 自分が生成したポート注入コピー(FleetestRunner-<port>.xctestrun)は除外
+                && !($0.lastPathComponent.hasPrefix("FleetestRunner-"))
         }
         return candidates.max { a, b in
             let da = (try? a.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
@@ -710,14 +710,14 @@ public struct BridgeLauncher {
     }
 
     /// ランナーのビルド入力の最終更新時刻。入力集合は Runner/project.yml の sources と対
-    /// (FTesterRunnerUITests/ + FTesterRunnerApp/ + project.yml + 共有 DTO の BridgeDTO.swift)。
+    /// (FleetestRunnerUITests/ + FleetestRunnerApp/ + project.yml + 共有 DTO の BridgeDTO.swift)。
     /// 取得できない場合は nil = 「判定不能」として再ビルドさせる(古いまま走らせるより安全)
     static func newestRunnerSourceTimestamp(repoRoot: URL) -> Date? {
         var inputs = [
             repoRoot.appendingPathComponent("Runner/project.yml"),
             repoRoot.appendingPathComponent("Sources/FTCore/BridgeDTO.swift"),
         ]
-        for dir in ["Runner/FTesterRunnerUITests", "Runner/FTesterRunnerApp"] {
+        for dir in ["Runner/FleetestRunnerUITests", "Runner/FleetestRunnerApp"] {
             let dirURL = repoRoot.appendingPathComponent(dir)
             guard let entries = try? FileManager.default.contentsOfDirectory(
                 at: dirURL, includingPropertiesForKeys: [.contentModificationDateKey]) else {
@@ -739,7 +739,7 @@ public enum LauncherError: Error, LocalizedError {
     case commandFailed(String, String)
     case xctestrunNotFound(String)
     case notRunning
-    /// ポートでブリッジが応答しているのに、このリポジトリの状態ファイル(.ftester/)に記録が無い。
+    /// ポートでブリッジが応答しているのに、このリポジトリの状態ファイル(.fleetest/)に記録が無い。
     /// 別クローン・別ワークスペースが起動したブリッジを掴んでいる状態。
     case notOwnedByThisRepo(port: UInt16, device: String?, protocolVersion: Int?)
     case timedOut(String, String)
@@ -755,7 +755,7 @@ public enum LauncherError: Error, LocalizedError {
         case .xctestrunNotFound(let path):
             return "xctestrun not found (build-for-testing must run first): \(path)"
         case .notRunning:
-            return "the bridge is not running (no .ftester/bridge.pid)"
+            return "the bridge is not running (no .fleetest/bridge.pid)"
         case .notOwnedByThisRepo(let port, let device, let version):
             // 「起動していません」と言うと事実と食い違う(実際は応答している)。実害: 別クローンの
             // 旧版ブリッジがポートとシミュレータを 7 時間握り、原因の切り分けに時間を要した
@@ -776,7 +776,7 @@ public enum LauncherError: Error, LocalizedError {
             return "port \(port) is in use by another process"
         case .developmentTeamMissing:
             return "building for a physical iOS device requires an Apple Developer Team ID. "
-                + "Set \"developmentTeam\" in ~/.config/ftester/config.json or the "
+                + "Set \"developmentTeam\" in ~/.config/fleetest/config.json or the "
                 + "FT_DEVELOPMENT_TEAM environment variable"
                 + " (the Team ID is the OU of the signing certificate — check with `security find-certificate -c "
                 + "\"Apple Development: <you>\" -p | openssl x509 -noout -subject`; "
@@ -809,7 +809,7 @@ public enum RepoRoot {
         }
         // 1. clone 構成: 実行ディレクトリの上方に Package.swift + Runner/ があればそれ(ツール repo 内実行)。
         //    外部パッケージ構成: 受け手パッケージ(Runner/ 無し)なら、その SPM checkout に foundation-tester が
-        //    展開されているのでそれを使う(.build/checkouts/*/Runner/。ftester CLI がどこでビルドされたかに
+        //    展開されているのでそれを使う(.build/checkouts/*/Runner/。fleetest CLI がどこでビルドされたかに
         //    依らず解決可 = ビルド元のソースツリーが既に無い場合でも #filePath に頼らず済む)。
         //    ※ path 依存(.package(path:))では checkouts が作られないので 2 で解決する。
         var dir = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
@@ -822,18 +822,18 @@ public enum RepoRoot {
             if parent.path == dir.path { break }
             dir = parent
         }
-        // 2. 実行中バイナリの位置から(<TOOL_ROOT>/.build/debug/ftester-mcp 等)。cwd が受け手パッケージに
+        // 2. 実行中バイナリの位置から(<TOOL_ROOT>/.build/debug/fleetest-mcp 等)。cwd が受け手パッケージに
         //    固定される MCP サーバはここで解決される。symlink 解決が必須
         //    (.build/debug は out/Products/Debug への symlink)。
         if let executableRoot = executableRoot() { return executableRoot }
         // 3. 最後のフォールバック: #filePath(コンパイル時に焼かれる自ソースの絶対パス)からツールソース
-        //    へ。SPM local path 依存(--ftester-path)や自前ビルドではソースがそのパスに実在する。
+        //    へ。SPM local path 依存(--fleetest-path)や自前ビルドではソースがそのパスに実在する。
         //    ※ ビルド元のソースが既に削除・移動されていれば #filePath は死んでいる(上の 1/2 で解決)。
         if let toolRoot = toolSourceRoot() { return toolRoot }
         throw LauncherError.commandFailed(
             "repo root detection",
             "bridge assets (Runner/) not found. The foundation-tester sources are required"
-                + " (in the external-package layout, the consumer package .build/checkouts or the --ftester-path sources are used). "
+                + " (in the external-package layout, the consumer package .build/checkouts or the --fleetest-path sources are used). "
                 + "The clone root can also be set explicitly via the FT_TOOL_ROOT environment variable")
     }
 

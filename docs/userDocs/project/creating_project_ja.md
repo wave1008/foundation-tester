@@ -17,10 +17,10 @@ TestProjects/SampleApp/
 │   └── _disabled/                 # コンパイル対象外の退避場所(生成失敗コードの隔離先など)
 ├── reports/                       # シナリオごとの Markdown レポート
 ├── results/                       # 実行結果の JSON データベース(results_analysis_ja.md 参照)
-└── .ftester/                      # ヒールキャッシュ等(プロジェクト別の状態)
+└── .fleetest/                      # ヒールキャッシュ等(プロジェクト別の状態)
 ```
 
-プロジェクトごとに SPM ターゲット `ftester-scenarios-<name>` が対応するため、あるプロジェクトの
+プロジェクトごとに SPM ターゲット `fleetest-scenarios-<name>` が対応するため、あるプロジェクトの
 コンパイルエラーが他のプロジェクトを止めません。`_Main.swift` はターゲットとシナリオランナーを
 つなぐだけのファイルで、通常は編集不要です。
 
@@ -28,27 +28,27 @@ TestProjects/SampleApp/
 
 このプロジェクトの `Package.swift` が foundation-tester を参照する形には2種類あります。
 
-- **外部パッケージ構成**(`/ftester:ftester-setup` の既定): 作業フォルダ自身が
-  foundation-tester のクローンに SPM 経由で依存する `Package.swift` を持ちます(`ftester init`)。
+- **外部パッケージ構成**(`/fleetest:fleetest-setup` の既定): 作業フォルダ自身が
+  foundation-tester のクローンに SPM 経由で依存する `Package.swift` を持ちます(`fleetest init`)。
   `TestProjects/` の資産は作業フォルダ側にあり、ツールのクローンとは分かれているため、
   ツールの更新がシナリオやプロファイルに触れることはありません。
 - **クローン構成**: foundation-tester のクローンの中で直接作業し、`TestProjects/` もその中に
   置かれます。主にツール本体の開発時に使う構成です。
 
-`ftester init` は外部パッケージ構成(`Package.swift` + 最初のテストプロジェクト)を生成します。
-`--ftester-path` はローカルのクローンを指定し(`.package(path:)`)、`--ftester-url` は代わりに
-git URL へ依存させます(`--ftester-version` は最小版を固定するタグ、`--ftester-branch` はタグが
+`fleetest init` は外部パッケージ構成(`Package.swift` + 最初のテストプロジェクト)を生成します。
+`--fleetest-path` はローカルのクローンを指定し(`.package(path:)`)、`--fleetest-url` は代わりに
+git URL へ依存させます(`--fleetest-version` は最小版を固定するタグ、`--fleetest-branch` はタグが
 無い間の検証用にブランチを追従します)。
 
 ## プロジェクトの管理
 
 | コマンド | 説明 |
 |---|---|
-| `ftester project create <name> [--app <bundleID>] [--platform ios\|android\|both]` | 新しいテストプロジェクトを作成し `Package.swift` に登録する |
-| `ftester project list` | テストプロジェクトの一覧と `Package.swift` への登録有無を表示する |
-| `ftester project sync` | `TestProjects/` を走査して `Package.swift` のマーカー区間を再生成する(手動コピーや `git pull` の後に実行する) |
+| `fleetest project create <name> [--app <bundleID>] [--platform ios\|android\|both]` | 新しいテストプロジェクトを作成し `Package.swift` に登録する |
+| `fleetest project list` | テストプロジェクトの一覧と `Package.swift` への登録有無を表示する |
+| `fleetest project sync` | `TestProjects/` を走査して `Package.swift` のマーカー区間を再生成する(手動コピーや `git pull` の後に実行する) |
 
-`Package.swift` のマーカー区間(`// === ftester projects begin/end ===` の間)は
+`Package.swift` のマーカー区間(`// === fleetest projects begin/end ===` の間)は
 `create`/`sync` が全置換で再生成するので、手で編集しないでください。
 
 ## プロジェクト名の制約

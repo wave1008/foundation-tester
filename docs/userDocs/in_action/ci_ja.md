@@ -27,7 +27,7 @@
 bash foundation-tester/Scripts/install.sh --work-dir "$PWD" --skip-extension --skip-mcp --no-doctor
 
 # 実行: --quiet でステップ行を抑制、--junit で JUnit XML を書く
-ftester run --profile ios-xcuitest --quiet --junit reports/junit.xml
+fleetest run --profile ios-xcuitest --quiet --junit reports/junit.xml
 ```
 
 - **exit code**: `0` = 全シナリオ成功 / `1` = 失敗あり(JUnit は失敗時も書かれます)。
@@ -50,7 +50,7 @@ pipeline {
       steps { sh 'bash ../foundation-tester/Scripts/install.sh --work-dir "$PWD" --skip-extension --skip-mcp --no-doctor' }
     }
     stage('Run scenarios') {
-      steps { sh '../foundation-tester/.build/debug/ftester run --profile ios-xcuitest --quiet --junit reports/junit.xml' }
+      steps { sh '../foundation-tester/.build/debug/fleetest run --profile ios-xcuitest --quiet --junit reports/junit.xml' }
     }
   }
   post {
@@ -62,7 +62,7 @@ pipeline {
 
 - デバイスの供給(シミュレータ起動・ブリッジ)は `--profile` 実行が自動で行います。連続ジョブでは
   稼働中のブリッジが再利用され、コールドスタートは初回だけです。
-- ジョブ間で環境を掃除したい場合は、ジョブ末尾に `ftester devices down`(全ブリッジ停止 +
+- ジョブ間で環境を掃除したい場合は、ジョブ末尾に `fleetest devices down`(全ブリッジ停止 +
   シミュレータ/エミュレータ全終了)を置きます。
 
 ## flaky シナリオの扱い(リトライ機構は意図的に無い)
@@ -70,9 +70,9 @@ pipeline {
 CI 用のシナリオ単位リトライは実装していません。自動リトライは不安定さを隠して腐らせるためです。
 代わりに次を使います。
 
-- **検出**: `ftester results flaky` が pass/fail 混在のシナリオを不安定度順に出します
-  (`ftester results insights` は回帰・インフラ起因の失敗・セレクタ陳腐化も検出します)。
-- **ローカル再現**: `ftester run --failed` が前回失敗したシナリオだけを再実行します。
+- **検出**: `fleetest results flaky` が pass/fail 混在のシナリオを不安定度順に出します
+  (`fleetest results insights` は回帰・インフラ起因の失敗・セレクタ陳腐化も検出します)。
+- **ローカル再現**: `fleetest run --failed` が前回失敗したシナリオだけを再実行します。
 - デバイス凍結などインフラ起因の失敗は、**run の内部で自動的に振り直されます**(結果を取り消し、
   別デバイスで再実行)。JUnit には最終結果だけが載ります。これはリトライではなく回復処理です。
 

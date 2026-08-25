@@ -11,7 +11,7 @@
 #   0 = up-to-date        … 最新(または pinned。verdict= で区別する)
 #   0 = pinned            … 版固定(detached HEAD)・git 管理外。更新を勧めない
 #                           (ローカル変更は pinned にしない。dirty= に出すだけで判定は続ける)
-#   3 = update-available  … upstream に未取得のコミットがある。取り込みは /ftester-update
+#   3 = update-available  … upstream に未取得のコミットがある。取り込みは /fleetest-update
 #   1 = unknown           … 判定できない(オフライン・認証不可・クローン不明)。呼び出し側は黙る
 #
 # **`reason=` の値は言語に関わらず英語で書く**。VSCode 拡張の通知に `{reason}` としてそのまま
@@ -20,7 +20,7 @@
 # 末尾の人向けサマリ行だけは日本語(preflight.sh / install.sh と同じ扱い)。
 #
 # 取り込みを自動でやらないのは、更新が pull だけで終わらないため(再ビルド + 拡張の再インストール +
-# プラグイン更新 + Reload Window。実体は Scripts/update.sh / スキルは /ftester-update)。加えて
+# プラグイン更新 + Reload Window。実体は Scripts/update.sh / スキルは /fleetest-update)。加えて
 # install.sh は既存クローンのローカル変更を「確認のうえ破棄」する作りで、無確認の取り込みは
 # 受け手の変更を壊し得る。
 #
@@ -32,7 +32,7 @@ WORK_DIR="$PWD"
 TOOL_ROOT_ARG=""
 # ls-remote がネットワーク不通で張り付くのを防ぐ上限(秒)。拡張の起動時チェックから呼ばれるので
 # 長くできない。超えたら unknown = 黙ってスキップ
-TIMEOUT_SEC="${FTESTER_UPDATE_CHECK_TIMEOUT:-20}"
+TIMEOUT_SEC="${FLEETEST_UPDATE_CHECK_TIMEOUT:-20}"
 
 usage() {
   cat <<'EOF'
@@ -68,7 +68,7 @@ finish() { # <verdict> <exit code> [reason (English)]
     up-to-date) say "✅ Up to date." ;;
     update-available)
       say "🆕 An update is available (local ${local_head:0:8} → upstream ${remote_head:0:8})."
-      say "   Apply it → /ftester-update in Claude Code / manually: bash $tool_root/Scripts/update.sh"
+      say "   Apply it → /fleetest-update in Claude Code / manually: bash $tool_root/Scripts/update.sh"
       say "   (git pull alone does not refresh the CLI, the extension or the skills)" ;;
     pinned) say "⏭️ Not applicable for update checks: ${3:-}" ;;
     *) say "❔ Could not tell: ${3:-}" ;;
@@ -135,7 +135,7 @@ kv remote "$remote"
 kv remote_ref "$remote_ref"
 
 # ---- upstream 側の HEAD(ls-remote。.git を変更しない) -------------------------
-tmp="$(mktemp -t ftester-update-check 2>/dev/null)"
+tmp="$(mktemp -t fleetest-update-check 2>/dev/null)"
 [ -n "$tmp" ] || finish unknown 1 "cannot create a temporary file"
 trap 'rm -f "$tmp"' EXIT
 

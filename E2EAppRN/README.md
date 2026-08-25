@@ -1,6 +1,6 @@
 # ft_e2e_rn
 
-foundation-tester の E2E テスト対象アプリ(SUT)。React Native 0.86(New Architecture 有効) + TypeScript。
+fleetest の E2E テスト対象アプリ(SUT)。React Native 0.86(New Architecture 有効) + TypeScript。
 
 UI 契約(`#id`・ラベル・画面構成)の唯一の正は `E2EAppCMP/docs/ui-contract.md`。
 シナリオは `TestProjects/E2E-RN/scenarios` を参照。

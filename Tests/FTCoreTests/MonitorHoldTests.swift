@@ -1,4 +1,4 @@
-// `ftester monitor pause` の保持ファイル(FTCore.MonitorHold)。
+// `fleetest monitor pause` の保持ファイル(FTCore.MonitorHold)。
 // 期限の判定・冪等な解除・ファイル破損時の安全側(hold 無し扱い)を固定する。
 // 既定パスはホスト共有なので使わない(テストは一時ディレクトリへ隔離)。
 

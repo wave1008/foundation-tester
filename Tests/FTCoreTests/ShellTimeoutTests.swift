@@ -20,9 +20,9 @@ final class ShellTimeoutTests: XCTestCase {
 
     /// timeout 内に終わる通常コマンドは kill されず出力と exit code を通常どおり返す。
     func testFastCommandCompletesWithinTimeout() throws {
-        let result = try Shell.run(["echo", "hello-ftester"], timeout: 10)
+        let result = try Shell.run(["echo", "hello-fleetest"], timeout: 10)
         XCTAssertEqual(result.status, 0)
-        XCTAssertEqual(result.output.trimmingCharacters(in: .whitespacesAndNewlines), "hello-ftester")
+        XCTAssertEqual(result.output.trimmingCharacters(in: .whitespacesAndNewlines), "hello-fleetest")
     }
 
     /// 非ゼロ exit code も timeout 経路で正しく伝播する(タイムアウトと誤検出しない)。

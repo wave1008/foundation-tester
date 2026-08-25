@@ -196,11 +196,11 @@ public enum DriverError: Error, LocalizedError {
         case .bridgeUnreachable(let detail):
             // ハイブリッド/混在実行では背面アプリが suspend され、TCP は受理されても
             // HTTP 応答が返らずタイムアウトになることがある(この case で観測される)。
-            return "Cannot reach the driver (bridge not running, slow response, or — in hybrid/mixed runs — the backgrounded app is suspended so TCP is accepted but no HTTP response comes back. Check iOS: ftester bridge up / Android: adb devices). The inapp/hybrid engines are simulator-only (injection is impossible on physical devices — use an xcuitest profile): \(detail)"
+            return "Cannot reach the driver (bridge not running, slow response, or — in hybrid/mixed runs — the backgrounded app is suspended so TCP is accepted but no HTTP response comes back. Check iOS: fleetest bridge up / Android: adb devices). The inapp/hybrid engines are simulator-only (injection is impossible on physical devices — use an xcuitest profile): \(detail)"
         case .bridgeConnectionRefused(let detail):
             // 接続拒否=ポートで誰も待受していない。実行途中なら対象アプリのプロセス死が最有力
             // (iOS inapp はブリッジがアプリ内常駐のため、アプリが落ちると即接続不能になる)。
-            return "Connection to the driver was refused (nothing listening on the port). If this happened mid-run, the app under test most likely exited or crashed (on iOS inapp the bridge lives inside the app, so it becomes unreachable the moment the app dies). If the app has not been started yet, check iOS: ftester bridge up / Android: adb devices. Detail: \(detail)"
+            return "Connection to the driver was refused (nothing listening on the port). If this happened mid-run, the app under test most likely exited or crashed (on iOS inapp the bridge lives inside the app, so it becomes unreachable the moment the app dies). If the app has not been started yet, check iOS: fleetest bridge up / Android: adb devices. Detail: \(detail)"
         case .badResponse(let status, let body):
             return "The driver returned an error (\(status)): \(body)"
         }

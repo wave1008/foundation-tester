@@ -34,7 +34,7 @@ final class ProjectStoreTests: XCTestCase {
         XCTAssertEqual(all.map(\.name), ["Alpha", "Beta"], "名前順")
 
         let beta = try ProjectStore.find("Beta", repoRoot: repoRoot)
-        XCTAssertEqual(beta.productName, "ftester-scenarios-Beta")
+        XCTAssertEqual(beta.productName, "fleetest-scenarios-Beta")
         XCTAssertEqual(beta.scenariosDir.lastPathComponent, "scenarios")
 
         let picked = try ProjectStore.find(nil, repoRoot: repoRoot, defaultProject: "Alpha")
@@ -74,7 +74,7 @@ final class ProjectStoreTests: XCTestCase {
 final class LocalConfigTests: XCTestCase {
     func testSaveLoadRoundtrip() throws {
         let url = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("FTCoreTests-config-\(UUID().uuidString)/ftester/config.json")
+            .appendingPathComponent("FTCoreTests-config-\(UUID().uuidString)/fleetest/config.json")
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent().deletingLastPathComponent()) }
 
         var config = LocalConfig()
@@ -88,6 +88,6 @@ final class LocalConfigTests: XCTestCase {
 
     func testXDGConfigHome() {
         let url = LocalConfig.url(environment: ["XDG_CONFIG_HOME": "/tmp/xdg"])
-        XCTAssertEqual(url.path, "/tmp/xdg/ftester/config.json")
+        XCTAssertEqual(url.path, "/tmp/xdg/fleetest/config.json")
     }
 }

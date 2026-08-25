@@ -1,6 +1,6 @@
 # リモート実行
 
-`ftester run --host <ホスト>` は、別の Mac へ SSH でジョブを投げ、向こうで普通にローカル実行し、
+`fleetest run --host <ホスト>` は、別の Mac へ SSH でジョブを投げ、向こうで普通にローカル実行し、
 出力と成果物を手元へ持ち帰る機能です。このページはできることとセットアップの流れの要点で、
 詳細な手順は [docs/remote-runner-setup.md](../../remote-runner-setup.md) を参照してください
 (ここでは手順を複製しません)。
@@ -14,10 +14,10 @@
 | レポート・JUnit・録画・run ログの回収 | ✅ |
 | ランナー機の導入・撤去を手元から1コマンド(`remote setup`) | ✅ |
 | 複数ホストの一括診断・掃除(`remote status` / `remote clean`) | ✅ |
-| リモートで単発の `ftester` を走らせる(`remote exec`) | ✅ |
+| リモートで単発の `fleetest` を走らせる(`remote exec`) | ✅ |
 | 複数ホストへの同時実行(フリート。`run --fleet`) | ✅ |
 | 1つのシナリオ集合を台数で分散する(`run --fleet <名前> --split`) | ✅ |
-| リモート実行分が `ftester results` の集計(flaky 検出など)に載る | ✅(既定で回収) |
+| リモート実行分が `fleetest results` の集計(flaky 検出など)に載る | ✅(既定で回収) |
 | モニターのデバイスタブでリモートデバイスの状態・映像を表示 | ✅ |
 
 シナリオとプロファイルは実行のたびに自動転送されるため、編集は常に手元だけで行います
@@ -27,7 +27,7 @@
 
 ```
 発行側の Mac(手元)                     ランナー機
-ftester run --host mac2 …               ~/ftester-runner/               ← 専用ベースディレクトリ
+fleetest run --host mac2 …               ~/fleetest-runner/               ← 専用ベースディレクトリ
   ├ 適合チェック(rev・Xcode)   ssh     ├── foundation-tester/          ← ツール本体のクローン(名前固定・共有)
   ├ 転送(rsync: シナリオ・設定) ────>  └── users/<issuerId>/work/      ← あなたの作業場所(発行者ごと)
   ├ 出力を受け取って表示                     ├── TestProjects/<プロジェクト>/
@@ -35,7 +35,7 @@ ftester run --host mac2 …               ~/ftester-runner/               ← �
 ```
 
 ランナー機がそのマシン自身のために持っている foundation-tester(あれば)には一切触りません ——
-リモートランナーは `~/ftester-runner/` 配下だけで完結します。
+リモートランナーは `~/fleetest-runner/` 配下だけで完結します。
 
 ## ランナー機の前提
 
@@ -48,8 +48,8 @@ ftester run --host mac2 …               ~/ftester-runner/               ← �
 | リモートログイン ON・鍵で入れる | 下のステップ1 |
 | その macOS を知っている版の Homebrew | `brew --version` が動くこと |
 | git が GitHub へ直接出られる(古いプロキシ設定が残っていない) | `git config --global --get-regexp '^https?\.'` が空 |
-| Android SDK と AVD(Android を回すときだけ) | `ftester doctor` |
-| システム言語が英語 + Apple Intelligence 有効(`screenLooksLike`・自己修復を使うときだけ) | `ftester doctor --fm-only` |
+| Android SDK と AVD(Android を回すときだけ) | `fleetest doctor` |
+| システム言語が英語 + Apple Intelligence 有効(`screenLooksLike`・自己修復を使うときだけ) | `fleetest doctor --fm-only` |
 
 ## セットアップの流れ
 
@@ -59,16 +59,16 @@ ftester run --host mac2 …               ~/ftester-runner/               ← �
 2. **ステップ1(発行側)— 鍵で入れるようにする**(`ssh-copy-id` の後、
    `ssh -o BatchMode=yes` が通ることを確認)。
 3. **ステップ2(発行側)— ランナー機を手元から1コマンドで用意する**:
-   `ftester remote setup <ユーザー>@<ホスト> --project <プロジェクト名>`。
+   `fleetest remote setup <ユーザー>@<ホスト> --project <プロジェクト名>`。
 4. **ステップ3 — 版を揃える。** git のコミットと Xcode/macOS の指紋が一致しないとディスパッチは
    止まります。`remote setup` の align ステップが揃えます。
 5. **ステップ4 — マシン名とプロファイル。** 実行プロファイルはマシンプロファイル経由で
    デバイス構成を解決します。
-6. **ステップ5 — 疎通を確認する**: `ftester remote status --host <ユーザー>@<ホスト>`。
-7. **ステップ6 — 最初のディスパッチ**: `ftester run --host <ユーザー>@<ホスト> --profile
+6. **ステップ5 — 疎通を確認する**: `fleetest remote status --host <ユーザー>@<ホスト>`。
+7. **ステップ6 — 最初のディスパッチ**: `fleetest run --host <ユーザー>@<ホスト> --profile
    <実行プロファイル> --scenario <ID>`(初回は数分、以降は数秒で始まります)。
 
-**`/ftester:ftester-remote-setup` は機械作業を `ftester remote setup` に委ねます** ——
+**`/fleetest:fleetest-remote-setup` は機械作業を `fleetest remote setup` に委ねます** ——
 必要なことを聞き、人手が要ることは人へ渡し、結果を報告します。ステップ0の sudo/GUI が要る
 手作業自体は代行しません。
 
@@ -91,9 +91,9 @@ ftester run --host mac2 …               ~/ftester-runner/               ← �
 ## `run --host` と `--fleet`
 
 ```bash
-ftester run --host <名前> --profile <実行プロファイル>          # この回だけ特定のホストへ送る
-ftester run --project <プロジェクト> --fleet <名前>             # フリートの全ホストで同じシナリオを回す
-ftester run --project <プロジェクト> --fleet <名前> --split      # 全ホストで回す代わりに台数で分散する
+fleetest run --host <名前> --profile <実行プロファイル>          # この回だけ特定のホストへ送る
+fleetest run --project <プロジェクト> --fleet <名前>             # フリートの全ホストで同じシナリオを回す
+fleetest run --project <プロジェクト> --fleet <名前> --split      # 全ホストで回す代わりに台数で分散する
 ```
 
 フリートは `TestProjects/<プロジェクト>/profiles/fleets/<名前>.json` に `host`/`profile` の組を
@@ -108,7 +108,7 @@ ftester run --project <プロジェクト> --fleet <名前> --split      # 全�
 マシンプロファイルの `host` を通じてホストの選択になります。拡張が担うのは次の2つです。
 
 - **デバイスモニターの「設定」タブでホストを登録する**(名前・ホスト・作業ベースディレクトリ)。
-  CLI と同じホスト登録簿(`~/.config/ftester/config.json`)を読み書きします。
+  CLI と同じホスト登録簿(`~/.config/fleetest/config.json`)を読み書きします。
 - **マシンプロファイルの編集ダイアログでホストとデバイスを追加する** —— ホストを切り替えると
   その機械に実在するデバイスの一覧に切り替わり、その場でデバイスを新規作成することもできます。
 

@@ -1,6 +1,6 @@
 // JUnitMerge.swift
-// `ftester run --fleet <name> --junit <path>` が、各エントリ(子プロセス)が別々に書いた
-// JUnit XML を1本へ結合するための純粋ロジック。呼び手(Sources/ftester/FleetRunner.swift)は
+// `fleetest run --fleet <name> --junit <path>` が、各エントリ(子プロセス)が別々に書いた
+// JUnit XML を1本へ結合するための純粋ロジック。呼び手(Sources/fleetest/FleetRunner.swift)は
 // エントリごとの一時ファイルを読んでここへ渡すだけで、ファイル I/O やプロセス起動は持たない。
 //
 // 入力の xml は `JUnitReportWriter.xml` が書いた形(<testsuites> > <testsuite> > <testcase>)を

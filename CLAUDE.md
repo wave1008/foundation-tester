@@ -1,9 +1,9 @@
-# foundation-tester
+# fleetest mobile
 
 ## 読者の分岐(最初に判定する)
 
 - **このツールを「使う」だけ**(自分のアプリのシナリオを書いて実行したい。ツール本体は改造しない):
-  `/ftester-setup` スキルに従ってセットアップする。手順の全体像は docs/userDocs/getting-started_ja.md。
+  `/fleetest-setup` スキルに従ってセットアップする。手順の全体像は docs/userDocs/getting-started_ja.md。
   **以下の保守者向けルール(委譲方針・コメント規約・i18n・ソース分割等)は適用しない。**
 - **このツール本体を「改造する」保守者**: 以下すべてが適用対象。
 
@@ -14,16 +14,16 @@
 - 受け手の状態判定: `Scripts/preflight.sh`(読み取りのみ。既定モードは引数なしでカレントを見て
   ready=0 / installed=2 / blocked=1 を返す。SKILL.md ステップ0・0.5 と 1:1)。
   **`--runner [--base <dir>]` はリモートランナー機としての判定**(ready=0 / needs-manual=2 /
-  blocked=1。`ftester remote setup` が scp して実行する)。**既定モードの出力は1バイトも変えない**
+  blocked=1。`fleetest remote setup` が scp して実行する)。**既定モードの出力は1バイトも変えない**
   (共通判定は関数に括り出して両モードから呼ぶ)。**判定を足すときは blocked/needs-manual の
   仕分けを間違えない** —— install.sh が自動導入するもの(xcodegen 等)を needs-manual にすると、
   `remote setup` が install.sh に到達できず「入れれば直るのに入れる工程まで進めない」で詰まる
 - 受け手の一括導入: `Scripts/install.sh`(clone〜検証ゲートを冪等に実行)。**各手順は
-  `.claude/skills/ftester-setup/SKILL.md` のステップ番号と 1:1**(失敗時に「→ SKILL.md ステップ N」を
+  `.claude/skills/fleetest-setup/SKILL.md` のステップ番号と 1:1**(失敗時に「→ SKILL.md ステップ N」を
   出してエージェントを手作業手順へ戻す設計)。**片方だけ変えない** — 手順の追加・番号の変更は両方に入れる
   (`installStepSync.test.mjs` が「install.sh が指すステップが SKILL.md に実在するか」を検出)。
   **スキルからは curl 形で呼ぶ**(クローン側の Scripts/ は pull されるまで古く、新しい引数は
-  「不明なオプション」で落ちる)。全出力は `<WORK_DIR>/.ftester/install-<日時>.log` に残る。
+  「不明なオプション」で落ちる)。全出力は `<WORK_DIR>/.fleetest/install-<日時>.log` に残る。
   **pull 後は自分自身を再 exec する**(2026-08-06 追加)。**bash は実行中にファイルが差し替わっても
   古い内容を最後まで実行する**(git は rename で置換するので開いた fd は旧 inode を指し続ける。
   実験で確認)。この再 exec が無いと、update.sh 経由で入った**新しいステップはその回に1つも
@@ -56,7 +56,7 @@
   同じブロックを書くので堂々巡りになる。判定はレイアウトではなく
   **`git ls-files --error-unmatch` で追跡の有無**。同型は packageLockSync(npm install が
   lock を書き換える)。**受け手のフローに「クローンの中を書く」工程を足すときは必ず追跡を見る**
-  **毎回 `ftester api ensure-settings` で Bash 許可リストを補修する**(init 経由だけだと
+  **毎回 `fleetest api ensure-settings` で Bash 許可リストを補修する**(init 経由だけだと
   `--skip-project` の更新で既存の受け手に永久に届かない)
 - MCP サーバの起動口: `Scripts/mcp-server.sh`(`.mcp.json` はこれを exec するだけ)。
   **シェル式を `.mcp.json` へ直書きしない** —— 起動のたびに no-op でも約8秒の `swift build` を払い、
@@ -67,16 +67,16 @@
   **stdout は JSON-RPC 専用**(診断は stderr・ビルド出力はログファイル)/
   **cwd を変えない**(cwd は受け手パッケージの特定に使う。ビルドはサブシェルで行う)
 - 受け手の更新: `Scripts/update.sh`(install.sh を再実行 + project sync + プラグイン更新と版照合。
-  `.claude/skills/ftester-update/SKILL.md` と 1:1)。**先に update-check.sh を呼び up-to-date なら
+  `.claude/skills/fleetest-update/SKILL.md` と 1:1)。**先に update-check.sh を呼び up-to-date なら
   即終了**(全工程は更新が無くても約30秒。入れ直しは `--force`)。**ログの場所は最後の
   「次にやること」にも出す**(install.sh には `--no-next-steps` を渡すため、こちらで案内しないと
   人が後から詳細を確認できない)。doctor は既定で出さない
-  (`--doctor`。結果表と情報が重複し8秒かかる)。**スキルのステップ0は `.ftester/state.json` の
+  (`--doctor`。結果表と情報が重複し8秒かかる)。**スキルのステップ0は `.fleetest/state.json` の
   Read で TOOL_ROOT を採る**(コマンドを打たない = 承認が要らない。無ければ preflight に落ちる)
 - 更新の有無だけ判定: `Scripts/update-check.sh`(読み取りのみ。**fetch せず `git ls-remote`** で
   upstream と比較し up-to-date=0 / update-available=3 / pinned=0 / unknown=1。取り込みはしない)。
-  VSCode 拡張が起動時に1日1回呼ぶ(`src/updateCheck.ts`・設定 `ftester.updateCheck`)。
-  **手動コマンド `ftester.checkForUpdate` は間隔・却下・設定 off を無視して必ず結果を返す**
+  VSCode 拡張が起動時に1日1回呼ぶ(`src/updateCheck.ts`・設定 `fleetest.updateCheck`)。
+  **手動コマンド `fleetest.checkForUpdate` は間隔・却下・設定 off を無視して必ず結果を返す**
   (自動は更新があるときだけ喋る。明示操作で黙るのは誤動作に見えるため。両者の差はここだけ)。
   **更新の実行口はモニターの「設定」タブ1箇所**(`src/monitorUpdateController.ts`。判定も取り込みも
   スクリプトに委譲し、拡張は結果を出すだけ)。通知は手順を書かず「設定タブを開く」で誘導する。
@@ -88,7 +88,7 @@
   **TOOL_ROOT の解決規則は preflight.sh / update.sh / `src/toolRootResolve.ts` と同じ**(4箇所。片方だけ変えない。
   `toolRootContract.test.mjs` が規則の3語(クローン判別マーカー・既定の隣・Package.swift の宣言)の欠落を検出)
 - DSL コマンドリファレンス(全コマンドの引数・挙動。利用者向け): docs/commands.md。
-  **機械可読な索引は `Sources/FTCore/CommandIndex.swift`**(`ftester api dsl-commands` が出す。
+  **機械可読な索引は `Sources/FTCore/CommandIndex.swift`**(`fleetest api dsl-commands` が出す。
   読者はコードを生成する側で、名前の存在確認に使う)。**コマンドを足す/消す/改名したら索引も直す**
   (`CommandIndexSyncTests` が Commands.swift / CommandsVerify.swift / CommandsAppControl.swift / ValueAssertions.swift / FTElement と突き合わせる)。
   **置いていない名前は `Sources/FTDSL/UnavailableCommands.swift` で受け止める**(他ツールの名前・
@@ -111,7 +111,7 @@
   ことが分かっており(代替手段の無い盤面でも 5/5 完了。measurements.md)、**足す/消すの
   判断材料は note B(実現バイト)**。`NoteBudgetTests` の**本数と鍵の集合の等号固定**は
   引き続き効かせる(予算を動かすには根拠を台帳へ書く)
-- CI 連携(`ftester run --junit` の JUnit 出力・GitHub Actions 例・flaky 方針): docs/ci.md
+- CI 連携(`fleetest run --junit` の JUnit 出力・GitHub Actions 例・flaky 方針): docs/ci.md
 - **結果 JSON のスキーマ**(run.json / scenarios/*.json の全欄と、落ちた run の仕分けレシピ):
   docs/results-json.md(**唯一の定義元**。`results/` は .gitignore なので**その中に README を置いても
   受け手に届かない** —— 2026-08-20 まで design.md がそこを指していた)。
@@ -169,21 +169,21 @@
   ssh にだけ**(自分の子に掛けるとロック解放と終了スクリプトを飛ばす)。**シグナルソースは
   1プロセスに1組**(2026-08-24)—— relay ごとに立てて `stop()` で SIG_DFL を戻すと、並行する子の
   うち先に終わったものの stop() が残りの横取りまで解き、`kill -INT` で親だけ死ぬ(受け手報告)。
-  `ftester remote unlock` は自分の死んだディスパッチのロックだけを外す(`RemoteDispatchUnlock`)。
+  `fleetest remote unlock` は自分の死んだディスパッチのロックだけを外す(`RemoteDispatchUnlock`)。
   **`--host H` + 明示 `--device` は H の台に限定**(`RemoteDispatchExplicitDeviceScope`。同名の台が
   複数機にあると名前だけでは全機ぶんを拾う)。**`--host local` も同じ判定を通す**(2026-08-24。
   run / api run の2経路 —— 絞らないと別ホストのエントリの UDID を手元で探して
   `no simulator with that UDID` で止まる。受け手報告)。
   **LPT はリモートでも実績で回る**(2026-08-18): 実績 JSON は on-demand でも常に回収・
   実績と観測窓は machine 別(platform 分離と同型)・フリート割り当ては facts キャッシュ
-  (`.ftester/remote-hosts/<host>.json`。ディスパッチのたびに machine と固定費実測を書く)で
+  (`.fleetest/remote-hosts/<host>.json`。ディスパッチのたびに machine と固定費実測を書く)で
   機械別に見積もる(実測は docs/performance-tuning.md §3.7)。**facts の machine 採取は
   relink より前** —— relink が reportPath を書き換えると stamp がファイルから消え、stamp 走査が
   空振りする(実ディスパッチで machine 欠落を確認)。**回収後の後処理を足すときは、後段の走査が
   stamp に依存していないかを見る**。設計・却下案・セキュリティ前提は docs/remote-runner.md /
   **利用者向けの導入手順は docs/remote-runner-setup.md**(ランナー機の前提・install.sh の呼び方・
-  版の揃え方・トラブルシュート)/ **エージェント向けは `.claude/skills/ftester-remote-setup/SKILL.md`**
-  (機械作業は `ftester remote setup` に委ね、聞くこと・人手へ渡すこと・結果の読み方だけを持つ。
+  版の揃え方・トラブルシュート)/ **エージェント向けは `.claude/skills/fleetest-remote-setup/SKILL.md`**
+  (機械作業は `fleetest remote setup` に委ね、聞くこと・人手へ渡すこと・結果の読み方だけを持つ。
   トラブル表は頻出3件だけで、詳細は docs を参照させる = 二重管理にしない)。
   **片方だけ変えない** —— 手順に影響する変更(レイアウト・併用不可オプション・適合チェックの項目)は
   docs とスキルの両方に入れる。**スキルを増やしたら `Scripts/install-skill.sh` の `SKILLS` にも足す**
@@ -193,15 +193,15 @@
   docs/remote-runner.md §17)。**スクリプトに宣言は無い** —— `<workspace>/scripts/setup.sh` /
   `teardown.sh` が**あれば実行、無ければ何もしない**(名前も置き場所も固定。拡張のフォームにも
   入力欄を置かない = 2026-08-18 ユーザー決定)。**呼ぶのは `ProfileRunner.run` と
-  `ApiRunCommand` の2箇所** —— リモートの子は `ftester run --host local` として向こうで同じ
+  `ApiRunCommand` の2箇所** —— リモートの子は `fleetest run --host local` として向こうで同じ
   コードを通るので `RemoteRunDispatcher` には足さない(手元とリモートで実装を割らない)。
   守る規律3つ: **①setup の失敗は run を止める**(インフラ起因。シナリオ0本)/
   **teardown の失敗は結果を変えない** / **②デバイスに触る前に撃つ**(渡すデバイス一覧は
   絞り込み後のもの)/ **③片付けは defer だけに頼らない** —— setup の前に
-  `.ftester/hooks/<pid>.json` を置き、次の run 開始時と `ftester hooks reap`(`remote clean` が
+  `.fleetest/hooks/<pid>.json` を置き、次の run 開始時と `fleetest hooks reap`(`remote clean` が
   撃つ)が死んだ pid のぶんを代わりに実行する(**生存判定は pid だけ。mtime を見ない** =
   数十分の run を「古い」と誤判定して動いている DB を落とさない)。
-  **転送から外すのは `.ftester-transfer-ignore`**(2026-08-23。転送対象ツリーのどこにでも置ける・
+  **転送から外すのは `.fleetest-transfer-ignore`**(2026-08-23。転送対象ツリーのどこにでも置ける・
   rsync の `--exclude` 書式・置いたディレクトリ起点。`FTCore.TransferIgnore`)。**rsync の `-F`
   (dir-merge)は使わない** —— macOS の openrsync では dir-merge が `--delete` から受け側を守らず、
   ランナー機の台帳が消える(実験で確認)。**3つの転送(run ディスパッチ・fan-out の
@@ -210,7 +210,7 @@
 - 設計書(アーキテクチャ・Swift DSL 仕様・セレクタ記法・プロファイル): docs/design.md
 - 性能チューニング(調整ノブ・不採用施策と再検討条件・計測手順): docs/performance-tuning.md
 - 検証の詳細(flake/性能の判定規律・ベータ整合・全滅時の切り分け・e2e.sh のオプション): docs/verification.md
-- ftester 自身の E2E: **UI フレームワークごとに SUT が5つ**ある(画面・`#id`・ラベルは全 SUT 共通契約):
+- fleetest 自身の E2E: **UI フレームワークごとに SUT が5つ**ある(画面・`#id`・ラベルは全 SUT 共通契約):
 
   | SUT | 実装 | プロジェクト | 対象 OS |
   |---|---|---|---|
@@ -238,7 +238,7 @@
   `fte2eflutter`/`fte2ern`。契約は `E2EAppCMP/docs/ui-contract.md` §ディープリンク)。
   iOS は同一スキームを複数アプリが登録していても解決先を1つしか選ばず、E2E のシミュレータには
   iOS の SUT が4つ同居するため共有スキームでは配送先が端末ごとに揺れる(実測で別アプリへ
-  配送された)。`Tests/FTesterTests/DeepLinkSchemeSyncTests.swift` が契約表との一致と
+  配送された)。`Tests/FleetestTests/DeepLinkSchemeSyncTests.swift` が契約表との一致と
   SUT 間の重複を検出する
 
 ## ビルド・検証
@@ -247,7 +247,7 @@
 「Application is not running」全滅時の切り分け・`Scripts/e2e.sh` の各オプション)は docs/verification.md**。
 以下は毎回効く最重要ゲートだけ。
 
-- 拡張: `cd vscode-ftester && npm run compile`(esbuild+tsc)/ `npm test`。挙動を変えたら
+- 拡張: `cd vscode-fleetest && npm run compile`(esbuild+tsc)/ `npm test`。挙動を変えたら
   **`npm version --no-git-tag-version <新版>` で版を上げて** `npm run install-local`
   (反映は VSCode の Reload Window **+パネル開き直し**。Reload だけでは効かないことがある。code CLI は PATH に無い)。
   **package.json だけ手で書き換えない** — lock も version を内包しており、放置すると受け手の
@@ -276,11 +276,11 @@
   **並列はテストプロセスを分けるので、ホストの共有資源に触るテストは自分で隔離する** ——
   既定のパスを直接見に行くと、無関係なテストの後始末と競合して落ちる(2026-08-10 に `FMBreaker` で実際に発生。
   状態ファイルがホスト単位なのは仕様なので、**テスト側が差し替え口でプロセスごとの一時パスへ逃がす**。
-  「どこに置くか」は I/O 抜きで別に表明する)。同型は `.ftester/` の台帳・`DiagnosticReports` の走査・simctl/adb
+  「どこに置くか」は I/O 抜きで別に表明する)。同型は `.fleetest/` の台帳・`DiagnosticReports` の走査・simctl/adb
   を呼ぶテスト。**隔離できないホストの実体**(simctl/adb・起動中の Simulator/Emulator・固定パス)は
   `Sources/FTTestSupport/SharedResource.swift` の `SharedResource.<key>.locked { }` で資源キーごとに
   直列化する(隔離が使えないときの下位の手段。詳細は docs/verification.md)
-- **`ftester bridge down --all` を頻繁に打たない**(2026-08-11 指示)。1回ごとに XCUITest ランナーの
+- **`fleetest bridge down --all` を頻繁に打たない**(2026-08-11 指示)。1回ごとに XCUITest ランナーの
   `xcodebuild` が全台ぶん走り、他セッションや監視が使う端末も巻き添えにする。**打たずに済む順序で組む**:
   **①ブリッジに触る編集を全部終えてから版を1回だけ上げる**(小刻みに上げると毎回全台の再構築)/
   **②建て直しは使う端末だけ**(`bridge down --port <N>`。1シナリオの確認なら台数上限で2台しか要らない)/
@@ -294,11 +294,11 @@
   (固定費 14.8s → 2.9s)。**予備1台は必須**(用意した台が blank/frozen で弾かれると run ごと落ちる)。
   **例外は `--broadcast`(ブロードキャスト。2026-08-22)** —— 各台で1回ずつ回すのが目的なので
   絞らない(分配だけ `ScenarioDispatch.broadcast` に差し替え、他は同じ経路。docs/design.md)。
-  `ftester api run`(拡張の並列経路)は**シナリオ一覧をビルドと並行に解決する**ので一覧を待てない ——
+  `fleetest api run`(拡張の並列経路)は**シナリオ一覧をビルドと並行に解決する**ので一覧を待てない ——
   確定している `--scenario` の指定だけで判断する(`ApiRun.exactScenarioCount`。
   明示 ID は1つにつき高々1本なので合計を上限に使え、クラス名指定・全件は絞らない)
 - **E2E 実行中に `swift build` / `swift test` を打たない**(2026-08-15 の実害)。同じ `.build` を
-  共有するので、**実行中の `ftester` バイナリが差し替わってプロセスが SIGKILL される**
+  共有するので、**実行中の `fleetest` バイナリが差し替わってプロセスが SIGKILL される**
   (`Killed: 9`)。フル E2E の最中に単体テストを回したところ、3プロファイルが同時刻の連番 PID で
   落ち、**テストの失敗に見える形で赤くなった**(実際は1本も走っていない)。
   見分け方は `Scripts/e2e.sh: line NNN: <pid> Killed: 9` と、シナリオ0本での即死。
@@ -306,11 +306,11 @@
 - **モニターを止めるのは性能を測るときだけ**(2026-08-21 ユーザー決定で運用変更。
   以前は「E2E の前に必ず止める」だった)。止めている間の利便性の損失が大きいという判断で、
   **合否を見るだけの実行では止めない**。問題が出たらそのとき見直す。
-  **止めるのは `ftester monitor pause [--for <分>]` / 再開は `resume`**(2026-08-24 追加。
+  **止めるのは `fleetest monitor pause [--for <分>]` / 再開は `resume`**(2026-08-24 追加。
   kill では止まらない —— 拡張が monitor も配信ヘルパーも数秒で再起動する。保持ファイルを
   `api monitor` が毎周期見て観測を止め、全タイルを unknown で出す = 拡張が配信を畳む。
   効くのはこの機械だけ。docs/verification.md §モニターと E2E)。拡張が動いていないときの
-  旧手段は pkill 3連打(`ftester api monitor` / `ftester-androidstream` /
+  旧手段は pkill 3連打(`fleetest api monitor` / `fleetest-androidstream` /
   `screenrecord --output-format=h264` —— 1つ目だけだと配信が台数ぶん残る)。
   **中途半端に止めた対照は誤った結論を出す**(観測だけ止めて残った失敗を「特定の個体の問題」と
   報告したが、実際はその台の配信が生きていただけだった)。
@@ -343,8 +343,8 @@
   `--ios` / `--android`。詳細は docs/verification.md。
   **この漏れは e2e.sh が検出する**(2026-08-10)—— **回さなかった側**のブリッジ入力集合
   (`BridgeSourceSet`)の digest を、そのエンジンの実行が**全部成功したときだけ**
-  `.ftester/<engine>-e2e-verified` に記録し、開始時と終了時に食い違いを警告する
-  (`ftester api bridge-sources --set inapp|xcuitest --digest`。一覧は BridgeSourceSet が唯一の定義元)。
+  `.fleetest/<engine>-e2e-verified` に記録し、開始時と終了時に食い違いを警告する
+  (`fleetest api bridge-sources --set inapp|xcuitest --digest`。一覧は BridgeSourceSet が唯一の定義元)。
   **落とさず警告だけ**(検知は警告から始める)。実害: in-app/xcuitest 両方のスナップショット生成を
   変えた回の E2E 254 本が全部 engine=xcuitest で、in-app 側は1度も動かないまま緑になった
 - **e2e の実行範囲はリスクとコストで決める**(上のゲートは「最低限ここまでは回す」の下限で、
@@ -392,8 +392,8 @@
   既存の問題にもしない(`git stash push -u` → HEAD で1シナリオ → `git stash pop`。3〜4分。
   docs/verification.md)
 - **「差が出ない」ときは仮説より先に実験系を疑う**。差が出ないことは、**変更が無効だったこと**と
-  **実験が無効だったこと**を区別しない。実行の実体は `ftester` ではなく
-  **`ftester-scenarios-<project>` サブプロセス**なので、A/B で `ftester` を差し替えても
+  **実験が無効だったこと**を区別しない。実行の実体は `fleetest` ではなく
+  **`fleetest-scenarios-<project>` サブプロセス**なので、A/B で `fleetest` を差し替えても
   base と fix が同一コードを走る(2026-08-03 に性能の A/B と修正案2件を取り違えた)。
   **陽性対照を先に通す**(マーカーを書くだけの版で差し替えが効くことを確認してから本番)。
   判定に使うシナリオは **`clearAppData()` から始める** —— E2E アプリは状態を launch を跨いで
@@ -439,10 +439,10 @@
   自前で書いていたため、`RefGuard.disabledWarning` を壊しても落ちなかった。検出できない変異が出たらテストを境界へ
   寄せる(要素数を増やす・既定値でなく限界値で呼ぶ)。詳細は docs/verification.md
 - **LPT の実績 run 数の既定値は3箇所(`LPTOrdering.defaultHistoryRuns` / `package.json` の
-  `ftester.lptHistoryRuns.default` / `monitorPanel.ts` が webview へ送る default)で一致必須**
+  `fleetest.lptHistoryRuns.default` / `monitorPanel.ts` が webview へ送る default)で一致必須**
   (`lptDefaultSync.test.mjs` が検出。設定タブは default を初期値として入力欄に入れ、空欄・不正値の
   ときもそこへ戻すので、ズレると表示された件数と実際に走る件数が食い違う)
-- `ftester api` の JSON/NDJSON 契約を後方非互換に変えたら `Sources/FTCore/ProtocolVersion.swift` と `vscode-ftester/src/protocolVersion.ts` の版を +1(両者一致必須・`protocolVersion.test.mjs` が検出。拡張は起動時に照合し不一致を警告)
+- `fleetest api` の JSON/NDJSON 契約を後方非互換に変えたら `Sources/FTCore/ProtocolVersion.swift` と `vscode-fleetest/src/protocolVersion.ts` の版を +1(両者一致必須・`protocolVersion.test.mjs` が検出。拡張は起動時に照合し不一致を警告)
 - **ブリッジの挙動・エンドポイントを変えたら版を上げる**(上げないと**稼働中の旧ブリッジが再利用され、変更が反映されないまま緑になる**。実害2回)。iOS = `Sources/FTCore/BridgeDTO.swift` の `bridgeProtocolVersion`(in-app dylib と XCUITest ランナーの共通定数)/ Android = `AndroidRunner/build.sh` の `VERSION_CODE` と `AndroidBridge.swift` の `expectedBridgeVersionCode` を**同時に**(`AndroidBridgeVersionSyncTests` が定数間の不一致と、**コミット済み `prebuilt/ftbridge.apk` が
   定数と別版のまま=APK 作り直し忘れ**を検出)。**実装ソースを変えたら `BridgeContractTests` が落ちる**
   ので、そこで版を上げてから期待値を貼り替える(貼り付け用のリテラルは失敗メッセージが出す)。
@@ -478,7 +478,7 @@
   Android 注入器=true・in-app=false で、false のときだけ `StepExecutor` がホスト側で読み返す)。
   **デバイスの健康状態も同じ**(2026-08-11): 「画面が凍結しているか」は `FTCore.FrozenVerdict`
   が唯一の定義元で、run 前トリアージとモニターは**根拠(`FrozenEvidence`)を束ねた同じ型**を配る。
-  プロセスを跨ぐ受け渡しは `FTCore.DeviceFrozenStore`(`.ftester/frozen-<key>.json`。RunLease と
+  プロセスを跨ぐ受け渡しは `FTCore.DeviceFrozenStore`(`.fleetest/frozen-<key>.json`。RunLease と
   同じ pid 生存 + mtime)。**新しい根拠は `isConclusive=false`(警告)から入れる**
 - **共有するのは「判定」であって「文言」ではない**(2026-08-15)。同じ事実に対して MCP は
   ツール名で逃げ道を書き(`ft_screenshot` / `ft_scroll_to`)、DSL はシナリオの言葉で書く
@@ -520,18 +520,18 @@
   notExists/count(誤った成功)だけを塞いでいたが、exist と操作の解決は**実在する要素で
   赤くなる** = flake として残っていた。操作側は**ドライバ切替と FM ヒールより前**に置く ——
   切り詰められた木で FM に代わりを探させると、実在する本命が候補に無いまま別の要素へ
-  「修復」し、それが `ftester api apply-heal` で利用者の .swift へ書き戻される
+  「修復」し、それが `fleetest api apply-heal` で利用者の .swift へ書き戻される
 - **「書けるセレクタ」の規則は `FTCore.SelectorNaming` の1箇所**(2026-08-15 に FTCore へ降ろした)。
   一意性(`picksOnlyOne`)・祖先スコープ・記法のエスケープ・耐久性の格付けを持つ。
   **ヒール(自己修復)もここを通す** —— 旧 `FlowLocatorBuilder.chain` は一意性を見ずに
   id/label を採っており、同じ id が複数ある画面で**別要素に解決するセレクタを利用者の .swift へ
-  書き戻していた**(`ftester api apply-heal` は直接書き込む)。書けるセレクタが無いときは
+  書き戻していた**(`fleetest api apply-heal` は直接書き込む)。書けるセレクタが無いときは
   **操作は続けて修復だけ成立させない**(`StepNote.healUnwritable` で数える)——
   掴んだ要素は手元にあるので叩くのは正しく、書き戻せないという理由で緑の run を赤にしない
 - **セレクタ文法(`FTSelector`)・コマンド索引(`CommandIndex`)・コード生成(`ScenarioCodeGen`)は
   FTCore に居る**(2026-08-15 に FTDSL から降ろした)。写像先の `FlowLocator` が FTCore の型で、
   DSL ランタイムには依存しない。FTDSL に置いていた間は **FTCore が `FTSelector.serialize` を
-  呼べず7箇所でセレクタを手で綴っており**、`ftester-mcp` はセレクタ文法のためだけに
+  呼べず7箇所でセレクタを手で綴っており**、`fleetest-mcp` はセレクタ文法のためだけに
   DSL ランタイム全体をリンクしていた(この依存は外した)。利用者からの見え方は
   `Descriptors.swift` の `@_exported import FTCore` が保っている。
   **ただし FTCore の名指し(`TapTargetGeometry.describe` 等)は「どれの話か」を短く言うためのもので、
@@ -601,7 +601,7 @@
   MCP で**タップ拒否**に格上げしたら、実アプリで誤検知が5形出て警告へ後退した
   (docs/design.md §10「実装で得た知見」の `RefGuard.ghostWarning` の項)。**新しい検知はまず警告から**入れる。
   探索ロジックは**MCP に2つ目の実装を書かず `StepExecutor` へ委ねる**(`ft_scroll_to`)
-- **木だけから決まる注記は `Sources/ftester-mcp/NoteCatalog.swift` が唯一の定義元**
+- **木だけから決まる注記は `Sources/fleetest-mcp/NoteCatalog.swift` が唯一の定義元**
   (応答の組み立て側へ直に書かない。`NoteCoverageTests` のソース走査が検出)。目録にすると
   3つ手に入る: **発火の全数計測**(どの注記がどの画面で出るか)/ **鍵ごとの黙らせ**
   (`FT_MCP_NOTES_OFF=<鍵,…|all>`。起動時に stderr で名乗る = A/B の陽性対照)/
@@ -640,16 +640,16 @@
 
 - **機械作業はスクリプト/CLI に寄せ、スキルには判断だけ残す**。エージェントに JSON を書かせる・
   値を集めさせると、実行のたびに結果が揺れる(machines と runs の名前不一致・指示していない
-  プラットフォームの生成・二度聞き)。決まった手順は `Scripts/*.sh` か `ftester` のサブコマンドにする
+  プラットフォームの生成・二度聞き)。決まった手順は `Scripts/*.sh` か `fleetest` のサブコマンドにする
 - **承認回数はコストとして数える**。値の収集は preflight の出力に寄せ、デバイス選定は
-  `profile setup --auto-device`、繰り返す実行は `.claude/settings.json` の許可(ftester 由来の
+  `profile setup --auto-device`、繰り返す実行は `.claude/settings.json` の許可(fleetest 由来の
   コマンドのみ。`api ensure-settings` が毎回補修)で吸収する。**出力済みの情報を別コマンドで
   取り直さない**。承認は3方向から増えるので全部潰す:
   **①聞かなくてよい確認**(答えが決まっているならスクリプトが決める。例: 外部構成のクローンの
   ローカル変更 = 受け手の資産ではないので自動破棄)/ **②許可リストに無いコマンド**(スクリプトを
   足したら許可も足す)/ **③巨大な出力**(切られてエージェントが grep を打つ。生ログはファイルへ)
 - **人に聞くのは AskUserQuestion(ダイアログ)だけ**。チャットに質問文を書くと見落とされてフローが止まる
-- **生成したシナリオの検証は3段**(`.claude/skills/ftester-scenario/SKILL.md` ステップ4→4.5→5):
+- **生成したシナリオの検証は3段**(`.claude/skills/fleetest-scenario/SKILL.md` ステップ4→4.5→5):
   コンパイル → **dry-run(デバイス不要・数秒)** → デバイス実行。真ん中を飛ばすと「コンパイルは通るが
   何も検証していない」をデバイス実行の時間で見つけることになる。**誤りは早い段の言葉で返す**のが方針
   (未知の名前 = コンパイラのメッセージ / 構文・アサーション不足・**撮った画面に無い `#id`** = dry-run /
@@ -682,21 +682,21 @@
 
 ## 国際化(i18n・日英切替)
 
-拡張の UI 文字列は日英切替対応(設定 `ftester.language`: auto/ja/en、auto は VSCode 表示言語に追従。モニター「設定」タブからも変更可)。UI 文字列を追加/変更するとき:
+拡張の UI 文字列は日英切替対応(設定 `fleetest.language`: auto/ja/en、auto は VSCode 表示言語に追従。モニター「設定」タブからも変更可)。UI 文字列を追加/変更するとき:
 
 - 辞書は `src/i18n/strings/<namespace>.ts` に `{ "ns.key": { ja, en } } satisfies MessageDict`。**ja は表示文字列と byte 一致**(未初期化時の既定 locale が "ja"・既存テストが日本語をアサートするため)。プレースホルダは名前付き `{name}` で ja/en 同集合。namespace とファイルは1対1。
 - 拡張側: `import { t } from "./i18n"`(`MessageKey` 型で typo を tsc 検出)。activate 冒頭で `initI18n()`。webview 側: `import { t } from '../i18n.js'`(locale は `<html lang>` 経由)。静的 HTML(monitorHtml.ts 等)は拡張側 `t()` で描画する。
 - **罠**: 拡張と webview の**両バンドルに入る .ts**(runReducer.ts/runLaneModel.ts 等。webview の import 連鎖で混入)は、vscode を引き込む `i18n/index.ts` を import できない(webview ビルドが壊れる)。vscode 非依存の別ランタイム `src/i18n/strings/lane.ts`(`tLane`/`setLaneLocale`、locale は両バンドルが注入)を使う。両バンドル共有の文字列を新たに i18n 化するときも同じ制約。
 - **module-level の表示 const 禁止**(import 時=initI18n 前に "ja" で固定される)。関数化する(例 livePanelHtml.ts の `livePanelTitle()`)。
-- package.json の contributes(コマンド名・設定説明)だけは別系統: `%key%` + `package.nls.json`(英)/`package.nls.ja.json`(日)で **VSCode 表示言語連動**(ftester.language ではない)。両 nls はキー集合一致。
+- package.json の contributes(コマンド名・設定説明)だけは別系統: `%key%` + `package.nls.json`(英)/`package.nls.ja.json`(日)で **VSCode 表示言語連動**(fleetest.language ではない)。両 nls はキー集合一致。
 - 検証は `test/i18n.test.mjs`(辞書パリティ・**残存日本語の AST 走査**[HTML コメントは除外]・webview/lane キー存在・nls 整合)。正当に日本語を残す文字列(非表示の内部 throw 等)は同ファイルの `RESIDUAL_ALLOWLIST` に登録。
-- `ftester.language` 変更は各 webview パネル(Monitor/Live/Dashboard/HealReview)の `relocalize()` が
+- `fleetest.language` 変更は各 webview パネル(Monitor/Live/Dashboard/HealReview)の `relocalize()` が
   `webview.html` を再代入して即時反映する(`extension.ts` が呼ぶ `languageChangeHandler.ts` の
   `handleLanguageChange` が束ねる。vscode 非依存に切り出してあるのはテストのため。パネル未生成時は
   no-op)。Monitor/Live は html 再代入(webview 再読込)でブラウザ側デコーダが失われるため、直後に
   `restartAllStreams()`/`restartStream()` でライブ配信を新キーフレームから張り直す。
   Reload Window が必要なのは package.nls(コマンド名・設定説明。VSCode 表示言語連動で
-  `ftester.language` とは無関係)だけ。
+  `fleetest.language` とは無関係)だけ。
 
 ## コメント規約
 

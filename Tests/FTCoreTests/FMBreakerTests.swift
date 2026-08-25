@@ -75,7 +75,7 @@ final class FMBreakerTests: XCTestCase {
     func testDefaultStateURLIsHostWide() {
         let url = FMBreaker.defaultStateURL
         XCTAssertEqual(url.lastPathComponent, "fm-breaker.state")
-        XCTAssertEqual(url.deletingLastPathComponent().lastPathComponent, "ftester")
+        XCTAssertEqual(url.deletingLastPathComponent().lastPathComponent, "fleetest")
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
         XCTAssertTrue(url.path.hasPrefix(caches.path), url.path)
     }

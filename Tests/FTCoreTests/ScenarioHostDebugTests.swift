@@ -43,7 +43,7 @@ final class ScenarioHostDebugTests: XCTestCase {
         }
 
         let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("ftester-debug-test-\(UUID().uuidString)")
+            .appendingPathComponent("fleetest-debug-test-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: tempDir) }
 
         let probe = DebugSessionProbe()

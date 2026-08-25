@@ -25,7 +25,7 @@
 | 案 | 内容 | 却下理由 |
 |---|---|---|
 | A. ブリッジ層で切る | `BridgeClient` の HTTP を遠隔ホストへ向ける | ステップ毎 snapshot の chatty なプロトコルに LAN RTT が乗り、ms 級チューニング(stale-guard 350ms・LPT 等)が崩れる。プロビジョニング(ブート・ランナービルド・インストール・ゾンビ掃除・凍結復旧)は全部ローカルプロセス制御前提で、遠隔化には常駐エージェント=第二プロダクトが要る |
-| B. 独自プロトコルの常駐デーモン | ftesterd を立ててクライアントが接続 | 全マシン Mac なのでどのマシンもフルスタックが動き、役割分離の動機が無い。ジョブ粒度なら Jenkins の再発明。認証/TLS の自前実装が必要 |
+| B. 独自プロトコルの常駐デーモン | fleetestd を立ててクライアントが接続 | 全マシン Mac なのでどのマシンもフルスタックが動き、役割分離の動機が無い。ジョブ粒度なら Jenkins の再発明。認証/TLS の自前実装が必要 |
 | FM 分離構成 | デバイスは VM ファーム・FM は手元物理 Mac(案A の副産物) | 全 Mac(物理)前提で動機消滅 |
 
 ## 3. 採用方針: ジョブ(run)単位の SSH ディスパッチ
@@ -34,7 +34,7 @@
 リモート実行=「向こうの Mac で普通にローカル実行し、結果を手元へストリームする」だけにする。
 新プロトコル・認証・常駐デーモンは作らない(トランスポートは SSH)。
 
-`ftester run --host <mac>` の流れ(**当初設計**。実装済みの Phase 1 は clone 構成・
+`fleetest run --host <mac>` の流れ(**当初設計**。実装済みの Phase 1 は clone 構成・
 アプリ非転送・`project sync` 経由など意図的な逸脱を含む — **現状の正は §12**):
 
 1. 適合チェック(§7。不一致は fail fast)
@@ -45,9 +45,9 @@
 3. リモートで `install.sh`(冪等)→ 実行。転送後はリモートで scenario ターゲットの
    swift build が走る(コールドは数分。`clean -fd` に `-x` を付けない= .build 温存の
    既存設計が増分ビルドを効かせる)
-4. **ストリームバックの実体は用途で分ける**: CLI/CI は `ftester run --quiet --junit` の
-   出力中継、拡張(レーン表示)連携は `ftester api run` の NDJSON 中継
-   (`ftester run` は人間向け出力で NDJSON を喋らない。ApiRunCommand が唯一の機械可読契約)
+4. **ストリームバックの実体は用途で分ける**: CLI/CI は `fleetest run --quiet --junit` の
+   出力中継、拡張(レーン表示)連携は `fleetest api run` の NDJSON 中継
+   (`fleetest run` は人間向け出力で NDJSON を喋らない。ApiRunCommand が唯一の機械可読契約)
 5. 成果物回収(reports/・JUnit・results DB・録画)。**JUnit 内 `report:` 行は
    リモートの絶対パス**なので回収後のローカルパスへ書き換える。
    回収物は**リモートが生成した外部入力**として扱う(§15)
@@ -71,7 +71,7 @@ Mac のデバイスに解決され、存在しない台の起動を試みるた�
 
 ```
 ┌─ ローカル Mac(発行側)────────────────────────────┐
-│ ftester run --host mac2 --profile …                │
+│ fleetest run --host mac2 --profile …                │
 │  ├─ 適合チェック(rev / Toolchain / Protocol)     │
 │  ├─ 転送(rsync: シナリオ・プロファイル・アプリ)  │
 │  ├─ NDJSON 受信 → 進捗表示・拡張へ中継            │
@@ -82,14 +82,14 @@ Mac のデバイスに解決され、存在しない台の起動を試みるた�
 │ Background セッション(sshd 側)= control plane    │
 │  └─ ジョブを session agent へ引き渡すだけ          │
 │ Aqua セッション(§5 の2モード+LaunchAgent)       │
-│  └─ session agent が ftester run を spawn           │
+│  └─ session agent が fleetest run を spawn           │
 │      = execution plane(シミュレータ・XCUITest・FM)│
 └────────────────────────────────────────────────────┘
 ```
 
 ## 5. control plane / execution plane 分離(GUI セッション制約への回答)
 
-GUI 依存は ftester のコードではなく **macOS のセッション意味論**に由来する
+GUI 依存は fleetest のコードではなく **macOS のセッション意味論**に由来する
 (launchd のセッション種別が Background[SSH 直・LaunchDaemon]か Aqua かで
 WindowServer・ユーザー空間サービスへのアクセスが変わる。Linux の Xvfb に相当する
 「ログインなしで Aqua を作る」公式手段は macOS に無い)。よってコード分離では消せず、
@@ -103,8 +103,8 @@ WindowServer・ユーザー空間サービスへのアクセスが変わる。Li
 | コンパイル・オーケストレーション・results・update | 不要 | 純粋にプロセスとファイル |
 
 - **execution plane = session agent(LaunchAgent)**。責務は「ジョブを受けて
-  `ftester run` を spawn し出力を中継する」だけに限定する。判断・プロビジョニングは
-  ftester 本体に残す(CLAUDE.md「機械作業はスクリプト/CLI へ」と同じ方針)。
+  `fleetest run` を spawn し出力を中継する」だけに限定する。判断・プロビジョニングは
+  fleetest 本体に残す(CLAUDE.md「機械作業はスクリプト/CLI へ」と同じ方針)。
   加えて**ジョブは直列化(1本ずつ)** — 同一リモートへの同時ディスパッチは
   デバイス割当が競合する(単一マシンには無かった失敗モード)。並行受付は
   Phase 3 の分散スケジューリング側の課題として送る。
@@ -197,7 +197,7 @@ sleep/wake で修復)は**すべてヘッドレス環境で得られたもの**�
 「Android だけログイン不要のレーンに振り分ける」最適化は**現時点では成立が確認できていない**。
 
 **ディスパッチ前にエミュレータの起動が要る**(iOS はプロファイル実行がブリッジを自動供給するが、
-Android は `no running emulator for AVD ...` で失敗する)。`ftester devices up --profile` を
+Android は `no running emulator for AVD ...` で失敗する)。`fleetest devices up --profile` を
 先に撃つ必要がある — フリート運用では `remote setup`/ディスパッチ側で吸収する余地がある(未実装)
 
 ## 7. 版整合・更新
@@ -217,13 +217,13 @@ Android は `no running emulator for AVD ...` で失敗する)。`ftester device
 - リモートの **TOOL_ROOT 解決は既存4箇所の規則を再利用**する(preflight.sh / update.sh /
   toolRootResolve.ts / Package.swift 宣言。`toolRootContract.test.mjs` の対象)。
   ディスパッチ用の独自解決を新設しない
-- **実行前に版ズレだけを問い合わせる口は `ftester api remote-compat --project <P> --profile <X>`**
-  (JSON。人が読む表は `ftester remote status`)。拡張はこれで実行プロファイルのリモートホスト
+- **実行前に版ズレだけを問い合わせる口は `fleetest api remote-compat --project <P> --profile <X>`**
+  (JSON。人が読む表は `fleetest remote status`)。拡張はこれで実行プロファイルのリモートホスト
   全部の rev/toolchain 適合を見て、ズレていれば「更新して実行 / キャンセル」をダイアログで聞く
   (**「そのまま実行」は置かない** —— ズレたまま走らせるとリモート担当分は必ず
   checkCompatibility に弾かれ、部分失敗の run にしかならない。align で直せないズレ
   = 未 push・到達不能・toolchain 不一致は実行を止めて理由を出す。チェック自体を外すのは
-  設定 `ftester.remoteCompatCheck`)。ズレの解消(揃えるだけ)は `ftester remote align <host>` —
+  設定 `fleetest.remoteCompatCheck`)。ズレの解消(揃えるだけ)は `fleetest remote align <host>` —
   `remote setup` の align ステップだけを単独で実行する軽量版(preflight/install は通さない)
 
 ## 8. マルチマシン分散(**実装済み: 2026-08-16**。`run --fleet --split`)
@@ -264,7 +264,7 @@ Android は `no running emulator for AVD ...` で失敗する)。`ftester device
 
 **machine 別見積りとディスパッチ固定費(2026-08-18)**: 機械ごとの速度差(手元と各リモート機で
 異なる)とディスパッチ経路の固定費(SSH 接続・転送・増分ビルド)を割り当てに織り込む
-(`FleetSplit.MachineContext`)。`RemoteHostFactsStore`(`.ftester/remote-hosts/<host>.json`)は
+(`FleetSplit.MachineContext`)。`RemoteHostFactsStore`(`.fleetest/remote-hosts/<host>.json`)は
 machine 識別子・実測固定費に加え **CPU モデル・論理コア数・直近 run の同時起動デバイス数**も
 持つ。CPU 情報はディスパッチの到達性プローブ(`RemoteRunDispatcher.resolveLayout`)に相乗りした
 `sysctl` の実測、machine とデバイス数は回収した実績レコード(`machine`/`worker`)由来 ——
@@ -355,7 +355,7 @@ SSH 側のプロセスからでもユーザーの launchd ドメインのサー�
 - §9 の実験4回を実施(①が最優先 — 到達経路を決める。**①は実施済み**)
 - **ゲート**: 対話的分散・共有の需要が実在するか/ジョブ粒度の体験が成立するかをユーザーが判断
 
-### Phase 1: `ftester run --host <mac>`(単一リモート・ジョブ粒度)
+### Phase 1: `fleetest run --host <mac>`(単一リモート・ジョブ粒度)
 
 - 適合チェック(§7)・rsync 転送・リモート実行・出力ストリームバック(§3 の用途分け)・
   成果物回収(JUnit の `report:` パス書き換え含む)
@@ -387,7 +387,7 @@ SSH 側のプロセスからでもユーザーの launchd ドメインのサー�
 
 - §6 の採用条件2つが実測で成立した場合のみ。ディスパッチの振り分け(対象 OS・FM 使用)を追加
 
-## 11. GUI(vscode-ftester モニター)への影響
+## 11. GUI(vscode-fleetest モニター)への影響
 
 リモートデバイスをローカルと混在表示する場合に必要になる機能。優先度は Phase 対応表(末尾)。
 
@@ -445,7 +445,7 @@ SSH 側のプロセスからでもユーザーの launchd ドメインのサー�
   チャンネル or 行プレフィクス)
 - processesTab / orphanSweep はローカルプロセス走査前提でリモートに適用不能。
   リモートは session agent 経由の状態表示だけにし、**効かない kill ボタンを出さない**。
-  掃除はリモート側 ftester の責務
+  掃除はリモート側 fleetest の責務
 
 ### Phase 対応
 
@@ -457,11 +457,11 @@ SSH 側のプロセスからでもユーザーの launchd ドメインのサー�
 
 ## 12. Phase 1 実装メモ(2026-07-31)
 
-`ftester run --host <user@host>`(`--profile` 必須。`--ports`/`--report-dir`/`--failed`/
+`fleetest run --host <user@host>`(`--profile` 必須。`--ports`/`--report-dir`/`--failed`/
 `--skip-build` は併用不可)・`--remote-dir`(既定: ローカルルートと同じ絶対パス)・
 (`--remote-session` は asuser 撤去に伴い廃止)。純粋ロジックは
 `Sources/FTCore/RemoteDispatch.swift`(単体テスト対象)、プロセス起動は
-`Sources/ftester/RemoteRunDispatcher.swift` に集約。
+`Sources/fleetest/RemoteRunDispatcher.swift` に集約。
 
 設計文書からの意図的な逸脱:
 
@@ -469,16 +469,16 @@ SSH 側のプロセスからでもユーザーの launchd ドメインのサー�
   clone 構成のままだと**ローカルインストール済みマシンと干渉する**(実害3件: rsync
   `--delete` が相手の `Scenarios`/`profiles` を消す・レポート回収が相手のローカル実行分まで
   引き込む・クローンと `.build` の共用で SPM ビルドロック競合と results 混在)。
-  現在は**リモートに専用ベースディレクトリ1つ**(`--remote-dir`。既定 `~/ftester-runner`)を
+  現在は**リモートに専用ベースディレクトリ1つ**(`--remote-dir`。既定 `~/fleetest-runner`)を
   置き、その配下で完結させる:
 
   ```
-  <base>/          ← --remote-dir(既定 ~/ftester-runner。チルダは $HOME で解決)
-  ├── tool/        ← TOOL_ROOT(ランナー専用クローン)。バイナリは tool/.build/debug/ftester
+  <base>/          ← --remote-dir(既定 ~/fleetest-runner。チルダは $HOME で解決)
+  ├── tool/        ← TOOL_ROOT(ランナー専用クローン)。バイナリは tool/.build/debug/fleetest
   └── work/        ← WORK_DIR(受け手パッケージ。TestProjects・results・.build)
   ```
 
-  実行は `cd <base>/work && <base>/tool/.build/debug/ftester …`。`packageRoot()`(cwd から
+  実行は `cd <base>/work && <base>/tool/.build/debug/fleetest …`。`packageRoot()`(cwd から
   Package.swift を探す)が work を、`RepoRoot.find()`(実行バイナリの位置)が tool を
   独立に解決するため、**既存の外部構成の仕組みでそのまま成立する**(新しい解決規則を
   作っていない)。マシン自身の `~/foundation-tester` や `Projects/` には一切触れない
@@ -492,9 +492,9 @@ SSH 側のプロセスからでもユーザーの launchd ドメインのサー�
   `on-demand` でも実績 JSON(run.json/scenarios/*.json/host-metrics.ndjson)は常に回収する ——
   回収しないと LPT(投入順・フリート割り当て)がリモートで走ったシナリオを永久に「実績なし」として
   扱う(2026-08-18)。重いのは録画だけなので、`on-demand` はそれだけリモートに残し、パスを1行案内する。
-  拡張連携(`ftester api run` の NDJSON 中継)は §12 末尾のとおり後日実装
+  拡張連携(`fleetest api run` の NDJSON 中継)は §12 末尾のとおり後日実装
 - **レポート回収はディスパッチ単位に隔離**(2026-07-31)。run に
-  `--report-dir <base>/work/.ftester/dispatch/<stamp>/reports` を内部で渡し、
+  `--report-dir <base>/work/.fleetest/dispatch/<stamp>/reports` を内部で渡し、
   **そのディレクトリだけを回収して、回収後にリモートから削除**する
   (リモートの `reports/` を丸ごと引くのをやめた。相手の無関係な実行分・録画を
   引き込まないため。ユーザーの `--report-dir` 併用は引き続き不可 = 内部で使うため)
@@ -512,7 +512,7 @@ SSH 側のプロセスからでもユーザーの launchd ドメインのサー�
   必要がある。さらに**ディスパッチの rsync が先に `Projects/<name>/` を作ると
   install.sh のプロジェクト作成がスキップされる**(ディレクトリ存在で判定するため)ので、
   導入はディスパッチより前に済ませる
-- `remote clean` の `devices down` も同じ経路で実行する(リモートの ftester を直接叩く)
+- `remote clean` の `devices down` も同じ経路で実行する(リモートの fleetest を直接叩く)
 - **`ssh -tt` はリモートの stderr を stdout に合流させる**(擬似 TTY は1本の流れ)。
   `api run --host` の stdout は NDJSON 専用の契約なので、**中継側で行を振り分ける**
   (JSON 行 = stdout / それ以外 = stderr。`RemoteRelay.isMachineReadableLine`)。
@@ -520,30 +520,30 @@ SSH 側のプロセスからでもユーザーの launchd ドメインのサー�
 
 適合チェックは git revision + `ToolchainFingerprint`(`compose` をローカル/リモート両方が
 共有し、合成規則の drift を防ぐ)の2項目。`ProtocolVersion` は独立して照合しない —
-CLI 中継(`ftester run` の起動)のみが対象で、rev 一致(= 同一 upstream コミット)に
+CLI 中継(`fleetest run` の起動)のみが対象で、rev 一致(= 同一 upstream コミット)に
 包含されるため
 
-`ftester api run --host` を実装(拡張連携用の NDJSON 中継。人間向け進行は stderr・NDJSON は
+`fleetest api run --host` を実装(拡張連携用の NDJSON 中継。人間向け進行は stderr・NDJSON は
 stdout を行単位でリモート→ローカルへパス書き換えして中継)。`--interactive`(`--debug`)/
 `--breakpoint`/`--dry-run` 等の stdin 制御・ローカル専用系は併用不可。`ProtocolVersion` は
 不変(NDJSON の形を変えていない)。
 
-GUI(vscode-ftester)は単一ホスト設定ではなく**複数ホスト登録+実行先選択**にした:
-`ftester.remote.hosts`(name/host/dir/session の配列。name は実行先セレクタの一意キー)と
-`ftester.remote.target`(空 = ローカル、非空 = hosts の name に一致するディスパッチ先)。
+GUI(vscode-fleetest)は単一ホスト設定ではなく**複数ホスト登録+実行先選択**にした:
+`fleetest.remote.hosts`(name/host/dir/session の配列。name は実行先セレクタの一意キー)と
+`fleetest.remote.target`(空 = ローカル、非空 = hosts の name に一致するディスパッチ先)。
 target が hosts に無い/host 未設定を指す場合は**黙ってローカル実行にフォールバックせず run を
 中止する**(runHandler.ts の resolveRemoteTarget)。同一リモートへの同時ディスパッチはまだ
 直列化していない(Phase 2 の課題のまま)。
 
-> **2026-08-17 に実行先セレクタは廃止**(§13 の実装で確定した点を参照)。`ftester.remote.target`
+> **2026-08-17 に実行先セレクタは廃止**(§13 の実装で確定した点を参照)。`fleetest.remote.target`
 > という設定キーはもう無く、ディスパッチ先は**マシンプロファイルの `host`**(= 実行プロファイルが
-> 参照するマシン)で決まる。登録簿は LocalConfig へ移り、`ftester.remote.hosts` も設定キーとしては
-> 存在しない(設定タブは `ftester api remote-hosts` を読み書きする)。残る設定キーは
-> `ftester.remote.artifacts` だけ。
+> 参照するマシン)で決まる。登録簿は LocalConfig へ移り、`fleetest.remote.hosts` も設定キーとしては
+> 存在しない(設定タブは `fleetest api remote-hosts` を読み書きする)。残る設定キーは
+> `fleetest.remote.artifacts` だけ。
 
 ## 13. フリート実行と多ホスト GUI(**段1・段4は実装済み: 2026-08-16**。段2・3・5 は未実装)
 
-**実装済み**: 登録簿の LocalConfig 移行(段1。`ftester remote hosts` / `--host <登録名>` /
+**実装済み**: 登録簿の LocalConfig 移行(段1。`fleetest remote hosts` / `--host <登録名>` /
 `api remote-hosts` / 拡張の移行)・フリート定義と `run --fleet`(段4)・実行先重複の拒否・
 **同一リモートへの二重ディスパッチのロック**(§5 の直列化に相当。ただし待たずに fail fast)。
 実機2台(M1Ultra + M1Max)で一斉実行と混在(`local` + リモート)を実走確認済み。
@@ -575,7 +575,7 @@ target が hosts に無い/host 未設定を指す場合は**黙ってローカ�
 - 実行プロファイルの参照(`RunDeviceRef`)も `host` を書ける。**書いていない参照が複数ホストに
   当たったら候補を挙げて中止**する(片方を黙って選ぶと別の機械のデバイスを操作したことになり、
   しかも気づけない)
-- **実行はホストごとのサブ実行へ分かれる**(`Sources/ftester/DeviceHostRunner.swift`)。
+- **実行はホストごとのサブ実行へ分かれる**(`Sources/fleetest/DeviceHostRunner.swift`)。
   子プロセスの起動・行の前置・JUnit 結合・集計は FleetRunner のヘルパを共有し、
   シナリオの割り当ては `FleetSplit.partition` に**台数の重み**(`entryCapacities`)を渡して行う ——
   総量で均すと台数の少ないホストだけが最後まで残り、壁時計が縮まない。
@@ -599,7 +599,7 @@ target が hosts に無い/host 未設定を指す場合は**黙ってローカ�
 
 **この作業でリモート実行の欠陥が1つ出た(修正済み)**: `RemoteRunArgs.build`/`buildApi` が
 リモートへ `--host local` を渡していなかったため、マシンプロファイルに host があると
-**リモート側の ftester が自分自身へ再ディスパッチしようとする**(登録簿に無ければ
+**リモート側の fleetest が自分自身へ再ディスパッチしようとする**(登録簿に無ければ
 「未登録のホスト」で落ち、あれば自分へ ssh する)。`FleetRunner` が "local" エントリに
 `--host local` を渡すのと同じ理由で、リモート側は常にそこで止める。
 
@@ -619,7 +619,7 @@ target が hosts に無い/host 未設定を指す場合は**黙ってローカ�
 - **マシンプロファイルの「取得元」も廃止**。デバイス候補をどのホストから採るかは
   **「デバイスを選択」ダイアログのホスト選択**に移した(選んだホストが、そのまま編集中の
   マシンプロファイルの `host` になる)。**取得元と実行先が別々に設定できてしまう状態を作らない**
-- ダイアログのデバイス行は**右クリックで実体を削除できる**(`ftester api delete-device`。
+- ダイアログのデバイス行は**右クリックで実体を削除できる**(`fleetest api delete-device`。
   判定は `FTCore.DeviceDeletion` — 起動中は削除しない・存在しない識別子を「削除できた」と
   言わない・マシンプロファイルからの参照は止めないが `referencedBy` で申告する)
 
@@ -642,13 +642,13 @@ machines/apps/runs はプロジェクト資産で、ディスパッチのたび�
     { "host": "mac-studio", "profile": "all" } ] }
 ```
 
-- CLI: `ftester run --fleet <name>` が全エントリを並行起動(local はローカル実行)。
+- CLI: `fleetest run --fleet <name>` が全エントリを並行起動(local はローカル実行)。
   集約 exit code。エントリごとに JUnit/レポートは従来どおり
-- **ホスト登録簿(論理名 → ssh 実体)は LocalConfig(`~/.config/ftester/config.json`)に
+- **ホスト登録簿(論理名 → ssh 実体)は LocalConfig(`~/.config/fleetest/config.json`)に
   置く**。理由は2つ: ①CLI が解決の主体になるため VSCode 設定では読めない、
   ②**リポジトリ由来の設定(`.vscode/settings.json`)がディスパッチ先を差し替えられなく
   なる**(§15。VSCode 設定は window スコープ既定でワークスペースから上書き可能)。
-  §12 の `ftester.remote.hosts`(VSCode 設定)は**この段階で LocalConfig へ移行**し、
+  §12 の `fleetest.remote.hosts`(VSCode 設定)は**この段階で LocalConfig へ移行**し、
   設定タブは CLI 経由の読み書きに変える。移行までの暫定対処は §15
 - 登録簿エントリは name/host/dir/session に加えて **machine(対応する machines
   プロファイル名)**を持つ。これは**キャッシュ**であり、真実はリモートの
@@ -667,7 +667,7 @@ machines/apps/runs はプロジェクト資産で、ディスパッチのたび�
   再実行の往復が長いので、1回で全部見せる
 - **集約 exit code は 1 に潰さず非0の最大**を返す。「リモートにバイナリが無い(90)」のような
   区別できる信号を呼び出し側へ残す
-- **ローカルエントリも子プロセスで起動する**(`ftester run --profile …` を spawn)。
+- **ローカルエントリも子プロセスで起動する**(`fleetest run --profile …` を spawn)。
   行ごとの `[host] ` 前置を、ローカル実行の深い呼び出し連鎖にも一様に掛けるため
 - **`--scenario` の 0 件 skip は実装していない**。フリートは1プロジェクトに閉じており、
   エントリごとにシナリオ集合が変わらないので「このエントリだけ 0 件」は起き得ない
@@ -676,7 +676,7 @@ machines/apps/runs はプロジェクト資産で、ディスパッチのたび�
 ### 二重ディスパッチのロック(§5 の直列化。実装済み)
 
 フリート内の重複は validate で防げるが、**別プロセス・別人・CLI と GUI の併走**は防げない。
-`<base>/.ftester/dispatch.lock` を **`mkdir` の原子性**で取る(`test -e` → 作成の2段は競合に
+`<base>/.fleetest/dispatch.lock` を **`mkdir` の原子性**で取る(`test -e` → 作成の2段は競合に
 対して無意味)。**フリート専用にしない** —— 同一ホストの取り合いは `--host` 単発でも起きるので、
 ディスパッチ経路そのものに置く。
 
@@ -689,7 +689,7 @@ machines/apps/runs はプロジェクト資産で、ディスパッチのたび�
 - ロック情報が読めなくても**ロック自体は尊重する**(壊れた情報で素通ししない)
 - 解放は `defer` で必ず行う(成功・失敗・タイムアウトのいずれでも)。**中断でも動くように、
   中断は子へ流して巻き戻す**(§16.1。時間で SIGKILL するとこの `defer` を飛ばす)
-- **`ftester remote unlock --host <h>`(2026-08-24)**: 自分の死んだディスパッチが残したロック
+- **`fleetest remote unlock --host <h>`(2026-08-24)**: 自分の死んだディスパッチが残したロック
   **だけ**を外す。`--force-lock` は走っているかもしれない他人の run を奪うので、残骸の片付けに
   それを使わせない(受け手要望: 複数人でフリートを共有すると「残ったロック + --force-lock」が
   事故になる)。判定は `RemoteDispatchUnlock.decide`(純粋関数): ロック無し=何もしない /
@@ -714,13 +714,13 @@ machines/apps/runs はプロジェクト資産で、ディスパッチのたび�
   (プロファイルの正は手元)。作成したデバイスは既存の経路で**手元のプロファイルへ**登録する。
   引数の組み立ては純粋関数1つ(`deviceCommandArgs`)に閉じ、ローカル取得時は引数を
   1バイトも変えない。
-  **経路は §14 の汎用転送(`ftester --host <name> <サブコマンド>`)をそのまま使う** —
+  **経路は §14 の汎用転送(`fleetest --host <name> <サブコマンド>`)をそのまま使う** —
   カタログ照会用の個別 ssh 実装は書かない。
   **リモートに対する破壊的操作(デバイス作成・削除・`devices down` 相当)は
   §11 と同じ modal 確認を付ける** — 共有ラボでは他人の実行環境を壊し得るため
   (照会系 catalog/installed-devices は確認不要)
 - **アプリプロファイル**: appPath の**マシン別上書きは作らない**。実プロファイルの
-  appPath は相対パス(`.ftester/DerivedData/…`・`../sut-ec-mobile/dist/…`)で、
+  appPath は相対パス(`.fleetest/DerivedData/…`・`../sut-ec-mobile/dist/…`)で、
   対等ピア+同一レイアウトなら上書きなしで解決する(レビューで前提誤りを確認)。
   **ただし「同一レイアウト」は成り立たないことがある**(2026-08-16 に実機で確認) ——
   相対 appPath は**リポジトリルート = ランナー機では `<base>/work`** に解決されるので、
@@ -771,7 +771,7 @@ machines/apps/runs はプロジェクト資産で、ディスパッチのたび�
   **子は fan-out しない**(入れ子のディスパッチを作らない)
 - **観測していない台は `state: "unknown"`**。offline(= 止まっている)と**別の値にする** ——
   同じにすると、向こうで動いていても止まって見える。拡張はこの値のときだけ
-  「<host> に届いていません」を出す(契約は `vscode-ftester/src/monitorDeviceModel.ts` の
+  「<host> に届いていません」を出す(契約は `vscode-fleetest/src/monitorDeviceModel.ts` の
   `MonitorDeviceState`)。**リモートだからという理由で表示を変えない** —— 状態が届いていれば
   手元の台と1文字も変わらない表示にする
 - **映像は多重化しない。1デバイス = 1本の ssh**。`api device-stream` は宛先(udid / adb serial /
@@ -807,20 +807,20 @@ machines/apps/runs はプロジェクト資産で、ディスパッチのたび�
 
 **版が揃っていないと配信も状態も来ない**(`--device-host` / `api device-stream` は新しい)。
 古い機械は「Unknown option」で即死 → 3回で諦め → タイルは「届いていません」のまま。
-`ftester remote setup <host>` で揃える。
+`fleetest remote setup <host>` で揃える。
 
 ### 実装順序
 
 | 段 | 内容 | 依存 |
 |---|---|---|
-| 0 | **暫定対処: `ftester.remote.hosts`/`remote.target` へ `"scope": "machine"` 付与**(§15.2。移行前の設定乗っ取り防止) | なし。**Phase 1 実装へ即時適用済み(2026-07-31)** |
+| 0 | **暫定対処: `fleetest.remote.hosts`/`remote.target` へ `"scope": "machine"` 付与**(§15.2。移行前の設定乗っ取り防止) | なし。**Phase 1 実装へ即時適用済み(2026-07-31)** |
 | 1 | 登録簿の LocalConfig 移行+machine 対応・接続確認・状態表示+**汎用転送 `--host <サブコマンド>`**(§14) | — |
 | 2 | マシンプロファイルタブの取得元セレクタ(段1の汎用転送を使うだけ) | 1 |
 | 3 | appPath の ssh 実在チェック(上書き機構は作らない) | 1 |
 | 4 | フリート定義+`run --fleet`+静的検証(host→machine→デバイス名解決の赤字表示) | 1 |
 | 5 | デバイスタブ多ホスト化(**状態・静止画・ライブ映像は 2026-08-17 実装済み**。watchdog 分界と自動修復は未実装) | 1。①〜④と独立に後回し可 |
 
-**results の扱い(2026-08-16 に実測で確認。当初の想定と違う)**: `ftester results` 系の集計は
+**results の扱い(2026-08-16 に実測で確認。当初の想定と違う)**: `fleetest results` 系の集計は
 `results/runs/` を走査する**ファイルベース**なので、`--remote-artifacts collect`(既定)が
 results/ を回収した時点で**リモート実行分もそのまま集計に載る**(実測: `results list` に
 M1Ultra / M1Max の run が machine 名付きで並ぶ)。「マージの実装」は要らなかった。
@@ -842,7 +842,7 @@ M1Ultra / M1Max の run が machine 名付きで並ぶ)。「マージの実装�
 | セッション | **Aqua セッションが立っている**(= コンソールにランナーユーザーがログイン済み)。画面ロックは可 | 必須 | `stat -f%Su /dev/console` がランナーユーザーと一致(**両モード共通**) |
 | 電源 | **システムスリープ無効**(ディスプレイスリープは可) | 必須 | `pmset -g` |
 | ネットワーク | リモートログイン ON・発行側からの鍵認証(BatchMode)・**画面共有 ON**(モード A の再起動後の解錠に使う。モード B では任意だが復旧用に推奨) | 必須 | 到達性プローブ(実装済み)+ ポート応答 |
-| ツール本体 | **専用ベースディレクトリ配下**(`<base>/tool` = クローン・`<base>/work` = WORK_DIR)に導入済みで `swift build` 済み。CLI のみ(拡張・MCP・モニター不要 = CI ランナーと同型)。**マシン自身のローカルインストールとは別物**(§12) | 必須 | `test -x <base>/tool/.build/debug/ftester` |
+| ツール本体 | **専用ベースディレクトリ配下**(`<base>/tool` = クローン・`<base>/work` = WORK_DIR)に導入済みで `swift build` 済み。CLI のみ(拡張・MCP・モニター不要 = CI ランナーと同型)。**マシン自身のローカルインストールとは別物**(§12) | 必須 | `test -x <base>/tool/.build/debug/fleetest` |
 | Android | Android SDK + AVD | レーン使用時 | 既存 preflight 流用 |
 | FM | システム言語**英語** + Apple Intelligence 有効化 | screenLooksLike/heal 使用時 | `doctor --fm-only`(実呼び出し) |
 
@@ -868,7 +868,7 @@ M1Ultra / M1Max の run が machine 名付きで並ぶ)。「マージの実装�
 
 ```
 Scripts/preflight.sh --runner  既存に判定モードを追加(--base <dir>。既定は --remote-dir と
-                               同じ ~/ftester-runner)。共通項目(macOS・Xcode・git/swift・
+                               同じ ~/fleetest-runner)。共通項目(macOS・Xcode・git/swift・
                                xcodegen)は関数に括り出して両モードから呼ぶ。ランナー固有は
                                コンソールユーザー・スリープ・sshd・画面共有・FileVault/自動
                                ログイン・base 配下の導入状況。ready=0 / needs-manual=2 / blocked=1
@@ -878,7 +878,7 @@ Scripts/install.sh             **そのまま流用**(外部構成で呼ぶ):
                                **--skip-project は使えない**(WORK_DIR に Package.swift が要る。§12)。
                                --tool-root も渡さない(既定の <work-dir>/../foundation-tester が
                                RemoteLayout.toolRoot とちょうど一致する)
-ftester remote setup <host>    発行側の入口。local(手元のプロジェクト解決)→ reach → preflight
+fleetest remote setup <host>    発行側の入口。local(手元のプロジェクト解決)→ reach → preflight
                                → install → align → machine → verify の7段。preflight と
                                install.sh は**手元のスクリプトを scp で送って実行する**
                                (リモートに clone が無い初回と、curl 形が main 固定で
@@ -888,11 +888,11 @@ ftester remote setup <host>    発行側の入口。local(手元のプロジェ�
 
 `remote setup` 固有の仕事は **版合わせ(align)・検証ディスパッチ**で、導入本体は
 既存 install.sh が持つ。出力規律も install.sh のものをそのまま使う(1ステップ1行+集計、
-生ログは `<clone>/.ftester/install-<日時>.log`)。
+生ログは `<clone>/.fleetest/install-<日時>.log`)。
 
 **align が要る理由**: 適合チェックは git revision 一致を要求するが、install.sh が clone するのは
 upstream の既定ブランチなので、検証中のブランチでは必ず不一致になる。発行側の HEAD へ
-`git fetch → checkout → swift build --product ftester` で合わせる(revision は 16進 7〜40 文字を
+`git fetch → checkout → swift build --product fleetest` で合わせる(revision は 16進 7〜40 文字を
 検証してから埋める = コマンド注入の入口を塞ぐ)。
 
 **踏んだ罠**: リモートで一時スクリプトを実行して後始末する1行で、終了コードの退避先を
@@ -933,14 +933,14 @@ ssh 越しの操作を用途ごとに実装しない。**2種類だけ**に整�
 
 | 種別 | 形 | 例 |
 |---|---|---|
-| **汎用転送**(状態照会・単発操作) | `ftester remote exec <host> -- <サブコマンド>` = リモートで同じコマンドを実行して出力と終了コードを返すだけ | `remote exec studio -- doctor --fm-only`(§14 の FM 検証)/ `-- api device-catalog`・`-- api installed-devices`・`-- api create-device`・`-- api delete-device`(§13 のデバイス選択ダイアログ)/ `-- devices down` |
+| **汎用転送**(状態照会・単発操作) | `fleetest remote exec <host> -- <サブコマンド>` = リモートで同じコマンドを実行して出力と終了コードを返すだけ | `remote exec studio -- doctor --fm-only`(§14 の FM 検証)/ `-- api device-catalog`・`-- api installed-devices`・`-- api create-device`・`-- api delete-device`(§13 のデバイス選択ダイアログ)/ `-- devices down` |
 | **ディスパッチ**(run 系) | `run --host` / `api run --host`(実装済み) | 転送(rsync)→ 実行 → 中継 → 回収が付く |
 
 §13 の「取得元セレクタ」「リモートデバイス作成」、§14 の FM 検証、設定タブの
 「このホストを更新」は**すべて汎用転送1つで賄える** — 個別の ssh 実装を書かない
 (RemoteExec ヘルパの一段上の一般化)。
 
-**当初案 `ftester --host <name> <サブコマンド>` から形を変えた(2026-08-16)**:
+**当初案 `fleetest --host <name> <サブコマンド>` から形を変えた(2026-08-16)**:
 トップレベルの `--host` はサブコマンド解決と衝突し、`run --host`(ディスパッチ)と
 意味も食い違う。`remote exec <host> -- <args>` なら**ホスト名より後ろは全部素通し**という
 規則1つで済む。転送する引数に `--host` が含まれていたら拒否する(入れ子のディスパッチを作らない)。
@@ -953,7 +953,7 @@ ssh 越しの操作を用途ごとに実装しない。**2種類だけ**に整�
    (+必要に応じ Android SDK・英語化+AI 有効化)。以後この機械に触るのは、
    **モード A なら再起動のたびの解錠+ログイン1回だけ・モード B なら不要**
 2. **ステップ1(発行側から)**: `ssh-copy-id`(初回のみパスワード1回)→ 設定タブで
-   ホスト登録 → `ftester remote setup <host>`。不足があれば手動手順の番号付きで
+   ホスト登録 → `fleetest remote setup <host>`。不足があれば手動手順の番号付きで
    列挙されて止まる(直して同じコマンドを再実行 — 冪等)。全部揃うと
    clone → build(コールド数分は初回のみ)→ toolchain/FM 検証 →
    **SampleApp 1本のディスパッチ実走**まで通って ✅
@@ -964,12 +964,12 @@ ssh 越しの操作を用途ごとに実装しない。**2種類だけ**に整�
    (自動ログインで Aqua が立つ)。**モード A** は計画再起動なら
    `sudo fdesetup authrestart` → 起動後に画面共有でログイン1回。以後また無人。
    ログイン前にディスパッチすると「loginwindow で待機中 — 解錠が必要」で落ちる(§5)
-4. **撤去**: `ftester remote setup <host> --uninstall`(LaunchAgent 撤去+clone 削除は
+4. **撤去**: `fleetest remote setup <host> --uninstall`(LaunchAgent 撤去+clone 削除は
    確認付き)。手動ステップ0の戻し方は手順書に併記
 
 ### Phase 2 との接続
 
-session agent が来たら **`ftester remote setup` に `--with-agent` を追加**し、LaunchAgent
+session agent が来たら **`fleetest remote setup` に `--with-agent` を追加**し、LaunchAgent
 plist を `~/Library/LaunchAgents` に配置+load する(**ユーザー空間なので sudo 不要** —
 決定1の線引きと整合。決定5により専用スクリプトは新設しない)。
 
@@ -1004,7 +1004,7 @@ plist を `~/Library/LaunchAgents` に配置+load する(**ユーザー空間な
   リポジトリの `.vscode/settings.json` から上書きできるため、悪意あるリポジトリを開いて
   普通にテストを実行しただけで**ディスパッチ先を差し替えられる**
 - **移行までの暫定対処(Phase 1 実装への即時適用)**: `package.json` の
-  `ftester.remote.hosts` / `ftester.remote.target` に **`"scope": "machine"`** を付け、
+  `fleetest.remote.hosts` / `fleetest.remote.target` に **`"scope": "machine"`** を付け、
   ワークスペース設定からの上書きを VSCode に無視させる
 - 現状これが実害に至っていないのは、未知ホストへの ssh がホスト鍵検証で接続段階に
   失敗し、**rsync 転送(= プロジェクトファイルの送信)に到達しない**ため。
@@ -1052,7 +1052,7 @@ plist を `~/Library/LaunchAgents` に配置+load する(**ユーザー空間な
 
 ### 16.1 中断とキャンセルの伝播(実装済み: `-tt` + InterruptRelay。2026-08-18 に実測で補強)
 
-**ssh クライアントを殺してもリモートの `ftester run` は死なない**(TTY 無しで起動しており
+**ssh クライアントを殺してもリモートの `fleetest run` は死なない**(TTY 無しで起動しており
 SIGHUP が伝播しない)。拡張の run キャンセル・Ctrl-C・ローカル側の異常終了で、
 **リモートにシミュレータを掴んだままの孤児 run が残り、次のディスパッチがデバイス競合で
 失敗する**。
@@ -1062,15 +1062,15 @@ ssh を `-tt`(擬似 TTY 強制割り当て)で起動し、切断時に SIGHUP �
 する(ディスパッチは対話しない。`--debug` 等の stdin 制御はそもそも `--host` と併用不可)。
 
 **`-tt` だけでは足りない**(2026-08-18 に実測): **親を殺しても子は死なない** —— Foundation の
-`Process` は親の終了に子を巻き込まないので、ftester を kill しても **ssh クライアントが生き残り**、
+`Process` は親の終了に子を巻き込まないので、fleetest を kill しても **ssh クライアントが生き残り**、
 切断が起きないので SIGHUP も発火しない。実際にリモートへ走りっぱなしの run が残り、
 `dispatch.lock` も握られたままになった(残った子は exit 途中で刺さり、次のディスパッチが
-数十分ぶん詰まった)。`Sources/ftester/InterruptRelay.swift` が SIGINT/SIGTERM/SIGHUP を
+数十分ぶん詰まった)。`Sources/fleetest/InterruptRelay.swift` が SIGINT/SIGTERM/SIGHUP を
 横取りして子へ流す。守る規律2つ:
 
 - **中断を握りつぶさない代わりに、子を落としてから通常の巻き戻しを続ける** ——
   こうしないと `defer`(dispatch.lock の解放・終了スクリプト)が動かない
-- **エスカレート(SIGKILL)は ssh にだけ掛ける**(2秒)。**ftester の子には掛けない** ——
+- **エスカレート(SIGKILL)は ssh にだけ掛ける**(2秒)。**fleetest の子には掛けない** ——
   子は SIGTERM のあとにロック解放と終了スクリプトを走らせるので、時間で殺すとそれを飛ばす
   (2秒で殺していた版では実際にロックが残った。子の exit=9 が witness)。片付けの所要は
   利用者のスクリプト次第で上限を決められないので待つ側に倒す(刺さったら人が kill -9 する)
@@ -1085,7 +1085,7 @@ ssh を `-tt`(擬似 TTY 強制割り当て)で起動し、切断時に SIGHUP �
   (`InterruptRelayTests` が自プロセスへ SIGINT を撃って固定する)
 
 取りこぼした孤児は 16.4 の `remote clean`(+ 終了スクリプトは `hooks reap`)で掃除する。
-**自分の死んだディスパッチが残したロックだけ**は `ftester remote unlock --host <h>` で外す
+**自分の死んだディスパッチが残したロックだけ**は `fleetest remote unlock --host <h>` で外す
 (下記「二重ディスパッチのロック」)。
 
 ### 16.2 ディスパッチ全体のタイムアウト(要実装)
@@ -1107,13 +1107,13 @@ ssh を `-tt`(擬似 TTY 強制割り当て)で起動し、切断時に SIGHUP �
 
 `<base>/work` の results DB・reports・録画は**溜まり続ける**。ローカルなら人が気付くが
 **ランナーは誰も見ない** — 数か月でディスクフルになり、ある日フリート全体が落ちる。
-`ftester remote clean <host>` で ①孤児プロセス・ゾンビブリッジの掃除(`devices down` 相当)
+`fleetest remote clean <host>` で ①孤児プロセス・ゾンビブリッジの掃除(`devices down` 相当)
 ②保持ポリシーを超えた results/reports/録画の削除、を行う。空き容量は 16.5 の status に出す。
 
 ### 16.5 フリートの一括診断(要実装 = `remote status`)
 
 ホストが3台を超えると「どれが今使えるか」の確認が運用の主コストになる。
-`ftester remote status [--fleet <name>]` で**全ホストへ並列に**到達性・rev・toolchain・
+`fleetest remote status [--fleet <name>]` で**全ホストへ並列に**到達性・rev・toolchain・
 FM 可否・**ログイン状態**(16.3)・空き容量を投げ、1画面の表にする。
 §13 のホスト状態表示(GUI)は**この結果をそのまま描画する**(判定ロジックを二重に持たない)。
 
@@ -1186,7 +1186,7 @@ appPath の原本をワークスペースの `apps/<原本のファイル名>` �
 - **スキーマ**: 実行プロファイルに任意で `"remoteControl": { "workspace": "<絶対パス or リポジトリ
   ルート相対パス>" }` を書く(`Sources/FTCore/RunProfile.swift` の `RemoteControlSection`)。
   **run 前後のスクリプトはここに書かない**(下記)。
-  同期相手: `vscode-ftester/schemas/run-profile.schema.json` と拡張のプロファイルフォーム
+  同期相手: `vscode-fleetest/schemas/run-profile.schema.json` と拡張のプロファイルフォーム
 - **`ResolvedAppTarget` は原本とインストール先を別々に持つ**(`Sources/FTCore/RunProfile.swift`):
   `sourcePath` = リポジトリルート基準で解決した原本の絶対パス(常に不変)/
   `appPath` = インストールに実際に使う絶対パス(常に `"<workspaceRoot>/apps/<sourcePath の
@@ -1215,7 +1215,7 @@ appPath の原本をワークスペースの `apps/<原本のファイル名>` �
   `apps/` はステージング済みバイナリの複製なので `.gitignore`(`TestProjects/*/workspace/apps/`)
   で無視する。`scripts/`・`data/` は利用者が書くものなので無視しない
 - **呼び出し場所**(run 時3箇所 + 導入時2箇所): 導入時は `ProjectScaffold.create`
-  (project create / init)と `ftester project sync`(update.sh が毎回呼ぶ = 既存の受け手への
+  (project create / init)と `fleetest project sync`(update.sh が毎回呼ぶ = 既存の受け手への
   配達口)が**既定ワークスペースにだけ**置く(宣言されたワークスペースは実行プロファイルの
   属性で、導入時点では存在しないため run 時の ensure が受け持つ)。
   run 時(プロファイル解決の直後): ローカル実行 `ProfileRunner.run` /
@@ -1223,26 +1223,26 @@ appPath の原本をワークスペースの `apps/<原本のファイル名>` �
   および `RemoteRunDispatcher.prepareWorkspace`(project の rsync 直前、ローカル側の
   ワークスペースへ揃える。マシン/デバイス解決を経由しない軽量読み `ProfileResolver.
   declaredAppPaths` で原本パスだけ取得する)。同じコードパスがリモートの子(ssh 越しに
-  実行される `ftester run`/`api run` 自身)でも走るが、そちらは原本を持たないため
+  実行される `fleetest run`/`api run` 自身)でも走るが、そちらは原本を持たないため
   上記の「dest があれば無視」で無害化される
 - **ミラー(プロジェクト外を指したときだけ)**: `--host` ディスパッチ時、`TestProjects/<project>/`
   の転送(§13)とは別枠でワークスペースを丸ごと rsync する(`RemoteTransferPlan.
   workspaceRsyncArgs` = `-az --delete`、除外は `.git`/`.DS_Store`/`node_modules`)。
   ミラー先はプロジェクトごとに分ける(`<remoteDir>/work/workspace/<project>/`。
   `RemoteLayout.workspaceDir`)
-- **`--workspace <path>`(hidden)**: `ftester run` / `ftester api run` の両方に持つ。
+- **`--workspace <path>`(hidden)**: `fleetest run` / `fleetest api run` の両方に持つ。
   実行プロファイルの `remoteControl.workspace`(既定込みの実効値)を1回限り上書きする
   (`ProfileResolver.effectiveWorkspaceRaw` = override が非空なら常に勝つ)。**手で打つものでは
-  ない** —— リモートディスパッチ(`Sources/ftester/RemoteRunDispatcher.swift` の
+  ない** —— リモートディスパッチ(`Sources/fleetest/RemoteRunDispatcher.swift` の
   `prepareWorkspace`)が、`WorkspaceRemoteDispatch.placement` の計算結果(配下ならプロジェクト
-  ディレクトリ配下のパス、配下でなければミラー先)をリモートの子(`ftester run/api run
+  ディレクトリ配下のパス、配下でなければミラー先)をリモートの子(`fleetest run/api run
   --host local …`)へ必ず渡す。渡し漏れると子は自分自身の既定/宣言で別のパスを組み立ててしまう
 - **多ホスト(§13 DeviceHostRunner/ApiRunHostFanout・フリート§8)への波及なし**: どちらも
-  ホストごとの子プロセスとして `ftester (api) run --host <label> …` を起動するだけで、
+  ホストごとの子プロセスとして `fleetest (api) run --host <label> …` を起動するだけで、
   各子は自分自身が `RemoteRunDispatcher` を経由するときに独立してワークスペースの用意を行う
   (二重実装ではなく、既存の子プロセス起動経路にこの節の機構がそのまま乗る)
 
-### 転送から外す(`.ftester-transfer-ignore`。2026-08-23)
+### 転送から外す(`.fleetest-transfer-ignore`。2026-08-23)
 
 受け手報告(3機構成): スタブサーバの端末登録台帳をワークスペース内に置いていたため、
 ディスパッチのたびの rsync `--delete` が**手元の台帳でランナー機の台帳を上書き**し、
@@ -1252,9 +1252,9 @@ appPath の原本をワークスペースの `apps/<原本のファイル名>` �
 
 - **宣言はファイル1つ**: 転送対象のツリー(プロジェクト転送なら `TestProjects/<project>/`、
   プロジェクト外のミラーならワークスペース)の**どのディレクトリにでも**置ける
-  `.ftester-transfer-ignore`。中身は rsync の `--exclude` パターンで、**置いたディレクトリ起点**
+  `.fleetest-transfer-ignore`。中身は rsync の `--exclude` パターンで、**置いたディレクトリ起点**
   (rsync の `-F`/dir-merge と同じ感覚)。規則の定義元は `Sources/FTCore/TransferIgnore.swift` の冒頭
-- **rsync の `-F`(dir-merge)を使わず ftester が読んで `--exclude` へ翻訳する理由**: macOS 標準の
+- **rsync の `-F`(dir-merge)を使わず fleetest が読んで `--exclude` へ翻訳する理由**: macOS 標準の
   rsync は **openrsync** で、**dir-merge の規則は `--delete` から受け側を守らない**
   (2026-08-23 実験。ローカル→ローカルで受け側の除外対象が消えた)。グローバルの `--exclude` なら
   守る(同日、M1Max への ssh 越しの実ディスパッチでも確認: 除外パスは送られず・ランナー側の
@@ -1266,7 +1266,7 @@ appPath の原本をワークスペースの `apps/<原本のファイル名>` �
   run のディスパッチ(`RemoteRunDispatcher.transfer`)・モニター/デバイスの fan-out
   (`RemoteProjectSync`。**これも `--delete` 付きでプロジェクトを運ぶ**ので、run だけ読んでも
   fan-out の転送で台帳が消える)・プロジェクト外ワークスペースのミラー
-- **黙って効かせない**: 宣言があるときだけ転送ログに1行(`==> .ftester-transfer-ignore: N exclude
+- **黙って効かせない**: 宣言があるときだけ転送ログに1行(`==> .fleetest-transfer-ignore: N exclude
   pattern(s) from <files>`)。受け手が「まだ上書きされる」ときに読まれたかどうかを切り分けられる
 - **却下**: 実行プロファイルのキー(`remoteControl.transferExcludes`)—— 除外はワークスペースの
   性質(サービスが何を書くか)であって run の構成ではなく、fan-out の転送はプロファイルを持たない。
@@ -1287,7 +1287,7 @@ appPath の原本をワークスペースの `apps/<原本のファイル名>` �
   名前と置き場所が1つに決まっているほうが、受け手にも回収側にも読み違えが起きない。
   無ければ何もしない(スクリプトを使わない利用者に空ファイルを強いない)
 - **実行場所はランナー機**。呼ぶのは `ProfileRunner.run` と `ApiRunCommand` の2箇所
-  (ワークスペースのステージングと同じ場所)で、リモートの子は `ftester run --host local` として
+  (ワークスペースのステージングと同じ場所)で、リモートの子は `fleetest run --host local` として
   向こうで同じコードを通る —— **`RemoteRunDispatcher` には何も足さない**(手元とリモートで
   実装が割れない)。ワークスペースごと運ばれるので、スクリプトと資材は勝手に届く
 - **順序**: デバイスに触る前に撃つ(依存サービスが無いままシミュレータを起こしても、
@@ -1310,10 +1310,10 @@ appPath の原本をワークスペースの `apps/<原本のファイル名>` �
   決める)。リモート実行はディスパッチ全体の上限(§16.2)が外側から縛る
 - **片付けの保証**(ここが一番壊れやすい): 正常系は `defer`。**プロセスが defer に到達できずに
   死んだ場合**(ssh 切断の SIGHUP・SIGKILL・停電)に備えて、setup を撃つ**前**に
-  `<repoRoot>/.ftester/hooks/<pid>.json` へ控えを置く(`FTCore.RunHookLease`。**プロジェクト
+  `<repoRoot>/.fleetest/hooks/<pid>.json` へ控えを置く(`FTCore.RunHookLease`。**プロジェクト
   非依存** —— 掴まれたポートはホスト全体の資源で、次に走るのが別プロジェクトでも同じ衝突を
-  起こす)。**次の run の開始時**と **`ftester hooks reap`** がこれを見て、死んだ pid のぶんの
-  終了スクリプトを代わりに撃つ。`ftester remote clean` は `devices down` の**前**にこれを撃つ
+  起こす)。**次の run の開始時**と **`fleetest hooks reap`** がこれを見て、死んだ pid のぶんの
+  終了スクリプトを代わりに撃つ。`fleetest remote clean` は `devices down` の**前**にこれを撃つ
   (終了スクリプトはデバイスに触りうる)。
   **生存判定は pid だけ**(RunLease と違い mtime は見ない) —— run は数十分かかりうるので、
   無音の時間で「古い」と判定すると**動いている run の DB を落とす**
@@ -1321,11 +1321,11 @@ appPath の原本をワークスペースの `apps/<原本のファイル名>` �
   撃つ)。残した run のプロファイルは既に書き換えられているかもしれない
 - **拡張のフォームには入力欄を置かない**(2026-08-18 のユーザー決定)。「リモート制御」の
   セクションに置くのは**「スクリプトの雛形を作成する」ボタン**だけ ——
-  `<workspace>/scripts/` に雛形を書き(`vscode-ftester/src/runHookScaffold.ts`)、開いて見せる。
+  `<workspace>/scripts/` に雛形を書き(`vscode-fleetest/src/runHookScaffold.ts`)、開いて見せる。
   **使い方(環境変数・実行規則)は雛形のコメントに書く** —— 画面の説明文とファイル内コメントの
   二重管理にしない。**既にあるファイルは1バイトも触らない**(利用者が書いた片付け手順を
   雛形で潰すと、次の run が古い環境を掴んだまま走る)。**雛形の中身は locale に追従する**
-  (`vscode-ftester/src/i18n/strings/hookScaffold.ts` の ja/en。日本語モードならコメントも日本語。
+  (`vscode-fleetest/src/i18n/strings/hookScaffold.ts` の ja/en。日本語モードならコメントも日本語。
   生成物だが利用者が読むので UI と同じ扱いにする)。中身は実行規則の説明そのものなので、
   規則を変えたらここと一緒に直す
 
@@ -1436,12 +1436,12 @@ upstream main を clone して update.sh で追従するので、2人の rev は
 ```
 <base>/
 ├── foundation-tester/          ← tool。共有(§18.4 — 分けない)
-├── .ftester/dispatch.lock      ← ホストに1本(競合の実体はデバイス = ホスト資源)
+├── .fleetest/dispatch.lock      ← ホストに1本(競合の実体はデバイス = ホスト資源)
 └── users/<issuerId>/work/      ← 発行者ごとの WORK_DIR(TestProjects・results・.build・workspace)
 ```
 
 - **これが唯一のレイアウト**(二重サポートしない — モードが2つあると版スキューと同型の
-  恒常バグ族になる)。既存利用者の移行は `ftester remote setup <host>` を1回再実行
+  恒常バグ族になる)。既存利用者の移行は `fleetest remote setup <host>` を1回再実行
   (tool は既存なのでコールドビルド無し)。旧 `<base>/work` は手で消してよい
   (`remote clean` の保持ポリシー掃除は移行期の間、旧レイアウトも対象に含める)
 - **鍵は issuerId**。パスに使うので文字種を入口で検証する(`RemoteLayout.validateIssuerKey`:

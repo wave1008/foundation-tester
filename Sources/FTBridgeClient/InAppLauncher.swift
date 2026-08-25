@@ -10,7 +10,7 @@ public struct InAppLauncher {
     public let udid: String
     public let port: UInt16
 
-    var stateDir: URL { repoRoot.appendingPathComponent(".ftester") }
+    var stateDir: URL { repoRoot.appendingPathComponent(".fleetest") }
 
     public init(repoRoot: URL, udid: String, port: UInt16) {
         self.repoRoot = repoRoot

@@ -1,6 +1,6 @@
 // RunOrchestrator.swift
-// シナリオ並列実行のオーケストレーション。CLI(ftester run --ports / ftester api run)が使う。
-// シナリオ実行の実体は ftester-scenarios サブプロセス(ScenarioHost)で、
+// シナリオ並列実行のオーケストレーション。CLI(fleetest run --ports / fleetest api run)が使う。
+// シナリオ実行の実体は fleetest-scenarios サブプロセス(ScenarioHost)で、
 // FM フックはサブプロセス側が持つ。ワーカーのドライバはウォームアップ・接続確認用。
 
 import Foundation
@@ -88,7 +88,7 @@ public struct RunWorker {
     public let driver: AppDriver          // ウォームアップ・接続確認用
     public let connection: DriverConnection  // サブプロセスへ渡す接続情報
     /// 実行プロファイル上のデバイス論理名(profiles/machines/ の name)。
-    /// ProfileWorkerFactory 経由で構築されたワーカーのみ設定される(ftester api run の
+    /// ProfileWorkerFactory 経由で構築されたワーカーのみ設定される(fleetest api run の
     /// workersReady イベントの id 構築に使う。--ports 等の非プロファイル経路では nil)
     public let logicalName: String?
 
@@ -150,7 +150,7 @@ public enum RunEvent: Sendable {
     /// ワーカーの進行状況メッセージ(離脱ではない。ワーカー復帰の進行可視化用。NDJSON では "log")
     case workerLog(worker: String, message: String)
     /// シナリオの結果を取り消して別デバイスへ振り直した(Test Explorer は該当項目を「待機中」へ戻す。
-    /// NDJSON では "scenarioRequeued"。契約: vscode-ftester/src/model.ts ScenarioRequeuedEvent)
+    /// NDJSON では "scenarioRequeued"。契約: vscode-fleetest/src/model.ts ScenarioRequeuedEvent)
     case flowRequeued(worker: String, flowURL: URL, reason: String, attempt: Int, limit: Int)
     case flowStarted(worker: String, flowURL: URL, flowName: String, isDirty: Bool)
     /// scene 開始(ScenarioEvent kind "sceneStarted" 相当)
@@ -540,14 +540,14 @@ public final class RunOrchestrator {
     /// run profile の record:true 時のワーカー動画録画(nil = 無効)。VideoRecordingCoordinator.swift
     private let videoRecording: VideoRecordingCoordinator?
     /// Android の画面凍結(blank-screen)判定。FTCore は FTAndroid に依存できない(循環)ため
-    /// 実プローブ(AndroidHealthProbe)の注入は呼び出し側(ftester ターゲット)が行う。
+    /// 実プローブ(AndroidHealthProbe)の注入は呼び出し側(fleetest ターゲット)が行う。
     /// nil(未注入)時は常に false(凍結扱いしない)
     private let isDeviceFrozen: (@Sendable (String) async -> Bool)?
     /// Android デバイスが実行中に到達不能(adb で offline/未検出=プロセス消滅・watchdog 再起動 down 等)に
     /// なったかの判定。凍結(adb 生存・画面のみ死)とは別で、こちらは adb からデバイス自体が消えた状態。
     /// isDeviceFrozen と同じ理由で呼び出し側が注入(未注入時は常に false)
     private let isDeviceUnreachable: (@Sendable (String) async -> Bool)?
-    /// xcuitest ブリッジのランナーログ(.ftester/bridge-<port>.log)の現在サイズ。ログ成長=ランナー生存
+    /// xcuitest ブリッジのランナーログ(.fleetest/bridge-<port>.log)の現在サイズ。ログ成長=ランナー生存
     /// の傍証として bridgeUnreachable の busy/ウェッジ判別に使う。ログパスは FTBridgeClient 側の知識
     /// なので isDeviceFrozen と同じ理由で注入。取得不能・非 xcuitest は nil(判別に使わない)
     private let bridgeLogSize: (@Sendable (RunWorker) -> UInt64?)?
@@ -557,7 +557,7 @@ public final class RunOrchestrator {
     /// 未注入時は worker.driver への素朴なプローブにフォールバック
     private let probeBridge: (@Sendable (RunWorker) async -> BridgeProbeOutcome)?
     /// run-lease(RunLease.write/remove、FTBridgeClient)のハートビート書き込み・削除。
-    /// isDeviceFrozen と同じ理由(FTCore は FTBridgeClient に依存できない)で ftester ターゲットが注入。
+    /// isDeviceFrozen と同じ理由(FTCore は FTBridgeClient に依存できない)で fleetest ターゲットが注入。
     /// nil(未注入。テストハーネス等)時は lease 書き込みを単に skip する
     private let writeRunLease: (@Sendable (String) -> Void)?
     private let removeRunLease: (@Sendable (String) -> Void)?
@@ -565,7 +565,7 @@ public final class RunOrchestrator {
     /// タスクが 5 秒毎にこの snapshot を舐めて writeRunLease を呼ぶ
     private let leaseKeys = RunLeaseKeys()
     /// 録画中 lease(RecordingLease.write/remove、FTBridgeClient)のハートビート書き込み・削除。
-    /// writeRunLease と同じ理由(FTCore は FTBridgeClient に依存できない)で ftester ターゲットが注入。
+    /// writeRunLease と同じ理由(FTCore は FTBridgeClient に依存できない)で fleetest ターゲットが注入。
     /// videoRecording?.start(_:) が true(録画プロセスの起動に成功)を返したキーだけ書く
     private let writeRecordingLease: (@Sendable (String) -> Void)?
     private let removeRecordingLease: (@Sendable (String) -> Void)?
@@ -588,7 +588,7 @@ public final class RunOrchestrator {
     private let lateWorkers: (platforms: Set<String>, provider: @Sendable () async -> [RunWorker])?
     /// installApp() の親実行ハンドラ(RPC)。nil なら子は --host-install 無しで起動し、
     /// フォールバック(--app-path・明示引数・明示エラー)に委ねる(ScenarioHost.run 参照)。
-    /// 呼び出し側(ftester ターゲット)が InstallHandlerFactory 経由で注入する
+    /// 呼び出し側(fleetest ターゲット)が InstallHandlerFactory 経由で注入する
     private let installHandler: (@Sendable (RunWorker, String?) async -> (ok: Bool, message: String))?
     /// アプリの表示名(プロファイルの appName)。tapAppIcon() の引数省略時の既定として子へ渡す
     private let appName: String?
@@ -759,7 +759,7 @@ public final class RunOrchestrator {
     }
 
     /// - dispatch: `.shared`(既定。platform 別の共有キュー)/ `.broadcast`(レーン別キュー。
-    ///   `ftester run --broadcast`)。**違うのはキューの切り方と、ワーカーがどのキューを
+    ///   `fleetest run --broadcast`)。**違うのはキューの切り方と、ワーカーがどのキューを
     ///   取るかだけ** —— スタッガ・CPU 門・復帰・lease・録画・ドレインは同じ経路を通る
     public func run(items: [ScenarioRunItem], defaultPlatform: String,
                     dispatch: ScenarioDispatch = .shared) async -> RunSummary {

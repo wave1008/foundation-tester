@@ -1,5 +1,5 @@
 // 10_ID無し画面.swift
-// ftester 機能: **相対セレクタ(`基準:rightSwitch` / `基準:leftButton`)だけ**で id の無い画面を
+// fleetest 機能: **相対セレクタ(`基準:rightSwitch` / `基準:leftButton`)だけ**で id の無い画面を
 // 操作・検証する。
 // 対象画面(ui-contract.md「ID なし画面」)の要素には testTag が一切無く、
 // スイッチは無ラベル・行3のボタンは左右とも同じラベル `変更` なので、方向でしか選び分けられない。

@@ -1,5 +1,5 @@
 // 同一リモートホストへの二重ディスパッチ防止ロック(docs/remote-runner.md §5)の純粋ロジック。
-// ssh 実行は Sources/ftester/RemoteRunDispatcher.swift 側(e2e に残す)。
+// ssh 実行は Sources/fleetest/RemoteRunDispatcher.swift 側(e2e に残す)。
 
 import Foundation
 import XCTest
@@ -71,14 +71,14 @@ final class RemoteDispatchLockTests: XCTestCase {
 
     // MARK: - paths
 
-    func testLockDirPathIsUnderDotFtester() {
-        XCTAssertEqual(RemoteDispatchLock.lockDirPath(base: "/Users/tester/ftester-runner"),
-                       "/Users/tester/ftester-runner/.ftester/dispatch.lock")
+    func testLockDirPathIsUnderDotFleetest() {
+        XCTAssertEqual(RemoteDispatchLock.lockDirPath(base: "/Users/tester/fleetest-runner"),
+                       "/Users/tester/fleetest-runner/.fleetest/dispatch.lock")
     }
 
     func testInfoFilePathIsInsideLockDir() {
-        XCTAssertEqual(RemoteDispatchLock.infoFilePath(base: "/Users/tester/ftester-runner"),
-                       "/Users/tester/ftester-runner/.ftester/dispatch.lock/info.json")
+        XCTAssertEqual(RemoteDispatchLock.infoFilePath(base: "/Users/tester/fleetest-runner"),
+                       "/Users/tester/fleetest-runner/.fleetest/dispatch.lock/info.json")
     }
 
     // MARK: - heldMessage
@@ -115,7 +115,7 @@ final class RemoteDispatchLockTests: XCTestCase {
         XCTAssertEqual(message,
             "another dispatch is already running on this remote host"
             + " (started by wave1008-mbp (pid 4242) at 2025-08-12T13:20:00Z)"
-            + " — wait for it to finish, run `ftester remote unlock --host <host>` if it is your own"
+            + " — wait for it to finish, run `fleetest remote unlock --host <host>` if it is your own"
             + " dispatch that died, or pass --force-lock if it is stuck"
             + " (docs/remote-runner.md §5)")
     }
@@ -154,29 +154,29 @@ final class RemoteDispatchLockTests: XCTestCase {
     private let sampleInfo = RemoteDispatchLockInfo(issuerHost: "h", pid: 1, acquiredAt: "2025-08-12T13:20:00Z")
 
     func testAcquireCommandExactText() {
-        let command = RemoteDispatchLock.acquireCommand(base: "/Users/tester/ftester-runner", info: sampleInfo)
+        let command = RemoteDispatchLock.acquireCommand(base: "/Users/tester/fleetest-runner", info: sampleInfo)
         XCTAssertEqual(command,
-            "mkdir -p '/Users/tester/ftester-runner/.ftester'"
-            + " && mkdir '/Users/tester/ftester-runner/.ftester/dispatch.lock' 2>/dev/null"
+            "mkdir -p '/Users/tester/fleetest-runner/.fleetest'"
+            + " && mkdir '/Users/tester/fleetest-runner/.fleetest/dispatch.lock' 2>/dev/null"
             + " && printf '%s' '{\"acquiredAt\":\"2025-08-12T13:20:00Z\",\"issuerHost\":\"h\",\"pid\":1}'"
-            + " > '/Users/tester/ftester-runner/.ftester/dispatch.lock/info.json'")
+            + " > '/Users/tester/fleetest-runner/.fleetest/dispatch.lock/info.json'")
     }
 
     func testForceAcquireCommandRemovesLockDirFirst() {
-        let command = RemoteDispatchLock.forceAcquireCommand(base: "/Users/tester/ftester-runner", info: sampleInfo)
+        let command = RemoteDispatchLock.forceAcquireCommand(base: "/Users/tester/fleetest-runner", info: sampleInfo)
         XCTAssertEqual(command,
-            "rm -rf '/Users/tester/ftester-runner/.ftester/dispatch.lock'"
-            + " && \(RemoteDispatchLock.acquireCommand(base: "/Users/tester/ftester-runner", info: sampleInfo))")
+            "rm -rf '/Users/tester/fleetest-runner/.fleetest/dispatch.lock'"
+            + " && \(RemoteDispatchLock.acquireCommand(base: "/Users/tester/fleetest-runner", info: sampleInfo))")
     }
 
     func testReadCommandExactText() {
-        XCTAssertEqual(RemoteDispatchLock.readCommand(base: "/Users/tester/ftester-runner"),
-            "cat '/Users/tester/ftester-runner/.ftester/dispatch.lock/info.json' 2>/dev/null || true")
+        XCTAssertEqual(RemoteDispatchLock.readCommand(base: "/Users/tester/fleetest-runner"),
+            "cat '/Users/tester/fleetest-runner/.fleetest/dispatch.lock/info.json' 2>/dev/null || true")
     }
 
     func testReleaseCommandExactText() {
-        XCTAssertEqual(RemoteDispatchLock.releaseCommand(base: "/Users/tester/ftester-runner"),
-            "rm -rf '/Users/tester/ftester-runner/.ftester/dispatch.lock'")
+        XCTAssertEqual(RemoteDispatchLock.releaseCommand(base: "/Users/tester/fleetest-runner"),
+            "rm -rf '/Users/tester/fleetest-runner/.fleetest/dispatch.lock'")
     }
 
     /// `$` とバッククォートはシングルクォート内では展開されない(RemoteShell.quote の契約 ——
@@ -186,17 +186,17 @@ final class RemoteDispatchLockTests: XCTestCase {
     func testAcquireCommandNeutralizesDollarAndBacktickInBase() {
         let command = RemoteDispatchLock.acquireCommand(base: "/tmp/$(whoami)/`id`", info: sampleInfo)
         XCTAssertEqual(command,
-            "mkdir -p '/tmp/$(whoami)/`id`/.ftester'"
-            + " && mkdir '/tmp/$(whoami)/`id`/.ftester/dispatch.lock' 2>/dev/null"
+            "mkdir -p '/tmp/$(whoami)/`id`/.fleetest'"
+            + " && mkdir '/tmp/$(whoami)/`id`/.fleetest/dispatch.lock' 2>/dev/null"
             + " && printf '%s' '{\"acquiredAt\":\"2025-08-12T13:20:00Z\",\"issuerHost\":\"h\",\"pid\":1}'"
-            + " > '/tmp/$(whoami)/`id`/.ftester/dispatch.lock/info.json'")
+            + " > '/tmp/$(whoami)/`id`/.fleetest/dispatch.lock/info.json'")
     }
 
     /// issuerHost にシングルクォートが混じっても壊れない(RemoteShell.quote が '\'' で無害化)
     func testAcquireCommandEscapesSingleQuoteInIssuerHost() throws {
         let info = RemoteDispatchLockInfo(issuerHost: "o'brien-mbp", pid: 1, acquiredAt: "2025-08-12T13:20:00Z")
         let payload = try XCTUnwrap(RemoteDispatchLock.encode(info))
-        let command = RemoteDispatchLock.acquireCommand(base: "/Users/tester/ftester-runner", info: info)
+        let command = RemoteDispatchLock.acquireCommand(base: "/Users/tester/fleetest-runner", info: info)
         XCTAssertTrue(command.contains(RemoteShell.quote(payload)), command)
     }
 }
@@ -269,9 +269,9 @@ final class RemoteDispatchUnlockTests: XCTestCase {
                        .held(info))
         XCTAssertNil(RemoteDispatchLock.parseProbe(""))
         XCTAssertEqual(
-            RemoteDispatchLock.probeCommand(base: "/Users/ci/ftester-runner"),
-            "if [ -d '/Users/ci/ftester-runner/.ftester/dispatch.lock' ]; then echo held;"
-            + " cat '/Users/ci/ftester-runner/.ftester/dispatch.lock/info.json' 2>/dev/null || true;"
+            RemoteDispatchLock.probeCommand(base: "/Users/ci/fleetest-runner"),
+            "if [ -d '/Users/ci/fleetest-runner/.fleetest/dispatch.lock' ]; then echo held;"
+            + " cat '/Users/ci/fleetest-runner/.fleetest/dispatch.lock/info.json' 2>/dev/null || true;"
             + " else echo absent; fi")
     }
 }

@@ -6,7 +6,7 @@ CLAUDE.md「ビルド・検証」からの詳細分。コマンドと最重要�
 ## iOS ランナー(Runner/)の再ビルドは供給時に自動化済み(2026-07-28)
 
 `BridgeProvisioner.prepareSharedBuilds` はランナーのソース
-(`Runner/FTesterRunnerUITests/`・`Runner/FTesterRunnerApp/`・`Runner/project.yml`・
+(`Runner/FleetestRunnerUITests/`・`Runner/FleetestRunnerApp/`・`Runner/project.yml`・
 共有 DTO の `Sources/FTCore/BridgeDTO.swift`)が xctestrun より新しければ
 build-for-testing を自動で再実行する(`BridgeLauncher.runnerNeedsRebuild`。
 InAppLauncher.needsBuild と対の mtime 判定)。稼働中の旧ランナーは
@@ -24,9 +24,9 @@ dylib が使われ続ける(macOS・Xcode がベータのうちは頻発する)�
 疑わしいときは従来の手動手順が今も有効:
 
 ```
-ftester bridge down --all --platform ios
-find .ftester/DerivedData -name "*.xctestrun" -delete
-ftester bridge up --platform ios --device <名前>     # ここで再ビルドが走る
+fleetest bridge down --all --platform ios
+find .fleetest/DerivedData -name "*.xctestrun" -delete
+fleetest bridge up --platform ios --device <名前>     # ここで再ビルドが走る
 ```
 
 (Android ブリッジ側は versionCode 照合で自動再インストールされるため、この問題は iOS 側だけに出る)
@@ -37,13 +37,13 @@ MCP の **profile 無しの iOS 経路**(`ft_snapshot` 等を `platform: ios` �
 
 - 実害: ランナー側の修正2件を入れ、`bridgeProtocolVersion` も上げ、`swift test` も緑にした状態で
   デバイスで確認したところ、**snapshot は直る前の木を返し続けた**。原因は稼働中の旧ランナー(v52)の
-  再利用で、`ftester bridge down && ftester bridge up` するまで「直っていない」ように見えた
+  再利用で、`fleetest bridge down && fleetest bridge up` するまで「直っていない」ように見えた
 - 対処は**繋ぐたびに /status の版を照合し、ズレていれば既定で拒否する**
   (`MCPServer+Driver.swift` の `enforceVersion` / `bridgeVersionSkew`。2026-08-09 に警告のみから反転)。
   古いブリッジは自分の版の挙動・注記で答え、そこから書かれたセレクタは黙って誤るため
   "Refusing to operate…" を throw して応答を信用しない。意図して古いブリッジを使うときは
   `allowVersionSkew: true` で押し通せるが、**その間は毎回の応答に警告が付く**
-- **ブリッジを直したときの検証手順**: 版を上げる → `ftester bridge down && ftester bridge up`
+- **ブリッジを直したときの検証手順**: 版を上げる → `fleetest bridge down && fleetest bridge up`
   → デバイスで確かめる。**down/up を省くと必ず旧版を測る**。iOS のシミュレータはブリッジを
   建て直すと**アプリが消えていることがある**ので、`ft_install` からやり直す
 
@@ -60,7 +60,7 @@ MCP の **profile 無しの iOS 経路**(`ft_snapshot` 等を `platform: ios` �
 払うだけになる(実測 244 秒 = このスイートの重複分)。OS の絞り込みは `--ios` / `--android`。
 
 **印は回さなかった側に付く**: e2e.sh は `BridgeSourceSet` の digest を
-`.ftester/<engine>-e2e-verified` に記録し(**全部成功したときだけ**)、次の実行で
+`.fleetest/<engine>-e2e-verified` に記録し(**全部成功したときだけ**)、次の実行で
 **回さない側**のエンジンの入力が動いていれば開始時と終了時に警告する。落とさず警告だけ。
 
 ## 入力・キー系は Compose だけで検証しない(フレームワークで経路が割れる)
@@ -119,30 +119,30 @@ step 4 の `type "abc"` が IME に飲まれて届かず、欄が**空のまま*
 | 条件 | Android プロファイル | 接続断 | ワーカー離脱 |
 |---|---|---|---|
 | モニター常駐(観測+配信) | **3/4 失敗** | 11 | 3 |
-| `ftester api monitor` だけ kill(配信は生存) | 1/4 失敗 | 2 | 3 |
+| `fleetest api monitor` だけ kill(配信は生存) | 1/4 失敗 | 2 | 3 |
 | **配信まで止める** | **4/4 成功**(108/108) | **0** | **0** |
 
 失敗はすべて `Cannot reach the driver` / `adb: device offline` /
 `the device disappeared (offline/not found)` で、**アサーション失敗は1件も無い**。
 
-**止め方は `ftester monitor pause`(2026-08-24 追加)。** kill では止まらない ——
+**止め方は `fleetest monitor pause`(2026-08-24 追加)。** kill では止まらない ——
 拡張が `api monitor` も配信ヘルパーも数秒で再起動する(受け手はこれで無人計測の条件が
-作れなかった)。保持ファイル(`.ftester/monitor-hold.json` = `FTCore.MonitorHold`)を
+作れなかった)。保持ファイル(`.fleetest/monitor-hold.json` = `FTCore.MonitorHold`)を
 `api monitor` が毎周期見て、hold 中は観測を止め全タイルを state:"unknown" で出す。
 unknown のタイルには拡張が配信ヘルパーを張らない(qualifying 判定)ので、ヘルパーも
-子の screenrecord も畳まれる。解除は `ftester monitor resume` か `--for <分>` の期限:
+子の screenrecord も畳まれる。解除は `fleetest monitor resume` か `--for <分>` の期限:
 
 ```
-ftester monitor pause --for 30   # 30分。省略すると resume まで
+fleetest monitor pause --for 30   # 30分。省略すると resume まで
 # … 計測 …
-ftester monitor resume
+fleetest monitor resume
 ```
 
 **効くのはこの機械の monitor だけ**(fan-out の子 = `--device-host` 付きは hold を見ない。
 リモートランナー機で pause しても、そこへ接続している別の機械の配信は止まらない)。
 
 拡張が動いていない(パネルを開いていない)ときの旧手段は pkill 3連打
-(`ftester api monitor` / `ftester-androidstream` / `screenrecord --output-format=h264`。
+(`fleetest api monitor` / `fleetest-androidstream` / `screenrecord --output-format=h264`。
 1つ目だけだと配信が8台ぶん全部生き残る)。
 
 **中途半端に止めた対照からは誤った結論が出る。** 観測ループだけ止めた回で接続断が 11→2 に減り、
@@ -339,7 +339,7 @@ DOM の粒度・命名を a11y へ揃えた直後、**ラベルだけでは a11y
   ソース復元と `swift build --product <名>` は必ずセットにする
 - **単体テストは `--parallel` で回す**(2026-08-10。実測 127s → 34s。ウォームで 33〜35s)。
   ただし**プロセスが分かれる**ので、ホスト単位の共有資源に素で触るテストは落ちる。
-  実例: `FMBreaker` は落ちた事実を `~/Library/Caches/ftester/fm-breaker.state` に置く
+  実例: `FMBreaker` は落ちた事実を `~/Library/Caches/fleetest/fm-breaker.state` に置く
   (14 ワーカーがプロセスを跨いで共有するための仕様)。テストが既定パスを直接読み書きしていたため、
   並列だと**他プロセスの `tearDown` にある `reset()` がファイルを消し**、トリップ判定が競合して必ず落ちた
   (直列では通るので、既定が直列である間は誰も気づけない)。
@@ -347,7 +347,7 @@ DOM の粒度・命名を a11y へ揃えた直後、**ラベルだけでは a11y
   のような差し替え口を production に持たせ、テストが UUID 付きの temp を入れる)/
   **②「どこに置くか」は I/O 抜きで表明する**(`defaultStateURL` の形だけを見る)。
   片方だけだと、隔離した瞬間に「ホスト単位である」という要件の表明が消える。
-  同型の危険は `.ftester/` の台帳書き込み・`DiagnosticReports` の走査・simctl/adb を呼ぶテスト。
+  同型の危険は `.fleetest/` の台帳書き込み・`DiagnosticReports` の走査・simctl/adb を呼ぶテスト。
   **並列を初めて通したときは数回まわす**(今回は 6 連続で緑を確認してから既定にした)
 - **共有資源に触るテストの方針は2段**: **①隔離できるなら隔離**(差し替え口を production に
   持たせ、テストは一時パスを使う。`FMBreaker` がこの型)/ **②隔離できないホストの実体**
@@ -406,7 +406,7 @@ DOM の粒度・命名を a11y へ揃えた直後、**ラベルだけでは a11y
 - **ファイルの中身は NFC のことも NFD のこともある**。ツールが書いた文字列は NFC、
   **ファイル名から作った文字列(reportPath 等)は NFD** で混在していた。両方の形を置換対象にする
 - 検証は「残っていないこと」ではなく**「新しい名前で引けること」**で行う
-  (`ftester results summary` に 694/333/333 件の履歴がそのまま出ることを確認した)
+  (`fleetest results summary` に 694/333/333 件の履歴がそのまま出ることを確認した)
 - **語の一括置換は正しい用法まで巻き込む**。この移行で `ScenarioRunnerMain` の
   「engine=xcuitest なら**実機で動く**、と誤認しやすい罠」(物理端末の意味で正しい)を
   巻き込んで書き換えた。**追跡対象ファイルの差分は1行ずつ読む**
@@ -794,11 +794,11 @@ FM の実呼び出しが全滅していると、**occlusion-guard(`exist` の既
 
 これは各シナリオの stderr には出ていたが、**run のまとめには出ていなかった**ため、赤を見るたびに
 「自分の変更か FM か」を人が HEAD 対照で切り分けていた(2026-08-20 に何度も払った)。
-いまは `ftester run` のまとめに1行出る:
+いまは `fleetest run` のまとめに1行出る:
 
 ```
 ⚠️ FM unavailable: 3 scenario(s) ran with occlusion-guard / self-healing / screenLooksLike
-   silently disabled. Read this run's result with that in mind (confirm with: ftester doctor --fm-only)
+   silently disabled. Read this run's result with that in mind (confirm with: fleetest doctor --fm-only)
 ```
 
 **合否は変えない**(FM と無関係な失敗を隠す方が危険)。数えるのは
@@ -856,12 +856,12 @@ falsePositiveCheck が OFF なので、この経路は緑の run では1度も�
 ## 検証は重ねない —— デバイス実行中に本線をビルドしない(2026-08-20 に再発)
 
 **変異テストは worktree(専用の `.build`)で隔離済み**なので本線の run とは衝突しない
-(`Scripts/mutation-check.sh` は `.build` と `.ftester` を除いて同期し、worktree の中で
+(`Scripts/mutation-check.sh` は `.build` と `.fleetest` を除いて同期し、worktree の中で
 `swift test` する)。**危ないのは本線で打つ `swift build` / `swift test`** —— 実行中の
-`ftester` バイナリが差し替わって run が SIGKILL される(CLAUDE.md の実害。2026-08-20 に
+`fleetest` バイナリが差し替わって run が SIGKILL される(CLAUDE.md の実害。2026-08-20 に
 フル E2E の最中に単体テストを打って1回ぶん捨てた)。
 
-**ガード**: `mutation-check.sh` は `Scripts/e2e.sh` / `ftester run` / `ftester api run` が
+**ガード**: `mutation-check.sh` は `Scripts/e2e.sh` / `fleetest run` / `fleetest api run` が
 走っている間は起動を拒む(承知のうえで重ねるときだけ `MUT_ALLOW_DURING_RUN=1`)。
 **本線の `swift test` は誰も止められない**ので、E2E を投げたら**ビルドを伴う作業は止める**。
 待っている間にやってよいのは docs とメモの編集だけ。
@@ -888,7 +888,7 @@ witness にならない): `InAppSettle.waitOnMain` の静穏判定を成立し�
 `InAppSettle` は収束しても cap 打ち切りでも**同じ顔で返る**ので、常態的な張り付きは黙って
 性能だけを食う(実測: Compose iOS の launch 直後 1〜2 アクションが毎回 2,500ms)。疑う手順:
 
-1. `ftester api run --project <P> --profile <inapp プロファイル> --scenario <1本>` の
+1. `fleetest api run --project <P> --profile <inapp プロファイル> --scenario <1本>` の
    NDJSON で `actionMs` を見る。**cap 値(2500)に近い定数**なら張り付き。
    snapshotMs でも waitMs でもなく actionMs に出るのが目印
 2. `InAppBridge/Sources/InAppSettle.swift` の打ち切り分岐に一時 `NSLog("FTSETTLE ...")` を入れ、
@@ -1135,7 +1135,7 @@ Compose の役割マーカーは画面端で**親と別の幅にクリップさ�
 モニターの ❄️ が**正常に描画しているタイルに出続けた**。原因は表示側ではなく公表側で、
 Android の回復は sleep/wake と guest restart の2段あるのに、**共有ストアの消し込みが
 sleep/wake の分岐にしか無かった**。guest restart で戻った機は run が終わるまで
-`.ftester/frozen-<key>.json` に凍結が残り、モニターはそれを無条件に取り込む。
+`.fleetest/frozen-<key>.json` に凍結が残り、モニターはそれを無条件に取り込む。
 
 切り分けの順序が効いた: **新しいモニターを別に起動したら誤検知ゼロ**だった(= 表示・判定の
 ロジックではなく、長時間動いているインスタンスの状態が原因)。次に配信抑制を疑って
@@ -1240,15 +1240,15 @@ Flutter/ios-inapp 単体では **387.0s → 98.9s**。
 
 ```bash
 # ① 注入 → モニターがその機だけ frozen と言う
-sleep 12 | FT_FAKE_FROZEN_KEYS=<UDID> .build/debug/ftester api monitor \
+sleep 12 | FT_FAKE_FROZEN_KEYS=<UDID> .build/debug/fleetest api monitor \
   --project <p> --profile <run profile> --interval 2 | tail -1
-# ② run が公表する(.ftester/frozen-<UDID>.json に evidence:["injected"])
-FT_FAKE_FROZEN_KEYS=<UDID> .build/debug/ftester run --project <p> --profile <r> --scenario <s>
+# ② run が公表する(.fleetest/frozen-<UDID>.json に evidence:["injected"])
+FT_FAKE_FROZEN_KEYS=<UDID> .build/debug/fleetest run --project <p> --profile <r> --scenario <s>
 # ③ 公表だけを根拠にモニターが frozen と言う(注入なしでモニターを回す)
 ```
 
 **モニターを `kill` で止めない**: NDJSON はブロックバッファリングされるので、SIGTERM で
-落とすと**観測が丸ごと空になる**(実際に踏んだ)。`sleep N | ftester api monitor …` にすると
+落とすと**観測が丸ごと空になる**(実際に踏んだ)。`sleep N | fleetest api monitor …` にすると
 **stdin EOF が終了指示**になり、自分で片付けて終わるのでバッファが flush される。
 
 ## めったに撃たない経路は、緑を重ねても検証されない(2026-08-02)
@@ -1289,9 +1289,9 @@ Compose の探索不具合を調べた1セッションで、**実データの裏
 
 **① 差し替えたバイナリが実行されていない**
 
-`StepExecutor`・ドライバ・セレクタ解決は `ftester` ではなく
-**`ftester-scenarios-<project>` サブプロセス**で動く(`RunOrchestrator.swift` 冒頭の契約)。
-`swift build --product ftester` して `.build/debug/ftester` を差し替え `--skip-build` で回すと
+`StepExecutor`・ドライバ・セレクタ解決は `fleetest` ではなく
+**`fleetest-scenarios-<project>` サブプロセス**で動く(`RunOrchestrator.swift` 冒頭の契約)。
+`swift build --product fleetest` して `.build/debug/fleetest` を差し替え `--skip-build` で回すと
 **base と fix が同一のコードを実行する**ので、どんな変更も必ず「差なし」に見える。
 これで性能の A/B(誤って「退行なし」)と、修正案2件(誤って「no-op」)を取り違えた。
 
@@ -1381,7 +1381,7 @@ latch にした。判定に使う木が常に天井のものになるので、�
 同じステップが同じ文言で落ちた** —— このブランチに元からあった穴(WebView の入力欄を
 `#wv_input` だけで指しており、HTML id を a11y へ出さない xcuitest では解決できない)だった。
 
-- **かかるのは 3〜4 分**(stash → `swift build --product ftester` → 1シナリオ → `git stash pop`)。
+- **かかるのは 3〜4 分**(stash → `swift build --product fleetest` → 1シナリオ → `git stash pop`)。
   「無関係だと思う」を根拠に報告するより安い
 - **逆向きにも効く**: 「元からある失敗」と言い切る前に対照を取らないと、自分が壊した回帰を
   既存の不具合として見送る
@@ -1506,13 +1506,13 @@ launchApp / appIs / removeApp / installApp / clearAppData すべてが実行プ�
 判らない** —— それはデバイス実行の仕事)。`--scenario` は**クラス名を渡すとそのクラス全体**を回す:
 
 ```bash
-ftester api list-scenarios --project E2E-CMP | python3 -c "
+fleetest api list-scenarios --project E2E-CMP | python3 -c "
 import json,sys
 print('\n'.join(sorted({s['id'].split('.')[0] for s in json.load(sys.stdin)['scenarios']})))" > /tmp/cls.txt
 # **配列で渡す**(クラス名に日本語・空白が入るので、文字列連結だと
 # 「Unexpected argument」でまとめて落ちる)
 ARGS=(); while IFS= read -r c; do ARGS+=(--scenario "$c"); done < /tmp/cls.txt
-ftester api run --project E2E-CMP --dry-run "${ARGS[@]}" | grep "探したい語"
+fleetest api run --project E2E-CMP --dry-run "${ARGS[@]}" | grep "探したい語"
 ```
 
 ## 注記は「読んだ印象」でなく「まっさらなエージェントの手数」で足し引きする(2026-08-12)
@@ -1529,7 +1529,7 @@ ftester api run --project E2E-CMP --dry-run "${ARGS[@]}" | grep "探したい語
   この自己増殖が実コストとして跳ね返った証拠
 
 **対処は評価者を替えること**。`Scripts/mcp-bench.sh` は、そのアプリを初めて触る
-エージェント(CLAUDE.md の無い作業ディレクトリ・ftester の MCP だけ)に同じタスクを解かせ、
+エージェント(CLAUDE.md の無い作業ディレクトリ・fleetest の MCP だけ)に同じタスクを解かせ、
 **完了率と ft_* の呼び出し回数**を測る。注記を1本落とした版と比べて手数が増えなければ、
 その注記は効いていない = 消してよい。**消すための根拠はこれ以外に作れない**。
 
@@ -1619,7 +1619,7 @@ OK(検出)/ SURVIVED(素通し)/ ERROR(適用失敗)の表を出す。
 **本線のツリーには1バイトも書かない**ので、復元忘れ・「変異版バイナリのままデバイス検証」
 (§変異テストの後は製品バイナリを作り直す)の型が構造的に起きない。
 初回だけ worktree のコールドビルドで数分かかる(以後は増分)。
-**filter には密閉されたテストだけを指定する** —— ホスト共有資源(`.ftester/` 台帳・simctl/adb・
+**filter には密閉されたテストだけを指定する** —— ホスト共有資源(`.fleetest/` 台帳・simctl/adb・
 DiagnosticReports)に触るテストをプロセス並列で走らせると偽の失敗が出る(§並列実行)。
 手で1件だけ確かめるときの旧手順(`cp` 退避 → 壊す → 実行 → 復元)も引き続き可。
 **復元に `git checkout <file>` を使わない** —— そのファイルの**未コミットの変更が全部消える**
@@ -1685,7 +1685,7 @@ DiagnosticReports)に触るテストをプロセス並列で走らせると偽�
 **2つの罠**:
 - **計装バイナリが `.build/debug` に残る**。TSan の後に E2E を回すと、シナリオが全部成功しても
   終了時に `Abort trap: 6` で落ちる(実害あり)。普通に `swift build` し直し
-  `otool -L .build/debug/ftester | grep -c tsan` が 0 になることを確認する
+  `otool -L .build/debug/fleetest | grep -c tsan` が 0 になることを確認する
 - **`Thread.sleep` のポーリング待ちは同期とみなされない**。実際には順序が付いていても
   `As if synchronized via sleep` 付きで報告されることがある(報告を読むときに見分ける)
 
@@ -1702,7 +1702,7 @@ DiagnosticReports)に触るテストをプロセス並列で走らせると偽�
   **矛盾する出力は誤判定の兆候**(このときは `xcode=unusable` と `xcode_first_launch=done` が同時に出ていた)
 - **空の結果は成功と見分けがつかない —— 件数を必ず確かめる**(2026-08-03 に3回踏んだ)。
   実験や反復が**そもそも実行されていない**のに、出力は「失敗0」に見える形が3つあった:
-  ①A/B で `ftester` を差し替えたが実行の実体は `ftester-scenarios-<project>`(→ どんな変更も差なし)/
+  ①A/B で `fleetest` を差し替えたが実行の実体は `fleetest-scenarios-<project>`(→ どんな変更も差なし)/
   ②バックグラウンドの負荷ループが起動せず、**無負荷の測定を「負荷下」と報告**した/
   ③**未マッチの glob で `&&` の連鎖が切れ**、30回の反復が丸ごと走らなかったのに
   「30回中 回失敗」と出た。**判定に使う前に「何回走ったか」「生成物が在るか」を数える** ——
@@ -2282,7 +2282,7 @@ E2E-iOS を回すまで気付かなかった)。**距離を伸ばしても・画
   スクロール探索自体の失敗)。**変更前から同じ**(ベースライン 3 回中 2 回で再現)なので本件とは別問題。
   フリング中に対象行がリサイクルされて消えるのが疑わしい
 
-## `Scripts/e2e.sh`(ftester 自身の E2E)
+## `Scripts/e2e.sh`(fleetest 自身の E2E)
 
 - SUT(`E2EAppCMP/` 他)の鮮度を見て必要なら再ビルドし、各プロファイルを順に回す。オプション:
   `--rebuild` / `--ios` / `--android` / `--cmp` / `--ios-native` / `--android-native` / `--flutter` / `--rn` /
@@ -2341,7 +2341,7 @@ RN のディープリンク不達を「JS 購読前の競合」と誤診し、�
   と対 — 片方だけ変えない)
 - **クローンを dirty にしたまま `install.sh` を試すと必ず止まる**(ローカル変更の破棄を尋ね、
   端末が無い実行では中止する仕様)。本体を触りながら試すときは **`--no-pull`** を付ける
-- 実行の記録は `<WORK_DIR>/.ftester/install-<日時>.log`(実行ごとに別ファイル)。
+- 実行の記録は `<WORK_DIR>/.fleetest/install-<日時>.log`(実行ごとに別ファイル)。
   端末出力を追わずに後から失敗を追える
 - **スキルが渡す新しい引数は、受け手のクローンが pull されるまで存在しない**。
   スキルからは **curl 形**(常に main の最新が走り、その中でクローンを pull する)で呼ぶ。
@@ -2359,8 +2359,8 @@ RN のディープリンク不達を「JS 購読前の競合」と誤診し、�
   (生き残って検証を汚す・旧ブリッジを自動再起動する。docs/performance-tuning.md §7)
 - ブリッジには無通信 TTL(既定2時間。design.md §4.1)があるが、**検証の掃除で TTL を
   当てにしない**(旧版ブリッジには入っていない・モニターのポーリングが心拍になり失効しない)
-- **調査で `ftester api monitor` を手で回すときは stdin を開いたままにする**
-  (`tail -f /dev/null | ftester api monitor ...`)。**stdin の EOF が終了指示**なので、
+- **調査で `fleetest api monitor` を手で回すときは stdin を開いたままにする**
+  (`tail -f /dev/null | fleetest api monitor ...`)。**stdin の EOF が終了指示**なので、
   スクリプトからバックグラウンド実行すると /dev/null が即 EOF になり、
   **1行も出さずに正常終了**する(「監視が何も返さない」ように見える罠)
 
@@ -2370,7 +2370,7 @@ occlusion-guard・自己修復・screenLooksLike は FM 失敗時に nil を返�
 run 終了時の「FM 呼び出しが全て失敗しました」警告と結果 JSON の `fm` フィールド、それに
 ステップ単位の `notes: ["visibility-guard-skipped"]`(occlusion-guard だけ)が手がかり。
 
-- **切り分けの起点は `ftester doctor`**。availability は「端末が対応しているか」しか見ておらず、
+- **切り分けの起点は `fleetest doctor`**。availability は「端末が対応しているか」しか見ておらず、
   資産側の理由で全滅していても `available` を返すので、**実呼び出し(checkLive)の結果で判断する**
 - **FM 依存の変更は「FM を呼ぶシナリオ」で検証する**。まず前提として、偽陽性検証
   (occlusion-guard)は**実行プロファイル既定 OFF**(`falsePositiveCheck: true` でオプトイン。
@@ -2388,7 +2388,7 @@ run 終了時の「FM 呼び出しが全て失敗しました」警告と結果 
   一致して triage の欠落を見逃す。判定前にコメントを落とすのも必須 —
   記録の必要性を説明したコメント自身に一致して一度素通りした)。
   作成時の経路(FMDoctor / ScenarioNamer / TestbaseDrafter)は run の実績ではないので免除リスト
-- **ヒールキャッシュが FM を肩代わりする**。`TestProjects/<p>/.ftester/heal-cache.json` が命中すると
+- **ヒールキャッシュが FM を肩代わりする**。`TestProjects/<p>/.fleetest/heal-cache.json` が命中すると
   heal は FM なしで解決し(`healed=1` だが `fm` は nil)、**FM 経路を検証したつもりで空振りする**。
   heal の FM を実際に通すときはこのファイルを消してから実行する
 
@@ -2397,7 +2397,7 @@ run 終了時の「FM 呼び出しが全て失敗しました」警告と結果 
 FM(オンデバイスモデル)が死んでいると、**occlusion-guard(`exist` の既定 `requireVisible`)・
 自己修復・`screenLooksLike`・triage が実質無効のまま緑になる**(失敗は飲み込まれて pass 扱い)。
 run のログに `Every FM call failed` が出ていたら、その run は**偽陽性(覆われているのに exist が
-通る)を検出できていない**と読むこと。`ftester doctor` の「On-device model」で確認できる。
+通る)を検出できていない**と読むこと。`fleetest doctor` の「On-device model」で確認できる。
 
 根本原因は Apple 側(`modelmanagerd` が安全性モデルを ANE にロードできない。FB 報告済み)で、
 availability は available と嘘をつく。**`SystemLanguageModel(guardrails:
@@ -2466,9 +2466,9 @@ Scripts/fm-verify.sh                    # 既定 TestProjects/E2E-CMP・プロ�
 
 FM は**ホスト全体で直列化される資源**(スループットは並列度によらず約1回/秒)。並列ワーカーから
 同時に投げても速くならず、modelmanagerd のモデル積み降ろし(`unloadIfNeededToMakeRoom`)だけが
-増える。そこで呼び出し側でも待ち行列を作る(`FMLock`。~/Library/Caches/ftester/fm.lock への flock)。
+増える。そこで呼び出し側でも待ち行列を作る(`FMLock`。~/Library/Caches/fleetest/fm.lock への flock)。
 
-- **リポジトリ単位ではなくホスト単位**。別リポジトリの ftester とも直列化する
+- **リポジトリ単位ではなくホスト単位**。別リポジトリの fleetest とも直列化する
 - **全ての FM 呼び出しがこのロックを通る**のが不変条件(occlusion / heal / screenLooksLike / triage /
   ScenarioNamer / TestbaseDrafter)。新しい FM 呼び出しを足すときは必ず通すこと。
   監査は `grep -n "LanguageModelSession" Sources/FTAgent/*.swift`(FMDoctor は可用性判定なので対象外)
@@ -2516,7 +2516,7 @@ FM は死んだら**再起動まで回復しない**ので、死んだ後も呼�
   **新しい FM 呼び出しを足すときは必ずここを通す**(監査: `grep -c "FMGate.enter" Sources/FTAgent/*.swift`
   と `grep -n "LanguageModelSession" Sources/FTAgent/*.swift` の数を突き合わせる。FMDoctor は
   可用性判定なので対象外)
-- **ホスト単位**(~/Library/Caches/ftester/fm-breaker.state の mtime)。全滅はホスト全体の事象で
+- **ホスト単位**(~/Library/Caches/fleetest/fm-breaker.state の mtime)。全滅はホスト全体の事象で
   ワーカーはプロセスが別なので、プロセス内カウンタだけだと 14 ワーカー分を無駄打ちする
 - **成功したら即座に復帰**する。10 分(cooldown)経過後は 1 回試させる(half-open)ので、
   FM が復活したことを検知できる
@@ -2542,13 +2542,13 @@ FM は死んだら**再起動まで回復しない**ので、死んだ後も呼�
   2. run は**供給フェーズ(install・凍結triage)の間も run-lease を保つ**(`SupplyLeaseHolder`)。
      `RunOrchestrator` の lease はシナリオ実行中しか書かれないため、その手前に watchdog の
      `device-up` が割り込む穴が空いていた
-- それでも手で確実に避けたいときは `ftester.autoRepairBridge` を false にするか、
+- それでも手で確実に避けたいときは `fleetest.autoRepairBridge` を false にするか、
   E2E 前にモニターパネルを閉じる
 - **`.adopt` は健全な環境では通らない**(announce 前のランナーが残っていないと発火しない)ので、
   E2E が緑でも「退行が無い」以上のことは言えない。実際の発火は再起動・拡張再起動を跨いだときに
   自然と起きる。**通らない経路を「E2E 緑」で検証済みと書かないこと**
 - **Android エミュレータは run が自動起動しない**(iOS シミュレータは供給が起こす)。
-  再起動後は `ftester devices up --project <名> --profile <名>` を先に回す
+  再起動後は `fleetest devices up --project <名> --profile <名>` を先に回す
 
 ## iOS が `never joined the run` / 「the in-app bridge did not respond in time」で供給に失敗したら
 
@@ -2566,7 +2566,7 @@ connection was lost」で落ちる(その台は never joined = 準備できて�
 - 止められない無関係プロセスなら **in-app は撃たずに落とす**(`port N is in use by another
   process (pid M: …)`)。xcuitest は従来どおり bindFailed の検知に任せる
 - 再利用できない旧ブリッジの停止手段は `StaleBridgeStop.decide`(記録無し → PortHolder。
-  以前は `.pid` 経路へ流して「no .ftester/bridge.pid」で止めそこねていた)
+  以前は `.pid` 経路へ流して「no .fleetest/bridge.pid」で止めそこねていた)
 - 注入後に ready にならなかったときは**占有者を名指し**して落とす(`PortHolder.describe`)。
   起動したアプリは terminate し記録も消す
 - `.inapp` の記録は **ready を待つ前に書く**(待っている間に run が中断されても記録が残る)
@@ -2582,7 +2582,7 @@ connection was lost」で落ちる(その台は never joined = 準備できて�
   全バイナリが dyld クラッシュする(swift build は SDKROOT/--sdk を無視するため Xcode 側を揃えるしかない)
 - Xcode(beta)単体の更新でも同様: iOS ランタイム導入(`xcodebuild -downloadPlatform iOS`)+
   ランナー再ビルドで整合させる。不整合はアプリが数操作で「Application is not running」クラッシュする
-  (`ftester doctor` がツールチェーン指紋の不一致を警告。2026-07-21 実害)。**判定に成果物の
+  (`fleetest doctor` がツールチェーン指紋の不一致を警告。2026-07-21 実害)。**判定に成果物の
   `Info.plist` を使わない** —— `XCTRunner.app` は SDK のテンプレートのコピーで、`DTXcodeBuild` は
   テンプレート自身の値のまま残る(Xcode 27 beta 6 は `27A252` で、`xcodebuild -version` の
   `27A5252f` と体系が違う = 建て直しても永久に警告し続ける。2026-08-25 に踏んだ)。
@@ -2597,7 +2597,7 @@ connection was lost」で落ちる(その台は never joined = 準備できて�
 - **run.json の `machine` がホスト名なら非プロファイル経路**(プロファイル経由ならマシン
   プロファイル名が入る)。`scutil --get ComputerName` と比べれば一目で分かる
 - **全シナリオが数十 ms・run 全体が数秒**なら供給が一度も走っていない(供給は数十秒かかる)
-- 生きているブリッジは `curl -s 127.0.0.1:<port>/status` で確認する。`.ftester/bridge-<port>.log`
+- 生きているブリッジは `curl -s 127.0.0.1:<port>/status` で確認する。`.fleetest/bridge-<port>.log`
   や `bridge-<port>.inapp` は**残骸が残る**ので、ファイルの存在は稼働の証拠にならない。
   `/status` の `sessionBundleID` で「どのアプリのブリッジか」まで見ること(別 SUT のブリッジが
   生きていても対象アプリには使えない)
@@ -2605,7 +2605,7 @@ connection was lost」で落ちる(その台は never joined = 準備できて�
 ## ワーカーが「ブリッジ接続不能のため離脱しました」で落ちたら
 
 **まず XCUITest ランナーのクラッシュを疑う**(2026-07-28 に真因確定・修正済み)。
-`~/Library/Logs/DiagnosticReports/FTesterRunnerUITests-Runner-*.ips` が積まれていれば確定。
+`~/Library/Logs/DiagnosticReports/FleetestRunnerUITests-Runner-*.ips` が積まれていれば確定。
 スタックが `Issue.record` → `Event.post` → `SwiftTestingInteropRecordHandler` の**再帰**で
 数千段になっていれば、XCUI の操作失敗を起点にしたツールチェーン不具合(design.md
 「XCUITest ランナーは『操作の失敗』でプロセスごと落ちる」)。
@@ -2614,7 +2614,7 @@ connection was lost」で落ちる(その台は never joined = 準備できて�
   (ランナー死=処理中の HTTP が返らない)と、**離脱せずに「12 回スクロールしても見つかりません」**
   (別アプリを掴んで無言で空振り)。後者は失敗レポートの要素一覧が**対象アプリの画面のまま**なので
   「スワイプが効いていないだけ」に見える
-- ランナー側の決め手は `.ftester/bridge-<xcuiPort>.log` の
+- ランナー側の決め手は `.fleetest/bridge-<xcuiPort>.log` の
   `Failed to application <bundleID> is not running`。**その bundleID が対象アプリと違えば**
   セッションの取り違え(使い回した XCUITest ブリッジが前のプロジェクトのアプリを指したまま)
 - **再現条件は「複数 SUT を連続で回す」**。`Scripts/e2e.sh --ios --ios-inapp --cmp` のように
@@ -2645,14 +2645,14 @@ apps プロファイルの healthCheckURL が実行開始時に警告を出す�
   本番ログの「実行中の画面凍結を修復」で観測する
 - **実凍結は事前修復が先に治すため「実行中だけ凍結」を意図的に作れない**(実凍結の誘発は
   8台並列 run の反復のみ。1台単独負荷・アイドルでは発生しない。performance-tuning.md §7)
-- **凍結のホスト側証跡は `~/Library/Logs/ftester/emulator/<AVD>.log`**(DeviceBooter が
+- **凍結のホスト側証跡は `~/Library/Logs/fleetest/emulator/<AVD>.log`**(DeviceBooter が
   emulator stdout/stderr を保存。ブート毎 truncate)。根因の Metal エラー
   (`GLDRendererMetal command buffer completion error` / `IOGPUCommandQueueErrorDomain 518`)は
   ここにしか出ない(2026-07-25 実測)。凍結個体を調べるときはまずこのログを見る
 - **エミュレータ操作は既定で emulator gRPC(EmulatorController)経由**(スクショ/キー・タッチ注入/
   停止等。実機・gRPC 失敗個体は自動で adb フォールバック。`Sources/FTAndroid/EmulatorControl.swift`)。
   gRPC 起因を疑うときは **`FT_EMULATOR_CONTROL=adb`** で全面 adb に切り替えて比較できる
-  (gRPC を話すのは Swift だけ。拡張の凍結修復も `ftester api repair-display` 経由でここを通るため、
+  (gRPC を話すのは Swift だけ。拡張の凍結修復も `fleetest api repair-display` 経由でここを通るため、
   この環境変数1つで両方効く)。挙動差の切り分けはまずこれ。
   **iOS も同様に CoreSimulator 直叩きが既定**(design.md §16.4)で、
   **`FT_SIMULATOR_CONTROL=simctl`** が殺しスイッチ。対象は**列挙だけでなく
@@ -2705,7 +2705,7 @@ apps プロファイルの healthCheckURL が実行開始時に警告を出す�
 
 ### iOS 実機
 
-- **署名が要る**。`~/.config/ftester/config.json` の `developmentTeam`(または環境変数
+- **署名が要る**。`~/.config/fleetest/config.json` の `developmentTeam`(または環境変数
   `FT_DEVELOPMENT_TEAM`)に Apple Developer の Team ID を入れる。bundle id プレフィックスは
   `bundleIDPrefix` / `FT_BUNDLE_ID_PREFIX`(既定 `com.example` のままだと他チームが登録済みの
   App ID と衝突しうる)。ビルドは `-allowProvisioningUpdates` 付きで走る
@@ -2780,11 +2780,11 @@ apps プロファイルの healthCheckURL が実行開始時に警告を出す�
   なる。ペイロードは 0.1KB なので**帯域ではなく往復回数**の問題(2026-07-25 実測)。
   usb にすると 1 シナリオあたり 12.1s → 9.1s で、シミュレータ(8.7s)とほぼ同等になる:
   - `lan` … ランナーが `0.0.0.0` に bind し(`FT_BIND_ALL=1` を xctestrun に注入)、自分の
-    LAN IPv4 を `FT_BRIDGE_ADDR=<ip>:<port>` としてテストログ(`.ftester/bridge-<port>.log`)に
+    LAN IPv4 を `FT_BRIDGE_ADDR=<ip>:<port>` としてテストログ(`.fleetest/bridge-<port>.log`)に
     1 行出す。ホストはそれを読んで宛先にする。**Mac と端末が同じネットワークに居ること**
     (クライアント分離 WiFi では不可)
   - `usb` … `iproxy`(`brew install libimobiledevice`)で USB トンネルを張り 127.0.0.1 を維持する
-- 実機とシミュレータで DerivedData を分けてある(`.ftester/DerivedData-device`)。混在させると
+- 実機とシミュレータで DerivedData を分けてある(`.fleetest/DerivedData-device`)。混在させると
   `findXCTestRun` が iphoneos/iphonesimulator の誤った方を掴む
 - **engine=xcuitest ならデバイスで動く、は誤り**だった箇所: `FastLaunchDriver`(xcuitest でも既定 ON・
   中身はアプリの再起動)と `LaunchPreflightDriver`(未インストール検査)は
@@ -2800,7 +2800,7 @@ apps プロファイルの healthCheckURL が実行開始時に警告を出す�
 
 原因はほぼこの 3 つ。**いずれも現在は原因が名指しで報告される**ので、まずメッセージを読む
 (そうなるまでに 3 回とも「180 秒待って無情報なタイムアウト」を踏んでいる)。
-ログは `.ftester/bridge-<port>.log`:
+ログは `.fleetest/bridge-<port>.log`:
 
 | 症状・ログ | 原因 | 対処 |
 |---|---|---|
@@ -2851,7 +2851,7 @@ apps プロファイルの healthCheckURL が実行開始時に警告を出す�
 - webview→拡張の `machineDeviceUpdate.fields` に `serial` を足した。**拡張と webview のバンドルは
   別々に更新されうる**ので、受信側は欠落を "" に補う(旧 webview と混ぜても壊さない)
 - 機種/OS はプロファイルに無ければ `installedDevicesRequest` で取りに行くが、**要求は
-  1 デバイス 1 回に絞ること**。この要求は毎回 `ftester api installed-devices` を spawn する
+  1 デバイス 1 回に絞ること**。この要求は毎回 `fleetest api installed-devices` を spawn する
   (devicectl + adb getprop で数秒)ので、値が埋まらないデバイス(未接続の実機・`hw.device.name`
   の無い AVD)では 応答→再描画→再要求 が閉じず CLI を叩き続ける(2026-07-25 のレビューで検出)
 - **ネイティブ `title` は表示遅延を指定できない**(ブラウザ/OS 固定で約 1 秒)。省略表示の全文を
@@ -2860,17 +2860,17 @@ apps プロファイルの healthCheckURL が実行開始時に警告を出す�
   `overflow: hidden` なので子要素方式だと切られる)② 対象に `title=""` を置いて祖先の `title` が
   遅れて二重に出るのを止める
 
-### 実機の画面配信(ftester-devicepoll)
+### 実機の画面配信(fleetest-devicepoll)
 
-**実機は両OSとも `ftester-devicepoll`**(スクリーンショットのポーリング → MJPEG)に一本化した。
+**実機は両OSとも `fleetest-devicepoll`**(スクリーンショットのポーリング → MJPEG)に一本化した。
 既存の 2 ヘルパーが実機で使えないため:
 
-- `ftester-simstream` は CoreSimulator/SimulatorKit の私有 API で deviceSet から UDID を引くので
+- `fleetest-simstream` は CoreSimulator/SimulatorKit の私有 API で deviceSet から UDID を引くので
   **iOS 実機では原理的に不可**。macOS 27 では iOS 実機を AVCaptureDevice として出す
   **DAL プラグインも消えている**(`/System/Library/CoreMediaIO/Plug-Ins/DAL` が存在せず、
   カメラ権限を付与した Info.plist 埋め込みバイナリでも CoreMediaIO デバイス数 0。2026-07-25 実測)
   ので、QuickTime 方式の代替も無い
-- `ftester-androidstream`(adb screenrecord)は Android 実機だと **画面が動いている間しか
+- `fleetest-androidstream`(adb screenrecord)は Android 実機だと **画面が動いている間しか
   フレームが流れない**(操作中 455KB / 静止画面はキープアライブの 20 バイトのみ)。
   エミュレータは静止時もフレームが出るためこの差は顕在化しない
 - あわせて **`screenrecord --time-limit 0`(無制限)は API 34 以上でしか使えない**ことも判明
@@ -2889,7 +2889,7 @@ devicepoll の要点:
 
 `bridge up` で立てた常駐ランナーへ curl 等で直接 `/snapshot`・`/tap` すると、最初の1回が
 `409`(セッション無し)で返ることがある。ランナーはアプリ参照(`sessionBundleID`)を `/session`
-で初めて確立するため。**先に `POST /session` を投げる**こと(Runner/FTesterRunnerUITests/BridgeRouter.swift)。
+で初めて確立するため。**先に `POST /session` を投げる**こと(Runner/FleetestRunnerUITests/BridgeRouter.swift)。
 
 - `simctl launch` で既に起動済みのアプリへ後付けで繋ぐ場合は `{"bundleID":"...","attachOnly":true}`。
   attachOnly は activate/launch せず前面到達だけ確認する(前面に無ければ即エラー)。通常 run は
@@ -2926,7 +2926,7 @@ devicepoll の要点:
   クリップ 1 本ごとに期限 `max(60s, ソース総尺)`・1 本でも期限超過したらその run の残りクリップを
   断念(警告 1 回)・エクスポート同時実行は 2 本。期限側は敗者 task を放置する
   (`cancelWriting` は固着した VT セッションのロックで共倒れし得るため呼ばない)
-- **「全シナリオ完了済みなのに run が終わらない」の診断**: `sample <ftester の pid>` を取り、
+- **「全シナリオ完了済みなのに run が終わらない」の診断**: `sample <fleetest の pid>` を取り、
   `VTCompressionSessionInvalidate` / `RemoteVideoEncoder_EncodeFrame` が居れば上記のエンコーダ
   無応答(相手側の VTEncoderXPCService プロセスも `AVE_UCRecv` で待っている)。ツールは期限で
   自力離脱するので待てばよい。頻発するなら OS 再起動でしか AVE は復旧しない

@@ -48,7 +48,7 @@ public enum XCUIBridgeResolver {
         }
         guard autoStart else {
             let note = "port \(preferred) is an in-app bridge"
-                + " (no XCUITest bridge found for this device; provide one with `ftester bridge up`)"
+                + " (no XCUITest bridge found for this device; provide one with `fleetest bridge up`)"
             logger(note)
             return Resolution(endpoint: preferredEndpoint, note: note)
         }
@@ -149,7 +149,7 @@ public enum XCUIBridgeResolver {
         portRange.first { port in
             !occupied.contains(port)
                 && !FileManager.default.fileExists(
-                    atPath: repoRoot.appendingPathComponent(".ftester/bridge-\(port).pid").path)
+                    atPath: repoRoot.appendingPathComponent(".fleetest/bridge-\(port).pid").path)
         }
     }
 }

@@ -436,7 +436,7 @@ extension StepExecutor {
     /// 「部分一致なら在る」。無条件に「\* で囲め」と言うと、既に `*…*` を渡した相手に同じものを
     /// 勧め、`#id` 指定にはラベル部分一致(`*foo*`)という**誤った記法**を勧める
     /// (2026-08-07 に MCP 側の無条件版で実測。id の部分一致は `#*foo*`)。
-    /// **MCP もこれを呼ぶ**(ftester-mcp/MCPServer の scrollTo/waitFor の失敗文)ので public
+    /// **MCP もこれを呼ぶ**(fleetest-mcp/MCPServer の scrollTo/waitFor の失敗文)ので public
     public static func partialMatchHint(for locator: FlowLocator,
                                         in elements: [ElementInfo]) -> String? {
         if let label = locator.label, !label.isEmpty,

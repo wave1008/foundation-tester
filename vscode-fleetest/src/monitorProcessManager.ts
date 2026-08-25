@@ -1,0 +1,609 @@
+// monitorProcessManager.ts
+// デバイスモニターパネル(monitorPanel.ts)の常駐子プロセス管理部分。
+// monitor プロセス(`fleetest api monitor`)・host-metrics プロセス(`fleetest api host-metrics`)の
+// 起動・停止・再起動・pause/resume/suppressFrames 制御を担う。
+
+import { type ChildProcessByStdio, spawn } from "node:child_process";
+import type { Readable, Writable } from "node:stream";
+import { resolveProjectName } from "./config";
+import { t } from "./i18n";
+import {
+  type MonitorControlCommand,
+  type MonitorDevice,
+  filterMonitorDevices,
+  isMonitorEvent,
+  monitorControlLine,
+  sortMonitorDevices,
+  toWebviewMessage,
+} from "./monitorModel";
+import { NdjsonParser } from "./ndjson";
+import type { MonitorPanelDeps } from "./monitorPanel";
+
+/**
+ * `fleetest api monitor` は stdin の EOF を終了指示として扱うため、stdio を "ignore"(=/dev/null)
+ * にすると起動直後に EOF を検知して即終了する(タイルが一切表示されない症状の原因)。stdin もパイプで保持する。
+ */
+type MonitorProcess = ChildProcessByStdio<Writable, Readable, Readable>;
+
+/**
+ * host-metrics プロセス(`fleetest api host-metrics --interval 1`)が stdout に流す1行の形。
+ * monitor とは別スキーマなので monitorModel.ts の MonitorEvent には混ぜず、ここで直接定義・検証する。
+ */
+type HostMetricsRawEvent = {
+  readonly kind: "hostMetrics";
+  readonly ts: number;
+  readonly cpu: number | null;
+  readonly gpu: number | null;
+  readonly memUsedBytes: number | null;
+  readonly memTotalBytes: number | null;
+};
+
+/** value が HostMetricsRawEvent として扱ってよいか判定する(isMonitorEvent と同じ方針)。 */
+function isHostMetricsEvent(value: unknown): value is HostMetricsRawEvent {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  const numberOrNull = (field: unknown): boolean => field === null || typeof field === "number";
+  return (
+    record.kind === "hostMetrics" &&
+    typeof record.ts === "number" &&
+    numberOrNull(record.cpu) &&
+    numberOrNull(record.gpu) &&
+    numberOrNull(record.memUsedBytes) &&
+    numberOrNull(record.memTotalBytes)
+  );
+}
+
+/** host-metrics プロセスの1サンプルを webview へ送るメッセージの形(post() 経由)。 */
+export type HostMetricsToWebviewMessage = {
+  readonly type: "hostMetrics";
+  readonly cpu: number | null;
+  readonly gpu: number | null;
+  readonly memUsedBytes: number | null;
+  readonly memTotalBytes: number | null;
+};
+
+/**
+ * monitor / host-metrics の2つの常駐子プロセスの起動・停止・再起動・pause/resume 制御を担う。
+ * デバイスライフサイクルキュー(monitorDeviceOps.ts)からは直接参照せず、MonitorPanelDeps の
+ * writeMonitorControl コールバック経由で pause/resume を依頼する(サブコントローラ間の直接参照禁止)。
+ */
+export class MonitorProcessManager {
+  private monitorProcess: MonitorProcess | undefined;
+  /** stopMonitorProcess() 経由(dispose/再起動)による意図した終了かどうか。 */
+  private stoppingMonitor = false;
+  /**
+   * 現在の monitor プロセスが実際に使っている監視スコープ("<project> <profile>" 形式。profile が
+   * 空なら "<project> ")。fleetest.profile/project の変更で再起動が必要かどうかの判定に使う。
+   * restartMonitorIfScopeChanged() が変化検知のために読むので公開する。
+   */
+  monitorScope: string | undefined;
+  /**
+   * restartMonitorProcess() の多重起動ガード。連続したプロファイル変更やボタン連打で
+   * stopMonitorProcess()→startMonitorProcess() が重なり二重起動するのを防ぐ。
+   */
+  /** scheduleRestartAfterClose の安全弁: close をこの秒数待って来なければ強制的に再起動を進める。
+   * stopXProcess は SIGTERM 後 2s で SIGKILL するため close は通常 ~2-3s で来る。8s は余裕を持たせた上限。 */
+  private static readonly RESTART_CLOSE_TIMEOUT_MS = 8000;
+  private restartPending = false;
+  /** monitor の予期しない終了後の自動再起動タイマー(5秒後)。dispose/stop 時に必ずクリアする。 */
+  private monitorRestartTimer: ReturnType<typeof setTimeout> | undefined;
+  /** monitor の直近の起動時刻(ms)。「起動後10秒未満での異常終了」判定用(host-metrics と同型)。 */
+  private monitorStartedAt: number | undefined;
+  /** monitor の「起動後10秒未満での異常終了」の連続回数(host-metrics と同型の give-up 用)。 */
+  private monitorFailureStreak = 0;
+  /** monitor の自動再起動を諦めた状態か。リセット条件も host-metrics と同じ(show()/再起動ボタン)。 */
+  private monitorGaveUp = false;
+  /** host-metrics プロセス(常駐。monitor プロセスとは独立に管理する)。 */
+  private hostMetricsProcess: MonitorProcess | undefined;
+  /** stopHostMetricsProcess() 経由による意図した終了かどうか(stoppingMonitor と同じ役割)。 */
+  private stoppingHostMetrics = false;
+  /** restartHostMetricsProcess() の多重起動ガード(restartPending と同じ役割)。 */
+  private hostMetricsRestartPending = false;
+  /** 予期しない終了後の自動再起動タイマー(5秒後)。dispose/stop 時に必ずクリアする。 */
+  private hostMetricsRestartTimer: ReturnType<typeof setTimeout> | undefined;
+  /** 直近の起動時刻(ms)。close イベントでの経過時間から「起動後10秒未満での異常終了」を判定する。 */
+  private hostMetricsStartedAt: number | undefined;
+  /**
+   * 「起動後10秒未満での異常終了」の連続回数。3回連続で諦めて自動再起動を止める(旧バイナリに
+   * host-metrics サブコマンドが無い環境で無限ループしないための安全弁)。10秒以上動いてからの
+   * 終了は正常運転とみなして 0 にリセットする。
+   */
+  private hostMetricsFailureStreak = 0;
+  /**
+   * 自動再起動を諦めた状態かどうか。true の間は close イベントで再起動をスケジュールしない。
+   * 「モニター再起動」ボタンと show() の両方でリセットして再挑戦できる(バイナリ更新後の復帰経路)。
+   */
+  private hostMetricsGaveUp = false;
+  /**
+   * 直近の monitorDevices で観測したデバイス一覧(整列済み・表示フィルタ適用前)。
+   * fleetest.monitorDeviceFilter が変わったときに次の監視サイクル(最大 interval 秒)を待たず
+   * 絞り込み直して再送するためだけに保持する。monitor プロセス起動時にクリアし、旧スコープの
+   * 観測が新スコープの表示として再送されないようにする。
+   */
+  private latestDevices: readonly MonitorDevice[] | undefined;
+
+  /** テスト用の spawn 差し替え口(既定は実 spawn)。monitorProcessManager.test.mjs 参照。 */
+  constructor(
+    private readonly deps: MonitorPanelDeps,
+    private readonly spawnFn: typeof spawn = spawn,
+  ) {}
+
+  /**
+   * パネルを新規に開いたとき(show())の起動一式: monitor プロセスを起動し、host-metrics の
+   * 失敗カウンタをリセットしてから host-metrics プロセスを起動する(前回セッションで諦めていても、
+   * 開き直したときは素直に起動を試みる。hostMetricsGaveUp 宣言部参照)。
+   */
+  startAll(): void {
+    this.monitorFailureStreak = 0;
+    this.monitorGaveUp = false;
+    this.startMonitorProcess();
+    this.hostMetricsFailureStreak = 0;
+    this.hostMetricsGaveUp = false;
+    this.startHostMetricsProcess();
+  }
+
+  /**
+   * 「モニター再起動」ボタン(handleWebviewMessage の "restartMonitor")の処理一式: monitor
+   * プロセスを再起動し、host-metrics の失敗カウンタもリセットして再起動を試みる(バイナリ更新後は
+   * ボタン一つで復帰できるようにするため)。
+   */
+  restartAll(): void {
+    this.monitorFailureStreak = 0;
+    this.monitorGaveUp = false;
+    this.restartMonitorProcess();
+    this.hostMetricsFailureStreak = 0;
+    this.hostMetricsGaveUp = false;
+    this.restartHostMetricsProcess();
+  }
+
+  startMonitorProcess(): void {
+    // 予約済みの自動再起動があれば無効化する(startHostMetricsProcess と同じ理由 — どの経路から
+    // 起動する場合も、close ハンドラが積んだ自動再起動と二重起動しないよう先にタイマーを消す)
+    if (this.monitorRestartTimer) {
+      clearTimeout(this.monitorRestartTimer);
+      this.monitorRestartTimer = undefined;
+    }
+    this.latestDevices = undefined;
+    const config = this.deps.getConfig();
+    const resolution = resolveProjectName(this.deps.workspaceRoot, config);
+    if (resolution.kind !== "resolved") {
+      this.monitorScope = undefined;
+      this.deps.post({
+        type: "processDown",
+        message: t("deviceOps.projectUnresolved"),
+      });
+      return;
+    }
+
+    const interval = Math.max(0.5, config.monitorInterval);
+    const args = [
+      "api",
+      "monitor",
+      "--project",
+      resolution.project,
+      "--interval",
+      String(interval),
+      "--max-width",
+      String(config.monitorMaxWidth),
+    ];
+    if (config.profile) {
+      // 実行プロファイルが参照するデバイスのみに監視対象を絞り込む(空なら全デバイス。CLI 側の既定)。
+      args.push("--profile", config.profile);
+    }
+    this.monitorScope = `${resolution.project} ${config.profile}`;
+
+    let proc: MonitorProcess;
+    try {
+      proc = this.spawnFn(config.binaryPath, args, {
+        cwd: this.deps.workspaceRoot,
+        shell: false,
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+    } catch (error) {
+      this.deps.outputChannel.appendLine(t("deviceOps.log.monitorStartFailed", { error: String(error) }));
+      this.deps.post({
+        type: "processDown",
+        message: t("deviceOps.monitorStartFailedMessage", { error: String(error) }),
+      });
+      return;
+    }
+
+    // stdin は EOF が終了指示なので、こちらからは何も書かず開いたまま保持する。
+    // 相手が先に死んだ後の書き込み(end等)で EPIPE が飛んでも拡張を落とさない。
+    proc.stdin.on("error", () => undefined);
+
+    this.stoppingMonitor = false;
+    this.monitorProcess = proc;
+    this.monitorStartedAt = Date.now();
+    // 再起動(プロファイル切り替え含む)でプロセス側の抑制状態は失われるため、既にストリーミング中の
+    // デバイスがあれば suppressFrames を再送する(MonitorDeviceStreamController.streamingIds 参照)。
+    const streamingIds = this.deps.getStreamingDeviceIds();
+    if (streamingIds.length > 0) {
+      this.writeMonitorControl({ cmd: "suppressFrames", devices: streamingIds });
+    }
+
+    const stdoutParser = new NdjsonParser(
+      (rawValue) => {
+        if (!isMonitorEvent(rawValue)) {
+          this.deps.outputChannel.appendLine(
+            t("deviceOps.log.unknownLine", { label: "monitor", value: JSON.stringify(rawValue) }),
+          );
+          return;
+        }
+        let value = rawValue;
+        if (value.kind === "monitorHold") {
+          // webview へは送らない: 配信の停止は hold 中の全タイル state:"unknown" 化で
+          // applyDevices の qualifying 判定(state !== "connected")が畳む。ここはログだけ
+          this.deps.outputChannel.appendLine(
+            t(value.active ? "deviceOps.log.monitorHoldActive" : "deviceOps.log.monitorHoldReleased"),
+          );
+          return;
+        }
+        if (value.kind === "monitorDevices") {
+          // プロファイルタブの表示順に整列してから全消費側へ配る(sortMonitorDevices 参照)。
+          this.latestDevices = sortMonitorDevices(value.devices);
+          // MonitorDeviceStreamController のパイプライン張り替え判定に使う(monitorPanel.ts で配線)。
+          // 表示フィルタ前を渡す: ウォッチドッグは offline の観測で連続回数をリセットするため、
+          // 絞り込んだ一覧を渡すと古い booted 連続回数が次の起動へ持ち越されて誤検知に寄る。
+          this.deps.notifyMonitorDevices(this.latestDevices);
+          value = {
+            kind: "monitorDevices",
+            devices: filterMonitorDevices(this.latestDevices, this.deps.getConfig().monitorDeviceFilter),
+          };
+        }
+        // monitorFrame は state==connected のデバイスにしか来ない(ApiMonitorCommand.swift)ため、
+        // "running" フィルタで消える対象(offline / ブリッジ不在の iOS 実機=booted)とは重ならない。
+        // フレーム側の絞り込みは不要。
+        if (value.kind === "monitorFrame" && this.deps.isDeviceStreaming(value.device)) {
+          // 生成側(suppressFrames)でも止めているが、送信中フレームとの競合・再起動直後の残りを
+          // 吸収する安全弁としてここでも間引く(monitorDeviceStreamController.ts 冒頭コメント参照)。
+          return;
+        }
+        this.deps.post(toWebviewMessage(value));
+      },
+      (line) => this.deps.outputChannel.appendLine(`[monitor stdout] ${line}`),
+    );
+    // **CLI が言っている理由を捨てない** —— 以前は exit code だけを見て「マシンプロファイル
+    // 未設定かも」と決め打ちしていたため、実際は「その実行プロファイルはこのプロジェクトに
+    // 無い」だったときに**見当違いの場所を調べさせた**(2026-08-17 の実害)。
+    // stderr の直近の Error 行を控えてバナーに載せる(全文は OUTPUT に残る)
+    let lastError: string | undefined;
+    const noteStderr = (line: string): void => {
+      this.deps.outputChannel.appendLine(`[monitor stderr] ${line}`);
+      // ArgumentParser / ValidationError は "Error: …" で始まる。進行ログ(==>/→)は拾わない
+      if (line.startsWith("Error:")) {
+        lastError = line.slice("Error:".length).trim();
+      }
+    };
+    const stderrParser = new NdjsonParser(
+      (value) => this.deps.outputChannel.appendLine(`[monitor stderr] ${JSON.stringify(value)}`),
+      noteStderr,
+    );
+
+    proc.stdout.on("data", (chunk: Buffer) => stdoutParser.push(chunk));
+    proc.stderr.on("data", (chunk: Buffer) => stderrParser.push(chunk));
+
+    proc.on("error", (error) => {
+      this.deps.outputChannel.appendLine(t("deviceOps.log.monitorRuntimeError", { error: error.message }));
+    });
+
+    proc.on("close", (exitCode, signal) => {
+      stdoutParser.end();
+      stderrParser.end();
+      if (this.monitorProcess === proc) {
+        this.monitorProcess = undefined;
+      }
+      // 意図した停止(dispose/再起動)かどうかはフラグだけで判定する。
+      // stdin EOF 経由で終了した場合は signal が null になるため、signal では判定できない。
+      const selfInitiated = this.stoppingMonitor;
+      this.stoppingMonitor = false;
+      // **OUTPUT にも必ず1行残す**(webview バナーはパネルの開き直しで消えるため、これが無いと
+      // monitor がいつ・どう死んだかが後から一切追えない。受け手報告 2026-08-24: silent 死に見えた。
+      // signal=SIGKILL はバイナリ差し替え(update.sh の再ビルド)の署名)
+      this.deps.outputChannel.appendLine(
+        t("deviceOps.log.monitorClosed", {
+          exitCode: String(exitCode),
+          signal: String(signal),
+          initiated: selfInitiated ? "self" : "unexpected",
+        }),
+      );
+      if (!selfInitiated) {
+        // exit 0 の予期しない終了(過去例: stdin の扱いの不備)も無言にせず必ず通知する。
+        // **CLI が理由を言っていればそれを出す**(推測より事実。決め打ちの案内は最後の手段)
+        const hint = lastError
+          ? lastError
+          : exitCode === 0
+            ? t("deviceOps.monitorExitedUnexpectedHint")
+            : t("deviceOps.monitorExitedMachineHint");
+        this.deps.post({
+          type: "processDown",
+          message: t("deviceOps.monitorClosedMessage", {
+            exitCode: String(exitCode),
+            signal: String(signal),
+            hint,
+          }),
+        });
+        this.scheduleMonitorRestart();
+      }
+    });
+  }
+
+  /**
+   * monitor プロセスの予期しない終了を受けて、再起動するか諦めるかを決める(host-metrics と同型。
+   * 2026-08-24 追加 — それまで monitor は死ぬとバナー通知のみで、パネルの開き直しまで戻らなかった。
+   * 実害: update.sh の再ビルドが稼働中バイナリを差し替えて SIGKILL → 無人計測の監視が止まりっぱなし)。
+   */
+  private scheduleMonitorRestart(): void {
+    const elapsedMs = Date.now() - (this.monitorStartedAt ?? Date.now());
+    if (elapsedMs < 10000) {
+      this.monitorFailureStreak += 1;
+    } else {
+      this.monitorFailureStreak = 0;
+    }
+    if (this.monitorFailureStreak >= 3) {
+      if (!this.monitorGaveUp) {
+        this.monitorGaveUp = true;
+        this.deps.outputChannel.appendLine(t("deviceOps.log.monitorGaveUp"));
+      }
+      return;
+    }
+    this.deps.outputChannel.appendLine(t("deviceOps.log.monitorRestartScheduled"));
+    this.monitorRestartTimer = setTimeout(() => {
+      this.monitorRestartTimer = undefined;
+      // 5秒待つ間にパネルが閉じられていたら何もしない(host-metrics と同じ)。
+      if (this.deps.isPanelActive()) {
+        this.startMonitorProcess();
+      }
+    }, 5000);
+  }
+
+  /** 実行中の monitor プロセスがあれば SIGTERM(2秒後 SIGKILL)で止める。無ければ何もしない。 */
+  stopMonitorProcess(): void {
+    if (this.monitorRestartTimer) {
+      clearTimeout(this.monitorRestartTimer);
+      this.monitorRestartTimer = undefined;
+    }
+    const proc = this.monitorProcess;
+    if (!proc || proc.exitCode !== null || proc.signalCode !== null) {
+      return;
+    }
+    this.stoppingMonitor = true;
+    // 行儀よく stdin EOF(=終了指示)を送ってから SIGTERM も送る(どちらでもクリーンに終了する)。
+    proc.stdin.end();
+    proc.kill("SIGTERM");
+    setTimeout(() => {
+      if (proc.exitCode === null && proc.signalCode === null) {
+        proc.kill("SIGKILL");
+      }
+    }, 2000);
+  }
+
+  /**
+   * fleetest.monitorDeviceFilter の変更を、次の監視サイクルを待たず直近の観測へ適用して再送する
+   * (monitor プロセスの再起動は不要 — 監視スコープは変わらず拡張側の表示フィルタだけが変わるため)。
+   * 観測がまだ無い(起動直後・スコープ変更直後)なら何もしない: 次サイクルでフィルタ込みで届く。
+   */
+  repostDevicesWithCurrentFilter(): void {
+    if (!this.latestDevices) {
+      return;
+    }
+    // webview への再送のみ(notifyMonitorDevices は呼ばない — ホスト側の状態は何も変わっていない)。
+    const visible = filterMonitorDevices(this.latestDevices, this.deps.getConfig().monitorDeviceFilter);
+    this.deps.post(toWebviewMessage({ kind: "monitorDevices", devices: visible }));
+  }
+
+  /**
+   * monitor プロセスを止めてから起動し直す(「モニター再起動」ボタン、および
+   * restartMonitorIfScopeChanged() の両方から呼ばれる)。多重起動ガードで潰された再起動要求が
+   * あっても実害はない — 実際に走る startMonitorProcess() は呼び出し時点の getConfig() を読むため、
+   * 最終的に反映されるのは常に最新の設定である。
+   */
+  restartMonitorProcess(): void {
+    if (this.restartPending) {
+      return;
+    }
+    this.restartPending = true;
+    const proc = this.monitorProcess;
+    this.stopMonitorProcess();
+    this.scheduleRestartAfterClose(
+      proc,
+      () => { this.restartPending = false; },
+      () => this.startMonitorProcess(),
+    );
+  }
+
+  /** proc の close を待って start する共通ロジック。close が来ない(defunct/zombie 化等)と
+   * pending が永久 true になり以後の再起動が全て握り潰されるため、RESTART_CLOSE_TIMEOUT_MS の
+   * 安全弁でも1回だけ進める(close と二重起動しない)。 */
+  private scheduleRestartAfterClose(
+    proc: MonitorProcess | undefined,
+    clearPending: () => void,
+    start: () => void,
+  ): void {
+    if (!proc) {
+      clearPending();
+      start();
+      return;
+    }
+    let proceeded = false;
+    const proceed = () => {
+      if (proceeded) {
+        return;
+      }
+      proceeded = true;
+      clearTimeout(timer);
+      clearPending();
+      start();
+    };
+    const timer = setTimeout(proceed, MonitorProcessManager.RESTART_CLOSE_TIMEOUT_MS);
+    proc.once("close", proceed);
+  }
+
+  /**
+   * host-metrics プロセス(`fleetest api host-metrics --interval 1`)を spawn する。--project/--profile は
+   * 付けない — ホストMac自体の値であり監視対象デバイスに依存しないため(restartMonitorIfScopeChanged()
+   * からは呼ばない)。このプロセスはライブ表示専用でファイル永続化は行わない — 実行履歴は
+   * run 単位(RunRecorder)で results/runs/<YYYY-MM>/<runID>/host-metrics.ndjson へ記録される。
+   */
+  startHostMetricsProcess(): void {
+    // 予約済みの自動再起動があれば無効化する。「プロセス終了→close未配送」の隙間で
+    // restartHostMetricsProcess() が走ると、close ハンドラが積んだ自動再起動と本起動の両方が
+    // 生きて二重起動し得るため、どの経路から起動する場合も先にタイマーを消す。
+    if (this.hostMetricsRestartTimer) {
+      clearTimeout(this.hostMetricsRestartTimer);
+      this.hostMetricsRestartTimer = undefined;
+    }
+    const config = this.deps.getConfig();
+    let proc: MonitorProcess;
+    try {
+      proc = this.spawnFn(
+        config.binaryPath,
+        ["api", "host-metrics", "--interval", "1"],
+        {
+          cwd: this.deps.workspaceRoot,
+          shell: false,
+          stdio: ["pipe", "pipe", "pipe"],
+        },
+      );
+    } catch (error) {
+      this.deps.outputChannel.appendLine(t("deviceOps.log.hostMetricsStartFailed", { error: String(error) }));
+      return;
+    }
+
+    // stdin は EOF が終了指示なので、こちらからは何も書かず開いたまま保持する(monitor と同じ)。
+    proc.stdin.on("error", () => undefined);
+
+    this.stoppingHostMetrics = false;
+    this.hostMetricsProcess = proc;
+    this.hostMetricsStartedAt = Date.now();
+
+    const stdoutParser = new NdjsonParser(
+      (value) => {
+        if (!isHostMetricsEvent(value)) {
+          this.deps.outputChannel.appendLine(
+            t("deviceOps.log.unknownLine", { label: "host-metrics", value: JSON.stringify(value) }),
+          );
+          return;
+        }
+        this.deps.post({
+          type: "hostMetrics",
+          cpu: value.cpu,
+          gpu: value.gpu,
+          memUsedBytes: value.memUsedBytes,
+          memTotalBytes: value.memTotalBytes,
+        });
+      },
+      (line) => this.deps.outputChannel.appendLine(`[host-metrics stdout] ${line}`),
+    );
+    const stderrParser = new NdjsonParser(
+      (value) => this.deps.outputChannel.appendLine(`[host-metrics stderr] ${JSON.stringify(value)}`),
+      (line) => this.deps.outputChannel.appendLine(`[host-metrics stderr] ${line}`),
+    );
+
+    proc.stdout.on("data", (chunk: Buffer) => stdoutParser.push(chunk));
+    proc.stderr.on("data", (chunk: Buffer) => stderrParser.push(chunk));
+
+    proc.on("error", (error) => {
+      this.deps.outputChannel.appendLine(t("deviceOps.log.hostMetricsRuntimeError", { error: error.message }));
+    });
+
+    proc.on("close", () => {
+      stdoutParser.end();
+      stderrParser.end();
+      if (this.hostMetricsProcess === proc) {
+        this.hostMetricsProcess = undefined;
+      }
+      // 意図した停止(dispose/再起動)かどうかはフラグだけで判定する(monitor と同じ理由)。
+      const selfInitiated = this.stoppingHostMetrics;
+      this.stoppingHostMetrics = false;
+      if (selfInitiated) {
+        return;
+      }
+      this.scheduleHostMetricsRestart();
+    });
+  }
+
+  /**
+   * host-metrics プロセスの予期しない終了を受けて、再起動するか諦めるかを決める。3回連続で
+   * 諦めたら outputChannel に1回だけログする(カウンタの意味は hostMetricsFailureStreak 参照)。
+   */
+  private scheduleHostMetricsRestart(): void {
+    const elapsedMs = Date.now() - (this.hostMetricsStartedAt ?? Date.now());
+    if (elapsedMs < 10000) {
+      this.hostMetricsFailureStreak += 1;
+    } else {
+      this.hostMetricsFailureStreak = 0;
+    }
+    if (this.hostMetricsFailureStreak >= 3) {
+      if (!this.hostMetricsGaveUp) {
+        this.hostMetricsGaveUp = true;
+        this.deps.outputChannel.appendLine(t("deviceOps.log.hostMetricsGaveUp"));
+      }
+      return;
+    }
+    this.hostMetricsRestartTimer = setTimeout(() => {
+      this.hostMetricsRestartTimer = undefined;
+      // 5秒待つ間にパネルが閉じられていたら何もしない。
+      if (this.deps.isPanelActive()) {
+        this.startHostMetricsProcess();
+      }
+    }, 5000);
+  }
+
+  /** 実行中の host-metrics プロセスがあれば SIGTERM(2秒後 SIGKILL)で止める(stopMonitorProcess と同じ方針)。 */
+  stopHostMetricsProcess(): void {
+    if (this.hostMetricsRestartTimer) {
+      clearTimeout(this.hostMetricsRestartTimer);
+      this.hostMetricsRestartTimer = undefined;
+    }
+    const proc = this.hostMetricsProcess;
+    if (!proc || proc.exitCode !== null || proc.signalCode !== null) {
+      return;
+    }
+    this.stoppingHostMetrics = true;
+    proc.stdin.end();
+    proc.kill("SIGTERM");
+    setTimeout(() => {
+      if (proc.exitCode === null && proc.signalCode === null) {
+        proc.kill("SIGKILL");
+      }
+    }, 2000);
+  }
+
+  /**
+   * host-metrics プロセスを止めてから起動し直す(「モニター再起動」ボタンから呼ばれる)。
+   * 多重起動ガードは restartMonitorProcess と同じ理由(連打で二重起動しないようにする)。
+   */
+  private restartHostMetricsProcess(): void {
+    if (this.hostMetricsRestartPending) {
+      return;
+    }
+    this.hostMetricsRestartPending = true;
+    const proc = this.hostMetricsProcess;
+    this.stopHostMetricsProcess();
+    this.scheduleRestartAfterClose(
+      proc,
+      () => { this.hostMetricsRestartPending = false; },
+      () => this.startHostMetricsProcess(),
+    );
+  }
+
+  /**
+   * モニタープロセスの stdin に制御コマンドを書き込む(NDJSON 1行)。モニターが
+   * 未起動・終了済みのとき、および書き込み失敗はいずれも黙ってスキップし、呼び出し元のジョブ実行は
+   * 継続させる。MonitorPanelDeps.writeMonitorControl 経由で呼ばれる(サブコントローラ間の直接参照禁止)。
+   */
+  writeMonitorControl(cmd: MonitorControlCommand): void {
+    const proc = this.monitorProcess;
+    if (!proc || proc.exitCode !== null || proc.signalCode !== null) {
+      return;
+    }
+    try {
+      proc.stdin.write(monitorControlLine(cmd));
+    } catch {
+      // 無視する(呼び出し元は継続させる)。
+    }
+  }
+}

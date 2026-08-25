@@ -1,5 +1,5 @@
 // 10_イレギュラーハンドラ.swift
-// ftester 機能: `irregularHandler`(出るか不定なアプリ内メッセージの検出・自動終了)。
+// fleetest 機能: `irregularHandler`(出るか不定なアプリ内メッセージの検出・自動終了)。
 // 07_条件分岐とダイアログ.swift はハンドラなしでのダイアログ操作(ifCanSelect/select)を検証しており、
 // 干渉させないためこちらは分けて irregularHandler 専用に検証する。
 // CMP 版(TestProjects/E2E-CMP/scenarios/17_イレギュラーハンドラ.swift)の移植。Flutter の AlertDialog は
@@ -31,7 +31,7 @@ class イレギュラーハンドラが自動でダイアログを閉じるこ�
                     // FM はホスト全体で直列化(約1回/秒)されるため、全 launchApp で FM を
                     // 呼ぶとコストだけが乗る。**可視性の検証と、occlusion-guard の誤判定を
                     // 検出する役目は 01_起動と画面遷移 が既定(true)のまま担う**
-                    // (README「既知の ftester 欠陥」参照。ここで guard を切っても検出器は死なない)。
+                    // (README「既知の fleetest 欠陥」参照。ここで guard を切っても検出器は死なない)。
                     exist("#txt_home_marker", requireVisible: false)
                 }.action {
                     tap("#nav_dialog")

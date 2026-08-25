@@ -44,7 +44,7 @@ public enum IOSPhysicalAppCatalog {
     /// stdout("-")を受け付けないため、一時ファイルへ書かせてから読む(list devices と違う点)
     public static func apps(udid: String) throws -> [App] {
         let outputURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("ftester-devicectl-apps-\(UUID().uuidString).json")
+            .appendingPathComponent("fleetest-devicectl-apps-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: outputURL) }
         let result = try Shell.run(
             ["xcrun", "devicectl", "device", "info", "apps", "--device", udid,

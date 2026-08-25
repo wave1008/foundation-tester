@@ -4,5 +4,5 @@
   "requires": "iOS シミュレータ1台に xcuitest ブリッジ(システムアプリを触るので in-app では不可)",
   "maxTurns": 60,
   "expect": "iPhone 17 Pro",
-  "prompt": "ftester の MCP ツール(ft_*)だけを使って、iOS シミュレータの「設定」アプリ(com.apple.Preferences)を操作してください。\n\nゴール: 「一般」→「情報」と進み、この端末の機種名を読み取ること。\n\n手順や使うツールは自分で決めてください。デバイスは ft_list_devices で選びます(システムアプリなので xcuitest ブリッジのポートが要ります)。\n\n最後に必ず1行だけ次の形式で出力してください: RESULT: <機種名>\n読み取れなかった場合は RESULT: unknown と出力してください。"
+  "prompt": "fleetest の MCP ツール(ft_*)だけを使って、iOS シミュレータの「設定」アプリ(com.apple.Preferences)を操作してください。\n\nゴール: 「一般」→「情報」と進み、この端末の機種名を読み取ること。\n\n手順や使うツールは自分で決めてください。デバイスは ft_list_devices で選びます(システムアプリなので xcuitest ブリッジのポートが要ります)。\n\n最後に必ず1行だけ次の形式で出力してください: RESULT: <機種名>\n読み取れなかった場合は RESULT: unknown と出力してください。"
 }

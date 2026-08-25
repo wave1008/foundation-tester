@@ -1,6 +1,6 @@
 # TestProjects/E2E-iOS
 
-ftester を **iOS ネイティブアプリ(SwiftUI + UIKit)** に対して検証する E2E テストプロジェクト。
+fleetest を **iOS ネイティブアプリ(SwiftUI + UIKit)** に対して検証する E2E テストプロジェクト。
 対象アプリはリポジトリ同梱の `E2EAppIOS/`(bundle id = `com.ftester.e2e.ios`)。
 
 - 画面構成・`#id`・ラベルの正: `E2EAppCMP/docs/ui-contract.md`(Compose 版と共通)
@@ -16,9 +16,9 @@ cd E2EAppIOS
 ## 実行
 
 ```sh
-ftester run --project E2E-iOS --profile ios-xcuitest   # 全件グリーンの基準
-ftester run --project E2E-iOS --profile ios-inapp      # エンジン差分の観測用
-ftester run --project E2E-iOS --profile ios-heal       # --heal
+fleetest run --project E2E-iOS --profile ios-xcuitest   # 全件グリーンの基準
+fleetest run --project E2E-iOS --profile ios-inapp      # エンジン差分の観測用
+fleetest run --project E2E-iOS --profile ios-heal       # --heal
 ```
 
 全シナリオが `platform: "ios"` 固定(SUT が iOS 専用のため)。
@@ -31,7 +31,7 @@ ftester run --project E2E-iOS --profile ios-heal       # --heal
 | `ios-heal` | ✅ 20/20 | — |
 | `ios-inapp` | ✅ 20/20 | 30.4s |
 
-## `ios-inapp` で判明し、修正した ftester 側の穴2件(2026-07-23)
+## `ios-inapp` で判明し、修正した fleetest 側の穴2件(2026-07-23)
 
 この SUT を作って初めて見えた2点。**どちらも Compose 固有ではなく SwiftUI ネイティブでも起きていた**。
 いずれも修正済みで、現在 `ios-inapp` は 20/20 グリーン(30.4s。xcuitest の 42.6s より速い)。
@@ -80,7 +80,7 @@ simctl terminate する(ログに「別アプリに注入された in-app ブリ
 06_待機とタイムアウト の S0020・08_ライフサイクルとコントロール の S0010/S0030・
 10_イレギュラーハンドラ・11_WebView)は独立のまま。
 
-| ファイル | 検証する ftester 機能 |
+| ファイル | 検証する fleetest 機能 |
 |---|---|
 | `01_起動と画面遷移.swift` | `launchApp` / タブ切替 / 下位画面遷移+`戻る` / タブ切替でスタックを持ち越さないこと |
 | `02_セレクタ画面.swift` | `#id`・ラベル一致規則・`.Type[n]` 系・`\|\|` フォールバック・フィルタ OR・対称アサーション(旧 02/03/04/16 を統合) |
@@ -95,14 +95,14 @@ simctl terminate する(ログに「別アプリに注入された in-app ブリ
 ## `_disabled/`(通常実行に含めない)
 
 **`_disabled/` は SPM のビルド対象外**(`Package.swift` の `exclude`)。回すときは
-`scenarios/` 直下へ移動 → `swift build --product ftester-scenarios-E2E-iOS` → 実行 → 元に戻す。
+`scenarios/` 直下へ移動 → `swift build --product fleetest-scenarios-E2E-iOS` → 実行 → 元に戻す。
 
 - `90_自己修復.swift` — FM 必須。`ios-heal` プロファイルで実行。
   **2026-07-23 検証済み**: FM 経路で `#btn_heal_v1` → `#btn_heal_v2||修復対象` に修復、
   2回目はヒールキャッシュ経路(FM 不使用)で通ることを確認
 - `91_クラッシュ検知.swift` — アプリを実際にクラッシュさせる破壊的シナリオ。**`ios-inapp` で回すこと**。
   **2026-07-23 検証済み**: `fatalError` でプロセスが落ち、エラー行に `.ips` のパスと終了理由
-  (`EXC_BREAKPOINT SIGTRAP`)が付く。この検証で ftester 側のバグを2件発見・修正した
+  (`EXC_BREAKPOINT SIGTRAP`)が付く。この検証で fleetest 側のバグを2件発見・修正した
   (`.ips` の探索が早すぎて取りこぼす / 前の実行の古い `.ips` を拾う)
 
 ## 注意

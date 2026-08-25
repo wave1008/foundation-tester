@@ -46,7 +46,7 @@ public enum ScenarioSourceEditor {
     /// 2 回以上 = 曖昧で自動判定できない)。対象行以外・改行・インデントは完全保存する。
     ///
     /// **両側を Swift リテラルとして綴る**。ここは**利用者の .swift を直接書き換える
-    /// 唯一の経路**(`ftester api apply-heal`)なので、素の `"\(selector)"` で綴ると
+    /// 唯一の経路**(`fleetest api apply-heal`)なので、素の `"\(selector)"` で綴ると
     /// **`"` を含むラベルでコンパイルできないコードを書き込む**。実際に再現した形:
     ///
     ///     tap("*【速報】"特価"セール開催中*")   ← 不正な Swift

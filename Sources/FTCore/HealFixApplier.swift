@@ -1,5 +1,5 @@
 // HealFixApplier.swift
-// 自己修復(FM ロケータ自己修復)の確定反映ロジック。CLI(ftester api apply-heal)が使う
+// 自己修復(FM ロケータ自己修復)の確定反映ロジック。CLI(fleetest api apply-heal)が使う
 // 副作用を持たない純粋ロジック。
 // ファイル I/O(ソースの読み書き・ヒールキャッシュファイルの読み書き)は呼び出し側の責務とし、
 // ここではソース文字列の変換とヒールキャッシュ(JSONSerialization の辞書)のキー削除だけを扱う

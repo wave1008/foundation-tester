@@ -1,8 +1,8 @@
-# ftester (foundation-tester) Documentation
+# fleetest mobile Documentation
 
 [in Japanese(日本語)](index_ja.md)
 
-ftester is an E2E test tool for iOS / Android apps on macOS. Scenarios are written in a
+fleetest is an E2E test tool for iOS / Android apps on macOS. Scenarios are written in a
 Shirates-style Swift DSL and replayed deterministically; Foundation Models (on-device) step
 in only when a step fails. Tests can be authored by Claude Code (MCP), recorded from the
 VSCode extension, or written by hand — all three produce the same `.swift` scenarios.
@@ -13,7 +13,7 @@ VSCode extension, or written by hand — all three produce the same `.swift` sce
 
 ## Overview
 
-- [What is ftester?](overview/about.md)
+- [What is fleetest?](overview/about.md)
 - [Environments](overview/environments.md)
 - [Getting Started (Installation)](getting-started.md)
 - [Quick start](quick-start.md)
@@ -95,11 +95,11 @@ VSCode extension, or written by hand — all three produce the same `.swift` sce
 
 ### Running
 
-- [Running scenarios (ftester run)](running/running_scenarios.md)
+- [Running scenarios (fleetest run)](running/running_scenarios.md)
 - [dry-run (No-Load-Run)](running/dry_run.md)
 - [Self-healing and the heal cache](running/self_healing.md)
 - [Parallel execution](running/parallel_execution.md)
-- [Analysing results (ftester results, dashboard)](running/results_analysis.md)
+- [Analysing results (fleetest results, dashboard)](running/results_analysis.md)
 
 ### Tools
 

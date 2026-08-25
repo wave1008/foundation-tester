@@ -1,8 +1,8 @@
 // FleetSplit.swift
-// `ftester run --fleet <name> --split`(docs/remote-runner.md §8「シナリオバッチを複数 Mac に
+// `fleetest run --fleet <name> --split`(docs/remote-runner.md §8「シナリオバッチを複数 Mac に
 // 割り当てる」)の純粋ロジック。実績の中央値は既存の LPTScheduler.Duration / durations(from:) を
 // そのまま使う(中央値算出を二重に持たない)。ssh・プロセス起動・ローカルビルド・ホスト→
-// platform の解決は呼び出し側(Sources/ftester/FleetRunner.swift)に置く。
+// platform の解決は呼び出し側(Sources/fleetest/FleetRunner.swift)に置く。
 //
 // LPT(longest processing time first)貪欲法: 見積りの長いシナリオから、その時点の負荷合計が
 // 最小の"適合する"エントリへ入れる。同着は決定的に解く(負荷合計の同点は entryIndex 昇順、

@@ -1,0 +1,161 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "fleetest 実行プロファイル",
+  "description": "実行プロファイル(profiles/runs/<name>.json)。apps/<app>.json への参照(name)とデバイス(machines/<マシン名>.json の name 参照)の組み合わせ、実行時設定を定義する。構造の正は Sources/FTCore/RunProfile.swift の RunProfileDocument / ProfileResolver.validate。",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "app",
+    "devices"
+  ],
+  "properties": {
+    "machine": {
+      "type": "string",
+      "description": "使用するマシンプロファイル名(profiles/machines/<名前>.json)。この指定が最優先で、未指定時は登録マシン(machine set)等から自動解決される。"
+    },
+    "app": {
+      "type": "string",
+      "description": "apps/<name>.json への参照(拡張子なし)。必須。",
+      "minLength": 1
+    },
+    "devices": {
+      "type": "array",
+      "description": "実行に使うデバイス(マシンプロファイルの name 参照)。iOS/Android混在可(両OSを同時実行する)。1件以上必須。",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "description": "デバイス参照(RunDeviceRef)。マシンプロファイル(profiles/machines/<マシン名>.json)側の name とちょうど一致する必要がある。",
+        "additionalProperties": true,
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "profiles/machines/<マシン名>.json 内のデバイス name(ios/android横断で一意にすること)。",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "fm": {
+      "type": "boolean",
+      "description": "FM(Foundation Model)の機能を使用するか。false で自己修復・偽陽性検証・screenLooksLike・失敗時トリアージを含む FM 呼び出しを行わない(既定 true)。",
+      "default": true
+    },
+    "heal": {
+      "type": "boolean",
+      "description": "FM によるロケータ自己修復を許可するか(既定 true)。",
+      "default": true
+    },
+    "falsePositiveCheck": {
+      "type": "boolean",
+      "description": "FM による偽陽性検証(occlusion guard)を有効にするか(既定 false)。",
+      "default": false
+    },
+    "screenLooksLike": {
+      "type": "boolean",
+      "description": "screenLooksLike コマンド(FM による画面判定)を有効にするか(既定 true)。",
+      "default": true
+    },
+    "screenIs": {
+      "type": "boolean",
+      "deprecated": true,
+      "description": "旧名。screenLooksLike が未指定のときだけ読まれる。新しく書くときは screenLooksLike を使う。"
+    },
+    "containerInference": {
+      "type": "boolean",
+      "description": "容器(スクロール領域)の推測に基づくタップ/スクロール座標補正を行うか(既定 true)。false で見切れ判定・掴み直し・救済ドラッグ・座標補正・壊れた座標の候補除外を止める。FM とは無関係の幾何ヒューリスティック。",
+      "default": true
+    },
+    "reportDir": {
+      "type": "string",
+      "description": "レポート出力先(プロジェクトルート相対 or 絶対。既定 \"reports\")。",
+      "default": "reports"
+    },
+    "defaultTimeout": {
+      "type": "number",
+      "description": "DSL コマンドの既定タイムアウト秒(小数可。省略時は DSL 側の既定値)。",
+      "minimum": 0
+    },
+    "scenarioTimeout": {
+      "type": "integer",
+      "description": "シナリオ単位の壁時計タイムアウト秒(ホスト側 watchdog。超過で子を強制終了し失敗扱い。省略時 90)。defaultTimeout(子内部の検証待ち)とは別物。",
+      "minimum": 1
+    },
+    "iosInappEngine": {
+      "type": "boolean",
+      "description": "iOS の高速な in-app エンジン(ハイブリッド)を使うか(既定 true=ON)。ON → iOS デバイスを hybrid(in-app 主+XCUITest フォールバック)、OFF → xcuitest で駆動する。マシンプロファイルでデバイスに engine を明示している場合はそちらが優先。Android には影響しない。",
+      "default": true
+    },
+    "wipeDataOnBloat": {
+      "type": "boolean",
+      "description": "省略時 true。実行開始時に Android AVD のイメージ(userdata/cache/snapshots)がしきい値(wipeDataThresholdGB)超過なら Wipe Data してから実行する。",
+      "default": true
+    },
+    "wipeDataThresholdGB": {
+      "type": "number",
+      "description": "Wipe Data 発動しきい値(GB)。省略時 8。Play イメージは wipe 直後でも userdata が 2〜4GB あるため、4GB 以下にすると毎実行 wipe が発動する。",
+      "exclusiveMinimum": 0,
+      "default": 8
+    },
+    "recoverCpuFallbackToGpu": {
+      "type": "boolean",
+      "description": "実行開始時に、画面凍結で CPU 描画(swiftshader)へ落ちた Android エミュレータを GPU(-gpu host)で起動し直す。GPU モードは起動引数で固定されるため emulator プロセスの再起動が必要で、該当機1台につき run 開始が約1分延びる。省略時 false。",
+      "default": false
+    },
+    "locale": {
+      "type": "string",
+      "description": "ロケール(Android エミュレータのブート完了時、Wipe Data 後の再起動を含めてブリッジ経由で適用される。iOS には影響しない)。省略時 \"ja_JP\"。",
+      "pattern": "^[A-Za-z]{2,3}([-_][A-Za-z0-9]{2,8})*$",
+      "default": "ja_JP"
+    },
+    "iosFastInput": {
+      "type": "boolean",
+      "description": "iOS xcuitest ブリッジの高速入力(quiescence 待ちスキップ)。動きの激しい画面ではフレークリスクあり(既定 false)"
+    },
+    "homeOnStart": {
+      "type": "boolean",
+      "description": "run 開始時に各デバイスへ home() を1回撃つ(既定 true = 撃つ)。一斉に launch した直後の端末は「描画要求が無いだけ」で画面が黒いまま止まることがあり、そのままだと凍結と見分けが付かない。入力を1回入れておくと描画が動き出すので予防になる。デバイスあたり1回だけなので実行時間への影響はほぼ無い。",
+      "default": true
+    },
+    "enableAnimations": {
+      "type": "boolean",
+      "description": "テスト対象アプリのアニメーションを残す(既定 false = 実行開始時にデバイス側のアニメーションを無効化する)。true にすると整定待ちが伸び、Android ではスクリーンショットが遷移途中の絵を掴むことがある。設定は run 開始時に毎回デバイスへ同期される(Android 実機はグローバル設定が永続的に書き換わる)。",
+      "default": false
+    },
+    "record": {
+      "type": "boolean",
+      "description": "各デバイスの画面録画を有効化する(既定 false)。録画は results/runs/<YYYY-MM>/<runID>/recordings/ 配下に保存され、モニターパネルの「録画」タブから再生できる。",
+      "default": false
+    },
+    "recordFailuresOnly": {
+      "type": "boolean",
+      "description": "録画のうち、成功(passed)したテストの録画は保存しない(既定 false)。record が true のときのみ意味を持つ。",
+      "default": false
+    },
+    "recordBitrateKbps": {
+      "type": "integer",
+      "description": "録画のビットレート(kbps、既定 1500)。record が true のときのみ意味を持つ。",
+      "exclusiveMinimum": 0,
+      "default": 1500
+    },
+    "recordFullResolution": {
+      "type": "boolean",
+      "description": "録画をデバイス画面のフル解像度で保存する(既定 false=縮小)。容量が増える。record が true のときのみ意味を持つ。",
+      "default": false
+    },
+    "remoteControl": {
+      "type": "object",
+      "description": "リモート実行の制御。ワークスペース(リモートのマシンへ運ぶ資材の置き場)。テストの前後で実行するスクリプトは、その scripts/setup.sh・scripts/teardown.sh が存在すれば自動的に実行される(宣言は不要)。",
+      "additionalProperties": true,
+      "properties": {
+        "workspace": {
+          "type": "string",
+          "description": "アプリのバイナリや実行スクリプトを置くフォルダ(絶対パス、またはリポジトリルート基準の相対パス)。省略時は TestProjects/<project>/workspace。リモートの Mac にはこのフォルダが運ばれる。",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

@@ -310,7 +310,7 @@ Shirates 準拠のコマンド名(`flick*`)。**画面(または `scrollFrame`)�
 | `appIs(id, waitSeconds: 15)` | フォアグラウンドのアプリが `id`(iOS=bundle ID / Android=package 名)と一致することの検証。**ニックネーム機構は無く ID を直接書く**(Shirates 準拠だが引数の意味だけ異なる)。`waitSeconds` までポーリング。**Android は失敗時に actual の package 名をメッセージへ含める**(iOS は前面 bundle ID を取得する手段が無いため含まれない) |
 
 > `screenLooksLike` と偽陽性検証の FM 段(`requireVisible` / `falsePositiveCheck`)は FM に画像を渡すため
-> **macOS 27+ が必要**。macOS 26 では自動でスキップ/素通りになる(現在の可否は `ftester doctor`)。
+> **macOS 27+ が必要**。macOS 26 では自動でスキップ/素通りになる(現在の可否は `fleetest doctor`)。
 > 偽陽性検証の**幾何の段(中心が画面外の一致を可視と呼ばない)は FM 無しでも効く**。
 
 ## テキスト・値の検証
@@ -503,7 +503,7 @@ let 合計 = try await fetchTotal()        // procedure { } 内で取得した�
 - **`ios { }` / `android { }` / `ifCanSelect { }` の中身が実行されなかった**ときは警告しません
   (中に何が書かれているかは実行しないと分からないため。`expectation { android { notExist(…) } }`
   を iOS で回しても黙ります)
-- **`ftester run --dry-run`(MCP は `ft_dry_run`)ならデバイス無しで判定できます**。
+- **`fleetest run --dry-run`(MCP は `ft_dry_run`)ならデバイス無しで判定できます**。
   デバイスを触る前にここで落とすのが安上がりです
 
 ## `#x` は placeholder も引く
@@ -525,7 +525,7 @@ type("#WebView 入力", "hello123")   // id が無い WebView の入力欄も pl
 ## セレクタの綴り誤りの検知(dry-run)
 
 `ft_snapshot` で撮った画面の `#id` はプロジェクトの台帳
-(`<プロジェクト>/.ftester/selector-inventory.json`)に貯まり、**dry-run がシナリオ中の `#id` と
+(`<プロジェクト>/.fleetest/selector-inventory.json`)に貯まり、**dry-run がシナリオ中の `#id` と
 突き合わせて**、どのスナップショットにも無い id を警告します(失敗にはしません)。
 
 - **撮っていない画面については何も言いません**(台帳が無い・そのプラットフォームの記録が無いときも同様)。
@@ -574,7 +574,7 @@ inconclusive はシナリオを中断しない。レポート・ログには ❓
 明示とプロファイルが食い違うと、明示を採ったうえで run ログに警告が1行出る。
 
 どちらからも決まらないとき(実行プロファイル無しの単独実行など)は明示エラーになる。
-`ftester run --app <bundleID>` で渡すか、`--profile` を使う。
+`fleetest run --app <bundleID>` で渡すか、`--profile` を使う。
 `installApp()` の `appPath` も同じくアプリプロファイルの `<platform>.appPath` から解決される。
 
 | コマンド | 説明 |
@@ -583,7 +583,7 @@ inconclusive はシナリオを中断しない。レポート・ログには ❓
 | `openURL(url)` | 起動済みのアプリへ URL(ディープリンク)を配送し、今の画面の上に遷移を積む(**アプリを再起動しない** = warm 配送。`launchApp(url:)` は逆に先にプロセスを再起動してから配送する)。配送はホスト側の外部コマンドで行う(ブリッジは経由しない): iOS シミュレータ = `simctl openurl` / iOS 実機 = `devicectl device process openURL` / Android = `adb shell am start -W -a android.intent.action.VIEW -d '<url>' <package>`。**カスタムスキーム前提** —— Universal Links/App Links(`https://`)は AASA/assetlinks.json の取得状態に左右され、シミュレータでは Safari に流れることがある。未起動のアプリに撃つと OS がアプリを起動して開くが、想定用途ではない。**iOS の in-app エンジンでは未起動のまま撃つと dylib が注入されずブリッジが死ぬ**ため、ドライバがブリッジ無応答を検知して注入起動してから配送し直す(利用者が意識する必要はないが、**cold start 検証そのものは in-app エンジンでは表現できない**)。iOS シミュレータでは配送直後に SpringBoard が出す初回の確認アラート(「"<表示名>"で開きますか?」。以後は端末+アプリの組で同意が永続する)を xcuitest/hybrid エンジンでは自動了承するが、**in-app エンジン単独では SpringBoard を見られないため自動了承できない**(初回は手動でアラートを閉じるか、事前に一度 xcuitest/hybrid で同意を済ませておく)。遷移は非同期なので直後の検証は通常どおりポーリングで待つ |
 | `restartApp(bundleID?)` | 終了してから起動(プロセス内状態のリセットに)。省略時の既定アプリは `launchApp()` と同じ解決 |
 | `terminateApp()` | 終了 |
-| `installApp(path?)` | アプリをインストール(iOS: `.app` / Android: `.apk` または `.apks`。`.apks` は bundletool が要る)。**実行はオーケストレータ(親プロセス)が行う**。パス省略時は実行プロファイルの `appPath` を親が解決する(明示引数 > プロファイル)。プロファイルにも `appPath` が無ければ明示エラー。iOS の in-app/hybrid エンジンでは simctl install で常駐ブリッジが道連れに終了するが、直後の `launchApp()` が再注入し直すので、続けて `launchApp()` を呼べば問題ない。オーケストレータ無しの単独実行(`ftester-scenarios run` を直接叩く等)では従来どおり明示引数が必須(省略時は明示エラー) |
+| `installApp(path?)` | アプリをインストール(iOS: `.app` / Android: `.apk` または `.apks`。`.apks` は bundletool が要る)。**実行はオーケストレータ(親プロセス)が行う**。パス省略時は実行プロファイルの `appPath` を親が解決する(明示引数 > プロファイル)。プロファイルにも `appPath` が無ければ明示エラー。iOS の in-app/hybrid エンジンでは simctl install で常駐ブリッジが道連れに終了するが、直後の `launchApp()` が再注入し直すので、続けて `launchApp()` を呼べば問題ない。オーケストレータ無しの単独実行(`fleetest-scenarios run` を直接叩く等)では従来どおり明示引数が必須(省略時は明示エラー) |
 | `removeApp(id?)` | アプリをアンインストール。省略時は起動中アプリの既定 bundleID/package(`launchApp()` 引数なしと同じ解決)。**入れ直しても権限は戻らない**(iOS シミュレータ実測): 削除→再インストールしても TCC(位置情報等)の許可が残り、許可ダイアログは**再び出ない**。実機の挙動とは違うので「入れ直せば初回状態」を前提にしたシナリオは書けない —— 権限から戻したいなら `clearAppData()`。**自分自身の SUT を消すと、以降のシナリオ実行と in-app ブリッジが壊れる**ので、テスト対象アプリに対して呼ぶのは慎重に |
 | `clearAppData(bundleID?)` | アプリは残しデータだけ消す(再インストール不要)。初回起動・オンボーディング・権限ダイアログの再現に使う。**権限(iOS の TCC / Android の実行時権限)も未許可へ戻す**ので、権限ダイアログが再び出る。**iOS はシミュレータ専用**(実機は失敗する)。Android は `pm clear` 相当。**NSUserDefaults / SharedPreferences は消える**(iOS は cfprefsd の入れ直しまで行う)。**キーチェーン(iOS)/ Keystore(Android)に置いた値は消えない** — オンボーディング判定をそこに置いているアプリは初回起動が再現しない |
 | `home()` | ホーム画面へ |
@@ -612,7 +612,7 @@ inconclusive はシナリオを中断しない。レポート・ログには ❓
 | `func setUp()` / `func tearDown()` | テストクラスに書くと各 `@Test` の前後で自動実行。**tearDown は失敗後でも実行される** |
 | `@TestClass(platform:)` / `@Test(platform:)` | **対象 OS の宣言**(`"ios"` / `"android"`)。両方あるとメソッド側が勝つ。宣言した OS を回さない実行プロファイルでは**そのシナリオを実行せず skipped(対象外)として記録する**(失敗ではなく、exit code も汚さない)。「iOS では意味がないテスト」(Wi-Fi プロキシ設定など)を、`ios { }` を空にして緑にする代わりに意図として残すためのもの。**実行プロファイルを使う run でだけ効く** —— `--ports` / `--serial` の直指定は「この run が回す OS の集合」を宣言しないので従来どおり |
 | `@Deleted("理由")` | テストクラスまたは `@Test` メソッドに付けて**論理削除**する。一覧には「削除済み」として残り、全実行・フォルダ実行・クラス名指定の一括実行から**除外**される。完全一致 ID の明示指定でだけ実行できる。コードは残るので復活はアノテーションを外すだけ |
-| `@Draft("理由")` | 実装中(未完成)のマーク。テストクラスまたは `@Test` メソッドに付ける。一覧には「作業中」として残り(GUI のテストツリーでも表示され、非表示にはならない)、全実行・フォルダ実行・クラス名指定の一括実行からは除外。完全一致 ID の明示指定でだけ実行できる(実装しながら個別に回す経路)。出来たらアノテーションを外す。`@Deleted` との違いは意味だけ(Deleted=もう使わない / Draft=これから使う)。`ftester draft-scenario`(テストベースからの下書き)の生成物にはこれが付く |
+| `@Draft("理由")` | 実装中(未完成)のマーク。テストクラスまたは `@Test` メソッドに付ける。一覧には「作業中」として残り(GUI のテストツリーでも表示され、非表示にはならない)、全実行・フォルダ実行・クラス名指定の一括実行からは除外。完全一致 ID の明示指定でだけ実行できる(実装しながら個別に回す経路)。出来たらアノテーションを外す。`@Deleted` との違いは意味だけ(Deleted=もう使わない / Draft=これから使う)。`fleetest draft-scenario`(テストベースからの下書き)の生成物にはこれが付く |
 | `irregularHandler(検出sel, dismiss: 閉じるsel?, maxDismissals: 10)` | **出るか不定のアプリ内メッセージ**(お知らせ・キャンペーン)を宣言すると、以降どのステップでも出た時点で自動的に閉じる。`dismiss` 省略時は検出したものをタップ。setUp で 1 回宣言するのが定石。閉じたことはステップの注記に残る(**1ステップで最大10回**まで閉じる。`maxDismissals:` で宣言ごとに変えられる。長いステップの最中に2度目が湧いても閉じ切れる。2回閉じても同じものが残っていれば「閉じられていない」と判断して打ち切り、注記に残す)。**OS のシステムダイアログ(権限の許可等)はこれでは閉じない** —— 下の §システムダイアログ(iOS)参照 |
 
 ```swift

@@ -12,7 +12,7 @@
 > macOS 26 では FM の**視覚検証だけ**が使えません(画像入力 API が macOS 27+ 必須)。
 > occlusion-guard(偽陽性チェック)と `screenLooksLike` は自動で無効になり、他は制限なく動きます。
 
-このマシンで何が使えるかは `ftester doctor`(または MCP の `ft_doctor`)でいつでも確認できます
+このマシンで何が使えるかは `fleetest doctor`(または MCP の `ft_doctor`)でいつでも確認できます
 —— Foundation Models の可用性・Xcode・xcodegen・シミュレータ・adb をまとめて確認します。
 
 ## Apple Intelligence の用途
@@ -28,7 +28,7 @@ Apple Intelligence(オンデバイスモデル)は任意ですが、有効にす
 
 ## 動作確認している UI フレームワーク
 
-Ftester は次のフレームワークで作られたアプリで動作確認しています。
+Fleetest は次のフレームワークで作られたアプリで動作確認しています。
 
 | フレームワーク | 対象 OS |
 |---|---|

@@ -1,5 +1,5 @@
 // FocusWait.swift
-// pressEnter 前の焦点待ちの定数。MCP(ftester-mcp の awaitFocus)と DSL(StepExecutor+Actions の
+// pressEnter 前の焦点待ちの定数。MCP(fleetest-mcp の awaitFocus)と DSL(StepExecutor+Actions の
 // pressEnter)が同じ値を使うための唯一の定義元。
 
 /// フォーカス待ちの上限。**短い**のは、報告しないフレームワークで毎回これを丸ごと待つため

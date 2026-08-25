@@ -53,7 +53,7 @@ element tree.)
 ## Always put an assertion in `expectation`
 
 An `expectation { }` block with no assertion in it compiles and runs fine, but proves nothing —
-the scenario stays green no matter how the app breaks. `ftester run --dry-run` catches this
+the scenario stays green no matter how the app breaks. `fleetest run --dry-run` catches this
 before you ever touch a device: it flags any `expectation` block with zero assertions, and any
 `#id` that doesn't appear in a screen you've actually captured with `ft_snapshot`. Always run
 dry-run once after writing a scenario, before running it on a device.

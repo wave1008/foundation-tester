@@ -1,6 +1,6 @@
 # Remote Runners
 
-`ftester run --host <host>` dispatches a run to another Mac over SSH, runs it there exactly as a
+`fleetest run --host <host>` dispatches a run to another Mac over SSH, runs it there exactly as a
 local run, and brings the output and artifacts back. This page summarizes what it can do and how
 to set it up; the full step-by-step is [docs/remote-runner-setup.md](../../remote-runner-setup.md)
 (not duplicated here).
@@ -17,7 +17,7 @@ to set it up; the full step-by-step is [docs/remote-runner-setup.md](../../remot
 | One-off remote command (`remote exec`) | ✅ |
 | Simultaneous dispatch to multiple hosts (a fleet, `run --fleet`) | ✅ |
 | Split one scenario set across hosts (`run --fleet <name> --split`) | ✅ |
-| Remote results feeding into `ftester results` (flaky detection etc.) | ✅ (collected by default) |
+| Remote results feeding into `fleetest results` (flaky detection etc.) | ✅ (collected by default) |
 | Remote device tiles in the Device Monitor (state, live video) | ✅ |
 
 Scenarios and profiles are transferred automatically on every run, so editing always happens on
@@ -27,7 +27,7 @@ your machine — the runner machine is never edited directly.
 
 ```
 Issuing Mac (yours)                     Runner machine
-ftester run --host mac2 …               ~/ftester-runner/               ← dedicated base directory
+fleetest run --host mac2 …               ~/fleetest-runner/               ← dedicated base directory
   ├ compatibility check (rev, Xcode) ssh ├── foundation-tester/          ← the tool's clone (fixed name, shared)
   ├ transfer (rsync: scenarios/config) ─> └── users/<issuerId>/work/     ← your work area (per issuer)
   ├ display output                             ├── TestProjects/<project>/
@@ -35,7 +35,7 @@ ftester run --host mac2 …               ~/ftester-runner/               ← de
 ```
 
 The runner's *own* foundation-tester clone (if it has one for itself) is never touched — the
-remote runner is entirely self-contained under `~/ftester-runner/`.
+remote runner is entirely self-contained under `~/fleetest-runner/`.
 
 ## Runner machine prerequisites
 
@@ -48,8 +48,8 @@ remote runner is entirely self-contained under `~/ftester-runner/`.
 | Remote Login on, key-based SSH access | see Step 1 below |
 | Homebrew recent enough to know this macOS | `brew --version` runs |
 | Git can reach GitHub directly (no stale proxy config) | `git config --global --get-regexp '^https?\.'` is empty |
-| Android SDK and AVDs (only if running Android) | `ftester doctor` |
-| English system language + Apple Intelligence enabled (only for `screenLooksLike`/self-healing) | `ftester doctor --fm-only` |
+| Android SDK and AVDs (only if running Android) | `fleetest doctor` |
+| English system language + Apple Intelligence enabled (only for `screenLooksLike`/self-healing) | `fleetest doctor --fm-only` |
 
 ## Setup flow
 
@@ -59,16 +59,16 @@ remote runner is entirely self-contained under `~/ftester-runner/`.
 2. **Step 1 (issuing machine) — enable key-based SSH** (`ssh-copy-id`, then confirm
    `ssh -o BatchMode=yes` succeeds).
 3. **Step 2 (issuing machine) — provision the runner in one command**:
-   `ftester remote setup <user>@<host> --project <project>`.
+   `fleetest remote setup <user>@<host> --project <project>`.
 4. **Step 3 — align versions.** Dispatch refuses to run unless the git commit and the Xcode/macOS
    fingerprint match; `remote setup`'s align step keeps them in sync.
 5. **Step 4 — machine name and profile.** A run profile resolves its device set through a machine
    profile.
-6. **Step 5 — check connectivity**: `ftester remote status --host <user>@<host>`.
-7. **Step 6 — first dispatch**: `ftester run --host <user>@<host> --profile <run profile>
+6. **Step 5 — check connectivity**: `fleetest remote status --host <user>@<host>`.
+7. **Step 6 — first dispatch**: `fleetest run --host <user>@<host> --profile <run profile>
    --scenario <id>` (the first dispatch takes a few minutes; later ones start in seconds).
 
-**`/ftester:ftester-remote-setup` delegates the machine work to `ftester remote setup`** — it
+**`/fleetest:fleetest-remote-setup` delegates the machine work to `fleetest remote setup`** — it
 asks what it needs to know, hands off anything that requires a human, and reports the result;
 it does not perform Step 0's manual, sudo/GUI-requiring items itself.
 
@@ -91,9 +91,9 @@ overrides the profile.
 ## `run --host` and `--fleet`
 
 ```bash
-ftester run --host <name> --profile <run profile>              # send this one run to a specific host
-ftester run --project <project> --fleet <name>                 # run the same scenarios on every host in the fleet
-ftester run --project <project> --fleet <name> --split          # split scenarios across the fleet's hosts instead
+fleetest run --host <name> --profile <run profile>              # send this one run to a specific host
+fleetest run --project <project> --fleet <name>                 # run the same scenarios on every host in the fleet
+fleetest run --project <project> --fleet <name> --split          # split scenarios across the fleet's hosts instead
 ```
 
 A fleet is defined in `TestProjects/<project>/profiles/fleets/<name>.json`, listing `host`/
@@ -108,7 +108,7 @@ There is no "choose a target host" UI — selecting a run profile *is* selecting
 its machine profile's `host`. The extension's involvement is:
 
 - **Register hosts** in the Device Monitor's Settings tab (name / host / base directory) — this
-  writes to the same host registry the CLI uses (`~/.config/ftester/config.json`).
+  writes to the same host registry the CLI uses (`~/.config/fleetest/config.json`).
 - **Add hosts and devices in a machine profile's edit dialog** — choosing a host there switches
   the device list to what actually exists on that machine, and a device can be created there
   directly.

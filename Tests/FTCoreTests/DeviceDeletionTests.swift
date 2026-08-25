@@ -74,7 +74,7 @@ final class DeviceDeletionTests: XCTestCase {
             isRunning: true, exists: true, then: "create it again"))
         XCTAssertTrue(recreating.hasSuffix("then create it again"), recreating)
         // 理由の本体(停止のさせ方)は共有したまま
-        XCTAssertTrue(recreating.contains("ftester devices down"), recreating)
+        XCTAssertTrue(recreating.contains("fleetest devices down"), recreating)
     }
 
     /// isRunning が exists より優先される(存在確認が信頼できない状況でも走っている疑いを最優先で扱う)

@@ -1,5 +1,5 @@
 // 08_ライフサイクルとプラットフォーム分岐.swift
-// ftester 機能: `restartApp`(terminate+launch でのプロセス内状態リセット・永続カウンタは残る)/
+// fleetest 機能: `restartApp`(terminate+launch でのプロセス内状態リセット・永続カウンタは残る)/
 // `terminateApp`(落としたことは次の launchApp の launch カウンタでのみ観測できる)/
 // `ios {}` / `android {}` によるプラットフォーム分岐 / コントロール(Switch/Checkbox/ラジオ/Slider)の
 // 状態遷移 / `enabledIsFalse`/`enabledIsTrue`(旧 11_操作可否アサーション)/ `clearAppData` をまとめて
@@ -32,7 +32,7 @@ class ライフサイクルとプラットフォーム分岐が正しく働く�
                     // FM はホスト全体で直列化(約1回/秒)されるため、全 launchApp で FM を
                     // 呼ぶとコストだけが乗る。**可視性の検証と、occlusion-guard の誤判定を
                     // 検出する役目は 01_起動と画面遷移 が既定(true)のまま担う**
-                    // (README「既知の ftester 欠陥」参照。ここで guard を切っても検出器は死なない)。
+                    // (README「既知の fleetest 欠陥」参照。ここで guard を切っても検出器は死なない)。
                     exist("#txt_home_marker", requireVisible: false)
                 }.action {
                     tap("#nav_lifecycle")
@@ -91,7 +91,7 @@ class ライフサイクルとプラットフォーム分岐が正しく働く�
                     // FM はホスト全体で直列化(約1回/秒)されるため、全 launchApp で FM を
                     // 呼ぶとコストだけが乗る。**可視性の検証と、occlusion-guard の誤判定を
                     // 検出する役目は 01_起動と画面遷移 が既定(true)のまま担う**
-                    // (README「既知の ftester 欠陥」参照。ここで guard を切っても検出器は死なない)。
+                    // (README「既知の fleetest 欠陥」参照。ここで guard を切っても検出器は死なない)。
                     exist("#txt_home_marker", requireVisible: false)
                 }.action {
                     tap("#nav_lifecycle")
@@ -198,7 +198,7 @@ class ライフサイクルとプラットフォーム分岐が正しく働く�
                     // FM はホスト全体で直列化(約1回/秒)されるため、全 launchApp で FM を
                     // 呼ぶとコストだけが乗る。**可視性の検証と、occlusion-guard の誤判定を
                     // 検出する役目は 01_起動と画面遷移 が既定(true)のまま担う**
-                    // (README「既知の ftester 欠陥」参照。ここで guard を切っても検出器は死なない)。
+                    // (README「既知の fleetest 欠陥」参照。ここで guard を切っても検出器は死なない)。
                     exist("#txt_home_marker", requireVisible: false)
                 }.action {
                     tap("#nav_input")

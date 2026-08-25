@@ -1,6 +1,6 @@
 # TestProjects/E2E-Android
 
-ftester を **Android ネイティブアプリ(View/XML + 一部 Compose)** に対して検証する E2E テスト
+fleetest を **Android ネイティブアプリ(View/XML + 一部 Compose)** に対して検証する E2E テスト
 プロジェクト。対象アプリはリポジトリ同梱の `E2EAppAndroid/`(package = `com.ftester.e2e.android`)。
 
 - 画面構成・`#id`・ラベルの正: `E2EAppCMP/docs/ui-contract.md`(Compose 版と共通)
@@ -16,7 +16,7 @@ cd E2EAppAndroid
 ## 実行
 
 ```sh
-ftester run --project E2E-Android --profile android
+fleetest run --project E2E-Android --profile android
 ```
 
 全シナリオが `platform: "android"` 固定(SUT が Android 専用のため)。
@@ -36,7 +36,7 @@ S0060/S0080/S0090/S0100)と独立維持のもの(06_待機とタイムアウト 
 08_ライフサイクルとコントロール の S0010/S0030・09_ID無し画面・10_イレギュラーハンドラ・
 11_WebView・12_フリック)は独立のまま。
 
-| ファイル | 検証する ftester 機能 |
+| ファイル | 検証する fleetest 機能 |
 |---|---|
 | `01_起動と画面遷移.swift` | `launchApp` / タブ切替 / 下位画面遷移+`戻る` / タブ切替でスタックを持ち越さないこと |
 | `02_セレクタ画面.swift` | `#id`・ラベル一致規則・`.Type[n]` 系・`\|\|` フォールバック・フィルタ OR・対称アサーション・View/Compose の型差(旧 02/03/04/16 を統合) |
@@ -51,7 +51,7 @@ S0060/S0080/S0090/S0100)と独立維持のもの(06_待機とタイムアウト 
 ## `_disabled/`(通常実行に含めない)
 
 **`_disabled/` は SPM のビルド対象外**(`Package.swift` の `exclude`)。回すときは
-`scenarios/` 直下へ移動 → `swift build --product ftester-scenarios-E2E-Android` → 実行 → 元に戻す。
+`scenarios/` 直下へ移動 → `swift build --product fleetest-scenarios-E2E-Android` → 実行 → 元に戻す。
 
 - `90_自己修復.swift` — FM 必須。`--heal` を付けて実行。
   **2026-07-23 検証済み**: FM 経路で `#btn_heal_v1` → `#btn_heal_v2||修復対象` に修復できることを確認

@@ -1,5 +1,5 @@
 // 13_ディープリンク.swift
-// ftester 機能: `launchApp(url:)`(再起動→URL配送を1ステップで行う)/ `openURL`(起動済みアプリへの配送)。
+// fleetest 機能: `launchApp(url:)`(再起動→URL配送を1ステップで行う)/ `openURL`(起動済みアプリへの配送)。
 // SUT は React Native(RN 標準 `Linking`。iOS = SceneDelegate + RCTLinkingManager、
 // Android = singleTop + onNewIntent)の E2EAppRN。URL スキーム `fte2ern` はホームタブのスタックへ
 // 積む形で着地する(`#btn_back` でホームへ戻る)。契約は E2EAppCMP/docs/ui-contract.md §ディープリンク。

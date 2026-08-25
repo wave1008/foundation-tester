@@ -1,5 +1,5 @@
 // 18_画面回転.swift
-// ftester 機能: `rotateTo(.portrait / .landscape)`。**契約は「アプリの UI がその向きになること」**
+// fleetest 機能: `rotateTo(.portrait / .landscape)`。**契約は「アプリの UI がその向きになること」**
 // で、デバイスがどう傾いているかではない(docs/commands.md)。左右の区別は語彙に無い。
 // SUT は Compose Multiplatform の E2EAppCMP。**自前描画のフレームワークでも再レイアウトされ、
 // a11y ツリーが新座標系で追随することの回帰**をここで守る(観測側はホスト無改修で追随する = 実測)。

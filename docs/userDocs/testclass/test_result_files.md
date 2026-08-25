@@ -20,7 +20,7 @@ gating, dashboards, and scripted triage. Full field reference:
 
 ## JUnit XML
 
-`ftester run --junit <path>` additionally writes a JUnit XML file, for CI systems that
+`fleetest run --junit <path>` additionally writes a JUnit XML file, for CI systems that
 consume that format directly.
 
 ## Video recordings
@@ -31,15 +31,15 @@ out one clip per scenario into `<runDir>/recordings/`. A failing run doesn't los
 
 ## Self-healing cache
 
-When self-healing is on, `TestProjects/<project>/.ftester/heal-cache.json` stores selectors
+When self-healing is on, `TestProjects/<project>/.fleetest/heal-cache.json` stores selectors
 that were repaired at runtime, so the second run onward is deterministic (no AI needed) even
 though the source still has the old selector. See
 [Self-healing](../running/self_healing.md).
 
 ## Last-run results (for `--failed`)
 
-`.ftester/last-results/<project>/` records which scenarios passed or failed on the most
-recent run, so `ftester run --failed` can re-run just the failures.
+`.fleetest/last-results/<project>/` records which scenarios passed or failed on the most
+recent run, so `fleetest run --failed` can re-run just the failures.
 
 ## From the VS Code extension
 

@@ -4,5 +4,5 @@
   "requires": "Android エミュレータ1台に ftbridge + Chrome(com.android.chrome)。**ホストで盤面を配信しておく**: `cd Bench/boards && python3 -m http.server 8791 --bind 127.0.0.1`(エミュレータからは 10.0.2.2:8791 で届く)。Chrome の初回ダイアログ(通知の許可・プライバシーサンドボックス)は**先に消しておく** —— 消していないと手数がダイアログの始末に食われて注記の差が埋もれる。盤面は Bench/boards/weather-dupgrid.html で**中身が変わらない**(実ページと違い手数の A/B が成立する)",
   "maxTurns": 60,
   "expect": "(?=[\\s\\S]*tokyo=30%)[\\s\\S]*osaka=20%",
-  "prompt": "ftester の MCP ツール(ft_*)だけを使って、Android エミュレータ上の Chrome を操作してください。あなたはこのページを初めて見ます。\n\nゴール: http://10.0.2.2:8791/weather-dupgrid.html を開き、**東京**と**大阪**それぞれの降水確率(パーセント)を読み取ること。\n\n手順や使うツールは自分で決めてください。デバイスは ft_list_devices で選びます。\n\n最後に必ず1行だけ次の形式で出力してください: RESULT: tokyo=<東京の降水確率> osaka=<大阪の降水確率>\n読み取れなかった場合は RESULT: unknown と出力してください。"
+  "prompt": "fleetest の MCP ツール(ft_*)だけを使って、Android エミュレータ上の Chrome を操作してください。あなたはこのページを初めて見ます。\n\nゴール: http://10.0.2.2:8791/weather-dupgrid.html を開き、**東京**と**大阪**それぞれの降水確率(パーセント)を読み取ること。\n\n手順や使うツールは自分で決めてください。デバイスは ft_list_devices で選びます。\n\n最後に必ず1行だけ次の形式で出力してください: RESULT: tokyo=<東京の降水確率> osaka=<大阪の降水確率>\n読み取れなかった場合は RESULT: unknown と出力してください。"
 }

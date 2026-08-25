@@ -1,5 +1,5 @@
 // 12_フリック.swift
-// ftester 機能: flick(画面基点の生ジェスチャ)。
+// fleetest 機能: flick(画面基点の生ジェスチャ)。
 // installApp/removeApp/tapAppIcon は意図的にここへ含めない(removeApp は自 SUT を消すと以降のシナリオと
 // in-app ブリッジが壊れる。tapAppIcon はホーム画面依存で flake リスクが高く実行での検証は別途行う)。
 // **appIs/screenshot/waitForDisplay/verify(旧 S0010)は 06_待機とタイムアウト.swift へ、

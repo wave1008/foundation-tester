@@ -8,7 +8,7 @@
 # 発生させないほうが上流なので、条件を実測で確定させる。
 #
 # **測り方**: 同時起動台数(level)を変えて、その直後に凍結した台数を数える。
-# 計測器は**モニター自身**(`ftester api monitor` の NDJSON の frozen)を使う ——
+# 計測器は**モニター自身**(`fleetest api monitor` の NDJSON の frozen)を使う ——
 # 判定を実験用に別実装すると本番と違うものを測ることになる(FrozenVerdict が唯一の定義元)。
 #
 # **交絡に注意**:
@@ -22,7 +22,7 @@
 #   Scripts/freeze-correlation.sh --project E2E-CMP --profile ios-inapp --levels 2 --rounds 1  # 煙試験
 #
 # 出力: 1行1試行の TSV(level round frozen total)+ level ごとの集計。
-# 生ログは .ftester/freeze-correlation-<日時>.log。
+# 生ログは .fleetest/freeze-correlation-<日時>.log。
 #
 # bash 3.2(macOS 既定)で動くこと: mapfile / declare -A / tac は使わない。
 
@@ -52,15 +52,15 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-FTESTER="$REPO_ROOT/.build/debug/ftester"
-if [ ! -x "$FTESTER" ]; then
-  echo "❌ $FTESTER がありません(先に swift build)" >&2
+FLEETEST="$REPO_ROOT/.build/debug/fleetest"
+if [ ! -x "$FLEETEST" ]; then
+  echo "❌ $FLEETEST がありません(先に swift build)" >&2
   exit 1
 fi
 
 STAMP="$(date +%Y%m%d-%H%M%S)"
-mkdir -p "$REPO_ROOT/.ftester"
-LOG="$REPO_ROOT/.ftester/freeze-correlation-$STAMP.log"
+mkdir -p "$REPO_ROOT/.fleetest"
+LOG="$REPO_ROOT/.fleetest/freeze-correlation-$STAMP.log"
 TRIALS="$(mktemp)"
 trap 'rm -f "$TRIALS"' EXIT
 
@@ -98,7 +98,7 @@ observe_frozen() {
   # **stdin EOF がモニターの終了指示**(ApiMonitorCommand の契約)。`sleep | monitor` にすると
   # sleep が終わった時点で EOF が届き、モニターが**自分で片付けて終わる** ——
   # kill で落とすと書き出し途中のバッファが失われ、観測が丸ごと空になる(実際に踏んだ)
-  sleep "$seconds" | "$FTESTER" api monitor --project "$PROJECT" --profile "$PROFILE" \
+  sleep "$seconds" | "$FLEETEST" api monitor --project "$PROJECT" --profile "$PROFILE" \
     --interval 2 >"$out" 2>>"$LOG"
   python3 - "$out" <<'PY'
 import json, sys

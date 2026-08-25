@@ -1,0 +1,296 @@
+// runReducer.ts
+// fleetest api run の NDJSON イベント(RunEvent)を vscode.TestRun 用アクション列(RunAction[])に
+// 変換する純粋ロジック。runHandler.ts がこれを vscode API へ適用する。
+//
+// RunReducerState は createRunReducerState() で生成し reduceRunEvent() のたびに使い回す
+// (内部で書き換える)。時刻は呼び出し側が nowMs として注入する(このモジュールは Date.now() を呼ばない)。
+//
+// アイコンは Sources/FTCore/RunOrchestrator.swift の RunLogFormatter と揃えている
+// (✅ 成功 / ❌ 失敗 / ⚠️ スキップ / ❓ inconclusive / 🔧 自己修復 / 💡 修正提案 / ▶ 開始 / ⏸ 一時停止)。
+
+import { isRunEvent, type RunEvent, type WorkerInfo } from "./model";
+import { tLane } from "./i18n/strings/lane";
+
+/** 出力・失敗メッセージに添えるソース位置。file はリポジトリルート相対、line は1起点。 */
+export interface RunLocation {
+  file: string;
+  line: number;
+}
+
+/** run.failed に渡す 1 件分の失敗メッセージ。 */
+export interface RunFailureMessage {
+  text: string;
+  location?: RunLocation;
+}
+
+export type RunAction =
+  | { type: "started"; scenario: string }
+  | { type: "output"; text: string; scenario?: string; location?: RunLocation; worker?: string }
+  | { type: "passed"; scenario: string; durationMs: number }
+  | { type: "failed"; scenario: string; messages: RunFailureMessage[]; durationMs: number }
+  | { type: "end"; passed: number; failed: number }
+  /** 振り直し(scenarioRequeued): 項目を「待機中」へ戻す(runHandler が run.enqueued を呼ぶ)。 */
+  | { type: "requeued"; scenario: string }
+  /** workersReady から発生(--profile 並列実行時のみ)。 */
+  | { type: "workers"; workers: WorkerInfo[] };
+
+interface ScenarioProgress {
+  startedAtMs: number;
+  messages: RunFailureMessage[];
+}
+
+/** reduceRunEvent が使い回す内部状態。中身は runHandler.ts からは触らない。 */
+export interface RunReducerState {
+  scenarios: Map<string, ScenarioProgress>;
+}
+
+export function createRunReducerState(): RunReducerState {
+  return { scenarios: new Map() };
+}
+
+/** ステップの status → アイコン。runLaneModel.ts(ログレーン)も同じアイコンを使う。 */
+export const STATUS_MARK: Record<string, string> = {
+  passed: "✅",
+  passedViaFallback: "✅",
+  healed: "🔧",
+  failed: "❌",
+  skipped: "⚠️",
+  inconclusive: "❓",
+};
+
+/** value は NdjsonParser の onValue が渡す unknown。isRunEvent が false なら安全に無視する。 */
+export function reduceRunEvent(
+  state: RunReducerState,
+  value: unknown,
+  nowMs: number,
+): { state: RunReducerState; actions: RunAction[] } {
+  if (!isRunEvent(value)) {
+    return { state, actions: [] };
+  }
+  return { state, actions: actionsFor(state, value, nowMs) };
+}
+
+function actionsFor(state: RunReducerState, event: RunEvent, nowMs: number): RunAction[] {
+  switch (event.kind) {
+    case "runStarted": {
+      const heading = tLane("lane.runStarted", { total: event.total });
+      return [{ type: "output", text: heading }];
+    }
+
+    case "workersReady":
+      // 以降の全イベントに worker が付く合図。
+      return [{ type: "workers", workers: event.workers }];
+
+    case "scenarioStarted": {
+      state.scenarios.set(event.scenario, { startedAtMs: nowMs, messages: [] });
+      const label = event.title ? `${event.title} [${event.scenario}]` : event.scenario;
+      return [
+        { type: "started", scenario: event.scenario },
+        { type: "output", scenario: event.scenario, text: `▶ ${label}`, worker: event.worker },
+      ];
+    }
+
+    case "sceneStarted": {
+      const scene = event.scene ?? 0;
+      const title = event.sceneTitle ?? "";
+      return [
+        {
+          type: "output",
+          scenario: event.scenario,
+          text: tLane("lane.sceneStarted", { scene, title }),
+          worker: event.worker,
+        },
+      ];
+    }
+
+    case "step":
+      return stepActions(state, event);
+
+    case "sceneFinished": {
+      const scene = event.scene ?? 0;
+      const mark = event.passed ? "✅" : "❌";
+      const label = event.passed ? tLane("lane.pass") : tLane("lane.fail");
+      return [
+        {
+          type: "output",
+          scenario: event.scenario,
+          text: tLane("lane.sceneFinished", { mark, scene, label }),
+          worker: event.worker,
+        },
+      ];
+    }
+
+    case "fixSuggestion": {
+      const text = tLane("lane.fixSuggestion", { detail: event.detail ?? event.description ?? "" });
+      const location = toLocation(event.file, event.line);
+      const actions: RunAction[] = [
+        { type: "output", scenario: event.scenario, text, location, worker: event.worker },
+      ];
+      if (event.oldSelector && event.newSelector) {
+        actions.push({
+          type: "output",
+          scenario: event.scenario,
+          text: `     ${event.oldSelector} → ${event.newSelector}`,
+          location,
+          worker: event.worker,
+        });
+      }
+      return actions;
+    }
+
+    case "paused":
+      // --debug 実行専用。このリポジトリの実行プロファイルは --debug を付与しないため通常は
+      // 発生しないが、念のため出力だけして無視する(デバッグセッションは debugAdapter.ts が処理する)。
+      // --debug は並列実行(--profile 非dry-run)と排他のため worker は付与されない。
+      return [
+        {
+          type: "output",
+          scenario: event.scenario,
+          text: tLane("lane.paused", { description: event.description ?? "" }),
+          location: toLocation(event.file, event.line),
+        },
+      ];
+
+    case "scenarioFinished":
+      return scenarioFinishedActions(state, event, nowMs);
+
+    case "log": {
+      const message = event.message ?? "";
+      if (message.length === 0) {
+        return [];
+      }
+      return [{ type: "output", scenario: event.scenario, text: `  ${message}`, worker: event.worker }];
+    }
+
+    case "runFinished":
+      return [
+        {
+          type: "output",
+          text: tLane("lane.runFinished", { passed: event.passed, failed: event.failed }),
+        },
+        { type: "end", passed: event.passed, failed: event.failed },
+      ];
+
+    case "wipeStatus":
+      // デバイスタイルのバッジ表示(monitorPanel.ts)専用。Test Explorer 出力には出さない。
+      return [];
+
+    case "scenarioRequeued":
+      return [
+        {
+          type: "output",
+          scenario: event.scenario,
+          text: tLane("lane.requeued", { reason: event.reason, attempt: event.attempt, limit: event.limit }),
+          worker: event.worker,
+        },
+        { type: "requeued", scenario: event.scenario },
+      ];
+
+  }
+}
+
+function stepActions(
+  state: RunReducerState,
+  event: Extract<RunEvent, { kind: "step" }>,
+): RunAction[] {
+  const mark = STATUS_MARK[event.status] ?? "•";
+  const index = event.index != null ? `${String(event.index)}. ` : "";
+  const location = toLocation(event.file, event.line);
+  const actions: RunAction[] = [
+    {
+      type: "output",
+      scenario: event.scenario,
+      text: `  ${mark} ${index}${event.description ?? ""}`,
+      location,
+      worker: event.worker,
+    },
+  ];
+
+  if (event.detail) {
+    let detailLine: string;
+    switch (event.status) {
+      case "passedViaFallback":
+        detailLine = tLane("lane.detailFallback", { detail: event.detail });
+        break;
+      case "healed":
+        detailLine = tLane("lane.detailHealed", { detail: event.detail });
+        break;
+      case "skipped":
+        detailLine = tLane("lane.detailSkipped", { detail: event.detail });
+        break;
+      case "inconclusive":
+        detailLine = tLane("lane.detailInconclusive", { detail: event.detail });
+        break;
+      default:
+        detailLine = `     ${event.detail}`;
+    }
+    actions.push({
+      type: "output",
+      scenario: event.scenario,
+      text: detailLine,
+      location,
+      worker: event.worker,
+    });
+  }
+
+  if (event.status === "failed") {
+    const progress = state.scenarios.get(event.scenario);
+    const text = event.detail ? `${event.description ?? ""}\n${event.detail}` : (event.description ?? tLane("lane.failedText"));
+    const message: RunFailureMessage = { text, location };
+    if (progress) {
+      progress.messages.push(message);
+    } else {
+      // scenarioStarted を観測する前に step が来ることは無い想定だが、
+      // 念のため見失わないよう即席の progress を用意しておく
+      state.scenarios.set(event.scenario, { startedAtMs: 0, messages: [message] });
+    }
+  }
+
+  return actions;
+}
+
+function scenarioFinishedActions(
+  state: RunReducerState,
+  event: Extract<RunEvent, { kind: "scenarioFinished" }>,
+  nowMs: number,
+): RunAction[] {
+  const progress = state.scenarios.get(event.scenario);
+  const durationMs = progress ? Math.max(0, nowMs - progress.startedAtMs) : 0;
+  state.scenarios.delete(event.scenario);
+
+  if (event.passed) {
+    return [
+      {
+        type: "output",
+        scenario: event.scenario,
+        text: `${tLane("lane.passed")} (${String(durationMs)}ms)`,
+        worker: event.worker,
+      },
+      { type: "passed", scenario: event.scenario, durationMs },
+    ];
+  }
+
+  const reportSuffix = event.reportPath ? tLane("lane.reportSuffix", { path: event.reportPath }) : "";
+  const messages =
+    progress && progress.messages.length > 0
+      ? progress.messages
+      : [
+          {
+            text:
+              tLane("lane.scenarioFailedText") +
+              (event.reportPath ? tLane("lane.reportParen", { path: event.reportPath }) : ""),
+          },
+        ];
+
+  return [
+    { type: "output", scenario: event.scenario, text: `${tLane("lane.failed")}${reportSuffix}`, worker: event.worker },
+    { type: "failed", scenario: event.scenario, messages, durationMs },
+  ];
+}
+
+function toLocation(file: string | undefined, line: number | undefined): RunLocation | undefined {
+  if (!file || line == null) {
+    return undefined;
+  }
+  return { file, line };
+}

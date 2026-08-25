@@ -1,15 +1,15 @@
 # dry-run
 
-`ftester run --dry-run` (Shirates' No-Load-Run equivalent) enumerates and validates a scenario's
+`fleetest run --dry-run` (Shirates' No-Load-Run equivalent) enumerates and validates a scenario's
 steps **without touching a device or calling FM**. It catches mistakes that would otherwise only
 surface during, or after, a slow device run — in seconds.
 
 ```bash
-ftester run --dry-run --scenario LoginTest
+fleetest run --dry-run --scenario LoginTest
 ```
 
 MCP exposes the same check as `ft_dry_run`; the VS Code extension runs it via
-`ftester api run --dry-run` (the Test Explorer's "Run (dry-run)" action).
+`fleetest api run --dry-run` (the Test Explorer's "Run (dry-run)" action).
 
 ## What it catches
 
@@ -18,7 +18,7 @@ MCP exposes the same check as `ft_dry_run`; the VS Code extension runs it via
 | Selector syntax errors | The selector expression parser runs before any device call |
 | Unreachable scenes / branches | Static reachability check of the scenario structure |
 | An `expectation { }` block with zero assertions | Counted the same way `verify` counts assertions (`exist`/`notExist`/`textIs` and friends, `thisIs` variants, `appIs`; `select` does not count). A scenario with **zero** assertions overall gets a stronger warning |
-| `#id`s that don't exist in any screen you've captured | Checked against the project's selector inventory (`<project>/.ftester/selector-inventory.json`), built by `ft_snapshot` calls made while writing the scenario |
+| `#id`s that don't exist in any screen you've captured | Checked against the project's selector inventory (`<project>/.fleetest/selector-inventory.json`), built by `ft_snapshot` calls made while writing the scenario |
 
 Notes on the last check: it only warns about screens you have actually captured — if the
 inventory has no record for a given screen (or platform), dry-run stays silent rather than
@@ -39,7 +39,7 @@ actually runs.
 - It does not write a report, and its result is not recorded for `--failed` to pick up later.
 
 `--scenario` / `--folder` / `--project` / `--quiet` all work the same as a normal run, and a
-failed check sets exit code `1` — so `ftester run --dry-run` (with no `--scenario`) is a cheap
+failed check sets exit code `1` — so `fleetest run --dry-run` (with no `--scenario`) is a cheap
 gate to run before every device run across a whole project.
 
 ### Link

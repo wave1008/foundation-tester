@@ -47,7 +47,7 @@ selects one.
 `fm` is the parent switch; `heal` and `screenLooksLike` default to `true`, `falsePositiveCheck`
 defaults to `false`. If `fm` is `false`, the individual toggles have no effect. Whether
 self-healing is on by default also depends on how you invoke the run: **a `--profile` run
-defaults `heal` to ON**, while a plain `ftester run` (no profile) defaults it to OFF. `--heal`
+defaults `heal` to ON**, while a plain `fleetest run` (no profile) defaults it to OFF. `--heal`
 and `--no-heal` on the command line override either default (they cannot be combined).
 
 ## iOS engine

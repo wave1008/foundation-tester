@@ -342,8 +342,8 @@ final class BlankWorkerRecoveryWiringTests: XCTestCase {
 
     /// (ファイル, その中に `excludeBlankScreenWorkers` が現れる回数)
     private static let supplySites = [
-        ("Sources/ftester/ProfileRunner.swift", 1),
-        ("Sources/ftester/ApiRunCommand.swift", 2),
+        ("Sources/fleetest/ProfileRunner.swift", 1),
+        ("Sources/fleetest/ApiRunCommand.swift", 2),
     ]
 
     private func source(_ relative: String) throws -> String {

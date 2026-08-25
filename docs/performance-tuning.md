@@ -167,9 +167,9 @@ Demo 16 シナリオ(iOS 6+Android 10)を iOS/Android 同数のデバイスで A
    フィンガープリント一致でスキップする。実測: `api run --dry-run` の連続実行 3.96s → **0.08s**。
    ツールチェーン識別(xcode_select_link の先+version.plist の mtime)を含むのは、Xcode 更新後に
    古いバイナリを温存して FoundationModels ABI 不整合で dyld クラッシュする罠(§CLAUDE.md)を
-   スキップが助長しないため。**強制的に再ビルドさせたいときは `.ftester/build-fingerprint-*.txt`
+   スキップが助長しないため。**強制的に再ビルドさせたいときは `.fleetest/build-fingerprint-*.txt`
    を消すか手で `swift build` する**
-2. **ビルドとワーカー供給の並行化**(`ftester api run`): ビルド(ホスト CPU)とデバイス供給
+2. **ビルドとワーカー供給の並行化**(`fleetest api run`): ビルド(ホスト CPU)とデバイス供給
    (ブリッジ待ち・install)は独立なので、並列実行経路ではワーカー構築 Task を build より先に
    開始する(`ApiRunCommand.run()`)。stderr の供給ログとビルドログは交互に出るようになった
 3. **コールド供給のデバイス間並列化**(`BridgeProvisioner.provision`): 「差分判定(並列)→
@@ -187,7 +187,7 @@ demo-4devices(16 シナリオ・ウォーム・§3.1 と同条件)の実測は w
 
 ### 3.3 devices up(デバイス一括起動)の再設計(2026-07-16 実装)
 
-「デバイスを起動」(`ftester devices up` = `DeviceBooter.bootAll`)の最終仕様:
+「デバイスを起動」(`fleetest devices up` = `DeviceBooter.bootAll`)の最終仕様:
 
 1. **CPU 負荷ゲートの廃止**(ユーザー決定): 旧実装は毎ブート前に「CPU<90% まで待つ」ゲートが
    あり、最低でも 5 秒窓の計測待ち、負荷が高いと最大 90 秒待った。同時 2 台の固定上限だけで
@@ -215,7 +215,7 @@ cores/3 への同時数自動スケールも実装後に撤回(同ユーザー�
   `MonitorDeviceOps.monitorPauseDepth`)ので、resume(down 完了)まで各デバイスの offline 遷移が届かず
   最後にまとめて反映されていた。**`suppressFrames` はフレームだけ止めて状態スキャンは継続する別コマンド**
   (pause と混同しない)。タイルの `offline` は monitor 供給の `device.state` 依存。
-- 対策: profile 指定の bulk down を **`api devices-down`(NDJSON)** に切替(`Sources/ftester/
+- 対策: profile 指定の bulk down を **`api devices-down`(NDJSON)** に切替(`Sources/fleetest/
   ApiDeviceCommands.swift`)。停止ロジックは `DevicesCommand.Down` の `shutdownProfile` と同一(ios→android
   逐次の `shutdownOne`)で、per-device の `deviceStopping`/`deviceFinished` を足しただけ=回帰なし。拡張は
   `deviceFinished` 受信ごとに **そのタイルだけ offline を先行反映**(`deviceDownFinished` メッセージ →
@@ -313,11 +313,11 @@ A/B 実測(E2E-Android 31シナリオ・Android 8レーン・交互に3回ずつ
 測定。その後の修正で順序判断は良くなる方向にしか変わらないが、**混在プロファイルでの再測はしていない**。
 
 - 実装: 並べ替えの規則は `Sources/FTCore/LPTScheduler.swift`(純関数)、実績の読み込みは
-  `Sources/ftester/LPTOrdering.swift`
+  `Sources/fleetest/LPTOrdering.swift`
 - **実績が無いシナリオは先頭**に置く(未知を末尾に回すと、それが長かったときに狙いがそのまま裏返る)
-- 無効化: `--no-lpt`、または VSCode 設定 `ftester.lptScheduling`(モニターの設定タブ
+- 無効化: `--no-lpt`、または VSCode 設定 `fleetest.lptScheduling`(モニターの設定タブ
   「スケジューリング」。既定 ON)
-- 実績の読む件数: `--lpt-history-runs <N>` / 設定 `ftester.lptHistoryRuns`(既定 5。
+- 実績の読む件数: `--lpt-history-runs <N>` / 設定 `fleetest.lptHistoryRuns`(既定 5。
   モニターの設定タブ「スケジューリング」の入力欄には常に実際に使う件数が入る)。
   **数えるのは run ではなく「シナリオ1本あたりの観測数」**(2026-08-11 変更。
   `RunResultsStore.scanRecords(maxObservationsPerScenario:)`)。run 数で数えていたときは、
@@ -390,7 +390,7 @@ A/B 実測(E2E-Android 31シナリオ・Android 8レーン・交互に3回ずつ
    観測窓(`maxObservationsPerScenario`)も machine 別に数える。**FleetSplit(フリート割り当て)も
    machine 別見積りに対応**(2026-08-18)。エントリに割り当てる前の見積りは
    同一機の実績 > 混合中央値 × 速度係数(共通観測シナリオの比の中央値)> 1.0 の順で決め、
-   ディスパッチ固定費(実測キャッシュ `.ftester/remote-hosts/<host>.json`)を見込み終了時刻に
+   ディスパッチ固定費(実測キャッシュ `.fleetest/remote-hosts/<host>.json`)を見込み終了時刻に
    足す(`FleetSplit.MachineContext`)。初回(キャッシュ無し)は従来と同一の混合見積りになる。
 
    実測(2026-08-18。sut-ec-mobile 21本 × local+M1Max+M1Ultra 各4台):
@@ -408,7 +408,7 @@ A/B 実測(E2E-Android 31シナリオ・Android 8レーン・交互に3回ずつ
    再配分機構(ストラグラー対策)は IDLE 列の実測が常態的に大きくなったら検討する
    (warm で 1〜3割の現状では見送り)。
 
-   **実績が無い機械の暫定係数(2026-08-18)**: facts(`.ftester/remote-hosts/<host>.json`)は
+   **実績が無い機械の暫定係数(2026-08-18)**: facts(`.fleetest/remote-hosts/<host>.json`)は
    CPU モデル・論理コア数・同時起動デバイス数も持つ(CPU はプローブ実測・machine とデバイス数は
    実績レコード由来)。共通観測が1本も無い機械は、速度係数の代わりに**コア数の逆比(ローカル基準)**
    を暫定係数として使い、観測が貯まり次第そちらへ置き換わる。詳細は docs/remote-runner.md §8。
@@ -546,7 +546,7 @@ APK 変更なので `AndroidRunner/build.sh` の `VERSION_CODE` と
 **`bridgeProtocolVersion` は上げていない**(8 のまま)。ルートも観測可能な挙動も変わらず、
 旧 dylib が居座っても「この削減が効かない」だけで機能差が出ないため。§3.8/§3.9 で版を上げたのは
 整定の**挙動**が変わり、旧ブリッジ再利用が緑の偽装になり得たから。計測時の新旧混在は
-`ftester bridge down --all` で潰す(こちらは版数と無関係に必要)。
+`fleetest bridge down --all` で潰す(こちらは版数と無関係に必要)。
 
 検証: iOS 全 3 SUT(E2E-CMP / E2E-iOS / E2E-Flutter)× `ios-inapp` で 91 シナリオ全成功・振り直し 0 件。
 
@@ -658,9 +658,9 @@ uikit ホストの同シナリオ(元から DOM 経路)が 11.3s なので、ほ
 上の調査のために足した口。**既定 off**。
 
 ```bash
-FT_BRIDGE_TIMING=1 FT_HTTP_TIMING=1 ftester run --project E2E-CMP --profile android
+FT_BRIDGE_TIMING=1 FT_HTTP_TIMING=1 fleetest run --project E2E-CMP --profile android
 adb -s <serial> logcat -d -s FTBridge | grep -E 'tapTiming|settleTiming|reqTiming'  # Android
-grep tapTiming .ftester/bridge-<port>.log                                            # iOS
+grep tapTiming .fleetest/bridge-<port>.log                                            # iOS
 ```
 
 - iOS = xctestrun へ環境変数を注入(`BridgeLauncher`)/ Android = `am instrument -e timing 1`
@@ -1157,8 +1157,8 @@ test time だけ +28〜44%** に膨らんだ(E2E-CMP/ios-xcuitest 71.2→91.2s)�
 
 **変更前にベースライン、変更後に同条件で再計測、summary.md を比較する。**
 
-**計測の前にモニターを止める** —— `ftester monitor pause [--for <分>]`(解除は
-`ftester monitor resume`)。kill では止まらない(拡張が `api monitor` も配信ヘルパーも
+**計測の前にモニターを止める** —— `fleetest monitor pause [--for <分>]`(解除は
+`fleetest monitor resume`)。kill では止まらない(拡張が `api monitor` も配信ヘルパーも
 数秒で再起動する)ので、無人計測はこのコマンドで条件を作る。効くのはこの機械の
 monitor だけ。機構と旧手段(pkill 3連打)は docs/verification.md §モニターと E2E。
 
@@ -1184,16 +1184,16 @@ n=3 では ±3s 程度は解像できない([[android-perf-degrades-within-sessi
 狙った経路のステップだけを取り出して突き合わせる方が S/N が高い
 (実例: スイート総計は +3.2s で悪化に見えたが、scroll 系ステップだけ見ると −2.0s の改善だった)。
 
-**A/B でバイナリを差し替えるなら `ftester-scenarios-<project>` を差し替える(2026-08-03 に実害)。**
-`StepExecutor`・ドライバ・セレクタ解決は **`ftester` ではなくシナリオランナーのサブプロセス**で
-動く(`RunOrchestrator.swift` 冒頭の契約)。`swift build --product ftester` して
-`.build/debug/ftester` を入れ替え、`--skip-build` で回す —— という手順は
+**A/B でバイナリを差し替えるなら `fleetest-scenarios-<project>` を差し替える(2026-08-03 に実害)。**
+`StepExecutor`・ドライバ・セレクタ解決は **`fleetest` ではなくシナリオランナーのサブプロセス**で
+動く(`RunOrchestrator.swift` 冒頭の契約)。`swift build --product fleetest` して
+`.build/debug/fleetest` を入れ替え、`--skip-build` で回す —— という手順は
 **両側とも同一のコードを実行する**ので、どんな変更も必ず「差なし」に見える。
 実際にこれで、性能の A/B(誤って「+0.1% = 退行なし」と結論)と、Compose の探索不具合に当てた
 修正案2件(いずれも誤って「no-op」と結論)を取り違えた。**症状は「きれいに差が出ない」**なので
 気付きにくい。手順:
 
-1. 差し替えるのは `.build/debug/ftester-scenarios-<project>`(`swift build --product` も同名で)
+1. 差し替えるのは `.build/debug/fleetest-scenarios-<project>`(`swift build --product` も同名で)
 2. **陽性対照を先に通す** —— マーカーを書くだけの版をビルドして差し替え、
    実行してマーカーが出ることを確認してから本番の A/B に入る
 3. 二つのバイナリが `cmp` で別物であることも確認する(同名プロダクトの取り違え検出)
@@ -1206,15 +1206,15 @@ symbol を見ても対象を間違えれば同じ穴に落ちる)。
 
 ```bash
 # ラン固定費の内訳(フェーズ毎の所要を stderr に出力)
-FT_PHASE_LOG=1 ftester run --profile <p> --scenario <s> --skip-build
+FT_PHASE_LOG=1 fleetest run --profile <p> --scenario <s> --skip-build
 
 # step 単位の NDJSON(durationMs/snapshotMs/actionMs/waitMs)をファイルへテー出力
-FT_EVENT_LOG_PATH=/tmp/steps.ndjson ftester run --profile <p> --scenario <s> --skip-build
+FT_EVENT_LOG_PATH=/tmp/steps.ndjson fleetest run --profile <p> --scenario <s> --skip-build
 
 # --scenario を付けなければプロファイル全体(=8レーン実負荷)の内訳が採れる。
 # 並列でも行は混ざらない(EventLogAppender が直列化。2026-08-02 修正。それ以前は
 # 複数ワーカーが同じハンドルへ書いて行が壊れ、41 本中 3 本しか読めなかった)
-FT_EVENT_LOG_PATH=/tmp/steps.ndjson ftester run --project <P> --profile <p>
+FT_EVENT_LOG_PATH=/tmp/steps.ndjson fleetest run --project <P> --profile <p>
 ```
 
 - **`launch` も内訳を持つ**(2026-08-02 から): `actionMs`=プロセスを起動させる外部呼び出し、
@@ -1237,20 +1237,20 @@ swift Scripts/bench.swift --project SampleApp --profile ios --iterations 3 \
 
 - `summary.md` に壁時計中央値/シナリオ毎所要/ステップ所要(durationMs と
   snapshot/action/wait の内訳)/成功率/heal 件数/ホスト CPU・GPU・MEM が出る
-- CPU 計測は `ftester api host-metrics`(デバイスモニターと同一計測系)を内部で流用
+- CPU 計測は `fleetest api host-metrics`(デバイスモニターと同一計測系)を内部で流用
 - **FM 介入は ANE 負荷ではなく呼び出し回数で見る**(§4.2)。ANE 負荷率は指標として使えないと
   実測で確定したため廃止した(§6)
 - ステップ内訳は NDJSON イベント(`kind:"step"` の `durationMs/snapshotMs/actionMs/waitMs`)
   として流れるので、レポート/拡張からも参照できる
 - `bench-results/` は .gitignore 済み。比較対象のベースラインは削除しないこと
 - run ごとに `TestProjects/<project>/results/runs/<YYYY-MM>/<runID>/host-metrics.ndjson`(1Hz NDJSON)
-  へホスト負荷を採取し、`ftester api host-metrics-summary --project <p> --run latest`(既定 latest)
+  へホスト負荷を採取し、`fleetest api host-metrics-summary --project <p> --run latest`(既定 latest)
   で直近実行の avg/peak を JSON で読み戻せる(「あの実行は CPU 律速か」を実行後に確認できる)
 
 ### 4.1 ストリーミング vs ポーリングのキャプチャ負荷ベンチ
 
 `Scripts/stream_vs_poll_bench.py`(依存: python3 + 起動中の sim/emu)。デバイス画面配信の2方式
-(ストリーミング=`ftester-simstream`/`ftester-androidstream`、ポーリング=`ftester api live serve` へ
+(ストリーミング=`fleetest-simstream`/`fleetest-androidstream`、ポーリング=`fleetest api live serve` へ
 `{"cmd":"frame"}` を fps 間隔で送る経路。`monitor.pollingMode` トグルの2方式に対応)のキャプチャ負荷を
 静止/モーション × 隣接ベースラインで比較する。
 
@@ -1310,7 +1310,7 @@ print('呼び出し', sum(f['calls'] for f in fs), '合計秒', sum(f['totalMs']
 ### 4.3 in-app dylib の内側を測る(整定ループ等)
 
 in-app ブリッジはアプリのプロセス内にいるので、外形計測(アクション所要)では中身の内訳が見えない。
-`ftester` 側のログにも出てこない。使える手順は**一時計装 → ホスト側のファイルへ追記 → 撤去**:
+`fleetest` 側のログにも出てこない。使える手順は**一時計装 → ホスト側のファイルへ追記 → 撤去**:
 
 - **書き出し先は `/private/tmp/<名前>.log` にしてホストから読む**。シミュレータのプロセスから
   ホストの絶対パスへ書ける(サンドボックス外だが simulator では通る)。`NSLog` は届くが
@@ -1318,7 +1318,7 @@ in-app ブリッジはアプリのプロセス内にいるので、外形計測(
 - **1 回ずつ時計で挟まない**。`DispatchTime.now()` 自体が数十 ns で、レイヤ判定のような
   1µs 未満の処理では測定対象と同程度になる。**同じ処理をまとめて N 回回して割る**
   (§3.10 は対象ツリー全レイヤ × 50 周で 1 レイヤあたりを出した)
-- **計測前に `ftester bridge down --all`**。稼働中の旧 dylib はそのまま再利用されるので、
+- **計測前に `fleetest bridge down --all`**。稼働中の旧 dylib はそのまま再利用されるので、
   ビルドし直しただけでは計装版が載らない(版数を上げていないときは特に無言で旧版が走る)
 - 撤去し忘れを防ぐため、計装は `// MARK: - 一時計測(TEMPORARY PROFILING — 計測後に削除する)`
   で囲んで1箇所に固める
@@ -1330,7 +1330,7 @@ in-app ブリッジはアプリのプロセス内にいるので、外形計測(
 採用ゲート(§2 の 3 指標)の「成功率」を、赤が出るより前に判定するための指標がこれ。
 
 ```bash
-ftester results insights --project <name>     # 🟡 unsettledSteps の行を見る
+fleetest results insights --project <name>     # 🟡 unsettledSteps の行を見る
 ```
 
 - 判定は `results/runs/**/scenarios/*.json` の `timeline[].notes`。閾値は
@@ -1356,15 +1356,15 @@ ftester results insights --project <name>     # 🟡 unsettledSteps の行を見
 | `defaultTimeout` | FTRuntime(runs プロファイルで上書き可) | 5s | 検証系の待ち上限。失敗するテストの所要を支配 |
 | `timeout:`(tap/type/select) | DSL 引数(FTDSL/Commands.swift・select は CommandsVerify.swift) | nil | アクションのロケータ解決待ち上限秒。nil=従来の3回リトライ(計700ms)、**0=リトライなし(出るか不定の要素を見るときの空振り ~750ms→数十msに短縮する opt-in ノブ)**。遅れて出る要素を拾えなくなるので `ifCanSelect` / `select` の空振り短縮以外では基本使わない |
 | fallback 照会の間引き | StepExecutor+Assert.swift(executeAssert) | primary 2回目以降・偶数回ミスのみ | hybrid の SystemUIDriver 照会(springboard 再session+XCUITest snapshot=数百ms)の頻度。実在するシステムUI要素の検知遅れは最大バックオフ1段+1周期 |
-| LPT 投入順 | `ftester.lptScheduling` / `--no-lpt` | ON | 過去実績の長い順に投入する(§3.7)。OFF でシナリオ ID 順。レーン数とシナリオ長のばらつきが無いと効かない |
-| LPT の実績の読む件数 | `ftester.lptHistoryRuns` / `--lpt-history-runs` | 5 | **シナリオ1本あたり**読み込む実績の観測数(新しい方から。`RunResultsStore.scanRecords(maxObservationsPerScenario:)`。§3.7)。増やすと代表値は安定するが毎 run の読み込みファイルが増える。実測で 1 プロジェクト 3,500〜4,500 件の結果 JSON があるため全件走査はしない |
+| LPT 投入順 | `fleetest.lptScheduling` / `--no-lpt` | ON | 過去実績の長い順に投入する(§3.7)。OFF でシナリオ ID 順。レーン数とシナリオ長のばらつきが無いと効かない |
+| LPT の実績の読む件数 | `fleetest.lptHistoryRuns` / `--lpt-history-runs` | 5 | **シナリオ1本あたり**読み込む実績の観測数(新しい方から。`RunResultsStore.scanRecords(maxObservationsPerScenario:)`。§3.7)。増やすと代表値は安定するが毎 run の読み込みファイルが増える。実測で 1 プロジェクト 3,500〜4,500 件の結果 JSON があるため全件走査はしない |
 | 操作直後の整定(Android) | ブリッジ `/settle`(QuietWaiter) | QUIET_MS=200ms | ブリッジを経由しない経路(activate/home/appSwitcher/pressEnter フォールバック)の整定(§3.9)。旧実装は固定 800ms。ブリッジ不達時のみ 800ms へフォールバック |
 | 操作直後の整定(iOS) | `BridgeRouter.captureSettled` の minSettle / budget | 0.12s / 0.35s | ツリーが連続2回一致するまで撮り直す(§3.8)。minSettle は早抜け防止の床、budget は収束しない画面の打ち切り。budget を上げるとスクロール慣性で待ち切ってしまい旧実装より遅くなる(0.8s で実測 0.72〜0.83s) |
-| ビルドスキップ判定 | FTCore/BuildFingerprint.swift | mtime+size+toolchain | §3.2。強制再ビルドは `.ftester/build-fingerprint-*.txt` を削除 |
-| `ftester.streamCodec` | VSCode 設定(package.json) | h264 | 画面配信コーデック。h264=HWエンコード/デコード(低負荷)、mjpeg=互換(WebCodecs 問題時の退避先。デバイス単位の自動フォールバックあり) |
-| 描画間引き(66ms) | vscode-ftester/src/webview/monitor/h264Decoder.js | 約15fps | h264 の canvas 描画間隔。デコード自体は全チャンク必須(P フレーム連鎖)なので下げても復号コストは減らない |
+| ビルドスキップ判定 | FTCore/BuildFingerprint.swift | mtime+size+toolchain | §3.2。強制再ビルドは `.fleetest/build-fingerprint-*.txt` を削除 |
+| `fleetest.streamCodec` | VSCode 設定(package.json) | h264 | 画面配信コーデック。h264=HWエンコード/デコード(低負荷)、mjpeg=互換(WebCodecs 問題時の退避先。デバイス単位の自動フォールバックあり) |
+| 描画間引き(66ms) | vscode-fleetest/src/webview/monitor/h264Decoder.js | 約15fps | h264 の canvas 描画間隔。デコード自体は全チャンク必須(P フレーム連鎖)なので下げても復号コストは減らない |
 | `FT_WEBVIEW_DOM` | InAppBridge/Sources/InAppWebViewDOM.swift / Sources/FTAndroid/AndroidWebViewDOM.swift | 有効(`off` で無効) | **自作アプリの WebView の中身を DOM から読むか**(OS 共通の意味)。iOS in-app は off で WebView 画面ごと XCUITest へ委譲する従来動作(1手 4ms → 378ms)。Android は off で a11y のまま = **WebView の版で `#id` と `placeholder` が入れ替わる**状態に戻る(docs/design.md §Android の自作アプリの WebView も DOM から読む)。ブラウザ本体は別の口(`FT_BROWSER_DOM`)|
-| watchdog しきい値 | vscode-ftester/src/monitorBridgeWatchdog.ts | booted 連続5観測(約10秒)/クールダウン3分/2回で諦め | ブリッジ自動修復の感度。短くすると起動過渡を誤検知、長くすると復旧が遅い |
+| watchdog しきい値 | vscode-fleetest/src/monitorBridgeWatchdog.ts | booted 連続5観測(約10秒)/クールダウン3分/2回で諦め | ブリッジ自動修復の感度。短くすると起動過渡を誤検知、長くすると復旧が遅い |
 | ワーカー参加の間隔(`FT_WORKER_STAGGER_SEC`) | Sources/FTCore/RunOrchestrator.swift(`WorkerStagger.seconds`) | 1.5s(`0` で無効) | run 開始時にワーカーを1本ずつ参加させる間隔。**先頭2本は待たない**(`simultaneousHead`=2。BridgeProvisioner の「in-app の新規起動は同時2台」と同じ値)。各シナリオは `condition { launchApp() }` から始まるので、N 本同時に積むと**最初の launch が N 本同時**に走る。**定常のレーン数は変えない**ので伸びるのは立ち上がりだけ(10 台で約 12 秒)。1.5 の根拠は「シミュレータの launch がおおむね1〜3秒」という観測だけで、凍結率で較正した値ではない |
 | ワーカー参加の CPU 上限(`FT_WORKER_START_CPU_MAX`) | Sources/FTCore/WorkerStartGate.swift(`WorkerStagger.cpuCeiling`) | 1.0 = 100%(`1` 以下は割合・超えたらパーセント) | **これ未満になるまで次のワーカーを起こさない**。間隔は時間の当て推量で、ホストが実際に空いたことを見ていない —— 供給が長引いた run では飽和したまま次を起こす。**先頭2本もこの門は通る**(間隔だけが先頭免除)。**30 秒(`cpuWaitCap`)空かなければ諦めて素通しし、以降その run では CPU を見ない**(飽和の理由がテストと無関係なとき立ち上がりが際限なく延びるため。諦めは1回だけ警告)。`CPUSampler` は連続呼び出しだと差分が取れず nil を返すので、**1窓(0.5s)以内の測定値は使い回す**(これが無いと先頭2本が測定窓のぶん離れ「間隔0」が崩れる)。コストは通常設定で最初の1窓=約 0.5 秒 |
 | `maxConcurrent`(bootAll 引数) | Sources/FTAndroid/DeviceBooter.swift | 2(固定。ユーザー決定 2026-07-16) | devices up の同時進行数(1台=ブート→iOS ブリッジ供給まで)。上限がブートストーム防止を兼ねる(旧 CPU 負荷ゲートは廃止済み。§3.3)。上げると速いがタイルの進行表示も増える |
@@ -1403,9 +1403,9 @@ window/transition/animator の `*_scale` はチューニングノブではなく
 | iOS のシミュレータ私有 IF 直叩き(idb 方式: AXRuntime ツリー+IndigoHID 入力) | snapshot は速くなるが**整定のイベント源が無い**(Android の a11y リスナ相当が無い)ためポーリングに回帰=負荷原則違反。Xcode ベータ毎に壊れるリスクも高い | プッシュ型のアイドル信号を得られる経路が見つかったら |
 | xcuitest の quiescence 待ちを swizzle でスキップ(FastInput.swift。2026-07-21 PoC) | swizzle 導入・リクエスト毎の発火まで実測確認したうえで**効果 0〜2%**。静的アプリでは quiescence 待ちは元々ほぼゼロで、tap ≈360ms の実体は XCUITest のイベント合成往復(実測記録: poc/appium-driver-benchmark ブランチの docs/poc-appium-benchmark.md 追補3)。実装はトグル付きで残置(iosFastInput / --fast-input、既定 off) | アニメーション・常時通信の多いアプリで tap が実測で遅いと分かったら(そのアプリでのみ opt-in) |
 | fast launch の attachOnly 化(simctl launch 後に activate() を呼ばずプロキシ接続のみ。2026-07-21) | launch 単発は 3.4→1.2s に見えるが、**activate() が担っていた初回整定が最初のステップのポーリング待ちへ移動して相殺**、シナリオ全体ではむしろ微悪化。simctl+activate を採用。ランナーの attachOnly 対応(LaunchRequest.attachOnly)は無害なので残置 | launch 直後に操作しない(整定を別途待つ)ワークロードが現れたら |
-| ライブ操作の SCK(ScreenCaptureKit)フレーム配信(DeviceHub/Emulator ウィンドウをキャプチャ、実装後ユーザー判断で撤回) | 実装は完動した(較正=ブリッジ実スクショとのテンプレートマッチ、~30fps)がキャンセル。実装時の実測知見: ①多数フレームワークをリンクした大型 CLI(ftester 本体)から SCK を呼ぶと macOS 27 beta で replayd 接続が再接続ストームになり await が無期限ブロック(Task.sleep も不発)→小型 @main 単体バイナリへの隔離が唯一の安定解 ②CLI からは NSApplication.shared(CGS 初期化)が先に必須 ③captureImage は要求キャンバスへスケールせず実効スケールで左上描画+透明パディング→倍率は不透明領域境界から検出する ④非表示ウィンドウへの captureImage はエラーでなくブロック=isOnScreen 必須 ⑤解像度は画面上のウィンドウサイズ依存(原寸スクショより低い) | 高fpsのライブ映像が再び必要になったら(実装の骨子はこの行と git 履歴のこのコミット前後を参照) |
+| ライブ操作の SCK(ScreenCaptureKit)フレーム配信(DeviceHub/Emulator ウィンドウをキャプチャ、実装後ユーザー判断で撤回) | 実装は完動した(較正=ブリッジ実スクショとのテンプレートマッチ、~30fps)がキャンセル。実装時の実測知見: ①多数フレームワークをリンクした大型 CLI(fleetest 本体)から SCK を呼ぶと macOS 27 beta で replayd 接続が再接続ストームになり await が無期限ブロック(Task.sleep も不発)→小型 @main 単体バイナリへの隔離が唯一の安定解 ②CLI からは NSApplication.shared(CGS 初期化)が先に必須 ③captureImage は要求キャンバスへスケールせず実効スケールで左上描画+透明パディング→倍率は不透明領域境界から検出する ④非表示ウィンドウへの captureImage はエラーでなくブロック=isOnScreen 必須 ⑤解像度は画面上のウィンドウサイズ依存(原寸スクショより低い) | 高fpsのライブ映像が再び必要になったら(実装の骨子はこの行と git 履歴のこのコミット前後を参照) |
 | エミュレータの Vulkan 有効化(`-feature Vulkan`)と HWUI の skiavk 化(guest UI 描画を GLES→Vulkan へ) | 2026-07-14 A/B 済(emulator 36.6 / Pixel 9 A16 / -gpu host)。**`-gpu host` の時点で gfxstream+host Vulkan(MoltenVK)は既定で有効**(起動ログ `vulkan_mode_selected:host`)のため `-feature Vulkan` は実質無操作。残る HWUI skiavk 化(`setprop debug.hwui.renderer skiavk`、Pipeline=Skia (Vulkan) 確認済)も同一スワイプ10回の qemu CPU が 10.6s→11.1s と改善なし(むしろ微増) | emulator が Apple Silicon で HWUI Vulkan を既定化したら、または ANGLE 変換(GLES→Metal)がプロファイルで支配的と実測されたら |
-| デバイス側動画ストリーミング(iOS=simctl recordVideo、Android=screenrecord/scrcpy + ffmpeg。2026-07-14 の当初 spike で不成立。ただし iOS はその後 ftester-simstream で成立→理由欄の追記参照) | **追記(2026-07-14以降): iOS のヘッドレス映像ストリーミングは別方式で成立済み**(`ftester-simstream`=CoreSimulator/SimulatorKit の private API `SimDisplayIOSurfaceRenderable` の IOSurface を `setPowerState:1` で起こし、フレーム単位に JPEG 化して長さ前置で stdout へ。simctl でも ffmpeg でもないため下記の不成立要因を構造的に回避。ヘッドレス=Simulator.app 非起動で mid-run・ネイティブ解像度・静止時ほぼ0fps を実測確認。ライブ操作タブ+デバイスモニタータブの両方で採用。実装: `Sources/ftester-simstream/main.m` / `vscode-ftester/src/deviceStream.ts` / `monitorDeviceStreamController.ts`。**「iOSストリーミングは不可能」と誤読しないこと**)。**以下の「不成立」は simctl recordVideo と ffmpeg パイプ方式に限った当初 spike の結果**。画像取得ポーリングの負荷対策として検討し、その2方式は両OSとも不成立だった。**iOS**: `simctl io recordVideo` は stdout(`-`)を「rendering to standard out is no longer supported」で拒否、ファイル/FIFO 出力も非フラグメント(moov を SIGINT 時に確定書き込み、`has_moof: False`)=録画停止まで1フレームも復号不可。**Android**: `adb exec-out screenrecord --output-format=h264 -` の生H.264を **ffmpeg にパイプ入力すると EOF まで出力をバッファしライブ逐次フレームが出ない**(実測: 同じH.264をファイル入力なら41フレーム復号できるがパイプ入力は mid-run 0。`-flush_packets1`/`-threads1`/`-use_wallclock_as_timestamps`/`-avioflags direct`/`-fflags nobuffer -flags low_delay`/fps有無/mpjpeg・image2pipe・image2個別ファイル の約16構成すべて mid-run 0。adb はパイプへ逐次配信済=adb 原因ではない。ffmpeg はライブ入力 lavfi なら逐次フラッシュするので raw-h264 パイプ demux の仕様的限界)。scrcpy 録画→FIFO(mkv)もクラスタバッファでライブ不可(frame=0)。**採用した代替=ライブの frameTick を旧 delayMs=0 ホットループから `ftester.liveFps`(既定12)頭打ちに変更**(iOS/Android 共通・依存ゼロ・負荷源そのものを解消) | **iOS は ftester-simstream で解決済み(理由欄の追記)。以下は Android 向け**: Android で真の映像ストリーミングが必要なら **GStreamer 未検証**(`fdsrc ! h264parse ! avdec_h264 ! jpegenc` はライブパイプ前提設計で ffmpeg のバッファ問題が無い可能性)。ただし heavy dep(`brew install gstreamer`)の再導入になる |
+| デバイス側動画ストリーミング(iOS=simctl recordVideo、Android=screenrecord/scrcpy + ffmpeg。2026-07-14 の当初 spike で不成立。ただし iOS はその後 fleetest-simstream で成立→理由欄の追記参照) | **追記(2026-07-14以降): iOS のヘッドレス映像ストリーミングは別方式で成立済み**(`fleetest-simstream`=CoreSimulator/SimulatorKit の private API `SimDisplayIOSurfaceRenderable` の IOSurface を `setPowerState:1` で起こし、フレーム単位に JPEG 化して長さ前置で stdout へ。simctl でも ffmpeg でもないため下記の不成立要因を構造的に回避。ヘッドレス=Simulator.app 非起動で mid-run・ネイティブ解像度・静止時ほぼ0fps を実測確認。ライブ操作タブ+デバイスモニタータブの両方で採用。実装: `Sources/fleetest-simstream/main.m` / `vscode-fleetest/src/deviceStream.ts` / `monitorDeviceStreamController.ts`。**「iOSストリーミングは不可能」と誤読しないこと**)。**以下の「不成立」は simctl recordVideo と ffmpeg パイプ方式に限った当初 spike の結果**。画像取得ポーリングの負荷対策として検討し、その2方式は両OSとも不成立だった。**iOS**: `simctl io recordVideo` は stdout(`-`)を「rendering to standard out is no longer supported」で拒否、ファイル/FIFO 出力も非フラグメント(moov を SIGINT 時に確定書き込み、`has_moof: False`)=録画停止まで1フレームも復号不可。**Android**: `adb exec-out screenrecord --output-format=h264 -` の生H.264を **ffmpeg にパイプ入力すると EOF まで出力をバッファしライブ逐次フレームが出ない**(実測: 同じH.264をファイル入力なら41フレーム復号できるがパイプ入力は mid-run 0。`-flush_packets1`/`-threads1`/`-use_wallclock_as_timestamps`/`-avioflags direct`/`-fflags nobuffer -flags low_delay`/fps有無/mpjpeg・image2pipe・image2個別ファイル の約16構成すべて mid-run 0。adb はパイプへ逐次配信済=adb 原因ではない。ffmpeg はライブ入力 lavfi なら逐次フラッシュするので raw-h264 パイプ demux の仕様的限界)。scrcpy 録画→FIFO(mkv)もクラスタバッファでライブ不可(frame=0)。**採用した代替=ライブの frameTick を旧 delayMs=0 ホットループから `fleetest.liveFps`(既定12)頭打ちに変更**(iOS/Android 共通・依存ゼロ・負荷源そのものを解消) | **iOS は fleetest-simstream で解決済み(理由欄の追記)。以下は Android 向け**: Android で真の映像ストリーミングが必要なら **GStreamer 未検証**(`fdsrc ! h264parse ! avdec_h264 ! jpegenc` はライブパイプ前提設計で ffmpeg のバッファ問題が無い可能性)。ただし heavy dep(`brew install gstreamer`)の再導入になる |
 
 | metal-errors(emulator ログの Metal エラー計数)を凍結対策の判定材料に使う(タイル警告表示・自動回復のトリガ) | 2026-07-26 フリート8台の全数検証で**個体を分離できないと確定**。凍結した個体は累積(2486)でも増加速度(128/分)でも最上位ではなく、健全機の方が高い(2560 / 288 分)。ログのタイムスタンプ集計でもエラーは全機の同一時間帯(run 実行中)に一斉発生=ホスト GPU ドライバ由来の背景現象。閾値 100 は艦隊のほぼ全台で常時成立するため、表示は無意味なノイズ、再起動トリガにすると毎セッション全台再起動になる(しかも凍結を防げる根拠がない)。**タイル表示を撤去し、回復の検討対象から外した**(計測と `metal-history.ndjson` への記録は劣化分析用に継続) | 「高カウント機だけが凍結する」対応が実データで示されたとき(異常機と健全機を並べた比較が必須。1個体の数字では判断しない) |
 
@@ -1413,7 +1413,7 @@ window/transition/animator の `*_scale` はチューニングノブではなく
 | 実行時の同時実行数の上限設定(実行プロファイルに per-platform の maxConcurrent を持たせる) | 2026-07-29 ユーザー決定で不採用。**同時実行数は実行プロファイルに載せるデバイス台数で手動管理する**。§8 の「iOS 並列度の上限」は 10台同時の AX スパイクが根拠だが、上限はレーンを減らす方向にしか効かず、§3.6 の「185秒→約121秒」は iOS のレーンを**増やす**ことで得られる数字なので別問題(こちらは配分=プロファイル記述の話)。代わりに実行後のレーン稼働表示だけ実装した(制御はしない。`LaneBalanceAdvice` / ProfileRunner の `📊 レーン稼働`) | なし(手動管理の方針ごと見直す場合のみ) |
 | `scrollToEdge` の署名に座標の量子化を入れる(端のバウンスで収束しない対策) | 2026-07-30 実測で**前提が再現せず不採用**。Android/WebView でスワイプ後に 8 回連続 snapshot しても y は完全に同一(整数値・ジッタなし)で、cap 打ち切りも起きなかった。実際の内訳は E2E-Flutter の `scrollToTop` 9,094ms に対し **actionMs 5,489ms(60%)/ snapshotMs 2,252ms / waitMs 1,333ms** で、**支配項は待ちでも収束失敗でもなくドラッグ操作そのもの**。しかもその所要は `hintDrag` の `min(max(|Δy|/2500, 0.3), 0.7)` = 意図したジェスチャ時間で、縮めるとフリングの物理(スクロール距離は速度依存)が変わる。量子化は「まだ動いているのに静止」と誤判定する実害リスクだけが残る。**追記(2026-07-31): 収束しない事例は実在したが原因は座標ではなくラベルだった** — SwiftUI List(E2E-iOS/ios-xcuitest)では静止画面でも画面外の再利用セル 2 件が取得のたびに別の行のラベルを名乗り A↔B で交互に振れ続ける(frame は 1pt も動かない)。**署名からラベルを外して解決済み**(`settledSignature`。cap 打ち切りが 2/3run → 0、`scrollToTop` の最悪 56s→17s)。当時 Android/WebView で再現しなかったのは**フレームワークが違ったから**で、量子化の不採用判断そのものは変わらない | 座標のジッタで収束しない事例が**実データで**観測されたとき(署名の連続比較をログに出して確認する。1 個体・1 回の観測では判断しない)。**ラベル由来の非収束は解決済みなので、それを根拠に量子化を再提案しない** |
 | モニター常駐負荷の最適化(ポートスキャンの URLSession 32個/2秒・`canonicalAVDID` の毎サイクル再計算・emulator ログ読み) | 2026-07-30 実測で**最適化の余地なしと判明**。通常ビルドの monitor の CPU は 20 秒窓で **0.0%**(cputime 10ms 未満)。コード上は「32 ポートへ毎周期 `BridgeClient`(=`URLSession`)を作る」「`canonicalAVDID` が毎周期 `installedAVDs()` を呼ぶ」は事実だが、ローカルの閉じたポートへの接続は即 RST で安価。**当初 17.3% と観測したのは TSan 入りバイナリを掴んだ残存プロセス**で計測アーティファクトだった(§7)。なお「プロセスタブが**ガード無し**で 1 秒ポーリング」という指摘は誤りで、`processesTab.js` に表示中のみ回すガードがある | monitor の CPU が実測で有意になったとき(**必ず通常ビルドのプロセスで測る**) |
-| プロファイル外デバイスの旧版ブリッジを provision が自動で掃除する | 2026-07-30 検討。`BridgeProvisioner` の stale 掃除は **`sameDevice` 条件**で「今まさに供給するデバイス」の分しか見ないため、プロファイル外に残った旧版ブリッジは誰も片付けない(実害: protocolVersion 4 のランナーがポートとシミュレータを 7 時間 22 分占有)。条件を外せば自動化できるが、**別ワークスペースが正当に使っているブリッジを殺す**危険がある(このリポジトリに「別クローンの資産を勝手に停止する」前例は無い)。代わりに **`ftester doctor` が報告だけする**(停止しない)ようにした | 「同一マシンで複数クローンを併用しない」が前提として確立したとき |
+| プロファイル外デバイスの旧版ブリッジを provision が自動で掃除する | 2026-07-30 検討。`BridgeProvisioner` の stale 掃除は **`sameDevice` 条件**で「今まさに供給するデバイス」の分しか見ないため、プロファイル外に残った旧版ブリッジは誰も片付けない(実害: protocolVersion 4 のランナーがポートとシミュレータを 7 時間 22 分占有)。条件を外せば自動化できるが、**別ワークスペースが正当に使っているブリッジを殺す**危険がある(このリポジトリに「別クローンの資産を勝手に停止する」前例は無い)。代わりに **`fleetest doctor` が報告だけする**(停止しない)ようにした | 「同一マシンで複数クローンを併用しない」が前提として確立したとき |
 | 録画クリップ切り出しの O(N²) 解消(`VideoRecordingFinalizer.extractClip` がクリップ 1 本ごとにソース動画**全域**から `AVMutableComposition` を組み直す) | 2026-07-30 精査で**意図的な設計と確認し、据え置き**。ソース総尺に比例することは呼び出し側が前提にしており、`VideoRecordingCoordinator` の `exportDeadline` がその比例分を織り込んで期限を決めている(コード内に明記)。効くのは `record: true` の run だけで、既定では走らない。さらに AVE 無応答によるハングには期限+断念ブレーカ+並列2の対策が既に入っている。区間ごとにソースを絞る最適化は、クリップ境界がソースファイル境界を跨ぐ場合の切り出し規則を作り直すことになり、**録画の正しさ(取りこぼし)に回帰が出る側**の変更になる | 長時間 run の `record: true` が常用ワークフローになり、書き出しが実測で run の支配項になったとき(まず1本あたりの `extractClip` 実測を取る) |
 | Android の autoInstall 差分判定に指紋キャッシュを入れる(iOS の `InstalledAppCheck` 方式を移植) | 2026-07-30 実測で**効果が小さく不採用**。ゲスト内 `md5sum` は 156MB の APK でも **0.30s**(3回とも安定)、run 全体への寄与は **+0.70s**(ワーカー構築 0.54s→1.24s。11MB の SUT との A/B)で、40 秒級の run の **1.75%**。しかも 156MB は E2E の SUT で突出しており、他(11MB)では差がほぼ出ない。一方で指紋キャッシュは**新しい状態ファイルと失効管理**を増やし、失敗モードが「アプリを入れ替えたのに古いまま実行される = 静かに誤った結果」方向になる(iOS 側は `get_app_container` の実在確認を併用して erase を検知している)。0.7 秒のために払う複雑さとして見合わない | APK が数百 MB 規模になり、`md5sum` が run 固定費の支配項になったとき(**まず `FT_PHASE_LOG=1` でワーカー構築フェーズを測る**) |
 
@@ -1471,16 +1471,16 @@ window/transition/animator の `*_scale` はチューニングノブではなく
   **見た目の確認や録画のためにアニメーションを残したいときだけ**実行プロファイルの
   `enableAnimations: true`(GUI は実行プロファイル設定「アニメーションを有効にする」)にする。
   その場合は整定待ちが伸び、上記 stale の実害が戻る前提で使うこと(既定に戻すべき設定)
-- **常駐 CLI は stdin EOF で即終了する**(`ftester api {host-metrics,live serve,monitor}`、
-  `ftester-simstream`、`ftester-androidstream`。拡張は stdin パイプを開いたまま保持している)。
+- **常駐 CLI は stdin EOF で即終了する**(`fleetest api {host-metrics,live serve,monitor}`、
+  `fleetest-simstream`、`fleetest-androidstream`。拡張は stdin パイプを開いたまま保持している)。
   アドホックに spawn して計測・検証するとき、stdin を /dev/null 継承のまま渡すと即座に EOF を検知して
   終了し、0 サンプル/0 フレームになる(静止時の 0 と区別がつかず「helper が壊れた」と誤診しやすい)。
   子プロセスの stdin は開いたまま保持すること(`subprocess.Popen(..., stdin=PIPE)` で閉じない等)
 - **タイル黒+「接続中/ブリッジ応答なし」が続く=ブリッジ死を疑う**(XCUITest ランナーの HTTP
   サーバだけ死んで xcodebuild 親が残ることがある。実例: 2026-07-14)。確認は
-  `curl -m 3 localhost:<port>/status`、復旧は `ftester devices up --profile <名>`
+  `curl -m 3 localhost:<port>/status`、復旧は `fleetest devices up --profile <名>`
   (死んだポートだけ再供給される)。拡張のウォッチドッグが自動修復するが、
-  `ftester.autoRepairBridge` を OFF にしている場合や CLI 単独運用ではこの手順で
+  `fleetest.autoRepairBridge` を OFF にしている場合や CLI 単独運用ではこの手順で
 - **稼働中デバイスへ simstream/androidstream を並走 spawn して計測しない**(本番ストリームが
   不安定化し、webview の codecError→mjpeg フォールバックやストリームのギブアップを誘発した実例
   あり)。ヘルパー単体のベンチはモニターが掴んでいないデバイスで行う
@@ -1507,7 +1507,7 @@ window/transition/animator の `*_scale` はチューニングノブではなく
     先に試し、不発なら guest reboot を同期発行してブート完了を待ち、**どちらで直っても本 run で
     使う**=ワーカー全数維持(実装 AndroidHealthProbe.repairBlankDisplay。watchdog ラダーの
     第一手 adbWifiRepair.repairDisplay も同一手順)。修復は免疫ではない(次の並列描画で再発し得る)。
-    **ホスト側証跡は `~/Library/Logs/ftester/emulator/<AVD>.log`**(DeviceBooter が emulator
+    **ホスト側証跡は `~/Library/Logs/fleetest/emulator/<AVD>.log`**(DeviceBooter が emulator
     stdout/stderr を保存・ブート毎 truncate。2026-07-25 実装)。根因の
     `GLDRendererMetal command buffer completion error` / `IOGPUCommandQueueErrorDomain 518` は
     ここにしか出ない(統合ログ・crash レポートは無音のまま)。**Metal エラー行数は劣化の定量指標**:
@@ -1520,7 +1520,7 @@ window/transition/animator の `*_scale` はチューニングノブではなく
     `metal-errors` を載せ続けるが(AndroidHealthProbe.issueMetalErrors)、**モニタータイルには
     表示せず・修復アクションも取らない**(monitorHealthWatchdog が actionable から除外。
     ユーザー決定 2026-07-26)。用途は下記の時系列記録による劣化分析のみ
-    カウントの時系列は `~/Library/Logs/ftester/emulator/metal-history.ndjson` に残る
+    カウントの時系列は `~/Library/Logs/fleetest/emulator/metal-history.ndjson` に残る
     (MetalErrorHistory。変化時のみ追記・5MB 超で `.1` へロールオーバー)
   - **凍結の変種と修復応答(修復パラメータの根拠)**: ①瞬間ブリップ(数秒で自己回復。アプリ起動
     白画面の誤検知も混在し得る)②自然回復型(~30s)③固着・修復可(sleep/wake 1サイクル dwell 1.5s
@@ -1564,7 +1564,7 @@ window/transition/animator の `*_scale` はチューニングノブではなく
   (§3.2)後は無負荷コールドの 3 台 hybrid(6 ブリッジ)は成立を確認済みだが、負荷下の挙動は
   未再計測(悪化しうる方向なので交互パターンを見たらまずここを疑う)
 
-- **iOS ブリッジのウェッジ(接続は受けるが無応答)の診断手順**: ① `curl -s -m 2 -o /dev/null -w "%{http_code}" http://localhost:<port>/status` で 000 なら無応答(200 が健全。ポートは 8123〜)。② run が固まって見えるときは `lsof -p <run pid> | grep ESTAB` — ブリッジポートへの ESTABLISHED が動かないのは無応答待ち。③ `sample <pid> 2` で全スレッドが workq/mach_msg でパーク+CPU 0% なら「返らない await」(死活確認系は withDeadline 必須。design.md §12.4)。復旧は `ftester bridge down --port <N>` で該当だけ停止(次の供給が作り直す)。**このコマンドは自リポジトリの `.ftester/` に記録があるブリッジしか止められない** — 別クローンが起動したものは「このリポジトリの管理下にありません」と出るので、起動元のクローンで止めるか `lsof -ti :<N>` のプロセスを止め、iOS は `xcrun simctl terminate <udid> com.example.ftrunner.uitests.xctrunner` まで行う。**残存ブリッジの一覧は `ftester doctor`** が出す(版が古い/記録が無いものを報告。停止はしない)
+- **iOS ブリッジのウェッジ(接続は受けるが無応答)の診断手順**: ① `curl -s -m 2 -o /dev/null -w "%{http_code}" http://localhost:<port>/status` で 000 なら無応答(200 が健全。ポートは 8123〜)。② run が固まって見えるときは `lsof -p <run pid> | grep ESTAB` — ブリッジポートへの ESTABLISHED が動かないのは無応答待ち。③ `sample <pid> 2` で全スレッドが workq/mach_msg でパーク+CPU 0% なら「返らない await」(死活確認系は withDeadline 必須。design.md §12.4)。復旧は `fleetest bridge down --port <N>` で該当だけ停止(次の供給が作り直す)。**このコマンドは自リポジトリの `.fleetest/` に記録があるブリッジしか止められない** — 別クローンが起動したものは「このリポジトリの管理下にありません」と出るので、起動元のクローンで止めるか `lsof -ti :<N>` のプロセスを止め、iOS は `xcrun simctl terminate <udid> com.example.ftrunner.uitests.xctrunner` まで行う。**残存ブリッジの一覧は `fleetest doctor`** が出す(版が古い/記録が無いものを報告。停止はしない)
 - **XCUITest ランナーの起動 ≈25〜30s/本はビルドではなくセッション確立コスト**(`xcodebuild test-without-building`=ランナー .app の sim へのインストール+XCTest セッション確立+/status 応答まで。共有ビルドはキャッシュで通常 no-op)。さらに供給は ProvisionLock(クロスプロセス flock、ポート採番の bindFailed(48) 対策)で直列化されるため、**壊れたブリッジが多いと run 開始が 10s→70〜80s 化する**。健全なフリートなら再利用スキャン(2s タイムアウト)だけで 1〜2s
 - **iOS 10台同時のシナリオ第一波で AX スパイクが起き、健全なブリッジも数秒〜数十秒 /status に応答しなくなる**(2026-07-18 実測: 一斉離脱後の計測で 12本中11本が 200=一過性)。短い期限の死活確認はここで誤判定する(§6 プレフライト不採用の根拠)
 - **Swift 構造化並行の罠: `withTaskGroup`+`cancelAll` はキャンセルに応答しない子タスクの完了を待つ**。ウェッジ機への URLSession(120s/リクエスト)を子に持つと、期限側が勝っても遅い方を待ち続けて run 全体が凍結する(実測: 全スレッドパークで5分以上)。死活確認の期限は「先着確定レース+遅い方は放置」(RunOrchestrator.withDeadline)にする
@@ -1578,10 +1578,10 @@ window/transition/animator の `*_scale` はチューニングノブではなく
   ~45s 逓増する。修正: ① `scanRunningBridges` を `status(timeout: 2)` にして本数に依らず ~2s 頭打ち、
   ② inapp 起動前に同 UDID の再利用対象外ゾンビを PortHolder で掃除し発生源を止める(`reclaimInAppOrphans`。
   blind な `simctl terminate` は同アプリ別ポートの稼働中ブリッジを誤殺し実行中ワーカーを連鎖死させる
-  実害があるため使わない)。いずれも `BridgeProvisioner.swift`。手動掃除は `ftester bridge down --all`
+  実害があるため使わない)。いずれも `BridgeProvisioner.swift`。手動掃除は `fleetest bridge down --all`
 - **iOS 壁時計だけ伸びて「テスト実時間」が一定なら供給/scan を疑う(アプリサイズではない)**:
   install 深比較や SUT サイズを疑うのは誤り。実測で native 1M ≈ Flutter 94M ≈ 同じ ~47s overhead=
-  サイズ無相関、真因は上項の孤児ブリッジ scan だった。フェーズ内訳は `FT_PHASE_LOG=1 ftester run ...`
+  サイズ無相関、真因は上項の孤児ブリッジ scan だった。フェーズ内訳は `FT_PHASE_LOG=1 fleetest run ...`
   (`ios-workers-start→ios-workers-built` が provision=scan+catalog。ここが膨らむ)
 - **`simctl list` は ~0.5s の固定費(件数非依存)**: 279件でも booted 6件でも 0.57 vs 0.45s=
   CoreSimulator 呼び出し自体のコストで、クエリを狭めても縮まない(booted 限定は未ブート対象の
@@ -1679,7 +1679,7 @@ window/transition/animator の `*_scale` はチューニングノブではなく
   **「税 = snapshot ~250ms」は旧説(2026-07-30 に外形計測で否定)**。ホスト側から HTTP 越しに
   測ると素の snapshot 取得は **29〜118ms**(要素 5〜22 個・M2 Ultra アイドル)で、支配項では
   なかった。実体は**操作直後の snapshot に掛けていた固定 350ms の整定待ち**で、
-  `Runner/FTesterRunnerUITests/BridgeRouter.swift` の `handleSnapshot` にあった
+  `Runner/FleetestRunnerUITests/BridgeRouter.swift` の `handleSnapshot` にあった
   (ランナー内のコメントも「app.snapshot() は ~0.45s」と書いていたが、これは
   **350ms ガード込みの値を素のコストと取り違えた誤り**だった)。→ §3.8 で置換済み。
   1. **税の減額(XCUITest 経路内)**。3 施策のうち採否が分かれた:
@@ -1703,7 +1703,7 @@ window/transition/animator の `*_scale` はチューニングノブではなく
        (シナリオ4本 × 36ラン・改良効果 −14〜21% を再現。既定 on になった今は取り直せない対照)。
      - ✅ **autoInstall 差分判定の指紋キャッシュ**(採用 2026-07-21): `InstalledAppCheck` の
        バンドル深比較(40MB で 0.86s/ラン)を、検証済みソース指紋(相対パス+サイズ+mtime の
-       SHA256、.ftester/install-check/)のヒット時にスキップ。0.86→0.41s(残りは列挙+
+       SHA256、.fleetest/install-check/)のヒット時にスキップ。0.86→0.41s(残りは列挙+
        get_app_container の実在確認=erase 検知のため残す)。
      - ✅ **inapp type の Compose 対応**(採用 2026-07-21): Compose は「フォーカスアンカーの
        OverlayInputView(入力セレクタ非応答)」と「実際のキーボード受け口 IntermediateTextInputUIView

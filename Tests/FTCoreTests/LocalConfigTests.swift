@@ -1,5 +1,5 @@
 // LocalConfig.resolveIssuerId(自己申告の帰属)と issuerId の round-trip。
-// テスト用の config.json は一時ディレクトリに作り、実機の ~/.config/ftester/config.json には触れない。
+// テスト用の config.json は一時ディレクトリに作り、実機の ~/.config/fleetest/config.json には触れない。
 
 import Foundation
 import XCTest

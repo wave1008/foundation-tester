@@ -1,4 +1,4 @@
-// `ftester run --host` (docs/remote-runner.md §3・§7・Phase 1) の純粋ロジック。
+// `fleetest run --host` (docs/remote-runner.md §3・§7・Phase 1) の純粋ロジック。
 // SSH/rsync 越しの結合は e2e に残す(ここは文字列合成・判定のみ)。
 
 import Foundation
@@ -143,12 +143,12 @@ final class RemoteDispatchTests: XCTestCase {
         let advice = RemoteCompat.relationAdvice(.localBehind)
         XCTAssertTrue(advice.contains("update"), advice)
         XCTAssertTrue(advice.contains("Scripts/update.sh"), advice)
-        XCTAssertFalse(advice.contains("ftester remote align"), advice)
+        XCTAssertFalse(advice.contains("fleetest remote align"), advice)
     }
 
     func testRelationAdviceRemoteBehindPointsToAlignWithCanary() {
         let advice = RemoteCompat.relationAdvice(.remoteBehind)
-        XCTAssertTrue(advice.contains("ftester remote align"), advice)
+        XCTAssertTrue(advice.contains("fleetest remote align"), advice)
         XCTAssertTrue(advice.contains("canary"), advice)
     }
 
@@ -163,38 +163,38 @@ final class RemoteDispatchTests: XCTestCase {
     // MARK: - RemoteLayout
 
     func testRemoteLayoutStripsTrailingSlashFromBase() {
-        let layout = RemoteLayout(base: "/Users/x/ftester-runner/", issuer: "alice")
-        XCTAssertEqual(layout.base, "/Users/x/ftester-runner")
+        let layout = RemoteLayout(base: "/Users/x/fleetest-runner/", issuer: "alice")
+        XCTAssertEqual(layout.base, "/Users/x/fleetest-runner")
     }
 
     func testRemoteLayoutToolRootWorkDirBinary() {
-        let layout = RemoteLayout(base: "/Users/x/ftester-runner", issuer: "alice")
-        XCTAssertEqual(layout.toolRoot, "/Users/x/ftester-runner/foundation-tester")
-        XCTAssertEqual(layout.workDir, "/Users/x/ftester-runner/users/alice/work")
-        XCTAssertEqual(layout.binary, "/Users/x/ftester-runner/foundation-tester/.build/debug/ftester")
+        let layout = RemoteLayout(base: "/Users/x/fleetest-runner", issuer: "alice")
+        XCTAssertEqual(layout.toolRoot, "/Users/x/fleetest-runner/foundation-tester")
+        XCTAssertEqual(layout.workDir, "/Users/x/fleetest-runner/users/alice/work")
+        XCTAssertEqual(layout.binary, "/Users/x/fleetest-runner/foundation-tester/.build/debug/fleetest")
     }
 
     /// ツールクローンと dispatch.lock はホスト共有のまま(base 基準)。work だけが発行者ごとに分かれる
     func testRemoteLayoutUsersDir() {
-        let layout = RemoteLayout(base: "/Users/x/ftester-runner", issuer: "alice")
-        XCTAssertEqual(layout.usersDir, "/Users/x/ftester-runner/users")
+        let layout = RemoteLayout(base: "/Users/x/fleetest-runner", issuer: "alice")
+        XCTAssertEqual(layout.usersDir, "/Users/x/fleetest-runner/users")
     }
 
     func testRemoteLayoutProjectDir() {
-        let layout = RemoteLayout(base: "/Users/x/ftester-runner", issuer: "alice")
-        XCTAssertEqual(layout.projectDir("E2E"), "/Users/x/ftester-runner/users/alice/work/TestProjects/E2E")
+        let layout = RemoteLayout(base: "/Users/x/fleetest-runner", issuer: "alice")
+        XCTAssertEqual(layout.projectDir("E2E"), "/Users/x/fleetest-runner/users/alice/work/TestProjects/E2E")
     }
 
     /// remoteControl.workspace のミラー先はプロジェクトごとに分ける(複数プロジェクトの衝突を防ぐ)
     func testRemoteLayoutWorkspaceDir() {
-        let layout = RemoteLayout(base: "/Users/x/ftester-runner", issuer: "alice")
-        XCTAssertEqual(layout.workspaceDir("E2E"), "/Users/x/ftester-runner/users/alice/work/workspace/E2E")
+        let layout = RemoteLayout(base: "/Users/x/fleetest-runner", issuer: "alice")
+        XCTAssertEqual(layout.workspaceDir("E2E"), "/Users/x/fleetest-runner/users/alice/work/workspace/E2E")
     }
 
     func testRemoteLayoutDispatchReportDir() {
-        let layout = RemoteLayout(base: "/Users/x/ftester-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/x/fleetest-runner", issuer: "alice")
         XCTAssertEqual(layout.dispatchReportDir(stamp: "20260801-120000-42"),
-                       "/Users/x/ftester-runner/users/alice/work/.ftester/dispatch/20260801-120000-42/reports")
+                       "/Users/x/fleetest-runner/users/alice/work/.fleetest/dispatch/20260801-120000-42/reports")
     }
 
     // MARK: - RemoteLayout.validateIssuerKey
@@ -239,13 +239,13 @@ final class RemoteDispatchTests: XCTestCase {
     // MARK: - RemoteLayout.resolveBase
 
     func testResolveBaseExpandsTildeSlash() {
-        XCTAssertEqual(RemoteLayout.resolveBase("~/ftester-runner", home: "/Users/ci"),
-                       "/Users/ci/ftester-runner")
+        XCTAssertEqual(RemoteLayout.resolveBase("~/fleetest-runner", home: "/Users/ci"),
+                       "/Users/ci/fleetest-runner")
     }
 
     func testResolveBaseKeepsAbsolutePathUnchanged() {
-        XCTAssertEqual(RemoteLayout.resolveBase("/opt/ftester-runner", home: "/Users/ci"),
-                       "/opt/ftester-runner")
+        XCTAssertEqual(RemoteLayout.resolveBase("/opt/fleetest-runner", home: "/Users/ci"),
+                       "/opt/fleetest-runner")
     }
 
     func testResolveBaseExpandsBareTilde() {
@@ -253,11 +253,11 @@ final class RemoteDispatchTests: XCTestCase {
     }
 
     func testResolveBaseEmptyFallsBackToDefault() {
-        XCTAssertEqual(RemoteLayout.resolveBase("", home: "/Users/ci"), "/Users/ci/ftester-runner")
+        XCTAssertEqual(RemoteLayout.resolveBase("", home: "/Users/ci"), "/Users/ci/fleetest-runner")
     }
 
     func testResolveBaseWhitespaceOnlyFallsBackToDefault() {
-        XCTAssertEqual(RemoteLayout.resolveBase("   ", home: "/Users/ci"), "/Users/ci/ftester-runner")
+        XCTAssertEqual(RemoteLayout.resolveBase("   ", home: "/Users/ci"), "/Users/ci/fleetest-runner")
     }
 
     func testResolveBaseStripsTrailingSlashFromHome() {
@@ -267,44 +267,44 @@ final class RemoteDispatchTests: XCTestCase {
     // MARK: - RemoteTransferPlan.rsyncArgs
 
     func testRsyncArgs() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
         XCTAssertEqual(
             RemoteTransferPlan.rsyncArgs(project: "E2E", localProjectsDir: "/local/Projects",
                                         layout: layout, sshTarget: "user@host", ignore: .none),
             [
                 "-az", "--delete",
-                "--exclude", "/reports", "--exclude", "/results", "--exclude", "/.ftester",
+                "--exclude", "/reports", "--exclude", "/results", "--exclude", "/.fleetest",
                 "/local/Projects/E2E/",
-                "user@host:/Users/ci/ftester-runner/users/alice/work/TestProjects/E2E/",
+                "user@host:/Users/ci/fleetest-runner/users/alice/work/TestProjects/E2E/",
             ])
     }
 
-    /// `.ftester-transfer-ignore` の翻訳結果は固定除外の**後・送り元/宛先パスの前**に並ぶ
+    /// `.fleetest-transfer-ignore` の翻訳結果は固定除外の**後・送り元/宛先パスの前**に並ぶ
     func testRsyncArgsAppendsTransferIgnorePatternsAfterFixedExcludes() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
-        let ignore = TransferIgnore.Scan(files: ["workspace/.ftester-transfer-ignore"],
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let ignore = TransferIgnore.Scan(files: ["workspace/.fleetest-transfer-ignore"],
                                          excludePatterns: ["/workspace/*.log", "/workspace/**/*.log"])
         XCTAssertEqual(
             RemoteTransferPlan.rsyncArgs(project: "E2E", localProjectsDir: "/local/Projects",
                                         layout: layout, sshTarget: "user@host", ignore: ignore),
             [
                 "-az", "--delete",
-                "--exclude", "/reports", "--exclude", "/results", "--exclude", "/.ftester",
+                "--exclude", "/reports", "--exclude", "/results", "--exclude", "/.fleetest",
                 "--exclude", "/workspace/*.log", "--exclude", "/workspace/**/*.log",
                 "/local/Projects/E2E/",
-                "user@host:/Users/ci/ftester-runner/users/alice/work/TestProjects/E2E/",
+                "user@host:/Users/ci/fleetest-runner/users/alice/work/TestProjects/E2E/",
             ])
         XCTAssertEqual(
             RemoteTransferPlan.workspaceRsyncArgs(
                 localWorkspaceDir: "/local/ws", project: "E2E", layout: layout, sshTarget: "user@host",
-                ignore: TransferIgnore.Scan(files: [".ftester-transfer-ignore"],
+                ignore: TransferIgnore.Scan(files: [".fleetest-transfer-ignore"],
                                             excludePatterns: ["/.stub-leases/", "/**/.stub-leases/"])),
             [
                 "-az", "--delete",
                 "--exclude", ".git", "--exclude", ".DS_Store", "--exclude", "node_modules",
                 "--exclude", "/.stub-leases/", "--exclude", "/**/.stub-leases/",
                 "/local/ws/",
-                "user@host:/Users/ci/ftester-runner/users/alice/work/workspace/E2E/",
+                "user@host:/Users/ci/fleetest-runner/users/alice/work/workspace/E2E/",
             ])
     }
 
@@ -313,7 +313,7 @@ final class RemoteDispatchTests: XCTestCase {
     /// project の rsyncArgs(--exclude /reports 等)と別の除外集合(.git/.DS_Store/node_modules を
     /// 階層を問わず除外)・別の宛先(workspaceDir)であることを固定する
     func testWorkspaceRsyncArgs() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
         XCTAssertEqual(
             RemoteTransferPlan.workspaceRsyncArgs(
                 localWorkspaceDir: "/local/sut-ec-mobile-workspace", project: "E2E",
@@ -322,7 +322,7 @@ final class RemoteDispatchTests: XCTestCase {
                 "-az", "--delete",
                 "--exclude", ".git", "--exclude", ".DS_Store", "--exclude", "node_modules",
                 "/local/sut-ec-mobile-workspace/",
-                "user@host:/Users/ci/ftester-runner/users/alice/work/workspace/E2E/",
+                "user@host:/Users/ci/fleetest-runner/users/alice/work/workspace/E2E/",
             ])
     }
 
@@ -330,38 +330,38 @@ final class RemoteDispatchTests: XCTestCase {
     // プロジェクトルート配下なら専用ミラーを組み立てない側の分岐を固定する)
 
     func testPlacementDefaultWorkspaceIsWithinProject() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
         let placement = WorkspaceRemoteDispatch.placement(
             workspaceRoot: "/repo/TestProjects/E2E/workspace",
             projectRoot: "/repo/TestProjects/E2E",
             layout: layout, project: "E2E")
         XCTAssertEqual(placement, .withinProject(
-            remotePath: "/Users/ci/ftester-runner/users/alice/work/TestProjects/E2E/workspace"))
+            remotePath: "/Users/ci/fleetest-runner/users/alice/work/TestProjects/E2E/workspace"))
     }
 
     /// プロジェクトルートそのものを指したとき(相対パスが空文字列)は projectDir 自身を返す
     func testPlacementWorkspaceEqualToProjectRootItself() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
         let placement = WorkspaceRemoteDispatch.placement(
             workspaceRoot: "/repo/TestProjects/E2E",
             projectRoot: "/repo/TestProjects/E2E",
             layout: layout, project: "E2E")
         XCTAssertEqual(placement, .withinProject(
-            remotePath: "/Users/ci/ftester-runner/users/alice/work/TestProjects/E2E"))
+            remotePath: "/Users/ci/fleetest-runner/users/alice/work/TestProjects/E2E"))
     }
 
     func testPlacementNestedCustomWorkspaceIsWithinProject() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
         let placement = WorkspaceRemoteDispatch.placement(
             workspaceRoot: "/repo/TestProjects/E2E/custom/ws",
             projectRoot: "/repo/TestProjects/E2E",
             layout: layout, project: "E2E")
         XCTAssertEqual(placement, .withinProject(
-            remotePath: "/Users/ci/ftester-runner/users/alice/work/TestProjects/E2E/custom/ws"))
+            remotePath: "/Users/ci/fleetest-runner/users/alice/work/TestProjects/E2E/custom/ws"))
     }
 
     func testPlacementExplicitOutsideProjectIsNotWithinProject() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
         let placement = WorkspaceRemoteDispatch.placement(
             workspaceRoot: "/shared/sut-workspace",
             projectRoot: "/repo/TestProjects/E2E",
@@ -372,7 +372,7 @@ final class RemoteDispatchTests: XCTestCase {
     /// 似た名前の兄弟ディレクトリを配下と誤判定しない(文字列前方一致だと
     /// "…/E2E-Android-x" が "…/E2E-Android" の配下に見えてしまう)
     func testPlacementDoesNotMatchSiblingDirectoryWithSimilarName() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
         let placement = WorkspaceRemoteDispatch.placement(
             workspaceRoot: "/repo/TestProjects/E2E-Android-x/workspace",
             projectRoot: "/repo/TestProjects/E2E-Android",
@@ -382,7 +382,7 @@ final class RemoteDispatchTests: XCTestCase {
 
     /// 逆方向(projectRoot が子を含む長いパス)も配下と誤判定しない
     func testPlacementDoesNotMatchWhenProjectRootIsLongerThanWorkspaceRoot() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
         let placement = WorkspaceRemoteDispatch.placement(
             workspaceRoot: "/repo/TestProjects",
             projectRoot: "/repo/TestProjects/E2E",
@@ -420,14 +420,14 @@ final class RemoteDispatchTests: XCTestCase {
     // MARK: - RemoteArtifactCollection.resultsRsyncArgs
 
     func testResultsRsyncArgs() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
         XCTAssertEqual(
             RemoteArtifactCollection.resultsRsyncArgs(
                 project: "E2E", layout: layout, sshTarget: "user@host",
                 localProjectsDir: "/local/Projects"),
             [
                 "-az",
-                "user@host:/Users/ci/ftester-runner/users/alice/work/TestProjects/E2E/results/",
+                "user@host:/Users/ci/fleetest-runner/users/alice/work/TestProjects/E2E/results/",
                 "/local/Projects/E2E/results/",
             ])
     }
@@ -435,7 +435,7 @@ final class RemoteDispatchTests: XCTestCase {
     /// --delete が無いこと(ローカルの results を巻き添えで消さない)と、両パスとも末尾スラッシュを
     /// 保つこと(rsync のディレクトリ中身コピー契約)を確認
     func testResultsRsyncArgsOmitsDeleteAndKeepsTrailingSlashes() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
         let args = RemoteArtifactCollection.resultsRsyncArgs(
             project: "E2E", layout: layout, sshTarget: "user@host",
             localProjectsDir: "/local/Projects")
@@ -449,13 +449,13 @@ final class RemoteDispatchTests: XCTestCase {
     /// 録画(recordings/)だけを除外し、src/dst は resultsRsyncArgs と同一であること —— on-demand
     /// でも実績 JSON は resultsRsyncArgs と同じ場所から同じ場所へ回収されることを固定する
     func testRecordsOnlyRsyncArgsExcludesRecordingsAndOmitsDelete() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
         let args = RemoteArtifactCollection.recordsOnlyRsyncArgs(
             project: "E2E", layout: layout, sshTarget: "user@host",
             localProjectsDir: "/local/Projects")
         XCTAssertEqual(args, [
             "-az", "--exclude", "recordings/",
-            "user@host:/Users/ci/ftester-runner/users/alice/work/TestProjects/E2E/results/",
+            "user@host:/Users/ci/fleetest-runner/users/alice/work/TestProjects/E2E/results/",
             "/local/Projects/E2E/results/",
         ])
         XCTAssertFalse(args.contains("--delete"), "\(args)")
@@ -517,11 +517,11 @@ final class RemoteDispatchTests: XCTestCase {
             heal: false, noHeal: false, noLPT: false, lptHistoryRuns: nil,
             fastInput: false, enableAnimations: false, performanceMode: false,
             remoteJUnitPath: nil, reportDir: nil,
-            workspace: "/Users/ci/ftester-runner/work/workspace/E2E")
+            workspace: "/Users/ci/fleetest-runner/work/workspace/E2E")
         guard let index = withWorkspace.firstIndex(of: "--workspace") else {
             return XCTFail("--workspace が無い: \(withWorkspace)")
         }
-        XCTAssertEqual(withWorkspace[index + 1], "/Users/ci/ftester-runner/work/workspace/E2E")
+        XCTAssertEqual(withWorkspace[index + 1], "/Users/ci/fleetest-runner/work/workspace/E2E")
 
         let withoutWorkspace = RemoteRunArgs.build(
             project: "E2E", profile: "p", scenarios: [], folders: [],
@@ -550,7 +550,7 @@ final class RemoteDispatchTests: XCTestCase {
             ])
     }
 
-    /// リモートで走る ftester が**もう一度ディスパッチしない**ことを固定する。転送された
+    /// リモートで走る fleetest が**もう一度ディスパッチしない**ことを固定する。転送された
     /// マシンプロファイルには host(= そのリモート自身の名前)が入っているので、--host local が
     /// 抜けると向こうの MachineHostDispatch が自動ディスパッチに入り、登録簿次第で
     /// 「未登録のホスト」で落ちるか自分自身へ ssh する
@@ -609,7 +609,7 @@ final class RemoteDispatchTests: XCTestCase {
     }
 
     /// `api run` には `--enable-animations` が無い(実行プロファイルと環境変数から解決する)。
-    /// 存在しないフラグを渡すとリモートの ftester が起動時に落ちるので、**混入しないこと**を固定する
+    /// 存在しないフラグを渡すとリモートの fleetest が起動時に落ちるので、**混入しないこと**を固定する
     func testApiPerformanceModeIsRelayedAndAnimationsFlagIsNever() {
         func args(performance: Bool) -> [String] {
             RemoteRunArgs.buildApi(project: "E2E", profile: "android-1", scenarios: [],
@@ -681,18 +681,18 @@ final class RemoteDispatchTests: XCTestCase {
     // MARK: - RemoteShell.remoteRunCommand
 
     func testRemoteRunCommand() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
         let command = RemoteShell.remoteRunCommand(
             layout: layout,
-            ftesterArgs: ["run", "--project", "E2E", "--profile", "ios-inapp", "--quiet"])
-        let workDir = "/Users/ci/ftester-runner/users/alice/work"
-        let binary = "/Users/ci/ftester-runner/foundation-tester/.build/debug/ftester"
+            fleetestArgs: ["run", "--project", "E2E", "--profile", "ios-inapp", "--quiet"])
+        let workDir = "/Users/ci/fleetest-runner/users/alice/work"
+        let binary = "/Users/ci/fleetest-runner/foundation-tester/.build/debug/fleetest"
         XCTAssertEqual(command,
             "cd '\(workDir)' 2>/dev/null && test -f Package.swift || "
-            + "{ echo \"no runner workspace at \(workDir) — run: ftester remote setup"
+            + "{ echo \"no runner workspace at \(workDir) — run: fleetest remote setup"
             + " <this host> once for this issuer (docs/remote-runner.md §18)\" >&2; exit 91; } && "
             + "export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\" && test -x '\(binary)' || "
-            + "{ echo \"ftester binary not found on remote — run: swift build --product ftester\" >&2; exit 90; } && "
+            + "{ echo \"fleetest binary not found on remote — run: swift build --product fleetest\" >&2; exit 90; } && "
             + "'\(binary)' project sync >/dev/null 2>&1 || true && "
             + "'\(binary)' 'run' '--project' 'E2E' '--profile' 'ios-inapp' '--quiet'")
     }
@@ -701,22 +701,22 @@ final class RemoteDispatchTests: XCTestCase {
     /// バイナリ不在(exit 90)より手前に置く —— workspace 自体が無ければバイナリの有無を
     /// 問うても意味が無い
     func testRemoteRunCommandGuardsMissingIssuerWorkspaceBeforeBinaryGuard() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
-        let command = RemoteShell.remoteRunCommand(layout: layout, ftesterArgs: ["run"])
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let command = RemoteShell.remoteRunCommand(layout: layout, fleetestArgs: ["run"])
         guard let workspaceGuardRange = command.range(of: "exit 91"),
               let binaryGuardRange = command.range(of: "exit 90") else {
             return XCTFail("expected both guards present: \(command)")
         }
         XCTAssertTrue(workspaceGuardRange.lowerBound < binaryGuardRange.lowerBound, command)
-        XCTAssertTrue(command.contains("ftester remote setup"), command)
+        XCTAssertTrue(command.contains("fleetest remote setup"), command)
     }
 
     /// 発行者はディスパッチ側から FT_ISSUER で運ぶ(LocalConfig.resolveIssuerId が最優先で読む
     /// 契約)。ランナー機側で解決させると全員が共有アカウントの同じ値になり帰属が消える
     func testRemoteRunCommandExportsIssuerWhenGiven() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
         let command = RemoteShell.remoteRunCommand(
-            layout: layout, ftesterArgs: ["run", "--quiet"], issuer: "tanaka@dev-mbp")
+            layout: layout, fleetestArgs: ["run", "--quiet"], issuer: "tanaka@dev-mbp")
         XCTAssertTrue(command.contains("export FT_ISSUER='tanaka@dev-mbp' && "), command)
         // 位置は PATH 補正の後・バイナリ存在ガードの前(run 本体より先に環境が立っていること)。
         // 強制アンラップしない ―― 変異で FT_ISSUER が消えたとき、クラッシュはこのプロセスの
@@ -733,7 +733,7 @@ final class RemoteDispatchTests: XCTestCase {
     func testRemoteRunCommandQuotesIssuerAgainstShellInjection() {
         let layout = RemoteLayout(base: "/b", issuer: "alice")
         let command = RemoteShell.remoteRunCommand(
-            layout: layout, ftesterArgs: ["run"], issuer: "a'; rm -rf /; '")
+            layout: layout, fleetestArgs: ["run"], issuer: "a'; rm -rf /; '")
         XCTAssertTrue(command.contains("export FT_ISSUER='a'\\''; rm -rf /; '\\'''"), command)
     }
 
@@ -822,11 +822,11 @@ final class RemoteDispatchTests: XCTestCase {
             project: "E2E", profile: "p", scenarios: ["Login.S0010"],
             heal: false, noLPT: false, lptHistoryRuns: nil,
             performanceMode: false, defaultTimeout: nil, scenarioTimeout: nil, reportDir: nil,
-            workspace: "/Users/ci/ftester-runner/work/workspace/E2E")
+            workspace: "/Users/ci/fleetest-runner/work/workspace/E2E")
         guard let index = withWorkspace.firstIndex(of: "--workspace") else {
             return XCTFail("--workspace が無い: \(withWorkspace)")
         }
-        XCTAssertEqual(withWorkspace[index + 1], "/Users/ci/ftester-runner/work/workspace/E2E")
+        XCTAssertEqual(withWorkspace[index + 1], "/Users/ci/fleetest-runner/work/workspace/E2E")
 
         let withoutWorkspace = RemoteRunArgs.buildApi(
             project: "E2E", profile: "p", scenarios: ["Login.S0010"],
@@ -1135,10 +1135,10 @@ final class RemoteDispatchTests: XCTestCase {
     // MARK: - RemoteStatusProbe.command
 
     func testStatusProbeCommand() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
-        let tool = "\"/Users/ci/ftester-runner/foundation-tester\""
-        let binary = "\"/Users/ci/ftester-runner/foundation-tester/.build/debug/ftester\""
-        let base = "\"/Users/ci/ftester-runner\""
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let tool = "\"/Users/ci/fleetest-runner/foundation-tester\""
+        let binary = "\"/Users/ci/fleetest-runner/foundation-tester/.build/debug/fleetest\""
+        let base = "\"/Users/ci/fleetest-runner\""
         XCTAssertEqual(
             RemoteStatusProbe.command(layout: layout),
             "echo $HOME; stat -f%Su /dev/console; id -un; echo '---FT---'; "
@@ -1152,14 +1152,14 @@ final class RemoteDispatchTests: XCTestCase {
     /// $HOME を未解決のまま埋め込んだ layout(remote status の実運用形)でも
     /// 二重引用符で包むだけで壊れない(単一引用符と違い変数展開を妨げない)ことを確認
     func testStatusProbeCommandQuotesDoNotSuppressHomeExpansion() {
-        let layout = RemoteLayout(base: RemoteLayout.resolveBase("~/ftester-runner", home: "$HOME"), issuer: "alice")
-        XCTAssertTrue(RemoteStatusProbe.command(layout: layout).contains("\"$HOME/ftester-runner/foundation-tester\""))
+        let layout = RemoteLayout(base: RemoteLayout.resolveBase("~/fleetest-runner", home: "$HOME"), issuer: "alice")
+        XCTAssertTrue(RemoteStatusProbe.command(layout: layout).contains("\"$HOME/fleetest-runner/foundation-tester\""))
     }
 
     // MARK: - RemoteStatusProbe.dquote
 
     func testDquotePlainPathUnaffected() {
-        XCTAssertEqual(RemoteStatusProbe.dquote("/Users/ci/ftester-runner"), "\"/Users/ci/ftester-runner\"")
+        XCTAssertEqual(RemoteStatusProbe.dquote("/Users/ci/fleetest-runner"), "\"/Users/ci/fleetest-runner\"")
     }
 
     /// $ はエスケープしない(remote status がここに $HOME を埋め込んで展開させるため)
@@ -1237,7 +1237,7 @@ final class RemoteDispatchTests: XCTestCase {
     // MARK: - RemoteCleanPlan.commands
 
     func testCleanPlanDryRunUsesPrint() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
         let commands = RemoteCleanPlan.commands(layout: layout, keepDays: 7, dryRun: true)
         XCTAssertEqual(commands.count, 6)
         for command in commands {
@@ -1247,7 +1247,7 @@ final class RemoteDispatchTests: XCTestCase {
     }
 
     func testCleanPlanNonDryRunUsesExecRm() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
         let commands = RemoteCleanPlan.commands(layout: layout, keepDays: 7, dryRun: false)
         for command in commands {
             XCTAssertTrue(command.hasSuffix("-exec rm -rf {} +"), command)
@@ -1255,7 +1255,7 @@ final class RemoteDispatchTests: XCTestCase {
     }
 
     func testCleanPlanKeepDaysReflected() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
         let commands = RemoteCleanPlan.commands(layout: layout, keepDays: 30, dryRun: true)
         for command in commands {
             XCTAssertTrue(command.contains("-mtime +30"), command)
@@ -1265,13 +1265,13 @@ final class RemoteDispatchTests: XCTestCase {
     /// 全発行者(`users/*/work`)+ 旧レイアウト(`work`)を横断する(§18.2)。ディスクはホスト共有
     /// 資源なので保持ポリシーは全員分に掛ける
     func testCleanPlanCoversAllIssuersAndTheLegacyLayout() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
         let commands = RemoteCleanPlan.commands(layout: layout, keepDays: 7, dryRun: true)
-        let base = "'/Users/ci/ftester-runner'"
-        XCTAssertTrue(commands[0].contains("\(base)/users/*/work/.ftester/dispatch"), commands[0])
+        let base = "'/Users/ci/fleetest-runner'"
+        XCTAssertTrue(commands[0].contains("\(base)/users/*/work/.fleetest/dispatch"), commands[0])
         XCTAssertTrue(commands[1].contains("\(base)/users/*/work/TestProjects/*/reports"), commands[1])
         XCTAssertTrue(commands[2].contains("\(base)/users/*/work/TestProjects/*/results"), commands[2])
-        XCTAssertTrue(commands[3].contains("\(base)/work/.ftester/dispatch"), commands[3])
+        XCTAssertTrue(commands[3].contains("\(base)/work/.fleetest/dispatch"), commands[3])
         XCTAssertTrue(commands[4].contains("\(base)/work/TestProjects/*/reports"), commands[4])
         XCTAssertTrue(commands[5].contains("\(base)/work/TestProjects/*/results"), commands[5])
     }
@@ -1285,15 +1285,15 @@ final class RemoteDispatchTests: XCTestCase {
     }
 
     func testCleanPlanQuotesTheBasePortion() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest runner", issuer: "alice")
         let commands = RemoteCleanPlan.commands(layout: layout, keepDays: 7, dryRun: true)
-        XCTAssertTrue(commands[0].contains("'/Users/ci/ftester runner'/users/*/work"), commands[0])
+        XCTAssertTrue(commands[0].contains("'/Users/ci/fleetest runner'/users/*/work"), commands[0])
     }
 
     // MARK: - RemoteLayout.validateBase(コマンド置換の入口ガード)
 
     func testValidateBaseAcceptsOrdinaryPaths() throws {
-        try RemoteLayout.validateBase("~/ftester-runner")
+        try RemoteLayout.validateBase("~/fleetest-runner")
         try RemoteLayout.validateBase("/opt/ft_runner-1.0")
         try RemoteLayout.validateBase("")            // 空は既定値へフォールバック
     }
@@ -1335,7 +1335,7 @@ final class RemoteDispatchTests: XCTestCase {
     func testReportPathIsRelinkedToTheCollectedCopy() {
         XCTAssertEqual(
             RemoteReportLink.rewrittenReportPath(
-                recorded: ".ftester/dispatch/20260816-130735-24451/reports/scenario-1-S0010.md",
+                recorded: ".fleetest/dispatch/20260816-130735-24451/reports/scenario-1-S0010.md",
                 stamp: "20260816-130735-24451",
                 projectReportsPathFromRepoRoot: "TestProjects/E2E-iOS/reports"),
             "TestProjects/E2E-iOS/reports/scenario-1-S0010.md")
@@ -1344,7 +1344,7 @@ final class RemoteDispatchTests: XCTestCase {
     /// **他の run の記録に触らない**。別のディスパッチ(別 stamp)の記録は対象外
     func testReportPathOfAnotherDispatchIsLeftAlone() {
         XCTAssertNil(RemoteReportLink.rewrittenReportPath(
-            recorded: ".ftester/dispatch/20260816-999999-11111/reports/scenario-1-S0010.md",
+            recorded: ".fleetest/dispatch/20260816-999999-11111/reports/scenario-1-S0010.md",
             stamp: "20260816-130735-24451",
             projectReportsPathFromRepoRoot: "TestProjects/E2E-iOS/reports"))
     }
@@ -1361,7 +1361,7 @@ final class RemoteDispatchTests: XCTestCase {
     /// 想定外を黙って別の場所へ向けない
     func testNestedPathUnderTheDispatchDirIsNotRewritten() {
         XCTAssertNil(RemoteReportLink.rewrittenReportPath(
-            recorded: ".ftester/dispatch/20260816-130735-24451/reports/sub/scenario-1-S0010.md",
+            recorded: ".fleetest/dispatch/20260816-130735-24451/reports/sub/scenario-1-S0010.md",
             stamp: "20260816-130735-24451",
             projectReportsPathFromRepoRoot: "TestProjects/E2E-iOS/reports"))
     }
@@ -1372,7 +1372,7 @@ final class RemoteDispatchTests: XCTestCase {
     /// 文言で固定する** —— これを warning にすると、本当の失敗理由の下にノイズが積まれる
     func testMissingSourceFailureIsDetectedFromRsyncStderr() {
         let stderr = """
-            rsync: [sender] change_dir "/Users/ci/ftester-runner/work/.ftester/dispatch/20260816-080316-95613/reports" \
+            rsync: [sender] change_dir "/Users/ci/fleetest-runner/work/.fleetest/dispatch/20260816-080316-95613/reports" \
             failed: No such file or directory (2)
             rsync error: some files/attrs were not transferred (see previous errors) (code 23) at main.c(1338)
             """
@@ -1396,38 +1396,38 @@ final class RemoteDispatchTests: XCTestCase {
     }
 
     func testRemoteExecCommand() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
         let command = RemoteShell.remoteExecCommand(layout: layout, args: ["doctor", "--fm-only"])
-        let workDir = "/Users/ci/ftester-runner/users/alice/work"
-        let binary = "/Users/ci/ftester-runner/foundation-tester/.build/debug/ftester"
+        let workDir = "/Users/ci/fleetest-runner/users/alice/work"
+        let binary = "/Users/ci/fleetest-runner/foundation-tester/.build/debug/fleetest"
         XCTAssertEqual(command,
             "cd '\(workDir)' 2>/dev/null && test -f Package.swift || "
-            + "{ echo \"no runner workspace at \(workDir) — run: ftester remote setup"
+            + "{ echo \"no runner workspace at \(workDir) — run: fleetest remote setup"
             + " <this host> once for this issuer (docs/remote-runner.md §18)\" >&2; exit 91; } && "
             + "export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\" && test -x '\(binary)' || "
-            + "{ echo \"ftester binary not found on remote — run: swift build --product ftester\" >&2; exit 90; } && "
+            + "{ echo \"fleetest binary not found on remote — run: swift build --product fleetest\" >&2; exit 90; } && "
             + "'\(binary)' 'doctor' '--fm-only'")
     }
 
     /// 照会・単発操作が目的で、run 専用の `project sync` を混ぜてはいけない
     /// (remoteRunCommand との唯一の差分。壊すと remote exec のたびに無駄な sync が走る)
     func testRemoteExecCommandDoesNotSyncProject() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
         let command = RemoteShell.remoteExecCommand(layout: layout, args: ["devices", "down"])
         XCTAssertFalse(command.contains("project sync"), command)
     }
 
     func testRemoteExecCommandQuotesEachArgumentIndependently() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
         let command = RemoteShell.remoteExecCommand(layout: layout, args: ["api", "device-catalog"])
         XCTAssertTrue(command.hasSuffix("'api' 'device-catalog'"), command)
     }
 
     /// exec も未 setup の発行者を exit 91 で fail fast する(remoteRunCommand と同じガード)
     func testRemoteExecCommandGuardsMissingIssuerWorkspace() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner", issuer: "alice")
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
         let command = RemoteShell.remoteExecCommand(layout: layout, args: ["doctor"])
         XCTAssertTrue(command.contains("exit 91"), command)
-        XCTAssertTrue(command.contains("ftester remote setup"), command)
+        XCTAssertTrue(command.contains("fleetest remote setup"), command)
     }
 }

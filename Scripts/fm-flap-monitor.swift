@@ -15,11 +15,11 @@
 //
 // ビルド: xcrun swiftc -O Scripts/fm-flap-monitor.swift -o /tmp/fm-flap-monitor
 //         (vision プローブの画像添付は macOS 27+ の API。macOS 26 ではコンパイルできない)
-// 実行:   /tmp/fm-flap-monitor [間隔秒=60] >> ~/Library/Logs/ftester/fm-flap.ndjson
+// 実行:   /tmp/fm-flap-monitor [間隔秒=60] >> ~/Library/Logs/fleetest/fm-flap.ndjson
 //         1行 = 1プローブ結果(NDJSON)。state は3文字 T/t=text V/v=vision P/p=permissive の生死
 //         (2026-07-26 に permissive を追加。それ以前のログは2文字)。state が変わった行には "transition": true が付き、
 //         直近 120 秒の modelmanagerd / SensitiveContentAnalysis 関連の system log を
-//         ~/Library/Logs/ftester/fm-transition-<時刻>.log に保存する。
+//         ~/Library/Logs/fleetest/fm-transition-<時刻>.log に保存する。
 
 import CoreGraphics
 import Foundation
@@ -135,7 +135,7 @@ func jsonEscape(_ s: String) -> String {
 /// FB 報告の「遷移直前に何が起きたか」の材料。失敗しても監視は続ける。
 func dumpSystemLog(tag: String) {
     let dir = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Logs/ftester")
+        .appendingPathComponent("Library/Logs/fleetest")
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     let out = dir.appendingPathComponent("fm-transition-\(tag).log")
     let p = Process()

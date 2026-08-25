@@ -1,5 +1,5 @@
 // _Main.swift
-// ftester-scenarios のエントリポイント(編集不要)。
+// fleetest-scenarios のエントリポイント(編集不要)。
 // このディレクトリ(scenarios/)に .swift を置いて swift build すればシナリオが認識される。
 
 import FTScenarioRunner

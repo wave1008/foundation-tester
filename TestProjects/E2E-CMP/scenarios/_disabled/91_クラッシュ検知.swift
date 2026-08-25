@@ -3,7 +3,7 @@
 // 人がブリッジ切断検知とクラッシュレポート添付(SimulatorCrashReport。docs/design.md §10「実装で得た知見」)
 // を目視確認するための手動シナリオ。
 //
-// ftester 機能: inapp ブリッジ切断時のクラッシュレポート添付。#btn_crash_confirm でプロセスを
+// fleetest 機能: inapp ブリッジ切断時のクラッシュレポート添付。#btn_crash_confirm でプロセスを
 // 即異常終了させ、以降のコマンドが bridgeConnectionRefused としてレポートに .ips 情報付きで
 // 記録されることを人が確認する。
 

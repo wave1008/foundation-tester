@@ -47,7 +47,7 @@ public enum DeviceBooter {
     ) async {
         // iOS(軽い)を先頭に、Android(重い)を後ろに並べた早い者勝ちキュー。各プラットフォーム内は
         // name 昇順に整列してモニタータイルの表示順(左→右)と起動順を一致させる(表示規則の同期相手:
-        // vscode-ftester/src/monitorModel.ts sortMonitorDevices「ios→android・各内は name 順」。
+        // vscode-fleetest/src/monitorModel.ts sortMonitorDevices「ios→android・各内は name 順」。
         // プロファイル JSON の配列順は name 順とは限らず、放置すると左→右と起動順がずれる)。
         // localizedCompare で JS localeCompare 相当。
         //
@@ -318,7 +318,7 @@ public enum DeviceBooter {
     // MARK: - Android
 
     /// emulator バイナリの場所: ANDROID_HOME/ANDROID_SDK_ROOT → adb からの相対
-    /// (`ftester profile setup --auto-device` が AVD 一覧を取るのにも使う)
+    /// (`fleetest profile setup --auto-device` が AVD 一覧を取るのにも使う)
     public static func findEmulatorBinary() throws -> String {
         let fm = FileManager.default
         for env in ["ANDROID_HOME", "ANDROID_SDK_ROOT"] {

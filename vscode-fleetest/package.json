@@ -1,0 +1,459 @@
+{
+  "name": "vscode-fleetest",
+  "displayName": "fleetest mobile",
+  "description": "%fleetest.extension.description%",
+  "version": "0.0.587",
+  "private": true,
+  "publisher": "wave1008",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wave1008/foundation-tester.git",
+    "directory": "vscode-fleetest"
+  },
+  "bugs": {
+    "url": "https://github.com/wave1008/foundation-tester/issues"
+  },
+  "homepage": "https://github.com/wave1008/foundation-tester/tree/main/vscode-fleetest#readme",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Testing"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "workspaceContains:Package.swift"
+  ],
+  "contributes": {
+    "configuration": {
+      "title": "fleetest",
+      "properties": {
+        "fleetest.binaryPath": {
+          "type": "string",
+          "default": ".build/debug/fleetest",
+          "description": "%fleetest.config.binaryPath.description%"
+        },
+        "fleetest.project": {
+          "type": "string",
+          "default": "",
+          "description": "%fleetest.config.project.description%"
+        },
+        "fleetest.profile": {
+          "type": "string",
+          "default": "",
+          "description": "%fleetest.config.profile.description%"
+        },
+        "fleetest.platform": {
+          "type": "string",
+          "enum": [
+            "ios",
+            "android"
+          ],
+          "default": "ios",
+          "description": "%fleetest.config.platform.description%"
+        },
+        "fleetest.port": {
+          "type": "number",
+          "default": 0,
+          "description": "%fleetest.config.port.description%"
+        },
+        "fleetest.serial": {
+          "type": "string",
+          "default": "",
+          "description": "%fleetest.config.serial.description%"
+        },
+        "fleetest.buildBeforeRun": {
+          "type": "boolean",
+          "default": true,
+          "description": "%fleetest.config.buildBeforeRun.description%"
+        },
+        "fleetest.lptScheduling": {
+          "type": "boolean",
+          "default": true,
+          "description": "%fleetest.config.lptScheduling.description%"
+        },
+        "fleetest.lptHistoryRuns": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "description": "%fleetest.config.lptHistoryRuns.description%"
+        },
+        "fleetest.heal": {
+          "type": "boolean",
+          "default": false,
+          "description": "%fleetest.config.heal.description%"
+        },
+        "fleetest.monitorInterval": {
+          "type": "number",
+          "default": 2,
+          "minimum": 0.5,
+          "description": "%fleetest.config.monitorInterval.description%"
+        },
+        "fleetest.monitorMaxWidth": {
+          "type": "number",
+          "default": 960,
+          "minimum": 240,
+          "maximum": 1600,
+          "description": "%fleetest.config.monitorMaxWidth.description%"
+        },
+        "fleetest.monitorDeviceFilter": {
+          "type": "string",
+          "enum": [
+            "all",
+            "running"
+          ],
+          "default": "all",
+          "description": "%fleetest.config.monitorDeviceFilter.description%"
+        },
+        "fleetest.liveFps": {
+          "type": "number",
+          "default": 12,
+          "minimum": 3,
+          "maximum": 30,
+          "description": "%fleetest.config.liveFps.description%"
+        },
+        "fleetest.iosStreamEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "%fleetest.config.iosStreamEnabled.description%"
+        },
+        "fleetest.androidStreamEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "%fleetest.config.androidStreamEnabled.description%"
+        },
+        "fleetest.streamCodec": {
+          "type": "string",
+          "enum": [
+            "h264",
+            "mjpeg"
+          ],
+          "default": "h264",
+          "description": "%fleetest.config.streamCodec.description%"
+        },
+        "fleetest.liveControlOnRun": {
+          "type": "boolean",
+          "default": true,
+          "description": "%fleetest.config.liveControlOnRun.description%"
+        },
+        "fleetest.autoRepairBridge": {
+          "type": "boolean",
+          "default": true,
+          "description": "%fleetest.config.autoRepairBridge.description%"
+        },
+        "fleetest.autoRepairDeviceHealth": {
+          "type": "boolean",
+          "default": false,
+          "description": "%fleetest.config.autoRepairDeviceHealth.description%"
+        },
+        "fleetest.showOnlyFailedTests": {
+          "type": "boolean",
+          "default": false,
+          "description": "%fleetest.config.showOnlyFailedTests.description%"
+        },
+        "fleetest.language": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "ja",
+            "en"
+          ],
+          "default": "auto",
+          "description": "%fleetest.config.language.description%"
+        },
+        "fleetest.updateCheck": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "off"
+          ],
+          "default": "auto",
+          "description": "%fleetest.config.updateCheck.description%"
+        },
+        "fleetest.remoteCompatCheck": {
+          "type": "boolean",
+          "default": true,
+          "description": "%fleetest.config.remoteCompatCheck.description%"
+        },
+        "fleetest.remote.artifacts": {
+          "type": "string",
+          "scope": "machine",
+          "enum": [
+            "collect",
+            "on-demand"
+          ],
+          "default": "collect",
+          "description": "%fleetest.config.remoteArtifacts.description%"
+        }
+      }
+    },
+    "debuggers": [
+      {
+        "type": "fleetest",
+        "label": "fleetest scenario",
+        "languages": [
+          "swift"
+        ],
+        "configurationAttributes": {
+          "launch": {
+            "required": [
+              "project",
+              "scenario"
+            ],
+            "properties": {
+              "project": {
+                "type": "string",
+                "description": "%fleetest.debugger.project.description%"
+              },
+              "scenario": {
+                "type": "string",
+                "description": "%fleetest.debugger.scenario.description%"
+              },
+              "dryRun": {
+                "type": "boolean",
+                "default": false,
+                "description": "%fleetest.debugger.dryRun.description%"
+              },
+              "stopOnEntry": {
+                "type": "boolean",
+                "default": false,
+                "description": "%fleetest.debugger.stopOnEntry.description%"
+              },
+              "skipBuild": {
+                "type": "boolean",
+                "default": false,
+                "description": "%fleetest.debugger.skipBuild.description%"
+              },
+              "heal": {
+                "type": "boolean",
+                "default": false,
+                "description": "%fleetest.debugger.heal.description%"
+              },
+              "profile": {
+                "type": "string",
+                "description": "%fleetest.debugger.profile.description%"
+              },
+              "platform": {
+                "type": "string",
+                "enum": [
+                  "ios",
+                  "android"
+                ],
+                "description": "%fleetest.debugger.platform.description%"
+              },
+              "port": {
+                "type": "number",
+                "description": "%fleetest.debugger.port.description%"
+              },
+              "serial": {
+                "type": "string",
+                "description": "%fleetest.debugger.serial.description%"
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "fleetest",
+            "request": "launch",
+            "name": "%fleetest.debugger.initialConfig.name%",
+            "project": "",
+            "scenario": ""
+          }
+        ]
+      }
+    ],
+    "breakpoints": [
+      {
+        "language": "swift"
+      }
+    ],
+    "views": {
+      "test": [
+        {
+          "id": "fleetestSteps",
+          "name": "%fleetest.view.fleetestSteps.name%"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "fleetest.refreshScenarios",
+        "title": "%fleetest.command.refreshScenarios.title%",
+        "category": "fleetest"
+      },
+      {
+        "command": "fleetest.checkForUpdate",
+        "title": "%fleetest.command.checkForUpdate.title%"
+      },
+      {
+        "command": "fleetest.selectProject",
+        "title": "%fleetest.command.selectProject.title%",
+        "category": "fleetest",
+        "icon": "$(folder-library)"
+      },
+      {
+        "command": "fleetest.showSteps",
+        "title": "%fleetest.command.showSteps.title%",
+        "category": "fleetest"
+      },
+      {
+        "command": "fleetest.refreshSteps",
+        "title": "%fleetest.command.refreshSteps.title%",
+        "category": "fleetest",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "fleetest.showDeviceMonitor",
+        "title": "%fleetest.command.showDeviceMonitor.title%",
+        "category": "fleetest",
+        "icon": "$(device-mobile)"
+      },
+      {
+        "command": "fleetest.showLiveControl",
+        "title": "%fleetest.command.showLiveControl.title%",
+        "category": "fleetest"
+      },
+      {
+        "command": "fleetest.showResultsDashboard",
+        "title": "%fleetest.command.showResultsDashboard.title%",
+        "category": "fleetest"
+      },
+      {
+        "command": "fleetest.selectProfile",
+        "title": "%fleetest.command.selectProfile.title%",
+        "category": "fleetest"
+      },
+      {
+        "command": "fleetest.validateProfiles",
+        "title": "%fleetest.command.validateProfiles.title%",
+        "category": "fleetest"
+      },
+      {
+        "command": "fleetest.deleteScenario",
+        "title": "%fleetest.command.deleteScenario.title%",
+        "category": "fleetest"
+      },
+      {
+        "command": "fleetest.rerunFailedTests",
+        "title": "%fleetest.command.rerunFailedTests.title%",
+        "category": "fleetest"
+      },
+      {
+        "command": "fleetest.copyTestName",
+        "title": "%fleetest.command.copyTestName.title%",
+        "category": "fleetest"
+      },
+      {
+        "command": "fleetest.openScenarioReport",
+        "title": "%fleetest.command.openScenarioReport.title%",
+        "category": "fleetest"
+      },
+      {
+        "command": "fleetest.enableFailedTestsFilter",
+        "title": "%fleetest.command.enableFailedTestsFilter.title%",
+        "category": "fleetest",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "fleetest.disableFailedTestsFilter",
+        "title": "%fleetest.command.disableFailedTestsFilter.title%",
+        "category": "fleetest",
+        "icon": "$(filter-filled)"
+      }
+    ],
+    "menus": {
+      "testing/item/context": [
+        {
+          "command": "fleetest.showSteps",
+          "group": "navigation"
+        },
+        {
+          "command": "fleetest.rerunFailedTests",
+          "when": "controllerId == 'fleetest'",
+          "group": "y_rerun@1"
+        },
+        {
+          "command": "fleetest.copyTestName",
+          "when": "controllerId == 'fleetest'",
+          "group": "y_rerun@2"
+        },
+        {
+          "command": "fleetest.openScenarioReport",
+          "when": "controllerId == 'fleetest'",
+          "group": "y_rerun@3"
+        },
+        {
+          "command": "fleetest.deleteScenario",
+          "when": "controllerId == 'fleetest' && !(testId =~ /^folder:/)",
+          "group": "z_delete"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "fleetest.refreshSteps",
+          "when": "view == fleetestSteps",
+          "group": "navigation"
+        },
+        {
+          "command": "fleetest.selectProject",
+          "when": "view == workbench.view.testing",
+          "group": "navigation@0"
+        },
+        {
+          "command": "fleetest.enableFailedTestsFilter",
+          "when": "view == workbench.view.testing && !fleetest.failedTestsFilterEnabled",
+          "group": "navigation"
+        },
+        {
+          "command": "fleetest.disableFailedTestsFilter",
+          "when": "view == workbench.view.testing && fleetest.failedTestsFilterEnabled",
+          "group": "navigation"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "fleetest.copyTestName",
+        "key": "ctrl+c",
+        "mac": "cmd+c",
+        "when": "focusedView == 'workbench.view.testing'"
+      }
+    ],
+    "jsonValidation": [
+      {
+        "fileMatch": "**/TestProjects/*/profiles/runs/*.json",
+        "url": "./schemas/run-profile.schema.json"
+      },
+      {
+        "fileMatch": "**/TestProjects/*/profiles/apps/*.json",
+        "url": "./schemas/app-profile.schema.json"
+      },
+      {
+        "fileMatch": "**/TestProjects/*/profiles/machines/*.json",
+        "url": "./schemas/machine-profile.schema.json"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "node esbuild.mjs && tsc --noEmit",
+    "watch": "node esbuild.mjs --watch",
+    "test": "node esbuild.mjs --tests && node --test --test-force-exit out-test/*.test.mjs",
+    "package": "vsce package",
+    "install-local": "bash scripts/install-local.sh"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.9.2",
+    "esbuild": "^0.28.1",
+    "jsdom": "^29.1.1",
+    "typescript": "^6.0.3"
+  },
+  "dependencies": {
+    "@vscode/debugadapter": "^1.65.0",
+    "@vscode/debugprotocol": "^1.65.0"
+  }
+}

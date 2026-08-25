@@ -1,6 +1,6 @@
-# xcodegen 定義。`cd Runner && xcodegen generate` で FTesterRunner.xcodeproj を生成する。
+# xcodegen 定義。`cd Runner && xcodegen generate` で FleetestRunner.xcodeproj を生成する。
 # 生成物はコミットしない(.gitignore 済み)。
-name: FTesterRunner
+name: FleetestRunner
 options:
   bundleIdPrefix: com.example
   deploymentTarget:
@@ -17,11 +17,11 @@ settings:
     FT_BUNDLE_ID_PREFIX: com.example
 targets:
   # UIテストの器になる空のホストアプリ
-  FTesterRunnerApp:
+  FleetestRunnerApp:
     type: application
     platform: iOS
     sources:
-      - path: FTesterRunnerApp
+      - path: FleetestRunnerApp
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: $(FT_BUNDLE_ID_PREFIX).ftrunner
@@ -29,23 +29,23 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
 
   # HTTPサーバ内蔵の常駐UIテスト(ブリッジ本体)
-  FTesterRunnerUITests:
+  FleetestRunnerUITests:
     type: bundle.ui-testing
     platform: iOS
     sources:
-      - path: FTesterRunnerUITests
+      - path: FleetestRunnerUITests
       # ホスト(macOS CLI)と共有するAPI型・純粋ロジック。Foundation のみに依存すること。
       # 追加したら BridgeSourceSet.xcuitest の explicitFiles にも載せる(片方だけ変えない)
       - path: ../Sources/FTCore/BridgeDTO.swift
       - path: ../Sources/FTCore/SnapshotDedupe.swift
       - path: ../Sources/FTCore/TypeReadback.swift
     dependencies:
-      - target: FTesterRunnerApp
+      - target: FleetestRunnerApp
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: $(FT_BUNDLE_ID_PREFIX).ftrunner.uitests
-        TEST_TARGET_NAME: FTesterRunnerApp
-        SWIFT_OBJC_BRIDGING_HEADER: FTesterRunnerUITests/BridgingHeader.h
+        TEST_TARGET_NAME: FleetestRunnerApp
+        SWIFT_OBJC_BRIDGING_HEADER: FleetestRunnerUITests/BridgingHeader.h
 
   # 検証用のテスト対象アプリ
   SampleApp:
@@ -60,14 +60,14 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
 
 schemes:
-  FTesterRunner:
+  FleetestRunner:
     build:
       targets:
-        FTesterRunnerApp: all
-        FTesterRunnerUITests: all
+        FleetestRunnerApp: all
+        FleetestRunnerUITests: all
     test:
       targets:
-        - FTesterRunnerUITests
+        - FleetestRunnerUITests
       environmentVariables:
         # build-for-testing 時に xctestrun へ焼き込まれる
         - variable: FT_PORT

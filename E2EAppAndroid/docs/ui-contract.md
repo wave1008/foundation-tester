@@ -109,7 +109,7 @@ API 30 未満のときだけ `keyevent 66` に落ちる。`OnEditorActionListene
 **罠(実測 2026-07-28)**: ソフトキーボードが出ていると `keyevent 66` は **View/XML の `EditText` に
 そもそも届かない**(IME が消費する)。`adb shell ime disable <id>` で IME を止めると同じキーで発火する
 ことを確認済み。**Compose の入力欄は同条件でも発火する**ので、CMP SUT だけ見ていると気付けない
-(実際シナリオ 18 は CMP で緑・View/XML で赤になった)。ftester が a11y 経路を既定にしたのはこのため。
+(実際シナリオ 18 は CMP で緑・View/XML で赤になった)。fleetest が a11y 経路を既定にしたのはこのため。
 
 ### 8. ダイアログ表示中は `screen` が別ウィンドウのサイズになる
 

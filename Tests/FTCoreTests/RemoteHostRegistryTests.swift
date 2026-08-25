@@ -1,5 +1,5 @@
 // `--host` 登録簿(docs/remote-runner.md §13)の純粋ロジック。
-// ssh/ファイル I/O は Sources/ftester/RemoteCommands.swift の RemoteHostResolver 側(e2e に残す)。
+// ssh/ファイル I/O は Sources/fleetest/RemoteCommands.swift の RemoteHostResolver 側(e2e に残す)。
 
 import Foundation
 import XCTest
@@ -166,7 +166,7 @@ final class RemoteHostRegistryTests: XCTestCase {
 
         var config = LocalConfig()
         config.remoteHosts = [RemoteHostEntry(name: "M1Ultra", host: "wave1008@192.168.20.95",
-                                              dir: "~/ftester-runner")]
+                                              dir: "~/fleetest-runner")]
         try config.save(to: url)
 
         let loaded = LocalConfig.load(from: url)

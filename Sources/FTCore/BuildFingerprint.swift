@@ -88,7 +88,7 @@ public enum BuildFingerprint {
     }
 
     private static func fingerprintURL(productName: String, repoRoot: URL) -> URL {
-        repoRoot.appendingPathComponent(".ftester")
+        repoRoot.appendingPathComponent(".fleetest")
             .appendingPathComponent("build-fingerprint-\(productName).txt")
     }
 

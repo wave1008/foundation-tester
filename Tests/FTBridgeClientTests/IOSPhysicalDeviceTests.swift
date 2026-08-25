@@ -155,7 +155,7 @@ final class IOSPhysicalDeviceTests: XCTestCase {
     /// xcodebuild のテストログは CRLF。\r が残るとポート照合が外れて 180 秒待って失敗する
     /// (2026-07-25 の実害。\n 固定のフィクスチャでは再現しなかった)
     func testAnnouncedHostHandlesCRLFLog() {
-        let log = "swizzled waitForQuiescence:\r\nFT_BRIDGE_ADDR=192.168.20.5:8201\r\n[ftester] ok\r\n"
+        let log = "swizzled waitForQuiescence:\r\nFT_BRIDGE_ADDR=192.168.20.5:8201\r\n[fleetest] ok\r\n"
         XCTAssertEqual(IOSDeviceTransport.announcedHost(inLog: log, port: 8201), "192.168.20.5")
     }
 
@@ -265,7 +265,7 @@ final class IOSPhysicalDeviceTests: XCTestCase {
     func testRunnerFailureReasonDetectsUntrustedCertificateWithoutTerminalMarker() {
         let log = """
         2026-07-26 00:00:20.893 xcodebuild[15317:9582357]  IDELaunchReport: Launching \
-        FTesterRunnerUITests Finished with error: The application could not be launched \
+        FleetestRunnerUITests Finished with error: The application could not be launched \
         because the Developer App Certificate is not trusted.
         Recovery Suggestion: Verify that the Developer App certificate for your account is trusted.
         """
@@ -285,7 +285,7 @@ final class IOSPhysicalDeviceTests: XCTestCase {
     func testPortsMatchingFindsBridgeByUDIDInProcessArguments() throws {
         let root = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("ft-ports-\(UUID().uuidString)")
-        let stateDir = root.appendingPathComponent(".ftester")
+        let stateDir = root.appendingPathComponent(".fleetest")
         try FileManager.default.createDirectory(at: stateDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
 
@@ -332,7 +332,7 @@ final class IOSPhysicalDeviceTests: XCTestCase {
         XCTAssertTrue(BridgeEndpoint.load(port: 8123, repoRoot: root).isLoopback)
     }
 
-    // MARK: - 実機 udid の記録(.ftester/bridge-<port>.device、欠陥②の前提)
+    // MARK: - 実機 udid の記録(.fleetest/bridge-<port>.device、欠陥②の前提)
 
     func testBridgeDeviceRecordRoundTripsThroughFile() throws {
         let root = URL(fileURLWithPath: NSTemporaryDirectory())

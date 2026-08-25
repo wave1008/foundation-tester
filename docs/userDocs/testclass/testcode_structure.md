@@ -59,7 +59,7 @@ setup are written directly in code instead of a fixed DSL vocabulary. Details:
 
 If an `expectation { }` block contains no assertion commands, a warning is added to the
 report and log (not a failure) — this catches scenarios that perform actions but never
-check anything. `ftester run --dry-run` (or `ft_dry_run`) finds this without touching a
+check anything. `fleetest run --dry-run` (or `ft_dry_run`) finds this without touching a
 device; see [dry-run](../running/dry_run.md).
 
 ## Branching by OS

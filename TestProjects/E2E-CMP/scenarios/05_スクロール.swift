@@ -1,5 +1,5 @@
 // 05_スクロール.swift
-// ftester 機能: `scrollTo` による要素到達と、「exist/textIs は非スクロール(現在画面のみ判定)」の
+// fleetest 機能: `scrollTo` による要素到達と、「exist/textIs は非スクロール(現在画面のみ判定)」の
 // 契約検証(docs/design.md §10)。折り返し下の要素は直前に scrollTo が必須であることを確認する。
 // あわせて `textContains`/`textMatches`・Shirates 準拠のスクロールコマンド群(`scrollToBottom`/
 // `scrollToTop`/`scrollDown(repeat:)`/`withScrollDown`/`tap(scroll:)`)・型付きセレクタ(Sel)の

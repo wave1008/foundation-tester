@@ -17,10 +17,10 @@ final class RepoRootResolutionTests: XCTestCase {
 
     private func makeToolRoot() throws -> URL {
         let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("ftester-toolroot-\(UUID().uuidString)")
+            .appendingPathComponent("fleetest-toolroot-\(UUID().uuidString)")
         try FileManager.default.createDirectory(
             at: dir.appendingPathComponent("Runner"), withIntermediateDirectories: true)
-        try "name: FTesterRunner".write(
+        try "name: FleetestRunner".write(
             to: dir.appendingPathComponent("Runner/project.yml"), atomically: true, encoding: .utf8)
         return dir
     }
@@ -39,7 +39,7 @@ final class RepoRootResolutionTests: XCTestCase {
     /// Runner/ を持たないパスを指していたら探索へフォールバックせず失敗する(誤設定を黙って読み替えない)
     func testInvalidOverrideThrows() throws {
         let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("ftester-toolroot-invalid-\(UUID().uuidString)")
+            .appendingPathComponent("fleetest-toolroot-invalid-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
 

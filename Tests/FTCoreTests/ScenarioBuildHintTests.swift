@@ -2,7 +2,7 @@
 //
 // SPM の `invalid custom path` は正確だが**規約を知らない**ので、受け手は原因
 // (2026-08-05 の `Projects/`→`TestProjects/` 改名の取り残し)に辿り着けない
-// (外部フィードバック 2026-08-06)。直すのは `ftester project sync` の1手。
+// (外部フィードバック 2026-08-06)。直すのは `fleetest project sync` の1手。
 
 import XCTest
 @testable import FTCore
@@ -18,7 +18,7 @@ final class ScenarioBuildHintTests: XCTestCase {
         let tail = "error: invalid custom path 'Projects/MyAppTests/Scenarios' for target 'x'"
         let hint = ScenarioHost.buildHint(tail, project: try project())
         XCTAssertTrue(hint.contains("TestProjects/MyAppTests/scenarios"), "正しいパスを示すこと")
-        XCTAssertTrue(hint.contains("ftester project sync"), "直し方を示すこと")
+        XCTAssertTrue(hint.contains("fleetest project sync"), "直し方を示すこと")
     }
 
     /// **無関係な失敗に助言を出さない**(誤誘導は無いより悪い)

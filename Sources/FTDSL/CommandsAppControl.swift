@@ -136,7 +136,7 @@ private func pollForegroundMatch(driver: AppDriver, target: String,
 }
 
 /// フォアグラウンドのアプリが appNameOrAppId(iOS=bundle ID / Android=package 名)と一致することの検証。
-/// ftester はニックネーム機構を持たないため、引数は ID そのもの(引数名だけ Shirates 準拠)。
+/// fleetest はニックネーム機構を持たないため、引数は ID そのもの(引数名だけ Shirates 準拠)。
 /// waitSeconds までポーリングする。Android は失敗メッセージに actual の package 名を含める
 /// (iOS は前面 bundle ID を取得する手段が無いため自然と省かれる。foregroundAppID 参照)
 public func appIs(_ appNameOrAppId: String, waitSeconds: Double = FlowStep.defaultIsScreenWaitSeconds,

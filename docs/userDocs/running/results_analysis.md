@@ -1,7 +1,7 @@
 # Results Analysis
 
-Every `ftester run` (CLI or `ftester api run`) appends its results to
-`TestProjects/<name>/results/`. This page covers the `ftester results` commands and how to read
+Every `fleetest run` (CLI or `fleetest api run`) appends its results to
+`TestProjects/<name>/results/`. This page covers the `fleetest results` commands and how to read
 a failure; the full JSON schema is the single source of truth at
 [../../results-json.md](../../results-json.md).
 
@@ -18,21 +18,21 @@ results/runs/<YYYY-MM>/<runID>/
 `results/` is an append-only, git-friendly layout: `runID` embeds the machine name and a random
 suffix, so results from different machines/branches merge without conflicts.
 
-## `ftester results` commands
+## `fleetest results` commands
 
 | Command | Description |
 |---|---|
-| `ftester results list [--since <period>] [--limit <n>]` | List runs, newest first |
-| `ftester results summary [--scenario <id>]` | Aggregate run count, pass rate and duration per scenario (lowest pass rate first) |
-| `ftester results flaky [--min-runs <n>]` | Scenarios that both pass and fail, most flaky first |
-| `ftester results trend --scenario <id>` | One scenario's run history in chronological order |
-| `ftester results devices` | Run count and pass rate per worker (device) and per platform |
-| `ftester results slow [--limit <n>]` | Scenarios by average duration, slowest first |
-| `ftester results insights` | Ten checks over the run history — see [What `insights` detects](#what-insights-detects) |
+| `fleetest results list [--since <period>] [--limit <n>]` | List runs, newest first |
+| `fleetest results summary [--scenario <id>]` | Aggregate run count, pass rate and duration per scenario (lowest pass rate first) |
+| `fleetest results flaky [--min-runs <n>]` | Scenarios that both pass and fail, most flaky first |
+| `fleetest results trend --scenario <id>` | One scenario's run history in chronological order |
+| `fleetest results devices` | Run count and pass rate per worker (device) and per platform |
+| `fleetest results slow [--limit <n>]` | Scenarios by average duration, slowest first |
+| `fleetest results insights` | Ten checks over the run history — see [What `insights` detects](#what-insights-detects) |
 
 All of them accept `--project`, `--since <period>` (a relative value like `30d`/`12h`, or
 `YYYY-MM-DD`; default `90d`), and `--json` for single-line JSON output. Run
-`ftester results <subcommand> --help` for the exact flags.
+`fleetest results <subcommand> --help` for the exact flags.
 
 ## What `insights` detects
 
@@ -89,14 +89,14 @@ jq -r 'select(.passed==false) | .failedSteps[0]
 
 ## In VS Code
 
-The command palette's **"ftester: Open Results Dashboard"** opens a panel showing recent runs,
+The command palette's **"fleetest: Open Results Dashboard"** opens a panel showing recent runs,
 per-scenario pass rate/duration, flaky scenarios, per-device/worker aggregates, a daily trend and
-insights — backed by the same `ftester results` data. See the "結果ダッシュボード" section of
-[vscode-ftester/README.md](../../../vscode-ftester/README.md) (Japanese).
+insights — backed by the same `fleetest results` data. See the "結果ダッシュボード" section of
+[vscode-fleetest/README.md](../../../vscode-fleetest/README.md) (Japanese).
 
 ## CI
 
-`ftester run --junit <path>` writes a JUnit XML report alongside the JSON results, for CI test
+`fleetest run --junit <path>` writes a JUnit XML report alongside the JSON results, for CI test
 reporting. See [ci.md](../in_action/ci.md).
 
 ### Link

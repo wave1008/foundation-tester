@@ -1,7 +1,7 @@
 // 失敗キャッシュ(.unavailable / unavailableRetryInterval)を再生したときの文言。
 //
 // 再生された文はライブの失敗と1バイトも違わなかったため、読み手は「今まさに adb forward が
-// 落ちた」と読む。実際、手で `adb forward` を打って成功し `ftester bridge status` も通るのに
+// 落ちた」と読む。実際、手で `adb forward` を打って成功し `fleetest bridge status` も通るのに
 // MCP だけが同じ文言を返し続ける状況で、原因をブリッジ側だと誤認して調査に数分溶かした。
 // キャッシュ自体は嵐防止として残す価値がある(失敗1回は probe 2s + 起動待ち最大 10s)ので、
 // 消さずに「これは再生である」と残り時間・抜け道を添える。
@@ -17,7 +17,7 @@ final class AndroidBridgeFailureCacheMessageTests: XCTestCase {
     }
 
     /// キャッシュの断り(`[cached: …]`)だけを切り出す。**全文で assert しない** ——
-    /// 素の案内文にも `ftester bridge up --platform android` は含まれるので、全文照合だと
+    /// 素の案内文にも `fleetest bridge up --platform android` は含まれるので、全文照合だと
     /// 断り側からその一文が消えても緑のまま通る(変異テストで実際に生き残った)
     private func cachedClause(_ text: String) -> String? {
         guard let start = text.range(of: "[cached:") else { return nil }

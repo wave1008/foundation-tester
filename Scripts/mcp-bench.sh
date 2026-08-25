@@ -85,7 +85,7 @@ fi
 if [ ${#VARIANT_NAMES[@]} -eq 0 ]; then VARIANT_NAMES=(full); VARIANT_SPECS=(""); fi
 
 STAMP="$(date +%Y%m%d-%H%M%S)"
-[ -n "$OUT" ] || OUT="$ROOT/.ftester/bench/$STAMP"
+[ -n "$OUT" ] || OUT="$ROOT/.fleetest/bench/$STAMP"
 mkdir -p "$OUT"
 # **絶対パスへ正規化する**: run は `cd "$CWD"` してから claude を起動するので、相対の
 # `--mcp-config` は cwd 側で解決されて必ず見つからない。それでも claude は 1 イベントも
@@ -97,12 +97,12 @@ say() { echo "$*" | tee -a "$LOG"; }
 
 # **測る対象は「今のソースで建てた」サーバ**(古いバイナリを測ると、直したはずの注記が
 # 反映されないまま結論が出る)
-say "==> ftester-mcp を建てる"
+say "==> fleetest-mcp を建てる"
 if [ "$DRY_RUN" = 0 ]; then
-  (cd "$ROOT" && swift build --product ftester-mcp) >>"$LOG" 2>&1 \
+  (cd "$ROOT" && swift build --product fleetest-mcp) >>"$LOG" 2>&1 \
     || die "ビルドに失敗($LOG)"
 fi
-BIN="$ROOT/.build/debug/ftester-mcp"
+BIN="$ROOT/.build/debug/fleetest-mcp"
 [ "$DRY_RUN" = 1 ] || [ -x "$BIN" ] || die "実行ファイルが無い: $BIN"
 
 # **CLAUDE.md の無い作業ディレクトリで走らせる**: 保守者向けの指示を読んだエージェントは
@@ -126,7 +126,7 @@ for vi in "${!VARIANT_NAMES[@]}"; do
     *) off_spec="$spec"; brief_spec="" ;;
   esac
   cat > "$vdir/mcp.json" <<JSON
-{"mcpServers":{"ftester":{"command":"$BIN","env":{"FT_MCP_NOTES_OFF":"$off_spec","FT_MCP_NOTES_BRIEF":"$brief_spec"}}}}
+{"mcpServers":{"fleetest":{"command":"$BIN","env":{"FT_MCP_NOTES_OFF":"$off_spec","FT_MCP_NOTES_BRIEF":"$brief_spec"}}}}
 JSON
   say "==> variant $variant (FT_MCP_NOTES_OFF='$off_spec' FT_MCP_NOTES_BRIEF='$brief_spec')"
 
@@ -152,7 +152,7 @@ drop: や lastN: で刈り込んでから、もう一度呼んでください。
       set -- claude -p "$prompt" \
         --output-format stream-json --verbose \
         --mcp-config "$vdir/mcp.json" --strict-mcp-config \
-        --allowedTools mcp__ftester \
+        --allowedTools mcp__fleetest \
         --max-turns "$max_turns"
       [ -z "$MODEL" ] || set -- "$@" --model "$MODEL"
       if [ "$DRY_RUN" = 1 ]; then

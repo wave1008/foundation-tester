@@ -30,8 +30,8 @@ const result = (text, extra = {}) => ({
 
 test('ft_* の呼び出しだけを数え、他サーバの道具は無視する', () => {
   const m = metricsFromTranscript([
-    toolUse('mcp__ftester__ft_snapshot'),
-    toolUse('mcp__ftester__ft_tap'),
+    toolUse('mcp__fleetest__ft_snapshot'),
+    toolUse('mcp__fleetest__ft_tap'),
     toolUse('mcp__other__do_something'),
     toolUse('Read'),
     result('RESULT: 立川'),
@@ -44,9 +44,9 @@ test('ft_* の呼び出しだけを数え、他サーバの道具は無視する
 
 test('snapshots は ft_snapshot と ft_batch の合計(木を読み直した往復)', () => {
   const m = metricsFromTranscript([
-    toolUse('mcp__ftester__ft_snapshot'),
-    toolUse('mcp__ftester__ft_batch'),
-    toolUse('mcp__ftester__ft_tap'),
+    toolUse('mcp__fleetest__ft_snapshot'),
+    toolUse('mcp__fleetest__ft_batch'),
+    toolUse('mcp__fleetest__ft_tap'),
     result('done'),
   ], null)
   assert.equal(m.snapshots, 2)
@@ -75,7 +75,7 @@ test('expect が無ければ claude 自身の成否を使う', () => {
 
 test('壊れた行・未知の形で落ちない(記録は途中で切れることがある)', () => {
   const m = metricsFromTranscript(
-    ['{壊れた', '', JSON.stringify(toolUse('mcp__ftester__ft_tap')), '{"type":"unknown"}'], null)
+    ['{壊れた', '', JSON.stringify(toolUse('mcp__fleetest__ft_tap')), '{"type":"unknown"}'], null)
   assert.equal(m.toolCalls, 1)
   assert.equal(m.wallSeconds, null)
   assert.equal(m.completed, false)
@@ -188,9 +188,9 @@ test('metricsFromTranscript が tool_result から下書きを拾う(最後の�
     message: { content: [{ type: 'tool_result', content: [{ type: 'text', text }] }] },
   })
   const m = metricsFromTranscript([
-    toolUse('mcp__ftester__ft_draft_scenario'),
+    toolUse('mcp__fleetest__ft_draft_scenario'),
     draftResult(DRAFT.replace('tap("#ok")', 'tap("#recycler_view >> .clickable[9]")')),
-    toolUse('mcp__ftester__ft_draft_scenario'),
+    toolUse('mcp__fleetest__ft_draft_scenario'),
     draftResult(DRAFT),
     result('RESULT: ok'),
   ], null)
@@ -261,7 +261,7 @@ test('metricsFromTranscript が注記のバイトを積む', () => {
     message: { content: [{ type: 'tool_result', content: [{ type: 'text', text }] }] },
   })
   const m = metricsFromTranscript([
-    toolUse('mcp__ftester__ft_snapshot'),
+    toolUse('mcp__fleetest__ft_snapshot'),
     noteResult('note: abc\nscreen: 1x1\n[1] button "x"'),
     result('RESULT: ok'),
   ], null)
@@ -270,6 +270,6 @@ test('metricsFromTranscript が注記のバイトを積む', () => {
 })
 
 test('注記が1つも無い run は 0(欠測ではない)', () => {
-  const m = metricsFromTranscript([toolUse('mcp__ftester__ft_tap'), result('RESULT: ok')], null)
+  const m = metricsFromTranscript([toolUse('mcp__fleetest__ft_tap'), result('RESULT: ok')], null)
   assert.equal(m.noteBytes, 0)
 })

@@ -10,7 +10,7 @@ final class SelectorInventoryTests: XCTestCase {
     override func setUp() {
         super.setUp()
         url = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("ft-inventory-\(UUID().uuidString)/.ftester/inv.json")
+            .appendingPathComponent("ft-inventory-\(UUID().uuidString)/.fleetest/inv.json")
     }
 
     override func tearDown() {

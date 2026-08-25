@@ -206,7 +206,7 @@ public enum ScenarioFolders {
     // MARK: - 内部
 
     /// scenarios/ 以下の .swift を列挙する(_disabled と隠しディレクトリはスキップ)。
-    /// Sources/ftester/ProjectCommands.swift の lint-selectors からも呼ばれる(同一走査規則の再利用)
+    /// Sources/fleetest/ProjectCommands.swift の lint-selectors からも呼ばれる(同一走査規則の再利用)
     public static func swiftFiles(under dir: URL) -> [URL] {
         guard let enumerator = FileManager.default.enumerator(
             at: dir, includingPropertiesForKeys: [.isDirectoryKey],

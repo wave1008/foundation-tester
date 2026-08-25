@@ -1,6 +1,6 @@
-# About Ftester
+# About Fleetest
 
-Ftester is a macOS-only E2E testing tool for iOS / Android apps, built around Claude Code.
+Fleetest is a macOS-only E2E testing tool for iOS / Android apps, built around Claude Code.
 
 ## Design philosophy: "AI writes the tests, code replays them deterministically"
 
@@ -22,7 +22,7 @@ extension.
 
 | Entry point | Launch | Suited for |
 |---|---|---|
-| **CLI** `ftester` | `swift run ftester ...` (clone), or the built `.build/debug/ftester` | scheduled CI / regression runs (deterministic, free, exit code) |
+| **CLI** `fleetest` | `swift run fleetest ...` (clone), or the built `.build/debug/fleetest` | scheduled CI / regression runs (deterministic, free, exit code) |
 | **VSCode extension** | the VSCode extension (device monitor, live control, dashboard) | interactive use: running/debugging scenarios, live control (record → generate), device monitor, results dashboard |
 | **MCP server** | started automatically by Claude Code | agent-driven work: AI-authored tests, debugging, exploratory testing |
 | **Swift DSL** | `TestProjects/<name>/scenarios/*.swift` | the test asset itself — saved and run the same way no matter which entry point created it |
@@ -30,7 +30,7 @@ extension.
 ## Role division
 
 **Exploration and judgment (intelligence) belong to the agent; operating, executing, and
-verifying (determinism) belong to ftester.** Tests are authored either by recording live control
+verifying (determinism) belong to fleetest.** Tests are authored either by recording live control
 in the VSCode extension (which converts operations into a Swift scenario) or by Claude Code
 (via MCP) for more complex cases. Once the Swift scenario exists, it is replayed deterministically
 by the CLI or CI.
@@ -38,7 +38,7 @@ by the CLI or CI.
 ## Architecture
 
 ```
-ftester CLI / MCP ──(subprocess)──▶ ftester-scenarios-<project> (discovers/runs a project's scenarios)
+fleetest CLI / MCP ──(subprocess)──▶ fleetest-scenarios-<project> (discovers/runs a project's scenarios)
       │                                        │  FTDSL   (Swift DSL: @TestClass/@Test macros, commands, reporting)
       │                                        │  FTAgent (Foundation Models: visual verification / healing / triage)
       │                                        │  FTCore  (step model / AppDriver abstraction / StepExecutor)

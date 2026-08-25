@@ -2,7 +2,7 @@
 // FM(Foundation Models)を要するため通常実行(scenarios/ 直下)には載せず _disabled/ に置く。
 // `heal.json` プロファイル(--heal)でのみ通す想定。
 //
-// ftester 機能: ヒールキャッシュ経由の自己修復(docs/design.md §10「自己修復の再設計」)。
+// fleetest 機能: ヒールキャッシュ経由の自己修復(docs/design.md §10「自己修復の再設計」)。
 // #sw_heal_schema を OFF にして id スキーマを v1→v2 に切り替える(ラベル『修復対象』は不変)。
 // シナリオは #btn_heal_v1 を書いたままにし、実体は #btn_heal_v2 になっている状態で
 // ラベルから FM が解決できるかを検証する。

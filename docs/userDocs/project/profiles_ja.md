@@ -58,7 +58,7 @@
   ディスパッチされます([remote_runners_ja.md](../in_action/remote_runners_ja.md)参照)。
   未指定は「このマシン」を意味します。
 
-`ftester profile setup --auto-device` はデバイスを自動選定します。iOS は最新 OS の既存シミュレータ
+`fleetest profile setup --auto-device` はデバイスを自動選定します。iOS は最新 OS の既存シミュレータ
 (iPad を除く)、Android は既存 AVD のうち API レベルが最大のものを選びます。
 
 ## マシン決定の順序
@@ -75,15 +75,15 @@
 
 | コマンド | 説明 |
 |---|---|
-| `ftester profile setup --platform <ios\|android\|both> --app-id <id> [--auto-device] [...]` | アプリ/マシン/実行プロファイルをまとめて整合させて作成する(冪等) |
-| `ftester profile list` | 実行プロファイルの一覧と、このマシンでの解決結果を表示する |
+| `fleetest profile setup --platform <ios\|android\|both> --app-id <id> [--auto-device] [...]` | アプリ/マシン/実行プロファイルをまとめて整合させて作成する(冪等) |
+| `fleetest profile list` | 実行プロファイルの一覧と、このマシンでの解決結果を表示する |
 
 ## VSCode での編集
 
 VSCode 拡張の「デバイス」タブから実行/アプリ/マシンプロファイルを対話的に編集できます。また
 `profiles/{apps,machines,runs}/*.json` には拡張が提供する JSON スキーマ(`schemas/*.schema.json`)が
 適用され、手で編集する際も補完・ホバー・構造レベルの検証が効きます。詳細は
-[vscode-ftester/README.md](../../../vscode-ftester/README.md)(「実行プロファイルの編集支援」)を
+[vscode-fleetest/README.md](../../../vscode-fleetest/README.md)(「実行プロファイルの編集支援」)を
 参照してください。
 
 ### Link

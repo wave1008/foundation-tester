@@ -45,7 +45,7 @@ if not isinstance(mutations, list) or not mutations:
 # 承知のうえで重ねるときだけ MUT_ALLOW_DURING_RUN=1。
 def device_run_in_progress():
     # 自分のコマンドラインにこの文字列は載らないので自己一致しない(pgrep の罠は CLAUDE.md)
-    for pattern in ("Scripts/e2e.sh", "ftester run ", "ftester api run"):
+    for pattern in ("Scripts/e2e.sh", "fleetest run ", "fleetest api run"):
         if subprocess.run(["pgrep", "-f", pattern], capture_output=True).returncode == 0:
             return pattern
     return None
@@ -60,7 +60,7 @@ repo = os.getcwd()
 name = os.path.basename(repo)
 root = os.environ.get("MUT_WORKTREE_ROOT", os.path.join(os.path.dirname(repo), f"{name}-mutwt"))
 jobs = int(os.environ.get("MUT_JOBS", "3"))
-log_dir = os.path.join(repo, ".ftester", "mutation", datetime.now().strftime("%Y%m%d-%H%M%S"))
+log_dir = os.path.join(repo, ".fleetest", "mutation", datetime.now().strftime("%Y%m%d-%H%M%S"))
 os.makedirs(log_dir, exist_ok=True)
 
 def sh(args, **kw):
@@ -95,7 +95,7 @@ def run_in(wt, index, mutation):
     # 作業ツリーの現状(未コミット含む)を worktree へ同期。.build は消さない(温かい
     # キャッシュが並列化の前提)。--delete は「本線で消したファイルの残留」を防ぐ
     r = sh(["rsync", "-a", "--delete",
-            "--exclude=.git", "--exclude=.build", "--exclude=.ftester",
+            "--exclude=.git", "--exclude=.build", "--exclude=.fleetest",
             "--exclude=node_modules", "--exclude=results", "--exclude=reports",
             f"{repo}/", f"{wt}/"])
     if r.returncode != 0:

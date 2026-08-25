@@ -8,7 +8,7 @@
 //
 // 各集合の出典(**片方だけ変えない**):
 //   inApp    → InAppBridge/build.sh の SWIFT_SOURCES と clang 行
-//   xcuitest → Runner/project.yml の FTesterRunnerUITests.sources
+//   xcuitest → Runner/project.yml の FleetestRunnerUITests.sources
 //   android  → AndroidRunner/build.sh の javac / aapt2 の入力
 
 import CryptoKit
@@ -41,7 +41,7 @@ public enum BridgeSourceSet: String, CaseIterable, Sendable {
             ]
         case .xcuitest:
             // Runner/project.yml は含めない: UITests の設定はブリッジ挙動に効くが、同ファイルは
-            // SampleApp / FTesterRunnerApp の都合でも編集されるためノイズが勝つ
+            // SampleApp / FleetestRunnerApp の都合でも編集されるためノイズが勝つ
             return ["Sources/FTCore/BridgeDTO.swift", "Sources/FTCore/SnapshotDedupe.swift",
                     "Sources/FTCore/TypeReadback.swift"]
         case .android:
@@ -55,7 +55,7 @@ public enum BridgeSourceSet: String, CaseIterable, Sendable {
         case .inApp:
             return ("InAppBridge/Sources", nil)
         case .xcuitest:
-            return ("Runner/FTesterRunnerUITests", nil)
+            return ("Runner/FleetestRunnerUITests", nil)
         case .android:
             return ("AndroidRunner/src/com/example/ftbridge", ["java"])
         }

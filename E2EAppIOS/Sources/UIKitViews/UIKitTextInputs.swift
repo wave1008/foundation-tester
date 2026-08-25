@@ -4,7 +4,7 @@ import UIKit
 // テキスト入力画面は **UIKit の UITextField / UITextView** を使う(SwiftUI TextField ではない)。
 // 狙いは型語彙のカバレッジ: SwiftUI の TextField と UIKit の生 UITextField は
 // アクセシビリティツリー上の見え方(型・value・placeholder の出方)が異なるため、
-// ftester の type/valueIs をネイティブ資産に近い形で検証できる。
+// fleetest の type/valueIs をネイティブ資産に近い形で検証できる。
 
 struct UIKitTextField: UIViewRepresentable {
     let tag: String

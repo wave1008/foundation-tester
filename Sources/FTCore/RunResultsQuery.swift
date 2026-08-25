@@ -1,6 +1,6 @@
 // RunResultsQuery.swift
 // RunResultsStore が読み取った [RunMetaRecord]/[ScenarioRunRecord] を集計する純関数群。
-// CLI(ftester results)と vscode 拡張向け api コマンドの双方から再利用するため FTCore に置く。
+// CLI(fleetest results)と vscode 拡張向け api コマンドの双方から再利用するため FTCore に置く。
 // 日付は startedAt(ISO8601 文字列)を基準に比較する。パース不能な文字列は distantPast 扱いで
 // 落ちないようにする(RunResultsStore 側も同様に不正日時を許容している)。
 
@@ -207,7 +207,7 @@ public enum RunResultsQuery {
     // MARK: - daily
 
     /// vscode 拡張ダッシュボードの日別グラフ用。フィールド名は
-    /// vscode-ftester/src/dashboardModel.ts と同期
+    /// vscode-fleetest/src/dashboardModel.ts と同期
     public struct DailyRow: Codable, Sendable, Equatable {
         public let date: String
         public let total: Int
@@ -617,7 +617,7 @@ public enum RunResultsQuery {
     /// **ヒールキャッシュ/自己修復に寄りかかったまま緑が続いている**セレクタ。
     ///
     /// 修正提案は毎 run 出るが、放置しても何も起きない —— キャッシュは
-    /// `.ftester/heal-cache.json` に残り、2 回目以降は FM すら呼ばずに通る。
+    /// `.fleetest/heal-cache.json` に残り、2 回目以降は FM すら呼ばずに通る。
     /// 速度のための仕組みが「壊れたセレクタを永久に緑にする装置」になっていないかを、
     /// **提案が何 run 続いたか**で見る(1 run だけなら直せばよい。続いているなら放置されている)。
     private static func healRelianceInsights(scenarioID: String,

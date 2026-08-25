@@ -1,5 +1,5 @@
 // 13_ディープリンク.swift
-// ftester 機能: launchApp(url:)(再起動 + URL 配送を1ステップで行う)/ openURL(起動済み
+// fleetest 機能: launchApp(url:)(再起動 + URL 配送を1ステップで行う)/ openURL(起動済み
 // プロセスへ URL を配送する)。fte2eandroid:// スキームの契約(着地画面・#txt_last_deeplink・
 // 未知 URL は遷移しない)は E2EAppCMP/docs/ui-contract.md §ディープリンク。
 

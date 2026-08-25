@@ -1,5 +1,5 @@
 // 08_ライフサイクルとコントロール.swift
-// ftester 機能: `restartApp`(terminate+launch でのプロセス内状態リセット・永続カウンタは残る)/
+// fleetest 機能: `restartApp`(terminate+launch でのプロセス内状態リセット・永続カウンタは残る)/
 // `terminateApp`(落としたことは次の launchApp の launch カウンタでのみ観測できる)と、
 // ネイティブ UI コントロール(Switch / Slider / トグルボタン)の状態遷移・`enabledIsFalse`/
 // `enabledIsTrue`(11)の検証。

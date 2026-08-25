@@ -243,11 +243,11 @@ final class RemoteControlWorkspaceTests: XCTestCase {
 
         let resolved = try ProfileResolver.resolve(
             project: project, runName: "r", machineName: "m",
-            workspaceOverride: "/Users/ci/ftester-runner/work/workspace/SampleApp")
+            workspaceOverride: "/Users/ci/fleetest-runner/work/workspace/SampleApp")
         XCTAssertEqual(resolved.workspaceRoot?.path,
-                       "/Users/ci/ftester-runner/work/workspace/SampleApp")
+                       "/Users/ci/fleetest-runner/work/workspace/SampleApp")
         XCTAssertEqual(resolved.apps["ios"]?.appPath,
-                       "/Users/ci/ftester-runner/work/workspace/SampleApp/apps/SampleApp.app")
+                       "/Users/ci/fleetest-runner/work/workspace/SampleApp/apps/SampleApp.app")
         XCTAssertEqual(resolved.apps["ios"]?.sourcePath,
                        tempDir.appendingPathComponent("apps/SampleApp.app").path)
     }

@@ -1,5 +1,5 @@
 // シナリオソースは自動書換しない方針のため、FM 自己修復の結果を
-// .ftester/heal-cache.json に永続化し、2 回目以降は FM なしで解決する。
+// .fleetest/heal-cache.json に永続化し、2 回目以降は FM なしで解決する。
 // キー = シナリオID+file:line+旧セレクタ文字列。ソースを直すとキー不一致で自然に無効化される。
 
 import Foundation
@@ -15,7 +15,7 @@ final class HealCache {
     private let url: URL
     private var entries: [String: Entry]
 
-    init(url: URL = URL(fileURLWithPath: ".ftester/heal-cache.json")) {
+    init(url: URL = URL(fileURLWithPath: ".fleetest/heal-cache.json")) {
         self.url = url
         if let data = try? Data(contentsOf: url),
            let loaded = try? JSONDecoder().decode([String: Entry].self, from: data) {

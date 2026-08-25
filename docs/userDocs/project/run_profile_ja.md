@@ -47,7 +47,7 @@
 `fm` が親スイッチで、`heal` と `screenLooksLike` は既定 `true`、`falsePositiveCheck` は既定
 `false` です。`fm` が `false` なら個別トグルは無効になります。自己修復が既定でオンかどうかは
 実行方法にも依存します。**`--profile` を使う実行は `heal` の既定が ON**、プロファイルを使わない
-素の `ftester run` は既定 OFF です。コマンドラインの `--heal` / `--no-heal` はどちらの既定も
+素の `fleetest run` は既定 OFF です。コマンドラインの `--heal` / `--no-heal` はどちらの既定も
 上書きします(両方の同時指定はエラー)。
 
 ## iOS エンジン

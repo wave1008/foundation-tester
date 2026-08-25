@@ -94,7 +94,7 @@ enum VideoRecordingFinalizer {
         }
         writer.startSession(atSourceTime: clipStart)
 
-        let queue = DispatchQueue(label: "ftester.video.extractClip")
+        let queue = DispatchQueue(label: "fleetest.video.extractClip")
         // 区間開始より前の最後のサンプル(pendingBeforeClip)を区間開始時刻に retime して先頭へ、
         // 以降は区間内サンプルをそのまま append する(VFR で区間頭にフレームが無い罠への対処)。
         var finished = false

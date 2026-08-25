@@ -59,7 +59,7 @@ this machine can use, under `ios` and `android`:
   SSH instead of running locally (see [remote_runners.md](../in_action/remote_runners.md)).
   Leaving `host` unset means "this machine".
 
-`ftester profile setup --auto-device` picks a device automatically: for iOS, the newest-OS
+`fleetest profile setup --auto-device` picks a device automatically: for iOS, the newest-OS
 existing simulator (excluding iPads); for Android, the existing AVD with the highest API level.
 
 ## Machine resolution order
@@ -77,8 +77,8 @@ machines.
 
 | Command | Description |
 |---|---|
-| `ftester profile setup --platform <ios\|android\|both> --app-id <id> [--auto-device] [...]` | Create/refresh the app, machine and run profiles together (idempotent) |
-| `ftester profile list` | List run profiles and show how they resolve on this machine |
+| `fleetest profile setup --platform <ios\|android\|both> --app-id <id> [--auto-device] [...]` | Create/refresh the app, machine and run profiles together (idempotent) |
+| `fleetest profile list` | List run profiles and show how they resolve on this machine |
 
 ## Editing in VS Code
 
@@ -86,7 +86,7 @@ The VS Code extension's Device tab lets you edit run/app/machine profiles intera
 `profiles/{apps,machines,runs}/*.json` get a JSON schema (`schemas/*.schema.json`) contributed by
 the extension for completion, hover and structural validation while editing by hand. See
 the "実行プロファイルの編集支援" section of
-[vscode-ftester/README.md](../../../vscode-ftester/README.md) (Japanese).
+[vscode-fleetest/README.md](../../../vscode-fleetest/README.md) (Japanese).
 
 ### Link
 - [index](../index.md)

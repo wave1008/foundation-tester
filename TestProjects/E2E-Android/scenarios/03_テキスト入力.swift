@@ -1,5 +1,5 @@
 // 03_テキスト入力.swift
-// ftester 機能: `type` コマンドと入力値の echo 検証(単一行/パスワード/送信/クリア)、`value*` 一式、
+// fleetest 機能: `type` コマンドと入力値の echo 検証(単一行/パスワード/送信/クリア)、`value*` 一式、
 // 型セレクタでの入力欄解決、`clearInput`、キーボード表示状態、`pressEnter`・末尾改行の IME アクションを
 // まとめて検証する。
 // SUT の入力欄は EditText。inputType=textPassword の欄だけ `SecureTextField` になり、

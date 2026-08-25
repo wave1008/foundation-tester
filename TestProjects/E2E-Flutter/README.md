@@ -1,6 +1,6 @@
 # TestProjects/E2E-Flutter
 
-ftester を **Flutter アプリ**に対して検証する E2E テストプロジェクト。
+fleetest を **Flutter アプリ**に対して検証する E2E テストプロジェクト。
 対象アプリはリポジトリ同梱の `E2EAppFlutter/`(bundle id / applicationId = `com.ftester.e2e.flutter`)。
 
 - 画面構成・`#id`・ラベルの正: `E2EAppCMP/docs/ui-contract.md`(Compose 版と共通)
@@ -22,8 +22,8 @@ Flutter SDK が必要(`brew install --cask flutter`)。
 両OSのデバイスを1プロファイルに並べても片方のキューにしか入らない(docs/design.md §11.4)。
 
 ```sh
-ftester run --project E2E-Flutter --profile ios-xcuitest
-ftester run --project E2E-Flutter --profile android
+fleetest run --project E2E-Flutter --profile ios-xcuitest
+fleetest run --project E2E-Flutter --profile android
 ```
 
 ## 実測(2026-07-23・M2 Ultra)
@@ -39,7 +39,7 @@ ftester run --project E2E-Flutter --profile android
 launchApp 回数を減らすため、同じ画面を起点にする軽量シナリオは1 @Test の連続 scene へ統合してある
 (2026-08-08。旧ファイル番号は各 scene のタイトルに `旧ID:` 接頭辞で残る)。
 
-| ファイル | 検証する ftester 機能 |
+| ファイル | 検証する fleetest 機能 |
 |---|---|
 | `01_起動と画面遷移.swift` | `launchApp` / タブ切替 / 下位画面遷移+`戻る` / タブ切替でスタックを持ち越さないこと |
 | `02_セレクタ画面.swift` | `#id` 完全一致 / ラベル一致規則 / `.Type[n]` / `.Type#id` / `.Type&&ラベル` / `\|\|` フォールバック連鎖 / OR・否定フィルタ・対称アサーション / `exist(scroll:)`(旧 02/03/04、16 の S0010) |
@@ -57,7 +57,7 @@ launchApp 回数を減らすため、同じ画面を起点にする軽量シナ�
 ## `_disabled/`(通常実行に含めない)
 
 **`_disabled/` は SPM のビルド対象外**(`Package.swift` の `exclude`)。回すときは
-`scenarios/` 直下へ移動 → `swift build --product ftester-scenarios-E2E-Flutter` → 実行 → 元に戻す。
+`scenarios/` 直下へ移動 → `swift build --product fleetest-scenarios-E2E-Flutter` → 実行 → 元に戻す。
 
 - `90_自己修復.swift` — FM 必須。`--heal` を付けて実行。
   **2026-07-23 検証済み**(iOS): FM 経路で `#btn_heal_v1` → `#btn_heal_v2||修復対象` に修復できることを確認。
@@ -104,19 +104,19 @@ flip 時に **FM が実際に見た crop** と読み取り結果が自動で残�
 - 失敗メッセージ末尾の `observed="..."` — **空なら仮説1**(画像が渡っていない)、
   **期待どおりの文字列なら純粋な判定誤り**(読めたのに covered と答えた = Apple 報告の最有力材料)
 - 失敗メッセージ末尾の `[crop: <path>]` — FM が見た画像そのもの
-  (`~/Library/Logs/ftester/occlusion/`。`FT_OCCLUSION_DUMP_DIR` で変更可・`off` で無効)。
+  (`~/Library/Logs/fleetest/occlusion/`。`FT_OCCLUSION_DUMP_DIR` で変更可・`off` で無効)。
   **白紙なら仮説1か2**、レンダリング済みなら判定誤り
-- 再判定・Apple 提出用の最小再現: `Scripts/occlusion-repro.swift`(ftester 非依存)
+- 再判定・Apple 提出用の最小再現: `Scripts/occlusion-repro.swift`(fleetest 非依存)
 
 ```sh
 xcrun swiftc -O Scripts/occlusion-repro.swift -o /tmp/occlusion-repro
-/tmp/occlusion-repro ~/Library/Logs/ftester/occlusion/occlusion-<時刻>.png 15
+/tmp/occlusion-repro ~/Library/Logs/fleetest/occlusion/occlusion-<時刻>.png 15
 ```
 
 ### 配色と検出器の方針
 
 この SUT は **Material 3 の既定配色(淡い着色)をそのまま使う**。白背景に変えれば低インク判定を
-避けられるが、M3 既定はごく普通の実アプリの見た目であり、そこで落ちるなら ftester 側の問題。
+避けられるが、M3 既定はごく普通の実アプリの見た目であり、そこで落ちるなら fleetest 側の問題。
 SUT の見た目を変えて避けるのは**検出器を潰す**行為なので採らない。
 
 - **検出点は `01_起動と画面遷移`**(既定 `requireVisible: true` のまま。timeout も既定 5s のまま —
@@ -128,7 +128,7 @@ SUT の見た目を変えて避けるのは**検出器を潰す**行為なので
 ## in-app エンジン対応(2026-07-23 に2つの修正で解決)
 
 かつては `iosInappEngine: true` で回すと **a11y ツリーが取れず要素が1つも見えなかった**。
-原因は2つあり、どちらも ftester 側で解決済み(`ios-inapp` プロファイルで 20/20 グリーン):
+原因は2つあり、どちらも fleetest 側で解決済み(`ios-inapp` プロファイルで 20/20 グリーン):
 
 1. **Flutter engine は `_AXSSetAutomationEnabled` を見ない**。platform 側の a11y ブリッジ
    (SemanticsObject 群)が生成されず `FlutterView.accessibilityElements` が空のままだった。

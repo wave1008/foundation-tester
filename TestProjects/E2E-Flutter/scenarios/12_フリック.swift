@@ -1,5 +1,5 @@
 // 12_フリック.swift
-// ftester 機能: flick(画面基点の生ジェスチャ。8方向)。
+// fleetest 機能: flick(画面基点の生ジェスチャ。8方向)。
 // installApp/removeApp/tapAppIcon は意図的にここへ含めない(removeApp は自 SUT を消すと以降のシナリオと
 // in-app ブリッジが壊れる。tapAppIcon はホーム画面依存で flake リスクが高く実行での検証は別途行う)。
 // **appIs/screenshot/waitForDisplay/verify は 06_待機とタイムアウト.swift(旧 S0010)へ、
@@ -23,7 +23,7 @@ class フリックが正しく動くこと {
                     // 取りこぼす**ことがある(初回タップが成功扱いのまま黙って無反応になる。
                     // Android で実測)。ここで1往復させ、着地を確認してから操作する。
                     // requireVisible: false = 可視性の**検証**ではなく同期のための1往復
-                    // (詳細は 01_起動と画面遷移.swift・README「既知の ftester 欠陥」参照)。
+                    // (詳細は 01_起動と画面遷移.swift・README「既知の fleetest 欠陥」参照)。
                     exist("#txt_home_marker", requireVisible: false)
                 }.action {
                     tap("#nav_scroll")

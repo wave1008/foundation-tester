@@ -1,5 +1,5 @@
 // BridgeInstrumentation.java
-// ftester の Android ブリッジ本体。iOS の XCUITest ランナー(FTesterBridgeTests)と対。
+// fleetest の Android ブリッジ本体。iOS の XCUITest ランナー(FleetestBridgeTests)と対。
 // 起動:
 //   adb shell "am instrument -w -e port 8123 com.example.ftbridge/.BridgeInstrumentation \
 //              </dev/null >/dev/null 2>&1 &"

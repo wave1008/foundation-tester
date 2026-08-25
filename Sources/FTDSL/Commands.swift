@@ -339,9 +339,9 @@ public func rotateTo(_ orientation: FTOrientation,
 /// `ft_swipe scrollFrame` も `ft_drag` も効かない = 座標しか手が無かった。
 /// 固定コーパス47画面の実測でも、操作可能な要素の 9.3% は書けるセレクタを持たない。
 ///
-/// **Shirates との差**(準拠表に記載): 座標は `Int` ではなく `Double`(ftester の
+/// **Shirates との差**(準拠表に記載): 座標は `Int` ではなく `Double`(fleetest の
 /// 座標コマンドは全部 `Double`。`swipePointToPoint` と揃える)/ `repeat:` `safeMode:` は持たない
-/// (あちらは tap を swipe で合成するための引数。ftester はドライバに座標タップの口がある)
+/// (あちらは tap を swipe で合成するための引数。fleetest はドライバに座標タップの口がある)
 public func tap(x: Double, y: Double, holdSeconds: Double = FlowStep.defaultTapHoldSeconds,
                 file: StaticString = #filePath, line: UInt = #line) {
     let core = FTRuntime.requireCore(command: "tap")
@@ -698,7 +698,7 @@ private func flickImpl(_ kind: FlickKind, scrollFrame: String?, startMarginRatio
 // MARK: - スクロール(Shirates 準拠のコマンド名)
 
 /// 1回スクロールする(`repeat` 回ぶん繰り返す)。**コンテンツ基準**なので `scrollDown` は
-/// 下に読み進める = 指は上へ動く。ftester のブリッジは全画面スワイプのみなので、
+/// 下に読み進める = 指は上へ動く。fleetest のブリッジは全画面スワイプのみなので、
 /// `scrollFrame` はスクロールさせたい領域のセレクタ式(Shirates と同じく式で受ける)。
 /// **省略時は従来どおり画面中央基準の全画面スワイプ**で、マージン指定も無視される
 /// (全画面固定のままスパンを変えると始点がスクロール領域の外に出る。design.md 参照)。

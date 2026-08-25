@@ -1,4 +1,4 @@
-// in-app ブリッジ状態ファイル(.ftester/bridge-<port>.inapp)の書式往復と、
+// in-app ブリッジ状態ファイル(.fleetest/bridge-<port>.inapp)の書式往復と、
 // stopAll/stop がそれを stale 許容で後始末することを検証する。
 // simctl は実機がないと成功しない(架空 udid/bundleID で失敗する)ため、
 // terminateAndRemove の失敗許容(ファイル削除は必ず起きる)だけを見る。
@@ -13,7 +13,7 @@ final class InAppBridgeStateTests: XCTestCase {
     override func setUpWithError() throws {
         repoRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("ftbridge-inapp-\(UUID().uuidString)")
-        stateDir = repoRoot.appendingPathComponent(".ftester")
+        stateDir = repoRoot.appendingPathComponent(".fleetest")
         try FileManager.default.createDirectory(at: stateDir, withIntermediateDirectories: true)
     }
 

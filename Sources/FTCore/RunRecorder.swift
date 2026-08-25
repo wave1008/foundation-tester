@@ -1,5 +1,5 @@
 // RunRecorder.swift
-// 1 run(ftester run / ftester api run 1 回の呼び出し)のライフサイクルを持つ記録器。
+// 1 run(fleetest run / fleetest api run 1 回の呼び出し)のライフサイクルを持つ記録器。
 // begin() で runID 発番+ run.json 初回書き込み、record()/recordSkipped() でシナリオ単位を
 // 都度書き込み、finish() で run.json に finishedAt・集計を追記する。
 // 並列ワーカー(--profile 実行)から同時に record() が呼ばれるため NSLock で直列化する。

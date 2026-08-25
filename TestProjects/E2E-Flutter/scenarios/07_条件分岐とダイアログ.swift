@@ -1,5 +1,5 @@
 // 07_条件分岐とダイアログ.swift
-// ftester 機能: `ifCanSelect`(出るか不定な要素への条件分岐)・`select`(掴めなければ空要素を返す)・
+// fleetest 機能: `ifCanSelect`(出るか不定な要素への条件分岐)・`select`(掴めなければ空要素を返す)・
 // `back`(Android のみ)・`repeatWhileCanSelect`・`waitForClose` をまとめて検証する
 // (旧: 09_条件分岐とダイアログ の S0010・S0020・S0040 / 14 の S0020 / 21 の S0060)。
 // #btn_maybe_dialog は奇数回目だけダイアログを開く決定的仕様。**カウンタは画面離脱(タブ再入)で
@@ -32,7 +32,7 @@ class 条件分岐とダイアログ操作が正しく働くこと {
                     // FM はホスト全体で直列化(約1回/秒)されるため、全 launchApp で FM を
                     // 呼ぶとコストだけが乗る。**可視性の検証と、occlusion-guard の誤判定を
                     // 検出する役目は 01_起動と画面遷移 が既定(true)のまま担う**
-                    // (README「既知の ftester 欠陥」参照。ここで guard を切っても検出器は死なない)。
+                    // (README「既知の fleetest 欠陥」参照。ここで guard を切っても検出器は死なない)。
                     exist("#txt_home_marker", requireVisible: false)
                 }.action {
                     tap("#nav_dialog")

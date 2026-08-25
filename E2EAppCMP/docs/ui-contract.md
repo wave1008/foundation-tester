@@ -18,7 +18,7 @@ tag 定数は `composeApp/src/commonMain/kotlin/com/ftester/e2e/Tags.kt` に集�
   (2026-07-26 のブリッジ役割正規化以降。それ以前は Compose の Button が Android で `cell` になり
   `ios {}` / `android {}` の分岐が必要だった)。この3つは型セレクタを OS 共通で書ける。
   **入力欄の型は OS 共通ではない**(2026-08-06 に実測して表を訂正した。Compose の制約であって
-  ftester の穴ではない):
+  fleetest の穴ではない):
 
   | | `#field_single` | `#field_password` | `#field_multiline` |
   |---|---|---|---|
@@ -83,7 +83,7 @@ tag 定数は `composeApp/src/commonMain/kotlin/com/ftester/e2e/Tags.kt` に集�
 
 - **横向きの許可**: iOS は `Info.plist` の `UISupportedInterfaceOrientations` に
   Portrait / LandscapeLeft / LandscapeRight。宣言していない向きへは**何をしても回らない**
-  (ftester は 422 で落ちる = 不具合ではない)
+  (fleetest は 422 で落ちる = 不具合ではない)
 - **画面の保持**: 回転を跨いで同じ画面に居続ける。**Android は Activity が作り直される**ので
   構成変更専用の引き継ぎが要る(E2EAppAndroid/docs/ui-contract.md)。Compose / Flutter / RN は
   フレームワーク側が保つ
@@ -221,7 +221,7 @@ Android は intent に package を明示するので影響しないが、**契�
   (singleLine のフィールドとして全 SUT 共通。`len` が増えたら改行が文字として入っている = バグ)
 - **発火後のフォーカス・キーボードの状態は SUT ごとに異なる**(UIKit は resignFirstResponder、
   Compose/Flutter は保持)。**シナリオは発火後に必ず tap し直してから次の入力をする**
-- **Android の発火経路は2つある**。ftester は a11y の `ACTION_IME_ENTER`(actionId は
+- **Android の発火経路は2つある**。fleetest は a11y の `ACTION_IME_ENTER`(actionId は
   フィールドの imeOptions = `IME_ACTION_SEARCH`・`KeyEvent` は **null**)を優先し、
   旧ブリッジ・API 30 未満では `keyevent 66`(actionId は **`IME_NULL`**・`KeyEvent` あり)に落ちる。
   **両方の actionId を受理**しないと片方の経路で発火しない(E2EAppAndroid/docs/ui-contract.md)
@@ -255,7 +255,7 @@ Android は intent に package を明示するので影響しないが、**契�
 | `#btn_gesture_reset` | Button | `ジェスチャクリア` | 全カウンタを初期化 |
 | `#nav_map` | Button | `マップ` | **右下**に置く(マップ画面を開く。左下は `#btn_gesture_reset`)|
 
-スワイプ方向は**指の移動方向**で判定する(上へ払う = `up`)。ftester の `swipe(.up)` と一致させる。
+スワイプ方向は**指の移動方向**で判定する(上へ払う = `up`)。fleetest の `swipe(.up)` と一致させる。
 
 **レイアウトの制約(これを崩すと swipe 検証が落ちる)**: ブリッジの `swipe` は**要素を狙わず画面を払う** —
 iOS は XCUITest の `XCUIApplication.swipeUp()` 等でアプリ frame 全体を払う(in-app エンジンは座標
@@ -425,7 +425,7 @@ in-app 経路のソース走査テスト(`InAppGestureRoutingTests`)が担う。
 | `#btn_enables_late` | Button | `あとで有効` | **Android だけが持つ**。画面に入ってから **1.5 秒間だけ disabled**、その後 enabled。押すと `#txt_late_result` が `late=tapped`。要素は最初から木に居るので `waitForDisplay` では待ち切れない = **`tap` が操作可能になるまで待つ**ことの witness |
 | `#txt_late_result` | Text | `late=<v>` 初期 `late=-` | **Android だけが持つ**。v ∈ `-`/`tapped` |
 
-**disabled の 2 ボタンは `enabledIsTrue`/`enabledIsFalse` の検証材料**(ftester 側の唯一の disabled 供給源)。
+**disabled の 2 ボタンは `enabledIsTrue`/`enabledIsFalse` の検証材料**(fleetest 側の唯一の disabled 供給源)。
 - **無効でもアクセシビリティツリーから消さない**(消えると「要素が見つかりません」になり
   「無効であること」を検証できない)。無効化は enabled 属性だけで表現する。
 - `#btn_toggle_target` は既存の `#cb_agree` を有効化スイッチとして流用する(新しいトグルを増やさない)。

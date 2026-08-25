@@ -55,7 +55,7 @@ public final class AndroidDriver: AppDriver {
         // Finder 上で "/" に化けるため、パス区切りになりうる文字は "_" に潰す
         let safeSerial = (serial ?? "default").map { $0 == ":" || $0 == "/" ? "_" : $0 }
         return FileManager.default.temporaryDirectory
-            .appendingPathComponent("ftester-android-\(String(safeSerial)).json")
+            .appendingPathComponent("fleetest-android-\(String(safeSerial)).json")
     }
 
     func persistState() {

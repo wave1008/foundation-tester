@@ -1,5 +1,5 @@
 // 02_セレクタ画面.swift
-// ftester 機能: セレクタ画面で解決できる記法をまとめて検証する
+// fleetest 機能: セレクタ画面で解決できる記法をまとめて検証する
 // (#id 完全一致 / ラベルの一致規則 / 型・序数・フォールバック連鎖 / OR・否定フィルタ・対称アサーション・scroll:)。
 // 同じ画面を起点にする軽量シナリオを1 @Test の連続 scene へ統合し launchApp を1回に絞る
 // (E2E-iOS 02_セレクタ画面.swift の移植。旧 02/03/04/16.S0010 の統合)。
@@ -31,7 +31,7 @@ class セレクタ画面の機能一式が正しく動くこと {
                     // FM はホスト全体で直列化(約1回/秒)されるため、全 launchApp で FM を
                     // 呼ぶとコストだけが乗る。**可視性の検証と、occlusion-guard の誤判定を
                     // 検出する役目は 01_起動と画面遷移 が既定(true)のまま担う**
-                    // (README「既知の ftester 欠陥」参照。ここで guard を切っても検出器は死なない)。
+                    // (README「既知の fleetest 欠陥」参照。ここで guard を切っても検出器は死なない)。
                     exist("#txt_home_marker", requireVisible: false)
                 }.action {
                     tap("#nav_selector")

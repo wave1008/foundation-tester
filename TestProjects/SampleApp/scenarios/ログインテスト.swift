@@ -1,6 +1,6 @@
 // LoginTest.swift
 // SampleApp のログインシナリオ(Swift DSL のサンプル)。
-// 実行: swift run ftester run --scenario ログインテスト.S0010
+// 実行: swift run fleetest run --scenario ログインテスト.S0010
 
 import FTDSL
 

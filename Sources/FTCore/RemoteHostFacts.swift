@@ -35,13 +35,13 @@ public struct RemoteHostFacts: Codable, Equatable, Sendable {
 
 public enum RemoteHostFactsStore {
 
-    /// 受け手パッケージ直下 .ftester/remote-hosts/(LastResultsStore.stateDir と同じアンカー規則:
+    /// 受け手パッケージ直下 .fleetest/remote-hosts/(LastResultsStore.stateDir と同じアンカー規則:
     /// ScenarioHost.packageRoot() 優先、無ければ project.rootURL から2階層遡る)。
     /// ホストの事実はプロジェクトをまたいで同じ機械を指すので project 名では分けない。
     public static func dir(project: TestProject) -> URL {
         let root = ScenarioHost.packageRoot() ?? project.rootURL
             .deletingLastPathComponent().deletingLastPathComponent()
-        return root.appendingPathComponent(".ftester/remote-hosts")
+        return root.appendingPathComponent(".fleetest/remote-hosts")
     }
 
     /// ホストラベル(profiles/machines の識別子・"user@host" 等)→ ファイル名。

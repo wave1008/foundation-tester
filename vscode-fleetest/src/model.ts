@@ -1,0 +1,291 @@
+// model.ts
+// fleetest CLI (`fleetest api ...`) の JSON/NDJSON 型定義。
+// RunEvent は Sources/FTCore/ScenarioEvent.swift(ScenarioEvent)と
+// Sources/fleetest/ApiRunCommand.swift(runStarted/runFinished)に合わせた kind 判別の共用体。
+// フィールドは概ね optional(Swift 側は同じ struct を全 kind で使い回すため)。
+
+/** `fleetest api list-scenarios --project <P>` の出力(1行JSON)。 */
+export interface ListScenariosResult {
+  project: string;
+  repoRoot: string;
+  scenariosDir: string;
+  folders: string[];
+  scenarios: ScenarioInfo[];
+  /** @Test を1件も持たない @TestClass(空クラス)。class ノードだけツリーに残す。 */
+  emptyClasses?: EmptyClassInfo[];
+}
+
+/** 空クラス(@Test なし)1件分。対向: Sources/fleetest/ApiCommands.swift ApiEmptyClassInfo。 */
+export interface EmptyClassInfo {
+  className: string;
+  file: string;
+  classLine: number | null;
+  folder: string | null;
+}
+
+export interface ScenarioInfo {
+  /** "クラス名.メソッド名" 形式のシナリオID(日本語を含む生文字列)。 */
+  id: string;
+  title: string;
+  deleted: boolean;
+  /** @Draft(実装中)。一括実行から除外。対向: Sources/fleetest/ApiCommands.swift ApiScenarioInfo。 */
+  draft: boolean;
+  file: string;
+  classLine: number | null;
+  methodLine: number | null;
+  folder: string | null;
+}
+
+/** `fleetest api steps --project P --scenario ID` の出力(1行JSON)。 */
+export interface StepsResult {
+  scenario: string;
+  steps: StepRow[];
+}
+
+export type StepSection = "condition" | "action" | "expectation";
+
+export interface StepRow {
+  index: number;
+  scene: number;
+  sceneTitle: string;
+  section: StepSection;
+  command: string;
+  comment: string | null;
+  generatedComment: string | null;
+  /** リポジトリ相対パス。 */
+  file: string;
+  line: number;
+}
+
+/** `fleetest api run ...` が1行ずつ出力するイベントの kind。 */
+export type RunEventKind =
+  | "runStarted"
+  | "workersReady"
+  | "scenarioStarted"
+  | "sceneStarted"
+  | "step"
+  | "sceneFinished"
+  | "fixSuggestion"
+  | "paused"
+  | "scenarioFinished"
+  | "log"
+  | "runFinished"
+  | "wipeStatus"
+  | "scenarioRequeued";
+
+const RUN_EVENT_KINDS: ReadonlySet<string> = new Set<RunEventKind>([
+  "runStarted",
+  "workersReady",
+  "scenarioStarted",
+  "sceneStarted",
+  "step",
+  "sceneFinished",
+  "fixSuggestion",
+  "paused",
+  "scenarioFinished",
+  "log",
+  "runFinished",
+  "wipeStatus",
+  "scenarioRequeued",
+]);
+
+/** 並列実行(`--profile` 指定時)のワーカー(デバイス)1台分の情報。 */
+export interface WorkerInfo {
+  /** モニタータイルの device id と同一規則("ios:simulator1" / "android:emulator1")。 */
+  id: string;
+  name: string;
+  platform: "ios" | "android";
+  detail: string;
+  /** このワーカーが居る機械(手元は省略)。実行プロファイルが複数の機械にまたがるとき、
+   * 同名のデバイスが別の機械にも居るのでレーンの見出しに出す。名前・意味は
+   * monitorDeviceModel.ts の MonitorDevice.machineHost と同じ(対向は
+   * Sources/fleetest/ApiRunCommand.swift の ApiWorkerInfo)。 */
+  machineHost?: string;
+}
+
+/**
+ * 並列実行(`--profile` 指定・非dry-run・非debug)で出力される。複数回出てよい ——
+ * 複数マシン実行では準備できた機械から順にワーカーが増え、そのたびに毎回その時点の
+ * 全構成(累積)を運ぶ。受け手は全置換してよいが、同じ id のレーンのログは維持すること
+ * (runLaneModel.ts の applyWorkers)。以降の全イベントに付く `worker` フィールドは、
+ * その時点までに宣言された workers[].id のいずれか。
+ */
+export interface WorkersReadyEvent {
+  kind: "workersReady";
+  workers: WorkerInfo[];
+}
+
+/** ScenarioEvent.swift の StepResult.Status.eventStatus が返す status 文字列。 */
+export type StepStatus =
+  | "passed"
+  | "passedViaFallback"
+  | "healed"
+  | "failed"
+  | "skipped"
+  | "inconclusive";
+
+/** ScenarioEvent.swift の section フィールド(CAE ブロック外は undefined)。 */
+export type RunStepSection = "condition" | "action" | "expectation";
+
+/** ApiRunCommand.swift の ApiRunStartedEvent。 */
+export interface RunStartedEvent {
+  kind: "runStarted";
+  total: number;
+}
+
+/** ScenarioEvent(kind: "scenarioStarted")。 */
+export interface ScenarioStartedEvent {
+  kind: "scenarioStarted";
+  scenario: string;
+  title?: string;
+  /** 並列実行時のみ付与される担当ワーカー id(WorkersReadyEvent.workers[].id と同一規則)。 */
+  worker?: string;
+}
+
+/** ScenarioEvent(kind: "sceneStarted")。 */
+export interface SceneStartedEvent {
+  kind: "sceneStarted";
+  scenario: string;
+  scene?: number;
+  sceneTitle?: string;
+  worker?: string;
+}
+
+/** ScenarioEvent(kind: "step")。tap/exist 等 1 操作分の結果。 */
+export interface StepEvent {
+  kind: "step";
+  scenario: string;
+  scene?: number;
+  sceneTitle?: string;
+  section?: RunStepSection;
+  index?: number;
+  description?: string;
+  status: StepStatus;
+  /** 失敗理由・フォールバック内容・スキップ理由など(status に応じて意味が変わる)。 */
+  detail?: string;
+  /** コマンド呼び出し元のソース位置(リポジトリルート相対)。 */
+  file?: string;
+  /** 1 起点の行番号。 */
+  line?: number;
+  worker?: string;
+}
+
+/** ScenarioEvent(kind: "sceneFinished")。 */
+export interface SceneFinishedEvent {
+  kind: "sceneFinished";
+  scenario: string;
+  scene?: number;
+  sceneTitle?: string;
+  passed: boolean;
+  worker?: string;
+}
+
+/** ScenarioEvent(kind: "fixSuggestion")。GUI の確認シート用の旧セレクタ・新セレクタを含む。 */
+export interface FixSuggestionEvent {
+  kind: "fixSuggestion";
+  scenario?: string;
+  description?: string;
+  detail?: string;
+  file?: string;
+  line?: number;
+  oldSelector?: string;
+  newSelector?: string;
+  worker?: string;
+}
+
+/** ScenarioEvent(kind: "paused")。--debug 実行時のみ発生する(debugAdapter.ts が処理する)。 */
+export interface PausedEvent {
+  kind: "paused";
+  scenario?: string;
+  index?: number;
+  description?: string;
+  /** コマンド呼び出し元のソース位置(リポジトリルート相対)。 */
+  file?: string;
+  /** 1 起点の行番号。 */
+  line?: number;
+  scene?: number;
+  section?: RunStepSection;
+}
+
+/** ScenarioEvent(kind: "scenarioFinished")。 */
+export interface ScenarioFinishedEvent {
+  kind: "scenarioFinished";
+  scenario: string;
+  passed: boolean;
+  reportPath?: string;
+  worker?: string;
+  /** このシナリオの FM 呼び出し実測(Sources/FTCore/FMHealth.swift の FMUsageRecord)。
+   *  FM を使わなかったシナリオでは欠落する。FM はホスト全体で直列化する共有資源のため、
+   *  モニターの FM グラフ(hostCharts.js)がこれを積んで実行コストを可視化する。 */
+  fm?: { calls: number; failures: number; totalMs: number };
+}
+
+/** ScenarioEvent(kind: "log")。ユーザー print の混入行などホスト側の付随情報。 */
+export interface LogEvent {
+  kind: "log";
+  scenario?: string;
+  message?: string;
+  worker?: string;
+}
+
+/** ApiRunCommand.swift の ApiRunFinishedEvent。testSeconds/scenarioTotalSeconds は計測不能時 undefined。 */
+export interface RunFinishedEvent {
+  kind: "runFinished";
+  passed: number;
+  failed: number;
+  testSeconds?: number;
+  scenarioTotalSeconds?: number;
+}
+
+/**
+ * AndroidDataWiper.swift(実行開始時の AVD Wipe Data)の進行状況。runStarted より前に届くことがある。
+ * device はマシンプロファイルのデバイス名(モニタータイル・deviceOpBusy・healthWatch と同じ名前空間)。
+ * failed の後に done は来ない。
+ */
+export interface WipeStatusEvent {
+  kind: "wipeStatus";
+  device: string;
+  phase: "stopping" | "rebooting" | "done" | "failed";
+}
+
+/**
+ * シナリオの結果を取り消して別デバイスへ振り直した(RunOrchestrator の discard+requeue)。
+ * Test Explorer は該当項目を「待機中(enqueued)」へ戻し、再実行の scenarioStarted で実行中に遷移する。
+ * 契約の同期相手: Sources/fleetest/ApiRunCommand.swift ApiScenarioRequeuedEvent
+ */
+export interface ScenarioRequeuedEvent {
+  kind: "scenarioRequeued";
+  scenario: string;
+  worker?: string;
+  reason: string;
+  attempt: number;
+  limit: number;
+}
+
+/** NDJSON の1行分のイベント(kind で判別する共用体)。 */
+export type RunEvent =
+  | RunStartedEvent
+  | WorkersReadyEvent
+  | ScenarioStartedEvent
+  | SceneStartedEvent
+  | StepEvent
+  | SceneFinishedEvent
+  | FixSuggestionEvent
+  | PausedEvent
+  | ScenarioFinishedEvent
+  | LogEvent
+  | RunFinishedEvent
+  | WipeStatusEvent
+  | ScenarioRequeuedEvent;
+
+/**
+ * unknown 値(NdjsonParser が JSON.parse しただけの値。cli.ts の onNdjsonValue 経由)が
+ * RunEvent か判定する。未知の kind(将来追加/壊れた行)は false で、呼び出し側は安全に無視できる。
+ */
+export function isRunEvent(value: unknown): value is RunEvent {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const kind = (value as { kind?: unknown }).kind;
+  return typeof kind === "string" && RUN_EVENT_KINDS.has(kind);
+}

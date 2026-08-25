@@ -21,7 +21,7 @@ final class BridgeRouterStatusContractTests: XCTestCase {
                 .deletingLastPathComponent()   // FTCoreTests
                 .deletingLastPathComponent()   // Tests
                 .deletingLastPathComponent()   // リポジトリルート
-                .appendingPathComponent("Runner/FTesterRunnerUITests/BridgeRouter.swift")
+                .appendingPathComponent("Runner/FleetestRunnerUITests/BridgeRouter.swift")
             return try String(contentsOf: url, encoding: .utf8)
         }
     }

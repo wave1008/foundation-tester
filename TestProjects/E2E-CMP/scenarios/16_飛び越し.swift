@@ -1,5 +1,5 @@
 // 16_飛び越し.swift
-// ftester 機能: scrollTo の決定的な「飛び越し」witness(#list_jump は 160dp の容器・内容 560dp =
+// fleetest 機能: scrollTo の決定的な「飛び越し」witness(#list_jump は 160dp の容器・内容 560dp =
 // スクロール範囲 400dp で、1回の既定スワイプが端から端まで行き切る。docs/ui-contract.md「飛び越し画面」)。
 // CMP のみ(他 3 SUT には無い)。
 

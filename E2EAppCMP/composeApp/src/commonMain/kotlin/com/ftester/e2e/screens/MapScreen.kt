@@ -100,7 +100,7 @@ private fun formatZoom(zoom: Float): String {
     return "${scaled / 10}.${scaled % 10}"
 }
 
-/** 指の移動方向。両軸とも非 none なら斜め(ftester の swipeBy の検証材料) */
+/** 指の移動方向。両軸とも非 none なら斜め(fleetest の swipeBy の検証材料) */
 private fun panLabel(x: Float, y: Float): String {
     if (abs(x) < PAN_THRESHOLD && abs(y) < PAN_THRESHOLD) return "-"
     val horizontal = if (abs(x) < PAN_THRESHOLD) "none" else if (x < 0) "left" else "right"

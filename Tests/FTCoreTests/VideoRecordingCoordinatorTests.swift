@@ -78,7 +78,7 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
 
     private func makeTempDir() throws -> URL {
         let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("ftester-export-tests-\(UUID().uuidString)")
+            .appendingPathComponent("fleetest-export-tests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }

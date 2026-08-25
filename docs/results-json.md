@@ -1,6 +1,6 @@
 # 実行結果の JSON(results/)
 
-`ftester run` / `ftester api run` は結果を `<project>/results/` に貯める。
+`fleetest run` / `fleetest api run` は結果を `<project>/results/` に貯める。
 **このページがスキーマの唯一の定義元**(DTO は `Sources/FTCore/RunRecord.swift`)。
 
 ```
@@ -110,7 +110,7 @@ jq -r 'select(.workerAnomalies == null) | .runID' results/runs/2026-08/*/run.jso
 | schemaVersion / runID / scenarioID | | シナリオ ID = クラス名.メソッド名 |
 | title | String? | `@Test` のタイトル |
 | platform | String | `ios` / `android` |
-| worker | String? | `"<platform>:<デバイス論理名>"`(並列実行時)。**`ftester run --broadcast`(ブロードキャスト)では同じ `scenarioID` が台数ぶん並ぶ**(ファイルは `~N` 連番)ので、台ごとの合否はこの欄で引く |
+| worker | String? | `"<platform>:<デバイス論理名>"`(並列実行時)。**`fleetest run --broadcast`(ブロードキャスト)では同じ `scenarioID` が台数ぶん並ぶ**(ファイルは `~N` 連番)ので、台ごとの合否はこの欄で引く |
 | machine / profile | String / String? | |
 | passed | Bool | シナリオ全体の成否 |
 | timedOut | Bool? | タイムアウトで強制終了したか |

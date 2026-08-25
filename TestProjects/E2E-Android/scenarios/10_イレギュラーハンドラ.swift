@@ -1,5 +1,5 @@
 // 10_イレギュラーハンドラ.swift
-// ftester 機能: `irregularHandler`(出るか不定なアプリ内メッセージを宣言すると、以降どのステップでも
+// fleetest 機能: `irregularHandler`(出るか不定なアプリ内メッセージを宣言すると、以降どのステップでも
 // 出た時点で自動的に閉じる)。閉じる操作は各コマンドがロケータを解決する直前に走る
 // (StepExecutor.dismissInterruption)ため、検証コマンド(expectation)・操作コマンド(action)の
 // どちらが先にダイアログへぶつかっても同じ結果になることを見る。

@@ -1,6 +1,6 @@
 // MachineProfileEditor.swift
 // マシンプロファイル(profiles/machines/<マシン名>.json)へ新規デバイスを追記する純粋ロジック。
-// ftester api create-device が使う。ファイル I/O(読み込み・書き戻し)は呼び出し側の責務とし、
+// fleetest api create-device が使う。ファイル I/O(読み込み・書き戻し)は呼び出し側の責務とし、
 // ここではソース文字列/辞書の変換だけを扱う(テスト容易性のため。HealFixApplier と同方針)。
 //
 // プロファイルの JSON はユーザーが直接編集するファイルであり、DeviceSpec(Codable)が知らない

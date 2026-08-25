@@ -1,5 +1,5 @@
 // 13_ディープリンク.swift
-// ftester 機能: `launchApp(url:)`(再起動 → URL 配送を1ステップで行う)/ `openURL`(起動済み
+// fleetest 機能: `launchApp(url:)`(再起動 → URL 配送を1ステップで行う)/ `openURL`(起動済み
 // アプリへ URL を送る)。スキーム `fte2eflutter` の契約は E2EAppCMP/docs/ui-contract.md §ディープリンク。
 
 import FTDSL

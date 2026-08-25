@@ -5,7 +5,7 @@
 //   runs/<name>.json     … 実行プロファイル(app 参照+デバイス name リスト+実行時設定)
 // ProfileResolver が 3 つを合成して ResolvedProfile(検証済み)を作る。
 // 実行コード(CLI/MCP)は ResolvedProfile のみを参照する。
-// JSON 形式は vscode-ftester/schemas/{app,machine,run}-profile.schema.json と同期を要する
+// JSON 形式は vscode-fleetest/schemas/{app,machine,run}-profile.schema.json と同期を要する
 // (knownKeys・必須/任意フィールドを変更したらスキーマ側も更新する)。
 
 import Foundation
@@ -183,10 +183,10 @@ public struct MachineDeviceList: Codable, Sendable, Equatable {
 /// マシンプロファイル(profiles/machines/<マシン名>.json)。ファイル名がマシン名
 public struct MachineProfile: Codable, Sendable, Equatable {
     /// このマシンの実行先。省略/"local" = このマシンでローカル実行(**既存プロファイルは
-    /// 無改修で動く**)。それ以外は `ftester remote hosts` の登録名でなければならない
+    /// 無改修で動く**)。それ以外は `fleetest remote hosts` の登録名でなければならない
     /// (生の ssh 宛先は書けない — プロファイルはプロジェクト資産で、ssh の実体はローカル設定
     /// = LocalConfig.remoteHosts にだけ置く規律。フリート定義と同じ)。優先順位・食い違いの扱いは
-    /// MachineHostDispatch、登録簿引きは Sources/ftester/RemoteCommands.swift
+    /// MachineHostDispatch、登録簿引きは Sources/fleetest/RemoteCommands.swift
     public var host: String?
     public var ios: MachineDeviceList?
     public var android: MachineDeviceList?
@@ -202,7 +202,7 @@ public struct MachineProfile: Codable, Sendable, Equatable {
 
 /// `MachineProfile.host` と `--host`(CLI 明示)の優先順位を1箇所に固定する純粋関数。
 /// マシンプロファイルに host を持たせたことで、実行プロファイル経由で間接的にリモートホストを
-/// 指定できるようにした(ユーザー決定)。呼び出し側(Sources/ftester/RemoteCommands.swift)は
+/// 指定できるようにした(ユーザー決定)。呼び出し側(Sources/fleetest/RemoteCommands.swift)は
 /// ここが返す名前を、由来に応じて登録簿引きするだけで if を散らさない。
 public enum MachineHostDispatch {
     public struct Decision: Equatable {
@@ -301,7 +301,7 @@ public struct FMConfig: Sendable, Equatable {
 /// 資材を揃える共有ディレクトリ。中身の規約 apps/scripts/data は WorkspaceScaffold)の宣言。
 /// run 前後のスクリプトはここでは宣言しない —— ワークスペースの `scripts/setup.sh` /
 /// `scripts/teardown.sh` があれば実行される(`RunHookPlan`)。
-/// 同期相手: vscode-ftester/schemas/run-profile.schema.json と拡張のプロファイルフォーム
+/// 同期相手: vscode-fleetest/schemas/run-profile.schema.json と拡張のプロファイルフォーム
 public struct RemoteControlSection: Codable, Sendable, Equatable {
     /// ワークスペースのルート。絶対パス、または**リポジトリルート基準**の相対パス。
     /// appPath の解決基準には使わない(常にリポジトリルート基準のまま)——
@@ -355,7 +355,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// そちらが優先(resolve 参照)。Android には影響しない。
     public var iosInappEngine: Bool?
     /// 実行開始時に Android AVD の肥大化(wipe 対象ファイル合計サイズ)を検査し超過分を
-    /// Wipe Data するか(既定 true=ON)。同期相手: vscode-ftester/schemas/run-profile.schema.json
+    /// Wipe Data するか(既定 true=ON)。同期相手: vscode-fleetest/schemas/run-profile.schema.json
     /// と src/monitorModel.ts の RunProfileFormFields
     public var wipeDataOnBloat: Bool?
     /// wipeDataOnBloat のしきい値(GB、1GB=1_073_741_824 バイト。既定 8。0 以下は検証エラー。
@@ -369,12 +369,12 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// GPU(-gpu host)で起動し直すか(既定 false=OFF)。GPU モードは emulator プロセスの起動引数で
     /// 決まるためプロセス再起動が必須で、該当機1台につき run 開始が約1分延びる。戻した先で再び凍結
     /// すればモニターの watchdog がまた CPU に落とす(design.md §12.4 のトレードオフ)。
-    /// 同期相手: vscode-ftester/schemas/run-profile.schema.json と
+    /// 同期相手: vscode-fleetest/schemas/run-profile.schema.json と
     /// src/monitorModel.ts の RunProfileFormFields
     public var recoverCpuFallbackToGpu: Bool?
     /// Android エミュレータのブート完了時(Wipe Data 後の再起動を含む)にブリッジ /locale で
     /// 適用するロケール(既定 "ja_JP"。Play イメージでは -change-locale 等が無効なため。
-    /// design.md §11.2)。iOS には影響しない。同期相手: vscode-ftester/schemas/run-profile.schema.json
+    /// design.md §11.2)。iOS には影響しない。同期相手: vscode-fleetest/schemas/run-profile.schema.json
     /// と src/monitorModel.ts の RunProfileFormFields
     public var locale: String?
     /// iOS xcuitest ブリッジの高速入力(quiescence 待ちスキップ)。true で FT_FAST_INPUT=1 を
@@ -390,14 +390,14 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// true で FT_ANIMATIONS=1 を実行環境に注入する(判定元は AnimationPolicy)。ON にすると
     /// 整定待ちが伸び、Android では静穏判定後もスクリーンショットが遷移途中の絵を掴みうる。
     /// 端末側の設定は run 開始時に毎回この値へ同期される(ブリッジ再利用でも効く)。
-    /// 同期相手: vscode-ftester/schemas/run-profile.schema.json と
+    /// 同期相手: vscode-fleetest/schemas/run-profile.schema.json と
     /// src/monitorProfileForms.ts の RunProfileFormFields
     public var enableAnimations: Bool?
     /// run 開始時に各デバイスへ home() を1回撃つか(**既定 true**)。
     /// 一斉に launch した直後の端末は「描画要求が無いだけ」で画面が黒いまま止まることがあり、
     /// そのままだと凍結と見分けが付かない(2026-08-11 の実測: 黒かった5台のうち4台は入力で戻った)。
     /// 予防として1回だけ入力を入れる。**デバイスあたり1回**なので実行時間への影響はほぼゼロ。
-    /// 同期相手: vscode-ftester/schemas/run-profile.schema.json と RunProfileFormFields
+    /// 同期相手: vscode-fleetest/schemas/run-profile.schema.json と RunProfileFormFields
     public var homeOnStart: Bool?
     /// 並列実行の各ワーカー(デバイス)ごとに run 全体を録画し、テスト関数(シナリオ)ごとに
     /// 1本の mp4 へ切り出すか(既定 false)。実体は RunOrchestrator への VideoRecordingConfig 注入
@@ -524,8 +524,8 @@ public struct ResolvedProfile: Sendable {
     public let runName: String
     public let machineName: String
     /// マシンプロファイルの host(MachineHostDispatch.normalize 済み。nil = ローカル実行)。
-    /// 表示用途(`ftester profile list`)。実際のディスパッチ判定・登録簿引きは呼び出し側
-    /// (Sources/ftester/RemoteCommands.swift)が `--host` と突き合わせて行う。
+    /// 表示用途(`fleetest profile list`)。実際のディスパッチ判定・登録簿引きは呼び出し側
+    /// (Sources/fleetest/RemoteCommands.swift)が `--host` と突き合わせて行う。
     /// **`var` にする**(memberwise init を直に呼ぶ既存テスト
     /// (Tests/FTAndroidTests/BuildAndroidWorkersPartialFailureTests.swift 等)が
     /// この引数を知らないため既定値が要る。**既定値付きの `let` は memberwise init から
@@ -582,7 +582,7 @@ public struct ResolvedProfile: Sendable {
     /// この配下の `apps/<ファイル名>` に切り替わる(ステージングは WorkspaceAppStaging)。
     /// リモートディスパッチはこれがプロジェクトルート配下かどうかで転送経路を分ける
     /// (`WorkspaceRemoteDispatch.placement`。配下ならプロジェクト転送がそのまま運ぶので専用
-    /// ミラーは不要。Sources/ftester/RemoteRunDispatcher.swift)。**`var` にする**(machineHost と
+    /// ミラーは不要。Sources/fleetest/RemoteRunDispatcher.swift)。**`var` にする**(machineHost と
     /// 同じ理由 —— 既定値付きの `let` は memberwise init から除外され、この引数を知らない
     /// 既存テストの直接呼び出しが壊れる。型を Optional のまま残すのも同じ理由 ——
     /// 非 Optional にすると同じ既存テストが nil を渡せなくなる)
@@ -816,7 +816,7 @@ public enum ProfileResolver {
 
     /// マシンプロファイルの `host` だけを読む(実行前のディスパッチ判定用)。フルの resolve() は
     /// デバイス解決まで行い重いので、host だけ知りたいホスト解決の前段はこちらを使う
-    /// (Sources/ftester/RemoteCommands.swift の EffectiveHostDispatch 解決)。
+    /// (Sources/fleetest/RemoteCommands.swift の EffectiveHostDispatch 解決)。
     /// 戻り値は MachineHostDispatch.normalize 済み(nil = ローカル)
     public static func machineHost(project: TestProject, machineName: String) throws -> String? {
         let machineURL = project.machinesDir.appendingPathComponent("\(machineName).json")
@@ -889,7 +889,7 @@ public enum ProfileResolver {
 
     /// runProfileName の実行プロファイルが宣言する `remoteControl.workspace`(trim 後非空)を返す。
     /// ファイルが無い/デコード不能/未宣言・空文字列なら nil。**マシン解決を必要としないので
-    /// フルの resolve() を経由しない** —— リモートディスパッチ(Sources/ftester/
+    /// フルの resolve() を経由しない** —— リモートディスパッチ(Sources/fleetest/
     /// RemoteRunDispatcher.swift)はミラーの要否だけを知りたく、実行するマシンはまだ決めていない
     public static func declaredWorkspace(project: TestProject, runName: String) -> String? {
         let runURL = project.runsDir.appendingPathComponent("\(runName).json")
@@ -1050,7 +1050,7 @@ public enum ProfileResolver {
                     warnings.append(
                         "device \"\(ref.name)\" on machine \(machineName) has no concrete target"
                         + " (ios: simulator/udid, android: avd/serial)"
-                        + " — re-run `ftester profile setup --auto-device`,"
+                        + " — re-run `fleetest profile setup --auto-device`,"
                         + " or fill it in in profiles/machines/\(machineName).json")
                 }
                 let device = ResolvedDevice(platform: entry.platform, spec: entry.spec)
@@ -1109,7 +1109,7 @@ public enum ProfileResolver {
         // リポジトリルート基準の絶対パスはリモートに存在しない。既定のワークスペースは
         // project.rootURL 配下なので、その転送(rsyncArgs)自体がステージング済みの apps/ を
         // 運ぶ ―― 明示指定でプロジェクト外を指したときだけ専用ミラーが要る
-        // (`WorkspaceRemoteDispatch.placement`。Sources/ftester/RemoteRunDispatcher.swift)
+        // (`WorkspaceRemoteDispatch.placement`。Sources/fleetest/RemoteRunDispatcher.swift)
         let repoRoot = project.rootURL.deletingLastPathComponent().deletingLastPathComponent()
         let workspaceRoot = resolveWorkspaceRoot(
             declared: runDoc.remoteControl?.workspace, override: workspaceOverride,

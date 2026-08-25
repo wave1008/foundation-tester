@@ -1,8 +1,8 @@
 // HostMetricsSampler.swift
 // ホストMac負荷(CPU/GPU/メモリ)のサンプラー群+NDJSON行の型(HostMetricsSample)+
 // run 単位の 1Hz 記録器(HostMetricsRecorder)。
-// NDJSON の hostMetrics 行形(フィールド一覧)は vscode-ftester/src/monitorProcessManager.ts の
-// isHostMetricsEvent/HostMetricsRawEvent と Sources/ftester/ApiHostMetricsSummaryCommand.swift の
+// NDJSON の hostMetrics 行形(フィールド一覧)は vscode-fleetest/src/monitorProcessManager.ts の
+// isHostMetricsEvent/HostMetricsRawEvent と Sources/fleetest/ApiHostMetricsSummaryCommand.swift の
 // パーサーが読む契約。フィールドを増減したら両方も更新すること(一覧はここに1箇所、重複させない)。
 
 import Foundation
@@ -325,7 +325,7 @@ public struct HostMetricsSample: Encodable {
 // MARK: - run 単位の 1Hz 記録器
 
 /// stdin 監視や DispatchSourceSignal を持たない常駐 Thread の停止フラグ
-/// (Sources/ftester/ApiHostMetricsCommand.swift の StopFlag と同型。private のためファイル間で
+/// (Sources/fleetest/ApiHostMetricsCommand.swift の StopFlag と同型。private のためファイル間で
 /// 共有できず複製)
 private final class StopGate: @unchecked Sendable {
     private let lock = NSLock()
@@ -392,7 +392,7 @@ public final class HostMetricsRecorder: @unchecked Sendable {
             }
             exitSemaphore.signal()
         }
-        thread.name = "ftester-host-metrics-recorder"
+        thread.name = "fleetest-host-metrics-recorder"
         thread.start()
     }
 

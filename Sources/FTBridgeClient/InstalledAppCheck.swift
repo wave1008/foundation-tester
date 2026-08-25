@@ -9,7 +9,7 @@ public enum InstalledAppCheck {
     /// インストール済みアプリがインストールファイル(.app)と同一内容か。simctl install はバンドルを
     /// バイト同一でコピーする(実測)ため、ディレクトリの深比較で「更新の有無」を判定できる。
     /// 深比較は約40MBのバンドルで0.8〜0.9s/ラン掛かるため、検証済みのソース指紋
-    /// (相対パス+サイズ+mtime のハッシュ)を .ftester/install-check/ にキャッシュし、
+    /// (相対パス+サイズ+mtime のハッシュ)を .fleetest/install-check/ にキャッシュし、
     /// ①コンテナ実在(erase 検知)+②指紋一致 なら深比較をスキップする(実測 0.86s→0.1s)。
     /// 未インストール・比較不能は false(=要インストール)。
     public static func simulatorAppIsCurrent(udid: String, bundleID: String, appPath: String) -> Bool {
@@ -98,7 +98,7 @@ public enum InstalledAppCheck {
 
     private static func cacheURL(udid: String, bundleID: String) -> URL? {
         guard let root = try? RepoRoot.find() else { return nil }
-        return root.appendingPathComponent(".ftester/install-check/\(udid)-\(bundleID).txt")
+        return root.appendingPathComponent(".fleetest/install-check/\(udid)-\(bundleID).txt")
     }
 
     private static func cachedFingerprint(udid: String, bundleID: String) -> String? {

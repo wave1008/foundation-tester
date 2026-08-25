@@ -1,5 +1,5 @@
 // 実行プロファイルの開始/終了スクリプト(docs/remote-runner.md §17)の純粋ロジック。
-// 実際の起動・孤児の回収は Sources/ftester/RunHookRunner.swift(プロセス起動が要るのでここでは扱わない)。
+// 実際の起動・孤児の回収は Sources/fleetest/RunHookRunner.swift(プロセス起動が要るのでここでは扱わない)。
 
 import Foundation
 import XCTest
@@ -73,9 +73,9 @@ final class RunHookLeaseTests: XCTestCase {
     }
 
     func testLeasePathIsProjectIndependent() {
-        let stateDir = URL(fileURLWithPath: "/repo/.ftester")
+        let stateDir = URL(fileURLWithPath: "/repo/.fleetest")
         XCTAssertEqual(RunHookLease.leaseURL(stateDir: stateDir, pid: 12).path,
-                       "/repo/.ftester/hooks/12.json")
+                       "/repo/.fleetest/hooks/12.json")
     }
 
     func testALiveProcessIsNotAnOrphan() {

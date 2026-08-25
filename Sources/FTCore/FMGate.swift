@@ -66,7 +66,7 @@ public enum FMBreaker {
     static var defaultStateURL: URL {
         let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSTemporaryDirectory())
-        return base.appendingPathComponent("ftester", isDirectory: true)
+        return base.appendingPathComponent("fleetest", isDirectory: true)
             .appendingPathComponent("fm-breaker.state")
     }
 

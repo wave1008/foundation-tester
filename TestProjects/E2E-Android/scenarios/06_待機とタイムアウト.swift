@@ -1,5 +1,5 @@
 // 06_待機とタイムアウト.swift
-// ftester 機能: 暗黙待ち(exist/textIs の既定タイムアウト再試行)と `timeout:` 引数 / notExist・countIs・
+// fleetest 機能: 暗黙待ち(exist/textIs の既定タイムアウト再試行)と `timeout:` 引数 / notExist・countIs・
 // 相対セレクタ `基準:below(...)`・`基準:above(...)` / スコープ `祖先 >> 子孫` / 状態フィルタ(enabled) /
 // appIs・screenshot・waitForDisplay・verify をまとめて検証する。
 // #btn_delay_8 は既定5秒を超えるため timeout: を明示して通す(timeout が効いていることの証明であり、

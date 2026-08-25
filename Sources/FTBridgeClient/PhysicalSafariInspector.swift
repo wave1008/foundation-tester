@@ -50,7 +50,7 @@ enum PhysicalSafariInspector {
 
         if LockdownProtocol.isInvalidService(serviceResponse) {
             FileHandle.standardError.write(Data(
-                ("ftester: com.apple.webinspector が実機の lockdown サービス一覧に無い"
+                ("fleetest: com.apple.webinspector が実機の lockdown サービス一覧に無い"
                  + "(Apple が別サービスへ移した可能性。ブラウザ DOM 読み取りは a11y のまま続行)\n").utf8))
             return nil
         }
@@ -104,7 +104,7 @@ enum PhysicalSafariInspector {
     }
 
     private static func commonFields(_ extra: [String: Any]) -> [String: Any] {
-        var payload: [String: Any] = ["ClientVersionString": "ftester", "ProgName": "ftester", "kLibUSBMuxVersion": 3]
+        var payload: [String: Any] = ["ClientVersionString": "fleetest", "ProgName": "fleetest", "kLibUSBMuxVersion": 3]
         payload.merge(extra) { _, new in new }
         return payload
     }
@@ -253,11 +253,11 @@ enum UsbmuxdEnvelope {
 /// lockdown の plist メッセージ組み立て・応答判定(純粋)
 enum LockdownProtocol {
     static func startSessionRequest(hostID: String, systemBUID: String) -> [String: Any] {
-        ["Request": "StartSession", "Label": "ftester", "HostID": hostID, "SystemBUID": systemBUID]
+        ["Request": "StartSession", "Label": "fleetest", "HostID": hostID, "SystemBUID": systemBUID]
     }
 
     static func startServiceRequest(_ service: String) -> [String: Any] {
-        ["Request": "StartService", "Label": "ftester", "Service": service]
+        ["Request": "StartService", "Label": "fleetest", "Service": service]
     }
 
     static func enableSessionSSL(_ response: [String: Any]) -> Bool {
@@ -408,7 +408,7 @@ enum PairingIdentityImporter {
     /// **秘密鍵を含む一時ファイルは `defer` で必ず削除する**
     static func importIdentity(hostCertificate: Data, hostPrivateKey: Data) -> SecIdentity? {
         let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("ftester-lockdown-\(UUID().uuidString)")
+            .appendingPathComponent("fleetest-lockdown-\(UUID().uuidString)")
         guard (try? FileManager.default.createDirectory(
             at: tempDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])) != nil
         else { return nil }

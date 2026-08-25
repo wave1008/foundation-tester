@@ -1,5 +1,5 @@
 // BridgeRouter.java
-// エンドポイントのディスパッチ(Runner/FTesterRunnerUITests/BridgeRouter.swift の Java 版)。
+// エンドポイントのディスパッチ(Runner/FleetestRunnerUITests/BridgeRouter.swift の Java 版)。
 // iOS ブリッジと同一のプロトコル: パス・DTO の JSON 形状・400/404/409/500 規約。
 // /snapshot /tap 等はセッションレス(uiautomator dump と同じ「今フォアグラウンドのもの」意味論)。
 package com.example.ftbridge;

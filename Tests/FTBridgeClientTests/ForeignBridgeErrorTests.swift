@@ -1,8 +1,8 @@
 // 「ポートで応答しているのに、このリポジトリの状態ファイルに記録が無い」ブリッジの扱い。
 //
 // 実害(2026-07-30): 別クローンが起動した protocolVersion 4 のランナーがポート 8127 と
-// シミュレータを 7 時間 22 分占有していた。`ftester bridge down --port 8127` は
-// 「ブリッジは起動していません(.ftester/bridge.pid なし)」と応え、**応答している事実と
+// シミュレータを 7 時間 22 分占有していた。`fleetest bridge down --port 8127` は
+// 「ブリッジは起動していません(.fleetest/bridge.pid なし)」と応え、**応答している事実と
 // 食い違う**メッセージのせいで切り分けに時間を要した。文言は診断そのものなので固定する。
 
 import XCTest
@@ -78,7 +78,7 @@ http.server.HTTPServer(("127.0.0.1", \(port)), H).serve_forever()
         let temp = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("FTBridgeClientTests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(
-            at: temp.appendingPathComponent(".ftester"), withIntermediateDirectories: true)
+            at: temp.appendingPathComponent(".fleetest"), withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: temp) }
 
         XCTAssertThrowsError(try BridgeLauncher(repoRoot: temp, port: port).stop()) { error in

@@ -114,7 +114,7 @@ public enum CmdlineToolsInstaller {
             + "(\(archive.size / 1_048_576) MB): \(archive.absoluteURL.lastPathComponent)")
 
         let work = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("ftester-cmdline-tools-\(ProcessInfo.processInfo.processIdentifier)")
+            .appendingPathComponent("fleetest-cmdline-tools-\(ProcessInfo.processInfo.processIdentifier)")
         try? FileManager.default.removeItem(at: work)
         try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: work) }

@@ -1,5 +1,5 @@
 // 08_ライフサイクルとコントロール.swift
-// ftester 機能: `restartApp`(terminate+launch でのプロセス内状態リセット・永続カウンタは残る)/
+// fleetest 機能: `restartApp`(terminate+launch でのプロセス内状態リセット・永続カウンタは残る)/
 // `terminateApp`(落としたことは次の launchApp の launch カウンタでのみ観測できる)/ `clearAppData`、
 // **ComposeView 側**のコントロール(Switch / Checkbox / RadioButton / Slider)の状態遷移・
 // `enabledIsFalse`/`enabledIsTrue`・`checkIsON`/`checkIsOFF`・ブリッジの value 供給(SeekBar の

@@ -1,5 +1,5 @@
 // 01_起動と画面遷移.swift
-// ftester 機能: launchApp / タブ切替 / 下位画面遷移+戻る / タブ切替時にスタックが
+// fleetest 機能: launchApp / タブ切替 / 下位画面遷移+戻る / タブ切替時にスタックが
 // 持ち越されないことの検証。
 // SUT は Flutter の E2EAppFlutter(iOS/Android 共通バイナリ)。プロセス起動ごとに State が
 // 初期値へ戻るため「起動時は必ずホームタブのルート」契約が成立する

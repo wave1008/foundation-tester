@@ -20,7 +20,7 @@ run(成否問わず)は何種類かの出力を残します。このページは
 
 ## JUnit XML
 
-`ftester run --junit <パス>` を付けると、JUnit XML 形式をそのまま読める CI システム向けに
+`fleetest run --junit <パス>` を付けると、JUnit XML 形式をそのまま読める CI システム向けに
 JUnit XML ファイルも追加で出力されます。
 
 ## 録画
@@ -31,14 +31,14 @@ JUnit XML ファイルも追加で出力されます。
 
 ## 自己修復キャッシュ
 
-自己修復が有効なとき、`TestProjects/<プロジェクト>/.ftester/heal-cache.json` に実行時に
+自己修復が有効なとき、`TestProjects/<プロジェクト>/.fleetest/heal-cache.json` に実行時に
 修復されたセレクタが保存されます。これにより、ソースが古いセレクタのままでも2回目以降は
 AI なしで決定的に通過します。詳細は[自己修復](../running/self_healing_ja.md)を参照してください。
 
 ## 直近の結果(`--failed` 用)
 
-`.ftester/last-results/<プロジェクト>/` には直近の run でどのシナリオが成功/失敗したかが
-記録されます。`ftester run --failed` はこれを使って失敗したシナリオだけを再実行します。
+`.fleetest/last-results/<プロジェクト>/` には直近の run でどのシナリオが成功/失敗したかが
+記録されます。`fleetest run --failed` はこれを使って失敗したシナリオだけを再実行します。
 
 ## VSCode 拡張から
 

@@ -19,7 +19,7 @@ final class CommentPointerTests: XCTestCase {
     private static let proseWords: Set<String> = ["UITests"]
 
     private static let skippedDirectories: Set<String> = [
-        ".git", ".build", ".ftester", "node_modules", "dist", "out-test", "media",
+        ".git", ".build", ".fleetest", "node_modules", "dist", "out-test", "media",
         "Generated", "results", "DerivedData", "build", ".gradle", "Pods",
     ]
 
@@ -121,7 +121,7 @@ final class CommentPointerTests: XCTestCase {
         let repo = Self.repo
         XCTAssertGreaterThan(repo.comments.count, 1000, "コメントが少なすぎる(走査が壊れていないか)")
         let pattern = "(?<![A-Za-z0-9_/.])((?:Sources|Tests|Runner|InAppBridge|AndroidRunner|Scripts|docs"
-            + "|vscode-ftester|Bench)/[A-Za-z0-9_.+\\-/]+\\.(?:\(Self.pathExtensions)))(?![A-Za-z0-9])"
+            + "|vscode-fleetest|Bench)/[A-Za-z0-9_.+\\-/]+\\.(?:\(Self.pathExtensions)))(?![A-Za-z0-9])"
         var broken: [String] = []
         for entry in repo.comments {
             for path in Self.captures(pattern, in: entry.text) {

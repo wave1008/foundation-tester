@@ -10,12 +10,12 @@ final class StalePidSweepTests: XCTestCase {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("sweep-\(UUID().uuidString)")
         try FileManager.default.createDirectory(
-            at: root.appendingPathComponent(".ftester"), withIntermediateDirectories: true)
+            at: root.appendingPathComponent(".fleetest"), withIntermediateDirectories: true)
         return root
     }
 
     private func writePid(_ content: String, port: Int, repoRoot: URL) throws -> URL {
-        let url = repoRoot.appendingPathComponent(".ftester/bridge-\(port).pid")
+        let url = repoRoot.appendingPathComponent(".fleetest/bridge-\(port).pid")
         try content.write(to: url, atomically: true, encoding: .utf8)
         return url
     }
@@ -49,7 +49,7 @@ final class StalePidSweepTests: XCTestCase {
 
     func testKeepsNonPidFiles() throws {
         let root = try makeRepoRoot()
-        let log = root.appendingPathComponent(".ftester/bridge-8126.log")
+        let log = root.appendingPathComponent(".fleetest/bridge-8126.log")
         try "log".write(to: log, atomically: true, encoding: .utf8)
         BridgeLauncher.sweepStalePidFiles(repoRoot: root)
         XCTAssertTrue(FileManager.default.fileExists(atPath: log.path),
