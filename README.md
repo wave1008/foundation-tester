@@ -1,54 +1,43 @@
 # fleetest mobile
 
-Claude Codeを前提とした macOS専用の iOS / Android アプリの E2E テストツール。
+※このREADME.md　はAIが読むことを前提にしています。製品の使い方はユーザー向けドキュメントを参照するか、AIにチャットで聞いてください
+
+**fleetest mobile** はClaude Code等のAIコーディングツールの使用を前提とした macOS専用の iOS / Android アプリの E2E テストツール。
 
 **fleetest** は `fleet` + `test` であり、*fleet*(すばやい)の最上級でもある。名前に畳み込んだ
 3つが、そのまま特徴になっている。
 
-- **fleet** — シミュレータ・エミュレータ・実機、さらに SSH 越しの別の Mac まで含めた
-  **デバイスフリート**で並列実行する。シナリオはワーカーへ自動で分配される
-- **fleetest** — 再生に LLM を挟まないので、実行時間を決めるのはモデルではなく**デバイス**。
-  長いシナリオから先に投入して末尾の空きを潰す
-- **free** — **テスト実行は無料**。クラウドのデバイスファームも実行ごとの API 課金も無い。
-  失敗時に介入するモデルもオンデバイス
+- **fleet** — ローカルとリモートにまたがって複数のデバイス（シミュレータ・エミュレータ・実機）で編成した **デバイスフリート**による並列実行
+- **fleetest** — ドライバーをカリカリにチューニングして高速化。単体で最高クラスの性能
+- **free** — ローカルのデバイスだけで完結するので**テスト実行は無料**
 
 **設計思想: 「AI がテストを作り、コードが決定的に再生する」**
 
-- **生成**: VSCode 拡張のライブ操作パネルで操作を録画すると **Swift のテストシナリオ
-  (Shirates 風 DSL)**を生成する(`fleetest api gen-scenario`)。複雑なものは Claude Code
-  (MCP 経由)に作らせる・手書きする。イレギュラー処理・データ投入は Swift でそのまま書ける
-- **実行**: シナリオは LLM なしで決定的に実行する。高速・安定で CI 向き
-- **失敗時のみ FM が介入**: ロケータ自己修復(+ヒールキャッシュ)/ スクリーンショットの
-  視覚検証(マルチモーダル)/ 失敗原因のトリアージとレポート・修正提案。**すべてオンデバイス —
-  アプリの画面情報が Mac の外に出ない**。**FM の機能は experimental で、現時点では英語のみ**
-  (Mac のシステム言語を英語にする必要がある。日本語サポートは 2027 年の見込み)
+- **生成**
+  - Claude Codeにドキュメントとfleetest MCPを渡して指示することでテストコードを生成可能
+- **実行**
+  - テストコードは LLM なしで決定的に実行。高速・安定で CI 向き
+- **セキュリティ**
+  - 完全ローカル実行が可能。高いセキュリティが求められクラウド利用が許可されない組織におけるテストツールの強力な選択肢となりうる
 
 ## 4つのインターフェース
 
-同じコア(Swift DSL + AppDriver + StepExecutor + FM 呼び出し)の上に、用途別の入口が4つある。
-UI は VSCode 拡張(`vscode-fleetest/`)に一本化している(セットアップ・機能の詳細は
-[vscode-fleetest/README.md](vscode-fleetest/README.md))。
-
-| 入口 | 起動 | 向いている用途 |
-|---|---|---|
-| **CLI** `fleetest` | `swift run fleetest ...`(clone 内)/ ビルド済み `.build/debug/fleetest` | CI・回帰テストの定期実行(決定的・無料・exit code) |
-| **VSCode 拡張** | [vscode-fleetest/](vscode-fleetest/README.md)(F5 起動 または .vsix インストール) | 人間の対話操作: シナリオ実行・デバッグ実行・ライブ操作(録画→生成)・デバイスモニター・結果ダッシュボード |
-| **MCP** サーバ | Claude Code が自動起動([.mcp.json](.mcp.json)) | エージェント連携: AIによるテスト作成・デバッグ・探索的テスト |
-| **Swift DSL** | `TestProjects/<name>/scenarios/*.swift` | テスト資産。どの入口で作っても同じ形式で保存・実行される |
-
-役割分担の原則: **探索・判断(知能)はエージェント、操作・実行・検証(決定性)は fleetest**。
-テスト作成は VSCode 拡張のライブ操作録画(操作を Swift シナリオに変換)か、複雑なものは Claude Code
-(MCP 経由)で行い、できた Swift シナリオを CLI/CI で決定的に回す。
+| インターフェース | 説明 |
+|---|---|
+| **CLI** | fleetest によるテストをコントロールする各種コマンド |
+| **VSCode 拡張** | GUIを提供。シナリオ実行・デバッグ実行・ライブ操作・デバイスモニター・結果ダッシュボード |
+| **MCP サーバ** | AIがデバイスを操作して発見的にテストコードを作成したりデバッグする。探索的テストも可能 |
+| **Swift DSL** | テストコード記述用のSwiftの関数セット |
 
 ## 必要環境
 
 | 対象 | 要件 |
 |---|---|
 | 共通 | macOS 26+。Apple Intelligence(Foundation Models)は**任意** — heal・FM 視覚検証・シナリオ生成に使う。後から有効化すればそのまま使える |
-| iOS | Xcode 26+、iOS シミュレータ、[xcodegen](https://github.com/yonaskolb/XcodeGen)(`brew install xcodegen`) |
-| Android(任意) | Android SDK(adb)、エミュレータまたは実機 |
+| iOS | Xcode 26+、iOS シミュレータ、xcodegen |
+| Android | Android SDK(adb)、エミュレータまたは実機 |
 
-> macOS 26 では FM の**視覚検証だけ**が使えない(画像入力 API が macOS 27+)。
+> macOS 26 では FM(Foundation Model) の**視覚検証だけ**が使えない(画像入力 API が macOS 27+)。
 > occlusion-guard(偽陽性チェック)と `screenLooksLike` は自動で無効になり、他は制限なく動く。
 >
 > **FM の機能は experimental で、2026 年内は英語でしか使えない**(日本語サポートは 2027 年の
