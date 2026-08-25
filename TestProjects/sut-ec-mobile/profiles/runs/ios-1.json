@@ -3,7 +3,7 @@
   "app": "sut-ec-mobile",
   "devices": [
     {
-      "host": "local",
+      "machine": "local",
       "name": "iPhone 17 Pro(iOS 27.0)-01"
     }
   ],

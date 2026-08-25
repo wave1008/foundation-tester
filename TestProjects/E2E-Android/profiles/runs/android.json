@@ -3,41 +3,36 @@
   "app": "ft_e2e_android",
   "devices": [
     {
-      "host": "local",
+      "machine": "local",
+      "name": "Pixel 4a"
+    },
+    {
+      "machine": "local",
       "name": "Pixel 9(Android 15)-01"
     },
     {
-      "host": "local",
+      "machine": "local",
       "name": "Pixel 9(Android 15)-02"
     },
     {
-      "host": "local",
-      "name": "Pixel 9(Android 15)-03"
+      "machine": "M1Max",
+      "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-01"
     },
     {
-      "host": "local",
-      "name": "Pixel 9(Android 15)-04"
-    },
-    {
-      "host": "local",
-      "name": "Pixel 9(Android 15)-05"
-    },
-    {
-      "host": "local",
-      "name": "Pixel 9(Android 15)-06"
-    },
-    {
-      "host": "local",
-      "name": "Pixel 9(Android 15)-07"
-    },
-    {
-      "host": "local",
-      "name": "Pixel 9(Android 15)-08"
+      "machine": "M1Ultra",
+      "name": "Pixel 3a"
     }
   ],
   "heal": false,
   "iosInappEngine": false,
   "reportDir": "reports",
   "scenarioTimeout": 180,
-  "wipeDataOnBloat": true
+  "wipeDataOnBloat": true,
+  "fm": true,
+  "falsePositiveCheck": false,
+  "screenLooksLike": true,
+  "containerInference": true,
+  "updateWebView": true,
+  "homeOnStart": true,
+  "record": true
 }

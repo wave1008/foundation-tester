@@ -3,27 +3,27 @@
   "app": "sampleapp_ios",
   "devices": [
     {
-      "host": "local",
+      "machine": "local",
       "name": "iPhone 17 Pro(iOS 27.0)-01"
     },
     {
-      "host": "local",
+      "machine": "local",
       "name": "iPhone 17 Pro(iOS 27.0)-02"
     },
     {
-      "host": "local",
+      "machine": "local",
       "name": "iPhone 17 Pro(iOS 27.0)-03"
     },
     {
-      "host": "local",
+      "machine": "local",
       "name": "Pixel 9(Android 15)-01"
     },
     {
-      "host": "local",
+      "machine": "local",
       "name": "Pixel 9(Android 15)-02"
     },
     {
-      "host": "local",
+      "machine": "local",
       "name": "Pixel 9(Android 15)-03"
     }
   ],

@@ -4,27 +4,31 @@
   "devices": [
     {
       "machine": "local",
+      "name": "iPhone wave"
+    },
+    {
+      "machine": "M1Max",
       "name": "iPhone 17 Pro(iOS 27.0)-01"
+    },
+    {
+      "machine": "M1Max",
+      "name": "iPhone 17 Pro(iOS 27.0)-02"
+    },
+    {
+      "machine": "M1Ultra",
+      "name": "iPhone 17 Pro(iOS 27.0)-01"
+    },
+    {
+      "machine": "M1Ultra",
+      "name": "iPhone 17 Pro(iOS 27.0)-02"
     },
     {
       "machine": "local",
-      "name": "iPhone 17 Pro(iOS 27.0)-02"
+      "name": "Pixel 3a"
     },
     {
-      "machine": "M1Max",
-      "name": "iPhone 17 Pro(iOS 27.0)-01"
-    },
-    {
-      "machine": "M1Max",
-      "name": "iPhone 17 Pro(iOS 27.0)-02"
-    },
-    {
-      "machine": "M1Ultra",
-      "name": "iPhone 17 Pro(iOS 27.0)-01"
-    },
-    {
-      "machine": "M1Ultra",
-      "name": "iPhone 17 Pro(iOS 27.0)-02"
+      "machine": "local",
+      "name": "Pixel 4a"
     },
     {
       "machine": "local",
@@ -33,22 +37,6 @@
     {
       "machine": "local",
       "name": "Pixel 9(Android 15)-02"
-    },
-    {
-      "machine": "M1Max",
-      "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-01"
-    },
-    {
-      "machine": "M1Max",
-      "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-02"
-    },
-    {
-      "machine": "M1Ultra",
-      "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-01"
-    },
-    {
-      "machine": "M1Ultra",
-      "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-02"
     }
   ],
   "containerInference": true,

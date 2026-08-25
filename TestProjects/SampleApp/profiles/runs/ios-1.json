@@ -3,7 +3,7 @@
   "app": "sampleapp_ios",
   "devices": [
     {
-      "host": "local",
+      "machine": "local",
       "name": "iPhone 17 Pro(iOS 27.0)"
     }
   ],

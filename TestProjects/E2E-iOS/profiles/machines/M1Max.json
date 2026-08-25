@@ -1,16 +1,16 @@
 {
-  "host": "M1Max",
+  "machine": "M1Max",
   "ios": {
     "devices": [
       {
-        "host": "M1Max",
+        "machine": "M1Max",
         "name": "iPhone 17 Pro(iOS 27.0)-01",
         "os": "27.0",
         "simulator": "iPhone 17 Pro(iOS 27.0)-01",
         "udid": "02113547-FF1A-4AFC-A6DD-86C6660C82B0"
       },
       {
-        "host": "M1Max",
+        "machine": "M1Max",
         "name": "iPhone 17 Pro(iOS 27.0)-02",
         "os": "27.0",
         "simulator": "iPhone 17 Pro(iOS 27.0)-02",

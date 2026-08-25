@@ -2,11 +2,11 @@
   "app": "project1",
   "devices": [
     {
-      "host": "local",
+      "machine": "local",
       "name": "メイン機"
     },
     {
-      "host": "local",
+      "machine": "local",
       "name": "エミュ1"
     }
   ],

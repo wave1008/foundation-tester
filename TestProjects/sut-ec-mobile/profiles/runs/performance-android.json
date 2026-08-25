@@ -3,23 +3,23 @@
   "app": "sut-ec-mobile",
   "devices": [
     {
-      "host": "local",
+      "machine": "local",
       "name": "Pixel 9(Android 15)-01"
     },
     {
-      "host": "local",
+      "machine": "local",
       "name": "Pixel 9(Android 15)-02"
     },
     {
-      "host": "local",
+      "machine": "local",
       "name": "Pixel 9(Android 15)-03"
     },
     {
-      "host": "local",
+      "machine": "local",
       "name": "Pixel 9(Android 15)-04"
     },
     {
-      "host": "local",
+      "machine": "local",
       "name": "Pixel 9(Android 15)-05"
     }
   ],

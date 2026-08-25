@@ -3,7 +3,7 @@
   "app": "sampleapp_ios",
   "devices": [
     {
-      "host": "local",
+      "machine": "local",
       "name": "Pixel 9(Android 15)-01"
     }
   ],

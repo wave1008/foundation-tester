@@ -3,27 +3,27 @@
   "app": "sut-ec-mobile",
   "devices": [
     {
-      "host": "local",
+      "machine": "local",
       "name": "Pixel 10(Android 16(API 36) / arm64-v8a)-01"
     },
     {
-      "host": "local",
+      "machine": "local",
       "name": "Pixel 10(Android 16(API 36) / arm64-v8a)-02"
     },
     {
-      "host": "M1Max",
+      "machine": "M1Max",
       "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-01"
     },
     {
-      "host": "M1Max",
+      "machine": "M1Max",
       "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-02"
     },
     {
-      "host": "M1Ultra",
+      "machine": "M1Ultra",
       "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-01"
     },
     {
-      "host": "M1Ultra",
+      "machine": "M1Ultra",
       "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-02"
     }
   ],
