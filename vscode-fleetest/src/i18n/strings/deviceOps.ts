@@ -99,6 +99,12 @@ export const deviceOpsStrings = {
     ja: "{cmd} が失敗しました(exit code: {exitCode})",
     en: "{cmd} failed (exit code: {exitCode})",
   },
+  // stderr に原因と対処が出ているとき(リモート転送の失敗など)は必ずそれを添える。
+  // detail は CLI 由来なので英語のまま(枠だけ訳す。reason= と同じ規律)。
+  "deviceOps.cmdFailedExitCodeDetail": {
+    ja: "{cmd} が失敗しました(exit code: {exitCode}): {detail}",
+    en: "{cmd} failed (exit code: {exitCode}): {detail}",
+  },
   "deviceOps.cmdParseFailed": {
     ja: "{cmd} の出力を解析できませんでした: {error}",
     en: "Failed to parse {cmd} output: {error}",

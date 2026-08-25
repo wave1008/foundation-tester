@@ -15,7 +15,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { MonitorDeviceOps } from "../src/monitorDeviceOps";
+import { MonitorDeviceOps, stderrDetailLine } from "../src/monitorDeviceOps";
 
 /** dirname(binaryPath) に、引数を argv ファイルへ落として即 exit 0 する mock fleetest を置く。 */
 function makeMockBinary() {
@@ -348,4 +348,36 @@ test("同名の台を2機で同時に操作しても、それぞれのタイル�
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// ---- 失敗メッセージに添える stderr の1行 ----
+// exit code だけを出していたため、`remote exec` の exit 91(発行者のワークスペースが無い)が
+// 「installed-devices が失敗しました(exit code: 91)」としか見えず、対処が分からなかった実害の回帰。
+
+test("stderrDetailLine: 進捗見出しを飛ばして最後の実質行(対処つき)を採る", () => {
+  const stderr = [
+    "==> host M1Ultra → wave1008@192.168.20.95",
+    "no runner workspace at /Users/x/fleetest-runner/users/y/work — run: fleetest remote setup <this host>",
+    "this issuer has no runner workspace on wave1008@192.168.20.95 yet — run `fleetest remote setup ...`",
+    "",
+  ].join("\n");
+  assert.equal(
+    stderrDetailLine(stderr),
+    "this issuer has no runner workspace on wave1008@192.168.20.95 yet — run `fleetest remote setup ...`",
+  );
+});
+
+test("stderrDetailLine: 進捗見出しだけ・空なら null(従来の exit code 文言へ落ちる)", () => {
+  assert.equal(stderrDetailLine("==> host M1Ultra → wave1008@192.168.20.95\n"), null);
+  assert.equal(stderrDetailLine("   \n\n"), null);
+  assert.equal(stderrDetailLine(""), null);
+});
+
+test("stderrDetailLine: 長い行は切り詰める(webview の1行表示に収める)", () => {
+  const long = "x".repeat(500);
+  const detail = stderrDetailLine(long, 200);
+  assert.equal(detail.length, 201, "上限200文字+省略記号");
+  assert.ok(detail.endsWith("…"));
+  // 上限ちょうどは切らない
+  assert.equal(stderrDetailLine("y".repeat(200), 200), "y".repeat(200));
 });

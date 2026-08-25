@@ -71,6 +71,25 @@ function withSourceContext(message: string, source: DeviceCommandSource): string
   return source.kind === "remote" ? t("deviceOps.remoteHostSuffix", { host: source.host, message }) : message;
 }
 
+/**
+ * 失敗メッセージへ添える stderr の1行。**exit code だけでは受け手が何もできない** ——
+ * とくにリモート転送(`remote exec <host>`)は原因と対処を stderr の最終行に出す
+ * (例: exit 91 = "this issuer has no runner workspace on … — run `fleetest remote setup …`")。
+ * 進捗見出し("==> …")は落として最後の実質行を採り、webview の1行表示に収まる長さで切る。
+ * 実質行が無ければ null(呼び出し側は exit code だけの従来文言に落ちる)。
+ */
+export function stderrDetailLine(stderr: string, limit = 200): string | null {
+  const lines = stderr
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith("==>"));
+  const last = lines[lines.length - 1];
+  if (last === undefined) {
+    return null;
+  }
+  return last.length > limit ? `${last.slice(0, limit)}…` : last;
+}
+
 /** デバイスライフサイクルの直列キューおよび device-catalog/installed-devices/create-device の
  * 短命プロセス実行を担う。MonitorPanelController が1つ保持する。 */
 export class MonitorDeviceOps {
@@ -908,8 +927,11 @@ export class MonitorDeviceOps {
     proc.on("close", (exitCode) => {
       flushStderr();
       if (exitCode !== 0) {
+        const detail = stderrDetailLine(stderr);
         const message = withSourceContext(
-          t("deviceOps.cmdFailedExitCode", { cmd: "device-catalog", exitCode: String(exitCode) }),
+          detail === null
+            ? t("deviceOps.cmdFailedExitCode", { cmd: "device-catalog", exitCode: String(exitCode) })
+            : t("deviceOps.cmdFailedExitCodeDetail", { cmd: "device-catalog", exitCode: String(exitCode), detail }),
           source,
         );
         this.deps.outputChannel.appendLine(`[fleetest] ${message}`);
@@ -1079,8 +1101,11 @@ export class MonitorDeviceOps {
     proc.on("close", (exitCode) => {
       flushStderr();
       if (exitCode !== 0) {
+        const detail = stderrDetailLine(stderr);
         const message = withSourceContext(
-          t("deviceOps.cmdFailedExitCode", { cmd: "installed-devices", exitCode: String(exitCode) }),
+          detail === null
+            ? t("deviceOps.cmdFailedExitCode", { cmd: "installed-devices", exitCode: String(exitCode) })
+            : t("deviceOps.cmdFailedExitCodeDetail", { cmd: "installed-devices", exitCode: String(exitCode), detail }),
           source,
         );
         this.deps.outputChannel.appendLine(`[fleetest] ${message}`);
