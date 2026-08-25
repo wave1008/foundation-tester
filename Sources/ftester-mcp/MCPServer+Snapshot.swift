@@ -48,7 +48,7 @@ extension MCPServer {
         return adoptSnapshot(full, args: args)
     }
 
-    /// 出力を短くする逃げ道の案内。**効くものだけを出す**(2026-08-15 の外部評価)。
+    /// 出力を短くする逃げ道の案内。**効くものだけを出す**。
     ///
     /// `interactiveOnly` は「レイアウト専用の行」を隠す道具なので、**そういう行が1つも無い画面では
     /// 1バイトも減らない** —— 実測(Yahoo 天気トップ)で 4,028B → 4,028B。要素がほぼ全部 `link` の
@@ -72,8 +72,8 @@ extension MCPServer {
             ? BridgeAPI.maxSnapshotElementsCeiling : nil
     }
 
-    /// **切り詰められた web ページなら、言われる前に天井で撮り直す**(2026-08-15 の外部評価。
-    /// 1セッションで 89 件と 72 件を落とされたと報告された)。
+    /// **切り詰められた web ページなら、言われる前に天井で撮り直す**
+    /// (1セッションで 89 件と 72 件を落とされた実績がある)。
     ///
     /// DSL には既に同じ撮り直し(`StepExecutor.retakenAtElementLimitCeiling`)がある一方、
     /// **MCP は別経路なので届いていなかった** —— 注記で「maxElements を上げろ」と案内するだけで、
@@ -88,7 +88,7 @@ extension MCPServer {
     /// **「web ページか」の判定は `TreeCoverage.holdsWebContent` に委ねる**(2026-08-15 に修正)。
     /// 最初の実装は `type == "webView"` だけを見ており、**Android Chrome では1件も発火しなかった**
     /// (あちらの木に webView 要素は無い)。固定コーパスに Android のブラウザが7枚あったのに
-    /// 当てずに入れたのが原因で、外部評価で Yahoo 天気の 81 件脱落として報告された
+    /// 当てずに入れたのが原因で、Yahoo 天気では 81 件が脱落していた
     static func needsWebPageCeiling(_ snapshot: SnapshotResponse) -> Bool {
         snapshot.truncatedCount > 0 && !SnapshotTruncation.isAtCeiling(snapshot)
             && TreeCoverage.holdsWebContent(in: snapshot)
@@ -467,8 +467,8 @@ extension MCPServer {
     ///
     /// **木を返す口はすべてここを通す**(`snapshotAfter` と `ft_scroll_to`)。片方だけ継承すると
     /// 「interactiveOnly を渡した後、どのツールで読むかで出力量が変わる」になり、読み手は
-    /// 自分の指定が効いていないと読む —— 2026-08-16 の外部評価で `ft_scroll_to` だけが
-    /// 継承せず、しかも継承しなかったことも言っていなかった。
+    /// 自分の指定が効いていないと読む —— 実際に `ft_scroll_to` だけが継承せず、
+    /// 継承しなかったことも言っていない形になっていた。
     /// **明示された値が常に優先**: args に無いキーだけ記憶で補う。補った値が true の
     /// ときだけ宣言する(false を補っても render の既定と同じなので出力は変わらない)
     func inheritingSnapshotFilters(_ args: [String: Any]) -> (args: [String: Any], note: String) {
@@ -653,7 +653,7 @@ extension MCPServer {
         } else if changedOnFirstRead {
             // 安定確認は「中間状態がそれ自体しばらく静止している」場合を
             // 見抜けない —— 遷移を1度も観測していないことだけは言える
-            // **「確かめろ」で終えない**(2026-08-15 の外部評価): 旧文はここまで来た木が
+            // **「確かめろ」で終えない**: 旧文はここまで来た木が
             // 何を通っているかを言わずに確認だけ促しており、読み手は素の ft_snapshot を
             // もう1回撃っていた —— この分岐は `stable && churn == 0`、つまり
             // **撮り直して同一だった**ときにしか来ないので、同じ木がもう1枚返るだけの丸損。

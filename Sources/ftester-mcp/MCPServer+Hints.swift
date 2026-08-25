@@ -116,7 +116,7 @@ extension MCPServer {
 
     /// 満額待って外れた回に、**払った場所で**上限の変え方を名指しする。
     /// `timeout` は全ての待ち(ft_snapshot / 操作系の snapshotAfter)に元からあるが、
-    /// 外れた回の文がどこにもそれを名指していなかったため、外部評価では「5秒固定」と読まれ、
+    /// 外れた回の文がどこにもそれを名指していなかったため、読み手には「5秒固定」と読まれ、
     /// **外れると分かっている待ちにも毎回満額**を払っていた。
     /// 逃げ道は払った場所で言う(`SnapshotTruncation.remedy` と同じ規律)
     static let waitTimeoutRemedy =
@@ -125,8 +125,8 @@ extension MCPServer {
 
     /// シート展開救済が走った(または意図的に省いた)ことを表す、応答の先頭に立つ固定の語。
     /// **所要時間の内訳(`scrollTimingNote`)と同じ語**にしてあるので、1つの文字列で
-    /// 「起きたか」と「いくらかかったか」の両方を拾える —— 2026-08-16 の外部評価は
-    /// 散文からの判別が難しいとして構造化フラグを求めたが、この応答は宛先が
+    /// 「起きたか」と「いくらかかったか」の両方を拾える —— 散文からの判別が難しいとして
+    /// 構造化フラグを求められたことがあるが、この応答は宛先が
     /// エージェントの本文1本なので、**別の機械可読チャネルを増やさず語を固定する**側で応える
     static let sheetRescueMarker = "note: sheet-expand rescue "
 
@@ -448,7 +448,7 @@ extension MCPServer {
         return parts.joined(separator: " ")
     }
 
-    /// 木の中に**同じ連続領域が2回**現れる形の注記(監査ラウンド5・2026-08-13・
+    /// 木の中に**同じ連続領域が2回**現れる形の注記(2026-08-13・
     /// jma.go.jp を横スクロールした後の iOS Safari で実測)。横スクロールで前後のコピーが
     /// 両方残ると、片方は既にスクロールで動いた実座標を持たないまま木に残る = 読み手が
     /// コピーした ref が古い側かもしれない。
@@ -599,8 +599,8 @@ extension MCPServer {
     /// `notationHint` は渡された1枚の木しか見ないので、部分一致の相手が探索のスワイプで
     /// 画面外へ流れると**ヒントごと黙る** —— 読み手は「`*X*` と書け」を受け取れないまま同じ式で
     /// 撃ち直す。さらに、開始時の木からしか出せなかったということは**その要素はもう後ろにある**
-    /// ので、勧めた `*X*` をそのまま同じ向きで撃っても届かない(外部評価 2026-08-15 の実害:
-    /// apple.com で `Shop` が8スワイプ空振り → 勧められた `*Shop*` も同じ結果、と報告された)。
+    /// ので、勧めた `*X*` をそのまま同じ向きで撃っても届かない(実害: apple.com で `Shop` が
+    /// 8スワイプ空振り → 勧められた `*Shop*` も同じ結果)。
     /// **両方の木から出せた回は「探索前から分かっていた」と帰属させる**(下の分岐の理由)。
     /// `backDirection` は探索方向の逆(呼び手が渡す)
     static func scrollNotationHint(_ selectorText: String, after: SnapshotResponse,
@@ -772,7 +772,7 @@ extension MCPServer {
     }
 
     /// **アドレス欄はあるのに webView 要素そのものが1つも無い**形の検知
-    /// (監査ラウンド5・2026-08-13・jma.go.jp を Android Chrome で実測)。
+    /// (2026-08-13・jma.go.jp を Android Chrome で実測)。
     ///
     /// なぜ要るか: `webViewGapNote` は webView 容器の**内側**しか測れず、`emptyTreeNote` は
     /// `elements.isEmpty` の完全一致でしか発火しない。Chrome が自分の chrome(ツールバー・
@@ -800,7 +800,7 @@ extension MCPServer {
     }
 
     /// **アドレス欄はあるのに webView 要素そのものが1つも無い**形の注記
-    /// (監査ラウンド5・2026-08-13・jma.go.jp を Android Chrome で実測)。
+    /// (2026-08-13・jma.go.jp を Android Chrome で実測)。
     ///
     /// なぜ要るか: `webViewGapNote` は webView 容器の**内側**しか測れず、`emptyTreeNote` は
     /// `elements.isEmpty` の完全一致でしか発火しない。Chrome が自分の chrome(ツールバー・
@@ -1211,7 +1211,7 @@ extension MCPServer {
         // **候補を先に絞ってから grade する**(2026-08-13 のレビュー指摘)。木の全要素を
         // 無条件に grade すると、**注記が1バイトも出ない画面で最も高くつく** ——
         // 実測(debug・固定コーパス)で 233 要素の画面が 3497ms、120 要素で 1208ms。
-        // ft_snapshot 全体が 203 要素で 1.2 秒(監査17)なので、桁で効いてしまう。
+        // ft_snapshot 全体が 203 要素で 1.2 秒なので、桁で効いてしまう。
         // grade するのは**候補と同じ矩形の要素だけ**にする
         let candidates = snapshot.elements.filter {
             $0.type == "clickable" && ($0.identifier ?? "").isEmpty && ($0.label ?? "").isEmpty
@@ -1525,7 +1525,7 @@ extension MCPServer {
             + " or just narrow by design: \(listed)\(more)\n"
     }
 
-    /// 曖昧と呼ぶ下限。**2**(2026-08-09 に3から下げた): 2件でも `tap("他のフィルタ")` は
+    /// 曖昧と呼ぶ下限。**2**: 2件でも `tap("他のフィルタ")` は
     /// 一意に選べず、危険度は3件と変わらない。実測(Google マップの検索結果)では
     /// `"他のフィルタ"` が別 frame の2件あるのに黙っていた。
     /// 雑音は「入れ子の一本鎖」を除外して抑える(下記)

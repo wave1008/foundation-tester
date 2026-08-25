@@ -1,7 +1,7 @@
 // セッション記憶(foldInRememberedDevice)が省略呼び出しへ宛先を注入してよいかの規則。
 //
 // 2026-08-12 は「2台以上を触ったら毎回注記しつつ直近の1台へ流す」だったが、注記は事故を
-// 1件も止めなかった(監査19・20・udid 2台の記憶混線は3件とも「2台以上を触ったセッション」で
+// 1件も止めなかった(実際に起きた3件はいずれも「2台以上を触ったセッション」で
 // 起きている)。2026-08-13 に**曖昧なら拒否**へ格上げした。1台しか触っていないセッションは
 // 原理的に外しようがないので、そこは従来どおり黙って適用する。
 //
@@ -96,7 +96,7 @@ final class RememberedDeviceAmbiguityNoteTests: XCTestCase {
     }
 
     /// 同 platform 内は1台でも、platform を跨いで触っていれば拒否する
-    /// (監査19 の形: iOS 1台 + Android 1台の並行運転で platform も宛先も省いた呼び出し)
+    /// (iOS 1台 + Android 1台の並行運転で platform も宛先も省いた呼び出し)
     func testCrossPlatformSessionRefusesWhenPlatformAlsoOmitted() {
         let server = MCPServer(write: { _ in }, makeDriver: { _ in FakeDriver() },
                                recordSnapshot: { _, _, _ in })

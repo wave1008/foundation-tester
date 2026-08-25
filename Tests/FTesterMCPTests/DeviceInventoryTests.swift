@@ -214,7 +214,7 @@ final class DeviceInventoryTests: XCTestCase {
         XCTAssertEqual(rows.map(\.identifier), ["SIM-2"])
     }
 
-    // MARK: - 同名の機が2台(2026-08-15 の外部評価の実害)
+    // MARK: - 同名の機が2台(実害)
 
     /// **同じ機種で2台作れば名前は既定で同じになる**。名前引きは udid を申告しないブリッジの
     /// ために在るが、名前が一意でないと**どちらの機のものか決められない** —— 和集合を取ると

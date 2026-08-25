@@ -24,7 +24,7 @@ extension StepExecutor {
         /// true = スクロールできていて末尾に着いた / false = 最初から1度も動いていない
         /// (指が容器の外・上に重なったモーダル・そもそもスクロールしない画面)。
         /// **この区別が無いと「stopped early」としか言えず**、末尾に着いただけの回を
-        /// 「途中で諦めた」と読ませて maxSwipes の引き上げを繰り返させる(2026-08-15 の外部評価)
+        /// 「途中で諦めた」と読ませて maxSwipes の引き上げを繰り返させる
         var contentEverMoved: Bool = false
         /// 端まで来ても見つからず、**逆向きの細刻みで拾い直した**回数(0 か 1。注記に載せる)
         var reverseSweeps: Int = 0
@@ -104,7 +104,7 @@ extension StepExecutor {
         let limit = max(0, step.maxSwipes ?? FlowStep.defaultMaxSwipes)
         // 打ち切ったときは**実際の回数**を出す(上限を名乗ると「8回も振ったのに」と読めてしまう)
         let swipes = result?.stoppedUnmoving == true ? (result?.swipes ?? limit) : limit
-        // **「stopped early」と言わない**(2026-08-15 の外部評価)。旧文言は「途中で諦めた」としか
+        // **「stopped early」と言わない**。旧文言は「途中で諦めた」としか
         // 読めず、実際には**リストの末尾に着いていた**回(iOS の設定アプリで実測)を欠陥と
         // 受け取らせ、maxSwipes を上げた再試行を誘っていた。上げても結果は変わらないので明言する。
         // 2形を分けるのは `contentEverMoved` —— 動いた末の停止と、1度も動かなかったのとでは次の手が違う

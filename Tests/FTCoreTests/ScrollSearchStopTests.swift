@@ -116,7 +116,7 @@ final class ScrollSearchStopTests: XCTestCase {
                        "実際には振っていない回数を名乗っている: \(reason)")
     }
 
-    /// **末尾に着いた回を「途中で諦めた」と読ませない**(2026-08-15 の外部評価)。
+    /// **末尾に着いた回を「途中で諦めた」と読ませない**。
     /// iOS の設定アプリで実測: リストの末尾まで届いていたのに旧文言が
     /// 「stopped early: the content no longer moved」としか言わず、読み手は欠陥と受け取って
     /// maxSwipes を 15 に上げて撃ち直した(結果は同じ)

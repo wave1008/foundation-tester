@@ -389,8 +389,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         shell("am force-stop " + bundleID);
         String output = shell("monkey -p " + bundleID + " -c android.intent.category.LAUNCHER 1");
         if (!output.contains("Events injected: 1")) {
-            // monkey はプロビジョニング直後の AVD などで理由なく失敗することがある(実測 exit 251。
-            // ホスト側 AndroidDriver.launch() に同じロジックがあった=移植して一本化)。
+            // monkey はプロビジョニング直後の AVD などで理由なく失敗することがある(実測 exit 251)。
             // LAUNCHER アクティビティを解決して am start で起動するフォールバック
             String resolve = shell("cmd package resolve-activity --brief "
                     + "-c android.intent.category.LAUNCHER " + bundleID);

@@ -1,5 +1,5 @@
-// 切り詰められた **web ページ**は、言われる前に要素上限の天井で撮り直す(2026-08-15 の外部評価:
-// 1セッションで 89 件と 72 件を落とされた)。
+// 切り詰められた **web ページ**は、言われる前に要素上限の天井で撮り直す
+// (1セッションで 89 件と 72 件を落とされた実績がある)。
 //
 // DSL には同じ撮り直し(`StepExecutor.retakenAtElementLimitCeiling`)が既にあったが、**MCP は
 // 別経路なので届いていなかった** —— 注記で「maxElements を上げろ」と案内するだけで、読み手は
@@ -218,7 +218,7 @@ final class MCPWebPageCeilingTests: XCTestCase {
             .filter { $0.hasSuffix(".json") }.map { String($0.dropLast(5)) }.sorted()
     }
 
-    // MARK: - 効かない逃げ道は勧めない(2026-08-15 の外部評価)
+    // MARK: - 効かない逃げ道は勧めない
 
     /// **実コーパスの witness**: Yahoo 天気トップは要素がほぼ全部 `link` なので
     /// `interactiveOnly` で消える行が**1つも無い**(実測 4,028B → 4,028B)。

@@ -134,7 +134,7 @@ final class SweepHarnessTests: XCTestCase {
         "ios-maps_suggest_keyboard": Counts(ghost: 0, overlay: 11, stacked: 0, misses: 0,
                                             disabled: 0, offscreen: 1, warnedTappable: 9,
                                             keyboard: 20),
-        // 2026-08-16 採取(外部評価の赤羽→立川の乗換案内)。**同じ画面の2状態**で、
+        // 2026-08-16 採取(赤羽→立川の乗換案内)。**同じ画面の2状態**で、
         // 注記の量を測るための供給源(NoteCoverageTests の当該コメント参照)。
         //
         // scrolledOut 5(両状態とも)は**真陽性**: 容器 `#TransitDirectionsListView` より上へ
@@ -333,7 +333,7 @@ final class SweepHarnessTests: XCTestCase {
         "ios-browser_weektable": Counts(ghost: 0, overlay: 6, stacked: 0, misses: 0, disabled: 1,
                                         offscreen: 4, warnedTappable: 2, keyboard: 0, sliver: 0,
                                         nested: 0, scrolledOut: 0),
-        // 2026-08-15 に外部評価者から受け取った1枚(iOS Safari・Yahoo 天気トップ)。**全件検分済み**。
+        // 2026-08-15 採取の1枚(iOS Safari・Yahoo 天気トップ)。**全件検分済み**。
         //
         // nested 20 は**全部真陽性**で1つの形 —— 日付セル `link "16 (日)"` と地点セルが
         // **入れ子のアンカー**を持ち、外側の中心が内側("16" / "28/22" 等)に乗る。ref で
@@ -370,10 +370,10 @@ final class SweepHarnessTests: XCTestCase {
         "and-browser_weather_weekly": Counts(ghost: 0, overlay: 15, stacked: 0, misses: 0,
                                              disabled: 0, offscreen: 0, warnedTappable: 2,
                                              keyboard: 0, sliver: 0, nested: 0, scrolledOut: 0),
-        // 2026-08-13 採取(監査ラウンド5・jma.go.jp)。missingPageContentNote /
+        // 2026-08-13 採取(jma.go.jp)。missingPageContentNote /
         // duplicateRegionNote の witness 対(NoteCoverageTests.baseline 参照)。
-        // **ios-browser_jma_hscroll の 33 件は全数検分済み**(2026-08-13)。監査24で web ページに
-        // 出た「折り返す inline テキスト」型の誤検知は1件も無く、原因は2つだけ:
+        // **ios-browser_jma_hscroll の 33 件は全数検分済み**(2026-08-13)。web ページで出る
+        // 「折り返す inline テキスト」型の誤検知は1件も無く、原因は2つだけ:
         // ⑴ **Safari の浮動下部バーが本文を実際に覆う**(15件。occluder は #CapsuleNavigationBar /
         //    #BackButton / #MoreMenuButton。ft_screenshot で実描画を確認)
         // ⑵ **この木が持つ前後コピーの重なりそのもの**(18件。旧コピー x=349 と実体 x=359 のような

@@ -334,8 +334,8 @@ public func rotateTo(_ orientation: FTOrientation,
 /// `swipePointToPoint` と同じ規約で、`ft_snapshot` の frame・`ft_tap` の x/y とも一致する。
 ///
 /// **セレクタで指せるなら `tap(sel)` を使うこと** —— 座標はレイアウトが動いた瞬間に別の物を
-/// 叩く。それでも要る場面がある: 実測(気象庁のページを Android Chrome で開いた画面。
-/// docs/mcp-audit-rounds.md の監査5)では、**ページ本体が a11y に1要素も公開されず**
+/// 叩く。それでも要る場面がある: 実測(気象庁のページを Android Chrome で開いた画面)では、
+/// **ページ本体が a11y に1要素も公開されず**
 /// `ft_swipe scrollFrame` も `ft_drag` も効かない = 座標しか手が無かった。
 /// 固定コーパス47画面の実測でも、操作可能な要素の 9.3% は書けるセレクタを持たない。
 ///

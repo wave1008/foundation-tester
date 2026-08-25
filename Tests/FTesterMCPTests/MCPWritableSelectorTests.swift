@@ -82,8 +82,8 @@ final class MCPWritableSelectorTests: XCTestCase {
 
     /// **切り詰め表示になるラベルは完全一致では勧めない**(印字が "…" 付きになり必ず外れる)。
     /// 2026-08-15 から**黙って諦めるのもやめた**: 印字されている先頭部分で `*断片*` が書け、
-    /// しかも位置に依存しないので索引形より強い(外部評価: 長いラベルの要素が軒並み
-    /// index-based になり再現性が不安、という指摘)
+    /// しかも位置に依存しないので索引形より強い(長いラベルの要素が軒並み index-based に
+    /// なると再現性が落ちる)
     func testOverlongLabelIsSuggestedAsAPartialMatchNotAnExactOne() throws {
         let long = String(repeating: "あ", count: SnapshotRenderer.labelDisplayLimit + 1)
         let snap = snapshot([element(1, label: long)])
@@ -431,7 +431,7 @@ final class MCPReproductionSelectorTests: XCTestCase {
                        "アプリの中なのにホーム画面向けの助言が出ている: \(text)")
     }
 
-    /// **ホーム画面のアイコンには次の手を添える**(2026-08-15 の外部評価)。ランチャのアイコンは
+    /// **ホーム画面のアイコンには次の手を添える**。ランチャのアイコンは
     /// a11y の id を持たないので「安定セレクタが無い」で永久に終わる —— そこで欲しいのは
     /// 別のセレクタではなく `ft_launch`。**助手の配線まで通す**(単体の
     /// `homeScreenLaunchHint` が緑でも、呼ばれていなければ利用者には何も届かない)

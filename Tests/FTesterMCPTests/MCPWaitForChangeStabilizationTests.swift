@@ -1,4 +1,4 @@
-// 2026-08-12 の実アプリ監査(赤羽→立川・ラウンド15)由来:
+// 実アプリ(赤羽→立川の乗換案内)で見つかった形:
 // waitForChange は「差が出た」だけで確定を返し、その木がネットワーク待ちの中間状態
 // (検索の「候補なし」)でも読み手に最終形として渡っていた。修正は2段:
 //   安定確認(差が出た後、直前の読みと一致するまで changeSettleRereads 回まで採り直す)
@@ -19,7 +19,7 @@ final class MCPWaitForChangeStabilizationTests: XCTestCase {
         XCTAssertTrue(text.contains("already present on the first read"), text)
     }
 
-    /// **この注記で ft_snapshot を撃たせない**(2026-08-15 の外部評価: AI が「未確認」の合図と
+    /// **この注記で ft_snapshot を撃たせない**(AI が「未確認」の合図と
     /// 読んで追加の ft_snapshot を撃つ例が実際に出た)。この分岐は撮り直して同一だったときに
     /// しか来ないので、素の読み直しは同じ木がもう1枚返るだけの丸損 —— **済んでいることを言い、
     /// 残る疑いに効く別の手(waitFor)を名指しする**

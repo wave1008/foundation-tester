@@ -257,7 +257,7 @@ extension MCPServer {
             "text": ["type": "string", "description": "Omit it to fire Enter only"],
             "pressEnter": ["type": "boolean", "description": "Fire Enter/IME action (search, submit)"],
             "ref": ["type": "integer", "description": "Reference number of the input field (defaults to the focused element)"],
-            // **値段と、二重払いの避け方まで書く**(2026-08-16 の外部評価): replace は素の type の
+            // **値段と、二重払いの避け方まで書く**: replace は素の type の
             // 約2倍かかる(実測 6.1s 対 2.3s)。内訳は clear の1往復と、**打った結果の読み返し**
             // (in-app iOS は clear/type の成否を検証せず YES を返すので、読み返さないと
             // 「replaced」が嘘になる)。snapshotAfter を付ければその1枚と共有する
@@ -459,7 +459,7 @@ extension MCPServer {
             "expandBulk": expandBulkProperty,
             "interactiveOnly": interactiveOnlyProperty,
         ]),
-        // **名前が「長押し」と言い切っていること**(2026-08-15 の外部評価)。ツールの説明が
+        // **名前が「長押し」と言い切っていること**。ツールの説明が
         // 遅延ロードされるクライアントでは、呼ぶかどうかを**名前だけ**で決める瞬間があり、
         // `ft_press` は「ハードウェアキーを押す」と読まれていた。旧名は dispatch で受け続ける
         tool("ft_long_press", "Long-press (press and hold) an element (ref) or a coordinate (x,y). "

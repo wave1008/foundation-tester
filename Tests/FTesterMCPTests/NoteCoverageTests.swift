@@ -66,7 +66,7 @@ final class NoteCoverageTests: XCTestCase {
         // **閾値超えの空白帯が2本ある**形で、最大の1本だけを返していた頃は
         // 週間表の見出しが落ちている側が黙って捨てられていた
         "and-browser_weather_weekly": "browser", "ios-browser_weather_weekly": "browser",
-        // 2026-08-13 の監査ラウンド5(jma.go.jp)で足した対。missingPageContentNote /
+        // jma.go.jp で足した対(2026-08-13)。missingPageContentNote /
         // duplicateRegionNote の witness(NoteCoverageTests.baseline の当該コメント参照)
         "and-browser_jma_notree": "browser", "ios-browser_jma_hscroll": "browser",
         // 2026-08-15 の監査ラウンド(ブラウザ・格子)で足した1枚。Chrome の DNS エラーページ ——
@@ -80,7 +80,7 @@ final class NoteCoverageTests: XCTestCase {
         // iOS 側 a11y から落ちている形で、見出しとは無関係)。真陽性(and-browser_weektable)の
         // 陰性対照として `chainsHaveHeaderTopRow` を追加した witness
         "ios-browser_j1_standings": "browser", "and-browser_j1_standings": "browser",
-        // 2026-08-15 の外部評価で受け取った1枚(iOS Safari・Yahoo 天気トップ)。**要素上限で
+        // iOS Safari・Yahoo 天気トップの1枚(2026-08-15 採取)。**要素上限で
         // 切り詰められた実ページ**(120 要素・89 件脱落)で、代表するのは自己言及の罠 ——
         // **`webView` 要素とアドレス欄そのものが上限で落ちている**(同じ画面を 400 で撮ると
         // 両方居る)。木の中身で「これは web ページか」を判定すると、**切り詰めがひどいほど
@@ -88,8 +88,8 @@ final class NoteCoverageTests: XCTestCase {
         // セッションのアプリを第一の根拠にしている理由の witness
         "ios-browser_yahoo_top": "browser",
         "ios-maps_route_options": "picker",
-        // 2026-08-16 の外部評価(赤羽→立川の乗換案内)で採った対。**同じ画面の2状態** ——
-        // 評価者が「出力が長い」と言った画面そのものを、注記の実数で測るための供給源。
+        // 赤羽→立川の乗換案内で採った対(2026-08-16)。**同じ画面の2状態** ——
+        // 「出力が長い」と言われた画面そのものを、注記の実数で測るための供給源。
         // 半開きは地図+シート(map)、展開は全画面の手順リスト —— 後者は
         // **全行が同じ id を共有する**密なリストで、`and-apps_list`(id を1つも持たない密な
         // リスト)と同じ family の逆の極なので dense-list に入れる
@@ -150,7 +150,7 @@ final class NoteCoverageTests: XCTestCase {
     /// 量の主因は `duplicateIDsNote`(15.1KB)と `ambiguousLabelsNote`(10.0KB)で変わらず、
     /// この2本は 5〜6/8 アーキタイプで発火する = 汎用の側。**削るなら文面であって対象ではない**
     static let baseline: [String: Coverage] = [
-        // 監査ラウンド5(2026-08-13・jma.go.jp)の2本。**要素が全部ブラウザ chrome でページ本体が
+        // jma.go.jp から採った2本(2026-08-13)。**要素が全部ブラウザ chrome でページ本体が
         // 木に無い**形の witness(and-browser_jma_notree。unrepresentedScreenFraction 0.886)。
         // 陰性対照は and-browser_urlmenu(URL バーはあるが webView も無い画面。0.059)と
         // and-overflow(0.564 まで達するが URL バーが無いので黙る=browser 限定の理由)
@@ -255,7 +255,7 @@ final class NoteCoverageTests: XCTestCase {
     /// 6個並ぶ形、scrollFrameCandidates は容器が2つある形。**上げるのは1回きりの記録**で、
     /// 次に超えたときはまた検分すること(黙って上げると現状追認装置になる)
     /// **2026-08-16 に 3200 → 3700**(新しい最悪値 3,621B = `ios-maps_transit_steps_expanded`)。
-    /// **注記は1本も足していない** —— 外部評価者が「出力が非常に長い」と言った画面そのものを
+    /// **注記は1本も足していない** —— 「出力が非常に長い」と言われた画面そのものを
     /// 採ったら、既存の5本がこの量になった。検分した内訳(この画面の木は 5,658B なので
     /// **注記が木の 64%**。比較: `ios-news_feed` は 3,070B / 13,155B = 23%):
     ///

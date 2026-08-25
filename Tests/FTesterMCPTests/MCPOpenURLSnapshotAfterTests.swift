@@ -31,7 +31,7 @@ final class MCPOpenURLSummaryTests: XCTestCase {
         XCTAssertTrue(summary.contains("waitFor"), summary)
     }
 
-    // MARK: - 着地を待つのが既定(2026-08-16 の外部評価)
+    // MARK: - 着地を待つのが既定
 
     /// **配送直後に読まない**。URL の配送は非同期なので、`snapshotAfter` だけを渡すと
     /// 前の画面が黙って返っていた。読み手は「開いた先の画面が欲しい」から付けているので、

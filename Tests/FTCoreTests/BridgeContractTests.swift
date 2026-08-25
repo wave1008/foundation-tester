@@ -149,7 +149,7 @@ final class BridgeContractTests: XCTestCase {
             "AndroidRunner/build.sh": "666cd57fd27b3a39cb9ecea0c7776577301181df87419ddfc76ff58c6ed8a5d7",
             "AndroidRunner/src/com/example/ftbridge/BridgeHttpServer.java": "7f0c481935f385244845b51973071f3f611d0cac226a23c257cf8847a07f5e4a",
             "AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java": "56f9044d5a3d5c3e129d2eecf4f67914eedc37bb2b66e1b40695080a1b08232f",
-            "AndroidRunner/src/com/example/ftbridge/BridgeRouter.java": "280c69e637ea841cb863823ff58de75f3bc3a10690d7306425bd11463383ba27",
+            "AndroidRunner/src/com/example/ftbridge/BridgeRouter.java": "5f50cf25cb9db6e9cbee0b4f07e3c9ced021734af0692e8d3dc8b7361a2911eb",
             "AndroidRunner/src/com/example/ftbridge/DisplayHeartbeat.java": "34c91b37e01829307897825e7104d250c8662f00ce9734512f3c41da8bccd956",
             "AndroidRunner/src/com/example/ftbridge/InputInjector.java": "b221a59f684e88f8b77509dac02963f9d3697e4841c3100f204a5db67bf4a945",
             "AndroidRunner/src/com/example/ftbridge/QuietWaiter.java": "bed0d4c3bbafa9a4038aabfbf1e29ebaeb0198eaf4bee926cbd842b7907c3c29",

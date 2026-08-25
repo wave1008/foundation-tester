@@ -89,7 +89,7 @@ final class MCPEvaluationFixes20260815Tests: XCTestCase {
         XCTAssertEqual(MCPServer.reversedDirection(.left), "right")
     }
 
-    // MARK: - 座標の単位を木に添える(2026-08-15 の2人目の評価)
+    // MARK: - 座標の単位を木に添える
 
     /// Android の論理解像度(実測 1280x2856)は iOS(402x874)と桁違いで、**同じ数字の感覚で
     /// 読むと的を外す**。数字は変えず(1セッションに座標系を2つ持つと黙って別の場所を撃つ)、

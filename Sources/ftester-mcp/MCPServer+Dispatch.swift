@@ -495,7 +495,7 @@ extension MCPServer {
             // installedState は撃たない: simctl openurl/devicectl openURL・am start は OS の URL
             // ルーティングで、installedState が守っている XCUIApplication.launch() のランナー死
             // (ft_launch のコメント参照)とは経路が別
-            // **既定で着地を待つ**(2026-08-16 の外部評価)。URL の配送は非同期なので、
+            // **既定で着地を待つ**。URL の配送は非同期なので、
             // `snapshotAfter` だけを渡すと**前の画面が黙って返る** —— 読み手は「開いた先の
             // 画面が欲しい」から snapshotAfter を付けているので、既定が誤りの側に倒れていた
             // (評価者の指摘。こちらも同セッションで踏んで snapshot を2回撮った)。
@@ -1340,7 +1340,7 @@ extension MCPServer {
             + Self.homeScreenLaunchHint(snapshot.sessionBundleID)
     }
 
-    /// ホーム画面(ランチャ)で「安定セレクタが無い」と言われた相手への次の手(2026-08-15 の外部評価)。
+    /// ホーム画面(ランチャ)で「安定セレクタが無い」と言われた相手への次の手。
     /// アイコンは a11y の id を持たないので**この画面では永久に書けない** —— そこで詰まった読み手が
     /// 欲しいのは別のセレクタではなく「アプリを開く別の口」なので、そちらを名指しする
     static func homeScreenLaunchHint(_ session: String?) -> String {

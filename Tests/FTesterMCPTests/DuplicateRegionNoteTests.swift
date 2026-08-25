@@ -1,4 +1,4 @@
-// duplicateRegionNote / missingPageContentNote(監査ラウンド5・2026-08-13・jma.go.jp)。
+// duplicateRegionNote / missingPageContentNote(2026-08-13・jma.go.jp)。
 //
 // witness は Tests/Fixtures/RealAppSnapshots/ios-browser_jma_hscroll.json(横スクロール後、
 // 前後のコピーが両方ツリーに残る)と and-browser_jma_notree.json(ブラウザ chrome しか
