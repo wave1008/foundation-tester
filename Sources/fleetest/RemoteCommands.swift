@@ -424,7 +424,7 @@ struct RemoteCommand: AsyncParsableCommand {
             private static func emitTable(_ entries: [RemoteHostEntry]) {
                 let header = ["NAME", "HOST", "DIR"]
                 var rows = [header]
-                rows.append(contentsOf: entries.map { [$0.name, $0.host, $0.dir ?? "-"] })
+                rows.append(contentsOf: entries.map { [$0.machine, $0.host, $0.dir ?? "-"] })
                 let widths = (0..<header.count).map { col in rows.map { $0[col].count }.max() ?? 0 }
                 for row in rows {
                     let line = zip(row, widths)
@@ -462,7 +462,7 @@ struct RemoteCommand: AsyncParsableCommand {
                 _ = try RemoteHostSpec.parse(host)
                 if let dir { try RemoteLayout.validateBase(dir) }
                 var config = LocalConfig.load()
-                let entry = RemoteHostEntry(name: name, host: host, dir: dir)
+                let entry = RemoteHostEntry(machine: name, host: host, dir: dir)
                 config.remoteHosts = RemoteHostRegistry.upsert(entry, into: config.remoteHosts ?? [])
                 try config.save()
                 print("✅ Registered host \"\(name)\" → \(host)")
@@ -483,10 +483,10 @@ struct RemoteCommand: AsyncParsableCommand {
             func run() async throws {
                 var config = LocalConfig.load()
                 let before = config.remoteHosts ?? []
-                guard before.contains(where: { $0.name == name }) else {
+                guard before.contains(where: { $0.machine == name }) else {
                     throw ValidationError("no host named \"\(name)\" is registered")
                 }
-                config.remoteHosts = RemoteHostRegistry.remove(name: name, from: before)
+                config.remoteHosts = RemoteHostRegistry.remove(machine: name, from: before)
                 try config.save()
                 print("✅ Removed host \"\(name)\"")
             }
@@ -580,7 +580,7 @@ enum RemoteHostResolver {
             try RemoteLayout.validateBase(dir)
             return ResolvedRemoteHost(
                 hostSpec: try RemoteHostSpec.parse(entry.host), remoteDirRaw: dir,
-                registeredName: entry.name)
+                registeredName: entry.machine)
         case .rawTarget(let raw):
             let dir = remoteDirOverride ?? defaultRemoteDir
             try RemoteLayout.validateBase(dir)
@@ -689,7 +689,7 @@ func resolveRemoteTarget(_ dispatch: EffectiveHostDispatch, remoteDirOverride: S
             "the machine profile's host \"\(dispatch.rawHost)\" is not a registered remote host"
             + (entries.isEmpty
                ? " (no hosts registered — run: fleetest remote hosts add <name> --host <user@host>)"
-               : " (available: \(entries.map(\.name).sorted().joined(separator: ", ")))"))
+               : " (available: \(entries.map(\.machine).sorted().joined(separator: ", ")))"))
     }
     return try RemoteHostResolver.resolve(rawHost: dispatch.rawHost, remoteDirOverride: remoteDirOverride)
 }

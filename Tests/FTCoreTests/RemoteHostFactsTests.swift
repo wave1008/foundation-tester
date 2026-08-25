@@ -14,40 +14,40 @@ final class RemoteHostFactsTests: XCTestCase {
     }
 
     func testSaveThenLoadRoundTrips() {
-        let facts = RemoteHostFacts(machine: "M1Max", dispatchOverheadSeconds: 4.2,
+        let facts = RemoteHostFacts(host: "M1Max", dispatchOverheadSeconds: 4.2,
                                     updatedAt: "2026-08-18T00:00:00Z")
-        RemoteHostFactsStore.save(facts, dir: dir, hostLabel: "runner-1")
-        XCTAssertEqual(RemoteHostFactsStore.load(dir: dir, hostLabel: "runner-1"), facts)
+        RemoteHostFactsStore.save(facts, dir: dir, host: "runner-1")
+        XCTAssertEqual(RemoteHostFactsStore.load(dir: dir, host: "runner-1"), facts)
     }
 
     func testLoadMissingFileReturnsNil() {
-        XCTAssertNil(RemoteHostFactsStore.load(dir: dir, hostLabel: "never-saved"))
+        XCTAssertNil(RemoteHostFactsStore.load(dir: dir, host: "never-saved"))
     }
 
     func testLoadCorruptedJSONReturnsNil() throws {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         try "not json".write(
-            to: dir.appendingPathComponent(RemoteHostFactsStore.fileKey(hostLabel: "runner-1") + ".json"),
+            to: dir.appendingPathComponent(RemoteHostFactsStore.fileKey(host: "runner-1") + ".json"),
             atomically: true, encoding: .utf8)
-        XCTAssertNil(RemoteHostFactsStore.load(dir: dir, hostLabel: "runner-1"))
+        XCTAssertNil(RemoteHostFactsStore.load(dir: dir, host: "runner-1"))
     }
 
     func testSaveOverwritesPreviousFacts() {
         RemoteHostFactsStore.save(
-            RemoteHostFacts(machine: "old", updatedAt: "2026-08-18T00:00:00Z"),
-            dir: dir, hostLabel: "runner-1")
+            RemoteHostFacts(host: "old", updatedAt: "2026-08-18T00:00:00Z"),
+            dir: dir, host: "runner-1")
         RemoteHostFactsStore.save(
-            RemoteHostFacts(machine: "new", updatedAt: "2026-08-18T01:00:00Z"),
-            dir: dir, hostLabel: "runner-1")
-        XCTAssertEqual(RemoteHostFactsStore.load(dir: dir, hostLabel: "runner-1")?.machine, "new")
+            RemoteHostFacts(host: "new", updatedAt: "2026-08-18T01:00:00Z"),
+            dir: dir, host: "runner-1")
+        XCTAssertEqual(RemoteHostFactsStore.load(dir: dir, host: "runner-1")?.host, "new")
     }
 
     func testFieldsAreOptionalAndNilRoundTrips() {
         let facts = RemoteHostFacts(updatedAt: "2026-08-18T00:00:00Z")
-        RemoteHostFactsStore.save(facts, dir: dir, hostLabel: "bare")
-        let loaded = RemoteHostFactsStore.load(dir: dir, hostLabel: "bare")
+        RemoteHostFactsStore.save(facts, dir: dir, host: "bare")
+        let loaded = RemoteHostFactsStore.load(dir: dir, host: "bare")
         XCTAssertEqual(loaded, facts)
-        XCTAssertNil(loaded?.machine)
+        XCTAssertNil(loaded?.host)
         XCTAssertNil(loaded?.dispatchOverheadSeconds)
         XCTAssertNil(loaded?.processorModel)
         XCTAssertNil(loaded?.coreCount)
@@ -58,11 +58,11 @@ final class RemoteHostFactsTests: XCTestCase {
 
     func testHardwareAndConcurrentDevicesFieldsRoundTrip() {
         let facts = RemoteHostFacts(
-            machine: "M1Max", dispatchOverheadSeconds: 4.2,
+            host: "M1Max", dispatchOverheadSeconds: 4.2,
             processorModel: "Apple M1 Max", coreCount: 10, concurrentDevices: 3,
             updatedAt: "2026-08-18T00:00:00Z")
-        RemoteHostFactsStore.save(facts, dir: dir, hostLabel: "runner-2")
-        let loaded = RemoteHostFactsStore.load(dir: dir, hostLabel: "runner-2")
+        RemoteHostFactsStore.save(facts, dir: dir, host: "runner-2")
+        let loaded = RemoteHostFactsStore.load(dir: dir, host: "runner-2")
         XCTAssertEqual(loaded, facts)
         XCTAssertEqual(loaded?.processorModel, "Apple M1 Max")
         XCTAssertEqual(loaded?.coreCount, 10)
@@ -77,33 +77,40 @@ final class RemoteHostFactsTests: XCTestCase {
             {"machine":"M1Max","dispatchOverheadSeconds":4.2,"updatedAt":"2026-08-18T00:00:00Z"}
             """
         try legacyJSON.write(
-            to: dir.appendingPathComponent(RemoteHostFactsStore.fileKey(hostLabel: "legacy") + ".json"),
+            to: dir.appendingPathComponent(RemoteHostFactsStore.fileKey(host: "legacy") + ".json"),
             atomically: true, encoding: .utf8)
-        let loaded = RemoteHostFactsStore.load(dir: dir, hostLabel: "legacy")
-        XCTAssertEqual(loaded?.machine, "M1Max")
+        let loaded = RemoteHostFactsStore.load(dir: dir, host: "legacy")
+        XCTAssertEqual(loaded?.host, "M1Max")
         XCTAssertEqual(loaded?.dispatchOverheadSeconds, 4.2)
         XCTAssertNil(loaded?.processorModel)
         XCTAssertNil(loaded?.coreCount)
         XCTAssertNil(loaded?.concurrentDevices)
     }
 
-    // MARK: - fileKey のサニタイズ
+    // MARK: - fileKey(鍵はホスト。ユーザー名は落とす)
+
+    /// ssh 宛先を渡されたら **user@ を落として実体だけ**を鍵にする —— 同じ機械を
+    /// 別ユーザーで叩いても実測は同じ機械のものだから
+    func testFileKeyDropsTheSshUser() {
+        XCTAssertEqual(RemoteHostFactsStore.fileKey(host: "user@192.168.20.95"), "192.168.20.95")
+        XCTAssertEqual(RemoteHostFactsStore.fileKey(host: "192.168.20.95"), "192.168.20.95")
+    }
 
     func testFileKeySanitizesDisallowedCharacters() {
-        XCTAssertEqual(RemoteHostFactsStore.fileKey(hostLabel: "user@host"), "user_host")
+        XCTAssertEqual(RemoteHostFactsStore.fileKey(host: "ホスト 名"), "_____")
     }
 
     func testFileKeyKeepsAllowedCharacters() {
-        XCTAssertEqual(RemoteHostFactsStore.fileKey(hostLabel: "M1Max-01_v2.local"), "M1Max-01_v2.local")
+        XCTAssertEqual(RemoteHostFactsStore.fileKey(host: "M1Max-01_v2.local"), "M1Max-01_v2.local")
     }
 
     func testDifferentHostLabelsWithSameSanitizedKeyShareOneFile() {
         // "user@host" と "user home" は共にサニタイズ後は "user_host"/"user_home" 相当だが、
         // ここでは同一キーへ丸まる2ラベルが同じファイルへ書く(衝突は書き手側の責任)ことだけ固定する
         RemoteHostFactsStore.save(
-            RemoteHostFacts(machine: "A", updatedAt: "2026-08-18T00:00:00Z"),
-            dir: dir, hostLabel: "user@host")
-        XCTAssertEqual(RemoteHostFactsStore.load(dir: dir, hostLabel: "user@host")?.machine, "A")
+            RemoteHostFacts(host: "A", updatedAt: "2026-08-18T00:00:00Z"),
+            dir: dir, host: "user@host")
+        XCTAssertEqual(RemoteHostFactsStore.load(dir: dir, host: "user@host")?.host, "A")
     }
 
     // MARK: - MachineHardware.current()

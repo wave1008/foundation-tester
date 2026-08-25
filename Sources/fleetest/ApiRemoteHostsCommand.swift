@@ -19,11 +19,11 @@ struct ApiRemoteHostsCommand: AsyncParsableCommand {
 
     @Option(name: .customLong("import"),
             // ArgumentHelp は文字列リテラルからしか作れない(連結した String は渡せない)
-            help: ArgumentHelp("Upsert these entries (JSON array: [{\"name\":…,\"host\":…,\"dir\":…,\"machine\":…}]), "
+            help: ArgumentHelp("Upsert these entries (JSON array: [{\"machine\":…,\"host\":…,\"dir\":…}]; the old key \"name\" is still read), "
                 + "then print the resulting registry. For migrating from the VSCode setting fleetest.remote.hosts"))
     var importJSON: String?
 
-    @Option(help: "Remove this entry by name, then print the resulting registry")
+    @Option(help: "Remove this entry by machine name, then print the resulting registry")
     var remove: String?
 
     func run() async throws {
@@ -35,14 +35,14 @@ struct ApiRemoteHostsCommand: AsyncParsableCommand {
         if let importJSON {
             let incoming = try Self.decodeImport(importJSON)
             for entry in incoming {
-                try RemoteHostRegistry.validateName(entry.name)
+                try RemoteHostRegistry.validateName(entry.machine)
                 _ = try RemoteHostSpec.parse(entry.host)
                 if let dir = entry.dir { try RemoteLayout.validateBase(dir) }
                 config.remoteHosts = RemoteHostRegistry.upsert(entry, into: config.remoteHosts ?? [])
             }
             try config.save()
         } else if let name = remove {
-            config.remoteHosts = RemoteHostRegistry.remove(name: name, from: config.remoteHosts ?? [])
+            config.remoteHosts = RemoteHostRegistry.remove(machine: name, from: config.remoteHosts ?? [])
             try config.save()
         }
 
@@ -82,18 +82,19 @@ private struct ApiRemoteHostImportEntry: Decodable {
     let dir: String?
 
     var entry: RemoteHostEntry {
-        RemoteHostEntry(name: name, host: host, dir: dir.flatMap { $0.isEmpty ? nil : $0 })
+        RemoteHostEntry(machine: name, host: host, dir: dir.flatMap { $0.isEmpty ? nil : $0 })
     }
 }
 
-/// dir は常にキーを出し、未設定は空文字("")にする(nil にはしない。契約はファイル冒頭のコメント)
+/// dir は常にキーを出し、未設定は空文字("")にする(nil にはしない。契約はファイル冒頭のコメント)。
+/// **マシン名のキーは "machine"**(2026-08-26 改名。旧 "name" は入力側だけ受ける)
 private struct ApiRemoteHostEntry: Encodable {
-    let name: String
+    let machine: String
     let host: String
     let dir: String
 
     init(_ entry: RemoteHostEntry) {
-        name = entry.name
+        machine = entry.machine
         host = entry.host
         dir = entry.dir ?? ""
     }

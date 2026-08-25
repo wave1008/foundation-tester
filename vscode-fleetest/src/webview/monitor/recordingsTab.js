@@ -124,10 +124,6 @@ function showPlayerView() {
   playerView.style.display = 'flex';
 }
 
-// 一覧の行に出す台の数。これを超えた分は「ほかN台」に畳む(8台のフリートで行が横に伸びるのを防ぐ。
-// 全台の名前は行の title(ツールチップ)に残す)
-const SESSION_DEVICE_CHIPS = 3;
-
 /** デバイス名ピル(タイル/レーン/実行プロファイルと同じ配色クラスを共用)。
  *  長い論理名は CSS で省略されるので、肩書きと一緒に全文を title に持たせる。
  *  **同じ台の名前は機械をまたいで重複する**ので、machine があれば title に併記する。 */
@@ -158,28 +154,18 @@ function sessionMachines(message) {
   return typeof message.machine === 'string' && message.machine !== '' ? [message.machine] : [];
 }
 
-/** セッション行の3段目「実行マシン + 台」。マシンも台も無い古い記録では null(段を作らない)。 */
+/** セッション行の3段目「実行マシン」。**台は出さない**(2026-08-26 ユーザー指示)——
+ *  台は動画ごとに違うので、行では機械だけを見せて中身は再生ビューで見る。
+ *  マシンが読めない古い記録では null(段を作らない)。 */
 function buildSessionMeta(session) {
   const machines = sessionMachines(session);
-  const devices = Array.isArray(session.devices) ? session.devices : [];
-  if (machines.length === 0 && devices.length === 0) {
+  if (machines.length === 0) {
     return null;
   }
   const meta = document.createElement('div');
   meta.className = 'recordings-session-meta';
   for (const machine of machines) {
     meta.appendChild(machineBadge(machine));
-  }
-  for (const device of devices.slice(0, SESSION_DEVICE_CHIPS)) {
-    meta.appendChild(deviceNamePill(device));
-  }
-  if (devices.length > SESSION_DEVICE_CHIPS) {
-    const more = document.createElement('span');
-    more.className = 'recordings-session-devices-more';
-    more.textContent = t('recordings.meta.devicesMore', { count: devices.length - SESSION_DEVICE_CHIPS });
-    // 畳んだ分もここで読める(行が伸びないまま全台を確かめられる)
-    more.title = devices.map((d) => d.device).join('\n');
-    meta.appendChild(more);
   }
   return meta;
 }

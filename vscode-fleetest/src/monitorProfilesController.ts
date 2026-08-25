@@ -176,7 +176,7 @@ export class MonitorProfilesController {
         platform: device.platform,
         // 実効ホスト(デバイス指定 > プロファイル直下の既定 > 手元)。同名は (host, name) で
         // 区別されるので、重複判定と表示の両方がこれを見る
-        host: effectiveDeviceHost(device.host, summary.host),
+        host: effectiveDeviceHost(device.machine, summary.host),
         detail: machineDeviceDetail(device),
         // 右ペインの編集フォーム用の生フィールド。undefined は postMessage の JSON化で
         // 自然に省略される。

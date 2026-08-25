@@ -109,10 +109,11 @@ public struct DeviceSpec: Codable, Sendable, Hashable {
     /// **一意なのは name 単体ではなく (host, name)** —— 別のホストに同名のデバイスが居てよい
     /// (フリートの各機が同じ命名規則でシミュレータを作るため、同名は例外ではなく通常)
     public var name: String
-    /// このデバイスが居る機械。省略時はマシンプロファイルの host(そちらも省略なら手元)。
-    /// 書けるのは登録名だけ(ssh の実体は書けない。MachineProfile.host と同じ規律)。
-    /// 解決規則は DeviceHostGrouping、正規化は MachineHostDispatch.normalize
-    public var host: String?
+    /// このデバイスが居る機械。省略時はマシンプロファイルの machine(そちらも省略なら手元)。
+    /// 書けるのは**登録名**だけ(ssh の実体は書けない。MachineProfile.machine と同じ規律)。
+    /// 解決規則は DeviceHostGrouping、正規化は MachineHostDispatch.normalize。
+    /// **JSON キーは "machine"**(2026-08-26 改名)。旧キー "host" も読む(既存プロファイルは無改修)
+    public var machine: String?
     /// 実体種別(省略時 virtual)。実機の識別子は iOS=udid / Android=serial
     public var kind: DeviceKind?
     /// iOS: シミュレータのデバイス名(例 "iPhone 17 Pro"。実機では未使用)
@@ -139,12 +140,12 @@ public struct DeviceSpec: Codable, Sendable, Hashable {
     /// 同定には使わない(登録時に控えるだけ。端末を挿し替えても値は追随しない)
     public var model: String?
 
-    public init(name: String, host: String? = nil, kind: DeviceKind? = nil,
+    public init(name: String, machine: String? = nil, kind: DeviceKind? = nil,
                 simulator: String? = nil, os: String? = nil,
                 udid: String? = nil, port: UInt16? = nil, engine: String? = nil,
                 avd: String? = nil, serial: String? = nil, model: String? = nil) {
         self.name = name
-        self.host = host
+        self.machine = machine
         self.kind = kind
         self.simulator = simulator
         self.os = os
@@ -166,10 +167,47 @@ public struct DeviceSpec: Codable, Sendable, Hashable {
         simulator == nil && os == nil && udid == nil && avd == nil && serial == nil
     }
 
+    /// 旧キー "host" は読めるので既知扱いにする(未知キー検査で弾かない)
     static let knownKeys: Set<String> = [
-        "name", "host", "kind", "simulator", "os", "udid", "port", "engine", "avd", "serial",
-        "model",
+        "name", "machine", "host", "kind", "simulator", "os", "udid", "port", "engine", "avd",
+        "serial", "model",
     ]
+
+    private enum CodingKeys: String, CodingKey {
+        case name, machine, host, kind, simulator, os, udid, port, engine, avd, serial, model
+    }
+
+    /// **読みは machine > 旧 host**、書きは machine だけ(改名の互換はこの1箇所)
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decode(String.self, forKey: .name)
+        machine = try container.decodeIfPresent(String.self, forKey: .machine)
+            ?? container.decodeIfPresent(String.self, forKey: .host)
+        kind = try container.decodeIfPresent(DeviceKind.self, forKey: .kind)
+        simulator = try container.decodeIfPresent(String.self, forKey: .simulator)
+        os = try container.decodeIfPresent(String.self, forKey: .os)
+        udid = try container.decodeIfPresent(String.self, forKey: .udid)
+        port = try container.decodeIfPresent(UInt16.self, forKey: .port)
+        engine = try container.decodeIfPresent(String.self, forKey: .engine)
+        avd = try container.decodeIfPresent(String.self, forKey: .avd)
+        serial = try container.decodeIfPresent(String.self, forKey: .serial)
+        model = try container.decodeIfPresent(String.self, forKey: .model)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(name, forKey: .name)
+        try container.encodeIfPresent(machine, forKey: .machine)
+        try container.encodeIfPresent(kind, forKey: .kind)
+        try container.encodeIfPresent(simulator, forKey: .simulator)
+        try container.encodeIfPresent(os, forKey: .os)
+        try container.encodeIfPresent(udid, forKey: .udid)
+        try container.encodeIfPresent(port, forKey: .port)
+        try container.encodeIfPresent(engine, forKey: .engine)
+        try container.encodeIfPresent(avd, forKey: .avd)
+        try container.encodeIfPresent(serial, forKey: .serial)
+        try container.encodeIfPresent(model, forKey: .model)
+    }
 }
 
 public struct MachineDeviceList: Codable, Sendable, Equatable {
@@ -186,18 +224,38 @@ public struct MachineProfile: Codable, Sendable, Equatable {
     /// 無改修で動く**)。それ以外は `fleetest remote hosts` の登録名でなければならない
     /// (生の ssh 宛先は書けない — プロファイルはプロジェクト資産で、ssh の実体はローカル設定
     /// = LocalConfig.remoteHosts にだけ置く規律。フリート定義と同じ)。優先順位・食い違いの扱いは
-    /// MachineHostDispatch、登録簿引きは Sources/fleetest/RemoteCommands.swift
-    public var host: String?
+    /// MachineHostDispatch、登録簿引きは Sources/fleetest/RemoteCommands.swift。
+    /// **JSON キーは "machine"**(2026-08-26 改名)。旧キー "host" も読む
+    public var machine: String?
     public var ios: MachineDeviceList?
     public var android: MachineDeviceList?
 
-    public init(host: String? = nil, ios: MachineDeviceList? = nil, android: MachineDeviceList? = nil) {
-        self.host = host
+    public init(machine: String? = nil, ios: MachineDeviceList? = nil,
+                android: MachineDeviceList? = nil) {
+        self.machine = machine
         self.ios = ios
         self.android = android
     }
 
-    static let knownKeys: Set<String> = ["host", "ios", "android"]
+    /// 旧キー "host" は読めるので既知扱い(DeviceSpec.knownKeys と同じ規律)
+    static let knownKeys: Set<String> = ["machine", "host", "ios", "android"]
+
+    private enum CodingKeys: String, CodingKey { case machine, host, ios, android }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        machine = try container.decodeIfPresent(String.self, forKey: .machine)
+            ?? container.decodeIfPresent(String.self, forKey: .host)
+        ios = try container.decodeIfPresent(MachineDeviceList.self, forKey: .ios)
+        android = try container.decodeIfPresent(MachineDeviceList.self, forKey: .android)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(machine, forKey: .machine)
+        try container.encodeIfPresent(ios, forKey: .ios)
+        try container.encodeIfPresent(android, forKey: .android)
+    }
 }
 
 /// `MachineProfile.host` と `--host`(CLI 明示)の優先順位を1箇所に固定する純粋関数。
@@ -266,16 +324,33 @@ public enum MachineHostDispatch {
 /// 実行プロファイルのデバイス参照(name でマシンプロファイルを引く)
 public struct RunDeviceRef: Codable, Sendable, Equatable {
     public var name: String
-    /// 同名のデバイスが複数のホストに居るときの指定(省略可)。省略した参照が複数に当たると
-    /// **候補を挙げて中止する**(どちらか一方を黙って選ばない。解決規則は DeviceHostGrouping)
-    public var host: String?
+    /// 同名のデバイスが複数の機械に居るときの指定(省略可)。省略した参照が複数に当たると
+    /// **候補を挙げて中止する**(どちらか一方を黙って選ばない。解決規則は DeviceHostGrouping)。
+    /// **JSON キーは "machine"**(2026-08-26 改名)。旧キー "host" も読む
+    public var machine: String?
 
-    public init(name: String, host: String? = nil) {
+    public init(name: String, machine: String? = nil) {
         self.name = name
-        self.host = host
+        self.machine = machine
     }
 
-    static let knownKeys: Set<String> = ["name", "host"]
+    /// 旧キー "host" は読めるので既知扱い(DeviceSpec.knownKeys と同じ規律)
+    static let knownKeys: Set<String> = ["name", "machine", "host"]
+
+    private enum CodingKeys: String, CodingKey { case name, machine, host }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decode(String.self, forKey: .name)
+        machine = try container.decodeIfPresent(String.self, forKey: .machine)
+            ?? container.decodeIfPresent(String.self, forKey: .host)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(name, forKey: .name)
+        try container.encodeIfPresent(machine, forKey: .machine)
+    }
 }
 
 /// FM 機能の実行時トグル(実行プロファイル由来の実効値)。enabled=false のとき他フラグも
@@ -628,7 +703,7 @@ public struct ResolvedProfile: Sendable {
         filtered.devices = devices.filter { device in
             if !wanted.isEmpty, !wanted.contains(device.name) { return false }
             guard deviceHost != nil else { return true }
-            return MachineHostDispatch.normalize(device.spec.host) == wantedHost
+            return MachineHostDispatch.normalize(device.spec.machine) == wantedHost
         }
         return filtered
     }
@@ -832,7 +907,7 @@ public enum ProfileResolver {
         }
         do {
             let machine = try JSONDecoder().decode(MachineProfile.self, from: data)
-            return MachineHostDispatch.normalize(machine.host)
+            return MachineHostDispatch.normalize(machine.machine)
         } catch {
             throw ProfileError.decodeFailed(machineURL, detail: "\(error)")
         }
@@ -1077,7 +1152,7 @@ public enum ProfileResolver {
                     devices.append(device)
                 }
             case .missing:
-                let onHost = ref.host.map { " on host \($0)" } ?? ""
+                let onHost = ref.machine.map { " on host \($0)" } ?? ""
                 warnings.append(
                     "device \"\(ref.name)\"\(onHost) is not defined on machine \(machineName)"
                     + " — skipping it")
@@ -1165,7 +1240,7 @@ public enum ProfileResolver {
             project: project,
             runName: runName,
             machineName: machineName,
-            machineHost: MachineHostDispatch.normalize(machine.host),
+            machineHost: MachineHostDispatch.normalize(machine.machine),
             appName: appProfile.resolvedAppName ?? appRef,
             apps: apps,
             devices: devices,

@@ -1763,32 +1763,32 @@ test("removeDeviceFromRunProfile: (host, name) 一致だけを外し、他ホス
     machine: "local+remote",
     app: "sut",
     devices: [
-      { host: "local", name: "iPhone(iOS 27.0)01" },
-      { host: "M1Max", name: "iPhone(iOS 27.0)01" },
-      { host: "local", name: "iPhone(iOS 27.0)02" },
+      { machine: "local", name: "iPhone(iOS 27.0)01" },
+      { machine: "M1Max", name: "iPhone(iOS 27.0)01" },
+      { machine: "local", name: "iPhone(iOS 27.0)02" },
     ],
   };
   const result = removeDeviceFromRunProfile(profile, "iPhone(iOS 27.0)01", "local");
   assert.equal(result.removed, 1);
   assert.deepEqual(result.object.devices, [
-    { host: "M1Max", name: "iPhone(iOS 27.0)01" },
-    { host: "local", name: "iPhone(iOS 27.0)02" },
+    { machine: "M1Max", name: "iPhone(iOS 27.0)01" },
+    { machine: "local", name: "iPhone(iOS 27.0)02" },
   ]);
   assert.equal(result.object.machine, "local+remote", "他のキーは保持する");
 });
 
 test("removeDeviceFromRunProfile: host 省略のエントリは local として引く", () => {
   const result = removeDeviceFromRunProfile(
-    { devices: [{ name: "Pixel(Android 15)01" }, { host: "M1Ultra", name: "Pixel(Android 15)01" }] },
+    { devices: [{ name: "Pixel(Android 15)01" }, { machine: "M1Ultra", name: "Pixel(Android 15)01" }] },
     "Pixel(Android 15)01",
     "local",
   );
   assert.equal(result.removed, 1);
-  assert.deepEqual(result.object.devices, [{ host: "M1Ultra", name: "Pixel(Android 15)01" }]);
+  assert.deepEqual(result.object.devices, [{ machine: "M1Ultra", name: "Pixel(Android 15)01" }]);
 });
 
 test("removeDeviceFromRunProfile: 対象が無ければ removed:0(書き戻さない判断に使う)", () => {
-  const result = removeDeviceFromRunProfile({ devices: [{ host: "local", name: "他" }] }, "対象", "local");
+  const result = removeDeviceFromRunProfile({ devices: [{ machine: "local", name: "他" }] }, "対象", "local");
   assert.equal(result.removed, 0);
 });
 
@@ -1797,7 +1797,7 @@ test("removeDeviceFromRunProfile: devices が無い/不正形式でも壊さな�
   assert.equal(removeDeviceFromRunProfile(null, "x", "local"), null);
   assert.equal(removeDeviceFromRunProfile([], "x", "local"), null);
   // 型不正の要素は対象外として保持する(消す方に倒すと利用者の記述を落とす)
-  const odd = removeDeviceFromRunProfile({ devices: ["文字列", { host: "local", name: "x" }] }, "x", "local");
+  const odd = removeDeviceFromRunProfile({ devices: ["文字列", { machine: "local", name: "x" }] }, "x", "local");
   assert.equal(odd.removed, 1);
   assert.deepEqual(odd.object.devices, ["文字列"]);
 });
@@ -1809,13 +1809,13 @@ test("removeDevicesFromRunProfileOfMachine: machine が一致する実行プロ�
   const profile = {
     machine: "M2Ultra",
     devices: [
-      { host: "local", name: "iPhone-01" },
-      { host: "local", name: "iPhone-02" },
+      { machine: "local", name: "iPhone-01" },
+      { machine: "local", name: "iPhone-02" },
     ],
   };
   const hit = removeDevicesFromRunProfileOfMachine(profile, "M2Ultra", [{ name: "iPhone-01", host: "local" }]);
   assert.equal(hit.removed, 1);
-  assert.deepEqual(hit.object.devices, [{ host: "local", name: "iPhone-02" }]);
+  assert.deepEqual(hit.object.devices, [{ machine: "local", name: "iPhone-02" }]);
 
   // 別のマシンプロファイルを使う実行プロファイルは触らない(同じ台が別構成に居ることがある)
   const miss = removeDevicesFromRunProfileOfMachine(profile, "M1Max", [{ name: "iPhone-01", host: "local" }]);
@@ -1828,10 +1828,10 @@ test("removeDevicesFromRunProfileOfMachine: 複数台をまとめて外し、hos
     {
       machine: "M2Ultra",
       devices: [
-        { host: "local", name: "iPhone-01" },
-        { host: "M1Max", name: "iPhone-01" },
-        { host: "local", name: "iPhone-02" },
-        { host: "local", name: "Pixel-01" },
+        { machine: "local", name: "iPhone-01" },
+        { machine: "M1Max", name: "iPhone-01" },
+        { machine: "local", name: "iPhone-02" },
+        { machine: "local", name: "Pixel-01" },
       ],
     },
     "M2Ultra",
@@ -1839,8 +1839,8 @@ test("removeDevicesFromRunProfileOfMachine: 複数台をまとめて外し、hos
   );
   assert.equal(result.removed, 2, "host 省略は local として引く");
   assert.deepEqual(result.object.devices, [
-    { host: "M1Max", name: "iPhone-01" },
-    { host: "local", name: "Pixel-01" },
+    { machine: "M1Max", name: "iPhone-01" },
+    { machine: "local", name: "Pixel-01" },
   ]);
 });
 
@@ -1930,8 +1930,8 @@ test("removeDeviceFromMachineProfile: トップレベルがオブジェクトで
 const PROFILE_SAME_NAME_ON_TWO_HOSTS = {
   ios: {
     devices: [
-      { host: "local", name: "シミュ1", udid: "UDID-LOCAL" },
-      { host: "M1Max", name: "シミュ1", udid: "UDID-M1MAX" },
+      { machine: "local", name: "シミュ1", udid: "UDID-LOCAL" },
+      { machine: "M1Max", name: "シミュ1", udid: "UDID-M1MAX" },
     ],
   },
 };
@@ -1939,38 +1939,38 @@ const PROFILE_SAME_NAME_ON_TWO_HOSTS = {
 test("removeDeviceFromMachineProfile: host を渡すとその機械のぶんだけ消す", () => {
   const result = removeDeviceFromMachineProfile(PROFILE_SAME_NAME_ON_TWO_HOSTS, "シミュ1", "M1Max");
   assert.equal(result.removed, true);
-  assert.deepEqual(result.object.ios.devices, [{ host: "local", name: "シミュ1", udid: "UDID-LOCAL" }]);
+  assert.deepEqual(result.object.ios.devices, [{ machine: "local", name: "シミュ1", udid: "UDID-LOCAL" }]);
 
   const local = removeDeviceFromMachineProfile(PROFILE_SAME_NAME_ON_TWO_HOSTS, "シミュ1", "local");
-  assert.deepEqual(local.object.ios.devices, [{ host: "M1Max", name: "シミュ1", udid: "UDID-M1MAX" }]);
+  assert.deepEqual(local.object.ios.devices, [{ machine: "M1Max", name: "シミュ1", udid: "UDID-M1MAX" }]);
 });
 
 test("removeDeviceFromMachineProfile: host 省略のエントリはプロファイル直下の既定に従う", () => {
   const profile = {
     host: "M1Max",
-    ios: { devices: [{ name: "シミュ1", udid: "UDID-M1MAX" }, { host: "local", name: "シミュ1", udid: "UDID-LOCAL" }] },
+    ios: { devices: [{ name: "シミュ1", udid: "UDID-M1MAX" }, { machine: "local", name: "シミュ1", udid: "UDID-LOCAL" }] },
   };
   const result = removeDeviceFromMachineProfile(profile, "シミュ1", "M1Max");
-  assert.deepEqual(result.object.ios.devices, [{ host: "local", name: "シミュ1", udid: "UDID-LOCAL" }]);
+  assert.deepEqual(result.object.ios.devices, [{ machine: "local", name: "シミュ1", udid: "UDID-LOCAL" }]);
 });
 
 test("removeDevicesFromMachineProfile: 各 (host, name) だけを消す(host 省略=手元)", () => {
   const profile = {
     ios: {
       devices: [
-        { host: "local", name: "シミュ1" },
-        { host: "M1Max", name: "シミュ1" },
-        { host: "M1Max", name: "シミュ2" },
+        { machine: "local", name: "シミュ1" },
+        { machine: "M1Max", name: "シミュ1" },
+        { machine: "M1Max", name: "シミュ2" },
       ],
     },
   };
   const result = removeDevicesFromMachineProfile(profile, [{ name: "シミュ1", host: "M1Max" }, { name: "シミュ2" }]);
   assert.equal(result.removed, 1); // シミュ2 は手元に居ないので消えない
-  assert.deepEqual(result.object.ios.devices, [{ host: "local", name: "シミュ1" }, { host: "M1Max", name: "シミュ2" }]);
+  assert.deepEqual(result.object.ios.devices, [{ machine: "local", name: "シミュ1" }, { machine: "M1Max", name: "シミュ2" }]);
 
   const local = removeDevicesFromMachineProfile(profile, [{ name: "シミュ1" }]);
   assert.equal(local.removed, 1);
-  assert.deepEqual(local.object.ios.devices, [{ host: "M1Max", name: "シミュ1" }, { host: "M1Max", name: "シミュ2" }]);
+  assert.deepEqual(local.object.ios.devices, [{ machine: "M1Max", name: "シミュ1" }, { machine: "M1Max", name: "シミュ2" }]);
 });
 
 test("removeDevicesFromMachineProfile: 不正形式は null(呼び出し側は書き戻さない)", () => {
@@ -1987,8 +1987,8 @@ test("updateDeviceInMachineProfile: host を渡すとその機械のエントリ
   );
   assert.equal(remote.ok, true);
   assert.deepEqual(remote.object.ios.devices, [
-    { host: "local", name: "シミュ1", udid: "UDID-LOCAL" },
-    { host: "M1Max", name: "シミュ1-改", udid: "UDID-M1MAX" },
+    { machine: "local", name: "シミュ1", udid: "UDID-LOCAL" },
+    { machine: "M1Max", name: "シミュ1-改", udid: "UDID-M1MAX" },
   ]);
 
   const local = updateDeviceInMachineProfile(
@@ -2000,8 +2000,8 @@ test("updateDeviceInMachineProfile: host を渡すとその機械のエントリ
   );
   assert.equal(local.ok, true);
   assert.deepEqual(local.object.ios.devices, [
-    { host: "local", name: "シミュ1-改", udid: "UDID-LOCAL" },
-    { host: "M1Max", name: "シミュ1", udid: "UDID-M1MAX" },
+    { machine: "local", name: "シミュ1-改", udid: "UDID-LOCAL" },
+    { machine: "M1Max", name: "シミュ1", udid: "UDID-M1MAX" },
   ]);
 });
 
@@ -2009,9 +2009,9 @@ test("updateDeviceInMachineProfile: 別の機械の同名へのリネームは�
   const profile = {
     ios: {
       devices: [
-        { host: "local", name: "シミュA" },
-        { host: "M1Max", name: "シミュB" },
-        { host: "M1Max", name: "シミュC" },
+        { machine: "local", name: "シミュA" },
+        { machine: "M1Max", name: "シミュB" },
+        { machine: "M1Max", name: "シミュC" },
       ],
     },
   };
@@ -2167,10 +2167,10 @@ test("addDevicesToMachineProfile: 実機は kind/serial を書き、simulator/os
   ]);
   assert.equal(result.ok, true);
   assert.deepEqual(result.object.ios.devices[0], {
-    host: "local", name: "iPhone 実機", kind: "physical", udid: "00008130-AAAA",
+    machine: "local", name: "iPhone 実機", kind: "physical", udid: "00008130-AAAA",
   });
   assert.deepEqual(result.object.android.devices[0], {
-    host: "local", name: "Pixel 実機", kind: "physical", serial: "14141JEC204922",
+    machine: "local", name: "Pixel 実機", kind: "physical", serial: "14141JEC204922",
   });
 });
 
@@ -2307,12 +2307,12 @@ test("addDevicesToMachineProfile: 基本追記(iOS1件をセクション末尾�
   const result = addDevicesToMachineProfile({}, [IOS_ADD_ENTRY]);
   assert.equal(result.ok, true);
   assert.deepEqual(result.added, ["iPhone 17 Pro"]);
-  // host は省略しない(手元でも "local" を書く)。省略は「直下の既定を継ぐ」の意味になるため。
+  // machine は省略しない(手元でも "local" を書く)。省略は「直下の既定を継ぐ」の意味になるため。
   assert.deepEqual(result.object.ios.devices, [
-    { host: "local", name: "iPhone 17 Pro", simulator: "iPhone 17 Pro", os: "27.0", udid: "1C86FAKE-0000-0000-0000-000000000000" },
+    { machine: "local", name: "iPhone 17 Pro", simulator: "iPhone 17 Pro", os: "27.0", udid: "1C86FAKE-0000-0000-0000-000000000000" },
   ]);
-  // キー順も契約(2026-08-17 指示: host → name を先に書く)。deepEqual は順序を見ないので別に固定する
-  assert.deepEqual(Object.keys(result.object.ios.devices[0]).slice(0, 2), ["host", "name"]);
+  // キー順も契約(2026-08-17 指示: machine → name を先に書く)。deepEqual は順序を見ないので別に固定する
+  assert.deepEqual(Object.keys(result.object.ios.devices[0]).slice(0, 2), ["machine", "name"]);
 });
 
 test("addDevicesToMachineProfile: 複数一括(iOS+Androidをまとめて追加し、既存デバイスの後ろに追記する)", () => {
@@ -2352,14 +2352,14 @@ test("addDevicesToMachineProfile: 同一バッチ内の名前衝突も自動サ�
 test("addDevicesToMachineProfile: エントリは name + 非空のオプショナルフィールドのみをキーとして構築する(空文字/undefinedは持たせない)", () => {
   const undefinedFields = addDevicesToMachineProfile({}, [{ platform: "android", name: "エミュ1" }]);
   assert.equal(undefinedFields.ok, true);
-  assert.deepEqual(undefinedFields.object.android.devices, [{ host: "local", name: "エミュ1" }]);
+  assert.deepEqual(undefinedFields.object.android.devices, [{ machine: "local", name: "エミュ1" }]);
 
   // オプショナルフィールドが空文字で明示的に渡された場合もキー自体を持たせない。
   const emptyStringFields = addDevicesToMachineProfile({}, [
     { platform: "ios", name: "シミュ1", simulator: "", os: "", udid: "" },
   ]);
   assert.equal(emptyStringFields.ok, true);
-  assert.deepEqual(emptyStringFields.object.ios.devices, [{ host: "local", name: "シミュ1" }]);
+  assert.deepEqual(emptyStringFields.object.ios.devices, [{ machine: "local", name: "シミュ1" }]);
 });
 
 test("addDevicesToMachineProfile: 未知キー(トップレベル・既存セクション・既存デバイスエントリ)を保持する", () => {
@@ -2394,7 +2394,7 @@ test("syncDevicesInMachineProfile: 追加のみ(remove:[])は addDevicesToMachin
   assert.deepEqual(result.added, ["iPhone 17 Pro"]);
   assert.equal(result.removed, 0);
   assert.deepEqual(result.object.ios.devices, [
-    { host: "local", name: "iPhone 17 Pro", simulator: "iPhone 17 Pro", os: "27.0", udid: "1C86FAKE-0000-0000-0000-000000000000" },
+    { machine: "local", name: "iPhone 17 Pro", simulator: "iPhone 17 Pro", os: "27.0", udid: "1C86FAKE-0000-0000-0000-000000000000" },
   ]);
 });
 
@@ -2471,54 +2471,54 @@ test("syncDevicesInMachineProfile: トップレベルがオブジェクトでな
 
 // 実行プロファイルのデバイス参照は (host, name)。**名前だけで保存すると、同名が別ホストに
 // 居るプロファイルで run が「どちらか決められない」と言って止まる**(CLI の ambiguousDeviceRef)
-test("parseRunProfileForForm / updateRunProfileInObject: devices の host を往復させる", () => {
+test("parseRunProfileForForm / updateRunProfileInObject: devices の machine を往復させる", () => {
   const profile = {
-    devices: [{ name: "iPhone-01" }, { host: "M1Ultra", name: "iPhone-01", note: "keep" }],
+    devices: [{ name: "iPhone-01" }, { machine: "M1Ultra", name: "iPhone-01", note: "keep" }],
   };
   const parsed = parseRunProfileForForm(profile);
-  assert.deepEqual(parsed.devices, [{ name: "iPhone-01" }, { name: "iPhone-01", host: "M1Ultra" }]);
+  assert.deepEqual(parsed.devices, [{ name: "iPhone-01" }, { name: "iPhone-01", machine: "M1Ultra" }]);
 
   const saved = updateRunProfileInObject(profile, { ...BASE_RUN_PROFILE_FIELDS, devices: parsed.devices });
   assert.equal(saved.ok, true);
-  // 同名でも (host, name) で引き当てるので、未知キーは正しい方のエントリに残る
+  // 同名でも (machine, name) で引き当てるので、未知キーは正しい方のエントリに残る
   assert.deepEqual(saved.object.devices, [
     { name: "iPhone-01" },
-    { host: "M1Ultra", name: "iPhone-01", note: "keep" },
+    { machine: "M1Ultra", name: "iPhone-01", note: "keep" },
   ]);
 });
 
 // **host は省略しない**(手元も "local")。省略した参照は、同名が複数ホストに居ると実行時に
 // 「どちらか決められない」で止まる(マシンプロファイル側の「"local" も明示」と同じ規律)
-test("updateRunProfileInObject: host は常に書く(手元は local)", () => {
+test("updateRunProfileInObject: machine は常に書く(手元は local)", () => {
   const remote = updateRunProfileInObject(
     { devices: [] },
-    { ...BASE_RUN_PROFILE_FIELDS, devices: [{ name: "x", host: "M1Max" }] });
-  assert.deepEqual(remote.object.devices, [{ host: "M1Max", name: "x" }]);
+    { ...BASE_RUN_PROFILE_FIELDS, devices: [{ name: "x", machine: "M1Max" }] });
+  assert.deepEqual(remote.object.devices, [{ machine: "M1Max", name: "x" }]);
 
   const local = updateRunProfileInObject(
     { devices: [] }, { ...BASE_RUN_PROFILE_FIELDS, devices: [{ name: "y" }] });
-  assert.deepEqual(local.object.devices, [{ host: "local", name: "y" }]);
+  assert.deepEqual(local.object.devices, [{ machine: "local", name: "y" }]);
 });
 
 // ファイル側の "local" は内部表現では「手元」= host 無しに畳む(往復で形が揺れない)
 test("parseRunProfileForForm: host の \"local\" は手元として読む", () => {
-  const parsed = parseRunProfileForForm({ devices: [{ host: "local", name: "y" }] });
+  const parsed = parseRunProfileForForm({ devices: [{ machine: "local", name: "y" }] });
   assert.deepEqual(parsed.devices, [{ name: "y" }]);
 });
 
 test("removeDeviceFromMachineProfile: host を渡すとそのホストのぶんだけ消す(別ホストの同名は残す)", () => {
   const profile = { ios: { devices: [
-    { host: "local", name: "iPhone 17 Pro", udid: "LOCAL" },
-    { host: "M1Ultra", name: "iPhone 17 Pro", udid: "REMOTE" },
+    { machine: "local", name: "iPhone 17 Pro", udid: "LOCAL" },
+    { machine: "M1Ultra", name: "iPhone 17 Pro", udid: "REMOTE" },
   ] } };
   const result = removeDeviceFromMachineProfile(profile, "iPhone 17 Pro", "M1Ultra");
   assert.equal(result.removed, true);
-  assert.deepEqual(result.object.ios.devices, [{ host: "local", name: "iPhone 17 Pro", udid: "LOCAL" }]);
+  assert.deepEqual(result.object.ios.devices, [{ machine: "local", name: "iPhone 17 Pro", udid: "LOCAL" }]);
 });
 
 test("removeDeviceFromMachineProfile: host 省略時は従来どおり同名を全部消す", () => {
   const profile = { ios: { devices: [
-    { host: "local", name: "x" }, { host: "M1Ultra", name: "x" },
+    { machine: "local", name: "x" }, { machine: "M1Ultra", name: "x" },
   ] } };
   const result = removeDeviceFromMachineProfile(profile, "x");
   assert.equal(result.removed, true);
@@ -2536,63 +2536,63 @@ test("removeDeviceFromMachineProfile: host 未指定のデバイスは直下の�
 });
 
 test("addDevicesToMachineProfile: 別ホストの同名には (2) を付けない(一意なのは (host, name))", () => {
-  const profile = { ios: { devices: [{ host: "local", name: "iPhone 17 Pro" }] } };
-  const result = addDevicesToMachineProfile(profile, [{ ...IOS_ADD_ENTRY, host: "M1Ultra" }]);
+  const profile = { ios: { devices: [{ machine: "local", name: "iPhone 17 Pro" }] } };
+  const result = addDevicesToMachineProfile(profile, [{ ...IOS_ADD_ENTRY, machine: "M1Ultra" }]);
   assert.equal(result.ok, true);
   assert.deepEqual(result.added, ["iPhone 17 Pro"]);
   assert.equal(result.object.ios.devices[1].name, "iPhone 17 Pro");
 });
 
 test("addDevicesToMachineProfile: 同じホストの同名には従来どおり (2) を付ける", () => {
-  const profile = { ios: { devices: [{ host: "M1Ultra", name: "iPhone 17 Pro" }] } };
-  const result = addDevicesToMachineProfile(profile, [{ ...IOS_ADD_ENTRY, host: "M1Ultra" }]);
+  const profile = { ios: { devices: [{ machine: "M1Ultra", name: "iPhone 17 Pro" }] } };
+  const result = addDevicesToMachineProfile(profile, [{ ...IOS_ADD_ENTRY, machine: "M1Ultra" }]);
   assert.equal(result.ok, true);
   assert.deepEqual(result.added, ["iPhone 17 Pro (2)"]);
 });
 
-test("syncDevicesInMachineProfile: add + source:remote は追加したデバイスに host を書く", () => {
+test("syncDevicesInMachineProfile: add + source:remote は追加したデバイスに machine を書く", () => {
   const result = syncDevicesInMachineProfile({}, [IOS_ADD_ENTRY], [], { kind: "remote", host: "M1Max" });
   assert.equal(result.ok, true);
-  assert.equal(result.object.ios.devices[0].host, "M1Max");
+  assert.equal(result.object.ios.devices[0].machine, "M1Max");
   // プロファイル直下は既定なので触らない(混在プロファイルでは「全部 M1Max」を意味してしまう)
-  assert.equal("host" in result.object, false);
+  assert.equal("machine" in result.object, false);
 });
 
-test("syncDevicesInMachineProfile: add + source:local は host キーを書かない", () => {
+test("syncDevicesInMachineProfile: add + source:local は直下に machine キーを書かない", () => {
   const result = syncDevicesInMachineProfile({}, [IOS_ADD_ENTRY], [], { kind: "local" });
   assert.equal(result.ok, true);
-  assert.equal("host" in result.object, false);
+  assert.equal("machine" in result.object, false);
 });
 
 // 既定がリモートのプロファイルへ手元のデバイスを混ぜる形。デバイス側に "local" を書かないと、
 // 既定(M1Max)を継いで「M1Max に居る」ことになり、run が手元の実体を見つけられない
 test("syncDevicesInMachineProfile: 既定がリモートのとき、追加したローカルのデバイスには local を明示する", () => {
-  const profile = { host: "M1Max", ios: { devices: [] } };
+  const profile = { machine: "M1Max", ios: { devices: [] } };
   const result = syncDevicesInMachineProfile(profile, [IOS_ADD_ENTRY], [], { kind: "local" });
   assert.equal(result.ok, true);
-  assert.equal(result.object.ios.devices[0].host, "local");
+  assert.equal(result.object.ios.devices[0].machine, "local");
   // 既定そのものは他のデバイスが使っているので消さない
-  assert.equal(result.object.host, "M1Max");
+  assert.equal(result.object.machine, "M1Max");
 });
 
-test("syncDevicesInMachineProfile: source を渡さない場合は従来どおり host キーを書かない", () => {
+test("syncDevicesInMachineProfile: source を渡さない場合は従来どおり machine キーを書かない", () => {
   const result = syncDevicesInMachineProfile({}, [IOS_ADD_ENTRY], []);
   assert.equal(result.ok, true);
   assert.equal("host" in result.object, false);
 });
 
-test("syncDevicesInMachineProfile: source を渡さない場合は既存の host キーも保持する(判断材料が無い)", () => {
-  const profile = { host: "M1Max", ios: { devices: [] } };
+test("syncDevicesInMachineProfile: source を渡さない場合は既存の machine キーも保持する(判断材料が無い)", () => {
+  const profile = { machine: "M1Max", ios: { devices: [] } };
   const result = syncDevicesInMachineProfile(profile, [IOS_ADD_ENTRY], []);
   assert.equal(result.ok, true);
-  assert.equal(result.object.host, "M1Max");
+  assert.equal(result.object.machine, "M1Max");
 });
 
-test("syncDevicesInMachineProfile: remove のみ(add:[])は source:remote でも host キーを書かない", () => {
+test("syncDevicesInMachineProfile: remove のみ(add:[])は source:remote でも直下に machine を書かない", () => {
   const profile = { ios: { devices: [{ name: "削除対象", udid: "EXISTING" }] } };
   const result = syncDevicesInMachineProfile(profile, [], ["削除対象"], { kind: "remote", host: "M1Max" });
   assert.equal(result.ok, true);
-  assert.equal("host" in result.object, false);
+  assert.equal("machine" in result.object, false);
 });
 
 test("syncDevicesInMachineProfile: remove のみ(add:[])は source:local でも既存の host キーを消さない", () => {
@@ -2970,7 +2970,7 @@ test("updateRunProfileInObject: 基本更新(machine/app/fm/heal/falsePositiveCh
   assert.equal(result.object.defaultTimeout, 10);
   assert.equal(result.object.locale, "ja_JP");
   // host は常に書く(手元は "local")
-  assert.deepEqual(result.object.devices, [{ host: "local", name: "シミュ1" }, { host: "local", name: "エミュ1" }]);
+  assert.deepEqual(result.object.devices, [{ machine: "local", name: "シミュ1" }, { machine: "local", name: "エミュ1" }]);
   assert.equal("record" in result.object, false); // record:false はキーを書かない
   assert.equal("recordFailuresOnly" in result.object, false);
   assert.equal("recordBitrateKbps" in result.object, false);
@@ -3147,7 +3147,7 @@ test("updateRunProfileInObject: devices は既存の同名エントリ(未知キ
     profile, { ...BASE_RUN_PROFILE_FIELDS, devices: [{ name: "シミュ1" }, { name: "新デバイス" }] });
   assert.equal(result.ok, true);
   assert.deepEqual(result.object.devices,
-                   [{ name: "シミュ1", note: "keep-me" }, { host: "local", name: "新デバイス" }]);
+                   [{ name: "シミュ1", note: "keep-me" }, { machine: "local", name: "新デバイス" }]);
 });
 
 test("updateRunProfileInObject: devices は fields.devices の順序で再構成する", () => {

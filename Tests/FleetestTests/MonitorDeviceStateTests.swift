@@ -338,14 +338,14 @@ final class MonitorTargetIDTests: XCTestCase {
 
     func testRemoteDeviceIncludesTheHost() {
         let target = MonitorTarget(platform: "ios",
-                                   spec: DeviceSpec(name: "iPhone-01", host: "M1Ultra"))
+                                   spec: DeviceSpec(name: "iPhone-01", machine: "M1Ultra"))
         XCTAssertEqual(target.id, "ios:M1Ultra/iPhone-01")
     }
 
     func testSameNameOnDifferentHostsGetsDistinctIDs() {
         let ids = ["local", "M1Max", "M1Ultra"].map { host -> String in
             MonitorTarget(platform: "android",
-                          spec: DeviceSpec(name: "Pixel-01", host: host)).id
+                          spec: DeviceSpec(name: "Pixel-01", machine: host)).id
         }
         XCTAssertEqual(Set(ids).count, 3, "\(ids)")
     }

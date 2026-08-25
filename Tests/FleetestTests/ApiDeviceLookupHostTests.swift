@@ -19,14 +19,14 @@ final class ApiDeviceLookupHostTests: XCTestCase {
 
     private func spec(_ name: String, host: String?) -> DeviceSpec {
         var spec = DeviceSpec(name: name, os: "27.0")
-        spec.host = host
+        spec.machine = host
         return spec
     }
 
     /// 同名の iPhone が3機に、Android は M1Max にだけ、という実物と同じ形
     private func machine() -> MachineProfile {
         MachineProfile(
-            host: nil,
+            machine: nil,
             ios: MachineDeviceList(devices: [
                 spec("iPhone-01", host: "local"),
                 spec("iPhone-01", host: "M1Max"),
@@ -40,7 +40,7 @@ final class ApiDeviceLookupHostTests: XCTestCase {
         guard case .found(let spec, let platform) = ApiDeviceOperation.findDevice(
             name: "iPhone-01", deviceHost: "M1Max", in: machine())
         else { return XCTFail("M1Max の台が引けること") }
-        XCTAssertEqual(spec.host, "M1Max")
+        XCTAssertEqual(spec.machine, "M1Max")
         XCTAssertEqual(platform, "ios")
     }
 
@@ -62,7 +62,7 @@ final class ApiDeviceLookupHostTests: XCTestCase {
         guard case .found(let spec, _) = ApiDeviceOperation.findDevice(
             name: "iPhone-99", deviceHost: nil, in: machine())
         else { return XCTFail("候補が1つなら従来どおり通る") }
-        XCTAssertNil(spec.host)
+        XCTAssertNil(spec.machine)
     }
 
     func testExplicitLocalMatchesBothTheExplicitAndTheOmittedForm() {
@@ -70,6 +70,6 @@ final class ApiDeviceLookupHostTests: XCTestCase {
         guard case .found(let spec, _) = ApiDeviceOperation.findDevice(
             name: "iPhone-99", deviceHost: "local", in: machine())
         else { return XCTFail("host 省略の台は --device-host local で引けること") }
-        XCTAssertNil(spec.host)
+        XCTAssertNil(spec.machine)
     }
 }

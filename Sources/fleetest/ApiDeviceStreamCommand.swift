@@ -37,7 +37,7 @@ struct ApiDeviceStreamCommand: AsyncParsableCommand {
     @Option(help: "Run profile name (scopes the machine profile the same way `api monitor --profile` does)")
     var profile: String?
 
-    @Option(name: .customLong("device-host"),
+    @Option(name: [.customLong("device-machine"), .customLong("device-host")],
             help: "Treat the devices assigned to this machine name as local (set by the caller on the other end of ssh)")
     var deviceHost: String?
 

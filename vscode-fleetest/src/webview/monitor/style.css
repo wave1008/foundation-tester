@@ -2326,15 +2326,6 @@ input[type="text"]::placeholder {
   flex-wrap: wrap;
   margin-top: 2px;
 }
-/* 長い論理名(例 "Pixel 10(Android 14(API 34) / arm64-v8a)-01")で行が埋まらないよう1台ぶんを
-   詰める。名前は省略されうるので、全台名は「ほかN台」の title 側にも残す。 */
-.recordings-session-meta .tile-name {
-  max-width: 240px;
-}
-.recordings-session-devices-more {
-  font-size: 11px;
-  color: var(--vscode-descriptionForeground);
-}
 .recordings-session-counts {
   flex: 0 0 auto;
   font-size: 12px;

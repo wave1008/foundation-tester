@@ -1192,7 +1192,7 @@ extension ProfileResolverTests {
         let resolved = try ProfileResolver.resolve(project: project, runName: "r",
                                                    machineName: "mixed")
         XCTAssertEqual(resolved.devices.map(\.spec.udid), ["REMOTE-UDID"])
-        XCTAssertEqual(resolved.devices.map(\.spec.host), ["M1Ultra"])
+        XCTAssertEqual(resolved.devices.map(\.spec.machine), ["M1Ultra"])
     }
 
     func testExplicitLocalHostInARunRefPicksTheLocalDevice() throws {
@@ -1200,7 +1200,7 @@ extension ProfileResolverTests {
         let resolved = try ProfileResolver.resolve(project: project, runName: "r",
                                                    machineName: "mixed")
         XCTAssertEqual(resolved.devices.map(\.spec.udid), ["LOCAL-UDID"])
-        XCTAssertNil(resolved.devices[0].spec.host)
+        XCTAssertNil(resolved.devices[0].spec.machine)
     }
 
     /// host を書いていない参照が2台に当たるときは**候補を挙げて止める**。

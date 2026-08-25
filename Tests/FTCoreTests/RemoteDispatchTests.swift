@@ -479,7 +479,8 @@ final class RemoteDispatchTests: XCTestCase {
 
     /// **リモートのサブ実行はデバイスの絞り込みを中継しないと効かない**(2026-08-17 の実走)。
     /// 向こうは同じマシンプロファイルを受け取るので、渡さないと全ホストぶんの台を自分のものと
-    /// して解決しようとする。一意なのは (host, name) なのでホストも要る
+    /// して解決しようとする。**ただし渡すのは "local" 固定** —— ローカルエイリアスは発行側だけの
+    /// 概念でリモートへ出さない(転送時に RunnerProfileView が畳む。2026-08-26 ユーザー決定)
     func testRemoteRunArgsRelaysTheDeviceScope() {
         let args = RemoteRunArgs.build(
             project: "E2E", profile: "mixed", scenarios: [], folders: [],
@@ -490,7 +491,8 @@ final class RemoteDispatchTests: XCTestCase {
         XCTAssertEqual(
             args,
             ["run", "--project", "E2E", "--profile", "mixed", "--quiet", "--host", "local",
-             "--device", "iPhone-01", "iPhone-02", "--device-host", "M1Max"])
+             "--device", "iPhone-01", "iPhone-02", "--device-machine", "local"])
+        XCTAssertFalse(args.contains("M1Max"), "ローカルエイリアスが引数に出てはいけない: \(args)")
     }
 
     /// **束ね鍵は中継しないとリモートの run.json に載らない** —— 載らないと、その機械で撮った
@@ -839,8 +841,9 @@ final class RemoteDispatchTests: XCTestCase {
         XCTAssertEqual(
             args,
             ["api", "run", "--project", "E2E", "--profile", "mixed", "--host", "local",
-             "--device", "iPhone-01", "iPhone-02", "--device-host", "M1Max",
+             "--device", "iPhone-01", "iPhone-02", "--device-machine", "local",
              "--scenario", "Login.S0010"])
+        XCTAssertFalse(args.contains("M1Max"), "ローカルエイリアスが引数に出てはいけない: \(args)")
     }
 
     /// build() と対(testRemoteRunArgsRelaysWorkspaceOnlyWhenGiven)。`api run --host` にも

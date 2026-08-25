@@ -135,8 +135,8 @@ final class ProfileWriterTests: XCTestCase {
     /// JSON 側(deviceBodyKeys)と型側(DeviceSpec.lacksConcreteTarget)は同じ集合を見る。
     /// 片方だけにキーを足すと、書くときは実体扱い・走るときは「実体なし」の警告(または逆)になる
     func testDeviceSpecAndBodyKeysAgree() {
-        XCTAssertTrue(DeviceSpec(name: "d", host: "local").lacksConcreteTarget)
-        XCTAssertTrue(DeviceSpec(name: "d", host: "local", port: 8100, engine: "inapp")
+        XCTAssertTrue(DeviceSpec(name: "d", machine: "local").lacksConcreteTarget)
+        XCTAssertTrue(DeviceSpec(name: "d", machine: "local", port: 8100, engine: "inapp")
             .lacksConcreteTarget, "port/engine は実体ではない")
         let specs: [String: DeviceSpec] = [
             "simulator": DeviceSpec(name: "d", simulator: "iPhone 17 Pro"),

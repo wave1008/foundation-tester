@@ -261,7 +261,7 @@ function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
       <div id="headline-latest" class="headline-latest"></div>
       <table id="table-runs" class="dash-table">
         <thead>
-          <tr><th>runID</th><th>${t("exploreHeal.dashboard.colDateTime")}</th><th>trigger</th><th>machine</th><th>profile</th><th>${t("exploreHeal.dashboard.colResult")}</th></tr>
+          <tr><th>runID</th><th>${t("exploreHeal.dashboard.colDateTime")}</th><th>trigger</th><th>host</th><th>profile</th><th>${t("exploreHeal.dashboard.colResult")}</th></tr>
         </thead>
         <tbody id="table-runs-body"></tbody>
       </table>

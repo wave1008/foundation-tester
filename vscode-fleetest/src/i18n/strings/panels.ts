@@ -249,7 +249,8 @@ export const panelsStrings = {
     ja: "ディスパッチ先として使うホストを登録します。name はホストを選ぶとき(例: 「デバイスを追加」ダイアログでのホスト選択)に出る表示名(一意)、host は SSH 先(user@host または host)、dir は空欄で ~/fleetest-runner(そのマシンの既存のローカルインストールと同じパスにしないこと)。",
     en: "Register hosts to dispatch runs to. Name is the display name shown when picking a host (e.g. the source selector in the \"add device\" dialog; must be unique); host is the SSH target (user@host or host); dir blank = ~/fleetest-runner (must not be an existing local install on that machine).",
   },
-  "panels.settings.remoteHostsColName": { ja: "名前", en: "Name" },
+  // 列見出しは「マシン」(2026-08-26 指示)。プロファイルの machine 欄・--host に書く名前と同じもの
+  "panels.settings.remoteHostsColMachine": { ja: "マシン", en: "Machine" },
   "panels.settings.remoteHostsColHost": { ja: "ホスト", en: "Host" },
   "panels.settings.remoteHostsColDir": { ja: "作業ベースディレクトリ", en: "Base directory" },
   "panels.settings.remoteHostsAdd": { ja: "ホストを追加", en: "Add host" },

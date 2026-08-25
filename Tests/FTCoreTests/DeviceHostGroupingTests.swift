@@ -8,7 +8,7 @@ import XCTest
 final class DeviceHostGroupingTests: XCTestCase {
     private func machine(host: String? = nil,
                          ios: [DeviceSpec] = [], android: [DeviceSpec] = []) -> MachineProfile {
-        MachineProfile(host: host,
+        MachineProfile(machine: host,
                        ios: ios.isEmpty ? nil : MachineDeviceList(devices: ios),
                        android: android.isEmpty ? nil : MachineDeviceList(devices: android))
     }
@@ -16,8 +16,8 @@ final class DeviceHostGroupingTests: XCTestCase {
     func testDeviceHostFallsBackToTheMachineProfileHost() {
         let entries = DeviceHostGrouping.entries(machine: machine(
             host: "M1Ultra",
-            ios: [DeviceSpec(name: "a"), DeviceSpec(name: "b", host: "M2Ultra"),
-                  DeviceSpec(name: "c", host: "local")]))
+            ios: [DeviceSpec(name: "a"), DeviceSpec(name: "b", machine: "M2Ultra"),
+                  DeviceSpec(name: "c", machine: "local")]))
         XCTAssertEqual(entries.map(\.host), ["M1Ultra", "M2Ultra", nil])
     }
 
@@ -26,13 +26,13 @@ final class DeviceHostGroupingTests: XCTestCase {
     func testEmptyMeansUnsetButLocalOverridesTheMachineDefault() {
         let entries = DeviceHostGrouping.entries(machine: machine(
             host: "M1Ultra",
-            ios: [DeviceSpec(name: "a", host: ""), DeviceSpec(name: "b", host: " local ")]))
+            ios: [DeviceSpec(name: "a", machine: ""), DeviceSpec(name: "b", machine: " local ")]))
         XCTAssertEqual(entries.map(\.host), ["M1Ultra", nil])
     }
 
     func testSameNameOnDifferentHostsIsNotADuplicate() {
         let entries = DeviceHostGrouping.entries(machine: machine(
-            ios: [DeviceSpec(name: "iPhone-01"), DeviceSpec(name: "iPhone-01", host: "M1Ultra")]))
+            ios: [DeviceSpec(name: "iPhone-01"), DeviceSpec(name: "iPhone-01", machine: "M1Ultra")]))
         XCTAssertNil(DeviceHostGrouping.firstDuplicate(in: entries))
     }
 
@@ -40,7 +40,7 @@ final class DeviceHostGroupingTests: XCTestCase {
         let entries = DeviceHostGrouping.entries(machine: machine(
             host: "M1Ultra",
             ios: [DeviceSpec(name: "iPhone-01")],
-            android: [DeviceSpec(name: "iPhone-01", host: "M1Ultra")]))
+            android: [DeviceSpec(name: "iPhone-01", machine: "M1Ultra")]))
         XCTAssertEqual(DeviceHostGrouping.firstDuplicate(in: entries)?.name, "iPhone-01")
     }
 
@@ -55,7 +55,7 @@ final class DeviceHostGroupingTests: XCTestCase {
 
     func testUnqualifiedRefIsAmbiguousWhenTheNameExistsOnTwoHosts() {
         let entries = DeviceHostGrouping.entries(machine: machine(
-            ios: [DeviceSpec(name: "a"), DeviceSpec(name: "a", host: "M1Ultra")]))
+            ios: [DeviceSpec(name: "a"), DeviceSpec(name: "a", machine: "M1Ultra")]))
         XCTAssertEqual(DeviceHostGrouping.resolve(RunDeviceRef(name: "a"), in: entries),
                        .ambiguous(hosts: ["local", "M1Ultra"]))
     }
@@ -63,9 +63,9 @@ final class DeviceHostGroupingTests: XCTestCase {
     func testQualifiedRefPicksTheDeviceOnThatHost() {
         let entries = DeviceHostGrouping.entries(machine: machine(
             ios: [DeviceSpec(name: "a", udid: "LOCAL"),
-                  DeviceSpec(name: "a", host: "M1Ultra", udid: "REMOTE")]))
+                  DeviceSpec(name: "a", machine: "M1Ultra", udid: "REMOTE")]))
         guard case .found(let entry) = DeviceHostGrouping.resolve(
-            RunDeviceRef(name: "a", host: "M1Ultra"), in: entries) else {
+            RunDeviceRef(name: "a", machine: "M1Ultra"), in: entries) else {
             return XCTFail("expected .found")
         }
         XCTAssertEqual(entry.spec.udid, "REMOTE")
@@ -76,9 +76,9 @@ final class DeviceHostGroupingTests: XCTestCase {
     func testExplicitLocalRefPicksTheLocalDeviceInsteadOfBeingAmbiguous() {
         let entries = DeviceHostGrouping.entries(machine: machine(
             ios: [DeviceSpec(name: "a", udid: "LOCAL"),
-                  DeviceSpec(name: "a", host: "M1Ultra", udid: "REMOTE")]))
+                  DeviceSpec(name: "a", machine: "M1Ultra", udid: "REMOTE")]))
         guard case .found(let entry) = DeviceHostGrouping.resolve(
-            RunDeviceRef(name: "a", host: "local"), in: entries) else {
+            RunDeviceRef(name: "a", machine: "local"), in: entries) else {
             return XCTFail("expected .found")
         }
         XCTAssertEqual(entry.spec.udid, "LOCAL")
@@ -86,7 +86,7 @@ final class DeviceHostGroupingTests: XCTestCase {
 
     func testQualifiedRefForAHostThatDoesNotHaveItIsMissing() {
         let entries = DeviceHostGrouping.entries(machine: machine(ios: [DeviceSpec(name: "a")]))
-        XCTAssertEqual(DeviceHostGrouping.resolve(RunDeviceRef(name: "a", host: "M1Ultra"),
+        XCTAssertEqual(DeviceHostGrouping.resolve(RunDeviceRef(name: "a", machine: "M1Ultra"),
                                                   in: entries), .missing)
     }
 
@@ -106,8 +106,8 @@ final class DeviceHostGroupingTests: XCTestCase {
 
     func testGroupsKeepFirstAppearanceOrderAndSeparateLocalFromRemote() {
         let entries = DeviceHostGrouping.entries(machine: machine(
-            ios: [DeviceSpec(name: "r1", host: "M1Ultra"), DeviceSpec(name: "l1"),
-                  DeviceSpec(name: "r2", host: "M1Ultra"), DeviceSpec(name: "l2")]))
+            ios: [DeviceSpec(name: "r1", machine: "M1Ultra"), DeviceSpec(name: "l1"),
+                  DeviceSpec(name: "r2", machine: "M1Ultra"), DeviceSpec(name: "l2")]))
         let groups = DeviceHostGrouping.groups(entries) { $0.host }
         XCTAssertEqual(groups.map(\.host), ["M1Ultra", nil])
         XCTAssertEqual(groups.map { $0.devices.map(\.name) }, [["r1", "r2"], ["l1", "l2"]])

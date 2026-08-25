@@ -11,7 +11,9 @@ export interface RunMetaRecord {
   readonly runID: string;
   readonly project: string;
   readonly profile?: string | null;
-  readonly machine: string;
+  /** その run を走らせた**機械のホスト名**(旧キー "machine" も読む。2026-08-26 改名。
+   * 用語: host = ホスト名/IP、machine = そのローカルエイリアス)。 */
+  readonly host: string;
   /** "api" | "cli" */
   readonly trigger: string;
   readonly startedAt: string;
@@ -115,7 +117,8 @@ export interface ScenarioRunRecord {
   readonly title?: string | null;
   readonly platform: string;
   readonly worker?: string | null;
-  readonly machine: string;
+  /** 機械のホスト名(RunMetaRecord.host と同じ。旧キー "machine" も読む)。 */
+  readonly host: string;
   readonly profile?: string | null;
   readonly passed: boolean;
   readonly timedOut?: boolean | null;
@@ -243,7 +246,7 @@ function isRunMetaRecord(value: unknown): value is RunMetaRecord {
     typeof value.runID === "string" &&
     typeof value.project === "string" &&
     isOptString(value.profile) &&
-    typeof value.machine === "string" &&
+    typeof value.host === "string" &&
     typeof value.trigger === "string" &&
     typeof value.startedAt === "string" &&
     isOptString(value.finishedAt) &&

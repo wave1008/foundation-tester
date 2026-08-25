@@ -87,7 +87,7 @@ public final class RunRecorder: @unchecked Sendable {
             issuer: issuer, runGroup: runGroup)
 
         let meta = RunMetaRecord(
-            runID: runID, project: project.name, profile: profile, machine: machine,
+            runID: runID, project: project.name, profile: profile, host: machine,
             trigger: trigger, startedAt: startedAt, issuer: issuer, runGroup: runGroup)
         RunResultsStore.writeMeta(meta, runDir: runDir)
         return recorder
@@ -97,7 +97,7 @@ public final class RunRecorder: @unchecked Sendable {
     public func record(_ record: ScenarioRunRecord) {
         var record = record
         record.runID = runID
-        record.machine = machine
+        record.host = machine
         record.profile = profile
         write(record)
     }
@@ -110,7 +110,7 @@ public final class RunRecorder: @unchecked Sendable {
                               kind: ScenarioSkipKind = .noWorker) {
         let record = ScenarioRunRecord(
             runID: runID, scenarioID: scenarioID, title: title, platform: platform, worker: worker,
-            machine: machine, profile: profile, passed: false, timedOut: false,
+            host: machine, profile: profile, passed: false, timedOut: false,
             startedAt: ISO8601DateFormatter().string(from: Date()), durationMs: 0,
             steps: StepCountsRecord(total: 1, skipped: 1),
             failedSteps: [FailedStepRecord(index: 0, description: reason)],
@@ -149,7 +149,7 @@ public final class RunRecorder: @unchecked Sendable {
                        workerAnomalies: [WorkerAnomalyRecord] = []) {
         hostMetrics?.stop()
         let meta = RunMetaRecord(
-            runID: runID, project: projectName, profile: profile, machine: machine,
+            runID: runID, project: projectName, profile: profile, host: machine,
             trigger: trigger, startedAt: startedAt,
             finishedAt: ISO8601DateFormatter().string(from: Date()),
             total: total, passed: passed, failed: failed,

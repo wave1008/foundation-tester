@@ -31,7 +31,7 @@ struct DevicesCommand: AsyncParsableCommand {
         @Flag(name: .customLong("no-bridge"), help: "Do not provision the iOS bridge")
         var noBridge = false
 
-        @Option(name: .customLong("device-host"), help: ArgumentHelp(
+        @Option(name: [.customLong("device-machine"), .customLong("device-host")], help: ArgumentHelp(
             "Operate on the devices that belong to this machine (registered host name)."
             + " Default: the devices with no host (this machine). Used when a parent dispatches"
             + " to a runner: remote exec <name> -- ... --device-host <name>"))
@@ -61,7 +61,7 @@ struct DevicesCommand: AsyncParsableCommand {
         @Option(help: "Run profile name (when given, only the devices that profile references are stopped individually; otherwise every bridge is stopped and all simulators and emulators are shut down)")
         var profile: String?
 
-        @Option(name: .customLong("device-host"), help: ArgumentHelp(
+        @Option(name: [.customLong("device-machine"), .customLong("device-host")], help: ArgumentHelp(
             "Operate on the devices that belong to this machine (registered host name)."
             + " Default: the devices with no host (this machine). Used when a parent dispatches"
             + " to a runner: remote exec <name> -- ... --device-host <name>"))
@@ -210,7 +210,7 @@ enum MachineProfileLoad {
         let ios = kept.filter { $0.platform == "ios" }.map(\.spec)
         let android = kept.filter { $0.platform == "android" }.map(\.spec)
         return MachineProfile(
-            host: profile.host,
+            machine: profile.machine,
             ios: ios.isEmpty ? nil : MachineDeviceList(devices: ios),
             android: android.isEmpty ? nil : MachineDeviceList(devices: android))
     }

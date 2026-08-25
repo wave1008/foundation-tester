@@ -140,7 +140,8 @@ final class RemoteMonitorFanout: @unchecked Sendable {
                     "--project", project,
                     "--interval", String(interval),
                     "--max-width", String(maxWidth),
-                    "--device-host", host]
+                    // エイリアスは渡さない(転送時に畳んである。FTCore.RunnerProfileView)
+                    "--device-machine", DeviceHostGrouping.localDisplayName]
         if let profile { args += ["--profile", profile] }
 
         let process = Process()

@@ -858,7 +858,7 @@ final class RunResultsQueryTests: XCTestCase {
         runID: String, startedAt: String = "2026-01-01T00:00:00Z", finishedAt: String? = nil, total: Int? = 1
     ) -> RunMetaRecord {
         RunMetaRecord(
-            runID: runID, project: "SampleApp", profile: nil, machine: "testmachine",
+            runID: runID, project: "SampleApp", profile: nil, host: "testmachine",
             trigger: "cli", startedAt: startedAt, finishedAt: finishedAt, total: total)
     }
 
@@ -872,7 +872,7 @@ final class RunResultsQueryTests: XCTestCase {
     ) -> ScenarioRunRecord {
         ScenarioRunRecord(
             runID: runID, scenarioID: scenarioID, title: title, platform: platform, worker: worker,
-            machine: "testmachine",
+            host: "testmachine",
             passed: passed, timedOut: timedOut, startedAt: startedAt, durationMs: durationMs,
             scenes: scenes, steps: steps ?? StepCountsRecord(total: 1, passed: passed ? 1 : 0, failed: passed ? 0 : 1),
             failedSteps: failedSteps, fixSuggestions: fixSuggestions, errorLogs: errorLogs)

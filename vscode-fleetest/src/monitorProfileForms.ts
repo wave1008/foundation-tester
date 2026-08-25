@@ -108,11 +108,12 @@ export function validateNewAppProfileName(name: string, existing: readonly strin
  * falsePositiveCheck/screenLooksLike は「FM」セクション、iosFastInput は「iOS」セクションのサブオプション
  * (親チェックボックスの状態に関わらず独立して保持・保存する。表示上の非表示切替は
  * runProfilesTab.js の責務)。containerInference は独立トグル(FM とは無関係の幾何ヒューリスティック)。 */
-/** 実行プロファイルのデバイス参照。**一意なのは (host, name)** なので host も持つ
- * (Sources/FTCore/RunProfile.swift の RunDeviceRef と同形。省略=手元)。 */
+/** 実行プロファイルのデバイス参照。**一意なのは (machine, name)** なので machine も持つ
+ * (Sources/FTCore/RunProfile.swift の RunDeviceRef と同形。省略=手元)。
+ * **JSON キーは "machine"**(2026-08-26 改名。旧 "host" も読む)。 */
 export interface RunProfileDeviceRef {
   readonly name: string;
-  readonly host?: string;
+  readonly machine?: string;
 }
 
 export interface RunProfileFormFields {
@@ -190,10 +191,12 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
           if (!isRecord(device) || typeof device.name !== "string") {
             return undefined;
           }
-          // 内部表現は「手元 = undefined」。ファイル側の "local"(明示)と "" と省略は同じ意味
-          const raw = typeof device.host === "string" ? device.host.trim() : "";
-          const host = raw === "" || raw === "local" ? undefined : raw;
-          return host === undefined ? { name: device.name } : { name: device.name, host };
+          // 内部表現は「手元 = undefined」。ファイル側の "local"(明示)と "" と省略は同じ意味。
+          // 旧キー "host" も読む(改名の互換。Swift の RunDeviceRef.init(from:) と同じ規律)
+          const rawMachine = device.machine ?? device.host;
+          const raw = typeof rawMachine === "string" ? rawMachine.trim() : "";
+          const machine = raw === "" || raw === "local" ? undefined : raw;
+          return machine === undefined ? { name: device.name } : { name: device.name, machine };
         })
         .filter((ref): ref is RunProfileDeviceRef => ref !== undefined)
     : [];
@@ -344,18 +347,20 @@ export function updateRunProfileInObject(
     result.locale = localeTrimmed;
   }
 
-  // 既存エントリの未知キーは保つ。**引き当ては (host, name)** —— 名前だけだと、同名が別ホストに
+  // 既存エントリの未知キーは保つ。**引き当ては (machine, name)** —— 名前だけだと、同名が別の機械に
   // 並ぶプロファイルで別のエントリの未知キーを持ってきてしまう
-  const refKey = (ref: RunProfileDeviceRef): string => `${ref.host ?? ""}\t${ref.name}`;
+  const refKey = (ref: RunProfileDeviceRef): string => `${ref.machine ?? ""}\t${ref.name}`;
   const existingDevices = Array.isArray(source.devices) ? source.devices : [];
   const existingByRef = new Map<string, Record<string, unknown>>();
   for (const device of existingDevices) {
     if (!isRecord(device) || typeof device.name !== "string") {
       continue;
     }
+    const existingMachine = device.machine ?? device.host;
     const key = refKey({
       name: device.name,
-      host: typeof device.host === "string" && device.host.trim() !== "" ? device.host : undefined,
+      machine: typeof existingMachine === "string" && existingMachine.trim() !== ""
+        ? existingMachine : undefined,
     });
     if (!existingByRef.has(key)) {
       existingByRef.set(key, device);
@@ -366,10 +371,10 @@ export function updateRunProfileInObject(
     if (existing) {
       return existing;
     }
-    // **host は省略しない**(手元なら "local")。省略した参照は、同名が複数ホストに居ると
+    // **machine は省略しない**(手元なら "local")。省略した参照は、同名が複数の機械に居ると
     // 実行時に「どちらか決められない」で止まる(FTCore の ambiguousDeviceRef)。
     // マシンプロファイル側の「"local" も明示する」規律と揃える
-    return { host: ref.host ?? "local", name: ref.name };
+    return { machine: ref.machine ?? "local", name: ref.name };
   });
 
   return { ok: true, object: result };
@@ -591,8 +596,8 @@ export interface MachineDeviceEntry {
 export interface MachineDeviceAddEntry {
   readonly platform: MonitorPlatform;
   readonly name: string;
-  /** 追加先の機械(devicePickHost の選択。省略=手元)。 */
-  readonly host?: string;
+  /** 追加先の機械(devicePickHost の選択。省略=手元)。JSON にも "machine" で書く。 */
+  readonly machine?: string;
   readonly kind?: "virtual" | "physical";
   readonly simulator?: string;
   readonly os?: string;
@@ -1086,8 +1091,10 @@ export function removeDeviceFromMachineProfile(
         return false;
       }
       const effective = effectiveDeviceHost(
-        typeof record.host === "string" ? record.host : undefined,
-        typeof source.host === "string" ? source.host : undefined);
+        typeof (record.machine ?? record.host) === "string"
+          ? (record.machine ?? record.host) as string : undefined,
+        typeof (source.machine ?? source.host) === "string"
+          ? (source.machine ?? source.host) as string : undefined);
       return (effective ?? "local") !== host;
     });
     if (filtered.length !== devices.length) {
@@ -1129,7 +1136,9 @@ export function removeDeviceFromRunProfile(
     if (record.name !== name) {
       return true;
     }
-    const entryHost = typeof record.host === "string" && record.host !== "" ? record.host : "local";
+    const rawEntryMachine = record.machine ?? record.host;  // 旧キー "host" も読む
+    const entryHost = typeof rawEntryMachine === "string" && rawEntryMachine !== ""
+      ? rawEntryMachine : "local";
     return entryHost !== host;
   });
   if (filtered.length === devices.length) {
@@ -1255,8 +1264,10 @@ export function updateDeviceInMachineProfile(
   // エントリの実効ホスト(デバイス指定 > プロファイル直下の既定 > 手元)。host 引数と同じ土俵に乗せる。
   const entryHost = (device: Record<string, unknown>): string =>
     effectiveDeviceHost(
-      typeof device.host === "string" ? device.host : undefined,
-      typeof source.host === "string" ? source.host : undefined,
+      typeof (device.machine ?? device.host) === "string"
+        ? (device.machine ?? device.host) as string : undefined,
+      typeof (source.machine ?? source.host) === "string"
+        ? (source.machine ?? source.host) as string : undefined,
     ) ?? "local";
   const hostMatches = (device: Record<string, unknown>): boolean =>
     host === undefined || entryHost(device) === host;
@@ -1371,7 +1382,8 @@ export function addDevicesToMachineProfile(
   // 名前も随時追加し、バッチ内衝突も検出する)。**別の機械の同名は衝突ではない** ——
   // 各機が同じ命名規則でシミュレータを作るので同名が普通で、ここを name だけで見ると
   // リモートを足すたびに " (2)" が付く(2026-08-17 の実害。Sources/FTCore/DeviceHostGrouping.swift)。
-  const profileDefault = typeof source.host === "string" ? source.host : undefined;
+  const rawDefault = source.machine ?? source.host;  // 直下の既定も新旧キーを読む
+  const profileDefault = typeof rawDefault === "string" ? rawDefault : undefined;
   const nameKey = (host: string | undefined, name: string) =>
     `${effectiveDeviceHost(host, profileDefault) ?? "local"}\t${name}`;
   const existingNames = new Set<string>();
@@ -1381,7 +1393,8 @@ export function addDevicesToMachineProfile(
       for (const device of section.devices) {
         if (isDeviceEntryLike(device) && typeof device.name === "string") {
           existingNames.add(nameKey(
-            typeof device.host === "string" ? device.host : undefined, device.name));
+            typeof (device.machine ?? device.host) === "string"
+              ? (device.machine ?? device.host) as string : undefined, device.name));
         }
       }
     }
@@ -1393,17 +1406,17 @@ export function addDevicesToMachineProfile(
   for (const entry of entries) {
     let name = entry.name;
     let suffix = 2;
-    while (existingNames.has(nameKey(entry.host, name))) {
+    while (existingNames.has(nameKey(entry.machine, name))) {
       name = `${entry.name} (${suffix})`;
       suffix += 1;
     }
-    existingNames.add(nameKey(entry.host, name));
+    existingNames.add(nameKey(entry.machine, name));
     added.push(name);
 
-    // **キー順は host → name → その他**(2026-08-17 指示。JSON.stringify は挿入順で出す)。
-    // host は常に書く("local" も省略しない) —— 省略は「直下の既定を継ぐ」の意味なので、
+    // **キー順は machine → name → その他**(2026-08-17 指示。JSON.stringify は挿入順で出す)。
+    // machine は常に書く("local" も省略しない) —— 省略は「直下の既定を継ぐ」の意味なので、
     // 既定がリモートのプロファイルでは黙って別の機械のデバイス扱いになる
-    const deviceEntry: Record<string, unknown> = { host: entry.host ?? "local", name };
+    const deviceEntry: Record<string, unknown> = { machine: entry.machine ?? "local", name };
     // kind は physical のときだけ書く(未指定=virtual が既定。既存プロファイルにノイズを足さない)
     if (entry.kind === "physical") {
       deviceEntry.kind = "physical";
@@ -1486,10 +1499,10 @@ export function syncDevicesInMachineProfile(
   // Sources/FTCore/DeviceHostGrouping.swift。一意なのは (host, name) なので、ローカルと
   // リモートに同名のデバイスが並んでよい)。省略すると「プロファイル直下の既定を継ぐ」に
   // なるため、既定がリモートのプロファイルでは手元のデバイスが別の機械のものとして扱われる。
-  // **プロファイル直下の host は触らない**(あちらは既定で、デバイス側の指定が優先)。
+  // **プロファイル直下の machine は触らない**(あちらは既定で、デバイス側の指定が優先)。
   const stamped = add.map((entry) => {
-    const host = source?.kind === "remote" ? source.host : "local";
-    return entry.host === host ? entry : { ...entry, host };
+    const machine = source?.kind === "remote" ? source.host : "local";
+    return entry.machine === machine ? entry : { ...entry, machine };
   });
   const addResult = addDevicesToMachineProfile(current, stamped);
   if (!addResult.ok) {

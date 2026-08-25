@@ -329,6 +329,16 @@ struct RemoteRunDispatcher {
         guard status == 0 else {
             throw RemoteDispatchError.remoteSetupFailed("rsync exited with status \(status)")
         }
+        // **ローカルエイリアスをランナーへ残さない**(FTCore.RunnerProfileView)。転送した
+        // profiles/ を「そのランナーから見た姿」へ差し替える —— 向こうの台は "local" になり、
+        // 他機の台は消える。子へ渡す --device-host も local になる(RemoteRunArgs)
+        // hostLabel が無い構築箇所(旧経路)では畳めない —— 畳む鍵はプロファイルが書く
+        // エイリアスそのものなので、生の ssh 宛先しか無いときは差し替えず従来どおり送る
+        if let hostLabel, let failure = RunnerProfileTransfer.localizeAndUpload(
+            localProjectDir: project.rootURL, project: project.name, alias: hostLabel,
+            layout: layout, sshTarget: host.sshTarget) {
+            throw RemoteDispatchError.remoteSetupFailed(failure)
+        }
     }
 
     /// ワークスペース(既定 `<project.rootURL>/workspace`。常に有効 = docs/remote-runner.md §17・
@@ -518,7 +528,8 @@ struct RemoteRunDispatcher {
     }
 
     /// FleetSplit の機械別見積り(ディスパッチ固定費・実績のホスト解決・§8 の事前係数)の供給源として、
-    /// このディスパッチが分かったホストの事実をキャッシュする。machine はプローブでなく
+    /// このディスパッチが分かったホストの事実をキャッシュする。**鍵は ssh 宛先(ホスト名/IP)**で、
+    /// ローカルエイリアスは使わない(RemoteHostFactsStore.fileKey)。host はプローブでなく
     /// 回収済みレコードから採る —— プローブの推測は FT_MACHINE 上書きやホスト名変化とズレるが、
     /// レコードの値は実績照合そのものに使われている正だから。**CPU 情報(processorModel/coreCount)は
     /// これと逆にプローブ由来**(machdep.cpu.brand_string/hw.ncpu はレコードに乗らない)。
@@ -528,23 +539,25 @@ struct RemoteRunDispatcher {
     /// run の成否・ログを汚さない)
     private func saveHostFacts(project: TestProject, stamp: String, overheadSeconds: Double,
                                session: RemoteSessionInfo?) {
-        guard let hostLabel else { return }
         let dir = RemoteHostFactsStore.dir(project: project)
-        let existing = RemoteHostFactsStore.load(dir: dir, hostLabel: hostLabel)
+        let key = host.sshTarget
+        let existing = RemoteHostFactsStore.load(dir: dir, host: key)
         let texts = collectedScenarioTexts(project: project, stamp: stamp)
-        let machine = recordedMachine(texts: texts) ?? existing?.machine
+        let recorded = recordedMachine(texts: texts) ?? existing?.host
         let concurrentDevices = recordedConcurrentDevices(texts: texts) ?? existing?.concurrentDevices
         let facts = RemoteHostFacts(
-            machine: machine, dispatchOverheadSeconds: overheadSeconds,
+            host: recorded, dispatchOverheadSeconds: overheadSeconds,
             processorModel: session?.processorModel ?? existing?.processorModel,
             coreCount: session?.coreCount ?? existing?.coreCount,
             concurrentDevices: concurrentDevices,
             updatedAt: ISO8601DateFormatter().string(from: Date()))
-        RemoteHostFactsStore.save(facts, dir: dir, hostLabel: hostLabel)
+        RemoteHostFactsStore.save(facts, dir: dir, host: key)
     }
 
     private func recordedMachine(texts: [(url: URL, text: String)]) -> String? {
         for (_, text) in texts {
+            // 記録側のキーは "host"(2026-08-26 改名)。旧記録の "machine" も読む
+            if let host = Self.recordedField(in: text, key: "host") { return host }
             if let machine = Self.recordedField(in: text, key: "machine") { return machine }
         }
         return nil

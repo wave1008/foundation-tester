@@ -124,7 +124,7 @@ struct ResultsListCommand: AsyncParsableCommand {
                 counts = "(incomplete)"
             }
             return [meta.runID, formatLocal(meta.startedAt), meta.trigger,
-                    meta.profile ?? "-", meta.machine, counts]
+                    meta.profile ?? "-", meta.host, counts]
         }
         print(SimpleTable.render(headers: headers, rows: tableRows))
     }
@@ -237,7 +237,7 @@ struct ResultsTrendCommand: AsyncParsableCommand {
                 bar = String(repeating: "█", count: length)
             }
             return [formatLocal(record.startedAt), record.runID, record.passed ? "✅" : "❌",
-                    String(record.durationMs), record.worker ?? "-", record.machine, bar]
+                    String(record.durationMs), record.worker ?? "-", record.host, bar]
         }
         print(SimpleTable.render(headers: headers, rows: tableRows))
     }

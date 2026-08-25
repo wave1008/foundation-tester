@@ -20,29 +20,29 @@ function workspaceWith(profile) {
 test("機械ごとにまとまる(手元 → ホスト名順、その中で名前順)", () => {
   const ws = workspaceWith({
     android: { devices: [
-      { host: "M1Ultra", name: "Pixel-02" },
-      { host: "M1Max", name: "Pixel-01" },
-      { host: "local", name: "Pixel-01" },
-      { host: "M1Ultra", name: "Pixel-01" },
-      { host: "M1Max", name: "Pixel-02" },
+      { machine: "M1Ultra", name: "Pixel-02" },
+      { machine: "M1Max", name: "Pixel-01" },
+      { machine: "local", name: "Pixel-01" },
+      { machine: "M1Ultra", name: "Pixel-01" },
+      { machine: "M1Max", name: "Pixel-02" },
     ] },
   });
   const devices = listMachineProfiles(ws, "P")[0].devices;
   assert.deepEqual(
-    devices.map((d) => `${d.name}/${d.host ?? "local"}`),
+    devices.map((d) => `${d.name}/${d.machine ?? "local"}`),
     ["Pixel-01/local", "Pixel-01/M1Max", "Pixel-02/M1Max", "Pixel-01/M1Ultra", "Pixel-02/M1Ultra"],
   );
 });
 
-// host を書いていないデバイスは直下の既定に居る。**"local" と同一視すると順序が狂う**
-test("host 省略は直下の既定として並べる(手元扱いにしない)", () => {
+// machine を書いていないデバイスは直下の既定に居る。**"local" と同一視すると順序が狂う**
+test("machine 省略は直下の既定として並べる(手元扱いにしない)", () => {
   const ws = workspaceWith({
-    host: "M1Ultra",
+    machine: "M1Ultra",
     ios: { devices: [
       { name: "iPhone-01" },                    // 既定 = M1Ultra
-      { host: "local", name: "iPhone-01" },
+      { machine: "local", name: "iPhone-01" },
     ] },
   });
   const devices = listMachineProfiles(ws, "P")[0].devices;
-  assert.deepEqual(devices.map((d) => d.host ?? "(none)"), ["local", "(none)"]);
+  assert.deepEqual(devices.map((d) => d.machine ?? "(none)"), ["local", "(none)"]);
 });

@@ -56,7 +56,8 @@ enum RemoteDeviceFanout {
                     var args = ["remote", "exec", host, "--", "api", subcommand]
                     if let project { args += ["--project", project] }
                     if let profile { args += ["--profile", profile] }
-                    args += ["--device-host", host]
+                    // エイリアスは渡さない(転送時に畳んである。FTCore.RunnerProfileView)
+                    args += ["--device-machine", DeviceHostGrouping.localDisplayName]
                     args += extraArgs
                     await runChild(args: args, host: host, relay: relay)
                 }

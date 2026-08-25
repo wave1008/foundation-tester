@@ -18,7 +18,7 @@ final class ResolvedProfileDeviceScopeTests: XCTestCase {
 
     private func device(_ name: String, host: String?, platform: String = "ios") -> ResolvedDevice {
         var spec = DeviceSpec(name: name, os: "27.0")
-        spec.host = host
+        spec.machine = host
         return ResolvedDevice(platform: platform, spec: spec)
     }
 
@@ -49,7 +49,7 @@ final class ResolvedProfileDeviceScopeTests: XCTestCase {
     }
 
     private func hosts(_ profile: ResolvedProfile) -> [String] {
-        profile.devices.map { "\(MachineHostDispatch.normalize($0.spec.host) ?? "local")/\($0.name)" }
+        profile.devices.map { "\(MachineHostDispatch.normalize($0.spec.machine) ?? "local")/\($0.name)" }
     }
 
     func testLocalSubRunDoesNotPickUpTheOtherMachinesSameNamedDevices() {

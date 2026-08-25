@@ -16,7 +16,7 @@ public enum RemoteDispatchError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .invalidHost(let detail):
-            return "invalid --host: \(detail)"
+            return "invalid --machine/--host: \(detail)"
         case .invalidDevice(let detail):
             return "invalid --device: \(detail)"
         case .invalidRemoteDir(let detail):
@@ -558,9 +558,13 @@ public enum RemoteRunArgs {
         if let reportDir { args += ["--report-dir", reportDir] }
         // **デバイスの絞り込みは中継しないと効かない** —— 向こうは同じマシンプロファイルを
         // 受け取るので、渡さないと**全ホストぶんの台**を自分のものとして解決しようとする
-        // (同名は別の機械にも居るのが通常。2026-08-17 に実走で確認)
+        // (同名は別の機械にも居るのが通常。2026-08-17 に実走で確認)。
+        // **値は常に "local"** —— 転送したプロファイルは RunnerProfileTransfer が
+        // 「そのランナーから見た姿」へ畳んであり、向こうの台は local になっている。
+        // ローカルエイリアス(M1Ultra 等)は発行側だけの概念なのでリモートへ出さない
+        // (用語の定義は FTCore.RunnerProfileView。2026-08-26 ユーザー決定)
         if !deviceNames.isEmpty { args += ["--device"] + deviceNames }
-        if let deviceHost { args += ["--device-host", deviceHost] }
+        if deviceHost != nil { args += ["--device-machine", DeviceHostGrouping.localDisplayName] }
         // **remoteControl.workspace が宣言されているプロファイルだけ渡る**(RemoteRunDispatcher が
         // ミラー後に埋める)。渡さないと子は自分のリポジトリルート基準で appPath を解決し、
         // ミラーしていない絶対パスを見に行く(この機能の動機になった不具合そのもの)
@@ -604,9 +608,9 @@ public enum RemoteRunArgs {
         if let reportDir { args += ["--report-dir", reportDir] }
         // **デバイスの絞り込みは中継しないと効かない**(build() と同じ理由。ApiRunHostFanout が
         // 複数機械にまたがるプロファイルをホストごとの子へ分けるようになったため、`api run --host`
-        // でも同名デバイスが別の機械に居りうる。2026-08-17)
+        // でも同名デバイスが別の機械に居りうる。2026-08-17)。値が "local" 固定なのも build() と同じ
         if !deviceNames.isEmpty { args += ["--device"] + deviceNames }
-        if let deviceHost { args += ["--device-host", deviceHost] }
+        if deviceHost != nil { args += ["--device-machine", DeviceHostGrouping.localDisplayName] }
         // 渡す条件・理由は build() の --workspace と同じ
         if let workspace { args += ["--workspace", workspace] }
         for scenario in scenarios { args += ["--scenario", scenario] }

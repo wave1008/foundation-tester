@@ -68,7 +68,7 @@ struct ApiListDevices: AsyncParsableCommand {
         let allDevices = (scoped.ios?.devices ?? []).map { (platform: "ios", spec: $0) }
             + (scoped.android?.devices ?? []).map { (platform: "android", spec: $0) }
         let localDevices = allDevices.filter {
-            DeviceHostGrouping.effectiveHost(device: $0.spec, machineHost: scoped.host) == nil
+            DeviceHostGrouping.effectiveHost(device: $0.spec, machineHost: scoped.machine) == nil
         }
         if localDevices.count < allDevices.count {
             logStderr("→ Skipped \(allDevices.count - localDevices.count) device(s) that live on"

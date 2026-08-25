@@ -78,7 +78,7 @@ final class StepNoteTests: XCTestCase {
     func testUnsettledStepsStaysSilentForLegacyRecords() {
         let legacy = (0..<5).map { _ in
             ScenarioRunRecord(runID: "r", scenarioID: "Foo.a", title: nil, platform: "ios",
-                              worker: nil, machine: "m", passed: true, timedOut: nil,
+                              worker: nil, host: "m", passed: true, timedOut: nil,
                               startedAt: "2026-01-01T00:00:00Z", durationMs: 1, scenes: [],
                               steps: StepCountsRecord(total: 1, passed: 1), timeline: nil)
         }
@@ -103,7 +103,7 @@ final class StepNoteTests: XCTestCase {
                                notes: index < cappedSteps ? [StepNote.settleCapped.rawValue] : nil)
         }
         return ScenarioRunRecord(runID: "r", scenarioID: "Foo.a", title: nil, platform: "ios",
-                                 worker: nil, machine: "m", passed: true, timedOut: nil,
+                                 worker: nil, host: "m", passed: true, timedOut: nil,
                                  startedAt: "2026-01-01T00:00:00Z", durationMs: 1, scenes: [],
                                  steps: StepCountsRecord(total: 3, passed: 3), timeline: timeline)
     }

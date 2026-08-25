@@ -7,13 +7,7 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import {
-  dedupeDeviceRefs,
-  distinctRecordingDevices,
-  isRecordingIndex,
-  type RecordingDeviceRef,
-  type RecordingIndex,
-} from "./recordingsModel";
+import { isRecordingIndex, type RecordingIndex } from "./recordingsModel";
 
 export interface RecordingSessionSummary {
   readonly project: string;
@@ -22,12 +16,10 @@ export interface RecordingSessionSummary {
   /** このセッションを構成する run(単機なら1件。runID 昇順)。 */
   readonly runIDs: readonly string[];
   readonly startedAt: string;
-  /** run.json の machine(実行マシン名)。古い/壊れた run.json では null。 */
+  /** 表示用のマシン名(登録名へ読み替え済み。sessionMachineLabel)。古い/壊れた run.json では null。 */
   readonly machine: string | null;
   /** 束ねたセッションの全マシン(初出順・重複排除。読めないものは除く)。 */
   readonly machines: readonly string[];
-  /** このセッションが録画を撮った台(初出順・重複排除)。index.json 由来なので run.json が無くても出る。 */
-  readonly devices: readonly RecordingDeviceRef[];
   readonly passed: number | null;
   readonly failed: number | null;
   /** recordings/index.json の同名フィールド(任意。無ければ null)。 */
@@ -81,6 +73,49 @@ function booleanField(obj: Record<string, unknown> | null, key: string): boolean
  * run.json 配置規則(Sources/FTCore/RunResultsStore.swift の runDir(resultsDir:runID:)と同じ導出。
  * 変更時は両方揃えること)。runID 先頭6桁が yyyyMM で無い(不正な runID)場合は "unknown" 配下。
  */
+/**
+ * **ホスト名 → 設定タブで付けた登録名**の読み替え表(2026-08-26 ユーザー決定: 記録側は
+ * 登録名を持たず、読み手が読み替える)。供給元は CLI が書く `.fleetest/remote-hosts/<登録名>.json`
+ * の `machine`(ディスパッチのたびに更新。手元は `local.json`)。**読み替えは表示だけ**で、
+ * LPT の同一 machine 判定など記録側の照合は run.json の machine のまま。
+ * 表に無いホスト名はそのまま出す(登録前の run・別の人の機械)。
+ */
+async function readMachineAliases(workspaceRoot: string): Promise<Map<string, string>> {
+  const dir = path.join(workspaceRoot, ".fleetest", "remote-hosts");
+  let files: string[];
+  try {
+    files = (await fs.readdir(dir)).filter((f) => f.endsWith(".json")).sort();
+  } catch {
+    return new Map();
+  }
+  const aliases = new Map<string, string>();
+  for (const file of files) {
+    const label = file.slice(0, -".json".length);
+    const raw = await readJson(path.join(dir, file));
+    const machine = stringField(isRecord(raw) ? raw : null, "machine");
+    if (machine === undefined || machine === "") {
+      continue;
+    }
+    // 同じ機械に複数の登録名が向いていたら **手元("local")を優先**し、他は先勝ち
+    // (ファイル名昇順)。手元をリモート名で呼ぶと、同じ機械の run が2つの名前で並ぶ
+    if (!aliases.has(machine) || label === "local") {
+      aliases.set(machine, label);
+    }
+  }
+  return aliases;
+}
+
+/** セッションのマシン表示名。run.json の machine(ホスト名)を登録名へ読み替える。 */
+function sessionMachineLabel(
+  meta: Record<string, unknown> | null, aliases: ReadonlyMap<string, string>,
+): string | null {
+  const machine = stringField(meta, "machine");
+  if (machine === undefined || machine === "") {
+    return null;
+  }
+  return aliases.get(machine) ?? machine;
+}
+
 function runDirFor(workspaceRoot: string, project: string, runID: string): string {
   const runsDir = path.join(workspaceRoot, "TestProjects", project, "results", "runs");
   if (runID.length < 6) {
@@ -92,6 +127,7 @@ function runDirFor(workspaceRoot: string, project: string, runID: string): strin
 
 /** recordings/index.json のある run を新しい順(runID 降順)に列挙する。上限 SESSION_LIMIT 件。 */
 export async function listRecordingSessions(workspaceRoot: string): Promise<RecordingSessionSummary[]> {
+  const aliases = await readMachineAliases(workspaceRoot);
   const projectsDir = path.join(workspaceRoot, "TestProjects");
   const sessions: RecordingSessionSummary[] = [];
   for (const project of await listDirNames(projectsDir)) {
@@ -110,7 +146,7 @@ export async function listRecordingSessions(workspaceRoot: string): Promise<Reco
         const indexRecord = indexRaw as unknown as Record<string, unknown>;
         const metaRaw = await readJson(path.join(runDir, "run.json"));
         const meta = isRecord(metaRaw) ? metaRaw : null;
-        const machine = stringField(meta, "machine") ?? null;
+        const machine = sessionMachineLabel(meta, aliases);
         sessions.push({
           project,
           runID,
@@ -118,7 +154,6 @@ export async function listRecordingSessions(workspaceRoot: string): Promise<Reco
           startedAt: stringField(meta, "startedAt") ?? runID,
           machine,
           machines: machine === null ? [] : [machine],
-          devices: distinctRecordingDevices(indexRaw.recordings, machine),
           passed: numberField(meta, "passed") ?? null,
           failed: numberField(meta, "failed") ?? null,
           clipsAttempted: numberField(indexRecord, "clipsAttempted") ?? null,
@@ -182,7 +217,6 @@ function combineSessions(
     startedAt: next.startedAt < first.startedAt ? next.startedAt : first.startedAt,
     machine: next.machine ?? first.machine,
     machines,
-    devices: dedupeDeviceRefs([...first.devices, ...next.devices]),
     passed: sum(first.passed, next.passed),
     failed: sum(first.failed, next.failed),
     clipsAttempted: sum(first.clipsAttempted, next.clipsAttempted),
@@ -222,7 +256,7 @@ export async function resolveSessionRunIDs(
 export interface RecordingSessionDetailRaw {
   readonly runDir: string;
   readonly index: RecordingIndex;
-  /** run.json の machine(実行マシン名)。読めなければ null。 */
+  /** 表示用のマシン名(登録名へ読み替え済み。sessionMachineLabel)。読めなければ null。 */
   readonly machine: string | null;
   /** scenarios/*.json の生 JSON(ScenarioRunRecord 相当)。検証・変換は呼び出し側
    * (recordingsModel.ts の extractScenarioFailureSource)が行う。 */
@@ -251,6 +285,7 @@ export async function loadRecordingSessionDetail(
     (s) => s !== null,
   );
   const metaRaw = await readJson(path.join(runDir, "run.json"));
-  const machine = stringField(isRecord(metaRaw) ? metaRaw : null, "machine") ?? null;
+  const machine = sessionMachineLabel(isRecord(metaRaw) ? metaRaw : null,
+                                      await readMachineAliases(workspaceRoot));
   return { runDir, index: indexRaw, machine, scenarios };
 }

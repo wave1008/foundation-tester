@@ -51,7 +51,7 @@ public enum DeviceHostGrouping {
             self.spec = spec
         }
 
-        public var host: String? { spec.host }
+        public var host: String? { spec.machine }
         public var name: String { spec.name }
     }
 
@@ -60,8 +60,8 @@ public enum DeviceHostGrouping {
     /// "local" を nil に畳むので、素の `normalize(device.host) ?? normalize(machineHost)` だと
     /// 未指定と区別が付かずマシン既定(リモート)へ落ちる。空文字は未指定として既定へ落とす
     public static func effectiveHost(device: DeviceSpec, machineHost: String?) -> String? {
-        if MachineHostDispatch.isExplicitLocal(device.host) { return nil }
-        return MachineHostDispatch.normalize(device.host) ?? MachineHostDispatch.normalize(machineHost)
+        if MachineHostDispatch.isExplicitLocal(device.machine) { return nil }
+        return MachineHostDispatch.normalize(device.machine) ?? MachineHostDispatch.normalize(machineHost)
     }
 
     /// マシンプロファイルを ios → android の順に平坦化する(実効ホストを spec.host へ書き戻すので、
@@ -71,7 +71,7 @@ public enum DeviceHostGrouping {
         for (platform, list) in [("ios", machine.ios), ("android", machine.android)] {
             for spec in list?.devices ?? [] {
                 var resolved = spec
-                resolved.host = effectiveHost(device: spec, machineHost: machine.host)
+                resolved.machine = effectiveHost(device: spec, machineHost: machine.machine)
                 result.append(CatalogEntry(platform: platform, spec: resolved))
             }
         }
@@ -104,11 +104,11 @@ public enum DeviceHostGrouping {
         let byName = entries.filter { $0.name == ref.name }
         guard !byName.isEmpty else { return .missing }
 
-        if let wanted = MachineHostDispatch.normalize(ref.host) {
+        if let wanted = MachineHostDispatch.normalize(ref.machine) {
             return byName.first { $0.host == wanted }.map { .found($0) } ?? .missing
         }
         // ref が "local" を明示していれば、ローカルのものだけを見る(未指定とは区別する)
-        if MachineHostDispatch.isExplicitLocal(ref.host) {
+        if MachineHostDispatch.isExplicitLocal(ref.machine) {
             return byName.first { $0.host == nil }.map { .found($0) } ?? .missing
         }
         if byName.count == 1 { return .found(byName[0]) }

@@ -19,7 +19,7 @@ function validPayload(overrides = {}) {
         runID: "20260716-000000",
         project: "SampleApp",
         profile: "default",
-        machine: "M2 Ultra",
+        host: "M2Ultra",
         trigger: "cli",
         startedAt: "2026-07-16T00:00:00Z",
         finishedAt: "2026-07-16T00:05:00Z",
@@ -55,7 +55,7 @@ test("isApiResultsPayload: trend を含む値(--scenario 指定時相当)も tru
         scenarioID: "Login",
         platform: "ios",
         worker: "ios:iPhone 15",
-        machine: "M2 Ultra",
+        host: "M2Ultra",
         passed: true,
         startedAt: "2026-07-16T00:00:00Z",
         durationMs: 1200,
@@ -74,7 +74,7 @@ test("isApiResultsPayload: Codable の nil Optional 省略(profile/finishedAt/to
       schemaVersion: 1,
       runID: "20260716-000000",
       project: "SampleApp",
-      machine: "M2 Ultra",
+      host: "M2Ultra",
       trigger: "api",
       startedAt: "2026-07-16T00:00:00Z",
       // profile/finishedAt/total/passed/failed は省略(未完了 run 相当)
@@ -204,7 +204,7 @@ test("isApiResultsPayload: runs が配列でなければ false", () => {
 
 test("isApiResultsPayload: runs 内の必須フィールド欠落は false", () => {
   const payload = validPayload();
-  delete payload.runs[0].machine;
+  delete payload.runs[0].host;
   assert.equal(isApiResultsPayload(payload), false);
 });
 

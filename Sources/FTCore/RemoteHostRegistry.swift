@@ -5,21 +5,44 @@
 
 import Foundation
 
-/// 登録簿の1エントリ。**論理名 → ssh 実体の対応だけ**を持つ。
+/// 登録簿の1エントリ。**マシン名 → ssh 実体の対応だけ**を持つ。
 /// 機械の身元は ssh の宛先が保証するので、リモートのマシン登録名は持たない
 /// (ProfileResolver.determineMachine)
 public struct RemoteHostEntry: Codable, Equatable, Sendable {
-    /// 論理名。登録簿内で一意(RemoteHostRegistry.upsert が同名を置き換える)
-    public let name: String
+    /// マシン名(利用者が設定タブで付ける名前)。登録簿内で一意(upsert が同名を置き換える)。
+    /// プロファイルの `machine` 欄・`--host` に書くのはこの名前。
+    /// **JSON キーは "machine"**(2026-08-26 改名)。旧キー "name" も読む
+    public let machine: String
     /// ssh 宛先("user@host" または "host")
     public let host: String
     /// ベースディレクトリ。nil なら CLI 既定("~/fleetest-runner")
     public let dir: String?
 
-    public init(name: String, host: String, dir: String? = nil) {
-        self.name = name
+    public init(machine: String, host: String, dir: String? = nil) {
+        self.machine = machine
         self.host = host
         self.dir = dir
+    }
+
+    private enum CodingKeys: String, CodingKey { case machine, name, host, dir }
+
+    /// 読みは machine > 旧 name、書きは machine だけ(改名の互換はこの1箇所)
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if let machine = try container.decodeIfPresent(String.self, forKey: .machine) {
+            self.machine = machine
+        } else {
+            self.machine = try container.decode(String.self, forKey: .name)
+        }
+        host = try container.decode(String.self, forKey: .host)
+        dir = try container.decodeIfPresent(String.self, forKey: .dir)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(machine, forKey: .machine)
+        try container.encode(host, forKey: .host)
+        try container.encodeIfPresent(dir, forKey: .dir)
     }
 }
 
@@ -73,21 +96,21 @@ public enum RemoteHostRegistry {
     public static func resolve(_ raw: String, entries: [RemoteHostEntry]) -> RemoteHostResolution {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed != "local" else { return .reserved }
-        if let entry = entries.first(where: { $0.name == trimmed }) {
+        if let entry = entries.first(where: { $0.machine == trimmed }) {
             return .registered(entry)
         }
         return .rawTarget(trimmed)
     }
 
-    /// 同名は置き換え、無ければ追加。名前順で安定に並べる(出力が実行のたびに揺れない)
+    /// 同名は置き換え、無ければ追加。マシン名順で安定に並べる(出力が実行のたびに揺れない)
     public static func upsert(_ entry: RemoteHostEntry, into entries: [RemoteHostEntry]) -> [RemoteHostEntry] {
-        var result = entries.filter { $0.name != entry.name }
+        var result = entries.filter { $0.machine != entry.machine }
         result.append(entry)
-        return result.sorted { $0.name < $1.name }
+        return result.sorted { $0.machine < $1.machine }
     }
 
-    public static func remove(name: String, from entries: [RemoteHostEntry]) -> [RemoteHostEntry] {
-        entries.filter { $0.name != name }
+    public static func remove(machine: String, from entries: [RemoteHostEntry]) -> [RemoteHostEntry] {
+        entries.filter { $0.machine != machine }
     }
 
     /// 同じ ssh 宛先を指す登録が複数あるとき、その宛先を返す(名前順。§13 のガードの土台

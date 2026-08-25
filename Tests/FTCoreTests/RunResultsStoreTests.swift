@@ -21,13 +21,13 @@ final class RunResultsStoreTests: XCTestCase {
     private func makeMeta(runID: String, startedAt: String, schemaVersion: Int = RunRecordSchema.current) -> RunMetaRecord {
         RunMetaRecord(
             schemaVersion: schemaVersion, runID: runID, project: "SampleApp", profile: nil,
-            machine: "testmachine", trigger: "cli", startedAt: startedAt)
+            host: "testmachine", trigger: "cli", startedAt: startedAt)
     }
 
     private func makeScenarioRecord(scenarioID: String, runID: String, passed: Bool = true,
                                     worker: String? = nil) -> ScenarioRunRecord {
         ScenarioRunRecord(
-            runID: runID, scenarioID: scenarioID, platform: "ios", worker: worker, machine: "testmachine",
+            runID: runID, scenarioID: scenarioID, platform: "ios", worker: worker, host: "testmachine",
             passed: passed, startedAt: "2026-01-01T00:00:00Z", durationMs: 100,
             steps: StepCountsRecord(total: 1, passed: passed ? 1 : 0, failed: passed ? 0 : 1))
     }
@@ -148,7 +148,7 @@ final class RunResultsStoreTests: XCTestCase {
         let runDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: runID)
         var record = makeScenarioRecord(scenarioID: scenario, runID: runID)
         record.platform = platform
-        record.machine = machine
+        record.host = machine
         record.durationMs = durationMs
         RunResultsStore.writeScenario(record, runDir: runDir, fileName: scenario)
     }
@@ -163,7 +163,7 @@ final class RunResultsStoreTests: XCTestCase {
         write(scenario: "A", runID: "20260101-000000Z-mach-0001", machine: "この機械")
         let records = RunResultsStore.scanRecords(resultsDir: resultsDir,
                                                   maxObservationsPerScenario: 5)
-        XCTAssertTrue(records.contains { $0.machine == "この機械" },
+        XCTAssertTrue(records.contains { $0.host == "この機械" },
                       "リモート機の観測で枠が尽きてこの機械が読めていない")
     }
 
@@ -274,7 +274,7 @@ final class RunResultsStoreTests: XCTestCase {
         XCTAssertEqual(meta?.total, 4)
         XCTAssertEqual(meta?.passed, 1)
         XCTAssertEqual(meta?.failed, 3)
-        XCTAssertFalse(meta?.machine.isEmpty ?? true)
+        XCTAssertFalse(meta?.host.isEmpty ?? true)
     }
 
     /// issuer は begin() 時点で焼き込まれ、finish() でも同じ値が引き継がれる
@@ -399,6 +399,6 @@ final class RunResultsStoreTests: XCTestCase {
         let record = data.flatMap { try? JSONDecoder().decode(ScenarioRunRecord.self, from: $0) }
         XCTAssertEqual(record?.runID, recorder.runID)
         XCTAssertEqual(record?.profile, "myProfile")
-        XCTAssertFalse(record?.machine.isEmpty ?? true)
+        XCTAssertFalse(record?.host.isEmpty ?? true)
     }
 }

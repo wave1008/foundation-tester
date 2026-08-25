@@ -288,7 +288,7 @@ test("loadRecordingSessionDetail: schemaVersion:1(v1)のindex.jsonはnull", asyn
   }
 });
 
-test("listRecordingSessions: run.json の machine と index.json の台を要約に載せる", async () => {
+test("listRecordingSessions: run.json の machine を要約に載せる", async () => {
   const root = makeWorkspace();
   try {
     const dir = runDir(root, "SampleApp", "20260723-000000");
@@ -309,17 +309,13 @@ test("listRecordingSessions: run.json の machine と index.json の台を要約
     writeJson(path.join(dir, "run.json"), { startedAt: "2026-07-23T00:00:00Z", machine: "M1Max", passed: 3, failed: 0 });
 
     const [session] = await listRecordingSessions(root);
-    assert.equal(session.machine, "M1Max");
-    assert.deepEqual(session.devices, [
-      { platform: "ios", device: "iPhone 16", machine: "M1Max" },
-      { platform: "android", device: "Pixel 9(Android 15)-01", machine: "M1Max" },
-    ]);
+    assert.equal(session.machine, "M1Max", "読み替え表が無ければ run.json の machine のまま");
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
-test("listRecordingSessions: run.json が無くても台は出る(machine だけ null)", async () => {
+test("listRecordingSessions: run.json が無ければ machine は null(録画自体は一覧に出る)", async () => {
   const root = makeWorkspace();
   try {
     const dir = runDir(root, "SampleApp", "20260723-000000");
@@ -327,7 +323,6 @@ test("listRecordingSessions: run.json が無くても台は出る(machine だけ
 
     const [session] = await listRecordingSessions(root);
     assert.equal(session.machine, null);
-    assert.deepEqual(session.devices, [{ platform: "ios", device: "iPhone 16", machine: null }]);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -392,8 +387,6 @@ test("listRecordingSessions: runGroup が同じ run は1セッションに束ね
     const [session] = sessions;
     assert.deepEqual(session.runIDs, ["20260826-010000Z-LDIPC96-aaa1", "20260826-010012Z-M1Max-bbb2"]);
     assert.deepEqual(session.machines, ["M1Max", "LDIPC96"], "全マシンが出る(新しい run から先に見る)");
-    assert.deepEqual(session.devices.map((d) => `${d.machine}/${d.device}`),
-                     ["M1Max/Pixel 10-01", "LDIPC96/Pixel 9-01"]);
     assert.equal(session.passed, 3, "件数は合計");
     assert.equal(session.failed, 1);
     assert.equal(session.startedAt, "2026-08-26T01:01:00Z", "開始は最も早い run のもの");
@@ -461,6 +454,61 @@ test("resolveSessionRunIDs: 鍵を共有する run を全部返す(鍵が無け�
       await resolveSessionRunIDs(root, "SampleApp", "20260826-010013Z-M1Ultra-ccc3"),
       ["20260826-010013Z-M1Ultra-ccc3"],
     );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// マシンのバッジは **設定タブで付けた登録名**。run.json が持つのはその機械が名乗るホスト名で、
+// "M1Ultra" と登録した機械が "LDIPC95" と出ていた(受け手指示 2026-08-26: ログ側は変えず読み替える)。
+// 読み替え表は CLI が書く .fleetest/remote-hosts/<登録名>.json の machine。
+test("listRecordingSessions: ホスト名を登録名へ読み替える(表に無ければそのまま)", async () => {
+  const root = makeWorkspace();
+  try {
+    writeJson(path.join(root, ".fleetest", "remote-hosts", "M1Ultra.json"), { machine: "LDIPC95" });
+    writeJson(path.join(root, ".fleetest", "remote-hosts", "local.json"), { machine: "LDIPC96" });
+
+    for (const [runID, machine] of [
+      ["20260826-020000Z-LDIPC95-aaa1", "LDIPC95"],
+      ["20260826-010000Z-LDIPC96-bbb2", "LDIPC96"],
+      ["20260826-000000Z-SNB-M1-ccc3", "SNB-M1"],
+    ]) {
+      const dir = runDir(root, "SampleApp", runID);
+      writeJson(path.join(dir, "recordings", "index.json"), SAMPLE_INDEX);
+      writeJson(path.join(dir, "run.json"), { startedAt: `2026-08-26T0${runID[10]}:00:00Z`, machine });
+    }
+
+    const sessions = await listRecordingSessions(root);
+    assert.deepEqual(sessions.map((s) => s.machine), ["M1Ultra", "local", "SNB-M1"],
+                     "登録名へ読み替え / 手元は local / 登録の無い機械はホスト名のまま");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("listRecordingSessions: 読み替え表が無い環境ではホスト名のまま出す", async () => {
+  const root = makeWorkspace();
+  try {
+    const dir = runDir(root, "SampleApp", "20260826-020000Z-LDIPC95-aaa1");
+    writeJson(path.join(dir, "recordings", "index.json"), SAMPLE_INDEX);
+    writeJson(path.join(dir, "run.json"), { startedAt: "2026-08-26T02:00:00Z", machine: "LDIPC95" });
+
+    assert.equal((await listRecordingSessions(root))[0].machine, "LDIPC95");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("loadRecordingSessionDetail: 再生ビュー側も同じ読み替えを通す", async () => {
+  const root = makeWorkspace();
+  try {
+    writeJson(path.join(root, ".fleetest", "remote-hosts", "M1Max.json"), { machine: "SNB-M1" });
+    const dir = runDir(root, "SampleApp", "20260826-020000Z-SNB-M1-aaa1");
+    writeJson(path.join(dir, "recordings", "index.json"), SAMPLE_INDEX);
+    writeJson(path.join(dir, "run.json"), { startedAt: "2026-08-26T02:00:00Z", machine: "SNB-M1" });
+
+    const detail = await loadRecordingSessionDetail(root, "SampleApp", "20260826-020000Z-SNB-M1-aaa1");
+    assert.equal(detail.machine, "M1Max");
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

@@ -31,7 +31,7 @@ struct ApiDeviceUp: AsyncParsableCommand {
     @Option(help: "Android GPU rendering mode (host / swiftshader_indirect; default host). Used as the CPU-rendering fallback for devices that freeze")
     var gpu: String?
 
-    @Option(name: .customLong("device-host"),
+    @Option(name: [.customLong("device-machine"), .customLong("device-host")],
             help: "Only match devices assigned to this machine (\"local\" or a registered host name). Set by the caller on the other end of ssh")
     var deviceHost: String?
 
@@ -84,7 +84,7 @@ struct ApiDevicesUp: AsyncParsableCommand {
             help: "Logical names of devices to restart with down->up even if already running, to bring CPU-rendering devices back onto the GPU. Repeatable; processed two at a time in the same queue as booting stopped devices")
     var restart: [String] = []
 
-    @Option(name: .customLong("device-host"), help: ArgumentHelp(
+    @Option(name: [.customLong("device-machine"), .customLong("device-host")], help: ArgumentHelp(
         "Operate on the devices that belong to this machine (registered host name)."
         + " Default: the devices with no host (this machine). Used when a parent dispatches"
         + " to a runner: remote exec <name> -- ... --device-host <name>"))
@@ -158,7 +158,7 @@ struct ApiDevicesRestart: AsyncParsableCommand {
     @Option(help: "Run profile name (when given, only the devices that profile references are affected)")
     var profile: String?
 
-    @Option(name: .customLong("device-host"), help: ArgumentHelp(
+    @Option(name: [.customLong("device-machine"), .customLong("device-host")], help: ArgumentHelp(
         "Operate on the devices that belong to this machine (registered host name)."
         + " Default: the devices with no host (this machine)"))
     var deviceHost: String?
@@ -217,21 +217,21 @@ struct ApiDevicesRestart: AsyncParsableCommand {
         }
         ApiDeviceEventEmitter.emit(
             ApiDevicesUpLifecycleEvent(kind: "deviceStopping", name: spec.name, platform: platform,
-                                       host: spec.host))
+                                       host: spec.machine))
         do {
             try await DeviceBooter.shutdownOne(
                 spec: spec, platform: platform,
                 repoRoot: platform == "ios" ? repoRoot : nil, log: log)
             ApiDeviceEventEmitter.emit(
                 ApiDevicesUpLifecycleEvent(kind: "deviceStarting", name: spec.name, platform: platform,
-                                           host: spec.host))
+                                           host: spec.machine))
             try await DeviceBooter.bootOne(spec: spec, platform: platform, log: log)
         } catch {
             log("❌ \(spec.name): \(error.localizedDescription)")
         }
         ApiDeviceEventEmitter.emit(
             ApiDevicesUpLifecycleEvent(kind: "deviceFinished", name: spec.name, platform: platform,
-                                       host: spec.host))
+                                       host: spec.machine))
     }
 
     private struct RestartItem: Sendable {
@@ -265,7 +265,7 @@ struct ApiDevicesDown: AsyncParsableCommand {
     @Option(help: "Run profile name (when given, only the devices that profile references are stopped)")
     var profile: String?
 
-    @Option(name: .customLong("device-host"), help: ArgumentHelp(
+    @Option(name: [.customLong("device-machine"), .customLong("device-host")], help: ArgumentHelp(
         "Operate on the devices that belong to this machine (registered host name)."
         + " Default: the devices with no host (this machine). Used when a parent dispatches"
         + " to a runner: remote exec <name> -- ... --device-host <name>"))
@@ -310,7 +310,7 @@ struct ApiDevicesDown: AsyncParsableCommand {
         }
         ApiDeviceEventEmitter.emit(
             ApiDevicesUpLifecycleEvent(kind: "deviceStopping", name: spec.name, platform: platform,
-                                       host: spec.host))
+                                       host: spec.machine))
         do {
             try await DeviceBooter.shutdownOne(spec: spec, platform: platform, repoRoot: repoRoot, log: log)
         } catch {
@@ -318,7 +318,7 @@ struct ApiDevicesDown: AsyncParsableCommand {
         }
         ApiDeviceEventEmitter.emit(
             ApiDevicesUpLifecycleEvent(kind: "deviceFinished", name: spec.name, platform: platform,
-                                       host: spec.host))
+                                       host: spec.machine))
     }
 
     private static func logStderr(_ message: String) {
@@ -351,7 +351,7 @@ struct ApiDeviceDown: AsyncParsableCommand {
     @Option(help: "Run profile name, used to resolve the machine. When given, that profile's machine wins; otherwise FT_MACHINE, the registered machine, or the only entry in machines/. Ignored in direct (--udid/--serial) mode")
     var profile: String?
 
-    @Option(name: .customLong("device-host"),
+    @Option(name: [.customLong("device-machine"), .customLong("device-host")],
             help: "Only match devices assigned to this machine (\"local\" or a registered host name). Set by the caller on the other end of ssh")
     var deviceHost: String?
 
@@ -534,7 +534,7 @@ enum ApiDeviceOperation {
     ) -> DeviceLookup {
         let entries = DeviceHostGrouping.entries(machine: machine).filter { $0.name == name }
         guard deviceHost != nil else {
-            let hosts = DeviceHostGrouping.groups(entries, host: { MachineHostDispatch.normalize($0.spec.host) })
+            let hosts = DeviceHostGrouping.groups(entries, host: { MachineHostDispatch.normalize($0.spec.machine) })
             if hosts.count > 1 {
                 return .ambiguous(hosts: hosts.map { DeviceHostGrouping.display($0.host) })
             }
@@ -542,7 +542,7 @@ enum ApiDeviceOperation {
             return .found(spec: entry.spec, platform: entry.platform)
         }
         let wanted = MachineHostDispatch.normalize(deviceHost)
-        guard let entry = entries.first(where: { MachineHostDispatch.normalize($0.spec.host) == wanted })
+        guard let entry = entries.first(where: { MachineHostDispatch.normalize($0.spec.machine) == wanted })
         else { return .missing }
         return .found(spec: entry.spec, platform: entry.platform)
     }

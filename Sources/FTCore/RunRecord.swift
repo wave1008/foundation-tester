@@ -40,11 +40,71 @@ public struct WorkerAnomalyRecord: Codable, Sendable {
 
 /// results/runs/<YYYY-MM>/<runID>/run.json
 public struct RunMetaRecord: Codable, Sendable {
+    /// 旧キー "machine"(2026-08-26 以前の記録)も読む。書きは "host" だけ
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion, runID, project, profile, host, machine, trigger, startedAt, finishedAt
+        case total, passed, failed, degradedWorkers, freezeRetries, blankRepairs, blankExclusions
+        case measurementInvalid, measurementInvalidReasons, workerAnomalies, issuer, runGroup
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try c.decode(Int.self, forKey: .schemaVersion)
+        runID = try c.decode(String.self, forKey: .runID)
+        project = try c.decode(String.self, forKey: .project)
+        profile = try c.decodeIfPresent(String.self, forKey: .profile)
+        host = try c.decodeIfPresent(String.self, forKey: .host)
+            ?? c.decodeIfPresent(String.self, forKey: .machine) ?? ""
+        trigger = try c.decode(String.self, forKey: .trigger)
+        startedAt = try c.decode(String.self, forKey: .startedAt)
+        finishedAt = try c.decodeIfPresent(String.self, forKey: .finishedAt)
+        total = try c.decodeIfPresent(Int.self, forKey: .total)
+        passed = try c.decodeIfPresent(Int.self, forKey: .passed)
+        failed = try c.decodeIfPresent(Int.self, forKey: .failed)
+        degradedWorkers = try c.decodeIfPresent([String].self, forKey: .degradedWorkers)
+        freezeRetries = try c.decodeIfPresent([String].self, forKey: .freezeRetries)
+        blankRepairs = try c.decodeIfPresent([String].self, forKey: .blankRepairs)
+        blankExclusions = try c.decodeIfPresent([String].self, forKey: .blankExclusions)
+        measurementInvalid = try c.decodeIfPresent(Bool.self, forKey: .measurementInvalid)
+        measurementInvalidReasons = try c.decodeIfPresent([String].self, forKey: .measurementInvalidReasons)
+        workerAnomalies = try c.decodeIfPresent([WorkerAnomalyRecord].self, forKey: .workerAnomalies)
+        issuer = try c.decodeIfPresent(String.self, forKey: .issuer)
+        runGroup = try c.decodeIfPresent(String.self, forKey: .runGroup)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(schemaVersion, forKey: .schemaVersion)
+        try c.encode(runID, forKey: .runID)
+        try c.encode(project, forKey: .project)
+        try c.encodeIfPresent(profile, forKey: .profile)
+        try c.encode(host, forKey: .host)
+        try c.encode(trigger, forKey: .trigger)
+        try c.encode(startedAt, forKey: .startedAt)
+        try c.encodeIfPresent(finishedAt, forKey: .finishedAt)
+        try c.encodeIfPresent(total, forKey: .total)
+        try c.encodeIfPresent(passed, forKey: .passed)
+        try c.encodeIfPresent(failed, forKey: .failed)
+        try c.encodeIfPresent(degradedWorkers, forKey: .degradedWorkers)
+        try c.encodeIfPresent(freezeRetries, forKey: .freezeRetries)
+        try c.encodeIfPresent(blankRepairs, forKey: .blankRepairs)
+        try c.encodeIfPresent(blankExclusions, forKey: .blankExclusions)
+        try c.encodeIfPresent(measurementInvalid, forKey: .measurementInvalid)
+        try c.encodeIfPresent(measurementInvalidReasons, forKey: .measurementInvalidReasons)
+        try c.encodeIfPresent(workerAnomalies, forKey: .workerAnomalies)
+        try c.encodeIfPresent(issuer, forKey: .issuer)
+        try c.encodeIfPresent(runGroup, forKey: .runGroup)
+    }
+
     public var schemaVersion: Int
     public var runID: String
     public var project: String
     public var profile: String?
-    public var machine: String
+    /// **その run を走らせた機械のホスト名**(`FT_MACHINE` > hostname を sanitize したもの)。
+    /// 用語の定義(2026-08-26 ユーザー決定): host = ホスト名/IP、machine = そのローカルエイリアス。
+    /// **エイリアスは頻繁に変わりうるので記録の鍵にしない** —— LPT の「同じ機械の実績を優先」も
+    /// この欄で照合する。**JSON キーは "host"**(旧キー "machine" も読む)
+    public var host: String
     /// "api" | "cli"
     public var trigger: String
     public var startedAt: String
@@ -84,7 +144,7 @@ public struct RunMetaRecord: Codable, Sendable {
     public var runGroup: String?
 
     public init(schemaVersion: Int = RunRecordSchema.current, runID: String, project: String,
-                profile: String?, machine: String, trigger: String, startedAt: String,
+                profile: String?, host: String, trigger: String, startedAt: String,
                 finishedAt: String? = nil, total: Int? = nil, passed: Int? = nil,
                 failed: Int? = nil, degradedWorkers: [String]? = nil,
                 freezeRetries: [String]? = nil,
@@ -96,7 +156,7 @@ public struct RunMetaRecord: Codable, Sendable {
         self.runID = runID
         self.project = project
         self.profile = profile
-        self.machine = machine
+        self.host = host
         self.trigger = trigger
         self.startedAt = startedAt
         self.finishedAt = finishedAt
@@ -268,6 +328,65 @@ public enum ScenarioSkipKind: String, Codable, Sendable {
 }
 
 public struct ScenarioRunRecord: Codable, Sendable {
+    /// 旧キー "machine"(2026-08-26 以前の記録)も読む。書きは "host" だけ
+    /// (RunMetaRecord と同じ規律。片方だけ変えない)
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion, runID, scenarioID, title, platform, worker, host, machine, profile
+        case passed, timedOut, startedAt, durationMs, scenes, steps, reportPath, failedSteps
+        case fixSuggestions, errorLogs, fm, timeline, skipKind
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try c.decode(Int.self, forKey: .schemaVersion)
+        runID = try c.decode(String.self, forKey: .runID)
+        scenarioID = try c.decode(String.self, forKey: .scenarioID)
+        title = try c.decodeIfPresent(String.self, forKey: .title)
+        platform = try c.decode(String.self, forKey: .platform)
+        worker = try c.decodeIfPresent(String.self, forKey: .worker)
+        host = try c.decodeIfPresent(String.self, forKey: .host)
+            ?? c.decodeIfPresent(String.self, forKey: .machine) ?? ""
+        profile = try c.decodeIfPresent(String.self, forKey: .profile)
+        passed = try c.decode(Bool.self, forKey: .passed)
+        timedOut = try c.decodeIfPresent(Bool.self, forKey: .timedOut)
+        startedAt = try c.decode(String.self, forKey: .startedAt)
+        durationMs = try c.decode(Int.self, forKey: .durationMs)
+        scenes = try c.decode([SceneResultRecord].self, forKey: .scenes)
+        steps = try c.decode(StepCountsRecord.self, forKey: .steps)
+        reportPath = try c.decodeIfPresent(String.self, forKey: .reportPath)
+        failedSteps = try c.decodeIfPresent([FailedStepRecord].self, forKey: .failedSteps)
+        fixSuggestions = try c.decodeIfPresent([FixSuggestionRecord].self, forKey: .fixSuggestions)
+        errorLogs = try c.decodeIfPresent([String].self, forKey: .errorLogs)
+        fm = try c.decodeIfPresent(FMUsageRecord.self, forKey: .fm)
+        timeline = try c.decodeIfPresent([TimelineStepRecord].self, forKey: .timeline)
+        skipKind = try c.decodeIfPresent(ScenarioSkipKind.self, forKey: .skipKind)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(schemaVersion, forKey: .schemaVersion)
+        try c.encode(runID, forKey: .runID)
+        try c.encode(scenarioID, forKey: .scenarioID)
+        try c.encodeIfPresent(title, forKey: .title)
+        try c.encode(platform, forKey: .platform)
+        try c.encodeIfPresent(worker, forKey: .worker)
+        try c.encode(host, forKey: .host)
+        try c.encodeIfPresent(profile, forKey: .profile)
+        try c.encode(passed, forKey: .passed)
+        try c.encodeIfPresent(timedOut, forKey: .timedOut)
+        try c.encode(startedAt, forKey: .startedAt)
+        try c.encode(durationMs, forKey: .durationMs)
+        try c.encode(scenes, forKey: .scenes)
+        try c.encode(steps, forKey: .steps)
+        try c.encodeIfPresent(reportPath, forKey: .reportPath)
+        try c.encodeIfPresent(failedSteps, forKey: .failedSteps)
+        try c.encodeIfPresent(fixSuggestions, forKey: .fixSuggestions)
+        try c.encodeIfPresent(errorLogs, forKey: .errorLogs)
+        try c.encodeIfPresent(fm, forKey: .fm)
+        try c.encodeIfPresent(timeline, forKey: .timeline)
+        try c.encodeIfPresent(skipKind, forKey: .skipKind)
+    }
+
     public var schemaVersion: Int
     /// Builder 段階では ""。RunRecorder.record が焼き込む
     public var runID: String
@@ -276,8 +395,9 @@ public struct ScenarioRunRecord: Codable, Sendable {
     public var platform: String
     /// "<platform>:<デバイス論理名>"(ScenarioEvent.worker と同一規則)
     public var worker: String?
-    /// RunRecorder が焼き込む(Builder 段階では "")
-    public var machine: String
+    /// RunRecorder が焼き込む(Builder 段階では "")。**機械のホスト名**で、ローカルエイリアス
+    /// ではない(RunMetaRecord.host の宣言参照)。**JSON キーは "host"**(旧キー "machine" も読む)
+    public var host: String
     /// RunRecorder が焼き込む
     public var profile: String?
     public var passed: Bool
@@ -306,7 +426,7 @@ public struct ScenarioRunRecord: Codable, Sendable {
 
     public init(schemaVersion: Int = RunRecordSchema.current, runID: String = "",
                 scenarioID: String, title: String? = nil, platform: String, worker: String? = nil,
-                machine: String = "", profile: String? = nil, passed: Bool, timedOut: Bool? = nil,
+                host: String = "", profile: String? = nil, passed: Bool, timedOut: Bool? = nil,
                 startedAt: String, durationMs: Int, scenes: [SceneResultRecord] = [],
                 steps: StepCountsRecord, reportPath: String? = nil,
                 failedSteps: [FailedStepRecord]? = nil,
@@ -323,7 +443,7 @@ public struct ScenarioRunRecord: Codable, Sendable {
         self.title = title
         self.platform = platform
         self.worker = worker
-        self.machine = machine
+        self.host = host
         self.profile = profile
         self.passed = passed
         self.timedOut = timedOut

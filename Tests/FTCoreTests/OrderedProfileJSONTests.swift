@@ -1,4 +1,4 @@
-// プロファイル JSON のキー順(ユーザー指示: host を先に書く)と、
+// プロファイル JSON のキー順(ユーザー指示: machine を先に書く)と、
 // 「エスケープは JSONSerialization に任せる」規律を固定する。
 // 順序が壊れても JSON としては妥当なので、人が読むまで気付けない —— だから等号で押さえる。
 
@@ -11,11 +11,11 @@ final class OrderedProfileJSONTests: XCTestCase {
         String(decoding: try OrderedProfileJSON.data(object), as: UTF8.self)
     }
 
-    func testHostAndNameComeFirstAndTheRestIsAlphabetical() throws {
-        let output = try text(["udid": "U", "avd": "A", "name": "d1", "host": "M1Ultra", "os": "27.0"])
+    func testMachineAndNameComeFirstAndTheRestIsAlphabetical() throws {
+        let output = try text(["udid": "U", "avd": "A", "name": "d1", "machine": "M1Ultra", "os": "27.0"])
         XCTAssertEqual(output, """
         {
-          "host": "M1Ultra",
+          "machine": "M1Ultra",
           "name": "d1",
           "avd": "A",
           "os": "27.0",
@@ -29,10 +29,10 @@ final class OrderedProfileJSONTests: XCTestCase {
     /// この並べ替えを入れた動機そのものなので、入れ子の配列でも効くことを固定する
     func testDeviceArraysAreOrderedToo() throws {
         let output = try text([
-            "ios": ["devices": [["avd": "Pixel_9", "name": "e1", "host": "local"]]],
+            "ios": ["devices": [["avd": "Pixel_9", "name": "e1", "machine": "local"]]],
         ])
         XCTAssertTrue(output.contains("""
-                "host": "local",
+                "machine": "local",
                 "name": "e1",
                 "avd": "Pixel_9"
         """), output)

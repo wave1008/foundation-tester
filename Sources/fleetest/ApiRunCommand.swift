@@ -92,8 +92,19 @@ struct ApiRunCommand: AsyncParsableCommand {
             help: "Default app (bundle ID / package name) for scenarios that declare no @TestClass(app:). Only needed without --profile; with --profile the app profile supplies it")
     var app: String?
 
-    @Option(help: "Dispatch this run to a remote Mac over SSH: a registered name (fleetest remote hosts) or a raw user@host/host. Relays its NDJSON stream. Requires --profile. Experimental (docs/remote-runner.md)")
+    /// **用語**(2026-08-26 ユーザー決定): machine = 登録簿の名前(このマシンだけのローカル
+    /// エイリアス)、host = ホスト名 / IP。`--machine` が本来の口で、`--host` は宛先を直接書く口。
+    /// 解決は RemoteHostRegistry.resolve が両方を受けるので、内部では1つの値に畳んで扱う
+    @Option(name: .customLong("machine"),
+            help: "Dispatch this run to the registered machine (fleetest remote hosts). Relays its NDJSON stream. Requires --profile")
+    var machine: String?
+
+    @Option(help: "Dispatch this run to this host name / IP (user@host or host) over SSH. Prefer --machine for a registered machine. Requires --profile. Experimental (docs/remote-runner.md)")
     var host: String?
+
+    /// `--machine` と `--host` はどちらもディスパッチ先を指す。両方あれば --machine を優先
+    /// (エイリアスのほうが利用者の意図に近い)。この畳み込みは resolveEffectiveHostDispatch より前
+    var dispatchTarget: String? { machine ?? host }
 
     @Option(name: .customLong("remote-dir"),
             help: "Runner-only base directory on the remote host (holds its own clone and workspace; default: the host registry's entry, or ~/fleetest-runner). Must NOT point at an existing local install of foundation-tester")
@@ -121,7 +132,7 @@ struct ApiRunCommand: AsyncParsableCommand {
     /// **どの機械のデバイスを使うか**。`--device` は名前でしか絞れないが、一意なのは (host, name)
     /// なので、名前だけだと別の機械の同名デバイスまで掴む(run の同名オプションと同じ規律)。
     /// ホスト別サブ実行(ApiRunHostFanout)が自分で付ける値で、手で打つものではない
-    @Option(name: .customLong("device-host"),
+    @Option(name: [.customLong("device-machine"), .customLong("device-host")],
             help: ArgumentHelp(
                 "Only use the devices assigned to this machine (\"local\" or a registered host name). "
                 + "Set by the per-host sub-runs; not for hand use",
@@ -176,7 +187,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         // (単一ホストの --host + --debug は dispatchToRemoteHost が同様に拒否している)
         if !dryRun, let profile,
            let groups = try DeviceHostRunner.plan(
-               project: testProject, profileName: profile, explicitHost: host, deviceFilter: devices) {
+               project: testProject, profileName: profile, explicitHost: dispatchTarget, deviceFilter: devices) {
             if debug {
                 throw ValidationError(
                     "--debug is not supported with a profile that spans multiple machines"
@@ -192,7 +203,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             return
         }
         if let dispatch = try resolveEffectiveHostDispatch(
-            explicitHost: host, profile: profile, project: project,
+            explicitHost: dispatchTarget, profile: profile, project: project,
             requireMachineHost: !dryRun, warn: { logStderr($0) }) {
             try await dispatchToRemoteHost(dispatch, project: testProject)
             return
@@ -260,7 +271,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             // 名前だけでは同名の台が別の機械のエントリに解決し、向こうの UDID を手元で探す)
             var effectiveDevices = devices
             var effectiveDeviceHost = deviceHost
-            if deviceHost == nil, MachineHostDispatch.isExplicitLocal(host) {
+            if deviceHost == nil, MachineHostDispatch.isExplicitLocal(dispatchTarget) {
                 (effectiveDevices, effectiveDeviceHost) = try hostScopedDeviceFilter(
                     project: testProject, profile: profile,
                     targetHost: DeviceHostGrouping.localDisplayName, requestedDevices: devices)

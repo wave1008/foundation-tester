@@ -9,8 +9,9 @@ import Foundation
 
 /// リモートホスト1台ぶんの観測キャッシュ。
 public struct RemoteHostFacts: Codable, Equatable, Sendable {
-    /// 回収した実績レコードの machine と同じ語彙(観測値。プローブでの推測はしない)
-    public var machine: String?
+    /// その機械の**ホスト名**(回収した実績レコードの host と同じ語彙。観測値で、プローブでの
+    /// 推測はしない)。**JSON キーは "host"**(2026-08-26 改名。旧キー "machine" も読む)
+    public var host: String?
     /// 直近ディスパッチのセットアップ固定費(プローブ〜リモート run 開始前)の実測秒
     public var dispatchOverheadSeconds: Double?
     /// プローブの実測(sysctl machdep.cpu.brand_string)
@@ -21,10 +22,36 @@ public struct RemoteHostFacts: Codable, Equatable, Sendable {
     public var concurrentDevices: Int?
     public var updatedAt: String
 
-    public init(machine: String? = nil, dispatchOverheadSeconds: Double? = nil,
+    private enum CodingKeys: String, CodingKey {
+        case host, machine, dispatchOverheadSeconds, processorModel, coreCount, concurrentDevices, updatedAt
+    }
+
+    /// 旧キー "machine"(改名前のキャッシュ)も読む。書きは "host" だけ
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        host = try c.decodeIfPresent(String.self, forKey: .host)
+            ?? c.decodeIfPresent(String.self, forKey: .machine)
+        dispatchOverheadSeconds = try c.decodeIfPresent(Double.self, forKey: .dispatchOverheadSeconds)
+        processorModel = try c.decodeIfPresent(String.self, forKey: .processorModel)
+        coreCount = try c.decodeIfPresent(Int.self, forKey: .coreCount)
+        concurrentDevices = try c.decodeIfPresent(Int.self, forKey: .concurrentDevices)
+        updatedAt = try c.decode(String.self, forKey: .updatedAt)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(host, forKey: .host)
+        try c.encodeIfPresent(dispatchOverheadSeconds, forKey: .dispatchOverheadSeconds)
+        try c.encodeIfPresent(processorModel, forKey: .processorModel)
+        try c.encodeIfPresent(coreCount, forKey: .coreCount)
+        try c.encodeIfPresent(concurrentDevices, forKey: .concurrentDevices)
+        try c.encode(updatedAt, forKey: .updatedAt)
+    }
+
+    public init(host: String? = nil, dispatchOverheadSeconds: Double? = nil,
                processorModel: String? = nil, coreCount: Int? = nil, concurrentDevices: Int? = nil,
                updatedAt: String) {
-        self.machine = machine
+        self.host = host
         self.dispatchOverheadSeconds = dispatchOverheadSeconds
         self.processorModel = processorModel
         self.coreCount = coreCount
@@ -44,28 +71,45 @@ public enum RemoteHostFactsStore {
         return root.appendingPathComponent(".fleetest/remote-hosts")
     }
 
-    /// ホストラベル(profiles/machines の識別子・"user@host" 等)→ ファイル名。
+    /// **鍵はホスト(ホスト名 / IP)**。ローカルエイリアス(machine)は頻繁に変わりうるので
+    /// 記録の鍵にしない(2026-08-26 ユーザー決定) —— 変えた瞬間に実測が孤児になる。
+    /// ssh 宛先を渡されたら user@ を落として実体だけを鍵にする。
     /// [A-Za-z0-9_.-] 以外は "_" に置換(書き手と読み手で同一の変換を通ること)
-    public static func fileKey(hostLabel: String) -> String {
+    public static func fileKey(host: String) -> String {
+        let hostLabel = host.contains("@") ? String(host.split(separator: "@").last ?? "") : host
         let allowed = CharacterSet(charactersIn:
             "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.-")
         return String(hostLabel.unicodeScalars.map { allowed.contains($0) ? Character($0) : "_" })
     }
 
-    private static func entryURL(dir: URL, hostLabel: String) -> URL {
-        dir.appendingPathComponent("\(fileKey(hostLabel: hostLabel)).json")
+    private static func entryURL(dir: URL, host: String) -> URL {
+        dir.appendingPathComponent("\(fileKey(host: host)).json")
+    }
+
+    /// **ローカルエイリアス(machine)から鍵(ホスト)を引く**。登録簿にあればその ssh 宛先、
+    /// 無ければ渡された文字列を生の宛先として扱う。手元(nil / "local")はこの機械のホスト名。
+    /// 呼び手が別々に解決すると読みと書きで鍵がずれるので、**解決はここだけ**
+    public static func hostKey(machine: String?, entries: [RemoteHostEntry],
+                               localHost: String) -> String {
+        guard let machine, !machine.isEmpty,
+              !MachineHostDispatch.isExplicitLocal(machine) else { return localHost }
+        switch RemoteHostRegistry.resolve(machine, entries: entries) {
+        case .registered(let entry): return entry.host
+        case .rawTarget(let target): return target
+        case .reserved: return localHost
+        }
     }
 
     /// 読めない(存在しない・壊れた JSON)場合は nil
-    public static func load(dir: URL, hostLabel: String) -> RemoteHostFacts? {
-        guard let data = try? Data(contentsOf: entryURL(dir: dir, hostLabel: hostLabel)) else { return nil }
+    public static func load(dir: URL, host: String) -> RemoteHostFacts? {
+        guard let data = try? Data(contentsOf: entryURL(dir: dir, host: host)) else { return nil }
         return try? JSONDecoder().decode(RemoteHostFacts.self, from: data)
     }
 
     /// best-effort(失敗しても呼び出し側の run 成否に影響させない)。atomic 書き込み
-    public static func save(_ facts: RemoteHostFacts, dir: URL, hostLabel: String) {
+    public static func save(_ facts: RemoteHostFacts, dir: URL, host: String) {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         guard let data = try? JSONEncoder().encode(facts) else { return }
-        try? data.write(to: entryURL(dir: dir, hostLabel: hostLabel), options: .atomic)
+        try? data.write(to: entryURL(dir: dir, host: host), options: .atomic)
     }
 }

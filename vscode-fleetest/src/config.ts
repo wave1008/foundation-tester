@@ -451,9 +451,10 @@ export function readMachineDeviceNames(workspaceRoot: string, project: string): 
 export interface MachineDeviceEntry {
   readonly name: string;
   readonly platform: Platform;
-  /** このデバイスが居る機械(登録名。省略=プロファイル直下の host、それも無ければ手元)。
-   * 一意なのは (host, name)(Sources/FTCore/DeviceHostGrouping.swift)。 */
-  readonly host?: string;
+  /** このデバイスが居る機械(登録名。省略=プロファイル直下の machine、それも無ければ手元)。
+   * 一意なのは (machine, name)(Sources/FTCore/DeviceHostGrouping.swift)。
+   * **JSON キーは "machine"**(旧 "host" も読む。toMachineDeviceEntry)。 */
+  readonly machine?: string;
   readonly kind?: "virtual" | "physical";
   readonly simulator?: string;
   readonly os?: string;
@@ -469,8 +470,8 @@ export interface MachineDeviceEntry {
 export interface MachineProfileSummary {
   readonly name: string;
   readonly devices: readonly MachineDeviceEntry[];
-  /** 登録済みリモートホスト名(machines/<name>.json 直下の "host"。未設定/absent = ローカル)。
-   * CLI が run のディスパッチ先をここから判定する(この拡張は判定しない)。 */
+  /** 登録済みマシン名(machines/<name>.json 直下の "machine"。旧 "host" も読む。
+   * 未設定/absent = ローカル)。CLI が run のディスパッチ先をここから判定する(この拡張は判定しない)。 */
   readonly host?: string;
 }
 
@@ -480,7 +481,10 @@ function toMachineDeviceEntry(value: unknown, platform: Platform): MachineDevice
     return undefined;
   }
   const record = value as Record<string, unknown>;
-  const { name, host, kind, simulator, os: osVersion, udid, port, avd, serial, model } = record;
+  // **JSON キーは "machine"**(2026-08-26 改名。Sources/FTCore/RunProfile.swift の DeviceSpec と
+  // 同期)。旧キー "host" も読む —— 既存プロファイルは無改修で動く
+  const { name, kind, simulator, os: osVersion, udid, port, avd, serial, model } = record;
+  const machine = record.machine ?? record.host;
   if (typeof name !== "string") {
     return undefined;
   }
@@ -505,7 +509,7 @@ function toMachineDeviceEntry(value: unknown, platform: Platform): MachineDevice
   if (model !== undefined && typeof model !== "string") {
     return undefined;
   }
-  if (host !== undefined && typeof host !== "string") {
+  if (machine !== undefined && typeof machine !== "string") {
     return undefined;
   }
   // kind は省略可(未指定=virtual)。未知の値はこのエントリだけ捨てる
@@ -517,7 +521,7 @@ function toMachineDeviceEntry(value: unknown, platform: Platform): MachineDevice
   return {
     name,
     platform,
-    host: host as string | undefined,
+    machine: machine as string | undefined,
     kind: kind as "virtual" | "physical" | undefined,
     simulator: simulator as string | undefined,
     os: osVersion as string | undefined,
@@ -555,7 +559,9 @@ export function listMachineProfiles(workspaceRoot: string, project: string): Mac
       if (typeof parsed !== "object" || parsed === null) {
         return { name, devices: [] };
       }
-      const rawHost = (parsed as Record<string, unknown>).host;
+      // 直下の既定も **"machine"**(旧 "host" も読む。Sources/FTCore/RunProfile.swift の MachineProfile)
+      const record = parsed as Record<string, unknown>;
+      const rawHost = record.machine ?? record.host;
       const host = typeof rawHost === "string" && rawHost.length > 0 ? rawHost : undefined;
       const devices: MachineDeviceEntry[] = [];
       for (const platform of ["ios", "android"] as const) {
@@ -578,7 +584,7 @@ export function listMachineProfiles(workspaceRoot: string, project: string): Mac
         // 同名が別ホストに並ぶのが通常なので、名前を第1キーにすると1台ずつ機械が入れ替わり、
         // 「この機械には何が居るか」が読めない。実効ホスト(デバイス指定 > 直下の既定)で比べる
         const hostKey = (device: MachineDeviceEntry): string => {
-          const raw = (device.host ?? "").trim();
+          const raw = (device.machine ?? "").trim();
           if (raw === "local") {
             return "";
           }

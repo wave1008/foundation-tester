@@ -24,7 +24,6 @@ export const recordingsStrings = {
   // デバイス名)は記録由来なので訳さない —— ここにあるのは肩書きと省略表記だけ。
   "recordings.meta.machineTitle": { ja: "実行マシン", en: "Machine" },
   "recordings.meta.deviceTitle": { ja: "実行デバイス", en: "Device" },
-  "recordings.meta.devicesMore": { ja: "ほか{count}台", en: "+{count} more" },
   // TEST EXPLORER 風ツリー(再生ビュー左ペイン)。
   "recordings.tree.empty": { ja: "タイムラインがありません。", en: "No timeline available." },
   "recordings.tree.sceneDefaultTitle": { ja: "シーン {n}", en: "Scene {n}" },

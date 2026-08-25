@@ -15,7 +15,7 @@ final class MachineHostDispatchTests: XCTestCase {
         { "ios": { "devices": [ { "name": "メイン機", "simulator": "iPhone 17 Pro" } ] } }
         """.data(using: .utf8)!
         let machine = try JSONDecoder().decode(MachineProfile.self, from: json)
-        XCTAssertNil(machine.host, "host を書いていない既存プロファイルは無改修で動く")
+        XCTAssertNil(machine.machine, "host を書いていない既存プロファイルは無改修で動く")
     }
 
     func testMachineProfileDecodesWithHostField() throws {
@@ -23,7 +23,7 @@ final class MachineHostDispatchTests: XCTestCase {
         { "host": "M1Max", "ios": { "devices": [] } }
         """.data(using: .utf8)!
         let machine = try JSONDecoder().decode(MachineProfile.self, from: json)
-        XCTAssertEqual(machine.host, "M1Max")
+        XCTAssertEqual(machine.machine, "M1Max")
     }
 
     // MARK: - MachineHostDispatch.normalize

@@ -676,8 +676,17 @@ struct RunScenarios: AsyncParsableCommand {
           help: "Enable fast input on the iOS xcuitest bridge (skips the quiescence wait). Can also be set via iosFastInput in the run profile")
     var fastInput = false
 
-    @Option(help: "Dispatch this run to a remote Mac over SSH: a registered name (fleetest remote hosts) or a raw user@host/host. Requires --profile. Experimental (docs/remote-runner.md)")
+    /// 用語と使い分けは ApiRunCommand の同名オプション参照(machine = 登録簿の名前 =
+    /// ローカルエイリアス、host = ホスト名 / IP)
+    @Option(name: .customLong("machine"),
+            help: "Dispatch this run to the registered machine (fleetest remote hosts). Requires --profile")
+    var machine: String?
+
+    @Option(help: "Dispatch this run to this host name / IP (user@host or host) over SSH. Prefer --machine for a registered machine. Requires --profile. Experimental (docs/remote-runner.md)")
     var host: String?
+
+    /// 両方あれば --machine を優先(ApiRunCommand.dispatchTarget と同じ規律)
+    var dispatchTarget: String? { machine ?? host }
 
     @Option(name: .customLong("remote-dir"),
             help: "Runner-only base directory on the remote host (holds its own clone and workspace; default: the host registry's entry, or ~/fleetest-runner). Must NOT point at an existing local install of foundation-tester")
@@ -746,7 +755,7 @@ struct RunScenarios: AsyncParsableCommand {
     /// **どの機械のデバイスを使うか**。`--device` は名前でしか絞れないが、一意なのは (host, name)
     /// なので、名前だけだと別の機械の同名デバイスまで掴む(docs/remote-runner.md §13)。
     /// ホスト別サブ実行が自分で付ける値で、手で打つものではない
-    @Option(name: .customLong("device-host"),
+    @Option(name: [.customLong("device-machine"), .customLong("device-host")],
             help: ArgumentHelp(
                 "Only use the devices assigned to this machine (\"local\" or a registered host name). "
                 + "Set by the per-host sub-runs; not for hand use",
@@ -805,7 +814,7 @@ struct RunScenarios: AsyncParsableCommand {
             if profile == nil { throw ValidationError("--broadcast requires --profile") }
         }
         if forceLock, let message = RemoteDispatchFlagPolicy.forceLockRejection(
-            host: host, fleet: fleet, profile: profile) {
+            host: dispatchTarget, fleet: fleet, profile: profile) {
             throw ValidationError(message)
         }
         if let message = RemoteDispatchFlagPolicy.waitLockConflictsWithForceLock(
@@ -813,7 +822,7 @@ struct RunScenarios: AsyncParsableCommand {
             throw ValidationError(message)
         }
         if waitLock != nil, let message = RemoteDispatchFlagPolicy.waitLockRejection(
-            host: host, fleet: fleet, profile: profile) {
+            host: dispatchTarget, fleet: fleet, profile: profile) {
             throw ValidationError(message)
         }
     }
@@ -836,7 +845,7 @@ struct RunScenarios: AsyncParsableCommand {
         if !dryRun, fleet == nil, let profile,
            let groups = try DeviceHostRunner.plan(
                project: try ScenarioHost.project(named: project), profileName: profile,
-               explicitHost: host, deviceFilter: devices) {
+               explicitHost: dispatchTarget, deviceFilter: devices) {
             let exitCode = try await DeviceHostRunner.run(
                 project: try ScenarioHost.project(named: project), profileName: profile,
                 groups: groups, scenarios: scenarios, folders: folders,
@@ -850,7 +859,7 @@ struct RunScenarios: AsyncParsableCommand {
             return
         }
         if !dryRun, let dispatch = try resolveEffectiveHostDispatch(
-            explicitHost: host, profile: profile, project: project,
+            explicitHost: dispatchTarget, profile: profile, project: project,
             requireMachineHost: true, warn: { print("⚠️ \($0)") }) {
             try await dispatchToRemoteHost(dispatch)
             return
@@ -956,7 +965,7 @@ struct RunScenarios: AsyncParsableCommand {
             // --host <リモート> と同じ hostScopedDeviceFilter(RemoteDispatchExplicitDeviceScope)
             var effectiveDeviceFilter = devices
             var effectiveDeviceHost = deviceHost
-            if deviceHost == nil, MachineHostDispatch.isExplicitLocal(host) {
+            if deviceHost == nil, MachineHostDispatch.isExplicitLocal(dispatchTarget) {
                 (effectiveDeviceFilter, effectiveDeviceHost) = try hostScopedDeviceFilter(
                     project: testProject, profile: profile,
                     targetHost: DeviceHostGrouping.localDisplayName, requestedDevices: devices)
@@ -1111,7 +1120,7 @@ struct RunScenarios: AsyncParsableCommand {
     private func dispatchToFleet(_ fleetName: String) async throws {
         let testProject = try ScenarioHost.project(named: project)
         let doc = try FleetProfile.load(project: testProject, name: fleetName)
-        let registeredNames = Set((LocalConfig.load().remoteHosts ?? []).map(\.name))
+        let registeredNames = Set((LocalConfig.load().remoteHosts ?? []).map(\.machine))
         let issues = FleetProfile.validate(doc, project: testProject, registeredHostNames: registeredNames)
         guard issues.isEmpty else {
             throw ValidationError((["fleet \"\(fleetName)\" is invalid:"] + issues.map { "  - \($0)" })

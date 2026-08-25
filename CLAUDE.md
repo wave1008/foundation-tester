@@ -146,7 +146,7 @@
 - リリース(git タグ発行と版ピンの関係。配布はソースビルド前提): docs/releasing.md(`Scripts/release.sh`)
 - **リモートのデバイスの監視と配信**(2026-08-17): 手元の `api monitor` は simctl/adb =
   **この機械しか観測できない**。別の機械のぶんは `RemoteMonitorFanout` が
-  `remote exec <host> -- api monitor --device-host <host>` を1本ずつ立てて合流させ、
+  `remote exec <host> -- api monitor --device-machine local` を1本ずつ立てて合流させ、
   ライブ映像は**1デバイス = 1本の ssh**(`api device-stream` が向こうで宛先を解決し配信
   ヘルパーへ `execv` で化ける = stdout のバイト列が手元起動時と同一なので `StreamPipeline` を
   そのまま使える)。**多重化の枠は作らない**(却下理由は docs/remote-runner.md §13)。
@@ -155,13 +155,21 @@
   —— offline(止まっている)と別の値にする(同じにすると向こうで動いていても止まって見える。
   拡張の `MonitorDeviceState` と対)/ **③配信が張れなければポーリングへ落ちる**(monitorFrame は
   止めていないので、配信を止めるだけでフォールバックが成立する)。
-  **版が揃っていないと状態も映像も来ない**(`--device-host` は新しいので旧バイナリは即死 →
+  **版が揃っていないと状態も映像も来ない**(`--device-machine` は新しいので旧バイナリは即死 →
   3回で諦め)。**操作も同じ規律** —— 一括だけでなく**タイル1枚の起動・停止もその機械へ回す**
   (手元で `api device-up --name` を撃つと、同名の台が別の機械にも居るとき
   **別の機械の設定でこの Mac にシミュレータが1台できる**。`findDevice` は (host, name) で引き、
-  `--device-host` の既定は手元)。**自動修復(watchdog)はリモートの台を見ない**
+  `--device-machine` の既定は手元)。**自動修復(watchdog)はリモートの台を見ない**
   (修復手段が手元にしか効かず、記録が name 単位なので同名の台と混線する)
-- リモート実行(`run --host` の SSH ディスパッチ): **ssh 越しに何かを起動する経路を新設したら
+- **用語(2026-08-26 ユーザー決定。全体で一貫させる)**: **host = ホスト名 / IP**(ネットワークの実体)、
+  **machine = その host に対するローカルエイリアス**(この Mac の登録簿だけが知る名前)。
+  定義と3つの規律(①エイリアスをリモートへ出さない ②記録の鍵は host ③プロファイルに ssh 実体を
+  書かない)は docs/remote-runner.md §0。**エイリアスは頻繁に変わりうるので記録・登録の鍵に
+  しない**(例外はその machine 自身に関する構成 = 登録簿とプロファイルのデバイス割り当て)。
+  JSON キーはプロファイル `devices[].machine`・登録簿 `machine`・記録 `host`(旧キーはすべて読める)。
+  リモートへ送るプロファイルは `FTCore.RunnerProfileView` が「そのランナーから見た姿」へ畳む
+  (自分の台は `machine: "local"`・他機の台は削除)ので、**転送物にも引数にもエイリアスは出ない**
+- リモート実行(`run --machine` / `--host` の SSH ディスパッチ): **ssh 越しに何かを起動する経路を新設したら
   非対話 PATH の補正(`/opt/homebrew:/usr/local/bin`)を必ず写す**(既存は `RemoteShell.remoteRunCommand`。
   写し漏れで「入っているのに brew が無い」と落ちた実害)。**子プロセスを spawn する経路を足したら
   中断のリレーも足す**(`InterruptRelay`)—— **親を殺しても子は死なない**ので、ssh が生き残って
@@ -170,8 +178,8 @@
   1プロセスに1組**(2026-08-24)—— relay ごとに立てて `stop()` で SIG_DFL を戻すと、並行する子の
   うち先に終わったものの stop() が残りの横取りまで解き、`kill -INT` で親だけ死ぬ(受け手報告)。
   `fleetest remote unlock` は自分の死んだディスパッチのロックだけを外す(`RemoteDispatchUnlock`)。
-  **`--host H` + 明示 `--device` は H の台に限定**(`RemoteDispatchExplicitDeviceScope`。同名の台が
-  複数機にあると名前だけでは全機ぶんを拾う)。**`--host local` も同じ判定を通す**(2026-08-24。
+  **`--machine M`(旧 `--host`)+ 明示 `--device` は M の台に限定**(`RemoteDispatchExplicitDeviceScope`。同名の台が
+  複数機にあると名前だけでは全機ぶんを拾う)。**`--machine local` も同じ判定を通す**(2026-08-24。
   run / api run の2経路 —— 絞らないと別ホストのエントリの UDID を手元で探して
   `no simulator with that UDID` で止まる。受け手報告)。
   **LPT はリモートでも実績で回る**(2026-08-18): 実績 JSON は on-demand でも常に回収・

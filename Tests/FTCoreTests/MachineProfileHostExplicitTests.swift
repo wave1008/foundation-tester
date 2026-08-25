@@ -31,7 +31,7 @@ final class MachineProfileHostExplicitTests: XCTestCase {
                 for (platform, list) in [("ios", profile.ios), ("android", profile.android)] {
                     for device in list?.devices ?? [] {
                         checked += 1
-                        let host = device.host?.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let host = device.machine?.trimmingCharacters(in: .whitespacesAndNewlines)
                         if host == nil || host?.isEmpty == true {
                             missing.append(
                                 "\(project.lastPathComponent)/\(file.lastPathComponent)"

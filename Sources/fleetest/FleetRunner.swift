@@ -248,11 +248,18 @@ enum FleetRunner {
         fleet: FleetProfileDocument, project: TestProject, records: [ScenarioRunRecord]
     ) -> FleetSplit.MachineContext {
         let factsDir = RemoteHostFactsStore.dir(project: project)
+        // **鍵はホスト(ssh 宛先)**。エイリアスは変わりうるので使わない(RemoteHostFacts)
+        let registry = LocalConfig.load().remoteHosts ?? []
+        let localHost = RunRecorder.currentMachine()
         let entryFacts: [RemoteHostFacts?] = fleet.runs.map { entry in
-            entry.host == "local" ? nil : RemoteHostFactsStore.load(dir: factsDir, hostLabel: entry.host)
+            guard entry.host != "local" else { return nil }
+            return RemoteHostFactsStore.load(
+                dir: factsDir,
+                host: RemoteHostFactsStore.hostKey(machine: entry.host, entries: registry,
+                                                   localHost: localHost))
         }
         let entryMachines: [String?] = zip(fleet.runs, entryFacts).map { entry, facts in
-            entry.host == "local" ? RunRecorder.currentMachine() : facts?.machine
+            entry.host == "local" ? localHost : facts?.host
         }
         let entryFixedOffsetsMs = entryFacts.map { ($0?.dispatchOverheadSeconds ?? 0) * 1000 }
         let localHardware = MachineHardware.current()
@@ -268,20 +275,21 @@ enum FleetRunner {
             entryFallbackFactors: entryFallbackFactors)
     }
 
-    /// "local" 鍵で facts を保存する(ローカル機の CPU 情報は RemoteRunDispatcher の
+    /// **この機械のホスト名を鍵に** facts を保存する(ローカル機の CPU 情報は RemoteRunDispatcher の
     /// プローブ経路を通らないので、ここでこの run のたびに書く)。dispatchOverheadSeconds/
     /// concurrentDevices は分からないので触らない(既存値を保持。RemoteHostFactsStore.save は
     /// 全置換なので既存値は読み直して埋める)。best-effort(失敗しても run の成否を変えない)
     private static func saveLocalHostFacts(project: TestProject, hardware: MachineHardware) {
         let dir = RemoteHostFactsStore.dir(project: project)
-        let existing = RemoteHostFactsStore.load(dir: dir, hostLabel: "local")
+        let localHost = RunRecorder.currentMachine()
+        let existing = RemoteHostFactsStore.load(dir: dir, host: localHost)
         let facts = RemoteHostFacts(
-            machine: RunRecorder.currentMachine(),
+            host: localHost,
             dispatchOverheadSeconds: existing?.dispatchOverheadSeconds,
             processorModel: hardware.processorModel, coreCount: hardware.coreCount,
             concurrentDevices: existing?.concurrentDevices,
             updatedAt: ISO8601DateFormatter().string(from: Date()))
-        RemoteHostFactsStore.save(facts, dir: dir, hostLabel: "local")
+        RemoteHostFactsStore.save(facts, dir: dir, host: localHost)
     }
 
     private static func medianMs(_ values: [Double]) -> Double? {
@@ -420,7 +428,7 @@ enum FleetRunner {
         if !deviceNames.isEmpty { args += ["--device"] + deviceNames }
         // **ホストも渡す** —— 一意なのは (host, name) なので、名前だけだと子が別の機械の
         // 同名デバイスまで掴む(2026-08-17 に実走で確認。RunProfile.filteringDevices の宣言)
-        if let deviceHost { args += ["--device-host", deviceHost] }
+        if let deviceHost { args += ["--device-machine", deviceHost] }
         if !scenarios.isEmpty { args += ["--scenario"] + scenarios }
         if !folders.isEmpty { args += ["--folder"] + folders }
         if heal { args += ["--heal"] }

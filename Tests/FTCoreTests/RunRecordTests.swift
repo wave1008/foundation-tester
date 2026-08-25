@@ -19,6 +19,43 @@ final class RunRecordTests: XCTestCase {
         return event
     }
 
+    /// `runGroup`(束ね鍵)は **begin と finish の両方**で同じ値を書く —— finish で落とすと、
+    /// 途中で落ちた run だけが束から外れて「マシンが1台足りない実行」に見える。
+    /// 読み手は docs/results-json.md の runGroup。
+    func testRecorderKeepsTheRunGroupFromBeginToFinish() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fleetest-runrecord-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let project = TestProject(name: "P", rootURL: root)
+
+        let recorder = RunRecorder.begin(project: project, profile: "android", trigger: "cli",
+                                         captureHostMetrics: false,
+                                         runGroup: "20260826-0100Z-LDIPC96-abcd")
+        let metaURL = recorder.runDir.appendingPathComponent("run.json")
+        func read() throws -> RunMetaRecord {
+            try JSONDecoder().decode(RunMetaRecord.self, from: Data(contentsOf: metaURL))
+        }
+        XCTAssertEqual(try read().runGroup, "20260826-0100Z-LDIPC96-abcd")
+
+        recorder.finish(total: 0, passed: 0, failed: 0)
+        XCTAssertEqual(try read().runGroup, "20260826-0100Z-LDIPC96-abcd", "finish で欄が落ちてはいけない")
+    }
+
+    /// 単機の run(束ねる相手が居ない)では鍵を持たない
+    func testRecorderOmitsTheRunGroupWhenNotGiven() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fleetest-runrecord-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let recorder = RunRecorder.begin(project: TestProject(name: "P", rootURL: root),
+                                         profile: nil, trigger: "cli", captureHostMetrics: false)
+        let meta = try JSONDecoder().decode(
+            RunMetaRecord.self,
+            from: Data(contentsOf: recorder.runDir.appendingPathComponent("run.json")))
+        XCTAssertNil(meta.runGroup)
+    }
+
     func testFailedScenarioCollectsStepsScenesAndFailures() throws {
         var builder = ScenarioRecordBuilder(
             scenarioID: "Foo.bar", platform: "ios", title: "Foo bar", worker: "ios:iPhone 16")

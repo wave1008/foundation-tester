@@ -72,7 +72,6 @@ const session = (over) => ({
   startedAt: "2026-07-24T00:00:00Z",
   machine: "M1Max",
   machines: ["M1Max"],
-  devices: [{ platform: "ios", device: "iPhone 16", machine: "M1Max" }],
   passed: 1,
   failed: 0,
   clipsAttempted: 1,
@@ -81,46 +80,26 @@ const session = (over) => ({
   ...over,
 });
 
-const androidFleet = (count) =>
-  Array.from({ length: count }, (_, i) => ({ platform: "android", device: `Pixel 9-0${i + 1}`, machine: "M1Max" }));
-
 function sessionRows(window) {
   return [...window.document.getElementById("recordings-sessions").querySelectorAll(".recordings-session-item")];
 }
 
-test("セッション一覧の行に実行マシンと台を出す", (t) => {
+test("セッション一覧の行に実行マシンのバッジを出す(台は出さない)", (t) => {
   const { window, sendToWebview } = createWebview();
   t.after(() => window.close());
   sendToWebview({ type: "recordingsSessions", sessions: [session()] });
 
   const meta = sessionRows(window)[0].querySelector(".recordings-session-meta");
-  assert.ok(meta, "マシン/台の段がある");
-  assert.equal(meta.querySelector(".badge-remote").textContent, "M1Max");
-  const pill = meta.querySelector(".tile-name");
-  assert.equal(pill.textContent, "iPhone 16");
-  assert.ok(pill.classList.contains("tile-name-ios"), "台のピルは platform の配色になる");
-  assert.match(pill.title, /iPhone 16/, "省略されても全文が読めるよう title に名前を持つ");
+  assert.ok(meta, "マシンの段がある");
+  assert.deepEqual([...meta.querySelectorAll(".badge-remote")].map((b) => b.textContent), ["M1Max"]);
+  // 台は動画ごとに違うので行には出さない(2026-08-26 指示)。見るのは再生ビュー
+  assert.equal(meta.querySelector(".tile-name"), null);
 });
 
-test("台が多い run は先頭3台+「ほかN台」に畳み、全台名は title に残す", (t) => {
+test("machine が読めない古い記録では段そのものを作らない", (t) => {
   const { window, sendToWebview } = createWebview();
   t.after(() => window.close());
-  sendToWebview({ type: "recordingsSessions", sessions: [session({ devices: androidFleet(8) })] });
-
-  const meta = sessionRows(window)[0].querySelector(".recordings-session-meta");
-  assert.deepEqual(
-    [...meta.querySelectorAll(".tile-name")].map((el) => el.textContent),
-    ["Pixel 9-01", "Pixel 9-02", "Pixel 9-03"],
-  );
-  const more = meta.querySelector(".recordings-session-devices-more");
-  assert.equal(more.textContent, "ほか5台");
-  assert.equal(more.title.split("\n").length, 8, "畳んだ分も含め全台が title で読める");
-});
-
-test("machine も台も無い古い記録では段そのものを作らない", (t) => {
-  const { window, sendToWebview } = createWebview();
-  t.after(() => window.close());
-  sendToWebview({ type: "recordingsSessions", sessions: [session({ machine: null, machines: [], devices: [] })] });
+  sendToWebview({ type: "recordingsSessions", sessions: [session({ machine: null, machines: [] })] });
 
   assert.equal(sessionRows(window)[0].querySelector(".recordings-session-meta"), null);
 });
@@ -203,21 +182,13 @@ test("束ねたセッションの行にはマシンが全部出る", (t) => {
     sessions: [session({
       runIDs: ["20260724-000000", "20260724-000012"],
       machines: ["LDIPC96", "M1Max"],
-      devices: [
-        { platform: "android", device: "Pixel 9-01", machine: "LDIPC96" },
-        { platform: "android", device: "Pixel 9-01", machine: "M1Max" },
-      ],
     })],
   });
 
   const meta = sessionRows(window)[0].querySelector(".recordings-session-meta");
   assert.deepEqual([...meta.querySelectorAll(".badge-remote")].map((b) => b.textContent),
                    ["LDIPC96", "M1Max"]);
-  // 同名の台が2機に居るので、名前だけでは区別できない → title に機械名を併記する
-  const titles = [...meta.querySelectorAll(".tile-name")].map((p) => p.title);
-  assert.equal(titles.length, 2);
-  assert.match(titles[0], /LDIPC96/);
-  assert.match(titles[1], /M1Max/);
+  assert.equal(meta.querySelector(".tile-name"), null, "束ねても行に台は出さない");
 });
 
 test("束ねたセッションの再生ビューは見出しに全マシン、再生中の台にその機械名を出す", (t) => {

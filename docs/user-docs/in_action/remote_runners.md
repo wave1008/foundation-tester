@@ -72,26 +72,36 @@ remote runner is entirely self-contained under `~/fleetest-runner/`.
 asks what it needs to know, hands off anything that requires a human, and reports the result;
 it does not perform Step 0's manual, sudo/GUI-requiring items itself.
 
-## Machine profiles decide the host
+## Terms: machine (alias) and host (host name / IP)
 
-A device's machine profile can carry `host`, naming a registered remote machine:
+- **host** = a host name or IP address (`user@192.168.20.101` and the like — the real address)
+- **machine** = a **local alias for that host**, private to this Mac. It is the name you type in the
+  "Machine" column of the Settings tab, and the name profiles refer to
+
+Aliases can be renamed at any time. **So that renaming stays harmless, records (result JSON and the
+like) keep the host name, and neither the files sent to a runner nor its arguments carry the alias.**
+
+## Machine profiles decide the machine
+
+A device's machine profile can carry `machine`, naming a registered machine:
 
 ```jsonc
 // profiles/machines/M1Max.json
-{ "host": "M1Max",
-  "ios": { "devices": [ { "host": "M1Max", "name": "simulator1", "simulator": "iPhone 17 Pro" } ] } }
+{ "machine": "M1Max",
+  "ios": { "devices": [ { "machine": "M1Max", "name": "simulator1", "simulator": "iPhone 17 Pro" } ] } }
 ```
 
-A run profile picks its machine profile via `machine`, so **selecting a run profile also selects
-which machine it runs on** — no separate `--host` is needed for normal use. Local devices should
-write `"host": "local"` explicitly (omitting it means "inherit the profile's default host", which
-matters once a profile mixes local and remote devices). `--host <name>` on the command line
-overrides the profile.
+A run profile picks its machine profile by name, so **selecting a run profile also selects
+which machine it runs on** — no separate `--machine` is needed for normal use. Local devices should
+write `"machine": "local"` explicitly (omitting it means "inherit the profile's default", which
+matters once a profile mixes local and remote devices). `--machine <name>` on the command line
+overrides the profile (use `--host` to name a host / IP directly). **Profiles written with the old
+key `"host"` are still read** (renamed to `machine` on 2026-08-26).
 
-## `run --host` and `--fleet`
+## `run --machine` and `--fleet`
 
 ```bash
-fleetest run --host <name> --profile <run profile>              # send this one run to a specific host
+fleetest run --machine <name> --profile <run profile>           # send this one run to a specific machine
 fleetest run --project <project> --fleet <name>                 # run the same scenarios on every host in the fleet
 fleetest run --project <project> --fleet <name> --split          # split scenarios across the fleet's hosts instead
 ```

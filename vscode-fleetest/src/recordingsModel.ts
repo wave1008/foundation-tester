@@ -110,34 +110,6 @@ export function buildScenarioDevices(
   return devices;
 }
 
-/** セッションが使った台(初出順・(machine, platform, 名前)で重複排除)。セッション一覧の行に出す。 */
-export function distinctRecordingDevices(
-  recordings: readonly RecordingEntry[],
-  machine: string | null = null,
-): readonly RecordingDeviceRef[] {
-  return dedupeDeviceRefs(
-    recordings.map((entry) => ({
-      platform: entry.platform,
-      device: deviceNameFromWorker(entry.worker, entry.platform),
-      machine,
-    })),
-  );
-}
-
-/** 束ねたセッションの台一覧(各 run のぶんを初出順に連結して重複排除)。 */
-export function dedupeDeviceRefs(refs: readonly RecordingDeviceRef[]): readonly RecordingDeviceRef[] {
-  const seen = new Set<string>();
-  const devices: RecordingDeviceRef[] = [];
-  for (const ref of refs) {
-    const key = `${ref.machine ?? ""}\u0000${ref.platform}\u0000${ref.device}`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      devices.push(ref);
-    }
-  }
-  return devices;
-}
-
 /** エラー一覧1件(オフセット計算済み)。offsetMs は動画内位置(ms、範囲外はclamp済み)。 */
 export interface RecordingErrorEntry {
   readonly scenarioID: string;

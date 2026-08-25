@@ -167,8 +167,8 @@ extension RunProfileScopeTests {
             .write(to: project.runsDir.appendingPathComponent("scoped.json"))
 
         let machine = MachineProfile(ios: MachineDeviceList(devices: [
-            DeviceSpec(name: "iPhone-01", host: "local", udid: "LOCAL"),
-            DeviceSpec(name: "iPhone-01", host: "M1Ultra", udid: "REMOTE"),
+            DeviceSpec(name: "iPhone-01", machine: "local", udid: "LOCAL"),
+            DeviceSpec(name: "iPhone-01", machine: "M1Ultra", udid: "REMOTE"),
         ]))
         var warnings: [String] = []
         let result = try filtered(runProfile: "scoped", machine: machine, warnings: &warnings)
@@ -187,9 +187,9 @@ extension RunProfileScopeTests {
             .write(to: project.runsDir.appendingPathComponent("ambiguous.json"))
 
         let machine = MachineProfile(ios: MachineDeviceList(devices: [
-            DeviceSpec(name: "iPhone-01", host: "local"),
-            DeviceSpec(name: "iPhone-01", host: "M1Ultra"),
-            DeviceSpec(name: "iPhone-02", host: "M1Ultra"),
+            DeviceSpec(name: "iPhone-01", machine: "local"),
+            DeviceSpec(name: "iPhone-01", machine: "M1Ultra"),
+            DeviceSpec(name: "iPhone-02", machine: "M1Ultra"),
         ]))
         var warnings: [String] = []
         let result = try filtered(runProfile: "ambiguous", machine: machine, warnings: &warnings)
@@ -206,10 +206,10 @@ extension RunProfileScopeTests {
             .write(to: project.runsDir.appendingPathComponent("stamped.json"))
 
         // デバイス側は host を書かず、プロファイル直下の既定から継ぐ形
-        let machine = MachineProfile(host: "M1Max",
+        let machine = MachineProfile(machine: "M1Max",
                                      ios: MachineDeviceList(devices: [DeviceSpec(name: "iPhone-09")]))
         var warnings: [String] = []
         let result = try filtered(runProfile: "stamped", machine: machine, warnings: &warnings)
-        XCTAssertEqual(result.ios?.devices?.map { $0.host }, ["M1Max"])
+        XCTAssertEqual(result.ios?.devices?.map { $0.machine }, ["M1Max"])
     }
 }

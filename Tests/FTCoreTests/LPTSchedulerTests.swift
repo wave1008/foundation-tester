@@ -113,7 +113,7 @@ final class LPTSchedulerTests: XCTestCase {
 
     private func record(_ id: String, _ ms: Int, machine: String,
                         platform: String = "android") -> ScenarioRunRecord {
-        ScenarioRunRecord(scenarioID: id, platform: platform, machine: machine, passed: true,
+        ScenarioRunRecord(scenarioID: id, platform: platform, host: machine, passed: true,
                           startedAt: "2026-08-18T00:00:00Z", durationMs: ms,
                           steps: StepCountsRecord(total: 1, passed: 1))
     }

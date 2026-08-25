@@ -52,7 +52,7 @@ export function renderHeadline(latestRun) {
   const parts = [
     formatLocalDateTime(latestRun.startedAt),
     'trigger: ' + latestRun.trigger,
-    'machine: ' + latestRun.machine,
+    'host: ' + latestRun.host,
     'profile: ' + (latestRun.profile || t('wvDashboard.render.none')),
   ];
   for (const part of parts) {
@@ -74,7 +74,7 @@ export function renderRunsTable(runs) {
       td(run.runID),
       td(formatLocalDateTime(run.startedAt)),
       td(run.trigger),
-      td(run.machine),
+      td(run.host),
       td(run.profile || '–'),
       td(runCounts(run)),
     );

@@ -88,13 +88,16 @@ public enum MachineProfileEditor {
         return names
     }
 
-    /// デバイスの実効ホスト(デバイス指定 > プロファイル直下の既定 > 手元)。
-    /// 規則は FTCore.DeviceHostGrouping.effectiveHost と同じ(生の辞書版)
+    /// デバイスの実効マシン(デバイス指定 > プロファイル直下の既定 > 手元)。
+    /// 規則は FTCore.DeviceHostGrouping.effectiveHost と同じ(生の辞書版)。
+    /// **キーは "machine"、旧 "host" も読む**(DeviceSpec の decode と同じ互換規律)
     private static func effectiveHost(of device: [String: Any], in object: [String: Any]) -> String? {
-        DeviceHostGrouping.effectiveHost(
-            device: DeviceSpec(name: (device["name"] as? String) ?? "",
-                               host: device["host"] as? String),
-            machineHost: object["host"] as? String)
+        func machineKey(_ object: [String: Any]) -> String? {
+            (object["machine"] as? String) ?? (object["host"] as? String)
+        }
+        return DeviceHostGrouping.effectiveHost(
+            device: DeviceSpec(name: (device["name"] as? String) ?? "", machine: machineKey(device)),
+            machineHost: machineKey(object))
     }
 
     /// AVD ID として使える文字([A-Za-z0-9._-])以外を "_" に置換し、連続する "_"

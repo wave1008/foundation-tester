@@ -177,7 +177,7 @@ enum ApiRunHostFanout {
         }
         // **ホストも渡す**(一意なのは (host, name)。ApiRunCommand.deviceHost の宣言参照)
         args += ["--device"] + group.deviceNames
-        args += ["--device-host", hostLabel]
+        args += ["--device-machine", hostLabel]
         args += ["--scenario"] + scenarioIDs
         if options.heal { args += ["--heal"] }
         if options.noLPT { args += ["--no-lpt"] }

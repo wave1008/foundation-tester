@@ -41,6 +41,14 @@ enum RemoteProjectSync {
         guard process.terminationStatus == 0 else {
             return "\(host): rsync exited with \(process.terminationStatus)"
         }
+        // run ディスパッチ(RemoteRunDispatcher.transfer)と同じく、エイリアスを残さない姿へ
+        // 差し替える。**片方だけ変えない** —— 生のプロファイルを上書きすると次の実行で復活する
+        if let failure = RunnerProfileTransfer.localizeAndUpload(
+            localProjectDir: URL(fileURLWithPath: "\(localProjectsDir)/\(project)"),
+            project: project, alias: host,
+            layout: layout, sshTarget: resolved.hostSpec.sshTarget) {
+            return "\(host): \(failure)"
+        }
         return nil
     }
 

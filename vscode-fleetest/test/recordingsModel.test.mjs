@@ -13,9 +13,7 @@ import {
   buildRecordingErrorEntries,
   buildRecordingTree,
   buildScenarioDevices,
-  dedupeDeviceRefs,
   deviceNameFromWorker,
-  distinctRecordingDevices,
   firstRecordingEntryByScenario,
   groupTreeByClass,
   extractScenarioFailureSource,
@@ -561,32 +559,6 @@ test("buildScenarioDevices: scenarioID ごとに最初のエントリの台を�
     { scenarioID: "A.S0010", platform: "ios", device: "iPhone 16", machine: null },
     { scenarioID: "A.S0020", platform: "android", device: "Pixel 9", machine: null },
   ]);
-});
-
-test("distinctRecordingDevices: 初出順で重複を畳む(platform 違いの同名は別物)", () => {
-  const devices = distinctRecordingDevices([
-    deviceEntry("A.S0010", "ios:iPhone 16", "ios"),
-    deviceEntry("A.S0020", "android:Pixel 9", "android"),
-    deviceEntry("A.S0030", "ios:iPhone 16", "ios"),
-    deviceEntry("A.S0040", "ios:Pixel 9", "ios"),
-  ]);
-  assert.deepEqual(devices, [
-    { platform: "ios", device: "iPhone 16", machine: null },
-    { platform: "android", device: "Pixel 9", machine: null },
-    { platform: "ios", device: "Pixel 9", machine: null },
-  ]);
-});
-
-// 束ねたセッションでは **同じ台の名前が機械をまたいで重複する**ので、machine 込みで区別する
-test("distinctRecordingDevices/dedupeDeviceRefs: 機械が違えば同名でも別の台", () => {
-  const m1 = distinctRecordingDevices([deviceEntry("A.S0010", "android:Pixel 10-01", "android")], "M1Max");
-  const m2 = distinctRecordingDevices([deviceEntry("A.S0020", "android:Pixel 10-01", "android")], "M1Ultra");
-  assert.deepEqual(dedupeDeviceRefs([...m1, ...m2]), [
-    { platform: "android", device: "Pixel 10-01", machine: "M1Max" },
-    { platform: "android", device: "Pixel 10-01", machine: "M1Ultra" },
-  ]);
-  // 同じ機械の同名は1つに畳む
-  assert.equal(dedupeDeviceRefs([...m1, ...m1]).length, 1);
 });
 
 test("buildScenarioDevices: machine を渡すと各シナリオに焼き込む(束ねたセッションの判別に使う)", () => {

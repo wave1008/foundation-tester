@@ -58,7 +58,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
     /// この機械のデバイスだけを走査し、他の機械のぶんは `RemoteMonitorFanout` がその機械で
     /// 1本ずつ `--device-host <host>` を走らせて合流させる。**この値が入っているのは子のとき** ——
     /// 子は自分のぶんだけを見て、それ以上の fan-out はしない(入れ子のディスパッチを作らない)
-    @Option(name: .customLong("device-host"),
+    @Option(name: [.customLong("device-machine"), .customLong("device-host")],
             help: "Only observe the devices assigned to this machine, treating them as local (set by the parent monitor when it fans out; not for hand use)")
     var deviceHost: String?
 
@@ -87,7 +87,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         if let machine, machine.auto {
             logStderr("→ Using machine profile \(machine.name) automatically (it is the only one in machines/)")
         }
-        var machineProfile = MachineProfile(host: nil, ios: nil, android: nil)
+        var machineProfile = MachineProfile(machine: nil, ios: nil, android: nil)
         if let machine {
             let machineURL = testProject.machinesDir.appendingPathComponent("\(machine.name).json")
             guard FileManager.default.fileExists(atPath: machineURL.path) else {
@@ -405,12 +405,12 @@ struct ApiMonitorCommand: AsyncParsableCommand {
     /// I/O を持たない pure 関数(MonitorHostScopeTests)
     static func scope(targets: [MonitorTarget], deviceHost: String?) -> Scope {
         let wanted = MachineHostDispatch.normalize(deviceHost)
-        let owned = targets.filter { MachineHostDispatch.normalize($0.spec.host) == wanted }
-        let foreign = targets.filter { MachineHostDispatch.normalize($0.spec.host) != wanted }
+        let owned = targets.filter { MachineHostDispatch.normalize($0.spec.machine) == wanted }
+        let foreign = targets.filter { MachineHostDispatch.normalize($0.spec.machine) != wanted }
         // **子は fan-out しない**(入れ子のディスパッチを作らない。`remote exec` も
         // --host の relay を拒む = 経路は1段と決めてある)
         let hosts = deviceHost == nil
-            ? DeviceHostGrouping.groups(foreign, host: { MachineHostDispatch.normalize($0.spec.host) })
+            ? DeviceHostGrouping.groups(foreign, host: { MachineHostDispatch.normalize($0.spec.machine) })
                 .compactMap(\.host)
             : []
         return Scope(owned: owned, listed: deviceHost == nil ? targets : owned, foreignHosts: hosts)
@@ -445,7 +445,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             state: "unknown", detail: detail, udid: nil, serial: nil, health: nil, renderMode: nil,
             inRun: false, kind: target.spec.isPhysical ? "physical" : "virtual",
             host: nil, port: nil, recording: false, registered: target.registered,
-            machineHost: MachineHostDispatch.normalize(target.spec.host), frozen: false)
+            machineHost: MachineHostDispatch.normalize(target.spec.machine), frozen: false)
     }
 
     // MARK: - デバイス状態判定
@@ -963,7 +963,7 @@ struct MonitorTarget {
     /// プロファイルが6タイルになる(2026-08-17 の実害)。手元のデバイスは従来と同じ形にする
     /// (単一マシン構成の id を変えない)
     var id: String {
-        DeviceHostGrouping.workerID(platform: platform, host: spec.host, name: spec.name)
+        DeviceHostGrouping.workerID(platform: platform, host: spec.machine, name: spec.name)
     }
 }
 
@@ -1004,7 +1004,7 @@ struct DeviceRuntimeState {
                              kind: target.spec.isPhysical ? "physical" : "virtual",
                              host: host, port: iosPort,
                              recording: recording, registered: target.registered,
-                             machineHost: MachineHostDispatch.normalize(target.spec.host),
+                             machineHost: MachineHostDispatch.normalize(target.spec.machine),
                              frozen: frozen)
     }
 }

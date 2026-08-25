@@ -193,11 +193,18 @@ enum DeviceHostRunner {
         // entryFallbackFactors(実績が無い機械の事前係数)の考え方は FleetRunner.buildMachineContext
         // のコメント参照(二重に書かない)
         let factsDir = RemoteHostFactsStore.dir(project: project)
+        // **鍵はホスト(ssh 宛先)**。ローカルエイリアスは変わりうるので使わない(RemoteHostFacts)
+        let registry = LocalConfig.load().remoteHosts ?? []
+        let localHost = RunRecorder.currentMachine()
         let groupFacts: [RemoteHostFacts?] = groups.map { group in
-            group.host == nil ? nil : RemoteHostFactsStore.load(dir: factsDir, hostLabel: group.hostLabel)
+            guard group.host != nil else { return nil }
+            return RemoteHostFactsStore.load(
+                dir: factsDir,
+                host: RemoteHostFactsStore.hostKey(machine: group.host, entries: registry,
+                                                   localHost: localHost))
         }
         let entryMachines: [String?] = zip(groups, groupFacts).map { group, facts in
-            group.host == nil ? RunRecorder.currentMachine() : facts?.machine
+            group.host == nil ? localHost : facts?.host
         }
         let entryFixedOffsetsMs = groupFacts.map { ($0?.dispatchOverheadSeconds ?? 0) * 1000 }
         let localHardware = MachineHardware.current()
@@ -239,20 +246,22 @@ enum DeviceHostRunner {
         return lines
     }
 
-    /// FleetRunner.buildMachineContext の同名ヘルパと同じ規律(local 鍵で facts を保存、
+    /// FleetRunner.buildMachineContext の同名ヘルパと同じ規律(手元の鍵で facts を保存、
     /// dispatchOverheadSeconds は既存値を保持)。こちらは local グループの台数が分かるので
-    /// concurrentDevices も埋める
+    /// concurrentDevices も埋める。**鍵はこの機械のホスト名**("local" ではない ——
+    /// エイリアスも予約名も記録の鍵にしない。2026-08-26 ユーザー決定)
     private static func saveLocalHostFacts(project: TestProject, hardware: MachineHardware, groups: [Group]) {
         let dir = RemoteHostFactsStore.dir(project: project)
-        let existing = RemoteHostFactsStore.load(dir: dir, hostLabel: "local")
+        let localHost = RunRecorder.currentMachine()
+        let existing = RemoteHostFactsStore.load(dir: dir, host: localHost)
         let localDeviceCount = groups.first(where: { $0.host == nil })?.deviceNames.count
         let facts = RemoteHostFacts(
-            machine: RunRecorder.currentMachine(),
+            host: localHost,
             dispatchOverheadSeconds: existing?.dispatchOverheadSeconds,
             processorModel: hardware.processorModel, coreCount: hardware.coreCount,
             concurrentDevices: localDeviceCount ?? existing?.concurrentDevices,
             updatedAt: ISO8601DateFormatter().string(from: Date()))
-        RemoteHostFactsStore.save(facts, dir: dir, hostLabel: "local")
+        RemoteHostFactsStore.save(facts, dir: dir, host: localHost)
     }
 
     private static func estimateText(_ estimatedMs: Double, devices: Int) -> String {

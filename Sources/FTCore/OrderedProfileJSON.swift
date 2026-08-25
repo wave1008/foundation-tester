@@ -1,7 +1,7 @@
 // プロファイル JSON の書き出し。**キー順を意味のある順に固定する**(ユーザー指示)。
 // JSONSerialization の .sortedKeys はアルファベット順なので、Android のデバイスが
-// `{"avd": …, "host": …, "name": …}` のように「どの機械の何か」より先に実体が来る。
-// 読み手(人と Claude Code)にとっては host → name が先に来るほうが早く読める。
+// `{"avd": …, "machine": …, "name": …}` のように「どの機械の何か」より先に実体が来る。
+// 読み手(人と Claude Code)にとっては machine → name が先に来るほうが早く読める。
 //
 // 実装の規律: **値の直列化は JSONSerialization に任せる**(エスケープを自前で書かない)。
 // ここが決めるのはキーの順序と字下げだけ。未知キーは温存し、優先リストに無いものは
@@ -11,10 +11,10 @@ import Foundation
 
 public enum OrderedProfileJSON {
     /// 先頭に出すキー。**この順序自体が契約**(profiles/*.json を読む人の期待)。
-    /// 先頭2つの理由: host = どの機械の話か、name = 実行プロファイルからの参照キー。
-    /// ここに無いキーはアルファベット順で後ろに付く
+    /// 先頭2つの理由: machine = どの機械の話か(ローカルエイリアス)、
+    /// name = 実行プロファイルからの参照キー。ここに無いキーはアルファベット順で後ろに付く
     public static let preferredKeyOrder = [
-        "host", "name", "machine", "app", "appName",
+        "machine", "name", "host", "app", "appName",
         // セクションはアルファベット順(android → ios)ではなく、読み手の期待どおり ios → android
         "common", "ios", "android", "devices", "kind", "platform",
     ]

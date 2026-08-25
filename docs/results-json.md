@@ -76,7 +76,7 @@ jq -r 'select(.workerAnomalies == null) | .runID' results/runs/2026-08/*/run.jso
 | runID | String | この run の ID |
 | project | String | プロジェクト名 |
 | profile | String? | 実行プロファイル名 |
-| machine | String | 実行マシン名(sanitize 済み) |
+| host | String | **実行マシンのホスト名**(`FT_MACHINE` > hostname を sanitize したもの)。**LPT の同一マシン判定はこれ**。**マシン名(設定タブで付けたローカルエイリアス)は記録しない** —— エイリアスは頻繁に変わりうるので記録の鍵にしない(2026-08-26 ユーザー決定。用語は docs/remote-runner.md §0)。**旧キー `machine` の記録も読める** |
 | trigger | String | `"api"`(拡張)/ `"cli"` |
 | startedAt / finishedAt | String / String? | ISO8601。**finishedAt が無い = 未完了**(クラッシュ検出) |
 | total / passed / failed | Int? | 実行完了まで nil |
@@ -112,7 +112,7 @@ jq -r 'select(.workerAnomalies == null) | .runID' results/runs/2026-08/*/run.jso
 | title | String? | `@Test` のタイトル |
 | platform | String | `ios` / `android` |
 | worker | String? | `"<platform>:<デバイス論理名>"`(並列実行時)。**`fleetest run --broadcast`(ブロードキャスト)では同じ `scenarioID` が台数ぶん並ぶ**(ファイルは `~N` 連番)ので、台ごとの合否はこの欄で引く |
-| machine / profile | String / String? | |
+| host / profile | String / String? | host = 実行マシンのホスト名(run.json と同じ。旧キー `machine` も読む) |
 | passed | Bool | シナリオ全体の成否 |
 | timedOut | Bool? | タイムアウトで強制終了したか |
 | startedAt / durationMs | String / Int | |

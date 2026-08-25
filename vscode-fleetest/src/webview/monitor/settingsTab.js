@@ -66,21 +66,18 @@ languageSelect.addEventListener('change', () => {
 // 送った時点で消える)。埋まったら行内の「確定」ボタンで初めて送る(既存タブの
 // wvMonitor2.common.confirm と同じ語)。確定済み行は今まで通りフィールドの change で即同期する。
 const remoteHostsError = document.getElementById('settings-remote-hosts-error');
-let hostRows = []; // { id, tr, nameInput, hostInput, dirInput, machine, confirmed, confirmButton }
+let hostRows = []; // { id, tr, machineInput, hostInput, dirInput, confirmed, confirmButton }
 let nextRowId = 0;
 
 function currentHostsPayload() {
-  // 未確定行(confirmed:false)は name/host が空のことがあるため、確定済み行だけを送る
+  // 未確定行(confirmed:false)は マシン/ホスト が空のことがあるため、確定済み行だけを送る
   // (「確定」ボタン自体は両方埋まるまで押せないが、ここでも二重に落として安全側に倒す)。
   return hostRows
     .filter((row) => row.confirmed)
     .map((row) => ({
-      name: row.nameInput.value.trim(),
+      machine: row.machineInput.value.trim(),
       host: row.hostInput.value.trim(),
       dir: row.dirInput.value.trim(),
-      // machine には入力欄が無い(§13 のフリート実装段で GUI から埋める想定)。他経路
-      // (`fleetest remote setup` 等)が書いた値を編集のたびに消さないようパススルーするだけ。
-      machine: row.machine,
     }));
 }
 
@@ -111,7 +108,7 @@ function removeHostRow(id) {
 }
 
 function rowIsFillable(row) {
-  return row.nameInput.value.trim() !== '' && row.hostInput.value.trim() !== '';
+  return row.machineInput.value.trim() !== '' && row.hostInput.value.trim() !== '';
 }
 
 function confirmHostRow(id) {
@@ -158,7 +155,7 @@ function addHostRow(host, confirmed) {
     return input;
   };
 
-  row.nameInput = makeTextCell(host ? host.name : '');
+  row.machineInput = makeTextCell(host ? host.machine : '');
   row.hostInput = makeTextCell(host ? host.host : '', 'user@host');
   row.dirInput = makeTextCell(host ? host.dir : '', '~/fleetest-runner');
 

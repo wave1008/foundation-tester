@@ -47,7 +47,7 @@ final class RemoteHostRegistryTests: XCTestCase {
     // MARK: - resolve
 
     func testResolveFindsRegisteredEntry() {
-        let entry = RemoteHostEntry(name: "M1Ultra", host: "wave1008@192.168.20.95")
+        let entry = RemoteHostEntry(machine: "M1Ultra", host: "wave1008@192.168.20.95")
         guard case .registered(let found) = RemoteHostRegistry.resolve("M1Ultra", entries: [entry]) else {
             return XCTFail("expected .registered")
         }
@@ -56,7 +56,7 @@ final class RemoteHostRegistryTests: XCTestCase {
 
     /// **登録簿が優先**: 同名が登録されていれば、その文字列を生の ssh 宛先として解釈し直さない
     func testResolvePrefersRegistryOverRawInterpretation() {
-        let entry = RemoteHostEntry(name: "M1Ultra", host: "wave1008@192.168.20.95")
+        let entry = RemoteHostEntry(machine: "M1Ultra", host: "wave1008@192.168.20.95")
         let resolution = RemoteHostRegistry.resolve("M1Ultra", entries: [entry])
         guard case .registered = resolution else {
             return XCTFail("expected .registered, got \(resolution)")
@@ -71,7 +71,7 @@ final class RemoteHostRegistryTests: XCTestCase {
     }
 
     func testResolveIsCaseSensitive() {
-        let entry = RemoteHostEntry(name: "M1Ultra", host: "wave1008@192.168.20.95")
+        let entry = RemoteHostEntry(machine: "M1Ultra", host: "wave1008@192.168.20.95")
         guard case .rawTarget = RemoteHostRegistry.resolve("m1ultra", entries: [entry]) else {
             return XCTFail("expected .rawTarget (case must not match)")
         }
@@ -93,7 +93,7 @@ final class RemoteHostRegistryTests: XCTestCase {
     /// そもそも登録時に "local" を拒否するので、この状況は登録簿の手編集でしか起こらない —
     /// それでも fail-closed に倒す)
     func testResolveReservedWinsEvenIfRegistryHasLocalEntry() {
-        let entry = RemoteHostEntry(name: "local", host: "should-not-be-used")
+        let entry = RemoteHostEntry(machine: "local", host: "should-not-be-used")
         XCTAssertEqual(RemoteHostRegistry.resolve("local", entries: [entry]), .reserved)
     }
 
@@ -101,57 +101,57 @@ final class RemoteHostRegistryTests: XCTestCase {
 
     func testUpsertAddsNewEntry() {
         let result = RemoteHostRegistry.upsert(
-            RemoteHostEntry(name: "M1Ultra", host: "a@host"), into: [])
-        XCTAssertEqual(result, [RemoteHostEntry(name: "M1Ultra", host: "a@host")])
+            RemoteHostEntry(machine: "M1Ultra", host: "a@host"), into: [])
+        XCTAssertEqual(result, [RemoteHostEntry(machine: "M1Ultra", host: "a@host")])
     }
 
     func testUpsertReplacesSameName() {
-        let existing = [RemoteHostEntry(name: "M1Ultra", host: "old@host", dir: "~/old")]
+        let existing = [RemoteHostEntry(machine: "M1Ultra", host: "old@host", dir: "~/old")]
         let result = RemoteHostRegistry.upsert(
-            RemoteHostEntry(name: "M1Ultra", host: "new@host", dir: "~/new"), into: existing)
-        XCTAssertEqual(result, [RemoteHostEntry(name: "M1Ultra", host: "new@host", dir: "~/new")])
+            RemoteHostEntry(machine: "M1Ultra", host: "new@host", dir: "~/new"), into: existing)
+        XCTAssertEqual(result, [RemoteHostEntry(machine: "M1Ultra", host: "new@host", dir: "~/new")])
     }
 
     /// 出力が実行のたびに揺れないよう、名前順で安定に並べる
     func testUpsertKeepsResultSortedByName() {
         var entries: [RemoteHostEntry] = []
-        entries = RemoteHostRegistry.upsert(RemoteHostEntry(name: "zeta", host: "z@host"), into: entries)
-        entries = RemoteHostRegistry.upsert(RemoteHostEntry(name: "alpha", host: "a@host"), into: entries)
-        entries = RemoteHostRegistry.upsert(RemoteHostEntry(name: "mid", host: "m@host"), into: entries)
-        XCTAssertEqual(entries.map(\.name), ["alpha", "mid", "zeta"])
+        entries = RemoteHostRegistry.upsert(RemoteHostEntry(machine: "zeta", host: "z@host"), into: entries)
+        entries = RemoteHostRegistry.upsert(RemoteHostEntry(machine: "alpha", host: "a@host"), into: entries)
+        entries = RemoteHostRegistry.upsert(RemoteHostEntry(machine: "mid", host: "m@host"), into: entries)
+        XCTAssertEqual(entries.map(\.machine), ["alpha", "mid", "zeta"])
     }
 
     // MARK: - remove
 
     func testRemoveDeletesByName() {
         let entries = [
-            RemoteHostEntry(name: "a", host: "a@host"),
-            RemoteHostEntry(name: "b", host: "b@host"),
+            RemoteHostEntry(machine: "a", host: "a@host"),
+            RemoteHostEntry(machine: "b", host: "b@host"),
         ]
-        XCTAssertEqual(RemoteHostRegistry.remove(name: "a", from: entries),
-                      [RemoteHostEntry(name: "b", host: "b@host")])
+        XCTAssertEqual(RemoteHostRegistry.remove(machine: "a", from: entries),
+                      [RemoteHostEntry(machine: "b", host: "b@host")])
     }
 
     func testRemoveIsNoOpWhenNameAbsent() {
-        let entries = [RemoteHostEntry(name: "a", host: "a@host")]
-        XCTAssertEqual(RemoteHostRegistry.remove(name: "nonexistent", from: entries), entries)
+        let entries = [RemoteHostEntry(machine: "a", host: "a@host")]
+        XCTAssertEqual(RemoteHostRegistry.remove(machine: "nonexistent", from: entries), entries)
     }
 
     // MARK: - duplicateTargets
 
     func testDuplicateTargetsEmptyWhenAllUnique() {
         let entries = [
-            RemoteHostEntry(name: "a", host: "one@host"),
-            RemoteHostEntry(name: "b", host: "two@host"),
+            RemoteHostEntry(machine: "a", host: "one@host"),
+            RemoteHostEntry(machine: "b", host: "two@host"),
         ]
         XCTAssertEqual(RemoteHostRegistry.duplicateTargets(entries), [])
     }
 
     func testDuplicateTargetsFindsSharedHost() {
         let entries = [
-            RemoteHostEntry(name: "a", host: "shared@host"),
-            RemoteHostEntry(name: "b", host: "shared@host"),
-            RemoteHostEntry(name: "c", host: "unique@host"),
+            RemoteHostEntry(machine: "a", host: "shared@host"),
+            RemoteHostEntry(machine: "b", host: "shared@host"),
+            RemoteHostEntry(machine: "c", host: "unique@host"),
         ]
         XCTAssertEqual(RemoteHostRegistry.duplicateTargets(entries), ["shared@host"])
     }
@@ -165,7 +165,7 @@ final class RemoteHostRegistryTests: XCTestCase {
         let url = dir.appendingPathComponent("config.json")
 
         var config = LocalConfig()
-        config.remoteHosts = [RemoteHostEntry(name: "M1Ultra", host: "wave1008@192.168.20.95",
+        config.remoteHosts = [RemoteHostEntry(machine: "M1Ultra", host: "wave1008@192.168.20.95",
                                               dir: "~/fleetest-runner")]
         try config.save(to: url)
 
