@@ -276,7 +276,7 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
 
 | ブリッジ | 共通コアへの追加 | 計 |
 |---|---|---|
-| XCUITest(Runner/) | `POST /drag`・`POST /appswitcher`・`POST /home`・`POST /hidekeyboard`・`POST /appstate`・`POST /rotate`・`GET /hittable`・`GET /systemalert`・`GET /systemui/snapshot`・`POST /systemui/tap` | 23 |
+| XCUITest(Runner/) | `POST /drag`・`POST /appswitcher`・`POST /home`・`POST /hidekeyboard`・`POST /appstate`・`POST /rotate`・`GET /hittable`・`GET /systemalert`・`GET /systemui/snapshot`・`POST /systemui/tap`・`POST /systemui/drag`・`POST /systemui/swipe` | 25 |
 | Android(AndroidRunner/) | `POST /locale`・`POST /settle`(§4.5) | 15 |
 | InApp | `POST /hidekeyboard`・`POST /appstate`・`POST /rotate` | 16 |
 
@@ -284,10 +284,23 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
 §10「キーボードの観測と `hideKeyboard`」)。Android は `hideKeyboard` をホスト側の
 戻るキーで実現するのでルートを持たない。
 
-`GET /systemui/snapshot` / `POST /systemui/tap` は XCUITest ランナーだけが持つ、SpringBoard
-(別プロセス)の木を読む・叩く口。**`POST /session springboard` + `GET /snapshot` との違いは
-セッションを触らないこと**だけで、返る木は同じ。ref は専用の名前空間(ランナーの
-`systemRefFrames`)に振り、`app` / `sessionBundleID` / `refFrames` のどれにも書かない。
+`/systemui/*` は XCUITest ランナーだけが持つ、SpringBoard(別プロセス)を読む・叩く口。
+**`POST /session springboard` + `GET /snapshot` との違いはセッションを触らないこと**だけで、
+返る木は同じ。ref は専用の名前空間(ランナーの `systemRefFrames`)に振り、
+`app` / `sessionBundleID` / `refFrames` のどれにも書かない。
+
+`POST /systemui/drag` / `POST /systemui/swipe` は**座標の原点を SpringBoard に取る**ジェスチャ
+(`POST /appswitcher` / `POST /home` と同じ理由)。呼び手の `tapAppIcon` は直前に `home()` を
+撃っているので、セッションのアプリを原点にする `/drag`・`/swipe` では、**背面なら**座標解決が
+`Find the Application` を約45秒リトライして**ランナーごと落ち**、**未起動なら** `requireLiveApp`
+の 503 で弾かれる。逆に `/tap` 側を SpringBoard へ寄せてはいけない —— あちらの 503 は
+「アプリが死んでいる」の申告で、ホストが復帰の判定に使っている。
+
+ref を引く表が2つあるので、**呼び手は直前に撮った木と同じ名前空間の口だけを叩く**。
+`SystemUIDriver` は scoped で撮った回の ref を `/systemui/tap` へ回し、座標へ落とせない
+操作(`type` / `clearInput` —— ランナーが要素そのものを引いて読み返す)は 422 で断る。
+素通しすると**両方の名前空間が 1 から採番される**ため、番号がアプリ側の `refFrames` で
+引き当たり、システム UI を操作したつもりで無関係なアプリの要素へ届く。
 
 **なぜ要るか**(2026-08-25): `engine=xcuitest` は**ブリッジが1本しかなく、主ドライバと
 共有している**。旧経路はセッションを springboard へ移し ref 表を空にするので、権限アラートを

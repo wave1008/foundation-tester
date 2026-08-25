@@ -429,15 +429,35 @@ public final class BridgeClient: AppDriver {
     }
 
     /// `systemUISnapshot()` が振った ref を叩く(`POST /systemui/tap`)。
-    /// 旧ランナーは 404 → false(呼び手が旧経路へ落ちる)
-    public func systemUITap(ref: Int) async throws -> Bool {
-        do {
-            let _: OKResponse = try await post("/systemui/tap", body: TapRequest(ref: ref),
-                                               timeout: interactionTimeout)
-            return true
-        } catch DriverError.badResponse(let status, _) where status == 404 {
-            return false
-        }
+    ///
+    /// **404 を握り潰さない**(2026-08-25)。この口を撃つのは `systemUISnapshot()` が
+    /// 成功した後だけ = ルートは在ると分かっているので、ここの 404 は
+    /// **「その ref を知らない」**しか意味しない(ランナーの `handleSystemUITap`)。
+    /// 一度は「旧ランナー」の合図として false を返し、呼び手が同じ番号を `/tap` へ撃ち直して
+    /// いた —— **両方の名前空間が 1 から採番される**ので、番号はアプリ側の `refFrames` で
+    /// 引き当たり、SpringBoard を叩いたつもりで**無関係なアプリの要素を黙ってタップ**していた
+    public func systemUITap(ref: Int) async throws {
+        let _: OKResponse = try await post("/systemui/tap", body: TapRequest(ref: ref),
+                                           timeout: interactionTimeout)
+    }
+
+    /// `/drag` の SpringBoard 版(`POST /systemui/drag`)。**セッションのアプリを原点にしない**
+    /// ので、対象アプリが背面・未起動でも撃てる(tapAppIcon のページ送り。ランナー側
+    /// `systemUIAnchor` の doc に理由がある)
+    public func systemUIDrag(fromX: Double, fromY: Double, toX: Double, toY: Double,
+                             pressSeconds: Double, durationSeconds: Double) async throws {
+        let _: OKResponse = try await post("/systemui/drag", body: DragRequest(
+            fromX: fromX, fromY: fromY, toX: toX, toY: toY,
+            press: pressSeconds, duration: durationSeconds),
+            timeout: interactionTimeout)
+    }
+
+    /// `/swipe` の SpringBoard 版(`POST /systemui/swipe`)。向きだけ = 呼び手は
+    /// ページ送りの座標を作れなかった退避先としてしか使わない
+    public func systemUISwipe(_ direction: FTSwipeDirection) async throws {
+        let _: OKResponse = try await post("/systemui/swipe",
+                                           body: SwipeRequest(direction: direction),
+                                           timeout: interactionTimeout)
     }
 
     /// iOS は任意の前面 bundle ID を取得する手段を持たない(XCUITest は他アプリの状態を見れず、

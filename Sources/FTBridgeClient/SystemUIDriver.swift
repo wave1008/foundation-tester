@@ -47,17 +47,49 @@ public final class SystemUIDriver: AppDriver {
         // 次のステップが SpringBoard の木を読む。hybrid で使わない理由は init の doc
         if sharesPrimarySession, let scoped = try await client.systemUISnapshot() {
             usedScopedSnapshot = true
+            scopedFrames = Dictionary(scoped.elements.map { ($0.ref, $0.frame) },
+                                      uniquingKeysWith: { first, _ in first })
             return scoped
         }
         // hybrid(共有していない)と旧ランナー(版 < 79)。前者は巻き添えが無いので
         // 従来どおりが正しく、後者は新しい口が 404 で無い
         usedScopedSnapshot = false
+        scopedFrames = [:]
         try await client.launch(bundleID: "com.apple.springboard")
         return try await client.snapshot(bypassingCache: bypassingCache)
     }
 
     /// 直前の snapshot がどちらの経路だったか。tap の ref を引く表が違うので取り違えない
     private var usedScopedSnapshot = false
+    /// scoped 経路で撮った ref → frame。**座標へ落とすためだけ**に持つ ——
+    /// `/systemui/*` に無い操作(長押し)は、番号ではなく座標で撃てば名前空間を跨がずに済む
+    private var scopedFrames: [Int: FTRect] = [:]
+
+    /// scoped 経路の ref を、そのとき撮った木の座標へ落とす。
+    /// **引けなければ落ちる**(アプリ側の `refFrames` へ流さない = 別要素を叩かない)
+    private func scopedPoint(_ ref: Int, command: String) throws -> (x: Double, y: Double) {
+        guard let frame = scopedFrames[ref] else {
+            throw DriverError.badResponse(status: 422,
+                body: "unknown system-UI reference number [\(ref)] for \(command)"
+                    + " — the system-UI snapshot it came from is gone. Take one again"
+                    + " before acting on it.")
+        }
+        return (frame.centerX, frame.centerY)
+    }
+
+    /// scoped 経路では**アプリの ref 表を引く操作を通さない**(2026-08-25)。
+    /// 両方の名前空間が 1 から採番されるので、素通しすると番号がアプリ側で引き当たり、
+    /// システム UI を操作したつもりで**無関係なアプリの要素へ**入力する。
+    /// 座標へ落とせる操作(tap/press)は落とし、落とせないもの(type/clearInput は
+    /// ランナーが要素そのものを引いて読み返す)はここで断る
+    private func refusesAppRefNamespace(_ command: String) -> DriverError {
+        .badResponse(status: 422,
+            body: "\(command) is not available on the system UI over the scoped"
+                + " (/systemui/*) path: its reference numbers live in a different namespace"
+                + " than the app's, and the runner resolves this command against the app's"
+                + " tree. Drive the system dialog with tap/press, or point the session at"
+                + " com.apple.springboard if the text really has to go there.")
+    }
     /// **転送必須**(既定実装に任せると最内のブリッジ接続へ届かず、上げたつもりで 120 のまま)
     public func raiseElementLimitOnNextSnapshot(_ max: Int?) {
         client.raiseElementLimitOnNextSnapshot(max)
@@ -69,24 +101,51 @@ public final class SystemUIDriver: AppDriver {
     /// **直前の snapshot と同じ名前空間の ref を使う**(scoped は `systemRefFrames`、
     /// 旧経路は session を springboard へ移したうえでの `refFrames`)
     public func tap(ref: Int) async throws {
-        if usedScopedSnapshot, try await client.systemUITap(ref: ref) { return }
+        if usedScopedSnapshot { return try await client.systemUITap(ref: ref) }
         try await client.tap(ref: ref)
     }
-    public func type(ref: Int?, text: String) async throws { try await client.type(ref: ref, text: text) }
+    public func type(ref: Int?, text: String) async throws {
+        if usedScopedSnapshot, ref != nil { throw refusesAppRefNamespace("type") }
+        try await client.type(ref: ref, text: text)
+    }
     public func pressEnter() async throws { try await client.pressEnter() }
-    public func clearInput(ref: Int?) async throws { try await client.clearInput(ref: ref) }
+    public func clearInput(ref: Int?) async throws {
+        if usedScopedSnapshot, ref != nil { throw refusesAppRefNamespace("clearInput") }
+        try await client.clearInput(ref: ref)
+    }
     public func hideKeyboard() async throws { try await client.hideKeyboard() }
-    public func press(ref: Int, duration: Double) async throws { try await client.press(ref: ref, duration: duration) }
+    /// **scoped では番号ではなく座標で撃つ**(`/systemui/*` に長押しの口は無い)。撃ち先の
+    /// `/press` は**セッションのアプリ**を原点にするので、これが成り立つのは
+    /// 「システム UI が載っている = アプリは前面」の場合だけ。背面から呼ぶ経路
+    /// (tapAppIcon)からは使わないこと —— 使うなら `/systemui/*` 側に口が要る
+    public func press(ref: Int, duration: Double) async throws {
+        if usedScopedSnapshot {
+            let point = try scopedPoint(ref, command: "press")
+            return try await client.press(x: point.x, y: point.y, duration: duration)
+        }
+        try await client.press(ref: ref, duration: duration)
+    }
     public func tap(x: Double, y: Double) async throws { try await client.tap(x: x, y: y) }
-    public func swipe(_ direction: FTSwipeDirection) async throws { try await client.swipe(direction) }
+    public func swipe(_ direction: FTSwipeDirection) async throws {
+        if usedScopedSnapshot { return try await client.systemUISwipe(direction) }
+        try await client.swipe(direction)
+    }
     /// 用途つき版の素通し(FastLaunchDriver の注記と同じ理由)
     public func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent,
                       path: FTSwipePath?) async throws {
         try await client.swipe(direction, intent: intent, path: path)
     }
-    /// tapAppIcon のページ送り(flickRightToLeft 相当)用。既存 /drag ルートの素通し(新規エンドポイントではない)
+    /// tapAppIcon のページ送り(flickRightToLeft 相当)用。
+    /// **scoped 経路では SpringBoard を原点にする口へ回す**(2026-08-25)——
+    /// 呼び手は直前に `home()` を撃っており、`/drag` はセッションのアプリを原点にするので、
+    /// 背面なら座標解決で約45秒ハングしてランナーごと落ち、未起動なら 503 で弾かれる
     public func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
                      pressSeconds: Double, durationSeconds: Double) async throws {
+        if usedScopedSnapshot {
+            return try await client.systemUIDrag(fromX: fromX, fromY: fromY, toX: toX, toY: toY,
+                                                 pressSeconds: pressSeconds,
+                                                 durationSeconds: durationSeconds)
+        }
         try await client.drag(fromX: fromX, fromY: fromY, toX: toX, toY: toY,
                               pressSeconds: pressSeconds, durationSeconds: durationSeconds)
     }

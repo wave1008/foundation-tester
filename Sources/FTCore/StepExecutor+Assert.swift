@@ -458,10 +458,11 @@ extension StepExecutor {
             } else {
                 lastOcclusion = nil   // #5: 直近は未発見 → 過去の occlusion 失敗を無効化(消失時に stale を返さない)
                 primaryMisses += 1
-                // fallback(SystemUIDriver)の snapshot は springboard 再session+XCUITest snapshot で
-                // 数百ms。primary(in-app ~0.05ms)ミス毎に払うと通常のアプリ内要素待ちを支配するため
-                // 間引く: 2・4・6…回目のミスでのみ照会。実在するシステムUI要素の検知遅れは最大で
-                // バックオフ1段+1周期
+                // fallback(SystemUIDriver)の snapshot は SpringBoard の木1枚ぶん(約185ms)。
+                // hybrid はさらに springboard の再 session が乗る(engine=xcuitest は
+                // `/systemui/snapshot` なので乗らない)。primary(in-app ~0.05ms)ミス毎に払うと
+                // 通常のアプリ内要素待ちを支配するため間引く: 2・4・6…回目のミスでのみ照会。
+                // 実在するシステムUI要素の検知遅れは最大でバックオフ1段+1周期
                 if primaryMisses >= 2, primaryMisses % 2 == 0, let fb = fallbackDriver {
                     start = clock.now
                     let fsnap = try await fb.snapshot()

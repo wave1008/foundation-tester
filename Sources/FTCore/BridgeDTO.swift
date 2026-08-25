@@ -236,7 +236,21 @@ public enum BridgeAPI {
     /// dropped from the tree entirely — while the a11y path keeps it, which is exactly the
     /// split this path exists to avoid (witness: E2E-CMP `WebViewの中身を操作できること.S0010`,
     /// failing 4 runs out of 5). A stale bridge keeps dropping it → bump.
-    public static let bridgeProtocolVersion = 79
+    /// 79: `GET /systemui/snapshot` and `POST /systemui/tap` on the XCUITest runner — read and
+    /// tap SpringBoard **without touching the session**. `engine=xcuitest` shares its single
+    /// bridge with the primary driver, so the old route to the same place
+    /// (`POST /session springboard`) swapped out `app` / `sessionBundleID` / `refFrames` and the
+    /// step after the alert read SpringBoard's tree. **New routes**, so a stale runner answers
+    /// 404 → bump.
+    /// 80: those routes gained `POST /systemui/drag` and `POST /systemui/swipe`, and
+    /// `/systemui/snapshot` now consumes `settlePending` like `/snapshot` does. Without the
+    /// gestures, `tapAppIcon`'s page flick went to `/drag`, which anchors coordinates on the
+    /// **session's** app — backgrounded by the `home()` two lines earlier, which hangs XCUITest
+    /// in `Find the Application` for ~45s and takes the runner down, or not launched at all,
+    /// which `requireLiveApp` refuses with 503. Without the settle, the shot right after an
+    /// alert was dismissed could be taken mid-animation and the follow-up tap missed the button.
+    /// A stale runner keeps both → bump.
+    public static let bridgeProtocolVersion = 80
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の

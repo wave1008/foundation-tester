@@ -83,6 +83,8 @@ final class BridgeRouter {
             case ("GET", "/systemalert"): response = handleSystemAlert()
             case ("GET", "/systemui/snapshot"): response = try handleSystemUISnapshot(request)
             case ("POST", "/systemui/tap"): response = try handleSystemUITap(request.body)
+            case ("POST", "/systemui/drag"): response = try handleSystemUIDrag(request.body)
+            case ("POST", "/systemui/swipe"): response = try handleSystemUISwipe(request.body)
             case ("POST", "/tap"): response = try handleTap(request.body)
             case ("POST", "/type"): response = try handleType(request.body)
             case ("POST", "/clear"): response = try handleClear(request.body)
@@ -372,8 +374,14 @@ final class BridgeRouter {
         -> BridgeHTTPServer.Response {
         snapshotElementLimit = BridgeAPI.resolvedSnapshotElementLimit(
             request.queryValue("max").flatMap { Int($0) })
-        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        let cap = try captureOnce(springboard)
+        let springboard = systemUIAnchor()
+        // **`settlePending` は /snapshot と同じように消費する**(2026-08-25)。置き換え前の経路は
+        // `POST /session springboard` が mutatingPaths に居たので、続く /snapshot が必ず
+        // captureSettled を通っていた。素取得に落とすと、アラートを閉じた直後・アイコンを叩いた
+        // 直後の1枚をアニメーション中に撮り、続く /systemui/tap が座標を外す。
+        // **どちらの口が先に来ても1回だけ**待つ(消費するのは最初に撮った方)
+        let cap = try settlePending ? captureSettled(springboard) : captureOnce(springboard)
+        settlePending = false
         systemRefFrames = cap.frames
         return .json(SnapshotResponse(
             sessionBundleID: "com.apple.springboard",
@@ -395,8 +403,44 @@ final class BridgeRouter {
             throw BridgeError(404,
                 "unknown system-UI reference number [\(ref)] — run GET /systemui/snapshot first")
         }
-        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        coordinate(springboard, CGPoint(x: frame.midX, y: frame.midY)).tap()
+        coordinate(systemUIAnchor(), CGPoint(x: frame.midX, y: frame.midY)).tap()
+        return .json(OKResponse())
+    }
+
+    /// `/systemui/*` の座標ジェスチャが原点にするアプリ。
+    ///
+    /// **セッションのアプリを使わない**のが要点(2026-08-25)。この口の呼び手(tapAppIcon)は
+    /// 直前に `home()` を撃っており、セッションのアプリは**背面**か、まだ**起動していない**。
+    /// 前者を `/drag` に流すと背面アプリの座標解決で `Find the Application` を約45秒リトライして
+    /// **ランナーごと落ち**、後者は `requireLiveApp` の 503 で弾かれる(旧経路は
+    /// `POST /session springboard` がセッションごと差し替えていたので、どちらも起きなかった)。
+    ///
+    /// 座標は画面座標なので、原点が (0,0) の SpringBoard を基準にすれば
+    /// **前面に何が居ても同じ点を叩く**(`/appswitcher` と `/home` が同じ理由で既にこうしている)。
+    /// **`/tap` 側を勝手に SpringBoard へ寄せてはいけない** —— あちらの 503 は
+    /// 「アプリが死んでいる」の申告で、ホストが復帰に使っている(requireLiveApp の doc)
+    private func systemUIAnchor() -> XCUIApplication {
+        XCUIApplication(bundleIdentifier: "com.apple.springboard")
+    }
+
+    /// `/drag` の SpringBoard 版(tapAppIcon のページ送り)
+    private func handleSystemUIDrag(_ body: Data) throws -> BridgeHTTPServer.Response {
+        let req = try decode(DragRequest.self, body)
+        return performDrag(req, in: systemUIAnchor())
+    }
+
+    /// `/swipe` の SpringBoard 版(tapAppIcon が座標を作れなかったときの退避先)。
+    /// **path 付きは受けない** —— 呼び手はページ送りの座標を作れなかったから来ているので、
+    /// 向き基準の全画面スワイプだけで足りる
+    private func handleSystemUISwipe(_ body: Data) throws -> BridgeHTTPServer.Response {
+        let req = try decode(SwipeRequest.self, body)
+        let app = systemUIAnchor()
+        switch req.direction {
+        case .up: app.swipeUp()
+        case .down: app.swipeDown()
+        case .left: app.swipeLeft()
+        case .right: app.swipeRight()
+        }
         return .json(OKResponse())
     }
 
@@ -776,7 +820,12 @@ final class BridgeRouter {
     /// velocity=距離÷移動時間で「ゆっくりドラッグ(慣性なし)〜フリック」を再現する
     private func handleDrag(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(DragRequest.self, body)
-        let app = try requireLiveApp()
+        return performDrag(req, in: try requireLiveApp())
+    }
+
+    /// ドラッグの実体。**`/systemui/drag` と共有する**(原点にするアプリだけが違う)
+    private func performDrag(_ req: DragRequest, in app: XCUIApplication)
+        -> BridgeHTTPServer.Response {
         let from = coordinate(app, CGPoint(x: req.fromX, y: req.fromY))
         let to = coordinate(app, CGPoint(x: req.toX, y: req.toY))
         let press = max(req.press ?? 0.05, 0.05)

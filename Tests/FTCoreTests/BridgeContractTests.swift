@@ -57,8 +57,12 @@ final class BridgeContractTests: XCTestCase {
         // /systemui/* は SpringBoard を**セッションを触らずに**読む/叩く口
         // (2026-08-25 追加・版 79)。ref は専用の名前空間 = ランナーの systemRefFrames。
         // engine=xcuitest は主ドライバと同じブリッジを共有するので、
-        // 旧経路(POST /session springboard)だとアプリのセッションが巻き添えになる
+        // 旧経路(POST /session springboard)だとアプリのセッションが巻き添えになる。
+        // drag / swipe は座標を **SpringBoard 基準**で撃つ(版 80)—— tapAppIcon は
+        // home() の直後に呼ぶので、セッションのアプリを原点にする /drag では
+        // 背面アプリの座標解決でランナーごと落ちる(BridgeRouter.systemUIAnchor)
         "GET /systemui/snapshot", "POST /systemui/tap",
+        "POST /systemui/drag", "POST /systemui/swipe",
         "GET /screenshot", "GET /snapshot", "GET /status",
         "POST /appstate", "POST /appswitcher", "POST /clear", "POST /doubletap", "POST /drag",
         "POST /hidekeyboard", "POST /home", "POST /pinch", "POST /press", "POST /pressEnter",
@@ -124,19 +128,19 @@ final class BridgeContractTests: XCTestCase {
             "InAppBridge/Sources/InAppWebViewDOM.swift": "ef4df4ffbbcb41adab67e3c257d8de5bcb2ac73b39c7e4e5a2e8305db37a34b6",
             "InAppBridge/Sources/boot.m": "b23fc93fbc99ce2579c9fd8ae75a6f9bbfd0ec6122bec60eb6cd00775dd635ef",
             "InAppBridge/build.sh": "73f53b3434d29114cf1bd0fd68264d373dc2730585d9f0c001d750dfd2844794",
-            "Sources/FTCore/BridgeDTO.swift": "fcba40c7ab088bfcbf6ae8af0d5dd0ad3f0d7c7adfd9c628e3bf87355e2b7796",
+            "Sources/FTCore/BridgeDTO.swift": "6f29a359848b568b342b95469980b5d60b6a11980835c4dce0f77268bbe29966",
             "Sources/FTCore/WebViewDOMSnapshot.swift": "1ee7abbddc203445c9e6859e0f6371fd22b7d7e40c3e406e5e1bf2c6cd1b4852",
         ],
         .xcuitest: [
             "Runner/FTesterRunnerUITests/BridgeHTTPServer.swift": "a915206e5b7a4a6a24c2e50ec64bcbe11f11566edae36128a731db29735044d9",
-            "Runner/FTesterRunnerUITests/BridgeRouter.swift": "bebea5976e2ec9573b90bce30c162d150d88e80a5bf629c872d8915c8fa42767",
+            "Runner/FTesterRunnerUITests/BridgeRouter.swift": "946340f908e2115a5e52c8d174667ded2bd62cacff267c1ac93a2047aa9e2d1a",
             "Runner/FTesterRunnerUITests/BridgingHeader.h": "f7ff424d9283644d0e7a0c6e202911ecbf2d9c12d469eea330d91471c4788272",
             "Runner/FTesterRunnerUITests/DisplayHeartbeat.swift": "e991d489bb2acdee6a523231fc136c78445d5e67c8464750b3c6ba01171d2c69",
             "Runner/FTesterRunnerUITests/FTesterBridgeTests.swift": "fa310ccbbe3447012d46ec300f3cb30e40435ad4739293432b4f9f6369f44338",
             "Runner/FTesterRunnerUITests/FastInput.swift": "18b54340c404eac53736675763fad8e291b08e2f1f1ba96d696172698aa83bc1",
             "Runner/FTesterRunnerUITests/ObjCExceptionCatcher.h": "5a98cdbeefb031137a985b2f4430a5e12fec447a492599f8f4da1bd2c7101edc",
             "Runner/FTesterRunnerUITests/ObjCExceptionCatcher.m": "8b41a8a81bc8199bca13a364717614684f8003999c7675d9a63242c8e74c26be",
-            "Sources/FTCore/BridgeDTO.swift": "fcba40c7ab088bfcbf6ae8af0d5dd0ad3f0d7c7adfd9c628e3bf87355e2b7796",
+            "Sources/FTCore/BridgeDTO.swift": "6f29a359848b568b342b95469980b5d60b6a11980835c4dce0f77268bbe29966",
             "Sources/FTCore/SnapshotDedupe.swift": "01912610b9bbf66f1fcf6cecc8c3d51d3fedc836c24d1a9ba8689a2538227b17",
             "Sources/FTCore/TypeReadback.swift": "a9e331686c7304988c12da4773af5706c755ad6c61b501280ec6e7f09070298e",
         ],
