@@ -421,9 +421,6 @@ BOOL FTClearTextInFirstResponder(void) {
     return NO;
 }
 
-// FTClearTextInFirstResponder と同じ対象解決(ftClearTarget)を使う。**冪等**: 対象が無い/
-// resignFirstResponder に応答しない場合も YES(呼び出し側 handleHideKeyboard は 409 分岐を持たない
-// ―― 「閉じるべきキーボードが無い」は既に望む状態であり失敗ではない)
 /// Flutter の入力受け口へ IME アクションを配送する。**engine の私有 API を叩く**ので、
 /// 各段で存在確認し1つでも欠けたら NO を返す(= 呼び出し側が 409 で「xcuitest を使え」と案内する
 /// 既知の縮退へ落ちる。Flutter 更新で黙って誤動作させないため、推測で続行しない)。

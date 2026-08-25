@@ -1183,11 +1183,10 @@ wedge してもコールバックは来る。この規則のままでは**本物
 根拠 `noPresent` も撤去済み)。判定材料は一様フレームと、下記の能動プローブだけ。
 ブリッジの計装(`DisplayHeartbeat`)と DTO の `displayIdleSeconds` フィールドは、
 指紋ゲート(`BridgeContractTests`)の版上げ連鎖を避けるため**次のブリッジ変更に便乗して撤去する**
-(今回は未着手)。**便乗時に一緒に直すもの**: 撤去済みの `FrozenEvidence.noPresent` を今も指す
-コメント5箇所(`Sources/FTCore/BridgeDTO.swift` の `displayIdleSeconds` doc と版履歴・
-`InAppBridge/Sources/DisplayHeartbeat.swift` / `InAppBridge.swift` /
-`Runner/FTesterRunnerUITests/DisplayHeartbeat.swift` /
-`AndroidRunner/.../DisplayHeartbeat.java`。いずれも指紋対象のため今回は触れていない)。
+(未着手)。**計器のコメントは 2026-08-25 に直してある** —— 撤去済みの `FrozenEvidence.noPresent`
+を指し、「wedge なら tick が止まる(未検証)」という**反証済みの前提**を残していた5箇所を、
+「ホストは判定に使わない・採り直さないこと」へ書き換えた(コメントだけなので版は据え置き、
+指紋の期待値だけ貼り替えている)。`BridgeDTO.swift` の**版履歴 64 は当時の記録として残す**。
 
 **正しい判別は能動プローブだった**。一斉に force-stop/launch した直後に黒かった5台を、
 「HOME を押しても画面が変わらないか」で仕分けると **本物は1台だけ**で、残り4台は押した瞬間に

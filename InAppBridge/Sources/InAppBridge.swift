@@ -53,8 +53,8 @@ final class FTInAppBridge {
         // UIInputSetHostView のクラス名走査は iOS 27 で不発を実測)。ブリッジ起動前に
         // 開いていたキーボードは最初の変化まで不明のまま = keyboardFrame なし
         DispatchQueue.main.async { Self.observeKeyboardFrame() }
-        // 画面が進んでいるかの計器(/status の displayIdleSeconds)。凍結を「絵の一様さ」ではなく
-        // 直接測るための信号 —— DisplayHeartbeat の説明を参照
+        // 画面が進んでいるかの計器(/status の displayIdleSeconds)。
+        // **ホストは凍結判定に使わない** —— 理由は DisplayHeartbeat の説明を参照
         DisplayHeartbeat.shared.start()
         do {
             try server.start()

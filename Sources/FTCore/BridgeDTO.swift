@@ -540,11 +540,10 @@ public struct StatusResponse: Codable, Sendable {
     /// compose-resources 実在チェック。xcuitest/Android ブリッジは返さない → nil 許容。
     public var uiFramework: String?
     /// **最後に画面が進んでからの秒数**(iOS=CADisplayLink / Android=Choreographer の tick)。
-    /// 凍結を「絵が一様か」という代理指標ではなく直接測るための信号で、vsync 由来なので
-    /// **静止画面でも tick する** = 静止と wedge を画像なしで分離できる。
-    /// ホストは `FrozenEvidence.noPresent` の材料に使うが、**単独では確定させない**
-    /// (この wedge で本当に止まるかが未検証のため。docs/verification.md)。
-    /// 計器を持たないブリッジ・旧ブリッジは返さない → nil 許容(=不明・根拠にしない)。
+    /// **ホストは凍結判定に使わない。採り直さないこと** —— 本物の wedge でも拍動は回り続ける
+    /// (測っているのは「vsync を要求しているか」で「表示が進んだか」ではない。反証の実測は
+    /// docs/verification.md)。計器の撤去は版上げを伴うため次のブリッジ変更に便乗する。
+    /// 計器を持たないブリッジ・旧ブリッジは返さない → nil 許容。
     /// 通信の `idleSeconds`(下)とは別物 —— あちらは「無通信秒数」で画面とは無関係
     public var displayIdleSeconds: Double?
     /// Android ブリッジ APK の versionCode(BridgeRouter.java handleStatus)。稼働中の旧ブリッジを
