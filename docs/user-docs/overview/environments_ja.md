@@ -5,9 +5,11 @@
 | 対象 | 要件 |
 |---|---|
 | 共通 | macOS 26+。Apple Intelligence(Foundation Models)は**任意** —— heal・FM 視覚検証・シナリオ生成に使います。後から有効化すればそのまま使えます |
-| iOS | Xcode 26+、iOS シミュレータ、[xcodegen](https://github.com/yonaskolb/XcodeGen)(`brew install xcodegen`) |
-| Android(任意) | Android SDK(adb)、エミュレータまたは実機 |
+| iOS(テストするなら) | Xcode 26+、iOS シミュレータ、[xcodegen](https://github.com/yonaskolb/XcodeGen)(`brew install xcodegen`) |
+| Android(テストするなら) | Android SDK(adb)、エミュレータまたは実機 |
 | 拡張ビルド | Node.js v24 以降、npm v11 以降(v24 と v26 で確認済み) |
+
+**iOS と Android は両方揃える必要はありません。** テストする側だけ用意すれば足り、少なくとも片方があれば動きます。
 
 > macOS 26 では FM の**視覚検証だけ**が使えません(画像入力 API が macOS 27+ 必須)。
 > occlusion-guard(偽陽性チェック)と `screenLooksLike` は自動で無効になり、他は制限なく動きます。

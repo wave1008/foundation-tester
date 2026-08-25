@@ -10,8 +10,8 @@ macOS や Xcodeのベータ版を前提としているので現時点ではバ�
 | 対象 | 要件 |
 |---|---|
 | 共通 | macOS 26+ |
-| iOS | Xcode 26+、iOS シミュレータ runtime、xcodegen |
-| Android（任意） | Android SDK（adb）、エミュレータまたは実機 |
+| iOS（テストするなら） | Xcode 26+、iOS シミュレータ runtime、xcodegen |
+| Android（テストするなら） | Android SDK（adb）、エミュレータまたは実機 |
 | 拡張ビルド | Node.js v24 以降 / npm v11 以降(v24 と v26 で確認済み) |
 
 一部の機能（視覚検証）は macOS 27+ で利用可能です

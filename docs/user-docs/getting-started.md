@@ -12,8 +12,8 @@ You install it through the Claude Code plugin, which clones the repository and b
 | Target | Requirement |
 |---|---|
 | Common | macOS 26+ |
-| iOS | Xcode 26+, iOS simulator runtime, xcodegen |
-| Android (optional) | Android SDK (adb), emulator or physical device |
+| iOS (if you test iOS) | Xcode 26+, iOS simulator runtime, xcodegen |
+| Android (if you test Android) | Android SDK (adb), emulator or physical device |
 | Extension build | Node.js v24 or newer, npm v11 or newer (verified on v24 and v26) |
 
 Some features (visual verification) require macOS 27+.
