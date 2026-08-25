@@ -276,13 +276,32 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
 
 | ブリッジ | 共通コアへの追加 | 計 |
 |---|---|---|
-| XCUITest(Runner/) | `POST /drag`・`POST /appswitcher`・`POST /home`・`POST /hidekeyboard`・`POST /appstate`・`POST /rotate`・`GET /hittable`・`GET /systemalert` | 21 |
+| XCUITest(Runner/) | `POST /drag`・`POST /appswitcher`・`POST /home`・`POST /hidekeyboard`・`POST /appstate`・`POST /rotate`・`GET /hittable`・`GET /systemalert`・`GET /systemui/snapshot`・`POST /systemui/tap` | 23 |
 | Android(AndroidRunner/) | `POST /locale`・`POST /settle`(§4.5) | 15 |
 | InApp | `POST /hidekeyboard`・`POST /appstate`・`POST /rotate` | 16 |
 
 `/hidekeyboard` は iOS の2実装だけが持つが、**中身は 501 を返すだけ**(iOS に実装手段が無い。
 §10「キーボードの観測と `hideKeyboard`」)。Android は `hideKeyboard` をホスト側の
 戻るキーで実現するのでルートを持たない。
+
+`GET /systemui/snapshot` / `POST /systemui/tap` は XCUITest ランナーだけが持つ、SpringBoard
+(別プロセス)の木を読む・叩く口。**`POST /session springboard` + `GET /snapshot` との違いは
+セッションを触らないこと**だけで、返る木は同じ。ref は専用の名前空間(ランナーの
+`systemRefFrames`)に振り、`app` / `sessionBundleID` / `refFrames` のどれにも書かない。
+
+**なぜ要るか**(2026-08-25): `engine=xcuitest` は**ブリッジが1本しかなく、主ドライバと
+共有している**。旧経路はセッションを springboard へ移し ref 表を空にするので、権限アラートを
+閉じた次のステップが SpringBoard の木を読んで `cannot resolve the locator` で落ちた
+(E2E-iOS の `16_システムアラート.swift` で実測)。hybrid はフォールバックが別ブリッジなので
+巻き添えが無く、旧経路のままでも正しく動いていた —— **同じホストのコードが、エンジンによって
+壊れたり壊れなかったりしていた**。ホスト側で「見た後に張り直す」ことでも塞げるが、
+戻し忘れが**次のステップで**沈黙して失敗する形になるため、ブリッジ側に不変条件を置いた。
+
+**アラートの有無で撮る/撮らないを分けない**: この口はホーム画面の走査(`tapAppIcon`)にも使う。
+SpringBoard は system shell なので背面に回らず、`requireForegroundApp` が防いでいる
+「背面アプリの木を読むとランナーごと落ちる」形には当たらない。
+
+旧ランナー(版 < 79)は 404 を返し、`SystemUIDriver` が旧経路へ落ちる。
 
 `POST /rotate` は iOS の2実装だけが持つ(`{orientation}` → 整定後の実際の向き、整定しなければ
 `422`)。Android は adb(`AndroidDriver`)で直接行うためルートを持たない。

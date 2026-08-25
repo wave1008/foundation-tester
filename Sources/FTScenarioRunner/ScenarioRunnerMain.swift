@@ -352,7 +352,14 @@ struct RunScenario: AsyncParsableCommand {
                     driver = SessionRecoveryDriver(base: preflighted)
                     // 通常ドライバのセッションは対象アプリに縛られ、home() 後の snapshot が
                     // 背面アプリ照会でハングする(実機で確認)。springboard 参照専用を渡す
-                    homeScreenDriver = SystemUIDriver(port: port)
+                    // 同じインスタンスをシステム UI のフォールバックにも使う。
+                    // **主ドライバと同じブリッジを共有していても安全**なのは、SystemUIDriver が
+                    // 版 79 の `/systemui/*`(セッションと ref を触らない)を使うため。
+                    // これが無いと SpringBoard の権限アラートはアプリの木に載らないまま
+                    // 「操作が効かない」だけが見える(2026-08-25 に E2E-iOS で踏んだ)
+                    let systemUI = SystemUIDriver(port: port, sharesPrimarySession: true)
+                    homeScreenDriver = systemUI
+                    fallbackDriver = systemUI
                     // xcuitest はブリッジの自己申告が無いため、バンドルのマーカーで判定する。
                     // --app-path があれば FileManager だけで判定できる(simctl の ~0.5s を
                     // シナリオプロセスごとに払わない)。無ければ simctl へ落ちる

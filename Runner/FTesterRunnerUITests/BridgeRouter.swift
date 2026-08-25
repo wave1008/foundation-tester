@@ -30,6 +30,10 @@ final class BridgeRouter {
     /// 直近スナップショットの ref→要素。handleType の読み返しが「対象の identifier」と
     /// 「入力前の値」をここから採る(ライブクエリを撃たずに済ませるため)
     private var refElements: [Int: ElementInfo] = [:]
+    /// `/systemui/snapshot` が振る ref。**アプリの refFrames と別に持つ**のが要点 ——
+    /// 同じ表に書くと、システム UI を1枚撮っただけで直前のアプリの ref が全部無効になる
+    /// (engine=xcuitest はブリッジが1本しかなく、主ドライバと共有している)
+    private var systemRefFrames: [Int: CGRect] = [:]
     // 直前の要求が画面を変えうる操作(tap/swipe/press/type/drag/session)だったか。
     // XCUITest の tap quiescence は非同期 push 遷移の完了前に返ることがあり、直後 snapshot が
     // 遷移前ツリーを掴む(実測 50% / bridge-8123)。操作直後の snapshot に限り整定確認する。
@@ -58,7 +62,7 @@ final class BridgeRouter {
     // 明示的な swipe/scroll コマンドは同 settledSignature(どちらも「連続2回一致」で待つ)。
     // **/pinch と /doubletap も同じ理由で入れない**: ズーム・展開のアニメーションは budget 内に
     // 収まらないことがあり、ホストの performGesture が末尾で必ず整定を待つ(二重に待たない)。
-    private static let mutatingPaths: Set<String> = ["/session", "/tap", "/type", "/clear", "/pressEnter", "/hidekeyboard", "/press", "/appswitcher", "/home"]
+    private static let mutatingPaths: Set<String> = ["/session", "/systemui/tap", "/tap", "/type", "/clear", "/pressEnter", "/hidekeyboard", "/press", "/appswitcher", "/home"]
 
     /// 所要内訳ログの on/off(既定 off)。ホストの FT_BRIDGE_TIMING=1 を BridgeLauncher が
     /// xctestrun の環境変数へ注入する(同期相手: Sources/FTBridgeClient/BridgeLauncher.swift)
@@ -77,6 +81,8 @@ final class BridgeRouter {
             case ("GET", "/snapshot"): response = try handleSnapshot(request)
             case ("GET", "/hittable"): response = try handleHittable(request)
             case ("GET", "/systemalert"): response = handleSystemAlert()
+            case ("GET", "/systemui/snapshot"): response = try handleSystemUISnapshot(request)
+            case ("POST", "/systemui/tap"): response = try handleSystemUITap(request.body)
             case ("POST", "/tap"): response = try handleTap(request.body)
             case ("POST", "/type"): response = try handleType(request.body)
             case ("POST", "/clear"): response = try handleClear(request.body)
@@ -346,6 +352,52 @@ final class BridgeRouter {
             .filter { !$0.isEmpty }
         let title = alert.label.isEmpty ? nil : alert.label
         return .json(Out(present: true, title: title, buttons: buttons))
+    }
+
+    /// SpringBoard(別プロセス)の木を **セッションを触らずに** 撮る。
+    ///
+    /// `POST /session springboard` + `GET /snapshot` と結果は同じだが、あちらは `app` /
+    /// `sessionBundleID` / `refFrames` を差し替える。**engine=xcuitest はブリッジが1本しかなく
+    /// 主ドライバと共有している**ため、それを撃つとアプリのセッションと ref が巻き添えになり、
+    /// アラートを閉じた次のステップが SpringBoard の木を読んで
+    /// `cannot resolve the locator` で落ちる(2026-08-25 に E2E-iOS で実測)。
+    ///
+    /// 撮る機構(`captureOnce`)は元からアプリを引数で受け取るので、参照した SpringBoard を
+    /// 渡して ref を別表へ書くだけでよい。`/systemalert` と同じ「参照するだけ」の規律。
+    ///
+    /// **アラートの有無で撮る/撮らないを分けない**: この口はホーム画面の走査(tapAppIcon)にも
+    /// 使う。SpringBoard は system shell なので背面に回らず、`requireForegroundApp` が
+    /// 防いでいる「背面アプリの木を読むとランナーごと落ちる」形には当たらない
+    private func handleSystemUISnapshot(_ request: BridgeHTTPServer.Request) throws
+        -> BridgeHTTPServer.Response {
+        snapshotElementLimit = BridgeAPI.resolvedSnapshotElementLimit(
+            request.queryValue("max").flatMap { Int($0) })
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let cap = try captureOnce(springboard)
+        systemRefFrames = cap.frames
+        return .json(SnapshotResponse(
+            sessionBundleID: "com.apple.springboard",
+            screen: FTRect(x: cap.screen.origin.x, y: cap.screen.origin.y,
+                           width: cap.screen.width, height: cap.screen.height),
+            elements: cap.elements,
+            truncatedCount: cap.truncated,
+            note: nil))
+    }
+
+    /// `/systemui/snapshot` が振った ref を叩く。**アプリの refFrames は読まない**
+    /// (別の名前空間。取り違えると座標が1枚前のアプリの木のものになる)
+    private func handleSystemUITap(_ body: Data) throws -> BridgeHTTPServer.Response {
+        let req = try decode(TapRequest.self, body)
+        guard let ref = req.ref else {
+            throw BridgeError(400, "ref is required (GET /systemui/snapshot first)")
+        }
+        guard let frame = systemRefFrames[ref] else {
+            throw BridgeError(404,
+                "unknown system-UI reference number [\(ref)] — run GET /systemui/snapshot first")
+        }
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        coordinate(springboard, CGPoint(x: frame.midX, y: frame.midY)).tap()
+        return .json(OKResponse())
     }
 
     private func handleHittable(_ request: BridgeHTTPServer.Request) throws

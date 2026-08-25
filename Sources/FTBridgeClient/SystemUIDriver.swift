@@ -13,8 +13,20 @@ import FTCore
 public final class SystemUIDriver: AppDriver {
     private let client: BridgeClient
 
-    public init(port: UInt16) {
+    /// 主ドライバが**このブリッジのセッションでアプリを駆動しているか**(engine=xcuitest = true)。
+    ///
+    /// true のときだけ版 79 の `/systemui/*`(セッションと ref を触らない)を使う。
+    /// **hybrid では false のまま = 旧経路**にするのが要点: あちらの主ドライバは in-app で
+    /// 別プロセスなので `/session springboard` の巻き添えが無く、**変える理由が無い**。
+    /// 実際 2026-08-25 に hybrid まで新経路へ寄せたところ、`notExist` の所要が
+    /// 0.30s → 0.07s に縮み、**その 0.25s が担っていた暗黙の整定待ち**が消えて
+    /// E2E-iOS の横カルーセルが 3/3 で落ちた(HEAD は 3/3 緑。対照で確定)。
+    /// 速くしてよいのは、その待ちに寄りかかっている砦を先に数え終えてから。
+    private let sharesPrimarySession: Bool
+
+    public init(port: UInt16, sharesPrimarySession: Bool = false) {
         self.client = BridgeClient(port: port)
+        self.sharesPrimarySession = sharesPrimarySession
     }
 
     public func snapshot() async throws -> SnapshotResponse {
@@ -25,11 +37,23 @@ public final class SystemUIDriver: AppDriver {
     /// SnapshotCacheBypassForwardingTests がラッパー全体でこれを守る)。
     /// **張り直しは必ずこちらに置く** —— snapshot() を素通し側にすると片方だけ張り直しを飛ばす
     public func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {
-        // 参照を張り直してから live ツリー(現在のアラート含む)を取る。session は refFrames をクリアし、
-        // 続く snapshot が振り直すので、この直後の tap は同じ ref で当たる。
+        // 版 79 以降・**共有しているときだけ**: セッションを触らない専用の口。
+        // engine=xcuitest はこのブリッジを主ドライバと共有しているので、旧経路
+        // (`/session springboard`)を撃つとアプリのセッションと refFrames が巻き添えになり、
+        // 次のステップが SpringBoard の木を読む。hybrid で使わない理由は init の doc
+        if sharesPrimarySession, let scoped = try await client.systemUISnapshot() {
+            usedScopedSnapshot = true
+            return scoped
+        }
+        // hybrid(共有していない)と旧ランナー(版 < 79)。前者は巻き添えが無いので
+        // 従来どおりが正しく、後者は新しい口が 404 で無い
+        usedScopedSnapshot = false
         try await client.launch(bundleID: "com.apple.springboard")
         return try await client.snapshot(bypassingCache: bypassingCache)
     }
+
+    /// 直前の snapshot がどちらの経路だったか。tap の ref を引く表が違うので取り違えない
+    private var usedScopedSnapshot = false
     /// **転送必須**(既定実装に任せると最内のブリッジ接続へ届かず、上げたつもりで 120 のまま)
     public func raiseElementLimitOnNextSnapshot(_ max: Int?) {
         client.raiseElementLimitOnNextSnapshot(max)
@@ -38,7 +62,12 @@ public final class SystemUIDriver: AppDriver {
     public var pointScale: Double { client.pointScale }
     public var verifiesTypedText: Bool { client.verifiesTypedText }
 
-    public func tap(ref: Int) async throws { try await client.tap(ref: ref) }
+    /// **直前の snapshot と同じ名前空間の ref を使う**(scoped は `systemRefFrames`、
+    /// 旧経路は session を springboard へ移したうえでの `refFrames`)
+    public func tap(ref: Int) async throws {
+        if usedScopedSnapshot, try await client.systemUITap(ref: ref) { return }
+        try await client.tap(ref: ref)
+    }
     public func type(ref: Int?, text: String) async throws { try await client.type(ref: ref, text: text) }
     public func pressEnter() async throws { try await client.pressEnter() }
     public func clearInput(ref: Int?) async throws { try await client.clearInput(ref: ref) }

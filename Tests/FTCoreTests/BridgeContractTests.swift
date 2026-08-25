@@ -54,6 +54,11 @@ final class BridgeContractTests: XCTestCase {
         // GET /systemalert は「SpringBoard のアラートが載っているか」だけを聞く軽い口
         // (2026-08-21 追加。木を全部撮る /snapshot は約 185ms・こちらはアラート無しで約 73ms)
         "GET /systemalert",
+        // /systemui/* は SpringBoard を**セッションを触らずに**読む/叩く口
+        // (2026-08-25 追加・版 79)。ref は専用の名前空間 = ランナーの systemRefFrames。
+        // engine=xcuitest は主ドライバと同じブリッジを共有するので、
+        // 旧経路(POST /session springboard)だとアプリのセッションが巻き添えになる
+        "GET /systemui/snapshot", "POST /systemui/tap",
         "GET /screenshot", "GET /snapshot", "GET /status",
         "POST /appstate", "POST /appswitcher", "POST /clear", "POST /doubletap", "POST /drag",
         "POST /hidekeyboard", "POST /home", "POST /pinch", "POST /press", "POST /pressEnter",
@@ -119,19 +124,19 @@ final class BridgeContractTests: XCTestCase {
             "InAppBridge/Sources/InAppWebViewDOM.swift": "ef4df4ffbbcb41adab67e3c257d8de5bcb2ac73b39c7e4e5a2e8305db37a34b6",
             "InAppBridge/Sources/boot.m": "b23fc93fbc99ce2579c9fd8ae75a6f9bbfd0ec6122bec60eb6cd00775dd635ef",
             "InAppBridge/build.sh": "73f53b3434d29114cf1bd0fd68264d373dc2730585d9f0c001d750dfd2844794",
-            "Sources/FTCore/BridgeDTO.swift": "c54a1a9862917ff22fe6be1b77d8e8bcbe7aabea5182ff05a012c86590ac5256",
+            "Sources/FTCore/BridgeDTO.swift": "fcba40c7ab088bfcbf6ae8af0d5dd0ad3f0d7c7adfd9c628e3bf87355e2b7796",
             "Sources/FTCore/WebViewDOMSnapshot.swift": "1ee7abbddc203445c9e6859e0f6371fd22b7d7e40c3e406e5e1bf2c6cd1b4852",
         ],
         .xcuitest: [
             "Runner/FTesterRunnerUITests/BridgeHTTPServer.swift": "a915206e5b7a4a6a24c2e50ec64bcbe11f11566edae36128a731db29735044d9",
-            "Runner/FTesterRunnerUITests/BridgeRouter.swift": "4977f2c9eeb8711bb603b08e3c49487fd3cb8e0f46e4afc8a0b0085a5abd7cdf",
+            "Runner/FTesterRunnerUITests/BridgeRouter.swift": "bebea5976e2ec9573b90bce30c162d150d88e80a5bf629c872d8915c8fa42767",
             "Runner/FTesterRunnerUITests/BridgingHeader.h": "f7ff424d9283644d0e7a0c6e202911ecbf2d9c12d469eea330d91471c4788272",
             "Runner/FTesterRunnerUITests/DisplayHeartbeat.swift": "e991d489bb2acdee6a523231fc136c78445d5e67c8464750b3c6ba01171d2c69",
             "Runner/FTesterRunnerUITests/FTesterBridgeTests.swift": "fa310ccbbe3447012d46ec300f3cb30e40435ad4739293432b4f9f6369f44338",
             "Runner/FTesterRunnerUITests/FastInput.swift": "18b54340c404eac53736675763fad8e291b08e2f1f1ba96d696172698aa83bc1",
             "Runner/FTesterRunnerUITests/ObjCExceptionCatcher.h": "5a98cdbeefb031137a985b2f4430a5e12fec447a492599f8f4da1bd2c7101edc",
             "Runner/FTesterRunnerUITests/ObjCExceptionCatcher.m": "8b41a8a81bc8199bca13a364717614684f8003999c7675d9a63242c8e74c26be",
-            "Sources/FTCore/BridgeDTO.swift": "c54a1a9862917ff22fe6be1b77d8e8bcbe7aabea5182ff05a012c86590ac5256",
+            "Sources/FTCore/BridgeDTO.swift": "fcba40c7ab088bfcbf6ae8af0d5dd0ad3f0d7c7adfd9c628e3bf87355e2b7796",
             "Sources/FTCore/SnapshotDedupe.swift": "01912610b9bbf66f1fcf6cecc8c3d51d3fedc836c24d1a9ba8689a2538227b17",
             "Sources/FTCore/TypeReadback.swift": "a9e331686c7304988c12da4773af5706c755ad6c61b501280ec6e7f09070298e",
         ],
@@ -202,9 +207,9 @@ final class BridgeContractTests: XCTestCase {
     // MARK: - 抽出
 
     /// Swift 側: `case ("GET", "/status")` → `GET /status`
-    private let swiftRoutePattern = #"case \("(GET|POST)", "(/[A-Za-z]+)"\)"#
+    private let swiftRoutePattern = #"case \("(GET|POST)", "(/[A-Za-z][A-Za-z0-9/_-]*)"\)"#
     /// Java 側: `case "GET /status":` → `GET /status`
-    private let javaRoutePattern = #"case "(GET|POST) (/[A-Za-z]+)":"#
+    private let javaRoutePattern = #"case "(GET|POST) (/[A-Za-z][A-Za-z0-9/_-]*)":"#
 
     private func assertRoutes(file: String, pattern: String,
                               expected: Set<String>, versionHint: String) throws {

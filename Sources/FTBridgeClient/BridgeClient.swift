@@ -410,6 +410,36 @@ public final class BridgeClient: AppDriver {
         }
     }
 
+    /// SpringBoard の木を**セッションを触らずに**撮る(`GET /systemui/snapshot`)。
+    /// ref は `systemUITap(ref:)` 専用の別名前空間(ランナー側 `systemRefFrames`)。
+    ///
+    /// 旧ランナー(版 < 79)は 404 —— 呼び手(`SystemUIDriver`)が
+    /// `POST /session springboard` + `GET /snapshot` の旧経路へ落ちる
+    public func systemUISnapshot() async throws -> SnapshotResponse? {
+        let limit = pendingElementLimit
+        pendingElementLimit = nil
+        let query = limit.map { "max=\(BridgeAPI.resolvedSnapshotElementLimit($0))" }
+        do {
+            return try await get("/systemui/snapshot", query: query,
+                                 timeout: sessionTimeout) as SnapshotResponse
+        } catch DriverError.badResponse(let status, _) where status == 404 {
+            pendingElementLimit = limit
+            return nil
+        }
+    }
+
+    /// `systemUISnapshot()` が振った ref を叩く(`POST /systemui/tap`)。
+    /// 旧ランナーは 404 → false(呼び手が旧経路へ落ちる)
+    public func systemUITap(ref: Int) async throws -> Bool {
+        do {
+            let _: OKResponse = try await post("/systemui/tap", body: TapRequest(ref: ref),
+                                               timeout: interactionTimeout)
+            return true
+        } catch DriverError.badResponse(let status, _) where status == 404 {
+            return false
+        }
+    }
+
     /// iOS は任意の前面 bundle ID を取得する手段を持たない(XCUITest は他アプリの状態を見れず、
     /// in-app は自分自身しか知らない)。appIs の失敗メッセージは actual なしで表示する
     public func foregroundAppID() async throws -> String? { nil }

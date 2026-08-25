@@ -236,7 +236,7 @@ public enum BridgeAPI {
     /// dropped from the tree entirely — while the a11y path keeps it, which is exactly the
     /// split this path exists to avoid (witness: E2E-CMP `WebViewの中身を操作できること.S0010`,
     /// failing 4 runs out of 5). A stale bridge keeps dropping it → bump.
-    public static let bridgeProtocolVersion = 78
+    public static let bridgeProtocolVersion = 79
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の
