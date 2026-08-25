@@ -9,8 +9,13 @@ decision or an approval genuinely needs a person.
 
 ```bash
 claude plugin marketplace add wave1008/foundation-tester
+claude plugin marketplace update foundation-tester
 claude plugin install fleetest@foundation-tester --scope user
 ```
+
+`marketplace update` matters when the marketplace is already on disk: `add` fetches nothing in
+that case, and installing against a stale cache fails with `Plugin "fleetest" not found in
+marketplace`. On a machine that has never added it, the line is a no-op.
 
 To pin a version instead of tracking `main`, add the marketplace from a tagged URL:
 

@@ -42,8 +42,13 @@ brew install claude-code
 
 ```bash
 claude plugin marketplace add wave1008/foundation-tester
+claude plugin marketplace update foundation-tester
 claude plugin install fleetest@foundation-tester --scope user
 ```
+
+> 2行目の `marketplace update` は、**マーケットプレイスを既に追加済みの機械**のために要ります。
+> `add` は「already on disk」と判断して何も取得しないため、キャッシュが古いままだと
+> `Plugin "fleetest" not found in marketplace` で失敗します。新規導入なら何も起きません。
 
 > **改名前の `ftester@foundation-tester` を入れていた場合は、先に消してください。**
 > プラグイン名が変わったため新旧が同居し、古い `/ftester:*` スキルは既に存在しない

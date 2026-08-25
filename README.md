@@ -47,9 +47,14 @@ UI は VSCode 拡張(`vscode-fleetest/`)に一本化している(セットアッ
 
 ```bash
 claude plugin marketplace add wave1008/foundation-tester
+claude plugin marketplace update foundation-tester
 claude plugin install fleetest@foundation-tester --scope user
 ```
 
+> `marketplace update` は、既にマーケットプレイスを追加済みの機械のために要る ——
+> `add` は「already on disk」で**何も取得しない**ので、古いキャッシュのままだと
+> `Plugin "fleetest" not found` で落ちる。新規導入なら no-op。
+>
 > **改名前の `ftester@foundation-tester` を入れている場合は、先に消してください。**
 > プラグイン名が変わったので新旧が同居し、古い `/ftester:*` スキルは既に存在しない
 > コマンド(`ftester`)と状態ディレクトリ(`.ftester/`)を指したまま残ります。

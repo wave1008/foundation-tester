@@ -8,8 +8,13 @@ fleetest プラグインは、導入・プロファイル設定・シナリオ�
 
 ```bash
 claude plugin marketplace add wave1008/foundation-tester
+claude plugin marketplace update foundation-tester
 claude plugin install fleetest@foundation-tester --scope user
 ```
+
+`marketplace update` が効くのは、マーケットプレイスが既に追加済みの場合です。そのとき `add` は
+何も取得しないため、古いキャッシュのまま install すると
+`Plugin "fleetest" not found in marketplace` で失敗します。一度も追加していない機械では no-op です。
 
 `main` を追従せず版を固定したい場合は、タグ付きの URL でマーケットプレイスを追加します。
 

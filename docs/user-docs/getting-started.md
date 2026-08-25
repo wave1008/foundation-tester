@@ -45,8 +45,13 @@ brew install claude-code
 
 ```bash
 claude plugin marketplace add wave1008/foundation-tester
+claude plugin marketplace update foundation-tester
 claude plugin install fleetest@foundation-tester --scope user
 ```
+
+> The second line, `marketplace update`, is there for machines that **already have the
+> marketplace added**. `add` sees it is already on disk and fetches nothing, so a stale cache
+> fails with `Plugin "fleetest" not found in marketplace`. On a fresh machine it does nothing.
 
 > **If you installed the pre-rename plugin (`ftester@foundation-tester`), remove it first.**
 > The plugin was renamed, so the two sit side by side and the old `/ftester:*` skills keep
