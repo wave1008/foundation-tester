@@ -285,6 +285,8 @@ enum FleetRunner {
         let existing = RemoteHostFactsStore.load(dir: dir, host: localHost)
         let facts = RemoteHostFacts(
             host: localHost,
+            // 手元の表示名は "local"(FTCore.DeviceHostGrouping.localDisplayName)
+            machineAlias: DeviceHostGrouping.localDisplayName,
             dispatchOverheadSeconds: existing?.dispatchOverheadSeconds,
             processorModel: hardware.processorModel, coreCount: hardware.coreCount,
             concurrentDevices: existing?.concurrentDevices,

@@ -546,7 +546,10 @@ struct RemoteRunDispatcher {
         let recorded = recordedMachine(texts: texts) ?? existing?.host
         let concurrentDevices = recordedConcurrentDevices(texts: texts) ?? existing?.concurrentDevices
         let facts = RemoteHostFacts(
-            host: recorded, dispatchOverheadSeconds: overheadSeconds,
+            host: recorded,
+            // 表示用のエイリアス(鍵ではない。RemoteHostFacts.machineAlias の宣言参照)
+            machineAlias: hostLabel ?? existing?.machineAlias,
+            dispatchOverheadSeconds: overheadSeconds,
             processorModel: session?.processorModel ?? existing?.processorModel,
             coreCount: session?.coreCount ?? existing?.coreCount,
             concurrentDevices: concurrentDevices,

@@ -12,6 +12,11 @@ public struct RemoteHostFacts: Codable, Equatable, Sendable {
     /// その機械の**ホスト名**(回収した実績レコードの host と同じ語彙。観測値で、プローブでの
     /// 推測はしない)。**JSON キーは "host"**(2026-08-26 改名。旧キー "machine" も読む)
     public var host: String?
+    /// **表示用のマシン名(ローカルエイリアス)**。このファイルは「その machine 自身に関する構成」
+    /// なので、エイリアスを**欄として**持ってよい(鍵にはしない —— 鍵はホスト。2026-08-26 ユーザー決定)。
+    /// 用途は記録(ホスト名)の読み替え1つだけ: 結果 JSON は host で残るので、画面に登録名を出すには
+    /// ホスト名 → エイリアスの対応が要る。ディスパッチのたびに書き直すので改名にも追随する
+    public var machineAlias: String?
     /// 直近ディスパッチのセットアップ固定費(プローブ〜リモート run 開始前)の実測秒
     public var dispatchOverheadSeconds: Double?
     /// プローブの実測(sysctl machdep.cpu.brand_string)
@@ -23,7 +28,8 @@ public struct RemoteHostFacts: Codable, Equatable, Sendable {
     public var updatedAt: String
 
     private enum CodingKeys: String, CodingKey {
-        case host, machine, dispatchOverheadSeconds, processorModel, coreCount, concurrentDevices, updatedAt
+        case host, machine, machineAlias
+        case dispatchOverheadSeconds, processorModel, coreCount, concurrentDevices, updatedAt
     }
 
     /// 旧キー "machine"(改名前のキャッシュ)も読む。書きは "host" だけ
@@ -31,6 +37,7 @@ public struct RemoteHostFacts: Codable, Equatable, Sendable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         host = try c.decodeIfPresent(String.self, forKey: .host)
             ?? c.decodeIfPresent(String.self, forKey: .machine)
+        machineAlias = try c.decodeIfPresent(String.self, forKey: .machineAlias)
         dispatchOverheadSeconds = try c.decodeIfPresent(Double.self, forKey: .dispatchOverheadSeconds)
         processorModel = try c.decodeIfPresent(String.self, forKey: .processorModel)
         coreCount = try c.decodeIfPresent(Int.self, forKey: .coreCount)
@@ -41,6 +48,7 @@ public struct RemoteHostFacts: Codable, Equatable, Sendable {
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encodeIfPresent(host, forKey: .host)
+        try c.encodeIfPresent(machineAlias, forKey: .machineAlias)
         try c.encodeIfPresent(dispatchOverheadSeconds, forKey: .dispatchOverheadSeconds)
         try c.encodeIfPresent(processorModel, forKey: .processorModel)
         try c.encodeIfPresent(coreCount, forKey: .coreCount)
@@ -48,10 +56,12 @@ public struct RemoteHostFacts: Codable, Equatable, Sendable {
         try c.encode(updatedAt, forKey: .updatedAt)
     }
 
-    public init(host: String? = nil, dispatchOverheadSeconds: Double? = nil,
+    public init(host: String? = nil, machineAlias: String? = nil,
+               dispatchOverheadSeconds: Double? = nil,
                processorModel: String? = nil, coreCount: Int? = nil, concurrentDevices: Int? = nil,
                updatedAt: String) {
         self.host = host
+        self.machineAlias = machineAlias
         self.dispatchOverheadSeconds = dispatchOverheadSeconds
         self.processorModel = processorModel
         self.coreCount = coreCount

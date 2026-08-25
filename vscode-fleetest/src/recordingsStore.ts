@@ -74,11 +74,13 @@ function booleanField(obj: Record<string, unknown> | null, key: string): boolean
  * 変更時は両方揃えること)。runID 先頭6桁が yyyyMM で無い(不正な runID)場合は "unknown" 配下。
  */
 /**
- * **ホスト名 → 設定タブで付けた登録名**の読み替え表(2026-08-26 ユーザー決定: 記録側は
- * 登録名を持たず、読み手が読み替える)。供給元は CLI が書く `.fleetest/remote-hosts/<登録名>.json`
- * の `machine`(ディスパッチのたびに更新。手元は `local.json`)。**読み替えは表示だけ**で、
- * LPT の同一 machine 判定など記録側の照合は run.json の machine のまま。
- * 表に無いホスト名はそのまま出す(登録前の run・別の人の機械)。
+ * **ホスト名 → 設定タブで付けたマシン名(ローカルエイリアス)**の読み替え表
+ * (2026-08-26 ユーザー決定: 記録側はエイリアスを持たず、読み手が読み替える)。
+ * 供給元は CLI が書く `.fleetest/remote-hosts/<ホスト>.json` の `host`(ホスト名)と
+ * `machineAlias`(表示用のエイリアス)。**ファイル名=鍵はホスト**で、エイリアスは欄として
+ * 持つだけ(Sources/FTCore/RemoteHostFacts.swift)。ディスパッチのたびに更新される。
+ * **読み替えは表示だけ**で、LPT の同一マシン判定など記録側の照合は run.json の host のまま。
+ * 表に無いホスト名はそのまま出す(まだディスパッチしていない機械・別の人の機械)。
  */
 async function readMachineAliases(workspaceRoot: string): Promise<Map<string, string>> {
   const dir = path.join(workspaceRoot, ".fleetest", "remote-hosts");
@@ -90,30 +92,34 @@ async function readMachineAliases(workspaceRoot: string): Promise<Map<string, st
   }
   const aliases = new Map<string, string>();
   for (const file of files) {
-    const label = file.slice(0, -".json".length);
     const raw = await readJson(path.join(dir, file));
-    const machine = stringField(isRecord(raw) ? raw : null, "machine");
-    if (machine === undefined || machine === "") {
+    const record = isRecord(raw) ? raw : null;
+    // 旧レイアウト(ファイル名がエイリアス・欄が machine)も読む —— 更新前の受け手の
+    // キャッシュが残っていても表示が空にならないように
+    const host = stringField(record, "host") ?? stringField(record, "machine");
+    const alias = stringField(record, "machineAlias") ?? file.slice(0, -".json".length);
+    if (host === undefined || host === "" || alias === "") {
       continue;
     }
-    // 同じ機械に複数の登録名が向いていたら **手元("local")を優先**し、他は先勝ち
+    // 同じ機械に複数のエイリアスが向いていたら **手元("local")を優先**し、他は先勝ち
     // (ファイル名昇順)。手元をリモート名で呼ぶと、同じ機械の run が2つの名前で並ぶ
-    if (!aliases.has(machine) || label === "local") {
-      aliases.set(machine, label);
+    if (!aliases.has(host) || alias === "local") {
+      aliases.set(host, alias);
     }
   }
   return aliases;
 }
 
-/** セッションのマシン表示名。run.json の machine(ホスト名)を登録名へ読み替える。 */
+/** セッションのマシン表示名。run.json の `host`(ホスト名。旧記録は `machine`)を
+ *  マシン名(エイリアス)へ読み替える。表に無ければホスト名のまま出す。 */
 function sessionMachineLabel(
   meta: Record<string, unknown> | null, aliases: ReadonlyMap<string, string>,
 ): string | null {
-  const machine = stringField(meta, "machine");
-  if (machine === undefined || machine === "") {
+  const host = stringField(meta, "host") ?? stringField(meta, "machine");
+  if (host === undefined || host === "") {
     return null;
   }
-  return aliases.get(machine) ?? machine;
+  return aliases.get(host) ?? host;
 }
 
 function runDirFor(workspaceRoot: string, project: string, runID: string): string {

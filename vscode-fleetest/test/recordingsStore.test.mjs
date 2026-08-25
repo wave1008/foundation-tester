@@ -306,7 +306,7 @@ test("listRecordingSessions: run.json の machine を要約に載せる", async 
         },
       ],
     });
-    writeJson(path.join(dir, "run.json"), { startedAt: "2026-07-23T00:00:00Z", machine: "M1Max", passed: 3, failed: 0 });
+    writeJson(path.join(dir, "run.json"), { startedAt: "2026-07-23T00:00:00Z", host: "M1Max", passed: 3, failed: 0 });
 
     const [session] = await listRecordingSessions(root);
     assert.equal(session.machine, "M1Max", "読み替え表が無ければ run.json の machine のまま");
@@ -333,7 +333,7 @@ test("loadRecordingSessionDetail: machine を run.json から読む(欠落は nu
   try {
     const withMachine = runDir(root, "SampleApp", "20260723-000000");
     writeJson(path.join(withMachine, "recordings", "index.json"), SAMPLE_INDEX);
-    writeJson(path.join(withMachine, "run.json"), { startedAt: "2026-07-23T00:00:00Z", machine: "LDIPC96" });
+    writeJson(path.join(withMachine, "run.json"), { startedAt: "2026-07-23T00:00:00Z", host: "LDIPC96" });
     const detail = await loadRecordingSessionDetail(root, "SampleApp", "20260723-000000");
     assert.equal(detail.machine, "LDIPC96");
 
@@ -367,7 +367,7 @@ function writeMemberRun(root, project, runID, { machine, runGroup, device, scena
   });
   writeJson(path.join(dir, "run.json"), {
     startedAt: `2026-08-26T01:0${runID.slice(-1)}:00Z`,
-    machine, passed, failed,
+    host: machine, passed, failed,
     ...(runGroup === null ? {} : { runGroup }),
   });
 }
@@ -465,8 +465,11 @@ test("resolveSessionRunIDs: 鍵を共有する run を全部返す(鍵が無け�
 test("listRecordingSessions: ホスト名を登録名へ読み替える(表に無ければそのまま)", async () => {
   const root = makeWorkspace();
   try {
-    writeJson(path.join(root, ".fleetest", "remote-hosts", "M1Ultra.json"), { machine: "LDIPC95" });
-    writeJson(path.join(root, ".fleetest", "remote-hosts", "local.json"), { machine: "LDIPC96" });
+    // 鍵はホスト(ファイル名)・エイリアスは欄(machineAlias)。Sources/FTCore/RemoteHostFacts.swift
+    writeJson(path.join(root, ".fleetest", "remote-hosts", "192.168.20.95.json"),
+              { host: "LDIPC95", machineAlias: "M1Ultra" });
+    writeJson(path.join(root, ".fleetest", "remote-hosts", "LDIPC96.json"),
+              { host: "LDIPC96", machineAlias: "local" });
 
     for (const [runID, machine] of [
       ["20260826-020000Z-LDIPC95-aaa1", "LDIPC95"],
@@ -475,7 +478,7 @@ test("listRecordingSessions: ホスト名を登録名へ読み替える(表に�
     ]) {
       const dir = runDir(root, "SampleApp", runID);
       writeJson(path.join(dir, "recordings", "index.json"), SAMPLE_INDEX);
-      writeJson(path.join(dir, "run.json"), { startedAt: `2026-08-26T0${runID[10]}:00:00Z`, machine });
+      writeJson(path.join(dir, "run.json"), { startedAt: `2026-08-26T0${runID[10]}:00:00Z`, host: machine });
     }
 
     const sessions = await listRecordingSessions(root);
@@ -491,7 +494,7 @@ test("listRecordingSessions: 読み替え表が無い環境ではホスト名の
   try {
     const dir = runDir(root, "SampleApp", "20260826-020000Z-LDIPC95-aaa1");
     writeJson(path.join(dir, "recordings", "index.json"), SAMPLE_INDEX);
-    writeJson(path.join(dir, "run.json"), { startedAt: "2026-08-26T02:00:00Z", machine: "LDIPC95" });
+    writeJson(path.join(dir, "run.json"), { startedAt: "2026-08-26T02:00:00Z", host: "LDIPC95" });
 
     assert.equal((await listRecordingSessions(root))[0].machine, "LDIPC95");
   } finally {
@@ -502,10 +505,11 @@ test("listRecordingSessions: 読み替え表が無い環境ではホスト名の
 test("loadRecordingSessionDetail: 再生ビュー側も同じ読み替えを通す", async () => {
   const root = makeWorkspace();
   try {
-    writeJson(path.join(root, ".fleetest", "remote-hosts", "M1Max.json"), { machine: "SNB-M1" });
+    writeJson(path.join(root, ".fleetest", "remote-hosts", "192.168.20.101.json"),
+              { host: "SNB-M1", machineAlias: "M1Max" });
     const dir = runDir(root, "SampleApp", "20260826-020000Z-SNB-M1-aaa1");
     writeJson(path.join(dir, "recordings", "index.json"), SAMPLE_INDEX);
-    writeJson(path.join(dir, "run.json"), { startedAt: "2026-08-26T02:00:00Z", machine: "SNB-M1" });
+    writeJson(path.join(dir, "run.json"), { startedAt: "2026-08-26T02:00:00Z", host: "SNB-M1" });
 
     const detail = await loadRecordingSessionDetail(root, "SampleApp", "20260826-020000Z-SNB-M1-aaa1");
     assert.equal(detail.machine, "M1Max");

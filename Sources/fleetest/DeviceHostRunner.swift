@@ -257,6 +257,8 @@ enum DeviceHostRunner {
         let localDeviceCount = groups.first(where: { $0.host == nil })?.deviceNames.count
         let facts = RemoteHostFacts(
             host: localHost,
+            // 手元の表示名は "local"(FTCore.DeviceHostGrouping.localDisplayName)
+            machineAlias: DeviceHostGrouping.localDisplayName,
             dispatchOverheadSeconds: existing?.dispatchOverheadSeconds,
             processorModel: hardware.processorModel, coreCount: hardware.coreCount,
             concurrentDevices: localDeviceCount ?? existing?.concurrentDevices,
