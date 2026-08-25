@@ -318,7 +318,7 @@ function renderRunProfileDevices() {
   // 並び順はマシンプロファイルと同じ(config.ts の listMachineProfiles が
   // 手元 → ホスト名順、その中で名前順に並べたもの)。ここでは並べ替えない
   const machineDevices = machine ? machine.devices : [];
-  const appendRow = (name, host, platform, missing) => {
+  const appendRow = (name, host, platform, kind, missing) => {
     const row = document.createElement('label');
     row.className = 'run-profile-device-row';
     const checkbox = document.createElement('input');
@@ -335,7 +335,15 @@ function renderRunProfileDevices() {
     // タイル/レーンと同じ配色ピル。マシンに無い名前は不明色(tile-name-unknown)。
     pill.className = 'tile-name ' + (platform ? 'tile-name-' + platform : 'tile-name-unknown');
     pill.textContent = name;
-    row.append(checkbox, pill);
+    row.append(checkbox);
+    // 実機バッジはデバイス名の左(マシンプロファイル一覧・ピッカー・タイルと同じ配色 .badge-kind)
+    if (kind === 'physical') {
+      const kindBadge = document.createElement('span');
+      kindBadge.className = 'badge badge-kind';
+      kindBadge.textContent = t('wvMonitor.tile.physicalBadge');
+      row.appendChild(kindBadge);
+    }
+    row.appendChild(pill);
     // 手元でないデバイスは名前の右にホスト名(マシンプロファイルの一覧と同じバッジ)
     if (host) {
       const badge = document.createElement('span');
@@ -353,11 +361,11 @@ function renderRunProfileDevices() {
   };
   const machineKeys = new Set(machineDevices.map((d) => refKey({ name: d.name, host: d.host })));
   for (const device of machineDevices) {
-    appendRow(device.name, device.host, device.platform, false);
+    appendRow(device.name, device.host, device.platform, device.kind, false);
   }
   for (const ref of runProfileCheckedRefs) {
     if (!machineKeys.has(refKey(ref))) {
-      appendRow(ref.name, ref.host, null, true);
+      appendRow(ref.name, ref.host, null, null, true);
     }
   }
 }
