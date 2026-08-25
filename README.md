@@ -10,7 +10,8 @@ Claude Codeを前提とした macOS専用の iOS / Android アプリの E2E テ�
 - **実行**: シナリオは LLM なしで決定的に実行する。高速・安定で CI 向き
 - **失敗時のみ FM が介入**: ロケータ自己修復(+ヒールキャッシュ)/ スクリーンショットの
   視覚検証(マルチモーダル)/ 失敗原因のトリアージとレポート・修正提案。**すべてオンデバイス —
-  アプリの画面情報が Mac の外に出ない**
+  アプリの画面情報が Mac の外に出ない**。**FM の機能は experimental で、現時点では英語のみ**
+  (Mac のシステム言語を英語にする必要がある。日本語サポートは 2027 年の見込み)
 
 ## 4つのインターフェース
 
@@ -39,6 +40,12 @@ UI は VSCode 拡張(`vscode-fleetest/`)に一本化している(セットアッ
 
 > macOS 26 では FM の**視覚検証だけ**が使えない(画像入力 API が macOS 27+)。
 > occlusion-guard(偽陽性チェック)と `screenLooksLike` は自動で無効になり、他は制限なく動く。
+>
+> **FM の機能は experimental で、2026 年内は英語でしか使えない**(日本語サポートは 2027 年の
+> 見込み)。**Mac のシステム言語が英語である必要があり**、`ja-JP` だと呼び出しが全て失敗する。
+> `availability` は available を返したまま失敗するので、実際に推論する
+> `fleetest doctor --fm-only` で確認する。詳細は
+> [docs/user-docs/overview/environments_ja.md](docs/user-docs/overview/environments_ja.md)。
 
 ## インストール(使う: 自分のアプリのテストを書く)
 

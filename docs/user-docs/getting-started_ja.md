@@ -16,6 +16,10 @@ macOS や Xcodeのベータ版を前提としているので現時点ではバ�
 
 一部の機能（視覚検証）は macOS 27+ で利用可能です
 
+FM（Foundation Models）の機能は **experimental で、2026 年内は英語でしか使えません**（日本語
+サポートは 2027 年の見込み）。**Mac のシステム言語を英語にする必要があります** ——
+詳細は [overview/environments_ja.md](overview/environments_ja.md)。
+
 ## 2. 事前準備
 
 Fleetestのインストールをスムーズに行うため、事前に以下の作業を実施してください。

@@ -18,6 +18,10 @@ You install it through the Claude Code plugin, which clones the repository and b
 
 Some features (visual verification) require macOS 27+.
 
+FM (Foundation Models) features are **experimental and English-only during 2026** (Japanese
+support is expected in 2027). **The Mac's system language must be English** — see
+[overview/environments.md](overview/environments.md).
+
 ## 2. Before you start
 
 To make the Fleetest installation go smoothly, do the following beforehand.

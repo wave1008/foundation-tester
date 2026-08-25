@@ -4,6 +4,10 @@ When self-healing is enabled and a selector fails to resolve during a device run
 Models) repairs the locator on the fly so the run continues, instead of failing the scenario
 outright. This requires FM to be available (see `fleetest doctor`).
 
+FM features are **experimental and English-only for now** — the Mac's system language must be
+English, and Japanese is not supported by the model during 2026 (2027 is expected). See
+[environments.md](../overview/environments.md).
+
 ## Enabling it
 
 - **`--profile` runs default `heal` to ON.** A plain `fleetest run` without a profile defaults it

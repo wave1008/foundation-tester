@@ -4,6 +4,10 @@
 失敗させる代わりに、FM(Foundation Models)がその場でロケータを修復して実行を続けます。
 FM が使える状態である必要があります(`fleetest doctor` で確認できます)。
 
+FM の機能は **experimental で、現時点では英語のみ**です —— Mac のシステム言語を英語にする
+必要があり、モデルは 2026 年内は日本語に対応しません(日本語サポートは 2027 年の見込み)。
+詳細は [environments_ja.md](../overview/environments_ja.md)。
+
 ## 有効にする
 
 - **`--profile` を使う実行は `heal` の既定が ON** です。プロファイルを使わない素の
