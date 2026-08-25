@@ -91,10 +91,19 @@ final class SettleMotionTests: XCTestCase {
     }
 
     /// **判定不能(nil)は「動いている」側へ倒す** —— 共通要素が無いのは画面が入れ替わった
-    /// 直後で、静止したと言える根拠が無い
+    /// 直後で、静止したと言える根拠が無い。**ただし1周だけ**(下のテスト)
     func testUnknownDisplacementKeepsWaiting() {
         XCTAssertTrue(SettleMotion.isDecelerating([nil]))
         XCTAssertTrue(SettleMotion.isDecelerating([30, nil]))
         XCTAssertTrue(SettleMotion.isDecelerating([nil, 30]))
+        XCTAssertTrue(SettleMotion.isDecelerating([nil, nil, 30, nil]))
+    }
+
+    /// **2周続けて測れない画面は待たない**(名前を持つ要素が1つも無い画面。何周待っても
+    /// 測れるようにはならないので、待ち続けると毎ジェスチャが上限まで回り切る)
+    func testRepeatedlyUnknownDisplacementStopsWaiting() {
+        XCTAssertFalse(SettleMotion.isDecelerating([nil, nil]))
+        XCTAssertFalse(SettleMotion.isDecelerating([30, nil, nil]))
+        XCTAssertFalse(SettleMotion.isDecelerating([nil, nil, nil, nil, nil, nil]))
     }
 }

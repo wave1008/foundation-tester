@@ -60,11 +60,18 @@ public enum SettleMotion {
     ///   (等速で動き続けるアニメーションを待つと、その画面では毎ジェスチャが上限まで待つ)
     /// - 判定材料が1つしか無い(履歴が1件)→ もう1周は待つ。1点では傾きが出ない
     ///
-    /// **nil(判定不能)は「動いている」扱い** —— 共通要素が無いのは画面が入れ替わった直後で、
-    /// 静止したと言える根拠が無い。
+    /// **nil(判定不能)を待つのは1周だけ**。共通要素が無いのは画面が入れ替わった直後の
+    /// 一過性の形なので1周は譲るが、**2周続けて測れないのは画面そのものの性質**
+    /// (名前を持つ要素が1つも無いキャンバス・地図・無名ノードだらけの WebView)で、
+    /// そこでは何周待っても測れるようにはならない。無条件に「動いている」へ倒すと、
+    /// そういう画面は早抜けの枝へ一度も入れず**毎ジェスチャが上限まで回り切る**
+    /// (24 周 = iOS xcuitest でスワイプ1回あたり約 11 秒。2026-08-25)。
     public static func isDecelerating(_ history: [Double?]) -> Bool {
         guard let latest = history.last else { return false }
-        guard let latest else { return true }
+        guard let latest else {
+            // 直前も測れていなければ「一過性」ではない。history.count == 1 は初回 = 譲る
+            return history.count < 2 || history[history.count - 2] != nil
+        }
         if latest == 0 { return false }
         guard history.count >= 2 else { return true }
         guard let previous = history[history.count - 2] else { return true }
