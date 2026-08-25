@@ -33,7 +33,7 @@ final class StaleBridgeStopTests: XCTestCase {
     func testPortInUseNamesTheHolder() {
         let error = BridgeProvisionerError.notReady(
             port: 8128,
-            underlying: LauncherError.portInUse(port: 8128, holder: "pid 29427: /…/sampleX"))
+            underlying: LauncherError.portInUse(port: 8128, holder: "pid 29427: /…/otherclone"))
         let text = error.localizedDescription
         XCTAssertTrue(text.contains("port 8128 is in use by another process"), text)
         XCTAssertTrue(text.contains("pid 29427"), text)

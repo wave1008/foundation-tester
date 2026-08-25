@@ -65,7 +65,7 @@ extension StepExecutor {
     ///     (`TapTargetGeometry.offscreenScrollGateCentre`。スクロール探索の「見つかった」ゲートと
     ///     同じ述語)。iOS の木は画面外の要素も frame ごと残すので、これが無いと通り過ぎた要素への
     ///     exist が通る。FM 側は crop が画像の外に落ちると nil = 素通りなので、**FM が生きていても
-    ///     この形は FM では塞がらない**(2026-08-20 受け手報告・E2E-sampleapp の横スクロール区画)
+    ///     この形は FM では塞がらない**(2026-08-20 受け手報告・横スクロール区画の実例)
     ///   Tier-1〜 FM: 覆われ/減光/不在(従来)。判定が返らなければ `visibilityGuardSkipped` を立てて素通り
     /// 呼び出し側(exists/textEquals)は不可視を即失敗にせず timeout まで可視化を待つ(poll-until-visible)。
     /// コストは足切り+低インクゲートで抑制(可視な高インク領域は FM を呼ばず nil で即通過)。

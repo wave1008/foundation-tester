@@ -1418,8 +1418,8 @@ latch にした。判定に使う木が常に天井のものになるので、�
 ときの実走確認は、**同じ ID を両 OS で使う E2E-CMP でしか取れず**、「同じコードが profile 切替で
 別の ID に解決される」という肝心の部分は純粋関数のテストだけが担保していた。
 
-**この穴は受け手の環境で埋まった**(2026-08-19。E2E-sampleapp = サンプルアプリ stub。
-`jp.co.sample.android.stub` / `jp.co.sample.iphone.SAMPLE.stub`)。`app:` を書かないシナリオで
+**この穴は受け手の環境で埋まった**(2026-08-19。**OS ごとに別の bundle ID / package 名を持つ
+アプリ**を実行プロファイルから解決する構成)。`app:` を書かないシナリオで
 launchApp / appIs / removeApp / installApp / clearAppData すべてが実行プロファイル経由で解決され、
 **両 OS で確認済み**(`--profile android` は 8 シナリオ一括グリーン)。
 これで「同じコードが profile 切替で別の ID に解決される」ところまで実走で取れている。
