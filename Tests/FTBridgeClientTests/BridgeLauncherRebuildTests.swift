@@ -93,3 +93,68 @@ final class BridgeLauncherRebuildTests: XCTestCase {
         XCTAssertTrue(needsRebuild(xctestrun))
     }
 }
+
+/// BridgeLauncher.staleRunnerToolchain(doctor が出す「ランナーが別のツールチェーン」警告の判定)。
+/// 再ビルドの砦と違い、**未ビルドでは黙る**(作り直しの必要ではなく未導入)。
+final class StaleRunnerToolchainTests: XCTestCase {
+    private var root: URL!
+    private let toolchain = "Xcode 27.0 Build version 27A5252f / iphonesimulator 24A5422a"
+
+    override func setUpWithError() throws {
+        root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ft-stale-toolchain-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: root)
+    }
+
+    private func storeFingerprint(_ value: String, physical: Bool = false) {
+        let derivedData = root.appendingPathComponent(
+            ".ftester/\(physical ? "DerivedData-device" : "DerivedData")")
+        ToolchainFingerprint.store(
+            at: BridgeLauncher.runnerFingerprintPath(derivedDataPath: derivedData), current: value)
+    }
+
+    private func stale(physical: Bool = false, current: String? = nil) -> String? {
+        BridgeLauncher.staleRunnerToolchain(
+            repoRoot: root, physical: physical, current: current ?? toolchain)
+    }
+
+    func testMatchingToolchainIsSilent() {
+        storeFingerprint(toolchain)
+        XCTAssertNil(stale())
+    }
+
+    /// Xcode beta を上げた形。保存されていた指紋をそのまま名指しする(何と食い違うか分かるように)
+    func testDifferentToolchainReportsStoredFingerprint() {
+        let old = "Xcode 27.0 Build version 27A5237l / iphonesimulator 24A5408c"
+        storeFingerprint(old)
+        XCTAssertEqual(stale(), old)
+    }
+
+    /// SDK だけ動いた形も不一致(ランタイムが入れ替わるとランナーは載らない)
+    func testSDKOnlyChangeIsStale() {
+        storeFingerprint("Xcode 27.0 Build version 27A5252f / iphonesimulator 24A5408c")
+        XCTAssertNotNil(stale())
+    }
+
+    func testMissingFingerprintIsSilent() {
+        XCTAssertNil(stale())
+    }
+
+    /// 現在のツールチェーンが採れないときは黙る(比較相手が無いのに警告しない)
+    func testUnknownCurrentToolchainIsSilent() {
+        storeFingerprint("Xcode 26.0 Build version 26A1 / iphonesimulator 23A1")
+        XCTAssertNil(BridgeLauncher.staleRunnerToolchain(repoRoot: root, current: nil))
+    }
+
+    /// 実機用の成果物は別の DerivedData に居る(シミュレータの指紋と混ざらない)
+    func testPhysicalUsesItsOwnDerivedData() {
+        storeFingerprint(toolchain, physical: false)
+        storeFingerprint("Xcode 26.0 Build version 26A1 / iphonesimulator 23A1", physical: true)
+        XCTAssertNil(stale(physical: false))
+        XCTAssertNotNil(stale(physical: true))
+    }
+}

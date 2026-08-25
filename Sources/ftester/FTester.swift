@@ -115,29 +115,16 @@ struct Doctor: AsyncParsableCommand {
 
         await reportUnmanagedBridges()
 
-        // ランナーをビルドした Xcode と現在選択中の Xcode の一致確認。Xcode(beta)更新後に
+        // ランナーをビルドした Xcode/SDK と現在のものの一致確認。Xcode(beta)更新後に
         // 旧ビルドのランナーを使う・逆に新ビルドのランナーを旧ランタイムに載せると、アプリが
         // 実行中に「Application is not running」でクラッシュする(2026-07-21 実害)。
-        // CLAUDE.md の「Xcode 更新後はフルリビルド」を機械検知にしたもの。
-        // 注: DTSDKBuild とランタイムのビルド ID は別体系のため比較しない(誤検知する)
-        if let root = try? RepoRoot.find() {
-            let plist = root.appendingPathComponent(".ftester/DerivedData/Build/Products/"
-                + "Debug-iphonesimulator/FTesterRunnerUITests-Runner.app/Info.plist")
-            // 末尾レター違い(27A5228b vs 27A5228h)は同一ビルド系列の再発行+増分ビルドで
-            // Info.plist が残るケースがあり実害なし(実測)。数字部分の差のみを不整合とみなす
-            func core(_ build: String) -> String {
-                String(build.reversed().drop(while: \.isLetter).reversed())
-            }
-            if let data = try? Data(contentsOf: plist),
-               let dict = try? PropertyListSerialization.propertyList(from: data, format: nil)
-                   as? [String: Any],
-               let runnerXcodeBuild = dict["DTXcodeBuild"] as? String,
-               !core(runnerXcodeBuild).isEmpty,
-               !xcode.output.contains(core(runnerXcodeBuild)) {
-                print("⚠️ The XCUITest runner was built with a different Xcode (build \(runnerXcodeBuild)). "
-                    + "After updating Xcode, install the runtime (xcodebuild -downloadPlatform iOS) and do a full rebuild "
-                    + "to bring them back in sync (a mismatch crashes the app mid-run)")
-            }
+        // 判定は再ビルドの砦と同じ指紋(BridgeLauncher.staleRunnerToolchain)。
+        // **成果物の Info.plist は見ない** —— 理由は同関数の doc(テンプレートのコピー)
+        if let root = try? RepoRoot.find(),
+           let stored = BridgeLauncher.staleRunnerToolchain(repoRoot: root) {
+            print("⚠️ The XCUITest runner was built with a different toolchain (\(stored)). "
+                + "The next bridge start rebuilds it; if the iOS runtime for the new Xcode is missing, "
+                + "install it first (xcodebuild -downloadPlatform iOS)")
         }
 
         let sims = try Shell.run(["xcrun", "simctl", "list", "devices", "booted"])

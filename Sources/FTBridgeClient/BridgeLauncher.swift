@@ -97,6 +97,27 @@ public struct BridgeLauncher {
         derivedDataPath.appendingPathComponent(".toolchain")
     }
 
+    /// 保存済みの指紋が現在のツールチェーンと食い違っていればその指紋を返す(doctor の警告用)。
+    /// 未ビルド(指紋なし)は nil = 何も言わない —— 作り直しの必要ではなく未導入なので、
+    /// ここで警告すると初回の受け手に「壊れている」と読める。
+    ///
+    /// **成果物の Info.plist を見てはいけない**(2026-08-25 に誤検知): `XCTRunner.app` は
+    /// ビルドの生成物ではなく **プラットフォーム SDK のテンプレートのコピー**で、その
+    /// `DTXcodeBuild` はテンプレート自身の値(Xcode 27 beta 6 では `27A252`)のまま残る。
+    /// `xcodebuild -version` の `27A5252f` とは体系が違うので、建て直しても永久に警告し続ける。
+    /// 判定は再ビルドの砦(`runnerNeedsRebuild`)と同じ指紋に一本化する。
+    public static func staleRunnerToolchain(
+        repoRoot: URL, physical: Bool = false,
+        current: String? = ToolchainFingerprint.current()
+    ) -> String? {
+        let derivedData = BridgeLauncher(repoRoot: repoRoot, physical: physical).derivedDataPath
+        let path = runnerFingerprintPath(derivedDataPath: derivedData)
+        guard let stored = try? String(contentsOf: path, encoding: .utf8) else { return nil }
+        let trimmed = stored.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let current, trimmed != current else { return nil }
+        return trimmed
+    }
+
     /// xctestrun から上方向に .toolchain を探す(<DerivedData>/Build/Products/ の 3 階層想定 + 余裕)
     static func findRunnerFingerprint(near xctestrun: URL) -> URL? {
         var dir = xctestrun.deletingLastPathComponent()

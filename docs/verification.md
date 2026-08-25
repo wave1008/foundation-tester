@@ -2583,7 +2583,11 @@ connection was lost」で落ちる(その台は never joined = 準備できて�
   全バイナリが dyld クラッシュする(swift build は SDKROOT/--sdk を無視するため Xcode 側を揃えるしかない)
 - Xcode(beta)単体の更新でも同様: iOS ランタイム導入(`xcodebuild -downloadPlatform iOS`)+
   ランナー再ビルドで整合させる。不整合はアプリが数操作で「Application is not running」クラッシュする
-  (`ftester doctor` が DTXcodeBuild 不一致を警告。2026-07-21 実害)
+  (`ftester doctor` がツールチェーン指紋の不一致を警告。2026-07-21 実害)。**判定に成果物の
+  `Info.plist` を使わない** —— `XCTRunner.app` は SDK のテンプレートのコピーで、`DTXcodeBuild` は
+  テンプレート自身の値のまま残る(Xcode 27 beta 6 は `27A252` で、`xcodebuild -version` の
+  `27A5252f` と体系が違う = 建て直しても永久に警告し続ける。2026-08-25 に踏んだ)。
+  正は `BridgeLauncher.staleRunnerToolchain` = 再ビルドの砦と同じ指紋
 
 ## テストが接続拒否(「ドライバへの接続が拒否されました」)で全滅したら
 
