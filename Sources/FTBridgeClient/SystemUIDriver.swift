@@ -16,12 +16,16 @@ public final class SystemUIDriver: AppDriver {
     /// 主ドライバが**このブリッジのセッションでアプリを駆動しているか**(engine=xcuitest = true)。
     ///
     /// true のときだけ版 79 の `/systemui/*`(セッションと ref を触らない)を使う。
-    /// **hybrid では false のまま = 旧経路**にするのが要点: あちらの主ドライバは in-app で
-    /// 別プロセスなので `/session springboard` の巻き添えが無く、**変える理由が無い**。
-    /// 実際 2026-08-25 に hybrid まで新経路へ寄せたところ、`notExist` の所要が
-    /// 0.30s → 0.07s に縮み、**その 0.25s が担っていた暗黙の整定待ち**が消えて
-    /// E2E-iOS の横カルーセルが 3/3 で落ちた(HEAD は 3/3 緑。対照で確定)。
-    /// 速くしてよいのは、その待ちに寄りかかっている砦を先に数え終えてから。
+    /// **hybrid では false のまま = 旧経路**: あちらの主ドライバは in-app で別プロセスなので
+    /// `/session springboard` の巻き添えが無く、**変える理由が無い**。困っていたのは
+    /// 共有している xcuitest だけなので、影響範囲をそこに閉じる。
+    ///
+    /// **ここに因果を書かないこと**(2026-08-25 の失敗): 一度は「hybrid へ寄せたら `notExist` が
+    /// 0.30s → 0.07s に縮み、その 0.25s が担っていた暗黙の待ちが消えて横カルーセルが 3/3 で
+    /// 落ちた」と書いた。**誤り** —— 後の 2×2 で、赤は経路ではなく **FM の生死**に完全追随すると
+    /// 分かった(FM 死亡 7/7 赤 / 生存 8/8 緑。旧経路でも FM が死ねば落ちる)。
+    /// 最初の対照は両群で FM の生死が揃っておらず、交絡していた
+    /// (記憶 fm-alive-costs-notexist-4s の「生死を揃える」を踏んだ)。
     private let sharesPrimarySession: Bool
 
     public init(port: UInt16, sharesPrimarySession: Bool = false) {
