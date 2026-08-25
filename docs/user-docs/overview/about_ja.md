@@ -25,7 +25,7 @@ Fleetest は Claude Code を前提とした macOS 専用の iOS / Android アプ
 
 ## 4つの入口
 
-同じコア(Swift DSL + AppDriver + StepExecutor + Foundation Models エージェント)の上に、
+同じコア(Swift DSL + AppDriver + StepExecutor + Foundation Models フック)の上に、
 用途別の入口が4つあります。UI は VSCode 拡張に一本化されています。
 
 | 入口 | 起動 | 向いている用途 |
@@ -54,7 +54,7 @@ fleetest CLI / MCP ──(サブプロセス)──▶ fleetest-scenarios-<proje
       └─ adb forward ⇄ 常駐ブリッジ ──▶ Android エミュレータ / 実機
 ```
 
-- プラットフォーム境界は `AppDriver` プロトコルのみです。Foundation Models エージェントと
+- プラットフォーム境界は `AppDriver` プロトコルのみです。Foundation Models フックと
   再生器は iOS/Android で完全に共通です。
 - スナップショットはドライバ側でフィルタし、`[3] Button "ログイン" id=login_btn` 形式の
   圧縮テキストに変換します(オンデバイスモデルのトークン制約対策)。
