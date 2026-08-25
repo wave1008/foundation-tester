@@ -176,8 +176,9 @@ final class RemoteMonitorFanout: @unchecked Sendable {
         process.waitUntilExit()
     }
 
-    /// 子の stdout 1行。devices は保持し、それ以外(frame/error)は行のまま中継する
-    private func ingest(line: String, host: String) {
+    /// 子の stdout 1行。devices は保持し、それ以外(frame/error)は行のまま中継する。
+    /// internal: RemoteMonitorFanoutIDTests が「親が id とマシンバッジを埋める」ことを固定する
+    func ingest(line: String, host: String) {
         struct KindOnly: Decodable { let kind: String }
         guard let data = line.data(using: .utf8),
               let kind = (try? JSONDecoder().decode(KindOnly.self, from: data))?.kind
@@ -201,6 +202,8 @@ final class RemoteMonitorFanout: @unchecked Sendable {
             var scoped = device
             scoped.id = DeviceHostGrouping.workerID(
                 platform: device.platform, host: host, name: device.name)
+            // タイルのマシンバッジも同じ理由で親が入れる(子は自分を "local" と見なすので nil)
+            scoped.machineHost = host
             byID[scoped.id] = scoped
         }
         lock.lock()

@@ -1243,7 +1243,10 @@ struct ApiMonitorDeviceInfo: Codable {
     /// 状態を観測できない。拡張はこの値でタイルにホスト名を出す
     /// (契約は vscode-fleetest/src/monitorDeviceModel.ts の MonitorDevice.machineHost)。
     /// 追加フィールドのみで後方互換のため ProtocolVersion は不変
-    let machineHost: String?
+    /// **var なのは id と同じ理由**(RemoteMonitorFanout が書き戻す)。子は畳んだプロファイルを
+    /// 見るので自分の台を "local" と見なし、machineHost が nil になる —— 親が自分の知っている
+    /// ホストラベルを入れないと、リモートのタイルからマシンのバッジが消える
+    var machineHost: String?
     /// 画面が凍結している(一様フレームが2サイクル連続)。**この値は1サイクル遅れる** ——
     /// devices イベントはフレーム取得より前に出るため、判定に使うのは前サイクルの PNG。
     /// スクショを撮らないデバイス(未接続・タイルがストリーミング中で frame 抑止・

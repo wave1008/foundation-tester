@@ -9,6 +9,22 @@ import FTCore
 
 final class RemoteMonitorFanoutIDTests: XCTestCase {
 
+    /// 子の monitorDevices は **id もマシンバッジ(machineHost)も持たない**(畳んだプロファイルでは
+    /// 自分の台は "local")。親が両方を埋める —— 埋め忘れるとタイルが特定できない/バッジが消える
+    func testRemoteDevicesGetBothTheScopedIDAndTheMachineBadge() throws {
+        let line = #"""
+        {"kind":"monitorDevices","devices":[{"id":"android:Pixel 3a","name":"Pixel 3a","platform":"android","state":"connected","detail":"S","udid":null,"serial":"S","health":null,"renderMode":null,"inRun":false,"kind":"physical","host":null,"port":null,"recording":false,"registered":true,"frozen":false,"machineHost":null}]}
+        """#
+        let fanout = RemoteMonitorFanout(hosts: ["M1Ultra"], project: "P", profile: nil,
+                                         interval: 2, maxWidth: 960,
+                                         log: { _ in }, relayLine: { _ in })
+        fanout.ingest(line: line, host: "M1Ultra")
+        let devices = fanout.snapshot()
+        XCTAssertEqual(devices.keys.sorted(), ["android:M1Ultra/Pixel 3a"])
+        XCTAssertEqual(devices["android:M1Ultra/Pixel 3a"]?.machineHost, "M1Ultra",
+                       "マシンのバッジは親が入れる(子は自分を local と見なす)")
+    }
+
     func testFrameLineGetsTheHostScopedDeviceID() {
         let line = #"{"kind":"monitorFrame","device":"android:Pixel 3a","jpegBase64":"AAAA","width":1}"#
         let scoped = RemoteMonitorFanout.hostScoped(line: line, host: "M1Ultra")
