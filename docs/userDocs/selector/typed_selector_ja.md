@@ -12,6 +12,7 @@ tap(.id("login_btn").or(.text("ログイン")))        // #login_btn||ログイ�
 tap(.id("list").find(.type(.cell).nth(2)))       // #list >> .cell[2]
 tap(.text("通知").right(.switch))                 // 通知:rightSwitch
 exist(.type(.button).text("保存", .contains))     // .button&&textContains=保存
+tap(.type(.button).not(.text("キャンセル")))         // .button&&text!=キャンセル
 ```
 
 対象セレクタを取るコマンドは全て `String` 版と `Sel` 版のオーバーロードを持ちます。
@@ -20,10 +21,13 @@ exist(.type(.button).text("保存", .contains))     // .button&&textContains=保
 
 ## 語彙
 
-- `.id(_)`、`mode` に `.exact` / `.contains` / `.startsWith` / `.endsWith` / `.matches` を
-  取る `.text(_, mode)`、`.value(_)`、`.placeholder(_)`、`.type(_)`、`.checked(_)`、
-  `.enabled(_)`、`.nth(_)`(1 オリジンの序数)。
+- `.id(_)`、`.text(_)`、`.value(_)`、`.placeholder(_)` —— いずれも第2引数 `mode` を任意で
+  取り、`.exact`(既定)/ `.contains` / `.startsWith` / `.endsWith` / `.matches` のどれかです。
+  ほかに `.type(_)`、`.checked(_)`、`.enabled(_)`、`.nth(_)`(1 オリジンの序数)。
 - `.or(_)`(和集合)と `.find(_)`(子孫へのスコープ)で合成します。
+- `.not(_)` で除外します —— 文字列記法の `属性!=値` / `!値` の型付き版です。文字列版と同じく
+  **肯定条件と併用してください**: 否定だけの節は容器やレイアウトノードまで拾います。
+  引数自身が `.or(_)` を含むなら、**その全ての節**が除外されます。
 - 相対: `.right(_)`、`.left(_)`、`.above(_)`、`.below(_)`。文字列版の相対セレクタと同じく、
   任意の `matching:` フィルタと `nth:`(近い順の序数)を取れます。
 - 型名: `.button`、`.staticText`、`.textField`、`.secureTextField`、`.switch`、それに

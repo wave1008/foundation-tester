@@ -56,10 +56,12 @@
 にすると XCUITest のみの実行に切り替わります。iOS の実機はこの設定に関わらず常に XCUITest です
 (dylib 注入が実機では使えないため)。
 
-## 廃止されたキー
+## 旧いキー名
 
-`iosSystemAlertButtons` はもう読まれません。代わりにシナリオ側の `iosAlertHandler` を使ってください。
-[ios_alert_handler_ja.md](../commands/ios_alert_handler_ja.md) を参照してください。
+| キー | 扱い |
+|---|---|
+| `screenIs` | `screenLooksLike` の旧名として**まだ読まれます**。効くのは `screenLooksLike` が無いときだけで、両方あれば `screenLooksLike` が優先されます。コマンドの改名前に書かれたプロファイルはそのまま動き続けます —— 新しく書くなら `screenLooksLike` を使ってください |
+| `iosSystemAlertButtons` | **もう読まれません。** 代わりにシナリオ側の `iosAlertHandler` を使ってください([ios_alert_handler_ja.md](../commands/ios_alert_handler_ja.md)を参照) |
 
 ### Link
 - [index](../index_ja.md)

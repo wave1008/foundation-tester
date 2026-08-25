@@ -85,7 +85,8 @@ machines.
 The VS Code extension's Device tab lets you edit run/app/machine profiles interactively, and
 `profiles/{apps,machines,runs}/*.json` get a JSON schema (`schemas/*.schema.json`) contributed by
 the extension for completion, hover and structural validation while editing by hand. See
-[vscode-ftester/README.md](../../../vscode-ftester/README.md) ("実行プロファイルの編集支援").
+the "実行プロファイルの編集支援" section of
+[vscode-ftester/README.md](../../../vscode-ftester/README.md) (Japanese).
 
 ### Link
 - [index](../index.md)

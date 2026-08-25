@@ -22,34 +22,34 @@ must already be booted for a real run; Run (dry-run) needs no device at all.
 
 ## Steps View
 
-A read-only **ftester ステップ** tree view (in the Testing view container) follows the cursor: put
+A read-only **ftester Steps** tree view (in the Testing view container) follows the cursor: put
 the cursor inside a `@Test` method and it lists that scenario's `scene` groups and steps.
 Clicking a step jumps to the matching source line. It also opens from a scenario's right-click
-menu ("ftester: ステップ一覧を表示").
+menu ("ftester: Show Step List").
 
 ## Device Monitor
 
-Command **"ftester: デバイスモニターを表示"** opens a webview panel of device tiles (one panel per
+Command **"ftester: Show Device Monitor"** opens a webview panel of device tiles (one panel per
 workspace). Each tile shows the device name, a platform badge (iOS/Android), a status badge, and
 the current screen — streamed live by default via a headless helper
 (`ftester-simstream`/`ftester-androidstream`), falling back to periodic screenshots if streaming
 is unavailable.
 
-- Status badges: **接続済み** (connected, green) — bridge attached, ready to drive; **起動中**
-  (booting, yellow) — device is up but the bridge hasn't attached yet; **未起動** (not running,
-  gray) — device is down.
+- Status badges: **Connected** (green) — bridge attached, ready to drive; **Starting**
+  (yellow) — device is up but the bridge hasn't attached yet; **Not started**
+  (gray) — device is down.
 - Right-click a tile to start or stop that one device (`ftester api device-up`/`device-down`).
   Device operations run one at a time through a shared queue, so queued tiles show a
-  "待機中..." (waiting) badge.
+  "Waiting..." badge.
 - Toolbar buttons start/stop every device on the machine profile and restart the monitor process.
-- The **プロファイル** (Profiles) tab lists, creates, copies, renames, deletes and edits run/app/
+- The **Profiles** tab lists, creates, copies, renames, deletes and edits run/app/
   machine profiles.
-- The **設定** (Settings) tab holds display and update options, including the update-check and
+- The **Settings** tab holds display and update options, including the update-check and
   update actions described below.
 
 ## Live Control
 
-Command **"ftester: ライブ操作を表示"** opens an independent panel for touching a device directly
+Command **"ftester: Show Live Control"** opens an independent panel for touching a device directly
 from its screenshot:
 
 | Gesture | Action |
@@ -70,16 +70,16 @@ compile it is parked under `scenarios/_disabled/` instead of being added to the 
 
 ## Results Dashboard
 
-Command **"ftester: 結果ダッシュボードを開く"** opens a panel summarizing
+Command **"ftester: Open Results Dashboard"** opens a panel summarizing
 `ftester api results` for the project: recent runs, per-scenario success rate and duration,
 flaky scenarios, device/worker breakdowns, a daily trend, slow scenarios, and other insights.
 
 ## Rerunning Failures and Reports
 
-- **"失敗したテストを再実行"** re-runs only the scenarios that failed last time.
-- **"レポートを開く"** opens the Markdown report for a scenario's last run (element list,
+- **"Rerun Failed Tests"** re-runs only the scenarios that failed last time.
+- **"Open Report"** opens the Markdown report for a scenario's last run (element list,
   screenshot, and — when available — FM triage).
-- The Test Explorer toolbar's **"失敗したテストのみ表示"** filter narrows the tree to failed tests.
+- The Test Explorer toolbar's **"Show Failed Tests Only"** filter narrows the tree to failed tests.
 
 ## Self-Healing Review
 
@@ -92,13 +92,13 @@ selector is shown as not applicable.
 
 ## Update Check
 
-The Settings tab's **"更新"** section is the one place updates are checked and applied:
+The Settings tab's **"Updates"** section is the one place updates are checked and applied:
 
-- **"更新を確認"** reports whether the tool is up to date, an update is available, the repo is
+- **"Check for updates"** reports whether the tool is up to date, an update is available, the repo is
   version-pinned, or the check failed — read-only, no repository changes.
-- **"更新する"** appears next to the tab only when an update is available; it pulls, rebuilds, and
+- **"Update now"** appears next to the tab only when an update is available; it pulls, rebuilds, and
   reinstalls the extension, then prompts to reload the window.
-- Command **"ftester: 更新を確認"** (`ftester.checkForUpdate`) always returns a result even when the
+- Command **"ftester: Check for Updates"** (`ftester.checkForUpdate`) always returns a result even when the
   once-a-day interval, a dismissed version, or `ftester.updateCheck: off` would otherwise silence
   the automatic check.
 

@@ -7,7 +7,7 @@
 | Common | macOS 26+. Apple Intelligence (Foundation Models) is **optional** — it's used for self-healing, FM visual verification, and scenario generation. If you enable it later, it just starts working |
 | iOS | Xcode 26+, iOS simulator, [xcodegen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`) |
 | Android (optional) | Android SDK (adb), emulator or physical device |
-| Extension build | Node.js v24, npm v11 |
+| Extension build | Node.js v24 or newer, npm v11 or newer (verified on v24 and v26) |
 
 > On macOS 26, only FM's **visual verification** is unavailable (the image-input API requires
 > macOS 27+). occlusion-guard (false-positive checking) and `screenLooksLike` are automatically

@@ -15,8 +15,8 @@ Taps an element, or raw coordinates, on the screen.
 ## Example
 
 ```swift
-tap("#login_btn||ログイン")
-tap("設定", scroll: .down)             // searches while scrolling down
+tap("#login_btn||Log In")
+tap("Settings", scroll: .down)         // searches while scrolling down
 tap("#row_03", holdSeconds: 1)         // long press
 tap(x: 120, y: 640)                    // only when no selector is available
 ```
@@ -30,7 +30,7 @@ tap(x: 120, y: 640)                    // only when no selector is available
   it — a scenario that deliberately taps a disabled element to assert "nothing happens" keeps
   working. Waiting is skipped when the selector explicitly pins the state, e.g.
   `#btn&&enabled=false`, or when `timeout: 0` is given.
-- **Traditional form**: `tap("#field")` followed by `type("文字列")` also works. On Android,
+- **Traditional form**: `tap("#field")` followed by `type("some text")` also works. On Android,
   when `#id` resolves to the input's wrapping container rather than the field itself, focus can
   fail to land in the field; `type` recovers by locating the single input inside the tapped
   container. See [type](./type.md).

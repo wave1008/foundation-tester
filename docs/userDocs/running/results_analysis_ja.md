@@ -28,11 +28,36 @@ results/runs/<YYYY-MM>/<runID>/
 | `ftester results trend --scenario <id>` | 1シナリオの実行履歴を時系列で表示する |
 | `ftester results devices` | ワーカー(デバイス)別・プラットフォーム別の実行回数と成功率を集計する |
 | `ftester results slow [--limit <n>]` | シナリオを平均所要時間が長い順に一覧する |
-| `ftester results insights` | 退行・連続失敗・インフラ起因の失敗・古いセレクタなど注意が必要な事項を検知する |
+| `ftester results insights` | 実行履歴に対する10種の検査 —— [`insights` が検知するもの](#insights-が検知するもの)を参照 |
 
 すべて `--project`、`--since <期間>`(`30d`/`12h` のような相対値、または `YYYY-MM-DD`。既定
 `90d`)、単一行 JSON で出す `--json` を受け付けます。正確なフラグは
 `ftester results <サブコマンド> --help` で確認してください。
+
+## `insights` が検知するもの
+
+`insights` は記録された同じ事実を読み、**複数の run にまたがってはじめて見える傾向**を報告します。
+検査は10種あり、それぞれ severity 付きの1行として出ます。
+
+| kind | severity | 出る条件 |
+|---|---|---|
+| `newFailure` | critical | 連続して通っていたシナリオが落ちた(退行の疑い) |
+| `consecutiveFailures` | critical | シナリオが複数 run 連続で落ちている |
+| `infraFailures` | warn | アサーション以外の**署名**を持つ失敗が繰り返している —— 下の注記を参照 |
+| `selectorDecay` | warn | そのシナリオの自己修復・フォールバック依存が増えている |
+| `healReliance` | warn | 1つのセレクタが自己修復・キャッシュ経由でしか通っていない(提案されたセレクタを適用する) |
+| `unsettledSteps` | warn | 画面がまだ動いている間にステップが進んだ(flake の先行指標) |
+| `deviceBias` | warn | 失敗が特定のワーカー/デバイスに偏っている |
+| `durationRegression` | warn | シナリオの所要時間が自身の過去実績に対して伸びた |
+| `unfinishedRuns` | info | 完了しなかった run がある(クラッシュ・強制終了の可能性) |
+| `retiredScenarios` | info | 結果は残っているが既に実行されていないシナリオ(上の検査からは除外される) |
+
+> **`infraFailures` と「原因」について。** この行は**環境に何が起きていたかを主張しません**。
+> 記録された署名 —— run がタイムアウトした、あるいは1ステップも到達しないまま `errorLogs` で
+> 終わった —— で失敗を数え、アサーション失敗の件数と対比するだけです。失敗の大半がその形の
+> シナリオは、アサーションで落ちているシナリオとは**別の観点で**見る価値がある、というのが
+> この行の言っていることの全てです。アプリが重かったのかマシンが混んでいたのかの判断は、
+> 引き続きツールの外の材料からあなたが行います。
 
 ## 失敗した run の読み方
 

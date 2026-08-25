@@ -12,6 +12,7 @@ tap(.id("login_btn").or(.text("Log In")))         // #login_btn||Log In
 tap(.id("list").find(.type(.cell).nth(2)))        // #list >> .cell[2]
 tap(.text("Notification").right(.switch))         // Notification:rightSwitch
 exist(.type(.button).text("Save", .contains))     // .button&&textContains=Save
+tap(.type(.button).not(.text("Cancel")))           // .button&&text!=Cancel
 ```
 
 Every command that takes a selector has both a `String` overload and a `Sel` overload — use
@@ -20,10 +21,14 @@ execution, reporting, and self-healing behave identically either way.
 
 ## Vocabulary
 
-- `.id(_)`, `.text(_, mode)` with `mode` one of `.exact` / `.contains` / `.startsWith` /
-  `.endsWith` / `.matches`, `.value(_)`, `.placeholder(_)`, `.type(_)`, `.checked(_)`,
-  `.enabled(_)`, `.nth(_)` (1-origin ordinal).
+- `.id(_)`, `.text(_)`, `.value(_)`, `.placeholder(_)` — each takes an optional second
+  argument `mode`, one of `.exact` (the default) / `.contains` / `.startsWith` / `.endsWith` /
+  `.matches`. Also `.type(_)`, `.checked(_)`, `.enabled(_)`, `.nth(_)` (1-origin ordinal).
 - Compose with `.or(_)` (union) and `.find(_)` (scope into a descendant).
+- Exclude with `.not(_)` — the typed form of the string notation's `attr!=value` / `!value`.
+  Pair it with a positive condition, exactly as the string form requires: a clause of only a
+  negation matches containers and layout nodes too. If the argument itself contains `.or(_)`,
+  **every** alternative is excluded.
 - Relative: `.right(_)`, `.left(_)`, `.above(_)`, `.below(_)` — take an optional `matching:`
   filter and `nth:` (nearest-first ordinal), mirroring the string form's relative selector.
 - Type names: `.button`, `.staticText`, `.textField`, `.secureTextField`, `.switch`, plus

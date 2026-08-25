@@ -14,7 +14,7 @@ You install it through the Claude Code plugin, which clones the repository and b
 | Common | macOS 26+ |
 | iOS | Xcode 26+, iOS simulator runtime, xcodegen |
 | Android (optional) | Android SDK (adb), emulator or physical device |
-| Extension build | Node.js v24, npm v11 |
+| Extension build | Node.js v24 or newer, npm v11 or newer (verified on v24 and v26) |
 
 Some features (visual verification) require macOS 27+.
 
@@ -68,15 +68,15 @@ notifies you. It only checks — it does not pull in the update. If you don't wa
 notification, set `ftester.updateCheck` to `off`.
 
 **Update status can be checked from the device monitor's "Settings" tab** (the "Check for
-Updates" button). When an update is found, a dialog asks whether to update now.
-When an update is available, **an "Update" button appears next to the tab** (shown regardless
+updates" button). When an update is found, a dialog asks whether to update now.
+When an update is available, **an "Update now" button appears next to the tab** (shown regardless
 of which tab you're viewing). Clicking it starts pulling in the update immediately. Progress is
 shown via a spinner and a notification in the lower-right of the screen, and the detailed log
 streams to VSCode's **OUTPUT (ftester)**. You can also jump there from the notification's "Open
-Settings tab" link. When it finishes, a dialog prompts you to reload — click **Reload** (if you
+Settings tab" link. When it finishes, a dialog prompts you to reload — click **Reload window** (if you
 don't, the pre-update extension keeps running).
 
-You can also check from the Command Palette's **`ftester: Check for Update`** (this always
+You can also check from the Command Palette's **`ftester: Check for Updates`** (this always
 checks, regardless of the interval or "don't notify for this version" setting). From a terminal,
 run `bash <TOOL_ROOT>/Scripts/update-check.sh` (neither of these changes anything).
 

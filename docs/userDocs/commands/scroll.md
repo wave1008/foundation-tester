@@ -77,7 +77,7 @@ go faster is not a substitute — flick has no notion of having reached the edge
 ## Example
 
 ```swift
-tap("設定", scroll: .down)          // scroll to find the item behind a fold, then tap it
+tap("Settings", scroll: .down)      // scroll to find the item behind a fold, then tap it
 withScrollDown {
     tap("#row_40")                  // searched for even though not written explicitly
     existWithoutScroll("#header")   // a fixed header, checked on the current screen only

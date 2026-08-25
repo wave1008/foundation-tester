@@ -53,7 +53,8 @@ by their `worker` field, since the same `scenarioID` appears once per device (se
 ## Other places parallel execution shows up
 
 - The VS Code extension runs the same parallel execution through the `ftester.profile` setting
-  (see "並列実行とログレーン" in [vscode-ftester/README.md](../../../vscode-ftester/README.md)).
+  (see the "並列実行とログレーン" section of
+  [vscode-ftester/README.md](../../../vscode-ftester/README.md) (Japanese)).
 - LPT ordering (longest-past-runtime-first dispatch) balances the queue across workers using
   recent run history; `--no-lpt`/`--lpt-history-runs` control it (see
   [running_scenarios.md](./running_scenarios.md)).

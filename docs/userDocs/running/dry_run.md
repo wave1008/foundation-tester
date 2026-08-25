@@ -5,7 +5,7 @@ steps **without touching a device or calling FM**. It catches mistakes that woul
 surface during, or after, a slow device run — in seconds.
 
 ```bash
-ftester run --dry-run --scenario ログインテスト
+ftester run --dry-run --scenario LoginTest
 ```
 
 MCP exposes the same check as `ft_dry_run`; the VS Code extension runs it via

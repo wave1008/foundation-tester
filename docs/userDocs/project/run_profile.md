@@ -56,10 +56,12 @@ The effective iOS engine is `hybrid` (in-app primary, XCUITest fallback) by defa
 `iosInappEngine: false` switches a run to XCUITest only. A physical iOS device always uses
 XCUITest regardless of this setting (dylib injection is not available on physical devices).
 
-## Deprecated key
+## Older key names
 
-`iosSystemAlertButtons` is no longer read. Use the scenario-level `iosAlertHandler` instead —
-see [ios_alert_handler.md](../commands/ios_alert_handler.md).
+| Key | Status |
+|---|---|
+| `screenIs` | **Still read**, as the former name of `screenLooksLike`. It applies only when `screenLooksLike` is absent; if both are present, `screenLooksLike` wins. Profiles written before the command was renamed keep working untouched — new profiles should use `screenLooksLike` |
+| `iosSystemAlertButtons` | **No longer read.** Use the scenario-level `iosAlertHandler` instead — see [ios_alert_handler.md](../commands/ios_alert_handler.md) |
 
 ### Link
 - [index](../index.md)

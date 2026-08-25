@@ -12,7 +12,7 @@ Fires the keyboard's commit action, or closes the on-screen keyboard.
 ## Example
 
 ```swift
-type("#search_box", "腕時計")
+type("#search_box", "watch")
 pressEnter()               // fires the field's commit action
 
 android {
