@@ -2,6 +2,17 @@
 
 Fleetest is a macOS-only E2E testing tool for iOS / Android apps, built around Claude Code.
 
+## Where the name comes from
+
+**fleetest** is `fleet` + `test`, and at the same time the superlative of *fleet* (swift). The
+three things packed into the name are the three things the tool is built for.
+
+| | |
+|---|---|
+| **fleet** | Tests run in parallel across a **fleet of devices** — simulators, emulators, physical devices, and even other Macs over SSH. Scenarios are distributed to the workers automatically, so adding devices shortens the run rather than complicating it. |
+| **fleetest** | *Fleet* is an old word for swift, and **fleetest** is its superlative. Replay carries no LLM in the loop, so what bounds a run is the device, not a model — and the ordering puts the longest scenarios in first so the tail does not idle. |
+| **free** | **Running tests costs nothing.** No cloud device farm, no per-run API billing. Replay is deterministic and local, and the model that does step in on failure is on-device. |
+
 ## Design philosophy: "AI writes the tests, code replays them deterministically"
 
 - **Generation**: recording your operations in the VSCode extension's live-control panel

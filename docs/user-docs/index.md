@@ -2,6 +2,11 @@
 
 [in Japanese(日本語)](index_ja.md)
 
+**fleetest** is `fleet` + `test`, and also the superlative of *fleet* (swift): tests run in
+parallel across a **fleet** of devices, replay is the **fleetest** path because no LLM sits in
+the loop, and running them is **free** — no device farm, no per-run billing. See
+[What is fleetest?](overview/about.md).
+
 fleetest is an E2E test tool for iOS / Android apps on macOS. Scenarios are written in a
 Shirates-style Swift DSL and replayed deterministically; Foundation Models (on-device) step
 in only when a step fails. Tests can be authored by Claude Code (MCP), recorded from the

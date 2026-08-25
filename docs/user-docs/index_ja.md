@@ -2,6 +2,11 @@
 
 [in English](index.md)
 
+**fleetest** は `fleet` + `test` であり、*fleet*(すばやい)の最上級でもあります。デバイス
+**フリート**で並列に実行し、LLM を挟まないので再生は**最速**、そして実行は**無料**です ——
+デバイスファームも実行ごとの課金もありません。詳細は
+[Fleetest とは](overview/about_ja.md)。
+
 fleetest は macOS 上で動く iOS / Android アプリの E2E テストツールです。シナリオは Shirates 風の
 Swift DSL で書き、LLM なしで決定的に再生します。Foundation Models(オンデバイス)が介入するのは
 ステップが失敗したときだけです。テストは Claude Code(MCP)に作らせる・VSCode 拡張で録画する・
