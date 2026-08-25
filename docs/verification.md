@@ -2354,7 +2354,7 @@ RN のディープリンク不達を「JS 購読前の競合」と誤診し、�
 - **ディレクトリを消しても `.build` が戻る**のは、生きているプロセスが作り直しているから。復活させる
   主体は MCP の rebuild-on-start(`.mcp.json` が起動のたびに `swift build`)と拡張のパネル respawn。
   **VSCode 終了で止まらないのは XCUITest ランナーだけ**(親から切り離してあり PPID=1)。
-  順序と掃除の1行(`pgrep -fl` / `pkill -f`)は docs/getting-started.md「アンインストール」
+  順序と掃除の1行(`pgrep -fl` / `pkill -f`)は docs/userDocs/getting-started_ja.md「アンインストール」
 - 再ビルド後の検証前に旧バイナリの常駐プロセス(monitor/host-metrics)を kill する
   (生き残って検証を汚す・旧ブリッジを自動再起動する。docs/performance-tuning.md §7)
 - ブリッジには無通信 TTL(既定2時間。design.md §4.1)があるが、**検証の掃除で TTL を

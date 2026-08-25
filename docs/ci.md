@@ -111,4 +111,4 @@ CI 用のシナリオ単位リトライは**実装していない**。自動リ�
 - 結果 DB の分析コマンド: `ftester results --help`(サブコマンドの一覧は
   [README「コマンド一覧」](../README.md#コマンド一覧)。docs/commands.md は**シナリオ用 DSL** の
   リファレンスなので `results` は載っていない)
-- 導入・更新の詳細: [docs/getting-started.md](getting-started.md)
+- 導入・更新の詳細: [docs/userDocs/getting-started_ja.md](userDocs/getting-started_ja.md)
