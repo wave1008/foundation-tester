@@ -90,6 +90,8 @@ enum ApiRunHostFanout {
         writeLine(encode(ApiRunStartedEvent(total: selected.count - notApplicable.count)))
 
         let binary = FleetRunner.selfBinaryPath()
+        // 束ね鍵はここで1回だけ発行する(理由は DeviceHostRunner.run の同じ箇所)
+        let runGroup = RunRecorder.makeRunGroupID()
         let (stream, continuation) = AsyncStream<ChildEvent>.makeStream()
         let groupHosts = active.map { $0.group.host }
 
@@ -117,7 +119,7 @@ enum ApiRunHostFanout {
                 taskGroup.addTask {
                     let args = buildArgs(
                         project: project.name, profileName: profileName, group: group,
-                        scenarioIDs: ids, options: options)
+                        scenarioIDs: ids, options: options, runGroup: runGroup)
                     let start = Date()
                     let exitCode = await runChild(
                         index: position, binary: binary, args: args, hostLabel: group.hostLabel,
@@ -152,9 +154,10 @@ enum ApiRunHostFanout {
 
     // MARK: - 子プロセスの引数
 
-    private static func buildArgs(
+    /// internal: 束ね鍵の中継を RunGroupPlumbingTests が等号で固定する
+    static func buildArgs(
         project: String, profileName: String, group: DeviceHostRunner.Group,
-        scenarioIDs: [String], options: Options
+        scenarioIDs: [String], options: Options, runGroup: String
     ) -> [String] {
         let hostLabel = group.hostLabel
         var args = ["api", "run", "--project", project, "--profile", profileName]
@@ -182,6 +185,7 @@ enum ApiRunHostFanout {
         if options.performanceMode { args += ["--performance"] }
         if let defaultTimeout = options.defaultTimeout { args += ["--default-timeout", String(defaultTimeout)] }
         if let scenarioTimeout = options.scenarioTimeout { args += ["--scenario-timeout", String(scenarioTimeout)] }
+        args += ["--run-group", runGroup]
         return args
     }
 

@@ -397,7 +397,7 @@ enum FleetRunner {
         heal: Bool, noHeal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
         fastInput: Bool, enableAnimations: Bool, performanceMode: Bool,
         forceLock: Bool, waitLock: Int?, remoteDir: String?, remoteTimeout: Int?, remoteArtifacts: String,
-        quiet: Bool, junitPath: String?, broadcast: Bool = false
+        quiet: Bool, junitPath: String?, broadcast: Bool = false, runGroup: String? = nil
     ) -> [String] {
         var args = ["run", "--project", project, "--profile", profile]
         // "local" エントリも常に --host を渡す(欠陥3・2026-08-17)。子プロセスは自分自身が
@@ -436,6 +436,9 @@ enum FleetRunner {
         // リモートエントリでも同じ --junit 中継でよい: RemoteRunDispatcher.dispatch が
         // localJUnitPath(= このパス)へリモートの JUnit を回収して書く(RemoteRunDispatcher.swift)
         if let junitPath { args += ["--junit", junitPath] }
+        // 機械ごとに分かれた run を束ねる鍵(FTCore.RunMetaRecord.runGroup)。**ホスト別サブ実行
+        // だけが渡す** —— --fleet(プロファイル別)は別々の実行なので束ねない
+        if let runGroup { args += ["--run-group", runGroup] }
         return args
     }
 

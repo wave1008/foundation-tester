@@ -42,7 +42,7 @@ struct RemoteRunDispatcher {
                   fastInput: Bool, enableAnimations: Bool, performanceMode: Bool,
                   broadcast: Bool = false,
                   localJUnitPath: String?,
-                  remoteTimeoutSeconds: Int?) async throws -> Int32 {
+                  remoteTimeoutSeconds: Int?, runGroup: String? = nil) async throws -> Int32 {
         let setupStart = Date()
         let (layout, session) = try resolveLayout()
         try checkCompatibility(layout: layout)
@@ -66,7 +66,8 @@ struct RemoteRunDispatcher {
             heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
             fastInput: fastInput, enableAnimations: enableAnimations,
             performanceMode: performanceMode, broadcast: broadcast,
-            remoteJUnitPath: remoteJUnitPath, reportDir: remoteReportDir, workspace: remoteWorkspace)
+            remoteJUnitPath: remoteJUnitPath, reportDir: remoteReportDir, workspace: remoteWorkspace,
+            runGroup: runGroup)
         let timeoutSeconds = RemoteTimeout.seconds(
             explicit: remoteTimeoutSeconds, scenarioCount: scenarios.count)
         announceTimeout(timeoutSeconds)
@@ -97,7 +98,7 @@ struct RemoteRunDispatcher {
                      heal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
                      performanceMode: Bool,
                      defaultTimeout: Double?, scenarioTimeout: Double?,
-                     remoteTimeoutSeconds: Int?) async throws -> Int32 {
+                     remoteTimeoutSeconds: Int?, runGroup: String? = nil) async throws -> Int32 {
         let setupStart = Date()
         let (layout, session) = try resolveLayout()
         try checkCompatibility(layout: layout)
@@ -117,7 +118,7 @@ struct RemoteRunDispatcher {
             heal: heal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
             performanceMode: performanceMode,
             defaultTimeout: defaultTimeout, scenarioTimeout: scenarioTimeout, reportDir: remoteReportDir,
-            workspace: remoteWorkspace)
+            workspace: remoteWorkspace, runGroup: runGroup)
         let timeoutSeconds = RemoteTimeout.seconds(
             explicit: remoteTimeoutSeconds, scenarioCount: scenarios.count)
         announceTimeout(timeoutSeconds)

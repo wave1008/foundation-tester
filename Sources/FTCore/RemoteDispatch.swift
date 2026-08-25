@@ -547,7 +547,8 @@ public enum RemoteRunArgs {
                              fastInput: Bool, enableAnimations: Bool, performanceMode: Bool,
                              broadcast: Bool = false,
                              remoteJUnitPath: String?,
-                             reportDir: String?, workspace: String? = nil) -> [String] {
+                             reportDir: String?, workspace: String? = nil,
+                             runGroup: String? = nil) -> [String] {
         // **リモート側は必ず「ここで走らせる」**(--host local)。省略すると、向こうの fleetest が
         // 転送されたマシンプロファイルの host(= 自分のはずのホスト名)を読んで**もう一度
         // ディスパッチしようとする** —— 登録簿に無ければ「未登録のホスト」で落ち、あれば
@@ -581,6 +582,9 @@ public enum RemoteRunArgs {
         // 中継しないとリモートは共有キューで走る = 「全台で1回ずつ」が黙って「分配」に化ける
         if broadcast { args.append("--broadcast") }
         if let remoteJUnitPath { args += ["--junit", remoteJUnitPath] }
+        // 束ね鍵は**中継しないと向こうの run.json に載らない** = リモートで撮った録画だけが
+        // 束から外れる(RunMetaRecord.runGroup の宣言)
+        if let runGroup { args += ["--run-group", runGroup] }
         return args
     }
 
@@ -593,7 +597,8 @@ public enum RemoteRunArgs {
                                 heal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
                                 performanceMode: Bool,
                                 defaultTimeout: Double?, scenarioTimeout: Double?,
-                                reportDir: String?, workspace: String? = nil) -> [String] {
+                                reportDir: String?, workspace: String? = nil,
+                                runGroup: String? = nil) -> [String] {
         // --host local の理由は build() のコメント(リモートでの再ディスパッチを止める)
         var args = ["api", "run", "--project", project, "--profile", profile, "--host", "local"]
         if let reportDir { args += ["--report-dir", reportDir] }
@@ -611,6 +616,8 @@ public enum RemoteRunArgs {
         if performanceMode { args.append("--performance") }
         if let defaultTimeout { args += ["--default-timeout", formatTimeout(defaultTimeout)] }
         if let scenarioTimeout { args += ["--scenario-timeout", formatTimeout(scenarioTimeout)] }
+        // 中継の理由は build() の --run-group と同じ
+        if let runGroup { args += ["--run-group", runGroup] }
         return args
     }
 

@@ -753,6 +753,15 @@ struct RunScenarios: AsyncParsableCommand {
                 visibility: .hidden))
     var deviceHost: String?
 
+    /// 同じ実行から分かれた run を束ねる鍵(FTCore.RunMetaRecord.runGroup)。**発行は
+    /// ホスト別サブ実行の親だけ**で、子は受け取った値をそのまま run.json に書く。手で打つものではない
+    @Option(name: .customLong("run-group"),
+            help: ArgumentHelp(
+                "Group key shared by the per-machine sub-runs of one execution. "
+                + "Set by the per-host sub-runs; not for hand use",
+                visibility: .hidden))
+    var runGroup: String?
+
     /// **手で打つものではない**。RemoteRunDispatcher がミラー後の絶対パスを渡す
     /// (Sources/FTCore/RemoteDispatch.swift の RemoteRunArgs.build)。プロファイルの
     /// `remoteControl.workspace` を上書きし、appPath のインストール先(ステージ先。原本の解決基準は
@@ -933,7 +942,8 @@ struct RunScenarios: AsyncParsableCommand {
         }
 
         PhaseLog.mark("fm-doctor")
-        let recorder = RunRecorder.begin(project: testProject, profile: profile, trigger: "cli")
+        let recorder = RunRecorder.begin(project: testProject, profile: profile, trigger: "cli",
+                                         runGroup: runGroup)
         PhaseLog.mark("recorder-begin")
 
         if let profile {
@@ -1075,7 +1085,7 @@ struct RunScenarios: AsyncParsableCommand {
             heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
             fastInput: fastInput, enableAnimations: enableAnimations,
             performanceMode: performanceMode, broadcast: broadcast,
-            localJUnitPath: junit, remoteTimeoutSeconds: remoteTimeout)
+            localJUnitPath: junit, remoteTimeoutSeconds: remoteTimeout, runGroup: runGroup)
         if exitCode != 0 {
             throw ExitCode(exitCode)
         }

@@ -87,6 +87,7 @@ jq -r 'select(.workerAnomalies == null) | .runID' results/runs/2026-08/*/run.jso
 | measurementInvalid | Bool? | `--performance` の run でレーン数が変わり所要時間が計測に使えない |
 | measurementInvalidReasons | [String]? | 同上の理由(英語) |
 | issuer | String? | ディスパッチ発行者の自己申告(認証ではない) |
+| runGroup | String? | **同じ実行から分かれた run を束ねる鍵**。デバイスが複数の機械にまたがるプロファイルは機械ごとに別 run(別 runID・別 machine・リモートは向こうの時計)になるので、`profile` と開始時刻では同じ実行かどうか決められない。ファンアウトの親が1回だけ発行し、手元の子にもリモートの子にも同じ値が入る。**単機の run と 2026-08-26 より前の記録では欠落**(束ねる相手が居ない) |
 
 ### WorkerAnomalyRecord
 

@@ -493,6 +493,34 @@ final class RemoteDispatchTests: XCTestCase {
              "--device", "iPhone-01", "iPhone-02", "--device-host", "M1Max"])
     }
 
+    /// **束ね鍵は中継しないとリモートの run.json に載らない** —— 載らないと、その機械で撮った
+    /// 録画だけが束から外れて別セッションに並ぶ(RunMetaRecord.runGroup の宣言)
+    func testRemoteRunArgsRelaysTheRunGroup() {
+        let args = RemoteRunArgs.build(
+            project: "E2E", profile: "mixed", scenarios: [], folders: [],
+            heal: false, noHeal: false, noLPT: false, lptHistoryRuns: nil,
+            fastInput: false, enableAnimations: false, performanceMode: false,
+            remoteJUnitPath: nil, reportDir: nil, runGroup: "20260826-0100Z-LDIPC96-abcd")
+        XCTAssertEqual(Array(args.suffix(2)), ["--run-group", "20260826-0100Z-LDIPC96-abcd"], "\(args)")
+
+        let api = RemoteRunArgs.buildApi(
+            project: "E2E", profile: "mixed", scenarios: [],
+            heal: false, noLPT: false, lptHistoryRuns: nil, performanceMode: false,
+            defaultTimeout: nil, scenarioTimeout: nil, reportDir: nil,
+            runGroup: "20260826-0100Z-LDIPC96-abcd")
+        XCTAssertEqual(Array(api.suffix(2)), ["--run-group", "20260826-0100Z-LDIPC96-abcd"], "\(api)")
+    }
+
+    /// 単機の run は束ねる相手が居ないので鍵を渡さない(旧レコードと同じ形を保つ)
+    func testRemoteRunArgsOmitsTheRunGroupWhenAbsent() {
+        let args = RemoteRunArgs.build(
+            project: "E2E", profile: "mixed", scenarios: [], folders: [],
+            heal: false, noHeal: false, noLPT: false, lptHistoryRuns: nil,
+            fastInput: false, enableAnimations: false, performanceMode: false,
+            remoteJUnitPath: nil, reportDir: nil)
+        XCTAssertFalse(args.contains("--run-group"), "\(args)")
+    }
+
     /// `--broadcast` は中継しないとリモートが共有キューで走る(「全台で1回ずつ」が黙って分配に化ける)
     func testRemoteRunArgsRelaysBroadcast() {
         let args = RemoteRunArgs.build(

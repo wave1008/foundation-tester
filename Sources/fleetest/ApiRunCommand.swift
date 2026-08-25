@@ -128,6 +128,16 @@ struct ApiRunCommand: AsyncParsableCommand {
                 visibility: .hidden))
     var deviceHost: String?
 
+    /// 同じ実行から分かれた run を束ねる鍵(FTCore.RunMetaRecord.runGroup)。**発行は
+    /// ファンアウトの親だけ**で、子は受け取った値をそのまま run.json に書く(自分で作らない)。
+    /// 手で打つものではない
+    @Option(name: .customLong("run-group"),
+            help: ArgumentHelp(
+                "Group key shared by the per-machine sub-runs of one execution. "
+                + "Set by the per-host sub-runs; not for hand use",
+                visibility: .hidden))
+    var runGroup: String?
+
     /// **手で打つものではない**。RunScenarios.workspace と同じ契約(RemoteRunDispatcher が
     /// ミラー後の絶対パスを渡す)
     @Option(help: ArgumentHelp(
@@ -442,7 +452,8 @@ struct ApiRunCommand: AsyncParsableCommand {
 
         // dry-run/debug は実測にならない(dry-run はデバイス未接続、debug は人間介入前提)ため記録しない
         let recorder: RunRecorder? = (!dryRun && debugOptions == nil)
-            ? RunRecorder.begin(project: testProject, profile: profile, trigger: "api")
+            ? RunRecorder.begin(project: testProject, profile: profile, trigger: "api",
+                                runGroup: runGroup)
             : nil
 
         // OS 対象外(`@TestClass(platform:)` / `@Test(platform:)`)をキュー投入前に外す。
@@ -610,7 +621,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             heal: heal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
             performanceMode: performanceMode,
             defaultTimeout: defaultTimeout, scenarioTimeout: scenarioTimeout.map(Double.init),
-            remoteTimeoutSeconds: remoteTimeout)
+            remoteTimeoutSeconds: remoteTimeout, runGroup: runGroup)
         if exitCode != 0 {
             throw ExitCode(exitCode)
         }

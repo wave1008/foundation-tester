@@ -31,6 +31,10 @@ public final class RunRecorder: @unchecked Sendable {
     /// 自己申告のディスパッチ発行者(LocalConfig.resolveIssuerId)。begin() で1回だけ解決し、
     /// begin/finish 両方の RunMetaRecord へ同じ値を焼き込む
     private let issuer: String?
+    /// 同じ実行から分かれた run を束ねる鍵(RunMetaRecord.runGroup の宣言参照)。issuer と同じく
+    /// begin/finish 両方へ同じ値を焼き込む —— finish で落とすと、途中で落ちた run だけが
+    /// 束から外れて「マシンが1台足りない実行」に見える
+    private let runGroup: String?
     /// 動画録画(record:true)が recordings/index.json を書く場所。RunOrchestrator への
     /// VideoRecordingConfig 注入に呼び出し側(ApiRunCommand/ProfileRunner)が使う
     public let runDir: URL
@@ -47,7 +51,7 @@ public final class RunRecorder: @unchecked Sendable {
 
     private init(runID: String, projectName: String, profile: String?, machine: String,
                 trigger: String, startedAt: String, runDir: URL,
-                hostMetrics: HostMetricsRecorder?, issuer: String?) {
+                hostMetrics: HostMetricsRecorder?, issuer: String?, runGroup: String?) {
         self.runID = runID
         self.projectName = projectName
         self.profile = profile
@@ -57,10 +61,12 @@ public final class RunRecorder: @unchecked Sendable {
         self.runDir = runDir
         self.hostMetrics = hostMetrics
         self.issuer = issuer
+        self.runGroup = runGroup
     }
 
     public static func begin(project: TestProject, profile: String?, trigger: String,
-                             captureHostMetrics: Bool = true) -> RunRecorder {
+                             captureHostMetrics: Bool = true,
+                             runGroup: String? = nil) -> RunRecorder {
         let machine = resolveMachine()
         let runID = makeRunID(machine: machine)
         let resultsDir = RunResultsStore.resultsDir(projectRoot: project.rootURL)
@@ -78,11 +84,11 @@ public final class RunRecorder: @unchecked Sendable {
         let recorder = RunRecorder(
             runID: runID, projectName: project.name, profile: profile, machine: machine,
             trigger: trigger, startedAt: startedAt, runDir: runDir, hostMetrics: hostMetrics,
-            issuer: issuer)
+            issuer: issuer, runGroup: runGroup)
 
         let meta = RunMetaRecord(
             runID: runID, project: project.name, profile: profile, machine: machine,
-            trigger: trigger, startedAt: startedAt, issuer: issuer)
+            trigger: trigger, startedAt: startedAt, issuer: issuer, runGroup: runGroup)
         RunResultsStore.writeMeta(meta, runDir: runDir)
         return recorder
     }
@@ -157,7 +163,7 @@ public final class RunRecorder: @unchecked Sendable {
             measurementInvalidReasons: measurementInvalid && !measurementInvalidReasons.isEmpty
                 ? measurementInvalidReasons : nil,
             workerAnomalies: workerAnomalies.isEmpty ? nil : workerAnomalies,
-            issuer: issuer)
+            issuer: issuer, runGroup: runGroup)
         RunResultsStore.writeMeta(meta, runDir: runDir)
     }
 
@@ -211,6 +217,13 @@ public final class RunRecorder: @unchecked Sendable {
             return "_"
         })
         return sanitized.isEmpty ? "unknown" : sanitized
+    }
+
+    /// ファンアウトの親が1回だけ発行する束ね鍵(RunMetaRecord.runGroup)。**形式は runID と同じ**
+    /// (辞書順=時系列順。親は run ディレクトリを作らないので runID とは衝突しない)。
+    /// 子はこれを `--run-group` で受け取って**そのまま**書く —— 各機械が自分で作ると束にならない
+    public static func makeRunGroupID() -> String {
+        makeRunID(machine: resolveMachine())
     }
 
     /// <yyyyMMdd-HHmmss(UTC)>Z-<machine>-<乱数4hex>。辞書順 = 時系列順になるよう固定幅にする

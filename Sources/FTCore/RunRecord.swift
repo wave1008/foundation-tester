@@ -75,6 +75,13 @@ public struct RunMetaRecord: Codable, Sendable {
     /// 自己申告のディスパッチ発行者(LocalConfig.resolveIssuerId)。認証ではない(帰属の記録のみ)。
     /// 旧レコードにはキーが無いので Optional のまま decode できる(schemaVersion は上げない)
     public var issuer: String?
+    /// **同じ実行から分かれた run を束ねる鍵**。デバイスが複数の機械にまたがるプロファイルは
+    /// 機械ごとに別々の run(別 runID・別 machine・リモートは向こうの時計)になるので、
+    /// 「同じ実行の子か」は時刻や profile 名からは決められない —— ファンアウトの親が1回だけ
+    /// 発行し、手元の子にもリモートの子にも同じ値を配る(発行は RunRecorder.makeRunGroupID、
+    /// 中継は FleetRunner.buildArgs / ApiRunHostFanout / RemoteRunArgs)。
+    /// 単機の run では nil(束ねる相手が居ない)。旧レコードも nil のまま読める
+    public var runGroup: String?
 
     public init(schemaVersion: Int = RunRecordSchema.current, runID: String, project: String,
                 profile: String?, machine: String, trigger: String, startedAt: String,
@@ -84,7 +91,7 @@ public struct RunMetaRecord: Codable, Sendable {
                 blankRepairs: [String]? = nil, blankExclusions: [String]? = nil,
                 measurementInvalid: Bool? = nil, measurementInvalidReasons: [String]? = nil,
                 workerAnomalies: [WorkerAnomalyRecord]? = nil,
-                issuer: String? = nil) {
+                issuer: String? = nil, runGroup: String? = nil) {
         self.schemaVersion = schemaVersion
         self.runID = runID
         self.project = project
@@ -104,6 +111,7 @@ public struct RunMetaRecord: Codable, Sendable {
         self.measurementInvalidReasons = measurementInvalidReasons
         self.workerAnomalies = workerAnomalies
         self.issuer = issuer
+        self.runGroup = runGroup
     }
 }
 

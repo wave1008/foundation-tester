@@ -119,6 +119,9 @@ enum DeviceHostRunner {
         }
 
         let binary = FleetRunner.selfBinaryPath()
+        // 機械ごとに別々の run になるので、ここで1回だけ束ね鍵を発行して全員へ配る
+        // (FTCore.RunMetaRecord.runGroup。子が自分で作ると束にならない)
+        let runGroup = RunRecorder.makeRunGroupID()
         let outcomes = await withTaskGroup(of: (Int, FleetEntryOutcome).self) { taskGroup in
             for (index, group, ids) in active {
                 taskGroup.addTask {
@@ -132,7 +135,7 @@ enum DeviceHostRunner {
                         remoteDir: remoteDir, remoteTimeout: remoteTimeout,
                         remoteArtifacts: remoteArtifacts, quiet: quiet,
                         junitPath: FleetRunner.entryJUnitPath(tempDir: junitTempDir, index: index),
-                        broadcast: broadcast)
+                        broadcast: broadcast, runGroup: runGroup)
                     let start = Date()
                     let exitCode = await FleetRunner.runEntry(
                         binary: binary, args: args, hostLabel: group.hostLabel)
