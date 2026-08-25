@@ -1202,7 +1202,10 @@ struct ApiMonitorDevicesEvent: Codable {
 /// (VSCode 拡張側(monitorModel.ts)の契約が detail: string 固定のため null は使わない。
 /// ApiScenarioInfo 等の「省略可能フィールドは null を明示する」方針とは別)
 struct ApiMonitorDeviceInfo: Codable {
-    let id: String
+    /// **var なのは RemoteMonitorFanout が書き戻すため**。子(ランナー)は畳んだプロファイルを
+    /// 見るので自分の台を "local" と名乗り、id にホストが入らない。親が (host, name) の id へ
+    /// 直してからタイルへ渡す(RemoteMonitorFanout.hostScoped)
+    var id: String
     let name: String
     let platform: String
     let state: String

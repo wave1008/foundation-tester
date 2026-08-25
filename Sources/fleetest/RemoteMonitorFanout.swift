@@ -6,8 +6,9 @@
 // NDJSON を親が取り込む。親がやることは3つだけ:
 //   - `monitorDevices` は**保持する**(親が毎サイクル出す devices 配列へ、マシンプロファイルの
 //     並び順のまま差し込む。子と親でサイクルが揃っていないので、そのまま素通しはできない)
-//   - `monitorFrame` / `monitorError` は**行のまま中継する**(device id にホストが入っているので
-//     受け手[拡張]はそのままタイルを特定できる。作り直すと base64 を1往復ぶん無駄に触る)
+//   - `monitorFrame` / `monitorError` は **"device" だけホスト付きに直して**中継する
+//     (子は畳んだプロファイルを見るので自分の台を "local" と名乗り、id にホストが入らない。
+//     JSON は組み直さない = base64 を1往復ぶん無駄に触らない。RemoteMonitorFanout.hostScoped)
 //   - stdin の制御行(pause/resume/suppressFrames)は**全子へ素通しする**(id の集合で判定する
 //     だけなので、自分の持たない id が混ざっていても害はない)
 //
@@ -182,19 +183,50 @@ final class RemoteMonitorFanout: @unchecked Sendable {
               let kind = (try? JSONDecoder().decode(KindOnly.self, from: data))?.kind
         else { return }
         guard kind == "monitorDevices" else {
-            // monitorFrame / monitorError。行のまま中継して受け手に判断させる
-            relayLine(line)
+            // monitorFrame / monitorError。**"device" だけホスト付きに直して**中継する
+            // (base64 は触らない = 1往復ぶんの無駄を避ける。理由はファイル冒頭)
+            relayLine(Self.hostScoped(line: line, host: host))
             return
         }
         guard let event = try? JSONDecoder().decode(ApiMonitorDevicesEvent.self, from: data) else {
             log("[monitor] \(host): cannot read the remote monitorDevices line")
             return
         }
+        // **子の id はホストを含まない** —— 転送プロファイルを畳んである(RunnerProfileView)ので
+        // 向こうは自分の台を "local" と名乗る。親のタイルは (host, name) で一意なので、ここで
+        // ホスト付きの id へ直す。**直さないと状態も映像もタイルに届かない**(実害 2026-08-26:
+        // 畳み込みを入れた直後、リモートのタイルが全部「状態不明」になった)
         var byID: [String: ApiMonitorDeviceInfo] = [:]
-        for device in event.devices { byID[device.id] = device }
+        for device in event.devices {
+            var scoped = device
+            scoped.id = DeviceHostGrouping.workerID(
+                platform: device.platform, host: host, name: device.name)
+            byID[scoped.id] = scoped
+        }
         lock.lock()
         devicesByHost[host] = byID
         lock.unlock()
+    }
+
+    /// 中継行の `"device":"<platform>:<name>"` を `"<platform>:<host>/<name>"` へ書き換える。
+    /// **JSON を組み直さない**(base64 のフレームを1往復ぶん触らないため)。id の規則は
+    /// DeviceHostGrouping.workerID と同じ = ここが2つ目の実装にならないよう platform/name を
+    /// 切り出してそちらへ渡す。書き換えられない行(想定外の形)はそのまま流す
+    static func hostScoped(line: String, host: String) -> String {
+        let key = "\"device\":\""
+        guard let keyRange = line.range(of: key) else { return line }
+        let valueStart = keyRange.upperBound
+        guard let quote = line.range(of: "\"", range: valueStart..<line.endIndex) else { return line }
+        let value = String(line[valueStart..<quote.lowerBound])
+        guard let colon = value.firstIndex(of: ":") else { return line }
+        let platform = String(value[value.startIndex..<colon])
+        let name = String(value[value.index(after: colon)...])
+        // **判定は「このホスト名で始まるか」**。デバイス名自体が "/" を含むのは普通
+        // (例 "Pixel 10(Android 14(API 34) / arm64-v8a)-01")なので、"/" の有無では見ない
+        // —— 見ると、その名前の台だけ id が直らず状態も映像も届かなくなる
+        guard !name.hasPrefix(host + "/") else { return line }
+        let scoped = DeviceHostGrouping.workerID(platform: platform, host: host, name: name)
+        return line.replacingCharacters(in: valueStart..<quote.lowerBound, with: scoped)
     }
 
     private func isStopping() -> Bool {
