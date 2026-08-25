@@ -21,7 +21,9 @@ extension StepExecutor {
         let clock = ContinuousClock()
         var previous = found.frame
         var lastSnapshotMs = 0
-        for _ in 0..<Self.scrollSettleMaxPolls {
+        // settledSignature と同じ規律: 基本予算を超えて回すのは**まだ減速しているとき**だけ
+        var motion: [Double?] = []
+        for poll in 0..<Self.scrollSettleMaxDeceleratingPolls {
             let waitStart = clock.now
             try await Task.sleep(for: .milliseconds(
                 Self.settleSleepMs(afterSnapshotMs: lastSnapshotMs,
@@ -38,7 +40,9 @@ extension StepExecutor {
             guard let (element, _) = Self.resolve(step: step, in: snapshot,
                                                   strictForAssert: true) else { return false }
             if element.frame == previous { return true }
+            motion.append(max(abs(element.frame.x - previous.x), abs(element.frame.y - previous.y)))
             previous = element.frame
+            if poll + 1 >= Self.scrollSettleMaxPolls, !SettleMotion.isDecelerating(motion) { break }
         }
         return false
     }
@@ -382,8 +386,15 @@ extension StepExecutor {
     /// 整定ポーリングの待ちの下限(busy loop 防止)
     static let scrollSettleMinSleepMs = 30
 
-    /// スクロール静止待ちの上限(回数 × 間隔 = 最大 600ms)。フリングの減速はこの範囲で収まる
+    /// スクロール静止待ちの**基本予算**(回数 × 間隔 = 600ms)。多くのフリングはこの範囲で収まる。
+    /// ここを超えても、**まだ減速しているうちは** scrollSettleMaxDeceleratingPolls まで待つ
     static let scrollSettleMaxPolls = 6
+    /// 減速が続いている場合の周回上限(= 最大 2.4s)。**当たるのは異常**で、当たれば
+    /// `settle-capped` が注記に出る —— 出たら「2.4 秒経っても減速し続ける画面」の実測を
+    /// 取ってから見直すこと(数字を増やす前に、何が動き続けているのかを見る)。
+    /// 基本予算の4倍にしてあるのは、600ms で打ち切られていた実測(全緑の run で 34 回・
+    /// うち横カルーセルは 0.25 秒の肩代わりが消えると赤)に対して十分な余裕を取るため
+    static let scrollSettleMaxDeceleratingPolls = 24
     static let scrollSettleIntervalMs = 100
     /// screenLooksLike が不一致だったときに撮り直すまでの待ち(ms)。**遷移の描き終わりを待つだけ**なので
     /// スクロールの整定待ち(6×100ms)と同じオーダーに置く。長くすると失敗の確定が遅れる
@@ -426,9 +437,12 @@ extension StepExecutor {
         var start = clock.now
         var last = try await freshSnapshot(.afterOwnMove)
         var previous = signature(last)
+        var previousElements = last.elements
         var lastSnapshotMs = Self.ms(clock.now - start)
         phase.snapshotMs += lastSnapshotMs
-        for _ in 0..<Self.scrollSettleMaxPolls {
+        // 変位の履歴(古い順)。**縮んでいる間は待つ**ので、周回上限は日常的には当たらない
+        var motion: [Double?] = []
+        for poll in 0..<Self.scrollSettleMaxDeceleratingPolls {
             let waitStart = clock.now
             try await Task.sleep(for: .milliseconds(
                 Self.settleSleepMs(afterSnapshotMs: lastSnapshotMs,
@@ -440,7 +454,12 @@ extension StepExecutor {
             lastSnapshotMs = Self.ms(clock.now - start)
             phase.snapshotMs += lastSnapshotMs
             if current == previous { return (current, last, true) }
+            motion.append(SettleMotion.displacement(from: previousElements, to: last.elements))
             previous = current
+            previousElements = last.elements
+            // 従来の予算(6周)を超えて回すのは**まだ減速しているとき**だけ。
+            // 横ばい・増加は等速のアニメーションで、待っても止まらない
+            if poll + 1 >= Self.scrollSettleMaxPolls, !SettleMotion.isDecelerating(motion) { break }
         }
         return (previous, last, false)
     }
