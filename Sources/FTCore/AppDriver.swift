@@ -1,6 +1,6 @@
 // AppDriver.swift
 // プラットフォーム境界となる唯一の抽象。iOS は FTBridgeClient が実装し、
-// Android フェーズでは adb/UIAutomator2 ベースの実装を追加する(FTAgent/FTCore は無変更)。
+// Android フェーズでは adb/UIAutomator2 ベースの実装を追加する(FTFoundationModels/FTCore は無変更)。
 
 import Foundation
 

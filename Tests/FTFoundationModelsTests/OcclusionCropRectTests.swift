@@ -1,7 +1,7 @@
 import CoreGraphics
 import XCTest
 import FTCore
-@testable import FTAgent
+@testable import FTFoundationModels
 
 final class OcclusionCropRectTests: XCTestCase {
 

@@ -1,5 +1,5 @@
 import XCTest
-@testable import FTAgent
+@testable import FTFoundationModels
 
 /// FM の rationale は @Guide で「日本語で1文」を要求しているが、構造化出力から外れて
 /// セッションのトランスクリプトを末尾へ巻き込むことがある(2026-07-22 実測)。

@@ -2,7 +2,7 @@
 // 宛先(デバイス)の記憶(省略呼び出しへの適用)と、曖昧なときの拒否文言。本体は MCPServer.swift
 
 import Foundation
-import FTAgent
+import FTFoundationModels
 import FTAndroid
 import FTBridgeClient
 import FTCore

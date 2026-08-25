@@ -27,7 +27,7 @@ three things packed into the name are the three things the tool is built for.
 
 ## Four entry points
 
-The same core (Swift DSL + AppDriver + StepExecutor + the Foundation Models hooks) is exposed
+The same core (Swift DSL + AppDriver + StepExecutor + the Foundation Models calls) is exposed
 through four entry points suited to different uses. The UI is consolidated in the VSCode
 extension.
 
@@ -51,7 +51,7 @@ by the CLI or CI.
 ```
 fleetest CLI / MCP ──(subprocess)──▶ fleetest-scenarios-<project> (discovers/runs a project's scenarios)
       │                                        │  FTDSL   (Swift DSL: @TestClass/@Test macros, commands, reporting)
-      │                                        │  FTAgent (Foundation Models: visual verification / healing / triage)
+      │                                        │  FTFoundationModels (Foundation Models: visual verification / healing / triage)
       │                                        │  FTCore  (step model / AppDriver abstraction / StepExecutor)
       │                                        ▼
       ├─ HTTP (localhost:8123) ──▶ a resident XCUITest process inside the iOS simulator
@@ -59,7 +59,7 @@ fleetest CLI / MCP ──(subprocess)──▶ fleetest-scenarios-<project> (dis
       └─ adb forward ⇄ resident bridge ──▶ Android emulator / physical device
 ```
 
-- The only platform boundary is the `AppDriver` protocol — the Foundation Models hooks and the
+- The only platform boundary is the `AppDriver` protocol — the Foundation Models calls and the
   replay engine are entirely shared between iOS and Android.
 - Snapshots are filtered on the driver side and converted into a compressed text form like
   `[3] Button "Log In" id=login_btn` (to work within the on-device model's token budget).

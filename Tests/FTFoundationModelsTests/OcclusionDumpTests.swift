@@ -4,7 +4,7 @@
 
 import CoreGraphics
 import XCTest
-@testable import FTAgent
+@testable import FTFoundationModels
 
 final class OcclusionDumpTests: XCTestCase {
 

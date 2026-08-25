@@ -2,7 +2,7 @@
 // ft_batch(DSL 行のパースと逐次実行)。本体は MCPServer.swift(instance 状態はそちらに置く)
 
 import Foundation
-import FTAgent
+import FTFoundationModels
 import FTAndroid
 import FTBridgeClient
 import FTCore

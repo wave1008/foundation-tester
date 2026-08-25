@@ -5,7 +5,7 @@
 
 import ArgumentParser  // --device の指定違いを ValidationError で返す
 import Foundation
-import FTAgent
+import FTFoundationModels
 import FTAndroid
 import FTBridgeClient
 import FTCore

@@ -19,7 +19,7 @@ hittable は無く、②Compose iOS では `isHittable` 自体が壊れている
 
 | 追加物 | 位置 | 役割 |
 |---|---|---|
-| `OcclusionVerifier` | [Sources/FTAgent/OcclusionVerifier.swift](../Sources/FTAgent/OcclusionVerifier.swift) | FM 視覚照合器。`@Generable VisibilityVerdict{ visible, state, observedText, reason }` を greedy で生成 |
+| `OcclusionVerifier` | [Sources/FTFoundationModels/OcclusionVerifier.swift](../Sources/FTFoundationModels/OcclusionVerifier.swift) | FM 視覚照合器。`@Generable VisibilityVerdict{ visible, state, observedText, reason }` を greedy で生成 |
 | `ReplayDelegate.verifyElementVisible` | [Sources/FTCore/StepExecutor.swift](../Sources/FTCore/StepExecutor.swift) | FM 非依存の delegate フック(既定実装 nil)。FTCore を FM から切り離したまま結線 |
 | `StepExecutor.occlusionGuard` + `occlusionFlip()` | ノブは同上。`occlusionFlip` の現在の実体は [Sources/FTCore/StepExecutor+Assert.swift](../Sources/FTCore/StepExecutor+Assert.swift) | ノブ。exists/textEquals がツリー一致した**一点で1回だけ** FM 照合し、`visible==false` なら `.failed("偽陽性(occlusion)…")` へ反転 |
 | 計測ハーネス | `fleetest-poc-occlusion`(PoC ブランチ履歴・§8) | 正解ラベル付き合成フィクスチャで正確性・速度を計測 |
@@ -180,7 +180,7 @@ FM が最も信頼できるケース。逆に言うと:
 |---|---|
 | カテゴリタイル(Button)、商品カード(Button)、商品画像(Image)、ハート(Button/Image)、絵文字単体「📱」 | 見出し・バナー・カテゴリ label・商品名・価格・評価・「セール」「新着」等の StaticText |
 
-**対策2: 省略許容プロンプト**([OcclusionVerifier.swift](../Sources/FTAgent/OcclusionVerifier.swift))。
+**対策2: 省略許容プロンプト**([OcclusionVerifier.swift](../Sources/FTFoundationModels/OcclusionVerifier.swift))。
 「末尾の… や折り返しは visible=true。false にするのは 覆い/単色空白/全く別の文字列 の時だけ」に改訂。
 
 ### 結果: 実 UI で有害誤反転 0
@@ -397,7 +397,7 @@ performance-tuning.md §6)。
 + **省略許容プロンプト**の3点を揃えれば、実 UI で有害誤反転 0%・レイテンシ median≈1.6s を達成できた。
 これらは全て実装・結線済み([OcclusionEligibility](../Sources/FTCore/OcclusionEligibility.swift)・
 [RegionInk](../Sources/FTCore/RegionInk.swift)・[OcclusionSuspicion](../Sources/FTCore/OcclusionSuspicion.swift)・
-[OcclusionVerifier](../Sources/FTAgent/OcclusionVerifier.swift)・StepExecutor.occlusionFlip)。
+[OcclusionVerifier](../Sources/FTFoundationModels/OcclusionVerifier.swift)・StepExecutor.occlusionFlip)。
 
 **デバイス上での true-positive も取得済み(§5.9)**: スナックバー occlusion で「¥24,000」が visible→covered に
 正しく反転、sticky バー裏の「レビュー」も安定検知。実 UI で **誤反転 0 かつ 実 occlusion 捕捉**を両立できた。

@@ -25,7 +25,7 @@ Claude Codeを前提とした macOS専用の iOS / Android アプリの E2E テ�
 
 ## 4つのインターフェース
 
-同じコア(Swift DSL + AppDriver + StepExecutor + FM フック)の上に、用途別の入口が4つある。
+同じコア(Swift DSL + AppDriver + StepExecutor + FM 呼び出し)の上に、用途別の入口が4つある。
 UI は VSCode 拡張(`vscode-fleetest/`)に一本化している(セットアップ・機能の詳細は
 [vscode-fleetest/README.md](vscode-fleetest/README.md))。
 
@@ -547,7 +547,7 @@ XCUITest ブリッジ側へ寄る**(読みが少し遅くなるだけで止ま�
 ```
 fleetest CLI / MCP ──(サブプロセス)──▶ fleetest-scenarios-<project>(プロジェクトのシナリオを発見・実行)
       │                                        │  FTDSL   (Swift DSL: @TestClass/@Test マクロ・コマンド・レポート)
-      │                                        │  FTAgent (FoundationModels: 視覚検証 / 修復 / トリアージ)
+      │                                        │  FTFoundationModels (FoundationModels: 視覚検証 / 修復 / トリアージ)
       │                                        │  FTCore  (ステップモデル / AppDriver 抽象 / StepExecutor)
       │                                        ▼
       ├─ HTTP (localhost:8123) ──▶ iOS シミュレータ内の常駐 XCUITest
@@ -556,7 +556,7 @@ fleetest CLI / MCP ──(サブプロセス)──▶ fleetest-scenarios-<proje
          (AndroidRunner/)
 ```
 
-- プラットフォーム境界は `AppDriver` プロトコルのみ。**FM フックと再生器は iOS/Android 完全共通**
+- プラットフォーム境界は `AppDriver` プロトコルのみ。**FM 呼び出しと再生器は iOS/Android 完全共通**
   (Android の UI 型は iOS と同じ語彙にマップ)
 - スナップショットはドライバ側でフィルタし、`[3] Button "ログイン" id=login_btn` 形式の
   圧縮テキストに変換(オンデバイスモデルの 4K トークン制約対策)
@@ -584,7 +584,7 @@ Sources/
   FTDSLMacros/     @TestClass / @Test マクロ実装(swift-syntax はここに閉じる)
   FTScenarioRunner/ fleetest-scenarios-<project> の CLI 実装(list / run・NDJSON イベント)
   FTCore/          ステップモデル / AppDriver / StepExecutor / プロジェクト・プロファイルモデル(FM 非依存・外部依存ゼロ)
-  FTAgent/         FM フック(失敗時の Healer / Verifier / Triager・occlusion-guard・下書き生成・命名)
+  FTFoundationModels/ FM 呼び出し(失敗時の Healer / Verifier / Triager・occlusion-guard・下書き生成・命名)
   FTBridgeClient/  iOS ブリッジの HTTP クライアントと起動管理・SimulatorCatalog・BridgeProvisioner
   FTAndroid/       Android ドライバ(常駐ブリッジ)・AndroidDeviceCatalog・ProfileWorkerFactory
 Runner/            xcodegen 定義 + ブリッジ本体(HTTP サーバ内蔵 UI テスト)

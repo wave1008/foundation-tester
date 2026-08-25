@@ -2,7 +2,7 @@
 // 木に添える注記・ヒント(ghost・類似ラベル・遮蔽・切り詰め等)。本体は MCPServer.swift(instance 状態はそちらに置く)
 
 import Foundation
-import FTAgent
+import FTFoundationModels
 import FTAndroid
 import FTBridgeClient
 import FTCore

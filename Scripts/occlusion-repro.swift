@@ -15,7 +15,7 @@
 //         /tmp/occlusion-repro <png> --crop x,y,w,h [回数] [期待テキスト]
 //         期待テキスト省略時は <png> と同名の .txt を読む。
 //
-// 実装は Sources/FTAgent/OcclusionVerifier.swift と一致させること(instructions / prompt /
+// 実装は Sources/FTFoundationModels/OcclusionVerifier.swift と一致させること(instructions / prompt /
 // VisibilityVerdict / sampling)。片方だけ変えると再現性の比較が成立しなくなる。
 
 import CoreGraphics

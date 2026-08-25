@@ -49,7 +49,7 @@ iOS / Android 両対応のアプリ E2E テストツール。iOS を先行実装
 ```
 ┌─ macOS ホスト ────────────────────────────────────────────────────┐
 │  fleetest CLI / MCP サーバ / VSCode 拡張(共通で fleetest api を呼ぶ) │
-│  ├─ FTAgent        : FoundationModels エージェント層               │
+│  ├─ FTFoundationModels        : FoundationModels エージェント層               │
 │  │   ├─ VerifierProfile   (マルチモーダル画面検証)                 │
 │  │   └─ TriagerProfile    (失敗トリアージ・自己修復)               │
 │  ├─ FTDSL          : Swift DSL(§10)/ セレクタ式 / ヒールキャッシュ │
@@ -74,7 +74,7 @@ iOS / Android 両対応のアプリ E2E テストツール。iOS を先行実装
 ブリッジ(AndroidRunner/)・InApp ブリッジは共通コア 9 エンドポイント(status/session/
 snapshot/tap/type/swipe/press/screenshot/terminate)を共有しつつ、iOS は drag/appswitcher/
 home を追加した12、Android は locale を追加した10、InApp はコアのみの9という差分があるため、
-`FTAgent` / `FTCore` / `FTDSL` はプラットフォーム非依存のまま両OSで動く
+`FTFoundationModels` / `FTCore` / `FTDSL` はプラットフォーム非依存のまま両OSで動く
 (ブリッジ設計の詳細は §4、Swift DSL の詳細は §10)。
 
 ```swift
@@ -117,7 +117,7 @@ foundation-tester/
 │   │                              # TestProject / RunProfile / LocalConfig(§11)
 │   ├── FTDSL / FTDSLMacros/       # Shirates 風 Swift DSL とマクロ(§10)
 │   ├── FTScenarioRunner/          # fleetest-scenarios-<project> の CLI 実装
-│   ├── FTAgent/                   # FoundationModels: プロファイル, @Generable 型, Tools
+│   ├── FTFoundationModels/                   # FoundationModels: プロファイル, @Generable 型, Tools
 │   ├── FTBridgeClient/            # iOS ブリッジ HTTP クライアント + SimulatorCatalog / BridgeProvisioner
 │   ├── FTAndroid/                 # AndroidDriver + AndroidBridge / AndroidDeviceCatalog / ProfileWorkerFactory
 │   └── fleetest-mcp/               # MCP サーバ(stdio、自前実装)
@@ -227,7 +227,7 @@ iOS ブリッジと区別なく扱える。
 
 ---
 
-## 5. FM フック層(FTAgent)設計
+## 5. FM 呼び出し層(FTFoundationModels)設計
 
 ### 5.1 セッション戦略(4K トークン運用)
 
@@ -300,7 +300,7 @@ CLI/MCP/VSCode 拡張はいずれも同じ `fleetest api ...` 系サブコマン
 | **M1** | ブリッジ + 手動駆動 | CLI から SampleApp を起動し、curl 相当で tap/type/snapshot/screenshot が通る | 達成済み |
 | **M2** | FM 探索によるシナリオ自動生成(`fleetest explore`) | — | 廃止済み(§1.2) |
 | **M3** | 決定的再生 + 自己修復 + トリアージ | id 変更を仕込んだ SampleApp でシナリオが自己修復され、意図的バグで TriageReport が出る | 達成済み |
-| **M4** | Android ブリッジ + ドライバ | `AndroidDriver` で FTAgent/FTCore を無変更のまま Android アプリのシナリオを再生する(実装は自作 instrumentation ブリッジ。UIAutomator2/Appium は不採用。§4.5, §8.7) | 達成済み |
+| **M4** | Android ブリッジ + ドライバ | `AndroidDriver` で FTFoundationModels/FTCore を無変更のまま Android アプリのシナリオを再生する(実装は自作 instrumentation ブリッジ。UIAutomator2/Appium は不採用。§4.5, §8.7) | 達成済み |
 
 M1・M3・M4 は達成済み(M2 の FM 探索機能は後に廃止。§1.2)。2026-07 には固定 sleep をブリッジ内蔵の a11y 静穏検知に置き換える高速化を実施し、
 Android シナリオで約 33%、iOS シナリオで約 27% 所要を短縮した(§8.7.1、詳細は
@@ -347,7 +347,7 @@ FM がアプリを自律探索してシナリオを生成する explore モー�
   AppDriver を完全実装できた。UIAutomator2 サーバや Appium は不要(依存ゼロ方針を維持)
 - **型語彙を iOS と揃える**: Android クラス名(EditText/TextView/Switch...)を iOS 側の
   型名(TextField/StaticText/Switch...)へマップすることで、FM プロンプト・ガードレール・
-  Flow DSL が完全共通化できた。**FTAgent と FTCore は1行も変えずに Android で動いた**
+  Flow DSL が完全共通化できた。**FTFoundationModels と FTCore は1行も変えずに Android で動いた**
 - **リスト行のテキスト昇格**: Android は「クリック可能な無名コンテナ+非クリックのテキスト子」
   構造が支配的。ドライバ側でクリック可能ノードへ子孫テキストを昇格させて解決する
 - **CLI プロセスは短命**: iOS はランナー常駐だが Android ドライバは CLI 内に住むため、
@@ -371,7 +371,7 @@ snapshot の 2 秒(uiautomator dump 自体のコスト)がフロー実行の支�
 iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 instrumentation APK)。
 
 - **共通コア部分は iOS ブリッジと同一プロトコル**(§4.5) → ホストは `BridgeClient` を無改修で流用
-  (`adb forward tcp:0 tcp:8123` 経由)。AppDriver/FTAgent/FTCore は引き続き無変更
+  (`adb forward tcp:0 tcp:8123` 経由)。AppDriver/FTFoundationModels/FTCore は引き続き無変更
 - 純フレームワーク API の Java のみ(androidx/gradle 不要、SDK 付属ツールでビルド、
   prebuilt APK を同梱)。初回操作時に自動インストール・自動起動(`AndroidBridge.swift`)
 - 実測: snapshot 2.0s → 8.7ms(中央値)、フロー8本 87s → 38s。日本語 type も

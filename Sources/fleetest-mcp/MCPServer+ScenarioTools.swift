@@ -2,7 +2,7 @@
 // シナリオ/プロジェクト系ツール(一覧・dry-run・実行・DSL索引)の実装。本体は MCPServer.swift
 
 import Foundation
-import FTAgent
+import FTFoundationModels
 import FTAndroid
 import FTBridgeClient
 import FTCore

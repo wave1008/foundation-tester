@@ -82,7 +82,7 @@ Tier-0 幾何 = 収まる軸の中心が画面外なら不可視(`TapTargetGeome
 ```
 ┌─ macOS ホスト ────────────────────────────────────────────────────┐
 │  fleetest CLI / MCP サーバ / VSCode 拡張(共通で fleetest api を呼ぶ) │
-│  ├─ FTAgent        : FoundationModels エージェント層               │
+│  ├─ FTFoundationModels        : FoundationModels エージェント層               │
 │  │   ├─ ReplayAssist      (ロケータ修復・画面検証・トリアージ)     │
 │  │   └─ OcclusionVerifier / FMDoctor / ScenarioNamer / TestbaseDrafter │
 │  ├─ FTDSL          : Swift DSL(§10)/ セレクタ式 / ヒールキャッシュ │
@@ -109,7 +109,7 @@ snapshot/tap/type/clear/pressEnter/swipe/press/doubletap/pinch/screenshot/termin
 共有しつつ、XCUITest は drag/appswitcher/home/hidekeyboard/appstate/rotate を追加した19、
 Android は locale/settle を追加した15、InApp は hidekeyboard/appstate/rotate を追加した16
 という差分がある(唯一の正は §4.3 の表 = `Tests/FTCoreTests/BridgeContractTests.swift`)。
-`FTAgent` / `FTCore` / `FTDSL` はプラットフォーム非依存のまま両OSで動く
+`FTFoundationModels` / `FTCore` / `FTDSL` はプラットフォーム非依存のまま両OSで動く
 (ブリッジ設計の詳細は §4、Swift DSL の詳細は §10)。
 
 ```swift
@@ -152,7 +152,7 @@ foundation-tester/
 │   ├── FTDSL / FTDSLMacros/       # Shirates 風 Swift DSL とマクロ(§10)。
 │   │                              # コマンド本体・FTRuntime・下書き生成(ScenarioDraftCodeGen)
 │   ├── FTScenarioRunner/          # fleetest-scenarios-<project> の CLI 実装
-│   ├── FTAgent/                   # FoundationModels: プロファイル, @Generable 型, Tools
+│   ├── FTFoundationModels/                   # FoundationModels: プロファイル, @Generable 型, Tools
 │   ├── FTBridgeClient/            # iOS ブリッジ HTTP クライアント + SimulatorCatalog / BridgeProvisioner
 │   ├── FTAndroid/                 # AndroidDriver + AndroidBridge / AndroidDeviceCatalog / ProfileWorkerFactory
 │   └── fleetest-mcp/               # MCP サーバ(stdio、自前実装)
@@ -870,7 +870,7 @@ inapp の ref タップも座標フォールバックに落ち、同じ壊れた
 
 ---
 
-## 5. FM フック層(FTAgent)設計
+## 5. FM 呼び出し層(FTFoundationModels)設計
 
 ### 5.1 セッション戦略(4K トークン運用)
 
@@ -882,7 +882,7 @@ inapp の ref タップも座標フォールバックに落ち、同じ壊れた
 ### 5.2 主要な @Generable 型
 
 ```swift
-// Sources/FTAgent/ReplayAssist.swift(抜粋。@Guide の全文はソース参照)
+// Sources/FTFoundationModels/ReplayAssist.swift(抜粋。@Guide の全文はソース参照)
 @Generable
 struct LocatorRepairSuggestion {   // 自己修復: 壊れたロケータの代替案
     var elementText: String        // 現在の要素一覧から label か id= 値を逐語コピー
@@ -898,7 +898,7 @@ struct TriageSuggestion {          // 失敗トリアージ
 }
 ```
 
-### 5.3 実装(Sources/FTAgent/ の5ファイル)
+### 5.3 実装(Sources/FTFoundationModels/ の5ファイル)
 
 | 実装 | 役割 |
 |---|---|
@@ -950,7 +950,7 @@ CLI/MCP/VSCode 拡張はいずれも同じ `fleetest api ...` 系サブコマン
 | **M1** | ブリッジ + 手動駆動 | CLI から SampleApp を起動し、curl 相当で tap/type/snapshot/screenshot が通る | 達成済み |
 | **M2** | FM 探索によるシナリオ自動生成(`fleetest explore`) | — | 廃止済み(§1.2) |
 | **M3** | 決定的再生 + 自己修復 + トリアージ | id 変更を仕込んだ SampleApp でシナリオが自己修復され、意図的バグで TriageReport が出る | 達成済み |
-| **M4** | Android ブリッジ + ドライバ | `AndroidDriver` で FTAgent/FTCore を無変更のまま Android アプリのシナリオを再生する(実装は自作 instrumentation ブリッジ。UIAutomator2/Appium は不採用。§4.5, §8.7) | 達成済み |
+| **M4** | Android ブリッジ + ドライバ | `AndroidDriver` で FTFoundationModels/FTCore を無変更のまま Android アプリのシナリオを再生する(実装は自作 instrumentation ブリッジ。UIAutomator2/Appium は不採用。§4.5, §8.7) | 達成済み |
 
 M1・M3・M4 は達成済み(M2 の FM 探索機能は後に廃止。§1.2)。2026-07 には固定 sleep をブリッジ内蔵の a11y 静穏検知に置き換える高速化を実施し、
 Android シナリオで約 33%、iOS シナリオで約 27% 所要を短縮した(§8.7.1、詳細は
@@ -983,7 +983,7 @@ FM がアプリを自律探索してシナリオを生成する explore モー�
   **Attachment だけが macOS 27+ で、FM 本体(テキスト・`@Generable`)は macOS 26+**。Package の最低は
   macOS 26 に置き、視覚系(occlusion-guard / screenLooksLike)を実行時に落とす:
   判定の単一点は `FTCore/FMVisionSupport.swift`(StepExecutor が呼ぶ前に skip/素通りへ)で、
-  実 API 側は `FTAgent` の `#available(macOS 27, *)` が保険。triage はテキストのみで継続する
+  実 API 側は `FTFoundationModels` の `#available(macOS 27, *)` が保険。triage はテキストのみで継続する
 - **screenMatches(視覚検証)は実用レベル**: 「果物の商品名と価格が並ぶリスト」の一致/不一致を
   スクリーンショットから正しく判定し、不一致時は理由(エラーメッセージの存在)も説明できた
 - **アサーションに type+index フォールバックは危険**(実測で偽陽性発生): 別画面の無関係な要素に
@@ -1000,7 +1000,7 @@ FM がアプリを自律探索してシナリオを生成する explore モー�
   AppDriver を完全実装できた。UIAutomator2 サーバや Appium は不要(依存ゼロ方針を維持)
 - **型語彙を iOS と揃える**: Android クラス名(EditText/TextView/Switch...)を iOS 側の
   型名(TextField/StaticText/Switch...)へマップすることで、FM プロンプト・ガードレール・
-  Flow DSL が完全共通化できた。**FTAgent と FTCore は1行も変えずに Android で動いた**
+  Flow DSL が完全共通化できた。**FTFoundationModels と FTCore は1行も変えずに Android で動いた**
 - **リスト行のテキスト昇格**: Android は「クリック可能な無名コンテナ+非クリックのテキスト子」
   構造が支配的。ドライバ側でクリック可能ノードへ子孫テキストを昇格させて解決する
 - **CLI プロセスは短命**: iOS はランナー常駐だが Android ドライバは CLI 内に住むため、
@@ -1024,7 +1024,7 @@ snapshot の 2 秒(uiautomator dump 自体のコスト)がフロー実行の支�
 iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 instrumentation APK)。
 
 - **共通コア部分は iOS ブリッジと同一プロトコル**(§4.5) → ホストは `BridgeClient` を無改修で流用
-  (`adb forward tcp:0 tcp:8123` 経由)。AppDriver/FTAgent/FTCore は引き続き無変更
+  (`adb forward tcp:0 tcp:8123` 経由)。AppDriver/FTFoundationModels/FTCore は引き続き無変更
 - 純フレームワーク API の Java のみ(androidx/gradle 不要、SDK 付属ツールでビルド、
   prebuilt APK を同梱)。初回操作時に自動インストール・自動起動(`AndroidBridge.swift`)
 - 実測: snapshot 2.0s → 8.7ms(中央値)、フロー8本 87s → 38s。日本語 type も
@@ -4236,7 +4236,7 @@ pid 引きとソケット一覧は**1往復に畳む**(adb は1回ごとに数�
 
 | 層 | 実装 | 役割 |
 |---|---|---|
-| 構造化(FM) | `FTAgent/TestbaseDrafter` | 資料 → `ScenarioDraft`(scene の並び + CAE ごとの自然言語手順)。1呼び出し1セッション |
+| 構造化(FM) | `FTFoundationModels/TestbaseDrafter` | 資料 → `ScenarioDraft`(scene の並び + CAE ごとの自然言語手順)。1呼び出し1セッション |
 | 構造化(決定的) | `FTCore/TestbaseOutline.parse` | 見出し(`#`=説明 / `##`=scene)・`### 前提`・行頭ラベル(`前提:`/`Given:`)・「〜こと」で CAE に振り分け |
 | レンダリング | `FTDSL/ScenarioDraftCodeGen` | 手順文 → コマンド候補(語彙の包含判定のみ・**FM 不使用=決定的**)+ Swift ソース |
 

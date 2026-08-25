@@ -1,5 +1,5 @@
 import XCTest
-@testable import FTAgent
+@testable import FTFoundationModels
 import FTCore
 
 /// FM 応答 → ScenarioDraft の変換(TestbaseDrafter.convert / clean / sanitize)。

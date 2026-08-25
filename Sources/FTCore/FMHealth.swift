@@ -11,8 +11,8 @@
 //     ANE 負荷率では測れない(DIE_n_ANE0 は電源状態の1ビットで、FM 実行中は 1.00 に張り付く)
 //     ため、回数とレイテンシで測る。
 //
-// FTCore は FoundationModels に依存しないため、記録は FTAgent の各呼び出し箇所から行う
-// (依存方向は FTAgent → FTCore の一方向)。集計はプロセス単位。シナリオは FTScenarioRunner の
+// FTCore は FoundationModels に依存しないため、記録は FTFoundationModels の各呼び出し箇所から行う
+// (依存方向は FTFoundationModels → FTCore の一方向)。集計はプロセス単位。シナリオは FTScenarioRunner の
 // 別プロセスで走るので、親へは scenarioFinished イベントの fm フィールドで運ぶ
 // (ScenarioEvent.fm → ScenarioRecordBuilder → ScenarioRunRecord.fm → 結果 JSON)。
 

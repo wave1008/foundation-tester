@@ -9,14 +9,14 @@ let package = Package(
     platforms: [
         // FoundationModels 本体(テキスト生成・Generable)は macOS 26+。
         // マルチモーダル(Attachment)だけが macOS 27+ なので、その呼び出しは
-        // #available で分岐する(FTAgent/OcclusionVerifier.swift・ReplayAssist.swift)。
+        // #available で分岐する(FTFoundationModels/OcclusionVerifier.swift・ReplayAssist.swift)。
         // ここを 27 に上げると macOS 26 でビルドすら通らなくなる。
         .macOS("26.0"),
     ],
     // 外部パッケージ(fleetest init が生成する受け手の Package.swift)が依存する公開 product。
     // 受け手のシナリオターゲットは .product(name: "FTScenarioRunner"/"FTDSL", package: "foundation-tester")
     // を dependencies に持つ(対向: Sources/FTCore/PackageManifestEditor.swift の external モード)。
-    // FTScenarioRunner が FTCore/FTBridgeClient/FTAgent/FTAndroid を、FTDSL が FTDSLMacros を
+    // FTScenarioRunner が FTCore/FTBridgeClient/FTFoundationModels/FTAndroid を、FTDSL が FTDSLMacros を
     // 推移的に引くため、公開が要るのはこの3つだけ。fleetest は CLI ツール本体。
     products: [
         .executable(name: "fleetest", targets: ["fleetest"]),
@@ -62,7 +62,7 @@ let package = Package(
         ),
         // FoundationModels 補助層(自己修復・失敗トリアージ・シナリオ命名)
         .target(
-            name: "FTAgent",
+            name: "FTFoundationModels",
             dependencies: ["FTCore"],
             swiftSettings: swift5Mode
         ),
@@ -92,7 +92,7 @@ let package = Package(
             dependencies: [
                 "FTCore",
                 "FTBridgeClient",
-                "FTAgent",
+                "FTFoundationModels",
                 "FTAndroid",
             ],
             swiftSettings: swift5Mode
@@ -102,7 +102,7 @@ let package = Package(
             dependencies: [
                 "FTCore",
                 "FTBridgeClient",
-                "FTAgent",
+                "FTFoundationModels",
                 "FTAndroid",
                 "FTDSL",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
@@ -131,7 +131,7 @@ let package = Package(
                 "FTDSL",
                 "FTCore",
                 "FTBridgeClient",
-                "FTAgent",
+                "FTFoundationModels",
                 "FTAndroid",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ],
@@ -238,8 +238,8 @@ let package = Package(
             swiftSettings: swift5Mode
         ),
         .testTarget(
-            name: "FTAgentTests",
-            dependencies: ["FTAgent", "FTCore"],
+            name: "FTFoundationModelsTests",
+            dependencies: ["FTFoundationModels", "FTCore"],
             swiftSettings: swift5Mode
         ),
         .testTarget(

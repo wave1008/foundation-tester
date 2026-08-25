@@ -6,7 +6,7 @@
 //
 // 同期相手(ここが false のときに素通り/skip する側):
 //   - FTCore/StepExecutor+Assert.swift: occlusionFlip・screenMatches
-//   - FTAgent/OcclusionVerifier.swift・ReplayAssist.swift(#available で実 API を分岐)
+//   - FTFoundationModels/OcclusionVerifier.swift・ReplayAssist.swift(#available で実 API を分岐)
 
 import Foundation
 

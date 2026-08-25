@@ -2471,7 +2471,7 @@ FM は**ホスト全体で直列化される資源**(スループットは並列
 - **リポジトリ単位ではなくホスト単位**。別リポジトリの fleetest とも直列化する
 - **全ての FM 呼び出しがこのロックを通る**のが不変条件(occlusion / heal / screenLooksLike / triage /
   ScenarioNamer / TestbaseDrafter)。新しい FM 呼び出しを足すときは必ず通すこと。
-  監査は `grep -n "LanguageModelSession" Sources/FTAgent/*.swift`(FMDoctor は可用性判定なので対象外)
+  監査は `grep -n "LanguageModelSession" Sources/FTFoundationModels/*.swift`(FMDoctor は可用性判定なので対象外)
 - **取れなければ FM をスキップする**(既定 20 秒)。全ワーカーが並ぶと最後尾の待ちが積み上がり
   シナリオの壁時計タイムアウトを超えうるため、この安全弁は外せない。スキップは**失敗とは別に
   数える**(`FMHealth.recordSkip`。失敗率の分母を汚さない)
@@ -2513,8 +2513,8 @@ FM は死んだら**再起動まで回復しない**ので、死んだ後も呼�
 (実測: 全滅した 1554 シナリオで合計 31 分を捨てていた)。**連続 3 回失敗したら以後は呼ばない**。
 
 - **入場は FMGate に一本化**している。`FMGate.enter()` が ①ブレーカ ②直列化ロック を順に見る。
-  **新しい FM 呼び出しを足すときは必ずここを通す**(監査: `grep -c "FMGate.enter" Sources/FTAgent/*.swift`
-  と `grep -n "LanguageModelSession" Sources/FTAgent/*.swift` の数を突き合わせる。FMDoctor は
+  **新しい FM 呼び出しを足すときは必ずここを通す**(監査: `grep -c "FMGate.enter" Sources/FTFoundationModels/*.swift`
+  と `grep -n "LanguageModelSession" Sources/FTFoundationModels/*.swift` の数を突き合わせる。FMDoctor は
   可用性判定なので対象外)
 - **ホスト単位**(~/Library/Caches/fleetest/fm-breaker.state の mtime)。全滅はホスト全体の事象で
   ワーカーはプロセスが別なので、プロセス内カウンタだけだと 14 ワーカー分を無駄打ちする

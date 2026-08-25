@@ -6,7 +6,7 @@
 
 import ArgumentParser
 import Foundation
-import FTAgent
+import FTFoundationModels
 import FTAndroid
 import FTBridgeClient
 import FTCore

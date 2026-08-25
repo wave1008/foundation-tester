@@ -2,7 +2,7 @@
 // snapshot の取得と ref 世代管理・snapshotAfter・ft_scroll_to。本体は MCPServer.swift(instance 状態はそちらに置く)
 
 import Foundation
-import FTAgent
+import FTFoundationModels
 import FTAndroid
 import FTBridgeClient
 import FTCore

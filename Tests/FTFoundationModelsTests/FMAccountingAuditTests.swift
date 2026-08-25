@@ -14,10 +14,10 @@ final class FMAccountingAuditTests: XCTestCase {
 
     private var agentSourceDir: URL {
         URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()   // FTAgentTests
+            .deletingLastPathComponent()   // FTFoundationModelsTests
             .deletingLastPathComponent()   // Tests
             .deletingLastPathComponent()   // リポジトリルート
-            .appendingPathComponent("Sources/FTAgent")
+            .appendingPathComponent("Sources/FTFoundationModels")
     }
 
     /// 記録しなくてよい呼び出し元とその理由。**追加するときは理由を書く**
@@ -32,7 +32,7 @@ final class FMAccountingAuditTests: XCTestCase {
         let files = try FileManager.default.contentsOfDirectory(
             at: agentSourceDir, includingPropertiesForKeys: nil)
             .filter { $0.pathExtension == "swift" }
-        XCTAssertFalse(files.isEmpty, "Sources/FTAgent が読めていない")
+        XCTAssertFalse(files.isEmpty, "Sources/FTFoundationModels が読めていない")
 
         var checkedFunctions = 0
         for file in files.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {

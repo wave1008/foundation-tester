@@ -9,7 +9,7 @@
 // クライアントのエージェント自身が探索できるため。
 
 import Foundation
-import FTAgent
+import FTFoundationModels
 import FTAndroid
 import FTBridgeClient
 import FTCore

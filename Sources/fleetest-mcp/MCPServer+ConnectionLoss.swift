@@ -2,7 +2,7 @@
 // 接続喪失時のヒント文言とブリッジの生死判定。本体は MCPServer.swift
 
 import Foundation
-import FTAgent
+import FTFoundationModels
 import FTAndroid
 import FTBridgeClient
 import FTCore

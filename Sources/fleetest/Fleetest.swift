@@ -1,6 +1,6 @@
 import ArgumentParser
 import Foundation
-import FTAgent
+import FTFoundationModels
 import FTAndroid
 import FTBridgeClient
 import FTCore
@@ -49,7 +49,7 @@ struct DriverOptions: ParsableArguments {
     @Option(help: "Android device serial (adb -s; defaults to the only connected device)")
     var serial: String?
 
-    /// FTAgent/FTCore はこの抽象のみに依存(BridgeClient/AndroidDriver を直接見ない)
+    /// FTFoundationModels/FTCore はこの抽象のみに依存(BridgeClient/AndroidDriver を直接見ない)
     func makeDriver(overriding platformOverride: String? = nil) throws -> AppDriver {
         switch platformOverride ?? platform {
         case "ios":

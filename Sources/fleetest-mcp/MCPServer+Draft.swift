@@ -2,7 +2,7 @@
 // 探索の操作列からのシナリオ下書き生成と、操作の記録。本体は MCPServer.swift
 
 import Foundation
-import FTAgent
+import FTFoundationModels
 import FTAndroid
 import FTBridgeClient
 import FTCore

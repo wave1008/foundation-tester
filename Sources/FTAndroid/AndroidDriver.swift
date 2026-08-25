@@ -4,7 +4,7 @@
 // ブリッジに接続できない場合は DriverError.bridgeUnreachable を投げる(フォールバックなし)。
 // 操作後の整定待ちはブリッジ側の a11y 静穏検知に委譲する。
 // terminate のみ adb 直(currentPackage 管理の意味論を維持)。
-// FTAgent(探索・修復・トリアージ)と FTCore(再生器)はドライバ実装に依存しない。
+// FTFoundationModels(探索・修復・トリアージ)と FTCore(再生器)はドライバ実装に依存しない。
 
 import CryptoKit
 import Foundation

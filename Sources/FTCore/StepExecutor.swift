@@ -44,7 +44,7 @@ public struct HealProposal: Sendable {
     }
 }
 
-/// FM フック。実装は FTAgent 側(失敗時のみ呼ばれる: 自己修復・画面検証・トリアージ)。
+/// FM フック。実装は FTFoundationModels 側(失敗時のみ呼ばれる: 自己修復・画面検証・トリアージ)。
 public protocol ReplayDelegate: AnyObject {
     func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealProposal?
     func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)?

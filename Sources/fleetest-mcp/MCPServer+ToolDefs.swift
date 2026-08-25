@@ -2,7 +2,7 @@
 // ツール定義(スキーマ)とサーバ説明文。本体は MCPServer.swift(instance 状態はそちらに置く)
 
 import Foundation
-import FTAgent
+import FTFoundationModels
 import FTAndroid
 import FTBridgeClient
 import FTCore

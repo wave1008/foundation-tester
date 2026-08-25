@@ -98,7 +98,7 @@ WindowServer・ユーザー空間サービスへのアクセスが変わる。Li
 | コンポーネント | Aqua 必須? | 備考 |
 |---|---|---|
 | iOS シミュレータ + XCUITest | 実質必須 | レンダリング・スクリーンショット・XCUITest が Background で不安定(既知問題)。本ツールはスナップショット・録画多用で回避不能 |
-| FM(FTAgent) | おそらく必要(未検証) | Apple Intelligence のデーモン群はユーザーセッション側。§9 で実測 |
+| FM(FTFoundationModels) | おそらく必要(未検証) | Apple Intelligence のデーモン群はユーザーセッション側。§9 で実測 |
 | Android エミュレータ | 不要にできる可能性 | `-no-window` + swiftshader が定番。ただし §6 の検証が条件 |
 | コンパイル・オーケストレーション・results・update | 不要 | 純粋にプロセスとファイル |
 
