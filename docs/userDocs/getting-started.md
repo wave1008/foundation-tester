@@ -48,6 +48,15 @@ claude plugin marketplace add wave1008/foundation-tester
 claude plugin install fleetest@foundation-tester --scope user
 ```
 
+> **If you installed the pre-rename plugin (`ftester@foundation-tester`), remove it first.**
+> The plugin was renamed, so the two sit side by side and the old `/ftester:*` skills keep
+> pointing at a command (`ftester`) and a state directory (`.ftester/`) that no longer exist.
+> The marketplace name (`foundation-tester`) did not change, so there is nothing to re-add.
+
+```bash
+claude plugin uninstall ftester@foundation-tester
+```
+
 3. Open a **new, test-only folder** in VSCode
 
 4. Run `/fleetest:fleetest-setup` in the Claude Code panel.
@@ -116,6 +125,8 @@ partway through).
 claude plugin marketplace remove foundation-tester
 claude plugin uninstall fleetest@foundation-tester
 ```
+
+If the pre-rename `ftester@foundation-tester` is still there, `claude plugin uninstall` it the same way.
 
 ### Uninstall the VSCode extension
 

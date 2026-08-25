@@ -50,6 +50,13 @@ claude plugin marketplace add wave1008/foundation-tester
 claude plugin install fleetest@foundation-tester --scope user
 ```
 
+> **改名前の `ftester@foundation-tester` を入れている場合は、先に消してください。**
+> プラグイン名が変わったので新旧が同居し、古い `/ftester:*` スキルは既に存在しない
+> コマンド(`ftester`)と状態ディレクトリ(`.ftester/`)を指したまま残ります。
+> marketplace 名(`foundation-tester`)は変えていないので、追加し直す必要はありません。
+>
+> `claude plugin uninstall ftester@foundation-tester`
+
 **エージェント無しで入れる**: 同じ機械作業を1コマンドで行うインストーラ(冪等):
 
 ```bash
@@ -59,7 +66,8 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scr
 ```
 
 - プラグインが提供するスキル: `fleetest-setup`(初回導入)・`fleetest-update`(更新)・`fleetest-profiles`
-  (マシン/アプリ/実行プロファイル)・`fleetest-scenario`(シナリオ作成)・`fleetest-mcp`(MCP のみ)。
+  (マシン/アプリ/実行プロファイル)・`fleetest-scenario`(シナリオ作成)・`fleetest-mcp`(MCP のみ)・
+  `fleetest-remote-setup`(別の Mac をランナー機にする)。
   版を固定するなら `claude plugin marketplace add https://github.com/wave1008/foundation-tester.git#<tag>`。
   プラグイン機構が無い環境向けの代替は
   `curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install-skill.sh | sh`。

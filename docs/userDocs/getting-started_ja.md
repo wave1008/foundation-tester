@@ -45,6 +45,15 @@ claude plugin marketplace add wave1008/foundation-tester
 claude plugin install fleetest@foundation-tester --scope user
 ```
 
+> **改名前の `ftester@foundation-tester` を入れていた場合は、先に消してください。**
+> プラグイン名が変わったため新旧が同居し、古い `/ftester:*` スキルは既に存在しない
+> コマンド(`ftester`)と状態ディレクトリ(`.ftester/`)を指したまま残ります。
+> marketplace 名(`foundation-tester`)は変わっていないので追加し直す必要はありません。
+
+```bash
+claude plugin uninstall ftester@foundation-tester
+```
+
 3. **テスト専用の新規フォルダ**を VSCode で開きます
 
 4. Claude Code パネルで `/fleetest:fleetest-setup`を実行します
@@ -107,6 +116,8 @@ Claude Code を使わない場合は `bash <TOOL_ROOT>/Scripts/update.sh`(pull�
 claude plugin marketplace remove foundation-tester
 claude plugin uninstall fleetest@foundation-tester
 ```
+
+改名前の `ftester@foundation-tester` も残っていれば、同じように `claude plugin uninstall` します。
 
 ### VSCode拡張のアンインストール
 
