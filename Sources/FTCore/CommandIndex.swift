@@ -372,6 +372,6 @@ public enum DSLCommandIndex {
     ]
 
     /// `exist(...)` の戻り値だけが持つメソッド(自由関数の対応が無い)。chainable の照合に使う。
-    /// **現在は空** —— チェーンできる検証はすべて同名の1引数自由関数を持つ(2026-08-04)
+    /// **現在は空** —— チェーンできる検証はすべて同名の1引数自由関数を持つ
     public static let chainOnlyNames: Set<String> = []
 }

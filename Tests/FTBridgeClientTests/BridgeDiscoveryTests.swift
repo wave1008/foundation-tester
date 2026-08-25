@@ -23,7 +23,7 @@ final class BridgeDiscoveryTests: XCTestCase {
                        .usePreferred)
     }
 
-    /// 1本だけなら自動採用(ユーザー決定 2026-08-06)
+    /// 1本だけなら自動採用(ユーザー決定)
     func testAdoptsTheOnlyRunningBridge() {
         XCTAssertEqual(BridgeDiscovery.decide(preferredAlive: false, preferredBound: false,
                                               found: [found(8124)]),
@@ -93,7 +93,7 @@ final class BridgeDiscoveryTests: XCTestCase {
                                                    matchedByName: "BY-NAME"), "BY-NAME")
     }
 
-    /// **実機の形**(2026-08-14): udid を申告せず、名前も汎用の "iPhone" でプロファイル名と
+    /// **実機の形**: udid を申告せず、名前も汎用の "iPhone" でプロファイル名と
     /// 一致しないので名前引きは nil。記録が無ければ端末に紐付かず、planBridge の同一デバイス
     /// 判定に当たらないまま2本目のランナーが立つ(1台に2本立てると両方死ぬ)
     func testResolveUDIDIdentifiesAPhysicalBridgeOnlyThroughTheRecord() {

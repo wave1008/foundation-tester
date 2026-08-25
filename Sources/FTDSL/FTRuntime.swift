@@ -546,7 +546,7 @@ public final class FTDriveCore {
         scenarioUnexecutedBlocks += 1
     }
 
-    /// verify のブロックにアサーションが無かったときの弱い修正提案(2026-08-03 ユーザー決定:
+    /// verify のブロックにアサーションが無かったときの弱い修正提案(ユーザー決定:
     /// ステップ自体は .inconclusive(理由つき)で記録されるため、別途の警告ログは出さない
     /// (旧 warnVerifyWithoutAssertions。ステップ行が理由を持つようになり役割が変わった)
     func suggestVerifyWithoutAssertions(message: String) {
@@ -1055,7 +1055,7 @@ public final class FTDriveCore {
     /// 分岐評価(記録のみ、実行はしない): セレクタが現在画面で解決できるか。
     /// waitSeconds: 0 = 即時1回判定(repeat-while が最低1回は回る契約は変えない)
     /// 条件判定の結果。**閉じた割り込みも運ぶ** —— 不成立の記録に注記を残さないと、
-    /// 「本当に無い」のか「覆われていた」のかを読み手が区別できない(2026-08-20)
+    /// 「本当に無い」のか「覆われていた」のかを読み手が区別できない
     struct CanSelectOutcome {
         let found: Bool
         /// 判定中に閉じた割り込み(検出セレクタの要約と回数)。閉じていなければ nil
@@ -1100,7 +1100,7 @@ public final class FTDriveCore {
                 Thread.sleep(forTimeInterval: min(remaining, 0.25))
             }
         } while Date() < deadline
-        // **「無い」を確定する側で fallbackDriver を1回だけ照会する**(2026-08-19)。
+        // **「無い」を確定する側で fallbackDriver を1回だけ照会する**。
         // hybrid では SpringBoard のダイアログ(位置情報・通知の許可)が primary の snapshot に
         // 映らないので、ここを通さないと `ifCanSelect("許可")` が**原理的に成立しない** ——
         // tap(StepExecutor+Actions)と exist(同+Assert)は既に照会しているのに、
@@ -1112,7 +1112,7 @@ public final class FTDriveCore {
         if StepExecutor.resolve(step: step, in: fsnap, strictForAssert: true) != nil {
             return result(true)
         }
-        // **どちらにも無いなら、システム許可アラートが被さっていないかを見る**(2026-08-20)。
+        // **どちらにも無いなら、システム許可アラートが被さっていないかを見る**。
         // 閉じたら primary を1枚撮り直して見直す —— 閉じる前の答え(不成立)をそのまま返すと、
         // **`ifCanSelect` のガード列がアラートの上を素通りして全部 not met になる**。
         // one-shot のガードは窓が過ぎたら戻ってこないので、後続の exist 系で自動押下が効いた頃には

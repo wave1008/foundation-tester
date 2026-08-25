@@ -1,6 +1,6 @@
 // 「スクリプトの雛形を作成する」が書き出すファイルの中身(src/runHookScaffold.ts)。
 // **UI 文字列ではなく生成物**だが、利用者が読むコメントなので locale に追従させる
-// (2026-08-18 ユーザー決定: 日本語モードならコメントも日本語)。
+// (ユーザー決定: 日本語モードならコメントも日本語)。
 //
 // 中身は実行規則の説明そのものなので、規則を変えたら Sources/FTCore/RunHooks.swift・
 // Sources/ftester/RunHookRunner.swift・docs/remote-runner.md §17 と一緒に直す。

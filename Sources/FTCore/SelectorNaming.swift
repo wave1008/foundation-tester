@@ -4,12 +4,12 @@
 // 「書けるセレクタ」の判定が食い違う(幾何を TapTargetGeometry へ寄せたのと同じ理由)。
 // 元は ftester-mcp/MCPServer+Hints.swift にあったが、自己修復(StepExecutor+Actions.swift)が
 // 修復結果を利用者の .swift ソースへ書き戻す経路でも同じ「書けるか」の判定が要るため
-// FTCore へ移した(2026-08-15)。MCPServer 側は typealias + 転送だけを残す
+// FTCore へ移した。MCPServer 側は typealias + 転送だけを残す
 // (RefGuard.swift が TapTargetGeometry/OcclusionGeometry へ転送しているのと同じ形)。
 
 import Foundation
 
-/// セレクタの壊れにくさ。**綴りからは判定しない**(2026-08-10)。
+/// セレクタの壊れにくさ。**綴りからは判定しない**。
 /// 位置で選ぶ式は必ずしも `[n]` を含まない —— `#容器 >> .clickable` は「容器の中の最初の
 /// clickable」で、`[1]` を書いたのと同じ意味だが綴りに添字が出ない。
 /// 綴りで見ると**この形だけが「安定」と誤って印無しになる**ので、
@@ -138,10 +138,10 @@ public struct SelectorNaming {
     public var gradedComputeCount: Int { gradedCache.computeCount }
 
     /// セレクタと**その耐久性**。「書ける」と「壊れにくい」は別物で、同じ一覧に混ぜると
-    /// 生成器は先頭を採るだけになる(2026-08-10)。`#id` と一意ラベルは木が変わっても
+    /// 生成器は先頭を採るだけになる。`#id` と一意ラベルは木が変わっても
     /// 指し続けるが、`#container >> .type[n]` の `[n]` は**同じ型の兄弟が1つ増減しただけで
     /// 別要素を指す**ので、シナリオに書くと静かに壊れる。
-    /// **同じ要素は木の中で1回しか採番しない**(2026-08-12): 曖昧ラベルと重複 id の両方の
+    /// **同じ要素は木の中で1回しか採番しない**: 曖昧ラベルと重複 id の両方の
     /// 群に出る要素(実測: `#TitleLabel` ×3 と `"経路"` ×3 が要素を共有)を、呼び出し元が
     /// 同じインスタンスを使い回せば二重に検証しない
     public func graded(for element: ElementInfo,
@@ -166,7 +166,7 @@ public struct SelectorNaming {
         }
         for candidate in candidates(for: element, in: snapshot)
         where holds(candidate.selector, candidate.durability) {
-            // **勧める形と書かれる形を揃える**(2026-08-10): 下書きは locator を
+            // **勧める形と書かれる形を揃える**: 下書きは locator を
             // `FTSelector.serialize` で書き戻すので、`[1]` のような冗長な節はそこで落ちる。
             // 勧めた文字列をそのまま出すと「注記は `.clickable[1]`、コードは `.clickable`」
             // という食い違いになり、1箇所で決める意味が無くなる

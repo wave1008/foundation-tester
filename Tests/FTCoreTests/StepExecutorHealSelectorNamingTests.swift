@@ -4,7 +4,7 @@ import XCTest
 /// 自己修復(`healLocator`)の結果は `ftester api apply-heal` が利用者の .swift ソースへ
 /// 書き戻す(FTRuntime.perform → FixSuggestion → apply-heal)。書き戻すセレクタの選び方は
 /// `SelectorNaming`(MCP と共有)に一本化されており、**一意に書けるセレクタが無い要素では
-/// ヒールを成立させてはいけない**(2026-08-15)。
+/// ヒールを成立させてはいけない**。
 ///
 /// 背景: 旧実装 `FlowLocatorBuilder.chain` は画面内の一意性を見ずに id/label をそのまま
 /// 採っていたため、同じ id を持つ要素が複数ある画面では「ヒールが選んだ要素とは別の要素に

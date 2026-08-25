@@ -726,7 +726,7 @@ extension StepExecutorTests {
                       "静止を確認できなかったことも注記すること: \(note)")
     }
 
-    // MARK: - scroll/scrollToEdge/flick(scrollFrame:) の fail-fast(2026-08-08)
+    // MARK: - scroll/scrollToEdge/flick(scrollFrame:) の fail-fast
 
     /// 明示 scrollFrame が解決できないなら、`scroll` は全画面スワイプへ黙って退化せず
     /// 1本も振らずに失敗する(A1 と同じ理由: 無関係な要素を誤発火させ得るため)

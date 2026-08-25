@@ -34,7 +34,7 @@ final class MCPServer {
     /// 撮り直して同じ要素を引き直すための起点(RefGuard 参照)。
     /// **ref はスナップショットごとに振り直される**ので、番号ではなく要素の同一性で照合する
     var lastSnapshots: [String: SnapshotResponse] = [:]
-    /// **ref の世代管理**(2026-08-10)。ブリッジは撮るたびに ref を振り直すので、
+    /// **ref の世代管理**。ブリッジは撮るたびに ref を振り直すので、
     /// 「1つ前の木」しか起点にしない `lastSnapshots` だけでは、それより前の snapshot の ref を
     /// 撃たれたときに「たまたま同じ番号を持つ別要素」へ黙って当たる(実害: ft_scroll_to の後に
     /// 旧 ref [42](戻るボタン)を叩いたら新しい木の [42](静的テキスト「料金:」)に当たった)。
@@ -240,7 +240,7 @@ final class MCPServer {
     var lastExplicitIOSTarget: (port: UInt16, udid: String?)?
     /// Android 版の同じ記憶。同じ規律(androidExplicitWithMemory/androidMemoryAfterResolve)
     var lastExplicitAndroidSerial: String?
-    /// このセッションで明示解決された iOS 宛先(port)の**延べ集合**(2026-08-12)。
+    /// このセッションで明示解決された iOS 宛先(port)の**延べ集合**。
     /// **lastExplicitIOSTarget との違い**: あちらは「省略呼び出しが実際にどこへ行くか」に使う
     /// 直近1件、こちらは「省略呼び出しが曖昧かどうか」の判定材料(2件以上あれば
     /// finishingFold が毎回注記する。1台しか触っていなければ従来どおり初回だけ)。
@@ -258,7 +258,7 @@ final class MCPServer {
     /// Android 版の同じフラグ
     var everNamedAndroidTarget = false
     /// **udid/port/serial を全部省略した呼び出しがどちらの platform の記憶を見るか**
-    /// (2026-08-12)。lastExplicitIOSTarget/lastExplicitAndroidSerial は platform ごとに
+    ///。lastExplicitIOSTarget/lastExplicitAndroidSerial は platform ごとに
     /// 分かれているだけで「どちらが最後に明示されたか」を持たないため、Android を明示した
     /// 直後に platform も省略した呼び出しが(既定の "ios" に負けて)iOS の記憶へ迷い込んでいた。
     /// 更新は iOS/Android どちらかの記憶が実際に更新された(= 利用者が明示した)ときだけ

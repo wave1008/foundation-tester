@@ -1,4 +1,4 @@
-// once() による繰り返し注記の縮約(2026-08-10)。セッション(プロセス)を通じて生きる
+// once() による繰り返し注記の縮約。セッション(プロセス)を通じて生きる
 // 1つの MCPServer インスタンスが同じ長文の注記を毎回満額で返すと、繰り返す呼び出しのぶん
 // 文脈を食う。初回だけ満額、以後は短縮形にする対象は7つ(truncatedLabelNote /
 // coordinateReproductionNote / indexedSelectorNote / unlabeledClickablesNote /

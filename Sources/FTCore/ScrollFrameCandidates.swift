@@ -65,7 +65,7 @@ public enum ScrollFrameCandidates {
         let listed = found.prefix(4)
             .map { describe($0, in: snapshot) }.joined(separator: " / ")
         let more = found.count > 4 ? " (+\(found.count - 4) more)" : ""
-        // **id が重複・欠落した容器はセレクタで一意に指せない**(2026-08-10): その画面でだけ、
+        // **id が重複・欠落した容器はセレクタで一意に指せない**: その画面でだけ、
         // MCP の ft_snapshot ref を scrollFrame へ直接渡せる逃げ道を添える(MCPServer.scrollTo が
         // 整数を受けて frame へ解決する)。毎回は出さない — 大半の画面は id で足りるので、
         // 出しっぱなしだと「渡せる書き方が無い」画面と区別が付かなくなる

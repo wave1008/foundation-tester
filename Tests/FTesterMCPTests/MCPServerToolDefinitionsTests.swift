@@ -2,7 +2,7 @@ import XCTest
 @testable import ftester_mcp
 
 /// デバイス選択プロパティの過不足を防ぐ。**「全ツールに付ける」ではなく「要るツールにだけ付ける」**
-/// (2026-08-05 変更): 5つ × ツール数で定義全体の約4割を占めるため、デバイスに触らないツールに
+///: 5つ × ツール数で定義全体の約4割を占めるため、デバイスに触らないツールに
 /// 並べるとコンテキストを食うだけでなく「渡せば効く」と誤解させる。
 /// 逆に**デバイス系から漏れると MCP クライアントから送れない**ので、両方向を検査する。
 final class MCPServerToolDefinitionsTests: XCTestCase {
@@ -46,7 +46,7 @@ final class MCPServerToolDefinitionsTests: XCTestCase {
         XCTAssertFalse(MCPServer.toolDefinitions.isEmpty)
     }
 
-    /// **snapshotAfter を持つツールは interactiveOnly/expandBulk も持つ**(2026-08-10):
+    /// **snapshotAfter を持つツールは interactiveOnly/expandBulk も持つ**:
     /// `snapshotAfterBody` は `snapshotBody` を経由するので、args を渡せば元々効いていた
     /// (`snapshotBody` が `args["interactiveOnly"]`/`args["expandBulk"]` を読む) —— スキーマに
     /// 無いだけで MCP クライアントから渡す術が無かった。2026-08-10 の語彙統一で
@@ -73,7 +73,7 @@ final class MCPServerToolDefinitionsTests: XCTestCase {
         }
     }
 
-    /// **実挙動と食い違わない**(2026-08-10): iOS の system app(Maps 等)は前回のUI状態を
+    /// **実挙動と食い違わない**: iOS の system app(Maps 等)は前回のUI状態を
     /// 復元して起動することがあるので、「1画面目から再開する」と言い切らない
     func testLaunchDescriptionDoesNotPromiseTheFirstScreen() {
         let description = MCPServer.toolDefinitions
@@ -84,7 +84,7 @@ final class MCPServerToolDefinitionsTests: XCTestCase {
         XCTAssertTrue(description?.contains("ft_snapshot") ?? false, description ?? "")
     }
 
-    /// **ft_scroll_to は ft_snapshot と同じ畳み方の引数を持つ**(2026-08-10): 最後の render
+    /// **ft_scroll_to は ft_snapshot と同じ畳み方の引数を持つ**: 最後の render
     /// 呼び出しだけが collapsingBulk: true 固定で interactiveOnly を渡していなかった —— スキーマに
     /// 無ければ MCP クライアントから渡す術が無いので、まずここで漏れを防ぐ
     func testScrollToDeclaresTheSameFoldingPropertiesAsSnapshot() {
@@ -101,7 +101,7 @@ final class MCPServerToolDefinitionsTests: XCTestCase {
         }
     }
 
-    // MARK: - 引用符剥がし対象キーの同期(2026-08-12)
+    // MARK: - 引用符剥がし対象キーの同期
 
     /// スキーマ全体を走査し、「a||b」(DSL のセレクタ構文表記に必ず出る記号)を含む説明文を持つ
     /// string 系プロパティのキー集合を返す。**マーカーはこの記号1つだけ** —— 現状のスキーマでは
@@ -181,7 +181,7 @@ final class MCPServerDriverCacheKeyTests: XCTestCase {
     }
 }
 
-/// 整数を受ける引数の**全数振り分け**(2026-08-13)。`ref` を受ける引数の見落としは
+/// 整数を受ける引数の**全数振り分け**。`ref` を受ける引数の見落としは
 /// 2026-08-13 の1日で3度起きた(`ref` → `fromRef` → `scrollFrame`)。綴りの類似では
 /// 判定できない(`scrollFrame` は名前から ref だと分からない)ので、
 /// **スキーマ側の「整数を受ける引数」を ref 系と非 ref 系へ全部振り分けて等号照合**する ——

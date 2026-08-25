@@ -49,7 +49,7 @@ enum DeviceInventory {
     /// 渡して判定するクロージャ。**理由込みで判定させる** —— 呼び出し側の鍵を理由に依存させないと、
     /// 「同じ理由の繰り返しは畳む」が「理由が変わっても畳む」に化ける(欠陥⑥: 指示どおり原因を
     /// 直しても、直った証拠だけが畳まれて読めなくなる)。
-    /// **見出しが実際に組まれる回だけ評価する**(2026-08-12) —— プロファイルが解決できた回や
+    /// **見出しが実際に組まれる回だけ評価する** —— プロファイルが解決できた回や
     /// platform が不正な回で先に評価すると、呼び出し側の once 系の鍵をここで消費してしまい、
     /// 本当の初出が短縮形になる
     static func devicesText(project: String?, profile: String?, platform: String?,
@@ -130,7 +130,7 @@ enum DeviceInventory {
     }
 
     /// 受け付ける platform。**devicesText の門番**(private) —— `abbreviated` クロージャ経由の
-    /// 遅延評価で、呼び出し側が同じ判定を先読みする必要は無くなった(2026-08-12)
+    /// 遅延評価で、呼び出し側が同じ判定を先読みする必要は無くなった
     private static func isSupportedPlatform(_ platform: String?) -> Bool {
         platform == nil || platform == "ios" || platform == "android"
     }

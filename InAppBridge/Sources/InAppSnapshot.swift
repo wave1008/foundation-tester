@@ -36,7 +36,7 @@ enum InAppSnapshot {
         capture(windows: [window], max: limit)
     }
 
-    /// **可視な窓を奥から手前へ歩き、手前の窓に覆われた要素は落とす**(2026-08-20)。
+    /// **可視な窓を奥から手前へ歩き、手前の窓に覆われた要素は落とす**。
     ///
     /// キーウィンドウ1枚に決め打っていたため、**別 UIWindow に載るモーダル**
     /// (アプリ内メッセージ SDK 等。`makeKey` しない)が木に載らず、画面を覆っているのに
@@ -173,7 +173,7 @@ enum InAppSnapshot {
         guard screen.isEmpty || frame.intersects(screen) else { return nil }
 
         // 画面の大半を覆う Other コンテナは除外(誤タップ誘発。BridgeRouter と同じ)。
-        // **スクロール容器だけは残す**(2026-08-08): 全画面のスクロール画面はまさにこの形で、
+        // **スクロール容器だけは残す**: 全画面のスクロール画面はまさにこの形で、
         // 落とすと scrollFrame の候補が1つも出ない。誤タップは offscreen/中身外しの注記が守る
         if type == .other, isScrollableContainer(node) != true {
             let screenArea = screen.width * screen.height

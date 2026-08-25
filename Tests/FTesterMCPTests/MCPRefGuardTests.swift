@@ -393,7 +393,7 @@ final class MCPRefGuardTests: XCTestCase {
             .contains("id=row_09 (10,700 370x40) ⚠️scroll-leftover"))
     }
 
-    // MARK: - offscreen 注記の方向分け(2026-08-10)
+    // MARK: - offscreen 注記の方向分け
 
     /// 主方向は**はみ出し量が大きい軸**で決まる(斜めにはみ出す要素も1方向へ丸める)
     func testOffscreenDirectionPicksTheAxisWithTheLargerOverflow() {
@@ -460,7 +460,7 @@ final class MCPRefGuardTests: XCTestCase {
                     frame: FTRect(x: 150, y: 780, width: 90, height: 20), depth: 1)
     }
 
-    /// 横ページャの誘導(2026-08-10)。実例(Apple マップの経路候補・横ページャ): 右隣ページの行は
+    /// 横ページャの誘導。実例(Apple マップの経路候補・横ページャ): 右隣ページの行は
     /// 「消えた」のではなく他のページに居るだけで、pageIndicator が実在するときだけ言い換えを添える
     func testGhostNoteOffscreenSectionMentionsAPageIndicatorForARightOffscreenRow() {
         let snapshot = screen([
@@ -689,7 +689,7 @@ final class MCPRefGuardTests: XCTestCase {
     }
 
     /// 実例: 経路ボタンを `waitFor "経路"` と推測したが実ラベルは「計画」だった。
-    /// 空振りの応答に近いラベルを添えること(2026-08-10)
+    /// 空振りの応答に近いラベルを添えること
     func testWaitForFailureMentionsASimilarLabel() async throws {
         driver.snapshotResponse = screen([element(ref: 1, id: "btn_plan", label: "計画", x: 0, y: 0)])
         let text = Self.text(try await server.call(
@@ -744,7 +744,7 @@ final class MCPRefGuardTests: XCTestCase {
             screen([element(ref: 1, id: "btn_ok", label: "OK", x: 0, y: 0)])), "")
     }
 
-    // MARK: - ft_drag を ref から始める(2026-08-09)
+    // MARK: - ft_drag を ref から始める
 
     /// **半開きシートを広げる操作**が座標の手計算になっていた(実測: `#Card grabber` の
     /// frame を読んで `ft_drag (200,664) → (200,120)` を人が組んだ)。ref と dy で書けること
@@ -826,7 +826,7 @@ final class MCPRefGuardTests: XCTestCase {
         XCTAssertEqual(MCPServer.sliverNote(screen([icon])), "")
     }
 
-    /// **全員が飾りの葉(型なし・操作不能・中身なし)の群は列挙しない**(2026-08-10)。
+    /// **全員が飾りの葉(型なし・操作不能・中身なし)の群は列挙しない**。
     /// 実測: 地図 POI の「東武鉄道 TJの路線」×3(全員 #VKPointFeature の other)が
     /// セレクタの書き先にならないのに注記の行を占めていた
     func testAmbiguousLabelsNoteSkipsAGroupOfOnlyDecorativeLeaves() {
@@ -864,7 +864,7 @@ final class MCPRefGuardTests: XCTestCase {
         XCTAssertEqual(MCPServer.ambiguousLabelsNote(screen([outer, inner])), "")
     }
 
-    /// **ゼロ幅文字は落としてから数えて表示する**(2026-08-09)。一覧の行は除去済みの形で
+    /// **ゼロ幅文字は落としてから数えて表示する**。一覧の行は除去済みの形で
     /// 出るので、生ラベルのまま注記に出すと同じラベルが1応答の中で2表記になる
     /// (実測: Google マップの `"​​埼京線​"`)
     func testAmbiguousLabelsNoteStripsZeroWidthCharacters() {
@@ -929,7 +929,7 @@ final class MCPRefGuardTests: XCTestCase {
         XCTAssertFalse(text.contains("scroll areas"), text)
     }
 
-    // MARK: - scrollFrame に ref(整数)を渡せる(2026-08-10)
+    // MARK: - scrollFrame に ref(整数)を渡せる
     //
     // id が重複・欠落した容器はセレクタで一意に指せない。ft_snapshot が返した ref を
     // そのまま scrollFrame へ渡せる逃げ道(既存の stale-ref 再照合を通す)
@@ -993,7 +993,7 @@ final class MCPRefGuardTests: XCTestCase {
         }
     }
 
-    // MARK: - キーボード被覆(2026-08-08)
+    // MARK: - キーボード被覆
 
     /// **中心がソフトキーボードの下にある要素へのタップは警告する**(拒否はしない)。
     /// 判定は RefGuard.keyboardWarning → TapTargetGeometry.keyboardCoveredAdvisory への転送
@@ -1046,7 +1046,7 @@ final class MCPRefGuardTests: XCTestCase {
         XCTAssertFalse(note.contains("nothing tappable"), "偽の全クリアへ後退していないこと: \(note)")
     }
 
-    /// **見出しの矩形は拡張後のまま・列挙は chrome の部分木を除く**(2026-08-14)。
+    /// **見出しの矩形は拡張後のまま・列挙は chrome の部分木を除く**。
     /// ref 3(chrome=`#inputView` の子、地球儀キー相当)は実効矩形の中に中心があるが、
     /// 覆っている側なので列挙しない。ref 1(chrome の外)は変わらず列挙する
     func testKeyboardCoverageNoteExcludesTheChromeSubtreeFromTheListing() {
@@ -1066,7 +1066,7 @@ final class MCPRefGuardTests: XCTestCase {
         content.compactMap { $0["text"] as? String }.joined(separator: "\n")
     }
 
-    // MARK: - ft_scroll_to の畳み方は ft_snapshot と同じ規則(2026-08-10)
+    // MARK: - ft_scroll_to の畳み方は ft_snapshot と同じ規則
 
     /// **既定**(引数無し)は今までどおり: layout-only の行も出るし、bulk 群は畳まれる
     /// (この形が変わらないことが受け入れ条件)

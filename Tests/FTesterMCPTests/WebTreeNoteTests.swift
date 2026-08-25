@@ -49,7 +49,7 @@ final class WebTreeNoteTests: XCTestCase {
         XCTAssertTrue(note.contains("ft_screenshot"), "確かめる手段まで書くこと: \(note)")
     }
 
-    /// **閾値を超えた帯は全部数える**(2026-08-13)。最大の1本だけを返していた頃は、
+    /// **閾値を超えた帯は全部数える**。最大の1本だけを返していた頃は、
     /// 2本目以降が黙って落ち、読み手は「警告された1箇所以外は揃っている」と読んだ
     /// (実測: Yahoo!天気の週間画面で、落ちたほうに週間表の日付・気温が丸ごと入っていた)。
     /// 名指しは webViewGapBandsReported 本までだが、**件数は必ず言う**

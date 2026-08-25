@@ -1,5 +1,5 @@
 // MachineHostDispatchTests.swift
-// マシンプロファイルの host(自動リモートディスパッチ、2026-08-17 ユーザー決定)まわりの
+// マシンプロファイルの host(自動リモートディスパッチ、ユーザー決定)まわりの
 // 破ったら落ちるテスト: JSON 後方互換・正規化・--host との優先順位(純粋関数)・
 // ProfileResolver 経由の読み取り。
 
@@ -79,7 +79,7 @@ final class MachineHostDispatchTests: XCTestCase {
     }
 
     func testResolveExplicitLocalOverridesMachineHostAndWarns() {
-        // 欠陥3(2026-08-17): "--host local" は「ここで走らせる」の明示指定であり、
+        // 欠陥3: "--host local" は「ここで走らせる」の明示指定であり、
         // 「未指定」ではない。マシン側が別のリモートを指していても黙って上書きせず、
         // 通常の食い違いと同じ規律で warn したうえでローカルに留まる
         // (以前は normalize の畳み込みだけで判定しており、この組み合わせだけ

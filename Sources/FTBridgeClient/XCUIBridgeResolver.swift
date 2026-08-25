@@ -1,6 +1,6 @@
 // live / MCP(ft_* ツール)専用のブリッジ振り替え。
 //
-// live/MCP は **in-app エンジンを使わない**(ユーザー決定 2026-07-28)。in-app ブリッジは
+// live/MCP は **in-app エンジンを使わない**(ユーザー決定)。in-app ブリッジは
 // home / appSwitcher / drag / 座標 press を原理的に実装できず、シナリオ実行と違って
 // StepExecutor のフォールバック機構を通らないため、これらが素の 501 で落ちる。
 // そこで接続先が in-app だと分かったら、同じデバイスの XCUITest ブリッジへ振り替える

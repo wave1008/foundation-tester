@@ -38,7 +38,7 @@ public struct ScenarioRunItem: Identifiable, Sendable {
 /// 並列ワーカー定義。platform が一致するシナリオだけをキューから消化する
 /// ワーカーを1本ずつ参加させる間隔(秒)。**0 で無効**。
 ///
-/// なぜ要るか(2026-08-09): 各シナリオは `condition { launchApp() }` から始まるので、
+/// なぜ要るか: 各シナリオは `condition { launchApp() }` から始まるので、
 /// N 台のワーカーを同時に起こすと**最初の launch が N 本同時**に走る。ブリッジ供給側は
 /// 「in-app の新規起動は同時2台」に絞ってある(BridgeProvisioner)のに、その数秒後の
 /// 本番の launch は無制限、という非対称だった。実測では供給が 2 台ずつ進んだ直後に
@@ -49,7 +49,7 @@ public struct ScenarioRunItem: Identifiable, Sendable {
 /// n=1 で、同じ run の別プロファイルは無事だった)。対照実験を安く回せるように
 /// `FT_WORKER_STAGGER_SEC` で差し替えられるようにしてある(`0` で従来どおり一斉起動)。
 ///
-/// **間隔だけでは足りない**(2026-08-09 ユーザー指示)。時間は当て推量で、ホストが実際に
+/// **間隔だけでは足りない**(ユーザー指示)。時間は当て推量で、ホストが実際に
 /// 空いたことは見ていない —— 供給が長引いた run では飽和したまま次を起こす。もう一つの門
 /// (**直近の CPU 使用率が上限未満**)は `WorkerStartGate` にある。`seconds` を 0 にしても
 /// CPU の門は残る(こちらを外すのは `FT_WORKER_START_CPU_MAX` ではなく、上限を 100% に
@@ -59,7 +59,7 @@ public struct ScenarioRunItem: Identifiable, Sendable {
 public enum WorkerStagger {
     public static let defaultSeconds = 1.5
 
-    /// **最初に同時起動してよい台数**(2026-08-09 のユーザー決定)。ここを超えた分から
+    /// **最初に同時起動してよい台数**(ユーザー決定)。ここを超えた分から
     /// 1本ずつ間隔を空ける —— つまり 1本目と2本目は同時、3本目以降が待つ。
     /// **2 は BridgeProvisioner の「in-app の新規起動は同時2台」と同じ値**で、
     /// 供給と本番の launch で違う上限を持たないために揃えてある。
@@ -203,7 +203,7 @@ public struct RunSummary: Sendable {
     /// **黙って素通り**する = その run の緑は「守りが効いた緑」ではない。
     /// **合否は変えない**(FM と無関係な失敗を隠す方が危険)。読み手に劣化を伝えるためだけの数。
     /// 各シナリオの警告は子プロセスの stderr にも出るが、**run のまとめには出ていなかった**ので、
-    /// 赤を見るたびに「自分の変更か FM か」を人が切り分ける羽目になっていた(2026-08-20)
+    /// 赤を見るたびに「自分の変更か FM か」を人が切り分ける羽目になっていた
     public let fmUnavailableScenarios: Int
     /// degradedWorkers / freezeRetries と**同じ事実の構造化版**(run.json の workerAnomalies)。
     /// 表示は prose 側、機械的な除外はこちら(片方だけ足さない)
@@ -298,7 +298,7 @@ private actor Counter {
 }
 
 /// 1 シナリオあたりの凍結再実行上限。ポイズンシナリオのフリート全滅を防ぐ
-/// (2→1: 意図的に NG になるテストがデバイス不調と重なった際の再実行を最小化。ユーザー決定 2026-07-18)
+/// (2→1: 意図的に NG になるテストがデバイス不調と重なった際の再実行を最小化。ユーザー決定)
 private let MAX_FREEZE_RETRIES = 1
 
 /// 失敗後ブリッジチェックの観察窓と、ログ静止によるウェッジ確定時間(秒)。
@@ -835,7 +835,7 @@ public final class RunOrchestrator {
             } : nil
 
         failed += await withTaskGroup(of: Int.self, returning: Int.self) { group in
-            // **ワーカーは一斉に起こさない**(2026-08-09)。各シナリオは `condition { launchApp() }`
+            // **ワーカーは一斉に起こさない**。各シナリオは `condition { launchApp() }`
             // から始まるので、N 本のワーカーを同時に積むと**最初の launch が N 本同時**に走る。
             // ブリッジ供給側は「in-app の新規起動は同時2台」に絞ってあるのに、その数秒後の
             // 本番の launch は無制限、という非対称だった(実測: 供給は 2 台ずつ進んでいたのに
@@ -1010,7 +1010,7 @@ public final class RunOrchestrator {
 
         var failed = 0
         var breaker = WorkerCircuitBreaker(threshold: WORKER_FAILURE_CIRCUIT_THRESHOLD)
-        // 実行前のブリッジ疎通確認(プレフライト)は不採用(ユーザー決定 2026-07-18)。
+        // 実行前のブリッジ疎通確認(プレフライト)は不採用(ユーザー決定)。
         // 「取ってから判定」版は一過性の AX スパイクで9台一斉離脱、「取る前に2sで即断」版も
         // 負荷時の誤判定で品質が安定しなかった。ウェッジは失敗後の事後チェック
         // (bridgeUnreachable/deviceUnreachable/deviceFrozen → 振り直し)だけで拾う。

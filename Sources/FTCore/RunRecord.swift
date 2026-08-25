@@ -128,7 +128,7 @@ public struct StepCountsRecord: Codable, Sendable {
     public var skipped: Int
     public var healed: Int
     public var passedViaFallback: Int
-    /// verify のブロックにアサーションが無かった等の inconclusive(2026-08-03 追加)。失敗には数えない。
+    /// verify のブロックにアサーションが無かった等の inconclusive。失敗には数えない。
     /// 後発の追加フィールドなので Optional(ScenarioEvent.durationMs と同じ理由。旧レコードの
     /// 欠損キーが decode エラーにならず nil になる = 過去の run 結果を読み続けられる)
     public var inconclusive: Int?

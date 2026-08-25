@@ -1,4 +1,4 @@
-// ft_tap/ft_type の snapshotAfter に waitFor/timeout を追加した分の検証(2026-08-10)。
+// ft_tap/ft_type の snapshotAfter に waitFor/timeout を追加した分の検証。
 // waitFor 付きは settle-lite(操作前後の見分けが付かないときだけ1回再読む)の代わりに、
 // ft_snapshot と同じ待ちのロジック(MCPServer.waitFor)を使う。両者は排他 —— waitFor が
 // あれば settle-lite は動かさない(snapshotAfterBody 参照)。
@@ -101,7 +101,7 @@ final class MCPActionWaitForTests: XCTestCase {
         XCTAssertTrue(text.contains("id=result_row"), text)
     }
 
-    // MARK: - 語彙統一(2026-08-10): snapshotAfter は操作系の全ツールに揃える
+    // MARK: - 語彙統一: snapshotAfter は操作系の全ツールに揃える
 
     /// 代表として ft_swipe(従来は snapshotAfter が無く、毎回 ft_snapshot の1往復を払っていた)
     func testFtSwipeSupportsSnapshotAfter() async throws {

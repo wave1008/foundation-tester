@@ -47,7 +47,7 @@ public enum OcclusionGeometry {
             // 犯人としては名指しされ続ける、という食い違いが残る
             if StepExecutor.hasClampedCoordinates(other, in: elements) { return false }
             if isOriginClamped(other, in: elements) { return false }
-            // **スクロール容器は、その点に自分の中身が無いなら何も隠していない**(2026-08-14)。
+            // **スクロール容器は、その点に自分の中身が無いなら何も隠していない**。
             // iOS は z を出さないので塗り順は木の順序で代用するしかなく、**フレームが上の
             // chrome の下へ潜り込む容器**(content inset を持つ表・コレクション)が、その上に
             // 描かれているタブ帯を「覆っている」と報告していた。実測(ios-news_feed):

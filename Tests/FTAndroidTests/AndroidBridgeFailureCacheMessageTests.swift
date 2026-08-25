@@ -1,4 +1,4 @@
-// 失敗キャッシュ(.unavailable / unavailableRetryInterval)を再生したときの文言(2026-08-13)。
+// 失敗キャッシュ(.unavailable / unavailableRetryInterval)を再生したときの文言。
 //
 // 再生された文はライブの失敗と1バイトも違わなかったため、読み手は「今まさに adb forward が
 // 落ちた」と読む。実際、手で `adb forward` を打って成功し `ftester bridge status` も通るのに

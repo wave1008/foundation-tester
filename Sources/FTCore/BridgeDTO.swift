@@ -31,85 +31,85 @@ public enum BridgeAPI {
     /// ブリッジ HTTP API のプロトコルバージョン。エンドポイントやリクエスト/レスポンスの形を
     /// 変えたら必ず +1 する。/status で返され、旧ビルドのランナーの自動再起動判定に使う
     /// (nil = この定数導入前のビルド = 旧版扱い)。
-    /// 4: 操作系が「対象アプリ未起動」に 503 を返すようになった(2026-07-28)。エンドポイントの
+    /// 4: 操作系が「対象アプリ未起動」に 503 を返すようになった。エンドポイントの
     /// 増減ではないが**版を上げる**: 旧ランナーが稼働中だと再利用され、XCUI の操作失敗で
     /// プロセスごと落ちる不具合(design.md 参照)を踏み続けるため、確実に入れ替える
-    /// 5: snapshot が WKWebView を型 "WebView" として返すようになった(2026-07-29)。
+    /// 5: snapshot が WKWebView を型 "WebView" として返すようになった。
     /// ホストはこの要素の有無で「XCUITest へ委譲する画面か」を判定する(WebViewDelegatingDriver)
     /// ため、旧ランナーが再利用されると**委譲が起きないまま緑になる**。確実に入れ替える
-    /// 6: in-app が WKWebView の中身を DOM から読んで返すようになった(2026-07-29)。
+    /// 6: in-app が WKWebView の中身を DOM から読んで返すようになった。
     /// 旧 dylib が再利用されると中身が空のまま = XCUITest へ委譲され続け、
     /// 速度改善が入っていないのに緑になる
-    /// 9: 無通信 TTL で自主終了するようになった(2026-07-30)。旧ランナーが再利用されると
+    /// 9: 無通信 TTL で自主終了するようになった。旧ランナーが再利用されると
     /// ゾンビ化防止が効かないまま残るため入れ替える
-    /// 10: /status が起動元(ownerRepo/ownerPid)を自己申告するようになった(2026-07-30)。
+    /// 10: /status が起動元(ownerRepo/ownerPid)を自己申告するようになった。
     /// doctor の確定ゾンビ自動停止が申告に依存するため、確実に入れ替える
-    /// 11: POST /clear(入力欄のクリア。DSL の clearInput)を追加(2026-07-30)。
+    /// 11: POST /clear(入力欄のクリア。DSL の clearInput)を追加。
     /// 旧ブリッジは 404 "not found:" を返し、ホスト側が「未対応」と誤判定し続けるため入れ替える
     /// 16: /clear が結果を読み返して確認する(**空に見えることを成功の根拠にしない**)ようになり、
-    /// snapshot が focused を返すようになった(2026-07-30)。ホスト側の事後検証が focused に
+    /// snapshot が focused を返すようになった。ホスト側の事後検証が focused に
     /// 依存するため、旧ブリッジの再利用を確実に断つ
-    /// 20: POST /hidekeyboard を追加し、snapshot が keyboardShown を返すようになった(2026-07-30)。
+    /// 20: POST /hidekeyboard を追加し、snapshot が keyboardShown を返すようになった。
     /// 旧ブリッジは 404 と nil を返し、keyboardIsShown が「状態不明」で失敗し続けるため入れ替える
     /// 23: XCUITest ランナーの /clear が「フォーカス欄が無い」「消し切れなかった」を
-    /// **409 でなく 422** で返すようになった(2026-07-31)。旧ブリッジを再利用すると 409 のまま
+    /// **409 でなく 422** で返すようになった。旧ブリッジを再利用すると 409 のまま
     /// = ホストがセッション消失と誤断定して無用な activate を撃ち、誤った理由でステップを落とす
-    /// 24: /clear が 2 周固定をやめ、空になるまで(deadline 付きで)叩くようになった(2026-07-31)。
+    /// 24: /clear が 2 周固定をやめ、空になるまで(deadline 付きで)叩くようになった。
     /// 旧ランナーが再利用されると高負荷での取りこぼしフレークが残ったままになる
     /// 25: in-app の整定が視覚効果パラメータ(scroll edge effect のぼかし)を「動いている」と
-    /// 数えなくなった(2026-07-31)。旧 dylib が再利用されると launch 直後の 1〜2 アクションが
+    /// 数えなくなった。旧 dylib が再利用されると launch 直後の 1〜2 アクションが
     /// 毎回 cap 2500ms に張り付いたままになる
     /// 26: in-app の swipe が Compose/Flutter で UIAccessibility の scroll アクション経由で
-    /// 効くようになり、swipe を unsupportedActions に申告しなくなった(2026-07-31)。
+    /// 効くようになり、swipe を unsupportedActions に申告しなくなった。
     /// 旧 dylib が再利用されるとスクロールが全部 XCUITest へ回ったままになる
-    /// 27: 整定を **cap で打ち切ったことを note で申告**するようになった(2026-07-31)。
+    /// 27: 整定を **cap で打ち切ったことを note で申告**するようになった。
     /// 旧ブリッジは黙るので「常態的に上限へ張り付いているのに緑」が見えないまま残る
     /// 28: Compose/Flutter でも **WebView 画面のスクロールを contentOffset で受けるようになった**
-    /// (2026-08-01)。旧 dylib は 501 を返すので画面ごと XCUITest 委譲のままで、この短縮が効かない
+    ///。旧 dylib は 501 を返すので画面ごと XCUITest 委譲のままで、この短縮が効かない
     /// 29: XCUITest ランナーの /type が**送った打鍵数を完了の根拠にせず**、読み返して期待値に
-    /// 届くまで足りないぶんを追送するようになった(2026-08-01)。旧ランナーが再利用されると
+    /// 届くまで足りないぶんを追送するようになった。旧ランナーが再利用されると
     /// 高負荷での打鍵取りこぼし(200 を返すのに値が空)が残ったままになる
     /// 30: in-app が interop(Compose/Flutter)ホストの WebView も DOM から読むようになり、
-    /// snapshot が webViewPath: "dom-interop" を申告するようになった(2026-08-02)。旧 dylib は
+    /// snapshot が webViewPath: "dom-interop" を申告するようになった。旧 dylib は
     /// interop 配下を引き続き読めないと申告し続け、ホストが画面ごと XCUITest 委譲へ落とすため、
     /// テストは緑のまま速度改善だけが効かない
-    /// 34: ブリッジ内の所要内訳ログ(tapTiming/settleTiming/reqTiming)を追加(2026-08-02)。
+    /// 34: ブリッジ内の所要内訳ログ(tapTiming/settleTiming/reqTiming)を追加。
     /// **起動時にしか切り替わらない**ので /status の timingEnabled で状態を申告し、
     /// ホストは希望と食い違えば起動し直す。旧ブリッジを再利用すると「on にしたのに1行も出ない」
     /// = 計測できていないのに「待ちが無かった」と誤読する事故になる
-    /// 35: SwipeRequest に用途つきのジェスチャ指定(distance/durationMs/fling)が入った(2026-08-02)。
+    /// 35: SwipeRequest に用途つきのジェスチャ指定(distance/durationMs/fling)が入った。
     /// **読むのは Android ブリッジだけ**で iOS の挙動は変えていないが、DTO は iOS ブリッジの
     /// 入力でもあるため版を上げる(上げないと稼働中の旧ブリッジが再利用され続ける)
-    /// 36: XCUITest ランナーの /swipe が SwipeRequest.velocity を受けるようになった(2026-08-02)。
+    /// 36: XCUITest ランナーの /swipe が SwipeRequest.velocity を受けるようになった。
     /// 旧ランナーが再利用されると既定速度のままで効かない
     /// 37: DragRequest.hold(終端ドウェル)を一時的に足した版(2026-08-02)。**実測で iOS では
     /// 慣性を止められないと分かったため 38 で撤去した**。37 のブリッジが稼働している環境を
     /// 確実に入れ替えるため、番号は再利用せず欠番にする
-    /// 38: DragRequest.hold を撤去(2026-08-02)。wire 形式は 36 と同一だが、37 が稼働している
+    /// 38: DragRequest.hold を撤去。wire 形式は 36 と同一だが、37 が稼働している
     /// 可能性があるので戻さず進める
-    /// 39: SwipeRequest.path(スクロール領域を指定したときの実座標)を追加(2026-08-02)。
+    /// 39: SwipeRequest.path(スクロール領域を指定したときの実座標)を追加。
     /// 旧ブリッジは path を**黙って無視して全画面スワイプする** = 指定と違う領域が動くので
     /// 確実に入れ替える。in-app は座標を実行できないため 501 を返す(ホストが XCUITest へ回す)
-    /// 40: in-app が path を「対象と移動量」として解釈するようになった(2026-08-02)。
+    /// 40: in-app が path を「対象と移動量」として解釈するようになった。
     /// 39 の dylib は path つきを 501 で返すので、再利用されると領域指定のたびに XCUITest へ
     /// 委譲され続ける(**動くが遅いまま**でテストは緑 = 気付けない)
-    /// 41: in-app の path 受理を **UIKit/SwiftUI(と WebView)に限定**(2026-08-02)。
+    /// 41: in-app の path 受理を **UIKit/SwiftUI(と WebView)に限定**。
     /// compose/flutter は領域を切り分けられず「指定と違う領域が動く」ため 501 に戻した。
     /// 40 の dylib が再利用されるとその誤動作が残る
-    /// 43: snapshot が scrollable(スクロールできる容器か)を返すようになった(2026-08-02)。
+    /// 43: snapshot が scrollable(スクロールできる容器か)を返すようになった。
     /// ホストは scrollFrame の指定が**スクロールできない領域を指していないか**の判定に使う。
     /// 旧ブリッジは返さないので判定が働かない(黙った空振りに気付けないまま)
-    /// 42: in-app の整定が**スクロールの動き自体**を見るようになった(2026-08-02)。
+    /// 42: in-app の整定が**スクロールの動き自体**を見るようになった。
     /// `setContentOffset(animated:)` は CALayer のアニメを伴わず旧実装をすり抜けるため、
     /// 「先頭へ」等の直後の snapshot が動く前のツリーを返し、**成功と記録されたまま
     /// 別の要素が掴まれていた**。旧 dylib が再利用されるとその誤動作が残る
-    /// 44: POST /appstate(DSL の appIs)を追加(2026-08-03)。旧ブリッジは
+    /// 44: POST /appstate(DSL の appIs)を追加。旧ブリッジは
     /// 404 "not found:" を返し続けるため入れ替える
     /// 45: XCUITest ランナーの GET /snapshot が XCUIElementTypeIcon(springboard のホーム画面
     /// アイコン)を含めるようになった(2026-08-03、tapAppIcon 用)。旧ランナーは identifier の
     /// 無いアイコンを黙って除外するため、tapAppIcon が「見つからない」で失敗し続ける
     /// 46: XCUITest ランナーの GET /snapshot が SnapshotResponse.offscreen(WebView 配下の
-    /// 画面外ノード)を供給するようになった(2026-08-04)。Android は既に供給しており iOS だけ
+    /// 画面外ノード)を供給するようになった。Android は既に供給しており iOS だけ
     /// 欠けていたため offscreenJump/offscreenEdgeJump が一度も発火しなかった。旧ランナーは
     /// offscreen を返さない = 黙って無効のまま
     /// 47: POST /pinch(2本指ズーム)と POST /doubletap を追加(2026-08-04、マップ系アプリ用)。
@@ -119,19 +119,19 @@ public enum BridgeAPI {
     /// `XCUICoordinate.tap()` が1打 335ms かかり、実際の間隔が約 400ms = 判定窓を外れて
     /// 単タップ2回になる**と分かったため 49 で撤去した。48 が稼働している環境を確実に
     /// 入れ替えるため番号は再利用せず欠番にする(37 と同じ扱い)
-    /// 49: /doubletap を `XCUICoordinate.doubleTap()` へ戻した(2026-08-04)
-    /// 50: **in-app ブリッジに /doubletap と /pinch を追加**(2026-08-04)。in-app は合成タッチの
+    /// 49: /doubletap を `XCUICoordinate.doubleTap()` へ戻した
+    /// 50: **in-app ブリッジに /doubletap と /pinch を追加**。in-app は合成タッチの
     /// 間隔と指の距離を自分で決められるので、XCTest では成立しない組み合わせ(Compose の
     /// ダブルタップ)が通る。旧 dylib はルートを持たず 404 → ホストが XCUITest へ回すため、
     /// **入れ替えないと直った経路が使われないまま**になる
     /// 53: XCUITest ランナーの GET /snapshot が(a)**placeholder がそのまま来る value を空に正規化**し、
-    /// (b)**同じ型・同じ位置で情報を足さない重複ノードを1つに畳む**ようになった(2026-08-06)。
+    /// (b)**同じ型・同じ位置で情報を足さない重複ノードを1つに畳む**ようになった。
     /// (a) が無いと iOS の WebView 入力欄だけ `value="<placeholder>"` になり `valueIs("")` が通らない
     /// (Android は空で返す = 経路で割れていた)。(b) が無いと UIKit の Switch・UIAlertController の
     /// ボタン・キーボードの Dictate が2つずつ出て、`.button[n]` の序数が見え方とずれる。
     /// **旧ランナーが再利用されるとどちらも直らないまま緑になる**
     /// 54: XCUITest ランナー・in-app の GET /snapshot が上限超過時の間引きを**先着順から
-    /// 優先度順(BridgeSnapshotThinning)へ変えた**(2026-08-07)。同一 identifier を20件以上
+    /// 優先度順(BridgeSnapshotThinning)へ変えた**。同一 identifier を20件以上
     /// 持つ非スクロール・非操作の装飾群(地図ピン等)を最初に捨てるようになり、詳細シートの
     /// 中身のような本物のコンテンツが残るようになった。旧ランナー/dylib は先着順のままなので、
     /// 再利用されると枠を装飾に食われた画面で waitFor/scrollTo が見えない要素を探し続ける
@@ -151,7 +151,7 @@ public enum BridgeAPI {
     /// scrollFrame 解決が退化する)。XCUITest ランナーの isEligible も id 無しのスクロール容器を
     /// 通すようになり、keyboardFrame の申告を追加。旧ランナー/dylib が再利用されると
     /// POI の多い画面で操作要素が切り詰められたまま・容器が落ちたままになる
-    /// 59: React Native 対応(2026-08-08)。in-app の tap 再試行が取り直した現在 frame で
+    /// 59: React Native 対応。in-app の tap 再試行が取り直した現在 frame で
     /// 合成タッチする(RN のコールドラウンチ直後、stored frame が古く1要素上を叩いた実測。
     /// 近距離 120pt 以内のみ)。WebViewDOMSnapshot の interop マーカーに RNCWebView を追加
     /// (react-native-webview は DOM を読めるが合成タッチが届かない)。SnapshotDedupe の
@@ -674,7 +674,7 @@ public struct ElementInfo: Codable, Sendable {
     /// スライダー/プログレスの**取り得る範囲**(`"0-100"`)。nil = 範囲を持たない要素、
     /// またはブリッジが申告しない。現在値は `value` に入る。
     ///
-    /// **パーセントへ正規化しない**のが決定(2026-08-07): 0..10 のスライダーで current=3 を
+    /// **パーセントへ正規化しない**のが決定: 0..10 のスライダーで current=3 を
     /// "30%" と言うのは、生値を読みたい側には嘘に近い。範囲を別に添えて割合は読み手に任せる。
     /// 取得元: Android=`AccessibilityNodeInfo.getRangeInfo`。
     /// **iOS はまだ出さない**(XCUIElement.value が `"50%"` を返すので value 側だけは読める)

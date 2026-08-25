@@ -85,7 +85,7 @@ struct RunScenario: AsyncParsableCommand {
     /// in-app ブリッジへの起動時プローブ(注入先アプリの判別)の締切。秒。
     /// **待ちは判断の正しさと引き換え**: 短いと冷えた実機ブリッジを「無応答」と誤読し、
     /// 長いと suspend 中のアプリ(TCP は受理して答えない)でその秒数を丸ごと払う。
-    /// 10 は 2026-08-15 のユーザー指示(いずれ実行プロファイルで指定できるようにする)
+    /// 10 は ユーザー指示(いずれ実行プロファイルで指定できるようにする)
     static let injectedAppProbeTimeout: TimeInterval = 10
 
     @Option(help: "Scenario ID (Class.method)")
@@ -259,7 +259,7 @@ struct RunScenario: AsyncParsableCommand {
                     // relaunch で bridge を張り直す)、別アプリ(Preferences 等)なら mismatch=XCUITest
                     // へ正しく分岐する。inappApp を使わず nil を「不明」扱いにすると、suspend 中の
                     // 別アプリシナリオを in-app 経路へ誤ルーティングして破綻する(実際に回帰した)。
-                    // 締切は 30 秒(2026-08-15 ユーザー指示)。**短くしない**: 実機は LAN/USB 越しで
+                    // 締切は 30 秒(ユーザー指示)。**短くしない**: 実機は LAN/USB 越しで
                     // 冷えたブリッジの初回応答が数秒に収まる保証が無く、外れると「注入先が分からない」
                     // まま進む。代わりに suspend 中のアプリ(TCP は受理するが答えない)では
                     // ここで最大 30 秒待つ —— 判断の正しさを待ち時間で買っている。
@@ -270,7 +270,7 @@ struct RunScenario: AsyncParsableCommand {
                                              simulatorUDID: physical ? nil : udid)
                     let probeStatus = try? await probe.status(timeout: Self.injectedAppProbeTimeout)
                     // in-app/hybrid はブリッジの自己申告を使うが、**プローブの締切に判断を
-                    // 預けない**(2026-08-15): この 4 秒は「suspend したアプリは答えない」を
+                    // 預けない**: この 4 秒は「suspend したアプリは答えない」を
                     // 素早く諦めるための値で、実機の冷えたブリッジが収まる保証は無い。
                     // 外れて nil のまま進むと shouldEmptyDrag が「不明なら打つ」へ倒れ、
                     // RN では scrollTo しただけで行が選ばれる(AppBundleInspector.detect 参照)。
@@ -380,7 +380,7 @@ struct RunScenario: AsyncParsableCommand {
             if !(driver is InAppDriver) && !(driver is WebViewDelegatingDriver) {
                 _ = try await driver.status()
             }
-            // **不明のまま進むことは黙らない**(2026-08-15)。自己申告もバンドルのマーカーも
+            // **不明のまま進むことは黙らない**。自己申告もバンドルのマーカーも
             // 取れないのは実機で --app-path が無いときで、そのとき shouldEmptyDrag は
             // 「不明なら打つ」へ倒れる = RN なら scrollTo が行を選ぶ(沈黙する実害)。
             // 判断は変えない(打たない側へ倒すと Compose の探索直後タップが容器に吸われて

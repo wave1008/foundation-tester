@@ -405,7 +405,7 @@ export interface RecordedStep {
  * ただし id があるときは位置依存の type+index フォールバックは足さない(id は安定なので
  * `.TextField` 等は冗長・ノイズ。生成コードの `#id||.Type` を `#id` にする)。
  *
- * **もう Swift 側の双子は無い**(2026-08-15): 旧 `Sources/FTCore/Flow.swift
+ * **もう Swift 側の双子は無い**: 旧 `Sources/FTCore/Flow.swift
  * FlowLocatorBuilder.chain` は画面内の一意性を見ずに id/label をそのまま採っていたため、
  * StepExecutor の自己修復(結果をユーザーの .swift ソースへ書き戻す経路)で「別要素に解決する
  * セレクタ」を書く欠陥のもとになり、一意性を検査する `FTCore.SelectorNaming` に統合されて

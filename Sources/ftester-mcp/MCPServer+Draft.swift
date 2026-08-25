@@ -25,7 +25,7 @@ extension MCPServer {
             return "No interactions recorded yet. Drive the app with ft_launch / ft_tap / ft_type"
                 + " / ft_scroll_to first — this tool turns that sequence into a scenario draft."
         }
-        // **刈り込みは下書きの質そのもの**(2026-08-10): 記録は「やったこと」であって
+        // **刈り込みは下書きの質そのもの**: 記録は「やったこと」であって
         // 「意図」ではないので、行き止まりのタップや試し打ちがそのまま載る。自動では
         // 本筋と回り道を見分けられない(どちらも成功した操作)ので、**番号を見せて選ばせる**
         let (scope, droppedCount, ignoredNumbers) = InteractionLog.prune(
@@ -39,7 +39,7 @@ extension MCPServer {
         let target = interactions.target(in: scope)
         let unresolved = scope.compactMap(\.unresolved)
         let steps = scope.compactMap(\.step)
-        // **解決できなかった手はその場に残す**(2026-08-10)。まとめて先頭へ出すと action の
+        // **解決できなかった手はその場に残す**。まとめて先頭へ出すと action の
         // 並びからその手が消え、生成コードが実際の手順と食い違う(33 手の下書きで実際に起きた:
         // チェックアウト→住所画面へ移る手が抜けたまま #btn_add_address を叩く形になった)
         var notesBeforeStep: [Int: [String]] = [:]
@@ -126,7 +126,7 @@ extension MCPServer {
     ///
     /// セレクタを解決できなかった手も**捨てずに**残す(`unresolved`)。落とすと、
     /// 出来上がったシナリオが実際の手順と食い違う(F-4)
-    /// 記録した手のセレクタを**どの木で名付けるか**(2026-08-13)。
+    /// 記録した手のセレクタを**どの木で名付けるか**。
     ///
     /// **`lastSnapshots` は「最後に読んだ木」であって「その ref が属する木」ではない。**
     /// 記録より先に撮り直す経路がある —— `ft_type` は入力の読み返しと `snapshotAfter` を
@@ -160,7 +160,7 @@ extension MCPServer {
         var selector: String?
         var durability: Durability = .stable
         var described = "\(action)"
-        // **ref が属する世代の木で名付ける**(2026-08-13)。`lastSnapshots` は「最後に読んだ木」で、
+        // **ref が属する世代の木で名付ける**。`lastSnapshots` は「最後に読んだ木」で、
         // **記録より先に撮り直す経路がある**(ft_type は入力の読み返し・snapshotAfter を
         // 記録の前に通す)。そこを見ると ref は別世代の番号なので引けず、**#id を持つ欄でも
         // 下書きが `// TODO: no stable selector — type` になる**。実機の観測:

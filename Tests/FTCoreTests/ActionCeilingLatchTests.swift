@@ -1,4 +1,4 @@
-// ステップ単位の要素上限ラッチ(2026-08-15)。
+// ステップ単位の要素上限ラッチ。
 //
 // AppDriver.raiseElementLimitOnNextSnapshot は次の1回だけ上限を上げる one-shot。
 // retakenAtElementLimitCeiling(StepExecutor+Assert.swift)が発火した後、同じステップの

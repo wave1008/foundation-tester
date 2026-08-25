@@ -151,7 +151,7 @@ final class BlankWorkerTriageTests: XCTestCase {
         return output as Data
     }
 
-    // MARK: - 能動プローブ(2026-08-11)
+    // MARK: - 能動プローブ
     //
     // 受動観測では**原理的に区別できない**2つの状態がある:
     //   「描画要求が無いだけの黒画面」= 入力すると描画が戻る(実測: HOME で 15KB → 1.4MB)
@@ -201,7 +201,7 @@ final class BlankWorkerTriageTests: XCTestCase {
     }
 }
 
-/// **レーンに凍結機を残さない**(2026-08-09 のユーザー決定)。
+/// **レーンに凍結機を残さない**(ユーザー決定)。
 /// 検出したら回復を試み、戻ったものはレーンに残し、**どうしても戻らないものだけ外す**。
 ///
 /// 回復の実体(simctl shutdown→boot とブリッジの張り直し)は呼び出し側が注入する

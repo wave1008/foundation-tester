@@ -384,7 +384,7 @@ public final class AndroidDriver: AppDriver {
         snapshot.elements = SnapshotDedupe.dropLabelTwinsInsideButtons(snapshot.elements)
         // 対応表は snapshot ごとに作り直す(前の画面のものを持ち越すと別の欄へ注入する)
         domBridgeRefs = [:]
-        // **web コンテンツを DOM で置き換える**。対象はブラウザ本体(2026-08-13)と
+        // **web コンテンツを DOM で置き換える**。対象はブラウザ本体と
         // **テスト対象アプリ自身の WebView**(2026-08-15。a11y が版で属性を入れ替えるため)。
         // **どちらの門も `AndroidWebViewDOM.route` の1箇所**(ここに2つ目の判定を書かない)。
         //
@@ -521,7 +521,7 @@ public final class AndroidDriver: AppDriver {
         // 旧フィールドへ誤追記する(hello123secret42 事故)。ブリッジの ref 経路
         // (InputInjector.setTextAppendingAt)は「タップ点にある editable ノードそのもの」へ
         // SET_TEXT + 期限内リトライするため、誤爆が構造的に起きない。
-        // v10-v12 のブリッジ側修正がここの分解のせいで一度も実行されていなかった(2026-07-23)。
+        // v10-v12 のブリッジ側修正がここの分解のせいで一度も実行されていなかった。
         //
         // 末尾の改行1つは ACTION_SET_TEXT では文字として入るだけで IME アクションにならないため、
         // 分離して本文の SET_TEXT 後に Enter キーイベントを送る(pressEnter と同じ経路。文中の
@@ -935,7 +935,7 @@ public final class AndroidDriver: AppDriver {
         }
     }
 
-    /// **system も引けるようにする**(2026-08-09): 端末に載っている地図・ブラウザ等は
+    /// **system も引けるようにする**: 端末に載っている地図・ブラウザ等は
     /// system 扱いで `-3` には1つも出ず、MCP から探しようが無かった(実測: Pixel の AVD で
     /// `com.google.android.apps.maps` が出ず adb へ落ちた)。`pm` は `-3` か `-s` の
     /// どちらかしか出せないので2回撃つ。**system アプリに更新が当たると `-s` 側にだけ出る**ので、

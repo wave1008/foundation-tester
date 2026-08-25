@@ -33,7 +33,7 @@ extension StepExecutor {
         var suggestedScrollFrame: String?
         /// `step.scrollFrame` が明示されているのに、探索開始時点(または探索中)の snapshot で
         /// 1件も解決できず、**スワイプを1本も送らずに**打ち切った。全画面スワイプへ黙って
-        /// 退化すると画面上の別の物(カードのボタン等)を発火させ得るための fail-fast(2026-08-08)
+        /// 退化すると画面上の別の物(カードのボタン等)を発火させ得るための fail-fast
         var scrollFrameMissing: Bool = false
         /// `stoppedUnmoving` の時点で、明示 scrollFrame が画面高の80%未満しかない(半開シート等)。
         /// シート展開ヒント(scrollNotFoundMessage)を**全画面リストの末尾到達**にまで出さないためのゲート
@@ -97,7 +97,7 @@ extension StepExecutor {
     static func scrollNotFoundMessage(_ step: FlowStep,
                                       _ result: ScrollSearchResult? = nil) -> String {
         // **fail-fast は別の文**: 実際にはスワイプを1本も送っていないので、通常の
-        // 「N 回振って見つからなかった」は嘘になる(2026-08-08)
+        // 「N 回振って見つからなかった」は嘘になる
         if result?.scrollFrameMissing == true {
             return Self.scrollFrameFailFastMessage(step, action: "search", swipes: result?.swipes ?? 0)
         }
@@ -138,7 +138,7 @@ extension StepExecutor {
     /// 明示 scrollFrame が「解決できない」ことの判定。**scrollContainer には委ねない** ——
     /// scrollContainer は殺しスイッチ(`FT_SCROLL_TARGET=legacy`)のとき常に nil を返すため、
     /// それを fail-fast の根拠にすると legacy 指定時に「セレクタが実在するのに matched nothing」
-    /// と誤判定する(2026-08-08)。殺しスイッチ有効時は判定自体をスキップし、従来(legacy)挙動へ流す。
+    /// と誤判定する。殺しスイッチ有効時は判定自体をスキップし、従来(legacy)挙動へ流す。
     /// runScrollSearch(scrollTo/exist/notExist 系)と scroll/scrollToEdge/flick の両方から呼ぶ
     static func scrollFrameUnresolved(_ step: FlowStep, in snapshot: SnapshotResponse) -> Bool {
         guard Self.coordinateScrollEnabled, let locator = step.scrollFrame else { return false }
@@ -148,7 +148,7 @@ extension StepExecutor {
     /// 明示 scrollFrame が解決できないときの fail-fast 文言。呼び手ごとに動詞(action)を渡す
     /// (scrollTo/exist/notExist 系="search"・scroll/scrollToEdge="swipe"・flick="flick")。
     /// **`swipes > 0`(容器が解決していたのに送信中に消えた)なら文言を差し替える** ——
-    /// スワイプ送信後にも「送られなかった」と言うのは嘘になるため(2026-08-08)
+    /// スワイプ送信後にも「送られなかった」と言うのは嘘になるため
     static func scrollFrameFailFastMessage(_ step: FlowStep, action: String, swipes: Int) -> String {
         let sel = step.scrollFrame?.summary ?? "?"
         guard swipes > 0 else {
@@ -515,7 +515,7 @@ extension StepExecutor {
                         }
                         // シート展開ヒントは**対象の容器が画面の大半を占めない**ときだけ
                         // (全画面リストの末尾到達で毎回シートを探しに行かせないためのゲート。2026-08-08)。
-                        // **scrollFrame 未指定でも判定する**(2026-08-09): 半開きシートの中で
+                        // **scrollFrame 未指定でも判定する**: 半開きシートの中で
                         // 止まる形は指定の有無に関係なく起きるのに、指定したときにしかヒントが
                         // 出ていなかった —— 実測(Apple マップの経路手順)では、未指定の1回目が
                         // 「動かなくなった」としか言わず、同じ画面で scrollFrame を渡した2回目に

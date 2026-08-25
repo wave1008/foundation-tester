@@ -127,7 +127,7 @@ final class UnrepresentedScreenCaveatBoundaryTests: XCTestCase {
         XCTAssertFalse(text.contains("no element in the tree at all"), text)
     }
 
-    // **呼び出し口ごとに1本ずつ要る**(2026-08-13): unrepresentedScreenCaveat 自体の境界を
+    // **呼び出し口ごとに1本ずつ要る**: unrepresentedScreenCaveat 自体の境界を
     // 上の2本が押さえていても、**各 verdict への連結を消す変異は全部生き残った**
     // (settle-lite 以外の3口 = waitFor 節・waitForChange タイムアウト・ft_batch)。
     // 判定を1本に寄せても、配線は寄らない。ft_batch 側は MCPBatchUnchangedNoteTests

@@ -542,13 +542,13 @@ extension MCPServer {
             + " \"\(SnapshotRenderer.truncate(value, 40))\" — the text may not have landed)"
     }
 
-    /// `ft_type(replace: true)` 後の読み返し(2026-08-12)。**無条件の「replaced」を断言しない** ——
+    /// `ft_type(replace: true)` 後の読み返し。**無条件の「replaced」を断言しない** ——
     /// in-app iOS の UIKit 経路は clearInput の成否を検証なしで YES と返すので、旧値が残ったまま
     /// 新しい文字が連結されても黙って「replaced」と言ってしまう(実害の型は typedIntoNote と同じ)。
     /// `target` は clear 前の要素(ref 指定時)—— RefGuard.relocate で同一性追跡する。
     /// ref 無指定(フォーカス任せ)のときは nil を渡し、focused な要素を見る(typedIntoNote と同じ規約)。
     /// `expected` が空文字なら **clear-only**({replace:true, text:"" or 省略})の検証 ——
-    /// 一致すれば "(cleared the field)"、残存していれば警告にする(2026-08-12)
+    /// 一致すれば "(cleared the field)"、残存していれば警告にする
     static func replaceVerificationNote(target: ElementInfo?, expected: String,
                                         fresh: SnapshotResponse?) -> String {
         guard let fresh else {
@@ -572,7 +572,7 @@ extension MCPServer {
         guard let rawValue = found.value else {
             return " (replace requested; its value could not be read back)"
         }
-        // **正規化してから比較する**(2026-08-12): typedIntoNote と同じゼロ幅文字の扱いを
+        // **正規化してから比較する**: typedIntoNote と同じゼロ幅文字の扱いを
         // expected 側にもかける —— これが無いと、両辺が実質同じ文字列でも不一致の警告が出る
         let value = FlowMatchMode.normalizeInvisibleCharacters(rawValue)
         let normalizedExpected = FlowMatchMode.normalizeInvisibleCharacters(expected)
@@ -580,7 +580,7 @@ extension MCPServer {
         if value == normalizedExpected {
             return clearOnly ? " (cleared the field)" : " (replaced the field's prior content)"
         }
-        // **マスク欄は偽警告にしない**(2026-08-12): パスワード欄の読み返しは伏せ字(•/●/*…)なので、
+        // **マスク欄は偽警告にしない**: パスワード欄の読み返しは伏せ字(•/●/*…)なので、
         // 期待値自体がマスク文字でない限り不一致は「違う」ではなく「確かめようがない」
         if Self.looksMasked(value), !Self.looksMasked(normalizedExpected) {
             return " (replace requested; the field reads back masked, so the result could not be"
@@ -599,7 +599,7 @@ extension MCPServer {
             + " \"\(SnapshotRenderer.truncate(value, 40))\" — this does not match what was typed)"
     }
 
-    /// `ft_type`(replace なし)で既存値へ追記したときの読み返し(2026-08-13)。
+    /// `ft_type`(replace なし)で既存値へ追記したときの読み返し。
     /// **連結後の値を予告しない** —— 空欄のヒント文字列が `value` に載るアプリでは撃つ前の値が
     /// 実在の内容ではないので、「今は "ヒント+入力" と読める」は**同じ応答が返す木に否定される**。
     /// witness は Google メッセージの宛先欄(`ContactSearchField`。撃つ前 value="名前、電話番号、

@@ -32,7 +32,7 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     case scrollFrameMissing = "scroll-frame-missing"
 
     /// 探索が「内容が動かない」で打ち切られ、そのときの容器が**画面高の80%未満**だった
-    /// = 半開きのボトムシートの中を探していた公算が高い(2026-08-09)。
+    /// = 半開きのボトムシートの中を探していた公算が高い。
     /// 文言側の同じ判定(`StepExecutor.scrollNotFoundMessage` のシート展開ヒント)を
     /// 機械可読にしたもので、**MCP はこのコードでシートを広げて1度だけ再試行する** ——
     /// 文字列一致で分岐すると、文言を書き換えた瞬間に静かに効かなくなる(このファイル冒頭の理由)
@@ -49,7 +49,7 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// 注記として運ぶ。MCP はこのコードで上限引き上げの案内を足す
     case truncatedDuringSearch = "truncated-during-search"
 
-    /// 委譲した WebView が**中身を1つも出さないまま待ちの上限に達した**木で判定した(2026-08-15)。
+    /// 委譲した WebView が**中身を1つも出さないまま待ちの上限に達した**木で判定した。
     /// 木からは「AX がまだ公開されていない」と「本当に空のページ」を区別できないので判定は変えないが、
     /// **黙るとこの木で成立した不在が後から見分けられない**(否定アサーションは空の木で必ず通る)。
     /// 上限は Simulator の実測 2.3s に対する余裕で、hybrid は実機でも動く =

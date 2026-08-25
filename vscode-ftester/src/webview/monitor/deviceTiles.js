@@ -16,7 +16,7 @@ import { isDragDistance, marqueeRect, idsInMarquee, mergeMarqueeSelection, rectC
 
 // bridgeWatch(拡張ホストの自動修復ウォッチドッグ、契約は main.js の 'bridgeWatch' ケース参照)の
 // phase→footer表示。'ok'はここに含めず通常表示へフォールバックさせる。
-// unresponsive(検知中)・repairing(自動修復中)は表示しない(ユーザー決定 2026-07-16:
+// unresponsive(検知中)・repairing(自動修復中)は表示しない(ユーザー決定:
 // 過渡的・自己解決する内部状態のため)。自動修復が諦めた failed だけ表示する
 // (これも消すとブリッジ死亡時にタイルが無言で「接続中」のまま止まり手掛かりが無くなる)。
 // 実機と仮想機で原因も対処も違うため文言を分ける(実機=ケーブル/信頼設定など接続そのもの、
@@ -78,7 +78,7 @@ function deviceOpMenuItem(state, busy, physical) {
 // iOS 実機の state==='booted' は「端末は接続済みだがブリッジが1本も無い」の意味
 // (ApiMonitorCommand.iosState。シミュレータの booted=起動済みとは意味が違う)。実機のブリッジは
 // 自動供給されない(run かタイルのメニューからのみ起動する)ため、この状態は待っても変わらない。
-// 「接続中」スピナーのまま放置すると復帰待ちに見えるので未起動として扱う(ユーザー決定 2026-07-26)。
+// 「接続中」スピナーのまま放置すると復帰待ちに見えるので未起動として扱う(ユーザー決定)。
 // android 実機の booted は「adb は見えるがブート未完了」= 本当に遷移途中なので対象外。
 function bridgeNotRunning(device) {
   return device.kind === 'physical' && device.platform === 'ios' && device.state === 'booted';
@@ -567,7 +567,7 @@ function renderMeta(entry) {
   entry.unregisteredBadgeEl.style.display = entry.device.registered === false ? 'inline-block' : 'none';
   renderRenderBadge(entry);
   // 通常時は空(接続済みは画面表示自体が、接続待ちはプレースホルダの「接続中」が伝えるため
-  // 冗長で出さない。ユーザー決定 2026-07-16)。bridgeWatch の異常時だけ下で埋める。
+  // 冗長で出さない。ユーザー決定)。bridgeWatch の異常時だけ下で埋める。
   // 要素は固定高のため空でも残す(タイル高の計算は createTile 付近のコメント参照)。
   let footerText = '';
   // booted/connected 離脱時は古い phase を捨てる(再度その state に戻った際に前回の死活情報を
@@ -793,7 +793,7 @@ document.addEventListener('contextmenu', () => closeDeviceOpMenu());
 // 応答(deviceOpBusy 等)は (name, host) で引く。**host 省略は「手元」の意味**であって
 // 「どれでもよい」ではない —— 同名のデバイスが別の機械にも居るのは通常なので、省略を
 // ワイルドカードにすると**先頭のタイル(= 手元)を書き換える**。実際
-// 「M2Ultra の台を停止」で手元のタイルに「シャットダウン中」が出た(2026-08-17)。
+// 「M2Ultra の台を停止」で手元のタイルに「シャットダウン中」が出た。
 // 手元だけの構成では machineHost が全て undefined なので挙動は変わらない。
 // bridgeWatch/healthWatch/wipeStatus は手元のデバイスにしか出さないので host を持たない
 function findTileByName(name, host) {
@@ -1187,7 +1187,7 @@ function updateSelectionUi() {
   updateLaneVisibility();
 }
 
-// クリックの当たり(ユーザー決定 2026-08-24)。タイルごとに張らず委譲するのは判定を1箇所に持つため。
+// クリックの当たり(ユーザー決定)。タイルごとに張らず委譲するのは判定を1箇所に持つため。
 //  - 「画像の高さの帯 × タイルの幅」= そのデバイスの選択トグル
 //    (画像の左右の余白を押しても押したことにする)
 //  - タイルの中でその帯の外(見出し・ホスト名の段・脚、およびその左右)= **何もしない**

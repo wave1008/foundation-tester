@@ -48,7 +48,7 @@ public final class WebViewDelegatingDriver: AppDriver {
     /// Web コンテンツが現れるまでの初回待ちの**上限**。XCUITest 側の WebView AX 活性化は
     /// **Simulator の実測 2.3s** で、これはそれに余裕を持たせた値。
     /// **hybrid は実機でも動く**ので、この上限が実機で足りる保証は無い ——
-    /// だから尽きたときは黙らず `WebViewPath.delegatedEmpty` を名乗る(2026-08-15)。
+    /// だから尽きたときは黙らず `WebViewPath.delegatedEmpty` を名乗る。
     /// 名乗らないと「AX がまだ出ていない空の木」と「本当に空のページ」が区別できず、
     /// 否定アサーションが誤って通り、肯定側は「見つからない」で誤誘導される
     private static let contentWaitMs = 5000

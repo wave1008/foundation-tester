@@ -329,7 +329,7 @@ final class BatchLineParserTests: XCTestCase {
         ]
     }
 
-    /// **ft_batch が実行できるコマンドは全部シナリオ行へ書き戻せること**(2026-08-12)。
+    /// **ft_batch が実行できるコマンドは全部シナリオ行へ書き戻せること**。
     /// 見本を並べるだけの往復テストでは、**ビルダを足しても見本を足さなければ黙って穴が空く**
     /// —— 実際 `scrollDown/Up/Left/Right` は実行できるのに codegen に `case "scroll"` が無く、
     /// `// (unsupported step: …)` へ落ちていた(2026-08-12 に発見)。等号で照合して、

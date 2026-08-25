@@ -239,7 +239,7 @@ final class MCPWritableSelectorTests: XCTestCase {
             element(3, type: "clickable", depth: 2),
         ])
         let naming = MCPServer.SelectorNaming(snap)
-        // **1番目は添字を書かない**(2026-08-10): 下書きは locator を書き戻すので `[1]` は
+        // **1番目は添字を書かない**: 下書きは locator を書き戻すので `[1]` は
         // そこで落ちる。勧める側も落とした形にしておかないと、注記とコードで別の文字列になる。
         // 意味は変わらない(添字なし = 最初の一致)ので、下の resolvedRef で当人が返ることを見る
         XCTAssertEqual(naming.selector(for: snap.elements[1], in: snap), "#tabs >> .clickable")
@@ -314,7 +314,7 @@ final class MCPWritableSelectorTests: XCTestCase {
 
     /// 群のどの候補も安定したセレクタを書けないとき、その事実を明示する
     /// (index-based の "~" と「そもそも書けない」の両方を「安定は無い」として拾う)。
-    /// **1度だけ言う**(2026-08-12): 群が畳まれた行(compactGroupLine)は既に
+    /// **1度だけ言う**: 群が畳まれた行(compactGroupLine)は既に
     /// 「tap by ref instead」と言うので、その回に末尾の総括まで出すと同じ助言が2回並ぶ
     func testAmbiguousNoteSaysWhenNoCandidateHasAStableSelector() throws {
         let snap = snapshot([element(1, type: "clickable", label: "経路", depth: 1),

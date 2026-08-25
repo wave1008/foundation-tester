@@ -50,12 +50,12 @@ final class SnapshotCacheBypassForwardingTests: XCTestCase {
                 if !source.contains("var supportsCacheBypass: Bool") {
                     missingSupports.append(file.lastPathComponent)
                 }
-                // 同型の3本目(2026-08-12): 1回限りの要素上限も**包む側が転送しないと
+                // 同型の3本目: 1回限りの要素上限も**包む側が転送しないと
                 // 最内のブリッジ接続へ届かず**、上げたつもりで 120 のまま黙って返る
                 if !source.contains("func raiseElementLimitOnNextSnapshot(_ max: Int?)") {
                     missingElementLimit.append(file.lastPathComponent)
                 }
-                // 同型の4本目(2026-08-15): 木の単位(px か pt か)も**包む側が透過しないと
+                // 同型の4本目: 木の単位(px か pt か)も**包む側が透過しないと
                 // 既定の 1 に落ち**、Android で幾何の床が密度ぶん緩む(誤タップは沈黙する)
                 if !source.contains("var pointScale: Double") {
                     missingPointScale.append(file.lastPathComponent)

@@ -153,7 +153,7 @@ export class MonitorHealthWatchdog {
       return;
     }
 
-    // metal-errors はここで落とす(表示も修復もしない。ユーザー決定 2026-07-26)。ホスト GPU
+    // metal-errors はここで落とす(表示も修復もしない。ユーザー決定)。ホスト GPU
     // ドライバ由来で艦隊全機に同じ時間帯に同時に出る背景現象であり、個体の異常を表さない
     // (実測: 凍結した個体は累積カウント・増加速度ともフリート最上位ではなかった)。個々のタイルに
     // 「デバイス異常を検出」と出すのが不適切なため落とす。Swift 側は health に載せ続ける
@@ -202,7 +202,7 @@ export class MonitorHealthWatchdog {
     if (this.now() < entry.cooldownUntil) {
       return;
     }
-    // テスト実行中でも保留しない(ユーザー決定 2026-07-17): 画面凍結は a11y が生きたまま画面だけ死ぬ
+    // テスト実行中でも保留しない(ユーザー決定): 画面凍結は a11y が生きたまま画面だけ死ぬ
     // 症状で、実行完了を待つとその間ずっとフリーズ表示のまま。実行中の該当デバイスは再起動で落ちるが、
     // 凍結済み=どのみち証跡が撮れないため許容する。lifecycle キュー busy は起動/停止処理との競合を
     // 避けるため引き続き保留する。
@@ -233,7 +233,7 @@ export class MonitorHealthWatchdog {
     if (hasBlank) {
       // blank-screen 専用ラダー: displayRepair(sleep/wake ~4s)1回 → streamRepair 1回 →
       // swiftshader 再起動 1回 → failed。host 再起動は実験で「治らず再凍結」が確定したため
-      // 一切挟まない(2026-07-17)。第一手の画面リセットは固着型を ~4s で直す最軽量修復
+      // 一切挟まない。第一手の画面リセットは固着型を ~4s で直す最軽量修復
       // (対照実験 2026-07-25。readback = stream 再起動が効かない個体にも効く)。
       if (!entry.displayAttempted && serial !== undefined) {
         entry.displayAttempted = true;

@@ -1,7 +1,7 @@
 // ftester profile setup
 // マシン/アプリ/実行の3プロファイルを**1コマンドで整合させて**書く。
 // エージェントに JSON を手書きさせると、machines の device 名と runs の参照名がずれる・
-// 指示していないプラットフォームの run が残る、という不整合が実際に起きた(2026-07-29)。
+// 指示していないプラットフォームの run が残る、という不整合が実際に起きた。
 // 書き込みロジックは FTCore.ProfileWriter に集約し、ここは引数の解決とファイル I/O だけ。
 
 import ArgumentParser

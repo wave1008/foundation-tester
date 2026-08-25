@@ -742,7 +742,7 @@ final class FTInAppBridge {
             }
             Self.scroll(scrollView, direction: req.direction, path: req.path,
                         toEdge: req.edge == true)
-            // **端送りは動かした後も待たない**(2026-08-20): 端送りの後にホストは必ず
+            // **端送りは動かした後も待たない**: 端送りの後にホストは必ず
             // `settledSignature`(署名が2回続けて一致)で整定を待つので、ここで待つのは二重。
             // 常にアニメーションし続ける画面ではこの cap(2.5s)がそのまま所要になり、
             // 受け手の実文書で端送りが 3.0s 固定になっていた残りがこれ。
@@ -1051,7 +1051,7 @@ final class FTInAppBridge {
             guard let key = self.keyWindow() else {
                 throw InAppError(409, "no key window")
             }
-            // **可視な窓を奥から手前へ重ねて描く**(2026-08-20)。キーウィンドウ1枚だけ描くと、
+            // **可視な窓を奥から手前へ重ねて描く**。キーウィンドウ1枚だけ描くと、
             // 別 UIWindow のモーダルが**写らない**画像を証跡として残すことになる
             // (木は載せるようになったのに画像だけ食い違う)
             let windows = Self.visibleWindows(keyWindow: key)
@@ -1107,7 +1107,7 @@ final class FTInAppBridge {
                 sem.signal()
                 return
             }
-            // **操作の宛先は「いま指が当たる窓」**(2026-08-20)。keyWindow 固定だと、
+            // **操作の宛先は「いま指が当たる窓」**。keyWindow 固定だと、
             // 別 UIWindow のモーダルが出ている間にスクロールや座標タップが**背面へ抜ける**
             let window = Self.frontmostTouchableWindow(keyWindow: key)
             let moved: Bool
@@ -1148,7 +1148,7 @@ final class FTInAppBridge {
     }
 
 
-    /// 木に載せる窓 = **キーウィンドウ + その上に重なっている可視の窓**(2026-08-20)。
+    /// 木に載せる窓 = **キーウィンドウ + その上に重なっている可視の窓**。
     /// **覆われた要素を落とすのは `InAppSnapshot.isCovered`**(理由はそちらの宣言)。
     /// **キーボードの窓は常に除く**(キーは大量に写り込み、表示判定と実矩形は
     /// keyboardIsVisible / keyboardFrameIfVisible が別に申告する既存の設計)

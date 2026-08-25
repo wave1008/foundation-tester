@@ -158,7 +158,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         // 必ずそれより前に分岐する。--host 明示 + --dry-run は dispatchToRemoteHost が明示的に
         // 拒否する(既存どおり)ため常に解決へ進める一方、自動側(host 未指定)は dry-run のとき
         // マシン側 host を見ない(requireMachineHost: !dryRun)= ローカルで dry-run が走る。
-        // 優先順位・食い違いは FTCore.MachineHostDispatch に委譲(ユーザー決定 2026-08-17)
+        // 優先順位・食い違いは FTCore.MachineHostDispatch に委譲(ユーザー決定)
         // デバイスが複数の機械にまたがる実行プロファイルは、ホストごとの子プロセス(`ftester api
         // run --host <label>`)へ分け、NDJSON を ApiRunHostFanout が1本へ多重化する
         // (docs/remote-runner.md §13)。--host 明示や全台が同じ機械なら nil が返り従来経路のまま。

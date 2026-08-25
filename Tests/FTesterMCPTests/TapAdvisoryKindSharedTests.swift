@@ -1,5 +1,5 @@
 // **DSL(TapTargetGeometry.occlusionAdvisory)と MCP(RefGuard.overlapWarning)が
-// 同じ判定(TapTargetGeometry.advisoryKind)を経由していること**を固定する(2026-08-15)。
+// 同じ判定(TapTargetGeometry.advisoryKind)を経由していること**を固定する。
 //
 // 文言そのものは意図的に違う(DSL はステップ注記の主語 "the target" / MCP は要素を名指しして
 // ft_screenshot・ft_scroll_to という MCP のツール名で逃げ道を書く)ので、ここでは文言の一致では

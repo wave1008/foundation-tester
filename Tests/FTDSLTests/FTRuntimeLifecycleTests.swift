@@ -440,10 +440,10 @@ final class FTRuntimeLifecycleTests: XCTestCase {
         XCTAssertFalse(isFailed(recorded[1].status))
     }
 
-    /// アサーションを1つも含まないブロックは**警告**(2026-08-03 ユーザー決定。失敗にしない=
+    /// アサーションを1つも含まないブロックは**警告**(ユーザー決定。失敗にしない=
     /// シナリオを止めない)。⚠️ の気付かせ方は弱い修正提案で担保する
     /// アサーション0個の verify は passed でも failed でもなく inconclusive になる
-    /// (2026-08-03 ユーザー決定)。失敗ではないので後続ステップは中断されず実行される
+    /// (ユーザー決定)。失敗ではないので後続ステップは中断されず実行される
     func testVerifyIsInconclusiveWhenBlockContainsNoAssertions() {
         let core = makeCore(driver: StubDriver(), dryRun: false)
         FTRuntime.bootstrap(core: core, dslThread: Thread.current)

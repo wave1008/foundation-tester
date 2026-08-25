@@ -147,7 +147,7 @@ public enum TapTargetGeometry {
     /// Compose/Flutter のために「木の並びから容器を推測する」ので、推測が当たらない木では
     /// nil に落ちる。ここは逆に **`scrollable` を申告している祖先だけ**を見る ——
     /// 推測しないぶん取りこぼすが、当たったときは確実で、実アプリのコーパス全数で
-    /// タップ対象の誤検知が0件だった(2026-08-09)。
+    /// タップ対象の誤検知が0件だった。
     ///
     /// 実測(Apple マップの場所カード): カードを送ると `#MUScrollableStackView` (0,72 402x802) の
     /// **上へ抜けた行が frame ごと木に残る**(`#PlaceCollectionCell` (16,-169 171x217) 等)。
@@ -264,7 +264,7 @@ public enum TapTargetGeometry {
             return "\(describe(nested)) sits inside the target and covers its centre, so this"
                 + " may have triggered \(describe(nested)) instead"
         case .stacked:
-            // **「完全一致」と断定しない**(2026-08-14): 判定は矩形の完全一致に加えて
+            // **「完全一致」と断定しない**: 判定は矩形の完全一致に加えて
             // 「原点だけが同じで大きさが違う」形も見るようになったので、断定すると
             // 広げた分について嘘になる(実アプリのフィードは行の高さがまちまち)
             return "the target is stacked on the same spot as other elements, so at most one of"
@@ -356,7 +356,7 @@ public enum TapTargetGeometry {
         // **書ける形で名指しする**(2026-08-14 の実画面で判明): 内側の欄は無ラベル・無 id の
         // ことが多く、素の `describe` だと "textField" としか言えない —— 同型が5つ並ぶ画面では
         // 選べないので助言にならない。包み側の id があればスコープ記法、無ければ ref を出す。
-        // **id の記法エスケープは `FTSelector.serialize` に委ねる**(2026-08-15) —— 手で
+        // **id の記法エスケープは `FTSelector.serialize` に委ねる** —— 手で
         // `"#\(id)"` と組み立てると、id が(稀だが)`*` で始まる/終わるとき `#` 短縮形は
         // ワイルドカードに化ける(`FTSelector.idToken` の規約)。唯一の正しい変換元を通す
         let how: String
@@ -370,7 +370,7 @@ public enum TapTargetGeometry {
             + " end up something you did not type). Target the field itself: \(how)"
     }
 
-    /// **人が読む名指しであって、セレクタとして貼れる保証はしない**(2026-08-15)。
+    /// **人が読む名指しであって、セレクタとして貼れる保証はしない**。
     /// `#id` はそのまま貼れることが多いが、ラベル側は `型 "ラベル"` という複合表示で、
     /// 記法として読まれる先頭文字(`#`/`.` 等)のエスケープも通していない —— ここを直すなら
     /// `SelectorNaming` を使う経路(MCP の graded セレクタ)へ寄せるべきで、この関数は

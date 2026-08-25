@@ -94,7 +94,7 @@ test("--runner: 助言文には想定どおり sudo pmset の文言が残って�
  * ready / needs-manual / blocked で分岐するので、**片方の経路にしか無い参照は他方を
  * 何度実行しても出ない**。実際 ready 行だけが `$tool_root_exists` 等を参照しており、
  * 手元(needs-manual)では出ず、ランナー機の1回目(ready)で `unbound variable` で落ち、
- * exit 1 = blocked と誤報した(2026-08-16)。
+ * exit 1 = blocked と誤報した。
  *
  * 静的走査なので**「どこかで代入されているが、通った経路では代入されていない」形は見えない**。
  * そちらは判定より前に既定値を代入して構造的に防ぐ(この節の tool_root_exists 等がその形)。

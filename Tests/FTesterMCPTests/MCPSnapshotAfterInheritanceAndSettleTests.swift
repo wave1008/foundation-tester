@@ -25,7 +25,7 @@ private func bodyText(_ content: [[String: Any]]) -> String {
     content.compactMap { $0["text"] as? String }.joined(separator: "\n")
 }
 
-// MARK: - interactiveOnly/expandBulk の継承(2026-08-10)
+// MARK: - interactiveOnly/expandBulk の継承
 
 final class MCPSnapshotAfterFilterInheritanceTests: XCTestCase {
     private var driver: FakeDriver!
@@ -148,7 +148,7 @@ final class MCPSnapshotAfterSettleLiteTests: XCTestCase {
     }
 }
 
-// MARK: - ft_type(ref なし)の typedIntoNote が settle-lite の基準を汚さない(2026-08-10)
+// MARK: - ft_type(ref なし)の typedIntoNote が settle-lite の基準を汚さない
 //
 // typedIntoNote は「どこへ入ったか」を確かめるため、type アクションの**後**に木を読む。
 // この読みを adoptSnapshot(lastSnapshots を更新する経路)に通すと、続く snapshotAfterBody の

@@ -1,4 +1,4 @@
-// エミュレータ操作の gRPC/adb 振り分け(既定 gRPC・ユーザー決定 2026-07-25)。
+// エミュレータ操作の gRPC/adb 振り分け(既定 gRPC・ユーザー決定)。
 // - serial がディスカバリ(EmulatorEndpoints)に無い = 実機 or 旧 emulator → 呼び出し側の adb 経路
 // - gRPC が一度でも失敗した個体は同一ブート(pid)中は adb 固定(再試行で遅くしない。
 //   再ブートで pid が変われば自動的に gRPC へ復帰)

@@ -139,7 +139,7 @@ extension StepExecutor {
         if v.visible { return nil }
         // observedText は原因切り分けの鍵: 空なら「FM に画像が渡っていない/白紙を見た」
         // (SCA 劣化で添付が落ちる仮説・起動遷移画面)、期待どおりの文字列なら「読めたのに
-        // 覆われていると答えた」= 純粋な判定誤り。これが無くて切り分けに窮した(2026-07-23)。
+        // 覆われていると答えた」= 純粋な判定誤り。これが無くて切り分けに窮した。
         return .failed("false positive (occlusion): present in the tree but not visually visible [\(v.state)] \(v.reason)"
                        + " observed=\"\(v.observedText)\"")
     }
@@ -152,7 +152,7 @@ extension StepExecutor {
         guard let element,
               let cover = OcclusionSuspicion.covering(element: element, in: elements, screen: screen)
         else { return "" }
-        // **`TapTargetGeometry.describe` と同じ「名指し」**(2026-08-15)。失敗文言に混ぜる
+        // **`TapTargetGeometry.describe` と同じ「名指し」**。失敗文言に混ぜる
         // 説明であって、読み手がそのまま貼れるセレクタである保証はしない(エスケープ未対応)
         let label = cover.identifier.map { "#\($0)" } ?? cover.label.map { "\"\($0)\"" } ?? cover.type
         return " (the target is covered by \(label); the interaction may have been swallowed by it)"
@@ -169,7 +169,7 @@ extension StepExecutor {
     /// 文言(スコープの絞り方)は DSL の語彙で持つ
     static func truncationHint(_ snapshot: SnapshotResponse?) -> String {
         guard let snapshot, let remedy = SnapshotTruncation.remedy(for: snapshot) else { return "" }
-        // **実行側が何をしたかは書かない**(2026-08-15)。「天井で撮り直してある」と書きたく
+        // **実行側が何をしたかは書かない**。「天井で撮り直してある」と書きたく
         // なるが、撮り直すのは**解決できなかったとき**だけで、要素は見つかったが覆われていた
         // 周回ではその文が嘘になる。書いてよいのは木から読み取れる事実と、読み手にできる手だけ
         let ceiling = remedy == .narrowTheScreen
@@ -193,7 +193,7 @@ extension StepExecutor {
             + " elements compete for the limit)"
     }
 
-    /// **切り詰められた木で「不在」を結論にしない**ための撮り直し(2026-08-15)。
+    /// **切り詰められた木で「不在」を結論にしない**ための撮り直し。
     ///
     /// 要素数の上限(`BridgeAPI.maxSnapshotElements`)は **LLM の読み手が読み切れる量**として
     /// 決めた値で、上限を引き上げるのは MCP だけ。**読み手の居ない DSL のシナリオ実行も同じ木を
@@ -221,7 +221,7 @@ extension StepExecutor {
         return full
     }
 
-    /// **空の WebView で判定したことを黙らない**(2026-08-15)。委譲した WebView が中身を出さない
+    /// **空の WebView で判定したことを黙らない**。委譲した WebView が中身を出さない
     /// まま待ちの上限に達した木では、「無い」と「まだ公開されていない」を区別できない。
     /// 判定は変えない(区別できないものを失敗にすると空ページの検証が書けなくなる)ので、
     /// **通った回にも残る機械可読な注記**にする —— 黙ると、空の木で成立した不在が後から見分けられない
@@ -231,7 +231,7 @@ extension StepExecutor {
         }
     }
 
-    /// **木が画面を代表していない疑いを黙らない**(2026-08-15)。`noteEmptyWebView` は
+    /// **木が画面を代表していない疑いを黙らない**。`noteEmptyWebView` は
     /// ドライバ申告の「委譲した WebView が空」しか見ないので、**中身が部分的にしか公開されない**
     /// 形(Android の Chrome)と、**webView 容器すら出ない**形をどちらも取り逃がす。
     /// 判定は `FTCore.TreeCoverage`(MCP の webViewGapNote / missingPageContentNote と共有)。
@@ -427,7 +427,7 @@ extension StepExecutor {
             phase.snapshotMs += Self.ms(clock.now - start)
             try await dismissInterruption(in: &snapshot, phase: &phase)
             noteEmptyWebView(snapshot)
-            // **見つからないのは上限で間引かれたからかもしれない**(2026-08-15)。否定側だけ
+            // **見つからないのは上限で間引かれたからかもしれない**。否定側だけ
             // 塞いであったが、肯定側は**実在する要素で赤くなる** = flake になる。
             // 誤った成功ではないので優先度は下だが、直す手段は同じファイルに既にある。
             // 撮り直しは切り詰められていて解決できなかったときだけ(通る側の固定費はゼロ)。
@@ -604,7 +604,7 @@ extension StepExecutor {
         let relation = Self.textMismatchRelation(assert)
         return found
             ? .failed("\(subject) \(relation): expected \"\(expected)\", actual \"\(lastActual ?? "nil")\""
-                      // **どちらの規則なら一致したか**を必ず添える(2026-08-09 のユーザー指示)。
+                      // **どちらの規則なら一致したか**を必ず添える(ユーザー指示)。
                       // 「見えない差で落ちたのか、本当に違う文字列なのか」で次の一手が変わる
                       + Self.normalizationVerdict(actual: lastActual, expected: expected,
                                                   assert: assert)
@@ -654,7 +654,7 @@ extension StepExecutor {
             guard !result.found else { return .failed(Self.scrollFoundMessage(step)) }
             // **`!result.found` を成功材料にしない**: scrollFrame が解決できず1本も振らずに
             // 打ち切った場合も found=false になるが、それは「無いことを確認した」ではなく
-            // 探索していない(2026-08-08)。exist 側(executeAssertExists)と同じく
+            // 探索していない。exist 側(executeAssertExists)と同じく
             // scrollNotFoundMessage 経由の文言でその場に失敗させる
             if result.scrollFrameMissing {
                 return failed(.notFound, Self.scrollNotFoundMessage(step, result))

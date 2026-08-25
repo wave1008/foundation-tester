@@ -563,7 +563,7 @@ public func group(_ title: String, _ body: () -> Void) {
 /// アサーション(assert 系コマンド・thisIs 系)が実行され全て成功すれば passed。
 /// ブロック内のコマンドが失敗した場合は既定どおりシナリオを中断する(handleFailure は
 /// 失敗した内側のコマンドが既に呼んでいるので、ここでは呼ばない=二重に証跡を撮らない)。
-/// アサーションが1つも無ければ **inconclusive**(2026-08-03 ユーザー決定。Shirates の MANUAL
+/// アサーションが1つも無ければ **inconclusive**(ユーザー決定。Shirates の MANUAL
 /// 相当は持たないが、失敗にもしない。理由つきステップ + 弱い修正提案で気付かせる)
 public func verify(_ message: String, file: StaticString = #filePath, line: UInt = #line,
                    _ block: () -> Void) {

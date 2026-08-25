@@ -171,7 +171,7 @@ final class WebViewDOMSnapshotTests: XCTestCase {
 
     /// **Android: density 倍して WebView の原点を足す**。ここを間違えるとタップが画面外や別の行へ飛ぶ
     func testElementsScalesByDensityAndAddsTheWebViewOrigin() {
-        // **原点は x も y も 0 にしない**(2026-08-13): x=0 で書いたら「x の原点を足し忘れる」
+        // **原点は x も y も 0 にしない**: x=0 で書いたら「x の原点を足し忘れる」
         // 変異が生き残った —— 片方が 0 の座標テストは、その軸を1つも守っていない
         let frame = FTRect(x: 24, y: 142, width: 1080, height: 1500)
         let els = WebViewDOM.elements(payload: nodePayload(x: 16, y: 595),

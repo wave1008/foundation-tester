@@ -1,4 +1,4 @@
-// `tap(入力欄)` → `type("文字列")`(Shirates 伝統の書き方)が成立することの固定(2026-08-21)。
+// `tap(入力欄)` → `type("文字列")`(Shirates 伝統の書き方)が成立することの固定。
 //
 // Android の入力欄は容器(Material の TextInputLayout)と中身(TextInputEditText)に分かれ、
 // **id は容器側に付くことが多い**。容器を叩いても入力フォーカスは中身へ移らないので、

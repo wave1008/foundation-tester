@@ -366,7 +366,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                         width: jpeg.width, height: jpeg.height))
                     lastErrorMessage[state.target.id] = nil
                 } catch {
-                    // JPEG 変換失敗(壊れた PNG 等)はタイルへ警告を出さない(ユーザー決定 2026-07-16:
+                    // JPEG 変換失敗(壊れた PNG 等)はタイルへ警告を出さない(ユーザー決定:
                     // 過渡的でユーザーに対処可能性が無いため)。stderr のみ・同一メッセージ連続中は
                     // 再ログしない。持続するならブリッジ不調のサイン(curl /screenshot で切り分け)
                     let message = error.localizedDescription

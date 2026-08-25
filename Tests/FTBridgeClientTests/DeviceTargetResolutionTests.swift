@@ -103,7 +103,7 @@ final class DeviceTargetResolutionTests: XCTestCase {
         XCTAssertNil(resolveBrowserDOM("unknown", simulators: [], phones: []))
     }
 
-    // MARK: - 宛先が一意でないときは撃たない(2026-08-13)
+    // MARK: - 宛先が一意でないときは撃たない
 
     /// **同名のシミュレータが2台起きていたら諦める**。1つ選ぶと
     /// 別端末の Safari の画面内容をこの端末の木へ差し込むことになる

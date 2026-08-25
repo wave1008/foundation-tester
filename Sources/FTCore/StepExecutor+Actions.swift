@@ -148,7 +148,7 @@ extension StepExecutor {
                     break
                 }
                 // **明示 scrollFrame が解決できないなら、ここで打ち切る(1本も振らない)**。
-                // 黙って全画面スワイプへ退化させない(2026-08-08)
+                // 黙って全画面スワイプへ退化させない
                 if Self.scrollFrameUnresolved(step, in: settled.snapshot) {
                     noteCodesThisStep.insert(.scrollFrameMissing)
                     return StepOutcome(status: failed(
@@ -168,7 +168,7 @@ extension StepExecutor {
                                                                 in: settled.snapshot),
                                                phase: &phase) { viaXCUITest = true }
                 sentSwipes += 1
-                // **ドライバが「もう端」と言えるなら、署名の2回不変を待たない**(2026-08-20)。
+                // **ドライバが「もう端」と言えるなら、署名の2回不変を待たない**。
                 // 位置を直接動かせる経路(Android の CDP・in-app の contentOffset)は
                 // 「余地が無い」を**事実として**知っており、こちらの推測より強い。
                 // それでも**確認の読みを1回だけ入れる**: 端に着いた後に内容が伸びる画面
@@ -455,7 +455,7 @@ extension StepExecutor {
         // (層3 の coveringHint と同じ事象。あちらは診断、こちらは宣言があるときの自動処理)
         try await dismissInterruption(in: &snapshot, phase: &phase)
         var resolved = Self.resolve(step: step, in: snapshot)
-        // **切り詰めが原因の未発見に、リトライ/ghost 救済の予算を燃やさない**(2026-08-15)。
+        // **切り詰めが原因の未発見に、リトライ/ghost 救済の予算を燃やさない**。
         // ここで撮り直さないと、下のリトライループが全予算(バックオフ3回 or step.timeout 全部)を
         // 当たるはずのない既定上限のスナップショットで使い切ってから、ループを抜けた後の
         // 1回でようやく天井に当たる。**ghost 救済(実ジェスチャで画面を動かす)より前**に置く ——
@@ -470,7 +470,7 @@ extension StepExecutor {
         // 子を報告する。docs/verification.md「Compose の探索直後タップ」)。掴んだままタップすると
         // 容器の外を撃って**黙って飲まれる**(値が変わらないので、後段の検証だけが落ちて原因が遠い)。
         // 探索ループの中では同じ判定で「もう1回送る」をしているが、**ループを抜けた後の再解決には
-        // 効いていなかった**のが残存フレークの正体(2026-08-04)。
+        // 効いていなかった**のが残存フレークの正体。
         // 判定は `isOutsideContainer`(容器と**交差しない** = 完全に外)。
         //
         // **またぎ(縁をまたぐ要素)まで対象に広げてはいけない**(2026-08-05 に試して撤回)。
@@ -521,7 +521,7 @@ extension StepExecutor {
                     // 容器の外に報告されたまま = タップが飲まれて `selected=-`)。
                     // 探索ループと同じく**もう1回送って**容器の中へ入れる。1周目は撮り直しだけ
                     // (木の遅れなら送らずに直る)、2周目以降だけ送る = 正常系のコストを増やさない
-                    // **指の向きを持たないステップでも救済に入る**(2026-08-06): 素の `tap` は
+                    // **指の向きを持たないステップでも救済に入る**: 素の `tap` は
                     // direction を持たないため、旧実装は ghost を検出しておきながら
                     // **1本も送らずにそのままタップ**していた。ghost は容器の外に居ることが
                     // 分かっているので、戻す向きは `recoveryJump` / `recoveryDirection` が
@@ -622,7 +622,7 @@ extension StepExecutor {
                 + " — the element was first reported outside its scroll container"
         }
 
-        // **解決できないのは上限で間引かれたからかもしれない**(2026-08-15)。否定アサーションと
+        // **解決できないのは上限で間引かれたからかもしれない**。否定アサーションと
         // 同じ retake を操作側にも入れる —— こちらは誤った成功ではなく**実在する要素での赤**
         // (flake)になる形だが、直す手段は同じ。
         // **ドライバ切替と FM ヒールより前**に置く: 切り詰められた木で FM に代わりを探させると、
@@ -708,7 +708,7 @@ extension StepExecutor {
             // 同じ id を複数持つ画面では書いたセレクタが別要素に解決していた)。
             element = proposal.element
             // **`graded` が nil = この画面でその要素を一意に指せる書き方が無い**。
-            // **操作は続け、修復だけ成立させない**(2026-08-15)。掴んだ要素は手元にあるので
+            // **操作は続け、修復だけ成立させない**。掴んだ要素は手元にあるので
             // 叩くこと自体は正しく、ここで失敗させるとシナリオ全体が中断する = 書き戻せない
             // という理由だけで緑の run を赤にすることになる。塞ぎたい欠陥は「壊れたセレクタが
             // 利用者の資産へ書かれる」ことなので、`healedStep` を立てない(= 修正提案も
@@ -743,7 +743,7 @@ extension StepExecutor {
         }
         resolvedElementThisStep = element
 
-        // **容器の縁にまたがった要素はそのまま撃たない**(2026-08-06)。見えている部分を撃っても、
+        // **容器の縁にまたがった要素はそのまま撃たない**。見えている部分を撃っても、
         // Compose は focus 時に bringIntoView で内容を動かすため、離すまでに隣の行が指の下へ来る
         // (Emulator で約 50%・実測 135〜179px ずれて隣の行が反応した)。**容器の中へ寄せてから撃つ**。
         //
@@ -769,7 +769,7 @@ extension StepExecutor {
             }
         }
 
-        // **無効な対象は操作可能になるまで待ってから撃つ**(2026-08-21 ユーザー決定)。
+        // **無効な対象は操作可能になるまで待ってから撃つ**(ユーザー決定)。
         // 画面が出た直後は、要素は木に居るのに**まだ触れない**ことがある(受け手の実アプリ:
         // ログインフォームが読み込み中は入力欄が無効で、id を持たない透明な clickable が
         // 覆っていた)。従来は警告を出してそのまま撃っており、**空振りしたことは
@@ -1124,7 +1124,7 @@ extension StepExecutor {
         var rounds = 0
         var stagnantRounds = 0
         var previous: String?
-        // 不可視文字を正規化する(2026-08-15): MCP の replaceVerificationNote/appendVerificationNote
+        // 不可視文字を正規化する: MCP の replaceVerificationNote/appendVerificationNote
         // と同じ規律。実データが混入させるゼロ幅文字(Flow.swift 参照)だけで、実質同じ文字列が
         // `TypeReadback.plan` の前方一致から外れる。**壊れ方は混入位置で2つに割れる**:
         //   途中(`Hel<ZWSP>lo`)= どちらの前方一致も成立せず `.unverifiable` で**黙って受理** ——
@@ -1217,7 +1217,7 @@ extension StepExecutor {
         }
     }
 
-    /// 読み返しが目標にする値(2026-08-13)。**既定は `expected`(撃つ前の値 + 本文)**で、
+    /// 読み返しが目標にする値。**既定は `expected`(撃つ前の値 + 本文)**で、
     /// それが `.unverifiable`(前方一致でも超過でもない = 追送も削除も効かない)のときだけ
     /// 「撃った文字だけ」を目標に採り直す。
     ///
@@ -1819,7 +1819,7 @@ extension StepExecutor {
             start = clock.now
             var snapshot = try await freshSnapshot(.afterOwnMove)
             phase.snapshotMs += Self.ms(clock.now - start)
-            // **待っている間に湧いた割り込みはここで閉じる**(2026-08-21)。待ちは
+            // **待っている間に湧いた割り込みはここで閉じる**。待ちは
             // 「撃つまでの時間」を伸ばすので、閉じないと**モーダルが被さる窓を自分で広げる**
             // ことになる(有効になった瞬間に覆いの上を撃つ)。解決の前に閉じるのは
             // executeAction 入口と同じ規律。宣言が無ければコストゼロ

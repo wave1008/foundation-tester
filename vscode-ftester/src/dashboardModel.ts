@@ -104,7 +104,7 @@ export interface StepCountsRecord {
   readonly skipped: number;
   readonly healed: number;
   readonly passedViaFallback: number;
-  /** 後発フィールド(2026-08-03)。旧レコードには無いので optional。 */
+  /** 後発フィールド。旧レコードには無いので optional。 */
   readonly inconclusive?: number;
 }
 

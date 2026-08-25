@@ -1,4 +1,4 @@
-// ref の世代管理(2026-08-10)。
+// ref の世代管理。
 //
 // なぜ要るか(実害): ブリッジは snapshot を撮るたびに ref を振り直す。MCP は「1つ前の木」しか
 // 起点にしない(RefGuard.relocate は lastSnapshots だけを見る)ので、それより前の snapshot の
@@ -93,7 +93,7 @@ final class MCPRefGenerationTests: XCTestCase {
         let result = try await server.call(tool: "ft_tap", args: ["ref": 1])
         let text = Self.text(result)
         XCTAssertTrue(text.contains("older snapshot"), text)
-        // **"done." と注記の間に区切りがあること**(2026-08-10): staleNote が裸の "note:" で
+        // **"done." と注記の間に区切りがあること**: staleNote が裸の "note:" で
         // 始まると "done.note:" と密着し、末尾の余白は次の " (selector:" と二重空白になる
         XCTAssertTrue(text.contains("done. note:"), text)
         XCTAssertFalse(text.contains("done.note:"), text)

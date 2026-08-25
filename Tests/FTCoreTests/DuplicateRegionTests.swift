@@ -187,7 +187,7 @@ final class DuplicateRegionTests: XCTestCase {
         XCTAssertNil(DuplicateRegion.find(in: short))
     }
 
-    // MARK: - ゲート強化(2026-08-15): 窓述語を直接撃つ
+    // MARK: - ゲート強化: 窓述語を直接撃つ
 
     /// ラベル無し同型要素が並ぶだけの行(写真グリッド・アイコン列・ページドット相当)。
     /// 全要素が互いの「相方」になるので、単純な「相方が1つ居るか」の門は毎回通ってしまう

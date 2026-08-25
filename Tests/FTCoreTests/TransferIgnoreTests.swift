@@ -3,7 +3,7 @@ import Foundation
 import XCTest
 
 /// `.ftester-transfer-ignore` → rsync `--exclude` の翻訳(TransferIgnore の冒頭が規則の定義元)。
-/// 期待値は openrsync で実験した形(2026-08-23)をそのまま書く —— 非固定パターンは
+/// 期待値は openrsync で実験した形をそのまま書く —— 非固定パターンは
 /// `<dir>/P` と `<dir>/**/P` の2本でないと `<dir>/P` 自身に当たらない
 final class TransferIgnoreTests: XCTestCase {
 

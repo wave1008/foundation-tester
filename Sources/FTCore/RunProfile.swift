@@ -182,7 +182,7 @@ public struct MachineDeviceList: Codable, Sendable, Equatable {
 
 /// マシンプロファイル(profiles/machines/<マシン名>.json)。ファイル名がマシン名
 public struct MachineProfile: Codable, Sendable, Equatable {
-    /// このマシンの実行先(2026-08-17)。省略/"local" = このマシンでローカル実行(**既存プロファイルは
+    /// このマシンの実行先。省略/"local" = このマシンでローカル実行(**既存プロファイルは
     /// 無改修で動く**)。それ以外は `ftester remote hosts` の登録名でなければならない
     /// (生の ssh 宛先は書けない — プロファイルはプロジェクト資産で、ssh の実体はローカル設定
     /// = LocalConfig.remoteHosts にだけ置く規律。フリート定義と同じ)。優先順位・食い違いの扱いは
@@ -200,7 +200,7 @@ public struct MachineProfile: Codable, Sendable, Equatable {
     static let knownKeys: Set<String> = ["host", "ios", "android"]
 }
 
-/// `MachineProfile.host` と `--host`(CLI 明示)の優先順位を1箇所に固定する純粋関数(2026-08-17)。
+/// `MachineProfile.host` と `--host`(CLI 明示)の優先順位を1箇所に固定する純粋関数。
 /// マシンプロファイルに host を持たせたことで、実行プロファイル経由で間接的にリモートホストを
 /// 指定できるようにした(ユーザー決定)。呼び出し側(Sources/ftester/RemoteCommands.swift)は
 /// ここが返す名前を、由来に応じて登録簿引きするだけで if を散らさない。

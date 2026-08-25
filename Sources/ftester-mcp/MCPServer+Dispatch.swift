@@ -44,7 +44,7 @@ extension MCPServer {
     ///
     /// **isStale の警告は呼び手に返していない**(座標系のジェスチャは verifiedRef ほど頻繁に
     /// 古い ref を渡される想定がなく、対象が消えていれば下の `.gone` が捕まえる)。
-    /// **ラベル変化だけは note で返す**(2026-08-10) —— これは double_tap/drag/pinch が
+    /// **ラベル変化だけは note で返す** —— これは double_tap/drag/pinch が
     /// 再ターゲットした要素へ実際に操作を撃つ経路なので、verifiedRef と同じ危険がある
     /// (RefGuard.labelChangeNote 参照。.found のときだけ = verifiedRef と条件を揃える)
     func verifiedElement(_ ref: Int, driver: AppDriver,
@@ -183,7 +183,7 @@ extension MCPServer {
     func call(tool: String, args: [String: Any]) async throws -> [[String: Any]] {
         let clock = ContinuousClock()
         let start = clock.now
-        // **udid は入口で port へ畳む**(2026-08-10)。`driver(_:)` は解決後のポートで
+        // **udid は入口で port へ畳む**。`driver(_:)` は解決後のポートで
         // ドライバを引くのに、`engineKey` は生の引数しか見ないので、udid で指した機は
         // すべて port=nil の同じキーに落ちていた。engineKey が引く記憶は
         // lastSnapshots / launchedBundleIDs / uiFrameworkHints / connections /
@@ -324,7 +324,7 @@ extension MCPServer {
         return out
     }
 
-    /// **デバイス側に何秒かかったかを毎回返す**(2026-08-09)。読み手はこれが無いと、自分の
+    /// **デバイス側に何秒かかったかを毎回返す**。読み手はこれが無いと、自分の
     /// 思考時間まで含んだ壁時計しか測れない —— 実測を頼まれたときに `date` をシェルで撃つ
     /// 往復が発生していた。
     ///
@@ -569,7 +569,7 @@ extension MCPServer {
                         // (2026-08-07 実測)。scrollTo だけに出していて届いていなかった
                         } ?? (Self.notationHint(waitFor, in: snapshot)
                               // **部分一致が出ていたときは出さない**: そちらのほうが具体的な
-                              // ヒントなので、的の外れた推測を並べて紛らわせない(2026-08-10)
+                              // ヒントなので、的の外れた推測を並べて紛らわせない
                               + Self.similarLabelsHint(waitFor, in: snapshot)))
                         + Self.waitForScrollHint(in: snapshot) + "\n"
                 }
@@ -631,11 +631,11 @@ extension MCPServer {
                 note = verified.note
                 priorElement = lastSnapshots[Self.engineKey(args)]?
                     .elements.first { $0.ref == verified.ref }
-                // **「入っている値」の判定は DSL と同じ**(2026-08-13)。素の `value` を見ていたので、
+                // **「入っている値」の判定は DSL と同じ**。素の `value` を見ていたので、
                 // `placeholder` と同値の空欄(iOS 全般 / Android の CMP)でも MCP だけが
                 // 追記警告を出していた —— StepExecutor は normalizedValue で黙る側
                 priorValue = priorElement.map(TypeReadback.normalizedValue)
-                // **入力欄でないものへ打とうとしていないか**(2026-08-14)。判定は DSL と共有
+                // **入力欄でないものへ打とうとしていないか**。判定は DSL と共有
                 // (TapTargetGeometry.nonInputTypeTargetNote。実測と理由はそちらの doc)。
                 // MCP は StepExecutor を経由しない別経路なので、ここにも配線が要る
                 if let priorElement,
@@ -645,7 +645,7 @@ extension MCPServer {
                         : note + " (warning: \(warn))"
                 }
             }
-            // **replace は文字が空でも clear する**(2026-08-12): {replace:true, text:""} や
+            // **replace は文字が空でも clear する**: {replace:true, text:""} や
             // {replace:true, pressEnter:true} は「クリアだけ」「クリア+Enter」を成立させるための
             // 書き方で、スキーマも "Clear the field before typing" と約束している。下の入力分岐
             // (文字が非空のときだけ通る)の内側に置くと、空文字はそこへ一度も入らず黙って
@@ -653,14 +653,14 @@ extension MCPServer {
             if wantsReplace {
                 try await typeDriver.clearInput(ref: targetRef.map { nativeRef($0, args: args) })
             }
-            // **replace + snapshotAfter(Enter を伴わない形)は同じ木を2回読まない**(2026-08-12):
+            // **replace + snapshotAfter(Enter を伴わない形)は同じ木を2回読まない**:
             // この組み合わせでは検証が読みたい瞬間(clear/type 直後)と snapshotAfter が読みたい
             // 瞬間が同じなので、snapshotAfterBodyWithStatus を先に1回だけ実行し、成功していれば
             // その木(lastSnapshots)を検証にも使う。失敗時だけ生読みへフォールバックする。
             // **pressEnter を伴う形は対象外**: Enter の前後で状態が変わるので、検証は Enter 前に
             // 読む必要があり(下の呼び出し位置のまま)、最終的に返す木は Enter 後でなければならない
             // —— そもそも2回読む理由がある(この最適化を適用すると Enter 前の古い木を返す)
-            // 追記(replace なし)も読み返して確かめるので、同じ merge の対象にする(2026-08-13)。
+            // 追記(replace なし)も読み返して確かめるので、同じ merge の対象にする。
             // これが無いと `snapshotAfter: true` の呼び方で**同じ木を2回読む**
             let verifiesAppend = !wantsReplace && !(priorValue ?? "").isEmpty
                 && !(content ?? "").isEmpty
@@ -696,14 +696,14 @@ extension MCPServer {
                     // **生読み(adoptSnapshot を通さない)**: この読みは入力という操作の**後**に
                     // 撮っているので、freshSnapshot 経由だと lastSnapshots[key] を上書きし、
                     // 続く snapshotAfterBody の settle-lite 基準(操作前の木のつもり)が
-                    // 操作後の木になってしまい「変化なし」と誤報する(2026-08-10)
+                    // 操作後の木になってしまい「変化なし」と誤報する
                     let rawAfterType = try? await typeDriver.snapshot(
                         bypassingCache: typeDriver.supportsCacheBypass)
                     note += await Self.typedIntoNote(driver: typeDriver, expected: content,
                                                      snapshot: rawAfterType)
                 }
                 if wantsReplace {
-                    // **無条件の「replaced」を断言しない**(2026-08-12): clearInput → type の後、
+                    // **無条件の「replaced」を断言しない**: clearInput → type の後、
                     // 読み返しなしで無条件に付けていた。in-app iOS の UIKit 経路は検証なしで YES を
                     // 返すので、clear が効いていなくても(旧値の後ろに新しい文字が連結されても)
                     // 「replaced」と嘘をつく。読み返して期待どおり/マスクで検証不能/旧値残存/
@@ -718,7 +718,7 @@ extension MCPServer {
                 }
             } else {
                 // **clear-only({replace:true, text:"" or 省略})も無条件に「cleared」と断言しない**
-                // (2026-08-12): 読み返して期待どおり(空)/マスク/残存の3形に分ける
+                //: 読み返して期待どおり(空)/マスク/残存の3形に分ける
                 // (replaceVerificationNote は expected 空でこの3形を返す)
                 if wantsReplace {
                     note += Self.replaceVerificationNote(
@@ -786,7 +786,7 @@ extension MCPServer {
             // scrollDown/scrollUp/scrollLeft/scrollRight(scrollFrame:) と同じ FlowStep 形。
             // ScrollGeometry の呼び出し・マージン定数・容器解決・fail-fast は全部あちらに
             // 1本化されている — MCP に2つ目の実装を作らない。**実機で確認した実害**
-            // (2026-08-12): MCP から driver.swipe(_:intent:path:) を直に叩くと、in-app
+            //: MCP から driver.swipe(_:intent:path:) を直に叩くと、in-app
             // ブリッジは領域指定つきスクロールを 501 で拒否する設計(Compose/Flutter。
             // InAppBridge/Sources/InAppBridge.swift:673-677「黙って別の領域を動かすより
             // 501 で XCUITest へ回す」)で、その 501→XCUITest フォールバックは
@@ -904,7 +904,7 @@ extension MCPServer {
                 // BackEffect.shouldWarn は observations が空なら false を返す)
                 var observations: [[ElementInfo]] = []
                 if wantsSnapshotAfter {
-                    // **撮り直しに成功した回だけ判定する**(2026-08-12): snapshotAfterBody が
+                    // **撮り直しに成功した回だけ判定する**: snapshotAfterBody が
                     // 読みに失敗すると lastSnapshots は back 前の木のまま残り、succeeded を見ずに
                     // 読むと指紋が自明に一致して「back は効かなかった」と誤読する(catch した回の
                     // 謝罪文の横に、矛盾する偽の注記が並ぶ)
@@ -1021,7 +1021,7 @@ extension MCPServer {
 
         case "ft_drag":
             let dragDriver = try await driver(args)
-            // **掴む側を ref で指せる**(2026-08-09): 半開きのシートを広げる操作は
+            // **掴む側を ref で指せる**: 半開きのシートを広げる操作は
             // 「グラバーを上へ引く」だけなのに、座標しか受けないせいで
             // `#Card grabber` の frame を人が読んで手で計算する必要があった(実測)。
             // 終点は「そこまで運ぶ距離」なので dy/dx でも書ける
@@ -1159,7 +1159,7 @@ extension MCPServer {
             }
             // **座標形は ft_tap と揃える**: ドライバは press(x:y:duration:) を要件として持つのに
             // MCP からは ref でしか呼べなかった。地図・キャンバスのように a11y 要素が無い点を
-            // 長押しする操作(ピンを落とす・住所を出す)が一切書けない状態だった(2026-08-07)
+            // 長押しする操作(ピンを落とす・住所を出す)が一切書けない状態だった
             if let x = args["x"] as? Double, let y = args["y"] as? Double {
                 try await pressDriver.press(x: x, y: y, duration: pressDuration)
                 recordInteraction(action: "press", resolvedRef: nil, args: args, coordinate: (x, y),
@@ -1245,12 +1245,12 @@ extension MCPServer {
         [["type": "text", "text": string]]
     }
 
-    /// `ft_open_url` の1行目。**snapshotAfter の有無で出し分ける**(2026-08-12):
+    /// `ft_open_url` の1行目。**snapshotAfter の有無で出し分ける**:
     /// 木を返すのに「ft_snapshot を撃ち直せ」と言うのは矛盾するので、そちらは待ち方の案内に替える。
     /// **配送が非同期であることは黙らない** —— settle-lite は**操作前の木を覚えているときしか
     /// 走らない**ので、`ft_launch` 直後(記憶が無い)の `snapshotAfter` は遷移前の画面を
     /// 何の断りもなく返し得る(2026-08-12 のレビュー指摘)
-    /// **推測した宛先は推測と分かる形で言う**(2026-08-13): `bundleId` を省くと
+    /// **推測した宛先は推測と分かる形で言う**: `bundleId` を省くと
     /// 「このセッションで最後に ft_launch したアプリ」が既定になるが、素の
     /// "Delivered <url> to <bundleID>." は**利用者が渡した宛先の確認**と字面が同じで、
     /// 読み手は自分が指定していないことに気付けない(実際の探索で気付かなかった)。
@@ -1325,7 +1325,7 @@ extension MCPServer {
               let element = snapshot.elements.first(where: { $0.ref == resolvedRef })
         else { return "" }
         if let graded = Self.SelectorNaming(snapshot).graded(for: element, in: snapshot) {
-            // **セレクタ自体は毎回出すが、但し書きは初回だけ満額**(2026-08-10): id の薄いアプリ
+            // **セレクタ自体は毎回出すが、但し書きは初回だけ満額**: id の薄いアプリ
             // (地図等)ではタップのたび同じ index-based 注意が繰り返され、id を足せない他社
             // アプリ相手ではノイズになる。indexedSelectorNote(下書き用・L2677/L2771)とは
             // 文言が違うので鍵を共有しない
@@ -1376,7 +1376,7 @@ extension MCPServer {
     /// 繰り返し出る注記を初回だけ満額にする(F-6・2026-08-10)。**通すのは dispatch 経由の
     /// 応答組み立てだけ**にすること — static 関数そのものは short/full を知らないまま変えない
     /// (テストの独立性を保つ: 同じ static 関数を単体で呼ぶテストは常に満額の文を見る)。
-    /// **full/short は @autoclosure**(2026-08-12): 呼び出し側は素の式を渡すだけでよく、
+    /// **full/short は @autoclosure**: 呼び出し側は素の式を渡すだけでよく、
     /// 選ばれなかった側は評価されない(full/short とも重い計算のことがある —— 実測
     /// unlabeledClickablesNote 等で1本 29〜116ms)
     func once(_ key: String, full: @autoclosure () -> String, short: @autoclosure () -> String) -> String {
@@ -1394,7 +1394,7 @@ extension MCPServer {
     /// 短縮形になってしまう。truncatedLabelNote/unlabeledClickablesNote/ambiguousLabelsNote/
     /// duplicateIDsNote が共有する。
     ///
-    /// **closure 形**(2026-08-12): 呼び手はどちらを出すかだけを決める1つの render を渡し、
+    /// **closure 形**: 呼び手はどちらを出すかだけを決める1つの render を渡し、
     /// これが**1回だけ**評価される —— 旧実装(full:/short: の2引数)は空判定のため full を
     /// 必ず評価し、初出でないときは short も評価していた(定常状態で二重評価。full/short とも
     /// 重い計算のことがある)。空判定は「実際に表示する側」の結果で行う: これらの note 関数は

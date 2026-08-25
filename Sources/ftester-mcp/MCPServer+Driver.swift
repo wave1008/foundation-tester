@@ -122,7 +122,7 @@ extension MCPServer {
                    udid: provisioned.udid, bundleID: bundleID, physical: false) {
                 uiFrameworkHints[key] = hint
             }
-            // **profile 経由でも宛先を記録する**(2026-08-06)。ここが空だと ft_status が
+            // **profile 経由でも宛先を記録する**。ここが空だと ft_status が
             // 「どこに繋がっているか」を出せず、**同名のデバイスが並ぶフリートでどの1台か
             // 分からない** —— Android の status.device は全エミュレータで
             // `sdk_gphone64_arm64` になるので、serial が出ないと識別子がゼロになる
@@ -165,7 +165,7 @@ extension MCPServer {
         let key = Self.driverCacheKey(platform: platform, port: explicitPort.map(Int.init),
                                       serial: args["serial"] as? String)
         if let cached = drivers[key] {
-            // **キャッシュ命中のドライバが、まだ同じ機を指しているかを確かめる**(2026-08-13)。
+            // **キャッシュ命中のドライバが、まだ同じ機を指しているかを確かめる**。
             // engineKey は `direct:ios:<port>:` で、**port は機の同一性ではない** ——
             // ブリッジを建て直すと同じ port が別のシミュレータのものになる。実機で再現:
             // 8123 で機A の木を採った後、`bridge down --port 8123` → `bridge up --device 機B
@@ -191,7 +191,7 @@ extension MCPServer {
         let created: AppDriver
         switch platform {
         case "ios":
-            // **記憶の適用はここでは行わない**(2026-08-12): dispatch 入口(call() の
+            // **記憶の適用はここでは行わない**: dispatch 入口(call() の
             // foldInRememberedDevice)が省略呼び出しへ既に port/udid を差し込んでいるので、
             // ここに来る時点で args は明示指定と区別が付かない。ここでは解決後の値を
             // 「記録」するだけにする(rememberResolvedTarget) —— 適用と記録を二重に持たない
@@ -199,7 +199,7 @@ extension MCPServer {
             let resolved = await ExploreDriverResolver.resolve(
                 preferred: port, repoRoot: try? RepoRoot.find(),
                 logger: { Self.logStderr($0) })
-            // **このキーが前と別の機を指し始めていたら、キーの記憶を全部捨てる**(2026-08-13)。
+            // **このキーが前と別の機を指し始めていたら、キーの記憶を全部捨てる**。
             // ドライバを作り直す経路は forgetConnection(ここは既に forgetDeviceState 済み)
             // だけではない —— 版ズレ拒否(enforceVersion)も drivers[key] だけを nil にするので、
             // そちらを通った後は木・ref 世代・起動アプリが前の機のまま残る。
@@ -299,7 +299,7 @@ extension MCPServer {
 
     /// ft_status の `@ …` に出す宛先の表記(純粋関数・テスト用)。**udid が分からないブリッジ
     /// (申告しない旧版)では port だけ** —— 「不明」と書くより短く、嘘も混ざらない。
-    /// **表示専用**(2026-08-14): `connectionLostHint` の経路判別は `connectedPorts`/
+    /// **表示専用**: `connectionLostHint` の経路判別は `connectedPorts`/
     /// `connectedAndroidSerials` の記録を見るので、ここの書式を変えても判定には影響しない
     static func connectionLabel(port: UInt16, udid: String?) -> String {
         guard let udid, !udid.isEmpty else { return "port \(port)" }
@@ -321,7 +321,7 @@ extension MCPServer {
     /// `port` と `udid` の突き合わせ。**走査から切り離した純粋関数** —— 実ブリッジが要ると
     /// 「食い違い」の枝がテストで一度も実行されず、判定を壊しても素通しする
     /// (2026-08-09 の変異テストで実際に素通しした)。
-    /// **udid 側は複数ポートを許す**(2026-08-12): 同じシミュレータに in-app / XCUITest の
+    /// **udid 側は複数ポートを許す**: 同じシミュレータに in-app / XCUITest の
     /// 2本が立つのが常態で、先頭の1本とだけ比べると正しい併記(udid + その in-app port)を
     /// 「別デバイス」と誤って拒否する(Simulator で 3/3 再現)
     static func reconcilePort(_ port: UInt16?, udid: String, udidPorts: [UInt16]) throws -> UInt16? {
@@ -348,7 +348,7 @@ extension MCPServer {
 
     /// udid を申告している稼働中ブリッジのポート(走査順・全部)。**申告が無いブリッジ(旧版)は
     /// 素通し** —— 「見つからない」と「そのブリッジは答えられない」を混ぜないため。
-    /// **scan の応答をそのまま濾すだけ**(2026-08-12): scan は全ポートへ並列 timeout 2s で
+    /// **scan の応答をそのまま濾すだけ**: scan は全ポートへ並列 timeout 2s で
     /// 既に status を撃っており、その StatusResponse は udid を含む(BridgeDTO.swift)
     static func bridgePorts(forUDID udid: String) async -> [UInt16] {
         await BridgeDiscovery.scan(excluding: 0, repoRoot: try? RepoRoot.find())
@@ -356,7 +356,7 @@ extension MCPServer {
     }
 
     /// **iOS の明示ターゲット述語**。args に有効な udid(非空文字列)または port(Int)があるか。
-    /// **キーの存在ではなく値を見る**(2026-08-12): `args["udid"] != nil` は `udid: ""` を
+    /// **キーの存在ではなく値を見る**: `args["udid"] != nil` は `udid: ""` を
     /// 「指定あり」と誤読する非対称を生む(Android の serial は元から isEmpty で見ている)。
     /// **driver() のキャッシュキー判定・記憶の適用可否(foldInRememberedDevice)・
     /// 記憶の記録可否(iosMemoryAfterResolve 呼び出し側)はすべてこの1つを通す**
@@ -370,7 +370,7 @@ extension MCPServer {
         (args["serial"] as? String).flatMap { $0.isEmpty ? nil : $0 } != nil
     }
 
-    /// **fold が注入した呼び出しかどうかの目印**(2026-08-12)。foldInRememberedDevice が
+    /// **fold が注入した呼び出しかどうかの目印**。foldInRememberedDevice が
     /// 省略呼び出しへ port/serial を差し込むとき一緒に立てる —— スキーマ検証後にしか付かず、
     /// engineKey(platform/port/serial/profile しか見ない)にも影響せず、ブリッジへ渡る辞書にも
     /// 漏れない(ドライバの各メソッドは args から個別の値を取り出すだけで、辞書ごとは渡さない)。
@@ -509,7 +509,7 @@ extension MCPServer {
         argsHadExplicitTarget ? (resolvedPort, resolvedUDID) : nil
     }
 
-    /// driver() が iOS 記憶を更新してよいかの判定(2026-08-12)。fold が注入した呼び出し
+    /// driver() が iOS 記憶を更新してよいかの判定。fold が注入した呼び出し
     /// (deviceFromMemoryKey 付き)は port/udid を持っていても**明示扱いしない** —— さもないと
     /// この直後の iosMemoryAfterResolve が「利用者が選んだ」として記憶を上書きし、ポート再利用で
     /// 別デバイスに化けたときに記憶が黙って乗り換わる。
@@ -523,7 +523,7 @@ extension MCPServer {
 
     /// iOS と同じ規律の Android 版。serial は空文字列も「無指定」として扱う(resolveAndroidSerial
     /// と揃える)。**適用は foldInRememberedDevice だけが呼ぶ**(iOS 側と同じ理由)。
-    /// **iosExplicitWithMemory と同形**(2026-08-12): 使わない tuple 要素(explicit)は持たない —
+    /// **iosExplicitWithMemory と同形**: 使わない tuple 要素(explicit)は持たない —
     /// 明示判定は argsGaveAndroidTarget に一本化してある
     static func androidExplicitWithMemory(argsGaveTarget: Bool, remembered: String?) -> String? {
         guard !argsGaveTarget, let remembered, !remembered.isEmpty else { return nil }
@@ -638,7 +638,7 @@ extension MCPServer {
     /// 合成は実行側(ScenarioRunnerMain)と同じ形:
     ///   in-app(注入) → WebView 画面だけ XCUITest へ委譲 → 不可な操作だけ XCUITest へ回す
     /// **hybrid でないとき(inapp 単独・xcuitest・実機)は素の1本**にする
-    /// **`probePort` は「同一性を確かめに行ってよい loopback のポート」**(2026-08-13)。
+    /// **`probePort` は「同一性を確かめに行ってよい loopback のポート」**。
     /// `provisioned.port` を外から使ってはいけない —— xcuitest 分岐は `XCUIBridgeResolver` が
     /// **接続先を振り替える**ことがあり、実機は loopback ですらない。誤ったポートを
     /// `connectedPorts` に記録すると、`deviceIdentityChanged` が**無関係な機のブリッジを読んで
@@ -684,7 +684,7 @@ extension MCPServer {
     /// 無く、後者は成立する。無関係な助言は誤誘導になる)。
     /// エンジンは driver(_:) が記録する = **推測しない**(profile 無しでも稼働中の in-app
     /// ブリッジを掴めば hybrid になるため、引数だけからは決まらない)
-    /// **1文に圧縮**(2026-08-08): UIKit アプリでも xcuitest エンジンなら毎回この助言が出ており、
+    /// **1文に圧縮**: UIKit アプリでも xcuitest エンジンなら毎回この助言が出ており、
     /// 長文の苦情があった。「in-app は起動し直る」制約(dylib は起動時にしか差し込めない。
     /// 2026-08-06 に実際に踏んだ: マップ画面で double tap → ホームから `#nav_scroll` が開いた)
     /// は末尾に畳み込む

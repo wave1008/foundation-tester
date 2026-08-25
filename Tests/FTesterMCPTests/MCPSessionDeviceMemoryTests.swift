@@ -10,7 +10,7 @@ final class MCPSessionDeviceMemoryTests: XCTestCase {
 
     // MARK: - iOS: 明示ターゲット述語(argsGaveIOSTarget/argsGaveAndroidTarget)
 
-    /// **udid:"" は「無指定」**(2026-08-12): キー存在(`args["udid"] != nil`)で判定すると
+    /// **udid:"" は「無指定」**: キー存在(`args["udid"] != nil`)で判定すると
     /// 空文字列を「指定あり」と誤読する非対称が生まれる。Android の serial は元から
     /// isEmpty で見ているので、iOS もこれで揃える
     func testArgsGaveIOSTargetTreatsEmptyUDIDAsOmitted() {
@@ -97,7 +97,7 @@ final class MCPSessionDeviceMemoryTests: XCTestCase {
 
     // MARK: - Android: 使用側(androidExplicitWithMemory)
 
-    /// **iosExplicitWithMemory と同形**(2026-08-12): argsGaveTarget: を取り、使わない tuple 要素
+    /// **iosExplicitWithMemory と同形**: argsGaveTarget: を取り、使わない tuple 要素
     /// (explicit)は持たない。明示判定(空文字列は無指定)は argsGaveAndroidTarget に一本化してある
     /// (testArgsGaveAndroidTargetTreatsEmptySerialAsOmitted が別途固定する)
     func testAndroidNoMemoryYetPassesThroughUnchanged() {

@@ -7,7 +7,7 @@
 // README.md の既知事象)の有力仮説が「SCA 劣化の過程で画像添付だけが先に壊れる」であり、
 // vision だけ先に死ぬ観測が取れれば2つの事象が同じ根で繋がる。
 //
-// 3本目の permissive プローブ(2026-07-26 追加): guardrails を .permissiveContentTransformations に
+// 3本目の permissive プローブ: guardrails を .permissiveContentTransformations に
 // した text 呼び出し。「安全性モデル instruct_300m.safety のロード失敗が根因なら、ガードレールを
 // 緩めれば呼び出し自体をスキップして生き残る」という仮説の検証材料。**default が死んでいる間に
 // permissive だけ生きる観測(tvP)が取れて初めて仮説が立つ** — 両方同時に死ぬ(tvp)なら

@@ -1,4 +1,4 @@
-// `suppressHandler { }` / `useHandler { }`(Shirates 準拠の名前)の契約(2026-08-21)。
+// `suppressHandler { }` / `useHandler { }`(Shirates 準拠の名前)の契約。
 //
 // **シナリオ自身がそのモーダルを検証・操作したい**とき、宣言済みハンドラが先に閉じてしまう。
 // これが無いと「`irregularHandler` を宣言する場所をずらす」回避策になる(自前 E2E も
@@ -207,7 +207,7 @@ final class SuppressHandlerTests: XCTestCase {
             }
         }
 
-        // **順序で見る**(2026-08-21): 「閉じた回数」だけだと、止まっていない実装
+        // **順序で見る**: 「閉じた回数」だけだと、止まっていない実装
         // (= 最初の exist で閉じて落ちる)でも ref 3 は現れるので判定にならない。
         // 止まっていれば target(1)を先に叩き、閉じる(3)のは enableHandler の後になる
         XCTAssertEqual(driver.tappedRefs, [1, 3, 1],

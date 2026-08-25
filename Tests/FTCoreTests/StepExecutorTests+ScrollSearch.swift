@@ -41,7 +41,7 @@ extension StepExecutorTests {
 
     /// **`!result.found` を成功材料にしない**: 明示 scrollFrame が解決できず1本も振らずに
     /// 打ち切った場合も found=false になるが、それは「無いことを確認した」ではなく
-    /// 探索していないだけ(2026-08-08)。notExist(scroll:) は exist(scroll:) と同じ文言で失敗する
+    /// 探索していないだけ。notExist(scroll:) は exist(scroll:) と同じ文言で失敗する
     func testNotExistWithScrollFailsWhenScrollFrameDoesNotResolve() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
@@ -525,7 +525,7 @@ extension StepExecutorTests {
                       "文言を出したのにコードを立てないと集計に乗らない")
     }
 
-    /// **シート展開の判定を機械可読でも出す**(2026-08-09): MCP はこのコードで
+    /// **シート展開の判定を機械可読でも出す**: MCP はこのコードで
     /// 「グラバーを引いて1度だけ再試行」へ分岐する。文言(scrollNotFoundMessage の
     /// half-open bottom sheet)と**同じ条件**であること —— 片方だけ変わると、
     /// 案内は出るのに自動展開が黙って効かなくなる

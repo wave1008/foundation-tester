@@ -54,7 +54,7 @@ public enum ProfileWorkerFactory {
     /// **実行プロファイルからは到達しない構成**なので代替は用意しない —— `iosInappEngine` は
     /// true→hybrid / false→xcuitest のどちらかで、両方とも home() が通る。
     ///
-    /// **結果は正直に出す**(2026-08-11): 最初の実装は `try?` で握り潰して台数だけログしており、
+    /// **結果は正直に出す**: 最初の実装は `try?` で握り潰して台数だけログしており、
     /// **1台も撃てていないのに成功したように見えていた**。
     public static func pressHomeOnStart(_ workers: [RunWorker], enabled: Bool,
                                         log: @escaping @Sendable (String) -> Void) async {
@@ -221,7 +221,7 @@ public enum ProfileWorkerFactory {
 
     /// android かつ serial 判明済みのワーカーを対象に恒常 blank-screen(画面凍結)を並列判定し、
     /// **blank ならまず sleep/wake 修復(~4s)、不発なら guest reboot を同期発行してブート完了まで
-    /// 待ち、本 run に復帰させる**(ユーザー決定 2026-07-26: 台数が半減するのを避け、除外+非同期
+    /// 待ち、本 run に復帰させる**(ユーザー決定: 台数が半減するのを避け、除外+非同期
     /// reboot で次 run 復帰にはしない)。除外は「reboot でも blank の
     /// まま」の最後の手段だけに残す。健全機は1サンプルで即返る。blank の確定は2連続サンプル ~1.5s
     /// (単発フレーム誤検知の回避): run 前の判定に既定の「40s ずっと blank」の確実性は過剰で、凍結が
@@ -233,7 +233,7 @@ public enum ProfileWorkerFactory {
     /// 通し、元 workers の順序を維持する。
     /// 全除外で空になっても throw しない(混在プロファイルの iOS 合流を殺さない。呼び出し側が判断)
     /// `stateDir` を渡すと判定を共有ストア(`DeviceFrozenStore`)へ公表する。**iOS 側と同じ口**で、
-    /// これが無いと「run は凍結を知っているのにモニターの ❄️ に出ない」非対称が残る(2026-08-11)
+    /// これが無いと「run は凍結を知っているのにモニターの ❄️ に出ない」非対称が残る
     public static func excludeOrRepairBlankScreenWorkers(
         _ workers: [RunWorker], stateDir: URL? = nil,
         environment: [String: String] = ProcessInfo.processInfo.environment,

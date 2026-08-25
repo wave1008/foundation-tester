@@ -54,7 +54,7 @@ final class BridgeRouter {
 
     // 画面を変えうる操作。直後の snapshot だけ整定確認する(handleSnapshot の settlePending)。
     //
-    // **/swipe と /drag は入れない**(2026-07-30)。スクロール慣性は budget 内で収束しないので
+    // **/swipe と /drag は入れない**。スクロール慣性は budget 内で収束しないので
     // ここで待っても整定したツリーにはならず、待ち時間だけ捨てることになる(実測: 収束せず
     // budget 打ち切り)。スクロール探索は `for attempt in 0...maxSwipes` で毎周 snapshot を
     // 撮るため、その全てにこの待ちが乗っていた。
@@ -375,7 +375,7 @@ final class BridgeRouter {
         snapshotElementLimit = BridgeAPI.resolvedSnapshotElementLimit(
             request.queryValue("max").flatMap { Int($0) })
         let springboard = systemUIAnchor()
-        // **`settlePending` は /snapshot と同じように消費する**(2026-08-25)。置き換え前の経路は
+        // **`settlePending` は /snapshot と同じように消費する**。置き換え前の経路は
         // `POST /session springboard` が mutatingPaths に居たので、続く /snapshot が必ず
         // captureSettled を通っていた。素取得に落とすと、アラートを閉じた直後・アイコンを叩いた
         // 直後の1枚をアニメーション中に撮り、続く /systemui/tap が座標を外す。
@@ -409,7 +409,7 @@ final class BridgeRouter {
 
     /// `/systemui/*` の座標ジェスチャが原点にするアプリ。
     ///
-    /// **セッションのアプリを使わない**のが要点(2026-08-25)。この口の呼び手(tapAppIcon)は
+    /// **セッションのアプリを使わない**のが要点。この口の呼び手(tapAppIcon)は
     /// 直前に `home()` を撃っており、セッションのアプリは**背面**か、まだ**起動していない**。
     /// 前者を `/drag` に流すと背面アプリの座標解決で `Find the Application` を約45秒リトライして
     /// **ランナーごと落ち**、後者は `requireLiveApp` の 503 で弾かれる(旧経路は

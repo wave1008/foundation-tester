@@ -129,7 +129,7 @@ final class HeldValueAssertTests: XCTestCase {
                       "取り直していない判定がレポート上で見分けられない: \(steps(core).map(\.description))")
     }
 
-    /// **3つの書き方は同義**(2026-08-04 ユーザー決定): チェーン / lastElement 明示 / 暗黙。
+    /// **3つの書き方は同義**(ユーザー決定): チェーン / lastElement 明示 / 暗黙。
     /// 記録されるステップも往復回数も一致すること —— ここがズレると「どれで書いたか」で
     /// 結果が変わる DSL になり、書き手は毎回どれを使うか迷うことになる
     func testTheThreeFormsAreEquivalent() {

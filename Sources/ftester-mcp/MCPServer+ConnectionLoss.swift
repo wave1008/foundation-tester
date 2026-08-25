@@ -10,7 +10,7 @@ import FTCore
 extension MCPServer {
 
     /// **経路の振り分けは記録(`connectedPorts`/`connectedAndroidSerials`)で決め、表示ラベルの
-    /// 接頭辞では決めない**(2026-08-14): `connections[key]` は表示用で、profile 経由の書式
+    /// 接頭辞では決めない**: `connections[key]` は表示用で、profile 経由の書式
     /// ("<device name> port/serial <値>")は "port"/"serial " のどちらの接頭辞にも一致しない ——
     /// 直接指定と profile とで判別条件を分けると、profile 経由はどちらの回復ハンドラにも
     /// 一度も入らず、死んだブリッジへ永久に再ダイヤルし続ける(実機の陽性対照で確認)
@@ -152,7 +152,7 @@ extension MCPServer {
 
     /// bound(誰かが listen している)なポートへ「exited」と言わないための正直な文言。
     /// **forgetConnection も呼ばない**呼び手側の判断とセットで使う(iosConnectionLostHint 参照)。
-    /// **エンジンで文面を出し分ける**(2026-08-12): in-app/hybrid ブリッジは対象アプリが
+    /// **エンジンで文面を出し分ける**: in-app/hybrid ブリッジは対象アプリが
     /// 前面のときしか応答しない(kernel が handshake を返すので isBound は true のまま)ので、
     /// XCUITest 向けの「busy・リトライせよ」は永遠に的外れな助言になる
     static func bridgeBusyHint(connection: String, engine: String?) -> String {
@@ -170,7 +170,7 @@ extension MCPServer {
     /// 死んだ接続の udid を、**手元にある scan 結果**から端末名へ引き直す(best-effort)。
     /// 失敗しても黙る —— `connectionLostMessage` の「同じ端末を先に」が効かず、
     /// 通し番号での畳み方に落ちるだけ。
-    /// **SimulatorCatalog を再照会しない**(2026-08-12): 呼び手は既に `running`(BridgeDiscovery.scan
+    /// **SimulatorCatalog を再照会しない**: 呼び手は既に `running`(BridgeDiscovery.scan
     /// の結果)を持っており、カタログ名とブリッジ申告名がズレると「同じ機を先頭に」が壊れる
     static func deviceName(forUDID udid: String?, in running: [BridgeDiscovery.Found]) -> String? {
         guard let udid else { return nil }
@@ -186,7 +186,7 @@ extension MCPServer {
 
     /// 掴んでいたドライバは死んでいる。次の呼び出しで解決し直させる。
     /// **記憶(lastExplicitIOSTarget/lastExplicitAndroidSerial)も一致すれば一緒に忘れる**
-    /// (2026-08-12): resolveIOSPort/resolveAndroidSerial は記憶されたポート/serial を生存確認
+    ///: resolveIOSPort/resolveAndroidSerial は記憶されたポート/serial を生存確認
     /// なしで返す(driver() 参照)ので、ここで消さないと、死んだ接続の後の省略呼び出しが
     /// 同じ死んだポート/serial へ永久に再ダイヤルし続ける。**internal**(テストが直接呼ぶ)
     func forgetConnection(_ key: String) {
@@ -196,7 +196,7 @@ extension MCPServer {
             // (rememberedDeviceNote が曖昧さの判定に使う集合。生きているものだけ残す)
             seenExplicitIOSPorts.remove(port)
         }
-        // **`connections[key]` の書式から抽出しない**(2026-08-14): profile 経由のラベルは
+        // **`connections[key]` の書式から抽出しない**: profile 経由のラベルは
         // "<device name> serial <serial>" で `hasPrefix("serial ")` に一致せず、profile で
         // 触った Android 機は記憶が一度も消えなかった(connectionLostHint と同じ根の欠陥)
         if let serial = connectedAndroidSerials[key] {
@@ -206,7 +206,7 @@ extension MCPServer {
         forgetDeviceState(key)
     }
 
-    /// engineKey に紐づく状態を**全部**捨てる(2026-08-13)。
+    /// engineKey に紐づく状態を**全部**捨てる。
     ///
     /// **なぜ「ドライバだけ」では足りないか**: engineKey は `direct:ios:<port>:<serial>` で、
     /// iOS のポートは**同じセッション中に動く**(監視が別ポートで建て直す。実測: -03 が

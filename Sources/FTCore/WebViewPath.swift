@@ -16,7 +16,7 @@ public enum WebViewPath {
     public static let domInterop = "dom-interop"
     /// 画面ごと XCUITest へ委譲した
     public static let delegated = "delegated"
-    /// 委譲したが、**Web コンテンツが1つも現れないまま待ちの上限に達した**(2026-08-15)。
+    /// 委譲したが、**Web コンテンツが1つも現れないまま待ちの上限に達した**。
     /// `delegated` との差は「木が空である理由が分からない」こと —— AX がまだ活性化していない
     /// だけかもしれず、**空の木を不在の証拠にしてはいけない**
     public static let delegatedEmpty = "delegated-empty"

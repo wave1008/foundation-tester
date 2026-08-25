@@ -18,7 +18,7 @@
 //   {"kind":"monitorFrame","device":"..","jpegBase64":"..","width":480,"height":1040}
 //     … connected デバイスのみ、約interval秒毎
 //   {"kind":"monitorError","device":"..","message":".."}         … device は省略されうる。
-//     現行バイナリは送出しない(スクショ変換失敗は stderr のみ。ユーザー決定 2026-07-16)が、
+//     現行バイナリは送出しない(スクショ変換失敗は stderr のみ。ユーザー決定)が、
 //     読み手としては旧バイナリ互換のため受理し続ける
 //
 // webview 向けメッセージ契約は monitorWebviewMessages.ts、デバイスライフサイクルのキューは

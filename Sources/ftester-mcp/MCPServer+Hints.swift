@@ -87,7 +87,7 @@ extension MCPServer {
     }
 
     /// 救済(シート展開 + 再試行)が**この画面では効かない**と分かったことを覚える鍵。
-    /// **木の指紋そのもの**にする(2026-08-12): 同じ画面で ft_scroll_to を撃ち直すと、
+    /// **木の指紋そのもの**にする: 同じ画面で ft_scroll_to を撃ち直すと、
     /// 実測で救済だけに 21.2 秒を再び払っていた —— 1回目の結末は「3回目も同じ」と
     /// 明言しているのに、機械側は次の呼び出しで何も覚えていなかった。
     /// **セレクタごとには割らない**: 効かない理由は画面の性質(リスト内のドラッグが外側シートの
@@ -117,7 +117,7 @@ extension MCPServer {
     /// 満額待って外れた回に、**払った場所で**上限の変え方を名指しする。
     /// `timeout` は全ての待ち(ft_snapshot / 操作系の snapshotAfter)に元からあるが、
     /// 外れた回の文がどこにもそれを名指していなかったため、外部評価では「5秒固定」と読まれ、
-    /// **外れると分かっている待ちにも毎回満額**を払っていた(2026-08-16)。
+    /// **外れると分かっている待ちにも毎回満額**を払っていた。
     /// 逃げ道は払った場所で言う(`SnapshotTruncation.remedy` と同じ規律)
     static let waitTimeoutRemedy =
         " (timeout: <seconds> sets this cap — a smaller one to find out sooner,"
@@ -233,7 +233,7 @@ extension MCPServer {
         snapshot.elements
             .filter {
                 RefGuard.isUntappableGhost($0, in: snapshot.elements, screen: snapshot.screen)
-                    // **申告されたスクロール容器の外**も同じ印に混ぜる(2026-08-09)。
+                    // **申告されたスクロール容器の外**も同じ印に混ぜる。
                     // `isUntappableGhost` の入口は容器の*推測*なので、申告のある UIKit/SwiftUI の
                     // 木では1件も付かず、カードを送って上へ抜けた行が**可視の行と同じ形**で
                     // 並んでいた。利用者から見て原因(そこには描かれていない)も対処
@@ -250,7 +250,7 @@ extension MCPServer {
     /// 「スクロールの残骸がそこに描かれていない」で、対処(`ft_scroll_to` で出してから撮り直す)
     /// も同じ。**印を2種類に割らない**(見分けても打ち手が変わらないものを増やさない)
     static let leftoverMark = "⚠️scroll-leftover"
-    /// 単に画面の外に居るだけの行。**危険度が違うので印を割る**(2026-08-09)。
+    /// 単に画面の外に居るだけの行。**危険度が違うので印を割る**。
     /// 上の `ghostFlags` の設計方針は「打ち手が変わらないものは割らない」だが、ここは
     /// **打ち手ではなく危険度**が違う —— leftover は「撃つと別の物に当たる」(沈黙した誤操作)、
     /// offscreen は「今そこに無い」だけ。実測(Apple マップの経路詳細)では、シートを広げた後に
@@ -297,7 +297,7 @@ extension MCPServer {
     }
 
     /// 実測(Apple マップの経路候補・横ページャ): 第2候補は x=401(画面幅402 の右隣ページ)に居て、
-    /// 一度も表示していないのに旧文言「scrolled past」は不正確だった(2026-08-10)。
+    /// 一度も表示していないのに旧文言「scrolled past」は不正確だった。
     /// 中心がどちらの縁をどれだけ超えているかを4方向とも計算し、いちばん超過が大きい方を返す
     static func offscreenDirection(of element: ElementInfo, screen: FTRect) -> OffscreenDirection {
         let cx = element.frame.centerX, cy = element.frame.centerY
@@ -312,7 +312,7 @@ extension MCPServer {
         return overflows.max { $0.1 < $1.1 }?.0 ?? .below
     }
 
-    /// **collapsingBulk は render() と揃える**(2026-08-10): 畳まれる ref をここでも個別に
+    /// **collapsingBulk は render() と揃える**: 畳まれる ref をここでも個別に
     /// 列挙すると、地図 POI のような大量群で出力の半分がこの注記に化ける。
     /// どの ref が畳まれるかは `SnapshotRenderer.foldedGroups` — render 本体と同じ関数 — で決める
     static func ghostNote(_ snapshot: SnapshotResponse, collapsingBulk: Bool = true,
@@ -541,7 +541,7 @@ extension MCPServer {
         SimilarLabels.editDistance(a, b)
     }
 
-    /// waitFor が空振りしたとき、画面に**近い**ラベル/id を最大3件挙げる(2026-08-10)。
+    /// waitFor が空振りしたとき、画面に**近い**ラベル/id を最大3件挙げる。
     /// 実測: 経路ボタンを `waitFor "経路"` と推測したら実ラベルは「計画」で5秒空振りした。
     /// **断定しない**(「これのことでは」とは書かない) —— 似ているというだけで、
     /// 別物を待っていた可能性を否定できる材料は無い。
@@ -594,7 +594,7 @@ extension MCPServer {
         }
     }
 
-    /// 探索が空振りしたときの記法ヒント。**最終木で出なければ探索を始めた木で見る**(2026-08-15)。
+    /// 探索が空振りしたときの記法ヒント。**最終木で出なければ探索を始めた木で見る**。
     ///
     /// `notationHint` は渡された1枚の木しか見ないので、部分一致の相手が探索のスワイプで
     /// 画面外へ流れると**ヒントごと黙る** —— 読み手は「`*X*` と書け」を受け取れないまま同じ式で
@@ -983,7 +983,7 @@ extension MCPServer {
     }
 
     /// webView 1つぶんの格子探索。**列は「隣接する行どうしが centerX で揃う」連鎖でだけ決める**
-    /// (2026-08-12): 幅の重なり(overlap/min-width)や全画面での列クラスタリングは、無関係な
+    ///: 幅の重なり(overlap/min-width)や全画面での列クラスタリングは、無関係な
     /// 要素(ナビの並び・ツールバーのアイコン)を座標の偶然一致で同じ列/行へ巻き込み、実測で
     /// 複数の誤検知を作った。隣接行だけを見る連鎖にすると、そもそも隣り合わない要素同士が
     /// 結び付くことがない。連鎖で残った列は**構造上つねに全セル埋まる**ので、
@@ -1232,7 +1232,7 @@ extension MCPServer {
         if abbreviated {
             advice = " — see the first snapshot's note for how to target them."
         } else {
-            // **「セレクタを書けない」は嘘だった**(2026-08-09): id を持つ祖先があれば
+            // **「セレクタを書けない」は嘘だった**: id を持つ祖先があれば
             // `#container >> .clickable[n]` で書ける(スコープ記法。docs/commands.md)。
             // 実測(Google マップの移動手段タブ)では id もラベルも無い clickable が
             // `#directions_mode_tabs` の中に居り、この形で一意に指せた。
@@ -1405,7 +1405,7 @@ extension MCPServer {
             + " something the destination has, and check ft_screenshot if it stays empty.\n"
     }
 
-    /// **打ち切りは先頭でも言う**(2026-08-09)。`(+91 elements truncated)` は render の末尾に
+    /// **打ち切りは先頭でも言う**。`(+91 elements truncated)` は render の末尾に
     /// 1行出るだけで、120 行の一覧のいちばん下にあった —— 実測(Apple マップの経路プランナー)で
     /// **候補 211 件中 91 件が木から落ちて**いたのに、いちばん重い事実がいちばん読まれない位置に
     /// あった。打ち切りは描画の省略ではなく配列からの脱落なので、`waitFor` も `scrollTo` も
@@ -1446,7 +1446,7 @@ extension MCPServer {
     /// **申告が無いブリッジ(旧版・Android)では黙る** —— 嘘の安心を出さない
     static func bulkExemptNote(_ snapshot: SnapshotResponse, abbreviated: Bool = false) -> String {
         guard let count = snapshot.bulkExemptCount, count > 0 else { return "" }
-        // **「無害」と読ませない**(2026-08-10): 元の文言は要素上限を守っていることしか言わず、
+        // **「無害」と読ませない**: 元の文言は要素上限を守っていることしか言わず、
         // これらの行がコンテキストを消費している事実が伝わらなかった。
         // **満額は初回だけ**(2026-08-12 の監査。`abbreviated` は他の注記と同じ F-6 の仕組み):
         // 実体は木の1行に畳まれているのに、注記のほうが長いという逆転が毎回の応答で起きていた。
@@ -1462,7 +1462,7 @@ extension MCPServer {
 
     /// 打ち切ったときだけ添える「枠を食っている当人」。
     ///
-    /// **間引きの方針では直せないから、代わりに名指しする**(2026-08-09): 同一 id の地図 POI が
+    /// **間引きの方針では直せないから、代わりに名指しする**: 同一 id の地図 POI が
     /// 上限の過半を占めることは実際にある(実測: Apple マップの経路プランナーで 77/120)が、
     /// 「大きな同一 id 群を先に捨てる」は**リストの行にも同じだけ当たる**ので採れない
     /// (BridgeSnapshotThinning.bulkGroupMinimum の却下理由)。読み手にできる手は
@@ -1507,7 +1507,7 @@ extension MCPServer {
     /// ラベル付きだが極端に細い要素(掴めないほど狭い可能性)。
     /// 判定は RefGuard.isClippedSliver = DSL(TapTargetGeometry)と共有。
     /// 判定は要素自身の細さだけ(縁で切れたかは見ない)。
-    /// **列挙は操作可能型(operableTypes)に限る**(2026-08-10): 文言が「タップに失敗するかも」
+    /// **列挙は操作可能型(operableTypes)に限る**: 文言が「タップに失敗するかも」
     /// なので、タップ対象にならない image/staticText に出すと空振りの注意になる(実測:
     /// 画面下端で 84x9 に切れた「IC 運賃」アイコン)。判定自体は共有のまま型を問わない
     static func sliverNote(_ snapshot: SnapshotResponse) -> String {
@@ -1591,7 +1591,7 @@ extension MCPServer {
     /// (呼び出し側で `label` に整形済み — `"\"foo\""` か `"#foo"`)と3つの文言だけなので、
     /// ここは凡例ヘッダ・グループごとの明細・打ち切り行・`anyStable` フッタだけを持つ。
     /// **グループ化とフィルタは呼び出し側の責務のまま**(ここへ寄せない)
-    /// `brief`(2026-08-16): **事実と群は出すが、要素ごとの代替セレクタの列挙だけ畳む**。
+    /// `brief`: **事実と群は出すが、要素ごとの代替セレクタの列挙だけ畳む**。
     /// A/B の計測用の口(`FT_MCP_NOTES_BRIEF` の宣言参照)で、既定は false = 従来どおり。
     /// **`abbreviated` とは畳む対象が違う** —— あちらはヘッダの凡例、こちらは明細。
     /// 実測(`ios-maps_transit_steps_expanded`)では、注記 3,621B のうち明細が主因で、
@@ -1691,7 +1691,7 @@ extension MCPServer {
                                     cache: SnapshotAnnotationCache? = nil) -> String {
         var groups: [String: [ElementInfo]] = [:]
         for e in snapshot.elements {
-            // **ゼロ幅文字を落としてから数える**(2026-08-09)。一覧の行は
+            // **ゼロ幅文字を落としてから数える**。一覧の行は
             // `SnapshotRenderer.renderElement` が除去済みの形で出すので、生ラベルのまま
             // 注記に出すと**同じラベルが1つの応答の中で2表記**になる(実測: Google マップの
             // `"​​埼京線​"`)。読み手はこれを別物と読む。数える側も揃える —— ゼロ幅の有無だけが
@@ -1720,10 +1720,10 @@ extension MCPServer {
             .sorted { groupPrecedes(key: $0.key, count: $0.value.count,
                                     otherKey: $1.key, otherCount: $1.value.count) }
         guard !ambiguous.isEmpty else { return "" }
-        // **「一意に指せない」で終わらせない**(2026-08-09): MCP の出力はシナリオへ書く文字列を
+        // **「一意に指せない」で終わらせない**: MCP の出力はシナリオへ書く文字列を
         // 供給するためにあるので、代わりに書ける形まで出す。機構は `writableSelector` =
         // ft_tap の推奨セレクタ(E)と同じ実装
-        // **cache 経由なら duplicateIDsNote と同じ SelectorNaming を共有する**(2026-08-12):
+        // **cache 経由なら duplicateIDsNote と同じ SelectorNaming を共有する**:
         // 両方の群に出る要素の graded を二重に検証しない
         let naming = cache?.selectorNaming(snapshot) ?? SelectorNaming(snapshot)
         return renderGroups(ambiguous.map { (label: "\"\($0.key)\"", matches: $0.value) },

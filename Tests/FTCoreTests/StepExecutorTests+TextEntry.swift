@@ -36,7 +36,7 @@ extension StepExecutorTests {
                        "primary の substring 要素で act してはいけない(偽陽性): \(log.entries)")
     }
 
-    /// **システムダイアログの形**(2026-08-16): iOS の権限ダイアログは SpringBoard が別プロセスで
+    /// **システムダイアログの形**: iOS の権限ダイアログは SpringBoard が別プロセスで
     /// 描くので、**アプリ側の木には1件も現れない**。hybrid ではこのとき fallbackDriver
     /// (SystemUIDriver = springboard 参照)だけが持っているので、`tap("許可")` は
     /// フォールバック経由で解決して**そちらのドライバで撃つ**必要がある。
@@ -416,7 +416,7 @@ extension StepExecutorTests {
         XCTAssertFalse(reason.contains("hi"), "失敗理由に入力値そのものを含めないこと: \(reason)")
     }
 
-    // MARK: - type(replace:)(2026-08-12)
+    // MARK: - type(replace:)
 
     /// replace: true は type の前に clearInput を1回だけ呼ぶこと(retype ではなく置換)
     func testTypeWithReplaceClearsBeforeTyping() async throws {

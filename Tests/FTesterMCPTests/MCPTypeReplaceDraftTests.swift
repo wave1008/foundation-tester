@@ -1,5 +1,5 @@
 // `ft_type {replace:true}` は下書き(`ft_draft_scenario`)にも `replace: true` を記録すること
-// (2026-08-12)。取りこぼすと、対話的に検証した replace 操作が下書きでは通常の追記
+//。取りこぼすと、対話的に検証した replace 操作が下書きでは通常の追記
 // (`type(sel, text)`)1行に化ける。
 
 import XCTest

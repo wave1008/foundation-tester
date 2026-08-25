@@ -11,7 +11,7 @@ extension MCPServer {
 
     /// **ツールが device ターゲット(port/serial/udid)を受けるか**。schema 駆動(port または serial
     /// プロパティの有無)にしてあるので、ツール一覧を追加でメンテしなくても toolDefinitions と
-    /// 自動的に揃う。**port だけでは見ない**(2026-08-12): scope: .none で serial だけを個別宣言する
+    /// 自動的に揃う。**port だけでは見ない**: scope: .none で serial だけを個別宣言する
     /// ツール(ft_logs)が port を持たないため、port 単独判定だと fold から漏れて記憶が効かなかった。
     /// device を受けないツール(ft_doctor 等)へ記憶を適用すると、宛先と無関係な応答に
     /// 「この機を使い回しています」という誤解を招く注記が付く
@@ -33,7 +33,7 @@ extension MCPServer {
     /// 既定(ios)の順**で決める —— 契約は「udid, port, AND serial を全部省略したら同じデバイスへ」
     /// なので、Android を明示した直後の全省略呼び出しは Android の記憶へ行かなければならない
     /// (既定 "ios" に負けて iOS 分岐へ迷い込んでいた)。
-    /// iOS 側は **port だけ注入し udid は注入しない**(2026-08-12): udid を注入すると
+    /// iOS 側は **port だけ注入し udid は注入しない**: udid を注入すると
     /// driver() の portForIOS → bridgePorts(forUDID:) が毎回 BridgeDiscovery.scan を強いられ、
     /// XCUITest quiescence(実測33.7秒)で busy なブリッジが scan に載らず reconcilePort が
     /// throw する(isBound による busy 救済が効くのは connectionLostHint の経路だけ)。
@@ -177,7 +177,7 @@ extension MCPServer {
             + " back. Pass udid or port (iOS) / serial (Android) to say which."
     }
 
-    /// `foldInRememberedDevice` の結果。**曖昧なら適用せず拒否する**(2026-08-13)。
+    /// `foldInRememberedDevice` の結果。**曖昧なら適用せず拒否する**。
     /// 以前は「2台以上を触っていたら毎回注記しつつ直近の1台へ流す」だったが、
     /// **注記は事故を1件も止めなかった** —— 監査19(serial だけの呼び出しが黙って iOS へ)・
     /// 監査20(キャッシュ命中で記憶が更新されない)・udid 2台の記憶混線は**3件とも

@@ -885,7 +885,7 @@ final class RemoteDispatchTests: XCTestCase {
     }
 
     func testRemoteTimeoutAutoZeroScenariosIsUnbounded() {
-        // 欠陥2(2026-08-17): scenarioCount 0 は「0本」ではなく「見積り不能」(プロファイル全体・
+        // 欠陥2: scenarioCount 0 は「0本」ではなく「見積り不能」(プロファイル全体・
         // --fleet)を意味しうるため、以前のように minimum(1800秒) へ丸めず nil(無期限)を返す。
         // 見積り不能で30分の下限を機械的に掛けると、正当な長時間 run を SIGKILL していた
         XCTAssertNil(RemoteTimeout.seconds(explicit: nil, scenarioCount: 0))

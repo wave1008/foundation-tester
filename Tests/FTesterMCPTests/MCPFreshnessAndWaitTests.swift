@@ -250,7 +250,7 @@ final class MCPPartialMatchFormHintTests: XCTestCase {
     }
 }
 
-// MARK: - 変更5: waitFor 空振り時の近傍ラベルのヒント(2026-08-10)
+// MARK: - 変更5: waitFor 空振り時の近傍ラベルのヒント
 
 final class MCPSimilarLabelsHintTests: XCTestCase {
 
@@ -303,7 +303,7 @@ final class MCPSimilarLabelsHintTests: XCTestCase {
         XCTAssertEqual(hint.components(separatedBy: "\"").count - 1, 6, hint) // 3件 ×2引用符
     }
 
-    // MARK: - 候補プールの品質(2026-08-10): 装飾葉を除外し、スコア順に選ぶ
+    // MARK: - 候補プールの品質: 装飾葉を除外し、スコア順に選ぶ
 
     /// 実例(Apple マップ): waitFor "経路" が地図 POI の装飾葉(type "other" の葉)にしか
     /// 当たらなかったとき、それらは isDecorativeLeaf(bulk fold と同じ判定)で候補から除かれ、

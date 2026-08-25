@@ -77,7 +77,7 @@ public struct StepResult: Sendable {
         case failed(String)
         case skipped(String)
         /// verify のブロックにアサーションが1つも無かった等、passed でも failed でもなく
-        /// 「結論が出ない」状態(2026-08-03 ユーザー決定)。シナリオは中断しない = 失敗扱いしない
+        /// 「結論が出ない」状態(ユーザー決定)。シナリオは中断しない = 失敗扱いしない
         case inconclusive(String)
     }
     public let index: Int

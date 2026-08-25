@@ -118,7 +118,7 @@ final class TapTargetAdvisoryTests: XCTestCase {
 
     // MARK: - occlusionAdvisory(座標に依るチェーン。連鎖と優先順の実体は advisoryKind)
     //
-    // **advisoryKind が唯一の連鎖の定義**(2026-08-15): 以前はここに「MCP の
+    // **advisoryKind が唯一の連鎖の定義**: 以前はここに「MCP の
     // RefGuard.overlapWarning と同じ優先順」という主張だけがあり、それを照合するテストが
     // 無いままズレていた(zeroFrame・sliver の2形が MCP のタップ時に出ていなかった)。
     // 今は両者が `TapTargetGeometry.advisoryKind` を呼ぶので、順序はここでしか変えられない。
@@ -238,7 +238,7 @@ final class TapTargetAdvisoryTests: XCTestCase {
                        "2件でクランプ扱いした(容器+子の普通の版組を巻き込む): \(note ?? "-")")
     }
 
-    /// **スクロール容器は、その点に自分の中身が無いなら何も隠していない**(2026-08-14)。
+    /// **スクロール容器は、その点に自分の中身が無いなら何も隠していない**。
     /// content inset を持つ容器はフレームが上の chrome の下へ潜り込むので、iOS(z 無し)では
     /// 木の順序だけで「タブ帯を覆っている」と誤報告していた
     func testScrollContainerWithNoContentAtThePointDoesNotOcclude() {
@@ -939,7 +939,7 @@ final class TapAdvisoryWiringTests: XCTestCase {
 
     // MARK: - T7: type の既存値注記
 
-    /// 通常欄: **撃つ前に入っていた値だけ**をエコーする。連結後の値は予告しない(2026-08-13)——
+    /// 通常欄: **撃つ前に入っていた値だけ**をエコーする。連結後の値は予告しない——
     /// ここでは読み返さないので観測していない値であり、ヒント文字列を `value` に載せる欄
     /// (E2E-CMP の `#field_single` が witness)では外れる。詳細は StepExecutor.readbackTarget
     func testTypeEchoesExistingValueInTheNote() async throws {
@@ -971,7 +971,7 @@ final class TapAdvisoryWiringTests: XCTestCase {
     }
 }
 
-/// **advisoryKind の優先順を等号で固定する**(2026-08-15)。DSL(`occlusionAdvisory`)と
+/// **advisoryKind の優先順を等号で固定する**。DSL(`occlusionAdvisory`)と
 /// MCP(`RefGuard.overlapWarning`)が両方これを呼ぶので、順序を入れ替える変異・
 /// どれか1形を落とす変異のどちらでも、ここか上の occlusionAdvisory 群のテストが落ちる。
 /// **各対は両方の条件が同時に成り立つ木で確かめる**(片方だけの木では「たまたま順序が

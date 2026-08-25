@@ -1,5 +1,5 @@
 // scrollTo の成功判定は StepExecutor.isSuccess の3形(passed/passedViaFallback/healed)を
-// 使う(2026-08-10)。以前は `guard case .passed` だけを見ており、fallback 一致
+// 使う。以前は `guard case .passed` だけを見ており、fallback 一致
 // (primary が空振りして `||` の相手が当たった)を失敗として throw し、内部 enum の生ダンプ
 // (`passedViaFallback(FTCore.FlowLocator(...))`)がそのままエラーメッセージに出ていた
 // (実害: セレクタ "*立川に到着*||*到着*" で fallback 側が当たったのに失敗扱いになった)。

@@ -1,6 +1,6 @@
 // 木だけから決まる注記の目録。**ここが唯一の定義元**で、snapshotBody / scrollTo は並べるだけ。
 //
-// なぜ目録が要るか(2026-08-12):
+// なぜ目録が要るか:
 // - **発火を数えられるようにする** —— どの注記がどの画面で出るかを NoteCoverageTests が
 //   固定コーパスの全数で数える。目録に載っていない注記は測れないので、「地図でだけ効く注記」と
 //   「どのアプリでも効く注記」が同じ棚に並んだまま増える(実際そうなっていた)
@@ -110,7 +110,7 @@ enum NoteCatalog {
             MCPServer.unlabeledClickablesNote(input.snapshot, abbreviated: abbreviated,
                                              cache: input.cache)
         },
-        // **この3本は scrollTo にも載せる**(2026-08-13): どれも「この一覧の行をそのまま
+        // **この3本は scrollTo にも載せる**: どれも「この一覧の行をそのまま
         // 報告してよいか / この行をセレクタで指せるか」を言う注記で、外すと**誤った出力**に
         // 直結する。しかも ft_scroll_to は「swipe+snapshot を繰り返す代わりに使え」と
         // 自ら勧める経路なので、警告が落ちる側が常用経路になっていた —— 実測(Yahoo!天気の
@@ -139,7 +139,7 @@ enum NoteCatalog {
             MCPServer.sliverNote(input.snapshot)
         },
         Entry(key: "truncatedLabelNote", contexts: [.snapshot, .scrollTo], abbreviates: true) { input, abbreviated in
-            // **短縮形をさらに短くした**(2026-08-13): 実運用の記録で 105 B が **6回/run**
+            // **短縮形をさらに短くした**: 実運用の記録で 105 B が **6回/run**
             // 出ていた(Bench/measurements.md)。短縮形なのに満額の指示をそのまま繰り返して
             // いたのが原因。行動に要るのは `*prefix*` の書き方だけで、
             // 「最初の注記を見よ」は既に読んでいる読み手には不要

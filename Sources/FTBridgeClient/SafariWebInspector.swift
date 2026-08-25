@@ -1,4 +1,4 @@
-// シミュレータ/実機の Safari を WebKit remote inspector 越しに DOM から読む(2026-08-13)。
+// シミュレータ/実機の Safari を WebKit remote inspector 越しに DOM から読む。
 //
 // **対象は Safari(`com.apple.mobilesafari`)だけ**。シミュレータは `/private/var/tmp` 等の
 // unix ソケットに直結する。実機は usbmuxd(`/var/run/usbmuxd`)→ lockdownd → TLS →

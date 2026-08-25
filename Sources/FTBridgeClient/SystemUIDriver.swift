@@ -77,7 +77,7 @@ public final class SystemUIDriver: AppDriver {
         return (frame.centerX, frame.centerY)
     }
 
-    /// scoped 経路では**アプリの ref 表を引く操作を通さない**(2026-08-25)。
+    /// scoped 経路では**アプリの ref 表を引く操作を通さない**。
     /// 両方の名前空間が 1 から採番されるので、素通しすると番号がアプリ側で引き当たり、
     /// システム UI を操作したつもりで**無関係なアプリの要素へ**入力する。
     /// 座標へ落とせる操作(tap/press)は落とし、落とせないもの(type/clearInput は
@@ -136,7 +136,7 @@ public final class SystemUIDriver: AppDriver {
         try await client.swipe(direction, intent: intent, path: path)
     }
     /// tapAppIcon のページ送り(flickRightToLeft 相当)用。
-    /// **scoped 経路では SpringBoard を原点にする口へ回す**(2026-08-25)——
+    /// **scoped 経路では SpringBoard を原点にする口へ回す**——
     /// 呼び手は直前に `home()` を撃っており、`/drag` はセッションのアプリを原点にするので、
     /// 背面なら座標解決で約45秒ハングしてランナーごと落ち、未起動なら 503 で弾かれる
     public func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,

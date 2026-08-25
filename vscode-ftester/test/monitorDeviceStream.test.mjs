@@ -267,7 +267,7 @@ test("リモートの実機は設定に関わらず MJPEG で張る — h264 を
   // こちらが h264(v2)のつもりで読むと、v1 レコードを v2 のレイアウトで解釈して
   // 未知 KIND → kill → 再起動のループになる。
   // **観測点は argv ではなくパイプラインの codec**: argv には元々 --codec を載せないので、
-  // argv だけ見るテストは「codec を h264 のままにする」変異を1つも殺せない(2026-08-17)。
+  // argv だけ見るテストは「codec を h264 のままにする」変異を1つも殺せない。
   // codec 設定を切り替えても張り替えが起きない = 実機は最初から mjpeg で固定されている。
   const { dir, binaryPath } = makeMockBinaryDir(["ftester"]);
   const { deps } = makeDeps(binaryPath);

@@ -3,7 +3,7 @@
 // テストが観測できるのは frame と画面サイズだけで、それは iOS も Android も、
 // Compose / SwiftUI / View-XML / Flutter / React Native のどれでも**アプリ座標系**で返る。
 // だから「アプリの向き」だけが跨いで同じ意味を持つ —— 物理的な左右は観測できないので約束しない
-// (2026-08-10 ユーザー決定。経緯は FTOrientation の宣言と docs/design.md)。
+// (ユーザー決定。経緯は FTOrientation の宣言と docs/design.md)。
 //
 // この決定は3つの実装に同時に効くので、ブリッジのソース走査で対応表を固定する
 // (ブリッジは別ターゲットで単体テストから呼べない。BridgeContractTests と同じ流儀)。

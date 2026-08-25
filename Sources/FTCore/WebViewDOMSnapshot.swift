@@ -81,7 +81,7 @@ public enum WebViewDOM {
           if (role === "image") {
             var alt = el.getAttribute("alt");
             if (alt && alt.trim()) return alt.trim();
-            // **alt が無い画像は src のファイル名を名前にする**(2026-08-13)。
+            // **alt が無い画像は src のファイル名を名前にする**。
             // Chromium の a11y はそうしており(`logo_small.svg` → `logo_small`)、
             // 揃えないと**ブラウザで a11y を DOM に置き換えた瞬間に名前が消える**
             var src = el.getAttribute("src") || "";
@@ -95,7 +95,7 @@ public enum WebViewDOM {
           return "";
         }
 
-        // **子孫が全部インラインのテキストなら1ノードへ畳む**(2026-08-13)。
+        // **子孫が全部インラインのテキストなら1ノードへ畳む**。
         // Chromium の a11y は `<td><span>19</span> / <span>24</span></td>` を「19 / 24」1件で出すが、
         // 素の DOM 走査は葉ごとに3件出す。揃えないと**同じページなのに
         // 「a11y で読む画面」と「DOM で読む画面」でセレクタが書き分け**になる。

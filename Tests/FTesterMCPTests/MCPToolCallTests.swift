@@ -279,7 +279,7 @@ final class MCPToolCallTests: XCTestCase {
     }
 
     /// ref 省略はフォーカス中の欄(DSL の clearInput() と同じ)。
-    /// **消した後に必ず読み返す**(2026-08-13): in-app iOS の UIKit 経路は clearInput の成否を
+    /// **消した後に必ず読み返す**: in-app iOS の UIKit 経路は clearInput の成否を
     /// 検証なしで YES と返すので、読み返さないと「cleared」が嘘になり、続く ft_type が黙って連結する
     func testClearInputPassesTheRefOrNilAndReadsBack() async throws {
         _ = try await server.call(tool: "ft_clear_input", args: ["ref": 2])

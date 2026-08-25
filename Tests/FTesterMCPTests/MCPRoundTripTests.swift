@@ -75,7 +75,7 @@ final class MCPRoundTripTests: XCTestCase {
         XCTAssertTrue(failed.contains("snapshotAfter could not read the screen"), failed)
     }
 
-    // MARK: - snapshotAfter は interactiveOnly/expandBulk も透過する(2026-08-10)
+    // MARK: - snapshotAfter は interactiveOnly/expandBulk も透過する
     //
     // `snapshotAfterBody` は元から `snapshotBody(args:)` を経由しており、`args["interactiveOnly"]`/
     // `args["expandBulk"]` はそこで読まれていた —— **機能はすでに透過していた**。欠けていたのは
@@ -252,7 +252,7 @@ final class MCPRoundTripTests: XCTestCase {
         XCTAssertEqual(MCPServer.capHogNote(snapshot(elements)), "")
     }
 
-    // MARK: - セレクタ引数の引用符剥がし(2026-08-12)
+    // MARK: - セレクタ引数の引用符剥がし
     //
     // DSL は Swift の文字列リテラルが引用符を剥がすが、MCP は生文字列で受ける。
     // `"*立川*"` が引用符ごと完全一致ラベルになり、スクロール探索が実在の要素へ
@@ -356,7 +356,7 @@ final class MCPDraftAndBulkTests: XCTestCase {
             elements: [], truncatedCount: 0, bulkExemptCount: 87)
         let note = MCPServer.bulkExemptNote(snapshot)
         XCTAssertTrue(note.contains("87 element(s)"), note)
-        // **「無害」と読ませない**(2026-08-10): 要素上限は守れているが、この出力の分量には
+        // **「無害」と読ませない**: 要素上限は守れているが、この出力の分量には
         // 効いていることまで言う
         XCTAssertTrue(note.contains("did not crowd other elements out of the tree"), note)
         XCTAssertTrue(note.contains("add to this output"), note)

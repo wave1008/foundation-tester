@@ -185,7 +185,7 @@ public enum RunResultsStore {
     ///   丸ごと消える —— 2026-08-11 のフル E2E で iOS 側が軒並み `1/N with history` に落ちていた。
     ///   遡る run ディレクトリ数は `observationScanLimitFactor` 倍で頭打ち(I/O の上限)。
     ///   打ち切っても集まった分だけで並べる = 従来と同じ安全側。
-    ///   窓は **machine 別にも**数える(2026-08-18)。リモート実行の回収記録は machine が
+    ///   窓は **machine 別にも**数える。リモート実行の回収記録は machine が
     ///   相手のホスト名で、新しい側に並ぶ。machine 非対応で数えると、その記録がこの機械の
     ///   実績を窓から押し出し、LPT の同一 machine 優先(LPTScheduler.durations)が常に
     ///   空振りして混合中央値へ後退する —— platform 押し出しと同型の失敗。

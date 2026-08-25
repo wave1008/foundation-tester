@@ -441,7 +441,7 @@ extension MCPServer {
     /// (`snapshotBody`) so it carries the same MCP-only notes (ghost/occlusion/offscreen) that
     /// ft_snapshot does. Per-step output is folded to one line each — only the last screen gets a tree
     func batch(_ args: [String: Any]) async throws -> [[String: Any]] {
-        // steps は文字列1本だけ(2026-08-10 ユーザー決定・表記は1つ。配列形は廃止)。
+        // steps は文字列1本だけ(ユーザー決定・表記は1つ。配列形は廃止)。
         // MCP の arguments はオブジェクト必須なのでキー自体は消せず、これが最小の形
         guard let joined = args["steps"] as? String else {
             if args["steps"] is [Any] {

@@ -121,7 +121,7 @@ final class NoteCoverageTests: XCTestCase {
         // 台帳が求めていた「a11y がほぼ空の面」の初の witness で、代表するのは2つ:
         // ⑴ **同一矩形 (0,288 1080x1440) に14要素**が積まれる(プレビューの重ね合わせ層)。
         //    ラベルを持つのは `viewfinder_frame` の1つだけなので `stackedRefs` は正しく黙る ——
-        //    「無地のラッパーは数えない」と、原点クランプ判定(2026-08-14 追加)の**陰性対照**
+        //    「無地のラッパーは数えない」と、原点クランプ判定の**陰性対照**
         // ⑵ 操作子が `staticText`(モード切替)で、器 `#bottom_bar` が z 上は手前・実体は透明という
         //    形。透明性は a11y から見えないので遮蔽の誤検知が出る(台帳に記録・規則は棄却済み)
         "and-camera_canvas": "canvas",
@@ -186,7 +186,7 @@ final class NoteCoverageTests: XCTestCase {
         // 誤検知ゼロの根拠は GridWithoutHeaderNoteTests.testFiresOnlyOnTheAndroidWeektableWitness
         "gridWithoutHeaderNote": Coverage(fixtures: ["and-browser_weektable"], bytes: 511),
         "urlishLabelsNote": Coverage(fixtures: ["and-browser_weather", "and-browser_weather_weekly"], bytes: 590),
-        // アドレス欄の値を名指しする(2026-08-12)。**既知 identifier だけで拾う**
+        // アドレス欄の値を名指しする。**既知 identifier だけで拾う**
         // (url_bar = Android Chrome / TabBarItemTitle = iOS Safari 通常時 /
         // URL = iOS Safari のアドレス欄タップ中 = ios-browser_startpage)。
         // 同じ webView を持つ and-browser_weather / and-browser_urlmenu は、捕った時点で
@@ -198,7 +198,7 @@ final class NoteCoverageTests: XCTestCase {
         // 追加(+524 バイト。url_bar/TabBarItemTitle が jleague.jp を名乗る)
         "addressBarNote": Coverage(fixtures: ["and-browser_error_page", "and-browser_j1_standings", "and-browser_weektable", "ios-browser_j1_standings", "ios-browser_jma_hscroll", "ios-browser_nationwide", "ios-browser_startpage", "ios-browser_weather_weekly", "ios-browser_weektable", "ios-safari_article"], bytes: 2634),
         "unlabeledClickablesNote": Coverage(fixtures: ["and-apps_list", "and-browser_urlmenu", "and-directions_tabs", "and-home", "and-place", "and-place_expanded", "and-results", "ios-home", "ios-maps_route_options", "ios-news_feed"], bytes: 3845),
-        // **格子は曖昧ラベルの塊**(2026-08-12): 週間表の2枚が入って +2,049 バイト。
+        // **格子は曖昧ラベルの塊**: 週間表の2枚が入って +2,049 バイト。
         // 同じ数値(`29/24`・`90%`)が行と列に何度も出るので、増分は形そのもの。
         // J1順位表(両OS。2026-08-15)も同型で +2,246 バイト —— 同じ勝点/試合数が縦横に並ぶ
         "ambiguousLabelsNote": Coverage(fixtures: ["and-apps_list", "and-browser_j1_standings", "and-browser_weather", "and-browser_weather_weekly", "and-browser_weektable", "and-camera_canvas", "and-home", "and-maps_suggest_ime", "and-place", "and-place_expanded", "and-results", "ios-browser_j1_standings", "ios-browser_jma_hscroll", "ios-browser_nationwide", "ios-browser_startpage", "ios-browser_weather_weekly", "ios-browser_weektable", "ios-browser_yahoo_top", "ios-home", "ios-maps_station", "ios-maps_suggest_keyboard", "ios-maps_transit_steps_expanded", "ios-messages_keyboard", "ios-news_feed", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-safari_article", "ios-settings_root", "sut-cmp_controls", "sut-cmp_home", "sutec-detail", "sutec-home"], bytes: 21757),
@@ -226,7 +226,7 @@ final class NoteCoverageTests: XCTestCase {
     /// 理由を確かめていない新しい注記を足すと testEveryNoteFiresSomewhere が落ちる
     /// (この免除表が「死んだ注記の置き場」になるのを防ぐ)
     static let knownSilent: Set<String> = [
-        // **既定が a11y になったので恒久的に黙る**(2026-08-14 のユーザー決定)。
+        // **既定が a11y になったので恒久的に黙る**(ユーザー決定)。
         // 実装は空文字を返すだけにしてある —— a11y から来ているのは正常で、言っても行動が
         // 変わらない(足りないときは missingPageContentNote が読み直しを促す)。
         // **目録から消すのは次のラウンド**(鍵の集合を変える操作は意識的に分ける)
@@ -234,7 +234,7 @@ final class NoteCoverageTests: XCTestCase {
         // 全 19 枚とも `bulkExemptCount` の申告自体が無い(採取時のブリッジが出していない)。
         // 判定は `guard let count = snapshot.bulkExemptCount, count > 0` なので永久に出ない
         "bulkExemptNote",
-        // **要素0の木はコーパスに置けない**(2026-08-13): このコーパスは「実アプリの画面の形」を
+        // **要素0の木はコーパスに置けない**: このコーパスは「実アプリの画面の形」を
         // 代表するためのもので、空の木はどの検知にも材料を与えず、アーキタイプにも属さない
         // (testEveryFixtureHasAnArchetype と testNoArchetypeDominatesTheCorpus が意味を失う)。
         // 判定そのものは `guard snapshot.elements.isEmpty` の1行なので、
@@ -365,7 +365,7 @@ final class NoteCoverageTests: XCTestCase {
         XCTAssertEqual(keys.count, Set(keys).count, "NoteCatalog の鍵が重複している: \(keys)")
     }
 
-    /// **1つのアーキタイプがコーパスを支配しないこと**(2026-08-12)。
+    /// **1つのアーキタイプがコーパスを支配しないこと**。
     ///
     /// これは様式の好みではなく、**判定を守るための不変条件**: 偏ったコーパスは
     /// 「この注記は◯◯でしか出ない」という誤った結論を作る(19 枚・地図 14 の時点で
@@ -406,7 +406,7 @@ final class NoteCoverageTests: XCTestCase {
         }
     }
 
-    /// **ft_scroll_to に載る注記の集合を等号で固定する**(2026-08-13)。
+    /// **ft_scroll_to に載る注記の集合を等号で固定する**。
     ///
     /// なぜ等号か: ft_scroll_to は「swipe + snapshot の繰り返しの代わりに使え」と自ら勧める
     /// 経路なので、**警告が落ちる側が常用経路になる**。実測(Yahoo!天気の週間画面)では

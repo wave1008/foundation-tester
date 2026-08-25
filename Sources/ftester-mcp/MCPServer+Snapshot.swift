@@ -351,7 +351,7 @@ extension MCPServer {
     /// 付かないときだけ、snapshotAfterBody が1回だけ短い待ちを挟んで撮り直す)。
     /// 実測: ft_type の直後は候補リストがまだネットワーク待ちで、waitFor 付きの ft_snapshot なら
     /// 出るものが「候補なし」に見えた
-    /// **満額を短くした**(2026-08-13)。実運用の記録で**最もバイトを食っている注記**だった
+    /// **満額を短くした**。実運用の記録で**最もバイトを食っている注記**だった
     /// (20 run で 7,180 B = 359 B を毎 run 満額で。Bench/measurements.md)。
     /// 落としたのは「不変に見えたら1回だけ待って撮り直した(上の注記を見よ)」の説明 ——
     /// **それが実際に起きた回には settle-lite の注記そのものが出る**ので二重だった。
@@ -370,7 +370,7 @@ extension MCPServer {
     /// なり無駄な待ちが入らない/ スクロールを伴うタップは frame が動くので同じ理由で入らない。
     /// **push 遷移が主目的**: 操作直後の木が古いまま返り、snapshotAfter が空振りして
     /// 別途 ft_snapshot を要求される実測から。
-    /// **FTCore.StaleFrameDetector へ寄せない**(2026-08-12): あちらの指紋は ref/type/identifier/
+    /// **FTCore.StaleFrameDetector へ寄せない**: あちらの指紋は ref/type/identifier/
     /// label/frame までで、value/checked の変化には反応しない(あちらはスクリーンショットの
     /// 鮮度判定用で、ここが要る「入力しただけの変化」を感知できない)
     /// **同一性判定はこの1本だけ**(ft_batch も跨いで呼ぶ。2つ目を書かない)
@@ -505,7 +505,7 @@ extension MCPServer {
     }
 
     /// `snapshotAfterBody` 本体。**back の無効判定(ft_navigate)が succeeded を見る**
-    /// (2026-08-12): catch した回(読みに失敗した回)は `lastSnapshots` が back 前の木のまま
+    ///: catch した回(読みに失敗した回)は `lastSnapshots` が back 前の木のまま
     /// 残るため、`succeeded` を返さずに「今の lastSnapshots」だけを見ると back 前の木と
     /// 指紋が自明に一致し、謝罪文の横に「back は効かなかった」という偽の注記が並ぶ
     /// (2026-08-12 実測)。他の呼び出し口は text だけを使い、この差は見ない
@@ -681,7 +681,7 @@ extension MCPServer {
     /// 照合の起点が無いので嘘の判断をするより、ブリッジの 404 に任せるほうが正しい。
     /// **どの世代にも無い ref**(何か撮った後で、それでも一致しない番号)は素通しせず throw する
     /// —— セッション内で ref は一意なので、世代があるのに見つからないのは番号の書き間違いか、
-    /// 直近5世代より前の snapshot からコピーしてきた番号のどちらか(2026-08-10)。
+    /// 直近5世代より前の snapshot からコピーしてきた番号のどちらか。
     ///
     /// **素通しの条件はセッション全体で見る**(2026-08-14・実機+仮想デバイス混在の監査)。
     /// 以前は「この engineKey に世代が無いか」で判定していたが、engineKey は**指し方**込み
@@ -762,7 +762,7 @@ extension MCPServer {
                 + RefGuard.preTapWarnings(found, keyboardOcclusion: keyboardOcclusion)
                 + RefGuard.ghostWarning(found: found, in: fresh.elements, screen: fresh.screen))
         case .found(let found, let moved):
-            // **ラベルが変わっていないかも見る**(2026-08-10)。moved の大小とは無関係に出す ——
+            // **ラベルが変わっていないかも見る**。moved の大小とは無関係に出す ——
             // 動かずにラベルだけ変わった行も同じ危険(RefGuard.labelChangeNote 参照)
             let labelNote = RefGuard.labelChangeNote(old: target.label, new: found.label) ?? ""
             // **ghost でなくても別の物に当たり得る**2形(上に描かれた overlay / 同一矩形への
@@ -945,7 +945,7 @@ extension MCPServer {
                                     releasesScrollTouch: !isAndroid,
                                     uiFramework: uiFrameworkHint,
                                     defersPartialSheetRecovery: true)
-        // **所要時間の内訳の起点**(2026-08-12): (a) 1回目の探索 + (b) シート展開救済だけを測る
+        // **所要時間の内訳の起点**: (a) 1回目の探索 + (b) シート展開救済だけを測る
         // (driver 解決・scrollFrame 解決は上ですでに終わっている)。成功応答だけに載せる
         let timingClock = ContinuousClock()
         let timingStart = timingClock.now
@@ -957,7 +957,7 @@ extension MCPServer {
         // 2つのゲートが構造的に無効になる。後者は **0スワイプの witness を持つ**
         // (Apple マップの経路ページャが読み取りの合間に自分で動く)ので、スワイプ数では守れない
         var after = try await freshSnapshot(scrollDriver, args: args)
-        // **半開きシートは自分で広げて1度だけやり直す**(2026-08-09)。この形は失敗文で
+        // **半開きシートは自分で広げて1度だけやり直す**。この形は失敗文で
         // 「グラバーを上へ引け」と案内済みだったが、**案内できるなら自分でできる** ——
         // 実測(Apple マップの経路詳細)では、案内どおり ft_drag してから同じ ft_scroll_to を
         // 撃ち直すだけで通り、2往復を人手で払っていた。
@@ -990,7 +990,7 @@ extension MCPServer {
                                         pressSeconds: 0.05, durationSeconds: 0.5)
             // **rect は展開後の木で作り直す**: シートが伸びると scrollFrameRect の元になった
             // 容器の frame も変わるので、展開前の rect のまま撃つと広がった分を探索できない。
-            // 同じ要素を撮り直した木から再照合し、取れなければ従来の rect のまま(2026-08-10)
+            // 同じ要素を撮り直した木から再照合し、取れなければ従来の rect のまま
             let expanded = try await freshSnapshot(scrollDriver, args: args)
             after = expanded
             if let original = scrollFrameArg.original,
@@ -1244,7 +1244,7 @@ extension MCPServer {
         let totalMs = Int((timingClock.now - timingStart) / .milliseconds(1))
         let timingNote = Self.scrollTimingNote(totalMs: totalMs, swipes: outcome.scrollSwipes,
                                                rescueMs: rescueMs)
-        // **ghostNote と render で ghostFlags を共有**(2026-08-12): 同じ `after` に対する
+        // **ghostNote と render で ghostFlags を共有**: 同じ `after` に対する
         // 応答1回ぶんのキャッシュ。SnapshotAnnotationCache のコメント参照(寿命はこの呼び出しだけ)
         let cache = SnapshotAnnotationCache()
         return text(switched + scrollFrameLabelNote + sheetNote + timingNote

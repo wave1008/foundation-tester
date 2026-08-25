@@ -53,7 +53,7 @@ public struct FlowStep: Codable, Sendable {
     public var duration: Double?
     /// count アサーションの期待個数(DSL の countIs)。他のステップでは nil
     public var expectedCount: Int?
-    /// テキスト比較を**厳密に**行う(一切正規化しない)。DSL の `strict: true`(2026-08-09)。
+    /// テキスト比較を**厳密に**行う(一切正規化しない)。DSL の `strict: true`。
     /// 既定(nil / false)は「見た目が完全に一致していれば同じ」= 不可視文字を無視し、
     /// 半角と全角は別物として扱う。**追加 optional のみ**なので旧レコードも decode できる
     public var strictText: Bool?

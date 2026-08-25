@@ -718,7 +718,7 @@ final class AssertKindsTests: XCTestCase {
         XCTAssertEqual(failureReason(outcome.status)?.contains("Parent and child"), false)
     }
 
-    // MARK: - Shirates 準拠で増えたアサート(2026-07-27)
+    // MARK: - Shirates 準拠で増えたアサート
 
     private func valued(_ ref: Int, id: String, value: String) -> ElementInfo {
         ElementInfo(ref: ref, type: "textField", identifier: id, label: nil, value: value,

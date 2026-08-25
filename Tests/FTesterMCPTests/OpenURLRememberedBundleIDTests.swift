@@ -1,5 +1,5 @@
 // ft_open_url が bundleId を省略されたとき「このセッションで最後に ft_launch したアプリ」を
-// 既定にすることの開示(2026-08-13)。
+// 既定にすることの開示。
 //
 // 素の "Delivered <url> to <bundleID>." は**利用者が渡した宛先の確認**と字面が同じで、
 // 読み手は自分が指定していないことに気付けない。Android では bundleID が intent の宛先

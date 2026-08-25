@@ -94,7 +94,7 @@ final class FakeDriver: AppDriver, @unchecked Sendable {
 
     /// snapshot が順に返す台本(空 = snapshotResponse を返し続ける)。
     ///
-    /// **罠(2026-08-13)**: 操作の前後で `value` だけが違う木を並べても **ref は進まない** ——
+    /// **罠**: 操作の前後で `value` だけが違う木を並べても **ref は進まない** ——
     /// `adoptSnapshot` は identity(ref / type / identifier / **label**)が同じなら世代を
     /// 使い回すので、`lastSnapshots` は同じ番号のまま更新される。「操作の後に木が進む」
     /// 経路(記録が別世代の木を見てしまう類の欠陥)を再現したいときは、

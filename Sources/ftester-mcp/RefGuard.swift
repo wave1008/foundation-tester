@@ -296,7 +296,7 @@ enum RefGuard {
                 + " \(describe(found)) — verify with ft_screenshot, and target the part you"
                 + " actually want)"
         case .stacked:
-            // **「完全一致」と断定しない**(2026-08-14): 判定は原点だけが同じで大きさが違う
+            // **「完全一致」と断定しない**: 判定は原点だけが同じで大きさが違う
             // クランプも見るようになった(OcclusionGeometry.originClampedRefs)。DSL 側の
             // 同じ文面(TapTargetGeometry.occlusionAdvisory)と揃える
             return " (warning: \(describe(found)) is stacked on the same spot as other elements,"
@@ -333,7 +333,7 @@ enum RefGuard {
 
     /// **原因は断定できないが、範囲は言える**: 同じ分だけ動いた要素が他にもあるなら
     /// スクロール等の画面全体の移動、その要素だけならレイアウト変化。
-    /// 「なぜ動いたか」の手掛かりが欲しいという要望(2026-08-06)への、嘘をつかない答え
+    /// 「なぜ動いたか」の手掛かりが欲しいという要望への、嘘をつかない答え
     static func movedTogether(_ target: ElementInfo, _ found: ElementInfo,
                               before: [ElementInfo], after: [ElementInfo]) -> String {
         let dy = found.frame.y - target.frame.y

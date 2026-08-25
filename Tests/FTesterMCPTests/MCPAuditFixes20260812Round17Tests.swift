@@ -171,7 +171,7 @@ final class MCPAuditFixes20260812Round17Tests: XCTestCase {
 
     /// device 系ツールは port または serial プロパティを持つ(toolAcceptsDeviceTarget の判定基盤)。
     /// **(v) 4欠陥修正⑤**: ft_logs は scope: .none で serial だけを個別宣言しており、port 単独
-    /// 判定では漏れていた(2026-08-12)
+    /// 判定では漏れていた
     func testToolAcceptsDeviceTargetMatchesDeviceScopedTools() {
         XCTAssertTrue(MCPServer.toolAcceptsDeviceTarget("ft_tap"))
         XCTAssertTrue(MCPServer.toolAcceptsDeviceTarget("ft_status"))
@@ -346,7 +346,7 @@ final class MCPAuditFixes20260812Round17Tests: XCTestCase {
         XCTAssertTrue(hint.contains("still bound"), hint)
     }
 
-    /// **C: suspend された in-app ブリッジへ「busy・リトライせよ」と言わない**(2026-08-12)。
+    /// **C: suspend された in-app ブリッジへ「busy・リトライせよ」と言わない**。
     /// in-app/hybrid はエンジンが分かればそちらの文言(前面に戻すか xcuitest ポートを使う)に切り替わる
     func testBridgeBusyHintSwitchesToInAppWordingWhenEngineIsInApp() {
         let hint = MCPServer.bridgeBusyHint(connection: "port 8125", engine: "inapp")

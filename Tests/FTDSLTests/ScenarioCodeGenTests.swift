@@ -33,7 +33,7 @@ final class ScenarioCodeGenTests: XCTestCase {
         XCTAssertFalse(omitted.contains("holdSeconds:"), omitted)
     }
 
-    /// **座標タップが行になること**(2026-08-16)。これが書けないと ft_batch は座標を通せず、
+    /// **座標タップが行になること**。これが書けないと ft_batch は座標を通せず、
     /// 下書きも `// TODO: no stable selector` に落ちる —— 実測で操作可能要素の 9.3% は
     /// 書けるセレクタを持たないので、そこがまるごと再生できないシナリオになる。
     /// **セレクタがあるときは必ずセレクタ形**(テストを書く目的では常にそちらが優先)

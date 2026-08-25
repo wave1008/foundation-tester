@@ -1,4 +1,4 @@
-// **MCP と DSL の全呼び出し元が KeyboardOcclusion を通ること**の配線ゲート(2026-08-14)。
+// **MCP と DSL の全呼び出し元が KeyboardOcclusion を通ること**の配線ゲート。
 // 型を keyboardFrame: FTRect? から keyboardOcclusion: KeyboardOcclusion へ変えるだけでは、
 // 呼び出し側が `.none` を渡す・毎回新しい空の値を作るといった「実質何も除外しない」変異を
 // コンパイラは止められない。ここは各ファイルのソースを読んで

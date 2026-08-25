@@ -1,4 +1,4 @@
-// 比較前の正規化の**契約表**(2026-08-09 のユーザー決定)。
+// 比較前の正規化の**契約表**(ユーザー決定)。
 //
 //   セレクタでフィルタする … 見つけたい。両端トリム・空白の種類を吸収・連続を畳む
 //   テキストを期待値と比較 … 確かめたい。「見た目が完全に一致していれば同じ」
@@ -209,7 +209,7 @@ final class TextNormalizationWiringTests: XCTestCase {
     }
 }
 
-/// **経路を割らない**: 肯定・否定・空判定・id が同じ正規化を通ること(2026-08-09)。
+/// **経路を割らない**: 肯定・否定・空判定・id が同じ正規化を通ること。
 /// ここが割れると、同じ画面について「`textIs("x")` は通るのに `textIsNot("x")` も通る」
 /// という矛盾した組が作れてしまう(実データにゼロ幅が1文字あるだけで起きる)。
 final class NormalizationCoversEveryComparisonTests: XCTestCase {
@@ -253,7 +253,7 @@ final class NormalizationCoversEveryComparisonTests: XCTestCase {
         XCTAssertFalse(negative("textIsEmpty", "\u{3000}", nil))
     }
 
-    /// id も同じ正規化を通る(2026-08-09 のユーザー決定: 日本語 id が実在するため正規化する)
+    /// id も同じ正規化を通る(ユーザー決定: 日本語 id が実在するため正規化する)
     func testIdIsNormalisedToo() {
         XCTAssertNotNil(StepExecutor.matchedText("btn\u{200B}_ok", expected: "btn_ok",
                                                  assert: "idEquals", normalization: .text))

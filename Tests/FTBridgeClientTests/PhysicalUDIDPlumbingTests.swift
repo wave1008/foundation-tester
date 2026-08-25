@@ -36,7 +36,7 @@ final class PhysicalUDIDPlumbingTests: FTBridgeClientSourceScanCase {
                       + " 名前引きの simctl 経路へ誤って落ち、Invalid device の的外れな失敗になる): \(offenders)")
     }
 
-    /// **シミュレータの UDID も同じく渡し切ること**(2026-08-19)。
+    /// **シミュレータの UDID も同じく渡し切ること**。
     /// 渡さないと install/uninstall/clearAppData の対象特定が `status()` に落ち、
     /// **`removeApp()` の直後の `installApp()` が「接続拒否」で失敗する** ——
     /// アプリごと in-app ブリッジを消した後は「入れる先を教えてくれる相手」が居ない
@@ -44,7 +44,7 @@ final class PhysicalUDIDPlumbingTests: FTBridgeClientSourceScanCase {
     /// 対象は**ワーカーを組み立てるファイルだけ**: そこは device.udid が既にスコープに来ている。
     /// MCP のポート直指定や runner の駆動用クライアントは UDID を持たないので対象にしない
     /// (対象にすると意図的な設計を誤検知する)
-    /// **シナリオ側も同じ**(2026-08-23): ホスト側(ProfileWorkerFactory)だけ直しても、
+    /// **シナリオ側も同じ**: ホスト側(ProfileWorkerFactory)だけ直しても、
     /// DSL の removeApp が通るのはシナリオプロセスの InAppDriver が持つ client で、そこが
     /// UDID 無しだと前のシナリオがアプリを終了した直後の removeApp が同じ形で落ちる(受け手報告)
     func testWorkerBridgeClientsForwardTheSimulatorUDID() throws {
@@ -67,7 +67,7 @@ final class PhysicalUDIDPlumbingTests: FTBridgeClientSourceScanCase {
                       + "(渡さないと removeApp() の直後の installApp() が接続拒否で落ちる): \(offenders)")
     }
 
-    /// **稼働ブリッジ → 端末の引き当ては共有規則を通すこと**(2026-08-14)。
+    /// **稼働ブリッジ → 端末の引き当ては共有規則を通すこと**。
     /// `scanRunningBridges` はここが名前引きだけだったため、udid を申告しない実機のブリッジが
     /// **生きていても端末に紐付かず**、planBridge の同一デバイス判定に一度も当たらないまま
     /// 2本目のランナーが立っていた(1台の実機に2本立てると両方死ぬ)。
@@ -122,7 +122,7 @@ class FTBridgeClientSourceScanCase: XCTestCase {
     static func argumentRanges(in source: String, callPrefix: String) -> [Range<String.Index>] {
         // 末尾は "(" でも ":" でもよい。**"(" で切れる形を許す**のは、引数を改行で折り返した
         // 呼び出し(`foo(\n  bar: ...`)では最初のラベルまで含む prefix が原文に現れず、
-        // 要求すると整形を検査することになるため(2026-08-14)
+        // 要求すると整形を検査することになるため
         precondition(callPrefix.contains("("))
         let callee = String(callPrefix[callPrefix.startIndex..<callPrefix.firstIndex(of: "(")!])
         var ranges: [Range<String.Index>] = []

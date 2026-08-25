@@ -170,7 +170,7 @@ final class ScrollSearchStopTests: XCTestCase {
                        "動いているのに打ち切った: \(driver.swipeCount) 回")
     }
 
-    /// **明示 scrollFrame が解決できないなら、1本も振らずに失敗させる**(2026-08-08)。
+    /// **明示 scrollFrame が解決できないなら、1本も振らずに失敗させる**。
     /// 黙って全画面スワイプへ退化すると、無関係な要素(カードのボタン等)を発火させ得るための
     /// fail-fast(実害: Apple マップで申告した容器がツリーから消え、退化したスワイプが
     /// カードの「計画」ボタンを叩いて画面遷移した)。MCP はこのコードで文面を分岐する(RefGuard 経由)
@@ -204,7 +204,7 @@ final class ScrollSearchStopTests: XCTestCase {
     }
 
     /// **全画面リストの末尾到達では出さない**(containerIsPartialHeight == false)。
-    /// 毎回シートの心配をさせない(2026-08-08)
+    /// 毎回シートの心配をさせない
     func testStoppedUnmovingAtFullHeightContainerDoesNotMentionTheSheet() {
         let step = scrollTo("missing", maxSwipes: 8)
         let stopped = StepExecutor.ScrollSearchResult(found: false, fallback: nil, viaXCUITest: false,
@@ -214,7 +214,7 @@ final class ScrollSearchStopTests: XCTestCase {
         XCTAssertFalse(message.contains("bottom sheet"), message)
     }
 
-    // MARK: - scrollFrame 未指定でもシートを見つける(2026-08-09)
+    // MARK: - scrollFrame 未指定でもシートを見つける
 
     private func snapshot(_ elements: [ElementInfo], height: Double = 874) -> SnapshotResponse {
         SnapshotResponse(sessionBundleID: nil,
@@ -266,7 +266,7 @@ final class ScrollSearchStopTests: XCTestCase {
         XCTAssertFalse(message.contains("bottom sheet"), message)
     }
 
-    /// **fail-fast の文言はスワイプ数で分岐する**(2026-08-08): 1本も送っていなければ
+    /// **fail-fast の文言はスワイプ数で分岐する**: 1本も送っていなければ
     /// 「検索は走っていない」、送った後に消えたなら「N 本振った後に消えた」と言う ——
     /// 送信後にも「送られなかった」と言うのは嘘になるため
     func testFailFastMessageBeforeAnySwipe() {

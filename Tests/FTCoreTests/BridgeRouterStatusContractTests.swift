@@ -28,7 +28,7 @@ final class BridgeRouterStatusContractTests: XCTestCase {
 
     /// ルータは status を**2書式**で返す(`throw BridgeError(501, …)` と
     /// `.error(…, status: 501)`)。片方しか数えないと**もう片方で足した分を見逃す** ——
-    /// 実際に `handleHideKeyboard` の 501 が「0箇所」の主張をすり抜けていた(2026-08-04)
+    /// 実際に `handleHideKeyboard` の 501 が「0箇所」の主張をすり抜けていた
     private func throwSites(status: Int, in source: String) throws -> Int {
         let patterns = [#"BridgeError\(\#(status)\s*,"#, #"status:\s*\#(status)\b"#]
         return try patterns.reduce(0) { total, pattern in

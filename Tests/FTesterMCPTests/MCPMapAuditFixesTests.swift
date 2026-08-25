@@ -150,7 +150,7 @@ final class MCPMapAuditFixesTests: XCTestCase {
         XCTAssertEqual(area.width, 60, accuracy: 0.001)
     }
 
-    // MARK: - 打ち切りの申告(2026-08-09)
+    // MARK: - 打ち切りの申告
 
     private func snapshot(elements: [ElementInfo], truncated: Int,
                           tiers: [String: Int]? = nil) -> SnapshotResponse {
@@ -189,7 +189,7 @@ final class MCPMapAuditFixesTests: XCTestCase {
         XCTAssertEqual(MCPServer.truncationNote(snapshot(elements: [], truncated: 0)), "")
     }
 
-    // MARK: - id もラベルも無い要素のスコープ付きセレクタ(2026-08-09)
+    // MARK: - id もラベルも無い要素のスコープ付きセレクタ
 
     /// **「セレクタを書けない」は嘘だった**: id を持つ祖先があれば `>>` で書ける。
     /// 実測(Google マップの移動手段タブ)は `#directions_mode_tabs` の中の名無し clickable

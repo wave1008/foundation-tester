@@ -1,5 +1,5 @@
 // ft_batch が「全手が成功したのに画面が1ピクセルも動いていない」を偽成功で終える件の対策
-// (2026-08-12)。同一性判定は MCPServer.looksUnchanged を再利用する(ft_swipe の settle-lite —
+//。同一性判定は MCPServer.looksUnchanged を再利用する(ft_swipe の settle-lite —
 // snapshotAfterBodyWithStatus — と同じ判定。2つ目を書かない)。ここは driver を要らない純関数
 // MCPServer.batchUnchangedNote だけを対象にする(実行ループ全体は MCPBatchTests が見る)。
 
@@ -88,7 +88,7 @@ final class MCPBatchUnchangedNoteTests: XCTestCase {
     }
 
     /// (5) 木がほぼ空の画面では `unrepresentedScreenCaveat` が添う。
-    /// **判定の共有だけでは配線は守れない**(2026-08-13): unrepresentedScreenCaveat 自体の
+    /// **判定の共有だけでは配線は守れない**: unrepresentedScreenCaveat 自体の
     /// 境界は UnrepresentedScreenCaveatBoundaryTests が見ているが、**ここでの連結を丸ごと
     /// 消す変異が生き残った** —— 呼び出し口ごとに1本ずつ要る。
     /// 実測の由来: Android Chrome がページ本体を1要素も公開しないまま scrollDown ×4 が

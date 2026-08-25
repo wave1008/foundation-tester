@@ -153,7 +153,7 @@ final class RunResultsStoreTests: XCTestCase {
         RunResultsStore.writeScenario(record, runDir: runDir, fileName: scenario)
     }
 
-    /// machine ごとに別々に数える(2026-08-18)。リモート実行の回収記録が新しい側に並んでも、
+    /// machine ごとに別々に数える。リモート実行の回収記録が新しい側に並んでも、
     /// この機械の観測は cap 件ぶん別枠で確保され押し出されない
     func testObservationsAreCountedPerMachine() {
         for i in 1...5 {

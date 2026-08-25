@@ -724,7 +724,7 @@ struct RunScenarios: AsyncParsableCommand {
               + "Cannot be combined with --force-lock"))
     var waitLock: Int?
 
-    /// ブロードキャスト実行(2026-08-22)。warmup のように「全デバイスがそれぞれ準備される」
+    /// ブロードキャスト実行。warmup のように「全デバイスがそれぞれ準備される」
     /// ことが目的の run 向け。分配だけを `ScenarioDispatch.broadcast` に差し替え、他は通常 run
     /// (ProfileRunner.run)と同じ経路。**--profile が要る**(レーン = プロファイルのデバイス)
     @Flag(name: .customLong("broadcast"),
@@ -819,7 +819,7 @@ struct RunScenarios: AsyncParsableCommand {
         // リモートへ中継されるので、向こう側の ftester が同じ env を自分で立てる)。
         // dry-run だけは送らない(--host 明示・マシンプロファイルの host 自動のどちらも。
         // 理由と罠は RemoteDispatchGate の宣言。優先順位・食い違いは resolveEffectiveHostDispatch
-        // → FTCore.MachineHostDispatch に委譲。ユーザー決定 2026-08-17: マシンプロファイルで
+        // → FTCore.MachineHostDispatch に委譲。ユーザー決定: マシンプロファイルで
         // host を持たせることで、実行プロファイル経由で間接的にリモートを指定できるようにした)
         // デバイスが複数の機械にまたがる実行プロファイルは、ホストごとのサブ実行へ分ける
         // (単一ディスパッチでは「そのホストに無いデバイス」が解決できない)。--host 明示や
@@ -990,7 +990,7 @@ struct RunScenarios: AsyncParsableCommand {
             print(failedCount == 0
                   ? "✅ All \(ranCount) \(unit) passed\(skippedSuffix)"
                   : "❌ \(failedCount) of \(ranCount) \(unit) failed\(skippedSuffix)")
-            // **合否は変えず、劣化だけ伝える**(2026-08-20)。FM が死んでいると occlusion-guard・
+            // **合否は変えず、劣化だけ伝える**。FM が死んでいると occlusion-guard・
             // 自己修復・screenLooksLike が黙って素通りするので、緑は「守りが効いた緑」ではない。
             // 赤のときも、切り分けの出発点として先に知りたい情報(自分の変更か FM か)
             if runSummary.fmUnavailableScenarios > 0 {

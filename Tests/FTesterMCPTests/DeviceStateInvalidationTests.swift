@@ -1,4 +1,4 @@
-// engineKey に紐づく状態の後始末(2026-08-13)。
+// engineKey に紐づく状態の後始末。
 //
 // engineKey は `direct:ios:<port>:<serial>` で、iOS のポートは同じセッション中に動く
 // (監視が別ポートで建て直す)。つまり死んだポートが後で別のシミュレータに再利用され得る。
@@ -206,7 +206,7 @@ final class DeviceStateInvalidationTests: XCTestCase {
         XCTAssertTrue(message.contains("AAA"), message)
     }
 
-    // MARK: - 掃討の網羅(2026-08-13): 片方の経路にだけ確認を入れると、その経路の利用者にだけ穴が残る
+    // MARK: - 掃討の網羅: 片方の経路にだけ確認を入れると、その経路の利用者にだけ穴が残る
 
     /// **ドライバのキャッシュ命中は2箇所ある**(profile 経路と直接ポート経路)。
     /// 2026-08-13 に直接ポート側だけへ確認を入れ、**profile 側を取りこぼした**。
@@ -264,7 +264,7 @@ final class DeviceStateInvalidationTests: XCTestCase {
             .appendingPathComponent("Sources/ftester-mcp/MCPServer+Driver.swift")
     }
 
-    /// **この検査は `MCPServerIntegerArgumentPartitionTests` へ移した**(2026-08-13)。
+    /// **この検査は `MCPServerIntegerArgumentPartitionTests` へ移した**。
     /// ここにあった版は「型が `"integer"`(単一の String)で、名前が ref で終わる」を条件に
     /// していたため、**`scrollFrame`(`["string","integer"]` 宣言・名前も ref で終わらない)を
     /// 構造的に拾えなかった** —— レビューで無力だと実証された。

@@ -35,7 +35,7 @@ final class SelOverloadParityTests: XCTestCase {
         "idIs",
     ]
 
-    /// **承認済みの差分**(ユーザー決定 2026-08-04・**再提案しない**): `scrollFrame:`
+    /// **承認済みの差分**(ユーザー決定・**再提案しない**): `scrollFrame:`
     /// (スクロール領域のセレクタ式)は String 固定で Sel 版を持たない。1対1を保証するのは
     /// **対象セレクタ**まで(`scrollTo` の Sel 版でも `scrollFrame:` は String のまま)。
     /// 一覧が増減したらここを更新する — **Sel 版を足す判断ではなく**、コマンドの増減の追随

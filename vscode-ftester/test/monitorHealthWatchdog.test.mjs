@@ -242,7 +242,7 @@ test("設定オフでは unhealthy 通知のみで修復しない", () => {
 });
 
 test("テスト実行中でも保留せず修復に進む", () => {
-  // 旧挙動(実行中は保留)を撤回(ユーザー決定 2026-07-17)。凍結は実行完了を待たず即修復する。
+  // 旧挙動(実行中は保留)を撤回(ユーザー決定)。凍結は実行完了を待たず即修復する。
   const h = createHarness();
   h.watchdog.observe([device("Pixel1", "connected", ["wifi-disabled"], "emulator-5554")]);
   assert.deepEqual(h.wifiCalls, ["emulator-5554"], "実行中かどうかに関わらず修復する");

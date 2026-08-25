@@ -1,4 +1,4 @@
-// `Tests/Fixtures/RealAppSnapshots/` の実アプリ固定コーパスを読む共有ローダ(2026-08-15)。
+// `Tests/Fixtures/RealAppSnapshots/` の実アプリ固定コーパスを読む共有ローダ。
 //
 // 読み手は TreeCoverageTests / DuplicateRegionTests / FlowMatchModeTests / SweepHarnessTests の
 // 4テスト(decode を複製しない)。この読める集合(ファイル名の昇順)は

@@ -25,7 +25,7 @@ public enum SnapshotRenderer {
     ///
     /// `flagging` に入れた ref の行末には印を付ける(既定は空 = 従来どおり)。MCP が
     /// スクロール残像を名指しするのに使う —— **先頭の注記だけでは足りない**という
-    /// 外部フィードバック(2026-08-06)への対応で、ref をコピーする行そのものに出す。
+    /// 外部フィードバックへの対応で、ref をコピーする行そのものに出す。
     /// `unit` は座標の単位(iOS="pt" / Android="px")。**呼び手が知っているときだけ渡す** ——
     /// `SnapshotResponse` は platform を持たないので、ここで推測はしない。
     /// 出すのは、Android の論理解像度(実測 1280x2856)が iOS(402x874)と桁違いで、
@@ -43,7 +43,7 @@ public enum SnapshotRenderer {
             + (unit.map { " \($0) (all x/y below are \($0))" } ?? ""))
         // 同じ id が2つ以上ある要素は、生成側へ「単独では曖昧」と伝えるため件数を付す
         var idCounts: [String: Int] = [:]
-        // **ラベルが木の中で一意な要素は ×N を省く**(2026-08-10): id 共有件数は「この行を
+        // **ラベルが木の中で一意な要素は ×N を省く**: id 共有件数は「この行を
         // ラベルだけで指せるか」には無関係で、検索候補のように全行が同じ id を共有する画面では
         // 一意なラベルを持つ行にまで無意味な ×10 が付いていた
         var labelCounts: [String: Int] = [:]
@@ -213,7 +213,7 @@ public enum SnapshotRenderer {
     /// - `other` = ブリッジが「型が付かなかったもの」に使う型で、シナリオの対象になるのは
     ///   地図のピンのような座標付きの飾りだけ。`staticText` や `button` の一覧は中身なので畳まない
     /// - 葉に限るのは、子を持つ要素を畳むと**子の行だけが親を失って残る**ため
-    /// - **印(⚠️scroll-leftover 等)が付いた要素も畳む**(2026-08-10): タップ時に RefGuard が
+    /// - **印(⚠️scroll-leftover 等)が付いた要素も畳む**: タップ時に RefGuard が
     ///   改めて警告するので、snapshot 時点の個別列挙は冗長。件数は見出し側の flagSummary が言う
     ///
     /// **群まるごとの all-or-nothing にしない**(D-2。2026-08-09 に実機で確定): 条件を外した
@@ -244,7 +244,7 @@ public enum SnapshotRenderer {
         }
         var folded: [String: [ElementInfo]] = [:]
         for (id, group) in byID where group.count >= bulkGroupMinimum {
-            // **警告付きも畳む**(2026-08-10): タップ時に RefGuard が改めて警告するので
+            // **警告付きも畳む**: タップ時に RefGuard が改めて警告するので
             // (testTapWarnsInsteadOfRefusingForAScrollLeftover)、snapshot 時点の個別列挙は
             // 冗長 —— 地図 POI 231件中40件が印付きというだけで出力の半分を個別行が占めていた。
             // 畳んだ群に何件混じっているかは見出し側(bulkHeadline の flagSummary)が言う
@@ -257,7 +257,7 @@ public enum SnapshotRenderer {
         return folded
     }
 
-    /// **ghostNote と render は同じ判定を使う**(2026-08-10): 別実装だと「畳まれた ref」の範囲が
+    /// **ghostNote と render は同じ判定を使う**: 別実装だと「畳まれた ref」の範囲が
     /// ずれ、片方は個別列挙・もう片方は畳んだままという食い違いが起きる
     public static func foldedGroups(_ snapshot: SnapshotResponse, flagging: [Int: String],
                                     collapsingBulk: Bool) -> [String: Set<Int>] {
@@ -277,7 +277,7 @@ public enum SnapshotRenderer {
         let contiguous = refs.count >= 2 && refs.last! - refs.first! == refs.count - 1
         let span = contiguous ? "[\(refs.first!)-\(refs.last!)]" : "[\(refs.first ?? 0)…]"
         let apart = (totalWithSameID ?? group.count) - group.count
-        // **「警告付き」は理由から外れる**(2026-08-10): 旗付きも畳むようになったので、
+        // **「警告付き」は理由から外れる**: 旗付きも畳むようになったので、
         // ここに残るのは葉でない・スクロール可能等、qualifying から漏れた分だけ
         let separately = apart > 0
             ? " \(apart) more with this id are listed separately below (not plain leaves),"
@@ -500,7 +500,7 @@ public enum SnapshotRenderer {
         "\"*\(partialMatchFragment(rawFragment))*\""
     }
 
-    /// 上の切り出し規則そのもの。**`SelectorNaming` の長ラベル候補と共有する**(2026-08-15)——
+    /// 上の切り出し規則そのもの。**`SelectorNaming` の長ラベル候補と共有する**——
     /// 別々に書くと、注記が勧める断片と、勧められるセレクタの断片が食い違う
     public static func partialMatchFragment(_ rawFragment: String) -> String {
         let fragment = rawFragment.range(of: "…")

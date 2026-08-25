@@ -162,7 +162,7 @@ export function updateLaneVisibility() {
   const activeIds = selectedDeviceIds.size > 0
     ? allIds.filter((id) => selectedDeviceIds.has(id))
     : allIds;
-  // デバイスを選択している間は拡大表示だけを並べる(ログは置かない。ユーザー決定 2026-08-24)。
+  // デバイスを選択している間は拡大表示だけを並べる(ログは置かない。ユーザー決定)。
   // 絞り込み無し(選択なし)は従来どおり全レーンのログ。
   const previewEnabled = selectedDeviceIds.size > 0;
   const previewIds = [];

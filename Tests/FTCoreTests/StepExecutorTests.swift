@@ -903,7 +903,7 @@ final class StepExecutorTests: XCTestCase {
     }
 
     /// **名指し宣言(`.alert`)は処理したら消費され、全部処理し終えたら監視を解除する**
-    /// (ユーザー決定 2026-08-21 の「宣言したアラートを処理したら監視を解除」は、待っている
+    /// (ユーザー決定の「宣言したアラートを処理したら監視を解除」は、待っている
     /// アラートの集合を言える名指し形でだけ成立する)。解除後は1往復も払わない
     func testNamedDeclarationsReleaseTheWatchOnceAllAreHandled() async throws {
         let log = CallLog()
@@ -1236,7 +1236,7 @@ final class StepExecutorTests: XCTestCase {
                       + " \(outcome.driverFallback ?? "nil")")
     }
 
-    /// **chrome 自身の部品を撃つときはキーボード警告を出さない**(2026-08-14)。地球儀キーは
+    /// **chrome 自身の部品を撃つときはキーボード警告を出さない**。地球儀キーは
     /// 実効矩形の中に中心があるが chrome(`#inputView`)の子孫なので、覆っている側であって
     /// 覆われている側ではない。片方だけ生の keyboardFrame へ戻す変異(RefGuard 側は直ったが
     /// StepExecutor 側は据え置き、のような部分退行)をここで落とす

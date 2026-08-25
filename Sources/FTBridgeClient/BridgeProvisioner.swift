@@ -394,7 +394,7 @@ public struct BridgeProvisioner {
         // 旧アプリが握ったままのポートで relaunch → bind 失敗し、以降のリクエストは suspend した
         // 旧ブリッジへ(TCP 受理・HTTP 無応答の 20s タイムアウト)。2026-07-23 に E2E → E2E-iOS の
         // 連続実行で 14/20 失敗として実害化した連鎖の根がここ
-        // **inapp は dylib の出所も一致しないと再利用しない**(2026-08-20)。版一致だけでは
+        // **inapp は dylib の出所も一致しないと再利用しない**。版一致だけでは
         // 「版を上げ忘れた変更」も「決定するプロセスが1ビルド古い場合」も素通りし、**変更が
         // 1度も実行されないまま緑になる**(実測は InAppBridgeState 冒頭)。digest はその場の
         // ソースから計算するのでどちらにも掛かる。**計算できないとき(nil)は従来どおり**
@@ -838,7 +838,7 @@ public struct BridgeProvisioner {
                     }
                     // デバイス名 → UDID(同名の起動中シミュレータが複数なら特定不能 = nil)
                     let booted = catalog.filter { $0.booted && $0.name == status.device }
-                    // **引き当ての規則は BridgeDiscovery.resolveUDID の1箇所**(2026-08-14)。
+                    // **引き当ての規則は BridgeDiscovery.resolveUDID の1箇所**。
                     // ここは名前引きしか見ていなかったので、**udid を申告しない実機のブリッジは
                     // 生きていても端末に紐付かず**、planBridge の sameDevice / stopStalePort に
                     // 一度も当たらないまま2本目のランナーが立っていた(1台に2本立てると全滅する)。

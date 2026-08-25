@@ -1,4 +1,4 @@
-// ft_open_url に他の操作系ツールと同じ snapshotAfter 系キーを足した分の回帰(2026-08-12)。
+// ft_open_url に他の操作系ツールと同じ snapshotAfter 系キーを足した分の回帰。
 // 木を返す(snapshotAfter: true)のに「もう一度 ft_snapshot を撃て」と言うのは矛盾するので、
 // 1行目の文面を出し分ける。組み立ては純関数(MCPServer.openURLSummary)に切り出してあるので
 // デバイス無しで固定できる
@@ -117,7 +117,7 @@ final class MCPOpenURLSummaryTests: XCTestCase {
     }
 }
 
-/// スキーマの過不足(2026-08-12): ft_open_url も他の操作系ツールと同じ畳み方・待ち方の
+/// スキーマの過不足: ft_open_url も他の操作系ツールと同じ畳み方・待ち方の
 /// 引数一式を持つ。MCPServerToolDefinitionsTests.testSnapshotAfterToolsDeclareTheSameFoldingPropertiesAsSnapshot
 /// は既存ツールの固定集合を検査するので、ft_open_url はここで独立に確認する
 final class MCPOpenURLToolDefinitionTests: XCTestCase {

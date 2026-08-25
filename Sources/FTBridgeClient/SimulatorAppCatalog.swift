@@ -1,7 +1,7 @@
 // iOS シミュレータのインストール済みアプリ一覧。`ftester api list-apps`(Sources/ftester/
 // ApiListAppsCommand.swift)と MCP の ft_list_apps(Sources/ftester-mcp/DeviceInventory.swift)が
 // 共有する。移設元は ApiListAppsCommand.swift の旧 private iosApps/bootedSimulatorUDID —
-// 挙動は変えていない(2026-08-09)。
+// 挙動は変えていない。
 //
 // parse は `xcrun simctl listapps <udid>` の OpenStep 形式 plist(トップレベルは
 // [bundleID: 情報dict])を PropertyListSerialization でそのまま食わせる。

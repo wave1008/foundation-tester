@@ -1,5 +1,5 @@
 // ft_scroll_to の再確認は「木に居るか」(旧 `Self.matches`)だけでなく「中心が画面内か」も見る
-// (2026-08-12)。FTCore 側のゲート(StepExecutor+ScrollSearch)を通り抜けた場合の独立した砦を固定する:
+//。FTCore 側のゲート(StepExecutor+ScrollSearch)を通り抜けた場合の独立した砦を固定する:
 // executor が成功で返した直後に、MCP が撮り直す木で対象の中心が画面外へ動いていたら、
 // "scrolled to" を名乗らない。判定は ⚠️offscreen と共有(TapTargetGeometry.offscreenAdvisory)。
 
@@ -66,7 +66,7 @@ final class MCPScrollToOffscreenGateTests: XCTestCase {
         XCTAssertTrue(text.contains("scrolled to"), text)
     }
 
-    /// **回帰(2026-08-12)**: ビューポートより大きい要素(縦3000pt、画面高874)は中心が
+    /// **回帰**: ビューポートより大きい要素(縦3000pt、画面高874)は中心が
     /// 常に画面外になる。FTCore 側の探索ゲート(offscreenScrollGateAdvisory)は既にこの形を
     /// 免除しており executor は成功で返すのに、ここが素の offscreenAdvisory のままだと
     /// 直後に hard fail していた不整合を固定する

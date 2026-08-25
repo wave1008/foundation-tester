@@ -58,7 +58,7 @@ final class TypeReadbackTargetTests: XCTestCase {
             "単一行12345")
     }
 
-    // ---- 不可視文字の正規化(2026-08-15) ----
+    // ---- 不可視文字の正規化 ----
     // MCP 側(replaceVerificationNote/appendVerificationNote)は既に
     // FlowMatchMode.normalizeInvisibleCharacters を両辺にかけているが、DSL のこの読み返し経路だけ
     // 素の比較のままだと、見た目が同じ文字列でも不一致になり 8 秒待った末にシナリオが失敗する
@@ -67,7 +67,7 @@ final class TypeReadbackTargetTests: XCTestCase {
 
     /// ゼロ幅文字が**読み返し値だけ**に混じっていても正規化後は一致として扱う。
     ///
-    /// **`actual` の正規化は readbackTarget 自身がやること**を確かめる形にしてある(2026-08-15)。
+    /// **`actual` の正規化は readbackTarget 自身がやること**を確かめる形にしてある。
     /// アサーション側で `normalizeInvisibleCharacters` を掛けてから `plan` を呼ぶ書き方だと、
     /// テストが production の代わりに正規化してしまい、**production 側の正規化を外しても落ちない**
     /// (変異で実際に生き残った)。ここは正規化していない生の値だけを渡す。

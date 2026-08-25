@@ -5,7 +5,7 @@
 // 受け付けるコマンドの絞り込み(DSLCommandIndex 由来)・セレクタを取らないコマンドでの ref 拒否・
 // 上限・最初の失敗で停止・木は最後に1回だけ・実行した手が InteractionLog に残ること。
 // **1手目に限る ref の受理・解決・2手目以降の拒否は MCPBatchFirstStepRefTests が見る**
-// (2026-08-12)。
+//。
 
 import XCTest
 import FTCore
@@ -168,7 +168,7 @@ final class MCPBatchTests: XCTestCase {
         XCTAssertTrue(text.contains("id=login_btn"), text)
     }
 
-    /// 配列形の steps は廃止(2026-08-10 ユーザー決定・表記は1つ)。書き換え方を添えて弾く
+    /// 配列形の steps は廃止(ユーザー決定・表記は1つ)。書き換え方を添えて弾く
     func testArrayStepsIsRejectedWithTheRewrite() async {
         do {
             _ = try await server.call(tool: "ft_batch",

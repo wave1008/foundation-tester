@@ -1,4 +1,4 @@
-// 打ち切りの逃げ道の共有判定(2026-08-15)。
+// 打ち切りの逃げ道の共有判定。
 //
 // 直したのは「同じ画面で MCP と DSL が逆のことを言う」状態: DSL だけが
 // 「対象に近づくようスクロールする」と勧めており、MCP は同じ事実に対して
@@ -85,7 +85,7 @@ final class SnapshotTruncationTests: XCTestCase {
                        BridgeAPI.maxSnapshotElements)
     }
 
-    // MARK: - budgetedCount は申告でなく配列から数え直す(2026-08-15)
+    // MARK: - budgetedCount は申告でなく配列から数え直す
 
     /// マージ形の生産者(in-app の WebView-DOM マージ)を模す: 申告 `bulkExemptCount` はマージ前
     /// (小さい)のままだが、配列にはマージ後の実 bulk 群(300件)が乗っている。
@@ -275,7 +275,7 @@ private final class TruncatingDriver: AppDriver {
     func terminate() async throws {}
 }
 
-/// **肯定側も天井まで上げて撮り直す**(2026-08-15)。否定側だけ塞いであったため、
+/// **肯定側も天井まで上げて撮り直す**。否定側だけ塞いであったため、
 /// 実在する要素で赤くなる = flake が残っていた
 final class PositivePathCeilingRetakeTests: XCTestCase {
 

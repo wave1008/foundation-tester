@@ -11,7 +11,7 @@
 //     (RunResultsStore.scanRecords の maxObservationsPerScenario)。run で数えると、
 //     調査中の 1 シナリオだけの run が窓を食い潰して直前のフル run の実績が消える。
 //     platform 別に数えるので、混在プロジェクトで他 platform に窓を食われることも無い
-//   - **machine 優先**(2026-08-18): リモート実行の回収記録(machine = 相手のホスト名)が
+//   - **machine 優先**: リモート実行の回収記録(machine = 相手のホスト名)が
 //     混ざるため、並べ替えは同一 machine の実績を優先し、無ければ全 machine 混合へフォールバック
 //     する(LPTScheduler.durations の preferringMachine)。観測窓も machine 別に数える
 //     (RunResultsStore.scanRecords)。FleetSplit(フリート割り当て)側は MachineContext 経由で

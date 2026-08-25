@@ -1,4 +1,4 @@
-// `#x` は identifier で引けなければ **placeholder** を引く(2026-08-15 ユーザー指示)。
+// `#x` は identifier で引けなければ **placeholder** を引く(ユーザー指示)。
 //
 // 入力欄は指す手段が経路で割れる: HTML の id は XCUITest が読む a11y に出ないが placeholder は
 // 出る / Android は WebView の版で id と placeholder が入れ替わる。同じ欄が**エンジンや OS 版で

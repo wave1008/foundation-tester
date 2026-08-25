@@ -78,7 +78,7 @@ final class SnapshotRenderingTests: XCTestCase {
         XCTAssertFalse(text.contains("id=title ×"))
     }
 
-    /// **ラベルで一意に特定できる行では ×N を省く**(2026-08-10): id の共有件数は「ラベルだけで
+    /// **ラベルで一意に特定できる行では ×N を省く**: id の共有件数は「ラベルだけで
     /// 指せるか」には無関係。実測(iOS の検索候補): セル id が10行で共有され、全行に無意味な
     /// ×10 が付いていた
     func testRenderOmitsTheCountWhenEachSharedIdHasAUniqueLabel() {
