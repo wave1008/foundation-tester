@@ -1,4 +1,4 @@
-// docs/userDocs/(利用者向けドキュメント。Shirates 流の en/ja 対)の整合検証。
+// docs/user-docs/(利用者向けドキュメント。Shirates 流の en/ja 対)の整合検証。
 // 契約(CLAUDE.md「ドキュメント」): 1ページ = `<name>.md`(英)+ `<name>_ja.md`(日)の対。
 // 片方だけ足す・片方だけ消すと対が崩れ、index から辿れない孤児や切れたリンクが残るので、
 // ソース走査で秒未満に落とす(ビルドもデバイスも要らない)。
@@ -14,9 +14,9 @@ import path from "node:path";
 import { test } from "node:test";
 
 const ROOT = path.join(process.cwd(), "..");
-const DOCS = path.join(ROOT, "docs", "userDocs");
+const DOCS = path.join(ROOT, "docs", "user-docs");
 
-/** docs/userDocs 配下の .md を再帰で集める(DOCS からの相対パス、"/" 区切り)。 */
+/** docs/user-docs 配下の .md を再帰で集める(DOCS からの相対パス、"/" 区切り)。 */
 function listPages(dir = DOCS) {
   const out = [];
   for (const entry of readdirSync(dir)) {
@@ -45,10 +45,10 @@ function relativeLinks(source) {
 
 const pages = listPages();
 
-test("docs/userDocs にページがある", () => {
+test("docs/user-docs にページがある", () => {
   assert.ok(pages.includes("index.md") && pages.includes("index_ja.md"),
-    "index.md / index_ja.md が docs/userDocs に無い");
-  assert.ok(pages.length > 2, "docs/userDocs にページが無い");
+    "index.md / index_ja.md が docs/user-docs に無い");
+  assert.ok(pages.length > 2, "docs/user-docs にページが無い");
 });
 
 test("全ページに en/ja の対がある", () => {
@@ -70,7 +70,7 @@ test("相対リンク先が実在し、言語が一貫している", () => {
         broken.push(`${page} -> ${target}`);
         continue;
       }
-      // docs/userDocs 内のページ同士は言語を揃える(自分の対へのリンクだけは言語切替として許す)
+      // docs/user-docs 内のページ同士は言語を揃える(自分の対へのリンクだけは言語切替として許す)
       const inside = path.relative(DOCS, resolved);
       if (inside.startsWith("..") || !inside.endsWith(".md")) continue;
       const rel = inside.split(path.sep).join("/");
@@ -109,7 +109,7 @@ test("index に全ページが載り、各ページから index へ戻れる", (
 
 // ---------------------------------------------------------------------------
 // 以下は「対とリンク」ではなく **中身が実装とズレていないか** を落とす走査。
-// 追加の経緯は docs/userDocs レビュー(8件)。いずれも1度は実際にズレていた。
+// 追加の経緯は docs/user-docs レビュー(8件)。いずれも1度は実際にズレていた。
 
 const SOURCES = path.join(ROOT, "Sources");
 const enPages = pages.filter((p) => !isJa(p));

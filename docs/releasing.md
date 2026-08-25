@@ -2,7 +2,7 @@
 
 git タグ(semver)は**版ピン用**に使う(clone 時の `git checkout <tag>`、`fleetest init --fleetest-version`、
 Claude Code プラグイン導入の `claude plugin marketplace add <repo URL>#<tag>`)。
-配布そのものは git clone + `swift build` / `npm run install-local`(docs/userDocs/getting-started_ja.md)であり、
+配布そのものは git clone + `swift build` / `npm run install-local`(docs/user-docs/getting-started_ja.md)であり、
 タグは必須ではないが、特定版に固定したい受け手のために発行する。
 
 ## 版は3つ(独立)
@@ -40,7 +40,7 @@ git clone https://github.com/wave1008/foundation-tester.git /tmp/fleetest-check
 cd /tmp/fleetest-check && git checkout 0.1.0 && swift build && .build/debug/fleetest --help | head -3
 ```
 
-受け手の利用フローは docs/userDocs/getting-started_ja.md を参照。特定版に固定したい場合は clone 後に
+受け手の利用フローは docs/user-docs/getting-started_ja.md を参照。特定版に固定したい場合は clone 後に
 `git checkout <tag>` してからビルドする。
 
 ## まだ手動なもの(未整備)

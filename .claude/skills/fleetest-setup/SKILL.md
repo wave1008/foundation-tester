@@ -18,7 +18,7 @@ description: fleetest を使いたい受け手を、自分の iOS/Android アプ
 > **`/plugin` スラッシュコマンドは VSCode 拡張・Agent SDK 環境では提供されない**ので CLI 形を使う。
 
 受け手を、**自分のアプリのシナリオを書いて実行できる状態**まで導く。
-全体像・背景は docs/userDocs/getting-started_ja.md。ここはエージェントが順に実行するための手順書。
+全体像・背景は docs/user-docs/getting-started_ja.md。ここはエージェントが順に実行するための手順書。
 
 **入り方は2通り。ステップ 0.5 で判定する:**
 
@@ -84,7 +84,7 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scr
   - デバイス・アプリ・実行プロファイルの追加 → `/fleetest-profiles`
   - シナリオの作成 → `/fleetest-scenario`
   - **再インストール**(clone 先の変更・導入のやり直し)→ **まずアンインストールを 🧑 に案内**し、
-    完了を確認してから `/fleetest-setup` を再実行する。手順は docs/userDocs/getting-started_ja.md「アンインストール」
+    完了を確認してから `/fleetest-setup` を再実行する。手順は docs/user-docs/getting-started_ja.md「アンインストール」
     (3層+ WORK_DIR 側の生成物削除。`TestProjects/` は資産なので残してよい)。アンインストール前に
     セットアップを続行しない。`Package.swift` 等の部分的な書き換えで済まさない(1箇所でも残すと
     旧 clone と新 clone に分裂し、更新が旧側に当たり続ける)
@@ -435,4 +435,4 @@ clone 構成では既定 `.build/debug/fleetest` のままでよい）。プロ�
 外部パッケージ構成では、以後の `/fleetest-setup`(デバイス定義・アプリパス・動作確認)は `fleetest init` が
 WORK_DIR に置いた**受け手専用スキル**が担う。更新（新しい修正版が出たとき）は `/fleetest-update` を使う
 （TOOL_ROOT で git pull → swift build 再ビルド → 依存版を揃える → 拡張再インストール → Reload Window）。
-手動手順は docs/userDocs/getting-started_ja.md「更新」。
+手動手順は docs/user-docs/getting-started_ja.md「更新」。

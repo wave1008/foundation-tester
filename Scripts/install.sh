@@ -687,7 +687,7 @@ else
   print_summary
   echo ""
   echo "❌ Resolved to a different clone/package (suspect leftovers of an old clone)." >&2
-  echo "   → See the verification gate in SKILL.md step 7.5 and the uninstall section of docs/userDocs/getting-started.md" >&2
+  echo "   → See the verification gate in SKILL.md step 7.5 and the uninstall section of docs/user-docs/getting-started.md" >&2
   exit 1
 fi
 

@@ -11,7 +11,7 @@ description: 既に fleetest をセットアップ済みの受け手が、新し
 
 
 セットアップ済みの環境に upstream の修正版を取り込む。初回導入は `/fleetest-setup`。
-背景・手動手順は docs/userDocs/getting-started_ja.md の「更新」。
+背景・手動手順は docs/user-docs/getting-started_ja.md の「更新」。
 
 > **この手順書自体が古い可能性がある。** プラグイン経由で導入している場合、この文書は
 > `~/.claude/plugins/cache/` の**スナップショット**から読まれており、`git pull` では更新されない。

@@ -618,4 +618,4 @@ cd ~/fleetest-runner/users/<自分の issuerId>/work
 
 - 設計・判断の背景(なぜ SSH なのか・却下した案・セキュリティ前提): [remote-runner.md](remote-runner.md)
 - CI での実行(Jenkins / EC2 Mac): [ci.md](ci.md)
-- 一般的な導入(手元のマシン): [userDocs/getting-started_ja.md](userDocs/getting-started_ja.md)
+- 一般的な導入(手元のマシン): [user-docs/getting-started_ja.md](user-docs/getting-started_ja.md)
