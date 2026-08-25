@@ -1,7 +1,7 @@
 // エミュレータの表示凍結(blank)を sleep/wake で修復する(ftester api repair-display)。
 // 拡張(monitorHealthWatchdog)の自動修復から呼ばれる唯一の窓口で、gRPC 優先・adb フォールバック・
-// blank 判定はすべて AndroidHealthProbe に閉じる(拡張側で gRPC を話さない。以前は
-// vscode-ftester/src/emulatorGrpc.ts に同じ手順の第二実装があり proto と判定閾値の二重管理だった)。
+// blank 判定はすべて AndroidHealthProbe に閉じる(拡張側で gRPC を話さない = proto と
+// 判定閾値を二重に持たない)。
 // 対向: vscode-ftester/src/adbWifiRepair.ts の repairDisplay。
 
 import ArgumentParser

@@ -12,7 +12,7 @@ final class BridgeHTTPServer {
         let path: String
         /// `?` の後ろ(無ければ空)。**path とは分けて持つ** —— 分けないと switch の完全一致が
         /// 外れ、クエリ付きの要求が丸ごと 404 になる(2026-08-03 に `?refresh=1` で実測)。
-        /// 規則は Android の BridgeHttpServer.parseRequest と同じ
+        /// 規則は Android の BridgeHttpServer.readRequest と同じ
         let query: String
         let body: Data
 

@@ -1,5 +1,5 @@
 // healReviewPanel.ts
-// 自己修復(--heal)の確認パネル。GUI 版 HealReviewSheet.swift + AppModel.applyHealFixes 相当。
+// 自己修復(--heal)の確認パネル。
 //
 // RunEventBus(runHandler.ts と同じインスタンス)を購読し、HealFixCollector(healModel.ts)で
 // fixSuggestion を収集する。実行終了時に候補が1件以上あれば WebviewPanel を開く
@@ -11,8 +11,7 @@
 // 同じロジックを手書きで複製している(healModel.ts を変更したらここも合わせて直すこと)。
 //
 // 「適用」は `ftester api apply-heal --project <project>` を stdin 経由の JSON で叩く
-// (cli.ts の CliInvocation.stdin)。失敗が0件かつ残り0件のときだけパネルを自動的に閉じる
-// (GUI の AppModel.applyHealFixes と同じ判定)。
+// (cli.ts の CliInvocation.stdin)。失敗が0件かつ残り0件のときだけパネルを自動的に閉じる。
 
 import { randomBytes } from "node:crypto";
 import * as fs from "node:fs";

@@ -44,7 +44,7 @@ extension MCPServer {
     /// 自動導出ではない — signature には出てこないのに読むキーもある。例: `type`/`clearInput`/
     /// `doubleTap`/`pinchOut`/`pinchIn`/`swipeBy` の `timeout`)。`BatchLineParser`(ft_batch の
     /// 行パーサ)がラベルの許否をここと突き合わせ、未対応ラベルを黙って捨てずに拒否する
-    /// (`BatchStepBuilderCoverageTests` が「signature から導出できるか keys に載っているか」を
+    /// (`BatchKeyTypeCoverageTests` が「signature から導出できるか keys に載っているか」を
     /// 全ビルダに対して確認する)。順序は「サポートしている引数」のメッセージにそのまま出る
     struct BatchStepBuilder {
         let keys: [String]

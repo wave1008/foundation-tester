@@ -3,9 +3,9 @@
 // - HealFixCollector: healReviewPanel.ts が「実行終了時に1件以上あればパネルを開く」判定に使う。
 // - selectorOccursOnce/isValidSelector/isValidComment/trailingComment/computeNewComment/
 //   buildPreviewAfterLine: healReviewPanel.ts の webview は CSP で本モジュールを import できず
-//   同じロジックを手書き複製している。GUI 版 HealReviewSheet.swift /
-//   Sources/FTCore/ScenarioSourceComments.swift / ScenarioSourceEditor.swift の
-//   isValidSelector/isValidComment/trailingCommentStart/setTrailingComment と同じ規則。
+//   同じロジックを手書き複製している。規則の正は Sources/FTCore/ScenarioSourceComments.swift /
+//   ScenarioSourceEditor.swift の isValidSelector/isValidComment/trailingCommentStart/
+//   setTrailingComment。
 // - buildApplyHealRequest/parseApplyHealResponse/toApplyHealFix: `ftester api apply-heal`
 //   (stdin/stdout の JSON 契約。Sources/ftester/ApiApplyHealCommand.swift 参照)の変換。
 
@@ -25,7 +25,7 @@ export interface HealFix {
   readonly command: string | undefined;
 }
 
-/** HealFix.id と同形式(GUI の AppModel.HealFix.id / apply-heal の応答 id と一致させる)。 */
+/** HealFix.id と同形式(apply-heal の応答 id と一致させる)。 */
 export function healFixId(fix: Pick<HealFix, "scenarioID" | "file" | "line" | "oldSelector">): string {
   return `${fix.scenarioID}|${fix.file}:${String(fix.line)}|${fix.oldSelector}`;
 }
@@ -88,7 +88,7 @@ export class HealFixCollector {
   }
 }
 
-// ---- セレクタ・コメントの検証(GUI の HealReviewSheet.isValidSelector/isValidComment と同じ規則)----
+// ---- セレクタ・コメントの検証(規則の正は FTCore の ScenarioSourceComments/ScenarioSourceEditor)----
 
 /** セレクタ編集値の検証: 空・「"」・改行はソースのクォート付き文字列を壊すため不可。 */
 export function isValidSelector(selector: string): boolean {
@@ -291,7 +291,7 @@ export function parseApplyHealResponse(value: unknown): ApplyHealResponse | unde
 }
 
 /**
- * チェック済み1件を適用リクエストの1件に変換する(GUI の HealReviewSheet.checkedFixes 相当)。
+ * チェック済み1件を適用リクエストの1件に変換する。
  * セレクタ・コメント不正なら undefined(UI 側の検証が壊れていても不正リクエストを組み立てない防御)。
  */
 export function toApplyHealFix(

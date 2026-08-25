@@ -636,7 +636,7 @@ extension MCPServer {
                 // 追記警告を出していた —— StepExecutor は normalizedValue で黙る側
                 priorValue = priorElement.map(TypeReadback.normalizedValue)
                 // **入力欄でないものへ打とうとしていないか**(2026-08-14)。判定は DSL と共有
-                // (TypeReadback.nonInputTargetNote。実測と理由はそちらの doc)。
+                // (TapTargetGeometry.nonInputTypeTargetNote。実測と理由はそちらの doc)。
                 // MCP は StepExecutor を経由しない別経路なので、ここにも配線が要る
                 if let priorElement,
                    let elements = lastSnapshots[Self.engineKey(args)]?.elements,

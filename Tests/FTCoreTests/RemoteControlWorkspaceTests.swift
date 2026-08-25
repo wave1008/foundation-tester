@@ -284,7 +284,7 @@ final class RemoteControlWorkspaceTests: XCTestCase {
     }
 
     // MARK: - resolve(): 開始・終了スクリプトは実効ワークスペースの scripts/ 配下に解決される
-    // (規則そのものは RunHooksTests。ここは配線だけ)
+    // (規則そのものは RunHooksTests.swift。ここは配線だけ)
 
     func testResolveCarriesTheHooksResolvedAgainstTheEffectiveWorkspace() throws {
         try writeAppAndMachine()

@@ -1,7 +1,7 @@
 // AnimationPolicy.swift
 // アプリのアニメーションを残すか(既定 = 残さない)の唯一の判定元。
 // 伝搬経路: 実行プロファイルの enableAnimations → FT_ANIMATIONS(ApiRunCommand / ProfileRunner が
-// setenv)→ ここ → AndroidBridge.applyAnimationSettings / BridgeLauncher.applyReduceMotion。
+// setenv)→ ここ → AndroidAnimationSettings.apply / BridgeLauncher.enableReduceMotion。
 // プロファイルを通らない経路(MCP・bridge up・explore)は未設定 = 無効化のまま。
 
 import Foundation

@@ -113,7 +113,7 @@ actor LiveBridgeAutoStarter {
     }
 
     /// actor の外で実行する起動処理本体。失敗時は起動途中のプロセス・pid ファイルを後始末する
-    /// (BridgeProvisioner.provisionBridge と同じ理由: 残すと以後のポート採番を汚す)
+    /// (BridgeProvisioner.provision と同じ理由: 残すと以後のポート採番を汚す)
     private static func launchBridge(
         repoRoot: URL, udid: String, port: UInt16, stopFirst: Bool = false
     ) async -> Result<Void, Error> {

@@ -316,10 +316,9 @@ export function parseLiveServeEvent(value: unknown): LiveServeEvent | undefined 
 
 // ---- 座標変換 ---------------------------------------------------------------------------
 // 契約: screen/frame はポイント座標、表示側は画像左上を原点とする表示px。画像は screen の
-// アスペクト比のままレターボックス無しで表示される前提(ftester-gui/LiveView.swift の
-// ScreenshotView と同じ)。
+// アスペクト比のままレターボックス無しで表示される前提。
 
-/** クリック位置(表示px)→ ポイント座標(GUI版 ScreenshotView.gesture と同じ比例変換)。
+/** クリック位置(表示px)→ ポイント座標(比例変換)。
  * 範囲外クリックでも screen の範囲にクランプする。 */
 export function pointFromClick(click: LivePoint, display: LiveSize, screen: LiveSize): LivePoint {
   if (display.width <= 0 || display.height <= 0 || screen.width <= 0 || screen.height <= 0) {
@@ -468,7 +467,7 @@ export function parseGenScenarioEvent(value: unknown): GenScenarioEvent | undefi
 // ---- 要素一覧の1行表示フォーマット --------------------------------------------------------
 
 /**
- * 要素一覧の1行の表示テキストを組み立てる(ftester-gui/LiveView.swift の elementLine と同じ形式:
+ * 要素一覧の1行の表示テキストを組み立てる(形式:
  * `[ref] type「label」id=identifier =value`。label/identifier/value が空・null のフィールドは省く)。
  */
 export function formatElementLine(element: LiveElement): string {

@@ -161,7 +161,7 @@ public struct DeviceSpec: Codable, Sendable, Hashable {
 
     /// 「どの台か」が1つも書かれていない(name と host だけの登録)。iOS はこの状態でも
     /// SimulatorCatalog の既定名に落ちるので**黙って別の台で走る**(Android は起動時に落ちる)。
-    /// 見るキーは ProfileWriter.deviceBodyKeys と同集合(DeviceSpecBodyKeysSyncTests が照合)
+    /// 見るキーは ProfileWriter.deviceBodyKeys と同集合(ProfileWriterTests が照合)
     public var lacksConcreteTarget: Bool {
         simulator == nil && os == nil && udid == nil && avd == nil && serial == nil
     }

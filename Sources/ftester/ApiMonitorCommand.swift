@@ -599,7 +599,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
 
     /// 1サイクルぶんの「撮る/配る」判断。
     /// **純粋関数として切り出してある**のは、「配信を抑制しても観測は続く」という不変条件を
-    /// 単体テストで固定するため(MonitorCapturePlanTests)。この不変条件が壊れたのが
+    /// 単体テストで固定するため(MonitorFrozenWiringTests)。この不変条件が壊れたのが
     /// 2026-08-11 の凍結カウンタ恒久 0 で、当時は判断がループ本体に埋まっていて誰も試せなかった
     struct CaptureDecision: Equatable {
         let id: String
@@ -1016,7 +1016,7 @@ struct DeviceRuntimeState {
 /// 能動プローブ(`nudge`)で確定させる。ここは受動観測のみ(run 中は使わない。`frozenVerdict`
 /// の `inRun` 参照)。一様でないフレームを1枚見たら即クリアする(復帰を遅らせない)。
 ///
-/// internal: 判定は純粋なのでここだけで単体テストする(ApiMonitorFrozenDebounceTests)。
+/// internal: 判定は純粋なのでここだけで単体テストする(MonitorFrozenDebounceTests)。
 struct MonitorFrozenDebounce {
     private let confirmThreshold: Int
     private var streaks: [String: Int] = [:]

@@ -1106,7 +1106,7 @@ public struct OKResponse: Codable {
 }
 
 /// POST /appstate(DSL の appIs)。読み取り専用でセッション不要
-/// (両ブリッジとも requireApp() を経由しない。同期相手: Runner/BridgeRouter.swift handleAppState /
+/// (両ブリッジとも requireApp() を経由しない。同期相手: Runner/FTesterRunnerUITests/BridgeRouter.swift handleAppState /
 /// InAppBridge/Sources/InAppBridge.swift handleAppState)。
 public struct AppStateRequest: Codable {
     public var bundleID: String

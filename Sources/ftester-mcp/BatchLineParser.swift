@@ -454,7 +454,7 @@ enum BatchStepResolver {
     // このバッチ辞書語彙で使われている全キーの型。3集合はどれとも重ならない
     // (現状 Bool 型のキーは無い —— containerInference/requireVisible/scroll は未対応のため)
     /// ビルダが宣言するキーは必ずこの3表のどれか1つに載る(載せ忘れると、その引数を書いた行が
-    /// 「does not accept」で弾かれる。`SharedKeyTypeCoverageTests` が漏れを検出する)
+    /// 「does not accept」で弾かれる。`BatchKeyTypeCoverageTests` が漏れを検出する)
     static let stringKeys: Set<String> = ["selector", "text", "direction", "to", "scrollFrame",
                                           "orientation"]
     static let intKeys: Set<String> = ["maxSwipes", "repeat", "ref"]

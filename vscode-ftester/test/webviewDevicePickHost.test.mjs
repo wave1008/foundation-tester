@@ -1,7 +1,7 @@
 // webviewDevicePickHost.test.mjs
 // #device-pick-overlay(「+既存から選択」モーダル)内のホスト選択(devicePickHost.js)の DOM テスト。
 // 実 HTML+実バンドルで動かす方式は webviewDeviceAddModal.test.mjs と同じ(harness のコメントは
-// そちら参照)。旧 test/webviewDeviceSource.test.mjs(常設セレクタ #device-source-select)を置き換える。
+// そちら参照)。
 //
 // 検証対象: ①マシンプロファイルに host が無ければ既定はローカル(source:{kind:'local'})で
 // deviceCatalogRequest/installedDevicesRequest/createDevice に載る、②マシンプロファイルの host が
