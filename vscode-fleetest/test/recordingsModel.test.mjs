@@ -12,6 +12,10 @@ import { test } from "node:test";
 import {
   buildRecordingErrorEntries,
   buildRecordingTree,
+  buildScenarioDevices,
+  dedupeDeviceRefs,
+  deviceNameFromWorker,
+  distinctRecordingDevices,
   firstRecordingEntryByScenario,
   groupTreeByClass,
   extractScenarioFailureSource,
@@ -518,4 +522,75 @@ test("groupTreeByClass: firstScenarioID はクラス内最初のシナリオの 
   });
   const grouped = groupTreeByClass([scenario("クラスA.S0010"), scenario("クラスA.S0020")]);
   assert.equal(grouped[0].firstScenarioID, "クラスA.S0010");
+});
+
+// ---- 実行デバイス(worker ラベル) ----
+
+const deviceEntry = (scenarioID, worker, platform) => ({
+  scenarioID, worker, platform, file: `recordings/${scenarioID}.mp4`,
+  segments: [{ startedAt: "2026-07-23T00:00:00.000Z", durationMs: 1000 }],
+});
+
+test("deviceNameFromWorker: <platform>: 接頭辞だけを落とす", () => {
+  assert.equal(deviceNameFromWorker("ios:iPhone 17 Pro(iOS 27.0)-01", "ios"), "iPhone 17 Pro(iOS 27.0)-01");
+  assert.equal(
+    deviceNameFromWorker("android:Pixel 10(Android 16(API 36) / arm64-v8a)-02", "android"),
+    "Pixel 10(Android 16(API 36) / arm64-v8a)-02",
+  );
+  // 名前の側にコロンがあっても、落とすのは先頭の接頭辞1つだけ
+  assert.equal(deviceNameFromWorker("ios:名前:付き", "ios"), "名前:付き");
+});
+
+test("deviceNameFromWorker: 接頭辞の無い古い記録は丸ごと名前として返す", () => {
+  // 実データに残っている形(ホストのポートが後ろに付き、platform が先頭に来ない)
+  assert.equal(
+    deviceNameFromWorker("iPhone 17 Pro(iOS 27.0)-01(ios:8100)", "ios"),
+    "iPhone 17 Pro(iOS 27.0)-01(ios:8100)",
+  );
+  // platform 欄と食い違う接頭辞も落とさない(名前の一部かもしれないため)
+  assert.equal(deviceNameFromWorker("android:Pixel 9", "ios"), "android:Pixel 9");
+});
+
+test("buildScenarioDevices: scenarioID ごとに最初のエントリの台を返す", () => {
+  const devices = buildScenarioDevices([
+    deviceEntry("A.S0010", "ios:iPhone 16", "ios"),
+    deviceEntry("A.S0010", "ios:iPhone 17", "ios"), // revive 再実行 → 最初の1件を採る
+    deviceEntry("A.S0020", "android:Pixel 9", "android"),
+  ]);
+  assert.deepEqual(devices, [
+    { scenarioID: "A.S0010", platform: "ios", device: "iPhone 16", machine: null },
+    { scenarioID: "A.S0020", platform: "android", device: "Pixel 9", machine: null },
+  ]);
+});
+
+test("distinctRecordingDevices: 初出順で重複を畳む(platform 違いの同名は別物)", () => {
+  const devices = distinctRecordingDevices([
+    deviceEntry("A.S0010", "ios:iPhone 16", "ios"),
+    deviceEntry("A.S0020", "android:Pixel 9", "android"),
+    deviceEntry("A.S0030", "ios:iPhone 16", "ios"),
+    deviceEntry("A.S0040", "ios:Pixel 9", "ios"),
+  ]);
+  assert.deepEqual(devices, [
+    { platform: "ios", device: "iPhone 16", machine: null },
+    { platform: "android", device: "Pixel 9", machine: null },
+    { platform: "ios", device: "Pixel 9", machine: null },
+  ]);
+});
+
+// 束ねたセッションでは **同じ台の名前が機械をまたいで重複する**ので、machine 込みで区別する
+test("distinctRecordingDevices/dedupeDeviceRefs: 機械が違えば同名でも別の台", () => {
+  const m1 = distinctRecordingDevices([deviceEntry("A.S0010", "android:Pixel 10-01", "android")], "M1Max");
+  const m2 = distinctRecordingDevices([deviceEntry("A.S0020", "android:Pixel 10-01", "android")], "M1Ultra");
+  assert.deepEqual(dedupeDeviceRefs([...m1, ...m2]), [
+    { platform: "android", device: "Pixel 10-01", machine: "M1Max" },
+    { platform: "android", device: "Pixel 10-01", machine: "M1Ultra" },
+  ]);
+  // 同じ機械の同名は1つに畳む
+  assert.equal(dedupeDeviceRefs([...m1, ...m1]).length, 1);
+});
+
+test("buildScenarioDevices: machine を渡すと各シナリオに焼き込む(束ねたセッションの判別に使う)", () => {
+  assert.deepEqual(buildScenarioDevices([deviceEntry("A.S0010", "ios:iPhone 16", "ios")], "M1Ultra"), [
+    { scenarioID: "A.S0010", platform: "ios", device: "iPhone 16", machine: "M1Ultra" },
+  ]);
 });

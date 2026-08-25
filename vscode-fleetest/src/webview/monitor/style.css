@@ -2317,6 +2317,24 @@ input[type="text"]::placeholder {
   font-size: 11px;
   color: var(--vscode-descriptionForeground);
 }
+/* セッション行の3段目「実行マシン + 台」。台数が多い run でも行が横に伸びないよう、
+   4台目以降は recordingsTab.js が「ほかN台」へ畳む(全台名はその title に残る)。 */
+.recordings-session-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+/* 長い論理名(例 "Pixel 10(Android 14(API 34) / arm64-v8a)-01")で行が埋まらないよう1台ぶんを
+   詰める。名前は省略されうるので、全台名は「ほかN台」の title 側にも残す。 */
+.recordings-session-meta .tile-name {
+  max-width: 240px;
+}
+.recordings-session-devices-more {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
 .recordings-session-counts {
   flex: 0 0 auto;
   font-size: 12px;
@@ -2544,6 +2562,21 @@ input[type="text"]::placeholder {
   min-height: 42px;
   border-radius: 4px;
   overflow: hidden;
+}
+/* 再生ビュー見出しのマシンバッジ入れ物(束ねたセッションでは複数並ぶ)。 */
+.recordings-session-machines {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  margin-right: 8px;
+}
+/* 再生中の動画を撮った台(最上段)。ステップが変わっても消えない = 動画の属性。 */
+.recordings-now-playing-device {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 8px;
 }
 /* 上段(クラス名)は背景なし、下段(説明)だけ薄い帯で区別する(ユーザー指定)。 */
 .recordings-now-playing-line {

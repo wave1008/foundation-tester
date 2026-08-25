@@ -9,7 +9,7 @@
 // 表示中の動画全体(video.duration)を表す。
 
 import { vscode, persistedState } from './vscodeApi.js';
-import { t } from '../i18n.js';
+import { formatDateTime, t } from '../i18n.js';
 
 const listView = document.getElementById('recordings-list-view');
 const playerView = document.getElementById('recordings-player-view');
@@ -18,6 +18,7 @@ const sessionsList = document.getElementById('recordings-sessions');
 const refreshBtn = document.getElementById('recordings-refresh');
 const backBtn = document.getElementById('recordings-back');
 const sessionTitle = document.getElementById('recordings-session-title');
+const sessionMachine = document.getElementById('recordings-session-machine');
 const video = document.getElementById('recordings-video');
 const playBtn = document.getElementById('recordings-play');
 const rewindBtn = document.getElementById('recordings-rewind');
@@ -79,6 +80,9 @@ function showListView() {
   errorsFilterChip.style.display = 'none';
   currentPlaybackEntry = null;
   clearNowPlaying();
+  clearNowPlayingDevice();
+  sessionMachine.textContent = '';
+  sessionMachine.style.display = 'none';
   resetVideoAvailability();
 }
 
@@ -120,6 +124,66 @@ function showPlayerView() {
   playerView.style.display = 'flex';
 }
 
+// 一覧の行に出す台の数。これを超えた分は「ほかN台」に畳む(8台のフリートで行が横に伸びるのを防ぐ。
+// 全台の名前は行の title(ツールチップ)に残す)
+const SESSION_DEVICE_CHIPS = 3;
+
+/** デバイス名ピル(タイル/レーン/実行プロファイルと同じ配色クラスを共用)。
+ *  長い論理名は CSS で省略されるので、肩書きと一緒に全文を title に持たせる。
+ *  **同じ台の名前は機械をまたいで重複する**ので、machine があれば title に併記する。 */
+function deviceNamePill(ref) {
+  const pill = document.createElement('span');
+  pill.className = 'tile-name ' + (ref.platform ? 'tile-name-' + ref.platform : 'tile-name-unknown');
+  pill.textContent = ref.device;
+  const machine = typeof ref.machine === 'string' && ref.machine !== '' ? ` (${ref.machine})` : '';
+  pill.title = `${t('recordings.meta.deviceTitle')}: ${ref.device}${machine}`;
+  return pill;
+}
+
+/** マシン名バッジ(タイル/マシンプロファイルのホスト表示と同じ .badge-remote)。 */
+function machineBadge(machine) {
+  const badge = document.createElement('span');
+  badge.className = 'badge badge-remote';
+  badge.textContent = machine;
+  badge.title = t('recordings.meta.machineTitle');
+  return badge;
+}
+
+/** 一覧・再生ビューが出すマシン名。**束ねたセッションでは複数**(machines)で、
+ *  古い応答(machines 欠落)は machine 1件に退化する。 */
+function sessionMachines(message) {
+  if (Array.isArray(message.machines) && message.machines.length > 0) {
+    return message.machines.filter((m) => typeof m === 'string' && m !== '');
+  }
+  return typeof message.machine === 'string' && message.machine !== '' ? [message.machine] : [];
+}
+
+/** セッション行の3段目「実行マシン + 台」。マシンも台も無い古い記録では null(段を作らない)。 */
+function buildSessionMeta(session) {
+  const machines = sessionMachines(session);
+  const devices = Array.isArray(session.devices) ? session.devices : [];
+  if (machines.length === 0 && devices.length === 0) {
+    return null;
+  }
+  const meta = document.createElement('div');
+  meta.className = 'recordings-session-meta';
+  for (const machine of machines) {
+    meta.appendChild(machineBadge(machine));
+  }
+  for (const device of devices.slice(0, SESSION_DEVICE_CHIPS)) {
+    meta.appendChild(deviceNamePill(device));
+  }
+  if (devices.length > SESSION_DEVICE_CHIPS) {
+    const more = document.createElement('span');
+    more.className = 'recordings-session-devices-more';
+    more.textContent = t('recordings.meta.devicesMore', { count: devices.length - SESSION_DEVICE_CHIPS });
+    // 畳んだ分もここで読める(行が伸びないまま全台を確かめられる)
+    more.title = devices.map((d) => d.device).join('\n');
+    meta.appendChild(more);
+  }
+  return meta;
+}
+
 function renderSessions(sessions) {
   sessionsList.textContent = '';
   if (sessions.length === 0) {
@@ -142,8 +206,12 @@ function renderSessions(sessions) {
     main.appendChild(runIdSpan);
     const startedSpan = document.createElement('span');
     startedSpan.className = 'recordings-session-started';
-    startedSpan.textContent = new Date(session.startedAt).toLocaleString();
+    startedSpan.textContent = formatDateTime(session.startedAt);
     main.appendChild(startedSpan);
+    const meta = buildSessionMeta(session);
+    if (meta) {
+      main.appendChild(meta);
+    }
     row.appendChild(main);
 
     if (session.passed !== null && session.failed !== null) {
@@ -201,6 +269,7 @@ function selectScenarioVideo(entry, seekSeconds, forcePlay) {
   }
   const wasPaused = video.paused;
   currentDetail.selectedScenarioID = entry.scenarioID;
+  renderNowPlayingDevice(entry.scenarioID);
   video.src = entry.videoUri;
   video.load();
   video.addEventListener(
@@ -356,6 +425,7 @@ let currentPlaybackEntry = null;
 let scenarioNav = [];
 const nowPlayingClassEl = document.getElementById('recordings-now-playing-class');
 const nowPlayingDetailEl = document.getElementById('recordings-now-playing-detail');
+const nowPlayingDeviceEl = document.getElementById('recordings-now-playing-device');
 
 /** キャプションの2段表示用パーツ。cls = クラス名(上段)、title = 関数の説明(下段。無ければ関数名)。 */
 function scenarioCaptionParts(scenario) {
@@ -364,6 +434,28 @@ function scenarioCaptionParts(scenario) {
     cls: dot > 0 ? scenario.scenarioID.slice(0, dot) : scenario.scenarioID,
     title: scenario.title || scenario.method,
   };
+}
+
+/** 再生中の動画を撮った台を出す(動画の属性なのでステップが変わっても消さない)。
+ *  **束ねたセッション(マシン2台以上)ではマシン名も前置する** —— 同じ台の名前は機械を
+ *  またいで重複するので、名前だけだとどの機械の録画か分からない。 */
+function renderNowPlayingDevice(scenarioID) {
+  const device = currentDetail ? currentDetail.devicesByScenario.get(scenarioID) : undefined;
+  nowPlayingDeviceEl.textContent = '';
+  if (!device) {
+    nowPlayingDeviceEl.style.display = 'none';
+    return;
+  }
+  if (currentDetail.machines.length > 1 && typeof device.machine === 'string' && device.machine !== '') {
+    nowPlayingDeviceEl.appendChild(machineBadge(device.machine));
+  }
+  nowPlayingDeviceEl.appendChild(deviceNamePill(device));
+  nowPlayingDeviceEl.style.display = 'flex';
+}
+
+function clearNowPlayingDevice() {
+  nowPlayingDeviceEl.textContent = '';
+  nowPlayingDeviceEl.style.display = 'none';
 }
 
 function clearNowPlaying() {
@@ -751,12 +843,24 @@ export function applyRecordingsSession(message) {
   // なので動画が無くても意味を持つ(仕様)。
   const videos = message.videos || [];
   const clipsFailed = typeof message.clipsFailed === 'number' ? message.clipsFailed : null;
+  const machines = sessionMachines(message);
   currentDetail = {
     videosByScenario: new Map(videos.map((v) => [v.scenarioID, v.videoUri])),
+    // scenarioID → 撮った台(録画のあるシナリオのぶんだけ。無い記録では空)
+    devicesByScenario: new Map((message.devices || []).map((d) => [d.scenarioID, d])),
+    // 束ねたセッションかどうかの判定に使う(2台以上ならタイルにマシン名も出す)
+    machines,
     selectedScenarioID: null,
     errors: message.errors || [],
   };
   sessionTitle.textContent = `${message.project} / ${message.runID}`;
+  // 束ねたセッションでは全マシンを並べる(1つなら従来と同じ見た目)
+  sessionMachine.textContent = '';
+  for (const machine of machines) {
+    sessionMachine.appendChild(machineBadge(machine));
+  }
+  sessionMachine.style.display = machines.length === 0 ? 'none' : 'flex';
+  clearNowPlayingDevice();
   setErrorFilter(null);
   renderTree(message.tree || []);
   showPlayerView();

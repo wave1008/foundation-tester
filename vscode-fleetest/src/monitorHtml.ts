@@ -480,11 +480,16 @@ function renderRecordingsPanel(): string {
       <div class="recordings-player-toolbar">
         <button id="recordings-back" class="icon-button" type="button" title="${t("panels.recordings.backTitle")}"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M7.146 3.646a.5.5 0 0 1 .708.708L4.707 7.5H13.5a.5.5 0 0 1 0 1H4.707l3.147 3.146a.5.5 0 0 1-.708.708l-4-4a.5.5 0 0 1 0-.708l4-4z"/></svg></button>
         <span id="recordings-session-title" class="recordings-session-title"></span>
+        <!-- 実行マシン(run.json の machine)。**束ねたセッションでは複数**入るので、これは
+             バッジそのものではなくバッジの入れ物(recordingsTab.js が中身と表示を切り替える) -->
+        <span id="recordings-session-machine" class="recordings-session-machines" style="display: none;"></span>
       </div>
       <div class="recordings-body">
         <div class="recordings-video-pane">
           <video id="recordings-video" class="recordings-video" playsinline></video>
           <div class="recordings-now-playing">
+            <!-- 再生中のシナリオを撮った台(index.json の worker)。空なら非表示 -->
+            <div id="recordings-now-playing-device" class="recordings-now-playing-device" style="display: none;"></div>
             <div id="recordings-now-playing-class" class="recordings-now-playing-line"></div>
             <div id="recordings-now-playing-detail" class="recordings-now-playing-line recordings-now-playing-detail"></div>
           </div>

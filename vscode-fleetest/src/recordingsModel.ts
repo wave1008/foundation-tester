@@ -69,6 +69,75 @@ export function firstRecordingEntryByScenario(
   return map;
 }
 
+/** 録画を撮った台。platform はエントリの申告(worker 接頭辞ではなく platform 欄が正)。
+ *  machine は run.json 由来(その run を走らせた機械。読めない古い記録では null)——
+ *  **同じ台の名前は機械をまたいで重複する**ので、束ねたセッションでは machine 込みで区別する。 */
+export interface RecordingDeviceRef {
+  readonly platform: "ios" | "android";
+  readonly device: string;
+  readonly machine: string | null;
+}
+
+export interface RecordingScenarioDevice extends RecordingDeviceRef {
+  readonly scenarioID: string;
+}
+
+/**
+ * worker ラベル `"<platform>:<デバイス論理名>"`(docs/results-json.md の worker 欄)から
+ * デバイス名だけを取り出す。**接頭辞が付いていない古い記録**(実データに
+ * `"iPhone 17 Pro(iOS 27.0)-01(ios:8100)"` の形が残っている)は丸ごと名前として返す ——
+ * 名前として読める形なので、規則に合わないことを理由に空にするより そのまま出すほうがよい。
+ */
+export function deviceNameFromWorker(worker: string, platform: string): string {
+  const prefix = `${platform}:`;
+  return (worker.startsWith(prefix) ? worker.slice(prefix.length) : worker).trim();
+}
+
+/** scenarioID → 実行した台(重複 scenarioID は firstRecordingEntryByScenario と同じ「最初の1件」)。 */
+export function buildScenarioDevices(
+  recordings: readonly RecordingEntry[],
+  machine: string | null = null,
+): readonly RecordingScenarioDevice[] {
+  const devices: RecordingScenarioDevice[] = [];
+  for (const [scenarioID, entry] of firstRecordingEntryByScenario(recordings)) {
+    devices.push({
+      scenarioID,
+      platform: entry.platform,
+      device: deviceNameFromWorker(entry.worker, entry.platform),
+      machine,
+    });
+  }
+  return devices;
+}
+
+/** セッションが使った台(初出順・(machine, platform, 名前)で重複排除)。セッション一覧の行に出す。 */
+export function distinctRecordingDevices(
+  recordings: readonly RecordingEntry[],
+  machine: string | null = null,
+): readonly RecordingDeviceRef[] {
+  return dedupeDeviceRefs(
+    recordings.map((entry) => ({
+      platform: entry.platform,
+      device: deviceNameFromWorker(entry.worker, entry.platform),
+      machine,
+    })),
+  );
+}
+
+/** 束ねたセッションの台一覧(各 run のぶんを初出順に連結して重複排除)。 */
+export function dedupeDeviceRefs(refs: readonly RecordingDeviceRef[]): readonly RecordingDeviceRef[] {
+  const seen = new Set<string>();
+  const devices: RecordingDeviceRef[] = [];
+  for (const ref of refs) {
+    const key = `${ref.machine ?? ""}\u0000${ref.platform}\u0000${ref.device}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      devices.push(ref);
+    }
+  }
+  return devices;
+}
+
 /** エラー一覧1件(オフセット計算済み)。offsetMs は動画内位置(ms、範囲外はclamp済み)。 */
 export interface RecordingErrorEntry {
   readonly scenarioID: string;

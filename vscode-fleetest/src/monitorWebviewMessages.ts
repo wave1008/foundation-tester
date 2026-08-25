@@ -6,7 +6,12 @@
 // にあり、メッセージ型はそれらを組み合わせて定義する。
 
 import type { MonitorDeviceFilter } from "./config";
-import type { RecordingErrorEntry, RecordingScenarioVideo, RecordingTreeClass } from "./recordingsModel";
+import type {
+  RecordingErrorEntry,
+  RecordingScenarioDevice,
+  RecordingScenarioVideo,
+  RecordingTreeClass,
+} from "./recordingsModel";
 import type { RecordingSessionSummary } from "./recordingsStore";
 import type { DeviceCommandSource, RemoteHostEntry } from "./remoteRunArgs";
 import type { ResidentProcess } from "./residentProcesses";
@@ -360,6 +365,13 @@ export type MonitorToWebviewMessage =
       readonly videos: readonly RecordingScenarioVideo[] | null;
       readonly errors: readonly RecordingErrorEntry[] | null;
       readonly tree: readonly RecordingTreeClass[] | null;
+      // 実行マシン名(run.json の machine。読めなければ null)と、scenarioID ごとの実行デバイス
+      // (index.json の worker/platform 由来。ok:false のときは null)。
+      // **束ねたセッション**(runGroup を共有する run。docs/results-json.md)では machines に
+      // 全マシンが入り、machine はその代表(先頭の run のもの)。
+      readonly machine: string | null;
+      readonly machines: readonly string[] | null;
+      readonly devices: readonly RecordingScenarioDevice[] | null;
       // recordings/index.json の同名フィールド(RecordingSessionSummary と同じ意味・寛容さ)。videos が
       // 空/一部欠落のとき、webview の再生ビューが理由を出すのに使う。省略時は webview 側が「無い」
       // として扱う(旧ホスト実装との互換)。

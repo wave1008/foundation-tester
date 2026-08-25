@@ -20,6 +20,11 @@ export const recordingsStrings = {
   "recordings.deviceBadge": { ja: "録画", en: "REC" },
   // セッション一覧の行チップ(クリップ切り出し失敗が1件以上あるセッション)。
   "recordings.sessions.clipsFailed": { ja: "クリップ{count}件失敗", en: "{count} clip(s) failed" },
+  // 実行したマシン・デバイスの表示(セッション一覧の行 / 再生ビュー)。値そのもの(マシン名・
+  // デバイス名)は記録由来なので訳さない —— ここにあるのは肩書きと省略表記だけ。
+  "recordings.meta.machineTitle": { ja: "実行マシン", en: "Machine" },
+  "recordings.meta.deviceTitle": { ja: "実行デバイス", en: "Device" },
+  "recordings.meta.devicesMore": { ja: "ほか{count}台", en: "+{count} more" },
   // TEST EXPLORER 風ツリー(再生ビュー左ペイン)。
   "recordings.tree.empty": { ja: "タイムラインがありません。", en: "No timeline available." },
   "recordings.tree.sceneDefaultTitle": { ja: "シーン {n}", en: "Scene {n}" },

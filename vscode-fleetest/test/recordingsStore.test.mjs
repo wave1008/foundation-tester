@@ -7,7 +7,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { listRecordingSessions, loadRecordingSessionDetail } from "../src/recordingsStore";
+import { listRecordingSessions, loadRecordingSessionDetail, resolveSessionRunIDs } from "../src/recordingsStore";
 
 function makeWorkspace() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "fleetest-recordingsstore-test-"));
@@ -283,6 +283,184 @@ test("loadRecordingSessionDetail: schemaVersion:1(v1)のindex.jsonはnull", asyn
     writeJson(path.join(dir, "recordings", "index.json"), V1_INDEX);
     const detail = await loadRecordingSessionDetail(root, "SampleApp", "20260723-000000");
     assert.equal(detail, null);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("listRecordingSessions: run.json の machine と index.json の台を要約に載せる", async () => {
+  const root = makeWorkspace();
+  try {
+    const dir = runDir(root, "SampleApp", "20260723-000000");
+    writeJson(path.join(dir, "recordings", "index.json"), {
+      schemaVersion: 2,
+      recordings: [
+        SAMPLE_INDEX.recordings[0],
+        { ...SAMPLE_INDEX.recordings[0], scenarioID: "クラス名.S0020" }, // 同じ台 → 畳まれる
+        {
+          scenarioID: "クラス名.S0030",
+          worker: "android:Pixel 9(Android 15)-01",
+          platform: "android",
+          file: "recordings/クラス名-S0030.mp4",
+          segments: [{ startedAt: "2026-07-23T12:40:00.000Z", durationMs: 1000 }],
+        },
+      ],
+    });
+    writeJson(path.join(dir, "run.json"), { startedAt: "2026-07-23T00:00:00Z", machine: "M1Max", passed: 3, failed: 0 });
+
+    const [session] = await listRecordingSessions(root);
+    assert.equal(session.machine, "M1Max");
+    assert.deepEqual(session.devices, [
+      { platform: "ios", device: "iPhone 16", machine: "M1Max" },
+      { platform: "android", device: "Pixel 9(Android 15)-01", machine: "M1Max" },
+    ]);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("listRecordingSessions: run.json が無くても台は出る(machine だけ null)", async () => {
+  const root = makeWorkspace();
+  try {
+    const dir = runDir(root, "SampleApp", "20260723-000000");
+    writeJson(path.join(dir, "recordings", "index.json"), SAMPLE_INDEX);
+
+    const [session] = await listRecordingSessions(root);
+    assert.equal(session.machine, null);
+    assert.deepEqual(session.devices, [{ platform: "ios", device: "iPhone 16", machine: null }]);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("loadRecordingSessionDetail: machine を run.json から読む(欠落は null)", async () => {
+  const root = makeWorkspace();
+  try {
+    const withMachine = runDir(root, "SampleApp", "20260723-000000");
+    writeJson(path.join(withMachine, "recordings", "index.json"), SAMPLE_INDEX);
+    writeJson(path.join(withMachine, "run.json"), { startedAt: "2026-07-23T00:00:00Z", machine: "LDIPC96" });
+    const detail = await loadRecordingSessionDetail(root, "SampleApp", "20260723-000000");
+    assert.equal(detail.machine, "LDIPC96");
+
+    const noMeta = runDir(root, "SampleApp", "20260722-000000");
+    writeJson(path.join(noMeta, "recordings", "index.json"), SAMPLE_INDEX);
+    const detail2 = await loadRecordingSessionDetail(root, "SampleApp", "20260722-000000");
+    assert.equal(detail2.machine, null);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// ---- 機械ごとに分かれた run を束ねる(runGroup。docs/results-json.md) ----
+// デバイスが複数の機械にまたがるプロファイルは機械ごとに別 run になる。束ねないと録画セッションが
+// Mac ごとに並ぶ(利用者報告)。**鍵を持たない run は束ねない**(推測で混ぜない)。
+
+/** 1機械ぶんの run を書く。worker は "<platform>:<台名>"。 */
+function writeMemberRun(root, project, runID, { machine, runGroup, device, scenarioID, passed, failed }) {
+  const dir = runDir(root, project, runID);
+  writeJson(path.join(dir, "recordings", "index.json"), {
+    schemaVersion: 2,
+    recordings: [
+      {
+        scenarioID,
+        worker: `android:${device}`,
+        platform: "android",
+        file: `recordings/${scenarioID}.mp4`,
+        segments: [{ startedAt: "2026-08-26T01:00:00.000Z", durationMs: 1000 }],
+      },
+    ],
+  });
+  writeJson(path.join(dir, "run.json"), {
+    startedAt: `2026-08-26T01:0${runID.slice(-1)}:00Z`,
+    machine, passed, failed,
+    ...(runGroup === null ? {} : { runGroup }),
+  });
+}
+
+test("listRecordingSessions: runGroup が同じ run は1セッションに束ねる", async () => {
+  const root = makeWorkspace();
+  try {
+    writeMemberRun(root, "SampleApp", "20260826-010000Z-LDIPC96-aaa1", {
+      machine: "LDIPC96", runGroup: "G1", device: "Pixel 9-01", scenarioID: "A.S0010", passed: 2, failed: 0,
+    });
+    writeMemberRun(root, "SampleApp", "20260826-010012Z-M1Max-bbb2", {
+      machine: "M1Max", runGroup: "G1", device: "Pixel 10-01", scenarioID: "A.S0020", passed: 1, failed: 1,
+    });
+
+    const sessions = await listRecordingSessions(root);
+    assert.equal(sessions.length, 1, "2つの run が1セッションになる");
+    const [session] = sessions;
+    assert.deepEqual(session.runIDs, ["20260826-010000Z-LDIPC96-aaa1", "20260826-010012Z-M1Max-bbb2"]);
+    assert.deepEqual(session.machines, ["M1Max", "LDIPC96"], "全マシンが出る(新しい run から先に見る)");
+    assert.deepEqual(session.devices.map((d) => `${d.machine}/${d.device}`),
+                     ["M1Max/Pixel 10-01", "LDIPC96/Pixel 9-01"]);
+    assert.equal(session.passed, 3, "件数は合計");
+    assert.equal(session.failed, 1);
+    assert.equal(session.startedAt, "2026-08-26T01:01:00Z", "開始は最も早い run のもの");
+    assert.equal(session.runID, "20260826-010000Z-LDIPC96-aaa1", "代表は最も古い run");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("listRecordingSessions: runGroup の無い run は束ねない(推測で混ぜない)", async () => {
+  const root = makeWorkspace();
+  try {
+    // 同じプロジェクト・ほぼ同時刻でも、鍵が無ければ別セッションのまま
+    writeMemberRun(root, "SampleApp", "20260826-010000Z-LDIPC96-aaa1", {
+      machine: "LDIPC96", runGroup: null, device: "Pixel 9-01", scenarioID: "A.S0010", passed: 1, failed: 0,
+    });
+    writeMemberRun(root, "SampleApp", "20260826-010012Z-M1Max-bbb2", {
+      machine: "M1Max", runGroup: null, device: "Pixel 10-01", scenarioID: "A.S0020", passed: 1, failed: 0,
+    });
+
+    assert.equal((await listRecordingSessions(root)).length, 2);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("listRecordingSessions: 鍵が違えば束ねない(別プロジェクトの同じ鍵も混ぜない)", async () => {
+  const root = makeWorkspace();
+  try {
+    writeMemberRun(root, "SampleApp", "20260826-010000Z-LDIPC96-aaa1", {
+      machine: "LDIPC96", runGroup: "G1", device: "Pixel 9-01", scenarioID: "A.S0010", passed: 1, failed: 0,
+    });
+    writeMemberRun(root, "SampleApp", "20260826-010012Z-M1Max-bbb2", {
+      machine: "M1Max", runGroup: "G2", device: "Pixel 10-01", scenarioID: "A.S0020", passed: 1, failed: 0,
+    });
+    writeMemberRun(root, "OtherApp", "20260826-010013Z-M1Ultra-ccc3", {
+      machine: "M1Ultra", runGroup: "G1", device: "Pixel 3a", scenarioID: "A.S0030", passed: 1, failed: 0,
+    });
+
+    assert.equal((await listRecordingSessions(root)).length, 3);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("resolveSessionRunIDs: 鍵を共有する run を全部返す(鍵が無ければ自分だけ)", async () => {
+  const root = makeWorkspace();
+  try {
+    writeMemberRun(root, "SampleApp", "20260826-010000Z-LDIPC96-aaa1", {
+      machine: "LDIPC96", runGroup: "G1", device: "Pixel 9-01", scenarioID: "A.S0010", passed: 1, failed: 0,
+    });
+    writeMemberRun(root, "SampleApp", "20260826-010012Z-M1Max-bbb2", {
+      machine: "M1Max", runGroup: "G1", device: "Pixel 10-01", scenarioID: "A.S0020", passed: 1, failed: 0,
+    });
+    writeMemberRun(root, "SampleApp", "20260826-010013Z-M1Ultra-ccc3", {
+      machine: "M1Ultra", runGroup: null, device: "Pixel 3a", scenarioID: "A.S0030", passed: 1, failed: 0,
+    });
+
+    assert.deepEqual(
+      await resolveSessionRunIDs(root, "SampleApp", "20260826-010012Z-M1Max-bbb2"),
+      ["20260826-010000Z-LDIPC96-aaa1", "20260826-010012Z-M1Max-bbb2"],
+      "どのメンバーから開いても束の全員が返る",
+    );
+    assert.deepEqual(
+      await resolveSessionRunIDs(root, "SampleApp", "20260826-010013Z-M1Ultra-ccc3"),
+      ["20260826-010013Z-M1Ultra-ccc3"],
+    );
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

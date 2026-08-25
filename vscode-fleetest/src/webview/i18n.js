@@ -26,6 +26,14 @@ const locale = document.documentElement.lang === 'ja' ? 'ja' : 'en';
 // 含まれる)へ locale を伝える。ここは monitor バンドル init 時に1回走る。
 setLaneLocale(locale);
 
+/** 表示用の日時。**ホスト(ブラウザ)のロケールではなく UI 言語(fleetest.language)に従う** ——
+ *  素の toLocaleString() は VSCode の実行環境依存で、日本語 UI に "8/18/2026, 4:32:25 PM" が
+ *  混ざる。value は Date でも ISO8601 文字列でもよい(未指定は現在時刻)。 */
+export function formatDateTime(value) {
+  const date = value instanceof Date ? value : new Date(value || undefined);
+  return date.toLocaleString(locale === 'ja' ? 'ja-JP' : 'en-US');
+}
+
 export function t(key, params) {
   const entry = merged[key];
   if (!entry) {

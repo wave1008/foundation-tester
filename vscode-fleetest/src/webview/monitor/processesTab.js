@@ -3,7 +3,7 @@
 // killAllResidentProcessesAndClose/residentProcesses、処理は src/monitorPanel.ts。
 
 import { vscode } from './vscodeApi.js';
-import { t } from '../i18n.js';
+import { formatDateTime, t } from '../i18n.js';
 
 const processesPanel = document.getElementById('panel-processes');
 const residentKillCloseBtn = document.getElementById('resident-kill-close');
@@ -15,7 +15,7 @@ const residentUpdated = document.getElementById('resident-updated');
 let lastSignature = null;
 
 function formatUpdatedAt(ts) {
-  return new Date(ts || undefined).toLocaleString('ja-JP', { hour12: false });
+  return formatDateTime(ts);
 }
 
 // data-sort の値 → 並べ替えキーの取り出し方と型。number 型は空("")を最小(-Infinity)扱いにして

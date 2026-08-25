@@ -7,12 +7,27 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { isRecordingIndex, type RecordingIndex } from "./recordingsModel";
+import {
+  dedupeDeviceRefs,
+  distinctRecordingDevices,
+  isRecordingIndex,
+  type RecordingDeviceRef,
+  type RecordingIndex,
+} from "./recordingsModel";
 
 export interface RecordingSessionSummary {
   readonly project: string;
+  /** 代表 runID(束ねたセッションでは最初の run。recordingsOpen はこれを送る)。 */
   readonly runID: string;
+  /** このセッションを構成する run(単機なら1件。runID 昇順)。 */
+  readonly runIDs: readonly string[];
   readonly startedAt: string;
+  /** run.json の machine(実行マシン名)。古い/壊れた run.json では null。 */
+  readonly machine: string | null;
+  /** 束ねたセッションの全マシン(初出順・重複排除。読めないものは除く)。 */
+  readonly machines: readonly string[];
+  /** このセッションが録画を撮った台(初出順・重複排除)。index.json 由来なので run.json が無くても出る。 */
+  readonly devices: readonly RecordingDeviceRef[];
   readonly passed: number | null;
   readonly failed: number | null;
   /** recordings/index.json の同名フィールド(任意。無ければ null)。 */
@@ -20,6 +35,8 @@ export interface RecordingSessionSummary {
   readonly clipsFailed: number | null;
   /** 同上。無ければ false(フォールバックしていないと同じ扱い)。 */
   readonly encoderFallback: boolean;
+  /** 束ね鍵(run.json の runGroup)。単機の run と旧記録では null = 束ねない。 */
+  readonly runGroup: string | null;
 }
 
 /** 一覧の表示上限(新しい順)。 */
@@ -93,26 +110,120 @@ export async function listRecordingSessions(workspaceRoot: string): Promise<Reco
         const indexRecord = indexRaw as unknown as Record<string, unknown>;
         const metaRaw = await readJson(path.join(runDir, "run.json"));
         const meta = isRecord(metaRaw) ? metaRaw : null;
+        const machine = stringField(meta, "machine") ?? null;
         sessions.push({
           project,
           runID,
+          runIDs: [runID],
           startedAt: stringField(meta, "startedAt") ?? runID,
+          machine,
+          machines: machine === null ? [] : [machine],
+          devices: distinctRecordingDevices(indexRaw.recordings, machine),
           passed: numberField(meta, "passed") ?? null,
           failed: numberField(meta, "failed") ?? null,
           clipsAttempted: numberField(indexRecord, "clipsAttempted") ?? null,
           clipsFailed: numberField(indexRecord, "clipsFailed") ?? null,
           encoderFallback: booleanField(indexRecord, "encoderFallback") ?? false,
+          runGroup: stringField(meta, "runGroup") ?? null,
         });
       }
     }
   }
   sessions.sort((a, b) => (a.runID < b.runID ? 1 : a.runID > b.runID ? -1 : 0));
-  return sessions.slice(0, SESSION_LIMIT);
+  return mergeSessionsByRunGroup(sessions).slice(0, SESSION_LIMIT);
+}
+
+/**
+ * **同じ実行から分かれた run を1セッションに束ねる**(docs/results-json.md の runGroup)。
+ * デバイスが複数の機械にまたがるプロファイルは機械ごとに別 run になるため、束ねないと
+ * 「Mac ごとにセッションが並ぶ」。鍵を持たない run(単機・2026-08-26 より前の記録)は
+ * **束ねない** —— profile 名と開始時刻からの推測は、同じプロファイルの連続実行や
+ * 機械間の時計ずれで別の実行を混ぜるので採らない。
+ * 入力は runID 降順。代表は**最も古い run**(親が最初に起こした = 一覧の並びと同じ基準)。
+ */
+function mergeSessionsByRunGroup(sessions: readonly RecordingSessionSummary[]): RecordingSessionSummary[] {
+  const merged: RecordingSessionSummary[] = [];
+  const indexByGroup = new Map<string, number>();
+  for (const session of sessions) {
+    // 鍵はプロジェクトを跨がない(同じ鍵が別プロジェクトに出ることはないが、束ねる単位は
+    // あくまで1プロジェクト内の run なので鍵に project を含める)
+    const key = session.runGroup === null ? null : `${session.project}\u0000${session.runGroup}`;
+    const at = key === null ? undefined : indexByGroup.get(key);
+    if (key === null || at === undefined) {
+      if (key !== null) {
+        indexByGroup.set(key, merged.length);
+      }
+      merged.push(session);
+      continue;
+    }
+    merged[at] = combineSessions(merged[at]!, session);
+  }
+  return merged;
+}
+
+/** 束ねた1件。件数は合計・開始時刻は最も早いもの・台とマシンは初出順で重複排除。 */
+function combineSessions(
+  first: RecordingSessionSummary,
+  next: RecordingSessionSummary,
+): RecordingSessionSummary {
+  const sum = (a: number | null, b: number | null): number | null =>
+    a === null && b === null ? null : (a ?? 0) + (b ?? 0);
+  // 入力は runID 降順なので next のほうが古い。代表と開始時刻は古い側に寄せる
+  const machines = [...first.machines];
+  for (const machine of next.machines) {
+    if (!machines.includes(machine)) {
+      machines.push(machine);
+    }
+  }
+  return {
+    project: first.project,
+    runID: next.runID,
+    runIDs: [...first.runIDs, next.runID].sort(),
+    startedAt: next.startedAt < first.startedAt ? next.startedAt : first.startedAt,
+    machine: next.machine ?? first.machine,
+    machines,
+    devices: dedupeDeviceRefs([...first.devices, ...next.devices]),
+    passed: sum(first.passed, next.passed),
+    failed: sum(first.failed, next.failed),
+    clipsAttempted: sum(first.clipsAttempted, next.clipsAttempted),
+    clipsFailed: sum(first.clipsFailed, next.clipsFailed),
+    encoderFallback: first.encoderFallback || next.encoderFallback,
+    runGroup: first.runGroup,
+  };
+}
+
+/**
+ * runID と同じセッション(= 同じ runGroup)を構成する run をすべて返す(runID 昇順)。
+ * 鍵が無ければその run 単体。**再生ビューを開くときの解決はここだけ** —— webview から
+ * 受け取った一覧を信じずにディスクから引き直す(一覧は古くなりうる)。
+ */
+export async function resolveSessionRunIDs(
+  workspaceRoot: string, project: string, runID: string,
+): Promise<string[]> {
+  const meta = await readJson(path.join(runDirFor(workspaceRoot, project, runID), "run.json"));
+  const group = stringField(isRecord(meta) ? meta : null, "runGroup");
+  if (group === undefined || group === "") {
+    return [runID];
+  }
+  const runsDir = path.join(workspaceRoot, "TestProjects", project, "results", "runs");
+  const found: string[] = [];
+  for (const month of await listDirNames(runsDir)) {
+    const monthDir = path.join(runsDir, month);
+    for (const candidate of await listDirNames(monthDir)) {
+      const candidateMeta = await readJson(path.join(monthDir, candidate, "run.json"));
+      if (stringField(isRecord(candidateMeta) ? candidateMeta : null, "runGroup") === group) {
+        found.push(candidate);
+      }
+    }
+  }
+  return found.length === 0 ? [runID] : found.sort();
 }
 
 export interface RecordingSessionDetailRaw {
   readonly runDir: string;
   readonly index: RecordingIndex;
+  /** run.json の machine(実行マシン名)。読めなければ null。 */
+  readonly machine: string | null;
   /** scenarios/*.json の生 JSON(ScenarioRunRecord 相当)。検証・変換は呼び出し側
    * (recordingsModel.ts の extractScenarioFailureSource)が行う。 */
   readonly scenarios: readonly unknown[];
@@ -139,5 +250,7 @@ export async function loadRecordingSessionDetail(
   const scenarios = (await Promise.all(files.map((f) => readJson(path.join(scenariosDir, f))))).filter(
     (s) => s !== null,
   );
-  return { runDir, index: indexRaw, scenarios };
+  const metaRaw = await readJson(path.join(runDir, "run.json"));
+  const machine = stringField(isRecord(metaRaw) ? metaRaw : null, "machine") ?? null;
+  return { runDir, index: indexRaw, machine, scenarios };
 }
