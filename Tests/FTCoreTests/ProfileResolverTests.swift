@@ -452,8 +452,8 @@ final class ProfileResolverTests: XCTestCase {
     }
 
     /// 決定順: 実行プロファイルの machine > FT_MACHINE > machines/ が1つ。
-    /// **「この Mac の登録名」は見ない**(2026-08-17 に廃止。プロファイル名と機械の身元が
-    /// 1つの値に載っていたため、プロファイルを改名するとこの Mac の身元まで変わっていた)
+    /// **「この Mac の登録名」は見ない**(プロファイル名と機械の身元を1つの値に載せると、
+    /// プロファイルを改名しただけでこの Mac の身元まで変わる)
     func testDetermineMachinePriority() throws {
         try writeStandardFixture()
         // FT_MACHINE が最優先

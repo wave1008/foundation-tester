@@ -815,8 +815,8 @@ extension MCPServer {
         // **次の一手まで書く**(2026-08-14 に原因が判った)。Chromium は a11y を要求する
         // サービスが繋がってから木を作り、**出来上がるまで数秒かかる**。その窓で撮ると
         // chrome だけが返る(実測: ブリッジ起動直後 19 要素 → 5 秒後 135 要素で安定)。
-        // 恒久的な故障ではないので、まず読み直させる —— 以前は screenshot しか勧めておらず、
-        // 「このページは読めない」と結論させていた
+        // 恒久的な故障ではないので、**まず読み直させる**(screenshot だけを勧めると
+        // 「このページは読めない」と結論させてしまう)
         return "note: the browser published no page content to the accessibility tree at all —"
             + " not even a webView container, only its own chrome (address bar, toolbar, tabs)."
             + " If the bridge was just started, the tree can be empty for a few seconds while the"

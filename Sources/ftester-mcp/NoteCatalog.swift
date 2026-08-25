@@ -21,8 +21,7 @@ import FTCore
 enum NoteCatalog {
 
     /// 注記が載る応答の種類。**同じ目録を文脈で絞る**ことで、ft_snapshot と ft_scroll_to で
-    /// 出る注記が違うという事実を目録の上で見えるようにする(以前は2箇所の並びを読み比べる
-    /// しかなかった)
+    /// 出る注記が違うという事実を目録の上で見えるようにする
     enum Context {
         case snapshot
         case scrollTo

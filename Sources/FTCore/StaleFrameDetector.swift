@@ -1,8 +1,7 @@
 // StaleFrameDetector.swift
 // 「木は変わったのに絵が前回とバイト同一 = 表示が凍結した古いフレームを返し続けている」の検知。
-// 元は MCP(ft_screenshot)専用の実装だったが、DSL の occlusion-guard(FM 照合前のスクショ)にも
-// 同じ穴があるため FTCore へ切り出し、両者で共有する(MCPServer+Driver.swift は転送、
-// StepExecutor+Assert.swift の occlusionFlip が配線元)。
+// MCP(ft_screenshot)と DSL の occlusion-guard(FM 照合前のスクショ)が**同じ判定を共有する**
+// (MCPServer+Driver.swift は転送、StepExecutor+Assert.swift の occlusionFlip が配線元)。
 
 import Foundation
 

@@ -75,7 +75,7 @@ struct ApiRemoteHostsCommand: AsyncParsableCommand {
 }
 
 /// `--import` のデコード用(ApiRemoteHostEntry の逆向き)。dir は "" もキー省略も未設定として
-/// 受け取る。**machine は 2026-08-17 に廃止**(未知キーとして黙って無視される = 古い設定でも壊れない)
+/// 受け取る。**machine は持たない**(未知キーとして黙って無視される = 古い設定でも壊れない)
 private struct ApiRemoteHostImportEntry: Decodable {
     let name: String
     let host: String

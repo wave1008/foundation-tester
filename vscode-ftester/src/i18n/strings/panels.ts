@@ -293,8 +293,8 @@ export const panelsStrings = {
   "panels.devicePick.addNewAndroidTitle": { ja: "Android デバイスを新規作成", en: "Create New Android Device" },
   "panels.devicePick.addNewLabel": { ja: "デバイスを作成", en: "Create device" },
   // タイトル行のホスト選択(#device-pick-host-select)の静的ラベル。選択肢自体は
-  // devicePickHost.js が remoteConfig を受けて動的生成する(panels.machineProfile.deviceSourceLabel
-  // と同じ役割・同じ文言だったが、常設セレクタを廃してこのダイアログの中だけに移した)。
+  // devicePickHost.js が remoteConfig を受けて動的生成する
+  // (panels.machineProfile.deviceSourceLabel と同じ役割・同じ文言)。
   "panels.devicePick.hostLabel": { ja: "ホスト:", en: "Host:" },
   "panels.devicePick.loading": { ja: "読み込み中...", en: "Loading..." },
   // 見出しには接続中の実機も並ぶため「デバイス」と呼ぶ(台数は JS が確定後に付ける)

@@ -139,13 +139,11 @@ public enum ScrollFrameCandidates {
 
     /// `scrollFrame:` にそのまま貼れる形。id が最優先(ラベルは容器では珍しく、
     /// 長いものは切り詰めると別物になるので採らない)。
-    /// **エスケープは `SelectorNaming.needsEscaping` に委ねる**(2026-08-15。旧実装は
-    /// `!label.contains("\"")` で弾いたうえでラベルを `"…"` で囲んでいたが、FTSelector の
-    /// 記法は引用符を特別扱いしないため、その形は**常にラベルの一部として引用符ごと
-    /// 一致を試み、実在の要素に一致しなかった** —— `#`/`.` 始まりや `>>` 等を含むラベルも
-    /// 無条件でそのまま返しており、記法として誤読される形も塞げていなかった。
-    /// `SelectorNaming` と同じ `=` 逃がしに揃えることで、実際に `FTSelector.parse` で
-    /// 往復する値だけを返す)
+    /// **エスケープは `SelectorNaming.needsEscaping` に委ねる。自前で書かない** ——
+    /// `!label.contains("\"")` で弾いてラベルを `"…"` で囲む形は、FTSelector の記法が引用符を
+    /// 特別扱いしないため**引用符ごと一致を試みて実在の要素に当たらない**。`#`/`.` 始まりや
+    /// `>>` を含むラベルも素通りする。`SelectorNaming` と同じ `=` 逃がしに揃えることで、
+    /// 実際に `FTSelector.parse` で往復する値だけを返す
     static func selector(for element: ElementInfo) -> String? {
         if let id = element.identifier, !id.isEmpty { return "#\(id)" }
         if let label = element.label, !label.isEmpty, label.count <= maxLabelLength {

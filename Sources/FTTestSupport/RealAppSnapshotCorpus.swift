@@ -1,7 +1,7 @@
 // `Tests/Fixtures/RealAppSnapshots/` の実アプリ固定コーパスを読む共有ローダ(2026-08-15)。
 //
-// 以前は同じ decode ロジックが TreeCoverageTests / DuplicateRegionTests / FlowMatchModeTests /
-// SweepHarnessTests の4箇所に逐語複製されていた。この読める集合(ファイル名の昇順)は
+// 読み手は TreeCoverageTests / DuplicateRegionTests / FlowMatchModeTests / SweepHarnessTests の
+// 4テスト(decode を複製しない)。この読める集合(ファイル名の昇順)は
 // 「発火する画面の集合を等号で固定する」各ゲートの母数そのものなので、パス解決や decode の
 // オプションを変えるときは**全ゲートの基準値**に影響する。変えたら4テストすべてを見直すこと。
 

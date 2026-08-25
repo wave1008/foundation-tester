@@ -597,7 +597,6 @@ final class AssertKindsTests: XCTestCase {
     // MARK: - 内蔵スクロール探索(tap(scroll:) / exist(scroll:))
 
     /// スクロールして見つけてからタップするまでを**1ステップ**で行う
-    /// (以前は scrollTo ステップを別に合成していた)
     func testTapWithScrollSearchesThenTapsInOneStep() async {
         let target = node(1, id: "row_40", label: "行 40")
         // 1・2枚目は未発見(スワイプ)、3枚目で現れる

@@ -55,9 +55,8 @@ extension MCPServer {
         "tap": BatchStepBuilder(keys: ["selector", "holdSeconds", "timeout", "x", "y"]) { raw in
             let hold = raw["holdSeconds"] as? Double ?? FlowStep.defaultTapHoldSeconds
             let duration = hold == FlowStep.defaultTapHoldSeconds ? nil : hold
-            // **座標タップ**(2026-08-16 に解禁)。以前は「座標はセレクタ解決の外」として弾いて
-            // いたが、その理由は**座標をシナリオ行に書けなかったこと**の言い換えだった ——
-            // DSL に `tap(x:y:)` が入り、`ScenarioCodeGen` が 1:1 で書き出せるので契約は保たれる。
+            // **座標タップは受ける**。DSL の `tap(x:y:)` があり `ScenarioCodeGen` が 1:1 で
+            // 書き出せるので、「通ったバッチはシナリオ行になる」契約は保たれる。
             // **セレクタと併記されたら拒否する**(黙ってどちらかを選ぶと、読み手は自分が何を
             // 撃ったのか分からない)
             if let x = raw["x"] as? Double, let y = raw["y"] as? Double {

@@ -264,8 +264,8 @@ struct ProfileSetupCommand: AsyncParsableCommand {
     }
 
     /// --machine が指定されていればそれ。無ければ通常の決定規則(実行プロファイルの machine >
-    /// FT_MACHINE > machines/ が1つ)。**「この Mac の登録名」は見ない**(2026-08-17 に廃止。
-    /// 理由は ProfileResolver.determineMachine の宣言)
+    /// FT_MACHINE > machines/ が1つ)。**「この Mac の登録名」は見ない**
+    /// (理由は ProfileResolver.determineMachine の宣言)
     private func resolveMachineName(project: TestProject) throws -> String {
         if let machine, !machine.isEmpty {
             return machine

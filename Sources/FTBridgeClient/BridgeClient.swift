@@ -303,7 +303,7 @@ public final class BridgeClient: AppDriver {
     /// URL(ディープリンク)を配送する。**アプリは再起動しない**(warm 配送。terminate は撃たない)。
     /// 宛先解決は install/uninstall と同じ `installTarget()`(実機は devicectl、シミュレータは
     /// simctl)。`simulatorTarget()` は clearAppData 専用に「実機は非対応」で 501 を返す作りなので、
-    /// 実機の devicectl 経路が要るここには使えない。bundleID は Android 向けの引数だったが、
+    /// 実機の devicectl 経路が要るここには使えない。bundleID は Android 向けの引数だが、
     /// iOS シミュレータでも初回確認アラートの自動了承(下記)の対象アプリ特定に使う
     /// (実機の devicectl 経路・bundleID なしの呼び出しでは同意ステップを行わない)
     public func openURL(_ url: String, bundleID: String?) async throws {

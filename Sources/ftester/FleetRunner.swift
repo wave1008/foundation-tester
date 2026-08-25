@@ -225,8 +225,8 @@ enum FleetRunner {
     /// 求める。**マシンプロファイルはプロジェクト資産(git 管理)で、実行のたびにリモートへ
     /// 転送される**ので、リモートエントリでも SSH せずローカルの clone から解決できる
     /// (docs/remote-runner.md §8)。どのマシンプロファイルかは**実行プロファイルの `machine`**
-    /// が決める —— 以前は登録簿にキャッシュしたリモートのマシン名を使っていたが、
-    /// 「この機械の登録名」は 2026-08-17 に廃止した(ProfileResolver.determineMachine の宣言)
+    /// が決める —— 登録簿にキャッシュしたリモートのマシン名は使わない
+    /// (「この機械の登録名」は持たない。ProfileResolver.determineMachine の宣言)
     private static func resolveEntryPlatforms(
         _ entry: FleetRunEntry, project: TestProject
     ) throws -> Set<String> {

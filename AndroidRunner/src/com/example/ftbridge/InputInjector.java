@@ -203,10 +203,9 @@ final class InputInjector {
      * 実測: 空欄へ "abc" → 続けて "def" で、アプリ側の echo が `•••def` になった。
      * ツールは "Typed" と成功を返すため、値が壊れたことは後段の検証まで分からない。
      *
-     * 既存コメント(setTextAppendingAt の規律)は「combined を**作り直す**と伏せ字を書く」と
-     * 警告していたが、**初回構築そのもの**が同じ穴だった。読める術が無い以上ここは
-     * 追記できない —— 置換したいなら呼び手が先に clearInput する(それは冪等で安全)。
-     * 空欄への1回目は `current` が "" なので従来どおり通る。
+     * setTextAppendingAt の「combined を**作り直す**と伏せ字を書く」規律は**初回構築にも効く**。
+     * 読める術が無い以上ここは追記できない —— 置換したいなら呼び手が先に clearInput する
+     * (それは冪等で安全)。空欄への1回目は `current` が "" なので通る。
      */
     private static void rejectMaskedAppend(boolean masked, String current) {
         if (!masked || current.isEmpty()) return;

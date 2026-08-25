@@ -183,8 +183,7 @@ extension MCPServer {
         let needsLocator = !["swipe", "type", "pressEnter", "back", "home", "appSwitcher",
                              "pinchOut", "pinchIn"]
             .contains(action) || (resolvedRef != nil || coordinate != nil)
-        // **座標タップは行にできる**(2026-08-16。DSL の `tap(x:y:)`)。以前は TODO 行へ落ちて
-        // いたが、それは書ける形が無かったからで、今は 1:1 で書き出せる。
+        // **座標タップは行にできる**(DSL の `tap(x:y:)` へ 1:1 で書き出せる)。
         // **ただし用途で重みが違う**(ユーザー方針): 対話中の探索では座標のほうが速いことがあるが、
         // **シナリオに残す目的ならセレクタが最優先**。下書きは実行できる行を出したうえで、
         // 置き換えるべきであることを行末コメントに残す(ScenarioCodeGen が `step.note` を出す)

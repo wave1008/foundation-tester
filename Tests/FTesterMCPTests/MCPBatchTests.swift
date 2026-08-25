@@ -34,9 +34,8 @@ final class MCPBatchTests: XCTestCase {
 
     // MARK: - 座標タップ(2026-08-16 に解禁)
 
-    /// **座標タップはバッチで通る**。以前は「座標はセレクタ解決の外」として弾いていたが、
-    /// その理由は座標をシナリオ行に書けなかったことの言い換えで、DSL に `tap(x:y:)` が
-    /// 入った時点で消えた。要素を1つも公開しない画面のための唯一の手なので、
+    /// **座標タップはバッチで通る**(DSL の `tap(x:y:)` へ 1:1 で書き出せる)。
+    /// 要素を1つも公開しない画面のための唯一の手なので、
     /// ここを塞ぐとバッチが「9.3% の要素には使えない道具」になる
     func testCoordinateTapRunsInABatch() async throws {
         let text = body(try await server.call(tool: "ft_batch",

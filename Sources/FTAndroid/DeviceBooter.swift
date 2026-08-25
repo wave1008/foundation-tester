@@ -28,7 +28,7 @@ public enum DeviceBooterError: Error, LocalizedError {
 public enum DeviceBooter {
 
     /// 起動済みはスキップ。最大 maxConcurrent 台まで同時進行する(既定2はユーザー決定 2026-07-16:
-    /// 固定値。この上限がブートストーム防止を兼ねる。旧実装の CPU 負荷ゲートは同決定で廃止)。
+    /// 固定値。この上限がブートストーム防止を兼ねるので CPU 負荷ゲートは置かない)。
     /// ワーカーは1台を「ブート →(repoRoot 指定時の iOS)ブリッジ供給」まで完結させてから次へ進む。
     /// 「同時進行が maxConcurrent 台を超えて見えない」こと自体が要件(ユーザー決定 2026-07-16。
     /// ブート完了分を束ねる供給バッチ化 ProvisionBatcher は速いが同時進行が上限を超えるため撤回。

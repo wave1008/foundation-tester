@@ -788,12 +788,12 @@ public enum ProfileResolver {
     /// 同じ明確なエラーになるようにするため)。
     /// 戻り値 auto = 自動採用だったか(呼び出し側がログ表示に使う。明示指定/FT_MACHINE は false)
     ///
-    /// **「この Mac の登録名」は見ない**(2026-08-17 にユーザー決定で廃止)。登録名は
-    /// 「複数ある machines/*.json のうちこの機械を表すのはどれか」を答えるためのものだったが、
-    /// ①ツールが書く実行プロファイルには必ず machine が入る(42本中 machine 未指定は3本だった)
-    /// ②デバイス側が host を持つようになり「どの機械のデバイスか」はプロファイル内で表現できる
-    /// ——の2点で役目を終えた。残すと「マシンプロファイルを改名したらこの Mac の身元が変わる」
-    /// (実際に project1 の解決が壊れた)ような、名前1つに2つの意味が載る構造が残る
+    /// **「この Mac の登録名」は見ない**(ユーザー決定)。「複数ある machines/*.json のうち
+    /// この機械を表すのはどれか」は登録名なしで決まる —— ①ツールが書く実行プロファイルには
+    /// 必ず machine が入る(42本中 machine 未指定は3本)②デバイス側が host を持つので
+    /// 「どの機械のデバイスか」はプロファイル内で表現できる。**登録名を復活させない** ——
+    /// 名前1つに2つの意味が載ると「マシンプロファイルを改名したらこの Mac の身元が変わる」
+    /// (実際に project1 の解決が壊れた)
     public static func determineMachine(
         project: TestProject,
         environment: [String: String] = ProcessInfo.processInfo.environment,
@@ -1092,9 +1092,8 @@ public enum ProfileResolver {
         // 5. アプリ解決(デバイスのある platform ごと。合成規則は AppProfileSection.merging 参照)
         // appPath の相対パスは常に「リポジトリルート」基準(project.rootURL =
         // <repoRoot>/TestProjects/<name> の2階層上。= アプリの原本の場所)。**ワークスペースの
-        // 有無・既定/明示のどれでもこの基準は変えない**(以前は宣言時にワークスペース基準へ
-        // 切り替えていたが、原本の置き場所とインストールに使う場所を混同していた。
-        // docs/remote-runner.md §17)。packageRoot() の CWD 走査は使わない(単体テストでは CWD が
+        // 有無・既定/明示のどれでもこの基準は変えない**(ワークスペース基準へ切り替えない ——
+        // 原本の置き場所とインストールに使う場所は別物。docs/remote-runner.md §17)。packageRoot() の CWD 走査は使わない(単体テストでは CWD が
         // 本体リポジトリを指し誤基準になる。project.rootURL からの決定的導出で統一)。
         // reportDir だけはプロジェクト直下に出すため下記で project.rootURL 基準のまま
         // (基準が異なるので resolvePath の base で使い分ける)。

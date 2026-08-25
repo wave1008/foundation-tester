@@ -132,8 +132,8 @@ extension MCPServer {
             case .android(let serial, let deviceName):
                 "\(deviceName) serial \(serial)"
             }
-            // **profile 経由もセッション記憶へ記録する**(欠陥③・実機監査 2026-08-13。以前は
-            // ここが呼ばれておらず profile 経由の宛先は一度も記憶されなかった)。args は
+            // **profile 経由もセッション記憶へ記録する**(ここを呼ばないと profile 経由の宛先が
+            // 一度も記憶されない)。args は
             // port/udid/serial ではなく `profile` を持つので、記録可否は recordsIOSMemory/
             // recordsAndroidMemory 側で `profile:` を明示扱いする(上記参照)。
             // **iOS は probePort でなく `probePort ?? provisioned.port` を使う**: 実機は
@@ -266,7 +266,7 @@ extension MCPServer {
 
     /// 繋いだブリッジの版が食い違っているときの文。一致・判定不能なら nil。
     ///
-    /// **既定は拒否**(G。2026-08-09 に方針を反転した): 以前は警告だけで通していたが、
+    /// **既定は拒否**(警告だけで通さない):
     /// MCP の出力はシナリオへ書く文字列を供給するためにあるので、**古いブリッジの出す古い注記から
     /// 誤ったセレクタが書き込まれる**ほうが「セッションが止まる」より高くつく。
     /// アドホック探索なら警告で足りるが、生成が目的だとそうではない。
@@ -629,9 +629,8 @@ extension MCPServer {
         }
     }
 
-    /// profile 経由の iOS ドライバ。**実行プロファイルのエンジンに追従する**(2026-08-04。
-    /// それ以前は常に XCUITest だった —— StepExecutor を通らない ft_* が in-app では
-    /// home/drag/座標 press で素の 501 になるためで、その穴は HybridFallbackDriver が埋めた)。
+    /// profile 経由の iOS ドライバ。**実行プロファイルのエンジンに追従する**(XCUITest 固定に
+    /// しない —— in-app が実装できない home/drag/座標 press は HybridFallbackDriver が埋める)。
     /// エンジンを揃える理由は**探索と実行で見えるものを一致させる**こと: snapshot の内容も
     /// ジェスチャの成否もエンジンで変わるので、揃えないと「MCP では動いたのにシナリオでは falls」
     /// (およびその逆)が起きる。

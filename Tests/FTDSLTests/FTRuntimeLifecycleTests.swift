@@ -152,8 +152,8 @@ final class FTRuntimeLifecycleTests: XCTestCase {
         ])
     }
 
-    /// 失敗したら**次の scene も実行しない**(2026-07-27 変更。以前は scene 単位でスキップし
-    /// 次の scene へ進んでいた)。失敗後の画面状態は不定で、続けても壊れた前提の擬陽性/擬陰性を
+    /// 失敗したら**次の scene も実行しない**(scene 単位のスキップにはしない)。
+    /// 失敗後の画面状態は不定で、続けても壊れた前提の擬陽性/擬陰性を
     /// 量産するだけのため、シナリオ全体を中断する
     func testFailureAbortsWholeScenario() {
         let driver = StubDriver()

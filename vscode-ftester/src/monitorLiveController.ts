@@ -1180,8 +1180,8 @@ export class MonitorLiveController implements vscode.Disposable {
   /** 表示中のみ回る自動フレーム。busy(ユーザー操作中)・パネル非表示・serve 不在の回はスキップ
    * (このスキップ回は handleFrameFailure の streak に数えない)。失敗3回連続で接続断オーバーレイに
    * 切り替わる(handleFrameFailure)。serve 死は既存の自動再起動が回復する。
-   * 成功時は config.liveFps を上限とする間隔(1フレームの実測所要を差し引く)で次フレームへ。旧実装は
-   * delayMs=0 のホットループでデバイスが返す限り最速で /screenshot を叩き負荷源だった(iOS/Android 共通)。
+   * 成功時は config.liveFps を上限とする間隔(1フレームの実測所要を差し引く)で次フレームへ。
+   * **delayMs=0 のホットループにしない** —— デバイスが返す限り最速で /screenshot を叩く(iOS/Android 共通)。
    * スキップ・失敗時のみ FRAME_IDLE_RETRY_MS 空ける。 */
   private async frameTick(): Promise<void> {
     if (!this.liveTabVisible) {

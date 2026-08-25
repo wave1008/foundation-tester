@@ -20,7 +20,7 @@ public struct DSLCommandInfo: Sendable, Encodable {
     public let category: String
     /// 代表的な呼び出し形(セレクタを取るものは文字列版。型付き `Sel` 版が必ず併設されている)。
     /// **検証は `select(selector).xxx(...)` の形で載せる** —— 対象は「直前に掴んだ要素」なので、
-    /// 名前と引数だけを見て `xxx(selector, expected)` と書かれるのを防ぐ(その形は廃止済み)
+    /// 名前と引数だけを見て `xxx(selector, expected)` と書かれるのを防ぐ(その形は無い)
     public let signature: String
     public let summary: String
     /// `exist(...)` / `waitForDisplay(...)` の戻り値へ `.name(...)` で繋げられるか

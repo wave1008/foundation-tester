@@ -39,8 +39,8 @@ export interface FtesterConfig {
    * として効く(monitorProcessManager.ts)。ドロップダウンの「起動中のデバイス」= profile "" +
    * この値 "running"(monitorModel.ts の RUNNING_DEVICES_PROFILE_VALUE)。 */
   monitorDeviceFilter: MonitorDeviceFilter;
-  /** ライブ操作パネルの自動フレーム更新レート上限(fps、3〜30にクランプ)。旧実装は成功時 delayMs=0 の
-   * ホットループでデバイスが返す限り最速で /screenshot を叩き負荷源だった。目標fpsで頭打ちにする
+  /** ライブ操作パネルの自動フレーム更新レート上限(fps、3〜30にクランプ)。**成功時 delayMs=0 の
+   * ホットループにしない** —— デバイスが返す限り最速で /screenshot を叩く負荷源になる。目標fpsで頭打ちにする
    * (monitorLiveController.ts frameTick)。 */
   liveFps: number;
   /** iOS シミュレータのライブ映像ストリーミング(ftester-simstream)を使うか。true でも helper が

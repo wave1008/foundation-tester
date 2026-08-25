@@ -324,7 +324,7 @@ public enum FleetSplit {
     private enum EstimateSource { case ownHistory, scaled, unknown }
 
     /// 呼び出し側の共通ガード: **実績が1件も無いときは entryFixedOffsetsMs を全 0 にした
-    /// context を返す**(context ごと nil に落としていた旧仕様から変更)。
+    /// context を返す**。
     ///
     /// ms の offset は単位重み(1.0)と混ぜると支配して壊れる —— 実績ゼロだと呼び出し側の
     /// unknownDuration は単位重みへ退化するが、entryFixedOffsetsMs は実測ミリ秒のままなので、

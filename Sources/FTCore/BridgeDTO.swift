@@ -481,8 +481,8 @@ public enum BridgeSnapshotThinning {
     }
 
     /// bulk 判定の3条件(すべて満たすときだけ true): 同一 identifier の群が bulkGroupMinimum 以上・
-    /// **自身が**スクロール容器でない(58 より前は祖先ベースだったが、地図 POI がスクロール容器
-    /// [地図] の中に居るため素通りしていた)・操作可能な型でない
+    /// **自身が**スクロール容器でない(祖先ベースにしない —— 地図 POI はスクロール容器[地図]の
+    /// 中に居るので素通りする)・操作可能な型でない
     private static func isBulk(_ candidate: Candidate, identifierCounts: [String: Int]) -> Bool {
         guard candidate.info.scrollable != true else { return false }
         guard let id = candidate.info.identifier, let count = identifierCounts[id],

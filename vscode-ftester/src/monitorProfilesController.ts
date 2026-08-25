@@ -142,8 +142,8 @@ export class MonitorProfilesController {
   /**
    * 初期選択にするマシンプロファイル名(postMachineProfileInfo・handleProfileAdd 共通)。
    * **1件のときだけ**選ぶ(あいまいな場合は選ばない。readMachineDeviceNames と同じ方針 —
-   * 変更時は両方揃える)。以前は「この Mac の登録名」を先に見ていたが、その概念は
-   * 2026-08-17 に廃止した(Sources/FTCore/RunProfile.swift の determineMachine)。
+   * 変更時は両方揃える)。**「この Mac の登録名」は見ない**(その概念は持たない。
+   * Sources/FTCore/RunProfile.swift の determineMachine)。
    */
   private resolveCurrentMachineName(summaries: readonly MachineProfileSummary[]): string | null {
     return summaries.length === 1 ? summaries[0]!.name : null;

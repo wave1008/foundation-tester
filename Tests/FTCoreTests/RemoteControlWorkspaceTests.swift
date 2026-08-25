@@ -177,8 +177,8 @@ final class RemoteControlWorkspaceTests: XCTestCase {
 
     // MARK: - resolve(): remoteControl.workspace 宣言時は「インストールに使うパス」だけが
     // ワークスペース基準へ切り替わる。**原本(sourcePath)の解決基準はリポジトリルートのまま不変**
-    // (以前は appPath の相対パス解決そのものの基準を切り替えていたが、原本の置き場所と
-    // インストールに使う場所を混同していた。docs/remote-runner.md §17)
+    // (appPath の相対パス解決そのものの基準は切り替えない —— 原本の置き場所と
+    // インストールに使う場所は別物。docs/remote-runner.md §17)
 
     func testDeclaredWorkspaceRedirectsInstallPathButKeepsSourceAtRepoRoot() throws {
         try writeAppAndMachine(appPath: "apps/SampleApp.app")

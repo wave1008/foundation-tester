@@ -1,8 +1,7 @@
 // BackEffect.swift
 // 「back の前後で木が同一 = システム back がこの画面に効かなかった」の判定。
-// 元は MCP(ft_navigate)専用の実装だったが、DSL の back() にも同じ穴があった
-// (自前ナビの画面はシステム back を無視するが、DSL は何も言わず次のステップへ進んでいた)ため、
-// FTCore へ切り出して両者で共有する。
+// MCP(ft_navigate)と DSL の back() が**同じ判定を共有する**(2箇所に持つと同じ画面で
+// 食い違う)。自前ナビの画面はシステム back を無視するので、黙って次のステップへ進ませない。
 
 import Foundation
 

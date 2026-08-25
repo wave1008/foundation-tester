@@ -181,8 +181,8 @@ public final class RunRecorder: @unchecked Sendable {
     }
 
     /// 結果に付ける「どの機械で走ったか」。優先順位: FT_MACHINE > **ホスト名** > "unknown"。
-    /// 登録名(config.json の machineName)は 2026-08-17 に廃止したので、既定はホスト名 ——
-    /// 人が登録する値ではないぶんズレようがなく、機械の身元としてはむしろ正確
+    /// 既定がホスト名なのは、人が登録する値ではないぶんズレようがなく、
+    /// 機械の身元としてはむしろ正確なため(登録名は持たない。RunProfile.determineMachine)
     /// (ファイル名(runID)に使うため [A-Za-z0-9_-] 以外は "_" に置換)
     private static func resolveMachine(
         environment: [String: String] = ProcessInfo.processInfo.environment

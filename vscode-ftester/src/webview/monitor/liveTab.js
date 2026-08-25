@@ -238,7 +238,7 @@ recordBtn.addEventListener('click', () => {
   if (recording) {
     post({ type: 'stopRecord' });
   } else {
-    // 自動インストールは常に有効(チェックボックス廃止)。host 側は appPath があれば install→launch する。
+    // 自動インストールは常に有効(チェックボックスは置かない)。host 側は appPath があれば install→launch する。
     post({ type: 'startRecord', appProfile: appProfileSelect.value, autoInstall: true });
   }
 });
@@ -598,7 +598,7 @@ function submitTypeText() {
   // 送信したら入力欄をクリアする(post は value を同期読みするので後でクリアしてよい)。
   typeTextInput.value = '';
 }
-// テキスト送信は Enter のみ(「入力」ボタンは廃止)。IME変換中(日本語変換の確定)の Enter は
+// テキスト送信は Enter のみ(「入力」ボタンは置かない)。IME変換中(日本語変換の確定)の Enter は
 // 送信しない: isComposing が true、環境により keyDown が keyCode 229(IME処理中)で届くため両方を除外する。
 // busy 中も送らない(処理中の多重送信を防ぐ)。
 typeTextInput.addEventListener('keydown', (event) => {

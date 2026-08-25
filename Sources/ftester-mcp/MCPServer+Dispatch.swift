@@ -1271,8 +1271,8 @@ extension MCPServer {
         let delivered = "Delivered \(url)" + target + "."
         let asynchronous = " Delivery is asynchronous (the app has to receive and handle it)"
         guard !snapshotAfter else {
-            // **既定が「待つ」に変わった**(2026-08-16)。以前は配送直後に読んでいたので
-            // 前の画面が返り得た。待っても着地しなかったことは waitForChange の注記が言う
+            // **既定は「待つ」**(配送直後に読むと前の画面が返り得る)。
+            // 待っても着地しなかったことは waitForChange の注記が言う
             guard waitedForLanding else {
                 return delivered + asynchronous + " — the tree below was read right after delivery"
                     + " (waitForChange: false), so it can still be the previous screen"

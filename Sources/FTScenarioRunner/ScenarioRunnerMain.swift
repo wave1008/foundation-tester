@@ -310,7 +310,7 @@ struct RunScenario: AsyncParsableCommand {
                             driver = WebViewDelegatingDriver(primary: inapp, delegated: attach)
                             // 2026-07-21 から Compose も inapp で type 可能
                             // (IntermediateTextInputUIView への insertText。InAppInput.m 参照。
-                            // 実測 266ms vs attach 1.0〜1.3s)。attach 優先は廃止し、
+                            // 実測 266ms vs attach 1.0〜1.3s)。**attach は優先しない** ——
                             // 失敗時 409 → typeDriver フォールバック(StepExecutor)だけを安全網とする
                             preferTypeDriver = false
                             // 「どの操作が不可か」はブリッジの申告に従う(ホストに

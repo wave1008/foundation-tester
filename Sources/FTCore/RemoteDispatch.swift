@@ -109,9 +109,8 @@ public enum RemoteCompat {
     /// fail-closed: 片方でも取得できなければ(nil)不一致に含める(古い/未検証の組で
     /// 黙って走らせない。CLAUDE.md「片方だけ変えない」規律をマシン間に広げる)。
     ///
-    /// **照合するのは rev と toolchain の2つだけ**。以前は「送り先が想定の機械か」を
-    /// リモートの登録名で確かめていたが、機械の身元は ssh の宛先(とホスト鍵)が既に
-    /// 保証しており、登録名そのものを 2026-08-17 に廃止した
+    /// **照合するのは rev と toolchain の2つだけ**。「送り先が想定の機械か」は ssh の宛先
+    /// (とホスト鍵)が保証するので、リモートの登録名は見ない
     /// (ProfileResolver.determineMachine の宣言)
     public static func mismatches(
         localRevision: String?, remoteRevision: String?,

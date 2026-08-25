@@ -1,10 +1,8 @@
 // profile を渡さない探索(MCP の ft_*)向けのドライバ組み立て。
 //
-// **稼働中の in-app ブリッジを見つけたら、それを主にした hybrid を組む**(2026-08-05)。
-// それ以前は XCUITest へ振り替えていた(XCUIBridgeResolver 冒頭の 2026-07-28 決定)。
-// 振り替えの根拠は「in-app は home/appSwitcher/drag/座標 press を実装できず、ft_* は
-// StepExecutor を通らないので素の 501 で落ちる」だったが、その穴は HybridFallbackDriver が
-// 埋めた(2026-08-04)ので前提が消えた。**利用者の実行既定は hybrid** なので、揃えないと
+// **稼働中の in-app ブリッジを見つけたら、それを主にした hybrid を組む**。
+// in-app が実装できない操作(home/appSwitcher/drag/座標 press)は HybridFallbackDriver が
+// 埋めるので、XCUITest へ振り替える必要は無い。**利用者の実行既定は hybrid** なので、揃えないと
 // 探索と実行で snapshot の中身もジェスチャの成否も変わる(Compose のダブルタップ・
 // Flutter のピンチは XCUITest では届かない)。
 //

@@ -6,8 +6,8 @@
 import Foundation
 
 /// 登録簿の1エントリ。**論理名 → ssh 実体の対応だけ**を持つ。
-/// 以前はリモートのマシン登録名(machine)をキャッシュしていたが、機械の身元は ssh の宛先が
-/// 保証しており、登録名そのものを 2026-08-17 に廃止した(ProfileResolver.determineMachine)
+/// 機械の身元は ssh の宛先が保証するので、リモートのマシン登録名は持たない
+/// (ProfileResolver.determineMachine)
 public struct RemoteHostEntry: Codable, Equatable, Sendable {
     /// 論理名。登録簿内で一意(RemoteHostRegistry.upsert が同名を置き換える)
     public let name: String

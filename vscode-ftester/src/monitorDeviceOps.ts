@@ -77,9 +77,9 @@ export class MonitorDeviceOps {
   /**
    * デバイスライフサイクル操作のスケジューラ。device ジョブは最大2台まで同時実行
    * (右クリック起動の2台並行=一括起動の2台固定ポリシーと同じ上限)、bulk/restartBatch は
-   * 単独占有(内部で2台並行するため)。かつてブリッジ供給の並行実行が waitUntilReady 失敗・
-   * ゾンビブリッジを誘発したため完全直列だったが、現在は ProvisionLock(クロスプロセス flock)が
-   * 供給を直列化するので device ジョブの並行は安全。状態遷移(queued/running)の純粋ロジックは
+   * 単独占有(内部で2台並行するため)。**device ジョブを並行にしてよいのは ProvisionLock
+   * (クロスプロセス flock)が供給を直列化しているから** —— 供給が並行に走ると waitUntilReady
+   * 失敗・ゾンビブリッジを誘発する。状態遷移(queued/running)の純粋ロジックは
    * monitorModel.ts 側(vscode 非依存・単体テスト対象)。
    */
   private lifecycleQueue: DeviceLifecycleQueueState = createDeviceLifecycleQueueState();

@@ -410,7 +410,7 @@ export class MonitorPanelController implements vscode.Disposable {
    * rename(同じ行の name 変更)も「旧名を消し新名を作る」として正しく扱える。
    * CLI 呼び出しが失敗した行は lastKnownRemoteHosts に残らない(=書き込めなかったことが
    * 次に webview へ返す一覧に反映される)。失敗理由は remoteConfig.error に乗せて webview へ返す
-   * (settingsTab.js が画面に出す。以前は OUTPUT へログするだけで、行が黙って消えて見えていた)。
+   * (settingsTab.js が画面に出す。OUTPUT へのログだけにしない —— 行が黙って消えて見える)。
    */
   private async syncRemoteHostsFromWebview(
     hosts: readonly RemoteHostEntry[],

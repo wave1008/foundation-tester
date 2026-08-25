@@ -173,8 +173,8 @@ final class RemoteHostRegistryTests: XCTestCase {
         XCTAssertEqual(loaded.remoteHosts, config.remoteHosts)
     }
 
-    /// 既存の config.json を読んでも壊れない。**廃止した machineName のような未知キーは
-    /// 黙って無視される**(2026-08-17 に登録名を廃止したので、古い設定がそのまま残っている)
+    /// 既存の config.json を読んでも壊れない。**machineName のような未知キーは黙って無視される**
+    /// (登録名は持たないが、古い設定にはそのまま残っている)
     func testLocalConfigDecodesOldConfigWithUnknownKeys() throws {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("RemoteHostRegistryTests-\(UUID().uuidString)")
@@ -189,8 +189,8 @@ final class RemoteHostRegistryTests: XCTestCase {
 
     // MARK: - RemoteCompat.mismatches
 
-    /// 照合は rev と toolchain の2つだけ(2026-08-17)。機械の身元は ssh の宛先が保証しており、
-    /// 「リモートの登録名」という概念自体を廃止した
+    /// 照合は rev と toolchain の2つだけ。機械の身元は ssh の宛先が保証するので、
+    /// 「リモートの登録名」は見ない
     func testMismatchesChecksRevisionAndToolchainOnly() {
         XCTAssertEqual(
             RemoteCompat.mismatches(localRevision: "abc", remoteRevision: "abc",

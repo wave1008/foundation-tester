@@ -36,7 +36,7 @@ extension MCPServer {
         guard !projects.isEmpty else {
             return text("No projects (create one with: ftester project create <name>)")
         }
-        // 「この機械の登録名」は廃止したので出さない(ProfileResolver.determineMachine の宣言)。
+        // 「この機械の登録名」は持たないので出さない(ProfileResolver.determineMachine の宣言)。
         // 使うマシンプロファイルは実行プロファイルの machine が決めるため、下の一覧で足りる
         var lines: [String] = []
         for project in projects {
