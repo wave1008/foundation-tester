@@ -218,6 +218,11 @@ public struct BridgeLauncher {
             if ProcessInfo.processInfo.environment["FT_BRIDGE_TIMING"] == "1" {
                 env["FT_BRIDGE_TIMING"] = "1"
             }
+            // 実機の自動ロック抑止の殺しスイッチ(既定 on)。同期相手:
+            // Runner/FleetestRunnerUITests/KeepAwake.swift
+            if let keepAwake = ProcessInfo.processInfo.environment["FT_KEEP_AWAKE"] {
+                env["FT_KEEP_AWAKE"] = keepAwake
+            }
             target["EnvironmentVariables"] = env
         }
 
@@ -585,7 +590,12 @@ public struct BridgeLauncher {
         return nil
     }
 
-    public func waitUntilReady(timeout: TimeInterval = 180,
+    /// ブリッジ起動の締切(秒)。実機の解除待ち(IOSPhysicalDeviceLock)もこの予算を使う
+    /// —— あちらは「起動を始めてよい状態になるまで」で、待った分だけ deviceprep の
+    /// 無情報な待ちが減る(猶予の上乗せではない)
+    public static let startupTimeoutSeconds: TimeInterval = 180
+
+    public func waitUntilReady(timeout: TimeInterval = BridgeLauncher.startupTimeoutSeconds,
                                host: String = BridgeEndpoint.loopbackHost,
                                log: @escaping (String) -> Void = { _ in }) async throws {
         let client = BridgeClient(port: port, host: host)

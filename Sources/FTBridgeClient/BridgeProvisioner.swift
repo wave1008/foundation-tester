@@ -45,6 +45,8 @@ public enum BridgeProvisionerError: Error, LocalizedError {
     case appNotInstalled(device: String, bundleID: String, udid: String)
     /// preinstallAppPath 指定時の simctl install 自体が失敗した
     case preinstallFailed(device: String, detail: String)
+    /// 実機がロックされたまま解除を待ち切った(起動しても SpringBoard に拒否されるので撃たない)
+    case deviceLocked(name: String, waited: TimeInterval)
 
     public var errorDescription: String? {
         switch self {
@@ -65,6 +67,10 @@ public enum BridgeProvisionerError: Error, LocalizedError {
             return "\(bundleID) is not installed, so this device drops out (engine=inapp requires it up front). "
                 + "Install it with `xcrun simctl install \(udid) <app>`, "
                 + "or set appPath + autoInstall in the apps profile"
+        case .deviceLocked(let name, let waited):
+            return "\(name) stayed locked for \(Int(waited))s. Unlock the device and run again "
+                + "(the runner cannot be launched on a locked device; once it is up it keeps the "
+                + "device awake, so this is only needed when the bridge is (re)built)"
         case .preinstallFailed(let device, let detail):
             return "\(device): automatic app install failed:\n\(detail)"
         }
@@ -494,12 +500,20 @@ public struct BridgeProvisioner {
                                               port: xcui.port, physical: xcui.sim.physical)
                 try launcher.generateProjectIfNeeded()
                 let existing = try launcher.findXCTestRun()
+                let rebuild = existing.map {
+                    BridgeLauncher.runnerNeedsRebuild(repoRoot: repoRoot, xctestrun: $0) } ?? false
+                // **ビルドを始める前に**ロックを知らせる(ビルド自体に解除は要らないので待たない
+                // = 数分の間に解除してもらえれば、起動時に待たずに済む)
+                if xcui.sim.physical, existing == nil || rebuild,
+                   IOSPhysicalDeviceLock.query(udid: xcui.sim.udid) == .locked {
+                    log("⏳ \(xcui.sim.name) is locked — unlock it while this builds "
+                        + "(the runner cannot be launched on a locked device).")
+                }
                 if existing == nil {
                     log("→ build-for-testing (for \(xcui.sim.physical ? "a physical device" : "the simulator")"
                         + "; the first run takes several minutes)...")
                     try launcher.buildForTesting()
-                } else if let existing,
-                          BridgeLauncher.runnerNeedsRebuild(repoRoot: repoRoot, xctestrun: existing) {
+                } else if rebuild {
                     // ソース変更後の旧 xctestrun を起動し続けない(BridgeLauncher.runnerNeedsRebuild 参照)
                     log("→ Runner sources changed — re-running build-for-testing...")
                     try launcher.buildForTesting()
@@ -666,6 +680,21 @@ public struct BridgeProvisioner {
             } else {
                 let launcher = BridgeLauncher(repoRoot: repoRoot, device: sim.udid, port: port,
                                               physical: sim.physical)
+                // **起動はロックされた端末では拒否される**。ここで解除を待つ(待ちきれなくても
+                // 起動は試みる)。待たずに撃つと deviceprep が `Unlock <name> to Continue` の
+                // まま留まり、`Failed to resume target process` でセッションごと死ぬ
+                if sim.physical {
+                    let state = await IOSPhysicalDeviceLock.waitForUnlock(
+                        udid: sim.udid, deviceName: name,
+                        timeout: BridgeLauncher.startupTimeoutSeconds,
+                        log: { log("\(name): \($0)") })
+                    // **ロックのままなら撃たない**: 起動しても deviceprep に拒否され、締切ぶん
+                    // (もう 180 秒)待ってから同じ理由で落ちるだけ。unknown は促していないので通す
+                    if state == .locked {
+                        throw BridgeProvisionerError.deviceLocked(
+                            name: name, waited: BridgeLauncher.startupTimeoutSeconds)
+                    }
+                }
                 // xctestrun の存在は prepareSharedBuilds が保証済み(不在なら xctestrunNotFound が
                 // そのまま届く。ここで buildForTesting はしない=並列で二重ビルドさせない)
                 try await Task.detached(priority: .userInitiated) {

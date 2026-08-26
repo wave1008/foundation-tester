@@ -32,10 +32,14 @@ final class FleetestBridgeTests: XCTestCase {
         // 載せる —— 下のループが回り出さないと CADisplayLink は tick しない
         DisplayHeartbeat.shared.start()
 
+        // 実機の自動ロック抑止(KeepAwake 参照)。ループから貼り直すので start だけでは終わらない
+        KeepAwake.start()
+
         // 接続処理は accept スレッドで行われる。ここでは RunLoop を回し続けて
         // テストを終わらせない(イベント合成等が必要とするランループも回る)。
         while server.isRunning {
             RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.25))
+            KeepAwake.tick()
             if ttl > 0, server.idleSeconds > TimeInterval(ttl) {
                 NSLog("[fleetest] bridge idle %.0fs > ttl %ds; self-terminating",
                       server.idleSeconds, ttl)

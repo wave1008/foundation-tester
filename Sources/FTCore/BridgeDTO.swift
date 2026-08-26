@@ -250,7 +250,13 @@ public enum BridgeAPI {
     /// which `requireLiveApp` refuses with 503. Without the settle, the shot right after an
     /// alert was dismissed could be taken mid-animation and the follow-up tap missed the button.
     /// A stale runner keeps both → bump.
-    public static let bridgeProtocolVersion = 80
+    ///
+    /// 81: the runner now keeps a physical device awake itself (KeepAwake.swift): it fires one
+    /// harmless input after 25s without a HID request, because `isIdleTimerDisabled` alone does
+    /// not hold once the runner is backgrounded (measured: the device still locked at exactly its
+    /// 30s auto-lock). A stale runner does not, and the run dies half-way with
+    /// `denied by SBMainWorkspace ... reason: Locked` → bump.
+    public static let bridgeProtocolVersion = 81
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の

@@ -64,6 +64,18 @@ final class BridgeRouter {
     // 収まらないことがあり、ホストの performGesture が末尾で必ず整定を待つ(二重に待たない)。
     private static let mutatingPaths: Set<String> = ["/session", "/systemui/tap", "/tap", "/type", "/clear", "/pressEnter", "/hidekeyboard", "/press", "/appswitcher", "/home"]
 
+    /// **HID を伴う**(= 端末の自動ロックのタイマーを戻す)エンドポイント。KeepAwake の
+    /// 「最後の入力からの経過」の基準で、木の読み・状態問い合わせは入れない(ポーリング中も
+    /// 端末は寝るため、入れると起こす玉が一生撃たれない)。
+    /// **操作エンドポイントを足したらここにも足す**(KeepAwakeInputPathsTests が
+    /// POST ルートの取りこぼしを検出する)。入力ではない POST は nonInputPaths に載せる
+    private static let inputPaths: Set<String> = ["/session", "/tap", "/systemui/tap", "/type",
+        "/clear", "/pressEnter", "/hidekeyboard", "/swipe", "/drag", "/systemui/drag",
+        "/systemui/swipe", "/doubletap", "/pinch", "/rotate", "/press", "/appswitcher", "/home"]
+
+    /// 入力を伴わない POST(問い合わせと終了)。inputPaths との和が POST ルートの全部になる
+    private static let nonInputPaths: Set<String> = ["/terminate", "/appstate"]
+
     /// 所要内訳ログの on/off(既定 off)。ホストの FT_BRIDGE_TIMING=1 を BridgeLauncher が
     /// xctestrun の環境変数へ注入する(同期相手: Sources/FTBridgeClient/BridgeLauncher.swift)
     private static let timingEnabled =
@@ -73,6 +85,10 @@ final class BridgeRouter {
     private static let timingAlwaysLogMs: Double = 1500
 
     func handle(_ request: BridgeHTTPServer.Request) -> BridgeHTTPServer.Response {
+        // 端末を起こし続けるための計時(KeepAwake)。処理中は撃たせない
+        let isInput = Self.inputPaths.contains(request.path)
+        KeepAwake.requestBegan(isInput: isInput)
+        defer { KeepAwake.requestEnded(isInput: isInput) }
         do {
             let response: BridgeHTTPServer.Response
             switch (request.method, request.path) {

@@ -2743,10 +2743,29 @@ apps プロファイルの healthCheckURL が実行開始時に警告を出す�
 - 端末側は「このコンピュータを信頼」と **Developer Mode の有効化**が前提。
   `xcrun devicectl list devices` に出ることを先に確認する
 - **端末のロックを解除しておく**(Android と同じ前提)。ロックされていると xcodebuild が
-  `Unlock <name> to Continue` で無言のまま止まる。テスト中に再ロックされないよう
-  **設定 → 画面表示と明るさ → 自動ロック を「なし」**にしておくこと。この条件は
-  「失敗」ではなく「進まない」だけなので、検出しても throw せず待ちながら 1 回だけ促す
-  (`IOSDeviceTransport.blockingCondition`)
+  `Unlock <name> to Continue` で無言のまま止まる。**ビルドと起動の前にホストが現況を見て促す**
+  (`IOSPhysicalDeviceLock`。`xcrun devicectl device info lockState` の **`passcodeRequired`** =
+  「今パスコードの入力が要るか」で、静的な設定の有無ではない。実測 0.23 秒・消灯 true /
+  解除 false・自動ロック 30 秒での遷移も観測)。**ビルド前は促すだけで待たない**(ビルドに解除は
+  要らないので、その数分の間に解除してもらう)/ **起動の直前は解除まで待ち**(2 秒刻み・上限は
+  `BridgeLauncher.startupTimeoutSeconds` と同じ 180 秒)、**待ち切ったら撃たずに落とす**
+  (撃っても deviceprep に拒否され、もう 180 秒待って同じ理由で死ぬだけ)。
+  **パスコード未設定の端末では常に false** なので見落とすが、誤検知は出さない側に倒してあり、
+  従来の xcodebuild ログからの検出(`IOSDeviceTransport.blockingCondition`)に落ちる。
+  **`devicectl device info displays` の `backlightState` は使えない**(消灯中でも `activeOn`)。
+  **解除が要るのはランナーの起動まで** —— 立ち上がったあとの再ロックはランナー自身が防ぐ
+  (`Runner/FleetestRunnerUITests/KeepAwake.swift`。**最後の HID 要求から 25 秒**で
+  `XCUIDevice.press(.home)` を 1 発撃つ)。数えるのは**入力**であってブリッジの多忙さではない
+  —— 待ちの最中もホストは木を読み続けるので、アイドル時間で計ると一生撃たれずに寝る。
+  実機の `press(.home)` は SpringBoard に届かない(ok を返してアプリは前面のまま)ので、
+  **入力としてだけ数えられる = 副作用の無い玉**になる。
+  **`isIdleTimerDisabled` は効かない**(2026-08-27 実測 iPhone SE3 / iOS 26.5.2 / 自動ロック 30 秒:
+  10 秒ごとに貼り直してもちょうど 30 秒で寝て、launch が
+  `denied by SBMainWorkspace ... reason: Locked` で拒否された)。ランナーは対象アプリを
+  起動した時点で背面に回り、idle timer の申告は前面アプリのものしか効かないため。
+  対照は同じ端末・同じ USB 接続で、パルス版は無操作 190 秒でも起きたまま(`press(.home)` 8 発)。
+  玉の選択は `FT_KEEP_AWAKE_PULSE=home|volume`(volume は音量 HUD が出るが確実な入力)、
+  丸ごと止めるのは `FT_KEEP_AWAKE=0`
 - **端末で開発者証明書の信頼が要る**。ビルドとインストールが成功しても、起動時に
   `The application could not be launched because the Developer App Certificate is not trusted.`
   で落ちる。iPhone の **設定 → 一般 → VPN とデバイス管理** からデベロッパ App の証明書を「信頼」する。

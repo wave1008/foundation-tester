@@ -146,9 +146,12 @@ public enum IOSDeviceTransport {
     /// 検知文字列は xcodebuild / DVTDevice の出力依存(変わってもタイムアウトに落ちるだけ)
     static func blockingCondition(inLog text: String) -> String? {
         if text.contains("Unlock") && text.contains("to Continue") {
+            // run 中の再ロックはランナー(KeepAwake)が起こし続けて防ぐが、**ロックされた端末では
+            // ランナー自体が起動できない**(SBMainWorkspace が launch を拒否する)ので、
+            // ここだけは人が解除するしかない
             return "the iPhone is locked. Unlock the device"
-                + " (to keep it from re-locking mid-test, set Settings → Display & Brightness → "
-                + "Auto-Lock to Never)"
+                + " (the runner keeps it awake once it is up, but it cannot be launched on a"
+                + " locked device)"
         }
         return nil
     }
