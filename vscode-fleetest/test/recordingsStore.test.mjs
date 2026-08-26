@@ -146,6 +146,24 @@ test("listRecordingSessions: recordings が空でもclipsAttempted>0のindex.jso
   }
 });
 
+// **録画そのものが取れなかった run**(ソースが空/読めない)。切り出し失敗とは別の欄で、
+// これが summary に乗らないと録画タブの行に理由が出ない(2026-08-26 の実害)
+test("listRecordingSessions: sourcesFailed だけの index.json も一覧に出し、summary へ載せる", async () => {
+  const root = makeWorkspace();
+  try {
+    writeJson(
+      path.join(runDir(root, "SampleApp", "20260723-000000"), "recordings", "index.json"),
+      { schemaVersion: 2, recordings: [], sourcesFailed: 2 },
+    );
+    const sessions = await listRecordingSessions(root);
+    assert.deepEqual(sessions.map((s) => s.runID), ["20260723-000000"], "録画全滅の run を消さない");
+    assert.equal(sessions[0].sourcesFailed, 2);
+    assert.equal(sessions[0].clipsAttempted, null, "切り出しまで到達していない");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("listRecordingSessions: clipsAttempted/clipsFailed/encoderFallback をsummaryへ載せる", async () => {
   const root = makeWorkspace();
   try {

@@ -84,6 +84,23 @@ final class RecordingIndexTests: XCTestCase {
         XCTAssertEqual(decoded.encoderFallback, true)
     }
 
+    /// **録画ソースが1本も使えなかった run も index を残す**(2026-08-26)。
+    /// 消すと「録画していない run」と見分けが付かず、録画タブから黙って消える
+    /// (実害: simctl が 0 バイトの .mov を作る Mac で、その機械のセッションだけ一覧から消えた)
+    func testWriteWithFailedSourcesStillWritesIndex() throws {
+        let tempDir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("FTCoreTests-recording-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        RecordingIndexIO.write([], runDir: tempDir, sourcesFailed: 2)
+
+        let indexURL = tempDir.appendingPathComponent("recordings/index.json")
+        let decoded = try JSONDecoder().decode(RecordingIndex.self, from: Data(contentsOf: indexURL))
+        XCTAssertEqual(decoded.recordings.count, 0)
+        XCTAssertEqual(decoded.sourcesFailed, 2, "何台で録画が取れなかったかを残す")
+        XCTAssertNil(decoded.clipsAttempted, "切り出しまで到達していないので attempted は書かない")
+    }
+
     func testWriteProducesReadableIndex() throws {
         let tempDir = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("FTCoreTests-recording-\(UUID().uuidString)")

@@ -25,6 +25,8 @@ export interface RecordingSessionSummary {
   /** recordings/index.json の同名フィールド(任意。無ければ null)。 */
   readonly clipsAttempted: number | null;
   readonly clipsFailed: number | null;
+  /** 録画ソースが1本も使えなかったワーカー数(RecordingIndex.sourcesFailed)。 */
+  readonly sourcesFailed: number | null;
   /** 同上。無ければ false(フォールバックしていないと同じ扱い)。 */
   readonly encoderFallback: boolean;
   /** 束ね鍵(run.json の runGroup)。単機の run と旧記録では null = 束ねない。 */
@@ -164,6 +166,7 @@ export async function listRecordingSessions(workspaceRoot: string): Promise<Reco
           failed: numberField(meta, "failed") ?? null,
           clipsAttempted: numberField(indexRecord, "clipsAttempted") ?? null,
           clipsFailed: numberField(indexRecord, "clipsFailed") ?? null,
+          sourcesFailed: numberField(indexRecord, "sourcesFailed") ?? null,
           encoderFallback: booleanField(indexRecord, "encoderFallback") ?? false,
           runGroup: stringField(meta, "runGroup") ?? null,
         });
@@ -227,6 +230,7 @@ function combineSessions(
     failed: sum(first.failed, next.failed),
     clipsAttempted: sum(first.clipsAttempted, next.clipsAttempted),
     clipsFailed: sum(first.clipsFailed, next.clipsFailed),
+    sourcesFailed: sum(first.sourcesFailed, next.sourcesFailed),
     encoderFallback: first.encoderFallback || next.encoderFallback,
     runGroup: first.runGroup,
   };

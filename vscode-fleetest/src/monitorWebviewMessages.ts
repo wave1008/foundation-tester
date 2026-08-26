@@ -377,6 +377,9 @@ export type MonitorToWebviewMessage =
       // として扱う(旧ホスト実装との互換)。
       readonly clipsAttempted?: number | null;
       readonly clipsFailed?: number | null;
+      /** 録画ソースが1本も使えなかったワーカー数(録画が全滅した run を「録画していない run」と
+       *  取り違えないための欄。Sources/FTCore/RecordingIndex.swift の sourcesFailed と同期)。 */
+      readonly sourcesFailed?: number | null;
       readonly encoderFallback?: boolean;
     };
 

@@ -100,7 +100,7 @@ function resetVideoAvailability() {
  * hasAnyVideo=false: video・再生中表示・コントロールを隠し、理由付きメッセージへ差し替える
  * (clipsFailed>0なら切り出し失敗の件数付き、そうでなければ汎用の「録画がない」文言)。
  * hasAnyVideo=true かつ clipsFailed>0: 通常表示のまま控えめな欠落件数の注記だけ足す。 */
-function applyVideoAvailability(hasAnyVideo, clipsFailed) {
+function applyVideoAvailability(hasAnyVideo, clipsFailed, sourcesFailed) {
   resetVideoAvailability();
   if (hasAnyVideo) {
     if (clipsFailed !== null && clipsFailed > 0) {
@@ -112,10 +112,14 @@ function applyVideoAvailability(hasAnyVideo, clipsFailed) {
   video.style.display = 'none';
   recordingsNowPlayingBlock.style.display = 'none';
   recordingsControlsBlock.style.display = 'none';
+  // **理由の優先順は「録れていない」→「切り出せなかった」→ 汎用** —— 録画自体が失敗している
+  // ときに「切り出しに失敗」と出すと、直す場所(simctl / screenrecord 側)を取り違える
   noVideoMessage.textContent =
-    clipsFailed !== null && clipsFailed > 0
-      ? t('recordings.player.allClipsFailed', { count: clipsFailed })
-      : t('recordings.player.noVideo');
+    sourcesFailed !== null && sourcesFailed > 0
+      ? t('recordings.player.allSourcesFailed', { count: sourcesFailed })
+      : clipsFailed !== null && clipsFailed > 0
+        ? t('recordings.player.allClipsFailed', { count: clipsFailed })
+        : t('recordings.player.noVideo');
   noVideoMessage.style.display = 'flex';
 }
 
@@ -218,6 +222,15 @@ function renderSessions(sessions) {
       clipsFailed.className = 'recordings-session-counts recordings-session-counts-failed';
       clipsFailed.textContent = t('recordings.sessions.clipsFailed', { count: session.clipsFailed });
       row.appendChild(clipsFailed);
+    }
+
+    // **録画そのものが取れなかった台**(切り出し失敗とは別物)。これを出さないと、
+    // 録画が全滅した run が「動画0本の空セッション」に見えて理由が分からない
+    if (session.sourcesFailed !== null && session.sourcesFailed > 0) {
+      const sourcesFailed = document.createElement('span');
+      sourcesFailed.className = 'recordings-session-counts recordings-session-counts-failed';
+      sourcesFailed.textContent = t('recordings.sessions.sourcesFailed', { count: session.sourcesFailed });
+      row.appendChild(sourcesFailed);
     }
 
     const open = () => vscode.postMessage({ type: 'recordingsOpen', project: session.project, runID: session.runID });
@@ -829,6 +842,7 @@ export function applyRecordingsSession(message) {
   // なので動画が無くても意味を持つ(仕様)。
   const videos = message.videos || [];
   const clipsFailed = typeof message.clipsFailed === 'number' ? message.clipsFailed : null;
+  const sourcesFailed = typeof message.sourcesFailed === 'number' ? message.sourcesFailed : null;
   const machines = sessionMachines(message);
   currentDetail = {
     videosByScenario: new Map(videos.map((v) => [v.scenarioID, v.videoUri])),
@@ -850,7 +864,7 @@ export function applyRecordingsSession(message) {
   setErrorFilter(null);
   renderTree(message.tree || []);
   showPlayerView();
-  applyVideoAvailability(currentDetail.videosByScenario.size > 0, clipsFailed);
+  applyVideoAvailability(currentDetail.videosByScenario.size > 0, clipsFailed, sourcesFailed);
   if (scenarioNav.length > 0) {
     seekToOffset(scenarioNav[0].scenarioID, 0);
   }

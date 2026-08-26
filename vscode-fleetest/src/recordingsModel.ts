@@ -4,7 +4,7 @@
 //
 // 契約(録画側実装。runDir = <workspaceRoot>/TestProjects/<project>/results/runs/<YYYY-MM>/<runID>/):
 // - recordings/index.json は schemaVersion 2: { schemaVersion:2, recordings: [{ scenarioID, worker,
-//   platform, file, segments }], clipsAttempted?, clipsFailed?, encoderFallback? }(Sources/FTCore/
+//   platform, file, segments }], clipsAttempted?, clipsFailed?, encoderFallback?, sourcesFailed? }(Sources/FTCore/
 //   RecordingIndex.swift と同期)。**1エントリ = 1テスト関数(scenarioID)の mp4**(v1 の1ワーカー
 //   1動画とは異なる)。file は runDir 相対。動画の0秒 = 先頭 segment の startedAt(クリップ自体が
 //   そのテストの録画区間なので、壁時計→クリップ内位置は既存 offsetMsForWallClock がそのまま使える)。
@@ -42,6 +42,10 @@ export interface RecordingIndex {
   readonly clipsAttempted?: number;
   /** 使えるクリップが得られなかった数(任意)。 */
   readonly clipsFailed?: number;
+  /** 録画ソースが1本も使えなかったワーカー数(切り出しまで到達しないので clipsAttempted に現れない。
+   *  Sources/FTCore/RecordingIndex.swift と同期)。**これが無いと録画全滅の run が
+   *  「録画していない run」と見分けられない** */
+  readonly sourcesFailed?: number;
   /** ハードウェアエンコーダを諦めソフトウェアへ切り替えたか(任意)。 */
   readonly encoderFallback?: boolean;
 }

@@ -99,6 +99,12 @@ actor VideoRecordingCoordinator {
     private var clipsAttempted = 0
     /// clipsAttempted のうち使えるクリップが得られなかった数
     private var clipsFailed = 0
+    /// **録画ソースが1本も使えなかったワーカー数**(起動できなかった/停止時に読めるファイルが
+    /// 無かった)。切り出しまで到達しないので clipsAttempted には現れない —— ここで数えないと、
+    /// 録画が全滅した run が index を書かずに**録画タブから黙って消える**
+    /// (2026-08-26 の実害: この Mac の simctl が 0 バイトの .mov を作る状態で、
+    /// 「local だけバッジが出ない」ように見えた)
+    private var sourcesFailed = 0
 
     private var active: [String: ActiveEntry] = [:]  // key = worker.label(物理ワーカー単位)
     /// key = worker.label。superviseWorker の revive で worker.label が変わっても、
@@ -145,7 +151,10 @@ actor VideoRecordingCoordinator {
                                           recordingsDir: recordingsDir, sourceStem: sourceStem)
         }
         guard let session else { return false }
-        guard await session.start() else { return false }
+        guard await session.start() else {
+            sourcesFailed += 1
+            return false
+        }
         active[worker.label] = ActiveEntry(session: session, workerID: workerID, platform: worker.platform)
         return true
     }
@@ -211,15 +220,25 @@ actor VideoRecordingCoordinator {
                 ("⚠️ [recording] \(clipsFailed)/\(clipsAttempted) clips could not be extracted"
                  + "\(fallbackNote)\n").utf8))
         }
+        if sourcesFailed > 0 {
+            FileHandle.standardError.write(Data(
+                ("⚠️ [recording] \(sourcesFailed) device(s) produced no usable recording"
+                 + " (the recorder started but nothing readable came out)\n").utf8))
+        }
         RecordingIndexIO.write(entries, runDir: config.runDir,
                                clipsAttempted: clipsAttempted, clipsFailed: clipsFailed,
-                               encoderFallback: softwareEncoderOnly)
+                               encoderFallback: softwareEncoderOnly, sourcesFailed: sourcesFailed)
     }
 
     /// 1 ワーカーのフル録画を停止し、そのワーカーで実行された各シナリオの区間ごとに
     /// クリップを切り出す。フルソースは(1件もクリップが取れなくても)必ず削除する
     private func finalize(_ workerLabel: String, _ entry: ActiveEntry) async {
-        guard let source = await entry.session.stop() else { return }
+        guard let source = await entry.session.stop() else {
+            // 読めるファイルが1本も残らなかった(録画プロセスは動いていたのに空だった等)。
+            // **黙って消さない** —— finish() がこの数を index に残し、録画タブに run が出る
+            sourcesFailed += 1
+            return
+        }
         defer { for file in source.files { try? FileManager.default.removeItem(at: file) } }
 
         // 区間が1つも無いワーカーの録画は破棄(シナリオが1本も来なかったアイドルワーカー等)

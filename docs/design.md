@@ -3387,6 +3387,16 @@ H.264 に再エンコード。VFR ソースの区間頭フレーム欠落は直�
 契約は `recordings/index.json`(schemaVersion 2。VideoRecordingCoordinator.swift・
 RecordingIndex.swift・RecordingWallClock.swift)。録画自体の失敗は run を失敗させない。
 
+**失敗しても index は残す**(2026-08-26)。集計欄は2つあり**別のことを言う**:
+`clipsAttempted`/`clipsFailed` は「録れた動画から切り出せなかった」、
+**`sourcesFailed` は「そもそも録れていない」**(録画プロセスは起動したのに、読めるファイルが
+1本も残らなかったワーカー数)。以前は後者のとき index を書かずに `recordings/` ごと消していたため、
+**録画が全滅した run は拡張の録画タブから黙って消え、「録画していない run」と区別が付かなかった**
+(実害: `simctl io recordVideo` が 0 バイトの .mov を作る Mac で、その機械のセッションだけ
+一覧から消えた。fleetest ではなく環境側の不調だったが、画面からは追えなかった)。
+拡張は行に「録画失敗 N 台」を出し、再生ビューでは**「録れていない」を「切り出せなかった」より
+優先して**理由に出す(直す場所が simctl / screenrecord 側なのか、エンコーダ側なのかが変わるため)。
+
 ファイナライズのエクスポートは同時 2 本に制限し、クリップ 1 本ごとに期限 `max(60秒, ソース総尺)`
 を切る(ホスト HW エンコーダ[AVE]の無応答で `finishWriting` が永久待ちし run がハングした実害
 2026-07-27 への保護)。期限超過はエンコーダ無応答とみなして**その run の残りクリップを断念**し、
