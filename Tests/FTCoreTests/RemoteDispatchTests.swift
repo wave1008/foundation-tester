@@ -1462,3 +1462,25 @@ final class RemoteDispatchTests: XCTestCase {
         XCTAssertTrue(command.contains("fleetest remote setup"), command)
     }
 }
+
+// MARK: - 中継・回収時のパス書き換え(手元のリポジトリルートに対応するのは workDir)
+
+extension RemoteDispatchTests {
+    /// **base ではなく workDir を写す**。base を渡すと `users/<issuer>/work` が残り、
+    /// 手元に存在しないパスが画面と記録に出る(2026-08-26 の実害。§18.2 の発行者
+    /// ネームスペースを足したときに追随し損ねていた)
+    func testRelayRewriteMapsTheRunnerWorkDirOntoTheLocalRepoRoot() {
+        let layout = RemoteLayout(base: "/Users/u/fleetest-runner", issuer: "u")
+        let localRoot = "/Users/u/github/foundation-tester"
+        let line = #"{"reportPath":"/Users/u/fleetest-runner/users/u/work/TestProjects/P/reports/x.md"}"#
+
+        XCTAssertEqual(
+            RemotePathRewrite.rewrite(line, remoteRoot: layout.workDir, localRoot: localRoot),
+            #"{"reportPath":"/Users/u/github/foundation-tester/TestProjects/P/reports/x.md"}"#)
+
+        XCTAssertEqual(
+            RemotePathRewrite.rewrite(line, remoteRoot: layout.base, localRoot: localRoot),
+            #"{"reportPath":"/Users/u/github/foundation-tester/users/u/work/TestProjects/P/reports/x.md"}"#,
+            "base を渡すと壊れる(この形を出さないための witness)")
+    }
+}

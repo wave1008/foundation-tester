@@ -600,7 +600,11 @@ struct RemoteRunDispatcher {
             log("warning: failed to collect the remote JUnit report (\(remotePath))")
             return
         }
-        let rewritten = RemotePathRewrite.rewrite(xml, remoteRoot: layout.base, localRoot: localRepoRoot.path)
+        // **写す先は workDir**(base ではない)。base のまま置換すると `users/<issuer>/work` が
+        // 残って手元に存在しないパスができる(2026-08-26 の実害。§18.2 の発行者ネームスペースを
+        // 足したときに追随し損ねていた)
+        let rewritten = RemotePathRewrite.rewrite(
+            xml, remoteRoot: layout.workDir, localRoot: localRepoRoot.path)
         let url = URL(fileURLWithPath: localPath)
         do {
             try FileManager.default.createDirectory(
@@ -704,7 +708,8 @@ struct RemoteRunDispatcher {
         let readHandle = stdoutPipe.fileHandleForReading
         let readDone = DispatchSemaphore(value: 0)
         let splitter = StreamLineSplitter()
-        let remoteRoot = layout.base
+        // **写す先は workDir**(base ではない。collectJUnit と同じ理由)
+        let remoteRoot = layout.workDir
         let localRoot = localRepoRoot.path
         let mode = self.mode
         func relayLine(_ line: String) {

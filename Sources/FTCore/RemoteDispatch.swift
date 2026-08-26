@@ -937,7 +937,13 @@ public enum RemotePathRewrite {
     /// テキスト(JUnit XML / NDJSON 行)内の remoteRoot(絶対パス)を localRoot へ全置換する。
     /// JUnit の `report:`/`worker:` 行、NDJSON の `reportPath` 等はリモートの絶対パスのまま
     /// 書かれるため、回収・中継後にここで手元パスへ書き換える。末尾 "/" の有無は同一視する
-    /// (rsync 側の契約と揃える)
+    /// (rsync 側の契約と揃える)。
+    ///
+    /// **渡す remoteRoot は `layout.workDir`**(`base` ではない)—— 手元のリポジトリルートに
+    /// 対応するのは受け手パッケージ = workDir で、base はその2段上。base を渡すと
+    /// `users/<issuer>/work` が残り、**手元に存在しないパス**が画面と記録に出る
+    /// (2026-08-26 の実害: リモート実行のログが `<手元のクローン>/users/<issuer>/work/…` を指し、
+    /// 実際に走ったスクリプトと違うパスに見えて原因調査が空転した)
     public static func rewrite(_ text: String, remoteRoot: String, localRoot: String) -> String {
         let remote = stripTrailingSlash(remoteRoot)
         guard !remote.isEmpty else { return text }

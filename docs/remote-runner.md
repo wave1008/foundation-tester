@@ -751,6 +751,17 @@ machines/apps/runs はプロジェクト資産で、ディスパッチのたび�
   ので、限定していると**残ったロックを解除する手段が `remote clean`(デバイスも止まる)か
   手動削除しか無くなる**(実際に詰まった)。純粋にローカルだけの実行のときだけ打ち間違いとして拒否する
 
+### 中継・回収時のパス書き換え(手元のルートに対応するのは workDir)
+
+リモートの子が出す絶対パス(NDJSON の `reportPath`・JUnit の `report:`/`worker:`・フックのログ)は
+`RemotePathRewrite.rewrite` で手元のパスへ写す。**渡す remoteRoot は `layout.workDir`**
+(`<base>/users/<issuer>/work`)であって `base` ではない —— 手元のリポジトリルートに対応するのは
+受け手パッケージ = workDir で、base はその2段上。base を渡すと `users/<issuer>/work` が残り、
+**手元にも向こうにも存在しないパス**が画面と記録に出る(2026-08-26 の実害: リモート実行のログが
+`<手元のクローン>/users/<issuer>/work/…/setup.sh` を指し、実際に走ったスクリプトと別物に見えて
+原因調査が空転した。§18.2 の発行者ネームスペースを足したときの追随漏れ)。
+witness は `RemoteDispatchTests.testRelayRewriteMapsTheRunnerWorkDirOntoTheLocalRepoRoot`。
+
 ### プロファイルのリモート対応
 
 - **マシンプロファイル**(実装済み。**2026-08-17 に「取得元」セレクタは廃止し、マシン選択は
