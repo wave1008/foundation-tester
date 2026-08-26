@@ -260,7 +260,79 @@ final class MonitorDeviceStateTests: XCTestCase {
             simCatalog: [sim(udid: "UDID-A", booted: false), sim(udid: "UDID-B", physical: true)],
             runningAVDs: [:], bootCompleted: [:],
             registeredTargets: [], registeredIosUdids: [])
-        XCTAssertTrue(states.isEmpty, "未起動・実機は未登録合成の対象外")
+        XCTAssertTrue(states.isEmpty,
+                      "未起動と、simctl が並べる実機の器は対象外(実機は physicalIOS から合成する)")
+    }
+
+    // MARK: - 接続中の実機の合成(2026-08-26。「(起動中のデバイス)」で実機が出ず、バッジも付かなかった)
+
+    private func iPhone(udid: String, name: String = "iPhone wave", connected: Bool = true)
+        -> IOSPhysicalDeviceInfo {
+        IOSPhysicalDeviceInfo(udid: udid, name: name, os: "iOS 26.6.1", connected: connected,
+                              transport: "wired", model: "iPhone 15 Pro")
+    }
+
+    /// ブリッジが無くても**繋がっている端末は出す**(state は booted = ブリッジ未起動の意味)。
+    /// kind=physical が乗らないと拡張の実機バッジが付かない
+    func testConnectedIPhoneIsSynthesizedEvenWithoutABridge() {
+        let (states, skipped) = ApiMonitorCommand.unregisteredStates(
+            simCatalog: [], runningAVDs: [:], bootCompleted: [:],
+            registeredTargets: [], registeredIosUdids: [],
+            physicalIOS: [iPhone(udid: "UDID-PHONE")])
+        XCTAssertTrue(skipped.isEmpty)
+        XCTAssertEqual(states.count, 1)
+        XCTAssertEqual(states[0].state, "booted", "繋がってはいるがブリッジが無い")
+        XCTAssertEqual(states[0].detail, "bridge not running")
+        XCTAssertTrue(states[0].target.spec.isPhysical, "実機バッジはこの値で出る")
+        XCTAssertEqual(states[0].target.name, "iPhone wave")
+        XCTAssertEqual(states[0].iosUdid, "UDID-PHONE")
+        XCTAssertFalse(states[0].target.registered)
+    }
+
+    /// ブリッジが立っていれば登録済みと同じく connected + port(配信が張れる)
+    func testConnectedIPhoneWithABridgeReportsThePort() {
+        let (states, _) = ApiMonitorCommand.unregisteredStates(
+            simCatalog: [], runningAVDs: [:], bootCompleted: [:],
+            registeredTargets: [], registeredIosUdids: [],
+            physicalIOS: [iPhone(udid: "UDID-PHONE")], iosBridgePorts: ["UDID-PHONE": 8145])
+        XCTAssertEqual(states.count, 1)
+        XCTAssertEqual(states[0].state, "connected")
+        XCTAssertEqual(states[0].iosPort, 8145)
+    }
+
+    /// 登録済みの実機は合成しない(マシンプロファイル側の名前・ポートで既に並んでいる)
+    func testRegisteredIPhoneIsNotSynthesizedTwice() {
+        let (states, _) = ApiMonitorCommand.unregisteredStates(
+            simCatalog: [], runningAVDs: [:], bootCompleted: [:],
+            registeredTargets: [], registeredIosUdids: ["UDID-PHONE"],
+            physicalIOS: [iPhone(udid: "UDID-PHONE")])
+        XCTAssertTrue(states.isEmpty)
+    }
+
+    /// Android 実機は serial で合成し、表示名は ro.product.model(取れなければ serial)
+    func testConnectedAndroidPhoneIsSynthesizedWithItsModelName() {
+        let (states, _) = ApiMonitorCommand.unregisteredStates(
+            simCatalog: [], runningAVDs: [:], bootCompleted: ["93MAY0CY1M": true],
+            registeredTargets: [], registeredIosUdids: [],
+            connectedPhysicalSerials: ["93MAY0CY1M", "ZY22H8LNCT"],
+            androidPhysicalNames: ["93MAY0CY1M": "Pixel 3a", "ZY22H8LNCT": ""])
+        XCTAssertEqual(states.map(\.target.name), ["Pixel 3a", "ZY22H8LNCT"],
+                       "serial 昇順(辞書の順序に任せない)。名前が取れなければ serial を使う")
+        XCTAssertEqual(states.map(\.state), ["connected", "booted"],
+                       "ブート完了だけ connected(未完了はブリッジ APK の自動導入に進ませない)")
+        XCTAssertTrue(states.allSatisfy { $0.target.spec.isPhysical })
+    }
+
+    /// 登録済みの Android 実機(serial 一致)は合成しない
+    func testRegisteredAndroidPhoneIsNotSynthesizedTwice() {
+        let registered = MonitorTarget(
+            platform: "android",
+            spec: DeviceSpec(name: "Pixel 3a", kind: .physical, serial: "93MAY0CY1M"))
+        let (states, _) = ApiMonitorCommand.unregisteredStates(
+            simCatalog: [], runningAVDs: [:], bootCompleted: ["93MAY0CY1M": true],
+            registeredTargets: [registered], registeredIosUdids: [],
+            connectedPhysicalSerials: ["93MAY0CY1M"], androidPhysicalNames: [:])
+        XCTAssertTrue(states.isEmpty)
     }
 
     func testUnregisteredRunningAVDBecomesConnectedWhenBootCompleted() {
@@ -348,5 +420,38 @@ final class MonitorTargetIDTests: XCTestCase {
                           spec: DeviceSpec(name: "Pixel-01", machine: host)).id
         }
         XCTAssertEqual(Set(ids).count, 3, "\(ids)")
+    }
+}
+
+// MARK: - 実機一覧のキャッシュ(毎サイクル devicectl/adb を叩かないための TTL 判定)
+
+extension MonitorDeviceStateTests {
+    private func inventory(names: [String: String], ageSeconds: TimeInterval, now: Date)
+        -> ApiMonitorCommand.PhysicalInventory {
+        ApiMonitorCommand.PhysicalInventory(
+            ios: [], androidNames: names, takenAt: now.addingTimeInterval(-ageSeconds))
+    }
+
+    func testInventoryIsRefetchedWhenThereIsNoCacheOrTheTTLExpired() {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        XCTAssertTrue(ApiMonitorCommand.needsRefresh(cache: nil, serials: [], now: now))
+        XCTAssertTrue(ApiMonitorCommand.needsRefresh(
+            cache: inventory(names: [:], ageSeconds: ApiMonitorCommand.physicalInventoryTTLSeconds, now: now),
+            serials: [], now: now))
+        XCTAssertFalse(ApiMonitorCommand.needsRefresh(
+            cache: inventory(names: [:], ageSeconds: 1, now: now), serials: [], now: now),
+            "TTL 内は引き直さない(devicectl/adb は 0.5〜1 秒。2 秒周期には重い)")
+    }
+
+    /// **新しく繋いだ端末は TTL を待たない** —— 待つと「繋いだのに 30 秒出てこない」になる
+    func testInventoryIsRefetchedWhenAnUnknownSerialAppears() {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        let cache = inventory(names: ["93MAY0CY1M": "Pixel 3a"], ageSeconds: 1, now: now)
+        XCTAssertTrue(ApiMonitorCommand.needsRefresh(
+            cache: cache, serials: ["93MAY0CY1M", "14141JEC204922"], now: now))
+        XCTAssertFalse(ApiMonitorCommand.needsRefresh(
+            cache: cache, serials: ["93MAY0CY1M"], now: now))
+        XCTAssertFalse(ApiMonitorCommand.needsRefresh(cache: cache, serials: [], now: now),
+                       "端末が抜けただけなら次の TTL まで待ってよい(消えるのは一覧側で分かる)")
     }
 }

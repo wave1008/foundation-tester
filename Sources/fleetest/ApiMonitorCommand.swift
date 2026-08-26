@@ -513,8 +513,11 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         })
         // includeUnregistered のときは未登録の running AVD の serial もブート完了スキャンに加える
         // (加えないと合成デバイスがブリッジAPK自動インストールを一切試みず永久に booted のまま)
+        // 未登録のエミュレータ + **接続中の実機**(実機も合成対象。unregisteredStates の doc)。
+        // **1回の scanBootCompleted に畳む** —— 別に呼ぶと同じ adb 往復を毎サイクル二重に払う
         let unregisteredAndroidSerials: Set<String> = includeUnregistered
             ? Set(runningAVDs.filter { !registeredCanonicalAVDIDs.contains($0.value) }.keys)
+                .union(connectedSerials.filter { !$0.hasPrefix("emulator-") })
             : []
         async let bootCompletedTask = scanBootCompleted(
             serials: androidCandidateSerials.union(unregisteredAndroidSerials))
@@ -532,18 +535,38 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         guard includeUnregistered else { return registeredStates }
 
         let registeredIosUdids = Set(registeredStates.compactMap { $0.iosUdid })
+        // **接続中の実機も合成する**(unregisteredStates の doc)。列挙元は api installed-devices と
+        // 同じ(iOS=IOSPhysicalDeviceCatalog / Android=adb の serial)。ブリッジの有無は登録済みと
+        // 同じ判定(BridgeLauncher.portsMatching + /status が返ったポート)で決める
+        let physicalSerialsForInventory = connectedSerials.filter { !$0.hasPrefix("emulator-") }
+        let inventory = physicalInventory(serials: physicalSerialsForInventory)
+        let physicalIOS = inventory.ios
+        var iosBridgePorts: [String: UInt16] = [:]
+        for device in physicalIOS {
+            let ports = repoRoot.map { BridgeLauncher.portsMatching(udid: device.udid, repoRoot: $0) } ?? []
+            if let port = ports.first(where: { bridgeStatuses[$0] != nil }) {
+                iosBridgePorts[device.udid] = port
+            }
+        }
+        let physicalSerials = physicalSerialsForInventory
+        let androidPhysicalNames = inventory.androidNames
         let (unregistered, skipped) = unregisteredStates(
             simCatalog: simCatalog, runningAVDs: runningAVDs, bootCompleted: bootCompleted,
-            registeredTargets: targets, registeredIosUdids: registeredIosUdids)
+            registeredTargets: targets, registeredIosUdids: registeredIosUdids,
+            physicalIOS: physicalIOS, iosBridgePorts: iosBridgePorts,
+            connectedPhysicalSerials: physicalSerials, androidPhysicalNames: androidPhysicalNames)
         for message in skipped {
             FileHandle.standardError.write(Data((message + "\n").utf8))
         }
         return registeredStates + unregistered
     }
 
-    /// 未登録(マシンプロファイル未記載)の起動中デバイスを合成する。iOS は booted かつ実機でない
-    /// シミュレータのうち registeredIosUdids に無いもの、Android は runningAVDs のうち canonical AVD ID
-    /// が registeredTargets の avd に無いもの。実機は対象外(未登録実機は扱わない)。
+    /// 未登録(マシンプロファイル未記載)の起動中デバイスを合成する。iOS は booted なシミュレータの
+    /// うち registeredIosUdids に無いもの、Android は runningAVDs のうち canonical AVD ID が
+    /// registeredTargets の avd に無いもの。
+    /// **接続中の実機も合成する**(2026-08-26。以前は対象外だった)—— 拡張の「(起動中のデバイス)」は
+    /// マシンプロファイルを引かないので、ここで合成しないと**繋いである実機が一覧に出ず**、
+    /// 実機バッジも付かない。識別子は iOS=udid / Android=serial で、登録済みのぶんは除く。
     /// 合成 id が登録ターゲット(または他の合成デバイス)の id と衝突したらスキップする — 拡張側は id を
     /// 一意キーとして devices を Map 管理するため、重複 id は片方が消える形で表示が壊れる。
     /// I/O を持たない pure 関数(ユニットテスト対象のため private にしない。skipped は呼び出し側が
@@ -553,7 +576,14 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         runningAVDs: [String: String],
         bootCompleted: [String: Bool],
         registeredTargets: [MonitorTarget],
-        registeredIosUdids: Set<String>
+        registeredIosUdids: Set<String>,
+        physicalIOS: [IOSPhysicalDeviceInfo] = [],
+        /// udid → ブリッジのポート(iosState と同じ判定を親から渡す。空 = ブリッジ無し)
+        iosBridgePorts: [String: UInt16] = [:],
+        /// adb で見えている実機の serial(emulator- は含めない)
+        connectedPhysicalSerials: Set<String> = [],
+        /// serial → 表示名(ro.product.model 等。空なら serial をそのまま名前にする)
+        androidPhysicalNames: [String: String] = [:]
     ) -> (states: [DeviceRuntimeState], skipped: [String]) {
         var usedIds = Set(registeredTargets.map { $0.id })
         var states: [DeviceRuntimeState] = []
@@ -609,7 +639,109 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             }
         }
 
+        // ---- 接続中の実機(iOS=devicectl / Android=adb)----------------------------------
+        // **登録済みのぶんは除く**(登録側は machines プロファイルの名前・ポートで既に並んでいる)。
+        // 状態の決め方は登録済みと同じ規則: iOS はブリッジがあれば connected(port)・無ければ
+        // booted(= 繋がっているがブリッジ未起動)、Android はブート完了で connected
+        let registeredSerials = Set(registeredTargets.compactMap { target -> String? in
+            guard target.platform == "android", target.spec.isPhysical else { return nil }
+            return target.spec.serial
+        })
+        for device in physicalIOS where !registeredIosUdids.contains(device.udid) {
+            let target = MonitorTarget(
+                platform: "ios",
+                spec: DeviceSpec(name: device.name, kind: .physical, os: device.os, udid: device.udid),
+                registered: false)
+            guard !usedIds.contains(target.id) else {
+                skipped.append("[monitor] Skipped an unregistered iPhone due to an id collision: \(target.id)")
+                continue
+            }
+            usedIds.insert(target.id)
+            if let port = iosBridgePorts[device.udid] {
+                states.append(DeviceRuntimeState(
+                    target: target, state: "connected", detail: "port \(port)",
+                    iosPort: port, androidSerial: nil, iosUdid: device.udid))
+            } else {
+                states.append(DeviceRuntimeState(
+                    target: target, state: "booted", detail: "bridge not running",
+                    iosPort: nil, androidSerial: nil, iosUdid: device.udid))
+            }
+        }
+        for serial in connectedPhysicalSerials.sorted() where !registeredSerials.contains(serial) {
+            let name = androidPhysicalNames[serial].flatMap { $0.isEmpty ? nil : $0 } ?? serial
+            let target = MonitorTarget(
+                platform: "android",
+                spec: DeviceSpec(name: name, kind: .physical, serial: serial),
+                registered: false)
+            guard !usedIds.contains(target.id) else {
+                skipped.append("[monitor] Skipped an unregistered Android device due to an id collision: \(target.id)")
+                continue
+            }
+            usedIds.insert(target.id)
+            if bootCompleted[serial] == true {
+                states.append(DeviceRuntimeState(
+                    target: target, state: "connected", detail: serial,
+                    iosPort: nil, androidSerial: serial))
+            } else {
+                states.append(DeviceRuntimeState(
+                    target: target, state: "booted", detail: "waiting for boot to finish (\(serial))",
+                    iosPort: nil, androidSerial: nil))
+            }
+        }
+
         return (states, skipped)
+    }
+
+    /// 接続中の実機の列挙(devicectl + adb getprop)は **毎サイクル叩かない** —— 実測で
+    /// 0.5〜1 秒かかり、既定 2 秒周期の監視ループには重すぎる(シミュレータの一覧は simctl 1回で
+    /// 済むのと違い、実機は端末ごとに問い合わせが要る)。**繋ぎ替えは分単位の出来事**なので
+    /// TTL で足りる。**新しい serial を見つけたら TTL を待たずに引き直す**(繋いだ端末が
+    /// 30 秒出てこないと「認識しない」と読めてしまう)
+    static let physicalInventoryTTLSeconds: TimeInterval = 30
+    struct PhysicalInventory {
+        let ios: [IOSPhysicalDeviceInfo]
+        /// serial → ro.product.model(空 = 取れなかった。呼び出し側が serial を使う)
+        let androidNames: [String: String]
+        let takenAt: Date
+    }
+    nonisolated(unsafe) private static var physicalInventoryCache: PhysicalInventory?
+    private static let physicalInventoryLock = NSLock()
+
+    /// TTL 内ならキャッシュ、切れていれば引き直す。**判定だけを純粋関数に切り出してある**
+    /// (I/O を持つ本体はテストできないため。needsRefresh がこの規律の witness)
+    static func needsRefresh(cache: PhysicalInventory?, serials: Set<String>, now: Date) -> Bool {
+        guard let cache else { return true }
+        if now.timeIntervalSince(cache.takenAt) >= physicalInventoryTTLSeconds { return true }
+        return !serials.isSubset(of: Set(cache.androidNames.keys))
+    }
+
+    private static func physicalInventory(serials: Set<String>) -> PhysicalInventory {
+        physicalInventoryLock.lock()
+        defer { physicalInventoryLock.unlock() }
+        if let cache = physicalInventoryCache, !needsRefresh(cache: cache, serials: serials, now: Date()) {
+            return cache
+        }
+        let inventory = PhysicalInventory(
+            ios: ((try? IOSPhysicalDeviceCatalog.devices()) ?? []).filter(\.connected),
+            androidNames: androidModelNames(serials: serials),
+            takenAt: Date())
+        physicalInventoryCache = inventory
+        return inventory
+    }
+
+    /// 実機の表示名(`ro.product.model`)。**取れなければ空**にして呼び出し側が serial を使う。
+    /// api installed-devices の androidPhysicalDevices と同じ値を出す(名前が2種類あると
+    /// 「デバイスを選択」で足したときにタイルの名前が変わって見える)
+    static func androidModelNames(serials: Set<String>) -> [String: String] {
+        guard !serials.isEmpty, let adb = try? AndroidDriver.findADB() else { return [:] }
+        var result: [String: String] = [:]
+        for serial in serials {
+            let model = (try? Shell.run([adb, "-s", serial, "shell", "getprop", "ro.product.model"],
+                                        timeout: 10))?
+                .output.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            result[serial] = model
+        }
+        return result
     }
 
     /// connected からの降格を確定させるまでに要する連続失敗回数(1回の失敗では降格しない)

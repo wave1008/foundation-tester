@@ -773,10 +773,15 @@ test("filterMonitorDevices: 全て offline なら空配列", () => {
   assert.deepEqual(filterMonitorDevices([], "running"), []);
 });
 
-// iOS 実機の booted = ブリッジ不在(タイルは「未起動」表示)。起動中扱いにすると
-// 「(起動中のデバイス)」に未起動の実機が居座る
-test("filterMonitorDevices: booted の iOS 実機(ブリッジ不在)は除外する", () => {
-  assert.deepEqual(filterMonitorDevices([SIM1, IPHONE_PHYSICAL_NO_BRIDGE, EMU1], "running"), [SIM1, EMU1]);
+// iOS 実機の booted = 端末は繋がっているがブリッジが1本も無い。**2026-08-26 に方針変更**:
+// api monitor が接続中の実機を合成するようになったので、繋がっている端末を「起動中のデバイス」から
+// 隠すほうが実態と食い違う(ブリッジはタイルのメニューから起こせる)。
+test("filterMonitorDevices: booted の iOS 実機(ブリッジ不在)も起動中に出す", () => {
+  assert.deepEqual(
+    filterMonitorDevices([SIM1, IPHONE_PHYSICAL_NO_BRIDGE, EMU1], "running"),
+    [SIM1, IPHONE_PHYSICAL_NO_BRIDGE, EMU1],
+    "繋がっている実機を隠さない(タイル側が『ブリッジ未起動』として出す)",
+  );
   assert.deepEqual(filterMonitorDevices([IPHONE_PHYSICAL_NO_BRIDGE], "all"), [IPHONE_PHYSICAL_NO_BRIDGE]);
 });
 

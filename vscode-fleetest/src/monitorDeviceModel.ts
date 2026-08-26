@@ -237,19 +237,15 @@ export function sortMonitorDevices(devices: readonly MonitorDevice[]): MonitorDe
  * validateNewRunProfileName が "@" 始まりを予約済みとして弾くため衝突しない。 */
 export const RUNNING_DEVICES_PROFILE_VALUE = "@running";
 
-/** iOS 実機の state==="booted" は「端末は繋がっているがブリッジが1本も無い」の意味
- * (ApiMonitorCommand.iosState。シミュレータの booted=起動済みとは意味が違う)。実機のブリッジは
- * 自動供給されず run かタイルのメニューからしか起動しないので、この状態は待っても変わらない
- * =タイルも「未起動」表示になる。android 実機の booted は本当にブート途中なので対象外。
- * 同期相手: src/webview/monitor/deviceTiles.js の bridgeNotRunning(同じ判定の複製)。 */
-function iosPhysicalWithoutBridge(device: MonitorDevice): boolean {
-  return device.kind === "physical" && device.platform === "ios" && device.state === "booted";
-}
-
-/** filter="running" なら起動中のみに絞る(offline と、未起動表示になる iOS 実機のブリッジ不在を除外)。
+/** filter="running" なら起動中のみに絞る(offline と unknown を除外)。
  * 未登録デバイス(registered===false)は定義上「起動中」なので running では素通りする。
  * "all" は registered===false のみ追加で除外する(マシンプロファイルタブの一覧と一致させるため。
- * それ以外は元の順序のまま素通し)。 */
+ * それ以外は元の順序のまま素通し)。
+ *
+ * **ブリッジ不在の iOS 実機(state==="booted")も出す**(2026-08-26 に方針変更)。以前は
+ * 「タイルが未起動表示になるので出さない」として除外していたが、`api monitor` が接続中の実機を
+ * 合成するようになった以上、**繋がっている端末を「起動中のデバイス」から隠すほうが実態と食い違う**
+ * (ブリッジはタイルのメニューから起こせる。タイル側の表示は deviceTiles.js の bridgeNotRunning のまま)。 */
 export function filterMonitorDevices(
   devices: readonly MonitorDevice[],
   filter: MonitorDeviceFilter,
@@ -257,11 +253,6 @@ export function filterMonitorDevices(
   return filter === "running"
     // unknown(誰も観測していない)は running に含めない —— 動いている根拠が無いものを
     // 「稼働中だけ」の一覧に出すと、その一覧の意味が「稼働中か、分からないもの」になる
-    ? devices.filter(
-        (device) =>
-          device.state !== "offline" &&
-          device.state !== "unknown" &&
-          !iosPhysicalWithoutBridge(device),
-      )
+    ? devices.filter((device) => device.state !== "offline" && device.state !== "unknown")
     : devices.filter((device) => device.registered !== false);
 }

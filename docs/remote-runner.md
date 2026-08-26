@@ -810,6 +810,13 @@ machines/apps/runs はプロジェクト資産で、ディスパッチのたび�
 |---|---|---|
 | 状態 | `api monitor` が simctl/adb で観測 | その機械で `api monitor --device-machine <machine>` を1本(`RemoteMonitorFanout`) |
 
+**「起動中のデバイス」で出る台**: booted なシミュレータ・起動中の AVD に加え、**接続中の実機**も
+合成する(`unregisteredStates`。iOS=`IOSPhysicalDeviceCatalog` / Android=adb の非 emulator serial)。
+実機の列挙は **30 秒 TTL でキャッシュ**する —— devicectl と `adb getprop` で 0.5〜1 秒かかり、
+既定 2 秒周期の監視には重い(繋ぎ替えは分単位の出来事。**新しい serial を見つけたら TTL を待たずに
+引き直す**)。**ブリッジ不在の iOS 実機(state=booted)も出す**(2026-08-26 に方針変更。拡張の
+`filterMonitorDevices` から除外規則を外した)—— 繋がっている端末を隠すほうが実態と食い違うため。
+
 **fan-out 先の決め方**(`ApiMonitorCommand.fanoutMachines`): 実行プロファイルを選んでいるときは
 **そのプロファイルに居る他機だけ**。選んでいないとき(拡張の「(起動中のデバイス)」= `--profile` 無し)は
 **登録簿の全マシン**へ張る —— このモードはマシンプロファイルを引かないので、張らないと
