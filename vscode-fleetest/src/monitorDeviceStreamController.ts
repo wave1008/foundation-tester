@@ -157,7 +157,12 @@ export class MonitorDeviceStreamController {
           command: config.binaryPath,
           args: [
             "remote", "exec", device.machine, "--",
-            "api", "device-stream", "--device-machine", device.machine,
+            // **向こうでは "local"**。転送したプロファイルは RunnerProfileView が「そのランナーから
+            // 見た姿」へ畳んである(自分の台は machine:"local"・他機の台は削除)ので、エイリアスで
+            // 絞ると1台も残らず "no ios device named …" で落ちる。fan-out の子
+            // (Sources/fleetest/RemoteMonitorFanout.swift)が `--device-machine local` を渡すのと同じ理由 ——
+            // **片方だけ直さない**(この経路は 8ef49815 で追随が漏れていた)
+            "api", "device-stream", "--device-machine", "local",
             "--platform", device.platform, "--name", device.name,
             "--fps", String(config.liveFps), "--max-width", String(config.monitorMaxWidth),
             ...remoteProjectArgs(),

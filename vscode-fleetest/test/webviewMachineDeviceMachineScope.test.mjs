@@ -147,6 +147,10 @@ test("編集フォームの確定は、選択した行のマシンを載せて�
   assert.equal(update.originalName, "シミュ1");
   assert.equal(update.deviceMachine, "M1Max");
   assert.equal(update.fields.udid, "UDID-M1MAX");
+  // **machine(編集中のマシンプロファイル名)と deviceMachine(その台が居る機械)は別物**。
+  // 同じキーに寄せると片方が undefined になり、拡張側の検証がメッセージごと捨てて
+  // 「確定中...」のまま何も起きない(2026-08-26 の改名で実際に起きた)
+  assert.equal(update.machine, "M1", "どのマシンプロファイルを書くかが落ちている");
 });
 
 test("手元の行の確定には deviceMachine を載せない(省略=手元)", (t) => {

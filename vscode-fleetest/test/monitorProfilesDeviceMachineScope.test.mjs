@@ -77,3 +77,27 @@ test("machineDeviceUpdate: deviceMachine 省略は手元のエントリを書き
   assert.equal(devices[0].udid, "UDID-LOCAL");
   assert.equal(devices[1].name, "シミュ1", "別マシンのエントリが巻き添えで書き換わっている");
 });
+
+// ---- 実体を消したあとの登録外し(unregisterDeletedDevice) ----
+// **引数の machine(その台が居る機械)とマシンプロファイル名を取り違えない**。
+// 2026-08-26 の改名で、走査ループの変数が引数を隠して**プロファイル名で引き当てて**おり、
+// 登録が1件も外れなかった(実行プロファイル側だけ外れて台帳が食い違う)。
+test("unregisterDeletedDevice: その機械の登録だけを外す(マシンプロファイル名と取り違えない)", () => {
+  const { controller, readDevices } = makeController();
+  const updated = controller.unregisterDeletedDevice("シミュ1", "M1Max");
+
+  assert.deepEqual(updated.machines, ["M1"], "書き換えたマシンプロファイル名を返す");
+  assert.deepEqual(
+    readDevices().map((d) => `${d.machine}\t${d.name}`),
+    ["local\tシミュ1"],
+    "M1Max の登録だけが消え、手元の同名は残る",
+  );
+});
+
+test("unregisterDeletedDevice: machine 省略は手元の登録を外す", () => {
+  const { controller, readDevices } = makeController();
+  const updated = controller.unregisterDeletedDevice("シミュ1", undefined);
+
+  assert.deepEqual(updated.machines, ["M1"]);
+  assert.deepEqual(readDevices().map((d) => d.machine), ["M1Max"], "手元のぶんだけ消える");
+});

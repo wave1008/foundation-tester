@@ -614,7 +614,7 @@ FileVault 有効のランナーは**再起動のたびに誰かが解錠+ログ�
 | `--host … overrides the machine profile's host …` | `--host` とマシン側の `host` が違う機械を指している | 警告どおり `--host` が使われる。意図と違えばどちらかを直す |
 | `the device is currently running — stop it first` | 起動中のデバイスは削除できない | `fleetest devices down` で停止してから削除する |
 | `no such simulator/AVD` | 既に削除済み / 識別子が違う | 一覧を取り直す(ダイアログのホストを選び直す) |
-| タイルが「<ホスト> に届いていません」のまま | その機械の fleetest が古い(`Unknown option '--device-host'` が OUTPUT に出る)/ ssh が通らない | ステップ3 で版を揃えてから、モニターの「モニター再起動」(諦めた接続はここでやり直す) |
+| タイルが「<マシン> に届いていません」のまま | その機械の fleetest が古い(`Unknown option '--device-machine'` が OUTPUT に出る)/ ssh が通らない | ステップ3 で版を揃えてから、モニターの「モニター再起動」(諦めた接続はここでやり直す) |
 | リモートのタイルだけ映像が出ない(静止画は出る) | 配信の ssh が張れていない / そのプラットフォームの配信を設定で切っている | 静止画で運用は続く。OUTPUT の `[monitor-stream]` を見る。設定タブの iOS/Android 配信のトグルを確認 |
 
 切り分けが要るときは、ランナー機で**そのまま手で実行してみる**のが早い —

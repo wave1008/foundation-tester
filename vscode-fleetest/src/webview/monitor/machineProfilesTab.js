@@ -438,8 +438,10 @@ function setEditorDirty(dirty) {
 
 // 選択中デバイスの値でフォームを作り直す(編集途中の値は破棄する)。
 function renderDeviceEditor(machine, device) {
+  // **machine と deviceMachine は別物**(machine = 編集中のマシンプロファイル名、
+  // deviceMachine = その台が居る機械)。同じキーに寄せると片方が黙って消える
   editorTarget = { machine: machine, platform: device.platform, originalName: device.name,
-                   machine: device.machine ?? undefined };
+                   deviceMachine: device.machine ?? undefined };
   editorOriginalValues = deviceFieldValues(device);
   editorSubmitting = false;
   editorError.textContent = '';
@@ -612,7 +614,7 @@ function validateDeviceEditorFields(name) {
     return t('wvMonitor2.machine.validation.nameRequired');
   }
   // 重複はそのデバイスが居る機械の中だけで見る(一意なのは (machine, name))。
-  const others = allDeviceNamesForSelectedMachine(editorTarget.machine)
+  const others = allDeviceNamesForSelectedMachine(editorTarget.deviceMachine)
     .filter((n) => n !== editorTarget.originalName);
   if (others.includes(name)) {
     return t('wvMonitor2.machine.validation.nameExists', { name });
@@ -646,7 +648,7 @@ editorConfirm.addEventListener('click', () => {
     platform: editorTarget.platform,
     originalName: editorTarget.originalName,
     // 引き当ては (deviceMachine, originalName)。省略=手元(拡張側が "local" として引く)。
-    ...(editorTarget.machine ? { deviceMachine: editorTarget.machine } : {}),
+    ...(editorTarget.deviceMachine ? { deviceMachine: editorTarget.deviceMachine } : {}),
     fields: {
       name: name,
       // 編集不可フィールドはラベル表示(span)の textContent = 元の値をそのまま往復させる。
@@ -668,7 +670,7 @@ export function applyMachineDeviceUpdateResult(message) {
   if (message.ok) {
     // リネームで名前が変わるのでキーを作り直す。**ホストは編集対象のもの**(名前だけだと
     // 別ホストの同名行が選択される)。
-    selectedDeviceKeys = new Set([deviceKey({ machine: editorTarget?.machine, name: message.name })]);
+    selectedDeviceKeys = new Set([deviceKey({ machine: editorTarget?.deviceMachine, name: message.name })]);
     editorError.textContent = '';
     setEditorDirty(false);
   } else {

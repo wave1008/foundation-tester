@@ -138,7 +138,7 @@ fleetest monitor pause --for 30   # 30分。省略すると resume まで
 fleetest monitor resume
 ```
 
-**効くのはこの機械の monitor だけ**(fan-out の子 = `--device-host` 付きは hold を見ない。
+**効くのはこの機械の monitor だけ**(fan-out の子 = `--device-machine` 付きは hold を見ない。
 リモートランナー機で pause しても、そこへ接続している別の機械の配信は止まらない)。
 
 拡張が動いていない(パネルを開いていない)ときの旧手段は pkill 3連打
@@ -308,6 +308,30 @@ DOM の粒度・命名を a11y へ揃えた直後、**ラベルだけでは a11y
 なった。それに気付かず a11y の木を見て「DOM 経路が効いている」と報告しかけた。
 **検証は木の構造で行う**(ブラウザなら chrome の後に id 無しノードが続くか)。
 一般化すると、**2つを見分けるために使っていた差を消す変更をしたら、検証手段を先に作り直す**。
+
+### 型検査の効かない境界(拡張 ⇄ webview)は往復テストで縛る(2026-08-26)
+
+用語の改名(`host` → `machine`)で **webview 側だけ旧キーが残り、3件が黙って壊れた**。
+拡張は TypeScript なので改名漏れはコンパイルで止まるが、**webview の JS は
+postMessage 越しで型が消える**ため、送る側と読む側がズレても誰も落とさない。
+壊れ方は3つとも「エラーにならない」形だった:
+
+- 一覧が常に空(`hosts[].name` を読んでいた → リモートのマシンを1つも選べない)
+- メッセージが最終ゲート(`isMonitorFromWebviewMessage`)で丸ごと捨てられ、
+  **画面上は成功したように見えて登録簿に届かない**
+- 参照のマシンが読めず、確定すると `machine: "local"` として保存 ——
+  **利用者の実行プロファイルからリモートの台が消えた**
+
+**テストは旧キーを固定していたので3件とも緑のまま通った**。フィクスチャは production と
+同じキーで書かれている限り、片側だけの改名を検出できない。要るのは
+**「webview が組み立てた payload をそのまま拡張側のゲート/パーサへ通す」往復テスト**
+(`webviewRemoteHostsSettings.test.mjs` / `webviewRunProfileDeviceMachine.test.mjs`)。
+実バンドルを jsdom で動かし、`postMessage` で出た値を `isMonitorFromWebviewMessage` に
+食わせる。旧キーへ戻す変異でどちらも落ちることを確認してある。
+
+**同型を疑う場所**: postMessage の両側・NDJSON のキー・`dataset.*` 属性・CSS クラス名 ——
+どれも「片方だけ変えてもビルドが通る」。改名したら **grep でキー名の全出現を数え、
+production とテストの両方が新しいキーになっているか**を見る。
 
 ### SUT アプリのビルドを守るゲートは E2E だけ(2026-08-13)
 

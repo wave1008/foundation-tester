@@ -231,7 +231,11 @@ test("リモートのデバイスは remote exec 経由の device-stream で配�
     const argv = await waitForArgv(dir, "fleetest");
     assert.ok(argv, "fleetest(remote exec)が起動されること");
     assert.match(argv, /remote exec M1Max -- api device-stream/, "その機械の上で解決させる");
-    assert.match(argv, /--device-machine M1Max/, "向こうは自分が誰かを知らないので親が明示する");
+    // **エイリアスではなく "local"** —— 転送したプロファイルは畳んであり(RunnerProfileView)、
+    // 向こうでは自分の台が machine:"local"。M1Max で絞ると1台も残らず配信が張れない
+    // (fan-out の子が `--device-machine local` を渡すのと同じ理由)
+    assert.match(argv, /--device-machine local/, "畳んだプロファイルは local で引く");
+    assert.doesNotMatch(argv, /--device-machine M1Max/, "エイリアスで絞ると向こうで1台も残らない");
     assert.match(argv, /--platform ios --name iPhone 17 Pro/, "宛先は (platform, 名前) で指す");
     assert.match(argv, /--codec h264/, "codec 設定はリモートにもそのまま効く");
     assert.match(argv, /--project demo/, "向こうもマシンプロファイルを引くのでプロジェクトが要る");

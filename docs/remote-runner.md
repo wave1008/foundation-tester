@@ -105,7 +105,7 @@
 
 **ホスト混在プロファイル(devices に `host: "local"` と `host: "M1Max"` 等が並ぶ形)を
 `--host <名前>` で単一ホストへ送るときは、そのホスト担当のデバイスだけが
-`--device`/`--device-host` として自動で付く**(丸ごと送ると受け側の「local」枠が発行元の
+`--device`/`--device-machine` として自動で付く**(丸ごと送ると受け側の「local」枠が発行元の
 Mac のデバイスに解決され、存在しない台の起動を試みるため)。担当が1台も無いプロファイルは
 ディスパッチ前にエラーで止まる。
 
@@ -606,7 +606,7 @@ target が hosts に無い/host 未設定を指す場合は**黙ってローカ�
 
 ### host はデバイス単位・1つの実行プロファイルが複数の機械にまたがれる(2026-08-17)
 
-**一意なのは name 単体ではなく (host, name)**。フリートの各機は同じ命名規則でシミュレータを
+**一意なのは name 単体ではなく (machine, name)**。フリートの各機は同じ命名規則でシミュレータを
 作るので、別ホストの同名は例外ではなく通常 —— これを重複として拒否すると
 「ローカル10台 + リモート10台」を1つのプロファイルに書けない(利用者の指摘で判明)。
 
@@ -627,9 +627,9 @@ target が hosts に無い/host 未設定を指す場合は**黙ってローカ�
   `RemoteDispatchExplicitDeviceScope`)。混在プロファイルでは同名の台が複数の機械にあるので、
   名前だけを子へ渡すと**全機械ぶんの同名を拾い**、手元の UDID をランナー機で探して
   `no simulator with that UDID` で落ちた(受け手報告 2026-08-23: local/M1Max/M1Ultra の同名
-  iPhone で `--device` 1台 → Devices に3台)。子には `--device-host H` を付けて渡し、
+  iPhone で `--device` 1台 → Devices に3台)。子には `--device-machine M` を付けて渡し、
   名前が H に無ければ**H の台を列挙して手元で止める**(遠い失敗にしない)。別の機械の同名を
-  指したいときは `--device-host` を明示する。host 未指定のプロファイルは従来どおり名前を素通し。
+  指したいときは `--device-machine` を明示する。machine 未指定のプロファイルは従来どおり名前を素通し。
   **`--host local` も同じ判定を通す**(2026-08-24。`run` / `api run` の2経路。手元実行だからと
   素通しにすると、名前が別ホストのエントリに解決して手元でそのホストの UDID を探し
   `no simulator with that UDID` で止まる — 受け手報告)
@@ -802,17 +802,17 @@ machines/apps/runs はプロジェクト資産で、ディスパッチのたび�
 放っておくとリモートの台は永久に `offline` で、**向こうで起動しても画面が1ミリも変わらない**
 (利用者の報告「表示が未起動のままです。起動しようとしたのかどうかわかりません」)。
 しかも**同名の手元の台に解決して別の機械の状態と画面を出す**という、もっと悪い形もあった
-((host, name) が一意なら同名は正常な構成なので普通に起きる)。
+((machine, name) が一意なら同名は正常な構成なので普通に起きる)。
 
 決めた形は**「手元とリモートで構造を変えない」**:
 
 | | 手元 | リモート |
 |---|---|---|
-| 状態 | `api monitor` が simctl/adb で観測 | その機械で `api monitor --device-host <host>` を1本(`RemoteMonitorFanout`) |
+| 状態 | `api monitor` が simctl/adb で観測 | その機械で `api monitor --device-machine <machine>` を1本(`RemoteMonitorFanout`) |
 | 映像 | 拡張が配信ヘルパーを直接 spawn | 拡張が `remote exec <host> -- api device-stream …` を spawn |
 | 静止画 | monitorFrame(2秒毎) | 同じ(子の行をそのまま中継) |
 
-- **`--device-host <host>`**: 「この機械のデバイスとして扱う対象」。リモート機には
+- **`--device-machine <machine>`**: 「この機械のデバイスとして扱う対象」。リモート機には
   「自分が誰か」を知る手段が無い(マシン登録名は廃止済み)ので**親が明示する**。
   仕分けの規則は `ApiMonitorCommand.scope`(pure。`MonitorHostScopeTests`)—— 走査するのは
   自分のぶんだけ / 並べるのは親は全部・子は自分のぶんだけ(両方が出すと拡張の Map で潰し合う)/
@@ -837,10 +837,10 @@ machines/apps/runs はプロジェクト資産で、ディスパッチのたび�
   `RemoteDeviceFanout` で分散していたが、**タイル1枚の起動・停止は手元で `api device-up --name`
   を撃っていた** —— `findDevice` は名前だけで引くので、同名の台が別の機械にも居ると
   **別の機械の設定でこの Mac にシミュレータが1台できる**(simctl は無ければ作る)。
-  現在は拡張が `remote exec <host> -- api device-up … --device-host <host>` を通し、
-  `findDevice` も (host, name) で引く。**`--device-host` を渡さない呼び出しは、候補が
+  現在は拡張が `remote exec <machine> -- api device-up … --device-machine <machine>` を通し、
+  `findDevice` も (machine, name) で引く。**`--device-machine` を渡さない呼び出しは、候補が
   複数ある名前なら候補を挙げて止める**(黙って手元を選ばない) —— 版の古い拡張は
-  `--device-host` を付けずに撃つので、既定を手元にすると
+  `--device-machine` を付けずに撃つので、既定を手元にすると
   **「M1Max を止めたつもりで手元が止まり、しかも ok:true で成功に見える」**になる
   (2026-08-17 に実際に起きた)。実行プロファイルの参照解決と同じ規律
 - **自動修復(watchdog)はリモートの台を見ない**。ブリッジ再供給も Wi-Fi 修復も手元にしか
@@ -853,7 +853,7 @@ machines/apps/runs はプロジェクト資産で、ディスパッチのたび�
 - **`remote exec` は何も転送しない**ので、fan-out は**先にプロジェクトを rsync する**
   (`RemoteProjectSync`。転送の規則は run のディスパッチと共有 = 二重に持たない)
 
-**版が揃っていないと配信も状態も来ない**(`--device-host` / `api device-stream` は新しい)。
+**版が揃っていないと配信も状態も来ない**(`--device-machine` / `api device-stream` は新しい)。
 古い機械は「Unknown option」で即死 → 3回で諦め → タイルは「届いていません」のまま。
 `fleetest remote setup <host>` で揃える。
 
@@ -1340,7 +1340,7 @@ appPath の原本をワークスペースの `apps/<原本のファイル名>` �
   実装が割れない)。ワークスペースごと運ばれるので、スクリプトと資材は勝手に届く
 - **順序**: デバイスに触る前に撃つ(依存サービスが無いままシミュレータを起こしても、
   全シナリオが「アプリの不具合」の顔で落ちるだけ)。渡すデバイス一覧は**絞り込み後**の
-  ものを使う(`--device` / `--device-host` で減った台を渡すと `adb reverse` の宛先がずれる)
+  ものを使う(`--device` / `--device-machine` で減った台を渡すと `adb reverse` の宛先がずれる)
 - **失敗の扱い**: setup が非0 → **run を止める**(インフラ起因。§16.7 の「シナリオの失敗と
   区別する」に乗せる。シナリオは1本も走らない)/ teardown が非0 → **警告のみ**
   (片付けの失敗で結果を赤にすると、通ったのか落ちたのかが読めなくなる)。

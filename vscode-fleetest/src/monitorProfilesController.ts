@@ -917,8 +917,10 @@ export class MonitorProfilesController {
       }
     }
     const updatedMachines: string[] = [];
-    for (const machine of listMachineProfiles(this.deps.workspaceRoot, project).map((s) => s.name)) {
-      const machinePath = path.join(this.machinesDir(project), `${machine}.json`);
+    // **ループ変数は machine と名付けない** —— 引数の machine(その台が居る機械)を隠して
+    // マシンプロファイル名で引き当てることになり、登録が1件も外れなくなる
+    for (const profileName of listMachineProfiles(this.deps.workspaceRoot, project).map((s) => s.name)) {
+      const machinePath = path.join(this.machinesDir(project), `${profileName}.json`);
       try {
         const parsed: unknown = JSON.parse(fs.readFileSync(machinePath, "utf8"));
         const removal = removeDevicesFromMachineProfile(parsed, [{ name, machine }]);
@@ -926,10 +928,10 @@ export class MonitorProfilesController {
           continue;
         }
         fs.writeFileSync(machinePath, `${JSON.stringify(removal.object, null, 2)}\n`, "utf8");
-        updatedMachines.push(machine);
+        updatedMachines.push(profileName);
       } catch (error) {
         this.deps.outputChannel.appendLine(
-          t("profiles.log.machineProfileLoadFailed", { name: machine, error: String(error) }),
+          t("profiles.log.machineProfileLoadFailed", { name: profileName, error: String(error) }),
         );
       }
     }
