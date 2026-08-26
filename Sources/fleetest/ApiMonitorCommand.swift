@@ -82,7 +82,8 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             guard !Self.requiresMachineProfile(profile: profile) else { throw error }
             machine = nil
             logStderr("[monitor] No run profile is selected and the machine profile cannot be determined"
-                + " — monitoring only the devices that are currently running")
+                + " — monitoring the devices that are currently running"
+                + " (here and on every registered machine: fleetest remote hosts)")
         }
         if let machine, machine.auto {
             logStderr("→ Using machine profile \(machine.name) automatically (it is the only one in machines/)")
@@ -125,10 +126,16 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         let scope = Self.scope(targets: targets, deviceMachine: deviceMachine)
         let ownedTargets = scope.owned
         let listedTargets = scope.listed
+        // プロファイル未選択(「起動中のデバイス」)は登録簿の全マシンへ張る(fanoutMachines の doc)
+        let fanoutTargets = Self.fanoutMachines(
+            foreignMachines: scope.foreignMachines,
+            profileSelected: Self.requiresMachineProfile(profile: profile),
+            registry: (LocalConfig.load().remoteHosts ?? []).map(\.machine),
+            deviceMachine: deviceMachine)
         let fanout: RemoteMonitorFanout? = {
-            guard !scope.foreignMachines.isEmpty else { return nil }
+            guard !fanoutTargets.isEmpty else { return nil }
             return RemoteMonitorFanout(
-                machines: scope.foreignMachines, project: testProject.name, profile: profile,
+                machines: fanoutTargets, project: testProject.name, profile: profile,
                 interval: interval, maxWidth: maxWidth,
                 log: { message in MonitorOutput.shared.writeStderr(message) },
                 relayLine: { line in MonitorOutput.shared.writeLine(line) })
@@ -385,7 +392,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
     /// —— 未選択は拡張の「(起動中のデバイス)」= 登録に依らず動いている台を見る、の意味なので、
     /// machines/ が複数あって決められなくても起動中の台だけを出して続ける
     /// (2026-08-17 の実害: プロファイルの選択を外した瞬間にモニターが起動できなくなった)。
-    /// I/O を持たない pure 関数(MonitorHostScopeTests)
+    /// I/O を持たない pure 関数(MonitorMachineScopeTests)
     static func requiresMachineProfile(profile: String?) -> Bool { profile != nil }
 
     /// 監視対象の仕分け。**この機械が観測できるのは自分のデバイスだけ** —— 他の機械のぶんを
@@ -402,7 +409,24 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         let foreignMachines: [String]
     }
 
-    /// I/O を持たない pure 関数(MonitorHostScopeTests)
+    /// fan-out 先の決定。**プロファイルを選んでいるときはその範囲**(scope が挙げた他機)、
+    /// **選んでいないとき(拡張の「起動中のデバイス」)は登録簿の全マシン** ——
+    /// マシンプロファイルを引かない = どの台がどの機械に居るかを知る手掛かりが他に無いので、
+    /// 何もしないと**リモートで起動中の台が一覧に出ない**(2026-08-26 の報告)。
+    /// **子(--device-machine 付き)は常に空** = 入れ子のディスパッチを作らない。
+    /// 重複除去は登場順を保つ(表示とログの並びを入力から決まる形にする)。I/O を持たない pure 関数
+    static func fanoutMachines(
+        foreignMachines: [String], profileSelected: Bool, registry: [String], deviceMachine: String?
+    ) -> [String] {
+        guard deviceMachine == nil else { return [] }
+        if profileSelected { return foreignMachines }
+        var seen = Set<String>()
+        return registry
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && MachineDispatch.normalize($0) != nil && seen.insert($0).inserted }
+    }
+
+    /// I/O を持たない pure 関数(MonitorMachineScopeTests)
     static func scope(targets: [MonitorTarget], deviceMachine: String?) -> Scope {
         let wanted = MachineDispatch.normalize(deviceMachine)
         let owned = targets.filter { MachineDispatch.normalize($0.spec.machine) == wanted }
@@ -423,7 +447,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
     ///   親子で一致する
     /// どちらにも無い台は **「状態を取得できない」** として出す —— 観測していないものを
     /// offline と言うと、向こうで動いていても止まって見える(2026-08-17 の実害)。
-    /// I/O を持たない pure 関数(MonitorHostScopeTests)
+    /// I/O を持たない pure 関数(MonitorMachineScopeTests)
     static func mergedDevices(listedTargets: [MonitorTarget], observed: [ApiMonitorDeviceInfo],
                               remote: [String: ApiMonitorDeviceInfo]) -> [ApiMonitorDeviceInfo] {
         var observedByID: [String: ApiMonitorDeviceInfo] = [:]
@@ -434,6 +458,12 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         // マシンプロファイルに無い台(determineStates が合成した起動中デバイス)を後ろへ足す
         let listedIDs = Set(listedTargets.map(\.id))
         merged += observed.filter { !listedIDs.contains($0.id) }
+        // **リモートの未登録の台も足す** —— プロファイル未選択(拡張の「起動中のデバイス」)では
+        // listedTargets が手元のぶんしか無いので、ここで足さないと**向こうで起動中の台が
+        // 一覧に出ない**(2026-08-26 の報告)。並びは id 順に固定する(辞書は順序を持たないため、
+        // 揺らすと拡張のタイルが毎サイクル並べ替わる)
+        let mergedIDs = Set(merged.map(\.id))
+        merged += remote.values.filter { !mergedIDs.contains($0.id) }.sorted { $0.id < $1.id }
         return merged
     }
 

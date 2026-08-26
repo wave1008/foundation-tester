@@ -14,7 +14,7 @@ import XCTest
 
 @testable import fleetest
 
-final class MonitorHostScopeTests: XCTestCase {
+final class MonitorMachineScopeTests: XCTestCase {
 
     private func target(_ name: String, host: String?, platform: String = "ios") -> MonitorTarget {
         var spec = DeviceSpec(name: name, os: "27.0")
@@ -120,5 +120,88 @@ final class MonitorHostScopeTests: XCTestCase {
             remote: [:])
         XCTAssertEqual(merged.map(\.id), ["ios:A", "ios:stray"],
                        "マシンプロファイルに無い起動中デバイスも落とさない")
+    }
+}
+
+// MARK: - fan-out 先の決定(プロファイル未選択 = 拡張の「起動中のデバイス」)
+
+extension MonitorMachineScopeTests {
+    /// プロファイルを選んでいるときは従来どおり「そのプロファイルに居る他機」だけ。
+    func testFanoutFollowsTheProfileWhenOneIsSelected() {
+        XCTAssertEqual(
+            ApiMonitorCommand.fanoutMachines(
+                foreignMachines: ["M1Max"], profileSelected: true,
+                registry: ["M1Max", "M1Ultra"], deviceMachine: nil),
+            ["M1Max"],
+            "選んだプロファイルの範囲を超えて ssh を張らない")
+    }
+
+    /// **未選択(起動中のデバイス)は登録簿の全マシン** —— マシンプロファイルを引かないので、
+    /// ここで張らないと「向こうで起動中の台」を知る手掛かりが無く一覧に出ない(2026-08-26 の報告)。
+    func testFanoutUsesTheRegistryWhenNoProfileIsSelected() {
+        XCTAssertEqual(
+            ApiMonitorCommand.fanoutMachines(
+                foreignMachines: [], profileSelected: false,
+                registry: ["M1Max", "M1Ultra"], deviceMachine: nil),
+            ["M1Max", "M1Ultra"])
+    }
+
+    /// 登録簿は人が編集するので、空白・空文字・"local"・重複が混ざる。登場順は保つ
+    func testFanoutCleansTheRegistryButKeepsOrder() {
+        XCTAssertEqual(
+            ApiMonitorCommand.fanoutMachines(
+                foreignMachines: [], profileSelected: false,
+                registry: ["  M1Ultra  ", "", "local", "M1Ultra", "M1Max"], deviceMachine: nil),
+            ["M1Ultra", "M1Max"],
+            "重複と local と空を落とし、最初に現れた順で返す")
+    }
+
+    /// **子は絶対に fan-out しない**(入れ子のディスパッチを作らない)。登録簿があっても空
+    func testChildNeverFansOut() {
+        XCTAssertEqual(
+            ApiMonitorCommand.fanoutMachines(
+                foreignMachines: ["M1Max"], profileSelected: false,
+                registry: ["M1Max", "M1Ultra"], deviceMachine: "local"),
+            [])
+    }
+}
+
+// MARK: - mergedDevices(リモートの未登録の台)
+
+extension MonitorMachineScopeTests {
+    private func remoteInfo(id: String, name: String, machine: String) -> ApiMonitorDeviceInfo {
+        var info = ApiMonitorDeviceInfo(
+            id: id, name: name, platform: "ios", state: "connected", detail: "",
+            udid: nil, serial: nil, health: nil, renderMode: nil, inRun: false, kind: "virtual",
+            host: nil, port: nil, recording: false, registered: true, machine: nil, frozen: false)
+        info.machine = machine
+        return info
+    }
+
+    /// **マシンプロファイルに無いリモートの台も出す** —— プロファイル未選択(「起動中のデバイス」)は
+    /// listedTargets が手元のぶんしか無いので、ここで落とすと向こうで動いている台が一覧から消える。
+    func testMergedDevicesKeepsRemoteDevicesThatAreNotInTheMachineProfile() {
+        let merged = ApiMonitorCommand.mergedDevices(
+            listedTargets: [], observed: [],
+            remote: [
+                "ios:M1Ultra/シミュ2": remoteInfo(id: "ios:M1Ultra/シミュ2", name: "シミュ2", machine: "M1Ultra"),
+                "ios:M1Max/シミュ1": remoteInfo(id: "ios:M1Max/シミュ1", name: "シミュ1", machine: "M1Max"),
+            ])
+
+        XCTAssertEqual(merged.map(\.id), ["ios:M1Max/シミュ1", "ios:M1Ultra/シミュ2"],
+                       "id 順で並べる(辞書の順序に依存すると毎サイクル並べ替わる)")
+        XCTAssertEqual(merged.map(\.machine), ["M1Max", "M1Ultra"], "マシンのタグが乗っていること")
+    }
+
+    /// listedTargets で既に使ったリモートの台を二重に足さない
+    func testMergedDevicesDoesNotDuplicateRemoteDevicesAlreadyListed() {
+        let spec = DeviceSpec(name: "シミュ1", machine: "M1Max")
+        let target = MonitorTarget(platform: "ios", spec: spec)
+        let merged = ApiMonitorCommand.mergedDevices(
+            listedTargets: [target], observed: [],
+            remote: [target.id: remoteInfo(id: target.id, name: "シミュ1", machine: "M1Max")])
+
+        XCTAssertEqual(merged.count, 1)
+        XCTAssertEqual(merged[0].state, "connected", "リモートの観測結果が unobserved を上書きする")
     }
 }

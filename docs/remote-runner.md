@@ -809,6 +809,15 @@ machines/apps/runs はプロジェクト資産で、ディスパッチのたび�
 | | 手元 | リモート |
 |---|---|---|
 | 状態 | `api monitor` が simctl/adb で観測 | その機械で `api monitor --device-machine <machine>` を1本(`RemoteMonitorFanout`) |
+
+**fan-out 先の決め方**(`ApiMonitorCommand.fanoutMachines`): 実行プロファイルを選んでいるときは
+**そのプロファイルに居る他機だけ**。選んでいないとき(拡張の「(起動中のデバイス)」= `--profile` 無し)は
+**登録簿の全マシン**へ張る —— このモードはマシンプロファイルを引かないので、張らないと
+**向こうで起動中の台が一覧に出ない**(2026-08-26 の報告。手元の台しか出ずマシンのタグも消える)。
+子(`--device-machine` 付き)は常に空 = 入れ子のディスパッチを作らない。
+**マシンプロファイルに無いリモートの台も devices に足す**(`mergedDevices`)—— listedTargets は
+手元のぶんしか無いので、そこで落とすと fan-out の結果が捨てられる。並びは id 順に固定
+(辞書の順序に任せるとタイルが毎サイクル並べ替わる)。
 | 映像 | 拡張が配信ヘルパーを直接 spawn | 拡張が `remote exec <host> -- api device-stream …` を spawn |
 | 静止画 | monitorFrame(2秒毎) | 同じ(子の行をそのまま中継) |
 
