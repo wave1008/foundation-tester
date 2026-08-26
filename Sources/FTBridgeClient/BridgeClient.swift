@@ -879,6 +879,21 @@ public final class BridgeClient: AppDriver {
         return components.url ?? withPath
     }
 
+    /// **宛先がループバックでない = 実機に LAN(WiFi)で繋いでいる**ときだけ足す注記。
+    /// 実機以外の経路(シミュレータ・Android・USB トンネル)は常にループバックなので、
+    /// この判定だけで実機の LAN を名指しできる(IOSDeviceTransport.establish の2分岐と対)。
+    /// WiFi の待ち受けは端末の省電力で閉じるため、実行途中の接続拒否は
+    /// **アプリの死ではなくトランスポート**であることが多い(2026-08-26 実測: LAN で2回とも
+    /// 同じ手順で拒否 → USB トンネルで成功、所要も 13.2s → 5.5s)
+    static func lanTransportAdvice(baseURL: URL) -> String {
+        guard let host = baseURL.host, host != BridgeEndpoint.loopbackHost else { return "" }
+        return " (reached over WiFi at \(host) — a physical device closes that listener under power"
+            + " saving, so a mid-run refusal here is usually the transport, not the app; confirm with"
+            + " a screenshot before suspecting a crash. `brew install libimobiledevice` on the machine"
+            + " that owns the device switches to the USB tunnel, and a bridge that is already up keeps"
+            + " its LAN transport until it is rebuilt with `fleetest bridge down --port <N>`)"
+    }
+
     func request(path: String, method: String, body: Data?, query: String? = nil,
                  timeout: TimeInterval? = nil) async throws -> (Data, URLResponse) {
         var req = URLRequest(url: Self.url(base: baseURL, path: path, query: query))
@@ -894,10 +909,11 @@ public final class BridgeClient: AppDriver {
             }
             return try await session.data(for: req)
         } catch {
+            let detail = error.localizedDescription + Self.lanTransportAdvice(baseURL: baseURL)
             if DriverError.isDefiniteDeliveryFailure(error) {
-                throw DriverError.bridgeConnectionRefused(error.localizedDescription)
+                throw DriverError.bridgeConnectionRefused(detail)
             }
-            throw DriverError.bridgeUnreachable(error.localizedDescription)
+            throw DriverError.bridgeUnreachable(detail)
         }
     }
 

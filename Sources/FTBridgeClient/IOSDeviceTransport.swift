@@ -86,7 +86,7 @@ public enum IOSDeviceTransport {
             // LAN は WiFi の省電力で 1 往復 ~48ms(標準偏差 27ms)かかる。USB の ~5ms に比べ
             // 1 シナリオあたり約 25% 遅い(実測 2026-07-25)。iproxy があれば usb が既定
             log(wired
-                ? "transport lan (over WiFi; a USB tunnel via `brew install libimobiledevice` is faster)"
+                ? "transport lan (over WiFi; the device closes this listener under power saving and a run can fail mid-way — `brew install libimobiledevice` switches to the USB tunnel)"
                 : "transport lan (the device is not on USB; connecting over USB cuts a round trip from 48ms to 5ms)")
             endpoint = BridgeEndpoint(
                 host: try await waitForAnnouncedAddress(
