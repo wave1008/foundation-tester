@@ -329,6 +329,14 @@ function renderAppProfileSection(): string {
             <label for="app-profile-ios-app-path">${t("panels.appProfile.packagePathLabel")}</label>
             <input type="text" id="app-profile-ios-app-path">
           </div>
+          <!-- 実機に配るビルドは iOS だけ別物(シミュレータ用は未署名で実機に入らない)。
+               Android は同じ APK が両方で動くため欄を置かない(RunProfile.swift の
+               AppProfileSection.appPathPhysical と同期。片方だけ変えない)。 -->
+          <div class="modal-row">
+            <label for="app-profile-ios-app-path-physical">${t("panels.appProfile.packagePathPhysicalLabel")}</label>
+            <input type="text" id="app-profile-ios-app-path-physical">
+          </div>
+          <div class="modal-row profile-hint">${t("panels.appProfile.packagePathPhysicalHint")}</div>
 
           <div class="app-profile-group-title app-profile-group-title-android">Android</div>
           <div class="modal-row">

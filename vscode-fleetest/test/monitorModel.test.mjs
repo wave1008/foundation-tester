@@ -1630,12 +1630,18 @@ const APP_PROFILE_PLATFORM_FIELDS = {
   appPath: "path/to.app",
 };
 
+// ios だけ実機に配るパッケージ(appPathPhysical)を持つ。
+const APP_PROFILE_IOS_FIELDS = {
+  ...APP_PROFILE_PLATFORM_FIELDS,
+  appPathPhysical: "path/to-device.app",
+};
+
 const VALID_APP_PROFILE_SAVE = {
   type: "appProfileSave",
   profile: "sampleapp",
   fields: {
     common: APP_PROFILE_COMMON_FIELDS,
-    ios: APP_PROFILE_PLATFORM_FIELDS,
+    ios: APP_PROFILE_IOS_FIELDS,
     android: APP_PROFILE_PLATFORM_FIELDS,
   },
 };
@@ -1659,7 +1665,32 @@ test("isMonitorFromWebviewMessage: appProfileSave は profile 非空・fields(co
   assert.equal(
     isMonitorFromWebviewMessage({
       ...VALID_APP_PROFILE_SAVE,
-      fields: { common: emptyCommon, ios: emptyPlatform, android: emptyPlatform },
+      fields: { common: emptyCommon, ios: { ...emptyPlatform, appPathPhysical: "" }, android: emptyPlatform },
+    }),
+    true,
+  );
+});
+
+test("isMonitorFromWebviewMessage: appProfileSave の ios は appPathPhysical(実機に配るパッケージ)が必須・android は持たない", () => {
+  assert.equal(
+    isMonitorFromWebviewMessage({
+      ...VALID_APP_PROFILE_SAVE,
+      fields: { ...VALID_APP_PROFILE_SAVE.fields, ios: APP_PROFILE_PLATFORM_FIELDS }, // appPathPhysical 欠落
+    }),
+    false,
+  );
+  assert.equal(
+    isMonitorFromWebviewMessage({
+      ...VALID_APP_PROFILE_SAVE,
+      fields: { ...VALID_APP_PROFILE_SAVE.fields, ios: { ...APP_PROFILE_IOS_FIELDS, appPathPhysical: 1 } },
+    }),
+    false,
+  );
+  // android は欄が無いので、余分に付いていても検証は通す(未知キーとして無視される)。
+  assert.equal(
+    isMonitorFromWebviewMessage({
+      ...VALID_APP_PROFILE_SAVE,
+      fields: { ...VALID_APP_PROFILE_SAVE.fields, android: APP_PROFILE_IOS_FIELDS },
     }),
     true,
   );
@@ -2879,7 +2910,13 @@ test("parseRunProfileForForm: トップレベルが非オブジェクト(配列�
 test("parseAppProfileForForm: 正常な値を読み取る(common は自動インストールのみ、ios/android は3フィールド)", () => {
   const parsed = parseAppProfileForForm({
     common: { appName: "廃止済み", app: "com.example.sampleapp", appPath: "path/to.app", autoInstall: true },
-    ios: { appName: "サンプル(iOS)", app: "com.example.sampleapp.ios", appPath: "path/to-ios.app", autoInstall: false },
+    ios: {
+      appName: "サンプル(iOS)",
+      app: "com.example.sampleapp.ios",
+      appPath: "path/to-ios.app",
+      appPathPhysical: "path/to-ios-device.app",
+      autoInstall: false,
+    },
     android: {
       appName: "サンプル(Android)",
       app: "com.example.sampleapp.android",
@@ -2891,7 +2928,12 @@ test("parseAppProfileForForm: 正常な値を読み取る(common は自動イン
     // common の appName/app/appPath は廃止のため読み取らない(autoInstall のみ反映される)。
     common: { autoInstall: "true" },
     // ios/android の autoInstall は common に一本化されたため読み取らない(残っていても無視)。
-    ios: { appName: "サンプル(iOS)", app: "com.example.sampleapp.ios", appPath: "path/to-ios.app" },
+    ios: {
+      appName: "サンプル(iOS)",
+      app: "com.example.sampleapp.ios",
+      appPath: "path/to-ios.app",
+      appPathPhysical: "path/to-ios-device.app",
+    },
     android: {
       appName: "サンプル(Android)",
       app: "com.example.sampleapp.android",
@@ -2903,13 +2945,33 @@ test("parseAppProfileForForm: 正常な値を読み取る(common は自動イン
 test("parseAppProfileForForm: セクション欠落は空のセクションとして読み取る(common の autoInstall は既定 'false')", () => {
   const parsed = parseAppProfileForForm({});
   const emptyPlatform = { appName: "", app: "", appPath: "" };
-  assert.deepEqual(parsed, { common: { autoInstall: "false" }, ios: emptyPlatform, android: emptyPlatform });
+  assert.deepEqual(parsed, {
+    common: { autoInstall: "false" },
+    ios: { ...emptyPlatform, appPathPhysical: "" },
+    android: emptyPlatform,
+  });
 });
 
 test("parseAppProfileForForm: セクションが非オブジェクト(配列含む)なら空のセクション扱い", () => {
   const parsed = parseAppProfileForForm({ common: "invalid", ios: null, android: ["a"] });
   const emptyPlatform = { appName: "", app: "", appPath: "" };
-  assert.deepEqual(parsed, { common: { autoInstall: "false" }, ios: emptyPlatform, android: emptyPlatform });
+  assert.deepEqual(parsed, {
+    common: { autoInstall: "false" },
+    ios: { ...emptyPlatform, appPathPhysical: "" },
+    android: emptyPlatform,
+  });
+});
+
+test("parseAppProfileForForm: appPathPhysical(実機に配るパッケージ)は ios のみ読み取る(android は欄が無い)", () => {
+  const parsed = parseAppProfileForForm({
+    ios: { appPathPhysical: "path/to-ios-device.app" },
+    android: { appPathPhysical: "path/to-device.apk" },
+  });
+  assert.equal(parsed.ios.appPathPhysical, "path/to-ios-device.app");
+  assert.equal("appPathPhysical" in parsed.android, false);
+  // 型不正・欠落は既定の空文字。
+  assert.equal(parseAppProfileForForm({ ios: { appPathPhysical: 1 } }).ios.appPathPhysical, "");
+  assert.equal(parseAppProfileForForm({ ios: {} }).ios.appPathPhysical, "");
 });
 
 test("parseAppProfileForForm: フィールドの型不正は既定値扱い(appName が数値、app/appPath が欠落 等)", () => {
@@ -2918,7 +2980,7 @@ test("parseAppProfileForForm: フィールドの型不正は既定値扱い(appN
     ios: { appName: 123, app: null },
   });
   assert.deepEqual(parsed.common, { autoInstall: "false" });
-  assert.deepEqual(parsed.ios, { appName: "", app: "", appPath: "" });
+  assert.deepEqual(parsed.ios, { appName: "", app: "", appPath: "", appPathPhysical: "" });
 });
 
 test("parseAppProfileForForm: common の autoInstall は true のときだけ 'true'、false/欠落/型不正は既定の 'false'", () => {
@@ -3202,7 +3264,7 @@ test("updateRunProfileInObject: トップレベルがオブジェクトでなけ
 
 const BASE_APP_PROFILE_FIELDS = {
   common: { autoInstall: "false" },
-  ios: { appName: "", app: "", appPath: "" },
+  ios: { appName: "", app: "", appPath: "", appPathPhysical: "" },
   android: { appName: "", app: "", appPath: "" },
 };
 
@@ -3253,7 +3315,7 @@ test("updateAppProfileInObject: common の autoInstall は2値('true' は boolea
 test("updateAppProfileInObject: ios/android の appName/app/appPath は空文字ならキー削除する", () => {
   const result = updateAppProfileInObject(
     { ios: { appName: "old", app: "old", appPath: "old" } },
-    { ...BASE_APP_PROFILE_FIELDS, ios: { appName: "", app: "", appPath: "" } },
+    { ...BASE_APP_PROFILE_FIELDS, ios: { appName: "", app: "", appPath: "", appPathPhysical: "" } },
   );
   assert.equal(result.ok, true);
   assert.deepEqual(result.object.ios, {});
@@ -3262,7 +3324,7 @@ test("updateAppProfileInObject: ios/android の appName/app/appPath は空文字
 test("updateAppProfileInObject: ios/android に残った autoInstall は common への一本化に伴い常に削除する", () => {
   const result = updateAppProfileInObject(
     { ios: { autoInstall: true } },
-    { ...BASE_APP_PROFILE_FIELDS, ios: { appName: "", app: "", appPath: "" } },
+    { ...BASE_APP_PROFILE_FIELDS, ios: { appName: "", app: "", appPath: "", appPathPhysical: "" } },
   );
   assert.equal(result.ok, true);
   assert.deepEqual(result.object.ios, {});
@@ -3290,7 +3352,7 @@ test("updateAppProfileInObject: 元に無いセクションでも1つでも値�
 
   const byField = updateAppProfileInObject(
     {},
-    { ...BASE_APP_PROFILE_FIELDS, ios: { appName: "", app: "com.example.ios", appPath: "" } },
+    { ...BASE_APP_PROFILE_FIELDS, ios: { appName: "", app: "com.example.ios", appPath: "", appPathPhysical: "" } },
   );
   assert.deepEqual(byField.object.ios, { app: "com.example.ios" });
 });
@@ -3298,10 +3360,29 @@ test("updateAppProfileInObject: 元に無いセクションでも1つでも値�
 test("updateAppProfileInObject: 既存の空セクションは空のまま保持する", () => {
   const result = updateAppProfileInObject(
     { ios: {} },
-    { ...BASE_APP_PROFILE_FIELDS, ios: { appName: "", app: "", appPath: "" } },
+    { ...BASE_APP_PROFILE_FIELDS, ios: { appName: "", app: "", appPath: "", appPathPhysical: "" } },
   );
   assert.equal(result.ok, true);
   assert.deepEqual(result.object.ios, {});
+});
+
+test("updateAppProfileInObject: ios の appPathPhysical(実機に配るパッケージ)は書き込み・空文字なら削除する", () => {
+  const written = updateAppProfileInObject(
+    {},
+    { ...BASE_APP_PROFILE_FIELDS, ios: { appName: "", app: "", appPath: "", appPathPhysical: "path/to-device.app" } },
+  );
+  assert.equal(written.ok, true);
+  assert.deepEqual(written.object.ios, { appPathPhysical: "path/to-device.app" });
+
+  const removed = updateAppProfileInObject({ ios: { appPathPhysical: "old.app" } }, BASE_APP_PROFILE_FIELDS);
+  assert.equal(removed.ok, true);
+  assert.deepEqual(removed.object.ios, {});
+});
+
+test("updateAppProfileInObject: 手書きの android.appPathPhysical は欄が無いため保存で消さない", () => {
+  const result = updateAppProfileInObject({ android: { appPathPhysical: "path/to-device.apk" } }, BASE_APP_PROFILE_FIELDS);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.object.android, { appPathPhysical: "path/to-device.apk" });
 });
 
 test("updateAppProfileInObject: 未知キー(トップレベル)を保持する", () => {

@@ -51,6 +51,10 @@
           "type": "string",
           "description": "パッケージファイル(.app / .apk)のパス。プロジェクトルート相対・絶対パス・~ 展開のいずれかに対応する。"
         },
+        "appPathPhysical": {
+          "type": "string",
+          "description": "実機に配るパッケージのパス(省略時は appPath)。iOS はシミュレータ用ビルド(iphonesimulator SDK・未署名)を実機へ入れられないため、同じアプリでも成果物が2つ要る。Android は同じ APK が両方で動くので普通は書かない。"
+        },
         "autoInstall": {
           "type": "boolean",
           "description": "廃止(common.autoInstall に一本化された)。残存していても実行時は無視される。"

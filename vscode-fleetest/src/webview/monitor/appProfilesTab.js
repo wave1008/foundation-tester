@@ -21,6 +21,8 @@ const appProfileCancel = document.getElementById('app-profile-cancel');
 
 // common: autoInstallのみ(表示名はios/androidそれぞれに持ち、commonからは継承しない)。
 // ios/android: appName/app/appPath(autoInstallはcommonに一本化)。
+// appPathPhysical(実機に配るビルド)はiOSだけ — Androidは同じAPKが両方で動くので欄が無く、
+// フィールドにも持たない(持たせるとmonitorProfileForms.tsが手書きのandroid.appPathPhysicalを消す)。
 const appProfileGroups = {
   common: {
     autoInstall: document.getElementById('app-profile-common-auto-install'),
@@ -29,12 +31,18 @@ const appProfileGroups = {
     appName: document.getElementById('app-profile-ios-app-name'),
     app: document.getElementById('app-profile-ios-app'),
     appPath: document.getElementById('app-profile-ios-app-path'),
+    appPathPhysical: document.getElementById('app-profile-ios-app-path-physical'),
   },
   android: {
     appName: document.getElementById('app-profile-android-app-name'),
     app: document.getElementById('app-profile-android-app'),
     appPath: document.getElementById('app-profile-android-app-path'),
   },
+};
+// グループごとの欄の集合(monitorProfileForms.ts の AppProfileIOSFields/AppProfilePlatformFields と対)。
+const APP_PROFILE_PLATFORM_FIELD_KEYS = {
+  ios: ['appName', 'app', 'appPath', 'appPathPhysical'],
+  android: ['appName', 'app', 'appPath'],
 };
 const APP_PROFILE_PLATFORM_GROUP_NAMES = ['ios', 'android'];
 
@@ -190,9 +198,9 @@ function renderAppProfileEditor(fields) {
   for (const group of APP_PROFILE_PLATFORM_GROUP_NAMES) {
     const dom = appProfileGroups[group];
     const values = fields[group];
-    dom.appName.value = values.appName;
-    dom.app.value = values.app;
-    dom.appPath.value = values.appPath;
+    for (const key of APP_PROFILE_PLATFORM_FIELD_KEYS[group]) {
+      dom[key].value = values[key];
+    }
   }
 
   setAppProfileControlsEnabled(true);
@@ -211,11 +219,11 @@ function collectAppProfileFields() {
   };
   for (const group of APP_PROFILE_PLATFORM_GROUP_NAMES) {
     const dom = appProfileGroups[group];
-    fields[group] = {
-      appName: dom.appName.value.trim(),
-      app: dom.app.value.trim(),
-      appPath: dom.appPath.value.trim(),
-    };
+    const values = {};
+    for (const key of APP_PROFILE_PLATFORM_FIELD_KEYS[group]) {
+      values[key] = dom[key].value.trim();
+    }
+    fields[group] = values;
   }
   return fields;
 }
@@ -228,7 +236,7 @@ function appProfileValuesEqual(fields) {
   return APP_PROFILE_PLATFORM_GROUP_NAMES.every((group) => {
     const a = current[group];
     const b = fields[group];
-    return a.appName === b.appName && a.app === b.app && a.appPath === b.appPath;
+    return APP_PROFILE_PLATFORM_FIELD_KEYS[group].every((key) => a[key] === b[key]);
   });
 }
 
@@ -244,18 +252,18 @@ function onAppProfileFormInput() {
 appProfileGroups.common.autoInstall.addEventListener('change', onAppProfileFormInput);
 for (const group of APP_PROFILE_PLATFORM_GROUP_NAMES) {
   const dom = appProfileGroups[group];
-  dom.appName.addEventListener('input', onAppProfileFormInput);
-  dom.app.addEventListener('input', onAppProfileFormInput);
-  dom.appPath.addEventListener('input', onAppProfileFormInput);
+  for (const key of APP_PROFILE_PLATFORM_FIELD_KEYS[group]) {
+    dom[key].addEventListener('input', onAppProfileFormInput);
+  }
 }
 
 function setAppProfileControlsEnabled(enabled) {
   appProfileGroups.common.autoInstall.disabled = !enabled;
   for (const group of APP_PROFILE_PLATFORM_GROUP_NAMES) {
     const dom = appProfileGroups[group];
-    dom.appName.disabled = !enabled;
-    dom.app.disabled = !enabled;
-    dom.appPath.disabled = !enabled;
+    for (const key of APP_PROFILE_PLATFORM_FIELD_KEYS[group]) {
+      dom[key].disabled = !enabled;
+    }
   }
 }
 

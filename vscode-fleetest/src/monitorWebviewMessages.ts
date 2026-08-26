@@ -20,6 +20,7 @@ import type { DeviceOpKind, DeviceOpQueueStatus } from "./monitorDeviceLifecycle
 import type {
   AppProfileCommonFields,
   AppProfileFormFields,
+  AppProfileIOSFields,
   AppProfilePlatformFields,
   DeviceCatalog,
   InstalledDevices,
@@ -719,6 +720,11 @@ function isAppProfilePlatformFieldsLike(value: unknown): value is AppProfilePlat
   );
 }
 
+/** アプリプロファイル ios セクションの検証(3項目 + 実機に配るパッケージ appPathPhysical)。 */
+function isAppProfileIOSFieldsLike(value: unknown): value is AppProfileIOSFields {
+  return isRecord(value) && isAppProfilePlatformFieldsLike(value) && typeof value.appPathPhysical === "string";
+}
+
 /** webview からの postMessage 値を MonitorFromWebviewMessage として扱ってよいか判定する。 */
 export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFromWebviewMessage {
   if (!isRecord(value) || typeof value.type !== "string") {
@@ -916,7 +922,7 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         value.profile !== "" &&
         isRecord(value.fields) &&
         isAppProfileCommonFieldsLike(value.fields.common) &&
-        isAppProfilePlatformFieldsLike(value.fields.ios) &&
+        isAppProfileIOSFieldsLike(value.fields.ios) &&
         isAppProfilePlatformFieldsLike(value.fields.android)
       );
     case "nameInputConfirm":

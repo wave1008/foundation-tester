@@ -400,10 +400,19 @@ export interface AppProfilePlatformFields {
   readonly appPath: string;
 }
 
+/** iOS セクション。実機に配るパッケージ(appPathPhysical。RunProfile.swift
+ * AppProfileSection.appPathPhysical と同期)を持つ点だけが android と違う —— iOS は
+ * シミュレータ用ビルド(未署名)を実機へ入れられず、同じアプリでも成果物が2つ要る。
+ * Android は同じ APK が両方で動くため欄を置かない(手書きで android.appPathPhysical が
+ * 書かれていても未知キーとして保たれる。updateAppProfilePlatformSection 参照)。 */
+export interface AppProfileIOSFields extends AppProfilePlatformFields {
+  readonly appPathPhysical: string;
+}
+
 /** アプリプロファイル設定フォームの common/ios/android 3グループ分のフィールド。 */
 export interface AppProfileFormFields {
   readonly common: AppProfileCommonFields;
-  readonly ios: AppProfilePlatformFields;
+  readonly ios: AppProfileIOSFields;
   readonly android: AppProfilePlatformFields;
 }
 
@@ -415,6 +424,11 @@ const EMPTY_APP_PROFILE_PLATFORM_FIELDS: AppProfilePlatformFields = {
   appName: "",
   app: "",
   appPath: "",
+};
+
+const EMPTY_APP_PROFILE_IOS_FIELDS: AppProfileIOSFields = {
+  ...EMPTY_APP_PROFILE_PLATFORM_FIELDS,
+  appPathPhysical: "",
 };
 
 /** apps/<name>.json の common セクションを許容的に読み取る(非オブジェクトなら空セクション扱い)。
@@ -440,6 +454,15 @@ function parseAppProfilePlatformSection(value: unknown): AppProfilePlatformField
   return { appName, app, appPath };
 }
 
+/** apps/<name>.json の ios セクションを読み取る(android との差は appPathPhysical の1欄だけ)。 */
+function parseAppProfileIOSSection(value: unknown): AppProfileIOSFields {
+  if (!isRecord(value)) {
+    return EMPTY_APP_PROFILE_IOS_FIELDS;
+  }
+  const appPathPhysical = typeof value.appPathPhysical === "string" ? value.appPathPhysical : "";
+  return { ...parseAppProfilePlatformSection(value), appPathPhysical };
+}
+
 /** apps/<name>.json のトップレベルから common/ios/android 3グループを読み取る(非オブジェクトなら null)。 */
 export function parseAppProfileForForm(profileObject: unknown): AppProfileFormFields | null {
   if (typeof profileObject !== "object" || profileObject === null || Array.isArray(profileObject)) {
@@ -448,7 +471,7 @@ export function parseAppProfileForForm(profileObject: unknown): AppProfileFormFi
   const source = profileObject as Record<string, unknown>;
   return {
     common: parseAppProfileCommonSection(source.common),
-    ios: parseAppProfilePlatformSection(source.ios),
+    ios: parseAppProfileIOSSection(source.ios),
     android: parseAppProfilePlatformSection(source.android),
   };
 }
@@ -489,19 +512,27 @@ function updateAppProfileCommonSection(
 /**
  * ios/android セクションを fields で更新した新オブジェクトを組み立てる(updateAppProfileCommonSection
  * と同じ方針)。autoInstall は common に一本化済みのため値に関わらず常に削除する(廃止分の掃除)。
- * 新規セクション作成の要否(hasAnyValue)は appName/app/appPath の3項目のみで判定する。
+ * **触るのは欄のあるキーだけ** —— appPathPhysical の欄は iOS にしか無いので、android の fields
+ * には持たせず、ここでも消しに行かない(消しに行くと手書きの android.appPathPhysical が保存の
+ * たびに落ちる)。新規セクション作成の要否(hasAnyValue)も欄のあるキーだけで判定する。
  */
 function updateAppProfilePlatformSection(
   existing: Record<string, unknown> | undefined,
-  fields: AppProfilePlatformFields,
+  fields: AppProfilePlatformFields | AppProfileIOSFields,
 ): Record<string, unknown> | undefined {
-  const hasAnyValue = fields.appName.trim() !== "" || fields.app.trim() !== "" || fields.appPath.trim() !== "";
+  const values: Record<string, string> = {
+    appName: fields.appName,
+    app: fields.app,
+    appPath: fields.appPath,
+    ...("appPathPhysical" in fields ? { appPathPhysical: fields.appPathPhysical } : {}),
+  };
+  const entries = Object.entries(values).map(([key, value]) => [key, value.trim()] as const);
+  const hasAnyValue = entries.some(([, value]) => value !== "");
   if (existing === undefined && !hasAnyValue) {
     return undefined;
   }
   const result: Record<string, unknown> = { ...(existing ?? {}) };
-  for (const key of ["appName", "app", "appPath"] as const) {
-    const value = fields[key].trim();
+  for (const [key, value] of entries) {
     if (value.length === 0) {
       delete result[key];
     } else {

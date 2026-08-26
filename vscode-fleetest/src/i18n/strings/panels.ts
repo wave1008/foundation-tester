@@ -156,6 +156,11 @@ export const panelsStrings = {
   },
   "panels.appProfile.appIdLabel": { ja: "アプリID", en: "App ID" },
   "panels.appProfile.packagePathLabel": { ja: "パッケージパス", en: "Package Path" },
+  "panels.appProfile.packagePathPhysicalLabel": { ja: "実機用パッケージパス", en: "Package Path (Physical Device)" },
+  "panels.appProfile.packagePathPhysicalHint": {
+    ja: "実機に配るビルドのパス。省略するとパッケージパスを配ります(シミュレータ用ビルドは実機に入りません)",
+    en: "Path to the build installed on physical devices. If omitted, the package path above is used (a simulator build cannot be installed on a device).",
+  },
   "panels.appProfile.packageNamePlaceholder": { ja: "パッケージ名", en: "Package name" },
 
   "panels.machineProfile.addTitle": { ja: "マシンプロファイルの追加", en: "Add machine profile" },
