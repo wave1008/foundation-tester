@@ -260,11 +260,11 @@ export const panelsStrings = {
   "panels.settings.remoteArtifactsCollect": { ja: "回収する", en: "Collect" },
   "panels.settings.remoteArtifactsOnDemand": { ja: "オンデマンド", en: "On demand" },
   "panels.settings.remoteHostsHint": {
-    ja: "ディスパッチ先として使うマシンを登録します。machine はマシンを選ぶとき(例: 「デバイスを追加」ダイアログでのマシン選択)に出る表示名(一意。この Mac だけのエイリアス)、host は SSH 先(user@host または host)、dir は空欄で ~/fleetest-runner(そのマシンの既存のローカルインストールと同じパスにしないこと)。",
-    en: "Register machines to dispatch runs to. Machine is the display name shown when picking a machine (e.g. the source selector in the \"add device\" dialog; must be unique, and local to this Mac); host is the SSH target (user@host or host); dir blank = ~/fleetest-runner (must not be an existing local install on that machine).",
+    ja: "ディスパッチ先として使うマシンを登録します。machine はマシンを選ぶとき(例: 「デバイスを追加」ダイアログでのマシン選択)に出る表示名(一意。この Mac だけのエイリアス)で、空欄なら host のホスト名 / IP をそのまま使います。host は SSH 先(user@host または host)、dir は空欄で ~/fleetest-runner(そのマシンの既存のローカルインストールと同じパスにしないこと)。",
+    en: "Register machines to dispatch runs to. Machine is the display name shown when picking a machine (e.g. the source selector in the \"add device\" dialog; must be unique, and local to this Mac) — leave it blank to use the host name / IP from host; host is the SSH target (user@host or host); dir blank = ~/fleetest-runner (must not be an existing local install on that machine).",
   },
   // 列見出しは「マシン」(2026-08-26 指示)。プロファイルの machine 欄・--machine に書く名前と同じもの
-  "panels.settings.remoteHostsColMachine": { ja: "マシン", en: "Machine" },
+  "panels.settings.remoteHostsColMachine": { ja: "マシン(任意)", en: "Machine (optional)" },
   "panels.settings.remoteHostsColHost": { ja: "ホスト", en: "Host" },
   "panels.settings.remoteHostsColDir": { ja: "作業ベースディレクトリ", en: "Base directory" },
   "panels.settings.remoteHostsAdd": { ja: "マシンを追加", en: "Add machine" },

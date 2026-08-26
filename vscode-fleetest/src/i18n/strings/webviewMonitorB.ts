@@ -180,6 +180,12 @@ export const webviewMonitorBStrings = {
   // 設定タブ「リモート実行」セクションの動的表示(settingsTab.js。行を JS で組み立てるため
   // 静的ラベルの panels.settings.remote* と違いこちら側に置く。docs/remote-runner.md §12)。
   "wvMonitor2.remote.removeTitle": { ja: "このマシンを削除", en: "Remove this machine" },
+  // マシン名は省略可。ホストが入っていればそこから採る名前を、空ならこの文言を出す
+  // (規則は remoteRunArgs.ts の defaultMachineForHost)
+  "wvMonitor2.remote.machinePlaceholder": {
+    ja: "省略可(ホスト名 / IP)",
+    en: "optional (host name / IP)",
+  },
   "wvMonitor2.remote.syncFailed": {
     ja: "マシン登録簿への反映に失敗しました: {reason}",
     en: "Failed to save the machine registry: {reason}",

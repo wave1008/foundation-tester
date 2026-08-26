@@ -9,6 +9,7 @@
 
 import { vscode } from './vscodeApi.js';
 import { t } from '../i18n.js';
+import { defaultMachineForHost } from '../../remoteRunArgs';
 import { switchTab } from './tabs.js';
 
 const pollingModeCheckbox = document.getElementById('settings-polling-mode');
@@ -69,24 +70,28 @@ languageSelect.addEventListener('change', () => {
 // ホスト一覧は行数が可変のため DOM を直接組み立てる。行の識別は name(変更され得る)ではなく
 // 使い捨ての rowId で行う。
 //
-// 「追加」で足す行は confirmed:false(未確定)で始まる。未確定行は name/host が両方埋まるまで
-// CLI へ送らない(空の name は CLI が拒否し、失敗経路が旧一覧を再送してテーブルを作り直すため、
-// 送った時点で消える)。埋まったら行内の「確定」ボタンで初めて送る(既存タブの
-// wvMonitor2.common.confirm と同じ語)。確定済み行は今まで通りフィールドの change で即同期する。
+// 「追加」で足す行は confirmed:false(未確定)で始まる。未確定行は **host が埋まるまで**
+// CLI へ送らない(host の無い登録は宛先を持たない)。埋まったら行内の「確定」ボタンで初めて
+// 送る(既存タブの wvMonitor2.common.confirm と同じ語)。確定済み行は今まで通りフィールドの
+// change で即同期する。
+//
+// **マシン名は任意**。空欄なら host のホスト部を名前にする(defaultMachineForHost。CLI 側も
+// 同じ既定を持つが、拡張は差分計算(diffRemoteHosts)を machine で行うため、送る時点で
+// 埋めておく)。入力欄には「これになる」名前をウォーターマークで出す。
 const remoteHostsError = document.getElementById('settings-remote-hosts-error');
 let hostRows = []; // { id, tr, machineInput, hostInput, dirInput, confirmed, confirmButton }
 let nextRowId = 0;
 
 function currentHostsPayload() {
-  // 未確定行(confirmed:false)は マシン/ホスト が空のことがあるため、確定済み行だけを送る
-  // (「確定」ボタン自体は両方埋まるまで押せないが、ここでも二重に落として安全側に倒す)。
+  // 未確定行(confirmed:false)はホストが空のことがあるため、確定済み行だけを送る
+  // (「確定」ボタン自体は host が埋まるまで押せないが、ここでも二重に落として安全側に倒す)。
   return hostRows
     .filter((row) => row.confirmed)
-    .map((row) => ({
-      machine: row.machineInput.value.trim(),
-      host: row.hostInput.value.trim(),
-      dir: row.dirInput.value.trim(),
-    }));
+    .map((row) => {
+      const host = row.hostInput.value.trim();
+      const machine = row.machineInput.value.trim();
+      return { machine: machine || defaultMachineForHost(host), host, dir: row.dirInput.value.trim() };
+    });
 }
 
 function sendRemoteConfig() {
@@ -115,8 +120,16 @@ function removeHostRow(id) {
   }
 }
 
+// 送れる行か。**マシン名は任意**なので host だけを見る
 function rowIsFillable(row) {
-  return row.machineInput.value.trim() !== '' && row.hostInput.value.trim() !== '';
+  return row.hostInput.value.trim() !== '';
+}
+
+// マシン名欄のウォーターマーク。host が入っていれば「省略したらこの名前になる」を出し、
+// まだ空なら省略できること自体を出す
+function updateMachinePlaceholder(row) {
+  const derived = defaultMachineForHost(row.hostInput.value);
+  row.machineInput.placeholder = derived || t('wvMonitor2.remote.machinePlaceholder');
 }
 
 function confirmHostRow(id) {
@@ -152,7 +165,7 @@ function addHostRow(host, confirmed) {
         onHostsChanged();
       }
     });
-    // 未確定行は入力のたびに「確定」ボタンの活性を更新する(machine/host が揃うまで押せない)。
+    // 未確定行は入力のたびに「確定」ボタンの活性を更新する(host が埋まるまで押せない)。
     input.addEventListener('input', () => {
       if (!row.confirmed && row.confirmButton) {
         row.confirmButton.disabled = !rowIsFillable(row);
@@ -166,6 +179,9 @@ function addHostRow(host, confirmed) {
   row.machineInput = makeTextCell(host ? host.machine : '');
   row.hostInput = makeTextCell(host ? host.host : '', 'user@host');
   row.dirInput = makeTextCell(host ? host.dir : '', '~/fleetest-runner');
+  // ホストを打つたびにマシン名のウォーターマークを追従させる(何になるかを先に見せる)
+  row.hostInput.addEventListener('input', () => updateMachinePlaceholder(row));
+  updateMachinePlaceholder(row);
 
   const actionsTd = document.createElement('td');
   actionsTd.className = 'settings-remote-hosts-actions-cell';

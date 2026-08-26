@@ -21,10 +21,14 @@ test("normalizeRemoteHosts: 配列でない/不正要素は除去", () => {
   );
 });
 
-test("normalizeRemoteHosts: machine 空なら host を流用", () => {
+// machine 空欄は host の**ホスト部**で埋める(user@ は落とす)。丸ごと流用すると、
+// 登録名に使えない文字("@")を含む名前になり CLI の validateName に弾かれる。
+// 規則は remoteRunArgs.ts の defaultMachineForHost(Swift 側と対。
+// remoteHostDefaultMachine.test.mjs が同期を見る)
+test("normalizeRemoteHosts: machine 空なら host のホスト部を流用", () => {
   assert.deepEqual(
     normalizeRemoteHosts([{ machine: "", host: "user@mac-01", dir: "" }]),
-    [{ machine: "user@mac-01", host: "user@mac-01", dir: "" }],
+    [{ machine: "mac-01", host: "user@mac-01", dir: "" }],
   );
 });
 

@@ -48,11 +48,23 @@ export function deviceCommandArgs(source: DeviceCommandSource, apiArgs: readonly
 /**
  * リモートホスト登録簿の生の値(JSON。`fleetest api remote-hosts` の stdout の hosts[]。
  * 外部プロセス由来で型不定)を防御的に正規化する。machine も host も空の要素は捨てる
- * (識別もホストも持たない無意味な登録)。machine が空なら host を流用する
+ * (識別もホストも持たない無意味な登録)。machine が空なら host のホスト部を流用する
  * (一意キーとして機能させるため)。host が空の要素も捨てない(壊れた登録として設定タブに
  * そのまま出す—黙って消すと利用者が編集で直す機会を失う)。dir は欠落・型不正なら
  * 空文字(CLI 契約: 未設定でもキーは必ずあり空文字)。**旧キー "name" も読む**(改名の互換)。
  */
+/**
+ * machine を省略したときの既定名: ssh 宛先からホスト部を採る(`user@` を落とす)。
+ * **同期相手: Sources/FTCore/RemoteHostRegistry.swift の defaultMachine(forHost:)**
+ * (拡張は入力欄のウォーターマークと送信値に、CLI は `--import` の空 machine に使う。
+ * remoteHostDefaultMachineSync.test.mjs が規則の食い違いを検出)。
+ */
+export function defaultMachineForHost(host: string): string {
+  const trimmed = host.trim();
+  const at = trimmed.lastIndexOf("@");
+  return (at >= 0 ? trimmed.slice(at + 1) : trimmed).trim();
+}
+
 export function normalizeRemoteHosts(raw: unknown): RemoteHostEntry[] {
   if (!Array.isArray(raw)) {
     return [];
@@ -66,7 +78,7 @@ export function normalizeRemoteHosts(raw: unknown): RemoteHostEntry[] {
     const host = typeof record.host === "string" ? record.host.trim() : "";
     const rawMachine = record.machine ?? record.name;  // 旧キー "name" も読む
     const trimmed = typeof rawMachine === "string" ? rawMachine.trim() : "";
-    const machine = trimmed.length > 0 ? trimmed : host;
+    const machine = trimmed.length > 0 ? trimmed : defaultMachineForHost(host);
     if (machine.length === 0 && host.length === 0) {
       continue;
     }

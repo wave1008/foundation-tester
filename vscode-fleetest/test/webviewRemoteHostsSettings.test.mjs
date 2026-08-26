@@ -88,6 +88,59 @@ test("remoteConfig の machine が表の1列目に出る", (t) => {
   assert.equal(inputs[1].value, "user@m1max");
 });
 
+// **マシン名は任意**(2026-08-27)。この Mac だけのエイリアスなので、名前を付けたくない
+// 利用者に付けさせない。空欄なら host のホスト部が名前になる(CLI 側も同じ既定を持つが、
+// 拡張は差分計算を machine で行うため送る時点で埋める)
+test("マシン名が空でもホストだけで確定できる(名前は必須ではない)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  post(window, REMOTE_CONFIG);
+  click(window, document.getElementById("settings-remote-hosts-add"));
+  const pendingRow = document.querySelector("#settings-remote-hosts-body tr.settings-remote-hosts-row-pending");
+  const inputs = pendingRow.querySelectorAll("input");
+  const confirm = pendingRow.querySelector(".settings-remote-hosts-confirm");
+
+  assert.equal(confirm.disabled, true, "空行では確定できない");
+  fill(window, inputs[1], "user@m1ultra.local");
+  assert.equal(confirm.disabled, false, "ホストだけで確定できる(マシン名は任意)");
+});
+
+test("マシン名欄のウォーターマークが、省略したときに付く名前を先に見せる", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  post(window, REMOTE_CONFIG);
+  click(window, document.getElementById("settings-remote-hosts-add"));
+  const pendingRow = document.querySelector("#settings-remote-hosts-body tr.settings-remote-hosts-row-pending");
+  const inputs = pendingRow.querySelectorAll("input");
+
+  assert.match(inputs[0].placeholder, /省略可|optional/,
+    "ホスト未入力のうちは「省略できる」ことを出す");
+  fill(window, inputs[1], "user@m1ultra.local");
+  assert.equal(inputs[0].placeholder, "m1ultra.local", "user@ を落としたホスト部を出す");
+  fill(window, inputs[1], "192.168.1.20");
+  assert.equal(inputs[0].placeholder, "192.168.1.20");
+});
+
+test("マシン名を空のまま確定すると、host のホスト部が machine として送られる", (t) => {
+  const posted = [];
+  const { window, document } = createWebview((message) => posted.push(message));
+  t.after(() => window.close());
+
+  post(window, REMOTE_CONFIG);
+  click(window, document.getElementById("settings-remote-hosts-add"));
+  const pendingRow = document.querySelector("#settings-remote-hosts-body tr.settings-remote-hosts-row-pending");
+  const inputs = pendingRow.querySelectorAll("input");
+  fill(window, inputs[1], "user@m1ultra.local");
+  click(window, pendingRow.querySelector(".settings-remote-hosts-confirm"));
+
+  const message = JSON.parse(JSON.stringify(posted.filter((m) => m.type === "setRemoteConfig").at(-1)));
+  const added = message.hosts.find((h) => h.host === "user@m1ultra.local");
+  assert.deepEqual(added, { machine: "m1ultra.local", host: "user@m1ultra.local", dir: "" });
+  assert.ok(isMonitorFromWebviewMessage(message), "拡張側のゲートを通る");
+});
+
 test("行を追加して確定すると setRemoteConfig が machine/host/dir で送られ、拡張側のゲートを通る", (t) => {
   const posted = [];
   const { window, document } = createWebview((message) => posted.push(message));

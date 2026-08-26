@@ -91,6 +91,19 @@ public enum RemoteHostRegistry {
         }
     }
 
+    /// **machine を省略したときの既定名**: ssh 宛先からホスト部を採る(`user@` を落とす)。
+    /// マシン名はこの Mac だけのエイリアスなので、名前を付けたくない利用者に付けさせない
+    /// (登録簿の鍵は host。docs/remote-runner.md §0)。
+    /// **同期相手: vscode-fleetest/src/remoteRunArgs.ts の defaultMachineForHost**
+    /// (拡張は入力欄のウォーターマークと送信値に使う。規則が割れると、画面が予告した名前と
+    /// 実際に登録される名前が食い違う。remoteHostDefaultMachineSync.test.mjs が検出)
+    public static func defaultMachine(forHost host: String) -> String {
+        let trimmed = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let at = trimmed.lastIndex(of: "@") else { return trimmed }
+        return String(trimmed[trimmed.index(after: at)...])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     /// `--host <raw>` の解決。**登録簿が優先**(同名の登録があれば raw を ssh 宛先として
     /// 解釈し直さない)。"local"・空文字は登録簿を見るまでもなく reserved
     public static func resolve(_ raw: String, entries: [RemoteHostEntry]) -> RemoteHostResolution {

@@ -54,7 +54,7 @@ struct ApiRemoteHostsCommand: AsyncParsableCommand {
     /// 想定すると "" が「未設定」として往復する必要がある。`RemoteHostEntry` の `dir`/`machine`
     /// を素の Optional のまま "" で埋めると、RemoteCompat.mismatches の machineName 照合が
     /// 空文字を「マシン名 "" を期待している」と読んで誤って fail-closed になる
-    private static func decodeImport(_ json: String) throws -> [RemoteHostEntry] {
+    static func decodeImport(_ json: String) throws -> [RemoteHostEntry] {
         guard let data = json.data(using: .utf8) else {
             throw ValidationError("--import is not valid UTF-8")
         }
@@ -75,14 +75,36 @@ struct ApiRemoteHostsCommand: AsyncParsableCommand {
 }
 
 /// `--import` のデコード用(ApiRemoteHostEntry の逆向き)。dir は "" もキー省略も未設定として
-/// 受け取る。**machine は持たない**(未知キーとして黙って無視される = 古い設定でも壊れない)
-private struct ApiRemoteHostImportEntry: Decodable {
-    let name: String
+/// 受け取る。
+///
+/// **鍵は machine、旧キー name も読む**(2026-08-26 の改名の互換。拡張は machine で送る)。
+/// 2026-08-27 まで `name` だけを必須で読んでおり、**設定タブからのマシン登録は
+/// `--import is not a valid JSON array` で全部失敗していた**(型の効かない境界を片側だけ
+/// 改名した実害。往復は remoteHostsImportKeys のテストで固定する)。
+///
+/// **machine は省略可**(キー欠落・空文字とも)。無いときは host のホスト部を名前にする
+/// (RemoteHostRegistry.defaultMachine)。マシン名はこの Mac だけのエイリアスなので、
+/// 名前を付けたくない利用者に付けさせない
+struct ApiRemoteHostImportEntry: Decodable {
+    let machine: String?
     let host: String
     let dir: String?
 
+    private enum CodingKeys: String, CodingKey { case machine, name, host, dir }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        machine = try container.decodeIfPresent(String.self, forKey: .machine)
+            ?? container.decodeIfPresent(String.self, forKey: .name)
+        host = try container.decode(String.self, forKey: .host)
+        dir = try container.decodeIfPresent(String.self, forKey: .dir)
+    }
+
     var entry: RemoteHostEntry {
-        RemoteHostEntry(machine: name, host: host, dir: dir.flatMap { $0.isEmpty ? nil : $0 })
+        let given = (machine ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolved = given.isEmpty ? RemoteHostRegistry.defaultMachine(forHost: host) : given
+        return RemoteHostEntry(machine: resolved, host: host,
+                               dir: dir.flatMap { $0.isEmpty ? nil : $0 })
     }
 }
 

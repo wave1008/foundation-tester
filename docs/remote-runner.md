@@ -692,6 +692,12 @@ machines/apps/runs はプロジェクト資産で、ディスパッチのたび�
 
 - CLI: `fleetest run --fleet <name>` が全エントリを並行起動(local はローカル実行)。
   集約 exit code。エントリごとに JUnit/レポートは従来どおり
+- **machine(登録名)は任意**(2026-08-27)。空欄なら `host` のホスト部(`user@` を落とした
+  ホスト名 / IP)をそのまま名前にする(`RemoteHostRegistry.defaultMachine(forHost:)`。
+  拡張の入力欄はその名前をウォーターマークで先に見せる —— 規則が割れると画面が予告した名前と
+  実際に登録される名前が食い違うので、`vscode-fleetest/src/remoteRunArgs.ts` の
+  `defaultMachineForHost` と対にしてテストで縛る)。**エイリアスはこの Mac だけのものなので、
+  名前を付けたくない利用者に付けさせない**。`host` は宛先そのものなので省略できない
 - **ホスト登録簿(論理名 → ssh 実体)は LocalConfig(`~/.config/fleetest/config.json`)に
   置く**。理由は2つ: ①CLI が解決の主体になるため VSCode 設定では読めない、
   ②**リポジトリ由来の設定(`.vscode/settings.json`)がディスパッチ先を差し替えられなく
