@@ -285,8 +285,8 @@ enum FleetRunner {
         let existing = RemoteHostFactsStore.load(dir: dir, host: localHost)
         let facts = RemoteHostFacts(
             host: localHost,
-            // 手元の表示名は "local"(FTCore.DeviceHostGrouping.localDisplayName)
-            machineAlias: DeviceHostGrouping.localDisplayName,
+            // 手元の表示名は "local"(FTCore.DeviceMachineGrouping.localDisplayName)
+            machineAlias: DeviceMachineGrouping.localDisplayName,
             dispatchOverheadSeconds: existing?.dispatchOverheadSeconds,
             processorModel: hardware.processorModel, coreCount: hardware.coreCount,
             concurrentDevices: existing?.concurrentDevices,
@@ -402,7 +402,7 @@ enum FleetRunner {
     /// 黙って無視される(リモートはプロファイルの既定で走る)
     static func buildArgs(
         project: String, host: String, profile: String,
-        deviceNames: [String] = [], deviceHost: String? = nil,
+        deviceNames: [String] = [], deviceMachine: String? = nil,
         scenarios: [String], folders: [String],
         heal: Bool, noHeal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
         fastInput: Bool, enableAnimations: Bool, performanceMode: Bool,
@@ -411,10 +411,10 @@ enum FleetRunner {
     ) -> [String] {
         var args = ["run", "--project", project, "--profile", profile]
         // "local" エントリも常に --host を渡す(欠陥3・2026-08-17)。子プロセスは自分自身が
-        // MachineHostDispatch を再適用するため、--host を省略すると「未指定」と区別が付かず、
+        // MachineDispatch を再適用するため、--host を省略すると「未指定」と区別が付かず、
         // entry.profile が引くマシンプロファイルに host が設定されていると子がそこへ自動
         // ディスパッチしてしまい、{"host":"local"} と書いた意味が失われる(重複ホスト拒否も
-        // 無意味になる)。"local" を明示すれば MachineHostDispatch.resolve がそこで止める
+        // 無意味になる)。"local" を明示すれば MachineDispatch.resolve がそこで止める
         // (RunProfile.swift 参照)。--force-lock/--wait-lock 等のリモート専用フラグは引き続きリモートのみ
         // (ロックは発行側の関心。"local" 子には転送しない)
         if host != "local" {
@@ -430,7 +430,7 @@ enum FleetRunner {
         if !deviceNames.isEmpty { args += ["--device"] + deviceNames }
         // **ホストも渡す** —— 一意なのは (host, name) なので、名前だけだと子が別の機械の
         // 同名デバイスまで掴む(2026-08-17 に実走で確認。RunProfile.filteringDevices の宣言)
-        if let deviceHost { args += ["--device-machine", deviceHost] }
+        if let deviceMachine { args += ["--device-machine", deviceMachine] }
         if !scenarios.isEmpty { args += ["--scenario"] + scenarios }
         if !folders.isEmpty { args += ["--folder"] + folders }
         if heal { args += ["--heal"] }
@@ -440,13 +440,13 @@ enum FleetRunner {
         if fastInput { args += ["--fast-input"] }
         if enableAnimations { args += ["--enable-animations"] }
         if performanceMode { args += ["--performance"] }
-        // DeviceHostRunner のホスト別サブ実行だけが渡す(--fleet は --broadcast と併用不可)
+        // DeviceMachineRunner のマシン別サブ実行だけが渡す(--fleet は --broadcast と併用不可)
         if broadcast { args += ["--broadcast"] }
         if quiet { args += ["--quiet"] }
         // リモートエントリでも同じ --junit 中継でよい: RemoteRunDispatcher.dispatch が
         // localJUnitPath(= このパス)へリモートの JUnit を回収して書く(RemoteRunDispatcher.swift)
         if let junitPath { args += ["--junit", junitPath] }
-        // 機械ごとに分かれた run を束ねる鍵(FTCore.RunMetaRecord.runGroup)。**ホスト別サブ実行
+        // 機械ごとに分かれた run を束ねる鍵(FTCore.RunMetaRecord.runGroup)。**マシン別サブ実行
         // だけが渡す** —— --fleet(プロファイル別)は別々の実行なので束ねない
         if let runGroup { args += ["--run-group", runGroup] }
         return args
@@ -558,7 +558,7 @@ enum FleetRunner {
         FileHandle.standardOutput.write(Data("[\(host)] \(line)\n".utf8))
     }
 
-    /// 子プロセスの中継行と混ざらないよう outputLock 越しに書く(DeviceHostRunner も同じ口を使う)
+    /// 子プロセスの中継行と混ざらないよう outputLock 越しに書く(DeviceMachineRunner も同じ口を使う)
     static func log(_ message: String) {
         outputLock.lock()
         defer { outputLock.unlock() }

@@ -137,7 +137,7 @@ test("isMonitorEvent: monitorDevices は要素の state が欠落/不正なら f
     devices: [
       {
         id: "ios:M1Max/シミュ1", name: "シミュ1", platform: "ios", state: "unknown", detail: "",
-        machineHost: "M1Max",
+        machine: "M1Max",
       },
     ],
   };
@@ -360,11 +360,11 @@ test("isMonitorFromWebviewMessage: setTileAutoFit は boolean value のみ受理
   assert.equal(isMonitorFromWebviewMessage({ type: "setTileAutoFit", value: "true" }), false);
 });
 
-test("isMonitorFromWebviewMessage: setRemoteConfig は hosts[](name/host/dir)+artifacts なら true", () => {
+test("isMonitorFromWebviewMessage: setRemoteConfig は hosts[](machine/host/dir)+artifacts なら true", () => {
   assert.equal(
     isMonitorFromWebviewMessage({
       type: "setRemoteConfig",
-      hosts: [{ name: "mac-01", host: "user@mac-01", dir: "" }],
+      hosts: [{ machine: "mac-01", host: "user@mac-01", dir: "" }],
       artifacts: "collect",
     }),
     true,
@@ -394,7 +394,16 @@ test("isMonitorFromWebviewMessage: setRemoteConfig は hosts 要素の型不正�
   assert.equal(
     isMonitorFromWebviewMessage({
       type: "setRemoteConfig",
-      hosts: [{ name: "mac-01", host: 123, dir: "" }],
+      hosts: [{ machine: "mac-01", host: 123, dir: "" }],
+      artifacts: "collect",
+    }),
+    false,
+  );
+  // マシン名のキーは "machine"。旧キー "name" だけの行は通さない(settingsTab.js は machine で送る)
+  assert.equal(
+    isMonitorFromWebviewMessage({
+      type: "setRemoteConfig",
+      hosts: [{ name: "mac-01", host: "user@mac-01", dir: "" }],
       artifacts: "collect",
     }),
     false,
@@ -572,17 +581,17 @@ function promoted(state) {
 test("DeviceLifecycleQueue: 同時実行の上限は機械ごとに数える", () => {
   let state = createDeviceLifecycleQueueState();
   for (const job of [
-    { kind: "device", name: "A", op: "up", host: "M2Ultra" },
-    { kind: "device", name: "B", op: "up", host: "M2Ultra" },
-    { kind: "device", name: "C", op: "up", host: "M1Max" },
-    { kind: "device", name: "D", op: "up", host: "M1Max" },
-    { kind: "device", name: "E", op: "up", host: "M2Ultra" },
+    { kind: "device", name: "A", op: "up", machine: "M2Ultra" },
+    { kind: "device", name: "B", op: "up", machine: "M2Ultra" },
+    { kind: "device", name: "C", op: "up", machine: "M1Max" },
+    { kind: "device", name: "D", op: "up", machine: "M1Max" },
+    { kind: "device", name: "E", op: "up", machine: "M2Ultra" },
   ]) {
     state = enqueueDeviceLifecycleJob(state, job);
   }
   const result = promoteDeviceLifecycleJobs(state);
   assert.deepEqual(
-    result.started.map((j) => `${j.host}/${j.name}`),
+    result.started.map((j) => `${j.machine}/${j.name}`),
     ["M2Ultra/A", "M2Ultra/B", "M1Max/C", "M1Max/D"],
     "機械ごとに2台ずつ。3台目(M2Ultra/E)だけが待つ",
   );
@@ -591,14 +600,14 @@ test("DeviceLifecycleQueue: 同時実行の上限は機械ごとに数える", (
 test("DeviceLifecycleQueue: 先頭が詰まっていても空いている機械のジョブは進む", () => {
   let state = createDeviceLifecycleQueueState();
   for (const job of [
-    { kind: "device", name: "A", op: "up", host: "M2Ultra" },
-    { kind: "device", name: "B", op: "up", host: "M2Ultra" },
-    { kind: "device", name: "C", op: "up", host: "M2Ultra" }, // ここで M2Ultra は満杯
-    { kind: "device", name: "D", op: "up", host: "M1Max" },
+    { kind: "device", name: "A", op: "up", machine: "M2Ultra" },
+    { kind: "device", name: "B", op: "up", machine: "M2Ultra" },
+    { kind: "device", name: "C", op: "up", machine: "M2Ultra" }, // ここで M2Ultra は満杯
+    { kind: "device", name: "D", op: "up", machine: "M1Max" },
   ]) {
     state = enqueueDeviceLifecycleJob(state, job);
   }
-  const started = promoteDeviceLifecycleJobs(state).started.map((j) => `${j.host}/${j.name}`);
+  const started = promoteDeviceLifecycleJobs(state).started.map((j) => `${j.machine}/${j.name}`);
   assert.ok(started.includes("M1Max/D"),
     "FIFO を機械をまたいで守る意味は無い(それが『起動待機』の正体)");
   assert.ok(!started.includes("M2Ultra/C"), "満杯の機械の3台目は待つ");
@@ -741,7 +750,7 @@ test("filterMonitorDevices: 'running' は unknown(誰も観測していない)�
   const devices = [
     { id: "ios:A", name: "A", platform: "ios", state: "connected", detail: "", kind: "virtual" },
     { id: "ios:M1Max/A", name: "A", platform: "ios", state: "unknown", detail: "", kind: "virtual",
-      machineHost: "M1Max" },
+      machine: "M1Max" },
   ];
   assert.deepEqual(filterMonitorDevices(devices, "running").map((d) => d.id), ["ios:A"]);
 });
@@ -957,17 +966,17 @@ test("isMonitorFromWebviewMessage: machineProfileRefresh は常に true", () => 
   assert.equal(isMonitorFromWebviewMessage({ type: "machineProfileRefresh" }), true);
 });
 
-test("isMonitorFromWebviewMessage: deviceCatalogRequest/installedDevicesRequest は source が local/remote(host非空)なら true", () => {
+test("isMonitorFromWebviewMessage: deviceCatalogRequest/installedDevicesRequest は source が local/remote(machine非空)なら true", () => {
   for (const type of ["deviceCatalogRequest", "installedDevicesRequest"]) {
     assert.equal(isMonitorFromWebviewMessage({ type, source: { kind: "local" } }), true);
-    assert.equal(isMonitorFromWebviewMessage({ type, source: { kind: "remote", host: "M1Max" } }), true);
+    assert.equal(isMonitorFromWebviewMessage({ type, source: { kind: "remote", machine: "M1Max" } }), true);
   }
 });
 
 test("isMonitorFromWebviewMessage: deviceCatalogRequest/installedDevicesRequest は source 欠落/不正なら false", () => {
   for (const type of ["deviceCatalogRequest", "installedDevicesRequest"]) {
     assert.equal(isMonitorFromWebviewMessage({ type }), false);
-    assert.equal(isMonitorFromWebviewMessage({ type, source: { kind: "remote", host: "" } }), false);
+    assert.equal(isMonitorFromWebviewMessage({ type, source: { kind: "remote", machine: "" } }), false);
     assert.equal(isMonitorFromWebviewMessage({ type, source: { kind: "remote" } }), false);
     assert.equal(isMonitorFromWebviewMessage({ type, source: { kind: "bogus" } }), false);
     assert.equal(isMonitorFromWebviewMessage({ type, source: null }), false);
@@ -1018,7 +1027,7 @@ test("isMonitorFromWebviewMessage: createDevice は全フィールドが非空�
       model: "pixel_9_pro",
       os: "system-images;android-37;google_apis;arm64-v8a",
       register: false,
-      source: { kind: "remote", host: "M1Max" },
+      source: { kind: "remote", machine: "M1Max" },
     }),
     true,
   );
@@ -1042,7 +1051,7 @@ test("isMonitorFromWebviewMessage: createDevice はフィールド欠落/空文�
   assert.equal(isMonitorFromWebviewMessage({ ...base, platform: "windows" }), false);
   assert.equal(isMonitorFromWebviewMessage({ ...base, register: "true" }), false);
   assert.equal(isMonitorFromWebviewMessage({ ...base, register: undefined }), false);
-  assert.equal(isMonitorFromWebviewMessage({ ...base, source: { kind: "remote", host: "" } }), false);
+  assert.equal(isMonitorFromWebviewMessage({ ...base, source: { kind: "remote", machine: "" } }), false);
   assert.equal(isMonitorFromWebviewMessage({ ...base, source: { kind: "bogus" } }), false);
   const { machine, ...missingMachine } = base;
   assert.equal(isMonitorFromWebviewMessage(missingMachine), false);
@@ -1069,7 +1078,7 @@ test("isMonitorFromWebviewMessage: devicePickDeviceDelete は platform(ios/andro
       platform: "android",
       identifier: "Pixel_9_API_37",
       name: "エミュ1",
-      source: { kind: "remote", host: "M1Max" },
+      source: { kind: "remote", machine: "M1Max" },
     }),
     true,
   );
@@ -1086,7 +1095,7 @@ test("isMonitorFromWebviewMessage: devicePickDeviceDelete はフィールド欠�
   assert.equal(isMonitorFromWebviewMessage({ ...base, platform: "windows" }), false);
   assert.equal(isMonitorFromWebviewMessage({ ...base, identifier: "" }), false);
   assert.equal(isMonitorFromWebviewMessage({ ...base, name: "" }), false);
-  assert.equal(isMonitorFromWebviewMessage({ ...base, source: { kind: "remote", host: "" } }), false);
+  assert.equal(isMonitorFromWebviewMessage({ ...base, source: { kind: "remote", machine: "" } }), false);
   assert.equal(isMonitorFromWebviewMessage({ ...base, source: { kind: "bogus" } }), false);
   const { identifier, ...missingIdentifier } = base;
   assert.equal(isMonitorFromWebviewMessage(missingIdentifier), false);
@@ -1097,12 +1106,12 @@ test("isMonitorFromWebviewMessage: machineDeviceRemove は machine 非空文字�
     isMonitorFromWebviewMessage({ type: "machineDeviceRemove", machine: "M1", devices: [{ name: "シミュ1" }] }),
     true,
   );
-  // host は省略可(=手元)。指定があれば非空文字列。
+  // machine は省略可(=手元)。指定があれば非空文字列。
   assert.equal(
     isMonitorFromWebviewMessage({
       type: "machineDeviceRemove",
       machine: "M1",
-      devices: [{ name: "シミュ1", host: "M1Max" }],
+      devices: [{ name: "シミュ1", machine: "M1Max" }],
     }),
     true,
   );
@@ -1111,7 +1120,7 @@ test("isMonitorFromWebviewMessage: machineDeviceRemove は machine 非空文字�
     isMonitorFromWebviewMessage({
       type: "machineDeviceRemove",
       machine: "M1",
-      devices: [{ name: "シミュ1" }, { name: "シミュ1", host: "M1Max" }],
+      devices: [{ name: "シミュ1" }, { name: "シミュ1", machine: "M1Max" }],
     }),
     true,
   );
@@ -1124,8 +1133,8 @@ test("isMonitorFromWebviewMessage: machineDeviceRemove は machine 空文字/dev
   assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceRemove", machine: "M1", devices: [{ name: "" }] }), false);
   assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceRemove", machine: "M1", devices: [{ name: 1 }] }), false);
   assert.equal(
-    isMonitorFromWebviewMessage({ type: "machineDeviceRemove", machine: "M1", devices: [{ name: "OK", host: "" }] }),
-    false, // host は指定するなら非空("" は「手元」ではなく不正)
+    isMonitorFromWebviewMessage({ type: "machineDeviceRemove", machine: "M1", devices: [{ name: "OK", machine: "" }] }),
+    false, // machine は指定するなら非空("" は「手元」ではなく不正)
   );
   assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceRemove", machine: "M1", devices: ["シミュ1"] }), false);
   assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceRemove", devices }), false);
@@ -1200,7 +1209,7 @@ test("isMonitorFromWebviewMessage: machineDevicesSync は add/remove 両方非�
       machine: "M1",
       add: [VALID_SYNC_ADD_IOS_ENTRY],
       remove: ["シミュ1"],
-      source: { kind: "remote", host: "M1Max" },
+      source: { kind: "remote", machine: "M1Max" },
     }),
     true,
   );
@@ -1222,7 +1231,7 @@ test("isMonitorFromWebviewMessage: machineDevicesSync は source 欠落/不正�
       machine: "M1",
       add: [VALID_SYNC_ADD_IOS_ENTRY],
       remove: [],
-      source: { kind: "remote", host: "" },
+      source: { kind: "remote", machine: "" },
     }),
     false,
   );
@@ -1756,9 +1765,9 @@ test("validateNewDeviceName: 既存(ios/android横断)と重複するならエ�
 
 // ---- removeDeviceFromRunProfile ----
 // 実体(シミュレータ/AVD)を消したあと、実行プロファイルが指す台も外すための関数。
-// マシンプロファイルと形が違う(devices は平らな配列で host は各エントリが持つ)。
+// マシンプロファイルと形が違う(devices は平らな配列で machine は各エントリが持つ)。
 
-test("removeDeviceFromRunProfile: (host, name) 一致だけを外し、他ホストの同名は残す", () => {
+test("removeDeviceFromRunProfile: (machine, name) 一致だけを外し、他マシンの同名は残す", () => {
   const profile = {
     machine: "local+remote",
     app: "sut",
@@ -1777,7 +1786,7 @@ test("removeDeviceFromRunProfile: (host, name) 一致だけを外し、他ホス
   assert.equal(result.object.machine, "local+remote", "他のキーは保持する");
 });
 
-test("removeDeviceFromRunProfile: host 省略のエントリは local として引く", () => {
+test("removeDeviceFromRunProfile: machine 省略のエントリは local として引く", () => {
   const result = removeDeviceFromRunProfile(
     { devices: [{ name: "Pixel(Android 15)01" }, { machine: "M1Ultra", name: "Pixel(Android 15)01" }] },
     "Pixel(Android 15)01",
@@ -1813,17 +1822,17 @@ test("removeDevicesFromRunProfileOfMachine: machine が一致する実行プロ�
       { machine: "local", name: "iPhone-02" },
     ],
   };
-  const hit = removeDevicesFromRunProfileOfMachine(profile, "M2Ultra", [{ name: "iPhone-01", host: "local" }]);
+  const hit = removeDevicesFromRunProfileOfMachine(profile, "M2Ultra", [{ name: "iPhone-01", machine: "local" }]);
   assert.equal(hit.removed, 1);
   assert.deepEqual(hit.object.devices, [{ machine: "local", name: "iPhone-02" }]);
 
   // 別のマシンプロファイルを使う実行プロファイルは触らない(同じ台が別構成に居ることがある)
-  const miss = removeDevicesFromRunProfileOfMachine(profile, "M1Max", [{ name: "iPhone-01", host: "local" }]);
+  const miss = removeDevicesFromRunProfileOfMachine(profile, "M1Max", [{ name: "iPhone-01", machine: "local" }]);
   assert.equal(miss.removed, 0);
   assert.deepEqual(miss.object.devices, profile.devices, "中身はそのまま");
 });
 
-test("removeDevicesFromRunProfileOfMachine: 複数台をまとめて外し、host 違いの同名は残す", () => {
+test("removeDevicesFromRunProfileOfMachine: 複数台をまとめて外し、machine 違いの同名は残す", () => {
   const result = removeDevicesFromRunProfileOfMachine(
     {
       machine: "M2Ultra",
@@ -1835,9 +1844,9 @@ test("removeDevicesFromRunProfileOfMachine: 複数台をまとめて外し、hos
       ],
     },
     "M2Ultra",
-    [{ name: "iPhone-01", host: "local" }, { name: "iPhone-02" }],
+    [{ name: "iPhone-01", machine: "local" }, { name: "iPhone-02" }],
   );
-  assert.equal(result.removed, 2, "host 省略は local として引く");
+  assert.equal(result.removed, 2, "machine 省略は local として引く");
   assert.deepEqual(result.object.devices, [
     { machine: "M1Max", name: "iPhone-01" },
     { machine: "local", name: "Pixel-01" },
@@ -1924,10 +1933,10 @@ test("removeDeviceFromMachineProfile: トップレベルがオブジェクトで
   assert.equal(removeDeviceFromMachineProfile(["ios", "android"], "x"), null);
 });
 
-// ---- (host, name) での引き当て(別の機械の同名デバイスを巻き添えにしない) ----
+// ---- (machine, name) での引き当て(別の機械の同名デバイスを巻き添えにしない) ----
 
 // 同じ機械プロファイルに手元と M1Max の同名デバイスが居る形(各機が同じ命名規則で作るので通常)。
-const PROFILE_SAME_NAME_ON_TWO_HOSTS = {
+const PROFILE_SAME_NAME_ON_TWO_MACHINES = {
   ios: {
     devices: [
       { machine: "local", name: "シミュ1", udid: "UDID-LOCAL" },
@@ -1936,16 +1945,16 @@ const PROFILE_SAME_NAME_ON_TWO_HOSTS = {
   },
 };
 
-test("removeDeviceFromMachineProfile: host を渡すとその機械のぶんだけ消す", () => {
-  const result = removeDeviceFromMachineProfile(PROFILE_SAME_NAME_ON_TWO_HOSTS, "シミュ1", "M1Max");
+test("removeDeviceFromMachineProfile: machine を渡すとその機械のぶんだけ消す", () => {
+  const result = removeDeviceFromMachineProfile(PROFILE_SAME_NAME_ON_TWO_MACHINES, "シミュ1", "M1Max");
   assert.equal(result.removed, true);
   assert.deepEqual(result.object.ios.devices, [{ machine: "local", name: "シミュ1", udid: "UDID-LOCAL" }]);
 
-  const local = removeDeviceFromMachineProfile(PROFILE_SAME_NAME_ON_TWO_HOSTS, "シミュ1", "local");
+  const local = removeDeviceFromMachineProfile(PROFILE_SAME_NAME_ON_TWO_MACHINES, "シミュ1", "local");
   assert.deepEqual(local.object.ios.devices, [{ machine: "M1Max", name: "シミュ1", udid: "UDID-M1MAX" }]);
 });
 
-test("removeDeviceFromMachineProfile: host 省略のエントリはプロファイル直下の既定に従う", () => {
+test("removeDeviceFromMachineProfile: machine 省略のエントリはプロファイル直下の既定に従う(旧キー host も読む)", () => {
   const profile = {
     host: "M1Max",
     ios: { devices: [{ name: "シミュ1", udid: "UDID-M1MAX" }, { machine: "local", name: "シミュ1", udid: "UDID-LOCAL" }] },
@@ -1954,7 +1963,7 @@ test("removeDeviceFromMachineProfile: host 省略のエントリはプロファ�
   assert.deepEqual(result.object.ios.devices, [{ machine: "local", name: "シミュ1", udid: "UDID-LOCAL" }]);
 });
 
-test("removeDevicesFromMachineProfile: 各 (host, name) だけを消す(host 省略=手元)", () => {
+test("removeDevicesFromMachineProfile: 各 (machine, name) だけを消す(machine 省略=手元)", () => {
   const profile = {
     ios: {
       devices: [
@@ -1964,7 +1973,7 @@ test("removeDevicesFromMachineProfile: 各 (host, name) だけを消す(host 省
       ],
     },
   };
-  const result = removeDevicesFromMachineProfile(profile, [{ name: "シミュ1", host: "M1Max" }, { name: "シミュ2" }]);
+  const result = removeDevicesFromMachineProfile(profile, [{ name: "シミュ1", machine: "M1Max" }, { name: "シミュ2" }]);
   assert.equal(result.removed, 1); // シミュ2 は手元に居ないので消えない
   assert.deepEqual(result.object.ios.devices, [{ machine: "local", name: "シミュ1" }, { machine: "M1Max", name: "シミュ2" }]);
 
@@ -1977,9 +1986,9 @@ test("removeDevicesFromMachineProfile: 不正形式は null(呼び出し側は�
   assert.equal(removeDevicesFromMachineProfile("not-an-object", [{ name: "x" }]), null);
 });
 
-test("updateDeviceInMachineProfile: host を渡すとその機械のエントリだけを書き換える", () => {
+test("updateDeviceInMachineProfile: machine を渡すとその機械のエントリだけを書き換える", () => {
   const remote = updateDeviceInMachineProfile(
-    PROFILE_SAME_NAME_ON_TWO_HOSTS,
+    PROFILE_SAME_NAME_ON_TWO_MACHINES,
     "ios",
     "シミュ1",
     iosFields({ name: "シミュ1-改", udid: "UDID-M1MAX" }),
@@ -1992,7 +2001,7 @@ test("updateDeviceInMachineProfile: host を渡すとその機械のエントリ
   ]);
 
   const local = updateDeviceInMachineProfile(
-    PROFILE_SAME_NAME_ON_TWO_HOSTS,
+    PROFILE_SAME_NAME_ON_TWO_MACHINES,
     "ios",
     "シミュ1",
     iosFields({ name: "シミュ1-改", udid: "UDID-LOCAL" }),
@@ -2024,7 +2033,7 @@ test("updateDeviceInMachineProfile: 別の機械の同名へのリネームは�
 
 test("updateDeviceInMachineProfile: host を渡さなければ従来どおり名前だけで引く", () => {
   const result = updateDeviceInMachineProfile(
-    PROFILE_SAME_NAME_ON_TWO_HOSTS,
+    PROFILE_SAME_NAME_ON_TWO_MACHINES,
     "ios",
     "シミュ1",
     iosFields({ name: "シミュ1", udid: "UDID-LOCAL" }),
@@ -2464,7 +2473,7 @@ test("syncDevicesInMachineProfile: トップレベルがオブジェクトでな
 
 // ---- syncDevicesInMachineProfile: source(devicePickHost.js のホスト選択)による host 書き込み ----
 // 契約(monitorProfileForms.ts): host は**追加したデバイス1台ずつ**に書く(一意なのは (host, name)
-// で、ローカルとリモートに同名のデバイスが並んでよい。Sources/FTCore/DeviceHostGrouping.swift)。
+// で、ローカルとリモートに同名のデバイスが並んでよい。Sources/FTCore/DeviceMachineGrouping.swift)。
 // プロファイル直下の host は「このプロファイルの既定」なので触らない —— ただし既定が別のホストを
 // 指しているときだけ、追加したローカルのデバイスに "local" を明示する(書かないと既定のリモートに
 // 居ることになる)。source を渡さない・remove のみ(add:[])では何も書かない。
@@ -2551,7 +2560,7 @@ test("addDevicesToMachineProfile: 同じホストの同名には従来どおり 
 });
 
 test("syncDevicesInMachineProfile: add + source:remote は追加したデバイスに machine を書く", () => {
-  const result = syncDevicesInMachineProfile({}, [IOS_ADD_ENTRY], [], { kind: "remote", host: "M1Max" });
+  const result = syncDevicesInMachineProfile({}, [IOS_ADD_ENTRY], [], { kind: "remote", machine: "M1Max" });
   assert.equal(result.ok, true);
   assert.equal(result.object.ios.devices[0].machine, "M1Max");
   // プロファイル直下は既定なので触らない(混在プロファイルでは「全部 M1Max」を意味してしまう)
@@ -2590,7 +2599,7 @@ test("syncDevicesInMachineProfile: source を渡さない場合は既存の mach
 
 test("syncDevicesInMachineProfile: remove のみ(add:[])は source:remote でも直下に machine を書かない", () => {
   const profile = { ios: { devices: [{ name: "削除対象", udid: "EXISTING" }] } };
-  const result = syncDevicesInMachineProfile(profile, [], ["削除対象"], { kind: "remote", host: "M1Max" });
+  const result = syncDevicesInMachineProfile(profile, [], ["削除対象"], { kind: "remote", machine: "M1Max" });
   assert.equal(result.ok, true);
   assert.equal("machine" in result.object, false);
 });

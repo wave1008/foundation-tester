@@ -67,7 +67,7 @@ const isMacPlatform = /^Mac/.test(navigator.platform || '');
 // 順序計算に使う。
 let deviceRowElements = new Map();
 // 右クリックメニュー(#machine-device-menu)を開いている対象(未オープンなら null)。
-// { machine, devices } の形(devices は行そのもの = (host, name) を持つ)。
+// { machine, devices } の形(devices は行そのもの = (machine, name) を持つ)。
 let machineDeviceMenuEntry = null;
 // 右ペインの編集フォームの対象({ machine, platform, originalName }。未選択なら null)。
 let editorTarget = null;
@@ -81,11 +81,11 @@ export function findMachine(name) {
   return machineProfiles.find((m) => m.name === name);
 }
 
-// デバイス行の同一性。**一意なのは (host, name)** —— 各機械が同じ命名規則でシミュレータを作るので
-// 別ホストに同名が並ぶのが通常で、名前だけで持つと行・選択・除去対象が別ホストの同名行に化ける。
-// host 省略=手元(判定の正は Sources/FTCore/DeviceHostGrouping.swift)。runProfilesTab.js の refKey と同形。
+// デバイス行の同一性。**一意なのは (machine, name)** —— 各機械が同じ命名規則でシミュレータを作るので
+// 別マシンに同名が並ぶのが通常で、名前だけで持つと行・選択・除去対象が別マシンの同名行に化ける。
+// machine 省略=手元(判定の正は Sources/FTCore/DeviceMachineGrouping.swift)。runProfilesTab.js の refKey と同形。
 function deviceKey(device) {
-  return `${device.host ?? ''}\t${device.name}`;
+  return `${device.machine ?? ''}\t${device.name}`;
 }
 
 /** 選択中マシンの devices からキーで引く(一覧に無ければ null)。 */
@@ -268,10 +268,10 @@ function renderMachineProfileBody(error) {
       nameLine.appendChild(name);
       // 手元でないデバイスは名前の右に**ホスト名**を出す(同名が別ホストに並ぶのが通常なので、
       // 「リモートかどうか」より「どの機械か」が要る。2026-08-17 指示)
-      if (device.host) {
+      if (device.machine) {
         const remote = document.createElement('span');
         remote.className = 'badge badge-remote';
-        remote.textContent = device.host;
+        remote.textContent = device.machine;
         nameLine.appendChild(remote);
       }
       const detail = document.createElement('div');
@@ -347,19 +347,19 @@ if (typeof ResizeObserver !== 'undefined') {
 }
 
 // 選択中マシンのデバイス名(ios/android 横断。デバイス追加モーダルと編集フォームの重複検証用)。
-// **host を渡すとその機械のぶんだけ**返す —— 一意なのは (host, name) で、別の機械に同じ名前の
+// **machine を渡すとその機械のぶんだけ**返す —— 一意なのは (machine, name) で、別の機械に同じ名前の
 // デバイスが居るのは通常(各機が同じ命名規則でシミュレータを作る)。判定の正は
-// Sources/FTCore/DeviceHostGrouping.swift で、ここはその写し。
-// host は undefined = 手元。引数を省略すると全ホストぶん(呼び出し側が自分で絞る)。
-export function allDeviceNamesForSelectedMachine(host) {
-  const machine = findMachine(selectedMachine);
-  if (!machine) {
+// Sources/FTCore/DeviceMachineGrouping.swift で、ここはその写し。
+// machine は undefined = 手元。引数を省略すると全マシンぶん(呼び出し側が自分で絞る)。
+export function allDeviceNamesForSelectedMachine(machine) {
+  const profile = findMachine(selectedMachine);
+  if (!profile) {
     return [];
   }
   if (arguments.length === 0) {
-    return machine.devices.map((d) => d.name);
+    return profile.devices.map((d) => d.name);
   }
-  return machine.devices.filter((d) => (d.host ?? undefined) === host).map((d) => d.name);
+  return profile.devices.filter((d) => (d.machine ?? undefined) === machine).map((d) => d.name);
 }
 
 // ---- 右ペインの編集フォーム ---------------------------------------------
@@ -439,7 +439,7 @@ function setEditorDirty(dirty) {
 // 選択中デバイスの値でフォームを作り直す(編集途中の値は破棄する)。
 function renderDeviceEditor(machine, device) {
   editorTarget = { machine: machine, platform: device.platform, originalName: device.name,
-                   host: device.host ?? undefined };
+                   machine: device.machine ?? undefined };
   editorOriginalValues = deviceFieldValues(device);
   editorSubmitting = false;
   editorError.textContent = '';
@@ -611,8 +611,8 @@ function validateDeviceEditorFields(name) {
   if (name.length === 0) {
     return t('wvMonitor2.machine.validation.nameRequired');
   }
-  // 重複はそのデバイスが居る機械の中だけで見る(一意なのは (host, name))。
-  const others = allDeviceNamesForSelectedMachine(editorTarget.host)
+  // 重複はそのデバイスが居る機械の中だけで見る(一意なのは (machine, name))。
+  const others = allDeviceNamesForSelectedMachine(editorTarget.machine)
     .filter((n) => n !== editorTarget.originalName);
   if (others.includes(name)) {
     return t('wvMonitor2.machine.validation.nameExists', { name });
@@ -645,8 +645,8 @@ editorConfirm.addEventListener('click', () => {
     machine: editorTarget.machine,
     platform: editorTarget.platform,
     originalName: editorTarget.originalName,
-    // 引き当ては (host, name)。省略=手元(ホスト側が "local" として引く)。
-    ...(editorTarget.host ? { host: editorTarget.host } : {}),
+    // 引き当ては (deviceMachine, originalName)。省略=手元(拡張側が "local" として引く)。
+    ...(editorTarget.machine ? { deviceMachine: editorTarget.machine } : {}),
     fields: {
       name: name,
       // 編集不可フィールドはラベル表示(span)の textContent = 元の値をそのまま往復させる。
@@ -668,7 +668,7 @@ export function applyMachineDeviceUpdateResult(message) {
   if (message.ok) {
     // リネームで名前が変わるのでキーを作り直す。**ホストは編集対象のもの**(名前だけだと
     // 別ホストの同名行が選択される)。
-    selectedDeviceKeys = new Set([deviceKey({ host: editorTarget?.host, name: message.name })]);
+    selectedDeviceKeys = new Set([deviceKey({ machine: editorTarget?.machine, name: message.name })]);
     editorError.textContent = '';
     setEditorDirty(false);
   } else {
@@ -707,9 +707,9 @@ machineDeviceMenuItemBtn.addEventListener('click', (event) => {
   vscode.postMessage({
     type: 'machineDeviceRemove',
     machine: machineDeviceMenuEntry.machine,
-    // **(host, name) で送る**(host 省略=手元)。名前だけだと、ホスト側が別の機械の同名
+    // **(machine, name) で送る**(machine 省略=手元)。名前だけだと、拡張側が別の機械の同名
     // デバイスまで巻き添えで消す。
-    devices: machineDeviceMenuEntry.devices.map((d) => (d.host ? { name: d.name, host: d.host } : { name: d.name })),
+    devices: machineDeviceMenuEntry.devices.map((d) => (d.machine ? { name: d.name, machine: d.machine } : { name: d.name })),
   });
   closeMachineDeviceMenu();
 });

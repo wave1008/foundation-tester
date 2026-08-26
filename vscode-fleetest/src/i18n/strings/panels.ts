@@ -246,14 +246,14 @@ export const panelsStrings = {
   "panels.settings.remoteArtifactsCollect": { ja: "回収する", en: "Collect" },
   "panels.settings.remoteArtifactsOnDemand": { ja: "オンデマンド", en: "On demand" },
   "panels.settings.remoteHostsHint": {
-    ja: "ディスパッチ先として使うホストを登録します。name はホストを選ぶとき(例: 「デバイスを追加」ダイアログでのホスト選択)に出る表示名(一意)、host は SSH 先(user@host または host)、dir は空欄で ~/fleetest-runner(そのマシンの既存のローカルインストールと同じパスにしないこと)。",
-    en: "Register hosts to dispatch runs to. Name is the display name shown when picking a host (e.g. the source selector in the \"add device\" dialog; must be unique); host is the SSH target (user@host or host); dir blank = ~/fleetest-runner (must not be an existing local install on that machine).",
+    ja: "ディスパッチ先として使うマシンを登録します。machine はマシンを選ぶとき(例: 「デバイスを追加」ダイアログでのマシン選択)に出る表示名(一意。この Mac だけのエイリアス)、host は SSH 先(user@host または host)、dir は空欄で ~/fleetest-runner(そのマシンの既存のローカルインストールと同じパスにしないこと)。",
+    en: "Register machines to dispatch runs to. Machine is the display name shown when picking a machine (e.g. the source selector in the \"add device\" dialog; must be unique, and local to this Mac); host is the SSH target (user@host or host); dir blank = ~/fleetest-runner (must not be an existing local install on that machine).",
   },
-  // 列見出しは「マシン」(2026-08-26 指示)。プロファイルの machine 欄・--host に書く名前と同じもの
+  // 列見出しは「マシン」(2026-08-26 指示)。プロファイルの machine 欄・--machine に書く名前と同じもの
   "panels.settings.remoteHostsColMachine": { ja: "マシン", en: "Machine" },
   "panels.settings.remoteHostsColHost": { ja: "ホスト", en: "Host" },
   "panels.settings.remoteHostsColDir": { ja: "作業ベースディレクトリ", en: "Base directory" },
-  "panels.settings.remoteHostsAdd": { ja: "ホストを追加", en: "Add host" },
+  "panels.settings.remoteHostsAdd": { ja: "マシンを追加", en: "Add machine" },
 
   "panels.deviceMenu.liveControl": { ja: "ライブ操作", en: "Live Control" },
   "panels.deviceMenu.restartWithGpu": { ja: "GPUで再起動", en: "Restart with GPU" },
@@ -293,10 +293,9 @@ export const panelsStrings = {
   "panels.devicePick.addNewIosTitle": { ja: "iOS デバイスを新規作成", en: "Create New iOS Device" },
   "panels.devicePick.addNewAndroidTitle": { ja: "Android デバイスを新規作成", en: "Create New Android Device" },
   "panels.devicePick.addNewLabel": { ja: "デバイスを作成", en: "Create device" },
-  // タイトル行のホスト選択(#device-pick-host-select)の静的ラベル。選択肢自体は
-  // devicePickHost.js が remoteConfig を受けて動的生成する
-  // (panels.machineProfile.deviceSourceLabel と同じ役割・同じ文言)。
-  "panels.devicePick.hostLabel": { ja: "ホスト:", en: "Host:" },
+  // タイトル行のマシン選択(#device-pick-machine-select)の静的ラベル。選択肢自体は
+  // devicePickMachine.js が remoteConfig を受けて動的生成する
+  "panels.devicePick.machineLabel": { ja: "マシン:", en: "Machine:" },
   "panels.devicePick.loading": { ja: "読み込み中...", en: "Loading..." },
   // 見出しには接続中の実機も並ぶため「デバイス」と呼ぶ(台数は JS が確定後に付ける)
   "panels.devicePick.iosGroupTitle": { ja: "iOS デバイス", en: "iOS devices" },

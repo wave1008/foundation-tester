@@ -1217,14 +1217,14 @@ extension ProfileResolverTests {
         }
     }
 
-    /// runDeviceHosts はディスパッチ先の判定に使う(resolve() より前に呼ばれる)。
+    /// runDeviceMachines はディスパッチ先の判定に使う(resolve() より前に呼ばれる)。
     /// resolve() と同じ規則で解決していないと、配る先と実際に走る台がズレる
     func testRunDeviceHostsReportsWhereEachDeviceLives() throws {
         try writeMixedHostFixture(runDevices:
             #"[ { "name": "iPhone-01", "host": "local" }, { "name": "iPhone-01", "host": "M1Ultra" } ]"#)
-        let devices = try ProfileResolver.runDeviceHosts(
+        let devices = try ProfileResolver.runDeviceMachines(
             project: project, runProfileName: "r", machineName: "mixed")
-        XCTAssertEqual(devices.map(\.host), [nil, "M1Ultra"])
+        XCTAssertEqual(devices.map(\.machine), [nil, "M1Ultra"])
         XCTAssertEqual(Set(devices.map(\.platform)), ["ios"])
     }
 }

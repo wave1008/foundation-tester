@@ -110,37 +110,37 @@ export const deviceOpsStrings = {
     en: "Failed to parse {cmd} output: {error}",
   },
   "deviceOps.cmdOutputInvalid": { ja: "{cmd} の出力形式が不正です。", en: "{cmd} output format is invalid." },
-  // §13 段2「ホスト」セレクタ: リモート実行時のエラーへホスト名を付記する(withSourceContext)。
-  "deviceOps.remoteHostSuffix": { ja: "{message}(ホスト: {host})", en: "{message} (host: {host})" },
+  // §13 段2「マシン」セレクタ: リモート実行時のエラーへマシン名を付記する(withSourceContext)。
+  "deviceOps.remoteMachineSuffix": { ja: "{message}(マシン: {machine})", en: "{message} (machine: {machine})" },
   "deviceOps.createRemoteConfirmMessage": {
-    ja: "「{name}」を {host} 上に作成します。よろしいですか?",
-    en: "This creates \"{name}\" on {host}. Continue?",
+    ja: "「{name}」を {machine} 上に作成します。よろしいですか?",
+    en: "This creates \"{name}\" on {machine}. Continue?",
   },
   "deviceOps.createRemoteConfirmButton": { ja: "作成", en: "Create" },
   // 同名の実体があるときの上書き確認。**削除を伴う**ので、消える対象と機械を文中に出す
   "deviceOps.createOverwriteConfirmMessage": {
-    ja: "{host} の「{name}」は既に存在します。削除して作り直しますか?(元に戻せません)",
-    en: "\"{name}\" already exists on {host}. Delete it and create it again? (cannot be undone)",
+    ja: "{machine} の「{name}」は既に存在します。削除して作り直しますか?(元に戻せません)",
+    en: "\"{name}\" already exists on {machine}. Delete it and create it again? (cannot be undone)",
   },
   "deviceOps.createOverwriteConfirmButton": { ja: "削除して作り直す", en: "Delete and recreate" },
-  "deviceOps.createOverwriteLocalHost": { ja: "このマシン", en: "this machine" },
+  "deviceOps.createOverwriteLocalMachine": { ja: "このマシン", en: "this machine" },
   // exit 64 = 引数エラー。リモートで出たら「向こうの fleetest が古い」がほぼ唯一の原因
   "deviceOps.remoteCliTooOld": {
-    ja: "{host} の fleetest がこの操作に対応していません(版が古い可能性があります)。{host} で版を揃えてください: fleetest remote setup {host} — {detail}",
-    en: "The fleetest on {host} does not support this operation (it is probably out of date). Align it with: fleetest remote setup {host} — {detail}",
+    ja: "{machine} の fleetest がこの操作に対応していません(版が古い可能性があります)。{machine} で版を揃えてください: fleetest remote setup {machine} — {detail}",
+    en: "The fleetest on {machine} does not support this operation (it is probably out of date). Align it with: fleetest remote setup {machine} — {detail}",
   },
   "deviceOps.createCancelled": { ja: "作成をキャンセルしました。", en: "Device creation was cancelled." },
   // バッチ作成の確認(webview の window.confirm は効かないのでホスト側 modal で聞く)。
   // **1枚だけ**出す —— 上書きが要るときは batchOverwriteNote を同じ文面へ書き足す
   "deviceOps.batchConfirmMessage": {
-    ja: "{host} に {count} 台のデバイスを作成します({first} 〜 {last})。よろしいですか?",
-    en: "This creates {count} devices on {host} ({first} - {last}). Continue?",
+    ja: "{machine} に {count} 台のデバイスを作成します({first} 〜 {last})。よろしいですか?",
+    en: "This creates {count} devices on {machine} ({first} - {last}). Continue?",
   },
   "deviceOps.batchConfirmButton": { ja: "作成", en: "Create" },
   // **確認ダイアログ1枚に書き足す文**(別のダイアログにしない)。先頭の改行は本文と離すため
   "deviceOps.batchOverwriteNote": {
-    ja: "\n\nうち {count} 台は {host} に既に存在します({names})。削除して作り直します(元に戻せません)。",
-    en: "\n\n{count} of them already exist on {host} ({names}) and will be deleted and recreated (cannot be undone).",
+    ja: "\n\nうち {count} 台は {machine} に既に存在します({names})。削除して作り直します(元に戻せません)。",
+    en: "\n\n{count} of them already exist on {machine} ({names}) and will be deleted and recreated (cannot be undone).",
   },
   "deviceOps.batchOverwriteConfirmButton": { ja: "削除して作り直す", en: "Delete and recreate" },
   "deviceOps.batchAlreadyRunning": {
@@ -173,10 +173,10 @@ export const deviceOpsStrings = {
     en: "[fleetest] create-device({name}) finished (exit code: {exitCode})",
   },
 
-  "deviceOps.hostLocalLabel": { ja: "ローカル", en: "the local machine" },
+  "deviceOps.machineLocalLabel": { ja: "ローカル", en: "the local machine" },
   "deviceOps.deleteConfirmMessage": {
-    ja: "「{name}」を {host} から削除します。シミュレータ/AVD本体が削除されるため、元に戻せません。よろしいですか?",
-    en: "This deletes \"{name}\" from {host}. It removes the underlying simulator/AVD and cannot be undone. Continue?",
+    ja: "「{name}」を {machine} から削除します。シミュレータ/AVD本体が削除されるため、元に戻せません。よろしいですか?",
+    en: "This deletes \"{name}\" from {machine}. It removes the underlying simulator/AVD and cannot be undone. Continue?",
   },
   "deviceOps.deleteConfirmButton": { ja: "削除", en: "Delete" },
   "deviceOps.deleteCancelled": { ja: "削除をキャンセルしました。", en: "Device deletion was cancelled." },

@@ -139,7 +139,7 @@ public struct RunMetaRecord: Codable, Sendable {
     /// 機械ごとに別々の run(別 runID・別 machine・リモートは向こうの時計)になるので、
     /// 「同じ実行の子か」は時刻や profile 名からは決められない —— ファンアウトの親が1回だけ
     /// 発行し、手元の子にもリモートの子にも同じ値を配る(発行は RunRecorder.makeRunGroupID、
-    /// 中継は FleetRunner.buildArgs / ApiRunHostFanout / RemoteRunArgs)。
+    /// 中継は FleetRunner.buildArgs / ApiRunMachineFanout / RemoteRunArgs)。
     /// 単機の run では nil(束ねる相手が居ない)。旧レコードも nil のまま読める
     public var runGroup: String?
 

@@ -754,16 +754,16 @@ struct RunScenarios: AsyncParsableCommand {
 
     /// **どの機械のデバイスを使うか**。`--device` は名前でしか絞れないが、一意なのは (host, name)
     /// なので、名前だけだと別の機械の同名デバイスまで掴む(docs/remote-runner.md §13)。
-    /// ホスト別サブ実行が自分で付ける値で、手で打つものではない
+    /// マシン別サブ実行が自分で付ける値で、手で打つものではない
     @Option(name: [.customLong("device-machine"), .customLong("device-host")],
             help: ArgumentHelp(
                 "Only use the devices assigned to this machine (\"local\" or a registered host name). "
                 + "Set by the per-host sub-runs; not for hand use",
                 visibility: .hidden))
-    var deviceHost: String?
+    var deviceMachine: String?
 
     /// 同じ実行から分かれた run を束ねる鍵(FTCore.RunMetaRecord.runGroup)。**発行は
-    /// ホスト別サブ実行の親だけ**で、子は受け取った値をそのまま run.json に書く。手で打つものではない
+    /// マシン別サブ実行の親だけ**で、子は受け取った値をそのまま run.json に書く。手で打つものではない
     @Option(name: .customLong("run-group"),
             help: ArgumentHelp(
                 "Group key shared by the per-machine sub-runs of one execution. "
@@ -836,17 +836,17 @@ struct RunScenarios: AsyncParsableCommand {
         // リモート実行はここで打ち切る(以降はローカル実行の段取り。フラグはコマンドラインごと
         // リモートへ中継されるので、向こう側の fleetest が同じ env を自分で立てる)。
         // dry-run だけは送らない(--host 明示・マシンプロファイルの host 自動のどちらも。
-        // 理由と罠は RemoteDispatchGate の宣言。優先順位・食い違いは resolveEffectiveHostDispatch
-        // → FTCore.MachineHostDispatch に委譲。ユーザー決定: マシンプロファイルで
+        // 理由と罠は RemoteDispatchGate の宣言。優先順位・食い違いは resolveEffectiveDispatchTarget
+        // → FTCore.MachineDispatch に委譲。ユーザー決定: マシンプロファイルで
         // host を持たせることで、実行プロファイル経由で間接的にリモートを指定できるようにした)
         // デバイスが複数の機械にまたがる実行プロファイルは、ホストごとのサブ実行へ分ける
         // (単一ディスパッチでは「そのホストに無いデバイス」が解決できない)。--host 明示や
         // 全台が同じ機械なら nil が返り、従来の経路をそのまま通る
         if !dryRun, fleet == nil, let profile,
-           let groups = try DeviceHostRunner.plan(
+           let groups = try DeviceMachineRunner.plan(
                project: try ScenarioHost.project(named: project), profileName: profile,
                explicitHost: dispatchTarget, deviceFilter: devices) {
-            let exitCode = try await DeviceHostRunner.run(
+            let exitCode = try await DeviceMachineRunner.run(
                 project: try ScenarioHost.project(named: project), profileName: profile,
                 groups: groups, scenarios: scenarios, folders: folders,
                 heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
@@ -858,9 +858,9 @@ struct RunScenarios: AsyncParsableCommand {
             if exitCode != 0 { throw ExitCode(exitCode) }
             return
         }
-        if !dryRun, let dispatch = try resolveEffectiveHostDispatch(
-            explicitHost: dispatchTarget, profile: profile, project: project,
-            requireMachineHost: true, warn: { print("⚠️ \($0)") }) {
+        if !dryRun, let dispatch = try resolveEffectiveDispatchTarget(
+        explicitTarget: dispatchTarget, profile: profile, project: project,
+            requireProfileMachine: true, warn: { print("⚠️ \($0)") }) {
             try await dispatchToRemoteHost(dispatch)
             return
         }
@@ -958,17 +958,17 @@ struct RunScenarios: AsyncParsableCommand {
         if let profile {
             // 明示 --host local はこの機械で走らせる指定なので、ホスト混在プロファイルでは
             // local 枠だけに絞る(他ホスト担当分まで手元で解決すると存在しない台を掴む。
-            // ホスト別サブ実行は --device/--device-host を持つのでこの分岐に入らない)。
+            // マシン別サブ実行は --device/--device-machine を持つのでこの分岐に入らない)。
             // **明示 --device があっても絞る** —— 名前だけでは同名の台が別の機械にもあるとき
             // そちらのエントリに解決し、向こうの UDID を手元で探して
             // "no simulator with that UDID" で止まる(受け手報告 2026-08-24)。判定は
-            // --host <リモート> と同じ hostScopedDeviceFilter(RemoteDispatchExplicitDeviceScope)
+            // --host <リモート> と同じ machineScopedDeviceFilter(RemoteDispatchExplicitDeviceScope)
             var effectiveDeviceFilter = devices
-            var effectiveDeviceHost = deviceHost
-            if deviceHost == nil, MachineHostDispatch.isExplicitLocal(dispatchTarget) {
-                (effectiveDeviceFilter, effectiveDeviceHost) = try hostScopedDeviceFilter(
+            var effectiveDeviceHost = deviceMachine
+            if deviceMachine == nil, MachineDispatch.isExplicitLocal(dispatchTarget) {
+                (effectiveDeviceFilter, effectiveDeviceHost) = try machineScopedDeviceFilter(
                     project: testProject, profile: profile,
-                    targetHost: DeviceHostGrouping.localDisplayName, requestedDevices: devices)
+                    targetMachine: DeviceMachineGrouping.localDisplayName, requestedDevices: devices)
             }
             let runSummary = try await ProfileRunner.run(
                 project: testProject, profileName: profile, items: items,
@@ -978,7 +978,7 @@ struct RunScenarios: AsyncParsableCommand {
                 lptHistoryRuns: lptHistoryRuns ?? LPTOrdering.defaultHistoryRuns,
                 performanceMode: performanceMode,
                 deviceFilter: effectiveDeviceFilter,
-                deviceHost: effectiveDeviceHost,
+                deviceMachine: effectiveDeviceHost,
                 workspaceOverride: workspace,
                 recorder: recorder,
                 broadcast: broadcast)
@@ -1053,7 +1053,7 @@ struct RunScenarios: AsyncParsableCommand {
     /// (SSH 到達可能な foundation-tester clone)に丸ごとディスパッチする
     /// (docs/remote-runner.md §3・§7・Phase 1)。デバイス割当競合を避けるためリモート1本での
     /// 実行のみサポートし、ローカル専用オプションは併用不可にする
-    private func dispatchToRemoteHost(_ dispatch: EffectiveHostDispatch) async throws {
+    private func dispatchToRemoteHost(_ dispatch: EffectiveDispatchTarget) async throws {
         guard let profile else {
             throw ValidationError("--host requires --profile")
         }
@@ -1081,16 +1081,16 @@ struct RunScenarios: AsyncParsableCommand {
         let localRoot = try RepoRoot.find()
         let dispatcher = RemoteRunDispatcher(
             host: resolved.hostSpec, remoteDirRaw: resolved.remoteDirRaw, localRepoRoot: localRoot,
-            artifacts: artifactsMode, forceLock: forceLock, waitLock: waitLock, hostLabel: dispatch.rawHost)
+            artifacts: artifactsMode, forceLock: forceLock, waitLock: waitLock, hostLabel: dispatch.rawTarget)
         var scopedDevices = devices
-        var scopedDeviceHost = deviceHost
-        if deviceHost == nil {
-            (scopedDevices, scopedDeviceHost) = try hostScopedDeviceFilter(
-                project: testProject, profile: profile, targetHost: dispatch.rawHost, requestedDevices: devices)
+        var scopedDeviceHost = deviceMachine
+        if deviceMachine == nil {
+            (scopedDevices, scopedDeviceHost) = try machineScopedDeviceFilter(
+                project: testProject, profile: profile, targetMachine: dispatch.rawTarget, requestedDevices: devices)
         }
         let exitCode = try await dispatcher.dispatch(
             project: testProject, profile: profile, scenarios: scenarios, folders: folders,
-            deviceNames: scopedDevices, deviceHost: scopedDeviceHost,
+            deviceNames: scopedDevices, deviceMachine: scopedDeviceHost,
             heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
             fastInput: fastInput, enableAnimations: enableAnimations,
             performanceMode: performanceMode, broadcast: broadcast,

@@ -24,7 +24,7 @@ export interface LaneInfo {
   readonly detail: string | undefined;
   /** 複数の機械にまたがる実行でこのレーンが居る機械(手元は undefined)。同名のデバイスが
    * 別の機械にも居るため、見出しに出さないとレーンを区別できない(model.ts の WorkerInfo)。 */
-  readonly machineHost: string | undefined;
+  readonly machine: string | undefined;
 }
 
 /** webview へ転送するレーン更新アクション。webview はこれをそのまま描画に反映する。 */
@@ -133,8 +133,8 @@ function ensureLane(state: RunLaneState, laneId: string): LaneEntry {
   const info: LaneInfo =
     laneId === OVERALL_LANE_ID
       ? { id: OVERALL_LANE_ID, name: overallLaneName(), platform: undefined, detail: undefined,
-          machineHost: undefined }
-      : { id: laneId, name: laneId, platform: undefined, detail: undefined, machineHost: undefined };
+          machine: undefined }
+      : { id: laneId, name: laneId, platform: undefined, detail: undefined, machine: undefined };
   const entry: LaneEntry = { info, lines: [] };
   state.lanes.set(laneId, entry);
   return entry;
@@ -159,7 +159,7 @@ export function resetRunLaneState(state: RunLaneState): LaneAction[] {
 
 /** workersReady 受信時にレーン構成を作り直す。同じ id のレーンの lines は維持する
  * (workersReady は累積再送される —— 複数マシン実行では準備できた機械から順に
- * ワーカーが増える。ApiRunHostFanout.swift の HostFanoutMultiplexer と対)。 */
+ * ワーカーが増える。ApiRunMachineFanout.swift の MachineFanoutMultiplexer と対)。 */
 function applyWorkers(state: RunLaneState, workers: readonly WorkerInfo[]): LaneAction[] {
   const kept = new Map(state.lanes);
   state.lanes.clear();
@@ -170,7 +170,7 @@ function applyWorkers(state: RunLaneState, workers: readonly WorkerInfo[]): Lane
       name: worker.name,
       platform: worker.platform,
       detail: worker.detail,
-      machineHost: worker.machineHost,
+      machine: worker.machine,
     };
     const existing = kept.get(worker.id);
     state.lanes.set(worker.id, { info, lines: existing ? existing.lines : [] });

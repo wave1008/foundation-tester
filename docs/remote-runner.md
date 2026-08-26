@@ -30,6 +30,27 @@
 直下の `host` → `machine`、ホスト登録簿の `name` → `machine`、記録の `machine` → `host`。
 **旧キーはすべて読める**(書き出しは新キーのみ)。
 
+**拡張 ⇄ webview のメッセージも同じ日に揃えた**(こちらは同時に配布されるので旧キーは読まない):
+`remoteConfig.hosts[].machine`・`DeviceCommandSource.machine`・`machineProfileInfo` の
+`machines[].machine` / `devices[].machine`・`deviceOp`/`deviceOpBusy`/`deviceDownFinished` の
+`machine`・`machineDeviceRemove.devices[].machine`・`machineDeviceUpdate.deviceMachine`
+(同じ階層の `machine` = マシンプロファイル名と衝突するため別名)・`runProfileSave` の
+`fields.devices[].machine`。**片側だけ改名すると黙って壊れる** —— 実際、webview が `host` を
+送り拡張が `machine` を読む状態が数時間残り、実行プロファイルのリモート参照が
+`machine: "local"` に書き換わった。
+
+**CLI ⇄ 拡張のワイヤも揃えた(ProtocolVersion 9)**: `api monitor` の `machineHost` → `machine`、
+`api devices-up` のライフサイクル行の `host` → `machine`、`api remote-compat` の
+`hosts[].name` → `machines[].machine`(`sshTarget` は本物のホストなのでそのまま)。
+**旧キーは読まない** —— この3つは拡張だけが読む口で、版が合っていなければ拡張が起動時に警告する。
+
+**Swift 側の識別子も同時に揃えた**(挙動は不変): `DeviceHostGrouping` → `DeviceMachineGrouping`
+(ファイルごと)・`RunDeviceHost` → `RunDeviceMachine`・`DeviceHostRunner` → `DeviceMachineRunner`・
+`ApiRunHostFanout` → `ApiRunMachineFanout`・`MachineHostDispatch` → `MachineDispatch`
+(`Decision.host` → `.target` = マシン名か `--host` の生の宛先)・`deviceHost` → `deviceMachine`。
+**`host` を残したのは本物のホストだけ**(登録簿の ssh 宛先・ブリッジの宛先 IP・`RemoteHostFacts` の
+鍵・fleet 定義の `runs[].host`)。
+
 ## 1. 前提と目的
 
 - **マシンは Mac に統一**(ユーザー決定 2026-07-30。クライアント・実行側とも)。
@@ -291,7 +312,7 @@ machine 識別子・実測固定費に加え **CPU モデル・論理コア数�
 `sysctl` の実測、machine とデバイス数は回収した実績レコード(`machine`/`worker`)由来 ——
 書き手が違う(前者はプローブ、後者はレコード)ので、片方だけ取れなかったときも他方は上書きで
 消さない。ローカル機の facts も同じ鍵("local")で `FleetRunner.buildMachineContext` /
-`DeviceHostRunner.assign` が毎回書く(こちらは SSH プローブを経由しないので `MachineHardware.current()`
+`DeviceMachineRunner.assign` が毎回書く(こちらは SSH プローブを経由しないので `MachineHardware.current()`
 を直接使う)。
 
 見積りは**同一機の実績 > 混合中央値 × 速度係数(共通観測シナリオの比の中央値)>
@@ -576,7 +597,7 @@ target が hosts に無い/host 未設定を指す場合は**黙ってローカ�
 **状態・静止画・ライブ映像まで 2026-08-17 に実装**(下記「リモートのデバイスの状態と画面」)。
 残るのは watchdog 分界とリモート機の自動修復。
 
-**NDJSON 多重化はライブ配信(2026-08-18)**: `ApiRunHostFanout.HostFanoutMultiplexer` は
+**NDJSON 多重化はライブ配信(2026-08-18)**: `ApiRunMachineFanout.HostFanoutMultiplexer` は
 以前 workersReady が全子ぶん揃うまで全イベントをバッファしていた(リモート機の準備待ちで
 ローカル分の表示が最後に一括更新される)。今は**バッファせず即時中継**し、workersReady は
 **子ごとに届くたび、その時点で判明している全ワーカーの累積で再送**する。子が担当シナリオを
@@ -590,18 +611,18 @@ target が hosts に無い/host 未設定を指す場合は**黙ってローカ�
 「ローカル10台 + リモート10台」を1つのプロファイルに書けない(利用者の指摘で判明)。
 
 - `MachineProfile.host` は**そのプロファイルの既定**、`DeviceSpec.host` が**そのデバイスの居場所**。
-  優先順位・正規化は `FTCore.DeviceHostGrouping`(空文字=未指定で既定へ / `"local"`=手元の明示で
+  優先順位・正規化は `FTCore.DeviceMachineGrouping`(空文字=未指定で既定へ / `"local"`=手元の明示で
   既定より強い。後者を normalize の nil と同一視すると、既定がリモートのプロファイルに手元の
   デバイスを1台混ぜられなくなる)
 - 実行プロファイルの参照(`RunDeviceRef`)も `host` を書ける。**書いていない参照が複数ホストに
   当たったら候補を挙げて中止**する(片方を黙って選ぶと別の機械のデバイスを操作したことになり、
   しかも気づけない)
-- **実行はホストごとのサブ実行へ分かれる**(`Sources/fleetest/DeviceHostRunner.swift`)。
+- **実行はホストごとのサブ実行へ分かれる**(`Sources/fleetest/DeviceMachineRunner.swift`)。
   子プロセスの起動・行の前置・JUnit 結合・集計は FleetRunner のヘルパを共有し、
   シナリオの割り当ては `FleetSplit.partition` に**台数の重み**(`entryCapacities`)を渡して行う ——
   総量で均すと台数の少ないホストだけが最後まで残り、壁時計が縮まない。
   子には `--device <名前…>` と `--host <ホスト|local>` を渡す
-- **`--host` 明示は分散より強い**(「今回はこの機械で」の意味。MachineHostDispatch と同じ規律)
+- **`--host` 明示は分散より強い**(「今回はこの機械で」の意味。MachineDispatch と同じ規律)
 - **`--host H` に明示の `--device <名前>` を付けたら、名前は H の台に限定する**(2026-08-24。
   `RemoteDispatchExplicitDeviceScope`)。混在プロファイルでは同名の台が複数の機械にあるので、
   名前だけを子へ渡すと**全機械ぶんの同名を拾い**、手元の UDID をランナー機で探して
@@ -636,11 +657,12 @@ target が hosts に無い/host 未設定を指す場合は**黙ってローカ�
   (間接指定)。ssh の実体は書けない = 登録名(エイリアス)だけ(§0 の規律3)
 - **`--machine`(登録名)/ `--host`(ホスト名・IP)は上書きとして残す**(CLI と自動化向け。
   `--host` は当面エイリアスも受けるが、本来の口は `--machine`)。優先順位・食い違いの扱いは
-  `FTCore.MachineHostDispatch`。**明示 `--host local` は「ここで走らせる」であって未指定ではない**
+  `FTCore.MachineDispatch`。**明示 `--host local` は「ここで走らせる」であって未指定ではない**
 - **設定タブの「実行先」は廃止**。設定タブが持つのは**登録簿(名前 → ssh 宛先)だけ**
-- **マシンプロファイルの「取得元」も廃止**。デバイス候補をどのホストから採るかは
-  **「デバイスを選択」ダイアログのホスト選択**に移した(選んだホストが、そのまま編集中の
-  マシンプロファイルの `host` になる)。**取得元と実行先が別々に設定できてしまう状態を作らない**
+- **マシンプロファイルの「取得元」も廃止**。デバイス候補をどのマシンから採るかは
+  **「デバイスを選択」ダイアログのマシン選択**(`#device-pick-machine-select`)に移した
+  (選んだマシンが、そのまま登録されるデバイスの `machine` になる)。
+  **取得元と実行先が別々に設定できてしまう状態を作らない**
 - ダイアログのデバイス行は**右クリックで実体を削除できる**(`fleetest api delete-device`。
   判定は `FTCore.DeviceDeletion` — 起動中は削除しない・存在しない識別子を「削除できた」と
   言わない・マシンプロファイルからの参照は止めないが `referencedBy` で申告する)
@@ -731,9 +753,9 @@ machines/apps/runs はプロジェクト資産で、ディスパッチのたび�
 
 ### プロファイルのリモート対応
 
-- **マシンプロファイル**(実装済み。**2026-08-17 に「取得元」セレクタは廃止し、ホスト選択は
+- **マシンプロファイル**(実装済み。**2026-08-17 に「取得元」セレクタは廃止し、マシン選択は
   「デバイスを選択」ダイアログへ移した**。上記「GUI のホスト指定はマシンプロファイルへ集約した」):
-  選んだホストの `api installed-devices` / `api device-catalog` / `api create-device` /
+  選んだマシンの `api installed-devices` / `api device-catalog` / `api create-device` /
   `api delete-device` を叩く。
   **リモートの `create-device` は `--no-register` を強制する** —— リモート側の
   マシンプロファイルへ書いても**次のディスパッチの rsync `--delete` で消える**
@@ -1102,7 +1124,7 @@ ssh を `-tt`(擬似 TTY 強制割り当て)で起動し、切断時に SIGHUP �
   利用者のスクリプト次第で上限を決められないので待つ側に倒す(刺さったら人が kill -9 する)
 
 - **シグナルソースは1プロセスに1組**(2026-08-24)。ホスト別の子を並行に持つ親
-  (DeviceHostRunner / FleetRunner)は relay を同時に複数抱える。relay ごとにソースを立てて
+  (DeviceMachineRunner / FleetRunner)は relay を同時に複数抱える。relay ごとにソースを立てて
   `stop()` が `SIG_DFL` を戻す作りだと、**先に終わった子の stop() が残りの子の横取りまで解く** ——
   手元のぶんが先に終わった分散 run の親へ `kill -INT` すると、親だけ既定動作で死に、
   M1Max の子・ssh・リモートの run・dispatch.lock が全部残った(受け手報告 2026-08-23)。
@@ -1263,7 +1285,7 @@ appPath の原本をワークスペースの `apps/<原本のファイル名>` �
   `prepareWorkspace`)が、`WorkspaceRemoteDispatch.placement` の計算結果(配下ならプロジェクト
   ディレクトリ配下のパス、配下でなければミラー先)をリモートの子(`fleetest run/api run
   --host local …`)へ必ず渡す。渡し漏れると子は自分自身の既定/宣言で別のパスを組み立ててしまう
-- **多ホスト(§13 DeviceHostRunner/ApiRunHostFanout・フリート§8)への波及なし**: どちらも
+- **多ホスト(§13 DeviceMachineRunner/ApiRunMachineFanout・フリート§8)への波及なし**: どちらも
   ホストごとの子プロセスとして `fleetest (api) run --host <label> …` を起動するだけで、
   各子は自分自身が `RemoteRunDispatcher` を経由するときに独立してワークスペースの用意を行う
   (二重実装ではなく、既存の子プロセス起動経路にこの節の機構がそのまま乗る)

@@ -9,31 +9,31 @@ import FTCore
 
 final class RemoteMonitorFanoutIDTests: XCTestCase {
 
-    /// 子の monitorDevices は **id もマシンバッジ(machineHost)も持たない**(畳んだプロファイルでは
+    /// 子の monitorDevices は **id もマシンバッジ(machine)も持たない**(畳んだプロファイルでは
     /// 自分の台は "local")。親が両方を埋める —— 埋め忘れるとタイルが特定できない/バッジが消える
     func testRemoteDevicesGetBothTheScopedIDAndTheMachineBadge() throws {
         let line = #"""
-        {"kind":"monitorDevices","devices":[{"id":"android:Pixel 3a","name":"Pixel 3a","platform":"android","state":"connected","detail":"S","udid":null,"serial":"S","health":null,"renderMode":null,"inRun":false,"kind":"physical","host":null,"port":null,"recording":false,"registered":true,"frozen":false,"machineHost":null}]}
+        {"kind":"monitorDevices","devices":[{"id":"android:Pixel 3a","name":"Pixel 3a","platform":"android","state":"connected","detail":"S","udid":null,"serial":"S","health":null,"renderMode":null,"inRun":false,"kind":"physical","host":null,"port":null,"recording":false,"registered":true,"frozen":false,"machine":null}]}
         """#
-        let fanout = RemoteMonitorFanout(hosts: ["M1Ultra"], project: "P", profile: nil,
+        let fanout = RemoteMonitorFanout(machines: ["M1Ultra"], project: "P", profile: nil,
                                          interval: 2, maxWidth: 960,
                                          log: { _ in }, relayLine: { _ in })
-        fanout.ingest(line: line, host: "M1Ultra")
+        fanout.ingest(line: line, machine: "M1Ultra")
         let devices = fanout.snapshot()
         XCTAssertEqual(devices.keys.sorted(), ["android:M1Ultra/Pixel 3a"])
-        XCTAssertEqual(devices["android:M1Ultra/Pixel 3a"]?.machineHost, "M1Ultra",
+        XCTAssertEqual(devices["android:M1Ultra/Pixel 3a"]?.machine, "M1Ultra",
                        "マシンのバッジは親が入れる(子は自分を local と見なす)")
     }
 
-    func testFrameLineGetsTheHostScopedDeviceID() {
+    func testFrameLineGetsTheMachineScopedDeviceID() {
         let line = #"{"kind":"monitorFrame","device":"android:Pixel 3a","jpegBase64":"AAAA","width":1}"#
-        let scoped = RemoteMonitorFanout.hostScoped(line: line, host: "M1Ultra")
+        let scoped = RemoteMonitorFanout.machineScoped(line: line, machine: "M1Ultra")
         XCTAssertEqual(
             scoped,
             #"{"kind":"monitorFrame","device":"android:M1Ultra/Pixel 3a","jpegBase64":"AAAA","width":1}"#)
-        // 規則は DeviceHostGrouping.workerID(2つ目の実装を作らない)
+        // 規則は DeviceMachineGrouping.workerID(2つ目の実装を作らない)
         XCTAssertTrue(scoped.contains(
-            DeviceHostGrouping.workerID(platform: "android", host: "M1Ultra", name: "Pixel 3a")))
+            DeviceMachineGrouping.workerID(platform: "android", machine: "M1Ultra", name: "Pixel 3a")))
     }
 
     /// **デバイス名が "/" を含むのは普通**(例 "Pixel 10(Android 14(API 34) / arm64-v8a)-01")。
@@ -41,19 +41,19 @@ final class RemoteMonitorFanoutIDTests: XCTestCase {
     func testDeviceNameContainingSlashIsStillScoped() {
         let line = #"{"kind":"monitorFrame","device":"android:Pixel 10(API 34 / arm64)-01","jpegBase64":"A"}"#
         XCTAssertEqual(
-            RemoteMonitorFanout.hostScoped(line: line, host: "M1Max"),
+            RemoteMonitorFanout.machineScoped(line: line, machine: "M1Max"),
             #"{"kind":"monitorFrame","device":"android:M1Max/Pixel 10(API 34 / arm64)-01","jpegBase64":"A"}"#)
     }
 
     /// 既にこのホストで修飾済みの id は二重に付けない(冪等)
     func testAlreadyScopedIDIsLeftAlone() {
         let line = #"{"kind":"monitorFrame","device":"android:M1Max/Pixel 3a","jpegBase64":"A"}"#
-        XCTAssertEqual(RemoteMonitorFanout.hostScoped(line: line, host: "M1Max"), line)
+        XCTAssertEqual(RemoteMonitorFanout.machineScoped(line: line, machine: "M1Max"), line)
     }
 
     func testUnexpectedLinesPassThroughUnchanged() {
         for line in [#"{"kind":"monitorFrame"}"#, "not json", #"{"device":"noplatform"}"#] {
-            XCTAssertEqual(RemoteMonitorFanout.hostScoped(line: line, host: "M1Max"), line, line)
+            XCTAssertEqual(RemoteMonitorFanout.machineScoped(line: line, machine: "M1Max"), line, line)
         }
     }
 }

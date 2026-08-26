@@ -654,7 +654,7 @@ function renderDeviceAddOverlay(): string {
         <span id="device-add-title">${t("panels.deviceAdd.title")}</span>
         <!-- どのホストから作成するかを常時表示(§13 段2。黙って別マシンを操作しない)。このダイアログは
              常に #device-pick-overlay の中から開くので、読み取り専用でその時点の選択(host select)を
-             映すだけ(devicePickHost.js の refreshDeviceAddBadge)。 -->
+             映すだけ(devicePickMachine.js の refreshDeviceAddBadge)。 -->
         <span id="device-add-source-badge" class="modal-hint"></span>
       </div>
       <div class="modal-row">
@@ -752,18 +752,18 @@ function renderDevicePickOverlay(): string {
        #device-add-overlayを重ねて開く(z-indexは#device-add-overlayのCSSルール参照)。
        **押した見出しのOS種別で開く** — 一覧のどちら側を増やしたいかは見出しで表明済みなので、
        ダイアログでもう一度選ばせない。
-       #device-pick-host-select はこのダイアログのデバイス候補のホスト(ローカル/登録済みリモート
-       ホスト)。選択肢は devicePickHost.js が remoteConfig(設定タブと同じメッセージ)を購読して
-       組み立てる。初期値はダイアログを開いたときの編集対象マシンプロファイルの host フィールド
-       (未設定ならローカル)。変更すると installed-devices を選び直したホストから再取得する
-       (modals.js の change リスナー)。 -->
+       #device-pick-machine-select はこのダイアログのデバイス候補のマシン(ローカル/登録済みの
+       リモートマシン)。選択肢は devicePickMachine.js が remoteConfig(設定タブと同じメッセージ)を
+       購読して組み立てる。初期値はダイアログを開いたときの編集対象マシンプロファイルの machine
+       フィールド(未設定ならローカル)。変更すると installed-devices を選び直したマシンから
+       再取得する(modals.js の change リスナー)。 -->
   <div id="device-pick-overlay" class="modal-overlay">
     <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="device-pick-title">
       <div class="modal-title device-pick-title-row">
         <span id="device-pick-title">${t("panels.devicePick.title")}</span>
-        <span class="device-pick-host-group">
-          <label for="device-pick-host-select">${t("panels.devicePick.hostLabel")}</label>
-          <select id="device-pick-host-select"></select>
+        <span class="device-pick-machine-group">
+          <label for="device-pick-machine-select">${t("panels.devicePick.machineLabel")}</label>
+          <select id="device-pick-machine-select"></select>
           <!-- ホスト切替中のインジケーター。**リストボックスの右に置く**(一覧側に出すと
                ダイアログの高さが変わって画面が跳ねる。2026-08-17 ユーザー指示) -->
           <span id="device-pick-loading" class="device-pick-loading" style="display: none;">

@@ -1,7 +1,7 @@
 // 機械ごとに分かれた run を束ねる鍵(FTCore.RunMetaRecord.runGroup)の中継。
 // **発行はファンアウトの親だけ**で、子(手元・リモート)は受け取った値をそのまま run.json に書く。
 // 落ちると症状は「録画セッションが Mac ごとにバラバラのまま」= 静かな退行なので、
-// 両方の親(CLI の DeviceHostRunner / api の ApiRunHostFanout)の引数組み立てを等号で固定する。
+// 両方の親(CLI の DeviceMachineRunner / api の ApiRunMachineFanout)の引数組み立てを等号で固定する。
 // リモートへの中継は FTCoreTests.RemoteDispatchTests の testRemoteRunArgsRelaysTheRunGroup。
 
 import XCTest
@@ -12,12 +12,12 @@ final class RunGroupPlumbingTests: XCTestCase {
 
     private let key = "20260826-010203Z-LDIPC96-beef"
 
-    /// CLI のホスト別サブ実行(`fleetest run`)。ローカル子・リモート子のどちらにも同じ鍵が付く
+    /// CLI のマシン別サブ実行(`fleetest run`)。ローカル子・リモート子のどちらにも同じ鍵が付く
     func testFleetRunnerBuildArgsRelaysTheRunGroupForEveryHost() {
         for host in ["local", "M1Max"] {
             let args = FleetRunner.buildArgs(
                 project: "E2E-Android", host: host, profile: "android",
-                deviceNames: ["Pixel 3a"], deviceHost: host,
+                deviceNames: ["Pixel 3a"], deviceMachine: host,
                 scenarios: ["A.S0010"], folders: [],
                 heal: false, noHeal: false, noLPT: false, lptHistoryRuns: nil,
                 fastInput: false, enableAnimations: false, performanceMode: false,
@@ -44,23 +44,23 @@ final class RunGroupPlumbingTests: XCTestCase {
     }
 
     /// 拡張の経路(`fleetest api run`)。こちらは鍵が必須引数なので、付いていることと値を見る
-    func testApiRunHostFanoutBuildArgsRelaysTheRunGroupForEveryHost() {
-        for host: String? in [nil, "M1Ultra"] {
-            let group = DeviceHostRunner.Group(
-                host: host, deviceNames: ["Pixel 3a"], platforms: ["android"])
-            let args = ApiRunHostFanout.buildArgs(
+    func testApiRunMachineFanoutBuildArgsRelaysTheRunGroupForEveryMachine() {
+        for machine: String? in [nil, "M1Ultra"] {
+            let group = DeviceMachineRunner.Group(
+                machine: machine, deviceNames: ["Pixel 3a"], platforms: ["android"])
+            let args = ApiRunMachineFanout.buildArgs(
                 project: "E2E-Android", profileName: "android", group: group,
                 scenarioIDs: ["A.S0010"],
-                options: ApiRunHostFanout.Options(
+                options: ApiRunMachineFanout.Options(
                     heal: false, defaultTimeout: nil, scenarioTimeout: nil, noLPT: false,
                     lptHistoryRuns: nil, performanceMode: false, remoteDir: nil,
                     remoteTimeout: nil, remoteArtifacts: "collect"),
                 runGroup: key)
             guard let index = args.firstIndex(of: "--run-group") else {
-                XCTFail("host=\(String(describing: host)) に束ね鍵が付いていない: \(args)")
+                XCTFail("machine=\(String(describing: machine)) に束ね鍵が付いていない: \(args)")
                 return
             }
-            XCTAssertEqual(args[args.index(after: index)], key, "host=\(String(describing: host))")
+            XCTAssertEqual(args[args.index(after: index)], key, "machine=\(String(describing: machine))")
         }
     }
 

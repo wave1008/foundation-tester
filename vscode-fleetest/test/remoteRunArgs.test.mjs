@@ -100,20 +100,20 @@ test("deviceCommandArgs: local は apiArgs をそのまま返す(1バイトも�
   );
 });
 
-test("deviceCommandArgs: remote は `remote exec <host> -- <apiArgs>` へ包む", () => {
+test("deviceCommandArgs: remote は `remote exec <machine> -- <apiArgs>` へ包む", () => {
   assert.deepEqual(
-    deviceCommandArgs({ kind: "remote", host: "M1Max" }, ["api", "installed-devices"]),
+    deviceCommandArgs({ kind: "remote", machine: "M1Max" }, ["api", "installed-devices"]),
     ["remote", "exec", "M1Max", "--", "api", "installed-devices"],
   );
   assert.deepEqual(
-    deviceCommandArgs({ kind: "remote", host: "M1Max" }, ["api", "device-catalog"]),
+    deviceCommandArgs({ kind: "remote", machine: "M1Max" }, ["api", "device-catalog"]),
     ["remote", "exec", "M1Max", "--", "api", "device-catalog"],
   );
 });
 
 test("deviceCommandArgs: remote は apiArgs を変更しない(呼び出し側の配列を書き換えない)", () => {
   const apiArgs = ["api", "create-device", "--name", "foo"];
-  const result = deviceCommandArgs({ kind: "remote", host: "studio" }, apiArgs);
+  const result = deviceCommandArgs({ kind: "remote", machine: "studio" }, apiArgs);
   assert.deepEqual(apiArgs, ["api", "create-device", "--name", "foo"], "元の配列は不変");
   assert.deepEqual(result, ["remote", "exec", "studio", "--", "api", "create-device", "--name", "foo"]);
 });

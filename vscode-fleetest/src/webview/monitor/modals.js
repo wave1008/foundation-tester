@@ -8,7 +8,7 @@ import { vscode } from './vscodeApi.js';
 import { cachePhysicalDeviceInfo } from './physicalDeviceCache.js';
 import { clampMenuPosition } from './menu.js';
 import { selectedMachine, findMachine, allDeviceNamesForSelectedMachine, btnDeviceAddExisting, refreshSelectedDeviceEditor } from './machineProfilesTab.js';
-import { currentDeviceSource, refreshDeviceAddBadge, resetDevicePickHost } from './devicePickHost.js';
+import { currentDeviceSource, refreshDeviceAddBadge, resetDevicePickMachine } from './devicePickMachine.js';
 
 // ---- デバイス追加モーダル ---------------------------------------------------
 
@@ -141,7 +141,7 @@ function platformIssue(platform) {
   // リモートのときは remote exec の案内にする(ローカルは下の導入ボタンが出る)
   const source = currentDeviceSource();
   const remedy = side.errorCode === 'avdmanager-missing' && source.kind === 'remote'
-    ? ' ' + t('wvMonitor.deviceAdd.installCmdlineToolsOnRemote', { host: source.host })
+    ? ' ' + t('wvMonitor.deviceAdd.installCmdlineToolsOnRemote', { machine: source.machine })
     : '';
   return {
     blocked,
@@ -159,10 +159,10 @@ function platformIssue(platform) {
 }
 
 // いま選んでいるホストで name が衝突するか(実体・登録のどちらか)。**別ホストの同名は衝突ではない**
-// (FTCore.DeviceHostGrouping と同じ「一意なのは (host, name)」)。
-function nameClashesOnCurrentHost(name, platform, source) {
-  const host = source.kind === 'remote' ? source.host : undefined;
-  if (allDeviceNamesForSelectedMachine(host).includes(name)) {
+// (FTCore.DeviceMachineGrouping と同じ「一意なのは (machine, name)」)。
+function nameClashesOnCurrentMachine(name, platform, source) {
+  const machine = source.kind === 'remote' ? source.machine : undefined;
+  if (allDeviceNamesForSelectedMachine(machine).includes(name)) {
     return true;
   }
   // 実体側(このホストから取得済みの一覧)。ピッカー経由で開いているので行が揃っている
@@ -400,10 +400,10 @@ dlgOk.addEventListener('click', () => {
     return;
   }
   // **同名は拒否せず「上書きするか」を聞く**(2026-08-17 指示)。判定は選択中のホストのぶんだけ
-  // (一意なのは (host, name)。別の機械の同名は衝突ではない)。実体と登録のどちらの衝突でも、
+  // (一意なのは (machine, name)。別の機械の同名は衝突ではない)。実体と登録のどちらの衝突でも、
   // 上書き = 実体を消して作り直す + 古い登録を新しい実体で置き換える。
   // 確認ダイアログはホスト側(webview の window.confirm は効かない)。
-  const overwrite = nameClashesOnCurrentHost(name, getDialogPlatform(), source);
+  const overwrite = nameClashesOnCurrentMachine(name, getDialogPlatform(), source);
   deviceAddCreating = true;
   setDialogControlsEnabled(false);
   dlgOk.disabled = true;
@@ -511,7 +511,7 @@ dlgBatch.addEventListener('click', () => {
   const names = batchDeviceNames(base, count);
   // 上書きの確認はホスト側(webview の window.confirm は効かない)。衝突の判定はこちら ――
   // 一覧(登録済み+実体)を持っているのは webview だけ。単発 OK と同じ規則を名前ごとに当てる
-  const overwriteNames = names.filter((name) => nameClashesOnCurrentHost(name, platform, source));
+  const overwriteNames = names.filter((name) => nameClashesOnCurrentMachine(name, platform, source));
   // 確認中も追加ダイアログを固める(Enter 連打・×での取り消しを止める)。
   // 開始できなければ batchCreateFinished(started:false)で元に戻す
   deviceAddCreating = true;
@@ -753,7 +753,7 @@ const devicePickCancel = document.getElementById('device-pick-cancel');
 const devicePickOk = document.getElementById('device-pick-ok');
 const devicePickIosAddNewBtn = document.getElementById('device-pick-ios-add-new');
 const devicePickAndroidAddNewBtn = document.getElementById('device-pick-android-add-new');
-const devicePickHostSelect = document.getElementById('device-pick-host-select');
+const devicePickMachineSelect = document.getElementById('device-pick-machine-select');
 const devicePickList = document.getElementById('device-pick-list');
 const devicePickLoading = document.getElementById('device-pick-loading');
 const devicePickDeleteMenu = document.getElementById('device-pick-delete-menu');
@@ -781,23 +781,23 @@ const devicePickDeletingIdentifiers = new Set();
 
 // **いま選んでいるホストに居る登録済みデバイスだけ**を返す。ホストを跨いで見ると、
 // 別の機械の同じ AVD id(各機が同じ命名規則で作るので普通に一致する)を「登録済み」と
-// 誤判定し、チェックを外すと**別ホストの登録を消す**(FTCore.DeviceHostGrouping と同じ
-// 「一意なのは (host, name)」)。
-function registeredDevicesForCurrentHost() {
-  const machine = findMachine(selectedMachine);
-  if (!machine) {
+// 誤判定し、チェックを外すと**別ホストの登録を消す**(FTCore.DeviceMachineGrouping と同じ
+// 「一意なのは (machine, name)」)。
+function registeredDevicesForCurrentMachine() {
+  const profile = findMachine(selectedMachine);
+  if (!profile) {
     return [];
   }
   const source = currentDeviceSource();
-  const host = source.kind === 'remote' ? source.host : undefined;
-  return machine.devices.filter((d) => (d.host ?? undefined) === host);
+  const machine = source.kind === 'remote' ? source.machine : undefined;
+  return profile.devices.filter((d) => (d.machine ?? undefined) === machine);
 }
 
 // 識別値→マシンプロファイル上の name の対応表(初期チェック判定・remove 対象名の特定に使う)。
 // Android は avd の id/displayName どちらの一致も登録済みとみなす。
 function registeredIosNameByUdid() {
   const map = new Map();
-  for (const d of registeredDevicesForCurrentHost()) {
+  for (const d of registeredDevicesForCurrentMachine()) {
     if (d.platform === 'ios' && d.udid) {
       map.set(d.udid, d.name);
     }
@@ -806,7 +806,7 @@ function registeredIosNameByUdid() {
 }
 function registeredAndroidNameByAvd() {
   const map = new Map();
-  for (const d of registeredDevicesForCurrentHost()) {
+  for (const d of registeredDevicesForCurrentMachine()) {
     if (d.platform === 'android' && d.avd) {
       map.set(d.avd, d.name);
     }
@@ -817,7 +817,7 @@ function registeredAndroidNameByAvd() {
 // 実機は serial で登録済みを判定する(AVD は持たないため registeredAndroidNameByAvd に載らない)。
 function registeredAndroidNameBySerial() {
   const map = new Map();
-  for (const d of registeredDevicesForCurrentHost()) {
+  for (const d of registeredDevicesForCurrentMachine()) {
     if (d.platform === 'android' && d.serial) {
       map.set(d.serial, d.name);
     }
@@ -956,7 +956,7 @@ function renderDevicePickGroups(data) {
   // リモートの実体は手元から見えず、実行して「AVD が無い」で落ちるまで分からない。
   // チェックを外して OK すれば登録だけ解除できる(実体は元から無い)
   const missingRows = (bodyEl, rows, platform, installedIdentifiers, identifierOf) => {
-    for (const d of registeredDevicesForCurrentHost()) {
+    for (const d of registeredDevicesForCurrentMachine()) {
       if (d.platform !== platform) { continue; }
       const identifier = identifierOf(d);
       if (!identifier || installedIdentifiers.has(identifier)) { continue; }
@@ -1234,14 +1234,14 @@ function beginDevicePickLoading() {
   }
   devicePickLoading.style.display = '';
   devicePickOk.disabled = true;
-  devicePickHostSelect.disabled = true;
+  devicePickMachineSelect.disabled = true;
 }
 
 /** 応答(成功・失敗どちらでも)が届いたら操作を戻す。ここで戻さないとホストを二度と切り替えられない。 */
 function endDevicePickLoading() {
   devicePickList.classList.remove('loading');
   devicePickLoading.style.display = 'none';
-  devicePickHostSelect.disabled = false;
+  devicePickMachineSelect.disabled = false;
   // **行のチェックも戻す**。begin 側で無効化しているので、ここで戻さないと取得に失敗したとき
   // 見た目は通常なのに全行が反応しない状態が残る(2026-08-17 のレビュー指摘)。
   // 応答が来て再描画される場合は新しい行に置き換わるため二重には効かない
@@ -1270,7 +1270,7 @@ function openDevicePickModal() {
   devicePickCancel.disabled = false;
   const machine = findMachine(selectedMachine);
   // ホストを先に確定させてから取得表示を出す(表示に「どこから取るか」を載せるため)
-  resetDevicePickHost(machine ? machine.host ?? null : null);
+  resetDevicePickMachine(machine ? machine.machine ?? null : null);
   beginDevicePickLoading();
   devicePickOverlay.classList.add('visible');
   vscode.postMessage({ type: 'installedDevicesRequest', source: currentDeviceSource() });
@@ -1417,7 +1417,7 @@ devicePickIosAddNewBtn.addEventListener('click', () => openDeviceAddModal('ios')
 devicePickAndroidAddNewBtn.addEventListener('click', () => openDeviceAddModal('android'));
 devicePickCancel.addEventListener('click', () => closeDevicePickModal());
 // ホスト選択を開いたまま変更した場合、選び直したホストから一覧を取り直す。
-devicePickHostSelect.addEventListener('change', () => reloadDevicePickIfOpen());
+devicePickMachineSelect.addEventListener('change', () => reloadDevicePickIfOpen());
 devicePickOverlay.addEventListener('click', (event) => {
   if (event.target === devicePickOverlay) {
     closeDevicePickModal();

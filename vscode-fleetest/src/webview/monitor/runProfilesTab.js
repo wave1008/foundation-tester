@@ -56,8 +56,8 @@ let runProfileApps = [];
 let selectedRunProfile = null;
 // 直近ロード(runProfileData ok:true)時点の19フィールド値。null の間はフォーム非表示。
 let runProfileOriginalFields = null;
-// 現在チェック済みのデバイス参照 { name, host }(表示順。チェックボックス操作・machine 切替の
-// 引き継ぎの正)。**一意なのは (host, name)** なので名前だけでは持てない
+// 現在チェック済みのデバイス参照 { name, machine }(表示順。チェックボックス操作・machine 切替の
+// 引き継ぎの正)。**一意なのは (machine, name)** なので名前だけでは持てない
 let runProfileCheckedRefs = [];
 let runProfileDirty = false;
 let runProfileSubmitting = false;
@@ -216,7 +216,7 @@ function renderRunProfileEditor(fields) {
 
   renderRunProfileMachineSelect(fields.machine);
   renderRunProfileAppSelect(fields.app);
-  runProfileCheckedRefs = fields.devices.map((d) => ({ name: d.name, host: d.host }));
+  runProfileCheckedRefs = fields.devices.map((d) => ({ name: d.name, machine: d.machine }));
   renderRunProfileDevices();
   runProfileFm.checked = fields.fm;
   runProfileHeal.checked = fields.heal;
@@ -318,17 +318,17 @@ function renderRunProfileDevices() {
   // 並び順はマシンプロファイルと同じ(config.ts の listMachineProfiles が
   // 手元 → ホスト名順、その中で名前順に並べたもの)。ここでは並べ替えない
   const machineDevices = machine ? machine.devices : [];
-  const appendRow = (name, host, platform, kind, missing) => {
+  const appendRow = (name, machine, platform, kind, missing) => {
     const row = document.createElement('label');
     row.className = 'run-profile-device-row';
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
-    checkbox.checked = runProfileCheckedRefs.some((r) => refKey(r) === refKey({ name, host }));
+    checkbox.checked = runProfileCheckedRefs.some((r) => refKey(r) === refKey({ name, machine }));
     checkbox.dataset.deviceName = name;
-    // **参照は (host, name)**。名前だけを保存すると、同名が別ホストに並ぶプロファイルで
+    // **参照は (machine, name)**。名前だけを保存すると、同名が別マシンに並ぶプロファイルで
     // どちらのデバイスか決まらない(run が候補を挙げて止まる)
-    if (host) {
-      checkbox.dataset.deviceHost = host;
+    if (machine) {
+      checkbox.dataset.deviceMachine = machine;
     }
     checkbox.addEventListener('change', onRunProfileDeviceToggle);
     const pill = document.createElement('span');
@@ -344,11 +344,11 @@ function renderRunProfileDevices() {
       row.appendChild(kindBadge);
     }
     row.appendChild(pill);
-    // 手元でないデバイスは名前の右にホスト名(マシンプロファイルの一覧と同じバッジ)
-    if (host) {
+    // 手元でないデバイスは名前の右にマシン名(マシンプロファイルの一覧と同じバッジ)
+    if (machine) {
       const badge = document.createElement('span');
       badge.className = 'badge badge-remote';
-      badge.textContent = host;
+      badge.textContent = machine;
       row.appendChild(badge);
     }
     if (missing) {
@@ -359,20 +359,20 @@ function renderRunProfileDevices() {
     }
     runProfileDevices.appendChild(row);
   };
-  const machineKeys = new Set(machineDevices.map((d) => refKey({ name: d.name, host: d.host })));
+  const machineKeys = new Set(machineDevices.map((d) => refKey({ name: d.name, machine: d.machine })));
   for (const device of machineDevices) {
-    appendRow(device.name, device.host, device.platform, device.kind, false);
+    appendRow(device.name, device.machine, device.platform, device.kind, false);
   }
   for (const ref of runProfileCheckedRefs) {
     if (!machineKeys.has(refKey(ref))) {
-      appendRow(ref.name, ref.host, null, null, true);
+      appendRow(ref.name, ref.machine, null, null, true);
     }
   }
 }
 
-// デバイス参照の同一性。**一意なのは (host, name)**(host 省略=手元)
+// デバイス参照の同一性。**一意なのは (machine, name)**(machine 省略=手元)
 function refKey(ref) {
-  return `${ref.host ?? ''}\t${ref.name}`;
+  return `${ref.machine ?? ''}\t${ref.name}`;
 }
 
 // チェックボックス操作: DOM の表示順(マシンのデバイス順+欠落分)で checked を集め直す。
@@ -380,14 +380,14 @@ function onRunProfileDeviceToggle() {
   const checked = [];
   for (const checkbox of runProfileDevices.querySelectorAll('input[type="checkbox"]')) {
     if (checkbox.checked) {
-      checked.push({ name: checkbox.dataset.deviceName, host: checkbox.dataset.deviceHost });
+      checked.push({ name: checkbox.dataset.deviceName, machine: checkbox.dataset.deviceMachine });
     }
   }
   runProfileCheckedRefs = checked;
   onRunProfileFormInput();
 }
 
-// マシン切替: チェック状態(runProfileCheckedRefs)は (host, name) で引き継いだまま一覧を作り直す。
+// マシン切替: チェック状態(runProfileCheckedRefs)は (machine, name) で引き継いだまま一覧を作り直す。
 runProfileMachine.addEventListener('change', () => {
   renderRunProfileDevices();
   onRunProfileFormInput();
@@ -571,7 +571,7 @@ runProfileConfirm.addEventListener('click', () => {
     fields: {
       machine: runProfileMachine.value.trim(),
       app: runProfileApp.value.trim(),
-      devices: runProfileCheckedRefs.map((r) => (r.host ? { name: r.name, host: r.host } : { name: r.name })),
+      devices: runProfileCheckedRefs.map((r) => (r.machine ? { name: r.name, machine: r.machine } : { name: r.name })),
       fm: runProfileFm.checked,
       heal: runProfileHeal.checked,
       falsePositiveCheck: runProfileFalsePositiveCheck.checked,

@@ -18,7 +18,7 @@ import {
 import {
   type AppProfileFormFields,
   buildRunProfileTemplate,
-  effectiveDeviceHost,
+  effectiveDeviceMachine,
   machineDeviceDetail,
   type MonitorFromWebviewMessage,
   parseAppProfileForForm,
@@ -170,13 +170,13 @@ export class MonitorProfilesController {
     const current = this.resolveCurrentMachineName(summaries);
     const machines = summaries.map((summary) => ({
       name: summary.name,
-      host: summary.host,
+      machine: summary.host,
       devices: summary.devices.map((device) => ({
         name: device.name,
         platform: device.platform,
-        // 実効ホスト(デバイス指定 > プロファイル直下の既定 > 手元)。同名は (host, name) で
+        // 実効マシン(デバイス指定 > プロファイル直下の既定 > 手元)。同名は (machine, name) で
         // 区別されるので、重複判定と表示の両方がこれを見る
-        host: effectiveDeviceHost(device.machine, summary.host),
+        machine: effectiveDeviceMachine(device.machine, summary.host),
         detail: machineDeviceDetail(device),
         // 右ペインの編集フォーム用の生フィールド。undefined は postMessage の JSON化で
         // 自然に省略される。
@@ -834,7 +834,7 @@ export class MonitorProfilesController {
    * プロファイル上だけ取り除く(シミュレータ/AVD 本体は操作しない)。ユーザー可視文言は
    * この操作に限り「削除」ではなく「除去」を使う(仮想マシン本体を消す「削除」と紛らわしいため)。
    * removeDevicesFromMachineProfile へ渡し1回の書き戻しにまとめる。1件も除去
-   * できなければ書き戻さない。**引き当ては (host, name)**(host 省略=手元) —— 名前だけで消すと
+   * できなければ書き戻さない。**引き当ては (machine, name)**(machine 省略=手元) —— 名前だけで消すと
    * 別の機械の同名デバイスが巻き添えになる(mixed プロファイルでは同名が普通)。
    */
   /**
@@ -846,19 +846,19 @@ export class MonitorProfilesController {
    * 次の run が「その台が無い」で落ちるまで気付けない(2026-08-25 の報告)。
    * OK 側の同期(machineDevicesSync)には乗らない = キャンセルでも必ず消える、が要点。
    *
-   * **引き当ては (host, name)**(host 省略=手元)。名前だけで消すと別の機械の同名が巻き添えになる。
+   * **引き当ては (machine, name)**(machine 省略=手元)。名前だけで消すと別の機械の同名が巻き添えになる。
    * 書き戻せた名前を返す(呼び出し側が通知に使う)。
    */
   /**
    * `machine` を使う実行プロファイル(runs/<name>.json の machine が一致するもの)から、
-   * devices の (host, name) 一致を取り除く。**マシンプロファイルより先に呼ぶ** ——
+   * devices の (machine, name) 一致を取り除く。**マシンプロファイルより先に呼ぶ** ——
    * 参照する側から外さないと、途中で失敗したときに「マシンに居ない台を指す実行プロファイル」
    * が残る。書き換えた実行プロファイル名を返す(ログ用)。
    */
   private removeDevicesFromRunProfilesOfMachine(
     project: string,
     machine: string,
-    devices: readonly { readonly name: string; readonly host?: string }[],
+    devices: readonly { readonly name: string; readonly machine?: string }[],
   ): readonly string[] {
     const updated: string[] = [];
     for (const run of listRunProfileNames(this.deps.workspaceRoot, project)) {
@@ -883,17 +883,17 @@ export class MonitorProfilesController {
 
   unregisterDeletedDevice(
     name: string,
-    host: string | undefined,
+    machine: string | undefined,
   ): { readonly machines: readonly string[]; readonly runs: readonly string[] } {
     const resolution = resolveProjectName(this.deps.workspaceRoot, this.deps.getConfig());
     if (resolution.kind !== "resolved") {
       return { machines: [], runs: [] };
     }
     const project = resolution.project;
-    const effectiveHost = host ?? "local";
+    const effectiveMachine = machine ?? "local";
     // **全件を自分で走査する**。`delete-device` の finished.referencedBy には頼らない ——
     // あれはマシンプロファイルしか見ず、しかも CLI 側のプロジェクト解決が外れると黙って空になる。
-    // 実体が消えた以上、(host, name) が一致する登録はどれも宙ぶらりんなので全部外す
+    // 実体が消えた以上、(machine, name) が一致する登録はどれも宙ぶらりんなので全部外す
     // **順番は「参照する側」から**(2026-08-25 指示)。実行プロファイルはマシンプロファイルの台を
     // 指すので、先にマシン側を消すと、途中で失敗したときに**実体もマシン登録も無い台を指す
     // 実行プロファイル**が残る。参照する側から外せば、途中で止まっても残るのは
@@ -903,7 +903,7 @@ export class MonitorProfilesController {
       const runPath = path.join(this.runsDir(project), `${run}.json`);
       try {
         const parsed: unknown = JSON.parse(fs.readFileSync(runPath, "utf8"));
-        const removal = removeDeviceFromRunProfile(parsed, name, effectiveHost);
+        const removal = removeDeviceFromRunProfile(parsed, name, effectiveMachine);
         if (!removal || removal.removed === 0) {
           continue;
         }
@@ -921,7 +921,7 @@ export class MonitorProfilesController {
       const machinePath = path.join(this.machinesDir(project), `${machine}.json`);
       try {
         const parsed: unknown = JSON.parse(fs.readFileSync(machinePath, "utf8"));
-        const removal = removeDevicesFromMachineProfile(parsed, [{ name, host }]);
+        const removal = removeDevicesFromMachineProfile(parsed, [{ name, machine }]);
         if (!removal || removal.removed === 0) {
           continue;
         }
@@ -941,14 +941,14 @@ export class MonitorProfilesController {
 
   async handleMachineDeviceRemove(
     machine: string,
-    devices: readonly { readonly name: string; readonly host?: string }[],
+    devices: readonly { readonly name: string; readonly machine?: string }[],
   ): Promise<void> {
-    // **ログには必ずホストを添える**(同名の台が別の機械に並ぶのは通常で、どの Mac の台かを
+    // **ログには必ずマシンを添える**(同名の台が別の機械に並ぶのは通常で、どの Mac の台かを
     // 名前だけからは決められない)。確認ダイアログは選択そのものを指すので名指ししない。
     const names = devices.map((device) =>
-      t("profiles.deviceHostQualified", {
+      t("profiles.deviceMachineQualified", {
         name: device.name,
-        host: device.host ?? t("deviceOps.hostLocalLabel"),
+        machine: device.machine ?? t("deviceOps.machineLocalLabel"),
       }),
     );
     const project = this.resolveProjectOrWarn();
@@ -1067,7 +1067,7 @@ export class MonitorProfilesController {
       message.platform,
       message.originalName,
       message.fields,
-      message.host ?? "local",
+      message.deviceMachine ?? "local",
     );
     if (!result.ok) {
       sendResult(false, message.originalName, result.error);
@@ -1135,12 +1135,12 @@ export class MonitorProfilesController {
     // マシン側を先に書くと「マシンに居ない台を指す実行プロファイル」が生まれ、
     // 次の run が落ちるまで気付けない(handleMachineDeviceRemove と同じ規律)。
     // 対象はこのマシンプロファイルを使う実行プロファイルだけ
-    const removedHost = message.source.kind === "remote" ? message.source.host : "local";
+    const removedMachine = message.source.kind === "remote" ? message.source.machine : "local";
     const removedFromRuns = message.remove.length > 0
       ? this.removeDevicesFromRunProfilesOfMachine(
           resolution.project,
           message.machine,
-          message.remove.map((name) => ({ name, host: removedHost })),
+          message.remove.map((name) => ({ name, machine: removedMachine })),
         )
       : [];
 

@@ -1,7 +1,7 @@
-// DeviceHostRunner.swift
+// DeviceMachineRunner.swift
 // **1つの実行プロファイルのデバイスが複数の機械にまたがるとき**の実行(docs/remote-runner.md §13)。
 // マシンプロファイルのデバイスは1台ずつ host を持てるので、「ローカル10台 + M1Ultra 10台」のような
-// 混在が書ける。run はホストごとのサブ実行(この fleetest 自身の子プロセス)へ分け、シナリオを
+// 混在が書ける。run はマシンごとのサブ実行(この fleetest 自身の子プロセス)へ分け、シナリオを
 // 台数で重み付けして配り、出力・JUnit・終了コードを1つに束ねる。
 //
 // **フリート(--fleet)との違い**: あちらは「エントリごとに別の実行プロファイル」、こちらは
@@ -15,44 +15,44 @@ import ArgumentParser
 import FTCore
 import Foundation
 
-enum DeviceHostRunner {
+enum DeviceMachineRunner {
 
     struct Group: Equatable {
-        let host: String?
+        let machine: String?
         let deviceNames: [String]
         let platforms: Set<String>
 
         /// 子プロセスへ渡すホスト表記(ローカルは "local")
-        var hostLabel: String { DeviceHostGrouping.display(host) }
+        var machineLabel: String { DeviceMachineGrouping.display(machine) }
     }
 
     /// デバイスが2つ以上の機械にまたがっていれば、その分け方を返す。1つ(= 従来どおり全台が
     /// 同じ機械)なら nil を返し、呼び出し側は既存の単一ディスパッチ経路をそのまま通す。
     ///
     /// **`--host` を明示したときは常に nil** —— 明示指定は「今回はこの機械で走らせる」の意味で、
-    /// 分散より強い(MachineHostDispatch と同じ「明示が勝つ」規律)。
+    /// 分散より強い(MachineDispatch と同じ「明示が勝つ」規律)。
     static func plan(project: TestProject, profileName: String,
                      explicitHost: String?, deviceFilter: [String]) throws -> [Group]? {
         if explicitHost != nil { return nil }
         let machine = try ProfileResolver.determineMachine(
             project: project,
             runProfileName: profileName)
-        var devices = try ProfileResolver.runDeviceHosts(
+        var devices = try ProfileResolver.runDeviceMachines(
             project: project, runProfileName: profileName, machineName: machine.name)
         if !deviceFilter.isEmpty {
             let wanted = Set(deviceFilter)
             devices = devices.filter { wanted.contains($0.name) }
         }
-        let grouped = DeviceHostGrouping.groups(devices) { $0.host }
+        let grouped = DeviceMachineGrouping.groups(devices) { $0.machine }
         guard grouped.count > 1 else { return nil }
         return grouped.map { group in
-            Group(host: group.host,
+            Group(machine: group.machine,
                   deviceNames: group.devices.map(\.name),
                   platforms: Set(group.devices.map(\.platform)))
         }
     }
 
-    /// ホストごとのサブ実行を並行に走らせ、1画面の集計を出す。戻り値 = 各サブ実行の非0の最大
+    /// マシンごとのサブ実行を並行に走らせ、1画面の集計を出す。戻り値 = 各サブ実行の非0の最大
     static func run(
         project: TestProject, profileName: String, groups: [Group],
         scenarios: [String], folders: [String],
@@ -64,10 +64,10 @@ enum DeviceHostRunner {
         let junitTempDir = try FleetRunner.makeJUnitTempDir(requested: junit)
         defer { if let junitTempDir { try? FileManager.default.removeItem(at: junitTempDir) } }
 
-        let hostList = groups.map { "\($0.hostLabel)(\($0.deviceNames.count))" }
+        let machineList = groups.map { "\($0.machineLabel)(\($0.deviceNames.count))" }
             .joined(separator: " + ")
         FleetRunner.log("==> profile \"\(profileName)\" spans \(groups.count) machines:"
-            + " \(hostList) — building \(project.name) locally to split the scenarios")
+            + " \(machineList) — building \(project.name) locally to split the scenarios")
 
         // 割り当てを決めるにはシナリオ一覧が要る(--split と同じ理由でローカルで1回ビルドする)
         try ScenarioHost.build(project: project, log: { FleetRunner.log($0) })
@@ -92,7 +92,7 @@ enum DeviceHostRunner {
             let ids = selected.map(\.id)
             active = groups.indices.map { ($0, groups[$0], ids) }
             for (_, group, ids) in active {
-                FleetRunner.log("    \(group.hostLabel): \(ids.count) scenario(s)"
+                FleetRunner.log("    \(group.machineLabel): \(ids.count) scenario(s)"
                     + " on each of \(group.deviceNames.count) device(s) (--broadcast)")
             }
         } else {
@@ -111,7 +111,7 @@ enum DeviceHostRunner {
             for (index, group, ids) in active {
                 // 推定に続けて**その推定が何に基づいたか**を出す(2026-08-24 受け手要望)。
                 // 係数だけ出しても由来が分からないと、遅い機に偏った run を後から検証できない
-                FleetRunner.log("    \(group.hostLabel): \(ids.count) scenario(s)"
+                FleetRunner.log("    \(group.machineLabel): \(ids.count) scenario(s)"
                     + " on \(group.deviceNames.count) device(s)"
                     + " [\(buckets[index].estimatedMs > 0 ? estimateText(buckets[index].estimatedMs, devices: group.deviceNames.count) : "no history")"
                     + "; \(basis[index].summary)]")
@@ -126,8 +126,8 @@ enum DeviceHostRunner {
             for (index, group, ids) in active {
                 taskGroup.addTask {
                     let args = FleetRunner.buildArgs(
-                        project: project.name, host: group.hostLabel, profile: profileName,
-                        deviceNames: group.deviceNames, deviceHost: group.hostLabel,
+                        project: project.name, host: group.machineLabel, profile: profileName,
+                        deviceNames: group.deviceNames, deviceMachine: group.machineLabel,
                         scenarios: ids, folders: [],
                         heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
                         fastInput: fastInput, enableAnimations: enableAnimations,
@@ -138,9 +138,9 @@ enum DeviceHostRunner {
                         broadcast: broadcast, runGroup: runGroup)
                     let start = Date()
                     let exitCode = await FleetRunner.runEntry(
-                        binary: binary, args: args, hostLabel: group.hostLabel)
+                        binary: binary, args: args, hostLabel: group.machineLabel)
                     return (index, FleetEntryOutcome(
-                        host: group.hostLabel, profile: profileName, exitCode: exitCode,
+                        host: group.machineLabel, profile: profileName, exitCode: exitCode,
                         duration: Date().timeIntervalSince(start)))
                 }
             }
@@ -155,7 +155,7 @@ enum DeviceHostRunner {
         if let junit, let junitTempDir {
             FleetRunner.mergeAndWriteJUnit(
                 junit: junit, project: project.name, tempDir: junitTempDir,
-                entries: active.map { (host: $0.1.hostLabel, index: $0.0) })
+                entries: active.map { (host: $0.1.machineLabel, index: $0.0) })
         }
         return FleetProfile.aggregateExitCode(outcomes.map(\.exitCode))
     }
@@ -165,10 +165,10 @@ enum DeviceHostRunner {
     /// 実績(results)からの見積りで LPT 分割する。**重みは台数**(同時に回せる本数)——
     /// 総量で均すと台数の少ないホストが最後まで残る。実績が1件も無ければ全員同じ重みになり、
     /// 台数比での本数割りに退化する(FleetRunner.unknownDurationUnitWeight と同じ考え方)。
-    /// internal: ApiRunHostFanout も同じ割り当てを使う(二重実装しない)。
+    /// internal: ApiRunMachineFanout も同じ割り当てを使う(二重実装しない)。
     /// **宣言 platform の台がどの機械にも無いシナリオは対象外**(notApplicable)として割り当てから
     /// 外して返す(単機の ProfileRunner と同じ規律。FleetSplit.applicability の宣言)。呼び手は
-    /// 単機と同じ文言でスキップを出す。子 run には渡さない —— api 経路の HostFanoutMultiplexer は
+    /// 単機と同じ文言でスキップを出す。子 run には渡さない —— api 経路の MachineFanoutMultiplexer は
     /// 子に渡した ID のうちイベントが来なかったものを failed に合成するため、渡すと赤になる
     static func assign(project: TestProject, groups: [Group],
                        selected: [ScenarioInfo], lptHistoryRuns: Int?)
@@ -197,19 +197,19 @@ enum DeviceHostRunner {
         let registry = LocalConfig.load().remoteHosts ?? []
         let localHost = RunRecorder.currentMachine()
         let groupFacts: [RemoteHostFacts?] = groups.map { group in
-            guard group.host != nil else { return nil }
+            guard group.machine != nil else { return nil }
             return RemoteHostFactsStore.load(
                 dir: factsDir,
-                host: RemoteHostFactsStore.hostKey(machine: group.host, entries: registry,
+                host: RemoteHostFactsStore.hostKey(machine: group.machine, entries: registry,
                                                    localHost: localHost))
         }
         let entryMachines: [String?] = zip(groups, groupFacts).map { group, facts in
-            group.host == nil ? localHost : facts?.host
+            group.machine == nil ? localHost : facts?.host
         }
         let entryFixedOffsetsMs = groupFacts.map { ($0?.dispatchOverheadSeconds ?? 0) * 1000 }
         let localHardware = MachineHardware.current()
         let entryFallbackFactors: [Double] = zip(groups, groupFacts).map { group, facts in
-            guard group.host != nil else { return 1.0 }
+            guard group.machine != nil else { return 1.0 }
             guard let coreCount = facts?.coreCount, coreCount > 0 else { return 1.0 }
             return Double(localHardware.coreCount) / Double(coreCount)
         }
@@ -254,11 +254,11 @@ enum DeviceHostRunner {
         let dir = RemoteHostFactsStore.dir(project: project)
         let localHost = RunRecorder.currentMachine()
         let existing = RemoteHostFactsStore.load(dir: dir, host: localHost)
-        let localDeviceCount = groups.first(where: { $0.host == nil })?.deviceNames.count
+        let localDeviceCount = groups.first(where: { $0.machine == nil })?.deviceNames.count
         let facts = RemoteHostFacts(
             host: localHost,
-            // 手元の表示名は "local"(FTCore.DeviceHostGrouping.localDisplayName)
-            machineAlias: DeviceHostGrouping.localDisplayName,
+            // 手元の表示名は "local"(FTCore.DeviceMachineGrouping.localDisplayName)
+            machineAlias: DeviceMachineGrouping.localDisplayName,
             dispatchOverheadSeconds: existing?.dispatchOverheadSeconds,
             processorModel: hardware.processorModel, coreCount: hardware.coreCount,
             concurrentDevices: localDeviceCount ?? existing?.concurrentDevices,

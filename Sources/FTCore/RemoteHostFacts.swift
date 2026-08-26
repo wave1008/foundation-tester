@@ -1,6 +1,6 @@
 // RemoteHostFacts.swift
 // ディスパッチが観測した「ホストの事実」の手元キャッシュ。書き手は RemoteRunDispatcher、
-// 読み手は FleetRunner / DeviceHostRunner(FleetSplit.MachineContext を組み立てる側)。
+// 読み手は FleetRunner / DeviceMachineRunner(FleetSplit.MachineContext を組み立てる側)。
 // 同一ホストへのディスパッチは dispatch.lock で直列化される(RemoteDispatchLock)ため、
 // このストアはファイル競合を気にしなくてよい(DeviceFrozenStore と違い pid 生存判定は不要 ——
 // 「最新の観測値」を保つだけの単純なキャッシュ)。
@@ -102,7 +102,7 @@ public enum RemoteHostFactsStore {
     public static func hostKey(machine: String?, entries: [RemoteHostEntry],
                                localHost: String) -> String {
         guard let machine, !machine.isEmpty,
-              !MachineHostDispatch.isExplicitLocal(machine) else { return localHost }
+              !MachineDispatch.isExplicitLocal(machine) else { return localHost }
         switch RemoteHostRegistry.resolve(machine, entries: entries) {
         case .registered(let entry): return entry.host
         case .rawTarget(let target): return target

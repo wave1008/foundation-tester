@@ -11,7 +11,7 @@
 // そうすることで呼び出し側の defer(dispatch.lock の解放・終了スクリプト)が動く。
 //
 // **1プロセスに1組のシグナルソース**: ホスト別の子を並行に持つ親
-// (DeviceHostRunner / FleetRunner / ApiRunHostFanout)は relay を同時に複数抱える。
+// (DeviceMachineRunner / FleetRunner / ApiRunMachineFanout)は relay を同時に複数抱える。
 // 以前は relay ごとにソースを立て、`stop()` が `signal(sig, SIG_DFL)` を戻していたため、
 // **先に終わった子の stop() が残りの子の横取りまで解いていた** —— 手元のぶんが先に終わった
 // 分散 run の親へ `kill -INT` すると、親だけ既定動作で死に、残った M1Max の子・ssh・リモートの
@@ -46,7 +46,7 @@ final class InterruptRelay {
     ///   **nil = エスカレートしない**。使い分け:
     ///   - **ssh(外部プロセス。片付けるものが無い)= 2 秒**。残すと「親は死んだのにリモートは
     ///     走り続ける」元の症状に戻るので必ず落とす
-    ///   - **fleetest の子(ホスト別サブ実行)= nil**。こちらは SIGTERM を受けてから
+    ///   - **fleetest の子(マシン別サブ実行)= nil**。こちらは SIGTERM を受けてから
     ///     dispatch.lock の解放と終了スクリプトを走らせる。**時間で殺すとそれを飛ばす** ——
     ///     2 秒で殺していた版では実際にロックが残った(2026-08-18 実測: 子の exit=9)。
     ///     片付けの所要は利用者のスクリプト次第で上限を決められないので、待つ側に倒す

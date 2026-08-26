@@ -2,7 +2,7 @@
 // `api monitor` を kill しても拡張が数秒で再起動するため、保持ファイル(FTCore.MonitorHold)で
 // 伝える。効くのは**この機械の** `api monitor`(観測と、拡張への monitorHold イベント経由で
 // 配信ヘルパー)だけ —— リモートランナー機の hold は、そこに接続している別の機械の配信を
-// 止めない(fan-out の子は --device-host 付きで hold を見ない。ApiMonitorCommand 参照)。
+// 止めない(fan-out の子は --device-machine 付きで hold を見ない。ApiMonitorCommand 参照)。
 
 import ArgumentParser
 import FTBridgeClient

@@ -1,6 +1,6 @@
-// ApiRunHostFanout.swift
+// ApiRunMachineFanout.swift
 // `fleetest api run --profile <p>` で p のデバイスが複数の機械にまたがるときの実行
-// (docs/remote-runner.md §13)。DeviceHostRunner(`fleetest run` の同じ状況)と同じ割り当て
+// (docs/remote-runner.md §13)。DeviceMachineRunner(`fleetest run` の同じ状況)と同じ割り当て
 // (build→list→resolve→assign)を再利用し、ホストごとに `fleetest api run --host <label> …` を
 // 子プロセスとして並行に起動、NDJSON を1本の stdout ストリームへ多重化する。
 //
@@ -8,7 +8,7 @@
 // (各種イベント) → runFinished」という契約しか知らない。子1つにつき1本ずつ来る同じ形の
 // ストリームを、runStarted/runFinished は集計してこちらが1回だけ出し、workersReady は
 // **子ごとに届くたび**それまでの累積(子 index 順)で合成して出し直し、それ以外は worker
-// フィールドをホスト付き id(FTCore.DeviceHostGrouping.workerID)へ書き換えて**即時**中継する
+// フィールドをホスト付き id(FTCore.DeviceMachineGrouping.workerID)へ書き換えて**即時**中継する
 // (バッファしない = リモート機の準備待ちでローカル分の表示が止まらない。2026-08-18)。
 // 子が担当シナリオを残して終了したら、そのシナリオを failed として合成イベントで報告する。
 
@@ -16,13 +16,13 @@ import ArgumentParser
 import FTCore
 import Foundation
 
-enum ApiRunHostFanout {
+enum ApiRunMachineFanout {
 
     /// 子プロセスへ素通しするオプション。skipBuild/folders は無い —— ビルドは常にここで1回だけ
-    /// 行う(DeviceHostRunner.run と同じ理由。シナリオ一覧が割り当てに要る)。--report-dir は
+    /// 行う(DeviceMachineRunner.run と同じ理由。シナリオ一覧が割り当てに要る)。--report-dir は
     /// 意図的に含めない: リモートホストの子は `dispatchToRemoteHost` が --report-dir を
     /// 常に拒否するため(RemoteDispatchFlagPolicy.rejected)、一部のホストにだけ効く/効かないが
-    /// 混在する形になる。CLI 側の多機械ディスパッチ(DeviceHostRunner/FleetRunner)も同じ理由で
+    /// 混在する形になる。CLI 側の多機械ディスパッチ(DeviceMachineRunner/FleetRunner)も同じ理由で
     /// --report-dir を子へ渡していない(既存の踏襲)
     struct Options {
         var heal: Bool
@@ -38,14 +38,14 @@ enum ApiRunHostFanout {
 
     /// 戻り値 = FleetProfile.aggregateExitCode(各ホストの exit code の集約)
     static func run(
-        project: TestProject, profileName: String, groups: [DeviceHostRunner.Group],
+        project: TestProject, profileName: String, groups: [DeviceMachineRunner.Group],
         scenarios: [String], options: Options
     ) async throws -> Int32 {
-        let hostList = groups.map { "\($0.hostLabel)(\($0.deviceNames.count))" }.joined(separator: " + ")
-        logStderr("==> profile \"\(profileName)\" spans \(groups.count) machines: \(hostList)"
+        let machineList = groups.map { "\($0.machineLabel)(\($0.deviceNames.count))" }.joined(separator: " + ")
+        logStderr("==> profile \"\(profileName)\" spans \(groups.count) machines: \(machineList)"
             + " — building \(project.name) locally to split the scenarios")
 
-        // 割り当てを決めるにはシナリオ一覧が要る(DeviceHostRunner.run と同じ理由。ここで1回だけ
+        // 割り当てを決めるにはシナリオ一覧が要る(DeviceMachineRunner.run と同じ理由。ここで1回だけ
         // ローカルビルドする。ローカルの子には --skip-build を渡す = 下の buildChildArgs 参照)
         try ScenarioHost.build(project: project) { logStderr($0) }
         let all = try ScenarioHost.list(project: project)
@@ -58,17 +58,17 @@ enum ApiRunHostFanout {
             throw ValidationError("no scenarios to run after filtering")
         }
 
-        let (buckets, basis, notApplicable) = try DeviceHostRunner.assign(
+        let (buckets, basis, notApplicable) = try DeviceMachineRunner.assign(
             project: project, groups: groups, selected: selected,
             lptHistoryRuns: options.lptHistoryRuns)
-        for line in DeviceHostRunner.notApplicableLines(notApplicable, groups: groups) { logStderr(line) }
-        let active = groups.indices.compactMap { index -> (index: Int, group: DeviceHostRunner.Group, ids: [String])? in
+        for line in DeviceMachineRunner.notApplicableLines(notApplicable, groups: groups) { logStderr(line) }
+        let active = groups.indices.compactMap { index -> (index: Int, group: DeviceMachineRunner.Group, ids: [String])? in
             let ids = buckets[index].scenarioIDs
             return ids.isEmpty ? nil : (index, groups[index], ids)
         }
         // CLI と同じ「見積りの根拠」を拡張の OUTPUT にも出す(片方だけ見える情報を作らない)
         for (index, group, ids) in active {
-            logStderr("    \(group.hostLabel): \(ids.count) scenario(s)"
+            logStderr("    \(group.machineLabel): \(ids.count) scenario(s)"
                 + " on \(group.deviceNames.count) device(s) [\(basis[index].summary)]")
         }
         let dispatchStart = Date()
@@ -83,17 +83,17 @@ enum ApiRunHostFanout {
             return 0
         }
         for (_, group, ids) in active {
-            logStderr("    \(group.hostLabel): \(ids.count) scenario(s) on \(group.deviceNames.count) device(s)")
+            logStderr("    \(group.machineLabel): \(ids.count) scenario(s) on \(group.deviceNames.count) device(s)")
         }
 
         // total は対象外を除いた本数(単機の ApiRunCommand と同じ: スキップは runStarted に数えない)
         writeLine(encode(ApiRunStartedEvent(total: selected.count - notApplicable.count)))
 
         let binary = FleetRunner.selfBinaryPath()
-        // 束ね鍵はここで1回だけ発行する(理由は DeviceHostRunner.run の同じ箇所)
+        // 束ね鍵はここで1回だけ発行する(理由は DeviceMachineRunner.run の同じ箇所)
         let runGroup = RunRecorder.makeRunGroupID()
         let (stream, continuation) = AsyncStream<ChildEvent>.makeStream()
-        let groupHosts = active.map { $0.group.host }
+        let groupMachines = active.map { $0.group.machine }
 
         // 拡張のキャンセル(SIGTERM/SIGINT)・stdin EOF のどちらでも全子へ SIGTERM を送る。
         // 子(単発の `fleetest api run --host <label>`)は自分ではシグナルを捕まえないので既定の
@@ -108,7 +108,7 @@ enum ApiRunHostFanout {
         // 合成 failed を抑止する(キャンセルで子は非0終了するため、抑止しないと中断した
         // シナリオが failed として赤く出る。キャンセル≠失敗)
         async let multiplexed = consume(
-            stream: stream, groupHosts: groupHosts, assignedScenarioIDs: active.map { $0.ids },
+            stream: stream, groupMachines: groupMachines, assignedScenarioIDs: active.map { $0.ids },
             isCancelled: { registry.isCancelled })
         let cancelSources = installCancellation(registry: registry)
         defer { for source in cancelSources { source.cancel() } }
@@ -122,10 +122,10 @@ enum ApiRunHostFanout {
                         scenarioIDs: ids, options: options, runGroup: runGroup)
                     let start = Date()
                     let exitCode = await runChild(
-                        index: position, binary: binary, args: args, hostLabel: group.hostLabel,
+                        index: position, binary: binary, args: args, machineLabel: group.machineLabel,
                         continuation: continuation, registry: registry)
                     return (position, FleetEntryOutcome(
-                        host: group.hostLabel, profile: profileName, exitCode: exitCode,
+                        host: group.machineLabel, profile: profileName, exitCode: exitCode,
                         duration: Date().timeIntervalSince(start)))
                 }
             }
@@ -156,28 +156,28 @@ enum ApiRunHostFanout {
 
     /// internal: 束ね鍵の中継を RunGroupPlumbingTests が等号で固定する
     static func buildArgs(
-        project: String, profileName: String, group: DeviceHostRunner.Group,
+        project: String, profileName: String, group: DeviceMachineRunner.Group,
         scenarioIDs: [String], options: Options, runGroup: String
     ) -> [String] {
-        let hostLabel = group.hostLabel
+        let machineLabel = group.machineLabel
         var args = ["api", "run", "--project", project, "--profile", profileName]
         // **常に --host を渡す**(FleetRunner.buildArgs と同じ理由: 省略すると子が自分でマシン
-        // プロファイルの host を再解決してしまう。"local" は MachineHostDispatch.resolve が
+        // プロファイルの host を再解決してしまう。"local" は MachineDispatch.resolve が
         // 明示指定として止める)
-        args += ["--host", hostLabel]
+        args += ["--machine", machineLabel]
         // **--skip-build はローカル子だけ**(dispatchToRemoteHost が .explicitHost origin では
         // "--skip-build is not supported with --host" で拒否する。RemoteDispatchFlagPolicy.skipBuild
         // の宣言参照。リモートは自前でビルドするので、渡す必要も無い)
-        if hostLabel == DeviceHostGrouping.localDisplayName {
+        if machineLabel == DeviceMachineGrouping.localDisplayName {
             args += ["--skip-build"]
         } else {
             if let remoteDir = options.remoteDir { args += ["--remote-dir", remoteDir] }
             if let remoteTimeout = options.remoteTimeout { args += ["--remote-timeout", String(remoteTimeout)] }
             if options.remoteArtifacts != "collect" { args += ["--remote-artifacts", options.remoteArtifacts] }
         }
-        // **ホストも渡す**(一意なのは (host, name)。ApiRunCommand.deviceHost の宣言参照)
+        // **ホストも渡す**(一意なのは (host, name)。ApiRunCommand.deviceMachine の宣言参照)
         args += ["--device"] + group.deviceNames
-        args += ["--device-machine", hostLabel]
+        args += ["--device-machine", machineLabel]
         args += ["--scenario"] + scenarioIDs
         if options.heal { args += ["--heal"] }
         if options.noLPT { args += ["--no-lpt"] }
@@ -199,7 +199,7 @@ enum ApiRunHostFanout {
     /// 子1体ぶん。stdout(NDJSON)は行単位で continuation へ、stderr(診断)はホスト名を前置して
     /// そのまま親の stderr へ流す(stdout は NDJSON 専用の契約なので混ぜない)
     private static func runChild(
-        index: Int, binary: String, args: [String], hostLabel: String,
+        index: Int, binary: String, args: [String], machineLabel: String,
         continuation: AsyncStream<ChildEvent>.Continuation, registry: ChildProcessRegistry
     ) async -> Int32 {
         let process = Process()
@@ -214,7 +214,7 @@ enum ApiRunHostFanout {
         do {
             try process.run()
         } catch {
-            logStderr("[\(hostLabel)] error: failed to launch subprocess: \(error.localizedDescription)")
+            logStderr("[\(machineLabel)] error: failed to launch subprocess: \(error.localizedDescription)")
             continuation.yield(.exited(index: index, status: 127))
             return 127
         }
@@ -242,7 +242,7 @@ enum ApiRunHostFanout {
             while true {
                 let chunk = stderrHandle.availableData  // 上と同じ理由(readData は EOF まで貯める)
                 if chunk.isEmpty { break }
-                for line in stderrSplitter.feed(chunk) { logStderr("[\(hostLabel)] \(line)") }
+                for line in stderrSplitter.feed(chunk) { logStderr("[\(machineLabel)] \(line)") }
             }
             stderrDone.signal()
         }
@@ -251,7 +251,7 @@ enum ApiRunHostFanout {
         stdoutDone.wait()
         stderrDone.wait()
         if let remaining = stdoutSplitter.flush() { continuation.yield(.line(index: index, text: remaining)) }
-        if let remaining = stderrSplitter.flush() { logStderr("[\(hostLabel)] \(remaining)") }
+        if let remaining = stderrSplitter.flush() { logStderr("[\(machineLabel)] \(remaining)") }
         continuation.yield(.exited(index: index, status: process.terminationStatus))
         return process.terminationStatus
     }
@@ -309,13 +309,13 @@ enum ApiRunHostFanout {
         }
     }
 
-    // MARK: - 多重化(I/O 側。純粋な状態機械は HostFanoutMultiplexer)
+    // MARK: - 多重化(I/O 側。純粋な状態機械は MachineFanoutMultiplexer)
 
     private static func consume(
-        stream: AsyncStream<ChildEvent>, groupHosts: [String?], assignedScenarioIDs: [[String]],
+        stream: AsyncStream<ChildEvent>, groupMachines: [String?], assignedScenarioIDs: [[String]],
         isCancelled: @escaping @Sendable () -> Bool
     ) async -> (passed: Int, failed: Int) {
-        var multiplexer = HostFanoutMultiplexer(groupHosts: groupHosts, assignedScenarioIDs: assignedScenarioIDs)
+        var multiplexer = MachineFanoutMultiplexer(groupMachines: groupMachines, assignedScenarioIDs: assignedScenarioIDs)
         for await event in stream {
             switch event {
             case .line(let index, let text):
@@ -357,7 +357,7 @@ enum ApiRunHostFanout {
     }
 }
 
-/// 子の NDJSON を1本へ多重化する状態機械(純粋・プロセス非依存。ApiRunHostFanoutMultiplexerTests が
+/// 子の NDJSON を1本へ多重化する状態機械(純粋・プロセス非依存。ApiRunMachineFanoutMultiplexerTests が
 /// 直接叩く)。runStarted/runFinished は集計して捨てる。workersReady は**子ごとに届くたび**、
 /// それまでに判明している全ワーカー(子 index 順の累積)で合成して出し直す —— 拡張側の
 /// レーン構成は全置換だが同一 id のログは維持されるため、再送は増分の追加として映る
@@ -365,8 +365,8 @@ enum ApiRunHostFanout {
 /// 即時中継する(貯めると複数マシン実行の進行表示が最後に一括更新になる。2026-08-18)。
 /// 子が担当シナリオを残して終了したら、そのシナリオを failed の合成イベントで報告する
 /// (沈黙のまま「走っていない」を作らない)。
-struct HostFanoutMultiplexer {
-    private let groupHosts: [String?]
+struct MachineFanoutMultiplexer {
+    private let groupMachines: [String?]
     /// 子 index → 担当シナリオ ID(合成 failed の対象を知るため)
     private let assignedScenarioIDs: [[String]]
     private var workersByIndex: [[ApiWorkerInfo]]
@@ -374,18 +374,18 @@ struct HostFanoutMultiplexer {
     private(set) var totalPassed = 0
     private(set) var totalFailed = 0
 
-    init(groupHosts: [String?], assignedScenarioIDs: [[String]] = []) {
-        self.groupHosts = groupHosts
+    init(groupMachines: [String?], assignedScenarioIDs: [[String]] = []) {
+        self.groupMachines = groupMachines
         self.assignedScenarioIDs = assignedScenarioIDs.isEmpty
-            ? Array(repeating: [], count: groupHosts.count)
+            ? Array(repeating: [], count: groupMachines.count)
             : assignedScenarioIDs
-        self.workersByIndex = Array(repeating: [], count: groupHosts.count)
-        self.finishedByIndex = Array(repeating: [], count: groupHosts.count)
+        self.workersByIndex = Array(repeating: [], count: groupMachines.count)
+        self.finishedByIndex = Array(repeating: [], count: groupMachines.count)
     }
 
     /// 子(childIndex)からの1行。バッファせず、relay してよい行をそのまま返す
     mutating func ingest(childIndex: Int, line: String) -> [String] {
-        switch Self.classify(line, host: groupHosts[childIndex]) {
+        switch Self.classify(line, host: groupMachines[childIndex]) {
         case .runStarted:
             return []
         case .runFinished(let passed, let failed):
@@ -394,7 +394,7 @@ struct HostFanoutMultiplexer {
             return []
         case .workersReady(let workers):
             workersByIndex[childIndex] = workers
-            let merged = groupHosts.indices.flatMap { workersByIndex[$0] }
+            let merged = groupMachines.indices.flatMap { workersByIndex[$0] }
             return [Self.encode(ApiWorkersReadyEvent(workers: merged))]
         case .other(let rewritten, let finishedScenario):
             if let scenario = finishedScenario { finishedByIndex[childIndex].insert(scenario) }
@@ -408,16 +408,16 @@ struct HostFanoutMultiplexer {
         let unfinished = assignedScenarioIDs[index].filter { !finishedByIndex[index].contains($0) }
         guard !unfinished.isEmpty else { return [] }
         totalFailed += unfinished.count
-        let hostLabel = DeviceHostGrouping.display(groupHosts[index])
+        let machineLabel = DeviceMachineGrouping.display(groupMachines[index])
         var log = ScenarioEvent(kind: "log")
-        log.message = "[\(hostLabel)] sub-run exited (status \(exitCode)) — marking "
+        log.message = "[\(machineLabel)] sub-run exited (status \(exitCode)) — marking "
             + "\(unfinished.count) unfinished scenario(s) as failed"
         var lines = [log.encodedLine()]
         for scenario in unfinished {
             var step = ScenarioEvent(kind: "step")
             step.scenario = scenario
             step.status = "failed"
-            step.description = "the sub-run on \(hostLabel) exited (status \(exitCode)) before this "
+            step.description = "the sub-run on \(machineLabel) exited (status \(exitCode)) before this "
                 + "scenario finished — see the fleetest OUTPUT panel for the dispatch error"
             lines.append(step.encodedLine())
 
@@ -461,8 +461,8 @@ struct HostFanoutMultiplexer {
                       let platform = entry["platform"] as? String else { return nil }
                 let detail = entry["detail"] as? String ?? ""
                 return ApiWorkerInfo(
-                    id: DeviceHostGrouping.workerID(platform: platform, host: host, name: name),
-                    name: name, platform: platform, detail: detail, machineHost: host)
+                    id: DeviceMachineGrouping.workerID(platform: platform, machine: host, name: name),
+                    name: name, platform: platform, detail: detail, machine: host)
             }
             return .workersReady(workers)
         default:
@@ -473,7 +473,7 @@ struct HostFanoutMultiplexer {
             }
             let platform = String(worker[..<colon])
             let name = String(worker[worker.index(after: colon)...])
-            let rehosted = DeviceHostGrouping.workerID(platform: platform, host: host, name: name)
+            let rehosted = DeviceMachineGrouping.workerID(platform: platform, machine: host, name: name)
             // 手元(host == nil)は常に無変化 —— 既存の id を1バイトも変えない契約をここで満たす
             guard rehosted != worker else { return .other(line, finishedScenario: finishedScenario) }
             var mutated = obj

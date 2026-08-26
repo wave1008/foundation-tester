@@ -12,14 +12,14 @@ import Foundation
 
 enum RemoteProjectSync {
 
-    /// プロジェクト(シナリオ含む一式)をそのホストへ送る。失敗は理由を1行返して false
-    /// (呼び出し側はその機械のぶんを諦め、他のホストと手元の処理は続ける)
-    static func run(project: String, host: String) -> String? {
+    /// プロジェクト(シナリオ含む一式)をそのマシンへ送る。失敗は理由を1行返して false
+    /// (呼び出し側はその機械のぶんを諦め、他のマシンと手元の処理は続ける)
+    static func run(project: String, machine: String) -> String? {
         guard let localProjectsDir = localProjectsDir(project: project),
-              let resolved = try? RemoteHostResolver.resolve(rawHost: host, remoteDirOverride: nil),
+              let resolved = try? RemoteHostResolver.resolve(rawHost: machine, remoteDirOverride: nil),
               let issuer = try? resolveLayoutIssuer()
         else {
-            return "\(host): cannot resolve the host, the project directory, or the issuer"
+            return "\(machine): cannot resolve the machine, the project directory, or the issuer"
         }
         let layout = RemoteLayout(base: RemoteLayout.resolveBase(resolved.remoteDirRaw, home: "$HOME"),
                                   issuer: issuer)
@@ -36,18 +36,18 @@ enum RemoteProjectSync {
             try process.run()
             process.waitUntilExit()
         } catch {
-            return "\(host): rsync failed to start: \(error.localizedDescription)"
+            return "\(machine): rsync failed to start: \(error.localizedDescription)"
         }
         guard process.terminationStatus == 0 else {
-            return "\(host): rsync exited with \(process.terminationStatus)"
+            return "\(machine): rsync exited with \(process.terminationStatus)"
         }
         // run ディスパッチ(RemoteRunDispatcher.transfer)と同じく、エイリアスを残さない姿へ
         // 差し替える。**片方だけ変えない** —— 生のプロファイルを上書きすると次の実行で復活する
         if let failure = RunnerProfileTransfer.localizeAndUpload(
             localProjectDir: URL(fileURLWithPath: "\(localProjectsDir)/\(project)"),
-            project: project, alias: host,
+            project: project, alias: machine,
             layout: layout, sshTarget: resolved.hostSpec.sshTarget) {
-            return "\(host): \(failure)"
+            return "\(machine): \(failure)"
         }
         return nil
     }

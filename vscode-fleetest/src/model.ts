@@ -98,9 +98,9 @@ export interface WorkerInfo {
   detail: string;
   /** このワーカーが居る機械(手元は省略)。実行プロファイルが複数の機械にまたがるとき、
    * 同名のデバイスが別の機械にも居るのでレーンの見出しに出す。名前・意味は
-   * monitorDeviceModel.ts の MonitorDevice.machineHost と同じ(対向は
+   * monitorDeviceModel.ts の MonitorDevice.machine と同じ(対向は
    * Sources/fleetest/ApiRunCommand.swift の ApiWorkerInfo)。 */
-  machineHost?: string;
+  machine?: string;
 }
 
 /**

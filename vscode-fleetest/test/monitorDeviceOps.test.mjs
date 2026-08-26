@@ -259,16 +259,16 @@ test("syncCpuRenderNames: ライフサイクルジョブ進行中の個体は落
 // リモートのタイルから起動すると**別の機械の設定でこの Mac にシミュレータが1台できる**
 // (simctl は無ければ作る)。一括起動が RemoteDeviceFanout で分散するのと同じ規律に揃える。
 
-test("リモートのデバイスの起動はその機械で実行する(remote exec + --device-host)", async () => {
+test("リモートのデバイスの起動はその機械で実行する(remote exec + --device-machine)", async () => {
   const { dir, binaryPath } = makeMockBinary();
   const { deps } = makeDeps(binaryPath);
   const deviceOps = new MonitorDeviceOps(deps);
   try {
-    deviceOps.enqueueLifecycleJob({ kind: "device", name: "シミュ1", op: "up", host: "M1Max" });
+    deviceOps.enqueueLifecycleJob({ kind: "device", name: "シミュ1", op: "up", machine: "M1Max" });
     await waitUntilIdle(deviceOps);
     const line = argvLines(dir).at(-1);
     assert.match(line, /^remote exec M1Max -- api device-up/, "その機械で起こす");
-    assert.match(line, /--device-host M1Max/, "向こうは自分が誰かを知らない");
+    assert.match(line, /--device-machine M1Max/, "向こうは自分が誰かを知らない");
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -284,31 +284,31 @@ test("手元のデバイスは remote exec を経由せず、手元の台に絞�
     const line = argvLines(dir).at(-1);
     assert.match(line, /^api device-up/);
     assert.doesNotMatch(line, /remote exec/);
-    assert.match(line, /--device-host local/, "同名のリモートの台を引かないための絞り込み");
+    assert.match(line, /--device-machine local/, "同名のリモートの台を引かないための絞り込み");
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 
-// キュー状態(deviceOpBusy)は **(name, host)** で宛先を決める。host を載せないと webview が
+// キュー状態(deviceOpBusy)は **(name, machine)** で宛先を決める。machine を載せないと webview が
 // 同名の先頭のタイル(= 手元)を書き換え、「別の機械の台を停止」で手元のタイルに
 // 「シャットダウン中」が出る(2026-08-17 の実害)。
-test("リモートのジョブのキュー状態には host が載る", async () => {
+test("リモートのジョブのキュー状態には machine が載る", async () => {
   const { dir, binaryPath } = makeMockBinary();
   const { deps, posts } = makeDeps(binaryPath);
   const deviceOps = new MonitorDeviceOps(deps);
   try {
-    deviceOps.enqueueLifecycleJob({ kind: "device", name: "シミュ1", op: "down", host: "M1Max" });
+    deviceOps.enqueueLifecycleJob({ kind: "device", name: "シミュ1", op: "down", machine: "M1Max" });
     const busy = posts.filter((m) => m.type === "deviceOpBusy" && m.name === "シミュ1");
     assert.ok(busy.length > 0, "前提: キュー状態が送られる");
-    assert.ok(busy.every((m) => m.host === "M1Max"), "宛先のタイルを特定できる host が要る");
+    assert.ok(busy.every((m) => m.machine === "M1Max"), "宛先のタイルを特定できる machine が要る");
     await waitUntilIdle(deviceOps);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test("手元のジョブのキュー状態は host を持たない(= 手元の意味)", async () => {
+test("手元のジョブのキュー状態は machine を持たない(= 手元の意味)", async () => {
   const { dir, binaryPath } = makeMockBinary();
   const { deps, posts } = makeDeps(binaryPath);
   const deviceOps = new MonitorDeviceOps(deps);
@@ -316,7 +316,7 @@ test("手元のジョブのキュー状態は host を持たない(= 手元の�
     deviceOps.enqueueLifecycleJob({ kind: "device", name: "シミュ1", op: "down" });
     const busy = posts.filter((m) => m.type === "deviceOpBusy" && m.name === "シミュ1");
     assert.ok(busy.length > 0);
-    assert.ok(busy.every((m) => m.host === undefined));
+    assert.ok(busy.every((m) => m.machine === undefined));
     await waitUntilIdle(deviceOps);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
@@ -330,12 +330,12 @@ test("同名の台を2機で同時に操作しても、それぞれのタイル�
   const { deps, posts } = makeDeps(binaryPath);
   const deviceOps = new MonitorDeviceOps(deps);
   try {
-    deviceOps.enqueueLifecycleJob({ kind: "device", name: "シミュ1", op: "down", host: "M1Max" });
+    deviceOps.enqueueLifecycleJob({ kind: "device", name: "シミュ1", op: "down", machine: "M1Max" });
     deviceOps.enqueueLifecycleJob({ kind: "device", name: "シミュ1", op: "up" });
 
     const busy = posts.filter((m) => m.type === "deviceOpBusy" && m.name === "シミュ1" && m.op);
-    const remote = busy.filter((m) => m.host === "M1Max");
-    const local = busy.filter((m) => m.host === undefined);
+    const remote = busy.filter((m) => m.machine === "M1Max");
+    const local = busy.filter((m) => m.machine === undefined);
     assert.ok(remote.length > 0 && local.length > 0,
       "別の機械の同名ジョブが手元の操作を握りつぶしてはいけない");
     assert.ok(remote.every((m) => m.op === "down"), "M1Max の台は停止中");

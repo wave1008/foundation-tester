@@ -3,11 +3,11 @@
 // (a) リモートホスト登録簿(machine/host/dir)の正規化・解決・差分計算。設定タブのホスト表
 //     (マシン/ホスト/作業ベースディレクトリ)を支える。登録簿の正は CLI の LocalConfig(~/.config/fleetest/config.json。
 //     `fleetest api remote-hosts` 経由。remoteHostsController.ts が spawn を担う)。
-// (b) DeviceCommandSource/deviceCommandArgs。「既存デバイスを追加」ダイアログで特定ホストから
+// (b) DeviceCommandSource/deviceCommandArgs。「既存デバイスを追加」ダイアログで特定のマシンから
 //     デバイス候補(device-catalog/installed-devices/create-device)を取得するときに使う。
 //
-// run のディスパッチ(その run がリモートホストへ出るかどうか)はここには一切関わらない ——
-// 今は CLI がマシンプロファイルの `host` フィールドから判定する(拡張側は関与しない)。
+// run のディスパッチ(その run がリモートへ出るかどうか)はここには一切関わらない ——
+// 今は CLI がマシンプロファイルの `machine` フィールドから判定する(拡張側は関与しない)。
 //
 // vscode 非依存の純粋関数(config.ts/remoteHostsController.ts から呼ぶ。テストは runHandler.ts を
 // 経由せず直接 import する — runHandler.ts は testTree.ts 経由でトップレベル `new vscode.TestTag` を
@@ -24,14 +24,17 @@ export interface RemoteHostEntry {
   readonly dir: string;
 }
 
-/** マシンプロファイルタブ「デバイス候補のホスト」(§13 段2)。host は登録簿の name
- * (`remote exec <host>` の第1引数。raw な ssh 宛先ではなく登録名を渡す契約)。 */
-export type DeviceCommandSource = { readonly kind: "local" } | { readonly kind: "remote"; readonly host: string };
+/** マシンプロファイルタブ「デバイス候補のマシン」(§13 段2)。machine は登録簿のマシン名
+ * (= この Mac だけのエイリアス。`remote exec <machine>` の第1引数で、raw な ssh 宛先ではなく
+ * 登録名を渡す契約)。**ホスト名/IP ではない**(用語は docs/remote-runner.md §0)。 */
+export type DeviceCommandSource =
+  | { readonly kind: "local" }
+  | { readonly kind: "remote"; readonly machine: string };
 
 /**
- * device-catalog/installed-devices/create-device をホストに応じた CLI 引数へ組み立てる
+ * device-catalog/installed-devices/create-device を取得元のマシンに応じた CLI 引数へ組み立てる
  * (docs/remote-runner.md §13「プロファイルのリモート対応」・§14「単発コマンドの転送は汎用化する」)。
- * リモートは既存の汎用転送 `remote exec <host> -- <apiArgs>` を使うだけで、個別 ssh 実装は書かない。
+ * リモートは既存の汎用転送 `remote exec <machine> -- <apiArgs>` を使うだけで、個別 ssh 実装は書かない。
  * ローカルは apiArgs をそのまま返す(§13 段2 の「ローカルの挙動を1バイトも変えない」契約 —
  * この分岐が無いと既存の spawn 引数が変わってしまう)。
  */
@@ -39,7 +42,7 @@ export function deviceCommandArgs(source: DeviceCommandSource, apiArgs: readonly
   if (source.kind === "local") {
     return [...apiArgs];
   }
-  return ["remote", "exec", source.host, "--", ...apiArgs];
+  return ["remote", "exec", source.machine, "--", ...apiArgs];
 }
 
 /**

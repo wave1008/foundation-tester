@@ -203,7 +203,7 @@ struct ProfileSetupCommand: AsyncParsableCommand {
     static func deviceEntry(platform: String, name: String, simulator: String?, os: String?,
                             udid: String?, avd: String?, serial: String?) -> [String: Any] {
         var device: [String: Any] = [
-            "host": DeviceHostGrouping.localDisplayName, "name": name,
+            "host": DeviceMachineGrouping.localDisplayName, "name": name,
         ]
         if platform == "ios" {
             if let simulator { device["simulator"] = simulator }

@@ -64,11 +64,11 @@ struct ApiListDevices: AsyncParsableCommand {
 
         // **このコマンドは「この機械で操作できるデバイス」を答える**(ライブ操作の対象選択に使う)。
         // 別の機械のデバイスはここからは触れないので落とす —— 出すと選べてしまい、操作は必ず失敗する。
-        // モニターは表示だけなのでリモートも出す(そちらは machineHost をタイルに出して区別する)
+        // モニターは表示だけなのでリモートも出す(そちらは machine をタイルに出して区別する)
         let allDevices = (scoped.ios?.devices ?? []).map { (platform: "ios", spec: $0) }
             + (scoped.android?.devices ?? []).map { (platform: "android", spec: $0) }
         let localDevices = allDevices.filter {
-            DeviceHostGrouping.effectiveHost(device: $0.spec, machineHost: scoped.machine) == nil
+            DeviceMachineGrouping.effectiveMachine(device: $0.spec, profileMachine: scoped.machine) == nil
         }
         if localDevices.count < allDevices.count {
             logStderr("→ Skipped \(allDevices.count - localDevices.count) device(s) that live on"

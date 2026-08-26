@@ -5,10 +5,10 @@
 // 手元のシミュレータが止まった**(しかも ok:true で「成功」に見えた)。
 //
 // 規律は2つ:
-//  - `--device-host` を渡したら、**その機械の台だけ**を見る(他機の同名には当たらない)
+//  - `--device-machine` を渡したら、**その機械の台だけ**を見る(他機の同名には当たらない)
 //  - 渡さなかったら、**候補が1つのときだけ**採る。2つ以上なら候補を挙げて止める ——
 //    黙って片方を選ぶと「別の機械のデバイスを操作した」になり、気づけない
-//    (実行プロファイルの参照解決 `DeviceHostGrouping.resolve` と同じ規律)
+//    (実行プロファイルの参照解決 `DeviceMachineGrouping.resolve` と同じ規律)
 
 import FTCore
 import XCTest
@@ -38,7 +38,7 @@ final class ApiDeviceLookupHostTests: XCTestCase {
 
     func testHostGivenPicksThatMachinesDevice() {
         guard case .found(let spec, let platform) = ApiDeviceOperation.findDevice(
-            name: "iPhone-01", deviceHost: "M1Max", in: machine())
+            name: "iPhone-01", deviceMachine: "M1Max", in: machine())
         else { return XCTFail("M1Max の台が引けること") }
         XCTAssertEqual(spec.machine, "M1Max")
         XCTAssertEqual(platform, "ios")
@@ -46,21 +46,21 @@ final class ApiDeviceLookupHostTests: XCTestCase {
 
     func testHostGivenNeverFallsBackToAnotherMachine() {
         guard case .missing = ApiDeviceOperation.findDevice(
-            name: "Pixel-01", deviceHost: "local", in: machine())
+            name: "Pixel-01", deviceMachine: "local", in: machine())
         else { return XCTFail("手元に無い台を他機から拾ってはいけない") }
     }
 
     func testNoHostRefusesWhenTheNameExistsOnSeveralMachines() {
-        guard case .ambiguous(let hosts) = ApiDeviceOperation.findDevice(
-            name: "iPhone-01", deviceHost: nil, in: machine())
+        guard case .ambiguous(let machines) = ApiDeviceOperation.findDevice(
+            name: "iPhone-01", deviceMachine: nil, in: machine())
         else { return XCTFail("黙って手元を選ぶと『M1Max を止めたつもりで手元が止まる』になる") }
-        XCTAssertEqual(hosts, ["local", "M1Max", "M1Ultra"], "どれなのか選べるよう候補を全部出す")
+        XCTAssertEqual(machines, ["local", "M1Max", "M1Ultra"], "どれなのか選べるよう候補を全部出す")
     }
 
     func testNoHostIsFineWhenTheNameIsUniqueAcrossMachines() {
-        // 単一マシン構成(host を書いていない従来のプロファイル)はこの経路。挙動を変えない
+        // 単一マシン構成(machine を書いていない従来のプロファイル)はこの経路。挙動を変えない
         guard case .found(let spec, _) = ApiDeviceOperation.findDevice(
-            name: "iPhone-99", deviceHost: nil, in: machine())
+            name: "iPhone-99", deviceMachine: nil, in: machine())
         else { return XCTFail("候補が1つなら従来どおり通る") }
         XCTAssertNil(spec.machine)
     }
@@ -68,8 +68,8 @@ final class ApiDeviceLookupHostTests: XCTestCase {
     func testExplicitLocalMatchesBothTheExplicitAndTheOmittedForm() {
         // マシンプロファイルの "local" 明示と host 省略は同じ「手元」を指す
         guard case .found(let spec, _) = ApiDeviceOperation.findDevice(
-            name: "iPhone-99", deviceHost: "local", in: machine())
-        else { return XCTFail("host 省略の台は --device-host local で引けること") }
+            name: "iPhone-99", deviceMachine: "local", in: machine())
+        else { return XCTFail("host 省略の台は --device-machine local で引けること") }
         XCTAssertNil(spec.machine)
     }
 }

@@ -179,9 +179,9 @@ export const webviewMonitorBStrings = {
 
   // 設定タブ「リモート実行」セクションの動的表示(settingsTab.js。行を JS で組み立てるため
   // 静的ラベルの panels.settings.remote* と違いこちら側に置く。docs/remote-runner.md §12)。
-  "wvMonitor2.remote.removeTitle": { ja: "このホストを削除", en: "Remove this host" },
+  "wvMonitor2.remote.removeTitle": { ja: "このマシンを削除", en: "Remove this machine" },
   "wvMonitor2.remote.syncFailed": {
-    ja: "ホスト登録簿への反映に失敗しました: {reason}",
-    en: "Failed to save the host registry: {reason}",
+    ja: "マシン登録簿への反映に失敗しました: {reason}",
+    en: "Failed to save the machine registry: {reason}",
   },
 } satisfies MessageDict;

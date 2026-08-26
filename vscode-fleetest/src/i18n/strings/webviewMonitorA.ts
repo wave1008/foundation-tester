@@ -54,8 +54,8 @@ export const webviewMonitorAStrings = {
   },
   "wvMonitor.tile.stateUnknown": { ja: "状態不明", en: "Unknown" },
   "wvMonitor.tile.remoteUnobservable": {
-    ja: "{host}\n状態不明",
-    en: "{host}\nunknown",
+    ja: "{machine}\n状態不明",
+    en: "{machine}\nunknown",
   },
   // 登録はあるのに一覧に無いデバイス(実体を手で消した等)。リモートの実体は手元から見えないので、
   // ここで出さないと「実行して落ちるまで気付けない」
@@ -67,8 +67,8 @@ export const webviewMonitorAStrings = {
   // avdmanager 不在の解決手段。**導入先はカタログを取った機械**なので、ローカルは導入ボタン、
   // リモートは remote exec の案内を出す(手元へ入れても向こうの欠けは埋まらない)
   "wvMonitor.deviceAdd.installCmdlineToolsOnRemote": {
-    ja: "導入は {host} 側で行います: fleetest remote exec {host} -- api install-cmdline-tools",
-    en: "Install it on {host}: fleetest remote exec {host} -- api install-cmdline-tools",
+    ja: "導入は {machine} 側で行います: fleetest remote exec {machine} -- api install-cmdline-tools",
+    en: "Install it on {machine}: fleetest remote exec {machine} -- api install-cmdline-tools",
   },
   "wvMonitor.tile.physicalBadgeTitle": {
     ja: "実機(シミュレータ/エミュレータではありません)。起動・停止は行いません",
@@ -147,12 +147,12 @@ export const webviewMonitorAStrings = {
   "wvMonitor.deviceAdd.createFailed": { ja: "デバイスの作成に失敗しました。", en: "Failed to create the device." },
   "wvMonitor.deviceAdd.creating": { ja: "作成中...", en: "Creating..." },
 
-  // #device-pick-overlay 内のホスト選択(#device-pick-host-select・devicePickHost.js)。
-  // モーダルを開いている間、どのホストから取得しているかを常時表示するバッジにも使う
+  // #device-pick-overlay 内のマシン選択(#device-pick-machine-select・devicePickMachine.js)。
+  // モーダルを開いている間、どのマシンから取得しているかを常時表示するバッジにも使う
   // (「黙って別マシンの一覧を出さない」ため。#device-add-source-badge はこのバッジの読み取り専用複製)。
-  "wvMonitor.devicePick.hostLocalOption": { ja: "ローカル(このマシン)", en: "Local (this machine)" },
-  "wvMonitor.devicePick.hostLocalShort": { ja: "ローカル", en: "local" },
-  "wvMonitor.devicePick.hostBadge": { ja: "ホスト: {source}", en: "Host: {source}" },
+  "wvMonitor.devicePick.machineLocalOption": { ja: "ローカル(このマシン)", en: "Local (this machine)" },
+  "wvMonitor.devicePick.machineLocalShort": { ja: "ローカル", en: "local" },
+  "wvMonitor.devicePick.machineBadge": { ja: "マシン: {source}", en: "Machine: {source}" },
 
   "wvMonitor.nameInput.required": { ja: "{noun}を入力してください。", en: "Please enter {noun}." },
   "wvMonitor.nameInput.forbiddenChars": {

@@ -2,22 +2,22 @@
 // **リモート機のデバイスの状態と画面を、手元のモニターへ合流させる**(docs/remote-runner.md §13)。
 //
 // 手元の `fleetest api monitor` は simctl/adb を叩くので**この機械のデバイスしか観測できない**。
-// 別の機械のデバイスは、その機械で `api monitor --device-host <host>` を1本走らせ、その
+// 別の機械のデバイスは、その機械で `api monitor --device-machine <machine>` を1本走らせ、その
 // NDJSON を親が取り込む。親がやることは3つだけ:
 //   - `monitorDevices` は**保持する**(親が毎サイクル出す devices 配列へ、マシンプロファイルの
 //     並び順のまま差し込む。子と親でサイクルが揃っていないので、そのまま素通しはできない)
-//   - `monitorFrame` / `monitorError` は **"device" だけホスト付きに直して**中継する
-//     (子は畳んだプロファイルを見るので自分の台を "local" と名乗り、id にホストが入らない。
-//     JSON は組み直さない = base64 を1往復ぶん無駄に触らない。RemoteMonitorFanout.hostScoped)
+//   - `monitorFrame` / `monitorError` は **"device" だけマシン付きに直して**中継する
+//     (子は畳んだプロファイルを見るので自分の台を "local" と名乗り、id にマシンが入らない。
+//     JSON は組み直さない = base64 を1往復ぶん無駄に触らない。RemoteMonitorFanout.machineScoped)
 //   - stdin の制御行(pause/resume/suppressFrames)は**全子へ素通しする**(id の集合で判定する
 //     だけなので、自分の持たない id が混ざっていても害はない)
 //
-// **子は必ず `remote exec` 経由**(ssh の張り方・PATH 補正・ホスト解決を委ねる。専用の ssh 経路を
+// **子は必ず `remote exec` 経由**(ssh の張り方・PATH 補正・マシン解決を委ねる。専用の ssh 経路を
 // 新設しない = docs/remote-runner.md §14)。**先にプロジェクトを rsync する**(RemoteProjectSync)。
 //
-// 子が落ちたら、そのホストのデバイスは**「状態を取得できない」に戻す**(古い状態を出し続けない ——
+// 子が落ちたら、そのマシンのデバイスは**「状態を取得できない」に戻す**(古い状態を出し続けない ——
 // 向こうが落ちているのに connected と言い続けるのが最悪)。再接続は指数的に間隔を空けて試み、
-// 短時間での失敗が続いたら諦める(旧バイナリに `--device-host` が無い機械で無限に ssh を張らない)。
+// 短時間での失敗が続いたら諦める(旧バイナリに `--device-machine` が無い機械で無限に ssh を張らない)。
 
 import FTCore
 import Foundation
@@ -32,7 +32,7 @@ final class RemoteMonitorFanout: @unchecked Sendable {
     /// 再接続の待ち(秒)。回数に応じて伸ばす
     private static let retryDelaysSeconds: [UInt32] = [2, 5, 15]
 
-    private let hosts: [String]
+    private let machines: [String]
     private let project: String
     private let profile: String?
     private let interval: Double
@@ -41,15 +41,15 @@ final class RemoteMonitorFanout: @unchecked Sendable {
     private let relayLine: @Sendable (String) -> Void
 
     private let lock = NSLock()
-    /// ホストごとの最新の devices(id → 1台分)。子が落ちたら**そのホストのぶんを捨てる**
-    private var devicesByHost: [String: [String: ApiMonitorDeviceInfo]] = [:]
+    /// マシンごとの最新の devices(id → 1台分)。子が落ちたら**そのマシンのぶんを捨てる**
+    private var devicesByMachine: [String: [String: ApiMonitorDeviceInfo]] = [:]
     private var children: [String: Process] = [:]
     private var stopping = false
 
-    init(hosts: [String], project: String, profile: String?, interval: Double, maxWidth: Int,
+    init(machines: [String], project: String, profile: String?, interval: Double, maxWidth: Int,
          log: @escaping @Sendable (String) -> Void,
          relayLine: @escaping @Sendable (String) -> Void) {
-        self.hosts = hosts
+        self.machines = machines
         self.project = project
         self.profile = profile
         self.interval = interval
@@ -58,21 +58,21 @@ final class RemoteMonitorFanout: @unchecked Sendable {
         self.relayLine = relayLine
     }
 
-    /// ホストごとに1本ずつ、監視スレッドを立てる(スレッドの中で rsync → spawn → 再接続まで回す)
+    /// マシンごとに1本ずつ、監視スレッドを立てる(スレッドの中で rsync → spawn → 再接続まで回す)
     func start() {
-        for host in hosts {
-            let thread = Thread { [weak self] in self?.superviseHost(host) }
-            thread.name = "fleetest-monitor-fanout-\(host)"
+        for machine in machines {
+            let thread = Thread { [weak self] in self?.superviseMachine(machine) }
+            thread.name = "fleetest-monitor-fanout-\(machine)"
             thread.start()
         }
     }
 
-    /// いま把握しているリモートのデバイス(id → 1台分)。**子から一度も届いていないホストは
+    /// いま把握しているリモートのデバイス(id → 1台分)。**子から一度も届いていないマシンは
     /// 含まれない** —— 呼び出し側は欠けている台を「状態を取得できない」として出す
     func snapshot() -> [String: ApiMonitorDeviceInfo] {
         lock.lock(); defer { lock.unlock() }
         var merged: [String: ApiMonitorDeviceInfo] = [:]
-        for (_, devices) in devicesByHost {
+        for (_, devices) in devicesByMachine {
             merged.merge(devices) { current, _ in current }
         }
         return merged
@@ -101,21 +101,21 @@ final class RemoteMonitorFanout: @unchecked Sendable {
         }
     }
 
-    // MARK: - 1ホスト分の監督
+    // MARK: - 1マシン分の監督
 
-    private func superviseHost(_ host: String) {
-        if let failure = RemoteProjectSync.run(project: project, host: host) {
-            log("[monitor] ❌ \(failure) — devices on \(host) stay unobserved")
+    private func superviseMachine(_ machine: String) {
+        if let failure = RemoteProjectSync.run(project: project, machine: machine) {
+            log("[monitor] ❌ \(failure) — devices on \(machine) stay unobserved")
             return
         }
         var quickFailures = 0
         while !isStopping() {
             let startedAt = Date()
-            runChild(host: host)
-            // 子が落ちた: そのホストの状態は**もう根拠が無い**ので捨てる
+            runChild(machine: machine)
+            // 子が落ちた: そのマシンの状態は**もう根拠が無い**ので捨てる
             lock.lock()
-            devicesByHost.removeValue(forKey: host)
-            children.removeValue(forKey: host)
+            devicesByMachine.removeValue(forKey: machine)
+            children.removeValue(forKey: machine)
             lock.unlock()
             if isStopping() { return }
             if Date().timeIntervalSince(startedAt) < Self.quickFailureSeconds {
@@ -124,25 +124,25 @@ final class RemoteMonitorFanout: @unchecked Sendable {
                 quickFailures = 0
             }
             guard quickFailures < Self.quickFailureLimit else {
-                log("[monitor] Giving up on \(host): the remote monitor died \(quickFailures) times right"
-                    + " after starting (is its fleetest up to date? `fleetest remote setup \(host)`)."
+                log("[monitor] Giving up on \(machine): the remote monitor died \(quickFailures) times right"
+                    + " after starting (is its fleetest up to date? `fleetest remote setup \(machine)`)."
                     + " Its devices stay unobserved until the monitor is restarted")
                 return
             }
             let delay = Self.retryDelaysSeconds[min(quickFailures, Self.retryDelaysSeconds.count - 1)]
-            log("[monitor] Reconnecting to \(host) in \(delay)s")
+            log("[monitor] Reconnecting to \(machine) in \(delay)s")
             sleep(delay)
         }
     }
 
     /// 子プロセス1本を最後まで回す(戻ったら子は死んでいる)
-    private func runChild(host: String) {
-        var args = ["remote", "exec", host, "--", "api", "monitor",
+    private func runChild(machine: String) {
+        var args = ["remote", "exec", machine, "--", "api", "monitor",
                     "--project", project,
                     "--interval", String(interval),
                     "--max-width", String(maxWidth),
                     // エイリアスは渡さない(転送時に畳んである。FTCore.RunnerProfileView)
-                    "--device-machine", DeviceHostGrouping.localDisplayName]
+                    "--device-machine", DeviceMachineGrouping.localDisplayName]
         if let profile { args += ["--profile", profile] }
 
         let process = Process()
@@ -159,63 +159,62 @@ final class RemoteMonitorFanout: @unchecked Sendable {
         do {
             try process.run()
         } catch {
-            log("[monitor] ❌ cannot start the monitor for \(host): \(error.localizedDescription)")
+            log("[monitor] ❌ cannot start the monitor for \(machine): \(error.localizedDescription)")
             return
         }
         lock.lock()
-        children[host] = process
+        children[machine] = process
         lock.unlock()
 
         let stderrThread = Thread { [weak self] in
-            Self.forEachLine(of: stderr) { line in self?.log("[\(host)] \(line)") }
+            Self.forEachLine(of: stderr) { line in self?.log("[\(machine)] \(line)") }
         }
-        stderrThread.name = "fleetest-monitor-fanout-err-\(host)"
+        stderrThread.name = "fleetest-monitor-fanout-err-\(machine)"
         stderrThread.start()
 
-        Self.forEachLine(of: stdout) { [weak self] line in self?.ingest(line: line, host: host) }
+        Self.forEachLine(of: stdout) { [weak self] line in self?.ingest(line: line, machine: machine) }
         process.waitUntilExit()
     }
 
     /// 子の stdout 1行。devices は保持し、それ以外(frame/error)は行のまま中継する。
     /// internal: RemoteMonitorFanoutIDTests が「親が id とマシンバッジを埋める」ことを固定する
-    func ingest(line: String, host: String) {
+    func ingest(line: String, machine: String) {
         struct KindOnly: Decodable { let kind: String }
         guard let data = line.data(using: .utf8),
               let kind = (try? JSONDecoder().decode(KindOnly.self, from: data))?.kind
         else { return }
         guard kind == "monitorDevices" else {
-            // monitorFrame / monitorError。**"device" だけホスト付きに直して**中継する
+            // monitorFrame / monitorError。**"device" だけマシン付きに直して**中継する
             // (base64 は触らない = 1往復ぶんの無駄を避ける。理由はファイル冒頭)
-            relayLine(Self.hostScoped(line: line, host: host))
+            relayLine(Self.machineScoped(line: line, machine: machine))
             return
         }
         guard let event = try? JSONDecoder().decode(ApiMonitorDevicesEvent.self, from: data) else {
-            log("[monitor] \(host): cannot read the remote monitorDevices line")
+            log("[monitor] \(machine): cannot read the remote monitorDevices line")
             return
         }
-        // **子の id はホストを含まない** —— 転送プロファイルを畳んである(RunnerProfileView)ので
-        // 向こうは自分の台を "local" と名乗る。親のタイルは (host, name) で一意なので、ここで
-        // ホスト付きの id へ直す。**直さないと状態も映像もタイルに届かない**(実害 2026-08-26:
+        // **子の id はマシンを含まない** —— 転送プロファイルを畳んである(RunnerProfileView)ので
+        // 向こうは自分の台を "local" と名乗る。親のタイルは (machine, name) で一意なので、ここで
+        // マシン付きの id へ直す。**直さないと状態も映像もタイルに届かない**(実害 2026-08-26:
         // 畳み込みを入れた直後、リモートのタイルが全部「状態不明」になった)
         var byID: [String: ApiMonitorDeviceInfo] = [:]
         for device in event.devices {
             var scoped = device
-            scoped.id = DeviceHostGrouping.workerID(
-                platform: device.platform, host: host, name: device.name)
+            scoped.id = DeviceMachineGrouping.workerID(platform: device.platform, machine: machine, name: device.name)
             // タイルのマシンバッジも同じ理由で親が入れる(子は自分を "local" と見なすので nil)
-            scoped.machineHost = host
+            scoped.machine = machine
             byID[scoped.id] = scoped
         }
         lock.lock()
-        devicesByHost[host] = byID
+        devicesByMachine[machine] = byID
         lock.unlock()
     }
 
-    /// 中継行の `"device":"<platform>:<name>"` を `"<platform>:<host>/<name>"` へ書き換える。
+    /// 中継行の `"device":"<platform>:<name>"` を `"<platform>:<machine>/<name>"` へ書き換える。
     /// **JSON を組み直さない**(base64 のフレームを1往復ぶん触らないため)。id の規則は
-    /// DeviceHostGrouping.workerID と同じ = ここが2つ目の実装にならないよう platform/name を
+    /// DeviceMachineGrouping.workerID と同じ = ここが2つ目の実装にならないよう platform/name を
     /// 切り出してそちらへ渡す。書き換えられない行(想定外の形)はそのまま流す
-    static func hostScoped(line: String, host: String) -> String {
+    static func machineScoped(line: String, machine: String) -> String {
         let key = "\"device\":\""
         guard let keyRange = line.range(of: key) else { return line }
         let valueStart = keyRange.upperBound
@@ -224,11 +223,11 @@ final class RemoteMonitorFanout: @unchecked Sendable {
         guard let colon = value.firstIndex(of: ":") else { return line }
         let platform = String(value[value.startIndex..<colon])
         let name = String(value[value.index(after: colon)...])
-        // **判定は「このホスト名で始まるか」**。デバイス名自体が "/" を含むのは普通
+        // **判定は「このマシン名で始まるか」**。デバイス名自体が "/" を含むのは普通
         // (例 "Pixel 10(Android 14(API 34) / arm64-v8a)-01")なので、"/" の有無では見ない
         // —— 見ると、その名前の台だけ id が直らず状態も映像も届かなくなる
-        guard !name.hasPrefix(host + "/") else { return line }
-        let scoped = DeviceHostGrouping.workerID(platform: platform, host: host, name: name)
+        guard !name.hasPrefix(machine + "/") else { return line }
+        let scoped = DeviceMachineGrouping.workerID(platform: platform, machine: machine, name: name)
         return line.replacingCharacters(in: valueStart..<quote.lowerBound, with: scoped)
     }
 

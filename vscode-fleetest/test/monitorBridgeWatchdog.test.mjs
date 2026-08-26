@@ -12,7 +12,7 @@ function device(name, state, registered) {
 
 /** 別の機械の同名デバイス(フリートでは通常の構成)。 */
 function remoteDevice(name, state, host = "M1Max") {
-  return { id: `ios:${host}/${name}`, name, platform: "ios", state, detail: "", machineHost: host };
+  return { id: `ios:${host}/${name}`, name, platform: "ios", state, detail: "", machine: host };
 }
 
 /** テスト用ハーネス。posts/logs/jobs を配列に記録し、now/autoRepair/runActive を手元で操作できる。 */

@@ -1,4 +1,4 @@
-// MachineHostDispatchTests.swift
+// MachineDispatchTests.swift
 // マシンプロファイルの host(自動リモートディスパッチ、ユーザー決定)まわりの
 // 破ったら落ちるテスト: JSON 後方互換・正規化・--host との優先順位(純粋関数)・
 // ProfileResolver 経由の読み取り。
@@ -6,7 +6,7 @@
 import XCTest
 @testable import FTCore
 
-final class MachineHostDispatchTests: XCTestCase {
+final class MachineDispatchTests: XCTestCase {
 
     // MARK: - MachineProfile.host の JSON 後方互換
 
@@ -26,56 +26,56 @@ final class MachineHostDispatchTests: XCTestCase {
         XCTAssertEqual(machine.machine, "M1Max")
     }
 
-    // MARK: - MachineHostDispatch.normalize
+    // MARK: - MachineDispatch.normalize
 
     func testNormalizeTreatsNilEmptyAndLocalAsNil() {
-        XCTAssertNil(MachineHostDispatch.normalize(nil))
-        XCTAssertNil(MachineHostDispatch.normalize(""))
-        XCTAssertNil(MachineHostDispatch.normalize("   "))
-        XCTAssertNil(MachineHostDispatch.normalize("local"))
-        XCTAssertNil(MachineHostDispatch.normalize("  local  "), "前後空白は trim してから比較する")
+        XCTAssertNil(MachineDispatch.normalize(nil))
+        XCTAssertNil(MachineDispatch.normalize(""))
+        XCTAssertNil(MachineDispatch.normalize("   "))
+        XCTAssertNil(MachineDispatch.normalize("local"))
+        XCTAssertNil(MachineDispatch.normalize("  local  "), "前後空白は trim してから比較する")
     }
 
     func testNormalizePreservesAndTrimsOtherNames() {
-        XCTAssertEqual(MachineHostDispatch.normalize("M1Max"), "M1Max")
-        XCTAssertEqual(MachineHostDispatch.normalize("  M1Max  "), "M1Max")
-        XCTAssertEqual(MachineHostDispatch.normalize("user@host"), "user@host")
+        XCTAssertEqual(MachineDispatch.normalize("M1Max"), "M1Max")
+        XCTAssertEqual(MachineDispatch.normalize("  M1Max  "), "M1Max")
+        XCTAssertEqual(MachineDispatch.normalize("user@host"), "user@host")
     }
 
-    // MARK: - MachineHostDispatch.resolve(優先順位・食い違い)
+    // MARK: - MachineDispatch.resolve(優先順位・食い違い)
 
     func testResolveBothLocalStaysLocal() {
-        let decision = MachineHostDispatch.resolve(explicitHost: nil, machineHost: nil)
-        XCTAssertNil(decision.host)
+        let decision = MachineDispatch.resolve(explicitTarget: nil, profileMachine: nil)
+        XCTAssertNil(decision.target)
         XCTAssertNil(decision.mismatchWarning)
     }
 
     func testResolveMachineHostAloneAutoDispatches() {
-        let decision = MachineHostDispatch.resolve(explicitHost: nil, machineHost: "runner1")
-        XCTAssertEqual(decision.host, "runner1", "実行プロファイル経由の間接指定(--host 未指定)")
+        let decision = MachineDispatch.resolve(explicitTarget: nil, profileMachine: "runner1")
+        XCTAssertEqual(decision.target, "runner1", "実行プロファイル経由の間接指定(--host 未指定)")
         XCTAssertNil(decision.mismatchWarning)
     }
 
     func testResolveExplicitHostAloneWins() {
-        let decision = MachineHostDispatch.resolve(explicitHost: "user@cli-host", machineHost: nil)
-        XCTAssertEqual(decision.host, "user@cli-host")
+        let decision = MachineDispatch.resolve(explicitTarget: "user@cli-host", profileMachine: nil)
+        XCTAssertEqual(decision.target, "user@cli-host")
         XCTAssertNil(decision.mismatchWarning)
     }
 
     func testResolveExplicitAndMachineAgreeNoWarning() {
-        let decision = MachineHostDispatch.resolve(explicitHost: "runner1", machineHost: "runner1")
-        XCTAssertEqual(decision.host, "runner1")
+        let decision = MachineDispatch.resolve(explicitTarget: "runner1", profileMachine: "runner1")
+        XCTAssertEqual(decision.target, "runner1")
         XCTAssertNil(decision.mismatchWarning, "一致しているときは注記しない")
     }
 
     func testResolveExplicitWinsOverDifferingMachineHostWithWarning() {
-        let decision = MachineHostDispatch.resolve(explicitHost: "cliHost", machineHost: "machineHost")
-        XCTAssertEqual(decision.host, "cliHost", "--host が常に勝つ")
+        let decision = MachineDispatch.resolve(explicitTarget: "cliHost", profileMachine: "machine")
+        XCTAssertEqual(decision.target, "cliHost", "--host が常に勝つ")
         guard let warning = decision.mismatchWarning else {
             return XCTFail("expected a mismatch warning when --host and the machine profile disagree")
         }
         XCTAssertTrue(warning.contains("cliHost"))
-        XCTAssertTrue(warning.contains("machineHost"))
+        XCTAssertTrue(warning.contains("machine"))
     }
 
     func testResolveExplicitLocalOverridesMachineHostAndWarns() {
@@ -84,8 +84,8 @@ final class MachineHostDispatchTests: XCTestCase {
         // 通常の食い違いと同じ規律で warn したうえでローカルに留まる
         // (以前は normalize の畳み込みだけで判定しており、この組み合わせだけ
         // マシン側の host へ自動ディスパッチしてしまっていた)
-        let decision = MachineHostDispatch.resolve(explicitHost: "local", machineHost: "runner1")
-        XCTAssertNil(decision.host, "--host local は常にローカルに留まる")
+        let decision = MachineDispatch.resolve(explicitTarget: "local", profileMachine: "runner1")
+        XCTAssertNil(decision.target, "--host local は常にローカルに留まる")
         guard let warning = decision.mismatchWarning else {
             return XCTFail("expected a mismatch warning when --host local overrides the machine host")
         }
@@ -93,19 +93,19 @@ final class MachineHostDispatchTests: XCTestCase {
     }
 
     func testResolveExplicitLocalAndNoMachineHostStaysLocal() {
-        let decision = MachineHostDispatch.resolve(explicitHost: "local", machineHost: nil)
-        XCTAssertNil(decision.host)
+        let decision = MachineDispatch.resolve(explicitTarget: "local", profileMachine: nil)
+        XCTAssertNil(decision.target)
         XCTAssertNil(decision.mismatchWarning, "食い違いが無ければ注記しない")
     }
 
     func testResolveExplicitLocalWithWhitespaceStillCountsAsLocal() {
-        let decision = MachineHostDispatch.resolve(explicitHost: "  local  ", machineHost: "runner1")
-        XCTAssertNil(decision.host, "前後空白は trim してから比較する")
+        let decision = MachineDispatch.resolve(explicitTarget: "  local  ", profileMachine: "runner1")
+        XCTAssertNil(decision.target, "前後空白は trim してから比較する")
         XCTAssertNotNil(decision.mismatchWarning)
     }
 }
 
-// MARK: - ProfileResolver.machineHost / ResolvedProfile.machineHost(読み取り経路)
+// MARK: - ProfileResolver.machine / ResolvedProfile.machine(読み取り経路)
 
 final class ProfileResolverMachineHostTests: XCTestCase {
     var tempDir: URL!
@@ -133,7 +133,7 @@ final class ProfileResolverMachineHostTests: XCTestCase {
         try write("""
         { "host": "  runner1  ", "ios": { "devices": [] } }
         """, to: project.machinesDir, name: "M1Max")
-        let host = try ProfileResolver.machineHost(project: project, machineName: "M1Max")
+        let host = try ProfileResolver.defaultMachine(project: project, machineName: "M1Max")
         XCTAssertEqual(host, "runner1", "trim 済みで返る")
     }
 
@@ -141,7 +141,7 @@ final class ProfileResolverMachineHostTests: XCTestCase {
         try write("""
         { "ios": { "devices": [] } }
         """, to: project.machinesDir, name: "M1Max")
-        let host = try ProfileResolver.machineHost(project: project, machineName: "M1Max")
+        let host = try ProfileResolver.defaultMachine(project: project, machineName: "M1Max")
         XCTAssertNil(host, "既存プロファイル(host 省略)は無改修でローカル扱い")
     }
 
@@ -149,13 +149,13 @@ final class ProfileResolverMachineHostTests: XCTestCase {
         try write("""
         { "host": "local", "ios": { "devices": [] } }
         """, to: project.machinesDir, name: "M1Max")
-        let host = try ProfileResolver.machineHost(project: project, machineName: "M1Max")
+        let host = try ProfileResolver.defaultMachine(project: project, machineName: "M1Max")
         XCTAssertNil(host)
     }
 
     func testMachineHostUnknownMachineThrows() {
         XCTAssertThrowsError(
-            try ProfileResolver.machineHost(project: project, machineName: "does-not-exist")
+            try ProfileResolver.defaultMachine(project: project, machineName: "does-not-exist")
         ) { error in
             guard case ProfileError.machineProfileNotFound(let machine, _) = error else {
                 return XCTFail("expected machineProfileNotFound, got \(error)")
@@ -177,7 +177,7 @@ final class ProfileResolverMachineHostTests: XCTestCase {
         """, to: project.runsDir, name: "all")
 
         let resolved = try ProfileResolver.resolve(project: project, runName: "all", machineName: "M1Max")
-        XCTAssertEqual(resolved.machineHost, "runner1")
+        XCTAssertEqual(resolved.machine, "runner1")
     }
 
     func testResolvedProfileMachineHostIsNilWhenOmitted() throws {
@@ -192,6 +192,6 @@ final class ProfileResolverMachineHostTests: XCTestCase {
         """, to: project.runsDir, name: "all")
 
         let resolved = try ProfileResolver.resolve(project: project, runName: "all", machineName: "M1Max")
-        XCTAssertNil(resolved.machineHost, "host 省略の既存マシンプロファイルはローカル扱いのまま")
+        XCTAssertNil(resolved.machine, "host 省略の既存マシンプロファイルはローカル扱いのまま")
     }
 }

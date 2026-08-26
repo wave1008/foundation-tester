@@ -590,27 +590,29 @@ enum RemoteHostResolver {
     }
 }
 
-// MARK: - --host ⊕ マシンプロファイルの host(共有。run/api run が使う。2026-08-17)
+// MARK: - --machine/--host ⊕ マシンプロファイルの machine(共有。run/api run が使う。2026-08-17)
 
-/// `--host`(明示)と `--profile` が解決するマシンプロファイルの `host`(自動)を統合した
-/// 実効ディスパッチ先。`rawHost` の由来で登録簿引きの規則が変わる(下記 resolveRemoteTarget)
-struct EffectiveHostDispatch {
-    let rawHost: String
-    /// true = マシンプロファイル由来(`--host` 未指定/"local"以外の理由で自動採用)。登録簿の
-    /// 名前のみ受け付ける(生の ssh 宛先は書けない = MachineProfile.host の契約)。false =
-    /// `--host` 由来で、既存どおり未登録名も生の ssh 宛先として扱う
+/// 明示の宛先(`--machine` / `--host`)と `--profile` が解決するマシンプロファイルの `machine`
+/// (自動)を統合した実効ディスパッチ先。`rawTarget` の由来で登録簿引きの規則が変わる
+/// (下記 resolveRemoteTarget)
+struct EffectiveDispatchTarget {
+    /// マシン名(エイリアス)か、`--host` で直接書かれたホスト名 / IP
+    let rawTarget: String
+    /// true = マシンプロファイル由来(明示の宛先が無く自動採用)。登録簿の名前のみ受け付ける
+    /// (生の ssh 宛先は書けない = MachineProfile.machine の契約)。false = 明示の `--host` 由来で、
+    /// 既存どおり未登録名も生の ssh 宛先として扱う
     let requiresRegisteredName: Bool
     /// 自動ディスパッチ(requiresRegisteredName == true)のときのマシン名。RemoteDispatchFlagPolicy の
-    /// 拒否理由文言だけに使う(欠陥1)。明示 `--host` 由来なら常に nil
+    /// 拒否理由文言だけに使う(欠陥1)。明示の宛先由来なら常に nil
     let autoDispatchMachineName: String?
 
     var origin: RemoteDispatchOrigin {
-        autoDispatchMachineName.map { .autoDispatch(machine: $0, host: rawHost) } ?? .explicitHost
+        autoDispatchMachineName.map { .autoDispatch(machine: $0, host: rawTarget) } ?? .explicitHost
     }
 }
 
-/// `--host` とマシンプロファイルの `host` を突き合わせ、実効ディスパッチ先を決める
-/// (優先順位・食い違いの判定は FTCore.MachineHostDispatch の純粋関数に委譲。ここは I/O だけ担当)。
+/// 明示の宛先とマシンプロファイルの `machine` を突き合わせ、実効ディスパッチ先を決める
+/// (優先順位・食い違いの判定は FTCore.MachineDispatch の純粋関数に委譲。ここは I/O だけ担当)。
 ///
 /// - `--host` が明示されていれば、マシン側 host の読み取りはミスマッチ警告のためだけの
 ///   ベストエフォート(`try?`)。読めなくても `--host` での実行は妨げない
@@ -618,126 +620,126 @@ struct EffectiveHostDispatch {
 /// - `--host` 未指定で `requireMachineHost` なら、マシン側 host を確定させる必要がある
 ///   (自動ディスパッチの唯一の判断材料なので、読めなければここで素直にエラーにする——
 ///   どのみち通常のローカル実行でも同じ理由でこの先失敗する)
-/// - `requireMachineHost: false` かつ `--host` 未指定なら常に nil(呼び出し側が dry-run 等で
+/// - `requireProfileMachine: false` かつ `--host` 未指定なら常に nil(呼び出し側が dry-run 等で
 ///   マシン側 host を見ない選択をしたとき用)
 ///
-/// **`MachineHostDispatch.normalize` は "local"/空文字/未指定を同じ nil に畳むが、"local" だけは
+/// **`MachineDispatch.normalize` は "local"/空文字/未指定を同じ nil に畳むが、"local" だけは
 /// 明示のローカル指定として resolve() 側で別扱いする**(欠陥3。この関数はここでは判定せず、
-/// 生の explicitHost をそのまま `MachineHostDispatch.resolve` へ渡して委ねる)。machineHost の
+/// 生の explicitHost をそのまま `MachineDispatch.resolve` へ渡して委ねる)。machine の
 /// 読み取り自体は「未指定」と同じ経路で行ってよい —— 読めても resolve() が "local" を優先するので
 /// 安全側に倒れる
-func resolveEffectiveHostDispatch(
-    explicitHost: String?, profile: String?, project: String?,
-    requireMachineHost: Bool, warn: (String) -> Void
-) throws -> EffectiveHostDispatch? {
-    let explicitNormalized = MachineHostDispatch.normalize(explicitHost)
-    var machineHost: String?
+func resolveEffectiveDispatchTarget(
+    explicitTarget: String?, profile: String?, project: String?,
+    requireProfileMachine: Bool, warn: (String) -> Void
+) throws -> EffectiveDispatchTarget? {
+    let explicitNormalized = MachineDispatch.normalize(explicitTarget)
+    var machine: String?
     var machineName: String?
     if let profile {
         if explicitNormalized != nil {
-            let resolved = try? machineProfileHostAndName(profile: profile, project: project)
-            machineHost = resolved?.host
+            let resolved = try? machineProfileMachineAndName(profile: profile, project: project)
+            machine = resolved?.machine
             machineName = resolved?.name
-        } else if requireMachineHost {
-            let resolved = try machineProfileHostAndName(profile: profile, project: project)
-            machineHost = resolved.host
+        } else if requireProfileMachine {
+            let resolved = try machineProfileMachineAndName(profile: profile, project: project)
+            machine = resolved.machine
             machineName = resolved.name
         }
     }
-    let decision = MachineHostDispatch.resolve(explicitHost: explicitHost, machineHost: machineHost)
+    let decision = MachineDispatch.resolve(explicitTarget: explicitTarget, profileMachine: machine)
     if let warning = decision.mismatchWarning { warn(warning) }
-    guard let rawHost = decision.host else { return nil }
+    guard let target = decision.target else { return nil }
     let requiresRegisteredName = explicitNormalized == nil
-    return EffectiveHostDispatch(
-        rawHost: rawHost, requiresRegisteredName: requiresRegisteredName,
+    return EffectiveDispatchTarget(
+        rawTarget: target, requiresRegisteredName: requiresRegisteredName,
         autoDispatchMachineName: requiresRegisteredName ? machineName : nil)
 }
 
 /// **デバイスが居る機械が優先**。マシンプロファイルの `host` は「そのプロファイルの既定」で、
-/// デバイス1台ずつが自分の host を持てる(DeviceHostGrouping)。実際に回す全デバイスが同じ機械に
+/// デバイス1台ずつが自分の host を持てる(DeviceMachineGrouping)。実際に回す全デバイスが同じ機械に
 /// 居るならそこがディスパッチ先 —— 既定を見るだけだと、`host` を書いていないマシンプロファイルに
 /// リモートのデバイスだけを並べた形が**黙って手元で走る**(そのデバイスは手元に無いので落ちる)。
-/// 複数の機械にまたがる場合はここへ来る前に DeviceHostRunner が引き取っているので、
+/// 複数の機械にまたがる場合はここへ来る前に DeviceMachineRunner が引き取っているので、
 /// 残りは「絞り込みで1つに定まらなかった」= 既定に従う場合だけ
-private func machineProfileHostAndName(
+private func machineProfileMachineAndName(
     profile: String, project: String?
-) throws -> (host: String?, name: String) {
+) throws -> (machine: String?, name: String) {
     let testProject = try ScenarioHost.project(named: project)
     let machine = try ProfileResolver.determineMachine(
         project: testProject, runProfileName: profile)
-    let devices = (try? ProfileResolver.runDeviceHosts(
+    let devices = (try? ProfileResolver.runDeviceMachines(
         project: testProject, runProfileName: profile, machineName: machine.name)) ?? []
-    let hosts = Set(devices.map { DeviceHostGrouping.display($0.host) })
-    if hosts.count == 1, let only = hosts.first {
-        return (only == DeviceHostGrouping.localDisplayName ? nil : only, machine.name)
+    let machines = Set(devices.map { DeviceMachineGrouping.display($0.machine) })
+    if machines.count == 1, let only = machines.first {
+        return (only == DeviceMachineGrouping.localDisplayName ? nil : only, machine.name)
     }
-    let host = try ProfileResolver.machineHost(project: testProject, machineName: machine.name)
-    return (host, machine.name)
+    let profileMachine = try ProfileResolver.defaultMachine(project: testProject, machineName: machine.name)
+    return (profileMachine, machine.name)
 }
 
-/// `EffectiveHostDispatch` → `ResolvedRemoteHost`。マシンプロファイル由来
+/// `EffectiveDispatchTarget` → `ResolvedRemoteHost`。マシンプロファイル由来
 /// (`requiresRegisteredName`)なら登録簿の名前だけを受け付け、無ければ候補一覧付きで落とす
 /// (黙ってローカル実行しない)。`--host` 由来は既存どおり `RemoteHostResolver.resolve` に委ねる
 /// (未登録名は生の ssh 宛先として扱う)
-func resolveRemoteTarget(_ dispatch: EffectiveHostDispatch, remoteDirOverride: String?) throws -> ResolvedRemoteHost {
+func resolveRemoteTarget(_ dispatch: EffectiveDispatchTarget, remoteDirOverride: String?) throws -> ResolvedRemoteHost {
     guard dispatch.requiresRegisteredName else {
-        return try RemoteHostResolver.resolve(rawHost: dispatch.rawHost, remoteDirOverride: remoteDirOverride)
+        return try RemoteHostResolver.resolve(rawHost: dispatch.rawTarget, remoteDirOverride: remoteDirOverride)
     }
     let entries = LocalConfig.load().remoteHosts ?? []
-    guard case .registered = RemoteHostRegistry.resolve(dispatch.rawHost, entries: entries) else {
+    guard case .registered = RemoteHostRegistry.resolve(dispatch.rawTarget, entries: entries) else {
         throw RemoteDispatchError.invalidHost(
-            "the machine profile's host \"\(dispatch.rawHost)\" is not a registered remote host"
+            "the machine profile's machine \"\(dispatch.rawTarget)\" is not a registered machine"
             + (entries.isEmpty
                ? " (no hosts registered — run: fleetest remote hosts add <name> --host <user@host>)"
                : " (available: \(entries.map(\.machine).sorted().joined(separator: ", ")))"))
     }
-    return try RemoteHostResolver.resolve(rawHost: dispatch.rawHost, remoteDirOverride: remoteDirOverride)
+    return try RemoteHostResolver.resolve(rawHost: dispatch.rawTarget, remoteDirOverride: remoteDirOverride)
 }
 
 // MARK: - shared helpers
 
-/// ホスト混在プロファイルの単一ホストディスパッチに付ける --device/--device-host を決める
+/// マシン混在プロファイルの単一マシンディスパッチに付ける --device/--device-machine を決める
 /// (判定は FTCore.RemoteDispatchDeviceScope / 明示 --device 付きは RemoteDispatchExplicitDeviceScope)。
-/// 呼び出し側が既に --device-host を持つときは呼ばないこと。`requestedDevices` は利用者の
-/// 明示 `--device`(空 = 無し)—— 混在プロファイルではそのホストの台に限定して渡す
+/// 呼び出し側が既に --device-machine を持つときは呼ばないこと。`requestedDevices` は利用者の
+/// 明示 `--device`(空 = 無し)—— 混在プロファイルではそのマシンの台に限定して渡す
 /// (同名の台が他の機械にもあると、名前だけでは全機械ぶんを拾う)。
-/// プロファイル/マシンが読めないときは従来どおり丸ごと(名前はそのまま・host は付けない)
-func hostScopedDeviceFilter(
-    project: TestProject, profile: String, targetHost: String, requestedDevices: [String] = []
-) throws -> (deviceNames: [String], deviceHost: String?) {
+/// プロファイル/マシンが読めないときは従来どおり丸ごと(名前はそのまま・machine は付けない)
+func machineScopedDeviceFilter(
+    project: TestProject, profile: String, targetMachine: String, requestedDevices: [String] = []
+) throws -> (deviceNames: [String], deviceMachine: String?) {
     guard let machine = try? ProfileResolver.determineMachine(project: project, runProfileName: profile) else {
         return (requestedDevices, nil)
     }
-    let devices = (try? ProfileResolver.runDeviceHosts(
+    let devices = (try? ProfileResolver.runDeviceMachines(
         project: project, runProfileName: profile, machineName: machine.name)) ?? []
     if !requestedDevices.isEmpty {
         switch RemoteDispatchExplicitDeviceScope.resolve(
-            targetHost: targetHost, requested: requestedDevices, devices: devices) {
+            targetMachine: targetMachine, requested: requestedDevices, devices: devices) {
         case .passThrough:
             return (requestedDevices, nil)
         case .pinned:
-            return (requestedDevices, targetHost)
-        case .notOnHost(let missing, let available):
+            return (requestedDevices, targetMachine)
+        case .notOnMachine(let missing, let available):
+            let names = missing.map { "\"\($0)\"" }.joined(separator: ", ")
+            let there = available.map { "\"\($0)\"" }.joined(separator: ", ")
             throw RemoteDispatchError.invalidDevice(
-                "\(missing.map { "\"\($0)\"" }.joined(separator: ", ")) is not assigned to host"
-                + " \"\(targetHost)\" in profile \"\(profile)\""
-                + (available.isEmpty ? " (it has no devices there)"
-                   : " (its devices there: \(available.map { "\"\($0)\"" }.joined(separator: ", ")))")
-                + " — with --host, --device is limited to that host's devices;"
-                + " pass --device-host to target another machine's device of the same name")
+                "\(names) is not assigned to machine \"\(targetMachine)\" in profile \"\(profile)\""
+                + (available.isEmpty ? " (it has no devices there)" : " (its devices there: \(there))")
+                + " — with --machine, --device is limited to that machine's devices;"
+                + " pass --device-machine to target another machine's device of the same name")
         }
     }
-    switch RemoteDispatchDeviceScope.resolve(targetHost: targetHost, devices: devices) {
+    switch RemoteDispatchDeviceScope.resolve(targetMachine: targetMachine, devices: devices) {
     case .wholeProfile:
         return ([], nil)
     case .filtered(let names):
-        return (names, targetHost)
-    case .noneForHost(let hosts):
-        throw RemoteDispatchError.invalidHost(
-            "profile \"\(profile)\" assigns no devices to host \"\(targetHost)\""
-            + " (its devices are pinned to: \(hosts.joined(separator: ", ")))"
-            + " — add devices for \(targetHost) to the machine profile,"
-            + " or pass --device/--device-host explicitly")
+        return (names, targetMachine)
+    case .noneForMachine(let machines):
+        throw RemoteDispatchError.invalidMachine(
+            "profile \"\(profile)\" assigns no devices to machine \"\(targetMachine)\""
+            + " (its devices are pinned to: \(machines.joined(separator: ", ")))"
+            + " — add devices for \(targetMachine) to the machine profile,"
+            + " or pass --device/--device-machine explicitly")
     }
 }
 

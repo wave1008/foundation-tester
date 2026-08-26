@@ -74,7 +74,7 @@ function post(window, data) {
   window.dispatchEvent(new window.MessageEvent("message", { data }));
 }
 
-/** 手元 1 台 + M1Max 1 台(同名。(host, name) で一意という前提そのもの) */
+/** 手元 1 台 + M1Max 1 台(同名。(machine, name) で一意という前提そのもの) */
 function sendMixedDevices(window) {
   post(window, {
     type: "devices",
@@ -85,7 +85,7 @@ function sendMixedDevices(window) {
       },
       {
         id: "ios:M1Max/Dev 1", name: "Dev 1", platform: "ios", state: "unknown", kind: "virtual",
-        udid: "UDID-R", recording: false, machineHost: "M1Max",
+        udid: "UDID-R", recording: false, machine: "M1Max",
       },
     ],
   });
@@ -113,11 +113,11 @@ test("操作中はリモートでも「起動中」を出す(無反応に見え�
   t.after(() => window.close());
   sendMixedDevices(window);
 
-  post(window, { type: "deviceOpBusy", name: "Dev 1", host: "M1Max", op: "up", status: "running" });
+  post(window, { type: "deviceOpBusy", name: "Dev 1", machine: "M1Max", op: "up", status: "running" });
 
   const [local, remote] = placeholderTexts(document);
   assert.match(remote, /起動中/, "deviceStarting は本物の進捗なので出す");
-  assert.match(local, /未起動/, "host が違う手元のタイルは巻き込まれない");
+  assert.match(local, /未起動/, "machine が違う手元のタイルは巻き込まれない");
 });
 
 test("状態が届いているリモートのタイルは手元の台と同じ表示になる", (t) => {
@@ -128,7 +128,7 @@ test("状態が届いているリモートのタイルは手元の台と同じ�
     devices: [
       {
         id: "ios:M1Max/Dev 1", name: "Dev 1", platform: "ios", state: "offline", kind: "virtual",
-        udid: "UDID-R", recording: false, machineHost: "M1Max",
+        udid: "UDID-R", recording: false, machine: "M1Max",
       },
     ],
   });
@@ -138,12 +138,12 @@ test("状態が届いているリモートのタイルは手元の台と同じ�
   assert.doesNotMatch(remote, /取得できません/, "届いているのに「取得できません」は嘘になる");
 });
 
-// キュー状態(deviceOpBusy)の宛先。**host 省略は「手元」であって「どれでもよい」ではない** ——
+// キュー状態(deviceOpBusy)の宛先。**machine 省略は「手元」であって「どれでもよい」ではない** ——
 // ワイルドカードにすると先頭のタイル(= 手元)を書き換え、「M2Ultra の台を停止」で
 // 手元のタイルに「シャットダウン中」が出る(2026-08-17 の実害)。
 /** 「シャットダウン中」は稼働中の台にしか出ない(offline のタイルは別の表示になる)ので、
  * この2本だけ connected の同名ペアを使う。
- * **リモートを先に置く**のは意図的 —— 「host 省略 = どれでもよい」の実装は
+ * **リモートを先に置く**のは意図的 —— 「machine 省略 = どれでもよい」の実装は
  * 先頭一致で当てるので、手元を先に置くと偶然正解してしまい欠陥を検出できない。 */
 function sendConnectedPair(window) {
   post(window, {
@@ -151,7 +151,7 @@ function sendConnectedPair(window) {
     devices: [
       {
         id: "ios:M1Max/Dev 1", name: "Dev 1", platform: "ios", state: "connected", kind: "virtual",
-        udid: "UDID-R", recording: false, machineHost: "M1Max",
+        udid: "UDID-R", recording: false, machine: "M1Max",
       },
       {
         id: "ios:Dev 1", name: "Dev 1", platform: "ios", state: "connected", kind: "virtual",
@@ -172,7 +172,7 @@ test("手元宛のキュー状態がリモートのタイルを書き換えな�
   t.after(() => window.close());
   sendConnectedPair(window);
 
-  // host を持たない = 手元宛
+  // machine を持たない = 手元宛
   post(window, { type: "deviceOpBusy", name: "Dev 1", op: "down", status: "running" });
 
   const { local, remote } = connectedPairTexts(document);
@@ -185,7 +185,7 @@ test("リモート宛のキュー状態が手元のタイルを書き換えな�
   t.after(() => window.close());
   sendConnectedPair(window);
 
-  post(window, { type: "deviceOpBusy", name: "Dev 1", host: "M1Max", op: "down", status: "running" });
+  post(window, { type: "deviceOpBusy", name: "Dev 1", machine: "M1Max", op: "down", status: "running" });
 
   const { local, remote } = connectedPairTexts(document);
   assert.match(remote, /シャットダウン中/, "リモートのタイルに出る");

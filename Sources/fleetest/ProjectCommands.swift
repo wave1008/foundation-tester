@@ -248,7 +248,7 @@ struct ProfileCommand: AsyncParsableCommand {
                         .joined(separator: ", ")
                     // マシンプロファイルの host はローカルのときだけ黙る(2026-08-17。ユーザー決定:
                     // マシンプロファイルで実行プロファイル経由のリモートホスト指定を表せるようにした)
-                    let hostSuffix = resolved.machineHost.map { " (\($0))" } ?? ""
+                    let hostSuffix = resolved.machine.map { " (\($0))" } ?? ""
                     print("・ \(run) — \(resolved.appName) / \(devices) @ \(resolved.machineName)\(hostSuffix)")
                     for warning in resolved.warnings { print("    ⚠️ \(warning)") }
                 } catch ProfileError.machineUndetermined {

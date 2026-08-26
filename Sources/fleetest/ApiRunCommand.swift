@@ -103,7 +103,7 @@ struct ApiRunCommand: AsyncParsableCommand {
     var host: String?
 
     /// `--machine` と `--host` はどちらもディスパッチ先を指す。両方あれば --machine を優先
-    /// (エイリアスのほうが利用者の意図に近い)。この畳み込みは resolveEffectiveHostDispatch より前
+    /// (エイリアスのほうが利用者の意図に近い)。この畳み込みは resolveEffectiveDispatchTarget より前
     var dispatchTarget: String? { machine ?? host }
 
     @Option(name: .customLong("remote-dir"),
@@ -131,13 +131,13 @@ struct ApiRunCommand: AsyncParsableCommand {
 
     /// **どの機械のデバイスを使うか**。`--device` は名前でしか絞れないが、一意なのは (host, name)
     /// なので、名前だけだと別の機械の同名デバイスまで掴む(run の同名オプションと同じ規律)。
-    /// ホスト別サブ実行(ApiRunHostFanout)が自分で付ける値で、手で打つものではない
+    /// マシン別サブ実行(ApiRunMachineFanout)が自分で付ける値で、手で打つものではない
     @Option(name: [.customLong("device-machine"), .customLong("device-host")],
             help: ArgumentHelp(
                 "Only use the devices assigned to this machine (\"local\" or a registered host name). "
                 + "Set by the per-host sub-runs; not for hand use",
                 visibility: .hidden))
-    var deviceHost: String?
+    var deviceMachine: String?
 
     /// 同じ実行から分かれた run を束ねる鍵(FTCore.RunMetaRecord.runGroup)。**発行は
     /// ファンアウトの親だけ**で、子は受け取った値をそのまま run.json に書く(自分で作らない)。
@@ -178,33 +178,33 @@ struct ApiRunCommand: AsyncParsableCommand {
         // プロファイルの host はローカルでは何も実行せずリモートの出力を中継するだけなので、
         // 必ずそれより前に分岐する。--host 明示 + --dry-run は dispatchToRemoteHost が明示的に
         // 拒否する(既存どおり)ため常に解決へ進める一方、自動側(host 未指定)は dry-run のとき
-        // マシン側 host を見ない(requireMachineHost: !dryRun)= ローカルで dry-run が走る。
-        // 優先順位・食い違いは FTCore.MachineHostDispatch に委譲(ユーザー決定)
+        // マシン側 host を見ない(requireProfileMachine: !dryRun)= ローカルで dry-run が走る。
+        // 優先順位・食い違いは FTCore.MachineDispatch に委譲(ユーザー決定)
         // デバイスが複数の機械にまたがる実行プロファイルは、ホストごとの子プロセス(`fleetest api
-        // run --host <label>`)へ分け、NDJSON を ApiRunHostFanout が1本へ多重化する
+        // run --host <label>`)へ分け、NDJSON を ApiRunMachineFanout が1本へ多重化する
         // (docs/remote-runner.md §13)。--host 明示や全台が同じ機械なら nil が返り従来経路のまま。
         // --debug は子プロセスの stdin へ橋渡しする経路が無いため、ここでだけ明示的に拒否する
         // (単一ホストの --host + --debug は dispatchToRemoteHost が同様に拒否している)
         if !dryRun, let profile,
-           let groups = try DeviceHostRunner.plan(
+           let groups = try DeviceMachineRunner.plan(
                project: testProject, profileName: profile, explicitHost: dispatchTarget, deviceFilter: devices) {
             if debug {
                 throw ValidationError(
                     "--debug is not supported with a profile that spans multiple machines"
-                    + " (\(groups.map(\.hostLabel).joined(separator: ", ")))")
+                    + " (\(groups.map(\.machineLabel).joined(separator: ", ")))")
             }
-            let exitCode = try await ApiRunHostFanout.run(
+            let exitCode = try await ApiRunMachineFanout.run(
                 project: testProject, profileName: profile, groups: groups, scenarios: scenarios,
-                options: ApiRunHostFanout.Options(
+                options: ApiRunMachineFanout.Options(
                     heal: heal, defaultTimeout: defaultTimeout, scenarioTimeout: scenarioTimeout,
                     noLPT: noLPT, lptHistoryRuns: lptHistoryRuns, performanceMode: performanceMode,
                     remoteDir: remoteDir, remoteTimeout: remoteTimeout, remoteArtifacts: remoteArtifacts))
             if exitCode != 0 { throw ExitCode(exitCode) }
             return
         }
-        if let dispatch = try resolveEffectiveHostDispatch(
-            explicitHost: dispatchTarget, profile: profile, project: project,
-            requireMachineHost: !dryRun, warn: { logStderr($0) }) {
+        if let dispatch = try resolveEffectiveDispatchTarget(
+        explicitTarget: dispatchTarget, profile: profile, project: project,
+            requireProfileMachine: !dryRun, warn: { logStderr($0) }) {
             try await dispatchToRemoteHost(dispatch, project: testProject)
             return
         }
@@ -260,28 +260,28 @@ struct ApiRunCommand: AsyncParsableCommand {
                         + staged.joined(separator: ", "))
                 }
             }
-            // --device / --device-host: ApiRunHostFanout の子(ホスト別サブ実行)が自分のぶんだけを
+            // --device / --device-machine: ApiRunMachineFanout の子(マシン別サブ実行)が自分のぶんだけを
             // 回すのに使う(ProfileRunner.run と同じ順序・同じメッセージ規律 —— ホストで絞らないと
             // 別の機械の同名デバイスまで掴む。filteringDevices の宣言)
             //
             // 明示 --host local はこの機械で走らせる指定なので、ホスト混在プロファイルでは
             // local 枠だけに絞る(他ホスト担当分まで手元で解決すると存在しない台を掴む。
-            // ホスト別サブ実行は --device/--device-host を持つのでこの分岐に入らない)。
+            // マシン別サブ実行は --device/--device-machine を持つのでこの分岐に入らない)。
             // **明示 --device があっても絞る**(RunScenarios.run と同型。受け手報告 2026-08-24:
             // 名前だけでは同名の台が別の機械のエントリに解決し、向こうの UDID を手元で探す)
             var effectiveDevices = devices
-            var effectiveDeviceHost = deviceHost
-            if deviceHost == nil, MachineHostDispatch.isExplicitLocal(dispatchTarget) {
-                (effectiveDevices, effectiveDeviceHost) = try hostScopedDeviceFilter(
+            var effectiveDeviceHost = deviceMachine
+            if deviceMachine == nil, MachineDispatch.isExplicitLocal(dispatchTarget) {
+                (effectiveDevices, effectiveDeviceHost) = try machineScopedDeviceFilter(
                     project: testProject, profile: profile,
-                    targetHost: DeviceHostGrouping.localDisplayName, requestedDevices: devices)
+                    targetMachine: DeviceMachineGrouping.localDisplayName, requestedDevices: devices)
             }
-            let full = resolvedAll.filteringDevices(names: effectiveDevices, deviceHost: effectiveDeviceHost)
+            let full = resolvedAll.filteringDevices(names: effectiveDevices, deviceMachine: effectiveDeviceHost)
             // 絞り込みを指定したときだけ「合致0」を報告する。指定していないのに0台なのは
             // プロファイル自体の誤りで、それは resolve 側が自分の言葉で報告する
             if full.devices.isEmpty, !effectiveDevices.isEmpty || effectiveDeviceHost != nil {
                 let scope = [devices.isEmpty ? nil : "--device \(devices.joined(separator: ", "))",
-                             deviceHost.map { "--device-host \($0)" }]
+                             deviceMachine.map { "--device-machine \($0)" }]
                     .compactMap { $0 }.joined(separator: " ")
                 throw ValidationError(
                     "\(scope) matched no device in run profile \(profile)"
@@ -583,7 +583,7 @@ struct ApiRunCommand: AsyncParsableCommand {
     /// (--debug)・ローカル専用系(--dry-run 等)はリモートでは意味を持たない/中継されないため
     /// 併用不可にする。--profile は既存の platform/port/serial 排他チェックで担保済みなので
     /// ここでは個別に確認しない
-    private func dispatchToRemoteHost(_ dispatch: EffectiveHostDispatch, project: TestProject) async throws {
+    private func dispatchToRemoteHost(_ dispatch: EffectiveDispatchTarget, project: TestProject) async throws {
         guard let profile else {
             throw ValidationError("--host requires --profile")
         }
@@ -619,16 +619,16 @@ struct ApiRunCommand: AsyncParsableCommand {
         let localRoot = try RepoRoot.find()
         let dispatcher = RemoteRunDispatcher(
             host: resolved.hostSpec, remoteDirRaw: resolved.remoteDirRaw, localRepoRoot: localRoot,
-            mode: .apiRun, artifacts: artifactsMode, hostLabel: dispatch.rawHost)
+            mode: .apiRun, artifacts: artifactsMode, hostLabel: dispatch.rawTarget)
         var scopedDevices = devices
-        var scopedDeviceHost = deviceHost
-        if deviceHost == nil {
-            (scopedDevices, scopedDeviceHost) = try hostScopedDeviceFilter(
-                project: project, profile: profile, targetHost: dispatch.rawHost, requestedDevices: devices)
+        var scopedDeviceHost = deviceMachine
+        if deviceMachine == nil {
+            (scopedDevices, scopedDeviceHost) = try machineScopedDeviceFilter(
+                project: project, profile: profile, targetMachine: dispatch.rawTarget, requestedDevices: devices)
         }
         let exitCode = try await dispatcher.dispatchApi(
             project: project, profile: profile, scenarios: scenarios,
-            deviceNames: scopedDevices, deviceHost: scopedDeviceHost,
+            deviceNames: scopedDevices, deviceMachine: scopedDeviceHost,
             heal: heal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
             performanceMode: performanceMode,
             defaultTimeout: defaultTimeout, scenarioTimeout: scenarioTimeout.map(Double.init),
@@ -839,7 +839,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         let reportDirURL = reportDir.map { URL(fileURLWithPath: $0) } ?? resolved.reportDir
 
         // workersReady はレーン構成の全置換(同一 id のログは維持。複数回出してよい ——
-        // ApiRunHostFanout は累積再送する)。単体実行は1回・全ワーカー分を宣言する。iOS はブリッジ
+        // ApiRunMachineFanout は累積再送する)。単体実行は1回・全ワーカー分を宣言する。iOS はブリッジ
         // 供給前でも id("ios:論理名")が確定するので、供給待ちを表す detail 付きのプレースホルダで
         // 先に載せる(port は表示のみの情報)。
         var readyInfo = workersReadyInfo(workers)
@@ -1261,7 +1261,7 @@ private final class DebugControlBox: @unchecked Sendable {
     }
 }
 
-/// fleetest api run の冒頭イベント。internal: ApiRunHostFanout が複数機械分をまとめて1回だけ emit する
+/// fleetest api run の冒頭イベント。internal: ApiRunMachineFanout が複数機械分をまとめて1回だけ emit する
 struct ApiRunStartedEvent: Encodable {
     let kind = "runStarted"
     let total: Int
@@ -1289,15 +1289,15 @@ private struct ApiScenarioRequeuedEvent: Encodable {
 /// --profile 指定(ワーカー並列実行時)のみ、runStarted 直後に 1 回 emit するイベント。
 /// id は "<platform>:<デバイス論理名>"(ApiMonitorCommand.swift の monitorDevices の id と
 /// 同一規則。VSCode 拡張がモニタータイルと突合するため)。internal: 複数機械にまたがる
-/// プロファイルでは ApiRunHostFanout が各子ぶんを合流させて1回だけ emit する
+/// プロファイルでは ApiRunMachineFanout が各子ぶんを合流させて1回だけ emit する
 struct ApiWorkersReadyEvent: Encodable {
     let kind = "workersReady"
     let workers: [ApiWorkerInfo]
 }
 
 /// ApiWorkersReadyEvent の 1 ワーカー分。同期相手: vscode-fleetest/src/model.ts の WorkerInfo
-/// (id/name/platform/detail。machineHost は 2026-08-17 時点で未追随)。machineHost は
-/// src/monitorDeviceModel.ts の MonitorDevice.machineHost と同じ名前・同じ意味(手元は省略・
+/// (id/name/platform/detail。machine は 2026-08-17 時点で未追随)。machine は
+/// src/monitorDeviceModel.ts の MonitorDevice.machine と同じ名前・同じ意味(手元は省略・
 /// リモートはホスト名)で揃える。表示の組み立ては拡張側(src/runLaneModel.ts の workersReady
 /// 処理・laneLog.js の .lane-name)の責務なので、name 自体は加工しない
 struct ApiWorkerInfo: Encodable {
@@ -1306,20 +1306,20 @@ struct ApiWorkerInfo: Encodable {
     let platform: String
     let detail: String
     /// 複数機械にまたがるプロファイルでこのワーカーが居る機械(手元は nil = キー省略)
-    let machineHost: String?
+    let machine: String?
 
-    init(id: String, name: String, platform: String, detail: String, machineHost: String? = nil) {
+    init(id: String, name: String, platform: String, detail: String, machine: String? = nil) {
         self.id = id
         self.name = name
         self.platform = platform
         self.detail = detail
-        self.machineHost = machineHost
+        self.machine = machine
     }
 }
 
 /// fleetest api run の末尾イベント。vscode-fleetest/src/model.ts の RunFinishedEvent と
 /// フィールド名を同期(testSeconds/scenarioTotalSeconds のリネーム不可)。internal: 複数機械に
-/// またがるプロファイルでは ApiRunHostFanout が全ホストの合計を1回だけ emit する
+/// またがるプロファイルでは ApiRunMachineFanout が全ホストの合計を1回だけ emit する
 struct ApiRunFinishedEvent: Encodable {
     let kind = "runFinished"
     let passed: Int

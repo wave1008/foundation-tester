@@ -3616,7 +3616,7 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
   名指しする**(同じ ID を別の台が同時に書いているので、「この ID の最新」では別の台の記録を消す。
   欠番は詰めない)。参加しなかった台のぶんは「device … never joined the run」、離脱して復帰できなかった
   台のぶんは「… dropped out and could not be revived」で失敗として残す(準備できなかった台が緑に紛れない)。
-  ホスト混在プロファイルは `DeviceHostRunner` が**分割せず全ホストへ全件**を渡し、`--host` は
+  ホスト混在プロファイルは `DeviceMachineRunner` が**分割せず全ホストへ全件**を渡し、`--host` は
   `RemoteRunArgs.build` が中継する。`--fleet` とは併用不可(中継していないので黙って分配になる)。
   `api run`(拡張)には載せていない(Test Explorer は flowURL = シナリオ1項目の前提)
 - **実行中の凍結による結果取り消し+別デバイス再実行**(`RunOrchestrator.runWorker`。2026-07-17):

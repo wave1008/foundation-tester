@@ -37,7 +37,7 @@ enum ProfileRunner {
                     lptHistoryRuns: Int = LPTOrdering.defaultHistoryRuns,
                     performanceMode: Bool = false,
                     deviceFilter: [String] = [],
-                    deviceHost: String? = nil,
+                    deviceMachine: String? = nil,
                     workspaceOverride: String? = nil,
                     recorder: RunRecorder? = nil,
                     broadcast: Bool = false) async throws -> RunSummary {
@@ -70,13 +70,13 @@ enum ProfileRunner {
                 print("→ Staged app package(s) into the workspace: " + staged.joined(separator: ", "))
             }
         }
-        // --device / --device-host(ホスト別サブ実行が自分のぶんだけ回す)。**ホストで絞らないと
+        // --device / --device-machine(マシン別サブ実行が自分のぶんだけ回す)。**ホストで絞らないと
         // 別の機械の同名デバイスまで掴む**(filteringDevices の宣言)。0台になったら止める
-        let full = resolvedAll.filteringDevices(names: deviceFilter, deviceHost: deviceHost)
+        let full = resolvedAll.filteringDevices(names: deviceFilter, deviceMachine: deviceMachine)
         if full.devices.isEmpty {
-            let scope = deviceFilter.isEmpty ? "--device-host \(deviceHost ?? "")"
+            let scope = deviceFilter.isEmpty ? "--device-machine \(deviceMachine ?? "")"
                 : "--device \(deviceFilter.joined(separator: ", "))"
-                    + (deviceHost.map { " --device-host \($0)" } ?? "")
+                    + (deviceMachine.map { " --device-machine \($0)" } ?? "")
             throw ValidationError(
                 "\(scope) matched no device in run profile \(profileName)"
                 + " (available: \(resolvedAll.devices.map(\.name).joined(separator: ", ")))")

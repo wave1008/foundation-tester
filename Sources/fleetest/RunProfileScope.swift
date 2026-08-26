@@ -35,27 +35,27 @@ enum RunProfileScope {
             throw ProfileError.missingDevices(run: runProfileName)
         }
 
-        // **参照の同一性は (host, name)**(FTCore.DeviceHostGrouping)。名前だけで絞ると、
+        // **参照の同一性は (host, name)**(FTCore.DeviceMachineGrouping)。名前だけで絞ると、
         // 同名のデバイスが別のホストにも居るとき**選んでいない台まで混ざる**
-        // (モニターに未選択のタイルが並ぶ実害。2026-08-17)。実効ホストは entries が
-        // spec.host へ書き戻すので、以降の利用側(モニターのホスト表示)もそれを読める
-        let entries = DeviceHostGrouping.entries(machine: machineProfile)
+        // (モニターに未選択のタイルが並ぶ実害。2026-08-17)。実効マシンは entries が
+        // spec.machine へ書き戻すので、以降の利用側(モニターのマシン表示)もそれを読める
+        let entries = DeviceMachineGrouping.entries(machine: machineProfile)
         // **並びはマシンプロファイル順**(実行プロファイルの記述順で並べ替えない。起動順の契約。
         // testPreservesMachineProfileOrderNotRunProfileOrder)ので、採用は「印」で持つ
         var matchedKeys = Set<String>()
         var missingNames: [String] = []
         for ref in deviceRefs {
-            switch DeviceHostGrouping.resolve(ref, in: entries) {
+            switch DeviceMachineGrouping.resolve(ref, in: entries) {
             case .found(let entry):
-                matchedKeys.insert("\(DeviceHostGrouping.display(entry.host))\t\(entry.name)")
+                matchedKeys.insert("\(DeviceMachineGrouping.display(entry.machine))\t\(entry.name)")
             case .missing:
                 missingNames.append(ref.name)
-            case .ambiguous(let hosts):
+            case .ambiguous(let machines):
                 // 曖昧な参照は**触らない**(どちらの機械の台か決まらないまま起動・監視しない)。
                 // run 側は同じ状況で中止する(ProfileError.ambiguousDeviceRef)
                 warn("⚠️ device \"\(ref.name)\" in run profile \(runProfileName) is ambiguous"
-                    + " (it exists on \(hosts.joined(separator: ", "))) — skipping it."
-                    + " Add \"host\" to the device entry to say which one")
+                    + " (it exists on \(machines.joined(separator: ", "))) — skipping it."
+                    + " Add \"machine\" to the device entry to say which one")
             }
         }
         if !missingNames.isEmpty {
@@ -65,7 +65,7 @@ enum RunProfileScope {
         }
 
         let matched = entries.filter {
-            matchedKeys.contains("\(DeviceHostGrouping.display($0.host))\t\($0.name)")
+            matchedKeys.contains("\(DeviceMachineGrouping.display($0.machine))\t\($0.name)")
         }
         let filteredIOS = matched.filter { $0.platform == "ios" }.map(\.spec)
         let filteredAndroid = matched.filter { $0.platform == "android" }.map(\.spec)

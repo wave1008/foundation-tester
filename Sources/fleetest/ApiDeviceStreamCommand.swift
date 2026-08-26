@@ -4,7 +4,7 @@
 // 手元のデバイスなら拡張が配信ヘルパー(fleetest-simstream / fleetest-androidstream /
 // fleetest-devicepoll)を直接起こす。**リモートのデバイスにはそれができない** —— udid も
 // adb serial も向こうの機械のものだから。そこで拡張は代わりに
-// `fleetest remote exec <host> -- api device-stream --device-host <host> --platform … --name …`
+// `fleetest remote exec <host> -- api device-stream --device-machine <host> --platform … --name …`
 // を起こす。このコマンドは向こうで宛先を解決してヘルパーへ **exec で化ける**ので、
 // **stdout に流れるバイト列はヘルパーが直に書いたものと1バイトも変わらない**。
 //
@@ -39,7 +39,7 @@ struct ApiDeviceStreamCommand: AsyncParsableCommand {
 
     @Option(name: [.customLong("device-machine"), .customLong("device-host")],
             help: "Treat the devices assigned to this machine name as local (set by the caller on the other end of ssh)")
-    var deviceHost: String?
+    var deviceMachine: String?
 
     @Option(help: "Platform of the device to stream (ios or android)")
     var platform: String
@@ -64,9 +64,9 @@ struct ApiDeviceStreamCommand: AsyncParsableCommand {
             throw ValidationError("--codec must be mjpeg or h264")
         }
         let machineProfile = try MachineProfileLoad.load(
-            project: project, profile: profile, deviceHost: deviceHost,
+            project: project, profile: profile, deviceMachine: deviceMachine,
             noteAutoMachine: { _ in }, warn: { _ in })
-        let targets = DeviceHostGrouping.entries(machine: machineProfile).map {
+        let targets = DeviceMachineGrouping.entries(machine: machineProfile).map {
             MonitorTarget(platform: $0.platform, spec: $0.spec)
         }
         guard let target = targets.first(where: { $0.platform == platform && $0.name == name }) else {

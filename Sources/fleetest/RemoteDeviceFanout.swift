@@ -7,10 +7,10 @@
 // 「同時2台」の上限は**機械ごとに**持てる。3台の機械なら 3×2 台が同時に立ち上がる。
 //
 // 実装の方針:
-// - 子は `fleetest remote exec <host> -- api devices-up … --device-host <host>` を**自分自身の
+// - 子は `fleetest remote exec <host> -- api devices-up … --device-machine <host>` を**自分自身の
 //   バイナリ**で起動する(ssh の張り方・PATH 補正・ホスト解決を remote exec に委ねる。
 //   FleetRunner が子プロセスで fleetest を呼ぶのと同じ形)
-// - **--device-host が要る** —— リモート機のプロファイルにはそのデバイスの host(= その機械の
+// - **--device-machine が要る** —— リモート機のプロファイルにはそのデバイスの host(= その機械の
 //   登録名)が書いてあり、CLI には「自分が誰か」を知る手段が無い(マシン登録名は持たない)。
 //   親が明示することで、向こうは自分のデバイスを「手元のもの」として扱える
 // - 子の stdout は **NDJSON のまま中継する**(行を作り直さない)。host は子が各イベントへ
@@ -22,17 +22,17 @@ import Foundation
 enum RemoteDeviceFanout {
 
     /// 実行プロファイルが参照するデバイスのうち、**手元でない機械**のホスト名(登場順)。
-    /// `--device-host` を明示している呼び出しでは分散しない(その機械のぶんだけを扱う指示なので)
-    static func remoteHosts(project: String?, profile: String?, deviceHost: String?) -> [String] {
-        guard deviceHost == nil, let profile else { return [] }
+    /// `--device-machine` を明示している呼び出しでは分散しない(その機械のぶんだけを扱う指示なので)
+    static func remoteMachines(project: String?, profile: String?, deviceMachine: String?) -> [String] {
+        guard deviceMachine == nil, let profile else { return [] }
         guard let testProject = try? ScenarioHost.project(named: project),
               let machine = try? ProfileResolver.determineMachine(
                   project: testProject, runProfileName: profile),
-              let devices = try? ProfileResolver.runDeviceHosts(
+              let devices = try? ProfileResolver.runDeviceMachines(
                   project: testProject, runProfileName: profile, machineName: machine.name)
         else { return [] }
-        return DeviceHostGrouping.groups(devices, host: { $0.host })
-            .compactMap(\.host)
+        return DeviceMachineGrouping.groups(devices, machine: { $0.machine })
+            .compactMap(\.machine)
     }
 
     /// 各ホストへ `api <subcommand>` を投げ、stdout の NDJSON を1行ずつ `relay` へ渡す。
@@ -49,7 +49,7 @@ enum RemoteDeviceFanout {
                     // 向こうの作業ディレクトリに profiles/ が無い(または古い)ままだと
                     // 「machines/ が空」で失敗する(2026-08-17 実機で確認)。run のディスパッチと
                     // 同じ rsync 引数(RemoteTransferPlan)を使う = 転送の規則を二重に持たない
-                    if let project, let failure = RemoteProjectSync.run(project: project, host: host) {
+                    if let project, let failure = RemoteProjectSync.run(project: project, machine: host) {
                         relay(logLine("❌ \(failure)"))
                         return
                     }
@@ -57,7 +57,7 @@ enum RemoteDeviceFanout {
                     if let project { args += ["--project", project] }
                     if let profile { args += ["--profile", profile] }
                     // エイリアスは渡さない(転送時に畳んである。FTCore.RunnerProfileView)
-                    args += ["--device-machine", DeviceHostGrouping.localDisplayName]
+                    args += ["--device-machine", DeviceMachineGrouping.localDisplayName]
                     args += extraArgs
                     await runChild(args: args, host: host, relay: relay)
                 }

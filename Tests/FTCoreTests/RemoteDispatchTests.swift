@@ -484,7 +484,7 @@ final class RemoteDispatchTests: XCTestCase {
     func testRemoteRunArgsRelaysTheDeviceScope() {
         let args = RemoteRunArgs.build(
             project: "E2E", profile: "mixed", scenarios: [], folders: [],
-            deviceNames: ["iPhone-01", "iPhone-02"], deviceHost: "M1Max",
+            deviceNames: ["iPhone-01", "iPhone-02"], deviceMachine: "M1Max",
             heal: false, noHeal: false, noLPT: false, lptHistoryRuns: nil,
             fastInput: false, enableAnimations: false, performanceMode: false,
             remoteJUnitPath: nil, reportDir: nil)
@@ -582,7 +582,7 @@ final class RemoteDispatchTests: XCTestCase {
 
     /// リモートで走る fleetest が**もう一度ディスパッチしない**ことを固定する。転送された
     /// マシンプロファイルには host(= そのリモート自身の名前)が入っているので、--host local が
-    /// 抜けると向こうの MachineHostDispatch が自動ディスパッチに入り、登録簿次第で
+    /// 抜けると向こうの MachineDispatch が自動ディスパッチに入り、登録簿次第で
     /// 「未登録のホスト」で落ちるか自分自身へ ssh する
     func testRemoteRunArgsAlwaysPinTheRemoteSideToLocal() {
         for args in [
@@ -828,13 +828,13 @@ final class RemoteDispatchTests: XCTestCase {
             ])
     }
 
-    /// ApiRunHostFanout がホストごとの子(`api run --host <label>`)を立てるようになったため、
+    /// ApiRunMachineFanout がホストごとの子(`api run --host <label>`)を立てるようになったため、
     /// `api run --host` のリモート実行にも `run --host` と同じデバイス絞り込みの中継が要る
     /// (testRemoteRunArgsRelaysTheDeviceScope と対。渡さないと向こうが全ホストぶんの台を掴む)
     func testBuildApiRelaysTheDeviceScope() {
         let args = RemoteRunArgs.buildApi(
             project: "E2E", profile: "mixed", scenarios: ["Login.S0010"],
-            deviceNames: ["iPhone-01", "iPhone-02"], deviceHost: "M1Max",
+            deviceNames: ["iPhone-01", "iPhone-02"], deviceMachine: "M1Max",
             heal: false, noLPT: false, lptHistoryRuns: nil,
             performanceMode: false,
             defaultTimeout: nil, scenarioTimeout: nil, reportDir: nil)

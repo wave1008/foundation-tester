@@ -8,13 +8,13 @@ import FTCore
 
 final class BroadcastFlagTests: XCTestCase {
 
-    /// ホスト別サブ実行(DeviceHostRunner)は FleetRunner.buildArgs で子の引数を作る。
+    /// マシン別サブ実行(DeviceMachineRunner)は FleetRunner.buildArgs で子の引数を作る。
     /// ここで落とすと、ホスト混在プロファイルだけブロードキャストにならない
     func testFleetBuildArgsRelaysBroadcastOnlyWhenSet() {
         func args(broadcast: Bool) -> [String] {
             FleetRunner.buildArgs(
                 project: "E2E", host: "local", profile: "p",
-                deviceNames: ["iPhone-01"], deviceHost: "local",
+                deviceNames: ["iPhone-01"], deviceMachine: "local",
                 scenarios: ["Warm.up"], folders: [],
                 heal: false, noHeal: false, noLPT: false, lptHistoryRuns: nil,
                 fastInput: false, enableAnimations: false, performanceMode: false,

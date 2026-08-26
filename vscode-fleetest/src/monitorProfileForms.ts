@@ -566,10 +566,10 @@ export function updateAppProfileInObject(
 export interface MachineDeviceEntry {
   readonly name: string;
   readonly platform: MonitorPlatform;
-  /** このデバイスが居る機械(登録名。省略=プロファイル直下の host、それも無ければ手元)。
-   * 一意なのは (host, name) で、別ホストの同名は重複ではない
-   * (Sources/FTCore/DeviceHostGrouping.swift)。 */
-  readonly host?: string;
+  /** このデバイスが居る機械(登録名 = マシンのエイリアス。省略=プロファイル直下の machine、
+   * それも無ければ手元)。一意なのは (machine, name) で、別マシンの同名は重複ではない
+   * (Sources/FTCore/DeviceMachineGrouping.swift)。 */
+  readonly machine?: string;
   /** 実体種別。省略=virtual(シミュレータ/エミュレータ)。physical は実機で、
    * 識別子は iOS=udid / Android=serial(Sources/FTCore/RunProfile.swift の DeviceKind と同期)。 */
   readonly kind?: "virtual" | "physical";
@@ -970,21 +970,21 @@ export function isDeleteDeviceEvent(value: unknown): value is DeleteDeviceEvent 
  * 無ければ udid 先頭8文字、それも無ければ "iOS"。Android: avd があれば "AVD: "+avd、
  * 実機(avd を持たない)は serial、どちらも無ければ "Android"。
  */
-/** デバイスの実効ホスト(デバイス指定 > プロファイル直下の既定 > 手元)。手元は undefined。
- * **判定は Sources/FTCore/DeviceHostGrouping.effectiveHost と同じ規則**(空文字=未指定で既定へ、
+/** デバイスの実効マシン(デバイス指定 > プロファイル直下の既定 > 手元)。手元は undefined。
+ * **判定は Sources/FTCore/DeviceMachineGrouping.effectiveHost と同じ規則**(空文字=未指定で既定へ、
  * "local"=手元の明示で既定より強い)。片方だけ変えると、拡張の重複判定と CLI の解決がズレて
  * 「UI では足せるのに run で解決できない」になる。 */
-export function effectiveDeviceHost(
-  deviceHost: string | undefined, profileDefaultHost: string | undefined,
+export function effectiveDeviceMachine(
+  deviceMachine: string | undefined, profileDefaultMachine: string | undefined,
 ): string | undefined {
-  const device = (deviceHost ?? "").trim();
+  const device = (deviceMachine ?? "").trim();
   if (device === "local") {
     return undefined;
   }
   if (device !== "") {
     return device;
   }
-  const fallback = (profileDefaultHost ?? "").trim();
+  const fallback = (profileDefaultMachine ?? "").trim();
   return fallback === "" || fallback === "local" ? undefined : fallback;
 }
 
@@ -1058,7 +1058,7 @@ export function validateNewMachineProfileName(name: string, existing: readonly s
 export function removeDeviceFromMachineProfile(
   profileObject: unknown,
   name: string,
-  host?: string,
+  machine?: string,
 ): { readonly object: Record<string, unknown>; readonly removed: boolean } | null {
   if (typeof profileObject !== "object" || profileObject === null || Array.isArray(profileObject)) {
     return null;
@@ -1085,17 +1085,17 @@ export function removeDeviceFromMachineProfile(
       if (record.name !== name) {
         return true;
       }
-      // **ホストを渡されたらそのホストのぶんだけ消す**。名前は (host, name) でしか一意でないので、
+      // **マシンを渡されたらそのマシンのぶんだけ消す**。名前は (machine, name) でしか一意でないので、
       // 名前だけで消すと別の機械の同名デバイスが巻き添えになる(mixed プロファイルでは同名が普通)
-      if (host === undefined) {
+      if (machine === undefined) {
         return false;
       }
-      const effective = effectiveDeviceHost(
+      const effective = effectiveDeviceMachine(
         typeof (record.machine ?? record.host) === "string"
           ? (record.machine ?? record.host) as string : undefined,
         typeof (source.machine ?? source.host) === "string"
           ? (source.machine ?? source.host) as string : undefined);
-      return (effective ?? "local") !== host;
+      return (effective ?? "local") !== machine;
     });
     if (filtered.length !== devices.length) {
       removed = true;
@@ -1107,18 +1107,18 @@ export function removeDeviceFromMachineProfile(
 }
 
 /**
- * runs/<name>.json の devices[] から (host, name) が一致するエントリを取り除いた新オブジェクトを
+ * runs/<name>.json の devices[] から (machine, name) が一致するエントリを取り除いた新オブジェクトを
  * 返す(未知キー保持)。**実体を消したあとの後始末専用** —— 実行プロファイルが指す台が消えると
  * run はその台を起動できずに落ちるので、台帳から外す。
  *
  * マシンプロファイルと形が違う: 実行プロファイルの devices は ios/android で分かれておらず
- * 平らな配列で、host は各エントリが持つ(省略は "local")。そのため専用の関数にする。
+ * 平らな配列で、machine は各エントリが持つ(省略は "local")。そのため専用の関数にする。
  * 非オブジェクトなら null(「不正なファイル」)、removed は取り除いた件数。
  */
 export function removeDeviceFromRunProfile(
   profileObject: unknown,
   name: string,
-  host: string,
+  machine: string,
 ): { readonly object: Record<string, unknown>; readonly removed: number } | null {
   if (typeof profileObject !== "object" || profileObject === null || Array.isArray(profileObject)) {
     return null;
@@ -1137,9 +1137,9 @@ export function removeDeviceFromRunProfile(
       return true;
     }
     const rawEntryMachine = record.machine ?? record.host;  // 旧キー "host" も読む
-    const entryHost = typeof rawEntryMachine === "string" && rawEntryMachine !== ""
+    const entryMachine = typeof rawEntryMachine === "string" && rawEntryMachine !== ""
       ? rawEntryMachine : "local";
-    return entryHost !== host;
+    return entryMachine !== machine;
   });
   if (filtered.length === devices.length) {
     return { object: { ...source }, removed: 0 };
@@ -1148,7 +1148,7 @@ export function removeDeviceFromRunProfile(
 }
 
 /**
- * `machine` を使う実行プロファイルからだけ devices の (host, name) 一致を取り除く
+ * `machine` を使う実行プロファイルからだけ devices の (machine, name) 一致を取り除く
  * (machine が違えば removed:0 でそのまま返す)。**マシンプロファイルの登録を外す前に呼ぶ** ——
  * 参照する側から外さないと「マシンに居ない台を指す実行プロファイル」が残る。
  * 非オブジェクトなら null(「不正なファイル」)。
@@ -1156,7 +1156,7 @@ export function removeDeviceFromRunProfile(
 export function removeDevicesFromRunProfileOfMachine(
   profileObject: unknown,
   machine: string,
-  devices: readonly { readonly name: string; readonly host?: string }[],
+  devices: readonly { readonly name: string; readonly machine?: string }[],
 ): { readonly object: unknown; readonly removed: number } | null {
   if (typeof profileObject !== "object" || profileObject === null || Array.isArray(profileObject)) {
     return null;
@@ -1167,7 +1167,7 @@ export function removeDevicesFromRunProfileOfMachine(
   let current: unknown = profileObject;
   let removed = 0;
   for (const device of devices) {
-    const result = removeDeviceFromRunProfile(current, device.name, device.host ?? "local");
+    const result = removeDeviceFromRunProfile(current, device.name, device.machine ?? "local");
     if (!result) {
       return null;
     }
@@ -1179,18 +1179,18 @@ export function removeDevicesFromRunProfileOfMachine(
 
 /**
  * removeDeviceFromMachineProfile を devices へ順次適用し、1つの新オブジェクトにまとめる
- * (handleMachineDeviceRemove の本体。ファイル I/O は呼び出し側)。**引き当ては (host, name)**
- * —— host 省略は手元("local")として引く。名前だけで消すと別の機械の同名デバイスが巻き添えになる。
+ * (handleMachineDeviceRemove の本体。ファイル I/O は呼び出し側)。**引き当ては (machine, name)**
+ * —— machine 省略は手元("local")として引く。名前だけで消すと別の機械の同名デバイスが巻き添えになる。
  * 途中で不正形式に当たったら null(呼び出し側は書き戻さない)。removed は実際に取り除けた件数。
  */
 export function removeDevicesFromMachineProfile(
   profileObject: unknown,
-  devices: readonly { readonly name: string; readonly host?: string }[],
+  devices: readonly { readonly name: string; readonly machine?: string }[],
 ): { readonly object: unknown; readonly removed: number } | null {
   let current: unknown = profileObject;
   let removed = 0;
   for (const device of devices) {
-    const result = removeDeviceFromMachineProfile(current, device.name, device.host ?? "local");
+    const result = removeDeviceFromMachineProfile(current, device.name, device.machine ?? "local");
     if (!result) {
       return null;
     }
@@ -1233,16 +1233,16 @@ function isDeviceEntryLike(value: unknown): value is Record<string, unknown> {
  * port は 0〜65535 の整数文字列以外はエラー。反対プラットフォームのフィールドには触れない(理由は
  * 下の port 処理コメント参照)。
  *
- * **host を渡すとその機械のぶんだけを対象にする**(手元は "local")。一意なのは (host, name) で、
- * 別の機械の同名デバイスは別物 —— 引き当ても重複判定もホストで絞らないと、別の機械のエントリを
- * 書き換える/正当なリネームを重複として弾く。省略時は名前だけで引く(全ホスト横断)。
+ * **machine を渡すとその機械のぶんだけを対象にする**(手元は "local")。一意なのは (machine, name)
+ * で、別の機械の同名デバイスは別物 —— 引き当ても重複判定もマシンで絞らないと、別の機械のエントリを
+ * 書き換える/正当なリネームを重複として弾く。省略時は名前だけで引く(全マシン横断)。
  */
 export function updateDeviceInMachineProfile(
   profileObject: unknown,
   platform: MonitorPlatform,
   originalName: string,
   fields: MachineDeviceUpdateFields,
-  host?: string,
+  machine?: string,
 ): MachineDeviceUpdateResult {
   if (typeof profileObject !== "object" || profileObject === null || Array.isArray(profileObject)) {
     return { ok: false, error: t("monitor.machineProfile.invalidFormat") };
@@ -1261,18 +1261,18 @@ export function updateDeviceInMachineProfile(
   if (!Array.isArray(devices)) {
     return notFoundError;
   }
-  // エントリの実効ホスト(デバイス指定 > プロファイル直下の既定 > 手元)。host 引数と同じ土俵に乗せる。
-  const entryHost = (device: Record<string, unknown>): string =>
-    effectiveDeviceHost(
+  // エントリの実効マシン(デバイス指定 > プロファイル直下の既定 > 手元)。machine 引数と同じ土俵に乗せる。
+  const entryMachine = (device: Record<string, unknown>): string =>
+    effectiveDeviceMachine(
       typeof (device.machine ?? device.host) === "string"
         ? (device.machine ?? device.host) as string : undefined,
       typeof (source.machine ?? source.host) === "string"
         ? (source.machine ?? source.host) as string : undefined,
     ) ?? "local";
-  const hostMatches = (device: Record<string, unknown>): boolean =>
-    host === undefined || entryHost(device) === host;
+  const machineMatches = (device: Record<string, unknown>): boolean =>
+    machine === undefined || entryMachine(device) === machine;
   const index = devices.findIndex(
-    (device) => isDeviceEntryLike(device) && device.name === originalName && hostMatches(device),
+    (device) => isDeviceEntryLike(device) && device.name === originalName && machineMatches(device),
   );
   if (index === -1) {
     return notFoundError;
@@ -1292,7 +1292,7 @@ export function updateDeviceInMachineProfile(
       if (device === target || !isDeviceEntryLike(device)) {
         continue; // 対象エントリ自身は重複チェックから除く
       }
-      if (!hostMatches(device)) {
+      if (!machineMatches(device)) {
         continue; // 別の機械の同名は重複ではない
       }
       if (device.name === newName) {
@@ -1378,14 +1378,14 @@ export function addDevicesToMachineProfile(
   const source = profileObject as Record<string, unknown>;
   const result: Record<string, unknown> = { ...source };
 
-  // 既存デバイス名を **(host, name)** で集める(ios/android 横断。同一バッチ内で確定した
+  // 既存デバイス名を **(machine, name)** で集める(ios/android 横断。同一バッチ内で確定した
   // 名前も随時追加し、バッチ内衝突も検出する)。**別の機械の同名は衝突ではない** ——
   // 各機が同じ命名規則でシミュレータを作るので同名が普通で、ここを name だけで見ると
-  // リモートを足すたびに " (2)" が付く(2026-08-17 の実害。Sources/FTCore/DeviceHostGrouping.swift)。
+  // リモートを足すたびに " (2)" が付く(2026-08-17 の実害。Sources/FTCore/DeviceMachineGrouping.swift)。
   const rawDefault = source.machine ?? source.host;  // 直下の既定も新旧キーを読む
   const profileDefault = typeof rawDefault === "string" ? rawDefault : undefined;
-  const nameKey = (host: string | undefined, name: string) =>
-    `${effectiveDeviceHost(host, profileDefault) ?? "local"}\t${name}`;
+  const nameKey = (machine: string | undefined, name: string) =>
+    `${effectiveDeviceMachine(machine, profileDefault) ?? "local"}\t${name}`;
   const existingNames = new Set<string>();
   for (const platform of ["ios", "android"] as const) {
     const section = source[platform];
@@ -1484,7 +1484,7 @@ export function syncDevicesInMachineProfile(
   let removedCount = 0;
   for (const name of remove) {
     const result = removeDeviceFromMachineProfile(
-      current, name, source?.kind === "remote" ? source.host : (source ? "local" : undefined));
+      current, name, source?.kind === "remote" ? source.machine : (source ? "local" : undefined));
     if (!result) {
       // removeDeviceFromMachineProfile は object 入力に対し常に非null を返すため実際には到達しないが、
       // 型上 null を返しうるための防御(削除しない)。
@@ -1496,12 +1496,12 @@ export function syncDevicesInMachineProfile(
     }
   }
   // 契約: 追加したデバイス1台ずつに、それが居る機械を**必ず**書く(手元なら "local"。
-  // Sources/FTCore/DeviceHostGrouping.swift。一意なのは (host, name) なので、ローカルと
+  // Sources/FTCore/DeviceMachineGrouping.swift。一意なのは (machine, name) なので、ローカルと
   // リモートに同名のデバイスが並んでよい)。省略すると「プロファイル直下の既定を継ぐ」に
   // なるため、既定がリモートのプロファイルでは手元のデバイスが別の機械のものとして扱われる。
   // **プロファイル直下の machine は触らない**(あちらは既定で、デバイス側の指定が優先)。
   const stamped = add.map((entry) => {
-    const machine = source?.kind === "remote" ? source.host : "local";
+    const machine = source?.kind === "remote" ? source.machine : "local";
     return entry.machine === machine ? entry : { ...entry, machine };
   });
   const addResult = addDevicesToMachineProfile(current, stamped);

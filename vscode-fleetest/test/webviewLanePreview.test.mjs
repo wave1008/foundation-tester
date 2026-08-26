@@ -188,12 +188,12 @@ test("拡大表示の上にフリートと同じタグが付く", (t) => {
   assert.equal(header.querySelectorAll(".tile-header").length, 1);
 });
 
-test("実機・未登録・ホスト名のタグもフリートと同じに出る", (t) => {
+test("実機・未登録・マシン名のタグもフリートと同じに出る", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   const devices = [{
     id: "d0", name: "Dev 0", platform: "android", state: "connected", detail: "",
-    kind: "physical", udid: "UDID-0", recording: false, registered: false, machineHost: "m1max",
+    kind: "physical", udid: "UDID-0", recording: false, registered: false, machine: "m1max",
   }];
   window.dispatchEvent(new window.MessageEvent("message", { data: { type: "devices", devices } }));
   clickTile(document, 0);
@@ -201,7 +201,7 @@ test("実機・未登録・ホスト名のタグもフリートと同じに出�
   const visibleBadges = [...header.querySelectorAll(".badge")].filter((el) => el.style.display !== "none");
   assert.deepEqual(
     visibleBadges.map((el) => el.textContent).sort(),
-    [...document.querySelectorAll("#grid .tile-header .badge, #grid .tile-host-row .badge")]
+    [...document.querySelectorAll("#grid .tile-header .badge, #grid .tile-machine-row .badge")]
       .filter((el) => el.style.display !== "none")
       .map((el) => el.textContent)
       .sort(),
@@ -219,7 +219,7 @@ test("タグの段数は手元でもリモートでも同じ(絵の上端を揃�
     { id: "d0", name: "Dev 0", platform: "ios", state: "connected", detail: "",
       kind: "virtual", udid: "UDID-0", recording: false, registered: true },
     { id: "d1", name: "Dev 1", platform: "ios", state: "connected", detail: "",
-      kind: "virtual", udid: "UDID-1", recording: false, registered: true, machineHost: "m1max" },
+      kind: "virtual", udid: "UDID-1", recording: false, registered: true, machine: "m1max" },
   ];
   window.dispatchEvent(new window.MessageEvent("message", { data: { type: "devices", devices } }));
   clickTile(document, 0);
@@ -228,14 +228,14 @@ test("タグの段数は手元でもリモートでも同じ(絵の上端を揃�
   assert.equal(headers.length, 2);
   for (const header of headers) {
     assert.equal(header.querySelectorAll(".tile-header").length, 1);
-    assert.equal(header.querySelectorAll(".tile-host-row").length, 1, "ホスト名の段は常に置く");
+    assert.equal(header.querySelectorAll(".tile-machine-row").length, 1, "マシン名の段は常に置く");
   }
-  const hostBadgeOf = (header) => header.querySelector(".tile-host-row .badge-remote");
+  const machineBadgeOf = (header) => header.querySelector(".tile-machine-row .badge-remote");
   // リモートはホスト名がそのまま見える
-  assert.equal(hostBadgeOf(headers[1]).textContent, "m1max");
-  assert.equal(hostBadgeOf(headers[1]).style.visibility, "");
+  assert.equal(machineBadgeOf(headers[1]).textContent, "m1max");
+  assert.equal(machineBadgeOf(headers[1]).style.visibility, "");
   // 手元は見えないダミー(段の高さだけを作る)。空文字だと高さが 0 になるので中身を入れる
-  const dummy = hostBadgeOf(headers[0]);
+  const dummy = machineBadgeOf(headers[0]);
   assert.equal(dummy.style.visibility, "hidden");
   assert.equal(dummy.style.display, "inline-block");
   assert.notEqual(dummy.textContent, "");

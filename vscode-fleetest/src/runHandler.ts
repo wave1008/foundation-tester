@@ -20,7 +20,7 @@ import { t } from "./i18n";
 import { lastResultsDir, lookupKey, readFailedScenarioIds } from "./lastResults";
 import type { LiveRunTarget } from "./liveRunTarget";
 import { runOneShot } from "./oneShotCli";
-import { decideRemoteCompat, type RemoteCompatHost, type RemoteCompatReport } from "./remoteCompatGate";
+import { decideRemoteCompat, type RemoteCompatMachine, type RemoteCompatReport } from "./remoteCompatGate";
 import { findLatestReport, listRecentReports, reportsDir } from "./scenarioReports";
 import type { ScenarioFinishedEventBody } from "./debugAdapter";
 import { isRunEvent } from "./model";
@@ -366,20 +366,20 @@ function resolveTargetPlatform(targets: Map<string, vscode.TestItem>): "ios" | "
   }
 }
 
-/** リモート版ズレダイアログの1ホスト分の値(revision 先頭7桁 / エラー / toolchain 不一致)。
+/** リモート版ズレダイアログの1マシン分の値(revision 先頭7桁 / エラー / toolchain 不一致)。
  * error・revision は CLI からの英語値をそのまま出す(枠だけ ja/en。CLAUDE.md の方針)。 */
-function formatHostDetailValue(host: RemoteCompatHost): string {
-  if (!host.reachable) {
-    return host.error ?? t("run.remoteCompat.hostUnreachable");
+function formatMachineDetailValue(machine: RemoteCompatMachine): string {
+  if (!machine.reachable) {
+    return machine.error ?? t("run.remoteCompat.hostUnreachable");
   }
-  if (host.revisionCompatible === false) {
-    const short = host.revision?.slice(0, 7);
+  if (machine.revisionCompatible === false) {
+    const short = machine.revision?.slice(0, 7);
     return short && short.length > 0 ? short : t("run.remoteCompat.hostRevisionUnknown");
   }
-  if (host.toolchainCompatible === false) {
-    return t("run.remoteCompat.hostToolchainMismatch", { toolchain: host.toolchain ?? "?" });
+  if (machine.toolchainCompatible === false) {
+    return t("run.remoteCompat.hostToolchainMismatch", { toolchain: machine.toolchain ?? "?" });
   }
-  return host.error ?? t("run.remoteCompat.hostUnreachable");
+  return machine.error ?? t("run.remoteCompat.hostUnreachable");
 }
 
 /** `fleetest remote align <name>` を単発 spawn し、stdout/stderr を `[<name>]` 接頭辞付きで
@@ -595,22 +595,22 @@ async function executeRun(
     }
     const decision = decideRemoteCompat(report ?? null);
     if (decision.kind === "ask") {
-      const detailLines = decision.incompatible.map((host) => `${host.name}: ${formatHostDetailValue(host)}`);
+      const detailLines = decision.incompatible.map((machine) => `${machine.machine}: ${formatMachineDetailValue(machine)}`);
       if (decision.revisionUnpublished) {
         detailLines.push(t("run.remoteCompat.revisionUnpublishedNote"));
       }
       if (decision.localDirty) {
         detailLines.push(t("run.remoteCompat.localDirtyNote"));
       }
-      if (decision.localBehindHosts.length > 0) {
-        detailLines.push(t("run.remoteCompat.localBehindNote", { names: decision.localBehindHosts.join(", ") }));
+      if (decision.localBehindMachines.length > 0) {
+        detailLines.push(t("run.remoteCompat.localBehindNote", { names: decision.localBehindMachines.join(", ") }));
       }
-      if (decision.divergedHosts.length > 0) {
-        detailLines.push(t("run.remoteCompat.divergedNote", { names: decision.divergedHosts.join(", ") }));
+      if (decision.divergedMachines.length > 0) {
+        detailLines.push(t("run.remoteCompat.divergedNote", { names: decision.divergedMachines.join(", ") }));
       }
-      if (decision.unknownRelationHosts.length > 0) {
+      if (decision.unknownRelationMachines.length > 0) {
         detailLines.push(
-          t("run.remoteCompat.unknownRelationNote", { names: decision.unknownRelationHosts.join(", ") }),
+          t("run.remoteCompat.unknownRelationNote", { names: decision.unknownRelationMachines.join(", ") }),
         );
       }
       // 「そのまま実行」は置かない —— ダイアログが出た時点でリモート担当分は必ず
@@ -645,7 +645,7 @@ async function executeRun(
             cancellable: false,
           },
           async (progress) => {
-            for (const hostName of decision.updatableHosts) {
+            for (const hostName of decision.updatableMachines) {
               const label = t("run.remoteCompat.alignProgressHost", { name: hostName });
               progress.report({ message: label });
               outputChannel.appendLine(`[${hostName}] ${label}`);

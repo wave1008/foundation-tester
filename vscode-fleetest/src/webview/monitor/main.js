@@ -63,7 +63,7 @@ import {
   applyNameInputOpen,
 } from './modals.js';
 import { applySettings } from './settingsTab.js';
-import { applyDevicePickHosts } from './devicePickHost.js';
+import { applyDevicePickMachines } from './devicePickMachine.js';
 import { applyResidentMessage } from './processesTab.js';
 import { applyRecordingsSessions, applyRecordingsSession } from './recordingsTab.js';
 import { activateTab, TAB_IDS, switchTab } from './tabs.js';
@@ -217,13 +217,13 @@ window.addEventListener('message', (event) => {
     case 'updateStatus':
       applySettings(message);
       break;
-    // devicePickHost.js は remoteConfig(#device-pick-overlay 内のホスト選択の選択肢)を独立に
+    // devicePickMachine.js は remoteConfig(#device-pick-overlay 内のマシン選択の選択肢)を独立に
     // 購読する(settingsTab.js の hostRows とは別モジュールの別コピー)。この case が無いと
     // remoteConfig は default で握り潰され、設定タブのリモートホスト一覧も
     // 「既存から選択」ダイアログのホスト選択も初期化されない。
     case 'remoteConfig':
       applySettings(message);
-      applyDevicePickHosts(message);
+      applyDevicePickMachines(message);
       break;
     case 'residentProcesses':
       applyResidentMessage(message);

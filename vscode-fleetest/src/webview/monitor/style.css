@@ -332,13 +332,13 @@ select:disabled { opacity: 0.5; cursor: default; }
   flex: 0 0 20px;
   height: 20px;
 }
-/* ホスト名バッジの段(デバイス名の下)。**グリッドに .with-host-row が付いたときだけ**出す ——
+/* マシン名バッジの段(デバイス名の下)。**グリッドに .with-machine-row が付いたときだけ**出す ——
    段の有無がタイルごとに混ざると、共通の --tile-image-h では高さが揃わない。
-   高さは deviceTiles.js の TILE_HOST_ROW_HEIGHT と一致させること */
-.tile-host-row {
+   高さは deviceTiles.js の TILE_MACHINE_ROW_HEIGHT と一致させること */
+.tile-machine-row {
   display: none;
 }
-.grid.with-host-row .tile-host-row {
+.grid.with-machine-row .tile-machine-row {
   display: flex;
   align-items: center;
   flex: 0 0 16px;
@@ -664,7 +664,7 @@ select:disabled { opacity: 0.5; cursor: default; }
   gap: 2px;
 }
 .lane-preview-header .tile-header,
-.lane-preview-header .tile-host-row {
+.lane-preview-header .tile-machine-row {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1587,7 +1587,7 @@ input[type="text"]::placeholder {
 .device-pick-title-row #device-pick-title {
   margin-right: 2em;
 }
-.device-pick-host-group {
+.device-pick-machine-group {
   display: flex;
   align-items: center;
   gap: 6px;

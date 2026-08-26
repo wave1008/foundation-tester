@@ -88,7 +88,7 @@ export class MonitorBridgeWatchdog {
       // かつ entries が name 単位なので、同名の台が別の機械にも居ると
       // 「向こうの connected が手元のハングを隠す / 向こうの booted が手元の健全な台を再起動する」
       // の両方が起きる(その機械の watchdog は未実装。docs/remote-runner.md §13)
-      if (device.machineHost !== undefined) {
+      if (device.machine !== undefined) {
         continue;
       }
       this.observeOne(device.name, device.state);

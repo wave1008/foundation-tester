@@ -43,11 +43,12 @@ interface StreamEntry {
   readonly pipeline: StreamPipeline;
 }
 
-/** MonitorTarget.id("<platform>:<name>" / リモートは "<platform>:<host>/<name>")が
- * (host, name) と一致するか。**名前だけで引かない** —— 同名の台が別の機械にも居るのは通常で、
- * 手元の停止でリモートの配信まで畳む(逆も同じ)。host 省略は「手元」の意味 */
-function matchesDeviceName(deviceId: string, name: string, host?: string): boolean {
-  return deviceId.endsWith(host === undefined ? `:${name}` : `:${host}/${name}`);
+/** MonitorTarget.id("<platform>:<name>" / リモートは "<platform>:<machine>/<name>")が
+ * (machine, name) と一致するか。**名前だけで引かない** —— 同名の台が別の機械にも居るのは通常で、
+ * 手元の停止でリモートの配信まで畳む(逆も同じ)。machine 省略は「手元」の意味
+ * (id の綴りは Swift 側 DeviceMachineGrouping.workerID が決める) */
+function matchesDeviceName(deviceId: string, name: string, machine?: string): boolean {
+  return deviceId.endsWith(machine === undefined ? `:${name}` : `:${machine}/${name}`);
 }
 
 export class MonitorDeviceStreamController {
@@ -108,7 +109,7 @@ export class MonitorDeviceStreamController {
     // **リモートは手元のヘルパーを使わない**(向こうの fleetest が起こす)ので、手元に
     // ヘルパーが1つも無くてもリモートのタイルは配信できる。ここで早期 return すると
     // 「手元にビルドが無い機械ではリモート映像も出ない」になる
-    const hasRemote = devices.some((device) => device.machineHost !== undefined);
+    const hasRemote = devices.some((device) => device.machine !== undefined);
     if (!simStreamPath && !(androidStreamPath && adbPath) && !devicePollPath && !hasRemote) {
       this.disposeAll();
       return;
@@ -133,7 +134,7 @@ export class MonitorDeviceStreamController {
       // codecError を受けたデバイスは設定値に関わらず mjpeg 固定(fallbackToMjpeg 参照)。
       const codec: "mjpeg" | "h264" = this.mjpegFallbackIds.has(device.id) ? "mjpeg" : config.streamCodec;
       const codecArgs = codec === "h264" ? ["--codec", "h264"] : [];
-      if (device.machineHost) {
+      if (device.machine) {
         // **別の機械のデバイス**。udid も adb serial も向こうのものなので、手元でヘルパーを
         // 起こしても当たらない(同名の手元の台に当たると**別の機械の画面が映る**)。代わりに
         // その機械で `api device-stream` を起こす —— 向こうは宛先を解決してヘルパーへ exec で
@@ -148,15 +149,15 @@ export class MonitorDeviceStreamController {
         }
         qualifying.set(device.id, {
           platform: device.platform,
-          key: `${device.machineHost}/${device.name}`,
+          key: `${device.machine}/${device.name}`,
           // 手元と同じ規則: **実機は devicepoll(MJPEG 固定)** —— 向こうの
           // ApiDeviceStreamCommand が実機で codec を落とすので、h264 を期待すると
           // v1 レコードを v2 として読んで desync → kill/再起動のループになる
           codec: device.kind === "physical" ? "mjpeg" : codec,
           command: config.binaryPath,
           args: [
-            "remote", "exec", device.machineHost, "--",
-            "api", "device-stream", "--device-host", device.machineHost,
+            "remote", "exec", device.machine, "--",
+            "api", "device-stream", "--device-machine", device.machine,
             "--platform", device.platform, "--name", device.name,
             "--fps", String(config.liveFps), "--max-width", String(config.monitorMaxWidth),
             ...remoteProjectArgs(),
@@ -280,12 +281,12 @@ export class MonitorDeviceStreamController {
   }
 
   /** device-down ジョブ(monitorDeviceOps.ts)の実行開始時に呼ぶ。deviceId は "<platform>:<name>"
-   * (リモートは "<platform>:<host>/<name>"。Swift 側 MonitorTarget.id)だがジョブは name しか
+   * (リモートは "<platform>:<machine>/<name>"。Swift 側 MonitorTarget.id)だがジョブは name しか
    * 持たないため、名前部分の一致で判定する(同名デバイスが ios/android 両方・複数の機械に
    * 存在する場合も全部破棄する)。 */
-  disposeForDeviceName(name: string, host?: string): void {
+  disposeForDeviceName(name: string, machine?: string): void {
     for (const deviceId of [...this.pipelines.keys()]) {
-      if (matchesDeviceName(deviceId, name, host)) {
+      if (matchesDeviceName(deviceId, name, machine)) {
         this.disposeDevice(deviceId);
       }
     }

@@ -34,12 +34,12 @@ struct DevicesCommand: AsyncParsableCommand {
         @Option(name: [.customLong("device-machine"), .customLong("device-host")], help: ArgumentHelp(
             "Operate on the devices that belong to this machine (registered host name)."
             + " Default: the devices with no host (this machine). Used when a parent dispatches"
-            + " to a runner: remote exec <name> -- ... --device-host <name>"))
-        var deviceHost: String?
+            + " to a runner: remote exec <name> -- ... --device-machine <name>"))
+        var deviceMachine: String?
 
         func run() async throws {
             let machineProfile = try MachineProfileLoad.load(
-                project: project, profile: profile, deviceHost: deviceHost,
+                project: project, profile: profile, deviceMachine: deviceMachine,
                 noteAutoMachine: { print($0) },
                 warn: { print($0) })
 
@@ -64,8 +64,8 @@ struct DevicesCommand: AsyncParsableCommand {
         @Option(name: [.customLong("device-machine"), .customLong("device-host")], help: ArgumentHelp(
             "Operate on the devices that belong to this machine (registered host name)."
             + " Default: the devices with no host (this machine). Used when a parent dispatches"
-            + " to a runner: remote exec <name> -- ... --device-host <name>"))
-        var deviceHost: String?
+            + " to a runner: remote exec <name> -- ... --device-machine <name>"))
+        var deviceMachine: String?
 
         func run() async throws {
             if let profile {
@@ -123,7 +123,7 @@ struct DevicesCommand: AsyncParsableCommand {
         private func shutdownProfile(_ profile: String) async {
             do {
                 let filtered = try MachineProfileLoad.load(
-                    project: project, profile: profile, deviceHost: deviceHost,
+                    project: project, profile: profile, deviceMachine: deviceMachine,
                     noteAutoMachine: { print($0) },
                     warn: { print($0) })
 
@@ -158,11 +158,11 @@ struct DevicesCommand: AsyncParsableCommand {
 /// Up の従来コードをそのまま移した実装(ApiDeviceOperation の machineProfileNotFound ガードは
 /// 意図的に取り込まない。ファイル未検出時は Data(contentsOf:) がそのまま throw する Up 従来挙動を維持)
 enum MachineProfileLoad {
-    /// - deviceHost: **どの機械のデバイスを扱うか**(nil/"local" = 手元)。リモート機で自分の
+    /// - deviceMachine: **どの機械のデバイスを扱うか**(nil/"local" = 手元)。リモート機で自分の
     ///   デバイスを起こすときに使う —— 転送されたマシンプロファイルにはそのデバイスの host
     ///   (= その機械の登録名)が書いてあり、CLI には「自分が誰か」を知る手段が無いため、
-    ///   呼び出し側(親)が明示する。例: `remote exec M1Max -- devices up --profile p --device-host M1Max`
-    static func load(project: String?, profile: String?, deviceHost: String? = nil,
+    ///   呼び出し側(親)が明示する。例: `remote exec M1Max -- devices up --profile p --device-machine M1Max`
+    static func load(project: String?, profile: String?, deviceMachine: String? = nil,
                      noteAutoMachine: (String) -> Void,
                      warn: (String) -> Void) throws -> MachineProfile {
         let testProject = try ScenarioHost.project(named: project)
@@ -182,31 +182,31 @@ enum MachineProfileLoad {
                 project: testProject, machineName: machine.name, machineProfile: machineProfile,
                 runProfileName: profile, warn: warn)
         }
-        return keepingDevices(of: deviceHost, in: machineProfile, warn: warn)
+        return keepingDevices(of: deviceMachine, in: machineProfile, warn: warn)
     }
 
     /// **この機械が扱えるデバイスだけ**にする(既定は手元 = host 無し)。起動・停止は simctl/adb を
     /// 叩く操作なので、別の機械のデバイスはここからは扱えない —— 残すと「起動待機のまま
     /// 終わらないタイル」と、存在しない UDID への simctl boot(必ず失敗)を並べることになる
     /// (2026-08-17 の実害)。落とした分は必ず言う(黙って減らさない)。
-    /// `deviceHost` を渡すと、そのホストのデバイスを**手元のものとして**扱う(上の doc 参照)
-    static func keepingDevices(of deviceHost: String?, in profile: MachineProfile,
+    /// `deviceMachine` を渡すと、そのマシンのデバイスを**手元のものとして**扱う(上の doc 参照)
+    static func keepingDevices(of deviceMachine: String?, in profile: MachineProfile,
                                warn: (String) -> Void) -> MachineProfile {
-        let wanted = MachineHostDispatch.normalize(deviceHost)
-        let entries = DeviceHostGrouping.entries(machine: profile)
-        let others = entries.filter { $0.host != wanted }
+        let wanted = MachineDispatch.normalize(deviceMachine)
+        let entries = DeviceMachineGrouping.entries(machine: profile)
+        let others = entries.filter { $0.machine != wanted }
         guard !others.isEmpty else { return profile }
 
-        for (host, devices) in DeviceHostGrouping.groups(others, host: { $0.host }) {
+        for (machine, devices) in DeviceMachineGrouping.groups(others, machine: { $0.machine }) {
             let names = devices.map(\.name).joined(separator: ", ")
-            let hostLabel = DeviceHostGrouping.display(host)
-            warn("→ Skipping \(devices.count) device(s) on \(hostLabel): \(names)"
-                + (host == nil
-                   ? " (they are on this machine; drop --device-host to use them)"
-                   : " (start them there: fleetest remote exec \(hostLabel)"
-                     + " -- devices up --device-host \(hostLabel))"))
+            let machineLabel = DeviceMachineGrouping.display(machine)
+            warn("→ Skipping \(devices.count) device(s) on \(machineLabel): \(names)"
+                + (machine == nil
+                   ? " (they are on this machine; drop --device-machine to use them)"
+                   : " (start them there: fleetest remote exec \(machineLabel)"
+                     + " -- devices up --device-machine \(machineLabel))"))
         }
-        let kept = entries.filter { $0.host == wanted }
+        let kept = entries.filter { $0.machine == wanted }
         let ios = kept.filter { $0.platform == "ios" }.map(\.spec)
         let android = kept.filter { $0.platform == "android" }.map(\.spec)
         return MachineProfile(

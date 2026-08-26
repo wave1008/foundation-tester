@@ -29,7 +29,7 @@ struct ApiRemoteCompatCommand: AsyncParsableCommand {
 
     func run() async throws {
         let testProject = try ScenarioHost.project(named: project)
-        let hostNames = try Self.remoteHostNames(project: testProject, profile: profile)
+        let machineNames = try Self.remoteHostNames(project: testProject, profile: profile)
 
         let repoRoot = try? RepoRoot.find()
         let localRevision = localGitRevision()
@@ -37,15 +37,15 @@ struct ApiRemoteCompatCommand: AsyncParsableCommand {
         let localToolchain = ToolchainFingerprint.current()
         let published = Self.published(repoRoot: repoRoot, revision: localRevision)
 
-        var hosts: [RemoteCompatHostJSON?] = Array(repeating: nil, count: hostNames.count)
+        var machines: [RemoteCompatMachineJSON?] = Array(repeating: nil, count: machineNames.count)
         var targets: [(index: Int, resolved: ResolvedRemoteHost)] = []
-        for (index, name) in hostNames.enumerated() {
+        for (index, name) in machineNames.enumerated() {
             do {
                 let resolved = try RemoteHostResolver.resolve(rawHost: name, remoteDirOverride: remoteDir)
                 targets.append((index, resolved))
             } catch {
-                hosts[index] = RemoteCompatHostJSON(
-                    name: name, sshTarget: name, reachable: false, revision: nil,
+                machines[index] = RemoteCompatMachineJSON(
+                    machine: name, sshTarget: name, reachable: false, revision: nil,
                     revisionCompatible: nil, revisionRelation: nil, toolchain: nil, toolchainCompatible: nil,
                     error: error.localizedDescription)
             }
@@ -70,8 +70,8 @@ struct ApiRemoteCompatCommand: AsyncParsableCommand {
                       let localRevision, let remoteRevision, let repoRoot else { return nil }
                 return revisionRelation(repoRoot: repoRoot, localRevision: localRevision, remoteRevision: remoteRevision)
             }()
-            hosts[index] = RemoteCompatHostJSON(
-                name: hostNames[index], sshTarget: report.sshTarget, reachable: report.reachable,
+            machines[index] = RemoteCompatMachineJSON(
+                machine: machineNames[index], sshTarget: report.sshTarget, reachable: report.reachable,
                 revision: remoteRevision,
                 revisionCompatible: revisionCompatible,
                 revisionRelation: relation?.rawValue,
@@ -82,7 +82,7 @@ struct ApiRemoteCompatCommand: AsyncParsableCommand {
         }
 
         let output = RemoteCompatOutput(
-            hosts: hosts.compactMap { $0 }, localDirty: localDirty, localRevision: localRevision,
+            machines: machines.compactMap { $0 }, localDirty: localDirty, localRevision: localRevision,
             revisionPublished: published)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
@@ -92,16 +92,16 @@ struct ApiRemoteCompatCommand: AsyncParsableCommand {
 
     /// この実行プロファイルが使うリモートホストのラベル一覧(登録名。docs/remote-runner.md §13 —
     /// マシンプロファイルの host は登録名でしか書けない契約)。ホストが2機以上にまたがっていれば
-    /// DeviceHostRunner の分割計画から、単一機械の自動ディスパッチならそちらの host から取る
+    /// DeviceMachineRunner の分割計画から、単一機械の自動ディスパッチならそちらの host から取る
     private static func remoteHostNames(project: TestProject, profile: String) throws -> [String] {
-        if let groups = try DeviceHostRunner.plan(
+        if let groups = try DeviceMachineRunner.plan(
             project: project, profileName: profile, explicitHost: nil, deviceFilter: []) {
-            return ApiRemoteCompat.remoteHostLabels(planGroups: groups, autoDispatchHost: nil)
+            return ApiRemoteCompat.remoteMachineLabels(planGroups: groups, autoDispatchMachine: nil)
         }
-        let dispatch = try? resolveEffectiveHostDispatch(
-            explicitHost: nil, profile: profile, project: project.name,
-            requireMachineHost: true, warn: { _ in })
-        return ApiRemoteCompat.remoteHostLabels(planGroups: nil, autoDispatchHost: dispatch?.rawHost)
+        let dispatch = try? resolveEffectiveDispatchTarget(
+        explicitTarget: nil, profile: profile, project: project.name,
+            requireProfileMachine: true, warn: { _ in })
+        return ApiRemoteCompat.remoteMachineLabels(planGroups: nil, autoDispatchMachine: dispatch?.rawTarget)
     }
 
     private static func localDirty(repoRoot: URL?) -> Bool {
@@ -121,18 +121,19 @@ struct ApiRemoteCompatCommand: AsyncParsableCommand {
 
 /// リモートホスト集合を求める純粋関数(I/O 抜き。`Tests/FleetestTests/ApiRemoteCompatTests.swift` 対象)
 enum ApiRemoteCompat {
-    /// `DeviceHostRunner.plan` の groups があれば、その中の**リモート**(host != nil)のラベルを
-    /// 出現順・重複除去で返す。groups が nil(単一機械)なら `autoDispatchHost` を高々1件返す
-    static func remoteHostLabels(planGroups: [DeviceHostRunner.Group]?, autoDispatchHost: String?) -> [String] {
+    /// `DeviceMachineRunner.plan` の groups があれば、その中の**リモート**(host != nil)のラベルを
+    /// 出現順・重複除去で返す。groups が nil(単一機械)なら `autoDispatchMachine` を高々1件返す
+    static func remoteMachineLabels(planGroups: [DeviceMachineRunner.Group]?,
+                                    autoDispatchMachine: String?) -> [String] {
         guard let planGroups else {
-            return autoDispatchHost.map { [$0] } ?? []
+            return autoDispatchMachine.map { [$0] } ?? []
         }
         var seen = Set<String>()
         var result: [String] = []
         for group in planGroups {
-            guard let host = group.host, !seen.contains(host) else { continue }
-            seen.insert(host)
-            result.append(host)
+            guard let machine = group.machine, !seen.contains(machine) else { continue }
+            seen.insert(machine)
+            result.append(machine)
         }
         return result
     }
@@ -140,8 +141,9 @@ enum ApiRemoteCompat {
 
 /// 省略可能なフィールドは JSON 上で "null" を明示する(ApiScenarioInfo と同方針 —— 外部ツール側で
 /// キー欠落と null を区別せず扱えるよう、synthesized Encodable の encodeIfPresent(キー省略)は使わない)
-private struct RemoteCompatHostJSON: Encodable {
-    let name: String
+private struct RemoteCompatMachineJSON: Encodable {
+    /// 登録簿のマシン名(エイリアス)。sshTarget は解決後のホスト名 / IP で別物
+    let machine: String
     let sshTarget: String
     let reachable: Bool
     let revision: String?
@@ -155,13 +157,13 @@ private struct RemoteCompatHostJSON: Encodable {
     let error: String?
 
     private enum CodingKeys: String, CodingKey {
-        case name, sshTarget, reachable, revision, revisionCompatible, revisionRelation,
+        case machine, sshTarget, reachable, revision, revisionCompatible, revisionRelation,
              toolchain, toolchainCompatible, error
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(name, forKey: .name)
+        try container.encode(machine, forKey: .machine)
         try container.encode(sshTarget, forKey: .sshTarget)
         try container.encode(reachable, forKey: .reachable)
         try container.encode(revision, forKey: .revision)
@@ -174,18 +176,18 @@ private struct RemoteCompatHostJSON: Encodable {
 }
 
 private struct RemoteCompatOutput: Encodable {
-    let hosts: [RemoteCompatHostJSON]
+    let machines: [RemoteCompatMachineJSON]
     let localDirty: Bool
     let localRevision: String?
     let revisionPublished: Bool
 
     private enum CodingKeys: String, CodingKey {
-        case hosts, localDirty, localRevision, revisionPublished
+        case machines, localDirty, localRevision, revisionPublished
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(hosts, forKey: .hosts)
+        try container.encode(machines, forKey: .machines)
         try container.encode(localDirty, forKey: .localDirty)
         try container.encode(localRevision, forKey: .localRevision)
         try container.encode(revisionPublished, forKey: .revisionPublished)

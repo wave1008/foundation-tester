@@ -65,10 +65,10 @@ export function summarizeDeviceNames(names: readonly string[]): string {
   return names.length > 3 ? t("deviceOps.nameListMore", { shown }) : shown;
 }
 
-/** エラーメッセージへホストホストを付記する(§13 段2「失敗時はホスト名込みのメッセージにする」)。
+/** エラーメッセージへマシン名を付記する(§13 段2「失敗時はマシン名込みのメッセージにする」)。
  * ローカルは素通し(既存の文言を変えない)。 */
 function withSourceContext(message: string, source: DeviceCommandSource): string {
-  return source.kind === "remote" ? t("deviceOps.remoteHostSuffix", { host: source.host, message }) : message;
+  return source.kind === "remote" ? t("deviceOps.remoteMachineSuffix", { machine: source.machine, message }) : message;
 }
 
 /**
@@ -131,7 +131,7 @@ export class MonitorDeviceOps {
    * ここに届く前に抑止される)。
    */
   enqueueLifecycleJob(job: DeviceLifecycleJob): void {
-    if (job.kind === "device" && hasDeviceLifecycleJobFor(this.lifecycleQueue, job.name, job.host)) {
+    if (job.kind === "device" && hasDeviceLifecycleJobFor(this.lifecycleQueue, job.name, job.machine)) {
       return;
     }
     this.pushLifecycleJob(job);
@@ -245,7 +245,7 @@ export class MonitorDeviceOps {
   /** ジョブ対象デバイスの queued/running バッジを再送する(投入直後・開始直後の表示更新)。 */
   private postJobStatuses(job: DeviceLifecycleJob): void {
     if (job.kind === "device") {
-      this.postDeviceLifecycleStatus(job.name, job.host);
+      this.postDeviceLifecycleStatus(job.name, job.machine);
     } else if (job.kind === "restartBatch") {
       for (const n of job.names) {
         this.postDeviceLifecycleStatus(n);
@@ -278,12 +278,12 @@ export class MonitorDeviceOps {
   }
 
   /** 指定デバイスの現在のキュー状態(実行中/待機中/なし)を deviceOpBusy として webview に送る。 */
-  private postDeviceLifecycleStatus(name: string, host?: string): void {
-    const status = deviceLifecycleStatusFor(this.lifecycleQueue, name, host);
-    // **host も載せる** —— 載せないと webview が同名の先頭のタイル(= 手元)を書き換え、
+  private postDeviceLifecycleStatus(name: string, machine?: string): void {
+    const status = deviceLifecycleStatusFor(this.lifecycleQueue, name, machine);
+    // **machine も載せる** —— 載せないと webview が同名の先頭のタイル(= 手元)を書き換え、
     // 「M2Ultra の台を停止」が手元のタイルに「シャットダウン中」と出る(2026-08-17 の実害)
     this.deps.post({
-      type: "deviceOpBusy", name, host, op: status?.op ?? null, status: status?.status ?? null,
+      type: "deviceOpBusy", name, machine, op: status?.op ?? null, status: status?.status ?? null,
     });
   }
 
@@ -341,11 +341,11 @@ export class MonitorDeviceOps {
       this.executeRestartBatchJob(job.names);
     } else {
       // 「実行中」バッジへ更新(running へ昇格済みのため statusFor が running を返す)。
-      this.postDeviceLifecycleStatus(job.name, job.host);
+      this.postDeviceLifecycleStatus(job.name, job.machine);
       if (job.op === "down") {
-        this.deps.stopDeviceStreams(job.name, job.host);
+        this.deps.stopDeviceStreams(job.name, job.machine);
       }
-      this.executeDeviceOpJob(job.name, job.op, job.udid, job.serial, job.host);
+      this.executeDeviceOpJob(job.name, job.op, job.udid, job.serial, job.machine);
     }
   }
 
@@ -364,7 +364,7 @@ export class MonitorDeviceOps {
     if (finished.kind === "device") {
       // **host も載せる**(表示の剥がしも宛先を間違えない。postDeviceLifecycleStatus と同じ理由)
       this.deps.post({
-        type: "deviceOpBusy", name: finished.name, host: finished.host, op: null, status: null,
+        type: "deviceOpBusy", name: finished.name, machine: finished.machine, op: null, status: null,
       });
     } else if (finished.kind === "restartBatch") {
       // プロセスクラッシュ等で per-device の deviceFinished が欠けた場合の表示剥がし
@@ -510,21 +510,21 @@ export class MonitorDeviceOps {
             // 殺される前にタイルを切断表示へ倒す。他デバイスのライブ映像は残す)、「シャットダウン中」に。
             // **host も渡す** —— 同名が別の機械にも居ると、名前だけでは別タイルを触ってしまう
             startedNames.add(value.name);
-            this.deps.stopDeviceStreams(value.name, value.host ?? undefined);
-            this.deps.post({ type: "deviceOpBusy", name: value.name, host: value.host ?? undefined, op: "down", status: "running" });
+            this.deps.stopDeviceStreams(value.name, value.machine ?? undefined);
+            this.deps.post({ type: "deviceOpBusy", name: value.name, machine: value.machine ?? undefined, op: "down", status: "running" });
             break;
           case "deviceStarting":
             startedNames.add(value.name);
-            this.deps.post({ type: "deviceOpBusy", name: value.name, host: value.host ?? undefined, op: "up", status: "running" });
+            this.deps.post({ type: "deviceOpBusy", name: value.name, machine: value.machine ?? undefined, op: "up", status: "running" });
             break;
           case "deviceFinished":
             startedNames.delete(value.name);
             if (kind === "down") {
               // down 中はモニター pause で state 更新が来ないため、この per-device 通知でそのタイルを
               // 即「未起動」へ倒す(offline を先行反映。opBusy もここで解除される)。
-              this.deps.post({ type: "deviceDownFinished", name: value.name, host: value.host ?? undefined });
+              this.deps.post({ type: "deviceDownFinished", name: value.name, machine: value.machine ?? undefined });
             } else {
-              this.deps.post({ type: "deviceOpBusy", name: value.name, host: value.host ?? undefined, op: null, status: null });
+              this.deps.post({ type: "deviceOpBusy", name: value.name, machine: value.machine ?? undefined, op: null, status: null });
             }
             break;
           case "finished":
@@ -694,7 +694,7 @@ export class MonitorDeviceOps {
    * 閉じると消えるため、事後診断できるよう出力チャネルにも必ずログを残す。
    */
   private executeDeviceOpJob(
-    name: string, op: DeviceOpKind, udid?: string, serial?: string, host?: string,
+    name: string, op: DeviceOpKind, udid?: string, serial?: string, machine?: string,
   ): void {
     // spawn 失敗時の 'error'+'close' 二重発火・複数試行にまたがる finish の二重呼び出しを防ぐ
     // ジョブ単位のガード(finishLifecycleQueueHead は1ジョブにつき1回だけ呼ぶ)。
@@ -704,11 +704,11 @@ export class MonitorDeviceOps {
         return;
       }
       jobFinished = true;
-      // **host も入れる** —— sameLifecycleJob は (host, name, op) で照合するので、
+      // **machine も入れる** —— sameLifecycleJob は (machine, name, op) で照合するので、
       // 落とすと「実行中に該当ジョブがありません」になる
-      this.finishLifecycleJob({ kind: "device", name, op, host });
+      this.finishLifecycleJob({ kind: "device", name, op, machine });
     };
-    this.runDeviceOpAttempt(name, op, 0, finishOnce, udid, serial, host);
+    this.runDeviceOpAttempt(name, op, 0, finishOnce, udid, serial, machine);
   }
 
   /** device-up/down の1回分の実行。up が失敗し追加試行が残っていれば遅延後に再試行、
@@ -720,7 +720,7 @@ export class MonitorDeviceOps {
     finishOnce: () => void,
     udid?: string,
     serial?: string,
-    host?: string,
+    machine?: string,
   ): void {
     const config = this.deps.getConfig();
     const resolution = resolveProjectName(this.deps.workspaceRoot, config);
@@ -733,7 +733,7 @@ export class MonitorDeviceOps {
     // **別の機械の台はその機械で操作する** —— 手元で `--name` を渡すと、手元のマシン
     // プロファイルの同名エントリを引いて**別の機械の設定でこの Mac にシミュレータを作る**
     // (simctl は無ければ作る)。一括起動が RemoteDeviceFanout で分散するのと同じ規律
-    const args: string[] = host ? ["remote", "exec", host, "--"] : [];
+    const args: string[] = machine ? ["remote", "exec", machine, "--"] : [];
     args.push("api", op === "up" ? "device-up" : "device-down");
     if (direct) {
       if (udid !== undefined) {
@@ -752,9 +752,9 @@ export class MonitorDeviceOps {
       if (config.profile) {
         args.push("--profile", config.profile);
       }
-      // 向こうは「自分が誰か」を知らないので、どのホストの台かを明示する(--device-host)。
+      // 向こうは「自分が誰か」を知らないので、どのマシンの台かを明示する(--device-machine)。
       // 手元でも渡す = 同名のリモート機の台を引かないための絞り込み
-      args.push("--device-host", host ?? "local");
+      args.push("--device-machine", machine ?? "local");
     }
     if (op === "up" && this.cpuRenderNames.has(name)) {
       args.push("--gpu", "swiftshader_indirect");
@@ -1154,13 +1154,13 @@ export class MonitorDeviceOps {
     }
     this.creatingDevice = true;
     // 上書き(既存の実体を消して作り直す)は破壊的なので、ローカル・リモートを問わず確認する。
-    // リモートの確認文はホスト名も出す(どの機械の実体を消すかが要点)
+    // リモートの確認文はマシン名も出す(どの機械の実体を消すかが要点)
     if (msg.overwrite) {
-      void this.confirmAndSpawnCreateDevice(msg, msg.source.kind === "remote" ? msg.source.host : null);
+      void this.confirmAndSpawnCreateDevice(msg, msg.source.kind === "remote" ? msg.source.machine : null);
       return;
     }
     if (msg.source.kind === "remote") {
-      void this.confirmAndSpawnCreateDevice(msg, msg.source.host);
+      void this.confirmAndSpawnCreateDevice(msg, msg.source.machine);
       return;
     }
     this.spawnCreateDevice(msg);
@@ -1196,7 +1196,7 @@ export class MonitorDeviceOps {
     }
     this.creatingDevice = true;
     try {
-      const host = msg.source.kind === "remote" ? msg.source.host : t("deviceOps.createOverwriteLocalHost");
+      const machine = msg.source.kind === "remote" ? msg.source.machine : t("deviceOps.createOverwriteLocalMachine");
       // 検証(isMonitorFromWebviewMessage)で names.length > 0 は保証済み。?? は型のためだけ
       const first = msg.names[0] ?? "";
       const last = msg.names[msg.names.length - 1] ?? "";
@@ -1206,7 +1206,7 @@ export class MonitorDeviceOps {
       // 「どこまで作られたのか」が押した人にも分からない
       const overwriteNote = msg.overwriteNames.length > 0
         ? t("deviceOps.batchOverwriteNote", {
-            host,
+            machine,
             count: String(msg.overwriteNames.length),
             names: msg.overwriteNames.join(", "),
           })
@@ -1216,7 +1216,7 @@ export class MonitorDeviceOps {
         : t("deviceOps.batchConfirmButton");
       const choice = await vscode.window.showWarningMessage(
         t("deviceOps.batchConfirmMessage", {
-          host,
+          machine,
           count: String(msg.names.length),
           first,
           last,
@@ -1272,15 +1272,15 @@ export class MonitorDeviceOps {
 
   /** リモート作成の modal 確認(§11・§13 と同じ showWarningMessage({modal:true}) 方式。
    * webview の window.confirm は効かないため必ずホスト側で行う)。 */
-  private async confirmAndSpawnCreateDevice(msg: CreateDeviceMessage, host: string | null): Promise<void> {
+  private async confirmAndSpawnCreateDevice(msg: CreateDeviceMessage, machine: string | null): Promise<void> {
     const overwrite = msg.overwrite === true;
     const confirmLabel = overwrite
       ? t("deviceOps.createOverwriteConfirmButton")
       : t("deviceOps.createRemoteConfirmButton");
-    const where = host ?? t("deviceOps.createOverwriteLocalHost");
+    const where = machine ?? t("deviceOps.createOverwriteLocalMachine");
     const message = overwrite
-      ? t("deviceOps.createOverwriteConfirmMessage", { host: where, name: msg.name })
-      : t("deviceOps.createRemoteConfirmMessage", { host: where, name: msg.name });
+      ? t("deviceOps.createOverwriteConfirmMessage", { machine: where, name: msg.name })
+      : t("deviceOps.createRemoteConfirmMessage", { machine: where, name: msg.name });
     const choice = await vscode.window.showWarningMessage(
       message,
       { modal: true },
@@ -1461,7 +1461,7 @@ export class MonitorDeviceOps {
       // 古くてこのオプションを知らない」なので、版合わせの案内に変える(数字だけでは辿れない)
       const detail = lastStderr.length > 0 ? `${t("deviceOps.processExitedWithCode", { exitCode: String(exitCode) })}: ${lastStderr}` : t("deviceOps.processExitedWithCode", { exitCode: String(exitCode) });
       const staleRemote = exitCode === 64 && source.kind === "remote";
-      respond(false, staleRemote ? t("deviceOps.remoteCliTooOld", { host: source.host, detail: lastStderr }) : detail, null);
+      respond(false, staleRemote ? t("deviceOps.remoteCliTooOld", { machine: source.machine, detail: lastStderr }) : detail, null);
     });
   }
 
@@ -1485,10 +1485,10 @@ export class MonitorDeviceOps {
       return;
     }
     this.deletingIdentifiers.add(msg.identifier);
-    const hostLabel = msg.source.kind === "remote" ? msg.source.host : t("deviceOps.hostLocalLabel");
+    const machineLabel = msg.source.kind === "remote" ? msg.source.machine : t("deviceOps.machineLocalLabel");
     const deleteLabel = t("deviceOps.deleteConfirmButton");
     const choice = await vscode.window.showWarningMessage(
-      t("deviceOps.deleteConfirmMessage", { name: msg.name, host: hostLabel }),
+      t("deviceOps.deleteConfirmMessage", { name: msg.name, machine: machineLabel }),
       { modal: true },
       deleteLabel,
     );
@@ -1546,8 +1546,8 @@ export class MonitorDeviceOps {
         // **referencedBy が空でも呼ぶ** —— あれはマシンプロファイルしか見ておらず、
         // 実行プロファイル側の掃除はこの中で全件走査する
         {
-          const host = source.kind === "remote" ? source.host : undefined;
-          const updated = this.deps.unregisterDeletedDevice(msg.name, host);
+          const machine = source.kind === "remote" ? source.machine : undefined;
+          const updated = this.deps.unregisterDeletedDevice(msg.name, machine);
           const touched = [...updated.machines, ...updated.runs];
           if (touched.length > 0) {
             this.deps.outputChannel.appendLine(

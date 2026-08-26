@@ -3,8 +3,10 @@
 // テストは vscode-stub を経由せずここを直接 import する(remoteRunArgs.ts と同じ理由)。
 // runHandler.ts の executeRun がこの判定を元に確認ダイアログ・align 実行を配線する。
 
-export interface RemoteCompatHost {
-  readonly name: string;
+export interface RemoteCompatMachine {
+  /** 登録簿のマシン名(エイリアス)。sshTarget は解決後のホスト名 / IP で別物。
+   * **キーは "machine"**(ProtocolVersion 9。Sources/fleetest/ApiRemoteCompatCommand.swift と対) */
+  readonly machine: string;
   readonly sshTarget?: string;
   readonly reachable: boolean;
   readonly revision?: string | null;
@@ -16,7 +18,7 @@ export interface RemoteCompatHost {
 }
 
 export interface RemoteCompatReport {
-  readonly hosts: RemoteCompatHost[];
+  readonly machines: RemoteCompatMachine[];
   readonly localRevision?: string | null;
   readonly localDirty?: boolean;
   readonly revisionPublished?: boolean;
@@ -26,14 +28,14 @@ export type RemoteCompatDecision =
   | { readonly kind: "proceed" }
   | {
       readonly kind: "ask";
-      readonly incompatible: RemoteCompatHost[];
+      readonly incompatible: RemoteCompatMachine[];
       readonly canUpdate: boolean;
-      readonly updatableHosts: string[];
+      readonly updatableMachines: string[];
       readonly localDirty: boolean;
       readonly revisionUnpublished: boolean;
-      readonly localBehindHosts: string[];
-      readonly divergedHosts: string[];
-      readonly unknownRelationHosts: string[];
+      readonly localBehindMachines: string[];
+      readonly divergedMachines: string[];
+      readonly unknownRelationMachines: string[];
     };
 
 /**
@@ -47,14 +49,14 @@ export type RemoteCompatDecision =
  * ここでの判定失敗が run を止める理由にはならない)。
  */
 export function decideRemoteCompat(report: RemoteCompatReport | null | undefined): RemoteCompatDecision {
-  if (!report || !Array.isArray(report.hosts)) {
+  if (!report || !Array.isArray(report.machines)) {
     return { kind: "proceed" };
   }
-  const incompatible = report.hosts.filter(
-    (host) =>
-      !host || typeof host !== "object"
+  const incompatible = report.machines.filter(
+    (machine) =>
+      !machine || typeof machine !== "object"
         ? false
-        : host.reachable === false || host.revisionCompatible === false || host.toolchainCompatible === false,
+        : machine.reachable === false || machine.revisionCompatible === false || machine.toolchainCompatible === false,
   );
   if (incompatible.length === 0) {
     return { kind: "proceed" };
@@ -64,26 +66,26 @@ export function decideRemoteCompat(report: RemoteCompatReport | null | undefined
   const canUpdate =
     !revisionUnpublished
     && incompatible.every(
-      (host) =>
-        host.reachable === true
-        && host.toolchainCompatible !== false
-        && (host.revisionRelation === "remoteBehind"
-          || host.revisionRelation === undefined
-          || host.revisionRelation === null),
+      (machine) =>
+        machine.reachable === true
+        && machine.toolchainCompatible !== false
+        && (machine.revisionRelation === "remoteBehind"
+          || machine.revisionRelation === undefined
+          || machine.revisionRelation === null),
     );
-  const updatableHosts = canUpdate ? incompatible.map((host) => host.name) : [];
+  const updatableMachines = canUpdate ? incompatible.map((machine) => machine.machine) : [];
 
   return {
     kind: "ask",
     incompatible,
     canUpdate,
-    updatableHosts,
+    updatableMachines,
     localDirty: report.localDirty === true,
     revisionUnpublished,
-    localBehindHosts: incompatible.filter((host) => host.revisionRelation === "localBehind").map((host) => host.name),
-    divergedHosts: incompatible.filter((host) => host.revisionRelation === "diverged").map((host) => host.name),
-    unknownRelationHosts: incompatible
-      .filter((host) => host.revisionRelation === "unknown")
-      .map((host) => host.name),
+    localBehindMachines: incompatible.filter((machine) => machine.revisionRelation === "localBehind").map((machine) => machine.machine),
+    divergedMachines: incompatible.filter((machine) => machine.revisionRelation === "diverged").map((machine) => machine.machine),
+    unknownRelationMachines: incompatible
+      .filter((machine) => machine.revisionRelation === "unknown")
+      .map((machine) => machine.machine),
   };
 }

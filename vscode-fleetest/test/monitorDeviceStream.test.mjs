@@ -213,7 +213,7 @@ const remoteDevice = {
   platform: "ios",
   state: "connected",
   udid: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE", // 向こうの機械の udid。手元では当たらない
-  machineHost: "M1Max",
+  machine: "M1Max",
   detail: "",
 };
 
@@ -231,7 +231,7 @@ test("リモートのデバイスは remote exec 経由の device-stream で配�
     const argv = await waitForArgv(dir, "fleetest");
     assert.ok(argv, "fleetest(remote exec)が起動されること");
     assert.match(argv, /remote exec M1Max -- api device-stream/, "その機械の上で解決させる");
-    assert.match(argv, /--device-host M1Max/, "向こうは自分が誰かを知らないので親が明示する");
+    assert.match(argv, /--device-machine M1Max/, "向こうは自分が誰かを知らないので親が明示する");
     assert.match(argv, /--platform ios --name iPhone 17 Pro/, "宛先は (platform, 名前) で指す");
     assert.match(argv, /--codec h264/, "codec 設定はリモートにもそのまま効く");
     assert.match(argv, /--project demo/, "向こうもマシンプロファイルを引くのでプロジェクトが要る");

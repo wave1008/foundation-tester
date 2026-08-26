@@ -128,7 +128,7 @@ function confirmHostRow(id) {
 function addHostRow(host, confirmed) {
   const id = nextRowId++;
   const tr = document.createElement('tr');
-  const row = { id, tr, confirmed, machine: host && typeof host.machine === 'string' ? host.machine : '' };
+  const row = { id, tr, confirmed };
 
   const makeTextCell = (value, placeholder) => {
     const td = document.createElement('td');
@@ -144,7 +144,7 @@ function addHostRow(host, confirmed) {
         onHostsChanged();
       }
     });
-    // 未確定行は入力のたびに「確定」ボタンの活性を更新する(name/host が揃うまで押せない)。
+    // 未確定行は入力のたびに「確定」ボタンの活性を更新する(machine/host が揃うまで押せない)。
     input.addEventListener('input', () => {
       if (!row.confirmed && row.confirmButton) {
         row.confirmButton.disabled = !rowIsFillable(row);

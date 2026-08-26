@@ -5,7 +5,7 @@
 // エイリアスは発行側のローカル概念なので、**リモートへ出してはいけない**。
 //
 // ところがプロファイルは「どの機械の台か」を machine で書くため、そのまま転送すると
-// ランナー機のディスクに M1Ultra 等が残り、子プロセスにも `--device-host M1Ultra` として渡っていた。
+// ランナー機のディスクに M1Ultra 等が残り、子プロセスにも `--device-machine M1Ultra` として渡っていた。
 // ここでは転送前に**そのランナーから見た姿**へ畳む:
 //   - そのランナー(alias)に居る台は machine を "local" に書き換える(向こうでは実際に手元)
 //   - 他の機械の台は落とす(そのランナーが動かすことは無い。エイリアスも一緒に消える)
@@ -19,8 +19,8 @@ import Foundation
 public enum RunnerProfileView {
 
     private static let platformKeys = ["ios", "android"]
-    /// 手元を表す予約名(FTCore.DeviceHostGrouping.localDisplayName と同じ値)
-    private static let localName = DeviceHostGrouping.localDisplayName
+    /// 手元を表す予約名(FTCore.DeviceMachineGrouping.localDisplayName と同じ値)
+    private static let localName = DeviceMachineGrouping.localDisplayName
 
     /// デバイス1件の実効マシン(デバイス指定 > 直下の既定 > 手元)。**旧キー "host" も読む**
     /// (改名の互換。DeviceSpec.init(from:) と同じ規律)

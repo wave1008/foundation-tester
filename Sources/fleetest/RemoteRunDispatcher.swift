@@ -37,7 +37,7 @@ struct RemoteRunDispatcher {
     /// 戻り値 = リモート `fleetest run` の exit code
     func dispatch(project: TestProject, profile: String,
                   scenarios: [String], folders: [String],
-                  deviceNames: [String] = [], deviceHost: String? = nil,
+                  deviceNames: [String] = [], deviceMachine: String? = nil,
                   heal: Bool, noHeal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
                   fastInput: Bool, enableAnimations: Bool, performanceMode: Bool,
                   broadcast: Bool = false,
@@ -62,7 +62,7 @@ struct RemoteRunDispatcher {
             ? "\(layout.workDir)/.fleetest/dispatch/\(stamp)/junit.xml" : nil
         let fleetestArgs = RemoteRunArgs.build(
             project: project.name, profile: profile, scenarios: scenarios, folders: folders,
-            deviceNames: deviceNames, deviceHost: deviceHost,
+            deviceNames: deviceNames, deviceMachine: deviceMachine,
             heal: heal, noHeal: noHeal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
             fastInput: fastInput, enableAnimations: enableAnimations,
             performanceMode: performanceMode, broadcast: broadcast,
@@ -94,7 +94,7 @@ struct RemoteRunDispatcher {
     /// だが JUnit は扱わない(拡張連携は NDJSON 中継のみで完結する)。戻り値 = リモート
     /// `fleetest api run` の exit code
     func dispatchApi(project: TestProject, profile: String, scenarios: [String],
-                     deviceNames: [String] = [], deviceHost: String? = nil,
+                     deviceNames: [String] = [], deviceMachine: String? = nil,
                      heal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
                      performanceMode: Bool,
                      defaultTimeout: Double?, scenarioTimeout: Double?,
@@ -114,7 +114,7 @@ struct RemoteRunDispatcher {
         let remoteReportDir = layout.dispatchReportDir(stamp: stamp)
         let fleetestArgs = RemoteRunArgs.buildApi(
             project: project.name, profile: profile, scenarios: scenarios,
-            deviceNames: deviceNames, deviceHost: deviceHost,
+            deviceNames: deviceNames, deviceMachine: deviceMachine,
             heal: heal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
             performanceMode: performanceMode,
             defaultTimeout: defaultTimeout, scenarioTimeout: scenarioTimeout, reportDir: remoteReportDir,
@@ -331,7 +331,7 @@ struct RemoteRunDispatcher {
         }
         // **ローカルエイリアスをランナーへ残さない**(FTCore.RunnerProfileView)。転送した
         // profiles/ を「そのランナーから見た姿」へ差し替える —— 向こうの台は "local" になり、
-        // 他機の台は消える。子へ渡す --device-host も local になる(RemoteRunArgs)
+        // 他機の台は消える。子へ渡す --device-machine も local になる(RemoteRunArgs)
         // hostLabel が無い構築箇所(旧経路)では畳めない —— 畳む鍵はプロファイルが書く
         // エイリアスそのものなので、生の ssh 宛先しか無いときは差し替えず従来どおり送る
         if let hostLabel, let failure = RunnerProfileTransfer.localizeAndUpload(

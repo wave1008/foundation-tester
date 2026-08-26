@@ -78,7 +78,7 @@ public enum FleetSplit {
             self.coefficientSource = coefficientSource
         }
 
-        /// ログ1行の断片。**文言はここ1箇所**(DeviceHostRunner と FleetRunner が同じ事実を
+        /// ログ1行の断片。**文言はここ1箇所**(DeviceMachineRunner と FleetRunner が同じ事実を
         /// 別の言い方で出すと、同じ run の2つの表で係数が食い違って見える)
         public var summary: String {
             var parts: [String] = []

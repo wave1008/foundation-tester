@@ -103,7 +103,7 @@ export interface MonitorPanelDeps {
   ): { readonly machines: readonly string[]; readonly runs: readonly string[] };
   /** MonitorDeviceStreamController.disposeForDeviceNameへの委譲。MonitorDeviceOpsのdevice-downジョブが
    * 実行を開始する時点(simctl/adbで実際に殺す前)で呼び、タイルを即座に切断表示へ倒す。 */
-  stopDeviceStreams(name: string, host?: string): void;
+  stopDeviceStreams(name: string, machine?: string): void;
   /** MonitorDeviceStreamController.disposeAllForDownへの委譲。MonitorDeviceOpsの一括downジョブの
    * 実行開始時に呼ぶ(stopDeviceStreamsの全台版)。 */
   stopAllStreams(): void;
@@ -230,7 +230,7 @@ export class MonitorPanelController implements vscode.Disposable {
         this.healthWatchdog.observe(devices);
       },
       isPollingMode: () => this.pollingMode,
-      stopDeviceStreams: (name, host) => this.deviceStream.disposeForDeviceName(name, host),
+      stopDeviceStreams: (name, machine) => this.deviceStream.disposeForDeviceName(name, machine),
       stopAllStreams: () => this.deviceStream.disposeAllForDown(),
       videoWebviewUri: (absPath) =>
         this.panel ? this.panel.webview.asWebviewUri(vscode.Uri.file(absPath)).toString() : null,
@@ -404,10 +404,10 @@ export class MonitorPanelController implements vscode.Disposable {
   }
 
   /**
-   * 設定タブのリモートホスト行編集(追加・削除・name/host/dir 変更)を CLI 登録簿へ反映する。
+   * 設定タブのリモートホスト行編集(追加・削除・machine/host/dir 変更)を CLI 登録簿へ反映する。
    * lastKnownRemoteHosts との差分だけを送る(diffRemoteHostsForSync)ので、artifacts のみの
    * 変更(hosts は不変)では CLI を叩かない。削除→追加(import は upsert)の順で送ることで、
-   * rename(同じ行の name 変更)も「旧名を消し新名を作る」として正しく扱える。
+   * rename(同じ行の machine 変更)も「旧名を消し新名を作る」として正しく扱える。
    * CLI 呼び出しが失敗した行は lastKnownRemoteHosts に残らない(=書き込めなかったことが
    * 次に webview へ返す一覧に反映される)。失敗理由は remoteConfig.error に乗せて webview へ返す
    * (settingsTab.js が画面に出す。OUTPUT へのログだけにしない —— 行が黙って消えて見える)。
@@ -530,7 +530,7 @@ export class MonitorPanelController implements vscode.Disposable {
         break;
       case "deviceOp":
         this.deviceOps.enqueueLifecycleJob({
-          kind: "device", name: message.name, op: message.op, host: message.host,
+          kind: "device", name: message.name, op: message.op, machine: message.machine,
           udid: message.udid, serial: message.serial,
         });
         break;

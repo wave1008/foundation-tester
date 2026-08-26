@@ -86,8 +86,8 @@ export interface MonitorDevice {
   /** このデバイスが居る機械(登録名。手元は undefined)。**`host` はブリッジ宛先の IP で別物**。
    * モニターは手元のデバイスしか触れないので、リモートのタイルは状態を観測できない ——
    * タイルにホスト名を出して「どの機械の台か」を分かるようにする
-   * (Sources/fleetest/ApiMonitorCommand.swift の ApiMonitorDeviceInfo.machineHost と対)。 */
-  readonly machineHost?: string;
+   * (Sources/fleetest/ApiMonitorCommand.swift の ApiMonitorDeviceInfo.machine と対)。 */
+  readonly machine?: string;
 }
 
 /** `fleetest api monitor` の NDJSON 1行分のイベント(kind で判別)。 */
@@ -218,7 +218,7 @@ export function sortMonitorDevices(devices: readonly MonitorDevice[]): MonitorDe
     if (a.platform !== b.platform) {
       return a.platform === "ios" ? -1 : 1;
     }
-    const [ha, hb] = [a.machineHost ?? "", b.machineHost ?? ""];
+    const [ha, hb] = [a.machine ?? "", b.machine ?? ""];
     if (ha !== hb) {
       return ha === "" ? -1 : hb === "" ? 1 : ha.localeCompare(hb);  // 手元が先
     }

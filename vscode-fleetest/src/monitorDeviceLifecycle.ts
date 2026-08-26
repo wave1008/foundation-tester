@@ -47,14 +47,16 @@ export function isDeviceOpEvent(value: unknown): value is DeviceOpEvent {
  * 契約の同期相手: Sources/fleetest/ApiDeviceCommands.swift ApiDevicesUp(deviceStarting/deviceFinished は
  * ブート開始/完了の即時通知で、モニターの状態スキャンを待たずタイルを「起動中」表示にするために使う。
  * deviceStopping は --restart 指定デバイスの down 開始通知)。 */
-// host: そのデバイスが居る機械(手元は null/省略)。**同名のデバイスが別の機械にも居るのが通常**
-// なので、名前だけではタイルを特定できない(Sources/fleetest/ApiDeviceCommands.swift の
-// ApiDevicesUpLifecycleEvent と対。リモートへ分散した分は子プロセスの行がそのまま流れてくる)。
+// machine: そのデバイスが居る機械(マシン名 = エイリアス。手元は null/省略)。**同名のデバイスが
+// 別の機械にも居るのが通常**なので、名前だけではタイルを特定できない
+// (Sources/fleetest/ApiDeviceCommands.swift の ApiDevicesUpLifecycleEvent と対。リモートへ
+// 分散した分は子プロセスの行がそのまま流れてくる)。**キーは "machine"**(2026-08-26 改名。
+// ProtocolVersion 9)。
 export type DevicesUpEvent =
   | { readonly kind: "log"; readonly message: string }
-  | { readonly kind: "deviceStopping"; readonly name: string; readonly platform: string; readonly host?: string | null }
-  | { readonly kind: "deviceStarting"; readonly name: string; readonly platform: string; readonly host?: string | null }
-  | { readonly kind: "deviceFinished"; readonly name: string; readonly platform: string; readonly host?: string | null }
+  | { readonly kind: "deviceStopping"; readonly name: string; readonly platform: string; readonly machine?: string | null }
+  | { readonly kind: "deviceStarting"; readonly name: string; readonly platform: string; readonly machine?: string | null }
+  | { readonly kind: "deviceFinished"; readonly name: string; readonly platform: string; readonly machine?: string | null }
   | { readonly kind: "finished"; readonly ok: boolean; readonly error: string | null };
 
 /** value が DevicesUpEvent として扱ってよいか判定する(isDeviceOpEvent と同じ方針)。 */
@@ -168,13 +170,13 @@ export type DeviceLifecycleJob =
   // monitorDeviceOps.ts executeDeviceOpJob が --name の代わりに --udid/--serial を渡す(対向:
   // Sources/fleetest/ApiDeviceCommands.swift ApiDeviceDownDirectTarget)。name はタイル特定・
   // 重複排除キーとして直指定時も引き続き使う。
-  // host: そのデバイスが居る機械(手元は undefined)。**名前だけで CLI に渡さない** ——
+  // machine: そのデバイスが居る機械(手元は undefined)。**名前だけで CLI に渡さない** ——
   // 同名の台が別の機械にも居るのは通常で、手元の同名エントリを引いて別の機械の設定で
   // シミュレータを1台作ってしまう(simctl は無ければ作る)
-  | { readonly kind: "device"; readonly name: string; readonly op: DeviceOpKind; readonly host?: string; readonly udid?: string; readonly serial?: string }
+  | { readonly kind: "device"; readonly name: string; readonly op: DeviceOpKind; readonly machine?: string; readonly udid?: string; readonly serial?: string }
   | { readonly kind: "restartBatch"; readonly names: readonly string[] };
 
-/** device ジョブの同時実行上限。**機械ごとに数える** —— 「2台同時でホスト CPU がほぼ飽和する」
+/** device ジョブの同時実行上限。**機械ごとに数える** —— 「2台同時でマシン CPU がほぼ飽和する」
  * という実測は**その機械の CPU の話**で、別の機械の起動を止める理由が無い(起動は機械ごとに
  * 独立した資源[CPU・GPU・ディスク]を使う。一括起動が RemoteDeviceFanout で機械ごとに
  * 分散するのと同じ考え方)。全機で共有すると、M2Ultra の2台を起こしている間、
@@ -199,13 +201,13 @@ export function enqueueDeviceLifecycleJob(
   return { running: state.running, jobs: [...state.jobs, job] };
 }
 
-/** ジョブの同一性(finish の running 照合用)。device は (host, name)+op、bulk は op、
- * restartBatch は names。**host を入れないと**、同名の台を2機で同時に操作したとき
+/** ジョブの同一性(finish の running 照合用)。device は (machine, name)+op、bulk は op、
+ * restartBatch は names。**machine を入れないと**、同名の台を2機で同時に操作したとき
  * 片方の完了がもう片方を running から外し、残ったジョブのバッジが剥がれない・
  * 二重に完了扱いになる(2026-08-17 に同型を掃討)。 */
 function sameLifecycleJob(a: DeviceLifecycleJob, b: DeviceLifecycleJob): boolean {
   if (a.kind === "device" && b.kind === "device") {
-    return a.name === b.name && a.op === b.op && a.host === b.host;
+    return a.name === b.name && a.op === b.op && a.machine === b.machine;
   }
   if (a.kind === "bulk" && b.kind === "bulk") {
     return a.op === b.op;
@@ -225,12 +227,12 @@ export function promoteDeviceLifecycleJobs(state: DeviceLifecycleQueueState): {
   const jobs = [...state.jobs];
   const started: DeviceLifecycleJob[] = [];
   /** その機械で走らせてよいか(上限は機械ごと・同じデバイスへの二重操作は避ける)。
-   * 判定は **(host, name)** —— 名前だけだと、別の機械の同名の台が「同じデバイス」に見える */
+   * 判定は **(machine, name)** —— 名前だけだと、別の機械の同名の台が「同じデバイス」に見える */
   const canStart = (job: DeviceLifecycleJob): boolean => {
     if (job.kind !== "device") {
       return false;
     }
-    const onSameMachine = running.filter((j) => j.kind === "device" && j.host === job.host);
+    const onSameMachine = running.filter((j) => j.kind === "device" && j.machine === job.machine);
     if (onSameMachine.length >= DEVICE_LIFECYCLE_MAX_CONCURRENT) {
       return false;
     }
@@ -306,11 +308,11 @@ export function hasDeviceLifecycleJobFor(
   /** そのデバイスが居る機械(手元は undefined)。**名前だけで見ると、別の機械の同名の台の
    * ジョブが手元の操作を黙って握りつぶす**(2026-08-17 に同型を掃討)。
    * bulk / restartBatch は全機に触れうるので名前だけで見てよい。 */
-  host?: string,
+  machine?: string,
 ): boolean {
   return [...state.running, ...state.jobs].some(
     (job) =>
-      (job.kind === "device" && job.name === name && job.host === host) ||
+      (job.kind === "device" && job.name === name && job.machine === machine) ||
       (job.kind === "restartBatch" && job.names.includes(name)) ||
       (job.kind === "bulk" && (job.restartNames?.includes(name) ?? false)),
   );
@@ -350,7 +352,7 @@ export function deviceLifecycleStatusFor(
   /** そのデバイスが居る機械(手元は undefined)。**名前だけで引くと同名の別の機械のジョブに
    * 当たる** —— 「M2Ultra の台を停止」が手元のタイルに「シャットダウン中」を出す
    * (2026-08-17 の実害。bulk/restartBatch は手元専用なので name のままでよい)。 */
-  host?: string,
+  machine?: string,
 ): DeviceOpBusyState | undefined {
   const all = [...state.running, ...state.jobs];
   // bulk up の restartNames(GPU 復帰対象)/ restartBatch は、ジョブが実行中でも CLI がその
@@ -363,7 +365,7 @@ export function deviceLifecycleStatusFor(
     return { op: "down", status: "queued" };
   }
   const sameDevice = (job: DeviceLifecycleJob): boolean =>
-    job.kind === "device" && job.name === name && job.host === host;
+    job.kind === "device" && job.name === name && job.machine === machine;
   const runningJob = state.running.find(sameDevice);
   if (runningJob && runningJob.kind === "device") {
     return { op: runningJob.op, status: "running" };

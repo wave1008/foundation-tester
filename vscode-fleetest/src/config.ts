@@ -452,7 +452,7 @@ export interface MachineDeviceEntry {
   readonly name: string;
   readonly platform: Platform;
   /** このデバイスが居る機械(登録名。省略=プロファイル直下の machine、それも無ければ手元)。
-   * 一意なのは (machine, name)(Sources/FTCore/DeviceHostGrouping.swift)。
+   * 一意なのは (machine, name)(Sources/FTCore/DeviceMachineGrouping.swift)。
    * **JSON キーは "machine"**(旧 "host" も読む。toMachineDeviceEntry)。 */
   readonly machine?: string;
   readonly kind?: "virtual" | "physical";

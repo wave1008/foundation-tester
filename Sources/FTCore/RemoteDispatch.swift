@@ -6,6 +6,8 @@ import Foundation
 
 public enum RemoteDispatchError: Error, LocalizedError {
     case invalidHost(String)
+    /// 宛先そのものは妥当だが、そのマシンに割り当てられた台が無い(--machine の絞り込み)
+    case invalidMachine(String)
     case invalidDevice(String)
     case invalidRemoteDir(String)
     case invalidArtifactsMode(String)
@@ -17,6 +19,8 @@ public enum RemoteDispatchError: Error, LocalizedError {
         switch self {
         case .invalidHost(let detail):
             return "invalid --machine/--host: \(detail)"
+        case .invalidMachine(let detail):
+            return "invalid --machine: \(detail)"
         case .invalidDevice(let detail):
             return "invalid --device: \(detail)"
         case .invalidRemoteDir(let detail):
@@ -472,7 +476,7 @@ public enum RemoteDispatchFlagPolicy {
     /// **デバイスが複数の機械にまたがるプロファイル**(ホスト別の子へ分かれる)で使えず、
     /// 中断した run が残したロックを解除する手段が `remote clean`(デバイスも止まる)か
     /// 手動削除しか無くなる(2026-08-18 に実際に詰まった。子への転送自体は
-    /// DeviceHostRunner/FleetRunner が既に行っている)。
+    /// DeviceMachineRunner/FleetRunner が既に行っている)。
     /// 純粋にローカルだけの実行(プロファイルすら無い)のときだけ、打ち間違いとして拒否する
     public static func forceLockRejection(host: String?, fleet: String?, profile: String?) -> String? {
         let hasRemoteRoute = host != nil || fleet != nil || profile != nil
@@ -542,7 +546,7 @@ public enum RemoteRunArgs {
     /// ディスパッチ単位の隔離先(non-nil のときのみ付与。RemoteRunDispatcher が常に渡す)
     public static func build(project: String, profile: String,
                              scenarios: [String], folders: [String],
-                             deviceNames: [String] = [], deviceHost: String? = nil,
+                             deviceNames: [String] = [], deviceMachine: String? = nil,
                              heal: Bool, noHeal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
                              fastInput: Bool, enableAnimations: Bool, performanceMode: Bool,
                              broadcast: Bool = false,
@@ -552,7 +556,7 @@ public enum RemoteRunArgs {
         // **リモート側は必ず「ここで走らせる」**(--host local)。省略すると、向こうの fleetest が
         // 転送されたマシンプロファイルの host(= 自分のはずのホスト名)を読んで**もう一度
         // ディスパッチしようとする** —— 登録簿に無ければ「未登録のホスト」で落ち、あれば
-        // 自分自身へ ssh する。"local" は MachineHostDispatch.resolve が明示指定として止める
+        // 自分自身へ ssh する。"local" は MachineDispatch.resolve が明示指定として止める
         // (FleetRunner が "local" エントリに --host local を渡すのと同じ理由)
         var args = ["run", "--project", project, "--profile", profile, "--quiet", "--host", "local"]
         if let reportDir { args += ["--report-dir", reportDir] }
@@ -564,7 +568,7 @@ public enum RemoteRunArgs {
         // ローカルエイリアス(M1Ultra 等)は発行側だけの概念なのでリモートへ出さない
         // (用語の定義は FTCore.RunnerProfileView。2026-08-26 ユーザー決定)
         if !deviceNames.isEmpty { args += ["--device"] + deviceNames }
-        if deviceHost != nil { args += ["--device-machine", DeviceHostGrouping.localDisplayName] }
+        if deviceMachine != nil { args += ["--device-machine", DeviceMachineGrouping.localDisplayName] }
         // **remoteControl.workspace が宣言されているプロファイルだけ渡る**(RemoteRunDispatcher が
         // ミラー後に埋める)。渡さないと子は自分のリポジトリルート基準で appPath を解決し、
         // ミラーしていない絶対パスを見に行く(この機能の動機になった不具合そのもの)
@@ -597,7 +601,7 @@ public enum RemoteRunArgs {
     /// `api run` に `--enable-animations` は無い(アニメーションは実行プロファイルの
     /// enableAnimations と環境変数から解決する)ので、中継するのは `--performance` だけ
     public static func buildApi(project: String, profile: String, scenarios: [String],
-                                deviceNames: [String] = [], deviceHost: String? = nil,
+                                deviceNames: [String] = [], deviceMachine: String? = nil,
                                 heal: Bool, noLPT: Bool, lptHistoryRuns: Int?,
                                 performanceMode: Bool,
                                 defaultTimeout: Double?, scenarioTimeout: Double?,
@@ -606,11 +610,11 @@ public enum RemoteRunArgs {
         // --host local の理由は build() のコメント(リモートでの再ディスパッチを止める)
         var args = ["api", "run", "--project", project, "--profile", profile, "--host", "local"]
         if let reportDir { args += ["--report-dir", reportDir] }
-        // **デバイスの絞り込みは中継しないと効かない**(build() と同じ理由。ApiRunHostFanout が
+        // **デバイスの絞り込みは中継しないと効かない**(build() と同じ理由。ApiRunMachineFanout が
         // 複数機械にまたがるプロファイルをホストごとの子へ分けるようになったため、`api run --host`
         // でも同名デバイスが別の機械に居りうる。2026-08-17)。値が "local" 固定なのも build() と同じ
         if !deviceNames.isEmpty { args += ["--device"] + deviceNames }
-        if deviceHost != nil { args += ["--device-machine", DeviceHostGrouping.localDisplayName] }
+        if deviceMachine != nil { args += ["--device-machine", DeviceMachineGrouping.localDisplayName] }
         // 渡す条件・理由は build() の --workspace と同じ
         if let workspace { args += ["--workspace", workspace] }
         for scenario in scenarios { args += ["--scenario", scenario] }

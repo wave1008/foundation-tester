@@ -1,13 +1,13 @@
-// webviewDevicePickHost.test.mjs
-// #device-pick-overlay(「+既存から選択」モーダル)内のホスト選択(devicePickHost.js)の DOM テスト。
+// webviewDevicePickMachine.test.mjs
+// #device-pick-overlay(「+既存から選択」モーダル)内のマシン選択(devicePickMachine.js)の DOM テスト。
 // 実 HTML+実バンドルで動かす方式は webviewDeviceAddModal.test.mjs と同じ(harness のコメントは
 // そちら参照)。
 //
-// 検証対象: ①マシンプロファイルに host が無ければ既定はローカル(source:{kind:'local'})で
-// deviceCatalogRequest/installedDevicesRequest/createDevice に載る、②マシンプロファイルの host が
-// 登録済みホスト名ならそのホストが初期値になり同じ3メッセージに remote(host)が載る、③登録簿に
-// 無いホストを指していればローカルへ落ちる、④ダイアログを開いたまま選び直すと installed-devices を
-// 選び直したホストで再取得する、⑤ホストバッジ(#device-add-source-badge)に現在の選択が出る、
+// 検証対象: ①マシンプロファイルに machine が無ければ既定はローカル(source:{kind:'local'})で
+// deviceCatalogRequest/installedDevicesRequest/createDevice に載る、②マシンプロファイルの machine が
+// 登録済みのマシン名ならそれが初期値になり同じ3メッセージに remote(machine)が載る、③登録簿に
+// 無いマシンを指していればローカルへ落ちる、④ダイアログを開いたまま選び直すと installed-devices を
+// 選び直したマシンで再取得する、⑤マシンバッジ(#device-add-source-badge)に現在の選択が出る、
 // ⑥machineDevicesSync(OK ボタン)にも現在の選択が source として載る。
 
 import assert from "node:assert/strict";
@@ -79,8 +79,8 @@ function openDevicePickModal(window, document, machine) {
   document.getElementById("btn-device-add-existing").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 }
 
-function selectHost(window, document, value) {
-  const select = document.getElementById("device-pick-host-select");
+function pickMachineOption(window, document, value) {
+  const select = document.getElementById("device-pick-machine-select");
   select.value = value;
   select.dispatchEvent(new window.Event("change", { bubbles: true }));
 }
@@ -91,14 +91,16 @@ function selectHost(window, document, value) {
 function assertLocalSource(source) {
   assert.equal(source.kind, "local");
 }
-function assertRemoteSource(source, host) {
+function assertRemoteSource(source, machine) {
   assert.equal(source.kind, "remote");
-  assert.equal(source.host, host);
+  assert.equal(source.machine, machine);
 }
 
+// **マシン名のキーは "machine"**(2026-08-26 改名。remoteRunArgs.ts の RemoteHostEntry と対)。
+// 旧キー "name" のままにすると一覧が空になり、リモートのマシンを1つも選べない。
 const REMOTE_CONFIG_WITH_M1MAX = {
   type: "remoteConfig",
-  hosts: [{ name: "M1Max", host: "user@m1max", dir: "", machine: "" }],
+  hosts: [{ machine: "M1Max", host: "user@m1max", dir: "" }],
   artifacts: "collect",
 };
 
@@ -112,7 +114,7 @@ const EMPTY_INSTALLED_DEVICES = {
   },
 };
 
-test("host 未設定のマシンは既定でローカル(installedDevicesRequest/deviceCatalogRequest/createDevice に source:{kind:'local'})", (t) => {
+test("machine 未設定のマシンは既定でローカル(installedDevicesRequest/deviceCatalogRequest/createDevice に source:{kind:'local'})", (t) => {
   const posted = [];
   const { window, document } = createWebview((message) => posted.push(message));
   t.after(() => window.close());
@@ -120,22 +122,22 @@ test("host 未設定のマシンは既定でローカル(installedDevicesRequest
   openDevicePickModal(window, document, { name: "M1", devices: [] });
   const installedReq = posted.find((m) => m.type === "installedDevicesRequest");
   assertLocalSource(installedReq.source);
-  assert.equal(document.getElementById("device-pick-host-select").value, "");
+  assert.equal(document.getElementById("device-pick-machine-select").value, "");
 
   document.getElementById("device-pick-ios-add-new").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
   const catalogReq = posted.find((m) => m.type === "deviceCatalogRequest");
   assertLocalSource(catalogReq.source);
 });
 
-test("マシンの host が登録済みホスト名なら、それが初期値になり同じ3メッセージに remote(host) が載る", (t) => {
+test("マシンの machine が登録済みのマシン名なら、それが初期値になり同じ3メッセージに remote(machine) が載る", (t) => {
   const posted = [];
   const { window, document } = createWebview((message) => posted.push(message));
   t.after(() => window.close());
 
   post(window, REMOTE_CONFIG_WITH_M1MAX);
-  openDevicePickModal(window, document, { name: "M1", devices: [], host: "M1Max" });
+  openDevicePickModal(window, document, { name: "M1", devices: [], machine: "M1Max" });
 
-  assert.equal(document.getElementById("device-pick-host-select").value, "M1Max");
+  assert.equal(document.getElementById("device-pick-machine-select").value, "M1Max");
   const installedReq = posted.find((m) => m.type === "installedDevicesRequest");
   assertRemoteSource(installedReq.source, "M1Max");
 
@@ -144,20 +146,20 @@ test("マシンの host が登録済みホスト名なら、それが初期値�
   assertRemoteSource(catalogReq.source, "M1Max");
 });
 
-test("マシンの host が登録簿に無い名前ならローカルへ落ちる", (t) => {
+test("マシンの machine が登録簿に無い名前ならローカルへ落ちる", (t) => {
   const posted = [];
   const { window, document } = createWebview((message) => posted.push(message));
   t.after(() => window.close());
 
   post(window, REMOTE_CONFIG_WITH_M1MAX);
-  openDevicePickModal(window, document, { name: "M1", devices: [], host: "GoneHost" });
+  openDevicePickModal(window, document, { name: "M1", devices: [], machine: "GoneMachine" });
 
-  assert.equal(document.getElementById("device-pick-host-select").value, "");
+  assert.equal(document.getElementById("device-pick-machine-select").value, "");
   const installedReq = posted.find((m) => m.type === "installedDevicesRequest");
   assertLocalSource(installedReq.source);
 });
 
-test("ダイアログを開いたまま選び直すと installedDevicesRequest を選び直したホストで再送する", (t) => {
+test("ダイアログを開いたまま選び直すと installedDevicesRequest を選び直したマシンで再送する", (t) => {
   const posted = [];
   const { window, document } = createWebview((message) => posted.push(message));
   t.after(() => window.close());
@@ -166,13 +168,13 @@ test("ダイアログを開いたまま選び直すと installedDevicesRequest �
   openDevicePickModal(window, document, { name: "M1", devices: [] });
   assert.equal(posted.filter((m) => m.type === "installedDevicesRequest").length, 1);
 
-  selectHost(window, document, "M1Max");
+  pickMachineOption(window, document, "M1Max");
   const requests = posted.filter((m) => m.type === "installedDevicesRequest");
   assert.equal(requests.length, 2, "選び直しで再要求する");
   assertRemoteSource(requests[1].source, "M1Max");
 });
 
-test("ホストバッジ(#device-add-source-badge)に現在の選択が出る", (t) => {
+test("マシンバッジ(#device-add-source-badge)に現在の選択が出る", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
 
@@ -181,23 +183,23 @@ test("ホストバッジ(#device-add-source-badge)に現在の選択が出る", 
   // ローカルのまま: バッジは「ローカル」
   openDevicePickModal(window, document, { name: "M1", devices: [] });
   document.getElementById("device-pick-ios-add-new").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-  assert.equal(document.getElementById("device-add-source-badge").textContent, "ホスト: ローカル");
+  assert.equal(document.getElementById("device-add-source-badge").textContent, "マシン: ローカル");
   document.getElementById("dlg-cancel").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
   document.getElementById("device-pick-cancel").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 
-  // host: M1Max のマシンを開き直す: バッジは「M1Max」
-  openDevicePickModal(window, document, { name: "M1", devices: [], host: "M1Max" });
+  // machine: M1Max のマシンを開き直す: バッジは「M1Max」
+  openDevicePickModal(window, document, { name: "M1", devices: [], machine: "M1Max" });
   document.getElementById("device-pick-ios-add-new").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-  assert.equal(document.getElementById("device-add-source-badge").textContent, "ホスト: M1Max");
+  assert.equal(document.getElementById("device-add-source-badge").textContent, "マシン: M1Max");
 });
 
-test("machineDevicesSync(OK ボタン)にも現在選択中のホストが source として載る", (t) => {
+test("machineDevicesSync(OK ボタン)にも現在選択中のマシンが source として載る", (t) => {
   const posted = [];
   const { window, document } = createWebview((message) => posted.push(message));
   t.after(() => window.close());
 
   post(window, REMOTE_CONFIG_WITH_M1MAX);
-  openDevicePickModal(window, document, { name: "M1", devices: [], host: "M1Max" });
+  openDevicePickModal(window, document, { name: "M1", devices: [], machine: "M1Max" });
 
   post(window, {
     type: "installedDevices",

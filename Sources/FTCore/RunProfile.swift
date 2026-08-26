@@ -111,7 +111,7 @@ public struct DeviceSpec: Codable, Sendable, Hashable {
     public var name: String
     /// このデバイスが居る機械。省略時はマシンプロファイルの machine(そちらも省略なら手元)。
     /// 書けるのは**登録名**だけ(ssh の実体は書けない。MachineProfile.machine と同じ規律)。
-    /// 解決規則は DeviceHostGrouping、正規化は MachineHostDispatch.normalize。
+    /// 解決規則は DeviceMachineGrouping、正規化は MachineDispatch.normalize。
     /// **JSON キーは "machine"**(2026-08-26 改名)。旧キー "host" も読む(既存プロファイルは無改修)
     public var machine: String?
     /// 実体種別(省略時 virtual)。実機の識別子は iOS=udid / Android=serial
@@ -224,7 +224,7 @@ public struct MachineProfile: Codable, Sendable, Equatable {
     /// 無改修で動く**)。それ以外は `fleetest remote hosts` の登録名でなければならない
     /// (生の ssh 宛先は書けない — プロファイルはプロジェクト資産で、ssh の実体はローカル設定
     /// = LocalConfig.remoteHosts にだけ置く規律。フリート定義と同じ)。優先順位・食い違いの扱いは
-    /// MachineHostDispatch、登録簿引きは Sources/fleetest/RemoteCommands.swift。
+    /// MachineDispatch、登録簿引きは Sources/fleetest/RemoteCommands.swift。
     /// **JSON キーは "machine"**(2026-08-26 改名)。旧キー "host" も読む
     public var machine: String?
     public var ios: MachineDeviceList?
@@ -262,59 +262,61 @@ public struct MachineProfile: Codable, Sendable, Equatable {
 /// マシンプロファイルに host を持たせたことで、実行プロファイル経由で間接的にリモートホストを
 /// 指定できるようにした(ユーザー決定)。呼び出し側(Sources/fleetest/RemoteCommands.swift)は
 /// ここが返す名前を、由来に応じて登録簿引きするだけで if を散らさない。
-public enum MachineHostDispatch {
+public enum MachineDispatch {
     public struct Decision: Equatable {
-        /// 実際に使うべきホスト名(nil = ローカル実行)
-        public let host: String?
-        /// `--host` とマシン側 host が両方非ローカルで食い違うときの1行注記。無ければ nil
+        /// 実際のディスパッチ先(nil = ローカル実行)。**マシン名(エイリアス)か、`--host` で
+        /// 直接書かれたホスト名 / IP のどちらか** —— 呼び出し側が登録簿で解決する
+        public let target: String?
+        /// 明示の宛先とプロファイルの machine が両方非ローカルで食い違うときの1行注記。無ければ nil
         /// (黙って別のマシンへ送らない。既存の ResolvedRemoteHost.announce と同じ規律)
         public let mismatchWarning: String?
 
-        public init(host: String? = nil, mismatchWarning: String? = nil) {
-            self.host = host
+        public init(target: String? = nil, mismatchWarning: String? = nil) {
+            self.target = target
             self.mismatchWarning = mismatchWarning
         }
     }
 
-    /// nil・空文字・trim 後 "local" は「ローカル」(nil に正規化)。MachineProfile.host と
-    /// --host の両方にこの規則を適用する
+    /// nil・空文字・trim 後 "local" は「ローカル」(nil に正規化)。MachineProfile.machine と
+    /// --machine/--host の両方にこの規則を適用する
     public static func normalize(_ raw: String?) -> String? {
         guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
               !trimmed.isEmpty, trimmed != "local" else { return nil }
         return trimmed
     }
 
-    /// **`--host` が常に勝つ**。マシン側 host が別のリモートを指していれば `mismatchWarning` を
-    /// 返す(黙って上書きしない)。`--host` が無ければマシン側の値をそのまま自動採用する。
+    /// **明示の宛先(`--machine` / `--host`)が常に勝つ**。プロファイルの machine が別のリモートを
+    /// 指していれば `mismatchWarning` を返す(黙って上書きしない)。明示が無ければプロファイル側の
+    /// 値をそのまま自動採用する。
     ///
-    /// **明示 `--host local` は「ここで走らせる」の指定であって「未指定」ではない**(欠陥3・
-    /// 2026-08-17)。`normalize` は "local" を nil に畳むため、素の `normalize(explicitHost)` だけで
-    /// 分岐すると "local" が「--host 未指定」と区別できず、マシン側の host へ自動ディスパッチして
+    /// **明示 `--machine local` は「ここで走らせる」の指定であって「未指定」ではない**(欠陥3・
+    /// 2026-08-17)。`normalize` は "local" を nil に畳むため、素の `normalize(explicitTarget)` だけで
+    /// 分岐すると "local" が「未指定」と区別できず、プロファイル側の machine へ自動ディスパッチして
     /// しまう(`FleetRunner` の "local" エントリが実際にはリモートへ飛ぶ実害があった)。ここでだけ
-    /// 生の explicitHost を見て先に判定する。マシン側が別のリモートを指していれば、通常の食い違いと
-    /// 同じ規律で mismatchWarning を返す(黙って上書きしない)
-    public static func resolve(explicitHost: String?, machineHost: String?) -> Decision {
-        let machine = normalize(machineHost)
-        if isExplicitLocal(explicitHost) {
-            guard let machine else { return Decision(host: nil) }
-            return Decision(host: nil, mismatchWarning:
-                "--host local overrides the machine profile's host \"\(machine)\""
+    /// 生の explicitTarget を見て先に判定する。プロファイル側が別のリモートを指していれば、通常の
+    /// 食い違いと同じ規律で mismatchWarning を返す(黙って上書きしない)
+    public static func resolve(explicitTarget: String?, profileMachine: String?) -> Decision {
+        let profileMachine = normalize(profileMachine)
+        if isExplicitLocal(explicitTarget) {
+            guard let profileMachine else { return Decision(target: nil) }
+            return Decision(target: nil, mismatchWarning:
+                "--machine local overrides the machine profile's machine \"\(profileMachine)\""
                 + " (the run stays local)")
         }
-        guard let explicit = normalize(explicitHost) else {
-            return Decision(host: machine)
+        guard let explicit = normalize(explicitTarget) else {
+            return Decision(target: profileMachine)
         }
-        guard let machine, machine != explicit else {
-            return Decision(host: explicit)
+        guard let profileMachine, profileMachine != explicit else {
+            return Decision(target: explicit)
         }
-        return Decision(host: explicit, mismatchWarning:
-            "--host \(explicit) overrides the machine profile's host \"\(machine)\""
+        return Decision(target: explicit, mismatchWarning:
+            "--machine \(explicit) overrides the machine profile's machine \"\(profileMachine)\""
             + " (they differ; the run continues on \(explicit))")
     }
 
     /// 生の(trim 前の)値が文字どおり "local" か。normalize 後の nil(= 未指定)とは区別する。
     /// `--host local` と実行プロファイルの `"host": "local"` の両方が「ここで走らせる」の明示指定で、
-    /// 判定を写すと片方だけズレるのでここが唯一の定義元(呼び出し側は DeviceHostGrouping.resolve)
+    /// 判定を写すと片方だけズレるのでここが唯一の定義元(呼び出し側は DeviceMachineGrouping.resolve)
     public static func isExplicitLocal(_ raw: String?) -> Bool {
         guard let raw else { return false }
         return raw.trimmingCharacters(in: .whitespacesAndNewlines) == "local"
@@ -325,7 +327,7 @@ public enum MachineHostDispatch {
 public struct RunDeviceRef: Codable, Sendable, Equatable {
     public var name: String
     /// 同名のデバイスが複数の機械に居るときの指定(省略可)。省略した参照が複数に当たると
-    /// **候補を挙げて中止する**(どちらか一方を黙って選ばない。解決規則は DeviceHostGrouping)。
+    /// **候補を挙げて中止する**(どちらか一方を黙って選ばない。解決規則は DeviceMachineGrouping)。
     /// **JSON キーは "machine"**(2026-08-26 改名)。旧キー "host" も読む
     public var machine: String?
 
@@ -598,7 +600,7 @@ public struct ResolvedProfile: Sendable {
     public let project: TestProject
     public let runName: String
     public let machineName: String
-    /// マシンプロファイルの host(MachineHostDispatch.normalize 済み。nil = ローカル実行)。
+    /// マシンプロファイルの host(MachineDispatch.normalize 済み。nil = ローカル実行)。
     /// 表示用途(`fleetest profile list`)。実際のディスパッチ判定・登録簿引きは呼び出し側
     /// (Sources/fleetest/RemoteCommands.swift)が `--host` と突き合わせて行う。
     /// **`var` にする**(memberwise init を直に呼ぶ既存テスト
@@ -606,7 +608,7 @@ public struct ResolvedProfile: Sendable {
     /// この引数を知らないため既定値が要る。**既定値付きの `let` は memberwise init から
     /// 除外されて渡せなくなる** —— `var` なら既定引数として残る(RemoteRunDispatcher.mode と同じ罠)。
     /// 省略時 nil = ローカル扱いは仕様どおり)
-    public var machineHost: String? = nil
+    public var machine: String? = nil
     /// アプリの表示名(apps/<name>.json の appName。無ければファイル名)
     public let appName: String
     /// platform("ios"/"android")→ アプリ情報(デバイスがある platform のみ)
@@ -657,7 +659,7 @@ public struct ResolvedProfile: Sendable {
     /// この配下の `apps/<ファイル名>` に切り替わる(ステージングは WorkspaceAppStaging)。
     /// リモートディスパッチはこれがプロジェクトルート配下かどうかで転送経路を分ける
     /// (`WorkspaceRemoteDispatch.placement`。配下ならプロジェクト転送がそのまま運ぶので専用
-    /// ミラーは不要。Sources/fleetest/RemoteRunDispatcher.swift)。**`var` にする**(machineHost と
+    /// ミラーは不要。Sources/fleetest/RemoteRunDispatcher.swift)。**`var` にする**(machine と
     /// 同じ理由 —— 既定値付きの `let` は memberwise init から除外され、この引数を知らない
     /// 既存テストの直接呼び出しが壊れる。型を Optional のまま残すのも同じ理由 ——
     /// 非 Optional にすると同じ既存テストが nil を渡せなくなる)
@@ -687,23 +689,23 @@ public struct ResolvedProfile: Sendable {
         return min(available, scenarios + 1)
     }
 
-    /// `run --device` の絞り込み(ホスト別サブ実行が「自分のぶんのデバイス」だけを回すのに使う)。
+    /// `run --device` の絞り込み(マシン別サブ実行が「自分のぶんのデバイス」だけを回すのに使う)。
     /// 空配列は「絞らない」。**1台も残らない指定は呼び出し側でエラーにする** ——
     /// ここで黙って全台に戻すと、名前を打ち間違えたときに意図しない台で走る
-    /// ホスト別サブ実行のスコープ。**一意なのは name 単体ではなく (host, name)** なので、
+    /// マシン別サブ実行のスコープ。**一意なのは name 単体ではなく (host, name)** なので、
     /// 名前だけで絞ると**別の機械の同名デバイスまで掴む**(フリートの各機は同じ命名規則で
     /// シミュレータを作るので、同名は例外ではなく通常。2026-08-17 に実走で確認 ——
     /// 手元のサブ実行が3機ぶんの "iPhone …-01" を全部拾って8台になった)。
-    /// - deviceHost: そのサブ実行が担当する機械("local" / 登録名。nil = ホストで絞らない)
-    public func filteringDevices(names: [String], deviceHost: String? = nil) -> ResolvedProfile {
-        guard !names.isEmpty || deviceHost != nil else { return self }
+    /// - deviceMachine: そのサブ実行が担当する機械("local" / 登録名。nil = ホストで絞らない)
+    public func filteringDevices(names: [String], deviceMachine: String? = nil) -> ResolvedProfile {
+        guard !names.isEmpty || deviceMachine != nil else { return self }
         let wanted = Set(names)
-        let wantedHost = MachineHostDispatch.normalize(deviceHost)
+        let wantedHost = MachineDispatch.normalize(deviceMachine)
         var filtered = self
         filtered.devices = devices.filter { device in
             if !wanted.isEmpty, !wanted.contains(device.name) { return false }
-            guard deviceHost != nil else { return true }
-            return MachineHostDispatch.normalize(device.spec.machine) == wantedHost
+            guard deviceMachine != nil else { return true }
+            return MachineDispatch.normalize(device.spec.machine) == wantedHost
         }
         return filtered
     }
@@ -756,10 +758,11 @@ public enum ProfileError: Error, LocalizedError {
     case decodeFailed(URL, detail: String)
     case missingAppReference(run: String)
     case missingDevices(run: String)
-    /// 同じ (host, name) が2つある。**別ホストの同名は重複ではない**(DeviceHostGrouping)
-    case duplicateDeviceName(name: String, host: String?, machine: String)
-    /// 実行プロファイルの参照が host を書いておらず、同名が複数ホストに居る
-    case ambiguousDeviceRef(name: String, hosts: [String], run: String, machine: String)
+    /// 同じ (machine, name) が2つある。**別マシンの同名は重複ではない**(DeviceMachineGrouping)。
+    /// deviceMachine = その台が居る機械、machine = マシンプロファイル名(別物)
+    case duplicateDeviceName(name: String, deviceMachine: String?, machine: String)
+    /// 実行プロファイルの参照が machine を書いておらず、同名が複数のマシンに居る
+    case ambiguousDeviceRef(name: String, machines: [String], run: String, machine: String)
     case noDevicesResolved(run: String, machine: String, requested: [String], available: [String])
     case missingBundleID(platform: String, appProfile: String)
     case invalidWipeDataThreshold(run: String)
@@ -794,14 +797,14 @@ public enum ProfileError: Error, LocalizedError {
             return "run profile \(run) has no \"app\" (a reference into apps/)"
         case .missingDevices(let run):
             return "run profile \(run) has no \"devices\""
-        case .duplicateDeviceName(let name, let host, let machine):
+        case .duplicateDeviceName(let name, let deviceMachine, let machine):
             return "duplicate device name in machine profile \(machine): \(name)"
-                + " on host \(DeviceHostGrouping.display(host))"
-                + " (names must be unique per host, across ios and android)"
-        case .ambiguousDeviceRef(let name, let hosts, let run, let machine):
+                + " on machine \(DeviceMachineGrouping.display(deviceMachine))"
+                + " (names must be unique per machine, across ios and android)"
+        case .ambiguousDeviceRef(let name, let machines, let run, let machine):
             return "device \"\(name)\" in run profile \(run) is ambiguous on machine \(machine):"
-                + " it exists on \(hosts.joined(separator: ", "))."
-                + " Add \"host\" to the device entry in the run profile to say which one"
+                + " it exists on \(machines.joined(separator: ", "))."
+                + " Add \"machine\" to the device entry in the run profile to say which one"
         case .noDevicesResolved(let run, let machine, let requested, let available):
             return "none of the devices in run profile \(run) resolve on machine \(machine)"
                 + " (requested: \(requested.joined(separator: ", ")) / "
@@ -891,9 +894,9 @@ public enum ProfileResolver {
 
     /// マシンプロファイルの `host` だけを読む(実行前のディスパッチ判定用)。フルの resolve() は
     /// デバイス解決まで行い重いので、host だけ知りたいホスト解決の前段はこちらを使う
-    /// (Sources/fleetest/RemoteCommands.swift の EffectiveHostDispatch 解決)。
-    /// 戻り値は MachineHostDispatch.normalize 済み(nil = ローカル)
-    public static func machineHost(project: TestProject, machineName: String) throws -> String? {
+    /// (Sources/fleetest/RemoteCommands.swift の EffectiveDispatchTarget 解決)。
+    /// 戻り値は MachineDispatch.normalize 済み(nil = ローカル)
+    public static func defaultMachine(project: TestProject, machineName: String) throws -> String? {
         let machineURL = project.machinesDir.appendingPathComponent("\(machineName).json")
         guard FileManager.default.fileExists(atPath: machineURL.path) else {
             throw ProfileError.machineProfileNotFound(
@@ -907,7 +910,7 @@ public enum ProfileResolver {
         }
         do {
             let machine = try JSONDecoder().decode(MachineProfile.self, from: data)
-            return MachineHostDispatch.normalize(machine.machine)
+            return MachineDispatch.normalize(machine.machine)
         } catch {
             throw ProfileError.decodeFailed(machineURL, detail: "\(error)")
         }
@@ -918,8 +921,8 @@ public enum ProfileResolver {
     /// 解決できない参照は**黙って落とす** —— 警告と中止は resolve() が受け持ち、ここは
     /// 「実際に走るデバイスがどの機械にあるか」だけを答える。曖昧な参照だけは resolve() を
     /// 待たずに投げる(どのホストへ配るかがここで決まってしまうため)
-    public static func runDeviceHosts(project: TestProject, runProfileName: String,
-                                      machineName: String) throws -> [RunDeviceHost] {
+    public static func runDeviceMachines(project: TestProject, runProfileName: String,
+                                      machineName: String) throws -> [RunDeviceMachine] {
         let runURL = project.runsDir.appendingPathComponent("\(runProfileName).json")
         guard let runData = try? Data(contentsOf: runURL),
               let runDoc = try? JSONDecoder().decode(RunProfileDocument.self, from: runData),
@@ -931,18 +934,18 @@ public enum ProfileResolver {
               let machine = try? JSONDecoder().decode(MachineProfile.self, from: machineData) else {
             return []
         }
-        let entries = DeviceHostGrouping.entries(machine: machine)
-        var result: [RunDeviceHost] = []
+        let entries = DeviceMachineGrouping.entries(machine: machine)
+        var result: [RunDeviceMachine] = []
         for ref in refs {
-            switch DeviceHostGrouping.resolve(ref, in: entries) {
+            switch DeviceMachineGrouping.resolve(ref, in: entries) {
             case .found(let entry):
-                result.append(RunDeviceHost(host: entry.host, name: entry.name,
-                                            platform: entry.platform))
+                result.append(RunDeviceMachine(machine: entry.machine, name: entry.name,
+                                               platform: entry.platform))
             case .missing:
                 continue
-            case .ambiguous(let hosts):
+            case .ambiguous(let machines):
                 throw ProfileError.ambiguousDeviceRef(
-                    name: ref.name, hosts: hosts, run: runProfileName, machine: machineName)
+                    name: ref.name, machines: machines, run: runProfileName, machine: machineName)
             }
         }
         return result
@@ -1098,11 +1101,11 @@ public enum ProfileResolver {
             checkMachineProfileKeys(json, context: "machines/\(machineName).json")
         }
 
-        // 一意なのは (host, name)。別ホストの同名は許す(DeviceHostGrouping にすべての規則がある)
-        let catalogEntries = DeviceHostGrouping.entries(machine: machine)
-        if let duplicate = DeviceHostGrouping.firstDuplicate(in: catalogEntries) {
+        // 一意なのは (machine, name)。別マシンの同名は許す(DeviceMachineGrouping にすべての規則がある)
+        let catalogEntries = DeviceMachineGrouping.entries(machine: machine)
+        if let duplicate = DeviceMachineGrouping.firstDuplicate(in: catalogEntries) {
             throw ProfileError.duplicateDeviceName(
-                name: duplicate.name, host: duplicate.host, machine: machineName)
+                name: duplicate.name, deviceMachine: duplicate.machine, machine: machineName)
         }
         let catalogOrder = catalogEntries.map(\.name)
 
@@ -1113,11 +1116,11 @@ public enum ProfileResolver {
         let iosEngine = (runDoc.iosInappEngine ?? true) ? "hybrid" : "xcuitest"
         var devices: [ResolvedDevice] = []
         for ref in deviceRefs {
-            switch DeviceHostGrouping.resolve(ref, in: catalogEntries) {
-            case .ambiguous(let hosts):
+            switch DeviceMachineGrouping.resolve(ref, in: catalogEntries) {
+            case .ambiguous(let machines):
                 // 片方を黙って選ぶと「別の機械のデバイスを操作した」になる。候補を挙げて止める
                 throw ProfileError.ambiguousDeviceRef(
-                    name: ref.name, hosts: hosts, run: runName, machine: machineName)
+                    name: ref.name, machines: machines, run: runName, machine: machineName)
             case .found(let entry):
                 // 実体の無い登録は走る前に言う(iOS は既定名へ落ちて別の台で黙って走る)。
                 // 止めはしない —— 既定に頼っている既存プロファイルを赤にしない
@@ -1240,7 +1243,7 @@ public enum ProfileResolver {
             project: project,
             runName: runName,
             machineName: machineName,
-            machineHost: MachineHostDispatch.normalize(machine.machine),
+            machine: MachineDispatch.normalize(machine.machine),
             appName: appProfile.resolvedAppName ?? appRef,
             apps: apps,
             devices: devices,
@@ -1321,13 +1324,13 @@ public enum ProfileResolver {
         case .machine:
             if let machine = try? decoder.decode(MachineProfile.self, from: data) {
                 // **一意なのは (host, name)**(別の機械の同名は重複ではない)。判定は
-                // DeviceHostGrouping で resolve() と共有する —— 片方だけ厳しいと
+                // DeviceMachineGrouping で resolve() と共有する —— 片方だけ厳しいと
                 // 「保存できるのに検証が赤い」(その逆も)になる
-                if let duplicate = DeviceHostGrouping.firstDuplicate(
-                    in: DeviceHostGrouping.entries(machine: machine)) {
+                if let duplicate = DeviceMachineGrouping.firstDuplicate(
+                    in: DeviceMachineGrouping.entries(machine: machine)) {
                     errors.append("duplicate device name: \(duplicate.name)"
-                                  + " on host \(DeviceHostGrouping.display(duplicate.host))"
-                                  + " (names must be unique per host, across ios and android)")
+                                  + " on machine \(DeviceMachineGrouping.display(duplicate.machine))"
+                                  + " (names must be unique per machine, across ios and android)")
                 }
                 for (platform, list) in [("ios", machine.ios), ("android", machine.android)] {
                     for spec in list?.devices ?? [] {

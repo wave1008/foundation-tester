@@ -102,12 +102,12 @@ const deviceMirrors = new Map();
 // タイル内の「画像以外」の高さの合計(px)。CSS の固定高と一致させること:
 // padding 上下 8+8 + header 20 + footer 18 + gap 6×2 = 66
 const TILE_CHROME_HEIGHT = 66;
-// ホスト名バッジの段(.tile-host-row)。**リモートのデバイスが1台でも居るときだけ**全タイルに
+// マシン名バッジの段(.tile-machine-row)。**リモートのデバイスが1台でも居るときだけ**全タイルに
 // 確保する —— タイルの画像高さ(--tile-image-h)はグリッド共通の1値で、段の有無が混ざると
-// 高さが揃わない。手元だけの構成では従来と1px も変わらない。CSS の .tile-host-row と一致必須
-const TILE_HOST_ROW_HEIGHT = 16;
+// 高さが揃わない。手元だけの構成では従来と1px も変わらない。CSS の .tile-machine-row と一致必須
+const TILE_MACHINE_ROW_HEIGHT = 16;
 // 直近の applyDevices が「リモート込み」だったか(chrome 高さの算出に使う)
-let hostRowReserved = false;
+let machineRowReserved = false;
 
 // タイル幅は「--tile-image-h × --tile-aspect」で決まる(style.css の .frame-wrap)。
 // **実際にデコードできた画像の実寸からしか設定しない**: ストリームのヘッダ由来の寸法を信じると、
@@ -154,7 +154,7 @@ export function relayoutTiles() {
   if (probe.clientHeight === 0) {
     return;
   }
-  const chrome = TILE_CHROME_HEIGHT + (hostRowReserved ? TILE_HOST_ROW_HEIGHT + 6 : 0);  // +6 = gap
+  const chrome = TILE_CHROME_HEIGHT + (machineRowReserved ? TILE_MACHINE_ROW_HEIGHT + 6 : 0);  // +6 = gap
   const imageHeight = Math.max(60, probe.clientHeight - chrome);
   grid.style.setProperty('--tile-image-h', imageHeight + 'px');
 }
@@ -219,10 +219,10 @@ function createTile(device) {
   // 実機バッジはデバイス名の左(ピッカー・一覧・編集フォームと同じ並び)
   header.append(kindBadge, name, unregisteredBadge);
   // ホスト名は**名前の下の段**(2026-08-17 指示)。段の有無はグリッド単位で揃える(上記
-  // hostRowReserved)ので、手元のデバイスでも段自体は作る(中身が空になるだけ)
-  const hostRow = document.createElement('div');
-  hostRow.className = 'tile-host-row';
-  hostRow.appendChild(remoteBadge);
+  // machineRowReserved)ので、手元のデバイスでも段自体は作る(中身が空になるだけ)
+  const machineRow = document.createElement('div');
+  machineRow.className = 'tile-machine-row';
+  machineRow.appendChild(remoteBadge);
 
   const frameWrap = document.createElement('div');
   frameWrap.className = 'frame-wrap';
@@ -256,7 +256,7 @@ function createTile(device) {
   // 実行中/キュー待ち/録画中のバッジはタイル左下(フッター先頭)。録画は実行中の右(ユーザー指定)。
   footer.append(runningBadge, recordingBadge, frozenBadge, queuedBadge, stateBadge, error, renderBadge);
 
-  tile.append(header, hostRow, frameWrap, footer);
+  tile.append(header, machineRow, frameWrap, footer);
   grid.appendChild(tile);
 
   const entry = {
@@ -265,7 +265,7 @@ function createTile(device) {
     nameEl: name,
     // 拡大表示(出力ペイン)のタグ段はこの2つの複製で作る(renderMirrorHeader)
     headerEl: header,
-    hostRowEl: hostRow,
+    machineRowEl: machineRow,
     // そのデバイスの直列キュー上の状態({ op: 'up'|'down', status: 'queued'|'running' })。
     // キューに入っていなければ undefined。
     opBusy: undefined,
@@ -397,8 +397,8 @@ function renderFrame(entry) {
     labelSpan.textContent = streamUnavailable
       ? t('wvMonitor.tile.streamUnavailable')
       : unobservableRemote
-      ? (entry.device.machineHost
-        ? t('wvMonitor.tile.remoteUnobservable', { host: entry.device.machineHost })
+      ? (entry.device.machine
+        ? t('wvMonitor.tile.remoteUnobservable', { machine: entry.device.machine })
         : t('wvMonitor.tile.stateUnknown'))
       : shuttingDown
         ? t('wvMonitor.tile.shuttingDown')
@@ -447,14 +447,14 @@ function renderMirror(entry) {
 function renderMirrorHeader(entry, mirror) {
   mirror.headerEl.textContent = '';
   mirror.headerEl.appendChild(entry.headerEl.cloneNode(true));
-  const hostRow = entry.hostRowEl.cloneNode(true);
-  const badge = hostRow.querySelector('.badge-remote');
+  const machineRow = entry.machineRowEl.cloneNode(true);
+  const badge = machineRow.querySelector('.badge-remote');
   if (badge && entry.remoteBadgeEl.style.display === 'none') {
     badge.textContent = '\u00a0';
     badge.style.display = 'inline-block';
     badge.style.visibility = 'hidden';
   }
-  mirror.headerEl.appendChild(hostRow);
+  mirror.headerEl.appendChild(machineRow);
 }
 
 // h264 は1フレーム描画するたびに呼ぶ(タイルの canvas → 拡大表示の canvas への転写)。
@@ -556,8 +556,8 @@ function renderMeta(entry) {
   // 実機は署名・接続の前提がシミュレータ/エミュレータと違うので取り違えないよう明示する
   entry.kindBadgeEl.style.display = entry.device.kind === 'physical' ? 'inline-block' : 'none';
   // リモートのデバイスはホスト名を出す(手元は出さない = 既存の見た目のまま)
-  if (entry.device.machineHost) {
-    entry.remoteBadgeEl.textContent = entry.device.machineHost;
+  if (entry.device.machine) {
+    entry.remoteBadgeEl.textContent = entry.device.machine;
     entry.remoteBadgeEl.style.display = 'inline-block';
   } else {
     entry.remoteBadgeEl.style.display = 'none';
@@ -733,14 +733,15 @@ deviceOpMenuItemBtn.addEventListener('click', (event) => {
     return;
   }
   const device = deviceOpMenuEntry.device;
-  // **host も載せる** —— 同名の台が別の機械にも居るのは通常で、名前だけだと
+  // **machine も載せる** —— 同名の台が別の機械にも居るのは通常で、名前だけだと
   // 手元のマシンプロファイルの同名エントリを引いて**別の機械の設定でこの Mac に1台作る**
+  // (machine は api monitor のワイヤ名。値はマシン名 = エイリアス)
   const message = {
     type: 'deviceOp', name: device.name, op: deviceOpMenuItemBtn.dataset.op,
-    host: device.machineHost,
+    machine: device.machine,
   };
   // 未登録(registered:false)はマシンプロファイルに無いため --name で引けない。udid(iOS)/
-  // serial(Android)を載せ、host 側(monitorDeviceOps.ts)が device-down --udid/--serial の
+  // serial(Android)を載せ、拡張側(monitorDeviceOps.ts)が device-down --udid/--serial の
   // 直指定モードへ振り分ける(契約: monitorWebviewMessages.ts の "deviceOp")。
   if (device.registered === false) {
     message.registered = false;
@@ -790,18 +791,18 @@ window.addEventListener('resize', () => closeDeviceOpMenu());
 // タイル外の右クリック(OS既定メニューが開く場合)用。タイル上はstopPropagation済みで来ない。
 document.addEventListener('contextmenu', () => closeDeviceOpMenu());
 
-// 応答(deviceOpBusy 等)は (name, host) で引く。**host 省略は「手元」の意味**であって
+// 応答(deviceOpBusy 等)は (name, machine) で引く。**machine 省略は「手元」の意味**であって
 // 「どれでもよい」ではない —— 同名のデバイスが別の機械にも居るのは通常なので、省略を
 // ワイルドカードにすると**先頭のタイル(= 手元)を書き換える**。実際
 // 「M2Ultra の台を停止」で手元のタイルに「シャットダウン中」が出た。
-// 手元だけの構成では machineHost が全て undefined なので挙動は変わらない。
-// bridgeWatch/healthWatch/wipeStatus は手元のデバイスにしか出さないので host を持たない
-function findTileByName(name, host) {
+// 手元だけの構成では machine が全て undefined なので挙動は変わらない。
+// bridgeWatch/healthWatch/wipeStatus は手元のデバイスにしか出さないので machine を持たない
+function findTileByName(name, machine) {
   for (const entry of tiles.values()) {
     if (entry.device.name !== name) {
       continue;
     }
-    if ((entry.device.machineHost ?? undefined) !== (host ?? undefined)) {
+    if ((entry.device.machine ?? undefined) !== (machine ?? undefined)) {
       continue;
     }
     return entry;
@@ -823,11 +824,11 @@ function clearTileError(entry) {
 export function applyDevices(devices) {
   const previousTileCount = tiles.size;
   // リモートのデバイスが混ざる構成でだけホスト名の段を出す(全タイルで高さを揃えるため
-  // グリッド単位のクラスで制御する。判定は machineHost の有無)
-  const nextHostRow = devices.some((device) => !!device.machineHost);
-  if (nextHostRow !== hostRowReserved) {
-    hostRowReserved = nextHostRow;
-    grid.classList.toggle('with-host-row', nextHostRow);
+  // グリッド単位のクラスで制御する。判定は machine の有無)
+  const nextMachineRow = devices.some((device) => !!device.machine);
+  if (nextMachineRow !== machineRowReserved) {
+    machineRowReserved = nextMachineRow;
+    grid.classList.toggle('with-machine-row', nextMachineRow);
     notifyTileLayoutChanged('deviceCount');
   }
   const seen = new Set();
@@ -989,7 +990,7 @@ export function applyH264Chunk(message) {
 // op: 'up'|'down'|null、status: 'queued'|'running'|null)。一括起動時は executeBulkJob の
 // devices-up NDJSON 中継からも同形のメッセージが飛ぶ(op:'up'→null。由来は個別デバイスではなく一括起動)。
 export function applyDeviceOpBusy(message) {
-  const entry = findTileByName(message.name, message.host);
+  const entry = findTileByName(message.name, message.machine);
   if (!entry) {
     return;
   }
@@ -1018,7 +1019,7 @@ export function applyDeviceOpBusy(message) {
 // 上書きされる)。opBusy も解除する。offline を立てることで renderFrame が凍結フレームを出さない
 // (applyDeviceOpBusy の「down 完了直後は再描画しない」フリッカ回避と同じ問題をここで解消する)。
 export function applyDeviceDownFinished(message) {
-  const entry = findTileByName(message.name, message.host);
+  const entry = findTileByName(message.name, message.machine);
   if (!entry) {
     return;
   }

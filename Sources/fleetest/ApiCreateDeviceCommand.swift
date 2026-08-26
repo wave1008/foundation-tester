@@ -101,7 +101,7 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
         // 名前重複は物理作成前に検証する(作成後に addingDevice で発覚すると孤児シミュレータ/AVDが
         // 残るため)。addingDevice 内の重複チェックは防御として残している。
         // **このコマンドは手元にしか作らない**(リモートは --no-register)ので、比べる相手は
-        // 手元のデバイスだけ。別ホストの同名は重複ではない(FTCore.DeviceHostGrouping)
+        // 手元のデバイスだけ。別ホストの同名は重複ではない(FTCore.DeviceMachineGrouping)
         let localNames = MachineProfileEditor.localDeviceNames(inProfileObject: profileObject)
         guard !localNames.contains(trimmedName) else {
             throw CreateDeviceError("duplicate device name: \(trimmedName)"
@@ -228,7 +228,7 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
         // host は**必ず書く**(手元なら "local")。省略は「プロファイル直下の既定を継ぐ」の意味で、
         // 既定がリモートのプロファイルだと手元で作った実体が別の機械のものとして扱われる
         let deviceEntry: [String: Any] = [
-            "host": DeviceHostGrouping.localDisplayName,
+            "host": DeviceMachineGrouping.localDisplayName,
             "name": name, "simulator": deviceTypeName, "os": runtimeVersion, "udid": udid,
         ]
         let resultEntry = ApiCreateDeviceEntry(avd: nil, name: name, udid: udid)
@@ -310,7 +310,7 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
 
         // host は必ず書く(理由は createSimulator 側のコメント)
         let deviceEntry: [String: Any] = [
-            "host": DeviceHostGrouping.localDisplayName, "name": name, "avd": avdID,
+            "host": DeviceMachineGrouping.localDisplayName, "name": name, "avd": avdID,
         ]
         let resultEntry = ApiCreateDeviceEntry(avd: avdID, name: name, udid: nil)
         return (deviceEntry, resultEntry)

@@ -48,30 +48,30 @@ function setTileRunning(id, running) {
 }
 
 // platform不明(全体レーンやフォールバック)は中立色のピル。
-// machineHost は複数の機械にまたがる実行でのみ付く。同名のデバイスが別の機械にも居るので、
+// machine は複数の機械にまたがる実行でのみ付く。同名のデバイスが別の機械にも居るので、
 // これを出さないと見出しが同じレーンが並んで区別できない(タイルの .badge-remote と同じ見た目)。
-function setLaneHeader(headerEl, name, platform, machineHost) {
+function setLaneHeader(headerEl, name, platform, machine) {
   headerEl.textContent = '';
   const pill = document.createElement('span');
   pill.className = 'lane-name ' + (platform ? 'tile-name-' + platform : 'lane-name-neutral');
   pill.textContent = name;
-  setHoverTip(pill, machineHost ? machineHost + ' / ' + name : name);
+  setHoverTip(pill, machine ? machine + ' / ' + name : name);
   headerEl.appendChild(pill);
-  if (machineHost) {
+  if (machine) {
     const host = document.createElement('span');
     host.className = 'badge badge-remote lane-host';
-    host.textContent = machineHost;
+    host.textContent = machine;
     headerEl.appendChild(host);
   }
 }
 
 // updateLabel=trueはdevices同期等のレーン構成時のみ。appendLaneLineから呼ぶ時にtrueにすると、
 // フォールバック名(生のworker id)で構成済み表示名を上書きしてしまう。
-function ensureLane(id, name, platform, updateLabel, machineHost) {
+function ensureLane(id, name, platform, updateLabel, machine) {
   let lane = lanes.get(id);
   if (lane) {
     if (updateLabel) {
-      setLaneHeader(lane.headerEl, name, platform, machineHost);
+      setLaneHeader(lane.headerEl, name, platform, machine);
     }
     return lane;
   }
@@ -79,7 +79,7 @@ function ensureLane(id, name, platform, updateLabel, machineHost) {
   el.className = 'lane';
   const header = document.createElement('div');
   header.className = 'lane-header';
-  setLaneHeader(header, name, platform, machineHost);
+  setLaneHeader(header, name, platform, machine);
   const body = document.createElement('div');
   body.className = 'lane-body';
   el.append(header, body);
@@ -151,7 +151,7 @@ function configureLanes(laneInfos) {
     }
   }
   for (const info of laneInfos) {
-    ensureLane(info.id, info.name, info.platform, true, info.machineHost);
+    ensureLane(info.id, info.name, info.platform, true, info.machine);
   }
   reorderLanes();
   updateLaneVisibility();
@@ -271,7 +271,7 @@ export function syncLanesToDevices(devices) {
     }
   }
   for (const device of devices) {
-    ensureLane(device.id, device.name, device.platform, true, device.machineHost);
+    ensureLane(device.id, device.name, device.platform, true, device.machine);
   }
   deviceOrder = devices.map((device) => device.id);
   reorderLanes();

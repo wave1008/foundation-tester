@@ -7,93 +7,93 @@ import XCTest
 final class RemoteDispatchDeviceScopeTests: XCTestCase {
     func testAllDevicesUnhosted() {
         let devices = [
-            RunDeviceHost(host: nil, name: "iPhone-1", platform: "ios"),
-            RunDeviceHost(host: nil, name: "Pixel-1", platform: "android"),
+            RunDeviceMachine(machine: nil, name: "iPhone-1", platform: "ios"),
+            RunDeviceMachine(machine: nil, name: "Pixel-1", platform: "android"),
         ]
-        XCTAssertEqual(RemoteDispatchDeviceScope.resolve(targetHost: "M1Max", devices: devices), .wholeProfile)
+        XCTAssertEqual(RemoteDispatchDeviceScope.resolve(targetMachine: "M1Max", devices: devices), .wholeProfile)
     }
 
     func testNoDevices() {
-        XCTAssertEqual(RemoteDispatchDeviceScope.resolve(targetHost: "M1Max", devices: []), .wholeProfile)
+        XCTAssertEqual(RemoteDispatchDeviceScope.resolve(targetMachine: "M1Max", devices: []), .wholeProfile)
     }
 
     func testExplicitLocalStringNormalizesToWholeProfile() {
         let devices = [
-            RunDeviceHost(host: "local", name: "iPhone-1", platform: "ios"),
-            RunDeviceHost(host: " local ", name: "Pixel-1", platform: "android"),
+            RunDeviceMachine(machine: "local", name: "iPhone-1", platform: "ios"),
+            RunDeviceMachine(machine: " local ", name: "Pixel-1", platform: "android"),
         ]
-        XCTAssertEqual(RemoteDispatchDeviceScope.resolve(targetHost: "local", devices: devices), .wholeProfile)
+        XCTAssertEqual(RemoteDispatchDeviceScope.resolve(targetMachine: "local", devices: devices), .wholeProfile)
     }
 
-    private func mixedDevices() -> [RunDeviceHost] {
+    private func mixedDevices() -> [RunDeviceMachine] {
         [
-            RunDeviceHost(host: nil, name: "local-ios", platform: "ios"),
-            RunDeviceHost(host: nil, name: "local-android", platform: "android"),
-            RunDeviceHost(host: "M1Max", name: "m1max-ios", platform: "ios"),
-            RunDeviceHost(host: "M1Max", name: "m1max-android", platform: "android"),
-            RunDeviceHost(host: "M1Ultra", name: "m1ultra-ios", platform: "ios"),
-            RunDeviceHost(host: "M1Ultra", name: "m1ultra-android", platform: "android"),
+            RunDeviceMachine(machine: nil, name: "local-ios", platform: "ios"),
+            RunDeviceMachine(machine: nil, name: "local-android", platform: "android"),
+            RunDeviceMachine(machine: "M1Max", name: "m1max-ios", platform: "ios"),
+            RunDeviceMachine(machine: "M1Max", name: "m1max-android", platform: "android"),
+            RunDeviceMachine(machine: "M1Ultra", name: "m1ultra-ios", platform: "ios"),
+            RunDeviceMachine(machine: "M1Ultra", name: "m1ultra-android", platform: "android"),
         ]
     }
 
     func testFiltersToTheMatchingRemoteHostInProfileOrder() {
-        let result = RemoteDispatchDeviceScope.resolve(targetHost: "M1Max", devices: mixedDevices())
+        let result = RemoteDispatchDeviceScope.resolve(targetMachine: "M1Max", devices: mixedDevices())
         XCTAssertEqual(result, .filtered(deviceNames: ["m1max-ios", "m1max-android"]))
     }
 
     func testFiltersToTheLocalHost() {
-        let result = RemoteDispatchDeviceScope.resolve(targetHost: "local", devices: mixedDevices())
+        let result = RemoteDispatchDeviceScope.resolve(targetMachine: "local", devices: mixedDevices())
         XCTAssertEqual(result, .filtered(deviceNames: ["local-ios", "local-android"]))
     }
 
     func testNoneForHostListsAvailableHostsInAppearanceOrder() {
-        let result = RemoteDispatchDeviceScope.resolve(targetHost: "M2", devices: mixedDevices())
-        XCTAssertEqual(result, .noneForHost(available: ["local", "M1Max", "M1Ultra"]))
+        let result = RemoteDispatchDeviceScope.resolve(targetMachine: "M2", devices: mixedDevices())
+        XCTAssertEqual(result, .noneForMachine(available: ["local", "M1Max", "M1Ultra"]))
     }
 }
 
-/// `--host H --device <名前>`(--device-host 無し)は H の台に限定する。同名の台が3機に
+/// `--host H --device <名前>`(--device-machine 無し)は H の台に限定する。同名の台が3機に
 /// あるプロファイルで名前だけを渡すと、子が3機ぶんを拾って手元の UDID を向こうで探す
 /// (受け手報告 2026-08-23)
 final class RemoteDispatchExplicitDeviceScopeTests: XCTestCase {
-    private func sameNameOnThreeHosts() -> [RunDeviceHost] {
+    private func sameNameOnThreeHosts() -> [RunDeviceMachine] {
         [
-            RunDeviceHost(host: nil, name: "iPhone 17 Pro(iOS 27.0)-01", platform: "ios"),
-            RunDeviceHost(host: "M1Max", name: "iPhone 17 Pro(iOS 27.0)-01", platform: "ios"),
-            RunDeviceHost(host: "M1Max", name: "Pixel-01", platform: "android"),
-            RunDeviceHost(host: "M1Ultra", name: "iPhone 17 Pro(iOS 27.0)-01", platform: "ios"),
+            RunDeviceMachine(machine: nil, name: "iPhone 17 Pro(iOS 27.0)-01", platform: "ios"),
+            RunDeviceMachine(machine: "M1Max", name: "iPhone 17 Pro(iOS 27.0)-01", platform: "ios"),
+            RunDeviceMachine(machine: "M1Max", name: "Pixel-01", platform: "android"),
+            RunDeviceMachine(machine: "M1Ultra", name: "iPhone 17 Pro(iOS 27.0)-01", platform: "ios"),
         ]
     }
 
     func testSameNameOnSeveralHostsIsPinnedToTheTargetHost() {
         XCTAssertEqual(
             RemoteDispatchExplicitDeviceScope.resolve(
-                targetHost: "M1Max", requested: ["iPhone 17 Pro(iOS 27.0)-01"], devices: sameNameOnThreeHosts()),
+                targetMachine: "M1Max", requested: ["iPhone 17 Pro(iOS 27.0)-01"], devices: sameNameOnThreeHosts()),
             .pinned)
     }
 
     func testNameMissingOnTheTargetHostListsThatHostsDevices() {
         XCTAssertEqual(
             RemoteDispatchExplicitDeviceScope.resolve(
-                targetHost: "M1Ultra", requested: ["Pixel-01", "iPhone 17 Pro(iOS 27.0)-01"],
+                targetMachine: "M1Ultra", requested: ["Pixel-01", "iPhone 17 Pro(iOS 27.0)-01"],
                 devices: sameNameOnThreeHosts()),
-            .notOnHost(missing: ["Pixel-01"], available: ["iPhone 17 Pro(iOS 27.0)-01"]))
+            .notOnMachine(missing: ["Pixel-01"], available: ["iPhone 17 Pro(iOS 27.0)-01"]))
     }
 
     func testUnhostedProfilePassesNamesThrough() {
-        let devices = [RunDeviceHost(host: nil, name: "iPhone-1", platform: "ios")]
+        let devices = [RunDeviceMachine(machine: nil, name: "iPhone-1", platform: "ios")]
         XCTAssertEqual(
-            RemoteDispatchExplicitDeviceScope.resolve(targetHost: "M1Max", requested: ["iPhone-1"], devices: devices),
+            RemoteDispatchExplicitDeviceScope.resolve(targetMachine: "M1Max", requested: ["iPhone-1"], devices: devices),
             .passThrough)
         XCTAssertEqual(
-            RemoteDispatchExplicitDeviceScope.resolve(targetHost: "M1Max", requested: ["iPhone-1"], devices: []),
+            RemoteDispatchExplicitDeviceScope.resolve(targetMachine: "M1Max", requested: ["iPhone-1"], devices: []),
             .passThrough)
     }
 
     func testHostWithNoDevicesAtAllReportsEmptyAvailable() {
         XCTAssertEqual(
             RemoteDispatchExplicitDeviceScope.resolve(
-                targetHost: "M2", requested: ["iPhone 17 Pro(iOS 27.0)-01"], devices: sameNameOnThreeHosts()),
-            .notOnHost(missing: ["iPhone 17 Pro(iOS 27.0)-01"], available: []))
+                targetMachine: "M2", requested: ["iPhone 17 Pro(iOS 27.0)-01"], devices: sameNameOnThreeHosts()),
+            .notOnMachine(missing: ["iPhone 17 Pro(iOS 27.0)-01"], available: []))
     }
 }

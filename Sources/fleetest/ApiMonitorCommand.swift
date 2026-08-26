@@ -56,11 +56,11 @@ struct ApiMonitorCommand: AsyncParsableCommand {
 
     /// **どの機械のデバイスを観測するか**。simctl/adb は手元にしか効かないので、既定(nil)では
     /// この機械のデバイスだけを走査し、他の機械のぶんは `RemoteMonitorFanout` がその機械で
-    /// 1本ずつ `--device-host <host>` を走らせて合流させる。**この値が入っているのは子のとき** ——
+    /// 1本ずつ `--device-machine <host>` を走らせて合流させる。**この値が入っているのは子のとき** ——
     /// 子は自分のぶんだけを見て、それ以上の fan-out はしない(入れ子のディスパッチを作らない)
     @Option(name: [.customLong("device-machine"), .customLong("device-host")],
             help: "Only observe the devices assigned to this machine, treating them as local (set by the parent monitor when it fans out; not for hand use)")
-    var deviceHost: String?
+    var deviceMachine: String?
 
     func run() async throws {
         // ストリーミング読み取りが前提のため常に行バッファにする(ApiRunCommand.swift と同じ理由)
@@ -112,8 +112,8 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 runProfileName: profile, warn: logStderr)
         }
         // **実効ホストを spec に焼き込んでから扱う**(プロファイル既定の host も反映される。
-        // id・帰属判定・拡張へ出す machineHost がすべてこの1つの値を見る)
-        let targets = DeviceHostGrouping.entries(machine: scoped).map {
+        // id・帰属判定・拡張へ出す machine がすべてこの1つの値を見る)
+        let targets = DeviceMachineGrouping.entries(machine: scoped).map {
             MonitorTarget(platform: $0.platform, spec: $0.spec)
         }
         // **プロファイル未選択のときは0台でも続ける**(起動中の台が現れたら出す)。
@@ -122,13 +122,13 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             throw ValidationError("machine profile \(machine.name) defines no devices")
         }
 
-        let scope = Self.scope(targets: targets, deviceHost: deviceHost)
+        let scope = Self.scope(targets: targets, deviceMachine: deviceMachine)
         let ownedTargets = scope.owned
         let listedTargets = scope.listed
         let fanout: RemoteMonitorFanout? = {
-            guard !scope.foreignHosts.isEmpty else { return nil }
+            guard !scope.foreignMachines.isEmpty else { return nil }
             return RemoteMonitorFanout(
-                hosts: scope.foreignHosts, project: testProject.name, profile: profile,
+                machines: scope.foreignMachines, project: testProject.name, profile: profile,
                 interval: interval, maxWidth: maxWidth,
                 log: { message in MonitorOutput.shared.writeStderr(message) },
                 relayLine: { line in MonitorOutput.shared.writeLine(line) })
@@ -172,10 +172,10 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         while !stop.isSet {
             // **保持ファイル(`fleetest monitor pause`)は毎周期の頭で見る** —— kill と違い
             // 拡張に再起動されない止め方(FTCore.MonitorHold)。手元スコープのときだけ:
-            // fan-out の子(--device-host 付き)はランナー機側の hold を親の拡張へ波及させない。
+            // fan-out の子(--device-machine 付き)はランナー機側の hold を親の拡張へ波及させない。
             // hold 中も monitorDevices は出す(全台 state:"unknown")—— タイルが最後の絵で
             // 固まると「止めた」ことが見えない。unknown はリモートの未観測と同じ既存表現
-            if deviceHost == nil, let dir = leaseStateDir {
+            if deviceMachine == nil, let dir = leaseStateDir {
                 let holdActive = MonitorHold.load(stateDir: dir)?.isActive() ?? false
                 if holdActive != lastHoldActive {
                     lastHoldActive = holdActive
@@ -395,25 +395,25 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         /// この機械が simctl/adb で観測する台
         let owned: [MonitorTarget]
         /// 毎サイクル devices として出す台。親は全部(他の機械のぶんは fan-out か「取得できません」)、
-        /// **子(--device-host 付き)は自分のぶんだけ** —— 親も同じ台を並べるので、両方が出すと
+        /// **子(--device-machine 付き)は自分のぶんだけ** —— 親も同じ台を並べるので、両方が出すと
         /// 拡張の Map で潰し合う
         let listed: [MonitorTarget]
         /// fan-out 先(登場順・重複なし)
-        let foreignHosts: [String]
+        let foreignMachines: [String]
     }
 
     /// I/O を持たない pure 関数(MonitorHostScopeTests)
-    static func scope(targets: [MonitorTarget], deviceHost: String?) -> Scope {
-        let wanted = MachineHostDispatch.normalize(deviceHost)
-        let owned = targets.filter { MachineHostDispatch.normalize($0.spec.machine) == wanted }
-        let foreign = targets.filter { MachineHostDispatch.normalize($0.spec.machine) != wanted }
+    static func scope(targets: [MonitorTarget], deviceMachine: String?) -> Scope {
+        let wanted = MachineDispatch.normalize(deviceMachine)
+        let owned = targets.filter { MachineDispatch.normalize($0.spec.machine) == wanted }
+        let foreign = targets.filter { MachineDispatch.normalize($0.spec.machine) != wanted }
         // **子は fan-out しない**(入れ子のディスパッチを作らない。`remote exec` も
         // --host の relay を拒む = 経路は1段と決めてある)
-        let hosts = deviceHost == nil
-            ? DeviceHostGrouping.groups(foreign, host: { MachineHostDispatch.normalize($0.spec.machine) })
-                .compactMap(\.host)
+        let machines = deviceMachine == nil
+            ? DeviceMachineGrouping.groups(foreign, machine: { MachineDispatch.normalize($0.spec.machine) })
+                .compactMap(\.machine)
             : []
-        return Scope(owned: owned, listed: deviceHost == nil ? targets : owned, foreignHosts: hosts)
+        return Scope(owned: owned, listed: deviceMachine == nil ? targets : owned, foreignMachines: machines)
     }
 
     /// 出す1サイクルぶんの devices を組み立てる。**並びはマシンプロファイルの順のまま**
@@ -445,7 +445,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             state: "unknown", detail: detail, udid: nil, serial: nil, health: nil, renderMode: nil,
             inRun: false, kind: target.spec.isPhysical ? "physical" : "virtual",
             host: nil, port: nil, recording: false, registered: target.registered,
-            machineHost: MachineHostDispatch.normalize(target.spec.machine), frozen: false)
+            machine: MachineDispatch.normalize(target.spec.machine), frozen: false)
     }
 
     // MARK: - デバイス状態判定
@@ -963,7 +963,7 @@ struct MonitorTarget {
     /// プロファイルが6タイルになる(2026-08-17 の実害)。手元のデバイスは従来と同じ形にする
     /// (単一マシン構成の id を変えない)
     var id: String {
-        DeviceHostGrouping.workerID(platform: platform, host: spec.machine, name: spec.name)
+        DeviceMachineGrouping.workerID(platform: platform, machine: spec.machine, name: spec.name)
     }
 }
 
@@ -1004,7 +1004,7 @@ struct DeviceRuntimeState {
                              kind: target.spec.isPhysical ? "physical" : "virtual",
                              host: host, port: iosPort,
                              recording: recording, registered: target.registered,
-                             machineHost: MachineHostDispatch.normalize(target.spec.machine),
+                             machine: MachineDispatch.normalize(target.spec.machine),
                              frozen: frozen)
     }
 }
@@ -1241,12 +1241,12 @@ struct ApiMonitorDeviceInfo: Codable {
     /// **このデバイスが居る機械**(登録名。手元は nil)。`host` はブリッジ宛先の IP で別物 ——
     /// 名前が近いので取り違えない。モニターは手元のデバイスしか触れないため、リモートのタイルは
     /// 状態を観測できない。拡張はこの値でタイルにホスト名を出す
-    /// (契約は vscode-fleetest/src/monitorDeviceModel.ts の MonitorDevice.machineHost)。
+    /// (契約は vscode-fleetest/src/monitorDeviceModel.ts の MonitorDevice.machine)。
     /// 追加フィールドのみで後方互換のため ProtocolVersion は不変
     /// **var なのは id と同じ理由**(RemoteMonitorFanout が書き戻す)。子は畳んだプロファイルを
-    /// 見るので自分の台を "local" と見なし、machineHost が nil になる —— 親が自分の知っている
+    /// 見るので自分の台を "local" と見なし、machine が nil になる —— 親が自分の知っている
     /// ホストラベルを入れないと、リモートのタイルからマシンのバッジが消える
-    var machineHost: String?
+    var machine: String?
     /// 画面が凍結している(一様フレームが2サイクル連続)。**この値は1サイクル遅れる** ——
     /// devices イベントはフレーム取得より前に出るため、判定に使うのは前サイクルの PNG。
     /// スクショを撮らないデバイス(未接続・タイルがストリーミング中で frame 抑止・

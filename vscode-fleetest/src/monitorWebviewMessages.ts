@@ -73,7 +73,7 @@ export type MonitorToWebviewMessage =
       readonly type: "deviceOpBusy";
       readonly name: string;
       /** そのデバイスが居る機械(手元は undefined)。名前だけでは同名の別タイルを触りうる。 */
-      readonly host?: string;
+      readonly machine?: string;
       readonly op: DeviceOpKind | null;
       /** キュー内での状態("running"=実行中／"queued"=順番待ち)。op が null のときは null。 */
       readonly status: DeviceOpQueueStatus | null;
@@ -82,7 +82,7 @@ export type MonitorToWebviewMessage =
   // 一括 down(api devices-down)で1台停止完了ごとに送る。webview はそのタイルを即「未起動」へ倒す
   // (down 中はモニター pause で state 更新が来ないため、落ちた順の反映をこの per-device 通知で行う。
   //  次の devices 反映=resume 後に本物の state で上書きされる)。name は deviceOpBusy と同じ名前空間。
-  | { readonly type: "deviceDownFinished"; readonly name: string; readonly host?: string }
+  | { readonly type: "deviceDownFinished"; readonly name: string; readonly machine?: string }
   | {
       readonly type: "profileInfo";
       /** 対象プロジェクトの実行プロファイル名一覧(TestProjects/<project>/profiles/runs/ 直下)。 */
@@ -105,15 +105,15 @@ export type MonitorToWebviewMessage =
       /** 対象プロジェクトのマシンプロファイル一覧(config.ts の listMachineProfiles の要約形)。 */
       readonly machines: readonly {
         readonly name: string;
-        /** 登録済みリモートホスト名(config.ts の MachineProfileSummary.host。未設定=ローカル)。
-         * device-pick ダイアログのホスト選択の初期値に使う。 */
-        readonly host?: string;
+        /** 登録済みのマシン名(config.ts の MachineProfileSummary.host。未設定=ローカル)。
+         * device-pick ダイアログのマシン選択の初期値に使う。 */
+        readonly machine?: string;
         readonly devices: readonly {
           readonly name: string;
           readonly platform: MonitorPlatform;
-          /** このデバイスが居る機械(実効値。undefined=手元)。**一意なのは (host, name)** なので、
-           * 重複判定はホストごとに行う(Sources/FTCore/DeviceHostGrouping.swift)。 */
-          readonly host?: string;
+          /** このデバイスが居る機械(実効値。undefined=手元)。**一意なのは (machine, name)** なので、
+           * 重複判定はマシンごとに行う(Sources/FTCore/DeviceMachineGrouping.swift)。 */
+          readonly machine?: string;
           /** 一覧2行目の表示文字列(machineDeviceDetail で組み立て済み)。 */
           readonly detail: string;
           // 右ペインの編集フォーム用の生フィールド(MachineDeviceEntry と同形)。undefined は
@@ -421,9 +421,9 @@ export type MonitorFromWebviewMessage =
       readonly type: "deviceOp";
       readonly name: string;
       readonly op: DeviceOpKind;
-      // host: そのデバイスが居る機械(手元は省略)。一意なのは (host, name) なので、
+      // machine: そのデバイスが居る機械(手元は省略)。一意なのは (machine, name) なので、
       // 名前だけで CLI へ渡すと別の機械のエントリを手元で起こしてしまう
-      readonly host?: string;
+      readonly machine?: string;
       readonly udid?: string;
       readonly serial?: string;
       readonly registered?: boolean;
@@ -453,7 +453,7 @@ export type MonitorFromWebviewMessage =
   | { readonly type: "machineProfileRename"; readonly machine: string }
   // デバイス追加モーダルを開いた直後に送る、`fleetest api device-catalog` の再取得リクエスト。
   // source: マシンプロファイルタブの「デバイス候補のホスト」セレクタの選択(§13 段2)。
-  // remote なら monitorDeviceOps.ts が deviceCommandArgs で `remote exec <host> -- api device-catalog`
+  // remote なら monitorDeviceOps.ts が deviceCommandArgs で `remote exec <machine> -- api device-catalog`
   // に組み立てる(docs/remote-runner.md §13「プロファイルのリモート対応」)。
   | { readonly type: "deviceCatalogRequest"; readonly source: DeviceCommandSource }
   // 同モーダルで Android のモデル一覧が空(errorCode: "avdmanager-missing")のときだけ出る
@@ -511,16 +511,16 @@ export type MonitorFromWebviewMessage =
       readonly add: readonly MachineDeviceAddEntry[];
       readonly remove: readonly string[];
       /** OK 押下時点でダイアログ内ホスト選択(devicePickHost.js)が指していたホスト。add が非空かつ
-       * remote のときだけ monitorProfileForms.ts がマシンプロファイルの host キーへ書き込む。 */
+       * remote のときだけ monitorProfileForms.ts がマシンプロファイルの machine キーへ書き込む。 */
       readonly source: DeviceCommandSource;
     }
   // デバイス行の右クリック「削除」。devices は複数選択の一括削除に対応する配列(単一削除も1件配列)。
-  // 空配列は「対象なし」として不正扱い。**参照は (host, name)**(host 省略=手元) —— 名前だけだと
+  // 空配列は「対象なし」として不正扱い。**参照は (machine, name)**(machine 省略=手元) —— 名前だけだと
   // 別の機械の同名デバイスまで巻き添えで消える。
   | {
       readonly type: "machineDeviceRemove";
       readonly machine: string;
-      readonly devices: readonly { readonly name: string; readonly host?: string }[];
+      readonly devices: readonly { readonly name: string; readonly machine?: string }[];
     }
   // #device-pick-overlay の行右クリック「削除」: マシンプロファイルからの除去(machineDeviceRemove)
   // とは別に、ホスト上の実体(シミュレータ/AVD)そのものを `fleetest api delete-device` で消す。
@@ -540,9 +540,9 @@ export type MonitorFromWebviewMessage =
       readonly machine: string;
       readonly platform: MonitorPlatform;
       readonly originalName: string;
-      /** 対象が居る機械(省略=手元)。引き当ては (host, name) —— 名前だけだと別の機械の
-       * 同名デバイスを書き換える。 */
-      readonly host?: string;
+      /** 対象が居る機械(省略=手元)。引き当ては (deviceMachine, originalName) —— 名前だけだと
+       * 別の機械の同名デバイスを書き換える。**`machine`(= マシンプロファイル名)とは別物**。 */
+      readonly deviceMachine?: string;
       readonly fields: {
         readonly name: string;
         readonly simulator: string;
@@ -670,25 +670,26 @@ function isMachineDeviceAddEntryLike(value: unknown): value is MachineDeviceAddE
 }
 
 /** deviceCatalogRequest/installedDevicesRequest/createDevice の source(§13 段2)の検証。
- * remote は host が非空文字列であること(空文字は `remote exec` に渡せない不正値)。 */
+ * remote は machine(登録簿のマシン名)が非空文字列であること(空文字は `remote exec` に
+ * 渡せない不正値)。 */
 function isDeviceCommandSourceLike(value: unknown): value is DeviceCommandSource {
   return (
     isRecord(value) &&
-    (value.kind === "local" || (value.kind === "remote" && typeof value.host === "string" && value.host !== ""))
+    (value.kind === "local" ||
+      (value.kind === "remote" && typeof value.machine === "string" && value.machine !== ""))
   );
 }
 
 /** setRemoteConfig の hosts[] 1件の検証(webview 側は既に正規化済みの値を送る想定だが、
- * 型不正なペイロードを弾くための最終ゲート)。machine は settingsTab.js が remoteConfig 受信時の
- * 値をパススルーするだけの隠しフィールド(UI に入力欄は無い)なので、無い(旧版 webview 由来)
- * ときも通す — 無いと "" 扱いになるだけで、無くても壊れない形にしておく。 */
+ * 型不正なペイロードを弾くための最終ゲート)。**マシン名のキーは "machine"**(2026-08-26 改名。
+ * 旧キー "name" を要求すると settingsTab.js の payload が全滅し、リモートマシンの追加・削除が
+ * 黙って無視される)。 */
 function isRemoteHostEntryLike(value: unknown): value is RemoteHostEntry {
   return (
     isRecord(value) &&
-    typeof value.name === "string" &&
+    typeof value.machine === "string" &&
     typeof value.host === "string" &&
-    typeof value.dir === "string" &&
-    (value.machine === undefined || typeof value.machine === "string")
+    typeof value.dir === "string"
   );
 }
 
@@ -731,7 +732,7 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
       return (
         typeof value.name === "string" &&
         (value.op === "up" || value.op === "down") &&
-        (value.host === undefined || (typeof value.host === "string" && value.host !== "")) &&
+        (value.machine === undefined || (typeof value.machine === "string" && value.machine !== "")) &&
         (value.udid === undefined || typeof value.udid === "string") &&
         (value.serial === undefined || typeof value.serial === "string") &&
         (value.registered === undefined || typeof value.registered === "boolean")
@@ -816,7 +817,7 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
             isRecord(device) &&
             typeof device.name === "string" &&
             device.name !== "" &&
-            (device.host === undefined || (typeof device.host === "string" && device.host !== "")),
+            (device.machine === undefined || (typeof device.machine === "string" && device.machine !== "")),
         )
       );
     case "devicePickDeviceDelete":
@@ -835,7 +836,8 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         (value.platform === "ios" || value.platform === "android") &&
         typeof value.originalName === "string" &&
         value.originalName !== "" &&
-        (value.host === undefined || (typeof value.host === "string" && value.host !== "")) &&
+        (value.deviceMachine === undefined ||
+          (typeof value.deviceMachine === "string" && value.deviceMachine !== "")) &&
         isRecord(value.fields) &&
         typeof value.fields.name === "string" &&
         typeof value.fields.simulator === "string" &&
@@ -862,13 +864,14 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         typeof value.fields.machine === "string" &&
         typeof value.fields.app === "string" &&
         Array.isArray(value.fields.devices) &&
-        // 参照は { name, host? }(一意なのは (host, name))。**文字列だった頃の形は受け取らない** ——
-        // 素通しすると host の無い参照として保存され、同名が別ホストに居ると run で曖昧になる
+        // 参照は { name, machine? }(一意なのは (machine, name))。**文字列だった頃の形は
+        // 受け取らない** —— 素通しすると machine の無い参照として保存され、同名が別マシンに
+        // 居ると run で曖昧になる
         value.fields.devices.every(
           (ref) =>
             isRecord(ref) &&
             typeof ref.name === "string" &&
-            (ref.host === undefined || typeof ref.host === "string"),
+            (ref.machine === undefined || typeof ref.machine === "string"),
         ) &&
         typeof value.fields.fm === "boolean" &&
         typeof value.fields.heal === "boolean" &&

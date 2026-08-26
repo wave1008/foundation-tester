@@ -32,7 +32,7 @@ final class ProfileSetupAutoDeviceTests: XCTestCase {
             let device = entry(platform: platform)
             XCTAssertFalse(ProfileWriter.hasDeviceBody(device),
                            "\(platform): 実体なしと判定されないと --auto-device が一度も発火しない")
-            XCTAssertEqual(device["host"] as? String, DeviceHostGrouping.localDisplayName)
+            XCTAssertEqual(device["host"] as? String, DeviceMachineGrouping.localDisplayName)
             XCTAssertEqual(device.count, 2, "実体を書かない限り host と name だけ")
         }
     }

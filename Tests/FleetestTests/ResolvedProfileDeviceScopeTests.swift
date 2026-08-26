@@ -1,4 +1,4 @@
-// ホスト別サブ実行のデバイス絞り込み(`ResolvedProfile.filteringDevices`)。
+// マシン別サブ実行のデバイス絞り込み(`ResolvedProfile.filteringDevices`)。
 //
 // 実害(2026-08-17 の実走): 1つの実行プロファイルが3台の機械にまたがるとき、サブ実行には
 // `--device <名前…>` だけを渡していた。**一意なのは name 単体ではなく (host, name)** で、
@@ -49,26 +49,26 @@ final class ResolvedProfileDeviceScopeTests: XCTestCase {
     }
 
     private func hosts(_ profile: ResolvedProfile) -> [String] {
-        profile.devices.map { "\(MachineHostDispatch.normalize($0.spec.machine) ?? "local")/\($0.name)" }
+        profile.devices.map { "\(MachineDispatch.normalize($0.spec.machine) ?? "local")/\($0.name)" }
     }
 
     func testLocalSubRunDoesNotPickUpTheOtherMachinesSameNamedDevices() {
         let scoped = profile().filteringDevices(
-            names: ["iPhone-01", "iPhone-02", "Pixel-local-01"], deviceHost: "local")
+            names: ["iPhone-01", "iPhone-02", "Pixel-local-01"], deviceMachine: "local")
         XCTAssertEqual(hosts(scoped), ["local/iPhone-01", "local/iPhone-02", "local/Pixel-local-01"],
                        "名前だけで絞ると3機ぶんの同名を全部掴む(実走で 4台 → 8台になった形)")
     }
 
     func testRemoteSubRunKeepsOnlyThatMachinesDevices() {
         let scoped = profile().filteringDevices(
-            names: ["iPhone-01", "iPhone-02", "Pixel-M1Max-01"], deviceHost: "M1Max")
+            names: ["iPhone-01", "iPhone-02", "Pixel-M1Max-01"], deviceMachine: "M1Max")
         XCTAssertEqual(hosts(scoped),
                        ["M1Max/iPhone-01", "M1Max/iPhone-02", "M1Max/Pixel-M1Max-01"])
     }
 
     func testHostAloneIsEnoughToScope() {
         // 名前を渡さなくてもホストだけで絞れる(中継が --device を落としても壊れない側に倒す)
-        let scoped = profile().filteringDevices(names: [], deviceHost: "M1Ultra")
+        let scoped = profile().filteringDevices(names: [], deviceMachine: "M1Ultra")
         XCTAssertEqual(hosts(scoped), ["M1Ultra/iPhone-01", "M1Ultra/iPhone-02"])
     }
 
@@ -84,7 +84,7 @@ final class ResolvedProfileDeviceScopeTests: XCTestCase {
 
     func testExplicitLocalOnADeviceCountsAsThisMachine() {
         let resolved = make(devices: [device("A", host: "local"), device("A", host: "M1Max")])
-        let scoped = resolved.filteringDevices(names: ["A"], deviceHost: "local")
+        let scoped = resolved.filteringDevices(names: ["A"], deviceMachine: "local")
         XCTAssertEqual(hosts(scoped), ["local/A"],
                        "\"local\" の明示は「手元」の意味(未指定と同じ扱いにする)")
     }
