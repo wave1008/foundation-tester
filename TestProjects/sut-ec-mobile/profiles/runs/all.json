@@ -11,6 +11,30 @@
       "name": "iPhone 17 Pro(iOS 27.0)-02"
     },
     {
+      "machine": "local",
+      "name": "iPhone 17 Pro(iOS 27.0)-03"
+    },
+    {
+      "machine": "local",
+      "name": "iPhone 17 Pro(iOS 27.0)-04"
+    },
+    {
+      "machine": "local",
+      "name": "iPhone 17 Pro(iOS 27.0)-05"
+    },
+    {
+      "machine": "local",
+      "name": "iPhone 17 Pro(iOS 27.0)-06"
+    },
+    {
+      "machine": "local",
+      "name": "iPhone 17 Pro(iOS 27.0)-07"
+    },
+    {
+      "machine": "local",
+      "name": "iPhone 17 Pro(iOS 27.0)-08"
+    },
+    {
       "machine": "M1Max",
       "name": "iPhone 17 Pro(iOS 27.0)-01"
     },
@@ -33,6 +57,30 @@
     {
       "machine": "local",
       "name": "Pixel 9(Android 15)-02"
+    },
+    {
+      "machine": "local",
+      "name": "Pixel 9(Android 15)-03"
+    },
+    {
+      "machine": "local",
+      "name": "Pixel 9(Android 15)-04"
+    },
+    {
+      "machine": "local",
+      "name": "Pixel 9(Android 15)-05"
+    },
+    {
+      "machine": "local",
+      "name": "Pixel 9(Android 15)-06"
+    },
+    {
+      "machine": "local",
+      "name": "Pixel 9(Android 15)-07"
+    },
+    {
+      "machine": "local",
+      "name": "Pixel 9(Android 15)-08"
     },
     {
       "machine": "M1Max",
