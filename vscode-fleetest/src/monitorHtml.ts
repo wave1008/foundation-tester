@@ -602,6 +602,9 @@ function renderSettingsPanel(): string {
             <option value="on-demand">${t("panels.settings.remoteArtifactsOnDemand")}</option>
           </select>
         </label>
+        <div class="settings-remote-hosts-actions">
+          <button id="settings-remote-hosts-add" class="secondary" type="button">${t("panels.settings.remoteHostsAdd")}</button>
+        </div>
         <table class="settings-remote-hosts-table">
           <thead>
             <tr>
@@ -613,9 +616,6 @@ function renderSettingsPanel(): string {
           </thead>
           <tbody id="settings-remote-hosts-body"></tbody>
         </table>
-        <div class="settings-remote-hosts-actions">
-          <button id="settings-remote-hosts-add" class="secondary" type="button">${t("panels.settings.remoteHostsAdd")}</button>
-        </div>
         <div id="settings-remote-hosts-error" class="settings-hint settings-remote-hosts-error" hidden></div>
       </div>
     </div>

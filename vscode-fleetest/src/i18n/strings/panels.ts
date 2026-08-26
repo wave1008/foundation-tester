@@ -267,7 +267,7 @@ export const panelsStrings = {
   // 見出しに ssh 宛先の書式をそのまま出す(説明文を置かない代わり。ja/en 共通の文字列)
   "panels.settings.remoteHostsColHost": { ja: "user@host", en: "user@host" },
   "panels.settings.remoteHostsColDir": { ja: "作業ベースディレクトリ", en: "Base directory" },
-  "panels.settings.remoteHostsAdd": { ja: "マシンを追加", en: "Add machine" },
+  "panels.settings.remoteHostsAdd": { ja: "ホストを追加", en: "Add host" },
 
   "panels.deviceMenu.liveControl": { ja: "ライブ操作", en: "Live Control" },
   "panels.deviceMenu.restartWithGpu": { ja: "GPUで再起動", en: "Restart with GPU" },
