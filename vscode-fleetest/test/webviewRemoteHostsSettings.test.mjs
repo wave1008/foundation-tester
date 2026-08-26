@@ -88,7 +88,7 @@ test("列の並びはホスト → マシン(任意) → 作業ベースディ�
 
   const headers = [...document.querySelectorAll(".settings-remote-hosts-table thead th")]
     .map((th) => th.textContent.trim());
-  assert.match(headers[HOST], /ホスト|Host/);
+  assert.match(headers[HOST], /user@host/);
   assert.match(headers[MACHINE], /マシン|Machine/);
   assert.match(headers[DIR], /ディレクトリ|directory/);
 
