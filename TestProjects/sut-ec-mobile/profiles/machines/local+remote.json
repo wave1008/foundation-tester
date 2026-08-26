@@ -101,11 +101,11 @@
       },
       {
         "machine": "M1Ultra",
-        "name": "iPhone wave",
+        "name": "iPhone snb",
         "kind": "physical",
-        "os": "26.6.1",
-        "udid": "00008130-001819863E60001C",
-        "model": "iPhone 15 Pro"
+        "os": "26.5.2",
+        "udid": "00008110-000805001188201E",
+        "model": "iPhone SE (3rd generation)"
       }
     ]
   },

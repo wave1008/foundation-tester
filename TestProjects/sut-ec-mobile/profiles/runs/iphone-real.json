@@ -4,7 +4,7 @@
   "devices": [
     {
       "machine": "M1Ultra",
-      "name": "iPhone wave"
+      "name": "iPhone snb"
     }
   ],
   "containerInference": true,
