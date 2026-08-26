@@ -38,12 +38,6 @@
       },
       {
         "machine": "local",
-        "name": "iPhone wave",
-        "kind": "physical",
-        "udid": "00008130-001819863E60001C"
-      },
-      {
-        "machine": "local",
         "name": "iPhone 17 Pro(iOS 27.0)-06",
         "os": "27.0",
         "simulator": "iPhone 17 Pro(iOS 27.0)-06",
@@ -136,12 +130,6 @@
       },
       {
         "machine": "local",
-        "name": "Pixel 4a",
-        "kind": "physical",
-        "serial": "14141JEC204922"
-      },
-      {
-        "machine": "local",
         "name": "Pixel 9(Android 15)-06",
         "avd": "Pixel_9_Android_15_-06"
       },
@@ -184,14 +172,6 @@
         "machine": "local",
         "name": "Pixel 10(Android 16(API 36) / arm64-v8a)-02",
         "avd": "Pixel_10_Android_16_API_36_arm64-v8a_-02"
-      },
-      {
-        "machine": "local",
-        "name": "Pixel 3a",
-        "kind": "physical",
-        "os": "12",
-        "serial": "93MAY0CY1M",
-        "model": "Pixel 3a"
       }
     ]
   }

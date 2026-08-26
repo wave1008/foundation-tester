@@ -3,10 +3,6 @@
   "app": "sut-ec-mobile",
   "devices": [
     {
-      "machine": "local",
-      "name": "iPhone wave"
-    },
-    {
       "machine": "M1Max",
       "name": "iPhone 17 Pro(iOS 27.0)-01"
     },
@@ -21,14 +17,6 @@
     {
       "machine": "M1Ultra",
       "name": "iPhone 17 Pro(iOS 27.0)-02"
-    },
-    {
-      "machine": "local",
-      "name": "Pixel 3a"
-    },
-    {
-      "machine": "local",
-      "name": "Pixel 4a"
     },
     {
       "machine": "local",
