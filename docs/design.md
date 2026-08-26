@@ -211,6 +211,17 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
   provision の reclaim 側)。自主終了はホスト側の pid ファイルを消せないため、provision が
   採番前に死んだランナーの pid ファイルを回収する(`BridgeLauncher.sweepStalePidFiles`。
   残すと `assignPort` が使用中とみなし採番がドリフトする)。
+- **実機を起こし続ける(2026-08-27)**: 実機は run の待ちの最中に自動ロックされ、以後の launch が
+  `denied by SBMainWorkspace ... reason: Locked` で拒否されて run ごと死ぬ。ホストから端末の
+  自動ロック設定を書き換える手段は無い(`devicectl device settings` は appearance/audio/
+  biometrics/voiceover だけ)ため、**ランナー自身が最後の HID 要求から 25 秒で
+  `XCUIDevice.press(.home)` を 1 発撃つ**(`KeepAwake.swift`。自動ロックの最短が 30 秒)。
+  実機の `press(.home)` は SpringBoard に届かない = 入力としてだけ数えられる副作用の無い玉で、
+  シミュレータでは撃たない(自動ロックが無い)。**`isIdleTimerDisabled` では止まらない**
+  (背面のランナーの申告は効かない。実測は docs/verification.md)。数える基準は
+  **入力(`BridgeRouter.inputPaths`)からの経過**であってブリッジのアイドル時間ではない
+  —— 待ちの最中もホストは木を読み続けるので、アイドルで計ると一生撃たれない。
+  処理中(`inFlight > 0`)は撃たない(accept スレッドと XCUITest を同時に叩かないため)
 - **容器推定は scrollable 申告の祖先を優先する(2026-08-23)**: `StepExecutor.clippingContainer` は
   「同じ深さの子を2つ以上持つ直近の祖先」を容器とみなす規則(Compose iOS は xcuitest で scrollable を
   申告できないための近似)だが、申告のある木ではそれが**カード**を容器に選ぶ(カルーセル > カード >
@@ -2212,6 +2223,20 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   `visibleTapRect` が見えている部分へ寄せる経路では「背後へ抜けた」が嘘になる。
   載せる経路は tap(寄せない側)・長押し(`press(ref:)` は frame 中心)・doubleTap の3つで、
   **pinch / swipeBy は対象外**(掴んで動かす形なので無効でも意味がある)
+- **縁の帯に潜っているだけなら、撃つ前に容器を1回送って外す**(2026-08-27。
+  `TapTargetGeometry.uncoverScrollJump` が唯一の判定元。利用者向けの説明は
+  docs/commands.md §縁の帯に潜った対象)。実アプリで頻出する形で、受け手の SUT では
+  4.7 インチ実機でログアウトがタブバーに潜り、タップがタブに当たって7本が巻き添えで
+  落ちた(D-02)。**外せないと分かる3形では送らない**(操作可能でない覆い・容器の半分以上を
+  占める覆い・容器の中心線を跨ぐ覆い)。**拒否はしない** —— 覆われた要素をわざと叩く
+  書き方を壊さない。実装で得た知見が2つ:
+  **①「覆いが対象の上か下か」では向きが決まらない**(中心を覆っている以上、覆いの矩形は
+  必ず対象の中心を含む)。**②「容器の縁に接しているか」でも決まらない** —— タブバーの下端は
+  セーフエリアぶん内側で、内容を潜らせた容器の下端と揃わない(実測: 帯 778..840 / 容器 200..873)。
+  採ったのは**容器の中心線のどちら側にあるか**。
+  witness は `E2E-iOS/scenarios/17_縁の帯に潜る.swift`(`#btn_under_footer`)で、
+  **効くのは xcuitest だけ** —— in-app エンジンは要素を直接活性化するので座標のヒットテストを
+  通らず、機能を殺しても緑のままになる
 - **「この木は画面を代表しているか」も MCP と共有する**(2026-08-15。`TreeCoverage`)。
   形は2つで、どちらも**幾何からしか疑えない**(打ち切りと違いブリッジの申告が無い):
   **①webView の内側に大きな空白帯が残る**(Android の Chrome は web コンテンツの a11y ノードを
