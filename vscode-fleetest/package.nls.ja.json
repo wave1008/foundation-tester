@@ -8,6 +8,7 @@
   "fleetest.config.serial.description": "Android デバイスのシリアル番号。空の場合は指定しません(fleetest.profile が空の場合のみ使用)。",
   "fleetest.config.buildBeforeRun.description": "CLI 呼び出し前に Swift ビルドを行うかどうか。false の場合は CLI 呼び出しに --skip-build を付与します。",
   "fleetest.config.lptScheduling.description": "過去の実測が長いシナリオから先に投入します(LPT)。短いものが末尾の隙間を埋めるため、デバイス台数を増やさずに実行時間が縮みます。実績が無いシナリオは先頭に回します。オフにするとシナリオ ID 順で投入します。",
+  "fleetest.config.suppressPhysicalDeviceAutoLock.description": "ツールが操作している間、実機が自動ロックされないようにします(iOS: 常駐ランナーが 25 秒ごとに無害な入力を1発送る / Android: `svc power stayon`)。オフにすると端末の自動ロック設定のまま動かします(Android ではツールが立てた消灯抑止も戻します)。ロックされた端末はアプリの起動を拒否するため、run は途中で落ちます。",
   "fleetest.config.lptHistoryRuns.description": "LPT スケジューリングが実績として読み込む run の件数(新しい方から)。大きくすると代表性は上がりますが、実行のたびに読む結果ファイルが増えます。",
   "fleetest.config.heal.description": "実行時に FM によるロケータ自己修復(--heal)を有効にします。実行完了後、修復候補があれば確認パネルが開き、承認するとソースに反映されます。",
   "fleetest.config.monitorInterval.description": "デバイスモニター(fleetest: デバイスモニターを表示)の更新間隔(秒)。0.5 未満は 0.5 として扱われます。",

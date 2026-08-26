@@ -29,8 +29,12 @@ public enum AndroidPhysicalDevice {
         }
 
         // 充電中は消灯させない。引数 "usb" だと USB 給電時のみ(bitmask 2)で、AC として
-        // 認識されるケーブル/ハブでは効かない(実測)。true = AC|USB|WIRELESS(7)を使う
-        shell(["shell", "svc", "power", "stayon", "true"])
+        // 認識されるケーブル/ハブでは効かない(実測)。true = AC|USB|WIRELESS(7)を使う。
+        // **抑止を切ってあるときは false を撃って戻す** —— stayon は端末に永続するので、
+        // 切った人が「一生消灯しない端末」を抱えたままにならないようにする(KeepAwakePolicy)。
+        // 点灯と解除はどちらの設定でも行う(ロック中は launch が 500 で落ちるため run の前提)
+        let suppress = KeepAwakePolicy.suppressesAutoLock
+        shell(["shell", "svc", "power", "stayon", suppress ? "true" : "false"])
         shell(["shell", "input", "keyevent", "KEYCODE_WAKEUP"])
         // 点灯を待ってから解除する。Dozing(AOD)中に投げた dismiss-keyguard は黙って無視される
         for _ in 0..<10 where !isAwake(adb: adb, serial: serial) {
@@ -41,7 +45,8 @@ public enum AndroidPhysicalDevice {
         let deadline = Date().addingTimeInterval(unlockTimeoutSeconds)
         while Date() < deadline {
             if hasResumedActivity(adb: adb, serial: serial) {
-                log("✔ \(serial): screen woken, unlocked and kept awake")
+                log("✔ \(serial): screen woken and unlocked"
+                    + (suppress ? " and kept awake" : " (auto-lock left as the device has it)"))
                 return
             }
             try? await Task.sleep(nanoseconds: 500_000_000)

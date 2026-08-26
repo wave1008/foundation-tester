@@ -14,6 +14,7 @@ import type { Readable, Writable } from "node:stream";
 import type * as vscode from "vscode";
 import { t } from "./i18n";
 import { NdjsonParser } from "./ndjson";
+import { fleetestSpawnEnv } from "./spawnEnv";
 
 /**
  * stdout/stderr=pipe で spawn したプロセスの型。stdin は invocation.stdin の有無で
@@ -150,8 +151,14 @@ export class FleetestCli {
         // union にすると spawn の戻り値型が ChildProcess に緩んでしまうため)。
         proc =
           invocation.stdin !== undefined
-            ? spawn(binaryPath, invocation.args, { cwd, shell: false, stdio: ["pipe", "pipe", "pipe"] })
-            : spawn(binaryPath, invocation.args, { cwd, shell: false, stdio: ["ignore", "pipe", "pipe"] });
+            ? spawn(binaryPath, invocation.args, {
+                cwd, shell: false, env: fleetestSpawnEnv(),
+                stdio: ["pipe", "pipe", "pipe"],
+              })
+            : spawn(binaryPath, invocation.args, {
+                cwd, shell: false, env: fleetestSpawnEnv(),
+                stdio: ["ignore", "pipe", "pipe"],
+              });
       } catch (error) {
         reject(new CliError(t("run.cli.spawnFailed", { error: String(error) }), error));
         return;

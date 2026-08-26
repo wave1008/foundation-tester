@@ -227,6 +227,18 @@ export const panelsStrings = {
     ja: "デバイス画面のストリーミングが不安定なときの回避用です。",
     en: "A workaround for when device screen streaming is unstable.",
   },
+  // 実機セクション。実体は fleetest.suppressPhysicalDeviceAutoLock 設定(config.ts)で、
+  // off のときだけ拡張が起動する fleetest へ FT_KEEP_AWAKE=0 を渡す(spawnEnv.ts)。
+  // 効かせ方の定義元は Sources/FTCore/KeepAwakePolicy.swift
+  "panels.settings.physicalSectionTitle": { ja: "実機", en: "Physical devices" },
+  "panels.settings.keepAwakeLabel": {
+    ja: "実機画面の自動ロックを抑制する",
+    en: "Keep physical device screens from auto-locking",
+  },
+  "panels.settings.keepAwakeHint": {
+    ja: "テスト中に実機が寝ないようにします(iOS: 常駐ランナーが 25 秒ごとに無害な入力を1発送る / Android: svc power stayon)。ロックされた端末はアプリの起動を拒否するため、切ると run が途中で落ちることがあります。オフにすると Android ではツールが立てた消灯抑止も戻します。シミュレータ・エミュレータには関係しません。",
+    en: "Keeps physical devices awake during a run (iOS: the resident runner sends one harmless input every 25s; Android: svc power stayon). A locked device refuses app launches, so turning this off can kill a run half-way. Turning it off also clears the stay-awake flag the tool set on Android. Simulators and emulators are unaffected.",
+  },
   // 設定タブ「更新」セクション(静的ラベル)。動的な状態表示は webviewMonitorB.ts の wvMonitor2.update.*
   "panels.settings.updateLabel": { ja: "更新", en: "Updates" },
   "panels.settings.updateChecking": { ja: "確認しています…", en: "Checking..." },

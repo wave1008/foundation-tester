@@ -13,6 +13,7 @@ import { switchTab } from './tabs.js';
 
 const pollingModeCheckbox = document.getElementById('settings-polling-mode');
 const lptCheckbox = document.getElementById('settings-lpt');
+const keepAwakeCheckbox = document.getElementById('settings-keep-awake');
 const lptHistoryInput = document.getElementById('settings-lpt-history');
 // 拡張から届く既定値(空欄・不正値のときに戻す値)。届くまでは null。
 let lptHistoryDefault = null;
@@ -29,6 +30,13 @@ const updateRunButton = document.getElementById('tabbar-update');
 
 pollingModeCheckbox.addEventListener('change', () => {
   vscode.postMessage({ type: 'setPollingMode', value: pollingModeCheckbox.checked });
+});
+
+// 実機の自動ロック抑止。拡張側が fleetest.suppressPhysicalDeviceAutoLock 設定を更新し、
+// **次に起動する fleetest プロセスから**効く(実行中の run と、既に立っているブリッジは
+// そのまま。iOS は常駐ランナーが起動時に読むため、ブリッジを建て直すまで変わらない)。
+keepAwakeCheckbox.addEventListener('change', () => {
+  vscode.postMessage({ type: 'setKeepPhysicalDevicesAwake', value: keepAwakeCheckbox.checked });
 });
 
 // LPT 投入順。拡張側が fleetest.lptScheduling 設定を更新し、次の run から効く
@@ -291,6 +299,8 @@ function applyUpdateStatus(message) {
 export function applySettings(message) {
   if (message.type === 'pollingMode') {
     pollingModeCheckbox.checked = !!message.value;
+  } else if (message.type === 'keepPhysicalDevicesAwake') {
+    keepAwakeCheckbox.checked = !!message.value;
   } else if (message.type === 'lptScheduling') {
     lptCheckbox.checked = !!message.value;
   } else if (message.type === 'lptHistoryRuns') {

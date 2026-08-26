@@ -37,6 +37,7 @@ import {
 import { NdjsonParser } from "./ndjson";
 import type { MonitorPanelDeps } from "./monitorPanel";
 import { type DeviceCommandSource, deviceCommandArgs } from "./remoteRunArgs";
+import { fleetestSpawnEnv } from "./spawnEnv";
 
 /** stdin=ignore, stdout/stderr=pipe で spawn したプロセスの型(cli.ts の FleetestProcess と同じ形)。 */
 type PipeProcess = ChildProcessByStdio<null, Readable, Readable>;
@@ -437,6 +438,7 @@ export class MonitorDeviceOps {
       proc = spawn(config.binaryPath, args, {
         cwd: this.deps.workspaceRoot,
         shell: false,
+        env: fleetestSpawnEnv(),
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (error) {
@@ -598,6 +600,7 @@ export class MonitorDeviceOps {
       proc = spawn(config.binaryPath, args, {
         cwd: this.deps.workspaceRoot,
         shell: false,
+        env: fleetestSpawnEnv(),
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (error) {
@@ -800,6 +803,7 @@ export class MonitorDeviceOps {
       proc = spawn(config.binaryPath, args, {
         cwd: this.deps.workspaceRoot,
         shell: false,
+        env: fleetestSpawnEnv(),
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (error) {
@@ -878,6 +882,7 @@ export class MonitorDeviceOps {
       proc = spawn(config.binaryPath, args, {
         cwd: this.deps.workspaceRoot,
         shell: false,
+        env: fleetestSpawnEnv(),
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (error) {
@@ -974,6 +979,7 @@ export class MonitorDeviceOps {
       proc = spawn(config.binaryPath, ["api", cmd], {
         cwd: this.deps.workspaceRoot,
         shell: false,
+        env: fleetestSpawnEnv(),
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (error) {
@@ -1053,6 +1059,7 @@ export class MonitorDeviceOps {
       proc = spawn(config.binaryPath, args, {
         cwd: this.deps.workspaceRoot,
         shell: false,
+        env: fleetestSpawnEnv(),
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (error) {
@@ -1387,6 +1394,7 @@ export class MonitorDeviceOps {
       proc = spawn(config.binaryPath, args, {
         cwd: this.deps.workspaceRoot,
         shell: false,
+        env: fleetestSpawnEnv(),
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (error) {
@@ -1581,6 +1589,7 @@ export class MonitorDeviceOps {
       proc = spawn(config.binaryPath, args, {
         cwd: this.deps.workspaceRoot,
         shell: false,
+        env: fleetestSpawnEnv(),
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (error) {

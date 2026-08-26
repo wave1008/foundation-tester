@@ -34,6 +34,7 @@ import { t } from "./i18n";
 import { isRunEvent, type RunStepSection } from "./model";
 import { NdjsonParser } from "./ndjson";
 import { createRunReducerState, reduceRunEvent, type RunReducerState } from "./runReducer";
+import { fleetestSpawnEnv } from "./spawnEnv";
 
 /** このアダプタが公開する唯一のスレッド ID。 */
 const THREAD_ID = 1;
@@ -393,6 +394,7 @@ export class FleetestDebugSession extends DebugSession {
       child = spawn(this.binaryPath, cliArgs, {
         cwd: this.cwd,
         shell: false,
+        env: fleetestSpawnEnv(),
         stdio: ["pipe", "pipe", "pipe"],
       });
     } catch (error) {

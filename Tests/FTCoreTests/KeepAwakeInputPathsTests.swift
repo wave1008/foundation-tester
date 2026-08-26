@@ -53,9 +53,10 @@ final class KeepAwakeInputPathsTests: XCTestCase {
         let keepAwake = try String(
             contentsOf: root.appendingPathComponent(
                 "Runner/FleetestRunnerUITests/KeepAwake.swift"), encoding: .utf8)
-        let launcher = try String(
+        // ホストが渡す鍵の一覧は KeepAwakePolicy が唯一の定義元(BridgeLauncher はそれを回す)
+        let policy = try String(
             contentsOf: root.appendingPathComponent(
-                "Sources/FTBridgeClient/BridgeLauncher.swift"), encoding: .utf8)
+                "Sources/FTCore/KeepAwakePolicy.swift"), encoding: .utf8)
         let regex = try NSRegularExpression(pattern: #"environment\["(FT_[A-Z_]+)"\]"#)
         let range = NSRange(keepAwake.startIndex..., in: keepAwake)
         var keys: Set<String> = []
@@ -65,8 +66,8 @@ final class KeepAwakeInputPathsTests: XCTestCase {
         }
         XCTAssertFalse(keys.isEmpty, "KeepAwake が読む環境変数を1つも拾えていない(走査が壊れた)")
         for key in keys.sorted() {
-            XCTAssertTrue(launcher.contains("\"\(key)\""),
-                          "\(key) が BridgeLauncher から xctestrun へ渡っていない"
+            XCTAssertTrue(policy.contains("\"\(key)\""),
+                          "\(key) が KeepAwakePolicy に載っていない = xctestrun へ渡らない"
                           + "(ランナーは既定値のまま動き、ノブが黙って効かない)")
         }
     }
