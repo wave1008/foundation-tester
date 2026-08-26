@@ -602,7 +602,6 @@ function renderSettingsPanel(): string {
             <option value="on-demand">${t("panels.settings.remoteArtifactsOnDemand")}</option>
           </select>
         </label>
-        <div class="settings-hint">${t("panels.settings.remoteHostsHint")}</div>
         <table class="settings-remote-hosts-table">
           <thead>
             <tr>
