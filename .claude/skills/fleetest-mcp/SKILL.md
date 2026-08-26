@@ -1,23 +1,29 @@
 ---
 name: fleetest-mcp
-description: foundation-tester の MCP サーバ(fleetest-mcp)だけを Claude Code に登録し、ft_* ツール(アプリを直接操作・スナップショット・シナリオ実行)を使える状態にする。VSCode 拡張・プロジェクト作成・プロファイル設定は行わない。未クローンなら clone → fleetest-mcp をビルド → .mcp.json をマージ → 承認案内までを検証付きで実行する。「MCP だけ入れて」「ft_* ツールを使えるようにして」「MCP サーバを登録して」等の依頼で使う。フル導入は /fleetest-setup。
+description: foundation-tester の MCP サーバ(fleetest-mcp)だけをエージェント(Claude Code / Codex)に登録し、ft_* ツール(アプリを直接操作・スナップショット・シナリオ実行)を使える状態にする。VSCode 拡張・プロジェクト作成・プロファイル設定は行わない。未クローンなら clone → fleetest-mcp をビルド → 登録先(.mcp.json / ~/.codex/config.toml)をマージ → 承認案内までを検証付きで実行する。「MCP だけ入れて」「ft_* ツールを使えるようにして」「MCP サーバを登録して」等の依頼で使う。フル導入は /fleetest-setup。
 ---
 
 # fleetest MCP 登録 runbook
 
-> **ユーザーへの質問(AskUserQuestion)・報告・チェックポイントはユーザーの言語で行う**。
+> **ユーザーへの質問・報告・チェックポイントはユーザーの言語で行う**。
 > この手順書は日本語だが、読者はエージェントであり利用者の言語とは独立している
 > (英語話者にはダイアログ・報告文をすべて英語で出す)。
 
 
 > **この手順書が古い可能性がある**: プラグイン経由で導入している場合、この文書は
-> `~/.claude/plugins/cache/` のスナップショットから読まれており `git pull` では更新されない。
-> **clone(TOOL_ROOT)が既にあるなら `<TOOL_ROOT>/.claude/skills/fleetest-mcp/SKILL.md` を読み、
-> 内容が違えばそちらを正とする**。更新は `claude plugin marketplace update foundation-tester` →
-> `claude plugin update fleetest@foundation-tester`(2つとも要る・Claude Code の再起動で反映)。
-> **`/plugin` スラッシュコマンドは VSCode 拡張・Agent SDK 環境では提供されない**ので CLI 形を使う。
+> エージェント側のキャッシュ(Claude Code は `~/.claude/plugins/cache/`)から読まれており
+> `git pull` では更新されない。**clone(TOOL_ROOT)が既にあるなら
+> `<TOOL_ROOT>/.claude/skills/fleetest-mcp/SKILL.md`(正典)を読み、内容が違えばそちらを正とする**。
+> 更新は Claude Code なら `claude plugin marketplace update foundation-tester` →
+> `claude plugin update fleetest@foundation-tester`(2つとも要る・再起動で反映。
+> **`/plugin` スラッシュコマンドは VSCode 拡張・Agent SDK 環境では提供されない**ので CLI 形)、
+> コピー配置(`install-skill.sh`)なら `fleetest-update` が正典から写し直す。
 
-Claude Code から `ft_*` ツール(`ft_tap`/`ft_screenshot`/`ft_snapshot`/`ft_run_scenario` 等)を使うための
+> **スキルの呼び出し記法はエージェントごとに違う**: Claude Code は `/fleetest-setup`、
+> Codex は `$fleetest-setup`(または `/skills` セレクタ)。以下は `/` 形で書くが、
+> Codex では `$` に読み替える。
+
+エージェント(Claude Code / Codex)から `ft_*` ツール(`ft_tap`/`ft_screenshot`/`ft_snapshot`/`ft_run_scenario` 等)を使うための
 **MCP サーバ(`fleetest-mcp`)だけ**を登録する。VSCode 拡張(.vsix)・`fleetest init`(プロジェクト作成)・
 プロファイル設定は**やらない**。それらまで含むフル導入は `/fleetest-setup`。
 
@@ -125,6 +131,56 @@ clone 構成ならこのステップは不要(同梱 `.mcp.json` が効く)。�
   cd したまま exec すると外部パッケージ構成で受け手の `TestProjects/` が見えなくなる。
 - cwd = パッケージルートが前提。cd 制御ができない起動経路では代わりに環境変数 `FT_PACKAGE_ROOT`
   でパッケージルートを明示指定できる(未設定なら cwd 探索、無効なパスなら診断のため探索フォールバックせず失敗する)。
+
+### 2.5 Codex に登録する(Codex を使う場合)
+
+Codex はプロジェクトスコープの `.mcp.json` を読まない。登録先は**ユーザーレベルの
+`~/.codex/config.toml`**(`CODEX_HOME` を設定しているならそちら)。次のテーブルを**末尾に追記**する
+(TOML はテーブル見出しで前のテーブルが終わるので追記は常に妥当。既存行には触らない):
+
+```toml
+[mcp_servers.fleetest]
+command = "bash"
+args = ["-lc", "exec \"<ABS_TOOL_ROOT>/Scripts/mcp-server.sh\""]
+
+[mcp_servers.fleetest.env]
+FT_TOOL_ROOT = "<ABS_TOOL_ROOT>"
+```
+
+- 起動の中身・`FT_TOOL_ROOT` の意味・`bash -lc` の理由はステップ2と同じ(ランチャは共通)。
+- **`cwd` は書かない**。cwd は `fleetest-mcp` が受け手パッケージを特定する入力なので、
+  エージェントが開いたディレクトリのままにする。
+- **プロジェクトスコープの `.codex/config.toml` は使わない**。あれは `~/.codex/config.toml` 側で
+  そのプロジェクトが trusted のときしか読まれないため、書いても**黙って効かない**状態を作れてしまう。
+- 既に `[mcp_servers.fleetest]` があり `FT_TOOL_ROOT` が別の clone を指しているときは、
+  **勝手に書き換えず** 🧑 にどちらを使うか確認する(古い clone が残っているだけのことが多い)。
+
+#### サンドボックスの確認(Codex では必須)
+
+Codex の既定 `sandbox_mode = "workspace-write"` は **loopback を含む outbound を遮断**し、
+**ワークスペース外への書き込みを禁止**する。fleetest はどちらも使うので、**このままでは
+デバイスを1台も駆動できない**(ブリッジ HTTP・adb の TCP 5037・エミュレータ gRPC が通らない)。
+
+`Scripts/install.sh` のステップ7.7(または `Scripts/preflight.sh` の `codex_sandbox=` 行)が判定を出す。
+不足していたら 🧑 に**次の内容を `~/.codex/config.toml` へ貼るよう依頼する**。
+**エージェントが勝手に書かない** —— サンドボックスは受け手のセキュリティ境界であり、
+このツールが受け手のグローバル設定を緩める判断をしてはいけない:
+
+```toml
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+network_access = true
+writable_roots = [
+  "<ABS_TOOL_ROOT>",
+  "~/.config/fleetest",
+  "~/Library/Developer/CoreSimulator",
+  "~/.android",
+]
+```
+
+`network_access` を常時開けたくない受け手には、**fleetest を使うセッションだけ
+`codex --sandbox danger-full-access` で起動する**選択肢も示す(常設の緩和より狭い)。
 
 「全プロジェクトで使いたい」場合のみ、代わりに user スコープ登録を案内する(claude CLI が PATH に要る):
 

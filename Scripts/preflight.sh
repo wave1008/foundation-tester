@@ -359,6 +359,18 @@ if [ -f "$WORK_DIR/.mcp.json" ] && grep -q '"fleetest"' "$WORK_DIR/.mcp.json" 2>
 else
   kv mcp_registered no
 fi
+# Codex 側の MCP 登録はユーザーレベル(~/.codex/config.toml)。**読むだけ**
+CODEX_CONFIG="${CODEX_HOME:-$HOME/.codex}/config.toml"
+if [ -f "$CODEX_CONFIG" ] && grep -q '^\[mcp_servers\.fleetest\]' "$CODEX_CONFIG" 2>/dev/null; then
+  kv codex_mcp_registered yes
+else
+  kv codex_mcp_registered no
+fi
+if [ -f "$WORK_DIR/.agents/skills/fleetest-setup/SKILL.md" ]; then
+  kv codex_skills yes
+else
+  kv codex_skills no
+fi
 if ls -d "$HOME/.vscode/extensions/"*fleetest* >/dev/null 2>&1; then
   kv vscode_extension yes
 else
@@ -376,6 +388,32 @@ check_xcodegen || missing+=("xcodegen (install.sh installs it via brew)")
 command -v npm >/dev/null 2>&1 && kv npm yes || { kv npm no; missing+=("npm (needed to build the VSCode extension)"); }
 check_adb
 command -v claude >/dev/null 2>&1 && kv claude_cli yes || kv claude_cli no
+command -v codex >/dev/null 2>&1 && kv codex_cli yes || kv codex_cli no
+# Codex のサンドボックスは既定(workspace-write)だと **loopback を含む outbound 遮断**と
+# **ワークスペース外への書込禁止**で、fleetest はデバイスを駆動できない。ここは判定だけ
+# (設定は受け手のグローバル資産なので触らない)。install.sh ステップ7.7 と同じ規則。
+if [ -f "$CODEX_CONFIG" ] && command -v python3 >/dev/null 2>&1; then
+  codex_sandbox="$(python3 - "$CODEX_CONFIG" <<'PYSB' 2>/dev/null || echo unknown
+import sys
+try:
+    import tomllib
+except ModuleNotFoundError:
+    print("unknown"); raise SystemExit(0)
+try:
+    with open(sys.argv[1], "rb") as f:
+        data = tomllib.load(f)
+except Exception:
+    print("unknown"); raise SystemExit(0)
+mode = data.get("sandbox_mode", "workspace-write")
+ws = data.get("sandbox_workspace_write", {}) or {}
+net = "yes" if ws.get("network_access") else "no"
+print("%s network_access=%s" % (mode, net))
+PYSB
+)"
+  kv codex_sandbox "$codex_sandbox"
+else
+  kv codex_sandbox unknown
+fi
 
 # ---- 判定 ---------------------------------------------------------------------
 if [ "${#blocked_reasons[@]}" -gt 0 ]; then
@@ -391,14 +429,14 @@ say ""
 case "$verdict" in
   ready)
     say "✅ Not installed. It can be installed here ($layout)."
-    say "   Claude Code: /fleetest-setup / manual: Scripts/install.sh --name <ProjectName>"
+    say "   Agent: /fleetest-setup (Codex: \$fleetest-setup) / manual: Scripts/install.sh --name <ProjectName>"
     [ "${#missing[@]}" -gt 0 ] && printf '   Missing (installed automatically): %s\n' "${missing[*]}"
     exit 0 ;;
   installed)
     say "ℹ️ Already installed (external-package layout). Do not run setup again."
     say "   Update → /fleetest-update / add profiles → /fleetest-profiles / scenarios → /fleetest-scenario"
     say "   To reinstall, uninstall first (docs/user-docs/getting-started.md, the uninstall section)."
-    say "   See projects= / mcp_registered= / vscode_extension= above for what already exists."
+    say "   See projects= / mcp_registered= / codex_mcp_registered= / vscode_extension= above for what already exists."
     exit 2 ;;
   *)
     say "❌ Cannot install as things stand:"

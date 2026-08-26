@@ -111,6 +111,7 @@ VSCode extension, or written by hand — all three produce the same `.swift` sce
 - [VSCode extension](tools/vscode_extension.md)
 - [MCP server (Claude Code)](tools/mcp_server.md)
 - [Claude Code skills](tools/claude_code_skills.md)
+- [Codex](tools/codex_skills.md)
 
 ## Tutorial (In action)
 

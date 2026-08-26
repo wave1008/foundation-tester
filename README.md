@@ -2,7 +2,7 @@
 
 ※このREADME.md　はAIが読むことを前提にしています。製品の使い方はユーザー向けドキュメントを参照するか、AIにチャットで聞いてください
 
-**fleetest mobile** はClaude Code等のAIコーディングツールの使用を前提とした macOS専用の iOS / Android アプリの E2E テストツール。
+**fleetest mobile** はClaude Code / Codex 等のAIコーディングツールの使用を前提とした macOS専用の iOS / Android アプリの E2E テストツール。
 
 **fleetest** は `fleet` + `test` であり、*fleet*(すばやい)の最上級でもある。名前に畳み込んだ
 3つが、そのまま特徴になっている。
@@ -14,7 +14,7 @@
 **設計思想: 「AI がテストを作り、コードが決定的に再生する」**
 
 - **生成**
-  - Claude Codeにドキュメントとfleetest MCPを渡して指示することでテストコードを生成可能
+  - Claude Code / Codex にドキュメントとfleetest MCPを渡して指示することでテストコードを生成可能
 - **実行**
   - テストコードは LLM なしで決定的に実行。高速・安定で CI 向き
 - **セキュリティ**
@@ -84,6 +84,11 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scr
   版を固定するなら `claude plugin marketplace add https://github.com/wave1008/foundation-tester.git#<tag>`。
   プラグイン機構が無い環境向けの代替は
   `curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install-skill.sh | sh`。
+- **Codex でも同じスキルが動く**(runbook は共有。違うのは置き場所 `.agents/skills/`・呼び出し `$fleetest-setup`・
+  入口 `AGENTS.md`・MCP 登録先 `~/.codex/config.toml` だけ)。導入は
+  `curl -fsSL .../Scripts/install-skill.sh | sh -s -- --agent codex`。
+  **Codex は既定のサンドボックスだとデバイスを駆動できない**(loopback を含む outbound 遮断)ので、
+  [docs/user-docs/tools/codex_skills_ja.md](docs/user-docs/tools/codex_skills_ja.md) のサンドボックス設定を先に読むこと。
 - 既定は**外部パッケージ構成**: ツール(この clone)と、あなたの `TestProjects/` が住むテスト用フォルダを分ける。
 - 事前準備・インストール・更新・アンインストールの手順は [docs/user-docs/getting-started_ja.md](docs/user-docs/getting-started_ja.md)。
   導入後の使い方(プロファイル・シナリオ・実行)は**利用者向けドキュメント [docs/user-docs/index_ja.md](docs/user-docs/index_ja.md)**([English](docs/user-docs/index.md))と [docs/commands.md](docs/commands.md)。
@@ -485,7 +490,8 @@ Android: `fleetest-androidstream`)経由でほぼリアルタイムに更新す�
 
 `fleetest-mcp` は同じ機能を MCP(Model Context Protocol)ツールとして公開する stdio サーバ。
 リポジトリ直下の [.mcp.json](.mcp.json) に登録済みのため、**このディレクトリで Claude Code を
-開くと自動で `fleetest` サーバが使える**(初回はビルドが走る)。
+開くと自動で `fleetest` サーバが使える**(初回はビルドが走る)。Codex は `.mcp.json` を読まないので、
+`~/.codex/config.toml` へ登録する([docs/user-docs/tools/codex_skills_ja.md](docs/user-docs/tools/codex_skills_ja.md))。
 
 | ツール | 内容 |
 |---|---|

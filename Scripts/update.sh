@@ -189,6 +189,42 @@ elif [ "$DO_PLUGIN" = "1" ]; then
   echo "  (if the skills are used directly from the clone, git pull already updated them)"
 fi
 
+# ---- 5.8. コピー配置のスキルの更新(プラグイン機構を使っていない受け手) -----------
+# `install-skill.sh` はスキルを**コピー**するので、`git pull` では更新されない。
+# Codex にはプラグイン機構経由の自動更新が(このツールでは)無いので、ここで差分を写す。
+# 契約: 写し元は正典 `<TOOL_ROOT>/.claude/skills/`(AgentIntegration.canonicalSkillsDirectory)。
+# **fleetest-setup は写さない** —— 受け手のパッケージのそれは `fleetest init` が生成した
+# **受け手専用の別内容**で、正典で上書きすると受け手のセットアップ手順が消える。
+# **シンボリックリンクも写さない**(クローンを直接指しているので pull 済み)。
+COPIED_SKILLS="fleetest-update fleetest-profiles fleetest-scenario fleetest-mcp fleetest-remote-setup"
+SKILLS_REFRESHED=0
+refresh_copied_skills() {
+  skills_dir="$1"
+  [ -d "$skills_dir" ] || return 0
+  for name in $COPIED_SKILLS; do
+    dest="$skills_dir/$name/SKILL.md"
+    src="$TOOL_ROOT/.claude/skills/$name/SKILL.md"
+    [ -f "$src" ] || continue
+    [ -f "$dest" ] || continue
+    # `A && continue` を素の文として置くと、A が偽のとき**関数の戻り値が 1 になり**、
+    # set -e の呼び出し元で更新全体が止まる。if で書く
+    if [ -L "$skills_dir/$name" ] || [ -L "$dest" ]; then continue; fi
+    if ! cmp -s "$src" "$dest"; then
+      cp "$src" "$dest"
+      SKILLS_REFRESHED=$((SKILLS_REFRESHED + 1))
+    fi
+  done
+  return 0
+}
+if [ "$DO_PLUGIN" = "1" ] && [ "$WORK_DIR" != "$TOOL_ROOT" ]; then
+  refresh_copied_skills "$WORK_DIR/.claude/skills"
+  refresh_copied_skills "$WORK_DIR/.agents/skills"
+  if [ "$SKILLS_REFRESHED" -gt 0 ]; then
+    echo ""
+    echo "✅ Skills: refreshed $SKILLS_REFRESHED copied SKILL.md from the clone"
+  fi
+fi
+
 echo ""
 echo "──────── Next steps ────────"
 # install.sh には --no-next-steps を渡しているので、ログの場所はここで案内する
@@ -199,5 +235,6 @@ last_log="${update_logs[${#update_logs[@]} - 1]}"
 [ -f "$last_log" ] && echo "・Detailed log: $last_log"
 echo "・In VSCode, run Developer: Reload Window (required for the extension; reopen the monitor panel)"
 [ "$PLUGIN_RESULT" = "ok" ] && echo "・Restart Claude Code (updated skills stay stale until a restart)"
+[ "$SKILLS_REFRESHED" -gt 0 ] && echo "・Restart the agent (Claude Code / Codex) so the refreshed skills are re-read"
 [ "$PLUGIN_RESULT" = "stale" ] && echo "・The plugin does not match HEAD. Run claude plugin marketplace update → plugin update by hand"
 exit "$INSTALL_STATUS"

@@ -22,6 +22,15 @@ struct ApiEnsureSettingsCommand: AsyncParsableCommand {
 
     func run() async throws {
         let root = URL(fileURLWithPath: workDir ?? FileManager.default.currentDirectoryPath)
+        // **Codex だけの受け手には .claude/ を作らない**。承認の粗さは approval_policy /
+        // sandbox_mode の話で、コマンド単位の allowlist は Codex に存在しない
+        // (AgentIntegration.hasCommandPermissionAllowlist)
+        let agents = AgentIntegration.detect(packageRoot: root)
+        guard agents.contains(where: \.hasCommandPermissionAllowlist) else {
+            print("skipped: no agent with a per-command permission allowlist "
+                  + "(\(agents.map(\.displayName).joined(separator: ", ")))")
+            return
+        }
         let added = try ProjectScaffold.writeClaudeSettings(packageRoot: root, toolRoot: toolRoot)
         // 画面に出るのは呼び出し元(install.sh)の1行だけなので短く。中身は settings.json にある
         if added.isEmpty {

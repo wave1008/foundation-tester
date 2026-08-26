@@ -58,6 +58,23 @@
   lock を書き換える)。**受け手のフローに「クローンの中を書く」工程を足すときは必ず追跡を見る**
   **毎回 `fleetest api ensure-settings` で Bash 許可リストを補修する**(init 経由だけだと
   `--skip-project` の更新で既存の受け手に永久に届かない)
+- **エージェントは Claude Code と Codex の2つ**(規約位置の唯一の定義元は
+  `Sources/FTCore/AgentIntegration.swift`。表と Codex 固有の罠は docs/design.md §15)。
+  **runbook 本体(`.claude/skills/<name>/SKILL.md`)は複製しない** —— 各エージェントへは
+  規約位置から正典を参照する薄いアダプタだけを置く(Codex は `.codex-plugin/plugin.json` +
+  `.agents/plugins/marketplace.json` + `.agents/skills/<name>` のシンボリックリンク)。
+  **正典を `.agents/skills/` へ移さない**: raw.githubusercontent はシンボリックリンクを
+  **本文でなくリンク先の文字列**として返すので、`install-skill.sh` の curl が SKILL.md ではなく
+  1行のパスを掴む。**シェル(install.sh / install-skill.sh)は clone 前・ビルド前に走るので
+  Swift を呼べず、判定規則を手で持つ** —— 片方だけ変えない(`agentIntegration.test.mjs` が
+  ドリフトを、`agentAdapters.test.mjs` がアダプタの到達性を落とす)。
+  **SKILL.md に特定エージェント専用機能を前提として書かない**(`AskUserQuestion` は
+  「選択ダイアログ(Claude Code なら AskUserQuestion)」の形で、実装ではなく意図を書く)。
+  **Codex のサンドボックスは判定するが緩めない**(既定 `workspace-write` は loopback を含む
+  outbound とワークスペース外書込を塞ぎ、デバイスを1台も駆動できない)—— install.sh ステップ7.7 と
+  preflight の `codex_sandbox=` が**判定と貼り付け用 TOML だけ**を出す。受け手のグローバル設定 =
+  セキュリティ境界なので1バイトも書かない。**プロジェクトスコープの `.codex/config.toml` も使わない**
+  (trusted なプロジェクトでしか読まれず、書いても黙って効かない状態を作れる)
 - MCP サーバの起動口: `Scripts/mcp-server.sh`(`.mcp.json` はこれを exec するだけ)。
   **シェル式を `.mcp.json` へ直書きしない** —— 起動のたびに no-op でも約8秒の `swift build` を払い、
   失敗すると `>/dev/null` で**理由が分からないまま起動しない**(2026-08-06 の外部フィードバック)。

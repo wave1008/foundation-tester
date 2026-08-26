@@ -5,6 +5,8 @@ profile setup and scenario authoring — each one drives the same underlying scr
 commands a human would run by hand, with verification gates and human checkpoints where a
 decision or an approval genuinely needs a person.
 
+Using Codex instead? The same runbooks back both agents — see [Codex](./codex_skills.md).
+
 ## Installing the plugin
 
 ```bash

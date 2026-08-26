@@ -5,17 +5,23 @@ description: fleetest のマシンプロファイル・アプリプロファイ�
 
 # fleetest プロファイル一括作成 runbook
 
-> **ユーザーへの質問(AskUserQuestion)・報告・チェックポイントはユーザーの言語で行う**。
+> **ユーザーへの質問・報告・チェックポイントはユーザーの言語で行う**。
 > この手順書は日本語だが、読者はエージェントであり利用者の言語とは独立している
 > (英語話者にはダイアログ・報告文をすべて英語で出す)。
 
 
 > **この手順書が古い可能性がある**: プラグイン経由で導入している場合、この文書は
-> `~/.claude/plugins/cache/` のスナップショットから読まれており `git pull` では更新されない。
-> **clone(TOOL_ROOT)が既にあるなら `<TOOL_ROOT>/.claude/skills/fleetest-profiles/SKILL.md` を読み、
-> 内容が違えばそちらを正とする**。更新は `claude plugin marketplace update foundation-tester` →
-> `claude plugin update fleetest@foundation-tester`(2つとも要る・Claude Code の再起動で反映)。
-> **`/plugin` スラッシュコマンドは VSCode 拡張・Agent SDK 環境では提供されない**ので CLI 形を使う。
+> エージェント側のキャッシュ(Claude Code は `~/.claude/plugins/cache/`)から読まれており
+> `git pull` では更新されない。**clone(TOOL_ROOT)が既にあるなら
+> `<TOOL_ROOT>/.claude/skills/fleetest-profiles/SKILL.md`(正典)を読み、内容が違えばそちらを正とする**。
+> 更新は Claude Code なら `claude plugin marketplace update foundation-tester` →
+> `claude plugin update fleetest@foundation-tester`(2つとも要る・再起動で反映。
+> **`/plugin` スラッシュコマンドは VSCode 拡張・Agent SDK 環境では提供されない**ので CLI 形)、
+> コピー配置(`install-skill.sh`)なら `fleetest-update` が正典から写し直す。
+
+> **スキルの呼び出し記法はエージェントごとに違う**: Claude Code は `/fleetest-setup`、
+> Codex は `$fleetest-setup`(または `/skills` セレクタ)。以下は `/` 形で書くが、
+> Codex では `$` に読み替える。
 
 1つのアプリ×1プラットフォーム分の **マシン/アプリ/実行プロファイルの三点セット** を作る。
 既存プロジェクト(`fleetest project create` / `fleetest init` 済み)に対して実行する。未セットアップなら
@@ -33,7 +39,7 @@ description: fleetest のマシンプロファイル・アプリプロファイ�
   **既に分かっている値は聞き直さない** — `/fleetest-setup` から呼ばれた場合はプロジェクト名・
   アプリ表示名・アプリID・プラットフォーム・マシン名が確定済み。**足りない値だけ**を聞く
   (同じことを二度聞かれるのは、受け手にとって最も目に付く無駄)。
-  **人に聞くときは必ず AskUserQuestion(ダイアログ)を使う** — チャットに質問文を書いて答えを待たない
+  **人に聞くときは必ず選択ダイアログ(Claude Code なら AskUserQuestion)を使う** — チャットに質問文を書いて答えを待たない
   (テキストで聞くと見落とされ、フローが止まる)。自由入力は Other で受ける。
   「それ以外のパラメータは既定」— 明示的に聞いた値以外は書かない(未指定=デフォルト)。
 
@@ -41,7 +47,7 @@ description: fleetest のマシンプロファイル・アプリプロファイ�
 
 ### 1. 🧑 プラットフォームを確認
 
-まず **iOS か Android か** をユーザーに確認する(AskUserQuestion)。以降 `<plat>` = `ios` または `android`。
+まず **iOS か Android か** をユーザーに確認する(選択ダイアログ)。以降 `<plat>` = `ios` または `android`。
 
 ### 2. 🧑 アプリ情報を確認
 
@@ -111,7 +117,7 @@ Google APIs 版(`...;google_apis;...`)がある。**指定が無ければ `googl
 
 Android で `android.models` が空(`android.errorCode` = `avdmanager-missing`)なら cmdline-tools が
 未導入。`fleetest api install-cmdline-tools` で導入できる(約150MB・数分)。**勝手に走らせず**
-AskUserQuestion で導入の可否を聞いてから実行し、終わったら device-catalog を取り直す。
+選択ダイアログで導入の可否を聞いてから実行し、終わったら device-catalog を取り直す。
 
 ### 5. 検証ゲート
 

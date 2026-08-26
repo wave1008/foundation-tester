@@ -75,6 +75,11 @@ clone、ビルド、プロジェクト作成、プロファイル設定が実行
 
 手動で1つずつ確認しながら進めたい場合は `.claude/skills/fleetest-setup/SKILL.md` を参照してください。
 
+**Codex を使う場合**: 同じ runbook がそのまま動きます。スキルの導入は
+`curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install-skill.sh | sh -s -- --agent codex`
+で、呼び出しは `$fleetest-setup` です。**既定のサンドボックスのままではデバイスを駆動できない**ので、
+[Codex](tools/codex_skills_ja.md) のサンドボックス設定を先に読んでください。
+
 
 ## 4. Fleetestの更新
 
@@ -135,8 +140,11 @@ claude plugin uninstall fleetest@foundation-tester
 ### 作業フォルダの削除
 
 - VSCodeを終了してから Finder や rm で削除します
-- **作業フォルダを残す場合**は、`CLAUDE.md` の `<!-- fleetest:begin -->` 〜 `<!-- fleetest:end -->`
-  の範囲も削除してください(インストーラが置いた Claude Code 向けの案内。範囲外には触れていません)
+- **作業フォルダを残す場合**は、`CLAUDE.md`(Codex なら `AGENTS.md`)の `<!-- fleetest:begin -->` 〜
+  `<!-- fleetest:end -->` の範囲も削除してください(インストーラが置いたエージェント向けの案内。
+  範囲外には触れていません)
+- Codex に MCP を登録していた場合は、`~/.codex/config.toml` の `[mcp_servers.fleetest]` と
+  `[mcp_servers.fleetest.env]` も削除します
 
 ### ファイルの削除
 

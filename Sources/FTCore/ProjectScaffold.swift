@@ -75,15 +75,33 @@ public enum ProjectScaffold {
         """
     }
 
-    /// 受け手のパッケージに Claude Code スキル `.claude/skills/fleetest-setup/SKILL.md` を書く
-    /// (fleetest init から呼ぶ)。受け手が自分のプロジェクトを Claude Code で開いて `/fleetest-setup`
-    /// で残りのセットアップ(デバイス定義・アプリパス・実行)を駆動できるようにする。clone 構成の
-    /// foundation-tester 同梱スキルは受け手のパッケージには届かないため、init で scaffold する。
-    public static func writeRecipientSkill(packageRoot: URL, projectName: String) throws {
-        let dir = packageRoot.appendingPathComponent(".claude/skills/fleetest-setup")
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        try recipientSetupSkill(projectName: projectName).write(
-            to: dir.appendingPathComponent("SKILL.md"), atomically: true, encoding: .utf8)
+    /// 受け手のパッケージにセットアップスキル `<agent>/fleetest-setup/SKILL.md` を書く
+    /// (fleetest init から呼ぶ)。受け手が自分のプロジェクトをエージェントで開いて
+    /// `/fleetest-setup`(Codex は `$fleetest-setup`)で残りのセットアップ(デバイス定義・
+    /// アプリパス・実行)を駆動できるようにする。clone 構成の foundation-tester 同梱スキルは
+    /// 受け手のパッケージには届かないため、init で scaffold する。
+    ///
+    /// **本文は1つ**(`recipientSetupSkill`)で、エージェントごとの差は置き場所だけ
+    /// (`AgentIntegration.skillsDirectory`)。**シンボリックリンクにしない** —— 受け手の
+    /// ワークスペースは git に入ることがあり、リンクは配布経路(zip・アーカイブ)で壊れる。
+    /// 戻り値は書いた相対パス。
+    @discardableResult
+    public static func writeRecipientSkill(
+        packageRoot: URL, projectName: String,
+        agents: [AgentIntegration]? = nil
+    ) throws -> [String] {
+        let targets = agents ?? AgentIntegration.detect(packageRoot: packageRoot)
+        let body = recipientSetupSkill(projectName: projectName)
+        var written: [String] = []
+        for agent in targets {
+            let relative = "\(agent.skillsDirectory)/fleetest-setup"
+            let dir = packageRoot.appendingPathComponent(relative)
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try body.write(to: dir.appendingPathComponent("SKILL.md"),
+                           atomically: true, encoding: .utf8)
+            written.append("\(relative)/SKILL.md")
+        }
+        return written
     }
 
     /// 受け手のパッケージに `.claude/settings.json` を書く(fleetest init から呼ぶ)。

@@ -5,7 +5,7 @@ description: 既に fleetest をセットアップ済みの受け手が、新し
 
 # fleetest 更新 runbook
 
-> **ユーザーへの質問(AskUserQuestion)・報告・チェックポイントはユーザーの言語で行う**。
+> **ユーザーへの質問・報告・チェックポイントはユーザーの言語で行う**。
 > この手順書は日本語だが、読者はエージェントであり利用者の言語とは独立している
 > (英語話者にはダイアログ・報告文をすべて英語で出す)。
 
@@ -37,10 +37,11 @@ description: 既に fleetest をセットアップ済みの受け手が、新し
 
 ## 手順
 
-### 0. TOOL_ROOT の確定(**まず Read。コマンドを打たない**)
+### 0. TOOL_ROOT の確定(**まずファイル読み取り。コマンドを打たない**)
 
-`<カレント>/.fleetest/state.json` を **Read** し、`toolRoot` を採る(install.sh が導入時に書く)。
-Read は承認が要らないので、これで**更新フロー全体の承認を1回(0.7 の update.sh)に抑えられる**。
+`<カレント>/.fleetest/state.json` を**ファイルとして読み**、`toolRoot` を採る(install.sh が導入時に書く)。
+読み取りはコマンド実行と違って承認が要らないことが多く、これで**更新フロー全体の承認を
+1回(0.7 の update.sh)に抑えられる**。
 
 - `Sources/FTScenarioRunner/` がカレントにある → **clone 構成**。TOOL_ROOT = WORK_DIR = カレント。
 - `state.json` があり `toolRoot` が実在 → **外部構成**。WORK_DIR = カレント、TOOL_ROOT = その値。
@@ -94,6 +95,11 @@ vsce)は画面に出ず `<WORK_DIR>/.fleetest/install-*.log` にだけ入り、*
 - **exit 2** → 任意ステップのみ未完(`[warn]`)。CLI は使える。warn の内容だけ手当てする。
 - プラグインが `⚠️ HEAD と不一致` のときは `claude plugin marketplace update` →
   `claude plugin update` を手で実行する(**順序が重要**。marketplace を先に更新しないと古い定義を見る)。
+- **コピー配置(`install-skill.sh` で入れた `.claude/skills/` / `.agents/skills/`)は
+  update.sh が正典から写し直す**(`✅ Skills: refreshed N ...`)。写した後は**エージェントを
+  再起動する**まで古い手順書が読まれ続ける。**`fleetest-setup` だけは写さない** ——
+  受け手のパッケージのそれは `fleetest init` が生成した受け手専用の別内容なので、
+  正典で上書きすると受け手のセットアップ手順が消える。
 
 **以降のステップ1〜5.7 は「スクリプトが失敗したときの手作業手順」**(成功したなら読み飛ばし、
 ステップ6の人間チェックポイントへ)。**スクリプトの出力にある情報を別コマンドで取り直さない**

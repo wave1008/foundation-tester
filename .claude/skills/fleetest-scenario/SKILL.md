@@ -5,17 +5,23 @@ description: セットアップ済みのプロジェクトに、Swift DSL のテ
 
 # fleetest シナリオ作成 runbook
 
-> **ユーザーへの質問(AskUserQuestion)・報告・チェックポイントはユーザーの言語で行う**。
+> **ユーザーへの質問・報告・チェックポイントはユーザーの言語で行う**。
 > この手順書は日本語だが、読者はエージェントであり利用者の言語とは独立している
 > (英語話者にはダイアログ・報告文をすべて英語で出す)。
 
 
 > **この手順書が古い可能性がある**: プラグイン経由で導入している場合、この文書は
-> `~/.claude/plugins/cache/` のスナップショットから読まれており `git pull` では更新されない。
-> **clone(TOOL_ROOT)が既にあるなら `<TOOL_ROOT>/.claude/skills/fleetest-scenario/SKILL.md` を読み、
-> 内容が違えばそちらを正とする**。更新は `claude plugin marketplace update foundation-tester` →
-> `claude plugin update fleetest@foundation-tester`(2つとも要る・Claude Code の再起動で反映)。
-> **`/plugin` スラッシュコマンドは VSCode 拡張・Agent SDK 環境では提供されない**ので CLI 形を使う。
+> エージェント側のキャッシュ(Claude Code は `~/.claude/plugins/cache/`)から読まれており
+> `git pull` では更新されない。**clone(TOOL_ROOT)が既にあるなら
+> `<TOOL_ROOT>/.claude/skills/fleetest-scenario/SKILL.md`(正典)を読み、内容が違えばそちらを正とする**。
+> 更新は Claude Code なら `claude plugin marketplace update foundation-tester` →
+> `claude plugin update fleetest@foundation-tester`(2つとも要る・再起動で反映。
+> **`/plugin` スラッシュコマンドは VSCode 拡張・Agent SDK 環境では提供されない**ので CLI 形)、
+> コピー配置(`install-skill.sh`)なら `fleetest-update` が正典から写し直す。
+
+> **スキルの呼び出し記法はエージェントごとに違う**: Claude Code は `/fleetest-setup`、
+> Codex は `$fleetest-setup`(または `/skills` セレクタ)。以下は `/` 形で書くが、
+> Codex では `$` に読み替える。
 
 既存プロジェクト(`fleetest init` / `fleetest project create` 済み・アプリ/デバイス/実行プロファイルが
 ある)に、**1本のテストシナリオ .swift** を作る。DSL の正典は docs/design.md §10「Swift DSL」と
@@ -25,7 +31,7 @@ README.md「Swift DSL」節。ここはエージェントが順に実行する�
 
 ## 進め方の原則
 
-- **人に何かを聞くときは必ず AskUserQuestion（ダイアログ）を使う**。チャットに質問文を書いて
+- **人に何かを聞くときは必ず選択ダイアログ（Claude Code なら AskUserQuestion）を使う**。チャットに質問文を書いて
   答えを待たない（テキストで聞くと見落とされ、フローが止まる）。自由入力は Other で受ける。
 - **コマンドも推測しない**。`ft_dsl_commands` が名前と署名の索引を返す(デバイス不要・引数なしで
   一覧、`name:` / `category:` で要約つき)。**索引に無い名前は存在しない**(コンパイルエラーになる)。
@@ -72,7 +78,7 @@ README.md「Swift DSL」節。ここはエージェントが順に実行する�
 
 1. `TestProjects/<proj>/profiles/apps/*.json` を列挙する(または `fleetest profile list`)。各ファイルの
    `common.appName`(表示名)と `ios.app` / `android.app`(bundle ID・パッケージ名)を読む。
-2. 🧑 **どのアプリプロファイルを対象にするかをユーザーに確認**する(AskUserQuestion。候補が
+2. 🧑 **どのアプリプロファイルを対象にするかをユーザーに確認**する(選択ダイアログ。候補が
    1つでも確認する)。**確認した bundle ID をコードに書いてはいけない** —— 対象アプリは
    実行プロファイル(`profiles/runs/<name>.json` → アプリプロファイル → 実行中 platform の
    `ios.app` / `android.app`)から解決される。ここで確認するのは、**実行時にどの実行プロファイルを

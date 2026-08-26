@@ -3957,12 +3957,37 @@ TOOL_ROOT)。clone 構成(クローンの中で直接シナリオを管理)は�
 `npm run install-local` でビルドする(バイナリ配布はしない)。mint は廃止(VSIX はバイナリ配布しないため
 clone がどのみち必須で、CLI だけ mint 経由にすると二重取得になるだけだったため)。
 
-**配布アダプタの方針(他エージェントツールへの将来展開)**: 導入 runbook の正典は
+**配布アダプタの方針(複数エージェント対応)**: 導入 runbook の正典は
 `.claude/skills/<name>/SKILL.md`(ツール中立の markdown 手順書。特定エージェント専用機能に依存させない)。
-Claude Code 向けは `.claude-plugin/`(plugin.json の `skills` が正典ディレクトリを**参照するだけ**の薄い
-アダプタ。複製しない。整合は `vscode-fleetest/test/claudePlugin.test.mjs` が検証)。他ツール(Codex/Cursor 等)へ
-展開するときも、同じ runbook を各ツールの規約位置から参照/変換する薄いアダプタを足す(runbook 本体は共有し、
-ツールごとに手順書を複製しない)。
+各エージェントへは**規約位置から正典を参照するだけの薄いアダプタ**を置き、**runbook 本体は複製しない**:
+
+| | Claude Code | Codex |
+|---|---|---|
+| プラグイン manifest | `.claude-plugin/plugin.json` | `.codex-plugin/plugin.json` |
+| マーケットプレイス manifest | `.claude-plugin/marketplace.json` | `.agents/plugins/marketplace.json` |
+| リポジトリ内のスキル発見 | `.claude/skills/`(正典の実体) | `.agents/skills/<name>` → 正典へのシンボリックリンク |
+| スキルの呼び出し | `/fleetest-setup` | `$fleetest-setup` |
+| 入口ファイル | `CLAUDE.md` | `AGENTS.md` |
+| MCP 登録 | `.mcp.json`(プロジェクト) | `~/.codex/config.toml`(ユーザー) |
+| コマンド単位の承認 allowlist | `.claude/settings.json` | **無い**(approval_policy / sandbox_mode のみ) |
+
+規約位置の唯一の定義元は `Sources/FTCore/AgentIntegration.swift`。**シェル(install.sh /
+install-skill.sh)は clone 前・ビルド前に走るので Swift を呼べず、同じ規則を手で持つ** ——
+`vscode-fleetest/test/agentIntegration.test.mjs` が両者のドリフトを落とし、
+`agentAdapters.test.mjs` が「アダプタが正典に届くこと」を落とす。
+**正典を `.agents/skills/` 側へ移してはいけない** —— raw.githubusercontent は
+シンボリックリンクを**本文でなくリンク先の文字列**として返すので、`install-skill.sh` の curl が
+SKILL.md ではなく1行のパスを掴む。
+
+**Codex 固有の2点**(どちらも沈黙の失敗を作る形なので規律で塞いである):
+- **プロジェクトスコープの `.codex/config.toml` は使わない**。`~/.codex/config.toml` 側で
+  trusted にしたプロジェクトでしか読まれないため、書いても**黙って効かない**状態を作れる。
+  MCP 登録はユーザーレベルの1箇所だけ
+- **サンドボックスは判定するが緩めない**。既定 `workspace-write` は **loopback を含む outbound**と
+  **ワークスペース外への書き込み**を塞ぐので、fleetest はデバイスを1台も駆動できない
+  (外部構成では TOOL_ROOT が WORK_DIR の兄弟 = `.build/` も外側)。install.sh ステップ7.7 と
+  preflight の `codex_sandbox=` が**判定と貼り付け用 TOML だけ**を出す。受け手のグローバル設定 =
+  セキュリティ境界なので、インストーラは1バイトも書かない
 **ローカル検証の罠**: `/plugin` は VSCode 拡張パネルでは使えない(ターミナル CLI かデスクトップアプリ)。
 `claude plugin marketplace add <ローカルパス>` は git clone ではなく**作業ツリーを丸ごとコピー**する
 (gitignore を無視するため `.build/` 約8GB も入りキャッシュが約13GBに膨れる)。検証後は
