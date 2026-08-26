@@ -380,7 +380,8 @@ enum ProfileRunner {
             }) : nil,
             installHandler: InstallHandlerFactory.make(apps: resolved.apps),
             appName: resolved.appName,
-            appBundleIDs: resolved.apps.mapValues(\.bundleID))
+            appBundleIDs: resolved.apps.mapValues(\.bundleID),
+            appTargets: resolved.apps)
         PhaseLog.mark("orchestrator-setup")
         // レーン = 絞り込み後の全デバイス(供給に失敗して参加しなかった台のぶんは、orchestrator が
         // 「never joined」でそのレーンの本数を失敗として残す = 準備できなかった台が緑に紛れない)

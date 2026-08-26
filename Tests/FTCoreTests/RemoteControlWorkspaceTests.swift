@@ -32,9 +32,11 @@ final class RemoteControlWorkspaceTests: XCTestCase {
         try json.data(using: .utf8)!.write(to: dir.appendingPathComponent("\(name).json"))
     }
 
-    private func writeAppAndMachine(appPath: String = "apps/SampleApp.app") throws {
+    private func writeAppAndMachine(appPath: String = "apps/SampleApp.app",
+                                    appPathPhysical: String? = nil) throws {
+        let physical = appPathPhysical.map { ", \"appPathPhysical\": \"\($0)\"" } ?? ""
         try write("""
-        { "ios": { "app": "com.example.sampleapp", "appPath": "\(appPath)" } }
+        { "ios": { "app": "com.example.sampleapp", "appPath": "\(appPath)"\(physical) } }
         """, to: project.appsDir, name: "sampleapp")
         try write("""
         { "ios": { "devices": [ { "name": "d1", "simulator": "iPhone 17 Pro" } ] } }
@@ -261,8 +263,26 @@ final class RemoteControlWorkspaceTests: XCTestCase {
         """, to: project.runsDir, name: "r")
 
         let paths = ProfileResolver.declaredAppPaths(project: project, runName: "r")
-        XCTAssertEqual(paths["ios"], tempDir.appendingPathComponent("apps/SampleApp.app").path)
-        XCTAssertNil(paths["android"])
+        XCTAssertEqual(paths[DeclaredAppPath(platform: "ios", physical: false)],
+                       tempDir.appendingPathComponent("apps/SampleApp.app").path)
+        XCTAssertNil(paths[DeclaredAppPath(platform: "android", physical: false)])
+        // appPathPhysical を書いていないので実機用の宣言は無い(= 運ばない)
+        XCTAssertNil(paths[DeclaredAppPath(platform: "ios", physical: true)])
+    }
+
+    /// **実機用ビルドも運ぶ**: この軽量読みはデバイスを解決しないので、
+    /// 宣言があるのに落とすと、実機を持つランナーで仮想デバイス用ビルドが入り
+    /// 0xe8008014(未署名)で落ちる
+    func testDeclaredAppPathsCarriesThePhysicalBuild() throws {
+        try writeAppAndMachine(appPath: "apps/SampleApp.app",
+                               appPathPhysical: "apps/device/SampleApp.app")
+        try write("""
+        { "app": "sampleapp", "devices": [ { "name": "d1" } ] }
+        """, to: project.runsDir, name: "r")
+
+        let paths = ProfileResolver.declaredAppPaths(project: project, runName: "r")
+        XCTAssertEqual(paths[DeclaredAppPath(platform: "ios", physical: true)],
+                       tempDir.appendingPathComponent("apps/device/SampleApp.app").path)
     }
 
     func testDeclaredAppPathsEmptyWhenAppOrProfileMissing() {

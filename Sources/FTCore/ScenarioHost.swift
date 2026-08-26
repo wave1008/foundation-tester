@@ -248,6 +248,19 @@ public enum ScenarioHost {
     /// `@TestClass(app:)` 未指定のシナリオの既定アプリになる。**明示があっても常に渡す** ——
     /// 渡さないと食い違いの警告が原理的に出せない(FTCore.ScenarioAppResolution)
     @discardableResult
+    /// 子へ渡すインストール関連の引数。**`--host-install` と `--app-path` は排他ではない**:
+    /// 前者は installApp() の実行先(親へ RPC)、後者は「アプリのバンドルがどこにあるか」。
+    /// 実機は simctl でバンドルを引けないので、ホストがインストールする経路でも後者を渡さないと
+    /// uiFrameworkHint が決まらず、スクロール探索後の空打ちドラッグが盲撃ちになる
+    /// (ScenarioRunnerMain の「不明のまま進むことは黙らない」参照)。子は `--host-install` の
+    /// ときに appPath をインストール元として採らないので、installApp() の意味は変わらない
+    static func installArguments(hostInstall: Bool, appPath: String?) -> [String] {
+        var args: [String] = []
+        if hostInstall { args.append("--host-install") }
+        if let appPath { args += ["--app-path", appPath] }
+        return args
+    }
+
     public static func run(project: TestProject, scenarioID: String,
                            connection: DriverConnection,
                            fm: FMConfig = FMConfig(), reportDir: String, defaultTimeout: Double? = nil,
@@ -312,11 +325,7 @@ public enum ScenarioHost {
             if debug.pauseOnStart { args.append("--pause-on-start") }
             for location in debug.breakpoints { args += ["--breakpoint", location] }
         }
-        if installHandler != nil {
-            args.append("--host-install")
-        } else if let appPath {
-            args += ["--app-path", appPath]
-        }
+        args += installArguments(hostInstall: installHandler != nil, appPath: appPath)
         if let appName { args += ["--app-name", appName] }
         if let appBundleID { args += ["--app", appBundleID] }
         process.arguments = args

@@ -1,0 +1,22 @@
+{
+  "machine": "local+remote",
+  "app": "sut-ec-mobile",
+  "devices": [
+    {
+      "machine": "M1Ultra",
+      "name": "iPhone wave"
+    }
+  ],
+  "containerInference": true,
+  "falsePositiveCheck": false,
+  "fm": true,
+  "heal": false,
+  "homeOnStart": true,
+  "iosInappEngine": false,
+  "record": true,
+  "recoverCpuFallbackToGpu": true,
+  "reportDir": "reports",
+  "updateWebView": true,
+  "wipeDataOnBloat": true,
+  "screenLooksLike": true
+}

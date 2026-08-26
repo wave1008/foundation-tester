@@ -388,6 +388,7 @@ public enum ScenarioRunner {
                                                -> (ok: Bool, message: String))? = nil,
                               appName: String? = nil,
                               appBundleID: String? = nil,
+                              appPath: String? = nil,
                               onEvent: @escaping (RunEvent) -> Void) async -> ScenarioOutcome {
         onEvent(.flowStarted(worker: worker.label, flowURL: item.url,
                              flowName: item.info.id, isDirty: false))
@@ -410,7 +411,7 @@ public enum ScenarioRunner {
             installHandler: installHandler.map { handler in
                 { (path: String?) async -> (ok: Bool, message: String) in await handler(worker, path) }
             },
-            appName: appName, appBundleID: appBundleID) { event in
+            appPath: appPath, appName: appName, appBundleID: appBundleID) { event in
             switch event.kind {
             case "sceneStarted":
                 onEvent(.sceneStarted(worker: worker.label, flowURL: item.url,
@@ -595,6 +596,12 @@ public final class RunOrchestrator {
     /// 実行プロファイルが解決した bundle ID。**platform 別**(appName と違い ios/android で
     /// 別の ID になりうるので単一値にできない)。`@TestClass(app:)` 未指定シナリオの既定アプリ
     private let appBundleIDs: [String: String]
+    /// 実行プロファイルが解決したアプリ。**platform 別**(appBundleIDs と同じ理由)。
+    /// 子の UI フレームワーク判定にパッケージのパスを渡すために持つ —— 実機は simctl で
+    /// バンドルを引けないため、これが無いと毎ステップ「不明」に落ちる。
+    /// **配るビルドは端末の種別で変わる**ので platform だけでは決まらない
+    /// (ResolvedAppTarget.packagePath(physical:))
+    private let appTargets: [String: ResolvedAppTarget]
     /// 劣化・離脱したワーカーの収集(summary/レポートの degradedWorkers に載せる)。
     private let degraded = NoteCollector()
     /// 振り直し(結果取り消し+requeue)の監査記録(summary/レポートの freezeRetries に載せる)。
@@ -641,7 +648,8 @@ public final class RunOrchestrator {
                 installHandler: (@Sendable (RunWorker, String?) async
                                   -> (ok: Bool, message: String))? = nil,
                 appName: String? = nil,
-                appBundleIDs: [String: String] = [:]) {
+                appBundleIDs: [String: String] = [:],
+                appTargets: [String: ResolvedAppTarget] = [:]) {
         (self.events, self.continuation) = AsyncStream.makeStream(of: RunEvent.self)
         self.workers = workers
         self.fm = fm
@@ -667,6 +675,7 @@ public final class RunOrchestrator {
         self.installHandler = installHandler
         self.appName = appName
         self.appBundleIDs = appBundleIDs
+        self.appTargets = appTargets
     }
 
     private func deviceUnreachable(_ serial: String) async -> Bool {
@@ -1026,6 +1035,8 @@ public final class RunOrchestrator {
                 scenarioTimeout: scenarioTimeout, debug: debug,
                 recorder: recorder, installHandler: installHandler, appName: appName,
                 appBundleID: appBundleIDs[worker.platform],
+                appPath: appTargets[worker.platform]?
+                    .packagePath(physical: worker.connection.physical),
                 onEvent: { [continuation, fmCounter = self.fmUnavailable] event in
                     // **FM 全滅のまま走ったシナリオを数える**(合否は変えない。summary の
                     // fmUnavailableScenarios。ここで数えるのは、実行結果に FM の可否が

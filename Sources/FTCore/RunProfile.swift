@@ -22,6 +22,12 @@ public struct AppProfileSection: Codable, Sendable, Equatable {
     public var app: String?
     /// パッケージファイル(.app / .apk / .apks)のパス。プロジェクトルート相対 or 絶対 or ~
     public var appPath: String?
+    /// **実機に配るパッケージ**のパス(省略時は appPath)。iOS はシミュレータ用ビルド
+    /// (iphonesimulator SDK・未署名)を実機へ入れられない —— `0xe8008014 invalid signature` で
+    /// インストールが失敗するため、同じアプリでも成果物が2つ要る。**端末ごとにアプリ
+    /// プロファイルを分けない**ためのフィールド(2026-08-26 ユーザー決定)。
+    /// Android は同じ APK が両方で動くので普通は書かない
+    public var appPathPhysical: String?
     /// 実行前に appPath を自動インストールするか(既定 false = 無効)
     public var autoInstall: Bool?
     /// アプリが依存するバックエンドの死活確認 URL(common のみ)。実行開始前に到達確認し、
@@ -30,11 +36,13 @@ public struct AppProfileSection: Codable, Sendable, Equatable {
     public var healthCheckURL: String?
 
     public init(appName: String? = nil, app: String? = nil,
-                appPath: String? = nil, autoInstall: Bool? = nil,
+                appPath: String? = nil, appPathPhysical: String? = nil,
+                autoInstall: Bool? = nil,
                 healthCheckURL: String? = nil) {
         self.appName = appName
         self.app = app
         self.appPath = appPath
+        self.appPathPhysical = appPathPhysical
         self.autoInstall = autoInstall
         self.healthCheckURL = healthCheckURL
     }
@@ -45,7 +53,7 @@ public struct AppProfileSection: Codable, Sendable, Equatable {
     static let commonKnownKeys: Set<String> = ["app", "appPath", "autoInstall", "healthCheckURL"]
     /// ios/android セクションで許容されるキー
     static let platformKnownKeys: Set<String> = [
-        "appName", "app", "appPath", "autoInstall", "healthCheckURL",
+        "appName", "app", "appPath", "appPathPhysical", "autoInstall", "healthCheckURL",
     ]
 
     /// common(self)と platform セクション(other)の合成(section(for:)専用)。フィールドごとに
@@ -60,6 +68,7 @@ public struct AppProfileSection: Codable, Sendable, Equatable {
             appName: other?.appName,
             app: other?.app,
             appPath: other?.appPath,
+            appPathPhysical: other?.appPathPhysical,
             autoInstall: autoInstall,
             healthCheckURL: healthCheckURL)  // autoInstall と同じく common のみ
     }
@@ -565,6 +574,17 @@ public struct ResolvedDevice: Sendable, Hashable {
 }
 
 /// プラットフォーム毎に解決されたアプリ情報
+/// `declaredAppPaths` の鍵。ワークスペースへ運ぶ対象は platform だけでは決まらない
+/// (実機用ビルドは別ファイル・別のステージング先)
+public struct DeclaredAppPath: Hashable, Sendable {
+    public let platform: String
+    public let physical: Bool
+    public init(platform: String, physical: Bool) {
+        self.platform = platform
+        self.physical = physical
+    }
+}
+
 public struct ResolvedAppTarget: Sendable, Hashable {
     public let bundleID: String
     /// アプリの原本の絶対パス(常にリポジトリルート基準で解決済み。nil = appPath 未指定。
@@ -578,18 +598,38 @@ public struct ResolvedAppTarget: Sendable, Hashable {
     /// が決める "<workspaceRoot>/apps/<原本のファイル名>"(ProfileResolver.resolve が唯一の生成元)。
     /// 呼び出し側(installApp・ProfileWorkerFactory 等)はこちらだけを見ればよい
     public let appPath: String?
+    /// 実機向けパッケージの原本(nil = appPathPhysical 未指定 = 実機にも appPath を配る)
+    public let sourcePathPhysical: String?
+    /// 実機向けパッケージのインストールに使う絶対パス(ステージング先。nil = 未指定)
+    public let appPathPhysical: String?
     /// 実行前に appPath を自動インストールするか(既定 false = 無効。
     /// common セクションで明示的に true にした場合のみ有効)
     public let autoInstall: Bool
     /// バックエンド死活確認 URL(AppProfileSection.healthCheckURL)
     public let healthCheckURL: String?
 
+    /// **配るパッケージは端末の種別で決まる**(この規則の唯一の定義元)。実機に
+    /// `appPathPhysical` が無ければ appPath に落ちる —— iOS ではまず入らない(シミュレータ用
+    /// ビルドは署名が無い)が、Android は同じ APK が両方で動くので落とすのが正しい。
+    /// 「実機なのに実機用が無い」を install の失敗より手前で言うのは ProfileValidation の役目
+    public func packagePath(physical: Bool) -> String? {
+        physical ? (appPathPhysical ?? appPath) : appPath
+    }
+
+    /// packagePath の原本側(ステージングの元。名前の対応は packagePath と同じ規則)
+    public func packageSource(physical: Bool) -> String? {
+        physical ? (sourcePathPhysical ?? sourcePath) : sourcePath
+    }
+
     /// sourcePath 省略時は appPath と同値にする(ワークスペース非経由の既存呼び出しとの互換)
     public init(bundleID: String, sourcePath: String? = nil, appPath: String? = nil,
+                sourcePathPhysical: String? = nil, appPathPhysical: String? = nil,
                 autoInstall: Bool = false, healthCheckURL: String? = nil) {
         self.bundleID = bundleID
         self.sourcePath = sourcePath ?? appPath
         self.appPath = appPath
+        self.sourcePathPhysical = sourcePathPhysical ?? appPathPhysical
+        self.appPathPhysical = appPathPhysical
         self.autoInstall = autoInstall
         self.healthCheckURL = healthCheckURL
     }
@@ -995,7 +1035,8 @@ public enum ProfileResolver {
     /// (declaredWorkspace と同じ理由 —— RemoteRunDispatcher はミラー直前にここだけ要る)。
     /// 戻り値: platform("ios"/"android") → リポジトリルート基準で解決した原本の絶対パス
     /// (appPath 未指定の platform は含まない)。プロファイル/アプリ定義が読めなければ空を返す
-    public static func declaredAppPaths(project: TestProject, runName: String) -> [String: String] {
+    public static func declaredAppPaths(project: TestProject,
+                                        runName: String) -> [DeclaredAppPath: String] {
         guard let runData = try? Data(
                 contentsOf: project.runsDir.appendingPathComponent("\(runName).json")),
               let runDoc = try? JSONDecoder().decode(RunProfileDocument.self, from: runData),
@@ -1004,10 +1045,19 @@ public enum ProfileResolver {
                 contentsOf: project.appsDir.appendingPathComponent("\(appRef).json")),
               let appProfile = try? JSONDecoder().decode(AppProfile.self, from: appData) else { return [:] }
         let repoRoot = project.rootURL.deletingLastPathComponent().deletingLastPathComponent()
-        var result: [String: String] = [:]
+        var result: [DeclaredAppPath: String] = [:]
         for platform in ["ios", "android"] {
-            if let raw = appProfile.section(for: platform).appPath {
-                result[platform] = resolvePath(raw, base: repoRoot)
+            let section = appProfile.section(for: platform)
+            if let raw = section.appPath {
+                result[DeclaredAppPath(platform: platform, physical: false)] =
+                    resolvePath(raw, base: repoRoot)
+            }
+            // **この経路はデバイスを解決しない**(マシンプロファイルを読まない軽量読み)ので
+            // 「そのランナーに実機が居るか」を知らない。居る場合に運び忘れると向こうで
+            // 仮想デバイス用ビルドを実機へ入れて 0xe8008014 で落ちるため、宣言があれば運ぶ
+            if let raw = section.appPathPhysical {
+                result[DeclaredAppPath(platform: platform, physical: true)] =
+                    resolvePath(raw, base: repoRoot)
             }
         }
         return result
@@ -1206,15 +1256,33 @@ public enum ProfileResolver {
             let installPath = sourcePath.map { source in
                 WorkspaceAppStaging.installPath(source: source, workspaceRoot: workspaceRoot)
             }
+            let physicalSource = section.appPathPhysical.map { resolvePath($0, base: repoRoot) }
+            let physicalInstallPath = physicalSource.map { source in
+                WorkspaceAppStaging.installPath(source: source, workspaceRoot: workspaceRoot,
+                                                physical: true)
+            }
             apps[platform] = ResolvedAppTarget(
                 bundleID: bundleID,
                 sourcePath: sourcePath,
                 appPath: installPath,
+                sourcePathPhysical: physicalSource,
+                appPathPhysical: physicalInstallPath,
                 // **appPath があれば既定で有効**。パスを書いたのに入らない(既定 false)方が
                 // 事故で、警告を出さないと気付けない設計だった。止めたいときだけ
                 // autoInstall: false を明示する(opt-out)。実インストールは中身が変わったときだけ
-                autoInstall: section.autoInstall ?? (section.appPath != nil),
+                autoInstall: section.autoInstall
+                    ?? (section.appPath != nil || section.appPathPhysical != nil),
                 healthCheckURL: section.healthCheckURL)
+            // **iOS の実機にシミュレータ用ビルドは入らない**(未署名 = 0xe8008014)。
+            // インストールの失敗は run の途中(ブリッジ供給の後)に出るので、
+            // ここで先に言う。止めはしない —— appPath を実機用にしている構成もありうる
+            if platform == "ios", section.appPathPhysical == nil, section.appPath != nil,
+               devices.contains(where: { $0.platform == "ios" && $0.spec.isPhysical }) {
+                warnings.append(
+                    "the run includes a physical iOS device but apps/\(appRef).json has no"
+                    + " \"appPathPhysical\" — a simulator build cannot be installed on a device"
+                    + " (it is unsigned); set appPathPhysical to a device build")
+            }
         }
 
         let reportDir = URL(fileURLWithPath:

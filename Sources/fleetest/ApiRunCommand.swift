@@ -803,7 +803,8 @@ struct ApiRunCommand: AsyncParsableCommand {
                 containerInference: resolved.containerInference,
                 scenarioTimeout: resolved.scenarioTimeout, dryRun: dryRun,
                 debug: debugOptions, recording: recording,
-                appPath: dryRun ? nil : resolved.apps[scenarioPlatform]?.appPath,
+                appPath: dryRun ? nil : resolved.apps[scenarioPlatform]?
+                    .packagePath(physical: connection.physical),
                 appName: resolved.appName,
                 appBundleID: resolved.apps[scenarioPlatform]?.bundleID) { event in
                 var event = event
@@ -984,7 +985,8 @@ struct ApiRunCommand: AsyncParsableCommand {
             },
             installHandler: InstallHandlerFactory.make(apps: resolved.apps),
             appName: resolved.appName,
-            appBundleIDs: resolved.apps.mapValues(\.bundleID))
+            appBundleIDs: resolved.apps.mapValues(\.bundleID),
+            appTargets: resolved.apps)
         async let summary = orchestrator.run(items: items, defaultPlatform: defaultPlatform)
 
         var timing = ScenarioTimingTracker()

@@ -25,11 +25,17 @@ public enum WorkspaceAppStagingError: Error, LocalizedError {
 
 public enum WorkspaceAppStaging {
 
-    /// インストール先の唯一の規則: "<workspaceRoot>/apps/<原本のファイル名>"。
+    /// インストール先の唯一の規則: "<workspaceRoot>/apps/<原本のファイル名>"、
+    /// **実機用は "<workspaceRoot>/apps/physical/<原本のファイル名>"**。
     /// ProfileResolver.resolve(ResolvedAppTarget.appPath の計算)とここ(実コピー先)の両方が
-    /// この関数を呼ぶ ―― 定義がずれると「ローカルでは動くがリモートでは見つからない」が起きる
-    public static func installPath(source: String, workspaceRoot: URL) -> String {
+    /// この関数を呼ぶ ―― 定義がずれると「ローカルでは動くがリモートでは見つからない」が起きる。
+    /// **実機用を別ディレクトリに置くのは名前が衝突するから** —— 同じアプリの2つのビルドは
+    /// ふつう同名(dist/ios-simulator/X.app と dist/ios-device/X.app)で、同じ apps/ へ
+    /// 置くと後からステージングした方が相手を上書きし、**片方の端末に必ず誤ったビルドが入る**
+    public static func installPath(source: String, workspaceRoot: URL,
+                                   physical: Bool = false) -> String {
         workspaceRoot.appendingPathComponent("apps")
+            .appendingPathComponent(physical ? "physical" : "")
             .appendingPathComponent((source as NSString).lastPathComponent).path
     }
 
@@ -40,9 +46,19 @@ public enum WorkspaceAppStaging {
     public static func stageWorkspaceApps(_ profile: ResolvedProfile) throws -> [String] {
         var staged: [String] = []
         for platform in profile.apps.keys.sorted() {
-            guard let app = profile.apps[platform],
-                  let source = app.sourcePath, let dest = app.appPath, source != dest else { continue }
-            if try stageApp(source: source, dest: dest) { staged.append(platform) }
+            guard let app = profile.apps[platform] else { continue }
+            if let source = app.sourcePath, let dest = app.appPath, source != dest,
+               try stageApp(source: source, dest: dest) {
+                staged.append(platform)
+            }
+            // 実機用は**その platform に実機が居るときだけ**運ぶ(仮想デバイスだけの run で
+            // 100MB 級のパッケージを毎回コピーし、リモートへも rsync するのは払い損)
+            guard profile.devices.contains(where: { $0.platform == platform && $0.spec.isPhysical }),
+                  let source = app.sourcePathPhysical, let dest = app.appPathPhysical,
+                  source != dest else { continue }
+            if try stageApp(source: source, dest: dest), !staged.contains(platform) {
+                staged.append(platform)
+            }
         }
         return staged
     }

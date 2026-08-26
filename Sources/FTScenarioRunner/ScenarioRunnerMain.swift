@@ -158,7 +158,7 @@ struct RunScenario: AsyncParsableCommand {
     var hostInstall = false
 
     @Option(name: .customLong("app-path"),
-            help: "Resolved appPath from the run profile, used by installApp() when the argument is omitted and --host-install is not set")
+            help: "Resolved appPath from the run profile. Used by installApp() when the argument is omitted and --host-install is not set, and always as the app bundle for UI-framework detection")
     var appPath: String?
 
     @Option(name: .customLong("app-name"),
@@ -436,7 +436,9 @@ struct RunScenario: AsyncParsableCommand {
                                physical: physical,
                                uiFramework: uiFrameworkHint,
                                emit: emit)
-        core.appPathOverride = appPath
+        // --host-install のときの appPath は**バンドルの在処**でしかない(インストールは親が行う)。
+        // ここで採るとホストと子の二重インストールになる
+        core.appPathOverride = hostInstall ? nil : appPath
         core.appDisplayName = appName
 
         // 失敗時に「アプリより手前の別 window」を添える(Android のみ。adb を叩くのでここで注入する)

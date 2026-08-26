@@ -6,7 +6,8 @@
   "ios": {
     "appName": "sut-ec-mobile",
     "app": "com.sutec.mobile",
-    "appPath": "../sut-ec-mobile/dist/ios-simulator/SUTStore.app"
+    "appPath": "../sut-ec-mobile/dist/ios-simulator/SUTStore.app",
+    "appPathPhysical": "../sut-ec-mobile/dist/ios-device/SUTStore.app"
   },
   "android": {
     "appName": "sut-ec-mobile",

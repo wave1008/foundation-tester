@@ -3230,15 +3230,30 @@ executableTarget `fleetest-scenarios-<name>`(path: `TestProjects/<name>/scenario
 **アプリケーションプロファイル** `apps/<name>.json` — common(共通)→ ios/android の後勝ちマージ。
 `autoInstall` は **common のみ**採用(未指定時の既定は
 `appPath` の有無 — パスを書いたのに入らない事故を避ける。止めたいときだけ `false` を明示する)、
-`appName`(表示名)・bundle ID(`app`)・`appPath` は
+`appName`(表示名)・bundle ID(`app`)・`appPath`・`appPathPhysical` は
 **ios/android セクションのみ**採用(common に書くと merging で無視され validate が警告する。
 表示名を OS ごとに書き分けられるようにするため、common の `appName` は継承しない):
 
 ```json
 { "common":  { "autoInstall": true },
-  "ios":     { "appName": "サンプルアプリ", "app": "com.example.sampleapp", "appPath": "~/builds/SampleApp.app" },
+  "ios":     { "appName": "サンプルアプリ", "app": "com.example.sampleapp",
+               "appPath": "~/builds/SampleApp.app",
+               "appPathPhysical": "~/builds/device/SampleApp.app" },
   "android": { "appName": "サンプルアプリ", "app": "com.example.sampleapp", "appPath": "builds/app-debug.apk" } }
 ```
+
+**`appPathPhysical` は実機に配るパッケージ**(省略時は `appPath`)。iOS はシミュレータ用ビルド
+(iphonesimulator SDK・未署名)を実機へ入れられず、`0xe8008014 The executable contains an
+invalid signature.` で失敗するため、同じアプリでも成果物が2つ要る。**端末ごとにアプリ
+プロファイルを分けないための欄**(2026-08-26 ユーザー決定。分けると実行プロファイルまで
+二重管理になり、`all` のような混在プロファイルに実機を入れられない)。Android は同じ APK が
+両方で動くので普通は書かない。選び分けの規則は `ResolvedAppTarget.packagePath(physical:)` の1箇所。
+**ステージング先は `apps/physical/<ファイル名>`**(仮想デバイス用は `apps/<ファイル名>`)——
+2つのビルドは同名(`dist/ios-simulator/X.app` と `dist/ios-device/X.app`)なのが普通で、
+同じディレクトリへ置くと後からステージングした方が相手を上書きし、**片方の端末に必ず誤った
+ビルドが入る**。実機用の転送は**その platform に実機が居る run でだけ**行う(100MB 級を
+毎回リモートへ rsync しない)。**実機が居るのに `appPathPhysical` が無い iOS の run は
+resolve の時点で警告する**(インストール失敗はブリッジ供給の後に出るので遅い)。
 
 `appPath` の相対パスは**リポジトリルート**基準(上例の `builds/app-debug.apk` は `<repoRoot>/builds/...`)。
 `~` 展開・絶対パスも可。ビルド成果物は TestProjects/ 外に置くのが普通なためプロジェクト基準にしていない。

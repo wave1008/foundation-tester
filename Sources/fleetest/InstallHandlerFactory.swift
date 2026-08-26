@@ -12,7 +12,8 @@ enum InstallHandlerFactory {
         -> @Sendable (RunWorker, String?) async -> (ok: Bool, message: String) {
         { worker, explicitPath in
             switch InstallPathResolver.resolve(platform: worker.platform,
-                                               explicitPath: explicitPath, apps: apps) {
+                                               explicitPath: explicitPath, apps: apps,
+                                               physical: worker.connection.physical) {
             case .error(let message):
                 return (false, message)
             case .resolved(let path, let bundleID):

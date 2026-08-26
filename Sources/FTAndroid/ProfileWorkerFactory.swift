@@ -626,7 +626,8 @@ public enum ProfileWorkerFactory {
                 continue
             }
             let forceThis = forceAndroidInstall && worker.platform == "android"
-            if let app = apps[worker.platform], let appPath = app.appPath,
+            if let app = apps[worker.platform],
+               let appPath = app.packagePath(physical: worker.connection.physical),
                app.autoInstall || forceThis {
                 // 存在確認だけは直列のまま行う: 確定的な順序で早期 throw するため
                 // (差分判定・インストールは下の TaskGroup で並列化)
@@ -635,7 +636,8 @@ public enum ProfileWorkerFactory {
                 }
                 candidates.append((index, worker, app, appPath))
             } else {
-                if forceThis, apps[worker.platform]?.appPath == nil {
+                if forceThis,
+                   apps[worker.platform]?.packagePath(physical: worker.connection.physical) == nil {
                     safeLog("⚠️ \(worker.label): appPath is required to reinstall after Wipe Data"
                         + " (appPath is not set in apps/)")
                 }

@@ -363,11 +363,15 @@ struct RemoteRunDispatcher {
         // マシン/デバイス解決を経由しない軽量読み(declaredWorkspace と同じ理由)。
         // インストール先の規則は WorkspaceAppStaging.installPath 1箇所と共有する
         // (ProfileResolver.resolve が ResolvedAppTarget.appPath を計算するのと同じ規則)
-        for (platform, source) in ProfileResolver.declaredAppPaths(project: project, runName: profile)
-            .sorted(by: { $0.key < $1.key }) {
-            let dest = WorkspaceAppStaging.installPath(source: source, workspaceRoot: localWorkspaceURL)
+        for (key, source) in ProfileResolver.declaredAppPaths(project: project, runName: profile)
+            .sorted(by: { ($0.key.platform, $0.key.physical ? 1 : 0)
+                          < ($1.key.platform, $1.key.physical ? 1 : 0) }) {
+            let dest = WorkspaceAppStaging.installPath(source: source,
+                                                       workspaceRoot: localWorkspaceURL,
+                                                       physical: key.physical)
             if try WorkspaceAppStaging.stageApp(source: source, dest: dest) {
-                log("==> staged \(platform) app package into the workspace")
+                log("==> staged \(key.platform)\(key.physical ? " physical-device" : "")"
+                    + " app package into the workspace")
             }
         }
 

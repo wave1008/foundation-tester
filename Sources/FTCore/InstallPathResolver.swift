@@ -15,16 +15,18 @@ public enum InstallPathResolution: Equatable, Sendable {
 public enum InstallPathResolver {
     /// 優先順: 明示引数(installApp("...") の path)→ 実行プロファイルの appPath(apps[platform])。
     /// どちらも無い、または platform に app 設定自体が無ければエラー。
+    /// **physical=true なら appPathPhysical を先に見る**(ResolvedAppTarget.packagePath が唯一の規則)。
     /// fileExists はテスト用の差し替え口(既定は実ファイルシステム)
     public static func resolve(platform: String, explicitPath: String?,
                                apps: [String: ResolvedAppTarget],
+                               physical: Bool = false,
                                fileExists: (String) -> Bool = {
                                    FileManager.default.fileExists(atPath: $0)
                                }) -> InstallPathResolution {
         guard let app = apps[platform] else {
             return .error("installApp: no app is configured for platform \(platform) in the run profile")
         }
-        guard let rawPath = explicitPath ?? app.appPath else {
+        guard let rawPath = explicitPath ?? app.packagePath(physical: physical) else {
             return .error("installApp: no package path was given and the run profile has no appPath "
                 + "for platform \(platform). Pass the path explicitly: installApp(\"/path/to/App\")")
         }
