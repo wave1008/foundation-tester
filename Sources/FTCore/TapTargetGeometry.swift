@@ -375,6 +375,61 @@ public enum TapTargetGeometry {
     /// 記法として読まれる先頭文字(`#`/`.` 等)のエスケープも通していない —— ここを直すなら
     /// `SelectorNaming` を使う経路(MCP の graded セレクタ)へ寄せるべきで、この関数は
     /// あくまで「どれの話をしているか」を短く言うためのもの
+    /// `advisoryKind` が `.overlayCovering` を選んだときの覆いだけを返す薄い口。
+    /// **チェーンの優先順を迂回しない**ため、直接 `OcclusionGeometry.overlayCovering` を
+    /// 呼ばずにここを通す(zero-frame・画面外・容器外が先に当たる形では nil)
+    public static func overlayCoveringForUncover(_ element: ElementInfo, in elements: [ElementInfo],
+                                                 screen: FTRect) -> ElementInfo? {
+        guard case .overlayCovering(let over)? = advisoryKind(for: element, in: elements,
+                                                              screen: screen) else { return nil }
+        return over
+    }
+
+    /// **覆いを1回のスクロールで外せるか**(外せるなら送る量。`StepExecutor.dragGesture` の
+    /// jump 規約 = 正なら指を上へ = 対象は画面の上へ動く)。
+    ///
+    /// 対象にできるのは「容器の縁に貼り付いた**帯**が中心を覆っている」形だけ
+    /// —— タブバー・下部の固定ボタン・上部のナビゲーションバーで、**実アプリで頻出**
+    /// (2026-08-27 に受け手の SUT の 4.7 インチ実機で7本が巻き添えで落ちた: 画面下端の
+    /// ログアウトがタブバーに潜り、タップがタブ「カート」に当たっていた)。
+    ///
+    /// 次の3つは**送っても外せない**ので nil を返す(呼び手は従来どおり警告付きで撃つ):
+    /// - 覆いが**操作可能でない**(暗幕・装飾)—— 送っても同じ物が付いてくることが多く、
+    ///   「別の物に当たる」実害も薄い
+    /// - 覆いが**容器の半分以上**を占める(全画面のモーダル。送っても外に出ない)
+    /// - 覆いが対象の**上下どちらとも言えない**(横方向の重なり・中心を跨ぐ)
+    ///
+    /// `minimumJump` は `dragGesture` が 50pt 未満のドラッグを捨てるため(0.9 掛けも入る)。
+    /// **足りない分を切り上げて送る**のは、送りすぎても呼び手が撮り直して再判定するから。
+    public static func uncoverScrollJump(target: ElementInfo, coveredBy over: ElementInfo,
+                                         container: FTRect,
+                                         minimumJump: Double = 60, margin: Double = 8) -> Double? {
+        guard container.height > 0 else { return nil }
+        guard BridgeSnapshotThinning.operableTypes.contains(over.type) else { return nil }
+        guard over.frame.height < container.height / 2 else { return nil }
+        // **どちら向きに送るかは「覆いが容器のどちらの縁に貼り付いているか」で決まる**。
+        // 「覆いが対象の上か下か」では決まらない —— 中心を覆っている以上、覆いの矩形は
+        // 必ず対象の中心を含むので、上下どちらの比較も成り立たない(最初の実装の誤り)。
+        // 縁に貼り付いていない浮きもの(中央のダイアログ等)は送っても付いてくるので nil
+        let containerBottom = container.y + container.height
+        let overBottom = over.frame.y + over.frame.height
+        if overBottom >= containerBottom - margin {
+            // 下の縁の帯(タブバー・固定フッタ)= 対象を上へ逃がす
+            let needed = target.frame.y + target.frame.height - over.frame.y + margin
+            guard needed > 0 else { return nil }
+            let jump = max(needed, minimumJump)
+            return jump < container.height ? jump : nil
+        }
+        if over.frame.y <= container.y + margin {
+            // 上の縁の帯(ナビゲーションバー)= 対象を下へ逃がす
+            let needed = overBottom - target.frame.y + margin
+            guard needed > 0 else { return nil }
+            let jump = max(needed, minimumJump)
+            return jump < container.height ? -jump : nil
+        }
+        return nil
+    }
+
     public static func describe(_ element: ElementInfo) -> String {
         if let id = element.identifier, !id.isEmpty { return "#\(id)" }
         if let label = element.label.map(FlowMatchMode.normalizeInvisibleCharacters), !label.isEmpty {

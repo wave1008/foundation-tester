@@ -876,6 +876,35 @@ extension StepExecutor {
                 }
                 break
             }
+            // **縁の帯に潜っているだけなら、撃つ前に1回だけ送って外す**(2026-08-27)。
+            // 判定は TapTargetGeometry.uncoverScrollJump の1箇所で、ここは送って撮り直し、
+            // 同じロケータで解決し直すだけ。外せなければ**従来どおり警告付きで撃つ**
+            // (「覆われた要素をわざと叩く」書き方を壊さないため、拒否はしない)。
+            // 払うのは注記が出る画面だけ = ドラッグ1回と木1枚
+            if let over = TapTargetGeometry.overlayCoveringForUncover(
+                   element, in: snapshot.elements, screen: snapshot.screen),
+               let container = Self.clippingContainer(of: element, in: snapshot.elements,
+                                                      inferring: step.containerInference ?? true),
+               let jump = TapTargetGeometry.uncoverScrollJump(
+                   target: element, coveredBy: over, container: container),
+               await slowDrag(jump: jump, container: container, phase: &phase) {
+                start = clock.now
+                let after = try await freshSnapshot(.afterOwnMove)
+                phase.snapshotMs += Self.ms(clock.now - start)
+                if let (moved, _) = Self.resolve(step: step, in: after),
+                   TapTargetGeometry.overlayCoveringForUncover(
+                       moved, in: after.elements, screen: after.screen) == nil {
+                    element = moved
+                    snapshot = after
+                    // **飲まれたタップの基準を撮り直す**: 送った後の画面が「撃つ直前」なので、
+                    // 古い基準のままだと自分のスクロールを「画面が変わった」と数えてしまう
+                    recordInteraction(step: step, element: moved, in: after)
+                    lastTapTarget = moved
+                    driverFallback = Self.joinNotes(driverFallback,
+                        "scrolled the container to bring the target out from under "
+                        + "\(TapTargetGeometry.describe(over)) before touching it")
+                }
+            }
             start = clock.now
             // **中心が容器の外に落ちる要素だけ、見えている部分の中心を座標で撃つ**
             // (visibleTapRect 参照)。ref で撃つとブリッジが frame の中心へ解決するので、
