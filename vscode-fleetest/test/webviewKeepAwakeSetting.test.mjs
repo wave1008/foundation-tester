@@ -6,6 +6,7 @@
 // 画面上は外れているのに実機は起こされ続ける(気付けるのは実機を放置したときだけ)。
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { before, test } from "node:test";
 import { createRequire } from "node:module";
@@ -71,6 +72,18 @@ test("チェックボックスは「デバイス画面」セクションの下�
   assert.ok(physicalIndex >= 0, "実機セクションのチェックボックスが無い");
   assert.equal(physicalIndex, deviceScreenIndex + 1,
     "実機セクションはデバイス画面セクションの直下に置く");
+});
+
+// 設定タブは項目が増える一方で、親(.tab-panel)は overflow:hidden。**スクロールできないと
+// 下端のセクションへ到達できない**(実際に「実機」を足したときに届かなくなった)。
+// jsdom はレイアウトを持たないので実スクロールは測れず、CSS の宣言で固定する
+test("設定タブは縦にスクロールできる(下端の項目に到達できる)", () => {
+  const css = readFileSync(path.resolve("src/webview/monitor/style.css"), "utf8");
+  const block = css.match(/\.settings-body\s*\{([\s\S]*?)\}/);
+  assert.ok(block, ".settings-body の定義が見つかりません");
+  assert.match(block[1], /overflow-y:\s*auto/, ".settings-body がスクロールしません");
+  assert.match(block[1], /min-height:\s*0/,
+    "min-height:0 が無いと flex 子は内容の高さで固まり overflow-y が効きません");
 });
 
 test("拡張から届いた値がチェック状態に入る", (t) => {

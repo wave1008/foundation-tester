@@ -1949,6 +1949,12 @@ input[type="text"]::placeholder {
   display: flex;
   flex-direction: column;
   gap: 14px; /* 枠+面色が区切りになるので、枠なし時(22px)より詰める(プロファイルタブと同値) */
+  /* **親の .tab-panel は overflow:hidden** なので、ここが伸びるとはみ出した分は見えなくなる
+     (下端のセクションへ到達できない)。項目は増える一方なのでスクロールさせる。
+     min-height:0 が無いと flex 子は内容の高さで固まり、overflow-y が効かない */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 /* 1設定 = ラベル→コントロール→説明 の縦積み。 */
 .settings-group {

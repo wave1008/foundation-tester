@@ -235,9 +235,11 @@ export const panelsStrings = {
     ja: "実機画面の自動ロックを抑制する",
     en: "Keep physical device screens from auto-locking",
   },
+  // 詳細(効き方・切ったときの影響)は設定エディタ側の説明(package.nls*.json)に置く。
+  // ここはタブ内の1行ヒント
   "panels.settings.keepAwakeHint": {
-    ja: "テスト中に実機が寝ないようにします(iOS: 常駐ランナーが 25 秒ごとに無害な入力を1発送る / Android: svc power stayon)。ロックされた端末はアプリの起動を拒否するため、切ると run が途中で落ちることがあります。オフにすると Android ではツールが立てた消灯抑止も戻します。シミュレータ・エミュレータには関係しません。",
-    en: "Keeps physical devices awake during a run (iOS: the resident runner sends one harmless input every 25s; Android: svc power stayon). A locked device refuses app launches, so turning this off can kill a run half-way. Turning it off also clears the stay-awake flag the tool set on Android. Simulators and emulators are unaffected.",
+    ja: "テスト中に実機が寝ないようにします。",
+    en: "Keeps physical devices awake during a run.",
   },
   // 設定タブ「更新」セクション(静的ラベル)。動的な状態表示は webviewMonitorB.ts の wvMonitor2.update.*
   "panels.settings.updateLabel": { ja: "更新", en: "Updates" },
