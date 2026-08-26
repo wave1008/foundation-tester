@@ -32,7 +32,7 @@ Usage: update.sh [options]
   --no-pull          Do not update the clone (to pin a version, or while developing the tool)
   --force            Run everything even without an update (to redo a broken install)
   --skip-extension   Do not reinstall the VSCode extension
-  --skip-plugin      Do not update the Claude Code plugin (skills)
+  --skip-plugin      Do not update the skills (the Claude Code plugin and copied SKILL.md files)
   --doctor           Print the environment report (fleetest doctor) at the end (off by default)
   --keep-local       Do not auto-discard local changes in the clone
   --verbose          Also print the raw swift build / npm logs to the screen
@@ -196,6 +196,8 @@ fi
 # **fleetest-setup は写さない** —— 受け手のパッケージのそれは `fleetest init` が生成した
 # **受け手専用の別内容**で、正典で上書きすると受け手のセットアップ手順が消える。
 # **シンボリックリンクも写さない**(クローンを直接指しているので pull 済み)。
+# `--skip-plugin` はプラグインだけでなく**スキル更新全体**の抑止(コピー配置はプラグイン機構を
+# 使わない受け手の同じ関心事なので、ノブを分けない)
 COPIED_SKILLS="fleetest-update fleetest-profiles fleetest-scenario fleetest-mcp fleetest-remote-setup"
 SKILLS_REFRESHED=0
 refresh_copied_skills() {
