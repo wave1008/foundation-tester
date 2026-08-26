@@ -111,6 +111,28 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
             passed: false)
     }
 
+    /// **録画を始められなかった/使えるソースが残らなかったワーカーを数える**(2026-08-26)。
+    /// 数えないと index を書かず、その run は録画タブから消えて「録画していない run」と
+    /// 区別が付かない(実害: 端末に刺さった録画セッションで 0 バイトの .mov ができ続けた)
+    func testFailedSourcesAreCountedAndKeepTheRunVisible() async throws {
+        let tmp = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let coordinator = VideoRecordingCoordinator(
+            config: VideoRecordingConfig(runDir: tmp, androidADBPath: nil, failuresOnly: false),
+            makeSession: { _, _, _ in DeadSession() })
+
+        let worker = makeWorker(1)
+        let started = await coordinator.start(worker)
+        XCTAssertFalse(started, "録画を開始できなかったワーカーは false")
+        await registerInterval(coordinator, worker: worker, scenarioID: "T.S0010")
+        await coordinator.finish()
+
+        let indexURL = tmp.appendingPathComponent("recordings/index.json")
+        let decoded = try JSONDecoder().decode(RecordingIndex.self, from: Data(contentsOf: indexURL))
+        XCTAssertEqual(decoded.sourcesFailed, 1, "録画できなかった台数を残す")
+        XCTAssertEqual(decoded.recordings.count, 0)
+    }
+
     /// ハードウェアエンコーダが期限超過したら、同じクリップをソフトウェアで撮り直し、
     /// この run の残りのクリップもソフトウェアで続行するはず(preferSoftwareEncoder==false
     /// のときだけ無応答にして固着を再現する)
@@ -323,4 +345,10 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
         let recordings = try XCTUnwrap(json["recordings"] as? [[String: Any]])
         XCTAssertEqual(recordings.count, 2, "シナリオ区間ごとに 1 エントリのはず")
     }
+}
+
+/// 録画を開始できないセッション(端末側に録画が刺さっている状態の代役)
+private actor DeadSession: DeviceVideoRecorderSession {
+    func start() async -> Bool { false }
+    func stop() async -> RecordingSource? { nil }
 }

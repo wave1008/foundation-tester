@@ -41,7 +41,50 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
 
     func start() async -> Bool {
         killStaleRecording()
+        guard await smokeCheckPasses() else {
+            warn("this simulator is not recording right now — a \(Int(Self.smokeSeconds))s test recording"
+                 + " came out empty. The device most likely holds a stuck host recording session"
+                 + " (it survives the client process). Shut it down and boot it again"
+                 + " (fleetest device-down/up, or xcrun simctl shutdown/boot \(udid))."
+                 + " Skipping recording for this device")
+            return false
+        }
         return await spawnNextPart()
+    }
+
+    /// **録画できることを実物で1本確かめてから本番を始める**(2026-08-26)。
+    /// `recordVideo` は端末側にセッションが刺さっていても "Recording started" を出し、**0 バイトの
+    /// .mov を作り続ける** —— 気付けるのは run の終わり(切り出し時)で、その run の録画は全部失われる。
+    /// 実害: 3台構成の run で1台だけ録れており、他の2台は録画タブから消えた(2026-08-26)。
+    ///
+    /// **「ファイルが育たない」は検知に使えない** —— 正常な録画でも**閉じるまで 0 バイトのまま**
+    /// (実測: 8 秒間ずっと 0、停止した瞬間に 21KB)。だから短い録画を1本**閉じて**大きさを見る。
+    /// 失敗しても run は続ける(録画はできないが実行はできる)。
+    private static let smokeSeconds: Double = 1
+    private func smokeCheckPasses() async -> Bool {
+        let url = workDir.appendingPathComponent("\(fileStem)-smoke.mov")
+        try? FileManager.default.removeItem(at: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
+        process.arguments = ["simctl", "io", udid, "recordVideo", "--codec=h264", "--force", url.path]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        let exitStream = ProcessExitWait.prepare(process)
+        do {
+            try process.run()
+        } catch {
+            warn("cannot start the test recording: \(error.localizedDescription)")
+            return false
+        }
+        try? await Task.sleep(nanoseconds: UInt64(Self.smokeSeconds * 1_000_000_000))
+        // **停止は SIGINT**(SIGTERM/SIGKILL だと moov が書かれず、健全な端末でも空に見える)
+        if process.isRunning { process.interrupt() }
+        await raceWithDeadline(seconds: 5, onTimeout: ()) { for await _ in exitStream {} }
+        if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+        let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? nil
+        return (size ?? 0) > 0
     }
 
     /// run を数十秒間隔で連続させると、直前セッションの CoreSimulator io 解放が間に合わず
@@ -167,7 +210,9 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
             })
     }
 
-    /// 同じ udid への stale な recordVideo を起動前に best-effort で止める
+    /// 同じ udid への stale な recordVideo(client プロセス)を起動前に best-effort で止める。
+    /// **端末側に残るセッションはこれでは解けない** —— プロセスが1つも無いのに録画が始まらない形が
+    /// あり、そちらは smokeCheckPasses が捕まえる
     private func killStaleRecording() {
         _ = try? Shell.run(["pkill", "-f", "simctl io \(udid) recordVideo"])
     }

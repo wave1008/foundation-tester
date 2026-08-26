@@ -3387,6 +3387,15 @@ H.264 に再エンコード。VFR ソースの区間頭フレーム欠落は直�
 契約は `recordings/index.json`(schemaVersion 2。VideoRecordingCoordinator.swift・
 RecordingIndex.swift・RecordingWallClock.swift)。録画自体の失敗は run を失敗させない。
 
+**録画できることを実物で1本確かめてから本番を始める**(2026-08-26)。`simctl io recordVideo` は
+**端末側に録画セッションが刺さっていても "Recording started" を出し、0 バイトの .mov を作り続ける**。
+気付けるのは run の終わり(切り出し)で、その run の録画は全部失われる。そこで
+`IOSSimulatorVideoRecorder.start()` は ①同じ udid の stale な client を pkill(従来)
+②**1 秒だけ録って閉じ、ファイルが空でないかを見る**(新規)—— 空なら「この端末は録画できない」と
+理由と復旧手順(デバイスの停止→起動)を出して**その台の録画だけ諦める**(run は続ける)。
+**「ファイルが育たない」は検知に使えない** —— 正常な録画でも閉じるまで 0 バイトのまま
+(実測: 8 秒間ずっと 0、停止した瞬間に 21KB)。だから*閉じてから*大きさを見る。
+
 **失敗しても index は残す**(2026-08-26)。集計欄は2つあり**別のことを言う**:
 `clipsAttempted`/`clipsFailed` は「録れた動画から切り出せなかった」、
 **`sourcesFailed` は「そもそも録れていない」**(録画プロセスは起動したのに、読めるファイルが
