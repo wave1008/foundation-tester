@@ -16,8 +16,11 @@ import FTDSL
 @TestClass(app: "com.sutec.mobile")  // iOS/Android 両対応(#id は testTag→resource-id/accessibilityId で共通)
 class 注文履歴に確定した注文が並ぶこと {
 
-    private let 氏名 = "E2E チェックアウト"
-    private let メール = "e2e-checkout@example.com"
+    // **アカウントはシナリオごとに分ける**。カートも注文履歴もサーバ側でアカウント単位なので、
+    // チェックアウト.swift と同じアカウントだと並列実行で互いのカートに商品が混ざり、
+    // 合計が 18,000 でなく 36,000 になって履歴の照合が落ちる(2026-08-27 に DB の実データで確認)
+    private let 氏名 = "E2E 注文履歴"
+    private let メール = "e2e-orderhistory@example.com"
     private let パスワード = "Passw0rd1!"
 
     func setUp() {
