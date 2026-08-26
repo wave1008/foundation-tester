@@ -44,3 +44,69 @@ final class IOSPhysicalDeviceLockTests: XCTestCase {
                        "文字列の \"true\" を真と読まないこと")
     }
 }
+
+/// 解除待ちの周回。**端末抜き**で回す(probe を差し替える)
+final class IOSPhysicalDeviceLockWaitTests: XCTestCase {
+
+    private func wait(_ states: [IOSPhysicalDeviceLock.State],
+                      timeout: TimeInterval = 5) async
+        -> (state: IOSPhysicalDeviceLock.State, log: [String]) {
+        var remaining = states
+        var lines: [String] = []
+        let state = await IOSPhysicalDeviceLock.waitForUnlock(
+            udid: "u", deviceName: "iPhone x", timeout: timeout,
+            log: { lines.append($0) }, pollInterval: 0.01,
+            probe: { _ in remaining.isEmpty ? .locked : remaining.removeFirst() })
+        return (state, lines)
+    }
+
+    func testReturnsImmediatelyWhenAlreadyUnlocked() async {
+        let result = await wait([.unlocked])
+        XCTAssertEqual(result.state, .unlocked)
+        XCTAssertTrue(result.log.isEmpty, "解除済みなら促さない: \(result.log)")
+    }
+
+    func testPromptsOnceThenProceedsWhenUnlocked() async {
+        let result = await wait([.locked, .locked, .unlocked])
+        XCTAssertEqual(result.state, .unlocked)
+        XCTAssertEqual(result.log.filter { $0.contains("is locked") }.count, 1,
+                       "促しは1回だけ: \(result.log)")
+        XCTAssertTrue(result.log.contains { $0.contains("unlocked") }, "\(result.log)")
+    }
+
+    /// **読めなくなっただけを「解除された」と読まない**(読むと、ロックされたままの端末へ
+    /// 起動を撃って無情報な締切待ちに戻る)
+    func testUnknownIsNotReportedAsUnlocked() async {
+        let result = await wait([.locked, .unknown])
+        XCTAssertEqual(result.state, .unknown)
+        XCTAssertFalse(result.log.contains { $0.contains("unlocked") },
+                       "unknown を解除済みと言ってはいけない: \(result.log)")
+    }
+
+    /// **中断されたら待ちを抜ける**。抜けないと刻みが 0 になり、締切まで devicectl を
+    /// 数百回起動し続ける(Ctrl+C 後の実挙動)
+    func testCancellationEndsTheWait() async {
+        final class Counter: @unchecked Sendable {
+            private let lock = NSLock()
+            private var value = 0
+            func bump() { lock.lock(); value += 1; lock.unlock() }
+            var count: Int { lock.lock(); defer { lock.unlock() }; return value }
+        }
+        let probes = Counter()
+        let task = Task {
+            await IOSPhysicalDeviceLock.waitForUnlock(
+                udid: "u", deviceName: "iPhone x", timeout: 2, log: { _ in },
+                pollInterval: 0.05, probe: { _ in probes.bump(); return .locked })
+        }
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        task.cancel()
+        _ = await task.value
+        XCTAssertLessThan(probes.count, 20,
+                          "中断後も回り続けている(\(probes.count) 回 devicectl を叩いた)")
+    }
+
+    func testStaysLockedUntilTheDeadline() async {
+        let result = await wait([.locked], timeout: 0.05)
+        XCTAssertEqual(result.state, .locked)
+    }
+}

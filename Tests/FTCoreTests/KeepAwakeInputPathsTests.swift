@@ -44,6 +44,33 @@ final class KeepAwakeInputPathsTests: XCTestCase {
             $0.trimmingCharacters(in: CharacterSet(charactersIn: " \n\"")) }.filter { !$0.isEmpty })
     }
 
+    /// KeepAwake が読む環境変数が、ホストから xctestrun へ**全部**渡っていること。
+    /// 渡し忘れてもコンパイルも実行も通り、**ノブが黙って効かないだけ**になる
+    /// (実際 FT_KEEP_AWAKE_PULSE が抜けていた)
+    func testEveryKeepAwakeEnvKeyIsForwarded() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let keepAwake = try String(
+            contentsOf: root.appendingPathComponent(
+                "Runner/FleetestRunnerUITests/KeepAwake.swift"), encoding: .utf8)
+        let launcher = try String(
+            contentsOf: root.appendingPathComponent(
+                "Sources/FTBridgeClient/BridgeLauncher.swift"), encoding: .utf8)
+        let regex = try NSRegularExpression(pattern: #"environment\["(FT_[A-Z_]+)"\]"#)
+        let range = NSRange(keepAwake.startIndex..., in: keepAwake)
+        var keys: Set<String> = []
+        for match in regex.matches(in: keepAwake, range: range) {
+            guard let r = Range(match.range(at: 1), in: keepAwake) else { continue }
+            keys.insert(String(keepAwake[r]))
+        }
+        XCTAssertFalse(keys.isEmpty, "KeepAwake が読む環境変数を1つも拾えていない(走査が壊れた)")
+        for key in keys.sorted() {
+            XCTAssertTrue(launcher.contains("\"\(key)\""),
+                          "\(key) が BridgeLauncher から xctestrun へ渡っていない"
+                          + "(ランナーは既定値のまま動き、ノブが黙って効かない)")
+        }
+    }
+
     func testEveryPostRouteIsClassified() throws {
         let source = try routerSource
         let routes = postRoutes(in: source)

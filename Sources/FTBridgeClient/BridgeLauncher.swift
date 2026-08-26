@@ -220,8 +220,8 @@ public struct BridgeLauncher {
             }
             // 実機の自動ロック抑止の殺しスイッチ(既定 on)。同期相手:
             // Runner/FleetestRunnerUITests/KeepAwake.swift
-            if let keepAwake = ProcessInfo.processInfo.environment["FT_KEEP_AWAKE"] {
-                env["FT_KEEP_AWAKE"] = keepAwake
+            for key in ["FT_KEEP_AWAKE", "FT_KEEP_AWAKE_PULSE"] {
+                if let value = ProcessInfo.processInfo.environment[key] { env[key] = value }
             }
             target["EnvironmentVariables"] = env
         }

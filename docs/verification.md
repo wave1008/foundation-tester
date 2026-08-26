@@ -2847,14 +2847,17 @@ apps プロファイルの healthCheckURL が実行開始時に警告を出す�
 
 | 症状・ログ | 原因 | 対処 |
 |---|---|---|
-| `Unlock <name> to Continue`(deviceprep Code=-3) | 端末ロック | 解除+自動ロック「なし」 |
+| `Unlock <name> to Continue`(deviceprep Code=-3) | 端末ロック | 解除する(**自動ロックは「なし」にしなくてよい** —— 起動後の再ロックはランナーが防ぐ) |
 | `Developer App Certificate is not trusted` | 証明書未信頼 | 設定 → 一般 → VPN とデバイス管理 |
 | `network connection was lost` が延々続く | WiFi 接続なのに usb を選んだ | USB で繋ぐ(自動で lan に落ちる) |
 
 検出側の設計上の要点(**同じ間違いを繰り返さないため**):
-- ロックは「失敗」ではなく「進まない」だけなので throw せず促す。ただし xcodebuild は
-  **諦めた時点で初めて**理由を書くことがあるので、待機ループ内だけでなく**締切後にもう一度**
-  ログを読む(`BridgeLauncher.waitUntilReady` の physicalDiagnosis)
+- ロックは「失敗」ではなく「進まない」だけなので、xcodebuild のログから拾う経路では throw せず
+  促す。ただし xcodebuild は**諦めた時点で初めて**理由を書くことがあるので、待機ループ内だけでなく
+  **締切後にもう一度**ログを読む(`BridgeLauncher.waitUntilReady` の physicalDiagnosis)。
+  **起動の直前の判定(`IOSPhysicalDeviceLock`)だけは待ち切ったら throw する** —— あちらは
+  「今ロックされている」ことを端末に直接訊いており、撃っても拒否されるのが確定しているため
+  (推測ではなく現況。`.unknown` では throw しない)
 - 証明書未信頼・Developer Mode 無効は**終端マーカーを待たずに確定**させる(理由を特定できない
   失敗だけマーカー待ち)。詳細は上の「iOS 実機」節
 - トランスポートは `transportType` で決める。`FT_IOS_DEVICE_TRANSPORT` の明示指定は尊重する

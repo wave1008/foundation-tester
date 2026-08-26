@@ -29,7 +29,7 @@ public enum IOSPhysicalDeviceLock {
 
     /// 解除待ちのポーリング間隔(秒)。人が端末を手に取って解除する動作に対しての刻みで、
     /// 1 回 0.23 秒の devicectl を挟むので詰めても意味がない
-    private static let pollIntervalSeconds: TimeInterval = 2
+    public static let pollIntervalSeconds: TimeInterval = 2
 
     /// devicectl の JSON から現況を読む(I/O 抜き。ここだけが形式を知っている)
     public static func parse(_ data: Data) -> State {
@@ -51,19 +51,35 @@ public enum IOSPhysicalDeviceLock {
     /// 解除されるまで待つ。**促すのは 1 回だけ**(同じ行を刻み続けない)。
     /// 待ちきれなくても throw しない —— 起動を試みて既存の締切と診断に委ねる
     /// (ここで落とすと、解除が間に合った端末まで殺すことになる)
+    /// `probe` / `pollInterval` は差し替え口(テストが端末抜きで周回を回すため。既定は実機を訊く)
     @discardableResult
     public static func waitForUnlock(udid: String, deviceName: String, timeout: TimeInterval,
-                                     log: (String) -> Void) async -> State {
-        var state = query(udid: udid)
+                                     log: (String) -> Void,
+                                     pollInterval: TimeInterval = pollIntervalSeconds,
+                                     probe: (String) -> State = { query(udid: $0) }) async -> State {
+        var state = probe(udid)
         guard state == .locked else { return state }
         log("⏳ \(deviceName) is locked — unlock it now. The runner cannot be launched on a locked "
             + "device (it keeps the device awake once it is up).")
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            try? await Task.sleep(nanoseconds: UInt64(pollIntervalSeconds * 1_000_000_000))
-            state = query(udid: udid)
-            if state != .locked {
+            // **中断は待ちを抜ける**: try? で握ると Ctrl+C 後に刻みが 0 になり、
+            // 締切まで devicectl を数百回起動し続ける
+            do {
+                try await Task.sleep(nanoseconds: UInt64(pollInterval * 1_000_000_000))
+            } catch {
+                return state
+            }
+            state = probe(udid)
+            switch state {
+            case .locked:
+                continue
+            case .unlocked:
                 log("✔ \(deviceName): unlocked")
+                return state
+            case .unknown:
+                // 読めなくなっただけ(devicectl の一時失敗)。**解除されたとは言わない** ——
+                // 言うと、まだロックされている端末に対して起動を撃ち、無情報な締切待ちに戻る
                 return state
             }
         }

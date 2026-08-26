@@ -69,12 +69,17 @@ final class BridgeRouter {
     /// 端末は寝るため、入れると起こす玉が一生撃たれない)。
     /// **操作エンドポイントを足したらここにも足す**(KeepAwakeInputPathsTests が
     /// POST ルートの取りこぼしを検出する)。入力ではない POST は nonInputPaths に載せる
-    private static let inputPaths: Set<String> = ["/session", "/tap", "/systemui/tap", "/type",
-        "/clear", "/pressEnter", "/hidekeyboard", "/swipe", "/drag", "/systemui/drag",
-        "/systemui/swipe", "/doubletap", "/pinch", "/rotate", "/press", "/appswitcher", "/home"]
+    private static let inputPaths: Set<String> = ["/tap", "/systemui/tap", "/type",
+        "/clear", "/pressEnter", "/swipe", "/drag", "/systemui/drag",
+        "/systemui/swipe", "/doubletap", "/pinch", "/press", "/appswitcher", "/home"]
 
-    /// 入力を伴わない POST(問い合わせと終了)。inputPaths との和が POST ルートの全部になる
-    private static let nonInputPaths: Set<String> = ["/terminate", "/appstate"]
+    /// 入力を伴わない POST。inputPaths との和が POST ルートの全部になる。
+    /// **タッチを合成しないものはここへ倒す**(`/session`=launch/activate・`/rotate`=向きの代入・
+    /// `/hidekeyboard`=iOS では 501・問い合わせ・終了)。入力でないものを input に数えると、
+    /// **端末側の 30 秒タイマーは進んだままこちらの 25 秒だけ延びる**ので余白を失う。
+    /// 逆向きの誤りは無害(余分に1発撃つだけ=不可視の press(.home))
+    private static let nonInputPaths: Set<String> = ["/session", "/rotate", "/hidekeyboard",
+                                                     "/terminate", "/appstate"]
 
     /// 所要内訳ログの on/off(既定 off)。ホストの FT_BRIDGE_TIMING=1 を BridgeLauncher が
     /// xctestrun の環境変数へ注入する(同期相手: Sources/FTBridgeClient/BridgeLauncher.swift)
@@ -85,10 +90,10 @@ final class BridgeRouter {
     private static let timingAlwaysLogMs: Double = 1500
 
     func handle(_ request: BridgeHTTPServer.Request) -> BridgeHTTPServer.Response {
-        // 端末を起こし続けるための計時(KeepAwake)。処理中は撃たせない
+        // 端末を起こし続けるための計時(KeepAwake)。**defer に頼らない** ——
+        // NSException で巻き戻ると走らない(dispatchToMain の FTCatchObjCException が握る)
         let isInput = Self.inputPaths.contains(request.path)
-        KeepAwake.requestBegan(isInput: isInput)
-        defer { KeepAwake.requestEnded(isInput: isInput) }
+        if isInput { KeepAwake.noteUserInput() }
         do {
             let response: BridgeHTTPServer.Response
             switch (request.method, request.path) {

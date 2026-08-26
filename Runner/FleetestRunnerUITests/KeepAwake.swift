@@ -44,9 +44,6 @@ enum KeepAwake {
     private static let lock = NSLock()
     private static var lastInput = Date()
     private static var lastAssert: Date?
-    /// 処理中の要求の本数。**0 のときしか撃たない** —— パルスは常駐ループ(main)から出るので、
-    /// accept スレッドが XCUITest を呼んでいる最中に重ねると同じ API を同時に叩くことになる
-    private static var inFlight = 0
 
     /// **メインスレッドから呼ぶこと**(UIApplication)。ブリッジのテストメソッドは main で回る
     static func start() {
@@ -60,22 +57,17 @@ enum KeepAwake {
               pulse.rawValue, pulseAfterIdleSeconds)
     }
 
-    /// 要求の処理を始めた/終えたことを知らせる(BridgeRouter.handle)。
-    /// **input(HID を伴う経路)は始めと終わりの両方で時計を戻す** —— 長い操作の最中に
-    /// 25 秒が来ても撃たず、終わってから数え直す。
-    /// 読み(スナップショット等)は入力ではないので時計は戻さない(ポーリング中も端末は寝る)
-    static func requestBegan(isInput: Bool) {
-        lock.lock()
-        inFlight += 1
-        if isInput { lastInput = Date() }
-        lock.unlock()
-    }
-
-    static func requestEnded(isInput: Bool) {
-        lock.lock()
-        inFlight -= 1
-        if isInput { lastInput = Date() }
-        lock.unlock()
+    /// HID を伴う要求(`BridgeRouter.inputPaths`)の始めと終わりに呼ぶ。
+    /// **終わりでも戻す**のは、長い操作の実入力が終了時刻に近いため。
+    /// 読み(スナップショット等)は入力ではないので戻さない(ポーリング中も端末は寝る)。
+    ///
+    /// **「処理中は撃たない」の数え上げは持たない**: ハンドラは
+    /// `BridgeHTTPServer.dispatchToMain` が main へ流し、tick も main の RunLoop から呼ばれるので
+    /// 両者は同時に走れない。数えると逆に、**NSException で巻き戻ったときに Swift の defer が
+    /// 走らず**(dispatchToMain の `FTCatchObjCException` が握る)カウンタが 1 のまま張り付き、
+    /// **以後パルスが永久に止まる** —— 直そうとしている死に方そのものになる
+    static func noteUserInput() {
+        lock.lock(); lastInput = Date(); lock.unlock()
     }
 
     /// 常駐ループの各周から呼ぶ。撃つ/貼り直す条件を満たさない周は何もしない
@@ -83,7 +75,7 @@ enum KeepAwake {
         guard enabled else { return }
         assertIdleTimerIfDue()
         lock.lock()
-        let due = inFlight == 0 && Date().timeIntervalSince(lastInput) >= pulseAfterIdleSeconds
+        let due = Date().timeIntervalSince(lastInput) >= pulseAfterIdleSeconds
         lock.unlock()
         guard due else { return }
         firePulse()
