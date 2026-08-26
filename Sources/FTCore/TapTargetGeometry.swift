@@ -375,6 +375,54 @@ public enum TapTargetGeometry {
     /// 記法として読まれる先頭文字(`#`/`.` 等)のエスケープも通していない —— ここを直すなら
     /// `SelectorNaming` を使う経路(MCP の graded セレクタ)へ寄せるべきで、この関数は
     /// あくまで「どれの話をしているか」を短く言うためのもの
+    /// **申告が無い木でキーボードの帯を推定する**(送る判断専用)。
+    /// `KeyboardOcclusion` は「申告が無い = キーボード無し」の意味を守る(警告の意味を
+    /// 変えないため)。しかしランナーは `elementType == .keyboard` のノードでしか申告せず、
+    /// キーボードが `other id=inputView` として出る画面がある(E2E-iOS の UIKit 入力で実測:
+    /// `[17] other id=inputView (0,573 402x301)`)。そこで**送る判断のときだけ** chrome から
+    /// 推定する —— 送った結果は呼び手が撮り直して再判定するので、外れても撃つ前に戻せる。
+    ///
+    /// **画面の下端に接している帯だけ**採る(同名要素が画面の別の場所にあると矩形が暴発する。
+    /// `effectiveKeyboardFrame` の同名 chrome の扱いと同じ警戒)
+    public static func keyboardBandFromChrome(in elements: [ElementInfo], screen: FTRect,
+                                              tolerance: Double = 4) -> FTRect? {
+        let chrome = elements.filter {
+            guard let id = $0.identifier else { return false }
+            return keyboardChromeIdentifiers.contains(id)
+        }
+        guard let first = chrome.first else { return nil }
+        let minX = chrome.reduce(first.frame.x) { min($0, $1.frame.x) }
+        let minY = chrome.reduce(first.frame.y) { min($0, $1.frame.y) }
+        let maxX = chrome.reduce(first.frame.x + first.frame.width) {
+            max($0, $1.frame.x + $1.frame.width)
+        }
+        let maxY = chrome.reduce(first.frame.y + first.frame.height) {
+            max($0, $1.frame.y + $1.frame.height)
+        }
+        guard maxY >= screen.y + screen.height - tolerance else { return nil }
+        return FTRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+    }
+
+    /// **送るときに指を当てる領域**(覆いを避けた容器の残り)。
+    /// `StepExecutor.dragGesture` は容器の下端付近から指を動かし始めるので、容器をそのまま
+    /// 渡すと**覆いの上をなぞる**ことになり何も動かない(2026-08-27 に実測: キーボードが
+    /// 573..874 を占める画面で、容器 117..817 の下端付近 712 から始まっていた)。
+    /// 下側の帯なら覆いの上、上側の帯なら覆いの下を返す。ドラッグに足りない高さなら nil
+    public static func uncoverDragArea(container: FTRect, cover: FTRect,
+                                       minimumHeight: Double = 120) -> FTRect? {
+        let containerBottom = container.y + container.height
+        let coverBottom = cover.y + cover.height
+        let area: FTRect
+        if cover.y > container.y + container.height / 2 {
+            area = FTRect(x: container.x, y: container.y,
+                          width: container.width, height: cover.y - container.y)
+        } else {
+            area = FTRect(x: container.x, y: coverBottom,
+                          width: container.width, height: containerBottom - coverBottom)
+        }
+        return area.height >= minimumHeight ? area : nil
+    }
+
     /// `advisoryKind` が `.overlayCovering` を選んだときの覆いだけを返す薄い口。
     /// **チェーンの優先順を迂回しない**ため、直接 `OcclusionGeometry.overlayCovering` を
     /// 呼ばずにここを通す(zero-frame・画面外・容器外が先に当たる形では nil)
@@ -404,9 +452,20 @@ public enum TapTargetGeometry {
     public static func uncoverScrollJump(target: ElementInfo, coveredBy over: ElementInfo,
                                          container: FTRect,
                                          minimumJump: Double = 60, margin: Double = 8) -> Double? {
-        guard container.height > 0 else { return nil }
+        // 操作可能でない覆い(暗幕・装飾)は送っても実害が薄く、送っても同じ物が付いてくる
         guard BridgeSnapshotThinning.operableTypes.contains(over.type) else { return nil }
-        guard over.frame.height < container.height / 2 else { return nil }
+        return uncoverScrollJump(target: target, coveredBy: over.frame, container: container,
+                                 minimumJump: minimumJump, margin: margin)
+    }
+
+    /// 覆いを**矩形**で渡す版。ソフトキーボードのように木の要素として渡せない覆い用
+    /// (`KeyboardOcclusion.frame`)。操作可能かの判定は呼び手の責務 —— キーボードは
+    /// 常にタッチを飲むので、呼び手はその判定を持たない
+    public static func uncoverScrollJump(target: ElementInfo, coveredBy over: FTRect,
+                                         container: FTRect,
+                                         minimumJump: Double = 60, margin: Double = 8) -> Double? {
+        guard container.height > 0 else { return nil }
+        guard over.height < container.height / 2 else { return nil }
         // **どちら向きに送るかは「覆いが容器の中心線のどちら側にあるか」で決まる**。
         // 「覆いが対象の上か下か」では決まらない —— 中心を覆っている以上、覆いの矩形は
         // 必ず対象の中心を含むので、上下どちらの比較も成り立たない(最初の実装の誤り)。
@@ -415,10 +474,10 @@ public enum TapTargetGeometry {
         // (2026-08-27 に E2E-iOS の witness で実測: 帯 778..840 / 容器 200..873)。
         // 中心線を跨ぐ覆い(中央のダイアログ等)は「どちらへ送っても外れない」ので nil
         let containerCentre = container.y + container.height / 2
-        let overBottom = over.frame.y + over.frame.height
-        if over.frame.y > containerCentre {
-            // 下側の帯(タブバー・固定フッタ)= 対象を上へ逃がす
-            let needed = target.frame.y + target.frame.height - over.frame.y + margin
+        let overBottom = over.y + over.height
+        if over.y > containerCentre {
+            // 下側の帯(タブバー・固定フッタ・ソフトキーボード)= 対象を上へ逃がす
+            let needed = target.frame.y + target.frame.height - over.y + margin
             guard needed > 0 else { return nil }
             let jump = max(needed, minimumJump)
             return jump < container.height ? jump : nil

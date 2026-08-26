@@ -33,6 +33,10 @@ enum Tags {
     static let navCover = "nav_cover"
     static let btnUnderFooter = "btn_under_footer"
     static let txtCoverResult = "txt_cover_result"
+    /// キーボードの下に潜る入力欄(打鍵が直前の欄へ流れ込む形の witness)
+    static let navKeyboardCover = "nav_keyboard_cover"
+    static let fieldAboveKeyboard = "field_above_keyboard"
+    static let fieldUnderKeyboard = "field_under_keyboard"
 
     // セレクタ
     static let selectorResult = "txt_selector_result"

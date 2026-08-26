@@ -491,6 +491,17 @@ FM が修復できるかを検証する。
 | `#txt_cover_result` | Text | `cover=<v>` 初期 `cover=none` | v ∈ `none`/`target` |
 | `#btn_under_footer` | Button | `下端のボタン` | スクロール内容の最後。**表示直後はシェルのタブバーの下に潜っている** |
 
+**iOS SUT だけが持つ**(キーボードの下に潜った入力欄の witness。ホームの `#nav_keyboard_cover`):
+
+| tag | 種別 | ラベル/テキスト | 備考 |
+|---|---|---|---|
+| `#nav_keyboard_cover` | Button | `キーボードの覆い` | ホームからキーボードの覆い画面を開く |
+| `#field_above_keyboard` | TextField | ph `上の欄` | ここで焦点を取るとキーボードが立つ |
+| `#field_under_keyboard` | TextField | ph `下の欄` | キーボードの下に潜る。**潜ったまま打つと打鍵が上の欄へ流れ込む** |
+
+容器は **UIKit の素の UIScrollView**(`KeyboardCoverScroll`)。SwiftUI の ScrollView は
+キーボードぶん縮むため対象が「容器の外」になり、既存の復帰が働いて witness にならない。
+
 `#btn_under_footer` は「縁の帯が操作対象を覆う」形の唯一の witness。そのまま撃つと
 タブバー(`#tab_home` 等)に当たってタブが切り替わり、送って外せていれば `cover=target`。
 対象の下には送る余地(160pt)を残してある —— 余地が無ければ送っても外れないため。

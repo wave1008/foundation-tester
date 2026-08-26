@@ -876,34 +876,17 @@ extension StepExecutor {
                 }
                 break
             }
-            // **縁の帯に潜っているだけなら、撃つ前に1回だけ送って外す**(2026-08-27)。
-            // 判定は TapTargetGeometry.uncoverScrollJump の1箇所で、ここは送って撮り直し、
-            // 同じロケータで解決し直すだけ。外せなければ**従来どおり警告付きで撃つ**
-            // (「覆われた要素をわざと叩く」書き方を壊さないため、拒否はしない)。
-            // 払うのは注記が出る画面だけ = ドラッグ1回と木1枚
-            if let over = TapTargetGeometry.overlayCoveringForUncover(
-                   element, in: snapshot.elements, screen: snapshot.screen),
-               let container = Self.clippingContainer(of: element, in: snapshot.elements,
-                                                      inferring: step.containerInference ?? true),
-               let jump = TapTargetGeometry.uncoverScrollJump(
-                   target: element, coveredBy: over, container: container),
-               await slowDrag(jump: jump, container: container, phase: &phase) {
-                start = clock.now
-                let after = try await freshSnapshot(.afterOwnMove)
-                phase.snapshotMs += Self.ms(clock.now - start)
-                if let (moved, _) = Self.resolve(step: step, in: after),
-                   TapTargetGeometry.overlayCoveringForUncover(
-                       moved, in: after.elements, screen: after.screen) == nil {
-                    element = moved
-                    snapshot = after
-                    // **飲まれたタップの基準を撮り直す**: 送った後の画面が「撃つ直前」なので、
-                    // 古い基準のままだと自分のスクロールを「画面が変わった」と数えてしまう
-                    recordInteraction(step: step, element: moved, in: after)
-                    lastTapTarget = moved
-                    driverFallback = Self.joinNotes(driverFallback,
-                        "scrolled the container to bring the target out from under "
-                        + "\(TapTargetGeometry.describe(over)) before touching it")
-                }
+            // **縁の帯に潜っているだけなら、撃つ前に1回だけ送って外す**(2026-08-27。
+            // 判定と手順は liftCoveredTarget の1箇所。type も同じものを通る)
+            if let lifted = try await liftCoveredTarget(element, in: snapshot, step: step,
+                                                        verb: "touching", phase: &phase) {
+                element = lifted.element
+                snapshot = lifted.snapshot
+                // **飲まれたタップの基準を撮り直す**: 送った後の画面が「撃つ直前」なので、
+                // 古い基準のままだと自分のスクロールを「画面が変わった」と数えてしまう
+                recordInteraction(step: step, element: lifted.element, in: lifted.snapshot)
+                lastTapTarget = lifted.element
+                driverFallback = Self.joinNotes(driverFallback, lifted.note)
             }
             start = clock.now
             // **中心が容器の外に落ちる要素だけ、見えている部分の中心を座標で撃つ**
@@ -968,6 +951,17 @@ extension StepExecutor {
                         : "the field already held \"\(SnapshotRenderer.truncate(priorValue, 30))\";"
                             + " type appends, so the result will not simply be what you typed."
                             + " Call clearInput first if you meant to replace it")
+            // **キーボードの下の欄へは打たない**(2026-08-27)。焦点を当てるタップがキーボードに
+            // 当たるので焦点が移らず、**打鍵が直前に焦点のあった欄へ流れ込む**
+            // (受け手の 4.7 インチ実機で実測: 市区町村の欄に住所が3回ぶん追記された。
+            // 読み返しが 422 で止めるが、別の欄はすでに壊れている)。tap と同じ規則で
+            // 容器を送り、外せたら送った後の木で解決し直す。外せなければ従来どおり撃つ
+            if let lifted = try await liftCoveredTarget(element, in: snapshot, step: step,
+                                                        verb: "typing", phase: &phase) {
+                element = lifted.element
+                snapshot = lifted.snapshot
+                driverFallback = Self.joinNotes(driverFallback, lifted.note)
+            }
             // **入力欄でないものへ打とうとしていないか**(2026-08-14。TypeReadback の doc に実測)。
             // 検証は両側とも空になる経路なので、せめて内側の欄を名指しして知らせる
             let nonInputNote = TapTargetGeometry.nonInputTypeTargetNote(element, in: snapshot.elements)
@@ -1652,6 +1646,88 @@ extension StepExecutor {
     /// 座標ドラッグを通常ドライバ →(501/ルート不明404 なら)typeDriver の順で撃つ。
     /// 座標はブリッジ間で共通(ref と違い取り直しが要らない)ので、そのまま渡すだけでよい。
     /// 戻り値: true = typeDriver(XCUITest)経由
+    /// **縁の帯に潜っている対象を、容器を1回だけ送って外す**(tap と type が共有する)。
+    /// 覆いは2種類: 木に載る操作可能な帯(タブバー・固定フッタ = `overlayCoveringForUncover`)と、
+    /// 木に要素として渡せないソフトキーボード(`KeyboardOcclusion.frame`)。
+    /// 外せたら (送った後の要素, 送った後の木, 注記) を返し、外せなければ nil
+    /// (呼び手は従来どおり警告付きで撃つ。**拒否はしない**)。
+    /// 払うのは覆いが出ている画面だけで、ドラッグ1回と木1枚。
+    /// verb は注記の文言(touching / typing)。判定そのものは共通で、言い回しだけ呼び手が持つ
+    /// **縁の帯に潜っている対象を、容器を送って外す**(tap と type が共有する)。
+    /// 覆いは2種類: 木に載る操作可能な帯(タブバー・固定フッタ = `overlayCoveringForUncover`)と、
+    /// 木に要素として渡せないソフトキーボード(`KeyboardOcclusion.frame`)。
+    /// 外せたら (送った後の要素, 送った後の木, 注記) を返し、外せなければ nil
+    /// (呼び手は従来どおり警告付きで撃つ。**拒否はしない**)。
+    ///
+    /// **1回では足りないことがあるので、動いている限り最大 `maxLifts` 回送る**
+    /// (2026-08-27 実測: 191pt 要求して実際の移動は 144pt で、中心がまだ覆いの内側だった)。
+    /// 動かなくなったら諦める = 端まで来ている画面で無限に粘らない。
+    /// verb は注記の文言(touching / typing)。判定は共通で、言い回しだけ呼び手が持つ
+    private func liftCoveredTarget(_ element: ElementInfo, in snapshot: SnapshotResponse,
+                                   step: FlowStep, verb: String, maxLifts: Int = 3,
+                                   phase: inout PhaseAccumulator) async throws
+        -> (element: ElementInfo, snapshot: SnapshotResponse, note: String)? {
+        var current = element
+        var currentSnapshot = snapshot
+        var coverName: String?
+        let clock = ContinuousClock()
+        for _ in 0..<maxLifts {
+            guard let container = Self.clippingContainer(
+                    of: current, in: currentSnapshot.elements,
+                    inferring: step.containerInference ?? true) else { return nil }
+            let keyboard = KeyboardOcclusion.resolve(reported: currentSnapshot.keyboardFrame,
+                                                     in: currentSnapshot.elements)
+            var jump: Double?
+            var coverRect: FTRect?
+            // 申告が無い木では chrome から推定する(意味は変えない。理由は keyboardBandFromChrome)
+            let keyboardBand = keyboard.frame
+                ?? TapTargetGeometry.keyboardBandFromChrome(in: currentSnapshot.elements,
+                                                            screen: currentSnapshot.screen)
+            if let keyboardFrame = keyboardBand,
+               TapTargetGeometry.keyboardCoveredAdvisory(current, keyboardFrame: keyboardFrame) != nil {
+                jump = TapTargetGeometry.uncoverScrollJump(target: current, coveredBy: keyboardFrame,
+                                                           container: container)
+                coverName = coverName ?? "the keyboard"
+                coverRect = keyboardFrame
+            }
+            if jump == nil,
+               let over = TapTargetGeometry.overlayCoveringForUncover(
+                   current, in: currentSnapshot.elements, screen: currentSnapshot.screen) {
+                jump = TapTargetGeometry.uncoverScrollJump(target: current, coveredBy: over,
+                                                           container: container)
+                coverName = coverName ?? TapTargetGeometry.describe(over)
+                coverRect = over.frame
+            }
+            // **指を当てるのは覆いを避けた領域**(理由は uncoverDragArea)
+            guard let jump, let coverRect,
+                  let dragArea = TapTargetGeometry.uncoverDragArea(container: container,
+                                                                   cover: coverRect),
+                  await slowDrag(jump: jump, container: dragArea, phase: &phase) else { return nil }
+            let start = clock.now
+            let after = try await freshSnapshot(.afterOwnMove)
+            phase.snapshotMs += Self.ms(clock.now - start)
+            guard let (moved, _) = Self.resolve(step: step, in: after) else { return nil }
+            let afterBand = KeyboardOcclusion.resolve(reported: after.keyboardFrame,
+                                                      in: after.elements).frame
+                ?? TapTargetGeometry.keyboardBandFromChrome(in: after.elements, screen: after.screen)
+            let stillCovered = (afterBand.flatMap {
+                    TapTargetGeometry.keyboardCoveredAdvisory(moved, keyboardFrame: $0)
+                } != nil)
+                || TapTargetGeometry.overlayCoveringForUncover(
+                       moved, in: after.elements, screen: after.screen) != nil
+            if !stillCovered {
+                return (moved, after,
+                        "scrolled the container to bring the target out from under"
+                        + " \(coverName ?? "the cover") before \(verb) it")
+            }
+            // 動かなくなったら諦める(端まで来ている・容器がスクロールしない画面)
+            guard moved.frame.y != current.frame.y else { return nil }
+            current = moved
+            currentSnapshot = after
+        }
+        return nil
+    }
+
     private func dragWithFallback(path: FTSwipePath, durationSeconds: Double,
                                   phase: inout PhaseAccumulator) async throws -> Bool {
         try await gestureWithFallback(phase: &phase) {

@@ -79,3 +79,62 @@ final class UncoverScrollJumpTests: XCTestCase {
             target: target, coveredBy: over, container: container))
     }
 }
+
+/// **送るときに指を当てる領域**(覆いを避けた容器の残り)の固定。
+/// 容器をそのまま渡すと覆いの上をなぞることになり、何も動かない。
+final class UncoverDragAreaTests: XCTestCase {
+
+    private let container = FTRect(x: 0, y: 140, width: 402, height: 700)
+
+    func testBottomCoverLeavesTheAreaAboveIt() {
+        let keyboard = FTRect(x: 0, y: 573, width: 402, height: 301)
+        guard let area = TapTargetGeometry.uncoverDragArea(container: container, cover: keyboard) else {
+            return XCTFail("覆いの上に 433pt 残っているのに nil")
+        }
+        XCTAssertEqual(area.y, 140)
+        XCTAssertEqual(area.y + area.height, 573, "指がキーボードの上に乗ってはいけない")
+    }
+
+    func testTopCoverLeavesTheAreaBelowIt() {
+        let navBar = FTRect(x: 0, y: 140, width: 402, height: 88)
+        let area = TapTargetGeometry.uncoverDragArea(container: container, cover: navBar)
+        XCTAssertEqual(area?.y, 228)
+    }
+
+    /// 残りが狭すぎるとドラッグが成立しない(dragGesture が捨てる)ので送らない
+    func testTooLittleRoomIsRefused() {
+        let keyboard = FTRect(x: 0, y: 200, width: 402, height: 674)
+        XCTAssertNil(TapTargetGeometry.uncoverDragArea(container: container, cover: keyboard))
+    }
+}
+
+/// 申告が無い木でのキーボード帯の推定(送る判断専用)。
+/// **警告の意味は変えない** —— `KeyboardOcclusion` は申告が無ければ「キーボード無し」のまま。
+final class KeyboardBandFromChromeTests: XCTestCase {
+
+    private let screen = FTRect(x: 0, y: 0, width: 402, height: 874)
+
+    private func element(_ id: String?, _ rect: FTRect, ref: Int = 1) -> ElementInfo {
+        ElementInfo(ref: ref, type: "other", identifier: id, label: nil, value: nil,
+                    placeholder: nil, enabled: true, frame: rect, depth: 2)
+    }
+
+    /// 実測の形(E2E-iOS の UIKit 入力): キーボードが `other id=inputView` として出る
+    func testChromeAtTheBottomEdgeIsTakenAsTheKeyboard() {
+        let elements = [element("inputView", FTRect(x: 0, y: 573, width: 402, height: 301))]
+        let band = TapTargetGeometry.keyboardBandFromChrome(in: elements, screen: screen)
+        XCTAssertEqual(band?.y, 573)
+        XCTAssertEqual(band.map { $0.y + $0.height }, 874)
+    }
+
+    /// 画面の下端に接していない同名要素は採らない(矩形の暴発を防ぐ)
+    func testChromeAwayFromTheBottomEdgeIsIgnored() {
+        let elements = [element("inputView", FTRect(x: 0, y: 0, width: 402, height: 50))]
+        XCTAssertNil(TapTargetGeometry.keyboardBandFromChrome(in: elements, screen: screen))
+    }
+
+    func testNoChromeMeansNoBand() {
+        let elements = [element("some_row", FTRect(x: 0, y: 800, width: 402, height: 74))]
+        XCTAssertNil(TapTargetGeometry.keyboardBandFromChrome(in: elements, screen: screen))
+    }
+}
