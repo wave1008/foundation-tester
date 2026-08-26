@@ -17,7 +17,12 @@ class サインアップ入力バリデーションが働くこと {
         tap("#tab_account")
         waitForDisplay("#btn_benchmark")
         waitForClose("#account_loading")
-        ifCanSelect("#btn_logout") { tap("#btn_logout") }
+        // 4.7インチ実機ではアカウント画面の下端が下部タブバーに潜る(D-02)。末尾まで送ってから
+        // 押さないと、タップがタブ「カート」に当たりログアウトできない
+        ifCanSelect("#btn_logout") {
+            scrollToBottom()
+            tap("#btn_logout")
+        }
     }
 
     @Test("必須項目が空だと登録されない")

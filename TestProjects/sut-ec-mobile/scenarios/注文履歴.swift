@@ -29,7 +29,12 @@ class 注文履歴に確定した注文が並ぶこと {
     func tearDown() {
         ifCanSelect("#btn_back") { tap("#btn_back") }
         ifCanSelect("#tab_account") { tap("#tab_account") }
-        ifCanSelect("#btn_logout", waitSeconds: 1) { tap("#btn_logout") }
+        // 4.7インチ実機ではアカウント画面の下端が下部タブバーに潜る(D-02)。末尾まで送ってから
+        // 押さないと、タップがタブ「カート」に当たりログアウトできない
+        ifCanSelect("#btn_logout", waitSeconds: 1) {
+            scrollToBottom()
+            tap("#btn_logout")
+        }
     }
 
     /// ログイン状態にする。未登録なら登録、登録済みなら「登録に失敗しました」からログインへ回る

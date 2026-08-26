@@ -29,7 +29,12 @@ class ログイン失敗が表示されること {
         tap("#tab_account")
         waitForDisplay("#btn_benchmark")
         waitForClose("#account_loading")
-        ifCanSelect("#btn_logout") { tap("#btn_logout") }
+        // 4.7インチ実機ではアカウント画面の下端が下部タブバーに潜る(D-02)。末尾まで送ってから
+        // 押さないと、タップがタブ「カート」に当たりログアウトできない
+        ifCanSelect("#btn_logout") {
+            scrollToBottom()
+            tap("#btn_logout")
+        }
     }
 
     @Test("誤った資格情報ではログインできずエラーが出る")
