@@ -98,6 +98,14 @@
         "simulator": "iPhone 17 Pro(iOS 27.0)-02",
         "os": "27.0",
         "udid": "73FA356F-831B-4F0B-A0AE-E4CD31CB8848"
+      },
+      {
+        "machine": "M1Ultra",
+        "name": "iPhone wave",
+        "kind": "physical",
+        "os": "26.6.1",
+        "udid": "00008130-001819863E60001C",
+        "model": "iPhone 15 Pro"
       }
     ]
   },
@@ -172,6 +180,14 @@
         "machine": "local",
         "name": "Pixel 10(Android 16(API 36) / arm64-v8a)-02",
         "avd": "Pixel_10_Android_16_API_36_arm64-v8a_-02"
+      },
+      {
+        "machine": "M1Ultra",
+        "name": "Pixel 3a",
+        "kind": "physical",
+        "os": "12",
+        "serial": "93MAY0CY1M",
+        "model": "Pixel 3a"
       }
     ]
   }
