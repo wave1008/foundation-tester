@@ -606,8 +606,8 @@ function renderSettingsPanel(): string {
         <table class="settings-remote-hosts-table">
           <thead>
             <tr>
-              <th>${t("panels.settings.remoteHostsColMachine")}</th>
               <th>${t("panels.settings.remoteHostsColHost")}</th>
+              <th>${t("panels.settings.remoteHostsColMachine")}</th>
               <th>${t("panels.settings.remoteHostsColDir")}</th>
               <th></th>
             </tr>

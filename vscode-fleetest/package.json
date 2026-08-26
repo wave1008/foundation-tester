@@ -2,7 +2,7 @@
   "name": "vscode-fleetest",
   "displayName": "fleetest mobile",
   "description": "%fleetest.extension.description%",
-  "version": "0.0.606",
+  "version": "0.0.607",
   "private": true,
   "publisher": "wave1008",
   "license": "MIT",

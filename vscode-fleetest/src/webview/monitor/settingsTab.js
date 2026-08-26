@@ -176,8 +176,10 @@ function addHostRow(host, confirmed) {
     return input;
   };
 
-  row.machineInput = makeTextCell(host ? host.machine : '');
+  // **列の並び = makeTextCell を呼ぶ順**(td を順に append する)。ホスト → マシン → ディレクトリ。
+  // 必須の host を先に置き、任意のマシン名をその右に置く(見出しは monitorHtml.ts と対)
   row.hostInput = makeTextCell(host ? host.host : '', 'user@host');
+  row.machineInput = makeTextCell(host ? host.machine : '');
   row.dirInput = makeTextCell(host ? host.dir : '', '~/fleetest-runner');
   // ホストを打つたびにマシン名のウォーターマークを追従させる(何になるかを先に見せる)
   row.hostInput.addEventListener('input', () => updateMachinePlaceholder(row));

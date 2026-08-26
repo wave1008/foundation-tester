@@ -72,20 +72,41 @@ function fill(window, input, value) {
   input.dispatchEvent(new window.Event("input", { bubbles: true }));
 }
 
+// 列の並び(monitorHtml.ts の thead と settingsTab.js の td 生成順が対)。
+// **必須のホストが先、任意のマシン名がその右**。下のテストが見出しと入力欄の両方で固定する
+const [HOST, MACHINE, DIR] = [0, 1, 2];
+
 const REMOTE_CONFIG = {
   type: "remoteConfig",
   hosts: [{ machine: "M1Max", host: "user@m1max", dir: "" }],
   artifacts: "collect",
 };
 
-test("remoteConfig の machine が表の1列目に出る", (t) => {
+test("列の並びはホスト → マシン(任意) → 作業ベースディレクトリ", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  const headers = [...document.querySelectorAll(".settings-remote-hosts-table thead th")]
+    .map((th) => th.textContent.trim());
+  assert.match(headers[HOST], /ホスト|Host/);
+  assert.match(headers[MACHINE], /マシン|Machine/);
+  assert.match(headers[DIR], /ディレクトリ|directory/);
+
+  // 入力欄の並びも見出しと同じであること(td の生成順がズレると値が別の列に入る)
+  post(window, REMOTE_CONFIG);
+  const inputs = document.querySelectorAll("#settings-remote-hosts-body tr input");
+  assert.equal(inputs[HOST].value, "user@m1max");
+  assert.equal(inputs[MACHINE].value, "M1Max");
+});
+
+test("remoteConfig の machine が表のマシン列に出る", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
 
   post(window, REMOTE_CONFIG);
   const inputs = document.querySelectorAll("#settings-remote-hosts-body tr input");
-  assert.equal(inputs[0].value, "M1Max");
-  assert.equal(inputs[1].value, "user@m1max");
+  assert.equal(inputs[0].value, "user@m1max");
+  assert.equal(inputs[1].value, "M1Max");
 });
 
 // **マシン名は任意**(2026-08-27)。この Mac だけのエイリアスなので、名前を付けたくない
@@ -102,7 +123,7 @@ test("マシン名が空でもホストだけで確定できる(名前は必須�
   const confirm = pendingRow.querySelector(".settings-remote-hosts-confirm");
 
   assert.equal(confirm.disabled, true, "空行では確定できない");
-  fill(window, inputs[1], "user@m1ultra.local");
+  fill(window, inputs[HOST], "user@m1ultra.local");
   assert.equal(confirm.disabled, false, "ホストだけで確定できる(マシン名は任意)");
 });
 
@@ -115,12 +136,12 @@ test("マシン名欄のウォーターマークが、省略したときに付�
   const pendingRow = document.querySelector("#settings-remote-hosts-body tr.settings-remote-hosts-row-pending");
   const inputs = pendingRow.querySelectorAll("input");
 
-  assert.match(inputs[0].placeholder, /省略可|optional/,
+  assert.match(inputs[MACHINE].placeholder, /省略可|optional/,
     "ホスト未入力のうちは「省略できる」ことを出す");
-  fill(window, inputs[1], "user@m1ultra.local");
-  assert.equal(inputs[0].placeholder, "m1ultra.local", "user@ を落としたホスト部を出す");
-  fill(window, inputs[1], "192.168.1.20");
-  assert.equal(inputs[0].placeholder, "192.168.1.20");
+  fill(window, inputs[HOST], "user@m1ultra.local");
+  assert.equal(inputs[MACHINE].placeholder, "m1ultra.local", "user@ を落としたホスト部を出す");
+  fill(window, inputs[HOST], "192.168.1.20");
+  assert.equal(inputs[MACHINE].placeholder, "192.168.1.20");
 });
 
 test("マシン名を空のまま確定すると、host のホスト部が machine として送られる", (t) => {
@@ -132,7 +153,7 @@ test("マシン名を空のまま確定すると、host のホスト部が machi
   click(window, document.getElementById("settings-remote-hosts-add"));
   const pendingRow = document.querySelector("#settings-remote-hosts-body tr.settings-remote-hosts-row-pending");
   const inputs = pendingRow.querySelectorAll("input");
-  fill(window, inputs[1], "user@m1ultra.local");
+  fill(window, inputs[HOST], "user@m1ultra.local");
   click(window, pendingRow.querySelector(".settings-remote-hosts-confirm"));
 
   const message = JSON.parse(JSON.stringify(posted.filter((m) => m.type === "setRemoteConfig").at(-1)));
@@ -151,8 +172,8 @@ test("行を追加して確定すると setRemoteConfig が machine/host/dir で
 
   const pendingRow = document.querySelector("#settings-remote-hosts-body tr.settings-remote-hosts-row-pending");
   const inputs = pendingRow.querySelectorAll("input");
-  fill(window, inputs[0], "M1Ultra");
-  fill(window, inputs[1], "user@m1ultra");
+  fill(window, inputs[MACHINE], "M1Ultra");
+  fill(window, inputs[HOST], "user@m1ultra");
   click(window, pendingRow.querySelector(".settings-remote-hosts-confirm"));
 
   const raw = posted.filter((m) => m.type === "setRemoteConfig").at(-1);
