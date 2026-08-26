@@ -17,6 +17,7 @@ struct HomeScreen: View {
             TaggedButton(tag: Tags.navLifecycle, label: "ライフサイクル", fillWidth: true) { onNavigate(.lifecycle) }
             TaggedButton(tag: Tags.navHeal, label: "自己修復", fillWidth: true) { onNavigate(.heal) }
             TaggedButton(tag: Tags.navDiagnostics, label: "診断", fillWidth: true) { onNavigate(.diagnostics) }
+            TaggedButton(tag: Tags.navCover, label: "覆い", fillWidth: true) { onNavigate(.cover) }
         }
     }
 }

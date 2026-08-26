@@ -1,7 +1,7 @@
 import SwiftUI
 
 enum Screen {
-    case selector, input, gesture, map, scroll, async, dialog, lifecycle, heal, diagnostics, noid, webview
+    case selector, input, gesture, map, scroll, async, dialog, lifecycle, heal, diagnostics, noid, webview, cover
 }
 
 private enum Tab { case home, controls, about }
@@ -42,6 +42,7 @@ struct AppShell: View {
             case .diagnostics: return "診断"
             case .noid: return "ID なし"
             case .webview: return "WebView"
+            case .cover: return "覆い"
             }
         }
     }
@@ -107,6 +108,7 @@ struct AppShell: View {
             case .diagnostics: DiagnosticsScreen()
             case .noid: NoIdScreen()
             case .webview: WebViewScreen()
+            case .cover: CoverScreen()
             }
         }
     }

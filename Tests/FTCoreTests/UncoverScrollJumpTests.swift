@@ -34,6 +34,18 @@ final class UncoverScrollJumpTests: XCTestCase {
         XCTAssertLessThan(jump ?? 0, 0)
     }
 
+    /// **帯の下端が容器の下端と揃っていなくても外せる**(タブバーはセーフエリアぶん内側)。
+    /// E2E-iOS の witness の実測値(帯 778..840 / 容器 200..873 / 対象 788..850)
+    func testTabBarNotFlushWithTheContainerEdge() {
+        let container = FTRect(x: 0, y: 200, width: 402, height: 673)
+        let target = element("button", FTRect(x: 16, y: 788, width: 370, height: 62))
+        let tabBar = element("button", FTRect(x: 134, y: 778, width: 134, height: 62))
+        let jump = TapTargetGeometry.uncoverScrollJump(
+            target: target, coveredBy: tabBar, container: container)
+        XCTAssertNotNil(jump, "セーフエリアぶん内側の帯でも外せなければ実機の形を救えない")
+        XCTAssertGreaterThan(jump ?? 0, 0)
+    }
+
     /// dragGesture は 50pt 未満のドラッグを捨てるので、必要量が小さくても切り上げる
     func testSmallOverlapStillProducesAUsableDrag() {
         let target = element("button", FTRect(x: 16, y: 545, width: 340, height: 20))
@@ -59,10 +71,10 @@ final class UncoverScrollJumpTests: XCTestCase {
             target: target, coveredBy: modal, container: container))
     }
 
-    /// 縁に貼り付いていない浮きもの(中央のダイアログ等)は送っても付いてくる
+    /// 容器の中心線を跨ぐ覆い(中央のダイアログ等)はどちらへ送っても外れない
     func testFloatingOverlayIsNotWorthScrolling() {
-        let target = element("button", FTRect(x: 16, y: 300, width: 340, height: 48))
-        let over = element("button", FTRect(x: 16, y: 290, width: 200, height: 80))
+        let target = element("button", FTRect(x: 16, y: 330, width: 340, height: 48))
+        let over = element("button", FTRect(x: 16, y: 320, width: 200, height: 80))
         XCTAssertNil(TapTargetGeometry.uncoverScrollJump(
             target: target, coveredBy: over, container: container))
     }

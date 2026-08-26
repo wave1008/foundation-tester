@@ -28,6 +28,11 @@ enum Tags {
     static let navWebview = "nav_webview"
     static let webviewContainer = "wv_container"
     static let navNoid = "nav_noid"
+    /// **iOS SUT だけが持つ witness**: スクロール内容の下端が固定フッタに潜る画面
+    /// (実アプリで頻出。タップが下の帯に当たる形の対照)
+    static let navCover = "nav_cover"
+    static let btnUnderFooter = "btn_under_footer"
+    static let txtCoverResult = "txt_cover_result"
 
     // セレクタ
     static let selectorResult = "txt_selector_result"

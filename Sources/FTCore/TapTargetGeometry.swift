@@ -407,21 +407,24 @@ public enum TapTargetGeometry {
         guard container.height > 0 else { return nil }
         guard BridgeSnapshotThinning.operableTypes.contains(over.type) else { return nil }
         guard over.frame.height < container.height / 2 else { return nil }
-        // **どちら向きに送るかは「覆いが容器のどちらの縁に貼り付いているか」で決まる**。
+        // **どちら向きに送るかは「覆いが容器の中心線のどちら側にあるか」で決まる**。
         // 「覆いが対象の上か下か」では決まらない —— 中心を覆っている以上、覆いの矩形は
         // 必ず対象の中心を含むので、上下どちらの比較も成り立たない(最初の実装の誤り)。
-        // 縁に貼り付いていない浮きもの(中央のダイアログ等)は送っても付いてくるので nil
-        let containerBottom = container.y + container.height
+        // **「容器の縁に接しているか」でも決まらない** —— タブバーの下端は
+        // セーフエリアぶん内側にあり、内容を潜らせた容器の下端とは揃わない
+        // (2026-08-27 に E2E-iOS の witness で実測: 帯 778..840 / 容器 200..873)。
+        // 中心線を跨ぐ覆い(中央のダイアログ等)は「どちらへ送っても外れない」ので nil
+        let containerCentre = container.y + container.height / 2
         let overBottom = over.frame.y + over.frame.height
-        if overBottom >= containerBottom - margin {
-            // 下の縁の帯(タブバー・固定フッタ)= 対象を上へ逃がす
+        if over.frame.y > containerCentre {
+            // 下側の帯(タブバー・固定フッタ)= 対象を上へ逃がす
             let needed = target.frame.y + target.frame.height - over.frame.y + margin
             guard needed > 0 else { return nil }
             let jump = max(needed, minimumJump)
             return jump < container.height ? jump : nil
         }
-        if over.frame.y <= container.y + margin {
-            // 上の縁の帯(ナビゲーションバー)= 対象を下へ逃がす
+        if overBottom < containerCentre {
+            // 上側の帯(ナビゲーションバー)= 対象を下へ逃がす
             let needed = overBottom - target.frame.y + margin
             guard needed > 0 else { return nil }
             let jump = max(needed, minimumJump)
