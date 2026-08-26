@@ -597,6 +597,7 @@ FileVault 有効のランナーは**再起動のたびに誰かが解錠+ログ�
 | `unknown or unsupported macOS version` / `brew install xcodegen failed` | Homebrew がその macOS を知らない古い版（brew が1つも動かない） | `git -C /opt/homebrew fetch origin && git -C /opt/homebrew reset --hard origin/master` |
 | `cannot resolve the local project` | 手元にプロジェクトが複数 | `--project <名前>` を付ける |
 | `is sitting at the login window` | ランナー機がログイン画面 | 解錠してログイン(画面共有) |
+| `setup script exited with status 1` で**シナリオが0本**。手でランナーの画面から同じスクリプトを流すと通る | **ssh 越しに起こしたプロセスはローカルネットワーク権限を取れない**(許可を与える相手がシステム設定の一覧に現れない)。依存サービスが同じ機械の別アドレス(コンテナの 192.168.64.x 等)へ出ようとして `EHOSTUNREACH` | 依存サービスへの接続先を **`127.0.0.1` にする**(コンテナ実行基盤は loopback へ publish していることが多い)。LAN 越しが要るなら、そのサービスをランナーの GUI セッションで常駐させる |
 | `git revision mismatch` | 版がズレている | メッセージの向き付き案内に従う(「複数人でフリートを共有する」の表。単独利用ならステップ3) |
 | `another dispatch is already running on this remote host` | 別のディスパッチ(他の人・別ターミナル)が実行中、または自分のディスパッチが死んでロックが残った | 待つ(`--wait-lock <秒>`)。保持者が自分で死んでいるなら `fleetest remote unlock --host <ホスト>`。他の人のもので確認できたときだけ `--force-lock` |
 | `toolchain mismatch` | Xcode / macOS が違う | 両機を同じ版に |
