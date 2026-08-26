@@ -20,12 +20,16 @@ struct ApiEnsureSettingsCommand: AsyncParsableCommand {
     @Option(help: "Location of the foundation-tester clone (used for the absolute paths of the allowed commands)")
     var toolRoot: String?
 
+    // install.sh が解決した結果を受ける(省略時は自動判定)。**インストーラの決定を上書きしない**
+    @Option(help: "Which agent conventions to honour: claude / codex / both / auto (default: auto-detect)")
+    var agent: String?
+
     func run() async throws {
         let root = URL(fileURLWithPath: workDir ?? FileManager.default.currentDirectoryPath)
         // **Codex だけの受け手には .claude/ を作らない**。承認の粗さは approval_policy /
         // sandbox_mode の話で、コマンド単位の allowlist は Codex に存在しない
         // (AgentIntegration.hasCommandPermissionAllowlist)
-        let agents = AgentIntegration.detect(packageRoot: root)
+        let agents = AgentIntegration.parse(agent, packageRoot: root)
         guard agents.contains(where: \.hasCommandPermissionAllowlist) else {
             print("skipped: no agent with a per-command permission allowlist "
                   + "(\(agents.map(\.displayName).joined(separator: ", ")))")

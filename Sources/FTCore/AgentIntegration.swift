@@ -84,6 +84,22 @@ public enum AgentIntegration: String, CaseIterable, Sendable {
         return found.isEmpty ? [.claude] : found
     }
 
+    /// CLI の `--agent` を解釈する。`nil`/空/`auto` は自動判定へ落とす。
+    /// **install.sh が解決した結果をそのまま渡すための口** —— インストーラが `--agent codex` と
+    /// 決めたのに CLI 側が独自に判定すると、**同じ実行の中で別々の結論が出る**
+    /// (実際に踏んだ: 受け手のホームに `~/.claude` があるだけで Codex 専用の導入に
+    /// `.claude/settings.json` ができた)。
+    public static func parse(_ raw: String?, packageRoot: URL) -> [AgentIntegration] {
+        guard let raw, !raw.trimmingCharacters(in: .whitespaces).isEmpty else {
+            return detect(packageRoot: packageRoot)
+        }
+        let tokens = raw.lowercased().split(whereSeparator: { $0 == "," || $0 == " " }).map(String.init)
+        if tokens.contains("auto") { return detect(packageRoot: packageRoot) }
+        if tokens.contains("both") { return allCases }
+        let parsed = tokens.compactMap(AgentIntegration.init(rawValue:))
+        return parsed.isEmpty ? detect(packageRoot: packageRoot) : parsed
+    }
+
     /// ファイルシステムを見る版。`~/` 始まりはホーム基準、それ以外は packageRoot 基準。
     public static func detect(packageRoot: URL,
                               home: URL = FileManager.default.homeDirectoryForCurrentUser)

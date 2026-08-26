@@ -440,7 +440,10 @@ record "build" ok "$FT ($(elapsed_since $step_started))"
 # **毎回呼ぶ**。許可リストは従来 `fleetest init` でしか書かれず、更新は --skip-project で init を
 # 回さないため、エントリを増やしても**既存の受け手には一生届かなかった**(実害: 更新のたびに
 # update.sh の承認が出る)。冪等・追加のみ・fleetest 由来のコマンドだけ(ProjectScaffold が保証)
-if perms_out="$( "$FT" api ensure-settings --work-dir "$WORK_DIR" --tool-root "$TOOL_ROOT" 2>&1 )"; then
+# **--agent を渡す**。渡さないと CLI 側が独自に判定し、受け手のホームに ~/.claude が
+# あるだけで Codex 専用の導入に .claude/settings.json ができる(実際に踏んだ)
+if perms_out="$( "$FT" api ensure-settings --work-dir "$WORK_DIR" --tool-root "$TOOL_ROOT" \
+                   --agent "${AGENTS// /,}" 2>&1 )"; then
   record "permissions" ok "$perms_out"
 else
   record "permissions" warn "could not top up (only means more approval prompts; behaviour is unaffected)"
@@ -482,7 +485,7 @@ elif [ -f "$WORK_DIR/Package.swift" ]; then
 else
   # 新規の受け手パッケージ。TOOL_ROOT はローカルパス依存で引く(git 依存は手動・SKILL ステップ4参照)
   echo "==> fleetest init($WORK_DIR)"
-  ( cd "$WORK_DIR" && "$FT" init --fleetest-path "$TOOL_ROOT" \
+  ( cd "$WORK_DIR" && "$FT" init --fleetest-path "$TOOL_ROOT" --agent "${AGENTS// /,}" \
       "${NAME_ARGS[@]+"${NAME_ARGS[@]}"}" "${APP_ARGS[@]+"${APP_ARGS[@]}"}" "${PLATFORM_ARGS[@]}" ) \
     || die "project" "fleetest init failed" 4
   record "project" ok "created the consumer package${PROJECT_NAME:+ (TestProjects/$PROJECT_NAME)}"

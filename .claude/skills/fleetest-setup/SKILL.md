@@ -168,7 +168,7 @@ tag も clone で取得できる)。
 
 ### 0.7 インストーラで機械作業を一括実行（**まずこれを試す**）
 
-ステップ **0.5・1・2・2.5・3・4・5・7・7.5・7.6** はインストーラが一括で行う（冪等。済んだ手順は skip される。
+ステップ **0.5・1・2・2.5・3・4・5・7・7.5・7.6・7.7** はインストーラが一括で行う（冪等。済んだ手順は skip される。
 **既存クローンは `git pull --ff-only` で更新してから使う** — ローカル変更があれば
 **端末で破棄の可否を尋ね、破棄しないなら中止する**（古いクローンのまま build させないため。
 端末が無い＝エージェント実行では尋ねられないので必ず中止 `[fail]` になる。その場合は 🧑 に
@@ -184,6 +184,12 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scr
 **`--machine` と `--app-name` を渡すとプロファイル作成(`profile setup --auto-device`)まで1回で終わる**
 (ステップ5・8 が不要になる。デバイスは自動選定)。値はすべてステップ0の回答と preflight の出力から作る。
 
+- **どのエージェントの規約位置を用意するかは自動判定**（`.claude/` や `CLAUDE.md` や `~/.claude` が
+  あれば Claude Code、`.agents/` や `AGENTS.md` や `~/.codex` があれば Codex、両方該当することもある。
+  どれも無ければ Claude Code 単独）。**判定が実態と違うときだけ `--agent claude|codex|both` で明示する** ——
+  たとえば「Claude Code も入っているが、このプロジェクトは Codex で使う」なら `--agent codex`
+  （渡さないとホームの `~/.claude` を拾って `.claude/settings.json` まで作られる）。
+  結果は `[ok] agent:` 行に出る。
 - **curl 形を使う**（クローンの `Scripts/install.sh` は pull されるまで古く、新しい引数を渡すと
   「不明なオプション」で落ちる。curl 形なら常に最新が動き、その中でクローンを pull する）。
   clone 先を変えるなら `--tool-root <dir>`。オフラインなど curl が使えないときだけ

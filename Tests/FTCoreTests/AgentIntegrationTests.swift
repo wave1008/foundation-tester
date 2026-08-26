@@ -70,6 +70,32 @@ final class AgentIntegrationTests: XCTestCase {
         XCTAssertEqual(AgentIntegration.detect { $0 == ".codex" }, [.claude])
     }
 
+    // MARK: - --agent のパース(インストーラの決定を CLI へ渡す口)
+
+    func testParseAcceptsExplicitAgents() {
+        let root = URL(fileURLWithPath: "/nonexistent-package-root")
+        XCTAssertEqual(AgentIntegration.parse("codex", packageRoot: root), [.codex])
+        XCTAssertEqual(AgentIntegration.parse("claude", packageRoot: root), [.claude])
+        XCTAssertEqual(AgentIntegration.parse("both", packageRoot: root), AgentIntegration.allCases)
+        // install.sh は空白区切りで持っているのでカンマへ畳んで渡す。どちらの区切りでも読む
+        XCTAssertEqual(AgentIntegration.parse("claude,codex", packageRoot: root), [.claude, .codex])
+        XCTAssertEqual(AgentIntegration.parse("claude codex", packageRoot: root), [.claude, .codex])
+        XCTAssertEqual(AgentIntegration.parse("CODEX", packageRoot: root), [.codex])
+    }
+
+    /// 未指定・空・auto・解釈できない値は自動判定へ落とす(引数の綴り違いで**黙って何も
+    /// しない**より、判定に戻すほうが安全)
+    func testParseFallsBackToDetection() {
+        let root = URL(fileURLWithPath: "/nonexistent-package-root")
+        let home = URL(fileURLWithPath: "/nonexistent-home")
+        let detected = AgentIntegration.detect(packageRoot: root, home: home)
+        for raw in [nil, "", "   ", "auto", "cursor"] {
+            XCTAssertEqual(AgentIntegration.parse(raw, packageRoot: root).isEmpty, false,
+                           "\(raw ?? "nil") で空になってはいけない")
+        }
+        XCTAssertEqual(detected, [.claude], "手掛かりが無ければ claude 単独")
+    }
+
     // MARK: - ファイルシステム版
 
     func testDetectOnDiskReadsPackageAndHomeSeparately() throws {

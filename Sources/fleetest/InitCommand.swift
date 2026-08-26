@@ -19,6 +19,10 @@ struct InitCommand: AsyncParsableCommand {
     @Option(help: "Bundle ID / package name of the app under test")
     var app: String = "com.example.myapp"
 
+    // install.sh が解決した結果を受ける(省略時は自動判定)。**インストーラの決定を上書きしない**
+    @Option(help: "Which agent conventions to set up: claude / codex / both / auto (default: auto-detect)")
+    var agent: String?
+
     @Option(help: "Which run profiles to scaffold: ios / android / both (default both)")
     var platform: String = "both"
 
@@ -73,7 +77,7 @@ struct InitCommand: AsyncParsableCommand {
                 name: projectName, app: app, repoRoot: cwd,
                 platforms: try Self.platforms(from: platform))
             // 受け手が自分のプロジェクトをエージェントで開いて fleetest-setup で残りを駆動できるように
-            let agents = AgentIntegration.detect(packageRoot: cwd)
+            let agents = AgentIntegration.parse(agent, packageRoot: cwd)
             try ProjectScaffold.writeRecipientSkill(
                 packageRoot: cwd, projectName: projectName, agents: agents)
             // VSCode 拡張が fleetest.project/fleetest.binaryPath を手動設定なしで解決できるように

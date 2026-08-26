@@ -130,3 +130,38 @@ test("install.sh はサンドボックス設定を書かない(判定だけ)", (
   );
   assert.match(section, /network_access/, "サンドボックス判定に network_access がありません");
 });
+
+// --- インストーラの決定を CLI が上書きしないこと --------------------------------
+// 実害: `install.sh --agent codex` で導入したのに、CLI 側が独自判定して
+// **受け手のホームに ~/.claude があるだけで** Codex 専用のワークスペースに
+// .claude/settings.json ができた。決定は install.sh が1回だけ行い、CLI へ渡す。
+
+for (const command of ["api ensure-settings", "init"]) {
+  test(`install.sh は ${command} に --agent を渡す(CLI に再判定させない)`, () => {
+    const at = INSTALL_SH.indexOf(command === "init" ? '"$FT" init ' : '"$FT" api ensure-settings');
+    assert.ok(at > 0, `install.sh に ${command} の呼び出しがありません`);
+    // 呼び出しは行継続で複数行に跨る
+    const invocation = INSTALL_SH.slice(at, at + 400).split("\n").slice(0, 4).join("\n");
+    assert.match(
+      invocation,
+      /--agent "\$\{AGENTS\/\/ \/,\}"/,
+      `${command} の呼び出しに --agent がありません(CLI が独自判定に落ちます)`,
+    );
+  });
+}
+
+test("CLI 側は --agent を受け取る口を持つ", () => {
+  const files = {
+    "Sources/fleetest/ApiEnsureSettingsCommand.swift": "ensure-settings",
+    "Sources/fleetest/InitCommand.swift": "init",
+  };
+  for (const [file, label] of Object.entries(files)) {
+    const source = readFileSync(path.join(ROOT, file), "utf8");
+    assert.match(source, /var agent: String\?/, `${label} に --agent オプションがありません`);
+    assert.match(
+      source,
+      /AgentIntegration\.parse\(agent,/,
+      `${label} が --agent を AgentIntegration.parse で解釈していません`,
+    );
+  }
+});
