@@ -4,53 +4,44 @@
 
 | Target | Requirement |
 |---|---|
-| Common | macOS 26+. Apple Intelligence (Foundation Models) is **optional** — it's used for self-healing, FM visual verification, and scenario generation. If you enable it later, it just starts working |
-| iOS (if you test iOS) | Xcode 26+, iOS simulator, [xcodegen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`) |
-| Android (if you test Android) | Android SDK (adb), emulator or physical device |
-| Extension build | Node.js v24 or newer, npm v11 or newer (verified on v24 and v26) |
+| Common | macOS 26+ |
+| If you test iOS | Xcode 26+, iOS simulator, [xcodegen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`) |
+| If you test Android | Android SDK (adb), emulator or physical device |
+| Extension build | Node.js v24 or newer, npm v11 or newer |
 
-**You do not need both.** Set up only the platform you actually test; at least one is enough.
+You do not need both iOS and Android. Set up only the platform you actually test.
 
-> On macOS 26, only FM's **visual verification** is unavailable (the image-input API requires
-> macOS 27+). occlusion-guard (false-positive checking) and `screenLooksLike` are automatically
-> disabled; everything else works without restriction.
+`fleetest doctor` checks what is available on this machine in one go — Foundation Models,
+Xcode, xcodegen, simulators, and adb.
 
-Run `fleetest doctor` (or the `ft_doctor` MCP tool) at any time to check what's available on this
-machine — Foundation Models availability, Xcode, xcodegen, simulators, and adb.
+## Apple Intelligence (optional)
 
-## What Apple Intelligence is used for
+Fleetest works without Apple Intelligence (Foundation Models), but enabling it unlocks three
+things. If you enable it later, they just start working.
 
-> **FM features are experimental, and English-only for now.** Apple's on-device model does not
-> support Japanese during 2026; Japanese support is expected in 2027. Until then:
->
-> - **The Mac's system language must be English** (United States). Under `ja-JP` the Apple
->   Intelligence pane does not even appear in System Settings and every FM call fails.
-> - **Write `screenLooksLike` descriptions in English.**
-> - Behaviour against a Japanese-language app UI is not something we can vouch for while the
->   model itself is English-only. The app under test is unaffected in every other respect — this
->   is a limit of the model, not of fleetest.
->
-> **`availability` cannot be used to decide this.** With the system language set to Japanese,
-> `SystemLanguageModel.default.availability` still reports `.available` while every call fails.
-> Use `fleetest doctor --fm-only`, which performs a real inference and reflects it in the exit
-> code. When FM is unavailable, self-healing, `screenLooksLike` and triage are skipped rather
-> than failed — the run stays green with those features silently off, which is why the check
-> matters.
+- **Self-healing** — when a selector breaks, the model repairs it so the scenario can keep going.
+  The fix is cached, so later runs don't call the model at all.
+- **`screenLooksLike`** — visual verification of the screen against a natural-language
+  description.
+- **Failure triage** — a summary of the cause and a suggested fix, written into the report.
 
-Apple Intelligence (an on-device model) is optional, but three things depend on it when enabled:
+All of it runs on-device; screen data from your app never leaves your Mac.
 
-- **Self-healing**: when a selector breaks, the model repairs it so the scenario can keep going
-  (and the fix is cached, so replays after the first one don't need the model at all).
-- **`screenLooksLike`**: multimodal visual verification against a natural-language description of
-  the screen.
-- **Failure triage**: when a scenario fails, the model helps summarize the cause and suggest a
-  fix in the report.
+### Limitations
 
-None of this leaves the Mac — Foundation Models runs entirely on-device.
+- **English-only for now.** Apple's on-device model does not support Japanese during 2026;
+  Japanese support is expected in 2027. To use it, **the Mac's system language must be English
+  (United States)**, and `screenLooksLike` descriptions must be written in English. Behaviour
+  against a Japanese-language app UI cannot be vouched for in the meantime.
+- On macOS 26, only visual verification (`screenLooksLike` and the false-positive check) is
+  unavailable, because image input requires macOS 27+. It is disabled automatically; everything
+  else works without restriction.
+- When FM is unavailable, these features are **skipped**, not failed. The run stays green with
+  the features silently off, so confirm they actually work with `fleetest doctor --fm-only`,
+  which performs one real inference. Details in
+  [Troubleshooting](../in_action/troubleshooting.md).
 
 ## Supported UI frameworks
-
-Fleetest has been verified against apps built with:
 
 | Framework | Platforms |
 |---|---|

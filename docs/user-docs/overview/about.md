@@ -1,69 +1,57 @@
 # About Fleetest
 
-Fleetest is a macOS-only E2E testing tool for iOS / Android apps, built around coding agents
-(Claude Code and others).
+Fleetest is an E2E testing tool for iOS / Android apps. It runs on macOS and is designed to be
+used together with a coding agent such as Claude Code.
 
-## Where the name comes from
+## Three things packed into the name
 
-**fleetest** is `fleet` + `test`, and at the same time the superlative of *fleet* (swift). The
-three things packed into the name are the three things the tool is built for.
+**fleetest** is `fleet` + `test` — and at the same time the superlative of *fleet* (swift).
 
-| | |
-|---|---|
-| **fleet** | Tests run in parallel across a **fleet of devices** — simulators, emulators, physical devices, and even other Macs over SSH. Scenarios are distributed to the workers automatically, so adding devices shortens the run rather than complicating it. |
-| **fleetest** | *Fleet* is an old word for swift, and **fleetest** is its superlative. Replay carries no LLM in the loop, so what bounds a run is the device, not a model — and the ordering puts the longest scenarios in first so the tail does not idle. |
-| **free** | **Running tests costs nothing.** No cloud device farm, no per-run API billing. Replay is deterministic and local, and the model that does step in on failure is on-device. |
+- **fleet** — Tests run in parallel across a **fleet of devices**: simulators, emulators, physical
+  devices, and even other Macs over SSH. Scenarios are distributed automatically, so the more
+  devices you add, the shorter the run.
+- **fleetest** — Replay has no LLM in the loop, so it is the **fastest** it can be. What bounds a
+  run is the device, not a model.
+- **free** — Running tests costs **nothing**. No cloud device farm, no per-run API billing.
 
-## Design philosophy: "AI writes the tests, code replays them deterministically"
+## AI writes the tests, code replays them deterministically
 
-- **Generation**: recording your operations in the VSCode extension's live-control panel
-  generates a **Swift test scenario (a Shirates-style DSL)**. More complex scenarios can be
-  written by an agent (via MCP) or by hand. Irregular handling and test data setup can be
-  written directly in Swift.
-- **Execution**: scenarios run deterministically, without an LLM in the loop — fast, stable, and
-  CI-friendly.
-- **AI steps in only on failure**: locator self-healing (with a heal cache), visual verification
-  of screenshots (multimodal), and failure triage with a repair suggestion. **All of this runs
-  on-device** — screen data from your app never leaves your Mac.
+Authoring and execution have clearly separated roles.
+
+**AI (or a human) writes the test.** There are three ways to write one, and all of them produce
+the same Swift scenario.
+
+- Record your operations in the VSCode extension's live-control panel
+- Let an agent write it — it explores the real screens and captures selectors as it goes
+- Write it by hand — irregular handling and test data setup are plain Swift
+
+**Code replays it.** Scenarios run deterministically, without an LLM. Fast, stable, and
+CI-friendly.
+
+**AI steps in only on failure.** Self-healing of broken selectors, visual verification of
+screenshots, and triage of the cause. All of it runs on Apple's on-device model
+(Foundation Models), so screen data from your app never leaves your Mac.
 
 ## Four entry points
 
-The same core (Swift DSL + AppDriver + StepExecutor + the Foundation Models calls) is exposed
-through four entry points suited to different uses. The UI is consolidated in the VSCode
-extension.
+There are four entry points for different uses, but they share one core. A test written through
+any of them becomes the same `.swift` file and can be run from any of them.
 
-| Entry point | Launch | Suited for |
-|---|---|---|
-| **CLI** `fleetest` | `swift run fleetest ...` (clone), or the built `.build/debug/fleetest` | scheduled CI / regression runs (deterministic, free, exit code) |
-| **VSCode extension** | the VSCode extension (device monitor, live control, dashboard) | interactive use: running/debugging scenarios, live control (record → generate), device monitor, results dashboard |
-| **MCP server** | started automatically by the agent (Claude Code registers it from `.mcp.json`; for others see [Other agents](../tools/other_agents.md)) | agent-driven work: AI-authored tests, debugging, exploratory testing |
-| **Swift DSL** | `TestProjects/<name>/scenarios/*.swift` | the test asset itself — saved and run the same way no matter which entry point created it |
+| Entry point | Suited for |
+|---|---|
+| **VSCode extension** | Interactive use: device monitor, live control (record → generate), running, results dashboard |
+| **MCP server** | Agent-driven work: AI-authored tests, debugging, exploratory testing |
+| **CLI** `fleetest` | Scheduled CI / regression runs |
+| **Swift DSL** | The test asset itself: `TestProjects/<name>/scenarios/*.swift` |
 
-## Role division
+## How it works
 
-**Exploration and judgment (intelligence) belong to the agent; operating, executing, and
-verifying (determinism) belong to fleetest.** Tests are authored either by recording live control
-in the VSCode extension (which converts operations into a Swift scenario) or by an agent
-(via MCP) for more complex cases. Once the Swift scenario exists, it is replayed deterministically
-by the CLI or CI.
+Devices are driven through resident bridges of our own. On iOS it talks over HTTP to an XCUITest
+process inside the simulator; on Android it talks to a bridge over adb. There is no dependency on
+Appium or any other external driver.
 
-## Architecture
-
-```
-fleetest CLI / MCP ──(subprocess)──▶ fleetest-scenarios-<project> (discovers/runs a project's scenarios)
-      │                                        │  FTDSL   (Swift DSL: @TestClass/@Test macros, commands, reporting)
-      │                                        │  FTFoundationModels (Foundation Models: visual verification / healing / triage)
-      │                                        │  FTCore  (step model / AppDriver abstraction / StepExecutor)
-      │                                        ▼
-      ├─ HTTP (localhost:8123) ──▶ a resident XCUITest process inside the iOS simulator
-      │                            (WebDriverAgent-style, dependency-free custom bridge)
-      └─ adb forward ⇄ resident bridge ──▶ Android emulator / physical device
-```
-
-- The only platform boundary is the `AppDriver` protocol — the Foundation Models calls and the
-  replay engine are entirely shared between iOS and Android.
-- Snapshots are filtered on the driver side and converted into a compressed text form like
-  `[3] Button "Log In" id=login_btn` (to work within the on-device model's token budget).
+Platform differences end at the driver layer — the replay engine and the Foundation Models calls
+are entirely shared between iOS and Android.
 
 ### Link
 - [index](../index.md)

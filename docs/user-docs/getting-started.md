@@ -1,45 +1,34 @@
 # Getting Started (Installation)
 
-Fleetest is a testing tool for iOS / Android apps.
+How to install, update, and uninstall Fleetest.
 
-## Distribution policy
-
-Because it targets macOS and Xcode beta releases, there is no binary distribution at this time.
-You install it through the Claude Code plugin, which clones the repository and builds it.
+There is no binary distribution at this time. Fleetest targets beta releases of macOS / Xcode,
+so it is installed through the Claude Code plugin, which clones the repository and builds it.
+The agent drives the clone and the build, so there is little to do by hand.
 
 ## 1. Requirements
 
 | Target | Requirement |
 |---|---|
 | Common | macOS 26+ |
-| iOS (if you test iOS) | Xcode 26+, iOS simulator runtime, xcodegen |
-| Android (if you test Android) | Android SDK (adb), emulator or physical device |
-| Extension build | Node.js v24 or newer, npm v11 or newer (verified on v24 and v26) |
+| If you test iOS | Xcode 26+, iOS simulator, xcodegen |
+| If you test Android | Android SDK (adb), emulator or physical device |
+| Extension build | Node.js v24 or newer, npm v11 or newer |
 
-Some features (visual verification) require macOS 27+.
-
-FM (Foundation Models) features are **experimental and English-only during 2026** (Japanese
-support is expected in 2027). **The Mac's system language must be English** — see
-[overview/environments.md](overview/environments.md).
+To use the Foundation Models features such as self-healing and visual verification, **the Mac's
+system language must be English** (the model is English-only for now). Visual verification also
+requires macOS 27+. Details in [Requirements](overview/environments.md).
 
 ## 2. Before you start
 
-To make the Fleetest installation go smoothly, do the following beforehand.
+To keep the installation smooth, have the devices you will test on ready beforehand.
 
-- Xcode
-  - Install Xcode itself
-  - Create and boot the Simulator you want to use for testing
-- Android Studio
-  - Install Android Studio itself
-  - Create and boot the AVD you want to use for testing
-  - Creating an AVD from within fleetest (the monitor's "Add Device") requires the Android SDK
-    Command-line Tools. If they are not installed, you can install them from the same dialog's
-    "Install Command-line Tools" button (or `fleetest api install-cmdline-tools`), so no
-    preparation is needed for this beforehand.
+- **If you test iOS**: install Xcode, then create and boot the simulator you want to use
+- **If you test Android**: install Android Studio, then create and boot the AVD you want to use
 
 ## 3. Installing Fleetest
 
-1. Install the `claude` CLI if you don't have it already
+1. Install the `claude` CLI if you don't have it
 
 ```bash
 brew install claude-code
@@ -53,116 +42,97 @@ claude plugin marketplace update foundation-tester
 claude plugin install fleetest@foundation-tester --scope user
 ```
 
-> The second line, `marketplace update`, is there for machines that **already have the
-> marketplace added**. `add` sees it is already on disk and fetches nothing, so a stale cache
-> fails with `Plugin "fleetest" not found in marketplace`. On a fresh machine it does nothing.
+> The second line, `marketplace update`, refreshes the cache on a machine that already has the
+> marketplace added. With a stale cache the install fails with
+> `Plugin "fleetest" not found in marketplace`. On a fresh machine it does nothing.
 
-> **If you installed the pre-rename plugin (`ftester@foundation-tester`), remove it first.**
-> The plugin was renamed, so the two sit side by side and the old `/ftester:*` skills keep
-> pointing at a command (`ftester`) and a state directory (`.ftester/`) that no longer exist.
-> The marketplace name (`foundation-tester`) did not change, so there is nothing to re-add.
-
-```bash
-claude plugin uninstall ftester@foundation-tester
-```
+> **If the pre-rename `ftester@foundation-tester` is installed, remove it first.** The old
+> `/ftester:*` skills would stay behind, pointing at a command that no longer exists. The
+> marketplace name did not change, so there is nothing to re-add.
+>
+> ```bash
+> claude plugin uninstall ftester@foundation-tester
+> ```
 
 3. Open a **new, test-only folder** in VSCode
 
-4. Run `/fleetest:fleetest-setup` in your agent's panel.
-This performs the clone, build, project creation, and profile setup.
+4. Run `/fleetest:fleetest-setup` in your agent's panel. It clones, builds, creates the project,
+   and sets up the profiles
 
 5. Run `Developer: Reload Window` in VSCode
 
 6. Click the **device monitor** shown in the lower-left corner of VSCode
 
+If you want to go through the steps manually one at a time, see
+`.claude/skills/fleetest-setup/SKILL.md`.
 
-If you want to go through the steps manually one at a time, see `.claude/skills/fleetest-setup/SKILL.md`.
-
-**Using another agent (Codex, Cline, …)?** The runbooks are tool-neutral markdown and apply
-unchanged, but the installer only sets up the Claude Code conventions. See
-[Other agents](tools/other_agents.md) for running the installer directly, registering the MCP
-server, and handing the runbooks over (it also covers Codex's sandbox settings).
-
+Using another agent (Codex, Cline, …)? See [Other agents](tools/other_agents.md). The runbooks
+are tool-neutral and apply unchanged, but you run the installer and register the MCP server
+yourself.
 
 ## 4. Updating Fleetest
 
-The VSCode extension automatically checks for updates on startup (at most once a day) and
-notifies you. It only checks — it does not pull in the update. If you don't want the
-notification, set `fleetest.updateCheck` to `off`.
+When an update is available, the VSCode extension notifies you on startup (at most once a day).
+It only checks — it never pulls the update in by itself. If you don't want the notification, set
+`fleetest.updateCheck` to `off`.
 
-**Update status can be checked from the device monitor's "Settings" tab** (the "Check for
-updates" button). When an update is found, a dialog asks whether to update now.
-When an update is available, **an "Update now" button appears next to the tab** (shown regardless
-of which tab you're viewing). Clicking it starts pulling in the update immediately. Progress is
-shown via a spinner and a notification in the lower-right of the screen, and the detailed log
-streams to VSCode's **OUTPUT (fleetest)**. You can also jump there from the notification's "Open
-Settings tab" link. When it finishes, a dialog prompts you to reload — click **Reload window** (if you
-don't, the pre-update extension keeps running).
+### From VSCode
 
-You can also check from the Command Palette's **`fleetest: Check for Updates`** (this always
-checks, regardless of the interval or "don't notify for this version" setting). From a terminal,
-run `bash <TOOL_ROOT>/Scripts/update-check.sh` (neither of these changes anything).
+The device monitor's "Settings" tab is where you check and apply updates. When an update is
+available, an "Update now" button appears next to the tab; clicking it starts the update. When
+it finishes, click **Reload window** (otherwise the pre-update extension keeps running). Details
+in [VSCode extension](tools/vscode_extension.md).
 
-To pull in the update:
-
-1. Run the following in a terminal
+### From a terminal
 
 ```bash
 claude plugin marketplace update foundation-tester
 claude plugin update fleetest@foundation-tester
 ```
 
-2. Start a new agent session and run `/fleetest:fleetest-update`
+Then start a new agent session and run `/fleetest:fleetest-update`.
 
-You can skip the two lines above and run `bash <TOOL_ROOT>/Scripts/update.sh` instead: it does the
-pull, build, extension, and **the Claude Code plugin update** in a single command,
-cross-checking each against the clone's HEAD. If there's nothing to update, it does
-nothing (use `--force` if you want to redo everything, for example after a previous run failed
-partway through).
+A single command, `bash <TOOL_ROOT>/Scripts/update.sh`, does the same thing: pull, build, the
+extension, and the plugin update. If there is nothing to update it does nothing. Pass `--force`
+to redo everything.
 
-> **Note when you have modified the clone (`foundation-tester`) yourself**
-> During an update, local changes in the clone are **discarded without confirmation** (test
-> assets live in the work folder, and the clone is treated as distributed material). If you have
-> changes you want to keep, pass `--keep-local`, or commit / `git stash` them first. Build
-> artifacts such as `.build/` are not removed.
-> The detailed `swift build` / npm logs are not shown on screen, but the full text is kept in
-> `<work folder>/.fleetest/install-*.log` (the location is shown at the start and at the end; pass
-> `--verbose` to also print it to the screen).
-> Progress is shown one line at a time as each step finishes, so it's fine to keep waiting even
-> if it looks unresponsive (the clone and initial build can take a few minutes).
-
+> **If you have modified the clone (`foundation-tester`) yourself**: during an update, local
+> changes in the clone are discarded without confirmation. Test assets live in the work folder,
+> and the clone is treated as distributed material. Commit anything you want to keep first, or
+> pass `--keep-local`.
+>
+> The full log is kept in `<work folder>/.fleetest/install-*.log`. The clone and the first build
+> take a few minutes, but a line is printed as each step finishes, so it's fine to keep waiting.
 
 ## 5. Uninstalling Fleetest
 
-### Uninstall the plugin
+### Plugin
 
 ```bash
 claude plugin marketplace remove foundation-tester
 claude plugin uninstall fleetest@foundation-tester
 ```
 
-If the pre-rename `ftester@foundation-tester` is still there, `claude plugin uninstall` it the same way.
+If the pre-rename `ftester@foundation-tester` is still there, uninstall it the same way.
 
-### Uninstall the VSCode extension
+### VSCode extension
 
-- Uninstall it from VSCode's Extensions view
+Uninstall it from VSCode's Extensions view.
 
-### Delete the work folder
+### Work folder
 
-- Quit VSCode, then delete it via Finder or `rm`
-- **If you want to keep the work folder**, also remove the range between
-  `<!-- fleetest:begin -->` and `<!-- fleetest:end -->` in `CLAUDE.md` — this is the agent guidance
-  the installer placed there; nothing outside that range was touched
-- If you registered the MCP server with another agent yourself, remove it from that agent's
-  configuration too (for Codex: `[mcp_servers.fleetest]` and `[mcp_servers.fleetest.env]` in
-  `~/.codex/config.toml`)
+Quit VSCode, then delete it via Finder or `rm`.
 
-### Delete files
+If you want to keep the work folder, remove the range between `<!-- fleetest:begin -->` and
+`<!-- fleetest:end -->` in `CLAUDE.md`. That is the agent guidance the installer placed there;
+nothing outside the range was touched. If you registered the MCP server with another agent
+yourself, remove that configuration too.
 
-- Optionally also delete `~/.config/fleetest/config.json`
+### Leftover files and processes
 
-### Clean up processes
-- If `.build` reappears even after deleting the work folder, run the following
+Optionally delete `~/.config/fleetest/config.json` as well.
+
+If `.build` reappears after you delete the work folder, fleetest processes are still running.
 
 ```bash
 pgrep -fl 'fleetest-mcp|/fleetest (api|run|bridge|devices)|fleetest-(simstream|androidstream|devicepoll)|xcodebuild.*FleetestRunner'
@@ -171,7 +141,8 @@ pkill  -f 'fleetest-mcp|/fleetest (api|run|bridge|devices)|fleetest-(simstream|a
 
 ## 6. Troubleshooting
 
-- If you run into a problem, ask Claude Code for help.
+If you run into a problem, ask Claude Code. Common symptoms and how to narrow them down are
+collected in [Troubleshooting](in_action/troubleshooting.md).
 
 ### Link
 - [index](index.md)

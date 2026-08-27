@@ -1,39 +1,32 @@
 # Quick Start
 
-The shortest path from a completed setup to running your first scenario. This assumes
-`/fleetest:fleetest-setup` (see [Getting Started](getting-started.md)) has already been run; if you
-haven't set up yet, start there.
+The shortest path from a completed setup to running your first scenario. If you don't have a
+work folder with `TestProjects/` yet, run `/fleetest:fleetest-setup` from
+[Getting Started](getting-started.md) first.
 
-## 1. Prerequisite: setup is done
+## 1. Prepare the profiles
 
-You should already have a work folder with a `TestProjects/` directory (created by
-`/fleetest:fleetest-setup`). If not, go to [Getting Started](getting-started.md) first.
-
-## 2. Prepare a profile
-
-You need an app profile (target app), a machine profile (device), and a run profile (the
-combination of app + devices) before you can run anything. Use the `fleetest-profiles` skill in
-your agent (`/fleetest:fleetest-profiles` in Claude Code), or run
-the underlying command directly:
+A run needs three profiles — an app profile for the target app, a machine profile for the
+devices, and a run profile that combines the two. Use `/fleetest:fleetest-profiles` in your
+agent, or create them directly with a command:
 
 ```bash
 fleetest profile setup --platform ios --app-id com.example.myapp --auto-device
 ```
 
-`--auto-device` picks an available simulator/emulator on this machine automatically. See
-[Run Profile](./project/run_profile.md) for what a run profile controls once it exists.
+`--auto-device` picks an available simulator/emulator on this machine. See
+[Profiles](./project/profiles.md) for the details.
 
-## 3. Write one scenario
+## 2. Write one scenario
 
-Any of the following three paths produce the same kind of Swift file under
+There are three ways, and all of them produce the same kind of Swift file under
 `TestProjects/<project>/scenarios/`:
 
-- Ask your agent to write it (`/fleetest:fleetest-scenario` in Claude Code,
-  — it explores the real screens with you and captures real
-  selectors before writing the file.
-- Record it live from the VSCode extension's live-control panel (operate the app; a scenario is
-  generated for you).
-- Write it by hand.
+- Ask your agent (`/fleetest:fleetest-scenario`). It explores the real screens and captures
+  selectors for you
+- Record it in the VSCode extension's live-control panel. Operate the app and a scenario is
+  generated
+- Write it by hand
 
 A minimal login scenario looks like this:
 
@@ -62,43 +55,41 @@ class LoginTest {
 }
 ```
 
-Selectors (`#email`, `#login_btn`, …) must come from the real screen — see
-[Selector Expression](./selector/selector_expression.md) or use `/fleetest:fleetest-scenario`,
-which captures them for you.
+Selectors (`#email` and the like) must come from the real screen. If you write them by hand,
+see [Selector Expression](./selector/selector_expression.md).
 
-## 4. Verify without a device (dry-run)
+## 3. Verify without a device (dry-run)
 
-Before touching a device, run a dry-run — it checks selector syntax, unreachable scenes, and
-`expectation` blocks with no assertions, in a few seconds:
+Before touching a device, run a dry-run. It catches selector syntax errors, unreachable scenes,
+and `expectation` blocks with no assertions, in a few seconds:
 
 ```bash
 fleetest run --dry-run --scenario LoginTest
 ```
 
-## 5. Run it on a device
+## 4. Run it on a device
 
 ```bash
 # Clone layout (working inside the foundation-tester clone)
 swift run fleetest run --profile <run-profile-name>
 
-# External package layout (a separate TestProjects/ work folder)
+# External package layout (a separate work folder with TestProjects/)
 ../foundation-tester/.build/debug/fleetest run --profile <run-profile-name>
 ```
 
-`--profile` resolves the app, the devices, and the run-time settings (self-healing, timeouts,
-etc.) from the run profile you prepared in step 2.
+`--profile` takes the name of the run profile from step 1. The app, the devices, and the
+run-time settings are all resolved from it.
 
-You can also run it from the VSCode extension: open the **Test Explorer**, find the scenario, and
-click **Run** (or **Run (dry-run)** to repeat step 4 from the UI).
+From VSCode, open the **Test Explorer**, pick the scenario, and click **Run**.
 
-## 6. Where results go
+## 5. Read the results
 
-Every run writes a Markdown report per scenario to `TestProjects/<project>/reports/`, regardless
-of pass/fail. It includes the scene → condition/action/expectation step hierarchy, triage on
-failure, screenshots, and self-healing suggestions if applicable.
+Every run writes a Markdown report per scenario to `TestProjects/<project>/reports/`, pass or
+fail. It contains the result of each step with screenshots, and on failure a triage of the
+cause and any self-healing suggestions.
 
-In VSCode, the Test Explorer shows pass/fail status directly on each test, and you can open the
-generated report from there.
+In VSCode, the Test Explorer shows pass/fail on each test, and you can open the report from
+there.
 
 ### Link
 - [index](index.md)

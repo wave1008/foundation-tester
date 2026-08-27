@@ -1,8 +1,11 @@
 # For Shirates Users
 
-Fleetest's Swift DSL follows Shirates (Classic) conventions — command names, argument names,
-defaults, and behavior are carried over rather than reinvented. This page maps what you already
-know from Shirates onto fleetest, and lists what's deliberately different or missing.
+Fleetest's Swift DSL follows Shirates (Classic) conventions. Command names, argument names,
+defaults, and behavior are carried over rather than reinvented, so if you know Shirates you can
+start writing almost immediately.
+
+This page lists, in order: what works under the same name, what is renamed, what is not
+present, and what only fleetest has.
 
 ## Structure
 
