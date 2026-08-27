@@ -3997,12 +3997,15 @@ SKILL.md ではなく1行のパスを掴む。
   受け手のグローバル設定 = セキュリティ境界なので、インストーラは1バイトも書かない。
   **案内は「貼り付け用ブロック」にしない** —— TOML は同じキー・テーブルの重複を許さないので、
   素朴な追記は config.toml 全体を無効にする
-- **`codex plugin add` は作業ツリーを丸ごとコピーする**(実測: `.build/` 込みで 11GB まで膨らんだ)。
-  Claude Code のローカル marketplace add と同じ罠。**リポジトリ内に自分自身を指すリンクを
-  置かない**理由でもある(リンクを辿るコピーが終わらなくなる)
-- **未検証**: GitHub の ZIP ダウンロードでシンボリックリンクがどう展開されるか。`git archive`(tar)
-  では保持されることを確認済み。ZIP から展開して Codex を向けた場合、スキルが1行のパスファイルに
-  なる可能性がある(`install-skill.sh` 経由は curl なので無傷)
+- **ローカルパスの marketplace は作業ツリーを丸ごとコピーする**(実測: `.build/` 込みで 11GB)。
+  Claude Code のローカル marketplace add と同じ罠で、**リポジトリ内に自分自身を指すリンクを
+  置かない**理由でもある(リンクを辿るコピーが終わらなくなる)。
+  **本番の導線(git URL)は clone なので影響しない** —— `codex plugin marketplace add
+  wave1008/foundation-tester --ref <ref>` は 77MB、プラグイン導入まで含めて 153MB(実測)。
+  **ローカル検証のときだけ**この差を思い出すこと
+- **シンボリックリンクは配布経路で保たれる**(実測)。`git archive`(tar)も GitHub の ZIP
+  ダウンロードも `lrwxrwxrwx` で復元される。curl 経路(`install-skill.sh`)は正典の実体を引くので
+  そもそもリンクを通らない
 **ローカル検証の罠**: `/plugin` は VSCode 拡張パネルでは使えない(ターミナル CLI かデスクトップアプリ)。
 `claude plugin marketplace add <ローカルパス>` は git clone ではなく**作業ツリーを丸ごとコピー**する
 (gitignore を無視するため `.build/` 約8GB も入りキャッシュが約13GBに膨れる)。検証後は
