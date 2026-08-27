@@ -14,7 +14,9 @@
 #   Claude Code: claude plugin marketplace add wave1008/foundation-tester →
 #                claude plugin install fleetest@foundation-tester --scope user
 #                (/plugin スラッシュコマンドは VSCode 拡張パネルでは使えない)
-#   Codex:       ~/.codex/config.toml の [marketplaces.foundation-tester] からこの repo を指す
+#   Codex:       codex plugin marketplace add wave1008/foundation-tester →
+#                codex plugin add fleetest@foundation-tester
+#                (更新は marketplace upgrade → plugin add。サブコマンド名が Claude と違う)
 # 本スクリプトはプラグイン機構を使えない環境向けのフォールバック(コピーなので自動更新なし)。
 # 以後 /fleetest-setup(Codex は $fleetest-setup)等を呼べる。
 # clone/build/install は各スキル本体が行う(大きな取得/ビルドの前にユーザーがレビューできるようにするため)。

@@ -3950,7 +3950,11 @@ TOOL_ROOT)。clone 構成(クローンの中で直接シナリオを管理)は�
 プラグイン**(ターミナルで `claude plugin marketplace add wave1008/foundation-tester` →
 `claude plugin install fleetest@foundation-tester --scope user`。受け手は VSCode の Claude Code 拡張前提で、
 拡張パネルでは /plugin スラッシュコマンドが使えないため CLI 形式が正。
-スキルはマーケットプレイス経由で自動更新)、フォールバックが curl ワンライナー
+スキルはマーケットプレイス経由で自動更新)。**Codex も同じくプラグインが入口**
+(`codex plugin marketplace add wave1008/foundation-tester` → `codex plugin add fleetest@foundation-tester`。
+更新は `marketplace upgrade` → `plugin add` で**サブコマンド名が Claude と違う**。版の照合は
+`codex plugin list` の VERSION が plugin.json の固定値なので効かず、**プラグインキャッシュの
+git HEAD** を見る ← `update.sh` 5.7b)。どちらもフォールバックが curl ワンライナー
 (`Scripts/install-skill.sh` がスキルを .claude/skills/ へコピー。自動更新なし)→ いずれも
 `/fleetest-setup`(プラグインでは `/fleetest:fleetest-setup`)が構成を自動判定し、受け手ディレクトリは
 外部構成へ分岐、クローン内は clone 構成。CLI・VSCode 拡張とも TOOL_ROOT の clone から `swift build` /
@@ -3969,6 +3973,9 @@ clone がどのみち必須で、CLI だけ mint 経由にすると二重取得�
 | スキルの呼び出し | `/fleetest-setup` | `$fleetest-setup` |
 | 入口ファイル | `CLAUDE.md` | `AGENTS.md` |
 | MCP 登録 | `.mcp.json`(プロジェクト) | `~/.codex/config.toml`(ユーザー) |
+| プラグイン導入 | `claude plugin marketplace add` → `plugin install --scope user` | `codex plugin marketplace add` → `codex plugin add` |
+| プラグイン更新 | `marketplace update` → `plugin update` | `marketplace upgrade` → `plugin add`(冪等) |
+| プラグインの版照合 | `claude plugin list` の `Version:`(= git sha) | キャッシュの git HEAD(`list` の VERSION は固定値) |
 | コマンド単位の承認 allowlist | `.claude/settings.json` | **無い**(approval_policy / sandbox_mode のみ) |
 
 **repo ローカルのスキル発見の実体は `.agents/skills/<name>` のシンボリックリンク**で、

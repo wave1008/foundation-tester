@@ -14,7 +14,21 @@ adapters differ. Nothing about the CLI, the MCP server or the VS Code extension 
 | MCP registration | `.mcp.json` (project scope) | `~/.codex/config.toml` (user scope) |
 | Per-command approval allowlist | `.claude/settings.json` | none — approvals are governed by `approval_policy` and `sandbox_mode` |
 
-## Installing the skills
+## Installing the skills (plugin — recommended)
+
+```bash
+codex plugin marketplace add wave1008/foundation-tester
+codex plugin add fleetest@foundation-tester
+```
+
+That installs the six skills; typing `$fleetest` lists them. **Installed this way they also update
+automatically**: `Scripts/update.sh` runs `marketplace upgrade` → `plugin add` and cross-checks the
+result against the clone's HEAD.
+
+The subcommands differ from Claude Code: **`marketplace upgrade`** (not `marketplace update`) and
+**`plugin add`** (not `plugin install`/`update`; it is idempotent).
+
+## Installing the skills (copies — where plugins are unavailable)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install-skill.sh \

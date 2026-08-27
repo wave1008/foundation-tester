@@ -78,9 +78,11 @@ This performs the clone, build, project creation, and profile setup.
 
 If you want to go through the steps manually one at a time, see `.claude/skills/fleetest-setup/SKILL.md`.
 
-**Using Codex?** The same runbooks apply. Install the skills with
-`curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install-skill.sh | sh -s -- --agent codex`
-and invoke them as `$fleetest-setup`. **The default sandbox blocks install and update** (`ft_*` is unaffected), so read the
+**Using Codex?** The same runbooks apply. The plugin is the recommended route:
+`codex plugin marketplace add wave1008/foundation-tester` then `codex plugin add fleetest@foundation-tester`.
+Where plugins are unavailable, use
+`curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install-skill.sh | sh -s -- --agent codex`.
+Invoke them as `$fleetest-setup`. **The default sandbox blocks install and update** (`ft_*` is unaffected), so read the
 sandbox settings in [Codex](tools/codex_skills.md) first.
 
 
@@ -112,10 +114,18 @@ claude plugin marketplace update foundation-tester
 claude plugin update fleetest@foundation-tester
 ```
 
+For Codex the subcommands differ:
+
+```bash
+codex plugin marketplace upgrade foundation-tester
+codex plugin add fleetest@foundation-tester
+```
+
 2. Start a new agent session and run `/fleetest:fleetest-update` (`$fleetest-update` in Codex)
 
-If you're not using Claude Code, run `bash <TOOL_ROOT>/Scripts/update.sh` (this does the pull,
-build, extension, and plugin update in a single command). If there's nothing to update, it does
+You can skip the two lines above and run `bash <TOOL_ROOT>/Scripts/update.sh` instead: it does the
+pull, build, extension, and **both the Claude Code and Codex plugin updates** in a single command,
+cross-checking each against the clone's HEAD. If there's nothing to update, it does
 nothing (use `--force` if you want to redo everything, for example after a previous run failed
 partway through).
 
@@ -141,6 +151,13 @@ claude plugin uninstall fleetest@foundation-tester
 ```
 
 If the pre-rename `ftester@foundation-tester` is still there, `claude plugin uninstall` it the same way.
+
+If you installed the Codex plugin, remove it with these two (the subcommands differ):
+
+```bash
+codex plugin remove fleetest@foundation-tester
+codex plugin marketplace remove foundation-tester
+```
 
 ### Uninstall the VSCode extension
 

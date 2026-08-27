@@ -111,6 +111,29 @@ test("install.sh は構成を問わず .mcp.json を書く(clone 構成を同梱
   );
 });
 
+// プラグインの更新は**エージェントごとにサブコマンド名が違う**(Claude: marketplace update →
+// plugin update / Codex: marketplace upgrade → plugin add)。update.sh と update スキルは 1:1 の
+// 契約なので、片方だけに書かれた状態を落とす。版の照合先も違う(Codex の `plugin list` の
+// VERSION は plugin.json の固定値なので、キャッシュの git HEAD を見る)。
+test("update.sh と update スキルが Codex プラグインの更新手順を両方持つ", () => {
+  const sh = readFileSync(path.join(ROOT, "Scripts/update.sh"), "utf8");
+  const skill = readFileSync(path.join(ROOT, ".claude/skills/fleetest-update/SKILL.md"), "utf8");
+  for (const [label, src] of [["update.sh", sh], ["fleetest-update/SKILL.md", skill]]) {
+    // **行頭アンカーで「実行される行」だけを見る** —— 素の部分一致だと、失敗時の案内文
+    // (`・The Codex plugin does not match HEAD. Run codex plugin marketplace upgrade …`)に
+    // 当たってしまい、実際のコマンドを消しても落ちない(変異で確認)
+    assert.match(src, /^\s*codex plugin marketplace upgrade foundation-tester\b/m,
+      `${label} に marketplace upgrade の実行行がありません`);
+    assert.match(src, /^\s*codex plugin add fleetest@foundation-tester\b/m,
+      `${label} に plugin add の実行行がありません`);
+    assert.match(
+      src,
+      /plugins\/cache\/foundation-tester\/fleetest/,
+      `${label} が版の照合にプラグインキャッシュの git HEAD を使っていません`,
+    );
+  }
+});
+
 test("Codex の marketplace.json が .agents/plugins/ にあり plugin と対応する", () => {
   const marketplace = JSON.parse(
     readFileSync(path.join(ROOT, ".agents", "plugins", "marketplace.json"), "utf8"),

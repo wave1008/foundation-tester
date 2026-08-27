@@ -98,7 +98,10 @@
   無変更のソースを触っただけだと再リンクされず毎回建て直しになるため)/
   **stdout は JSON-RPC 専用**(診断は stderr・ビルド出力はログファイル)/
   **cwd を変えない**(cwd は受け手パッケージの特定に使う。ビルドはサブシェルで行う)
-- 受け手の更新: `Scripts/update.sh`(install.sh を再実行 + project sync + プラグイン更新と版照合。
+- 受け手の更新: `Scripts/update.sh`(install.sh を再実行 + project sync + **両エージェントの
+  プラグイン更新と版照合**(Claude = `marketplace update`→`plugin update`・版は `plugin list` の sha /
+  Codex = `marketplace upgrade`→`plugin add`・版は**キャッシュの git HEAD**。`plugin list` の
+  VERSION は plugin.json の固定値なので照合に使えない)。
   `.claude/skills/fleetest-update/SKILL.md` と 1:1)。**先に update-check.sh を呼び up-to-date なら
   即終了**(全工程は更新が無くても約30秒。入れ直しは `--force`)。**ログの場所は最後の
   「次にやること」にも出す**(install.sh には `--no-next-steps` を渡すため、こちらで案内しないと

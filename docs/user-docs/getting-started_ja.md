@@ -75,9 +75,11 @@ clone、ビルド、プロジェクト作成、プロファイル設定が実行
 
 手動で1つずつ確認しながら進めたい場合は `.claude/skills/fleetest-setup/SKILL.md` を参照してください。
 
-**Codex を使う場合**: 同じ runbook がそのまま動きます。スキルの導入は
-`curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install-skill.sh | sh -s -- --agent codex`
-で、呼び出しは `$fleetest-setup` です。**既定のサンドボックスのままでは導入・更新が通らない**(`ft_*` は影響なし)ので、
+**Codex を使う場合**: 同じ runbook がそのまま動きます。導入はプラグインが推奨で、
+`codex plugin marketplace add wave1008/foundation-tester` → `codex plugin add fleetest@foundation-tester`。
+プラグインが使えない環境では
+`curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install-skill.sh | sh -s -- --agent codex`。
+呼び出しは `$fleetest-setup` です。**既定のサンドボックスのままでは導入・更新が通らない**(`ft_*` は影響なし)ので、
 [Codex](tools/codex_skills_ja.md) のサンドボックス設定を先に読んでください。
 
 
@@ -106,10 +108,17 @@ claude plugin marketplace update foundation-tester
 claude plugin update fleetest@foundation-tester
 ```
 
+Codex は次の2つです(サブコマンド名が違います):
+
+```bash
+codex plugin marketplace upgrade foundation-tester
+codex plugin add fleetest@foundation-tester
+```
+
 2. エージェントの新しいセッションを開始し、 `/fleetest:fleetest-update` を実行します(Codex は `$fleetest-update`)
 
-Claude Code を使わない場合は `bash <TOOL_ROOT>/Scripts/update.sh`(pull・ビルド・拡張・
-プラグイン更新までを1コマンドで行います)。更新が無ければ何もせず終わります（前回が途中で
+上の2行を打たずに `bash <TOOL_ROOT>/Scripts/update.sh` でも構いません(pull・ビルド・拡張に加えて
+**Claude Code と Codex のプラグイン更新**まで1コマンドで行い、クローンの HEAD と一致したかを照合します)。更新が無ければ何もせず終わります（前回が途中で
 失敗した場合など、全部やり直したいときは `--force`）。
 
 > **クローン（`foundation-tester`）を自分で書き換えている場合の注意**
@@ -132,6 +141,13 @@ claude plugin uninstall fleetest@foundation-tester
 ```
 
 改名前の `ftester@foundation-tester` も残っていれば、同じように `claude plugin uninstall` します。
+
+Codex にプラグインで入れている場合は次の2つです(サブコマンド名が違います):
+
+```bash
+codex plugin remove fleetest@foundation-tester
+codex plugin marketplace remove foundation-tester
+```
 
 ### VSCode拡張のアンインストール
 

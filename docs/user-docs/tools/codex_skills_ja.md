@@ -14,7 +14,21 @@ CLI・MCP サーバ・VS Code 拡張は何も変わりません。
 | MCP の登録先 | `.mcp.json`(プロジェクトスコープ) | `~/.codex/config.toml`(ユーザースコープ) |
 | コマンド単位の承認許可リスト | `.claude/settings.json` | 無し — 承認は `approval_policy` と `sandbox_mode` で決まる |
 
-## スキルの導入
+## スキルの導入(プラグイン・推奨)
+
+```bash
+codex plugin marketplace add wave1008/foundation-tester
+codex plugin add fleetest@foundation-tester
+```
+
+6本のスキルが入り、`$fleetest` と打つと補完候補に出ます。**プラグインで入れた場合は
+更新も自動**です(`Scripts/update.sh` が `marketplace upgrade` → `plugin add` を実行し、
+クローンの HEAD と一致したかまで照合します)。
+
+サブコマンド名は Claude Code と違います: `marketplace update` ではなく
+**`marketplace upgrade`**、`plugin install/update` ではなく **`plugin add`**(冪等)。
+
+## スキルの導入(コピー・プラグインが使えない環境)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install-skill.sh \

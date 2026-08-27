@@ -85,8 +85,10 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scr
   プラグイン機構が無い環境向けの代替は
   `curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install-skill.sh | sh`。
 - **Codex でも同じスキルが動く**(runbook は共有。違うのは置き場所 `.agents/skills/`・呼び出し `$fleetest-setup`・
-  入口 `AGENTS.md`・MCP 登録先 `~/.codex/config.toml` だけ)。導入は
-  `curl -fsSL .../Scripts/install-skill.sh | sh -s -- --agent codex`。
+  入口 `AGENTS.md`・MCP 登録先 `~/.codex/config.toml` だけ)。導入はプラグインが推奨:
+  `codex plugin marketplace add wave1008/foundation-tester` → `codex plugin add fleetest@foundation-tester`
+  (更新は `marketplace upgrade` → `plugin add`。`update.sh` が両エージェントぶん面倒を見る)。
+  プラグインが使えない環境では `curl -fsSL .../Scripts/install-skill.sh | sh -s -- --agent codex`。
   **Codex は既定のサンドボックスだと導入・更新のシェル工程が通らない**(`ft_*` は影響を受けない)ので、
   [docs/user-docs/tools/codex_skills_ja.md](docs/user-docs/tools/codex_skills_ja.md) のサンドボックス設定を先に読むこと。
 - 既定は**外部パッケージ構成**: ツール(この clone)と、あなたの `TestProjects/` が住むテスト用フォルダを分ける。
