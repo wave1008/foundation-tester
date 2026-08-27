@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+# push の直前にゲートを回す(保守者専用。受け手は push しないので入らない)。
+#
+# **なぜ push なのか**: 受け手は main を直接 clone する。壊れたものが main に着いた
+# 時点で配布済みなので、止める位置は「main に着く前」しかない。
+#
+# 守っているのは主に「片方だけ変えない」契約群 —— userDocsIntegrity / installStepSync /
+# installClaudeMdBlock / protocolVersion / packageLockSync / lptDefaultSync /
+# toolRootContract / agentIntegration / CommandIndexSync / uiContractSync /
+# DeepLinkSchemeSync / AndroidBridgeVersionSync / BridgeContract。どれも
+# **破ると静かに壊れる**型で、走らせなければ 0 円のまま 0 の価値になる。
+#
+# 導入: Scripts/install-git-hooks.sh(core.hooksPath を張るだけ)
+# 迂回: git push --no-verify / FT_SKIP_PREPUSH=1 git push
+set -uo pipefail
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+if [ "${FT_SKIP_PREPUSH:-}" = "1" ]; then
+    echo "pre-push: FT_SKIP_PREPUSH=1 のためゲートを飛ばします" >&2
+    exit 0
+fi
+
+# 非対話シェルの PATH 補正(ssh 経路と同じ理由。GUI の git クライアントから呼ばれると
+# brew の node/swift が PATH に無い)
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+
+ZERO='0000000000000000000000000000000000000000'
+LOG_DIR=".fleetest"
+LOG="$LOG_DIR/pre-push-$(date +%Y%m%d-%H%M%S).log"
+mkdir -p "$LOG_DIR"
+
+# ---- 何が push されるかを集める -------------------------------------------------
+# stdin は "<local ref> <local sha> <remote ref> <remote sha>" が push する ref のぶんだけ。
+changed=""
+scan_failed=0
+while read -r _local_ref local_sha _remote_ref remote_sha; do
+    [ -z "${local_sha:-}" ] && continue
+    [ "$local_sha" = "$ZERO" ] && continue          # ブランチ削除は見るものが無い
+    if [ "$remote_sha" != "$ZERO" ]; then
+        base="$remote_sha"
+    else
+        # 新しいブランチ。まだリモートに無いので、**どのリモートにも無いコミットのうち
+        # 最も古いもの**の親を基点にする(rev-list は新しい順なので tail で最古を採る)
+        oldest="$(git rev-list "$local_sha" --not --remotes 2>/dev/null | tail -1)"
+        base=""
+        [ -n "$oldest" ] && base="$(git rev-parse "$oldest^" 2>/dev/null)"
+    fi
+    if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+        scan_failed=1                                # 範囲が決まらないときは全部走らせる側に倒す
+        continue
+    fi
+    changed+=$'\n'"$(git diff --name-only "$base" "$local_sha" 2>/dev/null)"
+done
+changed="$(printf '%s\n' "$changed" | sed '/^$/d' | sort -u)"
+
+if [ -z "$changed" ] && [ "$scan_failed" -eq 0 ]; then
+    echo "pre-push: push するコミットに変更ファイルがありません"
+    exit 0
+fi
+
+# ---- Swift ゲートが要るか ------------------------------------------------------
+# **要らないと言い切れるときだけ省く**(docs/ と最上位の *.md だけの push)。
+# それ以外は走らせる —— 判断に迷う形を「省く」側へ倒すと、省いた回に限って壊れる。
+needs_swift=1
+if [ "$scan_failed" -eq 0 ] && [ -n "$changed" ]; then
+    if ! printf '%s\n' "$changed" | grep -qvE '^(docs/|[^/]+\.md$)'; then
+        needs_swift=0
+    fi
+fi
+
+# ---- デバイス実行中は Swift ゲートを撃たない -----------------------------------
+# 同じ .build を共有するので、実行中の fleetest バイナリが差し替わって run のプロセスが
+# SIGKILL される(CLAUDE.md / maintainer-notes §4.1)。npm test は .build を書かないので安全。
+# 自分のコマンドラインにこの文字列は載らないので pgrep は自己一致しない(pgrep の罠は CLAUDE.md)。
+device_run=""
+for pattern in "Scripts/e2e.sh" "fleetest run " "fleetest api run"; do
+    if pgrep -f "$pattern" >/dev/null 2>&1; then device_run="$pattern"; break; fi
+done
+
+# ---- 実行 ----------------------------------------------------------------------
+failed=0
+gate_output_failed=0     # 実行したゲートが落ちたか(ログ末尾を出すのはこのときだけ)
+run_gate() {                                    # run_gate <表示名> <作業ディレクトリ> <コマンド…>
+    local name="$1" dir="$2"; shift 2
+    local start; start=$(date +%s)
+    printf '  %-26s ' "$name"
+    echo "=== $name ===" >>"$LOG"
+    # **合否は exit code で見る**(CLAUDE.md)。パイプを挟むと別コマンドの exit code に
+    # 化けて失敗を握りつぶすので、ここでは出力をファイルへ直接リダイレクトするだけにする
+    local status=0
+    ( cd "$dir" && "$@" ) >>"$LOG" 2>&1 || status=$?
+    local elapsed=$(( $(date +%s) - start ))
+    echo "=== $name exit=$status (${elapsed}s) ===" >>"$LOG"
+    if [ "$status" -eq 0 ]; then
+        echo "ok (${elapsed}s)"
+    else
+        echo "FAILED (exit=$status, ${elapsed}s)"
+        failed=1
+        gate_output_failed=1
+    fi
+}
+
+echo "pre-push: ゲートを実行します(迂回は git push --no-verify)"
+
+if [ ! -d vscode-fleetest/node_modules ]; then
+    echo "  npm test                   SKIPPED —— vscode-fleetest/node_modules がありません" >&2
+    echo "    → cd vscode-fleetest && npm install" >&2
+    failed=1
+else
+    run_gate "npm test" "vscode-fleetest" npm test
+fi
+
+if [ "$needs_swift" -eq 0 ]; then
+    echo "  swift test                 skipped(docs のみの push)"
+elif [ -n "$device_run" ]; then
+    # **走らせなかったことを「通った」と報告しない**(false green を作らない)。
+    # ここで撃つと実行中の run を SIGKILL で殺すので撃てず、かといって黙って通すと
+    # Swift ゲートの無い push が main に着く。判断を人へ返すのが唯一の正しい出口。
+    echo "  swift test                 撃てません —— デバイス実行中($device_run)" >&2
+    echo "    同じ .build を共有するため、いま撃つと実行中の run を SIGKILL で殺します" >&2
+    echo "    (CLAUDE.md / maintainer-notes §4.1)。次のどれかを選んでください:" >&2
+    echo "      1. run の完了を待ってから push し直す(推奨)" >&2
+    echo "      2. run の完了後に swift test --parallel を回し、緑を見てから" >&2
+    echo "         FT_SKIP_PREPUSH=1 git push" >&2
+    echo "      3. Swift ゲート無しで押し切る: git push --no-verify" >&2
+    failed=1
+else
+    run_gate "swift test --parallel" "." swift test --parallel
+fi
+
+if [ "$failed" -ne 0 ]; then
+    echo
+    echo "pre-push: ゲートを通っていないので push を中止しました。" >&2
+    # **落ちたゲートがあるときだけ末尾を出す**。通ったゲートの出力を貼ると、
+    # 中止の理由(撃てなかった/依存が無い)が緑の行 25 本に埋もれて読めなくなる
+    if [ "$gate_output_failed" -eq 1 ]; then
+        echo "  ログ: $LOG" >&2
+        echo "  末尾:" >&2
+        tail -n 25 "$LOG" | sed 's/^/    /' >&2
+    elif [ -s "$LOG" ]; then
+        echo "  ログ: $LOG" >&2
+    fi
+    exit 1
+fi
+
+echo "pre-push: 通過。ログ: $LOG"
+exit 0
