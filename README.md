@@ -92,6 +92,31 @@ codex plugin add fleetest@foundation-tester
 > MCP 登録先 `~/.codex/config.toml`。更新は `marketplace upgrade` → `plugin add`
 > (`Scripts/update.sh` が両エージェントぶん面倒を見る)。
 
+**その他のエージェント(Cline・Cursor・Copilot 等)**: 専用の導線は持っていないが、**中核はそのまま使える**。
+必要なのは次の3つで、いずれもエージェント固有ではない:
+
+1. **機械作業** —— 下の「エージェント無しで入れる」インストーラで済む
+2. **`ft_*`(MCP)** —— `fleetest-mcp` は標準の stdio MCP サーバなので、**MCP に対応した
+   クライアントならどれでも使える**。あなたのエージェントの MCP 設定に次を足す
+   (`<ABS_TOOL_ROOT>` は clone の絶対パス。2箇所とも同じ値):
+
+   ```json
+   "fleetest": {
+     "command": "bash",
+     "args": ["-lc", "exec \"<ABS_TOOL_ROOT>/Scripts/mcp-server.sh\""],
+     "env": { "FT_TOOL_ROOT": "<ABS_TOOL_ROOT>" }
+   }
+   ```
+
+3. **手順書(runbook)** —— `<TOOL_ROOT>/.claude/skills/<name>/SKILL.md` は
+   **ツール中立の markdown** で、特定エージェント専用機能に依存しないように書いてある。
+   スキル機構が無いエージェントには、必要なときにこのファイルを読ませればよい
+
+得られないのは**スキルの自動発見と入口ファイル**(`/fleetest-setup` のように呼べる仕組み)だけ。
+なお、エージェントを判定できないとインストーラは Claude Code 向けに倒れるので、
+使わない生成物が出る —— `.mcp.json` と `CLAUDE.md` は `--skip-mcp` / `--skip-claude-md` で
+抑止できるが、**`.claude/settings.json`(Bash 許可リスト)は現状抑止できない**(無害・無視される)。
+
 **エージェント無しで入れる**: 同じ機械作業を1コマンドで行うインストーラ(冪等):
 
 ```bash

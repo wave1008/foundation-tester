@@ -15,6 +15,22 @@ not read `.mcp.json`; register the server in `~/.codex/config.toml` instead — 
 the MCP server to a different project — without the VS Code extension or project scaffolding — see
 [Claude Code Skills](./claude_code_skills.md) (`/fleetest:fleetest-mcp`).
 
+**Any other agent works too.** `fleetest-mcp` is a plain stdio MCP server, so any MCP-capable
+client can register it. Follow that client's own configuration format and give it this launch
+command (`<ABS_TOOL_ROOT>` is the absolute path of the clone):
+
+```json
+"fleetest": {
+  "command": "bash",
+  "args": ["-lc", "exec \"<ABS_TOOL_ROOT>/Scripts/mcp-server.sh\""],
+  "env": { "FT_TOOL_ROOT": "<ABS_TOOL_ROOT>" }
+}
+```
+
+`bash -lc` (a login shell) is what lets the server find the Swift/Xcode toolchain even when the
+client starts it with a minimal PATH. `FT_TOOL_ROOT` points at the bridge assets, which is a
+different location from the working directory (your test package).
+
 ## Common Arguments
 
 Every device tool accepts the same targeting arguments:
