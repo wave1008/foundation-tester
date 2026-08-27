@@ -45,7 +45,7 @@ relative step that's the anchor, after a relative step that's the resolved candi
   worst).
 - **`scrollFrame:` stays string-only** — there is no `Sel` overload for that one argument,
   even on commands that otherwise have a full `Sel` overload.
-- Generated code (from the VS Code extension's live-operation recording, or Claude Code
+- Generated code (from the VS Code extension's live-operation recording, or agent-driven
   scenario authoring) writes the **string form by default**. `Sel` is there for people who
   prefer to write it by hand.
 

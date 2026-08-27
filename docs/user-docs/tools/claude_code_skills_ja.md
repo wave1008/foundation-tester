@@ -4,6 +4,8 @@ fleetest プラグインは、導入・プロファイル設定・シナリオ�
 スキル群を提供します。いずれも人が手で打つのと同じスクリプト・CLI コマンドを裏で呼び出し、
 検証ゲートと、判断や承認が本当に人手を要する箇所だけの人間チェックポイントを備えています。
 
+Codex を使う場合も同じ runbook が動きます — [Codex](./codex_skills_ja.md) を参照してください。
+
 ## プラグインの導入
 
 ```bash
@@ -16,11 +18,8 @@ claude plugin install fleetest@foundation-tester --scope user
 何も取得しないため、古いキャッシュのまま install すると
 `Plugin "fleetest" not found in marketplace` で失敗します。一度も追加していない機械では no-op です。
 
-`main` を追従せず版を固定したい場合は、タグ付きの URL でマーケットプレイスを追加します。
-
-```bash
-claude plugin marketplace add https://github.com/wave1008/foundation-tester.git#<tag>
-```
+配布口は `main` の1本です(版を固定する導線はありません)。更新の取り込みは
+[更新](../getting-started_ja.md)の手順か `/fleetest:fleetest-update` で行います。
 
 プラグイン機構が無い環境では、同等のスキル群を直接インストールできます。
 

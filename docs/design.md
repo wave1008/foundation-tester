@@ -3950,19 +3950,87 @@ TOOL_ROOT)。clone 構成(クローンの中で直接シナリオを管理)は�
 プラグイン**(ターミナルで `claude plugin marketplace add wave1008/foundation-tester` →
 `claude plugin install fleetest@foundation-tester --scope user`。受け手は VSCode の Claude Code 拡張前提で、
 拡張パネルでは /plugin スラッシュコマンドが使えないため CLI 形式が正。
-スキルはマーケットプレイス経由で自動更新・版固定は `#<tag>`)、フォールバックが curl ワンライナー
+スキルはマーケットプレイス経由で自動更新)。**Codex も同じくプラグインが入口**
+(`codex plugin marketplace add wave1008/foundation-tester` → `codex plugin add fleetest@foundation-tester`。
+更新は `marketplace upgrade` → `plugin add` で**サブコマンド名が Claude と違う**。版の照合は
+`codex plugin list` の VERSION が plugin.json の固定値なので効かず、**プラグインキャッシュの
+git HEAD** を見る ← `update.sh` 5.7b)。どちらもフォールバックが curl ワンライナー
 (`Scripts/install-skill.sh` がスキルを .claude/skills/ へコピー。自動更新なし)→ いずれも
 `/fleetest-setup`(プラグインでは `/fleetest:fleetest-setup`)が構成を自動判定し、受け手ディレクトリは
 外部構成へ分岐、クローン内は clone 構成。CLI・VSCode 拡張とも TOOL_ROOT の clone から `swift build` /
 `npm run install-local` でビルドする(バイナリ配布はしない)。mint は廃止(VSIX はバイナリ配布しないため
 clone がどのみち必須で、CLI だけ mint 経由にすると二重取得になるだけだったため)。
 
-**配布アダプタの方針(他エージェントツールへの将来展開)**: 導入 runbook の正典は
+**配布アダプタの方針(複数エージェント対応)**: 導入 runbook の正典は
 `.claude/skills/<name>/SKILL.md`(ツール中立の markdown 手順書。特定エージェント専用機能に依存させない)。
-Claude Code 向けは `.claude-plugin/`(plugin.json の `skills` が正典ディレクトリを**参照するだけ**の薄い
-アダプタ。複製しない。整合は `vscode-fleetest/test/claudePlugin.test.mjs` が検証)。他ツール(Codex/Cursor 等)へ
-展開するときも、同じ runbook を各ツールの規約位置から参照/変換する薄いアダプタを足す(runbook 本体は共有し、
-ツールごとに手順書を複製しない)。
+各エージェントへは**規約位置から正典を参照するだけの薄いアダプタ**を置き、**runbook 本体は複製しない**:
+
+| | Claude Code | Codex |
+|---|---|---|
+| プラグイン manifest | `.claude-plugin/plugin.json` | `.codex-plugin/plugin.json` |
+| マーケットプレイス manifest | `.claude-plugin/marketplace.json` | `.agents/plugins/marketplace.json` |
+| リポジトリ内のスキル発見 | `.claude/skills/`(正典の実体) | `.agents/skills/<name>` → 正典へのシンボリックリンク |
+| スキルの呼び出し | `/fleetest-setup` | `$fleetest-setup` |
+| 入口ファイル | `CLAUDE.md` | `AGENTS.md` |
+| MCP 登録 | `.mcp.json`(プロジェクト) | `~/.codex/config.toml`(ユーザー) |
+| プラグイン導入 | `claude plugin marketplace add` → `plugin install --scope user` | `codex plugin marketplace add` → `codex plugin add` |
+| プラグイン更新 | `marketplace update` → `plugin update` | `marketplace upgrade` → `plugin add`(冪等) |
+| プラグインの版照合 | `claude plugin list` の `Version:`(= git sha) | キャッシュの git HEAD(`list` の VERSION は固定値) |
+| コマンド単位の承認 allowlist | `.claude/settings.json` | **無い**(approval_policy / sandbox_mode のみ) |
+
+**repo ローカルのスキル発見の実体は `.agents/skills/<name>` のシンボリックリンク**で、
+`.codex-plugin/plugin.json` は**プラグインとして導入したときだけ**効く(実測: リンクを外すと
+Codex はスキルを1本も見つけない)。両方要るのはそのため —— どちらかだけでは片方の経路が死ぬ。
+**ただし `.codex-plugin/plugin.json` の `skills` は正典の実体 `.claude/skills/` を指す** ——
+`codex plugin add` は marketplace の clone をプラグインキャッシュへコピーするとき
+**シンボリックリンクを落とす**(2026-08-27 実測: clone 側の `.agents/skills/` は6本のリンクが
+健在なのに、インストール後の plugin root では空・`find -type l` もゼロ)。リンクのディレクトリを
+manifest に書くと**プラグイン経由では0本**になる。`.agents/skills/` のリンクは
+**repo ローカル発見(作業ツリー)専用**。
+
+**repo ルートに `skills` を置いてはいけない**(2026-08-27 実測で撤去)。プラグイン root =
+repo ルートのとき、**Claude Code は `.claude-plugin/plugin.json` の明示パスと既定の `skills/` の
+両方を読む**(置換ではなく加算。以前は「source が `./` なら明示パスが既定を置換する」という
+前提で書いていたが誤り)。Codex 用に `skills → .claude/skills` を置いていた間、
+**6本のスキルが12本として登録され常時コストが倍**になっていた(~1,270 → ~2,537 tok)。
+数え方は `claude plugin details fleetest@foundation-tester` の Component inventory。
+`agentAdapters.test.mjs` がルートの `skills` の不在を固定する。
+
+規約位置の唯一の定義元は `Sources/FTCore/AgentIntegration.swift`。**シェル(install.sh /
+install-skill.sh)は clone 前・ビルド前に走るので Swift を呼べず、同じ規則を手で持つ** ——
+`vscode-fleetest/test/agentIntegration.test.mjs` が両者のドリフトを落とし、
+`agentAdapters.test.mjs` が「アダプタが正典に届くこと」を落とす。
+**正典を `.agents/skills/` 側へ移してはいけない** —— raw.githubusercontent は
+シンボリックリンクを**本文でなくリンク先の文字列**として返すので、`install-skill.sh` の curl が
+SKILL.md ではなく1行のパスを掴む。
+
+**Codex 固有の2点**(どちらも沈黙の失敗を作る形なので規律で塞いである):
+- **プロジェクトスコープの `.codex/config.toml` は使わない**。`~/.codex/config.toml` 側で
+  trusted にしたプロジェクトでしか読まれないため、書いても**黙って効かない**状態を作れる。
+  MCP 登録はユーザーレベルの1箇所だけ
+- **サンドボックスは判定するが緩めない**。**縛られるのはシェルコマンドだけで、MCP サーバは
+  その外で動く**(2026-08-27 実測: `--sandbox read-only` でも MCP プロセスはワークスペース外書込と
+  loopback が通る)。したがって **`ft_*` 経由の作成・実行・デバイス駆動は既定設定のまま動き**、
+  通らないのは**シェル経由の導入・更新**だけ。原因は権限ではない2つ:
+  **①SwiftPM が自前の `sandbox-exec` を入れ子に使うため `swift build` / `swift package` が
+  `sandbox_apply: Operation not permitted` で起動できない ②`xcrun simctl` が
+  CoreSimulatorService への mach 接続を塞がれる**(`adb` は TCP 5037 なので network_access で通る)。
+  **`network_access` / `writable_roots` を積んでも直らない**ので、それらを根拠に OK を返すと
+  false green になる(実際に出していた)。install.sh ステップ7.7 は
+  `danger-full-access` のときだけ OK を返し、それ以外は**2択の案内**を出す
+  (a: 導入・更新のセッションだけ `codex --sandbox danger-full-access` = 狭い / b: 恒久緩和)。
+  受け手のグローバル設定 = セキュリティ境界なので、インストーラは1バイトも書かない。
+  **案内は「貼り付け用ブロック」にしない** —— TOML は同じキー・テーブルの重複を許さないので、
+  素朴な追記は config.toml 全体を無効にする
+- **ローカルパスの marketplace は作業ツリーを丸ごとコピーする**(実測: `.build/` 込みで 11GB)。
+  Claude Code のローカル marketplace add と同じ罠で、**リポジトリ内に自分自身を指すリンクを
+  置かない**理由でもある(リンクを辿るコピーが終わらなくなる)。
+  **本番の導線(git URL)は clone なので影響しない** —— `codex plugin marketplace add
+  wave1008/foundation-tester --ref <ref>` は 77MB、プラグイン導入まで含めて 153MB(実測)。
+  **ローカル検証のときだけ**この差を思い出すこと
+- **シンボリックリンクは配布経路で保たれる**(実測)。`git archive`(tar)も GitHub の ZIP
+  ダウンロードも `lrwxrwxrwx` で復元される。curl 経路(`install-skill.sh`)は正典の実体を引くので
+  そもそもリンクを通らない
 **ローカル検証の罠**: `/plugin` は VSCode 拡張パネルでは使えない(ターミナル CLI かデスクトップアプリ)。
 `claude plugin marketplace add <ローカルパス>` は git clone ではなく**作業ツリーを丸ごとコピー**する
 (gitignore を無視するため `.build/` 約8GB も入りキャッシュが約13GBに膨れる)。検証後は
@@ -4000,8 +4068,12 @@ Claude Code 向けは `.claude-plugin/`(plugin.json の `skills` が正典ディ
   ライブラリ化できないため「ソースビルド配布」前提(prebuilt をソースの無い別マシンへ運ぶと Runner/ 解決不能)。
 - **拡張**: `binaryPath` は実在しなければ PATH フォールバック(`binaryPathResolve.ts`)で外部パッケージ構成の
   CLI(自前ビルドの PATH 登録先)を発見する。
-- **版**: git タグ(版ピン用)/ 拡張 package.json / プロトコル版(compatCheck)は独立。リリースは
-  `Scripts/release.sh`(docs/releasing.md)。
+- **版**: git タグ(履歴の目印)/ 拡張 package.json / プロトコル版(compatCheck)は独立。リリースは
+  `Scripts/release.sh`(docs/releasing.md)。**受け手の配布口は `main` の1本**で、版を固定する導線は
+  案内しない —— `#<tag>` でプラグインを固定してもスキルが引く install.sh と初回 clone は `main` のままで、
+  ピンとして機能していなかった。`FLEETEST_REF` は保守者のブランチ検証口として残す(位置づけの
+  書き換えだけで、install.sh の detached ガードと `update-check.sh` の `pinned` verdict は残してある ——
+  受け手が自分で `git checkout <tag>` した clone を勝手に動かさないため)。
 
 ## 16. エミュレータ操作の gRPC 制御(2026-07-25)
 

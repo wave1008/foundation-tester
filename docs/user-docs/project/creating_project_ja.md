@@ -37,8 +37,7 @@ TestProjects/SampleApp/
 
 `fleetest init` は外部パッケージ構成(`Package.swift` + 最初のテストプロジェクト)を生成します。
 `--fleetest-path` はローカルのクローンを指定し(`.package(path:)`)、`--fleetest-url` は代わりに
-git URL へ依存させます(`--fleetest-version` は最小版を固定するタグ、`--fleetest-branch` はタグが
-無い間の検証用にブランチを追従します)。
+git URL へ依存させます(`--fleetest-branch` で追従するブランチを指定。既定は `main`)。
 
 ## プロジェクトの管理
 

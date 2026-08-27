@@ -1,15 +1,35 @@
 # MCP Server
 
 `fleetest-mcp` is a stdio [MCP](https://modelcontextprotocol.io) server that exposes device
-operations, scenario execution and scenario authoring as `ft_*` tools for Claude Code. It is the
-same functionality as the CLI and VS Code extension, called by an agent instead of a human.
+operations, scenario execution and scenario authoring as `ft_*` tools for coding agents
+(Claude Code and Codex). It is the same functionality as the CLI and VS Code extension, called by
+an agent instead of a human.
 
 ## Setup
 
-Opening Claude Code at the root of the `foundation-tester` repository registers the `fleetest`
-server automatically via the repository's `.mcp.json` (the first call triggers a build). To add
-just the MCP server to a different project — without the VS Code extension or project scaffolding
-— see [Claude Code Skills](./claude_code_skills.md) (`/fleetest:fleetest-mcp`).
+The `fleetest` server is registered during installation (`install.sh` / `/fleetest:fleetest-setup`).
+For Claude Code it is written into your work folder's `.mcp.json` with the clone's **absolute path**,
+so it starts the same way wherever you open the agent (the first call triggers a build). Codex does
+not read `.mcp.json`; register the server in `~/.codex/config.toml` instead — see
+[Codex](./codex_skills.md), which also covers the sandbox settings the server needs. To add just
+the MCP server to a different project — without the VS Code extension or project scaffolding — see
+[Claude Code Skills](./claude_code_skills.md) (`/fleetest:fleetest-mcp`).
+
+**Any other agent works too.** `fleetest-mcp` is a plain stdio MCP server, so any MCP-capable
+client can register it. Follow that client's own configuration format and give it this launch
+command (`<ABS_TOOL_ROOT>` is the absolute path of the clone):
+
+```json
+"fleetest": {
+  "command": "bash",
+  "args": ["-lc", "exec \"<ABS_TOOL_ROOT>/Scripts/mcp-server.sh\""],
+  "env": { "FT_TOOL_ROOT": "<ABS_TOOL_ROOT>" }
+}
+```
+
+`bash -lc` (a login shell) is what lets the server find the Swift/Xcode toolchain even when the
+client starts it with a minimal PATH. `FT_TOOL_ROOT` points at the bridge assets, which is a
+different location from the working directory (your test package).
 
 ## Common Arguments
 

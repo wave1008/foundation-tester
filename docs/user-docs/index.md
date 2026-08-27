@@ -9,7 +9,7 @@ the loop, and running them is **free** — no device farm, no per-run billing. S
 
 fleetest is an E2E test tool for iOS / Android apps on macOS. Scenarios are written in a
 Shirates-style Swift DSL and replayed deterministically; Foundation Models (on-device) step
-in only when a step fails. Tests can be authored by Claude Code (MCP), recorded from the
+in only when a step fails. Tests can be authored by an agent (MCP), recorded from the
 VSCode extension, or written by hand — all three produce the same `.swift` scenarios.
 
 ## Repository
@@ -109,8 +109,9 @@ VSCode extension, or written by hand — all three produce the same `.swift` sce
 ### Tools
 
 - [VSCode extension](tools/vscode_extension.md)
-- [MCP server (Claude Code)](tools/mcp_server.md)
+- [MCP server](tools/mcp_server.md)
 - [Claude Code skills](tools/claude_code_skills.md)
+- [Codex](tools/codex_skills.md)
 
 ## Tutorial (In action)
 

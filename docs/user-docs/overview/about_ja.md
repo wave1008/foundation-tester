@@ -1,6 +1,7 @@
 # Fleetest とは
 
-Fleetest は Claude Code を前提とした macOS 専用の iOS / Android アプリの E2E テストツールです。
+Fleetest はコーディングエージェント(Claude Code / Codex)を前提とした macOS 専用の
+iOS / Android アプリの E2E テストツールです。
 
 ## 名前の由来
 
@@ -16,7 +17,7 @@ Fleetest は Claude Code を前提とした macOS 専用の iOS / Android アプ
 ## 設計思想: 「AI がテストを作り、コードが決定的に再生する」
 
 - **生成**: VSCode 拡張のライブ操作パネルで操作を録画すると **Swift のテストシナリオ
-  (Shirates 風 DSL)** を生成します。複雑なものは Claude Code(MCP 経由)に作らせる、または
+  (Shirates 風 DSL)** を生成します。複雑なものはエージェント(MCP 経由)に作らせる、または
   手書きします。イレギュラー処理やテストデータ投入は Swift でそのまま書けます。
 - **実行**: シナリオは LLM なしで決定的に実行します。高速・安定で CI 向きです。
 - **失敗時のみ AI が介入**: ロケータの自己修復(ヒールキャッシュ付き)、スクリーンショットの
@@ -32,14 +33,14 @@ Fleetest は Claude Code を前提とした macOS 専用の iOS / Android アプ
 |---|---|---|
 | **CLI** `fleetest` | `swift run fleetest ...`(clone 内)、またはビルド済み `.build/debug/fleetest` | CI・回帰テストの定期実行(決定的・無料・exit code) |
 | **VSCode 拡張** | VSCode 拡張(デバイスモニター・ライブ操作・結果ダッシュボード) | 人間の対話操作: シナリオ実行・デバッグ実行・ライブ操作(録画→生成)・デバイスモニター・結果ダッシュボード |
-| **MCP サーバ** | Claude Code が自動起動 | エージェント連携: AI によるテスト作成・デバッグ・探索的テスト |
+| **MCP サーバ** | エージェントが自動起動(Claude Code は `.mcp.json`、Codex は `~/.codex/config.toml` から) | エージェント連携: AI によるテスト作成・デバッグ・探索的テスト |
 | **Swift DSL** | `TestProjects/<name>/scenarios/*.swift` | テスト資産そのもの。どの入口で作っても同じ形式で保存・実行される |
 
 ## 役割分担
 
 **探索・判断(知能)はエージェント、操作・実行・検証(決定性)は fleetest** が担います。
 テスト作成は VSCode 拡張のライブ操作録画(操作を Swift シナリオに変換)か、複雑なものは
-Claude Code(MCP 経由)で行い、できた Swift シナリオを CLI や CI で決定的に実行します。
+エージェント(MCP 経由)で行い、できた Swift シナリオを CLI や CI で決定的に実行します。
 
 ## アーキテクチャ
 

@@ -5,17 +5,23 @@ description: fleetest を使いたい受け手を、自分の iOS/Android アプ
 
 # fleetest 初期セットアップ runbook
 
-> **ユーザーへの質問(AskUserQuestion)・報告・チェックポイントはユーザーの言語で行う**。
+> **ユーザーへの質問・報告・チェックポイントはユーザーの言語で行う**。
 > この手順書は日本語だが、読者はエージェントであり利用者の言語とは独立している
 > (英語話者にはダイアログ・報告文をすべて英語で出す)。
 
 
 > **この手順書が古い可能性がある**: プラグイン経由で導入している場合、この文書は
-> `~/.claude/plugins/cache/` のスナップショットから読まれており `git pull` では更新されない。
-> **clone(TOOL_ROOT)が既にあるなら `<TOOL_ROOT>/.claude/skills/fleetest-setup/SKILL.md` を読み、
-> 内容が違えばそちらを正とする**。更新は `claude plugin marketplace update foundation-tester` →
-> `claude plugin update fleetest@foundation-tester`(2つとも要る・Claude Code の再起動で反映)。
-> **`/plugin` スラッシュコマンドは VSCode 拡張・Agent SDK 環境では提供されない**ので CLI 形を使う。
+> エージェント側のキャッシュ(Claude Code は `~/.claude/plugins/cache/`)から読まれており
+> `git pull` では更新されない。**clone(TOOL_ROOT)が既にあるなら
+> `<TOOL_ROOT>/.claude/skills/fleetest-setup/SKILL.md`(正典)を読み、内容が違えばそちらを正とする**。
+> 更新は Claude Code なら `claude plugin marketplace update foundation-tester` →
+> `claude plugin update fleetest@foundation-tester`(2つとも要る・再起動で反映。
+> **`/plugin` スラッシュコマンドは VSCode 拡張・Agent SDK 環境では提供されない**ので CLI 形)、
+> コピー配置(`install-skill.sh`)なら `fleetest-update` が正典から写し直す。
+
+> **スキルの呼び出し記法はエージェントごとに違う**: Claude Code は `/fleetest-setup`、
+> Codex は `$fleetest-setup`(または `/skills` セレクタ)。以下は `/` 形で書くが、
+> Codex では `$` に読み替える。
 
 受け手を、**自分のアプリのシナリオを書いて実行できる状態**まで導く。
 全体像・背景は docs/user-docs/getting-started_ja.md。ここはエージェントが順に実行するための手順書。
@@ -38,7 +44,7 @@ description: fleetest を使いたい受け手を、自分の iOS/Android アプ
 
 - **各ステップの後に検証ゲートを通す**（exit code / doctor / 到達確認）。緑になるまで次へ進まない。
 - **人間チェックポイント（🧑）では必ず停止して依頼・確認する**。エージェントでは代行できない。
-- **人に何かを聞くときは必ず AskUserQuestion（ダイアログ）を使う**。チャットに質問文を書いて
+- **人に何かを聞くときは必ず選択ダイアログ（Claude Code なら AskUserQuestion）を使う**。チャットに質問文を書いて
   答えを待たない（テキストで聞くと見落とされ、フローが止まる）。自由入力は Other で受ける。
 - **セットアップ値は探索せず人間に聞く**：Bundle ID・App ID・ビルド済み `.app`/`.apk` のパス・
   テスト対象アプリの所在などを、兄弟ディレクトリや別リポジトリを勝手に `find`/`grep` で探索して
@@ -102,9 +108,9 @@ clone 構成(両方ある)の再実行は従来どおり冪等スキップで続
 - 初回セットアップ: `xcodebuild -checkFirstLaunchStatus`（exit 0 以外なら 🧑 に `xcodebuild -runFirstLaunch` を依頼）
 
 **セットアップ値は 🧑 に冒頭の1回でまとめて質問する**（以降のステップで散発的に再質問しない）。
-**必ず AskUserQuestion（ダイアログ）で聞く。チャットに箇条書きで質問文を書いて答えを待ってはいけない**
+**必ず選択ダイアログ（Claude Code なら AskUserQuestion）で聞く。チャットに箇条書きで質問文を書いて答えを待ってはいけない**
 （実際にテキストで聞いてしまい、ユーザーがダイアログを受け取れなかった事故がある）。
-**1回の AskUserQuestion 呼び出しに次の4問をまとめる**（各問に選択肢を用意する。自由入力は Other で受ける）:
+**1回のダイアログに次の4問をまとめる**（各問に選択肢を用意する。自由入力は「その他」で受ける）:
 
 | 質問 | header | 選択肢（先頭を推奨にする） |
 |---|---|---|
@@ -157,12 +163,9 @@ git clone https://github.com/wave1008/foundation-tester.git ../foundation-tester
   プロファイル設定は WORK_DIR(カレント)で行う。**カレントに `Package.swift` があってはいけない**
   (`fleetest init` が拒否する。既存 repo の直下ではなく、テスト専用の新規ディレクトリで実行する)。
 
-版を固定したい場合は 🧑 に確認して TOOL_ROOT で `git checkout <tag>`(配布はソースビルド前提なので
-tag も clone で取得できる)。
-
 ### 0.7 インストーラで機械作業を一括実行（**まずこれを試す**）
 
-ステップ **0.5・1・2・2.5・3・4・5・7・7.5・7.6** はインストーラが一括で行う（冪等。済んだ手順は skip される。
+ステップ **0.5・1・2・2.5・3・4・5・7・7.5・7.6・7.7** はインストーラが一括で行う（冪等。済んだ手順は skip される。
 **既存クローンは `git pull --ff-only` で更新してから使う** — ローカル変更があれば
 **端末で破棄の可否を尋ね、破棄しないなら中止する**（古いクローンのまま build させないため。
 端末が無い＝エージェント実行では尋ねられないので必ず中止 `[fail]` になる。その場合は 🧑 に
@@ -171,19 +174,30 @@ tag も clone で取得できる)。
 ステップ0で聞いた値を引数で渡すだけで、**探索はしない**（appPath・bundle ID を勝手に埋めない設計）。
 
 ```
-curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install.sh | bash -s -- \
+curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/${FLEETEST_REF:-main}/Scripts/install.sh | bash -s -- \
   --name <ProjectName> --platform <ios|android|both> --machine <マシン名> --app-name "<表示名>" [--app-id <bundleID>]
 ```
 
 **`--machine` と `--app-name` を渡すとプロファイル作成(`profile setup --auto-device`)まで1回で終わる**
 (ステップ5・8 が不要になる。デバイスは自動選定)。値はすべてステップ0の回答と preflight の出力から作る。
 
+- **どのエージェントの規約位置を用意するかは自動判定**（`.claude/` や `CLAUDE.md` や `~/.claude` が
+  あれば Claude Code、`.agents/` や `AGENTS.md` や `~/.codex` があれば Codex、両方該当することもある。
+  どれも無ければ Claude Code 単独）。**判定が実態と違うときだけ `--agent claude|codex|both` で明示する** ——
+  たとえば「Claude Code も入っているが、このプロジェクトは Codex で使う」なら `--agent codex`
+  （渡さないとホームの `~/.claude` を拾って `.claude/settings.json` まで作られる）。
+  結果は `[ok] agent:` 行に出る。
 - **curl 形を使う**（クローンの `Scripts/install.sh` は pull されるまで古く、新しい引数を渡すと
   「不明なオプション」で落ちる。curl 形なら常に最新が動き、その中でクローンを pull する）。
+  `${FLEETEST_REF:-main}` は**保守者が未マージのブランチを検証するため**の口で、受け手は何も指定しなくてよい
+  （受け手の配布口は main の1本で、版を固定する導線は無い）。
+  **逆に、ブランチ検証では必ず `FLEETEST_REF` を渡す** —— 渡さないと
+  「新しいスキル + main の古いインストーラ」を走らせて、直したはずの挙動を確認できない。
   clone 先を変えるなら `--tool-root <dir>`。オフラインなど curl が使えないときだけ
   `bash <TOOL_ROOT>/Scripts/install.sh --work-dir <WORK_DIR> …` を使う。
 - clone 構成（TOOL_ROOT = WORK_DIR）でもそのまま使える（`--work-dir` にクローンを渡す。
-  `fleetest init` ではなく `project create` 経路になり、`.mcp.json` は同梱のものが使われる）。
+  `fleetest init` ではなく `project create` 経路になる。`.mcp.json` はクローンの中に書かれる
+  ―― 追跡していないのでクローンは dirty にならない）。
 
 **出力の読み方**（行頭の `[ok]` / `[skip]` / `[warn]` / `[fail]` が機械可読部）:
 
@@ -260,7 +274,7 @@ FM 無しで動く。**人間に「有効か」を聞かない**：
   受け手専用の `/fleetest-setup` スキルが `.claude/skills/` に上書きされる(次回以降の実行はそちらを使う。
   この実行はロード済み手順のまま継続してよい)。ローカルパス依存なので `swift build` はネットワーク不要・
   TOOL_ROOT を `git pull` すれば fleetest 側も更新される。git 依存にしたい場合のみ `--fleetest-url
-  https://github.com/wave1008/foundation-tester.git --fleetest-version <ver>` を使う(`--fleetest-path` と排他。
+  https://github.com/wave1008/foundation-tester.git` を使う(`--fleetest-path` と排他。追従先は `main`。
   **git 依存では `.vscode/settings.json` の `fleetest.binaryPath` が自動設定されない** — CLI・拡張は
   ローカル clone からのビルドが別途必要なので、拡張を使うなら path 依存を推奨し、git 依存を選んだら
   binaryPath の手動設定を 🧑 に案内する)。
@@ -316,16 +330,16 @@ cd ../foundation-tester/vscode-fleetest && npm install && npm run install-local
 （clone 構成なら `cd vscode-fleetest && ...`。）`install-local` はパッケージ→インストール→到達確認まで
 一括で行う。**exit code で成否判定**。
 
-### 7.5 MCP サーバの登録（Claude Code から ft_* ツールを使う）
+### 7.5 MCP サーバの登録（エージェントから ft_* ツールを使う）
 
-VSIX とは別の消費面。Claude Code がアプリを直接操作してシナリオを生成するための MCP サーバ
+VSIX とは別の消費面。エージェント（Claude Code / Codex）がアプリを直接操作してシナリオを生成するための MCP サーバ
 （`fleetest-mcp`）を登録する。バイナリは TOOL_ROOT のクローンから毎回ビルドされる（配布はソースビルド前提。
 products 未宣言でも `swift build --product fleetest-mcp` は暗黙 product として通る）。
 
-- **clone 構成**: TOOL_ROOT ルートの `.mcp.json`（既存・プロジェクトスコープ）がそのまま効く。追加不要。
-  Claude Code を**クローンルートで開く**前提（相対 `.build/debug` 依存）。
-
-- **外部パッケージ構成（既定）**: WORK_DIR に `.mcp.json` を書く（**claude CLI 不要**・ただの JSON ファイル）。
+- **構成を問わず** WORK_DIR に `.mcp.json` を書く（clone 構成では WORK_DIR = クローン。
+  **同梱ファイルに頼らない** ―― プラグイン root = repo ルートなので、リポジトリに `.mcp.json` を
+  置くとプラグインに載って配られ、クローンの外で起動した受け手の MCP が必ず落ちる）。
+  以下は書く内容（**claude CLI 不要**・ただの JSON ファイル）。
   TOOL_ROOT を**絶対パス**で埋める（受け手がどの cwd で開いても解決できる）:
 
   1. `ABS_TOOL_ROOT=$(cd ../foundation-tester && pwd)` で絶対パスを得る。
@@ -364,11 +378,14 @@ CLI が無ければ上の WORK_DIR `.mcp.json` 方式で十分。
 **ツール本体 = TOOL_ROOT / シナリオのパッケージ = WORK_DIR** と表示されること（逆・同一なら
 `.mcp.json` の値か開く場所が違う）。FM 判定を挟まないので即座に返る。
 
-### 7.6 エージェントの入口を WORK_DIR の CLAUDE.md に置く
+### 7.6 エージェントの入口を WORK_DIR の CLAUDE.md / AGENTS.md に置く
 
-**導入直後ではなく、その後のセッションのための手当て**。`.mcp.json` も `.claude/settings.json` も
+**導入直後ではなく、その後のセッションのための手当て**。MCP 登録も `.claude/settings.json` も
 「設定として効く」だけでエージェントが読む物ではないので、これが無いと翌週
-「このアプリのテスト書いて」と言われた Claude Code の手掛かりは**スキルの description だけ**になる。
+「このアプリのテスト書いて」と言われたエージェントの手掛かりは**スキルの description だけ**になる。
+
+書き先はエージェントごと: **Claude Code → `CLAUDE.md` / Codex → `AGENTS.md`**。
+**本文は同じで、違うのはスキルの呼び出し記法だけ**（`/fleetest-scenario` ↔ `$fleetest-scenario`）。
 潰したい実害は3つ ——「素の XCTest を書き始める」「新しい `ft_*` に気づかない」
 「DSL コマンドを推測で書く」。
 
@@ -383,7 +400,8 @@ CLI が無ければ上の WORK_DIR `.mcp.json` 方式で十分。
 ## テスト(fleetest)
 
 <!-- この範囲は Scripts/install.sh が管理しており、更新のたび上書きされます。
-     不要なら begin〜end ごと削除するか、インストーラに --skip-claude-md を渡してください。 -->
+     不要なら begin〜end ごと削除するか、インストーラに --skip-claude-md /
+     --skip-agents-md を渡してください。 -->
 
 - シナリオ作成は `/fleetest-scenario`、対象アプリ/デバイスの追加は `/fleetest-profiles`、更新は `/fleetest-update`
 - 画面の探索・操作は `ft_*` ツール。**長いリストは `ft_swipe` の繰り返しでなく `ft_scroll_to`**
@@ -393,11 +411,36 @@ CLI が無ければ上の WORK_DIR `.mcp.json` 方式で十分。
 ```
 
 **チーム共有リポジトリでツール固有の記述を嫌う受け手には入れない**。インストーラなら
-`--skip-claude-md`、手作業ならこのステップを飛ばす（機能には影響しない＝スキルを明示的に
+`--skip-claude-md` / `--skip-agents-md`、手作業ならこのステップを飛ばす（機能には影響しない＝スキルを明示的に
 呼べば同じことができる）。既に入れた後で外したくなったら、マーカーごと削除すればよい。
 
-**検証ゲート**: WORK_DIR の `CLAUDE.md` にマーカーが**1組だけ**あり、受け手の既存の記述が
-残っていること（2回流しても増えない＝冪等）。
+**検証ゲート**: WORK_DIR の `CLAUDE.md`（Codex なら `AGENTS.md`）にマーカーが**1組だけ**あり、
+受け手の既存の記述が残っていること（2回流しても増えない＝冪等）。
+
+### 7.7 Codex のサンドボックス確認（Codex を使う場合のみ）
+
+**取り違えないこと**: Codex のサンドボックスは**シェルコマンドだけ**を縛る。**MCP サーバはその外**で
+動くので、**`ft_*` は既定設定のまま全部動く**（画面探索・シナリオ実行・デバイス駆動）。
+通らないのは**シェル経由の導入・更新**だけ:
+
+- `swift build` / `swift package` —— SwiftPM が自前の `sandbox-exec` を入れ子で使うため起動できない
+- `xcrun simctl` —— CoreSimulatorService への mach 接続が塞がれる
+- **`network_access` や `writable_roots` では直らない**（権限の問題ではない）
+
+インストーラのステップ7.7（または `Scripts/preflight.sh` の `codex_sandbox=` 行）が判定を出す。
+`danger-full-access` 以外なら 🧑 に次のどちらかを選んでもらう。**エージェントが
+`~/.codex/config.toml` を書き換えてはいけない**（受け手のセキュリティ境界であり、
+インストーラも判定だけで1バイトも書かない）:
+
+- **(a) 導入・更新のセッションだけ `codex --sandbox danger-full-access` で起動する**（推奨・狭い）
+- **(b) `sandbox_mode = "danger-full-access"` を恒久設定にする**。**そのまま追記させない** ——
+  `sandbox_mode` が重複すると config.toml 全体が無効になる
+
+**そもそもこのステップに到達しているなら、今のセッションでは導入が通っている**（swift build が
+成功している）。ここで出す警告は**次回以降のエージェントセッション**のための予告。
+
+**検証ゲート**: `ft_list_devices` が候補を返すこと（返らないなら MCP 登録のほう。
+サンドボックスは `ft_*` に影響しない）。
 
 ### 8. プロファイル（済んでいなければ /fleetest-profiles）
 

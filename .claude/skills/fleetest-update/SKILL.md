@@ -5,7 +5,7 @@ description: 既に fleetest をセットアップ済みの受け手が、新し
 
 # fleetest 更新 runbook
 
-> **ユーザーへの質問(AskUserQuestion)・報告・チェックポイントはユーザーの言語で行う**。
+> **ユーザーへの質問・報告・チェックポイントはユーザーの言語で行う**。
 > この手順書は日本語だが、読者はエージェントであり利用者の言語とは独立している
 > (英語話者にはダイアログ・報告文をすべて英語で出す)。
 
@@ -37,10 +37,11 @@ description: 既に fleetest をセットアップ済みの受け手が、新し
 
 ## 手順
 
-### 0. TOOL_ROOT の確定(**まず Read。コマンドを打たない**)
+### 0. TOOL_ROOT の確定(**まずファイル読み取り。コマンドを打たない**)
 
-`<カレント>/.fleetest/state.json` を **Read** し、`toolRoot` を採る(install.sh が導入時に書く)。
-Read は承認が要らないので、これで**更新フロー全体の承認を1回(0.7 の update.sh)に抑えられる**。
+`<カレント>/.fleetest/state.json` を**ファイルとして読み**、`toolRoot` を採る(install.sh が導入時に書く)。
+読み取りはコマンド実行と違って承認が要らないことが多く、これで**更新フロー全体の承認を
+1回(0.7 の update.sh)に抑えられる**。
 
 - `Sources/FTScenarioRunner/` がカレントにある → **clone 構成**。TOOL_ROOT = WORK_DIR = カレント。
 - `state.json` があり `toolRoot` が実在 → **外部構成**。WORK_DIR = カレント、TOOL_ROOT = その値。
@@ -94,6 +95,18 @@ vsce)は画面に出ず `<WORK_DIR>/.fleetest/install-*.log` にだけ入り、*
 - **exit 2** → 任意ステップのみ未完(`[warn]`)。CLI は使える。warn の内容だけ手当てする。
 - プラグインが `⚠️ HEAD と不一致` のときは `claude plugin marketplace update` →
   `claude plugin update` を手で実行する(**順序が重要**。marketplace を先に更新しないと古い定義を見る)。
+  Codex 側が `⚠️ Codex plugin: … does not match HEAD` なら
+  `codex plugin marketplace upgrade foundation-tester` → `codex plugin add fleetest@foundation-tester`。
+- **どのエージェントの規約位置を扱うかは前回の導入で固定されている**(`.fleetest/state.json` の
+  `agents`。`[ok] agent: ... — pinned by the previous install` と出る)。後からもう一方の
+  エージェントを入れた受け手には**そのままでは届かない** —— `bash <TOOL_ROOT>/Scripts/install.sh
+  --work-dir <WORK_DIR> --agent auto`(または `--agent both`)で入れ直す。
+  preflight の `agents=` 行が今の固定値を出す。
+- **コピー配置(`install-skill.sh` で入れた `.claude/skills/` / `.agents/skills/`)は
+  update.sh が正典から写し直す**(増えたスキルも置く)(`✅ Skills: refreshed N ...`)。写した後は**エージェントを
+  再起動する**まで古い手順書が読まれ続ける。**`fleetest-setup` だけは写さない** ——
+  受け手のパッケージのそれは `fleetest init` が生成した受け手専用の別内容なので、
+  正典で上書きすると受け手のセットアップ手順が消える。
 
 **以降のステップ1〜5.7 は「スクリプトが失敗したときの手作業手順」**(成功したなら読み飛ばし、
 ステップ6の人間チェックポイントへ)。**スクリプトの出力にある情報を別コマンドで取り直さない**
@@ -103,7 +116,6 @@ vsce)は画面に出ず `<WORK_DIR>/.fleetest/install-*.log` にだけ入り、*
 
 TOOL_ROOT で `git pull`。衝突が出たら停止して報告する(clone 構成では受け手の `TestProjects/` が
 git 管理下にあると衝突しやすい。その場合は TestProjects/ を git 管理外か別リポジトリにするよう案内する)。
-版を固定したい場合は `git checkout <新version>`。
 
 ### 2. 再ビルド（TOOL_ROOT）
 
@@ -157,8 +169,8 @@ cd <TOOL_ROOT>/vscode-fleetest && npm install && npm run install-local
 新版はランチャを `Scripts/mcp-server.sh` に切り出してあり、鮮度判定（ソースが実行ファイルより
 新しいときだけ建てる）・ログ・失敗時の stderr 出力・cwd の保持をあちらが担う。
 
-- **WORK_DIR の `.mcp.json`**（外部パッケージ構成のみ。clone 構成は同梱 `.mcp.json` を直接編集しない
-  ―― 本体側で管理される）を確認する。`mcpServers.fleetest.args` が `swift build` を含むなら
+- **WORK_DIR の `.mcp.json`**（構成を問わない。clone 構成では WORK_DIR = クローンで、
+  このファイルは追跡外）を確認する。`mcpServers.fleetest.args` が `swift build` を含むなら
   旧テンプレート。次の形へ書き換える（`<ABS_TOOL_ROOT>` は既存値をそのまま使う。他のキーは変更しない）:
 
 ```json
@@ -227,6 +239,29 @@ claude plugin update fleetest@foundation-tester
   再起動するまで、このセッションで読まれるスキルは古いままである点に注意。
 - 版は `plugin.json` に `version` を持たせず **git commit SHA** を使っているので、
   push 済みの変更は上記2コマンドで必ず取り込まれる。
+
+### 5.7b Codex プラグイン（スキル）の更新
+
+Codex にプラグインで導入している場合も同じ理由で `git pull` では新しくならない。
+**サブコマンド名が Claude と違う**（`marketplace update` ではなく `marketplace upgrade`、
+`plugin update` ではなく `plugin add`。`plugin add` は冪等で、導入済みでも上書き再導入になる）:
+
+```bash
+codex plugin list | grep fleetest        # 未導入ならスキップ
+codex plugin marketplace upgrade foundation-tester
+codex plugin add fleetest@foundation-tester
+```
+
+**版の照合の当て先も違う**。`codex plugin list` の `VERSION` は `plugin.json` の固定値（`0.1.0`）で
+更新しても動かないため、**プラグインキャッシュの git HEAD** を見る（キャッシュは clone なので
+sha が取れる）:
+
+```bash
+git -C "$(echo "${CODEX_HOME:-$HOME/.codex}"/plugins/cache/foundation-tester/fleetest/*)" rev-parse HEAD
+```
+
+これが TOOL_ROOT の HEAD と一致すれば最新。**反映には Codex の再起動が要る**。
+（`Scripts/update.sh` はここまでを自動で行い、`✅ Codex plugin: <sha> (matches HEAD)` と報告する。）
 
 ### 6. 🧑 人間チェックポイント（反映）
 

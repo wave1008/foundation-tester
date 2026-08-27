@@ -38,8 +38,7 @@ There are two ways this project's Package.swift can reference foundation-tester:
 
 `fleetest init` scaffolds the external configuration (a `Package.swift` plus a first test
 project). `--fleetest-path` points at a local clone (`.package(path:)`); `--fleetest-url` depends
-on a git URL instead (`--fleetest-version` pins a minimum tag, `--fleetest-branch` tracks a branch
-for testing before a tag exists).
+on a git URL instead (`--fleetest-branch` selects the branch to track; it defaults to `main`).
 
 ## Managing projects
 

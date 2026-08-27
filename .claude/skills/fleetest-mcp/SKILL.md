@@ -1,23 +1,29 @@
 ---
 name: fleetest-mcp
-description: foundation-tester の MCP サーバ(fleetest-mcp)だけを Claude Code に登録し、ft_* ツール(アプリを直接操作・スナップショット・シナリオ実行)を使える状態にする。VSCode 拡張・プロジェクト作成・プロファイル設定は行わない。未クローンなら clone → fleetest-mcp をビルド → .mcp.json をマージ → 承認案内までを検証付きで実行する。「MCP だけ入れて」「ft_* ツールを使えるようにして」「MCP サーバを登録して」等の依頼で使う。フル導入は /fleetest-setup。
+description: foundation-tester の MCP サーバ(fleetest-mcp)だけをエージェント(Claude Code / Codex)に登録し、ft_* ツール(アプリを直接操作・スナップショット・シナリオ実行)を使える状態にする。VSCode 拡張・プロジェクト作成・プロファイル設定は行わない。未クローンなら clone → fleetest-mcp をビルド → 登録先(.mcp.json / ~/.codex/config.toml)をマージ → 承認案内までを検証付きで実行する。「MCP だけ入れて」「ft_* ツールを使えるようにして」「MCP サーバを登録して」等の依頼で使う。フル導入は /fleetest-setup。
 ---
 
 # fleetest MCP 登録 runbook
 
-> **ユーザーへの質問(AskUserQuestion)・報告・チェックポイントはユーザーの言語で行う**。
+> **ユーザーへの質問・報告・チェックポイントはユーザーの言語で行う**。
 > この手順書は日本語だが、読者はエージェントであり利用者の言語とは独立している
 > (英語話者にはダイアログ・報告文をすべて英語で出す)。
 
 
 > **この手順書が古い可能性がある**: プラグイン経由で導入している場合、この文書は
-> `~/.claude/plugins/cache/` のスナップショットから読まれており `git pull` では更新されない。
-> **clone(TOOL_ROOT)が既にあるなら `<TOOL_ROOT>/.claude/skills/fleetest-mcp/SKILL.md` を読み、
-> 内容が違えばそちらを正とする**。更新は `claude plugin marketplace update foundation-tester` →
-> `claude plugin update fleetest@foundation-tester`(2つとも要る・Claude Code の再起動で反映)。
-> **`/plugin` スラッシュコマンドは VSCode 拡張・Agent SDK 環境では提供されない**ので CLI 形を使う。
+> エージェント側のキャッシュ(Claude Code は `~/.claude/plugins/cache/`)から読まれており
+> `git pull` では更新されない。**clone(TOOL_ROOT)が既にあるなら
+> `<TOOL_ROOT>/.claude/skills/fleetest-mcp/SKILL.md`(正典)を読み、内容が違えばそちらを正とする**。
+> 更新は Claude Code なら `claude plugin marketplace update foundation-tester` →
+> `claude plugin update fleetest@foundation-tester`(2つとも要る・再起動で反映。
+> **`/plugin` スラッシュコマンドは VSCode 拡張・Agent SDK 環境では提供されない**ので CLI 形)、
+> コピー配置(`install-skill.sh`)なら `fleetest-update` が正典から写し直す。
 
-Claude Code から `ft_*` ツール(`ft_tap`/`ft_screenshot`/`ft_snapshot`/`ft_run_scenario` 等)を使うための
+> **スキルの呼び出し記法はエージェントごとに違う**: Claude Code は `/fleetest-setup`、
+> Codex は `$fleetest-setup`(または `/skills` セレクタ)。以下は `/` 形で書くが、
+> Codex では `$` に読み替える。
+
+エージェント(Claude Code / Codex)から `ft_*` ツール(`ft_tap`/`ft_screenshot`/`ft_snapshot`/`ft_run_scenario` 等)を使うための
 **MCP サーバ(`fleetest-mcp`)だけ**を登録する。VSCode 拡張(.vsix)・`fleetest init`(プロジェクト作成)・
 プロファイル設定は**やらない**。それらまで含むフル導入は `/fleetest-setup`。
 
@@ -57,8 +63,6 @@ git clone https://github.com/wave1008/foundation-tester.git ../foundation-tester
   → TOOL_ROOT = clone 先(既定 `../foundation-tester`)。以降 `ABS_TOOL_ROOT=$(cd <TOOL_ROOT> && pwd)` で
   **絶対パス**を得ておく(受け手がどの cwd で Claude Code を開いても解決できるように)。
 
-版を固定したい場合は 🧑 に確認して TOOL_ROOT で `git checkout <tag>`。
-
 ### 0.7 インストーラで一括実行(**まずこれを試す**)
 
 ステップ1・2とその検証ゲートはインストーラが一括で行う(冪等)。MCP だけ入れるので
@@ -69,7 +73,7 @@ bash <TOOL_ROOT>/Scripts/install.sh --work-dir <WORK_DIR> --skip-project --skip-
 ```
 
 クローンがまだ無ければ clone から:
-`curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install.sh | bash -s -- --skip-project --skip-extension`
+`curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/${FLEETEST_REF:-main}/Scripts/install.sh | bash -s -- --skip-project --skip-extension`
 
 出力は行頭の `[ok]` / `[skip]` / `[warn]` / `[fail]` で読む。**exit 0 ならステップ3(承認)へ**。
 **exit 1 は `[fail]` 行の「→ SKILL.md step N」の手順を手で通して原因を解決し、同じ引数で再実行**
@@ -90,9 +94,10 @@ Xcode を同ベータへ揃えてフルリビルド。FoundationModels の ABI �
 > `swift run fleetest doctor --fm-only`(可=exit 0 / 不可=1)。ここは MCP 登録の必須ゲートではないので、
 > 不可でも登録自体は進めてよい(FM 無効の旨だけ 🧑 に伝える)。
 
-### 2. WORK_DIR に .mcp.json をマージ(外部パッケージ構成のみ)
+### 2. WORK_DIR に .mcp.json をマージ
 
-clone 構成ならこのステップは不要(同梱 `.mcp.json` が効く)。外部構成では **WORK_DIR(カレント)の
+**構成を問わず書く**(clone 構成では WORK_DIR = クローン。`.mcp.json` は追跡していないので
+クローンが dirty にならない)。**WORK_DIR(カレント)の
 `.mcp.json`** に次の `fleetest` サーバを書く(**claude CLI 不要**・ただの JSON ファイル)。**既存の `.mcp.json`
 があれば `mcpServers.fleetest` キーだけをマージし、他サーバは温存する**。`<ABS_TOOL_ROOT>` はステップ0.5 の実値に置換:
 
@@ -125,6 +130,49 @@ clone 構成ならこのステップは不要(同梱 `.mcp.json` が効く)。�
   cd したまま exec すると外部パッケージ構成で受け手の `TestProjects/` が見えなくなる。
 - cwd = パッケージルートが前提。cd 制御ができない起動経路では代わりに環境変数 `FT_PACKAGE_ROOT`
   でパッケージルートを明示指定できる(未設定なら cwd 探索、無効なパスなら診断のため探索フォールバックせず失敗する)。
+
+### 2.5 Codex に登録する(Codex を使う場合)
+
+Codex はプロジェクトスコープの `.mcp.json` を読まない。登録先は**ユーザーレベルの
+`~/.codex/config.toml`**(`CODEX_HOME` を設定しているならそちら)。次のテーブルを**末尾に追記**する
+(TOML はテーブル見出しで前のテーブルが終わるので追記は常に妥当。既存行には触らない):
+
+```toml
+[mcp_servers.fleetest]
+command = "bash"
+args = ["-lc", "exec \"<ABS_TOOL_ROOT>/Scripts/mcp-server.sh\""]
+
+[mcp_servers.fleetest.env]
+FT_TOOL_ROOT = "<ABS_TOOL_ROOT>"
+```
+
+- 起動の中身・`FT_TOOL_ROOT` の意味・`bash -lc` の理由はステップ2と同じ(ランチャは共通)。
+- **`cwd` は書かない**。cwd は `fleetest-mcp` が受け手パッケージを特定する入力なので、
+  エージェントが開いたディレクトリのままにする。
+- **プロジェクトスコープの `.codex/config.toml` は使わない**。あれは `~/.codex/config.toml` 側で
+  そのプロジェクトが trusted のときしか読まれないため、書いても**黙って効かない**状態を作れてしまう。
+- 既に `[mcp_servers.fleetest]` があり `FT_TOOL_ROOT` が別の clone を指しているときは、
+  **勝手に書き換えず** 🧑 にどちらを使うか確認する(古い clone が残っているだけのことが多い)。
+
+#### サンドボックスの確認(Codex)
+
+**まず取り違えないこと**: Codex のサンドボックスは**シェルコマンドだけ**を縛る。
+**MCP サーバはその外で動く**(実測: `--sandbox read-only` でもワークスペース外書込と loopback が通る)ので、
+**`ft_*` は既定設定のまま全部動く**(画面探索・シナリオ実行・デバイス駆動)。
+
+通らないのは**シェル経由の導入・更新**だけ:
+- `swift build` / `swift package` —— SwiftPM が自前の `sandbox-exec` を入れ子で使うため
+  `sandbox_apply: Operation not permitted` で起動できない
+- `xcrun simctl` —— CoreSimulatorService への mach 接続が塞がれる
+- **`network_access` や `writable_roots` では直らない**(権限の問題ではない)
+
+`Scripts/install.sh` のステップ7.7(または `Scripts/preflight.sh` の `codex_sandbox=` 行)が判定を出す。
+`danger-full-access` 以外なら、🧑 に次のどちらかを選んでもらう。**エージェントが
+`~/.codex/config.toml` を書き換えてはいけない**(受け手のセキュリティ境界):
+
+- **(a) 導入・更新のセッションだけ `codex --sandbox danger-full-access` で起動する**(推奨・狭い)
+- **(b) `sandbox_mode = "danger-full-access"` を恒久設定にする**。**そのまま追記させない** ——
+  `sandbox_mode` が2つになると config.toml 全体が無効になる
 
 「全プロジェクトで使いたい」場合のみ、代わりに user スコープ登録を案内する(claude CLI が PATH に要る):
 

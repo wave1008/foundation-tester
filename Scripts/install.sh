@@ -6,8 +6,9 @@
 #     | bash -s -- --name <ProjectName>          # clone から丸ごと(TOOL_ROOT は隣に作られる)
 #
 # やること: clone(既存クローンは git pull --ff-only で更新)/ swift build /
-#           fleetest init(または project create)/ .gitignore 整備 / VSCode 拡張 / .mcp.json /
-#           検証ゲート。**冪等**(済んだ手順は skip)。
+#           fleetest init(または project create)/ .gitignore 整備 / VSCode 拡張 /
+#           MCP 登録(Claude Code=.mcp.json / Codex=codex mcp add)/ エージェントの入口
+#           (CLAUDE.md / AGENTS.md)/ 検証ゲート。**冪等**(済んだ手順は skip)。
 #           --machine と --app-name があればプロファイル作成(profile setup --auto-device)も。
 # やらないこと: appPath や bundle ID の探索
 #           (値は引数で受けるだけ。スキルの「探索禁止」原則と対)。
@@ -26,6 +27,14 @@ set -euo pipefail
 
 # FLEETEST_REPO_URL はフォーク・ローカル検証用の差し替え口(既定は本家)
 REPO_URL="${FLEETEST_REPO_URL:-https://github.com/wave1008/foundation-tester.git}"
+# FLEETEST_REF は**保守者が未マージのブランチを受け手経路で検証するための口**(タグ・ブランチ・SHA。
+# 既定 = 既定ブランチ)。受け手向けの版固定手段としては案内しない —— 配布口は main の1本
+# (docs/releasing.md)。
+# **スクリプトの取得元とクローンの ref を必ず揃える**ためにある —— スキルは
+# `.../${FLEETEST_REF:-main}/Scripts/install.sh` を取りに行くので、ここで見ないと
+# 「ブランチのスクリプトが main を clone して main のバイナリに新しい引数を渡す」
+# という組み合わせが生まれ、`Unknown option` で落ちる(未マージのブランチ検証で実際に踏んだ)
+REF="${FLEETEST_REF:-}"
 WORK_DIR="$PWD"
 TOOL_ROOT_ARG=""
 PROJECT_NAME=""
@@ -37,6 +46,8 @@ DO_EXTENSION=1
 DO_PROJECT=1
 DO_MCP=1
 DO_CLAUDE_MD=1
+DO_AGENTS_MD=1
+AGENT_ARG=""
 DO_DOCTOR=1
 DO_NEXT_STEPS=1
 ALLOW_CLONE=1
@@ -61,6 +72,8 @@ Usage: install.sh [options]
   --skip-project     Do not create a project (TestProjects/<name>/) — e.g. MCP-only installs
   --skip-mcp         Do not generate/merge .mcp.json
   --skip-claude-md   Do not write the fleetest block into <work-dir>/CLAUDE.md
+  --skip-agents-md   Do not write the fleetest block into <work-dir>/AGENTS.md (Codex)
+  --agent <a>        Which agent conventions to set up: claude / codex / both / auto (default auto)
   --no-doctor        Skip the final environment report (fleetest doctor)
   --no-next-steps    Do not print "next steps" (when the caller, e.g. update.sh, guides instead)
   --keep-local       Do not auto-discard local changes in the clone (auto-discard is the default in the external layout)
@@ -68,8 +81,8 @@ Usage: install.sh [options]
   -h, --help         This help
 
 What it does: clone (git pull if it exists; in the external layout local changes are auto-discarded) /
-         swift build / project creation / .gitignore upkeep / VSCode extension / .mcp.json /
-         CLAUDE.md entry point / verification gates. **With --machine and --app-name it also creates profiles (--auto-device)**
+         swift build / project creation / .gitignore upkeep / VSCode extension / MCP registration /
+         CLAUDE.md + AGENTS.md entry points / verification gates. **With --machine and --app-name it also creates profiles (--auto-device)**
          (idempotent; finished steps are skipped)
 Exit codes: 0=done / 2=only optional steps incomplete (CLI and MCP work) / 1=stopped at a required step
          (on stop, the [fail] line shows the cause and the number of the manual step to complete)
@@ -94,6 +107,8 @@ while [ $# -gt 0 ]; do
     --skip-project) DO_PROJECT=0; shift ;;
     --skip-mcp) DO_MCP=0; shift ;;
     --skip-claude-md) DO_CLAUDE_MD=0; shift ;;
+    --skip-agents-md) DO_AGENTS_MD=0; shift ;;
+    --agent) AGENT_ARG="${2:?--agent requires a value}"; shift 2 ;;
     --no-doctor) DO_DOCTOR=0; shift ;;
     --keep-local) KEEP_LOCAL=1; shift ;;
     --verbose) VERBOSE=1; shift ;;
@@ -278,59 +293,92 @@ if [ -d "$TOOL_ROOT_RAW/.git" ] || [ -f "$TOOL_ROOT_RAW/Package.swift" ]; then
   TOOL_ROOT="$(abspath "$TOOL_ROOT_RAW")" || die "clone" "cannot resolve TOOL_ROOT: $TOOL_ROOT_RAW" 0.5
   # 既存クローンは更新してから使う(古いまま build して「入れ直したのに直らない」を防ぐ)。
   # マージコミットを勝手に作らないため ff-only。版固定(detached)は意図的とみなして触らない。
+  # ローカル変更の始末(外部構成は自動破棄・それ以外は人に確認)。**REF 経路と pull 経路の
+  # 両方から呼ぶ** —— どちらも checkout / pull の前にツリーを綺麗にする必要がある
+  settle_local_changes() {
+  # 前回の更新が残した npm の版差分を先に片付ける(これを残すと下の dirty ガードで止まる)
+  restore_lock_version_churn
+  # **外部パッケージ構成ではクローンに受け手の資産が無い**(TestProjects/・プロファイル・.mcp.json は
+  # すべて WORK_DIR 側)。そこに出る差分は生成物か上流コードの改変だけなので、聞かずに捨てる
+  # ―― 聞くと更新1回あたりの承認が3手増える(ダイアログ + reset + 再実行。受け手実測)。
+  # 捨てた内容は画面とログに残す(追跡分は reset、未追跡は clean。どちらも下の行を参照)。
+  # clone 構成(保守者・資産が同居)と --keep-local は従来どおり人に確認する
+  if [ "$WORK_DIR" != "$TOOL_ROOT" ] && [ "$KEEP_LOCAL" = "0" ] \
+     && [ -n "$(git -C "$TOOL_ROOT" status --porcelain 2>/dev/null)" ]; then
+    echo "⚠️ Discarding local changes in the clone before updating (external layout; use --keep-local to keep them):"
+    git -C "$TOOL_ROOT" status --short
+    git -C "$TOOL_ROOT" reset --hard >/dev/null \
+      || die "clone" "failed to discard local changes (git reset --hard)" 0.5
+    # **未追跡も消す** ―― reset は追跡分しか戻さず、残った未追跡ファイルは下のガードで止まるうえ、
+    # 上流に同名ファイルが増えると `pull --ff-only` 自体が失敗する。`-x` は付けない
+    # (.gitignore 対象 = .build/・node_modules・.vsix は消さない。消すと再ビルドで数分かかる)。
+    # clone 構成では受け手の TestProjects/ が未追跡のことがあるので**外部構成に限る**(この分岐の条件)
+    git -C "$TOOL_ROOT" clean -fd >/dev/null 2>&1 || true
+  fi
+  if [ -n "$(git -C "$TOOL_ROOT" status --porcelain 2>/dev/null)" ]; then
+    echo "⚠️ The existing clone has local changes: $TOOL_ROOT"
+    git -C "$TOOL_ROOT" status --short | head -20
+    answer=""
+    # curl | bash では stdin がスクリプト自身なので、質問と回答は端末から直接行う。
+    # 制御端末が無い(エージェント・CI)と /dev/tty は存在しても open に失敗するので、
+    # test -r ではなく実際に書けたかで判定する。聞けない場合は破棄せず中止する(黙って捨てない・
+    # 古いクローンのまま進めない)
+    if { printf "Discard the local changes above and update to the latest? [y/N]: " > /dev/tty; } 2>/dev/null; then
+      read -r answer < /dev/tty 2>/dev/null || answer=""
+    fi
+    case "$answer" in
+      [yY]*)
+        # 追跡ファイルの変更だけを戻す。未追跡は消さない(clone 構成では TestProjects/ が
+        # 未追跡のことがあり、git clean で受け手の資産を巻き込む)
+        git -C "$TOOL_ROOT" reset --hard >/dev/null \
+          || die "clone" "failed to discard local changes (git reset --hard)" 0.5
+        echo "   → Discarded the local changes"
+        ;;
+      *)
+        # 古いクローンのまま build すると「入れ直したのに直らない」になるため中止する
+        die "clone" "aborted because the local changes were not discarded. Stash or commit them, "\
+"or run git reset --hard in $TOOL_ROOT, then re-run" 0.5
+        ;;
+    esac
+  fi
+  }
+
   # ローカル変更は**人に確認してから**破棄する(黙って捨てない)
   if [ "$ALLOW_PULL" = "0" ]; then
     record "clone" skip "using the existing clone as-is (--no-pull): $TOOL_ROOT"
   elif [ ! -d "$TOOL_ROOT/.git" ]; then
     record "clone" skip "using the existing directory (not under git): $TOOL_ROOT"
+  elif [ -n "$REF" ]; then
+    # **「版固定(detached)」ガードより前に置く** —— FLEETEST_REF は「ここへ動かせ」という
+    # 明示指示なので、いまタグに固定されていても従う。後ろに置くと、一度タグへ固定した
+    # クローンが二度とブランチへ戻れない(実測で踏んだ)
+    settle_local_changes
+    echo "==> git fetch + checkout $REF (aligning the existing clone)"
+    step_started=$SECONDS
+    # **再 exec の判定に使うので fetch の前に控える**。控えないと、揃えた先の新しい
+    # install.sh が**その回に1つも実行されない**(CLAUDE.md の再 exec の項と同じ実害)
+    HEAD_BEFORE_PULL="$(git -C "$TOOL_ROOT" rev-parse HEAD 2>/dev/null || echo none)"
+    # **ブランチとそれ以外(タグ・SHA)を分ける**。ブランチは追跡付きで checkout する ——
+    # 追跡を張らないと、次に FLEETEST_REF 無しで実行したとき `git pull` が
+    # 「no tracking information」で失敗し、**戻れないまま毎回 warn が出る**
+    # (しかも既存の warn 文言は network/diverged を疑わせるので切り分けを誤らせる)。
+    # タグ・SHA は detached にする(ブランチ名を騙らせない。既存の「版固定」判定と揃う)
+    if git -C "$TOOL_ROOT" ls-remote --exit-code --heads origin "$REF" >/dev/null 2>&1; then
+      ref_checkout=(checkout -q -B "$REF" --track "origin/$REF")
+    else
+      ref_checkout=(checkout -q --detach FETCH_HEAD)
+    fi
+    if git -C "$TOOL_ROOT" fetch --tags origin "$REF" >>"$RAW_SINK" 2>&1 \
+       && git -C "$TOOL_ROOT" "${ref_checkout[@]}" >>"$RAW_SINK" 2>&1; then
+      record "clone" ok "aligned the existing clone to $REF ($(git -C "$TOOL_ROOT" rev-parse --short HEAD), $(elapsed_since $step_started))"
+    else
+      show_log_tail
+      die "clone" "failed to align $TOOL_ROOT to $REF" 0.5
+    fi
   elif ! branch="$(git -C "$TOOL_ROOT" symbolic-ref --short -q HEAD)"; then
-    record "clone" skip "using the existing clone (version pinned: $(git -C "$TOOL_ROOT" describe --tags --always 2>/dev/null))"
+    record "clone" skip "using the existing clone (version pinned: $(git -C "$TOOL_ROOT" describe --tags --always 2>/dev/null); FLEETEST_REF=<ref> moves it)"
   else
-    # 前回の更新が残した npm の版差分を先に片付ける(これを残すと下の dirty ガードで止まる)
-    restore_lock_version_churn
-    # **外部パッケージ構成ではクローンに受け手の資産が無い**(TestProjects/・プロファイル・.mcp.json は
-    # すべて WORK_DIR 側)。そこに出る差分は生成物か上流コードの改変だけなので、聞かずに捨てる
-    # ―― 聞くと更新1回あたりの承認が3手増える(ダイアログ + reset + 再実行。受け手実測)。
-    # 捨てた内容は画面とログに残す(追跡分は reset、未追跡は clean。どちらも下の行を参照)。
-    # clone 構成(保守者・資産が同居)と --keep-local は従来どおり人に確認する
-    if [ "$WORK_DIR" != "$TOOL_ROOT" ] && [ "$KEEP_LOCAL" = "0" ] \
-       && [ -n "$(git -C "$TOOL_ROOT" status --porcelain 2>/dev/null)" ]; then
-      echo "⚠️ Discarding local changes in the clone before updating (external layout; use --keep-local to keep them):"
-      git -C "$TOOL_ROOT" status --short
-      git -C "$TOOL_ROOT" reset --hard >/dev/null \
-        || die "clone" "failed to discard local changes (git reset --hard)" 0.5
-      # **未追跡も消す** ―― reset は追跡分しか戻さず、残った未追跡ファイルは下のガードで止まるうえ、
-      # 上流に同名ファイルが増えると `pull --ff-only` 自体が失敗する。`-x` は付けない
-      # (.gitignore 対象 = .build/・node_modules・.vsix は消さない。消すと再ビルドで数分かかる)。
-      # clone 構成では受け手の TestProjects/ が未追跡のことがあるので**外部構成に限る**(この分岐の条件)
-      git -C "$TOOL_ROOT" clean -fd >/dev/null 2>&1 || true
-    fi
-    if [ -n "$(git -C "$TOOL_ROOT" status --porcelain 2>/dev/null)" ]; then
-      echo "⚠️ The existing clone has local changes: $TOOL_ROOT"
-      git -C "$TOOL_ROOT" status --short | head -20
-      answer=""
-      # curl | bash では stdin がスクリプト自身なので、質問と回答は端末から直接行う。
-      # 制御端末が無い(エージェント・CI)と /dev/tty は存在しても open に失敗するので、
-      # test -r ではなく実際に書けたかで判定する。聞けない場合は破棄せず中止する(黙って捨てない・
-      # 古いクローンのまま進めない)
-      if { printf "Discard the local changes above and update to the latest? [y/N]: " > /dev/tty; } 2>/dev/null; then
-        read -r answer < /dev/tty 2>/dev/null || answer=""
-      fi
-      case "$answer" in
-        [yY]*)
-          # 追跡ファイルの変更だけを戻す。未追跡は消さない(clone 構成では TestProjects/ が
-          # 未追跡のことがあり、git clean で受け手の資産を巻き込む)
-          git -C "$TOOL_ROOT" reset --hard >/dev/null \
-            || die "clone" "failed to discard local changes (git reset --hard)" 0.5
-          echo "   → Discarded the local changes"
-          ;;
-        *)
-          # 古いクローンのまま build すると「入れ直したのに直らない」になるため中止する
-          die "clone" "aborted because the local changes were not discarded. Stash or commit them, "\
-"or run git reset --hard in $TOOL_ROOT, then re-run" 0.5
-          ;;
-      esac
-    fi
+    settle_local_changes
     echo "==> git pull (updating the existing clone $TOOL_ROOT)"
     step_started=$SECONDS
     HEAD_BEFORE_PULL="$(git -C "$TOOL_ROOT" rev-parse HEAD 2>/dev/null || echo none)"
@@ -344,10 +392,10 @@ else
   [ "$ALLOW_CLONE" = "1" ] || die "clone" "no clone at: $TOOL_ROOT_RAW (--no-clone was given)" 0.5
   echo "==> clone: $REPO_URL → $TOOL_ROOT_RAW"
   step_started=$SECONDS
-  git clone "$REPO_URL" "$TOOL_ROOT_RAW" >>"$RAW_SINK" 2>&1 \
-    || { show_log_tail; die "clone" "git clone failed" 0.5; }
+  git clone ${REF:+--branch "$REF"} "$REPO_URL" "$TOOL_ROOT_RAW" >>"$RAW_SINK" 2>&1 \
+    || { show_log_tail; die "clone" "git clone failed${REF:+ (ref: $REF)}" 0.5; }
   TOOL_ROOT="$(abspath "$TOOL_ROOT_RAW")"
-  record "clone" ok "$TOOL_ROOT ($(elapsed_since $step_started))"
+  record "clone" ok "$TOOL_ROOT${REF:+ @ $REF} ($(elapsed_since $step_started))"
 fi
 
 [ -f "$TOOL_ROOT/Package.swift" ] && [ -d "$TOOL_ROOT/Sources/FTScenarioRunner" ] \
@@ -377,6 +425,76 @@ if [ "$WORK_DIR" = "$TOOL_ROOT" ]; then
   LAYOUT="clone"
 fi
 record "layout" ok "$LAYOUT (TOOL_ROOT=$TOOL_ROOT / WORK_DIR=$WORK_DIR)"
+
+# ---- どのエージェントの規約位置を用意するか -----------------------------------
+# 判定規則は FTCore の AgentIntegration.detect と 1:1(.claude / CLAUDE.md / ~/.claude → claude、
+# .agents / AGENTS.md / ~/.codex → codex、どれも無ければ claude 単独 = 既存の受け手の挙動を変えない)。
+# 片方だけ変えない —— agentIntegration.test.mjs が Swift 側との一致を見る。
+#
+# 決め方は3段。**どこから来た決定かを record に出す**(pinned/auto/明示)—— 出さないと、
+# 固定されていることに受け手が気づけず「後から Claude Code を入れたのに何も起きない」で詰まる:
+#   ① 明示指定(--agent claude|codex|both)が常に勝つ
+#   ② 引数なしなら **前回の判定を state.json から引き継ぐ**。引き継がないと `--agent codex` で
+#      入れた受け手が更新のたびに自動判定へ戻り、ホームに ~/.claude があるだけで
+#      .claude/settings.json と CLAUDE.md が湧く(update.sh は install.sh を呼び直すだけ)
+#   ③ `--agent auto` を明示したとき、または記録が無い/壊れているときは判定し直す。
+#      **clone 構成では WORK_DIR 側の手掛かりを見ない** —— クローン自身が `.claude/` も
+#      `.agents/` も `CLAUDE.md` も持っている(このツールのアダプタであって、受け手が
+#      Codex を使っている証拠ではない)。見るとどのクローンでも codex と判定され、
+#      クローンの中に AGENTS.md を書いて次の更新を pull ガードで止める
+AGENTS=""
+AGENT_SOURCE=""
+detect_agents() {
+  AGENTS=""
+  if [ "$LAYOUT" = "clone" ]; then
+    if [ -d "$HOME/.claude" ]; then AGENTS="claude"; fi
+    if [ -d "$HOME/.codex" ]; then AGENTS="${AGENTS:+${AGENTS} }codex"; fi
+  else
+    if [ -d "$WORK_DIR/.claude" ] || [ -f "$WORK_DIR/CLAUDE.md" ] || [ -d "$HOME/.claude" ]; then
+      AGENTS="claude"
+    fi
+    if [ -d "$WORK_DIR/.agents" ] || [ -f "$WORK_DIR/AGENTS.md" ] || [ -d "$HOME/.codex" ]; then
+      AGENTS="${AGENTS:+${AGENTS} }codex"
+    fi
+  fi
+  [ -n "$AGENTS" ] || AGENTS="claude"
+}
+# **知らない名前を素通しさせない**。素通しすると has_agent がどれにも当たらず、MCP 登録も
+# 入口も行われないまま `[ok]` で終わる(= 何もしないのに成功。実際に state.json 経由で踏んだ)
+valid_agents() {
+  for candidate in $1; do
+    case "$candidate" in claude|codex) ;; *) return 1 ;; esac
+  done
+  [ -n "$1" ]
+}
+case "$AGENT_ARG" in
+  claude|codex) AGENTS="$AGENT_ARG"; AGENT_SOURCE="--agent $AGENT_ARG" ;;
+  both)         AGENTS="claude codex"; AGENT_SOURCE="--agent both" ;;
+  auto)         detect_agents; AGENT_SOURCE="auto (re-detected)" ;;
+  "")
+    PINNED="$(python3 -c 'import json,sys
+try:
+    with open(sys.argv[1]) as f:
+        print(json.load(f).get("agents", ""))
+except Exception:
+    pass' "$WORK_DIR/.fleetest/state.json" 2>/dev/null || true)"
+    if [ -n "$PINNED" ] && valid_agents "$PINNED"; then
+      AGENTS="$PINNED"; AGENT_SOURCE="pinned by the previous install (pass --agent auto to re-detect)"
+    else
+      [ -n "$PINNED" ] && record "agent" warn \
+        "state.json records an unknown agent set ($PINNED) — re-detecting"
+      detect_agents; AGENT_SOURCE="auto"
+    fi
+    ;;
+  *) die "agent" "--agent must be claude / codex / both / auto (got: $AGENT_ARG)" 0.5 ;;
+esac
+has_agent() { case " $AGENTS " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
+record "agent" ok "$AGENTS — $AGENT_SOURCE"
+
+# **DO_MCP のブロックの外で定義する** —— ステップ7.7(サンドボックス判定)も参照するので、
+# `--skip-mcp` のときに未定義だと set -u で落ちる([fail] 行も出ないまま exit 1)。
+# `fleetest remote setup` は常に --skip-mcp を渡すので、~/.codex のあるランナー機で必ず踏む
+CODEX_CONFIG="${CODEX_HOME:-$HOME/.codex}/config.toml"
 
 FT="$TOOL_ROOT/.build/debug/fleetest"
 
@@ -409,7 +527,10 @@ record "build" ok "$FT ($(elapsed_since $step_started))"
 # **毎回呼ぶ**。許可リストは従来 `fleetest init` でしか書かれず、更新は --skip-project で init を
 # 回さないため、エントリを増やしても**既存の受け手には一生届かなかった**(実害: 更新のたびに
 # update.sh の承認が出る)。冪等・追加のみ・fleetest 由来のコマンドだけ(ProjectScaffold が保証)
-if perms_out="$( "$FT" api ensure-settings --work-dir "$WORK_DIR" --tool-root "$TOOL_ROOT" 2>&1 )"; then
+# **--agent を渡す**。渡さないと CLI 側が独自に判定し、受け手のホームに ~/.claude が
+# あるだけで Codex 専用の導入に .claude/settings.json ができる(実際に踏んだ)
+if perms_out="$( "$FT" api ensure-settings --work-dir "$WORK_DIR" --tool-root "$TOOL_ROOT" \
+                   --agent "${AGENTS// /,}" 2>&1 )"; then
   record "permissions" ok "$perms_out"
 else
   record "permissions" warn "could not top up (only means more approval prompts; behaviour is unaffected)"
@@ -451,7 +572,7 @@ elif [ -f "$WORK_DIR/Package.swift" ]; then
 else
   # 新規の受け手パッケージ。TOOL_ROOT はローカルパス依存で引く(git 依存は手動・SKILL ステップ4参照)
   echo "==> fleetest init($WORK_DIR)"
-  ( cd "$WORK_DIR" && "$FT" init --fleetest-path "$TOOL_ROOT" \
+  ( cd "$WORK_DIR" && "$FT" init --fleetest-path "$TOOL_ROOT" --agent "${AGENTS// /,}" \
       "${NAME_ARGS[@]+"${NAME_ARGS[@]}"}" "${APP_ARGS[@]+"${APP_ARGS[@]}"}" "${PLATFORM_ARGS[@]}" ) \
     || die "project" "fleetest init failed" 4
   record "project" ok "created the consumer package${PROJECT_NAME:+ (TestProjects/$PROJECT_NAME)}"
@@ -499,15 +620,29 @@ else
 fi
 
 # ---- 7.5 MCP サーバ登録(SKILL ステップ7.5) -----------------------------------
+# 登録先はエージェントごとに違う(AgentIntegration.mcpRegistrationTarget):
+#   Claude Code → <WORK_DIR>/.mcp.json(プロジェクトスコープ・JSON)
+#   Codex       → ~/.codex/config.toml の [mcp_servers.fleetest](ユーザーレベル・TOML)
+# **Codex のプロジェクトスコープ .codex/config.toml は使わない** —— あれは
+# `~/.codex/config.toml` 側で trust されたプロジェクトでしか読まれないので、書いても
+# 黙って効かない状態を作れてしまう(沈黙の失敗は作らない)。
 if [ "$DO_MCP" = "0" ]; then
   record "MCP" skip "--skip-mcp"
-elif [ "$LAYOUT" = "clone" ]; then
-  record "MCP" skip "the bundled .mcp.json covers the clone layout"
+else
+
+# **clone 構成でもここで書く**(2026-08-27)。以前は repo ルートの `.mcp.json` を同梱して
+# 済ませていたが、**プラグイン root = repo ルートなのでそれがプラグインに載って配られ**、
+# 中身の `$PWD/Scripts/mcp-server.sh` はクローンの外では存在しないため、受け手が別の場所で
+# エージェントを起動するたびに MCP が落ちていた(Codex: connection closed / Claude: plugin
+# details に MCP servers (1))。同梱をやめ、どちらの構成でも**絶対パス**で登録する。
+# 書き先はクローン自身になるので `.gitignore` 済み(追跡すると次の更新が pull ガードで止まる)。
+if ! has_agent claude; then
+  : # Claude Code を使わない受け手には .mcp.json を作らない
 elif ! command -v python3 >/dev/null 2>&1; then
-  soft_fail "MCP" "python3 is missing, so .mcp.json cannot be merged (write the SKILL template by hand)" 7.5
+  soft_fail "MCP(claude)" "python3 is missing, so .mcp.json cannot be merged (write the SKILL template by hand)" 7.5
 else
   MCP_JSON="$WORK_DIR/.mcp.json"
-  if merge_out=$(python3 - "$MCP_JSON" "$TOOL_ROOT" <<'PY'
+  if merge_out=$(python3 - "$MCP_JSON" "$TOOL_ROOT" <<'PYCLAUDE'
 import json, os, sys
 
 path, tool_root = sys.argv[1], sys.argv[2]
@@ -538,46 +673,140 @@ if previous and previous != tool_root:
     print("REPLACED %s" % previous, end="")
 else:
     print("OK", end="")
-PY
+PYCLAUDE
   ); then
     case "$merge_out" in
-      REPLACED*) record "MCP" ok "updated .mcp.json (replaced the old TOOL_ROOT ${merge_out#REPLACED }; delete the old clone if unneeded)" ;;
-      *) record "MCP" ok "registered fleetest in .mcp.json" ;;
+      REPLACED*) record "MCP(claude)" ok "updated .mcp.json (replaced the old TOOL_ROOT ${merge_out#REPLACED }; delete the old clone if unneeded)" ;;
+      *) record "MCP(claude)" ok "registered fleetest in .mcp.json" ;;
     esac
   else
-    soft_fail "MCP" "failed to merge .mcp.json ($merge_out)" 7.5
+    soft_fail "MCP(claude)" "failed to merge .mcp.json ($merge_out)" 7.5
   fi
 fi
 
-# ---- 7.6 エージェントの入口を CLAUDE.md に置く(SKILL ステップ7.6) ----------------
-# **導入直後ではなく、その後のセッションのための手当て**。.mcp.json も .claude/settings.json も
+# Codex 側。**`codex` のサブコマンド名に依存しない** —— このインストーラは codex が入って
+# いない機械でも回るし、CLI の引数体系はここで検証できないので、TOML を自分で扱う。
+# 安全側の規律3つ:
+#   ① 既存の [mcp_servers.fleetest] が無いときだけ**末尾に追記**する(既存行に触らない。
+#      TOML はテーブル見出しで前のテーブルが終わるので、末尾追記は常に妥当)
+#   ② 既にあって TOOL_ROOT が違うときは**書き換えず**、既存テーブルの値を差し替えるよう案内する
+#      (コメント付き TOML の書き換えは受け手の設定を壊しうる。**追記させない** ——
+#      同じテーブルが2つになると config.toml 全体が無効になる)
+#   ③ tomllib(python 3.11+)で読めないときは1バイトも書かない
+if ! has_agent codex; then
+  : # Codex を使わない受け手には ~/.codex を作らない
+elif ! command -v python3 >/dev/null 2>&1; then
+  soft_fail "MCP(codex)" "python3 is missing, so $CODEX_CONFIG cannot be updated" 7.5
+else
+  if codex_out=$(python3 - "$CODEX_CONFIG" "$TOOL_ROOT" <<'PYCODEX'
+import os, sys
+
+path, tool_root = sys.argv[1], sys.argv[2]
+launcher = "%s/Scripts/mcp-server.sh" % tool_root
+# 起動の中身は Scripts/mcp-server.sh(Claude 側と同一のランチャ)。
+# **cwd は書かない** —— cwd は受け手パッケージの特定に使うので、エージェントが開いた
+# ディレクトリのままにする必要がある(mcp-server.sh の規律と対)。
+block = (
+    "\n# fleetest (foundation-tester) — added by Scripts/install.sh\n"
+    "[mcp_servers.fleetest]\n"
+    'command = "bash"\n'
+    'args = ["-lc", "exec \\"%s\\""]\n'
+    "\n[mcp_servers.fleetest.env]\n"
+    'FT_TOOL_ROOT = "%s"\n'
+) % (launcher, tool_root)
+
+try:
+    import tomllib
+except ModuleNotFoundError:
+    print("NOTOML%s" % block, end="")
+    sys.exit(0)
+
+existing = ""
+data = {}
+if os.path.exists(path):
+    with open(path, "rb") as f:
+        raw = f.read()
+    try:
+        data = tomllib.loads(raw.decode("utf-8"))
+    except Exception as e:
+        print("INVALID %s" % e, end="")
+        sys.exit(3)
+    existing = raw.decode("utf-8")
+
+current = data.get("mcp_servers", {}).get("fleetest")
+if current is not None:
+    previous = (current.get("env") or {}).get("FT_TOOL_ROOT")
+    if previous == tool_root:
+        print("PRESENT", end="")
+    else:
+        print("DIFFERS %s\n%s" % (previous, block), end="")
+    sys.exit(0)
+
+os.makedirs(os.path.dirname(path), exist_ok=True)
+with open(path, "a" if existing else "w") as f:
+    if existing and not existing.endswith("\n"):
+        f.write("\n")
+    f.write(block)
+print("ADDED", end="")
+PYCODEX
+  ); then
+    case "$codex_out" in
+      PRESENT) record "MCP(codex)" ok "already registered in $CODEX_CONFIG" ;;
+      ADDED) record "MCP(codex)" ok "registered fleetest in $CODEX_CONFIG" ;;
+      DIFFERS*)
+        record "MCP(codex)" warn "$CODEX_CONFIG already points fleetest at a different TOOL_ROOT — left it alone; to switch, replace the values in the existing [mcp_servers.fleetest] tables (do NOT append — a duplicated table invalidates the whole file):"
+        printf '%s\n' "${codex_out#DIFFERS }" ;;
+      NOTOML*)
+        record "MCP(codex)" warn "python3 has no tomllib (3.11+ required), so $CODEX_CONFIG could not be inspected — add this only if [mcp_servers.fleetest] is not already there (a duplicated table invalidates the whole file):"
+        printf '%s\n' "${codex_out#NOTOML}" ;;
+      *) soft_fail "MCP(codex)" "failed to update $CODEX_CONFIG ($codex_out)" 7.5 ;;
+    esac
+  else
+    soft_fail "MCP(codex)" "failed to update $CODEX_CONFIG ($codex_out)" 7.5
+  fi
+fi
+
+fi
+
+# ---- 7.6 エージェントの入口(SKILL ステップ7.6) --------------------------------
+# **導入直後ではなく、その後のセッションのための手当て**。MCP 登録も .claude/settings.json も
 # 「設定として効く」だけでエージェントが読む物ではないので、これが無いと翌週
-# 「このアプリのテスト書いて」と言われた Claude Code の手掛かりはスキルの description だけになる。
+# 「このアプリのテスト書いて」と言われたエージェントの手掛かりはスキルの description だけになる。
 # 実害は3つに絞られる(素の XCTest を書き始める / 新しい ft_* に気づかない /
 # DSL コマンドを推測で書く)ので、**使い方の解説は書かず入口だけ4行**置く
 # —— 解説を置くとツール説明と二重管理になり必ずズレる(docs/design.md「契約は1箇所」)。
-# 受け手の資産なので**マーカーの内側だけ**差し替える。共有リポジトリで嫌うなら --skip-claude-md。
-if [ "$DO_CLAUDE_MD" = "0" ]; then
-  record "CLAUDE.md" skip "--skip-claude-md"
-# **クローンが git 管理している CLAUDE.md には書かない**(2026-08-07 に自己破壊を再現)。
-# clone 構成(WORK_DIR = TOOL_ROOT)では受け手の CLAUDE.md はクローン自身の追跡ファイルで、
-# ここへ追記すると次の更新が pull ガード(「local changes」)で必ず止まる。しかも
-# `git reset --hard` で戻しても次の更新が同じブロックを書くので**同じ状態に戻る**。
-# 判定は「レイアウト」ではなく**そのファイルが追跡されているか** —— 外部構成でも受け手が
-# 自分のリポジトリで CLAUDE.md を管理していることはあるが、そちらはクローンの pull を
-# 妨げないので対象外(見るのは TOOL_ROOT の索引だけ)。
-# 同型: packageLockSync(npm install が lock を書き換えてクローンが dirty になる)
-elif git -C "$TOOL_ROOT" ls-files --error-unmatch \
-       "$(python3 -c 'import os,sys;print(os.path.relpath(sys.argv[1],sys.argv[2]))' \
-          "$WORK_DIR/CLAUDE.md" "$TOOL_ROOT" 2>/dev/null)" >/dev/null 2>&1; then
-  record "CLAUDE.md" skip "it is tracked by the clone — writing there would make the next update abort at the pull guard"
-elif ! command -v python3 >/dev/null 2>&1; then
-  record "CLAUDE.md" warn "python3 is missing, so the entry point was not written (agents may miss ft_*)"
-else
-  if guide_out=$(python3 - "$WORK_DIR/CLAUDE.md" <<'GUIDE'
+# 受け手の資産なので**マーカーの内側だけ**差し替える。共有リポジトリで嫌うなら
+# --skip-claude-md / --skip-agents-md。
+#
+# 書き先はエージェントごと(AgentIntegration.entryPointFile): Claude Code=CLAUDE.md /
+# Codex=AGENTS.md。**本文は同じで、違うのはスキルの呼び出し記法だけ**(/ と $)。
+write_entry_point() {
+  ep_file="$WORK_DIR/$1"
+  ep_prefix="$2"
+  ep_label="$3"
+  # **クローンの作業ツリーの中には書かない**(2026-08-07 に自己破壊を再現)。
+  # clone 構成(WORK_DIR = TOOL_ROOT)で入口ファイルへ書くと、次の更新が pull ガード
+  # (「local changes」)で必ず止まる。しかも `git reset --hard` で戻しても次の更新が
+  # 同じブロックを書くので**同じ状態に戻る**。
+  # **判定は「追跡されているか」ではなく「クローンの中か」** —— `git status --porcelain` は
+  # 未追跡ファイルも dirty と数えるので、追跡の有無で見ると **まだ存在しない AGENTS.md が
+  # 素通りして**同じ轍を踏む(CLAUDE.md はクローンの追跡ファイルなので追跡判定でも
+  # 止まっていたが、AGENTS.md は追跡も gitignore もされていない)。
+  # 外部構成で受け手が自分のリポジトリに入口を持つのは対象外(クローンの pull を妨げない)。
+  # **判定できなければ書かない**(fail-closed)—— 受け手の資産を壊す側に倒れるより、
+  # 案内を1つ諦めるほうが安い。
+  # 同型: packageLockSync(npm install が lock を書き換えてクローンが dirty になる)
+  if [ "$(python3 -c 'import os,sys
+target, clone = os.path.realpath(sys.argv[1]), os.path.realpath(sys.argv[2])
+print("inside" if os.path.commonpath([target, clone]) == clone else "outside")' \
+       "$ep_file" "$TOOL_ROOT" 2>/dev/null || echo inside)" = "inside" ]; then
+    record "$ep_label" skip "it lives inside the clone — writing there would make the next update abort at the pull guard"
+    return 0
+  fi
+  if guide_out=$(python3 - "$ep_file" "$ep_prefix" <<'PYGUIDE'
 import os, re, sys
 
-path = sys.argv[1]
+path, prefix = sys.argv[1], sys.argv[2]
 # **マーカーは最短・不変にする**。説明文をマーカー行に埋めると、文言を変えた瞬間に
 # 既存ブロックを見失って**二重に追記される**。前置き一致で拾い、説明は本文の側に置く。
 BEGIN = "<!-- fleetest:begin -->"
@@ -585,12 +814,13 @@ END = "<!-- fleetest:end -->"
 BODY = """## テスト(fleetest)
 
 <!-- この範囲は Scripts/install.sh が管理しており、更新のたび上書きされます。
-     不要なら begin〜end ごと削除するか、インストーラに --skip-claude-md を渡してください。 -->
+     不要なら begin〜end ごと削除するか、インストーラに --skip-claude-md /
+     --skip-agents-md を渡してください。 -->
 
-- シナリオ作成は `/fleetest-scenario`、対象アプリ/デバイスの追加は `/fleetest-profiles`、更新は `/fleetest-update`
+- シナリオ作成は `%(p)sfleetest-scenario`、対象アプリ/デバイスの追加は `%(p)sfleetest-profiles`、更新は `%(p)sfleetest-update`
 - 画面の探索・操作は `ft_*` ツール。**長いリストは `ft_swipe` の繰り返しでなく `ft_scroll_to`**
 - DSL のコマンド名は推測せず `ft_dsl_commands` で索引を引く(無いコマンドを書かないため)
-- シナリオは `TestProjects/<プロジェクト>/scenarios/*.swift`。実行は `ft_run_scenario` か VSCode 拡張"""
+- シナリオは `TestProjects/<プロジェクト>/scenarios/*.swift`。実行は `ft_run_scenario` か VSCode 拡張""" % {"p": prefix}
 block = BEGIN + "\n" + BODY + "\n" + END
 
 existing = ""
@@ -599,7 +829,7 @@ if os.path.exists(path):
         existing = f.read()
 
 # **マーカーが1組でないなら何も書かない**(2026-08-06。実際に消して確認した)。
-# 素朴に「最初の begin 〜 最初の end」を置換すると、end だけ壊れた CLAUDE.md で
+# 素朴に「最初の begin 〜 最初の end」を置換すると、end だけ壊れた入口ファイルで
 # 1回目に2つ目のブロックを追記 → 2回目に**間に挟まれた利用者の記述ごと**置換して消す。
 # 受け手の資産を黙って壊すくらいなら、案内を諦めて人に直してもらうほうがよい。
 # 行頭に限って数える(散文やコード例の中の言及に反応しないため)。
@@ -628,17 +858,109 @@ if updated != existing:
     with open(path, "w") as f:
         f.write(updated)
 print(verb, end="")
-GUIDE
+PYGUIDE
   ); then
     case "$guide_out" in
       damaged)
-        record "CLAUDE.md" warn "the fleetest markers in CLAUDE.md are not a single begin/end pair"\
+        record "$ep_label" warn "the fleetest markers in $1 are not a single begin/end pair"\
 " — left the file untouched (fix or remove them by hand, then re-run)" ;;
       *)
-        record "CLAUDE.md" ok "$guide_out CLAUDE.md (delete the fleetest block, or pass --skip-claude-md, to opt out)" ;;
+        record "$ep_label" ok "$guide_out $1 (delete the fleetest block, or pass --skip-claude-md / --skip-agents-md, to opt out)" ;;
     esac
   else
-    record "CLAUDE.md" warn "could not write the entry point (agents may miss ft_*)"
+    record "$ep_label" warn "could not write the entry point to $1 (agents may miss ft_*)"
+  fi
+}
+
+if ! command -v python3 >/dev/null 2>&1; then
+  record "entry point" warn "python3 is missing, so the entry point was not written (agents may miss ft_*)"
+else
+  if [ "$DO_CLAUDE_MD" = "0" ]; then
+    record "CLAUDE.md" skip "--skip-claude-md"
+  elif has_agent claude; then
+    write_entry_point "CLAUDE.md" "/" "CLAUDE.md"
+  fi
+  if [ "$DO_AGENTS_MD" = "0" ]; then
+    record "AGENTS.md" skip "--skip-agents-md"
+  elif has_agent codex; then
+    write_entry_point "AGENTS.md" "\$" "AGENTS.md"
+  fi
+fi
+
+# ---- 7.7 Codex サンドボックスの適合判定(SKILL ステップ7.7) --------------------
+# **判定するが緩めない**。`~/.codex/config.toml` の sandbox_mode は**受け手のグローバル設定であり
+# セキュリティ境界**なので、インストーラは1バイトも書かない。出すのは事実と選択肢だけ。
+#
+# **実測で分かった構造(2026-08-27。writable_roots では直らない)**:
+#   ・`swift build` / `swift package` は **workspace-write の中では起動できない** ——
+#     SwiftPM が自前で `sandbox-exec` を入れ子に使い `sandbox_apply: Operation not permitted`
+#   ・`xcrun simctl` も通らない —— CoreSimulatorService への mach 接続が塞がれる
+#   ・`adb` は通る(TCP 5037 なので network_access で足りる)
+#   したがって **network_access と writable_roots をどう積んでも workspace-write は救えない**。
+#   これらを「揃えれば OK」と報告していた頃は false green で、受け手の切り分けを誤らせた。
+#
+# **一方 MCP サーバはサンドボックスの外で動く**(実測: --sandbox read-only でもワークスペース外
+# 書込と loopback が通る)。つまり `ft_*` 経由の作成・実行・デバイス駆動は既定設定のまま動き、
+# 通らないのは**エージェントがシェルで叩く導入・更新**だけ。ここを取り違えない。
+if ! has_agent codex; then
+  : # Codex を使わない受け手には関係しない
+elif ! command -v python3 >/dev/null 2>&1; then
+  record "codex sandbox" warn "python3 is missing, so $CODEX_CONFIG could not be inspected"
+else
+  if sandbox_out=$(python3 - "$CODEX_CONFIG" <<'PYSANDBOX'
+import os, sys
+
+path = sys.argv[1]
+
+# **選択肢は2つだけ**。どちらも受け手が決めること(このスクリプトは書かない)。
+advice = (
+    "Codex runs shell commands inside a sandbox. `swift build` cannot start there (SwiftPM nests\n"
+    "its own sandbox-exec) and `xcrun simctl` cannot reach CoreSimulatorService, so the install and\n"
+    "update runbooks will not complete. Adding network_access or writable_roots does NOT fix this.\n"
+    "\n"
+    "What still works with no change: everything through the MCP server (ft_* tools) — authoring,\n"
+    "running scenarios and driving devices. The MCP server runs outside the sandbox.\n"
+    "\n"
+    "Pick one:\n"
+    "  (a) run the install/update sessions only with `codex --sandbox danger-full-access`\n"
+    "      and keep the default sandbox for everyday work  ← narrower, recommended\n"
+    "  (b) set `sandbox_mode = \"danger-full-access\"` in the config to relax it permanently\n"
+)
+
+try:
+    import tomllib
+except ModuleNotFoundError:
+    print("UNKNOWN python3 has no tomllib (3.11+)\n%s" % advice, end=""); sys.exit(0)
+if not os.path.exists(path):
+    print("LIMITED %s does not exist yet, so the default sandbox applies\n%s" % (path, advice), end="")
+    sys.exit(0)
+try:
+    with open(path, "rb") as f:
+        data = tomllib.load(f)
+except Exception as e:
+    print("UNKNOWN could not parse %s (%s)\n%s" % (path, e, advice), end=""); sys.exit(0)
+
+mode = data.get("sandbox_mode", "workspace-write")
+if mode == "danger-full-access":
+    print("OK sandbox_mode=danger-full-access (shell steps can run)", end="")
+else:
+    print("LIMITED sandbox_mode=%s\n%s" % (mode, advice), end="")
+PYSANDBOX
+  ); then
+    case "$sandbox_out" in
+      OK*) record "codex sandbox" ok "${sandbox_out#OK }" ;;
+      LIMITED*)
+        sandbox_head="${sandbox_out#LIMITED }"
+        record "codex sandbox" warn "${sandbox_head%%$'\n'*} — ft_* keeps working, but the install/update runbooks cannot run under it (nothing was written; see below)"
+        printf '%s\n' "${sandbox_out#*$'\n'}" ;;
+      UNKNOWN*)
+        sandbox_head="${sandbox_out#UNKNOWN }"
+        record "codex sandbox" warn "could not verify the sandbox: ${sandbox_head%%$'\n'*} (see below if the runbooks do not complete)"
+        printf '%s\n' "${sandbox_out#*$'\n'}" ;;
+      *) record "codex sandbox" warn "unexpected verdict ($sandbox_out)" ;;
+    esac
+  else
+    record "codex sandbox" warn "could not inspect $CODEX_CONFIG"
   fi
 fi
 
@@ -714,7 +1036,8 @@ if [ -d "$WORK_DIR/.fleetest" ]; then
   "installedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "toolRoot": "$TOOL_ROOT",
   "toolRootHead": "$(git -C "$TOOL_ROOT" rev-parse HEAD 2>/dev/null)",
-  "toolRootRef": "$(git -C "$TOOL_ROOT" symbolic-ref --short -q HEAD 2>/dev/null || echo detached)"
+  "toolRootRef": "$(git -C "$TOOL_ROOT" symbolic-ref --short -q HEAD 2>/dev/null || echo detached)",
+  "agents": "$AGENTS"
 }
 EOF
 fi

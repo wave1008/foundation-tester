@@ -19,6 +19,10 @@ struct InitCommand: AsyncParsableCommand {
     @Option(help: "Bundle ID / package name of the app under test")
     var app: String = "com.example.myapp"
 
+    // install.sh が解決した結果を受ける(省略時は自動判定)。**インストーラの決定を上書きしない**
+    @Option(help: "Which agent conventions to set up: claude / codex / both / auto (default: auto-detect)")
+    var agent: String?
+
     @Option(help: "Which run profiles to scaffold: ios / android / both (default both)")
     var platform: String = "both"
 
@@ -30,13 +34,11 @@ struct InitCommand: AsyncParsableCommand {
             help: "git URL of foundation-tester (depends via .package(url:from:); mutually exclusive with --fleetest-path)")
     var fleetestURL: String?
 
-    @Option(name: .customLong("fleetest-version"),
-            help: "Minimum version for the git dependency (used with --fleetest-url; ignored when --fleetest-branch is given)")
-    var fleetestVersion: String = "0.0.1"
-
+    // 配布口は main の1本(docs/releasing.md)。タグを指す `from:` 依存は案内しない導線だったので
+    // 落とし、git 依存はブランチ追従だけにしてある
     @Option(name: .customLong("fleetest-branch"),
-            help: "Track a branch instead of a tag for the git dependency (used with --fleetest-url; for testing before a tag exists)")
-    var fleetestBranch: String?
+            help: "Branch to track for the git dependency (used with --fleetest-url; default main)")
+    var fleetestBranch: String = "main"
 
     func run() async throws {
         let cwd = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
@@ -58,9 +60,7 @@ struct InitCommand: AsyncParsableCommand {
             let abs = URL(fileURLWithPath: fleetestPath, relativeTo: cwd).standardizedFileURL.path
             dependencyLine = #".package(path: "\#(abs)"),"#
         } else if let fleetestURL {
-            dependencyLine = fleetestBranch.map {
-                #".package(url: "\#(fleetestURL)", branch: "\#($0)"),"#
-            } ?? #".package(url: "\#(fleetestURL)", from: "\#(fleetestVersion)"),"#
+            dependencyLine = #".package(url: "\#(fleetestURL)", branch: "\#(fleetestBranch)"),"#
         } else {
             throw ValidationError("specify either --fleetest-path or --fleetest-url")
         }
@@ -72,22 +72,28 @@ struct InitCommand: AsyncParsableCommand {
             let project = try ProjectScaffold.createAndRegister(
                 name: projectName, app: app, repoRoot: cwd,
                 platforms: try Self.platforms(from: platform))
-            // 受け手が自分のプロジェクトを Claude Code で開いて /fleetest-setup で残りを駆動できるように
-            try ProjectScaffold.writeRecipientSkill(packageRoot: cwd, projectName: projectName)
+            // 受け手が自分のプロジェクトをエージェントで開いて fleetest-setup で残りを駆動できるように
+            let agents = AgentIntegration.parse(agent, packageRoot: cwd)
+            try ProjectScaffold.writeRecipientSkill(
+                packageRoot: cwd, projectName: projectName, agents: agents)
             // VSCode 拡張が fleetest.project/fleetest.binaryPath を手動設定なしで解決できるように
             let wroteVSCodeSettings = try ProjectScaffold.writeVSCodeSettings(
                 packageRoot: cwd, fleetestPath: fleetestPath, projectName: projectName)
             // fleetest のコマンドを毎回 Bash 承認させないための許可リスト(fleetest 由来のみ)。
             // 失敗しても init は続行する
+            // **Codex には等価物が無い**(承認は approval_policy / sandbox_mode の粗い軸だけで、
+            // コマンド単位の allowlist を持たない)ので、Claude Code を使う受け手にだけ書く
             var addedClaudeAllows: [String] = []
-            do {
-                addedClaudeAllows = try ProjectScaffold.writeClaudeSettings(
-                    packageRoot: cwd, toolRoot: fleetestPath.map {
-                        URL(fileURLWithPath: $0, relativeTo: cwd).standardizedFileURL.path
-                    })
-            } catch {
-                FileHandle.standardError.write(Data(("⚠️ Failed to prepare .claude/settings.json: "
-                    + "\(error.localizedDescription)\n").utf8))
+            if agents.contains(where: \.hasCommandPermissionAllowlist) {
+                do {
+                    addedClaudeAllows = try ProjectScaffold.writeClaudeSettings(
+                        packageRoot: cwd, toolRoot: fleetestPath.map {
+                            URL(fileURLWithPath: $0, relativeTo: cwd).standardizedFileURL.path
+                        })
+                } catch {
+                    FileHandle.standardError.write(Data(("⚠️ Failed to prepare .claude/settings.json: "
+                        + "\(error.localizedDescription)\n").utf8))
+                }
             }
             // .build/(~1.7GB)等が git status の未追跡ノイズにならないように。失敗しても init は続行
             var addedGitignoreEntries: [String] = []
@@ -114,7 +120,11 @@ struct InitCommand: AsyncParsableCommand {
             if !addedGitignoreEntries.isEmpty {
                 print("   .gitignore: appended \(addedGitignoreEntries.joined(separator: " ")) (to keep .build/ etc. out of git noise)")
             }
-            print("   Claude Code: open this folder and /fleetest-setup drives device setup through the first run")
+            for agent in agents {
+                print("   \(agent.displayName): open this folder and "
+                      + "\(agent.skillInvocationPrefix)fleetest-setup drives device setup "
+                      + "through the first run")
+            }
         } catch {
             // マニフェストだけ書いて scaffold に失敗したら、中途半端な Package.swift を残さない
             try? FileManager.default.removeItem(at: manifest)

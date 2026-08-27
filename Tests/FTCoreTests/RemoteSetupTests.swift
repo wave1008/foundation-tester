@@ -21,6 +21,7 @@ final class RemoteSetupTests: XCTestCase {
                 "--skip-extension",
                 "--skip-mcp",
                 "--skip-claude-md",
+                "--skip-agents-md",
                 "--no-next-steps",
             ])
     }

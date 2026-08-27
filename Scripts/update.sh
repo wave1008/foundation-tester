@@ -5,7 +5,7 @@
 #   bash <TOOL_ROOT>/Scripts/update.sh [--work-dir <dir>] [--tool-root <dir>] [--skip-extension] [--skip-plugin]
 #
 # やること: install.sh(pull → swift build → 拡張 → .mcp.json → 検証ゲート)を再実行し、
-#           更新固有の作業を足す: fleetest project sync / Claude Code プラグインの更新と版照合。
+#           更新固有の作業を足す: fleetest project sync / プラグイン(Claude Code・Codex)の更新と版照合。
 #           **先に update-check.sh で判定し、up-to-date なら何もせず終える**(全工程は更新が
 #           無くても約30秒かかる。壊れた導入を入れ直すときは --force)。
 # やらないこと: プロファイルの作り直し(既存を尊重)・受け手パッケージの作成(それは install.sh)。
@@ -32,7 +32,7 @@ Usage: update.sh [options]
   --no-pull          Do not update the clone (to pin a version, or while developing the tool)
   --force            Run everything even without an update (to redo a broken install)
   --skip-extension   Do not reinstall the VSCode extension
-  --skip-plugin      Do not update the Claude Code plugin (skills)
+  --skip-plugin      Do not update the skills (the Claude Code / Codex plugins and copied SKILL.md files)
   --doctor           Print the environment report (fleetest doctor) at the end (off by default)
   --keep-local       Do not auto-discard local changes in the clone
   --verbose          Also print the raw swift build / npm logs to the screen
@@ -189,6 +189,100 @@ elif [ "$DO_PLUGIN" = "1" ]; then
   echo "  (if the skills are used directly from the clone, git pull already updated them)"
 fi
 
+# ---- 5.7b. Codex プラグイン(スキル)の更新 --------------------------------------
+# Claude 側と同じ理由でここが要る(プラグインはキャッシュのスナップショットを読むので
+# `git pull` では新しくならない)。**サブコマンド名が Claude と違う**:
+#   marketplace update → `marketplace upgrade` / plugin update → `plugin add`(冪等・再導入)
+# 版の照合は Claude と違って**プラグインキャッシュの git HEAD**を見る ——
+# `codex plugin list` の VERSION は plugin.json の固定値(0.1.0)で、更新しても動かないため
+# 「実行した」しか言えない。キャッシュは clone なので sha が取れる(実測)。
+CODEX_PLUGIN_RESULT="skip"
+codex_plugin_sha() {
+  # <CODEX_HOME>/plugins/cache/foundation-tester/fleetest/<version>/ の git HEAD
+  for d in "${CODEX_HOME:-$HOME/.codex}"/plugins/cache/foundation-tester/fleetest/*/; do
+    [ -d "$d/.git" ] || continue
+    git -C "$d" rev-parse HEAD 2>/dev/null && return 0
+  done
+  return 1
+}
+if [ "$DO_PLUGIN" = "1" ] && command -v codex >/dev/null 2>&1; then
+  if codex plugin list 2>/dev/null | grep -q "fleetest@foundation-tester"; then
+    echo ""
+    echo "==> Updating the Codex plugin (skills)"
+    codex_before="$(codex_plugin_sha || echo "")"
+    codex plugin marketplace upgrade foundation-tester >/dev/null 2>&1
+    codex plugin add fleetest@foundation-tester >/dev/null 2>&1
+    codex_sha="$(codex_plugin_sha || echo "")"
+    # 空を「一致」に落とさない(Claude 側と同じ false green の穴)
+    [ -n "$codex_sha" ] || codex_sha="(unavailable)"
+    head_sha="$(git -C "$TOOL_ROOT" rev-parse HEAD 2>/dev/null)"
+    if [ "$codex_sha" = "$head_sha" ]; then
+      if [ "$codex_sha" = "$codex_before" ]; then
+        CODEX_PLUGIN_RESULT="unchanged"; echo "✅ Codex plugin: ${codex_sha:0:12} (same as before)"
+      else
+        CODEX_PLUGIN_RESULT="ok"; echo "✅ Codex plugin: ${codex_sha:0:12} (matches HEAD)"
+      fi
+    else
+      CODEX_PLUGIN_RESULT="stale"
+      echo "⚠️ Codex plugin: ${codex_sha:0:12} (does not match HEAD ${head_sha:0:12})"
+    fi
+  else
+    CODEX_PLUGIN_RESULT="none"
+  fi
+fi
+
+# ---- 5.8. コピー配置のスキルの更新(プラグイン機構を使っていない受け手) -----------
+# `install-skill.sh` はスキルを**コピー**するので、`git pull` では更新されない
+# (プラグイン経由の受け手は 5.7 / 5.7b で更新済み。ここはコピー配置の受け手のため)。
+# 契約: 写し元は正典 `<TOOL_ROOT>/.claude/skills/`(AgentIntegration.canonicalSkillsDirectory)。
+# **fleetest-setup は写さない** —— 受け手のパッケージのそれは `fleetest init` が生成した
+# **受け手専用の別内容**で、正典で上書きすると受け手のセットアップ手順が消える。
+# **シンボリックリンクも写さない**(クローンを直接指しているので pull 済み)。
+# `--skip-plugin` はプラグインだけでなく**スキル更新全体**の抑止(コピー配置はプラグイン機構を
+# 使わない受け手の同じ関心事なので、ノブを分けない)
+#
+# **一覧は持たず、クローンの正典から導出する**。手で持つと、スキルを増やす/改名するたびに
+# ここを直し忘れてコピー配置の受け手だけ取り残される(install-skill.sh は clone より前に
+# 走るので一覧を手で持つしかないが、こちらは TOOL_ROOT があるので導出できる)。
+# **fleetest-setup だけは除く** —— 受け手のパッケージのそれは `fleetest init` が生成した
+# 受け手専用の別内容で、正典で上書きすると受け手のセットアップ手順が消える
+COPIED_SKILLS="$(ls "$TOOL_ROOT/.claude/skills" 2>/dev/null | grep -v '^fleetest-setup$' | tr '\n' ' ')"
+SKILLS_REFRESHED=0
+refresh_copied_skills() {
+  skills_dir="$1"
+  [ -d "$skills_dir" ] || return 0
+  for name in $COPIED_SKILLS; do
+    dest="$skills_dir/$name/SKILL.md"
+    src="$TOOL_ROOT/.claude/skills/$name/SKILL.md"
+    [ -f "$src" ] || continue
+    # `A && continue` を素の文として置くと、A が偽のとき**関数の戻り値が 1 になり**、
+    # set -e の呼び出し元で更新全体が止まる。if で書く
+    if [ -L "$skills_dir/$name" ] || [ -L "$dest" ]; then continue; fi
+    # **既にある物を写すだけでなく、増えた物も置く**。`[ -f "$dest" ] || continue` だけだと
+    # 新しいスキルがコピー配置の受け手へ永久に届かない(プラグイン経由なら自動で増えるのに、
+    # コピーの受け手だけ取り残される)
+    if [ ! -f "$dest" ]; then
+      mkdir -p "$skills_dir/$name"
+      cp "$src" "$dest"
+      SKILLS_REFRESHED=$((SKILLS_REFRESHED + 1))
+      continue
+    fi
+    if ! cmp -s "$src" "$dest"; then
+      cp "$src" "$dest"
+      SKILLS_REFRESHED=$((SKILLS_REFRESHED + 1))
+    fi
+  done
+  return 0
+}
+if [ "$DO_PLUGIN" = "1" ] && [ "$WORK_DIR" != "$TOOL_ROOT" ]; then
+  refresh_copied_skills "$WORK_DIR/.claude/skills"
+  refresh_copied_skills "$WORK_DIR/.agents/skills"
+  if [ "$SKILLS_REFRESHED" -gt 0 ]; then
+    echo ""
+    echo "✅ Skills: refreshed $SKILLS_REFRESHED copied SKILL.md from the clone"
+  fi
+fi
+
 echo ""
 echo "──────── Next steps ────────"
 # install.sh には --no-next-steps を渡しているので、ログの場所はここで案内する
@@ -199,5 +293,8 @@ last_log="${update_logs[${#update_logs[@]} - 1]}"
 [ -f "$last_log" ] && echo "・Detailed log: $last_log"
 echo "・In VSCode, run Developer: Reload Window (required for the extension; reopen the monitor panel)"
 [ "$PLUGIN_RESULT" = "ok" ] && echo "・Restart Claude Code (updated skills stay stale until a restart)"
+[ "$CODEX_PLUGIN_RESULT" = "ok" ] && echo "・Restart Codex (updated skills stay stale until a restart)"
+[ "$SKILLS_REFRESHED" -gt 0 ] && echo "・Restart the agent (Claude Code / Codex) so the refreshed skills are re-read"
 [ "$PLUGIN_RESULT" = "stale" ] && echo "・The plugin does not match HEAD. Run claude plugin marketplace update → plugin update by hand"
+[ "$CODEX_PLUGIN_RESULT" = "stale" ] && echo "・The Codex plugin does not match HEAD. Run codex plugin marketplace upgrade → plugin add by hand"
 exit "$INSTALL_STATUS"

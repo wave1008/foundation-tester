@@ -58,7 +58,39 @@
   lock を書き換える)。**受け手のフローに「クローンの中を書く」工程を足すときは必ず追跡を見る**
   **毎回 `fleetest api ensure-settings` で Bash 許可リストを補修する**(init 経由だけだと
   `--skip-project` の更新で既存の受け手に永久に届かない)
+- **エージェントは Claude Code と Codex の2つ**(規約位置の唯一の定義元は
+  `Sources/FTCore/AgentIntegration.swift`。表と Codex 固有の罠は docs/design.md §15)。
+  **runbook 本体(`.claude/skills/<name>/SKILL.md`)は複製しない** —— 各エージェントへは
+  規約位置から正典を参照する薄いアダプタだけを置く(Codex は `.codex-plugin/plugin.json` +
+  `.agents/plugins/marketplace.json` + `.agents/skills/<name>` のシンボリックリンク)。
+  **正典を `.agents/skills/` へ移さない**: raw.githubusercontent はシンボリックリンクを
+  **本文でなくリンク先の文字列**として返すので、`install-skill.sh` の curl が SKILL.md ではなく
+  1行のパスを掴む。**シェル(install.sh / install-skill.sh)は clone 前・ビルド前に走るので
+  Swift を呼べず、判定規則を手で持つ** —— 片方だけ変えない(`agentIntegration.test.mjs` が
+  ドリフトを、`agentAdapters.test.mjs` がアダプタの到達性を落とす)。
+  **SKILL.md に特定エージェント専用機能を前提として書かない**(`AskUserQuestion` は
+  「選択ダイアログ(Claude Code なら AskUserQuestion)」の形で、実装ではなく意図を書く)。
+  **Codex のサンドボックスはシェルだけを縛る**(2026-08-27 実測)—— **MCP サーバはその外**で動くので
+  `ft_*` は既定設定のまま全部動く。通らないのは**シェル経由の導入・更新**だけで、
+  原因は権限ではなく **①SwiftPM が `sandbox-exec` を入れ子に使う(`swift build` が起動できない)
+  ②`simctl` が CoreSimulatorService へ届かない**。**`network_access` / `writable_roots` では直らない**
+  ので、それらを根拠に OK を返してはいけない(以前 false green を出していた)。
+  install.sh ステップ7.7 と preflight の `codex_sandbox=` は**判定と2択の案内だけ**を出す
+  (a: 導入・更新のセッションだけ `codex --sandbox danger-full-access` / b: 恒久緩和)。
+  受け手のグローバル設定 = セキュリティ境界なので1バイトも書かない。
+  **「貼り付け用ブロック」として出さない** —— TOML は同じキー・テーブルの重複を許さず、
+  素朴に追記させると config.toml 全体を無効にする。
+  **`codex plugin add` は作業ツリーを丸ごとコピーする**(実測で 11GB。`.build/` 込み)。
+  Claude Code のローカル marketplace add と同じ罠**プロジェクトスコープの `.codex/config.toml` も使わない**
+  (trusted なプロジェクトでしか読まれず、書いても黙って効かない状態を作れる)
 - MCP サーバの起動口: `Scripts/mcp-server.sh`(`.mcp.json` はこれを exec するだけ)。
+  **`.mcp.json` をリポジトリに置かない**(2026-08-27。追跡外・`.gitignore` 済み)——
+  **プラグイン root = repo ルートなので、ルートの規約ファイルはプラグインに載って配られる**。
+  同梱していた `.mcp.json` は `$PWD/Scripts/mcp-server.sh` 依存で、クローンの外で
+  エージェントを起動した受け手の MCP が必ず落ちていた(Codex は起動時に
+  `connection closed`、Claude は `plugin details` に `MCP servers (1)`)。登録は構成を問わず
+  install.sh が**絶対パス**で WORK_DIR へ書く。同型は `skills/`(スキルが二重登録された)——
+  **ルートに何か置くときは「プラグインに載ってよいか」を必ず問う**。
   **シェル式を `.mcp.json` へ直書きしない** —— 起動のたびに no-op でも約8秒の `swift build` を払い、
   失敗すると `>/dev/null` で**理由が分からないまま起動しない**(2026-08-06 の外部フィードバック)。
   ランチャが守るのは3つ: **鮮度でだけ建てる**(`find Sources Package.swift -newer <bin>`。
@@ -66,7 +98,10 @@
   無変更のソースを触っただけだと再リンクされず毎回建て直しになるため)/
   **stdout は JSON-RPC 専用**(診断は stderr・ビルド出力はログファイル)/
   **cwd を変えない**(cwd は受け手パッケージの特定に使う。ビルドはサブシェルで行う)
-- 受け手の更新: `Scripts/update.sh`(install.sh を再実行 + project sync + プラグイン更新と版照合。
+- 受け手の更新: `Scripts/update.sh`(install.sh を再実行 + project sync + **両エージェントの
+  プラグイン更新と版照合**(Claude = `marketplace update`→`plugin update`・版は `plugin list` の sha /
+  Codex = `marketplace upgrade`→`plugin add`・版は**キャッシュの git HEAD**。`plugin list` の
+  VERSION は plugin.json の固定値なので照合に使えない)。
   `.claude/skills/fleetest-update/SKILL.md` と 1:1)。**先に update-check.sh を呼び up-to-date なら
   即終了**(全工程は更新が無くても約30秒。入れ直しは `--force`)。**ログの場所は最後の
   「次にやること」にも出す**(install.sh には `--no-next-steps` を渡すため、こちらで案内しないと
@@ -143,7 +178,8 @@
   つかない)。ツールが閉じるのは**ステップ開始時点で出ている割り込み**までで、閉じた後は
   整定を待って木を取り直す。**間に湧いた分の復帰はシナリオ側**(docs/commands.md
   §割り込みが「操作を吸った」ときの扱い)。**自動リトライを再提案しない**
-- リリース(git タグ発行と版ピンの関係。配布はソースビルド前提): docs/releasing.md(`Scripts/release.sh`)
+- リリース(git タグ発行。**受け手の配布口は main の1本**で版固定の導線は案内しない。
+  `FLEETEST_REF` は保守者のブランチ検証口): docs/releasing.md(`Scripts/release.sh`)
 - **リモートのデバイスの監視と配信**(2026-08-17): 手元の `api monitor` は simctl/adb =
   **この機械しか観測できない**。別の機械のぶんは `RemoteMonitorFanout` が
   `remote exec <host> -- api monitor --device-machine local` を1本ずつ立てて合流させ、
@@ -199,8 +235,10 @@
   (機械作業は `fleetest remote setup` に委ね、聞くこと・人手へ渡すこと・結果の読み方だけを持つ。
   トラブル表は頻出3件だけで、詳細は docs を参照させる = 二重管理にしない)。
   **片方だけ変えない** —— 手順に影響する変更(レイアウト・併用不可オプション・適合チェックの項目)は
-  docs とスキルの両方に入れる。**スキルを増やしたら `Scripts/install-skill.sh` の `SKILLS` にも足す**
-  (プラグイン経由は `.claude/skills/` を直接見るので不要だが、curl 版は列挙が唯一の定義元)
+  docs とスキルの両方に入れる。**スキルを増やしたら `Scripts/install-skill.sh` の `SKILLS` と
+  `.agents/skills/<name>` のシンボリックリンクを足す**(前者は clone より前に走るので導出できず、
+  **手書きの一覧はここだけ**。`update.sh` は TOOL_ROOT の正典から導出するので触らなくてよい。
+  後者は **Codex の repo ローカル発見の実体** —— `.codex-plugin/plugin.json` だけでは効かない[実測])
 - **リモート制御(実行プロファイルの `remoteControl`。旧 `fileSync`)**: ワークスペース(資材の
   置き場。ステージングと転送)+ **run 前後のスクリプト**(依存 DB・スタブサーバの起動と片付け。
   docs/remote-runner.md §17)。**スクリプトに宣言は無い** —— `<workspace>/scripts/setup.sh` /

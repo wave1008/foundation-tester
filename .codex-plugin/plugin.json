@@ -1,0 +1,36 @@
+{
+  "name": "fleetest",
+  "version": "0.1.0",
+  "description": "fleetest mobile(オンデバイス FM 内蔵の iOS/Android E2E テストツール)の導入・更新・プロファイル作成・シナリオ作成スキル。導入は $fleetest-setup から。",
+  "author": {
+    "name": "wave1008",
+    "url": "https://github.com/wave1008"
+  },
+  "homepage": "https://github.com/wave1008/foundation-tester",
+  "repository": "https://github.com/wave1008/foundation-tester",
+  "license": "MIT",
+  "keywords": [
+    "mobile",
+    "e2e",
+    "ios",
+    "android",
+    "testing"
+  ],
+  "skills": "./.claude/skills/",
+  "interface": {
+    "displayName": "fleetest mobile",
+    "shortDescription": "AI と実機・仮想機を使ってモバイル E2E テストを作成・実行します。",
+    "longDescription": "fleetest mobile の導入、更新、プロファイル設定、実機・仮想機を操作したシナリオ作成を Codex から進められます。",
+    "developerName": "wave1008",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/wave1008/foundation-tester",
+    "defaultPrompt": [
+      "$fleetest-setup で fleetest mobile をセットアップしてください。",
+      "$fleetest-scenario でモバイル E2E シナリオを作成してください。"
+    ]
+  }
+}

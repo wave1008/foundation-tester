@@ -1,0 +1,20 @@
+{
+  "name": "foundation-tester",
+  "interface": {
+    "displayName": "fleetest mobile"
+  },
+  "plugins": [
+    {
+      "name": "fleetest",
+      "source": {
+        "source": "local",
+        "path": "./"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

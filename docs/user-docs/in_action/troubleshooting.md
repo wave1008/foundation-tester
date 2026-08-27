@@ -12,7 +12,7 @@ Common problems and how to resolve them.
 | Android snapshot is slow | Check `fleetest bridge status --platform android` and `fleetest doctor` for the bridge's install/running state | Run `fleetest bridge up --platform android` to force a re-setup of the resident bridge |
 | Japanese (or other non-ASCII) text doesn't get typed on Android | The bridge normally types via `ACTION_SET_TEXT`, so no IME switching is needed | Check the bridge's install state with `fleetest doctor`; reinstalling the bridge (`fleetest bridge up --platform android`) usually resolves it |
 
-If none of this resolves the issue, ask Claude Code to investigate — it can read bridge/run logs
+If none of this resolves the issue, ask your agent (Claude Code or Codex) to investigate — it can read bridge/run logs
 and the failure report directly.
 
 ### Link

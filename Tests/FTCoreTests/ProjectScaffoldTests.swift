@@ -213,6 +213,33 @@ final class ProjectScaffoldTests: XCTestCase {
             WorkspaceScaffold.defaultRootName)
     }
 
+    // MARK: - 受け手のセットアップスキル(エージェントごとの規約位置)
+
+    /// 本文は1つ、置き場所だけがエージェントごとに増える。**同じ内容を2箇所に持たない**
+    func testRecipientSkillGoesToEachAgentsConventionalLocation() throws {
+        let written = try ProjectScaffold.writeRecipientSkill(
+            packageRoot: packageRoot, projectName: "Demo", agents: [.claude, .codex])
+        XCTAssertEqual(written, [".claude/skills/fleetest-setup/SKILL.md",
+                                 ".agents/skills/fleetest-setup/SKILL.md"])
+        let bodies = try written.map {
+            try String(contentsOf: packageRoot.appendingPathComponent($0), encoding: .utf8)
+        }
+        XCTAssertEqual(Set(bodies).count, 1, "エージェントごとに別内容を書いてはいけない")
+        XCTAssertTrue(bodies[0].hasPrefix("---\nname: fleetest-setup\n"),
+                      "frontmatter が SKILL.md の形になっていない")
+    }
+
+    /// Codex だけの受け手に `.claude/` を作らない(逆も同じ)
+    func testRecipientSkillDoesNotCreateOtherAgentsDirectories() throws {
+        try ProjectScaffold.writeRecipientSkill(
+            packageRoot: packageRoot, projectName: "Demo", agents: [.codex])
+        XCTAssertTrue(FileManager.default.fileExists(
+            atPath: packageRoot.appendingPathComponent(".agents/skills").path))
+        XCTAssertFalse(FileManager.default.fileExists(
+            atPath: packageRoot.appendingPathComponent(".claude").path),
+            "使わないエージェントの規約位置を作ってはいけない")
+    }
+
     // MARK: - .claude/settings.json(Bash 承認を減らす許可リスト)
 
     private var claudeSettingsURL: URL {
