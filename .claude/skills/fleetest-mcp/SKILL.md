@@ -1,6 +1,6 @@
 ---
 name: fleetest-mcp
-description: foundation-tester の MCP サーバ(fleetest-mcp)だけをエージェント(Claude Code / Codex)に登録し、ft_* ツール(アプリを直接操作・スナップショット・シナリオ実行)を使える状態にする。VSCode 拡張・プロジェクト作成・プロファイル設定は行わない。未クローンなら clone → fleetest-mcp をビルド → 登録先(.mcp.json / ~/.codex/config.toml)をマージ → 承認案内までを検証付きで実行する。「MCP だけ入れて」「ft_* ツールを使えるようにして」「MCP サーバを登録して」等の依頼で使う。フル導入は /fleetest-setup。
+description: foundation-tester の MCP サーバ(fleetest-mcp)だけをエージェントに登録し、ft_* ツール(アプリを直接操作・スナップショット・シナリオ実行)を使える状態にする。VSCode 拡張・プロジェクト作成・プロファイル設定は行わない。未クローンなら clone → fleetest-mcp をビルド → 登録先(Claude Code は .mcp.json、他のエージェントはその設定ファイル)をマージ → 承認案内までを検証付きで実行する。「MCP だけ入れて」「ft_* ツールを使えるようにして」「MCP サーバを登録して」等の依頼で使う。フル導入は /fleetest-setup。
 ---
 
 # fleetest MCP 登録 runbook
@@ -19,11 +19,10 @@ description: foundation-tester の MCP サーバ(fleetest-mcp)だけをエージ
 > **`/plugin` スラッシュコマンドは VSCode 拡張・Agent SDK 環境では提供されない**ので CLI 形)、
 > コピー配置(`install-skill.sh`)なら `fleetest-update` が正典から写し直す。
 
-> **スキルの呼び出し記法はエージェントごとに違う**: Claude Code は `/fleetest-setup`、
-> Codex は `$fleetest-setup`(または `/skills` セレクタ)。以下は `/` 形で書くが、
-> Codex では `$` に読み替える。
+> **スキルの呼び出し記法はエージェントごとに違う**(Claude Code は `/fleetest-setup`)。
+> 以下は `/` 形で書くので、別の記法のエージェントではそちらへ読み替える。
 
-エージェント(Claude Code / Codex)から `ft_*` ツール(`ft_tap`/`ft_screenshot`/`ft_snapshot`/`ft_run_scenario` 等)を使うための
+エージェントから `ft_*` ツール(`ft_tap`/`ft_screenshot`/`ft_snapshot`/`ft_run_scenario` 等)を使うための
 **MCP サーバ(`fleetest-mcp`)だけ**を登録する。VSCode 拡張(.vsix)・`fleetest init`(プロジェクト作成)・
 プロファイル設定は**やらない**。それらまで含むフル導入は `/fleetest-setup`。
 
@@ -131,11 +130,19 @@ Xcode を同ベータへ揃えてフルリビルド。FoundationModels の ABI �
 - cwd = パッケージルートが前提。cd 制御ができない起動経路では代わりに環境変数 `FT_PACKAGE_ROOT`
   でパッケージルートを明示指定できる(未設定なら cwd 探索、無効なパスなら診断のため探索フォールバックせず失敗する)。
 
-### 2.5 Codex に登録する(Codex を使う場合)
+「全プロジェクトで使いたい」場合のみ、代わりに user スコープ登録を案内する(claude CLI が PATH に要る):
 
-Codex はプロジェクトスコープの `.mcp.json` を読まない。登録先は**ユーザーレベルの
-`~/.codex/config.toml`**(`CODEX_HOME` を設定しているならそちら)。次のテーブルを**末尾に追記**する
-(TOML はテーブル見出しで前のテーブルが終わるので追記は常に妥当。既存行には触らない):
+```
+claude mcp add fleetest --scope user -e FT_TOOL_ROOT=<ABS_TOOL_ROOT> -- bash -lc 'exec "<ABS_TOOL_ROOT>/Scripts/mcp-server.sh"'
+```
+
+CLI が無ければ上の WORK_DIR `.mcp.json` 方式で十分。
+
+### 2.5 Claude Code 以外のエージェントに登録する(該当するときだけ)
+
+`fleetest-mcp` は標準の stdio MCP サーバなので、**MCP に対応したクライアントならどれでも**使える。
+設定の書式はクライアントに従い、起動コマンドだけをステップ2と同じ形で渡す。TOML で設定する
+クライアント(Codex の `~/.codex/config.toml` など)ならこの形:
 
 ```toml
 [mcp_servers.fleetest]
@@ -149,10 +156,14 @@ FT_TOOL_ROOT = "<ABS_TOOL_ROOT>"
 - 起動の中身・`FT_TOOL_ROOT` の意味・`bash -lc` の理由はステップ2と同じ(ランチャは共通)。
 - **`cwd` は書かない**。cwd は `fleetest-mcp` が受け手パッケージを特定する入力なので、
   エージェントが開いたディレクトリのままにする。
-- **プロジェクトスコープの `.codex/config.toml` は使わない**。あれは `~/.codex/config.toml` 側で
-  そのプロジェクトが trusted のときしか読まれないため、書いても**黙って効かない**状態を作れてしまう。
-- 既に `[mcp_servers.fleetest]` があり `FT_TOOL_ROOT` が別の clone を指しているときは、
-  **勝手に書き換えず** 🧑 にどちらを使うか確認する(古い clone が残っているだけのことが多い)。
+- **エージェントが受け手の設定ファイルを書き換えない**。値を出して 🧑 に貼ってもらう。
+  とくに **TOML は同じテーブルの重複を許さない** ので、素朴な追記は設定ファイル全体を無効にする
+  —— 既に `[mcp_servers.fleetest]` があるなら追記ではなく既存の値を書き換えてもらう
+  (別の clone を指しているだけのことが多いので、どちらを使うかを先に確認する)。
+- Codex の場合、**プロジェクトスコープの `.codex/config.toml` は使わない**。あれは
+  `~/.codex/config.toml` 側でそのプロジェクトが trusted のときしか読まれないため、書いても
+  **黙って効かない**状態を作れてしまう。
+- 案内の全体像は docs/user-docs/tools/other_agents_ja.md。
 
 #### サンドボックスの確認(Codex)
 
@@ -166,21 +177,9 @@ FT_TOOL_ROOT = "<ABS_TOOL_ROOT>"
 - `xcrun simctl` —— CoreSimulatorService への mach 接続が塞がれる
 - **`network_access` や `writable_roots` では直らない**(権限の問題ではない)
 
-`Scripts/install.sh` のステップ7.7(または `Scripts/preflight.sh` の `codex_sandbox=` 行)が判定を出す。
-`danger-full-access` 以外なら、🧑 に次のどちらかを選んでもらう。**エージェントが
-`~/.codex/config.toml` を書き換えてはいけない**(受け手のセキュリティ境界):
-
-- **(a) 導入・更新のセッションだけ `codex --sandbox danger-full-access` で起動する**(推奨・狭い)
-- **(b) `sandbox_mode = "danger-full-access"` を恒久設定にする**。**そのまま追記させない** ——
-  `sandbox_mode` が2つになると config.toml 全体が無効になる
-
-「全プロジェクトで使いたい」場合のみ、代わりに user スコープ登録を案内する(claude CLI が PATH に要る):
-
-```
-claude mcp add fleetest --scope user -e FT_TOOL_ROOT=<ABS_TOOL_ROOT> -- bash -lc 'exec "<ABS_TOOL_ROOT>/Scripts/mcp-server.sh"'
-```
-
-CLI が無ければ上の WORK_DIR `.mcp.json` 方式で十分。
+導入・更新のセッションだけ `codex --sandbox danger-full-access` で起動するのが最も狭い回避
+(恒久設定にするなら `sandbox_mode`。こちらも**キーの重複で config.toml 全体が無効になる**)。
+**エージェントが `~/.codex/config.toml` を書き換えてはいけない**(受け手のセキュリティ境界)。
 
 **検証ゲート**: **WORK_DIR で**(承認前でもここは確認できる)
 

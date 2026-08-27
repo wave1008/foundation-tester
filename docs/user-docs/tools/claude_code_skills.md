@@ -5,7 +5,8 @@ profile setup and scenario authoring — each one drives the same underlying scr
 commands a human would run by hand, with verification gates and human checkpoints where a
 decision or an approval genuinely needs a person.
 
-Using Codex instead? The same runbooks back both agents — see [Codex](./codex_skills.md).
+Using a different agent (Codex, Cline, …)? The same runbooks apply — see
+[Other agents](./other_agents.md) for how to register the MCP server and hand them over.
 
 ## Installing the plugin
 

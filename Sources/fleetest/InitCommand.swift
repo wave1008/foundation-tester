@@ -19,10 +19,6 @@ struct InitCommand: AsyncParsableCommand {
     @Option(help: "Bundle ID / package name of the app under test")
     var app: String = "com.example.myapp"
 
-    // install.sh が解決した結果を受ける(省略時は自動判定)。**インストーラの決定を上書きしない**
-    @Option(help: "Which agent conventions to set up: claude / codex / both / auto (default: auto-detect)")
-    var agent: String?
-
     @Option(help: "Which run profiles to scaffold: ios / android / both (default both)")
     var platform: String = "both"
 
@@ -73,27 +69,22 @@ struct InitCommand: AsyncParsableCommand {
                 name: projectName, app: app, repoRoot: cwd,
                 platforms: try Self.platforms(from: platform))
             // 受け手が自分のプロジェクトをエージェントで開いて fleetest-setup で残りを駆動できるように
-            let agents = AgentIntegration.parse(agent, packageRoot: cwd)
             try ProjectScaffold.writeRecipientSkill(
-                packageRoot: cwd, projectName: projectName, agents: agents)
+                packageRoot: cwd, projectName: projectName)
             // VSCode 拡張が fleetest.project/fleetest.binaryPath を手動設定なしで解決できるように
             let wroteVSCodeSettings = try ProjectScaffold.writeVSCodeSettings(
                 packageRoot: cwd, fleetestPath: fleetestPath, projectName: projectName)
             // fleetest のコマンドを毎回 Bash 承認させないための許可リスト(fleetest 由来のみ)。
             // 失敗しても init は続行する
-            // **Codex には等価物が無い**(承認は approval_policy / sandbox_mode の粗い軸だけで、
-            // コマンド単位の allowlist を持たない)ので、Claude Code を使う受け手にだけ書く
             var addedClaudeAllows: [String] = []
-            if agents.contains(where: \.hasCommandPermissionAllowlist) {
-                do {
-                    addedClaudeAllows = try ProjectScaffold.writeClaudeSettings(
-                        packageRoot: cwd, toolRoot: fleetestPath.map {
-                            URL(fileURLWithPath: $0, relativeTo: cwd).standardizedFileURL.path
-                        })
-                } catch {
-                    FileHandle.standardError.write(Data(("⚠️ Failed to prepare .claude/settings.json: "
-                        + "\(error.localizedDescription)\n").utf8))
-                }
+            do {
+                addedClaudeAllows = try ProjectScaffold.writeClaudeSettings(
+                    packageRoot: cwd, toolRoot: fleetestPath.map {
+                        URL(fileURLWithPath: $0, relativeTo: cwd).standardizedFileURL.path
+                    })
+            } catch {
+                FileHandle.standardError.write(Data(("⚠️ Failed to prepare .claude/settings.json: "
+                    + "\(error.localizedDescription)\n").utf8))
             }
             // .build/(~1.7GB)等が git status の未追跡ノイズにならないように。失敗しても init は続行
             var addedGitignoreEntries: [String] = []
@@ -120,11 +111,9 @@ struct InitCommand: AsyncParsableCommand {
             if !addedGitignoreEntries.isEmpty {
                 print("   .gitignore: appended \(addedGitignoreEntries.joined(separator: " ")) (to keep .build/ etc. out of git noise)")
             }
-            for agent in agents {
-                print("   \(agent.displayName): open this folder and "
-                      + "\(agent.skillInvocationPrefix)fleetest-setup drives device setup "
-                      + "through the first run")
-            }
+            print("   \(AgentIntegration.displayName): open this folder and "
+                  + "\(AgentIntegration.skillInvocationPrefix)fleetest-setup drives device setup "
+                  + "through the first run")
         } catch {
             // マニフェストだけ書いて scaffold に失敗したら、中途半端な Package.swift を残さない
             try? FileManager.default.removeItem(at: manifest)

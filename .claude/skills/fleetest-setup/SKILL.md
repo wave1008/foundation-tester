@@ -19,9 +19,8 @@ description: fleetest を使いたい受け手を、自分の iOS/Android アプ
 > **`/plugin` スラッシュコマンドは VSCode 拡張・Agent SDK 環境では提供されない**ので CLI 形)、
 > コピー配置(`install-skill.sh`)なら `fleetest-update` が正典から写し直す。
 
-> **スキルの呼び出し記法はエージェントごとに違う**: Claude Code は `/fleetest-setup`、
-> Codex は `$fleetest-setup`(または `/skills` セレクタ)。以下は `/` 形で書くが、
-> Codex では `$` に読み替える。
+> **スキルの呼び出し記法はエージェントごとに違う**(Claude Code は `/fleetest-setup`)。
+> 以下は `/` 形で書くので、別の記法のエージェントではそちらへ読み替える。
 
 受け手を、**自分のアプリのシナリオを書いて実行できる状態**まで導く。
 全体像・背景は docs/user-docs/getting-started_ja.md。ここはエージェントが順に実行するための手順書。
@@ -181,12 +180,10 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/${FLEETE
 **`--machine` と `--app-name` を渡すとプロファイル作成(`profile setup --auto-device`)まで1回で終わる**
 (ステップ5・8 が不要になる。デバイスは自動選定)。値はすべてステップ0の回答と preflight の出力から作る。
 
-- **どのエージェントの規約位置を用意するかは自動判定**（`.claude/` や `CLAUDE.md` や `~/.claude` が
-  あれば Claude Code、`.agents/` や `AGENTS.md` や `~/.codex` があれば Codex、両方該当することもある。
-  どれも無ければ Claude Code 単独）。**判定が実態と違うときだけ `--agent claude|codex|both` で明示する** ——
-  たとえば「Claude Code も入っているが、このプロジェクトは Codex で使う」なら `--agent codex`
-  （渡さないとホームの `~/.claude` を拾って `.claude/settings.json` まで作られる）。
-  結果は `[ok] agent:` 行に出る。
+- **インストーラが規約位置(`.claude/`・`CLAUDE.md`・`.mcp.json`)を用意するのは Claude Code だけ**。
+  他のエージェント(Codex・Cline 等)で使う受け手には、MCP サーバの登録と手順書の渡し方を
+  docs/user-docs/tools/other_agents_ja.md で案内する（生成物が不要なら `--skip-mcp` /
+  `--skip-claude-md`）。
 - **curl 形を使う**（クローンの `Scripts/install.sh` は pull されるまで古く、新しい引数を渡すと
   「不明なオプション」で落ちる。curl 形なら常に最新が動き、その中でクローンを pull する）。
   `${FLEETEST_REF:-main}` は**保守者が未マージのブランチを検証するため**の口で、受け手は何も指定しなくてよい
@@ -332,7 +329,7 @@ cd ../foundation-tester/vscode-fleetest && npm install && npm run install-local
 
 ### 7.5 MCP サーバの登録（エージェントから ft_* ツールを使う）
 
-VSIX とは別の消費面。エージェント（Claude Code / Codex）がアプリを直接操作してシナリオを生成するための MCP サーバ
+VSIX とは別の消費面。エージェントがアプリを直接操作してシナリオを生成するための MCP サーバ
 （`fleetest-mcp`）を登録する。バイナリは TOOL_ROOT のクローンから毎回ビルドされる（配布はソースビルド前提。
 products 未宣言でも `swift build --product fleetest-mcp` は暗黙 product として通る）。
 
@@ -378,14 +375,13 @@ CLI が無ければ上の WORK_DIR `.mcp.json` 方式で十分。
 **ツール本体 = TOOL_ROOT / シナリオのパッケージ = WORK_DIR** と表示されること（逆・同一なら
 `.mcp.json` の値か開く場所が違う）。FM 判定を挟まないので即座に返る。
 
-### 7.6 エージェントの入口を WORK_DIR の CLAUDE.md / AGENTS.md に置く
+### 7.6 エージェントの入口を WORK_DIR の CLAUDE.md に置く
 
 **導入直後ではなく、その後のセッションのための手当て**。MCP 登録も `.claude/settings.json` も
 「設定として効く」だけでエージェントが読む物ではないので、これが無いと翌週
 「このアプリのテスト書いて」と言われたエージェントの手掛かりは**スキルの description だけ**になる。
 
-書き先はエージェントごと: **Claude Code → `CLAUDE.md` / Codex → `AGENTS.md`**。
-**本文は同じで、違うのはスキルの呼び出し記法だけ**（`/fleetest-scenario` ↔ `$fleetest-scenario`）。
+書き先は `CLAUDE.md`（インストーラが用意する規約位置は Claude Code のものだけ）。
 潰したい実害は3つ ——「素の XCTest を書き始める」「新しい `ft_*` に気づかない」
 「DSL コマンドを推測で書く」。
 
@@ -400,8 +396,8 @@ CLI が無ければ上の WORK_DIR `.mcp.json` 方式で十分。
 ## テスト(fleetest)
 
 <!-- この範囲は Scripts/install.sh が管理しており、更新のたび上書きされます。
-     不要なら begin〜end ごと削除するか、インストーラに --skip-claude-md /
-     --skip-agents-md を渡してください。 -->
+     不要なら begin〜end ごと削除するか、インストーラに --skip-claude-md を
+     渡してください。 -->
 
 - シナリオ作成は `/fleetest-scenario`、対象アプリ/デバイスの追加は `/fleetest-profiles`、更新は `/fleetest-update`
 - 画面の探索・操作は `ft_*` ツール。**長いリストは `ft_swipe` の繰り返しでなく `ft_scroll_to`**
@@ -411,33 +407,29 @@ CLI が無ければ上の WORK_DIR `.mcp.json` 方式で十分。
 ```
 
 **チーム共有リポジトリでツール固有の記述を嫌う受け手には入れない**。インストーラなら
-`--skip-claude-md` / `--skip-agents-md`、手作業ならこのステップを飛ばす（機能には影響しない＝スキルを明示的に
+`--skip-claude-md`、手作業ならこのステップを飛ばす（機能には影響しない＝スキルを明示的に
 呼べば同じことができる）。既に入れた後で外したくなったら、マーカーごと削除すればよい。
 
-**検証ゲート**: WORK_DIR の `CLAUDE.md`（Codex なら `AGENTS.md`）にマーカーが**1組だけ**あり、
+**検証ゲート**: WORK_DIR の `CLAUDE.md` にマーカーが**1組だけ**あり、
 受け手の既存の記述が残っていること（2回流しても増えない＝冪等）。
 
-### 7.7 Codex のサンドボックス確認（Codex を使う場合のみ）
+### 7.7 Claude Code 以外のエージェントで使う場合（該当するときだけ）
 
-**取り違えないこと**: Codex のサンドボックスは**シェルコマンドだけ**を縛る。**MCP サーバはその外**で
-動くので、**`ft_*` は既定設定のまま全部動く**（画面探索・シナリオ実行・デバイス駆動）。
-通らないのは**シェル経由の導入・更新**だけ:
+インストーラが用意するのは Claude Code の規約位置だけ。受け手が Codex・Cline などを使うなら、
+**MCP サーバの登録**（そのクライアントの設定書式へ `Scripts/mcp-server.sh` を起動する
+エントリを足す）と**手順書の渡し方**を docs/user-docs/tools/other_agents_ja.md で案内する。
+**エージェントが受け手のグローバル設定（`~/.codex/config.toml` など）を書き換えてはいけない** ——
+セキュリティ境界であり、TOML は同じテーブルの重複でファイル全体が無効になる。
+
+**Codex を使う受け手への注意**: サンドボックスは**シェルコマンドだけ**を縛る。**MCP サーバは
+その外**で動くので、**`ft_*` は既定設定のまま全部動く**（画面探索・シナリオ実行・デバイス駆動）。
+通らないのは**シェル経由の導入・更新**だけで、原因は権限ではない:
 
 - `swift build` / `swift package` —— SwiftPM が自前の `sandbox-exec` を入れ子で使うため起動できない
 - `xcrun simctl` —— CoreSimulatorService への mach 接続が塞がれる
-- **`network_access` や `writable_roots` では直らない**（権限の問題ではない）
+- **`network_access` や `writable_roots` では直らない**
 
-インストーラのステップ7.7（または `Scripts/preflight.sh` の `codex_sandbox=` 行）が判定を出す。
-`danger-full-access` 以外なら 🧑 に次のどちらかを選んでもらう。**エージェントが
-`~/.codex/config.toml` を書き換えてはいけない**（受け手のセキュリティ境界であり、
-インストーラも判定だけで1バイトも書かない）:
-
-- **(a) 導入・更新のセッションだけ `codex --sandbox danger-full-access` で起動する**（推奨・狭い）
-- **(b) `sandbox_mode = "danger-full-access"` を恒久設定にする**。**そのまま追記させない** ——
-  `sandbox_mode` が重複すると config.toml 全体が無効になる
-
-**そもそもこのステップに到達しているなら、今のセッションでは導入が通っている**（swift build が
-成功している）。ここで出す警告は**次回以降のエージェントセッション**のための予告。
+導入・更新のセッションだけ `codex --sandbox danger-full-access` で起動するのが最も狭い回避。
 
 **検証ゲート**: `ft_list_devices` が候補を返すこと（返らないなら MCP 登録のほう。
 サンドボックスは `ft_*` に影響しない）。

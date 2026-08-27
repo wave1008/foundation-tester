@@ -12,7 +12,7 @@
 | Android の snapshot が遅い | `fleetest bridge status --platform android` と `fleetest doctor` でブリッジの導入・起動状況を確認 | `fleetest bridge up --platform android` で常駐ブリッジを強制的に再セットアップする |
 | Android で日本語(非 ASCII)入力が入らない | ブリッジは通常 `ACTION_SET_TEXT` で入力するため IME 切替は不要 | `fleetest doctor` でブリッジの導入状況を確認する。ブリッジの再導入(`fleetest bridge up --platform android`)で解消することが多い |
 
-これで解決しない場合はエージェント(Claude Code / Codex)に相談してください。ブリッジ・実行ログや失敗レポートを直接読んで調査できます。
+これで解決しない場合はエージェントに相談してください。ブリッジ・実行ログや失敗レポートを直接読んで調査できます。
 
 ### Link
 - [index](../index_ja.md)

@@ -65,7 +65,7 @@ claude plugin uninstall ftester@foundation-tester
 
 3. **テスト専用の新規フォルダ**を VSCode で開きます
 
-4. エージェントのパネルで `/fleetest:fleetest-setup` を実行します(Codex は `$fleetest-setup`)
+4. エージェントのパネルで `/fleetest:fleetest-setup` を実行します
 clone、ビルド、プロジェクト作成、プロファイル設定が実行されます
 
 5. VSCode で `Developer: Reload Window` を実行します
@@ -75,12 +75,11 @@ clone、ビルド、プロジェクト作成、プロファイル設定が実行
 
 手動で1つずつ確認しながら進めたい場合は `.claude/skills/fleetest-setup/SKILL.md` を参照してください。
 
-**Codex を使う場合**: 同じ runbook がそのまま動きます。導入はプラグインが推奨で、
-`codex plugin marketplace add wave1008/foundation-tester` → `codex plugin add fleetest@foundation-tester`。
-プラグインが使えない環境では
-`curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install-skill.sh | sh -s -- --agent codex`。
-呼び出しは `$fleetest-setup` です。**既定のサンドボックスのままでは導入・更新が通らない**(`ft_*` は影響なし)ので、
-[Codex](tools/codex_skills_ja.md) のサンドボックス設定を先に読んでください。
+**Claude Code 以外のエージェント(Codex・Cline など)を使う場合**: 手順書はツール中立の
+markdown なので同じものがそのまま使えますが、インストーラが規約位置を用意するのは
+Claude Code だけです。インストーラの直接実行・MCP サーバの登録・手順書の渡し方は
+[その他のエージェント](tools/other_agents_ja.md)を参照してください
+(Codex のサンドボックス設定も同ページ)。
 
 
 ## 4. Fleetestの更新
@@ -108,17 +107,10 @@ claude plugin marketplace update foundation-tester
 claude plugin update fleetest@foundation-tester
 ```
 
-Codex は次の2つです(サブコマンド名が違います):
-
-```bash
-codex plugin marketplace upgrade foundation-tester
-codex plugin add fleetest@foundation-tester
-```
-
-2. エージェントの新しいセッションを開始し、 `/fleetest:fleetest-update` を実行します(Codex は `$fleetest-update`)
+2. エージェントの新しいセッションを開始し、 `/fleetest:fleetest-update` を実行します
 
 上の2行を打たずに `bash <TOOL_ROOT>/Scripts/update.sh` でも構いません(pull・ビルド・拡張に加えて
-**Claude Code と Codex のプラグイン更新**まで1コマンドで行い、クローンの HEAD と一致したかを照合します)。更新が無ければ何もせず終わります（前回が途中で
+**Claude Code のプラグイン更新**まで1コマンドで行い、クローンの HEAD と一致したかを照合します)。更新が無ければ何もせず終わります（前回が途中で
 失敗した場合など、全部やり直したいときは `--force`）。
 
 > **クローン（`foundation-tester`）を自分で書き換えている場合の注意**
@@ -142,13 +134,6 @@ claude plugin uninstall fleetest@foundation-tester
 
 改名前の `ftester@foundation-tester` も残っていれば、同じように `claude plugin uninstall` します。
 
-Codex にプラグインで入れている場合は次の2つです(サブコマンド名が違います):
-
-```bash
-codex plugin remove fleetest@foundation-tester
-codex plugin marketplace remove foundation-tester
-```
-
 ### VSCode拡張のアンインストール
 
 - VSCodeの拡張ビューからアンインストールします
@@ -156,11 +141,12 @@ codex plugin marketplace remove foundation-tester
 ### 作業フォルダの削除
 
 - VSCodeを終了してから Finder や rm で削除します
-- **作業フォルダを残す場合**は、`CLAUDE.md`(Codex なら `AGENTS.md`)の `<!-- fleetest:begin -->` 〜
+- **作業フォルダを残す場合**は、`CLAUDE.md` の `<!-- fleetest:begin -->` 〜
   `<!-- fleetest:end -->` の範囲も削除してください(インストーラが置いたエージェント向けの案内。
   範囲外には触れていません)
-- Codex に MCP を登録していた場合は、`~/.codex/config.toml` の `[mcp_servers.fleetest]` と
-  `[mcp_servers.fleetest.env]` も削除します
+- 他のエージェントに MCP サーバを自分で登録していた場合は、その設定
+  (Codex なら `~/.codex/config.toml` の `[mcp_servers.fleetest]` と
+  `[mcp_servers.fleetest.env]`)も削除します
 
 ### ファイルの削除
 

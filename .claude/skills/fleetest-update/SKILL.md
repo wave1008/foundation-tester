@@ -95,14 +95,7 @@ vsce)は画面に出ず `<WORK_DIR>/.fleetest/install-*.log` にだけ入り、*
 - **exit 2** → 任意ステップのみ未完(`[warn]`)。CLI は使える。warn の内容だけ手当てする。
 - プラグインが `⚠️ HEAD と不一致` のときは `claude plugin marketplace update` →
   `claude plugin update` を手で実行する(**順序が重要**。marketplace を先に更新しないと古い定義を見る)。
-  Codex 側が `⚠️ Codex plugin: … does not match HEAD` なら
-  `codex plugin marketplace upgrade foundation-tester` → `codex plugin add fleetest@foundation-tester`。
-- **どのエージェントの規約位置を扱うかは前回の導入で固定されている**(`.fleetest/state.json` の
-  `agents`。`[ok] agent: ... — pinned by the previous install` と出る)。後からもう一方の
-  エージェントを入れた受け手には**そのままでは届かない** —— `bash <TOOL_ROOT>/Scripts/install.sh
-  --work-dir <WORK_DIR> --agent auto`(または `--agent both`)で入れ直す。
-  preflight の `agents=` 行が今の固定値を出す。
-- **コピー配置(`install-skill.sh` で入れた `.claude/skills/` / `.agents/skills/`)は
+- **コピー配置(`install-skill.sh` で入れた `.claude/skills/`)は
   update.sh が正典から写し直す**(増えたスキルも置く)(`✅ Skills: refreshed N ...`)。写した後は**エージェントを
   再起動する**まで古い手順書が読まれ続ける。**`fleetest-setup` だけは写さない** ——
   受け手のパッケージのそれは `fleetest init` が生成した受け手専用の別内容なので、
@@ -239,29 +232,6 @@ claude plugin update fleetest@foundation-tester
   再起動するまで、このセッションで読まれるスキルは古いままである点に注意。
 - 版は `plugin.json` に `version` を持たせず **git commit SHA** を使っているので、
   push 済みの変更は上記2コマンドで必ず取り込まれる。
-
-### 5.7b Codex プラグイン（スキル）の更新
-
-Codex にプラグインで導入している場合も同じ理由で `git pull` では新しくならない。
-**サブコマンド名が Claude と違う**（`marketplace update` ではなく `marketplace upgrade`、
-`plugin update` ではなく `plugin add`。`plugin add` は冪等で、導入済みでも上書き再導入になる）:
-
-```bash
-codex plugin list | grep fleetest        # 未導入ならスキップ
-codex plugin marketplace upgrade foundation-tester
-codex plugin add fleetest@foundation-tester
-```
-
-**版の照合の当て先も違う**。`codex plugin list` の `VERSION` は `plugin.json` の固定値（`0.1.0`）で
-更新しても動かないため、**プラグインキャッシュの git HEAD** を見る（キャッシュは clone なので
-sha が取れる）:
-
-```bash
-git -C "$(echo "${CODEX_HOME:-$HOME/.codex}"/plugins/cache/foundation-tester/fleetest/*)" rev-parse HEAD
-```
-
-これが TOOL_ROOT の HEAD と一致すれば最新。**反映には Codex の再起動が要る**。
-（`Scripts/update.sh` はここまでを自動で行い、`✅ Codex plugin: <sha> (matches HEAD)` と報告する。）
 
 ### 6. 🧑 人間チェックポイント（反映）
 

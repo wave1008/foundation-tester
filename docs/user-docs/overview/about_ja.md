@@ -1,6 +1,6 @@
 # Fleetest とは
 
-Fleetest はコーディングエージェント(Claude Code / Codex)を前提とした macOS 専用の
+Fleetest はコーディングエージェント(Claude Code など)を前提とした macOS 専用の
 iOS / Android アプリの E2E テストツールです。
 
 ## 名前の由来
@@ -33,7 +33,7 @@ iOS / Android アプリの E2E テストツールです。
 |---|---|---|
 | **CLI** `fleetest` | `swift run fleetest ...`(clone 内)、またはビルド済み `.build/debug/fleetest` | CI・回帰テストの定期実行(決定的・無料・exit code) |
 | **VSCode 拡張** | VSCode 拡張(デバイスモニター・ライブ操作・結果ダッシュボード) | 人間の対話操作: シナリオ実行・デバッグ実行・ライブ操作(録画→生成)・デバイスモニター・結果ダッシュボード |
-| **MCP サーバ** | エージェントが自動起動(Claude Code は `.mcp.json`、Codex は `~/.codex/config.toml` から) | エージェント連携: AI によるテスト作成・デバッグ・探索的テスト |
+| **MCP サーバ** | エージェントが自動起動(Claude Code は `.mcp.json` から。他のエージェントは[その他のエージェント](../tools/other_agents_ja.md)) | エージェント連携: AI によるテスト作成・デバッグ・探索的テスト |
 | **Swift DSL** | `TestProjects/<name>/scenarios/*.swift` | テスト資産そのもの。どの入口で作っても同じ形式で保存・実行される |
 
 ## 役割分担

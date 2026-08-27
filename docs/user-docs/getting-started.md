@@ -68,7 +68,7 @@ claude plugin uninstall ftester@foundation-tester
 
 3. Open a **new, test-only folder** in VSCode
 
-4. Run `/fleetest:fleetest-setup` in your agent's panel (`$fleetest-setup` in Codex).
+4. Run `/fleetest:fleetest-setup` in your agent's panel.
 This performs the clone, build, project creation, and profile setup.
 
 5. Run `Developer: Reload Window` in VSCode
@@ -78,12 +78,10 @@ This performs the clone, build, project creation, and profile setup.
 
 If you want to go through the steps manually one at a time, see `.claude/skills/fleetest-setup/SKILL.md`.
 
-**Using Codex?** The same runbooks apply. The plugin is the recommended route:
-`codex plugin marketplace add wave1008/foundation-tester` then `codex plugin add fleetest@foundation-tester`.
-Where plugins are unavailable, use
-`curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install-skill.sh | sh -s -- --agent codex`.
-Invoke them as `$fleetest-setup`. **The default sandbox blocks install and update** (`ft_*` is unaffected), so read the
-sandbox settings in [Codex](tools/codex_skills.md) first.
+**Using another agent (Codex, Cline, …)?** The runbooks are tool-neutral markdown and apply
+unchanged, but the installer only sets up the Claude Code conventions. See
+[Other agents](tools/other_agents.md) for running the installer directly, registering the MCP
+server, and handing the runbooks over (it also covers Codex's sandbox settings).
 
 
 ## 4. Updating Fleetest
@@ -114,17 +112,10 @@ claude plugin marketplace update foundation-tester
 claude plugin update fleetest@foundation-tester
 ```
 
-For Codex the subcommands differ:
-
-```bash
-codex plugin marketplace upgrade foundation-tester
-codex plugin add fleetest@foundation-tester
-```
-
-2. Start a new agent session and run `/fleetest:fleetest-update` (`$fleetest-update` in Codex)
+2. Start a new agent session and run `/fleetest:fleetest-update`
 
 You can skip the two lines above and run `bash <TOOL_ROOT>/Scripts/update.sh` instead: it does the
-pull, build, extension, and **both the Claude Code and Codex plugin updates** in a single command,
+pull, build, extension, and **the Claude Code plugin update** in a single command,
 cross-checking each against the clone's HEAD. If there's nothing to update, it does
 nothing (use `--force` if you want to redo everything, for example after a previous run failed
 partway through).
@@ -152,13 +143,6 @@ claude plugin uninstall fleetest@foundation-tester
 
 If the pre-rename `ftester@foundation-tester` is still there, `claude plugin uninstall` it the same way.
 
-If you installed the Codex plugin, remove it with these two (the subcommands differ):
-
-```bash
-codex plugin remove fleetest@foundation-tester
-codex plugin marketplace remove foundation-tester
-```
-
 ### Uninstall the VSCode extension
 
 - Uninstall it from VSCode's Extensions view
@@ -167,10 +151,11 @@ codex plugin marketplace remove foundation-tester
 
 - Quit VSCode, then delete it via Finder or `rm`
 - **If you want to keep the work folder**, also remove the range between
-  `<!-- fleetest:begin -->` and `<!-- fleetest:end -->` in `CLAUDE.md` (`AGENTS.md` for Codex) —
-  this is the agent guidance the installer placed there; nothing outside that range was touched
-- If you registered the MCP server with Codex, also remove `[mcp_servers.fleetest]` and
-  `[mcp_servers.fleetest.env]` from `~/.codex/config.toml`
+  `<!-- fleetest:begin -->` and `<!-- fleetest:end -->` in `CLAUDE.md` — this is the agent guidance
+  the installer placed there; nothing outside that range was touched
+- If you registered the MCP server with another agent yourself, remove it from that agent's
+  configuration too (for Codex: `[mcp_servers.fleetest]` and `[mcp_servers.fleetest.env]` in
+  `~/.codex/config.toml`)
 
 ### Delete files
 

@@ -8,15 +8,14 @@
 
 `fleetest` サーバは導入時(`install.sh` / `/fleetest:fleetest-setup`)に登録されます。Claude Code は
 作業フォルダの `.mcp.json` に**クローンの絶対パス**で書かれるので、どこでエージェントを開いても
-同じサーバが起動します(初回呼び出し時にビルドが走ります)。Codex は
-`.mcp.json` を読まないので、代わりに `~/.codex/config.toml` へ登録します
-([Codex](./codex_skills_ja.md)。サーバの動作に必要なサンドボックス設定も同ページ)。VSCode
-拡張やプロジェクト作成を伴わず、別のプロジェクトに MCP サーバだけを追加したい場合は
+同じサーバが起動します(初回呼び出し時にビルドが走ります)。VSCode 拡張やプロジェクト作成を
+伴わず、別のプロジェクトに MCP サーバだけを追加したい場合は
 [Claude Code スキル](./claude_code_skills_ja.md)(`/fleetest:fleetest-mcp`)を参照してください。
 
-**それ以外のエージェントでも使えます。** `fleetest-mcp` は標準の stdio MCP サーバなので、
-MCP に対応したクライアントならどれでも登録できます。設定の書き方は各クライアントに従い、
-起動コマンドとして次を渡してください(`<ABS_TOOL_ROOT>` は clone の絶対パス):
+**それ以外のエージェント(Codex・Cline など)でも使えます。** `fleetest-mcp` は標準の stdio
+MCP サーバなので、MCP に対応したクライアントならどれでも登録できます。設定の書き方は各
+クライアントに従い、起動コマンドとして次を渡してください(`<ABS_TOOL_ROOT>` は clone の
+絶対パス。TOML での書き方と手順書の渡し方は[その他のエージェント](./other_agents_ja.md)):
 
 ```json
 "fleetest": {

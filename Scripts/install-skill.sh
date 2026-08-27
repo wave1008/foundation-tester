@@ -6,24 +6,22 @@
 # fleetest-mcp / fleetest-remote-setup スキルを置く(この時点では repo を clone しない):
 #   curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install-skill.sh | sh
 #
-# 置き先はエージェントの規約位置(既定は自動判定):
-#   Claude Code → .claude/skills/    Codex → .agents/skills/
-# 明示するときは `| sh -s -- --agent codex`(claude / codex / both / auto)。
+# 置き先は Claude Code の規約位置 `.claude/skills/`。**他のエージェント**(Codex・Cline 等)は
+# `--dir <path>` でそのエージェントのスキル置き場を指定する(SKILL.md はツール中立の
+# markdown なので、スキル機構が無いエージェントには必要なときに読ませればよい。
+# docs/user-docs/tools/other_agents.md)。
 #
-# 注: プラグイン機構が使えるならそちらが推奨(スキル自動更新つき・正典を参照する薄いアダプタ)。
-#   Claude Code: claude plugin marketplace add wave1008/foundation-tester →
-#                claude plugin install fleetest@foundation-tester --scope user
-#                (/plugin スラッシュコマンドは VSCode 拡張パネルでは使えない)
-#   Codex:       codex plugin marketplace add wave1008/foundation-tester →
-#                codex plugin add fleetest@foundation-tester
-#                (更新は marketplace upgrade → plugin add。サブコマンド名が Claude と違う)
+# 注: Claude Code はプラグイン機構が推奨(スキル自動更新つき・正典を参照する薄いアダプタ):
+#   claude plugin marketplace add wave1008/foundation-tester →
+#   claude plugin install fleetest@foundation-tester --scope user
+#   (/plugin スラッシュコマンドは VSCode 拡張パネルでは使えない)
 # 本スクリプトはプラグイン機構を使えない環境向けのフォールバック(コピーなので自動更新なし)。
-# 以後 /fleetest-setup(Codex は $fleetest-setup)等を呼べる。
+# 以後 /fleetest-setup 等を呼べる。
 # clone/build/install は各スキル本体が行う(大きな取得/ビルドの前にユーザーがレビューできるようにするため)。
 #
 # 契約: **取得元は repo 内の正典 .claude/skills/<name>/SKILL.md(単一ソース)**。
-# Codex 側の .agents/skills/ はこの正典へのシンボリックリンクなので、
-# **raw.githubusercontent から取ると本文でなくリンク先の文字列が返る** —— 取得先は常に正典。
+# 取得元をシンボリックリンクへ変えない —— **raw.githubusercontent はリンクを本文でなく
+# リンク先の文字列として返す**ので、SKILL.md ではなく1行のパスが降ってくる。
 # FLEETEST_REF=<tag/branch/sha> は**保守者が未マージのブランチを検証するための口**(既定 main)。
 # 受け手向けの版固定手段としては案内しない —— 配布口は main の1本(docs/releasing.md)。
 set -eu
@@ -33,37 +31,20 @@ REPO="wave1008/foundation-tester"
 # 正典の実体パス(AgentIntegration.canonicalSkillsDirectory と一致必須)
 BASE="https://raw.githubusercontent.com/${REPO}/${REF}/.claude/skills"
 SKILLS="fleetest-setup fleetest-update fleetest-profiles fleetest-scenario fleetest-mcp fleetest-remote-setup"
-AGENT="auto"
+# 置き先(既定は Claude Code の規約位置 = AgentIntegration.skillsDirectory)。
+# 他のエージェントは自分のスキル置き場を --dir で渡す
+DEST=".claude/skills"
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --agent) AGENT="${2:-}"; shift 2 ;;
-    --agent=*) AGENT="${1#--agent=}"; shift ;;
+    --dir) DEST="${2:?--dir にはパスが必要です}"; shift 2 ;;
+    --dir=*) DEST="${1#--dir=}"; shift ;;
     -h|--help)
-      echo "usage: install-skill.sh [--agent claude|codex|both|auto]"; exit 0 ;;
+      echo "usage: install-skill.sh [--dir <skills-dir>]  (default: .claude/skills)"; exit 0 ;;
     *) echo "エラー: 不明なオプション $1" >&2; exit 2 ;;
   esac
 done
-
-# 自動判定は FTCore の AgentIntegration.detect と同じ規則
-# (.claude / CLAUDE.md / ~/.claude → claude、.agents / AGENTS.md / ~/.codex → codex、
-#  どれも無ければ claude 単独)。判定を変えるときは両方を直す。
-if [ "$AGENT" = "auto" ]; then
-  AGENT=""
-  if [ -d ".claude" ] || [ -f "CLAUDE.md" ] || [ -d "$HOME/.claude" ]; then AGENT="claude"; fi
-  if [ -d ".agents" ] || [ -f "AGENTS.md" ] || [ -d "$HOME/.codex" ]; then
-    AGENT="${AGENT:+${AGENT} }codex"
-  fi
-  [ -n "$AGENT" ] || AGENT="claude"
-  if [ "$AGENT" = "claude codex" ]; then AGENT="both"; fi
-fi
-
-case "$AGENT" in
-  claude) DIRS=".claude/skills" ;;
-  codex)  DIRS=".agents/skills" ;;
-  both)   DIRS=".claude/skills .agents/skills" ;;
-  *) echo "エラー: --agent は claude / codex / both / auto のいずれか(受け取った値: $AGENT)" >&2; exit 2 ;;
-esac
+[ -n "$DEST" ] || { echo "エラー: --dir が空です" >&2; exit 2; }
 
 command -v curl >/dev/null 2>&1 || { echo "エラー: curl が必要です" >&2; exit 1; }
 
@@ -91,20 +72,19 @@ for name in ${SKILLS}; do
   fi
 done
 
-for base in ${DIRS}; do
-  for name in ${SKILLS}; do
-    dir="${base}/${name}"
-    mkdir -p "${dir}"
-    cp "${WORK}/${name}.md" "${dir}/SKILL.md"
-    echo "    → ${dir}/SKILL.md"
-  done
+for name in ${SKILLS}; do
+  dir="${DEST}/${name}"
+  mkdir -p "${dir}"
+  cp "${WORK}/${name}.md" "${dir}/SKILL.md"
+  echo "    → ${dir}/SKILL.md"
 done
 
-echo "✅ fleetest のスキル6本を ${DIRS} に導入しました。"
+echo "✅ fleetest のスキル6本を ${DEST} に導入しました。"
 cat <<'EOF'
 次の手順:
-  1. このフォルダをエージェント(Claude Code / Codex)で開く(既に開いているなら再読込)
-  2. /fleetest-setup を実行する(Codex は $fleetest-setup。初回導入: clone → build → install)
+  1. このフォルダをエージェントで開く(既に開いているなら再読込)
+  2. /fleetest-setup を実行する(初回導入: clone → build → install。
+     スキル機構の無いエージェントでは SKILL.md を読ませて手順どおり進める)
      エージェントを使わないなら同じ機械作業を1コマンドで:
        curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install.sh \
          | bash -s -- --name <ProjectName>

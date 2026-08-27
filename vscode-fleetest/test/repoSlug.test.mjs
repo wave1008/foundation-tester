@@ -80,7 +80,7 @@ function trackedTextFiles() {
     .filter((rel) => !SKIP_FILES.has(path.basename(rel)))
     .filter((rel) => !SKIP_PREFIXES.some((p) => rel.startsWith(p)))
     .filter((rel) => TEXT_EXT.has(path.extname(rel)))
-    // シンボリックリンク(`.agents/skills/*`・ルートの `skills`)は実体を別途走査するので読まない
+    // シンボリックリンクは実体を別途走査するので読まない
     .filter((rel) => !lstatSync(path.join(ROOT, rel)).isSymbolicLink());
 }
 
@@ -132,7 +132,6 @@ const MUST_CARRY_SLUG = [
   "Scripts/preflight.sh",
   "Scripts/update.sh",
   "Sources/FTCore/ProjectScaffold.swift",
-  ".codex-plugin/plugin.json",
   "vscode-fleetest/package.json",
   ".claude/skills/fleetest-setup/SKILL.md",
   ".claude/skills/fleetest-mcp/SKILL.md",

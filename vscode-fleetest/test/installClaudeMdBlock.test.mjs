@@ -1,4 +1,4 @@
-// install.sh のステップ7.6(受け手の CLAUDE.md / AGENTS.md へ入口ブロックを置く)の破壊耐性。
+// install.sh のステップ7.6(受け手の CLAUDE.md へ入口ブロックを置く)の破壊耐性。
 //
 // **これは利用者の資産を書き換える唯一の箇所**なので、壊し方を固定して守る。
 // 2026-08-06 に実際にデータを消した: `end` マーカーだけ壊れた CLAUDE.md に対し、
@@ -19,7 +19,7 @@ import { test } from "node:test";
 const ROOT = path.join(process.cwd(), "..");
 const INSTALL_SH = path.join(ROOT, "Scripts/install.sh");
 
-/** install.sh の `python3 - <file> <prefix> <<'PYGUIDE' … PYGUIDE` から本体を取り出す。 */
+/** install.sh の `python3 - <file> <<'PYGUIDE' … PYGUIDE` から本体を取り出す。 */
 function guideScript() {
   const source = readFileSync(INSTALL_SH, "utf8");
   const begin = source.indexOf("<<'PYGUIDE'\n");
@@ -30,19 +30,15 @@ function guideScript() {
   return body.slice(0, end);
 }
 
-/**
- * 与えた入口ファイルの内容(null = ファイル無し)に対してステップ7.6 を1回流す。
- * `fileName`/`prefix` は Claude Code(CLAUDE.md・`/`)と Codex(AGENTS.md・`$`)の両方を通す
- * ため引数にしてある —— **書き先が2つになっても破壊耐性は1つの実装で守る**。
- */
-function run(initial, { fileName = "CLAUDE.md", prefix = "/" } = {}) {
+/** 与えた入口ファイルの内容(null = ファイル無し)に対してステップ7.6 を1回流す。 */
+function run(initial, { fileName = "CLAUDE.md" } = {}) {
   const dir = mkdtempSync(path.join(tmpdir(), "ft-entry-md-"));
   try {
     const script = path.join(dir, "guide.py");
     writeFileSync(script, guideScript());
     const target = path.join(dir, fileName);
     if (initial !== null) writeFileSync(target, initial);
-    const verb = execFileSync("python3", [script, target, prefix], { encoding: "utf8" });
+    const verb = execFileSync("python3", [script, target], { encoding: "utf8" });
     return { verb, text: existsSync(target) ? readFileSync(target, "utf8") : null };
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -50,9 +46,9 @@ function run(initial, { fileName = "CLAUDE.md", prefix = "/" } = {}) {
 }
 
 /** 2回連続で流す(冪等性と「2回目に消える」形の検出)。 */
-function runTwice(initial, options) {
-  const first = run(initial, options);
-  return { first, second: run(first.text, options) };
+function runTwice(initial) {
+  const first = run(initial);
+  return { first, second: run(first.text) };
 }
 
 const USER_TEXT = "# 我が社のアプリ\n\n社内ルール: PR は必ず2人レビュー。\n";
@@ -63,6 +59,8 @@ test("ファイルが無ければ作り、2回目は変えない(冪等)", () =>
   assert.equal(second.verb, "unchanged");
   assert.equal(first.text, second.text);
   assert.match(first.text, /fleetest:begin/);
+  // 呼び出し記法は Claude Code の `/`(入口の本文はここでしか検証されない)
+  assert.ok(first.text.includes("`/fleetest-scenario`"), "スキルの呼び出し記法が / でない");
 });
 
 test("既存の CLAUDE.md には追記し、利用者の記述を残す", () => {
@@ -106,32 +104,4 @@ test("begin と end が逆順でも何も書かない", () => {
   const { verb, text } = run(damaged);
   assert.equal(verb, "damaged");
   assert.equal(text, damaged);
-});
-
-// --- Codex(AGENTS.md・$ 記法)------------------------------------------------
-// **書き先が増えても壊れ方は同じ**なので、破壊耐性の砦は同じ実装を通す。
-// ここで見るのは「呼び出し記法が引数で切り替わること」と「AGENTS.md でも冪等なこと」。
-
-const CODEX = { fileName: "AGENTS.md", prefix: "$" };
-
-test("AGENTS.md にも同じ規律で書き、2回目は変えない(冪等)", () => {
-  const { first, second } = runTwice(null, CODEX);
-  assert.equal(first.verb, "created");
-  assert.equal(second.verb, "unchanged");
-  assert.match(first.text, /fleetest:begin/);
-});
-
-test("呼び出し記法は引数で切り替わる(Claude Code は / ・Codex は $)", () => {
-  const claude = run(null);
-  const codex = run(null, CODEX);
-  assert.ok(claude.text.includes("`/fleetest-scenario`"), "Claude Code 側が / 記法でない");
-  assert.ok(codex.text.includes("`$fleetest-scenario`"), "Codex 側が $ 記法でない");
-  assert.ok(!codex.text.includes("`/fleetest-scenario`"), "Codex 側に / 記法が残っている");
-});
-
-test("AGENTS.md でも壊れたマーカーには1バイトも書かない", () => {
-  const damaged = "<!-- fleetest:begin -->\n## 古い\n" + USER_TEXT;
-  const { first, second } = runTwice(damaged, CODEX);
-  assert.equal(first.verb, "damaged");
-  assert.equal(second.text, damaged);
 });

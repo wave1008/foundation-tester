@@ -1,23 +1,22 @@
 # MCP Server
 
 `fleetest-mcp` is a stdio [MCP](https://modelcontextprotocol.io) server that exposes device
-operations, scenario execution and scenario authoring as `ft_*` tools for coding agents
-(Claude Code and Codex). It is the same functionality as the CLI and VS Code extension, called by
-an agent instead of a human.
+operations, scenario execution and scenario authoring as `ft_*` tools for coding agents.
+It is the same functionality as the CLI and VS Code extension, called by an agent instead of a
+human.
 
 ## Setup
 
 The `fleetest` server is registered during installation (`install.sh` / `/fleetest:fleetest-setup`).
 For Claude Code it is written into your work folder's `.mcp.json` with the clone's **absolute path**,
-so it starts the same way wherever you open the agent (the first call triggers a build). Codex does
-not read `.mcp.json`; register the server in `~/.codex/config.toml` instead — see
-[Codex](./codex_skills.md), which also covers the sandbox settings the server needs. To add just
-the MCP server to a different project — without the VS Code extension or project scaffolding — see
-[Claude Code Skills](./claude_code_skills.md) (`/fleetest:fleetest-mcp`).
+so it starts the same way wherever you open the agent (the first call triggers a build). To add
+just the MCP server to a different project — without the VS Code extension or project scaffolding —
+see [Claude Code Skills](./claude_code_skills.md) (`/fleetest:fleetest-mcp`).
 
-**Any other agent works too.** `fleetest-mcp` is a plain stdio MCP server, so any MCP-capable
-client can register it. Follow that client's own configuration format and give it this launch
-command (`<ABS_TOOL_ROOT>` is the absolute path of the clone):
+**Any other agent works too** (Codex, Cline, …). `fleetest-mcp` is a plain stdio MCP server, so
+any MCP-capable client can register it. Follow that client's own configuration format and give it
+this launch command (`<ABS_TOOL_ROOT>` is the absolute path of the clone; the TOML form and how to
+hand over the runbooks are in [Other agents](./other_agents.md)):
 
 ```json
 "fleetest": {

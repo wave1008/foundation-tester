@@ -13,7 +13,7 @@ You should already have a work folder with a `TestProjects/` directory (created 
 
 You need an app profile (target app), a machine profile (device), and a run profile (the
 combination of app + devices) before you can run anything. Use the `fleetest-profiles` skill in
-your agent (`/fleetest:fleetest-profiles` in Claude Code, `$fleetest-profiles` in Codex), or run
+your agent (`/fleetest:fleetest-profiles` in Claude Code), or run
 the underlying command directly:
 
 ```bash
@@ -29,7 +29,7 @@ Any of the following three paths produce the same kind of Swift file under
 `TestProjects/<project>/scenarios/`:
 
 - Ask your agent to write it (`/fleetest:fleetest-scenario` in Claude Code,
-  `$fleetest-scenario` in Codex) — it explores the real screens with you and captures real
+  — it explores the real screens with you and captures real
   selectors before writing the file.
 - Record it live from the VSCode extension's live-control panel (operate the app; a scenario is
   generated for you).

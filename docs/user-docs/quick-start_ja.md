@@ -12,7 +12,7 @@
 
 何かを実行する前に、アプリプロファイル(対象アプリ)・マシンプロファイル(デバイス)・
 実行プロファイル(アプリ+デバイスの組み合わせ)が必要です。エージェントで `fleetest-profiles`
-スキルを使う(Claude Code は `/fleetest:fleetest-profiles`、Codex は `$fleetest-profiles`)か、
+スキルを使う(Claude Code は `/fleetest:fleetest-profiles`)か、
 次のコマンドを直接実行します。
 
 ```bash
@@ -26,8 +26,8 @@ fleetest profile setup --platform ios --app-id com.example.myapp --auto-device
 
 次の3つの経路はいずれも `TestProjects/<プロジェクト>/scenarios/` 配下に同じ形の Swift ファイルを作ります。
 
-- エージェントに書かせる(Claude Code は `/fleetest:fleetest-scenario`、Codex は
-  `$fleetest-scenario`)—— 実画面を一緒に探索しながら実セレクタを採取してファイルを書きます。
+- エージェントに書かせる(Claude Code は `/fleetest:fleetest-scenario`)
+  —— 実画面を一緒に探索しながら実セレクタを採取してファイルを書きます。
 - VSCode 拡張のライブ操作パネルで録画する(アプリを操作すると自動でシナリオが生成されます)。
 - 手書きする。
 

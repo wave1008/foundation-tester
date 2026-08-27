@@ -3950,48 +3950,46 @@ TOOL_ROOT)。clone 構成(クローンの中で直接シナリオを管理)は�
 プラグイン**(ターミナルで `claude plugin marketplace add wave1008/foundation-tester` →
 `claude plugin install fleetest@foundation-tester --scope user`。受け手は VSCode の Claude Code 拡張前提で、
 拡張パネルでは /plugin スラッシュコマンドが使えないため CLI 形式が正。
-スキルはマーケットプレイス経由で自動更新)。**Codex も同じくプラグインが入口**
-(`codex plugin marketplace add wave1008/foundation-tester` → `codex plugin add fleetest@foundation-tester`。
-更新は `marketplace upgrade` → `plugin add` で**サブコマンド名が Claude と違う**。版の照合は
-`codex plugin list` の VERSION が plugin.json の固定値なので効かず、**プラグインキャッシュの
-git HEAD** を見る ← `update.sh` 5.7b)。どちらもフォールバックが curl ワンライナー
-(`Scripts/install-skill.sh` がスキルを .claude/skills/ へコピー。自動更新なし)→ いずれも
+スキルはマーケットプレイス経由で自動更新)。フォールバックは curl ワンライナー
+(`Scripts/install-skill.sh` がスキルを .claude/skills/ へコピー。自動更新なし。
+`--dir` で他のエージェントのスキル置き場へも入る)→ いずれも
 `/fleetest-setup`(プラグインでは `/fleetest:fleetest-setup`)が構成を自動判定し、受け手ディレクトリは
 外部構成へ分岐、クローン内は clone 構成。CLI・VSCode 拡張とも TOOL_ROOT の clone から `swift build` /
 `npm run install-local` でビルドする(バイナリ配布はしない)。mint は廃止(VSIX はバイナリ配布しないため
 clone がどのみち必須で、CLI だけ mint 経由にすると二重取得になるだけだったため)。
 
-**配布アダプタの方針(複数エージェント対応)**: 導入 runbook の正典は
-`.claude/skills/<name>/SKILL.md`(ツール中立の markdown 手順書。特定エージェント専用機能に依存させない)。
-各エージェントへは**規約位置から正典を参照するだけの薄いアダプタ**を置き、**runbook 本体は複製しない**:
+**配布アダプタの方針(2026-08-27。インストーラが面倒を見るのは Claude Code だけ)**: 導入
+runbook の正典は `.claude/skills/<name>/SKILL.md`(ツール中立の markdown 手順書。特定エージェント
+専用機能に依存させない)。Claude Code へは**規約位置から正典を参照するだけの薄いアダプタ**を置き、
+**runbook 本体は複製しない**:
 
-| | Claude Code | Codex |
-|---|---|---|
-| プラグイン manifest | `.claude-plugin/plugin.json` | `.codex-plugin/plugin.json` |
-| マーケットプレイス manifest | `.claude-plugin/marketplace.json` | `.agents/plugins/marketplace.json` |
-| リポジトリ内のスキル発見 | `.claude/skills/`(正典の実体) | `.agents/skills/<name>` → 正典へのシンボリックリンク |
-| スキルの呼び出し | `/fleetest-setup` | `$fleetest-setup` |
-| 入口ファイル | `CLAUDE.md` | `AGENTS.md` |
-| MCP 登録 | `.mcp.json`(プロジェクト) | `~/.codex/config.toml`(ユーザー) |
-| プラグイン導入 | `claude plugin marketplace add` → `plugin install --scope user` | `codex plugin marketplace add` → `codex plugin add` |
-| プラグイン更新 | `marketplace update` → `plugin update` | `marketplace upgrade` → `plugin add`(冪等) |
-| プラグインの版照合 | `claude plugin list` の `Version:`(= git sha) | キャッシュの git HEAD(`list` の VERSION は固定値) |
-| コマンド単位の承認 allowlist | `.claude/settings.json` | **無い**(approval_policy / sandbox_mode のみ) |
+| | Claude Code |
+|---|---|
+| プラグイン manifest | `.claude-plugin/plugin.json` |
+| マーケットプレイス manifest | `.claude-plugin/marketplace.json` |
+| リポジトリ内のスキル発見 | `.claude/skills/`(正典の実体) |
+| スキルの呼び出し | `/fleetest-setup` |
+| 入口ファイル | `CLAUDE.md` |
+| MCP 登録 | `.mcp.json`(プロジェクト) |
+| プラグイン導入 | `claude plugin marketplace add` → `plugin install --scope user` |
+| プラグイン更新 | `marketplace update` → `plugin update` |
+| プラグインの版照合 | `claude plugin list` の `Version:`(= git sha) |
+| コマンド単位の承認 allowlist | `.claude/settings.json` |
 
-**repo ローカルのスキル発見の実体は `.agents/skills/<name>` のシンボリックリンク**で、
-`.codex-plugin/plugin.json` は**プラグインとして導入したときだけ**効く(実測: リンクを外すと
-Codex はスキルを1本も見つけない)。両方要るのはそのため —— どちらかだけでは片方の経路が死ぬ。
-**ただし `.codex-plugin/plugin.json` の `skills` は正典の実体 `.claude/skills/` を指す** ——
-`codex plugin add` は marketplace の clone をプラグインキャッシュへコピーするとき
-**シンボリックリンクを落とす**(2026-08-27 実測: clone 側の `.agents/skills/` は6本のリンクが
-健在なのに、インストール後の plugin root では空・`find -type l` もゼロ)。リンクのディレクトリを
-manifest に書くと**プラグイン経由では0本**になる。`.agents/skills/` のリンクは
-**repo ローカル発見(作業ツリー)専用**。
+**他のエージェント(Codex・Cline・Cursor 等)には配布アダプタを置かない**(2026-08-27 に Codex の
+アダプタ一式を撤去)。中核はどれもエージェント固有ではない —— 機械作業はインストーラ、`ft_*` は
+標準の stdio MCP サーバ、runbook はツール中立の markdown。**エージェントごとに面倒を見ると、
+規約位置・プラグインのサブコマンド名・版照合の方法・設定ファイルの書式が全部そのエージェント
+固有の分岐になり、増やすたびに4箇所(Swift・install.sh・install-skill.sh・update.sh)へ手で
+写す**ことになる。案内は docs/user-docs/tools/other_agents.md に集約し、コードは
+Claude Code の1系統だけを持つ。**受け手のグローバル設定(`~/.codex/config.toml` 等)には
+1バイトも書かない** —— セキュリティ境界であり、TOML は同じテーブルの重複でファイル全体が
+無効になるので、素朴な追記は受け手の設定を壊す。
 
 **repo ルートに `skills` を置いてはいけない**(2026-08-27 実測で撤去)。プラグイン root =
 repo ルートのとき、**Claude Code は `.claude-plugin/plugin.json` の明示パスと既定の `skills/` の
 両方を読む**(置換ではなく加算。以前は「source が `./` なら明示パスが既定を置換する」という
-前提で書いていたが誤り)。Codex 用に `skills → .claude/skills` を置いていた間、
+前提で書いていたが誤り)。`skills → .claude/skills` を置いていた間、
 **6本のスキルが12本として登録され常時コストが倍**になっていた(~1,270 → ~2,537 tok)。
 数え方は `claude plugin details fleetest@foundation-tester` の Component inventory。
 `agentAdapters.test.mjs` がルートの `skills` の不在を固定する。
@@ -3999,38 +3997,21 @@ repo ルートのとき、**Claude Code は `.claude-plugin/plugin.json` の明�
 規約位置の唯一の定義元は `Sources/FTCore/AgentIntegration.swift`。**シェル(install.sh /
 install-skill.sh)は clone 前・ビルド前に走るので Swift を呼べず、同じ規則を手で持つ** ——
 `vscode-fleetest/test/agentIntegration.test.mjs` が両者のドリフトを落とし、
-`agentAdapters.test.mjs` が「アダプタが正典に届くこと」を落とす。
-**正典を `.agents/skills/` 側へ移してはいけない** —— raw.githubusercontent は
-シンボリックリンクを**本文でなくリンク先の文字列**として返すので、`install-skill.sh` の curl が
-SKILL.md ではなく1行のパスを掴む。
+「インストーラが他エージェントの規約位置・設定へ書かない」ことも同じテストが固定する。
+`agentAdapters.test.mjs` は「アダプタが正典に届くこと」を落とす。
+**正典を移してシンボリックリンクにしない** —— raw.githubusercontent はリンクを**本文でなく
+リンク先の文字列**として返すので、`install-skill.sh` の curl が SKILL.md ではなく1行のパスを掴む。
 
-**Codex 固有の2点**(どちらも沈黙の失敗を作る形なので規律で塞いである):
-- **プロジェクトスコープの `.codex/config.toml` は使わない**。`~/.codex/config.toml` 側で
-  trusted にしたプロジェクトでしか読まれないため、書いても**黙って効かない**状態を作れる。
-  MCP 登録はユーザーレベルの1箇所だけ
-- **サンドボックスは判定するが緩めない**。**縛られるのはシェルコマンドだけで、MCP サーバは
-  その外で動く**(2026-08-27 実測: `--sandbox read-only` でも MCP プロセスはワークスペース外書込と
-  loopback が通る)。したがって **`ft_*` 経由の作成・実行・デバイス駆動は既定設定のまま動き**、
-  通らないのは**シェル経由の導入・更新**だけ。原因は権限ではない2つ:
-  **①SwiftPM が自前の `sandbox-exec` を入れ子に使うため `swift build` / `swift package` が
-  `sandbox_apply: Operation not permitted` で起動できない ②`xcrun simctl` が
-  CoreSimulatorService への mach 接続を塞がれる**(`adb` は TCP 5037 なので network_access で通る)。
-  **`network_access` / `writable_roots` を積んでも直らない**ので、それらを根拠に OK を返すと
-  false green になる(実際に出していた)。install.sh ステップ7.7 は
-  `danger-full-access` のときだけ OK を返し、それ以外は**2択の案内**を出す
-  (a: 導入・更新のセッションだけ `codex --sandbox danger-full-access` = 狭い / b: 恒久緩和)。
-  受け手のグローバル設定 = セキュリティ境界なので、インストーラは1バイトも書かない。
-  **案内は「貼り付け用ブロック」にしない** —— TOML は同じキー・テーブルの重複を許さないので、
-  素朴な追記は config.toml 全体を無効にする
-- **ローカルパスの marketplace は作業ツリーを丸ごとコピーする**(実測: `.build/` 込みで 11GB)。
-  Claude Code のローカル marketplace add と同じ罠で、**リポジトリ内に自分自身を指すリンクを
-  置かない**理由でもある(リンクを辿るコピーが終わらなくなる)。
-  **本番の導線(git URL)は clone なので影響しない** —— `codex plugin marketplace add
-  wave1008/foundation-tester --ref <ref>` は 77MB、プラグイン導入まで含めて 153MB(実測)。
-  **ローカル検証のときだけ**この差を思い出すこと
-- **シンボリックリンクは配布経路で保たれる**(実測)。`git archive`(tar)も GitHub の ZIP
-  ダウンロードも `lrwxrwxrwx` で復元される。curl 経路(`install-skill.sh`)は正典の実体を引くので
-  そもそもリンクを通らない
+**Codex を使う受け手への案内(コードは持たない)**: サンドボックスに**縛られるのはシェル
+コマンドだけで、MCP サーバはその外で動く**(2026-08-27 実測: `--sandbox read-only` でも MCP
+プロセスはワークスペース外書込と loopback が通る)。したがって **`ft_*` 経由の作成・実行・
+デバイス駆動は既定設定のまま動き**、通らないのは**シェル経由の導入・更新**だけ。原因は権限では
+ない2つ: **①SwiftPM が自前の `sandbox-exec` を入れ子に使うため `swift build` / `swift package` が
+`sandbox_apply: Operation not permitted` で起動できない ②`xcrun simctl` が CoreSimulatorService への
+mach 接続を塞がれる**(`adb` は TCP 5037 なので network_access で通る)。
+**`network_access` / `writable_roots` を積んでも直らない**ので、それらを根拠に「OK」と言うと
+false green になる(以前 install.sh のステップ7.7 が実際に出していた)。
+
 **ローカル検証の罠**: `/plugin` は VSCode 拡張パネルでは使えない(ターミナル CLI かデスクトップアプリ)。
 `claude plugin marketplace add <ローカルパス>` は git clone ではなく**作業ツリーを丸ごとコピー**する
 (gitignore を無視するため `.build/` 約8GB も入りキャッシュが約13GBに膨れる)。検証後は

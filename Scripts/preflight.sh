@@ -359,30 +359,6 @@ if [ -f "$WORK_DIR/.mcp.json" ] && grep -q '"fleetest"' "$WORK_DIR/.mcp.json" 2>
 else
   kv mcp_registered no
 fi
-# Codex 側の MCP 登録はユーザーレベル(~/.codex/config.toml)。**読むだけ**
-CODEX_CONFIG="${CODEX_HOME:-$HOME/.codex}/config.toml"
-if [ -f "$CODEX_CONFIG" ] && grep -q '^\[mcp_servers\.fleetest\]' "$CODEX_CONFIG" 2>/dev/null; then
-  kv codex_mcp_registered yes
-else
-  kv codex_mcp_registered no
-fi
-if [ -f "$WORK_DIR/.agents/skills/fleetest-setup/SKILL.md" ]; then
-  kv codex_skills yes
-else
-  kv codex_skills no
-fi
-# 前回の導入が固定したエージェント(install.sh は引数なしのときこれを引き継ぐ)。
-# 出さないと「後から Claude Code を入れたのに何も起きない」の原因が見えない
-if [ -f "$WORK_DIR/.fleetest/state.json" ] && command -v python3 >/dev/null 2>&1; then
-  kv agents "$(python3 -c 'import json,sys
-try:
-    with open(sys.argv[1]) as f:
-        print(json.load(f).get("agents", ""))
-except Exception:
-    pass' "$WORK_DIR/.fleetest/state.json" 2>/dev/null || true)"
-else
-  kv agents ""
-fi
 if ls -d "$HOME/.vscode/extensions/"*fleetest* >/dev/null 2>&1; then
   kv vscode_extension yes
 else
@@ -400,34 +376,6 @@ check_xcodegen || missing+=("xcodegen (install.sh installs it via brew)")
 command -v npm >/dev/null 2>&1 && kv npm yes || { kv npm no; missing+=("npm (needed to build the VSCode extension)"); }
 check_adb
 command -v claude >/dev/null 2>&1 && kv claude_cli yes || kv claude_cli no
-command -v codex >/dev/null 2>&1 && kv codex_cli yes || kv codex_cli no
-# Codex のサンドボックスは danger-full-access 以外だと**シェル経由の導入・更新が通らない**
-# (SwiftPM が入れ子で sandbox-exec を使うので `swift build` が起動できず、`xcrun simctl` も
-# CoreSimulatorService に届かない。writable_roots や network_access では直らない)。
-# **MCP サーバはサンドボックスの外**なので ft_* 経由の作成・実行は影響を受けない。
-# ここは判定だけ(設定は受け手のグローバル資産なので触らない)。install.sh ステップ7.7 と同じ規則。
-if [ -f "$CODEX_CONFIG" ] && command -v python3 >/dev/null 2>&1; then
-  codex_sandbox="$(python3 - "$CODEX_CONFIG" <<'PYSB' 2>/dev/null || echo unknown
-import sys
-try:
-    import tomllib
-except ModuleNotFoundError:
-    print("unknown"); raise SystemExit(0)
-try:
-    with open(sys.argv[1], "rb") as f:
-        data = tomllib.load(f)
-except Exception:
-    print("unknown"); raise SystemExit(0)
-mode = data.get("sandbox_mode", "workspace-write")
-# shell_steps は「エージェントのシェルから導入・更新を回せるか」。danger-full-access だけが可
-print("%s shell_steps=%s" % (mode, "ok" if mode == "danger-full-access" else "blocked"))
-PYSB
-)"
-  kv codex_sandbox "$codex_sandbox"
-else
-  kv codex_sandbox unknown
-fi
-
 # ---- 判定 ---------------------------------------------------------------------
 if [ "${#blocked_reasons[@]}" -gt 0 ]; then
   verdict=blocked
@@ -442,14 +390,14 @@ say ""
 case "$verdict" in
   ready)
     say "✅ Not installed. It can be installed here ($layout)."
-    say "   Agent: /fleetest-setup (Codex: \$fleetest-setup) / manual: Scripts/install.sh --name <ProjectName>"
+    say "   Agent: /fleetest-setup / manual: Scripts/install.sh --name <ProjectName>"
     [ "${#missing[@]}" -gt 0 ] && printf '   Missing (installed automatically): %s\n' "${missing[*]}"
     exit 0 ;;
   installed)
     say "ℹ️ Already installed (external-package layout). Do not run setup again."
     say "   Update → /fleetest-update / add profiles → /fleetest-profiles / scenarios → /fleetest-scenario"
     say "   To reinstall, uninstall first (docs/user-docs/getting-started.md, the uninstall section)."
-    say "   See projects= / mcp_registered= / codex_mcp_registered= / vscode_extension= above for what already exists."
+    say "   See projects= / mcp_registered= / vscode_extension= above for what already exists."
     exit 2 ;;
   *)
     say "❌ Cannot install as things stand:"

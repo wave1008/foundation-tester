@@ -2,7 +2,7 @@
 
 ※このREADME.md　はAIが読むことを前提にしています。製品の使い方はユーザー向けドキュメントを参照するか、AIにチャットで聞いてください
 
-**fleetest mobile** はClaude Code / Codex 等のAIコーディングツールの使用を前提とした macOS専用の iOS / Android アプリの E2E テストツール。
+**fleetest mobile** は Claude Code 等のAIコーディングツールの使用を前提とした macOS専用の iOS / Android アプリの E2E テストツール。
 
 **fleetest** は `fleet` + `test` であり、*fleet*(すばやい)の最上級でもある。名前に畳み込んだ
 3つが、そのまま特徴になっている。
@@ -14,7 +14,7 @@
 **設計思想: 「AI がテストを作り、コードが決定的に再生する」**
 
 - **生成**
-  - Claude Code / Codex にドキュメントとfleetest MCPを渡して指示することでテストコードを生成可能
+  - コーディングエージェントにドキュメントとfleetest MCPを渡して指示することでテストコードを生成可能
 - **実行**
   - テストコードは LLM なしで決定的に実行。高速・安定で CI 向き
 - **セキュリティ**
@@ -70,30 +70,8 @@ claude plugin install fleetest@foundation-tester --scope user
 >
 > `claude plugin uninstall ftester@foundation-tester`
 
-**Codex に任せる**: 同じスキルがそのまま動く。ターミナルでプラグインを入れ、テスト用の新規フォルダを
-開いて `$fleetest-setup` を呼ぶ(`codex` CLI が無ければ `brew install --cask codex`):
-
-```bash
-codex plugin marketplace add wave1008/foundation-tester
-codex plugin add fleetest@foundation-tester
-```
-
-> **既定のサンドボックスのままだと導入・更新が通らない。** Codex はシェルコマンドを
-> サンドボックスの中で実行するため、`swift build` が起動できず(SwiftPM が `sandbox-exec` を
-> 入れ子に使う)、`xcrun simctl` も CoreSimulatorService へ届かない。`network_access` や
-> `writable_roots` では直らない。
->
-> **`ft_*`(MCP 経由の作成・実行・デバイス駆動)は影響を受けない** —— MCP サーバは
-> サンドボックスの外で動く。したがって**導入・更新のセッションだけ**
-> `codex --sandbox danger-full-access` で起動すれば足りる(恒久的に緩める必要はない)。
-> 詳細は [docs/user-docs/tools/codex_skills_ja.md](docs/user-docs/tools/codex_skills_ja.md)。
->
-> 規約位置の違いは3つだけ: 置き場所 `.agents/skills/` / 入口 `AGENTS.md` /
-> MCP 登録先 `~/.codex/config.toml`。更新は `marketplace upgrade` → `plugin add`
-> (`Scripts/update.sh` が両エージェントぶん面倒を見る)。
-
-**その他のエージェント(Cline・Cursor・Copilot 等)**: 専用の導線は持っていないが、**中核はそのまま使える**。
-必要なのは次の3つで、いずれもエージェント固有ではない:
+**その他のエージェント(Codex・Cline・Cursor・Copilot 等)**: 専用の導線は持っていないが、
+**中核はそのまま使える**。必要なのは次の3つで、いずれもエージェント固有ではない:
 
 1. **機械作業** —— 下の「エージェント無しで入れる」インストーラで済む
 2. **`ft_*`(MCP)** —— `fleetest-mcp` は標準の stdio MCP サーバなので、**MCP に対応した
@@ -111,11 +89,14 @@ codex plugin add fleetest@foundation-tester
 3. **手順書(runbook)** —— `<TOOL_ROOT>/.claude/skills/<name>/SKILL.md` は
    **ツール中立の markdown** で、特定エージェント専用機能に依存しないように書いてある。
    スキル機構が無いエージェントには、必要なときにこのファイルを読ませればよい
+   (スキル機構があるなら `install-skill.sh | sh -s -- --dir <その置き場>` でコピーできる)
 
 得られないのは**スキルの自動発見と入口ファイル**(`/fleetest-setup` のように呼べる仕組み)だけ。
-なお、エージェントを判定できないとインストーラは Claude Code 向けに倒れるので、
-使わない生成物が出る —— `.mcp.json` と `CLAUDE.md` は `--skip-mcp` / `--skip-claude-md` で
-抑止できるが、**`.claude/settings.json`(Bash 許可リスト)は現状抑止できない**(無害・無視される)。
+インストーラは常に Claude Code 向けの生成物を置くので、使わないものが出る ——
+`.mcp.json` と `CLAUDE.md` は `--skip-mcp` / `--skip-claude-md` で抑止できるが、
+**`.claude/settings.json`(Bash 許可リスト)は現状抑止できない**(無害・無視される)。
+手順の詳細は [docs/user-docs/tools/other_agents_ja.md](docs/user-docs/tools/other_agents_ja.md)
+(Codex のサンドボックス設定も同ページ)。
 
 **エージェント無しで入れる**: 同じ機械作業を1コマンドで行うインストーラ(冪等):
 
@@ -131,7 +112,7 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scr
   配布口は `main` の1本(版を固定する導線は無い)。
   プラグイン機構が無い環境向けの代替は
   `curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install-skill.sh | sh`
-  (置き場所は自動判定。明示するなら `| sh -s -- --agent claude|codex|both`)。
+  (置き先は `.claude/skills/`。他のエージェントは `| sh -s -- --dir <その置き場>`)。
 - 既定は**外部パッケージ構成**: ツール(この clone)と、あなたの `TestProjects/` が住むテスト用フォルダを分ける。
 - 事前準備・インストール・更新・アンインストールの手順は [docs/user-docs/getting-started_ja.md](docs/user-docs/getting-started_ja.md)。
   導入後の使い方(プロファイル・シナリオ・実行)は**利用者向けドキュメント [docs/user-docs/index_ja.md](docs/user-docs/index_ja.md)**([English](docs/user-docs/index.md))と [docs/commands.md](docs/commands.md)。
@@ -538,8 +519,8 @@ Android: `fleetest-androidstream`)経由でほぼリアルタイムに更新す�
 - **Claude Code** → ワークスペースの `.mcp.json`。**リポジトリには同梱していない** ——
   プラグイン root = repo ルートなので、同梱すると相対パス依存の設定がプラグインに載って配られ、
   クローンの外でエージェントを起動した受け手の MCP が必ず落ちていた
-- **Codex** → `.mcp.json` を読まないので `~/.codex/config.toml`
-  ([docs/user-docs/tools/codex_skills_ja.md](docs/user-docs/tools/codex_skills_ja.md))
+- **その他のエージェント** → インストーラは触らない(設定の場所も書式も受け手のグローバル資産)。
+  手順は [docs/user-docs/tools/other_agents_ja.md](docs/user-docs/tools/other_agents_ja.md)
 
 | ツール | 内容 |
 |---|---|

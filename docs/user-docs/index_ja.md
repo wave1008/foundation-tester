@@ -111,7 +111,7 @@ Swift DSL で書き、LLM なしで決定的に再生します。Foundation Mode
 - [VSCode 拡張](tools/vscode_extension_ja.md)
 - [MCP サーバ](tools/mcp_server_ja.md)
 - [Claude Code のスキル](tools/claude_code_skills_ja.md)
-- [Codex](tools/codex_skills_ja.md)
+- [その他のエージェント](tools/other_agents_ja.md)
 
 ## チュートリアル(In action)
 

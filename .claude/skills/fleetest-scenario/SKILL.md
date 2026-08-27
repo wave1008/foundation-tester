@@ -19,9 +19,8 @@ description: セットアップ済みのプロジェクトに、Swift DSL のテ
 > **`/plugin` スラッシュコマンドは VSCode 拡張・Agent SDK 環境では提供されない**ので CLI 形)、
 > コピー配置(`install-skill.sh`)なら `fleetest-update` が正典から写し直す。
 
-> **スキルの呼び出し記法はエージェントごとに違う**: Claude Code は `/fleetest-setup`、
-> Codex は `$fleetest-setup`(または `/skills` セレクタ)。以下は `/` 形で書くが、
-> Codex では `$` に読み替える。
+> **スキルの呼び出し記法はエージェントごとに違う**(Claude Code は `/fleetest-setup`)。
+> 以下は `/` 形で書くので、別の記法のエージェントではそちらへ読み替える。
 
 既存プロジェクト(`fleetest init` / `fleetest project create` 済み・アプリ/デバイス/実行プロファイルが
 ある)に、**1本のテストシナリオ .swift** を作る。DSL の正典は docs/design.md §10「Swift DSL」と

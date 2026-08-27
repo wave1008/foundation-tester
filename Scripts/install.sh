@@ -7,8 +7,10 @@
 #
 # やること: clone(既存クローンは git pull --ff-only で更新)/ swift build /
 #           fleetest init(または project create)/ .gitignore 整備 / VSCode 拡張 /
-#           MCP 登録(Claude Code=.mcp.json / Codex=codex mcp add)/ エージェントの入口
-#           (CLAUDE.md / AGENTS.md)/ 検証ゲート。**冪等**(済んだ手順は skip)。
+#           MCP 登録(.mcp.json)/ エージェントの入口(CLAUDE.md)/ 検証ゲート。
+#           **冪等**(済んだ手順は skip)。
+#           規約位置を用意するのは Claude Code だけ(他のエージェントは MCP 登録と
+#           SKILL.md 直読みで使う。docs/user-docs/tools/other_agents.md)。
 #           --machine と --app-name があればプロファイル作成(profile setup --auto-device)も。
 # やらないこと: appPath や bundle ID の探索
 #           (値は引数で受けるだけ。スキルの「探索禁止」原則と対)。
@@ -46,8 +48,6 @@ DO_EXTENSION=1
 DO_PROJECT=1
 DO_MCP=1
 DO_CLAUDE_MD=1
-DO_AGENTS_MD=1
-AGENT_ARG=""
 DO_DOCTOR=1
 DO_NEXT_STEPS=1
 ALLOW_CLONE=1
@@ -72,8 +72,6 @@ Usage: install.sh [options]
   --skip-project     Do not create a project (TestProjects/<name>/) — e.g. MCP-only installs
   --skip-mcp         Do not generate/merge .mcp.json
   --skip-claude-md   Do not write the fleetest block into <work-dir>/CLAUDE.md
-  --skip-agents-md   Do not write the fleetest block into <work-dir>/AGENTS.md (Codex)
-  --agent <a>        Which agent conventions to set up: claude / codex / both / auto (default auto)
   --no-doctor        Skip the final environment report (fleetest doctor)
   --no-next-steps    Do not print "next steps" (when the caller, e.g. update.sh, guides instead)
   --keep-local       Do not auto-discard local changes in the clone (auto-discard is the default in the external layout)
@@ -82,7 +80,7 @@ Usage: install.sh [options]
 
 What it does: clone (git pull if it exists; in the external layout local changes are auto-discarded) /
          swift build / project creation / .gitignore upkeep / VSCode extension / MCP registration /
-         CLAUDE.md + AGENTS.md entry points / verification gates. **With --machine and --app-name it also creates profiles (--auto-device)**
+         the CLAUDE.md entry point / verification gates. **With --machine and --app-name it also creates profiles (--auto-device)**
          (idempotent; finished steps are skipped)
 Exit codes: 0=done / 2=only optional steps incomplete (CLI and MCP work) / 1=stopped at a required step
          (on stop, the [fail] line shows the cause and the number of the manual step to complete)
@@ -107,8 +105,6 @@ while [ $# -gt 0 ]; do
     --skip-project) DO_PROJECT=0; shift ;;
     --skip-mcp) DO_MCP=0; shift ;;
     --skip-claude-md) DO_CLAUDE_MD=0; shift ;;
-    --skip-agents-md) DO_AGENTS_MD=0; shift ;;
-    --agent) AGENT_ARG="${2:?--agent requires a value}"; shift 2 ;;
     --no-doctor) DO_DOCTOR=0; shift ;;
     --keep-local) KEEP_LOCAL=1; shift ;;
     --verbose) VERBOSE=1; shift ;;
@@ -426,76 +422,6 @@ if [ "$WORK_DIR" = "$TOOL_ROOT" ]; then
 fi
 record "layout" ok "$LAYOUT (TOOL_ROOT=$TOOL_ROOT / WORK_DIR=$WORK_DIR)"
 
-# ---- どのエージェントの規約位置を用意するか -----------------------------------
-# 判定規則は FTCore の AgentIntegration.detect と 1:1(.claude / CLAUDE.md / ~/.claude → claude、
-# .agents / AGENTS.md / ~/.codex → codex、どれも無ければ claude 単独 = 既存の受け手の挙動を変えない)。
-# 片方だけ変えない —— agentIntegration.test.mjs が Swift 側との一致を見る。
-#
-# 決め方は3段。**どこから来た決定かを record に出す**(pinned/auto/明示)—— 出さないと、
-# 固定されていることに受け手が気づけず「後から Claude Code を入れたのに何も起きない」で詰まる:
-#   ① 明示指定(--agent claude|codex|both)が常に勝つ
-#   ② 引数なしなら **前回の判定を state.json から引き継ぐ**。引き継がないと `--agent codex` で
-#      入れた受け手が更新のたびに自動判定へ戻り、ホームに ~/.claude があるだけで
-#      .claude/settings.json と CLAUDE.md が湧く(update.sh は install.sh を呼び直すだけ)
-#   ③ `--agent auto` を明示したとき、または記録が無い/壊れているときは判定し直す。
-#      **clone 構成では WORK_DIR 側の手掛かりを見ない** —— クローン自身が `.claude/` も
-#      `.agents/` も `CLAUDE.md` も持っている(このツールのアダプタであって、受け手が
-#      Codex を使っている証拠ではない)。見るとどのクローンでも codex と判定され、
-#      クローンの中に AGENTS.md を書いて次の更新を pull ガードで止める
-AGENTS=""
-AGENT_SOURCE=""
-detect_agents() {
-  AGENTS=""
-  if [ "$LAYOUT" = "clone" ]; then
-    if [ -d "$HOME/.claude" ]; then AGENTS="claude"; fi
-    if [ -d "$HOME/.codex" ]; then AGENTS="${AGENTS:+${AGENTS} }codex"; fi
-  else
-    if [ -d "$WORK_DIR/.claude" ] || [ -f "$WORK_DIR/CLAUDE.md" ] || [ -d "$HOME/.claude" ]; then
-      AGENTS="claude"
-    fi
-    if [ -d "$WORK_DIR/.agents" ] || [ -f "$WORK_DIR/AGENTS.md" ] || [ -d "$HOME/.codex" ]; then
-      AGENTS="${AGENTS:+${AGENTS} }codex"
-    fi
-  fi
-  [ -n "$AGENTS" ] || AGENTS="claude"
-}
-# **知らない名前を素通しさせない**。素通しすると has_agent がどれにも当たらず、MCP 登録も
-# 入口も行われないまま `[ok]` で終わる(= 何もしないのに成功。実際に state.json 経由で踏んだ)
-valid_agents() {
-  for candidate in $1; do
-    case "$candidate" in claude|codex) ;; *) return 1 ;; esac
-  done
-  [ -n "$1" ]
-}
-case "$AGENT_ARG" in
-  claude|codex) AGENTS="$AGENT_ARG"; AGENT_SOURCE="--agent $AGENT_ARG" ;;
-  both)         AGENTS="claude codex"; AGENT_SOURCE="--agent both" ;;
-  auto)         detect_agents; AGENT_SOURCE="auto (re-detected)" ;;
-  "")
-    PINNED="$(python3 -c 'import json,sys
-try:
-    with open(sys.argv[1]) as f:
-        print(json.load(f).get("agents", ""))
-except Exception:
-    pass' "$WORK_DIR/.fleetest/state.json" 2>/dev/null || true)"
-    if [ -n "$PINNED" ] && valid_agents "$PINNED"; then
-      AGENTS="$PINNED"; AGENT_SOURCE="pinned by the previous install (pass --agent auto to re-detect)"
-    else
-      [ -n "$PINNED" ] && record "agent" warn \
-        "state.json records an unknown agent set ($PINNED) — re-detecting"
-      detect_agents; AGENT_SOURCE="auto"
-    fi
-    ;;
-  *) die "agent" "--agent must be claude / codex / both / auto (got: $AGENT_ARG)" 0.5 ;;
-esac
-has_agent() { case " $AGENTS " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
-record "agent" ok "$AGENTS — $AGENT_SOURCE"
-
-# **DO_MCP のブロックの外で定義する** —— ステップ7.7(サンドボックス判定)も参照するので、
-# `--skip-mcp` のときに未定義だと set -u で落ちる([fail] 行も出ないまま exit 1)。
-# `fleetest remote setup` は常に --skip-mcp を渡すので、~/.codex のあるランナー機で必ず踏む
-CODEX_CONFIG="${CODEX_HOME:-$HOME/.codex}/config.toml"
-
 FT="$TOOL_ROOT/.build/debug/fleetest"
 
 # ---- 1. xcodegen(SKILL ステップ1) --------------------------------------------
@@ -527,10 +453,7 @@ record "build" ok "$FT ($(elapsed_since $step_started))"
 # **毎回呼ぶ**。許可リストは従来 `fleetest init` でしか書かれず、更新は --skip-project で init を
 # 回さないため、エントリを増やしても**既存の受け手には一生届かなかった**(実害: 更新のたびに
 # update.sh の承認が出る)。冪等・追加のみ・fleetest 由来のコマンドだけ(ProjectScaffold が保証)
-# **--agent を渡す**。渡さないと CLI 側が独自に判定し、受け手のホームに ~/.claude が
-# あるだけで Codex 専用の導入に .claude/settings.json ができる(実際に踏んだ)
-if perms_out="$( "$FT" api ensure-settings --work-dir "$WORK_DIR" --tool-root "$TOOL_ROOT" \
-                   --agent "${AGENTS// /,}" 2>&1 )"; then
+if perms_out="$( "$FT" api ensure-settings --work-dir "$WORK_DIR" --tool-root "$TOOL_ROOT" 2>&1 )"; then
   record "permissions" ok "$perms_out"
 else
   record "permissions" warn "could not top up (only means more approval prompts; behaviour is unaffected)"
@@ -572,7 +495,7 @@ elif [ -f "$WORK_DIR/Package.swift" ]; then
 else
   # 新規の受け手パッケージ。TOOL_ROOT はローカルパス依存で引く(git 依存は手動・SKILL ステップ4参照)
   echo "==> fleetest init($WORK_DIR)"
-  ( cd "$WORK_DIR" && "$FT" init --fleetest-path "$TOOL_ROOT" --agent "${AGENTS// /,}" \
+  ( cd "$WORK_DIR" && "$FT" init --fleetest-path "$TOOL_ROOT" \
       "${NAME_ARGS[@]+"${NAME_ARGS[@]}"}" "${APP_ARGS[@]+"${APP_ARGS[@]}"}" "${PLATFORM_ARGS[@]}" ) \
     || die "project" "fleetest init failed" 4
   record "project" ok "created the consumer package${PROJECT_NAME:+ (TestProjects/$PROJECT_NAME)}"
@@ -620,12 +543,10 @@ else
 fi
 
 # ---- 7.5 MCP サーバ登録(SKILL ステップ7.5) -----------------------------------
-# 登録先はエージェントごとに違う(AgentIntegration.mcpRegistrationTarget):
-#   Claude Code → <WORK_DIR>/.mcp.json(プロジェクトスコープ・JSON)
-#   Codex       → ~/.codex/config.toml の [mcp_servers.fleetest](ユーザーレベル・TOML)
-# **Codex のプロジェクトスコープ .codex/config.toml は使わない** —— あれは
-# `~/.codex/config.toml` 側で trust されたプロジェクトでしか読まれないので、書いても
-# 黙って効かない状態を作れてしまう(沈黙の失敗は作らない)。
+# 登録先は <WORK_DIR>/.mcp.json(AgentIntegration.mcpRegistrationTarget。
+# プロジェクトスコープ・JSON)。**他のエージェント(Codex 等)への登録は行わない** ——
+# 設定の場所も書式も受け手のグローバル設定側にあり、インストーラが触ると
+# セキュリティ境界と既存の設定を壊しうる。手順は docs/user-docs/tools/other_agents.md。
 if [ "$DO_MCP" = "0" ]; then
   record "MCP" skip "--skip-mcp"
 else
@@ -633,13 +554,11 @@ else
 # **clone 構成でもここで書く**(2026-08-27)。以前は repo ルートの `.mcp.json` を同梱して
 # 済ませていたが、**プラグイン root = repo ルートなのでそれがプラグインに載って配られ**、
 # 中身の `$PWD/Scripts/mcp-server.sh` はクローンの外では存在しないため、受け手が別の場所で
-# エージェントを起動するたびに MCP が落ちていた(Codex: connection closed / Claude: plugin
-# details に MCP servers (1))。同梱をやめ、どちらの構成でも**絶対パス**で登録する。
+# エージェントを起動するたびに MCP が落ちていた(`plugin details` に MCP servers (1))。
+# 同梱をやめ、どちらの構成でも**絶対パス**で登録する。
 # 書き先はクローン自身になるので `.gitignore` 済み(追跡すると次の更新が pull ガードで止まる)。
-if ! has_agent claude; then
-  : # Claude Code を使わない受け手には .mcp.json を作らない
-elif ! command -v python3 >/dev/null 2>&1; then
-  soft_fail "MCP(claude)" "python3 is missing, so .mcp.json cannot be merged (write the SKILL template by hand)" 7.5
+if ! command -v python3 >/dev/null 2>&1; then
+  soft_fail "MCP" "python3 is missing, so .mcp.json cannot be merged (write the SKILL template by hand)" 7.5
 else
   MCP_JSON="$WORK_DIR/.mcp.json"
   if merge_out=$(python3 - "$MCP_JSON" "$TOOL_ROOT" <<'PYCLAUDE'
@@ -676,93 +595,11 @@ else:
 PYCLAUDE
   ); then
     case "$merge_out" in
-      REPLACED*) record "MCP(claude)" ok "updated .mcp.json (replaced the old TOOL_ROOT ${merge_out#REPLACED }; delete the old clone if unneeded)" ;;
-      *) record "MCP(claude)" ok "registered fleetest in .mcp.json" ;;
+      REPLACED*) record "MCP" ok "updated .mcp.json (replaced the old TOOL_ROOT ${merge_out#REPLACED }; delete the old clone if unneeded)" ;;
+      *) record "MCP" ok "registered fleetest in .mcp.json" ;;
     esac
   else
-    soft_fail "MCP(claude)" "failed to merge .mcp.json ($merge_out)" 7.5
-  fi
-fi
-
-# Codex 側。**`codex` のサブコマンド名に依存しない** —— このインストーラは codex が入って
-# いない機械でも回るし、CLI の引数体系はここで検証できないので、TOML を自分で扱う。
-# 安全側の規律3つ:
-#   ① 既存の [mcp_servers.fleetest] が無いときだけ**末尾に追記**する(既存行に触らない。
-#      TOML はテーブル見出しで前のテーブルが終わるので、末尾追記は常に妥当)
-#   ② 既にあって TOOL_ROOT が違うときは**書き換えず**、既存テーブルの値を差し替えるよう案内する
-#      (コメント付き TOML の書き換えは受け手の設定を壊しうる。**追記させない** ——
-#      同じテーブルが2つになると config.toml 全体が無効になる)
-#   ③ tomllib(python 3.11+)で読めないときは1バイトも書かない
-if ! has_agent codex; then
-  : # Codex を使わない受け手には ~/.codex を作らない
-elif ! command -v python3 >/dev/null 2>&1; then
-  soft_fail "MCP(codex)" "python3 is missing, so $CODEX_CONFIG cannot be updated" 7.5
-else
-  if codex_out=$(python3 - "$CODEX_CONFIG" "$TOOL_ROOT" <<'PYCODEX'
-import os, sys
-
-path, tool_root = sys.argv[1], sys.argv[2]
-launcher = "%s/Scripts/mcp-server.sh" % tool_root
-# 起動の中身は Scripts/mcp-server.sh(Claude 側と同一のランチャ)。
-# **cwd は書かない** —— cwd は受け手パッケージの特定に使うので、エージェントが開いた
-# ディレクトリのままにする必要がある(mcp-server.sh の規律と対)。
-block = (
-    "\n# fleetest (foundation-tester) — added by Scripts/install.sh\n"
-    "[mcp_servers.fleetest]\n"
-    'command = "bash"\n'
-    'args = ["-lc", "exec \\"%s\\""]\n'
-    "\n[mcp_servers.fleetest.env]\n"
-    'FT_TOOL_ROOT = "%s"\n'
-) % (launcher, tool_root)
-
-try:
-    import tomllib
-except ModuleNotFoundError:
-    print("NOTOML%s" % block, end="")
-    sys.exit(0)
-
-existing = ""
-data = {}
-if os.path.exists(path):
-    with open(path, "rb") as f:
-        raw = f.read()
-    try:
-        data = tomllib.loads(raw.decode("utf-8"))
-    except Exception as e:
-        print("INVALID %s" % e, end="")
-        sys.exit(3)
-    existing = raw.decode("utf-8")
-
-current = data.get("mcp_servers", {}).get("fleetest")
-if current is not None:
-    previous = (current.get("env") or {}).get("FT_TOOL_ROOT")
-    if previous == tool_root:
-        print("PRESENT", end="")
-    else:
-        print("DIFFERS %s\n%s" % (previous, block), end="")
-    sys.exit(0)
-
-os.makedirs(os.path.dirname(path), exist_ok=True)
-with open(path, "a" if existing else "w") as f:
-    if existing and not existing.endswith("\n"):
-        f.write("\n")
-    f.write(block)
-print("ADDED", end="")
-PYCODEX
-  ); then
-    case "$codex_out" in
-      PRESENT) record "MCP(codex)" ok "already registered in $CODEX_CONFIG" ;;
-      ADDED) record "MCP(codex)" ok "registered fleetest in $CODEX_CONFIG" ;;
-      DIFFERS*)
-        record "MCP(codex)" warn "$CODEX_CONFIG already points fleetest at a different TOOL_ROOT — left it alone; to switch, replace the values in the existing [mcp_servers.fleetest] tables (do NOT append — a duplicated table invalidates the whole file):"
-        printf '%s\n' "${codex_out#DIFFERS }" ;;
-      NOTOML*)
-        record "MCP(codex)" warn "python3 has no tomllib (3.11+ required), so $CODEX_CONFIG could not be inspected — add this only if [mcp_servers.fleetest] is not already there (a duplicated table invalidates the whole file):"
-        printf '%s\n' "${codex_out#NOTOML}" ;;
-      *) soft_fail "MCP(codex)" "failed to update $CODEX_CONFIG ($codex_out)" 7.5 ;;
-    esac
-  else
-    soft_fail "MCP(codex)" "failed to update $CODEX_CONFIG ($codex_out)" 7.5
+    soft_fail "MCP" "failed to merge .mcp.json ($merge_out)" 7.5
   fi
 fi
 
@@ -776,22 +613,19 @@ fi
 # DSL コマンドを推測で書く)ので、**使い方の解説は書かず入口だけ4行**置く
 # —— 解説を置くとツール説明と二重管理になり必ずズレる(docs/design.md「契約は1箇所」)。
 # 受け手の資産なので**マーカーの内側だけ**差し替える。共有リポジトリで嫌うなら
-# --skip-claude-md / --skip-agents-md。
+# --skip-claude-md。
 #
-# 書き先はエージェントごと(AgentIntegration.entryPointFile): Claude Code=CLAUDE.md /
-# Codex=AGENTS.md。**本文は同じで、違うのはスキルの呼び出し記法だけ**(/ と $)。
+# 書き先は CLAUDE.md(AgentIntegration.entryPointFile)。
 write_entry_point() {
-  ep_file="$WORK_DIR/$1"
-  ep_prefix="$2"
-  ep_label="$3"
+  ep_file="$WORK_DIR/CLAUDE.md"
+  ep_label="CLAUDE.md"
   # **クローンの作業ツリーの中には書かない**(2026-08-07 に自己破壊を再現)。
   # clone 構成(WORK_DIR = TOOL_ROOT)で入口ファイルへ書くと、次の更新が pull ガード
   # (「local changes」)で必ず止まる。しかも `git reset --hard` で戻しても次の更新が
   # 同じブロックを書くので**同じ状態に戻る**。
   # **判定は「追跡されているか」ではなく「クローンの中か」** —— `git status --porcelain` は
-  # 未追跡ファイルも dirty と数えるので、追跡の有無で見ると **まだ存在しない AGENTS.md が
-  # 素通りして**同じ轍を踏む(CLAUDE.md はクローンの追跡ファイルなので追跡判定でも
-  # 止まっていたが、AGENTS.md は追跡も gitignore もされていない)。
+  # 未追跡ファイルも dirty と数えるので、追跡判定にすると**まだ存在しない入口ファイル**が
+  # 素通りして同じ轍を踏む。
   # 外部構成で受け手が自分のリポジトリに入口を持つのは対象外(クローンの pull を妨げない)。
   # **判定できなければ書かない**(fail-closed)—— 受け手の資産を壊す側に倒れるより、
   # 案内を1つ諦めるほうが安い。
@@ -803,10 +637,10 @@ print("inside" if os.path.commonpath([target, clone]) == clone else "outside")' 
     record "$ep_label" skip "it lives inside the clone — writing there would make the next update abort at the pull guard"
     return 0
   fi
-  if guide_out=$(python3 - "$ep_file" "$ep_prefix" <<'PYGUIDE'
+  if guide_out=$(python3 - "$ep_file" <<'PYGUIDE'
 import os, re, sys
 
-path, prefix = sys.argv[1], sys.argv[2]
+path = sys.argv[1]
 # **マーカーは最短・不変にする**。説明文をマーカー行に埋めると、文言を変えた瞬間に
 # 既存ブロックを見失って**二重に追記される**。前置き一致で拾い、説明は本文の側に置く。
 BEGIN = "<!-- fleetest:begin -->"
@@ -814,13 +648,13 @@ END = "<!-- fleetest:end -->"
 BODY = """## テスト(fleetest)
 
 <!-- この範囲は Scripts/install.sh が管理しており、更新のたび上書きされます。
-     不要なら begin〜end ごと削除するか、インストーラに --skip-claude-md /
-     --skip-agents-md を渡してください。 -->
+     不要なら begin〜end ごと削除するか、インストーラに --skip-claude-md を
+     渡してください。 -->
 
-- シナリオ作成は `%(p)sfleetest-scenario`、対象アプリ/デバイスの追加は `%(p)sfleetest-profiles`、更新は `%(p)sfleetest-update`
+- シナリオ作成は `/fleetest-scenario`、対象アプリ/デバイスの追加は `/fleetest-profiles`、更新は `/fleetest-update`
 - 画面の探索・操作は `ft_*` ツール。**長いリストは `ft_swipe` の繰り返しでなく `ft_scroll_to`**
 - DSL のコマンド名は推測せず `ft_dsl_commands` で索引を引く(無いコマンドを書かないため)
-- シナリオは `TestProjects/<プロジェクト>/scenarios/*.swift`。実行は `ft_run_scenario` か VSCode 拡張""" % {"p": prefix}
+- シナリオは `TestProjects/<プロジェクト>/scenarios/*.swift`。実行は `ft_run_scenario` か VSCode 拡張"""
 block = BEGIN + "\n" + BODY + "\n" + END
 
 existing = ""
@@ -862,13 +696,13 @@ PYGUIDE
   ); then
     case "$guide_out" in
       damaged)
-        record "$ep_label" warn "the fleetest markers in $1 are not a single begin/end pair"\
+        record "$ep_label" warn "the fleetest markers in CLAUDE.md are not a single begin/end pair"\
 " — left the file untouched (fix or remove them by hand, then re-run)" ;;
       *)
-        record "$ep_label" ok "$guide_out $1 (delete the fleetest block, or pass --skip-claude-md / --skip-agents-md, to opt out)" ;;
+        record "$ep_label" ok "$guide_out CLAUDE.md (delete the fleetest block, or pass --skip-claude-md, to opt out)" ;;
     esac
   else
-    record "$ep_label" warn "could not write the entry point to $1 (agents may miss ft_*)"
+    record "$ep_label" warn "could not write the entry point to CLAUDE.md (agents may miss ft_*)"
   fi
 }
 
@@ -877,90 +711,8 @@ if ! command -v python3 >/dev/null 2>&1; then
 else
   if [ "$DO_CLAUDE_MD" = "0" ]; then
     record "CLAUDE.md" skip "--skip-claude-md"
-  elif has_agent claude; then
-    write_entry_point "CLAUDE.md" "/" "CLAUDE.md"
-  fi
-  if [ "$DO_AGENTS_MD" = "0" ]; then
-    record "AGENTS.md" skip "--skip-agents-md"
-  elif has_agent codex; then
-    write_entry_point "AGENTS.md" "\$" "AGENTS.md"
-  fi
-fi
-
-# ---- 7.7 Codex サンドボックスの適合判定(SKILL ステップ7.7) --------------------
-# **判定するが緩めない**。`~/.codex/config.toml` の sandbox_mode は**受け手のグローバル設定であり
-# セキュリティ境界**なので、インストーラは1バイトも書かない。出すのは事実と選択肢だけ。
-#
-# **実測で分かった構造(2026-08-27。writable_roots では直らない)**:
-#   ・`swift build` / `swift package` は **workspace-write の中では起動できない** ——
-#     SwiftPM が自前で `sandbox-exec` を入れ子に使い `sandbox_apply: Operation not permitted`
-#   ・`xcrun simctl` も通らない —— CoreSimulatorService への mach 接続が塞がれる
-#   ・`adb` は通る(TCP 5037 なので network_access で足りる)
-#   したがって **network_access と writable_roots をどう積んでも workspace-write は救えない**。
-#   これらを「揃えれば OK」と報告していた頃は false green で、受け手の切り分けを誤らせた。
-#
-# **一方 MCP サーバはサンドボックスの外で動く**(実測: --sandbox read-only でもワークスペース外
-# 書込と loopback が通る)。つまり `ft_*` 経由の作成・実行・デバイス駆動は既定設定のまま動き、
-# 通らないのは**エージェントがシェルで叩く導入・更新**だけ。ここを取り違えない。
-if ! has_agent codex; then
-  : # Codex を使わない受け手には関係しない
-elif ! command -v python3 >/dev/null 2>&1; then
-  record "codex sandbox" warn "python3 is missing, so $CODEX_CONFIG could not be inspected"
-else
-  if sandbox_out=$(python3 - "$CODEX_CONFIG" <<'PYSANDBOX'
-import os, sys
-
-path = sys.argv[1]
-
-# **選択肢は2つだけ**。どちらも受け手が決めること(このスクリプトは書かない)。
-advice = (
-    "Codex runs shell commands inside a sandbox. `swift build` cannot start there (SwiftPM nests\n"
-    "its own sandbox-exec) and `xcrun simctl` cannot reach CoreSimulatorService, so the install and\n"
-    "update runbooks will not complete. Adding network_access or writable_roots does NOT fix this.\n"
-    "\n"
-    "What still works with no change: everything through the MCP server (ft_* tools) — authoring,\n"
-    "running scenarios and driving devices. The MCP server runs outside the sandbox.\n"
-    "\n"
-    "Pick one:\n"
-    "  (a) run the install/update sessions only with `codex --sandbox danger-full-access`\n"
-    "      and keep the default sandbox for everyday work  ← narrower, recommended\n"
-    "  (b) set `sandbox_mode = \"danger-full-access\"` in the config to relax it permanently\n"
-)
-
-try:
-    import tomllib
-except ModuleNotFoundError:
-    print("UNKNOWN python3 has no tomllib (3.11+)\n%s" % advice, end=""); sys.exit(0)
-if not os.path.exists(path):
-    print("LIMITED %s does not exist yet, so the default sandbox applies\n%s" % (path, advice), end="")
-    sys.exit(0)
-try:
-    with open(path, "rb") as f:
-        data = tomllib.load(f)
-except Exception as e:
-    print("UNKNOWN could not parse %s (%s)\n%s" % (path, e, advice), end=""); sys.exit(0)
-
-mode = data.get("sandbox_mode", "workspace-write")
-if mode == "danger-full-access":
-    print("OK sandbox_mode=danger-full-access (shell steps can run)", end="")
-else:
-    print("LIMITED sandbox_mode=%s\n%s" % (mode, advice), end="")
-PYSANDBOX
-  ); then
-    case "$sandbox_out" in
-      OK*) record "codex sandbox" ok "${sandbox_out#OK }" ;;
-      LIMITED*)
-        sandbox_head="${sandbox_out#LIMITED }"
-        record "codex sandbox" warn "${sandbox_head%%$'\n'*} — ft_* keeps working, but the install/update runbooks cannot run under it (nothing was written; see below)"
-        printf '%s\n' "${sandbox_out#*$'\n'}" ;;
-      UNKNOWN*)
-        sandbox_head="${sandbox_out#UNKNOWN }"
-        record "codex sandbox" warn "could not verify the sandbox: ${sandbox_head%%$'\n'*} (see below if the runbooks do not complete)"
-        printf '%s\n' "${sandbox_out#*$'\n'}" ;;
-      *) record "codex sandbox" warn "unexpected verdict ($sandbox_out)" ;;
-    esac
   else
-    record "codex sandbox" warn "could not inspect $CODEX_CONFIG"
+    write_entry_point
   fi
 fi
 
@@ -1036,8 +788,7 @@ if [ -d "$WORK_DIR/.fleetest" ]; then
   "installedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "toolRoot": "$TOOL_ROOT",
   "toolRootHead": "$(git -C "$TOOL_ROOT" rev-parse HEAD 2>/dev/null)",
-  "toolRootRef": "$(git -C "$TOOL_ROOT" symbolic-ref --short -q HEAD 2>/dev/null || echo detached)",
-  "agents": "$AGENTS"
+  "toolRootRef": "$(git -C "$TOOL_ROOT" symbolic-ref --short -q HEAD 2>/dev/null || echo detached)"
 }
 EOF
 fi

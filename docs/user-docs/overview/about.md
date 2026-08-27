@@ -1,7 +1,7 @@
 # About Fleetest
 
 Fleetest is a macOS-only E2E testing tool for iOS / Android apps, built around coding agents
-(Claude Code and Codex).
+(Claude Code and others).
 
 ## Where the name comes from
 
@@ -36,7 +36,7 @@ extension.
 |---|---|---|
 | **CLI** `fleetest` | `swift run fleetest ...` (clone), or the built `.build/debug/fleetest` | scheduled CI / regression runs (deterministic, free, exit code) |
 | **VSCode extension** | the VSCode extension (device monitor, live control, dashboard) | interactive use: running/debugging scenarios, live control (record → generate), device monitor, results dashboard |
-| **MCP server** | started automatically by the agent (Claude Code registers it from `.mcp.json`; Codex from `~/.codex/config.toml`) | agent-driven work: AI-authored tests, debugging, exploratory testing |
+| **MCP server** | started automatically by the agent (Claude Code registers it from `.mcp.json`; for others see [Other agents](../tools/other_agents.md)) | agent-driven work: AI-authored tests, debugging, exploratory testing |
 | **Swift DSL** | `TestProjects/<name>/scenarios/*.swift` | the test asset itself — saved and run the same way no matter which entry point created it |
 
 ## Role division

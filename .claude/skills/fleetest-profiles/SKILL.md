@@ -19,9 +19,8 @@ description: fleetest のマシンプロファイル・アプリプロファイ�
 > **`/plugin` スラッシュコマンドは VSCode 拡張・Agent SDK 環境では提供されない**ので CLI 形)、
 > コピー配置(`install-skill.sh`)なら `fleetest-update` が正典から写し直す。
 
-> **スキルの呼び出し記法はエージェントごとに違う**: Claude Code は `/fleetest-setup`、
-> Codex は `$fleetest-setup`(または `/skills` セレクタ)。以下は `/` 形で書くが、
-> Codex では `$` に読み替える。
+> **スキルの呼び出し記法はエージェントごとに違う**(Claude Code は `/fleetest-setup`)。
+> 以下は `/` 形で書くので、別の記法のエージェントではそちらへ読み替える。
 
 1つのアプリ×1プラットフォーム分の **マシン/アプリ/実行プロファイルの三点セット** を作る。
 既存プロジェクト(`fleetest project create` / `fleetest init` 済み)に対して実行する。未セットアップなら
