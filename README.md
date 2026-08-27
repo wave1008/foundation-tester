@@ -70,6 +70,28 @@ claude plugin install fleetest@foundation-tester --scope user
 >
 > `claude plugin uninstall ftester@foundation-tester`
 
+**Codex に任せる**: 同じスキルがそのまま動く。ターミナルでプラグインを入れ、テスト用の新規フォルダを
+開いて `$fleetest-setup` を呼ぶ(`codex` CLI が無ければ `brew install --cask codex`):
+
+```bash
+codex plugin marketplace add wave1008/foundation-tester
+codex plugin add fleetest@foundation-tester
+```
+
+> **既定のサンドボックスのままだと導入・更新が通らない。** Codex はシェルコマンドを
+> サンドボックスの中で実行するため、`swift build` が起動できず(SwiftPM が `sandbox-exec` を
+> 入れ子に使う)、`xcrun simctl` も CoreSimulatorService へ届かない。`network_access` や
+> `writable_roots` では直らない。
+>
+> **`ft_*`(MCP 経由の作成・実行・デバイス駆動)は影響を受けない** —— MCP サーバは
+> サンドボックスの外で動く。したがって**導入・更新のセッションだけ**
+> `codex --sandbox danger-full-access` で起動すれば足りる(恒久的に緩める必要はない)。
+> 詳細は [docs/user-docs/tools/codex_skills_ja.md](docs/user-docs/tools/codex_skills_ja.md)。
+>
+> 規約位置の違いは3つだけ: 置き場所 `.agents/skills/` / 入口 `AGENTS.md` /
+> MCP 登録先 `~/.codex/config.toml`。更新は `marketplace upgrade` → `plugin add`
+> (`Scripts/update.sh` が両エージェントぶん面倒を見る)。
+
 **エージェント無しで入れる**: 同じ機械作業を1コマンドで行うインストーラ(冪等):
 
 ```bash
@@ -83,14 +105,8 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scr
   `fleetest-remote-setup`(別の Mac をランナー機にする)。
   配布口は `main` の1本(版を固定する導線は無い)。
   プラグイン機構が無い環境向けの代替は
-  `curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install-skill.sh | sh`。
-- **Codex でも同じスキルが動く**(runbook は共有。違うのは置き場所 `.agents/skills/`・呼び出し `$fleetest-setup`・
-  入口 `AGENTS.md`・MCP 登録先 `~/.codex/config.toml` だけ)。導入はプラグインが推奨:
-  `codex plugin marketplace add wave1008/foundation-tester` → `codex plugin add fleetest@foundation-tester`
-  (更新は `marketplace upgrade` → `plugin add`。`update.sh` が両エージェントぶん面倒を見る)。
-  プラグインが使えない環境では `curl -fsSL .../Scripts/install-skill.sh | sh -s -- --agent codex`。
-  **Codex は既定のサンドボックスだと導入・更新のシェル工程が通らない**(`ft_*` は影響を受けない)ので、
-  [docs/user-docs/tools/codex_skills_ja.md](docs/user-docs/tools/codex_skills_ja.md) のサンドボックス設定を先に読むこと。
+  `curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install-skill.sh | sh`
+  (置き場所は自動判定。明示するなら `| sh -s -- --agent claude|codex|both`)。
 - 既定は**外部パッケージ構成**: ツール(この clone)と、あなたの `TestProjects/` が住むテスト用フォルダを分ける。
 - 事前準備・インストール・更新・アンインストールの手順は [docs/user-docs/getting-started_ja.md](docs/user-docs/getting-started_ja.md)。
   導入後の使い方(プロファイル・シナリオ・実行)は**利用者向けドキュメント [docs/user-docs/index_ja.md](docs/user-docs/index_ja.md)**([English](docs/user-docs/index.md))と [docs/commands.md](docs/commands.md)。
@@ -491,9 +507,14 @@ Android: `fleetest-androidstream`)経由でほぼリアルタイムに更新す�
 ## MCP サーバ(エージェント連携)
 
 `fleetest-mcp` は同じ機能を MCP(Model Context Protocol)ツールとして公開する stdio サーバ。
-リポジトリ直下の [.mcp.json](.mcp.json) に登録済みのため、**このディレクトリで Claude Code を
-開くと自動で `fleetest` サーバが使える**(初回はビルドが走る)。Codex は `.mcp.json` を読まないので、
-`~/.codex/config.toml` へ登録する([docs/user-docs/tools/codex_skills_ja.md](docs/user-docs/tools/codex_skills_ja.md))。
+登録は `Scripts/install.sh` が行う(**絶対パス**で書くので、どのディレクトリでエージェントを
+開いても解決できる。初回呼び出しでビルドが走る):
+
+- **Claude Code** → ワークスペースの `.mcp.json`。**リポジトリには同梱していない** ——
+  プラグイン root = repo ルートなので、同梱すると相対パス依存の設定がプラグインに載って配られ、
+  クローンの外でエージェントを起動した受け手の MCP が必ず落ちていた
+- **Codex** → `.mcp.json` を読まないので `~/.codex/config.toml`
+  ([docs/user-docs/tools/codex_skills_ja.md](docs/user-docs/tools/codex_skills_ja.md))
 
 | ツール | 内容 |
 |---|---|
