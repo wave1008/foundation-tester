@@ -389,25 +389,54 @@ record "layout" ok "$LAYOUT (TOOL_ROOT=$TOOL_ROOT / WORK_DIR=$WORK_DIR)"
 # 判定規則は FTCore の AgentIntegration.detect と 1:1(.claude / CLAUDE.md / ~/.claude → claude、
 # .agents / AGENTS.md / ~/.codex → codex、どれも無ければ claude 単独 = 既存の受け手の挙動を変えない)。
 # 片方だけ変えない —— agentIntegration.test.mjs が Swift 側との一致を見る。
-# clone 構成のクローン自身は両方の規約位置を持つので、判定ではなく明示指定で使うこと。
+#
+# 順序が3段なのには理由がある:
+#   ① 明示指定が常に勝つ
+#   ② **前回の判定を state.json から引き継ぐ** —— 引き継がないと、`--agent codex` で入れた
+#      受け手が更新のたびに自動判定へ戻り、ホームに ~/.claude があるだけで
+#      .claude/settings.json と CLAUDE.md が湧く(update.sh は install.sh を呼び直すだけなので、
+#      ここで持たないと更新経路に決定が伝わらない)
+#   ③ それも無ければ判定。**clone 構成では WORK_DIR 側の手掛かりを見ない** ——
+#      クローン自身が `.claude/` も `.agents/` も `CLAUDE.md` も持っている(このツールの
+#      アダプタであって、受け手が Codex を使っている証拠ではない)。見るとどのクローンでも
+#      codex と判定され、クローンの中に AGENTS.md を書いて次の更新を pull ガードで止める
 AGENTS=""
 case "$AGENT_ARG" in
   claude) AGENTS="claude" ;;
   codex)  AGENTS="codex" ;;
   both)   AGENTS="claude codex" ;;
   auto)
-    if [ -d "$WORK_DIR/.claude" ] || [ -f "$WORK_DIR/CLAUDE.md" ] || [ -d "$HOME/.claude" ]; then
-      AGENTS="claude"
+    AGENTS="$(python3 -c 'import json,sys
+try:
+    with open(sys.argv[1]) as f:
+        print(json.load(f).get("agents", ""))
+except Exception:
+    pass' "$WORK_DIR/.fleetest/state.json" 2>/dev/null || true)"
+    if [ -z "$AGENTS" ]; then
+      if [ "$LAYOUT" = "clone" ]; then
+        # クローン自身の規約位置は証拠にならないので、ホーム側だけを見る
+        [ -d "$HOME/.claude" ] && AGENTS="claude"
+        [ -d "$HOME/.codex" ] && AGENTS="${AGENTS:+${AGENTS} }codex"
+      else
+        if [ -d "$WORK_DIR/.claude" ] || [ -f "$WORK_DIR/CLAUDE.md" ] || [ -d "$HOME/.claude" ]; then
+          AGENTS="claude"
+        fi
+        if [ -d "$WORK_DIR/.agents" ] || [ -f "$WORK_DIR/AGENTS.md" ] || [ -d "$HOME/.codex" ]; then
+          AGENTS="${AGENTS:+${AGENTS} }codex"
+        fi
+      fi
+      [ -n "$AGENTS" ] || AGENTS="claude"
     fi
-    if [ -d "$WORK_DIR/.agents" ] || [ -f "$WORK_DIR/AGENTS.md" ] || [ -d "$HOME/.codex" ]; then
-      AGENTS="${AGENTS:+${AGENTS} }codex"
-    fi
-    [ -n "$AGENTS" ] || AGENTS="claude"
     ;;
   *) die "agent" "--agent must be claude / codex / both / auto (got: $AGENT_ARG)" 0.5 ;;
 esac
 has_agent() { case " $AGENTS " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 record "agent" ok "$AGENTS ($AGENT_ARG)"
+
+# **DO_MCP のブロックの外で定義する** —— ステップ7.7(サンドボックス判定)も参照するので、
+# `--skip-mcp` のときに未定義だと set -u で落ちる([fail] 行も出ないまま exit 1)。
+# `fleetest remote setup` は常に --skip-mcp を渡すので、~/.codex のあるランナー機で必ず踏む
+CODEX_CONFIG="${CODEX_HOME:-$HOME/.codex}/config.toml"
 
 FT="$TOOL_ROOT/.build/debug/fleetest"
 
@@ -602,7 +631,6 @@ fi
 #      (コメント付き TOML の書き換えは受け手の設定を壊しうる。**追記させない** ——
 #      同じテーブルが2つになると config.toml 全体が無効になる)
 #   ③ tomllib(python 3.11+)で読めないときは1バイトも書かない
-CODEX_CONFIG="${CODEX_HOME:-$HOME/.codex}/config.toml"
 if ! has_agent codex; then
   : # Codex を使わない受け手には ~/.codex を作らない
 elif ! command -v python3 >/dev/null 2>&1; then
@@ -694,18 +722,21 @@ write_entry_point() {
   ep_file="$WORK_DIR/$1"
   ep_prefix="$2"
   ep_label="$3"
-  # **クローンが git 管理している入口ファイルには書かない**(2026-08-07 に自己破壊を再現)。
-  # clone 構成(WORK_DIR = TOOL_ROOT)では受け手の CLAUDE.md はクローン自身の追跡ファイルで、
-  # ここへ追記すると次の更新が pull ガード(「local changes」)で必ず止まる。しかも
-  # `git reset --hard` で戻しても次の更新が同じブロックを書くので**同じ状態に戻る**。
-  # 判定は「レイアウト」ではなく**そのファイルが追跡されているか** —— 外部構成でも受け手が
-  # 自分のリポジトリで入口を管理していることはあるが、そちらはクローンの pull を
-  # 妨げないので対象外(見るのは TOOL_ROOT の索引だけ)。
+  # **クローンの作業ツリーの中には書かない**(2026-08-07 に自己破壊を再現)。
+  # clone 構成(WORK_DIR = TOOL_ROOT)で入口ファイルへ書くと、次の更新が pull ガード
+  # (「local changes」)で必ず止まる。しかも `git reset --hard` で戻しても次の更新が
+  # 同じブロックを書くので**同じ状態に戻る**。
+  # **判定は「追跡されているか」ではなく「クローンの中か」** —— `git status --porcelain` は
+  # 未追跡ファイルも dirty と数えるので、追跡の有無で見ると **まだ存在しない AGENTS.md が
+  # 素通りして**同じ轍を踏む(CLAUDE.md はクローンの追跡ファイルなので追跡判定でも
+  # 止まっていたが、AGENTS.md は追跡も gitignore もされていない)。
+  # 外部構成で受け手が自分のリポジトリに入口を持つのは対象外(クローンの pull を妨げない)。
   # 同型: packageLockSync(npm install が lock を書き換えてクローンが dirty になる)
-  if git -C "$TOOL_ROOT" ls-files --error-unmatch \
-       "$(python3 -c 'import os,sys;print(os.path.relpath(sys.argv[1],sys.argv[2]))' \
-          "$ep_file" "$TOOL_ROOT" 2>/dev/null)" >/dev/null 2>&1; then
-    record "$ep_label" skip "it is tracked by the clone — writing there would make the next update abort at the pull guard"
+  if [ "$(python3 -c 'import os,sys
+target, clone = os.path.realpath(sys.argv[1]), os.path.realpath(sys.argv[2])
+print("inside" if os.path.commonpath([target, clone]) == clone else "outside")' \
+       "$ep_file" "$TOOL_ROOT" 2>/dev/null || echo outside)" = "inside" ]; then
+    record "$ep_label" skip "it lives inside the clone — writing there would make the next update abort at the pull guard"
     return 0
   fi
   if guide_out=$(python3 - "$ep_file" "$ep_prefix" <<'PYGUIDE'
@@ -963,7 +994,8 @@ if [ -d "$WORK_DIR/.fleetest" ]; then
   "installedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "toolRoot": "$TOOL_ROOT",
   "toolRootHead": "$(git -C "$TOOL_ROOT" rev-parse HEAD 2>/dev/null)",
-  "toolRootRef": "$(git -C "$TOOL_ROOT" symbolic-ref --short -q HEAD 2>/dev/null || echo detached)"
+  "toolRootRef": "$(git -C "$TOOL_ROOT" symbolic-ref --short -q HEAD 2>/dev/null || echo detached)",
+  "agents": "$AGENTS"
 }
 EOF
 fi

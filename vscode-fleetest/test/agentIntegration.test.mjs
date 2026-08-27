@@ -10,7 +10,9 @@
 // process.cwd() は npm test 実行時に vscode-fleetest ルート。
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 
@@ -196,5 +198,84 @@ test("ランナーの install 引数が docs と一致する(片方だけ変え�
     const required = doc.endsWith("remote-runner.md") ? missing : missing.filter((f) => f !== "--no-next-steps");
     assert.deepEqual(required, [],
       `${doc} が installArgs の抑止フラグを載せていません: ${required.join(", ")}`);
+  }
+});
+
+// --- レビューで出た3つの穴の回帰 ------------------------------------------------
+
+test("CODEX_CONFIG は --skip-mcp のブロックの外で定義する", () => {
+  // ステップ7.7(サンドボックス判定)も参照するので、7.5 の else の中で定義すると
+  // `--skip-mcp` のときに set -u で落ちる([fail] 行も出ないまま exit 1)。
+  // RemoteSetupPlan.installArgs は常に --skip-mcp を渡すので、~/.codex のある
+  // ランナー機で必ず踏む
+  const assign = INSTALL_SH.indexOf('CODEX_CONFIG="');
+  const guard = INSTALL_SH.indexOf('if [ "$DO_MCP" = "0" ]');
+  assert.ok(assign > 0, "install.sh に CODEX_CONFIG の定義がありません");
+  assert.ok(guard > 0, "install.sh に --skip-mcp のガードがありません");
+  assert.ok(assign < guard,
+    "CODEX_CONFIG が --skip-mcp のブロックの中で定義されています(7.7 が set -u で落ちます)");
+});
+
+test("clone 構成では WORK_DIR 側の手掛かりを判定に使わない", () => {
+  // クローン自身が .claude/ も .agents/ も CLAUDE.md も持っている(このツールのアダプタで
+  // あって、受け手が Codex を使っている証拠ではない)。見るとどのクローンでも codex と
+  // 判定され、クローンの中に AGENTS.md を書いて次の更新を pull ガードで止める
+  const block = detectionBlock("Scripts/install.sh", INSTALL_SH);
+  const cloneBranch = block.slice(block.indexOf('LAYOUT" = "clone"'));
+  assert.ok(cloneBranch.length > 0, "clone 構成の分岐がありません");
+  const untilElse = cloneBranch.slice(0, cloneBranch.indexOf("else"));
+  assert.ok(!untilElse.includes("$WORK_DIR"),
+    "clone 構成の判定が WORK_DIR 側の手掛かりを見ています(どのクローンでも codex になります)");
+  assert.ok(untilElse.includes("$HOME/.codex") && untilElse.includes("$HOME/.claude"),
+    "clone 構成の判定がホーム側の手掛かりを見ていません");
+});
+
+test("判定結果を state.json に残し、auto のときは引き継ぐ", () => {
+  // 引き継がないと `--agent codex` で入れた受け手が更新のたびに自動判定へ戻り、
+  // ホームに ~/.claude があるだけで .claude/settings.json と CLAUDE.md が湧く
+  // (update.sh は install.sh を呼び直すだけなので、決定はここで持つ)
+  assert.match(INSTALL_SH, /"agents":\s*"\$AGENTS"/,
+    "install.sh が state.json に判定結果(agents)を残していません");
+  const block = detectionBlock("Scripts/install.sh", INSTALL_SH);
+  const auto = block.slice(block.indexOf("auto)"));
+  assert.ok(auto.includes("state.json"),
+    "auto の判定が state.json の記録を先に読んでいません(更新のたびに決定が揺れます)");
+});
+
+test("入口ファイルはクローンの中には書かない(未追跡でも)", () => {
+  // 追跡の有無で判定すると、**まだ存在しない AGENTS.md が素通り**する
+  // (CLAUDE.md はクローンの追跡ファイルなので追跡判定でも止まっていた)。
+  // `git status --porcelain` は未追跡も dirty と数えるので、次の更新が pull ガードで止まる。
+  // install.sh から write_entry_point を抜き出して実際に走らせる(実装の写しを置かない)。
+  const begin = INSTALL_SH.indexOf("write_entry_point() {");
+  assert.ok(begin > 0, "install.sh に write_entry_point がありません");
+  const end = INSTALL_SH.indexOf("\n}\n", begin);
+  const fn = INSTALL_SH.slice(begin, end + 3);
+
+  const dir = mkdtempSync(path.join(tmpdir(), "ft-entry-guard-"));
+  try {
+    const clone = path.join(dir, "clone");
+    const outside = path.join(dir, "work");
+    mkdirSync(clone); mkdirSync(outside);
+    execFileSync("git", ["init", "-q", clone]);
+    const script = path.join(dir, "run.sh");
+    // record は結果を1行で出すだけのスタブに差し替える
+    writeFileSync(script, [
+      "set -eu",
+      'record() { echo "$1|$2"; }',
+      fn,
+      'WORK_DIR="$1"; TOOL_ROOT="$2"',
+      'write_entry_point "AGENTS.md" "\\$" "AGENTS.md"',
+    ].join("\n"));
+
+    const inClone = execFileSync("bash", [script, clone, clone], { encoding: "utf8" });
+    assert.match(inClone, /AGENTS\.md\|skip/, `クローンの中に書こうとしています: ${inClone}`);
+    assert.ok(!existsSync(path.join(clone, "AGENTS.md")), "クローンに AGENTS.md が作られました");
+
+    const outsideClone = execFileSync("bash", [script, outside, clone], { encoding: "utf8" });
+    assert.match(outsideClone, /AGENTS\.md\|ok/, `クローンの外なのに書いていません: ${outsideClone}`);
+    assert.ok(existsSync(path.join(outside, "AGENTS.md")), "クローン外の入口が作られていません");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });
