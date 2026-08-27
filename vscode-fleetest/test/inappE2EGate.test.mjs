@@ -16,6 +16,14 @@ const ROOT = resolve(import.meta.dirname, '../..')
 const SCRIPT = join(ROOT, 'Scripts/e2e.sh')
 const source = readFileSync(SCRIPT, 'utf8')
 
+// **サブコマンドの実在は、実バイナリが無ければ答えようがない**。無いまま叩くと
+// `bash: .build/debug/fleetest: No such file or directory` が help の代わりに返り、
+// 契約違反でないものを契約違反として落とす(pre-push フックが新しいクローンで
+// 意味不明に止まり、--no-verify を習慣にさせる)。liveModel/profileModel と同じ形で
+// 明示的に skip する —— 「検証できなかった」を「通った」と混ぜない。
+const BINARY_PATH = join(ROOT, '.build', 'debug', 'fleetest')
+const BINARY_EXISTS = existsSync(BINARY_PATH)
+
 /** ゲートの2ブロック(判定・記録)だけを取り出し、変数を差し替えて実行する。
  * marker は「エンジン名 → 中身」。engine_marker が組み立てるパス($ROOT/.fleetest/<engine>-e2e-verified)
  * に置くので、テスト側でパスの組み立て規則を二重に持たない。 */
@@ -89,8 +97,14 @@ test('失敗があれば印を書かない(失敗を検証済みにしない)', 
   assert.equal(readMarker('inapp'), null)
 })
 
-test('ゲートが呼ぶ api サブコマンドが実在する', () => {
+// ゲートが呼ぶ形(e2e.sh 側)はバイナリが無くても見られるので、実在照合と分けて常に走らせる。
+test('ゲートは api bridge-sources を --set/--digest 付きで呼ぶ', () => {
   assert.match(source, /api bridge-sources --set "\$1" --digest/)
+})
+
+test('ゲートが呼ぶ api サブコマンドが実在する',
+  { skip: !BINARY_EXISTS && '実バイナリ(.build/debug/fleetest)が見つからないため skip します' },
+  () => {
   const help = execFileSync('bash', ['-c',
     `cd ${JSON.stringify(ROOT)} && .build/debug/fleetest api bridge-sources --help 2>&1 || true`],
     { encoding: 'utf8' })
