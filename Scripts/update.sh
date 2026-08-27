@@ -198,7 +198,13 @@ fi
 # **シンボリックリンクも写さない**(クローンを直接指しているので pull 済み)。
 # `--skip-plugin` はプラグインだけでなく**スキル更新全体**の抑止(コピー配置はプラグイン機構を
 # 使わない受け手の同じ関心事なので、ノブを分けない)
-COPIED_SKILLS="fleetest-update fleetest-profiles fleetest-scenario fleetest-mcp fleetest-remote-setup"
+#
+# **一覧は持たず、クローンの正典から導出する**。手で持つと、スキルを増やす/改名するたびに
+# ここを直し忘れてコピー配置の受け手だけ取り残される(install-skill.sh は clone より前に
+# 走るので一覧を手で持つしかないが、こちらは TOOL_ROOT があるので導出できる)。
+# **fleetest-setup だけは除く** —— 受け手のパッケージのそれは `fleetest init` が生成した
+# 受け手専用の別内容で、正典で上書きすると受け手のセットアップ手順が消える
+COPIED_SKILLS="$(ls "$TOOL_ROOT/.claude/skills" 2>/dev/null | grep -v '^fleetest-setup$' | tr '\n' ' ')"
 SKILLS_REFRESHED=0
 refresh_copied_skills() {
   skills_dir="$1"

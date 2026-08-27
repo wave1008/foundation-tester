@@ -224,8 +224,10 @@
   (機械作業は `fleetest remote setup` に委ね、聞くこと・人手へ渡すこと・結果の読み方だけを持つ。
   トラブル表は頻出3件だけで、詳細は docs を参照させる = 二重管理にしない)。
   **片方だけ変えない** —— 手順に影響する変更(レイアウト・併用不可オプション・適合チェックの項目)は
-  docs とスキルの両方に入れる。**スキルを増やしたら `Scripts/install-skill.sh` の `SKILLS` にも足す**
-  (プラグイン経由は `.claude/skills/` を直接見るので不要だが、curl 版は列挙が唯一の定義元)
+  docs とスキルの両方に入れる。**スキルを増やしたら `Scripts/install-skill.sh` の `SKILLS` と
+  `.agents/skills/<name>` のシンボリックリンクを足す**(前者は clone より前に走るので導出できず、
+  **手書きの一覧はここだけ**。`update.sh` は TOOL_ROOT の正典から導出するので触らなくてよい。
+  後者は **Codex の repo ローカル発見の実体** —— `.codex-plugin/plugin.json` だけでは効かない[実測])
 - **リモート制御(実行プロファイルの `remoteControl`。旧 `fileSync`)**: ワークスペース(資材の
   置き場。ステージングと転送)+ **run 前後のスクリプト**(依存 DB・スタブサーバの起動と片付け。
   docs/remote-runner.md §17)。**スクリプトに宣言は無い** —— `<workspace>/scripts/setup.sh` /

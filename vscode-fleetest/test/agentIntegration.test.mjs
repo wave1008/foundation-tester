@@ -335,24 +335,26 @@ test("サンドボックス判定は danger-full-access 以外を OK にしな�
     "MCP がサンドボックス外である旨が案内にありません");
 });
 
-test("update.sh のコピー対象が install-skill.sh の一覧と揃っている", () => {
-  // スキル一覧は3箇所(install-skill.sh の SKILLS / 正典ディレクトリ / update.sh の
-  // COPIED_SKILLS)。増やす・改名するときに update.sh を忘れると、コピー配置の受け手だけ
-  // 取り残される
-  const updateSh = readFileSync(path.join(ROOT, "Scripts/update.sh"), "utf8");
-  const list = (source, name) => {
-    const m = source.match(new RegExp(`${name}="([^"]+)"`));
-    assert.ok(m, `${name} が見つかりません`);
-    return m[1].split(/\s+/).filter(Boolean).sort();
-  };
-  const declared = list(INSTALL_SKILL_SH, "SKILLS");
-  const copied = list(updateSh, "COPIED_SKILLS");
+test("スキル一覧は install-skill.sh の1箇所だけが手書きで、正典と一致する", () => {
+  // **手で持つ一覧は少ないほどよい**。update.sh は TOOL_ROOT を持つので正典から導出でき、
+  // install-skill.sh は clone より前に走るので導出できない —— 残る手書きはこの1つだけ。
+  // ここが正典とズレると、curl で入れた受け手に配られるスキルの集合が変わる
+  const declared = INSTALL_SKILL_SH.match(/SKILLS="([^"]+)"/);
+  assert.ok(declared, "install-skill.sh の SKILLS が見つかりません");
   const canon = readdirSync(path.join(ROOT, ".claude", "skills"), { withFileTypes: true })
     .filter((d) => d.isDirectory()).map((d) => d.name).sort();
-  assert.deepEqual(declared, canon, "install-skill.sh の SKILLS と正典が食い違っています");
-  // fleetest-setup だけは写さない(受け手のそれは init が生成した別内容)
-  assert.deepEqual(copied, declared.filter((n) => n !== "fleetest-setup"),
-    "COPIED_SKILLS が SKILLS から fleetest-setup を除いたものになっていません");
+  assert.deepEqual(declared[1].split(/\s+/).filter(Boolean).sort(), canon,
+    "install-skill.sh の SKILLS と正典が食い違っています");
+});
+
+test("update.sh のコピー対象は正典から導出し、fleetest-setup だけ除く", () => {
+  // 手で持つと、スキルを増やす/改名するたびに直し忘れてコピー配置の受け手だけ取り残される。
+  // fleetest-setup を除くのは、受け手のそれが `fleetest init` の生成物(別内容)だから
+  const updateSh = readFileSync(path.join(ROOT, "Scripts/update.sh"), "utf8");
+  assert.match(updateSh, /COPIED_SKILLS="\$\(ls "\$TOOL_ROOT\/\.claude\/skills"/,
+    "COPIED_SKILLS を正典から導出していません(手書きの一覧が3つ目になります)");
+  assert.match(updateSh, /grep -v '\^fleetest-setup\$'/,
+    "fleetest-setup を除外していません(受け手のセットアップ手順が上書きされます)");
 });
 
 test("FLEETEST_REF がスクリプトの取得元とクローンの ref を揃える", () => {

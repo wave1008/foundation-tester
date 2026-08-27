@@ -3971,6 +3971,10 @@ clone がどのみち必須で、CLI だけ mint 経由にすると二重取得�
 | MCP 登録 | `.mcp.json`(プロジェクト) | `~/.codex/config.toml`(ユーザー) |
 | コマンド単位の承認 allowlist | `.claude/settings.json` | **無い**(approval_policy / sandbox_mode のみ) |
 
+**repo ローカルのスキル発見の実体は `.agents/skills/<name>` のシンボリックリンク**で、
+`.codex-plugin/plugin.json` は**プラグインとして導入したときだけ**効く(実測: リンクを外すと
+Codex はスキルを1本も見つけない)。両方要るのはそのため —— どちらかだけでは片方の経路が死ぬ。
+
 規約位置の唯一の定義元は `Sources/FTCore/AgentIntegration.swift`。**シェル(install.sh /
 install-skill.sh)は clone 前・ビルド前に走るので Swift を呼べず、同じ規則を手で持つ** ——
 `vscode-fleetest/test/agentIntegration.test.mjs` が両者のドリフトを落とし、
