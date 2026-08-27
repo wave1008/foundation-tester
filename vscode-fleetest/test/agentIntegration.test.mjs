@@ -21,20 +21,16 @@ const SWIFT = readFileSync(path.join(ROOT, "Sources/FTCore/AgentIntegration.swif
 const INSTALL_SH = readFileSync(path.join(ROOT, "Scripts/install.sh"), "utf8");
 const INSTALL_SKILL_SH = readFileSync(path.join(ROOT, "Scripts/install-skill.sh"), "utf8");
 
-/** 判定に使う手掛かり(エージェントごとに3つ。3つ目はホーム側)。 */
+/** 判定に使う手掛かり(この6つが揃って1つの規則)。 */
 const SIGNALS = {
-  claude: [".claude", "CLAUDE.md", ".claude"],
+  claude: [".claude", "CLAUDE.md", ".claude"], // 3つ目はホーム側(~/.claude)
   codex: [".agents", "AGENTS.md", ".codex"],
-  cline: [".cline", ".clinerules", ".cline"],
 };
 
 /** 規約位置(Swift の enum が返す値と同じ文字列がシェルにも要る)。 */
 const CONVENTIONS = [
   { agent: "claude", skills: ".claude/skills", entry: "CLAUDE.md" },
   { agent: "codex", skills: ".agents/skills", entry: "AGENTS.md" },
-  // Cline は `.claude/skills/` も読むが**共有しない**(片方の都合で置き場所を変えたときに
-  // もう片方が黙って壊れる)。`.clinerules` はファイルにもディレクトリにもなり得る
-  { agent: "cline", skills: ".cline/skills", entry: ".clinerules" },
 ];
 
 test("Swift の AgentIntegration が両エージェントの規約位置を持つ", () => {
@@ -42,8 +38,7 @@ test("Swift の AgentIntegration が両エージェントの規約位置を持�
     assert.ok(SWIFT.includes(`"${skills}"`), `AgentIntegration に ${skills} がありません`);
     assert.ok(SWIFT.includes(`"${entry}"`), `AgentIntegration に ${entry} がありません`);
   }
-  assert.ok(SWIFT.includes("case codex"), "AgentIntegration に codex がありません");
-  assert.ok(SWIFT.includes("case cline"), "AgentIntegration に cline がありません");
+  assert.ok(SWIFT.includes('case codex'), "AgentIntegration に codex がありません");
   // 呼び出し記法(入口ファイルの本文と install.sh の write_entry_point 呼び出しで使う)
   assert.match(SWIFT, /skillInvocationPrefix/, "呼び出し記法の定義がありません");
 });
@@ -78,7 +73,7 @@ function detectionBlock(file, source) {
     .filter((at) => at > 0);
   const begin = Math.min(...candidates);
   assert.ok(Number.isFinite(begin) && begin > 0, `${file} に自動判定ブロックが見つかりません`);
-  const endMarkers = ["has_agent()", 'if [ "$AGENT" = "both" ]', 'case "$AGENT" in'];
+  const endMarkers = ["has_agent()", "case \"$AGENT\" in"];
   let end = -1;
   for (const marker of endMarkers) {
     const at = source.indexOf(marker, begin);
@@ -105,7 +100,6 @@ for (const [file, source] of [
     // ホーム側も見ること(まだ何も置いていない受け手を拾う唯一の手掛かり)
     assert.ok(block.includes("$HOME/.claude"), `${file} が ~/.claude を見ていません`);
     assert.ok(block.includes("$HOME/.codex"), `${file} が ~/.codex を見ていません`);
-    assert.ok(block.includes("$HOME/.cline"), `${file} が ~/.cline を見ていません`);
   });
 
   test(`${file} は手掛かりが1つも無ければ claude に倒す(既存の受け手の挙動を変えない)`, () => {
@@ -308,7 +302,7 @@ test("シェルは知らないエージェント名を素通しさせない", ()
   // 素通しすると has_agent がどれにも当たらず、MCP 登録も入口も行われないまま [ok] で終わる
   // (state.json 経由で実際に踏んだ)。Swift の parsed() も unknown を返して呼び手に警告させる
   assert.match(INSTALL_SH, /valid_agents\(\)/, "install.sh に検証関数がありません");
-  assert.match(INSTALL_SH, /case "\$candidate" in claude\|codex\|cline\)/,
+  assert.match(INSTALL_SH, /case "\$candidate" in claude\|codex\)/,
     "install.sh の検証が既知の名前だけを通していません");
   assert.match(SWIFT, /func parsed\(/, "AgentIntegration に unknown を返す parsed() がありません");
 });
@@ -410,35 +404,4 @@ test("ref へ揃える経路でも自己再 exec の材料を取る", () => {
   const fetched = section.indexOf("fetch --tags origin");
   assert.ok(captured > 0, "REF 経路が HEAD_BEFORE_PULL を取っていません(再 exec が働きません)");
   assert.ok(captured < fetched, "HEAD_BEFORE_PULL を fetch の後で取っています(常に同じ値になります)");
-});
-
-test("`both` は claude+codex の別名で「全部」ではない(Swift とシェルで一致)", () => {
-  // Cline を後から足したので取り違えやすい。Swift 側が allCases を返していた時期があり、
-  // 同じ `--agent both` でシェルと違う集合になっていた
-  assert.match(SWIFT, /if tokens\.contains\("both"\) \{ return \(\[\.claude, \.codex\], \[\]\) \}/,
-    "Swift の both が claude+codex になっていません");
-  assert.match(SWIFT, /if tokens\.contains\("all"\) \{ return \(allCases, \[\]\) \}/,
-    "Swift に all がありません");
-  assert.match(INSTALL_SH, /both\)\s+AGENTS="claude codex"/, "install.sh の both が違います");
-  assert.match(INSTALL_SH, /all\)\s+AGENTS="claude codex cline"/, "install.sh に all がありません");
-});
-
-test("`.clinerules` はディレクトリのときファイルへ振り替える", () => {
-  // Cline は単体ファイルでもフォルダでも読む。ディレクトリのパスへ書こうとすると失敗するので、
-  // 中の fleetest.md へ回す(受け手が単体ファイル運用ならそのまま追記する)
-  assert.match(INSTALL_SH, /if \[ -d "\$WORK_DIR\/\.clinerules" \]; then/,
-    "install.sh が .clinerules のディレクトリ形を扱っていません");
-  assert.match(INSTALL_SH, /write_entry_point "\.clinerules\/fleetest\.md"/,
-    "ディレクトリのときの書き先が .clinerules/fleetest.md ではありません");
-  // 判定側も -f ではなく -e で見ること(ディレクトリを見落とすと cline を拾えない)
-  assert.match(INSTALL_SH, /-e "\$WORK_DIR\/\.clinerules"/,
-    "判定が .clinerules を -e で見ていません(ディレクトリ形を見落とします)");
-});
-
-test(".mcp.json 形式の登録は1実装を共有する(Claude Code と Cline)", () => {
-  // 登録先だけが違うので写しを増やさない。増やすと片方だけ直したとき黙って割れる
-  assert.match(INSTALL_SH, /merge_mcp_json\(\) \{/, "共有関数がありません");
-  const calls = [...INSTALL_SH.matchAll(/merge_mcp_json "/g)];
-  assert.equal(calls.length, 2, `merge_mcp_json の呼び出しは2つ(claude と cline): ${calls.length}`);
-  assert.equal((INSTALL_SH.match(/PYMCPJSON/g) || []).length, 2, "python 本体が複数あります");
 });

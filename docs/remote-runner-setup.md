@@ -119,7 +119,7 @@ fleetest remote setup <ユーザー>@<ホスト> --project <プロジェクト�
 - 撤去は `fleetest remote setup <ホスト> --uninstall`(確認あり。`--yes` で無確認)
 
 > 手で入れたい場合は、上の install ステップと同じことを ssh して実行すればよい:
-> `bash install.sh --work-dir ~/fleetest-runner/users/<issuerId>/work --tool-root ~/fleetest-runner/foundation-tester --name <プロジェクト名> --skip-extension --skip-mcp --skip-claude-md --skip-agents-md --skip-clinerules`。
+> `bash install.sh --work-dir ~/fleetest-runner/users/<issuerId>/work --tool-root ~/fleetest-runner/foundation-tester --name <プロジェクト名> --skip-extension --skip-mcp --skip-claude-md --skip-agents-md`。
 > クローン先の**ディレクトリ名 `foundation-tester` は変えない**(SPM がパッケージ名をディレクトリ名から決めるため)。
 
 ## ステップ3: 版を揃える

@@ -12,7 +12,6 @@ import Foundation
 public enum AgentIntegration: String, CaseIterable, Sendable {
     case claude
     case codex
-    case cline
 
     /// リポジトリ内の runbook 正典。**両エージェントともここを参照する**(複製しない)。
     /// Codex 側は `.agents/skills/<name>` のシンボリックリンクと `.codex-plugin/plugin.json` が
@@ -24,7 +23,6 @@ public enum AgentIntegration: String, CaseIterable, Sendable {
         switch self {
         case .claude: return "Claude Code"
         case .codex: return "Codex"
-        case .cline: return "Cline"
         }
     }
 
@@ -33,10 +31,6 @@ public enum AgentIntegration: String, CaseIterable, Sendable {
         switch self {
         case .claude: return ".claude/skills"
         case .codex: return ".agents/skills"
-        // Cline は `.claude/skills/` も読むが、**共有しない** —— 共有すると
-        // 「Claude 用に置いた物を Cline も読む」暗黙の結合ができ、片方の都合で
-        // 置き場所を変えたときにもう片方が黙って壊れる。公式推奨の専用位置を使う
-        case .cline: return ".cline/skills"
         }
     }
 
@@ -45,10 +39,6 @@ public enum AgentIntegration: String, CaseIterable, Sendable {
         switch self {
         case .claude: return "CLAUDE.md"
         case .codex: return "AGENTS.md"
-        // **ファイルとディレクトリの両方があり得る**(Cline は `.clinerules` 単体ファイルでも
-        // `.clinerules/` フォルダでも読む)。ディレクトリだったときの書き先は
-        // install.sh が `.clinerules/fleetest.md` へ振り替える
-        case .cline: return ".clinerules"
         }
     }
 
@@ -57,7 +47,6 @@ public enum AgentIntegration: String, CaseIterable, Sendable {
         switch self {
         case .claude: return "/"
         case .codex: return "$"
-        case .cline: return "/"
         }
     }
 
@@ -67,10 +56,7 @@ public enum AgentIntegration: String, CaseIterable, Sendable {
     public var hasCommandPermissionAllowlist: Bool {
         switch self {
         case .claude: return true
-        // Codex は approval_policy / sandbox_mode、Cline は auto-approve —— どちらも
-        // 「このコマンドだけ許す」形を持たないので、等価物を捏造しない
         case .codex: return false
-        case .cline: return false
         }
     }
 
@@ -79,7 +65,6 @@ public enum AgentIntegration: String, CaseIterable, Sendable {
         switch self {
         case .claude: return ".mcp.json"
         case .codex: return "~/.codex/config.toml"
-        case .cline: return "~/.cline/mcp.json"
         }
     }
 
@@ -87,7 +72,6 @@ public enum AgentIntegration: String, CaseIterable, Sendable {
         switch self {
         case .claude: return "claude"
         case .codex: return "codex"
-        case .cline: return "cline"
         }
     }
 
@@ -104,10 +88,8 @@ public enum AgentIntegration: String, CaseIterable, Sendable {
         var found: [AgentIntegration] = []
         let claudeSignals = ignoringWorkspaceSignals ? ["~/.claude"] : [".claude", "CLAUDE.md", "~/.claude"]
         let codexSignals = ignoringWorkspaceSignals ? ["~/.codex"] : [".agents", "AGENTS.md", "~/.codex"]
-        let clineSignals = ignoringWorkspaceSignals ? ["~/.cline"] : [".cline", ".clinerules", "~/.cline"]
         if claudeSignals.contains(where: exists) { found.append(.claude) }
         if codexSignals.contains(where: exists) { found.append(.codex) }
-        if clineSignals.contains(where: exists) { found.append(.cline) }
         return found.isEmpty ? [.claude] : found
     }
 
@@ -128,10 +110,7 @@ public enum AgentIntegration: String, CaseIterable, Sendable {
         guard let raw, !raw.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
         let tokens = raw.lowercased().split(whereSeparator: { $0 == "," || $0 == " " }).map(String.init)
         if tokens.contains("auto") { return nil }
-        // **`both` は claude+codex の別名で「全部」ではない**(Cline を後から足したので
-        // 取り違えやすい)。全部は `all`。シェル側の install-skill.sh / install.sh と同じ規則
-        if tokens.contains("all") { return (allCases, []) }
-        if tokens.contains("both") { return ([.claude, .codex], []) }
+        if tokens.contains("both") { return (allCases, []) }
         let agents = tokens.compactMap(AgentIntegration.init(rawValue:))
         let unknown = tokens.filter { AgentIntegration(rawValue: $0) == nil }
         return agents.isEmpty ? nil : (agents, unknown)

@@ -86,7 +86,6 @@ public enum RemoteSetupPlan {
             // 両方の規約位置を明示的に抑止する(AgentIntegration.entryPointFile と対)
             "--skip-claude-md",
             "--skip-agents-md",
-            "--skip-clinerules",
             "--no-next-steps",
         ]
     }

@@ -956,7 +956,6 @@ Scripts/preflight.sh --runner  既存に判定モードを追加(--base <dir>。
 Scripts/install.sh             **そのまま流用**(外部構成で呼ぶ):
                                `--work-dir <base>/work --name <project>`
                                `--skip-extension --skip-mcp --skip-claude-md --skip-agents-md`
-                               `--skip-clinerules`
                                `--no-next-steps`(入口ファイルは人が開く機械にだけ要る)
                                **--skip-project は使えない**(WORK_DIR に Package.swift が要る。§12)。
                                --tool-root も渡さない(既定の <work-dir>/../foundation-tester が

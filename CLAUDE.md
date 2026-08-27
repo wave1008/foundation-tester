@@ -58,13 +58,8 @@
   lock を書き換える)。**受け手のフローに「クローンの中を書く」工程を足すときは必ず追跡を見る**
   **毎回 `fleetest api ensure-settings` で Bash 許可リストを補修する**(init 経由だけだと
   `--skip-project` の更新で既存の受け手に永久に届かない)
-- **エージェントは Claude Code / Codex / Cline の3つ**(規約位置の唯一の定義元は
-  `Sources/FTCore/AgentIntegration.swift`。表と各エージェント固有の罠は docs/design.md §15)。
-  **Cline は `.claude/skills/` も読むが共有しない** —— 共有すると片方が規約を変えた瞬間に
-  もう片方が黙って壊れる(`skillsDirectory` の一意性はテストで固定)。
-  **`--agent both` は claude+codex の別名で「全部」ではない**(全部は `all`)。
-  **`.clinerules` はファイルにもディレクトリにもなり得る**(判定は `-e`、ディレクトリなら
-  書き先を `.clinerules/fleetest.md` へ振り替える)。
+- **エージェントは Claude Code と Codex の2つ**(規約位置の唯一の定義元は
+  `Sources/FTCore/AgentIntegration.swift`。表と Codex 固有の罠は docs/design.md §15)。
   **runbook 本体(`.claude/skills/<name>/SKILL.md`)は複製しない** —— 各エージェントへは
   規約位置から正典を参照する薄いアダプタだけを置く(Codex は `.codex-plugin/plugin.json` +
   `.agents/plugins/marketplace.json` + `.agents/skills/<name>` のシンボリックリンク)。

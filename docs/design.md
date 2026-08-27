@@ -3965,31 +3965,18 @@ clone がどのみち必須で、CLI だけ mint 経由にすると二重取得�
 `.claude/skills/<name>/SKILL.md`(ツール中立の markdown 手順書。特定エージェント専用機能に依存させない)。
 各エージェントへは**規約位置から正典を参照するだけの薄いアダプタ**を置き、**runbook 本体は複製しない**:
 
-| | Claude Code | Codex | Cline |
-|---|---|---|---|
-| プラグイン manifest | `.claude-plugin/plugin.json` | `.codex-plugin/plugin.json` | (無し) |
-| マーケットプレイス manifest | `.claude-plugin/marketplace.json` | `.agents/plugins/marketplace.json` | (無し) |
-| リポジトリ内のスキル発見 | `.claude/skills/`(正典の実体) | `.agents/skills/<name>` → 正典へのシンボリックリンク | `.claude/skills/` を読む(受け手側は `.cline/skills/`) |
-| スキルの呼び出し | `/fleetest-setup` | `$fleetest-setup` | `/fleetest-setup` |
-| 入口ファイル | `CLAUDE.md` | `AGENTS.md` | `.clinerules`(ファイル/ディレクトリ両方あり) |
-| MCP 登録 | `.mcp.json`(プロジェクト) | `~/.codex/config.toml`(ユーザー) | `~/.cline/mcp.json`(ユーザー) |
+| | Claude Code | Codex |
+|---|---|---|
+| プラグイン manifest | `.claude-plugin/plugin.json` | `.codex-plugin/plugin.json` |
+| マーケットプレイス manifest | `.claude-plugin/marketplace.json` | `.agents/plugins/marketplace.json` |
+| リポジトリ内のスキル発見 | `.claude/skills/`(正典の実体) | `.agents/skills/<name>` → 正典へのシンボリックリンク |
+| スキルの呼び出し | `/fleetest-setup` | `$fleetest-setup` |
+| 入口ファイル | `CLAUDE.md` | `AGENTS.md` |
+| MCP 登録 | `.mcp.json`(プロジェクト) | `~/.codex/config.toml`(ユーザー) |
 | プラグイン導入 | `claude plugin marketplace add` → `plugin install --scope user` | `codex plugin marketplace add` → `codex plugin add` |
 | プラグイン更新 | `marketplace update` → `plugin update` | `marketplace upgrade` → `plugin add`(冪等) |
 | プラグインの版照合 | `claude plugin list` の `Version:`(= git sha) | キャッシュの git HEAD(`list` の VERSION は固定値) |
 | コマンド単位の承認 allowlist | `.claude/settings.json` | **無い**(approval_policy / sandbox_mode のみ) |
-
-**Cline 固有の3点**:
-- **`.claude/skills/` も読むが共有しない**。共有すると「Claude 用に置いた物を Cline も読む」
-  暗黙の結合ができ、**どちらかが規約を変えた瞬間にもう片方が黙って壊れる**。受け手側は
-  公式推奨の `.cline/skills/` へ入れる(`skillsDirectory` の一意性は `AgentIntegrationTests` が固定)
-- **`.clinerules` はファイルにもディレクトリにもなり得る**。判定は `-e`、書き先はディレクトリなら
-  `.clinerules/fleetest.md` へ振り替える(ディレクトリのパスへ書こうとすると失敗する)
-- **`.mcp.json` 形式の登録は Claude Code と共有**(`merge_mcp_json`。登録先だけが違う)。
-  ただし **VS Code 拡張は自前の globalStorage を見ることがある**ので、`~/.cline/mcp.json` に
-  書いても出てこない場合は UI の「Edit MCP Settings」へ同じ内容を足してもらう
-
-**`--agent both` は claude+codex の別名で「全部」ではない**(全部は `all`)。Cline を後から
-足したので取り違えやすく、Swift 側が `allCases` を返していた時期があった(テストで固定)。
 
 **repo ローカルのスキル発見の実体は `.agents/skills/<name>` のシンボリックリンク**で、
 `.codex-plugin/plugin.json` は**プラグインとして導入したときだけ**効く(実測: リンクを外すと
