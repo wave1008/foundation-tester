@@ -19,11 +19,8 @@ claude plugin install fleetest@foundation-tester --scope user
 that case, and installing against a stale cache fails with `Plugin "fleetest" not found in
 marketplace`. On a machine that has never added it, the line is a no-op.
 
-To pin a version instead of tracking `main`, add the marketplace from a tagged URL:
-
-```bash
-claude plugin marketplace add https://github.com/wave1008/foundation-tester.git#<tag>
-```
+`main` is the only distribution channel — there is no version-pinning route. Pick up fixes
+through [Updating](../getting-started.md) or `/fleetest:fleetest-update`.
 
 In an environment without a plugin mechanism, an equivalent set of skills can be installed
 directly:

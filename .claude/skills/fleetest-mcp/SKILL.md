@@ -63,8 +63,6 @@ git clone https://github.com/wave1008/foundation-tester.git ../foundation-tester
   → TOOL_ROOT = clone 先(既定 `../foundation-tester`)。以降 `ABS_TOOL_ROOT=$(cd <TOOL_ROOT> && pwd)` で
   **絶対パス**を得ておく(受け手がどの cwd で Claude Code を開いても解決できるように)。
 
-版を固定したい場合は 🧑 に確認して TOOL_ROOT で `git checkout <tag>`。
-
 ### 0.7 インストーラで一括実行(**まずこれを試す**)
 
 ステップ1・2とその検証ゲートはインストーラが一括で行う(冪等)。MCP だけ入れるので

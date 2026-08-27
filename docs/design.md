@@ -3950,7 +3950,7 @@ TOOL_ROOT)。clone 構成(クローンの中で直接シナリオを管理)は�
 プラグイン**(ターミナルで `claude plugin marketplace add wave1008/foundation-tester` →
 `claude plugin install fleetest@foundation-tester --scope user`。受け手は VSCode の Claude Code 拡張前提で、
 拡張パネルでは /plugin スラッシュコマンドが使えないため CLI 形式が正。
-スキルはマーケットプレイス経由で自動更新・版固定は `#<tag>`)、フォールバックが curl ワンライナー
+スキルはマーケットプレイス経由で自動更新)、フォールバックが curl ワンライナー
 (`Scripts/install-skill.sh` がスキルを .claude/skills/ へコピー。自動更新なし)→ いずれも
 `/fleetest-setup`(プラグインでは `/fleetest:fleetest-setup`)が構成を自動判定し、受け手ディレクトリは
 外部構成へ分岐、クローン内は clone 構成。CLI・VSCode 拡張とも TOOL_ROOT の clone から `swift build` /
@@ -4047,8 +4047,12 @@ SKILL.md ではなく1行のパスを掴む。
   ライブラリ化できないため「ソースビルド配布」前提(prebuilt をソースの無い別マシンへ運ぶと Runner/ 解決不能)。
 - **拡張**: `binaryPath` は実在しなければ PATH フォールバック(`binaryPathResolve.ts`)で外部パッケージ構成の
   CLI(自前ビルドの PATH 登録先)を発見する。
-- **版**: git タグ(版ピン用)/ 拡張 package.json / プロトコル版(compatCheck)は独立。リリースは
-  `Scripts/release.sh`(docs/releasing.md)。
+- **版**: git タグ(履歴の目印)/ 拡張 package.json / プロトコル版(compatCheck)は独立。リリースは
+  `Scripts/release.sh`(docs/releasing.md)。**受け手の配布口は `main` の1本**で、版を固定する導線は
+  案内しない —— `#<tag>` でプラグインを固定してもスキルが引く install.sh と初回 clone は `main` のままで、
+  ピンとして機能していなかった。`FLEETEST_REF` は保守者のブランチ検証口として残す(位置づけの
+  書き換えだけで、install.sh の detached ガードと `update-check.sh` の `pinned` verdict は残してある ——
+  受け手が自分で `git checkout <tag>` した clone を勝手に動かさないため)。
 
 ## 16. エミュレータ操作の gRPC 制御(2026-07-25)
 

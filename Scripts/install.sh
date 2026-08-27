@@ -27,7 +27,9 @@ set -euo pipefail
 
 # FLEETEST_REPO_URL はフォーク・ローカル検証用の差し替え口(既定は本家)
 REPO_URL="${FLEETEST_REPO_URL:-https://github.com/wave1008/foundation-tester.git}"
-# FLEETEST_REF はツールの版の固定口(タグ・ブランチ・SHA。既定 = 既定ブランチ)。
+# FLEETEST_REF は**保守者が未マージのブランチを受け手経路で検証するための口**(タグ・ブランチ・SHA。
+# 既定 = 既定ブランチ)。受け手向けの版固定手段としては案内しない —— 配布口は main の1本
+# (docs/releasing.md)。
 # **スクリプトの取得元とクローンの ref を必ず揃える**ためにある —— スキルは
 # `.../${FLEETEST_REF:-main}/Scripts/install.sh` を取りに行くので、ここで見ないと
 # 「ブランチのスクリプトが main を clone して main のバイナリに新しい引数を渡す」

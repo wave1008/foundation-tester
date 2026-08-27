@@ -163,9 +163,6 @@ git clone https://github.com/wave1008/foundation-tester.git ../foundation-tester
   プロファイル設定は WORK_DIR(カレント)で行う。**カレントに `Package.swift` があってはいけない**
   (`fleetest init` が拒否する。既存 repo の直下ではなく、テスト専用の新規ディレクトリで実行する)。
 
-版を固定したい場合は 🧑 に確認して TOOL_ROOT で `git checkout <tag>`(配布はソースビルド前提なので
-tag も clone で取得できる)。
-
 ### 0.7 インストーラで機械作業を一括実行（**まずこれを試す**）
 
 ステップ **0.5・1・2・2.5・3・4・5・7・7.5・7.6・7.7** はインストーラが一括で行う（冪等。済んだ手順は skip される。
@@ -192,9 +189,9 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/${FLEETE
   結果は `[ok] agent:` 行に出る。
 - **curl 形を使う**（クローンの `Scripts/install.sh` は pull されるまで古く、新しい引数を渡すと
   「不明なオプション」で落ちる。curl 形なら常に最新が動き、その中でクローンを pull する）。
-  `${FLEETEST_REF:-main}` は**未マージのブランチを検証するため**の口で、受け手は何も指定しなくてよい
-  （タグは main の祖先なので、版を固定した受け手にも `install.sh@main` は常に新しい = 引数が
-  足りなくなることはない）。**逆に、ブランチ検証では必ず `FLEETEST_REF` を渡す** —— 渡さないと
+  `${FLEETEST_REF:-main}` は**保守者が未マージのブランチを検証するため**の口で、受け手は何も指定しなくてよい
+  （受け手の配布口は main の1本で、版を固定する導線は無い）。
+  **逆に、ブランチ検証では必ず `FLEETEST_REF` を渡す** —— 渡さないと
   「新しいスキル + main の古いインストーラ」を走らせて、直したはずの挙動を確認できない。
   clone 先を変えるなら `--tool-root <dir>`。オフラインなど curl が使えないときだけ
   `bash <TOOL_ROOT>/Scripts/install.sh --work-dir <WORK_DIR> …` を使う。
@@ -276,7 +273,7 @@ FM 無しで動く。**人間に「有効か」を聞かない**：
   受け手専用の `/fleetest-setup` スキルが `.claude/skills/` に上書きされる(次回以降の実行はそちらを使う。
   この実行はロード済み手順のまま継続してよい)。ローカルパス依存なので `swift build` はネットワーク不要・
   TOOL_ROOT を `git pull` すれば fleetest 側も更新される。git 依存にしたい場合のみ `--fleetest-url
-  https://github.com/wave1008/foundation-tester.git --fleetest-version <ver>` を使う(`--fleetest-path` と排他。
+  https://github.com/wave1008/foundation-tester.git` を使う(`--fleetest-path` と排他。追従先は `main`。
   **git 依存では `.vscode/settings.json` の `fleetest.binaryPath` が自動設定されない** — CLI・拡張は
   ローカル clone からのビルドが別途必要なので、拡張を使うなら path 依存を推奨し、git 依存を選んだら
   binaryPath の手動設定を 🧑 に案内する)。

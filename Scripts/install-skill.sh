@@ -22,7 +22,8 @@
 # 契約: **取得元は repo 内の正典 .claude/skills/<name>/SKILL.md(単一ソース)**。
 # Codex 側の .agents/skills/ はこの正典へのシンボリックリンクなので、
 # **raw.githubusercontent から取ると本文でなくリンク先の文字列が返る** —— 取得先は常に正典。
-# 版を固定したいときは FLEETEST_REF=<tag/branch/sha> で上書き(既定 main)。
+# FLEETEST_REF=<tag/branch/sha> は**保守者が未マージのブランチを検証するための口**(既定 main)。
+# 受け手向けの版固定手段としては案内しない —— 配布口は main の1本(docs/releasing.md)。
 set -eu
 
 REF="${FLEETEST_REF:-main}"

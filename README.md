@@ -81,7 +81,7 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scr
 - プラグインが提供するスキル: `fleetest-setup`(初回導入)・`fleetest-update`(更新)・`fleetest-profiles`
   (マシン/アプリ/実行プロファイル)・`fleetest-scenario`(シナリオ作成)・`fleetest-mcp`(MCP のみ)・
   `fleetest-remote-setup`(別の Mac をランナー機にする)。
-  版を固定するなら `claude plugin marketplace add https://github.com/wave1008/foundation-tester.git#<tag>`。
+  配布口は `main` の1本(版を固定する導線は無い)。
   プラグイン機構が無い環境向けの代替は
   `curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install-skill.sh | sh`。
 - **Codex でも同じスキルが動く**(runbook は共有。違うのは置き場所 `.agents/skills/`・呼び出し `$fleetest-setup`・

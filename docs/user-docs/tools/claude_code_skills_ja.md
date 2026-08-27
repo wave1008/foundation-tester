@@ -18,11 +18,8 @@ claude plugin install fleetest@foundation-tester --scope user
 何も取得しないため、古いキャッシュのまま install すると
 `Plugin "fleetest" not found in marketplace` で失敗します。一度も追加していない機械では no-op です。
 
-`main` を追従せず版を固定したい場合は、タグ付きの URL でマーケットプレイスを追加します。
-
-```bash
-claude plugin marketplace add https://github.com/wave1008/foundation-tester.git#<tag>
-```
+配布口は `main` の1本です(版を固定する導線はありません)。更新の取り込みは
+[更新](../getting-started_ja.md)の手順か `/fleetest:fleetest-update` で行います。
 
 プラグイン機構が無い環境では、同等のスキル群を直接インストールできます。
 

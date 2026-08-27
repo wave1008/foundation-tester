@@ -114,7 +114,6 @@ vsce)は画面に出ず `<WORK_DIR>/.fleetest/install-*.log` にだけ入り、*
 
 TOOL_ROOT で `git pull`。衝突が出たら停止して報告する(clone 構成では受け手の `TestProjects/` が
 git 管理下にあると衝突しやすい。その場合は TestProjects/ を git 管理外か別リポジトリにするよう案内する)。
-版を固定したい場合は `git checkout <新version>`。
 
 ### 2. 再ビルド（TOOL_ROOT）
 

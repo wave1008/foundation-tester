@@ -168,7 +168,8 @@
   つかない)。ツールが閉じるのは**ステップ開始時点で出ている割り込み**までで、閉じた後は
   整定を待って木を取り直す。**間に湧いた分の復帰はシナリオ側**(docs/commands.md
   §割り込みが「操作を吸った」ときの扱い)。**自動リトライを再提案しない**
-- リリース(git タグ発行と版ピンの関係。配布はソースビルド前提): docs/releasing.md(`Scripts/release.sh`)
+- リリース(git タグ発行。**受け手の配布口は main の1本**で版固定の導線は案内しない。
+  `FLEETEST_REF` は保守者のブランチ検証口): docs/releasing.md(`Scripts/release.sh`)
 - **リモートのデバイスの監視と配信**(2026-08-17): 手元の `api monitor` は simctl/adb =
   **この機械しか観測できない**。別の機械のぶんは `RemoteMonitorFanout` が
   `remote exec <host> -- api monitor --device-machine local` を1本ずつ立てて合流させ、

@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 #
-# fleetest の git タグ(semver)を発行するリリースヘルパー(版ピン用)。
+# fleetest の git タグ(semver)を発行するリリースヘルパー。
 #
-# このタグは特定版に固定したい受け手が参照する:
-#   受け手: git checkout <version>(clone 後)/ fleetest init --fleetest-version <version>
-# タグは SPM が解釈できる semver(v プレフィックス無し。例 0.1.0)。
+# **タグは履歴の目印**(事故のとき「あの時点」へ戻る手掛かり)であって、受け手向けの配布口ではない。
+# 受け手の配布口は main の1本で、版を固定する導線は案内しない(docs/releasing.md)。
+# タグは v プレフィックス無しの semver(例 0.1.0)。
 #
 # 使い方:
 #   Scripts/release.sh 0.1.0            # ビルド+テスト→ローカルにタグ作成(push はしない)
 #   Scripts/release.sh 0.1.0 --push     # 上記に加えて origin へ push(= 公開)
 #
 # 版の関係(docs/releasing.md 参照):
-#   - この git タグ         = 版ピン用のタグ(clone/checkout や fleetest init --fleetest-version が参照)
+#   - この git タグ         = 履歴の目印(保守者だけが参照する)
 #   - vscode-fleetest/package.json の version = 拡張(VSIX)の版(別系統・別途 publish)
 #   - Sources/FTCore/ProtocolVersion.swift   = 拡張↔CLI プロトコル版(契約非互換時のみ +1)
 set -euo pipefail

@@ -49,7 +49,7 @@ public enum ProjectScaffold {
 
     /// fleetest init が生成する受け手の Package.swift。空のマーカー区間を持ち、直後に
     /// createAndRegister(external 自動判定)が最初のプロジェクトを登録する。
-    /// dependencyLine は `.package(path: "...")` か `.package(url: "...", from: "...")`。
+    /// dependencyLine は `.package(path: "...")` か `.package(url: "...", branch: "...")`。
     public static func externalManifest(packageName: String, dependencyLine: String) -> String {
         """
         // swift-tools-version: 6.0

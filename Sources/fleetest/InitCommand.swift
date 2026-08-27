@@ -34,13 +34,11 @@ struct InitCommand: AsyncParsableCommand {
             help: "git URL of foundation-tester (depends via .package(url:from:); mutually exclusive with --fleetest-path)")
     var fleetestURL: String?
 
-    @Option(name: .customLong("fleetest-version"),
-            help: "Minimum version for the git dependency (used with --fleetest-url; ignored when --fleetest-branch is given)")
-    var fleetestVersion: String = "0.0.1"
-
+    // 配布口は main の1本(docs/releasing.md)。タグを指す `from:` 依存は案内しない導線だったので
+    // 落とし、git 依存はブランチ追従だけにしてある
     @Option(name: .customLong("fleetest-branch"),
-            help: "Track a branch instead of a tag for the git dependency (used with --fleetest-url; for testing before a tag exists)")
-    var fleetestBranch: String?
+            help: "Branch to track for the git dependency (used with --fleetest-url; default main)")
+    var fleetestBranch: String = "main"
 
     func run() async throws {
         let cwd = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
@@ -62,9 +60,7 @@ struct InitCommand: AsyncParsableCommand {
             let abs = URL(fileURLWithPath: fleetestPath, relativeTo: cwd).standardizedFileURL.path
             dependencyLine = #".package(path: "\#(abs)"),"#
         } else if let fleetestURL {
-            dependencyLine = fleetestBranch.map {
-                #".package(url: "\#(fleetestURL)", branch: "\#($0)"),"#
-            } ?? #".package(url: "\#(fleetestURL)", from: "\#(fleetestVersion)"),"#
+            dependencyLine = #".package(url: "\#(fleetestURL)", branch: "\#(fleetestBranch)"),"#
         } else {
             throw ValidationError("specify either --fleetest-path or --fleetest-url")
         }
