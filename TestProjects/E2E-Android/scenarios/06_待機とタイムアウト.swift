@@ -104,7 +104,8 @@ class 待機とタイムアウトが正しく効くこと {
                 condition {
                     tap("#btn_back")
                     tap("#tab_controls")
-                    tap("#btn_controls_reset")
+                    tapWithScrollDown("#btn_controls_reset")
+                    scrollToTop()
                 }.expectation {
                     // **状態フィルタは型ではなく id と併用する**: 同じ役割の要素でも型は SUT ごとに
                     // 割れることがある(checkBox / slider / リスト行。ui-contract.md「型で指さない要素」)。

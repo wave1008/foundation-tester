@@ -104,7 +104,8 @@ class ライフサイクルとコントロールが正しく働くこと {
             }
             scene(4, "リセットで全て初期値に戻る") {
                 action {
-                    tap("#btn_controls_reset")
+                    tapWithScrollDown("#btn_controls_reset")
+                    scrollToTop()
                 }.expectation {
                     select("#txt_sw_notify").textIs("notify=off")
                     select("#txt_cb_agree").textIs("agree=false")
@@ -116,7 +117,8 @@ class ライフサイクルとコントロールが正しく働くこと {
                 condition {
                     tap("#tab_home")
                     tap("#tab_controls")
-                    tap("#btn_controls_reset")
+                    tapWithScrollDown("#btn_controls_reset")
+                    scrollToTop()
                 }.expectation {
                     select("#btn_always_disabled").enabledIsFalse()
                     select("#btn_toggle_target").enabledIsFalse()

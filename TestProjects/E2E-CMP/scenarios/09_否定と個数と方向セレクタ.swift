@@ -100,7 +100,8 @@ class 否定と個数と方向セレクタが正しく動くこと {
             scene(7, "enabledIsFalse / enabledIsTrue が要素の操作可否を判定する") {
                 condition {
                     tap("#tab_controls")
-                    tap("#btn_controls_reset")
+                    tapWithScrollDown("#btn_controls_reset")
+                    scrollToTop()
                 }.expectation {
                     // #btn_always_disabled は常に無効、#btn_toggle_target は #cb_agree 連動(初期 off)
                     select("#btn_always_disabled").enabledIsFalse()
@@ -154,7 +155,8 @@ class 否定と個数と方向セレクタが正しく動くこと {
             scene(10, "状態フィルタ(enabled / checked)で候補を絞る") {
                 condition {
                     tap("#tab_controls")
-                    tap("#btn_controls_reset")
+                    tapWithScrollDown("#btn_controls_reset")
+                    scrollToTop()
                 }.expectation {
                     // **型との AND は SUT 固有**(この SUT の無効ボタンは button だが、View/XML では
                     // clickable になる。他 SUT の 12_セレクタ拡張 は id と併用する形で書いてある)。

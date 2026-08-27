@@ -218,7 +218,8 @@ class スクロールで折り返し下の要素に到達できること {
             scene(2, "checked / enabled のフィルタ") {
                 condition {
                     tap(.id("tab_controls"))
-                    tap(.id("btn_controls_reset"))
+                    tapWithScrollDown(.id("btn_controls_reset"))
+                    scrollToTop()
                 }.expectation {
                     exist(.id("cb_agree").checked(false))                 // #cb_agree&&checked=false
                     countIs(.type(.button).enabled(false), 2)             // .button&&enabled=false

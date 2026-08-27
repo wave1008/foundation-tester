@@ -151,7 +151,8 @@ class セレクタ画面の機能一式が正しく動くこと {
                     // ラジオもリセットも空振りした場合と区別がつかない
                     select("#txt_radio").textIs("plan=B")
                 }.action {
-                    tap(".button&&コントロールリセット")
+                    tapWithScrollDown(".button&&コントロールリセット")
+                    scrollToTop()
                 }.expectation {
                     select("#txt_radio").textIs("plan=A")
                 }

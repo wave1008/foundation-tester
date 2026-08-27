@@ -421,7 +421,7 @@ in-app 経路のソース走査テスト(`InAppGestureRoutingTests`)が担う。
 | `#txt_slider` | Text | `volume=<n>` 初期 `volume=50` | |
 | `#btn_always_disabled` | Button | `無効ボタン` | **常に disabled**。押しても何も起きない |
 | `#btn_toggle_target` | Button | `切替対象` | **`#cb_agree` が true のときだけ enabled**(初期 disabled)。押しても何も起きない |
-| `#btn_controls_reset` | Button | `コントロールリセット` | 全て初期値へ |
+| `#btn_controls_reset` | Button | `コントロールリセット` | 全て初期値へ。**コントロール画面(縦スクロール)の最下段** —— 画面が短い端末では折り返しの下に入り木に載らないので、シナリオからは `tapWithScrollDown` で撃ち、**直後に `scrollToTop()` で先頭へ戻す**(下端に留まると上部の `#txt_*` を読む後続が同じ理由で落ちる) |
 | `#btn_enables_late` | Button | `あとで有効` | **Android だけが持つ**。画面に入ってから **1.5 秒間だけ disabled**、その後 enabled。押すと `#txt_late_result` が `late=tapped`。要素は最初から木に居るので `waitForDisplay` では待ち切れない = **`tap` が操作可能になるまで待つ**ことの witness |
 | `#txt_late_result` | Text | `late=<v>` 初期 `late=-` | **Android だけが持つ**。v ∈ `-`/`tapped` |
 
