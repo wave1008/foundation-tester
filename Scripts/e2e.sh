@@ -30,6 +30,11 @@
 #                                   # 仮想デバイスは常に復活を試みるが、このモードでは**復活できない
 #                                   # レーンが1つでも残ると run を開始せず失敗する**(レーン数が変わると
 #                                   # 計測にならないため。既定は切り離して完走)。時間を比較する回に付ける
+#   Scripts/e2e.sh --align         # **実行前に**リモートランナーの版を揃える(opt-in)。
+#                                   # 適合チェックは開始前に落ちるので、ズレたままだとその
+#                                   # プロファイルは1本も走らない(部分実行にすらならない)。
+#                                   # 揃えるのは**ランナーがこの clone の祖先のときだけ**
+#                                   # (自分が古い/分岐しているときは触らない。理由は下の align_runners)
 #   Scripts/e2e.sh --record        # 各プロファイルの一時コピー(<名前>-record-tmp.json。実行後に削除)に
 #                                   # record:true を付けて実行し、録画パイプラインの整合を
 #                                   # Scripts/check-recordings.py で検証する(元のプロファイルは書き換えない)
@@ -50,6 +55,8 @@ FORCE_REBUILD=0
 RUN_IOS=1
 RUN_ANDROID=1
 RECORD=0
+# リモートランナーの版合わせ(既定は触らない。理由は align_runners)
+ALIGN=0
 # 性能計測モード(各 run へ --performance を渡す。fleetest 側が run 開始前にレーンを揃える)
 PERFORMANCE=0
 # エンジンを明示した(--ios-inapp / --ios-xcuitest)= iOS のエンジン検証が目的。Android は回さない
@@ -67,6 +74,7 @@ for arg in "$@"; do
     --ios-inapp) IOS_PROFILE="ios-inapp"; IOS_ENGINE_ONLY=1 ;;
     --ios-xcuitest) IOS_PROFILE="ios-xcuitest"; IOS_ENGINE_ONLY=1 ;;
     --record) RECORD=1 ;;
+    --align) ALIGN=1 ;;
     --performance) PERFORMANCE=1 ;;
     --cmp|--ios-native|--android-native|--flutter|--rn) SUTS="$SUTS ${arg#--}" ;;
     *) echo "不明な引数: $arg" >&2; exit 2 ;;
@@ -89,6 +97,9 @@ fi
 if [ "$RECORD" = 1 ]; then
   command -v jq >/dev/null || { echo "❌ --record には jq が必要です" >&2; exit 1; }
   command -v python3 >/dev/null || { echo "❌ --record には python3 が必要です" >&2; exit 1; }
+fi
+if [ "$ALIGN" = 1 ]; then
+  command -v python3 >/dev/null || { echo "❌ --align には python3 が必要です" >&2; exit 1; }
 fi
 
 # ソースが成果物より新しいか(成果物が無い場合も真)
@@ -123,9 +134,90 @@ if [ "$RUN_IOS" = 1 ]; then
 fi
 
 FAILED=0
+# このスイートが回す (プロジェクト, プロファイル) の並び。**下の実行ループと同じ規則**で、
+# --align が「どのランナーを見るか」を決めるためだけに使う(実行はしない)。
+# 片方だけ変えると align が見に行くプロファイルがズレるので、実行ループの最後で
+# 実際に回した組と突き合わせて警告する(RAN_PROFILES)
+planned_profiles() {
+  local sut
+  for sut in $SUTS; do
+    case "$sut" in
+      cmp)
+        [ "$RUN_IOS" = 1 ] && echo "E2E-CMP $IOS_PROFILE"
+        [ "$RUN_ANDROID" = 1 ] && echo "E2E-CMP android" ;;
+      ios-native)     [ "$RUN_IOS" = 1 ] && echo "E2E-iOS $IOS_PROFILE" ;;
+      android-native) [ "$RUN_ANDROID" = 1 ] && echo "E2E-Android android" ;;
+      flutter)
+        [ "$RUN_IOS" = 1 ] && echo "E2E-Flutter $IOS_PROFILE"
+        [ "$RUN_ANDROID" = 1 ] && echo "E2E-Flutter android" ;;
+      rn)
+        [ "$RUN_IOS" = 1 ] && echo "E2E-RN $IOS_PROFILE"
+        [ "$RUN_ANDROID" = 1 ] && echo "E2E-RN android" ;;
+    esac
+  done
+  return 0
+}
+RAN_PROFILES=""
+
+# ---- --align: 実行前にランナーの版を揃える ------------------------------------
+# **既定では触らない**。align はランナーの `<base>/tool/.build` を差し替えるので、他人(や自分の
+# 別セッション)の run の下で走らせるとその run を SIGKILL で殺す —— 「E2E 中に swift build を
+# 打たない」と同型で、だから align 自身が dispatch.lock を取る(docs/remote-runner.md §18.3 規則2)。
+# **揃えるのはランナーがこの clone の祖先(remoteBehind)のときだけ**。向きは適合チェックが
+# 祖先関係で判定しており、取り違えると直る側が逆になる:
+#   localBehind = **この機械が古い** → 正解は手元の update。ランナーを引き下げてはいけない
+#   diverged    = ブランチ作業 → 共有ランナーでは解決しない(専用機の話)
+#   unknown / 未 push = 判断材料が無い(ランナーの rev がこの clone に無い等)
+# toolchain 不一致と到達不能は **align では直らない**ので、名指しして触らない。
+# 失敗しても中断しない —— そのプロファイルはどのみち適合チェックで落ちて赤くなる(=握り潰さない)。
+align_runners() {
+  local pairs plan host action reason project profile json hosts=""
+  pairs="$(planned_profiles)"
+  [ -n "$pairs" ] || return 0
+  echo "==> --align: リモートランナーの版を確認します"
+  while read -r project profile; do
+    [ -n "$project" ] || continue
+    # **stderr を混ぜない**(警告が1行でも混ざると JSON が壊れて「揃えるものなし」に化ける)。
+    # 解決に失敗したときだけ非0(ズレの有無は JSON で伝える契約)で、理由は stderr に出ている
+    if ! json="$("$FLEETEST" api remote-compat --project "$project" --profile "$profile")"; then
+      echo "   ⚠️ $project/$profile: 適合チェックを引けませんでした(上の行が理由)"
+      continue
+    fi
+    plan="$(printf '%s' "$json" | python3 "$ROOT/Scripts/e2e-align-plan.py" "$project/$profile")" || {
+      echo "   ⚠️ $project/$profile: 適合チェックの出力を解釈できませんでした"; continue; }
+    while IFS='|' read -r action host reason; do
+      [ -n "$action" ] || continue
+      case "$action" in
+        align) case " $hosts " in *" $host "*) : ;; *) hosts="$hosts $host" ;; esac ;;
+        *) echo "   ・$reason" ;;
+      esac
+    done <<EOF_PLAN
+$plan
+EOF_PLAN
+  done <<EOF_PAIRS
+$pairs
+EOF_PAIRS
+  if [ -z "$hosts" ]; then
+    echo "   ✅ 揃えるものはありません"
+    return 0
+  fi
+  for host in $hosts; do
+    echo "==> fleetest remote align $host(fetch → checkout → build。数分かかります)"
+    if "$FLEETEST" remote align "$host"; then
+      echo "   ✅ $host を揃えました"
+    else
+      echo "   ❌ $host の align に失敗しました(このホストを使うプロファイルは適合チェックで落ちます)"
+    fi
+  done
+  return 0
+}
+if [ "$ALIGN" = 1 ]; then align_runners; fi
+
 run_profile() {  # $1 = プロジェクト名, $2 = プロファイル名
   echo ""
   echo "═══ $1 / $2 ═══"
+  RAN_PROFILES="$RAN_PROFILES$1 $2
+"
 
   local profile="$2"
   local tmp_profile_path=""
@@ -217,6 +309,18 @@ for sut in $SUTS; do
       ;;
   esac
 done
+
+# **--align が見たプロファイルと、実際に回したプロファイルがズレていないか**。
+# planned_profiles は実行ループの写しなので、SUT やプロファイルを足したときに片方だけ直すと
+# align が別の集合を見に行く(黙って「揃えるものはありません」と言う)。落とさず警告する
+PLANNED_SORTED="$(planned_profiles | sort)"
+RAN_SORTED="$(printf '%s' "$RAN_PROFILES" | grep -v '^$' | sort || true)"
+if [ "$PLANNED_SORTED" != "$RAN_SORTED" ]; then
+  echo ""
+  echo "⚠️ planned_profiles と実際に回した組が食い違っています(--align が見る集合がズレます)"
+  echo "   planned: $(printf '%s' "$PLANNED_SORTED" | tr '\n' '/')"
+  echo "   ran:     $(printf '%s' "$RAN_SORTED" | tr '\n' '/')"
+fi
 
 echo ""
 if [ "$FAILED" = 0 ]; then

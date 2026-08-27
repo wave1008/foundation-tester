@@ -2312,7 +2312,22 @@ E2E-iOS を回すまで気付かなかった)。**距離を伸ばしても・画
   `--rebuild` / `--ios` / `--android` / `--cmp` / `--ios-native` / `--android-native` / `--flutter` / `--rn` /
   `--ios-xcuitest`(iOS を XCUITest エンジンで回す。既定は in-app。上記「1回の実行が見るのは…」節) /
   `--ios-inapp`(既定と同じエンジンで iOS のみ) /
-  `--record`(録画パイプラインの整合チェック付き。詳細は下記「録画」節)
+  `--record`(録画パイプラインの整合チェック付き。詳細は下記「録画」節) /
+  `--align`(下記)
+- **`--align`: リモートランナーの版ズレは「部分実行」ではなく「1本も走らない」**(2026-08-28)。
+  複数機に跨るプロファイル(E2E-Android/android)は**開始前**の適合チェックで弾かれるので、
+  手元を更新した直後のフルスイートはそのプロファイルのリモート担当ぶんが丸ごと欠ける
+  (実際に 22 本中 14 本しか走らず、結果表には「1 of 14 failed」としか出ない)。
+  `--align` を付けると実行前に `api remote-compat` を引き、**ランナーがこの clone の祖先
+  (`remoteBehind`)のホストだけ** `fleetest remote align` する。
+  **既定では触らない** —— align はランナーの `.build` を差し替えるので、他人(や自分の別セッション)の
+  run の下で走らせるとその run を SIGKILL で殺す(docs/remote-runner.md §18.3 規則2)。
+  **向きを取り違えない**: `localBehind`(この clone が古い)・`diverged`(ブランチ作業)・
+  未 push・toolchain 不一致・到達不能は**触らずに理由を1行出す**(align では直らない/直す側が逆)。
+  判定の写しは `Scripts/e2e-align-plan.py` の1箇所だけで、祖先関係の計算は Swift 側
+  (`FTCore.RemoteCompat`)に任せる(2つ目の実装を作らない)。
+  align が見るプロファイル集合は `planned_profiles`(実行ループの写し)なので、
+  **実行後に実際に回した組と突き合わせて食い違いを警告する**(片方だけ直すと黙ってズレるため)
 - **両OSを1プロファイルにまとめない**: platform 未指定シナリオは既定 platform のキューにしか入らず
   他方のワーカーが空回りする(design.md §11.4)。SUT はネットワーク依存ゼロなのでバックエンド死活の
   切り分けは不要
