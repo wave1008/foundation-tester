@@ -67,6 +67,25 @@ FLEETEST_REF=feat/my-branch \
 
 壊れた `main` を引いた受け手を個別に逃がすときも同じ口を使う(`FLEETEST_REF=<1つ前の sha>`)。
 
+## リポジトリの引っ越し(owner / repo 名を変える)
+
+座標(`<owner>/<repo>`)は **clone 前・ビルド前に走るシェル**と、**受け手が読む docs** と、
+**プラグイン manifest** に散っていて、唯一の定義元を持てない(シェルは Swift を呼べず、
+docs の URL は読者が読むのでリテラルである必要がある)。そこで「1箇所に集める」のではなく
+**唯一の可変点 + 機械での一致強制**にしてある。
+
+1. `Scripts/install-skill.sh` の `REPO="<owner>/<repo>"` を新しい座標へ書き換える(可変点はここ)
+2. 全域を置換する(`git grep -l '<旧座標>' | xargs sed -i '' 's|<旧座標>|<新座標>|g'`)。
+   **URL 形と裸の形の両方**がある —— `claude plugin marketplace add <owner>/<repo>` は裸
+3. `vscode-fleetest/test/repoSlug.test.mjs` の `LEGACY_SLUGS` へ**旧座標を足す**
+4. `cd vscode-fleetest && npm test` —— 取り残しがあれば `file:line` で全部出る
+   (旧座標・URL 形・裸の形・`marketplace.json` の owner を見る)
+5. **既存の受け手には周知が要る**。プラグインは登録時の URL を fetch するので、リダイレクトが
+   切れた時点で黙って更新されなくなる(marketplace 名は `marketplace.json` の `name` なので
+   repo 名を変えても変わらない = 名前が変わって外れる形にはならない)。
+   引っ越し直後に**この2経路を実測する**: `install-skill.sh` の raw curl と
+   `claude plugin marketplace update foundation-tester`
+
 ## まだ手動なもの(未整備)
 
 - **拡張の Marketplace / Open VSX 公開**: publisher アカウントと PAT が要る(`vsce publish` / `ovsx publish`)。
