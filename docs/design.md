@@ -3983,14 +3983,26 @@ SKILL.md ではなく1行のパスを掴む。
 - **プロジェクトスコープの `.codex/config.toml` は使わない**。`~/.codex/config.toml` 側で
   trusted にしたプロジェクトでしか読まれないため、書いても**黙って効かない**状態を作れる。
   MCP 登録はユーザーレベルの1箇所だけ
-- **サンドボックスは判定するが緩めない**。既定 `workspace-write` は **loopback を含む outbound**と
-  **ワークスペース外への書き込み**を塞ぐので、fleetest はデバイスを1台も駆動できない
-  (外部構成では TOOL_ROOT が WORK_DIR の兄弟 = `.build/` も外側)。install.sh ステップ7.7 と
-  preflight の `codex_sandbox=` が**判定と編集の案内だけ**を出す。受け手のグローバル設定 =
-  セキュリティ境界なので、インストーラは1バイトも書かない。**案内は「貼り付け用ブロック」に
-  しない** —— TOML は同じキー・テーブルの重複を許さないので、素朴な追記は config.toml 全体を
-  無効にする(`sandbox_mode` は最初の `[table]` より前・既存の `[sandbox_workspace_write]` は
-  中の値を編集)
+- **サンドボックスは判定するが緩めない**。**縛られるのはシェルコマンドだけで、MCP サーバは
+  その外で動く**(2026-08-27 実測: `--sandbox read-only` でも MCP プロセスはワークスペース外書込と
+  loopback が通る)。したがって **`ft_*` 経由の作成・実行・デバイス駆動は既定設定のまま動き**、
+  通らないのは**シェル経由の導入・更新**だけ。原因は権限ではない2つ:
+  **①SwiftPM が自前の `sandbox-exec` を入れ子に使うため `swift build` / `swift package` が
+  `sandbox_apply: Operation not permitted` で起動できない ②`xcrun simctl` が
+  CoreSimulatorService への mach 接続を塞がれる**(`adb` は TCP 5037 なので network_access で通る)。
+  **`network_access` / `writable_roots` を積んでも直らない**ので、それらを根拠に OK を返すと
+  false green になる(実際に出していた)。install.sh ステップ7.7 は
+  `danger-full-access` のときだけ OK を返し、それ以外は**2択の案内**を出す
+  (a: 導入・更新のセッションだけ `codex --sandbox danger-full-access` = 狭い / b: 恒久緩和)。
+  受け手のグローバル設定 = セキュリティ境界なので、インストーラは1バイトも書かない。
+  **案内は「貼り付け用ブロック」にしない** —— TOML は同じキー・テーブルの重複を許さないので、
+  素朴な追記は config.toml 全体を無効にする
+- **`codex plugin add` は作業ツリーを丸ごとコピーする**(実測: `.build/` 込みで 11GB まで膨らんだ)。
+  Claude Code のローカル marketplace add と同じ罠。**リポジトリ内に自分自身を指すリンクを
+  置かない**理由でもある(リンクを辿るコピーが終わらなくなる)
+- **未検証**: GitHub の ZIP ダウンロードでシンボリックリンクがどう展開されるか。`git archive`(tar)
+  では保持されることを確認済み。ZIP から展開して Codex を向けた場合、スキルが1行のパスファイルに
+  なる可能性がある(`install-skill.sh` 経由は curl なので無傷)
 **ローカル検証の罠**: `/plugin` は VSCode 拡張パネルでは使えない(ターミナル CLI かデスクトップアプリ)。
 `claude plugin marketplace add <ローカルパス>` は git clone ではなく**作業ツリーを丸ごとコピー**する
 (gitignore を無視するため `.build/` 約8GB も入りキャッシュが約13GBに膨れる)。検証後は

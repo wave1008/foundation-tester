@@ -11,7 +11,7 @@
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -66,9 +66,13 @@ test("正典スキルディレクトリの定義が Swift とインストーラ�
  * 素通しする(実際に変異が生き残った)。
  */
 function detectionBlock(file, source) {
-  const begin = source.indexOf('AGENT="auto"') >= 0 ? source.indexOf('if [ "$AGENT" = "auto" ]')
-                                                    : source.indexOf('case "$AGENT_ARG" in');
-  assert.ok(begin > 0, `${file} に自動判定ブロックが見つかりません`);
+  // 判定の実体は install.sh では detect_agents()、install-skill.sh では auto の if 文にある。
+  // **どちらか一方だけを見ると、実体が関数へ移った瞬間に空を検査して素通しする**(実際に踏んだ)
+  const candidates = ["detect_agents() {", 'if [ "$AGENT" = "auto" ]', 'case "$AGENT_ARG" in']
+    .map((marker) => source.indexOf(marker))
+    .filter((at) => at > 0);
+  const begin = Math.min(...candidates);
+  assert.ok(Number.isFinite(begin) && begin > 0, `${file} に自動判定ブロックが見つかりません`);
   const endMarkers = ["has_agent()", "case \"$AGENT\" in"];
   let end = -1;
   for (const marker of endMarkers) {
@@ -278,4 +282,75 @@ test("入口ファイルはクローンの中には書かない(未追跡でも)
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// --- 実機検証(2026-08-27)で分かった構造を固定する --------------------------------
+
+test("clone 構成の例外が Swift とシェルの両方にある", () => {
+  // 片方だけに入れると「規則は1つ」という前提が静かに崩れる。**シグナル名の一致だけを
+  // 見ていたテストはこの乖離を素通しした**ので、例外そのものを両側で見る
+  assert.match(SWIFT, /ignoringWorkspaceSignals/,
+    "AgentIntegration に clone 構成の例外がありません(シェル側だけにあります)");
+  assert.match(SWIFT, /isExternalPackage/,
+    "Swift 側が「クローン自身か」を判定していません");
+  const block = detectionBlock("Scripts/install.sh", INSTALL_SH);
+  assert.ok(block.includes('LAYOUT" = "clone"'),
+    "install.sh に clone 構成の例外がありません(Swift 側だけにあります)");
+});
+
+test("シェルは知らないエージェント名を素通しさせない", () => {
+  // 素通しすると has_agent がどれにも当たらず、MCP 登録も入口も行われないまま [ok] で終わる
+  // (state.json 経由で実際に踏んだ)。Swift の parsed() も unknown を返して呼び手に警告させる
+  assert.match(INSTALL_SH, /valid_agents\(\)/, "install.sh に検証関数がありません");
+  assert.match(INSTALL_SH, /case "\$candidate" in claude\|codex\)/,
+    "install.sh の検証が既知の名前だけを通していません");
+  assert.match(SWIFT, /func parsed\(/, "AgentIntegration に unknown を返す parsed() がありません");
+});
+
+test("判定の出所を record に出し、--agent auto で再判定できる", () => {
+  // pin が見えないと「後から Claude Code を入れたのに何も起きない」で詰まる
+  assert.match(INSTALL_SH, /AGENT_SOURCE=/, "判定の出所を持っていません");
+  assert.match(INSTALL_SH, /record "agent" ok "\$AGENTS — \$AGENT_SOURCE"/,
+    "record が判定の出所を出していません");
+  const block = detectionBlock("Scripts/install.sh", INSTALL_SH);
+  assert.match(block, /auto\)\s+detect_agents/,
+    "--agent auto を明示しても再判定していません(pin から抜け出せなくなります)");
+});
+
+test("サンドボックス判定は danger-full-access 以外を OK にしない", () => {
+  // **false green を作らない**。実測(2026-08-27): workspace-write では SwiftPM の入れ子
+  // sandbox-exec で `swift build` が起動できず、simctl も CoreSimulatorService に届かない。
+  // network_access / writable_roots を積んでも直らないので、それらを根拠に OK を返してはいけない
+  const start = INSTALL_SH.indexOf("# ---- 7.7");
+  const section = INSTALL_SH.slice(start, INSTALL_SH.indexOf("# ---- 5. プロファイル", start));
+  assert.ok(start > 0 && section.length > 0, "ステップ7.7 がありません");
+  const okLines = section.split("\n").filter((l) => l.includes('print("OK'));
+  assert.equal(okLines.length, 1, `OK を返す分岐は1つだけ: ${okLines.join(" / ")}`);
+  assert.match(okLines[0], /danger-full-access/, "danger-full-access 以外で OK を返しています");
+  // **判定の入力**に使っていないことを見る(案内の本文に「これでは直らない」と書くのは正しい)
+  assert.ok(!/data\.get\("sandbox_workspace_write"/.test(section),
+    "判定が sandbox_workspace_write を根拠にしています(実測では直らないので false green になります)");
+  // MCP は影響を受けないという事実を案内に含める(取り違えると切り分けを誤らせる)
+  assert.match(section, /MCP server runs outside the sandbox/,
+    "MCP がサンドボックス外である旨が案内にありません");
+});
+
+test("update.sh のコピー対象が install-skill.sh の一覧と揃っている", () => {
+  // スキル一覧は3箇所(install-skill.sh の SKILLS / 正典ディレクトリ / update.sh の
+  // COPIED_SKILLS)。増やす・改名するときに update.sh を忘れると、コピー配置の受け手だけ
+  // 取り残される
+  const updateSh = readFileSync(path.join(ROOT, "Scripts/update.sh"), "utf8");
+  const list = (source, name) => {
+    const m = source.match(new RegExp(`${name}="([^"]+)"`));
+    assert.ok(m, `${name} が見つかりません`);
+    return m[1].split(/\s+/).filter(Boolean).sort();
+  };
+  const declared = list(INSTALL_SKILL_SH, "SKILLS");
+  const copied = list(updateSh, "COPIED_SKILLS");
+  const canon = readdirSync(path.join(ROOT, ".claude", "skills"), { withFileTypes: true })
+    .filter((d) => d.isDirectory()).map((d) => d.name).sort();
+  assert.deepEqual(declared, canon, "install-skill.sh の SKILLS と正典が食い違っています");
+  // fleetest-setup だけは写さない(受け手のそれは init が生成した別内容)
+  assert.deepEqual(copied, declared.filter((n) => n !== "fleetest-setup"),
+    "COPIED_SKILLS が SKILLS から fleetest-setup を除いたものになっていません");
 });

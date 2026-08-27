@@ -87,7 +87,7 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scr
 - **Codex でも同じスキルが動く**(runbook は共有。違うのは置き場所 `.agents/skills/`・呼び出し `$fleetest-setup`・
   入口 `AGENTS.md`・MCP 登録先 `~/.codex/config.toml` だけ)。導入は
   `curl -fsSL .../Scripts/install-skill.sh | sh -s -- --agent codex`。
-  **Codex は既定のサンドボックスだとデバイスを駆動できない**(loopback を含む outbound 遮断)ので、
+  **Codex は既定のサンドボックスだと導入・更新のシェル工程が通らない**(`ft_*` は影響を受けない)ので、
   [docs/user-docs/tools/codex_skills_ja.md](docs/user-docs/tools/codex_skills_ja.md) のサンドボックス設定を先に読むこと。
 - 既定は**外部パッケージ構成**: ツール(この clone)と、あなたの `TestProjects/` が住むテスト用フォルダを分ける。
 - 事前準備・インストール・更新・アンインストールの手順は [docs/user-docs/getting-started_ja.md](docs/user-docs/getting-started_ja.md)。

@@ -417,23 +417,28 @@ CLI が無ければ上の WORK_DIR `.mcp.json` 方式で十分。
 
 ### 7.7 Codex のサンドボックス確認（Codex を使う場合のみ）
 
-Codex の既定 `sandbox_mode = "workspace-write"` は **loopback を含む outbound を遮断**し、
-**ワークスペース外への書き込みを禁止**する。fleetest はどちらも使うので、**このままでは
-デバイスを1台も駆動できない**（ブリッジの HTTP・adb の TCP 5037・エミュレータ gRPC が通らない。
-外部パッケージ構成では TOOL_ROOT が WORK_DIR の兄弟なので `.build/` への書き込みも外側）。
+**取り違えないこと**: Codex のサンドボックスは**シェルコマンドだけ**を縛る。**MCP サーバはその外**で
+動くので、**`ft_*` は既定設定のまま全部動く**（画面探索・シナリオ実行・デバイス駆動）。
+通らないのは**シェル経由の導入・更新**だけ:
+
+- `swift build` / `swift package` —— SwiftPM が自前の `sandbox-exec` を入れ子で使うため起動できない
+- `xcrun simctl` —— CoreSimulatorService への mach 接続が塞がれる
+- **`network_access` や `writable_roots` では直らない**（権限の問題ではない）
 
 インストーラのステップ7.7（または `Scripts/preflight.sh` の `codex_sandbox=` 行）が判定を出す。
-`[warn] codex sandbox` が出ていたら、🧑 に**その案内を渡して編集を依頼する**
-（**そのまま追記させない** —— `sandbox_mode` や `[sandbox_workspace_write]` が重複すると
-TOML として無効になり、config.toml 全体が読めなくなる）。
-**エージェントが `~/.codex/config.toml` を書き換えてはいけない** —— サンドボックスは受け手の
-セキュリティ境界であり、このツールが受け手のグローバル設定を緩める判断をしてはならない
-（インストーラも判定だけで1バイトも書かない）。
+`danger-full-access` 以外なら 🧑 に次のどちらかを選んでもらう。**エージェントが
+`~/.codex/config.toml` を書き換えてはいけない**（受け手のセキュリティ境界であり、
+インストーラも判定だけで1バイトも書かない）:
 
-`network_access` を常時開けたくない受け手には、**fleetest を使うセッションだけ
-`codex --sandbox danger-full-access` で起動する**選択肢も示す（常設の緩和より狭い）。
+- **(a) 導入・更新のセッションだけ `codex --sandbox danger-full-access` で起動する**（推奨・狭い）
+- **(b) `sandbox_mode = "danger-full-access"` を恒久設定にする**。**そのまま追記させない** ——
+  `sandbox_mode` が重複すると config.toml 全体が無効になる
 
-**検証ゲート**: `ft_list_devices` が候補を返すこと（返らないならサンドボックスか MCP 登録のどちらか）。
+**そもそもこのステップに到達しているなら、今のセッションでは導入が通っている**（swift build が
+成功している）。ここで出す警告は**次回以降のエージェントセッション**のための予告。
+
+**検証ゲート**: `ft_list_devices` が候補を返すこと（返らないなら MCP 登録のほう。
+サンドボックスは `ft_*` に影響しない）。
 
 ### 8. プロファイル（済んでいなければ /fleetest-profiles）
 

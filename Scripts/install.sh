@@ -39,7 +39,7 @@ DO_PROJECT=1
 DO_MCP=1
 DO_CLAUDE_MD=1
 DO_AGENTS_MD=1
-AGENT_ARG="auto"
+AGENT_ARG=""
 DO_DOCTOR=1
 DO_NEXT_STEPS=1
 ALLOW_CLONE=1
@@ -390,48 +390,65 @@ record "layout" ok "$LAYOUT (TOOL_ROOT=$TOOL_ROOT / WORK_DIR=$WORK_DIR)"
 # .agents / AGENTS.md / ~/.codex → codex、どれも無ければ claude 単独 = 既存の受け手の挙動を変えない)。
 # 片方だけ変えない —— agentIntegration.test.mjs が Swift 側との一致を見る。
 #
-# 順序が3段なのには理由がある:
-#   ① 明示指定が常に勝つ
-#   ② **前回の判定を state.json から引き継ぐ** —— 引き継がないと、`--agent codex` で入れた
-#      受け手が更新のたびに自動判定へ戻り、ホームに ~/.claude があるだけで
-#      .claude/settings.json と CLAUDE.md が湧く(update.sh は install.sh を呼び直すだけなので、
-#      ここで持たないと更新経路に決定が伝わらない)
-#   ③ それも無ければ判定。**clone 構成では WORK_DIR 側の手掛かりを見ない** ——
-#      クローン自身が `.claude/` も `.agents/` も `CLAUDE.md` も持っている(このツールの
-#      アダプタであって、受け手が Codex を使っている証拠ではない)。見るとどのクローンでも
-#      codex と判定され、クローンの中に AGENTS.md を書いて次の更新を pull ガードで止める
+# 決め方は3段。**どこから来た決定かを record に出す**(pinned/auto/明示)—— 出さないと、
+# 固定されていることに受け手が気づけず「後から Claude Code を入れたのに何も起きない」で詰まる:
+#   ① 明示指定(--agent claude|codex|both)が常に勝つ
+#   ② 引数なしなら **前回の判定を state.json から引き継ぐ**。引き継がないと `--agent codex` で
+#      入れた受け手が更新のたびに自動判定へ戻り、ホームに ~/.claude があるだけで
+#      .claude/settings.json と CLAUDE.md が湧く(update.sh は install.sh を呼び直すだけ)
+#   ③ `--agent auto` を明示したとき、または記録が無い/壊れているときは判定し直す。
+#      **clone 構成では WORK_DIR 側の手掛かりを見ない** —— クローン自身が `.claude/` も
+#      `.agents/` も `CLAUDE.md` も持っている(このツールのアダプタであって、受け手が
+#      Codex を使っている証拠ではない)。見るとどのクローンでも codex と判定され、
+#      クローンの中に AGENTS.md を書いて次の更新を pull ガードで止める
 AGENTS=""
+AGENT_SOURCE=""
+detect_agents() {
+  AGENTS=""
+  if [ "$LAYOUT" = "clone" ]; then
+    if [ -d "$HOME/.claude" ]; then AGENTS="claude"; fi
+    if [ -d "$HOME/.codex" ]; then AGENTS="${AGENTS:+${AGENTS} }codex"; fi
+  else
+    if [ -d "$WORK_DIR/.claude" ] || [ -f "$WORK_DIR/CLAUDE.md" ] || [ -d "$HOME/.claude" ]; then
+      AGENTS="claude"
+    fi
+    if [ -d "$WORK_DIR/.agents" ] || [ -f "$WORK_DIR/AGENTS.md" ] || [ -d "$HOME/.codex" ]; then
+      AGENTS="${AGENTS:+${AGENTS} }codex"
+    fi
+  fi
+  [ -n "$AGENTS" ] || AGENTS="claude"
+}
+# **知らない名前を素通しさせない**。素通しすると has_agent がどれにも当たらず、MCP 登録も
+# 入口も行われないまま `[ok]` で終わる(= 何もしないのに成功。実際に state.json 経由で踏んだ)
+valid_agents() {
+  for candidate in $1; do
+    case "$candidate" in claude|codex) ;; *) return 1 ;; esac
+  done
+  [ -n "$1" ]
+}
 case "$AGENT_ARG" in
-  claude) AGENTS="claude" ;;
-  codex)  AGENTS="codex" ;;
-  both)   AGENTS="claude codex" ;;
-  auto)
-    AGENTS="$(python3 -c 'import json,sys
+  claude|codex) AGENTS="$AGENT_ARG"; AGENT_SOURCE="--agent $AGENT_ARG" ;;
+  both)         AGENTS="claude codex"; AGENT_SOURCE="--agent both" ;;
+  auto)         detect_agents; AGENT_SOURCE="auto (re-detected)" ;;
+  "")
+    PINNED="$(python3 -c 'import json,sys
 try:
     with open(sys.argv[1]) as f:
         print(json.load(f).get("agents", ""))
 except Exception:
     pass' "$WORK_DIR/.fleetest/state.json" 2>/dev/null || true)"
-    if [ -z "$AGENTS" ]; then
-      if [ "$LAYOUT" = "clone" ]; then
-        # クローン自身の規約位置は証拠にならないので、ホーム側だけを見る
-        [ -d "$HOME/.claude" ] && AGENTS="claude"
-        [ -d "$HOME/.codex" ] && AGENTS="${AGENTS:+${AGENTS} }codex"
-      else
-        if [ -d "$WORK_DIR/.claude" ] || [ -f "$WORK_DIR/CLAUDE.md" ] || [ -d "$HOME/.claude" ]; then
-          AGENTS="claude"
-        fi
-        if [ -d "$WORK_DIR/.agents" ] || [ -f "$WORK_DIR/AGENTS.md" ] || [ -d "$HOME/.codex" ]; then
-          AGENTS="${AGENTS:+${AGENTS} }codex"
-        fi
-      fi
-      [ -n "$AGENTS" ] || AGENTS="claude"
+    if [ -n "$PINNED" ] && valid_agents "$PINNED"; then
+      AGENTS="$PINNED"; AGENT_SOURCE="pinned by the previous install (pass --agent auto to re-detect)"
+    else
+      [ -n "$PINNED" ] && record "agent" warn \
+        "state.json records an unknown agent set ($PINNED) — re-detecting"
+      detect_agents; AGENT_SOURCE="auto"
     fi
     ;;
   *) die "agent" "--agent must be claude / codex / both / auto (got: $AGENT_ARG)" 0.5 ;;
 esac
 has_agent() { case " $AGENTS " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
-record "agent" ok "$AGENTS ($AGENT_ARG)"
+record "agent" ok "$AGENTS — $AGENT_SOURCE"
 
 # **DO_MCP のブロックの外で定義する** —— ステップ7.7(サンドボックス判定)も参照するので、
 # `--skip-mcp` のときに未定義だと set -u で落ちる([fail] 行も出ないまま exit 1)。
@@ -731,11 +748,13 @@ write_entry_point() {
   # 素通りして**同じ轍を踏む(CLAUDE.md はクローンの追跡ファイルなので追跡判定でも
   # 止まっていたが、AGENTS.md は追跡も gitignore もされていない)。
   # 外部構成で受け手が自分のリポジトリに入口を持つのは対象外(クローンの pull を妨げない)。
+  # **判定できなければ書かない**(fail-closed)—— 受け手の資産を壊す側に倒れるより、
+  # 案内を1つ諦めるほうが安い。
   # 同型: packageLockSync(npm install が lock を書き換えてクローンが dirty になる)
   if [ "$(python3 -c 'import os,sys
 target, clone = os.path.realpath(sys.argv[1]), os.path.realpath(sys.argv[2])
 print("inside" if os.path.commonpath([target, clone]) == clone else "outside")' \
-       "$ep_file" "$TOOL_ROOT" 2>/dev/null || echo outside)" = "inside" ]; then
+       "$ep_file" "$TOOL_ROOT" 2>/dev/null || echo inside)" = "inside" ]; then
     record "$ep_label" skip "it lives inside the clone — writing there would make the next update abort at the pull guard"
     return 0
   fi
@@ -824,96 +843,74 @@ else
 fi
 
 # ---- 7.7 Codex サンドボックスの適合判定(SKILL ステップ7.7) --------------------
-# **判定するが緩めない**。`~/.codex/config.toml` の sandbox_mode / sandbox_workspace_write は
-# **受け手のグローバル設定でありセキュリティ境界**なので、インストーラは1バイトも書かない
-# (このスクリプトが受け手のファイルを書き換えるのは入口ファイルのマーカー内側だけ、という
-# 規律の外側に置く)。代わりに**効かない理由を名指しして、編集の案内を出す**。
-# **「貼り付け用ブロック」にしない** —— TOML は同じキー・テーブルの重複を許さないので、
-# 素朴に追記させると config.toml 全体が無効になる。
+# **判定するが緩めない**。`~/.codex/config.toml` の sandbox_mode は**受け手のグローバル設定であり
+# セキュリティ境界**なので、インストーラは1バイトも書かない。出すのは事実と選択肢だけ。
 #
-# 既定の workspace-write が塞ぐのは2つ:
-#   ① ワークスペース外への書き込み —— 外部パッケージ構成では TOOL_ROOT が WORK_DIR の
-#      **兄弟**なので `.build/` がまるごと外側。simctl/adb も ~/Library・~/.android に書く
-#   ② outbound ネットワーク —— **loopback も落ちる**ので、in-app ブリッジの HTTP・
-#      adb(TCP 5037)・エミュレータ gRPC が通らない = デバイス駆動そのものが成立しない
+# **実測で分かった構造(2026-08-27。writable_roots では直らない)**:
+#   ・`swift build` / `swift package` は **workspace-write の中では起動できない** ——
+#     SwiftPM が自前で `sandbox-exec` を入れ子に使い `sandbox_apply: Operation not permitted`
+#   ・`xcrun simctl` も通らない —— CoreSimulatorService への mach 接続が塞がれる
+#   ・`adb` は通る(TCP 5037 なので network_access で足りる)
+#   したがって **network_access と writable_roots をどう積んでも workspace-write は救えない**。
+#   これらを「揃えれば OK」と報告していた頃は false green で、受け手の切り分けを誤らせた。
+#
+# **一方 MCP サーバはサンドボックスの外で動く**(実測: --sandbox read-only でもワークスペース外
+# 書込と loopback が通る)。つまり `ft_*` 経由の作成・実行・デバイス駆動は既定設定のまま動き、
+# 通らないのは**エージェントがシェルで叩く導入・更新**だけ。ここを取り違えない。
 if ! has_agent codex; then
   : # Codex を使わない受け手には関係しない
 elif ! command -v python3 >/dev/null 2>&1; then
   record "codex sandbox" warn "python3 is missing, so $CODEX_CONFIG could not be inspected"
 else
-  if sandbox_out=$(python3 - "$CODEX_CONFIG" "$TOOL_ROOT" <<'PYSANDBOX'
+  if sandbox_out=$(python3 - "$CODEX_CONFIG" <<'PYSANDBOX'
 import os, sys
 
-path, tool_root = sys.argv[1], sys.argv[2]
-home = os.path.expanduser("~")
-# fleetest がワークスペースの外に書く先。ここが writable_roots に無いと落ちる
-needed = [tool_root, os.path.join(home, ".config/fleetest"),
-          os.path.join(home, "Library/Developer/CoreSimulator"),
-          os.path.join(home, ".android")]
+path = sys.argv[1]
 
-guidance = (
-    '# ~/.codex/config.toml — fleetest がデバイスを駆動するために必要\n'
-    '# 追記用ブロックではありません。sandbox_mode は最初の [table] より前に置き、\n'
-    '# 既存の [sandbox_workspace_write] があれば、そのテーブル内の値を編集してください。\n'
-    '# 同じキーやテーブルを重複させると config.toml 全体が無効になります。\n'
-    '# network_access は loopback(ブリッジ HTTP / adb 5037 / エミュレータ gRPC)にも要る。\n'
-    '# outbound を全部開けたくないなら sandbox_mode = "danger-full-access" ではなく、\n'
-    '# fleetest を使うときだけ `codex --sandbox danger-full-access` で起動する手もある。\n'
-    'sandbox_mode = "workspace-write"\n'
-    '\n[sandbox_workspace_write]\n'
-    'network_access = true\n'
-    'writable_roots = [\n' + "".join('  "%s",\n' % p for p in needed) + ']\n'
+# **選択肢は2つだけ**。どちらも受け手が決めること(このスクリプトは書かない)。
+advice = (
+    "Codex runs shell commands inside a sandbox. `swift build` cannot start there (SwiftPM nests\n"
+    "its own sandbox-exec) and `xcrun simctl` cannot reach CoreSimulatorService, so the install and\n"
+    "update runbooks will not complete. Adding network_access or writable_roots does NOT fix this.\n"
+    "\n"
+    "What still works with no change: everything through the MCP server (ft_* tools) — authoring,\n"
+    "running scenarios and driving devices. The MCP server runs outside the sandbox.\n"
+    "\n"
+    "Pick one:\n"
+    "  (a) run the install/update sessions only with `codex --sandbox danger-full-access`\n"
+    "      and keep the default sandbox for everyday work  ← narrower, recommended\n"
+    "  (b) set `sandbox_mode = \"danger-full-access\"` in the config to relax it permanently\n"
 )
 
 try:
     import tomllib
 except ModuleNotFoundError:
-    print("UNKNOWN python3 has no tomllib (3.11+)\n%s" % guidance, end="")
-    sys.exit(0)
+    print("UNKNOWN python3 has no tomllib (3.11+)\n%s" % advice, end=""); sys.exit(0)
 if not os.path.exists(path):
-    print("UNKNOWN %s does not exist yet\n%s" % (path, guidance), end="")
+    print("LIMITED %s does not exist yet, so the default sandbox applies\n%s" % (path, advice), end="")
     sys.exit(0)
 try:
     with open(path, "rb") as f:
         data = tomllib.load(f)
 except Exception as e:
-    print("UNKNOWN could not parse %s (%s)\n%s" % (path, e, guidance), end="")
-    sys.exit(0)
+    print("UNKNOWN could not parse %s (%s)\n%s" % (path, e, advice), end=""); sys.exit(0)
 
 mode = data.get("sandbox_mode", "workspace-write")
 if mode == "danger-full-access":
-    print("OK sandbox_mode=danger-full-access", end="")
-    sys.exit(0)
-if mode == "read-only":
-    print("BLOCKED sandbox_mode=read-only\n%s" % guidance, end="")
-    sys.exit(0)
-
-ws = data.get("sandbox_workspace_write", {}) or {}
-roots = [os.path.realpath(os.path.expanduser(r)) for r in (ws.get("writable_roots") or [])]
-def covered(p):
-    p = os.path.realpath(os.path.expanduser(p))
-    return any(p == r or p.startswith(r.rstrip("/") + "/") for r in roots)
-missing = [p for p in needed if not covered(p)]
-reasons = []
-if not ws.get("network_access"):
-    reasons.append("network_access is off (loopback is blocked too, so the bridge / adb / emulator gRPC cannot be reached)")
-if missing:
-    reasons.append("writable_roots is missing " + ", ".join(missing))
-if reasons:
-    print("BLOCKED %s\n%s" % ("; ".join(reasons), guidance), end="")
+    print("OK sandbox_mode=danger-full-access (shell steps can run)", end="")
 else:
-    print("OK sandbox_mode=workspace-write with network_access and the needed writable_roots", end="")
+    print("LIMITED sandbox_mode=%s\n%s" % (mode, advice), end="")
 PYSANDBOX
   ); then
     case "$sandbox_out" in
       OK*) record "codex sandbox" ok "${sandbox_out#OK }" ;;
-      BLOCKED*)
-        sandbox_head="${sandbox_out#BLOCKED }"
-        record "codex sandbox" warn "${sandbox_head%%$'\n'*} — fleetest cannot drive devices until this is changed (nothing was written; edit $CODEX_CONFIG using the guidance below)"
+      LIMITED*)
+        sandbox_head="${sandbox_out#LIMITED }"
+        record "codex sandbox" warn "${sandbox_head%%$'\n'*} — ft_* keeps working, but the install/update runbooks cannot run under it (nothing was written; see below)"
         printf '%s\n' "${sandbox_out#*$'\n'}" ;;
       UNKNOWN*)
         sandbox_head="${sandbox_out#UNKNOWN }"
-        record "codex sandbox" warn "could not verify the sandbox: ${sandbox_head%%$'\n'*} (edit $CODEX_CONFIG using the guidance below if devices do not respond)"
+        record "codex sandbox" warn "could not verify the sandbox: ${sandbox_head%%$'\n'*} (see below if the runbooks do not complete)"
         printf '%s\n' "${sandbox_out#*$'\n'}" ;;
       *) record "codex sandbox" warn "unexpected verdict ($sandbox_out)" ;;
     esac

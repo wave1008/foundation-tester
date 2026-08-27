@@ -371,6 +371,18 @@ if [ -f "$WORK_DIR/.agents/skills/fleetest-setup/SKILL.md" ]; then
 else
   kv codex_skills no
 fi
+# 前回の導入が固定したエージェント(install.sh は引数なしのときこれを引き継ぐ)。
+# 出さないと「後から Claude Code を入れたのに何も起きない」の原因が見えない
+if [ -f "$WORK_DIR/.fleetest/state.json" ] && command -v python3 >/dev/null 2>&1; then
+  kv agents "$(python3 -c 'import json,sys
+try:
+    with open(sys.argv[1]) as f:
+        print(json.load(f).get("agents", ""))
+except Exception:
+    pass' "$WORK_DIR/.fleetest/state.json" 2>/dev/null || true)"
+else
+  kv agents ""
+fi
 if ls -d "$HOME/.vscode/extensions/"*fleetest* >/dev/null 2>&1; then
   kv vscode_extension yes
 else
@@ -389,9 +401,11 @@ command -v npm >/dev/null 2>&1 && kv npm yes || { kv npm no; missing+=("npm (nee
 check_adb
 command -v claude >/dev/null 2>&1 && kv claude_cli yes || kv claude_cli no
 command -v codex >/dev/null 2>&1 && kv codex_cli yes || kv codex_cli no
-# Codex のサンドボックスは既定(workspace-write)だと **loopback を含む outbound 遮断**と
-# **ワークスペース外への書込禁止**で、fleetest はデバイスを駆動できない。ここは判定だけ
-# (設定は受け手のグローバル資産なので触らない)。install.sh ステップ7.7 と同じ規則。
+# Codex のサンドボックスは danger-full-access 以外だと**シェル経由の導入・更新が通らない**
+# (SwiftPM が入れ子で sandbox-exec を使うので `swift build` が起動できず、`xcrun simctl` も
+# CoreSimulatorService に届かない。writable_roots や network_access では直らない)。
+# **MCP サーバはサンドボックスの外**なので ft_* 経由の作成・実行は影響を受けない。
+# ここは判定だけ(設定は受け手のグローバル資産なので触らない)。install.sh ステップ7.7 と同じ規則。
 if [ -f "$CODEX_CONFIG" ] && command -v python3 >/dev/null 2>&1; then
   codex_sandbox="$(python3 - "$CODEX_CONFIG" <<'PYSB' 2>/dev/null || echo unknown
 import sys
@@ -405,9 +419,8 @@ try:
 except Exception:
     print("unknown"); raise SystemExit(0)
 mode = data.get("sandbox_mode", "workspace-write")
-ws = data.get("sandbox_workspace_write", {}) or {}
-net = "yes" if ws.get("network_access") else "no"
-print("%s network_access=%s" % (mode, net))
+# shell_steps は「エージェントのシェルから導入・更新を回せるか」。danger-full-access だけが可
+print("%s shell_steps=%s" % (mode, "ok" if mode == "danger-full-access" else "blocked"))
 PYSB
 )"
   kv codex_sandbox "$codex_sandbox"

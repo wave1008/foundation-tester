@@ -70,11 +70,18 @@
   ドリフトを、`agentAdapters.test.mjs` がアダプタの到達性を落とす)。
   **SKILL.md に特定エージェント専用機能を前提として書かない**(`AskUserQuestion` は
   「選択ダイアログ(Claude Code なら AskUserQuestion)」の形で、実装ではなく意図を書く)。
-  **Codex のサンドボックスは判定するが緩めない**(既定 `workspace-write` は loopback を含む
-  outbound とワークスペース外書込を塞ぎ、デバイスを1台も駆動できない)—— install.sh ステップ7.7 と
-  preflight の `codex_sandbox=` が**判定と編集の案内だけ**を出す。受け手のグローバル設定 =
-  セキュリティ境界なので1バイトも書かない。**「貼り付け用ブロック」として出さない** ——
-  TOML は同じキー・テーブルの重複を許さず、素朴に追記させると config.toml 全体を無効にする。**プロジェクトスコープの `.codex/config.toml` も使わない**
+  **Codex のサンドボックスはシェルだけを縛る**(2026-08-27 実測)—— **MCP サーバはその外**で動くので
+  `ft_*` は既定設定のまま全部動く。通らないのは**シェル経由の導入・更新**だけで、
+  原因は権限ではなく **①SwiftPM が `sandbox-exec` を入れ子に使う(`swift build` が起動できない)
+  ②`simctl` が CoreSimulatorService へ届かない**。**`network_access` / `writable_roots` では直らない**
+  ので、それらを根拠に OK を返してはいけない(以前 false green を出していた)。
+  install.sh ステップ7.7 と preflight の `codex_sandbox=` は**判定と2択の案内だけ**を出す
+  (a: 導入・更新のセッションだけ `codex --sandbox danger-full-access` / b: 恒久緩和)。
+  受け手のグローバル設定 = セキュリティ境界なので1バイトも書かない。
+  **「貼り付け用ブロック」として出さない** —— TOML は同じキー・テーブルの重複を許さず、
+  素朴に追記させると config.toml 全体を無効にする。
+  **`codex plugin add` は作業ツリーを丸ごとコピーする**(実測で 11GB。`.build/` 込み)。
+  Claude Code のローカル marketplace add と同じ罠**プロジェクトスコープの `.codex/config.toml` も使わない**
   (trusted なプロジェクトでしか読まれず、書いても黙って効かない状態を作れる)
 - MCP サーバの起動口: `Scripts/mcp-server.sh`(`.mcp.json` はこれを exec するだけ)。
   **シェル式を `.mcp.json` へ直書きしない** —— 起動のたびに no-op でも約8秒の `swift build` を払い、

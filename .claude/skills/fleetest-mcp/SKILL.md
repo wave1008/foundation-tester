@@ -155,34 +155,25 @@ FT_TOOL_ROOT = "<ABS_TOOL_ROOT>"
 - 既に `[mcp_servers.fleetest]` があり `FT_TOOL_ROOT` が別の clone を指しているときは、
   **勝手に書き換えず** 🧑 にどちらを使うか確認する(古い clone が残っているだけのことが多い)。
 
-#### サンドボックスの確認(Codex では必須)
+#### サンドボックスの確認(Codex)
 
-Codex の既定 `sandbox_mode = "workspace-write"` は **loopback を含む outbound を遮断**し、
-**ワークスペース外への書き込みを禁止**する。fleetest はどちらも使うので、**このままでは
-デバイスを1台も駆動できない**(ブリッジ HTTP・adb の TCP 5037・エミュレータ gRPC が通らない)。
+**まず取り違えないこと**: Codex のサンドボックスは**シェルコマンドだけ**を縛る。
+**MCP サーバはその外で動く**(実測: `--sandbox read-only` でもワークスペース外書込と loopback が通る)ので、
+**`ft_*` は既定設定のまま全部動く**(画面探索・シナリオ実行・デバイス駆動)。
+
+通らないのは**シェル経由の導入・更新**だけ:
+- `swift build` / `swift package` —— SwiftPM が自前の `sandbox-exec` を入れ子で使うため
+  `sandbox_apply: Operation not permitted` で起動できない
+- `xcrun simctl` —— CoreSimulatorService への mach 接続が塞がれる
+- **`network_access` や `writable_roots` では直らない**(権限の問題ではない)
 
 `Scripts/install.sh` のステップ7.7(または `Scripts/preflight.sh` の `codex_sandbox=` 行)が判定を出す。
-不足していたら 🧑 に**次の状態になるよう `~/.codex/config.toml` を編集してもらう**。
-**そのまま追記させない** —— TOML は同じキー・テーブルの重複を許さないので、`sandbox_mode` や
-`[sandbox_workspace_write]` が2つになると **config.toml 全体が無効**になる(既にあるなら
-その中の値を編集する)。**エージェントが勝手に書かない** —— サンドボックスは受け手の
-セキュリティ境界であり、このツールが受け手のグローバル設定を緩める判断をしてはいけない:
+`danger-full-access` 以外なら、🧑 に次のどちらかを選んでもらう。**エージェントが
+`~/.codex/config.toml` を書き換えてはいけない**(受け手のセキュリティ境界):
 
-```toml
-sandbox_mode = "workspace-write"
-
-[sandbox_workspace_write]
-network_access = true
-writable_roots = [
-  "<ABS_TOOL_ROOT>",
-  "~/.config/fleetest",
-  "~/Library/Developer/CoreSimulator",
-  "~/.android",
-]
-```
-
-`network_access` を常時開けたくない受け手には、**fleetest を使うセッションだけ
-`codex --sandbox danger-full-access` で起動する**選択肢も示す(常設の緩和より狭い)。
+- **(a) 導入・更新のセッションだけ `codex --sandbox danger-full-access` で起動する**(推奨・狭い)
+- **(b) `sandbox_mode = "danger-full-access"` を恒久設定にする**。**そのまま追記させない** ——
+  `sandbox_mode` が2つになると config.toml 全体が無効になる
 
 「全プロジェクトで使いたい」場合のみ、代わりに user スコープ登録を案内する(claude CLI が PATH に要る):
 

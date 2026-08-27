@@ -95,8 +95,13 @@ vsce)は画面に出ず `<WORK_DIR>/.fleetest/install-*.log` にだけ入り、*
 - **exit 2** → 任意ステップのみ未完(`[warn]`)。CLI は使える。warn の内容だけ手当てする。
 - プラグインが `⚠️ HEAD と不一致` のときは `claude plugin marketplace update` →
   `claude plugin update` を手で実行する(**順序が重要**。marketplace を先に更新しないと古い定義を見る)。
+- **どのエージェントの規約位置を扱うかは前回の導入で固定されている**(`.fleetest/state.json` の
+  `agents`。`[ok] agent: ... — pinned by the previous install` と出る)。後からもう一方の
+  エージェントを入れた受け手には**そのままでは届かない** —— `bash <TOOL_ROOT>/Scripts/install.sh
+  --work-dir <WORK_DIR> --agent auto`(または `--agent both`)で入れ直す。
+  preflight の `agents=` 行が今の固定値を出す。
 - **コピー配置(`install-skill.sh` で入れた `.claude/skills/` / `.agents/skills/`)は
-  update.sh が正典から写し直す**(`✅ Skills: refreshed N ...`)。写した後は**エージェントを
+  update.sh が正典から写し直す**(増えたスキルも置く)(`✅ Skills: refreshed N ...`)。写した後は**エージェントを
   再起動する**まで古い手順書が読まれ続ける。**`fleetest-setup` だけは写さない** ——
   受け手のパッケージのそれは `fleetest init` が生成した受け手専用の別内容なので、
   正典で上書きすると受け手のセットアップ手順が消える。

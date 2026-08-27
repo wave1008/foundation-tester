@@ -77,10 +77,19 @@ public enum AgentIntegration: String, CaseIterable, Sendable {
 
     /// 受け手がどのエージェントを使っているかの推定(純関数。I/O は presence クロージャへ逃がす)。
     /// **どれも見つからなければ Claude Code 単独に倒す** — 既存の受け手の挙動を変えないため。
-    public static func detect(exists: (String) -> Bool) -> [AgentIntegration] {
+    ///
+    /// `ignoringWorkspaceSignals` は **workspace が fleetest のクローン自身のとき**に立てる。
+    /// クローンは `.claude/` も `.agents/` も `CLAUDE.md` も持っているが、それは**このツールの
+    /// アダプタ**であって受け手が Codex を使っている証拠ではない。見てしまうとどのクローンでも
+    /// codex と判定され、クローンの中に AGENTS.md を書いて次の更新を pull ガードで止める。
+    /// **Scripts/install.sh の clone 構成の分岐と同じ規則**(片方だけ変えない)。
+    public static func detect(ignoringWorkspaceSignals: Bool = false,
+                              exists: (String) -> Bool) -> [AgentIntegration] {
         var found: [AgentIntegration] = []
-        if exists(".claude") || exists("CLAUDE.md") || exists("~/.claude") { found.append(.claude) }
-        if exists(".agents") || exists("AGENTS.md") || exists("~/.codex") { found.append(.codex) }
+        let claudeSignals = ignoringWorkspaceSignals ? ["~/.claude"] : [".claude", "CLAUDE.md", "~/.claude"]
+        let codexSignals = ignoringWorkspaceSignals ? ["~/.codex"] : [".agents", "AGENTS.md", "~/.codex"]
+        if claudeSignals.contains(where: exists) { found.append(.claude) }
+        if codexSignals.contains(where: exists) { found.append(.codex) }
         return found.isEmpty ? [.claude] : found
     }
 
@@ -90,22 +99,32 @@ public enum AgentIntegration: String, CaseIterable, Sendable {
     /// (実際に踏んだ: 受け手のホームに `~/.claude` があるだけで Codex 専用の導入に
     /// `.claude/settings.json` ができた)。
     public static func parse(_ raw: String?, packageRoot: URL) -> [AgentIntegration] {
-        guard let raw, !raw.trimmingCharacters(in: .whitespaces).isEmpty else {
-            return detect(packageRoot: packageRoot)
-        }
+        parsed(raw)?.agents ?? detect(packageRoot: packageRoot)
+    }
+
+    /// `--agent` / state.json の値を解釈する I/O 無しの版。`nil` は「解釈できない(判定へ落とす)」。
+    /// **知らない名前を黙って捨てない**: `unknown` に残して呼び手が警告できるようにする ——
+    /// シェル側が知らない名前を素通しして「何もしないのに成功」を出した実害がある
+    /// (`agents:"cursor"` で MCP 登録も入口も行われないまま `[ok]` になった)。
+    public static func parsed(_ raw: String?) -> (agents: [AgentIntegration], unknown: [String])? {
+        guard let raw, !raw.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
         let tokens = raw.lowercased().split(whereSeparator: { $0 == "," || $0 == " " }).map(String.init)
-        if tokens.contains("auto") { return detect(packageRoot: packageRoot) }
-        if tokens.contains("both") { return allCases }
-        let parsed = tokens.compactMap(AgentIntegration.init(rawValue:))
-        return parsed.isEmpty ? detect(packageRoot: packageRoot) : parsed
+        if tokens.contains("auto") { return nil }
+        if tokens.contains("both") { return (allCases, []) }
+        let agents = tokens.compactMap(AgentIntegration.init(rawValue:))
+        let unknown = tokens.filter { AgentIntegration(rawValue: $0) == nil }
+        return agents.isEmpty ? nil : (agents, unknown)
     }
 
     /// ファイルシステムを見る版。`~/` 始まりはホーム基準、それ以外は packageRoot 基準。
+    /// packageRoot が fleetest のクローン自身(= 受け手のパッケージではない)なら、
+    /// ワークスペース側の手掛かりは見ない(上の doc を参照)。
     public static func detect(packageRoot: URL,
                               home: URL = FileManager.default.homeDirectoryForCurrentUser)
         -> [AgentIntegration]
     {
-        detect { path in
+        let isToolClone = !ProjectScaffold.isExternalPackage(repoRoot: packageRoot)
+        return detect(ignoringWorkspaceSignals: isToolClone) { path in
             let url = path.hasPrefix("~/")
                 ? home.appendingPathComponent(String(path.dropFirst(2)))
                 : packageRoot.appendingPathComponent(path)

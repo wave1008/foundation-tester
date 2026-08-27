@@ -80,7 +80,7 @@ If you want to go through the steps manually one at a time, see `.claude/skills/
 
 **Using Codex?** The same runbooks apply. Install the skills with
 `curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install-skill.sh | sh -s -- --agent codex`
-and invoke them as `$fleetest-setup`. **The default sandbox cannot drive devices**, so read the
+and invoke them as `$fleetest-setup`. **The default sandbox blocks install and update** (`ft_*` is unaffected), so read the
 sandbox settings in [Codex](tools/codex_skills.md) first.
 
 

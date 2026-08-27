@@ -51,38 +51,45 @@ FT_TOOL_ROOT = "<ABS_TOOL_ROOT>"
 プロジェクトスコープの `.codex/config.toml` には**書かないでください**。あの層は trusted に
 した プロジェクトでしか読まれないため、登録が**黙って効かない**状態になり得ます。
 
-## サンドボックスの設定(必須)
+## サンドボックスが止めるもの・止めないもの
 
-Codex の既定は `sandbox_mode = "workspace-write"` で、**loopback を含む outbound 通信**と
-**ワークスペース外への書き込み**を遮断します。fleetest はどちらも使うので、既定のままでは
-**デバイスを1台も駆動できません** — in-app ブリッジは loopback 上の HTTP、adb は TCP 5037、
-エミュレータは gRPC を使います。外部パッケージ構成ではクローンがワークスペースの**兄弟**に
-あるため、`swift build` の書き込み先も外側です。
+Codex はシェルコマンドをサンドボックスの中で実行します。**MCP サーバはその外で動く**ので、
+影響はきれいに2つに分かれます。分かれ方は直感と逆かもしれません。
 
-`Scripts/install.sh` のステップ7.7 と `Scripts/preflight.sh` の `codex_sandbox=` 行が、現在の設定で
-足りるかを判定します。**どちらも設定を書きません** — サンドボックスは利用者のセキュリティ境界
-であり、緩める判断はツールではなく利用者のものだからです。判定が「不足」と出たら、次の状態に
-なるよう自分で編集してください。**そのまま追記しないこと**: TOML は同じキー・同じテーブルの
-重複を許さないので、`sandbox_mode` や `[sandbox_workspace_write]` が2つになると
-**config.toml 全体が無効**になります。`sandbox_mode` は最初の `[table]` より前に置き、
-`[sandbox_workspace_write]` が既にあるならその中の値を編集します:
+**影響なし(設定不要)** — `ft_*` ツール経由の作業すべて。画面の探索・シナリオ作成・実行・
+シミュレータや実機の駆動。MCP サーバは Codex が普通の子プロセスとして起動するため、
+`--sandbox read-only` を指定した場合でもファイルシステムと loopback に完全にアクセスできることを
+実測で確認しています。
 
-```toml
-sandbox_mode = "workspace-write"
+**`danger-full-access` 以外では通らない** — 導入・更新の runbook。シェル経由で走るためです:
 
-[sandbox_workspace_write]
-network_access = true
-writable_roots = [
-  "<ABS_TOOL_ROOT>",
-  "~/.config/fleetest",
-  "~/Library/Developer/CoreSimulator",
-  "~/.android",
-]
+| コマンド | 何が起きるか | 理由 |
+|---|---|---|
+| `swift build` / `swift package` | `sandbox-exec: sandbox_apply: Operation not permitted` | SwiftPM が自前の `sandbox-exec` を入れ子で使い、外側のサンドボックスがそれを拒む |
+| `xcrun simctl` | `CoreSimulatorService connection became invalid` | CoreSimulatorService への mach 接続が塞がれる |
+| `adb` | 通る | TCP 5037 を使うので `network_access = true` で足りる |
+
+**上の2つは `network_access` や `writable_roots` では直りません。** 権限の問題ではないからです
+(片方は入れ子のサンドボックス、もう片方は mach サービス)。
+`~/Library/Developer/CoreSimulator` を writable_roots に足しても何も変わりません。
+
+### どうするか
+
+`Scripts/install.sh` のステップ7.7 と `Scripts/preflight.sh` の `codex_sandbox=` 行が、
+今どちら側にいるかを報告します。**どちらも設定を書きません** — サンドボックスは利用者の
+セキュリティ境界であり、緩める判断はツールではなく利用者のものだからです。次のどちらかを選びます。
+
+**(a) 導入・更新のセッションだけ緩める** — 推奨。影響範囲が狭くて済みます:
+
+```bash
+codex --sandbox danger-full-access     # このセッションで /fleetest-setup や /fleetest-update を実行
 ```
 
-outbound を常時開けたくない場合は、fleetest を使うセッションだけ
-`codex --sandbox danger-full-access` で起動する方法もあります(常設の緩和より時間的に狭い代わりに、
-その間は広くなります)。
+`ft_*` は影響を受けないので、日常の作業は既定のままで構いません。
+
+**(b) 恒久的に緩める** — `~/.codex/config.toml` に `sandbox_mode = "danger-full-access"` を設定します。
+**そのまま追記しないこと**: TOML は同じキーの重複を許さないので、`sandbox_mode` が2つになると
+**config.toml 全体が無効**になります。最初の `[table]` より前に置き、既にあるならその値を編集します。
 
 ## スキル一覧
 

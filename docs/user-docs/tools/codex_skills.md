@@ -51,38 +51,47 @@ for you to paste — it never rewrites a config it did not write.
 Do not put this in a project-scoped `.codex/config.toml`: those layers are only read for projects
 you have marked trusted, so the registration can silently do nothing.
 
-## Sandbox settings (required)
+## The sandbox: what it does and does not stop
 
-Codex defaults to `sandbox_mode = "workspace-write"`, which blocks **all outbound network access
-including loopback** and **writes outside the workspace**. fleetest needs both, so with the
-default settings it cannot drive a single device: the in-app bridge speaks HTTP over loopback,
-adb uses TCP 5037, and the emulator uses gRPC. In the external-package layout the clone is a
-*sibling* of your workspace, so even `swift build` writes outside it.
+Codex runs shell commands inside a sandbox. **The MCP server runs outside it**, so this splits
+cleanly in two — and the split is the opposite of what you might expect.
 
-`Scripts/install.sh` (step 7.7) and `Scripts/preflight.sh` (the `codex_sandbox=` line) report
-whether the current settings suffice. **Neither writes the settings** — a sandbox is your security
-boundary, so widening it is your decision, not the installer's. When the verdict says the settings
-are insufficient, edit the file to end up with the following. **Do not append it blindly**: TOML
-rejects a duplicated key or table, so a second `sandbox_mode` or `[sandbox_workspace_write]` makes
-the whole config invalid. `sandbox_mode` belongs above the first `[table]`, and if
-`[sandbox_workspace_write]` already exists, edit the values inside it:
+**Unaffected — no configuration needed.** Everything through the `ft_*` tools: exploring screens,
+authoring scenarios, running them, driving simulators and physical devices. The MCP server is
+spawned by Codex as an ordinary child process, verified to keep full filesystem and loopback
+access even under `--sandbox read-only`.
 
-```toml
-sandbox_mode = "workspace-write"
+**Blocked under any sandbox mode except `danger-full-access`** — the install and update runbooks,
+because they run through the shell:
 
-[sandbox_workspace_write]
-network_access = true
-writable_roots = [
-  "<ABS_TOOL_ROOT>",
-  "~/.config/fleetest",
-  "~/Library/Developer/CoreSimulator",
-  "~/.android",
-]
+| Command | What happens | Why |
+|---|---|---|
+| `swift build`, `swift package` | `sandbox-exec: sandbox_apply: Operation not permitted` | SwiftPM nests its own `sandbox-exec`, which the outer sandbox refuses |
+| `xcrun simctl` | `CoreSimulatorService connection became invalid` | the mach connection to CoreSimulatorService is blocked |
+| `adb` | works | it speaks TCP 5037, which `network_access = true` allows |
+
+**`network_access` and `writable_roots` do not fix the first two.** They are not permission
+problems: one is a nested sandbox, the other a mach service. Adding writable roots for
+`~/Library/Developer/CoreSimulator` changes nothing.
+
+### What to do
+
+`Scripts/install.sh` (step 7.7) and `Scripts/preflight.sh` (the `codex_sandbox=` line) report which
+side of this line you are on. **Neither writes the setting** — a sandbox is your security boundary,
+so widening it is your decision, not the installer's. Pick one:
+
+**(a) Elevate only the install and update sessions** — recommended, and narrower:
+
+```bash
+codex --sandbox danger-full-access     # run /fleetest-setup or /fleetest-update in this session
 ```
 
-If you would rather not leave outbound access open, start Codex with
-`codex --sandbox danger-full-access` for the sessions where you use fleetest instead. That is
-narrower in time than a permanent change, though wider while it lasts.
+Everyday work needs no change, because `ft_*` is unaffected.
+
+**(b) Relax it permanently** by setting `sandbox_mode = "danger-full-access"` in
+`~/.codex/config.toml`. **Do not append it blindly**: TOML rejects a duplicated key, so a second
+`sandbox_mode` makes the whole config invalid. It belongs above the first `[table]`; if the key
+already exists, edit it in place.
 
 ## Skills
 

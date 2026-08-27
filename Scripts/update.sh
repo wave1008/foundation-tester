@@ -207,10 +207,18 @@ refresh_copied_skills() {
     dest="$skills_dir/$name/SKILL.md"
     src="$TOOL_ROOT/.claude/skills/$name/SKILL.md"
     [ -f "$src" ] || continue
-    [ -f "$dest" ] || continue
     # `A && continue` を素の文として置くと、A が偽のとき**関数の戻り値が 1 になり**、
     # set -e の呼び出し元で更新全体が止まる。if で書く
     if [ -L "$skills_dir/$name" ] || [ -L "$dest" ]; then continue; fi
+    # **既にある物を写すだけでなく、増えた物も置く**。`[ -f "$dest" ] || continue` だけだと
+    # 新しいスキルがコピー配置の受け手へ永久に届かない(プラグイン経由なら自動で増えるのに、
+    # コピーの受け手だけ取り残される)
+    if [ ! -f "$dest" ]; then
+      mkdir -p "$skills_dir/$name"
+      cp "$src" "$dest"
+      SKILLS_REFRESHED=$((SKILLS_REFRESHED + 1))
+      continue
+    fi
     if ! cmp -s "$src" "$dest"; then
       cp "$src" "$dest"
       SKILLS_REFRESHED=$((SKILLS_REFRESHED + 1))

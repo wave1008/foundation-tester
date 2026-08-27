@@ -77,7 +77,7 @@ clone、ビルド、プロジェクト作成、プロファイル設定が実行
 
 **Codex を使う場合**: 同じ runbook がそのまま動きます。スキルの導入は
 `curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install-skill.sh | sh -s -- --agent codex`
-で、呼び出しは `$fleetest-setup` です。**既定のサンドボックスのままではデバイスを駆動できない**ので、
+で、呼び出しは `$fleetest-setup` です。**既定のサンドボックスのままでは導入・更新が通らない**(`ft_*` は影響なし)ので、
 [Codex](tools/codex_skills_ja.md) のサンドボックス設定を先に読んでください。
 
 
