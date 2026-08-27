@@ -27,6 +27,12 @@ set -euo pipefail
 
 # FLEETEST_REPO_URL はフォーク・ローカル検証用の差し替え口(既定は本家)
 REPO_URL="${FLEETEST_REPO_URL:-https://github.com/wave1008/foundation-tester.git}"
+# FLEETEST_REF はツールの版の固定口(タグ・ブランチ・SHA。既定 = 既定ブランチ)。
+# **スクリプトの取得元とクローンの ref を必ず揃える**ためにある —— スキルは
+# `.../${FLEETEST_REF:-main}/Scripts/install.sh` を取りに行くので、ここで見ないと
+# 「ブランチのスクリプトが main を clone して main のバイナリに新しい引数を渡す」
+# という組み合わせが生まれ、`Unknown option` で落ちる(未マージのブランチ検証で実際に踏んだ)
+REF="${FLEETEST_REF:-}"
 WORK_DIR="$PWD"
 TOOL_ROOT_ARG=""
 PROJECT_NAME=""
@@ -338,23 +344,38 @@ if [ -d "$TOOL_ROOT_RAW/.git" ] || [ -f "$TOOL_ROOT_RAW/Package.swift" ]; then
           ;;
       esac
     fi
-    echo "==> git pull (updating the existing clone $TOOL_ROOT)"
-    step_started=$SECONDS
-    HEAD_BEFORE_PULL="$(git -C "$TOOL_ROOT" rev-parse HEAD 2>/dev/null || echo none)"
-    if git -C "$TOOL_ROOT" pull --ff-only >>"$RAW_SINK" 2>&1; then
-      record "clone" ok "updated the existing clone: $TOOL_ROOT ($branch $(git -C "$TOOL_ROOT" rev-parse --short HEAD), $(elapsed_since $step_started))"
+    # **FLEETEST_REF を明示したら、既存クローンもその ref へ揃える**。揃えないと
+    # 「新しいスクリプト + 別の ref のバイナリ」で走り、直したはずの挙動を確認できない。
+    # ローカル変更は上で始末済みなので、ここでは位置合わせだけ行う
+    if [ -n "$REF" ]; then
+      echo "==> git fetch + checkout $REF (aligning the existing clone)"
+      step_started=$SECONDS
+      if git -C "$TOOL_ROOT" fetch --tags origin "$REF" >>"$RAW_SINK" 2>&1 \
+         && git -C "$TOOL_ROOT" checkout -q -B "$REF" FETCH_HEAD >>"$RAW_SINK" 2>&1; then
+        record "clone" ok "aligned the existing clone to $REF ($(git -C "$TOOL_ROOT" rev-parse --short HEAD), $(elapsed_since $step_started))"
+      else
+        show_log_tail
+        die "clone" "failed to align $TOOL_ROOT to $REF" 0.5
+      fi
     else
-      soft_fail "clone" "git pull failed (continuing with the existing clone; check the network or a diverged history)" 0.5
+      echo "==> git pull (updating the existing clone $TOOL_ROOT)"
+      step_started=$SECONDS
+      HEAD_BEFORE_PULL="$(git -C "$TOOL_ROOT" rev-parse HEAD 2>/dev/null || echo none)"
+      if git -C "$TOOL_ROOT" pull --ff-only >>"$RAW_SINK" 2>&1; then
+        record "clone" ok "updated the existing clone: $TOOL_ROOT ($branch $(git -C "$TOOL_ROOT" rev-parse --short HEAD), $(elapsed_since $step_started))"
+      else
+        soft_fail "clone" "git pull failed (continuing with the existing clone; check the network or a diverged history)" 0.5
+      fi
     fi
   fi
 else
   [ "$ALLOW_CLONE" = "1" ] || die "clone" "no clone at: $TOOL_ROOT_RAW (--no-clone was given)" 0.5
   echo "==> clone: $REPO_URL → $TOOL_ROOT_RAW"
   step_started=$SECONDS
-  git clone "$REPO_URL" "$TOOL_ROOT_RAW" >>"$RAW_SINK" 2>&1 \
-    || { show_log_tail; die "clone" "git clone failed" 0.5; }
+  git clone ${REF:+--branch "$REF"} "$REPO_URL" "$TOOL_ROOT_RAW" >>"$RAW_SINK" 2>&1 \
+    || { show_log_tail; die "clone" "git clone failed${REF:+ (ref: $REF)}" 0.5; }
   TOOL_ROOT="$(abspath "$TOOL_ROOT_RAW")"
-  record "clone" ok "$TOOL_ROOT ($(elapsed_since $step_started))"
+  record "clone" ok "$TOOL_ROOT${REF:+ @ $REF} ($(elapsed_since $step_started))"
 fi
 
 [ -f "$TOOL_ROOT/Package.swift" ] && [ -d "$TOOL_ROOT/Sources/FTScenarioRunner" ] \

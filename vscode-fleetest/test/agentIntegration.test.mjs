@@ -354,3 +354,19 @@ test("update.sh のコピー対象が install-skill.sh の一覧と揃ってい�
   assert.deepEqual(copied, declared.filter((n) => n !== "fleetest-setup"),
     "COPIED_SKILLS が SKILLS から fleetest-setup を除いたものになっていません");
 });
+
+test("FLEETEST_REF がスクリプトの取得元とクローンの ref を揃える", () => {
+  // 揃えないと「ブランチのスクリプトが main を clone し、main のバイナリに新しい引数を渡す」
+  // 組み合わせが生まれ、Unknown option で落ちる(未マージのブランチ検証で実際に踏んだ)。
+  // 受け手には影響しない(タグは main の祖先なので install.sh@main は常に新しい)が、
+  // **直したはずの挙動を確認できない**という一番たちの悪い壊れ方をする
+  assert.match(INSTALL_SH, /REF="\$\{FLEETEST_REF:-\}"/, "install.sh が FLEETEST_REF を読んでいません");
+  assert.match(INSTALL_SH, /git clone \$\{REF:\+--branch "\$REF"\}/,
+    "新規 clone が REF を指定していません");
+  assert.match(INSTALL_SH, /fetch --tags origin "\$REF"/,
+    "既存クローンを REF へ揃えていません");
+  // スキル側の取得元も同じ口を使う(片方だけだと同じズレが残る)
+  const setup = readFileSync(path.join(ROOT, ".claude/skills/fleetest-setup/SKILL.md"), "utf8");
+  assert.match(setup, /\$\{FLEETEST_REF:-main\}\/Scripts\/install\.sh/,
+    "setup スキルの install.sh 取得元が ref を通していません");
+});
