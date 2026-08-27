@@ -1,6 +1,7 @@
 # About Fleetest
 
-Fleetest is a macOS-only E2E testing tool for iOS / Android apps, built around Claude Code.
+Fleetest is a macOS-only E2E testing tool for iOS / Android apps, built around coding agents
+(Claude Code and Codex).
 
 ## Where the name comes from
 
@@ -17,7 +18,7 @@ three things packed into the name are the three things the tool is built for.
 
 - **Generation**: recording your operations in the VSCode extension's live-control panel
   generates a **Swift test scenario (a Shirates-style DSL)**. More complex scenarios can be
-  written by Claude Code (via MCP) or by hand. Irregular handling and test data setup can be
+  written by an agent (via MCP) or by hand. Irregular handling and test data setup can be
   written directly in Swift.
 - **Execution**: scenarios run deterministically, without an LLM in the loop — fast, stable, and
   CI-friendly.
@@ -35,14 +36,14 @@ extension.
 |---|---|---|
 | **CLI** `fleetest` | `swift run fleetest ...` (clone), or the built `.build/debug/fleetest` | scheduled CI / regression runs (deterministic, free, exit code) |
 | **VSCode extension** | the VSCode extension (device monitor, live control, dashboard) | interactive use: running/debugging scenarios, live control (record → generate), device monitor, results dashboard |
-| **MCP server** | started automatically by Claude Code | agent-driven work: AI-authored tests, debugging, exploratory testing |
+| **MCP server** | started automatically by the agent (Claude Code registers it from `.mcp.json`; Codex from `~/.codex/config.toml`) | agent-driven work: AI-authored tests, debugging, exploratory testing |
 | **Swift DSL** | `TestProjects/<name>/scenarios/*.swift` | the test asset itself — saved and run the same way no matter which entry point created it |
 
 ## Role division
 
 **Exploration and judgment (intelligence) belong to the agent; operating, executing, and
 verifying (determinism) belong to fleetest.** Tests are authored either by recording live control
-in the VSCode extension (which converts operations into a Swift scenario) or by Claude Code
+in the VSCode extension (which converts operations into a Swift scenario) or by an agent
 (via MCP) for more complex cases. Once the Swift scenario exists, it is replayed deterministically
 by the CLI or CI.
 

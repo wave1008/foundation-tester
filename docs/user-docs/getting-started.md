@@ -68,7 +68,7 @@ claude plugin uninstall ftester@foundation-tester
 
 3. Open a **new, test-only folder** in VSCode
 
-4. Run `/fleetest:fleetest-setup` in the Claude Code panel.
+4. Run `/fleetest:fleetest-setup` in your agent's panel (`$fleetest-setup` in Codex).
 This performs the clone, build, project creation, and profile setup.
 
 5. Run `Developer: Reload Window` in VSCode
@@ -112,7 +112,7 @@ claude plugin marketplace update foundation-tester
 claude plugin update fleetest@foundation-tester
 ```
 
-2. Start a new Claude Code session and run `/fleetest:fleetest-update`
+2. Start a new agent session and run `/fleetest:fleetest-update` (`$fleetest-update` in Codex)
 
 If you're not using Claude Code, run `bash <TOOL_ROOT>/Scripts/update.sh` (this does the pull,
 build, extension, and plugin update in a single command). If there's nothing to update, it does

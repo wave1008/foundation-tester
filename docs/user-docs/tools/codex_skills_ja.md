@@ -9,7 +9,7 @@ CLI・MCP サーバ・VS Code 拡張は何も変わりません。
 | | Claude Code | Codex |
 |---|---|---|
 | スキルの置き場所 | `.claude/skills/` | `.agents/skills/` |
-| スキルの呼び出し | `/fleetest-setup` | `$fleetest-setup`(または `/skills` セレクタ) |
+| スキルの呼び出し | `/fleetest-setup`、プラグイン経由なら `/fleetest:fleetest-setup` | `$fleetest-setup`(または `/skills` セレクタ) |
 | 指示ファイル | `CLAUDE.md` | `AGENTS.md` |
 | MCP の登録先 | `.mcp.json`(プロジェクトスコープ) | `~/.codex/config.toml`(ユーザースコープ) |
 | コマンド単位の承認許可リスト | `.claude/settings.json` | 無し — 承認は `approval_policy` と `sandbox_mode` で決まる |

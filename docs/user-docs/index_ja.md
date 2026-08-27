@@ -9,7 +9,7 @@
 
 fleetest は macOS 上で動く iOS / Android アプリの E2E テストツールです。シナリオは Shirates 風の
 Swift DSL で書き、LLM なしで決定的に再生します。Foundation Models(オンデバイス)が介入するのは
-ステップが失敗したときだけです。テストは Claude Code(MCP)に作らせる・VSCode 拡張で録画する・
+ステップが失敗したときだけです。テストはエージェント(MCP)に作らせる・VSCode 拡張で録画する・
 手書きする、の3通りで作れ、どれも同じ `.swift` シナリオになります。
 
 ## リポジトリ
@@ -109,7 +109,7 @@ Swift DSL で書き、LLM なしで決定的に再生します。Foundation Mode
 ### ツール
 
 - [VSCode 拡張](tools/vscode_extension_ja.md)
-- [MCP サーバ(Claude Code)](tools/mcp_server_ja.md)
+- [MCP サーバ](tools/mcp_server_ja.md)
 - [Claude Code のスキル](tools/claude_code_skills_ja.md)
 - [Codex](tools/codex_skills_ja.md)
 

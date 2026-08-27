@@ -65,7 +65,7 @@ claude plugin uninstall ftester@foundation-tester
 
 3. **テスト専用の新規フォルダ**を VSCode で開きます
 
-4. Claude Code パネルで `/fleetest:fleetest-setup`を実行します
+4. エージェントのパネルで `/fleetest:fleetest-setup` を実行します(Codex は `$fleetest-setup`)
 clone、ビルド、プロジェクト作成、プロファイル設定が実行されます
 
 5. VSCode で `Developer: Reload Window` を実行します
@@ -106,7 +106,7 @@ claude plugin marketplace update foundation-tester
 claude plugin update fleetest@foundation-tester
 ```
 
-2. Claude Codeの新しいセッションを開始し、 `/fleetest:fleetest-update` を実行します
+2. エージェントの新しいセッションを開始し、 `/fleetest:fleetest-update` を実行します(Codex は `$fleetest-update`)
 
 Claude Code を使わない場合は `bash <TOOL_ROOT>/Scripts/update.sh`(pull・ビルド・拡張・
 プラグイン更新までを1コマンドで行います)。更新が無ければ何もせず終わります（前回が途中で

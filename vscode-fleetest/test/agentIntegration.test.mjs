@@ -165,3 +165,36 @@ test("CLI 側は --agent を受け取る口を持つ", () => {
     );
   }
 });
+
+// --- ランナー機には入口ファイルを置かない -------------------------------------
+// 入口(CLAUDE.md / AGENTS.md)は**人が開く機械**のためのもので、ランナー機には要らない。
+// エージェントの規約位置が増えたら抑止フラグも増えるので、Swift の実引数と docs の記載が
+// ドリフトする(実際に `--skip-agents-md` を足したとき docs 側が2箇所とも古いまま残った)。
+
+test("RemoteSetup.installArgs が全エージェントの入口を抑止する", () => {
+  const swift = readFileSync(path.join(ROOT, "Sources/FTCore/RemoteSetup.swift"), "utf8");
+  for (const { agent, flag } of [
+    { agent: "claude", flag: "--skip-claude-md" },
+    { agent: "codex", flag: "--skip-agents-md" },
+  ]) {
+    assert.ok(swift.includes(`"${flag}"`),
+      `RemoteSetup.installArgs に ${agent} の入口抑止 ${flag} がありません`);
+  }
+});
+
+test("ランナーの install 引数が docs と一致する(片方だけ変えない)", () => {
+  const swift = readFileSync(path.join(ROOT, "Sources/FTCore/RemoteSetup.swift"), "utf8");
+  const body = swift.slice(swift.indexOf("func installArgs"));
+  const flags = [...body.slice(0, body.indexOf("\n    }")).matchAll(/"(--[a-z-]+)"/g)]
+    .map((m) => m[1])
+    .filter((f) => f.startsWith("--skip") || f === "--no-next-steps");
+  assert.ok(flags.length >= 4, `installArgs から抑止フラグを抽出できません: ${flags}`);
+  for (const doc of ["docs/remote-runner.md", "docs/remote-runner-setup.md"]) {
+    const source = readFileSync(path.join(ROOT, doc), "utf8");
+    const missing = flags.filter((f) => !source.includes(f));
+    // --no-next-steps は setup 手順書には出ないので、そちらだけ緩める
+    const required = doc.endsWith("remote-runner.md") ? missing : missing.filter((f) => f !== "--no-next-steps");
+    assert.deepEqual(required, [],
+      `${doc} が installArgs の抑止フラグを載せていません: ${required.join(", ")}`);
+  }
+});

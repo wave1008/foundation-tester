@@ -223,7 +223,7 @@ code --install-extension vscode-fleetest-<version>.vsix
   あとで Developer: Reload Window でも反映できます)。失敗時はエラー通知で OUTPUT を案内します。
 
 判定も取り込みもスクリプトに委譲しており、拡張側は実行して結果を表示するだけです
-(CLI・Claude Code のスキル・拡張で同じ1実装を使う)。
+(CLI・エージェントのスキル・拡張で同じ1実装を使う)。
 
 `auto` の間は起動時(1日1回まで)にも確認し、更新があれば通知を出します(`src/updateCheck.ts`)。
 判定は `git ls-remote` だけで行い、**`git fetch` も `git pull` もしません**(ローカルのリポジトリを

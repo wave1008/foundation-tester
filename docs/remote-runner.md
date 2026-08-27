@@ -955,7 +955,8 @@ Scripts/preflight.sh --runner  既存に判定モードを追加(--base <dir>。
                                ログイン・base 配下の導入状況。ready=0 / needs-manual=2 / blocked=1
 Scripts/install.sh             **そのまま流用**(外部構成で呼ぶ):
                                `--work-dir <base>/work --name <project>`
-                               `--skip-extension --skip-mcp --skip-claude-md --no-next-steps`
+                               `--skip-extension --skip-mcp --skip-claude-md --skip-agents-md`
+                               `--no-next-steps`(入口ファイルは人が開く機械にだけ要る)
                                **--skip-project は使えない**(WORK_DIR に Package.swift が要る。§12)。
                                --tool-root も渡さない(既定の <work-dir>/../foundation-tester が
                                RemoteLayout.toolRoot とちょうど一致する)

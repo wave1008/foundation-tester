@@ -2,6 +2,9 @@
 
 git タグ(semver)は**版ピン用**に使う(clone 時の `git checkout <tag>`、`fleetest init --fleetest-version`、
 Claude Code プラグイン導入の `claude plugin marketplace add <repo URL>#<tag>`)。
+**Codex にはマーケットプレイスへタグを渡す形が無い**ので、版を固定する受け手には
+`FLEETEST_REF=<tag> ... install-skill.sh | sh -s -- --agent codex` を案内する
+(スキルはコピーなので、その時点の版で固定される)。
 配布そのものは git clone + `swift build` / `npm run install-local`(docs/user-docs/getting-started_ja.md)であり、
 タグは必須ではないが、特定版に固定したい受け手のために発行する。
 

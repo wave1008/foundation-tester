@@ -9,7 +9,7 @@ adapters differ. Nothing about the CLI, the MCP server or the VS Code extension 
 | | Claude Code | Codex |
 |---|---|---|
 | Skills directory | `.claude/skills/` | `.agents/skills/` |
-| Skill invocation | `/fleetest-setup` | `$fleetest-setup` (or the `/skills` picker) |
+| Skill invocation | `/fleetest-setup`, or `/fleetest:fleetest-setup` via the plugin | `$fleetest-setup` (or the `/skills` picker) |
 | Instruction file | `CLAUDE.md` | `AGENTS.md` |
 | MCP registration | `.mcp.json` (project scope) | `~/.codex/config.toml` (user scope) |
 | Per-command approval allowlist | `.claude/settings.json` | none — approvals are governed by `approval_policy` and `sandbox_mode` |
