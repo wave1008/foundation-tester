@@ -63,11 +63,20 @@ test("codex-plugin/plugin.json が有効な JSON で正典 .claude/skills/ を�
   assert.equal(typeof plugin.interface?.displayName, "string");
   assert.ok(Array.isArray(plugin.interface?.capabilities));
   assert.ok(plugin.interface?.defaultPrompt);
-  // Codex の同梱プラグインは skills をプラグイン root の内側(`./skills/`)に置く。
-  // repo ルートの `skills` は正典への**1本のリンク**(複製でも入れ子でもない)
-  assert.equal(plugin.skills, "./skills/", "Codex の規約位置から正典を参照する");
-  assert.equal(realpathSync(path.join(ROOT, "skills")), realpathSync(path.join(ROOT, ".claude", "skills")));
-  assert.ok(lstatSync(path.join(ROOT, "skills")).isSymbolicLink(), "repo ルートの skills は実体でなくリンク");
+  // Codex の規約位置(`.agents/skills/`)を指す。中身は正典への symlink 6本(下のテスト)。
+  assert.equal(plugin.skills, "./.agents/skills/", "Codex の規約位置から正典を参照する");
+});
+
+// **repo ルートに `skills` を置いてはいけない**(2026-08-27 に実測して撤去)。
+// プラグイン root = repo ルートのとき、Claude Code は `.claude-plugin/plugin.json` の明示パス
+// `./.claude/skills/` と**既定の `skills/`** の両方を読む(置換ではなく加算)。ルートに
+// `skills → .claude/skills` のリンクを置いていた間は **6本が12本として登録**され、
+// 常時コストが倍(~1,270 → ~2,537 tok)になっていた。`claude plugin details` で確認できる。
+test("repo ルートに skills を置かない(Claude 側で二重登録になる)", () => {
+  assert.ok(
+    !existsSync(path.join(ROOT, "skills")),
+    "repo ルートの skills は Claude Code の既定スキャンに拾われ、スキルが二重登録される",
+  );
 });
 
 test("Codex の marketplace.json が .agents/plugins/ にあり plugin と対応する", () => {

@@ -16,7 +16,7 @@
     "android",
     "testing"
   ],
-  "skills": "./skills/",
+  "skills": "./.agents/skills/",
   "interface": {
     "displayName": "fleetest mobile",
     "shortDescription": "AI と実機・仮想機を使ってモバイル E2E テストを作成・実行します。",

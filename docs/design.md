@@ -3974,6 +3974,15 @@ clone がどのみち必須で、CLI だけ mint 経由にすると二重取得�
 **repo ローカルのスキル発見の実体は `.agents/skills/<name>` のシンボリックリンク**で、
 `.codex-plugin/plugin.json` は**プラグインとして導入したときだけ**効く(実測: リンクを外すと
 Codex はスキルを1本も見つけない)。両方要るのはそのため —— どちらかだけでは片方の経路が死ぬ。
+`.codex-plugin/plugin.json` の `skills` もこの `.agents/skills/` を指す。
+
+**repo ルートに `skills` を置いてはいけない**(2026-08-27 実測で撤去)。プラグイン root =
+repo ルートのとき、**Claude Code は `.claude-plugin/plugin.json` の明示パスと既定の `skills/` の
+両方を読む**(置換ではなく加算。以前は「source が `./` なら明示パスが既定を置換する」という
+前提で書いていたが誤り)。Codex 用に `skills → .claude/skills` を置いていた間、
+**6本のスキルが12本として登録され常時コストが倍**になっていた(~1,270 → ~2,537 tok)。
+数え方は `claude plugin details fleetest@foundation-tester` の Component inventory。
+`agentAdapters.test.mjs` がルートの `skills` の不在を固定する。
 
 規約位置の唯一の定義元は `Sources/FTCore/AgentIntegration.swift`。**シェル(install.sh /
 install-skill.sh)は clone 前・ビルド前に走るので Swift を呼べず、同じ規則を手で持つ** ——
