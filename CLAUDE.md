@@ -271,22 +271,6 @@
 「Application is not running」全滅時の切り分け・`Scripts/e2e.sh` の各オプション)は docs/verification.md**。
 以下は毎回効く最重要ゲートだけ。
 
-### push 前のゲート(保守者の作業クローンだけ)
-
-`Scripts/install-git-hooks.sh` を1回叩くと `core.hooksPath` が張られ、`Scripts/git-hooks/pre-push`
-が push のたびに **`npm test`(約6秒)+ `swift test --parallel`(約2分)** を回す。
-
-- **止める位置が push なのは、受け手が main を直接 clone するから** —— main に着いた時点で
-  配布済みで、そこから戻す手段が無い
-- **`swift test` を省くのは docs/ と最上位 `*.md` だけの push のとき**。判断に迷う形は
-  走らせる側に倒す
-- **デバイス実行中(`Scripts/e2e.sh` / `fleetest run` / `api run`)は Swift ゲートを撃たずに
-  push を止める** —— 撃つと実行中の run を SIGKILL で殺すため。**「走らせなかった」を
-  「通った」と報告しない**(false green を作らない)。判断は人へ返す
-- 迂回は `git push --no-verify` / `FT_SKIP_PREPUSH=1 git push`。全出力は `.fleetest/pre-push-<日時>.log`
-- **受け手のフロー(install.sh / update.sh)からは呼ばない** —— 受け手は push しないので
-  払う理由が無い
-
 ### 拡張(vscode-fleetest)
 
 - `cd vscode-fleetest && npm run compile`(esbuild+tsc)/ `npm test`。挙動を変えたら
