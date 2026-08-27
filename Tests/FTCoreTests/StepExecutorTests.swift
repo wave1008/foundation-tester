@@ -1236,6 +1236,48 @@ final class StepExecutorTests: XCTestCase {
                       + " \(outcome.driverFallback ?? "nil")")
     }
 
+    /// **木に出ないオーバーレイ・ウィンドウ**の下を撃つときは注記に出す。MCP 側
+    /// (MCPRefGuardTests.testTapWarnsWhenTheCentreIsUnderAnOverlayWindow)と同じ witness を
+    /// DSL 側でも固定する —— 実機 Pixel 4a の Chrome で、テキスト選択のフローティング
+    /// ツールバーの下にある段落へのタップが「Select all」に当たっていた
+    func testTapNotesAnOverlayWindowCoveringTheCentre() async throws {
+        let log = CallLog()
+        let para = ElementInfo(ref: 1, type: "staticText", identifier: "content", label: "本文",
+                               value: nil, placeholder: nil, enabled: true,
+                               frame: FTRect(x: 22, y: 1062, width: 1036, height: 267), depth: 1)
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[para]])
+        // 実機の申告(x 88..1036 / y 1172..1304)。段落の中心 (540,1195) を含む
+        primary.overlayWindowFrames = [FTRect(x: 88, y: 1172, width: 948, height: 132)]
+        let executor = StepExecutor(driver: primary)
+
+        let outcome = await executor.execute(FlowStep(action: "tap",
+                                                      locator: FlowLocator(id: "content")))
+
+        guard case .passed = outcome.status else {
+            XCTFail("tap 自体は passed のはず(警告であって拒否ではない): \(outcome.status)"); return
+        }
+        XCTAssertTrue(outcome.driverFallback?.contains("overlay window") == true,
+                      "申告された覆いを注記に出すこと: \(outcome.driverFallback ?? "nil")")
+    }
+
+    /// **中心が申告の外なら黙る**(部分的に重なっているだけの形。実機では段落の上端だけが
+    /// ツールバーに掛かる形が普通に出るので、ここで喋ると毎ステップ注記が付く)
+    func testTapStaysQuietWhenTheOverlayWindowMissesTheCentre() async throws {
+        let log = CallLog()
+        let para = ElementInfo(ref: 1, type: "staticText", identifier: "content", label: "本文",
+                               value: nil, placeholder: nil, enabled: true,
+                               frame: FTRect(x: 22, y: 732, width: 1036, height: 333), depth: 1)
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[para]])
+        primary.overlayWindowFrames = [FTRect(x: 88, y: 710, width: 948, height: 131)]
+        let executor = StepExecutor(driver: primary)
+
+        let outcome = await executor.execute(FlowStep(action: "tap",
+                                                      locator: FlowLocator(id: "content")))
+
+        XCTAssertFalse(outcome.driverFallback?.contains("overlay window") == true,
+                       "中心が外なら黙ること: \(outcome.driverFallback ?? "nil")")
+    }
+
     /// **chrome 自身の部品を撃つときはキーボード警告を出さない**。地球儀キーは
     /// 実効矩形の中に中心があるが chrome(`#inputView`)の子孫なので、覆っている側であって
     /// 覆われている側ではない。片方だけ生の keyboardFrame へ戻す変異(RefGuard 側は直ったが

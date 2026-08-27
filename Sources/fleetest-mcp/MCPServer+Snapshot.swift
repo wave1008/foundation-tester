@@ -750,6 +750,9 @@ extension MCPServer {
         // MCP と DSL が同じ画面で違う判断をする
         let keyboardOcclusion = KeyboardOcclusion.resolve(
             reported: fresh.keyboardFrame, in: fresh.elements)
+        // **木に出ないオーバーレイ・ウィンドウ**(Android のポップアップ)。keyboardFrame と
+        // 同じく申告からしか言えない —— 覆っている実体が fresh.elements に1要素も載らない
+        let overlayWindows = OverlayWindowOcclusion.resolve(reported: fresh.overlayWindowFrames)
         switch RefGuard.relocate(target, in: fresh.elements, screen: fresh.screen) {
         case .gone:
             throw MCPError(RefGuard.goneMessage(ref: ref, target: target,
@@ -759,7 +762,8 @@ extension MCPServer {
             // **キーボード被覆は先に言う**(木の遮蔽判定では原理的に拾えない事実なので、
             // 座標由来の他の警告より確度が高い)
             return (found.ref, originNote
-                + RefGuard.preTapWarnings(found, keyboardOcclusion: keyboardOcclusion)
+                + RefGuard.preTapWarnings(found, keyboardOcclusion: keyboardOcclusion,
+                                        overlayWindows: overlayWindows)
                 + RefGuard.ghostWarning(found: found, in: fresh.elements, screen: fresh.screen))
         case .found(let found, let moved):
             // **ラベルが変わっていないかも見る**。moved の大小とは無関係に出す ——
@@ -768,7 +772,8 @@ extension MCPServer {
             // **ghost でなくても別の物に当たり得る**2形(上に描かれた overlay / 同一矩形への
             // 積み重なり)。どちらも容器の内側なので RefGuard.relocate では .found になる
             let overlap = originNote
-                + RefGuard.preTapWarnings(found, keyboardOcclusion: keyboardOcclusion)
+                + RefGuard.preTapWarnings(found, keyboardOcclusion: keyboardOcclusion,
+                                        overlayWindows: overlayWindows)
                 + RefGuard.overlapWarning(found: found, in: fresh.elements, screen: fresh.screen)
                 + (await Self.hiddenUnderChromeWarning(found, in: fresh, driver: driver))
             guard moved >= RefGuard.movedThreshold else { return (found.ref, overlap + labelNote) }
@@ -778,7 +783,8 @@ extension MCPServer {
             let cause = RefGuard.movedTogether(target, found,
                                                before: lastRendered, after: fresh.elements)
             return (found.ref, originNote
-                + RefGuard.preTapWarnings(found, keyboardOcclusion: keyboardOcclusion)
+                + RefGuard.preTapWarnings(found, keyboardOcclusion: keyboardOcclusion,
+                                        overlayWindows: overlayWindows)
                 + RefGuard.movedNote(found: found, moved: moved, cause: cause) + labelNote)
         }
     }

@@ -253,34 +253,80 @@ final class SnapshotBuilder {
         response.put("elements", elements);
         response.put("truncatedCount", truncated);
         if (offscreen.length() > 0) response.put("offscreen", offscreen);
-        Rect keyboard = keyboardBounds(ua);
-        if (keyboard != null) response.put("keyboardFrame", rectJSON(keyboard));
+        WindowRects hidden = hiddenWindowRects(ua);
+        if (hidden.keyboard != null) response.put("keyboardFrame", rectJSON(hidden.keyboard));
+        if (!hidden.overlays.isEmpty()) {
+            JSONArray overlayFrames = new JSONArray();
+            for (Rect overlay : hidden.overlays) overlayFrames.put(rectJSON(overlay));
+            response.put("overlayWindowFrames", overlayFrames);
+        }
         return new Result(response.toString(), centers, ids, screen);
     }
 
     /**
-     * IME(ソフトキーボード)ウィンドウの bounds。別プロセスの別ウィンドウで a11y 木に出ないため、
-     * ここで申告しないとホストは要素がキーボードに隠れているかを判定できない
-     * (2026-08-08 Google マップで無警告タップ漏れを実害確認)。
+     * 木に出ないウィンドウの矩形。**木の根は `getRootInActiveWindow()` の1枚だけ**なので、
+     * アクティブウィンドウ以外はどれも `elements` に1つも載らない —— ホストはここで申告された
+     * 矩形でしか「要素が覆われているか」を判定できない。
+     *
+     * 元は IME だけを申告していた(2026-08-08 Google マップで無警告タップ漏れを実害確認)。
+     * **同じ失敗は IME 以外の別ウィンドウ全部にあった**(2026-08-28・実機 Pixel 4a の Chrome で
+     * 実害確認): テキスト選択のフローティングツールバー(Copy/Share/Select all)が段落の中心を
+     * 覆っている状態で ref タップが無警告の "done" を返し、実際には「Select all」に当たった。
+     *
+     * **数えるのは TYPE_APPLICATION だけ**(実測で決めた境界):
+     *  - TYPE_INPUT_METHOD は `keyboard` が持つ(実効矩形を chrome で広げる専用の扱いがある)
+     *  - TYPE_SYSTEM は**ステータスバー / ナビゲーションバーが常設で入る**ので数えない。
+     *    数えると画面上下の帯に居る要素が毎回警告になる(= 常時発火する検知は雑音でしかない)。
+     *    代償として TYPE_APPLICATION_OVERLAY(SYSTEM_ALERT_WINDOW のチャットヘッド等)は
+     *    拾えない —— こちらは実害を観測してから広げる
+     *  - TYPE_ACCESSIBILITY_OVERLAY は検査基盤自身なので数えない
+     *
+     * **手前に居ることを layer で確かめる**(アクティブより奥のウィンドウは覆っていない)。
+     * アクティブが1枚も無ければ何も申告しない = 従来動作へ縮退する。
+     *
      * getWindows() は BridgeRouter コンストラクタで FLAG_RETRIEVE_INTERACTIVE_WINDOWS を
-     * 立てないと常に空を返す。取れない(空/例外)場合は黙って null = レスポンスから省略する。
+     * 立てないと常に空を返す。取れない(空/例外)場合は黙って空 = レスポンスから省略する。
      */
-    private static Rect keyboardBounds(UiAutomation ua) {
+    static final class WindowRects {
+        Rect keyboard;
+        final List<Rect> overlays = new ArrayList<>();
+    }
+
+    /** 1応答で申告するオーバーレイの上限。**件数を絞るのは応答を膨らませないため**で、
+     *  超える画面は実測で1つも無い(溢れたら黙って落とす = 従来動作) */
+    static final int MAX_OVERLAY_WINDOWS = 8;
+
+    private static WindowRects hiddenWindowRects(UiAutomation ua) {
+        WindowRects out = new WindowRects();
         try {
             List<AccessibilityWindowInfo> windows = ua.getWindows();
-            if (windows == null) return null;
+            if (windows == null) return out;
+            boolean haveActive = false;
+            int activeLayer = Integer.MIN_VALUE;
             for (AccessibilityWindowInfo window : windows) {
-                if (window == null || window.getType() != AccessibilityWindowInfo.TYPE_INPUT_METHOD) {
-                    continue;
-                }
+                if (window == null || !window.isActive()) continue;
+                haveActive = true;
+                activeLayer = Math.max(activeLayer, window.getLayer());
+            }
+            for (AccessibilityWindowInfo window : windows) {
+                if (window == null) continue;
                 Rect bounds = new Rect();
                 window.getBoundsInScreen(bounds);
-                if (!bounds.isEmpty()) return bounds;
+                if (bounds.isEmpty()) continue;
+                int type = window.getType();
+                if (type == AccessibilityWindowInfo.TYPE_INPUT_METHOD) {
+                    if (out.keyboard == null) out.keyboard = bounds;
+                    continue;
+                }
+                if (type != AccessibilityWindowInfo.TYPE_APPLICATION) continue;
+                if (!haveActive || window.isActive() || window.getLayer() <= activeLayer) continue;
+                if (out.overlays.size() >= MAX_OVERLAY_WINDOWS) continue;
+                out.overlays.add(bounds);
             }
         } catch (RuntimeException ignored) {
             // a11y サービス切断中などで getWindows が使えない環境では省略
         }
-        return null;
+        return out;
     }
 
     /** preorder 走査。不可視ノードはサブツリーごと除外(uiautomator dump と同じ) */

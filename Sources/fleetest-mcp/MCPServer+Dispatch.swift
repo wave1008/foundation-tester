@@ -997,7 +997,9 @@ extension MCPServer {
                 doubleTapNote = RefGuard.preTapWarnings(
                     element, keyboardOcclusion: KeyboardOcclusion.resolve(
                         reported: doubleTapSnapshot?.keyboardFrame,
-                        in: doubleTapSnapshot?.elements ?? []))
+                        in: doubleTapSnapshot?.elements ?? []),
+                    overlayWindows: OverlayWindowOcclusion.resolve(
+                        reported: doubleTapSnapshot?.overlayWindowFrames))
                     + RefGuard.overlapWarning(found: element, in: doubleTapSnapshot?
                         .elements ?? [], screen: doubleTapSnapshot?.screen
                         ?? FTRect(x: 0, y: 0, width: 0, height: 0)) + labelNote

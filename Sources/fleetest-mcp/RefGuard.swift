@@ -241,10 +241,26 @@ enum RefGuard {
         return " (warning: \(describe(element)) — \(advisory))"
     }
 
-    /// keyboard + disabled の組。**この順序で4箇所から呼ばれる** —— キーボードを先にするのは、
-    /// 木からは判定できず ghost/overlap 側では検知できない唯一の警告だから
-    static func preTapWarnings(_ element: ElementInfo, keyboardOcclusion: KeyboardOcclusion) -> String {
-        (keyboardWarning(element, keyboardOcclusion: keyboardOcclusion) ?? "") + disabledWarning(element)
+    /// **木に出ないオーバーレイ・ウィンドウの下にある要素を撃とうとしている**ときの警告。
+    /// キーボードと同じ理由でブリッジ申告からしか言えない(判定は `OverlayWindowOcclusion`
+    /// = DSL と共有)。実測(2026-08-28・実機 Pixel 4a の Chrome): テキスト選択の
+    /// フローティングツールバーの下にある段落への ft_tap が無警告の "done" を返し、
+    /// 実際には「Select all」に当たってページ全体が選択された
+    static func overlayWindowWarning(_ element: ElementInfo,
+                                     overlayWindows: OverlayWindowOcclusion) -> String? {
+        guard let advisory = overlayWindows.advisory(for: element) else { return nil }
+        return " (warning: \(describe(element)) — \(advisory);"
+            + " ft_screenshot shows the overlay, which is why it is not in the element list)"
+    }
+
+    /// keyboard + overlay window + disabled の組。**この順序で4箇所から呼ばれる** ——
+    /// 申告由来の2つを先にするのは、木からは判定できず ghost/overlap 側では検知できない
+    /// 唯一の警告だから。**`overlayWindows` に既定値を置かない**(呼び忘れをコンパイルで止める)
+    static func preTapWarnings(_ element: ElementInfo, keyboardOcclusion: KeyboardOcclusion,
+                               overlayWindows: OverlayWindowOcclusion) -> String {
+        (keyboardWarning(element, keyboardOcclusion: keyboardOcclusion) ?? "")
+            + (overlayWindowWarning(element, overlayWindows: overlayWindows) ?? "")
+            + disabledWarning(element)
     }
 
     /// **申告されたスクロール容器の外へ送り出された要素を撃とうとしている**ときの警告

@@ -183,7 +183,8 @@ public enum TapTargetGeometry {
     }
 
     /// **撃つ前に言える「たぶん何も起きない/別の物に当たる」**を1文にする。空 = 心当たり無し。
-    /// **keyboard を先頭**に合成する(木の遮蔽判定では原理的に拾えず、確度が最も高いため)。
+    /// **申告由来(keyboard → overlay window)を先頭**に合成する —— どちらも木の遮蔽判定では
+    /// 原理的に拾えず(覆っている実体が `elements` に載っていない)、確度が最も高いため。
     /// `keyboardFrame` を渡さない呼び出しは従来どおり disabled から始まる。
     ///
     /// 判断はしない —— 呼び出し側が注記に混ぜるか警告にするかを決める。
@@ -192,10 +193,14 @@ public enum TapTargetGeometry {
     ///
     /// keyboard/disabled は座標に依らず言えるので先頭に残す。座標に依る残り(zero-frame〜sliver)は
     /// `occlusionAdvisory` へ委ねる(実測は各判定関数の doc を参照)
+    /// **`overlayWindows` に既定値を置かない** —— 呼び忘れはコンパイルで止める。
+    /// 申告が無い経路(iOS・旧ブリッジ)は呼び出し側が `.none` を明示的に渡す
     public static func advisory(for element: ElementInfo, in elements: [ElementInfo],
                                 screen: FTRect,
-                                keyboardOcclusion: KeyboardOcclusion = .none) -> String? {
+                                keyboardOcclusion: KeyboardOcclusion,
+                                overlayWindows: OverlayWindowOcclusion) -> String? {
         keyboardOcclusion.advisory(for: element)
+            ?? overlayWindows.advisory(for: element)
             ?? disabledAdvisory(for: element)
             ?? occlusionAdvisory(for: element, in: elements, screen: screen)
     }

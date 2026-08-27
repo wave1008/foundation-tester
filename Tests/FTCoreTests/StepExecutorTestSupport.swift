@@ -40,6 +40,9 @@ final class FakeAppDriver: AppDriver {
     /// SnapshotResponse.keyboardFrame(全 snapshot() 呼び出しに一律で乗せる。
     /// キーボード遮蔽の配線テスト専用。既定 nil = 従来どおりキーボード非表示扱い)
     var keyboardFrame: FTRect?
+    /// SnapshotResponse.overlayWindowFrames(木に出ないオーバーレイ・ウィンドウの申告。
+    /// keyboardFrame と同じく全 snapshot() 呼び出しに一律で乗せる)
+    var overlayWindowFrames: [FTRect]?
 
     init(name: String, log: CallLog, snapshotElements: [[ElementInfo]] = [],
          screenshots: [Data]? = nil) {
@@ -97,7 +100,8 @@ final class FakeAppDriver: AppDriver {
         return SnapshotResponse(sessionBundleID: nil,
                                 screen: FTRect(x: 0, y: 0, width: 400, height: 800),
                                 elements: elements, truncatedCount: 0, keyboardShown: keyboardShown,
-                                keyboardFrame: keyboardFrame)
+                                keyboardFrame: keyboardFrame,
+                                overlayWindowFrames: overlayWindowFrames)
     }
 
     var supportsCacheBypass: Bool { bypassSupported }

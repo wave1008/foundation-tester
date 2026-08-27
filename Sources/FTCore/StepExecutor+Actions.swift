@@ -843,6 +843,11 @@ extension StepExecutor {
             let tapKeyboardOcclusion = KeyboardOcclusion.resolve(
                 reported: snapshot.keyboardFrame, in: snapshot.elements)
             adviseTarget(tapKeyboardOcclusion.advisory(for: element))
+            // **木に出ないオーバーレイ・ウィンドウ**も同じ理由でここでしか言えない
+            // (覆っている実体が elements に1要素も載らない。OverlayWindowOcclusion の doc)。
+            // keyboard と同じく座標に依らないので、この時点で載せてよい
+            adviseTarget(OverlayWindowOcclusion.resolve(
+                reported: snapshot.overlayWindowFrames).advisory(for: element))
             adviseTarget(TapTargetGeometry.disabledAdvisory(for: element))
             adviseTarget(duplicateRegionAdvisory(element, in: snapshot))
             // **長押しは tap の引数**(Shirates 準拠。`tap(sel, holdSeconds:)`)。0 より大きいときだけ
@@ -1023,7 +1028,9 @@ extension StepExecutor {
                                                screen: snapshot.screen,
                                                keyboardOcclusion: KeyboardOcclusion.resolve(
                                                   reported: snapshot.keyboardFrame,
-                                                  in: snapshot.elements)),
+                                                  in: snapshot.elements),
+                                               overlayWindows: OverlayWindowOcclusion.resolve(
+                                                  reported: snapshot.overlayWindowFrames)),
                     duplicateRegionAdvisory(element, in: snapshot))
                 : nil
             let outcome = try await performGesture(action, step: step, target: element.frame,

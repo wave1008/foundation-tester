@@ -521,7 +521,15 @@
   `FTCore.OcclusionGeometry`(中心を覆う最前面の名指し。`OcclusionSuspicion.covering` とは
   判定軸が別=面積比 vs 中心点。統合しない理由は両型の doc)、「絵が古いか」は
   `FTCore.StaleFrameDetector`、焦点待ちの定数は `FTCore.FocusWait` の1箇所だけに置き、
-  `RefGuard`/MCP は転送する。別々に持つと**同じ画面で MCP と DSL の判断が食い違う**。
+  `RefGuard`/MCP は転送する。**木からは原理的に判定できない遮蔽は「ブリッジの申告」+ 専用の型**
+  —— キーボードは `KeyboardOcclusion`(`keyboardFrame`)、**それ以外の別ウィンドウは
+  `FTCore.OverlayWindowOcclusion`(`overlayWindowFrames`。2026-08-28 追加)**。
+  Android の木の根は `getRootInActiveWindow()` = **アクティブウィンドウ1枚だけ**なので、
+  手前に居る非フォーカスのポップアップ(ツールチップ・テキスト選択のフローティングツールバー)は
+  `elements` に1要素も載らず、覆われた要素を無警告で撃っていた(実機 Pixel 4a で実害確認)。
+  **申告由来の2つは木由来の警告より先に言う**(確度が最も高い)。**この2つの引数に既定値を
+  置かない** —— 新しい呼び出し元の呼び忘れをコンパイルで止めるため
+  (`OverlayWindowOcclusionWiringTests` が配線を、変異チェックが検知の生死を落とす)。別々に持つと**同じ画面で MCP と DSL の判断が食い違う**。
   移設したときは**掃討ゲート(`SweepHarnessTests`)が実アプリのコーパスで等価性を検証する**。
   **type の読み返しの有無はドライバの能力**(`AppDriver.verifiesTypedText`。xcuitest ランナー/
   Android 注入器=true・in-app=false で、false のときだけ `StepExecutor` がホスト側で読み返す)。

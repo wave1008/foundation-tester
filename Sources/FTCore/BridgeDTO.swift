@@ -773,6 +773,18 @@ public struct SnapshotResponse: Codable, Sendable {
     /// Android=UiAutomation.getWindows() の TYPE_INPUT_METHOD ウィンドウ bounds。
     /// 読み手はホストの遮蔽警告(TapTargetGeometry)。
     public var keyboardFrame: FTRect?
+    /// **木に出ないオーバーレイ・ウィンドウ**が覆っている矩形(画面座標)。省略は「無し、
+    /// または旧ブリッジ」。読み手はホストの遮蔽警告(`OverlayWindowOcclusion`)。
+    ///
+    /// **Android だけが申告する**。Android の木は `getRootInActiveWindow()` = アクティブ
+    /// ウィンドウ1枚だけなので、その手前に居るポップアップ(メニュー・ツールチップ・
+    /// テキスト選択のフローティングツールバー)は木に1要素も載らず、木由来の遮蔽判定では
+    /// 原理的に拾えない —— `keyboardFrame` と同じ理由・同じ形の申告。
+    /// iOS は in-app が可視な窓を全部歩き、xcuitest も同様に載せるので申告しない(nil)。
+    ///
+    /// 何を数えるかの境界は `SnapshotBuilder.hiddenWindowRects` が唯一の定義元
+    /// (ステータス/ナビゲーションバーは常設なので数えない、等)
+    public var overlayWindowFrames: [FTRect]?
     /// **何を捨てたか**の内訳(`BridgeSnapshotThinning.tierKey` の値 → 件数)。
     /// `truncatedCount` は「何件落ちたか」しか言わないので、ホストは
     /// 「選べる物が消えたのか、飾りが消えただけなのか」を区別できなかった ——
@@ -802,7 +814,8 @@ public struct SnapshotResponse: Codable, Sendable {
     public init(sessionBundleID: String?, screen: FTRect, elements: [ElementInfo],
                 truncatedCount: Int, note: String? = nil, webViewPath: String? = nil,
                 offscreen: [ElementInfo]? = nil, keyboardShown: Bool? = nil,
-                keyboardFrame: FTRect? = nil, truncatedTiers: [String: Int]? = nil,
+                keyboardFrame: FTRect? = nil, overlayWindowFrames: [FTRect]? = nil,
+                truncatedTiers: [String: Int]? = nil,
                 bulkExemptCount: Int? = nil) {
         self.sessionBundleID = sessionBundleID
         self.screen = screen
@@ -813,6 +826,7 @@ public struct SnapshotResponse: Codable, Sendable {
         self.offscreen = offscreen
         self.keyboardShown = keyboardShown
         self.keyboardFrame = keyboardFrame
+        self.overlayWindowFrames = overlayWindowFrames
         self.truncatedTiers = truncatedTiers
         self.bulkExemptCount = bulkExemptCount
     }

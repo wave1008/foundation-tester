@@ -1012,6 +1012,34 @@ final class MCPRefGuardTests: XCTestCase {
         XCTAssertTrue(actions.contains { $0.hasPrefix("tap") }, "拒否ではなく警告して撃つこと")
     }
 
+    /// **木に出ないオーバーレイ・ウィンドウ**の下を撃とうとしたら警告すること
+    /// (実機 Pixel 4a の Chrome で実害確認。判定は OverlayWindowOcclusion = DSL と共有)。
+    /// この経路(ft_tap → verifiedRef → RefGuard.preTapWarnings)が申告を読まなくなると落ちる
+    func testTapWarnsWhenTheCentreIsUnderAnOverlayWindow() async throws {
+        var withOverlay = screen([
+            element(ref: 1, id: "content", label: "本文", x: 22, y: 136, w: 1036, h: 266),
+        ])
+        // 実機の実測(テキスト選択のフローティングツールバー)。中心 (540,269) を覆う
+        withOverlay.overlayWindowFrames = [FTRect(x: 96, y: 251, width: 950, height: 124)]
+        driver.snapshotResponse = withOverlay
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        let text = Self.text(try await server.call(tool: "ft_tap", args: ["ref": 1]))
+        XCTAssertTrue(text.contains("overlay window"), "オーバーレイ被覆を警告すること: \(text)")
+        XCTAssertTrue(actions.contains { $0.hasPrefix("tap") }, "拒否ではなく警告して撃つこと")
+    }
+
+    /// **申告があっても中心が外なら黙る**。この画面で毎回警告が付くと、実機の通常操作が濁る
+    func testTapStaysQuietWhenTheOverlayMissesTheCentre() async throws {
+        var withOverlay = screen([
+            element(ref: 1, id: "content", label: "本文", x: 22, y: 732, w: 1036, h: 333),
+        ])
+        withOverlay.overlayWindowFrames = [FTRect(x: 96, y: 710, width: 950, height: 131)]
+        driver.snapshotResponse = withOverlay
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        let text = Self.text(try await server.call(tool: "ft_tap", args: ["ref": 1]))
+        XCTAssertFalse(text.contains("overlay window"), "中心が外なら黙ること: \(text)")
+    }
+
     /// **申告 keyboardFrame はキー面だけ**(TapTargetGeometry.effectiveKeyboardFrame の doc)。
     /// この経路(ft_tap → verifiedRef → RefGuard.preTapWarnings)が申告のまま渡すよう後退すると、
     /// このテストは警告が付かず落ちる ——「拡張後の矩形を使っているか」の配線テスト

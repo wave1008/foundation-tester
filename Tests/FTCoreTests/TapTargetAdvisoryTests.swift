@@ -20,7 +20,9 @@ final class TapTargetAdvisoryTests: XCTestCase {
     /// (E2E-CMP の契約上「押しても何も起きない」ボタンで実測)
     func testDisabledTargetIsCalledOut() {
         let off = element(1, "btn_always_disabled", "button", 42, 1544, 309, 126, enabled: false)
-        let note = TapTargetGeometry.advisory(for: off, in: [off], screen: screen)
+        let note = TapTargetGeometry.advisory(for: off, in: [off], screen: screen,
+                                                    keyboardOcclusion: .none,
+                                                    overlayWindows: .none)
         XCTAssertEqual(note, "the target is disabled, so this almost certainly did nothing")
     }
 
@@ -45,7 +47,9 @@ final class TapTargetAdvisoryTests: XCTestCase {
         ]
         XCTAssertNil(OcclusionGeometry.overlayCovering(segment, in: elements, screen: screen),
                      "ホイールの申告 frame は描画範囲ではないので遮蔽と言わないこと")
-        XCTAssertNil(TapTargetGeometry.advisory(for: segment, in: elements, screen: screen))
+        XCTAssertNil(TapTargetGeometry.advisory(for: segment, in: elements, screen: screen,
+                                                    keyboardOcclusion: .none,
+                                                    overlayWindows: .none))
     }
 
     /// **入れ物ごと外したのではない**ことの対照: ピッカーの器そのものが中心を覆うなら
@@ -63,7 +67,9 @@ final class TapTargetAdvisoryTests: XCTestCase {
     /// 有効な要素では黙る(毎回付くと注記が意味を失う)
     func testEnabledPlainTargetIsSilent() {
         let on = element(1, "btn", "button", 0, 0, 100, 40)
-        XCTAssertNil(TapTargetGeometry.advisory(for: on, in: [on], screen: screen))
+        XCTAssertNil(TapTargetGeometry.advisory(for: on, in: [on], screen: screen,
+                                                    keyboardOcclusion: .none,
+                                                    overlayWindows: .none))
     }
 
     /// 全幅の非対話コンテナで中身は右端の FAB だけ = 中心は地図の上
@@ -74,7 +80,9 @@ final class TapTargetAdvisoryTests: XCTestCase {
             element(2, "layers_fab_button", "other", 0, 442, 1080, 157, depth: 4),
             element(3, "layers_fab", "image", 928, 457, 152, 142, depth: 5),
         ]
-        let note = TapTargetGeometry.advisory(for: elements[1], in: elements, screen: screen)
+        let note = TapTargetGeometry.advisory(for: elements[1], in: elements, screen: screen,
+                                                    keyboardOcclusion: .none,
+                                                    overlayWindows: .none)
         XCTAssertNotNil(note)
         XCTAssertTrue(note?.contains("#layers_fab") == true, note ?? "")
         XCTAssertTrue(note?.contains("behind it") == true, note ?? "")
@@ -87,7 +95,9 @@ final class TapTargetAdvisoryTests: XCTestCase {
             element(2, "business_place_card", "other", 0, 1399, 1080, 320, depth: 3),
             element(3, "title", "staticText", 42, 1462, 440, 58, depth: 4),
         ]
-        XCTAssertNil(TapTargetGeometry.advisory(for: elements[1], in: elements, screen: screen))
+        XCTAssertNil(TapTargetGeometry.advisory(for: elements[1], in: elements, screen: screen,
+                                                    keyboardOcclusion: .none,
+                                                    overlayWindows: .none))
     }
 
     /// **中心が画面の外**は空振りの警告になる(実測: Compose iOS のカレンダーで
@@ -95,7 +105,8 @@ final class TapTargetAdvisoryTests: XCTestCase {
     func testOffscreenCentreIsCalledOut() {
         let above = element(1, "slot_07", "button", 0, -46, 402, 56)
         let note = TapTargetGeometry.advisory(
-            for: above, in: [above], screen: FTRect(x: 0, y: 0, width: 402, height: 874))
+            for: above, in: [above], screen: FTRect(x: 0, y: 0, width: 402, height: 874),
+            keyboardOcclusion: .none, overlayWindows: .none)
         XCTAssertNotNil(note)
         XCTAssertTrue(note?.contains("outside the visible screen") == true, note ?? "")
         XCTAssertTrue(note?.contains("(201, -18)") == true, note ?? "")
@@ -412,7 +423,9 @@ final class TapTargetAdvisoryTests: XCTestCase {
             element(2, "wrap", "other", 0, 442, 1080, 157, depth: 4, enabled: false),
             element(3, "inner", "image", 928, 457, 152, 142, depth: 5),
         ]
-        XCTAssertEqual(TapTargetGeometry.advisory(for: elements[1], in: elements, screen: screen),
+        XCTAssertEqual(TapTargetGeometry.advisory(for: elements[1], in: elements, screen: screen,
+                                                    keyboardOcclusion: .none,
+                                                    overlayWindows: .none),
                        "the target is disabled, so this almost certainly did nothing")
     }
 

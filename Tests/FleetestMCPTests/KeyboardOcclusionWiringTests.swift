@@ -49,15 +49,18 @@ final class KeyboardOcclusionWiringTests: XCTestCase {
         let text = compact(try source("fleetest-mcp/RefGuard.swift"))
         XCTAssertTrue(text.contains(compact("keyboardWarning(_ element: ElementInfo, keyboardOcclusion: KeyboardOcclusion)")),
                       "RefGuard.keyboardWarning が KeyboardOcclusion を受けていない")
-        XCTAssertTrue(text.contains(compact("preTapWarnings(_ element: ElementInfo, keyboardOcclusion: KeyboardOcclusion)")),
-                      "RefGuard.preTapWarnings が KeyboardOcclusion を受けていない")
+        XCTAssertTrue(text.contains(compact("preTapWarnings(_ element: ElementInfo, keyboardOcclusion: KeyboardOcclusion, overlayWindows: OverlayWindowOcclusion)")),
+                      "RefGuard.preTapWarnings が KeyboardOcclusion / OverlayWindowOcclusion を受けていない")
     }
 
     /// `TapTargetGeometry.advisory` の keyboard 引数も KeyboardOcclusion であること
-    /// (doubleTap の gestureAdvisory がここを通る唯一の経路)
-    func testTapTargetGeometryAdvisoryTakesKeyboardOcclusion() throws {
-        let text = try source("FTCore/TapTargetGeometry.swift")
-        XCTAssertTrue(text.contains("keyboardOcclusion: KeyboardOcclusion = .none"),
-                      "TapTargetGeometry.advisory が KeyboardOcclusion を既定引数に取っていない")
+    /// (doubleTap の gestureAdvisory がここを通る唯一の経路)。
+    /// **既定値は置かない** —— 申告由来の遮蔽は呼び忘れをコンパイルで止める(2026-08-28)
+    func testTapTargetGeometryAdvisoryTakesKeyboardOcclusionWithoutADefault() throws {
+        let text = compact(try source("FTCore/TapTargetGeometry.swift"))
+        XCTAssertTrue(text.contains(compact("keyboardOcclusion: KeyboardOcclusion,")),
+                      "TapTargetGeometry.advisory が KeyboardOcclusion を取っていない")
+        XCTAssertFalse(text.contains(compact("keyboardOcclusion: KeyboardOcclusion = .none")),
+                       "既定引数が復活している(呼び忘れがコンパイルで止まらなくなる)")
     }
 }
