@@ -3974,7 +3974,12 @@ clone がどのみち必須で、CLI だけ mint 経由にすると二重取得�
 **repo ローカルのスキル発見の実体は `.agents/skills/<name>` のシンボリックリンク**で、
 `.codex-plugin/plugin.json` は**プラグインとして導入したときだけ**効く(実測: リンクを外すと
 Codex はスキルを1本も見つけない)。両方要るのはそのため —— どちらかだけでは片方の経路が死ぬ。
-`.codex-plugin/plugin.json` の `skills` もこの `.agents/skills/` を指す。
+**ただし `.codex-plugin/plugin.json` の `skills` は正典の実体 `.claude/skills/` を指す** ——
+`codex plugin add` は marketplace の clone をプラグインキャッシュへコピーするとき
+**シンボリックリンクを落とす**(2026-08-27 実測: clone 側の `.agents/skills/` は6本のリンクが
+健在なのに、インストール後の plugin root では空・`find -type l` もゼロ)。リンクのディレクトリを
+manifest に書くと**プラグイン経由では0本**になる。`.agents/skills/` のリンクは
+**repo ローカル発見(作業ツリー)専用**。
 
 **repo ルートに `skills` を置いてはいけない**(2026-08-27 実測で撤去)。プラグイン root =
 repo ルートのとき、**Claude Code は `.claude-plugin/plugin.json` の明示パスと既定の `skills/` の

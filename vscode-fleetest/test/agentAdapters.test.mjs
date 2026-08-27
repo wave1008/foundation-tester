@@ -63,8 +63,20 @@ test("codex-plugin/plugin.json が有効な JSON で正典 .claude/skills/ を�
   assert.equal(typeof plugin.interface?.displayName, "string");
   assert.ok(Array.isArray(plugin.interface?.capabilities));
   assert.ok(plugin.interface?.defaultPrompt);
-  // Codex の規約位置(`.agents/skills/`)を指す。中身は正典への symlink 6本(下のテスト)。
-  assert.equal(plugin.skills, "./.agents/skills/", "Codex の規約位置から正典を参照する");
+  // **manifest の skills は実体のあるディレクトリを指す**(2026-08-27 実測)。
+  // `codex plugin add` はマーケットプレイスの clone をプラグインキャッシュへコピーするとき
+  // **シンボリックリンクを落とす**(clone 側の `.agents/skills/` は6本のリンクが健在なのに、
+  // インストール後の root では空になり `find -type l` もゼロ)。リンクのディレクトリを指すと
+  // **プラグイン経由では0本**になるので、正典の実体 `.claude/skills/` を指す。
+  // `.agents/skills/` のリンクは repo ローカル発見(作業ツリー)専用で、そちらは残す。
+  assert.equal(plugin.skills, "./.claude/skills/", "Codex にも正典の実体を指させる(リンクは配布で落ちる)");
+  const target = path.join(ROOT, ".claude", "skills");
+  for (const entry of readdirSync(target, { withFileTypes: true })) {
+    assert.ok(
+      !entry.isSymbolicLink(),
+      `${entry.name} が symlink です。manifest が指す先は実体でなければ codex plugin add で落ちます`,
+    );
+  }
 });
 
 // **repo ルートに `skills` を置いてはいけない**(2026-08-27 に実測して撤去)。
