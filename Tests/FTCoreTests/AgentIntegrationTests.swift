@@ -14,10 +14,15 @@ final class AgentIntegrationTests: XCTestCase {
     func testConventionsAreDistinctPerAgent() {
         XCTAssertEqual(AgentIntegration.claude.skillsDirectory, ".claude/skills")
         XCTAssertEqual(AgentIntegration.codex.skillsDirectory, ".agents/skills")
+        // **Cline は `.claude/skills/` も読むが共有しない** —— 共有すると片方の都合で
+        // 置き場所を変えたときにもう片方が黙って壊れる。公式推奨の専用位置を使う
+        XCTAssertEqual(AgentIntegration.cline.skillsDirectory, ".cline/skills")
         XCTAssertEqual(AgentIntegration.claude.entryPointFile, "CLAUDE.md")
         XCTAssertEqual(AgentIntegration.codex.entryPointFile, "AGENTS.md")
+        XCTAssertEqual(AgentIntegration.cline.entryPointFile, ".clinerules")
         XCTAssertEqual(AgentIntegration.claude.skillInvocationPrefix, "/")
         XCTAssertEqual(AgentIntegration.codex.skillInvocationPrefix, "$")
+        XCTAssertEqual(AgentIntegration.cline.skillInvocationPrefix, "/")
         // 規約位置は**エージェント間で衝突しない**こと(同じ場所を2つが取り合うと
         // 片方の入口をもう片方が上書きする)
         XCTAssertEqual(Set(AgentIntegration.allCases.map(\.skillsDirectory)).count,
@@ -36,7 +41,10 @@ final class AgentIntegrationTests: XCTestCase {
     /// **Codex にコマンド単位の承認 allowlist は無い**。等価物を捏造しないための分岐
     func testOnlyClaudeHasACommandPermissionAllowlist() {
         XCTAssertTrue(AgentIntegration.claude.hasCommandPermissionAllowlist)
+        // Codex は approval_policy / sandbox_mode、Cline は auto-approve。
+        // どちらも「このコマンドだけ許す」形を持たない
         XCTAssertFalse(AgentIntegration.codex.hasCommandPermissionAllowlist)
+        XCTAssertFalse(AgentIntegration.cline.hasCommandPermissionAllowlist)
     }
 
     // MARK: - 自動判定(純関数)
@@ -49,6 +57,13 @@ final class AgentIntegrationTests: XCTestCase {
         for signal in [".agents", "AGENTS.md", "~/.codex"] {
             XCTAssertEqual(AgentIntegration.detect { $0 == signal }, [.codex],
                            "手掛かり \(signal) から codex を拾えていない")
+        }
+    }
+
+    func testDetectPicksClineFromEachOfItsSignals() {
+        for signal in [".cline", ".clinerules", "~/.cline"] {
+            XCTAssertEqual(AgentIntegration.detect { $0 == signal }, [.cline],
+                           "手掛かり \(signal) から cline を拾えていない")
         }
     }
 
@@ -76,7 +91,9 @@ final class AgentIntegrationTests: XCTestCase {
         let root = URL(fileURLWithPath: "/nonexistent-package-root")
         XCTAssertEqual(AgentIntegration.parse("codex", packageRoot: root), [.codex])
         XCTAssertEqual(AgentIntegration.parse("claude", packageRoot: root), [.claude])
-        XCTAssertEqual(AgentIntegration.parse("both", packageRoot: root), AgentIntegration.allCases)
+        XCTAssertEqual(AgentIntegration.parse("cline", packageRoot: root), [.cline])
+        // `both` は claude+codex の別名(all ではない)。Cline を後から足したので取り違えやすい
+        XCTAssertEqual(AgentIntegration.parse("both", packageRoot: root), [.claude, .codex])
         // install.sh は空白区切りで持っているのでカンマへ畳んで渡す。どちらの区切りでも読む
         XCTAssertEqual(AgentIntegration.parse("claude,codex", packageRoot: root), [.claude, .codex])
         XCTAssertEqual(AgentIntegration.parse("claude codex", packageRoot: root), [.claude, .codex])

@@ -2,7 +2,7 @@
 
 ※このREADME.md　はAIが読むことを前提にしています。製品の使い方はユーザー向けドキュメントを参照するか、AIにチャットで聞いてください
 
-**fleetest mobile** はClaude Code / Codex 等のAIコーディングツールの使用を前提とした macOS専用の iOS / Android アプリの E2E テストツール。
+**fleetest mobile** はClaude Code / Codex / Cline 等のAIコーディングツールの使用を前提とした macOS専用の iOS / Android アプリの E2E テストツール。
 
 **fleetest** は `fleet` + `test` であり、*fleet*(すばやい)の最上級でもある。名前に畳み込んだ
 3つが、そのまま特徴になっている。
@@ -14,7 +14,7 @@
 **設計思想: 「AI がテストを作り、コードが決定的に再生する」**
 
 - **生成**
-  - Claude Code / Codex にドキュメントとfleetest MCPを渡して指示することでテストコードを生成可能
+  - Claude Code / Codex / Cline にドキュメントとfleetest MCPを渡して指示することでテストコードを生成可能
 - **実行**
   - テストコードは LLM なしで決定的に実行。高速・安定で CI 向き
 - **セキュリティ**
@@ -91,6 +91,10 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scr
   プラグインが使えない環境では `curl -fsSL .../Scripts/install-skill.sh | sh -s -- --agent codex`。
   **Codex は既定のサンドボックスだと導入・更新のシェル工程が通らない**(`ft_*` は影響を受けない)ので、
   [docs/user-docs/tools/codex_skills_ja.md](docs/user-docs/tools/codex_skills_ja.md) のサンドボックス設定を先に読むこと。
+- **Cline でも同じスキルが動く**(置き場所 `.cline/skills/`・入口 `.clinerules`・MCP 登録先
+  `~/.cline/mcp.json`)。導入は `curl -fsSL .../Scripts/install-skill.sh | sh -s -- --agent cline`。
+  サンドボックスは無く承認方式なので、Codex のような設定は要らない。
+  詳細は [docs/user-docs/tools/cline_ja.md](docs/user-docs/tools/cline_ja.md)。
 - 既定は**外部パッケージ構成**: ツール(この clone)と、あなたの `TestProjects/` が住むテスト用フォルダを分ける。
 - 事前準備・インストール・更新・アンインストールの手順は [docs/user-docs/getting-started_ja.md](docs/user-docs/getting-started_ja.md)。
   導入後の使い方(プロファイル・シナリオ・実行)は**利用者向けドキュメント [docs/user-docs/index_ja.md](docs/user-docs/index_ja.md)**([English](docs/user-docs/index.md))と [docs/commands.md](docs/commands.md)。

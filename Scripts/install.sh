@@ -47,6 +47,7 @@ DO_PROJECT=1
 DO_MCP=1
 DO_CLAUDE_MD=1
 DO_AGENTS_MD=1
+DO_CLINERULES=1
 AGENT_ARG=""
 DO_DOCTOR=1
 DO_NEXT_STEPS=1
@@ -73,7 +74,8 @@ Usage: install.sh [options]
   --skip-mcp         Do not generate/merge .mcp.json
   --skip-claude-md   Do not write the fleetest block into <work-dir>/CLAUDE.md
   --skip-agents-md   Do not write the fleetest block into <work-dir>/AGENTS.md (Codex)
-  --agent <a>        Which agent conventions to set up: claude / codex / both / auto (default auto)
+  --skip-clinerules  Do not write the fleetest block into <work-dir>/.clinerules (Cline)
+  --agent <a>        Which agent conventions to set up: claude / codex / cline / both / all / auto (default auto)
   --no-doctor        Skip the final environment report (fleetest doctor)
   --no-next-steps    Do not print "next steps" (when the caller, e.g. update.sh, guides instead)
   --keep-local       Do not auto-discard local changes in the clone (auto-discard is the default in the external layout)
@@ -108,6 +110,7 @@ while [ $# -gt 0 ]; do
     --skip-mcp) DO_MCP=0; shift ;;
     --skip-claude-md) DO_CLAUDE_MD=0; shift ;;
     --skip-agents-md) DO_AGENTS_MD=0; shift ;;
+    --skip-clinerules) DO_CLINERULES=0; shift ;;
     --agent) AGENT_ARG="${2:?--agent requires a value}"; shift 2 ;;
     --no-doctor) DO_DOCTOR=0; shift ;;
     --keep-local) KEEP_LOCAL=1; shift ;;
@@ -449,12 +452,17 @@ detect_agents() {
   if [ "$LAYOUT" = "clone" ]; then
     if [ -d "$HOME/.claude" ]; then AGENTS="claude"; fi
     if [ -d "$HOME/.codex" ]; then AGENTS="${AGENTS:+${AGENTS} }codex"; fi
+    if [ -d "$HOME/.cline" ]; then AGENTS="${AGENTS:+${AGENTS} }cline"; fi
   else
     if [ -d "$WORK_DIR/.claude" ] || [ -f "$WORK_DIR/CLAUDE.md" ] || [ -d "$HOME/.claude" ]; then
       AGENTS="claude"
     fi
     if [ -d "$WORK_DIR/.agents" ] || [ -f "$WORK_DIR/AGENTS.md" ] || [ -d "$HOME/.codex" ]; then
       AGENTS="${AGENTS:+${AGENTS} }codex"
+    fi
+    # `.clinerules` は**ファイルでもディレクトリでもあり得る**ので -e で見る
+    if [ -d "$WORK_DIR/.cline" ] || [ -e "$WORK_DIR/.clinerules" ] || [ -d "$HOME/.cline" ]; then
+      AGENTS="${AGENTS:+${AGENTS} }cline"
     fi
   fi
   [ -n "$AGENTS" ] || AGENTS="claude"
@@ -463,13 +471,14 @@ detect_agents() {
 # 入口も行われないまま `[ok]` で終わる(= 何もしないのに成功。実際に state.json 経由で踏んだ)
 valid_agents() {
   for candidate in $1; do
-    case "$candidate" in claude|codex) ;; *) return 1 ;; esac
+    case "$candidate" in claude|codex|cline) ;; *) return 1 ;; esac
   done
   [ -n "$1" ]
 }
 case "$AGENT_ARG" in
-  claude|codex) AGENTS="$AGENT_ARG"; AGENT_SOURCE="--agent $AGENT_ARG" ;;
+  claude|codex|cline) AGENTS="$AGENT_ARG"; AGENT_SOURCE="--agent $AGENT_ARG" ;;
   both)         AGENTS="claude codex"; AGENT_SOURCE="--agent both" ;;
+  all)          AGENTS="claude codex cline"; AGENT_SOURCE="--agent all" ;;
   auto)         detect_agents; AGENT_SOURCE="auto (re-detected)" ;;
   "")
     PINNED="$(python3 -c 'import json,sys
@@ -486,7 +495,7 @@ except Exception:
       detect_agents; AGENT_SOURCE="auto"
     fi
     ;;
-  *) die "agent" "--agent must be claude / codex / both / auto (got: $AGENT_ARG)" 0.5 ;;
+  *) die "agent" "--agent must be claude / codex / cline / both / all / auto (got: $AGENT_ARG)" 0.5 ;;
 esac
 has_agent() { case " $AGENTS " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 record "agent" ok "$AGENTS — $AGENT_SOURCE"
@@ -495,6 +504,9 @@ record "agent" ok "$AGENTS — $AGENT_SOURCE"
 # `--skip-mcp` のときに未定義だと set -u で落ちる([fail] 行も出ないまま exit 1)。
 # `fleetest remote setup` は常に --skip-mcp を渡すので、~/.codex のあるランナー機で必ず踏む
 CODEX_CONFIG="${CODEX_HOME:-$HOME/.codex}/config.toml"
+# Cline の MCP 登録先(公式が CLI 向けに明記しているユーザーレベルの JSON)。
+# **VSCode 拡張は自前の globalStorage を見ることがある**ので、そちらは UI から追加してもらう
+CLINE_MCP_JSON="${CLINE_HOME:-$HOME/.cline}/mcp.json"
 
 FT="$TOOL_ROOT/.build/debug/fleetest"
 
@@ -636,13 +648,16 @@ else
 # エージェントを起動するたびに MCP が落ちていた(Codex: connection closed / Claude: plugin
 # details に MCP servers (1))。同梱をやめ、どちらの構成でも**絶対パス**で登録する。
 # 書き先はクローン自身になるので `.gitignore` 済み(追跡すると次の更新が pull ガードで止まる)。
-if ! has_agent claude; then
-  : # Claude Code を使わない受け手には .mcp.json を作らない
-elif ! command -v python3 >/dev/null 2>&1; then
-  soft_fail "MCP(claude)" "python3 is missing, so .mcp.json cannot be merged (write the SKILL template by hand)" 7.5
-else
-  MCP_JSON="$WORK_DIR/.mcp.json"
-  if merge_out=$(python3 - "$MCP_JSON" "$TOOL_ROOT" <<'PYCLAUDE'
+# `.mcp.json` 形式(Claude Code と Cline)。**登録先だけが違うので実装は1つ**にする ——
+# 写しを増やすと、片方だけ直したときに黙って挙動が割れる
+merge_mcp_json() {
+  mcp_path="$1"
+  mcp_label="$2"
+  if ! command -v python3 >/dev/null 2>&1; then
+    soft_fail "MCP($mcp_label)" "python3 is missing, so $mcp_path cannot be merged (write the SKILL template by hand)" 7.5
+    return 0
+  fi
+  if merge_out=$(python3 - "$mcp_path" "$TOOL_ROOT" <<'PYMCPJSON'
 import json, os, sys
 
 path, tool_root = sys.argv[1], sys.argv[2]
@@ -666,6 +681,11 @@ servers["fleetest"] = {
     "args": ["-lc", 'exec "%s/Scripts/mcp-server.sh"' % tool_root],
     "env": {"FT_TOOL_ROOT": tool_root},
 }
+# 登録先はプロジェクト内(.mcp.json)とユーザーレベル(~/.cline/mcp.json)の両方がある。
+# 後者は親ディレクトリが無いことがあるので作る
+parent = os.path.dirname(path)
+if parent:
+    os.makedirs(parent, exist_ok=True)
 with open(path, "w") as f:
     json.dump(data, f, indent=2, ensure_ascii=False)
     f.write("\n")
@@ -673,15 +693,36 @@ if previous and previous != tool_root:
     print("REPLACED %s" % previous, end="")
 else:
     print("OK", end="")
-PYCLAUDE
+PYMCPJSON
   ); then
     case "$merge_out" in
-      REPLACED*) record "MCP(claude)" ok "updated .mcp.json (replaced the old TOOL_ROOT ${merge_out#REPLACED }; delete the old clone if unneeded)" ;;
-      *) record "MCP(claude)" ok "registered fleetest in .mcp.json" ;;
+      REPLACED*) record "MCP($mcp_label)" ok "updated $mcp_path (replaced the old TOOL_ROOT ${merge_out#REPLACED }; delete the old clone if unneeded)" ;;
+      *) record "MCP($mcp_label)" ok "registered fleetest in $mcp_path" ;;
     esac
   else
-    soft_fail "MCP(claude)" "failed to merge .mcp.json ($merge_out)" 7.5
+    soft_fail "MCP($mcp_label)" "failed to merge $mcp_path ($merge_out)" 7.5
   fi
+}
+
+# **clone 構成でもここで書く**。以前は repo ルートの `.mcp.json` を同梱して済ませていたが、
+# **プラグイン root = repo ルートなのでそれがプラグインに載って配られ**、中身の
+# `$PWD/Scripts/mcp-server.sh` はクローンの外では存在しないため、受け手が別の場所で
+# エージェントを起動するたびに MCP が落ちていた(Codex: connection closed / Claude: plugin
+# details に MCP servers (1))。同梱をやめ、どちらの構成でも**絶対パス**で登録する。
+# 書き先はクローン自身になるので `.gitignore` 済み(追跡すると次の更新が pull ガードで止まる)。
+if ! has_agent claude; then
+  : # Claude Code を使わない受け手には .mcp.json を作らない
+else
+  merge_mcp_json "$WORK_DIR/.mcp.json" claude
+fi
+
+# Cline。登録先は**ユーザーレベルの ~/.cline/mcp.json**(公式が CLI 向けに明記している場所)。
+# 形は .mcp.json と同じ mcpServers なので実装を共有する。**VSCode 拡張は自前の
+# globalStorage を見ることがある**ので、その場合は UI の「Edit MCP Settings」から同じ内容を足す
+if ! has_agent cline; then
+  : # Cline を使わない受け手には ~/.cline を作らない
+else
+  merge_mcp_json "$CLINE_MCP_JSON" cline
 fi
 
 # Codex 側。**`codex` のサブコマンド名に依存しない** —— このインストーラは codex が入って
@@ -803,6 +844,7 @@ print("inside" if os.path.commonpath([target, clone]) == clone else "outside")' 
     record "$ep_label" skip "it lives inside the clone — writing there would make the next update abort at the pull guard"
     return 0
   fi
+  mkdir -p "$(dirname "$ep_file")" 2>/dev/null || true
   if guide_out=$(python3 - "$ep_file" "$ep_prefix" <<'PYGUIDE'
 import os, re, sys
 
@@ -815,7 +857,7 @@ BODY = """## テスト(fleetest)
 
 <!-- この範囲は Scripts/install.sh が管理しており、更新のたび上書きされます。
      不要なら begin〜end ごと削除するか、インストーラに --skip-claude-md /
-     --skip-agents-md を渡してください。 -->
+     --skip-agents-md / --skip-clinerules を渡してください。 -->
 
 - シナリオ作成は `%(p)sfleetest-scenario`、対象アプリ/デバイスの追加は `%(p)sfleetest-profiles`、更新は `%(p)sfleetest-update`
 - 画面の探索・操作は `ft_*` ツール。**長いリストは `ft_swipe` の繰り返しでなく `ft_scroll_to`**
@@ -865,7 +907,7 @@ PYGUIDE
         record "$ep_label" warn "the fleetest markers in $1 are not a single begin/end pair"\
 " — left the file untouched (fix or remove them by hand, then re-run)" ;;
       *)
-        record "$ep_label" ok "$guide_out $1 (delete the fleetest block, or pass --skip-claude-md / --skip-agents-md, to opt out)" ;;
+        record "$ep_label" ok "$guide_out $1 (delete the fleetest block, or pass the matching --skip-claude-md / --skip-agents-md / --skip-clinerules, to opt out)" ;;
     esac
   else
     record "$ep_label" warn "could not write the entry point to $1 (agents may miss ft_*)"
@@ -884,6 +926,18 @@ else
     record "AGENTS.md" skip "--skip-agents-md"
   elif has_agent codex; then
     write_entry_point "AGENTS.md" "\$" "AGENTS.md"
+  fi
+  # Cline の `.clinerules` は**ファイルでもディレクトリでもあり得る**。ディレクトリのときに
+  # そのパスへ書くと失敗するので、中の `fleetest.md` へ振り替える(Cline はフォルダ内の
+  # 各ファイルを読む)。受け手が単体ファイルで運用しているならそのまま追記する
+  if [ "$DO_CLINERULES" = "0" ]; then
+    record ".clinerules" skip "--skip-clinerules"
+  elif has_agent cline; then
+    if [ -d "$WORK_DIR/.clinerules" ]; then
+      write_entry_point ".clinerules/fleetest.md" "/" ".clinerules/fleetest.md"
+    else
+      write_entry_point ".clinerules" "/" ".clinerules"
+    fi
   fi
 fi
 

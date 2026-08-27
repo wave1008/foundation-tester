@@ -7,8 +7,9 @@
 #   curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install-skill.sh | sh
 #
 # 置き先はエージェントの規約位置(既定は自動判定):
-#   Claude Code → .claude/skills/    Codex → .agents/skills/
-# 明示するときは `| sh -s -- --agent codex`(claude / codex / both / auto)。
+#   Claude Code → .claude/skills/  Codex → .agents/skills/  Cline → .cline/skills/
+# 明示するときは `| sh -s -- --agent codex`(claude / codex / cline / all / auto。
+# 複数を空白/カンマ区切りでも渡せる)。
 #
 # 注: プラグイン機構が使えるならそちらが推奨(スキル自動更新つき・正典を参照する薄いアダプタ)。
 #   Claude Code: claude plugin marketplace add wave1008/foundation-tester →
@@ -40,30 +41,38 @@ while [ $# -gt 0 ]; do
     --agent) AGENT="${2:-}"; shift 2 ;;
     --agent=*) AGENT="${1#--agent=}"; shift ;;
     -h|--help)
-      echo "usage: install-skill.sh [--agent claude|codex|both|auto]"; exit 0 ;;
+      echo "usage: install-skill.sh [--agent claude|codex|cline|all|auto|<list>]"; exit 0 ;;
     *) echo "エラー: 不明なオプション $1" >&2; exit 2 ;;
   esac
 done
 
 # 自動判定は FTCore の AgentIntegration.detect と同じ規則
 # (.claude / CLAUDE.md / ~/.claude → claude、.agents / AGENTS.md / ~/.codex → codex、
-#  どれも無ければ claude 単独)。判定を変えるときは両方を直す。
+#  .cline / .clinerules / ~/.cline → cline、どれも無ければ claude 単独)。判定を変えるときは両方を直す。
 if [ "$AGENT" = "auto" ]; then
   AGENT=""
   if [ -d ".claude" ] || [ -f "CLAUDE.md" ] || [ -d "$HOME/.claude" ]; then AGENT="claude"; fi
   if [ -d ".agents" ] || [ -f "AGENTS.md" ] || [ -d "$HOME/.codex" ]; then
     AGENT="${AGENT:+${AGENT} }codex"
   fi
+  if [ -d ".cline" ] || [ -e ".clinerules" ] || [ -d "$HOME/.cline" ]; then
+    AGENT="${AGENT:+${AGENT} }cline"
+  fi
   [ -n "$AGENT" ] || AGENT="claude"
-  if [ "$AGENT" = "claude codex" ]; then AGENT="both"; fi
 fi
 
-case "$AGENT" in
-  claude) DIRS=".claude/skills" ;;
-  codex)  DIRS=".agents/skills" ;;
-  both)   DIRS=".claude/skills .agents/skills" ;;
-  *) echo "エラー: --agent は claude / codex / both / auto のいずれか(受け取った値: $AGENT)" >&2; exit 2 ;;
-esac
+# `both` は claude+codex の別名、`all` は全部。空白/カンマ区切りの複数指定も受ける
+if [ "$AGENT" = "both" ]; then AGENT="claude codex"; fi
+if [ "$AGENT" = "all" ]; then AGENT="claude codex cline"; fi
+DIRS=""
+for one in $(echo "$AGENT" | tr ',' ' '); do
+  case "$one" in
+    claude) DIRS="${DIRS:+${DIRS} }.claude/skills" ;;
+    codex)  DIRS="${DIRS:+${DIRS} }.agents/skills" ;;
+    cline)  DIRS="${DIRS:+${DIRS} }.cline/skills" ;;
+    *) echo "エラー: --agent は claude / codex / cline / all / auto のいずれか(受け取った値: $one)" >&2; exit 2 ;;
+  esac
+done
 
 command -v curl >/dev/null 2>&1 || { echo "エラー: curl が必要です" >&2; exit 1; }
 
