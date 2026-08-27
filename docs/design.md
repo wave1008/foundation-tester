@@ -3986,8 +3986,11 @@ SKILL.md ではなく1行のパスを掴む。
 - **サンドボックスは判定するが緩めない**。既定 `workspace-write` は **loopback を含む outbound**と
   **ワークスペース外への書き込み**を塞ぐので、fleetest はデバイスを1台も駆動できない
   (外部構成では TOOL_ROOT が WORK_DIR の兄弟 = `.build/` も外側)。install.sh ステップ7.7 と
-  preflight の `codex_sandbox=` が**判定と貼り付け用 TOML だけ**を出す。受け手のグローバル設定 =
-  セキュリティ境界なので、インストーラは1バイトも書かない
+  preflight の `codex_sandbox=` が**判定と編集の案内だけ**を出す。受け手のグローバル設定 =
+  セキュリティ境界なので、インストーラは1バイトも書かない。**案内は「貼り付け用ブロック」に
+  しない** —— TOML は同じキー・テーブルの重複を許さないので、素朴な追記は config.toml 全体を
+  無効にする(`sandbox_mode` は最初の `[table]` より前・既存の `[sandbox_workspace_write]` は
+  中の値を編集)
 **ローカル検証の罠**: `/plugin` は VSCode 拡張パネルでは使えない(ターミナル CLI かデスクトップアプリ)。
 `claude plugin marketplace add <ローカルパス>` は git clone ではなく**作業ツリーを丸ごとコピー**する
 (gitignore を無視するため `.build/` 約8GB も入りキャッシュが約13GBに膨れる)。検証後は

@@ -423,7 +423,9 @@ Codex の既定 `sandbox_mode = "workspace-write"` は **loopback を含む outb
 外部パッケージ構成では TOOL_ROOT が WORK_DIR の兄弟なので `.build/` への書き込みも外側）。
 
 インストーラのステップ7.7（または `Scripts/preflight.sh` の `codex_sandbox=` 行）が判定を出す。
-`[warn] codex sandbox` が出ていたら、🧑 に**貼り付け用の TOML をそのまま渡して依頼する**。
+`[warn] codex sandbox` が出ていたら、🧑 に**その案内を渡して編集を依頼する**
+（**そのまま追記させない** —— `sandbox_mode` や `[sandbox_workspace_write]` が重複すると
+TOML として無効になり、config.toml 全体が読めなくなる）。
 **エージェントが `~/.codex/config.toml` を書き換えてはいけない** —— サンドボックスは受け手の
 セキュリティ境界であり、このツールが受け手のグローバル設定を緩める判断をしてはならない
 （インストーラも判定だけで1バイトも書かない）。

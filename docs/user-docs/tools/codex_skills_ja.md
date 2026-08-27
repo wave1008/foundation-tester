@@ -61,8 +61,11 @@ Codex の既定は `sandbox_mode = "workspace-write"` で、**loopback を含む
 
 `Scripts/install.sh` のステップ7.7 と `Scripts/preflight.sh` の `codex_sandbox=` 行が、現在の設定で
 足りるかを判定します。**どちらも設定を書きません** — サンドボックスは利用者のセキュリティ境界
-であり、緩める判断はツールではなく利用者のものだからです。判定が「不足」と出たら、次を自分で
-貼り付けてください:
+であり、緩める判断はツールではなく利用者のものだからです。判定が「不足」と出たら、次の状態に
+なるよう自分で編集してください。**そのまま追記しないこと**: TOML は同じキー・同じテーブルの
+重複を許さないので、`sandbox_mode` や `[sandbox_workspace_write]` が2つになると
+**config.toml 全体が無効**になります。`sandbox_mode` は最初の `[table]` より前に置き、
+`[sandbox_workspace_write]` が既にあるならその中の値を編集します:
 
 ```toml
 sandbox_mode = "workspace-write"

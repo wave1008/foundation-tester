@@ -62,7 +62,10 @@ adb uses TCP 5037, and the emulator uses gRPC. In the external-package layout th
 `Scripts/install.sh` (step 7.7) and `Scripts/preflight.sh` (the `codex_sandbox=` line) report
 whether the current settings suffice. **Neither writes the settings** — a sandbox is your security
 boundary, so widening it is your decision, not the installer's. When the verdict says the settings
-are insufficient, paste this yourself:
+are insufficient, edit the file to end up with the following. **Do not append it blindly**: TOML
+rejects a duplicated key or table, so a second `sandbox_mode` or `[sandbox_workspace_write]` makes
+the whole config invalid. `sandbox_mode` belongs above the first `[table]`, and if
+`[sandbox_workspace_write]` already exists, edit the values inside it:
 
 ```toml
 sandbox_mode = "workspace-write"

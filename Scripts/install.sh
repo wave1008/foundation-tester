@@ -598,8 +598,9 @@ fi
 # 安全側の規律3つ:
 #   ① 既存の [mcp_servers.fleetest] が無いときだけ**末尾に追記**する(既存行に触らない。
 #      TOML はテーブル見出しで前のテーブルが終わるので、末尾追記は常に妥当)
-#   ② 既にあって TOOL_ROOT が違うときは**書き換えず**貼り付け用の TOML を出す
-#      (コメント付き TOML の書き換えは受け手の設定を壊しうる)
+#   ② 既にあって TOOL_ROOT が違うときは**書き換えず**、既存テーブルの値を差し替えるよう案内する
+#      (コメント付き TOML の書き換えは受け手の設定を壊しうる。**追記させない** ——
+#      同じテーブルが2つになると config.toml 全体が無効になる)
 #   ③ tomllib(python 3.11+)で読めないときは1バイトも書かない
 CODEX_CONFIG="${CODEX_HOME:-$HOME/.codex}/config.toml"
 if ! has_agent codex; then
@@ -663,10 +664,10 @@ PYCODEX
       PRESENT) record "MCP(codex)" ok "already registered in $CODEX_CONFIG" ;;
       ADDED) record "MCP(codex)" ok "registered fleetest in $CODEX_CONFIG" ;;
       DIFFERS*)
-        record "MCP(codex)" warn "$CODEX_CONFIG already points fleetest at a different TOOL_ROOT — left it alone; paste this to switch:"
+        record "MCP(codex)" warn "$CODEX_CONFIG already points fleetest at a different TOOL_ROOT — left it alone; to switch, replace the values in the existing [mcp_servers.fleetest] tables (do NOT append — a duplicated table invalidates the whole file):"
         printf '%s\n' "${codex_out#DIFFERS }" ;;
       NOTOML*)
-        record "MCP(codex)" warn "python3 has no tomllib (3.11+ required), so $CODEX_CONFIG was not touched — paste this yourself:"
+        record "MCP(codex)" warn "python3 has no tomllib (3.11+ required), so $CODEX_CONFIG could not be inspected — add this only if [mcp_servers.fleetest] is not already there (a duplicated table invalidates the whole file):"
         printf '%s\n' "${codex_out#NOTOML}" ;;
       *) soft_fail "MCP(codex)" "failed to update $CODEX_CONFIG ($codex_out)" 7.5 ;;
     esac
@@ -795,7 +796,9 @@ fi
 # **判定するが緩めない**。`~/.codex/config.toml` の sandbox_mode / sandbox_workspace_write は
 # **受け手のグローバル設定でありセキュリティ境界**なので、インストーラは1バイトも書かない
 # (このスクリプトが受け手のファイルを書き換えるのは入口ファイルのマーカー内側だけ、という
-# 規律の外側に置く)。代わりに**効かない理由を名指しして、貼り付け用の TOML を出す**。
+# 規律の外側に置く)。代わりに**効かない理由を名指しして、編集の案内を出す**。
+# **「貼り付け用ブロック」にしない** —— TOML は同じキー・テーブルの重複を許さないので、
+# 素朴に追記させると config.toml 全体が無効になる。
 #
 # 既定の workspace-write が塞ぐのは2つ:
 #   ① ワークスペース外への書き込み —— 外部パッケージ構成では TOOL_ROOT が WORK_DIR の
@@ -817,8 +820,11 @@ needed = [tool_root, os.path.join(home, ".config/fleetest"),
           os.path.join(home, "Library/Developer/CoreSimulator"),
           os.path.join(home, ".android")]
 
-paste = (
+guidance = (
     '# ~/.codex/config.toml — fleetest がデバイスを駆動するために必要\n'
+    '# 追記用ブロックではありません。sandbox_mode は最初の [table] より前に置き、\n'
+    '# 既存の [sandbox_workspace_write] があれば、そのテーブル内の値を編集してください。\n'
+    '# 同じキーやテーブルを重複させると config.toml 全体が無効になります。\n'
     '# network_access は loopback(ブリッジ HTTP / adb 5037 / エミュレータ gRPC)にも要る。\n'
     '# outbound を全部開けたくないなら sandbox_mode = "danger-full-access" ではなく、\n'
     '# fleetest を使うときだけ `codex --sandbox danger-full-access` で起動する手もある。\n'
@@ -831,16 +837,16 @@ paste = (
 try:
     import tomllib
 except ModuleNotFoundError:
-    print("UNKNOWN python3 has no tomllib (3.11+)\n%s" % paste, end="")
+    print("UNKNOWN python3 has no tomllib (3.11+)\n%s" % guidance, end="")
     sys.exit(0)
 if not os.path.exists(path):
-    print("UNKNOWN %s does not exist yet\n%s" % (path, paste), end="")
+    print("UNKNOWN %s does not exist yet\n%s" % (path, guidance), end="")
     sys.exit(0)
 try:
     with open(path, "rb") as f:
         data = tomllib.load(f)
 except Exception as e:
-    print("UNKNOWN could not parse %s (%s)\n%s" % (path, e, paste), end="")
+    print("UNKNOWN could not parse %s (%s)\n%s" % (path, e, guidance), end="")
     sys.exit(0)
 
 mode = data.get("sandbox_mode", "workspace-write")
@@ -848,7 +854,7 @@ if mode == "danger-full-access":
     print("OK sandbox_mode=danger-full-access", end="")
     sys.exit(0)
 if mode == "read-only":
-    print("BLOCKED sandbox_mode=read-only\n%s" % paste, end="")
+    print("BLOCKED sandbox_mode=read-only\n%s" % guidance, end="")
     sys.exit(0)
 
 ws = data.get("sandbox_workspace_write", {}) or {}
@@ -863,7 +869,7 @@ if not ws.get("network_access"):
 if missing:
     reasons.append("writable_roots is missing " + ", ".join(missing))
 if reasons:
-    print("BLOCKED %s\n%s" % ("; ".join(reasons), paste), end="")
+    print("BLOCKED %s\n%s" % ("; ".join(reasons), guidance), end="")
 else:
     print("OK sandbox_mode=workspace-write with network_access and the needed writable_roots", end="")
 PYSANDBOX
@@ -872,11 +878,11 @@ PYSANDBOX
       OK*) record "codex sandbox" ok "${sandbox_out#OK }" ;;
       BLOCKED*)
         sandbox_head="${sandbox_out#BLOCKED }"
-        record "codex sandbox" warn "${sandbox_head%%$'\n'*} — fleetest cannot drive devices until this is changed (nothing was written; paste the block below into $CODEX_CONFIG yourself)"
+        record "codex sandbox" warn "${sandbox_head%%$'\n'*} — fleetest cannot drive devices until this is changed (nothing was written; edit $CODEX_CONFIG using the guidance below)"
         printf '%s\n' "${sandbox_out#*$'\n'}" ;;
       UNKNOWN*)
         sandbox_head="${sandbox_out#UNKNOWN }"
-        record "codex sandbox" warn "could not verify the sandbox: ${sandbox_head%%$'\n'*} (paste the block below if devices do not respond)"
+        record "codex sandbox" warn "could not verify the sandbox: ${sandbox_head%%$'\n'*} (edit $CODEX_CONFIG using the guidance below if devices do not respond)"
         printf '%s\n' "${sandbox_out#*$'\n'}" ;;
       *) record "codex sandbox" warn "unexpected verdict ($sandbox_out)" ;;
     esac

@@ -162,9 +162,11 @@ Codex の既定 `sandbox_mode = "workspace-write"` は **loopback を含む outb
 デバイスを1台も駆動できない**(ブリッジ HTTP・adb の TCP 5037・エミュレータ gRPC が通らない)。
 
 `Scripts/install.sh` のステップ7.7(または `Scripts/preflight.sh` の `codex_sandbox=` 行)が判定を出す。
-不足していたら 🧑 に**次の内容を `~/.codex/config.toml` へ貼るよう依頼する**。
-**エージェントが勝手に書かない** —— サンドボックスは受け手のセキュリティ境界であり、
-このツールが受け手のグローバル設定を緩める判断をしてはいけない:
+不足していたら 🧑 に**次の状態になるよう `~/.codex/config.toml` を編集してもらう**。
+**そのまま追記させない** —— TOML は同じキー・テーブルの重複を許さないので、`sandbox_mode` や
+`[sandbox_workspace_write]` が2つになると **config.toml 全体が無効**になる(既にあるなら
+その中の値を編集する)。**エージェントが勝手に書かない** —— サンドボックスは受け手の
+セキュリティ境界であり、このツールが受け手のグローバル設定を緩める判断をしてはいけない:
 
 ```toml
 sandbox_mode = "workspace-write"

@@ -72,8 +72,9 @@
   「選択ダイアログ(Claude Code なら AskUserQuestion)」の形で、実装ではなく意図を書く)。
   **Codex のサンドボックスは判定するが緩めない**(既定 `workspace-write` は loopback を含む
   outbound とワークスペース外書込を塞ぎ、デバイスを1台も駆動できない)—— install.sh ステップ7.7 と
-  preflight の `codex_sandbox=` が**判定と貼り付け用 TOML だけ**を出す。受け手のグローバル設定 =
-  セキュリティ境界なので1バイトも書かない。**プロジェクトスコープの `.codex/config.toml` も使わない**
+  preflight の `codex_sandbox=` が**判定と編集の案内だけ**を出す。受け手のグローバル設定 =
+  セキュリティ境界なので1バイトも書かない。**「貼り付け用ブロック」として出さない** ——
+  TOML は同じキー・テーブルの重複を許さず、素朴に追記させると config.toml 全体を無効にする。**プロジェクトスコープの `.codex/config.toml` も使わない**
   (trusted なプロジェクトでしか読まれず、書いても黙って効かない状態を作れる)
 - MCP サーバの起動口: `Scripts/mcp-server.sh`(`.mcp.json` はこれを exec するだけ)。
   **シェル式を `.mcp.json` へ直書きしない** —— 起動のたびに no-op でも約8秒の `swift build` を払い、
