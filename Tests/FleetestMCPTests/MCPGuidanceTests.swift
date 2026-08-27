@@ -151,6 +151,43 @@ final class MCPGuidanceTests: XCTestCase {
         XCTAssertTrue(text.contains("bridge restart"), text)
     }
 
+    // MARK: - 前面判定(backgroundedSessionNote)
+
+    /// **通知シェード / クイック設定に「前面に居ない」と言わない**(2026-08-28・実機 Pixel 4a)。
+    /// Android の foregroundAppID() は topmost *app* package を返すので、アクティビティを
+    /// 持たないシステム UI の窓が前面のときは `com.android.systemui` が決して一致せず、
+    /// **木がまさにその面のものでも必ず**「木は古い・ft_launch で戻せ」と言っていた
+    func testSystemUiTreeIsNotCalledBackgrounded() async throws {
+        let driver = FakeDriver()
+        driver.snapshotResponse = SnapshotResponse(
+            sessionBundleID: "com.android.systemui",
+            screen: FTRect(x: 0, y: 0, width: 1080, height: 2340),
+            elements: [], truncatedCount: 0)
+        // 実機と同じ形: 前面の「アプリ」は背後のアプリのまま
+        driver.foregroundBundleID = "com.ftester.e2e.android"
+        let server = MCPServer(write: { _ in }, makeDriver: { _ in driver },
+                               recordSnapshot: { _, _, _ in })
+        let content = try await server.call(tool: "ft_snapshot", args: [:])
+        let text = try XCTUnwrap(content.first?["text"] as? String)
+        XCTAssertFalse(text.contains("NOT in the foreground"), text)
+    }
+
+    /// **陰性対照ではなく陽性対照**: 本当に背面へ回ったアプリには従来どおり言うこと
+    /// (上の絞り込みが検知そのものを消していないか)
+    func testAGenuinelyBackgroundedAppIsStillCalledOut() async throws {
+        let driver = FakeDriver()
+        driver.snapshotResponse = SnapshotResponse(
+            sessionBundleID: "com.ftester.e2e.android",
+            screen: FTRect(x: 0, y: 0, width: 1080, height: 2340),
+            elements: [], truncatedCount: 0)
+        driver.foregroundBundleID = "com.example.other"
+        let server = MCPServer(write: { _ in }, makeDriver: { _ in driver },
+                               recordSnapshot: { _, _, _ in })
+        let content = try await server.call(tool: "ft_snapshot", args: [:])
+        let text = try XCTUnwrap(content.first?["text"] as? String)
+        XCTAssertTrue(text.contains("NOT in the foreground"), text)
+    }
+
     // MARK: - アプリのすり替わり(2026-08-06 の探索で決定的に再現)
 
     /// **Android のブリッジは session を前面ウィンドウから採る**ので、back でアプリを出ると

@@ -899,9 +899,20 @@ extension MCPServer {
 
     /// セッションのアプリが前面に居ないときの注記(居るとき・判定できないときは空)。
     /// 判定は 1 往復(/appstate)なので snapshot の1割程度。**黙って嘘を返すよりは安い**
+    ///
+    /// **システム UI の面には言わない**(2026-08-28・実機 Pixel 4a で実害確認)。Android の
+    /// `foregroundAppID()` は **topmost *app* package**(`mCurrentFocus` のアクティビティ名)を
+    /// 返すので、通知シェード / クイック設定のように**アクティビティを持たない窓**が前面に居ると
+    /// `com.android.systemui` は決して一致しない —— 木がまさにその面のものでも
+    /// **必ず**「前面に居ない・木は古い・ft_launch で戻せ」と言っていた。事実と逆なうえ、
+    /// 助言どおり `ft_launch com.android.systemui` を撃つ道理も無い。
+    /// **`switchedAppNote` は同じ集合を見て既にこれを避けている**(欠陥⑧)—— こちらが
+    /// その掃討漏れだった。判定材料が無いのだから**黙る**(この関数の既存の縮退と同じ)。
+    /// iOS の springboard では再現しない(実測: 誤警告なし)ので触っていない
     static func backgroundedSessionNote(_ snapshot: SnapshotResponse,
                                         driver: AppDriver) async -> String {
         guard let bundleID = snapshot.sessionBundleID,
+              !systemDialogPackages.contains(bundleID),
               let foreground = try? await driver.isAppForeground(bundleID: bundleID),
               !foreground else { return "" }
         return "\(bundleID) is NOT in the foreground: this tree is its last state, not what is on"
