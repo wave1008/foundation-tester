@@ -75,7 +75,7 @@ bash <TOOL_ROOT>/Scripts/install.sh --work-dir <WORK_DIR> --skip-project --skip-
 ```
 
 クローンがまだ無ければ clone から:
-`curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install.sh | bash -s -- --skip-project --skip-extension`
+`curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/${FLEETEST_REF:-main}/Scripts/install.sh | bash -s -- --skip-project --skip-extension`
 
 出力は行頭の `[ok]` / `[skip]` / `[warn]` / `[fail]` で読む。**exit 0 ならステップ3(承認)へ**。
 **exit 1 は `[fail]` 行の「→ SKILL.md step N」の手順を手で通して原因を解決し、同じ引数で再実行**

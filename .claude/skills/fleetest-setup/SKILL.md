@@ -177,7 +177,7 @@ tag も clone で取得できる)。
 ステップ0で聞いた値を引数で渡すだけで、**探索はしない**（appPath・bundle ID を勝手に埋めない設計）。
 
 ```
-curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install.sh | bash -s -- \
+curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/${FLEETEST_REF:-main}/Scripts/install.sh | bash -s -- \
   --name <ProjectName> --platform <ios|android|both> --machine <マシン名> --app-name "<表示名>" [--app-id <bundleID>]
 ```
 
@@ -192,6 +192,10 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scr
   結果は `[ok] agent:` 行に出る。
 - **curl 形を使う**（クローンの `Scripts/install.sh` は pull されるまで古く、新しい引数を渡すと
   「不明なオプション」で落ちる。curl 形なら常に最新が動き、その中でクローンを pull する）。
+  `${FLEETEST_REF:-main}` は**未マージのブランチを検証するため**の口で、受け手は何も指定しなくてよい
+  （タグは main の祖先なので、版を固定した受け手にも `install.sh@main` は常に新しい = 引数が
+  足りなくなることはない）。**逆に、ブランチ検証では必ず `FLEETEST_REF` を渡す** —— 渡さないと
+  「新しいスキル + main の古いインストーラ」を走らせて、直したはずの挙動を確認できない。
   clone 先を変えるなら `--tool-root <dir>`。オフラインなど curl が使えないときだけ
   `bash <TOOL_ROOT>/Scripts/install.sh --work-dir <WORK_DIR> …` を使う。
 - clone 構成（TOOL_ROOT = WORK_DIR）でもそのまま使える（`--work-dir` にクローンを渡す。
