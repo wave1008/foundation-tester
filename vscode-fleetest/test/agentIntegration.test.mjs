@@ -370,3 +370,36 @@ test("FLEETEST_REF がスクリプトの取得元とクローンの ref を揃�
   assert.match(setup, /\$\{FLEETEST_REF:-main\}\/Scripts\/install\.sh/,
     "setup スキルの install.sh 取得元が ref を通していません");
 });
+
+test("FLEETEST_REF は「版固定(detached)」ガードより先に効く", () => {
+  // 後ろに置くと、**一度タグへ固定したクローンが二度とブランチへ戻れない**(実測で踏んだ)。
+  // FLEETEST_REF は「ここへ動かせ」という明示指示なので、現在の状態に関わらず従う
+  const refBranch = INSTALL_SH.indexOf('elif [ -n "$REF" ]; then');
+  const pinnedGuard = INSTALL_SH.indexOf("version pinned:");
+  assert.ok(refBranch > 0, "install.sh に REF の分岐がありません");
+  assert.ok(pinnedGuard > 0, "install.sh に版固定ガードがありません");
+  assert.ok(refBranch < pinnedGuard,
+    "REF の分岐が版固定ガードより後ろにあります(タグへ固定すると戻れなくなります)");
+});
+
+test("ref へ揃えるとき、ブランチは追跡付き・タグは detached", () => {
+  // 追跡を張らないと、次に FLEETEST_REF 無しで実行したとき `git pull` が
+  // 「no tracking information」で失敗し、戻れないまま毎回 warn が出る
+  assert.match(INSTALL_SH, /checkout -q -B "\$REF" --track "origin\/\$REF"/,
+    "ブランチの checkout に --track がありません");
+  assert.match(INSTALL_SH, /checkout -q --detach FETCH_HEAD/,
+    "タグ・SHA を detached にしていません");
+  assert.match(INSTALL_SH, /ls-remote --exit-code --heads origin "\$REF"/,
+    "ブランチかどうかの判定がありません");
+});
+
+test("ref へ揃える経路でも自己再 exec の材料を取る", () => {
+  // 取らないと、揃えた先の新しい install.sh が**その回に1つも実行されない**
+  // (CLAUDE.md の再 exec の項と同じ実害)
+  const refBranch = INSTALL_SH.indexOf('elif [ -n "$REF" ]; then');
+  const section = INSTALL_SH.slice(refBranch, INSTALL_SH.indexOf("version pinned:"));
+  const captured = section.indexOf("HEAD_BEFORE_PULL=");
+  const fetched = section.indexOf("fetch --tags origin");
+  assert.ok(captured > 0, "REF 経路が HEAD_BEFORE_PULL を取っていません(再 exec が働きません)");
+  assert.ok(captured < fetched, "HEAD_BEFORE_PULL を fetch の後で取っています(常に同じ値になります)");
+});

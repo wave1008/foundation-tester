@@ -291,81 +291,99 @@ if [ -d "$TOOL_ROOT_RAW/.git" ] || [ -f "$TOOL_ROOT_RAW/Package.swift" ]; then
   TOOL_ROOT="$(abspath "$TOOL_ROOT_RAW")" || die "clone" "cannot resolve TOOL_ROOT: $TOOL_ROOT_RAW" 0.5
   # 既存クローンは更新してから使う(古いまま build して「入れ直したのに直らない」を防ぐ)。
   # マージコミットを勝手に作らないため ff-only。版固定(detached)は意図的とみなして触らない。
+  # ローカル変更の始末(外部構成は自動破棄・それ以外は人に確認)。**REF 経路と pull 経路の
+  # 両方から呼ぶ** —— どちらも checkout / pull の前にツリーを綺麗にする必要がある
+  settle_local_changes() {
+  # 前回の更新が残した npm の版差分を先に片付ける(これを残すと下の dirty ガードで止まる)
+  restore_lock_version_churn
+  # **外部パッケージ構成ではクローンに受け手の資産が無い**(TestProjects/・プロファイル・.mcp.json は
+  # すべて WORK_DIR 側)。そこに出る差分は生成物か上流コードの改変だけなので、聞かずに捨てる
+  # ―― 聞くと更新1回あたりの承認が3手増える(ダイアログ + reset + 再実行。受け手実測)。
+  # 捨てた内容は画面とログに残す(追跡分は reset、未追跡は clean。どちらも下の行を参照)。
+  # clone 構成(保守者・資産が同居)と --keep-local は従来どおり人に確認する
+  if [ "$WORK_DIR" != "$TOOL_ROOT" ] && [ "$KEEP_LOCAL" = "0" ] \
+     && [ -n "$(git -C "$TOOL_ROOT" status --porcelain 2>/dev/null)" ]; then
+    echo "⚠️ Discarding local changes in the clone before updating (external layout; use --keep-local to keep them):"
+    git -C "$TOOL_ROOT" status --short
+    git -C "$TOOL_ROOT" reset --hard >/dev/null \
+      || die "clone" "failed to discard local changes (git reset --hard)" 0.5
+    # **未追跡も消す** ―― reset は追跡分しか戻さず、残った未追跡ファイルは下のガードで止まるうえ、
+    # 上流に同名ファイルが増えると `pull --ff-only` 自体が失敗する。`-x` は付けない
+    # (.gitignore 対象 = .build/・node_modules・.vsix は消さない。消すと再ビルドで数分かかる)。
+    # clone 構成では受け手の TestProjects/ が未追跡のことがあるので**外部構成に限る**(この分岐の条件)
+    git -C "$TOOL_ROOT" clean -fd >/dev/null 2>&1 || true
+  fi
+  if [ -n "$(git -C "$TOOL_ROOT" status --porcelain 2>/dev/null)" ]; then
+    echo "⚠️ The existing clone has local changes: $TOOL_ROOT"
+    git -C "$TOOL_ROOT" status --short | head -20
+    answer=""
+    # curl | bash では stdin がスクリプト自身なので、質問と回答は端末から直接行う。
+    # 制御端末が無い(エージェント・CI)と /dev/tty は存在しても open に失敗するので、
+    # test -r ではなく実際に書けたかで判定する。聞けない場合は破棄せず中止する(黙って捨てない・
+    # 古いクローンのまま進めない)
+    if { printf "Discard the local changes above and update to the latest? [y/N]: " > /dev/tty; } 2>/dev/null; then
+      read -r answer < /dev/tty 2>/dev/null || answer=""
+    fi
+    case "$answer" in
+      [yY]*)
+        # 追跡ファイルの変更だけを戻す。未追跡は消さない(clone 構成では TestProjects/ が
+        # 未追跡のことがあり、git clean で受け手の資産を巻き込む)
+        git -C "$TOOL_ROOT" reset --hard >/dev/null \
+          || die "clone" "failed to discard local changes (git reset --hard)" 0.5
+        echo "   → Discarded the local changes"
+        ;;
+      *)
+        # 古いクローンのまま build すると「入れ直したのに直らない」になるため中止する
+        die "clone" "aborted because the local changes were not discarded. Stash or commit them, "\
+"or run git reset --hard in $TOOL_ROOT, then re-run" 0.5
+        ;;
+    esac
+  fi
+  }
+
   # ローカル変更は**人に確認してから**破棄する(黙って捨てない)
   if [ "$ALLOW_PULL" = "0" ]; then
     record "clone" skip "using the existing clone as-is (--no-pull): $TOOL_ROOT"
   elif [ ! -d "$TOOL_ROOT/.git" ]; then
     record "clone" skip "using the existing directory (not under git): $TOOL_ROOT"
-  elif ! branch="$(git -C "$TOOL_ROOT" symbolic-ref --short -q HEAD)"; then
-    record "clone" skip "using the existing clone (version pinned: $(git -C "$TOOL_ROOT" describe --tags --always 2>/dev/null))"
-  else
-    # 前回の更新が残した npm の版差分を先に片付ける(これを残すと下の dirty ガードで止まる)
-    restore_lock_version_churn
-    # **外部パッケージ構成ではクローンに受け手の資産が無い**(TestProjects/・プロファイル・.mcp.json は
-    # すべて WORK_DIR 側)。そこに出る差分は生成物か上流コードの改変だけなので、聞かずに捨てる
-    # ―― 聞くと更新1回あたりの承認が3手増える(ダイアログ + reset + 再実行。受け手実測)。
-    # 捨てた内容は画面とログに残す(追跡分は reset、未追跡は clean。どちらも下の行を参照)。
-    # clone 構成(保守者・資産が同居)と --keep-local は従来どおり人に確認する
-    if [ "$WORK_DIR" != "$TOOL_ROOT" ] && [ "$KEEP_LOCAL" = "0" ] \
-       && [ -n "$(git -C "$TOOL_ROOT" status --porcelain 2>/dev/null)" ]; then
-      echo "⚠️ Discarding local changes in the clone before updating (external layout; use --keep-local to keep them):"
-      git -C "$TOOL_ROOT" status --short
-      git -C "$TOOL_ROOT" reset --hard >/dev/null \
-        || die "clone" "failed to discard local changes (git reset --hard)" 0.5
-      # **未追跡も消す** ―― reset は追跡分しか戻さず、残った未追跡ファイルは下のガードで止まるうえ、
-      # 上流に同名ファイルが増えると `pull --ff-only` 自体が失敗する。`-x` は付けない
-      # (.gitignore 対象 = .build/・node_modules・.vsix は消さない。消すと再ビルドで数分かかる)。
-      # clone 構成では受け手の TestProjects/ が未追跡のことがあるので**外部構成に限る**(この分岐の条件)
-      git -C "$TOOL_ROOT" clean -fd >/dev/null 2>&1 || true
-    fi
-    if [ -n "$(git -C "$TOOL_ROOT" status --porcelain 2>/dev/null)" ]; then
-      echo "⚠️ The existing clone has local changes: $TOOL_ROOT"
-      git -C "$TOOL_ROOT" status --short | head -20
-      answer=""
-      # curl | bash では stdin がスクリプト自身なので、質問と回答は端末から直接行う。
-      # 制御端末が無い(エージェント・CI)と /dev/tty は存在しても open に失敗するので、
-      # test -r ではなく実際に書けたかで判定する。聞けない場合は破棄せず中止する(黙って捨てない・
-      # 古いクローンのまま進めない)
-      if { printf "Discard the local changes above and update to the latest? [y/N]: " > /dev/tty; } 2>/dev/null; then
-        read -r answer < /dev/tty 2>/dev/null || answer=""
-      fi
-      case "$answer" in
-        [yY]*)
-          # 追跡ファイルの変更だけを戻す。未追跡は消さない(clone 構成では TestProjects/ が
-          # 未追跡のことがあり、git clean で受け手の資産を巻き込む)
-          git -C "$TOOL_ROOT" reset --hard >/dev/null \
-            || die "clone" "failed to discard local changes (git reset --hard)" 0.5
-          echo "   → Discarded the local changes"
-          ;;
-        *)
-          # 古いクローンのまま build すると「入れ直したのに直らない」になるため中止する
-          die "clone" "aborted because the local changes were not discarded. Stash or commit them, "\
-"or run git reset --hard in $TOOL_ROOT, then re-run" 0.5
-          ;;
-      esac
-    fi
-    # **FLEETEST_REF を明示したら、既存クローンもその ref へ揃える**。揃えないと
-    # 「新しいスクリプト + 別の ref のバイナリ」で走り、直したはずの挙動を確認できない。
-    # ローカル変更は上で始末済みなので、ここでは位置合わせだけ行う
-    if [ -n "$REF" ]; then
-      echo "==> git fetch + checkout $REF (aligning the existing clone)"
-      step_started=$SECONDS
-      if git -C "$TOOL_ROOT" fetch --tags origin "$REF" >>"$RAW_SINK" 2>&1 \
-         && git -C "$TOOL_ROOT" checkout -q -B "$REF" FETCH_HEAD >>"$RAW_SINK" 2>&1; then
-        record "clone" ok "aligned the existing clone to $REF ($(git -C "$TOOL_ROOT" rev-parse --short HEAD), $(elapsed_since $step_started))"
-      else
-        show_log_tail
-        die "clone" "failed to align $TOOL_ROOT to $REF" 0.5
-      fi
+  elif [ -n "$REF" ]; then
+    # **「版固定(detached)」ガードより前に置く** —— FLEETEST_REF は「ここへ動かせ」という
+    # 明示指示なので、いまタグに固定されていても従う。後ろに置くと、一度タグへ固定した
+    # クローンが二度とブランチへ戻れない(実測で踏んだ)
+    settle_local_changes
+    echo "==> git fetch + checkout $REF (aligning the existing clone)"
+    step_started=$SECONDS
+    # **再 exec の判定に使うので fetch の前に控える**。控えないと、揃えた先の新しい
+    # install.sh が**その回に1つも実行されない**(CLAUDE.md の再 exec の項と同じ実害)
+    HEAD_BEFORE_PULL="$(git -C "$TOOL_ROOT" rev-parse HEAD 2>/dev/null || echo none)"
+    # **ブランチとそれ以外(タグ・SHA)を分ける**。ブランチは追跡付きで checkout する ——
+    # 追跡を張らないと、次に FLEETEST_REF 無しで実行したとき `git pull` が
+    # 「no tracking information」で失敗し、**戻れないまま毎回 warn が出る**
+    # (しかも既存の warn 文言は network/diverged を疑わせるので切り分けを誤らせる)。
+    # タグ・SHA は detached にする(ブランチ名を騙らせない。既存の「版固定」判定と揃う)
+    if git -C "$TOOL_ROOT" ls-remote --exit-code --heads origin "$REF" >/dev/null 2>&1; then
+      ref_checkout=(checkout -q -B "$REF" --track "origin/$REF")
     else
-      echo "==> git pull (updating the existing clone $TOOL_ROOT)"
-      step_started=$SECONDS
-      HEAD_BEFORE_PULL="$(git -C "$TOOL_ROOT" rev-parse HEAD 2>/dev/null || echo none)"
-      if git -C "$TOOL_ROOT" pull --ff-only >>"$RAW_SINK" 2>&1; then
-        record "clone" ok "updated the existing clone: $TOOL_ROOT ($branch $(git -C "$TOOL_ROOT" rev-parse --short HEAD), $(elapsed_since $step_started))"
-      else
-        soft_fail "clone" "git pull failed (continuing with the existing clone; check the network or a diverged history)" 0.5
-      fi
+      ref_checkout=(checkout -q --detach FETCH_HEAD)
+    fi
+    if git -C "$TOOL_ROOT" fetch --tags origin "$REF" >>"$RAW_SINK" 2>&1 \
+       && git -C "$TOOL_ROOT" "${ref_checkout[@]}" >>"$RAW_SINK" 2>&1; then
+      record "clone" ok "aligned the existing clone to $REF ($(git -C "$TOOL_ROOT" rev-parse --short HEAD), $(elapsed_since $step_started))"
+    else
+      show_log_tail
+      die "clone" "failed to align $TOOL_ROOT to $REF" 0.5
+    fi
+  elif ! branch="$(git -C "$TOOL_ROOT" symbolic-ref --short -q HEAD)"; then
+    record "clone" skip "using the existing clone (version pinned: $(git -C "$TOOL_ROOT" describe --tags --always 2>/dev/null); FLEETEST_REF=<ref> moves it)"
+  else
+    settle_local_changes
+    echo "==> git pull (updating the existing clone $TOOL_ROOT)"
+    step_started=$SECONDS
+    HEAD_BEFORE_PULL="$(git -C "$TOOL_ROOT" rev-parse HEAD 2>/dev/null || echo none)"
+    if git -C "$TOOL_ROOT" pull --ff-only >>"$RAW_SINK" 2>&1; then
+      record "clone" ok "updated the existing clone: $TOOL_ROOT ($branch $(git -C "$TOOL_ROOT" rev-parse --short HEAD), $(elapsed_since $step_started))"
+    else
+      soft_fail "clone" "git pull failed (continuing with the existing clone; check the network or a diverged history)" 0.5
     fi
   fi
 else
