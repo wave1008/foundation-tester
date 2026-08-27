@@ -9,6 +9,7 @@
 // process.cwd() は npm test 実行時に vscode-fleetest ルート(protocolVersion.test.mjs と同じ前提)。
 
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
@@ -88,6 +89,25 @@ test("repo ルートに skills を置かない(Claude 側で二重登録にな�
   assert.ok(
     !existsSync(path.join(ROOT, "skills")),
     "repo ルートの skills は Claude Code の既定スキャンに拾われ、スキルが二重登録される",
+  );
+});
+
+// 同型の2件目。repo ルートの `.mcp.json` は**プラグインに載って配られ**、中身が
+// `$PWD/Scripts/mcp-server.sh` 依存なのでクローンの外では必ず落ちる(2026-08-27 実測:
+// Codex は起動時に `connection closed: initialize response`、Claude は `plugin details` に
+// `MCP servers (1)`)。登録は構成を問わず install.sh が絶対パスで WORK_DIR へ書く。
+test("repo ルートに .mcp.json を置かない(プラグインに載って受け手の MCP が落ちる)", () => {
+  assert.ok(
+    !execFileSync("git", ["ls-files", ".mcp.json"], { cwd: ROOT, encoding: "utf8" }).trim(),
+    "repo ルートの .mcp.json はプラグインに載って配られる($PWD 依存でクローンの外では起動しない)",
+  );
+});
+
+test("install.sh は構成を問わず .mcp.json を書く(clone 構成を同梱ファイルに頼らない)", () => {
+  const sh = readFileSync(path.join(ROOT, "Scripts/install.sh"), "utf8");
+  assert.ok(
+    !/bundled \.mcp\.json/.test(sh),
+    "clone 構成で .mcp.json の生成をスキップしている(同梱ファイルはもう存在しない)",
   );
 });
 

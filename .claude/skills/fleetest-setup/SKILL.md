@@ -196,7 +196,8 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/${FLEETE
   clone 先を変えるなら `--tool-root <dir>`。オフラインなど curl が使えないときだけ
   `bash <TOOL_ROOT>/Scripts/install.sh --work-dir <WORK_DIR> …` を使う。
 - clone 構成（TOOL_ROOT = WORK_DIR）でもそのまま使える（`--work-dir` にクローンを渡す。
-  `fleetest init` ではなく `project create` 経路になり、`.mcp.json` は同梱のものが使われる）。
+  `fleetest init` ではなく `project create` 経路になる。`.mcp.json` はクローンの中に書かれる
+  ―― 追跡していないのでクローンは dirty にならない）。
 
 **出力の読み方**（行頭の `[ok]` / `[skip]` / `[warn]` / `[fail]` が機械可読部）:
 
@@ -335,10 +336,10 @@ VSIX とは別の消費面。エージェント（Claude Code / Codex）がア�
 （`fleetest-mcp`）を登録する。バイナリは TOOL_ROOT のクローンから毎回ビルドされる（配布はソースビルド前提。
 products 未宣言でも `swift build --product fleetest-mcp` は暗黙 product として通る）。
 
-- **clone 構成**: TOOL_ROOT ルートの `.mcp.json`（既存・プロジェクトスコープ）がそのまま効く。追加不要。
-  Claude Code を**クローンルートで開く**前提（相対 `.build/debug` 依存）。
-
-- **外部パッケージ構成（既定）**: WORK_DIR に `.mcp.json` を書く（**claude CLI 不要**・ただの JSON ファイル）。
+- **構成を問わず** WORK_DIR に `.mcp.json` を書く（clone 構成では WORK_DIR = クローン。
+  **同梱ファイルに頼らない** ―― プラグイン root = repo ルートなので、リポジトリに `.mcp.json` を
+  置くとプラグインに載って配られ、クローンの外で起動した受け手の MCP が必ず落ちる）。
+  以下は書く内容（**claude CLI 不要**・ただの JSON ファイル）。
   TOOL_ROOT を**絶対パス**で埋める（受け手がどの cwd で開いても解決できる）:
 
   1. `ABS_TOOL_ROOT=$(cd ../foundation-tester && pwd)` で絶対パスを得る。

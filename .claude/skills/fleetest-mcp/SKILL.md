@@ -94,9 +94,10 @@ Xcode を同ベータへ揃えてフルリビルド。FoundationModels の ABI �
 > `swift run fleetest doctor --fm-only`(可=exit 0 / 不可=1)。ここは MCP 登録の必須ゲートではないので、
 > 不可でも登録自体は進めてよい(FM 無効の旨だけ 🧑 に伝える)。
 
-### 2. WORK_DIR に .mcp.json をマージ(外部パッケージ構成のみ)
+### 2. WORK_DIR に .mcp.json をマージ
 
-clone 構成ならこのステップは不要(同梱 `.mcp.json` が効く)。外部構成では **WORK_DIR(カレント)の
+**構成を問わず書く**(clone 構成では WORK_DIR = クローン。`.mcp.json` は追跡していないので
+クローンが dirty にならない)。**WORK_DIR(カレント)の
 `.mcp.json`** に次の `fleetest` サーバを書く(**claude CLI 不要**・ただの JSON ファイル)。**既存の `.mcp.json`
 があれば `mcpServers.fleetest` キーだけをマージし、他サーバは温存する**。`<ABS_TOOL_ROOT>` はステップ0.5 の実値に置換:
 

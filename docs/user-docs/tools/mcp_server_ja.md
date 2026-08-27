@@ -6,8 +6,9 @@
 
 ## セットアップ
 
-`foundation-tester` リポジトリのルートで Claude Code を開くと、リポジトリ同梱の `.mcp.json`
-により `fleetest` サーバが自動的に登録されます(初回呼び出し時にビルドが走ります)。Codex は
+`fleetest` サーバは導入時(`install.sh` / `/fleetest:fleetest-setup`)に登録されます。Claude Code は
+作業フォルダの `.mcp.json` に**クローンの絶対パス**で書かれるので、どこでエージェントを開いても
+同じサーバが起動します(初回呼び出し時にビルドが走ります)。Codex は
 `.mcp.json` を読まないので、代わりに `~/.codex/config.toml` へ登録します
 ([Codex](./codex_skills_ja.md)。サーバの動作に必要なサンドボックス設定も同ページ)。VSCode
 拡張やプロジェクト作成を伴わず、別のプロジェクトに MCP サーバだけを追加したい場合は

@@ -7,8 +7,9 @@ an agent instead of a human.
 
 ## Setup
 
-Opening Claude Code at the root of the `foundation-tester` repository registers the `fleetest`
-server automatically via the repository's `.mcp.json` (the first call triggers a build). Codex does
+The `fleetest` server is registered during installation (`install.sh` / `/fleetest:fleetest-setup`).
+For Claude Code it is written into your work folder's `.mcp.json` with the clone's **absolute path**,
+so it starts the same way wherever you open the agent (the first call triggers a build). Codex does
 not read `.mcp.json`; register the server in `~/.codex/config.toml` instead — see
 [Codex](./codex_skills.md), which also covers the sandbox settings the server needs. To add just
 the MCP server to a different project — without the VS Code extension or project scaffolding — see

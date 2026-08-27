@@ -167,8 +167,8 @@ cd <TOOL_ROOT>/vscode-fleetest && npm install && npm run install-local
 新版はランチャを `Scripts/mcp-server.sh` に切り出してあり、鮮度判定（ソースが実行ファイルより
 新しいときだけ建てる）・ログ・失敗時の stderr 出力・cwd の保持をあちらが担う。
 
-- **WORK_DIR の `.mcp.json`**（外部パッケージ構成のみ。clone 構成は同梱 `.mcp.json` を直接編集しない
-  ―― 本体側で管理される）を確認する。`mcpServers.fleetest.args` が `swift build` を含むなら
+- **WORK_DIR の `.mcp.json`**（構成を問わない。clone 構成では WORK_DIR = クローンで、
+  このファイルは追跡外）を確認する。`mcpServers.fleetest.args` が `swift build` を含むなら
   旧テンプレート。次の形へ書き換える（`<ABS_TOOL_ROOT>` は既存値をそのまま使う。他のキーは変更しない）:
 
 ```json

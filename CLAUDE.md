@@ -84,6 +84,13 @@
   Claude Code のローカル marketplace add と同じ罠**プロジェクトスコープの `.codex/config.toml` も使わない**
   (trusted なプロジェクトでしか読まれず、書いても黙って効かない状態を作れる)
 - MCP サーバの起動口: `Scripts/mcp-server.sh`(`.mcp.json` はこれを exec するだけ)。
+  **`.mcp.json` をリポジトリに置かない**(2026-08-27。追跡外・`.gitignore` 済み)——
+  **プラグイン root = repo ルートなので、ルートの規約ファイルはプラグインに載って配られる**。
+  同梱していた `.mcp.json` は `$PWD/Scripts/mcp-server.sh` 依存で、クローンの外で
+  エージェントを起動した受け手の MCP が必ず落ちていた(Codex は起動時に
+  `connection closed`、Claude は `plugin details` に `MCP servers (1)`)。登録は構成を問わず
+  install.sh が**絶対パス**で WORK_DIR へ書く。同型は `skills/`(スキルが二重登録された)——
+  **ルートに何か置くときは「プラグインに載ってよいか」を必ず問う**。
   **シェル式を `.mcp.json` へ直書きしない** —— 起動のたびに no-op でも約8秒の `swift build` を払い、
   失敗すると `>/dev/null` で**理由が分からないまま起動しない**(2026-08-06 の外部フィードバック)。
   ランチャが守るのは3つ: **鮮度でだけ建てる**(`find Sources Package.swift -newer <bin>`。

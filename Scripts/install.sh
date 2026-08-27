@@ -630,10 +630,14 @@ if [ "$DO_MCP" = "0" ]; then
   record "MCP" skip "--skip-mcp"
 else
 
+# **clone 構成でもここで書く**(2026-08-27)。以前は repo ルートの `.mcp.json` を同梱して
+# 済ませていたが、**プラグイン root = repo ルートなのでそれがプラグインに載って配られ**、
+# 中身の `$PWD/Scripts/mcp-server.sh` はクローンの外では存在しないため、受け手が別の場所で
+# エージェントを起動するたびに MCP が落ちていた(Codex: connection closed / Claude: plugin
+# details に MCP servers (1))。同梱をやめ、どちらの構成でも**絶対パス**で登録する。
+# 書き先はクローン自身になるので `.gitignore` 済み(追跡すると次の更新が pull ガードで止まる)。
 if ! has_agent claude; then
   : # Claude Code を使わない受け手には .mcp.json を作らない
-elif [ "$LAYOUT" = "clone" ]; then
-  record "MCP(claude)" skip "the bundled .mcp.json covers the clone layout"
 elif ! command -v python3 >/dev/null 2>&1; then
   soft_fail "MCP(claude)" "python3 is missing, so .mcp.json cannot be merged (write the SKILL template by hand)" 7.5
 else
