@@ -55,10 +55,7 @@ export const panelsStrings = {
   "panels.hostMetrics.gpuTitle": { ja: "GPU負荷", en: "GPU load" },
   "panels.hostMetrics.fmTitle": { ja: "FM 呼び出し回数", en: "FM call count" },
 
-  "panels.devices.emptyMessage": {
-    ja: "デバイス情報を待機しています(ポーリング形式のため反映まで数十秒かかることがあります)...",
-    en: "Waiting for device information (this may take tens of seconds to reflect since it uses polling)...",
-  },
+  "panels.devices.emptyMessage": { ja: "デバイスを待機しています", en: "Waiting for devices" },
   "panels.devices.splitterAriaLabel": { ja: "タイルと出力の分割境界線", en: "Divider between tiles and output" },
   "panels.devices.lanesPlaceholder": {
     ja: "テストを実行するとデバイス毎の出力がここに表示されます",
