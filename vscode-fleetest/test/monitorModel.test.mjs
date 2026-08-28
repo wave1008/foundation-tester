@@ -796,8 +796,19 @@ test("filterMonitorDevices: connected の iOS 実機・booted の Android 実機
 // 未登録(マシンプロファイル未記載の合成デバイス。determineStates(includeUnregistered:) 参照)
 const SIM_UNREGISTERED = { ...SIM1, id: "ios:野良シム", name: "野良シム", registered: false };
 
-test("filterMonitorDevices: filter='all' は registered=false を除外する(マシンプロファイルタブと一致させるため)", () => {
-  assert.deepEqual(filterMonitorDevices([SIM1, SIM_UNREGISTERED, EMU1], "all"), [SIM1, EMU1]);
+// **落とさない**。以前は除外していたが、マシンプロファイルが2つ以上ある案件では
+// `--profile` 無しの `api monitor` がマシンを決められず全台を registered:false で出すため、
+// 「(プロファイルなし)で1台も出ない」になっていた(実害 2026-08-28)。
+test("filterMonitorDevices: filter='all' は registered=false も落とさない", () => {
+  assert.deepEqual(
+    filterMonitorDevices([SIM1, SIM_UNREGISTERED, EMU1], "all"),
+    [SIM1, SIM_UNREGISTERED, EMU1],
+  );
+});
+
+test("filterMonitorDevices: 全台が未登録でも 'all' は空にならない(縮退した監視の実データ)", () => {
+  const devices = [SIM_UNREGISTERED, { ...SIM_UNREGISTERED, id: "ios:野良シム2" }];
+  assert.equal(filterMonitorDevices(devices, "all").length, 2);
 });
 
 test("filterMonitorDevices: filter='running' は registered=false も素通しする(未登録は定義上起動中)", () => {

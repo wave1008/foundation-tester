@@ -239,8 +239,15 @@ export const RUNNING_DEVICES_PROFILE_VALUE = "@running";
 
 /** filter="running" なら起動中のみに絞る(offline と unknown を除外)。
  * 未登録デバイス(registered===false)は定義上「起動中」なので running では素通りする。
- * "all" は registered===false のみ追加で除外する(マシンプロファイルタブの一覧と一致させるため。
- * それ以外は元の順序のまま素通し)。
+ * **"all" は何も落とさない**(元の順序のまま素通し)。
+ *
+ * 以前の "all" は registered===false を落としていた(マシンプロファイルタブの一覧と揃える意図)。
+ * **これが「(プロファイルなし)で1台も出ない」の正体**(実害 2026-08-28): マシンプロファイルが
+ * 2つ以上ある案件では `--profile` 無しの `api monitor` はマシンを決められず、
+ * 「起動中のデバイスだけを見る」に縮退して**全台を registered:false で出す**
+ * (ApiMonitorCommand の includeUnregistered)。それを丸ごと落としていたので 0 件になっていた。
+ * マシンプロファイルが複数あるとき「登録済みの台の一覧」は一意に決まらないので、
+ * 縮退そのものは正しい —— 落とす側が間違っていた。
  *
  * **ブリッジ不在の iOS 実機(state==="booted")も出す**(2026-08-26 に方針変更)。以前は
  * 「タイルが未起動表示になるので出さない」として除外していたが、`api monitor` が接続中の実機を
@@ -254,5 +261,5 @@ export function filterMonitorDevices(
     // unknown(誰も観測していない)は running に含めない —— 動いている根拠が無いものを
     // 「稼働中だけ」の一覧に出すと、その一覧の意味が「稼働中か、分からないもの」になる
     ? devices.filter((device) => device.state !== "offline" && device.state !== "unknown")
-    : devices.filter((device) => device.registered !== false);
+    : [...devices];
 }

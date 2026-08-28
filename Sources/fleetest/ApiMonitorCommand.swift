@@ -68,59 +68,64 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         ResidentProcessGuard.startOrphanWatchdog(logLabel: "monitor")
 
         let testProject = try ScenarioHost.project(named: project)
-        // --profile の machine 明示指定を最優先(ProfileResolver.resolve() と同じ優先順位)。
-        // **--profile 無しでマシンが確定しないのは失敗ではない** —— 実行プロファイル未選択は
-        // 拡張の「(起動中のデバイス)」= 登録に依らず動いている台を見る、の意味なので、
-        // machines/ が複数あって決められなくても**起動中の台だけを出して続ける**
-        // (2026-08-17 の実害: プロファイルの選択を外した瞬間にモニターが起動できなくなった)。
-        // --profile を渡しているときは従来どおり厳しく落とす(選んだ以上、その machine は要る)
+        // **マシンプロファイルが要るのは実行プロファイルを選んでいるときだけ**。選んでいなければ
+        // 台帳を1つに決めず、machines/ を全部畳んで使う(下の targets を参照)
         let machine: (name: String, auto: Bool)?
-        do {
+        if Self.requiresMachineProfile(profile: profile) {
             machine = try ProfileResolver.determineMachine(
                 project: testProject, runProfileName: profile)
-        } catch {
-            guard !Self.requiresMachineProfile(profile: profile) else { throw error }
+            if let machine, machine.auto {
+                logStderr("→ Using machine profile \(machine.name) automatically (it is the only one in machines/)")
+            }
+        } else {
             machine = nil
-            logStderr("[monitor] No run profile is selected and the machine profile cannot be determined"
-                + " — monitoring the devices that are currently running"
-                + " (here and on every registered machine: fleetest remote hosts)")
         }
-        if let machine, machine.auto {
-            logStderr("→ Using machine profile \(machine.name) automatically (it is the only one in machines/)")
-        }
-        var machineProfile = MachineProfile(machine: nil, ios: nil, android: nil)
-        if let machine {
+        // 監視対象の台。**実行プロファイルを選んでいるかどうかで作り方が違う**:
+        //   選んでいる: その machine の台帳 → 実行プロファイルが参照する台だけに絞る
+        //   選んでいない(拡張の「(プロファイルなし)」): **台帳を1つに決めない** —— machines/ を
+        //     全部畳み、手元 + リモート実行の登録簿にあるマシンの台だけを残す(MachineInventory)。
+        //     台帳が2つ以上ある案件では決められず「今動いている台」だけに縮退していたため、
+        //     **未起動の台が1台も出なかった**(実害 2026-08-28)
+        // **実効マシンは spec に焼き込まれている**(プロファイル既定の machine も反映済み。
+        // id・帰属判定・拡張へ出す machine がすべてこの1つの値を見る)
+        let targets: [MonitorTarget]
+        if let machine, Self.requiresMachineProfile(profile: profile), let profile {
             let machineURL = testProject.machinesDir.appendingPathComponent("\(machine.name).json")
             guard FileManager.default.fileExists(atPath: machineURL.path) else {
                 throw ProfileError.machineProfileNotFound(
                     machine: machine.name,
                     available: ProfileResolver.machineNames(project: testProject))
             }
+            let machineProfile: MachineProfile
             do {
                 machineProfile = try JSONDecoder().decode(
                     MachineProfile.self, from: Data(contentsOf: machineURL))
             } catch {
                 throw ProfileError.decodeFailed(machineURL, detail: "\(error)")
             }
-        }
-
-        // --profile 指定時は、実行プロファイルが参照するデバイスのみに監視対象を絞り込む
-        // (RunProfileScope.swift。fleetest devices up/down --profile と共通のロジック)
-        var scoped = machineProfile
-        if let profile, let machine {
-            scoped = try RunProfileScope.filteredMachineProfile(
+            // 実行プロファイルが参照するデバイスのみに絞り込む(RunProfileScope.swift。
+            // fleetest devices up/down --profile と共通のロジック)
+            let scoped = try RunProfileScope.filteredMachineProfile(
                 project: testProject, machineName: machine.name, machineProfile: machineProfile,
                 runProfileName: profile, warn: logStderr)
-        }
-        // **実効ホストを spec に焼き込んでから扱う**(プロファイル既定の host も反映される。
-        // id・帰属判定・拡張へ出す machine がすべてこの1つの値を見る)
-        let targets = DeviceMachineGrouping.entries(machine: scoped).map {
-            MonitorTarget(platform: $0.platform, spec: $0.spec)
-        }
-        // **プロファイル未選択のときは0台でも続ける**(起動中の台が現れたら出す)。
-        // 選んでいるのに0台なのは設定の誤りなので落とす
-        if targets.isEmpty, Self.requiresMachineProfile(profile: profile), let machine {
-            throw ValidationError("machine profile \(machine.name) defines no devices")
+            targets = DeviceMachineGrouping.entries(machine: scoped).map {
+                MonitorTarget(platform: $0.platform, spec: $0.spec)
+            }
+            // 選んでいるのに0台なのは設定の誤りなので落とす
+            if targets.isEmpty {
+                throw ValidationError("machine profile \(machine.name) defines no devices")
+            }
+        } else {
+            let registry = (LocalConfig.load().remoteHosts ?? []).map(\.machine)
+            targets = MachineInventory.observableEntries(
+                profiles: Self.allMachineProfiles(project: testProject, warn: logStderr),
+                registry: registry
+            ).map { MonitorTarget(platform: $0.platform, spec: $0.spec) }
+            // **0台でも続ける**(起動中の台が現れたら出す)
+            logStderr("[monitor] No run profile is selected — monitoring the devices registered for this"
+                + " machine and for every machine in the remote registry"
+                + " (\(targets.count) device(s) from \(ProfileResolver.machineNames(project: testProject).count)"
+                + " machine profile(s); registry: \(registry.isEmpty ? "none" : registry.joined(separator: ", ")))")
         }
 
         let scope = Self.scope(targets: targets, deviceMachine: deviceMachine)
@@ -420,6 +425,22 @@ struct ApiMonitorCommand: AsyncParsableCommand {
     /// (2026-08-17 の実害: プロファイルの選択を外した瞬間にモニターが起動できなくなった)。
     /// I/O を持たない pure 関数(MonitorMachineScopeTests)
     static func requiresMachineProfile(profile: String?) -> Bool { profile != nil }
+
+    /// machines/ の全マシンプロファイル。**ファイル名順**(MachineInventory の重複解決が
+    /// 入力順で決まるので、走査順で結果が揺れないようにする)。壊れた JSON は警告して飛ばす ——
+    /// 実行プロファイルを選んでいないときは「見えるものを見せる」経路なので、1枚の壊れた台帳で
+    /// 監視ごと止めない(選んでいるときは従来どおり decodeFailed で落ちる)
+    static func allMachineProfiles(project: TestProject, warn: (String) -> Void) -> [MachineProfile] {
+        ProfileResolver.machineNames(project: project).sorted().compactMap { name in
+            let url = project.machinesDir.appendingPathComponent("\(name).json")
+            guard let data = try? Data(contentsOf: url),
+                  let profile = try? JSONDecoder().decode(MachineProfile.self, from: data) else {
+                warn("[monitor] skipping machine profile \(name): it cannot be read")
+                return nil
+            }
+            return profile
+        }
+    }
 
     /// 監視対象の仕分け。**この機械が観測できるのは自分のデバイスだけ** —— 他の機械のぶんを
     /// simctl/adb で見ると、同名の手元のシミュレータに解決して**別の機械の台の状態と画面を出す**

@@ -174,13 +174,25 @@ export function measureTileImageHeight() {
 
 // マシンプロファイル未記載の合成デバイス。起動(up)と GPU 再起動が成立しないことを
 // タイル上でも明示する(停止・ライブ操作は可)。
-// **「(起動中のデバイス)」を選んでいる間は出さない** —— このフィルタは登録に依らず動いて
-// いる台を見るためのもので、そこでは未登録は例外ではなく普通の状態。全タイルに同じバッジが
-// 並ぶだけで何も区別しない。他のフィルタでは今までどおり出す(そこでは未登録の台が
-// 混ざっていること自体が情報)。
+// **バッジは「他と違う」ことを示すもの**なので、区別しないときは出さない:
+//   - 「(起動中のデバイス)」を選んでいる間(ユーザー決定)—— このフィルタは登録に依らず
+//     動いている台を見るためのもので、そこでは未登録は例外ではなく普通の状態。
+//   - **1台も登録済みが居ないとき** —— マシンプロファイルが2つ以上ある案件では
+//     `api monitor` がマシンを決められず全台を未登録として出す(monitorDeviceModel.ts の
+//     filterMonitorDevices 参照)。全タイルに同じバッジが並ぶだけで何も区別しない。
 function renderUnregisteredBadge(entry) {
-  const visible = entry.device.registered === false && !runningFilterActive;
+  const visible = entry.device.registered === false && !runningFilterActive && hasRegisteredTile();
   entry.unregisteredBadgeEl.style.display = visible ? 'inline-block' : 'none';
+}
+
+/** 登録済みのタイルが1枚でもあるか(= 未登録であることが区別になるか)。 */
+function hasRegisteredTile() {
+  for (const entry of tiles.values()) {
+    if (entry.device.registered !== false) {
+      return true;
+    }
+  }
+  return false;
 }
 
 // フィルタの切り替えは次の監視サイクル(最大 interval 秒)を待たずに反映する
@@ -1036,6 +1048,9 @@ export function applyDevices(devices) {
     }
   }
   emptyMessage.style.display = tiles.size === 0 ? 'flex' : 'none';
+  // **全タイルが揃ってから**判定する(hasRegisteredTile は集合全体を見るので、1枚ずつの
+  // renderMeta では最初の数枚が古い判定のまま残る)。
+  renderUnregisteredBadges();
   // 選択そのものは変わらなくても、台数が変われば全選択トグルの向き(選択/解除)は変わる。
   renderSelectAllButton();
   relayoutTiles();
