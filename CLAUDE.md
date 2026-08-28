@@ -358,6 +358,7 @@
 | ホスト側ロジック(`StepExecutor` の分岐・セレクタ解決) | `swift test` + **該当シナリオ1〜2本** |
 | ブリッジの挙動(注入・スナップショット・型写像) | 該当 SUT の**1プロファイル**。フレームワーク差が絡むなら全 SUT |
 | 入力・キー・IME 系 | 上記 + **`--ios-xcuitest`**(既定は in-app なので、もう片方のエンジン) |
+| **幾何・容器推定・整定**(実ジェスチャの慣性で挙動が変わるもの) | 上記 + **`--ios-xcuitest`**。**in-app は慣性を持たない**ので、この種の退行は既定スイートでは原理的に出ない(maintainer-notes §4.5.1) |
 | flake 調査・性能 | 該当プロファイルを**反復10周**(docs/verification.md) |
 | run 制御(再キュー・ワーカー離脱など。シナリオ実行の中身を触らない) | `swift test` + **その経路を強制的に通す陽性対照**。緑の run では1度も実行されないのでフルは情報ゼロ |
 | リリース前・大きな統合の締め | **フルスイート = `Scripts/e2e.sh`(引数なし)だけ** |
@@ -544,7 +545,10 @@
   「その streak の間に別のレーンが通った」証拠があるときだけ。無ければ残して走り続け
   `circuitHeld` を記録する。condition 除外案・閾値ノブだけの案は却下)→ maintainer-notes §6
 - **容器推定(`StepExecutor.clippingContainer`)は scrollable 申告の祖先を優先する**。
-  この関数はタップの座標補正・ghost 判定・MCP にも効くので、触ったら 5 SUT のフル E2E。
+  この関数はタップの座標補正・ghost 判定・MCP にも効くので、触ったら 5 SUT のフル E2E
+  **+ `--ios-xcuitest`**。**フルスイートは iOS を in-app で回すので、これだけでは守れない** ——
+  現にこの規則の導入(`8a416bc0`)が xcuitest 限定の退行を入れ、フル E2E 緑のまま通った
+  (**未修正**。経緯と壊れ方は maintainer-notes §4.5.1)
   **座標ドラッグは `StepExecutor.dragWithFallback` だけから撃つ**(in-app は drag が 501。
   `driver.drag` を直に呼ぶと hybrid で黙って不発になる)
 - **システムアラートの判定は2段**: 登録がある間は `SystemUIGate` が毎ステップ止める / 登録が
