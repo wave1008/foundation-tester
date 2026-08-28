@@ -462,9 +462,9 @@ function renderProfilesPanel(): string {
   return `<div id="panel-profiles" class="tab-panel" role="tabpanel" aria-labelledby="tab-profiles" style="display: none;">
     ${renderRunProfileSection()}
 
-    ${renderAppProfileSection()}
-
     ${renderMachineProfileSection()}
+
+    ${renderAppProfileSection()}
   </div>`;
 }
 
