@@ -82,9 +82,6 @@ export const deviceOpsStrings = {
     en: "[fleetest] Retrying device-up({name}) ({nextAttempt}/{max}, after {delayMs}ms)",
   },
   "deviceOps.deviceOpFailedGeneric": { ja: "device-{op} に失敗しました。", en: "device-{op} failed." },
-  // バナーは1行しか出さないので、続きの在り処を必ず言う(monitorDeviceOps.ts の firstLine)
-  "deviceOps.detailsInOutput": { ja: " (詳細は OUTPUT パネル)", en: " (details in the OUTPUT panel)" },
-
   // 実機のブリッジが署名で建たないときの案内。**判定は CLI**(FTBridgeClient の
   // XcodeSigningDiagnosis)で、文言はここが持つ(CLAUDE.md「共有するのは判定であって文言ではない」)。
   // 1行目だけで用が足りるように書く —— バナーは1行しか出さない

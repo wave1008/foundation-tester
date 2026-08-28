@@ -503,3 +503,56 @@ test("signingGuidance: 知らない種別は飛ばす(新しい判定の CLI と
   assert.equal(signingGuidance(["somethingNew"], undefined), null, "1つも分からなければ CLI の文言へ譲る");
   assert.equal(signingGuidance([], undefined), null);
 });
+
+// バナーに載せる文字列の選び方。**自分で組み立てた案内は全文**(短く整形済み)、
+// **外から来た生のエラーは1行目だけ**(xcodebuild のビルドログのように数十行あり得る)。
+// OUTPUT へは誘導しない —— 常時流れていて利用者が読む場所ではない(ユーザー決定 2026-08-29)。
+
+test("署名の案内は全文がバナーへ渡る(3ステップが読める)", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleetest-deviceops-signing-"));
+  const binaryPath = path.join(dir, "fleetest");
+  const finished = JSON.stringify({
+    kind: "finished", ok: false, error: "Cannot code-sign … (English)",
+    signingProblems: ["noAccount", "invalidCertificate", "deviceNotInProfile"],
+    signingLogPath: "/tmp/bridge-build-8123.log",
+  });
+  // **printf '%s' を使う** —— echo は引数中の \n を展開する処理系があり、JSON が複数行に割れる
+  fs.writeFileSync(binaryPath, `#!/bin/sh\nprintf '%s\\n' '${finished}'\nexit 1\n`);
+  fs.chmodSync(binaryPath, 0o755);
+  const { deps, posts } = makeDeps(binaryPath);
+  const deviceOps = new MonitorDeviceOps(deps);
+  try {
+    deviceOps.enqueueLifecycleJob({ kind: "device", name: "iPhone 13", op: "down" });
+    await waitUntilIdle(deviceOps);
+    const failed = posts.filter((m) => m.type === "deviceOpFailed").at(-1);
+    assert.ok(failed, "deviceOpFailed が送られる");
+    assert.match(failed.message, /実機用のブリッジに署名できません/, "拡張の言語で組み立てる");
+    assert.match(failed.message, /1\. .*Apple ID/s, "3ステップが読める");
+    assert.match(failed.message, /3\. .*デベロッパモード/s);
+    assert.doesNotMatch(failed.message, /出力ビュー|OUTPUT/, "OUTPUT へは誘導しない");
+    assert.doesNotMatch(failed.message, /English/, "CLI の英語は使わない");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("生のエラー(署名以外)は1行目だけ渡す(長いビルドログでパネルを埋めない)", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleetest-deviceops-raw-"));
+  const binaryPath = path.join(dir, "fleetest");
+  const finished = JSON.stringify({
+    kind: "finished", ok: false, error: "xcodebuild failed:\nline2\nline3\nline4",
+  });
+  // **printf '%s' を使う** —— echo は引数中の \n を展開する処理系があり、JSON が複数行に割れる
+  fs.writeFileSync(binaryPath, `#!/bin/sh\nprintf '%s\\n' '${finished}'\nexit 1\n`);
+  fs.chmodSync(binaryPath, 0o755);
+  const { deps, posts } = makeDeps(binaryPath);
+  const deviceOps = new MonitorDeviceOps(deps);
+  try {
+    deviceOps.enqueueLifecycleJob({ kind: "device", name: "シム1", op: "down" });
+    await waitUntilIdle(deviceOps);
+    const failed = posts.filter((m) => m.type === "deviceOpFailed").at(-1);
+    assert.equal(failed.message, "xcodebuild failed:");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

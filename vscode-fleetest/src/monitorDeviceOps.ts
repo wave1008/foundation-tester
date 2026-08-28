@@ -866,14 +866,13 @@ export class MonitorDeviceOps {
             ? null
             : signingGuidance(value.signingProblems, value.signingLogPath);
           const message = localized ?? value.error ?? t("deviceOps.deviceOpFailedGeneric", { op });
-          // OUTPUT には全文、**バナーは1行目だけ** —— CLI は「1行目だけで用が足りる」形で
-          // 返す契約(FTBridgeClient の XcodeSigningDiagnosis)。全文をバナーへ流すと、
-          // 実機の署名エラーのような数十行のビルドログでパネルが埋まる(実害 2026-08-29)
           logFailure(message);
-          const head = firstLine(message);
+          // **自分で組み立てた案内は全文をバナーへ**(短く整形済みで数行。読み切れる)。
+          // 外から来た生のエラーは1行目だけ —— xcodebuild のビルドログのように数十行あり得て、
+          // 全文を流すとパネルが埋まる(実害 2026-08-29)。
+          // **OUTPUT へは誘導しない** —— 常時流れていて利用者が読む場所ではない(ユーザー決定)
           this.deps.post({
-            type: "deviceOpFailed", name,
-            message: head === message.trim() ? head : head + t("deviceOps.detailsInOutput"),
+            type: "deviceOpFailed", name, message: localized ?? firstLine(message),
           });
         }
       },
