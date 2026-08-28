@@ -54,6 +54,7 @@ final class BridgeContractTests: XCTestCase {
         // GET /systemalert は「SpringBoard のアラートが載っているか」だけを聞く軽い口
         // (2026-08-21 追加。木を全部撮る /snapshot は約 185ms・こちらはアラート無しで約 73ms)
         "GET /systemalert",
+        "GET /systemui/covering",
         // /systemui/* は SpringBoard を**セッションを触らずに**読む/叩く口
         // (2026-08-25 追加・版 79)。ref は専用の名前空間 = ランナーの systemRefFrames。
         // engine=xcuitest は主ドライバと同じブリッジを共有するので、
@@ -128,12 +129,12 @@ final class BridgeContractTests: XCTestCase {
             "InAppBridge/Sources/InAppWebViewDOM.swift": "ef4df4ffbbcb41adab67e3c257d8de5bcb2ac73b39c7e4e5a2e8305db37a34b6",
             "InAppBridge/Sources/boot.m": "b23fc93fbc99ce2579c9fd8ae75a6f9bbfd0ec6122bec60eb6cd00775dd635ef",
             "InAppBridge/build.sh": "73f53b3434d29114cf1bd0fd68264d373dc2730585d9f0c001d750dfd2844794",
-            "Sources/FTCore/BridgeDTO.swift": "45112b7967d61a93c47b36953ee4bd63c9647e76f706fb6f5aebf574a3082050",
+            "Sources/FTCore/BridgeDTO.swift": "346801ea71bd23c4e8776460ce9531c938ea549ff239532894b688c1a7af93d1",
             "Sources/FTCore/WebViewDOMSnapshot.swift": "649134e9ee668e692000ad362c71f5821ac21f351485ba5c985ec75d64594726",
         ],
         .xcuitest: [
             "Runner/FleetestRunnerUITests/BridgeHTTPServer.swift": "05fca42b7ba467553b96f100f46597f8e4fb1cae75813ca520e5028c4d23bf59",
-            "Runner/FleetestRunnerUITests/BridgeRouter.swift": "0160531358b10f00ddc1de5b422bd88bc6928cde8a5d6a17760b9d2b69acf0dc",
+            "Runner/FleetestRunnerUITests/BridgeRouter.swift": "392e1222b4c2ba95c2336b93291a60bdd059c49ccb3e8aea697ba826fcd6c3a4",
             "Runner/FleetestRunnerUITests/BridgingHeader.h": "f7ff424d9283644d0e7a0c6e202911ecbf2d9c12d469eea330d91471c4788272",
             "Runner/FleetestRunnerUITests/DisplayHeartbeat.swift": "c62c30a45e842d5ec7aff60210284d679b76f6e44358a3f4c97429fe918e5ffa",
             "Runner/FleetestRunnerUITests/FastInput.swift": "50f5c3893a1eeb9faf0e0a7e7f66050abe31efb87d35f454dac78ac38becb748",
@@ -141,7 +142,7 @@ final class BridgeContractTests: XCTestCase {
             "Runner/FleetestRunnerUITests/KeepAwake.swift": "c0e8f397caee6c5e43bef53801a2323efa6940c25e692f7aded1fefc8680f537",
             "Runner/FleetestRunnerUITests/ObjCExceptionCatcher.h": "5a98cdbeefb031137a985b2f4430a5e12fec447a492599f8f4da1bd2c7101edc",
             "Runner/FleetestRunnerUITests/ObjCExceptionCatcher.m": "8b41a8a81bc8199bca13a364717614684f8003999c7675d9a63242c8e74c26be",
-            "Sources/FTCore/BridgeDTO.swift": "45112b7967d61a93c47b36953ee4bd63c9647e76f706fb6f5aebf574a3082050",
+            "Sources/FTCore/BridgeDTO.swift": "346801ea71bd23c4e8776460ce9531c938ea549ff239532894b688c1a7af93d1",
             "Sources/FTCore/SnapshotDedupe.swift": "12a22200bd2048a2b3140c38e7816e341f6c56e25e1ab3a6d1b9d5c5259a56f8",
             "Sources/FTCore/TypeReadback.swift": "24f7637ee29018d3f0f597241f3f0a397dc503b45d9863ac97603c6ede9fbb59",
         ],

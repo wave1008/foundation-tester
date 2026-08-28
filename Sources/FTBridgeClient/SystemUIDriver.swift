@@ -184,5 +184,6 @@ public final class SystemUIDriver: AppDriver {
     }
     public func foregroundAppID() async throws -> String? { try await client.foregroundAppID() }
     public func systemAlert() async throws -> SystemAlertProbeResponse? { try await client.systemAlert() }
+    public func systemUICovering() async throws -> SystemUICoveringResponse? { try await client.systemUICovering() }
     public var lastActionNote: String? { client.lastActionNote }
 }

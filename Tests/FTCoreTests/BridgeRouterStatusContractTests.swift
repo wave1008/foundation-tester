@@ -99,6 +99,18 @@ final class BridgeRouterStatusContractTests: XCTestCase {
     /// XCUITest も 501 を返す。ホスト(`StepExecutor`)は in-app の 501 を typeDriver へ
     /// **1回だけ**回し、そこでも 501 なら失敗させるので、遠回りは1往復で止まる。
     /// **これ以外の 501 を足さないこと**(「今は無理」は 422)
+    /// **ホームボタン機の appSwitcher は断る**(2026-08-28・実機 iPhone SE3 で2案とも実測)。
+    /// 黙って別の面(コントロールセンター / ホーム)を開いて ok を返していたので、
+    /// 「できないと言う」ことそのものが仕様。**501 ではなく 422**(501 は他エンジンへの
+    /// フォールバック指示で、実機には代わりが無い)
+    func testAppSwitcherRefusesOnHomeButtonPhonesInsteadOfDoingSomethingElse() throws {
+        let source = try routerSource
+        XCTAssertTrue(source.contains("the app switcher cannot be opened on a home-button iPhone"),
+                      "ホームボタン機で appSwitcher を断る分岐が消えている")
+        XCTAssertTrue(source.contains("isHomeButtonPhone"),
+                      "機種判定が消えている(全機に Face ID のジェスチャを撃つ状態へ戻っている)")
+    }
+
     func testRunnerNeverClaimsEngineIncapable() throws {
         let source = try routerSource
         XCTAssertEqual(try throwSites(status: 501, in: source), 1,

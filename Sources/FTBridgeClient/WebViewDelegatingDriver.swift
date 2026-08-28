@@ -347,6 +347,7 @@ public final class WebViewDelegatingDriver: AppDriver {
     }
     public func foregroundAppID() async throws -> String? { try await primary.foregroundAppID() }
     public func systemAlert() async throws -> SystemAlertProbeResponse? { try await primary.systemAlert() }
+    public func systemUICovering() async throws -> SystemUICoveringResponse? { try await primary.systemUICovering() }
     // Unrelated to WebView delegation mode, same as status()/isAppForeground — primary 固定
     public func rotate(to orientation: FTOrientation) async throws -> FTOrientation {
         try await primary.rotate(to: orientation)

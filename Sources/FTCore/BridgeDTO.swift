@@ -256,7 +256,65 @@ public enum BridgeAPI {
     /// not hold once the runner is backgrounded (measured: the device still locked at exactly its
     /// 30s auto-lock). A stale runner does not, and the run dies half-way with
     /// `denied by SBMainWorkspace ... reason: Locked` → bump.
-    public static let bridgeProtocolVersion = 81
+    ///
+    /// 82: POST /appswitcher and POST /home branch on device class. On a **home-button iPhone**
+    /// the bottom-edge swipe up is Control Center by design, so the Face ID gesture **silently
+    /// opened the wrong surface while answering ok** (measured 2026-08-28 on a physical iPhone
+    /// SE 3: `ft_navigate appSwitcher` put Control Center on screen). /home now presses the
+    /// hardware button there (measured working), and /appswitcher **refuses with 422** — the
+    /// switcher is a hardware double-press XCUITest cannot send, and `press(.home)` twice just
+    /// goes home (also measured). A stale runner keeps doing the wrong thing silently → bump.
+    ///
+    /// 83: GET /systemui/covering answers whether a SpringBoard surface (Control Center,
+    /// notification centre) is drawn over the app. Nothing on the app side can tell: the tree is
+    /// byte-identical, `XCUIApplication.state` says foreground and /hittable says hittable
+    /// (measured on a physical iPhone SE3). A stale runner 404s, and the host stays silent while
+    /// taps land on the covering surface → bump.
+    public static let bridgeProtocolVersion = 83
+
+    /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
+    ///
+    /// なぜ要るか: ホームボタン機では画面下端から上へのスワイプが**仕様上コントロールセンター**で、
+    /// アプリスイッチャーはハードウェアボタンの2度押し。Face ID 機のジェスチャをそのまま撃つと
+    /// **黙って別の面が開いたまま ok を返す**(2026-08-28・実機 iPhone SE 第3世代で実測。
+    /// `ft_navigate appSwitcher` がコントロールセンターを開いていた)。
+    ///
+    /// 実測値: iPhone SE3 = 375x667(1.78)/ iPhone 15 Pro = 393x852(2.17)/
+    /// iPhone 17 Pro = 402x874(2.17)。**2.0 で綺麗に割れる**。
+    /// **iPad は対象外**(短辺 500pt 以上で false)—— Face ID iPad は下端スワイプでスイッチャーが
+    /// 開くので従来どおりでよく、ホームボタン iPad は未実測なので勝手に挙動を変えない。
+    ///
+    /// **XCUITest ランナーもこの定義を使う**(BridgeDTO.swift はランナーの入力集合に入っている)。
+    /// 2つ目の閾値を作らないこと
+    public static let homeButtonAspectThreshold = 2.0
+    /// iPhone とみなす短辺の上限(pt)。これ以上は iPad 扱いで従来動作
+    public static let phoneShortSideLimit = 500.0
+
+    /// **SpringBoard の面がアプリを覆っていることの目印**(`GET /systemui/covering`)。
+    ///
+    /// 実測(2026-08-28・実機 iPhone SE3 / iOS 26.6。SpringBoard の木の要素数):
+    /// **素の状態 6 件 → コントロールセンター 56 件 → 通知センター 9 件**。
+    /// 素の状態にはここに挙げた識別子が**1つも無い**ので、存在そのものが信号になる。
+    ///
+    /// - `cc-brightness-slider` / `cc-volume-slider`: コントロールセンター。`cc-` 接頭辞は
+    ///   CC 固有で**ローカライズされない**(同時に出る `mode-おやすみモード` のような
+    ///   ローカライズされる名前は使わない)
+    /// - `SBCoverSheetWindow`: 通知センター(カバーシート)。ロック画面もこれなので、
+    ///   **ロック中もアプリは覆われている**という意味で正しい
+    ///
+    /// **iOS の版が変わると識別子は変わりうる**。増減させるときは実機で
+    /// 「素の状態に出ないこと」と「その面で出ること」の両方を測ること
+    public static let systemUICoveringMarkers: [String] = [
+        "cc-brightness-slider", "cc-volume-slider", "SBCoverSheetWindow",
+    ]
+
+    public static func isHomeButtonPhoneScreen(width: Double, height: Double) -> Bool {
+        guard width > 0, height > 0 else { return false }
+        let shortSide = min(width, height)
+        let longSide = max(width, height)
+        guard shortSide < phoneShortSideLimit else { return false }
+        return longSide / shortSide < homeButtonAspectThreshold
+    }
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の
@@ -847,6 +905,23 @@ public struct SystemAlertProbeResponse: Codable, Sendable {
         self.present = present
         self.title = title
         self.buttons = buttons
+    }
+}
+
+/// `GET /systemui/covering`(XCUITest ランナーのみ)。**SpringBoard の面がアプリを覆っているか**。
+///
+/// なぜ専用の口が要るか(2026-08-28・実機 iPhone SE3 で実測): コントロールセンター /
+/// 通知センターがアプリを全画面で覆っても、**アプリ側からは何も分からない** ——
+/// `/snapshot` は覆う前と1バイト同じ木を返し、`XCUIApplication.state` は `foreground: true`、
+/// `/hittable` も `hittable: true` のまま。覆っているのは別プロセス(SpringBoard)の窓なので、
+/// アプリのクエリには原理的に現れない。**SpringBoard に聞く以外に知る手段が無い**。
+public struct SystemUICoveringResponse: Codable, Sendable {
+    public var covering: Bool
+    /// 当たった目印(`BridgeAPI.systemUICoveringMarkers`)。呼び手が面を名指しするために使う
+    public var marker: String?
+    public init(covering: Bool, marker: String? = nil) {
+        self.covering = covering
+        self.marker = marker
     }
 }
 

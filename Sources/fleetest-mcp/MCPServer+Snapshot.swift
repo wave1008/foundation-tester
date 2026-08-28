@@ -691,6 +691,74 @@ extension MCPServer {
     /// 実機で再現: profile: で撮った木の ref は 70..93 なのに `port:8143 ref:10` が
     /// `tap [10] done` を返し、ブリッジの #10 = `#btn_input_submit` を実際に押した
     /// (`submitted=-` → `submitted=physical`)。既存の「機を跨いだ ref」テストが通っていたのは
+    /// 「木が画面を代表していない」の申告由来の警告。**覆いを先に聞く**(2026-08-28 実機で実測):
+    /// 通知センターが出ているときは覆いの検知と `hitTest` の**両方**が発火し、後者は
+    /// 「アプリスイッチャーが開いている」という**誤った説明**を並べてしまう。
+    /// 面が分かっているならそちらが正確なので、当たったほうだけを言う。
+    /// 覆っているときは `hitTest` を聞かずに済むので往復も1つ減る
+    static func screenNotRepresentedWarning(_ found: ElementInfo, driver: AppDriver) async -> String {
+        let covering = await systemUICoveringWarning(found, driver: driver)
+        if !covering.isEmpty { return covering }
+        return await treeDoesNotMatchScreenWarning(found, driver: driver)
+    }
+
+    /// **SpringBoard の面がアプリを覆っている**ことを SpringBoard に聞く(iOS xcuitest だけ)。
+    ///
+    /// `treeDoesNotMatchScreenWarning` では拾えない形を埋める —— コントロールセンター /
+    /// 通知センターはアプリを前面のまま覆うので、木も `XCUIApplication.state` も `/hittable` も
+    /// 全部「正常」を返す(実機 iPhone SE3 で実測)。**アプリ側には知る手段が無い**。
+    ///
+    /// **費用**: `/systemalert` と同じ「目印を1問聞くだけ」の口。**MCP のタップ経路だけ**に置く ——
+    /// エージェントは1手ずつ撃つので影響しないが、DSL は1 run で数千回撃つ。DSL へ広げるのは
+    /// 実害を観測してから(2026-08-28 時点で DSL での観測は0件)。
+    /// **警告のみ**(拒否しない)。答えられない(旧ブリッジ・in-app・Android)ときは黙る
+    static func systemUICoveringWarning(_ found: ElementInfo, driver: AppDriver) async -> String {
+        guard let covering = try? await driver.systemUICovering(), covering.covering
+        else { return "" }
+        let surface = covering.marker == "SBCoverSheetWindow"
+            ? "the notification centre (or the lock screen)" : "Control Center"
+        return " (warning: \(surface) is drawn over the app right now, so \(RefGuard.describe(found))"
+            + " is not actually reachable — the element list still shows what is underneath,"
+            + " because the covering surface belongs to another process and never appears in it."
+            + " This tap landed on that surface. Dismiss it first, then read the screen again)"
+    }
+
+    /// **木が画面を代表していないことを、木の外から知る唯一の答え**(iOS xcuitest だけ)。
+    ///
+    /// アプリが**問い合わせ対象でなくなった**とき(アプリスイッチャーが開いた・別アプリが前面に
+    /// 来た)、`/snapshot` は**直前と1バイト同じ木**を返し続け、`XCUIApplication.state` も
+    /// `foreground: true` のままになる(実機・Simulator の両方で実測)。木由来の判定は全部素通しする。
+    /// **唯一食い違うのがライブのヒットテスト** —— 木が今まさに載せている要素を引き当てられない。
+    ///
+    /// 実測(2026-08-28・Simulator の設定 root): 覆い無し 0/12 → アプリスイッチャーで 12/12。
+    /// 実害の witness は同じ形で `ft_tap` が **`tap [5] done. (selector: #com.apple.settings
+    /// .primaryAppleAccount)` と成功を返しながら、実際にはスイッチャーの別アプリのカードに
+    /// 当たって端末ごと別アプリへ切り替わった**こと。
+    ///
+    /// **拾えない形(実測して確定・文言で名乗らないこと)**: **コントロールセンター / 通知センター**は
+    /// この信号を出さない —— アプリは前面のまま問い合わせに答え続けるので、全画面を覆われていても
+    /// `hittable: true` が返る(Simulator と実機 iPhone SE の両方で確認)。あちらは
+    /// **別の手当てが要る未解決の穴**(docs/mcp-audit-rounds.md の当該ラウンド)
+    ///
+    /// **絞り込みは `TapTargetGeometry.platformShouldResolve`**(名前を持たない容器は覆いが
+    /// 無くても引き当てられないので、そのまま信号にすると誤検知だらけになる。実測は同 doc)。
+    /// **警告のみ**(拒否しない)。答えられない(旧ブリッジ・in-app・Android)ときは黙る。
+    ///
+    /// **費用**: 対象1件で 72〜146ms。**MCP のタップ経路だけ**に置く —— こちらは
+    /// エージェントが1手ずつ撃つので影響が無い。DSL は1 run で数千回撃つため、
+    /// 同じ費用を毎ステップ払う判断は実測してから(今回は入れていない)
+    static func treeDoesNotMatchScreenWarning(_ found: ElementInfo,
+                                              driver: AppDriver) async -> String {
+        guard TapTargetGeometry.platformShouldResolve(found),
+              (try? await driver.hitTest(ref: found.ref)) == .unresolvable
+        else { return "" }
+        return " (warning: the platform cannot find \(RefGuard.describe(found)) at all, even though"
+            + " the tree just listed it — the app is no longer the one being queried (the app"
+            + " switcher is open, or another app came to the front), and the tree still shows what"
+            + " was there before. This tap almost certainly did not reach the app."
+            + " Check with ft_screenshot, and bring the app back before operating it)"
+    }
+
     /// **木では答えられない「上のクロムの下へ潜っているか」をプラットフォームに聞く**(iOS だけ)。
     ///
     /// ゲートは `TapTargetGeometry.suspectedHiddenUnderChrome`(粗くてよい。断定は
@@ -703,7 +771,7 @@ extension MCPServer {
                                          driver: AppDriver) async -> String {
         guard TapTargetGeometry.suspectedHiddenUnderChrome(found, in: fresh.elements,
                                                            screen: fresh.screen),
-              let hittable = try? await driver.hittable(ref: found.ref), hittable == false
+              (try? await driver.hitTest(ref: found.ref)) == .hittable(false)
         else { return "" }
         return " (warning: the platform reports \(RefGuard.describe(found)) is NOT hittable at its"
             + " reported position — it is scrolled under the navigation bar or another overlay, so"
@@ -776,6 +844,7 @@ extension MCPServer {
                                         overlayWindows: overlayWindows)
                 + RefGuard.overlapWarning(found: found, in: fresh.elements, screen: fresh.screen)
                 + (await Self.hiddenUnderChromeWarning(found, in: fresh, driver: driver))
+                + (await Self.screenNotRepresentedWarning(found, driver: driver))
             guard moved >= RefGuard.movedThreshold else { return (found.ref, overlap + labelNote) }
             // **原因までは断定できない**が、「他も同じだけ動いたか」は手元の2枚から言える。
             // 揃って動いていればスクロール等の画面全体の移動、その要素だけならレイアウト変化。

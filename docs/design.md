@@ -287,7 +287,7 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
 
 | ブリッジ | 共通コアへの追加 | 計 |
 |---|---|---|
-| XCUITest(Runner/) | `POST /drag`・`POST /appswitcher`・`POST /home`・`POST /hidekeyboard`・`POST /appstate`・`POST /rotate`・`GET /hittable`・`GET /systemalert`・`GET /systemui/snapshot`・`POST /systemui/tap`・`POST /systemui/drag`・`POST /systemui/swipe` | 25 |
+| XCUITest(Runner/) | `POST /drag`・`POST /appswitcher`・`POST /home`・`POST /hidekeyboard`・`POST /appstate`・`POST /rotate`・`GET /hittable`・`GET /systemalert`・`GET /systemui/covering`・`GET /systemui/snapshot`・`POST /systemui/tap`・`POST /systemui/drag`・`POST /systemui/swipe` | 26 |
 | Android(AndroidRunner/) | `POST /locale`・`POST /settle`(§4.5) | 15 |
 | InApp | `POST /hidekeyboard`・`POST /appstate`・`POST /rotate` | 16 |
 

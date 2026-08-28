@@ -53,6 +53,16 @@ final class OverlayWindowOcclusionWiringTests: XCTestCase {
                        "既定引数が置かれている(呼び忘れがコンパイルで止まらなくなる)")
     }
 
+    /// **BridgeClient が写像を FTCore へ委ねていること**。`hittable` 欠落を素で
+    /// `.unavailable` へ畳む実装に戻すと、木が画面を代表していないことを知る唯一の答えが
+    /// 捨てられる —— その退化は FakeDriver 経由の MCP テストでは落ちない(2026-08-28 の
+    /// 変異チェックで実際に生き残った)ので、配線をここで縛る
+    func testBridgeClientMapsTheHitTestAnswerThroughFTCore() throws {
+        let text = compact(try source("FTBridgeClient/BridgeClient.swift"))
+        XCTAssertTrue(text.contains("HitTestAnswer.fromBridge(hittable:answer.hittable)"),
+                      "BridgeClient が HitTestAnswer.fromBridge を通していない")
+    }
+
     /// **ブリッジ側の申告が消えていないこと**。ホストだけ直しても、Android の
     /// SnapshotBuilder が overlayWindowFrames を出さなければ判定材料は永久に来ない
     /// (この配線は Java と Swift をまたぐのでコンパイラは何も言わない)

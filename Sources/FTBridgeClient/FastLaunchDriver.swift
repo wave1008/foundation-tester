@@ -73,6 +73,7 @@ public final class FastLaunchDriver: AppDriver {
     }
     public func foregroundAppID() async throws -> String? { try await base.foregroundAppID() }
     public func systemAlert() async throws -> SystemAlertProbeResponse? { try await base.systemAlert() }
+    public func systemUICovering() async throws -> SystemUICoveringResponse? { try await base.systemUICovering() }
     public func activate(bundleID: String) async throws { try await base.activate(bundleID: bundleID) }
     public func openAppSwitcher() async throws { try await base.openAppSwitcher() }
     public func home() async throws { try await base.home() }
@@ -81,8 +82,8 @@ public final class FastLaunchDriver: AppDriver {
     /// SnapshotCacheBypassForwardingTests がラッパー全体でこれを守る)
     /// **転送必須**(既定実装 nil に落ちると、ラッパー越しでは常に「答えられない」になる。
     /// AppDriver.hittable の doc と AppDriverDefaultDispatchTests 参照)
-    public func hittable(ref: Int) async throws -> Bool? {
-        try await base.hittable(ref: ref)
+    public func hitTest(ref: Int) async throws -> HitTestAnswer {
+        try await base.hitTest(ref: ref)
     }
 
     public func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {

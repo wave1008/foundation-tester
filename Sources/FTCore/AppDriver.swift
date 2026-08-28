@@ -18,6 +18,34 @@ public struct LaunchTiming: Sendable {
     }
 }
 
+/// `GET /hittable` の答え。**3つを混ぜない** —— 混ぜると「撃てない」と「聞けなかった」が
+/// 同じ nil になり、呼び手はどちらとも断定できずに黙るしかなくなる(実際にそうなっていた)。
+///
+/// - `hittable(false)`: プラットフォームが**その位置では当たらない**と答えた
+///   (上のクロムの下へ潜った等)
+/// - `unresolvable`: **木が今まさに載せている要素を、ライブのクエリが引き当てられない**。
+///   iOS で SpringBoard の面(アプリスイッチャー・コントロールセンター)がアプリを覆うと
+///   これになる —— そのとき `/snapshot` は覆う前と1バイト同じ木を返し続けるので、
+///   **木と食い違うこの答えだけが「木が画面を代表していない」ことを知っている**
+///   (2026-08-28 実測: 覆い無し 0/12 → 覆い有り 12/12。判定は
+///   `TapTargetGeometry.platformShouldResolve` で「引き当てられて当然の要素」に絞る)
+/// - `unavailable`: 旧ブリッジ・in-app・Android・通信失敗。**何も言えない**
+public enum HitTestAnswer: Sendable, Equatable {
+    case hittable(Bool)
+    case unresolvable
+    case unavailable
+
+    /// `GET /hittable` の本文から組み立てる。**`hittable` 欠落 = 引き当て不能**
+    /// (ランナーは `resolvedBy: "unresolved"` を添える)。
+    /// **ここを `.unavailable` へ畳むと検知が丸ごと死ぬ** —— 木が画面を代表していないことを
+    /// 知っている唯一の答えが「聞けなかった」と同じ扱いになる。
+    /// 呼び出しの失敗(旧ブリッジの 404・通信断)は呼び手が `.unavailable` にする
+    public static func fromBridge(hittable: Bool?) -> HitTestAnswer {
+        guard let hittable else { return .unresolvable }
+        return .hittable(hittable)
+    }
+}
+
 public protocol AppDriver {
     func status() async throws -> StatusResponse
     /// パッケージファイル(iOS: .app バンドル / Android: .apk / .apks)からアプリをインストールする
@@ -50,7 +78,7 @@ public protocol AppDriver {
     ///
     /// **全要素に付けてはいけない**(実測 121 要素で 5.1 秒 = snapshot の 50 倍)。
     /// 呼び手が疑ったときだけ1件聞く。**プロトコル要件として宣言すること**(理由は上と同じ)
-    func hittable(ref: Int) async throws -> Bool?
+    func hitTest(ref: Int) async throws -> HitTestAnswer
     func tap(ref: Int) async throws
     func tap(x: Double, y: Double) async throws
     func type(ref: Int?, text: String) async throws
@@ -137,6 +165,10 @@ public protocol AppDriver {
     /// **プロトコル要件として宣言すること**(install(packagePath:) と同じ理由 ——
     /// 要件でないと存在型越しの呼び出しが静的ディスパッチで既定実装に落ち、黙って nil になる)
     func systemAlert() async throws -> SystemAlertProbeResponse?
+    /// **SpringBoard の面がアプリを覆っているか**(iOS xcuitest だけが答えられる)。
+    /// nil = 答えられない(in-app / Android / 旧ブリッジ)。**プロトコル要件として宣言すること**
+    /// (存在型越しの呼び出しは要件でなければ既定実装へ静的ディスパッチされる)
+    func systemUICovering() async throws -> SystemUICoveringResponse?
     /// 現在フォアグラウンドのアプリの bundleID/package(分かるプラットフォームだけ実値。
     /// 分からなければ nil。DSL の appIs の失敗メッセージが actual として使う)。
     /// **プロトコル要件として宣言すること**(install(packagePath:) と同じ理由)
@@ -239,6 +271,8 @@ public extension AppDriver {
     /// 既定は nil(= 判定しない)。**答えられるのは XCUITest ランナーを包むドライバだけ**で、
     /// in-app は自プロセスしか見えず、Android は木の根が active window なので判定自体が要らない
     public func systemAlert() async throws -> SystemAlertProbeResponse? { nil }
+    /// 既定は「答えられない」。答えられるのは XCUITest ブリッジを話す BridgeClient だけ
+    public func systemUICovering() async throws -> SystemUICoveringResponse? { nil }
 
     var lastActionNote: String? { nil }
     /// 既定は「分からない」。答えられるのは**位置を直接動かせる**ドライバ(AndroidDriver の
@@ -246,7 +280,7 @@ public extension AppDriver {
     /// 素通しすること**(捨てると端送りが毎回ホストの署名判定まで回る)
     var reachedEdgeOnLastSwipe: Bool? { nil }
     /// 既定は「答えられない」。答えられるのは XCUITest ブリッジを話す BridgeClient だけ
-    func hittable(ref: Int) async throws -> Bool? { nil }
+    func hitTest(ref: Int) async throws -> HitTestAnswer { .unavailable }
     var lastLaunchTiming: LaunchTiming? { nil }
 
     /// 既定は用途を落として通常 swipe に委譲する(ラッパードライバはこれで素通しになる)。

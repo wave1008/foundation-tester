@@ -49,6 +49,22 @@ final class FakeDriver: AppDriver, @unchecked Sendable {
 
     var foregroundBundleID: String?
 
+    /// `GET /hittable` の答え。既定は「答えられない」= 旧ブリッジ / in-app / Android と同じ縮退
+    var hitTestAnswer: HitTestAnswer = .unavailable
+
+    /// `GET /systemui/covering` の答え。既定 nil = 答えられない(同上)
+    var systemUICoveringResponse: SystemUICoveringResponse?
+
+    func systemUICovering() async throws -> SystemUICoveringResponse? {
+        try record("systemUICovering", "systemUICovering")
+        return systemUICoveringResponse
+    }
+
+    func hitTest(ref: Int) async throws -> HitTestAnswer {
+        try record("hitTest(\(ref))", "hitTest")
+        return hitTestAnswer
+    }
+
     func isAppForeground(bundleID: String) async throws -> Bool {
         try record("isAppForeground(\(bundleID))", "isAppForeground")
         return foregroundBundleID == bundleID

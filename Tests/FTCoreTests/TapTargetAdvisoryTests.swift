@@ -100,6 +100,85 @@ final class TapTargetAdvisoryTests: XCTestCase {
                                                     overlayWindows: .none))
     }
 
+    /// **覆いの目印**(実機で測った集合)。空にする・localize される名前を混ぜる退行を落とす
+    func testSystemUICoveringMarkersAreTheMeasuredSet() {
+        let markers = BridgeAPI.systemUICoveringMarkers
+        XCTAssertEqual(Set(markers),
+                       ["cc-brightness-slider", "cc-volume-slider", "SBCoverSheetWindow"],
+                       "実機で「素の状態に出ない・その面で出る」を測った集合。増減は再測定してから")
+        // **ローカライズされる名前を混ぜない**(同時に出る mode-おやすみモード 等)
+        XCTAssertTrue(markers.allSatisfy { $0.allSatisfy { $0.isASCII } },
+                      "ASCII 以外 = ローカライズされる名前が混ざっている: \(markers)")
+    }
+
+    /// **ホームボタン機の判定**(`ft_navigate appSwitcher` がどのジェスチャを撃つかを決める)。
+    /// 実測した実寸で固定する —— ホームボタン機で Face ID のジェスチャを撃つと
+    /// **黙ってコントロールセンターが開いたまま ok を返す**(2026-08-28・iPhone SE3)
+    func testHomeButtonPhoneIsDecidedByTheMeasuredAspectRatios() {
+        // ホームボタン機(実測)
+        XCTAssertTrue(BridgeAPI.isHomeButtonPhoneScreen(width: 375, height: 667), "iPhone SE3")
+        XCTAssertTrue(BridgeAPI.isHomeButtonPhoneScreen(width: 667, height: 375), "横向きでも同じ")
+        // Face ID 機(実測)。従来どおりジェスチャを撃つ側
+        XCTAssertFalse(BridgeAPI.isHomeButtonPhoneScreen(width: 393, height: 852), "iPhone 15 Pro")
+        XCTAssertFalse(BridgeAPI.isHomeButtonPhoneScreen(width: 402, height: 874), "iPhone 17 Pro")
+        // **iPad は対象外**(短辺が上限以上)—— 縦横比だけで見ると 4:3 が誤ってホームボタン機になる
+        XCTAssertFalse(BridgeAPI.isHomeButtonPhoneScreen(width: 820, height: 1180), "iPad")
+        XCTAssertFalse(BridgeAPI.isHomeButtonPhoneScreen(width: 768, height: 1024), "旧 iPad")
+        // 寸法が取れないときは従来動作へ倒す
+        XCTAssertFalse(BridgeAPI.isHomeButtonPhoneScreen(width: 0, height: 0))
+    }
+
+    /// `GET /hittable` の本文 → 答えの写像。**欠落を `.unavailable` へ畳むと検知が丸ごと死ぬ**
+    /// ので、3つが混ざらないことをここで固定する
+    func testHitTestAnswerKeepsUnresolvableSeparateFromUnavailable() {
+        XCTAssertEqual(HitTestAnswer.fromBridge(hittable: true), .hittable(true))
+        XCTAssertEqual(HitTestAnswer.fromBridge(hittable: false), .hittable(false))
+        // **hittable 欠落 = 引き当て不能**。ここが .unavailable になると呼び手は黙る
+        XCTAssertEqual(HitTestAnswer.fromBridge(hittable: nil), .unresolvable)
+        XCTAssertNotEqual(HitTestAnswer.fromBridge(hittable: nil), .unavailable)
+    }
+
+    /// **プラットフォームの「引き当てられない」を信号にしてよい要素**の絞り込み。
+    /// 実測(2026-08-28・覆いの無い iOS 設定 root)では 53 要素中 12 件が unresolved で、
+    /// その全部が**名前を持たない容器**だった。絞らないと誤検知だらけになる
+    func testPlatformShouldResolveOnlyNamedOperableElements() {
+        let named = element(1, "btn_ok", "button", 16, 168, 370, 108)
+        XCTAssertTrue(TapTargetGeometry.platformShouldResolve(named))
+
+        // 名前の無い容器 = 覆いが無くても引き当てられない(実測の誤検知の正体)
+        let unnamedContainer = ElementInfo(ref: 2, type: "other", identifier: nil, label: nil,
+                                           value: nil, placeholder: nil, enabled: true,
+                                           frame: FTRect(x: 0, y: 0, width: 100, height: 50),
+                                           depth: 2)
+        XCTAssertFalse(TapTargetGeometry.platformShouldResolve(unnamedContainer))
+
+        // 名前はあるが操作可能型ではない(容器・装飾)
+        let namedContainer = ElementInfo(ref: 3, type: "other", identifier: "wrapper", label: nil,
+                                         value: nil, placeholder: nil, enabled: true,
+                                         frame: FTRect(x: 0, y: 0, width: 100, height: 50),
+                                         depth: 2)
+        XCTAssertFalse(TapTargetGeometry.platformShouldResolve(namedContainer))
+
+        // 操作可能型だが名前が無い(id も label も空)
+        let unnamedButton = ElementInfo(ref: 4, type: "clickable", identifier: nil, label: nil,
+                                        value: nil, placeholder: nil, enabled: true,
+                                        frame: FTRect(x: 0, y: 0, width: 100, height: 50),
+                                        depth: 2)
+        XCTAssertFalse(TapTargetGeometry.platformShouldResolve(unnamedButton))
+
+        // ラベルだけでも名前として通る(引き当ては identifier / label のどちらでも効く)
+        let labelled = ElementInfo(ref: 5, type: "cell", identifier: nil, label: "行 1",
+                                   value: nil, placeholder: nil, enabled: true,
+                                   frame: FTRect(x: 0, y: 0, width: 100, height: 50), depth: 2)
+        XCTAssertTrue(TapTargetGeometry.platformShouldResolve(labelled))
+
+        // **不可視文字だけのラベルは名前ではない**(normalizeInvisibleCharacters を通すこと)
+        let blank = ElementInfo(ref: 6, type: "button", identifier: nil, label: "\u{200B}",
+                                value: nil, placeholder: nil, enabled: true,
+                                frame: FTRect(x: 0, y: 0, width: 100, height: 50), depth: 2)
+        XCTAssertFalse(TapTargetGeometry.platformShouldResolve(blank))
+    }
+
     /// **中心が画面の外**は空振りの警告になる(実測: Compose iOS のカレンダーで
     /// ヘッダ裏へ抜けた `#slot_07`(中心 y=-18)への ref タップが無警告の no-op だった)
     func testOffscreenCentreIsCalledOut() {

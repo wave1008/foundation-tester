@@ -182,6 +182,22 @@ public enum TapTargetGeometry {
             .count >= 2
     }
 
+    /// **プラットフォームに「引き当てられない」と言われて意味がある要素か**。
+    ///
+    /// ライブのクエリ(`GET /hittable`)は identifier / label + frame で**一意に**引き当てるので、
+    /// **名前を持たない容器は覆いが無くても普通に引き当てられない** —— 実測(2026-08-28・
+    /// 覆いの無い iOS 設定 root)で 53 要素中 12 件が unresolved だった。そのまま信号にすると
+    /// 誤検知だらけになる。
+    ///
+    /// 操作可能型かつ名前を持つものに絞ると分離する: **13 画面・111 件で誤検知 0** /
+    /// アプリスイッチャーで覆うと同じ画面の **12/12 が unresolvable**。
+    /// 型の集合は `BridgeSnapshotThinning.operableTypes` の1箇所を使う(2つ目を作らない)
+    public static func platformShouldResolve(_ element: ElementInfo) -> Bool {
+        guard BridgeSnapshotThinning.operableTypes.contains(element.type) else { return false }
+        let name = (element.identifier ?? "") + (element.label ?? "")
+        return !FlowMatchMode.normalizeInvisibleCharacters(name).isEmpty
+    }
+
     /// **撃つ前に言える「たぶん何も起きない/別の物に当たる」**を1文にする。空 = 心当たり無し。
     /// **申告由来(keyboard → overlay window)を先頭**に合成する —— どちらも木の遮蔽判定では
     /// 原理的に拾えず(覆っている実体が `elements` に載っていない)、確度が最も高いため。

@@ -102,6 +102,7 @@ final class BridgeRouter {
             case ("GET", "/snapshot"): response = try handleSnapshot(request)
             case ("GET", "/hittable"): response = try handleHittable(request)
             case ("GET", "/systemalert"): response = handleSystemAlert()
+            case ("GET", "/systemui/covering"): response = handleSystemUICovering()
             case ("GET", "/systemui/snapshot"): response = try handleSystemUISnapshot(request)
             case ("POST", "/systemui/tap"): response = try handleSystemUITap(request.body)
             case ("POST", "/systemui/drag"): response = try handleSystemUIDrag(request.body)
@@ -391,6 +392,25 @@ final class BridgeRouter {
     /// **アラートの有無で撮る/撮らないを分けない**: この口はホーム画面の走査(tapAppIcon)にも
     /// 使う。SpringBoard は system shell なので背面に回らず、`requireForegroundApp` が
     /// 防いでいる「背面アプリの木を読むとランナーごと落ちる」形には当たらない
+    /// **SpringBoard の面(コントロールセンター / 通知センター)がアプリを覆っているか**。
+    ///
+    /// 覆っていてもアプリ側は何も気付けない —— `/snapshot` は覆う前と同じ木を返し、
+    /// `XCUIApplication.state` は `foreground: true`、`/hittable` も `true`(実機で実測)。
+    /// **SpringBoard に聞く以外に知る手段が無い**ので専用の口を置く。
+    ///
+    /// **`/systemui/snapshot` では代用しない**: あちらは木を丸ごと撮る(CC 表示中は 56 要素)。
+    /// ここは目印の存在を1問聞くだけ —— `/systemalert` と同じ形。
+    /// 目印の集合は `BridgeAPI.systemUICoveringMarkers` が唯一の定義元(実測の根拠もそちら)。
+    ///
+    /// **述語で1回のクエリにまとめる**(目印ごとに `.exists` を撃つと往復が本数分になる)
+    private func handleSystemUICovering() -> BridgeHTTPServer.Response {
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let predicate = NSPredicate(format: "identifier IN %@", BridgeAPI.systemUICoveringMarkers)
+        let match = springboard.descendants(matching: .any).matching(predicate).firstMatch
+        guard match.exists else { return .json(SystemUICoveringResponse(covering: false)) }
+        return .json(SystemUICoveringResponse(covering: true, marker: match.identifier))
+    }
+
     private func handleSystemUISnapshot(_ request: BridgeHTTPServer.Request) throws
         -> BridgeHTTPServer.Response {
         snapshotElementLimit = BridgeAPI.resolvedSnapshotElementLimit(
@@ -963,11 +983,38 @@ final class BridgeRouter {
         .png(XCUIScreen.main.screenshot().pngRepresentation)
     }
 
+    /// **ホームボタン機かどうか**(iPhone に限る)。ホームボタン機では画面下端から上へのスワイプは
+    /// **仕様上コントロールセンター**で、アプリスイッチャーはホームボタンの2度押しなので、
+    /// Face ID 機のジェスチャをそのまま撃つと**黙って別の面が開く**(2026-08-28・実機
+    /// iPhone SE 第3世代で実測。`ft_navigate appSwitcher` がコントロールセンターを開いていた)。
+    ///
+    /// 判定そのものは **`BridgeAPI.isHomeButtonPhoneScreen` の1箇所**(閾値・実測値・iPad の
+    /// 扱いはそちらの doc)。ここは画面寸法を渡すだけ —— 2つ目の閾値を作らない
+    private func isHomeButtonPhone(_ sb: XCUIApplication) -> Bool {
+        let f = sb.frame
+        return BridgeAPI.isHomeButtonPhoneScreen(width: Double(f.width), height: Double(f.height))
+    }
+
     /// 画面下端からのスワイプ上げ+ホールドでアプリスイッチャーを開く(Face ID 機にはホームボタン
     /// APIが無いためジェスチャで行う)。座標は springboard 参照(セッション不要・HID合成なので
     /// 前面アプリに関係なく効く)。velocity/hold はシミュレータ実機で調整済みの値。
+    ///
+    /// **ホームボタン機では開けないので断る**(2026-08-28・実機 iPhone SE3 で2案とも実測):
+    /// ⑴ このジェスチャは**コントロールセンターが開くだけ**(下端スワイプの意味が機種で違う)
+    /// ⑵ `XCUIDevice.press(.home)` の2連打も**ホームに戻るだけ**でスイッチャーにならない
+    /// (XCUITest の press は同期実行で、ダブルプレスとして解釈される間隔に入らない)。
+    /// どちらも **ok を返しながら別の画面になる**ので、呼び手は永久に気付けない。
+    /// スイッチャーはハードウェアボタンの2度押しで、送る手段が無い —— **黙って別のことを
+    /// するより断る**。**501 にしない**(501 は「このエンジンでは不可 = 他エンジンへ
+    /// フォールバックせよ」の意味で、実機には代わりのエンジンが無い。BridgeRouterStatusContractTests)
     private func handleAppSwitcher() throws -> BridgeHTTPServer.Response {
         let sb = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        if isHomeButtonPhone(sb) {
+            throw BridgeError(422, "the app switcher cannot be opened on a home-button iPhone:"
+                + " the bottom-edge swipe up is Control Center by design, and the switcher is a"
+                + " hardware double-press XCUITest cannot send. Switch apps with a launch instead"
+                + " (DSL: launchApp / MCP: ft_launch <bundleId>).")
+        }
         let start = sb.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.999))
         let end = sb.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.48))
         start.press(forDuration: 0.1, thenDragTo: end,
@@ -991,6 +1038,12 @@ final class BridgeRouter {
         // 0.08 秒で駆け上がるとホーム・ゆっくり長く引くとスイッチャー)。
         // 数値は iPhone 15 Pro / iOS 26.5.2 で確認した値
         let sb = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        // **ホームボタン機は下端スワイプがコントロールセンター**なので、ここでもジェスチャを
+        // 使わずハードウェアボタンを押す(2026-08-28・iPhone SE3 で appswitcher 側の実害を確認)
+        if isHomeButtonPhone(sb) {
+            XCUIDevice.shared.press(.home)
+            return .json(OKResponse())
+        }
         let start = sb.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.995))
         let end = sb.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.73))
         // press は 0 にしない(タッチダウンが載らず不発になる。handleDrag の下限 0.05 と同じ)

@@ -30,7 +30,7 @@ final class MCPRefGuardTests: XCTestCase {
     }
 
     /// 前面判定(backgroundedSessionNote)の往復は本題ではないので落とす
-    private var actions: [String] { driver.calls.filter { !$0.hasPrefix("isAppForeground") } }
+    private var actions: [String] { driver.calls.filter { !$0.hasPrefix("isAppForeground") && !$0.hasPrefix("hitTest") && !$0.hasPrefix("systemUICovering") } }
 
     private func screen(_ elements: [ElementInfo]) -> SnapshotResponse {
         SnapshotResponse(sessionBundleID: "com.example.app",
@@ -1038,6 +1038,134 @@ final class MCPRefGuardTests: XCTestCase {
         _ = try await server.call(tool: "ft_snapshot", args: [:])
         let text = Self.text(try await server.call(tool: "ft_tap", args: ["ref": 1]))
         XCTAssertFalse(text.contains("overlay window"), "中心が外なら黙ること: \(text)")
+    }
+
+    /// **木が画面を代表していないことを、木の外から知る**(iOS xcuitest)。SpringBoard の面が
+    /// アプリを覆うと `/snapshot` は覆う前と同じ木を返し続け、ライブのヒットテストだけが
+    /// 「引き当てられない」と答える。実害の witness は Simulator で ft_tap が成功を返しながら
+    /// 別アプリへ切り替わったこと(2026-08-28)
+    func testTapWarnsWhenThePlatformCannotResolveAnElementTheTreeListed() async throws {
+        driver.snapshotResponse = screen([
+            element(ref: 1, type: "button", id: "com.apple.settings.primaryAppleAccount",
+                    label: "Apple Account", x: 16, y: 168, w: 370, h: 108),
+        ])
+        driver.hitTestAnswer = .unresolvable
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        let text = Self.text(try await server.call(tool: "ft_tap", args: ["ref": 1]))
+        XCTAssertTrue(text.contains("cannot find"), "引き当て不能を警告すること: \(text)")
+        XCTAssertTrue(text.contains("no longer the one being queried"), text)
+        // **拾えない形を名乗らない**: コントロールセンター / 通知センターはこの信号を出さない
+        // (実測。名乗ると読み手が「出ていない = 覆いは無い」と誤読する)
+        XCTAssertFalse(text.contains("Control Center"), text)
+        XCTAssertTrue(actions.contains { $0.hasPrefix("tap") }, "拒否ではなく警告して撃つこと")
+    }
+
+    /// **引き当てられたときは黙る**(検出器が常時発火していないこと)
+    func testTapStaysQuietWhenThePlatformResolvesTheElement() async throws {
+        driver.snapshotResponse = screen([
+            element(ref: 1, type: "button", id: "btn_ok", label: "OK",
+                    x: 16, y: 168, w: 370, h: 108),
+        ])
+        driver.hitTestAnswer = .hittable(true)
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        let text = Self.text(try await server.call(tool: "ft_tap", args: ["ref": 1]))
+        XCTAssertFalse(text.contains("cannot find"), text)
+    }
+
+    /// **答えられない口(旧ブリッジ・in-app・Android)では黙る** —— 「聞けなかった」を
+    /// 「覆われている」と読み替えない
+    func testTapStaysQuietWhenTheBridgeCannotAnswer() async throws {
+        driver.snapshotResponse = screen([
+            element(ref: 1, type: "button", id: "btn_ok", label: "OK",
+                    x: 16, y: 168, w: 370, h: 108),
+        ])
+        driver.hitTestAnswer = .unavailable
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        let text = Self.text(try await server.call(tool: "ft_tap", args: ["ref": 1]))
+        XCTAssertFalse(text.contains("cannot find"), text)
+    }
+
+    /// **名前を持たない容器には言わない**。覆いが無くても引き当てられないので、
+    /// ここを絞らないと誤検知だらけになる(実測: 覆い無しの設定 root で 53 中 12 件)
+    func testTapStaysQuietForAnUnnamedContainerThatCannotBeResolved() async throws {
+        driver.snapshotResponse = screen([
+            element(ref: 1, type: "other", x: 16, y: 168, w: 370, h: 108),
+        ])
+        driver.hitTestAnswer = .unresolvable
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        let text = Self.text(try await server.call(tool: "ft_tap", args: ["ref": 1]))
+        XCTAssertFalse(text.contains("cannot find"), text)
+    }
+
+    /// **コントロールセンターが覆っているときは SpringBoard の答えで警告する**。
+    /// 木も `/hittable` も「正常」を返すので、これ以外に知る手段が無い(実機で実測)
+    func testTapWarnsWhenControlCentreCoversTheApp() async throws {
+        driver.snapshotResponse = screen([
+            element(ref: 1, type: "button", id: "btn_ok", label: "OK",
+                    x: 16, y: 168, w: 370, h: 108),
+        ])
+        driver.hitTestAnswer = .hittable(true)   // アプリ側は「正常」と答える
+        driver.systemUICoveringResponse = SystemUICoveringResponse(
+            covering: true, marker: "cc-brightness-slider")
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        let text = Self.text(try await server.call(tool: "ft_tap", args: ["ref": 1]))
+        XCTAssertTrue(text.contains("Control Center"), text)
+        XCTAssertTrue(actions.contains { $0.hasPrefix("tap") }, "拒否ではなく警告して撃つこと")
+    }
+
+    /// **両方が発火しうるときは覆いのほうだけを言う**。通知センターはアプリを背面へ回すので
+    /// hitTest も unresolvable になるが、その文言は「アプリスイッチャーが開いている」と
+    /// **誤った説明**をする(実機で実測)
+    func testCoveringWarningWinsOverTheGenericUnresolvableOne() async throws {
+        driver.snapshotResponse = screen([
+            element(ref: 1, type: "button", id: "btn_ok", label: "OK",
+                    x: 16, y: 168, w: 370, h: 108),
+        ])
+        driver.hitTestAnswer = .unresolvable
+        driver.systemUICoveringResponse = SystemUICoveringResponse(
+            covering: true, marker: "SBCoverSheetWindow")
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        let text = Self.text(try await server.call(tool: "ft_tap", args: ["ref": 1]))
+        XCTAssertTrue(text.contains("notification centre"), text)
+        XCTAssertFalse(text.contains("app switcher is open"),
+                       "面が分かっているのに一般論の誤った説明を並べないこと: \(text)")
+    }
+
+    /// 通知センター(カバーシート)は別の面として名指しする
+    func testTapNamesTheNotificationCentreWhenThatIsWhatCovers() async throws {
+        driver.snapshotResponse = screen([
+            element(ref: 1, type: "button", id: "btn_ok", label: "OK",
+                    x: 16, y: 168, w: 370, h: 108),
+        ])
+        driver.systemUICoveringResponse = SystemUICoveringResponse(
+            covering: true, marker: "SBCoverSheetWindow")
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        let text = Self.text(try await server.call(tool: "ft_tap", args: ["ref": 1]))
+        XCTAssertTrue(text.contains("notification centre"), text)
+    }
+
+    /// **覆っていないときは黙る**(常時発火していないこと)
+    func testTapStaysQuietWhenNothingCoversTheApp() async throws {
+        driver.snapshotResponse = screen([
+            element(ref: 1, type: "button", id: "btn_ok", label: "OK",
+                    x: 16, y: 168, w: 370, h: 108),
+        ])
+        driver.systemUICoveringResponse = SystemUICoveringResponse(covering: false)
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        let text = Self.text(try await server.call(tool: "ft_tap", args: ["ref": 1]))
+        XCTAssertFalse(text.contains("drawn over the app"), text)
+    }
+
+    /// **答えられない口(旧ブリッジ・in-app・Android)では黙る**
+    func testTapStaysQuietWhenTheBridgeCannotAnswerAboutCovering() async throws {
+        driver.snapshotResponse = screen([
+            element(ref: 1, type: "button", id: "btn_ok", label: "OK",
+                    x: 16, y: 168, w: 370, h: 108),
+        ])
+        driver.systemUICoveringResponse = nil
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        let text = Self.text(try await server.call(tool: "ft_tap", args: ["ref": 1]))
+        XCTAssertFalse(text.contains("drawn over the app"), text)
     }
 
     /// **申告 keyboardFrame はキー面だけ**(TapTargetGeometry.effectiveKeyboardFrame の doc)。

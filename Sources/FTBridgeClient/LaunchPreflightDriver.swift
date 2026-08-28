@@ -59,6 +59,7 @@ public final class LaunchPreflightDriver: AppDriver {
     }
     public func foregroundAppID() async throws -> String? { try await base.foregroundAppID() }
     public func systemAlert() async throws -> SystemAlertProbeResponse? { try await base.systemAlert() }
+    public func systemUICovering() async throws -> SystemUICoveringResponse? { try await base.systemUICovering() }
     public var lastActionNote: String? { base.lastActionNote }
     public var reachedEdgeOnLastSwipe: Bool? { base.reachedEdgeOnLastSwipe }
     public var lastLaunchTiming: LaunchTiming? { base.lastLaunchTiming }
@@ -104,8 +105,8 @@ public final class LaunchPreflightDriver: AppDriver {
     /// SnapshotCacheBypassForwardingTests がラッパー全体でこれを守る)
     /// **転送必須**(既定実装 nil に落ちると、ラッパー越しでは常に「答えられない」になる。
     /// AppDriver.hittable の doc と AppDriverDefaultDispatchTests 参照)
-    public func hittable(ref: Int) async throws -> Bool? {
-        try await base.hittable(ref: ref)
+    public func hitTest(ref: Int) async throws -> HitTestAnswer {
+        try await base.hitTest(ref: ref)
     }
 
     public func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {

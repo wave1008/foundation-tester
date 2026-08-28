@@ -39,7 +39,7 @@ final class MCPRefGenerationTests: XCTestCase {
                          elements: elements, truncatedCount: 0)
     }
 
-    private var actions: [String] { driver.calls.filter { !$0.hasPrefix("isAppForeground") } }
+    private var actions: [String] { driver.calls.filter { !$0.hasPrefix("isAppForeground") && !$0.hasPrefix("hitTest") && !$0.hasPrefix("systemUICovering") } }
 
     private static func text(_ content: [[String: Any]]) -> String {
         content.compactMap { $0["text"] as? String }.joined(separator: "\n")

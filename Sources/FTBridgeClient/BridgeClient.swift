@@ -410,6 +410,17 @@ public final class BridgeClient: AppDriver {
         }
     }
 
+    /// `AppDriver.systemUICovering`。**XCUITest ブリッジだけが答えられる**。
+    /// 版 83 より古いブリッジは 404 を返すので、その場合も nil(呼び手は黙る)
+    public func systemUICovering() async throws -> SystemUICoveringResponse? {
+        do {
+            return try await get("/systemui/covering",
+                                 timeout: sessionTimeout) as SystemUICoveringResponse
+        } catch DriverError.badResponse(let status, _) where status == 404 {
+            return nil
+        }
+    }
+
     /// SpringBoard の木を**セッションを触らずに**撮る(`GET /systemui/snapshot`)。
     /// ref は `systemUITap(ref:)` 専用の別名前空間(ランナー側 `systemRefFrames`)。
     ///
@@ -498,16 +509,17 @@ public final class BridgeClient: AppDriver {
     /// `AppDriver.hittable`。**XCUITest ブリッジだけが答えられる**(in-app / Android は既定の nil)。
     /// 版 67 より古いブリッジは 404 を返すので、その場合も nil(呼び手は黙る)。
     /// 費用は対象1件で 72〜146ms(実測)なので、**呼び手が疑ったときだけ**呼ぶこと
-    public func hittable(ref: Int) async throws -> Bool? {
+    public func hitTest(ref: Int) async throws -> HitTestAnswer {
         struct Answer: Decodable { let hittable: Bool? }
         do {
             let answer: Answer = try await get("/hittable", query: "ref=\(ref)",
                                                timeout: sessionTimeout)
-            return answer.hittable
+            // **写像は FTCore の1箇所**(HitTestAnswer.fromBridge)。ここに条件を書き直さない
+            return HitTestAnswer.fromBridge(hittable: answer.hittable)
         } catch {
-            // 未対応(旧ブリッジ)・引き当て不能・一時的な失敗はすべて「答えられない」に畳む ——
+            // 未対応(旧ブリッジ)・一時的な失敗は「答えられない」——
             // **タップの手前の照会で失敗して操作ごと落とすのは本末転倒**
-            return nil
+            return .unavailable
         }
     }
 
