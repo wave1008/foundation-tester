@@ -349,6 +349,18 @@ select:disabled { opacity: 0.5; cursor: default; }
 .grid.marquee-dragging {
   user-select: none;
 }
+/* フリートを触っている間(deviceTiles.js の fleetActive)はページの文字を選択不可にする。
+   **Cmd/Ctrl+A のテキスト全選択を止める唯一効く手**: VSCode(Electron)の「すべて選択」は
+   ネイティブメニュー経由でも走り、ページの keydown を preventDefault しても止まらず、
+   届く時刻もずれるので後から removeAllRanges しても間に合わない。**選択できるものが
+   無ければ、いつ届いても何も反転しない**。
+   `*` と !important まで掛けるのは、個別に user-select:text を持つ要素(省略表示のセル等)を
+   取りこぼすと、そこだけ反転して結局同じ苦情になるため。
+   ペインの外を押した時点で外れる = ログのテキスト選択・コピーは従来どおり。 */
+html.select-all-guard,
+html.select-all-guard * {
+  user-select: none !important;
+}
 .tile.selected {
   border-color: var(--vscode-focusBorder, #007acc);
   border-width: 2px;

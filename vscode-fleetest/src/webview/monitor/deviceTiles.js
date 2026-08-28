@@ -172,10 +172,33 @@ export function measureTileImageHeight() {
   return probe.clientHeight - chrome;
 }
 
+// マシンプロファイル未記載の合成デバイス。起動(up)と GPU 再起動が成立しないことを
+// タイル上でも明示する(停止・ライブ操作は可)。
+// **「(起動中のデバイス)」を選んでいる間は出さない** —— このフィルタは登録に依らず動いて
+// いる台を見るためのもので、そこでは未登録は例外ではなく普通の状態。全タイルに同じバッジが
+// 並ぶだけで何も区別しない。他のフィルタでは今までどおり出す(そこでは未登録の台が
+// 混ざっていること自体が情報)。
+function renderUnregisteredBadge(entry) {
+  const visible = entry.device.registered === false && !runningFilterActive;
+  entry.unregisteredBadgeEl.style.display = visible ? 'inline-block' : 'none';
+}
+
+// フィルタの切り替えは次の監視サイクル(最大 interval 秒)を待たずに反映する
+// (デバイスの再送を待つと、選び直した直後だけバッジが残って見える)。
+function renderUnregisteredBadges() {
+  for (const entry of tiles.values()) {
+    renderUnregisteredBadge(entry);
+  }
+}
+
 function createTile(device) {
   const tile = document.createElement('div');
   tile.className = 'tile';
   tile.title = t('wvMonitor.tile.title');
+  // **クリックでだけフォーカスが入る**(tabindex=-1 はタブ順に入らない)。Cmd/Ctrl+A の
+  // 全選択をフリートに限定するための条件で、0 にすると台数ぶんのタブ停止ができて
+  // ツールバーからの移動が潰れる。
+  tile.tabIndex = -1;
   // 選択のクリックはタイルごとに張らず grid へ委譲する(当たりの規則はそちらのコメント)。
   tile.addEventListener('contextmenu', (event) => {
     // 既定メニュー抑止+タイルクリック(選択トグル)への波及防止。
@@ -580,9 +603,7 @@ function renderMeta(entry) {
   } else {
     entry.remoteBadgeEl.style.display = 'none';
   }
-  // マシンプロファイル未記載の合成デバイス(「(起動中のデバイス)」フィルタでのみ現れる)。
-  // 起動(up)と GPU 再起動が成立しないことをタイル上でも明示する(停止・ライブ操作は可)
-  entry.unregisteredBadgeEl.style.display = entry.device.registered === false ? 'inline-block' : 'none';
+  renderUnregisteredBadge(entry);
   renderRenderBadge(entry);
   // 通常時は空(接続済みは画面表示自体が、接続待ちはプレースホルダの「接続中」が伝えるため
   // 冗長で出さない。ユーザー決定)。bridgeWatch の異常時だけ下で埋める。
@@ -744,8 +765,8 @@ function renderSelectAllButton() {
   btnSelectAll.setAttribute('aria-label', label);
 }
 
-btnSelectAll.addEventListener('click', () => {
-  if (btnSelectAll.disabled) {
+function toggleSelectAll() {
+  if (tiles.size === 0) {
     return;
   }
   if (selectAllIsDeselect()) {
@@ -756,7 +777,77 @@ btnSelectAll.addEventListener('click', () => {
     }
   }
   updateSelectionUi();
+}
+
+btnSelectAll.addEventListener('click', () => {
+  if (btnSelectAll.disabled) {
+    return;
+  }
+  toggleSelectAll();
 });
+
+// ---- フリートを触っている間の Cmd/Ctrl+A ----------------------------------------------
+// 「フリートを触っている」= **最後に押した場所がタイルペインの中**、またはフォーカスが
+// その中にある。**フォーカスだけを条件にしない** —— タイルは div(tabindex=-1)で、
+// webview では押しても activeElement が body のままになることがある。
+let fleetActive = false;
+
+function inTilePane(node) {
+  return node instanceof Node && tilePane.contains(node);
+}
+
+function setFleetActive(active) {
+  if (fleetActive === active) {
+    return;
+  }
+  fleetActive = active;
+  // **選択できるものを無くす**のがテキスト全選択の抑止の本体。理由は下の keydown を参照。
+  document.documentElement.classList.toggle('select-all-guard', active);
+}
+
+// capture:true = タイル側の stopPropagation より先に見る(判定するだけで何も止めない)。
+document.addEventListener('pointerdown', (event) => {
+  setFleetActive(inTilePane(event.target));
+}, true);
+// キーボードで外へ出たとき(タブ移動・モーダル・入力欄)も畳む。
+document.addEventListener('focusin', (event) => {
+  if (!inTilePane(event.target)) {
+    setFleetActive(false);
+  }
+}, true);
+
+function fleetHasFocus() {
+  return fleetActive || inTilePane(document.activeElement);
+}
+
+// フリートを触っている間だけ Cmd/Ctrl+A を「全選択/全解除」に使う(webview 既定の
+// 「テキストを全選択」はここでは何の役にも立たない)。それ以外の場所では横取りしない。
+//
+// **テキスト全選択の抑止は preventDefault ではできない**(2026-08-28 実測: 効かなかった)。
+// VSCode は Electron で「すべて選択」はネイティブメニュー経由でも走り、そちらは
+// ページの既定動作とは別経路。届く時刻も keydown とずれるので、後から選択を消す
+// (removeAllRanges)のも間に合わない。**選択できるものが無ければ、いつ届いても何も
+// 反転しない** —— だから抑止は CSS(.select-all-guard の user-select:none)で行い、
+// フリートを触っている間ずっと掛けておく。ペイン外を押した時点で外れるので、ログの
+// テキスト選択・コピーは従来どおり(ドラッグの pointerdown が先に外す)。
+document.addEventListener('keydown', (event) => {
+  if (event.key.toLowerCase() !== 'a' || event.altKey || event.shiftKey) {
+    return;
+  }
+  if (!event.metaKey && !event.ctrlKey) {
+    return;
+  }
+  if (!fleetHasFocus()) {
+    return;
+  }
+  event.preventDefault();
+  toggleSelectAll();
+  // 既に立っている選択(ペインを押す前に作ったもの)はガードでは消えないので畳む。
+  const selection = window.getSelection ? window.getSelection() : null;
+  if (selection) {
+    selection.removeAllRanges();
+  }
+}, true);
 
 // 初期表示(devices が1度も届いていない間)。押せない状態と説明を先に入れておく。
 renderSelectAllButton();
@@ -1193,6 +1284,7 @@ export function applyProfileInfo(message) {
   const current = typeof message.current === 'string' ? message.current : '';
   // filter==='running' は profile 未選択(current==='')と組で来る。選択表示は予約値側にする。
   runningFilterActive = message.filter === 'running';
+  renderUnregisteredBadges();
   profileSelect.textContent = '';
 
   const noneOption = document.createElement('option');
