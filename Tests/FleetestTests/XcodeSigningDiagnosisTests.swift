@@ -67,4 +67,11 @@ final class XcodeSigningDiagnosisTests: XCTestCase {
         XCTAssertFalse(text.contains("add your Apple ID"), "起きていないことは言わない")
         XCTAssertFalse(text.contains("Full xcodebuild output"), "残せなかったログの在り処は書かない")
     }
+
+    /// **機械可読の raw 値は拡張との契約**(NDJSON の signingProblems → 拡張の signingGuidance)。
+    /// 改名すると拡張は「知らない種別」として飛ばし、案内が黙って英語に戻る
+    func testRawValuesAreTheWireContractWithTheExtension() {
+        XCTAssertEqual(XcodeSigningProblem.allCases.map(\.rawValue),
+                       ["noAccount", "invalidCertificate", "deviceNotInProfile"])
+    }
 }

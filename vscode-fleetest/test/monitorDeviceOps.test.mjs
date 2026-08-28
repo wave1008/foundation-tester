@@ -15,7 +15,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { MonitorDeviceOps, firstLine, stderrDetailLine } from "../src/monitorDeviceOps";
+import { MonitorDeviceOps, firstLine, signingGuidance, stderrDetailLine } from "../src/monitorDeviceOps";
 
 /** dirname(binaryPath) に、引数を argv ファイルへ落として即 exit 0 する mock fleetest を置く。 */
 function makeMockBinary() {
@@ -473,4 +473,33 @@ test("firstLine: 先頭の空行は飛ばし、長すぎる行は切る", () => 
 
 test("firstLine: 1行だけのエラーはそのまま(既存の見え方を変えない)", () => {
   assert.equal(firstLine("no simulator with that UDID"), "no simulator with that UDID");
+});
+
+// ---- 実機の署名エラーの案内(signingGuidance)----
+// **判定は CLI・文言は拡張**(CLAUDE.md「共有するのは判定であって文言ではない」)。CLI の error は
+// 英語(CLI 利用者向け)なので、拡張は機械可読の signingProblems から自分の言語で組み立て直す。
+
+test("signingGuidance: 検出したぶんだけを直す順に番号で出す", () => {
+  const guidance = signingGuidance(
+    ["noAccount", "invalidCertificate", "deviceNotInProfile"], "/tmp/bridge-build-8123.log");
+  const lines = guidance.split("\n");
+  assert.match(lines[0], /実機用のブリッジに署名できません/, "1行目だけで用が足りる(バナーは1行)");
+  assert.match(lines[0], /シミュレータは署名不要/, "「なぜシミュレータは動くのか」に先回りする");
+  assert.match(lines[1], /^ {2}1\. Xcode ▸ Settings ▸ Accounts に Apple ID/);
+  assert.match(lines[2], /^ {2}2\. .*Manage Certificates/);
+  assert.match(lines[3], /^ {2}3\. .*デベロッパモード/);
+  assert.equal(lines[4], "xcodebuild の全出力: /tmp/bridge-build-8123.log");
+});
+
+test("signingGuidance: 起きていないことは言わない・ログの在り処が無ければ書かない", () => {
+  const guidance = signingGuidance(["deviceNotInProfile"], undefined);
+  assert.match(guidance, /^ {2}1\. /m);
+  assert.doesNotMatch(guidance, /Apple ID/);
+  assert.doesNotMatch(guidance, /全出力/);
+});
+
+test("signingGuidance: 知らない種別は飛ばす(新しい判定の CLI と組み合わさっても壊れない)", () => {
+  assert.match(signingGuidance(["noAccount", "somethingNew"], undefined), /Apple ID/);
+  assert.equal(signingGuidance(["somethingNew"], undefined), null, "1つも分からなければ CLI の文言へ譲る");
+  assert.equal(signingGuidance([], undefined), null);
 });

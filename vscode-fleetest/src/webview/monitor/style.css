@@ -290,6 +290,8 @@ select:disabled { opacity: 0.5; cursor: default; }
   font-size: 12px;
 }
 .banner.visible { display: block; }
+/* 自動では消えない(deviceTiles.js の showBanner)ので、閉じられることを見せる */
+.banner { cursor: pointer; }
 .tile-pane {
   /* 高さは JS が inline style で設定・クランプする(padding は持たず、余白は
      子要素 .grid/.empty の inset で付ける)。 */

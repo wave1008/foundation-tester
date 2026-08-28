@@ -77,7 +77,10 @@ window.addEventListener('message', (event) => {
   }
   switch (message.type) {
     case 'devices':
-      hideBanner();
+      // **バナーは消さない** —— 監視サイクルは約2秒ごとに来るので、ここで消すと
+      // エラーが読む前に消える(実害 2026-08-29)。バナーはすべて失敗の通知なので、
+      // 消えてよいのは利用者が閉じたとき・次のバナーで置き換わったとき・
+      // 「モニター再起動」を押したときだけ(deviceTiles.js の showBanner)
       applyDevices(message.devices);
       break;
     case 'frame':

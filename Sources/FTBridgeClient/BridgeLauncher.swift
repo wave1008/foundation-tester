@@ -91,9 +91,9 @@ public struct BridgeLauncher {
             // そのまま拡張のバナーへ流れると読み手は何をすればいいか分からない
             // (XcodeSigningDiagnosis)。当てはまらないログには触らず生のまま出す
             let problems = XcodeSigningDiagnosis.problems(inBuildLog: result.tail)
-            if let guidance = XcodeSigningDiagnosis.guidance(
-                problems: problems, fullLogPath: writeBuildLog(result.tail)?.path) {
-                throw LauncherError.codeSigningIncomplete(guidance)
+            if !problems.isEmpty {
+                throw LauncherError.codeSigningIncomplete(
+                    problems: problems, logPath: writeBuildLog(result.tail)?.path)
             }
             throw LauncherError.commandFailed("xcodebuild build-for-testing", result.tail)
         }
@@ -772,9 +772,10 @@ public enum LauncherError: Error, LocalizedError {
     case portInUse(port: UInt16, holder: String?)
     /// 実機ビルドに必要な Team ID が未設定(署名エラーになる前に止める)
     case developmentTeamMissing
-    /// 署名設定が足りずランナーを実機向けに建てられない。**文字列は「次にやること」**
-    /// (XcodeSigningDiagnosis が組み立てる。生のビルドログはファイルへ)
-    case codeSigningIncomplete(String)
+    /// 署名設定が足りずランナーを実機向けに建てられない。**文字列ではなく「何が欠けているか」を
+    /// 運ぶ** —— CLI は英語で案内を出し、拡張は同じ判定から**自分の言語で**案内を組み立てる
+    /// (CLAUDE.md「共有するのは判定であって文言ではない」)。生のビルドログはファイルへ
+    case codeSigningIncomplete(problems: [XcodeSigningProblem], logPath: String?)
 
     public var errorDescription: String? {
         switch self {
@@ -802,8 +803,9 @@ public enum LauncherError: Error, LocalizedError {
                 return "port \(port) is in use by another process (\(holder))"
             }
             return "port \(port) is in use by another process"
-        case .codeSigningIncomplete(let guidance):
-            return guidance
+        case .codeSigningIncomplete(let problems, let logPath):
+            return XcodeSigningDiagnosis.guidance(problems: problems, fullLogPath: logPath)
+                ?? "the runner cannot be code-signed for a physical device"
         case .developmentTeamMissing:
             return "building for a physical iOS device requires an Apple Developer Team ID. "
                 + "Set \"developmentTeam\" in ~/.config/fleetest/config.json or the "

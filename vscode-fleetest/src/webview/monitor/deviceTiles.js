@@ -1245,10 +1245,14 @@ export function applyDeviceError(message) {
   showBanner(message.message);
 }
 
+// **自動では消えない**(監視サイクルで消すと読む前に消える。main.js の 'devices' 参照)。
+// 消えるのは3つだけ: 利用者が閉じた・次のバナーで置き換わった・「モニター再起動」。
 export function showBanner(text) {
   banner.textContent = text;
+  banner.title = t('wvMonitor.banner.dismissTip');
   banner.classList.add('visible');
 }
+banner.addEventListener('click', () => hideBanner());
 export function hideBanner() {
   banner.textContent = '';
   banner.classList.remove('visible');

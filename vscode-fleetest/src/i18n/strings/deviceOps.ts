@@ -82,6 +82,39 @@ export const deviceOpsStrings = {
     en: "[fleetest] Retrying device-up({name}) ({nextAttempt}/{max}, after {delayMs}ms)",
   },
   "deviceOps.deviceOpFailedGeneric": { ja: "device-{op} に失敗しました。", en: "device-{op} failed." },
+  // バナーは1行しか出さないので、続きの在り処を必ず言う(monitorDeviceOps.ts の firstLine)
+  "deviceOps.detailsInOutput": { ja: " (詳細は OUTPUT パネル)", en: " (details in the OUTPUT panel)" },
+
+  // 実機のブリッジが署名で建たないときの案内。**判定は CLI**(FTBridgeClient の
+  // XcodeSigningDiagnosis)で、文言はここが持つ(CLAUDE.md「共有するのは判定であって文言ではない」)。
+  // 1行目だけで用が足りるように書く —— バナーは1行しか出さない
+  "deviceOps.signing.headline": {
+    ja: "実機用のブリッジに署名できません。その端末が繋がっている Mac の Xcode の署名設定を直してから、"
+      + "もう一度ブリッジを起動してください(シミュレータは署名不要なので、実機だけが止まります)。",
+    en: "Cannot code-sign the bridge runner for a physical device. Fix Xcode's signing setup on the Mac"
+      + " that the device is connected to, then start the bridge again"
+      + " (simulators need no signing, which is why only physical devices stop here).",
+  },
+  "deviceOps.signing.noAccount": {
+    ja: "Xcode ▸ Settings ▸ Accounts に Apple ID を追加する(いまアカウントが1つも登録されていません)。",
+    en: "Xcode ▸ Settings ▸ Accounts: add your Apple ID — no account is configured there.",
+  },
+  "deviceOps.signing.invalidCertificate": {
+    ja: "Xcode ▸ Settings ▸ Accounts ▸ Manage Certificates で開発用証明書を作り直す"
+      + "(いまの証明書は失効または期限切れです)。",
+    en: "Xcode ▸ Settings ▸ Accounts ▸ Manage Certificates: the Apple Development certificate is revoked"
+      + " or expired — create a new one.",
+  },
+  "deviceOps.signing.deviceNotInProfile": {
+    ja: "端末がプロビジョニングプロファイルに入っていません。Xcode を開いた状態で端末を接続して登録し、"
+      + "端末側の設定 ▸ プライバシーとセキュリティ ▸ デベロッパモード を ON にする。",
+    en: "The device is not in the provisioning profile: connect it with Xcode open so it gets registered,"
+      + " and turn on Developer Mode on the device (Settings ▸ Privacy & Security ▸ Developer Mode).",
+  },
+  "deviceOps.signing.fullLog": {
+    ja: "xcodebuild の全出力: {path}",
+    en: "Full xcodebuild output: {path}",
+  },
   "deviceOps.log.deviceOpClosed": {
     ja: "[fleetest] device-{op}({name})が終了しました{attemptLabel}(exit code: {exitCode})",
     en: "[fleetest] device-{op}({name}) finished{attemptLabel} (exit code: {exitCode})",

@@ -24,6 +24,14 @@ export interface DeviceOpFinishedEvent {
   readonly kind: "finished";
   readonly ok: boolean;
   readonly error: string | null;
+  /** 実機の署名設定で止まったときに**何が欠けているか**(FTBridgeClient の XcodeSigningProblem
+   * の raw 値)。**error は英語の案内**(CLI 利用者向け)で、こちらから拡張が自分の言語で
+   * 組み立て直す(CLAUDE.md「共有するのは判定であって文言ではない」)。
+   * 同期相手: Sources/fleetest/ApiDeviceCommands.swift の ApiDeviceFinishedEvent。
+   * **旧い CLI は送ってこない** —— そのときは error をそのまま出す(壊れない) */
+  readonly signingProblems?: readonly string[];
+  /** そのときの xcodebuild の全出力の在り処 */
+  readonly signingLogPath?: string;
 }
 
 export type DeviceOpEvent = DeviceOpLogEvent | DeviceOpFinishedEvent;
@@ -37,7 +45,11 @@ export function isDeviceOpEvent(value: unknown): value is DeviceOpEvent {
     case "log":
       return typeof value.message === "string";
     case "finished":
-      return typeof value.ok === "boolean" && (value.error === null || typeof value.error === "string");
+      return typeof value.ok === "boolean" && (value.error === null || typeof value.error === "string")
+        && (value.signingProblems === undefined
+          || (Array.isArray(value.signingProblems)
+            && value.signingProblems.every((item) => typeof item === "string")))
+        && (value.signingLogPath === undefined || typeof value.signingLogPath === "string");
     default:
       return false;
   }

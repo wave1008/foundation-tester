@@ -91,6 +91,29 @@ export function stderrDetailLine(stderr: string, limit = 200): string | null {
   return last.length > limit ? `${last.slice(0, limit)}…` : last;
 }
 
+/** CLI が返した「何が欠けているか」から、**この拡張の言語で**案内を組み立てる。
+ * 判定は CLI(FTBridgeClient の XcodeSigningDiagnosis)、文言はここ
+ * (CLAUDE.md「共有するのは判定であって文言ではない」)。
+ * **知らない種別は黙って飛ばす** —— 新しい判定を足した CLI と組み合わさっても、
+ * 分かるぶんだけ案内して壊れない。1つも分からなければ null(呼び手は CLI の英語をそのまま出す)。 */
+export function signingGuidance(
+  problems: readonly string[], logPath: string | undefined,
+): string | null {
+  const steps = problems
+    .filter((problem): problem is "noAccount" | "invalidCertificate" | "deviceNotInProfile" =>
+      problem === "noAccount" || problem === "invalidCertificate" || problem === "deviceNotInProfile")
+    .map((problem) => t(`deviceOps.signing.${problem}` as const));
+  if (steps.length === 0) {
+    return null;
+  }
+  const lines = [t("deviceOps.signing.headline")];
+  lines.push(...steps.map((step, index) => `  ${index + 1}. ${step}`));
+  if (logPath !== undefined) {
+    lines.push(t("deviceOps.signing.fullLog", { path: logPath }));
+  }
+  return lines.join("\n");
+}
+
 /** 複数行のエラーの1行目(バナー用)。空行は飛ばし、長ければ切る
  * (stderrDetailLine と対 —— あちらは stderr の**最後**の実質行、こちらは NDJSON の
  * error の**先頭**行。CLI が先頭行に要点を置く契約なのでここは先頭を採る)。 */
@@ -838,12 +861,20 @@ export class MonitorDeviceOps {
         if (value.kind === "log") {
           this.deps.outputChannel.appendLine(`[device-${op} ${name}] ${value.message}`);
         } else if (!value.ok) {
-          const message = value.error ?? t("deviceOps.deviceOpFailedGeneric", { op });
+          // 署名の欠けは**こちらの言語で**組み立て直す(CLI の error は英語 = CLI 利用者向け)
+          const localized = value.signingProblems === undefined
+            ? null
+            : signingGuidance(value.signingProblems, value.signingLogPath);
+          const message = localized ?? value.error ?? t("deviceOps.deviceOpFailedGeneric", { op });
           // OUTPUT には全文、**バナーは1行目だけ** —— CLI は「1行目だけで用が足りる」形で
           // 返す契約(FTBridgeClient の XcodeSigningDiagnosis)。全文をバナーへ流すと、
           // 実機の署名エラーのような数十行のビルドログでパネルが埋まる(実害 2026-08-29)
           logFailure(message);
-          this.deps.post({ type: "deviceOpFailed", name, message: firstLine(message) });
+          const head = firstLine(message);
+          this.deps.post({
+            type: "deviceOpFailed", name,
+            message: head === message.trim() ? head : head + t("deviceOps.detailsInOutput"),
+          });
         }
       },
       (line) => this.deps.outputChannel.appendLine(`[device-${op} ${name} stdout] ${line}`),

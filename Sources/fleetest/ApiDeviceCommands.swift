@@ -92,7 +92,7 @@ struct ApiDeviceUp: AsyncParsableCommand {
                 .provision(devices: [(spec.name, spec)], log: log)
             ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(ok: true, error: nil))
         } catch {
-            ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(ok: false, error: error.localizedDescription))
+            ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent.failure(error))
             throw ExitCode(1)
         }
     }
@@ -185,7 +185,7 @@ struct ApiDevicesUp: AsyncParsableCommand {
             await fanout  // リモート分の完走まで finished を出さない(受け手の「全部終わった」の合図)
             ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(ok: true, error: nil))
         } catch {
-            ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(ok: false, error: error.localizedDescription))
+            ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent.failure(error))
             throw ExitCode(1)
         }
     }
@@ -256,7 +256,7 @@ struct ApiDevicesRestart: AsyncParsableCommand {
         } catch let exitCode as ExitCode {
             throw exitCode
         } catch {
-            ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(ok: false, error: error.localizedDescription))
+            ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent.failure(error))
             throw ExitCode(1)
         }
     }
@@ -351,7 +351,7 @@ struct ApiDevicesDown: AsyncParsableCommand {
             await fanout  // リモート分の完走まで finished を出さない(受け手の「全部終わった」の合図)
             ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(ok: true, error: nil))
         } catch {
-            ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(ok: false, error: error.localizedDescription))
+            ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent.failure(error))
             throw ExitCode(1)
         }
     }
@@ -448,7 +448,7 @@ struct ApiDeviceDown: AsyncParsableCommand {
             try await DeviceBooter.shutdownOne(spec: spec, platform: platform, repoRoot: repoRoot, log: log)
             ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(ok: true, error: nil))
         } catch {
-            ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(ok: false, error: error.localizedDescription))
+            ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent.failure(error))
             throw ExitCode(1)
         }
     }
@@ -666,9 +666,16 @@ private struct ApiDeviceFinishedEvent: Encodable {
     let kind = "finished"
     let ok: Bool
     let error: String?
+    /// 実機の署名設定で止まったときに**何が欠けているか**(XcodeSigningProblem の raw 値)。
+    /// error は英語の案内(CLI 利用者向け)で、受け手はこちらから**自分の言語で**案内を
+    /// 組み立てる(対向: vscode-fleetest/src/monitorDeviceOps.ts の signingGuidance)。
+    /// 追加のみの省略可能フィールド = 旧い受け手は error をそのまま出すだけで壊れない
+    var signingProblems: [String]?
+    /// そのときの xcodebuild の全出力の在り処(受け手の案内に載せる)
+    var signingLogPath: String?
 
     private enum CodingKeys: String, CodingKey {
-        case kind, ok, error
+        case kind, ok, error, signingProblems, signingLogPath
     }
 
     func encode(to encoder: Encoder) throws {
@@ -676,5 +683,17 @@ private struct ApiDeviceFinishedEvent: Encodable {
         try container.encode(kind, forKey: .kind)
         try container.encode(ok, forKey: .ok)
         try container.encode(error, forKey: .error)
+        try container.encodeIfPresent(signingProblems, forKey: .signingProblems)
+        try container.encodeIfPresent(signingLogPath, forKey: .signingLogPath)
+    }
+
+    /// 失敗イベント。**署名の欠けだけは機械可読でも返す**(受け手が自分の言語で案内を出せるように)
+    static func failure(_ error: Error) -> ApiDeviceFinishedEvent {
+        guard case .codeSigningIncomplete(let problems, let logPath)? = error as? LauncherError else {
+            return ApiDeviceFinishedEvent.failure(error)
+        }
+        return ApiDeviceFinishedEvent(
+            ok: false, error: error.localizedDescription,
+            signingProblems: problems.map(\.rawValue), signingLogPath: logPath)
     }
 }
