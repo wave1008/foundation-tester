@@ -96,7 +96,7 @@ struct ApiDeviceStreamCommand: AsyncParsableCommand {
         if target.spec.isPhysical {
             // 実機は種別を問わず devicepoll(iOS 実機に simstream は使えず[CoreSimulator 私有 API]、
             // Android 実機は screenrecord だと静止画面でフレームが流れない)。MJPEG 固定
-            let helper = try helperPath("fleetest-devicepoll")
+            let helper = try helperPath(StreamHelpers.devicepoll)
             if target.platform == "ios" {
                 guard let port = state.iosPort else {
                     throw ValidationError("\(name) has no running bridge on this machine yet")
@@ -115,12 +115,12 @@ struct ApiDeviceStreamCommand: AsyncParsableCommand {
             guard let udid = state.iosUdid else {
                 throw ValidationError("no simulator named \"\(name)\" on this machine")
             }
-            return [try helperPath("fleetest-simstream"), "--udid", udid] + sizeArgs + codecArgs
+            return [try helperPath(StreamHelpers.simstream), "--udid", udid] + sizeArgs + codecArgs
         }
         guard let serial = state.androidSerial else {
             throw ValidationError("\(name) is not running on this machine")
         }
-        return [try helperPath("fleetest-androidstream"), "--serial", serial,
+        return [try helperPath(StreamHelpers.androidstream), "--serial", serial,
                 "--adb", try AndroidDriver.findADB()] + sizeArgs + codecArgs
     }
 

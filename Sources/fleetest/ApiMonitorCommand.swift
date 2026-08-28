@@ -165,6 +165,9 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         var frozenDebounce = MonitorFrozenDebounce(confirmThreshold: 2)
         // 配信を抑制中のデバイスを最後に「観測のためだけに」撮った時刻(capturePlan が更新する)
         var lastFrozenProbeAt: [String: Date] = [:]
+        // ブリッジを持たない iOS シミュレータを最後に simctl で撮った時刻
+        // (simctlCapturePick が更新する。1サイクル1台の順繰りに使う)
+        var lastSimctlCaptureAt: [String: Date] = [:]
         // GPU/CPU 判定はブート時固定のため接続毎に1回のみ検出しキャッシュする(健全性プローブとは
         // 別間隔。再接続=リブートで変わりうるため切断時に破棄する)
         var renderModeCache: [String: String] = [:]
@@ -313,23 +316,46 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 loggedFetchFailure.remove(state.target.id)
                 frozenDebounce.forget(id: state.target.id)
                 lastFrozenProbeAt.removeValue(forKey: state.target.id)
+                lastSimctlCaptureAt.removeValue(forKey: state.target.id)
             }
 
             // 未登録 iOS シミュレータはブリッジが無い(iosPort == nil のまま connected にするため。
-            // unregisteredStates 参照)。表示は拡張の simstream helper が udid だけで担うので
-            // fetchScreenshot(ブリッジ /screenshot 前提)は毎サイクル失敗するだけ
+            // unregisteredStates 参照)ので、ブリッジ /screenshot を前提とするこの経路には乗らない
             let eligible = states.filter { state in
                 state.state == "connected" && (state.target.platform != "ios" || state.iosPort != nil)
+            }
+            // **ブリッジを持たない iOS シミュレータは simctl で撮る**。通常は拡張の simstream が
+            // 映すので出番は無いが、**配信が張れない台ではここが唯一の絵の出所**になる
+            // (リモート機・ポーリングモード)。以前はこの穴が塞がっておらず、
+            // 「落ちたときはポーリングへ落ちる」が iOS では成立していなかった(2026-08-28)。
+            // 抑制中(= そのタイルは配信で映っている)の台は重い simctl を撃つ理由が無いので外す。
+            // 実機は simctl で撮れないので対象外(そちらは devicepoll がブリッジ経由で撮る)
+            let simctlCandidates = states.filter { state in
+                state.state == "connected" && state.target.platform == "ios"
+                    && state.iosPort == nil && state.iosUdid != nil
+                    && !state.target.spec.isPhysical
+                    && !control.isFrameSuppressed(state.target.id)
+            }
+            let simctlPickID = Self.simctlCapturePick(ids: simctlCandidates.map(\.target.id),
+                                                      lastCapturedAt: &lastSimctlCaptureAt)
+            let simctlPicked = simctlPickID.flatMap { id in
+                simctlCandidates.first { $0.target.id == id }
             }
             // **観測段と配信段の分かれ目はここだけ**。抑制(拡張のタイルがストリーミング表示中)は
             // `deliver` にしか効かない —— 観測まで止めると凍結判定が丸ごと死ぬ(2026-08-11 の実害)
             let plan = Self.capturePlan(ids: eligible.map(\.target.id),
                                         suppressed: { control.isFrameSuppressed($0) },
                                         lastProbeAt: &lastFrozenProbeAt)
-            let deliverIDs = Set(plan.filter(\.deliver).map(\.id))
-            let plannedIDs = Set(plan.map(\.id))
+            var deliverIDs = Set(plan.filter(\.deliver).map(\.id))
+            var plannedIDs = Set(plan.map(\.id))
+            if let simctlPickID {
+                // 抑制されていない台だけを候補にしてあるので、撮ったら必ず配る
+                deliverIDs.insert(simctlPickID)
+                plannedIDs.insert(simctlPickID)
+            }
 
-            for state in eligible where plannedIDs.contains(state.target.id) {
+            for state in eligible + (simctlPicked.map { [$0] } ?? [])
+            where plannedIDs.contains(state.target.id) {
                 guard !stop.isSet else { break }
 
                 let png: Data
@@ -793,6 +819,23 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         return plan
     }
 
+    /// ブリッジを持たない iOS シミュレータを **1サイクルに1台だけ** simctl で撮るための選択。
+    /// **最後に撮ってから最も経った台**を返し、その台の時計を進める(順繰り)。
+    ///
+    /// **更新間隔の定数は置かない** —— `xcrun simctl io <udid> screenshot` は実測 1.7 秒
+    /// (M2 Ultra・iPhone 17 Pro シミュレータ)で、既定の interval(2秒)より長い。1サイクル1台に
+    /// 固定すると1サイクルあたりの追加コストは撮影1回で頭打ちになり、更新間隔は「対象の台数」から
+    /// 自然に決まる(2台なら約2サイクル、10台なら約10サイクル)。
+    /// I/O を持たない pure 関数(MonitorSimctlCaptureTests)
+    static func simctlCapturePick(ids: [String], lastCapturedAt: inout [String: Date],
+                                  now: Date = Date()) -> String? {
+        guard let pick = ids.min(by: {
+            (lastCapturedAt[$0] ?? .distantPast) < (lastCapturedAt[$1] ?? .distantPast)
+        }) else { return nil }
+        lastCapturedAt[pick] = now
+        return pick
+    }
+
     /// モニターが配る凍結判定。**3つの根拠を合流させる**:
     ///   ① 自前の観測(一様フレーム。`MonitorFrozenDebounce`)
     ///   ② run が公表した判定(`DeviceFrozenStore`。run 前トリアージが書く)
@@ -1019,11 +1062,30 @@ struct ApiMonitorCommand: AsyncParsableCommand {
     /// state==connected のデバイスのスクリーンショットを取得する(PNG。JPEG 変換は呼び出し側)
     private static func fetchScreenshot(state: DeviceRuntimeState) async throws -> Data {
         if state.target.platform == "ios" {
-            guard let port = state.iosPort else { throw MonitorError.noConnection }
+            guard let port = state.iosPort else {
+                // ブリッジを持たないシミュレータ(呼び出し側が simctlCapturePick で1台だけ選ぶ)
+                guard let udid = state.iosUdid, !state.target.spec.isPhysical else {
+                    throw MonitorError.noConnection
+                }
+                return try Self.simctlScreenshot(udid: udid)
+            }
             return try await BridgeClient(port: port, timeoutSeconds: 5).screenshot()
         }
         guard let serial = state.androidSerial else { throw MonitorError.noConnection }
         return try await AndroidDriver(serial: serial).screenshot()
+    }
+
+    /// ブリッジを持たないシミュレータの1枚。**実測 1.7 秒**(M2 Ultra・iPhone 17 Pro)なので、
+    /// 混雑時の伸びを見て 15 秒で切る —— 1サイクル(既定 2 秒)を握り続けさせない。
+    /// 切れた場合は呼び出し側が過渡的失敗として扱い、前回フレームがタイルに残る
+    private static func simctlScreenshot(udid: String) throws -> Data {
+        let path = NSTemporaryDirectory() + "ft-monitor-\(udid).png"
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        guard let result = try? Shell.run(["xcrun", "simctl", "io", udid, "screenshot", path],
+                                          timeout: 15), result.status == 0 else {
+            throw MonitorError.noConnection
+        }
+        return try Data(contentsOf: URL(fileURLWithPath: path))
     }
 
     /// SIGTERM/SIGINT/EOF を最大 0.1 秒粒度で検知しながら interval 秒待つ

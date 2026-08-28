@@ -161,12 +161,18 @@ final class RemoteSetupTests: XCTestCase {
 
     // MARK: - RemoteSetupPlan.alignRevisionCommand
 
+    /// 期待値は**リテラルで書き切る**(`StreamHelpers.all` から組むと、ヘルパーを取り落とす
+    /// 変異が production と期待値の両方に同時に効いて素通しする)。ヘルパーを増やしたら
+    /// ここも手で足す —— それがこのテストの仕事
     func testAlignRevisionCommand() {
         let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
         XCTAssertEqual(
             RemoteSetupPlan.alignRevisionCommand(layout: layout, revision: "9655a21"),
             "cd '/Users/ci/fleetest-runner/foundation-tester' && git fetch origin && "
-                + "git checkout '9655a21' && swift build --product fleetest")
+                + "git checkout '9655a21' && swift build --product fleetest"
+                + " && swift build --product fleetest-simstream"
+                + " && swift build --product fleetest-androidstream"
+                + " && swift build --product fleetest-devicepoll")
     }
 
     // MARK: - RemoteSetupPlan.validateUninstallBase

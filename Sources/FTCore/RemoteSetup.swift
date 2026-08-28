@@ -143,12 +143,20 @@ public enum RemoteSetupPlan {
 
     private static let hexDigits = CharacterSet(charactersIn: "0123456789abcdefABCDEF")
 
-    /// リモートのクローンを発行側と同じコミットへ合わせ、`fleetest` バイナリを作り直す
-    /// (docs/remote-runner.md §14 ステップ3 相当)。呼び出し側は `validateRevision` を先に通すこと
-    /// (ここでは検証しない — 検証は1箇所、埋め込みは複数箇所から呼ばれ得るため分離してある)
+    /// リモートのクローンを発行側と同じコミットへ合わせ、`fleetest` と**配信ヘルパー**を
+    /// 作り直す(docs/remote-runner.md §14 ステップ3 相当)。呼び出し側は `validateRevision` を
+    /// 先に通すこと(ここでは検証しない — 検証は1箇所、埋め込みは複数箇所から呼ばれ得るため
+    /// 分離してある)。
+    ///
+    /// **ヘルパーを省かない** —— `fleetest` だけを建てると、そのランナーのタイルは状態は届くのに
+    /// 映像が1枚も来ない(`api device-stream` が exec 対象を見つけられず即死し、拡張は
+    /// 「映像なし」で諦める)。名前の定義元は `StreamHelpers`
     public static func alignRevisionCommand(layout: RemoteLayout, revision: String) -> String {
-        "cd \(RemoteShell.quote(layout.toolRoot)) && git fetch origin && "
-            + "git checkout \(RemoteShell.quote(revision)) && swift build --product fleetest"
+        let builds = (["fleetest"] + StreamHelpers.all)
+            .map { "swift build --product \($0)" }
+            .joined(separator: " && ")
+        return "cd \(RemoteShell.quote(layout.toolRoot)) && git fetch origin && "
+            + "git checkout \(RemoteShell.quote(revision)) && " + builds
     }
 
     /// `--uninstall` が base ごと削除してよいかの判定(docs/remote-runner.md §14 撤去)。

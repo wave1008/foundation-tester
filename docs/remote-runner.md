@@ -865,7 +865,15 @@ witness は `RemoteDispatchTests.testRelayRewriteMapsTheRunnerWorkDirOntoTheLoca
 - **落ちたときはポーリングへ落ちる**。映像が張れない/張り替えに失敗しても、リモートの
   `api monitor` が出す monitorFrame(2秒毎)がタイルを更新し続ける ——
   **配信を止めるだけでフォールバックが成立する**(手元と同じ性質)。
-  帯域や CPU が足りない環境では設定の「ポーリングモード」でも同じ状態になる
+  帯域や CPU が足りない環境では設定の「ポーリングモード」でも同じ状態になる。
+  **iOS でこれが成立していなかった**(2026-08-28 に判明): 実行プロファイル未選択のときの
+  iOS は「未登録」= ブリッジを持たないので、ブリッジ `/screenshot` を前提とした撮影の対象から
+  外れ、**monitorFrame が1枚も出ない**。手元は simstream(udid だけで映る)が覆っていたので
+  見えなかったが、配信の張れない台では画面の出所がゼロになる。現在はブリッジを持たない
+  シミュレータを `xcrun simctl io … screenshot` で撮る —— **1サイクル1台の順繰り**
+  (`ApiMonitorCommand.simctlCapturePick`)。**間隔の定数は置かない**: simctl は実測 1.7 秒で
+  interval(2秒)より長いため、1サイクル1台に固定して追加コストを撮影1回で頭打ちにし、
+  更新間隔は対象の台数から決まるようにしてある。配信中(`suppressFrames`)の台は撮らない
 - **操作もその機械へ回す**(2026-08-17 のレビューで実バグ)。一括の起動・停止は
   `RemoteDeviceFanout` で分散していたが、**タイル1枚の起動・停止は手元で `api device-up --name`
   を撃っていた** —— `findDevice` は名前だけで引くので、同名の台が別の機械にも居ると
@@ -974,8 +982,16 @@ fleetest remote setup <host>    発行側の入口。local(手元のプロジェ
 
 **align が要る理由**: 適合チェックは git revision 一致を要求するが、install.sh が clone するのは
 upstream の既定ブランチなので、検証中のブランチでは必ず不一致になる。発行側の HEAD へ
-`git fetch → checkout → swift build --product fleetest` で合わせる(revision は 16進 7〜40 文字を
+`git fetch → checkout → swift build` で合わせる(revision は 16進 7〜40 文字を
 検証してから埋める = コマンド注入の入口を塞ぐ)。
+
+**建てるのは `fleetest` だけではない** —— **配信ヘルパー3本(`fleetest-simstream` /
+`fleetest-androidstream` / `fleetest-devicepoll`)も建てる**。名前の定義元は
+`FTCore.StreamHelpers` で、`api device-stream` はこれへ `execv` で化ける。
+`--product fleetest` だけにしていた頃は、**そのランナーのタイルは状態は届くのに映像が1枚も
+来なかった**(`api device-stream` が exec 対象を見つけられず即死 → 拡張は「映像なし」で諦める)。
+2026-08-28 に実際に起きて、**ランナー導入以来ずっと**そうだった(手元は素の `swift build` で
+全部建つので誰も気づかない)。等号は `RemoteSetupTests.testAlignRevisionCommand` が固定する。
 
 **踏んだ罠**: リモートで一時スクリプトを実行して後始末する1行で、終了コードの退避先を
 `status` にしていた。**ssh が起こすのは受け手のログインシェル(macOS 既定 zsh)で、zsh の
