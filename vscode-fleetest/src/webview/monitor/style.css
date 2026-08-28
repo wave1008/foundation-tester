@@ -702,6 +702,15 @@ html.select-all-guard * {
   gap: 4px;
   min-width: 0;
   min-height: 0;
+  /* **1台ぶんを薄い枠で囲う**。台が増えると段組みが細かくなり、タグ段(バッジ)が隣の台の
+     ぶんと地続きに見えて境界が読めなくなる。枠はログだけのとき(.lane)と同じトークン・
+     同じ角丸なので、表示が切り替わっても見え方が揃う。縦にも並ぶので、列と列だけでなく
+     行と行の境にも要る。
+     box-sizing: 枠のぶんセルからはみ出さない(段組みの寸法は laneLog.js が実測で決める)。 */
+  box-sizing: border-box;
+  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+  border-radius: 4px;
+  padding: 4px;
 }
 /* タグ段(上=実機・デバイス名・未登録 / 下=ホスト名)。段数は台によらず常に2段
    —— 手元の台には見えないダミーのバッジが入る(deviceTiles.js renderMirrorHeader)。
@@ -724,6 +733,8 @@ html.select-all-guard * {
   min-width: 0;
   height: auto;
 }
+/* 枠は外側(.lane-preview)が持つ。ここにも枠を置くと縁で二重線になるので、絵の領域は
+   背景色だけで示す。 */
 .lane-preview-frame {
   flex: 1 1 auto;
   min-height: 0;
@@ -731,8 +742,7 @@ html.select-all-guard * {
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
-  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
-  border-radius: 4px;
+  border-radius: 2px;
   background-color: var(--vscode-input-background, #1e1e1e);
   overflow: hidden;
 }

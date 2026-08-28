@@ -301,3 +301,60 @@ test("既に立っている選択は畳む(ペインを押す前に作ったも�
 
   assert.equal(cleared, 1);
 });
+
+// ---- 右クリックメニューの「すべて選択/すべて解除」 ----
+// キー(Cmd/Ctrl+A)と同じ扱いにする。**メニューはフリートの領域**(タイルから開くもので、
+// DOM 上だけペインの外に居る)—— 領域から外すと、項目を押した瞬間にガードが外れて
+// それまで隠れていた選択が見え、「メニューの『すべて選択』で HTML が全選択された」に見える。
+
+const menuSelectAll = (document) => document.getElementById("device-op-menu-select-all");
+const menuDeselectAll = (document) => document.getElementById("device-op-menu-deselect-all");
+
+/** タイルを右クリックしてデバイス操作メニューを開く。 */
+function openDeviceMenu(document, tile) {
+  const window = document.defaultView;
+  tile.dispatchEvent(new window.MouseEvent("pointerdown", { bubbles: true, button: 2 }));
+  tile.dispatchEvent(new window.MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+}
+
+test("メニューを押してもガードは外れない(隠れていた選択が見えるようになるのを防ぐ)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, 3);
+  openDeviceMenu(document, tiles(document)[0]);
+  assert.equal(guarded(document), true, "前提: タイルを押した時点で掛かる");
+
+  pointerDown(document, menuSelectAll(document));
+  assert.equal(guarded(document), true, "メニューはフリートの領域(外扱いにしない)");
+});
+
+test("メニューの「すべて選択」はデバイスを全選択し、テキスト選択は畳む", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, 3);
+  openDeviceMenu(document, tiles(document)[0]);
+
+  let cleared = 0;
+  window.getSelection = () => ({ removeAllRanges: () => { cleared += 1; } });
+  click(document, menuSelectAll(document));
+
+  assert.equal(selectedCount(document), 3);
+  assert.equal(cleared, 1, "Cmd/Ctrl+A と同じ扱い");
+});
+
+test("メニューの「すべて解除」も同じ", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, 3);
+  pointerDown(document, tiles(document)[0]);
+  pressSelectAllKey(document, document.body); // 全選択しておく
+  assert.equal(selectedCount(document), 3, "前提");
+  openDeviceMenu(document, tiles(document)[0]);
+
+  let cleared = 0;
+  window.getSelection = () => ({ removeAllRanges: () => { cleared += 1; } });
+  click(document, menuDeselectAll(document));
+
+  assert.equal(selectedCount(document), 0);
+  assert.equal(cleared, 1);
+});

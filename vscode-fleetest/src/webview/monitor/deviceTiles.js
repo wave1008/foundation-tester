@@ -787,13 +787,27 @@ btnSelectAll.addEventListener('click', () => {
 });
 
 // ---- フリートを触っている間の Cmd/Ctrl+A ----------------------------------------------
-// 「フリートを触っている」= **最後に押した場所がタイルペインの中**、またはフォーカスが
+// 「フリートを触っている」= **最後に押した場所がフリートの領域の中**、またはフォーカスが
 // その中にある。**フォーカスだけを条件にしない** —— タイルは div(tabindex=-1)で、
 // webview では押しても activeElement が body のままになることがある。
 let fleetActive = false;
 
-function inTilePane(node) {
-  return node instanceof Node && tilePane.contains(node);
+// **右クリックメニューもフリートの領域**(タイルから開くもので、DOM 上だけペインの外に居る)。
+// 含めないと、メニューの項目を押した瞬間にガードが外れ、**それまで隠れていた選択が
+// 見えるようになる** —— 利用者からは「メニューの『すべて選択』で HTML が全選択された」
+// ように見える(実害 2026-08-28)。
+function inFleetRegion(node) {
+  return node instanceof Node && (tilePane.contains(node) || deviceOpMenu.contains(node));
+}
+
+// 既に立っている選択(フリートを触る前に作ったもの)はガードでは消えない ——
+// ガードは新しい選択を作らせないだけなので、外れた瞬間に前の選択が見えてしまう。
+// **フリートの「全選択/全解除」を実行したときは畳む**(キーもメニューも同じ扱い)。
+function dropTextSelection() {
+  const selection = window.getSelection ? window.getSelection() : null;
+  if (selection) {
+    selection.removeAllRanges();
+  }
 }
 
 function setFleetActive(active) {
@@ -807,17 +821,17 @@ function setFleetActive(active) {
 
 // capture:true = タイル側の stopPropagation より先に見る(判定するだけで何も止めない)。
 document.addEventListener('pointerdown', (event) => {
-  setFleetActive(inTilePane(event.target));
+  setFleetActive(inFleetRegion(event.target));
 }, true);
 // キーボードで外へ出たとき(タブ移動・モーダル・入力欄)も畳む。
 document.addEventListener('focusin', (event) => {
-  if (!inTilePane(event.target)) {
+  if (!inFleetRegion(event.target)) {
     setFleetActive(false);
   }
 }, true);
 
 function fleetHasFocus() {
-  return fleetActive || inTilePane(document.activeElement);
+  return fleetActive || inFleetRegion(document.activeElement);
 }
 
 // フリートを触っている間だけ Cmd/Ctrl+A を「全選択/全解除」に使う(webview 既定の
@@ -842,11 +856,7 @@ document.addEventListener('keydown', (event) => {
   }
   event.preventDefault();
   toggleSelectAll();
-  // 既に立っている選択(ペインを押す前に作ったもの)はガードでは消えないので畳む。
-  const selection = window.getSelection ? window.getSelection() : null;
-  if (selection) {
-    selection.removeAllRanges();
-  }
+  dropTextSelection();
 }, true);
 
 // 初期表示(devices が1度も届いていない間)。押せない状態と説明を先に入れておく。
@@ -861,6 +871,7 @@ deviceOpMenuSelectAllBtn.addEventListener('click', (event) => {
     selectedDeviceIds.add(id);
   }
   updateSelectionUi();
+  dropTextSelection(); // Cmd/Ctrl+A と同じ扱い(dropTextSelection の doc 参照)
   closeDeviceOpMenu();
 });
 
@@ -871,6 +882,7 @@ deviceOpMenuDeselectAllBtn.addEventListener('click', (event) => {
   }
   selectedDeviceIds.clear();
   updateSelectionUi();
+  dropTextSelection();
   closeDeviceOpMenu();
 });
 
