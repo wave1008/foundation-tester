@@ -10,6 +10,9 @@ import {
   idsInMarquee,
   mergeMarqueeSelection,
   rectContains,
+  autoScrollVelocity,
+  autoScrollEdgeWidth,
+  autoScrollStep,
 } from "../src/webview/monitor/marqueeModel.js";
 
 const rect = (left, top, width, height) => ({ left, top, width, height });
@@ -77,4 +80,43 @@ test("点の内外は4辺すべてで見る(縁は中に含む)", () => {
   assert.equal(rectContains(box, { x: 111, y: 40 }), false, "右に外れる");
   assert.equal(rectContains(box, { x: 50, y: 19 }), false, "上に外れる");
   assert.equal(rectContains(box, { x: 50, y: 71 }), false, "下に外れる");
+});
+
+test("端の帯の中だけ流れる(向きは寄せた側・帯の外は 0)", () => {
+  const view = [100, 500]; // 左端 100 / 幅 500 → 帯は 40px(表示幅の 1/4 より狭い)
+  assert.equal(autoScrollVelocity(300, ...view), 0, "真ん中は動かさない");
+  assert.equal(autoScrollVelocity(140, ...view), 0, "左の帯の入口ちょうどは 0");
+  assert.equal(autoScrollVelocity(560, ...view), 0, "右の帯の入口ちょうどは 0");
+  assert.ok(autoScrollVelocity(120, ...view) < 0, "左へ寄せたら左へ流す");
+  assert.ok(autoScrollVelocity(580, ...view) > 0, "右へ寄せたら右へ流す");
+});
+
+// 期待値は production の定数を参照せず、既定値(帯 40px・最大 1.2 表示幅/秒・刻み上限 100ms)から
+// 手で計算したリテラルで書く(定数を使うと定数を書き換える変異が素通しする)。
+test("速さは表示幅で決まり、端で最大・その外でも最大どまり", () => {
+  const max = 600; // 表示幅 500px × 1.2 表示幅/秒
+  assert.equal(autoScrollVelocity(600, 100, 500), max, "右端ちょうどで最大");
+  assert.equal(autoScrollVelocity(9999, 100, 500), max, "表示の外へ出しても最大を超えない");
+  assert.equal(autoScrollVelocity(100, 100, 500), -max, "左端ちょうどで最大(逆向き)");
+  assert.equal(autoScrollVelocity(-9999, 100, 500), -max);
+  // 半分だけ食い込んだら半分の速さ(入口 0 → 端 max の線形)
+  assert.equal(autoScrollVelocity(580, 100, 500), max / 2);
+  // 表示幅が倍なら同じ寄せ方でも倍の px/秒(体感 = 画面何枚ぶん流れたか、を一定にする)
+  assert.equal(autoScrollVelocity(1100, 100, 1000), 1200);
+});
+
+test("狭い表示では帯を縮める(左右の帯が触れ合って止められなくなるのを防ぐ)", () => {
+  assert.equal(autoScrollEdgeWidth(500), 40, "広ければ既定の幅");
+  assert.equal(autoScrollEdgeWidth(100), 25, "表示幅 100px なら片側 25px");
+  assert.equal(autoScrollEdgeWidth(0), 0);
+  // 帯が縮んでも真ん中は必ず残る
+  assert.equal(autoScrollVelocity(50, 0, 100), 0, "表示幅 100px の中央は動かさない");
+});
+
+test("1回の刻みは経過時間ぶん・詰まったフレームは頭打ちにする", () => {
+  assert.equal(autoScrollStep(1000, 16), 16, "1000px/秒 × 16ms");
+  assert.equal(autoScrollStep(-1000, 16), -16, "左向きも同じ");
+  assert.equal(autoScrollStep(1000, 0), 0);
+  assert.equal(autoScrollStep(1000, 5000), 100, "main thread が5秒詰まっても 100ms ぶんしか進まない");
+  assert.equal(autoScrollStep(1000, -5), 0, "負の経過時間でも逆走しない");
 });

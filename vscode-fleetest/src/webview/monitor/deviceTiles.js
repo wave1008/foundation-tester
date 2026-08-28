@@ -12,7 +12,7 @@ import { updateLaneVisibility, syncLanesToDevices, runningWorkers, relayoutPrevi
 import { createH264Renderer } from './h264Decoder.js';
 import { clampMenuPosition } from './menu.js';
 import { setHoverTip } from './hoverTip.js';
-import { isDragDistance, marqueeRect, idsInMarquee, mergeMarqueeSelection, rectContains } from './marqueeModel.js';
+import { isDragDistance, marqueeRect, idsInMarquee, mergeMarqueeSelection, rectContains, autoScrollVelocity, autoScrollStep } from './marqueeModel.js';
 
 // bridgeWatch(拡張ホストの自動修復ウォッチドッグ、契約は main.js の 'bridgeWatch' ケース参照)の
 // phase→footer表示。'ok'はここに含めず通常表示へフォールバックさせる。
@@ -1288,7 +1288,14 @@ grid.addEventListener('contextmenu', (event) => {
 // 押している間だけ前の選択を残して足す。空振りのドラッグは全解除)。
 let marqueePointerId = null;
 let marqueeOrigin = null;
+// 押し始めた時点の grid.scrollLeft。自動スクロールで内容が動いた分だけ origin の viewport x を
+// 戻すのに使う(掴んだ点は内容に付いている = 流れれば画面上では逆へ動く)。
+let marqueeOriginScrollLeft = 0;
 let marqueeActive = false;
+// 最後に見たポインタ位置と修飾キー。自動スクロールは pointermove が来ない(指が止まっている)
+// 間も矩形と選択を更新するので、直近の入力をここに控える。
+let marqueeLastPoint = null;
+let marqueeAdditive = false;
 // ドラッグを始めた時点の選択(Ctrl/Cmd を押しながらのときはこれを残して足す)。
 let marqueeBaseIds = [];
 // ドラッグの終わりに来る click を1回だけ捨てるための旗(下の capture リスナが読む)。
@@ -1317,6 +1324,73 @@ function marqueeSelect(rect, additive) {
   updateSelectionUi();
 }
 
+// 掴んだ点の「今の」viewport 座標。自動スクロールで内容が流れたぶんを差し引く ——
+// 引かないと矩形の始点が画面に固定され、流した先で掴み直したような選択になる。
+function marqueeOriginPoint() {
+  return { x: marqueeOrigin.x - (grid.scrollLeft - marqueeOriginScrollLeft), y: marqueeOrigin.y };
+}
+
+// 矩形の描画と選択の反映。pointermove からも自動スクロールの刻みからも同じものを通す。
+function updateMarquee() {
+  const rect = marqueeRect(marqueeOriginPoint(), marqueeLastPoint);
+  renderMarquee(rect);
+  marqueeSelect(rect, marqueeAdditive);
+}
+
+// ---- 端に寄せている間の自動スクロール(速さの規則は marqueeModel.js) ----
+let autoScrollRaf = null;
+let autoScrollPrevTs = 0;
+// 1フレームの移動量は 1px 未満になりうる。切り捨てた端数を持ち越さないと、遅い側では
+// scrollLeft の丸めに食われて永久に動かない。
+let autoScrollCarry = 0;
+
+function autoScrollTick(ts) {
+  autoScrollRaf = null;
+  if (!marqueeActive || !marqueeLastPoint) {
+    return;
+  }
+  const view = grid.getBoundingClientRect();
+  const velocity = autoScrollVelocity(marqueeLastPoint.x, view.left, view.width);
+  if (velocity === 0) {
+    // 帯の外。次に端へ寄ったとき pointermove が張り直す(止まったまま帯へ入ることはない)。
+    autoScrollPrevTs = 0;
+    autoScrollCarry = 0;
+    return;
+  }
+  // 1フレーム目は経過時間が分からないので進めない(次のフレームから刻む)。
+  const dt = autoScrollPrevTs ? ts - autoScrollPrevTs : 0;
+  autoScrollPrevTs = ts;
+  const want = autoScrollStep(velocity, dt) + autoScrollCarry;
+  const step = Math.trunc(want);
+  autoScrollCarry = want - step;
+  if (step !== 0) {
+    const before = grid.scrollLeft;
+    grid.scrollLeft = before + step;
+    // 端に着いたら carry を溜めない(戻す向きへ動かすとき溜まったぶんが一気に出る)。
+    if (grid.scrollLeft === before) {
+      autoScrollCarry = 0;
+    } else {
+      updateMarquee();
+    }
+  }
+  autoScrollRaf = requestAnimationFrame(autoScrollTick);
+}
+
+function startAutoScroll() {
+  if (autoScrollRaf === null) {
+    autoScrollRaf = requestAnimationFrame(autoScrollTick);
+  }
+}
+
+function stopAutoScroll() {
+  if (autoScrollRaf !== null) {
+    cancelAnimationFrame(autoScrollRaf);
+    autoScrollRaf = null;
+  }
+  autoScrollPrevTs = 0;
+  autoScrollCarry = 0;
+}
+
 function renderMarquee(rect) {
   const paneRect = tilePane.getBoundingClientRect();
   tileMarquee.style.left = (rect.left - paneRect.left) + 'px';
@@ -1326,8 +1400,10 @@ function renderMarquee(rect) {
 }
 
 function endMarquee() {
+  stopAutoScroll();
   marqueeOrigin = null;
   marqueePointerId = null;
+  marqueeLastPoint = null;
   if (!marqueeActive) {
     return;
   }
@@ -1349,6 +1425,7 @@ grid.addEventListener('pointerdown', (event) => {
   }
   marqueePointerId = event.pointerId;
   marqueeOrigin = { x: event.clientX, y: event.clientY };
+  marqueeOriginScrollLeft = grid.scrollLeft;
   marqueeBaseIds = [...selectedDeviceIds];
 });
 grid.addEventListener('pointermove', (event) => {
@@ -1371,9 +1448,11 @@ grid.addEventListener('pointermove', (event) => {
       selection.removeAllRanges();
     }
   }
-  const rect = marqueeRect(marqueeOrigin, point);
-  renderMarquee(rect);
-  marqueeSelect(rect, event.ctrlKey || event.metaKey);
+  marqueeLastPoint = point;
+  marqueeAdditive = event.ctrlKey || event.metaKey;
+  updateMarquee();
+  // 端の帯に居るかは刻み側が毎フレーム見る。ここは止まっている間も流れ続けるように張るだけ。
+  startAutoScroll();
 });
 grid.addEventListener('pointerup', (event) => {
   if (marqueePointerId !== event.pointerId) {
