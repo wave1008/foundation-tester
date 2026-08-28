@@ -5,7 +5,7 @@
 
 import { vscode, persistedState } from './vscodeApi.js';
 import { toolbar, banner, devicesPanel, tilePane, splitter, grid, btnAutoFit } from './domRefs.js';
-import { relayoutTiles, setTileLayoutObserver } from './deviceTiles.js';
+import { relayoutTiles, setTileLayoutObserver, measureTileImageHeight } from './deviceTiles.js';
 import { computeFitPaneHeight } from './tileFitModel.js';
 
 // setState/getStateにも保存し、パネル再表示時に復元する。出力ペインはflexの残りスペースを
@@ -119,14 +119,26 @@ function computeFitTilePaneHeight() {
     if (!frame) {
       return null;
     }
+    const tileStyle = getComputedStyle(tileEl);
+    // 選択中タイルは border 2px/padding 7px と内訳が違うのでタイルごとに測る。
+    const innerWidth =
+      tileEl.clientWidth - parseFloat(tileStyle.paddingLeft) - parseFloat(tileStyle.paddingRight);
     const imageWidth = frame.getBoundingClientRect().width;
     measuredTiles.push({
       imageWidth,
-      chromeWidth: tileEl.getBoundingClientRect().width - imageWidth,
+      chromeWidth: tileEl.getBoundingClientRect().width - innerWidth,
+      // 画像以外の子(マシン名バッジの段など)が要求している幅。画像を縮めても
+      // ここより細くはならないので、固定費(chromeWidth)ではなく床として渡す。
+      floorWidth: Math.max(0, innerWidth - imageWidth),
     });
   }
+  const imageHeight = measureTileImageHeight();
+  if (imageHeight === null) {
+    return null;
+  }
   return computeFitPaneHeight({
-    paneHeight: tilePaneHeight,
+    // 下限クランプ前の対応で測る(tileFitModel.js の paneOverhead の注記)。
+    paneOverhead: tilePaneHeight - imageHeight,
     imageHeight: parseFloat(gridStyle.getPropertyValue('--tile-image-h')),
     gridWidth: grid.clientWidth,
     gap: parseFloat(gridStyle.columnGap),

@@ -30,6 +30,17 @@ export function setHoverTip(el, text) {
   }
 }
 
+/// 静的 HTML(monitorHtml.ts)側で title を書いた要素を、まとめて自前ツールチップへ移す。
+/// 文言の定義元は HTML 側のまま(拡張の t() で描かれる)で、出し方だけをこちらへ寄せる。
+export function adoptTitleHoverTips(selector) {
+  for (const el of document.querySelectorAll(selector)) {
+    // setHoverTip が title を空にするので、二度呼んでも二重にはならない(空はここで弾く)。
+    if (el.title) {
+      setHoverTip(el, el.title);
+    }
+  }
+}
+
 function ensureTipEl() {
   if (!tipEl) {
     tipEl = document.createElement('div');

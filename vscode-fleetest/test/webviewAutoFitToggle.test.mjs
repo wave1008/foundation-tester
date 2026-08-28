@@ -132,7 +132,10 @@ test("ボタンはホストグラフより後ろ・ツールバー最後の要�
   );
   assert.equal(button.textContent.trim(), "", "テキストではなくアイコン(インライン SVG)");
   assert.equal(button.querySelectorAll("svg").length, 1);
-  assert.ok(button.getAttribute("title"), "アイコンのみなので title で意味を伝える");
+  // 説明はネイティブ title(遅延約1秒・指定不可)ではなく自前ツールチップ(0.2秒)で出す。
+  // 静的 HTML の title は main.js の adoptTitleHoverTips が移すので、ここには残らない。
+  assert.equal(button.getAttribute("title"), "", "title は残さない(残すと二重に出る)");
+  assert.ok(button.getAttribute("data-hover-tip"), "アイコンのみなので説明を持つ");
 });
 
 test("初期状態は ON(既定。押さなくても台数変化でフィットする)", (t) => {

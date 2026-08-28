@@ -68,6 +68,7 @@ import { applyResidentMessage } from './processesTab.js';
 import { applyRecordingsSessions, applyRecordingsSession } from './recordingsTab.js';
 import { activateTab, TAB_IDS, switchTab } from './tabs.js';
 import { setTilePaneHeight, setTileAutoFit } from './splitter.js';
+import { adoptTitleHoverTips } from './hoverTip.js';
 
 window.addEventListener('message', (event) => {
   const message = event.data;
@@ -275,6 +276,11 @@ btnRestart.addEventListener('click', () => {
   emptyMessage.style.display = 'flex';
   vscode.postMessage({ type: 'restartMonitor' });
 });
+
+// ツールバー右端のアイコンボタン(全選択・高さ自動調整)の説明は、ネイティブ title(約1秒・
+// 遅延を指定できない)ではなくタイルと同じ自前ツールチップ(0.2秒)で出す。
+// 全選択ボタンの文言は押すたびに変わるので deviceTiles.js が自分で setHoverTip する。
+adoptTitleHoverTips('#toolbar .icon-button[title]');
 
 // 選択タブの永続化(vscode.getState())から復元する。不正値・未設定は 'devices'。
 const initialTab = TAB_IDS.includes(persistedState.activeTab) ? persistedState.activeTab : 'devices';

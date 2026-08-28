@@ -7,7 +7,7 @@
 
 import { t } from '../i18n.js';
 import { vscode } from './vscodeApi.js';
-import { grid, emptyMessage, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuItemBtn, deviceOpMenuItemLabel, deviceOpMenuLiveBtn, deviceOpMenuGpuBtn, deviceOpMenuSep, deviceOpMenuSelectAllBtn, deviceOpMenuDeselectAllBtn, profileSelect, tilePane, tileMarquee } from './domRefs.js';
+import { grid, emptyMessage, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuItemBtn, deviceOpMenuItemLabel, deviceOpMenuLiveBtn, deviceOpMenuGpuBtn, deviceOpMenuSep, deviceOpMenuSelectAllBtn, deviceOpMenuDeselectAllBtn, btnSelectAll, profileSelect, tilePane, tileMarquee } from './domRefs.js';
 import { updateLaneVisibility, syncLanesToDevices, runningWorkers, relayoutPreviewsForResize } from './laneLog.js';
 import { createH264Renderer } from './h264Decoder.js';
 import { clampMenuPosition } from './menu.js';
@@ -99,6 +99,10 @@ export const selectedDeviceIds = new Set();
 // device id -> { wrapEl, imgEl, canvasEl }
 const deviceMirrors = new Map();
 
+// 画像高さの絶対下限(px)。auto-fit の下限(MIN_FIT_IMAGE_HEIGHT_PX)とは別物 ——
+// こちらはセパレーターを手で最小まで詰めたときに 0 や負にならないための床で、
+// 手動操作の結果を尊重するぶん低い。
+const MIN_TILE_IMAGE_HEIGHT = 60;
 // タイル内の「画像以外」の高さの合計(px)。CSS の固定高と一致させること:
 // padding 上下 8+8 + header 20 + footer 18 + gap 6×2 = 66
 const TILE_CHROME_HEIGHT = 66;
@@ -144,19 +148,28 @@ function notifyTileLayoutChanged(reason) {
 // タイル実測高さから --tile-image-h を算出(タイル幅はこの高さ×アスペクト比で決まる)。
 // スプリッター移動・リサイズ・タイル生成のたびに呼び直す必要がある。
 export function relayoutTiles() {
-  const probe = grid.querySelector('.tile');
-  if (!probe) {
-    return;
-  }
-  // 「デバイス」タブ非表示中(display:none)は clientHeight=0 で下限 60px に潰れる。書くと
+  const raw = measureTileImageHeight();
+  // 「デバイス」タブ非表示中(display:none)は clientHeight=0 で下限に潰れる。書くと
   // 「ペイン高さ ↔ --tile-image-h」の対応が壊れ、タブ復帰時の auto-fit(splitter.js の
   // computeFitTilePaneHeight)が差分計算を誤ってはみ出す。devices は非表示中も届くので必須。
-  if (probe.clientHeight === 0) {
+  if (raw === null) {
     return;
   }
+  grid.style.setProperty('--tile-image-h', Math.max(MIN_TILE_IMAGE_HEIGHT, raw) + 'px');
+}
+
+// ペイン高さから決まる画像の高さ。**下限クランプ前**の値で、負にもなりうる
+// (ペインがタイルの中身より低い = 画像が下端で隠れている状態)。auto-fit はこの値で
+// 「ペイン高さのうち画像以外」を出す —— クランプ後の --tile-image-h から引くと、下限に
+// 張り付いている間だけ対応が崩れ、算出した高さでも画像が隠れたままになる。
+// 測れない(タイル未生成・タブ非表示)ときは null。
+export function measureTileImageHeight() {
+  const probe = grid.querySelector('.tile');
+  if (!probe || probe.clientHeight === 0) {
+    return null;
+  }
   const chrome = TILE_CHROME_HEIGHT + (machineRowReserved ? TILE_MACHINE_ROW_HEIGHT + 6 : 0);  // +6 = gap
-  const imageHeight = Math.max(60, probe.clientHeight - chrome);
-  grid.style.setProperty('--tile-image-h', imageHeight + 'px');
+  return probe.clientHeight - chrome;
 }
 
 function createTile(device) {
@@ -712,6 +725,42 @@ function renderSelectionMenuItems() {
   deviceOpMenuDeselectAllBtn.disabled = selectedDeviceIds.size === 0;
 }
 
+// ツールバーの全選択トグル。**全部選ばれているときだけ解除側**になる(部分選択から押した
+// ときに選択が消えると、選び直しの手間が大きい)。台数が変わっても押せるかは変わらないので
+// 無効化は「1台も居ない」ときだけ。
+function selectAllIsDeselect() {
+  return tiles.size > 0 && selectedDeviceIds.size === tiles.size;
+}
+
+function renderSelectAllButton() {
+  const deselect = selectAllIsDeselect();
+  const label = t(deselect ? 'wvMonitor.toolbar.deselectAll' : 'wvMonitor.toolbar.selectAll');
+  btnSelectAll.disabled = tiles.size === 0;
+  btnSelectAll.classList.toggle('toggled', deselect);
+  btnSelectAll.setAttribute('aria-pressed', deselect ? 'true' : 'false');
+  // ネイティブ title ではなく自前ツールチップ(0.2秒)。setHoverTip が title を空にするので
+  // 二重には出ない。aria-label は読み上げ用に別途持つ。
+  setHoverTip(btnSelectAll, label);
+  btnSelectAll.setAttribute('aria-label', label);
+}
+
+btnSelectAll.addEventListener('click', () => {
+  if (btnSelectAll.disabled) {
+    return;
+  }
+  if (selectAllIsDeselect()) {
+    selectedDeviceIds.clear();
+  } else {
+    for (const id of tiles.keys()) {
+      selectedDeviceIds.add(id);
+    }
+  }
+  updateSelectionUi();
+});
+
+// 初期表示(devices が1度も届いていない間)。押せない状態と説明を先に入れておく。
+renderSelectAllButton();
+
 deviceOpMenuSelectAllBtn.addEventListener('click', (event) => {
   event.stopPropagation();
   if (deviceOpMenuSelectAllBtn.disabled) {
@@ -884,6 +933,8 @@ export function applyDevices(devices) {
     }
   }
   emptyMessage.style.display = tiles.size === 0 ? 'flex' : 'none';
+  // 選択そのものは変わらなくても、台数が変われば全選択トグルの向き(選択/解除)は変わる。
+  renderSelectAllButton();
   relayoutTiles();
   // devices は数秒ごとのポーリングで届くため、台数が変わったときだけ通知する
   // (毎サイクル通知すると auto-fit の再計測が無駄に走る)。
@@ -1192,6 +1243,7 @@ function updateSelectionUi() {
   for (const [id, entry] of tiles) {
     entry.tile.classList.toggle('selected', selectedDeviceIds.has(id));
   }
+  renderSelectAllButton();
   updateLaneVisibility();
 }
 

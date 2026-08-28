@@ -182,7 +182,9 @@ button.secondary:hover:not(:disabled) {
   gap: 10px;
 }
 /* ホストグラフより右・ツールバー右端へ寄せる(auto-fit トグル) */
-.toolbar-auto-fit {
+/* ツールバー右端のアイコン群。**先頭の1つだけ**を右へ寄せると、以降は gap で右端に並ぶ
+   (個々に margin-left:auto を付けると間が開く)。 */
+.toolbar-tail-start {
   margin-left: auto;
 }
 /* ドラッグによる一時停止中(splitter.js。台数が変わると自動で再開)。ON 表示のまま減光で区別する。 */
@@ -263,25 +265,20 @@ select:disabled { opacity: 0.5; cursor: default; }
   overflow-x: scroll; /* auto は常時表示にならないため */
   overflow-y: hidden;
   padding-bottom: 10px;
-}
-/* webview(Chromium)向けに ::-webkit-scrollbar を明示スタイルし、OS のオーバーレイ式
-   (自動フェードアウト)ではなく常時表示のクラシック表示にする。 */
-.grid::-webkit-scrollbar {
-  height: 12px;
-}
-.grid::-webkit-scrollbar-track {
-  background-color: rgba(121, 121, 121, 0.15);
-  border-radius: 6px;
-}
-.grid::-webkit-scrollbar-thumb {
-  background-color: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
-  border-radius: 6px;
-}
-.grid::-webkit-scrollbar-thumb:hover {
-  background-color: var(--vscode-scrollbarSlider-hoverBackground, rgba(100, 100, 100, 0.7));
-}
-.grid::-webkit-scrollbar-thumb:active {
-  background-color: var(--vscode-scrollbarSlider-activeBackground, rgba(191, 191, 191, 0.4));
+  /* つまみは**濃いグレーを半透明で**・溝は**塗らない**(ユーザー決定 2026-08-28)。
+     テーマのトークンにも前面色にも戻さない —— どちらも明るめの中間グレーで、
+     セパレーター(.splitter)と同色になり見分けが付かなかった。黒だと今度は暗い地に
+     溶けて消えるので、地(#1e1e1e 前後)との差が残る濃いグレーをリテラルで置く。
+     主張の強さの調整ノブは**この alpha 1つだけ**(下げるほど地が透けて目立たなくなる。
+     色そのものは変えない = 変えると上の2つの失敗に戻る)。
+
+     **`::-webkit-scrollbar-*` では色も太さも変えられない** —— VSCode の webview 既定スタイルが
+     `html { scrollbar-color: … }` を敷いており(`@layer vscode-default`。継承するので全要素に
+     効く)、scrollbar-color が auto でない要素では Chromium が ::-webkit-scrollbar 系の指定を
+     丸ごと無視する。標準プロパティで書くのが唯一効く手段。この既定のせいで、つまみは
+     セパレーター(.splitter)と同じ --vscode-scrollbarSlider-background になり見分けが
+     付かなかった。hover/active の段階は標準プロパティでは持てない(Chromium が自前で付ける)。 */
+  scrollbar-color: rgba(85, 85, 85, 0.55) transparent;
 }
 .tile {
   flex: 0 0 auto;
@@ -740,30 +737,9 @@ select:disabled { opacity: 0.5; cursor: default; }
   font-size: 11px;
   background-color: var(--vscode-editor-background);
 }
-/* 実行ログ系(レーン一覧・レーン本文)の縦スクロールバーを .grid と同じ
-   クラシック常時表示にする(オーバーレイ式の自動フェードを避ける) */
-.lanes-grid::-webkit-scrollbar,
-.lane-body::-webkit-scrollbar {
-  width: 12px;
-}
-.lanes-grid::-webkit-scrollbar-track,
-.lane-body::-webkit-scrollbar-track {
-  background-color: rgba(121, 121, 121, 0.15);
-  border-radius: 6px;
-}
-.lanes-grid::-webkit-scrollbar-thumb,
-.lane-body::-webkit-scrollbar-thumb {
-  background-color: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
-  border-radius: 6px;
-}
-.lanes-grid::-webkit-scrollbar-thumb:hover,
-.lane-body::-webkit-scrollbar-thumb:hover {
-  background-color: var(--vscode-scrollbarSlider-hoverBackground, rgba(100, 100, 100, 0.7));
-}
-.lanes-grid::-webkit-scrollbar-thumb:active,
-.lane-body::-webkit-scrollbar-thumb:active {
-  background-color: var(--vscode-scrollbarSlider-activeBackground, rgba(191, 191, 191, 0.4));
-}
+/* 実行ログ系(レーン一覧・レーン本文)の縦スクロールバーは**何も指定しない** ——
+   VSCode の webview 既定スタイル(`html { scrollbar-color: … }`)がそのまま効く。
+   ここに ::-webkit-scrollbar-* を書いても Chromium に無視される(理由は .grid の注記)。 */
 .lane-line {
   white-space: pre-wrap;
   overflow-wrap: anywhere;

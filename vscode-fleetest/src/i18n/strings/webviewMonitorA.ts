@@ -90,6 +90,10 @@ export const webviewMonitorAStrings = {
     ja: "マシンプロファイル未記載の起動中デバイスです。起動は行えません(停止・ライブ操作は可能です)",
     en: "A running device not listed in the machine profile. Starting is unavailable (stopping and Live Control are available).",
   },
+  // ツールバー右端の全選択トグル(deviceTiles.js が押すたびに title/aria-label を入れ替える)。
+  "wvMonitor.toolbar.selectAll": { ja: "デバイスをすべて選択", en: "Select All Devices" },
+  "wvMonitor.toolbar.deselectAll": { ja: "デバイスの選択をすべて解除", en: "Deselect All Devices" },
+
   "wvMonitor.tile.queuedRestart": { ja: "再起動待機", en: "Restart pending" },
   "wvMonitor.tile.queuedStart": { ja: "起動待機", en: "Start pending" },
 
