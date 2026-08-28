@@ -91,6 +91,17 @@ export function stderrDetailLine(stderr: string, limit = 200): string | null {
   return last.length > limit ? `${last.slice(0, limit)}…` : last;
 }
 
+/** 複数行のエラーの1行目(バナー用)。空行は飛ばし、長ければ切る
+ * (stderrDetailLine と対 —— あちらは stderr の**最後**の実質行、こちらは NDJSON の
+ * error の**先頭**行。CLI が先頭行に要点を置く契約なのでここは先頭を採る)。 */
+export function firstLine(message: string, limit = 200): string {
+  const line = message.split("\n").map((value) => value.trim()).find((value) => value.length > 0);
+  if (line === undefined) {
+    return message;
+  }
+  return line.length > limit ? `${line.slice(0, limit)}…` : line;
+}
+
 /** デバイスライフサイクルの直列キューおよび device-catalog/installed-devices/create-device の
  * 短命プロセス実行を担う。MonitorPanelController が1つ保持する。 */
 export class MonitorDeviceOps {
@@ -828,8 +839,11 @@ export class MonitorDeviceOps {
           this.deps.outputChannel.appendLine(`[device-${op} ${name}] ${value.message}`);
         } else if (!value.ok) {
           const message = value.error ?? t("deviceOps.deviceOpFailedGeneric", { op });
+          // OUTPUT には全文、**バナーは1行目だけ** —— CLI は「1行目だけで用が足りる」形で
+          // 返す契約(FTBridgeClient の XcodeSigningDiagnosis)。全文をバナーへ流すと、
+          // 実機の署名エラーのような数十行のビルドログでパネルが埋まる(実害 2026-08-29)
           logFailure(message);
-          this.deps.post({ type: "deviceOpFailed", name, message });
+          this.deps.post({ type: "deviceOpFailed", name, message: firstLine(message) });
         }
       },
       (line) => this.deps.outputChannel.appendLine(`[device-${op} ${name} stdout] ${line}`),

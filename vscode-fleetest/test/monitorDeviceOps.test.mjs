@@ -15,7 +15,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { MonitorDeviceOps, stderrDetailLine } from "../src/monitorDeviceOps";
+import { MonitorDeviceOps, firstLine, stderrDetailLine } from "../src/monitorDeviceOps";
 
 /** dirname(binaryPath) に、引数を argv ファイルへ落として即 exit 0 する mock fleetest を置く。 */
 function makeMockBinary() {
@@ -450,4 +450,27 @@ test("stderrDetailLine: 長い行は切り詰める(webview の1行表示に収�
   assert.ok(detail.endsWith("…"));
   // 上限ちょうどは切らない
   assert.equal(stderrDetailLine("y".repeat(200), 200), "y".repeat(200));
+});
+
+// ---- バナーは1行だけ(firstLine)----
+// 実機の署名エラーは xcodebuild のビルドログが数十行そのまま返る。全文をバナーへ流すと
+// パネルが埋まって読めない(実害 2026-08-29)。CLI は「1行目だけで用が足りる」形で返す
+// 契約(FTBridgeClient の XcodeSigningDiagnosis)なので、バナーは先頭行を採る。
+
+test("firstLine: 複数行のうち先頭の実質行だけを採る", () => {
+  const guidance = [
+    "Cannot code-sign the bridge runner for a physical device on this Mac.",
+    "  1. Xcode ▸ Settings ▸ Accounts: add your Apple ID",
+    "Full xcodebuild output: /tmp/bridge-build-8123.log",
+  ].join("\n");
+  assert.equal(firstLine(guidance), "Cannot code-sign the bridge runner for a physical device on this Mac.");
+});
+
+test("firstLine: 先頭の空行は飛ばし、長すぎる行は切る", () => {
+  assert.equal(firstLine("\n\n  実質行  \n次"), "実質行");
+  assert.equal(firstLine("x".repeat(250)), "x".repeat(200) + "…");
+});
+
+test("firstLine: 1行だけのエラーはそのまま(既存の見え方を変えない)", () => {
+  assert.equal(firstLine("no simulator with that UDID"), "no simulator with that UDID");
 });

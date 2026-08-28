@@ -1,0 +1,31 @@
+xcodebuild build-for-testing failed:
+ComputePackagePrebuildTargetDependencyGraph
+Prepare packages
+CreateBuildRequest
+SendProjectDescription
+CreateBuildOperation
+ComputeTargetDependencyGraph
+note: Building targets in dependency order
+note: Target dependency graph (2 targets)
+    Target 'FleetestRunnerUITests' in project 'FleetestRunner'
+        ➜ Explicit dependency on target 'FleetestRunnerApp' in project 'FleetestRunner'
+    Target 'FleetestRunnerApp' in project 'FleetestRunner' (no dependencies)
+GatherProvisioningInputs
+CreateBuildDescription
+ExecuteExternalTool /Applications/Xcode_27_beta_6.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -isysroot /Applications/Xcode_27_beta_6.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS27.0.sdk -x c -c /dev/null
+ExecuteExternalTool /Applications/Xcode_27_beta_6.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc --version
+ExecuteExternalTool /Applications/Xcode_27_beta_6.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -arch arm64 -isysroot /Applications/Xcode_27_beta_6.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS27.0.sdk -x objective-c -c /dev/null
+ExecuteExternalTool /Applications/Xcode_27_beta_6.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -arch arm64 -isysroot /Applications/Xcode_27_beta_6.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS27.0.sdk -x c -c /dev/null
+ExecuteExternalTool /Applications/Xcode_27_beta_6.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ld -version_details
+Build description signature: f30a5be201e0c69fa5ccc471b00b3321
+Build description path: /Users/wave1008/fleetest-runner/foundation-tester/.fleetest/DerivedData-device/Build/Intermediates.noindex/XCBuildData/f30a5be201e0c69fa5ccc471b00b3321.xcbuilddata
+/Users/wave1008/fleetest-runner/foundation-tester/Runner/FleetestRunner.xcodeproj: error: No Accounts: Add a new account in Accounts settings. (in target 'FleetestRunnerApp' from project 'FleetestRunner')
+/Users/wave1008/fleetest-runner/foundation-tester/Runner/FleetestRunner.xcodeproj: error: Signing certificate is invalid. Signing certificate "Apple Development: dev@example.com (YGLMJWB5WB)", serial number "19C4B8FC5BE59FB672889C0139DE1122", is not valid for code signing. It may have been revoked or expired. (in target 'FleetestRunnerApp' from project 'FleetestRunner')
+/Users/wave1008/fleetest-runner/foundation-tester/Runner/FleetestRunner.xcodeproj: error: Provisioning profile "iOS Team Provisioning Profile: com.example.ftrunner" doesn't include the currently selected device "iPhone 13" (identifier 00008110-001460910E0A201E). (in target 'FleetestRunnerApp' from project 'FleetestRunner')
+/Users/wave1008/fleetest-runner/foundation-tester/Runner/FleetestRunner.xcodeproj: error: No Accounts: Add a new account in Accounts settings. (in target 'FleetestRunnerUITests' from project 'FleetestRunner')
+/Users/wave1008/fleetest-runner/foundation-tester/Runner/FleetestRunner.xcodeproj: error: Signing certificate is invalid. Signing certificate "Apple Development: dev@example.com (YGLMJWB5WB)", serial number "19C4B8FC5BE59FB672889C0139DE1122", is not valid for code signing. It may have been revoked or expired. (in target 'FleetestRunnerUITests' from project 'FleetestRunner')
+/Users/wave1008/fleetest-runner/foundation-tester/Runner/FleetestRunner.xcodeproj: error: Provisioning profile "iOS Team Provisioning Profile: com.example.ftrunner.uitests.xctrunner" doesn't include the currently selected device "iPhone 13" (identifier 00008110-001460910E0A201E). (in target 'FleetestRunnerUITests' from project 'FleetestRunner')
+** TEST BUILD FAILED **
+The following build commands failed:
+	Building project FleetestRunner for testing with scheme FleetestRunner
+(1 failure)

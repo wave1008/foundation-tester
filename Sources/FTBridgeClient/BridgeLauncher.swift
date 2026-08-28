@@ -87,9 +87,24 @@ public struct BridgeLauncher {
             "-derivedDataPath", derivedDataPath.path,
         ] + (try codeSigningArguments()), cwd: repoRoot)
         guard result.status == 0 else {
+            // **署名で止まっているなら「次にやること」を出す** —— 生のビルドログは数十行あり、
+            // そのまま拡張のバナーへ流れると読み手は何をすればいいか分からない
+            // (XcodeSigningDiagnosis)。当てはまらないログには触らず生のまま出す
+            let problems = XcodeSigningDiagnosis.problems(inBuildLog: result.tail)
+            if let guidance = XcodeSigningDiagnosis.guidance(
+                problems: problems, fullLogPath: writeBuildLog(result.tail)?.path) {
+                throw LauncherError.codeSigningIncomplete(guidance)
+            }
             throw LauncherError.commandFailed("xcodebuild build-for-testing", result.tail)
         }
         ToolchainFingerprint.store(at: Self.runnerFingerprintPath(derivedDataPath: derivedDataPath))
+    }
+
+    /// 失敗したビルドの生出力を残す(畳んだ案内から辿れるように)。**書けなくても失敗させない**
+    /// —— ここで throw すると、本題(署名の案内)が届かなくなる
+    private func writeBuildLog(_ output: String) -> URL? {
+        let url = stateDir.appendingPathComponent("bridge-build-\(port).log")
+        return (try? output.write(to: url, atomically: true, encoding: .utf8)) == nil ? nil : url
     }
 
     /// ランナーをどの Xcode/SDK で作ったかの記録(DerivedData 配下 = 成果物と一緒に消える場所)
@@ -757,6 +772,9 @@ public enum LauncherError: Error, LocalizedError {
     case portInUse(port: UInt16, holder: String?)
     /// 実機ビルドに必要な Team ID が未設定(署名エラーになる前に止める)
     case developmentTeamMissing
+    /// 署名設定が足りずランナーを実機向けに建てられない。**文字列は「次にやること」**
+    /// (XcodeSigningDiagnosis が組み立てる。生のビルドログはファイルへ)
+    case codeSigningIncomplete(String)
 
     public var errorDescription: String? {
         switch self {
@@ -784,6 +802,8 @@ public enum LauncherError: Error, LocalizedError {
                 return "port \(port) is in use by another process (\(holder))"
             }
             return "port \(port) is in use by another process"
+        case .codeSigningIncomplete(let guidance):
+            return guidance
         case .developmentTeamMissing:
             return "building for a physical iOS device requires an Apple Developer Team ID. "
                 + "Set \"developmentTeam\" in ~/.config/fleetest/config.json or the "
