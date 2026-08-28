@@ -321,7 +321,12 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 loggedFetchFailure.remove(state.target.id)
                 frozenDebounce.forget(id: state.target.id)
                 lastFrozenProbeAt.removeValue(forKey: state.target.id)
-                lastSimctlCaptureAt.removeValue(forKey: state.target.id)
+                // **撮り続ける対象の時計は捨てない**(判定は候補と同じ述語 = 2つの規則が
+                // 食い違わない)。捨てると毎サイクル全台が「未撮影」に戻り、順繰り
+                // (最後に撮ってから最も経った台)が常に同じ1台を選び続ける
+                if !Self.isSimctlCaptureTarget(state: state) {
+                    lastSimctlCaptureAt.removeValue(forKey: state.target.id)
+                }
             }
 
             // 未登録 iOS シミュレータはブリッジが無い(iosPort == nil のまま connected にするため。
@@ -334,11 +339,14 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             // (リモート機・ポーリングモード)。以前はこの穴が塞がっておらず、
             // 「落ちたときはポーリングへ落ちる」が iOS では成立していなかった(2026-08-28)。
             // 抑制中(= そのタイルは配信で映っている)の台は重い simctl を撃つ理由が無いので外す。
-            // 実機は simctl で撮れないので対象外(そちらは devicepoll がブリッジ経由で撮る)
+            // 実機は simctl で撮れないので対象外(そちらは devicepoll がブリッジ経由で撮る)。
+            //
+            // **"booted" も対象**(2026-08-29)。ブリッジの無い台の state は登録の有無で割れる ——
+            // 未登録の合成デバイスは "connected"、**台帳に載っている台は "booted"**。connected だけを
+            // 見ていたので、台帳に載っていてブリッジを持たない台は絵の出所がゼロになり、タイルが
+            // 「接続中」のまま永久に埋まらなかった(実行プロファイル未選択の一覧で顕在化)
             let simctlCandidates = states.filter { state in
-                state.state == "connected" && state.target.platform == "ios"
-                    && state.iosPort == nil && state.iosUdid != nil
-                    && !state.target.spec.isPhysical
+                Self.isSimctlCaptureTarget(state: state)
                     && !control.isFrameSuppressed(state.target.id)
             }
             let simctlPickID = Self.simctlCapturePick(ids: simctlCandidates.map(\.target.id),
@@ -838,6 +846,23 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             plan.append(CaptureDecision(id: id, deliver: false))
         }
         return plan
+    }
+
+    /// simctl で撮る対象か(抑制の判定は呼び出し側)。**候補の選定と、順繰りの時計を残すかの
+    /// 両方がこれを見る** —— 別々に書くと片方だけ直したときに「撮る対象なのに毎サイクル時計を
+    /// 捨てる」= 順繰りが回らない、が起きる。
+    ///
+    /// **"booted" も対象**: ブリッジの無い台の state は登録の有無で割れる —— 未登録の合成
+    /// デバイスは "connected"、**台帳に載っている台は "booted"**。connected だけを見ていた頃は、
+    /// 台帳に載っていてブリッジを持たない台の絵の出所がゼロで、タイルが「接続中」のまま
+    /// 永久に埋まらなかった(2026-08-29)。実機は simctl で撮れないので対象外
+    /// (そちらは devicepoll がブリッジ経由で撮る)。I/O を持たない pure 関数
+    static func isSimctlCaptureTarget(state: DeviceRuntimeState) -> Bool {
+        (state.state == "connected" || state.state == "booted")
+            && state.target.platform == "ios"
+            && state.iosPort == nil
+            && state.iosUdid != nil
+            && !state.target.spec.isPhysical
     }
 
     /// ブリッジを持たない iOS シミュレータを **1サイクルに1台だけ** simctl で撮るための選択。

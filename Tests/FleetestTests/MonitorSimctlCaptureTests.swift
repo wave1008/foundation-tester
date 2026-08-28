@@ -1,5 +1,6 @@
 import XCTest
 
+import FTCore
 @testable import fleetest
 
 /// ブリッジを持たない iOS シミュレータの「1サイクル1台の順繰り」を固定する。
@@ -54,5 +55,69 @@ final class MonitorSimctlCaptureTests: XCTestCase {
         let pick = ApiMonitorCommand.simctlCapturePick(ids: ["a"], lastCapturedAt: &last,
                                                        now: t0.addingTimeInterval(2))
         XCTAssertEqual(pick, "a")
+    }
+}
+
+// ---- 撮る対象かの判定(isSimctlCaptureTarget)----
+// **ブリッジの無い台の state は登録の有無で割れる** —— 未登録の合成デバイスは "connected"、
+// 台帳に載っている台は "booted"。connected だけを見ていた頃は、台帳に載っていてブリッジを
+// 持たない台の絵の出所がゼロになり、タイルが「接続中」のまま永久に埋まらなかった(2026-08-29)。
+
+extension MonitorSimctlCaptureTests {
+
+    private func state(_ state: String, port: UInt16? = nil, udid: String? = "UDID",
+                       platform: String = "ios", kind: DeviceKind? = nil) -> DeviceRuntimeState {
+        DeviceRuntimeState(
+            target: MonitorTarget(platform: platform,
+                                  spec: DeviceSpec(name: "sim", kind: kind)),
+            state: state, detail: "", iosPort: port, androidSerial: nil, iosUdid: udid)
+    }
+
+    func testBridgelessSimulatorIsCapturedWhateverItsStateIsCalled() {
+        // 台帳に載っている台(booted)も、未登録の合成デバイス(connected)も同じ扱い
+        XCTAssertTrue(ApiMonitorCommand.isSimctlCaptureTarget(state: state("booted")))
+        XCTAssertTrue(ApiMonitorCommand.isSimctlCaptureTarget(state: state("connected")))
+    }
+
+    func testStoppedOrUnobservedDevicesAreNotCaptured() {
+        XCTAssertFalse(ApiMonitorCommand.isSimctlCaptureTarget(state: state("offline")))
+        XCTAssertFalse(ApiMonitorCommand.isSimctlCaptureTarget(state: state("unknown")))
+    }
+
+    func testDevicesWithABridgeGoThroughTheBridgeInstead() {
+        // ポートがあるなら /screenshot で撮れる(重い simctl を撃つ理由が無い)
+        XCTAssertFalse(ApiMonitorCommand.isSimctlCaptureTarget(state: state("booted", port: 8127)))
+    }
+
+    func testWithoutAUdidOrOnAnotherPlatformThereIsNothingToShoot() {
+        XCTAssertFalse(ApiMonitorCommand.isSimctlCaptureTarget(state: state("booted", udid: nil)))
+        XCTAssertFalse(ApiMonitorCommand.isSimctlCaptureTarget(state: state("booted", platform: "android")))
+    }
+
+    func testPhysicalDevicesCannotBeShotWithSimctl() {
+        XCTAssertFalse(ApiMonitorCommand.isSimctlCaptureTarget(state: state("booted", kind: .physical)))
+    }
+
+    /// **順繰りの時計を毎サイクル捨てると回らない**: 撮り続ける対象(booted)の時計を
+    /// 捨てる実装だと、全台が「未撮影」に戻って常に同じ1台が選ばれる
+    func testKeepingTheClockIsWhatMakesTheRotationWork() {
+        var kept: [String: Date] = [:]
+        var wiped: [String: Date] = [:]
+        var keptPicks: [String] = []
+        var wipedPicks: [String] = []
+        for i in 0..<4 {
+            let now = t0.addingTimeInterval(Double(i) * 2)
+            if let pick = ApiMonitorCommand.simctlCapturePick(ids: ["a", "b"],
+                                                              lastCapturedAt: &kept, now: now) {
+                keptPicks.append(pick)
+            }
+            if let pick = ApiMonitorCommand.simctlCapturePick(ids: ["a", "b"],
+                                                              lastCapturedAt: &wiped, now: now) {
+                wipedPicks.append(pick)
+            }
+            wiped.removeAll()  // 「毎サイクル捨てる」実装の再現
+        }
+        XCTAssertEqual(keptPicks, ["a", "b", "a", "b"])
+        XCTAssertEqual(wipedPicks, ["a", "a", "a", "a"], "捨てると2台目が永久に撮られない")
     }
 }
