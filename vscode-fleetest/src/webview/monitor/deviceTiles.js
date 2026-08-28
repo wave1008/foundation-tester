@@ -1203,21 +1203,16 @@ function updateSelectionUi() {
 //  - タイルの外(タイルとタイルの間・右端の余り)でも、**画像の高さに収まっていれば何もしない**
 //    —— タイルの隙間は 8px しかなく、狙って押すものではない
 //  - 解除は「画像の高さの外」を押したときだけ(グリッドの上下の余白・タイルの見出しや脚の高さ)
+//
+// **決めるのは pointerup で、click は保険**。詰まっている間の押下→離上では click が
+// そもそも来ないことがある(押下と離上で当たり先が変わると合成されない)ので、click を待つと
+// 選択も解除も落ちる。pointerup で処理したぶんは pointerHandledClick で後続の click を1回捨てる。
 grid.addEventListener('click', (event) => {
-  const hit = tileHitAtPoint(event);
-  if (hit.tile) {
-    if (hit.entry) {
-      toggleDeviceSelection(hit.entry.device.id);
-    }
+  if (pointerHandledClick) {
+    pointerHandledClick = false;
     return;
   }
-  if (deviceBandContainsY(event.clientY)) {
-    return;
-  }
-  if (selectedDeviceIds.size > 0) {
-    selectedDeviceIds.clear();
-    updateSelectionUi();
-  }
+  applyTileClickAt(event.clientX, event.clientY);
 });
 
 // クリックの高さがどれかのデバイスの画像の高さに収まっているか(タイルの外で使う)。
@@ -1241,18 +1236,42 @@ function deviceHitRect(entry) {
 
 // { tile: タイルの中か, entry: 当たり矩形の中ならそのタイル }。2つに分けるのは、タイルの中の
 // 帯の外(何もしない)とタイルの外(全解除)を区別するため。
-function tileHitAtPoint(event) {
-  const tileEl = event.target && event.target.closest ? event.target.closest('.tile') : null;
-  if (!tileEl) {
-    return { tile: false, entry: null };
-  }
+//
+// **判定は座標だけで行う(event.target を見ない)**。フリートは配信の描画と同じ main thread に
+// 載っており(実測 2026-08-28: 配信ヘルパー 22 本 × 12fps)、詰まっている間に押下と離上をまたいで
+// タイルが描き直されると、`event.target.closest('.tile')` は入れ替わった DOM を指して当たりを
+// 落とす —— 選択も解除も黙って効かない(2026-08-28 の報告)。タイルは重ならないので、
+// 座標で引くほうが DOM の入れ替わりに影響されない。
+function tileHitAtPoint(x, y) {
+  const point = { x, y };
   for (const entry of tiles.values()) {
-    if (entry.tile === tileEl) {
-      const inside = rectContains(deviceHitRect(entry), { x: event.clientX, y: event.clientY });
-      return { tile: true, entry: inside ? entry : null };
+    const rect = entry.tile.getBoundingClientRect();
+    const tileBox = { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+    if (!rectContains(tileBox, point)) {
+      continue;
     }
+    return { tile: true, entry: rectContains(deviceHitRect(entry), point) ? entry : null };
   }
-  return { tile: true, entry: null };
+  return { tile: false, entry: null };
+}
+
+// クリック1回ぶんの判定(当たりの規則は grid の click リスナのコメント)。
+// pointerup と click の**どちらから来ても同じ**ものを通す = 規則を2つ持たない。
+function applyTileClickAt(x, y) {
+  const hit = tileHitAtPoint(x, y);
+  if (hit.tile) {
+    if (hit.entry) {
+      toggleDeviceSelection(hit.entry.device.id);
+    }
+    return;
+  }
+  if (deviceBandContainsY(y)) {
+    return;
+  }
+  if (selectedDeviceIds.size > 0) {
+    selectedDeviceIds.clear();
+    updateSelectionUi();
+  }
 }
 
 // タイルの外(空きエリア)の右クリック。stopPropagation しないと、下の document の
@@ -1274,6 +1293,10 @@ let marqueeActive = false;
 let marqueeBaseIds = [];
 // ドラッグの終わりに来る click を1回だけ捨てるための旗(下の capture リスナが読む)。
 let marqueeSuppressClick = false;
+// pointerup で選択を処理済み = 後続の click を1回だけ捨てる(二重トグル防止)。
+// **pointerdown で必ず倒す** —— click が来ないまま残ると次の1回を飲み込む(marqueeSuppressClick
+// が 2026-08-24 に踏んだのと同じ穴)。
+let pointerHandledClick = false;
 
 // additive は pointermove ごとに見る(ドラッグ中に押した・離したがそのまま効く)。
 function marqueeSelect(rect, additive) {
@@ -1320,6 +1343,7 @@ grid.addEventListener('pointerdown', (event) => {
   // click は grid に来ない = 旗が立ったまま残り、**次の普通のクリックを1回飲み込む**
   // (範囲選択の直後に未選択のデバイスを押しても選ばれず、2回目で選ばれる。実害 2026-08-24)。
   marqueeSuppressClick = false;
+  pointerHandledClick = false;
   if (event.button !== 0) {
     return;
   }
@@ -1355,10 +1379,19 @@ grid.addEventListener('pointerup', (event) => {
   if (marqueePointerId !== event.pointerId) {
     return;
   }
+  // endMarquee() が origin を捨てるので先に控える
+  const origin = marqueeOrigin;
+  const wasDrag = marqueeActive;
   if (marqueeActive) {
     grid.releasePointerCapture(event.pointerId);
   }
   endMarquee();
+  // ドラッグでなければここが本番の判定。**当たりは押し始めの座標**で見る ——
+  // 詰まっている間に指がぶれても、しきい値未満なら押した先が対象という体感どおりになる
+  if (!wasDrag && origin) {
+    pointerHandledClick = true;
+    applyTileClickAt(origin.x, origin.y);
+  }
 });
 grid.addEventListener('pointercancel', (event) => {
   if (marqueePointerId === event.pointerId) {

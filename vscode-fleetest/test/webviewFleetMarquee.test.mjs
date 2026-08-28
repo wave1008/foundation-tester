@@ -171,7 +171,8 @@ test("しきい値未満の動きは従来どおりクリック(タイルの選�
   grid.dispatchEvent(pointerEvent(window, "pointermove", { x: 252, y: 51 }));
   assert.equal(marquee(document).style.display, "", "手ぶれで矩形を出さないこと");
   grid.dispatchEvent(pointerEvent(window, "pointerup", { x: 252, y: 51 }));
-  clickImage(window, document, 2);
+  // 押下→離上がそのままクリック(判定は pointerup 側。以前はここで click を別に送っていたが、
+  // 実ブラウザではこの並びで click が合成されるので、送ると2回トグルしたことになっていた)
   assert.deepEqual(selectedNames(document), ["Dev 2"]);
 });
 
@@ -456,4 +457,73 @@ test("空きエリアの右クリックはメニューを開いたまま(開い�
     bubbles: true, cancelable: true, clientX: 500, clientY: 250, button: 2,
   }));
   assert.ok(menu(document).classList.contains("visible"));
+});
+
+// ---- 詰まっている間もクリックを落とさない(2026-08-28 の報告) ----
+// フリートは配信の描画と同じ main thread に載っており(実測: 配信ヘルパー22本 × 12fps)、
+// 詰まると ①押下と離上の間でタイルが描き直されて click が合成されない ②手がぶれる
+// のどちらかで**選択も解除も黙って落ちていた**。判定を pointerup + 押し始めの座標へ移してある。
+
+/** pointerdown/pointerup だけ(click は来ない)。詰まったときの実際の並び。 */
+function pressWithoutClick(window, target, x, y) {
+  target.dispatchEvent(pointerEvent(window, "pointerdown", { x, y }));
+  target.dispatchEvent(pointerEvent(window, "pointerup", { x, y }));
+}
+
+test("click が来なくても押下→離上だけで選択できる", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, 3);
+  layoutTiles(document, 3);
+  pressWithoutClick(window, imageOf(document, 1), 160, 100);
+  assert.deepEqual(selectedNames(document), ["Dev 1"]);
+});
+
+test("click が来なくても押下→離上だけで選択を解除できる", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, 3);
+  layoutTiles(document, 3);
+  clickImage(window, document, 1);
+  assert.deepEqual(selectedNames(document), ["Dev 1"]);
+  pressWithoutClick(window, imageOf(document, 1), 160, 100);
+  assert.deepEqual(selectedNames(document), [], "解除も同じ経路で効く");
+});
+
+test("pointerup と click の両方が来ても1回しかトグルしない", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, 3);
+  layoutTiles(document, 3);
+  clickImage(window, document, 0);
+  assert.deepEqual(selectedNames(document), ["Dev 0"], "二重トグルなら空になる");
+});
+
+// しきい値(4px)未満のぶれは従来どおりクリック。**離した位置ではなく押し始めの位置**で決める
+// —— 詰まって指がぶれたときに、押したタイルと違う先が選ばれると体感と食い違う。
+test("しきい値未満のぶれは押し始めのタイルを選ぶ", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, 3);
+  layoutTiles(document, 3);
+  const grid = document.getElementById("grid");
+  // タイル0の右端(x=99)で押し、3px 右へずれて離す(x=102 はタイル間の隙間)
+  grid.dispatchEvent(pointerEvent(window, "pointerdown", { x: 99, y: 100 }));
+  grid.dispatchEvent(pointerEvent(window, "pointermove", { x: 102, y: 100 }));
+  grid.dispatchEvent(pointerEvent(window, "pointerup", { x: 102, y: 100 }));
+  assert.deepEqual(selectedNames(document), ["Dev 0"]);
+});
+
+// タイルの外(空きエリア)で押して離したときの全解除も pointerup 経由で効くこと
+test("空きエリアの押下→離上で全解除できる", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, 3);
+  layoutTiles(document, 3);
+  clickImage(window, document, 0);
+  assert.deepEqual(selectedNames(document), ["Dev 0"]);
+  const grid = document.getElementById("grid");
+  grid.dispatchEvent(pointerEvent(window, "pointerdown", { x: 500, y: 250 }));
+  grid.dispatchEvent(pointerEvent(window, "pointerup", { x: 500, y: 250 }));
+  assert.deepEqual(selectedNames(document), []);
 });

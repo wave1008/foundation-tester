@@ -94,10 +94,29 @@ function decodeFrame(window, document, index, jpegBase64, naturalWidth, naturalH
   img.dispatchEvent(new window.Event("load"));
 }
 
+// jsdom にはレイアウトが無く getBoundingClientRect は全部 0 を返す。選択の当たり判定は
+// **座標**で行う(deviceTiles.js の tileHitAtPoint)ので、タイルを横一列に並べた寸法を与える
+// (webviewFleetMarquee.test.mjs の layoutTiles と同じ置き方)。与えないと全タイルが同じ
+// 0 矩形になり、どこを押しても先頭のタイルに当たる。
+function layoutTilesForHit(document) {
+  const stub = (el, left, top, width, height) => {
+    el.getBoundingClientRect = () => ({
+      left, top, width, height, right: left + width, bottom: top + height, x: left, y: top,
+    });
+  };
+  [...document.querySelectorAll("#grid .tile")].forEach((tile, i) => {
+    stub(tile, i * 110, 0, 100, 200);
+    stub(tile.querySelector(".frame-wrap"), i * 110 + 10, 30, 80, 140);
+  });
+}
+
 // 選択の当たりはタイルの画像(.frame-wrap)。タイルの見出し・脚のクリックは全解除になる。
 function clickTile(document, index) {
+  layoutTilesForHit(document);
   const frame = document.querySelectorAll("#grid .tile .frame-wrap")[index];
-  frame.dispatchEvent(new document.defaultView.MouseEvent("click", { bubbles: true }));
+  frame.dispatchEvent(new document.defaultView.MouseEvent("click", {
+    bubbles: true, clientX: index * 110 + 50, clientY: 100,
+  }));
 }
 
 const visiblePairs = (document) =>
