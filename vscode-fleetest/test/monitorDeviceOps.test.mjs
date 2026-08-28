@@ -484,9 +484,13 @@ test("signingGuidance: 検出したぶんだけを直す順に番号で出す", 
     ["noAccount", "invalidCertificate", "deviceNotInProfile"], "/tmp/bridge-build-8123.log");
   const lines = guidance.split("\n");
   assert.match(lines[0], /実機用のブリッジに署名できません/, "1行目は何が起きたか + どこを直すか");
-  assert.match(lines[1], /^ {2}1\. Xcode ▸ Settings ▸ Accounts に Apple ID/);
-  assert.match(lines[2], /^ {2}2\. .*Manage Certificates/);
+  assert.match(lines[1], /^ {2}1\. Xcode に Apple ID を追加する/);
+  assert.match(lines[1], /developmentTeam/, "Team ID をどこに書くかも示す(画面では直せない)");
+  assert.match(lines[2], /^ {2}2\. 失効した開発用証明書をキーチェーンから削除する/);
   assert.match(lines[3], /^ {2}3\. .*デベロッパモード/);
+  // **画面の道順は書かない**(ユーザー決定)。Xcode も iOS も版ごとに UI が変わるので、
+  // 書いた道順は必ず古くなる。メニューの区切り記号を1つも置かないことで機械的に守る
+  assert.doesNotMatch(guidance, /▸/);
   // **説明は書かない**(ユーザー決定 2026-08-29)。状態の言い換えは手順を読めば分かる。
   // 放っておくと案内は説明で膨らむので機械で止める
   for (const explanation of ["シミュレータは署名不要", "アカウントが1つも", "失効または期限切れ",
@@ -560,4 +564,9 @@ test("生のエラー(署名以外)は1行目だけ渡す(長いビルドログ�
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("signingGuidance: ssh 越しのビルドで出るキーチェーンのロックも案内する", () => {
+  const guidance = signingGuidance(["keychainLocked"], undefined);
+  assert.match(guidance, /security unlock-keychain/);
 });

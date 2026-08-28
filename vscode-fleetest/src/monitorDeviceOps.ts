@@ -100,8 +100,10 @@ export function signingGuidance(
   problems: readonly string[], logPath: string | undefined,
 ): string | null {
   const steps = problems
-    .filter((problem): problem is "noAccount" | "invalidCertificate" | "deviceNotInProfile" =>
-      problem === "noAccount" || problem === "invalidCertificate" || problem === "deviceNotInProfile")
+    .filter((problem): problem is "noAccount" | "invalidCertificate" | "deviceNotInProfile"
+      | "keychainLocked" =>
+      problem === "noAccount" || problem === "invalidCertificate"
+      || problem === "deviceNotInProfile" || problem === "keychainLocked")
     .map((problem) => t(`deviceOps.signing.${problem}` as const));
   if (steps.length === 0) {
     return null;

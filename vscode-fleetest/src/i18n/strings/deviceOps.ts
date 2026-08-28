@@ -92,19 +92,27 @@ export const deviceOpsStrings = {
     en: "Cannot code-sign the bridge runner for a physical device. Fix Xcode's signing setup on the Mac"
       + " that the device is connected to, then start the bridge again.",
   },
+  // **画面の道順を書かない**(ユーザー決定 2026-08-29)—— Xcode も iOS も版ごとに UI が変わり、
+  // 書いた道順は必ず古くなって「そんなメニューは無い」で詰まる。**何をするかだけ**を1行で書く。
+  // 証明書は**作り直しではなく失効ぶんの削除** —— 自動署名は有効な証明書があればそれを使うが、
+  // 失効した証明書が残っているとそちらを掴んで落ちる(M1Ultra で実測)
   "deviceOps.signing.noAccount": {
-    ja: "Xcode ▸ Settings ▸ Accounts に Apple ID を追加する。",
-    en: "Xcode ▸ Settings ▸ Accounts: add your Apple ID.",
+    ja: "Xcode に Apple ID を追加する"
+      + "(Team ID は ~/.config/fleetest/config.json の developmentTeam に設定)。",
+    en: "Add your Apple ID to Xcode"
+      + " (its Team ID goes in developmentTeam in ~/.config/fleetest/config.json).",
   },
   "deviceOps.signing.invalidCertificate": {
-    ja: "Xcode ▸ Settings ▸ Accounts ▸ Manage Certificates で開発用証明書を作り直す。",
-    en: "Xcode ▸ Settings ▸ Accounts ▸ Manage Certificates: create a new Apple Development certificate.",
+    ja: "失効した開発用証明書をキーチェーンから削除する。",
+    en: "Delete the revoked Apple Development certificate from the keychain.",
+  },
+  "deviceOps.signing.keychainLocked": {
+    ja: "ログインキーチェーンのロックを外す(`security unlock-keychain`)。",
+    en: "Unlock the login keychain (`security unlock-keychain`).",
   },
   "deviceOps.signing.deviceNotInProfile": {
-    ja: "Xcode を開いた状態で端末を接続して登録し、"
-      + "端末側の 設定 ▸ プライバシーとセキュリティ ▸ デベロッパモード を ON にする。",
-    en: "Connect the device with Xcode open so it gets registered, and turn on Developer Mode on the"
-      + " device (Settings ▸ Privacy & Security ▸ Developer Mode).",
+    ja: "端末のデベロッパモードを ON にして接続する。",
+    en: "Turn on Developer Mode on the device and connect it.",
   },
   "deviceOps.signing.fullLog": {
     ja: "xcodebuild の全出力: {path}",

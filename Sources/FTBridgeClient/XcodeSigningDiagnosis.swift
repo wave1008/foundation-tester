@@ -22,7 +22,17 @@
 import Foundation
 
 /// 実機ビルドを止めている署名設定の欠け。**xcodebuild が実際に出す文言**から拾う
-/// (Xcode が文言を変えたら拾えなくなる = 生ログへ落ちるだけで、誤った案内はしない)
+/// (Xcode が文言を変えたら拾えなくなる = 生ログへ落ちるだけで、誤った案内はしない)。
+///
+/// **画面の道順を書かない**(ユーザー決定 2026-08-29)。Xcode も iOS も版ごとに UI が変わり
+/// (Xcode 26 で「Accounts」→「Apple Accounts」、証明書の管理もチームの下へ移った)、書いた
+/// 道順は必ず古くなって「そんなメニューは無い」で詰まる。**何をするかだけを1行で書く**。
+/// 証明書は**作り直しではなく失効ぶんの削除**: 自動署名(-allowProvisioningUpdates)は
+/// 有効な証明書があればそれを使うが、失効した証明書が残っているとそちらを掴んで落ちる
+/// (M1Ultra で実測: 有効なものと失効したものが両方あった)。
+/// **プロジェクトの Signing & Capabilities では直せない** —— ランナーの .xcodeproj は xcodegen が
+/// 生成し(BridgeLauncher.generateProjectIfNeeded)、ビルドのたびに DEVELOPMENT_TEAM を
+/// コマンドラインで上書きする(codeSigningArguments)。**Team の正は fleetest の設定**
 public enum XcodeSigningProblem: String, Sendable, CaseIterable {
     /// Xcode に Apple ID が1つも無い
     case noAccount
@@ -30,6 +40,9 @@ public enum XcodeSigningProblem: String, Sendable, CaseIterable {
     case invalidCertificate
     /// その端末が provisioning profile に入っていない
     case deviceNotInProfile
+    /// キーチェーンがロックされていて署名鍵に触れない。**ssh 越しのビルドで出る**
+    /// (remote exec 経由の実機ビルド。2026-08-29 に M1Ultra で実測)
+    case keychainLocked
 }
 
 public enum XcodeSigningDiagnosis {
@@ -41,6 +54,7 @@ public enum XcodeSigningDiagnosis {
             (.noAccount, "No Accounts: Add a new account in Accounts settings"),
             (.invalidCertificate, "Signing certificate is invalid"),
             (.deviceNotInProfile, "doesn't include the currently selected device"),
+            (.keychainLocked, "User interaction is not allowed"),
         ]
         return signatures.filter { log.contains($0.1) }.map(\.0)
     }
@@ -70,13 +84,14 @@ public enum XcodeSigningDiagnosis {
     private static func step(_ problem: XcodeSigningProblem) -> String {
         switch problem {
         case .noAccount:
-            return "Xcode ▸ Settings ▸ Accounts: add your Apple ID."
+            return "Add your Apple ID to Xcode"
+                + " (its Team ID goes in developmentTeam in ~/.config/fleetest/config.json)."
         case .invalidCertificate:
-            return "Xcode ▸ Settings ▸ Accounts ▸ Manage Certificates:"
-                + " create a new Apple Development certificate."
+            return "Delete the revoked Apple Development certificate from the keychain."
         case .deviceNotInProfile:
-            return "Connect the device with Xcode open so it gets registered, and turn on"
-                + " Developer Mode on the device (Settings ▸ Privacy & Security ▸ Developer Mode)."
+            return "Turn on Developer Mode on the device and connect it."
+        case .keychainLocked:
+            return "Unlock the login keychain (`security unlock-keychain`)."
         }
     }
 }

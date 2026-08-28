@@ -24,6 +24,15 @@ final class XcodeSigningDiagnosisTests: XCTestCase {
             "同じ問題が2ターゲット分出るが、案内は1回ずつ")
     }
 
+    /// **ssh 越しのビルドで出る**。証明書も端末も揃っていてもここで止まるので、
+    /// 拾えないと「原因の分からない失敗」に戻る(2026-08-29 に M1Ultra で実測)
+    func testTheLockedKeychainIsPickedUp() {
+        let log = "error: User interaction is not allowed. (in target 'FleetestRunnerApp')"
+        XCTAssertEqual(XcodeSigningDiagnosis.problems(inBuildLog: log), [.keychainLocked])
+        let guidance = XcodeSigningDiagnosis.guidance(problems: [.keychainLocked], fullLogPath: nil) ?? ""
+        XCTAssertTrue(guidance.contains("security unlock-keychain"), guidance)
+    }
+
     func testAnUnrelatedFailureIsLeftAlone() {
         // **当てはまらないログには触らない** —— 畳んで良いのは「何をすればいいか言える」ときだけ。
         // ここで生ログを捨てると、原因の分からない失敗になる
@@ -43,6 +52,16 @@ final class XcodeSigningDiagnosisTests: XCTestCase {
         XCTAssertFalse(first.contains("\n"))
     }
 
+    /// **画面の道順は書かない**(ユーザー決定)。Xcode も iOS も版ごとに UI が変わるので、
+    /// 書いた道順は必ず古くなる(2026-08-29 に「Manage Certificates… が見つからない」で詰まった)。
+    /// **メニューの区切り記号を1つも置かない**ことで機械的に守る
+    func testTheGuidanceDoesNotWalkThroughAnyUI() throws {
+        let guidance = try XCTUnwrap(XcodeSigningDiagnosis.guidance(
+            problems: XcodeSigningProblem.allCases, fullLogPath: nil))
+        XCTAssertFalse(guidance.contains("▸"), guidance)
+        XCTAssertFalse(guidance.contains("Manage Certificates"), guidance)
+    }
+
     /// **説明は書かない**(ユーザー決定 2026-08-29)。読み手が要るのは「何をすればいいか」だけで、
     /// 状態の言い換えは手順を読めば分かる。放っておくと案内は説明で膨らむので機械で止める
     func testTheGuidanceCarriesStepsOnlyNotExplanations() throws {
@@ -60,12 +79,15 @@ final class XcodeSigningDiagnosisTests: XCTestCase {
             problems: XcodeSigningDiagnosis.problems(inBuildLog: try realFailureLog()),
             fullLogPath: "/tmp/bridge-build-8123.log"))
         // アカウントを足すのが先(証明書もプロファイルもそこから作り直される)
-        let account = try XCTUnwrap(guidance.range(of: "1. Xcode ▸ Settings ▸ Accounts: add your Apple ID"))
-        let certificate = try XCTUnwrap(guidance.range(of: "2. Xcode ▸ Settings ▸ Accounts ▸ Manage Certificates"))
-        let profile = try XCTUnwrap(guidance.range(of: "3. Connect the device with Xcode open"))
+        let account = try XCTUnwrap(guidance.range(of: "1. Add your Apple ID to Xcode"))
+        let certificate = try XCTUnwrap(guidance.range(of: "2. Delete the revoked Apple Development certificate"))
+        let profile = try XCTUnwrap(guidance.range(of: "3. Turn on Developer Mode on the device"))
         XCTAssertTrue(account.lowerBound < certificate.lowerBound)
         XCTAssertTrue(certificate.lowerBound < profile.lowerBound)
         XCTAssertTrue(guidance.contains("Developer Mode"), "端末側の設定も要る")
+        // **Team の正は fleetest の設定**(プロジェクトの Signing & Capabilities では直せない ——
+        // .xcodeproj は xcodegen が生成し、DEVELOPMENT_TEAM は毎回コマンドラインで上書きされる)
+        XCTAssertTrue(guidance.contains("developmentTeam"), "どこに Team ID を書くかを示す")
         XCTAssertTrue(guidance.contains("Full xcodebuild output: /tmp/bridge-build-8123.log"),
                       "生ログの在り処を必ず示す")
     }
@@ -73,8 +95,8 @@ final class XcodeSigningDiagnosisTests: XCTestCase {
     func testOnlyTheDetectedStepsAreShown() {
         let guidance = XcodeSigningDiagnosis.guidance(problems: [.deviceNotInProfile], fullLogPath: nil)
         let text = guidance ?? ""
-        XCTAssertTrue(text.contains("1. Connect the device with Xcode open"))
-        XCTAssertFalse(text.contains("add your Apple ID"), "起きていないことは言わない")
+        XCTAssertTrue(text.contains("1. Turn on Developer Mode on the device"))
+        XCTAssertFalse(text.contains("Apple ID"), "起きていないことは言わない")
         XCTAssertFalse(text.contains("Full xcodebuild output"), "残せなかったログの在り処は書かない")
     }
 
@@ -82,6 +104,6 @@ final class XcodeSigningDiagnosisTests: XCTestCase {
     /// 改名すると拡張は「知らない種別」として飛ばし、案内が黙って英語に戻る
     func testRawValuesAreTheWireContractWithTheExtension() {
         XCTAssertEqual(XcodeSigningProblem.allCases.map(\.rawValue),
-                       ["noAccount", "invalidCertificate", "deviceNotInProfile"])
+                       ["noAccount", "invalidCertificate", "deviceNotInProfile", "keychainLocked"])
     }
 }
