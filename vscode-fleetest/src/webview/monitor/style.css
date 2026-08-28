@@ -176,16 +176,58 @@ button.secondary:hover:not(:disabled) {
   font-size: 12px;
   color: var(--vscode-descriptionForeground);
 }
+/* 通常は1行(手元だけ)。リモート機の行が増えると縦に積む(hostCharts.js が hm-multi を付ける) */
 .host-metrics {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+.hm-row {
   display: flex;
   align-items: center;
   gap: 10px;
 }
-/* ホストグラフより右・ツールバー右端へ寄せる(auto-fit トグル) */
-/* ツールバー右端のアイコン群。**先頭の1つだけ**を右へ寄せると、以降は gap で右端に並ぶ
-   (個々に margin-left:auto を付けると間が開く)。 */
+/* 行の左端の機械名。**リモートの行があるときだけ出す** —— 手元だけのときに "local" と
+   書いても情報が増えず、既存の1行表示の幅を無駄に食う。幅を固定して各行の系列を縦に揃える。 */
+.hm-machine {
+  display: none;
+  /* どの行の話かが一目で分かるよう、系列ラベル(MEM/CPU…)より目立たせる。
+     **リテラルの白は置かない** —— ライトテーマで背景に溶ける。--vscode-foreground は
+     ダークで白・ライトで黒になる、テーマが決めた「一番強い文字色」。 */
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+  width: 72px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.host-metrics.hm-multi .hm-machine {
+  display: inline-block;
+}
+/* 「モニター再起動」とホストグラフの間だけ広げる(ツールバーの gap 8px + ここの 8px)。
+   左のボタン群(実行プロファイル・一括起動/停止・再起動)と、右の観測の表示を切り分ける。 */
+#btn-restart {
+  margin-right: 8px;
+}
+/* ツールバー右端へ寄せる。**寄せるのはグループ1つだけ** —— 個々のボタンに margin-left:auto を
+   付けると、その間がツールバーの gap ぶん開いて別々のボタンに見える。 */
 .toolbar-tail-start {
   margin-left: auto;
+}
+/* タイルの見え方を操る2つ(全選択・高さの自動調整)を1つのグループとして囲う。
+   枠は .icon-button の角丸(5px)+ 1px の余白ぶんだけ外側に取る。
+   **下寄せ**(.toolbar の align-items: center を align-self で上書き) —— ホストグラフは
+   リモート機のぶんだけ縦に伸びるので、中央だと機械の数でグループの位置が動く。 */
+.toolbar-icon-group {
+  align-self: flex-end;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px var(--vscode-widget-border, rgba(127, 127, 127, 0.35));
 }
 /* ドラッグによる一時停止中(splitter.js。台数が変わると自動で再開)。ON 表示のまま減光で区別する。 */
 .toolbar-auto-fit.toggled.suspended {

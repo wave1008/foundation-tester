@@ -200,3 +200,144 @@ test("stopMonitorProcess 経由の意図した終了では自動再起動しな�
   t.mock.timers.tick(10000);
   assert.equal(calls.length, 1, "意図した停止では再 spawn しない");
 });
+
+// ---- リモート機の host-metrics(モニターのグラフをマシンごとに出す) ----
+// 手元の `api host-metrics` は**この機械しか観測できない**ので、リモート機のぶんはその機械で
+// 1本ずつ立てる。専用の ssh 経路は書かず既存の汎用転送(`remote exec`)を使う契約
+// (docs/remote-runner.md §14。配信 = device-stream と同じ)。
+
+/** monitorDevices を1行流す(machine 付きのデバイスでリモート機を名乗らせる)。 */
+function feedMonitorDevices(proc, devices) {
+  const line = JSON.stringify({
+    kind: "monitorDevices",
+    devices: devices.map((device) => ({
+      id: device.id, name: device.name, platform: "ios", state: "connected", detail: "",
+      inRun: false, recording: false, registered: true, frozen: false, kind: "virtual",
+      ...(device.machine ? { machine: device.machine } : {}),
+    })),
+  });
+  proc.stdout.emit("data", Buffer.from(line + "\n"));
+}
+
+test("リモート機のデバイスが居ると `remote exec <machine> -- api host-metrics` を機械ごとに立てる", () => {
+  const calls = [];
+  const procs = [];
+  const spawnFn = (command, args) => {
+    calls.push(args);
+    const proc = makeFakeProc();
+    procs.push(proc);
+    return proc;
+  };
+  const posts = [];
+  const manager = new MonitorProcessManager(makeDeps({ post: (m) => posts.push(m) }), spawnFn);
+  manager.startAll();
+  assert.deepEqual(calls[1], ["api", "host-metrics", "--interval", "1"], "手元のぶんは従来どおり");
+
+  feedMonitorDevices(procs[0], [
+    { id: "ios:local1", name: "local1" },
+    { id: "ios:mac2/A", name: "A", machine: "mac2" },
+    { id: "ios:mac2/B", name: "B", machine: "mac2" },
+    { id: "ios:mac3/C", name: "C", machine: "mac3" },
+  ]);
+
+  const remote = calls.filter((args) => args[0] === "remote");
+  assert.deepEqual(remote, [
+    ["remote", "exec", "mac2", "--", "api", "host-metrics", "--interval", "1"],
+    ["remote", "exec", "mac3", "--", "api", "host-metrics", "--interval", "1"],
+  ], "機械ごとに1本(同じ機械の台が複数あっても1本)");
+
+  const machinesMsg = posts.filter((m) => m.type === "hostMetricsMachines").at(-1);
+  assert.deepEqual(machinesMsg.machines, ["mac2", "mac3"], "行の集合を webview へ配る");
+});
+
+test("リモート機のサンプルには machine が付く(手元のサンプルには付かない)", () => {
+  const procs = [];
+  const spawnFn = () => {
+    const proc = makeFakeProc();
+    procs.push(proc);
+    return proc;
+  };
+  const posts = [];
+  const manager = new MonitorProcessManager(makeDeps({ post: (m) => posts.push(m) }), spawnFn);
+  manager.startAll();
+  feedMonitorDevices(procs[0], [{ id: "ios:mac2/A", name: "A", machine: "mac2" }]);
+
+  const sample = (cpu) => Buffer.from(JSON.stringify({
+    kind: "hostMetrics", ts: 1, cpu, gpu: 0.1, memUsedBytes: 2, memTotalBytes: 4,
+  }) + "\n");
+  procs[1].stdout.emit("data", sample(0.5)); // 手元の host-metrics
+  procs[2].stdout.emit("data", sample(0.9)); // mac2 の host-metrics
+
+  const samples = posts.filter((m) => m.type === "hostMetrics");
+  assert.equal(samples[0].machine, undefined, "手元は machine を持たない");
+  assert.equal(samples[0].cpu, 0.5);
+  assert.equal(samples[1].machine, "mac2", "spawn した側が機械名を付ける");
+  assert.equal(samples[1].cpu, 0.9);
+});
+
+test("リモート機のデバイスが消えたらその機械の子を止め、行の集合からも外す", () => {
+  const procs = [];
+  const spawnFn = () => {
+    const proc = makeFakeProc();
+    procs.push(proc);
+    return proc;
+  };
+  const posts = [];
+  const manager = new MonitorProcessManager(makeDeps({ post: (m) => posts.push(m) }), spawnFn);
+  manager.startAll();
+  feedMonitorDevices(procs[0], [{ id: "ios:mac2/A", name: "A", machine: "mac2" }]);
+  const remoteProc = procs[2];
+  let killed = 0;
+  remoteProc.kill = () => { killed += 1; };
+
+  feedMonitorDevices(procs[0], [{ id: "ios:local1", name: "local1" }]);
+
+  assert.ok(killed > 0, "その機械の子を止める");
+  assert.deepEqual(posts.filter((m) => m.type === "hostMetricsMachines").at(-1).machines, []);
+});
+
+test("同じ機械の集合が続く間は子を立て直さない(監視サイクル毎の ssh churn を作らない)", () => {
+  const calls = [];
+  const procs = [];
+  const spawnFn = (command, args) => {
+    calls.push(args);
+    const proc = makeFakeProc();
+    procs.push(proc);
+    return proc;
+  };
+  const manager = new MonitorProcessManager(makeDeps(), spawnFn);
+  manager.startAll();
+  for (let i = 0; i < 5; i += 1) {
+    feedMonitorDevices(procs[0], [{ id: "ios:mac2/A", name: "A", machine: "mac2" }]);
+  }
+  assert.equal(calls.filter((args) => args[0] === "remote").length, 1);
+});
+
+test("全停止(パネルを閉じる・掃討)のあとの「モニター再起動」は消えた機械の ssh を張り直さない", () => {
+  const calls = [];
+  const procs = [];
+  const spawnFn = (command, args) => {
+    calls.push(args);
+    const proc = makeFakeProc();
+    procs.push(proc);
+    return proc;
+  };
+  const manager = new MonitorProcessManager(makeDeps(), spawnFn);
+  manager.startAll();
+  feedMonitorDevices(procs[0], [{ id: "ios:mac2/A", name: "A", machine: "mac2" }]);
+  assert.equal(calls.filter((args) => args[0] === "remote").length, 1);
+
+  manager.stopHostMetricsProcess();
+  for (const proc of procs) {
+    proc.exitCode = 0;
+    proc.emit("close", 0, null); // 実際に畳まれたところまで進める
+  }
+  calls.length = 0;
+  manager.restartAll();
+
+  assert.equal(calls.filter((args) => args[0] === "remote").length, 0, "誰も見ていない機械は張り直さない");
+  assert.equal(
+    calls.filter((args) => args[0] === "api" && args[1] === "host-metrics").length, 1,
+    "手元のぶんは復帰する",
+  );
+});

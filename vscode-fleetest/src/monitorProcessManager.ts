@@ -6,6 +6,7 @@
 import { type ChildProcessByStdio, spawn } from "node:child_process";
 import type { Readable, Writable } from "node:stream";
 import { resolveProjectName } from "./config";
+import { deviceCommandArgs } from "./remoteRunArgs";
 import { t } from "./i18n";
 import {
   type MonitorControlCommand,
@@ -24,6 +25,27 @@ import type { MonitorPanelDeps } from "./monitorPanel";
  * にすると起動直後に EOF を検知して即終了する(タイルが一切表示されない症状の原因)。stdin もパイプで保持する。
  */
 type MonitorProcess = ChildProcessByStdio<Writable, Readable, Readable>;
+
+/**
+ * host-metrics 子1本ぶんの寿命管理の状態(機械ごと。手元も同じ形で持つ)。
+ * failureStreak/gaveUp は「起動後10秒未満での異常終了」が3回続いたら自動再起動を諦めるための
+ * 安全弁(旧バイナリに host-metrics サブコマンドが無い機械で無限に ssh を張らない)。
+ * 10秒以上動いてからの終了は正常運転とみなして 0 に戻す。gaveUp は「モニター再起動」ボタンと
+ * show() の両方でリセットして再挑戦できる(バイナリ更新後の復帰経路)。
+ */
+interface HostMetricsChild {
+  proc: MonitorProcess | undefined;
+  /** stopHostMetricsProcess() 経由による意図した終了かどうか(stoppingMonitor と同じ役割)。 */
+  stopping: boolean;
+  /** 再起動の多重起動ガード(restartPending と同じ役割)。 */
+  restartPending: boolean;
+  /** 予期しない終了後の自動再起動タイマー(5秒後)。dispose/stop 時に必ずクリアする。 */
+  restartTimer: ReturnType<typeof setTimeout> | undefined;
+  /** 直近の起動時刻(ms)。close イベントでの経過時間から「起動後10秒未満での異常終了」を判定する。 */
+  startedAt: number | undefined;
+  failureStreak: number;
+  gaveUp: boolean;
+}
 
 /**
  * host-metrics プロセス(`fleetest api host-metrics --interval 1`)が stdout に流す1行の形。
@@ -55,14 +77,21 @@ function isHostMetricsEvent(value: unknown): value is HostMetricsRawEvent {
   );
 }
 
-/** host-metrics プロセスの1サンプルを webview へ送るメッセージの形(post() 経由)。 */
-export type HostMetricsToWebviewMessage = {
-  readonly type: "hostMetrics";
-  readonly cpu: number | null;
-  readonly gpu: number | null;
-  readonly memUsedBytes: number | null;
-  readonly memTotalBytes: number | null;
-};
+/** host-metrics プロセスの1サンプル、および行の集合を webview へ送るメッセージの形(post() 経由)。
+ *  対向: src/webview/monitor/hostCharts.js(applyHostMetrics / setHostMetricMachines)。 */
+export type HostMetricsToWebviewMessage =
+  | {
+      readonly type: "hostMetrics";
+      /** どの機械のサンプルか(手元は undefined)。**サンプル自身には入っていない** ——
+       *  リモートの子は向こうで自分の値を出すだけなので、spawn した側でここに入れる。 */
+      readonly machine?: string;
+      readonly cpu: number | null;
+      readonly gpu: number | null;
+      readonly memUsedBytes: number | null;
+      readonly memTotalBytes: number | null;
+    }
+  /** 行の集合(手元 + このリモート機。値より先に配る)。消えた機械の行は webview 側で捨てる。 */
+  | { readonly type: "hostMetricsMachines"; readonly machines: readonly string[] };
 
 /**
  * monitor / host-metrics の2つの常駐子プロセスの起動・停止・再起動・pause/resume 制御を担う。
@@ -95,27 +124,18 @@ export class MonitorProcessManager {
   private monitorFailureStreak = 0;
   /** monitor の自動再起動を諦めた状態か。リセット条件も host-metrics と同じ(show()/再起動ボタン)。 */
   private monitorGaveUp = false;
-  /** host-metrics プロセス(常駐。monitor プロセスとは独立に管理する)。 */
-  private hostMetricsProcess: MonitorProcess | undefined;
-  /** stopHostMetricsProcess() 経由による意図した終了かどうか(stoppingMonitor と同じ役割)。 */
-  private stoppingHostMetrics = false;
-  /** restartHostMetricsProcess() の多重起動ガード(restartPending と同じ役割)。 */
-  private hostMetricsRestartPending = false;
-  /** 予期しない終了後の自動再起動タイマー(5秒後)。dispose/stop 時に必ずクリアする。 */
-  private hostMetricsRestartTimer: ReturnType<typeof setTimeout> | undefined;
-  /** 直近の起動時刻(ms)。close イベントでの経過時間から「起動後10秒未満での異常終了」を判定する。 */
-  private hostMetricsStartedAt: number | undefined;
   /**
-   * 「起動後10秒未満での異常終了」の連続回数。3回連続で諦めて自動再起動を止める(旧バイナリに
-   * host-metrics サブコマンドが無い環境で無限ループしないための安全弁)。10秒以上動いてからの
-   * 終了は正常運転とみなして 0 にリセットする。
+   * host-metrics 子プロセス(常駐。monitor プロセスとは独立に管理する)。**機械ごとに1本**で、
+   * キーは機械名(手元は "")。リモートは `remote exec <machine> -- api host-metrics` ——
+   * 専用の ssh 経路は書かない(docs/remote-runner.md §14。配信 = device-stream と同じ規律)。
    */
-  private hostMetricsFailureStreak = 0;
+  private readonly hostMetricsChildren = new Map<string, HostMetricsChild>();
   /**
-   * 自動再起動を諦めた状態かどうか。true の間は close イベントで再起動をスケジュールしない。
-   * 「モニター再起動」ボタンと show() の両方でリセットして再挑戦できる(バイナリ更新後の復帰経路)。
+   * いま行を出しているリモート機(機械名順)。直近の monitorDevices に居る機械の集合で、
+   * **表示フィルタは通さない** —— フィルタの出入りで ssh を張り直すと、行が付いたり消えたりする
+   * だけのために接続が churn する。
    */
-  private hostMetricsGaveUp = false;
+  private hostMetricsMachines: readonly string[] = [];
   /**
    * 直近の monitorDevices で観測したデバイス一覧(整列済み・表示フィルタ適用前)。
    * fleetest.monitorDeviceFilter が変わったときに次の監視サイクル(最大 interval 秒)を待たず
@@ -139,8 +159,10 @@ export class MonitorProcessManager {
     this.monitorFailureStreak = 0;
     this.monitorGaveUp = false;
     this.startMonitorProcess();
-    this.hostMetricsFailureStreak = 0;
-    this.hostMetricsGaveUp = false;
+    // リモート機の子は最初の monitorDevices(syncHostMetricsMachines)で立つ
+    const local = this.hostMetricsChild("");
+    local.failureStreak = 0;
+    local.gaveUp = false;
     this.startHostMetricsProcess();
   }
 
@@ -153,8 +175,11 @@ export class MonitorProcessManager {
     this.monitorFailureStreak = 0;
     this.monitorGaveUp = false;
     this.restartMonitorProcess();
-    this.hostMetricsFailureStreak = 0;
-    this.hostMetricsGaveUp = false;
+    this.hostMetricsChild(""); // 一度も起動していなくてもボタンで立ち上がるようにする
+    for (const child of this.hostMetricsChildren.values()) {
+      child.failureStreak = 0;
+      child.gaveUp = false;
+    }
     this.restartHostMetricsProcess();
   }
 
@@ -248,6 +273,8 @@ export class MonitorProcessManager {
           // 表示フィルタ前を渡す: ウォッチドッグは offline の観測で連続回数をリセットするため、
           // 絞り込んだ一覧を渡すと古い booted 連続回数が次の起動へ持ち越されて誤検知に寄る。
           this.deps.notifyMonitorDevices(this.latestDevices);
+          // リモート機の host-metrics(行が増える)。表示フィルタ前の一覧で判定する
+          this.syncHostMetricsMachines(this.latestDevices);
           value = {
             kind: "monitorDevices",
             devices: filterMonitorDevices(this.latestDevices, this.deps.getConfig().monitorDeviceFilter),
@@ -440,26 +467,94 @@ export class MonitorProcessManager {
     proc.once("close", proceed);
   }
 
+  /** 機械1つぶんの寿命管理の状態(無ければ作る)。キーは機械名(手元は "")。 */
+  private hostMetricsChild(machine: string): HostMetricsChild {
+    const existing = this.hostMetricsChildren.get(machine);
+    if (existing) {
+      return existing;
+    }
+    const child: HostMetricsChild = {
+      proc: undefined,
+      stopping: false,
+      restartPending: false,
+      restartTimer: undefined,
+      startedAt: undefined,
+      failureStreak: 0,
+      gaveUp: false,
+    };
+    this.hostMetricsChildren.set(machine, child);
+    return child;
+  }
+
+  /** OUTPUT の1行。リモートの子はどの機械のものか分からないと読めないので機械名を前置する。 */
+  private hostMetricsLog(machine: string, message: string): void {
+    this.deps.outputChannel.appendLine(machine ? `[${machine}] ${message}` : message);
+  }
+
+  /**
+   * 直近の monitorDevices に居るリモート機に合わせて、host-metrics の子と webview の行を揃える。
+   * **表示フィルタ前の一覧で判定する**(hostMetricsMachines 参照)。集合が変わったときだけ動く。
+   */
+  private syncHostMetricsMachines(devices: readonly MonitorDevice[]): void {
+    const wanted = [
+      ...new Set(devices.map((device) => device.machine).filter((machine): machine is string =>
+        typeof machine === "string" && machine !== "")),
+    ].sort();
+    const current = this.hostMetricsMachines;
+    if (wanted.length === current.length && wanted.every((machine, i) => machine === current[i])) {
+      return;
+    }
+    this.hostMetricsMachines = wanted;
+    for (const machine of current) {
+      if (!wanted.includes(machine)) {
+        this.stopHostMetricsProcess(machine);
+        this.hostMetricsChildren.delete(machine);
+      }
+    }
+    // 値より先に行の集合を配る(観測が来る前から行が見えるようにする)
+    this.deps.post({ type: "hostMetricsMachines", machines: wanted });
+    for (const machine of wanted) {
+      if (current.includes(machine)) {
+        continue; // 既に子が居る(諦めた機械もそのまま — 再挑戦は「モニター再起動」から)
+      }
+      const child = this.hostMetricsChild(machine);
+      child.failureStreak = 0;
+      child.gaveUp = false;
+      this.startHostMetricsProcess(machine);
+    }
+  }
+
+  /** いまの行の集合(リモート機。手元は webview 側が常に持つ)を webview へ配り直す。
+   *  webview の再読込(パネル生成・言語切替)で行が消えるので sendInitialState から呼ぶ。 */
+  postHostMetricsMachines(): void {
+    this.deps.post({ type: "hostMetricsMachines", machines: this.hostMetricsMachines });
+  }
+
   /**
    * host-metrics プロセス(`fleetest api host-metrics --interval 1`)を spawn する。--project/--profile は
    * 付けない — ホストMac自体の値であり監視対象デバイスに依存しないため(restartMonitorIfScopeChanged()
    * からは呼ばない)。このプロセスはライブ表示専用でファイル永続化は行わない — 実行履歴は
    * run 単位(RunRecorder)で results/runs/<YYYY-MM>/<runID>/host-metrics.ndjson へ記録される。
+   * machine を渡すと `remote exec <machine> -- …` でその機械の値を採る(既存の汎用転送を使うだけ)。
    */
-  startHostMetricsProcess(): void {
+  startHostMetricsProcess(machine = ""): void {
+    const child = this.hostMetricsChild(machine);
     // 予約済みの自動再起動があれば無効化する。「プロセス終了→close未配送」の隙間で
     // restartHostMetricsProcess() が走ると、close ハンドラが積んだ自動再起動と本起動の両方が
     // 生きて二重起動し得るため、どの経路から起動する場合も先にタイマーを消す。
-    if (this.hostMetricsRestartTimer) {
-      clearTimeout(this.hostMetricsRestartTimer);
-      this.hostMetricsRestartTimer = undefined;
+    if (child.restartTimer) {
+      clearTimeout(child.restartTimer);
+      child.restartTimer = undefined;
     }
     const config = this.deps.getConfig();
     let proc: MonitorProcess;
     try {
       proc = this.spawnFn(
         config.binaryPath,
-        ["api", "host-metrics", "--interval", "1"],
+        deviceCommandArgs(
+          machine ? { kind: "remote", machine } : { kind: "local" },
+          ["api", "host-metrics", "--interval", "1"],
+        ),
         {
           cwd: this.deps.workspaceRoot,
           shell: false,
@@ -467,101 +562,133 @@ export class MonitorProcessManager {
         },
       );
     } catch (error) {
-      this.deps.outputChannel.appendLine(t("deviceOps.log.hostMetricsStartFailed", { error: String(error) }));
+      this.hostMetricsLog(machine, t("deviceOps.log.hostMetricsStartFailed", { error: String(error) }));
       return;
     }
 
     // stdin は EOF が終了指示なので、こちらからは何も書かず開いたまま保持する(monitor と同じ)。
+    // リモートの子でも同じ: `remote exec` は ssh に stdin を継承させるので、閉じれば向こうの
+    // host-metrics まで EOF が届いて畳まれる。
     proc.stdin.on("error", () => undefined);
 
-    this.stoppingHostMetrics = false;
-    this.hostMetricsProcess = proc;
-    this.hostMetricsStartedAt = Date.now();
+    child.stopping = false;
+    child.proc = proc;
+    child.startedAt = Date.now();
 
+    const label = machine ? `host-metrics ${machine}` : "host-metrics";
     const stdoutParser = new NdjsonParser(
       (value) => {
         if (!isHostMetricsEvent(value)) {
           this.deps.outputChannel.appendLine(
-            t("deviceOps.log.unknownLine", { label: "host-metrics", value: JSON.stringify(value) }),
+            t("deviceOps.log.unknownLine", { label, value: JSON.stringify(value) }),
           );
           return;
         }
         this.deps.post({
           type: "hostMetrics",
+          // 子は自分の値を出すだけで機械名を知らない(向こうから見れば自分が手元)。
+          // どの行へ積むかはここでしか分からないので、spawn した側で付ける
+          ...(machine ? { machine } : {}),
           cpu: value.cpu,
           gpu: value.gpu,
           memUsedBytes: value.memUsedBytes,
           memTotalBytes: value.memTotalBytes,
         });
       },
-      (line) => this.deps.outputChannel.appendLine(`[host-metrics stdout] ${line}`),
+      (line) => this.deps.outputChannel.appendLine(`[${label} stdout] ${line}`),
     );
     const stderrParser = new NdjsonParser(
-      (value) => this.deps.outputChannel.appendLine(`[host-metrics stderr] ${JSON.stringify(value)}`),
-      (line) => this.deps.outputChannel.appendLine(`[host-metrics stderr] ${line}`),
+      (value) => this.deps.outputChannel.appendLine(`[${label} stderr] ${JSON.stringify(value)}`),
+      (line) => this.deps.outputChannel.appendLine(`[${label} stderr] ${line}`),
     );
 
     proc.stdout.on("data", (chunk: Buffer) => stdoutParser.push(chunk));
     proc.stderr.on("data", (chunk: Buffer) => stderrParser.push(chunk));
 
     proc.on("error", (error) => {
-      this.deps.outputChannel.appendLine(t("deviceOps.log.hostMetricsRuntimeError", { error: error.message }));
+      this.hostMetricsLog(machine, t("deviceOps.log.hostMetricsRuntimeError", { error: error.message }));
     });
 
     proc.on("close", () => {
       stdoutParser.end();
       stderrParser.end();
-      if (this.hostMetricsProcess === proc) {
-        this.hostMetricsProcess = undefined;
+      if (child.proc === proc) {
+        child.proc = undefined;
       }
       // 意図した停止(dispose/再起動)かどうかはフラグだけで判定する(monitor と同じ理由)。
-      const selfInitiated = this.stoppingHostMetrics;
-      this.stoppingHostMetrics = false;
+      const selfInitiated = child.stopping;
+      child.stopping = false;
       if (selfInitiated) {
         return;
       }
-      this.scheduleHostMetricsRestart();
+      this.scheduleHostMetricsRestart(machine);
     });
   }
 
   /**
    * host-metrics プロセスの予期しない終了を受けて、再起動するか諦めるかを決める。3回連続で
-   * 諦めたら outputChannel に1回だけログする(カウンタの意味は hostMetricsFailureStreak 参照)。
+   * 諦めたら outputChannel に1回だけログする(カウンタの意味は HostMetricsChild 参照)。
    */
-  private scheduleHostMetricsRestart(): void {
-    const elapsedMs = Date.now() - (this.hostMetricsStartedAt ?? Date.now());
+  private scheduleHostMetricsRestart(machine: string): void {
+    const child = this.hostMetricsChild(machine);
+    const elapsedMs = Date.now() - (child.startedAt ?? Date.now());
     if (elapsedMs < 10000) {
-      this.hostMetricsFailureStreak += 1;
+      child.failureStreak += 1;
     } else {
-      this.hostMetricsFailureStreak = 0;
+      child.failureStreak = 0;
     }
-    if (this.hostMetricsFailureStreak >= 3) {
-      if (!this.hostMetricsGaveUp) {
-        this.hostMetricsGaveUp = true;
-        this.deps.outputChannel.appendLine(t("deviceOps.log.hostMetricsGaveUp"));
+    if (child.failureStreak >= 3) {
+      if (!child.gaveUp) {
+        child.gaveUp = true;
+        this.hostMetricsLog(machine, t("deviceOps.log.hostMetricsGaveUp"));
       }
       return;
     }
-    this.hostMetricsRestartTimer = setTimeout(() => {
-      this.hostMetricsRestartTimer = undefined;
-      // 5秒待つ間にパネルが閉じられていたら何もしない。
-      if (this.deps.isPanelActive()) {
-        this.startHostMetricsProcess();
+    child.restartTimer = setTimeout(() => {
+      child.restartTimer = undefined;
+      // 5秒待つ間にパネルが閉じられていたら何もしない。リモートは、その間にその機械の
+      // デバイスが消えていたら張り直さない(行も既に消えている)
+      if (!this.deps.isPanelActive()) {
+        return;
       }
+      if (machine !== "" && !this.hostMetricsMachines.includes(machine)) {
+        return;
+      }
+      this.startHostMetricsProcess(machine);
     }, 5000);
   }
 
-  /** 実行中の host-metrics プロセスがあれば SIGTERM(2秒後 SIGKILL)で止める(stopMonitorProcess と同じ方針)。 */
-  stopHostMetricsProcess(): void {
-    if (this.hostMetricsRestartTimer) {
-      clearTimeout(this.hostMetricsRestartTimer);
-      this.hostMetricsRestartTimer = undefined;
+  /**
+   * 実行中の host-metrics プロセスを SIGTERM(2秒後 SIGKILL)で止める(stopMonitorProcess と同じ方針)。
+   * machine 省略時は**全機械ぶん**(パネルを閉じる・dispose・掃討の経路はこちら)。
+   */
+  stopHostMetricsProcess(machine?: string): void {
+    if (machine === undefined) {
+      for (const key of [...this.hostMetricsChildren.keys()]) {
+        this.stopHostMetricsProcess(key);
+        if (key !== "") {
+          // **リモートの記録は捨てる** —— 残すと「モニター再起動」がもう誰も見ていない機械の
+          // ssh を張り直す(行の集合は下で空にするので、webview にも行は無い)
+          this.hostMetricsChildren.delete(key);
+        }
+      }
+      // 次に monitorDevices が来たら行を配り直す(集合が同じでも再送させるため空にする)
+      this.hostMetricsMachines = [];
+      return;
     }
-    const proc = this.hostMetricsProcess;
+    const child = this.hostMetricsChildren.get(machine);
+    if (!child) {
+      return;
+    }
+    if (child.restartTimer) {
+      clearTimeout(child.restartTimer);
+      child.restartTimer = undefined;
+    }
+    const proc = child.proc;
     if (!proc || proc.exitCode !== null || proc.signalCode !== null) {
       return;
     }
-    this.stoppingHostMetrics = true;
+    child.stopping = true;
     proc.stdin.end();
     proc.kill("SIGTERM");
     setTimeout(() => {
@@ -574,19 +701,23 @@ export class MonitorProcessManager {
   /**
    * host-metrics プロセスを止めてから起動し直す(「モニター再起動」ボタンから呼ばれる)。
    * 多重起動ガードは restartMonitorProcess と同じ理由(連打で二重起動しないようにする)。
+   * リモートの子も同じ扱い(向こうのバイナリを更新したあとボタン一つで復帰できるようにする)。
    */
   private restartHostMetricsProcess(): void {
-    if (this.hostMetricsRestartPending) {
-      return;
+    for (const machine of [...this.hostMetricsChildren.keys()]) {
+      const child = this.hostMetricsChild(machine);
+      if (child.restartPending) {
+        continue;
+      }
+      child.restartPending = true;
+      const proc = child.proc;
+      this.stopHostMetricsProcess(machine);
+      this.scheduleRestartAfterClose(
+        proc,
+        () => { child.restartPending = false; },
+        () => this.startHostMetricsProcess(machine),
+      );
     }
-    this.hostMetricsRestartPending = true;
-    const proc = this.hostMetricsProcess;
-    this.stopHostMetricsProcess();
-    this.scheduleRestartAfterClose(
-      proc,
-      () => { this.hostMetricsRestartPending = false; },
-      () => this.startHostMetricsProcess(),
-    );
   }
 
   /**

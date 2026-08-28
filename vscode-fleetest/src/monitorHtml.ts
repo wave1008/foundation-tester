@@ -91,20 +91,30 @@ function renderDevicesPanel(): string {
       <button id="btn-devices-up">${t("panels.toolbar.startAllDevices")}</button>
       <button id="btn-devices-down" class="secondary">${t("panels.toolbar.stopAll")}</button>
       <button id="btn-restart" class="secondary">${t("panels.toolbar.restartMonitor")}</button>
-      <!-- hostMetricsメッセージ受信のたびにmain.js側で再描画(独自タイマーなし)。 -->
+      <!-- hostMetricsメッセージ受信のたびにmain.js側で再描画(独自タイマーなし)。
+           **リモート機のぶんは行が増える**(hostCharts.js が data-machine="" の行を複製する)ので、
+           行の中身は data-metric で引く(id は手元の行にしか無い)。 -->
       <div id="host-metrics" class="host-metrics">
-        <span class="host-metric" id="hm-mem" title="${t("panels.hostMetrics.memTitle")}"><span class="hm-label">MEM</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
-        <span class="host-metric" id="hm-cpu" title="${t("panels.hostMetrics.cpuTitle")}"><span class="hm-label">CPU</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
-        <span class="host-metric" id="hm-gpu" title="${t("panels.hostMetrics.gpuTitle")}"><span class="hm-label">GPU</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
-        <span class="host-metric" id="hm-fm" title="${t("panels.hostMetrics.fmTitle")}"><span class="hm-label">FM</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
+        <div class="hm-row" data-machine="">
+          <!-- リモートの行があるときだけ出す(.host-metrics.hm-multi)。手元は "local" 固定 -->
+          <span class="hm-machine">local</span>
+          <span class="host-metric" id="hm-mem" data-metric="mem" title="${t("panels.hostMetrics.memTitle")}"><span class="hm-label">MEM</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
+          <span class="host-metric" id="hm-cpu" data-metric="cpu" title="${t("panels.hostMetrics.cpuTitle")}"><span class="hm-label">CPU</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
+          <span class="host-metric" id="hm-gpu" data-metric="gpu" title="${t("panels.hostMetrics.gpuTitle")}"><span class="hm-label">GPU</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
+          <span class="host-metric" id="hm-fm" data-metric="fm" title="${t("panels.hostMetrics.fmTitle")}"><span class="hm-label">FM</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
+        </div>
       </div>
       <!-- グラフの右・ツールバー右端の2つ。左が全選択トグル・右が高さの自動調整。
+           **どちらもタイルの見え方を操るので1つのグループに入れる**(枠の中でだけ隣接させ、
+           ツールバーの他のボタンとは gap で切る)。
            **title/aria-label は webview 側(deviceTiles.js)が入れる** —— 押すたびに
            「すべて選択」⇄「すべて解除」で入れ替わるので、静的 HTML に置くと二重管理になる。 -->
-      <button id="btn-select-all" class="icon-button toolbar-tail-start" type="button" aria-pressed="false"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M1 2h14v12H1V2zm1 1v10h12V3H2z"/><path d="M7 11.4 3.9 8.3l.9-.9L7 9.6l4.2-4.2.9.9z"/></svg></button>
-      <!-- ON の間、タイル高さを「全デバイスが横幅にちょうど収まる」高さへ自動調整する
-           (状態と再計算契機は splitter.js)。左右の縁へ向かう両矢印の自作SVG。 -->
-      <button id="btn-auto-fit" class="icon-button toolbar-auto-fit" type="button" aria-pressed="false" title="${t("panels.toolbar.autoFitTitle")}"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M1 3h1v10H1zM14 3h1v10h-1zM5 7.5h6v1H5zM6 5.5L3 8l3 2.5zM13 8l-3-2.5v5z"/></svg></button>
+      <div id="toolbar-tail" class="toolbar-icon-group toolbar-tail-start">
+        <button id="btn-select-all" class="icon-button" type="button" aria-pressed="false"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M1 2h14v12H1V2zm1 1v10h12V3H2z"/><path d="M7 11.4 3.9 8.3l.9-.9L7 9.6l4.2-4.2.9.9z"/></svg></button>
+        <!-- ON の間、タイル高さを「全デバイスが横幅にちょうど収まる」高さへ自動調整する
+             (状態と再計算契機は splitter.js)。左右の縁へ向かう両矢印の自作SVG。 -->
+        <button id="btn-auto-fit" class="icon-button toolbar-auto-fit" type="button" aria-pressed="false" title="${t("panels.toolbar.autoFitTitle")}"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M1 3h1v10H1zM14 3h1v10h-1zM5 7.5h6v1H5zM6 5.5L3 8l3 2.5zM13 8l-3-2.5v5z"/></svg></button>
+      </div>
     </div>
     <div id="banner" class="banner"></div>
 

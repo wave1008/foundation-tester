@@ -154,7 +154,8 @@ test("scenarioFinished に fm があれば fmUsage アクションを出す(モ�
   ]);
 
   const fmActions = actions.filter((a) => a.type === "fmUsage");
-  assert.deepEqual(fmActions, [{ type: "fmUsage", calls: 4, totalMs: 9532, failures: 0 }]);
+  assert.deepEqual(fmActions,
+    [{ type: "fmUsage", calls: 4, totalMs: 9532, failures: 0, machine: undefined }]);
 });
 
 test("FM を使わなかったシナリオでは fmUsage を出さない(誤カウント防止)", () => {
@@ -195,7 +196,7 @@ test("失敗シナリオでも fmUsage は出す(FM コストは成否によら�
   ]);
   assert.deepEqual(
     actions.filter((a) => a.type === "fmUsage"),
-    [{ type: "fmUsage", calls: 2, totalMs: 4000, failures: 1 }],
+    [{ type: "fmUsage", calls: 2, totalMs: 4000, failures: 1, machine: undefined }],
   );
 });
 

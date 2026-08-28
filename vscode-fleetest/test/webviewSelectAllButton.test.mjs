@@ -77,11 +77,14 @@ function click(document, el) {
   el.dispatchEvent(new document.defaultView.MouseEvent("click", { bubbles: true }));
 }
 
-test("高さ自動調整ボタンのすぐ左に置く", (t) => {
+test("高さ自動調整ボタンと1つのグループに入り、そのすぐ左に置く", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   const el = button(document);
-  assert.equal(el.parentElement, document.getElementById("toolbar"));
+  // どちらもタイルの見え方を操るので同じ枠に入れる(ツールバーの他のボタンとは gap で切る)
+  const group = document.getElementById("toolbar-tail");
+  assert.equal(el.parentElement, group);
+  assert.equal(group.parentElement, document.getElementById("toolbar"));
   assert.equal(el.nextElementSibling, document.getElementById("btn-auto-fit"));
   assert.equal(el.textContent.trim(), "", "テキストではなくアイコン(インライン SVG)");
   assert.equal(el.querySelectorAll("svg").length, 1);

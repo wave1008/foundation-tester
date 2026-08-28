@@ -23,6 +23,9 @@ test("classifyResident: 各種別を正しく判定する", () => {
     ],
     [".build/debug/fleetest api monitor --project SampleApp --interval 1 --max-width 800", "monitor"],
     [".build/debug/fleetest api host-metrics --interval 1", "host-metrics"],
+    // リモート機のぶん(モニターのグラフをマシンごとに出す)。手元のぶんと同じ種別に入れる ——
+    // 掃討の対象も同じで、区別が要るのは detail(機械名)だけ
+    [".build/debug/fleetest remote exec M1Max -- api host-metrics --interval 1", "host-metrics"],
     [".build/debug/fleetest api live serve --platform ios --device iPhone17Pro --port 8127", "live-serve"],
     [".build/debug/fleetest-androidstream --serial emulator-5554", "stream"],
     [".build/debug/fleetest-simstream --udid E38DCA93-95F2-4DDF-B1FE-29527205D3EE", "stream"],
@@ -56,6 +59,16 @@ test("classifyResident: fleetest 無関係のプロセスは null", () => {
 test("classifyResident: detail(識別子)を抽出する", () => {
   assert.equal(classifyResident("x/qemu-system-aarch64 -avd Pixel_9_Android_15_-07")?.detail, "Pixel_9_Android_15_-07");
   assert.equal(classifyResident(".build/debug/fleetest-androidstream --serial emulator-5554")?.detail, "emulator-5554");
+  // host-metrics は手元とリモート機のぶんが並ぶので、機械名で区別できないと読めない
+  assert.equal(classifyResident(".build/debug/fleetest api host-metrics --interval 1")?.detail, "");
+  assert.equal(
+    classifyResident(".build/debug/fleetest remote exec M1Max -- api host-metrics --interval 1")?.detail,
+    "M1Max",
+  );
+  assert.equal(
+    classifyResident(".build/debug/fleetest remote exec --remote-dir ~/runner M1Max -- api host-metrics")?.detail,
+    "M1Max", // --remote-dir は host の前にしか置けない(remote exec の契約)
+  );
   assert.equal(
     classifyResident("a/CoreSimulator/Devices/E38DCA93-95F2-4DDF-B1FE-29527205D3EE/x/FleetestRunnerUITests-Runner")?.detail,
     "E38DCA93-95F2-4DDF-B1FE-29527205D3EE",

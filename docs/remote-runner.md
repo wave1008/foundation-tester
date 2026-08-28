@@ -894,6 +894,22 @@ witness は `RemoteDispatchTests.testRelayRewriteMapsTheRunnerWorkDirOntoTheLoca
 - **`remote exec` は何も転送しない**ので、fan-out は**先にプロジェクトを rsync する**
   (`RemoteProjectSync`。転送の規則は run のディスパッチと共有 = 二重に持たない)
 
+- **ホストの負荷(MEM/CPU/GPU/FM)もその機械で採る**(2026-08-28)。手元の `api host-metrics` は
+  **この Mac の値しか出せない**ので、リモート機のぶんは拡張が
+  `remote exec <machine> -- api host-metrics --interval 1` を**機械ごとに1本**立てて、
+  ツールバーのグラフを**機械ごとの行**にする(左端は手元が `local`・以降は機械名。
+  行が1つのときはラベルを出さない)。守る規律は3つ:
+  **①専用の ssh 経路を書かない**(§14 の汎用転送を使うだけ。配信と同じ)/
+  **②行の集合は「直近の monitorDevices に居る機械」で決める**(表示フィルタは通さない ——
+  フィルタの出入りで ssh を張り直すと、行が付いたり消えたりするだけのために接続が churn する)/
+  **③消えた機械の行は捨てる**(観測が止まったまま最後の値を出し続けない = 状態を
+  `state:"unknown"` に戻すのと同じ規律)。
+  **サンプル自身に機械名は入っていない** —— 子は向こうで自分の値を出すだけなので、
+  spawn した側(`MonitorProcessManager`)が付ける。FM だけは供給元が違い、
+  シナリオ完了イベントの実測を**そのレーンの機械**の行へ積む(FM はその機械の中で直列化する
+  共有資源なので、機械ごとに分けて初めて意味を持つ)。子の死の扱いは監視の子と同じ
+  (起動直後の死が3回続いたら諦める = 版の古い機械で無限に ssh を張らない)
+
 **版が揃っていないと配信も状態も来ない**(`--device-machine` / `api device-stream` は新しい)。
 古い機械は「Unknown option」で即死 → 3回で諦め → タイルは「届いていません」のまま。
 `fleetest remote setup <host>` で揃える。

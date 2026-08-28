@@ -29,7 +29,7 @@ import {
   applyWipeStatus,
 } from './deviceTiles.js';
 import { applyLaneAction, applyLaneHydrate, updateLaneVisibility, updateLanesPlaceholder } from './laneLog.js';
-import { applyHostMetrics, recordFmCalls, resetFmUsage } from './hostCharts.js';
+import { applyHostMetrics, recordFmCalls, resetFmUsage, setHostMetricMachines } from './hostCharts.js';
 import {
   applyMachineProfileInfo,
   applyMachineProfileSelected,
@@ -104,6 +104,10 @@ window.addEventListener('message', (event) => {
     case 'hostMetrics':
       applyHostMetrics(message);
       break;
+    case 'hostMetricsMachines':
+      // 行の集合(手元 + リモート機)。値より先に届くので、観測が来る前から行が見える
+      setHostMetricMachines(message.machines);
+      break;
     case 'deviceOpBusy':
       applyDeviceOpBusy(message);
       break;
@@ -130,7 +134,8 @@ window.addEventListener('message', (event) => {
       // FM 実測はシナリオ完了時にしか来ない(hostMetrics ストリームには乗らない)。
       // hostCharts 側が次の tick で系列へ積む
       if (message.action && message.action.type === 'fmUsage') {
-        recordFmCalls(message.action.calls, message.action.totalMs, message.action.failures);
+        recordFmCalls(message.action.calls, message.action.totalMs, message.action.failures,
+          message.action.machine);
       }
       if (message.action && message.action.type === 'cleared') {
         resetFmUsage();

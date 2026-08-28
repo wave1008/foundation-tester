@@ -731,6 +731,8 @@ export class MonitorPanelController implements vscode.Disposable {
     this.profiles.postMachineProfileInfo();
     // webview再読込がジョブ実行中に起きた場合にボタン無効状態・タイルのバッジを復元するため。
     this.deviceOps.resendQueueStatus();
+    // webview 再読込でホストグラフの行(手元 + リモート機)が消えるので配り直す
+    this.processManager.postHostMetricsMachines();
     this.post({ type: "pollingMode", value: this.pollingMode });
     this.post({
       type: "keepPhysicalDevicesAwake",

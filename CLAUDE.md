@@ -198,7 +198,13 @@
   (手元で `api device-up --name` を撃つと、同名の台が別の機械にも居るとき**別の機械の設定で
   この Mac にシミュレータが1台できる**。`findDevice` は (machine, name) で引き、
   `--device-machine` の既定は手元)。
-  **自動修復(watchdog)はリモートの台を見ない**(修復手段が手元にしか効かず、記録が name 単位)
+  **自動修復(watchdog)はリモートの台を見ない**(修復手段が手元にしか効かず、記録が name 単位)。
+  **ホストの負荷(MEM/CPU/GPU/FM)も同じ** —— 拡張が
+  `remote exec <machine> -- api host-metrics` を機械ごとに立て、ツールバーのグラフを
+  **機械ごとの行**にする(左端は手元が `local`・以降は機械名。1行のときはラベルを出さない)。
+  **行の集合は直近の monitorDevices に居る機械で決める**(表示フィルタは通さない = ssh の churn を
+  作らない)/ **消えた機械の行は捨てる**(古い値を出し続けない)/ **機械名は spawn した側が付ける**
+  (サンプル自身は持たない)。FM は供給元が別で、シナリオ完了イベントの実測を**そのレーンの機械**へ積む
 - リモート実行(`run --machine` / `--host` の SSH ディスパッチ):
   - **ssh 越しに何かを起動する経路を新設したら非対話 PATH の補正
     (`/opt/homebrew:/usr/local/bin`)を必ず写す**(既存は `RemoteShell.remoteRunCommand`)

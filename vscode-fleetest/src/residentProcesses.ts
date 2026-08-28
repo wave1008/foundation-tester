@@ -145,6 +145,11 @@ function extractArg(command: string, flag: string): string {
   return m?.[1] ?? "";
 }
 
+/** `fleetest remote exec <machine> -- …` の機械名(この形でなければ空文字)。 */
+function remoteExecMachine(command: string): string {
+  return command.match(/\bremote\s+exec\s+(?:--remote-dir[= ]+\S+\s+)?(\S+)/)?.[1] ?? "";
+}
+
 /** コマンド列1本を分類する。fleetest 関連でなければ null。
  *  opts.binaryDir を渡すと、その配下の実行ファイルを名前を問わず fleetest 由来として拾う。 */
 export function classifyResident(
@@ -177,7 +182,9 @@ export function classifyResident(
       return { type: "monitor", detail: extractArg(cmd, "--project") || extractArg(cmd, "--profile") };
     }
     if (/\bapi\s+host-metrics(?:\s|$)/.test(cmd)) {
-      return { type: "host-metrics", detail: "" };
+      // リモート機のぶんは `remote exec <machine> -- api host-metrics`(モニターのグラフを
+      // マシンごとに出す。monitorProcessManager.ts)。手元のぶんと並ぶので機械名を detail に出す
+      return { type: "host-metrics", detail: remoteExecMachine(cmd) };
     }
     if (/\bapi\s+live\s+serve(?:\s|$)/.test(cmd)) {
       const dev = extractArg(cmd, "--device") || extractArg(cmd, "--name");

@@ -116,15 +116,19 @@ function dragSplitter(window, document, dy) {
   splitter.dispatchEvent(pointerEvent(window, "pointerup", { y: 100 + dy }));
 }
 
-test("ボタンはホストグラフより後ろ・ツールバー最後の要素で、テキストを持たない", (t) => {
+test("ボタンは全選択と同じグループ・ホストグラフより後ろ・最後で、テキストを持たない", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
 
   const toolbar = document.getElementById("toolbar");
   const button = autoFitButton(document);
   assert.ok(button, "#btn-auto-fit がツールバーに存在する");
-  assert.equal(button.parentElement, toolbar);
-  assert.equal(toolbar.lastElementChild, button, "グラフより右(=最後)に置く");
+  // 全選択と1つのグループ(枠の中で隣接。ツールバーの他のボタンとは gap で切る)
+  const group = document.getElementById("toolbar-tail");
+  assert.equal(button.parentElement, group);
+  assert.equal(group.firstElementChild, document.getElementById("btn-select-all"));
+  assert.equal(group.lastElementChild, button, "グループの中では自動フィットが右");
+  assert.equal(toolbar.lastElementChild, group, "グラフより右(=最後)に置く");
   assert.ok(
     button.compareDocumentPosition(document.getElementById("host-metrics")) &
       window.Node.DOCUMENT_POSITION_PRECEDING,
