@@ -203,6 +203,43 @@ test("device-down は udid 指定時、--udid を渡し --name/--project/--profi
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test("device-up は udid 指定時、--udid を渡す(接続中の実機のブリッジ起動)", async () => {
+  const { dir, binaryPath, argsLog } = makeArgRecordingBinary();
+  const { deps } = makeDeps(binaryPath);
+  const deviceOps = new MonitorDeviceOps(deps);
+
+  const args = await runDeviceJobAndReadArgs(deviceOps, argsLog, {
+    kind: "device",
+    name: "iPhone SE3",
+    op: "up",
+    udid: "00008110-000260242EEB801E",
+  });
+  assert.match(args, /device-up/);
+  assert.match(args, /--udid 00008110-000260242EEB801E/);
+  assert.doesNotMatch(args, /--name/);
+  assert.doesNotMatch(args, /--project/);
+  assert.doesNotMatch(args, /--profile/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// Android の up に直指定は無い(端末の電源を入れる操作は存在しない)。serial 付きの up は
+// 従来どおり --name 経路へ落ちること
+test("device-up は serial 指定でも直指定にせず --name 経路のまま", async () => {
+  const { dir, binaryPath, argsLog } = makeArgRecordingBinary();
+  const { deps } = makeDeps(binaryPath);
+  const deviceOps = new MonitorDeviceOps(deps);
+
+  const args = await runDeviceJobAndReadArgs(deviceOps, argsLog, {
+    kind: "device",
+    name: "Pixel_9_Android_15_-01",
+    op: "up",
+    serial: "emulator-5554",
+  });
+  assert.match(args, /--name Pixel_9_Android_15_-01/);
+  assert.doesNotMatch(args, /--serial emulator-5554/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test("device-down は serial 指定時、--serial を渡し --name/--project/--profile を渡さない", async () => {
   const { dir, binaryPath, argsLog } = makeArgRecordingBinary();
   const { deps } = makeDeps(binaryPath);

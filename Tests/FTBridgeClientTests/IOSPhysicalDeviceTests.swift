@@ -79,21 +79,39 @@ final class IOSPhysicalDeviceTests: XCTestCase {
         XCTAssertEqual(device.transport, "localNetwork")
     }
 
-    /// USB 接続中の実機でも connection.state は "disconnected" のままだった(2026-07-25 実機実測)。
-    /// pairingState/bootState の肯定シグナルで到達可能と判定できること
-    func testParseTreatsPairedButDisconnectedDeviceAsAvailable() throws {
+    /// **ペアリング済み・未接続**の実機(実測 2026-08-28: 手元に無い iPhone が
+    /// state="disconnected" / pairingState="paired" / bootState="booted" で列挙され続ける)。
+    /// pairing と boot を肯定シグナルに数えていた頃は、これが「起動中のデバイス」の一覧に
+    /// 「未起動」タイルとして並んでいた
+    func testParseTreatsPairedButDisconnectedDeviceAsNotConnected() throws {
         let entry: [String: Any] = [
             "identifier": "2DBFD3DF-21FE-5C6C-9F5D-1210BF80726B",
             "properties": [
                 "hardware": ["platform": "iOS", "udid": "00008130-001819863E60001C"],
                 "state": ["name": "iPhone wave", "bootState": "booted"],
                 "connection": ["state": "disconnected", "pairingState": "paired",
+                               "transportType": "localNetwork"],
+            ],
+        ]
+        let device = try XCTUnwrap(IOSPhysicalDeviceCatalog.parse(entry))
+        XCTAssertFalse(device.connected,
+                       "pairingState/bootState は繋がっていなくても残るので到達性の根拠にしない")
+    }
+
+    /// 接続中の実機は pairing/boot に頼らず state だけで真になる(上のテストの陽性対照 ——
+    /// 「常に false」の実装と区別する)
+    func testParseTreatsWiredConnectedDeviceAsConnected() throws {
+        let entry: [String: Any] = [
+            "identifier": "2DBFD3DF-21FE-5C6C-9F5D-1210BF80726B",
+            "properties": [
+                "hardware": ["platform": "iOS", "udid": "00008110-000260242EEB801E"],
+                "state": ["name": "iPhone SE3", "bootState": "booted"],
+                "connection": ["state": "connected", "pairingState": "paired",
                                "transportType": "wired"],
             ],
         ]
         let device = try XCTUnwrap(IOSPhysicalDeviceCatalog.parse(entry))
-        XCTAssertTrue(device.connected,
-                      "connection.state は当てにならない(未接続機はそもそも一覧に出ない)")
+        XCTAssertTrue(device.connected)
     }
 
     /// devicectl の Identifier 列を profile に書いてしまっても解決できること

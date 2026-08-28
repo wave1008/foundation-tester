@@ -20,7 +20,10 @@ struct ApiDeviceUp: AsyncParsableCommand {
             + "stdout; diagnostics on stderr only; exit code 1 when ok:false)")
 
     @Option(help: "Logical device name (a name under ios or android in the machine profile)")
-    var name: String
+    var name: String?
+
+    @Option(help: "Hardware UDID of a connected physical iOS device that is not in the machine profile (starts its bridge; mutually exclusive with --name)")
+    var udid: String?
 
     @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
@@ -46,6 +49,19 @@ struct ApiDeviceUp: AsyncParsableCommand {
             FileHandle.standardError.write(Data("⚠️ Unknown --gpu value — falling back to host: \(gpu!)\n".utf8))
             resolvedGpu = "host"
         }
+        // 直指定モード(--udid): マシンプロファイル未記載の**接続中の実機**のブリッジを起こす。
+        // 実機は端末そのものを起動・停止しないので boot は無く、供給だけが仕事
+        // (対向: vscode-fleetest/src/webview/monitor/deviceTiles.js の「ブリッジを起動」)
+        guard let name else {
+            guard let udid else {
+                throw ValidationError("specify exactly one of --name / --udid")
+            }
+            try await Self.startPhysicalBridge(udid: udid)
+            return
+        }
+        guard udid == nil else {
+            throw ValidationError("specify exactly one of --name / --udid")
+        }
         try await ApiDeviceOperation.run(
             name: name, project: project, profile: profile, deviceMachine: deviceMachine
         ) { spec, platform, log in
@@ -58,6 +74,44 @@ struct ApiDeviceUp: AsyncParsableCommand {
                     .provision(devices: [(spec.name, spec)], log: log)
             }
         }
+    }
+
+    /// `--udid` 直指定の1台。プロジェクト・マシンプロファイル解決を経ないため
+    /// `ApiDeviceOperation.run` を通らず、NDJSON の log*/finished をここで組み立てる
+    /// (device-down の runDirect と同じ形)
+    private static func startPhysicalBridge(udid: String) async throws {
+        setvbuf(stdout, nil, _IOLBF, 0)
+        let log: @Sendable (String) -> Void = { message in
+            ApiDeviceEventEmitter.emit(ApiDeviceLogEvent(message: message))
+        }
+        do {
+            let devices = try IOSPhysicalDeviceCatalog.devices()
+            let spec = try ApiDeviceUpDirectSpec.physicalIOSSpec(udid: udid, devices: devices)
+            let root = try RepoRoot.find()
+            _ = try await BridgeProvisioner(repoRoot: root)
+                .provision(devices: [(spec.name, spec)], log: log)
+            ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(ok: true, error: nil))
+        } catch {
+            ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(ok: false, error: error.localizedDescription))
+            throw ExitCode(1)
+        }
+    }
+}
+
+/// `device-up --udid` の spec 合成。**接続中の実機だけ**を受ける —— 繋がっていない端末で
+/// ブリッジを起こそうとすると xcodebuild が数分かけて失敗するので、その手前で落とす。
+/// engine は xcuitest 固定(`fleetest bridge up --physical` と同じ。実機に in-app 注入は無い)。
+/// I/O を持たない pure 関数(ユニットテスト対象のため private にしない)
+enum ApiDeviceUpDirectSpec {
+    static func physicalIOSSpec(udid: String, devices: [IOSPhysicalDeviceInfo]) throws -> DeviceSpec {
+        guard let device = devices.first(where: { $0.udid == udid || $0.deviceCtlIdentifier == udid }) else {
+            throw IOSPhysicalDeviceCatalogError.notFound(udid: udid, available: devices)
+        }
+        guard device.connected else {
+            throw IOSPhysicalDeviceCatalogError.notConnected(udid: device.udid, name: device.name)
+        }
+        return DeviceSpec(name: device.name, kind: .physical, os: device.os, udid: device.udid,
+                          engine: "xcuitest")
     }
 }
 

@@ -405,7 +405,12 @@ function renderFrame(entry) {
         : waitingUp
           ? t('wvMonitor.tile.waiting')
           : offline
-            ? (upRunning ? t('wvMonitor.deviceState.booting') : t('wvMonitor.deviceState.offline'))
+            ? (upRunning
+              ? t('wvMonitor.deviceState.booting')
+              // 繋がっている実機は「未起動」ではない —— 無いのはブリッジだけ
+              : bridgeNotRunning(entry.device)
+                ? t('wvMonitor.tile.bridgeNotRunning')
+                : t('wvMonitor.deviceState.offline'))
             : t('wvMonitor.tile.connecting');
     entry.placeholderEl.append(icon, labelSpan);
     entry.frameWrapEl.appendChild(entry.placeholderEl);
@@ -639,10 +644,12 @@ export function renderDeviceOpMenuItem() {
   // 止まっているものを止める操作しか選べなくなる)
   const item = deviceOpMenuItem(bridgeNotRunning(device) ? 'offline' : device.state,
                                 deviceOpMenuEntry.opBusy, device.kind === 'physical');
-  // 未登録(マシンプロファイル未記載)は起動(up)がマシンプロファイル名前提のため成立しない。
-  // 停止(down)だけ出す。未登録は原理上 connected/booted しか来ない = op は常に 'down' のはずだが、
-  // 念のため 'up' になるケースを防御的に隠す。
-  if (device.registered === false && item.op !== 'down') {
+  // 未登録(マシンプロファイル未記載)のシミュレータ/エミュレータは起動(up)が --name 前提のため
+  // 成立しない。停止(down)だけ出す。
+  // **実機は例外** —— 実機の up は「ブリッジを起動」であって端末の電源ではなく、udid で撃てる
+  // (device-up --udid)。ここで隠すと、繋がっている実機がタイルに出るのに何も操作できない
+  // (2026-07-25 に一度直した実害が、未登録デバイスを出すようになった時点で実機に再発していた)
+  if (device.registered === false && item.op !== 'down' && device.kind !== 'physical') {
     deviceOpMenuItemBtn.style.display = 'none';
     return;
   }

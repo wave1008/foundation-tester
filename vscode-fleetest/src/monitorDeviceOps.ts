@@ -730,9 +730,9 @@ export class MonitorDeviceOps {
     // 未登録(マシンプロファイル未記載)デバイスの直指定モード: --name の代わりに --udid/--serial を渡し、
     // プロジェクト・マシンプロファイル解決に使う --project/--profile も付けない(直指定はそれらを
     // 一切参照しない契約。Sources/fleetest/ApiDeviceCommands.swift ApiDeviceDownDirectTarget)。
-    // up には direct モードが無い(未登録は起動をメニューに出さない。monitorDeviceLifecycle.ts の
-    // udid/serial コメント参照)。
-    const direct = op === "down" && (udid !== undefined || serial !== undefined);
+    // **up の直指定は --udid だけ** —— 実機のブリッジ起動(device-up --udid)がそれ。
+    // serial(Android)の up は端末の電源を入れる操作になり存在しないので down のみ。
+    const direct = udid !== undefined || (op === "down" && serial !== undefined);
     // **別の機械の台はその機械で操作する** —— 手元で `--name` を渡すと、手元のマシン
     // プロファイルの同名エントリを引いて**別の機械の設定でこの Mac にシミュレータを作る**
     // (simctl は無ければ作る)。一括起動が RemoteDeviceFanout で分散するのと同じ規律

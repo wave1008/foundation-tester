@@ -166,9 +166,11 @@ export type DeviceOpQueueStatus = "queued" | "running";
 export type DeviceLifecycleJob =
   // restartNames: up のみ。起動済みでも down→up する対象(devices-up --restart に渡す)。
   | { readonly kind: "bulk"; readonly op: "up" | "down"; readonly restartNames?: readonly string[] }
-  // udid/serial: 未登録(マシンプロファイル未記載)デバイスの直指定(op==="down" のときのみ意味を持つ)。
-  // monitorDeviceOps.ts executeDeviceOpJob が --name の代わりに --udid/--serial を渡す(対向:
-  // Sources/fleetest/ApiDeviceCommands.swift ApiDeviceDownDirectTarget)。name はタイル特定・
+  // udid/serial: 未登録(マシンプロファイル未記載)デバイスの直指定。monitorDeviceOps.ts
+  // executeDeviceOpJob が --name の代わりに --udid/--serial を渡す(対向:
+  // Sources/fleetest/ApiDeviceCommands.swift の ApiDeviceDownDirectTarget / ApiDeviceUpDirectSpec)。
+  // **udid は up/down 両方**(up = 接続中の実機のブリッジ起動)、**serial は down のみ**
+  // (Android の up は端末の電源を入れる操作になり存在しない)。name はタイル特定・
   // 重複排除キーとして直指定時も引き続き使う。
   // machine: そのデバイスが居る機械(手元は undefined)。**名前だけで CLI に渡さない** ——
   // 同名の台が別の機械にも居るのは通常で、手元の同名エントリを引いて別の機械の設定で

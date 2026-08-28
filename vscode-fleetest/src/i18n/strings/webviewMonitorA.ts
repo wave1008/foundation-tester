@@ -53,6 +53,9 @@ export const webviewMonitorAStrings = {
     en: "This machine cannot observe the state (simctl/adb are local only). Check that the other machine's fleetest is on the same version.",
   },
   "wvMonitor.tile.stateUnknown": { ja: "状態不明", en: "Unknown" },
+  // 繋がっている iOS 実機でブリッジが起きていないだけの状態。**「未起動」と言わない** ——
+  // 端末は動いており、無いのはブリッジだけ(タイルのメニューから起こせる)
+  "wvMonitor.tile.bridgeNotRunning": { ja: "ブリッジ未起動", en: "No bridge" },
   "wvMonitor.tile.remoteUnobservable": {
     ja: "{machine}\n状態不明",
     en: "{machine}\nunknown",

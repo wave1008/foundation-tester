@@ -111,19 +111,27 @@ public enum IOSPhysicalDeviceCatalog {
             ?? (entry["connectionProperties"] as? [String: Any]) ?? [:]
         let transport = (connection["transportType"] as? String) ?? "unknown"
 
-        // **connection.state は当てにならない**: USB 接続中で devicectl が "available (paired)" と
-        // 表示している実機でも "disconnected" のままだった(2026-07-25 実機で確認。Android の
-        // dumpsys ロック判定と同種の罠)。未接続の実機は list devices に**そもそも出てこない**ので、
-        // 一覧に居ること自体を到達性の主信号にし、明示的な肯定シグナルだけを足して判定する
-        let paired = (connection["pairingState"] as? String) == "paired"
-        let booted = (state["bootState"] as? String) == "booted"
+        // **到達性は connection.state / tunnelState だけで決める**。
+        // `pairingState` と `bootState` は**一度ペアリングした端末には繋がっていなくても残り続ける**
+        // ので信号にならない(実測 2026-08-28・Xcode 27.0・2台で実機6台分: 接続中の wired 2台が
+        // state="connected"、手元に無い localNetwork 4台が state="disconnected"。pairingState は
+        // 6台とも "paired"、bootState も6台とも "booted")。
+        //
+        // 以前は「未接続の実機は list devices にそもそも出てこない」を前提に paired/booted も
+        // 真としていたが、**devicectl は接続が切れてもペアリング済みの端末を列挙し続ける** ——
+        // その結果、判定が「devicectl が知っている = 到達可能」= 恒真になり、モニターの
+        // 「起動中のデバイス」に手元に無い iPhone が「未起動」タイルとして並んでいた。
+        //
+        // 2026-07-25(Xcode 27 beta 4)には USB 接続中でも state="disconnected" と出た記録がある。
+        // 27.0 では再現しない。**もし将来のベータでまた嘘をつくなら、症状は
+        // `IOSPhysicalDeviceCatalogError.notConnected` で明示的に落ちる**(黙って誤った緑には
+        // ならない)ので、そのときは信号を足す
         return IOSPhysicalDeviceInfo(
             udid: udid,
             name: name,
             os: version.map { "iOS \($0)" } ?? "iOS",
             connected: (connection["state"] as? String) == "connected"
-                || (connection["tunnelState"] as? String) == "connected"
-                || paired || booted,
+                || (connection["tunnelState"] as? String) == "connected",
             transport: transport,
             deviceCtlIdentifier: identifier,
             model: (hardware["marketingName"] as? String) ?? "")
