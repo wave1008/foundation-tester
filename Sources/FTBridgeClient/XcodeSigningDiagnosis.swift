@@ -47,16 +47,16 @@ public enum XcodeSigningDiagnosis {
 
     /// 「次にやること」。problems が空なら nil(呼び手は生の出力をそのまま出す)。
     ///
-    /// **1行目だけで用が足りるように書く** —— 拡張のバナーは1行しか出さず、続きは
-    /// OUTPUT へ回る(monitorDeviceOps.ts)。2行目以降は手順。
+    /// **1行目だけで用が足りるように書く**(2行目以降は手順)。**説明は書かない** ——
+    /// 読み手が要るのは「何をすればいいか」だけで、状態の言い換え(「アカウントがありません」等)は
+    /// 手順を読めば分かる(ユーザー決定 2026-08-29)。
     /// **「この Mac」と書く** —— リモート機で走っていても、直すのは端末が繋がっている
     /// その機械の Xcode。手元とどちらの話かは呼び手(拡張)が機械名を添えて示す。
     public static func guidance(problems: [XcodeSigningProblem], fullLogPath: String?) -> String? {
         guard !problems.isEmpty else { return nil }
         var lines = [
             "Cannot code-sign the bridge runner for a physical device on this Mac."
-                + " Fix Xcode's signing setup there, then start the bridge again"
-                + " (simulators need no signing, which is why only physical devices stop here).",
+                + " Fix Xcode's signing setup there, then start the bridge again.",
         ]
         for (index, problem) in problems.enumerated() {
             lines.append("  \(index + 1). \(step(problem))")
@@ -70,14 +70,13 @@ public enum XcodeSigningDiagnosis {
     private static func step(_ problem: XcodeSigningProblem) -> String {
         switch problem {
         case .noAccount:
-            return "Xcode ▸ Settings ▸ Accounts: add your Apple ID — no account is configured there."
+            return "Xcode ▸ Settings ▸ Accounts: add your Apple ID."
         case .invalidCertificate:
-            return "Xcode ▸ Settings ▸ Accounts ▸ Manage Certificates: the Apple Development"
-                + " certificate is revoked or expired — create a new one."
+            return "Xcode ▸ Settings ▸ Accounts ▸ Manage Certificates:"
+                + " create a new Apple Development certificate."
         case .deviceNotInProfile:
-            return "The device is not in the provisioning profile: connect it with Xcode open so it"
-                + " gets registered, and turn on Developer Mode on the device"
-                + " (Settings ▸ Privacy & Security ▸ Developer Mode)."
+            return "Connect the device with Xcode open so it gets registered, and turn on"
+                + " Developer Mode on the device (Settings ▸ Privacy & Security ▸ Developer Mode)."
         }
     }
 }

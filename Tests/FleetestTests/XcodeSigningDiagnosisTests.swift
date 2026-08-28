@@ -32,7 +32,7 @@ final class XcodeSigningDiagnosisTests: XCTestCase {
         XCTAssertNil(XcodeSigningDiagnosis.guidance(problems: [], fullLogPath: "/tmp/x.log"))
     }
 
-    /// 1行目だけで用が足りること(拡張のバナーは1行しか出さず、続きは OUTPUT へ回る)
+    /// 1行目だけで用が足りること(何が起きたか + どこを直すか)
     func testTheFirstLineStandsOnItsOwn() throws {
         let guidance = try XCTUnwrap(XcodeSigningDiagnosis.guidance(
             problems: XcodeSigningDiagnosis.problems(inBuildLog: try realFailureLog()),
@@ -40,9 +40,19 @@ final class XcodeSigningDiagnosisTests: XCTestCase {
         let first = try XCTUnwrap(guidance.split(separator: "\n").first).trimmingCharacters(in: .whitespaces)
         XCTAssertTrue(first.contains("code-sign"), first)
         XCTAssertTrue(first.contains("physical device"), first)
-        // 「なぜシミュレータは動くのに」を1行目で答える(この誤解が実際に起きた)
-        XCTAssertTrue(first.contains("simulators need no signing"), first)
         XCTAssertFalse(first.contains("\n"))
+    }
+
+    /// **説明は書かない**(ユーザー決定 2026-08-29)。読み手が要るのは「何をすればいいか」だけで、
+    /// 状態の言い換えは手順を読めば分かる。放っておくと案内は説明で膨らむので機械で止める
+    func testTheGuidanceCarriesStepsOnlyNotExplanations() throws {
+        let guidance = try XCTUnwrap(XcodeSigningDiagnosis.guidance(
+            problems: XcodeSigningDiagnosis.problems(inBuildLog: try realFailureLog()),
+            fullLogPath: nil))
+        for explanation in ["simulators need no signing", "no account is configured",
+                            "revoked or expired", "is not in the provisioning profile"] {
+            XCTAssertFalse(guidance.contains(explanation), explanation)
+        }
     }
 
     func testStepsAreNumberedInTheOrderYouFixThem() throws {
@@ -52,7 +62,7 @@ final class XcodeSigningDiagnosisTests: XCTestCase {
         // アカウントを足すのが先(証明書もプロファイルもそこから作り直される)
         let account = try XCTUnwrap(guidance.range(of: "1. Xcode ▸ Settings ▸ Accounts: add your Apple ID"))
         let certificate = try XCTUnwrap(guidance.range(of: "2. Xcode ▸ Settings ▸ Accounts ▸ Manage Certificates"))
-        let profile = try XCTUnwrap(guidance.range(of: "3. The device is not in the provisioning profile"))
+        let profile = try XCTUnwrap(guidance.range(of: "3. Connect the device with Xcode open"))
         XCTAssertTrue(account.lowerBound < certificate.lowerBound)
         XCTAssertTrue(certificate.lowerBound < profile.lowerBound)
         XCTAssertTrue(guidance.contains("Developer Mode"), "端末側の設定も要る")
@@ -63,7 +73,7 @@ final class XcodeSigningDiagnosisTests: XCTestCase {
     func testOnlyTheDetectedStepsAreShown() {
         let guidance = XcodeSigningDiagnosis.guidance(problems: [.deviceNotInProfile], fullLogPath: nil)
         let text = guidance ?? ""
-        XCTAssertTrue(text.contains("1. The device is not in the provisioning profile"))
+        XCTAssertTrue(text.contains("1. Connect the device with Xcode open"))
         XCTAssertFalse(text.contains("add your Apple ID"), "起きていないことは言わない")
         XCTAssertFalse(text.contains("Full xcodebuild output"), "残せなかったログの在り処は書かない")
     }

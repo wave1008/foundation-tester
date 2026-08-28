@@ -483,11 +483,16 @@ test("signingGuidance: 検出したぶんだけを直す順に番号で出す", 
   const guidance = signingGuidance(
     ["noAccount", "invalidCertificate", "deviceNotInProfile"], "/tmp/bridge-build-8123.log");
   const lines = guidance.split("\n");
-  assert.match(lines[0], /実機用のブリッジに署名できません/, "1行目だけで用が足りる(バナーは1行)");
-  assert.match(lines[0], /シミュレータは署名不要/, "「なぜシミュレータは動くのか」に先回りする");
+  assert.match(lines[0], /実機用のブリッジに署名できません/, "1行目は何が起きたか + どこを直すか");
   assert.match(lines[1], /^ {2}1\. Xcode ▸ Settings ▸ Accounts に Apple ID/);
   assert.match(lines[2], /^ {2}2\. .*Manage Certificates/);
   assert.match(lines[3], /^ {2}3\. .*デベロッパモード/);
+  // **説明は書かない**(ユーザー決定 2026-08-29)。状態の言い換えは手順を読めば分かる。
+  // 放っておくと案内は説明で膨らむので機械で止める
+  for (const explanation of ["シミュレータは署名不要", "アカウントが1つも", "失効または期限切れ",
+                             "プロビジョニングプロファイルに入っていません"]) {
+    assert.doesNotMatch(guidance, new RegExp(explanation), explanation);
+  }
   assert.equal(lines[4], "xcodebuild の全出力: /tmp/bridge-build-8123.log");
 });
 

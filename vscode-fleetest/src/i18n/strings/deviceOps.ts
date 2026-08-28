@@ -84,29 +84,27 @@ export const deviceOpsStrings = {
   "deviceOps.deviceOpFailedGeneric": { ja: "device-{op} に失敗しました。", en: "device-{op} failed." },
   // 実機のブリッジが署名で建たないときの案内。**判定は CLI**(FTBridgeClient の
   // XcodeSigningDiagnosis)で、文言はここが持つ(CLAUDE.md「共有するのは判定であって文言ではない」)。
-  // 1行目だけで用が足りるように書く —— バナーは1行しか出さない
+  // **手順だけを書く** —— 状態の言い換え(「アカウントがありません」等)は手順を読めば分かる
+  // (ユーザー決定 2026-08-29)。1行目は「何が起きたか + どこを直すか」で完結させる
   "deviceOps.signing.headline": {
     ja: "実機用のブリッジに署名できません。その端末が繋がっている Mac の Xcode の署名設定を直してから、"
-      + "もう一度ブリッジを起動してください(シミュレータは署名不要なので、実機だけが止まります)。",
+      + "もう一度ブリッジを起動してください。",
     en: "Cannot code-sign the bridge runner for a physical device. Fix Xcode's signing setup on the Mac"
-      + " that the device is connected to, then start the bridge again"
-      + " (simulators need no signing, which is why only physical devices stop here).",
+      + " that the device is connected to, then start the bridge again.",
   },
   "deviceOps.signing.noAccount": {
-    ja: "Xcode ▸ Settings ▸ Accounts に Apple ID を追加する(いまアカウントが1つも登録されていません)。",
-    en: "Xcode ▸ Settings ▸ Accounts: add your Apple ID — no account is configured there.",
+    ja: "Xcode ▸ Settings ▸ Accounts に Apple ID を追加する。",
+    en: "Xcode ▸ Settings ▸ Accounts: add your Apple ID.",
   },
   "deviceOps.signing.invalidCertificate": {
-    ja: "Xcode ▸ Settings ▸ Accounts ▸ Manage Certificates で開発用証明書を作り直す"
-      + "(いまの証明書は失効または期限切れです)。",
-    en: "Xcode ▸ Settings ▸ Accounts ▸ Manage Certificates: the Apple Development certificate is revoked"
-      + " or expired — create a new one.",
+    ja: "Xcode ▸ Settings ▸ Accounts ▸ Manage Certificates で開発用証明書を作り直す。",
+    en: "Xcode ▸ Settings ▸ Accounts ▸ Manage Certificates: create a new Apple Development certificate.",
   },
   "deviceOps.signing.deviceNotInProfile": {
-    ja: "端末がプロビジョニングプロファイルに入っていません。Xcode を開いた状態で端末を接続して登録し、"
-      + "端末側の設定 ▸ プライバシーとセキュリティ ▸ デベロッパモード を ON にする。",
-    en: "The device is not in the provisioning profile: connect it with Xcode open so it gets registered,"
-      + " and turn on Developer Mode on the device (Settings ▸ Privacy & Security ▸ Developer Mode).",
+    ja: "Xcode を開いた状態で端末を接続して登録し、"
+      + "端末側の 設定 ▸ プライバシーとセキュリティ ▸ デベロッパモード を ON にする。",
+    en: "Connect the device with Xcode open so it gets registered, and turn on Developer Mode on the"
+      + " device (Settings ▸ Privacy & Security ▸ Developer Mode).",
   },
   "deviceOps.signing.fullLog": {
     ja: "xcodebuild の全出力: {path}",
