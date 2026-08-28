@@ -93,15 +93,49 @@ extension StepExecutor {
                                   inferring enabled: Bool = containerInferenceEnabled) -> FTRect? {
         guard enabled,
               let index = elements.firstIndex(where: { $0.ref == element.ref }) else { return nil }
-        if let scroller = nearestScrollableAncestor(of: element, at: index, in: elements) {
+        let tight = siblingRuleContainer(of: element, at: index, in: elements)
+        // **申告の祖先へ倒すのは「深さ由来の候補が小さすぎる」ときだけ**(2026-08-28)。
+        //
+        // 2026-08-23 に申告を無条件で優先したところ、縦リストのように**行の容器が scrollable を
+        // 申告せず外側の全画面 scrollView だけが申告する**木で容器が画面全体へ広がり、
+        // 慣性で動いている最中の見切れ・整定判定が効かなくなった(iOS xcuitest 限定の退行。
+        // maintainer-notes §4.5.1)。**それ以外は 2026-08-23 以前とまったく同じ経路**にする ——
+        // 候補が無ければ nil を返すところまで含めて(nil と「画面全体」は下流で別物として効く)。
+        //
+        // 倒す条件は**元の不具合そのものの形**: 横カルーセルではカード(164 幅)を容器に選び、
+        // カルーセル(402 幅)で切ると **42 幅**になって要素「スタンプラリー」(98 幅)を収められず、
+        // 「viewport より大きい」扱いで見切れ判定が免除された。**小さすぎる候補だけを退ける**。
+        //
+        // **収まり・重なりでは判定しない**(2026-08-28 に2案とも実機で否定)。動いている最中は
+        // 行が容器の縁・外に報告されるので、位置を見る述語は**効いてほしい瞬間だけ**申告容器へ
+        // 倒れる。代償として、位置的に無関係な候補を退ける力は失う(実アプリのコーパス
+        // `and-browser_weather_weekly` の ghost 1件。2026-08-23 以前の基準値へ戻る)——
+        // スクロール探索が別の行を撃つ実害と、警告レベルの検知1件を秤にかけた判断
+        if let tight, let scroller = nearestScrollableAncestor(of: element, at: index, in: elements),
+           let clipped = ScrollGeometry.intersection(tight, scroller.frame),
+           !canHold(clipped, element.frame) {
             return scroller.frame
         }
+        return tight
+    }
+
+    /// 「同じ深さの子を2つ持つ直近の祖先」= Compose iOS 向けの近似(申告の無い木ではこれが唯一の手)
+    private static func siblingRuleContainer(of element: ElementInfo, at index: Int,
+                                             in elements: [ElementInfo]) -> FTRect? {
         guard let ancestor = elements[..<index].last(where: { $0.depth < element.depth }),
               ancestor.frame.width > 0, ancestor.frame.height > 0
         else { return nil }
         let siblings = descendants(of: ancestor, in: elements).filter { $0.depth == element.depth }
         let inside = siblings.filter { ScrollGeometry.intersection($0.frame, ancestor.frame) != nil }
         return inside.count >= 2 ? ancestor.frame : nil
+    }
+
+    /// `outer` が `inner` を**収められる大きさ**か(位置は見ない。上の doc)。
+    /// 偽 = 「viewport として成立しない candidate」で、そのときだけ申告容器へ倒す
+    /// **1pt の丸めは許容**(木の座標は丸められて届く。ランナーの frame 照合と同じ許容値)
+    private static func canHold(_ outer: FTRect, _ inner: FTRect) -> Bool {
+        let tol = 1.0
+        return outer.width + tol >= inner.width && outer.height + tol >= inner.height
     }
 
     /// 祖先の連鎖(pre-order + depth: 手前に遡って depth が下がるたびに1段上の祖先)を辿り、

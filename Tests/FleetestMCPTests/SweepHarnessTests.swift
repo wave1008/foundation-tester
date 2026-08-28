@@ -367,7 +367,15 @@ final class SweepHarnessTests: XCTestCase {
         // 2026-08-23: ghost 1→0 / overlay 14→15。上で「親の復元に依る」と注記していた ghost は、
         // 容器推定が scrollable 申告の祖先(WebView)を優先するようになって消えた(旧は
         // `Link (540,2184 517x97)` を容器と取り違えていた = 同型が増えたら見直す、と書いた当のもの)
-        "and-browser_weather_weekly": Counts(ghost: 0, overlay: 15, stacked: 0, misses: 0,
+        // 2026-08-28: ghost 0→1 / overlay 15→14 に**戻した**。申告の祖先を無条件で優先する規則が
+        // iOS xcuitest の縦リストで容器を画面全体へ広げ、慣性で動いている最中に別の行を撃つ退行を
+        // 入れていた(maintainer-notes §4.5.1)。申告へ倒すのを「候補が小さすぎるとき」だけに
+        // 絞った結果、ここは 2026-08-23 以前の挙動へ戻る —— **上に書いてある取り違え
+        // (`Link (540,2184 517x97)` を容器にする)がそのまま復活する**。
+        // **意図した代償**: 位置を見る述語で退けようとしたが、動いている最中は行が容器の縁・外に
+        // 報告されるため**効いてほしい瞬間だけ**申告容器へ倒れ、実機で2案とも落ちた。
+        // スクロール探索が別の行を撃つ実害と、警告レベルの検知1件を秤にかけている
+        "and-browser_weather_weekly": Counts(ghost: 1, overlay: 14, stacked: 0, misses: 0,
                                              disabled: 0, offscreen: 0, warnedTappable: 2,
                                              keyboard: 0, sliver: 0, nested: 0, scrolledOut: 0),
         // 2026-08-13 採取(jma.go.jp)。missingPageContentNote /

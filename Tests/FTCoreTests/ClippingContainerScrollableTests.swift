@@ -54,6 +54,54 @@ final class ClippingContainerScrollableTests: XCTestCase {
         XCTAssertTrue(StepExecutor.isClippedByViewport(target, screen: viewport))
     }
 
+    /// **縦リストの退行**(2026-08-28・iOS xcuitest 限定。maintainer-notes §4.5.1)。
+    /// 行の容器 `#list_rows` は scrollable を申告せず、**外側の全画面 scrollView だけ**が申告する。
+    /// 申告を無条件で優先すると容器が画面全体になり、慣性で動いている最中の見切れ・整定判定が
+    /// 効かなくなって、行を移動前の座標で撃つ(`selected=-`)。
+    /// **深さ由来の候補が申告容器の中で要素を収められるなら、そちらを採る**
+    func testKeepsTheTighterRowContainerWhenOnlyTheOuterScrollViewDeclaresScroll() {
+        let tree = [
+            el(1, "scrollView", 1, 0, 0, 402, 874, scrollable: true),   // 全画面
+            el(8, "other", 2, 16, 230, 370, 462),                       // #list_rows(申告なし)
+            el(20, "button", 3, 16, 443, 370, 56, label: "行 30"),
+            el(22, "button", 3, 16, 499, 370, 56, label: "行 31"),
+        ]
+        XCTAssertEqual(StepExecutor.clippingContainer(of: tree[2], in: tree, inferring: true),
+                       FTRect(x: 16, y: 230, width: 370, height: 462),
+                       "行を収められる #list_rows を容器にする(画面全体へ広げない)")
+    }
+
+    /// **動いている最中でも容器は変わらない**(2026-08-28)。慣性で動く木は一部の行を容器の外へ
+    /// 報告するが、対象の行が容器に重なっている限り容器は変わらない
+    func testKeepsTheRowContainerWhileOtherRowsAreReportedOutsideIt() {
+        // 実測(失敗時の木): 送り出された行は容器(230..692)の外に報告され、残りは中に居る
+        let tree = [
+            el(1, "scrollView", 1, 0, 0, 402, 874, scrollable: true),
+            el(8, "other", 2, 16, 230, 370, 462),
+            el(20, "button", 3, 16, 60, 370, 56, label: "行 23"),    // 送り出されて容器の外
+            el(21, "button", 3, 16, 116, 370, 56, label: "行 24"),   // 外
+            el(22, "button", 3, 16, 275, 370, 56, label: "行 27"),   // 中
+            el(23, "button", 3, 16, 443, 370, 56, label: "行 30"),   // 中(これが対象)
+        ]
+        XCTAssertEqual(StepExecutor.clippingContainer(of: tree[5], in: tree, inferring: true),
+                       FTRect(x: 16, y: 230, width: 370, height: 462),
+                       "容器の外に報告されていても #list_rows のまま(画面全体へ広げない)")
+    }
+
+    /// 逆向きの対照: 深さ由来の候補が**要素を収められない**なら申告容器へ倒す。
+    /// カルーセルと同じ形を最小化したもの —— この向きを失うと 2026-08-23 の修正が戻る
+    func testFallsBackToTheDeclaredScrollerWhenTheTightCandidateCannotHoldTheElement() {
+        let tree = [
+            el(1, "other", 1, 0, 432, 402, 199, scrollable: true),      // カルーセル
+            el(2, "clickable", 2, 360, 432, 164, 199),                  // 右にはみ出すカード
+            el(3, "staticText", 3, 360, 563, 98, 20, label: "スタンプラリー"),
+            el(4, "staticText", 3, 360, 614, 30, 17, label: "未読"),
+        ]
+        XCTAssertEqual(StepExecutor.clippingContainer(of: tree[2], in: tree, inferring: true),
+                       FTRect(x: 0, y: 432, width: 402, height: 199),
+                       "カードは容器で切ると幅 42 で要素(98)を収められないので申告容器を採る")
+    }
+
     /// 申告の無い木(Compose iOS の形)は従来の規則のまま = カードが容器(挙動を変えない)
     func testFallsBackToTheSiblingRuleWhenNothingDeclaresScroll() {
         let tree = carouselTree(declaresScroll: false)
