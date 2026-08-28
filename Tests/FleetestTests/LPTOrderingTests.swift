@@ -32,14 +32,42 @@ final class LPTOrderingTests: XCTestCase {
 
     private func ids(_ items: [ScenarioRunItem]) -> [String] { items.map(\.info.id) }
 
+    /// **窓の内側を絶対日付で書かない**(2026-08-28)。`LPTOrdering.historyDays` は 30 日で、
+    /// 固定日付のフィクスチャは**その日付が窓から外れた瞬間に恒久的に落ちる**時限式になる ——
+    /// 実際 2026-07-29 固定の記録が 08-28 のセッション中に窓を割り、同じコードが早朝は緑・
+    /// 昼は赤になった(失敗の後に `logs[0]` を触っていたためクラスごとクラッシュし、
+    /// LPTOrderingTests 8本が丸ごと消えていた)。**窓の内側は「今」からの相対で書く**
+    private static func iso(_ date: Date) -> String {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        f.timeZone = TimeZone(identifier: "UTC")
+        return f.string(from: date)
+    }
+
+    /// 窓の内側であることが自明な、ごく最近の時刻(境界に寄せない)
+    private static let recent = Date().addingTimeInterval(-24 * 60 * 60)
+
+    /// `results/runs/<YYYY-MM>/` の月ディレクトリ。**startedAt から導く**
+    /// (固定文字列にすると、古い記録を書くテストが実在しない月へ落ちる)
+    private func monthDirectory(for startedAt: String) -> String {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        let date = f.date(from: startedAt) ?? Self.recent
+        let out = DateFormatter()
+        out.dateFormat = "yyyy-MM"
+        out.timeZone = TimeZone(identifier: "UTC")
+        return out.string(from: date)
+    }
+
     /// 実際のレイアウト results/runs/<YYYY-MM>/<runID>/scenarios/<id>.json に1件書く。
     private func writeRecord(scenarioID: String, durationMs: Int,
-                             startedAt: String = "2026-07-29T00:00:00Z",
+                             startedAt: String = iso(recent),
                              platform: String = "android",
                              machine: String = "TEST",
                              runID: String = "20260729-000000Z-TEST-0001") throws {
         let runDir = project.rootURL
-            .appendingPathComponent("results/runs/2026-07/\(runID)/scenarios")
+            .appendingPathComponent(
+                "results/runs/\(monthDirectory(for: startedAt))/\(runID)/scenarios")
         try FileManager.default.createDirectory(at: runDir, withIntermediateDirectories: true)
         let record: [String: Any] = [
             "schemaVersion": 1, "scenarioID": scenarioID, "title": scenarioID,
@@ -105,7 +133,9 @@ final class LPTOrderingTests: XCTestCase {
     func testCorruptRecordIsIgnoredNotFatal() throws {
         // 書き込み途中・別スキーマの JSON が混ざっても実行を止めない
         let runDir = project.rootURL
-            .appendingPathComponent("results/runs/2026-07/20260729-000000Z-TEST-0001/scenarios")
+            .appendingPathComponent(
+                "results/runs/\(monthDirectory(for: Self.iso(Self.recent)))"
+                    + "/20260729-000000Z-TEST-0001/scenarios")
         try FileManager.default.createDirectory(at: runDir, withIntermediateDirectories: true)
         try Data("{ 壊れている".utf8).write(to: runDir.appendingPathComponent("broken.json"))
 
@@ -141,7 +171,8 @@ final class LPTOrderingTests: XCTestCase {
         let (result, logs) = apply([item("短"), item("新規"), item("長")])
         XCTAssertEqual(ids(result), ["新規", "長", "短"])
         XCTAssertEqual(logs.count, 1)
-        XCTAssertTrue(logs[0].contains("2/3"), "実績のあった件数を出す: \(logs[0])")
+        guard let firstLog = logs.first else { XCTFail("ログが1本も出ていない"); return }
+        XCTAssertTrue(firstLog.contains("2/3"), "実績のあった件数を出す: \(firstLog)")
     }
 
     func testHistoryFromAnotherPlatformIsNotUsed() throws {
@@ -153,7 +184,8 @@ final class LPTOrderingTests: XCTestCase {
         let (result, logs) = apply([item("Android専用"), item("両対応")])
         XCTAssertEqual(ids(result), ["両対応", "Android専用"],
                        "android の実績が無い「両対応」は実績なし扱いで先頭")
-        XCTAssertTrue(logs[0].contains("1/2"), "android の実績があるのは1件: \(logs[0])")
+        guard let firstLog = logs.first else { XCTFail("ログが1本も出ていない"); return }
+        XCTAssertTrue(firstLog.contains("1/2"), "android の実績があるのは1件: \(firstLog)")
     }
 
     /// 窓は**シナリオごとの観測数**なので、他のシナリオだけを含む run が何本挟まっても
@@ -169,7 +201,8 @@ final class LPTOrderingTests: XCTestCase {
 
         let (result, logs) = apply([item("毎回"), item("たまにしか回らない")])
         XCTAssertEqual(ids(result), ["毎回", "たまにしか回らない"], "実績どおり長い方が先")
-        XCTAssertTrue(logs[0].contains("2/2"), "両方に実績があること: \(logs[0])")
+        guard let firstLog = logs.first else { XCTFail("ログが1本も出ていない"); return }
+        XCTAssertTrue(firstLog.contains("2/2"), "両方に実績があること: \(firstLog)")
     }
 
     /// 遡りは無制限ではない。結果 JSON は run × シナリオ数で増え続ける(実測で 1 プロジェクト
@@ -188,7 +221,8 @@ final class LPTOrderingTests: XCTestCase {
         let (result, logs) = apply([item("毎回"), item("古いだけ")])
         XCTAssertEqual(ids(result), ["古いだけ", "毎回"],
                        "上限外の run しか実績が無いものは「実績なし」= 先頭")
-        XCTAssertTrue(logs[0].contains("1/2"), "実績ありは「毎回」だけ: \(logs[0])")
+        guard let firstLog = logs.first else { XCTFail("ログが1本も出ていない"); return }
+        XCTAssertTrue(firstLog.contains("1/2"), "実績ありは「毎回」だけ: \(firstLog)")
     }
 
     func testEmptyRunDirectoryDoesNotConsumeTheWindow() throws {
@@ -199,7 +233,8 @@ final class LPTOrderingTests: XCTestCase {
         // 実行中の run(空)。名前が新しいので走査は先にこちらへ当たる
         try FileManager.default.createDirectory(
             at: project.rootURL.appendingPathComponent(
-                "results/runs/2026-07/20260729-999999Z-TEST-9999/scenarios"),
+                "results/runs/\(monthDirectory(for: Self.iso(Self.recent)))"
+                    + "/20260729-999999Z-TEST-9999/scenarios"),
             withIntermediateDirectories: true)
 
         // historyRuns=1 が最も厳しい: 空ディレクトリを1件と数えると枠が尽きて実績ゼロになる
@@ -225,8 +260,9 @@ final class LPTOrderingTests: XCTestCase {
 
         let (result, logs) = apply([item("短"), item("長")])
         XCTAssertEqual(ids(result), ["長", "短"], "ios の run で窓を埋めても android の実績で並べる")
-        XCTAssertTrue(logs[0].contains("2/2"),
-                      "android の実績が2件とも窓に入っている: \(logs[0])")
+        guard let firstLog = logs.first else { XCTFail("ログが1本も出ていない"); return }
+        XCTAssertTrue(firstLog.contains("2/2"),
+                      "android の実績が2件とも窓に入っている: \(firstLog)")
     }
 
     func testWindowScanIsBoundedWhenPlatformHasNoRecentRuns() throws {
@@ -244,7 +280,8 @@ final class LPTOrderingTests: XCTestCase {
 
         let (result, logs) = apply([item("短"), item("長")])
         XCTAssertEqual(ids(result), ["短", "長"], "打ち切ったら並べ替えない(元の順序)")
-        XCTAssertTrue(logs[0].contains("0/2"), "android の実績は窓に入らない: \(logs[0])")
+        guard let firstLog = logs.first else { XCTFail("ログが1本も出ていない"); return }
+        XCTAssertTrue(firstLog.contains("0/2"), "android の実績は窓に入らない: \(firstLog)")
     }
 
     func testOldRecordsOutsideTheWindowAreIgnored() throws {
@@ -271,7 +308,8 @@ final class LPTOrderingTests: XCTestCase {
         let (result, logs) = apply([item("T"), item("S")], machine: "この機械")
         XCTAssertEqual(ids(result), ["T", "S"],
                        "S は同一機の実績(1,000ms)で評価され、リモート機の90,000msに引きずられない")
-        XCTAssertTrue(logs[0].contains("(same-machine runs preferred)"))
+        guard let firstLog = logs.first else { XCTFail("ログが1本も出ていない"); return }
+        XCTAssertTrue(firstLog.contains("(same-machine runs preferred)"))
     }
 
     /// 同一 machine の実績が無いシナリオは全 machine 混合の中央値へフォールバックする
@@ -281,6 +319,7 @@ final class LPTOrderingTests: XCTestCase {
 
         let (result, logs) = apply([item("T"), item("S")], machine: "この機械")
         XCTAssertEqual(ids(result), ["S", "T"], "この機械の実績が無いので混合(リモート機)の中央値で並ぶ")
-        XCTAssertTrue(logs[0].contains("2/2"))
+        guard let firstLog = logs.first else { XCTFail("ログが1本も出ていない"); return }
+        XCTAssertTrue(firstLog.contains("2/2"))
     }
 }
