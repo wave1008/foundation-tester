@@ -154,10 +154,14 @@ struct ApiDevicesUp: AsyncParsableCommand {
             let repoRoot = noBridge ? nil : try RepoRoot.find()
             // **リモートのぶんはその機械へ投げる**(手元の起動と同時に走る。RemoteDeviceFanout)。
             // 起動は機械ごとに独立した資源を使うので、「同時2台」の上限は機械ごとに持てる
-            let hosts = RemoteDeviceFanout.remoteMachines(
+            let machines = RemoteDeviceFanout.remoteMachines(
                 project: project, profile: profile, deviceMachine: deviceMachine)
+            // **意図を変えるフラグは中継しないと黙って無視される**(FTCore.RemoteDispatch.build と
+            // 同じ規律)—— --no-bridge を渡さないと、向こうだけブリッジを供給する。
+            // --restart / --cpu-render は手元の watchdog が持つ名簿なので中継しない
             async let fanout: Void = RemoteDeviceFanout.dispatch(
-                subcommand: "devices-up", hosts: hosts, project: project, profile: profile,
+                subcommand: "devices-up", machines: machines, project: project, profile: profile,
+                extraArgs: noBridge ? ["--no-bridge"] : [],
                 relay: { ApiDeviceEventEmitter.emitRaw($0) })
 
             // deviceStopping/deviceStarting/deviceFinished は bootAll のワーカータスクから並行に
@@ -333,10 +337,10 @@ struct ApiDevicesDown: AsyncParsableCommand {
                 noteAutoMachine: { Self.logStderr($0) },
                 warn: { Self.logStderr($0) })
             // リモートのぶんはその機械へ投げる(起動と同じ分散。RemoteDeviceFanout)
-            let hosts = RemoteDeviceFanout.remoteMachines(
+            let machines = RemoteDeviceFanout.remoteMachines(
                 project: project, profile: profile, deviceMachine: deviceMachine)
             async let fanout: Void = RemoteDeviceFanout.dispatch(
-                subcommand: "devices-down", hosts: hosts, project: project, profile: profile,
+                subcommand: "devices-down", machines: machines, project: project, profile: profile,
                 relay: { ApiDeviceEventEmitter.emitRaw($0) })
 
             // shutdownProfile と同じ ios→android 逐次(1台落ちるごとに deviceFinished を出すので、
@@ -707,7 +711,7 @@ private struct ApiDeviceFinishedEvent: Encodable {
     /// 失敗イベント。**署名の欠けだけは機械可読でも返す**(受け手が自分の言語で案内を出せるように)
     static func failure(_ error: Error) -> ApiDeviceFinishedEvent {
         guard case .codeSigningIncomplete(let problems, let logPath)? = error as? LauncherError else {
-            return ApiDeviceFinishedEvent.failure(error)
+            return ApiDeviceFinishedEvent(ok: false, error: error.localizedDescription)
         }
         return ApiDeviceFinishedEvent(
             ok: false, error: error.localizedDescription,

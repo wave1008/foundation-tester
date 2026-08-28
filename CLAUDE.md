@@ -198,6 +198,10 @@
   (手元で `api device-up --name` を撃つと、同名の台が別の機械にも居るとき**別の機械の設定で
   この Mac にシミュレータが1台できる**。`findDevice` は (machine, name) で引き、
   `--device-machine` の既定は手元)。
+  **中継する側が machine を埋める**(3経路とも: `RemoteMonitorFanout.ingest` /
+  `RemoteDeviceFanout.machineStamped` / `ApiRunMachineFanout` の rehost)—— 子は
+  `--device-machine local` で走るので自分の台を `machine:null` と名乗り、そのまま流すと拡張が
+  **同名の手元のタイル**を書き換える(機械ごとに2台ずつ起きていても「全体で2台」に見える)。
   **自動修復(watchdog)はリモートの台を見ない**(修復手段が手元にしか効かず、記録が name 単位)。
   **ホストの負荷(MEM/CPU/GPU/FM)も同じ** —— 拡張が
   `remote exec <machine> -- api host-metrics` を機械ごとに立て、ツールバーのグラフを

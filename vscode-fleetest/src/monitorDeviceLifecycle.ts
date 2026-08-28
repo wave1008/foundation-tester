@@ -61,9 +61,10 @@ export function isDeviceOpEvent(value: unknown): value is DeviceOpEvent {
  * deviceStopping は --restart 指定デバイスの down 開始通知)。 */
 // machine: そのデバイスが居る機械(マシン名 = エイリアス。手元は null/省略)。**同名のデバイスが
 // 別の機械にも居るのが通常**なので、名前だけではタイルを特定できない
-// (Sources/fleetest/ApiDeviceCommands.swift の ApiDevicesUpLifecycleEvent と対。リモートへ
-// 分散した分は子プロセスの行がそのまま流れてくる)。**キーは "machine"**(2026-08-26 改名。
-// ProtocolVersion 9)。
+// (Sources/fleetest/ApiDeviceCommands.swift の ApiDevicesUpLifecycleEvent と対)。
+// **リモートへ分散した分は親が machine を入れて中継する**(RemoteDeviceFanout.machineStamped)——
+// 子は `--device-machine local` で走るので自分では null を名乗る。**キーは "machine"**
+// (2026-08-26 改名。ProtocolVersion 9)。
 export type DevicesUpEvent =
   | { readonly kind: "log"; readonly message: string }
   | { readonly kind: "deviceStopping"; readonly name: string; readonly platform: string; readonly machine?: string | null }

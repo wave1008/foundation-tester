@@ -893,6 +893,14 @@ witness は `RemoteDispatchTests.testRelayRewriteMapsTheRunnerWorkDirOntoTheLoca
   **起動直後の死が3回続いたら諦める**(版が古い機械で無限に ssh を張らない)
 - **`remote exec` は何も転送しない**ので、fan-out は**先にプロジェクトを rsync する**
   (`RemoteProjectSync`。転送の規則は run のディスパッチと共有 = 二重に持たない)
+- **子の NDJSON には親が machine を入れる**(2026-08-29 に実バグ)。子は `--device-machine local`
+  で走る(エイリアスはリモートへ出さない = §0 の規律①)ので、per-device のイベントを
+  **machine:null** で返す。そのまま中継すると拡張は同名の**手元のタイル**を書き換えるため、
+  機械ごとに2台ずつ起きていても画面上は「全体で2台しか起動していない」ように見える
+  (これが「リモートを使っても並列にならない」の正体だった)。現在は
+  `RemoteDeviceFanout.machineStamped` が deviceStopping/deviceStarting/deviceFinished に machine を
+  入れ、log 行の先頭に `[<machine>]` を付ける —— 監視の `RemoteMonitorFanout.ingest`・run の
+  `ApiRunMachineFanout` の rehost と**同じ規律**(中継する側が3つとも machine を埋める)
 
 - **ホストの負荷(MEM/CPU/GPU/FM)もその機械で採る**(2026-08-28)。手元の `api host-metrics` は
   **この Mac の値しか出せない**ので、リモート機のぶんは拡張が

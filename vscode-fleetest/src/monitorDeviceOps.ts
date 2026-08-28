@@ -523,10 +523,13 @@ export class MonitorDeviceOps {
     // 即時反映する。イベント形は共通(isDevicesUpEvent)。stderr は診断ログのみでプレーンテキスト。
     const label = kind === "up" ? "devices up" : "devices down";
 
-    // このジョブのクロージャ内だけで有効な「操作を掴んだがまだ完了していないデバイス名」集合。
+    // このジョブのクロージャ内だけで有効な「操作を掴んだがまだ完了していないデバイス」集合。
     // close 時に残っていればクラッシュ・kill とみなし、deviceOpBusy(null) で表示を剥がす
     // (正常終了なら deviceFinished で空になっているはずなので no-op)。
-    const startedNames = new Set<string>();
+    // **鍵は (machine, name)** —— 名前だけだと、リモートの台の deviceFinished が同名の手元の台を
+    // 集合から消し、手元がクラッシュしたときに表示が剥がれずに残る
+    const started = new Map<string, { readonly name: string; readonly machine?: string }>();
+    const startedKey = (name: string, machine?: string): string => `${machine ?? ""}\t${name}`;
     const stdoutParser = new NdjsonParser(
       (value) => {
         if (!isDevicesUpEvent(value)) {
@@ -543,16 +546,18 @@ export class MonitorDeviceOps {
             // down 開始(up では --restart 対象)。ストリームをこのデバイスだけ止め(simctl/adb に
             // 殺される前にタイルを切断表示へ倒す。他デバイスのライブ映像は残す)、「シャットダウン中」に。
             // **host も渡す** —— 同名が別の機械にも居ると、名前だけでは別タイルを触ってしまう
-            startedNames.add(value.name);
+            started.set(startedKey(value.name, value.machine ?? undefined),
+              { name: value.name, machine: value.machine ?? undefined });
             this.deps.stopDeviceStreams(value.name, value.machine ?? undefined);
             this.deps.post({ type: "deviceOpBusy", name: value.name, machine: value.machine ?? undefined, op: "down", status: "running" });
             break;
           case "deviceStarting":
-            startedNames.add(value.name);
+            started.set(startedKey(value.name, value.machine ?? undefined),
+              { name: value.name, machine: value.machine ?? undefined });
             this.deps.post({ type: "deviceOpBusy", name: value.name, machine: value.machine ?? undefined, op: "up", status: "running" });
             break;
           case "deviceFinished":
-            startedNames.delete(value.name);
+            started.delete(startedKey(value.name, value.machine ?? undefined));
             if (kind === "down") {
               // down 中はモニター pause で state 更新が来ないため、この per-device 通知でそのタイルを
               // 即「未起動」へ倒す(offline を先行反映。opBusy もここで解除される)。
@@ -585,10 +590,10 @@ export class MonitorDeviceOps {
       stdoutParser.end();
       // クラッシュ・kill でタイルの「起動中」表示が永久に残らないためのクリーンアップ
       // (正常終了なら deviceFinished 済みでこの Set は空 = 無害な no-op)。
-      for (const name of startedNames) {
-        this.deps.post({ type: "deviceOpBusy", name, op: null, status: null });
+      for (const { name, machine } of started.values()) {
+        this.deps.post({ type: "deviceOpBusy", name, machine, op: null, status: null });
       }
-      startedNames.clear();
+      started.clear();
       this.deps.outputChannel.appendLine(
         t("deviceOps.log.devicesClosed", { kind, exitCode: String(exitCode) }),
       );
