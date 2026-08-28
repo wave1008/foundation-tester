@@ -790,7 +790,10 @@ export class MonitorDeviceOps {
           }),
         );
         setTimeout(
-          () => this.runDeviceOpAttempt(name, op, attempt + 1, finishOnce, udid, serial),
+          // **machine を落とさない** —— 落とすと再試行だけ手元で走り、別の機械の台に対して
+          // 「そんな UDID の実機は無い(認識しているのは…)」という**見当違いのエラー**が
+          // 最後に出て、本当の失敗理由(向こうの署名エラー等)が隠れる(実害 2026-08-29)
+          () => this.runDeviceOpAttempt(name, op, attempt + 1, finishOnce, udid, serial, machine),
           MonitorDeviceOps.deviceUpRetryDelayMs,
         );
         return;

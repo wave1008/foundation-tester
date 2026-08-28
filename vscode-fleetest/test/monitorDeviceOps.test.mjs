@@ -311,6 +311,39 @@ test("リモートのデバイスの起動はその機械で実行する(remote 
   }
 });
 
+// **再試行も同じ機械で走らせる**(実害 2026-08-29): 落とすと再試行だけ手元で走り、
+// 別の機械の実機に対して「そんな UDID の実機は無い(認識しているのは…手元の3台)」という
+// 見当違いのエラーが最後に出て、本当の失敗理由(向こうの署名エラー)が隠れた。
+test("up の再試行もその機械で実行する(machine を落とさない)", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleetest-deviceops-retry-"));
+  const binaryPath = path.join(dir, "fleetest");
+  // 1回目だけ失敗して再試行を起こし、2回目は成功してキューを空にする
+  fs.writeFileSync(binaryPath, `#!/bin/sh
+echo "$@" >> "${path.join(dir, "argv")}"
+if [ -f "${path.join(dir, "failed-once")}" ]; then exit 0; fi
+touch "${path.join(dir, "failed-once")}"
+exit 1
+`);
+  fs.chmodSync(binaryPath, 0o755);
+  const { deps } = makeDeps(binaryPath);
+  const deviceOps = new MonitorDeviceOps(deps);
+  try {
+    deviceOps.enqueueLifecycleJob({
+      kind: "device", name: "iPhone 13", op: "up", machine: "M1Ultra",
+      udid: "00008110-001460910E0A201E",
+    });
+    // 再試行は 3 秒後。キューが空くまで(= 2回目が終わるまで)待つ
+    await waitUntilIdle(deviceOps, 10000);
+    const lines = argvLines(dir);
+    assert.equal(lines.length, 2, "1回目 + 再試行");
+    for (const [index, line] of lines.entries()) {
+      assert.match(line, /^remote exec M1Ultra -- api device-up/, `${index + 1}回目もその機械で起こす`);
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("手元のデバイスは remote exec を経由せず、手元の台に絞られる", async () => {
   const { dir, binaryPath } = makeMockBinary();
   const { deps } = makeDeps(binaryPath);
