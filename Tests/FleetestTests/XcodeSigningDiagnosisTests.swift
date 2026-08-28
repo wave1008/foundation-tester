@@ -29,8 +29,7 @@ final class XcodeSigningDiagnosisTests: XCTestCase {
     func testTheLockedKeychainIsPickedUp() {
         let log = "error: User interaction is not allowed. (in target 'FleetestRunnerApp')"
         XCTAssertEqual(XcodeSigningDiagnosis.problems(inBuildLog: log), [.keychainLocked])
-        let guidance = XcodeSigningDiagnosis.guidance(problems: [.keychainLocked], fullLogPath: nil) ?? ""
-        XCTAssertTrue(guidance.contains("security unlock-keychain"), guidance)
+        XCTAssertNotNil(XcodeSigningDiagnosis.guidance(problems: [.keychainLocked], fullLogPath: nil))
     }
 
     func testAnUnrelatedFailureIsLeftAlone() {
@@ -52,52 +51,36 @@ final class XcodeSigningDiagnosisTests: XCTestCase {
         XCTAssertFalse(first.contains("\n"))
     }
 
-    /// **画面の道順は書かない**(ユーザー決定)。Xcode も iOS も版ごとに UI が変わるので、
-    /// 書いた道順は必ず古くなる(2026-08-29 に「Manage Certificates… が見つからない」で詰まった)。
-    /// **メニューの区切り記号を1つも置かない**ことで機械的に守る
-    func testTheGuidanceDoesNotWalkThroughAnyUI() throws {
+    /// **案内は2行だけ**(ユーザー決定 2026-08-29): どこを直すか + 生ログの在り処。
+    /// **直し方は書かない** —— Xcode も macOS も版ごとに手順が変わり、書いた手順は必ず古くなる
+    /// (実際「Manage Certificates… が見つからない」で詰まった)。放っておくと案内は手順と説明で
+    /// 膨らむので、**行数と中身の両方**を機械で止める
+    func testTheGuidanceIsTwoLinesAndTellsNoSteps() throws {
         let guidance = try XCTUnwrap(XcodeSigningDiagnosis.guidance(
-            problems: XcodeSigningProblem.allCases, fullLogPath: nil))
-        XCTAssertFalse(guidance.contains("▸"), guidance)
-        XCTAssertFalse(guidance.contains("Manage Certificates"), guidance)
-    }
-
-    /// **説明は書かない**(ユーザー決定 2026-08-29)。読み手が要るのは「何をすればいいか」だけで、
-    /// 状態の言い換えは手順を読めば分かる。放っておくと案内は説明で膨らむので機械で止める
-    func testTheGuidanceCarriesStepsOnlyNotExplanations() throws {
-        let guidance = try XCTUnwrap(XcodeSigningDiagnosis.guidance(
-            problems: XcodeSigningDiagnosis.problems(inBuildLog: try realFailureLog()),
-            fullLogPath: nil))
-        for explanation in ["simulators need no signing", "no account is configured",
-                            "revoked or expired", "is not in the provisioning profile"] {
-            XCTAssertFalse(guidance.contains(explanation), explanation)
+            problems: XcodeSigningProblem.allCases, fullLogPath: "/tmp/bridge-build-8123.log"))
+        let lines = guidance.split(separator: "\n")
+        XCTAssertEqual(lines.count, 2, guidance)
+        XCTAssertEqual(String(lines[1]), "Full xcodebuild output: /tmp/bridge-build-8123.log")
+        // 手順・画面の道順・状態の言い換えのどれも出さない
+        for forbidden in ["1.", "▸", "Manage Certificates", "Apple ID", "keychain", "Developer Mode",
+                         "developmentTeam", "revoked or expired", "simulators need no signing"] {
+            XCTAssertFalse(guidance.contains(forbidden), forbidden)
         }
     }
 
-    func testStepsAreNumberedInTheOrderYouFixThem() throws {
-        let guidance = try XCTUnwrap(XcodeSigningDiagnosis.guidance(
-            problems: XcodeSigningDiagnosis.problems(inBuildLog: try realFailureLog()),
-            fullLogPath: "/tmp/bridge-build-8123.log"))
-        // アカウントを足すのが先(証明書もプロファイルもそこから作り直される)
-        let account = try XCTUnwrap(guidance.range(of: "1. Add your Apple ID to Xcode"))
-        let certificate = try XCTUnwrap(guidance.range(of: "2. Delete the revoked Apple Development certificate"))
-        let profile = try XCTUnwrap(guidance.range(of: "3. Turn on Developer Mode on the device"))
-        XCTAssertTrue(account.lowerBound < certificate.lowerBound)
-        XCTAssertTrue(certificate.lowerBound < profile.lowerBound)
-        XCTAssertTrue(guidance.contains("Developer Mode"), "端末側の設定も要る")
-        // **Team の正は fleetest の設定**(プロジェクトの Signing & Capabilities では直せない ——
-        // .xcodeproj は xcodegen が生成し、DEVELOPMENT_TEAM は毎回コマンドラインで上書きされる)
-        XCTAssertTrue(guidance.contains("developmentTeam"), "どこに Team ID を書くかを示す")
-        XCTAssertTrue(guidance.contains("Full xcodebuild output: /tmp/bridge-build-8123.log"),
-                      "生ログの在り処を必ず示す")
+    /// 生ログを残せなかったときは在り処を書かない(見出しだけ)
+    func testWithoutALogPathOnlyTheHeadlineIsShown() throws {
+        let guidance = try XCTUnwrap(
+            XcodeSigningDiagnosis.guidance(problems: [.deviceNotInProfile], fullLogPath: nil))
+        XCTAssertFalse(guidance.contains("\n"), guidance)
+        XCTAssertFalse(guidance.contains("Full xcodebuild output"))
     }
 
-    func testOnlyTheDetectedStepsAreShown() {
-        let guidance = XcodeSigningDiagnosis.guidance(problems: [.deviceNotInProfile], fullLogPath: nil)
-        let text = guidance ?? ""
-        XCTAssertTrue(text.contains("1. Turn on Developer Mode on the device"))
-        XCTAssertFalse(text.contains("Apple ID"), "起きていないことは言わない")
-        XCTAssertFalse(text.contains("Full xcodebuild output"), "残せなかったログの在り処は書かない")
+    /// **どの種別でも案内は同じ** —— 種別は「署名で止まった」と言い切るためだけに使う
+    func testEveryProblemProducesTheSameGuidance() {
+        let one = XcodeSigningDiagnosis.guidance(problems: [.noAccount], fullLogPath: nil)
+        let another = XcodeSigningDiagnosis.guidance(problems: [.keychainLocked], fullLogPath: nil)
+        XCTAssertEqual(one, another)
     }
 
     /// **機械可読の raw 値は拡張との契約**(NDJSON の signingProblems → 拡張の signingGuidance)。

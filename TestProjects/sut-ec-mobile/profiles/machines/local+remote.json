@@ -100,20 +100,20 @@
         "udid": "73FA356F-831B-4F0B-A0AE-E4CD31CB8848"
       },
       {
-        "machine": "M1Ultra",
-        "name": "iPhone snb",
-        "kind": "physical",
-        "os": "26.5.2",
-        "udid": "00008110-000805001188201E",
-        "model": "iPhone SE (3rd generation)"
-      },
-      {
         "machine": "local",
         "name": "iPhone SE3",
         "kind": "physical",
         "os": "26.6",
         "udid": "00008110-000260242EEB801E",
         "model": "iPhone SE (3rd generation)"
+      },
+      {
+        "machine": "local",
+        "name": "iPhone 13",
+        "kind": "physical",
+        "os": "26.6.1",
+        "udid": "00008110-001460910E0A201E",
+        "model": "iPhone 13"
       }
     ]
   },

@@ -15,9 +15,38 @@
 //     普通(手元の台は両方の台帳に居る)なので、重複はエラーではない。**入力の順序で決まる**ので
 //     呼び出し側はファイル名順など安定した順で渡すこと
 //
-// 純粋関数(I/O を持たない)。テストは Tests/FleetestTests/MachineInventoryTests.swift。
+// **I/O は loadAll だけ**(残りは純粋関数)。テストは Tests/FleetestTests/MachineInventoryTests.swift。
+
+import Foundation
 
 public enum MachineInventory {
+
+    /// machines/ の全マシンプロファイル。**ファイル名順**(下の重複解決が入力順で決まるので、
+    /// 走査順で結果が揺れないようにする)。壊れた JSON は警告して飛ばす —— 実行プロファイルを
+    /// 選んでいないときは「見えるものを見せる」経路なので、1枚の壊れた台帳で全部を止めない
+    /// (選んでいるときは従来どおり decodeFailed で落ちる)。
+    /// **ここだけが I/O** —— 下の2つは純粋関数
+    public static func loadAll(project: TestProject, warn: (String) -> Void) -> [MachineProfile] {
+        ProfileResolver.machineNames(project: project).sorted().compactMap { name in
+            let url = project.machinesDir.appendingPathComponent("\(name).json")
+            guard let data = try? Data(contentsOf: url),
+                  let profile = try? JSONDecoder().decode(MachineProfile.self, from: data) else {
+                warn("skipping machine profile \(name): it cannot be read")
+                return nil
+            }
+            return profile
+        }
+    }
+
+    /// 畳んだカタログを1つのマシンプロファイルの姿へ戻す(`machine` は各デバイスに焼き込み済み
+    /// なので既定は持たない)。**既存の (machine, name) 解決をそのまま使うため** ——
+    /// 探索の規律を2つ持たない(ApiDeviceOperation.findDevice / RunProfileScope と同じ入力にする)
+    public static func mergedProfile(_ entries: [DeviceMachineGrouping.CatalogEntry]) -> MachineProfile {
+        MachineProfile(
+            machine: nil,
+            ios: MachineDeviceList(devices: entries.filter { $0.platform == "ios" }.map(\.spec)),
+            android: MachineDeviceList(devices: entries.filter { $0.platform == "android" }.map(\.spec)))
+    }
 
     /// 複数のマシンプロファイルを1つのカタログへ畳む。`registry` はリモート実行の登録簿の
     /// マシン名(手元は登録簿に載らないので常に残す)。並びは渡された台帳の順 → その中は

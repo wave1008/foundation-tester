@@ -81,4 +81,64 @@ final class MachineInventoryTests: XCTestCase {
             registry: [])
         XCTAssertEqual(names(entries), ["ios:local/A"])
     }
+
+    // MARK: - loadAll / mergedProfile
+    //
+    // 「(プロファイルなし)」で**タイルからブリッジを起動できる**ことを支える2つ
+    // (ApiDeviceOperation.run が台帳を1つに決められず落ちていた。実害 2026-08-29)。
+
+    private func projectWithMachines(_ files: [String: String]) throws -> TestProject {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("fleetest-machine-inventory-\(UUID().uuidString)")
+        let machines = root.appendingPathComponent("profiles/machines")
+        try FileManager.default.createDirectory(at: machines, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+        for (name, body) in files {
+            try body.write(to: machines.appendingPathComponent("\(name).json"),
+                           atomically: true, encoding: .utf8)
+        }
+        return TestProject(name: "p", rootURL: root)
+    }
+
+    func testLoadAllReadsEveryLedgerInFileNameOrder() throws {
+        // **並びが結果を決める**(observableEntries の重複解決は入力順で先頭を採る)ので固定する
+        let project = try projectWithMachines([
+            "zzz": #"{"ios":{"devices":[{"name":"Z"}]}}"#,
+            "aaa": #"{"ios":{"devices":[{"name":"A"}]}}"#,
+        ])
+        let loaded = MachineInventory.loadAll(project: project) { _ in
+            XCTFail("読める台帳で警告は出ない")
+        }
+        XCTAssertEqual(loaded.map { $0.ios?.devices?.first?.name }, ["A", "Z"])
+    }
+
+    func testABrokenLedgerIsSkippedWithAWarningInsteadOfStoppingEverything() throws {
+        // 1枚壊れていても残りは見せる —— ここは「見えるものを見せる」経路
+        let project = try projectWithMachines([
+            "broken": "{ not json",
+            "good": #"{"ios":{"devices":[{"name":"A"}]}}"#,
+        ])
+        var warnings: [String] = []
+        let loaded = MachineInventory.loadAll(project: project) { warnings.append($0) }
+        XCTAssertEqual(loaded.count, 1)
+        XCTAssertEqual(loaded.first?.ios?.devices?.first?.name, "A")
+        // 添字で読まない —— 変異で0件になったときにクラッシュすると「検出」ではなく
+        // 「実行できなかった」に化けて、変異チェックの判定が濁る
+        XCTAssertEqual(warnings.count, 1)
+        XCTAssertTrue(warnings.first?.contains("broken") == true, "\(warnings)")
+    }
+
+    func testMergedProfileSplitsByPlatformAndKeepsTheMachineOnEachDevice() {
+        let entries = MachineInventory.observableEntries(
+            profiles: [profile(machine: "M1Max", ios: [DeviceSpec(name: "A")],
+                               android: [DeviceSpec(name: "B")]),
+                       profile(ios: [DeviceSpec(name: "C")])],
+            registry: ["M1Max"])
+        let merged = MachineInventory.mergedProfile(entries)
+        // 台帳既定は持たない —— **マシンは各デバイスに焼き込む**。既定を残すと、
+        // 手元の台まで M1Max の台と読まれて別の機械へ回る
+        XCTAssertNil(merged.machine)
+        XCTAssertEqual(merged.ios?.devices?.map { "\($0.name)@\($0.machine ?? "-")" }, ["A@M1Max", "C@-"])
+        XCTAssertEqual(merged.android?.devices?.map { "\($0.name)@\($0.machine ?? "-")" }, ["B@M1Max"])
+    }
 }

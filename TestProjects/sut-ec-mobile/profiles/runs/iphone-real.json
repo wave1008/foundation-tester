@@ -1,12 +1,7 @@
 {
   "machine": "local+remote",
   "app": "sut-ec-mobile",
-  "devices": [
-    {
-      "machine": "M1Ultra",
-      "name": "iPhone snb"
-    }
-  ],
+  "devices": [],
   "containerInference": true,
   "falsePositiveCheck": false,
   "fm": true,

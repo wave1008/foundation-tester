@@ -479,45 +479,32 @@ test("firstLine: 1行だけのエラーはそのまま(既存の見え方を変�
 // **判定は CLI・文言は拡張**(CLAUDE.md「共有するのは判定であって文言ではない」)。CLI の error は
 // 英語(CLI 利用者向け)なので、拡張は機械可読の signingProblems から自分の言語で組み立て直す。
 
-test("signingGuidance: 検出したぶんだけを直す順に番号で出す", () => {
+test("signingGuidance: 案内は2行だけ(どこを直すか + 生ログの在り処)", () => {
   const guidance = signingGuidance(
     ["noAccount", "invalidCertificate", "deviceNotInProfile"], "/tmp/bridge-build-8123.log");
   const lines = guidance.split("\n");
-  assert.match(lines[0], /実機用のブリッジに署名できません/, "1行目は何が起きたか + どこを直すか");
-  assert.match(lines[1], /^ {2}1\. Xcode に Apple ID を追加する/);
-  assert.match(lines[1], /developmentTeam/, "Team ID をどこに書くかも示す(画面では直せない)");
-  assert.match(lines[2], /^ {2}2\. 失効した開発用証明書をキーチェーンから削除する/);
-  assert.match(lines[3], /^ {2}3\. .*デベロッパモード/);
-  // **画面の道順は書かない**(ユーザー決定)。Xcode も iOS も版ごとに UI が変わるので、
-  // 書いた道順は必ず古くなる。メニューの区切り記号を1つも置かないことで機械的に守る
-  assert.doesNotMatch(guidance, /▸/);
-  // **説明は書かない**(ユーザー決定 2026-08-29)。状態の言い換えは手順を読めば分かる。
-  // 放っておくと案内は説明で膨らむので機械で止める
-  for (const explanation of ["シミュレータは署名不要", "アカウントが1つも", "失効または期限切れ",
-                             "プロビジョニングプロファイルに入っていません"]) {
-    assert.doesNotMatch(guidance, new RegExp(explanation), explanation);
+  assert.equal(lines.length, 2, guidance);
+  assert.match(lines[0], /実機用のブリッジに署名できません/);
+  assert.equal(lines[1], "xcodebuild の全出力: /tmp/bridge-build-8123.log");
+  // **直し方は書かない**(ユーザー決定 2026-08-29)—— Xcode も macOS も版ごとに手順が変わり、
+  // 書いた手順は必ず古くなる。放っておくと案内は手順と説明で膨らむので機械で止める
+  for (const forbidden of ["1.", "▸", "Apple ID", "キーチェーン", "デベロッパモード",
+                           "developmentTeam", "証明書"]) {
+    assert.doesNotMatch(guidance, new RegExp(forbidden.replace(".", "\\.")), forbidden);
   }
-  assert.equal(lines[4], "xcodebuild の全出力: /tmp/bridge-build-8123.log");
 });
 
-test("signingGuidance: 起きていないことは言わない・ログの在り処が無ければ書かない", () => {
-  const guidance = signingGuidance(["deviceNotInProfile"], undefined);
-  assert.match(guidance, /^ {2}1\. /m);
-  assert.doesNotMatch(guidance, /Apple ID/);
-  assert.doesNotMatch(guidance, /全出力/);
-});
-
-test("signingGuidance: 知らない種別は飛ばす(新しい判定の CLI と組み合わさっても壊れない)", () => {
-  assert.match(signingGuidance(["noAccount", "somethingNew"], undefined), /Apple ID/);
-  assert.equal(signingGuidance(["somethingNew"], undefined), null, "1つも分からなければ CLI の文言へ譲る");
+test("signingGuidance: 生ログを残せなければ在り処は書かない・空なら CLI の文言に譲る", () => {
+  assert.equal(signingGuidance(["noAccount"], undefined).includes("\n"), false);
   assert.equal(signingGuidance([], undefined), null);
 });
 
-// バナーに載せる文字列の選び方。**自分で組み立てた案内は全文**(短く整形済み)、
-// **外から来た生のエラーは1行目だけ**(xcodebuild のビルドログのように数十行あり得る)。
-// OUTPUT へは誘導しない —— 常時流れていて利用者が読む場所ではない(ユーザー決定 2026-08-29)。
+// **種別は見ない** —— どれでも案内は同じなので、CLI が判定を増やしても拡張は壊れない
+test("signingGuidance: 知らない種別でも同じ案内を出す", () => {
+  assert.equal(signingGuidance(["somethingNew"], undefined), signingGuidance(["noAccount"], undefined));
+});
 
-test("署名の案内は全文がバナーへ渡る(3ステップが読める)", async () => {
+test("署名の案内は全文がバナーへ渡る(2行)", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleetest-deviceops-signing-"));
   const binaryPath = path.join(dir, "fleetest");
   const finished = JSON.stringify({
@@ -536,8 +523,8 @@ test("署名の案内は全文がバナーへ渡る(3ステップが読める)",
     const failed = posts.filter((m) => m.type === "deviceOpFailed").at(-1);
     assert.ok(failed, "deviceOpFailed が送られる");
     assert.match(failed.message, /実機用のブリッジに署名できません/, "拡張の言語で組み立てる");
-    assert.match(failed.message, /1\. .*Apple ID/s, "3ステップが読める");
-    assert.match(failed.message, /3\. .*デベロッパモード/s);
+    assert.match(failed.message, /xcodebuild の全出力: \/tmp\/bridge-build-8123\.log/, "生ログの在り処");
+    assert.equal(failed.message.split("\n").length, 2, "2行だけ");
     assert.doesNotMatch(failed.message, /出力ビュー|OUTPUT/, "OUTPUT へは誘導しない");
     assert.doesNotMatch(failed.message, /English/, "CLI の英語は使わない");
   } finally {
@@ -566,7 +553,42 @@ test("生のエラー(署名以外)は1行目だけ渡す(長いビルドログ�
   }
 });
 
-test("signingGuidance: ssh 越しのビルドで出るキーチェーンのロックも案内する", () => {
-  const guidance = signingGuidance(["keychainLocked"], undefined);
-  assert.match(guidance, /security unlock-keychain/);
+// **NDJSON を1行も出さずに落ちる失敗**(引数エラー・プロファイル解決の失敗など)。理由は
+// stderr にしか無いので、控えていないとバナーが空のまま = タイルの操作が無反応に見える
+// (実害 2026-08-29: 「(プロファイルなし)」でブリッジ起動が何も出さずに失敗した)
+test("NDJSON を出さずに落ちたら stderr の理由をバナーへ出す", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleetest-deviceops-nondjson-"));
+  const binaryPath = path.join(dir, "fleetest");
+  fs.writeFileSync(binaryPath,
+    "#!/bin/sh\nprintf '%s\\n' '→ resolving' 'machine profile not found: local+remote' >&2\nexit 1\n");
+  fs.chmodSync(binaryPath, 0o755);
+  const { deps, posts } = makeDeps(binaryPath);
+  const deviceOps = new MonitorDeviceOps(deps);
+  try {
+    deviceOps.enqueueLifecycleJob({ kind: "device", name: "iPhone 13", op: "down" });
+    await waitUntilIdle(deviceOps);
+    const failed = posts.filter((m) => m.type === "deviceOpFailed").at(-1);
+    assert.ok(failed, "deviceOpFailed が送られる");
+    assert.equal(failed.message, "machine profile not found: local+remote", "stderr の最後の実質行");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("stderr が何も無ければ exit code だけでもバナーへ出す(黙って失敗しない)", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleetest-deviceops-silent-"));
+  const binaryPath = path.join(dir, "fleetest");
+  fs.writeFileSync(binaryPath, "#!/bin/sh\nexit 3\n");
+  fs.chmodSync(binaryPath, 0o755);
+  const { deps, posts } = makeDeps(binaryPath);
+  const deviceOps = new MonitorDeviceOps(deps);
+  try {
+    deviceOps.enqueueLifecycleJob({ kind: "device", name: "シム1", op: "down" });
+    await waitUntilIdle(deviceOps);
+    const failed = posts.filter((m) => m.type === "deviceOpFailed").at(-1);
+    assert.ok(failed, "deviceOpFailed が送られる");
+    assert.match(failed.message, /3/, "exit code が読める");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

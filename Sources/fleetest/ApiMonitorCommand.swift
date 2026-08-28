@@ -118,7 +118,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         } else {
             let registry = (LocalConfig.load().remoteHosts ?? []).map(\.machine)
             targets = MachineInventory.observableEntries(
-                profiles: Self.allMachineProfiles(project: testProject, warn: logStderr),
+                profiles: MachineInventory.loadAll(project: testProject) { logStderr("[monitor] \($0)") },
                 registry: registry
             ).map { MonitorTarget(platform: $0.platform, spec: $0.spec) }
             // **0台でも続ける**(起動中の台が現れたら出す)
@@ -433,22 +433,6 @@ struct ApiMonitorCommand: AsyncParsableCommand {
     /// (2026-08-17 の実害: プロファイルの選択を外した瞬間にモニターが起動できなくなった)。
     /// I/O を持たない pure 関数(MonitorMachineScopeTests)
     static func requiresMachineProfile(profile: String?) -> Bool { profile != nil }
-
-    /// machines/ の全マシンプロファイル。**ファイル名順**(MachineInventory の重複解決が
-    /// 入力順で決まるので、走査順で結果が揺れないようにする)。壊れた JSON は警告して飛ばす ——
-    /// 実行プロファイルを選んでいないときは「見えるものを見せる」経路なので、1枚の壊れた台帳で
-    /// 監視ごと止めない(選んでいるときは従来どおり decodeFailed で落ちる)
-    static func allMachineProfiles(project: TestProject, warn: (String) -> Void) -> [MachineProfile] {
-        ProfileResolver.machineNames(project: project).sorted().compactMap { name in
-            let url = project.machinesDir.appendingPathComponent("\(name).json")
-            guard let data = try? Data(contentsOf: url),
-                  let profile = try? JSONDecoder().decode(MachineProfile.self, from: data) else {
-                warn("[monitor] skipping machine profile \(name): it cannot be read")
-                return nil
-            }
-            return profile
-        }
-    }
 
     /// 監視対象の仕分け。**この機械が観測できるのは自分のデバイスだけ** —— 他の機械のぶんを
     /// simctl/adb で見ると、同名の手元のシミュレータに解決して**別の機械の台の状態と画面を出す**

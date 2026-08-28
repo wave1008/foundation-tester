@@ -518,26 +518,43 @@ enum ApiDeviceOperation {
         setvbuf(stdout, nil, _IOLBF, 0)
 
         let testProject = try ScenarioHost.project(named: project)
-        // runProfileName を渡すと determineMachine が実行プロファイルの machine を最優先で解決する。
-        // これが無いと machines/ 複数時に「マシン名が未登録」で落ちる(DevicesCommand.Up と同経路)。
-        let machine = try ProfileResolver.determineMachine(
-            project: testProject,
-            runProfileName: profile)
-        if machine.auto {
-            logStderr("→ Using machine profile \(machine.name) automatically (it is the only one in machines/)")
-        }
-        let machineURL = testProject.machinesDir.appendingPathComponent("\(machine.name).json")
-        guard FileManager.default.fileExists(atPath: machineURL.path) else {
-            throw ProfileError.machineProfileNotFound(
-                machine: machine.name,
-                available: ProfileResolver.machineNames(project: testProject))
-        }
+        // **台帳の決め方は実行プロファイルの有無で変わる**(監視 = ApiMonitorCommand と同じ規律):
+        //   選んでいる: その machine の台帳(runProfileName を渡すと determineMachine が
+        //     実行プロファイルの machine を最優先で解決する)
+        //   選んでいない: **台帳を1つに決めない** —— machines/ を全部畳み、手元 +
+        //     リモート実行の登録簿にあるマシンの台から探す(MachineInventory)
+        //
+        // 決められないという理由で操作を断らない —— **タイルに出ている台は操作できるべき**。
+        // 台帳が2つある案件では「(プロファイルなし)」でタイルからブリッジを起動すると必ず
+        // determineMachine が落ち、しかも NDJSON を出さずに終わるので拡張には何も出なかった
+        // (実害 2026-08-29)
         let machineProfile: MachineProfile
-        do {
-            machineProfile = try JSONDecoder().decode(
-                MachineProfile.self, from: Data(contentsOf: machineURL))
-        } catch {
-            throw ProfileError.decodeFailed(machineURL, detail: "\(error)")
+        let machineLabel: String
+        if profile != nil {
+            let machine = try ProfileResolver.determineMachine(
+                project: testProject, runProfileName: profile)
+            if machine.auto {
+                logStderr("→ Using machine profile \(machine.name) automatically (it is the only one in machines/)")
+            }
+            let machineURL = testProject.machinesDir.appendingPathComponent("\(machine.name).json")
+            guard FileManager.default.fileExists(atPath: machineURL.path) else {
+                throw ProfileError.machineProfileNotFound(
+                    machine: machine.name,
+                    available: ProfileResolver.machineNames(project: testProject))
+            }
+            do {
+                machineProfile = try JSONDecoder().decode(
+                    MachineProfile.self, from: Data(contentsOf: machineURL))
+            } catch {
+                throw ProfileError.decodeFailed(machineURL, detail: "\(error)")
+            }
+            machineLabel = machine.name
+        } else {
+            let registry = (LocalConfig.load().remoteHosts ?? []).map(\.machine)
+            machineProfile = MachineInventory.mergedProfile(MachineInventory.observableEntries(
+                profiles: MachineInventory.loadAll(project: testProject) { logStderr("→ \($0)") },
+                registry: registry))
+            machineLabel = "machines/"
         }
 
         let spec: DeviceSpec
@@ -549,13 +566,13 @@ enum ApiDeviceOperation {
         case .ambiguous(let hosts):
             emitFinished(ok: false, error: "\(name) exists on more than one machine"
                 + " (\(hosts.joined(separator: ", "))) — pass --device-machine to say which one"
-                + " (machine \(machine.name))")
+                + " (machine \(machineLabel))")
             throw ExitCode(1)
         case .missing:
             emitFinished(ok: false, error: "device not found: \(name)"
                 + (deviceMachine == nil ? ""
                    : " on \(DeviceMachineGrouping.display(MachineDispatch.normalize(deviceMachine)))")
-                + " (machine \(machine.name))")
+                + " (machine \(machineLabel))")
             throw ExitCode(1)
         }
 

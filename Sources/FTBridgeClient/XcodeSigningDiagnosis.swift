@@ -24,15 +24,18 @@ import Foundation
 /// 実機ビルドを止めている署名設定の欠け。**xcodebuild が実際に出す文言**から拾う
 /// (Xcode が文言を変えたら拾えなくなる = 生ログへ落ちるだけで、誤った案内はしない)。
 ///
-/// **画面の道順を書かない**(ユーザー決定 2026-08-29)。Xcode も iOS も版ごとに UI が変わり
-/// (Xcode 26 で「Accounts」→「Apple Accounts」、証明書の管理もチームの下へ移った)、書いた
-/// 道順は必ず古くなって「そんなメニューは無い」で詰まる。**何をするかだけを1行で書く**。
-/// 証明書は**作り直しではなく失効ぶんの削除**: 自動署名(-allowProvisioningUpdates)は
-/// 有効な証明書があればそれを使うが、失効した証明書が残っているとそちらを掴んで落ちる
-/// (M1Ultra で実測: 有効なものと失効したものが両方あった)。
-/// **プロジェクトの Signing & Capabilities では直せない** —— ランナーの .xcodeproj は xcodegen が
-/// 生成し(BridgeLauncher.generateProjectIfNeeded)、ビルドのたびに DEVELOPMENT_TEAM を
-/// コマンドラインで上書きする(codeSigningArguments)。**Team の正は fleetest の設定**
+/// **この判定は「署名で止まった」と言い切るためだけに使う** —— 直し方は案内しない
+/// (ユーザー決定 2026-08-29。Xcode も macOS も版ごとに手順が変わり、書いた手順は必ず古くなる)。
+/// 種別を分けて持つのは、どれか1つでも当たれば畳んでよいと判断するため。
+///
+/// 直すときに要る知識(この案内には書かないが、忘れると調べ直しになる):
+///   - 証明書は**作り直しではなく失効ぶんの削除**で足りることがある —— 自動署名
+///     (-allowProvisioningUpdates)は有効な証明書があればそれを使うが、失効した証明書が
+///     残っているとそちらを掴んで落ちる(M1Ultra で実測: 両方あった)
+///   - **プロジェクトの Signing & Capabilities では直せない** —— ランナーの .xcodeproj は
+///     xcodegen が生成し(generateProjectIfNeeded)、ビルドのたびに DEVELOPMENT_TEAM を
+///     コマンドラインで上書きする(codeSigningArguments)。**Team の正は fleetest の設定**
+///   - keychainLocked は **ssh 越しのビルド固有** —— GUI セッションでは出ない
 public enum XcodeSigningProblem: String, Sendable, CaseIterable {
     /// Xcode に Apple ID が1つも無い
     case noAccount
@@ -59,11 +62,13 @@ public enum XcodeSigningDiagnosis {
         return signatures.filter { log.contains($0.1) }.map(\.0)
     }
 
-    /// 「次にやること」。problems が空なら nil(呼び手は生の出力をそのまま出す)。
+    /// 「どこを直すか」と生ログの在り処。problems が空なら nil(呼び手は生の出力をそのまま出す)。
     ///
-    /// **1行目だけで用が足りるように書く**(2行目以降は手順)。**説明は書かない** ——
-    /// 読み手が要るのは「何をすればいいか」だけで、状態の言い換え(「アカウントがありません」等)は
-    /// 手順を読めば分かる(ユーザー決定 2026-08-29)。
+    /// **個別の手順は書かない**(ユーザー決定 2026-08-29)—— アカウント・証明書・端末登録・
+    /// キーチェーンのどれも直し方が Xcode と macOS の版で変わり、書いた手順は必ず古くなる。
+    /// **どこを見ればよいか(その Mac の Xcode の署名設定)と、生ログの在り処**だけを出し、
+    /// 中身の判断は読み手に委ねる。**判定そのものは残す** —— 「署名で止まった」と言い切れる
+    /// ときだけ畳み、当てはまらないログには触らないため(problems の呼び出し元を参照)。
     /// **「この Mac」と書く** —— リモート機で走っていても、直すのは端末が繋がっている
     /// その機械の Xcode。手元とどちらの話かは呼び手(拡張)が機械名を添えて示す。
     public static func guidance(problems: [XcodeSigningProblem], fullLogPath: String?) -> String? {
@@ -72,26 +77,9 @@ public enum XcodeSigningDiagnosis {
             "Cannot code-sign the bridge runner for a physical device on this Mac."
                 + " Fix Xcode's signing setup there, then start the bridge again.",
         ]
-        for (index, problem) in problems.enumerated() {
-            lines.append("  \(index + 1). \(step(problem))")
-        }
         if let fullLogPath {
             lines.append("Full xcodebuild output: \(fullLogPath)")
         }
         return lines.joined(separator: "\n")
-    }
-
-    private static func step(_ problem: XcodeSigningProblem) -> String {
-        switch problem {
-        case .noAccount:
-            return "Add your Apple ID to Xcode"
-                + " (its Team ID goes in developmentTeam in ~/.config/fleetest/config.json)."
-        case .invalidCertificate:
-            return "Delete the revoked Apple Development certificate from the keychain."
-        case .deviceNotInProfile:
-            return "Turn on Developer Mode on the device and connect it."
-        case .keychainLocked:
-            return "Unlock the login keychain (`security unlock-keychain`)."
-        }
     }
 }

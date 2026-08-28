@@ -91,25 +91,21 @@ export function stderrDetailLine(stderr: string, limit = 200): string | null {
   return last.length > limit ? `${last.slice(0, limit)}…` : last;
 }
 
-/** CLI が返した「何が欠けているか」から、**この拡張の言語で**案内を組み立てる。
+/** CLI が「署名で止まった」と判定したときの案内を、**この拡張の言語で**組み立てる。
  * 判定は CLI(FTBridgeClient の XcodeSigningDiagnosis)、文言はここ
  * (CLAUDE.md「共有するのは判定であって文言ではない」)。
- * **知らない種別は黙って飛ばす** —— 新しい判定を足した CLI と組み合わさっても、
- * 分かるぶんだけ案内して壊れない。1つも分からなければ null(呼び手は CLI の英語をそのまま出す)。 */
+ *
+ * **2行だけ**(ユーザー決定 2026-08-29): どこを直すか + 生ログの在り処。**直し方は書かない**
+ * —— Xcode も macOS も版ごとに手順が変わり、書いた手順は必ず古くなる。
+ * **種別は見ない** —— どれであっても案内は同じで、種別は「署名で止まった」と言い切るために
+ * CLI が使う。だから**知らない種別が増えても壊れない**(空なら null = CLI の文言に譲る)。 */
 export function signingGuidance(
   problems: readonly string[], logPath: string | undefined,
 ): string | null {
-  const steps = problems
-    .filter((problem): problem is "noAccount" | "invalidCertificate" | "deviceNotInProfile"
-      | "keychainLocked" =>
-      problem === "noAccount" || problem === "invalidCertificate"
-      || problem === "deviceNotInProfile" || problem === "keychainLocked")
-    .map((problem) => t(`deviceOps.signing.${problem}` as const));
-  if (steps.length === 0) {
+  if (problems.length === 0) {
     return null;
   }
   const lines = [t("deviceOps.signing.headline")];
-  lines.push(...steps.map((step, index) => `  ${index + 1}. ${step}`));
   if (logPath !== undefined) {
     lines.push(t("deviceOps.signing.fullLog", { path: logPath }));
   }
@@ -880,9 +876,17 @@ export class MonitorDeviceOps {
       },
       (line) => this.deps.outputChannel.appendLine(`[device-${op} ${name} stdout] ${line}`),
     );
+    // **stderr を控える** —— CLI が NDJSON を出さずに終わる失敗(引数・プロファイル解決の
+    // ValidationError 等)は理由が stderr にしか無い。控えないと close の分岐で
+    // 「exit code だけ」になり、**バナーに何も出ないまま失敗する**(実害 2026-08-29:
+    // タイルの「ブリッジ起動」が無反応に見えた)
+    let stderr = "";
     const stderrParser = new NdjsonParser(
       (value) => this.deps.outputChannel.appendLine(`[device-${op} ${name} stderr] ${JSON.stringify(value)}`),
-      (line) => this.deps.outputChannel.appendLine(`[device-${op} ${name} stderr] ${line}`),
+      (line) => {
+        stderr += `${line}\n`;
+        this.deps.outputChannel.appendLine(`[device-${op} ${name} stderr] ${line}`);
+      },
     );
 
     proc.stdout.on("data", (chunk: Buffer) => stdoutParser.push(chunk));
@@ -899,10 +903,17 @@ export class MonitorDeviceOps {
       this.deps.outputChannel.appendLine(
         t("deviceOps.log.deviceOpClosed", { op, name, attemptLabel, exitCode: String(exitCode) }),
       );
-      // finished(ok:false)を経由せずに落ちたケース(クラッシュ・kill 等)を捕捉する。
+      // finished(ok:false)を経由せずに落ちたケース(引数エラー・クラッシュ・kill 等)を捕捉する。
       // finished 経由で既にログ済みの場合は二重に出さない。
+      // **バナーにも出す** —— ログだけだと利用者からは無反応に見える。理由は stderr の
+      // 最後の実質行(CLI はそこに原因を書く。stderrDetailLine の doc 参照)
       if (!failureLogged && exitCode !== 0) {
-        logFailure(t("deviceOps.processExitedWithCode", { exitCode: String(exitCode) }));
+        const detail = stderrDetailLine(stderr);
+        const message = detail === null
+          ? t("deviceOps.processExitedWithCode", { exitCode: String(exitCode) })
+          : detail;
+        logFailure(message);
+        this.deps.post({ type: "deviceOpFailed", name, message });
       }
       settle(failureLogged);
     });

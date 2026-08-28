@@ -4,6 +4,10 @@
   "devices": [
     {
       "machine": "local",
+      "name": "iPhone 13"
+    },
+    {
+      "machine": "local",
       "name": "iPhone 17 Pro(iOS 27.0)-01"
     },
     {
@@ -53,10 +57,6 @@
     {
       "machine": "M1Ultra",
       "name": "iPhone 17 Pro(iOS 27.0)-02"
-    },
-    {
-      "machine": "M1Ultra",
-      "name": "iPhone snb"
     },
     {
       "machine": "local",

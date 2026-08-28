@@ -84,35 +84,13 @@ export const deviceOpsStrings = {
   "deviceOps.deviceOpFailedGeneric": { ja: "device-{op} に失敗しました。", en: "device-{op} failed." },
   // 実機のブリッジが署名で建たないときの案内。**判定は CLI**(FTBridgeClient の
   // XcodeSigningDiagnosis)で、文言はここが持つ(CLAUDE.md「共有するのは判定であって文言ではない」)。
-  // **手順だけを書く** —— 状態の言い換え(「アカウントがありません」等)は手順を読めば分かる
-  // (ユーザー決定 2026-08-29)。1行目は「何が起きたか + どこを直すか」で完結させる
+  // **2行だけ**(ユーザー決定 2026-08-29): どこを直すか + 生ログの在り処。**直し方は書かない**
+  // —— Xcode も macOS も版ごとに手順が変わり、書いた手順は必ず古くなる
   "deviceOps.signing.headline": {
     ja: "実機用のブリッジに署名できません。その端末が繋がっている Mac の Xcode の署名設定を直してから、"
       + "もう一度ブリッジを起動してください。",
     en: "Cannot code-sign the bridge runner for a physical device. Fix Xcode's signing setup on the Mac"
       + " that the device is connected to, then start the bridge again.",
-  },
-  // **画面の道順を書かない**(ユーザー決定 2026-08-29)—— Xcode も iOS も版ごとに UI が変わり、
-  // 書いた道順は必ず古くなって「そんなメニューは無い」で詰まる。**何をするかだけ**を1行で書く。
-  // 証明書は**作り直しではなく失効ぶんの削除** —— 自動署名は有効な証明書があればそれを使うが、
-  // 失効した証明書が残っているとそちらを掴んで落ちる(M1Ultra で実測)
-  "deviceOps.signing.noAccount": {
-    ja: "Xcode に Apple ID を追加する"
-      + "(Team ID は ~/.config/fleetest/config.json の developmentTeam に設定)。",
-    en: "Add your Apple ID to Xcode"
-      + " (its Team ID goes in developmentTeam in ~/.config/fleetest/config.json).",
-  },
-  "deviceOps.signing.invalidCertificate": {
-    ja: "失効した開発用証明書をキーチェーンから削除する。",
-    en: "Delete the revoked Apple Development certificate from the keychain.",
-  },
-  "deviceOps.signing.keychainLocked": {
-    ja: "ログインキーチェーンのロックを外す(`security unlock-keychain`)。",
-    en: "Unlock the login keychain (`security unlock-keychain`).",
-  },
-  "deviceOps.signing.deviceNotInProfile": {
-    ja: "端末のデベロッパモードを ON にして接続する。",
-    en: "Turn on Developer Mode on the device and connect it.",
   },
   "deviceOps.signing.fullLog": {
     ja: "xcodebuild の全出力: {path}",
