@@ -35,6 +35,10 @@
       "name": "iPhone 17 Pro(iOS 27.0)-08"
     },
     {
+      "machine": "local",
+      "name": "iPhone SE3"
+    },
+    {
       "machine": "M1Max",
       "name": "iPhone 17 Pro(iOS 27.0)-01"
     },

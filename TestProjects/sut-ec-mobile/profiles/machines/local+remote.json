@@ -106,6 +106,14 @@
         "os": "26.5.2",
         "udid": "00008110-000805001188201E",
         "model": "iPhone SE (3rd generation)"
+      },
+      {
+        "machine": "local",
+        "name": "iPhone SE3",
+        "kind": "physical",
+        "os": "26.6",
+        "udid": "00008110-000260242EEB801E",
+        "model": "iPhone SE (3rd generation)"
       }
     ]
   },
