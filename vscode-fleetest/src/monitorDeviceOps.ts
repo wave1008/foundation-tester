@@ -194,7 +194,12 @@ export class MonitorDeviceOps {
     const queued = this.enqueueWipe(devices);
     if (queued === 0) {
       void vscode.window.showWarningMessage(`fleetest: ${t("deviceOps.wipeAllBusy")}`);
+      return;
     }
+    // **受け付けたことをその場で返す**(実行はキュー越しで、しかも数分かかる)。進行そのものは
+    // デバイスタブのタイルが出す(停止中 → 再起動中)ので、ここでは行き先だけ案内する。
+    // modal = 確認ダイアログと同じ場所に出す(通知だと右下に一瞬出て見落とす。ユーザー決定)
+    void vscode.window.showInformationMessage(t("deviceOps.wipeStarted"), { modal: true });
   }
 
   /** プロファイルタブのデバイス行右クリック「Wipe Data」: 対象を1台ずつ device ジョブとして積む

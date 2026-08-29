@@ -384,7 +384,12 @@ function renderFrame(entry) {
   //  - 個別起動がキュー待ち(status==='queued')/一括起動(個別 status を持たない)→「待機中」時計
   const upRunning = offline && entry.opBusy?.op === 'up' && entry.opBusy.status === 'running';
   const waitingUp = offline && !upRunning && (bulkOpActive === 'up' || entry.opBusy?.op === 'up');
-  if (!offline && !shuttingDown && (entry.frameSrc || entry.usingH264)) {
+  // **Wipe Data 中は最後のフレームを出さない**。中身を消して(場合によっては数分かけて)
+  // 作り直している最中に、消える前の画面を映し続けることになる —— しかも down と違って
+  // 状態が offline へ倒れるとは限らない(止めずに終わる台もある)ので、放っておくと
+  // 「押したのに何も起きていない」ようにしか見えない。進捗はフェーズ(停止中/再起動中)で出す。
+  const wiping = entry.opBusy?.op === 'wipe' && entry.opBusy.status === 'running';
+  if (!offline && !shuttingDown && !wiping && (entry.frameSrc || entry.usingH264)) {
     if (entry.frameSrc) {
       entry.imgEl.src = entry.frameSrc;
     }
@@ -404,7 +409,12 @@ function renderFrame(entry) {
     // 「起動中」をブート処理中に限定することで、同時ブート上限(2台)とタイル表示が一致する。
     entry.placeholderEl.textContent = '';
     const icon = document.createElement('span');
-    if (shuttingDown) {
+    if (wiping) {
+      // 停止フェーズは無彩色スピナー(シャットダウンと同じ意味)、再起動フェーズは起動と同じ色
+      icon.className = entry.wipePhase === 'rebooting'
+        ? 'placeholder-icon booting booting-' + entry.device.platform
+        : 'placeholder-icon shutdown';
+    } else if (shuttingDown) {
       icon.className = 'placeholder-icon shutdown';
     } else if (waitingUp) {
       icon.className = 'placeholder-icon waiting';
@@ -426,24 +436,32 @@ function renderFrame(entry) {
     // 起動していても offline のままなので「未起動」と言ってはいけない —— 操作中(起動中/待機中)の
     // 表示は本物の進捗なのでそのまま出し、静止状態だけ「状態を取得できない」に置き換える
     const unobservableRemote = entry.device.state === 'unknown'
-      && !shuttingDown && !waitingUp && !upRunning;
+      && !wiping && !shuttingDown && !waitingUp && !upRunning;
     if (unobservableRemote) {
       icon.className = 'placeholder-icon remote';
       icon.innerHTML = '';
     }
     // 配信を諦めた台は「接続中」と言わない(待っても来ない)
-    const streamUnavailable = !!entry.streamUnavailable && !shuttingDown && !waitingUp && !upRunning
-      && !offline;
+    const streamUnavailable = !!entry.streamUnavailable && !wiping && !shuttingDown && !waitingUp
+      && !upRunning && !offline;
     if (streamUnavailable) {
       icon.className = 'placeholder-icon remote';  // アイコンは出さない(display:none)
       icon.innerHTML = '';
     }
     // **タイルの文言は短く**(幅は 60px 程度しかなく、長い文は1文字ずつ折り返して潰れる。
     // 2026-08-17 に実際に読めない表示になった)。理由と対処はツールチップと OUTPUT へ
-    entry.placeholderEl.title = streamUnavailable
+    entry.placeholderEl.title = wiping
+      ? t('wvMonitor.tile.wipingTip')
+      : streamUnavailable
       ? t('wvMonitor.tile.streamUnavailableTip')
       : unobservableRemote ? t('wvMonitor.tile.stateUnknownTip') : t('wvMonitor.tile.title');
-    labelSpan.textContent = streamUnavailable
+    labelSpan.textContent = wiping
+      ? (entry.wipePhase === 'stopping'
+        ? t('wvMonitor.tile.wipeStopping')
+        : entry.wipePhase === 'rebooting'
+          ? t('wvMonitor.tile.wipeRebooting')
+          : t('wvMonitor.tile.wiping'))
+      : streamUnavailable
       ? t('wvMonitor.tile.streamUnavailable')
       : unobservableRemote
       ? (entry.device.machine
@@ -635,11 +653,9 @@ function renderMeta(entry) {
   // state で排他(booted/connected)のため bridgeWatch と healthWatch は衝突しない。
   let warn = false;
   let footerTip = '';
-  if (entry.opBusy && entry.opBusy.op !== 'wipe') {
+  if (entry.opBusy) {
     // 何もしない: footerText は空のまま(キュー待ちは左下の queuedBadge チップが伝える。
-    // 実行中の down/up はプレースホルダ側のラベルに譲る)。
-    // **wipe だけは譲らない** —— 停止と再起動で数分かかり、フェーズ(停止中/再起動中)を
-    // 出さないと固まったように見える(プレースホルダ側に対応するラベルも無い)。
+    // 実行中の down/up/wipe はプレースホルダ側のラベルに譲る = 同じことを2箇所で言わない)。
   } else if (entry.wipePhase) {
     const override = WIPE_STATUS_LABEL[entry.wipePhase];
     if (override) {
@@ -1240,6 +1256,9 @@ export function applyWipeStatus(message) {
   }
   entry.wipePhase = message.phase === 'done' ? undefined : message.phase;
   renderMeta(entry);
+  // フェーズは**プレースホルダの文言**にも出る(実行中は最後のフレームを出さない)ので、
+  // renderMeta だけでは「Wipe Data中」から進まない
+  renderFrame(entry);
 }
 
 export function applyDeviceError(message) {
