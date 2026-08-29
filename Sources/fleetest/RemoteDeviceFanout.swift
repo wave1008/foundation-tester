@@ -75,11 +75,53 @@ enum RemoteDeviceFanout {
                     args += ["--device-machine", DeviceMachineGrouping.localDisplayName]
                     args += extraArgs
                     await runChild(args: args, machine: machine,
+                                   formatSpawnFailure: { logLine("❌ \(machine): \($0)") },
                                    relay: { line in
                                        if let out = machineStamped(line: line, machine: machine) {
                                            relay(out)
                                        }
                                    })
+                }
+            }
+        }
+    }
+
+    /// `fleetest devices down`(実行プロファイル無し = 全ブリッジ停止 + シミュレータ/エミュレータの
+    /// 全終了)を投げる先。**集合の正はモニターの fan-out と同じ**(プロファイル未選択なら
+    /// 登録簿の全マシン。`ApiMonitorCommand.fanoutMachines`)—— 別に持つと「タイルには出ているのに
+    /// 『全て終了』では止まらない」台が生まれる。`deviceMachine` 指定時は [] = 子は分散しない
+    static func sweepMachines(deviceMachine: String?) -> [String] {
+        sweepMachines(registry: (LocalConfig.load().remoteHosts ?? []).map(\.machine),
+                      deviceMachine: deviceMachine)
+    }
+
+    /// I/O を持たない本体(RemoteDeviceFanoutTests)
+    static func sweepMachines(registry: [String], deviceMachine: String?) -> [String] {
+        ApiMonitorCommand.fanoutMachines(
+            foreignMachines: [], profileSelected: false,
+            registry: registry, deviceMachine: deviceMachine)
+    }
+
+    /// 掃討の子の argv(純関数)。**`--device-machine local` が入れ子の分散を止める**
+    /// (sweepMachines / remoteMachines はどちらも deviceMachine 指定時に [] を返す)
+    static func sweepChildArgs(machine: String) -> [String] {
+        ["remote", "exec", machine, "--", "devices", "down", "--device-machine",
+         DeviceMachineGrouping.localDisplayName]
+    }
+
+    /// 各機械でも同じ掃討を走らせる。**api 経路と違い出力はプレーンテキスト**なので machineStamped は
+    /// 通さず、行頭に `[<machine>]` を付けて中継する(手元の行と混ざるとどの機械の声か読めない)。
+    /// プロファイルを見ないので転送(RemoteProjectSync)も要らない。
+    /// **1台の失敗で他を止めない**(dispatch と同じ)
+    static func dispatchSweep(machines: [String],
+                              relay: @escaping @Sendable (String) -> Void) async {
+        guard !machines.isEmpty else { return }
+        await withTaskGroup(of: Void.self) { group in
+            for machine in machines {
+                group.addTask {
+                    await runChild(args: sweepChildArgs(machine: machine), machine: machine,
+                                   formatSpawnFailure: { "❌ \($0)" },
+                                   relay: { relay("[\(machine)] \($0)") })
                 }
             }
         }
@@ -130,7 +172,11 @@ enum RemoteDeviceFanout {
 
     /// 子プロセス1件。stdout を行単位で中継する(読み取りは専用スレッド。
     /// RemoteRunDispatcher/FleetRunner と同じ規律)。stderr は親の stderr へ素通しする
+    /// - formatSpawnFailure: 子を起動できなかったときの1行を作る(引数は理由)。**既定値は置かない**
+    ///   —— 中継先の形は呼び手ごとに違い(NDJSON の log 行 / プレーンテキスト)、既定に頼ると
+    ///   掃討の出力へ生の JSON が混ざる
     private static func runChild(args: [String], machine: String,
+                                 formatSpawnFailure: @escaping @Sendable (String) -> String,
                                  relay: @escaping @Sendable (String) -> Void) async {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: RemoteProjectSync.selfBinaryPath())
@@ -142,7 +188,7 @@ enum RemoteDeviceFanout {
         do {
             try process.run()
         } catch {
-            relay(logLine("❌ \(machine): cannot start the fan-out child: \(error.localizedDescription)"))
+            relay(formatSpawnFailure("cannot start the fan-out child: \(error.localizedDescription)"))
             return
         }
 

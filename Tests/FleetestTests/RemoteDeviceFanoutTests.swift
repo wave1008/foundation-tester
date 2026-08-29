@@ -83,6 +83,36 @@ final class RemoteDeviceFanoutTests: XCTestCase {
             line: #"{"kind":"log","message":"x"}"#, machine: "M1Max"))
     }
 
+    // MARK: - 掃討(profile 無しの `devices down`)の分散
+
+    /// 「全て終了」(実行プロファイル未選択)は**登録簿の全マシン**へ投げる —— 監視の fan-out と
+    /// 同じ集合。ここが手元だけだと、タイルに出ているリモートの台が消えない(実害 2026-08-30)
+    func testSweepReachesEveryMachineInTheRegistry() {
+        XCTAssertEqual(
+            RemoteDeviceFanout.sweepMachines(registry: ["M1Max", "M1Ultra"], deviceMachine: nil),
+            ["M1Max", "M1Ultra"])
+    }
+
+    /// 子(`--device-machine local`)は分散しない —— 入れ子のディスパッチを作らない
+    func testSweepDoesNotFanOutAgainFromTheChild() {
+        XCTAssertEqual(
+            RemoteDeviceFanout.sweepMachines(registry: ["M1Max"], deviceMachine: "local"), [])
+        XCTAssertEqual(
+            RemoteDeviceFanout.sweepMachines(registry: ["M1Max"], deviceMachine: "M1Max"), [])
+    }
+
+    /// 登録簿が空(リモート未使用)なら1本も ssh を張らない
+    func testSweepIsEmptyWithoutARegistry() {
+        XCTAssertEqual(RemoteDeviceFanout.sweepMachines(registry: [], deviceMachine: nil), [])
+    }
+
+    /// 子の argv を等号で固定する。**`--device-machine local` が抜けると入れ子で分散し続ける**
+    func testSweepChildRunsTheSameSweepPinnedToItsOwnMachine() {
+        XCTAssertEqual(RemoteDeviceFanout.sweepChildArgs(machine: "M1Ultra"),
+                       ["remote", "exec", "M1Ultra", "--", "devices", "down",
+                        "--device-machine", "local"])
+    }
+
     /// スラッシュを含むデバイス名(Android の AVD 表示名は普通に含む)が \/ へ潰れない ——
     /// 受け手はタイルを名前で引くので、エスケープが変わると一致しなくなる
     func testKeepsSlashesInNamesUnescaped() throws {

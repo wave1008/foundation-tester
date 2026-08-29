@@ -1,6 +1,7 @@
 // マシンプロファイルに定義されたデバイス群の起動・停止 CLI。
 //   fleetest devices up   … 並行起動(最大2台同時・起動済みスキップ・iOS はブリッジ供給まで)
-//   fleetest devices down … 全ブリッジ停止+シミュレータ/エミュレータ全終了
+//   fleetest devices down … 全ブリッジ停止+シミュレータ/エミュレータ全終了(--profile 無しは
+//                           登録簿の全マシンでも同じ掃討を走らせる。RemoteDeviceFanout.dispatchSweep)
 // どちらも --profile(実行プロファイル名)指定時は、そのプロファイルが参照するデバイスのみを
 // 対象にする(RunProfileScope.swift。省略時はマシンプロファイルの全デバイス)。
 // DeviceBooter / BridgeProvisioner を直接使う(fleetest api device-up/device-down と共通の実装)。
@@ -52,8 +53,10 @@ struct DevicesCommand: AsyncParsableCommand {
 
     struct Down: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Stop every bridge and shut down all simulators and emulators (physical Android devices are"
-                + " excluded). With --profile, only the devices that profile references are stopped individually)")
+            abstract: "Stop every bridge and shut down all simulators and emulators (physical Android"
+                + " devices are excluded), on this machine and on every machine in the remote registry."
+                + " With --profile, only the devices that profile references are stopped individually,"
+                + " on this machine only.")
 
         @Option(help: "Test project name (only used with --profile; defaults to the only one in TestProjects/, or the default project)")
         var project: String?
@@ -72,6 +75,13 @@ struct DevicesCommand: AsyncParsableCommand {
                 await shutdownProfile(profile)
                 return
             }
+
+            // 手元だけ掃討しても**モニターに出ているリモートの台は残る**(「全て終了」を押しても
+            // 消えない。実害 2026-08-30)。監視と同じ集合(登録簿の全マシン)へ同じ掃討を投げる。
+            // 子は `--device-machine local` で走るので入れ子にはならない
+            async let fanout: Void = RemoteDeviceFanout.dispatchSweep(
+                machines: RemoteDeviceFanout.sweepMachines(deviceMachine: deviceMachine),
+                relay: { print($0) })
 
             if let root = try? RepoRoot.find() {
                 let stopped = BridgeLauncher.stopAll(repoRoot: root)
@@ -115,6 +125,7 @@ struct DevicesCommand: AsyncParsableCommand {
                     _ = try? Shell.run(["pkill", "-9", "-f", "sdk/emulator/qemu"])
                 }
             }
+            await fanout  // リモート分の完走まで抜けない(呼び出し側の「全部終わった」の合図)
         }
 
         /// 対象デバイスのみ ios→android の順で shutdownOne により個別停止する(ApiDeviceDown と

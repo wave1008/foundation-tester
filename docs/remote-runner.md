@@ -891,6 +891,17 @@ witness は `RemoteDispatchTests.testRelayRewriteMapsTheRunnerWorkDirOntoTheLoca
   **同じ規律で回すのは起動・停止だけではない** —— プロファイルタブの右クリック「Wipe Data」も
   `remote exec <machine> -- api device-wipe …` を通す(手元で撃つと、同名の台が別の機械にも
   居るとき**手元の台が初期化される**)
+- **「全て終了」(実行プロファイル未選択)も分散する**(2026-08-30 の実害)。拡張はこのとき
+  `api devices-down` ではなく従来の `fleetest devices down`(全ブリッジ停止 + `simctl shutdown all`
+  + 残った qemu の kill = マシンプロファイルに無い台も止める掃討)を呼ぶ。この掃討が手元しか
+  見ていなかったので、**監視は登録簿の全マシンへ張るのに停止は手元だけ**という食い違いになり、
+  リモートのタイルが1枚も消えなかった。現在は `RemoteDeviceFanout.dispatchSweep` が
+  `remote exec <machine> -- devices down --device-machine local` を機械ごとに立てる ——
+  **投げる先は `ApiMonitorCommand.fanoutMachines` と同じ**(集合を別に持つと「出ているのに
+  止まらない台」が生まれる)。子は `--device-machine local` で走るので入れ子にはならない。
+  出力は NDJSON でなくプレーンテキストなので、行頭に `[<machine>]` を付けて中継する。
+  **リモートで `devices down` を撃つ側は `--device-machine local` を必ず付ける**
+  (`remote clean` がそう)—— 付けないとランナー自身の登録簿を辿って連鎖する
 - **名前で引けるのはモニターが知っている台だけ**(2026-08-29)。ランナー側のプロファイル複製が
   更新されるのは**モニターの fan-out 開始時だけ**なので、それ以降に足した台・改名した台を
   名前で撃つと `device not found: <名前>` で必ず失敗する。**タイルの起動・停止はこの穴を踏まない**

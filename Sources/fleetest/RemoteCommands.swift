@@ -287,8 +287,11 @@ struct RemoteCommand: AsyncParsableCommand {
                 print("→ running teardown scripts left behind by dead runs")
                 runReapAcrossIssuers(target: target, layout: layout)
                 print("→ stopping bridges and shutting down simulators/emulators")
+                // **`--device-machine local` でその機械に閉じる** —— `devices down` は登録簿の
+                // 全マシンへ掃討を分散するので、付けないとランナー自身の登録簿を辿って
+                // 入れ子のディスパッチになる(経路は1段、の規律。RemoteDeviceFanout.sweepMachines)
                 let devicesDownCommand = RemoteShell.remoteRunCommand(
-                    layout: layout, fleetestArgs: ["devices", "down"])
+                    layout: layout, fleetestArgs: ["devices", "down", "--device-machine", "local"])
                 let downResult = try Shell.run(remoteSSHBase + [target, devicesDownCommand])
                 if downResult.status != 0 {
                     print("warning: `devices down` exited with status \(downResult.status)\n\(downResult.tail)")
