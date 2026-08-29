@@ -344,3 +344,59 @@ test("ping はフレームに数えない(諦め判定を殺さない)", async (
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// ---- 遅い失敗が諦めの上限をすり抜けないこと ----
+//
+// 実害(2026-08-30 の一括起動): ランナーへの ssh が混雑し、1本あたり約 10〜11 秒かけて
+// `Connection timed out during banner exchange` で失敗していた。諦めの判定は
+// 「HEALTHY_WINDOW_MS(10秒)以内の終了」だけを連続失敗として数えるので、毎回 streak が
+// 0 に戻り、**混雑しているホストを永久に叩き続けた**。時間ではなく「1フレームも来なかったか」
+// で数える(NO_FRAME_WEDGE_LIMIT と同じ判断)。
+//
+// 実プロセスで 10 秒超を 3 回再現すると 30 秒以上かかるので、private の内部状態を直接置いて
+// handleUnexpectedExit を呼ぶ(このファイルの他のテストが ingest() を直接呼ぶのと同じ方針)。
+function newPipeline(onFailureCount) {
+  return new StreamPipeline({
+    command: "/nonexistent", args: [], logPrefix: "ios-stream",
+    outputChannel: { appendLine() {} }, codec: "h264",
+    onFrame: () => {}, onChunk: () => {}, onConnectionOk: () => {},
+    onFailure: () => { onFailureCount.n += 1; },
+    onCodecUnavailable: () => {},
+  });
+}
+
+test("1フレームも来ないまま終わる失敗は、遅くても諦めの上限に数える", () => {
+  const failures = { n: 0 };
+  const pipeline = new StreamPipeline({
+    command: "/nonexistent", args: [], logPrefix: "ios-stream",
+    outputChannel: { appendLine() {} }, codec: "h264",
+    onFrame: () => {}, onChunk: () => {}, onConnectionOk: () => {},
+    onFailure: () => { failures.n += 1; },
+    onCodecUnavailable: () => {},
+  });
+  try {
+    for (let i = 0; i < 3; i += 1) {
+      pipeline.startedAt = Date.now() - 20000;  // 10秒より長く生きてから失敗(= ssh タイムアウト)
+      pipeline.everDeliveredFrame = false;      // 1枚も届いていない
+      pipeline.handleUnexpectedExit("exit code 1");
+    }
+    assert.equal(failures.n, 1, "遅い失敗が3回続いたら諦めてポーリングへ落ちる");
+  } finally {
+    pipeline.dispose();
+  }
+});
+
+test("一度でも映像が届いた後の終了は、何度でも張り直す(streak を戻す)", () => {
+  const failures = { n: 0 };
+  const pipeline = newPipeline(failures);
+  try {
+    for (let i = 0; i < 5; i += 1) {
+      pipeline.startedAt = Date.now() - 20000;
+      pipeline.everDeliveredFrame = true;      // 映像は来ていた = 本物の wedge/切断
+      pipeline.handleUnexpectedExit("wedge");
+    }
+    assert.equal(failures.n, 0, "動いていた配信は諦めずに張り直す(ここを巻き込むと退行)");
+  } finally {
+    pipeline.dispose();
+  }
+});

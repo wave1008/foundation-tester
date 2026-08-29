@@ -382,8 +382,14 @@ export class StreamPipeline implements LiveStreamPipeline {
       this.options.onFailure(t("live.stream.noFrameMessage", { seconds: WEDGE_TIMEOUT_MS / 1000 }));
       return;
     }
+    // **「速い失敗」だけを数えると、遅い失敗が上限をすり抜ける**。実害(2026-08-30 の一括起動):
+    // ランナーへの ssh が混雑して 1 本あたり約 10〜11 秒かけて失敗し、毎回 elapsed が
+    // HEALTHY_WINDOW_MS を超えるので streak が 0 に戻り、**永久に張り直し続けた**
+    // (混雑しているホストをさらに叩く)。時間ではなく「1 フレームも来なかったか」で数える ——
+    // NO_FRAME_WEDGE_LIMIT と同じ判断(一度も映像が来ていないのは一時的な固着ではない)。
+    // 一度でも映像が届いた後の終了は、どれだけ長く動いていても streak を戻してよい
     const elapsed = Date.now() - this.startedAt;
-    if (elapsed < HEALTHY_WINDOW_MS) {
+    if (elapsed < HEALTHY_WINDOW_MS || !this.everDeliveredFrame) {
       this.failureStreak += 1;
     } else {
       this.failureStreak = 0;
