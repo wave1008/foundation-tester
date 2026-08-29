@@ -60,7 +60,7 @@ final class InAppBridgeStateTests: XCTestCase {
     }
 
     func testInstanceStopHandlesInappFileWhenNoPidFile() throws {
-        let launcher = BridgeLauncher(repoRoot: repoRoot, port: 8215)
+        let launcher = BridgeLauncher(repoRoot: repoRoot, port: 8215, physical: false)
         InAppBridgeState.write(stateDir: stateDir, port: 8215, udid: "FAKE-UDID", bundleID: "com.example.nonexistent")
 
         XCTAssertNoThrow(try launcher.stop())
@@ -70,7 +70,7 @@ final class InAppBridgeStateTests: XCTestCase {
     }
 
     func testInstanceStopThrowsWhenNeitherPidNorInappFileExists() throws {
-        let launcher = BridgeLauncher(repoRoot: repoRoot, port: 8216)
+        let launcher = BridgeLauncher(repoRoot: repoRoot, port: 8216, physical: false)
         XCTAssertThrowsError(try launcher.stop())
     }
 }

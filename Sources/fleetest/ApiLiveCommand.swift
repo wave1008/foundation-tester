@@ -164,12 +164,15 @@ struct ApiLiveServe: AsyncParsableCommand {
     }
 
     /// platform=ios かつ --udid 指定時のみ自動起動を有効化する。RepoRoot.find() の失敗は
-    /// serve 自体を止めず自動起動なしで続行する(--udid 未指定時と同じ扱いに落とす)
+    /// serve 自体を止めず自動起動なしで続行する(--udid 未指定時と同じ扱いに落とす)。
+    /// **physical は construction 時に1回だけ解決する**(SimulatorCatalog.isPhysical(udid:)。
+    /// 判別できなければシミュレータ扱いに倒す = 従来の既定 false と同じで退行しない)
     private func makeAutoStarter(port: UInt16) -> LiveBridgeAutoStarter? {
         guard driverOptions.platform == "ios", let udid else { return nil }
         do {
             let repoRoot = try RepoRoot.find()
-            return LiveBridgeAutoStarter(repoRoot: repoRoot, udid: udid, port: port)
+            let physical = SimulatorCatalog.isPhysical(udid: udid) ?? false
+            return LiveBridgeAutoStarter(repoRoot: repoRoot, udid: udid, port: port, physical: physical)
         } catch {
             logStderr("Repository root not found — disabling bridge auto-start: " +
                 error.localizedDescription)

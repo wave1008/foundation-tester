@@ -409,7 +409,9 @@ struct Bridge: AsyncParsableCommand {
                       ? "No bridges are running"
                       : "✅ Stopped bridges (port: \(stopped.joined(separator: ", ")))")
             } else {
-                let launcher = BridgeLauncher(repoRoot: root, port: port)
+                // physical は stop() が見ない(kind を知らない経路からも止められるよう、
+                // stop() 側が条件分岐しない宣言をしている)ので false でよい
+                let launcher = BridgeLauncher(repoRoot: root, port: port, physical: false)
                 try launcher.stop()
                 print("✅ Stopped the bridge (port: \(port))")
             }

@@ -81,7 +81,7 @@ http.server.HTTPServer(("127.0.0.1", \(port)), H).serve_forever()
             at: temp.appendingPathComponent(".fleetest"), withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: temp) }
 
-        XCTAssertThrowsError(try BridgeLauncher(repoRoot: temp, port: port).stop()) { error in
+        XCTAssertThrowsError(try BridgeLauncher(repoRoot: temp, port: port, physical: false).stop()) { error in
             guard case LauncherError.notOwnedByThisRepo(let p, let device, let version) = error else {
                 return XCTFail("notOwnedByThisRepo を投げるはず: \(error)")
             }

@@ -145,4 +145,26 @@ public enum SimulatorCatalog {
         }
         return best  // devices は 起動中 → OS 降順 で並んでいる
     }
+
+    /// 純関数: UDID がシミュレータ一覧・実機一覧のどちらに居るかを返す。**形状では判別できない**
+    /// (実機 UDID は 25 文字型・旧 40 桁 hex 型があり、シミュレータの「36 文字・ダッシュ5分割」
+    /// 判定を外れる。BridgeLauncher.physical のコメント参照)。どちらにも無ければ nil
+    /// (呼び出し側が既定へ倒せるよう断定しない)
+    /// **実機一覧は遅延**(シミュレータで当たれば devicectl を引かない)。この形は
+    /// BridgeClient.resolveTarget(named:simulators:physicalDevices:) と同じで、
+    /// 「シミュレータ優先」の短絡を判定側に1つだけ持たせるため
+    static func isPhysical(udid: String, simulators: [SimDeviceInfo],
+                           physicalDevices: () -> [IOSPhysicalDeviceInfo]) -> Bool? {
+        if simulators.contains(where: { $0.udid == udid }) { return false }
+        if physicalDevices().contains(where: { $0.udid == udid || $0.deviceCtlIdentifier == udid }) {
+            return true
+        }
+        return nil
+    }
+
+    /// I/O 版。一覧の取得自体が失敗したときも nil(判別できない)
+    public static func isPhysical(udid: String) -> Bool? {
+        isPhysical(udid: udid, simulators: (try? devices()) ?? [],
+                   physicalDevices: { (try? IOSPhysicalDeviceCatalog.devices()) ?? [] })
+    }
 }

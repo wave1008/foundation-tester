@@ -27,13 +27,17 @@ actor LiveBridgeAutoStarter {
     private let repoRoot: URL
     private let udid: String
     private let port: UInt16
+    /// 実機かシミュレータか(BridgeLauncher.physical に渡す。UDID の形状では判別できないため
+    /// 呼び出し側が構築時に一度だけ確定させる。SimulatorCatalog.isPhysical(udid:) 参照)
+    private let physical: Bool
     private var state: State = .idle
     private var consecutiveFailures = 0
 
-    init(repoRoot: URL, udid: String, port: UInt16) {
+    init(repoRoot: URL, udid: String, port: UInt16, physical: Bool) {
         self.repoRoot = repoRoot
         self.udid = udid
         self.port = port
+        self.physical = physical
     }
 
     /// 接続拒否を観測したとき呼ぶ。idle なら起動タスクを開始する(starting/failed 中は何もしない
@@ -45,8 +49,10 @@ actor LiveBridgeAutoStarter {
             let repoRoot = self.repoRoot
             let udid = self.udid
             let port = self.port
+            let physical = self.physical
             Task.detached { [weak self] in
-                let result = await Self.launchBridge(repoRoot: repoRoot, udid: udid, port: port)
+                let result = await Self.launchBridge(
+                    repoRoot: repoRoot, udid: udid, port: port, physical: physical)
                 await self?.finishLaunch(result: result)
             }
         }
@@ -72,9 +78,10 @@ actor LiveBridgeAutoStarter {
         let repoRoot = self.repoRoot
         let udid = self.udid
         let port = self.port
+        let physical = self.physical
         Task.detached { [weak self] in
             let result = await Self.launchBridge(
-                repoRoot: repoRoot, udid: udid, port: port, stopFirst: true)
+                repoRoot: repoRoot, udid: udid, port: port, physical: physical, stopFirst: true)
             await self?.finishLaunch(result: result)
         }
     }
@@ -115,9 +122,9 @@ actor LiveBridgeAutoStarter {
     /// actor の外で実行する起動処理本体。失敗時は起動途中のプロセス・pid ファイルを後始末する
     /// (BridgeProvisioner.provision と同じ理由: 残すと以後のポート採番を汚す)
     private static func launchBridge(
-        repoRoot: URL, udid: String, port: UInt16, stopFirst: Bool = false
+        repoRoot: URL, udid: String, port: UInt16, physical: Bool, stopFirst: Bool = false
     ) async -> Result<Void, Error> {
-        let launcher = BridgeLauncher(repoRoot: repoRoot, device: udid, port: port)
+        let launcher = BridgeLauncher(repoRoot: repoRoot, device: udid, port: port, physical: physical)
         do {
             if stopFirst {
                 do {

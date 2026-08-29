@@ -378,7 +378,8 @@ final class IOSPhysicalDeviceTests: XCTestCase {
         XCTAssertEqual(device.destination, "platform=iOS,id=00008130-000A1B2C3D4E5678")
 
         let simulator = BridgeLauncher(repoRoot: root,
-                                       device: "6109860E-93CE-47E1-9989-5DCD16186434", port: 8123)
+                                       device: "6109860E-93CE-47E1-9989-5DCD16186434", port: 8123,
+                                       physical: false)
         XCTAssertEqual(simulator.destination,
                        "platform=iOS Simulator,id=6109860E-93CE-47E1-9989-5DCD16186434")
     }
@@ -394,7 +395,7 @@ final class IOSPhysicalDeviceTests: XCTestCase {
         unsetenv("FT_DEVELOPMENT_TEAM")
         defer { unsetenv("XDG_CONFIG_HOME") }
 
-        XCTAssertEqual(try BridgeLauncher(repoRoot: root, device: "U", port: 8123)
+        XCTAssertEqual(try BridgeLauncher(repoRoot: root, device: "U", port: 8123, physical: false)
             .codeSigningArguments(), [], "シミュレータは署名引数を足さない")
         XCTAssertThrowsError(
             try BridgeLauncher(repoRoot: root, device: "U", port: 8123, physical: true)
@@ -409,7 +410,7 @@ final class IOSPhysicalDeviceTests: XCTestCase {
     func testDerivedDataIsSeparatedByDeviceKind() {
         let root = URL(fileURLWithPath: "/tmp/ft")
         let device = BridgeLauncher(repoRoot: root, device: "U", port: 8123, physical: true)
-        let simulator = BridgeLauncher(repoRoot: root, device: "U", port: 8123)
+        let simulator = BridgeLauncher(repoRoot: root, device: "U", port: 8123, physical: false)
         XCTAssertNotEqual(device.derivedDataPath, simulator.derivedDataPath,
                           "混在すると findXCTestRun が iphoneos/iphonesimulator の誤った方を掴む")
     }

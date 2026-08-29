@@ -32,8 +32,12 @@ public struct BridgeLauncher {
                       : "platform=iOS Simulator,name=\(device)"
     }
 
+    /// **`physical` に既定値を置かない** —— 呼び忘れると DerivedData も -destination も
+    /// シミュレータ用のまま実機へ向けて起動し、確実に失敗する(2026-08-30 に
+    /// LiveBridgeAutoStarter が実際にこれを踏んでいた)。新しい呼び出し元の呼び忘れは
+    /// コンパイルで止める(BridgeLauncher.stopAll の skipPhysical と同じ規律)
     public init(repoRoot: URL, device: String = "iPhone 17 Pro",
-                port: UInt16 = BridgeAPI.defaultPort, physical: Bool = false) {
+                port: UInt16 = BridgeAPI.defaultPort, physical: Bool) {
         self.repoRoot = repoRoot
         self.device = device
         self.port = port

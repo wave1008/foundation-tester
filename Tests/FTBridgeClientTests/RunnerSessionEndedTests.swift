@@ -34,7 +34,7 @@ final class RunnerSessionEndedTests: XCTestCase {
             at: root.appendingPathComponent(".fleetest"), withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
         // 誰も listen していないポート(接続拒否ですぐ返る)
-        let launcher = BridgeLauncher(repoRoot: root, device: "UDID-1", port: 8199)
+        let launcher = BridgeLauncher(repoRoot: root, device: "UDID-1", port: 8199, physical: false)
         try "…\n** TEST EXECUTE FAILED **\n".write(to: launcher.logPath, atomically: true,
                                                    encoding: .utf8)
 
