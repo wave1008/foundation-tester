@@ -48,6 +48,7 @@ const editorConfirm = document.getElementById('editor-confirm');
 const editorCancel = document.getElementById('editor-cancel');
 const machineDeviceMenu = document.getElementById('machine-device-menu');
 const machineDeviceMenuItemBtn = document.getElementById('machine-device-menu-item');
+const machineDeviceMenuWipeBtn = document.getElementById('machine-device-menu-wipe');
 
 // machineProfileInfo 受信で更新。空なら「マシンプロファイルなし」。
 export let machineProfiles = [];
@@ -691,12 +692,21 @@ export function closeMachineDeviceMenu() {
 }
 
 // entry は { machine, devices }(1件以上)。2台以上なら項目ラベルを「選択した<N>台を除去」に変える。
+// **Wipe Data は仮想デバイスだけ**(実機に「中身を初期化する」操作は無い)。1台でも実機が
+// 混ざっていれば出さない —— 出したうえで一部だけ実行すると、何が消えて何が残ったのか
+// 分からなくなる。
 function openMachineDeviceMenu(entry, clientX, clientY) {
   machineDeviceMenuEntry = entry;
   machineDeviceMenuItemBtn.textContent =
     entry.devices.length >= 2
       ? t('wvMonitor2.machine.removeSelectedCount', { count: entry.devices.length })
       : t('wvMonitor2.common.remove');
+  const wipable = entry.devices.every((d) => d.kind !== 'physical');
+  machineDeviceMenuWipeBtn.style.display = wipable ? '' : 'none';
+  machineDeviceMenuWipeBtn.textContent =
+    entry.devices.length >= 2
+      ? t('wvMonitor2.machine.wipeSelectedCount', { count: entry.devices.length })
+      : t('wvMonitor2.machine.wipeData');
   machineDeviceMenu.classList.add('visible');
   clampMenuPosition(machineDeviceMenu, clientX, clientY);
 }
@@ -711,6 +721,20 @@ machineDeviceMenuItemBtn.addEventListener('click', (event) => {
     machine: machineDeviceMenuEntry.machine,
     // **(machine, name) で送る**(machine 省略=手元)。名前だけだと、拡張側が別の機械の同名
     // デバイスまで巻き添えで消す。
+    devices: machineDeviceMenuEntry.devices.map((d) => (d.machine ? { name: d.name, machine: d.machine } : { name: d.name })),
+  });
+  closeMachineDeviceMenu();
+});
+
+// 「Wipe Data」: 中身の初期化(登録もデバイス本体も残る)。**確認は拡張側の modal** ——
+// webview の window.confirm は効かない(CLAUDE.md)。宛先は除去と同じ (machine, name)。
+machineDeviceMenuWipeBtn.addEventListener('click', (event) => {
+  event.stopPropagation();
+  if (!machineDeviceMenuEntry) {
+    return;
+  }
+  vscode.postMessage({
+    type: 'machineDeviceWipe',
     devices: machineDeviceMenuEntry.devices.map((d) => (d.machine ? { name: d.name, machine: d.machine } : { name: d.name })),
   });
   closeMachineDeviceMenu();

@@ -274,6 +274,8 @@ export const panelsStrings = {
   "panels.deviceMenu.selectAll": { ja: "すべて選択", en: "Select All" },
   "panels.deviceMenu.deselectAll": { ja: "すべて解除", en: "Deselect All" },
   "panels.deviceMenu.remove": { ja: "除去", en: "Remove" },
+  // 実機の行では出さない(仮想デバイスの中身の初期化。Android=Wipe Data / iOS=simctl erase)。
+  "panels.deviceMenu.wipeData": { ja: "Wipe Data", en: "Wipe Data" },
   // #device-pick-overlay の行専用。machineDeviceMenu の「除去」(プロファイルから外すだけ)と違い、
   // ホスト上の実体(シミュレータ/AVD)そのものを削除する(devicePickDeviceDelete)。
   "panels.deviceMenu.delete": { ja: "削除", en: "Delete" },

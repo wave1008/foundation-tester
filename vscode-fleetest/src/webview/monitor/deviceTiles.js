@@ -63,6 +63,7 @@ function deviceOpMenuItem(state, busy, physical) {
   if (busy && busy.status === 'queued') { return { label: t('wvMonitor.deviceOpMenu.queued'), op: busy.op, disabled: true }; }
   if (busy && busy.op === 'up') { return { label: t('wvMonitor.deviceOpMenu.startingUp'), op: 'up', disabled: true }; }
   if (busy && busy.op === 'down') { return { label: t('wvMonitor.deviceOpMenu.stoppingDown'), op: 'down', disabled: true }; }
+  if (busy && busy.op === 'wipe') { return { label: t('wvMonitor.deviceOpMenu.wiping'), op: 'wipe', disabled: true }; }
   if (state === 'offline' || state === 'unknown') {
     return {
       label: t(physical ? 'wvMonitor.deviceOpMenu.startBridge' : 'wvMonitor.deviceOpMenu.start'),
@@ -634,9 +635,11 @@ function renderMeta(entry) {
   // state で排他(booted/connected)のため bridgeWatch と healthWatch は衝突しない。
   let warn = false;
   let footerTip = '';
-  if (entry.opBusy) {
+  if (entry.opBusy && entry.opBusy.op !== 'wipe') {
     // 何もしない: footerText は空のまま(キュー待ちは左下の queuedBadge チップが伝える。
     // 実行中の down/up はプレースホルダ側のラベルに譲る)。
+    // **wipe だけは譲らない** —— 停止と再起動で数分かかり、フェーズ(停止中/再起動中)を
+    // 出さないと固まったように見える(プレースホルダ側に対応するラベルも無い)。
   } else if (entry.wipePhase) {
     const override = WIPE_STATUS_LABEL[entry.wipePhase];
     if (override) {
@@ -666,7 +669,9 @@ function renderMeta(entry) {
   // bulkOpActive 変化時の再評価は setBusy 側の renderMeta 一括呼び出しが担う。
   let queuedText = '';
   if (entry.opBusy?.status === 'queued') {
-    queuedText = entry.opBusy.op === 'down' ? t('wvMonitor.tile.queuedRestart') : t('wvMonitor.tile.queuedStart');
+    queuedText = entry.opBusy.op === 'wipe'
+      ? t('wvMonitor.tile.queuedWipe')
+      : entry.opBusy.op === 'down' ? t('wvMonitor.tile.queuedRestart') : t('wvMonitor.tile.queuedStart');
   } else if (!entry.opBusy && bulkOpActive === 'up' && entry.device.state === 'offline') {
     queuedText = t('wvMonitor.tile.queuedStart');
   }
@@ -1225,10 +1230,11 @@ export function applyHealthWatch(message) {
   renderMeta(entry);
 }
 
-// 契約: { type: 'wipeStatus', name, phase }(name は deviceOpBusy と同じ device.name 名前空間。
-// 契約元は model.ts の WipeStatusEvent / monitorPanel.ts の handleWipeStatusEvent)。
+// 契約: { type: 'wipeStatus', name, machine?, phase }(name は deviceOpBusy と同じ device.name
+// 名前空間。契約元は model.ts の WipeStatusEvent / monitorPanel.ts の handleWipeStatusEvent と、
+// 手動 Wipe の monitorDeviceOps.ts)。**machine 省略は「手元」**(run 由来は載せてこない)。
 export function applyWipeStatus(message) {
-  const entry = findTileByName(message.name);
+  const entry = findTileByName(message.name, message.machine);
   if (!entry) {
     return;
   }

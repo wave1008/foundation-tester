@@ -6,6 +6,17 @@
 import Foundation
 import FTCore
 
+public enum AndroidDataWiperError: Error, LocalizedError, Equatable {
+    case avdDirectoryNotFound(avd: String, path: String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .avdDirectoryNotFound(let avd, let path):
+            return "AVD directory not found for \(avd) (\(path))"
+        }
+    }
+}
+
 public enum AndroidDataWiper {
 
     private enum RunningState: Equatable {
@@ -70,42 +81,84 @@ public enum AndroidDataWiper {
             let name = candidate.device.name
             let progress = "\(index + 1)/\(candidates.count)"
             do {
-                log("🧹 \(name): wiping data (\(progress)) — stopping the emulator...")
-                status?(name, "stopping")
-                let running = try await stopIfRunning(avdID: candidate.avdID,
-                                                      deviceName: name, log: log)
-                guard running != .failedToStop else {
-                    status?(name, "failed")
-                    continue
-                }
-
-                for target in candidate.targets {
-                    try? FileManager.default.removeItem(at: target)
-                }
-                wiped.append(name)
-
-                if running == .wasRunning {
-                    log("🧹 \(name): data wiped (freed \(candidate.sizeGB)GB). "
-                        + "Rebooting (the first boot rebuilds and takes minutes)...")
-                    status?(name, "rebooting")
-                    let serial = try await DeviceBooter.startEmulator(avd: candidate.avdID,
-                                                                      locale: locale)
-                    try await DeviceBooter.waitForAndroidBoot(serial: serial)
-                    // Play イメージでは -change-locale が無効のため、ブリッジ /locale で適用する
-                    await DeviceBooter.applyLocale(serial: serial, locale: locale,
-                                                   deviceName: name, log: log)
-                    log("✅ \(name): Wipe Data finished (\(progress))")
-                } else {
-                    log("✅ \(name): Wipe Data finished (\(progress), freed \(candidate.sizeGB)GB; "
-                        + "not running, so no reboot)")
-                }
-                status?(name, "done")
+                let done = try await performWipe(
+                    name: name, avdID: candidate.avdID, targets: candidate.targets,
+                    sizeGB: candidate.sizeGB, progress: progress, locale: locale,
+                    status: { phase in status?(name, phase) }, log: log)
+                if done { wiped.append(name) }
             } catch {
                 log("❌ \(name): Wipe Data failed — \(error.localizedDescription)")
                 status?(name, "failed")
             }
         }
         return wiped
+    }
+
+    /// 1台ぶんの Wipe Data(しきい値を見ない。手元/リモートの手動実行 =
+    /// `fleetest api device-wipe` から DeviceWiper 経由で呼ぶ)。**肥大化チェックの経路と
+    /// 同じ本体**(performWipe)を通す —— 停止できたときだけ消す・稼働中だった台だけ起こし直す、
+    /// という規律を2箇所に持たない。AVD ディレクトリが見つからないのは失敗
+    /// (自動チェックは毎 run のノイズになるので警告して飛ばすが、人が選んで撃った1台は黙って
+    /// 成功にしてはいけない)。
+    /// status のフェーズ("stopping"/"rebooting"/"done"/"failed")は wipeBloatedAVDs と同じ集合。
+    public static func wipeOne(
+        deviceName: String, avd: String, locale: String,
+        status: (@Sendable (String) -> Void)? = nil,
+        log: @escaping @Sendable (String) -> Void
+    ) async throws -> Bool {
+        let avdID = AndroidDeviceCatalog.canonicalAVDID(avd)
+        let avdDir = AndroidDeviceCatalog.avdContentDirectory(id: avdID)
+        guard FileManager.default.fileExists(atPath: avdDir.path) else {
+            throw AndroidDataWiperError.avdDirectoryNotFound(avd: avdID, path: avdDir.path)
+        }
+        let targets = wipeTargets(avdDir: avdDir)
+        let sizeGB = String(format: "%.1f", Double(totalSize(paths: targets)) / 1_073_741_824)
+        do {
+            return try await performWipe(
+                name: deviceName, avdID: avdID, targets: targets, sizeGB: sizeGB,
+                progress: "1/1", locale: locale, status: status, log: log)
+        } catch {
+            status?("failed")
+            throw error
+        }
+    }
+
+    /// 1台ぶんの本体: 停止 → 削除 → (稼働中だった台だけ)再起動+ロケール適用。
+    /// **停止を確認できなければ1バイトも消さない**(稼働中エミュレータの下からイメージを
+    /// 抜くと qemu がクラッシュし、AVD が壊れて作り直しになる)。戻り値は消したかどうか。
+    private static func performWipe(
+        name: String, avdID: String, targets: [URL], sizeGB: String, progress: String,
+        locale: String, status: (@Sendable (String) -> Void)?,
+        log: @escaping @Sendable (String) -> Void
+    ) async throws -> Bool {
+        log("🧹 \(name): wiping data (\(progress)) — stopping the emulator...")
+        status?("stopping")
+        let running = try await stopIfRunning(avdID: avdID, deviceName: name, log: log)
+        guard running != .failedToStop else {
+            status?("failed")
+            return false
+        }
+
+        for target in targets {
+            try? FileManager.default.removeItem(at: target)
+        }
+
+        if running == .wasRunning {
+            log("🧹 \(name): data wiped (freed \(sizeGB)GB). "
+                + "Rebooting (the first boot rebuilds and takes minutes)...")
+            status?("rebooting")
+            let serial = try await DeviceBooter.startEmulator(avd: avdID, locale: locale)
+            try await DeviceBooter.waitForAndroidBoot(serial: serial)
+            // Play イメージでは -change-locale が無効のため、ブリッジ /locale で適用する
+            await DeviceBooter.applyLocale(serial: serial, locale: locale,
+                                           deviceName: name, log: log)
+            log("✅ \(name): Wipe Data finished (\(progress))")
+        } else {
+            log("✅ \(name): Wipe Data finished (\(progress), freed \(sizeGB)GB; "
+                + "not running, so no reboot)")
+        }
+        status?("done")
+        return true
     }
 
     /// 起動中なら emu kill → serial 消失を待つ(上限30秒・0.5秒ポーリング)。

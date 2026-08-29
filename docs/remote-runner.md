@@ -883,7 +883,10 @@ witness は `RemoteDispatchTests.testRelayRewriteMapsTheRunnerWorkDirOntoTheLoca
   複数ある名前なら候補を挙げて止める**(黙って手元を選ばない) —— 版の古い拡張は
   `--device-machine` を付けずに撃つので、既定を手元にすると
   **「M1Max を止めたつもりで手元が止まり、しかも ok:true で成功に見える」**になる
-  (2026-08-17 に実際に起きた)。実行プロファイルの参照解決と同じ規律
+  (2026-08-17 に実際に起きた)。実行プロファイルの参照解決と同じ規律。
+  **同じ規律で回すのは起動・停止だけではない** —— プロファイルタブの右クリック「Wipe Data」も
+  `remote exec <machine> -- api device-wipe … --device-machine <machine>` を通す
+  (手元で撃つと、同名の台が別の機械にも居るとき**手元の台が初期化される**)
 - **自動修復(watchdog)はリモートの台を見ない**。ブリッジ再供給も Wi-Fi 修復も手元にしか
   効かないうえ、記録が name 単位なので、同名の台が2機にあると**向こうの connected が
   手元のハングを隠し、向こうの booted が手元の健全な台を再起動する**。その機械の watchdog

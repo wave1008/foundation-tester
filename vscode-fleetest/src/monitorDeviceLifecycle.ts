@@ -13,11 +13,22 @@ import { isRecord, type MonitorDeviceState } from "./monitorDeviceModel";
 //   {"kind":"log","message":".."} × n → {"kind":"finished","ok":bool,"error":string|null}
 // (ok:false のときは exit code 1。診断は stderr のみ)。
 
-export type DeviceOpKind = "up" | "down";
+// wipe = 仮想デバイス1台の初期化(`fleetest api device-wipe`)。up/down と同じ device ジョブとして
+// 直列キューに載せる —— 中で停止と再起動をするので、一括起動や個別の起動/停止と重なると
+// simctl/adb・ブリッジ供給が競合する。
+export type DeviceOpKind = "up" | "down" | "wipe";
 
 export interface DeviceOpLogEvent {
   readonly kind: "log";
   readonly message: string;
+}
+
+/** device-wipe だけが出すフェーズ通知(Sources/fleetest/ApiDeviceCommands.swift の
+ * ApiDeviceWipeStatusEvent と対)。phase の集合は run 開始時の自動 Wipe(model.ts の
+ * WipeStatusEvent)と同じで、タイルの表示もそちらと共有する。 */
+export interface DeviceOpWipeStatusEvent {
+  readonly kind: "wipeStatus";
+  readonly phase: "stopping" | "rebooting" | "done" | "failed";
 }
 
 export interface DeviceOpFinishedEvent {
@@ -34,7 +45,7 @@ export interface DeviceOpFinishedEvent {
   readonly signingLogPath?: string;
 }
 
-export type DeviceOpEvent = DeviceOpLogEvent | DeviceOpFinishedEvent;
+export type DeviceOpEvent = DeviceOpLogEvent | DeviceOpWipeStatusEvent | DeviceOpFinishedEvent;
 
 /** value が DeviceOpEvent として扱ってよいか判定する(isMonitorEvent と同じ方針)。 */
 export function isDeviceOpEvent(value: unknown): value is DeviceOpEvent {
@@ -44,6 +55,9 @@ export function isDeviceOpEvent(value: unknown): value is DeviceOpEvent {
   switch (value.kind) {
     case "log":
       return typeof value.message === "string";
+    case "wipeStatus":
+      return value.phase === "stopping" || value.phase === "rebooting"
+        || value.phase === "done" || value.phase === "failed";
     case "finished":
       return typeof value.ok === "boolean" && (value.error === null || typeof value.error === "string")
         && (value.signingProblems === undefined
@@ -153,6 +167,9 @@ export function deviceOpMenuItem(
   }
   if (busy?.op === "down") {
     return { label: t("monitor.deviceOp.labelStopping"), op: "down", disabled: true };
+  }
+  if (busy?.op === "wipe") {
+    return { label: t("monitor.deviceOp.labelWiping"), op: "wipe", disabled: true };
   }
   // unknown(リモートで観測できていない)は「起動」を出す —— 止めようがない状態で「停止」を
   // 出すより、起動を撃てるほうが役に立つ(起動は fan-out でその機械へ届く)
@@ -405,9 +422,11 @@ export type MonitorControlCommand =
   | { readonly cmd: "suppressFrames"; readonly devices: readonly string[] };
 
 /** down 系ジョブのみ true(bulk/device いずれも op フィールドで判定可能)。restartBatch は
- * up 系と同様 pause せずタイル上に進行を出す(GPU 再起動はタイル単位で見せたいため)。 */
+ * up 系と同様 pause せずタイル上に進行を出す(GPU 再起動はタイル単位で見せたいため)。
+ * **wipe も含む** —— 中でデバイスを止めてイメージを消すので、片付け中の台へスクショを
+ * 取りに行かせない(down と同じ理由)。 */
 export function deviceLifecycleJobNeedsMonitorPause(job: DeviceLifecycleJob): boolean {
-  return job.kind !== "restartBatch" && job.op === "down";
+  return job.kind !== "restartBatch" && (job.op === "down" || job.op === "wipe");
 }
 
 /** モニターの stdin に書き込む制御コマンドの NDJSON 1行(末尾に改行を含む)。 */

@@ -290,6 +290,69 @@ test("syncCpuRenderNames: ライフサイクルジョブ進行中の個体は落
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+// --- 手動 Wipe Data(プロファイルタブのデバイス行右クリック) --------------------------------
+
+test("wipe ジョブは api device-wipe を --name/--project/--device-machine で撃つ", async () => {
+  const { dir, binaryPath } = makeMockBinary();
+  const { deps } = makeDeps(binaryPath);
+  const deviceOps = new MonitorDeviceOps(deps);
+  try {
+    assert.equal(deviceOps.enqueueWipe([{ name: "エミュ1" }]), 1);
+    await waitUntilIdle(deviceOps);
+    const line = argvLines(dir).at(-1);
+    assert.match(line, /^api device-wipe /);
+    assert.match(line, /--name エミュ1/);
+    assert.match(line, /--project P/);
+    assert.match(line, /--device-machine local/, "手元でも絞る(同名のリモートの台を引かない)");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("リモートの台の wipe はその機械で実行する(remote exec + --device-machine)", async () => {
+  const { dir, binaryPath } = makeMockBinary();
+  const { deps } = makeDeps(binaryPath);
+  const deviceOps = new MonitorDeviceOps(deps);
+  try {
+    deviceOps.enqueueWipe([{ name: "エミュ1", machine: "M1Max" }]);
+    await waitUntilIdle(deviceOps);
+    const line = argvLines(dir).at(-1);
+    assert.match(line, /^remote exec M1Max -- api device-wipe/);
+    assert.match(line, /--device-machine M1Max/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("wipe ジョブは down と同じく実行開始時に stopDeviceStreams を呼ぶ(中で必ず停止するため)", async () => {
+  const { dir, binaryPath } = makeMockBinary();
+  const { deps, stopDeviceStreamsCalls, stopAllStreamsCalls } = makeDeps(binaryPath);
+  const deviceOps = new MonitorDeviceOps(deps);
+  try {
+    deviceOps.enqueueWipe([{ name: "エミュ1" }]);
+    assert.deepEqual(stopDeviceStreamsCalls, ["エミュ1"]);
+    assert.deepEqual(stopAllStreamsCalls, []);
+    await waitUntilIdle(deviceOps);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("同じ台に別の操作が載っている間は wipe を積まない(戻り値0)", async () => {
+  const { dir, binaryPath } = makeMockBinary();
+  const { deps } = makeDeps(binaryPath);
+  const deviceOps = new MonitorDeviceOps(deps);
+  try {
+    deviceOps.enqueueLifecycleJob({ kind: "device", name: "エミュ1", op: "down" });
+    assert.equal(deviceOps.enqueueWipe([{ name: "エミュ1" }]), 0);
+    // 別の機械の同名は別の台なので積める((machine, name) で引く)
+    assert.equal(deviceOps.enqueueWipe([{ name: "エミュ1", machine: "M1Max" }]), 1);
+    await waitUntilIdle(deviceOps);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // --- 別の機械のデバイスの単体操作 ---------------------------------------------------------
 // 実害の形(2026-08-17 のレビュー): `api device-up --name X` は**手元の**マシンプロファイルを
 // 名前だけで引く(ApiDeviceOperation.findDevice)。同名の台が別の機械にも居るのは通常なので、

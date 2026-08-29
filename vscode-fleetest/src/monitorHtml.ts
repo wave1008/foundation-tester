@@ -661,9 +661,11 @@ function renderDeviceOpMenu(): string {
 }
 
 function renderMachineDeviceMenu(): string {
-  return `<!-- #device-op-menuとスタイルのみ共用する別要素。「除去」はプロファイルから外すだけで本体は削除しない。 -->
+  return `<!-- #device-op-menuとスタイルのみ共用する別要素。「除去」はプロファイルから外すだけで本体は削除しない。
+       「Wipe Data」はデバイスの中身だけを初期化する(登録も本体も残る)。実機の行では隠す。 -->
   <div id="machine-device-menu" class="device-op-menu" role="menu">
     <button id="machine-device-menu-item" class="device-op-menu-item" type="button" role="menuitem">${t("panels.deviceMenu.remove")}</button>
+    <button id="machine-device-menu-wipe" class="device-op-menu-item" type="button" role="menuitem">${t("panels.deviceMenu.wipeData")}</button>
   </div>`;
 }
 

@@ -9,6 +9,7 @@ export const monitorStrings = {
   "monitor.deviceOp.labelQueued": { ja: "待機中...", en: "Waiting..." },
   "monitor.deviceOp.labelStarting": { ja: "起動中...", en: "Starting..." },
   "monitor.deviceOp.labelStopping": { ja: "停止中...", en: "Stopping..." },
+  "monitor.deviceOp.labelWiping": { ja: "Wipe Data 実行中...", en: "Wiping data..." },
   "monitor.deviceOp.labelStart": { ja: "起動", en: "Start" },
   "monitor.deviceOp.labelStop": { ja: "停止", en: "Stop" },
 

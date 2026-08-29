@@ -82,8 +82,8 @@ export const webviewMonitorBStrings = {
     en: "No devices. You can add one from the button above.",
   },
   "wvMonitor2.machine.multiSelected": {
-    ja: "{count}台選択中(右クリックで一括除去できます)",
-    en: "{count} selected (right-click to remove them all)",
+    ja: "{count}台選択中",
+    en: "{count} selected",
   },
   "wvMonitor2.machine.validation.nameRequired": {
     ja: "デバイス名を入力してください。",
@@ -104,6 +104,11 @@ export const webviewMonitorBStrings = {
   "wvMonitor2.machine.removeSelectedCount": {
     ja: "選択した{count}台を除去",
     en: "Remove {count} selected",
+  },
+  "wvMonitor2.machine.wipeData": { ja: "Wipe Data", en: "Wipe Data" },
+  "wvMonitor2.machine.wipeSelectedCount": {
+    ja: "選択した{count}台を Wipe Data",
+    en: "Wipe Data on {count} selected",
   },
 
   // appProfilesTab.js

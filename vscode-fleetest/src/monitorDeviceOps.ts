@@ -170,6 +170,48 @@ export class MonitorDeviceOps {
     this.pushLifecycleJob(job);
   }
 
+  /**
+   * プロファイルタブのデバイス行右クリック「Wipe Data」。**不可逆なのでホスト側 modal で必ず確認する**
+   * (webview の window.confirm は効かない。runDeleteDevice と同じ方式)。確認後は enqueueWipe で
+   * 直列キューへ積む。
+   */
+  async runWipeDevices(devices: readonly { readonly name: string; readonly machine?: string }[]): Promise<void> {
+    if (devices.length === 0) {
+      return;
+    }
+    const wipeLabel = t("deviceOps.wipeConfirmButton");
+    const choice = await vscode.window.showWarningMessage(
+      t("deviceOps.wipeConfirmMessage"),
+      { modal: true, detail: t("deviceOps.wipeConfirmDetail") },
+      wipeLabel,
+    );
+    if (choice !== wipeLabel) {
+      return;
+    }
+    const queued = this.enqueueWipe(devices);
+    if (queued === 0) {
+      void vscode.window.showWarningMessage(`fleetest: ${t("deviceOps.wipeAllBusy")}`);
+    }
+  }
+
+  /** プロファイルタブのデバイス行右クリック「Wipe Data」: 対象を1台ずつ device ジョブとして積む
+   * (実処理は `fleetest api device-wipe`)。**確認は runWipeDevices で済ませてから呼ぶ**
+   * (この関数自体は聞かない)。既に同じ台のジョブがキューに居れば無視する
+   * (引き当ては (machine, name) —— 別の機械の同名の台は別の台)。
+   * 積めた台数を返す(0 = 全部が既に処理中)。 */
+  enqueueWipe(devices: readonly { readonly name: string; readonly machine?: string }[]): number {
+    let queued = 0;
+    for (const device of devices) {
+      if (hasDeviceLifecycleJobFor(this.lifecycleQueue, device.name, device.machine)) {
+        this.deps.outputChannel.appendLine(t("deviceOps.log.wipeSkippedBusy", { name: device.name }));
+        continue;
+      }
+      this.pushLifecycleJob({ kind: "device", name: device.name, op: "wipe", machine: device.machine });
+      queued += 1;
+    }
+    return queued;
+  }
+
   /** ヘルスウォッチドッグの再起動修復: down→up を連続で積む。対象デバイスのジョブが既に
    * キューにあれば何もしない(enqueueLifecycleJob の連打対策と同じ理由。down と up のペアは
    * この直後の連続 push なので per-name 重複排除を素通しする)。 */
@@ -375,7 +417,9 @@ export class MonitorDeviceOps {
     } else {
       // 「実行中」バッジへ更新(running へ昇格済みのため statusFor が running を返す)。
       this.postDeviceLifecycleStatus(job.name, job.machine);
-      if (job.op === "down") {
+      // wipe も中で必ず止めるので、down と同じくストリームを先に畳む(残すと消えた台の
+      // 最終フレームが stall 自己修復まで固まって見える)。
+      if (job.op === "down" || job.op === "wipe") {
         this.deps.stopDeviceStreams(job.name, job.machine);
       }
       this.executeDeviceOpJob(job.name, job.op, job.udid, job.serial, job.machine);
@@ -399,6 +443,11 @@ export class MonitorDeviceOps {
       this.deps.post({
         type: "deviceOpBusy", name: finished.name, machine: finished.machine, op: null, status: null,
       });
+      // wipe は失敗・異常終了だと "done" が来ないまま終わりうるので、ここでも Wipe 表示を剥がす
+      // (failed は残したい情報だが、ジョブが消えた後も残ると次の操作の判断を誤らせる)。
+      if (finished.op === "wipe") {
+        this.deps.post({ type: "wipeStatus", name: finished.name, machine: finished.machine, phase: "done" });
+      }
     } else if (finished.kind === "restartBatch") {
       // プロセスクラッシュ等で per-device の deviceFinished が欠けた場合の表示剥がし
       // (正常時は二重送信だが上書き描画のみなので無害)。
@@ -774,7 +823,7 @@ export class MonitorDeviceOps {
     // プロファイルの同名エントリを引いて**別の機械の設定でこの Mac にシミュレータを作る**
     // (simctl は無ければ作る)。一括起動が RemoteDeviceFanout で分散するのと同じ規律
     const args: string[] = machine ? ["remote", "exec", machine, "--"] : [];
-    args.push("api", op === "up" ? "device-up" : "device-down");
+    args.push("api", op === "up" ? "device-up" : op === "down" ? "device-down" : "device-wipe");
     if (direct) {
       if (udid !== undefined) {
         args.push("--udid", udid);
@@ -863,6 +912,10 @@ export class MonitorDeviceOps {
         }
         if (value.kind === "log") {
           this.deps.outputChannel.appendLine(`[device-${op} ${name}] ${value.message}`);
+        } else if (value.kind === "wipeStatus") {
+          // run 開始時の自動 Wipe と同じタイル表示を使う(footer の「Wipe: 停止中/再起動中」)。
+          // **machine も載せる** —— 名前だけだと同名の手元タイルが書き換わる
+          this.deps.post({ type: "wipeStatus", name, machine, phase: value.phase });
         } else if (!value.ok) {
           // 署名の欠けは**こちらの言語で**組み立て直す(CLI の error は英語 = CLI 利用者向け)
           const localized = value.signingProblems === undefined
@@ -914,9 +967,13 @@ export class MonitorDeviceOps {
       // 最後の実質行(CLI はそこに原因を書く。stderrDetailLine の doc 参照)
       if (!failureLogged && exitCode !== 0) {
         const detail = stderrDetailLine(stderr);
-        const message = detail === null
-          ? t("deviceOps.processExitedWithCode", { exitCode: String(exitCode) })
-          : detail;
+        // **exit 64 = 引数エラー**(ArgumentParser)。リモートで出たなら、ほぼ「向こうの fleetest が
+        // 古くてこのサブコマンド/オプションを知らない」(spawnCreateDevice と同じ読み替え)
+        const message = exitCode === 64 && machine !== undefined
+          ? t("deviceOps.remoteCliTooOld", { machine, detail: detail ?? "" })
+          : detail === null
+            ? t("deviceOps.processExitedWithCode", { exitCode: String(exitCode) })
+            : detail;
         logFailure(message);
         this.deps.post({ type: "deviceOpFailed", name, message });
       }

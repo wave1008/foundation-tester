@@ -188,6 +188,30 @@ export const deviceOpsStrings = {
   },
 
   "deviceOps.machineLocalLabel": { ja: "ローカル", en: "the local machine" },
+  // **台数も名前も入れない**(10台選ぶと名前だけで数行になり、肝心の「消える」が埋もれる)。
+  // 対象は右ペインの選択状態が示している。
+  "deviceOps.wipeConfirmMessage": {
+    ja: "選択したデバイスのデータを消去します。よろしいですか?",
+    en: "This wipes the data on the selected devices. Continue?",
+  },
+  "deviceOps.wipeConfirmDetail": {
+    ja:
+      "インストール済みアプリ・設定・保存データがすべて消えます(元に戻せません)。" +
+      "起動中のデバイスは停止してから消去し、そのあと起動し直します(Android は初回起動の再構築で数分かかります)。",
+    en:
+      "Installed apps, settings and saved data are all removed (this cannot be undone). " +
+      "Running devices are stopped before the wipe and started again afterwards " +
+      "(on Android the first boot rebuilds and takes minutes).",
+  },
+  "deviceOps.wipeConfirmButton": { ja: "Wipe Data", en: "Wipe Data" },
+  "deviceOps.wipeAllBusy": {
+    ja: "対象のデバイスはすべて別の操作を実行中です。完了してからやり直してください。",
+    en: "Every selected device already has an operation in progress. Try again once it finishes.",
+  },
+  "deviceOps.log.wipeSkippedBusy": {
+    ja: "[fleetest] {name}は別の操作を実行中のため Wipe Data を見送りました",
+    en: "[fleetest] Skipped Wipe Data for {name}: another operation is already in progress",
+  },
   "deviceOps.deleteConfirmMessage": {
     ja: "「{name}」を {machine} から削除します。シミュレータ/AVD本体が削除されるため、元に戻せません。よろしいですか?",
     en: "This deletes \"{name}\" from {machine}. It removes the underlying simulator/AVD and cannot be undone. Continue?",

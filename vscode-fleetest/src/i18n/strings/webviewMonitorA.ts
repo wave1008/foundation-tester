@@ -22,6 +22,7 @@ export const webviewMonitorAStrings = {
   "wvMonitor.deviceOpMenu.queued": { ja: "待機中...", en: "Waiting..." },
   "wvMonitor.deviceOpMenu.startingUp": { ja: "起動中...", en: "Starting..." },
   "wvMonitor.deviceOpMenu.stoppingDown": { ja: "停止中...", en: "Stopping..." },
+  "wvMonitor.deviceOpMenu.wiping": { ja: "Wipe Data 実行中...", en: "Wiping data..." },
   "wvMonitor.deviceOpMenu.start": { ja: "起動", en: "Start" },
   "wvMonitor.deviceOpMenu.stop": { ja: "停止", en: "Stop" },
   // 実機は端末そのものを起動・停止しない(操作対象はブリッジだけ)ので別ラベルにする
@@ -95,6 +96,7 @@ export const webviewMonitorAStrings = {
   "wvMonitor.toolbar.deselectAll": { ja: "デバイスの選択をすべて解除", en: "Deselect All Devices" },
 
   "wvMonitor.tile.queuedRestart": { ja: "再起動待機", en: "Restart pending" },
+  "wvMonitor.tile.queuedWipe": { ja: "Wipe 待機", en: "Wipe pending" },
   "wvMonitor.tile.queuedStart": { ja: "起動待機", en: "Start pending" },
 
   "wvMonitor.deviceState.booting": { ja: "起動中", en: "Starting" },

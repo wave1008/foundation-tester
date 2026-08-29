@@ -343,11 +343,16 @@ export type MonitorToWebviewMessage =
       readonly name: string;
       readonly phase: "unhealthy" | "repairing" | "displayRepairing" | "streamRepairing" | "cpuFallback" | "restarting" | "failed" | "ok";
     }
-  // `fleetest api run` の AVD Wipe Data 進行状況(model.ts の WipeStatusEvent が NDJSON 契約の同期相手)。
+  // Wipe Data の進行状況。出どころは2つで phase の集合は共通:
+  //   `fleetest api run` の自動 Wipe(model.ts の WipeStatusEvent が NDJSON 契約の同期相手)
+  //   手動の `fleetest api device-wipe`(monitorDeviceLifecycle.ts の DeviceOpWipeStatusEvent)
   // name は deviceOpBusy と同じ名前空間(デバイス論理名)。webview はタイルのバッジ表示に使う。
+  // machine はそのデバイスが居る機械(省略=手元)。**手動 Wipe は必ず載せる** —— 名前だけだと
+  // webview が同名の手元タイルを書き換える(deviceOpBusy と同じ理由)。
   | {
       readonly type: "wipeStatus";
       readonly name: string;
+      readonly machine?: string;
       readonly phase: "stopping" | "rebooting" | "done" | "failed";
     }
   // ---- 録画タブ ---------------------------------------------------------------------------
@@ -527,6 +532,14 @@ export type MonitorFromWebviewMessage =
   | {
       readonly type: "machineDeviceRemove";
       readonly machine: string;
+      readonly devices: readonly { readonly name: string; readonly machine?: string }[];
+    }
+  // デバイス行の右クリック「Wipe Data」: 仮想デバイスの中身を初期化する(マシンプロファイルからの
+  // 除去[machineDeviceRemove]・実体の削除[devicePickDeviceDelete]とは別物。デバイスは残る)。
+  // devices は複数選択に対応する配列(単一も1件配列)。**参照は (machine, name)**(machine 省略=手元)。
+  // **実機は webview 側で項目を出さない**(CLI 側も DeviceWiper が拒否する)。
+  | {
+      readonly type: "machineDeviceWipe";
       readonly devices: readonly { readonly name: string; readonly machine?: string }[];
     }
   // #device-pick-overlay の行右クリック「削除」: マシンプロファイルからの除去(machineDeviceRemove)
@@ -825,6 +838,18 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
       return (
         typeof value.machine === "string" &&
         value.machine !== "" &&
+        Array.isArray(value.devices) &&
+        value.devices.length > 0 &&
+        value.devices.every(
+          (device) =>
+            isRecord(device) &&
+            typeof device.name === "string" &&
+            device.name !== "" &&
+            (device.machine === undefined || (typeof device.machine === "string" && device.machine !== "")),
+        )
+      );
+    case "machineDeviceWipe":
+      return (
         Array.isArray(value.devices) &&
         value.devices.length > 0 &&
         value.devices.every(

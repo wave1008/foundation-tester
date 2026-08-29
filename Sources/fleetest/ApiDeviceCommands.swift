@@ -115,6 +115,47 @@ enum ApiDeviceUpDirectSpec {
     }
 }
 
+/// 仮想デバイス1台の Wipe Data(Android = AVD の userdata/cache/snapshots 削除、
+/// iOS = simctl erase)。**実機は DeviceWiper が拒否する**(webview 側でも項目を出さない)。
+/// stdout の NDJSON は device-up/down と同じ log*/finished に、フェーズ通知
+/// {"kind":"wipeStatus","phase":"stopping"|"rebooting"|"done"|"failed"} を加えた形
+/// (同期相手: vscode-fleetest/src/monitorDeviceLifecycle.ts の DeviceOpEvent)
+struct ApiDeviceWipe: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "device-wipe",
+        abstract: "Wipe one virtual device listed in the machine profile (Android: Wipe Data; "
+            + "iOS: simctl erase). Physical devices are rejected. NDJSON: log*/wipeStatus* -> "
+            + "finished on stdout; diagnostics on stderr only; exit code 1 when ok:false")
+
+    @Option(help: "Logical device name (a name under ios or android in the machine profile)")
+    var name: String
+
+    @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
+    var project: String?
+
+    @Option(help: "Run profile name, used to resolve the machine. When given, that profile's machine wins; otherwise FT_MACHINE, the registered machine, or the only entry in machines/")
+    var profile: String?
+
+    @Option(name: [.customLong("device-machine"), .customLong("device-host")],
+            help: "Only match devices assigned to this machine (\"local\" or a registered host name). Set by the caller on the other end of ssh")
+    var deviceMachine: String?
+
+    func run() async throws {
+        try await ApiDeviceOperation.run(
+            name: name, project: project, profile: profile, deviceMachine: deviceMachine
+        ) { spec, platform, log in
+            // iOS はブリッジの停止・再供給に repoRoot が要る(device-down / device-up と同じ)
+            let repoRoot = platform == "ios" ? try? RepoRoot.find() : nil
+            try await DeviceWiper.wipeOne(
+                spec: spec, platform: platform, repoRoot: repoRoot,
+                status: { phase in
+                    ApiDeviceEventEmitter.emit(ApiDeviceWipeStatusEvent(phase: phase))
+                },
+                log: log)
+        }
+    }
+}
+
 struct ApiDevicesUp: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "devices-up",
@@ -664,6 +705,14 @@ private enum ApiDeviceEventEmitter {
 private struct ApiDeviceLogEvent: Encodable {
     let kind = "log"
     let message: String
+}
+
+/// device-wipe のフェーズ通知(DeviceWiper/AndroidDataWiper の status コールバック由来)。
+/// 拡張はこれをタイルの Wipe 表示(wipeStatus)へそのまま流す —— run 開始時の自動 Wipe
+/// (ApiRunCommand の wipeStatus イベント)と**同じフェーズ集合**にしてある
+private struct ApiDeviceWipeStatusEvent: Encodable {
+    let kind = "wipeStatus"
+    let phase: String
 }
 
 /// devices-up の per-device 進捗(kind: "deviceStarting" / "deviceFinished")。

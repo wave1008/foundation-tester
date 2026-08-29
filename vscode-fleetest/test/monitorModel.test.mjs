@@ -501,6 +501,15 @@ test("isDeviceOpEvent: 未知のkind・フィールド欠落/型不一致は fal
   assert.equal(isDeviceOpEvent(null), false);
 });
 
+test("isDeviceOpEvent: device-wipe の wipeStatus は既知の phase だけ true", () => {
+  for (const phase of ["stopping", "rebooting", "done", "failed"]) {
+    assert.equal(isDeviceOpEvent({ kind: "wipeStatus", phase }), true);
+  }
+  assert.equal(isDeviceOpEvent({ kind: "wipeStatus" }), false);
+  assert.equal(isDeviceOpEvent({ kind: "wipeStatus", phase: "erasing" }), false);
+  assert.equal(isDeviceOpEvent({ kind: "wipeStatus", phase: 1 }), false);
+});
+
 // ---- isDevicesUpEvent ----
 
 test("isDevicesUpEvent: log/deviceStarting/deviceFinished/finished(ok:true/false)の正常な値を true と判定する", () => {
@@ -551,6 +560,19 @@ test("deviceOpMenuItem: busy.status='running' なら state に関わらず実行
   assert.deepEqual(deviceOpMenuItem("connected", { op: "down", status: "running" }), {
     label: "停止中...",
     op: "down",
+    disabled: true,
+  });
+});
+
+test("deviceOpMenuItem: busy.op='wipe' は「Wipe Data 実行中...」(タイルからの起動/停止を塞ぐ)", () => {
+  assert.deepEqual(deviceOpMenuItem("connected", { op: "wipe", status: "running" }), {
+    label: "Wipe Data 実行中...",
+    op: "wipe",
+    disabled: true,
+  });
+  assert.deepEqual(deviceOpMenuItem("offline", { op: "wipe", status: "running" }), {
+    label: "Wipe Data 実行中...",
+    op: "wipe",
     disabled: true,
   });
 });
@@ -711,6 +733,13 @@ test("deviceLifecycleJobNeedsMonitorPause: bulk down / device down は true", ()
   assert.equal(deviceLifecycleJobNeedsMonitorPause({ kind: "bulk", op: "down" }), true);
   assert.equal(
     deviceLifecycleJobNeedsMonitorPause({ kind: "device", name: "シミュ1", op: "down" }),
+    true,
+  );
+});
+
+test("deviceLifecycleJobNeedsMonitorPause: device wipe は true(中で停止するため down と同じ)", () => {
+  assert.equal(
+    deviceLifecycleJobNeedsMonitorPause({ kind: "device", name: "シミュ1", op: "wipe" }),
     true,
   );
 });
@@ -1139,6 +1168,28 @@ test("isMonitorFromWebviewMessage: machineDeviceRemove は machine 非空文字�
       devices: [{ name: "シミュ1" }, { name: "シミュ1", machine: "M1Max" }],
     }),
     true,
+  );
+});
+
+test("isMonitorFromWebviewMessage: machineDeviceWipe は devices 非空配列(各要素 name 非空・machine は非空か省略)なら true", () => {
+  assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceWipe", devices: [{ name: "シミュ1" }] }), true);
+  assert.equal(
+    isMonitorFromWebviewMessage({
+      type: "machineDeviceWipe",
+      devices: [{ name: "シミュ1" }, { name: "シミュ1", machine: "M1Max" }],
+    }),
+    true, // 同名でも機械が違えば別の台(引き当ては (machine, name))
+  );
+});
+
+test("isMonitorFromWebviewMessage: machineDeviceWipe は devices 空配列・欠落・要素不正なら false", () => {
+  assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceWipe", devices: [] }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceWipe" }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceWipe", devices: [{ name: "" }] }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceWipe", devices: ["シミュ1"] }), false);
+  assert.equal(
+    isMonitorFromWebviewMessage({ type: "machineDeviceWipe", devices: [{ name: "OK", machine: "" }] }),
+    false, // machine は指定するなら非空("" は「手元」ではなく不正)
   );
 });
 

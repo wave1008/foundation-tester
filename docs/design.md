@@ -3382,6 +3382,17 @@ skip(素通り)になり、FM 利用不可時と同じ扱い。UI はデバイ�
 実行する(AndroidDataWiper.swift。ゲストは初期化されるが、アプリは appPath があれば強制
 再インストール、ロケールは下記 `locale` が再ブート後に自動適用される)。
 
+手動の Wipe Data はプロファイルタブの**デバイス行の右クリック**から撃つ(`fleetest api
+device-wipe --name <論理名> --device-machine <機械>`。Android = 上と同じファイル集合の削除、
+iOS = `simctl erase`)。**実機には項目を出さない**(`DeviceWiper.target` が CLI 側でも拒否する)。
+**しきい値は見ない**(人が選んで撃つので、消すか消さないかの判断はもう済んでいる)。
+本体は自動チェックと同じ `AndroidDataWiper.performWipe` / 起動・停止は `DeviceBooter` を通す ——
+「停止を確認できたときだけ消す」「稼働中だった台だけ起こし直す」を2箇所に持たない。
+拡張はこれを **device ジョブ(op: `wipe`)としてライフサイクルの直列キューへ載せる**
+(中で停止と再起動をするので、一括起動や個別の起動/停止と重なると simctl/adb・ブリッジ供給が
+競合する)。進行は CLI の NDJSON `wipeStatus`(phase: stopping/rebooting/done/failed)を
+run 開始時の自動 Wipe と**同じタイル表示**へ流す。
+
 `recoverCpuFallbackToGpu`(既定 false)を true にすると、実行開始時に**画面凍結で CPU 描画
 (swiftshader)へ落ちた Android エミュレータを GPU(`-gpu host`)で起動し直す**
 (AndroidGpuRecovery.swift。`dumpsys SurfaceFlinger` で現に CPU の個体だけが対象、1台ずつ直列)。
