@@ -63,7 +63,9 @@ public enum DeviceWiper {
     ) async throws {
         switch try target(spec: spec, platform: platform) {
         case .android(let avd):
-            _ = try await AndroidDataWiper.wipeOne(
+            // **戻り値で成否を返させない**(`_ =` で捨てると「消えていないのに成功」になる。
+            // 2026-08-29 に実際に起きた)。失敗は throw で上がってくる
+            try await AndroidDataWiper.wipeOne(
                 deviceName: spec.name, avd: avd, locale: locale, status: status, log: log)
         case .ios:
             try await eraseSimulator(spec: spec, repoRoot: repoRoot, status: status, log: log)

@@ -23,6 +23,45 @@ final class AndroidDataWiperTests: XCTestCase {
         return url
     }
 
+    // MARK: - 停止確認(プロセス走査)
+    // **中止を成功として返さない**ための2本目の根拠。adb が詰まっているときに serial だけを
+    // 見ていると「本当は止まっているのに確認が取れない」で中止してしまう(2026-08-29 の実例)。
+
+    private static let psSample = """
+    /Users/x/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64 -avd Pixel_9_Android_15_-01 -no-window
+    /Users/x/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64 -avd Pixel_10_Android_16_-07 -no-window
+    /usr/bin/some-other-process
+    """
+
+    func testAVDProcessPresentFindsTheRunningEmulator() {
+        XCTAssertTrue(AndroidDataWiper.avdProcessPresent(psOutput: Self.psSample, avdID: "Pixel_9_Android_15_-01"))
+        XCTAssertTrue(AndroidDataWiper.avdProcessPresent(psOutput: Self.psSample, avdID: "Pixel_10_Android_16_-07"))
+    }
+
+    func testAVDProcessPresentIsFalseWhenTheEmulatorIsGone() {
+        XCTAssertFalse(AndroidDataWiper.avdProcessPresent(psOutput: Self.psSample, avdID: "Pixel_9_Android_15_-02"))
+        XCTAssertFalse(AndroidDataWiper.avdProcessPresent(psOutput: "", avdID: "Pixel_9_Android_15_-01"))
+    }
+
+    /// **前方一致で判定しない** —— 片方がもう片方の接頭辞になる AVD 名は普通にある。
+    /// 前方一致だと「-01 が動いているから -0 も動いている」と誤判定し、止まっている台の wipe を
+    /// 締切まで待たせる(逆に -0 の走査で -01 を消しにいくことはない = 安全側だが遅い)
+    func testAVDProcessPresentDoesNotMatchAPrefixOfAnotherAVD() {
+        XCTAssertFalse(AndroidDataWiper.avdProcessPresent(psOutput: Self.psSample, avdID: "Pixel_9_Android_15_-0"))
+        XCTAssertFalse(AndroidDataWiper.avdProcessPresent(psOutput: Self.psSample, avdID: "Pixel_9"))
+    }
+
+    /// 停止を確認できなかったときの文言は**「何も消していない」ことを言う**(利用者はここだけ見て
+    /// 「消えたのか残ったのか」を判断する)
+    func testStopNotConfirmedSaysNothingWasWiped() {
+        let error = AndroidDataWiperError.stopNotConfirmed(
+            device: "エミュ1", serial: "emulator-5554", seconds: 60)
+        let message = error.errorDescription ?? ""
+        XCTAssertTrue(message.contains("nothing was wiped"), message)
+        XCTAssertTrue(message.contains("emulator-5554"), message)
+        XCTAssertTrue(message.contains("60"), message)
+    }
+
     func testWipeTargetsListsOnlyExistingCandidates() throws {
         _ = try writeFile("userdata-qemu.img.qcow2", bytes: 10)
         _ = try writeFile("cache.img", bytes: 10)

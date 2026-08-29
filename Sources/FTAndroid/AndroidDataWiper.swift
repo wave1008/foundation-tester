@@ -8,11 +8,17 @@ import FTCore
 
 public enum AndroidDataWiperError: Error, LocalizedError, Equatable {
     case avdDirectoryNotFound(avd: String, path: String)
+    /// 停止を確認できないまま締切に達した(**1バイトも消していない**)。稼働中のエミュレータの
+    /// 下からイメージを抜くと qemu がクラッシュして AVD が壊れるので、確認が取れないなら中止する
+    case stopNotConfirmed(device: String, serial: String, seconds: Int)
 
     public var errorDescription: String? {
         switch self {
         case .avdDirectoryNotFound(let avd, let path):
             return "AVD directory not found for \(avd) (\(path))"
+        case .stopNotConfirmed(let device, let serial, let seconds):
+            return "\(device): could not confirm the emulator stopped within \(seconds)s (\(serial))"
+                + " — nothing was wiped. Stop it and try again"
         }
     }
 }
@@ -20,7 +26,7 @@ public enum AndroidDataWiperError: Error, LocalizedError, Equatable {
 public enum AndroidDataWiper {
 
     private enum RunningState: Equatable {
-        case wasRunning, wasNotRunning, failedToStop
+        case wasRunning, wasNotRunning
     }
 
     private struct Candidate {
@@ -81,11 +87,11 @@ public enum AndroidDataWiper {
             let name = candidate.device.name
             let progress = "\(index + 1)/\(candidates.count)"
             do {
-                let done = try await performWipe(
+                try await performWipe(
                     name: name, avdID: candidate.avdID, targets: candidate.targets,
                     sizeGB: candidate.sizeGB, progress: progress, locale: locale,
                     status: { phase in status?(name, phase) }, log: log)
-                if done { wiped.append(name) }
+                wiped.append(name)
             } catch {
                 log("❌ \(name): Wipe Data failed — \(error.localizedDescription)")
                 status?(name, "failed")
@@ -105,7 +111,7 @@ public enum AndroidDataWiper {
         deviceName: String, avd: String, locale: String,
         status: (@Sendable (String) -> Void)? = nil,
         log: @escaping @Sendable (String) -> Void
-    ) async throws -> Bool {
+    ) async throws {
         let avdID = AndroidDeviceCatalog.canonicalAVDID(avd)
         let avdDir = AndroidDeviceCatalog.avdContentDirectory(id: avdID)
         guard FileManager.default.fileExists(atPath: avdDir.path) else {
@@ -114,7 +120,7 @@ public enum AndroidDataWiper {
         let targets = wipeTargets(avdDir: avdDir)
         let sizeGB = String(format: "%.1f", Double(totalSize(paths: targets)) / 1_073_741_824)
         do {
-            return try await performWipe(
+            try await performWipe(
                 name: deviceName, avdID: avdID, targets: targets, sizeGB: sizeGB,
                 progress: "1/1", locale: locale, status: status, log: log)
         } catch {
@@ -130,14 +136,13 @@ public enum AndroidDataWiper {
         name: String, avdID: String, targets: [URL], sizeGB: String, progress: String,
         locale: String, status: (@Sendable (String) -> Void)?,
         log: @escaping @Sendable (String) -> Void
-    ) async throws -> Bool {
+    ) async throws {
         log("🧹 \(name): wiping data (\(progress)) — stopping the emulator...")
         status?("stopping")
+        // 停止を確認できなければ **throw**(呼び手が失敗として扱う)。**false を返して成功扱いに
+        // しない** —— 「消えていないのに成功」は、この案件で最も避けたい誤った緑そのもの
+        // (2026-08-29 に実際に起きた: 台が止まっただけで中身は残り、利用者には ok:true が返った)
         let running = try await stopIfRunning(avdID: avdID, deviceName: name, log: log)
-        guard running != .failedToStop else {
-            status?("failed")
-            return false
-        }
 
         for target in targets {
             try? FileManager.default.removeItem(at: target)
@@ -158,11 +163,18 @@ public enum AndroidDataWiper {
                 + "not running, so no reboot)")
         }
         status?("done")
-        return true
     }
 
-    /// 起動中なら emu kill → serial 消失を待つ(上限30秒・0.5秒ポーリング)。
-    /// 消えなければ failedToStop(呼び出し側は wipe を中止する)
+    /// 停止確認の締切(秒)。**この時間内に消えなければ削除へ進まない**(消したい相手より
+    /// 「稼働中のイメージを抜かない」ほうが重い)。フリート実行中の kill は adb の応答が詰まって
+    /// 数十秒かかることがあるため 60 秒(2026-08-29 に 30 秒では取り切れず中止した実例あり)
+    private static let stopConfirmSeconds = 60
+
+    /// 起動中なら emu kill → **停止したことの確認**を待つ。確認は2つのどちらかで取れればよい:
+    ///   ① adb の serial が消えた ② **その AVD の qemu プロセスが消えた**
+    /// ②を併せて見るのは、adb 側が詰まっている(まさに kill が遅い状況)ときに①だけだと
+    /// 「本当は止まっているのに確認が取れない」で中止してしまうため。**どちらも取れなければ throw**
+    /// (削除には進まない。呼び手は失敗として扱う)
     private static func stopIfRunning(
         avdID: String, deviceName: String, log: @escaping (String) -> Void
     ) async throws -> RunningState {
@@ -176,14 +188,39 @@ public enum AndroidDataWiper {
             _ = try? Shell.run([adb, "-s", serial, "emu", "kill"])
         }
 
-        let deadline = Date().addingTimeInterval(30)
+        let deadline = Date().addingTimeInterval(TimeInterval(stopConfirmSeconds))
         while Date() < deadline {
             let connected = (try? AndroidDeviceCatalog.connectedSerials()) ?? []
             if !connected.contains(serial) { return .wasRunning }
+            if !emulatorProcessRunning(avdID: avdID) {
+                log("→ \(deviceName): the emulator process is gone (adb still lists \(serial))")
+                return .wasRunning
+            }
             try? await Task.sleep(nanoseconds: 500_000_000)
         }
-        log("❌ \(deviceName): could not confirm the emulator stopped — aborting Wipe Data (\(serial))")
-        return .failedToStop
+        throw AndroidDataWiperError.stopNotConfirmed(
+            device: deviceName, serial: serial, seconds: stopConfirmSeconds)
+    }
+
+    /// その AVD の qemu プロセスが生きているか(`ps` の1回分を走査)。読み取りだけ
+    private static func emulatorProcessRunning(avdID: String) -> Bool {
+        guard let result = try? Shell.run(["/bin/ps", "-eo", "command"], timeout: 10) else {
+            return true  // 見られないなら「居るかもしれない」に倒す(消す側へ倒さない)
+        }
+        return avdProcessPresent(psOutput: result.output, avdID: avdID)
+    }
+
+    /// `ps` の出力に `-avd <id>` が**そのままの語**で現れるか。I/O を持たない pure 関数
+    /// (テスト用に internal)。**前方一致では判定しない** —— `Pixel_9_-01` と `Pixel_9_-010` の
+    /// ように、片方がもう片方の接頭辞になる AVD 名は普通にある
+    static func avdProcessPresent(psOutput: String, avdID: String) -> Bool {
+        for line in psOutput.split(separator: "\n") {
+            let tokens = line.split(whereSeparator: { $0 == " " || $0 == "\t" })
+            for (index, token) in tokens.enumerated() where token == "-avd" {
+                if index + 1 < tokens.count, tokens[index + 1] == Substring(avdID) { return true }
+            }
+        }
+        return false
     }
 
     // MARK: - 純粋ロジック(テスト用に internal で公開)
