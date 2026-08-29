@@ -23,6 +23,7 @@ import { StreamPipeline } from "./deviceStream";
 import { t } from "./i18n";
 import type { MonitorDevice, MonitorPlatform } from "./monitorModel";
 import type { MonitorPanelDeps } from "./monitorPanel";
+import { admitStreamStarts } from "./remoteStreamAdmission";
 
 /** applyDevices が1サイクル分の qualifying 判定と同時に組み立てる、起動に必要な情報一式。 */
 interface QualifyingTarget {
@@ -32,6 +33,9 @@ interface QualifyingTarget {
   readonly command: string;
   readonly args: readonly string[];
   readonly codec: "mjpeg" | "h264";
+  /** リモート機のデバイスならその machine(手元は undefined)。**ssh を張るのはこちらだけ**なので、
+   * 一斉起動の入場制限(remoteStreamAdmission.ts)はこの有無で判断する。 */
+  readonly machine?: string;
 }
 
 interface StreamEntry {
@@ -149,6 +153,7 @@ export class MonitorDeviceStreamController {
         }
         qualifying.set(device.id, {
           platform: device.platform,
+          machine: device.machine,
           key: `${device.machine}/${device.name}`,
           // 手元と同じ規則: **実機は devicepoll(MJPEG 固定)** —— 向こうの
           // ApiDeviceStreamCommand が実機で codec を落とすので、h264 を期待すると
@@ -237,8 +242,15 @@ export class MonitorDeviceStreamController {
         this.deps.post({ type: "streamUnavailable", device: deviceId, unavailable: false });
       }
     }
-    for (const [deviceId, target] of qualifying) {
-      if (!this.pipelines.has(deviceId) && !this.gaveUpDeviceIds.has(deviceId)) {
+    // **リモートは一斉に張らない**(1機械あたり ssh が N+2 本になり sshd の MaxStartups に
+    // 当たる。remoteStreamAdmission.ts)。見送った台はこの reapply が次のモニター更新で
+    // また拾うので、取りこぼしにはならない
+    const pending = [...qualifying]
+      .filter(([deviceId]) => !this.pipelines.has(deviceId) && !this.gaveUpDeviceIds.has(deviceId))
+      .map(([deviceId, target]) => ({ deviceId, machine: target.machine }));
+    for (const deviceId of admitStreamStarts(pending)) {
+      const target = qualifying.get(deviceId);
+      if (target) {
         this.startPipeline(deviceId, target);
       }
     }
