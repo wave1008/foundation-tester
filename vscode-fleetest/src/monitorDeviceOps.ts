@@ -841,9 +841,13 @@ export class MonitorDeviceOps {
       if (config.profile) {
         args.push("--profile", config.profile);
       }
-      // 向こうは「自分が誰か」を知らないので、どのマシンの台かを明示する(--device-machine)。
+      // **常に "local"**(リモートでも)。宛先はもう `remote exec <machine>` で選んでおり、
+      // 向こうへ送ったプロファイルは**自分の台を machine:"local" に畳んである**
+      // (FTCore.RunnerProfileView。転送物にも引数にもエイリアスは出ない = CLAUDE.md の規律)。
+      // エイリアスを渡すと向こうで一致するエントリが無く
+      // `device not found: <名前> on <machine>` になる(fan-out の子・device-stream も local で走る)。
       // 手元でも渡す = 同名のリモート機の台を引かないための絞り込み
-      args.push("--device-machine", machine ?? "local");
+      args.push("--device-machine", "local");
     }
     if (op === "up" && this.cpuRenderNames.has(name)) {
       args.push("--gpu", "swiftshader_indirect");

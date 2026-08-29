@@ -878,14 +878,18 @@ witness は `RemoteDispatchTests.testRelayRewriteMapsTheRunnerWorkDirOntoTheLoca
   `RemoteDeviceFanout` で分散していたが、**タイル1枚の起動・停止は手元で `api device-up --name`
   を撃っていた** —— `findDevice` は名前だけで引くので、同名の台が別の機械にも居ると
   **別の機械の設定でこの Mac にシミュレータが1台できる**(simctl は無ければ作る)。
-  現在は拡張が `remote exec <machine> -- api device-up … --device-machine <machine>` を通し、
-  `findDevice` も (machine, name) で引く。**`--device-machine` を渡さない呼び出しは、候補が
+  現在は拡張が `remote exec <machine> -- api device-up … --device-machine local` を通し、
+  `findDevice` も (machine, name) で引く。**向こうへ渡す値は常に `local`** —— 宛先はもう
+  `remote exec` で選んでおり、送ったプロファイルは自分の台を `machine:"local"` に畳んである
+  (§0 の規律「引数にエイリアスを出さない」)。**エイリアスを渡すと向こうで一致するエントリが
+  無く `device not found: <名前> on <machine>` になる**(2026-08-29 に実機で確認。この文書自身が
+  `--device-machine <machine>` と書いていたのを直した)。**`--device-machine` を渡さない呼び出しは、候補が
   複数ある名前なら候補を挙げて止める**(黙って手元を選ばない) —— 版の古い拡張は
   `--device-machine` を付けずに撃つので、既定を手元にすると
   **「M1Max を止めたつもりで手元が止まり、しかも ok:true で成功に見える」**になる
   (2026-08-17 に実際に起きた)。実行プロファイルの参照解決と同じ規律。
   **同じ規律で回すのは起動・停止だけではない** —— プロファイルタブの右クリック「Wipe Data」も
-  `remote exec <machine> -- api device-wipe … --device-machine <machine>` を通す
+  `remote exec <machine> -- api device-wipe … --device-machine local` を通す
   (手元で撃つと、同名の台が別の機械にも居るとき**手元の台が初期化される**)
 - **自動修復(watchdog)はリモートの台を見ない**。ブリッジ再供給も Wi-Fi 修復も手元にしか
   効かないうえ、記録が name 単位なので、同名の台が2機にあると**向こうの connected が

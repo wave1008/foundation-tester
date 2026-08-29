@@ -318,7 +318,7 @@ test("リモートの台の wipe はその機械で実行する(remote exec + --
     await waitUntilIdle(deviceOps);
     const line = argvLines(dir).at(-1);
     assert.match(line, /^remote exec M1Max -- api device-wipe/);
-    assert.match(line, /--device-machine M1Max/);
+    assert.match(line, /--device-machine local/, "向こうから見た自分の台は local(起動/停止と同じ)");
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -368,7 +368,11 @@ test("リモートのデバイスの起動はその機械で実行する(remote 
     await waitUntilIdle(deviceOps);
     const line = argvLines(dir).at(-1);
     assert.match(line, /^remote exec M1Max -- api device-up/, "その機械で起こす");
-    assert.match(line, /--device-machine M1Max/, "向こうは自分が誰かを知らない");
+    // **向こうでは "local"** —— 送ったプロファイルは自分の台を machine:"local" に畳んである
+    // (RunnerProfileView)。エイリアスを渡すと向こうで一致せず
+    // "device not found: <名前> on M1Max" になる(2026-08-29 に実機で確認)
+    assert.match(line, /--device-machine local/);
+    assert.doesNotMatch(line, /--device-machine M1Max/);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

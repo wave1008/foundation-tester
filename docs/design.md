@@ -3383,7 +3383,7 @@ skip(素通り)になり、FM 利用不可時と同じ扱い。UI はデバイ�
 再インストール、ロケールは下記 `locale` が再ブート後に自動適用される)。
 
 手動の Wipe Data はプロファイルタブの**デバイス行の右クリック**から撃つ(`fleetest api
-device-wipe --name <論理名> --device-machine <機械>`。Android = 上と同じファイル集合の削除、
+device-wipe --name <論理名> --device-machine local`(リモートは `remote exec <機械> --` で回す)。Android = 上と同じファイル集合の削除、
 iOS = `simctl erase`)。**実機には項目を出さない**(`DeviceWiper.target` が CLI 側でも拒否する)。
 **しきい値は見ない**(人が選んで撃つので、消すか消さないかの判断はもう済んでいる)。
 本体は自動チェックと同じ `AndroidDataWiper.performWipe` / 起動・停止は `DeviceBooter` を通す ——
