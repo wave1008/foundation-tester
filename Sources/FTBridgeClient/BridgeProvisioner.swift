@@ -85,6 +85,8 @@ public enum BridgeProvisionerError: Error, LocalizedError {
 public final class ProvisionLock {
     enum LockError: Error { case openFailed(Int32) }
     private let fd: Int32
+    private let releaseLock = NSLock()
+    private var released = false
 
     /// stateDir/<lockName> を flock 対象にする。既定は provision.lock(ブリッジ供給用)。
     /// 別用途(例: マシンプロファイル追記)は別 lockName を渡して独立させる。
@@ -106,9 +108,57 @@ public final class ProvisionLock {
         }
     }
 
+    /// **冪等**。早期解放(ポート確保が済んだ時点)と関数末尾の defer の両方から呼ばれるので、
+    /// 2 回目を素通しにしないと close(fd) が無関係な fd を閉じる(fd は再利用される)
     public func release() {
+        releaseLock.lock()
+        let already = released
+        released = true
+        releaseLock.unlock()
+        guard !already else { return }
         _ = flock(fd, LOCK_UN)
         close(fd)
+    }
+}
+
+/// **ポート確保(pid ファイル/記録の書き込み)まで**を数える関門。全ブリッジが「確保済み or 失敗」に
+/// なった時点で ProvisionLock を解く —— ready 待ち(実測 7〜28 秒)をロックの外へ出すため。
+/// これが無いと、ワーカーが 2 つあっても供給は常に 1 台ずつになる(2026-08-30 の実測: iOS 5 本の
+/// 供給 95 秒がすべて直列)。**撃ち漏らすとロックが解放されない**ので、呼び出し側は成否を問わず
+/// 必ず 1 回通すこと(BridgeProvisioner.executeDevice の ClaimOnce)
+actor PortClaimBarrier {
+    private var remaining: Int
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    init(expected: Int) { remaining = max(0, expected) }
+
+    func claimed() {
+        guard remaining > 0 else { return }
+        remaining -= 1
+        guard remaining == 0 else { return }
+        let pending = waiters
+        waiters = []
+        for waiter in pending { waiter.resume() }
+    }
+
+    func waitAll() async {
+        guard remaining > 0 else { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+}
+
+/// 1 ブリッジぶんの合図を 1 回だけ通す小箱。executeBridge は経路が多く(reuse/adopt/launch ×
+/// inapp/xcuitest × 実機)、どれかで撃ち漏らすとロックが解放されないままになる
+actor ClaimOnce {
+    private var fired = false
+    private let barrier: PortClaimBarrier
+
+    init(barrier: PortClaimBarrier) { self.barrier = barrier }
+
+    func fire() async {
+        guard !fired else { return }
+        fired = true
+        await barrier.claimed()
     }
 }
 
@@ -271,6 +321,18 @@ public struct BridgeProvisioner {
         // 5. 共有ビルド(直列)。並列起動フェーズより前に必ず済ませる
         try await prepareSharedBuilds(plans: plans, log: safeLog)
 
+        // **ロックはここから「ポート確保が済むまで」しか要らない**。採番と確保(pid ファイル/
+        // 記録の書き込み)さえ直列なら bindFailed(48) は防げる —— ready 待ちまで握っていると、
+        // ワーカーが 2 つあっても供給が常に 1 台ずつになる(2026-08-30 実測: iOS 5 本の供給 95 秒が
+        // すべて直列。同時進行は 2 台のままで、撤回済みの ProvisionBatcher とは別物)。
+        // 起動直後で /status 未応答のランナーは、他プロセスからは EnginePlan.adopt が引き取る
+        let claimBarrier = PortClaimBarrier(expected: plans.reduce(0) { $0 + $1.bridges.count })
+        let earlyRelease = Task {
+            await claimBarrier.waitAll()
+            provisionLock.release()  // 冪等。末尾の defer と二重に呼ばれてよい
+        }
+        defer { earlyRelease.cancel() }
+
         // 6. 起動(デバイス単位で並列。**in-app の新規起動を含むときだけ同時2台に絞る**)。
         // 2026-08-08: フルスイート直後の in-app フェーズ開始(8台同時の terminate→launch+注入)で
         // シミュレータの画面凍結クラスタが同日2回発生した(a11y は応答・描画とタップが停止。
@@ -295,7 +357,8 @@ public struct BridgeProvisioner {
                     do {
                         let device = try await self.executeDevice(
                             plan: plan, bundleID: bundleID,
-                            preinstallAppPath: preinstallAppPath, log: safeLog)
+                            preinstallAppPath: preinstallAppPath,
+                            claimBarrier: claimBarrier, log: safeLog)
                         return (plan.index, .success(device))
                     } catch {
                         return (plan.index, .failure(error))
@@ -526,12 +589,23 @@ public struct BridgeProvisioner {
     /// (hybrid の inapp → xcuitest)は同一シミュレータへの simctl 競合を避けるため直列。
     /// inapp が失敗したら xcuitest は実行しない(直列版と同じ)
     private func executeDevice(plan: DevicePlan, bundleID: String?, preinstallAppPath: String?,
+                               claimBarrier: PortClaimBarrier,
                                log: @escaping (String) -> Void) async throws -> ProvisionedIOSDevice {
         var ports: [UInt16] = []
         for bridge in plan.bridges {
-            ports.append(try await executeBridge(
-                engine: bridge.engine, plan: bridge.plan, name: plan.name, sim: plan.sim,
-                bundleID: bundleID, preinstallAppPath: preinstallAppPath, log: log))
+            // **成否を問わず必ず 1 回通す**(撃ち漏らすと ProvisionLock が解放されない)。
+            // executeBridge の中でも確保直後に撃つが、経路の取りこぼしをここで埋める
+            let claim = ClaimOnce(barrier: claimBarrier)
+            do {
+                ports.append(try await executeBridge(
+                    engine: bridge.engine, plan: bridge.plan, name: plan.name, sim: plan.sim,
+                    bundleID: bundleID, preinstallAppPath: preinstallAppPath,
+                    claimed: { await claim.fire() }, log: log))
+                await claim.fire()
+            } catch {
+                await claim.fire()
+                throw error
+            }
         }
         return ProvisionedIOSDevice(
             name: plan.name, udid: plan.sim.udid, simulatorName: plan.sim.name,
@@ -543,14 +617,20 @@ public struct BridgeProvisioner {
     }
 
     /// 1 ブリッジ分のプラン実行(ポート採番・再利用判定はプランニングで確定済み)
+    /// - claimed: **ポートを確保した(pid ファイル/記録を書いた)直後**に撃つ。これで
+    ///   ProvisionLock が解け、ready 待ちは他ワーカーと並行になる。再利用・引き取りは新しく
+    ///   確保しないので即座に撃つ
     private func executeBridge(engine: String, plan: EnginePlan, name: String, sim: SimDeviceInfo,
                                bundleID: String?, preinstallAppPath: String?,
+                               claimed: @escaping @Sendable () async -> Void,
                                log: @escaping (String) -> Void) async throws -> UInt16 {
         switch plan {
         case .reuse(let port):
+            await claimed()
             log("✅ \(name): reusing the running \(engine) bridge (port \(port), \(sim.name))")
             return port
         case .adopt(let port):
+            await claimed()
             // 別プロセスが起動した直後のランナー。起動はせず announce だけ待つ
             log("→ \(name): taking over the starting \(engine) bridge (port \(port), \(sim.name))...")
             let launcher = BridgeLauncher(repoRoot: repoRoot, device: sim.udid, port: port,
@@ -570,7 +650,7 @@ public struct BridgeProvisioner {
                     plan: .launch(port: port, needsInstall: false,
                                   stopStalePort: nil, reclaimInApp: false),
                     name: name, sim: sim, bundleID: bundleID,
-                    preinstallAppPath: preinstallAppPath, log: log)
+                    preinstallAppPath: preinstallAppPath, claimed: claimed, log: log)
             }
         case .launch(let port, let needsInstall, let stopStalePort, let reclaimInApp):
             let stateDir = repoRoot.appendingPathComponent(".fleetest")
@@ -661,7 +741,10 @@ public struct BridgeProvisioner {
                                                 needsInstall: needsInstall, log: log)
                 }.value
                 do {
+                    // **in-app は relaunch の中で記録の書き込みと ready 待ちが分かれていない**ので、
+                    // 確保の合図は戻ってから(= この経路はロックの短縮が効かない)
                     try await launcher.relaunch(bundleID: bundleID)
+                    await claimed()
                 } catch {
                     // 起動したアプリを残さない(ブリッジの無いアプリが前面に残ると次の run でも
                     // 残骸になる)。記録は relaunch が ready 前に書いているのでここで消す
@@ -701,6 +784,9 @@ public struct BridgeProvisioner {
                     try launcher.generateProjectIfNeeded()
                     try launcher.startDetached()
                 }.value
+                // **ここでポートは確保済み**(startDetached が pid ファイルを書く)。以降の
+                // ready 待ちはロックの外でよい = 他ワーカーの供給と並行に進む
+                await claimed()
                 // 実機はデバイス内ループバックに届かない。/status を叩く前に到達手段
                 // (LAN の宛先解決 or iproxy の USB トンネル)を確立して endpoint を記録する
                 var endpoint = BridgeEndpoint(port: port)
