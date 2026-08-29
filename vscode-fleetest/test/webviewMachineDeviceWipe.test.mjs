@@ -2,9 +2,11 @@
 // マシンプロファイルのデバイス行右クリック「Wipe Data」(machineProfilesTab.js)の DOM テスト。
 // 実 HTML+実バンドルで動かす方式は webviewMachineDeviceMachineScope.test.mjs と同じ。
 //
-// 守りたいのは2つ: ①**実機の行には出さない**(端末を初期化する操作は持たない。1台でも実機が
+// 守りたいのは3つ: ①**実機の行には出さない**(端末を初期化する操作は持たない。1台でも実機が
 // 混ざる選択でも出さない —— 一部だけ実行すると何が消えたのか分からなくなる)
-// ②宛先は (machine, name) で送る(名前だけだと別の機械の同名の台が初期化される)。
+// ②宛先は**識別子**(iOS=udid / Android=avd)で送る —— CLI は名前を引かない(プロファイルを
+// 参照しない契約)。どの機械の台かは machine で伝える
+// ③識別子を持たない行では出さない(撃ちようがない)。
 
 import assert from "node:assert/strict";
 import path from "node:path";
@@ -61,9 +63,12 @@ function createWebview(onPost = () => {}) {
 const MACHINE = {
   name: "M1",
   devices: [
-    { name: "エミュ1", platform: "android", detail: "Pixel 8", avd: "Pixel_8" },
-    { name: "エミュ1", platform: "android", machine: "M1Max", detail: "Pixel 8", avd: "Pixel_8" },
+    { name: "エミュ1", platform: "android", detail: "Pixel 8", avd: "Pixel_8_LOCAL" },
+    { name: "エミュ1", platform: "android", machine: "M1Max", detail: "Pixel 8", avd: "Pixel_8_M1MAX" },
     { name: "iPhone実機", platform: "ios", kind: "physical", detail: "iPhone 16", udid: "UDID-PHYS" },
+    // avd 未設定 = 撃つ宛先が無い(そもそも wipe できない)
+    { name: "エミュ(avd未設定)", platform: "android", detail: "Pixel 3a" },
+    { name: "シミュ1", platform: "ios", detail: "iPhone 17 Pro", udid: "UDID-SIM1" },
   ],
 };
 
@@ -97,15 +102,40 @@ test("仮想デバイスの行には Wipe Data を出し、その行のマシン
   wipeItem.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
   const remote = posted.filter((m) => m.type === "machineDeviceWipe").pop();
   assert.equal(remote.devices.length, 1);
-  assert.equal(remote.devices[0].name, "エミュ1");
+  assert.equal(remote.devices[0].platform, "android");
+  assert.equal(remote.devices[0].identifier, "Pixel_8_M1MAX", "その行の avd を送る(同名でも別の台)");
   assert.equal(remote.devices[0].machine, "M1Max");
 
   openMenuOn(window, rows[0]);
   wipeItem.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
   const local = posted.filter((m) => m.type === "machineDeviceWipe").pop();
   assert.equal(local.devices.length, 1);
-  assert.equal(local.devices[0].name, "エミュ1");
+  assert.equal(local.devices[0].identifier, "Pixel_8_LOCAL");
   assert.equal(local.devices[0].machine, undefined, "手元のデバイスに machine は載せない(省略=手元)");
+});
+
+test("iOS の行は udid を送る", (t) => {
+  const posted = [];
+  const { window, document } = createWebview((message) => posted.push(message));
+  t.after(() => window.close());
+
+  postMachine(window, MACHINE);
+  const rows = deviceRows(document);
+  openMenuOn(window, rows[4]);
+  document.getElementById("machine-device-menu-wipe").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  const sent = posted.filter((m) => m.type === "machineDeviceWipe").pop();
+  assert.equal(sent.devices[0].platform, "ios");
+  assert.equal(sent.devices[0].identifier, "UDID-SIM1");
+});
+
+test("識別子(avd/udid)を持たない行では Wipe Data を出さない", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  postMachine(window, MACHINE);
+  const rows = deviceRows(document);
+  openMenuOn(window, rows[3]);
+  assert.equal(document.getElementById("machine-device-menu-wipe").style.display, "none");
 });
 
 test("実機の行では Wipe Data を出さない", (t) => {

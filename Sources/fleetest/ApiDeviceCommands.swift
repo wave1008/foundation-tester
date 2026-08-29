@@ -116,42 +116,99 @@ enum ApiDeviceUpDirectSpec {
 }
 
 /// 仮想デバイス1台の Wipe Data(Android = AVD の userdata/cache/snapshots 削除、
-/// iOS = simctl erase)。**実機は DeviceWiper が拒否する**(webview 側でも項目を出さない)。
+/// iOS = simctl erase)。**識別子の直指定だけ**を受け、`api delete-device` と同じく
+/// プロジェクト・マシンプロファイルを一切参照しない —— 消す対象はその AVD ディレクトリ /
+/// シミュレータ UDID そのものなので、名前で引く必要が無い。名前で引く形にすると
+/// **リモートでは向こうの複製が古いと `device not found` で必ず失敗する**
+/// (複製が更新されるのはモニターの fan-out 開始時だけ)ため、操作のたびにプロジェクトを
+/// 送り直す羽目になる —— 200 バイトの情報のために毎回 rsync を1本払う形は採らない。
+/// **実機は識別子から作る spec が virtual なので原理的に来ない**が、DeviceWiper.target が
+/// 別の呼び手のために拒否を持ち続ける。
 /// stdout の NDJSON は device-up/down と同じ log*/finished に、フェーズ通知
 /// {"kind":"wipeStatus","phase":"stopping"|"rebooting"|"done"|"failed"} を加えた形
 /// (同期相手: vscode-fleetest/src/monitorDeviceLifecycle.ts の DeviceOpEvent)
 struct ApiDeviceWipe: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "device-wipe",
-        abstract: "Wipe one virtual device listed in the machine profile (Android: Wipe Data; "
-            + "iOS: simctl erase). Physical devices are rejected. NDJSON: log*/wipeStatus* -> "
-            + "finished on stdout; diagnostics on stderr only; exit code 1 when ok:false")
+        abstract: "Wipe one virtual device by identifier (Android: Wipe Data on --avd; iOS: simctl "
+            + "erase on --udid). Resolves no project or machine profile at all, like delete-device. "
+            + "NDJSON: log*/wipeStatus* -> finished on stdout; diagnostics on stderr only; exit "
+            + "code 1 when ok:false")
 
-    @Option(help: "Logical device name (a name under ios or android in the machine profile)")
-    var name: String
+    @Option(help: "Device platform (ios or android)")
+    var platform: String
 
-    @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
-    var project: String?
+    @Option(help: "iOS simulator UDID (required with --platform ios)")
+    var udid: String?
 
-    @Option(help: "Run profile name, used to resolve the machine. When given, that profile's machine wins; otherwise FT_MACHINE, the registered machine, or the only entry in machines/")
-    var profile: String?
-
-    @Option(name: [.customLong("device-machine"), .customLong("device-host")],
-            help: "Only match devices assigned to this machine (\"local\" or a registered host name). Set by the caller on the other end of ssh")
-    var deviceMachine: String?
+    @Option(help: "Android AVD id (required with --platform android)")
+    var avd: String?
 
     func run() async throws {
-        try await ApiDeviceOperation.run(
-            name: name, project: project, profile: profile, deviceMachine: deviceMachine
-        ) { spec, platform, log in
+        setvbuf(stdout, nil, _IOLBF, 0)
+        let log: @Sendable (String) -> Void = { message in
+            ApiDeviceEventEmitter.emit(ApiDeviceLogEvent(message: message))
+        }
+        do {
+            let target = try ApiDeviceWipeTarget.resolve(platform: platform, udid: udid, avd: avd)
+            let spec = target.spec(simCatalog: target.platform == "ios"
+                                   ? ((try? SimulatorCatalog.devices()) ?? []) : [])
             // iOS はブリッジの停止・再供給に repoRoot が要る(device-down / device-up と同じ)
-            let repoRoot = platform == "ios" ? try? RepoRoot.find() : nil
+            let repoRoot = target.platform == "ios" ? try? RepoRoot.find() : nil
             try await DeviceWiper.wipeOne(
-                spec: spec, platform: platform, repoRoot: repoRoot,
+                spec: spec, platform: target.platform, repoRoot: repoRoot,
                 status: { phase in
                     ApiDeviceEventEmitter.emit(ApiDeviceWipeStatusEvent(phase: phase))
                 },
                 log: log)
+            ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(ok: true, error: nil))
+        } catch let error as ValidationError {
+            throw error  // 引数の誤りは NDJSON でなく ArgumentParser の作法で返す(exit 64)
+        } catch {
+            ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent.failure(error))
+            throw ExitCode(1)
+        }
+    }
+}
+
+/// `device-wipe` の引数から対象を決め、spec を組み立てる。I/O を持たない pure 関数
+/// (ユニットテスト対象のため private にしない。ApiDeviceDownDirectSpec と同じ位置づけ)
+enum ApiDeviceWipeTarget: Equatable {
+    case ios(udid: String)
+    case android(avd: String)
+
+    var platform: String {
+        switch self {
+        case .ios: return "ios"
+        case .android: return "android"
+        }
+    }
+
+    /// platform に対応する識別子がちょうど1つ与えられているか検証する
+    static func resolve(platform: String, udid: String?, avd: String?) throws -> ApiDeviceWipeTarget {
+        switch platform {
+        case "ios":
+            guard avd == nil else { throw ValidationError("--avd is for --platform android") }
+            guard let udid, !udid.isEmpty else { throw ValidationError("--platform ios needs --udid") }
+            return .ios(udid: udid)
+        case "android":
+            guard udid == nil else { throw ValidationError("--udid is for --platform ios") }
+            guard let avd, !avd.isEmpty else { throw ValidationError("--platform android needs --avd") }
+            return .android(avd: avd)
+        default:
+            throw ValidationError("unknown --platform: \(platform) (expected ios or android)")
+        }
+    }
+
+    /// 表示名は**人が読む1行のためだけ**に使う(操作の宛先は識別子)。iOS はカタログに載って
+    /// いればシミュレータ名、無ければ UDID をそのまま出す(ApiDeviceDownDirectSpec.iosSpec と同じ方針)
+    func spec(simCatalog: [SimDeviceInfo]) -> DeviceSpec {
+        switch self {
+        case .ios(let udid):
+            let name = simCatalog.first(where: { $0.udid == udid })?.name ?? udid
+            return DeviceSpec(name: name, kind: .virtual, udid: udid)
+        case .android(let avd):
+            return DeviceSpec(name: avd, kind: .virtual, avd: avd)
         }
     }
 }

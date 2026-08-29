@@ -18,7 +18,6 @@ import {
   deviceLifecycleJobNeedsMonitorPause,
   promoteDeviceLifecycleJobs,
   deviceLifecycleStatusFor,
-  type DeviceOpKind,
   enqueueDeviceLifecycleJob,
   hasDeviceLifecycleJobFor,
   isCreateDeviceEvent,
@@ -56,6 +55,10 @@ type CreateDeviceOutcome = {
   readonly device: { readonly avd: string | null; readonly udid: string | null } | null;
 };
 type CreateDeviceOutcomeHandler = (outcome: CreateDeviceOutcome) => void;
+
+/** プロファイルタブの「Wipe Data」1台分(machineDeviceWipe メッセージの要素と同じ形)。
+ * **identifier が主**(iOS = UDID / Android = AVD id)で、name は確認・ログ・タイル表示用。 */
+type WipeTargetDevice = Extract<MonitorFromWebviewMessage, { type: "machineDeviceWipe" }>["devices"][number];
 
 /** webview からの "devicePickDeviceDelete" メッセージの形(runDeleteDevice で使う)。 */
 export type DevicePickDeviceDeleteMessage = Extract<MonitorFromWebviewMessage, { type: "devicePickDeviceDelete" }>;
@@ -175,7 +178,7 @@ export class MonitorDeviceOps {
    * (webview の window.confirm は効かない。runDeleteDevice と同じ方式)。確認後は enqueueWipe で
    * 直列キューへ積む。
    */
-  async runWipeDevices(devices: readonly { readonly name: string; readonly machine?: string }[]): Promise<void> {
+  async runWipeDevices(devices: readonly WipeTargetDevice[]): Promise<void> {
     if (devices.length === 0) {
       return;
     }
@@ -199,14 +202,17 @@ export class MonitorDeviceOps {
    * (この関数自体は聞かない)。既に同じ台のジョブがキューに居れば無視する
    * (引き当ては (machine, name) —— 別の機械の同名の台は別の台)。
    * 積めた台数を返す(0 = 全部が既に処理中)。 */
-  enqueueWipe(devices: readonly { readonly name: string; readonly machine?: string }[]): number {
+  enqueueWipe(devices: readonly WipeTargetDevice[]): number {
     let queued = 0;
     for (const device of devices) {
       if (hasDeviceLifecycleJobFor(this.lifecycleQueue, device.name, device.machine)) {
         this.deps.outputChannel.appendLine(t("deviceOps.log.wipeSkippedBusy", { name: device.name }));
         continue;
       }
-      this.pushLifecycleJob({ kind: "device", name: device.name, op: "wipe", machine: device.machine });
+      this.pushLifecycleJob({
+        kind: "device", name: device.name, op: "wipe", machine: device.machine,
+        platform: device.platform, identifier: device.identifier,
+      });
       queued += 1;
     }
     return queued;
@@ -422,7 +428,7 @@ export class MonitorDeviceOps {
       if (job.op === "down" || job.op === "wipe") {
         this.deps.stopDeviceStreams(job.name, job.machine);
       }
-      this.executeDeviceOpJob(job.name, job.op, job.udid, job.serial, job.machine);
+      this.executeDeviceOpJob(job);
     }
   }
 
@@ -782,9 +788,7 @@ export class MonitorDeviceOps {
    * 失敗時(finished ok:false、または finished を出せずに落ちた場合を含む)は、バナーがパネルを
    * 閉じると消えるため、事後診断できるよう出力チャネルにも必ずログを残す。
    */
-  private executeDeviceOpJob(
-    name: string, op: DeviceOpKind, udid?: string, serial?: string, machine?: string,
-  ): void {
+  private executeDeviceOpJob(job: Extract<DeviceLifecycleJob, { kind: "device" }>): void {
     // spawn 失敗時の 'error'+'close' 二重発火・複数試行にまたがる finish の二重呼び出しを防ぐ
     // ジョブ単位のガード(finishLifecycleQueueHead は1ジョブにつき1回だけ呼ぶ)。
     let jobFinished = false;
@@ -795,22 +799,21 @@ export class MonitorDeviceOps {
       jobFinished = true;
       // **machine も入れる** —— sameLifecycleJob は (machine, name, op) で照合するので、
       // 落とすと「実行中に該当ジョブがありません」になる
-      this.finishLifecycleJob({ kind: "device", name, op, machine });
+      this.finishLifecycleJob(job);
     };
-    this.runDeviceOpAttempt(name, op, 0, finishOnce, udid, serial, machine);
+    this.runDeviceOpAttempt(job, 0, finishOnce);
   }
 
   /** device-up/down の1回分の実行。up が失敗し追加試行が残っていれば遅延後に再試行、
    * それ以外(成功・down・up の上限到達)は finishOnce でキューを進める。 */
   private runDeviceOpAttempt(
-    name: string,
-    op: DeviceOpKind,
+    job: Extract<DeviceLifecycleJob, { kind: "device" }>,
     attempt: number,
     finishOnce: () => void,
-    udid?: string,
-    serial?: string,
-    machine?: string,
   ): void {
+    const { name, op, machine } = job;
+    const udid = job.op === "wipe" ? undefined : job.udid;
+    const serial = job.op === "wipe" ? undefined : job.serial;
     const config = this.deps.getConfig();
     const resolution = resolveProjectName(this.deps.workspaceRoot, config);
     // 未登録(マシンプロファイル未記載)デバイスの直指定モード: --name の代わりに --udid/--serial を渡し、
@@ -824,7 +827,14 @@ export class MonitorDeviceOps {
     // (simctl は無ければ作る)。一括起動が RemoteDeviceFanout で分散するのと同じ規律
     const args: string[] = machine ? ["remote", "exec", machine, "--"] : [];
     args.push("api", op === "up" ? "device-up" : op === "down" ? "device-down" : "device-wipe");
-    if (direct) {
+    // **wipe は識別子だけで撃つ**(delete-device と同じ契約: プロジェクトもマシンプロファイルも
+    // 参照しない)。名前で引く形にすると、リモートでは向こうのプロファイル複製が古いと
+    // `device not found` で必ず失敗し、操作のたびにプロジェクトを送り直す羽目になる
+    // (複製が更新されるのはモニターの fan-out 開始時だけ。2026-08-29 に実機で確認)
+    if (job.op === "wipe") {
+      args.push("--platform", job.platform,
+                job.platform === "ios" ? "--udid" : "--avd", job.identifier);
+    } else if (direct) {
       if (udid !== undefined) {
         args.push("--udid", udid);
       } else if (serial !== undefined) {
@@ -883,7 +893,7 @@ export class MonitorDeviceOps {
           // **machine を落とさない** —— 落とすと再試行だけ手元で走り、別の機械の台に対して
           // 「そんな UDID の実機は無い(認識しているのは…)」という**見当違いのエラー**が
           // 最後に出て、本当の失敗理由(向こうの署名エラー等)が隠れる(実害 2026-08-29)
-          () => this.runDeviceOpAttempt(name, op, attempt + 1, finishOnce, udid, serial, machine),
+          () => this.runDeviceOpAttempt(job, attempt + 1, finishOnce),
           MonitorDeviceOps.deviceUpRetryDelayMs,
         );
         return;

@@ -691,17 +691,26 @@ export function closeMachineDeviceMenu() {
   machineDeviceMenu.classList.remove('visible');
 }
 
+/** Wipe Data の宛先(iOS = シミュレータの UDID / Android = AVD id)。無ければ null。
+ * **名前は使わない** —— CLI は識別子だけで撃つ(delete-device と同じ契約)。 */
+function wipeIdentifier(device) {
+  const value = device.platform === 'ios' ? device.udid : device.avd;
+  return typeof value === 'string' && value !== '' ? value : null;
+}
+
 // entry は { machine, devices }(1件以上)。2台以上なら項目ラベルを「選択した<N>台を除去」に変える。
 // **Wipe Data は仮想デバイスだけ**(実機に「中身を初期化する」操作は無い)。1台でも実機が
 // 混ざっていれば出さない —— 出したうえで一部だけ実行すると、何が消えて何が残ったのか
-// 分からなくなる。
+// 分からなくなる。**識別子(iOS=udid / Android=avd)が無い行も出さない** ——
+// CLI は識別子で撃つ(プロファイルを参照しない)ので、無い行は撃ちようがない
+// (avd 未設定の Android エントリはそもそも wipe できない)。
 function openMachineDeviceMenu(entry, clientX, clientY) {
   machineDeviceMenuEntry = entry;
   machineDeviceMenuItemBtn.textContent =
     entry.devices.length >= 2
       ? t('wvMonitor2.machine.removeSelectedCount', { count: entry.devices.length })
       : t('wvMonitor2.common.remove');
-  const wipable = entry.devices.every((d) => d.kind !== 'physical');
+  const wipable = entry.devices.every((d) => d.kind !== 'physical' && wipeIdentifier(d) !== null);
   machineDeviceMenuWipeBtn.style.display = wipable ? '' : 'none';
   machineDeviceMenuWipeBtn.textContent =
     entry.devices.length >= 2
@@ -733,10 +742,19 @@ machineDeviceMenuWipeBtn.addEventListener('click', (event) => {
   if (!machineDeviceMenuEntry) {
     return;
   }
-  vscode.postMessage({
-    type: 'machineDeviceWipe',
-    devices: machineDeviceMenuEntry.devices.map((d) => (d.machine ? { name: d.name, machine: d.machine } : { name: d.name })),
-  });
+  const devices = machineDeviceMenuEntry.devices
+    .map((d) => {
+      const identifier = wipeIdentifier(d);
+      return identifier === null ? null : {
+        name: d.name, platform: d.platform, identifier,
+        ...(d.machine ? { machine: d.machine } : {}),
+      };
+    })
+    .filter((d) => d !== null);
+  if (devices.length === 0) {
+    return;
+  }
+  vscode.postMessage({ type: 'machineDeviceWipe', devices });
   closeMachineDeviceMenu();
 });
 

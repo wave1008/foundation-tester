@@ -3382,9 +3382,15 @@ skip(素通り)になり、FM 利用不可時と同じ扱い。UI はデバイ�
 実行する(AndroidDataWiper.swift。ゲストは初期化されるが、アプリは appPath があれば強制
 再インストール、ロケールは下記 `locale` が再ブート後に自動適用される)。
 
-手動の Wipe Data はプロファイルタブの**デバイス行の右クリック**から撃つ(`fleetest api
-device-wipe --name <論理名> --device-machine local`(リモートは `remote exec <機械> --` で回す)。Android = 上と同じファイル集合の削除、
-iOS = `simctl erase`)。**実機には項目を出さない**(`DeviceWiper.target` が CLI 側でも拒否する)。
+手動の Wipe Data はプロファイルタブの**デバイス行の右クリック**から撃つ(Android =
+`fleetest api device-wipe --platform android --avd <ID>` = 上と同じファイル集合の削除、
+iOS = `--platform ios --udid <UDID>` = `simctl erase`。リモートは `remote exec <機械> --` で回す)。
+**識別子だけで撃ち、プロジェクトもマシンプロファイルも参照しない**(`api delete-device` と同じ契約)
+—— 名前で引くと、リモートではランナー側の複製が古いときに `device not found` で必ず失敗し
+(複製の更新はモニターの fan-out 開始時だけ)、操作のたびにプロジェクトを送り直す羽目になる。
+**実機には項目を出さない**(識別子から作る spec は必ず仮想デバイスなので原理的に来ないが、
+`DeviceWiper.target` が別の呼び手のために拒否を持ち続ける)。**識別子を持たない行にも出さない**
+(avd 未設定の Android エントリはそもそも wipe できない)。
 **しきい値は見ない**(人が選んで撃つので、消すか消さないかの判断はもう済んでいる)。
 本体は自動チェックと同じ `AndroidDataWiper.performWipe` / 起動・停止は `DeviceBooter` を通す ——
 「停止を確認できたときだけ消す」「稼働中だった台だけ起こし直す」を2箇所に持たない。

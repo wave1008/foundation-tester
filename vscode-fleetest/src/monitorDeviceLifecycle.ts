@@ -205,7 +205,18 @@ export type DeviceLifecycleJob =
   // machine: そのデバイスが居る機械(手元は undefined)。**名前だけで CLI に渡さない** ——
   // 同名の台が別の機械にも居るのは通常で、手元の同名エントリを引いて別の機械の設定で
   // シミュレータを1台作ってしまう(simctl は無ければ作る)
-  | { readonly kind: "device"; readonly name: string; readonly op: DeviceOpKind; readonly machine?: string; readonly udid?: string; readonly serial?: string }
+  | { readonly kind: "device"; readonly name: string; readonly op: "up" | "down"; readonly machine?: string; readonly udid?: string; readonly serial?: string }
+  // wipe は **識別子で撃つ**(`api device-wipe --platform … --udid/--avd`)。delete-device と同じく
+  // プロジェクトもマシンプロファイルも参照しない —— 名前で引く形にすると、リモートでは向こうの
+  // 複製が古いと `device not found` で必ず失敗する(複製が更新されるのはモニターの fan-out
+  // 開始時だけ)。**識別子を省略できない型にしてある**ので、呼び忘れはコンパイルで止まる
+  | {
+      readonly kind: "device"; readonly name: string; readonly op: "wipe";
+      readonly machine?: string;
+      readonly platform: "ios" | "android";
+      /** iOS = シミュレータの UDID / Android = AVD id */
+      readonly identifier: string;
+    }
   | { readonly kind: "restartBatch"; readonly names: readonly string[] };
 
 /** device ジョブの同時実行上限。**機械ごとに数える** —— 「2台同時でマシン CPU がほぼ飽和する」

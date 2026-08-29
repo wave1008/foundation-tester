@@ -1171,24 +1171,38 @@ test("isMonitorFromWebviewMessage: machineDeviceRemove は machine 非空文字�
   );
 });
 
-test("isMonitorFromWebviewMessage: machineDeviceWipe は devices 非空配列(各要素 name 非空・machine は非空か省略)なら true", () => {
-  assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceWipe", devices: [{ name: "シミュ1" }] }), true);
+test("isMonitorFromWebviewMessage: machineDeviceWipe は name/platform/identifier が揃っていれば true", () => {
+  const ios = { name: "シミュ1", platform: "ios", identifier: "UDID-1" };
+  assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceWipe", devices: [ios] }), true);
   assert.equal(
     isMonitorFromWebviewMessage({
       type: "machineDeviceWipe",
-      devices: [{ name: "シミュ1" }, { name: "シミュ1", machine: "M1Max" }],
+      devices: [ios, { name: "エミュ1", platform: "android", identifier: "Pixel_8", machine: "M1Max" }],
     }),
-    true, // 同名でも機械が違えば別の台(引き当ては (machine, name))
+    true,
   );
 });
 
-test("isMonitorFromWebviewMessage: machineDeviceWipe は devices 空配列・欠落・要素不正なら false", () => {
+test("isMonitorFromWebviewMessage: machineDeviceWipe は識別子を欠くと false(名前では撃たない)", () => {
+  const ok = { name: "シミュ1", platform: "ios", identifier: "UDID-1" };
   assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceWipe", devices: [] }), false);
   assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceWipe" }), false);
-  assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceWipe", devices: [{ name: "" }] }), false);
+  assert.equal(
+    isMonitorFromWebviewMessage({ type: "machineDeviceWipe", devices: [{ name: "シミュ1" }] }),
+    false, // 名前だけでは撃たない(CLI は識別子でしか受け付けない)
+  );
+  assert.equal(
+    isMonitorFromWebviewMessage({ type: "machineDeviceWipe", devices: [{ ...ok, identifier: "" }] }),
+    false,
+  );
+  assert.equal(
+    isMonitorFromWebviewMessage({ type: "machineDeviceWipe", devices: [{ ...ok, platform: "web" }] }),
+    false,
+  );
+  assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceWipe", devices: [{ ...ok, name: "" }] }), false);
   assert.equal(isMonitorFromWebviewMessage({ type: "machineDeviceWipe", devices: ["シミュ1"] }), false);
   assert.equal(
-    isMonitorFromWebviewMessage({ type: "machineDeviceWipe", devices: [{ name: "OK", machine: "" }] }),
+    isMonitorFromWebviewMessage({ type: "machineDeviceWipe", devices: [{ ...ok, machine: "" }] }),
     false, // machine は指定するなら非空("" は「手元」ではなく不正)
   );
 });

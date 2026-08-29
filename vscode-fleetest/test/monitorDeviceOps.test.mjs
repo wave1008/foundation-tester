@@ -292,33 +292,55 @@ test("syncCpuRenderNames: ライフサイクルジョブ進行中の個体は落
 
 // --- 手動 Wipe Data(プロファイルタブのデバイス行右クリック) --------------------------------
 
-test("wipe ジョブは api device-wipe を --name/--project/--device-machine で撃つ", async () => {
+// **wipe は識別子だけで撃つ**(`api delete-device` と同じ契約)。名前で引くと、リモートでは
+// 向こうのプロファイル複製が古いと `device not found` で必ず失敗し(複製が更新されるのは
+// モニターの fan-out 開始時だけ)、操作のたびにプロジェクトを送り直す羽目になる。
+test("wipe ジョブは識別子で撃つ(--platform/--avd。プロファイルは参照しない)", async () => {
   const { dir, binaryPath } = makeMockBinary();
   const { deps } = makeDeps(binaryPath);
   const deviceOps = new MonitorDeviceOps(deps);
   try {
-    assert.equal(deviceOps.enqueueWipe([{ name: "エミュ1" }]), 1);
+    assert.equal(
+      deviceOps.enqueueWipe([{ name: "エミュ1", platform: "android", identifier: "Pixel_8" }]),
+      1,
+    );
     await waitUntilIdle(deviceOps);
     const line = argvLines(dir).at(-1);
-    assert.match(line, /^api device-wipe /);
-    assert.match(line, /--name エミュ1/);
-    assert.match(line, /--project P/);
-    assert.match(line, /--device-machine local/, "手元でも絞る(同名のリモートの台を引かない)");
+    assert.match(line, /^api device-wipe --platform android --avd Pixel_8$/);
+    assert.doesNotMatch(line, /--name/);
+    assert.doesNotMatch(line, /--project/);
+    assert.doesNotMatch(line, /--device-machine/);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test("リモートの台の wipe はその機械で実行する(remote exec + --device-machine)", async () => {
+test("iOS の wipe は --udid で撃つ", async () => {
   const { dir, binaryPath } = makeMockBinary();
   const { deps } = makeDeps(binaryPath);
   const deviceOps = new MonitorDeviceOps(deps);
   try {
-    deviceOps.enqueueWipe([{ name: "エミュ1", machine: "M1Max" }]);
+    deviceOps.enqueueWipe([{ name: "シミュ1", platform: "ios", identifier: "UDID-1" }]);
+    await waitUntilIdle(deviceOps);
+    assert.match(argvLines(dir).at(-1), /^api device-wipe --platform ios --udid UDID-1$/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("リモートの台の wipe はその機械で実行する(識別子はそのまま渡す)", async () => {
+  const { dir, binaryPath } = makeMockBinary();
+  const { deps } = makeDeps(binaryPath);
+  const deviceOps = new MonitorDeviceOps(deps);
+  try {
+    deviceOps.enqueueWipe([
+      { name: "エミュ1", machine: "M1Max", platform: "android", identifier: "Pixel_8" },
+    ]);
     await waitUntilIdle(deviceOps);
     const line = argvLines(dir).at(-1);
-    assert.match(line, /^remote exec M1Max -- api device-wipe/);
-    assert.match(line, /--device-machine local/, "向こうから見た自分の台は local(起動/停止と同じ)");
+    assert.match(line, /^remote exec M1Max -- api device-wipe --platform android --avd Pixel_8$/);
+    // 向こうのプロファイルを読まないので、送り直し(--sync-project)も要らない
+    assert.doesNotMatch(line, /--sync-project/);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -329,7 +351,7 @@ test("wipe ジョブは down と同じく実行開始時に stopDeviceStreams �
   const { deps, stopDeviceStreamsCalls, stopAllStreamsCalls } = makeDeps(binaryPath);
   const deviceOps = new MonitorDeviceOps(deps);
   try {
-    deviceOps.enqueueWipe([{ name: "エミュ1" }]);
+    deviceOps.enqueueWipe([{ name: "エミュ1", platform: "android", identifier: "Pixel_8" }]);
     assert.deepEqual(stopDeviceStreamsCalls, ["エミュ1"]);
     assert.deepEqual(stopAllStreamsCalls, []);
     await waitUntilIdle(deviceOps);
@@ -344,9 +366,10 @@ test("同じ台に別の操作が載っている間は wipe を積まない(戻�
   const deviceOps = new MonitorDeviceOps(deps);
   try {
     deviceOps.enqueueLifecycleJob({ kind: "device", name: "エミュ1", op: "down" });
-    assert.equal(deviceOps.enqueueWipe([{ name: "エミュ1" }]), 0);
+    const target = { name: "エミュ1", platform: "android", identifier: "Pixel_8" };
+    assert.equal(deviceOps.enqueueWipe([target]), 0);
     // 別の機械の同名は別の台なので積める((machine, name) で引く)
-    assert.equal(deviceOps.enqueueWipe([{ name: "エミュ1", machine: "M1Max" }]), 1);
+    assert.equal(deviceOps.enqueueWipe([{ ...target, machine: "M1Max" }]), 1);
     await waitUntilIdle(deviceOps);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });

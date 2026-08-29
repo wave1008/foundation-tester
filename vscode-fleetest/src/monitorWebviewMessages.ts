@@ -432,7 +432,9 @@ export type MonitorFromWebviewMessage =
   | {
       readonly type: "deviceOp";
       readonly name: string;
-      readonly op: DeviceOpKind;
+      // タイルが撃つのは起動/停止だけ(Wipe Data はプロファイルタブの machineDeviceWipe)。
+      // 型でも絞る = 検証(isMonitorFromWebviewMessage)と同じ集合にする
+      readonly op: "up" | "down";
       // machine: そのデバイスが居る機械(手元は省略)。一意なのは (machine, name) なので、
       // 名前だけで CLI へ渡すと別の機械のエントリを手元で起こしてしまう
       readonly machine?: string;
@@ -540,7 +542,16 @@ export type MonitorFromWebviewMessage =
   // **実機は webview 側で項目を出さない**(CLI 側も DeviceWiper が拒否する)。
   | {
       readonly type: "machineDeviceWipe";
-      readonly devices: readonly { readonly name: string; readonly machine?: string }[];
+      // **identifier で撃つ**(iOS = シミュレータの UDID / Android = AVD id)。CLI は
+      // `api device-wipe --platform … --udid/--avd` でプロファイルを一切参照しない
+      // (delete-device と同じ契約)。name は確認・ログ・タイル表示のためだけに運ぶ。
+      // 識別子を持たない行では webview がメニュー項目自体を出さない。
+      readonly devices: readonly {
+        readonly name: string;
+        readonly machine?: string;
+        readonly platform: MonitorPlatform;
+        readonly identifier: string;
+      }[];
     }
   // #device-pick-overlay の行右クリック「削除」: マシンプロファイルからの除去(machineDeviceRemove)
   // とは別に、ホスト上の実体(シミュレータ/AVD)そのものを `fleetest api delete-device` で消す。
@@ -857,6 +868,9 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
             isRecord(device) &&
             typeof device.name === "string" &&
             device.name !== "" &&
+            (device.platform === "ios" || device.platform === "android") &&
+            typeof device.identifier === "string" &&
+            device.identifier !== "" &&
             (device.machine === undefined || (typeof device.machine === "string" && device.machine !== "")),
         )
       );
