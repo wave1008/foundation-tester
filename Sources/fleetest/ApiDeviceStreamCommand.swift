@@ -65,6 +65,7 @@ struct ApiDeviceStreamCommand: AsyncParsableCommand {
         }
         let machineProfile = try MachineProfileLoad.load(
             project: project, profile: profile, deviceMachine: deviceMachine,
+            foreign: .notHandled,  // 1台ぶんの配信。警告は捨てているので表示は変わらない
             noteAutoMachine: { _ in }, warn: { _ in })
         let targets = DeviceMachineGrouping.entries(machine: machineProfile).map {
             MonitorTarget(platform: $0.platform, spec: $0.spec)

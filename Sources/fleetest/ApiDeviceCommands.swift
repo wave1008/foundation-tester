@@ -247,6 +247,7 @@ struct ApiDevicesUp: AsyncParsableCommand {
         do {
             let machineProfile = try MachineProfileLoad.load(
                 project: project, profile: profile, deviceMachine: deviceMachine,
+                foreign: .dispatchedByCaller,  // RemoteDeviceFanout がこの後その機械へ回す
                 noteAutoMachine: { Self.logStderr($0) },
                 warn: { Self.logStderr($0) })
             let repoRoot = noBridge ? nil : try RepoRoot.find()
@@ -327,6 +328,7 @@ struct ApiDevicesRestart: AsyncParsableCommand {
         do {
             let machineProfile = try MachineProfileLoad.load(
                 project: project, profile: profile, deviceMachine: deviceMachine,
+                foreign: .notHandled,  // devices-restart は分散しない(watchdog 由来で手元専用)
                 noteAutoMachine: { Self.logStderr($0) },
                 warn: { Self.logStderr($0) })
 
@@ -438,6 +440,7 @@ struct ApiDevicesDown: AsyncParsableCommand {
         do {
             let machineProfile = try MachineProfileLoad.load(
                 project: project, profile: profile, deviceMachine: deviceMachine,
+                foreign: .dispatchedByCaller,  // RemoteDeviceFanout がこの後その機械へ回す
                 noteAutoMachine: { Self.logStderr($0) },
                 warn: { Self.logStderr($0) })
             // リモートのぶんはその機械へ投げる(起動と同じ分散。RemoteDeviceFanout)

@@ -41,6 +41,7 @@ struct DevicesCommand: AsyncParsableCommand {
         func run() async throws {
             let machineProfile = try MachineProfileLoad.load(
                 project: project, profile: profile, deviceMachine: deviceMachine,
+                foreign: .notHandled,  // `devices up` は分散しない(api devices-up が分散する側)
                 noteAutoMachine: { print($0) },
                 warn: { print($0) })
 
@@ -135,6 +136,7 @@ struct DevicesCommand: AsyncParsableCommand {
             do {
                 let filtered = try MachineProfileLoad.load(
                     project: project, profile: profile, deviceMachine: deviceMachine,
+                    foreign: .notHandled,  // --profile 付きの掃討は手元だけ
                     noteAutoMachine: { print($0) },
                     warn: { print($0) })
 
@@ -183,18 +185,30 @@ enum MachineProfileLoad {
     ///   デバイスを起こすときに使う —— 転送されたマシンプロファイルにはそのデバイスの host
     ///   (= その機械の登録名)が書いてあり、CLI には「自分が誰か」を知る手段が無いため、
     ///   呼び出し側(親)が明示する。例: `remote exec M1Max -- devices up --profile p --device-machine M1Max`
+    /// **他の機械のデバイスを呼び出し側がどう扱うか**。既定値を置かない —— 分散する経路で
+    /// 「その機械で起動してください」と案内すると、直後にツール自身が起動するので嘘になる
+    /// (実害 2026-08-30: 一括起動のログで、案内の 2 秒後に fan-out が同じ台を起動していた)
+    enum ForeignDevices {
+        /// 呼び出し側が RemoteDeviceFanout でその機械へ回す(api devices-up / devices-down)
+        case dispatchedByCaller
+        /// 誰も扱わない = 本当に落とす(手元専用の経路)
+        case notHandled
+    }
+
     static func load(project: String?, profile: String?, deviceMachine: String? = nil,
+                     foreign: ForeignDevices,
                      noteAutoMachine: (String) -> Void,
                      warn: (String) -> Void) throws -> MachineProfile {
         try load(project: try ScenarioHost.project(named: project), profile: profile,
                  deviceMachine: deviceMachine,
                  registry: (LocalConfig.load().remoteHosts ?? []).map(\.machine),
+                 foreign: foreign,
                  noteAutoMachine: noteAutoMachine, warn: warn)
     }
 
     /// プロジェクトと登録簿を受け取る本体(テストが差し替えられるように分けてある)。
     static func load(project testProject: TestProject, profile: String?, deviceMachine: String?,
-                     registry: [String],
+                     registry: [String], foreign: ForeignDevices,
                      noteAutoMachine: (String) -> Void,
                      warn: (String) -> Void) throws -> MachineProfile {
         // **実行プロファイルを選んでいなければ台帳を1つに決めない** —— machines/ を全部畳み、
@@ -207,7 +221,7 @@ enum MachineProfileLoad {
             let merged = MachineInventory.mergedProfile(MachineInventory.observableEntries(
                 profiles: MachineInventory.loadAll(project: testProject) { warn("→ \($0)") },
                 registry: registry))
-            return keepingDevices(of: deviceMachine, in: merged, warn: warn)
+            return keepingDevices(of: deviceMachine, in: merged, foreign: foreign, warn: warn)
         }
         // --profile の machine 明示指定を最優先(ProfileResolver.resolve() と同じ優先順位)
         let machine = try ProfileResolver.determineMachine(
@@ -223,7 +237,7 @@ enum MachineProfileLoad {
         machineProfile = try RunProfileScope.filteredMachineProfile(
             project: testProject, machineName: machine.name, machineProfile: machineProfile,
             runProfileName: profile, warn: warn)
-        return keepingDevices(of: deviceMachine, in: machineProfile, warn: warn)
+        return keepingDevices(of: deviceMachine, in: machineProfile, foreign: foreign, warn: warn)
     }
 
     /// **この機械が扱えるデバイスだけ**にする(既定は手元 = host 無し)。起動・停止は simctl/adb を
@@ -232,6 +246,7 @@ enum MachineProfileLoad {
     /// (2026-08-17 の実害)。落とした分は必ず言う(黙って減らさない)。
     /// `deviceMachine` を渡すと、そのマシンのデバイスを**手元のものとして**扱う(上の doc 参照)
     static func keepingDevices(of deviceMachine: String?, in profile: MachineProfile,
+                               foreign: ForeignDevices,
                                warn: (String) -> Void) -> MachineProfile {
         let wanted = MachineDispatch.normalize(deviceMachine)
         let entries = DeviceMachineGrouping.entries(machine: profile)
@@ -241,6 +256,11 @@ enum MachineProfileLoad {
         for (machine, devices) in DeviceMachineGrouping.groups(others, machine: { $0.machine }) {
             let names = devices.map(\.name).joined(separator: ", ")
             let machineLabel = DeviceMachineGrouping.display(machine)
+            if foreign == .dispatchedByCaller, machine != nil {
+                // 呼び出し側がこの後その機械へ回す。手動の案内を出すと嘘になる
+                warn("→ Dispatching \(devices.count) device(s) to \(machineLabel): \(names)")
+                continue
+            }
             warn("→ Skipping \(devices.count) device(s) on \(machineLabel): \(names)"
                 + (machine == nil
                    ? " (they are on this machine; drop --device-machine to use them)"
