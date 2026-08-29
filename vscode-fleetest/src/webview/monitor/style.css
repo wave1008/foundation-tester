@@ -140,6 +140,22 @@ button.secondary:hover:not(:disabled) {
     var(--vscode-button-secondaryBackground, transparent) 80%,
     var(--vscode-foreground) 20%);
 }
+/* 「デバイスの起動を中断」。**同じボタンが起動と中断を兼ねる**ので、中断の間だけ赤系にして
+   押し間違いに気付けるようにする(付け外しは deviceTiles.js の refreshBulkButtons)。
+   VSCode に破壊的操作用のボタントークンは無いため、エラー色を背景・ボタン前景色を文字に使う
+   (ライトは暗赤 x 白、ダークは明赤 x 白でどちらもコントラストが取れる組み合わせ)。 */
+button.bulk-cancel {
+  background-color: var(--vscode-errorForeground, #f14c4c);
+  border-color: var(--vscode-errorForeground, #f14c4c);
+  color: var(--vscode-button-foreground, #ffffff);
+}
+/* hover は button.secondary と同じ考え方(前景色へ 20% 寄せる)—— テーマによらず必ず変化する */
+button.bulk-cancel:hover:not(:disabled) {
+  background-color: color-mix(in srgb,
+    var(--vscode-errorForeground, #f14c4c) 80%,
+    var(--vscode-foreground) 20%);
+}
+
 /* button のグローバルスタイルより優先させるためクラスセレクタで明示的に上書きする。 */
 .icon-button {
   display: inline-flex;

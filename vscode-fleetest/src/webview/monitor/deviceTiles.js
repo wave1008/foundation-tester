@@ -318,6 +318,9 @@ function createTile(device) {
     // そのデバイスの直列キュー上の状態({ op: 'up'|'down', status: 'queued'|'running' })。
     // キューに入っていなければ undefined。
     opBusy: undefined,
+    // 起動が終わったが**まだ新しい観測が来ていない**間だけ true(applyDeviceOpBusy が立て、
+    // applyDevices が畳む)。この間は「待機中」へ戻さず「起動中」を保つ
+    awaitingStateAfterUp: false,
     stateBadgeEl: stateBadge,
     runningBadgeEl: runningBadge,
     queuedBadgeEl: queuedBadge,
@@ -382,7 +385,8 @@ function renderFrame(entry) {
   // まだ offline の起動操作中の表示分け(booted への遷移は devices サイクルの state 更新に任せる):
   //  - 個別起動が実行中(status==='running'=simctl 起動処理が走っている)→「起動中」スピナー(下の booting 分岐)
   //  - 個別起動がキュー待ち(status==='queued')/一括起動(個別 status を持たない)→「待機中」時計
-  const upRunning = offline && entry.opBusy?.op === 'up' && entry.opBusy.status === 'running';
+  const upRunning = offline
+    && ((entry.opBusy?.op === 'up' && entry.opBusy.status === 'running') || !!entry.awaitingStateAfterUp);
   const waitingUp = offline && !upRunning && (bulkOpActive === 'up' || entry.opBusy?.op === 'up');
   // **Wipe Data 中は最後のフレームを出さない**。中身を消して(場合によっては数分かけて)
   // 作り直している最中に、消える前の画面を映し続けることになる —— しかも down と違って
@@ -678,7 +682,11 @@ function renderMeta(entry) {
   }
   entry.stateBadgeEl.classList.toggle('tile-status-warn', warn);
   entry.stateBadgeEl.textContent = footerText;
-  setHoverTip(entry.stateBadgeEl, footerTip);
+  // **ホバーで必ず全文が読めるようにする** —— この行は nowrap でタイル幅に収まらなければ
+  // 見切れる(「デバイス異常を検出」等)。説明(footerTip)があるときは2行目に足す。
+  // 文言が空のときは付けない(空のツールチップを出さない)
+  setHoverTip(entry.stateBadgeEl,
+    footerText ? (footerTip ? footerText + '\n' + footerTip : footerText) : footerTip);
 
   // キュー待ちチップ(ヘッダー)。per-device の queued(再起動待ち/個別起動待ち)に加え、
   // 一括起動中で CLI が未到達の未起動機(per-device 状態なし)にも「起動待機」を出す。
@@ -688,7 +696,8 @@ function renderMeta(entry) {
     queuedText = entry.opBusy.op === 'wipe'
       ? t('wvMonitor.tile.queuedWipe')
       : entry.opBusy.op === 'down' ? t('wvMonitor.tile.queuedRestart') : t('wvMonitor.tile.queuedStart');
-  } else if (!entry.opBusy && bulkOpActive === 'up' && entry.device.state === 'offline') {
+  } else if (!entry.opBusy && !entry.awaitingStateAfterUp
+             && bulkOpActive === 'up' && entry.device.state === 'offline') {
     queuedText = t('wvMonitor.tile.queuedStart');
   }
   entry.queuedBadgeEl.style.display = queuedText ? 'inline-block' : 'none';
@@ -1032,6 +1041,9 @@ export function applyDevices(devices) {
       entry.runningBadgeEl.style.display = runningWorkers.has(device.id) ? 'inline-block' : 'none';
     } else {
       entry.device = device;
+      // **新しい観測が来た = 起動直後の空白は終わり**(下の awaitingStateAfterUp を必ずここで畳む)。
+      // 観測が「まだ offline」でも畳む —— それはもう推測ではなく事実なので、待機中へ戻ってよい
+      entry.awaitingStateAfterUp = false;
       // renderModeStale の解除判定(フラグの意味は createTile の初期化コメント参照)。
       if (entry.renderModeStale) {
         if (device.state !== 'connected') {
@@ -1193,6 +1205,14 @@ export function applyDeviceOpBusy(message) {
   }
   const prev = entry.opBusy;
   entry.opBusy = message.op ? { op: message.op, status: message.status || 'running' } : undefined;
+  // **起動が終わった直後の1瞬だけ「待機中」へ落ちるのを防ぐ**。CLI の deviceFinished は
+  // モニターの観測サイクル(既定2秒)より先に来るので、busy を剥がした時点ではまだ state が
+  // offline のまま = 「一括起動中の未起動機」= 待機中/起動待機 の条件に合致してしまう
+  // (実害 2026-08-29: 起動中 → 一瞬 待機中 → 画面)。**次の観測が来るまで**起動中を保つ
+  // (時間で消さない = 定数を置かない。applyDevices が必ず畳む)
+  if (prev?.op === 'up' && !entry.opBusy && entry.device.state === 'offline') {
+    entry.awaitingStateAfterUp = true;
+  }
   // down が実際に走り始めた時点から、monitor の 'cpu' は再起動前の残存値になりうる
   // (フラグの意味・解除は createTile 初期化コメントと applyDevices 参照)。
   if (entry.device.platform === 'android'
@@ -1297,6 +1317,9 @@ function refreshBulkButtons() {
   // 中断ボタンとして使っている間は無効化しない(進行中のジョブを止める導線を残す)。
   const blockedByFilter = runningFilterActive && !upCancelMode;
   btnUp.disabled = (bulkBusy && !upCancelMode) || blockedByFilter;
+  // 中断の間だけ赤系にする(同じ位置・同じボタンが別の操作になるので、色で気付けるようにする。
+  // 見た目の定義は style.css の button.bulk-cancel)
+  btnUp.classList.toggle('bulk-cancel', upCancelMode);
   btnUp.textContent = upCancelMode ? t('wvMonitor.bulk.cancelStart') : t('wvMonitor.bulk.startAll');
   btnUp.title = blockedByFilter ? t('wvMonitor.bulk.startAllDisabledRunning') : '';
   btnDown.disabled = bulkBusy;
