@@ -1,5 +1,5 @@
 {
-  "machine": "M2Ultra",
+  "machine": "local+remote",
   "app": "sut-ec-mobile",
   "devices": [
     {
@@ -21,6 +21,58 @@
     {
       "machine": "local",
       "name": "Pixel 9(Android 15)-05"
+    },
+    {
+      "machine": "local",
+      "name": "Pixel 9(Android 15)-06"
+    },
+    {
+      "machine": "local",
+      "name": "Pixel 9(Android 15)-07"
+    },
+    {
+      "machine": "local",
+      "name": "Pixel 9(Android 15)-08"
+    },
+    {
+      "machine": "M1Max",
+      "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-01"
+    },
+    {
+      "machine": "M1Max",
+      "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-02"
+    },
+    {
+      "machine": "M1Max",
+      "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-03"
+    },
+    {
+      "machine": "M1Max",
+      "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-04"
+    },
+    {
+      "machine": "M1Ultra",
+      "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-01"
+    },
+    {
+      "machine": "M1Ultra",
+      "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-02"
+    },
+    {
+      "machine": "M1Ultra",
+      "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-03"
+    },
+    {
+      "machine": "M1Ultra",
+      "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-04"
+    },
+    {
+      "machine": "M1Ultra",
+      "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-05"
+    },
+    {
+      "machine": "M1Ultra",
+      "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-06"
     }
   ],
   "falsePositiveCheck": false,
@@ -30,6 +82,9 @@
   "record": true,
   "recoverCpuFallbackToGpu": true,
   "reportDir": "reports",
-  "screenIs": true,
-  "wipeDataOnBloat": true
+  "wipeDataOnBloat": true,
+  "screenLooksLike": true,
+  "containerInference": true,
+  "updateWebView": true,
+  "homeOnStart": true
 }

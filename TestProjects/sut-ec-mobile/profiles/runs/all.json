@@ -4,10 +4,6 @@
   "devices": [
     {
       "machine": "local",
-      "name": "iPhone 13"
-    },
-    {
-      "machine": "local",
       "name": "iPhone 17 Pro(iOS 27.0)-01"
     },
     {
@@ -37,10 +33,6 @@
     {
       "machine": "local",
       "name": "iPhone 17 Pro(iOS 27.0)-08"
-    },
-    {
-      "machine": "local",
-      "name": "iPhone SE3"
     },
     {
       "machine": "M1Max",
@@ -105,10 +97,6 @@
     {
       "machine": "M1Ultra",
       "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-02"
-    },
-    {
-      "machine": "M1Ultra",
-      "name": "Pixel 3a"
     }
   ],
   "containerInference": true,
