@@ -740,7 +740,11 @@ html.select-all-guard * {
   flex-direction: column;
   align-items: center;
   gap: 2px;
+  min-width: 0;
 }
+/* max-width+overflow はタイル側の width:0/min-width:100% と同じ役目 —— 段は中身に合わせて
+   縮むが、セル幅を超えたら .tile-name の ellipsis へ渡す。column+align-items:center は
+   子の幅を fit-content にするので、これが無いと長いデバイス名がセルからはみ出す。 */
 .lane-preview-header .tile-header,
 .lane-preview-header .tile-machine-row {
   display: flex;
@@ -749,6 +753,8 @@ html.select-all-guard * {
   flex: 0 0 auto;
   width: auto;
   min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   height: auto;
 }
 /* 枠は外側(.lane-preview)が持つ。ここにも枠を置くと縁で二重線になるので、絵の領域は
