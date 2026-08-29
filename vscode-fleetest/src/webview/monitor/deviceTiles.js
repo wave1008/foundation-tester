@@ -380,14 +380,18 @@ function renderFrame(entry) {
   // シャットダウン扱いにしない(ライブ映像を出したまま順番待ち)。実際に落ち始める running でだけ倒す。
   // これを外すと、一括起動の後ろに積まれた再起動待ちの CPU 機が、まだ動いているのに数分間
   // 「シャットダウン中」表示で固まって見える(順番待ちを停止中と誤認させる)。
-  const shuttingDown = !offline && (bulkOpActive === 'down'
+  // 実機は一括操作(bulkOpActive)の対象外(ユーザー決定 2026-08-30)。タイル単体操作
+  // (entry.opBusy。右クリックのブリッジ起動/停止)は実機でも従来どおり効かせる
+  const isPhysical = entry.device.kind === 'physical';
+  const shuttingDown = !offline && ((!isPhysical && bulkOpActive === 'down')
     || (entry.opBusy?.op === 'down' && entry.opBusy.status === 'running'));
   // まだ offline の起動操作中の表示分け(booted への遷移は devices サイクルの state 更新に任せる):
   //  - 個別起動が実行中(status==='running'=simctl 起動処理が走っている)→「起動中」スピナー(下の booting 分岐)
   //  - 個別起動がキュー待ち(status==='queued')/一括起動(個別 status を持たない)→「待機中」時計
   const upRunning = offline
     && ((entry.opBusy?.op === 'up' && entry.opBusy.status === 'running') || !!entry.awaitingStateAfterUp);
-  const waitingUp = offline && !upRunning && (bulkOpActive === 'up' || entry.opBusy?.op === 'up');
+  const waitingUp = offline && !upRunning
+    && ((!isPhysical && bulkOpActive === 'up') || entry.opBusy?.op === 'up');
   // **Wipe Data 中は最後のフレームを出さない**。中身を消して(場合によっては数分かけて)
   // 作り直している最中に、消える前の画面を映し続けることになる —— しかも down と違って
   // 状態が offline へ倒れるとは限らない(止めずに終わる台もある)ので、放っておくと
@@ -697,7 +701,7 @@ function renderMeta(entry) {
       ? t('wvMonitor.tile.queuedWipe')
       : entry.opBusy.op === 'down' ? t('wvMonitor.tile.queuedRestart') : t('wvMonitor.tile.queuedStart');
   } else if (!entry.opBusy && !entry.awaitingStateAfterUp
-             && bulkOpActive === 'up' && entry.device.state === 'offline') {
+             && entry.device.kind !== 'physical' && bulkOpActive === 'up' && entry.device.state === 'offline') {
     queuedText = t('wvMonitor.tile.queuedStart');
   }
   entry.queuedBadgeEl.style.display = queuedText ? 'inline-block' : 'none';

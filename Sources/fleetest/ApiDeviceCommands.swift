@@ -340,6 +340,12 @@ struct ApiDevicesRestart: AsyncParsableCommand {
                         ok: false, error: "device not found: \(deviceName)"))
                     throw ExitCode(1)
                 }
+                if spec.isPhysical {
+                    ApiDeviceEventEmitter.emit(ApiDeviceLogEvent(
+                        message: "✔ \(spec.name): physical device — restart leaves it alone"
+                            + " (its bridge only starts/stops from a run or the tile menu)"))
+                    continue
+                }
                 items.append(RestartItem(spec: spec, platform: platform))
             }
 
@@ -445,9 +451,17 @@ struct ApiDevicesDown: AsyncParsableCommand {
             // 拡張側は落ちた順にタイルを「未起動」へ倒せる)。iOS のみブリッジ停止のため repoRoot を渡す。
             let repoRoot = try? RepoRoot.find()
             for spec in machineProfile.ios?.devices ?? [] {
+                if spec.isPhysical {
+                    Self.logPhysicalSkip(spec: spec)
+                    continue
+                }
                 await Self.shutdownOneEmitting(spec: spec, platform: "ios", repoRoot: repoRoot)
             }
             for spec in machineProfile.android?.devices ?? [] {
+                if spec.isPhysical {
+                    Self.logPhysicalSkip(spec: spec)
+                    continue
+                }
                 await Self.shutdownOneEmitting(spec: spec, platform: "android", repoRoot: nil)
             }
             await fanout  // リモート分の完走まで finished を出さない(受け手の「全部終わった」の合図)
@@ -456,6 +470,15 @@ struct ApiDevicesDown: AsyncParsableCommand {
             ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent.failure(error))
             throw ExitCode(1)
         }
+    }
+
+    /// 実機はスキップし理由を1行だけ log イベントで報告する(deviceStopping/deviceFinished は
+    /// 出さない —— 拡張のタイルは「その台を一括操作の対象にしていない」ことがそのまま伝わる
+    /// べきで、シャットダウン中の表示に倒すべきではない)
+    private static func logPhysicalSkip(spec: DeviceSpec) {
+        ApiDeviceEventEmitter.emit(ApiDeviceLogEvent(
+            message: "✔ \(spec.name): physical device — bulk stop leaves it alone"
+                + " (stop its bridge from the tile menu)"))
     }
 
     /// 1台停止。失敗しても deviceFinished は必ず送出する(拡張の再スキャン契約。

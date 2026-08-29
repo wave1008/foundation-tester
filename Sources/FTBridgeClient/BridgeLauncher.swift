@@ -548,9 +548,20 @@ public struct BridgeLauncher {
         }
     }
 
+    /// ps のコマンドラインから「実機向けランナーか」を判定する。実機とシミュレータは DerivedData を
+    /// 分けてあり(derivedDataPath)、-xctestrun のパスがそこを通るのでこれで一意に分かれる
+    static func isPhysicalRunnerCommand(_ command: String) -> Bool {
+        command.contains("DerivedData-device")
+    }
+
     /// .fleetest/bridge-*.pid(xcuitest)と bridge-*.inapp(dylib 注入)を走査して全ブリッジを
-    /// 停止する。戻り値は停止したポート一覧
-    public static func stopAll(repoRoot: URL) -> [String] {
+    /// 停止する。戻り値は停止したポート一覧。
+    /// - skipPhysical: true なら実機向けランナー(isPhysicalRunnerCommand で同定)を対象から外す
+    ///   (ユーザー決定: 一括デバイス操作は実機を触らない。`bridge down --all` は false で呼ぶ)。
+    ///   **既定値は置かない** —— 新しい呼び出し元が選択を明示せず素通りするのを防ぐ。
+    ///   除外した実機は kill もせず pid ファイルも消さない(生きているランナーのファイルを
+    ///   消すとポート採番(assignPort)が壊れる)
+    public static func stopAll(repoRoot: URL, skipPhysical: Bool) -> [String] {
         let stateDir = repoRoot.appendingPathComponent(".fleetest")
         guard let entries = try? FileManager.default.contentsOfDirectory(
             at: stateDir, includingPropertiesForKeys: nil) else { return [] }
@@ -559,23 +570,32 @@ public struct BridgeLauncher {
         for entry in entries where entry.lastPathComponent.hasPrefix("bridge-") {
             switch entry.pathExtension {
             case "pid":
-                if let pidString = try? String(contentsOf: entry, encoding: .utf8),
-                   let pid = Int32(pidString.trimmingCharacters(in: .whitespacesAndNewlines)) {
-                    let port = entry.deletingPathExtension().lastPathComponent
-                        .replacingOccurrences(of: "bridge-", with: "")
-                    // PID 再利用対策: pid ファイルの PID が実際に当該ポートのランナーか cmdline で確認してから
-                    // 殺す(stopMatching/killOrphanRunners と同方針)。-ww で cmdline 切り詰めを防ぎ、
-                    // -xctestrun のポート専用ファイル名で同定する。無関係な再利用 PID は撃たない。
-                    let ps = try? Shell.run(["ps", "-ww", "-p", String(pid), "-o", "command="])
-                    if let ps, ps.status == 0, ps.output.contains("FleetestRunner-\(port).xctestrun") {
-                        kill(pid, SIGTERM)
-                        terminated.append(pid)
-                        stopped.append(port)
-                    }
+                guard let pidString = try? String(contentsOf: entry, encoding: .utf8),
+                      let pid = Int32(pidString.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+                    try? FileManager.default.removeItem(at: entry)
+                    continue
                 }
-                // 同定できてもできなくても stale な pid ファイルは掃除する(assignPort の採番ずれ防止)。
+                let port = entry.deletingPathExtension().lastPathComponent
+                    .replacingOccurrences(of: "bridge-", with: "")
+                // PID 再利用対策: pid ファイルの PID が実際に当該ポートのランナーか cmdline で確認してから
+                // 殺す(stopMatching/killOrphanRunners と同方針)。-ww で cmdline 切り詰めを防ぎ、
+                // -xctestrun のポート専用ファイル名で同定する。無関係な再利用 PID は撃たない。
+                let ps = try? Shell.run(["ps", "-ww", "-p", String(pid), "-o", "command="])
+                guard let ps, ps.status == 0, ps.output.contains("FleetestRunner-\(port).xctestrun") else {
+                    // 同定できない stale な pid ファイルは掃除する(assignPort の採番ずれ防止)。
+                    try? FileManager.default.removeItem(at: entry)
+                    continue
+                }
+                if skipPhysical, isPhysicalRunnerCommand(ps.output) {
+                    continue
+                }
+                kill(pid, SIGTERM)
+                terminated.append(pid)
+                stopped.append(port)
                 try? FileManager.default.removeItem(at: entry)
             case "inapp":
+                // in-app ブリッジ(dylib 注入)はシミュレータ専用(実機に in-app 注入は無い)ので
+                // skipPhysical に関わらず全部止めてよい
                 InAppBridgeState.terminateAndRemove(at: entry)
                 stopped.append(entry.deletingPathExtension().lastPathComponent
                     .replacingOccurrences(of: "bridge-", with: ""))

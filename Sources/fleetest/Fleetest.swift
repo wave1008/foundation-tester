@@ -404,7 +404,7 @@ struct Bridge: AsyncParsableCommand {
             }
             let root = try RepoRoot.find()
             if all {
-                let stopped = BridgeLauncher.stopAll(repoRoot: root)
+                let stopped = BridgeLauncher.stopAll(repoRoot: root, skipPhysical: false)
                 print(stopped.isEmpty
                       ? "No bridges are running"
                       : "✅ Stopped bridges (port: \(stopped.joined(separator: ", ")))")

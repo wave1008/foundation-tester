@@ -53,7 +53,7 @@ final class InAppBridgeStateTests: XCTestCase {
         let path = InAppBridgeState.url(stateDir: stateDir, port: 8214)
         try "FAKE-UDID com.example.nonexistent".write(to: path, atomically: true, encoding: .utf8)
 
-        let stopped = BridgeLauncher.stopAll(repoRoot: repoRoot)
+        let stopped = BridgeLauncher.stopAll(repoRoot: repoRoot, skipPhysical: false)
 
         XCTAssertEqual(stopped, ["8214"])
         XCTAssertFalse(FileManager.default.fileExists(atPath: path.path))

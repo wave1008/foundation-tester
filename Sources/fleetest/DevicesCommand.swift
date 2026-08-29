@@ -53,8 +53,8 @@ struct DevicesCommand: AsyncParsableCommand {
 
     struct Down: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Stop every bridge and shut down all simulators and emulators (physical Android"
-                + " devices are excluded), on this machine and on every machine in the remote registry."
+            abstract: "Stop every bridge and shut down all simulators and emulators (physical devices are"
+                + " excluded), on this machine and on every machine in the remote registry."
                 + " With --profile, only the devices that profile references are stopped individually,"
                 + " on this machine only.")
 
@@ -84,7 +84,7 @@ struct DevicesCommand: AsyncParsableCommand {
                 relay: { print($0) })
 
             if let root = try? RepoRoot.find() {
-                let stopped = BridgeLauncher.stopAll(repoRoot: root)
+                let stopped = BridgeLauncher.stopAll(repoRoot: root, skipPhysical: true)
                 if !stopped.isEmpty {
                     print("✅ Bridges stopped (port: \(stopped.joined(separator: ", ")))")
                 }
@@ -142,6 +142,11 @@ struct DevicesCommand: AsyncParsableCommand {
                 // 未検出時はブリッジ停止をスキップし simctl shutdown のみ行う(ApiDeviceDown と同じ)
                 let repoRoot = try? RepoRoot.find()
                 for spec in filtered.ios?.devices ?? [] {
+                    if spec.isPhysical {
+                        print("✔ \(spec.name): physical device — bulk stop leaves it alone"
+                            + " (stop its bridge from the tile menu)")
+                        continue
+                    }
                     do {
                         try await DeviceBooter.shutdownOne(
                             spec: spec, platform: "ios", repoRoot: repoRoot, log: { print($0) })
@@ -150,6 +155,11 @@ struct DevicesCommand: AsyncParsableCommand {
                     }
                 }
                 for spec in filtered.android?.devices ?? [] {
+                    if spec.isPhysical {
+                        print("✔ \(spec.name): physical device — bulk stop leaves it alone"
+                            + " (stop its bridge from the tile menu)")
+                        continue
+                    }
                     do {
                         try await DeviceBooter.shutdownOne(
                             spec: spec, platform: "android", log: { print($0) })

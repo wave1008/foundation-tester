@@ -55,22 +55,12 @@ public enum DeviceBooter {
         // 同一キューの先頭に置き、通常ブート項目からは除外する(同じデバイスを2ワーカーが同時に
         // 触る競合を防ぐ)。ジョブを分けず1キューに混載することで、種別を問わず常に最大
         // maxConcurrent 台だけが起動処理中になる(再起動の端数で並行枠が遊ばない)。
-        let restartItems = ((machine.ios?.devices ?? []).map { ($0, "ios") }
-            + (machine.android?.devices ?? []).map { ($0, "android") })
-            .filter { restartNames.contains($0.0.name) }
-            .sorted { $0.0.name.localizedCompare($1.0.name) == .orderedAscending }
-            .map { BootItem(spec: $0.0, platform: $0.1, restart: true,
-                            gpuMode: gpuMode(name: $0.0.name, platform: $0.1, cpuRenderNames: cpuRenderNames)) }
-        let iosItems = (machine.ios?.devices ?? [])
-            .filter { !restartNames.contains($0.name) }
-            .sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
-            .map { BootItem(spec: $0, platform: "ios", restart: false, gpuMode: "host") }
-        let androidItems = (machine.android?.devices ?? [])
-            .filter { !restartNames.contains($0.name) }
-            .sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
-            .map { BootItem(spec: $0, platform: "android", restart: false,
-                            gpuMode: gpuMode(name: $0.name, platform: "android", cpuRenderNames: cpuRenderNames)) }
-        let items = restartItems + iosItems + androidItems
+        let (items, skippedPhysical) = buildBootQueue(
+            machine: machine, restartNames: restartNames, cpuRenderNames: cpuRenderNames)
+        for skipped in skippedPhysical {
+            log("✔ \(skipped.name): physical device — bulk start leaves it alone"
+                + " (start its bridge from the tile menu)")
+        }
         guard !items.isEmpty else { return }
 
         let queue = BootQueue(items)
@@ -88,12 +78,45 @@ public enum DeviceBooter {
         }
     }
 
-    private struct BootItem: Sendable {
+    struct BootItem: Sendable {
         let spec: DeviceSpec
         let platform: String
         let restart: Bool
         /// android のみ有効(ios は無視される)。cpuRenderNames 該当機は swiftshader_indirect
         let gpuMode: String
+    }
+
+    /// 一括起動のキューを組み立てる純関数(I/O なし)。**実機は入らない**(ユーザー決定:
+    /// 実機は端末そのものを起動できず、フリートに居ると一括起動が数分のブリッジ供給
+    /// (build-for-testing)を始めて同時起動枠(maxConcurrent)の半分を専有し、他機のブートを
+    /// 待たせる。実機のブリッジ起動は run とタイル右クリックのみ)。
+    /// 戻り値の items は実機を含まない(ios→android・各内 name 昇順は従来どおり)。
+    /// skippedPhysical は除外した実機の一覧 —— 呼び出し側は1行ログするだけに留め、
+    /// deviceStarting/deviceFinished は出さない(拡張のタイルを「待機中」に留めるため)。
+    static func buildBootQueue(
+        machine: MachineProfile, restartNames: Set<String>, cpuRenderNames: Set<String>
+    ) -> (items: [BootItem], skippedPhysical: [(name: String, platform: String)]) {
+        let allIOS = (machine.ios?.devices ?? []).map { ($0, "ios") }
+        let allAndroid = (machine.android?.devices ?? []).map { ($0, "android") }
+        let skippedPhysical = (allIOS + allAndroid)
+            .filter { $0.0.isPhysical }
+            .map { (name: $0.0.name, platform: $0.1) }
+
+        let restartItems = (allIOS + allAndroid)
+            .filter { !$0.0.isPhysical && restartNames.contains($0.0.name) }
+            .sorted { $0.0.name.localizedCompare($1.0.name) == .orderedAscending }
+            .map { BootItem(spec: $0.0, platform: $0.1, restart: true,
+                            gpuMode: gpuMode(name: $0.0.name, platform: $0.1, cpuRenderNames: cpuRenderNames)) }
+        let iosItems = (machine.ios?.devices ?? [])
+            .filter { !$0.isPhysical && !restartNames.contains($0.name) }
+            .sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
+            .map { BootItem(spec: $0, platform: "ios", restart: false, gpuMode: "host") }
+        let androidItems = (machine.android?.devices ?? [])
+            .filter { !$0.isPhysical && !restartNames.contains($0.name) }
+            .sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
+            .map { BootItem(spec: $0, platform: "android", restart: false,
+                            gpuMode: gpuMode(name: $0.name, platform: "android", cpuRenderNames: cpuRenderNames)) }
+        return (restartItems + iosItems + androidItems, skippedPhysical)
     }
 
     /// 凍結フォールバック中の個体(cpuRenderNames)は一括起動でも swiftshader を維持する
