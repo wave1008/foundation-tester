@@ -27,9 +27,21 @@ enum RemoteDeviceFanout {
     /// 実行プロファイルが参照するデバイスのうち、**手元でない機械**のマシン名(登場順)。
     /// `--device-machine` を明示している呼び出しでは分散しない(その機械のぶんだけを扱う指示なので)
     static func remoteMachines(project: String?, profile: String?, deviceMachine: String?) -> [String] {
-        guard deviceMachine == nil, let profile else { return [] }
-        guard let testProject = try? ScenarioHost.project(named: project),
-              let machine = try? ProfileResolver.determineMachine(
+        guard deviceMachine == nil else { return [] }
+        guard let testProject = try? ScenarioHost.project(named: project) else { return [] }
+        // **実行プロファイル未選択でも分散する** —— 台帳を1つに決めず machines/ を畳み、
+        // 登録簿にあるマシンの台を持つ機械へ投げる(監視の fan-out と同じ集合)。
+        // ここで [] を返していたため、「(プロファイルなし)」での「デバイスを全て起動」は
+        // **手元しか起きなかった**(実害 2026-08-29)
+        guard let profile else {
+            let registry = (LocalConfig.load().remoteHosts ?? []).map(\.machine)
+            let entries = MachineInventory.observableEntries(
+                profiles: MachineInventory.loadAll(project: testProject) { _ in },
+                registry: registry)
+            return DeviceMachineGrouping.groups(entries, machine: { $0.machine })
+                .compactMap(\.machine)
+        }
+        guard let machine = try? ProfileResolver.determineMachine(
                   project: testProject, runProfileName: profile),
               let devices = try? ProfileResolver.runDeviceMachines(
                   project: testProject, runProfileName: profile, machineName: machine.name)

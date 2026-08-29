@@ -165,7 +165,29 @@ enum MachineProfileLoad {
     static func load(project: String?, profile: String?, deviceMachine: String? = nil,
                      noteAutoMachine: (String) -> Void,
                      warn: (String) -> Void) throws -> MachineProfile {
-        let testProject = try ScenarioHost.project(named: project)
+        try load(project: try ScenarioHost.project(named: project), profile: profile,
+                 deviceMachine: deviceMachine,
+                 registry: (LocalConfig.load().remoteHosts ?? []).map(\.machine),
+                 noteAutoMachine: noteAutoMachine, warn: warn)
+    }
+
+    /// プロジェクトと登録簿を受け取る本体(テストが差し替えられるように分けてある)。
+    static func load(project testProject: TestProject, profile: String?, deviceMachine: String?,
+                     registry: [String],
+                     noteAutoMachine: (String) -> Void,
+                     warn: (String) -> Void) throws -> MachineProfile {
+        // **実行プロファイルを選んでいなければ台帳を1つに決めない** —— machines/ を全部畳み、
+        // 手元 + リモート実行の登録簿にあるマシンの台を対象にする(監視 = ApiMonitorCommand・
+        // 単体操作 = ApiDeviceOperation と同じ規律)。決められないという理由で操作を断らない:
+        // 台帳が2つある案件では「(プロファイルなし)」のまま「デバイスを全て起動」を押しても
+        // `cannot tell which machine profile to use` で即死し、**画面には何も起きない**
+        // (実害 2026-08-29)
+        guard let profile else {
+            let merged = MachineInventory.mergedProfile(MachineInventory.observableEntries(
+                profiles: MachineInventory.loadAll(project: testProject) { warn("→ \($0)") },
+                registry: registry))
+            return keepingDevices(of: deviceMachine, in: merged, warn: warn)
+        }
         // --profile の machine 明示指定を最優先(ProfileResolver.resolve() と同じ優先順位)
         let machine = try ProfileResolver.determineMachine(
             project: testProject,
@@ -177,11 +199,9 @@ enum MachineProfileLoad {
         var machineProfile = try JSONDecoder().decode(
             MachineProfile.self, from: Data(contentsOf: url))
 
-        if let profile {
-            machineProfile = try RunProfileScope.filteredMachineProfile(
-                project: testProject, machineName: machine.name, machineProfile: machineProfile,
-                runProfileName: profile, warn: warn)
-        }
+        machineProfile = try RunProfileScope.filteredMachineProfile(
+            project: testProject, machineName: machine.name, machineProfile: machineProfile,
+            runProfileName: profile, warn: warn)
         return keepingDevices(of: deviceMachine, in: machineProfile, warn: warn)
     }
 

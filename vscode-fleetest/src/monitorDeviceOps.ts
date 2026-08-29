@@ -628,9 +628,12 @@ export class MonitorDeviceOps {
             break;
           case "finished":
             if (!value.ok) {
-              this.deps.outputChannel.appendLine(
-                t("deviceOps.log.bulkOpFailed", { label, error: value.error ?? t("deviceOps.detailUnknown") }),
-              );
+              const detail = value.error ?? t("deviceOps.detailUnknown");
+              this.deps.outputChannel.appendLine(t("deviceOps.log.bulkOpFailed", { label, error: detail }));
+              // **バナーにも出す** —— ログだけだと「押したのに何も始まらない」にしか見えない
+              // (実害 2026-08-29: プロファイル未選択で台帳を決められず即死していたのに無反応だった)。
+              // 1行目だけ = 外から来た生のエラーは長くなりうる(deviceOpFailed と同じ規律)
+              this.deps.post({ type: "deviceError", message: firstLine(detail) });
             }
             break;
         }
