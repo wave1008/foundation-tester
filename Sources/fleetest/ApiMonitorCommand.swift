@@ -1154,13 +1154,17 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                     let previous = control.setSuppressedFrames(ids)
                     // 拡張は配信が1本張られるたびに全リストを送る(30 台なら 30 回)ので、
                     // 全リストを毎回出すと1秒で数千文字になる。出すのは差分だけ
-                    let added = ids.subtracting(previous).sorted()
-                    let removed = previous.subtracting(ids).sorted()
-                    var delta: [String] = []
-                    if !added.isEmpty { delta.append("+ " + added.joined(separator: ", ")) }
-                    if !removed.isEmpty { delta.append("- " + removed.joined(separator: ", ")) }
-                    self.logStderr("[monitor] Frame suppression: \(ids.count) device(s)"
-                                   + (delta.isEmpty ? " (unchanged)" : " " + delta.joined(separator: "; ")))
+                    // fan-out の子(--device-machine 付き)は親から同じ行を無加工で中継されるので、
+                    // 親が1行出せば足りる(子も出すと機械の数だけ同じ差分が並ぶ)
+                    if deviceMachine == nil {
+                        let added = ids.subtracting(previous).sorted()
+                        let removed = previous.subtracting(ids).sorted()
+                        var delta: [String] = []
+                        if !added.isEmpty { delta.append("+ " + added.joined(separator: ", ")) }
+                        if !removed.isEmpty { delta.append("- " + removed.joined(separator: ", ")) }
+                        self.logStderr("[monitor] Frame suppression: \(ids.count) device(s)"
+                                       + (delta.isEmpty ? " (unchanged)" : " " + delta.joined(separator: "; ")))
+                    }
                 default:
                     break
                 }
