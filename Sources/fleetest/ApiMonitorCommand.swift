@@ -503,6 +503,13 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         // 揺らすと拡張のタイルが毎サイクル並べ替わる)
         let mergedIDs = Set(merged.map(\.id))
         merged += remote.values.filter { !mergedIDs.contains($0.id) }.sorted { $0.id < $1.id }
+        // **WiFi 越しの分身は隠す**(2026-08-31 指示: wired を優先表示し WiFi は非表示)。
+        // 同じ実機(udid)を、USB で繋がった機械と WiFi ペアリング済みの機械の両方が connected と
+        // 報告する(devicectl は localNetwork でも state=connected)。wired の1枚が居るときだけ
+        // WiFi 側(wired == false)を落とす。wired が1枚も無ければ全部残す —— どれが本物か
+        // 決められないものを隠すと、その実機が一覧から消える
+        let wiredUdids = Set(merged.compactMap { $0.wired == true ? $0.udid : nil })
+        merged.removeAll { $0.wired == false && $0.udid.map(wiredUdids.contains) == true }
         return merged
     }
 
@@ -514,7 +521,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             state: "unknown", detail: detail, udid: nil, serial: nil, health: nil, renderMode: nil,
             inRun: false, kind: target.spec.isPhysical ? "physical" : "virtual",
             host: nil, port: nil, recording: false, registered: target.registered,
-            machine: MachineDispatch.normalize(target.spec.machine), frozen: false)
+            machine: MachineDispatch.normalize(target.spec.machine), frozen: false, wired: nil)
     }
 
     // MARK: - デバイス状態判定
@@ -696,14 +703,15 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 continue
             }
             usedIds.insert(target.id)
+            let wired = device.transport == "wired"
             if let port = iosBridgePorts[device.udid] {
                 states.append(DeviceRuntimeState(
                     target: target, state: "connected", detail: "port \(port)",
-                    iosPort: port, androidSerial: nil, iosUdid: device.udid))
+                    iosPort: port, androidSerial: nil, iosUdid: device.udid, wired: wired))
             } else {
                 states.append(DeviceRuntimeState(
                     target: target, state: "booted", detail: "bridge not running",
-                    iosPort: nil, androidSerial: nil, iosUdid: device.udid))
+                    iosPort: nil, androidSerial: nil, iosUdid: device.udid, wired: wired))
             }
         }
         for serial in connectedPhysicalSerials.sorted() where !registeredSerials.contains(serial) {
@@ -968,11 +976,12 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             if let port = ports.first(where: { bridgeStatuses[$0] != nil }) {
                 return DeviceRuntimeState(target: target, state: "connected",
                                           detail: "port \(port)", iosPort: port,
-                                          androidSerial: nil, iosUdid: sim.udid)
+                                          androidSerial: nil, iosUdid: sim.udid, wired: sim.wired)
             }
             return DeviceRuntimeState(target: target, state: "booted",
                                       detail: "\(sim.name) \(sim.os)",
-                                      iosPort: nil, androidSerial: nil, iosUdid: sim.udid)
+                                      iosPort: nil, androidSerial: nil, iosUdid: sim.udid,
+                                      wired: sim.wired)
         }
         // /status には UDID が無いため、ブリッジの帰属はデバイス名でしか判定できない。
         // hybrid は同一シミュレータに inapp+xcuitest の2ブリッジが並ぶため、複数一致でも
@@ -1245,15 +1254,19 @@ struct DeviceRuntimeState {
     /// iOS で SimulatorCatalog.resolve が成功した場合(state に関わらず)設定。list-devices が
     /// ブリッジ自動起動(ApiLiveCommand --udid)のために公開する。resolve 失敗時は nil のまま
     let iosUdid: String?
+    /// iOS 実機の USB 接続か(devicectl の transportType == "wired")。仮想・Android・不明は nil
+    /// (mergedDevices の WiFi 分身の抑制にだけ使う)
+    let wired: Bool?
 
     init(target: MonitorTarget, state: String, detail: String,
-        iosPort: UInt16?, androidSerial: String?, iosUdid: String? = nil) {
+        iosPort: UInt16?, androidSerial: String?, iosUdid: String? = nil, wired: Bool? = nil) {
         self.target = target
         self.state = state
         self.detail = detail
         self.iosPort = iosPort
         self.androidSerial = androidSerial
         self.iosUdid = iosUdid
+        self.wired = wired
     }
 
     /// health・renderMode・inRun・recording・frozen は monitor ループだけが知る状態のため引数で受け取る
@@ -1269,7 +1282,7 @@ struct DeviceRuntimeState {
                              host: host, port: iosPort,
                              recording: recording, registered: target.registered,
                              machine: MachineDispatch.normalize(target.spec.machine),
-                             frozen: frozen)
+                             frozen: frozen, wired: wired)
     }
 }
 
@@ -1520,6 +1533,10 @@ struct ApiMonitorDeviceInfo: Codable {
     /// ブリッジ不在)は最後の確定値を保つ(黙って false に戻すと凍結が画面から消える)。
     /// 契約は vscode-fleetest/src/monitorDeviceModel.ts の MonitorDevice.frozen
     let frozen: Bool
+    /// iOS 実機の USB 接続か(devicectl の transportType == "wired")。仮想・Android・不明は nil。
+    /// mergedDevices が WiFi 越しの分身の抑制に使う(拡張は読まない)。
+    /// 追加フィールドのみで後方互換のため ProtocolVersion は不変
+    let wired: Bool?
 }
 
 /// monitorFrame イベント: state == connected のデバイスのみ、スクリーンショットを添えて出す

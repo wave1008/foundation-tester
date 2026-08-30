@@ -75,11 +75,12 @@ final class MonitorMachineScopeTests: XCTestCase {
 
     // MARK: - mergedDevices
 
-    private func info(id: String, state: String) -> ApiMonitorDeviceInfo {
+    private func info(id: String, state: String, udid: String? = nil,
+                      kind: String = "virtual", wired: Bool? = nil) -> ApiMonitorDeviceInfo {
         ApiMonitorDeviceInfo(
-            id: id, name: id, platform: "ios", state: state, detail: "", udid: nil, serial: nil,
-            health: nil, renderMode: nil, inRun: false, kind: "virtual", host: nil, port: nil,
-            recording: false, registered: true, machine: nil, frozen: false)
+            id: id, name: id, platform: "ios", state: state, detail: "", udid: udid, serial: nil,
+            health: nil, renderMode: nil, inRun: false, kind: kind, host: nil, port: nil,
+            recording: false, registered: true, machine: nil, frozen: false, wired: wired)
     }
 
     func testRemoteEntriesFillInForTheDevicesThisMachineCannotSee() {
@@ -173,7 +174,8 @@ extension MonitorMachineScopeTests {
         var info = ApiMonitorDeviceInfo(
             id: id, name: name, platform: "ios", state: "connected", detail: "",
             udid: nil, serial: nil, health: nil, renderMode: nil, inRun: false, kind: "virtual",
-            host: nil, port: nil, recording: false, registered: true, machine: nil, frozen: false)
+            host: nil, port: nil, recording: false, registered: true, machine: nil, frozen: false,
+            wired: nil)
         info.machine = machine
         return info
     }
@@ -191,6 +193,41 @@ extension MonitorMachineScopeTests {
         XCTAssertEqual(merged.map(\.id), ["ios:M1Max/シミュ1", "ios:M1Ultra/シミュ2"],
                        "id 順で並べる(辞書の順序に依存すると毎サイクル並べ替わる)")
         XCTAssertEqual(merged.map(\.machine), ["M1Max", "M1Ultra"], "マシンのタグが乗っていること")
+    }
+
+    /// **WiFi 越しの分身は隠す**: 同じ実機(udid)が、USB で繋がった機械(wired=true)と
+    /// WiFi ペアリング済みの機械(wired=false)の両方から connected と報告される
+    /// (devicectl は localNetwork でも state=connected。実測 2026-08-31: iPhone 13 が
+    /// 手元に wired・M1Ultra から localNetwork で同時に見えた)。wired を優先表示し WiFi は非表示
+    func testWifiTwinOfAWiredPhysicalDeviceIsHidden() {
+        let udid = "00008110-001460910E0A201E"
+        var wifiTwin = info(id: "ios:M1Ultra/iPhone 13", state: "booted",
+                            udid: udid, kind: "physical", wired: false)
+        wifiTwin.machine = "M1Ultra"
+        let merged = ApiMonitorCommand.mergedDevices(
+            listedTargets: [],
+            observed: [info(id: "ios:iPhone 13", state: "connected",
+                            udid: udid, kind: "physical", wired: true)],
+            remote: [wifiTwin.id: wifiTwin])
+
+        XCTAssertEqual(merged.map(\.id), ["ios:iPhone 13"],
+                       "wired の1枚だけを出す(WiFi 側の分身は隠す)")
+    }
+
+    /// wired の分身が居ないときは WiFi の観測も残す —— どれが本物か決められないものを隠すと、
+    /// その実機が一覧から丸ごと消える。udid が違えば別個体なので互いに干渉しない
+    func testWifiOnlyPhysicalDevicesStayVisible() {
+        var wifiOnly = info(id: "ios:M1Ultra/iPhone 13", state: "booted",
+                            udid: "00008110-AAAA", kind: "physical", wired: false)
+        wifiOnly.machine = "M1Ultra"
+        let merged = ApiMonitorCommand.mergedDevices(
+            listedTargets: [],
+            observed: [info(id: "ios:iPhone SE3", state: "connected",
+                            udid: "00008110-BBBB", kind: "physical", wired: true)],
+            remote: [wifiOnly.id: wifiOnly])
+
+        XCTAssertEqual(merged.map(\.id).sorted(), ["ios:M1Ultra/iPhone 13", "ios:iPhone SE3"].sorted(),
+                       "wired の分身が居ない WiFi の実機・別個体の wired は両方残る")
     }
 
     /// listedTargets で既に使ったリモートの台を二重に足さない

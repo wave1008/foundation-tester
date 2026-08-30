@@ -855,6 +855,13 @@ witness は `RemoteDispatchTests.testRelayRewriteMapsTheRunnerWorkDirOntoTheLoca
   「<host> に届いていません」を出す(契約は `vscode-fleetest/src/monitorDeviceModel.ts` の
   `MonitorDeviceState`)。**リモートだからという理由で表示を変えない** —— 状態が届いていれば
   手元の台と1文字も変わらない表示にする
+- **WiFi 越しの分身は隠す(wired 優先)**。実機は WiFi ペアリング済みの Mac 全部から
+  `state=connected` に見える(devicectl は localNetwork でも connected)ので、同じ udid が
+  「USB で繋がった機械」と「WiFi で見えるだけの機械」の両方から報告される。合流点
+  (`ApiMonitorCommand.mergedDevices`)で wired の1枚だけを残し、WiFi 側(`wired == false`)は
+  出さない。**wired が1枚も居なければ全部残す**(どれが本物か決められないものを隠すと、
+  その実機が一覧から消える)。`wired` は追加フィールドのみで後方互換だが、**子(ランナー)が
+  旧版だと `wired` が届かず分身は消えない** = 版を揃えて初めて効く
 - **映像は多重化しない。1デバイス = 1本の ssh**。`api device-stream` は宛先(udid / adb serial /
   ブリッジのポート)を向こうで解決して**配信ヘルパーへ `execv` で化ける**ので、
   **stdout に流れるバイト列は手元で直接起こしたときと1バイトも変わらない**。
