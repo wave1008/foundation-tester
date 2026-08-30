@@ -136,6 +136,7 @@ actor LiveBridgeAutoStarter {
                 }
             }
             try launcher.generateProjectIfNeeded()
+            try launcher.rebuildIfStale()
             do {
                 try launcher.startDetached()
             } catch LauncherError.xctestrunNotFound {

@@ -124,6 +124,7 @@ public enum XCUIBridgeResolver {
                                       physical: booted[0].physical)
         do {
             try launcher.generateProjectIfNeeded()
+            try launcher.rebuildIfStale()
             do {
                 try launcher.startDetached()
             } catch LauncherError.xctestrunNotFound {

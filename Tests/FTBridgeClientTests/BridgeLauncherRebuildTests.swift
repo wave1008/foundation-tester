@@ -36,9 +36,11 @@ final class BridgeLauncherRebuildTests: XCTestCase {
         return url
     }
 
-    private func needsRebuild(_ xctestrun: URL, toolchain: String? = nil) -> Bool {
+    private func needsRebuild(_ xctestrun: URL, signing: String = "",
+                              toolchain: String? = nil) -> Bool {
         BridgeLauncher.runnerNeedsRebuild(
-            repoRoot: root, xctestrun: xctestrun, toolchain: toolchain ?? self.toolchain)
+            repoRoot: root, xctestrun: xctestrun, signing: signing,
+            toolchain: toolchain ?? self.toolchain)
     }
 
     private func setModified(_ relPath: String, _ date: Date) throws {
@@ -158,3 +160,42 @@ final class StaleRunnerToolchainTests: XCTestCase {
         XCTAssertNotNil(stale(physical: true))
     }
 }
+
+// MARK: - 署名設定の指紋(.signing)
+
+/// 署名設定(チーム・接頭辞)の変更はソースの mtime もツールチェーンも動かさないため、
+/// 独立した指紋で見る(2026-08-31 実害: チーム切替後も旧 bundle id のランナーを起動し続け、
+/// ビルド成功なのに「not installed (-10814)」で落ちた)
+extension BridgeLauncherRebuildTests {
+    private func storeSigning(_ value: String) throws {
+        try (value + "\n").write(to: root.appendingPathComponent(".signing"),
+                                  atomically: true, encoding: .utf8)
+    }
+
+    func testChangedSigningTriggersRebuild() throws {
+        let xctestrun = try makeXCTestRun(modified: Date())
+        try storeSigning("DEVELOPMENT_TEAM=AAA")
+        XCTAssertTrue(needsRebuild(xctestrun, signing: "DEVELOPMENT_TEAM=BBB"))
+    }
+
+    func testMatchingSigningDoesNotRebuild() throws {
+        let xctestrun = try makeXCTestRun(modified: Date())
+        try storeSigning("DEVELOPMENT_TEAM=AAA")
+        XCTAssertFalse(needsRebuild(xctestrun, signing: "DEVELOPMENT_TEAM=AAA"))
+    }
+
+    func testMissingSigningFingerprintRebuildsForPhysical() throws {
+        let xctestrun = try makeXCTestRun(modified: Date())
+        XCTAssertTrue(needsRebuild(xctestrun, signing: "DEVELOPMENT_TEAM=AAA"),
+                      "この仕組み以前の成果物は一度だけ建て直す(古いまま走らせない)")
+    }
+
+    func testEmptySigningNeverRebuilds() throws {
+        // シミュレータ(署名なし)は指紋の有無に関わらず建て直さない
+        let xctestrun = try makeXCTestRun(modified: Date())
+        XCTAssertFalse(needsRebuild(xctestrun, signing: ""))
+        try storeSigning("DEVELOPMENT_TEAM=AAA")
+        XCTAssertFalse(needsRebuild(xctestrun, signing: ""))
+    }
+}
+

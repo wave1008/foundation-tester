@@ -83,13 +83,26 @@ public struct BridgeLauncher {
 
     public func buildForTesting() throws {
         try FileManager.default.createDirectory(at: stateDir, withIntermediateDirectories: true)
+        let signingArguments = try codeSigningArguments()
+        let signing = signingArguments.joined(separator: "\n")
+        // 署名設定(チーム・接頭辞)が変わっても増分ビルドは旧 bundle id のランナー .app を
+        // 作り直さない。ビルドは成功するのに起動が「The requested application
+        // com.example.… is not installed (-10814)」で落ちる(2026-08-31 実害)ので成果物ごと捨てる
+        if Self.signingMismatch(
+            stored: try? String(contentsOf: signingFingerprintPath, encoding: .utf8),
+            current: signing) {
+            FileHandle.standardError.write(Data(
+                ("[bridge] The code-signing settings (team / bundle id prefix) changed — "
+                 + "discarding \(derivedDataPath.lastPathComponent) and rebuilding\n").utf8))
+            try? FileManager.default.removeItem(at: derivedDataPath)
+        }
         let result = try Shell.run([
             "xcodebuild", "build-for-testing",
             "-project", projectPath.path,
             "-scheme", "FleetestRunner",
             "-destination", destination,
             "-derivedDataPath", derivedDataPath.path,
-        ] + (try codeSigningArguments()), cwd: repoRoot)
+        ] + signingArguments, cwd: repoRoot)
         guard result.status == 0 else {
             // **署名で止まっているなら「次にやること」を出す** —— 生のビルドログは数十行あり、
             // そのまま拡張のバナーへ流れると読み手は何をすればいいか分からない
@@ -102,6 +115,38 @@ public struct BridgeLauncher {
             throw LauncherError.commandFailed("xcodebuild build-for-testing", result.tail)
         }
         ToolchainFingerprint.store(at: Self.runnerFingerprintPath(derivedDataPath: derivedDataPath))
+        if !signing.isEmpty {
+            try? (signing + "\n").write(to: signingFingerprintPath, atomically: true, encoding: .utf8)
+        }
+    }
+
+    /// 署名設定の指紋(codeSigningArguments を結合。シミュレータは空)。.toolchain と同じく
+    /// DerivedData ルートに置き、成果物と一緒に消える
+    var signingFingerprintPath: URL { derivedDataPath.appendingPathComponent(".signing") }
+
+    func currentSigningFingerprint() -> String {
+        ((try? codeSigningArguments()) ?? []).joined(separator: "\n")
+    }
+
+    /// current が空(シミュレータ = 署名なし)は常に一致扱い —— 空同士を不一致にすると
+    /// 署名の無いビルドを毎回捨てることになる。指紋ファイル不在(この仕組み以前の成果物)は
+    /// 不一致 = 一度だけ建て直す(古いまま走らせるより安全。ToolchainFingerprint と同じ向き)
+    static func signingMismatch(stored: String?, current: String) -> Bool {
+        guard !current.isEmpty else { return false }
+        return stored?.trimmingCharacters(in: .whitespacesAndNewlines) != current
+    }
+
+    /// 既存の xctestrun があってもソース/ツールチェーン/署名設定が変わっていれば建て直す。
+    /// 「xctestrunNotFound のときだけ build」の起動ヘルパー(XCUIBridgeResolver /
+    /// LiveBridgeAutoStarter)が旧成果物を起動し続けないための前段
+    /// (BridgeProvisioner.prepareSharedBuilds と同じ判定)。xctestrun 不在は何もしない
+    /// = 従来の xctestrunNotFound → buildForTesting 経路に任せる
+    public func rebuildIfStale() throws {
+        guard let xctestrun = try findXCTestRun() else { return }
+        if Self.runnerNeedsRebuild(repoRoot: repoRoot, xctestrun: xctestrun,
+                                   signing: currentSigningFingerprint()) {
+            try buildForTesting()
+        }
     }
 
     /// 失敗したビルドの生出力を残す(畳んだ案内から辿れるように)。**書けなくても失敗させない**
@@ -744,7 +789,7 @@ public struct BridgeLauncher {
     /// ランナーのソースが xctestrun より新しいか(InAppLauncher.needsBuild と対の鮮度判定)。
     /// これが無いと prepareSharedBuilds は「xctestrun 不在」しか見ず、ソース変更後も旧バイナリを
     /// 起動し続ける(旧版検知 → 停止 → 同じ旧バイナリで再起動、の毎 run ループになる。2026-07-28 実害)
-    static func runnerNeedsRebuild(repoRoot: URL, xctestrun: URL,
+    static func runnerNeedsRebuild(repoRoot: URL, xctestrun: URL, signing: String,
                                    toolchain: String? = ToolchainFingerprint.current()) -> Bool {
         guard let built = (try? xctestrun.resourceValues(forKeys: [.contentModificationDateKey]))?
                 .contentModificationDate,
@@ -755,7 +800,12 @@ public struct BridgeLauncher {
         // 指紋は DerivedData ルートに置く。xctestrun からの相対位置は Xcode の出力レイアウトに
         // 依存するので、決め打ちせず上方向に探す(見つからなければ「旧版の成果物」= 作り直す)
         guard let fingerprint = findRunnerFingerprint(near: xctestrun) else { return true }
-        return !ToolchainFingerprint.matches(storedAt: fingerprint, current: toolchain)
+        if !ToolchainFingerprint.matches(storedAt: fingerprint, current: toolchain) { return true }
+        // 署名設定(チーム・接頭辞)の変更もソースの mtime を動かさない(buildForTesting の doc)
+        let storedSigning = try? String(
+            contentsOf: fingerprint.deletingLastPathComponent().appendingPathComponent(".signing"),
+            encoding: .utf8)
+        return signingMismatch(stored: storedSigning, current: signing)
     }
 
     /// ランナーのビルド入力の最終更新時刻。入力集合は Runner/project.yml の sources と対

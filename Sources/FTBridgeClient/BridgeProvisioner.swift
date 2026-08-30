@@ -564,7 +564,9 @@ public struct BridgeProvisioner {
                 try launcher.generateProjectIfNeeded()
                 let existing = try launcher.findXCTestRun()
                 let rebuild = existing.map {
-                    BridgeLauncher.runnerNeedsRebuild(repoRoot: repoRoot, xctestrun: $0) } ?? false
+                    BridgeLauncher.runnerNeedsRebuild(
+                        repoRoot: repoRoot, xctestrun: $0,
+                        signing: launcher.currentSigningFingerprint()) } ?? false
                 // **ビルドを始める前に**ロックを知らせる(ビルド自体に解除は要らないので待たない
                 // = 数分の間に解除してもらえれば、起動時に待たずに済む)
                 if xcui.sim.physical, existing == nil || rebuild,
