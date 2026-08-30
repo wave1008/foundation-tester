@@ -11,7 +11,7 @@ import { grid, emptyMessage, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuI
 import { updateLaneVisibility, syncLanesToDevices, runningWorkers, relayoutPreviewsForResize } from './laneLog.js';
 import { createH264Renderer } from './h264Decoder.js';
 import { clampMenuPosition } from './menu.js';
-import { setHoverTip } from './hoverTip.js';
+import { setHoverTip, flashTip } from './hoverTip.js';
 import { isDragDistance, marqueeRect, idsInMarquee, mergeMarqueeSelection, rectContains, autoScrollVelocity, autoScrollStep } from './marqueeModel.js';
 
 // bridgeWatch(拡張ホストの自動修復ウォッチドッグ、契約は main.js の 'bridgeWatch' ケース参照)の
@@ -1312,6 +1312,7 @@ export function showBanner(text) {
     // フォーカス条件で失敗しうる
     event.stopPropagation();
     vscode.postMessage({ type: 'copyText', text });
+    flashTip(copy, t('wvMonitor.banner.copied'));
   });
   banner.append(body, copy);
   banner.title = t('wvMonitor.banner.dismissTip');

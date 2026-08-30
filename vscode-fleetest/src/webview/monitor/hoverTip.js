@@ -57,9 +57,8 @@ function hide() {
   if (tipEl) { tipEl.style.display = 'none'; }
 }
 
-/// 対象要素の直下に出し、画面外へはみ出す分だけ内側へ寄せる(下が入らなければ上へ回す)
-function show(el, text) {
-  const tip = ensureTipEl();
+/// 対象要素の直下に置き、画面外へはみ出す分だけ内側へ寄せる(下が入らなければ上へ回す)
+function placeTip(tip, el, text) {
   tip.textContent = text;
   tip.style.display = 'block';
   // 先に left/top を確定させてから測る(未配置だと offsetWidth が折り返し後の値になる)
@@ -77,6 +76,32 @@ function show(el, text) {
   if (top < margin) { top = margin; }
   tip.style.left = left + 'px';
   tip.style.top = top + 'px';
+}
+
+function show(el, text) {
+  placeTip(ensureTipEl(), el, text);
+}
+
+// クリック確認(「コピーしました」等)の短命ツールチップ。ホバー用の tipEl は
+// mousedown(capture)で消されるため、クリック直後に出す用途とは干渉する —— 別要素で持つ。
+// 1500ms: 読み切れる長さで、次の操作の邪魔をしない(status bar の 3000ms より短め =
+// カーソルの近くに出るぶん気付きやすい)
+const FLASH_MS = 1500;
+let flashEl = null;
+let flashTimer = null;
+export function flashTip(el, text) {
+  if (!flashEl) {
+    flashEl = document.createElement('div');
+    flashEl.className = 'hover-tip';
+    flashEl.setAttribute('role', 'status');
+    document.body.appendChild(flashEl);
+  }
+  placeTip(flashEl, el, text);
+  if (flashTimer !== null) { clearTimeout(flashTimer); }
+  flashTimer = setTimeout(() => {
+    flashTimer = null;
+    flashEl.style.display = 'none';
+  }, FLASH_MS);
 }
 
 document.addEventListener('mouseover', (e) => {

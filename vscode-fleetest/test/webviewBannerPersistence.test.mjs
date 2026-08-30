@@ -148,3 +148,18 @@ test("コピーボタンは copyText を送り、バナーは閉じない(閉じ
   assert.equal(bannerText(document), "");
 });
 
+test("コピーで「コピーしました」の短命ツールチップが出る(バナーは残る)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  failOp(window);
+
+  banner(document).querySelector(".banner-copy")
+    .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+
+  const tip = document.querySelector('[role="status"]');
+  assert.ok(tip, "確認ツールチップの要素が居る");
+  assert.equal(tip.style.display, "block");
+  assert.match(tip.textContent, /コピーしました/);
+  assert.match(bannerText(document), /ブリッジを起動できません/, "ツールチップを出してもバナーは残る");
+});
+

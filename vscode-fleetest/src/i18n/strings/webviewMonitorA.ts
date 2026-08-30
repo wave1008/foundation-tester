@@ -118,6 +118,7 @@ export const webviewMonitorAStrings = {
   // バナーは自動では消えない(読む前に消えるため)。閉じ方を示す
   "wvMonitor.banner.dismissTip": { ja: "クリックで閉じる", en: "Click to dismiss" },
   "wvMonitor.banner.copy": { ja: "コピー", en: "Copy" },
+  "wvMonitor.banner.copied": { ja: "コピーしました", en: "Copied" },
   "wvMonitor.banner.copyTip": {
     ja: "メッセージをコピーします(閉じません)",
     en: "Copy the message (does not dismiss it)",
