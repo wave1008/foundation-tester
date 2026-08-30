@@ -1,5 +1,10 @@
-// hostMetrics受信毎に直近60サンプルのローリングバッファへ追加しcanvas再描画。webview側は
+// hostMetrics を受けたら直近60サンプルのローリングバッファへ追加しcanvas再描画。webview側は
 // 独自タイマーを持たない(更新頻度はCLI側 --interval 1 に完全依存)。他モジュールとの状態共有は無い。
+//
+// **描く瞬間は全行で1つ**(hmClock)。機械ごとに host-metrics の子が独立して刻むので、届いた
+// 順に行を書き換えると行ごとにばらばらの瞬間で動いてちらつく。リモートのサンプルは受信時には
+// 保持するだけで、手元の tick で全行まとめて描く。**そのとき使うのは保持済みの最新値だけ**で、
+// 描画のために問い合わせ直すことはしない(1秒の刻みに間に合わない)。
 //
 // **行は機械ごと**(キーは機械名。手元は '')。リモート機のデバイスがモニターに居るときだけ
 // 行が増え、左端に機械名(手元は "local")が出る(monitorProcessManager.ts が機械ごとに
@@ -16,6 +21,13 @@
 import { t } from '../i18n.js';
 
 const HM_MAX_SAMPLES = 60;
+// 手元の tick が途絶えたとみなすまでの猶予(ms)。手元の host-metrics 子が落ちてから自動再起動
+// までの待ち(monitorProcessManager.ts scheduleHostMetricsRestart の 5000ms)と同値 —— これを
+// 超えて手元が無音なら、手元は止まっているとみなして刻みをリモートへ委譲する。
+const HM_CLOCK_TAKEOVER_MS = 5000;
+// 保持したサンプルを何 tick まで使い回してよいか。両側とも --interval 1 なので、生きている機械が
+// 位相のずれで落とせるのは1 tick まで。これを超えたら観測が途絶えたとみなし欠測(–)にする。
+const HM_STALE_TICKS = 2;
 // バリデータ検証済みパレット(ダーク/ライトで系列色を切り替える。グリッド・軸は描かない)。
 const HM_COLORS = {
   dark: { cpu: '#f2555a', gpu: '#b8891f', fm: '#a06be0', mem: '#2f9e63' },
@@ -65,8 +77,21 @@ function hmMakeRow(rowEl, machine) {
     entries,
     all: [entries.cpu, entries.gpu, entries.fm, entries.mem],
     fm: { total: 0, totalMs: 0, failures: 0, pendingCalls: 0, lastDelta: 0 },
+    // pending: 受信済みでまだ描いていないサンプル(1 tick の間に複数届いたら最後の1つだけ残る)。
+    // latest: 直近に描いたサンプル(pending が無い tick はこれを使い回す)。missed はその回数。
+    pending: undefined,
+    latest: null,
+    missed: 0,
   };
 }
+
+/**
+ * 全行を描く刻みを刻む機械(既定は手元)。手元が HM_CLOCK_TAKEOVER_MS 以上無音のときだけ、
+ * 最初にサンプルを届けたリモート機へ委譲する(手元のサンプルが来たら必ず手元へ戻す)。
+ */
+let hmClock = '';
+/** 直近の一斉描画の時刻(ms)。委譲の判定にだけ使う。パネルを開いた時刻から数える。 */
+let hmLastCommitAt = Date.now();
 
 /** 機械名(手元は '')→ 行。手元の行は静的 HTML にあるので最初から居る。 */
 const hmRows = new Map([['', hmMakeRow(hmLocalRowEl, '')]]);
@@ -295,18 +320,58 @@ function hmFormatGb(bytes) {
   return bytes === null || bytes === undefined ? '–' : (bytes / (1024 * 1024 * 1024)).toFixed(1);
 }
 
+/**
+ * host-metrics の1サンプルを受け取る。**ここでは保持するだけ**で、描画は刻み(hmClock)を持つ
+ * 機械のサンプルが来た tick に全行まとめて行う。machine 欄が無い行 = 手元(旧 CLI・手元の子)。
+ */
 export function applyHostMetrics(message) {
-  const memRatio =
-    typeof message.memUsedBytes === 'number' &&
-    typeof message.memTotalBytes === 'number' &&
-    message.memTotalBytes > 0
-      ? message.memUsedBytes / message.memTotalBytes
-      : null;
+  const machine = typeof message.machine === 'string' ? message.machine : '';
+  const row = hmEnsureRow(machine);
+  row.pending = message;
+  if (machine === '') {
+    hmClock = ''; // 手元が復活したら刻みは必ず手元へ戻す
+  } else if (machine !== hmClock && Date.now() - hmLastCommitAt > HM_CLOCK_TAKEOVER_MS) {
+    hmClock = machine; // 手元が黙っている間もリモートの行を止めない
+  }
+  if (machine === hmClock) {
+    hmCommitTick();
+  }
+}
 
-  // machine 欄が無い行 = 手元(旧 CLI・手元の host-metrics プロセス)
-  const row = hmEnsureRow(typeof message.machine === 'string' ? message.machine : '');
-  hmPushSample(row.entries.cpu, typeof message.cpu === 'number' ? message.cpu : null);
-  hmPushSample(row.entries.gpu, typeof message.gpu === 'number' ? message.gpu : null);
+/** 全行を1度に描き直す(値・ツールチップ・スパークライン)。 */
+function hmCommitTick() {
+  hmLastCommitAt = Date.now();
+  for (const row of hmRows.values()) {
+    hmCommitRow(row);
+  }
+}
+
+/** この tick でその行に使うサンプルを決めて描く。保持済みが無ければ直近の値を使い回し、
+ *  それも HM_STALE_TICKS を超えたら欠測にする(観測が途絶えた行に古い値を出し続けない)。 */
+function hmCommitRow(row) {
+  if (row.pending) {
+    row.latest = row.pending;
+    row.pending = undefined;
+    row.missed = 0;
+  } else if (row.latest !== null && ++row.missed > HM_STALE_TICKS) {
+    row.latest = null;
+  }
+  hmRenderRow(row, row.latest);
+}
+
+/** sample が null の tick は欠測(値は '–'、系列は null)。FM だけは供給元が別(runEvent)なので、
+ *  host-metrics のサンプルが無くても毎 tick 増分を確定させる。 */
+function hmRenderRow(row, sample) {
+  const cpu = sample && typeof sample.cpu === 'number' ? sample.cpu : null;
+  const gpu = sample && typeof sample.gpu === 'number' ? sample.gpu : null;
+  const memUsedBytes = sample && typeof sample.memUsedBytes === 'number' ? sample.memUsedBytes : null;
+  const memTotalBytes = sample && typeof sample.memTotalBytes === 'number' ? sample.memTotalBytes : null;
+  const memRatio = memUsedBytes !== null && memTotalBytes !== null && memTotalBytes > 0
+    ? memUsedBytes / memTotalBytes
+    : null;
+
+  hmPushSample(row.entries.cpu, cpu);
+  hmPushSample(row.entries.gpu, gpu);
   // FM: この tick ぶんの増分を確定し、バッファ内の最大増分で正規化して積む
   const fmDelta = row.fm.pendingCalls;
   row.fm.pendingCalls = 0;
@@ -314,17 +379,17 @@ export function applyHostMetrics(message) {
   hmPushSample(row.entries.fm, fmDelta);
   hmPushSample(row.entries.mem, memRatio);
 
-  row.entries.cpu.value.textContent = hmFormatPercent(message.cpu);
-  row.entries.gpu.value.textContent = hmFormatPercent(message.gpu);
+  row.entries.cpu.value.textContent = hmFormatPercent(cpu);
+  row.entries.gpu.value.textContent = hmFormatPercent(gpu);
   row.entries.mem.value.textContent = hmFormatPercent(memRatio);
 
   const prefix = hmTitlePrefix(row);
-  row.entries.cpu.el.title = prefix + t('wvMonitor2.hostCharts.cpuTitle', { value: hmFormatPercent(message.cpu) });
-  row.entries.gpu.el.title = prefix + t('wvMonitor2.hostCharts.gpuTitle', { value: hmFormatPercent(message.gpu) });
+  row.entries.cpu.el.title = prefix + t('wvMonitor2.hostCharts.cpuTitle', { value: hmFormatPercent(cpu) });
+  row.entries.gpu.el.title = prefix + t('wvMonitor2.hostCharts.gpuTitle', { value: hmFormatPercent(gpu) });
   hmRenderFmLabel(row);
   row.entries.mem.el.title = prefix + t('wvMonitor2.hostCharts.memTitle', {
-    used: hmFormatGb(message.memUsedBytes),
-    total: hmFormatGb(message.memTotalBytes),
+    used: hmFormatGb(memUsedBytes),
+    total: hmFormatGb(memTotalBytes),
     percent: hmFormatPercent(memRatio),
   });
 

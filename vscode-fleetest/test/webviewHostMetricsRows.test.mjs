@@ -5,6 +5,8 @@
 // - 既定は手元の1行だけ。左端の機械名は出さない(.hm-multi が付かない)
 // - hostMetricsMachines で行が増え、左端が local / <機械名> になる
 // - サンプルは machine の行にだけ積む(手元のサンプルが machine 欄を持たないことと対)
+// - **描く瞬間は全行で1つ**(リモートは受信時には保持だけ・手元の tick で保持済みの最新値を描く)
+// - 手元が黙ったら刻みをリモートへ委譲し、手元が戻れば手元へ返す
 // - 機械が消えたら行も消える(観測が止まったまま最後の値を出し続けない)
 // - FM(供給元は runEvent)もレーンの機械の行へ積む
 
@@ -130,19 +132,81 @@ test("hostMetricsMachines で機械ごとの行が増え、左端が local / <�
   assert.equal(document.querySelectorAll("#hm-cpu").length, 1, "複製した行に id を残さない");
 });
 
-test("サンプルは machine の行にだけ積む", (t) => {
+test("サンプルは machine の行にだけ積み、描くのは手元の tick で全行まとめて", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
 
   send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
   send(window, hostMetricsSample("mac2", 0.9));
 
-  assert.deepEqual(values(rowFor(document, "mac2")), ["25%", "90%", "25%", "0"]);
-  assert.deepEqual(values(rowFor(document, "")), ["–", "–", "–", "–"], "手元の行は動かない");
+  assert.deepEqual(
+    values(rowFor(document, "mac2")), ["–", "–", "–", "–"],
+    "リモートのサンプルは保持するだけ(行ごとにばらばらの瞬間で書き換えない)",
+  );
+  assert.deepEqual(values(rowFor(document, "")), ["–", "–", "–", "–"], "手元の行も動かない");
 
   send(window, hostMetricsSample(undefined, 0.1));
   assert.deepEqual(values(rowFor(document, "")), ["25%", "10%", "25%", "0"], "machine 欄が無ければ手元");
-  assert.deepEqual(values(rowFor(document, "mac2")), ["25%", "90%", "25%", "0"], "他機の行は据え置き");
+  assert.deepEqual(
+    values(rowFor(document, "mac2")), ["25%", "90%", "25%", "0"],
+    "リモートは手元と同じ tick で、保持していた最新値で描かれる",
+  );
+});
+
+test("同じ tick までに複数届いたら最後の1つだけを使う", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
+  send(window, hostMetricsSample("mac2", 0.9));
+  send(window, hostMetricsSample("mac2", 0.4));
+  send(window, hostMetricsSample(undefined, 0.1));
+
+  assert.deepEqual(values(rowFor(document, "mac2")), ["25%", "40%", "25%", "0"]);
+});
+
+test("サンプルの無い tick は直近の値を使い回し、途絶えたら欠測にする", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
+  send(window, hostMetricsSample("mac2", 0.9));
+  send(window, hostMetricsSample(undefined, 0.1));
+
+  const cpuOf = (machine) => values(rowFor(document, machine))[1];
+  send(window, hostMetricsSample(undefined, 0.1));
+  assert.equal(cpuOf("mac2"), "90%", "位相のずれで1 tick 落ちても穴にしない");
+  send(window, hostMetricsSample(undefined, 0.1));
+  assert.equal(cpuOf("mac2"), "90%");
+  send(window, hostMetricsSample(undefined, 0.1));
+  assert.equal(cpuOf("mac2"), "–", "観測が途絶えた行に古い値を出し続けない");
+});
+
+test("手元が黙ったらリモートが刻みを引き取り、手元が戻れば手元へ返す", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  // 手元の host-metrics 子が落ちて自動再起動の猶予(5s)も過ぎた状況を作る
+  const advance = (ms) => {
+    const now = window.Date.now();
+    window.Date.now = () => now + ms;
+  };
+
+  send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
+  send(window, hostMetricsSample("mac2", 0.9));
+  assert.deepEqual(values(rowFor(document, "mac2")), ["–", "–", "–", "–"], "猶予の内は手元を待つ");
+
+  advance(6000);
+  send(window, hostMetricsSample("mac2", 0.8));
+  assert.deepEqual(values(rowFor(document, "mac2")), ["25%", "80%", "25%", "0"], "無音が続けば委譲");
+
+  send(window, hostMetricsSample(undefined, 0.1));
+  assert.deepEqual(values(rowFor(document, "")), ["25%", "10%", "25%", "0"]);
+  send(window, hostMetricsSample("mac2", 0.5));
+  assert.equal(
+    values(rowFor(document, "mac2"))[1], "80%",
+    "手元が戻ったらリモートは刻まない(保持だけ)",
+  );
 });
 
 test("サンプル先着で作られた行も並びは機械名順(webview 再読込直後の経路)", (t) => {
