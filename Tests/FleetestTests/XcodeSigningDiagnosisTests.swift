@@ -29,7 +29,7 @@ final class XcodeSigningDiagnosisTests: XCTestCase {
     func testTheLockedKeychainIsPickedUp() {
         let log = "error: User interaction is not allowed. (in target 'FleetestRunnerApp')"
         XCTAssertEqual(XcodeSigningDiagnosis.problems(inBuildLog: log), [.keychainLocked])
-        XCTAssertNotNil(XcodeSigningDiagnosis.guidance(problems: [.keychainLocked], fullLogPath: nil))
+        XCTAssertNotNil(XcodeSigningDiagnosis.guidance(problems: [.keychainLocked], fullLogPath: nil, overSSH: true))
     }
 
     func testAnUnrelatedFailureIsLeftAlone() {
@@ -37,7 +37,7 @@ final class XcodeSigningDiagnosisTests: XCTestCase {
         // ここで生ログを捨てると、原因の分からない失敗になる
         let log = "error: Build input file cannot be found: '/…/Missing.swift'\n** TEST BUILD FAILED **"
         XCTAssertTrue(XcodeSigningDiagnosis.problems(inBuildLog: log).isEmpty)
-        XCTAssertNil(XcodeSigningDiagnosis.guidance(problems: [], fullLogPath: "/tmp/x.log"))
+        XCTAssertNil(XcodeSigningDiagnosis.guidance(problems: [], fullLogPath: "/tmp/x.log", overSSH: true))
     }
 
     /// チーム切替時に実際に出る3種も拾う。行は M1Ultra の bridge-build-8127/8129.log から
@@ -60,7 +60,7 @@ final class XcodeSigningDiagnosisTests: XCTestCase {
     func testTheFirstLineStandsOnItsOwn() throws {
         let guidance = try XCTUnwrap(XcodeSigningDiagnosis.guidance(
             problems: XcodeSigningDiagnosis.problems(inBuildLog: try realFailureLog()),
-            fullLogPath: "/tmp/bridge-build-8123.log"))
+            fullLogPath: "/tmp/bridge-build-8123.log", overSSH: true))
         let first = try XCTUnwrap(guidance.split(separator: "\n").first).trimmingCharacters(in: .whitespaces)
         XCTAssertTrue(first.contains("code-sign"), first)
         XCTAssertTrue(first.contains("physical device"), first)
@@ -72,7 +72,7 @@ final class XcodeSigningDiagnosisTests: XCTestCase {
     /// **Xcode の画面の道順は引き続き出さない**(版ごとに変わり、必ず古くなる)
     func testTheGuidanceStatesFactsButTellsNoSteps() throws {
         let guidance = try XCTUnwrap(XcodeSigningDiagnosis.guidance(
-            problems: XcodeSigningProblem.allCases, fullLogPath: "/tmp/bridge-build-8123.log"))
+            problems: XcodeSigningProblem.allCases, fullLogPath: "/tmp/bridge-build-8123.log", overSSH: true))
         let lines = guidance.split(separator: "\n")
         XCTAssertEqual(lines.count, 4, guidance)
         XCTAssertTrue(String(lines[1]).hasPrefix("Detected: "), guidance)
@@ -88,24 +88,41 @@ final class XcodeSigningDiagnosisTests: XCTestCase {
     /// (毎回書くとアカウント忘れのような手元で直る話まで GUI へ誘導してしまう)
     func testThePortalLineAppearsOnlyWhenProvisioningIsNeeded() throws {
         let without = try XCTUnwrap(
-            XcodeSigningDiagnosis.guidance(problems: [.noAccountForTeam], fullLogPath: nil))
+            XcodeSigningDiagnosis.guidance(problems: [.noAccountForTeam], fullLogPath: nil, overSSH: true))
         XCTAssertFalse(without.contains("GUI session"), without)
         let with = try XCTUnwrap(
-            XcodeSigningDiagnosis.guidance(problems: [.deviceNotRegistered], fullLogPath: nil))
+            XcodeSigningDiagnosis.guidance(problems: [.deviceNotRegistered], fullLogPath: nil, overSSH: true))
         XCTAssertTrue(with.contains("GUI session"), with)
+    }
+
+    /// GUI セッションで走っているなら「GUI で」とは言わない(行き止まりの案内になる)。
+    /// 代わりに登録直後の1回目が落ちる事実だけ
+    func testInAGUISessionThePortalLineOnlySaysToRunItAgain() throws {
+        let gui = try XCTUnwrap(
+            XcodeSigningDiagnosis.guidance(problems: [.deviceNotRegistered], fullLogPath: nil, overSSH: false))
+        XCTAssertFalse(gui.contains("GUI session"), gui)
+        XCTAssertFalse(gui.contains("ssh"), gui)
+        XCTAssertTrue(gui.contains("run it again"), gui)
+    }
+
+    /// ssh 判定は sshd が立てる環境変数だけを見る
+    func testSSHSessionIsDetectedFromTheEnvironment() {
+        XCTAssertTrue(XcodeSigningDiagnosis.isSSHSession(environment: ["SSH_CONNECTION": "10.0.0.2 1 10.0.0.1 22"]))
+        XCTAssertTrue(XcodeSigningDiagnosis.isSSHSession(environment: ["SSH_TTY": "/dev/ttys001"]))
+        XCTAssertFalse(XcodeSigningDiagnosis.isSSHSession(environment: ["TERM_PROGRAM": "Apple_Terminal"]))
     }
 
     /// 生ログを残せなかったときは在り処を書かない
     func testWithoutALogPathThePathLineIsOmitted() throws {
         let guidance = try XCTUnwrap(
-            XcodeSigningDiagnosis.guidance(problems: [.noAccount], fullLogPath: nil))
+            XcodeSigningDiagnosis.guidance(problems: [.noAccount], fullLogPath: nil, overSSH: true))
         XCTAssertFalse(guidance.contains("Full xcodebuild output"))
     }
 
     /// **事実の行は種別ごとに違う**(どれかすら言わないと切り分けのたびに生ログを読むことになる)
     func testDifferentProblemsProduceDifferentFacts() {
-        let one = XcodeSigningDiagnosis.guidance(problems: [.noAccount], fullLogPath: nil)
-        let another = XcodeSigningDiagnosis.guidance(problems: [.keychainLocked], fullLogPath: nil)
+        let one = XcodeSigningDiagnosis.guidance(problems: [.noAccount], fullLogPath: nil, overSSH: true)
+        let another = XcodeSigningDiagnosis.guidance(problems: [.keychainLocked], fullLogPath: nil, overSSH: true)
         XCTAssertNotEqual(one, another)
     }
 

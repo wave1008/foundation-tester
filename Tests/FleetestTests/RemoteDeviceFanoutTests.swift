@@ -56,20 +56,22 @@ final class RemoteDeviceFanoutTests: XCTestCase {
         XCTAssertNil(RemoteDeviceFanout.machineStamped(line: line, machine: "M1Max"))
     }
 
-    /// ただし**失敗は捨てない** —— 捨てるとその機械が丸ごと起きなかった理由が stdout から消える
-    func testTurnsAChildFailureIntoALogLine() {
+    /// ただし**失敗は捨てない** —— 捨てるとその機械が丸ごと起きなかった理由が stdout から消える。
+    /// **構造化して流す**(log 行にすると受け手は OUTPUT にしか出せず、バナーが無音になる)
+    func testTurnsAChildFailureIntoAMachineFailedEvent() {
         let line = #"{"error":"no simulator with that UDID","kind":"finished","ok":false}"#
         let object = decoded(RemoteDeviceFanout.machineStamped(line: line, machine: "M1Ultra"))
-        XCTAssertEqual(object["kind"] as? String, "log")
-        XCTAssertEqual(object["message"] as? String, "❌ [M1Ultra] no simulator with that UDID")
+        XCTAssertEqual(object["kind"] as? String, "machineFailed")
+        XCTAssertEqual(object["machine"] as? String, "M1Ultra")
+        XCTAssertEqual(object["error"] as? String, "no simulator with that UDID")
     }
 
     /// error が無い失敗でも黙らない(理由が書けないだけで、起きなかったことは言う)
     func testStillReportsAFailureWithoutAnErrorMessage() {
         let line = #"{"error":null,"kind":"finished","ok":false}"#
         let object = decoded(RemoteDeviceFanout.machineStamped(line: line, machine: "M1Max"))
-        XCTAssertEqual(object["message"] as? String,
-                       "❌ [M1Max] the devices on this machine did not start")
+        XCTAssertEqual(object["kind"] as? String, "machineFailed")
+        XCTAssertEqual(object["error"] as? String, "the devices on this machine did not start")
     }
 
     /// 想定外の形は解釈せずそのまま流す(中継が行を落とさない)

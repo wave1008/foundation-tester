@@ -84,6 +84,10 @@ export type DevicesUpEvent =
   | { readonly kind: "deviceStopping"; readonly name: string; readonly platform: string; readonly machine?: string | null }
   | { readonly kind: "deviceStarting"; readonly name: string; readonly platform: string; readonly machine?: string | null }
   | { readonly kind: "deviceFinished"; readonly name: string; readonly platform: string; readonly machine?: string | null }
+  // リモート機1台ぶんの devices-up/down が丸ごと失敗した(親が子の finished{ok:false} を
+  // 移し替える。Sources/fleetest/RemoteDeviceFanout.swift machineStamped と対)。
+  // 親の finished は ok:true のまま来る = これを見ないとその機械の失敗が無音になる
+  | { readonly kind: "machineFailed"; readonly machine: string; readonly error: string }
   | { readonly kind: "finished"; readonly ok: boolean; readonly error: string | null };
 
 /** value が DevicesUpEvent として扱ってよいか判定する(isDeviceOpEvent と同じ方針)。 */
@@ -98,6 +102,8 @@ export function isDevicesUpEvent(value: unknown): value is DevicesUpEvent {
     case "deviceStarting":
     case "deviceFinished":
       return typeof value.name === "string" && typeof value.platform === "string";
+    case "machineFailed":
+      return typeof value.machine === "string" && value.machine !== "" && typeof value.error === "string";
     case "finished":
       return typeof value.ok === "boolean" && (value.error === null || typeof value.error === "string");
     default:

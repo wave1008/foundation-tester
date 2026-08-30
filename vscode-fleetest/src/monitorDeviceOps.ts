@@ -107,8 +107,9 @@ const SIGNING_FACT_KEYS: Record<string, MessageKey> = {
   keychainLocked: "deviceOps.signing.fact.keychainLocked",
 };
 
-/** ポータル通信(端末登録・プロファイルの取り直し)が要る種別。ssh からはできないので
- * 「GUI セッションで一度」の行を添える(Swift 側 needsProvisioningUpdate と対)。 */
+/** ポータル通信(端末登録・プロファイルの取り直し)が要る種別(Swift 側 needsProvisioningUpdate
+ * と対)。ssh 越し(= 別の機械へ `remote exec` した)なら「GUI セッションで一度」、手元なら
+ * 「登録直後の1回目は落ちる。もう一度」だけを添える(GUI に居る人へ「GUI で」は行き止まり)。 */
 const SIGNING_NEEDS_PORTAL = new Set([
   "deviceNotRegistered", "certificateNotInProfile", "deviceNotInProfile",
 ]);
@@ -121,7 +122,7 @@ const SIGNING_NEEDS_PORTAL = new Set([
  * 変わり、書いた手順は必ず古くなる)。**1つも種別を知らなければ null** —— 見出しだけの案内で
  * CLI の error(全種別の事実を含む)を上書きすると、版ズレのとき情報を捨てることになる。 */
 export function signingGuidance(
-  problems: readonly string[], logPath: string | undefined,
+  problems: readonly string[], logPath: string | undefined, overSSH: boolean,
 ): string | null {
   if (problems.length === 0) {
     return null;
@@ -136,7 +137,7 @@ export function signingGuidance(
   const lines = [t("deviceOps.signing.headline")];
   lines.push(t("deviceOps.signing.detected", { facts: facts.join(" / ") }));
   if (problems.some((kind) => SIGNING_NEEDS_PORTAL.has(kind))) {
-    lines.push(t("deviceOps.signing.portalNeedsGui"));
+    lines.push(t(overSSH ? "deviceOps.signing.portalNeedsGui" : "deviceOps.signing.portalRetryOnce"));
   }
   if (logPath !== undefined) {
     lines.push(t("deviceOps.signing.fullLog", { path: logPath }));
@@ -655,6 +656,16 @@ export class MonitorDeviceOps {
               this.deps.post({ type: "deviceOpBusy", name: value.name, machine: value.machine ?? undefined, op: null, status: null });
             }
             break;
+          case "machineFailed": {
+            // その機械のぶんが丸ごと起きなかった。親の finished は ok:true で来るので、
+            // ここでバナーに出さないと OUTPUT にしか残らず無音になる(1行目だけ = finished と同じ規律)
+            const message = t("deviceOps.remoteMachineFailed", {
+              machine: value.machine, error: firstLine(value.error),
+            });
+            this.deps.outputChannel.appendLine(`[${label}] ❌ [${value.machine}] ${value.error}`);
+            this.deps.post({ type: "deviceError", message });
+            break;
+          }
           case "finished":
             if (!value.ok) {
               const detail = value.error ?? t("deviceOps.detailUnknown");
@@ -973,9 +984,10 @@ export class MonitorDeviceOps {
         } else if (!value.ok) {
           signingFailure = value.signingProblems !== undefined;
           // 署名の欠けは**こちらの言語で**組み立て直す(CLI の error は英語 = CLI 利用者向け)
+          // 別の機械へ投げた(remote exec = ssh)ならポータル通信ができない旨を添える
           const localized = value.signingProblems === undefined
             ? null
-            : signingGuidance(value.signingProblems, value.signingLogPath);
+            : signingGuidance(value.signingProblems, value.signingLogPath, machine !== undefined);
           const message = localized ?? value.error ?? t("deviceOps.deviceOpFailedGeneric", { op });
           logFailure(message);
           // **自分で組み立てた案内は全文をバナーへ**(短く整形済みで数行。読み切れる)。

@@ -878,7 +878,9 @@ public enum LauncherError: Error, LocalizedError {
             }
             return "port \(port) is in use by another process"
         case .codeSigningIncomplete(let problems, let logPath):
-            return XcodeSigningDiagnosis.guidance(problems: problems, fullLogPath: logPath)
+            return XcodeSigningDiagnosis.guidance(
+                problems: problems, fullLogPath: logPath,
+                overSSH: XcodeSigningDiagnosis.isSSHSession(environment: ProcessInfo.processInfo.environment))
                 ?? "the runner cannot be code-signed for a physical device"
         case .developmentTeamMissing:
             return "building for a physical iOS device requires an Apple Developer Team ID. "

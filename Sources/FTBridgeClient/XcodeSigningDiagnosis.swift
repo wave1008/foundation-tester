@@ -99,15 +99,25 @@ public enum XcodeSigningDiagnosis {
         return signatures.filter { log.contains($0.1) }.map(\.0)
     }
 
+    /// このビルドが ssh セッションで走っているか(sshd が立てる環境変数)。**GUI セッションの
+    /// 判定はこれの否定**でしかない —— ポータル通信(端末登録・プロファイル取得)はアカウント
+    /// セッションが要り、それは GUI ログインにしか無い。環境を引数に取るのはテストのため
+    public static func isSSHSession(environment: [String: String]) -> Bool {
+        environment["SSH_CONNECTION"] != nil || environment["SSH_TTY"] != nil
+    }
+
     /// 見出し + 事実(どれが欠けているか)+ 生ログの在り処。problems が空なら nil
     /// (呼び手は生の出力をそのまま出す)。
     ///
     /// **事実は言い、手順は書かない**(理由は XcodeSigningProblem の doc)。
-    /// 例外は「ポータル通信は ssh からはできない」の1行 —— これは Xcode の手順ではなく
-    /// このツールの実行経路(remote exec)の制約で、知らないと ssh から何度でも同じ失敗を繰り返す。
+    /// 例外はポータル通信が要る問題への1行 —— ssh 越し(overSSH)なら「GUI セッションで一度」
+    /// (Xcode の手順ではなくこのツールの実行経路 remote exec の制約。知らないと ssh から何度でも
+    /// 同じ失敗を繰り返す)、GUI で走っているなら「登録直後の1回目は落ちる。もう一度」だけ
+    /// (GUI に居る人へ「GUI で」と言っても行き止まり)。
     /// **「この Mac」と書く** —— リモート機で走っていても、直すのは端末が繋がっている
     /// その機械の Xcode。手元とどちらの話かは呼び手(拡張)が機械名を添えて示す。
-    public static func guidance(problems: [XcodeSigningProblem], fullLogPath: String?) -> String? {
+    public static func guidance(problems: [XcodeSigningProblem], fullLogPath: String?,
+                                overSSH: Bool) -> String? {
         guard !problems.isEmpty else { return nil }
         var lines = [
             "Cannot code-sign the bridge runner for a physical device on this Mac."
@@ -115,10 +125,11 @@ public enum XcodeSigningDiagnosis {
             "Detected: " + problems.map(\.fact).joined(separator: "; ") + ".",
         ]
         if problems.contains(where: \.needsProvisioningUpdate) {
-            lines.append(
-                "Registering a device or refreshing a profile talks to Apple's portal, which a build"
-                + " started over ssh cannot do — run the bridge once from a GUI session on that Mac"
-                + " (the first attempt may fail once right after registering; run it again).")
+            lines.append(overSSH
+                ? "Registering a device or refreshing a profile talks to Apple's portal, which a build"
+                    + " started over ssh cannot do — run the bridge once from a GUI session on that Mac"
+                    + " (the first attempt may fail once right after registering; run it again)."
+                : "The first build right after registering a device may fail once — run it again.")
         }
         if let fullLogPath {
             lines.append("Full xcodebuild output: \(fullLogPath)")

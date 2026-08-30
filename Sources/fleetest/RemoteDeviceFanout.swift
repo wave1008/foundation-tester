@@ -134,8 +134,9 @@ enum RemoteDeviceFanout {
     /// - log 行の先頭に `[<machine>]` を付ける(手元の行と混ざるとどの機械の声か読めない)
     /// - 子の `finished` は**流さない**。あれは「1機械ぶんの締め」で、受け手の契約では
     ///   `finished` はストリーム全体の終端が1つだけ(親が `await fanout` の後に出す)。
-    ///   **失敗だけは log へ移し替える**(捨てると、その機械が丸ごと起きなかった理由が
-    ///   stdout から消える)
+    ///   **失敗だけは `machineFailed` に移し替える**(捨てると、その機械が丸ごと起きなかった理由が
+    ///   stdout から消える。log 行にすると受け手は OUTPUT にしか出せずバナーが無音になる。
+    ///   対向: vscode-fleetest/src/monitorDeviceLifecycle.ts の DevicesUpEvent)
     /// **読めない行・想定外の形はそのまま流す**(RemoteMonitorFanout.machineScoped と同じ方針)
     static let deviceKinds: Set<String> = ["deviceStopping", "deviceStarting", "deviceFinished"]
 
@@ -151,7 +152,7 @@ enum RemoteDeviceFanout {
         } else if kind == "finished" {
             guard object["ok"] as? Bool == false else { return nil }
             let detail = object["error"] as? String ?? "the devices on this machine did not start"
-            return logLine("❌ [\(machine)] \(detail)")
+            object = ["kind": "machineFailed", "machine": machine, "error": detail]
         } else {
             return line
         }

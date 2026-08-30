@@ -602,7 +602,7 @@ test("firstLine: 1行だけのエラーはそのまま(既存の見え方を変�
 
 test("signingGuidance: 見出し + 事実 + 生ログの在り処(事実は言う・手順は書かない)", () => {
   const guidance = signingGuidance(
-    ["noAccount", "invalidCertificate", "deviceNotInProfile"], "/tmp/bridge-build-8123.log");
+    ["noAccount", "invalidCertificate", "deviceNotInProfile"], "/tmp/bridge-build-8123.log", true);
   const lines = guidance.split("\n");
   assert.equal(lines.length, 4, guidance);
   assert.match(lines[0], /実機用のブリッジに署名できません/);
@@ -615,7 +615,7 @@ test("signingGuidance: 全種別の文言に Xcode の画面の道順を書か�
   // **全種別を通す**(3種別だけだと、残りの fact 文言に手順を書いても素通しする)
   const guidance = signingGuidance(
     ["noAccount", "noAccountForTeam", "invalidCertificate", "deviceNotRegistered",
-     "certificateNotInProfile", "deviceNotInProfile", "keychainLocked"], undefined);
+     "certificateNotInProfile", "deviceNotInProfile", "keychainLocked"], undefined, true);
   // **includes で見る**(RegExp 化すると括弧を含む禁止語が黙ってグループになり空振りする)
   for (const forbidden of ["1.", "▸", "Manage Certificates", "設定 →", "アカウント設定を開"]) {
     assert.equal(guidance.includes(forbidden), false, forbidden);
@@ -623,22 +623,32 @@ test("signingGuidance: 全種別の文言に Xcode の画面の道順を書か�
 });
 
 test("signingGuidance: ポータル通信が要らない種別だけなら GUI 誘導の行は出ない", () => {
-  const guidance = signingGuidance(["noAccountForTeam"], undefined);
+  const guidance = signingGuidance(["noAccountForTeam"], undefined, true);
   assert.match(guidance, /developmentTeam/);
   assert.doesNotMatch(guidance, /GUI セッション/);
 });
 
+// 手元(GUI セッション)で失敗した人へ「GUI で」と言っても行き止まり —— 登録直後の1回目が
+// 落ちる事実だけを言う。ssh 越し(別の機械へ remote exec)のときだけ GUI へ誘導する
+test("signingGuidance: GUI 誘導は ssh 越しのときだけ", () => {
+  const ssh = signingGuidance(["deviceNotRegistered"], undefined, true);
+  assert.match(ssh, /GUI セッションで一度/);
+  const gui = signingGuidance(["deviceNotRegistered"], undefined, false);
+  assert.doesNotMatch(gui, /GUI セッション|ssh/);
+  assert.match(gui, /もう一度実行/);
+});
+
 test("signingGuidance: 生ログを残せなければ在り処は書かない・空なら CLI の文言に譲る", () => {
-  assert.doesNotMatch(signingGuidance(["noAccount"], undefined), /xcodebuild の全出力/);
-  assert.equal(signingGuidance([], undefined), null);
+  assert.doesNotMatch(signingGuidance(["noAccount"], undefined, false), /xcodebuild の全出力/);
+  assert.equal(signingGuidance([], undefined, false), null);
 });
 
 // 1つも知らない種別なら null = CLI の error(全種別の事実を含む英語の案内)へ譲る。
 // 見出しだけの案内で上書きすると版ズレのとき情報を捨てることになる
 test("signingGuidance: 全部知らない種別なら null(CLI の文言に譲る)", () => {
-  assert.equal(signingGuidance(["somethingNew"], "/tmp/x.log"), null);
+  assert.equal(signingGuidance(["somethingNew"], "/tmp/x.log", false), null);
   // 一部でも知っていれば組み立てる(知らないぶんの事実行だけ欠ける)
-  assert.match(signingGuidance(["somethingNew", "noAccount"], undefined), /検出:/);
+  assert.match(signingGuidance(["somethingNew", "noAccount"], undefined, false), /検出:/);
 });
 
 test("署名の案内は全文がバナーへ渡る", async () => {

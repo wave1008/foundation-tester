@@ -131,6 +131,14 @@ export const deviceOpsStrings = {
       + " from a GUI session on that Mac (the first attempt may fail once right after registering;"
       + " run it again).",
   },
+  "deviceOps.signing.portalRetryOnce": {
+    ja: "端末を登録した直後の1回目のビルドは失敗することがあります。もう一度実行してください。",
+    en: "The first build right after registering a device may fail once — run it again.",
+  },
+  "deviceOps.remoteMachineFailed": {
+    ja: "{machine} のデバイス操作が失敗しました: {error}",
+    en: "The device operation on {machine} failed: {error}",
+  },
   "deviceOps.signing.fullLog": {
     ja: "xcodebuild の全出力: {path}",
     en: "Full xcodebuild output: {path}",
