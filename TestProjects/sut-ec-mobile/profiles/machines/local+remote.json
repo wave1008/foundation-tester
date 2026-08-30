@@ -100,22 +100,6 @@
         "udid": "73FA356F-831B-4F0B-A0AE-E4CD31CB8848"
       },
       {
-        "machine": "local",
-        "name": "iPhone SE3",
-        "kind": "physical",
-        "os": "26.6",
-        "udid": "00008110-000260242EEB801E",
-        "model": "iPhone SE (3rd generation)"
-      },
-      {
-        "machine": "local",
-        "name": "iPhone 13",
-        "kind": "physical",
-        "os": "26.6.1",
-        "udid": "00008110-001460910E0A201E",
-        "model": "iPhone 13"
-      },
-      {
         "machine": "M1Max",
         "name": "iPhone 17 Pro(iOS 27.0)-03",
         "simulator": "iPhone 17 Pro(iOS 27.0)-03",
@@ -156,6 +140,22 @@
         "simulator": "iPhone 17 Pro(iOS 27.0)-06",
         "os": "27.0",
         "udid": "6C7ADCB9-B221-4377-85BA-5258DEC86C69"
+      },
+      {
+        "machine": "local",
+        "name": "iPhone 13",
+        "kind": "physical",
+        "os": "26.6.1",
+        "udid": "00008110-001460910E0A201E",
+        "model": "iPhone 13"
+      },
+      {
+        "machine": "local",
+        "name": "iPhone SE3",
+        "kind": "physical",
+        "os": "26.6",
+        "udid": "00008110-000260242EEB801E",
+        "model": "iPhone SE (3rd generation)"
       }
     ]
   },
@@ -232,14 +232,6 @@
         "avd": "Pixel_10_Android_16_API_36_arm64-v8a_-02"
       },
       {
-        "machine": "M1Ultra",
-        "name": "Pixel 3a",
-        "kind": "physical",
-        "os": "12",
-        "serial": "93MAY0CY1M",
-        "model": "Pixel 3a"
-      },
-      {
         "machine": "M1Max",
         "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-03",
         "avd": "Pixel_10_Android_14_API_34_arm64-v8a_-03"
@@ -298,6 +290,22 @@
         "machine": "local",
         "name": "Pixel 10(Android 16(API 36) / arm64-v8a)-08",
         "avd": "Pixel_10_Android_16_API_36_arm64-v8a_-08"
+      },
+      {
+        "machine": "local",
+        "name": "Pixel 4a",
+        "kind": "physical",
+        "os": "13",
+        "serial": "14141JEC204922",
+        "model": "Pixel 4a"
+      },
+      {
+        "machine": "local",
+        "name": "Pixel 3a",
+        "kind": "physical",
+        "os": "12",
+        "serial": "93MAY0CY1M",
+        "model": "Pixel 3a"
       }
     ]
   }

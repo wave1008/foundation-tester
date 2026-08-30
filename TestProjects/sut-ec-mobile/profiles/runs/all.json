@@ -110,5 +110,6 @@
   "reportDir": "reports",
   "updateWebView": true,
   "wipeDataOnBloat": true,
-  "screenLooksLike": true
+  "screenLooksLike": true,
+  "iosPreActionWarmup": true
 }
