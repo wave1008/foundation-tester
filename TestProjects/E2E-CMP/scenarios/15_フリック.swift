@@ -61,8 +61,10 @@ class フリックが正しく動くこと {
                 }.expectation {
                     notExist("#tag_01")
                 }.action {
-                    // 戻しは**フリックではなく決定的な scrollLeft**(距離に依存させない)
-                    scrollLeft(scrollFrame: "#carousel_tags", repeat: 3)
+                    // 戻しは**フリックではなく端送り**(距離に依存させない)。scrollLeft×N は
+                    // 1回の刻み(横 370px の容器で 221px)× N が慣性距離(約 700〜770px)に届かず、
+                    // 先頭タグが部分可視かどうかの数十 px で合否が割れていた(2026-08-30 実測)
+                    scrollToLeftEdge(scrollFrame: "#carousel_tags")
                 }.expectation {
                     exist("#tag_01")
                 }.action {
@@ -73,7 +75,7 @@ class フリックが正しく動くこと {
             }
             scene(6, "左端に戻し、端で flickLeftToRight / flickCenterToRight を撃っても先頭タグは残る") {
                 action {
-                    scrollLeft(scrollFrame: "#carousel_tags", repeat: 3)
+                    scrollToLeftEdge(scrollFrame: "#carousel_tags")
                 }.expectation {
                     exist("#tag_01")
                 }.action {
