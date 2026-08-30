@@ -3085,3 +3085,64 @@ curl -s -X POST http://127.0.0.1:<port>/session -d '{"bundleID":"com.example.non
 返らないのにポートは待受している。ブリッジ探索が「応答なし=死」と読むと、この隙に
 **別デバイスのブリッジへ黙って乗り換える**。`BridgeDiscovery.isBound`(TCP 接続可否)で
 死と忙しいを分けること。外部ログでは整定待ちで **33.7 秒**ブロックした区間が観測されている。
+
+## interop WebView の最初のタップが吸われる(2026-08-30・**未解決**)
+
+`E2E-CMP` × iOS × in-app(hybrid) の `WebViewの中身を操作できること.S0010` が、
+**scene 2 の最初の interop タップ**で約 14% 落ちる(通算 9/62)。落ちるのは常に同じ1歩:
+
+```
+❌ 11. [expectation] textIs "wv_result=*" == "wv_result=link"
+   expected "wv_result=link", actual "wv_result=-"
+   (the preceding tap ... did not change the screen at all)
+```
+
+**再現条件は `Scripts/e2e.sh --cmp --ios` のフル1周だけ**(1周 = 1標本・約2分)。
+**`--broadcast` で1シナリオを全台へ配る形では再現しない(0/120)** —— 10レーンが同じ軽い
+シナリオを流すだけでは、実スイートの「各レーンが別々の34シナリオを回す」混雑が作れない。
+効率は10倍(1周10標本)だが**測っている現象が別物になる**。
+
+### ホスト層は無実(計測で確定)
+
+`WebViewDelegatingDriver` に計測を入れて25周回し、失敗3件と成功周を突き合わせた:
+
+| | 失敗周 | 成功周 |
+|---|---|---|
+| snapshot | `webViewPath=dom-interop mode=domInterop webElems=13` | **同一** |
+| tap | `via=delegated point=(77.25738525390625,266.734375)` | **同一** |
+| タップ後 | 次の snapshot まで 434ms・要素 13 のまま | 754ms・13→8 |
+
+**1bit も違わない同じ命令を出して、24% の回だけページに届かない**。差はタップ後にしか出ない。
+したがって DSL / StepExecutor / WebViewDelegatingDriver / in-app ブリッジは原因ではなく、
+消えているのは **XCTest の合成タッチ → Compose interop → WebKit** の間。
+
+**ステップ所要の分離は症状であって原因ではない**(失敗 443〜519ms / 成功 729〜1313ms)。
+画面が変われば整定待ちのポーリングが入り、変わらなければ即返るというだけ。
+**この分離を手掛かりに原因を探さないこと**。
+
+### 否定済みの仮説(再調査しない)
+
+| 仮説 | 否定した根拠 |
+|---|---|
+| `InAppWebViewDOM.capture` が nil を返し木が空になる | `dom-unread` の注記が全実行で発火 0 |
+| XCUITest 側の WebView a11y 活性化待ちが足りない | `hasWebContent` を待つ実装に変えても scene1 の所要が伸びず **no-op**(post 9194ms vs pre 10505ms)。そもそも scene 1 に約9秒使っており活性化(約2.3秒)は完了している |
+| アイドル後の「冷え」 | 120秒アイドルを毎周置いて **0/30** |
+| `XCUICoordinate.tap()` の DOWN/UP が同一瞬間に潰れている | `press(forDuration: 0.05)` に替えて **2/25**(ベースライン 9/62 と Fisher p≈0.51 で差なし) |
+| `FastInput` の quiescence スキップ | `iosFastInput` は既定 false・プロファイル指定も無い = **元から素通し**。実験する前にコードで否定 |
+
+### 測定の教訓(この件で実際に払った)
+
+- **長い実行の前に計測器が鳴ることを単発で確かめる** —— stderr が捕まらない計測のまま12周
+  (約25分)回して情報ゼロ。出力先をファイルにして解決した
+- **実行中の E2E を中断しない** —— 中断すると次の周のデバイス状態が汚れる。汚れた1周目の
+  3/10 を陽性対照と誤認し、A/B の判定を1回無効にした
+- **変更が本当にその経路を通るかを、既存テストが落ちることで確かめる** —— press 化では
+  `testDomInteropReadsFromPrimaryAndTapsByCoordinate` が落ちたので経路が確認できた。
+  暖機修正ではこれをやらず、no-op を50分測った
+
+### 手つかずの隣接品
+
+`domInteropPoint` は **DOM 矩形の素の中心**を返すが、DOM 側の可視判定 JS は
+**見えている部分の中心**で `elementFromPoint` を撃つ(`WebViewDOMSnapshot.swift` の `hittable`)。
+**判定と実射で基準がずれている**。今回の失敗は対象が画面内に完全に収まっており座標も一致して
+いたので**この件の原因ではない**が、部分的に隠れた要素では実害が出うる。
