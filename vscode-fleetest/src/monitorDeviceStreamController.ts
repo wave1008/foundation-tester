@@ -392,22 +392,31 @@ export class MonitorDeviceStreamController {
       this.pipelines.delete(deviceId);
       this.streamingDeviceIds.delete(deviceId);
     }
-    this.syncSuppressFrames();
+    this.syncSuppressFramesNow();
   }
 
-  /** 同じ tick に来た変化をまとめて1回だけ送る(起動時は ack が数十本まとめて届き、1本ごとに
-   * 全リストを送ると monitor 側のログが台数ぶん並ぶ)。microtask なので送信は同期の直後 =
-   * 抑止のタイミングは変わらない。 */
-  private suppressSyncScheduled = false;
+  /** 描画 ack は webview から1本ずつ別メッセージで届く(起動時は数十本が連続)ので、送信を
+   * **monitor の polling 間隔1つ分**だけ溜めてまとめる。窓がこの値なのは、抑止がその cadence で
+   * しか効かないため —— 遅らせる代償は台ごとに最大1枚余分にポーリングするだけ。
+   * (microtask ではメッセージを跨いで畳めず、実運用で 31 行/秒のままだった 2026-08-31) */
+  private suppressSyncTimer: ReturnType<typeof setTimeout> | undefined;
   private syncSuppressFrames(): void {
-    if (this.suppressSyncScheduled) {
+    if (this.suppressSyncTimer) {
       return;
     }
-    this.suppressSyncScheduled = true;
-    queueMicrotask(() => {
-      this.suppressSyncScheduled = false;
+    this.suppressSyncTimer = setTimeout(() => {
+      this.suppressSyncTimer = undefined;
       this.flushSuppressFrames();
-    });
+    }, this.deps.getConfig().monitorInterval * 1000);
+  }
+
+  /** 溜めずに今送る(restartAllStreams / 全破棄。空集合の再同期が遅れるとタイル餓死の回帰) */
+  private syncSuppressFramesNow(): void {
+    if (this.suppressSyncTimer) {
+      clearTimeout(this.suppressSyncTimer);
+      this.suppressSyncTimer = undefined;
+    }
+    this.flushSuppressFrames();
   }
 
   /** streamingDeviceIds の現在値を monitor へ suppressFrames として送る(前回と同じなら送らない)。 */

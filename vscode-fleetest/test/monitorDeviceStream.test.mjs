@@ -59,6 +59,7 @@ function makeDeps(binaryPath) {
       streamCodec: "h264",
       liveFps: 12,
       monitorMaxWidth: 960,
+      monitorInterval: 0.05, // まとめ窓(秒)。テストでは短く
     }),
     isPollingMode: () => false,
     post: () => {},
@@ -82,10 +83,10 @@ const iosDevice = {
   detail: "",
 };
 
-/** suppressFrames は microtask でまとめ送りされる(syncSuppressFrames 参照)。観測の前に1回流す */
-const flushMicrotasks = () => new Promise((resolve) => queueMicrotask(resolve));
+/** suppressFrames は monitorInterval(fake では 0.05s)だけ溜めて送る(syncSuppressFrames 参照) */
+const waitSuppressWindow = () => new Promise((resolve) => setTimeout(resolve, 120));
 
-test("同じ tick の描画 ack はまとめて1回の suppressFrames になる", async () => {
+test("窓の中に届いた描画 ack はまとめて1回の suppressFrames になる", async () => {
   const { dir, binaryPath } = makeMockBinaryDir();
   const { deps, controls } = makeDeps(binaryPath);
   const controller = new MonitorDeviceStreamController(deps);
@@ -93,9 +94,10 @@ test("同じ tick の描画 ack はまとめて1回の suppressFrames になる"
     const second = { ...iosDevice, id: "ios:second", name: "second" };
     controller.applyDevices([iosDevice, second]);
     controller.noteStreamRendered(iosDevice.id);
+    await new Promise((resolve) => setTimeout(resolve, 10)); // 別メッセージとして届く形
     controller.noteStreamRendered(second.id);
-    assert.equal(controls.filter((c) => c.cmd === "suppressFrames").length, 0, "同期では送らない");
-    await flushMicrotasks();
+    assert.equal(controls.filter((c) => c.cmd === "suppressFrames").length, 0, "窓の中では送らない");
+    await waitSuppressWindow();
     const sent = controls.filter((c) => c.cmd === "suppressFrames");
     assert.equal(sent.length, 1, "2本の ack で1回");
     assert.deepEqual([...sent[0].devices].sort(), [iosDevice.id, second.id].sort());
@@ -116,10 +118,10 @@ test("restartAllStreams は streamingIds を空にし suppressFrames を空集�
     assert.equal(controller.isStreaming(iosDevice.id), true, "前提: ack 後は streaming 中");
     assert.deepEqual(controller.streamingIds(), [iosDevice.id]);
 
-    await flushMicrotasks();
+    await waitSuppressWindow();
     controls.length = 0; // ここから先の suppressFrames を観測する
     controller.restartAllStreams();
-    await flushMicrotasks();
+    // 溜めずに即時 = 同期で観測できる(空集合の再同期が遅れると餓死の回帰)
 
     assert.deepEqual(controller.streamingIds(), [], "restartAllStreams 後は streamingIds が空");
     const lastSuppress = controls.filter((c) => c.cmd === "suppressFrames").at(-1);
