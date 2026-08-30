@@ -7,7 +7,7 @@ import { type ChildProcessByStdio, spawn } from "node:child_process";
 import type { Readable } from "node:stream";
 import * as vscode from "vscode";
 import { resolveProjectName } from "./config";
-import { t } from "./i18n";
+import { t, type MessageKey } from "./i18n";
 import {
   bulkLifecycleOp,
   createDeviceLifecycleQueueState,
@@ -94,21 +94,50 @@ export function stderrDetailLine(stderr: string, limit = 200): string | null {
   return last.length > limit ? `${last.slice(0, limit)}…` : last;
 }
 
+/** 種別 → 事実の i18n キー(FTBridgeClient の XcodeSigningProblem の raw 値と対。
+ * 片方だけ変えない: Swift 側は testRawValuesAreTheWireContractWithTheExtension が固定)。
+ * ここに無い種別は事実行を出さないだけ(見出しは出る)= CLI が判定を増やしても壊れない。 */
+const SIGNING_FACT_KEYS: Record<string, MessageKey> = {
+  noAccount: "deviceOps.signing.fact.noAccount",
+  noAccountForTeam: "deviceOps.signing.fact.noAccountForTeam",
+  invalidCertificate: "deviceOps.signing.fact.invalidCertificate",
+  deviceNotRegistered: "deviceOps.signing.fact.deviceNotRegistered",
+  certificateNotInProfile: "deviceOps.signing.fact.certificateNotInProfile",
+  deviceNotInProfile: "deviceOps.signing.fact.deviceNotInProfile",
+  keychainLocked: "deviceOps.signing.fact.keychainLocked",
+};
+
+/** ポータル通信(端末登録・プロファイルの取り直し)が要る種別。ssh からはできないので
+ * 「GUI セッションで一度」の行を添える(Swift 側 needsProvisioningUpdate と対)。 */
+const SIGNING_NEEDS_PORTAL = new Set([
+  "deviceNotRegistered", "certificateNotInProfile", "deviceNotInProfile",
+]);
+
 /** CLI が「署名で止まった」と判定したときの案内を、**この拡張の言語で**組み立てる。
  * 判定は CLI(FTBridgeClient の XcodeSigningDiagnosis)、文言はここ
  * (CLAUDE.md「共有するのは判定であって文言ではない」)。
  *
- * **2行だけ**(ユーザー決定 2026-08-29): どこを直すか + 生ログの在り処。**直し方は書かない**
- * —— Xcode も macOS も版ごとに手順が変わり、書いた手順は必ず古くなる。
- * **種別は見ない** —— どれであっても案内は同じで、種別は「署名で止まった」と言い切るために
- * CLI が使う。だから**知らない種別が増えても壊れない**(空なら null = CLI の文言に譲る)。 */
+ * **事実(どれが欠けているか)は言い、手順は書かない**(Xcode も macOS も版ごとに手順が
+ * 変わり、書いた手順は必ず古くなる)。**1つも種別を知らなければ null** —— 見出しだけの案内で
+ * CLI の error(全種別の事実を含む)を上書きすると、版ズレのとき情報を捨てることになる。 */
 export function signingGuidance(
   problems: readonly string[], logPath: string | undefined,
 ): string | null {
   if (problems.length === 0) {
     return null;
   }
+  const facts = problems
+    .map((kind) => SIGNING_FACT_KEYS[kind])
+    .filter((key): key is MessageKey => key !== undefined)
+    .map((key) => t(key));
+  if (facts.length === 0) {
+    return null;
+  }
   const lines = [t("deviceOps.signing.headline")];
+  lines.push(t("deviceOps.signing.detected", { facts: facts.join(" / ") }));
+  if (problems.some((kind) => SIGNING_NEEDS_PORTAL.has(kind))) {
+    lines.push(t("deviceOps.signing.portalNeedsGui"));
+  }
   if (logPath !== undefined) {
     lines.push(t("deviceOps.signing.fullLog", { path: logPath }));
   }
@@ -946,11 +975,14 @@ export class MonitorDeviceOps {
           const message = localized ?? value.error ?? t("deviceOps.deviceOpFailedGeneric", { op });
           logFailure(message);
           // **自分で組み立てた案内は全文をバナーへ**(短く整形済みで数行。読み切れる)。
+          // signingProblems 付きの error も全文 —— CLI が畳んだ数行の案内で、生のビルドログ
+          // ではない(こちらで組み立てられない種別のときの受け皿)。
           // 外から来た生のエラーは1行目だけ —— xcodebuild のビルドログのように数十行あり得て、
           // 全文を流すとパネルが埋まる(実害 2026-08-29)。
           // **OUTPUT へは誘導しない** —— 常時流れていて利用者が読む場所ではない(ユーザー決定)
           this.deps.post({
-            type: "deviceOpFailed", name, message: localized ?? firstLine(message),
+            type: "deviceOpFailed", name,
+            message: localized ?? (value.signingProblems !== undefined ? message : firstLine(message)),
           });
         }
       },

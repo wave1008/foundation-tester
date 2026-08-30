@@ -708,7 +708,10 @@ enum ApiDeviceOperation {
             try await body(spec, platform) { message in emitLog(message) }
             emitFinished(ok: true, error: nil)
         } catch {
-            emitFinished(ok: false, error: error.localizedDescription)
+            // .failure() を通す —— 素の emitFinished だと署名エラーの機械可読フィールド
+            // (signingProblems/signingLogPath)が落ち、登録済みデバイスのタイル起動だけ
+            // 拡張の案内が英語1行に退化する(--udid 直指定の startPhysicalBridge と同じ形にする)
+            ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent.failure(error))
             throw ExitCode(1)
         }
     }

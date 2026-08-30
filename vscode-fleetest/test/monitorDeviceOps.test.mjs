@@ -569,32 +569,48 @@ test("firstLine: 1行だけのエラーはそのまま(既存の見え方を変�
 // **判定は CLI・文言は拡張**(CLAUDE.md「共有するのは判定であって文言ではない」)。CLI の error は
 // 英語(CLI 利用者向け)なので、拡張は機械可読の signingProblems から自分の言語で組み立て直す。
 
-test("signingGuidance: 案内は2行だけ(どこを直すか + 生ログの在り処)", () => {
+test("signingGuidance: 見出し + 事実 + 生ログの在り処(事実は言う・手順は書かない)", () => {
   const guidance = signingGuidance(
     ["noAccount", "invalidCertificate", "deviceNotInProfile"], "/tmp/bridge-build-8123.log");
   const lines = guidance.split("\n");
-  assert.equal(lines.length, 2, guidance);
+  assert.equal(lines.length, 4, guidance);
   assert.match(lines[0], /実機用のブリッジに署名できません/);
-  assert.equal(lines[1], "xcodebuild の全出力: /tmp/bridge-build-8123.log");
-  // **直し方は書かない**(ユーザー決定 2026-08-29)—— Xcode も macOS も版ごとに手順が変わり、
-  // 書いた手順は必ず古くなる。放っておくと案内は手順と説明で膨らむので機械で止める
-  for (const forbidden of ["1.", "▸", "Apple ID", "キーチェーン", "デベロッパモード",
-                           "developmentTeam", "証明書"]) {
-    assert.doesNotMatch(guidance, new RegExp(forbidden.replace(".", "\\.")), forbidden);
+  assert.match(lines[1], /検出: .*サインイン済みのアカウントがありません.*失効または期限切れ/);
+  assert.match(lines[2], /GUI セッションで一度/);
+  assert.equal(lines[3], "xcodebuild の全出力: /tmp/bridge-build-8123.log");
+});
+
+test("signingGuidance: 全種別の文言に Xcode の画面の道順を書かない(版ごとに変わり必ず古くなる)", () => {
+  // **全種別を通す**(3種別だけだと、残りの fact 文言に手順を書いても素通しする)
+  const guidance = signingGuidance(
+    ["noAccount", "noAccountForTeam", "invalidCertificate", "deviceNotRegistered",
+     "certificateNotInProfile", "deviceNotInProfile", "keychainLocked"], undefined);
+  // **includes で見る**(RegExp 化すると括弧を含む禁止語が黙ってグループになり空振りする)
+  for (const forbidden of ["1.", "▸", "Manage Certificates", "設定 →", "アカウント設定を開"]) {
+    assert.equal(guidance.includes(forbidden), false, forbidden);
   }
 });
 
+test("signingGuidance: ポータル通信が要らない種別だけなら GUI 誘導の行は出ない", () => {
+  const guidance = signingGuidance(["noAccountForTeam"], undefined);
+  assert.match(guidance, /developmentTeam/);
+  assert.doesNotMatch(guidance, /GUI セッション/);
+});
+
 test("signingGuidance: 生ログを残せなければ在り処は書かない・空なら CLI の文言に譲る", () => {
-  assert.equal(signingGuidance(["noAccount"], undefined).includes("\n"), false);
+  assert.doesNotMatch(signingGuidance(["noAccount"], undefined), /xcodebuild の全出力/);
   assert.equal(signingGuidance([], undefined), null);
 });
 
-// **種別は見ない** —— どれでも案内は同じなので、CLI が判定を増やしても拡張は壊れない
-test("signingGuidance: 知らない種別でも同じ案内を出す", () => {
-  assert.equal(signingGuidance(["somethingNew"], undefined), signingGuidance(["noAccount"], undefined));
+// 1つも知らない種別なら null = CLI の error(全種別の事実を含む英語の案内)へ譲る。
+// 見出しだけの案内で上書きすると版ズレのとき情報を捨てることになる
+test("signingGuidance: 全部知らない種別なら null(CLI の文言に譲る)", () => {
+  assert.equal(signingGuidance(["somethingNew"], "/tmp/x.log"), null);
+  // 一部でも知っていれば組み立てる(知らないぶんの事実行だけ欠ける)
+  assert.match(signingGuidance(["somethingNew", "noAccount"], undefined), /検出:/);
 });
 
-test("署名の案内は全文がバナーへ渡る(2行)", async () => {
+test("署名の案内は全文がバナーへ渡る", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleetest-deviceops-signing-"));
   const binaryPath = path.join(dir, "fleetest");
   const finished = JSON.stringify({
@@ -614,7 +630,7 @@ test("署名の案内は全文がバナーへ渡る(2行)", async () => {
     assert.ok(failed, "deviceOpFailed が送られる");
     assert.match(failed.message, /実機用のブリッジに署名できません/, "拡張の言語で組み立てる");
     assert.match(failed.message, /xcodebuild の全出力: \/tmp\/bridge-build-8123\.log/, "生ログの在り処");
-    assert.equal(failed.message.split("\n").length, 2, "2行だけ");
+    assert.match(failed.message, /検出: /, "何が欠けているかの事実行");
     assert.doesNotMatch(failed.message, /出力ビュー|OUTPUT/, "OUTPUT へは誘導しない");
     assert.doesNotMatch(failed.message, /English/, "CLI の英語は使わない");
   } finally {

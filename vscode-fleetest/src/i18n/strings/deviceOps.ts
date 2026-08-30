@@ -84,13 +84,52 @@ export const deviceOpsStrings = {
   "deviceOps.deviceOpFailedGeneric": { ja: "device-{op} に失敗しました。", en: "device-{op} failed." },
   // 実機のブリッジが署名で建たないときの案内。**判定は CLI**(FTBridgeClient の
   // XcodeSigningDiagnosis)で、文言はここが持つ(CLAUDE.md「共有するのは判定であって文言ではない」)。
-  // **2行だけ**(ユーザー決定 2026-08-29): どこを直すか + 生ログの在り処。**直し方は書かない**
-  // —— Xcode も macOS も版ごとに手順が変わり、書いた手順は必ず古くなる
+  // **事実(どれが欠けているか)は言い、手順は書かない**(Xcode の画面の道順は版ごとに
+  // 変わり必ず古くなる)
   "deviceOps.signing.headline": {
     ja: "実機用のブリッジに署名できません。その端末が繋がっている Mac の Xcode の署名設定を直してから、"
       + "もう一度ブリッジを起動してください。",
     en: "Cannot code-sign the bridge runner for a physical device. Fix Xcode's signing setup on the Mac"
       + " that the device is connected to, then start the bridge again.",
+  },
+  "deviceOps.signing.detected": {
+    ja: "検出: {facts}。",
+    en: "Detected: {facts}.",
+  },
+  "deviceOps.signing.fact.noAccount": {
+    ja: "Xcode にサインイン済みのアカウントがありません",
+    en: "Xcode has no signed-in account",
+  },
+  "deviceOps.signing.fact.noAccountForTeam": {
+    ja: "設定のチーム(developmentTeam)のアカウントが Xcode にありません",
+    en: "Xcode has no account for the configured team (fleetest's developmentTeam)",
+  },
+  "deviceOps.signing.fact.invalidCertificate": {
+    ja: "開発用証明書が失効または期限切れです",
+    en: "the development certificate is revoked or expired",
+  },
+  "deviceOps.signing.fact.deviceNotRegistered": {
+    ja: "この端末がチームに未登録です",
+    en: "the device is not registered to the team",
+  },
+  "deviceOps.signing.fact.certificateNotInProfile": {
+    ja: "プロビジョニングプロファイルが署名証明書を含んでいません",
+    en: "the provisioning profile does not include the signing certificate",
+  },
+  "deviceOps.signing.fact.deviceNotInProfile": {
+    ja: "プロビジョニングプロファイルがこの端末を含んでいません",
+    en: "the provisioning profile does not include this device",
+  },
+  "deviceOps.signing.fact.keychainLocked": {
+    ja: "ログインキーチェーンに触れません(ssh 越しのビルドで起きます)",
+    en: "the login keychain is not available (typical of builds started over ssh)",
+  },
+  "deviceOps.signing.portalNeedsGui": {
+    ja: "端末登録・プロファイルの取り直しは ssh からはできません。その Mac の GUI セッションで一度"
+      + "ブリッジを起動してください(登録直後の1回目は失敗することがあります。その場合はもう一度)。",
+    en: "Registering a device or refreshing a profile cannot be done over ssh — start the bridge once"
+      + " from a GUI session on that Mac (the first attempt may fail once right after registering;"
+      + " run it again).",
   },
   "deviceOps.signing.fullLog": {
     ja: "xcodebuild の全出力: {path}",
