@@ -97,4 +97,45 @@ final class EmptyWebViewNoteTests: XCTestCase {
                               expected: "送信", timeout: 0, occlusionGuard: false))
         XCTAssertTrue(negative.notes.contains(.webViewNotRendered), "negative text: \(negative.notes)")
     }
+
+    // MARK: - DOM を読めなかった木(dom-unread)
+    //
+    // `delegated-empty` は「委譲したが中身が出なかった」。こちらは **委譲する前に諦めた** ——
+    // in-app が WKWebView の DOM を1つも読めず、ネイティブだけの木を返した形。
+    // `iosInappEngine` の台には委譲先の XCUITest が居ないので、黙ると
+    // **実在する web 要素に対する exist が満了まで落ち続け、理由が1バイトも残らない**
+    // (E2E-CMP の WebView シナリオが並列負荷で約 39% 落ちていた。2026-08-30)
+
+    /// 否定側: 空の木で成立した不在に注記が付く
+    func testAPassingAbsenceOnAnUnreadWebViewCarriesTheNote() async {
+        let driver = EmptyWebViewDriver(path: WebViewPath.domUnread)
+        let outcome = await StepExecutor(driver: driver).execute(notExist("submit"))
+        XCTAssertTrue(outcome.notes.contains(.webViewUnread),
+                      "読めなかった WebView で成立した不在が黙って通った: \(outcome.notes)")
+    }
+
+    /// 逆方向: 読めている経路には付けない(毎回出る注記にしない)
+    func testAReadWebViewCarriesNoUnreadNote() async {
+        for path in [WebViewPath.dom, WebViewPath.domInterop, WebViewPath.delegated] {
+            let outcome = await StepExecutor(driver: EmptyWebViewDriver(path: path))
+                .execute(notExist("submit"))
+            XCTAssertFalse(outcome.notes.contains(.webViewUnread), "\(path): \(outcome.notes)")
+        }
+    }
+
+    /// 肯定側: 落ちたときは**文言でも**読めなかったことを言い、
+    /// ブリッジが出す理由の鍵を名指しする(鍵を改名したらここで落ちる)
+    func testTheFailureMessageExplainsTheUnreadWebView() async {
+        let driver = EmptyWebViewDriver(path: WebViewPath.domUnread)
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "wv_input"),
+                            timeout: 0, occlusionGuard: false)
+        let outcome = await StepExecutor(driver: driver).execute(step)
+        guard case .failed(let reason) = outcome.status else {
+            return XCTFail("見つからないので失敗するはず: \(outcome.status)")
+        }
+        XCTAssertTrue(reason.contains("could not be read"), reason)
+        XCTAssertTrue(reason.contains("webview-eval-timeout"),
+                      "理由の鍵を名指しすること(調査の入口になる): \(reason)")
+        XCTAssertTrue(outcome.notes.contains(.webViewUnread), "\(outcome.notes)")
+    }
 }

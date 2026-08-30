@@ -27,6 +27,33 @@ enum InAppWebViewDOM {
         var note: String?
     }
 
+    /// 読めなかった理由。**nil を返して黙らないため**にある ——
+    /// 呼び出し側(mergeWebViewDOM)は「中身が無い WebView」と「中身を読めなかった WebView」を
+    /// 区別できず、`iosInappEngine` には委譲先の XCUITest が居ないので、黙ると Web の要素が
+    /// 丸ごと消えた木を「これが全部」として返すことになる(E2E-CMP の WebView シナリオが
+    /// 並列負荷で約 39% 落ちていた原因。2026-08-30 に results DB から特定)。
+    /// **rawValue は注記として永続化される** —— 一度出したものは変えない。
+    enum Unread: String, Error {
+        /// ページ読み込み中(`loadHTMLString` の途中を含む)。次の読みで回復しうる
+        case loading = "webview-loading"
+        /// JS の往復が待ち上限に返らなかった。**メインスレッドが詰まっているときに出る**
+        /// (Compose の iOS 描画のように、静止していてもメインを回し続けるホストで起きる)
+        case evaluationTimedOut = "webview-eval-timeout"
+        /// JS は返ったが使える payload ではない(例外・viewport 無し・readyState != complete)
+        case notReadable = "webview-not-readable"
+        /// `FT_WEBVIEW_DOM=off` の殺しスイッチ
+        case disabled = "webview-dom-off"
+    }
+
+    /// メインキューの完了ブロックと呼び出しスレッドの間で結果を渡す箱。
+    /// **待ち上限で先に返った後もブロックは書きに来る**ので、素の var では data race になる
+    private final class Box {
+        private let lock = NSLock()
+        private var value: Result<Captured, Unread> = .failure(.notReadable)
+        func set(_ v: Result<Captured, Unread>) { lock.lock(); value = v; lock.unlock() }
+        func get() -> Result<Captured, Unread> { lock.lock(); defer { lock.unlock() }; return value }
+    }
+
     /// JS 1往復の待ち上限。超えたら DOM 経路をあきらめる(呼び出し側は従来どおり
     /// WebView コンテナだけを返し、ホスト側が XCUITest へ委譲する)。
     /// 実測 3〜10ms なので、これに当たるのは JS 無効・重い同期処理・ページ未生成のとき
@@ -38,20 +65,21 @@ enum InAppWebViewDOM {
         (ProcessInfo.processInfo.environment["FT_WEBVIEW_DOM"] ?? "").lowercased() == "off"
 
     /// 指定 WKWebView の DOM を読み、画面座標の要素列にして返す。
-    /// 失敗(JS 例外・タイムアウト・未ロード)は nil を返す = 従来動作へ落とす。
-    static func capture(webView: WKWebView, screen: CGRect) -> Captured? {
+    /// **読めなかったときは理由を返す**(呼び出し側が申告に載せる)。
+    static func capture(webView: WKWebView, screen: CGRect) -> Result<Captured, Unread> {
         precondition(!Thread.isMainThread,
                      "capture はメインで呼べない(evaluateJavaScript の完了待ちでデッドロックする)")
-        guard !disabled else { return nil }
+        guard !disabled else { return .failure(.disabled) }
 
         let semaphore = DispatchSemaphore(value: 0)
-        var captured: Captured?
+        let box = Box()
 
         DispatchQueue.main.async {
             // 読み込み中は評価しない。`loadHTMLString` の途中は URL が about:blank・DOM が空のまま
             // readyState だけ complete を返すため、ここで弾かないと「中身ゼロの WebView」を
             // 読めたことにしてしまう(ホストは委譲もリトライもしなくなる。2026-07-29 実測)
             guard !webView.isLoading else {
+                box.set(.failure(.loading))
                 semaphore.signal()
                 return
             }
@@ -66,13 +94,19 @@ enum InAppWebViewDOM {
                       // **読み込み中の about:blank でも readyState は complete を返す**(実測)。
                       // ネイティブ側の isLoading と両方見ないと空の DOM を「読めた」と誤判定する
                       payload.readyState == "complete"
-                else { return }
-                captured = build(payload: payload, viewport: viewport, webView: webView, screen: screen)
+                else {
+                    box.set(.failure(.notReadable))
+                    return
+                }
+                box.set(.success(build(payload: payload, viewport: viewport,
+                                       webView: webView, screen: screen)))
             }
         }
 
-        guard semaphore.wait(timeout: .now() + evaluationTimeout) == .success else { return nil }
-        return captured
+        guard semaphore.wait(timeout: .now() + evaluationTimeout) == .success else {
+            return .failure(.evaluationTimedOut)
+        }
+        return box.get()
     }
 
     /// **メインで呼ぶこと**(UIView.convert を使う)。evaluateJavaScript の完了ブロック内から呼ばれる。

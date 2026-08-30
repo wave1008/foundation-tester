@@ -229,6 +229,10 @@ extension StepExecutor {
         if snapshot.webViewPath == WebViewPath.delegatedEmpty {
             noteCodesThisStep.insert(.webViewNotRendered)
         }
+        // **読めなかった木も同じ扱い**。委譲先が居ない台(iosInappEngine)ではこちらしか立たない
+        if snapshot.webViewPath == WebViewPath.domUnread {
+            noteCodesThisStep.insert(.webViewUnread)
+        }
     }
 
     /// **木が画面を代表していない疑いを黙らない**。`noteEmptyWebView` は
@@ -297,6 +301,11 @@ extension StepExecutor {
                 + " ran out, so this tree cannot tell \"the element is not there\" from \"the web"
                 + " content had not been published to accessibility yet\". Give the screen more time"
                 + " (a preceding exist() on a known element waits for it), or check the page loaded.)"
+        case WebViewPath.domUnread:
+            return " (the WebView contents could not be read at all, so this tree holds only the native"
+                + " elements — a web element that is really on screen cannot be found in it. The bridge"
+                + " note names why (webview-loading = still loading, webview-eval-timeout = the main"
+                + " thread did not run the DOM read in time, webview-not-readable, webview-dom-off).)"
         case WebViewPath.dom:
             return " (WebView contents were read through the DOM path. Taps are synthesized onto DOM rects, so "
                 + "a WebView embedded through interop **records success even when nothing responds**. "

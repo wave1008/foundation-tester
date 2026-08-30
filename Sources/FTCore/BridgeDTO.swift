@@ -270,7 +270,7 @@ public enum BridgeAPI {
     /// byte-identical, `XCUIApplication.state` says foreground and /hittable says hittable
     /// (measured on a physical iPhone SE3). A stale runner 404s, and the host stays silent while
     /// taps land on the covering surface → bump.
-    public static let bridgeProtocolVersion = 83
+    public static let bridgeProtocolVersion = 84
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///

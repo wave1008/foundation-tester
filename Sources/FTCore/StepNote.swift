@@ -63,6 +63,10 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// 事実、こちらは**幾何からの疑い**なので判定は変えず注記だけにする ——
     /// 断定すると空のページに対する正当な `notExist` が書けなくなる。
     /// **率が上がったらブラウザの a11y 公開待ちを疑う**(木の構築中に撮ると chrome しか返らない)
+    /// **WebView の中身を読めなかった木で判定した**。読めなかった理由はブリッジの申告
+    /// (snapshot の note)にあり、`webview-not-rendered` が「委譲したが空だった」なのに対し
+    /// こちらは「DOM を読む前に諦めた」。どちらも**不在の証拠にならない木**である点は同じ
+    case webViewUnread = "webview-unread"
     case treeUnderreported = "tree-underreported"
 
     /// 掴んだ要素が**同じ領域の2つ目のコピー**の中に居た(`FTCore.DuplicateRegion`。
@@ -142,6 +146,8 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
         case .staleDuplicateRegion:
             return "the tree listed this element's row twice (a horizontally-scrolled region left"
                 + " both copies behind), so this may have hit the copy that is no longer drawn"
+        case .webViewUnread:
+            return "the WebView contents could not be read, so this tree does not represent the page"
         case .treeUnderreported:
             return "the tree did not appear to cover the whole screen when this was judged, so an"
                 + " absence here is not evidence"

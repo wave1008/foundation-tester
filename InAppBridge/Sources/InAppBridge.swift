@@ -311,6 +311,16 @@ final class FTInAppBridge {
     /// これを見て ref を座標へ解決し XCUITest の実タッチへ回す**(ここでは判定だけ、実際の
     /// ルーティングはブリッジの責務外)。DOM が全く読めなかった WebView は素通し = 従来どおり
     /// コンテナだけが出て、ホストは画面ごと XCUITest へ委譲する。
+    /// 読めなかった WebView の理由を1行にまとめる。**理由の rawValue をそのまま出す**
+    /// (ホストは文言ではなく鍵で仕分ける)。読めなかった WebView が無ければ nil
+    private static func unreadNote(_ unread: [InAppWebViewDOM.Unread]) -> String? {
+        guard !unread.isEmpty else { return nil }
+        var seen: [String] = []
+        for reason in unread where !seen.contains(reason.rawValue) { seen.append(reason.rawValue) }
+        return "the contents of \(unread.count) WebView(s) could not be read"
+            + " (\(seen.joined(separator: ", ")))"
+    }
+
     private func mergeWebViewDOM(into base: InAppSnapshot.Result, max limit: Int)
         -> MergedSnapshot {
         let containers = base.elements.filter { $0.type == "webView" }
@@ -325,22 +335,39 @@ final class FTInAppBridge {
         var domByRef: [Int: InAppWebViewDOM.Captured] = [:]
         var note: String?
         var anyInterop = false
+        // **読めなかった理由を捨てない**。ここで黙ると「中身の無い WebView」と
+        // 「中身を読めなかった WebView」が呼び出し側で区別できなくなる
+        var unread: [InAppWebViewDOM.Unread] = []
         for container in containers {
-            guard let webView = base.nodes[container.ref] as? WKWebView,
-                  let captured = InAppWebViewDOM.capture(webView: webView, screen: screen)
-            else { continue }
-            if WebViewDOM.isInteropHosted(ancestorClassNames: Self.ancestorClassNames(of: webView)) {
-                anyInterop = true
+            guard let webView = base.nodes[container.ref] as? WKWebView else { continue }
+            switch InAppWebViewDOM.capture(webView: webView, screen: screen) {
+            case .failure(let reason):
+                unread.append(reason)
+            case .success(let captured):
+                if WebViewDOM.isInteropHosted(
+                    ancestorClassNames: Self.ancestorClassNames(of: webView)) {
+                    anyInterop = true
+                }
+                domByRef[container.ref] = captured
+                if note == nil { note = captured.note }
             }
-            domByRef[container.ref] = captured
-            if note == nil { note = captured.note }
         }
         guard !domByRef.isEmpty else {
-            // 読めなかった = ホスト側が XCUITest へ委譲する。経路は委譲した側が名乗る
+            // **1つも読めなかった**。XCUITest ブリッジが居れば従来どおりホストが画面ごと
+            // 委譲するが、`iosInappEngine` の台には委譲先が居ない —— そこで黙ると
+            // **Web の要素が丸ごと消えた木を「これが全部」として返す**ことになり、
+            // 実在する要素に対する exist が満了まで落ち続ける(理由は何も残らない)。
+            // だから読めなかったことを経路と注記で名乗る。判定は変えない(委譲の可否はホストが決める)
             return MergedSnapshot(elements: base.elements, frames: base.frames,
-                                  nodes: base.nodes, truncated: base.truncated, note: nil,
-                                  webViewPath: nil, truncatedTiers: base.truncatedTiers,
+                                  nodes: base.nodes, truncated: base.truncated,
+                                  note: Self.unreadNote(unread),
+                                  webViewPath: unread.isEmpty ? nil : "dom-unread",
+                                  truncatedTiers: base.truncatedTiers,
                                   bulkExempt: base.bulkExempt)
+        }
+        // 一部だけ読めた場合も黙らない(読めた WebView の申告に読めなかったぶんを足す)
+        if let partial = Self.unreadNote(unread) {
+            note = note.map { "\($0); \(partial)" } ?? partial
         }
 
         // **先着順で切らない**(2026-08-08 実測: 密グリッドページで装飾セルが残り、送信・入力欄・
