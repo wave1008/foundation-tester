@@ -395,8 +395,23 @@ export class MonitorDeviceStreamController {
     this.syncSuppressFrames();
   }
 
-  /** streamingDeviceIds の現在値を monitor へ suppressFrames として送る(前回と同じなら送らない)。 */
+  /** 同じ tick に来た変化をまとめて1回だけ送る(起動時は ack が数十本まとめて届き、1本ごとに
+   * 全リストを送ると monitor 側のログが台数ぶん並ぶ)。microtask なので送信は同期の直後 =
+   * 抑止のタイミングは変わらない。 */
+  private suppressSyncScheduled = false;
   private syncSuppressFrames(): void {
+    if (this.suppressSyncScheduled) {
+      return;
+    }
+    this.suppressSyncScheduled = true;
+    queueMicrotask(() => {
+      this.suppressSyncScheduled = false;
+      this.flushSuppressFrames();
+    });
+  }
+
+  /** streamingDeviceIds の現在値を monitor へ suppressFrames として送る(前回と同じなら送らない)。 */
+  private flushSuppressFrames(): void {
     const current = this.streamingDeviceIds;
     if (
       this.lastSuppressedIds &&

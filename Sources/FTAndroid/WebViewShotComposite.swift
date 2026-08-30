@@ -94,18 +94,42 @@ enum WebViewShotComposite {
         return png(from: composed)
     }
 
+    /// 補えなかった理由。**3つは別の事実**で、案内が違う(2026-08-31: 全部を「デバッグを有効に
+    /// しろ」に丸めていたので、アプリが起きていないだけの台にも同じ案内が出ていた)
+    enum BlankCaptureReason: Equatable {
+        /// アプリの pid に devtools ソケットが無い = WebView 未生成 か デバッグ無効
+        case noDevtoolsSocket
+        case appNotRunning
+        /// ソケットはあるが `Page.captureScreenshot` が空、または画像が領域の形に合わず貼れなかった
+        case captureFailed
+        /// 端末に訊けなかった / 候補が複数で決められなかった
+        case undetermined(String)
+    }
+
     /// 補えなかったときに出す説明。**黙って空白の画像を返さない**ためのもので、
-    /// 読み手には理由が見えない(画像は真っ白/真っ黒なだけ)。最頻の原因は
-    /// **アプリ側で WebView のデバッグが有効になっていない**こと ——
-    /// `setWebContentsDebuggingEnabled(true)` が無いビルドには devtools のソケットが無く、
-    /// ページを撮る手段が存在しない。**確かめ方まで書く**(原因の切り分けが利用者側にしかできない)
-    static func blankCaptureWarning(hasWebViewNode: Bool) -> String {
+    /// 読み手には理由が見えない(画像は真っ白/真っ黒なだけ)。**serial を名指しし、確かめ方の
+    /// コマンドにも実 serial を埋める**(17 台並ぶモニターで「どの台か」が分からないと確認できない)
+    static func blankCaptureWarning(serial: String, hasWebViewNode: Bool,
+                                    reason: BlankCaptureReason) -> String {
         let area = hasWebViewNode ? "the WebView area" : "most of the screen"
-        return "⚠️ the screen capture is blank across \(area), and the page could not be read"
-            + " back over CDP. On Android the device capture can miss the WebView layer; fleetest"
-            + " fills it in from the page itself, which needs WebView debugging enabled in the app"
-            + " under test (WebView.setWebContentsDebuggingEnabled(true), usually debug builds"
-            + " only). Check with: adb -s <serial> shell cat /proc/net/unix | grep devtools_remote"
+        let head = "⚠️ [\(serial)] the screen capture is blank across \(area), and the page could not"
+            + " be read back over CDP. On Android the device capture can miss the WebView layer;"
+            + " fleetest fills it in from the page itself. "
+        switch reason {
+        case .noDevtoolsSocket:
+            return head + "The app process has no WebView devtools socket — either no WebView is"
+                + " on screen, or WebView debugging is off in the app under test"
+                + " (WebView.setWebContentsDebuggingEnabled(true), usually debug builds only)."
+                + " Check with: adb -s \(serial) shell cat /proc/net/unix | grep devtools_remote"
+        case .appNotRunning:
+            return head + "The app under test is not running on this device, so there is no page"
+                + " to read back (the blank capture is most likely not a WebView at all)."
+        case .captureFailed:
+            return head + "The app's devtools socket is reachable, but Page.captureScreenshot"
+                + " returned no image or one that does not fit the WebView area."
+        case .undetermined(let detail):
+            return head + "Could not determine the app's devtools socket (\(detail))."
+        }
     }
 
     /// 補えなかった警告を**プロセス全体で serial ごとに1回だけ**通す門。

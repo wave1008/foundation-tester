@@ -89,12 +89,27 @@ final class WebViewShotCompositeTests: XCTestCase {
     /// —— 原因(アプリのビルド設定)は利用者側にしか分からないので、そこへ橋渡しできないと
     /// 真っ黒な画像だけが残る
     func testBlankCaptureWarningSaysHowToCheck() {
-        let text = WebViewShotComposite.blankCaptureWarning(hasWebViewNode: true)
+        typealias R = WebViewShotComposite.BlankCaptureReason
+        let text = WebViewShotComposite.blankCaptureWarning(
+            serial: "emulator-5554", hasWebViewNode: true, reason: .noDevtoolsSocket)
+        XCTAssertTrue(text.contains("[emulator-5554]"), "どの台か分からない: \(text)")
         XCTAssertTrue(text.contains("the WebView area"), text)
         XCTAssertTrue(text.contains("setWebContentsDebuggingEnabled"), "原因の当たりが無い: \(text)")
-        XCTAssertTrue(text.contains("devtools_remote"), "確かめ方が無い: \(text)")
-        XCTAssertTrue(WebViewShotComposite.blankCaptureWarning(hasWebViewNode: false)
+        XCTAssertTrue(text.contains("adb -s emulator-5554 shell"), "確かめ方に実 serial が無い: \(text)")
+        XCTAssertTrue(WebViewShotComposite.blankCaptureWarning(
+            serial: "x", hasWebViewNode: false, reason: .noDevtoolsSocket)
             .contains("most of the screen"), "木が無い場合の言い分けが無い")
+        // 理由ごとに案内が違う(アプリが起きていないだけの台にデバッグ設定を案内しない)
+        let notRunning = WebViewShotComposite.blankCaptureWarning(
+            serial: "x", hasWebViewNode: false, reason: .appNotRunning)
+        XCTAssertTrue(notRunning.contains("not running"), notRunning)
+        XCTAssertFalse(notRunning.contains("setWebContentsDebuggingEnabled"), notRunning)
+        let failed = WebViewShotComposite.blankCaptureWarning(
+            serial: "x", hasWebViewNode: false, reason: .captureFailed)
+        XCTAssertTrue(failed.contains("captureScreenshot"), failed)
+        let undetermined = WebViewShotComposite.blankCaptureWarning(
+            serial: "x", hasWebViewNode: false, reason: .undetermined("why"))
+        XCTAssertTrue(undetermined.contains("(why)"), undetermined)
     }
 
     /// 合成そのもの: 出力は base と同じ大きさで、**帯の位置の色が overlay のものに変わる**

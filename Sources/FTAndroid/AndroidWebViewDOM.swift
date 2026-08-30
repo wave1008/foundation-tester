@@ -150,6 +150,15 @@ public enum AndroidWebViewDOM {
         case unavailable
     }
 
+    /// 端末に問い合わせて `resolveAppSocket` の結果を返す(**失敗経路の説明用**。撮る経路は
+    /// `withRankedTabs` が同じ判定を内側で行い、結果を nil に畳むのでここで1回だけ引き直す)
+    static func appSocketResolution(packageID: String,
+                                    adb: (_ args: [String]) throws -> String) -> AppSocketResolution {
+        guard let command = probeCommand(packageID: packageID),
+              let output = try? adb(command) else { return .unavailable }
+        return resolveAppSocket(probeOutput: output)
+    }
+
     /// `probeCommand` の出力 → ソケット名(純粋)。
     ///
     /// 一覧には**他アプリの `webview_devtools_remote_<別 pid>` も Chrome の

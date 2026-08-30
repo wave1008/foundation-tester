@@ -162,6 +162,10 @@ final class RemoteMonitorFanout: @unchecked Sendable {
             log("[monitor] ❌ cannot start the monitor for \(machine): \(error.localizedDescription)")
             return
         }
+        // 宛先はここで1回だけ言う(`remote exec` は端末でないと黙る)
+        let target = (try? RemoteHostResolver.resolve(rawHost: machine, remoteDirOverride: nil))
+            .map { $0.hostSpec.sshTarget } ?? "?"
+        log("[monitor] Monitoring \(machine) via \(target)")
         lock.lock()
         children[machine] = process
         lock.unlock()

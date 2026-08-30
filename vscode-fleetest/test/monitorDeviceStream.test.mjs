@@ -82,7 +82,30 @@ const iosDevice = {
   detail: "",
 };
 
-test("restartAllStreams は streamingIds を空にし suppressFrames を空集合で再同期する", () => {
+/** suppressFrames は microtask でまとめ送りされる(syncSuppressFrames 参照)。観測の前に1回流す */
+const flushMicrotasks = () => new Promise((resolve) => queueMicrotask(resolve));
+
+test("同じ tick の描画 ack はまとめて1回の suppressFrames になる", async () => {
+  const { dir, binaryPath } = makeMockBinaryDir();
+  const { deps, controls } = makeDeps(binaryPath);
+  const controller = new MonitorDeviceStreamController(deps);
+  try {
+    const second = { ...iosDevice, id: "ios:second", name: "second" };
+    controller.applyDevices([iosDevice, second]);
+    controller.noteStreamRendered(iosDevice.id);
+    controller.noteStreamRendered(second.id);
+    assert.equal(controls.filter((c) => c.cmd === "suppressFrames").length, 0, "同期では送らない");
+    await flushMicrotasks();
+    const sent = controls.filter((c) => c.cmd === "suppressFrames");
+    assert.equal(sent.length, 1, "2本の ack で1回");
+    assert.deepEqual([...sent[0].devices].sort(), [iosDevice.id, second.id].sort());
+  } finally {
+    controller.setVisible(false);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("restartAllStreams は streamingIds を空にし suppressFrames を空集合で再同期する", async () => {
   const { dir, binaryPath } = makeMockBinaryDir();
   const { deps, controls } = makeDeps(binaryPath);
   const controller = new MonitorDeviceStreamController(deps);
@@ -93,8 +116,10 @@ test("restartAllStreams は streamingIds を空にし suppressFrames を空集�
     assert.equal(controller.isStreaming(iosDevice.id), true, "前提: ack 後は streaming 中");
     assert.deepEqual(controller.streamingIds(), [iosDevice.id]);
 
+    await flushMicrotasks();
     controls.length = 0; // ここから先の suppressFrames を観測する
     controller.restartAllStreams();
+    await flushMicrotasks();
 
     assert.deepEqual(controller.streamingIds(), [], "restartAllStreams 後は streamingIds が空");
     const lastSuppress = controls.filter((c) => c.cmd === "suppressFrames").at(-1);

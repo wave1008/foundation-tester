@@ -859,7 +859,7 @@ public final class AndroidDriver: AppDriver {
               let rect = WebViewShotComposite.pasteRect(
                 in: nodeRect ?? band, pageWidth: overlay.width, pageHeight: overlay.height,
                 known: nodeRect != nil) else {
-            warnBlankCaptureOnce(hasWebViewNode: nodeRect != nil)
+            warnBlankCaptureOnce(package: package, hasWebViewNode: nodeRect != nil)
             return nil
         }
         return WebViewShotComposite.composite(base: base, overlay: overlay, rect: rect)
@@ -868,9 +868,20 @@ public final class AndroidDriver: AppDriver {
     /// 補えなかったことを serial ごとにプロセスで1回だけ知らせる(毎枚出すと騒がしい)。
     /// 文言と切り分け方は WebViewShotComposite.blankCaptureWarning、
     /// once の置き場が static である理由は shouldWarnBlankCapture
-    private func warnBlankCaptureOnce(hasWebViewNode: Bool) {
-        guard WebViewShotComposite.shouldWarnBlankCapture(serial: serial ?? "default") else { return }
-        let text = WebViewShotComposite.blankCaptureWarning(hasWebViewNode: hasWebViewNode)
+    private func warnBlankCaptureOnce(package: String, hasWebViewNode: Bool) {
+        let serial = serial ?? "default"
+        guard WebViewShotComposite.shouldWarnBlankCapture(serial: serial) else { return }
+        // 理由の引き直しは once の内側 = serial ごとに adb 1往復だけ
+        let reason: WebViewShotComposite.BlankCaptureReason
+        switch AndroidWebViewDOM.appSocketResolution(packageID: package, adb: { try self.adb($0).output }) {
+        case .socket: reason = .captureFailed
+        case .noWebView: reason = .noDevtoolsSocket
+        case .appNotRunning: reason = .appNotRunning
+        case .ambiguous(let names): reason = .undetermined("several candidate sockets: \(names.joined(separator: ", "))")
+        case .unavailable: reason = .undetermined("adb could not list the sockets")
+        }
+        let text = WebViewShotComposite.blankCaptureWarning(
+            serial: serial, hasWebViewNode: hasWebViewNode, reason: reason)
         FileHandle.standardError.write(Data((text + "\n").utf8))
     }
 

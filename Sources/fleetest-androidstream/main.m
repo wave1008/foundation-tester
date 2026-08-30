@@ -406,8 +406,8 @@ int main(int argc, char **argv) {
     NSString *timeLimit = ftScreenRecordTimeLimit(adbPath, serial);
     // 帯なしの端末では nil = --size を渡さない(既定挙動のまま。ftLetterboxFreeSize のコメント参照)
     NSString *contentSize = ftLetterboxFreeSize(adbPath, serial);
-    fprintf(stderr, "[androidstream] screenrecord --time-limit %s%s%s\n", timeLimit.UTF8String,
-            contentSize ? " --size " : "", contentSize ? contentSize.UTF8String : "");
+    fprintf(stderr, "[androidstream] %s: screenrecord --time-limit %s%s%s\n", serial.UTF8String,
+            timeLimit.UTF8String, contentSize ? " --size " : "", contentSize ? contentSize.UTF8String : "");
     NSMutableArray<NSString *> *recordArgs = [@[@"-s", serial, @"exec-out", @"screenrecord",
                                                 @"--output-format=h264", @"--time-limit", timeLimit] mutableCopy];
     if (contentSize) { [recordArgs addObjectsFromArray:@[@"--size", contentSize]]; }

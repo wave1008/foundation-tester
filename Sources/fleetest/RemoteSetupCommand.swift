@@ -524,7 +524,9 @@ extension RemoteCommand {
             }
             let resolved = try RemoteHostResolver.resolve(rawHost: host, remoteDirOverride: remoteDir)
             let hostSpec = resolved.hostSpec
-            resolved.announce(toStderr: true)
+            // 端末で打ったときだけ。拡張は配信・メトリクス・fan-out で1機に十数本を立てるので、
+            // 毎本同じ行が並ぶ(fan-out の親が機械と宛先を1行出す = RemoteMonitorFanout)
+            if isatty(STDERR_FILENO) != 0 { resolved.announce(toStderr: true) }
 
             let homeResult = try Shell.run(setupSSHBase + [hostSpec.sshTarget, "echo $HOME"])
             guard homeResult.status == 0 else {
