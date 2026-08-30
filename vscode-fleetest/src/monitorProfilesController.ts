@@ -38,6 +38,7 @@ import {
 } from "./monitorModel";
 import { type HookScaffoldResult, resolveWorkspaceDir, writeHookScriptTemplates } from "./runHookScaffold";
 import type { MonitorPanelDeps } from "./monitorPanel";
+import { MONITOR_RESTART_DEBOUNCE_MS, monitorRestartNeeded, type ScopeFileKind } from "./monitorScopeFiles";
 
 type MachineDeviceUpdateMessage = Extract<MonitorFromWebviewMessage, { type: "machineDeviceUpdate" }>;
 type MachineDevicesSyncMessage = Extract<MonitorFromWebviewMessage, { type: "machineDevicesSync" }>;
@@ -68,6 +69,8 @@ export class MonitorProfilesController {
    * 変更は編集対象と同名であれば appProfileFileChanged を送り外部編集を反映させる。
    */
   private readonly appsFileWatcher: vscode.FileSystemWatcher;
+  /** 監視対象ファイルの変化をまとめてモニターを再起動するタイマー(monitorScopeFiles.ts)。 */
+  private monitorRestartTimer: ReturnType<typeof setTimeout> | undefined;
   /**
    * 名前入力モーダル(#name-input-overlay)の応答待ち状態。promptName() 呼び出しごとに id を払い出し、
    * webview からの nameInputConfirm/Cancel の id と突き合わせて resolve する。
@@ -81,16 +84,30 @@ export class MonitorProfilesController {
       new vscode.RelativePattern(deps.workspaceRoot, "TestProjects/*/profiles/runs/*.json"),
     );
     this.profileFileWatcher.onDidCreate(() => this.postProfileInfo());
-    this.profileFileWatcher.onDidDelete(() => this.postProfileInfo());
+    this.profileFileWatcher.onDidDelete((uri) => {
+      this.postProfileInfo();
+      this.scheduleMonitorRestart("run", uri);
+    });
     this.profileFileWatcher.onDidChange((uri) => {
       this.deps.post({ type: "runProfileFileChanged", name: path.basename(uri.fsPath, ".json") });
+      this.scheduleMonitorRestart("run", uri);
     });
     this.machineFileWatcher = vscode.workspace.createFileSystemWatcher(
       new vscode.RelativePattern(deps.workspaceRoot, "TestProjects/*/profiles/machines/*.json"),
     );
-    this.machineFileWatcher.onDidCreate(() => this.postMachineProfileInfo());
-    this.machineFileWatcher.onDidDelete(() => this.postMachineProfileInfo());
-    this.machineFileWatcher.onDidChange(() => this.postMachineProfileInfo());
+    // **マシンプロファイルの変化はモニターの再起動まで行う**。`api monitor` は台帳を起動時に
+    // 1回しか読まないので、外した台は再起動するまでタイルに残る(2026-08-31 指示:
+    // フリートに出す台はマシンプロファイルに登録されているものだけ)
+    for (const event of [
+      this.machineFileWatcher.onDidCreate,
+      this.machineFileWatcher.onDidDelete,
+      this.machineFileWatcher.onDidChange,
+    ]) {
+      event((uri) => {
+        this.postMachineProfileInfo();
+        this.scheduleMonitorRestart("machine", uri);
+      });
+    }
     this.appsFileWatcher = vscode.workspace.createFileSystemWatcher(
       new vscode.RelativePattern(deps.workspaceRoot, "TestProjects/*/profiles/apps/*.json"),
     );
@@ -110,8 +127,26 @@ export class MonitorProfilesController {
     }
   }
 
+  private scheduleMonitorRestart(kind: ScopeFileKind, uri: vscode.Uri): void {
+    if (!monitorRestartNeeded(kind, path.basename(uri.fsPath, ".json"), this.deps.getConfig().profile)) {
+      return;
+    }
+    if (this.monitorRestartTimer) {
+      clearTimeout(this.monitorRestartTimer);
+    }
+    this.monitorRestartTimer = setTimeout(() => {
+      this.monitorRestartTimer = undefined;
+      this.deps.outputChannel.appendLine(t("profiles.log.monitorRestartForScopeFiles"));
+      this.deps.restartMonitor();
+    }, MONITOR_RESTART_DEBOUNCE_MS);
+  }
+
   /** dispose() から呼ばれる: プロファイル関連のファイルウォッチャーを破棄する。 */
   disposeWatchers(): void {
+    if (this.monitorRestartTimer) {
+      clearTimeout(this.monitorRestartTimer);
+      this.monitorRestartTimer = undefined;
+    }
     this.profileFileWatcher.dispose();
     this.machineFileWatcher.dispose();
     this.appsFileWatcher.dispose();

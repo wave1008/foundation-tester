@@ -96,6 +96,10 @@ export interface MonitorPanelDeps {
   isPollingMode(): boolean;
   /** MonitorProfilesController.postMachineProfileInfoへの委譲。MonitorDeviceOps.runCreateDevice成功時に呼ぶ。 */
   notifyMachineProfilesChanged(): void;
+  /** MonitorProcessManager.restartMonitorProcessへの委譲(パネル未生成時は no-op)。
+   * MonitorProfilesController が監視対象ファイル(machines/*.json・選択中の runs/<profile>.json)の
+   * 変化で呼ぶ。 */
+  restartMonitor(): void;
   /** MonitorProfilesController.unregisterDeletedDeviceへの委譲。実体を消したあと、その実体を
    * 参照しているマシンプロファイルから登録も外す(delete-device 成功時)。書き戻せた名前を返す。 */
   unregisterDeletedDevice(
@@ -220,6 +224,11 @@ export class MonitorPanelController implements vscode.Disposable {
       isPanelActive: () => this.panel !== undefined,
       writeMonitorControl: (cmd) => this.processManager.writeMonitorControl(cmd),
       notifyMachineProfilesChanged: () => this.profiles.postMachineProfileInfo(),
+      restartMonitor: () => {
+        if (this.panel) {
+          this.processManager.restartMonitorProcess();
+        }
+      },
       unregisterDeletedDevice: (name, host) => this.profiles.unregisterDeletedDevice(name, host),
       openGeneratedDocument: (filePath) => this.openGeneratedDocument(filePath),
       isDeviceStreaming: (deviceId) => this.deviceStream.isStreaming(deviceId),

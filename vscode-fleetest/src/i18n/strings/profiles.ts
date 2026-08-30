@@ -364,6 +364,10 @@ export const profilesStrings = {
     ja: "[fleetest] マシンプロファイル「{machine}」のデバイス「{device}」を更新しました。",
     en: "[fleetest] Updated device \"{device}\" in machine profile \"{machine}\".",
   },
+  "profiles.log.monitorRestartForScopeFiles": {
+    ja: "マシンプロファイルまたは選択中の実行プロファイルが変わったため、モニターを再起動します",
+    en: "Restarting the monitor because a machine profile or the selected run profile changed",
+  },
   "profiles.log.machineProfileDevicesSyncWriteFailed": {
     ja: "[fleetest] マシンプロファイル「{machine}」へのデバイス同期の書き込みに失敗しました: {error}",
     en: "[fleetest] Failed to write device sync to machine profile \"{machine}\": {error}",
