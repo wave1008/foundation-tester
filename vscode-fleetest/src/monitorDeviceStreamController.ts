@@ -151,6 +151,12 @@ export class MonitorDeviceStreamController {
         if (!enabled) {
           continue;
         }
+        // 未登録デバイスは張らない —— 向こうの device-stream は登録簿の名前でしか宛先を
+        // 解決できず(ApiDeviceStreamCommand.swift)、必ず exit 64 → 約30秒周期の再試行ループになる。
+        // 典型は WiFi ペアリングだけで見えている別機の実機(wired 不在だと mergedDevices も隠さない)
+        if (device.registered === false) {
+          continue;
+        }
         qualifying.set(device.id, {
           platform: device.platform,
           machine: device.machine,

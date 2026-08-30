@@ -293,6 +293,27 @@ test("プラットフォームの配信を切っていればリモートも起�
   }
 });
 
+test("未登録のリモートデバイスは張らない(向こうの device-stream が名前を解決できない)", async () => {
+  // 典型: WiFi ペアリングだけで別の機械から見えている実機。向こうの monitor は
+  // 「未登録だが connected」で報告するが、device-stream は登録簿の名前でしか宛先を
+  // 解決できず(ApiDeviceStreamCommand.swift)、必ず exit 64 → 約30秒周期の再試行ループになる
+  const { dir, binaryPath } = makeMockBinaryDir(["fleetest"]);
+  const { deps } = makeDeps(binaryPath);
+  deps.getConfig = () => ({
+    binaryPath, iosStreamEnabled: true, androidStreamEnabled: false,
+    streamCodec: "h264", liveFps: 12, monitorMaxWidth: 960, project: "demo",
+  });
+  const controller = new MonitorDeviceStreamController(deps);
+  try {
+    controller.applyDevices([{ ...remoteDevice, kind: "physical", registered: false }]);
+    assert.equal(await waitForArgv(dir, "fleetest", 300), undefined,
+      "登録簿に無い名前で device-stream を張りに行ってはいけない");
+  } finally {
+    controller.setVisible(false);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("リモートの実機は設定に関わらず MJPEG で張る — h264 を要求すると desync する", async () => {
   // 向こう(ApiDeviceStreamCommand)は実機を devicepoll = MJPEG(v1)固定に落とす。
   // こちらが h264(v2)のつもりで読むと、v1 レコードを v2 のレイアウトで解釈して
