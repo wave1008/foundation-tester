@@ -122,4 +122,15 @@ final class WebViewShotCompositeTests: XCTestCase {
         XCTAssertNil(WebViewShotComposite.largestUniformBand(composed),
                      "貼った後も単色の帯が残っている(貼れていない)")
     }
+
+    /// 警告の once は serial ごと・プロセス全体(ドライバのインスタンスを跨ぐ)。
+    /// serial は同一プロセスの他テストと衝突しないよう一意にする
+    func testBlankCaptureWarningFiresOncePerSerialAcrossCalls() {
+        let a = "test-serial-\(UUID().uuidString)"
+        let b = "test-serial-\(UUID().uuidString)"
+        XCTAssertTrue(WebViewShotComposite.shouldWarnBlankCapture(serial: a))
+        XCTAssertFalse(WebViewShotComposite.shouldWarnBlankCapture(serial: a))
+        XCTAssertFalse(WebViewShotComposite.shouldWarnBlankCapture(serial: a))
+        XCTAssertTrue(WebViewShotComposite.shouldWarnBlankCapture(serial: b), "別の台は別に1回言う")
+    }
 }

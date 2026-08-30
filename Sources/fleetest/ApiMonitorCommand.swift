@@ -1151,10 +1151,16 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                     self.logStderr("[monitor] Polling resumed")
                 case "suppressFrames":
                     let ids = Set(command.devices ?? [])
-                    control.setSuppressedFrames(ids)
-                    self.logStderr(
-                        "[monitor] Updated the frame-suppression targets" +
-                        " (\(ids.count) device(s): \(ids.sorted().joined(separator: ", ")))")
+                    let previous = control.setSuppressedFrames(ids)
+                    // 拡張は配信が1本張られるたびに全リストを送る(30 台なら 30 回)ので、
+                    // 全リストを毎回出すと1秒で数千文字になる。出すのは差分だけ
+                    let added = ids.subtracting(previous).sorted()
+                    let removed = previous.subtracting(ids).sorted()
+                    var delta: [String] = []
+                    if !added.isEmpty { delta.append("+ " + added.joined(separator: ", ")) }
+                    if !removed.isEmpty { delta.append("- " + removed.joined(separator: ", ")) }
+                    self.logStderr("[monitor] Frame suppression: \(ids.count) device(s)"
+                                   + (delta.isEmpty ? " (unchanged)" : " " + delta.joined(separator: "; ")))
                 default:
                     break
                 }
@@ -1417,10 +1423,13 @@ private final class MonitorControl: @unchecked Sendable {
     }
 
     /// フレーム抑制対象デバイス集合を全置換する
-    func setSuppressedFrames(_ ids: Set<String>) {
-        lock.lock()
+    /// 戻り値は差し替える前の集合(呼び手が差分をログする)
+    @discardableResult
+    func setSuppressedFrames(_ ids: Set<String>) -> Set<String> {
+        lock.lock(); defer { lock.unlock() }
+        let previous = suppressedFrames
         suppressedFrames = ids
-        lock.unlock()
+        return previous
     }
 
     func isFrameSuppressed(_ id: String) -> Bool {

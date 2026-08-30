@@ -108,6 +108,18 @@ enum WebViewShotComposite {
             + " only). Check with: adb -s <serial> shell cat /proc/net/unix | grep devtools_remote"
     }
 
+    /// 補えなかった警告を**プロセス全体で serial ごとに1回だけ**通す門。
+    /// AndroidDriver のインスタンス変数にしてはいけない —— モニターは1枚撮るごとに
+    /// `AndroidDriver(serial:)` を作り直すので、インスタンスに閉じた once は毎フレーム鳴る
+    /// (2026-08-31 に手元と M1Max の両方で毎秒出続けた)。NSLock は並列の撮影が同時に来るため
+    static func shouldWarnBlankCapture(serial: String) -> Bool {
+        blankCaptureWarnLock.lock()
+        defer { blankCaptureWarnLock.unlock() }
+        return blankCaptureWarnedSerials.insert(serial).inserted
+    }
+    private static let blankCaptureWarnLock = NSLock()
+    private static var blankCaptureWarnedSerials = Set<String>()
+
     static func cgImage(fromPNG data: Data) -> CGImage? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
         return CGImageSourceCreateImageAtIndex(source, 0, nil)

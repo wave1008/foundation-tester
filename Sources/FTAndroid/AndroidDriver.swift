@@ -31,8 +31,6 @@ public final class AndroidDriver: AppDriver {
     /// 大きいため毎 snapshot では叩かず、StepExecutor が keyboardShown/keyboardNotShown アサートの
     /// 直前に立てたときだけ払う(snapshot() 側で読み捨てる)
     private var captureKeyboardOnNextSnapshot = false
-    /// 空白キャプチャを補えなかったことの警告を出したか(1プロセス1回)
-    private var warnedAboutBlankCapture = false
     /// CDP の端送りが使えなかったアプリ(ネイティブ画面で毎回ソケットを探さないための記憶)
     private var webViewEdgeJumpUnavailableFor: String?
 
@@ -867,11 +865,11 @@ public final class AndroidDriver: AppDriver {
         return WebViewShotComposite.composite(base: base, overlay: overlay, rect: rect)
     }
 
-    /// 補えなかったことを1プロセスに1回だけ知らせる(毎枚出すと騒がしい)。
-    /// 文言と切り分け方は WebViewShotComposite.blankCaptureWarning
+    /// 補えなかったことを serial ごとにプロセスで1回だけ知らせる(毎枚出すと騒がしい)。
+    /// 文言と切り分け方は WebViewShotComposite.blankCaptureWarning、
+    /// once の置き場が static である理由は shouldWarnBlankCapture
     private func warnBlankCaptureOnce(hasWebViewNode: Bool) {
-        guard !warnedAboutBlankCapture else { return }
-        warnedAboutBlankCapture = true
+        guard WebViewShotComposite.shouldWarnBlankCapture(serial: serial ?? "default") else { return }
         let text = WebViewShotComposite.blankCaptureWarning(hasWebViewNode: hasWebViewNode)
         FileHandle.standardError.write(Data((text + "\n").utf8))
     }
