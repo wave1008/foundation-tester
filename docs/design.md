@@ -3451,6 +3451,18 @@ Android 実機はグローバル設定が**永続的に**書き換わるので�
 (`Runner/FleetestRunnerUITests/FastInput.swift`。`fast` は in-app ブリッジにも送られるが
 あちらは解釈しない = quiescence の概念が無いため)。
 
+`iosPreActionWarmup`(**既定 true**)は **interop WebView 画面(domInterop モード)の委譲イベント
+直前に、ランナーへ木を1回読ませてから撃つ**(`WebViewDelegatingDriver.warmDelegatedForEvent`)。
+attach したままの XCUITest セッションは、ランナーに問い合わせないまま数秒置いた直後の
+座標イベントを **200 を返しつつ届け損なう**(実測 約13%。ページは pointerdown すら見ない。
+機構は非公開で特定できておらず、観測に立脚した防御。A/B と経緯は docs/verification.md
+§interop WebView)。時間閾値にしないのは、短いギャップでも確率的に落ちる実測があり安全な
+境界を引けないため。false は `FT_PRE_ACTION_WARMUP=0` として注入される(ProfileRunner /
+ApiRunCommand の2箇所)。**効くのは hybrid の domInterop 経路だけ**(委譲モード・xcuitest
+エンジンは毎ステップ ランナーが働くので元から出ない)。コストは該当画面のイベント1回につき
+約 +0.4 秒で、スイート全体では並列に隠れて差が出ない(25周比較 88.9s vs 90.0s)。
+UI は実行プロファイル設定の iOS セクション(inapp エンジン ON のときだけ表示)。
+
 `record`(既定 false)を true にすると、各ワーカー(デバイス)で run 全体を録画し続けつつ
 (iOS: `simctl io recordVideo` の .mov / Android: `screenrecord` の 180 秒セグメント群)、
 ファイナライズ時に**テスト関数(シナリオ)ごとに1本の mp4**へ壁時計区間で切り出して

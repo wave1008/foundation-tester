@@ -296,8 +296,8 @@ final class WebViewDelegatingDriverTests: XCTestCase {
 
         XCTAssertEqual(result.elements.count, 2, "in-app の DOM snapshot が返るはず")
         // 中心 = (20+60/2, 40+20/2)
-        XCTAssertEqual(delegated.calls, ["snapshot", "tap(50.0,50.0)"],
-                       "暖機の snapshot 1回のあと、座標で渡すこと(ref を渡さない)")
+        XCTAssertEqual(delegated.calls, ["snapshot", "snapshot", "tap(50.0,50.0)"],
+                       "入場時の暖機 + イベント直前の暖機のあと、座標で渡すこと(ref を渡さない)")
         XCTAssertEqual(primary.calls, ["snapshot"], "委譲 snapshot を撮らない")
     }
 
@@ -312,7 +312,7 @@ final class WebViewDelegatingDriverTests: XCTestCase {
         _ = try await driver.snapshot()
         try await driver.press(ref: 2, duration: 1)
 
-        XCTAssertEqual(delegated.calls, ["snapshot", "press(5.0,5.0)"])
+        XCTAssertEqual(delegated.calls, ["snapshot", "snapshot", "press(5.0,5.0)"])
     }
 
     /// type は「座標タップでフォーカス → ref なしで入力」の順(DOM への値代入は不採用)
@@ -326,7 +326,7 @@ final class WebViewDelegatingDriverTests: XCTestCase {
         _ = try await driver.snapshot()
         try await driver.type(ref: 2, text: "hello")
 
-        XCTAssertEqual(delegated.calls, ["snapshot", "tap(20.0,10.0)", "type(focused)"])
+        XCTAssertEqual(delegated.calls, ["snapshot", "snapshot", "tap(20.0,10.0)", "type(focused)"])
     }
 
     /// 直近 snapshot に無い ref は座標に解決できない。**黙って別経路へ流さない**
@@ -377,7 +377,7 @@ final class WebViewDelegatingDriverTests: XCTestCase {
         try await driver.tap(ref: 2)
 
         // 中心 = (15+41/2, 8+23/2) = (35.5, 19.5)
-        XCTAssertEqual(delegated.calls, ["snapshot", "tap(35.5,19.5)"])
+        XCTAssertEqual(delegated.calls, ["snapshot", "snapshot", "tap(35.5,19.5)"])
     }
 
     /// "dom"(interop でない)は従来どおり primary 一本のまま。"dom-interop" とだけ比較する文字列一致で
@@ -396,8 +396,12 @@ final class WebViewDelegatingDriverTests: XCTestCase {
         XCTAssertEqual(primary.calls, ["snapshot", "tap(2)"])
     }
 
-    /// **暖機は画面ごとに1回だけ**。毎 snapshot 撃つと委譲と同じコストに戻り、この機能の意味が消える
-    func testDomInteropWarmsDelegatedOnlyOncePerScreen() async throws {
+    /// **読み(snapshot)ではランナーを触らない**。domInterop の読みは in-app 3ms 級で、
+    /// ここで毎回ランナーへ問い合わせると委譲と同じコストに戻り、この機能の意味が消える。
+    /// ランナーを触ってよいのは入場時の暖機と**委譲イベントの直前**だけ
+    /// (イベント直前の暖機は attach セッションの静かなイベント欠落を防ぐ実測起点の防御。
+    /// A/B は docs/verification.md §interop WebView)
+    func testDomInteropWarmsDelegatedOnlyOnEntryAndBeforeEvents() async throws {
         let dom = snapshot([element(1, "WebView"), element(2, "Link", web: true)], webViewPath: "dom-interop")
         let primary = FakeDriver(snapshots: [dom])
         let delegated = FakeDriver(snapshots: [snapshot([])])
@@ -406,10 +410,32 @@ final class WebViewDelegatingDriverTests: XCTestCase {
         _ = try await driver.snapshot()
         _ = try await driver.snapshot()
         _ = try await driver.snapshot()
-        try await driver.tap(ref: 2)
 
         XCTAssertEqual(delegated.calls.filter { $0 == "snapshot" }.count, 1,
-                       "暖機は入場時の1回だけ(毎回撮ると 3ms → 378ms へ逆戻り)")
+                       "読みだけならランナーは入場時の1回だけ: \(delegated.calls)")
+
+        try await driver.tap(ref: 2)
+        try await driver.tap(ref: 2)
+
+        XCTAssertEqual(delegated.calls, ["snapshot", "snapshot", "tap(50.0,50.0)",
+                                         "snapshot", "tap(50.0,50.0)"],
+                       "委譲イベントは毎回、直前の暖機とセットで撃つこと")
     }
 
+    /// プロファイル iosPreActionWarmup=false(FT_PRE_ACTION_WARMUP=0)では暖機を撃たない。
+    /// **既定(引数省略)が ON であること**は上の各テストが init を引数無しで呼んで守っている
+    func testDomInteropWarmUpCanBeDisabledByProfileOption() async throws {
+        let dom = snapshot([element(1, "WebView"), element(2, "Link", web: true)],
+                           webViewPath: "dom-interop")
+        let primary = FakeDriver(snapshots: [dom])
+        let delegated = FakeDriver(snapshots: [snapshot([])])
+        let driver = WebViewDelegatingDriver(primary: primary, delegated: delegated,
+                                             preActionWarmup: false)
+
+        _ = try await driver.snapshot()
+        try await driver.tap(ref: 2)
+
+        XCTAssertEqual(delegated.calls, ["snapshot", "tap(50.0,50.0)"],
+                       "OFF では入場時の暖機だけ(イベント直前は撃たない)")
+    }
 }

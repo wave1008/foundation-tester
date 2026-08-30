@@ -68,6 +68,7 @@ final class BuildAndroidWorkersPartialFailureTests: XCTestCase {
             recoverCpuFallbackToGpu: false,
             locale: "ja_JP",
             iosFastInput: false,
+            iosPreActionWarmup: true,
             containerInference: true,
             enableAnimations: false,
             homeOnStart: true,

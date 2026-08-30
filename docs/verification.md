@@ -3086,10 +3086,10 @@ curl -s -X POST http://127.0.0.1:<port>/session -d '{"bundleID":"com.example.non
 **別デバイスのブリッジへ黙って乗り換える**。`BridgeDiscovery.isBound`(TCP 接続可否)で
 死と忙しいを分けること。外部ログでは整定待ちで **33.7 秒**ブロックした区間が観測されている。
 
-## interop WebView の最初のタップが吸われる(2026-08-30・**未解決**)
+## interop WebView のタップが吸われる(2026-08-30・**解決** — アクション前暖機)
 
 `E2E-CMP` × iOS × in-app(hybrid) の `WebViewの中身を操作できること.S0010` が、
-**scene 2 の最初の interop タップ**で約 14% 落ちる(通算 9/62)。落ちるのは常に同じ1歩:
+**interop タップ**で約 13% 落ちていた(素の tap 通算 11/83)。多くは scene 2 の最初のタップ:
 
 ```
 ❌ 11. [expectation] textIs "wv_result=*" == "wv_result=link"
@@ -3139,6 +3139,36 @@ curl -s -X POST http://127.0.0.1:<port>/session -d '{"bundleID":"com.example.non
 - **変更が本当にその経路を通るかを、既存テストが落ちることで確かめる** —— press 化では
   `testDomInteropReadsFromPrimaryAndTapsByCoordinate` が落ちたので経路が確認できた。
   暖機修正ではこれをやらず、no-op を50分測った
+
+### 決着(2026-08-30)
+
+**原因**: attach したままの XCUITest セッションは、**ランナーに問い合わせないまま置いた直後の
+座標イベントを、200 を返しつつ届け損なう**。domInterop は読みを in-app(3ms)で済ませるため
+ランナーが数秒沈黙し、そこへ最初のタップを撃っていた。これで全証拠が繋がる —— ページは
+pointerdown すら見ない(JS プローブ)・hybrid 限定(xcuitest エンジンは毎ステップ ランナーが
+働く)・委譲モードでは出ない(同上)・「最初のタップ」に偏るがギャップ約1秒の後段でも数%落ちる。
+既存コメントの前科「attach 直後の最初の座標タップが 200 でも不発(CMP で再現)」の残りだった
+(mode 入場時の暖機1回では、その後の沈黙で冷え直す)。機構(testmanagerd の何が冷えるのか)は
+非公開で特定できていない —— 修正は観測に立脚した防御。
+
+**切り分けの決め手**(各25周):
+
+| arm | 変えたもの | 結果 |
+|---|---|---|
+| ベースライン | — | 6/25(以降の素 tap arm 通算 11/83 = 13.3%) |
+| `FT_WEBVIEW_DOM=off` | DOM 経路を殺す(委譲モードへ) | **0/25** |
+| 実験W | DOM 読みはそのまま・タップ直前に `delegated.snapshot()` | **0/25** |
+| 本修正(最終確認) | 全委譲イベント直前の暖機 + プローブ無し SUT | **0/25** |
+
+両介入の共通項は「タップ直前にランナーの経路が使われていること」だけ = 因果が閉じる。
+暖機あり通算 **0/50** vs なし 11/83(p ≈ 0.0008)。
+
+**修正**: `WebViewDelegatingDriver.warmDelegatedForEvent` —— domInterop の委譲イベント
+(tap / press / type の focus タップ / clearInput)直前にランナーへ木を1回読ませる。
+実行プロファイル `iosPreActionWarmup`(既定 true)で止められる(docs/design.md §プロファイル)。
+**時間閾値にしない**(短いギャップでも確率的に落ち、安全な境界を引けない)。
+コスト実測: 該当画面のイベント1回 +約0.4s・当該シナリオ +3.0s(16.1→19.1s)・
+**スイート全体は差なし**(88.9s vs 90.0s。10レーン並列に隠れる)。
 
 ### 手つかずの隣接品
 

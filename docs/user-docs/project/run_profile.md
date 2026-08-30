@@ -33,6 +33,7 @@ selects one.
 | `recoverCpuFallbackToGpu` | bool | `false` | At run start, restart any Android emulator that has fallen back to CPU rendering (swiftshader) in GPU mode instead |
 | `locale` | string | `"ja_JP"` | Locale applied to an Android emulator on boot. No effect on iOS |
 | `iosFastInput` | bool | `false` | Skip the quiescence wait on the iOS XCUITest bridge's text input (faster, but riskier on fast-moving screens). Only affects the XCUITest bridge |
+| `iosPreActionWarmup` | bool | `true` | On interop WebView screens (WebViews embedded by Compose/Flutter etc.), query the runner once right before each tap/type. An attached XCUITest session that has sat idle can report success while failing to deliver the coordinate event (measured ~13% → 0/50 with the warm-up). Costs ~0.4s per event on those screens only (reads and other screens are unaffected). Only takes effect with the hybrid engine |
 | `containerInference` | bool | `true` | Enable geometry-based corrections that infer scroll containers (edge clamping, off-screen tap correction, etc.). Unrelated to FM |
 | `enableAnimations` | bool | `false` | Keep the app's animations instead of disabling them for the run |
 | `homeOnStart` | bool | `true` | Press Home once on every device at run start (works around devices staying black after a mass launch) |

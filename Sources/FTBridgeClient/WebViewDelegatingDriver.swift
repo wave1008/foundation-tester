@@ -57,7 +57,10 @@ public final class WebViewDelegatingDriver: AppDriver {
     /// 委譲中であることの申告(失敗文言・記録に出る)。空のまま尽きた回はこれに理由を足す
     private static let delegatedNote = "WebView screen — delegated to XCUITest"
 
-    public init(primary: AppDriver, delegated: AppDriver) {
+    public init(primary: AppDriver, delegated: AppDriver,
+                preActionWarmup: Bool =
+                    ProcessInfo.processInfo.environment["FT_PRE_ACTION_WARMUP"] != "0") {
+        self.preActionWarmup = preActionWarmup
         self.primary = primary
         self.delegated = delegated
     }
@@ -200,9 +203,26 @@ public final class WebViewDelegatingDriver: AppDriver {
         return (frame.centerX, frame.centerY)
     }
 
+    /// domInterop の**委譲イベント直前の暖機**。attach したままの XCUITest セッションは、
+    /// ランナーに問い合わせないまま数秒置いた直後の座標イベントを **200 を返しつつ届け損なう**
+    /// (実測: アイドル ~3.5s で ~14%・~1s でも数%。SUT の JS プローブで「ページは pointerdown
+    /// すら見ていない」を確認)。直前にランナーへ木を1回読ませると 0/25(A/B は
+    /// docs/verification.md §interop WebView)。**時間閾値にしない** —— 短いギャップでも
+    /// 確率的に落ちる実測があり、安全な境界を引けない。機構(testmanagerd の何が冷えるのか)は
+    /// 非公開で特定できておらず、この暖機は観測に立脚した防御
+    /// 実行プロファイル iosPreActionWarmup(既定 true)。OFF は FT_PRE_ACTION_WARMUP=0 で届く
+    /// (注入は ProfileRunner / ApiRunCommand の2箇所)
+    private let preActionWarmup: Bool
+
+    private func warmDelegatedForEvent() async {
+        guard preActionWarmup else { return }
+        _ = try? await delegated.snapshot()
+    }
+
     public func tap(ref: Int) async throws {
         guard mode == .domInterop else { try await screenDriver.tap(ref: ref); return }
         let p = try domInteropPoint(ref: ref)
+        await warmDelegatedForEvent()
         try await delegated.tap(x: p.x, y: p.y)
     }
     public func tap(x: Double, y: Double) async throws { try await screenDriver.tap(x: x, y: y) }
@@ -221,6 +241,7 @@ public final class WebViewDelegatingDriver: AppDriver {
         }
         let point = try domInteropPoint(ref: ref)
         let before = domValues[ref]
+        await warmDelegatedForEvent()
         try await delegated.tap(x: point.x, y: point.y)
         try await delegated.type(ref: nil, text: text)
         // **値を報告する要素だけ**読み返す(報告しない要素は検証不能 = 従来どおり撃ちっぱなし。
@@ -238,6 +259,7 @@ public final class WebViewDelegatingDriver: AppDriver {
         guard mode == .domInterop else { try await screenDriver.clearInput(ref: ref); return }
         if let ref {
             let p = try domInteropPoint(ref: ref)
+            await warmDelegatedForEvent()
             try await delegated.tap(x: p.x, y: p.y)
         }
         try await delegated.clearInput(ref: nil)
@@ -271,6 +293,7 @@ public final class WebViewDelegatingDriver: AppDriver {
     public func press(ref: Int, duration: Double) async throws {
         guard mode == .domInterop else { try await screenDriver.press(ref: ref, duration: duration); return }
         let p = try domInteropPoint(ref: ref)
+        await warmDelegatedForEvent()
         try await delegated.press(x: p.x, y: p.y, duration: duration)
     }
     public func press(x: Double, y: Double, duration: Double) async throws {

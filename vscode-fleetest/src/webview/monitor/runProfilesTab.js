@@ -29,6 +29,8 @@ const runProfileScreenLooksLike = document.getElementById('run-profile-screen-lo
 const runProfileContainerInference = document.getElementById('run-profile-container-inference');
 const runProfileIosInappEngine = document.getElementById('run-profile-ios-inapp-engine');
 const runProfileIosFastInput = document.getElementById('run-profile-ios-fast-input');
+const runProfileIosPreActionWarmup = document.getElementById('run-profile-ios-pre-action-warmup');
+const runProfileInappOptions = document.getElementById('run-profile-inapp-options');
 const runProfileHomeOnStart = document.getElementById('run-profile-home-on-start');
 const runProfileEnableAnimations = document.getElementById('run-profile-enable-animations');
 const runProfileUpdateWebView = document.getElementById('run-profile-update-webview');
@@ -223,8 +225,10 @@ function renderRunProfileEditor(fields) {
   runProfileFalsePositiveCheck.checked = fields.falsePositiveCheck;
   runProfileScreenLooksLike.checked = fields.screenLooksLike;
   updateFmOptionsVisibility();
+  updateInappOptionsVisibility();
   runProfileIosInappEngine.checked = fields.iosInappEngine;
   runProfileIosFastInput.checked = fields.iosFastInput;
+  runProfileIosPreActionWarmup.checked = fields.iosPreActionWarmup;
   runProfileHomeOnStart.checked = fields.homeOnStart;
   runProfileEnableAnimations.checked = fields.enableAnimations;
   runProfileContainerInference.checked = fields.containerInference;
@@ -405,7 +409,17 @@ runProfileFm.addEventListener('change', () => {
 runProfileHeal.addEventListener('change', onRunProfileFormInput);
 runProfileFalsePositiveCheck.addEventListener('change', onRunProfileFormInput);
 runProfileScreenLooksLike.addEventListener('change', onRunProfileFormInput);
-runProfileIosInappEngine.addEventListener('change', onRunProfileFormInput);
+// inapp エンジン ON のときだけ配下のサブオプション(iosPreActionWarmup)を表示する
+// (暖機は hybrid の domInterop 経路にしか無い = xcuitest エンジンでは効果が無いため。
+//  値そのものはエンジンの状態に関わらず保持・保存する = FM サブオプションと同じ方針)。
+function updateInappOptionsVisibility() {
+  runProfileInappOptions.style.display = runProfileIosInappEngine.checked ? '' : 'none';
+}
+runProfileIosInappEngine.addEventListener('change', () => {
+  updateInappOptionsVisibility();
+  onRunProfileFormInput();
+});
+runProfileIosPreActionWarmup.addEventListener('change', onRunProfileFormInput);
 runProfileIosFastInput.addEventListener('change', onRunProfileFormInput);
 runProfileEnableAnimations.addEventListener('change', onRunProfileFormInput);
 runProfileContainerInference.addEventListener('change', onRunProfileFormInput);
@@ -463,6 +477,7 @@ function runProfileValuesEqual(fields) {
     runProfileScreenLooksLike.checked === fields.screenLooksLike &&
     runProfileIosInappEngine.checked === fields.iosInappEngine &&
     runProfileIosFastInput.checked === fields.iosFastInput &&
+    runProfileIosPreActionWarmup.checked === fields.iosPreActionWarmup &&
     runProfileHomeOnStart.checked === fields.homeOnStart &&
     runProfileEnableAnimations.checked === fields.enableAnimations &&
     runProfileContainerInference.checked === fields.containerInference &&
@@ -499,6 +514,7 @@ function setRunProfileControlsEnabled(enabled) {
   runProfileScreenLooksLike.disabled = !enabled;
   runProfileIosInappEngine.disabled = !enabled;
   runProfileIosFastInput.disabled = !enabled;
+  runProfileIosPreActionWarmup.disabled = !enabled;
   runProfileContainerInference.disabled = !enabled;
   runProfileWipeDataOnBloat.disabled = !enabled;
   runProfileRecoverCpuFallback.disabled = !enabled;
@@ -578,6 +594,7 @@ runProfileConfirm.addEventListener('click', () => {
       screenLooksLike: runProfileScreenLooksLike.checked,
       iosInappEngine: runProfileIosInappEngine.checked,
       iosFastInput: runProfileIosFastInput.checked,
+      iosPreActionWarmup: runProfileIosPreActionWarmup.checked,
       homeOnStart: runProfileHomeOnStart.checked,
       enableAnimations: runProfileEnableAnimations.checked,
       containerInference: runProfileContainerInference.checked,

@@ -1483,6 +1483,7 @@ const VALID_RUN_PROFILE_SAVE = {
     containerInference: true,
     iosInappEngine: true,
     iosFastInput: false,
+    iosPreActionWarmup: true,
     homeOnStart: true,
     enableAnimations: false,
     reportDir: "reports",
@@ -1509,7 +1510,7 @@ test("isMonitorFromWebviewMessage: runProfileLoad は profile 空文字/欠落/�
   assert.equal(isMonitorFromWebviewMessage({ type: "runProfileLoad", profile: 1 }), false);
 });
 
-test("isMonitorFromWebviewMessage: runProfileSave は profile 非空・fields21項目の型が揃っていれば true", () => {
+test("isMonitorFromWebviewMessage: runProfileSave は profile 非空・fields22項目の型が揃っていれば true", () => {
   assert.equal(isMonitorFromWebviewMessage(VALID_RUN_PROFILE_SAVE), true);
   // devices は空配列も(型としては)許容する — 「1件以上」の検証はクライアント側の別ロジックが担う。
   assert.equal(
@@ -1531,6 +1532,7 @@ test("isMonitorFromWebviewMessage: runProfileSave は profile 非空・fields21�
         containerInference: false,
         iosInappEngine: false,
         iosFastInput: true,
+        iosPreActionWarmup: false,
         homeOnStart: true,
         enableAnimations: true,
         reportDir: "",
@@ -2725,7 +2727,7 @@ test("syncDevicesInMachineProfile: remove のみ(add:[])は source:local でも�
 
 // ---- parseRunProfileForForm ----
 
-test("parseRunProfileForForm: 正常な値は23フィールドをそのまま読み取る", () => {
+test("parseRunProfileForForm: 正常な値は24フィールドをそのまま読み取る", () => {
   const parsed = parseRunProfileForForm({
     machine: "M1 Max",
     app: "sampleapp",
@@ -2737,6 +2739,7 @@ test("parseRunProfileForForm: 正常な値は23フィールドをそのまま読
     containerInference: false,
     iosInappEngine: false,
     iosFastInput: true,
+    iosPreActionWarmup: false,
     homeOnStart: true,
     enableAnimations: true,
     reportDir: "reports",
@@ -2763,6 +2766,7 @@ test("parseRunProfileForForm: 正常な値は23フィールドをそのまま読
     containerInference: false,
     iosInappEngine: false,
     iosFastInput: true,
+    iosPreActionWarmup: false,
     homeOnStart: true,
     enableAnimations: true,
     reportDir: "reports",
@@ -2780,7 +2784,7 @@ test("parseRunProfileForForm: 正常な値は23フィールドをそのまま読
   });
 });
 
-test("parseRunProfileForForm: 欠落キーは既定値(machine/app/reportDir/locale/recordBitrateKbps/workspace=''、devices=[]、fm/heal/screenLooksLike/containerInference=true、falsePositiveCheck=false、iosInappEngine=true、defaultTimeout=''、wipeDataOnBloat=true、wipeDataThresholdGB=''、record/recordFailuresOnly/recordFullResolution/iosFastInput/enableAnimations/recoverCpuFallbackToGpu=false)", () => {
+test("parseRunProfileForForm: 欠落キーは既定値(machine/app/reportDir/locale/recordBitrateKbps/workspace=''、devices=[]、fm/heal/screenLooksLike/containerInference=true、falsePositiveCheck=false、iosInappEngine=true、defaultTimeout=''、wipeDataOnBloat=true、wipeDataThresholdGB=''、record/recordFailuresOnly/recordFullResolution/iosFastInput/enableAnimations/recoverCpuFallbackToGpu=false、iosPreActionWarmup=true)", () => {
   const parsed = parseRunProfileForForm({});
   assert.deepEqual(parsed, {
     machine: "",
@@ -2793,6 +2797,7 @@ test("parseRunProfileForForm: 欠落キーは既定値(machine/app/reportDir/loc
     containerInference: true,
     iosInappEngine: true,
     iosFastInput: false,
+    iosPreActionWarmup: true,
     homeOnStart: true,
     enableAnimations: false,
     reportDir: "",
@@ -2845,6 +2850,7 @@ test("parseRunProfileForForm: 型不正のキーは既定値扱い(machine が�
     containerInference: true,
     iosInappEngine: true,
     iosFastInput: false,
+    iosPreActionWarmup: true,
     homeOnStart: true,
     enableAnimations: false,
     reportDir: "",
@@ -3090,6 +3096,7 @@ const BASE_RUN_PROFILE_FIELDS = {
   containerInference: true,
   iosInappEngine: true,
   iosFastInput: false,
+  iosPreActionWarmup: true,
   homeOnStart: true,
   enableAnimations: false,
   reportDir: "reports",

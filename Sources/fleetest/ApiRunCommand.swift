@@ -300,6 +300,8 @@ struct ApiRunCommand: AsyncParsableCommand {
             }
             for warning in resolved.warnings { logStderr("⚠️ \(warning)") }
             if resolved.iosFastInput { setenv("FT_FAST_INPUT", "1", 1) }  // BridgeClient.fastInput 参照
+            // 既定 ON なので OFF のときだけ注入する(WebViewDelegatingDriver.preActionWarmup 参照)
+            if !resolved.iosPreActionWarmup { setenv("FT_PRE_ACTION_WARMUP", "0", 1) }
             // 未指定でも必ず書く(既定の "0" を明示し、前段の値を残さない)。環境変数側で
             // 既に ON なら尊重する(`fleetest run --enable-animations` と手動 export の上書き)
             let animations = resolved.enableAnimations || AnimationPolicy.animationsEnabled()

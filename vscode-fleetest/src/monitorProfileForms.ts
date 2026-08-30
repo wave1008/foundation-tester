@@ -103,9 +103,9 @@ export function validateNewAppProfileName(name: string, existing: readonly strin
 // handleRunProfileLoad/Save(monitorPanel.ts)が使う、JSON⇔フォーム21フィールド変換の純粋関数
 // (未知キー保持のイミュータブルな方針。updateDeviceInMachineProfile と同じ)。
 
-/** 実行プロファイル設定フォームの21フィールド(全て文字列/配列/真偽値化済み。空文字は未設定)。
+/** 実行プロファイル設定フォームの22フィールド(全て文字列/配列/真偽値化済み。空文字は未設定)。
  * recordFailuresOnly/recordBitrateKbps/recordFullResolution は「録画セクション」、heal/
- * falsePositiveCheck/screenLooksLike は「FM」セクション、iosFastInput は「iOS」セクションのサブオプション
+ * falsePositiveCheck/screenLooksLike は「FM」セクション、iosFastInput / iosPreActionWarmup は「iOS」セクションのサブオプション
  * (親チェックボックスの状態に関わらず独立して保持・保存する。表示上の非表示切替は
  * runProfilesTab.js の責務)。containerInference は独立トグル(FM とは無関係の幾何ヒューリスティック)。 */
 /** 実行プロファイルのデバイス参照。**一意なのは (machine, name)** なので machine も持つ
@@ -127,6 +127,9 @@ export interface RunProfileFormFields {
   readonly containerInference: boolean;
   readonly iosInappEngine: boolean;
   readonly iosFastInput: boolean;
+  /// **既定 true**。domInterop の委譲イベント直前にランナーへ1回問い合わせてから撃つ
+  /// (attach セッションの静かなイベント欠落の防御。Swift 側は iosPreActionWarmup → FT_PRE_ACTION_WARMUP)
+  readonly iosPreActionWarmup: boolean;
   /// **既定 true**。一斉 launch 直後の黒画面(描画要求が無いだけ)を避ける予防措置
   readonly homeOnStart: boolean;
   readonly enableAnimations: boolean;
@@ -176,6 +179,7 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
   const containerInference = typeof source.containerInference === "boolean" ? source.containerInference : true;
   const iosInappEngine = typeof source.iosInappEngine === "boolean" ? source.iosInappEngine : true;
   const iosFastInput = typeof source.iosFastInput === "boolean" ? source.iosFastInput : false;
+  const iosPreActionWarmup = typeof source.iosPreActionWarmup === "boolean" ? source.iosPreActionWarmup : true;
   const homeOnStart = typeof source.homeOnStart === "boolean" ? source.homeOnStart : true;
   const enableAnimations = typeof source.enableAnimations === "boolean" ? source.enableAnimations : false;
   const updateWebView = typeof source.updateWebView === "boolean" ? source.updateWebView : true;
@@ -224,6 +228,7 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
     containerInference,
     iosInappEngine,
     iosFastInput,
+    iosPreActionWarmup,
     homeOnStart,
     enableAnimations,
     reportDir,
@@ -288,6 +293,7 @@ export function updateRunProfileInObject(
   result.wipeDataOnBloat = fields.wipeDataOnBloat;
   // 既定 true 側なので containerInference と同じく常に書く(false を落とすと既定へ戻ってしまう)
   result.homeOnStart = fields.homeOnStart;
+  result.iosPreActionWarmup = fields.iosPreActionWarmup;  // 同上(既定 true 側)
   for (const key of [
     "record", "recordFailuresOnly", "recordFullResolution", "iosFastInput", "recoverCpuFallbackToGpu",
     "enableAnimations",

@@ -33,6 +33,7 @@
 | `recoverCpuFallbackToGpu` | bool | `false` | 実行開始時、CPU 描画(swiftshader)へフォールバック済みの Android エミュレータを GPU モードで起動し直す |
 | `locale` | string | `"ja_JP"` | Android エミュレータのブート時に適用するロケール。iOS には影響しない |
 | `iosFastInput` | bool | `false` | iOS XCUITest ブリッジのテキスト入力で quiescence 待ちを飛ばす(速いが、動きの激しい画面ではフレークのリスクを伴う)。効くのは XCUITest ブリッジだけ |
+| `iosPreActionWarmup` | bool | `true` | interop WebView 画面(Compose/Flutter 等の埋め込み WebView)でタップ・入力の直前にランナーへ1回問い合わせてから撃つ。attach したままの XCUITest セッションは放置後の座標イベントを成功応答のまま届け損なうことがある(実測 約13% → 暖機で 0/50)。コストは該当画面のイベント1回につき約 +0.4 秒(読み取りと他の画面には掛からない)。hybrid エンジンのときだけ効く |
 | `containerInference` | bool | `true` | スクロール容器を幾何から推測する補正(端の見切れ・座標補正等)を有効にする。FM とは無関係 |
 | `enableAnimations` | bool | `false` | 実行のためにアプリのアニメーションを無効化せず残す |
 | `homeOnStart` | bool | `true` | 実行開始時に各デバイスへ Home を1回撃つ(一斉起動直後に画面が黒いまま止まるのを防ぐ) |

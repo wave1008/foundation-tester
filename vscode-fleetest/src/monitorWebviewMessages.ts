@@ -934,6 +934,7 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         typeof value.fields.containerInference === "boolean" &&
         typeof value.fields.iosInappEngine === "boolean" &&
         typeof value.fields.iosFastInput === "boolean" &&
+        typeof value.fields.iosPreActionWarmup === "boolean" &&
         typeof value.fields.homeOnStart === "boolean" &&
         typeof value.fields.enableAnimations === "boolean" &&
         typeof value.fields.reportDir === "string" &&

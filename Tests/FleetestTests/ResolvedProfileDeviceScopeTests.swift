@@ -43,7 +43,7 @@ final class ResolvedProfileDeviceScopeTests: XCTestCase {
             reportDir: URL(fileURLWithPath: "/tmp/dummy/reports"),
             defaultTimeout: nil, scenarioTimeout: nil, wipeDataOnBloat: true, updateWebView: false,
             wipeDataThresholdGB: 8, recoverCpuFallbackToGpu: false, locale: "ja_JP",
-            iosFastInput: false, containerInference: true, enableAnimations: false,
+            iosFastInput: false, iosPreActionWarmup: true, containerInference: true, enableAnimations: false,
             homeOnStart: true, record: false, recordFailuresOnly: false,
             recordBitrateKbps: 1500, recordFullResolution: false, warnings: [])
     }

@@ -237,6 +237,12 @@ function renderRunProfileSection(): string {
               <input type="checkbox" id="run-profile-ios-fast-input">
               <label for="run-profile-ios-fast-input">${t("panels.runProfile.iosFastInputLabel")}</label>
             </div>
+            <div id="run-profile-inapp-options" style="display: none;">
+              <div class="modal-row profile-checkbox-row">
+                <input type="checkbox" id="run-profile-ios-pre-action-warmup">
+                <label for="run-profile-ios-pre-action-warmup">${t("panels.runProfile.iosPreActionWarmupLabel")}</label>
+              </div>
+            </div>
           </div>
           <div class="run-profile-section-group">
             <div class="run-profile-section-title">${t("panels.runProfile.androidSectionTitle")}</div>
