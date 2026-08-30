@@ -426,6 +426,9 @@ export type MonitorFromWebviewMessage =
   | { readonly type: "devicesUpCancel" }
   | { readonly type: "devicesDown" }
   | { readonly type: "restartMonitor" }
+  // エラーバナーの「コピー」: text をホスト側で vscode.env.clipboard へ書く(webview の
+  // navigator.clipboard はフォーカス条件で失敗しうる)。対向: deviceTiles.js showBanner
+  | { readonly type: "copyText"; readonly text: string }
   // udid/serial/registered: 未登録(マシンプロファイル未記載)デバイスの直指定用。registered:false の
   // ときだけ deviceTiles.js が iOS udid / Android serial のどちらかを載せる(--name で引けないため)。
   // 対向: monitorDeviceOps.ts executeDeviceOpJob(device-down --udid/--serial の直指定モード)。
@@ -778,6 +781,8 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
       );
     case "openLiveForDevice":
       return typeof value.id === "string" && value.id !== "";
+    case "copyText":
+      return typeof value.text === "string" && value.text !== "";
     case "deviceRestartGpu":
       return typeof value.name === "string" && value.name !== "";
     case "devicesRestartGpu":

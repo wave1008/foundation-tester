@@ -528,6 +528,11 @@ export class MonitorPanelController implements vscode.Disposable {
         this.deviceStream.restartAllStreams();
         this.processManager.restartAll();
         break;
+      case "copyText":
+        void vscode.env.clipboard.writeText(message.text).then(() => {
+          vscode.window.setStatusBarMessage(t("panels.banner.copied"), 3000);
+        });
+        break;
       case "devicesTabVisible":
         this.devicesTabVisible = message.visible;
         this.applyDeviceStreamVisibility();

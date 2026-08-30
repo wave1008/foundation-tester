@@ -434,6 +434,37 @@ exit 1
   }
 });
 
+// 署名エラーは設定の問題で、再試行しても必ず同じ失敗になる(同じバナーが試行のたびに出て、
+// 実機のフルビルドも余計に払う)。一時的な失敗(署名以外)のリトライは上のテストが守る
+test("up の失敗が署名エラーなら再試行しない(バナーは1回だけ)", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleetest-deviceops-signing-noretry-"));
+  const binaryPath = path.join(dir, "fleetest");
+  const finished = JSON.stringify({
+    kind: "finished", ok: false, error: "Cannot code-sign …",
+    signingProblems: ["deviceNotRegistered"], signingLogPath: "/tmp/bridge-build-8129.log",
+  });
+  fs.writeFileSync(binaryPath, `#!/bin/sh
+echo "$@" >> "${path.join(dir, "argv")}"
+printf '%s\n' '${finished}'
+exit 1
+`);
+  fs.chmodSync(binaryPath, 0o755);
+  const { deps, posts } = makeDeps(binaryPath);
+  const deviceOps = new MonitorDeviceOps(deps);
+  try {
+    deviceOps.enqueueLifecycleJob({
+      kind: "device", name: "iPhone snb", op: "up", machine: "M1Ultra",
+      udid: "00008110-000805001188201E",
+    });
+    await waitUntilIdle(deviceOps, 10000);
+    assert.equal(argvLines(dir).length, 1, "再試行しない");
+    const failures = posts.filter((m) => m.type === "deviceOpFailed");
+    assert.equal(failures.length, 1, "バナーは1回だけ: " + JSON.stringify(posts.map((m) => m.type)));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("手元のデバイスは remote exec を経由せず、手元の台に絞られる", async () => {
   const { dir, binaryPath } = makeMockBinary();
   const { deps } = makeDeps(binaryPath);

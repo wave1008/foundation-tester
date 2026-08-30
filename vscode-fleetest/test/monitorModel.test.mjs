@@ -300,6 +300,12 @@ test("toWebviewMessage: monitorError → { type: 'deviceError', device, message 
 
 // ---- isMonitorFromWebviewMessage ----
 
+test("isMonitorFromWebviewMessage: copyText は空でない text だけ通す", () => {
+  assert.equal(isMonitorFromWebviewMessage({ type: "copyText", text: "エラー全文" }), true);
+  assert.equal(isMonitorFromWebviewMessage({ type: "copyText", text: "" }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "copyText" }), false);
+});
+
 test("isMonitorFromWebviewMessage: ready/devicesUp/devicesDown/restartMonitor を true と判定する", () => {
   assert.equal(isMonitorFromWebviewMessage({ type: "ready" }), true);
   assert.equal(isMonitorFromWebviewMessage({ type: "devicesUp" }), true);

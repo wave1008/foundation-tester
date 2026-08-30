@@ -1297,7 +1297,23 @@ export function applyDeviceError(message) {
 // **自動では消えない**(監視サイクルで消すと読む前に消える。main.js の 'devices' 参照)。
 // 消えるのは3つだけ: 利用者が閉じた・次のバナーで置き換わった・「モニター再起動」。
 export function showBanner(text) {
-  banner.textContent = text;
+  banner.textContent = '';
+  const body = document.createElement('span');
+  body.className = 'banner-text';
+  body.textContent = text;
+  const copy = document.createElement('button');
+  copy.type = 'button';
+  copy.className = 'banner-copy';
+  copy.textContent = t('wvMonitor.banner.copy');
+  copy.title = t('wvMonitor.banner.copyTip');
+  copy.addEventListener('click', (event) => {
+    // **コピーで閉じない**(閉じるのは本文クリックだけ。ユーザー決定)。クリップボードは
+    // ホスト側(vscode.env.clipboard)で書く —— webview の navigator.clipboard は
+    // フォーカス条件で失敗しうる
+    event.stopPropagation();
+    vscode.postMessage({ type: 'copyText', text });
+  });
+  banner.append(body, copy);
   banner.title = t('wvMonitor.banner.dismissTip');
   banner.classList.add('visible');
 }

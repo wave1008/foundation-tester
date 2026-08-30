@@ -55,10 +55,11 @@ before(async () => {
 function createWebview() {
   const dom = new JSDOM(panelHtml, { runScripts: "outside-only", pretendToBeVisual: true, url: "https://localhost/" });
   const { window } = dom;
-  window.acquireVsCodeApi = () => ({ postMessage: () => {}, setState: () => {}, getState: () => undefined });
+  const posts = [];
+  window.acquireVsCodeApi = () => ({ postMessage: (m) => posts.push(m), setState: () => {}, getState: () => undefined });
   window.HTMLElement.prototype.scrollIntoView = () => {};
   window.eval(webviewBundle);
-  return { window, document: window.document };
+  return { window, document: window.document, posts };
 }
 
 function post(window, data) {
@@ -123,3 +124,27 @@ test("「モニター再起動」では消える(タイルごと作り直すた�
   document.getElementById("btn-restart").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
   assert.equal(bannerText(document), "");
 });
+
+test("コピーボタンは copyText を送り、バナーは閉じない(閉じるのは本文クリックだけ)", (t) => {
+  const { window, document, posts } = createWebview();
+  t.after(() => window.close());
+  failOp(window, "実機用のブリッジに署名できません。\n検出: 何か。");
+
+  const copyBtn = banner(document).querySelector(".banner-copy");
+  assert.ok(copyBtn, "コピーボタンが居る");
+  assert.notEqual(copyBtn.title, "", "閉じないことをツールチップで示す");
+  copyBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+
+  const copy = posts.find((m) => m.type === "copyText");
+  assert.ok(copy, "copyText がホストへ送られる: " + JSON.stringify(posts));
+  assert.match(copy.text, /署名できません/);
+  assert.match(copy.text, /検出: 何か/, "本文の全文をコピーする(ボタンのラベルは含めない)");
+  assert.doesNotMatch(copy.text, /コピー/);
+  assert.match(bannerText(document), /署名できません/, "コピーしてもバナーは残る");
+
+  // 本文クリックは従来どおり閉じる
+  banner(document).querySelector(".banner-text")
+    .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  assert.equal(bannerText(document), "");
+});
+

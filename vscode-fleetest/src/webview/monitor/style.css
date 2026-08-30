@@ -305,9 +305,11 @@ select:disabled { opacity: 0.5; cursor: default; }
   white-space: pre-wrap;
   font-size: 12px;
 }
-.banner.visible { display: block; }
+.banner.visible { display: flex; align-items: flex-start; gap: 8px; }
 /* 自動では消えない(deviceTiles.js の showBanner)ので、閉じられることを見せる */
 .banner { cursor: pointer; }
+.banner-text { flex: 1 1 auto; }
+.banner-copy { flex: 0 0 auto; font-size: 11px; padding: 2px 8px; }
 .tile-pane {
   /* 高さは JS が inline style で設定・クランプする(padding は持たず、余白は
      子要素 .grid/.empty の inset で付ける)。 */

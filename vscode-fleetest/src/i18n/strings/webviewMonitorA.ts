@@ -117,6 +117,11 @@ export const webviewMonitorAStrings = {
   "wvMonitor.profile.running": { ja: "(起動中のデバイス)", en: "(Running devices)" },
   // バナーは自動では消えない(読む前に消えるため)。閉じ方を示す
   "wvMonitor.banner.dismissTip": { ja: "クリックで閉じる", en: "Click to dismiss" },
+  "wvMonitor.banner.copy": { ja: "コピー", en: "Copy" },
+  "wvMonitor.banner.copyTip": {
+    ja: "メッセージをコピーします(閉じません)",
+    en: "Copy the message (does not dismiss it)",
+  },
   "wvMonitor.bulk.startAllDisabledRunning": {
     ja: "「(起動中のデバイス)」表示中は使えません(未起動のデバイスが一覧に出ないため)。「(プロファイルなし)」か実行プロファイルを選んでください。",
     en: "Unavailable while showing \"(Running devices)\" because devices that are not started are hidden. Select \"(No profile)\" or a run profile.",

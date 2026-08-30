@@ -909,6 +909,9 @@ export class MonitorDeviceOps {
       this.deps.outputChannel.appendLine(t("deviceOps.log.deviceOpFailed", { op, name, attemptLabel, message }));
     };
 
+    // 署名エラー(finished の signingProblems 付き)は設定の問題で、再試行しても必ず同じ失敗に
+    // なる。リトライすると同じバナーが試行のたびに出て、実機のフルビルドも余計に払う
+    let signingFailure = false;
     // この試行の終端('error' と 'close' の二重発火を1回に集約)。up が失敗し追加試行が残っていれば
     // 再試行(キューは進めない)、それ以外は finishOnce。
     let attemptSettled = false;
@@ -917,7 +920,7 @@ export class MonitorDeviceOps {
         return;
       }
       attemptSettled = true;
-      if (failed && op === "up" && attempt < MonitorDeviceOps.deviceUpMaxRetries) {
+      if (failed && !signingFailure && op === "up" && attempt < MonitorDeviceOps.deviceUpMaxRetries) {
         this.deps.outputChannel.appendLine(
           t("deviceOps.log.deviceUpRetrying", {
             name,
@@ -968,6 +971,7 @@ export class MonitorDeviceOps {
           // **machine も載せる** —— 名前だけだと同名の手元タイルが書き換わる
           this.deps.post({ type: "wipeStatus", name, machine, phase: value.phase });
         } else if (!value.ok) {
+          signingFailure = value.signingProblems !== undefined;
           // 署名の欠けは**こちらの言語で**組み立て直す(CLI の error は英語 = CLI 利用者向け)
           const localized = value.signingProblems === undefined
             ? null
