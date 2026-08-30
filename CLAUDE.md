@@ -30,7 +30,9 @@
 - 設計書(アーキテクチャ・Swift DSL 仕様・セレクタ記法・プロファイル): docs/design.md
 - 検証の詳細(flake/性能の判定規律・ベータ整合・全滅時の切り分け・e2e.sh のオプション): docs/verification.md
 - 性能チューニング(調整ノブ・不採用施策と再検討条件・計測手順): docs/performance-tuning.md
-- **結果 JSON のスキーマ**(run.json / scenarios/*.json の全欄と、落ちた run の仕分けレシピ):
+- **結果 JSON のスキーマ**(run.json / scenarios/*.json の全欄・落ちた run の仕分けレシピ・
+  **フレークの推移を run 横断で見るときに先に揃える4つ**(run の本数 / シナリオの集合 / 標本数 /
+  デバイス構成)。揃えないと同じデータが改善にも悪化にも読める):
   docs/results-json.md(**唯一の定義元**。`results/` は .gitignore なので中に README を置いても
   受け手に届かない)
 - Shirates(Classic)との対応表(何が揃っていて何を持たないか・意図的に持たないものの理由・
