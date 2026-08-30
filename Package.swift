@@ -205,6 +205,7 @@ let package = Package(
                 .linkedFramework("CoreVideo"), .linkedFramework("IOSurface"),
                 .linkedFramework("QuartzCore"), .linkedFramework("CoreGraphics"),
                 .linkedFramework("CoreMedia"), .linkedFramework("VideoToolbox"),
+                .linkedFramework("ImageIO"),
             ]
         ),
         // Android実機/エミュレータ画面ストリーミング(adb screenrecord H.264 -> VideoToolboxデコード)
@@ -214,7 +215,7 @@ let package = Package(
                 .linkedFramework("Foundation"), .linkedFramework("CoreImage"),
                 .linkedFramework("CoreVideo"), .linkedFramework("CoreMedia"),
                 .linkedFramework("VideoToolbox"), .linkedFramework("QuartzCore"),
-                .linkedFramework("CoreGraphics"),
+                .linkedFramework("CoreGraphics"), .linkedFramework("ImageIO"),
             ]
         ),
         // 実機(iOS/Android)画面ストリーミング(スクリーンショットのポーリング -> MJPEG)。

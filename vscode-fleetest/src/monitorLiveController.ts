@@ -1037,7 +1037,7 @@ export class MonitorLiveController implements vscode.Disposable {
             "--udid", device.udid, "--fps", String(config.liveFps), "--max-width", String(LIVE_STREAM_MAX_WIDTH),
             ...codecArgs,
           ],
-          logPrefix: "ios-stream",
+          logPrefix: `ios-stream ${device.udid}`,
           codec,
         });
         return;
@@ -1060,7 +1060,7 @@ export class MonitorLiveController implements vscode.Disposable {
             "--fps", String(config.liveFps), "--max-width", String(LIVE_STREAM_MAX_WIDTH),
             ...codecArgs,
           ],
-          logPrefix: "android-stream",
+          logPrefix: `android-stream ${device.serial}`,
           codec,
         });
         return;

@@ -237,8 +237,8 @@ export const liveStrings = {
     en: "no frame arrived within {seconds}s",
   },
   "live.stream.codecUnavailable": {
-    ja: "この機械では h264 でエンコードできないため MJPEG で張り直します",
-    en: "This host cannot encode h264 — restarting the stream with MJPEG",
+    ja: "h264 のエンコードがセッションを作り直しても失敗したため MJPEG で張り直します(MJPEG も失敗するなら原因はホストではなく、このシミュレータのフレーム側です)",
+    en: "h264 encoding kept failing even after recreating the session — restarting the stream with MJPEG (if MJPEG fails too, the frames from this simulator are the problem, not the host)",
   },
   "live.stream.wedgeRestart": {
     ja: "[{prefix}] {seconds}秒フレームが届かないため helper を再起動します。",

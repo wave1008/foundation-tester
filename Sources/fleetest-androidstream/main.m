@@ -9,6 +9,7 @@
 #import <VideoToolbox/VideoToolbox.h>
 #import <QuartzCore/QuartzCore.h>
 #import <CoreGraphics/CoreGraphics.h>
+#import <ImageIO/ImageIO.h>
 
 static dispatch_queue_t gQueue = NULL;
 static CIContext *gCtx = nil;
@@ -96,6 +97,38 @@ static CVImageBufferRef gLatest = NULL;
 // (gQueue上でのみ操作)。gSPS/gPPSはmjpegデコード経路と共用する(codecは起動時に固定・排他)。
 static NSMutableData *gPendingOther = nil;
 
+// JPEG 化は2段(fleetest-simstream/main.m の ftEncodeJPEG と同じ。片方だけ変えない):
+// `JPEGRepresentationOfImage:` は macOS 27 で正常な画像にも nil を返すことがあるので、
+// 落ちたら同じ CIContext の `createCGImage` + ImageIO で書く。警告は寿命で1回
+static BOOL gJPEGFallbackLogged = NO;
+static NSData *ftEncodeJPEG(CIImage *ci) {
+    NSData *jpeg = [gCtx JPEGRepresentationOfImage:ci colorSpace:gColorSpace options:@{}];
+    if (jpeg) return jpeg;
+    CGImageRef cg = [gCtx createCGImage:ci fromRect:ci.extent];
+    if (!cg) {
+        fprintf(stderr, "warning: JPEG encode failed: CIContext could not render the image\n");
+        return nil;
+    }
+    NSMutableData *out = [NSMutableData data];
+    CGImageDestinationRef dest = CGImageDestinationCreateWithData((__bridge CFMutableDataRef)out,
+                                                                  (__bridge CFStringRef)@"public.jpeg", 1, NULL);
+    if (dest) {
+        CGImageDestinationAddImage(dest, cg, NULL);
+        if (CGImageDestinationFinalize(dest)) jpeg = out;
+        CFRelease(dest);
+    }
+    CGImageRelease(cg);
+    if (!jpeg) {
+        fprintf(stderr, "warning: JPEG encode failed: CIContext rendered but ImageIO could not write JPEG\n");
+        return nil;
+    }
+    if (!gJPEGFallbackLogged) {
+        gJPEGFallbackLogged = YES;
+        fprintf(stderr, "warning: JPEGRepresentationOfImage failed; encoding via createCGImage+ImageIO instead\n");
+    }
+    return jpeg;
+}
+
 // gQueue上でのみ呼ぶこと(gLatest/gLastEmit/gTrailingArmedの直列性が前提)。
 static void ftEncodeAndEmit(void) {
     CVImageBufferRef img = gLatest;
@@ -109,11 +142,8 @@ static void ftEncodeAndEmit(void) {
         outW = (uint16_t)llround((double)w * scale);
         outH = (uint16_t)llround((double)h * scale);
     }
-    NSData *jpeg = [gCtx JPEGRepresentationOfImage:ci colorSpace:gColorSpace options:@{}];
-    if (!jpeg) {
-        fprintf(stderr, "warning: JPEG encode失敗\n");
-        return;
-    }
+    NSData *jpeg = ftEncodeJPEG(ci);
+    if (!jpeg) return;
     ftWriteFrame(jpeg, outW, outH);
     gLastEmit = ftNow();
 }

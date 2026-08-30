@@ -6,6 +6,7 @@
 #import <CoreMedia/CoreMedia.h>
 #import <VideoToolbox/VideoToolbox.h>
 #import <CoreGraphics/CoreGraphics.h>
+#import <ImageIO/ImageIO.h>
 #import <IOSurface/IOSurface.h>
 #import <QuartzCore/QuartzCore.h>
 #import <objc/runtime.h>
@@ -37,6 +38,12 @@ static size_t gCompHeight = 0;
 // **警告を出すだけだったので以後1バイトも出さず、タイルが永久に「接続中」になった**
 // (2026-08-17 の実害)。作り直す以外に回復手段が無いので、失敗したら作り直す
 static int gEncodeFailures = 0;
+// 圧縮セッションの世代(作るたびに +1。refCon として VT に渡し、コールバックが「どのセッションの
+// 失敗か」を持ち帰る)。**失敗は1セッションにつき1回だけ数え、1回だけ出す** —— VT の出力
+// コールバックは非同期で、壊れたセッションに投入済みのフレームぶんが一度に返る。1本ごとに
+// 数えると作り直す前に閾値へ達し「作り直しても壊れた」を確かめずに exit 3 していた
+// (2026-08-31: 台ごとに -17691 が 8 行並んで即 exit)
+static uintptr_t gCompGeneration = 0;
 // 何回連続で失敗したら h264 を諦めて MJPEG へ落ちるか。**2 の根拠**: 1回目は
 // そのセッション固有の malfunction かもしれない(作り直しで直る)。作り直した直後に
 // また壊れたなら、原因はセッションではなく**ホスト側の資源**なので、形式を落とすしかない。
@@ -134,14 +141,76 @@ static void ftWritePing(void) {
     gLastEmit = ftNow();
 }
 
+// 入力の IOSurface が使える形か。**エンコーダの失敗と入力の失敗を分ける**ためにある ——
+// VT の kVTSessionMalfunctionErr は「ホストが h264 をこなせない」と読んで MJPEG へ落とすが、
+// シミュレータ側が空(0x0)や無効なサーフェスを返しているときは MJPEG(CIContext)も同じ入力で
+// 失敗し、「この機械では h264 が無理」という診断が外れたまま再起動ループになる
+// (2026-08-31: 4台同時、直前まで同じ機械で h264 が動いていた)。無効な入力はエンコード
+// 失敗に数えず、次のトリガを待つ。ログは台ごとに1回(60Hz で鳴らさない)
+static BOOL gBadSurfaceLogged = NO;
+static BOOL ftSurfaceUsable(IOSurfaceRef s) {
+    size_t w = IOSurfaceGetWidth(s), h = IOSurfaceGetHeight(s);
+    if (w > 0 && h > 0 && w <= UINT16_MAX && h <= UINT16_MAX && IOSurfaceGetBytesPerRow(s) > 0) {
+        gBadSurfaceLogged = NO;
+        return YES;
+    }
+    if (!gBadSurfaceLogged) {
+        gBadSurfaceLogged = YES;
+        uint32_t fmt = IOSurfaceGetPixelFormat(s);
+        fprintf(stderr, "warning: framebuffer surface is unusable (%zux%zu, bytesPerRow=%zu, format=0x%08x)"
+                        " — the simulator is not producing frames; waiting for the next one\n",
+                w, h, IOSurfaceGetBytesPerRow(s), fmt);
+    }
+    return NO;
+}
+static void ftLogSurface(const char *what, IOSurfaceRef s) {
+    fprintf(stderr, "warning: %s (surface %zux%zu, format=0x%08x)\n", what,
+            IOSurfaceGetWidth(s), IOSurfaceGetHeight(s), IOSurfaceGetPixelFormat(s));
+}
+
+// JPEG 化は2段。**`JPEGRepresentationOfImage:` は macOS 27 で正常な BGRA surface に対しても
+// nil を返す**(2026-08-31 実測: 1206x2622 BGRA で h264 は通り、こちらだけ失敗)。同じ CIContext の
+// `createCGImage` + ImageIO は同じ画像で成功するので、1段目が落ちたら2段目で書く。
+// 1段目を残すのは、通る環境ではそちらが速い(中間の CGImage を作らない)ため。
+// 切り替えの警告は寿命で1回だけ(毎フレーム鳴らすと fps ぶんログが並ぶ)
+static BOOL gJPEGFallbackLogged = NO;
+static NSData *ftEncodeJPEG(CIImage *ci, IOSurfaceRef s) {
+    NSData *jpeg = [gCtx JPEGRepresentationOfImage:ci colorSpace:gColorSpace options:@{}];
+    if (jpeg) return jpeg;
+    CGImageRef cg = [gCtx createCGImage:ci fromRect:ci.extent];
+    if (!cg) {
+        ftLogSurface("JPEG encode failed: CIContext could not render the image", s);
+        return nil;
+    }
+    NSMutableData *out = [NSMutableData data];
+    CGImageDestinationRef dest = CGImageDestinationCreateWithData((__bridge CFMutableDataRef)out,
+                                                                  (__bridge CFStringRef)@"public.jpeg", 1, NULL);
+    if (dest) {
+        CGImageDestinationAddImage(dest, cg, NULL);
+        if (CGImageDestinationFinalize(dest)) jpeg = out;
+        CFRelease(dest);
+    }
+    CGImageRelease(cg);
+    if (!jpeg) {
+        ftLogSurface("JPEG encode failed: CIContext rendered but ImageIO could not write JPEG", s);
+        return nil;
+    }
+    if (!gJPEGFallbackLogged) {
+        gJPEGFallbackLogged = YES;
+        fprintf(stderr, "warning: JPEGRepresentationOfImage failed; encoding via createCGImage+ImageIO instead\n");
+    }
+    return jpeg;
+}
+
 // gQueue 上でのみ呼ぶこと(CIContext・gLastEmit・gTrailingArmed の直列性が前提)。
 static void ftEmitNow(void) {
     id so = ftMsg0(gDesc, "framebufferSurface");
     if (!so) return;  // 起動直後などまだサーフェス未生成。次のトリガ待ち
     IOSurfaceRef s = (__bridge IOSurfaceRef)so;
+    if (!ftSurfaceUsable(s)) return;
     CVPixelBufferRef pb = NULL;
     if (CVPixelBufferCreateWithIOSurface(kCFAllocatorDefault, s, NULL, &pb) != kCVReturnSuccess || !pb) {
-        fprintf(stderr, "warning: CVPixelBufferCreateWithIOSurface failed\n");
+        ftLogSurface("CVPixelBufferCreateWithIOSurface failed", s);
         return;
     }
     CIImage *ci = [CIImage imageWithCVPixelBuffer:pb];
@@ -155,19 +224,16 @@ static void ftEmitNow(void) {
         outW = (uint16_t)llround((double)w * scale);
         outH = (uint16_t)llround((double)h * scale);
     }
-    NSData *jpeg = [gCtx JPEGRepresentationOfImage:ci colorSpace:gColorSpace options:@{}];
+    NSData *jpeg = ftEncodeJPEG(ci, s);
     CVPixelBufferRelease(pb);
-    if (!jpeg) {
-        fprintf(stderr, "warning: JPEG encode failed\n");
-        return;
-    }
+    if (!jpeg) return;
     ftWriteFrame(jpeg, outW, outH);
     gLastEmit = ftNow();
 }
 
 #pragma mark - H.264 encode (--codec h264)
 
-static void ftNoteEncodeFailure(void);
+static void ftNoteEncodeFailure(uintptr_t generation, OSStatus status);
 
 // gQueue 上でのみ呼ぶこと(gCompSession/gCompWidth/gCompHeight の直列性が前提)。
 static void ftInvalidateCompressionSession(void) {
@@ -187,12 +253,22 @@ static void ftCompressionOutputCB(void *outputCallbackRefCon, void *sourceFrameR
 // codec でレコードを切り出すので、v2 の途中に v1 が現れると境界がずれて desync し、
 // helper を kill して再起動するループになる。プロセスの寿命の中で形式は変えず、
 // 「h264 は無理だった」を exit code で伝えて呼び出し側に mjpeg で張り直させる
-static void ftNoteEncodeFailure(void) {
-    gEncodeFailures += 1;
+static void ftCountEncodeFailure(void);
+static void ftNoteEncodeFailure(uintptr_t generation, OSStatus status) {
+    // 古い世代の失敗・既に捨てたセッションの残りは無視(同じセッションの2本目以降)
+    if (generation != gCompGeneration || !gCompSession) return;
+    fprintf(stderr, "warning: h264 encode failed status=%d (session #%lu discarded)\n",
+            (int)status, (unsigned long)generation);
     ftInvalidateCompressionSession();
+    ftCountEncodeFailure();
+}
+// 生成失敗(セッションが無い)も同じ勘定に載せる
+static void ftCountEncodeFailure(void) {
+    gEncodeFailures += 1;
     if (gEncodeFailures < kFtEncodeFailuresBeforeMJPEG) return;
-    fprintf(stderr, "error: h264 encoding failed %d times in a row — this host cannot encode"
-                    " (exiting %d so the caller retries with --codec mjpeg)\n",
+    fprintf(stderr, "error: h264 encoding failed %d times in a row even after recreating the session"
+                    " (exiting %d so the caller retries with --codec mjpeg; if MJPEG fails on the same"
+                    " frames too, the input from this simulator is the problem, not the host encoder)\n",
             gEncodeFailures, kFtExitCodecUnavailable);
     fflush(stderr);
     exit(kFtExitCodecUnavailable);
@@ -205,14 +281,16 @@ static void ftEnsureCompressionSession(size_t w, size_t h) {
     gCompWidth = w;
     gCompHeight = h;
     VTCompressionSessionRef session = NULL;
+    gCompGeneration += 1;
     OSStatus st = VTCompressionSessionCreate(kCFAllocatorDefault, (int32_t)w, (int32_t)h,
-        kCMVideoCodecType_H264, NULL, NULL, kCFAllocatorDefault, ftCompressionOutputCB, NULL, &session);
+        kCMVideoCodecType_H264, NULL, NULL, kCFAllocatorDefault, ftCompressionOutputCB,
+        (void *)gCompGeneration, &session);
     if (st != noErr || !session) {
         fprintf(stderr, "error: VTCompressionSessionCreate failed status=%d\n", (int)st);
         // **生成失敗も「黙って何も出さない」に落ちる** —— gCompSession が NULL のままだと
         // 下の encode を丸ごと飛ばすので、失敗として数えない限り永久に無フレームになる
         // (encode 失敗と同じ穴。2026-08-17)
-        ftNoteEncodeFailure();
+        ftCountEncodeFailure();
         return;
     }
     VTSessionSetProperty(session, kVTCompressionPropertyKey_RealTime, kCFBooleanTrue);
@@ -284,9 +362,9 @@ static void ftHandleEncodedSample(CMSampleBufferRef sampleBuffer) {
 static void ftCompressionOutputCB(void *outputCallbackRefCon, void *sourceFrameRefCon, OSStatus status,
                                    VTEncodeInfoFlags infoFlags, CMSampleBufferRef sampleBuffer) {
     if (status != noErr) {
-        fprintf(stderr, "warning: VTCompressionSession encode failed status=%d\n", (int)status);
-        // 状態は gQueue 上でだけ触る(VT のコールバックは別スレッド)
-        dispatch_async(gQueue, ^{ ftNoteEncodeFailure(); });
+        // 状態(とログ)は gQueue 上でだけ触る(VT のコールバックは別スレッド)
+        uintptr_t generation = (uintptr_t)outputCallbackRefCon;
+        dispatch_async(gQueue, ^{ ftNoteEncodeFailure(generation, status); });
         return;
     }
     if (!sampleBuffer || !CMSampleBufferDataIsReady(sampleBuffer)) return;
@@ -302,9 +380,10 @@ static void ftEmitNowH264(void) {
     id so = ftMsg0(gDesc, "framebufferSurface");
     if (!so) return;  // 起動直後などまだサーフェス未生成。次のトリガ待ち
     IOSurfaceRef s = (__bridge IOSurfaceRef)so;
+    if (!ftSurfaceUsable(s)) return;
     CVPixelBufferRef pb = NULL;
     if (CVPixelBufferCreateWithIOSurface(kCFAllocatorDefault, s, NULL, &pb) != kCVReturnSuccess || !pb) {
-        fprintf(stderr, "warning: CVPixelBufferCreateWithIOSurface failed\n");
+        ftLogSurface("CVPixelBufferCreateWithIOSurface failed", s);
         return;
     }
     size_t w = IOSurfaceGetWidth(s);
@@ -315,7 +394,7 @@ static void ftEmitNowH264(void) {
         OSStatus st = VTCompressionSessionEncodeFrame(gCompSession, pb, pts, kCMTimeInvalid, NULL, NULL, NULL);
         if (st != noErr) {
             fprintf(stderr, "warning: VTCompressionSessionEncodeFrame failed status=%d\n", (int)st);
-            ftNoteEncodeFailure();  // 既に gQueue 上
+            ftNoteEncodeFailure(gCompGeneration, st);  // 既に gQueue 上
         }
     }
     CVPixelBufferRelease(pb);

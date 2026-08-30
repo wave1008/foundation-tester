@@ -335,7 +335,9 @@ export class MonitorDeviceStreamController {
     const pipeline = new StreamPipeline({
       command: target.command,
       args: target.args,
-      logPrefix: target.platform === "ios" ? "ios-stream" : "android-stream",
+      // 台名を入れる —— helper の stderr(encode 失敗・wedge)は全部この prefix で出るので、
+      // 無いと数十本のどれが壊れたか分からない(2026-08-31: iOS 4本の同時失敗が特定できなかった)
+      logPrefix: `${target.platform === "ios" ? "ios-stream" : "android-stream"} ${deviceId}`,
       outputChannel: this.deps.outputChannel,
       codec: target.codec,
       // 受信時に間引きは発動しない(stream: true を付けて webview の描画 ack に委ねる。冒頭コメント参照)
