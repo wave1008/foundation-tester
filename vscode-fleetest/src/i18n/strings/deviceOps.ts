@@ -363,6 +363,11 @@ export const deviceOpsStrings = {
     ja: "モニタープロセスが終了しました(exit code: {exitCode}, signal: {signal})。{hint}",
     en: "The monitor process exited (exit code: {exitCode}, signal: {signal}). {hint}",
   },
+  // 予期しない終了のバナーは give-up 時のみ(それまでは OUTPUT +自動再起動で自己回復)
+  "deviceOps.monitorGaveUpMessage": {
+    ja: "モニタープロセスが繰り返し終了するため自動再起動を停止しました。{detail}",
+    en: "The monitor process kept exiting, so automatic restarts stopped. {detail}",
+  },
   "deviceOps.log.hostMetricsStartFailed": {
     ja: "[host-metrics] プロセスの起動に失敗しました: {error}",
     en: "[host-metrics] Failed to start the process: {error}",

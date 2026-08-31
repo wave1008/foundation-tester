@@ -361,22 +361,23 @@ export class MonitorProcessManager {
         }),
       );
       if (!selfInitiated) {
-        // exit 0 の予期しない終了(過去例: stdin の扱いの不備)も無言にせず必ず通知する。
+        // **終了のたびにバナーは出さない** —— 自動再起動が自己回復させるので、外からの kill
+        // (update.sh のバイナリ差し替え・新バイナリへの respawn)で毎回警告が鳴っていた
+        // (2026-09-01 報告)。無言にはしない: OUTPUT には上で必ず1行残り、バナーは
+        // **再起動を諦めたときだけ**(scheduleMonitorRestart の give-up)。
         // **CLI が理由を言っていればそれを出す**(推測より事実。決め打ちの案内は最後の手段)
         const hint = lastError
           ? lastError
           : exitCode === 0
             ? t("deviceOps.monitorExitedUnexpectedHint")
             : t("deviceOps.monitorExitedMachineHint");
-        this.deps.post({
-          type: "processDown",
-          message: t("deviceOps.monitorClosedMessage", {
+        this.scheduleMonitorRestart(
+          t("deviceOps.monitorClosedMessage", {
             exitCode: String(exitCode),
             signal: String(signal),
             hint,
           }),
-        });
-        this.scheduleMonitorRestart();
+        );
       }
     });
   }
@@ -386,7 +387,7 @@ export class MonitorProcessManager {
    * 2026-08-24 追加 — それまで monitor は死ぬとバナー通知のみで、パネルの開き直しまで戻らなかった。
    * 実害: update.sh の再ビルドが稼働中バイナリを差し替えて SIGKILL → 無人計測の監視が止まりっぱなし)。
    */
-  private scheduleMonitorRestart(): void {
+  private scheduleMonitorRestart(downMessage: string): void {
     const elapsedMs = Date.now() - (this.monitorStartedAt ?? Date.now());
     if (elapsedMs < 10000) {
       this.monitorFailureStreak += 1;
@@ -397,6 +398,12 @@ export class MonitorProcessManager {
       if (!this.monitorGaveUp) {
         this.monitorGaveUp = true;
         this.deps.outputChannel.appendLine(t("deviceOps.log.monitorGaveUp"));
+        // バナーはここでだけ出す(close 側のコメント参照)。downMessage は CLI の Error 行を
+        // 最優先にした終了理由(monitorClosedMessage 済みの文)
+        this.deps.post({
+          type: "processDown",
+          message: t("deviceOps.monitorGaveUpMessage", { detail: downMessage }),
+        });
       }
       return;
     }

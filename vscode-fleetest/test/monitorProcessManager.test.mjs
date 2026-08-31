@@ -106,32 +106,57 @@ test("startHostMetricsProcess は `api host-metrics --interval 1` で spawnFn �
 // 「run profile not found: local+remote (available: android, android-device)」と正しく言っていたのに、
 // 拡張は exit code だけを見て「マシンプロファイル未設定の可能性があります」と表示し、
 // 見当違いの場所(profiles/machines/)を調べさせた。
-test("モニターの異常終了は CLI の Error 行をそのままバナーに載せる", () => {
+test("異常終了のバナーは give-up 時だけ・CLI の Error 行をそのまま載せる", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"], now: 0 });
   const posts = [];
-  const proc = makeFakeProc();
-  const manager = new MonitorProcessManager(makeDeps({ post: (m) => posts.push(m) }), () => proc);
+  let current;
+  const spawnFn = () => {
+    current = makeFakeProc();
+    return current;
+  };
+  const manager = new MonitorProcessManager(makeDeps({ post: (m) => posts.push(m) }), spawnFn);
   manager.startMonitorProcess();
 
-  proc.stderr.emit("data", Buffer.from("→ Using machine profile M2Ultra automatically\n"));
-  proc.stderr.emit("data", Buffer.from("Error: run profile not found: local+remote (available: android)\n"));
-  // ArgumentParser は Error の**後ろ**に usage を出す。最後の1行を拾う実装だとこれを理由にする
-  proc.stderr.emit("data", Buffer.from("  See 'fleetest api monitor --help' for more information.\n"));
-  proc.emit("close", 1, null);
+  for (let i = 0; i < 3; i += 1) {
+    // 起動直後(10秒未満)に同じ理由で死に続ける(設定誤り等の再現)
+    t.mock.timers.tick(1000);
+    current.stderr.emit("data", Buffer.from("→ Using machine profile M2Ultra automatically\n"));
+    current.stderr.emit("data", Buffer.from("Error: run profile not found: local+remote (available: android)\n"));
+    // ArgumentParser は Error の**後ろ**に usage を出す。最後の1行を拾う実装だとこれを理由にする
+    current.stderr.emit("data", Buffer.from("  See 'fleetest api monitor --help' for more information.\n"));
+    current.emit("close", 1, null);
+    if (i < 2) {
+      // 自動再起動が自己回復させる間はバナーを出さない(update.sh の差し替え kill で毎回鳴っていた)
+      assert.equal(posts.filter((m) => m.type === "processDown").length, 0,
+        "再起動が残っている間はバナーを出さない");
+    }
+    t.mock.timers.tick(5000);
+  }
 
   const down = posts.filter((m) => m.type === "processDown").at(-1);
-  assert.ok(down, "processDown が送られる");
+  assert.ok(down, "give-up でバナーが送られる");
+  assert.match(down.message, /自動再起動を停止/, "諦めたことを言う");
   assert.match(down.message, /run profile not found: local\+remote/, "理由をそのまま出す");
   assert.doesNotMatch(down.message, /マシンプロファイル未設定/, "推測の案内で上書きしない");
   assert.doesNotMatch(down.message, /Using machine profile/, "進行ログは理由ではない");
 });
 
-test("CLI が何も言わずに落ちたときは従来の案内へ戻る", () => {
+test("CLI が何も言わずに落ち続けたときは従来の案内へ戻る(give-up バナー)", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"], now: 0 });
   const posts = [];
-  const proc = makeFakeProc();
-  const manager = new MonitorProcessManager(makeDeps({ post: (m) => posts.push(m) }), () => proc);
+  let current;
+  const spawnFn = () => {
+    current = makeFakeProc();
+    return current;
+  };
+  const manager = new MonitorProcessManager(makeDeps({ post: (m) => posts.push(m) }), spawnFn);
   manager.startMonitorProcess();
 
-  proc.emit("close", 1, null);
+  for (let i = 0; i < 3; i += 1) {
+    t.mock.timers.tick(1000);
+    current.emit("close", 1, null);
+    t.mock.timers.tick(5000);
+  }
 
   const down = posts.filter((m) => m.type === "processDown").at(-1);
   assert.match(down.message, /マシンプロファイル未設定/);
