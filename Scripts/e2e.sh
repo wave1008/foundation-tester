@@ -26,7 +26,9 @@
 #                                   # Android だけ回したいときは --android
 #   Scripts/e2e.sh --ios-inapp     # **iOS だけ**を in-app エンジン(= 既定と同じ)で回す
 #   Scripts/e2e.sh --rebuild       # SUT を必ず再ビルドしてから実行
-#   Scripts/e2e.sh --performance   # 性能計測モード(各 run へ --performance を渡す)。起動していない
+#   Scripts/e2e.sh --performance   # 性能計測モード(各 run へ --performance を渡す)。**この機械の
+#                                   # モニターを自動で pause し、終了時(失敗・Ctrl-C 込み)に resume する**
+#                                   # (手で pause しない。安全網は --for 60)。起動していない
 #                                   # 仮想デバイスは常に復活を試みるが、このモードでは**復活できない
 #                                   # レーンが1つでも残ると run を開始せず失敗する**(レーン数が変わると
 #                                   # 計測にならないため。既定は切り離して完走)。時間を比較する回に付ける
@@ -100,6 +102,27 @@ if [ "$RECORD" = 1 ]; then
 fi
 if [ "$ALIGN" = 1 ]; then
   command -v python3 >/dev/null || { echo "❌ --align には python3 が必要です" >&2; exit 1; }
+fi
+
+# ---- --performance: モニターの pause/resume はこのスクリプトが所有する --------------------
+# 「モニターを止めるのは性能を測るときだけ」(docs/verification.md §モニターと E2E)は
+# --performance と 1:1 なので、止める・戻すを人に任せない —— 戻し忘れが実害になった
+# (2026-09-01: 計測後の resume が後続作業に埋もれ、利用者が「モニターが戻らない」と報告)。
+# --for 60 は trap が走れない死に方(SIGKILL)への安全網。60分 = フルスイート(10〜30分)の2倍。
+# リモートランナーの monitor は止めない —— run 中はランナー側の占有機構(dispatch.lock →
+# monitorLock)が配信を退避するので、手で止める必要がそもそも無い。
+MONITOR_PAUSED=""
+resume_monitor() {
+  [ -n "$MONITOR_PAUSED" ] || return 0
+  MONITOR_PAUSED=""
+  "$FLEETEST" monitor resume >/dev/null 2>&1 || true
+  echo "→ モニターを再開しました(--performance の自動 pause/resume)"
+}
+trap 'resume_monitor' EXIT
+trap 'resume_monitor; exit 130' INT TERM
+if [ "$PERFORMANCE" = 1 ]; then
+  "$FLEETEST" monitor pause --for 60
+  MONITOR_PAUSED=1
 fi
 
 # ソースが成果物より新しいか(成果物が無い場合も真)

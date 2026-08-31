@@ -108,6 +108,12 @@ step 4 の `type "abc"` が IME に飲まれて届かず、欄が**空のまま*
 **運用**: モニターを止めるのは**こちらが性能を測るとき**だけ。合否を見るだけの実行では止めない
 (止めている間の利便性の損失が大きい、という 2026-08-21 のユーザー判断)。問題が出たら見直す。
 
+**`Scripts/e2e.sh --performance` は pause/resume を自分で行う**(2026-09-01)。開始時に
+`monitor pause --for 60`(SIGKILL 時の安全網)、終了時は trap で必ず `resume`(失敗・Ctrl-C 込み)。
+**手で pause しない** —— 戻し忘れが実害になった(計測後の resume が後続作業に埋もれ、利用者が
+「モニターが戻らない」と報告)。**リモートランナーの monitor も止めない** —— run 中は
+ランナー側の占有機構(dispatch.lock → monitorLock)が配信を退避するので手動の pause は不要。
+
 **ただし下の実測は捨てない** —— 配信は**遅くするだけでなく落とすことがある**。
 だから **Android が赤くなったら真っ先に配信の有無を疑う**。判定材料は run.json の
 `workerAnomalies`(`degraded` / `requeued`)で、理由が `the device disappeared` /
