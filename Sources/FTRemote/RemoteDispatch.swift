@@ -292,6 +292,16 @@ public enum RemoteTransferPlan {
         return args
     }
 
+    /// WebView レベリングの供給元キャッシュ(`~/Library/Caches/fleetest/webview`)をランナーへ渡す。
+    /// 実機の無い機械はドナー不在で永遠に古いまま(AndroidWebViewUpdate.plan のコメント参照)。
+    /// **--delete は付けない**(ランナー自身が吸い出した版を消さない。古い版の掃除は
+    /// AndroidWebViewUpdate.run の既存 cleanup が行う)。版で1ファイルなので2回目以降は no-op。
+    /// remoteCacheDir はリモートのホーム相対(親ディレクトリは呼び出し側が mkdir -p で用意する)
+    public static func webViewCacheRsyncArgs(localCacheDir: String, sshTarget: String,
+                                             remoteCacheDir: String) -> [String] {
+        ["-az", localCacheDir + "/", "\(sshTarget):\(remoteCacheDir)/"]
+    }
+
     /// `remoteControl.workspace` のミラー(RemoteRunDispatcher が宣言済みのときだけ呼ぶ)。
     /// アプリのパッケージ(.app/.apk)を運ぶための rsync なので `-az --delete` で手元と揃える
     /// (rsyncArgs と同じ規律)。`ignore` は workspaceIgnore で読んだ結果

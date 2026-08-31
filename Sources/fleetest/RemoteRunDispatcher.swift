@@ -4,6 +4,7 @@
 // (dispatch.lock の取得・解放。docs/remote-runner.md §5)もここで行う。純粋ロジックは
 // Sources/FTRemote/RemoteDispatchLock.swift 側。
 
+import FTAndroid
 import FTCore
 import FTRemote
 import Foundation
@@ -355,6 +356,31 @@ struct RemoteRunDispatcher {
             localProjectDir: project.rootURL, project: project.name, alias: hostLabel,
             layout: layout, sshTarget: host.sshTarget) {
             throw RemoteDispatchError.remoteSetupFailed(failure)
+        }
+        transferWebViewCache()
+    }
+
+    /// WebView レベリング(AndroidWebViewUpdate)の供給元キャッシュをランナーへ届ける。
+    /// 実機の無い機械は機内にドナーが居らず永遠に古いまま(M1Max が 124 で取り残され
+    /// WebView シナリオがリモートレーンでだけ落ちた。2026-09-01)。**失敗しても run は止めない**
+    /// (レベリング自体が best-effort。版差は run を落とすより軽い)。android を含まない構成でも
+    /// 一度だけ払う(この層では platform を解決しない。rsync は同版なら no-op)
+    private func transferWebViewCache() {
+        let localDir = AndroidWebViewUpdate.cacheDirectory()
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: localDir.path),
+              names.contains(where: { $0.hasSuffix(".apk") }) else { return }
+        let remoteDir = "Library/Caches/fleetest/webview"
+        // グロブ無しの固定コマンド(ssh 越しのグロブ禁止。docs/remote-runner.md §18.7)
+        guard (try? runInherited(["ssh", host.sshTarget, "mkdir -p \(remoteDir)"])) == 0 else {
+            log("⚠️ could not prepare the WebView cache directory on \(host.sshTarget)"
+                + " (continuing; WebView levelling on that runner keeps its local donors only)")
+            return
+        }
+        let args = ["rsync"] + RemoteTransferPlan.webViewCacheRsyncArgs(
+            localCacheDir: localDir.path, sshTarget: host.sshTarget, remoteCacheDir: remoteDir)
+        if (try? runInherited(args)) != 0 {
+            log("⚠️ could not transfer the WebView cache to \(host.sshTarget)"
+                + " (continuing; WebView levelling on that runner keeps its local donors only)")
         }
     }
 

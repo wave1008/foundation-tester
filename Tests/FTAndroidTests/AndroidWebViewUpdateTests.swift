@@ -11,7 +11,7 @@ final class AndroidWebViewUpdateTests: XCTestCase {
         let plan = try XCTUnwrap(AndroidWebViewUpdate.plan(
             candidates: ["phone": "150.0.7871.181", "emu-1": "124.0.6367.219", "emu-2": "124.0.6367.219"],
             targets: ["emu-1", "emu-2"]))
-        XCTAssertEqual(plan.source, "phone")
+        XCTAssertEqual(plan.source, .device("phone"))
         XCTAssertEqual(plan.targets, ["emu-1", "emu-2"])
     }
 
@@ -21,8 +21,53 @@ final class AndroidWebViewUpdateTests: XCTestCase {
         let plan = try XCTUnwrap(AndroidWebViewUpdate.plan(
             candidates: ["phone": "150.0.7871.181", "emu-1": "124.0.6367.219"],
             targets: ["emu-1"]))
-        XCTAssertEqual(plan.source, "phone")
+        XCTAssertEqual(plan.source, .device("phone"))
         XCTAssertEqual(plan.targets, ["emu-1"])
+    }
+
+    /// **キャッシュの APK が全端末より新しければ供給元になる**(実機の無い機械のドナー。
+    /// ディスパッチ元が転送してくる。2026-09-01 の M1Max 取り残しの再発防止)
+    func testCachedAPKBecomesTheDonorWhenNewerThanEveryDevice() throws {
+        let plan = try XCTUnwrap(AndroidWebViewUpdate.plan(
+            candidates: ["emu-1": "124.0.6367.219", "emu-2": "124.0.6367.219"],
+            targets: ["emu-1", "emu-2"],
+            cachedAPKs: ["/cache/com.google.android.webview-151.0.7922.199.apk": "151.0.7922.199"]))
+        XCTAssertEqual(plan.source,
+                       .cachedAPK("/cache/com.google.android.webview-151.0.7922.199.apk"))
+        XCTAssertEqual(plan.sourceVersion, "151.0.7922.199")
+        XCTAssertEqual(plan.targets, ["emu-1", "emu-2"])
+    }
+
+    /// **同版なら端末を優先**(従来と挙動が変わらない側。キャッシュが勝つのは真に新しいときだけ)
+    func testDeviceDonorWinsOverAnEquallyNewCache() throws {
+        let plan = try XCTUnwrap(AndroidWebViewUpdate.plan(
+            candidates: ["phone": "151.0.7922.199", "emu-1": "124.0.6367.219"],
+            targets: ["emu-1"],
+            cachedAPKs: ["/cache/com.google.android.webview-151.0.7922.199.apk": "151.0.7922.199"]))
+        XCTAssertEqual(plan.source, .device("phone"))
+    }
+
+    /// 古いキャッシュは供給元にしない(古いものを配らない、の既存規律のまま)
+    func testAnOlderCacheNeverDowngrades() {
+        XCTAssertNil(AndroidWebViewUpdate.plan(
+            candidates: ["emu-1": "151.0.7922.199"],
+            targets: ["emu-1"],
+            cachedAPKs: ["/cache/com.google.android.webview-124.0.6367.219.apk": "124.0.6367.219"]))
+    }
+
+    /// キャッシュのファイル名契約(`com.google.android.webview-<版>.apk`)の読み取り
+    func testCachedVersionsParsesTheFilenameContract() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ft-webview-cache-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        FileManager.default.createFile(
+            atPath: dir.appendingPathComponent("com.google.android.webview-151.0.7922.199.apk").path,
+            contents: Data())
+        FileManager.default.createFile(atPath: dir.appendingPathComponent("junk.txt").path,
+                                       contents: Data())
+        let versions = AndroidWebViewUpdate.cachedVersions(in: dir)
+        XCTAssertEqual(Array(versions.values), ["151.0.7922.199"])
     }
 
     /// **run の対象外の端末は書き換えない**(テストが触っていない端末を変えない)

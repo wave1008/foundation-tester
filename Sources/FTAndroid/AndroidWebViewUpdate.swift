@@ -33,26 +33,55 @@ public enum AndroidWebViewUpdate {
         return false
     }
 
-    /// 配る計画(純粋)。**供給元は接続中で最も新しい端末**、対象はそれより古い端末。
-    /// 供給元が無い / 全部同じなら空(= 何もしない)
+    /// 配る計画(純粋)。**供給元は接続中で最も新しい端末、それより新しければキャッシュの APK**、
+    /// 対象はそれより古い端末。供給元が無い / 全部同じなら空(= 何もしない)
+    public enum Donor: Equatable {
+        case device(String)     // serial
+        case cachedAPK(String)  // cacheDirectory 内の APK のパス
+    }
     public struct Plan: Equatable {
-        public let source: String
+        public let source: Donor
         public let sourceVersion: String
         public let targets: [String]
     }
 
-    /// **供給元は接続中の全端末から探し、書き換えるのは run が使う端末だけ**。
+    /// **供給元は接続中の全端末とキャッシュの APK から探し、書き換えるのは run が使う端末だけ**。
     /// 実機は Play が勝手に上げるので供給元になりやすいが、**run のプロファイルに入っていない**
     /// ことが普通で、同じ集合から選ぶと「供給元が居ない」で何も起きなかった(実際に踏んだ)。
-    /// 逆に**無関係な端末を書き換えない** —— テスト実行が触っていない端末を変えるのは驚きが大きい
-    public static func plan(candidates: [String: String], targets targetSerials: [String]) -> Plan? {
-        guard let newest = candidates.max(by: { isNewer($1.value, than: $0.value) }) else { return nil }
+    /// 逆に**無関係な端末を書き換えない** —— テスト実行が触っていない端末を変えるのは驚きが大きい。
+    /// キャッシュを候補に入れるのは、**実機の無い機械はドナー不在で永遠に古いまま**だから
+    /// (M1Max が 124 のまま取り残され、WebView シナリオがリモートレーンでだけ落ちた。
+    /// 2026-09-01)。ディスパッチ元がキャッシュをランナーへ届ける(RemoteRunDispatcher の
+    /// transferWebViewCache)。**同版なら端末を優先**(従来と挙動が変わらない側に倒す)
+    public static func plan(candidates: [String: String], targets targetSerials: [String],
+                            cachedAPKs: [String: String] = [:]) -> Plan? {
+        var donor: (source: Donor, version: String)?
+        if let d = candidates.max(by: { isNewer($1.value, than: $0.value) }) {
+            donor = (.device(d.key), d.value)
+        }
+        if let c = cachedAPKs.max(by: { isNewer($1.value, than: $0.value) }),
+           donor.map({ isNewer(c.value, than: $0.version) }) ?? true {
+            donor = (.cachedAPK(c.key), c.value)
+        }
+        guard let donor else { return nil }
         let targets = targetSerials.filter { serial in
             guard let v = candidates[serial] else { return false }
-            return isNewer(newest.value, than: v)
+            return isNewer(donor.version, than: v)
         }.sorted()
         guard !targets.isEmpty else { return nil }
-        return Plan(source: newest.key, sourceVersion: newest.value, targets: targets)
+        return Plan(source: donor.source, sourceVersion: donor.version, targets: targets)
+    }
+
+    /// キャッシュ内の APK 一覧(パス → 版。ファイル名 `com.google.android.webview-<版>.apk` が契約)
+    static func cachedVersions(in directory: URL) -> [String: String] {
+        let prefix = "com.google.android.webview-"
+        var out: [String: String] = [:]
+        for name in (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? [] {
+            guard name.hasPrefix(prefix), name.hasSuffix(".apk") else { continue }
+            out[directory.appendingPathComponent(name).path] =
+                String(name.dropFirst(prefix.count).dropLast(4))
+        }
+        return out
     }
 
     /// **自動化できないときに出す文**(純粋)。
@@ -74,7 +103,7 @@ public enum AndroidWebViewUpdate {
     /// (OS に消されると毎回 pull し直す)。**リポジトリにも置かない**(受け手が clone する
     /// ツリーを太らせない)。`SharedResource` と同じ `~/Library/Caches/fleetest` 配下にする。
     /// **版ごとにファイルを分け、古い版は消す**(放置すると 265MB ずつ積み上がる)
-    static func cacheDirectory(home: URL = URL(fileURLWithPath: NSHomeDirectory())) -> URL {
+    public static func cacheDirectory(home: URL = URL(fileURLWithPath: NSHomeDirectory())) -> URL {
         home.appendingPathComponent("Library/Caches/fleetest/webview")
     }
 
@@ -101,24 +130,32 @@ public extension AndroidWebViewUpdate {
                   let v = AndroidWebViewVersions.versionName(inDumpsys: text) else { continue }
             versions[serial] = v
         }
-        guard let plan = plan(candidates: versions, targets: targets) else {
+        let cache = cacheDirectory()
+        guard let plan = plan(candidates: versions, targets: targets,
+                              cachedAPKs: cachedVersions(in: cache)) else {
             if let message = cannotUpdateMessage(candidates: versions, targets: targets) { log(message) }
             return
         }
-        log("==> WebView を \(plan.sourceVersion) へ揃えます(供給元 \(plan.source)・対象 \(plan.targets.count)台)")
-        guard let path = adb(["-s", plan.source, "shell", "pm", "path", "com.google.android.webview"])?
-            .split(separator: "\n").first.map({ $0.replacingOccurrences(of: "package:", with: "")
-                .trimmingCharacters(in: .whitespacesAndNewlines) }), !path.isEmpty else {
-            log("⚠️ WebView の APK パスを取れませんでした(揃えずに続行します)")
-            return
-        }
-        let cache = cacheDirectory()
-        try? FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
-        let local = cachedAPK(version: plan.sourceVersion, in: cache)
-        if !FileManager.default.fileExists(atPath: local.path) {
-            guard adb(["-s", plan.source, "pull", path, local.path]) != nil else {
-                log("⚠️ WebView の APK を取り出せませんでした(揃えずに続行します)")
+        let local: URL
+        switch plan.source {
+        case .cachedAPK(let path):
+            log("==> WebView を \(plan.sourceVersion) へ揃えます(供給元 キャッシュ・対象 \(plan.targets.count)台)")
+            local = URL(fileURLWithPath: path)
+        case .device(let source):
+            log("==> WebView を \(plan.sourceVersion) へ揃えます(供給元 \(source)・対象 \(plan.targets.count)台)")
+            guard let path = adb(["-s", source, "shell", "pm", "path", "com.google.android.webview"])?
+                .split(separator: "\n").first.map({ $0.replacingOccurrences(of: "package:", with: "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines) }), !path.isEmpty else {
+                log("⚠️ WebView の APK パスを取れませんでした(揃えずに続行します)")
                 return
+            }
+            try? FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
+            local = cachedAPK(version: plan.sourceVersion, in: cache)
+            if !FileManager.default.fileExists(atPath: local.path) {
+                guard adb(["-s", source, "pull", path, local.path]) != nil else {
+                    log("⚠️ WebView の APK を取り出せませんでした(揃えずに続行します)")
+                    return
+                }
             }
         }
         for target in plan.targets {
