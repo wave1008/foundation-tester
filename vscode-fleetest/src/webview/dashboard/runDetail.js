@@ -28,7 +28,8 @@ function titleFor(runID) {
   return t('wvDashboard.runDetail.title', { runID });
 }
 
-export function requestRunDetail(runID) {
+/** runIDs = 同じ実行の構成 run 全部(先頭 = runID)。単機は省略可。 */
+export function requestRunDetail(runID, runIDs) {
   section.style.display = 'block';
   titleEl.textContent = titleFor(runID);
   clearChildren(bodyEl);
@@ -36,7 +37,7 @@ export function requestRunDetail(runID) {
   loading.className = 'status-message';
   loading.textContent = t('wvDashboard.runDetail.loading');
   bodyEl.appendChild(loading);
-  vscode.postMessage({ type: 'runDetail', runID });
+  vscode.postMessage({ type: 'runDetail', runID, runIDs: runIDs && runIDs.length > 0 ? runIDs : [runID] });
 }
 
 export function showRunDetailError(runID, message) {
@@ -326,13 +327,25 @@ function scenariosTable(scenarios) {
   return wrap;
 }
 
-export function showRunDetailData(payload) {
-  const run = payload.run;
-  if (titleEl.textContent !== titleFor(run.runID)) {
+/** payloads = 構成 run ごとの results-run 応答(先頭 = リクエストした primary)。
+ * フリート実行は機械ごとの見出しを立てて縦に並べる。 */
+export function showRunDetailData(payloads) {
+  if (payloads.length === 0) {
+    return;
+  }
+  if (titleEl.textContent !== titleFor(payloads[0].run.runID)) {
     return; // 別 run のリクエスト後に古い応答が届いた場合は無視する
   }
   clearChildren(bodyEl);
-  bodyEl.appendChild(renderMeta(run));
-  bodyEl.appendChild(renderAnomalies(run));
-  bodyEl.appendChild(scenariosTable(payload.scenarios));
+  for (const payload of payloads) {
+    if (payloads.length > 1) {
+      const heading = document.createElement('h3');
+      heading.className = 'detail-machine-heading';
+      heading.textContent = machineLabel(payload.run.host);
+      bodyEl.appendChild(heading);
+    }
+    bodyEl.appendChild(renderMeta(payload.run));
+    bodyEl.appendChild(renderAnomalies(payload.run));
+    bodyEl.appendChild(scenariosTable(payload.scenarios));
+  }
 }

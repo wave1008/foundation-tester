@@ -114,8 +114,8 @@ export const exploreHealStrings = {
     en: "Recent Runs",
   },
   "exploreHeal.dashboard.headingPerformance": {
-    ja: "パフォーマンス(--performance run)",
-    en: "Performance (--performance runs)",
+    ja: "パフォーマンス測定(--performance run)",
+    en: "Performance Measurements (--performance runs)",
   },
   "exploreHeal.dashboard.headingPerfComparison": {
     ja: "前回計測との比較",

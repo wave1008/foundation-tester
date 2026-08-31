@@ -248,6 +248,12 @@ button:hover:not(:disabled) { background-color: var(--vscode-button-hoverBackgro
 .detail-subsection {
   margin-bottom: 16px;
 }
+.detail-machine-heading {
+  font-size: 1em;
+  margin: 14px 0 6px 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--vscode-widget-border, rgba(127, 127, 127, 0.35));
+}
 .detail-subsection h3 {
   font-size: 0.95em;
   margin: 0 0 6px 0;

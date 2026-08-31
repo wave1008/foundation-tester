@@ -40,6 +40,7 @@ struct ApiResultsCommand: AsyncParsableCommand {
 
         let runs = RunResultsStore.scanRuns(resultsDir: resultsDir, since: sinceDate)
         let records = RunResultsStore.scanRecords(resultsDir: resultsDir, since: sinceDate)
+        let recentRuns = RunResultsQuery.recentRuns(runs, limit: limit)
         let isoFormatter = ISO8601DateFormatter()
 
         let output = ApiResultsOutput(
@@ -47,7 +48,7 @@ struct ApiResultsCommand: AsyncParsableCommand {
             project: testProject.name,
             generatedAt: isoFormatter.string(from: Date()),
             since: isoFormatter.string(from: sinceDate),
-            runs: RunResultsQuery.recentRuns(runs, limit: limit),
+            runs: recentRuns,
             summary: RunResultsQuery.scenarioSummary(records),
             flaky: RunResultsQuery.flakyScenarios(records, minRuns: minRuns),
             devices: RunResultsQuery.deviceSummary(records),
@@ -62,7 +63,8 @@ struct ApiResultsCommand: AsyncParsableCommand {
             fullSuiteMinScenarios: RunResultsQuery.fullSuiteMinScenarios,
             performance: RunResultsQuery.performanceReport(records: records, runs: runs),
             machines: RemoteHostFactsStore.aliasPairs(dir: RemoteHostFactsStore.dir(project: testProject))
-                .map { MachineAliasEntry(host: $0.host, machine: $0.machine) })
+                .map { MachineAliasEntry(host: $0.host, machine: $0.machine) },
+            runStats: RunResultsQuery.runStats(runs: recentRuns, records: records))
 
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
@@ -94,10 +96,13 @@ private struct ApiResultsOutput: Encodable {
     /// 記録の host(ホスト名)→ この Mac の登録名(machine)の読み替え表(facts キャッシュ由来)。
     /// 記録・runID は host のまま —— エイリアスは改名されうるので表示時にだけ引く
     let machines: [MachineAliasEntry]
+    /// runs と同じ集合の per-run 時間統計(壁時計・テスト時間。表示側が runGroup 単位に畳む)
+    let runStats: [RunResultsQuery.RunStatsRow]
 
     private enum CodingKeys: String, CodingKey {
         case schemaVersion, project, generatedAt, since, runs, summary, flaky, devices, daily, trend,
-             slow, insights, matrix, triage, dailyFullSuite, fullSuiteMinScenarios, performance, machines
+             slow, insights, matrix, triage, dailyFullSuite, fullSuiteMinScenarios, performance, machines,
+             runStats
     }
 
     func encode(to encoder: Encoder) throws {
@@ -124,6 +129,7 @@ private struct ApiResultsOutput: Encodable {
         try container.encode(fullSuiteMinScenarios, forKey: .fullSuiteMinScenarios)
         try container.encode(performance, forKey: .performance)
         try container.encode(machines, forKey: .machines)
+        try container.encode(runStats, forKey: .runStats)
     }
 }
 

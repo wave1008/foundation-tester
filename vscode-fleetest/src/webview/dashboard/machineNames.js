@@ -12,3 +12,14 @@ export function setMachineAliases(rows) {
 export function machineLabel(host) {
   return aliasByHost.get(host) || host;
 }
+
+/** hosts → 表示名の配列。local を常に先頭に(モニターのホスト負荷グラフと同じ並び)、残りは名前昇順 */
+export function machineLabels(hosts) {
+  const labels = hosts.map(machineLabel);
+  labels.sort((a, b) => {
+    if (a === 'local') return -1;
+    if (b === 'local') return 1;
+    return a < b ? -1 : a > b ? 1 : 0;
+  });
+  return labels;
+}

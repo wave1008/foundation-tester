@@ -267,11 +267,16 @@ export interface TriageReport {
 
 /** `--performance` run 1本(`fleetest api results` の performance.runs[])。 */
 export interface PerfRunRow {
+  /** グループ鍵(フリート計測は runGroup で1行に畳まれる。単機 run はその runID)。 */
   readonly runID: string;
+  /** 畳んだ run の全 runID。本フィールド追加前の CLI ではキー省略あり。 */
+  readonly runIDs?: readonly string[] | null;
   readonly startedAt: string;
   readonly profile?: string | null;
   readonly host: string;
-  /** run の壁時計。未完了等でキー省略あり。 */
+  /** グループ内の全機械のホスト名(昇順)。表示は machine へ読み替える。キー省略あり(旧 CLI)。 */
+  readonly hosts?: readonly string[] | null;
+  /** run の壁時計(グループ最初の開始〜最後の完了)。未完了等でキー省略あり。 */
   readonly wallClockMs?: number | null;
   /** テスト時間(最初のシナリオ開始〜最後の完了)。稼働率の分母。キー省略あり。 */
   readonly testTimeMs?: number | null;
@@ -354,12 +359,29 @@ export interface ApiResultsPayload {
   /** 記録の host(ホスト名)→ この Mac の登録名(machine)の読み替え表(facts キャッシュ由来。
    * 表示時にだけ引く —— 記録・runID は host のまま)。本フィールド追加前の CLI ではキー欠落。 */
   readonly machines?: readonly MachineAliasRow[];
+  /** runs と同じ集合の per-run 時間統計。本フィールド追加前の CLI ではキー欠落。 */
+  readonly runStats?: readonly RunStatsRow[];
 }
 
 /** host(記録の鍵)→ machine(表示名)の1組。Swift 側 ApiResultsCommand.MachineAliasEntry と対。 */
 export interface MachineAliasRow {
   readonly host: string;
   readonly machine: string;
+}
+
+/** runs と同じ集合の per-run 時間統計(Swift 側 RunResultsQuery.RunStatsRow と対)。
+ * 表示側が runGroup 単位に畳むため、テスト時間は端点(testStartedAt/testFinishedAt)も届く。 */
+export interface RunStatsRow {
+  readonly runID: string;
+  readonly wallClockMs?: number | null;
+  readonly testStartedAt?: string | null;
+  readonly testFinishedAt?: string | null;
+  readonly testTimeMs?: number | null;
+  readonly scenarioTotalMs: number;
+  readonly scenarioCount: number;
+  readonly laneCount: number;
+  readonly maxScenarioMs?: number | null;
+  readonly maxScenarioID?: string | null;
 }
 
 // ---- webview ⇔ 拡張のメッセージ契約 ----------------------------------------------------
@@ -369,7 +391,8 @@ export interface MachineAliasRow {
 export type DashboardFromWebviewMessage =
   | { readonly type: "ready" }
   | { readonly type: "refresh" }
-  | { readonly type: "runDetail"; readonly runID: string }
+  /** runIDs = 同じ実行(runGroup)の構成 run 全部(先頭 = runID)。旧 webview は省略。 */
+  | { readonly type: "runDetail"; readonly runID: string; readonly runIDs?: readonly string[] }
   | { readonly type: "trend"; readonly scenarioID: string }
   | { readonly type: "openReport"; readonly path: string }
   | { readonly type: "selectProject"; readonly project: string };
@@ -378,7 +401,8 @@ export type DashboardToWebviewMessage =
   | { readonly type: "loading" }
   | { readonly type: "error"; readonly message: string }
   | { readonly type: "data"; readonly payload: ApiResultsPayload }
-  | { readonly type: "runDetail"; readonly payload: ApiResultsRunPayload }
+  /** 構成 run ごとの results-run 応答(先頭 = リクエストした primary)。 */
+  | { readonly type: "runDetail"; readonly payloads: readonly ApiResultsRunPayload[] }
   | { readonly type: "runDetailError"; readonly runID: string; readonly message: string }
   | { readonly type: "trend"; readonly scenarioID: string; readonly records: readonly ScenarioRunRecord[] }
   | { readonly type: "trendError"; readonly scenarioID: string; readonly message: string }
@@ -680,9 +704,11 @@ function isPerfRunRow(value: unknown): value is PerfRunRow {
   if (!isRecord(value)) return false;
   return (
     typeof value.runID === "string" &&
+    isOptStringArray(value.runIDs) &&
     typeof value.startedAt === "string" &&
     isOptString(value.profile) &&
     typeof value.host === "string" &&
+    isOptStringArray(value.hosts) &&
     isOptNumber(value.wallClockMs) &&
     isOptNumber(value.testTimeMs) &&
     typeof value.scenarioTotalMs === "number" &&
@@ -778,6 +804,26 @@ export function isApiResultsPayload(value: unknown): value is ApiResultsPayload 
   ) {
     return false;
   }
+  if (
+    value.runStats !== undefined &&
+    (!Array.isArray(value.runStats) ||
+      !value.runStats.every(
+        (s) =>
+          isRecord(s) &&
+          typeof s.runID === "string" &&
+          isOptNumber(s.wallClockMs) &&
+          isOptString(s.testStartedAt) &&
+          isOptString(s.testFinishedAt) &&
+          isOptNumber(s.testTimeMs) &&
+          typeof s.scenarioTotalMs === "number" &&
+          typeof s.scenarioCount === "number" &&
+          typeof s.laneCount === "number" &&
+          isOptNumber(s.maxScenarioMs) &&
+          isOptString(s.maxScenarioID),
+      ))
+  ) {
+    return false;
+  }
   // performance はキー欠落(旧 CLI)を許容するため undefined のみ特別扱いする。
   if (value.performance !== undefined && !isPerformanceReport(value.performance)) {
     return false;
@@ -788,7 +834,13 @@ export function isApiResultsPayload(value: unknown): value is ApiResultsPayload 
 export function isDashboardFromWebviewMessage(value: unknown): value is DashboardFromWebviewMessage {
   if (!isRecord(value)) return false;
   if (value.type === "ready" || value.type === "refresh") return true;
-  if (value.type === "runDetail") return typeof value.runID === "string";
+  if (value.type === "runDetail") {
+    return (
+      typeof value.runID === "string" &&
+      (value.runIDs === undefined ||
+        (Array.isArray(value.runIDs) && value.runIDs.every((id) => typeof id === "string")))
+    );
+  }
   if (value.type === "trend") return typeof value.scenarioID === "string";
   if (value.type === "openReport") return typeof value.path === "string";
   if (value.type === "selectProject") return typeof value.project === "string";

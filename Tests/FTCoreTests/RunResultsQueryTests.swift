@@ -1145,6 +1145,102 @@ final class RunResultsQueryTests: XCTestCase {
         XCTAssertEqual(report.comparison.map(\.latestMs), [130], "hostB の R3 は比較に混ざらない")
     }
 
+    /// フリート計測(runGroup で束なる複数 run)は1行に畳む(2026-09-01 ユーザー指示)
+    func testPerformanceReportMergesRunGroupIntoOneRow() {
+        let runs = [
+            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z",
+                     finishedAt: "2026-01-01T00:01:00Z", total: 2, host: "hostA",
+                     performanceMode: true, passed: 2, failed: 0, runGroup: "G1"),
+            makeMeta(runID: "R2", startedAt: "2026-01-01T00:00:30Z",
+                     finishedAt: "2026-01-01T00:02:00Z", total: 1, host: "hostB",
+                     performanceMode: true, passed: 1, failed: 0, runGroup: "G1"),
+        ]
+        let records = [
+            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:10Z",
+                       durationMs: 10_000, worker: "ios:Lane-01", runID: "R1"),
+            makeRecord(scenarioID: "Foo.b", passed: true, startedAt: "2026-01-01T00:00:20Z",
+                       durationMs: 20_000, worker: "ios:Lane-02", runID: "R1"),
+            // 別機械の同名レーン(論理名は機械ごとに付く)—— worker 単独で数えると潰れる
+            makeRecord(scenarioID: "Foo.c", passed: true, startedAt: "2026-01-01T00:00:40Z",
+                       durationMs: 30_000, worker: "ios:Lane-01", runID: "R2"),
+        ]
+        // makeRecord の host は固定なので R2 の host を書き換える(レーン数の機械跨ぎ判定用)
+        var patched = records
+        patched[2] = ScenarioRunRecord(
+            runID: "R2", scenarioID: "Foo.c", platform: "ios", worker: "ios:Lane-01",
+            host: "hostB", passed: true, startedAt: "2026-01-01T00:00:40Z", durationMs: 30_000,
+            steps: StepCountsRecord(total: 1, passed: 1))
+        let report = RunResultsQuery.performanceReport(records: patched, runs: runs)
+        XCTAssertEqual(report.runs.count, 1, "runGroup G1 は1行に畳む")
+        let row = report.runs[0]
+        XCTAssertEqual(row.runID, "G1")
+        XCTAssertEqual(row.runIDs, ["R1", "R2"])
+        XCTAssertEqual(row.hosts, ["hostA", "hostB"])
+        XCTAssertEqual(row.startedAt, "2026-01-01T00:00:00Z", "グループ最初の開始")
+        XCTAssertEqual(row.wallClockMs, 120_000, "最初の開始〜最後の完了")
+        XCTAssertEqual(row.scenarioTotalMs, 60_000)
+        XCTAssertEqual(row.scenarioCount, 3)
+        XCTAssertEqual(row.passed, 3)
+        XCTAssertEqual(row.laneCount, 3, "(host, worker) で数える。同名レーンを潰さない")
+        // 稼働率の分母は機械ごとの窓×レーン数の合算:
+        // hostA = 2レーン × 窓30s(00:10〜00:40)= 60s / hostB = 1レーン × 窓30s(00:40〜01:10)= 30s
+        // → 60000/90000 = 66.67%(グループ全体の窓で割ると開始ずれが「遊び」に化ける)
+        XCTAssertEqual(row.avgLaneUtilisationPct ?? 0, 200.0 / 3, accuracy: 0.01)
+    }
+
+    /// measurementInvalid の run を1つでも含む実行はグループごと除外する(片翼だけの計測は使えない)
+    func testPerformanceReportExcludesWholeGroupWhenAnyMemberInvalid() {
+        let runs = [
+            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z",
+                     finishedAt: "2026-01-01T00:01:00Z", total: 1, host: "hostA",
+                     performanceMode: true, runGroup: "G1"),
+            makeMeta(runID: "R2", startedAt: "2026-01-01T00:00:00Z",
+                     finishedAt: "2026-01-01T00:01:00Z", total: 1, host: "hostB",
+                     performanceMode: true, measurementInvalid: true, runGroup: "G1"),
+        ]
+        let report = RunResultsQuery.performanceReport(records: [], runs: runs)
+        XCTAssertTrue(report.runs.isEmpty)
+        XCTAssertEqual(report.invalidCount, 2, "除外したグループの run 総数")
+    }
+
+    /// 比較は同じ (profile, 機械集合) の実行同士に限る —— ローカルのみ計測と
+    /// フリート計測の突き合わせは機械性能差が混ざる(デバイス構成を揃える規律)
+    func testPerformanceComparisonRequiresSameMachineSet() {
+        let runs = [
+            // 旧フリート(hostA+hostB)
+            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z",
+                     finishedAt: "2026-01-01T00:01:00Z", total: 1, host: "hostA",
+                     performanceMode: true, runGroup: "G1"),
+            makeMeta(runID: "R2", startedAt: "2026-01-01T00:00:00Z",
+                     finishedAt: "2026-01-01T00:01:00Z", total: 1, host: "hostB",
+                     performanceMode: true, runGroup: "G1"),
+            // 間に挟まるローカルのみ計測(機械集合が違うので相手にならない)
+            makeMeta(runID: "R3", startedAt: "2026-01-02T00:00:00Z",
+                     finishedAt: "2026-01-02T00:01:00Z", total: 1, host: "hostA",
+                     performanceMode: true),
+            // 最新フリート(hostA+hostB)
+            makeMeta(runID: "R4", startedAt: "2026-01-03T00:00:00Z",
+                     finishedAt: "2026-01-03T00:01:00Z", total: 1, host: "hostA",
+                     performanceMode: true, runGroup: "G2"),
+            makeMeta(runID: "R5", startedAt: "2026-01-03T00:00:00Z",
+                     finishedAt: "2026-01-03T00:01:00Z", total: 1, host: "hostB",
+                     performanceMode: true, runGroup: "G2"),
+        ]
+        let records = [
+            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:10Z",
+                       durationMs: 100, runID: "R1"),
+            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-02T00:00:10Z",
+                       durationMs: 999, runID: "R3"),
+            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-03T00:00:10Z",
+                       durationMs: 120, runID: "R4"),
+        ]
+        let report = RunResultsQuery.performanceReport(records: records, runs: runs)
+        XCTAssertEqual(report.comparisonRunID, "G2")
+        XCTAssertEqual(report.comparedRunID, "G1", "機械集合の違う R3(単機)を飛び越す")
+        XCTAssertEqual(report.comparison.map(\.latestMs), [120])
+        XCTAssertEqual(report.comparison.map(\.previousMs), [100])
+    }
+
     /// 相手の選定は同じ (profile, host) の run だけを対象にする。別 profile の run を挟んでも
     /// 飛び越して正しい相手を選ぶこと
     func testPerformanceComparisonSkipsPastADifferentProfileRunToFindTheSamePair() {
@@ -1299,17 +1395,56 @@ final class RunResultsQueryTests: XCTestCase {
         XCTAssertNil(report.runs.first?.avgLaneUtilisationPct, "laneCount==0")
     }
 
+    // MARK: - runStats
+
+    func testRunStatsComputesWallClockAndTestWindowPerRun() {
+        let runs = [
+            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z",
+                     finishedAt: "2026-01-01T00:02:00Z", total: 2),
+            // 未完了 + レコード無し
+            makeMeta(runID: "R2", startedAt: "2026-01-02T00:00:00Z", finishedAt: nil, total: nil),
+        ]
+        let records = [
+            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:10Z",
+                       durationMs: 20_000, worker: "ios:A", runID: "R1"),
+            makeRecord(scenarioID: "Foo.b", passed: true, startedAt: "2026-01-01T00:00:40Z",
+                       durationMs: 30_000, worker: "ios:B", runID: "R1"),
+            // 合成レコード(未実行の埋め合わせ)は窓に入れない
+            makeRecord(scenarioID: "Foo.c", passed: false, startedAt: "2026-01-01T00:05:00Z",
+                       durationMs: 0, steps: StepCountsRecord(total: 1, skipped: 1), runID: "R1"),
+        ]
+        let stats = RunResultsQuery.runStats(runs: runs, records: records)
+        XCTAssertEqual(stats.count, 2)
+        XCTAssertEqual(stats[0].runID, "R1")
+        XCTAssertEqual(stats[0].wallClockMs, 120_000)
+        XCTAssertEqual(stats[0].testStartedAt, "2026-01-01T00:00:10Z")
+        XCTAssertEqual(stats[0].testFinishedAt, "2026-01-01T00:01:10Z", "最後の完了 = 00:40 + 30s")
+        XCTAssertEqual(stats[0].testTimeMs, 60_000)
+        XCTAssertEqual(stats[0].scenarioTotalMs, 50_000, "合成レコードは合計に入れない")
+        XCTAssertEqual(stats[0].scenarioCount, 2)
+        XCTAssertEqual(stats[0].laneCount, 2)
+        XCTAssertEqual(stats[0].maxScenarioID, "Foo.b")
+        XCTAssertEqual(stats[0].maxScenarioMs, 30_000)
+        XCTAssertNil(stats[1].wallClockMs)
+        XCTAssertNil(stats[1].testTimeMs)
+        XCTAssertEqual(stats[1].scenarioTotalMs, 0)
+        XCTAssertEqual(stats[1].laneCount, 0)
+    }
+
     // MARK: - フィクスチャ
 
     private func makeMeta(
         runID: String, startedAt: String = "2026-01-01T00:00:00Z", finishedAt: String? = nil, total: Int? = 1,
         profile: String? = nil, host: String = "testmachine",
-        performanceMode: Bool? = nil, measurementInvalid: Bool? = nil
+        performanceMode: Bool? = nil, measurementInvalid: Bool? = nil,
+        passed: Int? = nil, failed: Int? = nil, runGroup: String? = nil
     ) -> RunMetaRecord {
         RunMetaRecord(
             runID: runID, project: "SampleApp", profile: profile, host: host,
             trigger: "cli", startedAt: startedAt, finishedAt: finishedAt, total: total,
-            measurementInvalid: measurementInvalid, performanceMode: performanceMode)
+            passed: passed, failed: failed,
+            measurementInvalid: measurementInvalid, runGroup: runGroup,
+            performanceMode: performanceMode)
     }
 
     private func makeRecord(

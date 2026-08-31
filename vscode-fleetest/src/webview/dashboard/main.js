@@ -9,6 +9,7 @@ import { t } from '../i18n.js';
 import {
   renderDevicesTable,
   renderFlakyTable,
+  groupRuns,
   renderHeadline,
   renderInsights,
   renderMatrixTable,
@@ -75,8 +76,11 @@ function applyData(payload) {
   setMachineAliases(payload.machines || []);
   // キー欠落(旧 CLI)を許容する契約(dashboardModel.ts)のため performance は undefined のことがある。
   renderPerformance(payload.performance);
-  renderHeadline(payload.runs[0]);
-  renderRunsTable(payload.runs);
+  // 直近の実行も実行(runGroup)単位に畳む(パフォーマンス一覧と同じ規則)
+  const runGroups = groupRuns(payload.runs);
+  const statsByRunID = new Map((payload.runStats || []).map((s) => [s.runID, s]));
+  renderHeadline(runGroups[0]);
+  renderRunsTable(runGroups, statsByRunID);
   // slow/insights はキー欠落(古い CLI)を許容する契約(dashboardModel.ts)のためデフォルト空配列。
   renderInsights(payload.insights || []);
   renderFlakyTable(payload.flaky);
@@ -112,7 +116,7 @@ window.addEventListener('message', (event) => {
       applyData(message.payload);
       break;
     case 'runDetail':
-      showRunDetailData(message.payload);
+      showRunDetailData(message.payloads);
       break;
     case 'runDetailError':
       showRunDetailError(message.runID, message.message);

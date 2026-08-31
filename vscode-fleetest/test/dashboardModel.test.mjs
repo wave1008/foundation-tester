@@ -284,6 +284,13 @@ test("isDashboardFromWebviewMessage: runDetail/trend/openReport を runID/scenar
   assert.equal(isDashboardFromWebviewMessage({ type: "openReport", path: undefined }), false);
 });
 
+test("isDashboardFromWebviewMessage: runDetail の runIDs(構成 run 全部)は省略可・string 配列のみ許容する", () => {
+  assert.equal(isDashboardFromWebviewMessage({ type: "runDetail", runID: "R1", runIDs: ["R1", "R2"] }), true);
+  assert.equal(isDashboardFromWebviewMessage({ type: "runDetail", runID: "R1", runIDs: [] }), true);
+  assert.equal(isDashboardFromWebviewMessage({ type: "runDetail", runID: "R1", runIDs: [42] }), false);
+  assert.equal(isDashboardFromWebviewMessage({ type: "runDetail", runID: "R1", runIDs: "R2" }), false);
+});
+
 test("isDashboardFromWebviewMessage: selectProject を project が string のときのみ true と判定する", () => {
   assert.equal(isDashboardFromWebviewMessage({ type: "selectProject", project: "E2E-iOS" }), true);
   assert.equal(isDashboardFromWebviewMessage({ type: "selectProject", project: 42 }), false);

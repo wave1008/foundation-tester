@@ -13,16 +13,18 @@ export function formatDurationMs(ms) {
   return typeof ms === 'number' ? Math.round(ms) + 'ms' : '–';
 }
 
-// 遅いテストセクション向け(所要時間が長く ms 表示だと読みにくいため): 1000ms 未満は ms、
-// 60秒未満は小数1桁の秒、それ以上は分+秒。
+// 人間向けの所要表示: 1000ms 未満は ms、1秒以上は常に「XmYYs」(2026-09-01 ユーザー指示。
+// 55.1s と 1m 9s の混在をやめて 0m55s / 1m9s に揃える)。
 export function formatDurationHuman(ms) {
   if (typeof ms !== 'number' || !isFinite(ms)) return '–';
   if (ms < 1000) return Math.round(ms) + 'ms';
-  const totalSeconds = ms / 1000;
-  if (totalSeconds < 60) return totalSeconds.toFixed(1) + 's';
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = Math.round(totalSeconds % 60);
-  return minutes + 'm ' + seconds + 's';
+  let minutes = Math.floor(ms / 60000);
+  let seconds = Math.round((ms % 60000) / 1000);
+  if (seconds === 60) {
+    minutes += 1;
+    seconds = 0;
+  }
+  return minutes + 'm' + seconds + 's';
 }
 
 // 悪化率バッジ(遅いテスト/insights 共用)。符号なし数値は呼び出し側で '–' 扱いにする。

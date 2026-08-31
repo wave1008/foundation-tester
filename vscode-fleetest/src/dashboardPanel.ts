@@ -18,6 +18,7 @@ import { type FleetestConfig, listProjectCandidates, resolveProjectName } from "
 import { currentLocale, t } from "./i18n";
 import {
   isApiResultsPayload,
+  type ApiResultsRunPayload,
   isApiResultsRunPayload,
   isDashboardFromWebviewMessage,
   type DashboardToWebviewMessage,
@@ -197,7 +198,7 @@ export class DashboardPanelController implements vscode.Disposable {
         void this.refresh();
         break;
       case "runDetail":
-        void this.handleRunDetail(message.runID);
+        void this.handleRunDetail(message.runID, message.runIDs);
         break;
       case "trend":
         void this.handleTrend(message.scenarioID);
@@ -300,7 +301,8 @@ export class DashboardPanelController implements vscode.Disposable {
     }
   }
 
-  private async handleRunDetail(runID: string): Promise<void> {
+  /** runIDs = 同じ実行(runGroup)の構成 run 全部。フリート実行は全構成 run の詳細を集めて返す。 */
+  private async handleRunDetail(runID: string, runIDs?: readonly string[]): Promise<void> {
     if (this.detailFetching) {
       return;
     }
@@ -312,18 +314,23 @@ export class DashboardPanelController implements vscode.Disposable {
         this.deps.post({ type: "runDetailError", runID, message: t("exploreHeal.common.projectUnresolved") });
         return;
       }
-      const args = ["api", "results-run", "--project", resolution.project, "--run-id", runID];
-      const result = await this.runOneShotTracked(args);
-      if (!isApiResultsRunPayload(result.json)) {
-        const detail = result.stderrTail.length > 0 ? result.stderrTail : `exit code: ${String(result.exitCode)}`;
-        this.deps.post({
-          type: "runDetailError",
-          runID,
-          message: t("exploreHeal.dashboard.runDetailFetchFailed", { detail }),
-        });
-        return;
+      const ids = runIDs && runIDs.length > 0 ? runIDs : [runID];
+      const payloads: ApiResultsRunPayload[] = [];
+      for (const id of ids) {
+        const args = ["api", "results-run", "--project", resolution.project, "--run-id", id];
+        const result = await this.runOneShotTracked(args);
+        if (!isApiResultsRunPayload(result.json)) {
+          const detail = result.stderrTail.length > 0 ? result.stderrTail : `exit code: ${String(result.exitCode)}`;
+          this.deps.post({
+            type: "runDetailError",
+            runID,
+            message: t("exploreHeal.dashboard.runDetailFetchFailed", { detail }),
+          });
+          return;
+        }
+        payloads.push(result.json);
       }
-      this.deps.post({ type: "runDetail", payload: result.json });
+      this.deps.post({ type: "runDetail", payloads });
     } catch (error) {
       this.deps.post({
         type: "runDetailError",
@@ -463,7 +470,7 @@ function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
       <div id="headline-latest" class="headline-latest"></div>
       <table id="table-runs" class="dash-table">
         <thead>
-          <tr><th>${t("exploreHeal.dashboard.colDateTime")}</th><th>trigger</th><th>machine</th><th>profile</th><th>${t("exploreHeal.dashboard.colResult")}</th></tr>
+          <tr><th>${t("exploreHeal.dashboard.colDateTime")}</th><th>machine</th><th>profile</th><th>${t("exploreHeal.dashboard.colWallClock")}</th><th>${t("exploreHeal.dashboard.colTestTime")}</th><th>${t("exploreHeal.dashboard.colScenarioTotal")}</th><th>${t("exploreHeal.dashboard.colLaneCount")}</th><th>${t("exploreHeal.dashboard.colLaneUtilisation")}</th><th>${t("exploreHeal.dashboard.colMaxScenario")}</th><th>${t("exploreHeal.dashboard.colRuns")}</th><th>${t("exploreHeal.dashboard.colResult")}</th></tr>
         </thead>
         <tbody id="table-runs-body"></tbody>
       </table>

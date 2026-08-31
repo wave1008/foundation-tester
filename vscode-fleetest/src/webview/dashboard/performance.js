@@ -6,7 +6,7 @@
 
 import { t } from '../i18n.js';
 import { clearChildren, td } from './domUtil.js';
-import { machineLabel } from './machineNames.js';
+import { machineLabels } from './machineNames.js';
 import { deltaBadgeCell } from './render.js';
 import {
   formatDurationHuman,
@@ -46,13 +46,19 @@ function maxScenarioCell(row) {
   return cell;
 }
 
+// 1行 = 1実行(フリート計測は複数機械ぶんが畳まれている)。machine 列は全機械を並べる
+function rowMachinesText(row) {
+  const hosts = row.hosts && row.hosts.length > 0 ? row.hosts : [row.host];
+  return machineLabels(hosts).join(' + ');
+}
+
 function renderRunsTable(runs) {
   clearChildren(runsBody);
   for (const row of runs) {
     const tr = document.createElement('tr');
     tr.append(
       td(formatLocalDateTime(row.startedAt)),
-      td(machineLabel(row.host)),
+      td(rowMachinesText(row)),
       td(row.profile || '–'),
       td(formatDurationHuman(row.wallClockMs)),
       td(formatDurationHuman(row.testTimeMs)),
@@ -63,7 +69,7 @@ function renderRunsTable(runs) {
       td(String(row.scenarioCount)),
       td(perfRunResultText(row)),
     );
-    tr.title = row.runID;
+    tr.title = row.runIDs && row.runIDs.length > 0 ? row.runIDs.join('\n') : row.runID;
     runsBody.appendChild(tr);
   }
 }
@@ -102,7 +108,7 @@ function renderSummary(latest, invalidCount) {
 
 function runLabel(runID, runs) {
   const target = runs.find((r) => r.runID === runID);
-  return target ? formatLocalDateTime(target.startedAt) + '(' + machineLabel(target.host) + ')' : runID;
+  return target ? formatLocalDateTime(target.startedAt) + '(' + rowMachinesText(target) + ')' : runID;
 }
 
 function renderComparisonHeading(comparisonRunID, comparedRunID, runs) {

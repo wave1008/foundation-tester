@@ -631,13 +631,74 @@ public enum RunResultsQuery {
             scenarios: sortedByScenarioID(flakyRows) + sortedByScenarioID(allFailRows) + sortedByScenarioID(allPassRows))
     }
 
+    // MARK: - runStats
+
+    /// 直近の実行一覧に添える per-run の時間統計(壁時計・テスト時間)。
+    /// テスト時間の**端点も配る** —— 表示はフリート実行(runGroup)単位に畳むが、畳むのは
+    /// クライアント側なので、所要(長さ)だけだとグループの窓(min 開始〜max 完了)を合成できない
+    public struct RunStatsRow: Codable, Sendable, Equatable {
+        public let runID: String
+        /// startedAt〜finishedAt(ms)。未完了・パース不能なら nil
+        public let wallClockMs: Int?
+        /// 最初のシナリオ開始 / 最後のシナリオ完了(ISO8601)。レコード0件なら nil
+        public let testStartedAt: String?
+        public let testFinishedAt: String?
+        public let testTimeMs: Int?
+        /// シナリオ所要合計(ms)。isSkippedSynthetic は除外
+        public let scenarioTotalMs: Int
+        /// 同・レコード数
+        public let scenarioCount: Int
+        /// distinct worker 数(1 run = 1機械なので host は畳み込み不要。グループのレーン数は合算)
+        public let laneCount: Int
+        /// 最長1本(= test time の下限)。レコード0件なら nil
+        public let maxScenarioMs: Int?
+        public let maxScenarioID: String?
+    }
+
+    public static func runStats(runs: [RunMetaRecord], records: [ScenarioRunRecord]) -> [RunStatsRow] {
+        let byRunID = Dictionary(grouping: records.filter { !isSkippedSynthetic($0) }, by: \.runID)
+        let formatter = ISO8601DateFormatter()
+        return runs.map { run in
+            let scoped = byRunID[run.runID] ?? []
+            let spans = scoped.compactMap { record -> (start: Date, end: Date)? in
+                let start = date(from: record.startedAt)
+                guard start != .distantPast else { return nil }
+                return (start, start.addingTimeInterval(Double(record.durationMs) / 1000))
+            }
+            let testStart = spans.map(\.start).min()
+            let testEnd = spans.map(\.end).max()
+            let testTime = testStart.flatMap { start in
+                testEnd.map { Int(($0.timeIntervalSince(start) * 1000).rounded()) }
+            }
+            return RunStatsRow(
+                runID: run.runID,
+                wallClockMs: perfGroupWallClockMs([run]),
+                testStartedAt: testStart.map(formatter.string(from:)),
+                testFinishedAt: testEnd.map(formatter.string(from:)),
+                testTimeMs: testTime,
+                scenarioTotalMs: scoped.reduce(0) { $0 + $1.durationMs },
+                scenarioCount: scoped.count,
+                laneCount: Set(scoped.compactMap(\.worker)).count,
+                maxScenarioMs: perfMaxScenario(scoped)?.ms,
+                maxScenarioID: perfMaxScenario(scoped)?.id)
+        }
+    }
+
     // MARK: - performance
 
+    /// パフォーマンス一覧の1行 = **1つの実行**。フリート計測は機械ごとに別 run(別 runID)に
+    /// なるが同じ実行なので、runGroup で1行に畳む(単機 run は自分1つのグループ)
     public struct PerfRunRow: Codable, Sendable, Equatable {
+        /// グループ鍵(runGroup。単機 run はその runID)
         public let runID: String
+        /// 畳んだ run の全 runID(昇順)
+        public let runIDs: [String]
         public let startedAt: String
         public let profile: String?
+        /// hosts の先頭(単機 run では従来どおりその host)。表示は hosts を使う
         public let host: String
+        /// グループ内の全機械のホスト名(昇順・distinct)。表示は machine へ読み替える
+        public let hosts: [String]
         /// finishedAt - startedAt(ms)。どちらか欠落・パース不能なら nil
         public let wallClockMs: Int?
         /// テスト時間(ms): 最初のシナリオ開始〜最後のシナリオ完了。CLI が run 末尾に出す
@@ -652,12 +713,15 @@ public enum RunResultsQuery {
         /// test time の下限 = 最長1本(これ以上レーンを増やしても速くならない)。レコード0件なら nil
         public let maxScenarioMs: Int?
         public let maxScenarioID: String?
-        /// worker が入っている distinct worker 数(worker nil のレコードは数えない)
+        /// distinct **(host, worker)** の数(worker nil のレコードは数えない)。worker 単独で
+        /// 数えないこと —— デバイス論理名は機械ごとに付くので、別々の機械の同名レーンが1本に潰れる
         public let laneCount: Int
         /// ProfileRunner が run 末尾に出す Lane utilisation の記録版に相当する近似(シナリオ所要ベース)。
-        /// scenarioTotalMs / (laneCount × **testTimeMs**) × 100。**分母は壁時計にしない** ——
-        /// リモートの子 run は供給待ちで壁時計が膨らみ、実測 87% の run が 17% に見えた
-        /// (2026-09-01 実データ)。testTimeMs が nil/0 か laneCount==0 なら nil
+        /// scenarioTotalMs / **Σ機械ごとの(レーン数 × その機械のテスト時間窓)** × 100。
+        /// **分母は壁時計にしない**(供給待ちで膨らみ、実測 87% が 17% に見えた)し、
+        /// **グループ全体の窓×全レーンにもしない**(機械の開始ずれが「全レーンの遊び」に化けて
+        /// フリート計測で 16.7% に見えた。どちらも 2026-09-01 実データ)。
+        /// 単機グループでは従来(laneCount × testTimeMs)と同値。分母が 0 なら nil
         public let avgLaneUtilisationPct: Double?
     }
 
@@ -671,20 +735,23 @@ public enum RunResultsQuery {
     }
 
     public struct PerformanceReport: Codable, Sendable, Equatable {
-        /// 有効な計測 run(performanceMode==true かつ measurementInvalid != true)。runID 降順(新しい順)
+        /// 有効な計測の実行(グループ)。1行 = 1実行(PerfRunRow の doc 参照)。グループ鍵の降順(新しい順)。
+        /// **measurementInvalid の run を1つでも含むグループは丸ごと除外**(片翼だけの計測は
+        /// 実行全体として使えない)
         public let runs: [PerfRunRow]
-        /// performanceMode==true だが measurementInvalid==true で除外した run 数(事実として出す)
+        /// 除外したグループに属していた perf run の総数(事実として出す)
         public let invalidCount: Int
-        /// **同じ (profile, host) に前回計測がある最新の有効 perf run**と、その直前の run の突き合わせ。
-        /// 「全体の最新」に固定しない —— フリート計測は機械ごとに別 run になり、最新が
-        /// 初計測の機械だと、他の機械の意味ある比較が眠ったまま空になる(2026-09-01 実データ)。
+        /// **同じ (profile, 機械集合) に前回計測がある最新の実行**と、その直前の実行の突き合わせ。
+        /// 「全体の最新」に固定しない —— 初計測の構成が最新に来ると、意味ある比較が眠ったまま
+        /// 空になる(2026-09-01 実データ)。機械集合も揃える(デバイス構成を揃える規律:
+        /// docs/results-json.md。ローカルのみ計測とフリート計測の突き合わせは機械性能差が混ざる)。
         /// **両方に存在する (scenarioID, platform) だけ**を比べる(集合を揃える規律。
-        /// 同一 run 内に同じ組が複数あるときは startedAt 最新を採る = matrix と同じ規律)。
+        /// 同一実行内に同じ組が複数あるときは startedAt 最新を採る = matrix と同じ規律)。
         /// deltaPct 降順(悪化が上)、同値は scenarioID 昇順。相手が無ければ空
         public let comparison: [PerfScenarioDelta]
-        /// comparison の比較相手(前回側)の runID(無ければ nil)
+        /// comparison の比較相手(前回側)のグループ鍵(無ければ nil)
         public let comparedRunID: String?
-        /// comparison の最新側の runID(runs の先頭と一致するとは限らない。無ければ nil)
+        /// comparison の最新側のグループ鍵(runs の先頭と一致するとは限らない。無ければ nil)
         public let comparisonRunID: String?
     }
 
@@ -693,40 +760,78 @@ public enum RunResultsQuery {
         let platform: String
     }
 
-    /// performanceMode==true の run だけを対象に、有効な計測(measurementInvalid でない)run の
-    /// 一覧と、直近2件の突き合わせを返す
+    /// performanceMode==true の run を実行(runGroup)単位に畳み、有効な計測グループの一覧と
+    /// 直近の突き合わせを返す
     public static func performanceReport(records: [ScenarioRunRecord], runs: [RunMetaRecord]) -> PerformanceReport {
         let perfRuns = runs.filter { $0.performanceMode == true }
-        let validRuns = perfRuns.filter { $0.measurementInvalid != true }
-            .sorted { $0.runID > $1.runID }
-        let invalidCount = perfRuns.count - validRuns.count
+        let grouped = Dictionary(grouping: perfRuns) { $0.runGroup ?? $0.runID }
+        var validGroups: [(key: String, members: [RunMetaRecord])] = []
+        var invalidCount = 0
+        for (key, members) in grouped {
+            if members.contains(where: { $0.measurementInvalid == true }) {
+                invalidCount += members.count
+            } else {
+                validGroups.append((key, members.sorted { $0.runID < $1.runID }))
+            }
+        }
+        // グループ鍵は runID と同じ形式(辞書順 = 時系列順)なので鍵の降順 = 新しい順
+        validGroups.sort { $0.key > $1.key }
 
-        let runRows = validRuns.map { perfRunRow(run: $0, records: records) }
-        let (comparison, comparedRunID, comparisonRunID) = perfComparison(validRuns: validRuns, records: records)
+        let runRows = validGroups.map { perfGroupRow(key: $0.key, members: $0.members, records: records) }
+        let (comparison, comparedRunID, comparisonRunID) = perfComparison(groups: validGroups, records: records)
 
         return PerformanceReport(
             runs: runRows, invalidCount: invalidCount,
             comparison: comparison, comparedRunID: comparedRunID, comparisonRunID: comparisonRunID)
     }
 
-    private static func perfRunRow(run: RunMetaRecord, records: [ScenarioRunRecord]) -> PerfRunRow {
-        let scoped = records.filter { $0.runID == run.runID && !isSkippedSynthetic($0) }
+    private static func perfGroupRow(key: String, members: [RunMetaRecord],
+                                     records: [ScenarioRunRecord]) -> PerfRunRow {
+        let memberIDs = Set(members.map(\.runID))
+        let scoped = records.filter { memberIDs.contains($0.runID) && !isSkippedSynthetic($0) }
         let scenarioTotalMs = scoped.reduce(0) { $0 + $1.durationMs }
-        let wallClock = perfWallClockMs(run)
         let testTime = perfTestTimeMs(scoped)
-        let laneCount = Set(scoped.compactMap(\.worker)).count
+        // (host, worker) で数える(laneCount の doc 参照)
+        let laneCount = Set(scoped.compactMap { record in
+            record.worker.map { "\(record.host)\u{1}\($0)" }
+        }).count
         let longest = perfMaxScenario(scoped)
-        let utilisation: Double? = {
-            guard let testTime, testTime > 0, laneCount > 0 else { return nil }
-            return Double(scenarioTotalMs) / (Double(laneCount) * Double(testTime)) * 100
-        }()
+        // 分母 = Σ機械ごとの(レーン数 × その機械のテスト時間窓)(avgLaneUtilisationPct の doc 参照)
+        let capacityMs = Dictionary(grouping: scoped, by: \.host).values.reduce(0.0) { acc, hostRecords in
+            let lanes = Set(hostRecords.compactMap(\.worker)).count
+            guard lanes > 0, let hostTestTime = perfTestTimeMs(hostRecords) else { return acc }
+            return acc + Double(lanes) * Double(hostTestTime)
+        }
+        let utilisation: Double? = capacityMs > 0
+            ? Double(scenarioTotalMs) / capacityMs * 100 : nil
+        let hosts = Set(members.map(\.host)).sorted()
+        let startedAt = members.min { date(from: $0.startedAt) < date(from: $1.startedAt) }?.startedAt
+            ?? members.first?.startedAt ?? ""
+        // 合算(どれか1つでも未完了なら「まだ言えない」= nil)
+        let passed = members.reduce(Optional(0)) { acc, m in acc.flatMap { a in m.passed.map { a + $0 } } }
+        let failed = members.reduce(Optional(0)) { acc, m in acc.flatMap { a in m.failed.map { a + $0 } } }
         return PerfRunRow(
-            runID: run.runID, startedAt: run.startedAt, profile: run.profile, host: run.host,
-            wallClockMs: wallClock, testTimeMs: testTime,
+            runID: key, runIDs: members.map(\.runID),
+            startedAt: startedAt, profile: members.first?.profile,
+            host: hosts.first ?? "", hosts: hosts,
+            wallClockMs: perfGroupWallClockMs(members), testTimeMs: testTime,
             scenarioTotalMs: scenarioTotalMs, scenarioCount: scoped.count,
-            passed: run.passed, failed: run.failed,
+            passed: passed, failed: failed,
             maxScenarioMs: longest?.ms, maxScenarioID: longest?.id,
             laneCount: laneCount, avgLaneUtilisationPct: utilisation)
+    }
+
+    /// グループ最初の開始〜最後の完了(ms)。1つでも finishedAt が欠落(未完了)なら nil
+    private static func perfGroupWallClockMs(_ members: [RunMetaRecord]) -> Int? {
+        let starts = members.map { date(from: $0.startedAt) }
+        var finishes: [Date] = []
+        for member in members {
+            guard let finishedAt = member.finishedAt,
+                  let finish = isoFormatter.date(from: finishedAt) else { return nil }
+            finishes.append(finish)
+        }
+        guard let start = starts.min(), start != .distantPast, let finish = finishes.max() else { return nil }
+        return Int((finish.timeIntervalSince(start) * 1000).rounded())
     }
 
     /// 最初のシナリオ開始〜最後のシナリオ完了(ms)。startedAt がパース不能なレコードは
@@ -739,13 +844,6 @@ public enum RunResultsQuery {
         }
         guard let first = spans.map(\.start).min(), let last = spans.map(\.end).max() else { return nil }
         return Int((last.timeIntervalSince(first) * 1000).rounded())
-    }
-
-    private static func perfWallClockMs(_ run: RunMetaRecord) -> Int? {
-        guard let finishedAt = run.finishedAt,
-              let start = isoFormatter.date(from: run.startedAt),
-              let finish = isoFormatter.date(from: finishedAt) else { return nil }
-        return Int((finish.timeIntervalSince(start) * 1000).rounded())
     }
 
     /// 最長所要のレコード(同値は scenarioID 昇順で決定的に選ぶ)。走査順に依存しない —— 同値のときは
@@ -763,14 +861,22 @@ public enum RunResultsQuery {
         return best
     }
 
+    /// グループの比較同一性: (profile, 機械集合)。member は runID 昇順で来るので first の profile で代表する
+    private static func perfGroupIdentity(_ members: [RunMetaRecord]) -> String {
+        let profile = members.first?.profile ?? ""
+        let hosts = Set(members.map(\.host)).sorted().joined(separator: "\u{1}")
+        return "\(profile)\u{2}\(hosts)"
+    }
+
     private static func perfComparison(
-        validRuns: [RunMetaRecord], records: [ScenarioRunRecord]
+        groups: [(key: String, members: [RunMetaRecord])], records: [ScenarioRunRecord]
     ) -> ([PerfScenarioDelta], String?, String?) {
-        // 新しい順に「同じ (profile, host) の前回計測がある run」を探す(PerformanceReport の doc 参照)
-        var pair: (latest: RunMetaRecord, previous: RunMetaRecord)?
-        for (index, candidate) in validRuns.enumerated() {
-            if let previous = validRuns.dropFirst(index + 1).first(where: {
-                $0.profile == candidate.profile && $0.host == candidate.host
+        // 新しい順に「同じ (profile, 機械集合) の前回計測がある実行」を探す(PerformanceReport の doc 参照)
+        var pair: (latest: (key: String, members: [RunMetaRecord]),
+                   previous: (key: String, members: [RunMetaRecord]))?
+        for (index, candidate) in groups.enumerated() {
+            if let previous = groups.dropFirst(index + 1).first(where: {
+                perfGroupIdentity($0.members) == perfGroupIdentity(candidate.members)
             }) {
                 pair = (candidate, previous)
                 break
@@ -778,8 +884,8 @@ public enum RunResultsQuery {
         }
         guard let (latest, previous) = pair else { return ([], nil, nil) }
 
-        let latestDurations = perfLatestDurations(records: records, runID: latest.runID)
-        let previousDurations = perfLatestDurations(records: records, runID: previous.runID)
+        let latestDurations = perfLatestDurations(records: records, runIDs: Set(latest.members.map(\.runID)))
+        let previousDurations = perfLatestDurations(records: records, runIDs: Set(previous.members.map(\.runID)))
 
         var deltas: [PerfScenarioDelta] = []
         for (key, latestValue) in latestDurations {
@@ -795,7 +901,7 @@ public enum RunResultsQuery {
             if lhs.scenarioID != rhs.scenarioID { return lhs.scenarioID < rhs.scenarioID }
             return lhs.platform < rhs.platform
         }
-        return (sorted, previous.runID, latest.runID)
+        return (sorted, previous.key, latest.key)
     }
 
     /// (scenarioID, platform) ごとの最新レコードの所要(同一 run 内に複数あるときは startedAt 最新。
@@ -803,10 +909,10 @@ public enum RunResultsQuery {
     /// **passed のレコードだけ** —— 失敗の durationMs はタイムアウト等「失敗経路の長さ」であって
     /// シナリオの性能ではなく、比較に混ぜると巨大な偽の悪化が先頭に並ぶ
     private static func perfLatestDurations(
-        records: [ScenarioRunRecord], runID: String
+        records: [ScenarioRunRecord], runIDs: Set<String>
     ) -> [PerfScenarioKey: (durationMs: Int, startedAt: String)] {
         var result: [PerfScenarioKey: (durationMs: Int, startedAt: String)] = [:]
-        for record in records where record.runID == runID && record.passed && !isSkippedSynthetic(record) {
+        for record in records where runIDs.contains(record.runID) && record.passed && !isSkippedSynthetic(record) {
             let key = PerfScenarioKey(scenarioID: record.scenarioID, platform: record.platform)
             if let existing = result[key] {
                 if date(from: record.startedAt) > date(from: existing.startedAt) {
