@@ -11,8 +11,44 @@
       "name": "Pixel 9(Android 15)-02"
     },
     {
+      "machine": "local",
+      "name": "Pixel 9(Android 15)-03"
+    },
+    {
+      "machine": "local",
+      "name": "Pixel 9(Android 15)-04"
+    },
+    {
+      "machine": "local",
+      "name": "Pixel 9(Android 15)-05"
+    },
+    {
+      "machine": "local",
+      "name": "Pixel 9(Android 15)-06"
+    },
+    {
       "machine": "M1Max",
-      "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-01"
+      "name": "Pixel 9(Android 15)-01"
+    },
+    {
+      "machine": "M1Max",
+      "name": "Pixel 9(Android 15)-02"
+    },
+    {
+      "machine": "M1Ultra",
+      "name": "Pixel 9(Android 15)-01"
+    },
+    {
+      "machine": "M1Ultra",
+      "name": "Pixel 9(Android 15)-02"
+    },
+    {
+      "machine": "M1Ultra",
+      "name": "Pixel 9(Android 15)-03"
+    },
+    {
+      "machine": "M1Ultra",
+      "name": "Pixel 9(Android 15)-04"
     }
   ],
   "heal": false,

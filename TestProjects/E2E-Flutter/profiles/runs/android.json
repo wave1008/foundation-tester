@@ -27,12 +27,28 @@
       "name": "Pixel 9(Android 15)-06"
     },
     {
-      "machine": "local",
-      "name": "Pixel 9(Android 15)-07"
+      "machine": "M1Max",
+      "name": "Pixel 9(Android 15)-01"
     },
     {
-      "machine": "local",
-      "name": "Pixel 9(Android 15)-08"
+      "machine": "M1Max",
+      "name": "Pixel 9(Android 15)-02"
+    },
+    {
+      "machine": "M1Ultra",
+      "name": "Pixel 9(Android 15)-01"
+    },
+    {
+      "machine": "M1Ultra",
+      "name": "Pixel 9(Android 15)-02"
+    },
+    {
+      "machine": "M1Ultra",
+      "name": "Pixel 9(Android 15)-03"
+    },
+    {
+      "machine": "M1Ultra",
+      "name": "Pixel 9(Android 15)-04"
     }
   ],
   "heal": false,

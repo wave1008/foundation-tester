@@ -152,6 +152,36 @@
         "machine": "M1Max",
         "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-01",
         "avd": "Pixel_10_Android_14_API_34_arm64-v8a_-01"
+      },
+      {
+        "machine": "M1Max",
+        "name": "Pixel 9(Android 15)-01",
+        "avd": "Pixel_9_Android_15_-01"
+      },
+      {
+        "machine": "M1Max",
+        "name": "Pixel 9(Android 15)-02",
+        "avd": "Pixel_9_Android_15_-02"
+      },
+      {
+        "machine": "M1Ultra",
+        "name": "Pixel 9(Android 15)-01",
+        "avd": "Pixel_9_Android_15_-01"
+      },
+      {
+        "machine": "M1Ultra",
+        "name": "Pixel 9(Android 15)-02",
+        "avd": "Pixel_9_Android_15_-02"
+      },
+      {
+        "machine": "M1Ultra",
+        "name": "Pixel 9(Android 15)-03",
+        "avd": "Pixel_9_Android_15_-03"
+      },
+      {
+        "machine": "M1Ultra",
+        "name": "Pixel 9(Android 15)-04",
+        "avd": "Pixel_9_Android_15_-04"
       }
     ]
   }

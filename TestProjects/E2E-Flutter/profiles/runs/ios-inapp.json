@@ -35,12 +35,28 @@
       "name": "iPhone 17 Pro(iOS 27.0)-08"
     },
     {
-      "machine": "local",
-      "name": "iPhone 17 Pro(iOS 27.0)-09"
+      "machine": "M1Max",
+      "name": "iPhone 17 Pro(iOS 27.0)-01"
     },
     {
-      "machine": "local",
-      "name": "iPhone 17 Pro(iOS 27.0)-10"
+      "machine": "M1Max",
+      "name": "iPhone 17 Pro(iOS 27.0)-02"
+    },
+    {
+      "machine": "M1Ultra",
+      "name": "iPhone 17 Pro(iOS 27.0)-01"
+    },
+    {
+      "machine": "M1Ultra",
+      "name": "iPhone 17 Pro(iOS 27.0)-02"
+    },
+    {
+      "machine": "M1Ultra",
+      "name": "iPhone 17 Pro(iOS 27.0)-03"
+    },
+    {
+      "machine": "M1Ultra",
+      "name": "iPhone 17 Pro(iOS 27.0)-04"
     }
   ],
   "heal": false,
