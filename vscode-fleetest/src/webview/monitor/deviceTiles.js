@@ -452,7 +452,7 @@ function renderFrame(entry) {
     const unobservableRemote = entry.device.state === 'unknown' && !monitorPaused
       && !wiping && !shuttingDown && !waitingUp && !upRunning;
     if (monitorPaused) {
-      icon.className = 'placeholder-icon shutdown';
+      icon.className = 'placeholder-icon paused';
       icon.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"'
         + ' stroke="currentColor" stroke-width="1.8" stroke-linecap="round">'
         + '<path d="M6 3.5v9"/><path d="M10 3.5v9"/></svg>';

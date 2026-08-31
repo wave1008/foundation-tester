@@ -219,12 +219,15 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                         : "[monitor] Hold released — resuming observation")
                 }
                 if holdActive {
-                    let held = ownedTargets.map {
+                    // **リモートの台も held にする**(remote: を空で渡す)。fanout の snapshot
+                    // (state=connected)を合流させると、拡張が qualifying 判定で device-stream を
+                    // 張り続け、pause 中もリモートのタイルだけ映像が更新され続ける(2026-09-01 報告)。
+                    // fanout の子の観測は止めない —— 畳むのは配信段(この表示)だけ
+                    let held = listedTargets.map {
                         Self.unobservedInfo(target: $0, detail: "held (fleetest monitor resume)")
                     }
                     emitLine(ApiMonitorDevicesEvent(devices: Self.mergedDevices(
-                        listedTargets: listedTargets, observed: held,
-                        remote: fanout?.snapshot() ?? [:])))
+                        listedTargets: listedTargets, observed: held, remote: [:])))
                     // **interval で寝る(pausedPollSeconds を使わない)** —— あの 0.2s は
                     // pause 分岐が emit せずに resume を素早く検知するための値で、emit を伴う
                     // このループへ流用すると 0.2s ごとに全台ぶんの devices を出し続ける

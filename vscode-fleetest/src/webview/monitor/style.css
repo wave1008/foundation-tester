@@ -585,6 +585,10 @@ html.select-all-guard * {
 .placeholder-icon.remote {
   display: none;
 }
+/* モニタ停止中(monitorPaused)は静止表示 —— 停止しているのにアニメーションさせない(ユーザー指示) */
+.placeholder-icon.paused {
+  color: var(--vscode-descriptionForeground);
+}
 /* 改行入りの文言(ホスト名 + 補足)をそのまま出す */
 .frame-placeholder span {
   white-space: pre-line;
