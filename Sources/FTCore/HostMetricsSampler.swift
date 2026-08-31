@@ -225,8 +225,12 @@ public final class GPUSampler {
 
 // MARK: - メモリサンプラー
 
-/// host_statistics64(HOST_VM_INFO64) の active+wire+compressor ページ数 × ページサイズを
-/// 使用中メモリとみなす。合計は ProcessInfo.physicalMemory
+/// host_statistics64(HOST_VM_INFO64) の (internal−purgeable)+wire+compressor ページ数 ×
+/// ページサイズを使用中メモリとみなす(= Activity Monitor の「使用済みメモリ」と同じ式。
+/// 人が疑ったとき突き合わせる先がそれなので、食い違う式は偽の疑いを生む)。
+/// 旧式 active+wire+compressor は inactive に落ちた匿名ページ(実際は返ってこない)を数え漏らし、
+/// active な file cache(逼迫すれば即捨てられる)を数え込むので、実態より低く出ていた。
+/// 合計は ProcessInfo.physicalMemory
 public final class MemorySampler {
     public struct Result {
         public let used: Int
@@ -260,8 +264,9 @@ public final class MemorySampler {
                 "Memory usage is unavailable")
             return nil
         }
-        let usedPages = UInt64(info.active_count) + UInt64(info.wire_count)
-            + UInt64(info.compressor_page_count)
+        // internal_page_count(匿名ページ)− purgeable_count は Activity Monitor の「アプリメモリ」
+        let usedPages = UInt64(info.internal_page_count) - UInt64(min(info.purgeable_count, info.internal_page_count))
+            + UInt64(info.wire_count) + UInt64(info.compressor_page_count)
         let used = usedPages * UInt64(pageSize)
         let total = ProcessInfo.processInfo.physicalMemory
         return Result(used: Int(used), total: Int(total))
