@@ -8,6 +8,7 @@
 
 import Foundation
 import FTCore
+import FTRemote
 
 /// begin() が返す片付けの控え。end() へそのまま渡す
 struct RunHookSession {

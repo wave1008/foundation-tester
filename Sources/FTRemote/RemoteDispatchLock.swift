@@ -7,6 +7,7 @@
 // 純粋関数(結果は完全一致でテストする)。
 
 import Foundation
+import FTCore
 
 /// ロック取得側(ローカル)の情報。`<base>/.fleetest/dispatch.lock/info.json` の中身
 public struct RemoteDispatchLockInfo: Codable, Equatable, Sendable {

@@ -3,6 +3,7 @@
 // プロセス起動・ネットワーク I/O はここに置かない(呼び出し側 = Sources/fleetest/RemoteRunDispatcher.swift)。
 
 import Foundation
+import FTCore
 
 public enum RemoteDispatchError: Error, LocalizedError {
     case invalidHost(String)

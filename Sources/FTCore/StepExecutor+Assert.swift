@@ -965,7 +965,7 @@ extension StepExecutor {
             try await Task.sleep(for: backoff.nextDelay())
             phase.waitMs += Self.ms(clock.now - waitStart)
         }
-        guard let lastShown else {
+        guard lastShown != nil else {
             return .failed("cannot determine the keyboard state (the bridge may be outdated)")
         }
         return .failed(wantShown

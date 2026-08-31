@@ -483,7 +483,7 @@ test("resolveSessionRunIDs: 鍵を共有する run を全部返す(鍵が無け�
 test("listRecordingSessions: ホスト名を登録名へ読み替える(表に無ければそのまま)", async () => {
   const root = makeWorkspace();
   try {
-    // 鍵はホスト(ファイル名)・エイリアスは欄(machineAlias)。Sources/FTCore/RemoteHostFacts.swift
+    // 鍵はホスト(ファイル名)・エイリアスは欄(machineAlias)。Sources/FTRemote/RemoteHostFacts.swift
     writeJson(path.join(root, ".fleetest", "remote-hosts", "192.168.20.95.json"),
               { host: "LDIPC95", machineAlias: "M1Ultra" });
     writeJson(path.join(root, ".fleetest", "remote-hosts", "LDIPC96.json"),

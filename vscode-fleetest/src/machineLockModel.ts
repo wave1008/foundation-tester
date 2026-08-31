@@ -13,7 +13,7 @@
 // **「不明」と「空き」を混ぜない**。控えが無い機械は不明(観測していない・旧ランナー)で、
 // 空きだと言い切らない —— 破壊的操作の確認が「走っている run は無い」と誤って請け合わないため。
 
-/** 1機械ぶんの占有。**保持者が誰かは表示専用**(自己申告。Sources/FTCore/HostOccupancy.swift)。 */
+/** 1機械ぶんの占有。**保持者が誰かは表示専用**(自己申告。Sources/FTRemote/HostOccupancy.swift)。 */
 export interface MachineLock {
   /** **その機械をまだ観測できているか**。false = 供給元(リモートの監視の子)が落ちた ——
    * ロックの状態は分からない。**「空き」ではない**(ApiMonitorLockEvent.observed の契約)。 */

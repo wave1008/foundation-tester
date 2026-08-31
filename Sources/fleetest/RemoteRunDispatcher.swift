@@ -1,10 +1,11 @@
 // RemoteRunDispatcher.swift
 // `fleetest run --host` のプロセス起動(ssh/rsync)を集約する。純粋ロジックは
-// Sources/FTCore/RemoteDispatch.swift 側(単体テスト対象)。同一ホストへの二重ディスパッチ防止
+// Sources/FTRemote/RemoteDispatch.swift 側(単体テスト対象)。同一ホストへの二重ディスパッチ防止
 // (dispatch.lock の取得・解放。docs/remote-runner.md §5)もここで行う。純粋ロジックは
-// Sources/FTCore/RemoteDispatchLock.swift 側。
+// Sources/FTRemote/RemoteDispatchLock.swift 側。
 
 import FTCore
+import FTRemote
 import Foundation
 
 /// cliRun = `fleetest run --host`(人間向け進行・出力とも stdout)。apiRun = `fleetest api run
@@ -27,7 +28,7 @@ struct RemoteRunDispatcher {
     /// 既定では奪わない(stuck なロックを機械的に stale 判定しない)
     var forceLock: Bool = false
     /// `--wait-lock <秒>`: 取得できない間、解放をポーリングして待つ(forceLock と併用不可 ——
-    /// FTCore.RemoteDispatchFlagPolicy.waitLockConflictsWithForceLock が入口で弾く)
+    /// FTRemote.RemoteDispatchFlagPolicy.waitLockConflictsWithForceLock が入口で弾く)
     var waitLock: Int? = nil
     /// `--host` の生値(登録簿名 or 生 ssh 宛先)。RemoteHostFactsStore の鍵として使う
     /// (FleetSplit の機械別見積りの供給源。docs/remote-runner.md §13)。nil のまま渡された

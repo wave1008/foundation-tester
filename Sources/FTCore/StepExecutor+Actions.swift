@@ -83,7 +83,7 @@ extension StepExecutor {
             // 黙って全画面スワイプへ退化する(scrollToEdge/flick は rect を見ている。2026-08-12)
             var latest = (step.scrollFrame == nil && step.scrollFrameRect == nil)
                 ? nil : try await snapshotForScrollFrame(phase: &phase)
-            for index in 0..<times {
+            for _ in 0..<times {
                 // **明示 scrollFrame が解決できないなら、ここで打ち切る(1本も振らない)**。
                 // 黙って全画面スワイプへ退化させない(runScrollSearch の fail-fast と同じ理由。2026-08-08)
                 if let latest, Self.scrollFrameUnresolved(step, in: latest) {

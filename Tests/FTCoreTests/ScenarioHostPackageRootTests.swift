@@ -30,7 +30,7 @@ final class ScenarioHostPackageRootTests: XCTestCase {
         try "// swift-tools-version: 6.0".write(
             to: tempDir.appendingPathComponent("Package.swift"), atomically: true, encoding: .utf8)
 
-        try withEnv("FT_PACKAGE_ROOT", tempDir.path) {
+        withEnv("FT_PACKAGE_ROOT", tempDir.path) {
             let root = ScenarioHost.packageRoot()
             XCTAssertEqual(root?.standardizedFileURL.path, tempDir.standardizedFileURL.path)
         }
@@ -43,14 +43,14 @@ final class ScenarioHostPackageRootTests: XCTestCase {
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tempDir) }
 
-        try withEnv("FT_PACKAGE_ROOT", tempDir.path) {
+        withEnv("FT_PACKAGE_ROOT", tempDir.path) {
             XCTAssertNil(ScenarioHost.packageRoot(), "誤設定を別ルートへ黙って読み替えてはいけない")
         }
     }
 
     /// 未設定なら従来どおり cwd 探索(このテストプロセスの cwd はリポジトリ内なので見つかるはず)
     func testUnsetFallsBackToCwdSearch() throws {
-        try withEnv("FT_PACKAGE_ROOT", nil) {
+        withEnv("FT_PACKAGE_ROOT", nil) {
             XCTAssertNotNil(ScenarioHost.packageRoot(), "リポジトリ内で実行しているので cwd 探索で見つかるはず")
         }
     }

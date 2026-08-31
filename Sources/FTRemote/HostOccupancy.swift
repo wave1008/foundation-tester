@@ -16,6 +16,7 @@
 // 経路(ランナー機で人が直に打った `fleetest run`)は写らない。
 
 import Foundation
+import FTCore
 
 /// ランナー機の占有状態(dispatch.lock 1本の要約)。NDJSON へそのまま載せるので Codable。
 public struct HostOccupancy: Equatable, Sendable, Codable {

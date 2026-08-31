@@ -9,6 +9,7 @@
 // 上書きすると、次のコマンドでエイリアスが復活する。
 
 import FTCore
+import FTRemote
 import Foundation
 
 enum RunnerProfileTransfer {

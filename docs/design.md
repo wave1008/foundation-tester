@@ -149,6 +149,8 @@ foundation-tester/
 │   │                              # TestProject / RunProfile / LocalConfig(§11)。
 │   │                              # セレクタ文法(FTSelector)・コマンド索引(CommandIndex)・
 │   │                              # コード生成(ScenarioCodeGen)もここ = DSL ランタイム非依存
+│   ├── FTRemote/                  # SSH ディスパッチ・ランナー登録簿・dispatch.lock・占有(docs/remote-runner.md)。
+│   │                              # 利用側は fleetest CLI だけ = 受け手のシナリオ実行バイナリにはリンクしない
 │   ├── FTDSL / FTDSLMacros/       # Shirates 風 Swift DSL とマクロ(§10)。
 │   │                              # コマンド本体・FTRuntime・下書き生成(ScenarioDraftCodeGen)
 │   ├── FTScenarioRunner/          # fleetest-scenarios-<project> の CLI 実装

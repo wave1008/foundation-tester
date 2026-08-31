@@ -177,6 +177,10 @@
 
 ### リモート
 
+- **リモートの純粋ロジック(SSH ディスパッチ・登録簿の解決・dispatch.lock・占有・setup 計画)は
+  `Sources/FTRemote`**(利用側は fleetest CLI だけ。受け手のシナリオ実行バイナリにはリンクしない)。
+  **FTCore から FTRemote を参照しない**(循環)—— `LocalConfig` が持つ登録簿のスキーマ
+  `RemoteHostEntry` だけが FTCore に居る。他の分割は保留(理由は maintainer-notes §10)
 - **用語(ユーザー決定。全体で一貫させる)**: **host = ホスト名 / IP**(ネットワークの実体)、
   **machine = その host に対するローカルエイリアス**(この Mac の登録簿だけが知る名前)。
   定義と3つの規律(①エイリアスをリモートへ出さない ②記録の鍵は host ③プロファイルに ssh 実体を
@@ -233,7 +237,7 @@
 - **共有(複数ユーザー)の規律**(docs/remote-runner.md §18.7。M2 実装済み): **占有を知るために
   ssh を足さない** —— `dispatch.lock` はランナーのディスクにあるので、**向こうで走っている子
   (`api monitor` の fan-out)にローカルで読ませ**既存の NDJSON(`monitorLock`)に相乗りさせる
-  (場所は `FT_RUNNER_BASE`・判定は `FTCore.HostOccupancy` の1箇所)。守る規律4つ:
+  (場所は `FT_RUNNER_BASE`・判定は `FTRemote.HostOccupancy` の1箇所)。守る規律4つ:
   **①「不明」と「空き」を混ぜない**(子が落ちたら `observed:false`。**控えは消さない** ——
   消すと「一度も聞いていない機械」= 配信してよい、と同じ形になり run の最中に配信が再開する。
   不明の間は**配信を畳んだまま・保持者は名乗らない**(`isConfirmedHeld` を通す)。

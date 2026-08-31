@@ -55,7 +55,7 @@ export function deviceCommandArgs(source: DeviceCommandSource, apiArgs: readonly
  */
 /**
  * machine を省略したときの既定名: ssh 宛先からホスト部を採る(`user@` を落とす)。
- * **同期相手: Sources/FTCore/RemoteHostRegistry.swift の defaultMachine(forHost:)**
+ * **同期相手: Sources/FTRemote/RemoteHostRegistry.swift の defaultMachine(forHost:)**
  * (拡張は入力欄のウォーターマークと送信値に、CLI は `--import` の空 machine に使う。
  * remoteHostDefaultMachineSync.test.mjs が規則の食い違いを検出)。
  */

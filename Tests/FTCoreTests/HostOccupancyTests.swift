@@ -3,6 +3,7 @@
 
 import XCTest
 @testable import FTCore
+import FTRemote
 
 final class HostOccupancyTests: XCTestCase {
 

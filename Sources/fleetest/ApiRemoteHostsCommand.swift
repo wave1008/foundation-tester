@@ -10,6 +10,7 @@
 import ArgumentParser
 import Foundation
 import FTCore
+import FTRemote
 
 struct ApiRemoteHostsCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(

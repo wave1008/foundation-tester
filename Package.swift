@@ -41,6 +41,13 @@ let package = Package(
             name: "FTCore",
             swiftSettings: swift5Mode
         ),
+        // SSH ディスパッチ・ランナー登録簿・dispatch.lock(利用側は fleetest CLI だけ。
+        // FTScenarioRunner = 受け手のシナリオ実行バイナリにはリンクしない)
+        .target(
+            name: "FTRemote",
+            dependencies: ["FTCore"],
+            swiftSettings: swift5Mode
+        ),
         // CoreSimulator 直叩きシム(ObjC・dlopen。SimulatorCatalog の simctl 高速化用)
         .target(
             name: "FTCoreSimShim"
@@ -101,6 +108,7 @@ let package = Package(
             name: "fleetest",
             dependencies: [
                 "FTCore",
+                "FTRemote",
                 "FTBridgeClient",
                 "FTFoundationModels",
                 "FTAndroid",
@@ -230,7 +238,7 @@ let package = Package(
         ),
         .testTarget(
             name: "FTCoreTests",
-            dependencies: ["FTCore", "FTTestSupport"],
+            dependencies: ["FTCore", "FTRemote", "FTTestSupport"],
             swiftSettings: swift5Mode
         ),
         .testTarget(
@@ -268,7 +276,7 @@ let package = Package(
         // 実行プロファイルによる絞り込み・表示整形)
         .testTarget(
             name: "FleetestTests",
-            dependencies: ["fleetest", "FTCore", "FTAndroid", "FTBridgeClient"],
+            dependencies: ["fleetest", "FTCore", "FTRemote", "FTAndroid", "FTBridgeClient"],
             swiftSettings: swift5Mode
         ),
         .testTarget(

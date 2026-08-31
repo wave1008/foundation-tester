@@ -20,7 +20,7 @@ final class FMLockTests: XCTestCase {
     /// プロセス内の排他が別に要る = この検証が無いと直列化が効かない)
     func testSecondAcquireFailsWhileHeld() async throws {
         try requireSerializationEnabled()
-        var acquired = await FMLock.acquire(timeoutSeconds: 1)
+        let acquired = await FMLock.acquire(timeoutSeconds: 1)
         XCTAssertTrue(acquired)
         let second = await FMLock.acquire(timeoutSeconds: 0.3)
         XCTAssertFalse(second, "保持中は取れないはず")
@@ -41,7 +41,7 @@ final class FMLockTests: XCTestCase {
     /// timeout はおおむね守る(待ち続けてシナリオのタイムアウトを食い潰さない)
     func testAcquireRespectsTimeout() async throws {
         try requireSerializationEnabled()
-        var acquired = await FMLock.acquire(timeoutSeconds: 1)
+        let acquired = await FMLock.acquire(timeoutSeconds: 1)
         XCTAssertTrue(acquired)
         let started = Date()
         _ = await FMLock.acquire(timeoutSeconds: 0.5)

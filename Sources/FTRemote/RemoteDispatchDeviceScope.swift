@@ -4,6 +4,7 @@
 // (ApiRunMachineFanout / DeviceMachineRunner / FleetRunner の子)はこの判定を通さない。
 
 import Foundation
+import FTCore
 
 public enum RemoteDispatchDeviceScope: Equatable, Sendable {
     /// 全デバイスが machine 未指定 = 従来どおりプロファイル丸ごと(受け側が自分の台として解釈する)

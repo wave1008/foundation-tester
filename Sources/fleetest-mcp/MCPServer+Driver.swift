@@ -101,7 +101,7 @@ extension MCPServer {
                     pendingWarnings[key, default: []].append(
                         Self.reusedPortWarning(port: probePort ?? provisioned.port,
                                                previousUDID: previousUDID,
-                                               nowUDID: provisioned.udid ?? ""))
+                                               nowUDID: provisioned.udid))
                 }
                 udids[key] = provisioned.udid
                 // **実機は probePort が常に nil**(loopback 経由ではないため。iosDriver 参照)。

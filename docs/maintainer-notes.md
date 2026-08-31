@@ -437,3 +437,24 @@ dry-run との対比で「実機の前に落とす」等と書いていた 20 �
 検出できなかった。軸を①画面の形 / ②セッションの形の2本立てに直し、天気サイトはもう足さない。
 
 → 規則: CLAUDE.md「MCP 監査ラウンドの回し方」/ 台帳は docs/mcp-audit-rounds.md
+
+## 10. 外部レビュー(Codex・2026-08-31)の5件をどう仕分けたか
+
+再提案されやすいので判断と根拠を残す。
+
+| 指摘 | 扱い | 根拠 |
+|---|---|---|
+| ① FTCore の責務が広い(137 ファイル・約 3.1 万行)。FTDomain / FTExecution / FTProfiles / FTRemote / FTReporting / FTRecording へ | **FTRemote だけ分離**(採用) | `Remote*.swift` + `HostOccupancy` は FTCore から一方向にしか依存されていない(唯一の逆依存 = `LocalConfig.remoteHosts` の型 `RemoteHostEntry` は FTCore に残した)。利用側は fleetest CLI だけなので、分離すると受け手のシナリオ実行バイナリ(FTScenarioRunner)から ssh/転送のコードが落ちる。**他の分割は保留** —— `RunOrchestrator` / `RunRecord` / `RunProfile` / `StepExecutor` は相互参照しており、切ると循環を public 化で解く作業になる。CLAUDE.md の分割方針は「1ファイル ≈2,000 行・1タスクで 1〜2 ファイル」で、**モジュール数は目的ではない** |
+| ② 実行オーケストレーションが分散(ProfileRunner / FleetRunner / RemoteRunDispatcher / RunOrchestrator / FTScenarioRunner / MCP) | 見送り(既知) | execute 段は既に `RunOrchestrator`(FTCore)1箇所、ワーカー構築も `ProfileWorkerFactory` 1箇所。残る二重は `fleetest run` と `fleetest api run` の入口2実装で、`RunCommandFlagParityTests` が差分を等号で固定している(CLAUDE.md「版と契約の同期」)。FleetRunner の子プロセス方式と RemoteRunDispatcher の ssh は設計上別物(理由は各ファイル冒頭)。1つのユースケース層へ畳むのは run 制御の改修で、**緑の run では実行されない経路を含む**ので、着手するなら陽性対照を先に揃える |
+| ③ `AppDriver` の能力差を型で(DriverCapabilities / プロトコル分割) | 不採用 | 501 は「このエンジンでは原理的に不可 → typeDriver(XCUITest)へ回す」というホストの分岐契約そのもの(design.md §4.3)。hybrid は**実行時に 501 を受けて回す**のが正で、計画段階で能力を検証するとフォールバックの前提が崩れる。既定実装が黙って返る罠は `AppDriverDefaultDispatchTests` が塞ぐ。ホスト側で分岐が要る能力だけフラグにしてある(`verifiesTypedText` / `supportsCacheBypass`) |
+| ④ Package.swift がワークスペースを兼ねる → 各テストプロジェクトを外部パッケージへ一本化 | 既に実装済み | 受け手は 2026-07-20 から外部パッケージ構成が既定(design.md §15)。ルートの `fleetest-scenarios-*` は保守者の SUT で、**`swift test` が 5 SUT のシナリオを型検査する砦**なので外へ出さない |
+| ⑤ Swift 6 系のコンパイラ警告 | 機械的な分だけ修正・残りは下の台帳 | 全ファイル再コンパイルで実数 88 件(端末表示は1件が2行に出るので `grep -c warning:` は倍を数える)。修正した 31 件は挙動に触れない型(冗長 `public`・不要 `try`・未使用値・Codable の `let kind`) |
+
+**残す警告の台帳(2026-08-31・57 件)**。全数を出す手順:
+`find Sources Tests -name '*.swift' -exec touch {} +` → `swift build --build-tests 2>&1 | sed -E 's/\x1b\[[0-9;]*m//g' | grep -E '^/.*: warning:' | sort -u`
+(増えていないかはこの数で見る。CI は無いので手順ごと残す)
+
+- **FoundationModels `init(sampling:)` の deprecated ×8**: 後継 `init(samplingMode:)` は macOS 27 SDK のみ。platforms は macOS 26 なので置き換えると 26 でビルドが通らなくなる(Package.swift の platforms コメントと同じ理由)。macOS 26 SDK では出ない
+- **SecureTransport `SSL*` の deprecated ×12**(`PhysicalSafariInspector`): 実機 iOS の lockdown TLS は自前ソケット上で証明書を指定して握手する形で、Network.framework に同じ口が無い(design.md §実機だけの罠)
+- **Sendable 捕捉・非同期文脈の `wait`/`lock` ×約 37**(production は FleetRunner / ApiRunMachineFanout / ProfileRunner / VideoRecordingFinalizer / ScenarioRunnerMain / devicepoll の約 16 件、残りはテスト): Swift 6 言語モードでエラーになる本命。production 側は子プロセスの stdout 読み切り(`DispatchSemaphore.wait`)と `readabilityHandler` の捕捉なので、**直すときは run 制御の改修として扱い、中断リレー(`InterruptRelay`)と出力の取りこぼしの陽性対照を付ける**
+- **ゲートの選択肢**: `swiftLanguageMode(.v5)` のまま `.treatWarning(_:as: .error)` で群ごとにエラー化する案は tools-version 6.2 が要る(受け手の最低環境は macOS 26 = Xcode 26 = Swift 6.2 なので可能)が、群の無い診断(冗長 `public`・非同期文脈のロック)は対象外。**`-warnings-as-errors` の `unsafeFlags` は不可**(受け手の外部パッケージが依存として解決できなくなる)

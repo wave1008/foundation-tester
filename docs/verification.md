@@ -2327,7 +2327,7 @@ E2E-iOS を回すまで気付かなかった)。**距離を伸ばしても・画
   **向きを取り違えない**: `localBehind`(この clone が古い)・`diverged`(ブランチ作業)・
   未 push・toolchain 不一致・到達不能は**触らずに理由を1行出す**(align では直らない/直す側が逆)。
   判定の写しは `Scripts/e2e-align-plan.py` の1箇所だけで、祖先関係の計算は Swift 側
-  (`FTCore.RemoteCompat`)に任せる(2つ目の実装を作らない)。
+  (`FTRemote.RemoteCompat`)に任せる(2つ目の実装を作らない)。
   align が見るプロファイル集合は `planned_profiles`(実行ループの写し)なので、
   **実行後に実際に回した組と突き合わせて食い違いを警告する**(片方だけ直すと黙ってズレるため)
 - **両OSを1プロファイルにまとめない**: platform 未指定シナリオは既定 platform のキューにしか入らず

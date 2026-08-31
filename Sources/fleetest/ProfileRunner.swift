@@ -511,7 +511,7 @@ enum ProfileRunner {
             // 張り直しは buildIOSWorkers を呼び直すだけでよい(生きているブリッジは
             // 再利用されるので、実際に建て直るのは落とした機だけ)。
             // レーンに凍結機を残さないための処理で、戻らなかった個体だけが除外される
-            let recovered = try? await BlankWorkerTriage.excludeBlankScreenWorkers(
+            let recovered = await BlankWorkerTriage.excludeBlankScreenWorkers(
                 ws,
                 recover: { @Sendable frozen, currentWorkers in
                     await ProfileWorkerFactory.recoverFrozenIOSWorkers(
@@ -522,7 +522,7 @@ enum ProfileRunner {
                     nudge: { @Sendable [bundleID = ProfileWorkerFactory.iosBundleID(apps: resolved.apps)] in
                         await ProfileWorkerFactory.nudgeIOSScreen(worker: $0, restoring: bundleID) },
                 log: { print($0) }).workers
-            ws = recovered ?? ws
+            ws = recovered
             await ProfileWorkerFactory.prepareDevicesOnStart(
                 ws, homeOnStart: resolved.homeOnStart) { print($0) }
             return ws

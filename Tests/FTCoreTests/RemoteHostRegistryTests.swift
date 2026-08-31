@@ -4,6 +4,7 @@
 import Foundation
 import XCTest
 @testable import FTCore
+import FTRemote
 
 final class RemoteHostRegistryTests: XCTestCase {
 

@@ -1,9 +1,10 @@
 // RemoteSetup.swift
 // `fleetest remote setup` (docs/remote-runner.md §14) の純粋ロジック。
 // scp/ssh の起動・確認プロンプトは Sources/fleetest/RemoteSetupCommand.swift 側(単体テスト対象外)。
-// RemoteShell/RemoteLayout/RemoteProbe 等は Sources/FTCore/RemoteDispatch.swift(同じ規律を踏襲する)。
+// RemoteShell/RemoteLayout/RemoteProbe 等は Sources/FTRemote/RemoteDispatch.swift(同じ規律を踏襲する)。
 
 import Foundation
+import FTCore
 
 public enum RemoteSetupError: Error, LocalizedError, Equatable {
     case invalidRevision(String)

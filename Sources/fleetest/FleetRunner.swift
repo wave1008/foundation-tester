@@ -11,6 +11,7 @@
 
 import ArgumentParser
 import FTCore
+import FTRemote
 import Foundation
 
 struct FleetEntryOutcome: Sendable {

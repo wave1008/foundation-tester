@@ -33,7 +33,7 @@ final class MCPBatchUnchangedNoteTests: XCTestCase {
         let final = batchSnapshot([batchElement(ref: 1)], marker: 0)
         let reread = batchSnapshot([batchElement(ref: 1)], marker: 99)
         var rereadCalls = 0
-        let (note, snapshot) = try await MCPServer.batchUnchangedNote(
+        let (note, snapshot) = await MCPServer.batchUnchangedNote(
             beforeBatch: before, final: final, stepCount: 3) {
             rereadCalls += 1
             return reread
@@ -49,7 +49,7 @@ final class MCPBatchUnchangedNoteTests: XCTestCase {
         let before = batchSnapshot([batchElement(ref: 1)], marker: 0)
         let final = batchSnapshot([batchElement(ref: 1), batchElement(ref: 2, id: "row2")], marker: 0)
         var rereadCalls = 0
-        let (note, snapshot) = try await MCPServer.batchUnchangedNote(
+        let (note, snapshot) = await MCPServer.batchUnchangedNote(
             beforeBatch: before, final: final, stepCount: 3) {
             rereadCalls += 1
             return batchSnapshot([], marker: 99)
@@ -64,7 +64,7 @@ final class MCPBatchUnchangedNoteTests: XCTestCase {
     func testNoteIsSilentWhenThereIsNoBeforeBatchSnapshot() async throws {
         let final = batchSnapshot([batchElement(ref: 1)], marker: 0)
         var rereadCalls = 0
-        let (note, snapshot) = try await MCPServer.batchUnchangedNote(
+        let (note, snapshot) = await MCPServer.batchUnchangedNote(
             beforeBatch: nil, final: final, stepCount: 3) {
             rereadCalls += 1
             return batchSnapshot([], marker: 99)
@@ -80,7 +80,7 @@ final class MCPBatchUnchangedNoteTests: XCTestCase {
         let before = batchSnapshot([batchElement(ref: 1)], marker: 0)
         let final = batchSnapshot([batchElement(ref: 1)], marker: 0)
         let reread = batchSnapshot([batchElement(ref: 1), batchElement(ref: 2, id: "row2")], marker: 42)
-        let (note, snapshot) = try await MCPServer.batchUnchangedNote(
+        let (note, snapshot) = await MCPServer.batchUnchangedNote(
             beforeBatch: before, final: final, stepCount: 1) { reread }
         XCTAssertTrue(note.contains("re-read once"), note)
         XCTAssertFalse(note.contains("none of the steps") || note.contains("actually changed"), note)
@@ -96,7 +96,7 @@ final class MCPBatchUnchangedNoteTests: XCTestCase {
     func testCaveatIsAppendedWhenMostOfTheScreenHasNoElement() async throws {
         // 844 の画面に高さ 40 の1要素 = 空帯が 95% ≥ しきい値 0.5
         let sparse = batchSnapshot([batchElement(ref: 1)], marker: 0)
-        let (note, _) = try await MCPServer.batchUnchangedNote(
+        let (note, _) = await MCPServer.batchUnchangedNote(
             beforeBatch: sparse, final: sparse, stepCount: 1) { sparse }
         XCTAssertTrue(note.contains("none of the steps"), note)
         XCTAssertTrue(note.contains("no element in the tree at all"), note)
@@ -108,7 +108,7 @@ final class MCPBatchUnchangedNoteTests: XCTestCase {
                                    value: nil, placeholder: nil, enabled: true,
                                    frame: FTRect(x: 0, y: 0, width: 390, height: 844), depth: 1)
         let dense = batchSnapshot([covering], marker: 0)
-        let (note, _) = try await MCPServer.batchUnchangedNote(
+        let (note, _) = await MCPServer.batchUnchangedNote(
             beforeBatch: dense, final: dense, stepCount: 1) { dense }
         XCTAssertTrue(note.contains("none of the steps"), note)
         XCTAssertFalse(note.contains("no element in the tree at all"), note)

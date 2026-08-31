@@ -14,6 +14,7 @@
 
 import ArgumentParser
 import FTCore
+import FTRemote
 import Foundation
 
 enum ApiRunMachineFanout {

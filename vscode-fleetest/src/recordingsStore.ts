@@ -80,7 +80,7 @@ function booleanField(obj: Record<string, unknown> | null, key: string): boolean
  * (2026-08-26 ユーザー決定: 記録側はエイリアスを持たず、読み手が読み替える)。
  * 供給元は CLI が書く `.fleetest/remote-hosts/<ホスト>.json` の `host`(ホスト名)と
  * `machineAlias`(表示用のエイリアス)。**ファイル名=鍵はホスト**で、エイリアスは欄として
- * 持つだけ(Sources/FTCore/RemoteHostFacts.swift)。ディスパッチのたびに更新される。
+ * 持つだけ(Sources/FTRemote/RemoteHostFacts.swift)。ディスパッチのたびに更新される。
  * **読み替えは表示だけ**で、LPT の同一マシン判定など記録側の照合は run.json の host のまま。
  * 表に無いホスト名はそのまま出す(まだディスパッチしていない機械・別の人の機械)。
  */

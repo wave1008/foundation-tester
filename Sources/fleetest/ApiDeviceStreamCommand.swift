@@ -20,6 +20,7 @@ import ArgumentParser
 import FTAndroid
 import FTBridgeClient
 import FTCore
+import FTRemote
 import Foundation
 
 struct ApiDeviceStreamCommand: AsyncParsableCommand {

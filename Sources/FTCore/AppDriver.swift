@@ -270,9 +270,9 @@ public enum DriverError: Error, LocalizedError {
 public extension AppDriver {
     /// 既定は nil(= 判定しない)。**答えられるのは XCUITest ランナーを包むドライバだけ**で、
     /// in-app は自プロセスしか見えず、Android は木の根が active window なので判定自体が要らない
-    public func systemAlert() async throws -> SystemAlertProbeResponse? { nil }
+    func systemAlert() async throws -> SystemAlertProbeResponse? { nil }
     /// 既定は「答えられない」。答えられるのは XCUITest ブリッジを話す BridgeClient だけ
-    public func systemUICovering() async throws -> SystemUICoveringResponse? { nil }
+    func systemUICovering() async throws -> SystemUICoveringResponse? { nil }
 
     var lastActionNote: String? { nil }
     /// 既定は「分からない」。答えられるのは**位置を直接動かせる**ドライバ(AndroidDriver の

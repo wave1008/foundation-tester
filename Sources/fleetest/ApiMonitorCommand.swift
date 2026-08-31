@@ -31,6 +31,7 @@ import Foundation
 import FTAndroid
 import FTBridgeClient
 import FTCore
+import FTRemote
 import ImageIO
 import UniformTypeIdentifiers
 
@@ -1500,7 +1501,7 @@ struct ApiMonitorHoldEvent: Encodable {
 }
 
 struct ApiMonitorDevicesEvent: Codable {
-    let kind = "monitorDevices"
+    private(set) var kind = "monitorDevices"
     let devices: [ApiMonitorDeviceInfo]
 }
 
@@ -1510,7 +1511,7 @@ struct ApiMonitorDevicesEvent: Codable {
 /// 中継する RemoteMonitorFanout が埋める(monitorDevices・monitorFrame と同じ規律)。
 /// 同期相手: vscode-fleetest/src/monitorDeviceModel.ts(isMonitorEvent)
 struct ApiMonitorLockEvent: Codable {
-    let kind = "monitorLock"
+    private(set) var kind = "monitorLock"
     var machine: String?
     /// **その機械をまだ観測できているか**。子が落ちたら親が false で1行出す —— 古い占有を
     /// 出し続けないため(子の devices を捨てるのと同じ規律)。**false を「空き」と読ませない**:

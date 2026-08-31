@@ -75,13 +75,13 @@ test("インストーラ一式が他エージェントの規約位置・設定�
 // 抑止フラグを変えると Swift の実引数と docs の記載がドリフトするので、両方を見る。
 
 test("RemoteSetup.installArgs が入口ファイルの生成を抑止する", () => {
-  const swift = readFileSync(path.join(ROOT, "Sources/FTCore/RemoteSetup.swift"), "utf8");
+  const swift = readFileSync(path.join(ROOT, "Sources/FTRemote/RemoteSetup.swift"), "utf8");
   assert.ok(swift.includes('"--skip-claude-md"'),
     "RemoteSetup.installArgs に入口抑止 --skip-claude-md がありません");
 });
 
 test("ランナーの install 引数が docs と一致する(片方だけ変えない)", () => {
-  const swift = readFileSync(path.join(ROOT, "Sources/FTCore/RemoteSetup.swift"), "utf8");
+  const swift = readFileSync(path.join(ROOT, "Sources/FTRemote/RemoteSetup.swift"), "utf8");
   const body = swift.slice(swift.indexOf("func installArgs"));
   const flags = [...body.slice(0, body.indexOf("\n    }")).matchAll(/"(--[a-z-]+)"/g)]
     .map((m) => m[1])

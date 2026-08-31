@@ -11,6 +11,7 @@
 // **走っている run の hooks は触らない**。
 
 import Foundation
+import FTCore
 
 public enum RemoteHooksReap {
 

@@ -4,6 +4,7 @@ import FTFoundationModels
 import FTAndroid
 import FTBridgeClient
 import FTCore
+import FTRemote
 import FTDSL
 
 @main
@@ -774,7 +775,7 @@ struct RunScenarios: AsyncParsableCommand {
     var runGroup: String?
 
     /// **手で打つものではない**。RemoteRunDispatcher がミラー後の絶対パスを渡す
-    /// (Sources/FTCore/RemoteDispatch.swift の RemoteRunArgs.build)。プロファイルの
+    /// (Sources/FTRemote/RemoteDispatch.swift の RemoteRunArgs.build)。プロファイルの
     /// `remoteControl.workspace` を上書きし、appPath のインストール先(ステージ先。原本の解決基準は
     /// 常にリポジトリルートで不変)をそちらへ切り替える(ProfileResolver.resolve の
     /// workspaceOverride / WorkspaceAppStaging 参照)
@@ -1059,7 +1060,7 @@ struct RunScenarios: AsyncParsableCommand {
         guard let profile else {
             throw ValidationError("--host requires --profile")
         }
-        // 拒否 or 注記の分岐は FTCore.RemoteDispatchFlagPolicy に委譲(欠陥1)。origin が
+        // 拒否 or 注記の分岐は FTRemote.RemoteDispatchFlagPolicy に委譲(欠陥1)。origin が
         // 自動ディスパッチ(マシンプロファイルの host)なら --skip-build は注記のみで無視する
         // (リモートは常に自前でビルドする)。他の3つは自動でも意味を持たせられないため拒否のまま
         let origin = dispatch.origin

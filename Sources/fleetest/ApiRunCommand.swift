@@ -15,6 +15,7 @@ import Foundation
 import FTAndroid
 import FTBridgeClient
 import FTCore
+import FTRemote
 
 struct ApiRunCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
@@ -181,7 +182,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             throw ValidationError("--profile cannot be combined with --platform/--port/--serial")
         }
         // 純粋にローカルだけの実行で --wait-lock は打ち間違い(待つ相手が居ない)。
-        // 判定は run と同じ FTCore.RemoteDispatchFlagPolicy(2つ目の規則を作らない。--fleet は
+        // 判定は run と同じ FTRemote.RemoteDispatchFlagPolicy(2つ目の規則を作らない。--fleet は
         // api run に無いので常に nil)
         if waitLock != nil, let message = RemoteDispatchFlagPolicy.waitLockRejection(
             host: machine ?? host, fleet: nil, profile: profile) {
@@ -618,7 +619,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         if dryRun {
             throw ValidationError("--dry-run is not supported with --host")
         }
-        // 拒否 or 注記の分岐は FTCore.RemoteDispatchFlagPolicy に委譲(欠陥1)。VSCode 拡張は
+        // 拒否 or 注記の分岐は FTRemote.RemoteDispatchFlagPolicy に委譲(欠陥1)。VSCode 拡張は
         // 設定 fleetest.buildBeforeRun: false のとき常に --skip-build を送るため、マシンプロファイル
         // 由来の自動ディスパッチ(origin = .autoDispatch)にそのまま適用すると、利用者が打っていない
         // フラグを理由に必ず落ちる。自動側は注記のみで無視する(リモートは常に自前でビルドする)
@@ -754,7 +755,6 @@ struct ApiRunCommand: AsyncParsableCommand {
             // (BlankWorkerTriage 参照)。**この経路にも通すこと** ——
             // iOS ワーカーの供給口は「遅延合流(lateWorkers)」とここの2つで、片方だけだと穴が空く
             let iosRepoRoot = try RepoRoot.find()
-            let iosWorkers = workers
             let iosTriage = await BlankWorkerTriage.excludeBlankScreenWorkers(
                 workers,
                 recover: { @Sendable frozen, currentWorkers in

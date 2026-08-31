@@ -8,6 +8,7 @@
 
 import FTBridgeClient  // RepoRoot
 import FTCore
+import FTRemote
 import Foundation
 
 enum RemoteProjectSync {

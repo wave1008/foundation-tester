@@ -1,6 +1,6 @@
 // RemoteCommands.swift
 // `fleetest remote status` / `fleetest remote clean` (docs/remote-runner.md §16.4・§16.5)。
-// フリート運用の診断・掃除。純粋ロジックは Sources/FTCore/RemoteDispatch.swift 側
+// フリート運用の診断・掃除。純粋ロジックは Sources/FTRemote/RemoteDispatch.swift 側
 // (RemoteStatusProbe/RemoteCleanPlan、単体テスト対象)。ssh の張り方は
 // Sources/fleetest/RemoteRunDispatcher.swift と同じ規律(BatchMode=yes・ConnectTimeout=10)だが
 // そちらは private のため複製する。
@@ -14,6 +14,7 @@
 import ArgumentParser
 import FTBridgeClient
 import FTCore
+import FTRemote
 import Foundation
 
 /// 全 ssh 共通の基底引数。ConnectTimeout が無いと到達不能ホストで TCP 既定(75秒超)固まる
@@ -176,7 +177,7 @@ struct RemoteCommand: AsyncParsableCommand {
 
     // MARK: - unlock
 
-    /// 自分の死んだディスパッチが残した dispatch.lock だけを外す(判定は FTCore.RemoteDispatchUnlock)。
+    /// 自分の死んだディスパッチが残した dispatch.lock だけを外す(判定は FTRemote.RemoteDispatchUnlock)。
     /// `--force-lock` と違い他人の(走っているかもしれない)ロックは絶対に触らない
     struct Unlock: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
@@ -406,7 +407,7 @@ struct RemoteCommand: AsyncParsableCommand {
                                issuer: try resolveLayoutIssuer())
         }
 
-        /// 死んだ run が残した終了スクリプトを**全発行者ぶん**代行実行する(FTCore.RemoteHooksReap が
+        /// 死んだ run が残した終了スクリプトを**全発行者ぶん**代行実行する(FTRemote.RemoteHooksReap が
         /// コマンドの唯一の定義元。ディスパッチ開始時の掃除と同じものを使う ―― 2つ目の実装を作らない)
         private func runReapAcrossIssuers(target: String, layout: RemoteLayout) {
             let command = RemoteHooksReap.commandAcrossIssuers(layout: layout, quiet: false)
@@ -726,7 +727,7 @@ func resolveRemoteTarget(_ dispatch: EffectiveDispatchTarget, remoteDirOverride:
 // MARK: - shared helpers
 
 /// マシン混在プロファイルの単一マシンディスパッチに付ける --device/--device-machine を決める
-/// (判定は FTCore.RemoteDispatchDeviceScope / 明示 --device 付きは RemoteDispatchExplicitDeviceScope)。
+/// (判定は FTRemote.RemoteDispatchDeviceScope / 明示 --device 付きは RemoteDispatchExplicitDeviceScope)。
 /// 呼び出し側が既に --device-machine を持つときは呼ばないこと。`requestedDevices` は利用者の
 /// 明示 `--device`(空 = 無し)—— 混在プロファイルではそのマシンの台に限定して渡す
 /// (同名の台が他の機械にもあると、名前だけでは全機械ぶんを拾う)。

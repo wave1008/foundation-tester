@@ -6,6 +6,7 @@
 // 「最新の観測値」を保つだけの単純なキャッシュ)。
 
 import Foundation
+import FTCore
 
 /// リモートホスト1台ぶんの観測キャッシュ。
 public struct RemoteHostFacts: Codable, Equatable, Sendable {

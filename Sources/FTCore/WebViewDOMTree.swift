@@ -20,7 +20,7 @@ public extension WebViewDOM {
     /// JS は CSS px・visual viewport 相対で返す。**density だけが OS で違う**:
     /// Android は `CSS px × density = 物理 px`(a11y の bounds が物理 px のため)。
     /// iOS の a11y frame は既に pt なので `density: 1` で呼ぶ(専用の別関数は作らない)。
-    public static func elements(payload: Payload, webViewFrame: FTRect,
+    static func elements(payload: Payload, webViewFrame: FTRect,
                                 density: Double, startingRef: Int) -> [ElementInfo] {
         guard let nodes = payload.nodes, let viewport = payload.viewport else { return [] }
         var out: [ElementInfo] = []
@@ -49,20 +49,20 @@ public extension WebViewDOM {
     /// 木の中の WebView ノード本体(DOM を差し込む先・スコープ算出の起点)。**最大のものを選ぶ**
     /// —— 入れ子の WebView はブリッジ側で既に落としているが、複数並ぶ画面では
     /// 面積の大きいほうが本体である公算が高い
-    public static func webViewElement(in elements: [ElementInfo]) -> ElementInfo? {
+    static func webViewElement(in elements: [ElementInfo]) -> ElementInfo? {
         elements.filter { $0.type.lowercased() == "webview" }
             .max { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }
     }
     
     /// `webViewElement(in:)` の frame だけを要る呼び出し向け
-    public static func webViewFrame(in elements: [ElementInfo]) -> FTRect? {
+    static func webViewFrame(in elements: [ElementInfo]) -> FTRect? {
         webViewElement(in: elements)?.frame
     }
     
     /// DOM で読む対象のブラウザ(**この集合の外は自作アプリ扱い = a11y のまま**)。
     /// 口の実装は OS ごとに別だが、**「ブラウザかどうか」の判定は1箇所**に置く
     /// —— 割れると「Safari では DOM・注記は a11y 前提」のような食い違いが出る
-    public static let knownBrowserIDs: Set<String> = ["com.apple.mobilesafari", "com.android.chrome"]
+    static let knownBrowserIDs: Set<String> = ["com.apple.mobilesafari", "com.android.chrome"]
 
     /// **ブラウザの a11y が足りているか**(純粋)。足りていれば DOM は読まない。
     ///
@@ -74,7 +74,7 @@ public extension WebViewDOM {
     ///
     /// 足りないと見なすのは2つだけ: **`webView` ノードが無い** / **その内側にラベルが1つも無い**。
     /// どちらも「本文がまだ来ていない」形で、`missingPageContentNote` が言うのと同じ状態
-    public static func browserA11yLooksSufficient(elements: [ElementInfo]) -> Bool {
+    static func browserA11yLooksSufficient(elements: [ElementInfo]) -> Bool {
         guard let webView = webViewElement(in: elements) else { return false }
         return StepExecutor.descendants(of: webView, in: elements)
             .contains { !($0.label ?? "").isEmpty }
@@ -95,7 +95,7 @@ public extension WebViewDOM {
     /// 中身を chrome と数えると領域が潰れる。
     /// 手掛かりが1つも無ければ nil(**画面全体で代用しない** —— 原点が chrome のぶんずれ、
     /// タップが全部上へ外れる)
-    public static func browserContentFrame(in elements: [ElementInfo], screen: FTRect) -> FTRect? {
+    static func browserContentFrame(in elements: [ElementInfo], screen: FTRect) -> FTRect? {
         guard screen.height > 0 else { return nil }
         let chrome = elements.filter { !($0.identifier ?? "").isEmpty }
         let topBand = screen.y + screen.height * 0.3
@@ -117,7 +117,7 @@ public extension WebViewDOM {
     /// ノード自身とブラウザ chrome(URL バー等 = WebView の外)は残す。
     /// 子孫の判定は `StepExecutor.descendants` と同じ pre-order + depth 規約をそのまま使う
     /// (ここに2つ目の子孫判定を書かない = 3ブリッジの組み立て規約から外れさせない)
-    public static func droppingWebViewSubtree(_ elements: [ElementInfo],
+    static func droppingWebViewSubtree(_ elements: [ElementInfo],
                                               webView: ElementInfo) -> [ElementInfo] {
         let inner = Set(StepExecutor.descendants(of: webView, in: elements).map(\.ref))
         guard !inner.isEmpty else { return elements }

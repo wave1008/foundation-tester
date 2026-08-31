@@ -1,6 +1,6 @@
 // RemoteSetupCommand.swift
 // `fleetest remote setup` / `fleetest remote exec` (docs/remote-runner.md §14)。
-// 純粋ロジックは Sources/FTCore/RemoteSetup.swift 側(RemoteSetupPlan、単体テスト対象)。
+// 純粋ロジックは Sources/FTRemote/RemoteSetup.swift 側(RemoteSetupPlan、単体テスト対象)。
 // ssh の張り方は Sources/fleetest/RemoteRunDispatcher.swift・RemoteCommands.swift と同じ規律
 // (BatchMode=yes・ConnectTimeout=10)だが、そちらは private のため複製する。
 
@@ -8,6 +8,7 @@ import ArgumentParser
 import Darwin
 import FTBridgeClient
 import FTCore
+import FTRemote
 import Foundation
 
 private let setupSSHBase = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10"]

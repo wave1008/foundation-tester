@@ -32,7 +32,7 @@ test("正規化でも machine 空欄は host のホスト部で埋まる(user@ �
 
 test("Swift 側(RemoteHostRegistry.defaultMachine)と同じ規則である", () => {
   const swift = readFileSync(
-    path.join(process.cwd(), "..", "Sources/FTCore/RemoteHostRegistry.swift"), "utf8");
+    path.join(process.cwd(), "..", "Sources/FTRemote/RemoteHostRegistry.swift"), "utf8");
   const body = swift.match(/func defaultMachine\(forHost[\s\S]*?\n    \}/);
   assert.ok(body, "defaultMachine(forHost:) が見つかりません");
   // 同じ2つの規則(最後の @ で切る / 前後の空白を落とす)が両実装にあること

@@ -8,6 +8,7 @@
 import ArgumentParser
 import FTBridgeClient
 import FTCore
+import FTRemote
 import Foundation
 
 struct ApiRemoteCompatCommand: AsyncParsableCommand {

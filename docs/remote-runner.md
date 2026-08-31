@@ -502,7 +502,7 @@ SSH 側のプロセスからでもユーザーの launchd ドメインのサー�
 `fleetest run --host <user@host>`(`--profile` 必須。`--ports`/`--report-dir`/`--failed`/
 `--skip-build` は併用不可)・`--remote-dir`(既定: ローカルルートと同じ絶対パス)・
 (`--remote-session` は asuser 撤去に伴い廃止)。純粋ロジックは
-`Sources/FTCore/RemoteDispatch.swift`(単体テスト対象)、プロセス起動は
+`Sources/FTRemote/RemoteDispatch.swift`(単体テスト対象)、プロセス起動は
 `Sources/fleetest/RemoteRunDispatcher.swift` に集約。
 
 設計文書からの意図的な逸脱:
@@ -978,7 +978,7 @@ M1Ultra / M1Max の run が machine 名付きで並ぶ)。「マージの実装�
 
 ただし**レポートへのリンクだけは壊れていた** —— リモートの run が記録する `reportPath` は
 ディスパッチ単位の隔離先(回収後に削除される)を指すため。回収後に記録側を回収先へ
-向け直す(`FTCore.RemoteReportLink`)。`on-demand` でも録画以外(実績 JSON)は回収されるので
+向け直す(`FTRemote.RemoteReportLink`)。`on-demand` でも録画以外(実績 JSON)は回収されるので
 集計には載る。載らないのは録画だけ。
 
 ## 14. ランナー機の前提とインストーラー(実装済み: 2026-08-16)
@@ -1671,7 +1671,7 @@ upstream main を clone して update.sh で追従するので、2人の rev は
   `remoteExecCommand` が export する **1箇所**。**手元実行では未設定**なので、この値の有無が
   そのまま「ランナー機の文脈か」の判定になる(手元には dispatch.lock という概念が無い)。
   **exec も `FT_ISSUER` を運ぶ**(子が「保持者は自分か」を判定するため)
-- **判定は `FTCore.HostOccupancy` の1箇所**(純粋関数 + 薄い読み込み)。
+- **判定は `FTRemote.HostOccupancy` の1箇所**(純粋関数 + 薄い読み込み)。
   **info が読めなくても held は保つ**(「情報が読めなくてもロックは尊重する」と同じ向き)/
   **保持者不明を自分扱いにしない**(破壊的操作の確認が黙る側へ倒れる)
 - **中継する親が machine を埋める**(monitorDevices・monitorFrame と同じ規律)。
@@ -1701,7 +1701,7 @@ upstream main を clone して update.sh で追従するので、2人の rev は
   `RunCommandFlagParityTests` の run 専用表から外れた)+ 設定 `fleetest.remoteWaitLock`(既定 0 =
   従来どおり待たない)。**奪う口(`--force-lock`)は GUI に出さない** —— 走っているかもしれない
   他人の run を殺せる導線を作らない(§5 の決定を維持)
-- **孤児 hooks はディスパッチ開始時に横断で代行**(`FTCore.RemoteHooksReap`。1 ssh で
+- **孤児 hooks はディスパッチ開始時に横断で代行**(`FTRemote.RemoteHooksReap`。1 ssh で
   `users/*/work` と旧 `work` を回る)。**ロックを取った直後に撃つ**ので生きている run の
   hooks は触らない(加えて `hooks reap` 自身が pid の生死で判定する)。`remote clean` も
   同じコマンドを使う(2つ目の実装を作らない)

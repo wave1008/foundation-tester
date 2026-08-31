@@ -10,7 +10,7 @@ final class RemoteDeviceFanoutTests: XCTestCase {
     private func decoded(_ line: String?) -> [String: Any] {
         guard let line, let data = line.data(using: .utf8),
               let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
-            XCTFail("not a JSON object: \(line)")
+            XCTFail("not a JSON object: \(line ?? "nil")")
             return [:]
         }
         return object

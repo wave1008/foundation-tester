@@ -255,7 +255,7 @@ struct ApiDevicesUp: AsyncParsableCommand {
             // 起動は機械ごとに独立した資源を使うので、「同時2台」の上限は機械ごとに持てる
             let machines = RemoteDeviceFanout.remoteMachines(
                 project: project, profile: profile, deviceMachine: deviceMachine)
-            // **意図を変えるフラグは中継しないと黙って無視される**(FTCore.RemoteDispatch.build と
+            // **意図を変えるフラグは中継しないと黙って無視される**(FTRemote.RemoteDispatch.build と
             // 同じ規律)—— --no-bridge を渡さないと、向こうだけブリッジを供給する。
             // --restart / --cpu-render は手元の watchdog が持つ名簿なので中継しない
             async let fanout: Void = RemoteDeviceFanout.dispatch(

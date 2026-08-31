@@ -1,5 +1,6 @@
 import XCTest
 @testable import FTCore
+import FTRemote
 
 final class RemoteHostFactsTests: XCTestCase {
     var dir: URL!
