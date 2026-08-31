@@ -10,21 +10,6 @@
 | D-01 | カート数量1で「−」しても明細が削除されない | カート | 中 | 🔴 起票 | SC-42 / TC-42 | 自動(`カートの数量を操作できること.S0020`) | 2026-07-20 | [D-01](D-01-cart-qty1-no-auto-delete.md) |
 | D-02 | アカウント画面下端の操作が下部タブバーに潜る | アカウント / 共通インセット | 高 | 🔴 起票 | — | 自動(7本 / iPhone SE 第3世代) | 2026-08-26 | [D-02](D-02-account-bottom-under-tabbar.md) |
 | D-03 | 住所フォーム下部の入力欄がキーボードに隠れて触れない | 住所を追加 / キーボードインセット | 高 | 🔴 起票 | — | 自動(`注文履歴…S0010` / iPhone SE 第3世代) | 2026-08-27 | [D-03](D-03-address-form-under-keyboard.md) |
-| D-04 | iOS のローカルネットワーク権限ダイアログの説明文が「(null)」 | iOS / Info.plist | 中 | 🔴 起票 | — | 手動(探索的) / iPhone 13 | 2026-08-31 | [D-04](D-04-local-network-usage-description-missing.md) |
-| D-05 | ホームのバナー「今だけ全品送料無料」が送料規則と矛盾 | ホーム | 中 | 🔴 起票 | §5 送料 | 手動(探索的) / iPhone 13 | 2026-08-31 | [D-05](D-05-home-banner-contradicts-shipping-rule.md) |
-| D-06 | 未ログインでもアカウントメニューが並び、注文履歴が通信エラー文言 | アカウント / 注文履歴 | 中 | 🔴 起票 | §9 | 手動(探索的) / iPhone 13 | 2026-08-31 | [D-06](D-06-logged-out-account-menu-and-orders-error.md) |
-| D-07 | 住所・支払いフォームの必須欄空で保存が無反応 | 住所 / 支払い フォーム | 中 | 🔴 起票 | — | 手動(探索的) / iPhone 13 | 2026-08-31 | [D-07](D-07-forms-silent-noop-on-missing-required.md) |
-| D-08 | サインアップの失敗理由が丸まる・パスワード1文字/メール「@」で登録可 | 登録 / サーバ検証 | 中 | 🔴 起票 | §9 | 手動 + API / iPhone 13 | 2026-08-31 | [D-08](D-08-signup-generic-error-and-no-password-policy.md) |
-| D-09 | メールの大文字小文字で別アカウント・先頭空白で 500 | サーバ 認証 | 高 | 🔴 起票 | §9 FAQ | API(dev サーバ) | 2026-08-31 | [D-09](D-09-email-case-sensitive-and-trim-mismatch.md) |
-| D-10 | 郵便番号・電話に英字が通り保存・注文に写る | 住所 | 中 | 🔴 起票 | — | 手動(探索的) / iPhone 13 | 2026-08-31 | [D-10](D-10-address-postal-phone-accept-non-digits.md) |
-| D-11 | 支払い方法の番号1桁・月13・過去年・ブランド空が保存される | 支払い方法 | 中 | 🔴 起票 | §11 | 手動(探索的) / iPhone 13 | 2026-08-31 | [D-11](D-11-payment-form-no-validation.md) |
-| D-12 | フォームのスイッチで既定が2件同時に立つ | 住所 / 支払い方法 | 中 | 🔴 起票 | §10 §11 | 手動(探索的) / iPhone 13 | 2026-08-31 | [D-12](D-12-multiple-default-address-payment.md) |
-| D-13 | 選択中の住所を全削除しても確定ボタンが有効・失敗文言が一時障害を装う | レジ | 高 | 🔴 起票 | §6 / F1 | 手動(探索的) / iPhone 13 | 2026-08-31 | [D-13](D-13-checkout-stale-address-misleading-error.md) |
-| D-14 | 注文詳細の送料が「¥0」(カート・レジは「無料」) | 注文詳細 | 低 | 🔴 起票 | §5 | 手動(探索的) / iPhone 13 | 2026-08-31 | [D-14](D-14-order-detail-shipping-zero-not-free.md) |
-| D-15 | English でもレジの支払い行が「代金引換(COD)」 | レジ / 国際化 | 低 | 🔴 起票 | §12 | 手動(探索的) / iPhone 13 | 2026-08-31 | [D-15](D-15-checkout-cod-label-untranslated.md) |
-| D-16 | ゲストのお気に入りがログインで破棄される(カートは引き継ぐ) | お気に入り | 中 | 🔴 起票 | §9 | 手動(探索的) / iPhone 13 | 2026-08-31 | [D-16](D-16-guest-wishlist-discarded-on-login.md) |
-| D-17 | 検索語を消す/変えると結果一覧の先頭行が隠れる | 検索 | 中 | 🔴 起票 | — | 手動(探索的) / iPhone 13 | 2026-08-31 | [D-17](D-17-search-grid-keeps-scroll-offset-on-query-change.md) |
-| D-18 | 住所フォームの保存ボタンが下端で切れ押せない(844pt) | 住所 フォーム / 共通インセット | 中 | 🔴 起票 | — | 手動(探索的) / iPhone 13 | 2026-08-31 | [D-18](D-18-address-form-save-button-clipped-bottom.md) |
 
 ## 状態の凡例
 
@@ -34,11 +19,11 @@
 
 | 状態 | 件数 |
 |---|---|
-| 🔴 起票 | 18 |
+| 🔴 起票 | 3 |
 | 🟡 修正中 | 0 |
 | 🟢 修正済み | 0 |
 | ⚪ 却下 | 0 |
-| **合計** | **18** |
+| **合計** | **3** |
 
 > 対応テストとの連動: 状態が 🔴/🟡 の間は対応シナリオが RED(仕様違反を追跡)。🟢 修正済みになったら
 > 対応シナリオが緑に変わることを確認して閉じる。⚪ 却下なら testbase 側の期待を確定仕様へ更新する。
