@@ -85,6 +85,7 @@ final class ClippingContainerFlattenedTreeTests: XCTestCase {
         XCTAssertEqual(StepExecutor.clippingContainer(of: ghost, in: tree, inferring: true),
                        FTRect(x: 0, y: 230, width: 390, height: 462),
                        "容器の外に居る行でも、行を2件以上含む容器は引けること(ghost 検知の前提)")
-        XCTAssertTrue(StepExecutor.isOutsideContainer(ghost, in: tree))
+        XCTAssertTrue(StepExecutor.isOutsideContainer(
+            ghost, in: tree, screen: FTRect(x: 0, y: 0, width: 390, height: 844)))
     }
 }

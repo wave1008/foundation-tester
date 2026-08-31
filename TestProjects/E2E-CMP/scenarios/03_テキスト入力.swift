@@ -159,4 +159,41 @@ class テキスト入力が正しくechoされること {
             }
         }
     }
+
+    /// **空白だけの replace の陽性対照**(2026-08-31・実機 iPhone 13 の Compose で踏んだ形):
+    /// Compose の欄では空白だけの内容が a11y の値に載らず、ランナーの `/clear` が「もう空」と誤認し、
+    /// `/type` の読み返しが clear 前の控えを期待に足して再送していた(`   モバイル   `)。
+    /// ランナーは「空に見える」欄にも短い削除バーストを送り、`/clear` 後の控えを空にし、読み返しは
+    /// 空白だけの差を検証不能として再送しない。どれか1つが崩れると `xyz` の前後に旧値や空白が残る
+    @Test("空白だけで置き換えた後も replace が旧値を残さない")
+    func S0050() {
+        scenario {
+            scene(1, "入力画面を開いて値を入れる") {
+                condition {
+                    launchApp()
+                }.action {
+                    tap("#nav_input")
+                    tap("#field_single")
+                    type("#field_single", "hello")
+                }.expectation {
+                    select("#txt_echo_single").textIs("single=hello")
+                }
+            }
+            scene(2, "空白だけで置き換える(値は見えないことがある)") {
+                action {
+                    type("#field_single", "   ", replace: true)
+                }.expectation {
+                    select("#txt_echo_single").textContainsNot("hello")
+                }
+            }
+            scene(3, "そのまま文字で置き換えると前後に何も残らない") {
+                action {
+                    type("#field_single", "xyz", replace: true)
+                }.expectation {
+                    select("#txt_echo_single").textIs("single=xyz")
+                    select("#txt_echo_length").textIs("len=3")
+                }
+            }
+        }
+    }
 }

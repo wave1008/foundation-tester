@@ -238,7 +238,8 @@ extension MCPServer {
                     // 木では1件も付かず、カードを送って上へ抜けた行が**可視の行と同じ形**で
                     // 並んでいた。利用者から見て原因(そこには描かれていない)も対処
                     // (ft_scroll_to で出してから撮り直す)も同じなので、印は割らない
-                    || RefGuard.outsideDeclaredScroller($0, in: snapshot.elements) != nil
+                    || RefGuard.outsideDeclaredScroller($0, in: snapshot.elements,
+                                                        screen: snapshot.screen) != nil
             }
             .map(\.ref)
     }

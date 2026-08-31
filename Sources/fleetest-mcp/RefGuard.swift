@@ -51,8 +51,8 @@ enum RefGuard {
     }
 
     static func outsideDeclaredScroller(_ element: ElementInfo,
-                                        in elements: [ElementInfo]) -> ElementInfo? {
-        TapTargetGeometry.outsideDeclaredScroller(element, in: elements)
+                                        in elements: [ElementInfo], screen: FTRect) -> ElementInfo? {
+        TapTargetGeometry.outsideDeclaredScroller(element, in: elements, screen: screen)
     }
 
     /// 撮り直した木での照合結果
@@ -271,8 +271,10 @@ enum RefGuard {
     /// 実測(2026-08-09・Apple マップ): カードを送って `#MUScrollableStackView` (0,72 402x802) の
     /// 上へ抜けた `link "ウィキペディア"` (16,-2 85x18) への ft_tap が無警告の "done" を返し、
     /// 実際には中心 (58,7) = ステータスバーに当たってカードが先頭へ飛んだ
-    static func scrolledOutWarning(_ element: ElementInfo, in elements: [ElementInfo]) -> String {
-        guard let scroller = outsideDeclaredScroller(element, in: elements) else { return "" }
+    static func scrolledOutWarning(_ element: ElementInfo, in elements: [ElementInfo],
+                                   screen: FTRect) -> String {
+        guard let scroller = outsideDeclaredScroller(element, in: elements, screen: screen)
+        else { return "" }
         return " (warning: \(describe(element)) is reported entirely outside \(describe(scroller)),"
             + " which is the scroll container it belongs to — it is a leftover from scrolling,"
             + " not what you see. Bring it into view with ft_scroll_to and re-snapshot)"
@@ -296,7 +298,7 @@ enum RefGuard {
         case .scrolledOut:
             // **容器の外**: これが真なら frame そのものが今の描画位置ではないので、
             // 以下の遮蔽・中身外しはその古い frame を前提にした話になり、名指しが嘘になる
-            return scrolledOutWarning(found, in: elements)
+            return scrolledOutWarning(found, in: elements, screen: screen)
         case .overlayCovering(let over):
             return " (warning: \(describe(over)) is drawn over the center of \(describe(found)),"
                 + " so this may have hit \(describe(over)) instead — verify with ft_screenshot,"

@@ -33,7 +33,7 @@ public enum OcclusionGeometry {
             // `clickable (16,484 370x52)` は、スクロールで画面外へ出たリスト行の容器だった。
             // **この判定を先に置く**のが要点 —— 包含判定は 1pt の差で外れるほど際どく
             // (閉じる y483..521 対 clickable y484..536)、閾値では守り切れない
-            if StepExecutor.isOutsideContainer(other, in: elements) { return false }
+            if StepExecutor.isOutsideContainer(other, in: elements, screen: screen) { return false }
             // **容器の内側でも、原点へ潰れているだけなら描かれていない**。`isOutsideContainer`
             // は容器の**外**しか見ないので、容器の**原点にクランプ**された残骸(自身が
             // 容器より小さく、同じ原点の同 depth 兄弟が3つ以上いる = `hasClampedCoordinates`
@@ -136,7 +136,7 @@ public enum OcclusionGeometry {
     /// springboard の `#Safari` の中心 (157,805) には何も重ならない(通す)。
     public static func isUntappableGhost(_ element: ElementInfo, in elements: [ElementInfo],
                                   screen: FTRect) -> Bool {
-        guard StepExecutor.isOutsideContainer(element, in: elements) else { return false }
+        guard StepExecutor.isOutsideContainer(element, in: elements, screen: screen) else { return false }
         return occluder(of: element, in: elements, screen: screen) != nil
     }
 

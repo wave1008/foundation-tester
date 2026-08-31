@@ -177,10 +177,108 @@ extension StepExecutor {
     ///
     /// public なのは fleetest-mcp の RefGuard が同じ判定を使うため(ref を撃つ直前の照合)。
     /// **判定はここ1箇所** —— MCP 側に別の閾値を置くと、DSL と MCP で「ghost の定義」が割れる
-    public static func isOutsideContainer(_ element: ElementInfo, in elements: [ElementInfo]) -> Bool {
+    ///
+    /// **容器の外側の帯に固定された chrome は ghost から除く**(2026-08-31・and-sutec_home):
+    /// Android ブリッジが無ラベルの NavigationBar を間引く(`SnapshotBuilder.shouldInclude`)と、
+    /// preorder+depth の復元がタブを容器(`#screen_home`)の子に再配線し、非交差になる。
+    /// `isChromePinnedOutside` の doc を参照
+    public static func isOutsideContainer(_ element: ElementInfo, in elements: [ElementInfo],
+                                          screen: FTRect) -> Bool {
         guard let container = clippingContainer(of: element, in: elements) else { return false }
-        return ScrollGeometry.intersection(element.frame, container) == nil
+        guard ScrollGeometry.intersection(element.frame, container) == nil else { return false }
+        let containerIsViewport = TapTargetGeometry.ancestors(of: element, in: elements)
+            .contains { $0.scrollable == true && sameFrame($0.frame, container) }
+        return !isChromePinnedOutside(element, container: container,
+                                      containerIsViewport: containerIsViewport,
+                                      in: elements, screen: screen)
     }
+
+    /// 容器の外側の帯に固定された chrome(下部タブ・上部バー)か。ghost(スクロールで容器の外へ
+    /// 押し出された行)と区別する。判定は自分自身、または**自分を含む祖先**(タブのラベルのように
+    /// chrome の中に居る要素)のどれかが帯の一員であること。
+    ///
+    /// 実測(2026-08-31・and-sutec_home): Compose Scaffold の NavigationBar が無ラベルで
+    /// 間引かれ(`SnapshotBuilder.shouldInclude`)、preorder+depth の復元がタブを
+    /// `#screen_home`(scrollView・d9)の子(d10)に再配線する。タブは容器と交差せず、
+    /// `isOutsideContainer` / `outsideDeclaredScroller` の両方が ghost/scrolledOut と判定していた。
+    ///
+    /// 呼び出し側は**非交差(1)を確認済み**という前提。ここで見るのは (5) 容器が本物の viewport
+    /// (scrollable 申告、または画面の `TapTargetGeometry.fullScreenContainerAreaRatio` 以上)——
+    /// 小さな推測容器を viewport 扱いすると、本物の ghost(`and-browser_weather_weekly` の
+    /// 「洗濯指数10」= 517x97 の偶発的な祖先)まで免除してしまう。残りは `chromeBarMember`。
+    /// **祖先以外の要素を host にしない** —— 幾何的に含むだけの無関係なパネルで免除されないため
+    static func isChromePinnedOutside(_ element: ElementInfo, container: FTRect,
+                                      containerIsViewport: Bool, in elements: [ElementInfo],
+                                      screen: FTRect) -> Bool {
+        let screenArea = screen.width * screen.height
+        let containerArea = container.width * container.height
+        guard containerIsViewport
+            || (screenArea > 0
+                && containerArea >= screenArea * TapTargetGeometry.fullScreenContainerAreaRatio)
+        else { return false }
+        let f = element.frame
+        let hosts = TapTargetGeometry.ancestors(of: element, in: elements).filter {
+            TapTargetGeometry.contains($0.frame, f)
+                && ScrollGeometry.intersection($0.frame, container) == nil
+        }
+        return ([element] + hosts).contains {
+            chromeBarMember($0, container: container, in: elements, screen: screen)
+        }
+    }
+
+    /// 要素自身が「容器の外側に固定された帯」の一員か。全部そろって初めて chrome:
+    ///  (2) 進行軸の**外側の帯**(容器の下端/上端に接する側)に居る
+    ///  (3) 画面に**完全に収まる**(はみ出す ghost は「今そこに無い」ので対象外のまま)
+    ///  (4) その画面端に**固定**されている: 残りの隙間が自分の高さ以下。上帯だけは
+    ///      `chromeTopBandGapFactor` 倍まで許す(status bar のぶん下がって始まる)。
+    ///      スケールに依らない相対条件 —— pt 固定値の `bottomUncoveredBand` は使わない
+    ///      (px の木で黙って誤る)
+    ///  (6) **バーの形**: 同じ depth・同じ y/height(±1)・水平に重ならない兄弟が、容器の外・
+    ///      画面内にもう1件いる
+    ///  (7) **行ではない**: 容器の内側に同じ depth・同じ高さ(±1)の要素が無い —— スクロールで
+    ///      容器の外へ出た行(2列グリッドの最終行など)は内側の兄弟と同じ高さで並ぶが、
+    ///      chrome は内側の何とも高さが揃わない
+    ///
+    /// **残差**(意図して塞がない): 単独の固定 chrome(FAB・1タブだけのバー)は(6)で弾かれず
+    /// 保守的に ghost 側へ残る。`hasClampedCoordinates`・`stackedRefs`・`isOriginClamped`
+    /// (クランプ系)とは無関係 —— `.stacked` が優先されるチェーンの順序は変えない
+    private static func chromeBarMember(_ element: ElementInfo, container: FTRect,
+                                        in elements: [ElementInfo], screen: FTRect) -> Bool {
+        let tol = chromePinnedEdgeTolerance
+        let f = element.frame
+        let bottomBand = f.y >= container.y + container.height - tol
+        let topBand = f.y + f.height <= container.y + tol
+        guard bottomBand || topBand else { return false }
+        guard TapTargetGeometry.contains(screen, f) else { return false }
+        let gap = bottomBand
+            ? (screen.y + screen.height) - (f.y + f.height)
+            : f.y - screen.y
+        let allowance = bottomBand ? f.height : f.height * chromeTopBandGapFactor
+        guard gap >= -tol, gap <= allowance else { return false }
+        let sameHeightInside = elements.contains { other in
+            other.ref != element.ref && other.depth == element.depth
+                && abs(other.frame.height - f.height) <= tol
+                && ScrollGeometry.intersection(other.frame, container) != nil
+        }
+        guard !sameHeightInside else { return false }
+        return elements.contains { other in
+            other.ref != element.ref && other.depth == element.depth
+                && abs(other.frame.y - f.y) <= tol && abs(other.frame.height - f.height) <= tol
+                && (other.frame.x + other.frame.width <= f.x + tol
+                    || other.frame.x >= f.x + f.width - tol)
+                && ScrollGeometry.intersection(other.frame, container) == nil
+                && TapTargetGeometry.contains(screen, other.frame)
+        }
+    }
+
+    /// chrome 判定の縁の丸め許容(pt/px)。`sameFrame`/`TapTargetGeometry.contains` と同じ
+    /// オーダーの丸め差(1pt)を許す。根拠を持たない緩め値ではなく、**既存の許容と揃えた**もの
+    static let chromePinnedEdgeTolerance: Double = 1
+
+    /// 上帯(容器の上端側)の固定判定で許す隙間の倍率。iOS の safe-area 上端(status bar・
+    /// Dynamic Island)は最大 59pt で nav bar は 44pt 以上 = 隙間/高さ ≈ 1.3、Android は
+    /// status bar < app bar なので 1 未満。2 なら両方を含み、それより下がった要素は chrome ではない
+    static let chromeTopBandGapFactor: Double = 2
 
     /// 端まで送っても見つからなかったときの**拾い直し**。探索方向を反転し、
     /// **容器基準の細刻み**(容器の約半分)で戻りながら毎周解決を試す。

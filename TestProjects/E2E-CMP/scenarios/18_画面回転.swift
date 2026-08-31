@@ -44,4 +44,32 @@ class 横向きでも操作できること {
             }
         }
     }
+
+    /// **横向きの既定スワイプの陽性対照**(2026-08-31): iOS の XCUITest ランナーは path 無しの swipe を
+    /// 横向きだけ点→点のドラッグに合成する(実機の横向きで `swipeUp()` 系が 1pt も動かなかった)。
+    /// 使うのは**ホームのナビ一覧**(横向きでは下半分が画面外に出る = 探索が必ずスワイプを撃つ)。
+    /// リスト画面(`#list_rows`)は横向きだと全 SUT でスクロールしない(SUT の性質)ので使わない
+    @Test("横向きでも scrollFrame 無しのスクロール探索が届く")
+    func S0020() {
+        scenario {
+            scene(1, "横向きにしてホームのナビ一覧を探索する") {
+                condition {
+                    launchApp()
+                    rotateTo(.landscape)
+                }.action {
+                    scrollTo("#nav_scroll")
+                    tap("#nav_scroll")
+                }.expectation {
+                    exist("#row_01")
+                }
+            }
+            scene(2, "縦へ戻しても同じ画面のまま") {
+                condition {
+                    rotateTo(.portrait)
+                }.expectation {
+                    exist("#row_01")
+                }
+            }
+        }
+    }
 }

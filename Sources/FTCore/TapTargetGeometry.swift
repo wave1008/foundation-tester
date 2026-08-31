@@ -152,13 +152,21 @@ public enum TapTargetGeometry {
     /// 実測(Apple マップの場所カード): カードを送ると `#MUScrollableStackView` (0,72 402x802) の
     /// **上へ抜けた行が frame ごと木に残る**(`#PlaceCollectionCell` (16,-169 171x217) 等)。
     /// 一覧では可視の行と見分けが付かず、ref タップは "done" を返して何も起きない
+    ///
+    /// **容器の外側の帯に固定された chrome は除く**(`StepExecutor.isChromePinnedOutside` の doc)。
+    /// ここで見つかる `scroller` は定義上 `scrollable == true` を申告しているので、
+    /// `containerIsViewport` は常に true(推測容器と違い viewport かどうかで悩む余地が無い)
     public static func outsideDeclaredScroller(_ element: ElementInfo,
-                                               in elements: [ElementInfo]) -> ElementInfo? {
+                                               in elements: [ElementInfo],
+                                               screen: FTRect) -> ElementInfo? {
         guard element.frame.width > 0, element.frame.height > 0,
               let scroller = ancestors(of: element, in: elements)
                   .first(where: { $0.scrollable == true }),
               ScrollGeometry.intersection(element.frame, scroller.frame) == nil,
-              hasSiblingsInside(at: element.depth, inside: scroller, in: elements)
+              hasSiblingsInside(at: element.depth, inside: scroller, in: elements),
+              !StepExecutor.isChromePinnedOutside(element, container: scroller.frame,
+                                                  containerIsViewport: true,
+                                                  in: elements, screen: screen)
         else { return nil }
         return scroller
     }
@@ -246,7 +254,7 @@ public enum TapTargetGeometry {
                                     screen: FTRect) -> TapAdvisoryKind? {
         if element.frame.width <= 0 || element.frame.height <= 0 { return .zeroFrame }
         if offscreenAdvisory(for: element, screen: screen) != nil { return .offscreen }
-        if let scroller = outsideDeclaredScroller(element, in: elements) {
+        if let scroller = outsideDeclaredScroller(element, in: elements, screen: screen) {
             return .scrolledOut(scroller)
         }
         if let over = OcclusionGeometry.overlayCovering(element, in: elements, screen: screen) {

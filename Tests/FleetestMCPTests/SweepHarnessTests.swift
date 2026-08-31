@@ -450,6 +450,24 @@ final class SweepHarnessTests: XCTestCase {
         "ios-browser_j1_standings": Counts(ghost: 0, overlay: 5, stacked: 0, misses: 0, disabled: 1,
                                            offscreen: 3, warnedTappable: 4, keyboard: 0, sliver: 0,
                                            nested: 0, scrolledOut: 0),
+        // 2026-08-31 の実機監査(and-sutec_home)。**修正前の witness**: Android ブリッジが
+        // 無ラベルの NavigationBar を間引き(SnapshotBuilder.shouldInclude)、preorder+depth の
+        // 復元が下部タブ5本を `#screen_home`(scrollView)の子として再配線する形 ——
+        // 修正前は5本とも `outsideDeclaredScroller` が容器の外と誤判定し scrolledOut=5(
+        // かつ warnedTappable も clickable な4タブぶん押し上げていた)。
+        // `StepExecutor.isChromePinnedOutside` の導入で scrolledOut は 0 に戻る
+        // (ghost は元々0のまま不変 —— `RefGuard.isUntappableGhost` はタブの中心を覆う要素が
+        // 無いため、容器外判定だけでは発火しない。DSL の再解決ループが空振りする実害は
+        // `StepExecutor.isOutsideContainer` の生値を直接見ており、この Counts には出ない)。
+        // misses=1 は無関係な既存の形(`#tab_home` が type=Other・唯一 label を持たず、
+        // 子の "ホーム" ラベルが中心より下に来るため missesItsOwnContent が発火。他の4タブは
+        // type=Clickable なので対象外)。sliver=3 は価格ラベル("¥18,000" 等)が高さ5pxで
+        // 報告される形の真陽性(容器比ではなく寸法そのもの)。
+        // 値は FT_SWEEP_BASELINE=1 で採取(2026-08-31)。修正前は scrolledOut=5(タブのラベル5件)+
+        // ghost 側でタブ5件が「容器の外」だった = この画面が witness
+        "and-sutec_home": Counts(ghost: 0, overlay: 0, stacked: 0, misses: 1, disabled: 0,
+                                  offscreen: 0, warnedTappable: 0, keyboard: 0, sliver: 3,
+                                  nested: 0, scrolledOut: 0, clippedByContainer: 3),
     ]
 
     static func counts(_ snap: SnapshotResponse) -> Counts {
@@ -480,7 +498,7 @@ final class SweepHarnessTests: XCTestCase {
             // 警告の組み立て側を壊してもこのゲートが落ちない
             let nested = RefGuard.nestedActionCoveringCentre(e, in: els) != nil
             if nested { c.nested += 1 }
-            let scrolledOut = !RefGuard.scrolledOutWarning(e, in: els).isEmpty
+            let scrolledOut = !RefGuard.scrolledOutWarning(e, in: els, screen: snap.screen).isEmpty
             if scrolledOut { c.scrolledOut += 1 }
             // **production の関数(TapTargetGeometry.advisoryKind)を通す**: 自前で
             // clippedAtContainerEdge を呼び直すと、その手前で勝つはずの強い判定
@@ -629,7 +647,7 @@ final class SweepHarnessTests: XCTestCase {
                 if let nested = RefGuard.nestedActionCoveringCentre(e, in: els) {
                     emit("   DETAIL \(name) nested   \(who) ← \(RefGuard.describe(nested))")
                 }
-                if let scroller = RefGuard.outsideDeclaredScroller(e, in: els) {
+                if let scroller = RefGuard.outsideDeclaredScroller(e, in: els, screen: snap.screen) {
                     emit("   DETAIL \(name) scrolled \(who) outside \(RefGuard.describe(scroller))")
                 }
                 if case .clippedByContainer(let container) = TapTargetGeometry.advisoryKind(

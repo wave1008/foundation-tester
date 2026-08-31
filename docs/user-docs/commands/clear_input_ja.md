@@ -7,7 +7,7 @@
 | 関数 | 説明 |
 |---|---|
 | `clearInput()` | フォーカス中の入力欄を空にします。 |
-| `clearInput(sel, timeout:scroll:maxSwipes:)` | 要素を指定して入力欄を空にします。 |
+| `clearInput(sel, timeout:scroll:maxSwipes:)` | 要素を指定して入力欄を空にします。空白だけの内容はアクセシビリティの値に載らないため、消えたことをツールは検証できません。`type` の後で末尾・途中の空白が欠けても検出できないので、空白が意味を持つ値は `textIs` で確かめてください |
 
 ## 例
 

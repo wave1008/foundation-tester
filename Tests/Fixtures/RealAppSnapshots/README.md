@@ -13,10 +13,10 @@
 
 | 接頭辞 | 由来 | 何を代表するか |
 |---|---|---|
-| `and-` | Google マップ 11.x / Android 15(emulator) | 塗り順 `z` を**持つ**木・全画面シート・横カルーセル。`and-maps_suggest_ime` は IME を開いたまま採った木(`keyboardFrame` 申告付き。ブリッジ版53以降でだけ採れる) |
+| `and-` | Google マップ 11.x / Android 15(emulator) | 塗り順 `z` を**持つ**木・全画面シート・横カルーセル。`and-maps_suggest_ime` は IME を開いたまま採った木(`keyboardFrame` 申告付き。ブリッジ版53以降でだけ採れる)。`and-sutec_home` は sut-ec-mobile を Android 実機で採った1枚(下の節を参照) |
 | `ios-` | Apple マップ / iOS 27.0(Simulator・xcuitest) | `z` を**持たない**木(ツリー順フォールバック)。`ios-maps_suggest_keyboard`(キーボード + `keyboardFrame`)と `ios-maps_station`(地図 POI 67個 = bulk 間引き後の高密度画面)は 2026-08-08・版58 で採取。**`ios-maps_suggest_guides` と `ios-place_guides_scrolled` は 2026-08-09 の監査で足した witness** —— 前者は行セルの中心を中の帯が横取りする形(`nested`)、後者は申告されたスクロール容器の上へ抜けた行(`scrolledOut`)の供給源で、どちらも Simulator 上で誤タップを実測してから採った |
 | `sut-` | E2E-CMP(自前) | 契約で盤面が固定された対照 |
-| `sutec-` | sut-ec-mobile / iOS 27.0(Simulator・**in-app**) | in-app エンジンの木(それまで1枚も無かった)・画面外中心(`offscreen`)の供給源・下部バーの遮蔽 |
+| `sutec-` | sut-ec-mobile / iOS 27.0(Simulator・**in-app**) | in-app エンジンの木(それまで1枚も無かった)・画面外中心(`offscreen`)の供給源・下部バーの遮蔽。**接頭辞は OS を表すだけ**なので、同じ sut-ec-mobile の Android 実機キャプチャは `sutec-` ではなく `and-sutec_home` に載る(`and-` = Android の意味を守るため) |
 
 **2026-08-12 に足した6枚**(コーパスの地図比率を 14/19 → 14/25 へ下げるため。いずれも実アプリ):
 
@@ -126,6 +126,12 @@
 残る1件も **Simulator で実際に撃って裏取りし**、タップは chevron に通った(地図がその停車駅へ
 寄ってシートが半開きへ戻った)= `ios-safari_article` の10件と同じ**既知クラスの誤検知**
 (装飾の staticText が操作可能要素の中心に重なる形)。
+
+**2026-08-31 の実機監査(Android Compose Scaffold の再配線)で足した1枚**:
+
+| ファイル | アーキタイプ | 由来 | 何を代表するか |
+|---|---|---|---|
+| `and-sutec_home` | ec | sut-ec-mobile(Android 実機・Jetpack Compose) | **Compose Scaffold の bottomBar が無ラベルで間引かれ、preorder+depth の復元が下部タブをスクロール容器の子に再配線する**形。Android ブリッジは identifier も label も無い `NavigationBar` コンテナを `SnapshotBuilder.shouldInclude` で落とすが、depth の振り直しはしない。結果、木は「タブ5本が `#screen_home`(scrollView)の子として、容器の下端(y=2054)にちょうど接する非交差の行」に見える —— `StepExecutor.isOutsideContainer` と `TapTargetGeometry.outsideDeclaredScroller` の両方がこれを ghost/scrolledOut と誤判定し、DSL の `tap` が無意味な再解決スワイプを繰り返し、`ft_snapshot` が5本とも ⚠️scroll-leftover を出していた(結果 DB で 715 件中 45 件が this)。`StepExecutor.isChromePinnedOutside` の witness で、既存の `sutec-*`(iOS in-app)には無い形 —— あちらは容器の外に単独で浮く行はあっても、**画面の縁に固定された複数要素のバー**という形を持たない |
 
 **採り直すとき**は基準値も一緒に更新する(`SweepHarnessTests.baselines`)。件数が増えたら
 まず誤検知を疑い、真陽性だと確かめてから基準値を上げること —— 黙って上げると、

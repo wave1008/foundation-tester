@@ -394,6 +394,33 @@ final class MCPRefGuardTests: XCTestCase {
             .contains("id=row_09 (10,700 370x40) ⚠️scroll-leftover"))
     }
 
+    /// **chrome-pinned な下部タブは ⚠️scroll-leftover を出さない**(and-sutec_home の witness。
+    /// Android ブリッジが無ラベルの NavigationBar を間引き、タブが `#screen_home` の子に
+    /// 再配線される形。StepExecutor.isChromePinnedOutside の doc を参照)
+    func testChromePinnedBottomTabsAreNotFlaggedAsScrollLeftovers() {
+        let testScreen = FTRect(x: 0, y: 0, width: 1080, height: 2340)
+        let scroller = ElementInfo(ref: 1, type: "scrollView", identifier: "screen_home",
+                                   label: nil, value: nil, placeholder: nil, enabled: true,
+                                   frame: FTRect(x: 0, y: 136, width: 1080, height: 1918), depth: 9,
+                                   scrollable: true)
+        let headingA = element(ref: 2, type: "StaticText", label: "SUT Store",
+                              x: 44, y: 180, w: 269, h: 71, depth: 10)
+        let headingB = element(ref: 7, type: "StaticText", label: "カテゴリ",
+                              x: 44, y: 867, w: 176, h: 64, depth: 10)
+        let tabHome = element(ref: 46, type: "Other", id: "tab_home",
+                              x: 0, y: 2054, w: 199, h: 220, depth: 10)
+        let tabSearch = element(ref: 48, id: "tab_search", label: "検索",
+                                x: 221, y: 2054, w: 199, h: 220, depth: 10)
+        let snapshot = SnapshotResponse(sessionBundleID: nil, screen: testScreen,
+                                        elements: [scroller, headingA, headingB, tabHome, tabSearch],
+                                        truncatedCount: 0)
+
+        XCTAssertEqual(RefGuard.scrolledOutWarning(tabHome, in: snapshot.elements,
+                                                   screen: snapshot.screen), "")
+        let flags = MCPServer.ghostFlags(snapshot)
+        XCTAssertNil(flags[tabHome.ref], "下部タブに ⚠️scroll-leftover が付いていないこと")
+    }
+
     // MARK: - offscreen 注記の方向分け
 
     /// 主方向は**はみ出し量が大きい軸**で決まる(斜めにはみ出す要素も1方向へ丸める)

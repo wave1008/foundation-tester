@@ -500,7 +500,7 @@ extension StepExecutor {
         func grabbedGhost(_ candidate: (ElementInfo, FlowLocator?)?) -> Bool {
             guard let element = candidate?.0, step.containerInference ?? true
             else { return false }
-            return Self.isOutsideContainer(element, in: snapshot.elements)
+            return Self.isOutsideContainer(element, in: snapshot.elements, screen: snapshot.screen)
         }
         var ghostRetries = 0
         var ghostSwipes = 0

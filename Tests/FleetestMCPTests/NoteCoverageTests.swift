@@ -128,6 +128,11 @@ final class NoteCoverageTests: XCTestCase {
         // 自前 SUT(盤面が契約で固定されている対照)
         "sutec-calendar_day": "ec", "sutec-detail": "ec", "sutec-home": "ec",
         "sut-cmp_controls": "sut", "sut-cmp_home": "sut",
+        // 2026-08-31 の実機監査で足した1枚。Android Compose Scaffold の NavigationBar が
+        // 無ラベルで間引かれ(SnapshotBuilder.shouldInclude)、preorder+depth の復元が下部タブを
+        // scroll 容器の子に再配線する形(StepExecutor.isChromePinnedOutside の witness)。
+        // 既存の sutec-home(iOS/hybrid 採取)とは別プラットフォームの捕獲なので独立の鍵にする
+        "and-sutec_home": "ec",
     ]
 
     static func family(_ fixture: String) -> String { archetypes[fixture] ?? "?" }
@@ -204,7 +209,10 @@ final class NoteCoverageTests: XCTestCase {
         // **格子は曖昧ラベルの塊**: 週間表の2枚が入って +2,049 バイト。
         // 同じ数値(`29/24`・`90%`)が行と列に何度も出るので、増分は形そのもの。
         // J1順位表(両OS。2026-08-15)も同型で +2,246 バイト —— 同じ勝点/試合数が縦横に並ぶ
-        "ambiguousLabelsNote": Coverage(fixtures: ["and-apps_list", "and-browser_j1_standings", "and-browser_weather", "and-browser_weather_weekly", "and-browser_weektable", "and-camera_canvas", "and-home", "and-maps_suggest_ime", "and-place", "and-place_expanded", "and-results", "ios-browser_j1_standings", "ios-browser_jma_hscroll", "ios-browser_nationwide", "ios-browser_startpage", "ios-browser_weather_weekly", "ios-browser_weektable", "ios-browser_yahoo_top", "ios-home", "ios-maps_station", "ios-maps_suggest_keyboard", "ios-maps_transit_steps_expanded", "ios-messages_keyboard", "ios-news_feed", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-safari_article", "ios-settings_root", "sut-cmp_controls", "sut-cmp_home", "sutec-detail", "sutec-home"], bytes: 21757),
+        // and-sutec_home(Android の Compose Scaffold・2026-08-31)で +1,135 バイト: 商品カードの
+        // 画像とテキストが同じ商品名を持ち、バッジ「セール」「新着」も複数カードで重なる形(iOS 版の
+        // sutec-home と同じ由来。判定は変えず、Android の木でも同じ量が出ることの記録)
+        "ambiguousLabelsNote": Coverage(fixtures: ["and-apps_list", "and-browser_j1_standings", "and-browser_weather", "and-browser_weather_weekly", "and-browser_weektable", "and-camera_canvas", "and-home", "and-maps_suggest_ime", "and-place", "and-place_expanded", "and-results", "and-sutec_home", "ios-browser_j1_standings", "ios-browser_jma_hscroll", "ios-browser_nationwide", "ios-browser_startpage", "ios-browser_weather_weekly", "ios-browser_weektable", "ios-browser_yahoo_top", "ios-home", "ios-maps_station", "ios-maps_suggest_keyboard", "ios-maps_transit_steps_expanded", "ios-messages_keyboard", "ios-news_feed", "ios-place", "ios-place_guides_scrolled", "ios-profile", "ios-safari_article", "ios-settings_root", "sut-cmp_controls", "sut-cmp_home", "sutec-detail", "sutec-home"], bytes: 22892),
         // 2026-08-15 に 16,940 → 16,984(+44)。**発火する画面は1枚も増えていない** ——
         // 増えたのは ios-place_guides_scrolled の `#PlaceCollectionCell` ×3 の**中身**で、
         // 40字超のラベルしか無い行に `*断片*` が書けるようになったぶん(以前は索引形 `~`)。

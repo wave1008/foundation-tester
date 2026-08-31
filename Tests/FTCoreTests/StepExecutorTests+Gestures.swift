@@ -304,9 +304,10 @@ extension StepExecutorTests {
         let ghost = framed(ref: 3, id: "row_30", x: 16, y: 783, width: 370, height: 56, depth: 2)
         let elements = [container, inside1, inside2, ghost]
 
-        XCTAssertTrue(StepExecutor.isOutsideContainer(ghost, in: elements),
+        let screen = FTRect(x: 0, y: 0, width: 402, height: 874)
+        XCTAssertTrue(StepExecutor.isOutsideContainer(ghost, in: elements, screen: screen),
                       "容器の外に並ぶ行は ghost として検出すること")
-        XCTAssertFalse(StepExecutor.isOutsideContainer(inside1, in: elements),
+        XCTAssertFalse(StepExecutor.isOutsideContainer(inside1, in: elements, screen: screen),
                        "容器と交差する行は通常の行(掴み直さない)")
     }
 
@@ -326,7 +327,9 @@ extension StepExecutorTests {
 
         XCTAssertEqual(StepExecutor.clippingContainer(of: straddling, in: elements), container.frame,
                        "またぐ行でも容器を特定できないと、見切れ判定が画面基準に落ちる")
-        XCTAssertFalse(StepExecutor.isOutsideContainer(straddling, in: elements),
+        XCTAssertFalse(StepExecutor.isOutsideContainer(straddling, in: elements,
+                                                       screen: FTRect(x: 0, y: 0, width: 402,
+                                                                      height: 874)),
                        "またぐ行は ghost ではない(掴み直しの対象にすると自傷する)")
         XCTAssertTrue(StepExecutor.isClippedByViewport(straddling, screen: container.frame),
                       "容器基準なら見切れとして検出でき、探索ループがもう1回送る")

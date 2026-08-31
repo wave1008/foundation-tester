@@ -522,6 +522,41 @@ final class TapTargetAdvisoryTests: XCTestCase {
         XCTAssertFalse(note?.contains("covered by") == true, note ?? "")
     }
 
+    /// **chrome-pinned な下部タブは scrolledOut を出さない**(and-sutec_home の witness。
+    /// StepExecutor.isChromePinnedOutside の doc)。容器の下端にちょうど接する帯で、
+    /// 画面下端までの隙間(74)が自分の高さ(100)以下 = 固定された chrome
+    func testBottomBarOutsideADeclaredScrollerIsSilent() {
+        let screen = FTRect(x: 0, y: 0, width: 402, height: 874)
+        let scroller = ElementInfo(ref: 1, type: "other", identifier: "scroller", label: nil,
+                                   value: nil, placeholder: nil, enabled: true,
+                                   frame: FTRect(x: 0, y: 100, width: 402, height: 600), depth: 1,
+                                   scrollable: true)
+        let rowA = ElementInfo(ref: 2, type: "clickable", identifier: "row_a", label: "行A",
+                               value: nil, placeholder: nil, enabled: true,
+                               frame: FTRect(x: 10, y: 110, width: 370, height: 20), depth: 2)
+        let rowB = ElementInfo(ref: 3, type: "clickable", identifier: "row_b", label: "行B",
+                               value: nil, placeholder: nil, enabled: true,
+                               frame: FTRect(x: 10, y: 160, width: 370, height: 20), depth: 2)
+        let tabA = ElementInfo(ref: 4, type: "clickable", identifier: "tab_a", label: "A",
+                               value: nil, placeholder: nil, enabled: true,
+                               frame: FTRect(x: 0, y: 700, width: 201, height: 100), depth: 2)
+        // 無効タブ: chrome-pinned の判定自体は enabled を見ないので条件6の相棒として使い回す
+        let tabB = ElementInfo(ref: 5, type: "clickable", identifier: "tab_b", label: "B",
+                               value: nil, placeholder: nil, enabled: false,
+                               frame: FTRect(x: 201, y: 700, width: 201, height: 100), depth: 2)
+        let elements = [scroller, rowA, rowB, tabA, tabB]
+
+        XCTAssertNil(TapTargetGeometry.occlusionAdvisory(for: tabA, in: elements, screen: screen,
+                                                          isAndroid: false),
+                     "chrome-pinned なタブは scrolledOut を出さないこと")
+        // **チェーンが飲み込まれていないこと**: disabled は occlusionAdvisory より前段で
+        // 判定されるので、chrome-pinned の免除とは無関係に出続けるはず
+        XCTAssertEqual(TapTargetGeometry.advisory(for: tabB, in: elements, screen: screen,
+                                                  keyboardOcclusion: .none, overlayWindows: .none,
+                                                  isAndroid: false),
+                       "the target is disabled, so this almost certainly did nothing")
+    }
+
     /// **disabled が優先**: 両方に当てはまるときは「そもそも無効」を先に言う
     func testDisabledWinsOverTheGeometricAdvice() {
         let elements = [

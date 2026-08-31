@@ -7,7 +7,7 @@ Empties an input field.
 | function | description |
 |---|---|
 | `clearInput()` | Empties the currently focused input field. |
-| `clearInput(sel, timeout:scroll:maxSwipes:)` | Empties the specified input field. |
+| `clearInput(sel, timeout:scroll:maxSwipes:)` | Empties the specified input field. Whitespace-only content is invisible to accessibility, so the tool cannot verify that it was cleared, and a lost trailing/middle space after `type` is not detected either — assert values where whitespace matters with `textIs`. |
 
 ## Example
 

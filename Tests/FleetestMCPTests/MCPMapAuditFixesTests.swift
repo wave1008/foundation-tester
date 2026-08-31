@@ -59,9 +59,9 @@ final class MCPMapAuditFixesTests: XCTestCase {
         let section = try XCTUnwrap(
             snap.elements.first { $0.identifier == "CuratedGuidesSection" })
         let scroller = try XCTUnwrap(
-            RefGuard.outsideDeclaredScroller(section, in: snap.elements))
+            RefGuard.outsideDeclaredScroller(section, in: snap.elements, screen: snap.screen))
         XCTAssertEqual(scroller.identifier, "MUScrollableStackView")
-        let warning = RefGuard.scrolledOutWarning(section, in: snap.elements)
+        let warning = RefGuard.scrolledOutWarning(section, in: snap.elements, screen: snap.screen)
         XCTAssertTrue(warning.contains("#MUScrollableStackView"), warning)
         XCTAssertTrue(warning.contains("ft_scroll_to"), warning)
     }
@@ -72,7 +72,7 @@ final class MCPMapAuditFixesTests: XCTestCase {
     func testPrunedTreeDoesNotFakeAScroller() throws {
         let snap = try fixture("and-results")
         for e in snap.elements {
-            XCTAssertNil(RefGuard.outsideDeclaredScroller(e, in: snap.elements),
+            XCTAssertNil(RefGuard.outsideDeclaredScroller(e, in: snap.elements, screen: snap.screen),
                          "\(RefGuard.describe(e)) が誤って容器の外と判定されている")
         }
     }
