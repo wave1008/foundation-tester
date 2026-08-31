@@ -246,6 +246,42 @@ struct RemoteCommand: AsyncParsableCommand {
     }
 
     /// `remote clean` が占有中のホストで止まった理由(同上)
+    /// モニター(親)の起動時に、登録簿の各ランナーで**自分の死んだディスパッチの**
+    /// dispatch.lock だけを掃除する(ユーザー指示 2026-09-01「ロックされたままにならないように、
+    /// デバイスモニター再起動後に処理して」—— セッションごと殺されたディスパッチはロック解放に
+    /// 到達できず、次の run が「別の dispatch が実行中」で止まっていた)。
+    /// 判定は手動 unlock より保守側(RemoteDispatchUnlock.decideAutomaticSweep)。
+    /// best-effort: 到達不能・他人のロック・生きている pid はすべて黙って続行する
+    enum StaleLockSweep {
+        static func sweep(machines: [String], log: (String) -> Void) {
+            for machine in machines {
+                do {
+                    let resolved = try RemoteHostResolver.resolve(rawHost: machine, remoteDirOverride: nil)
+                    let target = resolved.hostSpec.sshTarget
+                    let layout = try Clean.resolveLayout(target: target, remoteDirRaw: resolved.remoteDirRaw)
+                    let probeResult = try Shell.run(
+                        remoteSSHBase + [target, RemoteDispatchLock.probeCommand(base: layout.base)])
+                    guard probeResult.status == 0,
+                          let probe = RemoteDispatchLock.parseProbe(probeResult.output) else { continue }
+                    guard case .release(let reason) = RemoteDispatchUnlock.decideAutomaticSweep(
+                        probe: probe, myIssuer: LocalConfig.resolveIssuerId(),
+                        myHost: ProcessInfo.processInfo.hostName, pidAlive: { kill($0, 0) == 0 })
+                    else { continue }
+                    let release = try Shell.run(
+                        remoteSSHBase + [target, RemoteDispatchLock.releaseCommand(base: layout.base)])
+                    if release.status == 0 {
+                        log("[monitor] released a stale dispatch lock on \(machine) (\(reason))")
+                    } else {
+                        log("[monitor] could not release the stale dispatch lock on \(machine)"
+                            + " (status \(release.status))")
+                    }
+                } catch {
+                    continue
+                }
+            }
+        }
+    }
+
     private struct CleanRefused: LocalizedError {
         let reason: String
         var errorDescription: String? { "not cleaned: \(reason)" }

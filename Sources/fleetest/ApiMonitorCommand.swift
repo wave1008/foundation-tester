@@ -148,6 +148,19 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         }()
         fanout?.start()
         defer { fanout?.stop() }
+        // **死んだ自分のディスパッチのロックを掃除する**(親だけ・プロセス起動時に1回)。
+        // 拡張はモニターをバイナリ差し替え等のたびに再起動するので、そのたびに掃除が走る。
+        // ssh を伴うので初回サイクルを待たせない(RemoteCommand.StaleLockSweep のコメント参照)
+        if deviceMachine == nil {
+            let sweepMachines = (LocalConfig.load().remoteHosts ?? []).map(\.machine)
+            if !sweepMachines.isEmpty {
+                Task.detached {
+                    RemoteCommand.StaleLockSweep.sweep(machines: sweepMachines) {
+                        MonitorOutput.shared.writeStderr($0)
+                    }
+                }
+            }
+        }
 
         let stop = StopFlag()
         let control = MonitorControl()

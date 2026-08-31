@@ -208,4 +208,19 @@ public enum RemoteDispatchUnlock {
             return .release(reason: why)
         }
     }
+
+    /// モニター起動時の**自動掃除**用の判定。手動の unlock より保守側 —— 自分のロックでも
+    /// **別の機械から発行したものは触らない**(pid の生死をここから確かめられず、同じ issuer の
+    /// 別 Mac の生きている run のロックを外し得る。手動なら本人が判断できるが、自動で外して
+    /// よいのは「この機械の自分の pid が死んでいる」と確定できたときだけ)
+    public static func decideAutomaticSweep(probe: RemoteDispatchLock.Probe, myIssuer: String,
+                                            myHost: String, pidAlive: (Int32) -> Bool) -> Decision {
+        let decision = decide(probe: probe, myIssuer: myIssuer, myHost: myHost, pidAlive: pidAlive)
+        if case .release = decision, case .held(let info?) = probe,
+           info.issuerHost.caseInsensitiveCompare(myHost) != .orderedSame {
+            return .refuse(reason: "acquired from \(info.issuerHost) — its liveness cannot be checked"
+                + " from this machine; run `fleetest remote unlock` manually if it is dead")
+        }
+        return decision
+    }
 }
