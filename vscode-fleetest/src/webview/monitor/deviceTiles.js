@@ -411,34 +411,9 @@ function renderFrame(entry) {
       entry.frameWrapEl.appendChild(entry.canvasEl);
     }
   } else {
-    // offline→未起動+電源アイコン(起動待ちは待機中+時計)、終了中→シャットダウン中+
-    // 無彩色スピナー、ブート処理中(offline のまま upRunning)→起動中+スピナー、
-    // booted でフレーム未着(ブリッジ供給・ストリーム確立待ち)→接続中+スピナー。
-    // 「起動中」をブート処理中に限定することで、同時ブート上限(2台)とタイル表示が一致する。
+    // 状態はテキストだけで伝える(アイコン・スピナーは 2026-09-01 に撤去 —— タイル幅は
+    // 60px 程度しかなく、英語ラベルはアイコンの行に押されて表示しきれなかった)
     entry.placeholderEl.textContent = '';
-    const icon = document.createElement('span');
-    if (wiping) {
-      // 停止フェーズは無彩色スピナー(シャットダウンと同じ意味)、再起動フェーズは起動と同じ色
-      icon.className = entry.wipePhase === 'rebooting'
-        ? 'placeholder-icon booting booting-' + entry.device.platform
-        : 'placeholder-icon shutdown';
-    } else if (shuttingDown) {
-      icon.className = 'placeholder-icon shutdown';
-    } else if (waitingUp) {
-      icon.className = 'placeholder-icon waiting';
-      icon.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"'
-        + ' stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">'
-        + '<circle cx="8" cy="8" r="6.2"/><path d="M8 4.6v3.4l2.4 1.5"/></svg>';
-    } else if (offline && !upRunning) {
-      icon.className = 'placeholder-icon offline';
-      icon.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"'
-        + ' stroke="currentColor" stroke-width="1.6" stroke-linecap="round">'
-        + '<path d="M8 1.8v5.4"/><path d="M4.4 3.9a5.4 5.4 0 1 0 7.2 0"/></svg>';
-    } else {
-      // booted 待ち、または個別起動が実行中(offline のまま simctl 起動処理中)。
-      // スピナー色はプラットフォーム別(タイトルのピルと同色。style.css の booting-ios/-android)
-      icon.className = 'placeholder-icon booting booting-' + entry.device.platform;
-    }
     const labelSpan = document.createElement('span');
     // **リモートのデバイスは状態を観測できない**(モニターの判定は simctl/adb = 手元にしか効かない)。
     // 起動していても offline のままなので「未起動」と言ってはいけない —— 操作中(起動中/待機中)の
@@ -451,23 +426,9 @@ function renderFrame(entry) {
       && !wiping && !shuttingDown && !waitingUp && !upRunning;
     const unobservableRemote = entry.device.state === 'unknown' && !monitorPaused
       && !wiping && !shuttingDown && !waitingUp && !upRunning;
-    if (monitorPaused) {
-      icon.className = 'placeholder-icon paused';
-      icon.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"'
-        + ' stroke="currentColor" stroke-width="1.8" stroke-linecap="round">'
-        + '<path d="M6 3.5v9"/><path d="M10 3.5v9"/></svg>';
-    }
-    if (unobservableRemote) {
-      icon.className = 'placeholder-icon remote';
-      icon.innerHTML = '';
-    }
     // 配信を諦めた台は「接続中」と言わない(待っても来ない)
     const streamUnavailable = !!entry.streamUnavailable && !wiping && !shuttingDown && !waitingUp
       && !upRunning && !offline;
-    if (streamUnavailable) {
-      icon.className = 'placeholder-icon remote';  // アイコンは出さない(display:none)
-      icon.innerHTML = '';
-    }
     // **タイルの文言は短く**(幅は 60px 程度しかなく、長い文は1文字ずつ折り返して潰れる。
     // 2026-08-17 に実際に読めない表示になった)。理由と対処はツールチップと OUTPUT へ
     entry.placeholderEl.title = wiping
@@ -503,7 +464,7 @@ function renderFrame(entry) {
                 ? t('wvMonitor.tile.bridgeNotRunning')
                 : t('wvMonitor.deviceState.offline'))
             : t('wvMonitor.tile.connecting');
-    entry.placeholderEl.append(icon, labelSpan);
+    entry.placeholderEl.append(labelSpan);
     entry.frameWrapEl.appendChild(entry.placeholderEl);
   }
   renderMirror(entry);
