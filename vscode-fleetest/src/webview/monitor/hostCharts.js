@@ -19,6 +19,7 @@
 // 他系列と時間軸を揃えるため、値は hostMetrics の tick ごとに「前tickからの増分」を積む。
 
 import { t } from '../i18n.js';
+import { setHoverTip } from './hoverTip.js';
 
 const HM_MAX_SAMPLES = 60;
 // 手元の tick が途絶えたとみなすまでの猶予(ms)。手元の host-metrics 子が落ちてから自動再起動
@@ -137,15 +138,15 @@ function hmApplyLock(row, machine) {
   }
   const lock = hmLocks.get(machine);
   chip.classList.toggle('hm-lock-on', !!lock);
-  if (!lock) {
-    chip.removeAttribute('title');
-    return;
-  }
-  chip.title = lock.mine
-    ? t('wvMonitor2.hostCharts.lockMine', { machine })
-    : t('wvMonitor2.hostCharts.lockOther', {
-      machine, issuer: lock.issuer || t('wvMonitor2.hostCharts.lockIssuerUnknown'),
-    });
+  // **説明はタイルと同じ自前ツールチップ**(0.2 秒)。ネイティブ `title` は遅延が約1秒で
+  // 指定できず、この錠前のような小さい的では「乗せても何も出ない」に見える(2026-08-31 の指摘)
+  setHoverTip(chip, lock
+    ? (lock.mine
+      ? t('wvMonitor2.hostCharts.lockMine', { machine })
+      : t('wvMonitor2.hostCharts.lockOther', {
+        machine, issuer: lock.issuer || t('wvMonitor2.hostCharts.lockIssuerUnknown'),
+      }))
+    : '');
 }
 
 /** 手元が先・以降は機械名順に並べ直す(appendChild は既存ノードでは移動として働く)。 */

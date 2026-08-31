@@ -229,8 +229,10 @@ button.bulk-cancel:hover:not(:disabled) {
    表示だけ ―― 配信を畳む判断はホスト側(monitorDeviceStreamController.ts)。 */
 .hm-lock {
   display: none;
-  width: 12px;
-  margin-left: -6px;
+  /* 的が小さすぎるとホバーで拾えない(絵文字の実寸ぶん + 左右に少し)。列は全行同じ幅なので
+     広げてもずれない */
+  width: 16px;
+  margin-left: -4px;
   font-size: 11px;
   line-height: 1;
   text-align: center;

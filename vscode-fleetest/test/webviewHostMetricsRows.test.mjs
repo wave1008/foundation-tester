@@ -144,7 +144,10 @@ test("占有の錠前は行より先に届いても出る(行の生成時に貼�
 
   const chip = rowFor(document, "mac2").querySelector(".hm-lock");
   assert.ok(chip.classList.contains("hm-lock-on"), "行ができた時点で錠前が点く");
-  assert.match(chip.title, /bob/, "誰の run かはツールチップに出す");
+  // 説明はタイルと同じ自前ツールチップ(hoverTip.js)。ネイティブ title は遅延が約1秒で
+  // 指定できず、小さい的では「乗せても何も出ない」に見える
+  assert.match(chip.getAttribute("data-hover-tip"), /bob/, "誰の run かはツールチップに出す");
+  assert.equal(chip.title, "", "ネイティブ title は残さない(二重に出る)");
   assert.equal(
     rowFor(document, "").querySelector(".hm-lock").classList.contains("hm-lock-on"), false,
     "手元の行には出さない",
@@ -152,6 +155,7 @@ test("占有の錠前は行より先に届いても出る(行の生成時に貼�
 
   send(window, { type: "machineLock", machine: "mac2", held: false, mine: false });
   assert.equal(chip.classList.contains("hm-lock-on"), false, "空きは無印");
+  assert.equal(chip.getAttribute("data-hover-tip"), null, "空きの錠前に説明を残さない");
 });
 
 // **錠前は行の幅を動かさない** —— 出る行にだけ要素を足すと、その行だけ MEM/CPU/… が右へずれる
