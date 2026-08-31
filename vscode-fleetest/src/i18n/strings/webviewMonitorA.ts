@@ -54,6 +54,12 @@ export const webviewMonitorAStrings = {
     en: "This machine cannot observe the state (simctl/adb are local only). Check that the other machine's fleetest is on the same version.",
   },
   "wvMonitor.tile.stateUnknown": { ja: "状態不明", en: "Unknown" },
+  // fleetest monitor pause 中(state=unknown + detail 'held…')。タイルは狭いので短く
+  "wvMonitor.tile.monitorPaused": { ja: "モニタ停止中", en: "Monitor paused" },
+  "wvMonitor.tile.monitorPausedTip": {
+    ja: "fleetest monitor pause で観測と配信を停止しています。fleetest monitor resume(または --for の期限切れ)で再開します。",
+    en: "Observation and streaming are held by `fleetest monitor pause`. Resume with `fleetest monitor resume` (or when the --for window expires).",
+  },
   // 繋がっている iOS 実機でブリッジが起きていないだけの状態。**「未起動」と言わない** ——
   // 端末は動いており、無いのはブリッジだけ(タイルのメニューから起こせる)
   "wvMonitor.tile.bridgeNotRunning": { ja: "ブリッジ未起動", en: "No bridge" },

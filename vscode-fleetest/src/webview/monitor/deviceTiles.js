@@ -443,8 +443,20 @@ function renderFrame(entry) {
     // **リモートのデバイスは状態を観測できない**(モニターの判定は simctl/adb = 手元にしか効かない)。
     // 起動していても offline のままなので「未起動」と言ってはいけない —— 操作中(起動中/待機中)の
     // 表示は本物の進捗なのでそのまま出し、静止状態だけ「状態を取得できない」に置き換える
-    const unobservableRemote = entry.device.state === 'unknown'
+    // モニター停止中(fleetest monitor pause)。目印は detail の 'held' 接頭辞
+    // (契約: Sources/fleetest/ApiMonitorCommand.swift の unobservedInfo(detail:)。片方だけ
+    //  変えない = test/monitorHoldDetailSync.test.mjs が両側の文字列を突き合わせる)
+    const monitorPaused = entry.device.state === 'unknown'
+      && String(entry.device.detail || '').startsWith('held')
       && !wiping && !shuttingDown && !waitingUp && !upRunning;
+    const unobservableRemote = entry.device.state === 'unknown' && !monitorPaused
+      && !wiping && !shuttingDown && !waitingUp && !upRunning;
+    if (monitorPaused) {
+      icon.className = 'placeholder-icon shutdown';
+      icon.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"'
+        + ' stroke="currentColor" stroke-width="1.8" stroke-linecap="round">'
+        + '<path d="M6 3.5v9"/><path d="M10 3.5v9"/></svg>';
+    }
     if (unobservableRemote) {
       icon.className = 'placeholder-icon remote';
       icon.innerHTML = '';
@@ -460,6 +472,8 @@ function renderFrame(entry) {
     // 2026-08-17 に実際に読めない表示になった)。理由と対処はツールチップと OUTPUT へ
     entry.placeholderEl.title = wiping
       ? t('wvMonitor.tile.wipingTip')
+      : monitorPaused
+      ? t('wvMonitor.tile.monitorPausedTip')
       : streamUnavailable
       ? t('wvMonitor.tile.streamUnavailableTip')
       : unobservableRemote ? t('wvMonitor.tile.stateUnknownTip') : t('wvMonitor.tile.title');
@@ -469,6 +483,8 @@ function renderFrame(entry) {
         : entry.wipePhase === 'rebooting'
           ? t('wvMonitor.tile.wipeRebooting')
           : t('wvMonitor.tile.wiping'))
+      : monitorPaused
+      ? t('wvMonitor.tile.monitorPaused')
       : streamUnavailable
       ? t('wvMonitor.tile.streamUnavailable')
       : unobservableRemote
