@@ -54,6 +54,7 @@ function renderRunsTable(runs) {
       td(row.host),
       td(row.profile || '–'),
       td(formatDurationHuman(row.wallClockMs)),
+      td(formatDurationHuman(row.testTimeMs)),
       td(formatDurationHuman(row.scenarioTotalMs)),
       td(String(row.laneCount)),
       td(formatPercent(row.avgLaneUtilisationPct)),
@@ -73,6 +74,7 @@ function renderSummary(latest, invalidCount) {
   const parts = [
     formatLocalDateTime(latest.startedAt),
     t('wvDashboard.perf.wallClockLabel', { value: formatDurationHuman(latest.wallClockMs) }),
+    t('wvDashboard.perf.testTimeLabel', { value: formatDurationHuman(latest.testTimeMs) }),
     t('wvDashboard.perf.scenarioTotalLabel', { value: formatDurationHuman(latest.scenarioTotalMs) }),
     t('wvDashboard.perf.maxScenarioLabel', {
       value: typeof latest.maxScenarioMs === 'number' ? formatDurationHuman(latest.maxScenarioMs) : '–',
@@ -97,14 +99,26 @@ function renderSummary(latest, invalidCount) {
   }
 }
 
-function renderComparisonHeading(comparedRunID, runs) {
+function runLabel(runID, runs) {
+  const target = runs.find((r) => r.runID === runID);
+  return target ? formatLocalDateTime(target.startedAt) + '(' + target.host + ')' : runID;
+}
+
+function renderComparisonHeading(comparisonRunID, comparedRunID, runs) {
   if (!comparedRunID) {
     comparisonHeadingEl.textContent = defaultComparisonHeadingText;
     return;
   }
-  const target = runs.find((r) => r.runID === comparedRunID);
-  const text = target ? formatLocalDateTime(target.startedAt) : comparedRunID;
-  comparisonHeadingEl.textContent = t('wvDashboard.perf.comparisonHeadingWith', { target: text });
+  // 比較の最新側は runs の先頭とは限らない(フリート計測では初計測の機械が最新に来る)ので、
+  // どの run とどの run の比較かを両方明示する
+  if (comparisonRunID) {
+    comparisonHeadingEl.textContent = t('wvDashboard.perf.comparisonHeadingPair', {
+      latest: runLabel(comparisonRunID, runs),
+      target: runLabel(comparedRunID, runs),
+    });
+    return;
+  }
+  comparisonHeadingEl.textContent = t('wvDashboard.perf.comparisonHeadingWith', { target: runLabel(comparedRunID, runs) });
 }
 
 function renderComparisonTable(comparison) {
@@ -157,6 +171,6 @@ export function renderPerformance(performance) {
   }
   comparisonHeadingEl.style.display = 'block';
   comparisonTable.style.display = 'table';
-  renderComparisonHeading(performance.comparedRunID, runs);
+  renderComparisonHeading(performance.comparisonRunID, performance.comparedRunID, runs);
   renderComparisonTable(performance.comparison);
 }

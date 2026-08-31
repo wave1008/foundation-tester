@@ -1119,6 +1119,32 @@ final class RunResultsQueryTests: XCTestCase {
                        "失敗した Foo.a の組は比較から外れる")
     }
 
+    /// 全体の最新 run(初計測の機械)に相手が無くても、相手の居る run の比較を出す ——
+    /// フリート計測は機械ごとに別 run になり、最新固定だと意味ある比較が眠る(2026-09-01 実データ)
+    func testPerformanceComparisonFallsBackToTheNewestRunThatHasAPartner() {
+        let runs = [
+            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z",
+                     finishedAt: "2026-01-01T00:01:00Z", total: 1, host: "hostA", performanceMode: true),
+            makeMeta(runID: "R2", startedAt: "2026-01-02T00:00:00Z",
+                     finishedAt: "2026-01-02T00:01:00Z", total: 1, host: "hostA", performanceMode: true),
+            // 最新だが hostB は初計測(相手なし)
+            makeMeta(runID: "R3", startedAt: "2026-01-03T00:00:00Z",
+                     finishedAt: "2026-01-03T00:01:00Z", total: 1, host: "hostB", performanceMode: true),
+        ]
+        let records = [
+            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:10Z",
+                       durationMs: 100, runID: "R1"),
+            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-02T00:00:10Z",
+                       durationMs: 130, runID: "R2"),
+            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-03T00:00:10Z",
+                       durationMs: 999, runID: "R3"),
+        ]
+        let report = RunResultsQuery.performanceReport(records: records, runs: runs)
+        XCTAssertEqual(report.comparisonRunID, "R2")
+        XCTAssertEqual(report.comparedRunID, "R1")
+        XCTAssertEqual(report.comparison.map(\.latestMs), [130], "hostB の R3 は比較に混ざらない")
+    }
+
     /// 相手の選定は同じ (profile, host) の run だけを対象にする。別 profile の run を挟んでも
     /// 飛び越して正しい相手を選ぶこと
     func testPerformanceComparisonSkipsPastADifferentProfileRunToFindTheSamePair() {
@@ -1226,7 +1252,8 @@ final class RunResultsQueryTests: XCTestCase {
     }
 
     func testPerformanceReportAvgLaneUtilisationComputesPercentage() {
-        // wallClockMs = 100_000 / laneCount = 2 / scenarioTotalMs = 150_000 → 150000/(2*100000)*100 = 75%
+        // テスト時間窓 = 最初の開始 00:00:10 〜 最後の完了 00:01:30(Foo.a 80s)= 80_000ms。
+        // 分母は壁時計(100_000ms)ではなくこの窓 → 150000/(2*80000)*100 = 93.75%
         let runs = [
             makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z",
                      finishedAt: "2026-01-01T00:01:40Z", total: 2, performanceMode: true),
@@ -1238,10 +1265,13 @@ final class RunResultsQueryTests: XCTestCase {
                        durationMs: 70_000, worker: "ios:B", runID: "R1"),
         ]
         let report = RunResultsQuery.performanceReport(records: records, runs: runs)
-        XCTAssertEqual(report.runs.first?.avgLaneUtilisationPct ?? 0, 75, accuracy: 0.001)
+        XCTAssertEqual(report.runs.first?.testTimeMs, 80_000)
+        XCTAssertEqual(report.runs.first?.avgLaneUtilisationPct ?? 0, 93.75, accuracy: 0.001)
     }
 
-    func testPerformanceReportAvgLaneUtilisationNilWhenWallClockMissing() {
+    /// 壁時計(finishedAt)が無くても稼働率はテスト時間窓から出る(リモートの子 run は
+    /// 供給待ちで壁時計が膨らむので、分母に使うと実測 87% が 17% に見える)
+    func testPerformanceReportAvgLaneUtilisationComputedFromTestTimeEvenWithoutWallClock() {
         let runs = [
             makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z", finishedAt: nil,
                      total: 1, performanceMode: true),
@@ -1251,7 +1281,9 @@ final class RunResultsQueryTests: XCTestCase {
                        durationMs: 100, worker: "ios:A", runID: "R1"),
         ]
         let report = RunResultsQuery.performanceReport(records: records, runs: runs)
-        XCTAssertNil(report.runs.first?.avgLaneUtilisationPct)
+        XCTAssertNil(report.runs.first?.wallClockMs)
+        XCTAssertEqual(report.runs.first?.testTimeMs, 100)
+        XCTAssertEqual(report.runs.first?.avgLaneUtilisationPct ?? 0, 100, accuracy: 0.001)
     }
 
     func testPerformanceReportAvgLaneUtilisationNilWhenNoLanes() {

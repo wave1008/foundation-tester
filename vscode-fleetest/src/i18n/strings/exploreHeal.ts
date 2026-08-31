@@ -125,6 +125,10 @@ export const exploreHealStrings = {
     ja: "壁時計",
     en: "Wall Clock",
   },
+  "exploreHeal.dashboard.colTestTime": {
+    ja: "テスト時間",
+    en: "Test Time",
+  },
   "exploreHeal.dashboard.colScenarioTotal": {
     ja: "シナリオ所要合計",
     en: "Scenario Total",

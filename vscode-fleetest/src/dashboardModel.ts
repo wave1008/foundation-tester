@@ -273,6 +273,8 @@ export interface PerfRunRow {
   readonly host: string;
   /** run の壁時計。未完了等でキー省略あり。 */
   readonly wallClockMs?: number | null;
+  /** テスト時間(最初のシナリオ開始〜最後の完了)。稼働率の分母。キー省略あり。 */
+  readonly testTimeMs?: number | null;
   /** シナリオ所要合計。 */
   readonly scenarioTotalMs: number;
   readonly scenarioCount: number;
@@ -307,6 +309,8 @@ export interface PerformanceReport {
   readonly comparison: readonly PerfScenarioDelta[];
   /** 比較相手の runID。無ければキー省略。 */
   readonly comparedRunID?: string | null;
+  /** comparison の最新側の runID(runs の先頭と一致するとは限らない)。キー省略あり。 */
+  readonly comparisonRunID?: string | null;
 }
 
 /** `fleetest api results-run --project <名> --run-id <runID>` の stdout。 */
@@ -671,6 +675,7 @@ function isPerfRunRow(value: unknown): value is PerfRunRow {
     isOptString(value.profile) &&
     typeof value.host === "string" &&
     isOptNumber(value.wallClockMs) &&
+    isOptNumber(value.testTimeMs) &&
     typeof value.scenarioTotalMs === "number" &&
     typeof value.scenarioCount === "number" &&
     isOptNumber(value.passed) &&
@@ -701,7 +706,8 @@ function isPerformanceReport(value: unknown): value is PerformanceReport {
     typeof value.invalidCount === "number" &&
     Array.isArray(value.comparison) &&
     value.comparison.every(isPerfScenarioDelta) &&
-    isOptString(value.comparedRunID)
+    isOptString(value.comparedRunID) &&
+    isOptString(value.comparisonRunID)
   );
 }
 
