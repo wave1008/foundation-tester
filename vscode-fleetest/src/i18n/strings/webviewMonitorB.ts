@@ -141,6 +141,15 @@ export const webviewMonitorBStrings = {
   },
 
   // hostCharts.js
+  "wvMonitor2.hostCharts.lockOther": {
+    ja: "{machine} で {issuer} の run が実行中(ライブ配信を停止中。タイルはポーリングで更新)",
+    en: "A run by {issuer} is in progress on {machine} (live streams paused; tiles update by polling)",
+  },
+  "wvMonitor2.hostCharts.lockMine": {
+    ja: "{machine} で自分の run が実行中(ライブ配信を停止中。タイルはポーリングで更新)",
+    en: "Your run is in progress on {machine} (live streams paused; tiles update by polling)",
+  },
+  "wvMonitor2.hostCharts.lockIssuerUnknown": { ja: "誰か", en: "someone" },
   "wvMonitor2.hostCharts.cpuTitle": { ja: "CPU負荷 {value}", en: "CPU load {value}" },
   "wvMonitor2.hostCharts.gpuTitle": { ja: "GPU負荷 {value}", en: "GPU load {value}" },
   "wvMonitor2.hostCharts.fmTitle": {

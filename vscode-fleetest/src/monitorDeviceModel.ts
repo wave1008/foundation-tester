@@ -88,6 +88,11 @@ export interface MonitorDevice {
    * タイルにホスト名を出して「どの機械の台か」を分かるようにする
    * (Sources/fleetest/ApiMonitorCommand.swift の ApiMonitorDeviceInfo.machine と対)。 */
   readonly machine?: string;
+  /** **他の発行者(共有ランナーの別の利用者)がこの台の画面配信を張っている**
+   * (Sources/FTCore/StreamLease.swift)。true の間は配信を起こさずポーリングのままにする ——
+   * 同じ台を人数ぶん捕捉するとランナーが痛む(docs/remote-runner.md §18.2)。
+   * 手元の台・単独利用・旧 CLI は欠落 = undefined(false と同義)。 */
+  readonly streamedByOther?: boolean;
 }
 
 /** `fleetest api monitor` の NDJSON 1行分のイベント(kind で判別)。 */
@@ -104,7 +109,20 @@ export type MonitorEvent =
   // `fleetest monitor pause` の保持状態の変化(ApiMonitorHoldEvent)。webview へは送らず
   // OUTPUT ログだけ(配信の停止自体は、hold 中の全タイル state:"unknown" 化で
   // monitorDeviceStreamController の既存の qualifying 判定が畳む)
-  | { readonly kind: "monitorHold"; readonly active: boolean };
+  | { readonly kind: "monitorHold"; readonly active: boolean }
+  // ランナー機の dispatch.lock の状態(ApiMonitorLockEvent。docs/remote-runner.md §18.2 M2)。
+  // **リモートの機械についてのみ届く**(machine は中継する親が埋める)。observed:false は
+  // 「その機械をもう観測できていない」= 空きではなく**不明**へ戻す合図
+  | {
+      readonly kind: "monitorLock";
+      readonly machine?: string;
+      readonly observed: boolean;
+      readonly held: boolean;
+      readonly issuer?: string;
+      readonly issuerHost?: string;
+      readonly acquiredAt?: string;
+      readonly mine: boolean;
+    };
 
 const PLATFORMS: ReadonlySet<string> = new Set<MonitorPlatform>(["ios", "android"]);
 const STATES: ReadonlySet<string> = new Set<MonitorDeviceState>(["connected", "booted", "offline", "unknown"]);
@@ -157,6 +175,11 @@ function isMonitorDevice(value: unknown): value is MonitorDevice {
     // 欠落/null/型不正を「凍結していない」に寄せる(旧 CLI は frozen を送らない)。
     value.frozen = false;
   }
+  if (value.streamedByOther !== true) {
+    // 欠落/null/型不正を「他人は配信していない」に寄せる。**true のときだけ配信を止める**
+    // 側に倒す(誤って止めると映像が出ない = 気付きにくい退行になる)。
+    value.streamedByOther = undefined;
+  }
   return (
     typeof value.id === "string" &&
     typeof value.name === "string" &&
@@ -199,6 +222,21 @@ export function isMonitorEvent(value: unknown): value is MonitorEvent {
       );
     case "monitorHold":
       return typeof value.active === "boolean";
+    case "monitorLock":
+      if (value.machine === null) {
+        value.machine = undefined;
+      }
+      for (const key of ["issuer", "issuerHost", "acquiredAt"] as const) {
+        if (typeof value[key] !== "string") {
+          value[key] = undefined;
+        }
+      }
+      return (
+        typeof value.held === "boolean" &&
+        typeof value.mine === "boolean" &&
+        typeof value.observed === "boolean" &&
+        (value.machine === undefined || typeof value.machine === "string")
+      );
     default:
       return false;
   }

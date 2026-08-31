@@ -222,6 +222,14 @@ button.bulk-cancel:hover:not(:disabled) {
 .host-metrics.hm-multi .hm-machine {
   display: inline-block;
 }
+/* 占有の錠前(その機械で run が走っている間だけ DOM に居る。空きは無印)。機械名の直後に
+   置くので、行の gap ぶんだけ詰めて名前とひとかたまりに見せる。表示だけ ―― 配信を畳む
+   判断はホスト側(monitorDeviceStreamController.ts)。 */
+.hm-lock {
+  font-size: 11px;
+  margin-left: -6px;
+  cursor: default;
+}
 /* 「モニター再起動」とホストグラフの間だけ広げる(ツールバーの gap 8px + ここの 8px)。
    左のボタン群(実行プロファイル・一括起動/停止・再起動)と、右の観測の表示を切り分ける。 */
 #btn-restart {

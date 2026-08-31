@@ -118,6 +118,15 @@ struct ApiRunCommand: AsyncParsableCommand {
             help: "Collect recordings and run logs (results/) from the remote after the run: collect (default) or on-demand (leave them on the remote; docs/remote-runner.md)")
     var remoteArtifacts: String = "collect"
 
+    /// **拡張から待てるようにするための口**(docs/remote-runner.md §18.2 M2)。共有ランナーでは
+    /// 「ロックが取れないので失敗しました」を人間が手で押し直す運用になり、そこが摩擦の実体だった。
+    /// **奪う口(--force-lock)は足さない** —— 走っているかもしれない他人の run を GUI から
+    /// 殺せる導線を作らない(§5 の決定を維持)
+    @Option(name: .customLong("wait-lock"),
+            help: ArgumentHelp("Instead of failing fast, poll until a remote host's dispatch.lock is released, "
+              + "up to this many seconds (docs/remote-runner.md §5). Needs a run profile or --machine/--host"))
+    var waitLock: Int?
+
     @Flag(name: .customLong("performance"),
           help: "Performance-testing mode (--profile only): if a dead lane cannot be revived before the run starts, fail instead of dropping it and continuing on the remaining lanes. iOS lanes are built before the run starts (no late join) so a missing one is reported before the run, not in the middle of it")
     var performanceMode = false
@@ -171,6 +180,13 @@ struct ApiRunCommand: AsyncParsableCommand {
         if profile != nil && (platform != nil || port != nil || serial != nil) {
             throw ValidationError("--profile cannot be combined with --platform/--port/--serial")
         }
+        // 純粋にローカルだけの実行で --wait-lock は打ち間違い(待つ相手が居ない)。
+        // 判定は run と同じ FTCore.RemoteDispatchFlagPolicy(2つ目の規則を作らない。--fleet は
+        // api run に無いので常に nil)
+        if waitLock != nil, let message = RemoteDispatchFlagPolicy.waitLockRejection(
+            host: machine ?? host, fleet: nil, profile: profile) {
+            throw ValidationError(message)
+        }
 
         let testProject = try ScenarioHost.project(named: project)
 
@@ -198,7 +214,8 @@ struct ApiRunCommand: AsyncParsableCommand {
                 options: ApiRunMachineFanout.Options(
                     heal: heal, defaultTimeout: defaultTimeout, scenarioTimeout: scenarioTimeout,
                     noLPT: noLPT, lptHistoryRuns: lptHistoryRuns, performanceMode: performanceMode,
-                    remoteDir: remoteDir, remoteTimeout: remoteTimeout, remoteArtifacts: remoteArtifacts))
+                    remoteDir: remoteDir, remoteTimeout: remoteTimeout, remoteArtifacts: remoteArtifacts,
+                    waitLock: waitLock))
             if exitCode != 0 { throw ExitCode(exitCode) }
             return
         }
@@ -619,9 +636,10 @@ struct ApiRunCommand: AsyncParsableCommand {
         resolved.announce(toStderr: true)
         let artifactsMode = try RemoteArtifactsMode.parse(remoteArtifacts)
         let localRoot = try RepoRoot.find()
-        let dispatcher = RemoteRunDispatcher(
+        var dispatcher = RemoteRunDispatcher(
             host: resolved.hostSpec, remoteDirRaw: resolved.remoteDirRaw, localRepoRoot: localRoot,
             mode: .apiRun, artifacts: artifactsMode, hostLabel: dispatch.rawTarget)
+        dispatcher.waitLock = waitLock
         var scopedDevices = devices
         var scopedDeviceHost = deviceMachine
         if deviceMachine == nil {

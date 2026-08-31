@@ -83,6 +83,15 @@ struct ApiDeviceStreamCommand: AsyncParsableCommand {
             throw ValidationError("could not determine the state of \(name)")
         }
         let argv = try helperArgv(target: target, state: state)
+        // **配信の控えを置いてから化ける**(FTCore.StreamLease)。共有ランナーで同じ台を2人が
+        // 眺めると端末側の捕捉コストが人数ぶん重なるので、監視の子がこの控えを読んで
+        // 「他人が配信中」を配り、拡張はその台の配信を起こさない。**ここでは誰も拒否しない**
+        // (拒否すると起こしては断られる ssh の再試行ループになる)。pid は execv 後も同じ
+        if let base = RunnerBase.fromEnvironment() {
+            StreamLease.write(base: base, platform: platform, name: name,
+                              info: .now(pid: ProcessInfo.processInfo.processIdentifier,
+                                         issuer: LocalConfig.resolveIssuerId()))
+        }
         // ヘルパーへ化ける(戻ってこない)。失敗したときだけ下へ落ちる
         try Self.exec(argv: argv)
     }

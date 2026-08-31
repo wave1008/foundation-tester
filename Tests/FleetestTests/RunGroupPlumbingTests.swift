@@ -54,7 +54,7 @@ final class RunGroupPlumbingTests: XCTestCase {
                 options: ApiRunMachineFanout.Options(
                     heal: false, defaultTimeout: nil, scenarioTimeout: nil, noLPT: false,
                     lptHistoryRuns: nil, performanceMode: false, remoteDir: nil,
-                    remoteTimeout: nil, remoteArtifacts: "collect"),
+                    remoteTimeout: nil, remoteArtifacts: "collect", waitLock: nil),
                 runGroup: key)
             guard let index = args.firstIndex(of: "--run-group") else {
                 XCTFail("machine=\(String(describing: machine)) に束ね鍵が付いていない: \(args)")
@@ -72,5 +72,29 @@ final class RunGroupPlumbingTests: XCTestCase {
         XCTAssertNotEqual(a, b)
         XCTAssertNotNil(a.range(of: #"^\d{8}-\d{6}Z-[A-Za-z0-9_-]+-[0-9a-f]{4}$"#, options: .regularExpression),
                         "runID と同じ形でない: \(a)")
+    }
+
+    /// `--wait-lock` は**リモートの子にだけ**渡す(手元の子にディスパッチのロックは無い)。
+    /// ここが抜けると、拡張の設定が**複数機械にまたがるプロファイルでだけ黙って効かない**
+    /// (共有フリートで一番待ちたい形。docs/remote-runner.md §18.7)
+    func testApiRunMachineFanoutRelaysWaitLockToRemoteChildrenOnly() {
+        func args(machine: String?) -> [String] {
+            ApiRunMachineFanout.buildArgs(
+                project: "E2E-Android", profileName: "android",
+                group: DeviceMachineRunner.Group(
+                    machine: machine, deviceNames: ["Pixel 3a"], platforms: ["android"]),
+                scenarioIDs: ["A.S0010"],
+                options: ApiRunMachineFanout.Options(
+                    heal: false, defaultTimeout: nil, scenarioTimeout: nil, noLPT: false,
+                    lptHistoryRuns: nil, performanceMode: false, remoteDir: nil,
+                    remoteTimeout: nil, remoteArtifacts: "collect", waitLock: 600),
+                runGroup: "g")
+        }
+        let remote = args(machine: "M1Ultra")
+        guard let index = remote.firstIndex(of: "--wait-lock") else {
+            return XCTFail("リモートの子に --wait-lock が付いていない: \(remote)")
+        }
+        XCTAssertEqual(remote[remote.index(after: index)], "600")
+        XCTAssertFalse(args(machine: nil).contains("--wait-lock"), "手元の子には渡さない")
     }
 }

@@ -230,6 +230,22 @@
     `.claude/skills/fleetest-remote-setup/SKILL.md`**(機械作業は `fleetest remote setup` に委ね、
     聞くこと・人手へ渡すこと・結果の読み方だけを持つ)。**片方だけ変えない** —— 手順に影響する
     変更(レイアウト・併用不可オプション・適合チェックの項目)は docs とスキルの両方に入れる
+- **共有(複数ユーザー)の規律**(docs/remote-runner.md §18.7。M2 実装済み): **占有を知るために
+  ssh を足さない** —— `dispatch.lock` はランナーのディスクにあるので、**向こうで走っている子
+  (`api monitor` の fan-out)にローカルで読ませ**既存の NDJSON(`monitorLock`)に相乗りさせる
+  (場所は `FT_RUNNER_BASE`・判定は `FTCore.HostOccupancy` の1箇所)。守る規律4つ:
+  **①「不明」と「空き」を混ぜない**(子が落ちたら `observed:false`。**控えは消さない** ——
+  消すと「一度も聞いていない機械」= 配信してよい、と同じ形になり run の最中に配信が再開する。
+  不明の間は**配信を畳んだまま・保持者は名乗らない**(`isConfirmedHeld` を通す)。
+  不明を空きに倒すと破壊的操作の確認が「走っている run は無い」と誤って請け合う)/
+  **②配信の退避は保持者を問わない**(自分の run でも干渉は同じ)**が、畳むのは配信だけで観測は続ける** /
+  **③二重配信は拒否でなく事実で止める**(`FTCore.StreamLease` の控えを監視が読んで
+  `streamedByOther` を配り、拡張が起こさない。**起こしてから断る形にすると ssh の再試行ループ**
+  になる)/ **④他人の run を殺す操作はロックを読む**(`remote clean` は中止・
+  `--ignore-lock` で押し切る。**読めないときは通す** = 掃除が永久にできなくなるほうが害が大きい)。
+  **奪う口(`--force-lock`)を GUI に出さない**。
+  **ssh 越しのコマンドにグロブを書かない**(相手は zsh。`for w in <マッチ無し>` は**シェルごと
+  落ちて後続の文が全部消える**)—— 一覧は `find … 2>/dev/null` で作る → maintainer-notes §3.5
 - **リモート制御(実行プロファイルの `remoteControl`)**: ワークスペース(資材の置き場)+
   **run 前後のスクリプト**(docs/remote-runner.md §17)。**スクリプトに宣言は無い** ——
   `<workspace>/scripts/setup.sh` / `teardown.sh` が**あれば実行、無ければ何もしない**

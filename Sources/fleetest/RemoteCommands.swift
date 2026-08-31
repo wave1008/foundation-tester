@@ -100,7 +100,7 @@ struct RemoteCommand: AsyncParsableCommand {
         }
 
         private func emitTable(_ reports: [HostReport]) {
-            let header = ["HOST", "REACHABLE", "LOGIN", "REV", "TOOLCHAIN", "FM", "BINARY", "FREE"]
+            let header = ["HOST", "REACHABLE", "LOGIN", "REV", "TOOLCHAIN", "FM", "BINARY", "FREE", "LOCK"]
             var rows = [header]
             rows.append(contentsOf: reports.map(cells))
             let widths = (0..<header.count).map { col in rows.map { $0[col].count }.max() ?? 0 }
@@ -114,7 +114,7 @@ struct RemoteCommand: AsyncParsableCommand {
 
         private func cells(_ r: HostReport) -> [String] {
             guard r.reachable else {
-                return [r.sshTarget, "no", "-", "-", "-", "-", "-", "-"]
+                return [r.sshTarget, "no", "-", "-", "-", "-", "-", "-", "-"]
             }
             let login: String
             if let session = r.status?.session {
@@ -128,7 +128,18 @@ struct RemoteCommand: AsyncParsableCommand {
             return [r.sshTarget, "yes", login,
                     mark(r, label: "git revision", value: r.status?.revision),
                     mark(r, label: "toolchain", value: r.status?.toolchain),
-                    fm, binary, free]
+                    fm, binary, free, Self.lockCell(r.status?.lock)]
+        }
+
+        /// 占有の1セル。**「誰が使っているか」を毎回 ssh で見に行かせないための欄**(§18.1 #1)。
+        /// 判定不能(旧ランナー・ブロックが読めない)は "-" で、空きと区別する
+        static func lockCell(_ probe: RemoteDispatchLock.Probe?) -> String {
+            switch probe {
+            case .none: return "-"
+            case .absent: return "free"
+            case .held(let info?): return "held by \(info.issuer ?? info.issuerHost)"
+            case .held(nil): return "held (holder unknown)"
+            }
         }
 
         private func mark(_ r: HostReport, label: String, value: String?) -> String {
@@ -152,6 +163,7 @@ struct RemoteCommand: AsyncParsableCommand {
                     fm: r.fmOK,
                     binaryPresent: r.status?.binaryPresent,
                     freeKB: r.status?.freeKB,
+                    lock: Self.lockCell(r.status?.lock),
                     error: r.detail)
             }
             let encoder = JSONEncoder()
@@ -232,6 +244,12 @@ struct RemoteCommand: AsyncParsableCommand {
         var errorDescription: String? { "not released: \(reason)" }
     }
 
+    /// `remote clean` が占有中のホストで止まった理由(同上)
+    private struct CleanRefused: LocalizedError {
+        let reason: String
+        var errorDescription: String? { "not cleaned: \(reason)" }
+    }
+
     // MARK: - clean
 
     struct Clean: AsyncParsableCommand {
@@ -252,6 +270,10 @@ struct RemoteCommand: AsyncParsableCommand {
 
         @Flag(name: .customLong("dry-run"), help: "List what would be deleted instead of deleting it")
         var dryRun = false
+
+        @Flag(name: .customLong("ignore-lock"),
+              help: "Clean even while a dispatch holds the host's lock (this kills that run; docs/remote-runner.md §18.1)")
+        var ignoreLock = false
 
         func run() async throws {
             guard !hosts.isEmpty else {
@@ -282,6 +304,18 @@ struct RemoteCommand: AsyncParsableCommand {
             let layout = try Self.resolveLayout(target: target, remoteDirRaw: resolved.remoteDirRaw)
 
             if RemoteCleanPlan.stopsDevices(dryRun: dryRun) {
+                // **走っている run を殺さない**(docs/remote-runner.md §18.1 #6)。共有フリートでは
+                // 掃除の相手が他人の実行中の環境でありうるので、デバイスに触る前に占有を見る。
+                // dry-run は何も止めないのでこのゲートを通さない(preview が実害を出さない契約)
+                switch RemoteDestructiveGuard.decide(probe: probeLock(target: target, layout: layout),
+                                                     ignoreLock: ignoreLock) {
+                case .proceed:
+                    break
+                case .proceedWithWarning(let message):
+                    print("warning: \(message)")
+                case .refuse(let reason):
+                    throw CleanRefused(reason: reason)
+                }
                 // デバイスを止める前に片付ける(docs/remote-runner.md §17)。順序は逆にしない ——
                 // 終了スクリプトはデバイスに触りうる(adb reverse の解除など)
                 print("→ running teardown scripts left behind by dead runs")
@@ -323,11 +357,38 @@ struct RemoteCommand: AsyncParsableCommand {
                let freeKB = RemoteStatusProbe.parseFreeKB(dfResult.output.trimmingCharacters(in: .whitespacesAndNewlines)) {
                 print("→ free space: \(formatFreeSpace(freeKB))")
             }
+            printDiskByIssuer(target: target, layout: layout)
         }
 
         /// `<remote-dir>` の $HOME を実際に取得して絶対パスへ解決する(RemoteRunDispatcher.resolveLayout
         /// と同じ規律だが private のため複製・簡略化。clean は1台ずつ順に実行するため remote status
         /// と違い「1 ssh に収める」制約が無く、通常どおり事前解決してから RemoteShell.quote できる)
+        /// dispatch.lock の状態を1往復で読む。**読めなければ nil**(ssh の失敗で掃除を
+        /// 永久に止めない = RemoteDestructiveGuard は nil を proceed として扱う)
+        private func probeLock(target: String, layout: RemoteLayout) -> RemoteDispatchLock.Probe? {
+            guard let result = try? Shell.run(
+                    remoteSSHBase + [target, RemoteDispatchLock.probeCommand(base: layout.base)]),
+                  result.status == 0 else { return nil }
+            return RemoteDispatchLock.parseProbe(result.output)
+        }
+
+        /// 発行者ごとのディスク使用量(`users/*/work` と旧 `work`)。**ディスクはホスト共有資源**
+        /// なので「誰のぶんが食っているか」が見えないと消す判断ができない(§18.1)。
+        /// du はツリーを歩くので遅い —— 掃除という重い操作の中でだけ撃つ(remote status には置かない)
+        private func printDiskByIssuer(target: String, layout: RemoteLayout) {
+            // **グロブを書かない** —— ssh の相手は zsh で、マッチしないグロブは du ごと落とす
+            // (旧レイアウトの行まで消える。maintainer-notes §3.5)。一覧は find で作る
+            let list = "$(find \(RemoteShell.quote(layout.usersDir)) -mindepth 2 -maxdepth 2"
+                + " -type d -name work 2>/dev/null)"
+            let command = "du -sk \(list) \(RemoteShell.quote(layout.base + "/work"))"
+                + " 2>/dev/null || true"
+            guard let result = try? Shell.run(remoteSSHBase + [target, command]) else { return }
+            let rows = RemoteDiskUsage.parse(result.output, usersDir: layout.usersDir, base: layout.base)
+            guard !rows.isEmpty else { return }
+            print("→ disk by issuer: " + rows.map { "\($0.issuer) \(formatFreeSpace($0.kb))" }
+                .joined(separator: ", "))
+        }
+
         static func resolveLayout(target: String, remoteDirRaw: String) throws -> RemoteLayout {
             // 実行時の失敗は ValidationError にしない — ArgumentParser の ValidationError は
             // LocalizedError を実装しておらず、catch 側の localizedDescription が
@@ -345,51 +406,14 @@ struct RemoteCommand: AsyncParsableCommand {
                                issuer: try resolveLayoutIssuer())
         }
 
-        /// `hooks reap` を全発行者(`users/*`)+ 旧レイアウト(`work`)へ横断させる(§18.2)。
-        /// ディスクはホスト共有資源なので、他の発行者が残した孤児 hooks も片付ける対象になる
-        /// (RemoteCleanPlan.commands の reports/results 横断と同じ思想)
+        /// 死んだ run が残した終了スクリプトを**全発行者ぶん**代行実行する(FTCore.RemoteHooksReap が
+        /// コマンドの唯一の定義元。ディスパッチ開始時の掃除と同じものを使う ―― 2つ目の実装を作らない)
         private func runReapAcrossIssuers(target: String, layout: RemoteLayout) {
-            let listResult = try? Shell.run(
-                remoteSSHBase + [target, "ls -1 \(RemoteShell.quote(layout.usersDir)) 2>/dev/null"])
-            let issuers = (listResult?.output ?? "")
-                .split(separator: "\n")
-                .map { $0.trimmingCharacters(in: .whitespaces) }
-                .filter { !$0.isEmpty }
-            for issuer in issuers {
-                guard (try? RemoteLayout.validateIssuerKey(issuer)) != nil else { continue }
-                runReap(target: target, layout: RemoteLayout(base: layout.base, issuer: issuer))
-            }
-            runLegacyReap(target: target, layout: layout)
-        }
-
-        /// **cd 失敗(その発行者の work がまだ無い)は exit 91 = skip として扱う**(エラーではない —
-        /// 変更4の workspace ガードが返すだけの正常系。RemoteShell.remoteRunCommand 参照)
-        private func runReap(target: String, layout: RemoteLayout) {
-            let reapCommand = RemoteShell.remoteRunCommand(layout: layout, fleetestArgs: ["hooks", "reap"])
-            guard let reapResult = try? Shell.run(remoteSSHBase + [target, reapCommand]) else {
-                print("warning: failed to run `hooks reap` for issuer \(layout.issuer) (could not run ssh)")
+            let command = RemoteHooksReap.commandAcrossIssuers(layout: layout, quiet: false)
+            guard let result = try? Shell.run(remoteSSHBase + [target, command]) else {
+                print("warning: failed to run `hooks reap` (could not run ssh)")
                 return
             }
-            guard reapResult.status != 91 else { return }
-            if reapResult.status != 0 {
-                print("warning: `hooks reap` (issuer \(layout.issuer)) exited with status \(reapResult.status)\n\(reapResult.tail)")
-                return
-            }
-            let trimmed = reapResult.output.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty { print(trimmed) }
-        }
-
-        /// 旧レイアウト(`<base>/work`。発行者ネームスペース化前)の掃除。移行期だけの経路なので
-        /// RemoteLayout.workDir(常に `users/<issuer>/work`)は使えない —— 存在しない/バイナリ未整備は
-        /// 静かに無視する(ベストエフォート。ここで警告を出すと発行者ネームスペース化前の環境が
-        /// 無かっただけの受け手にまでノイズが出る)
-        private func runLegacyReap(target: String, layout: RemoteLayout) {
-            let legacyWorkDir = layout.base + "/work"
-            let binary = RemoteShell.quote(layout.binary)
-            let command = "cd \(RemoteShell.quote(legacyWorkDir)) 2>/dev/null && test -f Package.swift && "
-                + "export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\" && "
-                + "test -x \(binary) && \(binary) 'hooks' 'reap'"
-            guard let result = try? Shell.run(remoteSSHBase + [target, command]), result.status == 0 else { return }
             let trimmed = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty { print(trimmed) }
         }
@@ -834,6 +858,9 @@ private struct StatusHostJSON: Encodable {
     let fm: Bool?
     let binaryPresent: Bool?
     let freeKB: Int?
+    /// 占有("free" / "held by <issuer>" / "held (holder unknown)" / "-" = 判定不能)。
+    /// 文字列1つに畳むのは表示用の欄だから(機械判定に使うなら probe をそのまま出す)
+    let lock: String?
     let error: String?
 }
 

@@ -33,6 +33,7 @@ import {
   type MonitorFromWebviewMessage,
   type MonitorToWebviewMessage,
 } from "./monitorModel";
+import { isConfirmedHeld } from "./machineLockModel";
 import { NdjsonParser } from "./ndjson";
 import type { MonitorPanelDeps } from "./monitorPanel";
 import { type DeviceCommandSource, deviceCommandArgs } from "./remoteRunArgs";
@@ -1482,7 +1483,7 @@ export class MonitorDeviceOps {
       : t("deviceOps.createRemoteConfirmMessage", { machine: where, name: msg.name });
     const choice = await vscode.window.showWarningMessage(
       message,
-      { modal: true },
+      { modal: true, detail: this.occupancyDetail(machine) },
       confirmLabel,
     );
     if (choice !== confirmLabel) {
@@ -1665,6 +1666,22 @@ export class MonitorDeviceOps {
     });
   }
 
+  /** 破壊的操作の modal に添える1行(その機械で run が走っているときだけ)。
+   * **占有が不明なら何も足さない** —— 「走っていない」と請け合わないための沈黙
+   * (docs/remote-runner.md §18.1 #6)。 */
+  private occupancyDetail(machine: string | null): string | undefined {
+    if (machine === null) {
+      return undefined;
+    }
+    const lock = this.deps.machineLock(machine);
+    if (!isConfirmedHeld(lock)) {
+      return undefined;
+    }
+    return t("deviceOps.occupiedDetail", {
+      machine, issuer: lock?.issuer ?? t("deviceOps.occupiedIssuerUnknown"),
+    });
+  }
+
   /**
    * #device-pick-overlay の行右クリック「削除」: `fleetest api delete-device` を実行し、ホスト上の
    * 実体(シミュレータ/AVD)を消す(machineDeviceRemove のプロファイル除去とは別物。本体は残さない)。
@@ -1689,7 +1706,7 @@ export class MonitorDeviceOps {
     const deleteLabel = t("deviceOps.deleteConfirmButton");
     const choice = await vscode.window.showWarningMessage(
       t("deviceOps.deleteConfirmMessage", { name: msg.name, machine: machineLabel }),
-      { modal: true },
+      { modal: true, detail: msg.source.kind === "remote" ? this.occupancyDetail(msg.source.machine) : undefined },
       deleteLabel,
     );
     if (choice !== deleteLabel) {

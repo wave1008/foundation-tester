@@ -34,7 +34,6 @@ final class RunCommandFlagParityTests: XCTestCase {
         "--ports": "手で建てたブリッジのポートを直に並べる旧来の口。拡張は実行プロファイル経由でしかデバイスを指定しない",
         "--quiet": "ステップ行を止めてサマリだけ出す。api run は常に NDJSON なので概念が無い",
         "--split": "--fleet の分配方式。--fleet が CLI 専用なので従属",
-        "--wait-lock": "--force-lock と同じくリモートロックの待ち方。--force-lock と同じ理由",
     ]
 
     /// `fleetest api run` にだけあるもの。

@@ -132,6 +132,25 @@ test("hostMetricsMachines で機械ごとの行が増え、左端が local / <�
   assert.equal(document.querySelectorAll("#hm-cpu").length, 1, "複製した行に id を残さない");
 });
 
+// 占有(dispatch.lock)の錠前。**行より先に届く** —— ランナー機の子は最初のサイクルで占有を
+// 出すので、行を作る hostMetricsMachines より前に来る(実行中にモニターを開いた形)。
+// 捨てると「配信は止まっているのに理由が画面のどこにも無い」になる。
+test("占有の錠前は行より先に届いても出る(行の生成時に貼る)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  send(window, { type: "machineLock", machine: "mac2", held: true, issuer: "bob", mine: false });
+  send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
+
+  const chip = rowFor(document, "mac2").querySelector(".hm-lock");
+  assert.ok(chip, "行ができた時点で錠前が貼られる");
+  assert.match(chip.title, /bob/, "誰の run かはツールチップに出す");
+  assert.equal(rowFor(document, "").querySelector(".hm-lock"), null, "手元の行には出さない");
+
+  send(window, { type: "machineLock", machine: "mac2", held: false, mine: false });
+  assert.equal(rowFor(document, "mac2").querySelector(".hm-lock"), null, "空きは無印(要素ごと消す)");
+});
+
 test("サンプルは machine の行にだけ積み、描くのは手元の tick で全行まとめて", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());

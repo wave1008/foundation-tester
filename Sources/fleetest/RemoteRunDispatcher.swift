@@ -49,6 +49,7 @@ struct RemoteRunDispatcher {
 
         try acquireDispatchLock(layout: layout)
         defer { releaseDispatchLock(layout: layout) }
+        reapOrphanedHooksAcrossIssuers(layout: layout)
 
         // ワークスペースの用意(ステージング)は project の rsync より先に行う。ワークスペースは
         // 既定でプロジェクトルート配下(prepareWorkspace 参照)なので、順序を逆にすると
@@ -105,6 +106,7 @@ struct RemoteRunDispatcher {
 
         try acquireDispatchLock(layout: layout)
         defer { releaseDispatchLock(layout: layout) }
+        reapOrphanedHooksAcrossIssuers(layout: layout)
 
         // 順序の理由は dispatch() のコメント参照(prepareWorkspace は transfer() より先)
         let remoteWorkspace = try prepareWorkspace(project: project, profile: profile, layout: layout)
@@ -304,6 +306,20 @@ struct RemoteRunDispatcher {
         }
     }
 
+    /// **ロックを取った直後に、全発行者ぶんの孤児 hooks を代行実行する**(§18.1 #6)。
+    /// 孤児が掴んでいるのはポート = ホスト全体の資源なので、他人の死んだ run の残骸でも自分の
+    /// run が詰まる。ロック保持中に撃つので、**生きている run の hooks を触ることはない**
+    /// (加えて `hooks reap` 自身が pid の生死で判定する)。
+    /// 失敗も出力も run の成否には効かせない —— 片付けの失敗でディスパッチを止めない
+    private func reapOrphanedHooksAcrossIssuers(layout: RemoteLayout) {
+        let command = RemoteHooksReap.commandAcrossIssuers(layout: layout, quiet: true)
+        guard let result = try? Shell.run(sshBase + [host.sshTarget, command]) else { return }
+        let trimmed = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            log("==> reaped teardown scripts left behind on \(host.sshTarget)\n\(trimmed)")
+        }
+    }
+
     /// 成功・失敗・タイムアウト・例外いずれでも defer から呼ばれる。解放の失敗は run の成否を
     /// 変えない(warn のみ。他の回収処理と同じ規律)が、ロックが残るのは事故なので隠さず言う
     private func releaseDispatchLock(layout: RemoteLayout) {
@@ -475,8 +491,12 @@ struct RemoteRunDispatcher {
         let args = ["rsync"] + RemoteArtifactCollection.resultsRsyncArgs(
             project: project.name, layout: layout, sshTarget: host.sshTarget,
             localProjectsDir: localProjectsDir)
-        collectRsync(args, what: "recordings and run logs",
-                     missingNote: "note: the remote produced no recordings or run logs")
+        let collected = collectRsync(args, what: "recordings and run logs",
+                                     missingNote: "note: the remote produced no recordings or run logs")
+        // **回収できたときだけ**リモートの録画を消す(docs/remote-runner.md §15.4:
+        // 録画にはテスト資格情報の入力画面が写り込み、共有ランナーでは同じ UNIX アカウントの
+        // 全員が読める)。回収に失敗したまま消すと唯一の証拠を失うので、失敗時は残す
+        if collected { deleteRemoteRecordings(project: project, layout: layout) }
     }
 
     /// 回収した results の `reportPath` を、回収先(ローカルの `TestProjects/<project>/reports/`)へ
@@ -586,17 +606,35 @@ struct RemoteRunDispatcher {
     /// 回収の rsync。**転送元不在(= run が成果物を作る前に落ちた)は警告にしない** ——
     /// 本当の失敗理由の下にノイズを積まないため(RemoteArtifactCollection.isMissingSourceFailure)。
     /// stderr を見る必要があるので継承ではなく捕捉する(回収は少量で進行表示が要らない)
-    private func collectRsync(_ args: [String], what: String, missingNote: String) {
+    /// 戻り値 = 転送が成功したか(**回収できていない物を消さない**ための判定に使う。
+    /// 転送元不在は「消す物も無い」なので成功と同じ扱いでよいが、区別できるよう false を返す)
+    @discardableResult
+    private func collectRsync(_ args: [String], what: String, missingNote: String) -> Bool {
         guard let result = try? Shell.run(args) else {
             log("warning: failed to collect \(what) from the remote (could not run rsync)")
-            return
+            return false
         }
-        guard result.status != 0 else { return }
+        guard result.status != 0 else { return true }
         if RemoteArtifactCollection.isMissingSourceFailure(status: result.status, stderr: result.tail) {
             log(missingNote)
-            return
+            return false
         }
         log("warning: failed to collect \(what) from the remote (rsync exited with \(result.status))\n\(result.tail)")
+        return false
+    }
+
+    /// 回収済みの録画をランナーから消す。実績 JSON(run.json / scenarios/*.json)は**消さない** ——
+    /// LPT がリモートの実績を見るのはランナー側のファイルではなく回収した手元のものだが、
+    /// 向こうの results をまるごと消すと `remote clean` の保持ポリシーと二重管理になる。
+    /// 失敗は warn のみ(run の成否を変えない)
+    private func deleteRemoteRecordings(project: TestProject, layout: RemoteLayout) {
+        do {
+            _ = try sshCapture(RemoteArtifactCollection.deleteRecordingsCommand(
+                project: project.name, layout: layout))
+        } catch {
+            log("warning: failed to delete the collected recordings on \(host.sshTarget)"
+                + " (\(error.localizedDescription)) — `fleetest remote clean` removes them later")
+        }
     }
 
     private func collectJUnit(remotePath: String, localPath: String, layout: RemoteLayout) {

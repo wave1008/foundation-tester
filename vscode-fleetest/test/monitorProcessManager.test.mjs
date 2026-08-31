@@ -32,6 +32,7 @@ function makeDeps(overrides = {}) {
     getStreamingDeviceIds: () => [],
     isDeviceStreaming: () => false,
     notifyMonitorDevices: () => {},
+    notifyMachineLocks: () => {},
     getConfig: () => ({
       binaryPath: "/usr/local/bin/fleetest",
       project: "P",

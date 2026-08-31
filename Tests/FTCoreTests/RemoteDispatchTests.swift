@@ -721,7 +721,8 @@ final class RemoteDispatchTests: XCTestCase {
             "cd '\(workDir)' 2>/dev/null && test -f Package.swift || "
             + "{ echo \"no runner workspace at \(workDir) — run: fleetest remote setup"
             + " <this host> once for this issuer (docs/remote-runner.md §18)\" >&2; exit 91; } && "
-            + "export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\" && test -x '\(binary)' || "
+            + "export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\" && "
+            + "export FT_RUNNER_BASE='/Users/ci/fleetest-runner' && test -x '\(binary)' || "
             + "{ echo \"fleetest binary not found on remote — run: swift build --product fleetest\" >&2; exit 90; } && "
             + "'\(binary)' project sync >/dev/null 2>&1 || true && "
             + "'\(binary)' 'run' '--project' 'E2E' '--profile' 'ios-inapp' '--quiet'")
@@ -760,11 +761,86 @@ final class RemoteDispatchTests: XCTestCase {
         XCTAssertTrue(issuerRange.lowerBound < guardRange.lowerBound, command)
     }
 
+    /// ランナー機の base を子へ渡す(FTCore.RunnerBase)。**run と exec の両方**に無いと、
+    /// その経路の子だけ dispatch.lock を読めず、占有中でも配信を張り続ける(§18.2 M2)
+    func testBothRemoteCommandsExportTheRunnerBase() {
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        for command in [RemoteShell.remoteRunCommand(layout: layout, fleetestArgs: ["run"]),
+                        RemoteShell.remoteExecCommand(layout: layout, args: ["api", "monitor"])] {
+            XCTAssertTrue(command.contains("export FT_RUNNER_BASE='/Users/ci/fleetest-runner' && "), command)
+            guard let baseRange = command.range(of: "FT_RUNNER_BASE"),
+                  let launchRange = command.range(of: "test -x") else {
+                return XCTFail("expected markers missing: \(command)")
+            }
+            XCTAssertTrue(baseRange.lowerBound < launchRange.lowerBound, command)
+        }
+    }
+
+    /// `remote exec` の子も発行者を知る必要がある(ロックの保持者が自分かを判定する = HostOccupancy)。
+    /// exec が入るのは `users/<issuer>/work` なので、そのネームスペースの持ち主を渡す
+    func testRemoteExecCommandExportsTheNamespaceIssuer() {
+        let layout = RemoteLayout(base: "/b", issuer: "a'; rm -rf /; '")
+        let command = RemoteShell.remoteExecCommand(layout: layout, args: ["api", "monitor"])
+        XCTAssertTrue(command.contains("export FT_ISSUER='a'\\''; rm -rf /; '\\'''"), command)
+    }
+
     func testRemoteRunCommandQuotesIssuerAgainstShellInjection() {
         let layout = RemoteLayout(base: "/b", issuer: "alice")
         let command = RemoteShell.remoteRunCommand(
             layout: layout, fleetestArgs: ["run"], issuer: "a'; rm -rf /; '")
         XCTAssertTrue(command.contains("export FT_ISSUER='a'\\''; rm -rf /; '\\'''"), command)
+    }
+
+    // MARK: - RemoteHooksReap / RemoteDiskUsage / 録画の後始末(共有ランナーの片付け)
+
+    /// 孤児 hooks が掴んでいるのは**ポート = ホスト全体の資源**なので、片付けは発行者を跨ぐ。
+    /// **1 ssh に収める**(発行者の数だけ往復を増やさない)
+    func testHooksReapSweepsEveryIssuerAndTheLegacyWorkDirInOneCommand() {
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let command = RemoteHooksReap.commandAcrossIssuers(layout: layout, quiet: true)
+        XCTAssertTrue(command.contains("find '/Users/ci/fleetest-runner/users'"), command)
+        XCTAssertTrue(command.contains("'/Users/ci/fleetest-runner/work'"), command)
+        // **グロブを使わない** —— ssh の相手は zsh で、`for w in <マッチしないグロブ>` は
+        // シェルごと落ちる(まだ誰も setup していないランナーで旧 work の掃除まで消える。
+        // 2026-08-31 に実機で確認)。find なら1件も無いときは空の出力になるだけ
+        XCTAssertFalse(command.contains("*"), command)
+        XCTAssertTrue(command.contains("'hooks' 'reap' '--quiet'"), command)
+        // 終了スクリプトは adb 等を呼ぶ(非対話 ssh の PATH には Homebrew が入らない)
+        XCTAssertTrue(command.contains("/opt/homebrew/bin"), command)
+        // 片付けの失敗でディスパッチを止めない
+        XCTAssertTrue(command.contains("|| true"), command)
+        XCTAssertFalse(RemoteHooksReap.commandAcrossIssuers(layout: layout, quiet: false)
+            .contains("'--quiet'"))
+    }
+
+    func testDiskUsageParsesDuOutputPerIssuer() {
+        let output = "1024\t/b/users/alice/work\n4096\t/b/users/bob/work\n8\t/b/work\n"
+        let rows = RemoteDiskUsage.parse(output, usersDir: "/b/users", base: "/b")
+        // 大きい順(消す判断に使う欄)
+        XCTAssertEqual(rows.map(\.issuer), ["bob", "alice", RemoteDiskUsage.legacyLabel])
+        XCTAssertEqual(rows.map(\.kb), [4096, 1024, 8])
+    }
+
+    /// 壊れた1行で全体を失わない・想定外のパスは拾わない
+    func testDiskUsageIgnoresUnparsableAndForeignLines() {
+        let output = "not a row\n1024\t/other/place\nxx\t/b/users/alice/work\n7\t/b/users/carol/work\n"
+        let rows = RemoteDiskUsage.parse(output, usersDir: "/b/users", base: "/b")
+        XCTAssertEqual(rows.map(\.issuer), ["carol"])
+    }
+
+    /// 回収した録画はランナーに残さない(docs/remote-runner.md §15.4)。**消すのは録画だけ**
+    func testDeleteRecordingsCommandTargetsOnlyRecordings() {
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
+        let command = RemoteArtifactCollection.deleteRecordingsCommand(project: "E2E", layout: layout)
+        // 置き場は `results/runs/<YYYY-MM>/<runID>/recordings`(RunResultsStore.runDir)。
+        // **月の階層を数え間違えると1件も消えない**(黙って効かない = 気付けない失敗)
+        let runs = "'/Users/ci/fleetest-runner/users/alice/work/TestProjects/E2E/results/runs'"
+        XCTAssertEqual(
+            command,
+            "if [ -d \(runs) ]; then find \(runs) -mindepth 3 -maxdepth 3 -type d"
+            + " -name recordings -exec rm -rf {} +; fi")
+        // グロブは使わない(zsh のマッチ無しでコマンドが失敗し、録画の無い run のたびに警告が出る)
+        XCTAssertFalse(command.contains("*"), command)
     }
 
     // MARK: - RemotePathRewrite
@@ -1177,7 +1253,27 @@ final class RemoteDispatchTests: XCTestCase {
             + "xcodebuild -version; echo '---FT---'; "
             + "xcrun --sdk iphonesimulator --show-sdk-build-version; echo '---FT---'; "
             + "test -x \(binary) && echo yes || echo no; echo '---FT---'; "
-            + "df -k \(base) | tail -1")
+            + "df -k \(base) | tail -1; echo '---FT---'; "
+            + "if [ -d \"/Users/ci/fleetest-runner/.fleetest/dispatch.lock\" ]; then echo held;"
+            + " cat \"/Users/ci/fleetest-runner/.fleetest/dispatch.lock/info.json\" 2>/dev/null || true;"
+            + " else echo absent; fi")
+    }
+
+    /// 占有(誰が使っているか)を **remote status の1往復に相乗りさせる**(§18.1 #1)。
+    /// 別の ssh を足すとホスト数ぶん往復が増える
+    func testStatusProbeParsesTheDispatchLockBlock() {
+        let info = RemoteDispatchLock.encode(RemoteDispatchLockInfo(
+            issuerHost: "dev-mbp", pid: 7, acquiredAt: "2026-08-31T00:00:00Z", issuer: "bob")) ?? ""
+        let free = statusOutput(
+            session: "/Users/ci\nalice\nalice", revision: "abc123",
+            xcodeVersion: "Xcode 27.0\nBuild version 27A5228h", sdkBuild: "27A5228h",
+            binary: "yes", df: "/dev/disk3s1s1  965538800 542000000 400000000   58%    /")
+        XCTAssertEqual(RemoteStatusProbe.parse(free + "\n\(Self.statusSeparator)\nabsent").lock, .absent)
+        let held = RemoteStatusProbe.parse(free + "\n\(Self.statusSeparator)\nheld\n\(info)").lock
+        XCTAssertEqual(held, .held(RemoteDispatchLock.decode(info)))
+        // **旧ランナー(ブロックが6個しか無い)は nil = 判定不能**。空きに倒すと、
+        // 実際は走っている run を「空いている」と表示してしまう
+        XCTAssertNil(RemoteStatusProbe.parse(free).lock)
     }
 
     /// $HOME を未解決のまま埋め込んだ layout(remote status の実運用形)でも
@@ -1270,7 +1366,7 @@ final class RemoteDispatchTests: XCTestCase {
     func testCleanPlanDryRunUsesPrint() {
         let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
         let commands = RemoteCleanPlan.commands(layout: layout, keepDays: 7, dryRun: true)
-        XCTAssertEqual(commands.count, 6)
+        XCTAssertEqual(commands.count, 7)
         for command in commands {
             XCTAssertTrue(command.hasSuffix("-print"), command)
             XCTAssertFalse(command.contains("-exec"), command)
@@ -1299,12 +1395,15 @@ final class RemoteDispatchTests: XCTestCase {
         let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice")
         let commands = RemoteCleanPlan.commands(layout: layout, keepDays: 7, dryRun: true)
         let base = "'/Users/ci/fleetest-runner'"
-        XCTAssertTrue(commands[0].contains("\(base)/users/*/work/.fleetest/dispatch"), commands[0])
-        XCTAssertTrue(commands[1].contains("\(base)/users/*/work/TestProjects/*/reports"), commands[1])
-        XCTAssertTrue(commands[2].contains("\(base)/users/*/work/TestProjects/*/results"), commands[2])
-        XCTAssertTrue(commands[3].contains("\(base)/work/.fleetest/dispatch"), commands[3])
-        XCTAssertTrue(commands[4].contains("\(base)/work/TestProjects/*/reports"), commands[4])
-        XCTAssertTrue(commands[5].contains("\(base)/work/TestProjects/*/results"), commands[5])
+        // 配信の控えはホスト共有の1箇所(発行者ネームスペースの外)。**死んだ pid の控えが
+        // 溜まると、pid が一巡したときにその台の配信が誰にも張れなくなる**ので上限を作る
+        XCTAssertTrue(commands[0].contains("\(base)/.fleetest/streams"), commands[0])
+        XCTAssertTrue(commands[1].contains("\(base)/users/*/work/.fleetest/dispatch"), commands[1])
+        XCTAssertTrue(commands[2].contains("\(base)/users/*/work/TestProjects/*/reports"), commands[2])
+        XCTAssertTrue(commands[3].contains("\(base)/users/*/work/TestProjects/*/results"), commands[3])
+        XCTAssertTrue(commands[4].contains("\(base)/work/.fleetest/dispatch"), commands[4])
+        XCTAssertTrue(commands[5].contains("\(base)/work/TestProjects/*/reports"), commands[5])
+        XCTAssertTrue(commands[6].contains("\(base)/work/TestProjects/*/results"), commands[6])
     }
 
     /// `--dry-run` は**何も変えない**。`devices down` は走っている run を巻き添えにする破壊的操作
@@ -1318,7 +1417,11 @@ final class RemoteDispatchTests: XCTestCase {
     func testCleanPlanQuotesTheBasePortion() {
         let layout = RemoteLayout(base: "/Users/ci/fleetest runner", issuer: "alice")
         let commands = RemoteCleanPlan.commands(layout: layout, keepDays: 7, dryRun: true)
-        XCTAssertTrue(commands[0].contains("'/Users/ci/fleetest runner'/users/*/work"), commands[0])
+        // 添字ではなく「どのコマンドか」で選ぶ(先頭に別のターゲットが増えても意味が変わらない)
+        guard let usersCommand = commands.first(where: { $0.contains("/users/") }) else {
+            return XCTFail("expected a per-issuer target: \(commands)")
+        }
+        XCTAssertTrue(usersCommand.contains("'/Users/ci/fleetest runner'/users/*/work"), usersCommand)
     }
 
     // MARK: - RemoteLayout.validateBase(コマンド置換の入口ガード)
@@ -1435,7 +1538,8 @@ final class RemoteDispatchTests: XCTestCase {
             "cd '\(workDir)' 2>/dev/null && test -f Package.swift || "
             + "{ echo \"no runner workspace at \(workDir) — run: fleetest remote setup"
             + " <this host> once for this issuer (docs/remote-runner.md §18)\" >&2; exit 91; } && "
-            + "export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\" && test -x '\(binary)' || "
+            + "export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\" && "
+            + "export FT_RUNNER_BASE='/Users/ci/fleetest-runner' && export FT_ISSUER='alice' && test -x '\(binary)' || "
             + "{ echo \"fleetest binary not found on remote — run: swift build --product fleetest\" >&2; exit 90; } && "
             + "'\(binary)' 'doctor' '--fm-only'")
     }

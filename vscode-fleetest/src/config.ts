@@ -30,6 +30,11 @@ export interface FleetestConfig {
   lptScheduling: boolean;
   /** LPT が実績として読む run 数(新しい方から)。 */
   lptHistoryRuns: number;
+  /** リモートランナーの dispatch ロックが埋まっているときに待つ秒数(0 = 待たずに失敗)。
+   * 共有フリートでは run が機械ごとに直列化されるため、待てないと「取れなかった」を人間が
+   * 手で押し直す運用になる(docs/remote-runner.md §18.2 M2)。`fleetest api run --wait-lock` へ渡す。
+   * **奪う口(--force-lock)は GUI に出さない** —— 走っている他人の run を殺せる導線を作らない。 */
+  remoteWaitLock: number;
   /** 実機の自動ロックを run 中だけ抑えるか(既定 true)。false のとき拡張が起動する fleetest に
    * `FT_KEEP_AWAKE=0` を渡す(spawnEnv.ts)。効かせ方は Sources/FTCore/KeepAwakePolicy.swift。 */
   suppressPhysicalDeviceAutoLock: boolean;
@@ -111,6 +116,7 @@ export function readConfig(workspaceRoot: string): FleetestConfig {
     heal: configuration.get<boolean>("heal", false),
     lptScheduling: configuration.get<boolean>("lptScheduling", true),
     lptHistoryRuns: Math.max(1, Math.floor(configuration.get<number>("lptHistoryRuns", 5))),
+    remoteWaitLock: Math.max(0, Math.floor(configuration.get<number>("remoteWaitLock", 0))),
     suppressPhysicalDeviceAutoLock: configuration.get<boolean>("suppressPhysicalDeviceAutoLock", true),
     monitorInterval: Math.max(0.5, configuration.get<number>("monitorInterval", 2)),
     monitorMaxWidth: Math.min(1600, Math.max(240, configuration.get<number>("monitorMaxWidth", 960))),

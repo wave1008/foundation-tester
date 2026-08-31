@@ -714,6 +714,12 @@ async function executeRun(
   if (!config.buildBeforeRun) {
     args.push("--skip-build");
   }
+  // リモートへ出る run だけに効く(純ローカルの run では CLI が黙って無視する…のではなく
+  // **ValidationError で弾く**ので、プロファイル指定があるときだけ渡す)。共有フリートでは
+  // ロックの取り合いが日常になるため、既定 0(待たない = 従来どおり)で明示的に有効化させる
+  if (config.remoteWaitLock > 0 && !liveTarget && profile.length > 0) {
+    args.push("--wait-lock", String(config.remoteWaitLock));
+  }
   // --heal は dry-run には付与しない(dry-run はワーカー構築自体を省略するデバイス不要の
   // 検証実行であり、自己修復の対象になる実機動作が発生しないため)。
   if (config.heal && !dryRun) {

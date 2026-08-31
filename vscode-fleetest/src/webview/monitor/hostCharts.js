@@ -95,10 +95,57 @@ let hmLastCommitAt = Date.now();
 
 /** 機械名(手元は '')→ 行。手元の行は静的 HTML にあるので最初から居る。 */
 const hmRows = new Map([['', hmMakeRow(hmLocalRowEl, '')]]);
+/** 機械ごとの占有(錠前)。**行より先に届く**ので、行の有無と独立に持つ(setMachineLock 参照)。 */
+const hmLocks = new Map();
 
 /** リモートの行があるときだけ左端の機械名を出す(CSS の .hm-multi)。 */
 function hmSyncMultiClass() {
   hmContainer.classList.toggle('hm-multi', hmRows.size > 1);
+}
+
+/**
+ * その機械で誰かの run が走っていることを、機械名の隣の錠前で出す(docs/remote-runner.md §18.2)。
+ * **出るのは「占有中」のときだけ**(空きは無印)。ライブ配信はこの間ホスト側で畳まれ、タイルは
+ * ポーリングで更新され続ける ―― その理由が画面のどこにも無いと「映像が止まった」に見える。
+ * 対向: monitorProcessManager.ts の machineLock メッセージ。
+ */
+export function setMachineLock(machine, held, issuer, mine) {
+  const key = typeof machine === 'string' ? machine : '';
+  // **控えは行より先に来る**(ランナー機の子は最初のサイクルで占有を出すので、行を作る
+  // hostMetricsMachines より前に届きうる)。行が無いからと捨てると、**実行中に
+  // モニターを開いた人には錠前が出ない**まま配信だけ止まる ―― 覚えておいて行の生成時に貼る。
+  if (held) {
+    hmLocks.set(key, { issuer, mine });
+  } else {
+    hmLocks.delete(key);
+  }
+  const row = hmRows.get(key);
+  if (row) {
+    hmApplyLock(row, key);
+  }
+}
+
+/** 控え(hmLocks)を1行へ反映する。**空きは要素ごと消す**(無印 = 空き)。 */
+function hmApplyLock(row, machine) {
+  const lock = hmLocks.get(machine);
+  let chip = row.el.querySelector('.hm-lock');
+  if (!lock) {
+    if (chip) {
+      chip.remove();
+    }
+    return;
+  }
+  if (!chip) {
+    chip = document.createElement('span');
+    chip.className = 'hm-lock';
+    chip.textContent = '🔒';
+    row.el.querySelector('.hm-machine').insertAdjacentElement('afterend', chip);
+  }
+  chip.title = lock.mine
+    ? t('wvMonitor2.hostCharts.lockMine', { machine })
+    : t('wvMonitor2.hostCharts.lockOther', {
+      machine, issuer: lock.issuer || t('wvMonitor2.hostCharts.lockIssuerUnknown'),
+    });
 }
 
 /** 手元が先・以降は機械名順に並べ直す(appendChild は既存ノードでは移動として働く)。 */
@@ -132,6 +179,7 @@ function hmEnsureRow(machine) {
   hmContainer.appendChild(rowEl);
   const row = hmMakeRow(rowEl, machine);
   hmRows.set(machine, row);
+  hmApplyLock(row, machine);   // 行より先に届いていた占有をここで貼る
   hmSortRows(); // サンプル先着で作られた行も並びは機械名順に保つ
   hmSyncMultiClass();
   return row;
@@ -149,6 +197,7 @@ export function setHostMetricMachines(machines) {
     if (machine !== '' && !wanted.includes(machine)) {
       row.el.remove();
       hmRows.delete(machine);
+      hmLocks.delete(machine);   // 行ごと消えた機械の控えは残さない
     }
   }
   for (const machine of wanted) {

@@ -34,6 +34,10 @@ enum ApiRunMachineFanout {
         var remoteDir: String?
         var remoteTimeout: Int?
         var remoteArtifacts: String
+        /// `--wait-lock <秒>`。**リモートの子にだけ渡す**(手元の子にディスパッチのロックは無い)。
+        /// ここに無いと、拡張の設定 `fleetest.remoteWaitLock` が**複数機械にまたがるプロファイルで
+        /// だけ黙って落ちる** —— 共有フリートで一番待ちたい形がまさにそれ
+        var waitLock: Int?
     }
 
     /// 戻り値 = FleetProfile.aggregateExitCode(各ホストの exit code の集約)
@@ -173,6 +177,7 @@ enum ApiRunMachineFanout {
         } else {
             if let remoteDir = options.remoteDir { args += ["--remote-dir", remoteDir] }
             if let remoteTimeout = options.remoteTimeout { args += ["--remote-timeout", String(remoteTimeout)] }
+            if let waitLock = options.waitLock { args += ["--wait-lock", String(waitLock)] }
             if options.remoteArtifacts != "collect" { args += ["--remote-artifacts", options.remoteArtifacts] }
         }
         // **ホストも渡す**(一意なのは (host, name)。ApiRunCommand.deviceMachine の宣言参照)

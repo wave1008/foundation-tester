@@ -127,5 +127,28 @@ Once registered, remote device tiles behave like local ones in the Device Monito
 live streaming, and per-tile start/stop all work the same way, with a host-name badge as the only
 visible difference. Automatic bridge/health repair, however, only applies to local devices.
 
+## Sharing one runner between several people
+
+Only **one run at a time** can go to the same runner (its devices belong to that machine, so two
+runs must not fight over the same simulator). When it is busy, fleetest prints who has been
+holding it and since when.
+
+- **Wait instead of failing**: `--wait-lock <seconds>` on the CLI, or the
+  `fleetest.remoteWaitLock` setting (seconds; default 0 = fail immediately) in the VS Code
+  extension. There is deliberately no "steal it" button in the extension.
+- **See who is using it**: the LOCK column of `fleetest remote status --host <machine>`
+  (`-` means "could not tell", not "free"). The Device Monitor shows a 🔒 on that machine's
+  toolbar row.
+- **Live video pauses by itself during a run** — when someone's run starts, that machine's tiles
+  switch from live streaming to a still image every two seconds, and switch back when the run
+  finishes (streaming interferes with test execution, so this applies to your own runs too).
+  If two people watch the same device, the one who opened it later gets still images.
+- **Operations that would break someone's run stop first** — `fleetest remote clean` refuses
+  while a run is in progress, and the extension's bulk stop / device deletion confirmations name
+  the run that is in progress.
+
+Set who you are (`issuerId` in `~/.config/fleetest/config.json`) and your name appears in those
+messages. The full procedure is in `docs/remote-runner-setup.md` (maintainer-facing).
+
 ### Link
 - [index](../index.md)

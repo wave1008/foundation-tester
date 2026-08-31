@@ -19,12 +19,19 @@ struct HooksCommand: AsyncParsableCommand {
             commandName: "reap",
             abstract: "Run the teardown scripts left behind by runs that died before they could clean up")
 
+        @Flag(help: "Say nothing when there was nothing to reap (for callers that sweep every namespace on a shared runner)")
+        var quiet = false
+
         func run() async throws {
             let stateDir = try RepoRoot.find().appendingPathComponent(".fleetest")
             let reaped = RunHookRunner.reapOrphans(stateDir: stateDir) { print($0) }
-            print(reaped == 0
-                ? "→ no orphaned teardown scripts"
-                : "→ reaped \(reaped) orphaned teardown script(s)")
+            if reaped == 0 {
+                // **黙るのは「0件のとき」だけ** —— 代行実行したことは共有ランナーでも必ず言う
+                // (他人の run の後始末が走ったのに誰も知らない状態を作らない)
+                if !quiet { print("→ no orphaned teardown scripts") }
+            } else {
+                print("→ reaped \(reaped) orphaned teardown script(s)")
+            }
         }
     }
 }

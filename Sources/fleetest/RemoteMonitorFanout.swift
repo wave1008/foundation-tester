@@ -106,17 +106,20 @@ final class RemoteMonitorFanout: @unchecked Sendable {
     private func superviseMachine(_ machine: String) {
         if let failure = RemoteProjectSync.run(project: project, machine: machine) {
             log("[monitor] ❌ \(failure) — devices on \(machine) stay unobserved")
+            relayUnobservedLock(machine)
             return
         }
         var quickFailures = 0
         while !isStopping() {
             let startedAt = Date()
             runChild(machine: machine)
-            // 子が落ちた: そのマシンの状態は**もう根拠が無い**ので捨てる
+            // 子が落ちた: そのマシンの状態は**もう根拠が無い**ので捨てる。占有(dispatch.lock)も
+            // 同じ —— 古い「他人の run が実行中」を出し続けない(拡張は控えを消して不明に戻す)
             lock.lock()
             devicesByMachine.removeValue(forKey: machine)
             children.removeValue(forKey: machine)
             lock.unlock()
+            relayUnobservedLock(machine)
             if isStopping() { return }
             if Date().timeIntervalSince(startedAt) < Self.quickFailureSeconds {
                 quickFailures += 1
@@ -187,6 +190,22 @@ final class RemoteMonitorFanout: @unchecked Sendable {
         guard let data = line.data(using: .utf8),
               let kind = (try? JSONDecoder().decode(KindOnly.self, from: data))?.kind
         else { return }
+        if kind == "monitorLock" {
+            // ランナー機の dispatch.lock の状態(§18.2 M2)。**マシン名は親が埋める** ——
+            // 子は自分を "local" としか名乗れないので、そのまま流すと拡張がどの機械の
+            // 占有か分からない(monitorDevices の id と同じ理由)
+            guard var event = try? JSONDecoder().decode(ApiMonitorLockEvent.self, from: data) else {
+                log("[monitor] \(machine): cannot read the remote monitorLock line")
+                return
+            }
+            event.machine = machine
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+            guard let encoded = try? encoder.encode(event),
+                  let text = String(data: encoded, encoding: .utf8) else { return }
+            relayLine(text)
+            return
+        }
         guard kind == "monitorDevices" else {
             // monitorFrame / monitorError。**"device" だけマシン付きに直して**中継する
             // (base64 は触らない = 1往復ぶんの無駄を避ける。理由はファイル冒頭)
@@ -233,6 +252,16 @@ final class RemoteMonitorFanout: @unchecked Sendable {
         guard !name.hasPrefix(machine + "/") else { return line }
         let scoped = DeviceMachineGrouping.workerID(platform: platform, machine: machine, name: name)
         return line.replacingCharacters(in: valueStart..<quote.lowerBound, with: scoped)
+    }
+
+    /// 「この機械の占有はもう観測できていない」を1行流す(子の死・接続断のたび)。
+    /// internal: RemoteMonitorFanoutIDTests が形を固定する
+    func relayUnobservedLock(_ machine: String) {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        guard let data = try? encoder.encode(ApiMonitorLockEvent(unobservedMachine: machine)),
+              let line = String(data: data, encoding: .utf8) else { return }
+        relayLine(line)
     }
 
     private func isStopping() -> Bool {

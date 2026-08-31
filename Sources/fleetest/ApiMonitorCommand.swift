@@ -184,7 +184,24 @@ struct ApiMonitorCommand: AsyncParsableCommand {
 
         // 直近の hold 状態(変化したときだけ monitorHold イベントと stderr を出す)
         var lastHoldActive = false
+        // **ランナー機の上で走っているときだけ**(FT_RUNNER_BASE が立っている = 発行側の
+        // remoteExecCommand から起こされた子)、その機械の dispatch.lock を毎周期読んで
+        // monitorLock を出す。手元では nil のまま = 1行も出ない(docs/remote-runner.md §18.2)。
+        // **ssh は増えない**(ローカルのファイル読み)。親は RemoteMonitorFanout がマシン名を
+        // 埋めて中継し、拡張がそのマシンの配信を畳む
+        let runnerBase = RunnerBase.fromEnvironment()
+        let myIssuer = LocalConfig.resolveIssuerId()
+        var lastOccupancy: HostOccupancy?
         while !stop.isSet {
+            if let occupancy = HostOccupancy.read(base: runnerBase, myIssuer: myIssuer),
+               occupancy != lastOccupancy {
+                lastOccupancy = occupancy
+                emitLine(ApiMonitorLockEvent(occupancy: occupancy))
+                logStderr(occupancy.held
+                    ? "[monitor] A dispatch holds this runner's lock"
+                      + " (\(occupancy.issuer ?? "holder unknown")) — the extension stops live streams here"
+                    : "[monitor] This runner's dispatch lock is free")
+            }
             // **保持ファイル(`fleetest monitor pause`)は毎周期の頭で見る** —— kill と違い
             // 拡張に再起動されない止め方(FTCore.MonitorHold)。手元スコープのときだけ:
             // fan-out の子(--device-machine 付き)はランナー機側の hold を親の拡張へ波及させない。
@@ -305,10 +322,18 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 let frozenVerdict = Self.frozenVerdict(
                     id: state.target.id, key: leaseKey,
                     debounce: frozenDebounce, stateDir: leaseStateDir, inRun: inRun)
+                // 他の発行者がこの台を配信中か(共有ランナーのみ。手元では runnerBase が nil で
+                // 常に nil = 拡張の判定に一切効かない)
+                let streamedByOther = runnerBase.map { base in
+                    StreamLease.heldByOther(
+                        info: StreamLease.read(base: base, platform: state.target.platform,
+                                               name: state.target.name),
+                        myIssuer: myIssuer, pidAlive: { kill($0, 0) == 0 })
+                }
                 return state.info(health: confirmedIssues.isEmpty ? nil : confirmedIssues,
                                    renderMode: state.androidSerial.flatMap { renderModeCache[$0] },
                                    inRun: inRun, recording: recording, host: bridgeHost,
-                                   frozen: frozenVerdict.isFrozen)
+                                   frozen: frozenVerdict.isFrozen, streamedByOther: streamedByOther)
             }
             emitLine(ApiMonitorDevicesEvent(devices: Self.mergedDevices(
                 listedTargets: listedTargets, observed: observedInfos,
@@ -521,7 +546,8 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             state: "unknown", detail: detail, udid: nil, serial: nil, health: nil, renderMode: nil,
             inRun: false, kind: target.spec.isPhysical ? "physical" : "virtual",
             host: nil, port: nil, recording: false, registered: target.registered,
-            machine: MachineDispatch.normalize(target.spec.machine), frozen: false, wired: nil)
+            machine: MachineDispatch.normalize(target.spec.machine), frozen: false, wired: nil,
+            streamedByOther: nil)
     }
 
     // MARK: - デバイス状態判定
@@ -1273,7 +1299,7 @@ struct DeviceRuntimeState {
     /// (list-devices は同じ情報を ApiDeviceEntry として別途組み立てる)
     func info(health: [String]?, renderMode: String?, inRun: Bool,
                           recording: Bool, host: String? = nil,
-                          frozen: Bool = false) -> ApiMonitorDeviceInfo {
+                          frozen: Bool = false, streamedByOther: Bool? = nil) -> ApiMonitorDeviceInfo {
         ApiMonitorDeviceInfo(id: target.id, name: target.name,
                              platform: target.platform, state: state, detail: detail,
                              udid: iosUdid, serial: androidSerial, health: health, renderMode: renderMode,
@@ -1282,7 +1308,7 @@ struct DeviceRuntimeState {
                              host: host, port: iosPort,
                              recording: recording, registered: target.registered,
                              machine: MachineDispatch.normalize(target.spec.machine),
-                             frozen: frozen, wired: wired)
+                             frozen: frozen, wired: wired, streamedByOther: streamedByOther)
     }
 }
 
@@ -1478,6 +1504,46 @@ struct ApiMonitorDevicesEvent: Codable {
     let devices: [ApiMonitorDeviceInfo]
 }
 
+/// ランナー機の dispatch.lock の状態変化(docs/remote-runner.md §18.2 M2)。
+/// **ランナー機で走っている子だけが出す**(手元には dispatch.lock という概念が無い)。
+/// `machine` は **var** —— 子は自分の機械名を知らない(畳んだプロファイルでは "local")ので、
+/// 中継する RemoteMonitorFanout が埋める(monitorDevices・monitorFrame と同じ規律)。
+/// 同期相手: vscode-fleetest/src/monitorDeviceModel.ts(isMonitorEvent)
+struct ApiMonitorLockEvent: Codable {
+    let kind = "monitorLock"
+    var machine: String?
+    /// **その機械をまだ観測できているか**。子が落ちたら親が false で1行出す —— 古い占有を
+    /// 出し続けないため(子の devices を捨てるのと同じ規律)。**false を「空き」と読ませない**:
+    /// 拡張は控えを消して「不明」に戻す(破壊的操作の確認は不明を空きとして扱わない)
+    let observed: Bool
+    let held: Bool
+    let issuer: String?
+    let issuerHost: String?
+    let acquiredAt: String?
+    let mine: Bool
+
+    init(occupancy: HostOccupancy, machine: String? = nil) {
+        self.machine = machine
+        self.observed = true
+        self.held = occupancy.held
+        self.issuer = occupancy.issuer
+        self.issuerHost = occupancy.issuerHost
+        self.acquiredAt = occupancy.acquiredAt
+        self.mine = occupancy.mine
+    }
+
+    /// 「この機械はもう観測できていない」1行(親が子の死を見たときだけ出す)
+    init(unobservedMachine machine: String) {
+        self.machine = machine
+        self.observed = false
+        self.held = false
+        self.issuer = nil
+        self.issuerHost = nil
+        self.acquiredAt = nil
+        self.mine = false
+    }
+}
+
 /// fleetest api monitor の 1 デバイス分の状態。detail は補足が無ければ空文字列("")にする
 /// (VSCode 拡張側(monitorModel.ts)の契約が detail: string 固定のため null は使わない。
 /// ApiScenarioInfo 等の「省略可能フィールドは null を明示する」方針とは別)
@@ -1537,6 +1603,12 @@ struct ApiMonitorDeviceInfo: Codable {
     /// mergedDevices が WiFi 越しの分身の抑制に使う(拡張は読まない)。
     /// 追加フィールドのみで後方互換のため ProtocolVersion は不変
     let wired: Bool?
+    /// **他の発行者がこの台の画面配信を張っている**(共有ランナーのみ。FTCore.StreamLease)。
+    /// 拡張はこの台の配信を起こさずポーリングのままにする —— 同じ台を人数ぶん捕捉すると
+    /// ランナーが痛む(docs/remote-runner.md §18.2)。手元・単独利用では常に nil。
+    /// 追加フィールドのみで後方互換のため ProtocolVersion は不変
+    /// (契約は vscode-fleetest/src/monitorDeviceModel.ts の MonitorDevice.streamedByOther)
+    let streamedByOther: Bool?
 }
 
 /// monitorFrame イベント: state == connected のデバイスのみ、スクリーンショットを添えて出す

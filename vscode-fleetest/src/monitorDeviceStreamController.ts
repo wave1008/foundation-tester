@@ -68,6 +68,11 @@ export class MonitorDeviceStreamController {
    * mjpeg を使う(fallbackToMjpeg 参照。gaveUpDeviceIds と違い切断でもクリアしない — WebCodecs
    * 非対応はデバイス側でなく webview 側の恒常的な制約のため)。 */
   private readonly mjpegFallbackIds = new Set<string>();
+  /** 誰かの run が走っている(dispatch.lock を保持している)リモート機。**その機械の配信は
+   * 起こさない・張っているものは畳む**(docs/remote-runner.md §18.2 M2)。
+   * 配信を張ったままの run は実際に赤くなる(docs/verification.md の実測)ので、**保持者が
+   * 自分か他人かは問わない**。ポーリングのフレームは止めないのでタイルは更新され続ける。 */
+  private occupiedMachines: ReadonlySet<string> = new Set();
   private visible = true;
   /** 直近の applyDevices 呼び出し引数。reapply() がポーリングモードのトグル直後に同じ入力で
    * 再判定するために保持する(次の monitorDevices イベント[最大 monitorInterval 秒後]を待たない)。 */
@@ -80,6 +85,19 @@ export class MonitorDeviceStreamController {
 
   isStreaming(deviceId: string): boolean {
     return this.streamingDeviceIds.has(deviceId);
+  }
+
+  /** 占有中のリモート機を差し替える(MonitorProcessManager → MonitorPanelDeps.notifyMachineLocks)。
+   * 変化があったときだけ即座に再判定する —— 次の monitorDevices(既定2秒後)を待つと、
+   * run が始まった直後に配信が残っている時間ができる。 */
+  setOccupiedMachines(machines: ReadonlySet<string>): void {
+    const same = machines.size === this.occupiedMachines.size
+      && [...machines].every((machine) => this.occupiedMachines.has(machine));
+    if (same) {
+      return;
+    }
+    this.occupiedMachines = new Set(machines);
+    this.reapply();
   }
 
   /** 現在フレーム抑制中のデバイス id 一覧。monitor プロセス再起動直後の suppressFrames 再送に使う
@@ -138,6 +156,15 @@ export class MonitorDeviceStreamController {
       // codecError を受けたデバイスは設定値に関わらず mjpeg 固定(fallbackToMjpeg 参照)。
       const codec: "mjpeg" | "h264" = this.mjpegFallbackIds.has(device.id) ? "mjpeg" : config.streamCodec;
       const codecArgs = codec === "h264" ? ["--codec", "h264"] : [];
+      // **占有中の機械・他の発行者が配信中の台は起こさない**(共有ランナー。§18.2 M2)。
+      // qualifying に入れない = 既存のパイプラインも下の破棄ループが畳み、タイルは
+      // ポーリングのフレームで更新され続ける
+      if (device.machine !== undefined && this.occupiedMachines.has(device.machine)) {
+        continue;
+      }
+      if (device.streamedByOther === true) {
+        continue;
+      }
       if (device.machine) {
         // **別の機械のデバイス**。udid も adb serial も向こうのものなので、手元でヘルパーを
         // 起こしても当たらない(同名の手元の台に当たると**別の機械の画面が映る**)。代わりに

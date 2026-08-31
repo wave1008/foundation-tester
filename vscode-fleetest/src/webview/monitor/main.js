@@ -29,7 +29,7 @@ import {
   applyWipeStatus,
 } from './deviceTiles.js';
 import { applyLaneAction, applyLaneHydrate, updateLaneVisibility, updateLanesPlaceholder } from './laneLog.js';
-import { applyHostMetrics, recordFmCalls, resetFmUsage, setHostMetricMachines } from './hostCharts.js';
+import { applyHostMetrics, recordFmCalls, resetFmUsage, setHostMetricMachines, setMachineLock } from './hostCharts.js';
 import {
   applyMachineProfileInfo,
   applyMachineProfileSelected,
@@ -106,6 +106,10 @@ window.addEventListener('message', (event) => {
       break;
     case 'hostMetrics':
       applyHostMetrics(message);
+      break;
+    case 'machineLock':
+      // その機械の占有(錠前)。配信はホスト側で畳まれるので、ここは表示だけ
+      setMachineLock(message.machine, message.held, message.issuer, message.mine);
       break;
     case 'hostMetricsMachines':
       // 行の集合(手元 + リモート機)。値より先に届くので、観測が来る前から行が見える

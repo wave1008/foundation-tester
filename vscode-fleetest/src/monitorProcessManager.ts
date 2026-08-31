@@ -17,6 +17,7 @@ import {
   sortMonitorDevices,
   toWebviewMessage,
 } from "./monitorModel";
+import { type MachineLock, applyMachineLockEvent, isConfirmedHeld } from "./machineLockModel";
 import { NdjsonParser } from "./ndjson";
 import type { MonitorPanelDeps } from "./monitorPanel";
 
@@ -91,7 +92,17 @@ export type HostMetricsToWebviewMessage =
       readonly memTotalBytes: number | null;
     }
   /** 行の集合(手元 + このリモート機。値より先に配る)。消えた機械の行は webview 側で捨てる。 */
-  | { readonly type: "hostMetricsMachines"; readonly machines: readonly string[] };
+  | { readonly type: "hostMetricsMachines"; readonly machines: readonly string[] }
+  /** その機械で誰かの run(dispatch)が走っているか(docs/remote-runner.md §18.2 M2)。
+   *  ツールバーの機械の行に錠前を出す。**held:false は「空き」**で、控えを消す(不明へ戻す)
+   *  ときは送らない —— 表示は「錠前が出るか出ないか」の2値で足りる。 */
+  | {
+      readonly type: "machineLock";
+      readonly machine: string;
+      readonly held: boolean;
+      readonly issuer?: string;
+      readonly mine: boolean;
+    };
 
 /**
  * monitor / host-metrics の2つの常駐子プロセスの起動・停止・再起動・pause/resume 制御を担う。
@@ -136,6 +147,9 @@ export class MonitorProcessManager {
    * だけのために接続が churn する。
    */
   private hostMetricsMachines: readonly string[] = [];
+  /** リモート機ごとの占有(dispatch.lock)。供給元は monitorLock イベント(docs/remote-runner.md
+   * §18.2 M2)。**控えが無い機械は「不明」**で、空きとは区別する(machineLockModel.ts)。 */
+  private machineLocks: ReadonlyMap<string, MachineLock> = new Map();
   /**
    * 直近の monitorDevices で観測したデバイス一覧(整列済み・表示フィルタ適用前)。
    * fleetest.monitorDeviceFilter が変わったときに次の監視サイクル(最大 interval 秒)を待たず
@@ -241,6 +255,13 @@ export class MonitorProcessManager {
 
     this.stoppingMonitor = false;
     this.monitorProcess = proc;
+    // **占有の控えは monitor プロセスと寿命を共にする** —— 供給元はこのプロセスの子
+    // (リモート機で走る `api monitor`)で、再起動すれば新しい子が最初のサイクルで出し直す。
+    // 残したままだと、終わった run の錠前が出続け配信も畳まれたままになる。
+    // **デバイス一覧で間引かない**(消えた機械の行を捨てる hostMetricsMachines とは別の寿命):
+    // 子は変化したときだけ出すので、一度捨てると run が終わるまで二度と届かない
+    this.machineLocks = new Map();
+    this.deps.notifyMachineLocks(this.machineLocks);
     this.monitorStartedAt = Date.now();
     // 再起動(プロファイル切り替え含む)でプロセス側の抑制状態は失われるため、既にストリーミング中の
     // デバイスがあれば suppressFrames を再送する(MonitorDeviceStreamController.streamingIds 参照)。
@@ -264,6 +285,10 @@ export class MonitorProcessManager {
           this.deps.outputChannel.appendLine(
             t(value.active ? "deviceOps.log.monitorHoldActive" : "deviceOps.log.monitorHoldReleased"),
           );
+          return;
+        }
+        if (value.kind === "monitorLock") {
+          this.applyMachineLock(value);
           return;
         }
         if (value.kind === "monitorDevices") {
@@ -528,6 +553,62 @@ export class MonitorProcessManager {
    *  webview の再読込(パネル生成・言語切替)で行が消えるので sendInitialState から呼ぶ。 */
   postHostMetricsMachines(): void {
     this.deps.post({ type: "hostMetricsMachines", machines: this.hostMetricsMachines });
+    this.postMachineLocks();
+  }
+
+  /** いまの占有を webview へ配り直す(行の集合と同じく webview 再読込で失われる)。 */
+  postMachineLocks(): void {
+    for (const [machine, lock] of this.machineLocks) {
+      this.deps.post({
+        type: "machineLock", machine, held: isConfirmedHeld(lock), issuer: lock.issuer, mine: lock.mine,
+      });
+    }
+  }
+
+  /** リモート機で誰かが run を走らせているか。破壊的操作の確認が読む(占有が**不明**の機械は
+   * undefined —— 「走っていない」と請け合わない)。 */
+  machineLock(machine: string): MachineLock | undefined {
+    return this.machineLocks.get(machine);
+  }
+
+  /** いま run が走っている機械の一覧(一括停止の確認が読む)。 */
+  occupiedMachineList(): readonly { readonly machine: string; readonly issuer?: string }[] {
+    // **観測できているものだけを名指しする**(不明を「実行中」と言わない。言えないことは黙る)
+    return [...this.machineLocks]
+      .filter(([, lock]) => isConfirmedHeld(lock))
+      .map(([machine, lock]) => ({ machine, issuer: lock.issuer }));
+  }
+
+  /** monitorLock 1件を控えへ畳み、変化があれば配信の退避と表示へ配る。 */
+  private applyMachineLock(event: {
+    readonly machine?: string; readonly observed: boolean; readonly held: boolean;
+    readonly issuer?: string; readonly issuerHost?: string; readonly acquiredAt?: string;
+    readonly mine: boolean;
+  }): void {
+    const before = event.machine === undefined ? undefined : this.machineLocks.get(event.machine);
+    this.machineLocks = applyMachineLockEvent(this.machineLocks, event);
+    const after = event.machine === undefined ? undefined : this.machineLocks.get(event.machine);
+    if (before?.held === after?.held && before?.issuer === after?.issuer
+        && before?.observed === after?.observed) {
+      return;
+    }
+    if (event.machine !== undefined) {
+      // **「終わった」と言うのは、掴んでいたのが解放されたときだけ** —— 起動直後の
+      // 「不明 → 空き」や、観測が途切れただけの遷移で「run が終わりました」と書かない
+      // (毎回の monitor 起動で、走ってもいない run の完了行が機械ぶん並ぶ)
+      if (isConfirmedHeld(after)) {
+        this.deps.outputChannel.appendLine(t("deviceOps.log.machineLockHeld",
+          { machine: event.machine, issuer: after?.issuer ?? "?" }));
+      } else if (isConfirmedHeld(before) && after?.observed === true) {
+        this.deps.outputChannel.appendLine(
+          t("deviceOps.log.machineLockFree", { machine: event.machine }));
+      }
+      this.deps.post({
+        type: "machineLock", machine: event.machine,
+        held: isConfirmedHeld(after), issuer: after?.issuer, mine: after?.mine ?? false,
+      });
+    }
+    this.deps.notifyMachineLocks(this.machineLocks);
   }
 
   /**

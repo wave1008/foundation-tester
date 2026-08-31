@@ -343,6 +343,21 @@ public enum RemoteArtifactCollection {
 
 extension RemoteArtifactCollection {
 
+    /// 回収済みの録画をランナーから消す1本のコマンド(docs/remote-runner.md §15.4)。
+    /// **消すのは録画だけ**(実績 JSON は残す = `remote clean` の保持ポリシーが面倒を見る)。
+    ///
+    /// **グロブを使わない**。①置き場は `results/runs/<YYYY-MM>/<runID>/recordings`
+    /// (RunResultsStore.runDir。月の階層がある)ので `runs/*/recordings` では1件も当たらない
+    /// ②ssh の相手はログインシェル(macOS 既定は zsh)で、**マッチしないグロブはそのコマンドを
+    /// 失敗させる**(`no matches found`)ため、録画が無い run のたびに警告が出る。
+    /// find の `-mindepth/-maxdepth 3` が階層の契約(runs から数えて 月 / runID / recordings)。
+    /// runs が無いときは何もしない(`test -d`)= 失敗と区別できる
+    public static func deleteRecordingsCommand(project: String, layout: RemoteLayout) -> String {
+        let runs = RemoteShell.quote(layout.projectDir(project) + "/results/runs")
+        return "if [ -d \(runs) ]; then find \(runs) -mindepth 3 -maxdepth 3 -type d"
+            + " -name recordings -exec rm -rf {} +; fi"
+    }
+
     /// rsync の失敗が「**転送元がそもそも無い**」だけかを判定する。run がシナリオ実行の前に
     /// 落ちた場合(リモートのビルド失敗など)、reports/results はリモートに1つも作られないので
     /// 回収は必ず 23 で失敗する —— これを warning にすると、**本当の失敗理由の下に
@@ -725,6 +740,21 @@ public struct RemoteHostStatus: Equatable, Sendable {
     public let toolchain: String?
     public let binaryPresent: Bool
     public let freeKB: Int?
+    /// dispatch.lock の状態(docs/remote-runner.md §18.2 M2)。nil = ブロックが読めず判定不能。
+    /// **「今このフリートを誰が使っているか」を手で ssh しに行かずに済ませる**ための欄で、
+    /// 破壊的操作(remote clean)の前にも同じ probe を撃つ
+    public let lock: RemoteDispatchLock.Probe?
+
+    /// lock は既定 nil ―― 既存の5引数呼び出し(と、それを固定しているテスト)を壊さない
+    public init(session: RemoteSessionInfo?, revision: String?, toolchain: String?,
+                binaryPresent: Bool, freeKB: Int?, lock: RemoteDispatchLock.Probe? = nil) {
+        self.session = session
+        self.revision = revision
+        self.toolchain = toolchain
+        self.binaryPresent = binaryPresent
+        self.freeKB = freeKB
+        self.lock = lock
+    }
 }
 
 /// `fleetest remote status` 用の1コマンド組み立て・パース(ssh 1回で全項目を取る。往復を
@@ -745,6 +775,12 @@ public enum RemoteStatusProbe {
             "xcrun --sdk iphonesimulator --show-sdk-build-version",
             "test -x \(dquote(layout.binary)) && echo yes || echo no",
             "df -k \(dquote(layout.base)) | tail -1",
+            // **dispatch.lock はホストに1本**(発行者ネームスペースの外側)。RemoteDispatchLock の
+            // probeCommand と同じ形だが、こちらは $HOME 未解決の base を扱うため dquote で包む
+            // (単一引用符だと展開されない。ファイル冒頭の注記と同じ理由)
+            "if [ -d \(dquote(RemoteDispatchLock.lockDirPath(base: layout.base))) ]; then echo held;"
+                + " cat \(dquote(RemoteDispatchLock.infoFilePath(base: layout.base))) 2>/dev/null || true;"
+                + " else echo absent; fi",
         ]
         return steps.joined(separator: "; \(sep); ")
     }
@@ -764,9 +800,11 @@ public enum RemoteStatusProbe {
         }
         let binaryPresent = trimmedNonEmpty(block(4)) == "yes"
         let freeKB = block(5).flatMap(parseFreeKB)
+        // 旧ランナー(ブロックが6個しか無い)では nil = 判定不能。「ロック無し」に倒さない
+        let lock = block(6).flatMap(RemoteDispatchLock.parseProbe)
 
         return RemoteHostStatus(session: session, revision: revision, toolchain: toolchain,
-                                binaryPresent: binaryPresent, freeKB: freeKB)
+                                binaryPresent: binaryPresent, freeKB: freeKB, lock: lock)
     }
 
     /// 二重引用符クォート。`$` はエスケープしない($HOME を展開させるための唯一の理由でこの
@@ -839,6 +877,11 @@ public enum RemoteCleanPlan {
         let base = RemoteShell.quote(layout.base)
         let projects = RemoteLayout.projectsDirName
         let targets = [
+            // 配信の控え(FTCore.StreamLease)。**ホスト共有の1箇所**で、書いた側は execv で
+            // 化けるので自分では消せない —— 死んだ pid の控えが溜まる(読む側は無視するが、
+            // **pid が一巡して別プロセスに当たると、その台の配信が誰にも張れなくなる**)。
+            // ここで保持ポリシーに掛けて上限を作る(数日前の配信は必ず終わっている)
+            base + "/.fleetest/streams",
             base + "/users/*/work/.fleetest/dispatch",
             base + "/users/*/work/\(projects)/*/reports",
             base + "/users/*/work/\(projects)/*/results",
@@ -847,6 +890,50 @@ public enum RemoteCleanPlan {
             base + "/work/\(projects)/*/results",
         ]
         return targets.map { "find \($0) -mindepth 1 -maxdepth 1 -mtime +\(keepDays) \(action)" }
+    }
+}
+
+/// `du -sk <base>/users/*/work <base>/work` の出力 → 発行者ごとの使用量(純粋)。
+/// **ディスクはホスト共有資源**なので「誰のぶんか」が見えないと消す判断ができない(§18.1)。
+/// 行の形は `<KB>\t<path>`(BSD du)。想定外の行は捨てる = 壊れた1行で全体を失わない
+public enum RemoteDiskUsage {
+    public struct Row: Equatable, Sendable {
+        public let issuer: String
+        public let kb: Int
+        public init(issuer: String, kb: Int) {
+            self.issuer = issuer
+            self.kb = kb
+        }
+    }
+
+    /// 旧レイアウト(`<base>/work`)の表示名。発行者ネームスペース化前の残骸で、
+    /// 誰のものとも言えないので発行者名の代わりにこの語を出す
+    public static let legacyLabel = "(legacy work)"
+
+    public static func parse(_ output: String, usersDir: String, base: String) -> [Row] {
+        let legacyPath = stripTrailingSlashes(base) + "/work"
+        let prefix = stripTrailingSlashes(usersDir) + "/"
+        var rows: [Row] = []
+        for line in output.split(separator: "\n") {
+            let parts = line.split(separator: "\t", maxSplits: 1, omittingEmptySubsequences: false)
+            guard parts.count == 2, let kb = Int(parts[0].trimmingCharacters(in: .whitespaces)) else { continue }
+            let path = parts[1].trimmingCharacters(in: .whitespaces)
+            if path == legacyPath {
+                rows.append(Row(issuer: legacyLabel, kb: kb))
+            } else if path.hasPrefix(prefix), path.hasSuffix("/work") {
+                let issuer = String(path.dropFirst(prefix.count).dropLast("/work".count))
+                guard !issuer.isEmpty, !issuer.contains("/") else { continue }
+                rows.append(Row(issuer: issuer, kb: kb))
+            }
+        }
+        // 大きい順(消す判断に使う欄なので、目に入る順を「食っている順」にする)
+        return rows.sorted { $0.kb > $1.kb }
+    }
+
+    private static func stripTrailingSlashes(_ path: String) -> String {
+        var result = path
+        while result.hasSuffix("/") { result.removeLast() }
+        return result
     }
 }
 
@@ -886,7 +973,7 @@ public enum RemoteShell {
         return "cd \(quote(layout.workDir)) 2>/dev/null && test -f Package.swift || "
             + "{ echo \"no runner workspace at \(layout.workDir) — run: fleetest remote setup"
             + " <this host> once for this issuer (docs/remote-runner.md §18)\" >&2; exit 91; } && "
-            + "\(pathCmd) && \(issuerCmd)\(guardCmd) && \(syncCmd) && \(launch)"
+            + "\(pathCmd) && \(runnerBaseCmd(layout: layout))\(issuerCmd)\(guardCmd) && \(syncCmd) && \(launch)"
     }
 
     /// `fleetest remote exec`(docs/remote-runner.md §14「単発コマンドの転送は汎用化する」)。
@@ -899,10 +986,22 @@ public enum RemoteShell {
         let quotedArgs = args.map(quote).joined(separator: " ")
         let launch = "\(binary) \(quotedArgs)"
         let pathCmd = "export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\""
+        // **exec も発行者を運ぶ**(run と同じ理由)。exec が入るのは `users/<layout.issuer>/work`
+        // なので、そのネームスペースの持ち主がそのまま帰属になる。fan-out の子(api monitor /
+        // api device-stream)はこの値で「ロックを握っているのは自分か」を判定する(HostOccupancy)
+        let issuerCmd = "export FT_ISSUER=\(quote(layout.issuer)) && "
         return "cd \(quote(layout.workDir)) 2>/dev/null && test -f Package.swift || "
             + "{ echo \"no runner workspace at \(layout.workDir) — run: fleetest remote setup"
             + " <this host> once for this issuer (docs/remote-runner.md §18)\" >&2; exit 91; } && "
-            + "\(pathCmd) && \(guardCmd) && \(launch)"
+            + "\(pathCmd) && \(runnerBaseCmd(layout: layout))\(issuerCmd)\(guardCmd) && \(launch)"
+    }
+
+    /// ランナー機の base を子へ渡す(FTCore.RunnerBase)。**手元実行では存在しない値**なので、
+    /// 子はこの有無で「ランナー機の上に居るか」を判定でき、dispatch.lock を ssh 無しで読める
+    /// (docs/remote-runner.md §18.2)。run/exec の両方に置く —— 片方だけだと、その経路の子だけ
+    /// 占有が見えないまま配信を張り続ける
+    private static func runnerBaseCmd(layout: RemoteLayout) -> String {
+        "export \(RunnerBase.environmentKey)=\(quote(layout.base)) && "
     }
 }
 

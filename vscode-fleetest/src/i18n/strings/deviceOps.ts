@@ -52,6 +52,34 @@ export const deviceOpsStrings = {
     ja: "[monitor] 保持が解除されました — 観測を再開します",
     en: "[monitor] The hold was released — resuming observation",
   },
+  "deviceOps.log.machineLockHeld": {
+    ja: "[monitor] {machine} で {issuer} の run が実行中です — この機械のライブ配信を停止します(タイルはポーリングで更新)",
+    en: "[monitor] A run by {issuer} is in progress on {machine} — stopping live streams there (tiles keep updating by polling)",
+  },
+  "deviceOps.log.machineLockFree": {
+    ja: "[monitor] {machine} の run が終わりました — ライブ配信を再開します",
+    en: "[monitor] The run on {machine} finished — resuming live streams",
+  },
+  "deviceOps.occupiedDetail": {
+    ja: "{machine} では {issuer} の run が実行中です。この操作はその run を壊します。",
+    en: "A run by {issuer} is in progress on {machine}. This operation will break that run.",
+  },
+  "deviceOps.occupiedIssuerUnknown": {
+    ja: "誰か(発行者不明)",
+    en: "someone (issuer unknown)",
+  },
+  "deviceOps.bulkDownOccupiedMessage": {
+    ja: "実行中の run があるマシンのデバイスを停止しますか?",
+    en: "Stop devices on machines that have a run in progress?",
+  },
+  "deviceOps.bulkDownOccupiedDetail": {
+    ja: "{holders} — 停止するとその run は失敗します。",
+    en: "{holders} — stopping them makes those runs fail.",
+  },
+  "deviceOps.bulkDownOccupiedConfirmButton": {
+    ja: "それでも停止",
+    en: "Stop anyway",
+  },
   "deviceOps.log.bulkOpFailed": {
     ja: "[fleetest] {label} が失敗しました: {error}",
     en: "[fleetest] {label} failed: {error}",

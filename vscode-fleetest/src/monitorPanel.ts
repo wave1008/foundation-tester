@@ -36,6 +36,7 @@ import {
   type MonitorDevice,
   type MonitorToWebviewMessage,
 } from "./monitorModel";
+import { type MachineLock, occupiedMachines } from "./machineLockModel";
 import { MonitorBridgeWatchdog } from "./monitorBridgeWatchdog";
 import { MonitorDeviceOps } from "./monitorDeviceOps";
 import { MonitorDeviceStreamController } from "./monitorDeviceStreamController";
@@ -90,6 +91,13 @@ export interface MonitorPanelDeps {
   /** monitorDevicesイベントをMonitorDeviceStreamControllerへ渡す(パイプラインの張り替え判定に使う。
    * monitorProcessManager.tsのmonitorDevices処理から呼ぶ)。 */
   notifyMonitorDevices(devices: readonly MonitorDevice[]): void;
+  /** リモート機の占有(dispatch.lock)が変わったときに MonitorProcessManager が呼ぶ。
+   * **配信の自動退避**(占有中の機械のライブ配信を畳んでポーリングへ落とす)の入口
+   * (docs/remote-runner.md §18.2 M2)。 */
+  notifyMachineLocks(locks: ReadonlyMap<string, MachineLock>): void;
+  /** その機械で run が走っているか(MonitorProcessManager.machineLock への委譲)。
+   * **undefined は「不明」**(観測していない・旧ランナー)で、「走っていない」ではない。 */
+  machineLock(machine: string): MachineLock | undefined;
   /** 設定タブの「ポーリングモードを使用する」チェックボックスの現在値。true の間は
    * monitorDeviceStreamController.ts がストリーミング開始を抑止しポーリングへフォールバックする
    * (workspaceState の "monitor.pollingMode" を共有する livePanel.ts/monitorLiveController.ts も同様)。 */
@@ -239,7 +247,13 @@ export class MonitorPanelController implements vscode.Disposable {
         this.bridgeWatchdog.observe(devices);
         this.healthWatchdog.observe(devices);
       },
+      notifyMachineLocks: (locks) => {
+        // 占有が変わった瞬間に畳む/戻す(次の monitorDevices を待たない = run の開始直後に
+        // 配信が残っている時間を作らない)
+        this.deviceStream.setOccupiedMachines(occupiedMachines(locks));
+      },
       isPollingMode: () => this.pollingMode,
+      machineLock: (machine) => this.processManager.machineLock(machine),
       stopDeviceStreams: (name, machine) => this.deviceStream.disposeForDeviceName(name, machine),
       stopAllStreams: () => this.deviceStream.disposeAllForDown(),
       videoWebviewUri: (absPath) =>
@@ -519,7 +533,10 @@ export class MonitorPanelController implements vscode.Disposable {
         this.deviceOps.cancelBulkUp();
         break;
       case "devicesDown":
-        this.deviceOps.enqueueLifecycleJob({ kind: "bulk", op: "down" });
+        // **他人(あるいは自分)の run が走っている機械があれば先に言う**(§18.1 #6)。
+        // 一括停止はリモート機のブリッジとシミュレータも畳むので、走っている run は必ず落ちる。
+        // 占有が1件も無いときは従来どおり確認を挟まない(単独利用の手数を増やさない)
+        void this.confirmThenBulkDown();
         break;
       case "restartMonitor":
         // ストリームを先に作り直す: streamingIds をクリアしてから monitor を再起動させることで、
@@ -742,6 +759,27 @@ export class MonitorPanelController implements vscode.Disposable {
    * webviewからの"ready"を受けて初期状態をまとめて送る。readyはwebview再読込のたびに再送
    * されうるため、ここで呼ぶ各処理は冪等であること(いずれもwebview側で上書き描画するだけ)。
    */
+  /** 一括停止の前に、占有中の機械があれば modal で確認する(webview の window.confirm は
+   * 効かないのでホスト側で出す)。占有が無ければ即実行 = 従来どおり。 */
+  private async confirmThenBulkDown(): Promise<void> {
+    const occupied = this.processManager.occupiedMachineList();
+    if (occupied.length > 0) {
+      const holders = occupied
+        .map((entry) => `${entry.machine}: ${entry.issuer ?? t("deviceOps.occupiedIssuerUnknown")}`)
+        .join(t("deviceOps.nameSeparator"));
+      const confirmLabel = t("deviceOps.bulkDownOccupiedConfirmButton");
+      const choice = await vscode.window.showWarningMessage(
+        t("deviceOps.bulkDownOccupiedMessage"),
+        { modal: true, detail: t("deviceOps.bulkDownOccupiedDetail", { holders }) },
+        confirmLabel,
+      );
+      if (choice !== confirmLabel) {
+        return;
+      }
+    }
+    this.deviceOps.enqueueLifecycleJob({ kind: "bulk", op: "down" });
+  }
+
   private sendInitialState(): void {
     this.hydrateLaneUi();
     this.profiles.postProfileInfo();

@@ -67,6 +67,7 @@ function makeDeps(binaryPath) {
     isDeviceStreaming: () => false,
     getStreamingDeviceIds: () => [],
     notifyMonitorDevices: () => {},
+    notifyMachineLocks: () => {},
     isPanelActive: () => true,
     notifyMachineProfilesChanged: () => {},
     openGeneratedDocument: () => {},
@@ -243,6 +244,58 @@ const remoteDevice = {
   machine: "M1Max",
   detail: "",
 };
+
+// 共有ランナーの配信の退避(docs/remote-runner.md §18.2 M2)。**保持者が自分か他人かは問わない** ——
+// 配信を張ったままの run は実際に赤くなる(docs/verification.md の実測)。
+test("占有中の機械の配信は起こさず、張っていれば畳む", async () => {
+  const { dir, binaryPath } = makeMockBinaryDir(["fleetest-simstream", "fleetest"]);
+  const { deps } = makeDeps(binaryPath);
+  deps.getConfig = () => ({
+    binaryPath, iosStreamEnabled: true, androidStreamEnabled: false,
+    streamCodec: "h264", liveFps: 12, monitorMaxWidth: 960, project: "demo",
+  });
+  const controller = new MonitorDeviceStreamController(deps);
+  try {
+    controller.applyDevices([remoteDevice]);
+    assert.ok(await waitForArgv(dir, "fleetest"), "前提: 空いていれば配信が張られる");
+    fs.rmSync(path.join(dir, "fleetest.argv"));
+
+    // run が始まった = その機械が占有された。**次の monitorDevices を待たずに畳む**
+    controller.setOccupiedMachines(new Set(["M1Max"]));
+    assert.equal(controller.isStreaming(remoteDevice.id), false, "配信は畳まれる");
+    controller.applyDevices([remoteDevice]);
+    assert.equal(await waitForArgv(dir, "fleetest", 300), undefined,
+      "占有中は起こし直さない(タイルはポーリングのフレームで更新され続ける)");
+
+    // run が終われば戻る
+    controller.setOccupiedMachines(new Set());
+    assert.ok(await waitForArgv(dir, "fleetest"), "解放されたら張り直す");
+  } finally {
+    controller.setVisible(false);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// 同じ台を2人が眺めると端末側の捕捉コストが人数ぶん重なる(FTCore.StreamLease)。
+// **起こしてから断られる形にしない** = 監視が配る事実を見て起こさないだけ(ssh を張らない)
+test("他の発行者が配信中の台は起こさない", async () => {
+  const { dir, binaryPath } = makeMockBinaryDir(["fleetest-simstream", "fleetest"]);
+  const { deps } = makeDeps(binaryPath);
+  deps.getConfig = () => ({
+    binaryPath, iosStreamEnabled: true, androidStreamEnabled: false,
+    streamCodec: "h264", liveFps: 12, monitorMaxWidth: 960, project: "demo",
+  });
+  const controller = new MonitorDeviceStreamController(deps);
+  try {
+    controller.applyDevices([{ ...remoteDevice, streamedByOther: true }]);
+    assert.equal(await waitForArgv(dir, "fleetest", 300), undefined, "二重に張らない");
+    controller.applyDevices([{ ...remoteDevice, streamedByOther: false }]);
+    assert.ok(await waitForArgv(dir, "fleetest"), "相手がやめたら張る");
+  } finally {
+    controller.setVisible(false);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 test("リモートのデバイスは remote exec 経由の device-stream で配信する", async () => {
   // fleetest 本体を mock にする(リモート経路はこれを spawn する)

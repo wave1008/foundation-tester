@@ -148,6 +148,35 @@ facts の machine 採取は relink より前。relink が reportPath を書き�
 `rsync -F`(dir-merge)を使うとランナー機の台帳が消える(実験で確認)。除外は
 `.fleetest-transfer-ignore` を `--exclude` 相当で明示的に読む形にしてある。
 
+### 3.5 ssh 越しのコマンドにグロブを書かない(相手は zsh。マッチ無しは「文字列のまま」にならない)
+
+`ssh <host> '<コマンド>'` を解釈するのは**相手のログインシェル**で、macOS の既定は zsh。
+sh/bash と違い、**マッチしないグロブはエラーになる**(`no matches found`)。しかも壊れ方が
+2通りあり、どちらも 2026-08-31 に実機で確認した:
+
+| 形 | zsh の挙動 |
+|---|---|
+| `rm -rf <nomatch>` (単純コマンド) | そのコマンドだけ失敗(exit 1)。**後続の文は動く** |
+| `for w in <nomatch>; do …; done` | **シェルごと終了**(exit 1)。**後続の文が1つも動かない** |
+
+前者は「録画が無い run のたびに `warning: failed to delete …`」、後者は「まだ誰も setup して
+いないランナーで、旧 `work` の片付けまで丸ごと落ちる」という形で出る。**2文に分けても直らない**
+(後者はシェル自体が終わる)。
+
+→ 規則: **リモートで回す一覧は `find … 2>/dev/null` で作る**(1件も無ければ空の出力になるだけ)。
+`RemoteHooksReap.commandAcrossIssuers` と `RemoteArtifactCollection.deleteRecordingsCommand` が
+その形。パスに空白が入らないこと(`validateBase` / `validateIssuerKey`)が語分割の前提。
+
+### 3.6 「消す」コマンドは階層を数え間違えても静かに成功する
+
+回収済み録画の削除を `results/runs/*/recordings` と書いたが、実際の置き場は
+`results/runs/<YYYY-MM>/<runID>/recordings`(`RunResultsStore.runDir` が月の階層を挟む)。
+**1件も消えないのに成功**するので、テストが文字列を固定しているだけだと気付けない
+(2026-08-31 のレビューで発見。単体テストは誤った期待値ごと緑だった)。
+
+→ 規則: パスの深さに依存する削除・走査は、**実データのあるランナーで `-print` して1件以上
+当たることを確かめる**(実際に当ててから `rm` へ変える)。
+
 ---
 
 ## 4. ビルド・検証
