@@ -125,21 +125,21 @@ export function setMachineLock(machine, held, issuer, mine) {
   }
 }
 
-/** 控え(hmLocks)を1行へ反映する。**空きは要素ごと消す**(無印 = 空き)。 */
+/**
+ * 控え(hmLocks)を1行へ反映する。**要素は足しも消しもしない** —— 枠は monitorHtml.ts が
+ * 全行に置いてあり、ここは可視性と説明文だけを切り替える(足し引きすると、その行だけ幅が
+ * 変わって MEM/CPU/… の列が行ごとにずれる。2026-08-31 の実害)。
+ */
 function hmApplyLock(row, machine) {
-  const lock = hmLocks.get(machine);
-  let chip = row.el.querySelector('.hm-lock');
-  if (!lock) {
-    if (chip) {
-      chip.remove();
-    }
+  const chip = row.el.querySelector('.hm-lock');
+  if (!chip) {
     return;
   }
-  if (!chip) {
-    chip = document.createElement('span');
-    chip.className = 'hm-lock';
-    chip.textContent = '🔒';
-    row.el.querySelector('.hm-machine').insertAdjacentElement('afterend', chip);
+  const lock = hmLocks.get(machine);
+  chip.classList.toggle('hm-lock-on', !!lock);
+  if (!lock) {
+    chip.removeAttribute('title');
+    return;
   }
   chip.title = lock.mine
     ? t('wvMonitor2.hostCharts.lockMine', { machine })

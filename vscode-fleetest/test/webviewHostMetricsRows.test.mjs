@@ -143,12 +143,32 @@ test("占有の錠前は行より先に届いても出る(行の生成時に貼�
   send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
 
   const chip = rowFor(document, "mac2").querySelector(".hm-lock");
-  assert.ok(chip, "行ができた時点で錠前が貼られる");
+  assert.ok(chip.classList.contains("hm-lock-on"), "行ができた時点で錠前が点く");
   assert.match(chip.title, /bob/, "誰の run かはツールチップに出す");
-  assert.equal(rowFor(document, "").querySelector(".hm-lock"), null, "手元の行には出さない");
+  assert.equal(
+    rowFor(document, "").querySelector(".hm-lock").classList.contains("hm-lock-on"), false,
+    "手元の行には出さない",
+  );
 
   send(window, { type: "machineLock", machine: "mac2", held: false, mine: false });
-  assert.equal(rowFor(document, "mac2").querySelector(".hm-lock"), null, "空きは無印(要素ごと消す)");
+  assert.equal(chip.classList.contains("hm-lock-on"), false, "空きは無印");
+});
+
+// **錠前は行の幅を動かさない** —— 出る行にだけ要素を足すと、その行だけ MEM/CPU/… が右へずれる
+// (2026-08-31 の実害)。枠は全行に常にあり、切り替えるのは可視性だけ
+test("錠前が出ても行ごとの列がずれない(枠は全行に常にある)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  send(window, { type: "hostMetricsMachines", machines: ["mac2", "mac3"] });
+  const slots = rows(document).map((row) => row.querySelectorAll(".hm-lock").length);
+  assert.deepEqual(slots, [1, 1, 1], "どの行にも錠前の枠が1つある(手元の行も含む)");
+
+  send(window, { type: "machineLock", machine: "mac2", held: true, issuer: "bob", mine: false });
+  // 要素の増減で列がずれないこと = 錠前の有無に関わらず、各行の子要素の並びが同じであること
+  const shapes = rows(document).map((row) =>
+    [...row.children].map((child) => child.className.split(" ")[0]).join(","));
+  assert.equal(new Set(shapes).size, 1, `行の構造が揃っていない: ${JSON.stringify(shapes)}`);
 });
 
 test("サンプルは machine の行にだけ積み、描くのは手元の tick で全行まとめて", (t) => {
