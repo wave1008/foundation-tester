@@ -410,4 +410,9 @@ export const deviceOpsStrings = {
     ja: "エミュレータ内プロセス",
     en: "Process inside the emulator",
   },
+  // 実機のブリッジ行の補足(serial が emulator- 以外)。実機に「エミュレータ内」は誤り
+  "deviceOps.note.physicalDeviceInternalProcess": {
+    ja: "実機内プロセス",
+    en: "Process on the physical device",
+  },
 } satisfies MessageDict;

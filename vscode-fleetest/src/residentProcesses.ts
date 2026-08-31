@@ -404,8 +404,11 @@ export function parseAndroidBridges(
     if (devicePort !== ANDROID_BRIDGE_DEVICE_PORT) {
       continue;
     }
+    // 補足は端末の種別で分ける(実機に「エミュレータ内」は誤り。用語規律: 実機=物理端末のみ)。
+    // adb の serial は仮想なら必ず emulator-<port>、それ以外(英数・IP:port・adb-…_tcp)は実機
+    const emulator = serial.startsWith("emulator-");
     rows.push({
-      pid: 0, // ホスト PID 無し(エミュレータ内プロセス)
+      pid: 0, // ホスト PID 無し(端末内プロセス)
       ppid: 0,
       type: "android-bridge",
       label: typeLabel("android-bridge", locale),
@@ -414,7 +417,8 @@ export function parseAndroidBridges(
       zombie: false,
       parentDescription: `Android(${serial})`,
       command: `am instrument com.example.ftbridge/.BridgeInstrumentation @ ${serial}`,
-      note: rt("deviceOps.note.emulatorInternalProcess", locale),
+      note: rt(emulator ? "deviceOps.note.emulatorInternalProcess"
+                        : "deviceOps.note.physicalDeviceInternalProcess", locale),
       devicePid: pidBySerial?.get(serial),
     });
   }
