@@ -7,6 +7,7 @@
 import { vscode } from './vscodeApi.js';
 import { t } from '../i18n.js';
 import { clearChildren, td } from './domUtil.js';
+import { machineLabel } from './machineNames.js';
 import { requestTrend } from './trend.js';
 import {
   formatDurationHuman,
@@ -78,7 +79,7 @@ function renderMeta(run) {
   wrap.append(
     metaRow(t('wvDashboard.runDetail.labelStarted'), formatLocalDateTime(run.startedAt)),
     metaRow(t('wvDashboard.runDetail.labelFinished'), run.finishedAt ? formatLocalDateTime(run.finishedAt) : t('wvDashboard.runDetail.none')),
-    metaRow(t('wvDashboard.runDetail.labelHost'), run.host),
+    metaRow(t('wvDashboard.runDetail.labelHost'), machineLabel(run.host)),
     metaRow(t('wvDashboard.runDetail.labelProfile'), run.profile || t('wvDashboard.runDetail.none')),
     metaRow(t('wvDashboard.runDetail.labelTrigger'), run.trigger),
     metaRow(t('wvDashboard.runDetail.colResult'), countsText(run)),

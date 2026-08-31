@@ -47,7 +47,7 @@ export const webviewDashboardStrings = {
   "wvDashboard.runDetail.none": { ja: "(なし)", en: "(None)" },
   "wvDashboard.runDetail.labelStarted": { ja: "開始", en: "Started" },
   "wvDashboard.runDetail.labelFinished": { ja: "終了", en: "Finished" },
-  "wvDashboard.runDetail.labelHost": { ja: "host", en: "host" },
+  "wvDashboard.runDetail.labelHost": { ja: "machine", en: "machine" },
   "wvDashboard.runDetail.labelProfile": { ja: "profile", en: "profile" },
   "wvDashboard.runDetail.labelTrigger": { ja: "trigger", en: "trigger" },
   "wvDashboard.runDetail.labelCounts": {
@@ -92,5 +92,5 @@ export const webviewDashboardStrings = {
   "wvDashboard.trend.colResult": { ja: "結果", en: "Result" },
   "wvDashboard.trend.colDuration": { ja: "所要", en: "Duration" },
   "wvDashboard.trend.colWorker": { ja: "worker", en: "worker" },
-  "wvDashboard.trend.colHost": { ja: "host", en: "host" },
+  "wvDashboard.trend.colHost": { ja: "machine", en: "machine" },
 } satisfies MessageDict;

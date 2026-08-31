@@ -351,6 +351,15 @@ export interface ApiResultsPayload {
   readonly fullSuiteMinScenarios?: number;
   /** `--performance` run の集計。本フィールド追加前の CLI ではキー欠落。 */
   readonly performance?: PerformanceReport;
+  /** 記録の host(ホスト名)→ この Mac の登録名(machine)の読み替え表(facts キャッシュ由来。
+   * 表示時にだけ引く —— 記録・runID は host のまま)。本フィールド追加前の CLI ではキー欠落。 */
+  readonly machines?: readonly MachineAliasRow[];
+}
+
+/** host(記録の鍵)→ machine(表示名)の1組。Swift 側 ApiResultsCommand.MachineAliasEntry と対。 */
+export interface MachineAliasRow {
+  readonly host: string;
+  readonly machine: string;
 }
 
 // ---- webview ⇔ 拡張のメッセージ契約 ----------------------------------------------------
@@ -758,6 +767,15 @@ export function isApiResultsPayload(value: unknown): value is ApiResultsPayload 
     return false;
   }
   if (value.fullSuiteMinScenarios !== undefined && typeof value.fullSuiteMinScenarios !== "number") {
+    return false;
+  }
+  if (
+    value.machines !== undefined &&
+    (!Array.isArray(value.machines) ||
+      !value.machines.every(
+        (m) => isRecord(m) && typeof m.host === "string" && typeof m.machine === "string",
+      ))
+  ) {
     return false;
   }
   // performance はキー欠落(旧 CLI)を許容するため undefined のみ特別扱いする。

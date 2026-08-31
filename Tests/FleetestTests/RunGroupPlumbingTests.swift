@@ -70,7 +70,8 @@ final class RunGroupPlumbingTests: XCTestCase {
         let a = RunRecorder.makeRunGroupID()
         let b = RunRecorder.makeRunGroupID()
         XCTAssertNotEqual(a, b)
-        XCTAssertNotNil(a.range(of: #"^\d{8}-\d{6}Z-[A-Za-z0-9_-]+-[0-9a-f]{4}$"#, options: .regularExpression),
+        // マシン名は埋めない(makeRunID の宣言参照。ホスト名が表示へ漏れるため 2026-09-01 に撤去)
+        XCTAssertNotNil(a.range(of: #"^\d{8}-\d{6}Z-[0-9a-f]{8}$"#, options: .regularExpression),
                         "runID と同じ形でない: \(a)")
     }
 

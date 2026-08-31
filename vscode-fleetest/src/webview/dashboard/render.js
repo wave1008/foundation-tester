@@ -15,6 +15,7 @@ import {
 } from './format.js';
 import { t } from '../i18n.js';
 import { clearChildren, td } from './domUtil.js';
+import { machineLabel } from './machineNames.js';
 import { requestRunDetail } from './runDetail.js';
 import { requestTrend } from './trend.js';
 
@@ -44,7 +45,7 @@ export function renderHeadline(latestRun) {
   const parts = [
     formatLocalDateTime(latestRun.startedAt),
     'trigger: ' + latestRun.trigger,
-    'host: ' + latestRun.host,
+    'machine: ' + machineLabel(latestRun.host),
     'profile: ' + (latestRun.profile || t('wvDashboard.render.none')),
   ];
   for (const part of parts) {
@@ -64,9 +65,11 @@ function anomalyBreakdown(anomalies) {
   return [...counts.entries()].map(([kind, n]) => kind + '×' + n).join(', ');
 }
 
-function runIdCell(run, allRuns) {
+/** 日時セル。runID は列に出さない(2026-09-01 ユーザー指示。行の title と詳細取得の鍵にだけ使う)。
+ * runGroup バッジ(複数機械にまたがった run の束ね)はここに載せる。 */
+function runDateCell(run, allRuns) {
   const cell = document.createElement('td');
-  cell.textContent = run.runID;
+  cell.textContent = formatLocalDateTime(run.startedAt);
   if (run.runGroup) {
     const badge = document.createElement('span');
     badge.className = 'run-group-badge';
@@ -101,10 +104,9 @@ export function renderRunsTable(runs) {
     row.className = 'row-clickable';
     row.title = run.runID;
     row.append(
-      runIdCell(run, runs),
-      td(formatLocalDateTime(run.startedAt)),
+      runDateCell(run, runs),
       td(run.trigger),
-      td(run.host),
+      td(machineLabel(run.host)),
       td(run.profile || '–'),
       runResultCell(run),
     );

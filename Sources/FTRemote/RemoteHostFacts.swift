@@ -111,6 +111,28 @@ public enum RemoteHostFactsStore {
         }
     }
 
+    /// キャッシュ全体から「記録の host(ホスト名)→ ローカルエイリアス」の対応を集める
+    /// (machineAlias の doc にある唯一の用途 = 結果表示の読み替え)。host か machineAlias の
+    /// 欠けたエントリは飛ばす。host 昇順で決定的。同じ host が複数ファイルに居たら
+    /// updatedAt の新しい方を採る(IP と手元名で二重観測されうる)
+    public static func aliasPairs(dir: URL) -> [(host: String, machine: String)] {
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: dir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) else {
+            return []
+        }
+        let decoder = JSONDecoder()
+        var byHost: [String: (machine: String, updatedAt: String)] = [:]
+        for file in files where file.pathExtension == "json" {
+            guard let data = try? Data(contentsOf: file),
+                  let facts = try? decoder.decode(RemoteHostFacts.self, from: data),
+                  let host = facts.host, let machine = facts.machineAlias else { continue }
+            if let existing = byHost[host], existing.updatedAt >= facts.updatedAt { continue }
+            byHost[host] = (machine, facts.updatedAt)
+        }
+        return byHost.map { (host: $0.key, machine: $0.value.machine) }
+            .sorted { $0.host < $1.host }
+    }
+
     /// 読めない(存在しない・壊れた JSON)場合は nil
     public static func load(dir: URL, host: String) -> RemoteHostFacts? {
         guard let data = try? Data(contentsOf: entryURL(dir: dir, host: host)) else { return nil }

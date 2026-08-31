@@ -5,6 +5,7 @@
 import ArgumentParser
 import Foundation
 import FTCore
+import FTRemote
 
 struct ApiResultsCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
@@ -59,7 +60,9 @@ struct ApiResultsCommand: AsyncParsableCommand {
             triage: RunResultsQuery.triage(records),
             dailyFullSuite: RunResultsQuery.fullSuiteDaily(records: records, runs: runs),
             fullSuiteMinScenarios: RunResultsQuery.fullSuiteMinScenarios,
-            performance: RunResultsQuery.performanceReport(records: records, runs: runs))
+            performance: RunResultsQuery.performanceReport(records: records, runs: runs),
+            machines: RemoteHostFactsStore.aliasPairs(dir: RemoteHostFactsStore.dir(project: testProject))
+                .map { MachineAliasEntry(host: $0.host, machine: $0.machine) })
 
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
@@ -88,10 +91,13 @@ private struct ApiResultsOutput: Encodable {
     let dailyFullSuite: [RunResultsQuery.DailyRow]
     let fullSuiteMinScenarios: Int
     let performance: RunResultsQuery.PerformanceReport
+    /// 記録の host(ホスト名)→ この Mac の登録名(machine)の読み替え表(facts キャッシュ由来)。
+    /// 記録・runID は host のまま —— エイリアスは改名されうるので表示時にだけ引く
+    let machines: [MachineAliasEntry]
 
     private enum CodingKeys: String, CodingKey {
         case schemaVersion, project, generatedAt, since, runs, summary, flaky, devices, daily, trend,
-             slow, insights, matrix, triage, dailyFullSuite, fullSuiteMinScenarios, performance
+             slow, insights, matrix, triage, dailyFullSuite, fullSuiteMinScenarios, performance, machines
     }
 
     func encode(to encoder: Encoder) throws {
@@ -117,5 +123,12 @@ private struct ApiResultsOutput: Encodable {
         try container.encode(dailyFullSuite, forKey: .dailyFullSuite)
         try container.encode(fullSuiteMinScenarios, forKey: .fullSuiteMinScenarios)
         try container.encode(performance, forKey: .performance)
+        try container.encode(machines, forKey: .machines)
     }
+}
+
+/// host(記録の鍵)→ machine(表示名)の1組。TS 側契約: dashboardModel.ts の MachineAliasRow
+struct MachineAliasEntry: Encodable {
+    let host: String
+    let machine: String
 }

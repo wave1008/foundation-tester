@@ -6,6 +6,7 @@
 
 import { t } from '../i18n.js';
 import { clearChildren, td } from './domUtil.js';
+import { machineLabel } from './machineNames.js';
 import { deltaBadgeCell } from './render.js';
 import {
   formatDurationHuman,
@@ -51,7 +52,7 @@ function renderRunsTable(runs) {
     const tr = document.createElement('tr');
     tr.append(
       td(formatLocalDateTime(row.startedAt)),
-      td(row.host),
+      td(machineLabel(row.host)),
       td(row.profile || '–'),
       td(formatDurationHuman(row.wallClockMs)),
       td(formatDurationHuman(row.testTimeMs)),
@@ -101,7 +102,7 @@ function renderSummary(latest, invalidCount) {
 
 function runLabel(runID, runs) {
   const target = runs.find((r) => r.runID === runID);
-  return target ? formatLocalDateTime(target.startedAt) + '(' + target.host + ')' : runID;
+  return target ? formatLocalDateTime(target.startedAt) + '(' + machineLabel(target.host) + ')' : runID;
 }
 
 function renderComparisonHeading(comparisonRunID, comparedRunID, runs) {

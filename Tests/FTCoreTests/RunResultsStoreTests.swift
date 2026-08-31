@@ -282,8 +282,9 @@ final class RunResultsStoreTests: XCTestCase {
 
     func testRunRecorderSequentialNamingAndFinish() {
         let recorder = RunRecorder.begin(project: project, profile: "default", trigger: "cli", captureHostMetrics: false)
+        // マシン名は埋めない(RunRecorder.makeRunID の宣言参照。2026-09-01 に撤去)
         XCTAssertTrue(
-            recorder.runID.range(of: #"^\d{8}-\d{6}Z-.+-[0-9a-f]{4}$"#, options: .regularExpression) != nil,
+            recorder.runID.range(of: #"^\d{8}-\d{6}Z-[0-9a-f]{8}$"#, options: .regularExpression) != nil,
             "runID: \(recorder.runID)")
 
         recorder.record(makeScenarioRecord(scenarioID: "Foo.bar", runID: "", passed: true))

@@ -444,7 +444,7 @@ function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
       <div id="perf-summary"></div>
       <table id="table-perf-runs" class="dash-table">
         <thead>
-          <tr><th>${t("exploreHeal.dashboard.colDateTime")}</th><th>host</th><th>profile</th><th>${t("exploreHeal.dashboard.colWallClock")}</th><th>${t("exploreHeal.dashboard.colTestTime")}</th><th>${t("exploreHeal.dashboard.colScenarioTotal")}</th><th>${t("exploreHeal.dashboard.colLaneCount")}</th><th>${t("exploreHeal.dashboard.colLaneUtilisation")}</th><th>${t("exploreHeal.dashboard.colMaxScenario")}</th><th>${t("exploreHeal.dashboard.colRuns")}</th><th>${t("exploreHeal.dashboard.colResult")}</th></tr>
+          <tr><th>${t("exploreHeal.dashboard.colDateTime")}</th><th>machine</th><th>profile</th><th>${t("exploreHeal.dashboard.colWallClock")}</th><th>${t("exploreHeal.dashboard.colTestTime")}</th><th>${t("exploreHeal.dashboard.colScenarioTotal")}</th><th>${t("exploreHeal.dashboard.colLaneCount")}</th><th>${t("exploreHeal.dashboard.colLaneUtilisation")}</th><th>${t("exploreHeal.dashboard.colMaxScenario")}</th><th>${t("exploreHeal.dashboard.colRuns")}</th><th>${t("exploreHeal.dashboard.colResult")}</th></tr>
         </thead>
         <tbody id="table-perf-runs-body"></tbody>
       </table>
@@ -463,7 +463,7 @@ function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
       <div id="headline-latest" class="headline-latest"></div>
       <table id="table-runs" class="dash-table">
         <thead>
-          <tr><th>runID</th><th>${t("exploreHeal.dashboard.colDateTime")}</th><th>trigger</th><th>host</th><th>profile</th><th>${t("exploreHeal.dashboard.colResult")}</th></tr>
+          <tr><th>${t("exploreHeal.dashboard.colDateTime")}</th><th>trigger</th><th>machine</th><th>profile</th><th>${t("exploreHeal.dashboard.colResult")}</th></tr>
         </thead>
         <tbody id="table-runs-body"></tbody>
       </table>

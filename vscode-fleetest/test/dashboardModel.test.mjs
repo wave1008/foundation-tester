@@ -357,6 +357,22 @@ test("isApiResultsPayload: fullSuiteMinScenarios が数値でなければ false"
   assert.equal(isApiResultsPayload(validPayload({ fullSuiteMinScenarios: "30" })), false);
 });
 
+test("isApiResultsPayload: machines(host→machine 読み替え表)を含む値・欠落(旧 CLI)の両方を true と判定する", () => {
+  const withMachines = validPayload({
+    machines: [
+      { host: "LDIPC96", machine: "local" },
+      { host: "SNB-M1", machine: "M1Max" },
+    ],
+  });
+  assert.equal(isApiResultsPayload(withMachines), true);
+  assert.equal(isApiResultsPayload(validPayload()), true);
+});
+
+test("isApiResultsPayload: machines の要素に host/machine が欠けていれば false", () => {
+  assert.equal(isApiResultsPayload(validPayload({ machines: [{ host: "LDIPC96" }] })), false);
+  assert.equal(isApiResultsPayload(validPayload({ machines: "not-an-array" })), false);
+});
+
 // ---- performance(ApiResultsPayload の追加キー) ----------------------------------------------
 
 function validPerfRunRow(overrides = {}) {

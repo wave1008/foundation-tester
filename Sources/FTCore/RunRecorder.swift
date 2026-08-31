@@ -68,7 +68,7 @@ public final class RunRecorder: @unchecked Sendable {
                              captureHostMetrics: Bool = true,
                              runGroup: String? = nil) -> RunRecorder {
         let machine = resolveMachine()
-        let runID = makeRunID(machine: machine)
+        let runID = makeRunID()
         let resultsDir = RunResultsStore.resultsDir(projectRoot: project.rootURL)
         let runDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: runID)
         let startedAt = ISO8601DateFormatter().string(from: Date())
@@ -226,17 +226,23 @@ public final class RunRecorder: @unchecked Sendable {
     /// (辞書順=時系列順。親は run ディレクトリを作らないので runID とは衝突しない)。
     /// 子はこれを `--run-group` で受け取って**そのまま**書く —— 各機械が自分で作ると束にならない
     public static func makeRunGroupID() -> String {
-        makeRunID(machine: resolveMachine())
+        makeRunID()
     }
 
-    /// <yyyyMMdd-HHmmss(UTC)>Z-<machine>-<乱数4hex>。辞書順 = 時系列順になるよう固定幅にする
-    private static func makeRunID(machine: String) -> String {
+    /// <yyyyMMdd-HHmmss(UTC)>Z-<乱数8hex>。辞書順 = 時系列順になるよう固定幅にする。
+    /// **マシン名は埋めない**(2026-09-01 ユーザー指示。埋めたホスト名が表示へ漏れ続けるため。
+    /// どの機械の run かは記録の `host` 欄が持ち、画面は machine へ読み替える)。
+    /// 複数マシンが同じ results/ へ書いても衝突しない一意性は、マシン名の代わりに
+    /// 乱数を 4hex→8hex(2^32)へ広げて担保する。旧形式
+    /// (<ts>Z-<マシン名>-<4hex>)の記録もそのまま読める —— 構造に依存する読み手は
+    /// 先頭の日時 prefix だけ(RunResultsStore.runDir / recordingsStore.ts)
+    private static func makeRunID() -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMdd-HHmmss"
         formatter.timeZone = TimeZone(identifier: "UTC")
         formatter.locale = Locale(identifier: "en_US_POSIX")
         let timestamp = formatter.string(from: Date())
-        let random = String(format: "%04x", UInt32.random(in: 0...0xFFFF))
-        return "\(timestamp)Z-\(machine)-\(random)"
+        let random = String(format: "%08x", UInt32.random(in: .min ... .max))
+        return "\(timestamp)Z-\(random)"
     }
 }

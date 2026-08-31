@@ -18,6 +18,7 @@ import {
   renderTriageTable,
 } from './render.js';
 import { renderPerformance } from './performance.js';
+import { setMachineAliases } from './machineNames.js';
 import { showRunDetailData, showRunDetailError } from './runDetail.js';
 import { showTrendData, showTrendError } from './trend.js';
 
@@ -70,6 +71,8 @@ function applyData(payload) {
     return;
   }
   showState('data');
+  // 各セクションの host 表示を machine へ読み替えるため、描画より先に対応表を差し替える
+  setMachineAliases(payload.machines || []);
   // キー欠落(旧 CLI)を許容する契約(dashboardModel.ts)のため performance は undefined のことがある。
   renderPerformance(payload.performance);
   renderHeadline(payload.runs[0]);

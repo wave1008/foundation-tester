@@ -114,6 +114,37 @@ final class RemoteHostFactsTests: XCTestCase {
         XCTAssertEqual(RemoteHostFactsStore.load(dir: dir, host: "user@host")?.host, "A")
     }
 
+    // MARK: - aliasPairs(dir:)
+
+    func testAliasPairsCollectsHostToMachineSorted() {
+        RemoteHostFactsStore.save(
+            RemoteHostFacts(host: "SNB-M1", machineAlias: "M1Max", updatedAt: "2026-08-31T00:00:00Z"),
+            dir: dir, host: "192.168.20.101")
+        RemoteHostFactsStore.save(
+            RemoteHostFacts(host: "LDIPC96", machineAlias: "local", updatedAt: "2026-08-31T00:00:00Z"),
+            dir: dir, host: "LDIPC96")
+        // machineAlias 欠落は表に入れない
+        RemoteHostFactsStore.save(
+            RemoteHostFacts(host: "NOALIAS", updatedAt: "2026-08-31T00:00:00Z"),
+            dir: dir, host: "10.0.0.9")
+        let pairs = RemoteHostFactsStore.aliasPairs(dir: dir)
+        XCTAssertEqual(pairs.map(\.host), ["LDIPC96", "SNB-M1"], "host 昇順・欠落は除外")
+        XCTAssertEqual(pairs.map(\.machine), ["local", "M1Max"])
+    }
+
+    /// 同じ host が IP キーと名前キーの両ファイルに居るとき、updatedAt の新しい方のエイリアスを採る
+    func testAliasPairsPrefersNewerEntryForDuplicateHost() {
+        RemoteHostFactsStore.save(
+            RemoteHostFacts(host: "SNB-M1", machineAlias: "old-name", updatedAt: "2026-08-01T00:00:00Z"),
+            dir: dir, host: "SNB-M1")
+        RemoteHostFactsStore.save(
+            RemoteHostFacts(host: "SNB-M1", machineAlias: "M1Max", updatedAt: "2026-08-31T00:00:00Z"),
+            dir: dir, host: "192.168.20.101")
+        let pairs = RemoteHostFactsStore.aliasPairs(dir: dir)
+        XCTAssertEqual(pairs.count, 1)
+        XCTAssertEqual(pairs.first?.machine, "M1Max")
+    }
+
     // MARK: - MachineHardware.current()
 
     /// この機械上での sanity チェック(具体値は環境依存なので形だけ確認する)

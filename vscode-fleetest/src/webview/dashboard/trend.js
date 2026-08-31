@@ -8,6 +8,7 @@
 import { vscode } from './vscodeApi.js';
 import { t } from '../i18n.js';
 import { clearChildren, td } from './domUtil.js';
+import { machineLabel } from './machineNames.js';
 import {
   formatDurationHuman,
   formatLocalDateTime,
@@ -59,7 +60,7 @@ function recordRow(record) {
     td(passFailMark(record.passed)),
     td(formatDurationHuman(record.durationMs)),
     td(record.worker || '–'),
-    td(record.host),
+    td(machineLabel(record.host)),
   );
   return tr;
 }
