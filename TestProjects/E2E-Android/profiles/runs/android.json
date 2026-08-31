@@ -4,10 +4,6 @@
   "devices": [
     {
       "machine": "local",
-      "name": "Pixel 4a"
-    },
-    {
-      "machine": "local",
       "name": "Pixel 9(Android 15)-01"
     },
     {
@@ -17,10 +13,6 @@
     {
       "machine": "M1Max",
       "name": "Pixel 10(Android 14(API 34) / arm64-v8a)-01"
-    },
-    {
-      "machine": "M1Ultra",
-      "name": "Pixel 3a"
     }
   ],
   "heal": false,
