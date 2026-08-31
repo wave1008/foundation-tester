@@ -73,7 +73,7 @@ final class StepExecutorHealSelectorNamingTests: XCTestCase {
             element(2, type: "textField", id: "row_input", depth: 1, y: 200),
         ])
         let driver = StubDriver(snap)
-        let executor = StepExecutor(driver: driver, delegate: FixedHealer(ref: 1), healingEnabled: true)
+        let executor = StepExecutor(driver: driver, delegate: FixedHealer(ref: 1), healingEnabled: true, isAndroid: false)
         // 素の locator は木のどこにも無い(旧セレクタが古くなった想定)→ cache miss →
         // delegate.healLocator へ進む
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "stale_id"))
@@ -94,7 +94,7 @@ final class StepExecutorHealSelectorNamingTests: XCTestCase {
     func testUniqueIDCandidateHealsNormally() async throws {
         let snap = snapshot([element(1, type: "textField", id: "unique_input", depth: 1)])
         let driver = StubDriver(snap)
-        let executor = StepExecutor(driver: driver, delegate: FixedHealer(ref: 1), healingEnabled: true)
+        let executor = StepExecutor(driver: driver, delegate: FixedHealer(ref: 1), healingEnabled: true, isAndroid: false)
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "stale_id"))
         let outcome = await executor.execute(step)
 
@@ -115,7 +115,7 @@ final class StepExecutorHealSelectorNamingTests: XCTestCase {
             element(3, type: "clickable", depth: 2),
         ])
         let driver = StubDriver(snap)
-        let executor = StepExecutor(driver: driver, delegate: FixedHealer(ref: 2), healingEnabled: true)
+        let executor = StepExecutor(driver: driver, delegate: FixedHealer(ref: 2), healingEnabled: true, isAndroid: false)
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "stale_id"))
         let outcome = await executor.execute(step)
 

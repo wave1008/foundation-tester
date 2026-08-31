@@ -214,11 +214,12 @@ public enum TapTargetGeometry {
     public static func advisory(for element: ElementInfo, in elements: [ElementInfo],
                                 screen: FTRect,
                                 keyboardOcclusion: KeyboardOcclusion,
-                                overlayWindows: OverlayWindowOcclusion) -> String? {
+                                overlayWindows: OverlayWindowOcclusion,
+                                isAndroid: Bool) -> String? {
         keyboardOcclusion.advisory(for: element)
             ?? overlayWindows.advisory(for: element)
             ?? disabledAdvisory(for: element)
-            ?? occlusionAdvisory(for: element, in: elements, screen: screen)
+            ?? occlusionAdvisory(for: element, in: elements, screen: screen, isAndroid: isAndroid)
     }
 
     /// **座標に依る警告の優先順チェーン、当たった形**(強い事実から先に、最初の1件だけ)。
@@ -355,7 +356,7 @@ public enum TapTargetGeometry {
     /// **DSL 用の文言**(ステップ注記なので主語は "the target")。`advisoryKind` の kind ごとに
     /// 写すだけで、判定そのものはしない
     public static func occlusionAdvisory(for element: ElementInfo, in elements: [ElementInfo],
-                                         screen: FTRect) -> String? {
+                                         screen: FTRect, isAndroid: Bool) -> String? {
         guard let kind = advisoryKind(for: element, in: elements, screen: screen) else { return nil }
         switch kind {
         case .zeroFrame:
@@ -384,6 +385,12 @@ public enum TapTargetGeometry {
         case .clippedByContainer(let container):
             let edge = isClippedAtBottomEdge(element, container: container) ? "bottom" : "top"
             let h = Int(element.frame.height.rounded())
+            if isAndroid {
+                return "the target is cut off at the \(edge) edge of \(describe(container)) — only"
+                    + " \(h) of its height is drawn (px), but on Android the visible part is"
+                    + " normally still tappable at its visible centre, so the tap most likely hit"
+                    + " the target. Scroll it fully into view first if the result looks wrong"
+            }
             return "the target is cut off at the \(edge) edge of \(describe(container)) — only"
                 + " \(h) of its height is drawn (pt on iOS / px on Android), so the tap may land on"
                 + " whatever is drawn there instead"

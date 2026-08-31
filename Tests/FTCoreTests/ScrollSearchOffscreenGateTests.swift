@@ -132,7 +132,7 @@ final class ScrollSearchOffscreenGateTests: XCTestCase {
         let driver = StaticFrameDriver(
             frame: FTRect(x: 401, y: 300, width: 234, height: 56), screen: screen)
 
-        let outcome = await StepExecutor(driver: driver)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false)
             .execute(scrollTo(direction: "right", maxSwipes: 0))
 
         guard case .failed = outcome.status else {
@@ -148,7 +148,7 @@ final class ScrollSearchOffscreenGateTests: XCTestCase {
         let driver = StaticFrameDriver(
             frame: FTRect(x: 16, y: 829, width: 370, height: 56), screen: screen)
 
-        let outcome = await StepExecutor(driver: driver)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false)
             .execute(scrollTo(direction: "up", maxSwipes: 0))
 
         guard case .passed = outcome.status else {
@@ -161,7 +161,7 @@ final class ScrollSearchOffscreenGateTests: XCTestCase {
     func testMidRoundWithCentreOffscreenStillNudgesTowardIt() async {
         let driver = NudgeIntoViewDriver(screen: screen)
 
-        let outcome = await StepExecutor(driver: driver)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false)
             .execute(scrollTo(direction: "right", maxSwipes: 1))
 
         guard case .passed = outcome.status else {
@@ -179,7 +179,7 @@ final class ScrollSearchOffscreenGateTests: XCTestCase {
         let driver = StaticFrameDriver(
             frame: FTRect(x: 0, y: -2500, width: 402, height: 3000), screen: screen)
 
-        let outcome = await StepExecutor(driver: driver)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false)
             .execute(scrollTo(direction: "down", maxSwipes: 0))
 
         guard case .passed = outcome.status else {
@@ -193,7 +193,7 @@ final class ScrollSearchOffscreenGateTests: XCTestCase {
         let driver = StaticFrameDriver(
             frame: FTRect(x: 1000, y: 1000, width: 0, height: 0), screen: screen)
 
-        let outcome = await StepExecutor(driver: driver)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false)
             .execute(scrollTo(direction: "down", maxSwipes: 0))
 
         guard case .passed = outcome.status else {
@@ -207,7 +207,7 @@ final class ScrollSearchOffscreenGateTests: XCTestCase {
         let driver = StaticFrameDriver(
             frame: FTRect(x: 800, y: -2500, width: 234, height: 3000), screen: screen)
 
-        let outcome = await StepExecutor(driver: driver)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false)
             .execute(scrollTo(direction: "right", maxSwipes: 0))
 
         guard case .failed = outcome.status else {
@@ -221,7 +221,7 @@ final class ScrollSearchOffscreenGateTests: XCTestCase {
         let driver = StaticFrameDriver(
             frame: FTRect(x: -49, y: 2000, width: 500, height: 56), screen: screen)
 
-        let outcome = await StepExecutor(driver: driver)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false)
             .execute(scrollTo(direction: "down", maxSwipes: 0))
 
         guard case .failed = outcome.status else {
@@ -239,7 +239,7 @@ final class ScrollSearchOffscreenGateTests: XCTestCase {
     func testReverseSweepDoesNotRecoverAnElementWhoseCentreIsOffscreen() async throws {
         let driver = DraggableStaticFrameDriver(
             frame: FTRect(x: 800, y: -2500, width: 234, height: 3000), screen: screen)
-        let executor = StepExecutor(driver: driver)
+        let executor = StepExecutor(driver: driver, isAndroid: false)
         var phase = StepExecutor.PhaseAccumulator()
 
         let recovered = try await executor.reverseSweep(
@@ -255,7 +255,7 @@ final class ScrollSearchOffscreenGateTests: XCTestCase {
     func testReverseSweepStillRecoversAnOversizedElementWhoseCentreIsOnscreen() async throws {
         let driver = DraggableStaticFrameDriver(
             frame: FTRect(x: 60, y: -2500, width: 234, height: 3000), screen: screen)
-        let executor = StepExecutor(driver: driver)
+        let executor = StepExecutor(driver: driver, isAndroid: false)
         var phase = StepExecutor.PhaseAccumulator()
 
         let recovered = try await executor.reverseSweep(

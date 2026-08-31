@@ -101,7 +101,7 @@ final class ScrollSearchStopTests: XCTestCase {
     func testSearchStopsOnceTheContentNoLongerMoves() async throws {
         let driver = CountingDriver(frame: Self.still)
 
-        let result = await StepExecutor(driver: driver).execute(scrollTo("missing", maxSwipes: 8))
+        let result = await StepExecutor(driver: driver, isAndroid: false).execute(scrollTo("missing", maxSwipes: 8))
 
         XCTAssertLessThan(driver.swipeCount, 8,
                           "動かない画面なのに上限まで振っている: \(driver.swipeCount) 回")
@@ -150,7 +150,7 @@ final class ScrollSearchStopTests: XCTestCase {
     func testSearchReportsThatTheContentMovedBeforeItStopped() async throws {
         let driver = MovingDriver(movesAtMost: 1)
 
-        let result = await StepExecutor(driver: driver).execute(scrollTo("missing", maxSwipes: 8))
+        let result = await StepExecutor(driver: driver, isAndroid: false).execute(scrollTo("missing", maxSwipes: 8))
 
         guard case .failed(let reason) = result.status else {
             return XCTFail("見つからない探索は失敗のはず: \(result.status)")
@@ -164,7 +164,7 @@ final class ScrollSearchStopTests: XCTestCase {
     func testSearchKeepsGoingWhileTheContentMoves() async throws {
         let driver = MovingDriver()
 
-        _ = await StepExecutor(driver: driver).execute(scrollTo("missing", maxSwipes: 5))
+        _ = await StepExecutor(driver: driver, isAndroid: false).execute(scrollTo("missing", maxSwipes: 5))
 
         XCTAssertEqual(driver.swipeCount, 5,
                        "動いているのに打ち切った: \(driver.swipeCount) 回")
@@ -179,7 +179,7 @@ final class ScrollSearchStopTests: XCTestCase {
         var step = scrollTo("missing", maxSwipes: 8)
         step.scrollFrame = FlowLocator(id: "no_such_container")
 
-        let outcome = await StepExecutor(driver: driver).execute(step)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(step)
 
         XCTAssertEqual(driver.swipeCount, 0, "scrollFrame が解決できないなら1本も振らないこと")
         guard case .failed(let reason) = outcome.status else {

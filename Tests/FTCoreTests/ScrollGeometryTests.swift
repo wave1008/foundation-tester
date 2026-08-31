@@ -366,4 +366,54 @@ final class ScrollGeometryTests: XCTestCase {
         XCTAssertEqual(path?.fromY ?? -1, 509 * 0.75, accuracy: 0.001)
         XCTAssertLessThan(path?.fromY ?? .infinity, 509)
     }
+
+    // MARK: - marginsForKeyboardClippedViewport(キーボード側だけ詰める非対称マージン)
+
+    /// .down は始点(fromY)が下端 = キーボード側。キーボードが下にあるときは start だけ詰め、
+    /// 反対側(end = 画面上端。ナビバー等の chrome を守る)は intent 既定のまま
+    func testKeyboardClippedMarginsTightenTheStartSideForDown() {
+        let margins = ScrollGeometry.marginsForKeyboardClippedViewport(
+            start: 0.25, end: 0.25, direction: .down, keyboardBelow: true)
+        XCTAssertEqual(margins.start, 0.15, accuracy: 0.0001)
+        XCTAssertEqual(margins.end, 0.25, accuracy: 0.0001)
+    }
+
+    /// .up は終点(toY)が下端 = キーボード側なので、詰まるのは end のほう(start は上端のまま)
+    func testKeyboardClippedMarginsTightenTheEndSideForUp() {
+        let margins = ScrollGeometry.marginsForKeyboardClippedViewport(
+            start: 0.25, end: 0.25, direction: .up, keyboardBelow: true)
+        XCTAssertEqual(margins.start, 0.25, accuracy: 0.0001)
+        XCTAssertEqual(margins.end, 0.15, accuracy: 0.0001)
+    }
+
+    /// 水平方向はキーボードと無関係(縦帯でしか削らない)なので、そのまま返す
+    func testKeyboardClippedMarginsLeaveHorizontalDirectionsUnchanged() {
+        let left = ScrollGeometry.marginsForKeyboardClippedViewport(
+            start: 0.2, end: 0.2, direction: .left, keyboardBelow: true)
+        XCTAssertEqual(left.start, 0.2, accuracy: 0.0001)
+        XCTAssertEqual(left.end, 0.2, accuracy: 0.0001)
+        let right = ScrollGeometry.marginsForKeyboardClippedViewport(
+            start: 0.2, end: 0.2, direction: .right, keyboardBelow: true)
+        XCTAssertEqual(right.start, 0.2, accuracy: 0.0001)
+        XCTAssertEqual(right.end, 0.2, accuracy: 0.0001)
+    }
+
+    /// iPhone 13 実測(509pt に縮んだ viewport)で組んだ経路は、詰めたマージンのほうが
+    /// 通常マージンより長く動く(254pt → 305pt)。かつ始点は viewport の内側(< 509)のまま
+    /// = キーボード面には乗らない
+    func testTightenedMarginsTravelFartherOnTheClippedIPhone13Viewport() {
+        let clippedViewport = FTRect(x: 0, y: 0, width: 390, height: 509)
+        let tightened = ScrollGeometry.marginsForKeyboardClippedViewport(
+            start: 0.25, end: 0.25, direction: .down, keyboardBelow: true)
+        let tightenedPath = ScrollGeometry.path(
+            container: clippedViewport, viewport: clippedViewport, direction: .down,
+            startMarginRatio: tightened.start, endMarginRatio: tightened.end)
+        let defaultPath = ScrollGeometry.path(
+            container: clippedViewport, viewport: clippedViewport, direction: .down,
+            startMarginRatio: 0.25, endMarginRatio: 0.25)
+        XCTAssertEqual(tightenedPath?.distance ?? 0, 305.4, accuracy: 0.001)
+        XCTAssertEqual(defaultPath?.distance ?? 0, 254.5, accuracy: 0.001)
+        XCTAssertGreaterThan(tightenedPath?.distance ?? 0, defaultPath?.distance ?? 0)
+        XCTAssertLessThan(tightenedPath?.fromY ?? .infinity, 509)
+    }
 }

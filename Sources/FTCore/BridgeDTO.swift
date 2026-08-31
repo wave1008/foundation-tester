@@ -270,7 +270,20 @@ public enum BridgeAPI {
     /// byte-identical, `XCUIApplication.state` says foreground and /hittable says hittable
     /// (measured on a physical iPhone SE3). A stale runner 404s, and the host stays silent while
     /// taps land on the covering surface → bump.
-    public static let bridgeProtocolVersion = 84
+    ///
+    /// 84: a WKWebView DOM that could not be read even once no longer comes back as a silently
+    /// empty (native-only) tree — it now carries a `webViewPath="dom-unread"` note naming why
+    /// (`webview-loading` / `webview-eval-timeout` / `webview-not-readable` / `webview-dom-off`).
+    /// A stale runner keeps dropping the Web elements with no reason left behind → bump.
+    ///
+    /// 85: two blind spots measured 2026-08-31 on a physical iPhone 13. `POST /swipe` with no
+    /// `path` now falls back to a coordinate press-drag in **landscape** (`landscapeDefaultSwipe`)
+    /// — the 8-way `swipeUp()`/`swipeDown()`/etc. switch moves nothing there (844x390, portrait
+    /// unaffected). `POST /clearInput` now fires one blind delete burst when the field's
+    /// remaining text reads nil at entry — whitespace-only content is invisible to accessibility,
+    /// so a field holding only spaces looked already-clear and the next `/type` appended after
+    /// it. A stale runner keeps both silently wrong → bump.
+    public static let bridgeProtocolVersion = 85
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
@@ -289,6 +302,17 @@ public enum BridgeAPI {
     public static let homeButtonAspectThreshold = 2.0
     /// iPhone とみなす短辺の上限(pt)。これ以上は iPad 扱いで従来動作
     public static let phoneShortSideLimit = 500.0
+
+    /// 横向き既定 swipe(XCUITest ランナーの `landscapeDefaultSwipe`)のマージン比。
+    /// `Sources/FTCore/ScrollGeometry.swift` の `FTScrollDefaults` の `.search` と同じ値
+    /// (スパン0.5・重なり50%)を写したもの——ScrollGeometry.swift はランナーの入力集合に
+    /// 無いため定数はここに置く。
+    /// 0.25(0.2 でなく)である理由: 横向きの高さは実測 ~390pt で下部バー+セーフエリアが
+    /// ~y=341 から始まる。0.2 の始点(y≈312)はそこを ~30pt しかクリアしない
+    /// (docs/performance-tuning.md:798-801 に、全画面 swipe がタブバー上で始まり 0pt しか
+    /// 動かなかった実測が残る)。それでもバーに乗れば動かない——そのときは
+    /// host 側の「何も動いていない」判定がそのまま報告する
+    public static let defaultSwipeMarginRatio = 0.25
 
     /// **SpringBoard の面がアプリを覆っていることの目印**(`GET /systemui/covering`)。
     ///

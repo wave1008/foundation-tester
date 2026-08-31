@@ -281,7 +281,8 @@ enum RefGuard {
     /// **判定は `TapTargetGeometry.advisoryKind` の1箇所だけ**(DSL の `occlusionAdvisory` と共有)。
     /// ここは kind を MCP の文言(要素を名指しし、ft_screenshot / ft_scroll_to という MCP の
     /// ツール名で逃げ道を書く)へ写すだけ —— 順序・当たり判定を書き直さない
-    static func overlapWarning(found: ElementInfo, in elements: [ElementInfo], screen: FTRect) -> String {
+    static func overlapWarning(found: ElementInfo, in elements: [ElementInfo], screen: FTRect,
+                               isAndroid: Bool) -> String {
         guard let kind = TapTargetGeometry.advisoryKind(for: found, in: elements, screen: screen)
         else { return "" }
         switch kind {
@@ -325,6 +326,13 @@ enum RefGuard {
             let edge = TapTargetGeometry.isClippedAtBottomEdge(found, container: container)
                 ? "bottom" : "top"
             let h = Int(found.frame.height.rounded())
+            if isAndroid {
+                return " (note: \(describe(found)) is cut off at the \(edge) edge of"
+                    + " \(describe(container)), only \(h) of its height is drawn, but on Android"
+                    + " the visible part is normally still tappable at its visible centre, so this"
+                    + " most likely hit \(describe(found)) — scroll it fully into view with"
+                    + " ft_scroll_to if the result looks wrong)"
+            }
             return " (warning: \(describe(found)) is cut off at the \(edge) edge of"
                 + " \(describe(container)), only \(h) of its height is drawn, so this may have hit"
                 + " whatever is drawn there instead — scroll it fully into view with"

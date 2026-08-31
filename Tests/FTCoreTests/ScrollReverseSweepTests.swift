@@ -104,7 +104,7 @@ final class ScrollReverseSweepTests: XCTestCase {
     func testReverseSweepFindsTheOvershotElement() async throws {
         let driver = JumpScreenDriver()
 
-        let outcome = await StepExecutor(driver: driver).execute(scrollTo("jrow_05"))
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(scrollTo("jrow_05"))
 
         guard case .passed = outcome.status else {
             return XCTFail("飛び越した要素を拾い直せていない: \(outcome.status)"
@@ -118,7 +118,7 @@ final class ScrollReverseSweepTests: XCTestCase {
         let driver = JumpScreenDriver()
         driver.declaresScrollable = true
 
-        let outcome = await StepExecutor(driver: driver).execute(scrollTo("jrow_05"))
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(scrollTo("jrow_05"))
 
         let note = outcome.driverFallback ?? ""
         XCTAssertTrue(note.contains("specify scrollFrame: #list_jump"), "注記: \(note)")
@@ -128,7 +128,7 @@ final class ScrollReverseSweepTests: XCTestCase {
     func testReverseSweepStaysGenericWhenTheContainerCannotBeNamed() async throws {
         let driver = JumpScreenDriver()   // declaresScrollable = false
 
-        let outcome = await StepExecutor(driver: driver).execute(scrollTo("jrow_05"))
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(scrollTo("jrow_05"))
 
         let note = outcome.driverFallback ?? ""
         XCTAssertTrue(note.contains("specify scrollFrame: to step"), "注記: \(note)")
@@ -139,7 +139,7 @@ final class ScrollReverseSweepTests: XCTestCase {
     func testReverseSweepIsSkippedWhenContainerInferenceIsOff() async throws {
         let driver = JumpScreenDriver()
 
-        let outcome = await StepExecutor(driver: driver)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false)
             .execute(scrollTo("jrow_05", containerInference: false))
 
         guard case .failed = outcome.status else {

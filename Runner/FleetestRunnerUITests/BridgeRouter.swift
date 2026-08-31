@@ -741,6 +741,17 @@ final class BridgeRouter {
                 + " container does not move focus. Tap the field (or pass the ref of the element"
                 + " whose type is a text field) and try again")
         }
+        if Self.remainingText(of: focused) == nil {
+            // 空白のみの内容は a11y から読めない(value が nil か placeholder と同値に見える。
+            // TypeReadback のコメント参照)ので、この欄が本当に空か「見えない空白が残っている」かは
+            // 区別できない。長さも分からないので固定本数の当て推量で消す——空欄への delete は
+            // no-op なので外れて多く撃っても損は無く、それでも残るほど長ければ次の /type の
+            // 読み返し不一致が唯一の合図になる(2026-08-31・実機実測)
+            let frame = focused.frame
+            coordinate(app, CGPoint(x: frame.maxX - 4, y: frame.midY)).tap()
+            focused.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue,
+                                     count: Self.invisibleContentDeleteBurst))
+        }
         let deadline = Date().addingTimeInterval(Self.clearBudgetSeconds)
         var previous: String?
         var stagnantRounds = 0
@@ -760,6 +771,10 @@ final class BridgeRouter {
             throw BridgeError(422, "could not empty the field"
                 + " (\(residual.count) character(s) still there after \(rounds) round(s))")
         }
+        // **控えの値も空にする**: /type は「入力前の値」を直近スナップショットの控え(refElements)から
+        // 取るので、clear → type を撮り直さずに続けると clear 前の値を期待に足して再送し、
+        // 消したはずの文字列が戻る(実機 iPhone 13・2026-08-31: replace で `   モバイル   `)
+        if let ref = req.ref { refElements[ref]?.value = nil }
         return .json(OKResponse())
     }
 
@@ -768,6 +783,10 @@ final class BridgeRouter {
     private static let clearBudgetSeconds: TimeInterval = 8
     /// 残り文字数が変わらない周回の許容数。1周まるごと打鍵が落ちることがあるので 1 では早すぎる
     private static let clearMaxStagnantRounds = 4
+    /// 読めない(空白のみの)内容へ撃つ当て推量の delete 本数。長さが分からないので、人や
+    /// ツールが誤って残しがちな空白の連続を覆う値として 8 を置く(2026-08-31 実機実測の根拠は
+    /// 直前のコメント参照)
+    private static let invisibleContentDeleteBurst = 8
 
     /// value が placeholder と一致/空なら nil(クリア済み扱い)を返す
     private static func remainingText(of element: XCUIElement) -> String? {
@@ -830,16 +849,15 @@ final class BridgeRouter {
         // 速度未指定のときは既定速度を模倣せず**素の press-drag** にする —— 指定領域を
         // 動かすことが目的で、未指定側(全画面)の挙動を変えるものではない
         if let path = req.path {
-            let from = coordinate(app, CGPoint(x: path.fromX, y: path.fromY))
-            let to = coordinate(app, CGPoint(x: path.toX, y: path.toY))
-            FastInput.with(req.fast) {
-                if let velocity {
-                    from.press(forDuration: 0.05, thenDragTo: to,
-                               withVelocity: velocity, thenHoldForDuration: 0)
-                } else {
-                    from.press(forDuration: 0.05, thenDragTo: to)
-                }
-            }
+            pressDrag(app, from: CGPoint(x: path.fromX, y: path.fromY),
+                      to: CGPoint(x: path.toX, y: path.toY), velocity: velocity, fast: req.fast)
+            return .json(OKResponse())
+        }
+        // 横向きだけ `swipeUp()` 系が不発(2026-08-31・実機 iPhone 13 landscape 844x390 実測:
+        // 8方向 switch のどれも画面を動かさない。縦向きは同じ switch のままでよい)。
+        // path 指定と同じ press-drag へ落とし、始点・終点は landscapeDefaultSwipe が決める
+        if let (from, to) = Self.landscapeDefaultSwipe(req.direction, frame: app.frame) {
+            pressDrag(app, from: from, to: to, velocity: velocity, fast: req.fast)
             return .json(OKResponse())
         }
         FastInput.with(req.fast) {
@@ -855,6 +873,50 @@ final class BridgeRouter {
             }
         }
         return .json(OKResponse())
+    }
+
+    /// path 指定 swipe と横向き既定 swipe が共有する press-drag(velocity nil = 素の
+    /// `press(forDuration:thenDragTo:)`。既定速度を模倣しない理由は handleSwipe のコメント)
+    private func pressDrag(_ app: XCUIApplication, from: CGPoint, to: CGPoint,
+                           velocity: XCUIGestureVelocity?, fast: Bool?) {
+        let fromCoordinate = coordinate(app, from)
+        let toCoordinate = coordinate(app, to)
+        FastInput.with(fast) {
+            if let velocity {
+                fromCoordinate.press(forDuration: 0.05, thenDragTo: toCoordinate,
+                                      withVelocity: velocity, thenHoldForDuration: 0)
+            } else {
+                fromCoordinate.press(forDuration: 0.05, thenDragTo: toCoordinate)
+            }
+        }
+    }
+
+    /// 横向き(landscape)専用の既定 swipe の始点・終点。**frame ローカル座標**を返す
+    /// (`coordinate(_:_:)` が app frame 原点からのオフセットとして加算するため minX/minY は足さない)。
+    /// 縦向きは対象外で nil を返し `swipeUp()` 系のまま —— 全画面を暗黙に座標化する案は
+    /// 2度撤回済み(docs/performance-tuning.md §3.19)。
+    /// マージンは `BridgeAPI.defaultSwipeMarginRatio`(0.25)。**それでもバーに乗れば動かない**——
+    /// そのときは host 側の「何も動いていない」判定がそのまま報告する
+    private static func landscapeDefaultSwipe(_ direction: FTSwipeDirection, frame: CGRect)
+        -> (CGPoint, CGPoint)? {
+        guard frame.width > frame.height else { return nil }
+        let margin = BridgeAPI.defaultSwipeMarginRatio
+        let midX = frame.width / 2
+        let midY = frame.height / 2
+        switch direction {
+        case .up:
+            return (CGPoint(x: midX, y: frame.height * (1 - margin)),
+                    CGPoint(x: midX, y: frame.height * margin))
+        case .down:
+            return (CGPoint(x: midX, y: frame.height * margin),
+                    CGPoint(x: midX, y: frame.height * (1 - margin)))
+        case .left:
+            return (CGPoint(x: frame.width * (1 - margin), y: midY),
+                    CGPoint(x: frame.width * margin, y: midY))
+        case .right:
+            return (CGPoint(x: frame.width * margin, y: midY),
+                    CGPoint(x: frame.width * (1 - margin), y: midY))
+        }
     }
 
     /// 2点間ドラッグ(座標は tap と同じポイント座標)。press=静止時間で長押し→ドラッグを再現し、

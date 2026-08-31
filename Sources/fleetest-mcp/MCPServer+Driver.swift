@@ -755,7 +755,9 @@ extension MCPServer {
         return "\nTo read the home screen or a system dialog instead of the app,"
             + " ft_launch bundleId: com.apple.springboard — it attaches to SpringBoard without"
             + " launching anything, and ft_snapshot then returns the home screen."
-            + " ft_launch your app again to go back."
+            + " ft_launch bundleId: <your app> resume: true to go back to it without losing its"
+            + " state (xcuitest engine only), or ft_launch bundleId: <your app> to relaunch it"
+            + " from scratch."
     }
 
     /// **iOS のシステムダイアログはこの木に出ない**ことを、詰まった場所で言う。

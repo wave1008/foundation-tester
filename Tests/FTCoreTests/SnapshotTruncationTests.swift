@@ -283,7 +283,7 @@ final class PositivePathCeilingRetakeTests: XCTestCase {
         let driver = TruncatingDriver()
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "submit"),
                             timeout: 0, occlusionGuard: false)
-        let outcome = await StepExecutor(driver: driver).execute(step)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(step)
         XCTAssertTrue(StepExecutor.isSuccess(outcome.status),
                       "切り詰めで落ちていた実在要素を「見つからない」と報告した: \(outcome.status)")
         XCTAssertGreaterThanOrEqual(driver.reads, 2, "天井で撮り直していない")
@@ -293,7 +293,7 @@ final class PositivePathCeilingRetakeTests: XCTestCase {
         let driver = TruncatingDriver()
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "submit"),
                             timeout: 0, occlusionGuard: false)
-        let outcome = await StepExecutor(driver: driver).execute(step)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(step)
         XCTAssertTrue(StepExecutor.isSuccess(outcome.status),
                       "切り詰めで落ちていた実在要素を解決できないと報告した: \(outcome.status)")
     }

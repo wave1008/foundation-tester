@@ -362,7 +362,7 @@ final class DuplicateRegionStepNoteTests: XCTestCase {
 
     func testTappingInsideADuplicatedRegionCarriesTheNote() async {
         let driver = DuplicateRegionDriver(tree(secondCopyY: 100))
-        let outcome = await StepExecutor(driver: driver).execute(tapStep())
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(tapStep())
         XCTAssertTrue(outcome.notes.contains(.staleDuplicateRegion),
                       "複製区間のタップが黙った: \(outcome.notes) / \(outcome.status)")
         XCTAssertFalse(driver.tapped.isEmpty, "注記であって拒否ではない(撃つこと)")
@@ -374,7 +374,7 @@ final class DuplicateRegionStepNoteTests: XCTestCase {
         let driver = DuplicateRegionDriver(tree(secondCopyY: 100))
         let step = FlowStep(action: "doubleTap", locator: FlowLocator(label: "気温"), timeout: 0,
                             occlusionGuard: false)
-        let outcome = await StepExecutor(driver: driver).execute(step)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(step)
         XCTAssertTrue(outcome.notes.contains(.staleDuplicateRegion),
                       "doubleTap が黙った: \(outcome.notes) / \(outcome.status)")
     }
@@ -382,7 +382,7 @@ final class DuplicateRegionStepNoteTests: XCTestCase {
     /// **陰性対照**: 2つ目のコピーが別の行にある = 正当なページ構造では付かない
     func testAValidPageStructureCarriesNoNote() async {
         let driver = DuplicateRegionDriver(tree(secondCopyY: 400))
-        let outcome = await StepExecutor(driver: driver).execute(tapStep())
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(tapStep())
         XCTAssertFalse(outcome.notes.contains(.staleDuplicateRegion), "\(outcome.notes)")
         XCTAssertFalse(driver.tapped.isEmpty)
     }

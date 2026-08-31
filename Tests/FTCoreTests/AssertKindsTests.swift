@@ -61,7 +61,7 @@ final class AssertKindsTests: XCTestCase {
 
     func testNotExistPassesImmediatelyWhenAbsent() async {
         let driver = ScriptedDriver(frames: [[node(1, id: "other")]])
-        let executor = StepExecutor(driver: driver)
+        let executor = StepExecutor(driver: driver, isAndroid: false)
         let step = FlowStep(assert: "notExists", locator: FlowLocator(id: "dialog"), timeout: 5)
         let outcome = await executor.execute(step)
         XCTAssertTrue(isPassed(outcome.status))
@@ -75,7 +75,7 @@ final class AssertKindsTests: XCTestCase {
             [node(1, id: "dialog")],
             [node(2, id: "other")],
         ])
-        let executor = StepExecutor(driver: driver)
+        let executor = StepExecutor(driver: driver, isAndroid: false)
         let step = FlowStep(assert: "notExists", locator: FlowLocator(id: "dialog"), timeout: 5)
         let outcome = await executor.execute(step)
         XCTAssertTrue(isPassed(outcome.status))
@@ -84,7 +84,7 @@ final class AssertKindsTests: XCTestCase {
 
     func testNotExistFailsWhileStillPresent() async {
         let driver = ScriptedDriver(frames: [[node(1, id: "dialog")]])
-        let executor = StepExecutor(driver: driver)
+        let executor = StepExecutor(driver: driver, isAndroid: false)
         let step = FlowStep(assert: "notExists", locator: FlowLocator(id: "dialog"), timeout: 0)
         let outcome = await executor.execute(step)
         XCTAssertEqual(failureReason(outcome.status)?.contains("still exists"), true)
@@ -94,7 +94,7 @@ final class AssertKindsTests: XCTestCase {
         // primary(アプリ内)には無いがシステム UI 側に居る = まだ閉じていない
         let primary = ScriptedDriver(frames: [[node(1, id: "other")]])
         let fallback = ScriptedDriver(frames: [[node(9, label: "許可")]])
-        let executor = StepExecutor(driver: primary, fallbackDriver: fallback)
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false)
         let step = FlowStep(assert: "notExists", locator: FlowLocator(label: "許可"), timeout: 0)
         let outcome = await executor.execute(step)
         XCTAssertEqual(failureReason(outcome.status)?.contains("system UI"), true)
@@ -107,7 +107,7 @@ final class AssertKindsTests: XCTestCase {
         func run(_ assert: String, _ expected: String) async -> Bool {
             let step = FlowStep(assert: assert, locator: FlowLocator(id: "total"),
                                 expected: expected, timeout: 0, occlusionGuard: false)
-            let outcome = await StepExecutor(driver: ScriptedDriver(frames: frames)).execute(step)
+            let outcome = await StepExecutor(driver: ScriptedDriver(frames: frames), isAndroid: false).execute(step)
             return isPassed(outcome.status)
         }
         let containsHit = await run("textContains", "1,200")
@@ -127,7 +127,7 @@ final class AssertKindsTests: XCTestCase {
     func testUnresolvedLocatorSuggestsNearbyCandidates() async {
         let frames = [[node(1, type: "button", id: "btn_submit", label: "送信")]]
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "btn_submitt"), timeout: 0)
-        let outcome = await StepExecutor(driver: ScriptedDriver(frames: frames)).execute(step)
+        let outcome = await StepExecutor(driver: ScriptedDriver(frames: frames), isAndroid: false).execute(step)
         if case .failed(let reason) = outcome.status {
             XCTAssertTrue(reason.contains("near matches"), reason)
             XCTAssertTrue(reason.contains("btn_submit"), reason)
@@ -143,20 +143,20 @@ final class AssertKindsTests: XCTestCase {
     func testCheckedAndNotCheckedFollowOmittedFalseConvention() async {
         let on = [[node(1, id: "sw", checked: true)]]
         let off = [[node(1, id: "sw", checked: nil)]]
-        let checkedOnOn = await StepExecutor(driver: ScriptedDriver(frames: on))
+        let checkedOnOn = await StepExecutor(driver: ScriptedDriver(frames: on), isAndroid: false)
             .execute(FlowStep(assert: "checked", locator: FlowLocator(id: "sw"), timeout: 0))
         XCTAssertTrue(isPassed(checkedOnOn.status))
-        let checkedOnOff = await StepExecutor(driver: ScriptedDriver(frames: off))
+        let checkedOnOff = await StepExecutor(driver: ScriptedDriver(frames: off), isAndroid: false)
             .execute(FlowStep(assert: "checked", locator: FlowLocator(id: "sw"), timeout: 0))
         XCTAssertFalse(isPassed(checkedOnOff.status))
-        let notCheckedOnOff = await StepExecutor(driver: ScriptedDriver(frames: off))
+        let notCheckedOnOff = await StepExecutor(driver: ScriptedDriver(frames: off), isAndroid: false)
             .execute(FlowStep(assert: "notChecked", locator: FlowLocator(id: "sw"), timeout: 0))
         XCTAssertTrue(isPassed(notCheckedOnOff.status))
     }
 
     /// 「見つからない」と「状態が違う」を別メッセージにする(enabled と同じ規律)
     func testCheckedDistinguishesMissingFromOff() async {
-        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [[node(1, id: "other")]]))
+        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [[node(1, id: "other")]]), isAndroid: false)
             .execute(FlowStep(assert: "checked", locator: FlowLocator(id: "sw"), timeout: 0))
         if case .failed(let reason) = outcome.status {
             XCTAssertTrue(reason.contains("not found"), reason)
@@ -169,11 +169,11 @@ final class AssertKindsTests: XCTestCase {
 
     func testEnabledPassesAndDisabledFailsForEnabledElement() async {
         let frames = [[node(1, id: "send", enabled: true)]]
-        let enabledOutcome = await StepExecutor(driver: ScriptedDriver(frames: frames))
+        let enabledOutcome = await StepExecutor(driver: ScriptedDriver(frames: frames), isAndroid: false)
             .execute(FlowStep(assert: "enabled", locator: FlowLocator(id: "send"), timeout: 0))
         XCTAssertTrue(isPassed(enabledOutcome.status))
 
-        let disabledOutcome = await StepExecutor(driver: ScriptedDriver(frames: frames))
+        let disabledOutcome = await StepExecutor(driver: ScriptedDriver(frames: frames), isAndroid: false)
             .execute(FlowStep(assert: "disabled", locator: FlowLocator(id: "send"), timeout: 0))
         XCTAssertEqual(failureReason(disabledOutcome.status)?.contains("the element is enabled"), true)
     }
@@ -183,14 +183,14 @@ final class AssertKindsTests: XCTestCase {
             [node(1, id: "send", enabled: false)],
             [node(1, id: "send", enabled: true)],
         ])
-        let outcome = await StepExecutor(driver: driver)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false)
             .execute(FlowStep(assert: "enabled", locator: FlowLocator(id: "send"), timeout: 5))
         XCTAssertTrue(isPassed(outcome.status))
         XCTAssertEqual(driver.snapshotCallCount, 2)
     }
 
     func testEnabledFailsWithNotFoundWhenMissing() async {
-        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [[]]))
+        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [[]]), isAndroid: false)
             .execute(FlowStep(assert: "enabled", locator: FlowLocator(id: "send"), timeout: 0))
         XCTAssertEqual(failureReason(outcome.status)?.contains("element not found"), true)
     }
@@ -206,14 +206,14 @@ final class AssertKindsTests: XCTestCase {
             node(4, type: "clickable", depth: 1),   // list の外
         ]
         let scoped = FlowLocator(type: "clickable", scope: [FlowLocator(id: "list")])
-        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [elements]))
+        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [elements]), isAndroid: false)
             .execute(FlowStep(assert: "count", locator: scoped, timeout: 0, expectedCount: 2))
         XCTAssertTrue(isPassed(outcome.status))
     }
 
     func testCountFailureReportsActual() async {
         let elements = [node(1, type: "clickable"), node(2, type: "clickable")]
-        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [elements]))
+        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [elements]), isAndroid: false)
             .execute(FlowStep(assert: "count", locator: FlowLocator(type: "clickable"),
                               timeout: 0, expectedCount: 3))
         let reason = failureReason(outcome.status)
@@ -226,14 +226,14 @@ final class AssertKindsTests: XCTestCase {
             [node(1, type: "clickable")],
             [node(1, type: "clickable"), node(2, type: "clickable")],
         ])
-        let outcome = await StepExecutor(driver: driver)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false)
             .execute(FlowStep(assert: "count", locator: FlowLocator(type: "clickable"),
                               timeout: 5, expectedCount: 2))
         XCTAssertTrue(isPassed(outcome.status))
     }
 
     func testCountWithoutExpectedCountIsSkipped() async {
-        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [[]]))
+        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [[]]), isAndroid: false)
             .execute(FlowStep(assert: "count", locator: FlowLocator(type: "clickable"), timeout: 0))
         if case .skipped = outcome.status {} else { XCTFail("skipped を期待: \(outcome.status)") }
     }
@@ -242,7 +242,7 @@ final class AssertKindsTests: XCTestCase {
         let elements = [node(1, type: "clickable", id: "row"), node(2, type: "row"), node(3, type: "row")]
         let step = FlowStep(assert: "count", locator: FlowLocator(type: "clickable"),
                             fallbacks: [FlowLocator(type: "row")], timeout: 0, expectedCount: 3)
-        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [elements])).execute(step)
+        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [elements]), isAndroid: false).execute(step)
         XCTAssertTrue(isPassed(outcome.status), ".clickable 1 件 + .row 2 件 = 3 件")
     }
 
@@ -251,7 +251,7 @@ final class AssertKindsTests: XCTestCase {
         let elements = [node(1, type: "button", id: "save", label: "保存"), node(2, type: "button")]
         let step = FlowStep(assert: "count", locator: FlowLocator(id: "save"),
                             fallbacks: [FlowLocator(label: "保存")], timeout: 0, expectedCount: 1)
-        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [elements])).execute(step)
+        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [elements]), isAndroid: false).execute(step)
         XCTAssertTrue(isPassed(outcome.status), "#save と 保存 は同じ要素なので 1 件")
     }
 
@@ -259,7 +259,7 @@ final class AssertKindsTests: XCTestCase {
         let elements = [node(1, type: "row"), node(2, type: "row")]
         let step = FlowStep(assert: "count", locator: FlowLocator(type: "clickable"),
                             fallbacks: [FlowLocator(type: "row")], timeout: 0, expectedCount: 2)
-        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [elements])).execute(step)
+        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [elements]), isAndroid: false).execute(step)
         XCTAssertTrue(isPassed(outcome.status))
     }
 
@@ -273,7 +273,7 @@ final class AssertKindsTests: XCTestCase {
         ] as [(String, String, Bool)] {
             let step = FlowStep(assert: assert, locator: FlowLocator(id: "msg"),
                                 expected: expected, timeout: 0, occlusionGuard: false)
-            let outcome = await StepExecutor(driver: ScriptedDriver(frames: [elements]))
+            let outcome = await StepExecutor(driver: ScriptedDriver(frames: [elements]), isAndroid: false)
                 .execute(step)
             XCTAssertEqual(isPassed(outcome.status), shouldPass, "\(assert) \(expected)")
         }
@@ -282,7 +282,7 @@ final class AssertKindsTests: XCTestCase {
     func testTextStartsWithFailureMessageNamesTheRelation() async {
         let step = FlowStep(assert: "textStartsWith", locator: FlowLocator(id: "msg"),
                             expected: "合計", timeout: 0, occlusionGuard: false)
-        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [[node(1, id: "msg", label: "小計 500 円")]]))
+        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [[node(1, id: "msg", label: "小計 500 円")]]), isAndroid: false)
             .execute(step)
         XCTAssertEqual(failureReason(outcome.status)?.contains("does not start with"), true)
     }
@@ -294,7 +294,7 @@ final class AssertKindsTests: XCTestCase {
         ])
         let step = FlowStep(assert: "textNotEquals", locator: FlowLocator(id: "status"),
                             expected: "処理中", timeout: 5)
-        let outcome = await StepExecutor(driver: driver).execute(step)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(step)
         XCTAssertTrue(isPassed(outcome.status))
         XCTAssertEqual(driver.snapshotCallCount, 2)
     }
@@ -302,7 +302,7 @@ final class AssertKindsTests: XCTestCase {
     func testTextIsNotFailsWhileValueMatches() async {
         let step = FlowStep(assert: "textNotEquals", locator: FlowLocator(id: "status"),
                             expected: "処理中", timeout: 0)
-        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [[node(1, id: "status", label: "処理中")]]))
+        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [[node(1, id: "status", label: "処理中")]]), isAndroid: false)
             .execute(step)
         XCTAssertEqual(failureReason(outcome.status)?.contains("equals it"), true)
     }
@@ -315,7 +315,7 @@ final class AssertKindsTests: XCTestCase {
             ("textIsNotEmpty", filled, true), ("textIsNotEmpty", blank, false),
         ] as [(String, [ElementInfo], Bool)] {
             let step = FlowStep(assert: assert, locator: FlowLocator(id: "input"), timeout: 0)
-            let outcome = await StepExecutor(driver: ScriptedDriver(frames: [elements]))
+            let outcome = await StepExecutor(driver: ScriptedDriver(frames: [elements]), isAndroid: false)
                 .execute(step)
             XCTAssertEqual(isPassed(outcome.status), shouldPass, assert)
         }
@@ -323,7 +323,7 @@ final class AssertKindsTests: XCTestCase {
 
     func testEmptyAssertionsDistinguishMissingElement() async {
         let step = FlowStep(assert: "textIsNotEmpty", locator: FlowLocator(id: "居ない"), timeout: 0)
-        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [[node(1, id: "other")]]))
+        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [[node(1, id: "other")]]), isAndroid: false)
             .execute(step)
         XCTAssertEqual(failureReason(outcome.status)?.contains("element not found"), true)
     }
@@ -333,7 +333,7 @@ final class AssertKindsTests: XCTestCase {
         let elements = [[node(1, id: "other")]]
         let step = FlowStep(action: "scrollTo", locator: FlowLocator(id: "居ない"),
                             direction: "down", maxSwipes: 1)
-        let failed = await StepExecutor(driver: ScriptedDriver(frames: elements))
+        let failed = await StepExecutor(driver: ScriptedDriver(frames: elements), isAndroid: false)
             .execute(step)
         XCTAssertEqual(failureReason(failed.status)?.contains("scroll(s)"), true)
     }
@@ -343,7 +343,7 @@ final class AssertKindsTests: XCTestCase {
     func testSelectWithScrollReturnsEmptyWhenNotFound() async {
         let step = FlowStep(action: "select", locator: FlowLocator(id: "居ない"),
                             direction: "down", maxSwipes: 1)
-        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [[node(1, id: "other")]]))
+        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [[node(1, id: "other")]]), isAndroid: false)
             .execute(step)
         if case .skipped = outcome.status {} else { XCTFail("skipped を期待: \(outcome.status)") }
         XCTAssertNil(outcome.resolvedElement)
@@ -365,7 +365,7 @@ final class AssertKindsTests: XCTestCase {
         ])
         let step = FlowStep(action: "scrollTo", locator: FlowLocator(id: "row_30"),
                             direction: "up", maxSwipes: 5)
-        let outcome = await StepExecutor(driver: driver).execute(step)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(step)
         XCTAssertTrue(isPassed(outcome.status))
         // 発見(2回目)のあと、静止を確認するまで snapshot を追加で撮る
         XCTAssertEqual(driver.snapshotCallCount, 5)
@@ -382,7 +382,7 @@ final class AssertKindsTests: XCTestCase {
         let driver = ScriptedDriver(frames: [[node(1, id: "row_30")], [node(1, id: "row_30")]])
         let step = FlowStep(action: "scrollTo", locator: FlowLocator(id: "row_30"),
                             direction: "up", maxSwipes: 5)
-        let outcome = await StepExecutor(driver: driver).execute(step)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(step)
         XCTAssertTrue(isPassed(outcome.status))
         XCTAssertEqual(driver.snapshotCallCount, 2, "静止確認の2枚だけで、スワイプは挟まない")
         XCTAssertEqual(driver.swipeCallCount, 0)
@@ -403,7 +403,7 @@ final class AssertKindsTests: XCTestCase {
                                 frame: FTRect(x: 0, y: 0, width: 400, height: 800), depth: 1)
         let step = FlowStep(assert: "textEquals", locator: FlowLocator(id: "txt_result"),
                             expected: "result=new", timeout: 0, occlusionGuard: false)
-        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [[target, modal]]))
+        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [[target, modal]]), isAndroid: false)
             .execute(step)
         let reason = failureReason(outcome.status)
         XCTAssertEqual(reason?.contains("#promo_modal"), true, reason ?? "")
@@ -420,7 +420,7 @@ final class AssertKindsTests: XCTestCase {
                                 frame: FTRect(x: 10, y: 400, width: 200, height: 40), depth: 1)
         let step = FlowStep(assert: "textEquals", locator: FlowLocator(id: "txt_result"),
                             expected: "result=new", timeout: 0, occlusionGuard: false)
-        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [[target, other]]))
+        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [[target, other]]), isAndroid: false)
             .execute(step)
         XCTAssertEqual(failureReason(outcome.status)?.contains("is covered by"), false)
     }
@@ -465,7 +465,7 @@ final class AssertKindsTests: XCTestCase {
         let close = node(8, id: "btn_promo_close", label: "閉じる")
         let target = node(1, id: "btn_submit", label: "送信")
         let driver = TapRecordingDriver(frames: [[modal, close, target], [target]])
-        let executor = StepExecutor(driver: driver)
+        let executor = StepExecutor(driver: driver, isAndroid: false)
         executor.interruptHandlers = [
             .init(detect: FlowLocator(id: "promo_modal"), dismiss: FlowLocator(id: "btn_promo_close")),
         ]
@@ -481,7 +481,7 @@ final class AssertKindsTests: XCTestCase {
     func testNoInterruptHandlerMeansNoExtraWork() async {
         let target = node(1, id: "btn_submit")
         let driver = TapRecordingDriver(frames: [[target]])
-        let outcome = await StepExecutor(driver: driver)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false)
             .execute(FlowStep(action: "tap", locator: FlowLocator(id: "btn_submit")))
         XCTAssertTrue(isPassed(outcome.status))
         XCTAssertEqual(driver.tapped, [1])
@@ -493,7 +493,7 @@ final class AssertKindsTests: XCTestCase {
     func testInterruptHandlerDoesNotFireWhenAbsent() async {
         let target = node(1, id: "btn_submit")
         let driver = TapRecordingDriver(frames: [[target]])
-        let executor = StepExecutor(driver: driver)
+        let executor = StepExecutor(driver: driver, isAndroid: false)
         executor.interruptHandlers = [
             .init(detect: FlowLocator(id: "promo_modal"), dismiss: FlowLocator(id: "btn_promo_close")),
         ]
@@ -511,7 +511,7 @@ final class AssertKindsTests: XCTestCase {
         let target = node(1, id: "btn_submit", label: "送信")
         // 1枚目に対象は居ない(モーダルが画面を占有)。閉じた後の2枚目で現れる
         let driver = TapRecordingDriver(frames: [[modal, close], [target]])
-        let executor = StepExecutor(driver: driver)
+        let executor = StepExecutor(driver: driver, isAndroid: false)
         executor.interruptHandlers = [
             .init(detect: FlowLocator(id: "promo_modal"), dismiss: FlowLocator(id: "btn_promo_close")),
         ]
@@ -531,7 +531,7 @@ final class AssertKindsTests: XCTestCase {
                                 frame: FTRect(x: 0, y: 0, width: 400, height: 800), depth: 1)
         let step = FlowStep(assert: "textNotEquals", locator: FlowLocator(id: "txt_status"),
                             expected: "処理中", timeout: 0)
-        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [[target, modal]]))
+        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [[target, modal]]), isAndroid: false)
             .execute(step)
         XCTAssertEqual(failureReason(outcome.status)?.contains("#announce_modal"), true)
     }
@@ -544,7 +544,7 @@ final class AssertKindsTests: XCTestCase {
         let target = node(1, id: "btn_submit", label: "送信")
         // 閉じても両方残り続ける画面(2枚目以降も同じ)= 何度でも発火し得る状況
         let driver = TapRecordingDriver(frames: [[first, second, target]])
-        let executor = StepExecutor(driver: driver)
+        let executor = StepExecutor(driver: driver, isAndroid: false)
         executor.interruptHandlers = [
             .init(detect: FlowLocator(id: "modal_a"), dismiss: FlowLocator(id: "modal_a")),
             .init(detect: FlowLocator(id: "modal_b"), dismiss: FlowLocator(id: "modal_b")),
@@ -563,7 +563,7 @@ final class AssertKindsTests: XCTestCase {
         let target = node(1, type: "staticText", id: "txt_result", label: "result=ok")
         // モーダルが出ている間は結果テキストが読めない → 閉じた後の2枚目で読める
         let driver = TapRecordingDriver(frames: [[modal, close], [target]])
-        let executor = StepExecutor(driver: driver)
+        let executor = StepExecutor(driver: driver, isAndroid: false)
         executor.interruptHandlers = [
             .init(detect: FlowLocator(id: "promo_modal"), dismiss: FlowLocator(id: "btn_promo_close")),
         ]
@@ -584,7 +584,7 @@ final class AssertKindsTests: XCTestCase {
         let close = node(8, id: "btn_promo_close", label: "閉じる")
         // 何度閉じても消えない = 全フレームに出続ける。対象は最後まで現れない
         let driver = TapRecordingDriver(frames: [[modal, close]])
-        let executor = StepExecutor(driver: driver)
+        let executor = StepExecutor(driver: driver, isAndroid: false)
         executor.interruptHandlers = [
             .init(detect: FlowLocator(id: "promo_modal"), dismiss: FlowLocator(id: "btn_promo_close")),
         ]
@@ -604,7 +604,7 @@ final class AssertKindsTests: XCTestCase {
                                                  [target]])
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "row_40"),
                             direction: "up", maxSwipes: 5)
-        let outcome = await StepExecutor(driver: driver).execute(step)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(step)
         XCTAssertTrue(isPassed(outcome.status))
         XCTAssertEqual(driver.tapped, [1])
     }
@@ -614,7 +614,7 @@ final class AssertKindsTests: XCTestCase {
         let driver = TapRecordingDriver(frames: [[node(9, id: "other")]])
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "row_40"),
                             direction: "up", maxSwipes: 2)
-        let outcome = await StepExecutor(driver: driver).execute(step)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(step)
         XCTAssertEqual(failureReason(outcome.status)?.contains("scroll(s)"), true)
         XCTAssertTrue(driver.tapped.isEmpty)
     }
@@ -625,7 +625,7 @@ final class AssertKindsTests: XCTestCase {
         let driver = ScriptedDriver(frames: [[node(9, id: "other")], [target]])
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "txt_offscreen"),
                             direction: "up", timeout: 0, maxSwipes: 3, occlusionGuard: false)
-        let outcome = await StepExecutor(driver: driver).execute(step)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(step)
         XCTAssertTrue(isPassed(outcome.status))
     }
 
@@ -634,7 +634,7 @@ final class AssertKindsTests: XCTestCase {
         let driver = ScriptedDriver(frames: [[node(9, id: "other")], [node(1, id: "txt_offscreen")]])
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "txt_offscreen"),
                             timeout: 0, occlusionGuard: false)
-        let outcome = await StepExecutor(driver: driver).execute(step)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(step)
         XCTAssertFalse(isPassed(outcome.status))
     }
 
@@ -646,7 +646,7 @@ final class AssertKindsTests: XCTestCase {
                         node(3, type: "button", label: "別名"), node(4, type: "staticText", label: "別名")]
         let step = FlowStep(assert: "count", locator: FlowLocator(label: "許可"),
                             fallbacks: [FlowLocator(label: "別名")], timeout: 0, expectedCount: 2)
-        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [elements])).execute(step)
+        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [elements]), isAndroid: false).execute(step)
         let reason = failureReason(outcome.status)
         XCTAssertEqual(reason?.contains("actual 4"), true, reason ?? "")
         XCTAssertEqual(reason?.contains("breakdown"), true, reason ?? "")
@@ -671,7 +671,7 @@ final class AssertKindsTests: XCTestCase {
     func testCountFailureKeepsSimpleMessageForSingleClause() async {
         let step = FlowStep(assert: "count", locator: FlowLocator(type: "button"),
                             timeout: 0, expectedCount: 3)
-        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [[node(1, type: "button")]]))
+        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [[node(1, type: "button")]]), isAndroid: false)
             .execute(step)
         let reason = failureReason(outcome.status)
         XCTAssertEqual(reason?.contains("breakdown"), false, reason ?? "")
@@ -701,7 +701,7 @@ final class AssertKindsTests: XCTestCase {
         }
         let step = FlowStep(assert: "count", locator: FlowLocator(label: "項目"),
                             timeout: 0, expectedCount: 3)
-        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [elements])).execute(step)
+        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [elements]), isAndroid: false).execute(step)
         let reason = failureReason(outcome.status)
         XCTAssertEqual(reason?.contains("actual 6"), true, reason ?? "")
         XCTAssertEqual(reason?.contains("Parent and child are being counted as the same element"), true, reason ?? "")
@@ -714,7 +714,7 @@ final class AssertKindsTests: XCTestCase {
         let elements = [node(1, type: "button", label: "項目"), node(2, type: "button", label: "項目")]
         let step = FlowStep(assert: "count", locator: FlowLocator(label: "項目"),
                             timeout: 0, expectedCount: 3)
-        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [elements])).execute(step)
+        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [elements]), isAndroid: false).execute(step)
         XCTAssertEqual(failureReason(outcome.status)?.contains("Parent and child"), false)
     }
 
@@ -736,7 +736,7 @@ final class AssertKindsTests: XCTestCase {
         ] as [(String, String, Bool)] {
             let step = FlowStep(assert: assert, locator: FlowLocator(id: "input"),
                                 expected: expected, timeout: 0)
-            let outcome = await StepExecutor(driver: ScriptedDriver(frames: [elements]))
+            let outcome = await StepExecutor(driver: ScriptedDriver(frames: [elements]), isAndroid: false)
                 .execute(step)
             XCTAssertEqual(isPassed(outcome.status), shouldPass, "\(assert) \(expected)")
         }
@@ -747,7 +747,7 @@ final class AssertKindsTests: XCTestCase {
         let step = FlowStep(assert: "textContainsNot", locator: FlowLocator(id: "status"),
                             expected: "エラー", timeout: 0)
         let outcome = await StepExecutor(
-            driver: ScriptedDriver(frames: [[node(1, id: "status", label: "エラー 404")]]))
+            driver: ScriptedDriver(frames: [[node(1, id: "status", label: "エラー 404")]]), isAndroid: false)
             .execute(step)
         XCTAssertEqual(failureReason(outcome.status)?.contains("contains"), true)
     }
@@ -757,7 +757,7 @@ final class AssertKindsTests: XCTestCase {
         let step = FlowStep(assert: "textContainsNot", locator: FlowLocator(id: "status"),
                             timeout: 0)
         let outcome = await StepExecutor(
-            driver: ScriptedDriver(frames: [[node(1, id: "status", label: "x")]])).execute(step)
+            driver: ScriptedDriver(frames: [[node(1, id: "status", label: "x")]]), isAndroid: false).execute(step)
         if case .skipped = outcome.status {} else { XCTFail("skipped ではない: \(outcome.status)") }
     }
 
@@ -766,12 +766,12 @@ final class AssertKindsTests: XCTestCase {
         let elements = [node(1, id: "btn_ok", label: "OK")]
         let pass = FlowStep(assert: "idEquals", locator: FlowLocator(label: "OK"),
                             expected: "btn_ok", timeout: 0, occlusionGuard: false)
-        let passed = await StepExecutor(driver: ScriptedDriver(frames: [elements])).execute(pass)
+        let passed = await StepExecutor(driver: ScriptedDriver(frames: [elements]), isAndroid: false).execute(pass)
         XCTAssertTrue(isPassed(passed.status))
 
         let fail = FlowStep(assert: "idEquals", locator: FlowLocator(label: "OK"),
                             expected: "btn_cancel", timeout: 0, occlusionGuard: false)
-        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [elements])).execute(fail)
+        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [elements]), isAndroid: false).execute(fail)
         XCTAssertEqual(failureReason(outcome.status)?.contains("btn_ok"), true)
         XCTAssertEqual(failureReason(outcome.status)?.contains("id"), true)
     }
@@ -826,7 +826,7 @@ final class AssertKindsTests: XCTestCase {
                                       fresh: [node(1, id: "txt", label: "submitted=persist99")])
         let step = FlowStep(assert: "textEquals", locator: FlowLocator(id: "txt"),
                             expected: "submitted=persist99", timeout: 1, occlusionGuard: false)
-        let outcome = await StepExecutor(driver: driver).execute(step)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(step)
         XCTAssertTrue(isPassed(outcome.status), "取り直しで成功になるはず: \(outcome.status)")
         // 取り直しは**1回だけ**(毎周回払うとコストが跳ねる)
         XCTAssertEqual(driver.freshReads, 1)
@@ -840,7 +840,7 @@ final class AssertKindsTests: XCTestCase {
                                       supportsBypass: false)
         let step = FlowStep(assert: "textEquals", locator: FlowLocator(id: "txt"),
                             expected: "new", timeout: 0, occlusionGuard: false)
-        let outcome = await StepExecutor(driver: driver).execute(step)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(step)
         XCTAssertNotNil(failureReason(outcome.status))
         XCTAssertEqual(driver.freshReads, 0)
     }
@@ -855,7 +855,7 @@ final class AssertKindsTests: XCTestCase {
         let driver = StaleCacheDriver(stale: [], fresh: [node(1, id: "dialog", label: "エラー")])
         let step = FlowStep(assert: "notExists", locator: FlowLocator(id: "dialog"),
                             timeout: 0, occlusionGuard: false)
-        let outcome = await StepExecutor(driver: driver).execute(step)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(step)
         XCTAssertNotNil(failureReason(outcome.status),
                         "実在する要素を不在と通した(誤った成功): \(outcome.status)")
         XCTAssertGreaterThan(driver.freshReads, 0, "確認の取り直しが撃たれていない")
@@ -867,7 +867,7 @@ final class AssertKindsTests: XCTestCase {
         let driver = StaleCacheDriver(stale: [], fresh: [])
         let step = FlowStep(assert: "notExists", locator: FlowLocator(id: "dialog"),
                             timeout: 0, occlusionGuard: false)
-        let outcome = await StepExecutor(driver: driver).execute(step)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(step)
         XCTAssertTrue(isPassed(outcome.status), "不在なのに落ちた: \(outcome.status)")
         XCTAssertEqual(driver.freshReads, 1)
     }
@@ -879,7 +879,7 @@ final class AssertKindsTests: XCTestCase {
                                       fresh: [node(1, id: "txt", label: "new")])
         let step = FlowStep(assert: "textNotEquals", locator: FlowLocator(id: "txt"),
                             expected: "new", timeout: 0, occlusionGuard: false)
-        let outcome = await StepExecutor(driver: driver).execute(step)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(step)
         XCTAssertNotNil(failureReason(outcome.status),
                         "古い値で否定条件を満たして通した(誤った成功): \(outcome.status)")
     }
@@ -890,7 +890,7 @@ final class AssertKindsTests: XCTestCase {
                                       fresh: [node(1, id: "txt", label: "old")])
         let step = FlowStep(assert: "textNotEquals", locator: FlowLocator(id: "txt"),
                             expected: "new", timeout: 0, occlusionGuard: false)
-        let outcome = await StepExecutor(driver: driver).execute(step)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(step)
         XCTAssertTrue(isPassed(outcome.status), "値が違うのに落ちた: \(outcome.status)")
     }
 
@@ -900,7 +900,7 @@ final class AssertKindsTests: XCTestCase {
                                       supportsBypass: false)
         let step = FlowStep(assert: "notExists", locator: FlowLocator(id: "dialog"),
                             timeout: 0, occlusionGuard: false)
-        let outcome = await StepExecutor(driver: driver).execute(step)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(step)
         XCTAssertTrue(isPassed(outcome.status))
         XCTAssertEqual(driver.freshReads, 0)
     }

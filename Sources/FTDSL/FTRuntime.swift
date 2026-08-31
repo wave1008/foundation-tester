@@ -395,6 +395,7 @@ public final class FTDriveCore {
                                      occlusionGuardEnabled: falsePositiveCheckEnabled,
                                      screenLooksLikeEnabled: screenLooksLikeEnabled,
                                      releasesScrollTouch: platform == "ios",
+                                     isAndroid: platform == "android",
                                      uiFramework: uiFramework,
                                      containerInference: containerInference)
         self.scenarioID = scenarioID

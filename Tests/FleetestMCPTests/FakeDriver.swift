@@ -87,6 +87,12 @@ final class FakeDriver: AppDriver, @unchecked Sendable {
         try record("launch(\(bundleID))", "launch")
     }
 
+    /// **既定実装(AppDriver extension)は launch へ落ちる**ので、上書きしないと resume(activate)
+    /// を撃った呼び出しが "launch(...)" として記録され、activate 固有のテストが書けない
+    func activate(bundleID: String) async throws {
+        try record("activate(\(bundleID))", "activate")
+    }
+
     func snapshot() async throws -> SnapshotResponse {
         try record("snapshot", "snapshot")
         // 待ちの検証用: 台本があれば呼ばれた順に返し、尽きたら最後の1枚を返し続ける
@@ -134,7 +140,16 @@ final class FakeDriver: AppDriver, @unchecked Sendable {
         try record("openURL(\(url))", "openURL")
     }
 
+    /// 実機での 501("simulator-only")を模すための差し替え口。**`failing` の汎用 Boom は
+    /// DriverError ではない**ので、`DriverError.badResponse` の status/body で分岐するテストは
+    /// これを使う。設定が無ければ従来どおり成功する
+    var clearAppDataError: Error?
+
     func clearAppData(bundleID: String) async throws {
+        if let clearAppDataError {
+            calls.append("clearAppData(\(bundleID))")
+            throw clearAppDataError
+        }
         try record("clearAppData(\(bundleID))", "clearAppData")
     }
 
@@ -180,6 +195,13 @@ final class FakeDriver: AppDriver, @unchecked Sendable {
                durationSeconds: Double) async throws {
         let target = frame.map { "\($0.x),\($0.y),\($0.width)x\($0.height)" } ?? "screen"
         try record("pinch(\(target),id:\(identifier ?? "nil"),scale:\(scale))", "pinch")
+    }
+
+    /// **既定実装(AppDriver extension)は 501 を投げる**ので、上書きしないと ft_rotate の
+    /// 整定ループが一切テストできない。要求された向きをそのまま「一致した」と返す
+    func rotate(to orientation: FTOrientation) async throws -> FTOrientation {
+        try record("rotate(\(orientation.rawValue))", "rotate")
+        return orientation
     }
 
     func back() async throws { try record("back", "back") }

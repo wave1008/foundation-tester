@@ -121,6 +121,33 @@ public enum ScrollGeometry {
         return clipped
     }
 
+    /// キーボードで削られた viewport で使う、キーボード側だけの詰めたマージン比。
+    /// **0.25/0.2 が守るのは画面の自然な縁**(タブバー・ホームインジケータ・ノッチ)で、
+    /// キーボード側の縁は `viewport(_:excludingKeyboard:)` が既に削り切ったハードな境界 ——
+    /// 同じ余裕は要らない。iPhone 13 実測(509pt に縮んだ viewport)でこの比率を使うと
+    /// 76pt の余白が残り、コーパス最大の上部 chrome(ナビバー44+ステータス47=91pt。これは
+    /// 上回っていない)より広い —— そのため**反対側の縁は詰めない**(この定数は
+    /// キーボード側だけに使う。両側に使うと画面の自然な縁が chrome に食われる)
+    public static let keyboardClippedMarginRatio: Double = 0.15
+
+    /// `viewport` がキーボードで実際に削られたとき、キーボード側の縁のマージンだけ詰める。
+    /// 反対側(画面の自然な縁)は intent 既定のまま。**指定されたマージンより広げない**
+    /// (呼び手が既に 0.15 未満の値を渡していれば、それを優先する)。
+    /// - Parameters:
+    ///   - direction: **コンテンツ基準**(`ScrollGeometry.path` と同じ)。水平方向は無関係(そのまま返す)
+    ///   - keyboardBelow: キーボード(削った帯)が画面の下側にあるか。上側なら false
+    public static func marginsForKeyboardClippedViewport(
+        start: Double, end: Double, direction: FTScrollDirection, keyboardBelow: Bool
+    ) -> (start: Double, end: Double) {
+        guard direction == .up || direction == .down else { return (start, end) }
+        // `path` の式: .down は start が下端(area.height*(1-start))・.up は end が下端
+        let bottomIsStart = direction == .down
+        guard keyboardBelow == bottomIsStart else {
+            return (start, min(end, keyboardClippedMarginRatio))
+        }
+        return (min(start, keyboardClippedMarginRatio), end)
+    }
+
     /// 交差矩形。幅・高さが 0 以下なら nil(接しているだけ = 操作できない)
     static func intersection(_ a: FTRect, _ b: FTRect) -> FTRect? {
         let left = max(a.x, b.x)

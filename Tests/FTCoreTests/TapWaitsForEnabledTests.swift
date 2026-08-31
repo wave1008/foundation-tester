@@ -101,7 +101,7 @@ final class TapWaitsForEnabledTests: XCTestCase {
     /// 本命: 有効になってから撃つ(注記も残る)
     func testWaitsUntilTheTargetBecomesEnabled() async throws {
         let driver = LateEnableDriver(enabledFrom: 3)
-        let outcome = await StepExecutor(driver: driver).execute(
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(
             FlowStep(action: "tap", locator: FlowLocator(id: "btnLogin"), timeout: 3))
 
         guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
@@ -114,7 +114,7 @@ final class TapWaitsForEnabledTests: XCTestCase {
     /// **待ち切れなくても撃つ**(意図的に無効な要素を叩く書き方を壊さない)
     func testTapsAnywayWhenItNeverBecomesEnabled() async throws {
         let driver = LateEnableDriver(enabledFrom: .max)
-        let outcome = await StepExecutor(driver: driver).execute(
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(
             FlowStep(action: "tap", locator: FlowLocator(id: "btnLogin"), timeout: 1))
 
         guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
@@ -127,7 +127,7 @@ final class TapWaitsForEnabledTests: XCTestCase {
     /// 閉じないと**モーダルが被さる窓を自分で広げる**(有効になった瞬間に覆いの上を撃つ)
     func testDismissesInterruptionsWhileWaiting() async throws {
         let driver = LateEnableWithModalDriver(enabledFrom: 3, modalFrom: 2)
-        let executor = StepExecutor(driver: driver)
+        let executor = StepExecutor(driver: driver, isAndroid: false)
         executor.interruptHandlers = [
             StepExecutor.InterruptHandler(detect: FlowLocator(id: "promo_modal"),
                                           dismiss: FlowLocator(id: "btn_promo_close")),
@@ -144,7 +144,7 @@ final class TapWaitsForEnabledTests: XCTestCase {
     /// 最初から有効なら待たない(正常系のコストを増やさない)
     func testDoesNotWaitWhenAlreadyEnabled() async throws {
         let driver = LateEnableDriver(enabledFrom: 1)
-        let outcome = await StepExecutor(driver: driver).execute(
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(
             FlowStep(action: "tap", locator: FlowLocator(id: "btnLogin"), timeout: 3))
 
         XCTAssertEqual(driver.tappedRefs, [1])
@@ -157,7 +157,7 @@ final class TapWaitsForEnabledTests: XCTestCase {
         let driver = LateEnableDriver(enabledFrom: .max)
         var locator = FlowLocator(id: "btnLogin")
         locator.enabled = false
-        let outcome = await StepExecutor(driver: driver).execute(
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(
             FlowStep(action: "tap", locator: locator, timeout: 3))
 
         XCTAssertEqual(driver.tappedRefs, [1])

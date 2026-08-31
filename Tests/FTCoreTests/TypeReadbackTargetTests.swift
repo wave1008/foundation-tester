@@ -110,7 +110,7 @@ final class TypeReadbackTargetTests: XCTestCase {
     /// 検証したい「打った文字がそのまま入ったか」ではなく追記の話になる
     private func runTypeStep(fieldValue: String, typing: String) async -> StepOutcome {
         let driver = ReadbackStubDriver(before: "", after: fieldValue)
-        return await StepExecutor(driver: driver).execute(
+        return await StepExecutor(driver: driver, isAndroid: false).execute(
             FlowStep(action: "type", locator: FlowLocator(id: "field"), text: typing))
     }
 

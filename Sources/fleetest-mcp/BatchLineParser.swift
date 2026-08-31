@@ -451,9 +451,9 @@ enum BatchStepResolver {
                : "")
     }
 
-    // このバッチ辞書語彙で使われている全キーの型。3集合はどれとも重ならない
-    // (現状 Bool 型のキーは無い —— containerInference/requireVisible/scroll は未対応のため)
-    /// ビルダが宣言するキーは必ずこの3表のどれか1つに載る(載せ忘れると、その引数を書いた行が
+    // このバッチ辞書語彙で使われている全キーの型。4集合はどれとも重ならない
+    // (containerInference/requireVisible/scroll は Bool 型だが未対応のため boolKeys に無い)
+    /// ビルダが宣言するキーは必ずこの4表のどれか1つに載る(載せ忘れると、その引数を書いた行が
     /// 「does not accept」で弾かれる。`BatchKeyTypeCoverageTests` が漏れを検出する)
     static let stringKeys: Set<String> = ["selector", "text", "direction", "to", "scrollFrame",
                                           "orientation"]
@@ -463,6 +463,7 @@ enum BatchStepResolver {
         // (iOS = pt / Android = px)なので整数で書かれることが多いが、型は Double で揃える
         "holdSeconds", "timeout", "scale", "durationSeconds", "dxRatio", "dyRatio", "x", "y",
     ]
+    static let boolKeys: Set<String> = ["replace"]
 
     private static func assign(_ raw: inout [String: Any], dictKey: String, value: BatchLineValue,
                                command: String, displayName: String) throws {
@@ -481,7 +482,10 @@ enum BatchStepResolver {
                 throw ResolveError(message: mismatch(command, displayName, "\(n)"))
             }
         case .bool(let b):
-            throw ResolveError(message: mismatch(command, displayName, "\(b)"))
+            guard boolKeys.contains(dictKey) else {
+                throw ResolveError(message: mismatch(command, displayName, "\(b)"))
+            }
+            raw[dictKey] = b
         }
     }
 

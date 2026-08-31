@@ -55,13 +55,13 @@ cwd(受け手パッケージ)とは別物です。
 | `ft_install` | パッケージファイルからアプリをインストール(iOS: `.app` / Android: `.apk`) |
 | `ft_snapshot` | 画面要素一覧のスナップショット(圧縮された set-of-mark 形式)。`waitFor` でセレクタが出るまで待つ |
 | `ft_tap` / `ft_type` / `ft_swipe` / `ft_long_press` | 画面操作 — タップ・入力(`pressEnter: true` で入力後 Enter/IME まで撃つ)・スワイプ・長押し |
-| `ft_scroll_to` | セレクタが出るまでスクロールして、撮り直した要素一覧を返す |
+| `ft_scroll_to` | セレクタが出るまでスクロールして、撮り直した要素一覧を返す。`scrollFrame:` には `scroll` 印の容器のセレクタのほか、**任意の要素の ref**(その frame を帯として使う。Compose のチップ列・カルーセル向け)も渡せる |
 | `ft_batch` | 複数の操作/スクロール手を1回の呼び出しにまとめ、1回の承認で実行する |
 | `ft_rotate` | デバイスを回転し、新しい向きの要素一覧を返す |
 | `ft_navigate` | 戻る / ホーム / タスク切替 |
 | `ft_open_url` | アプリを再起動せずディープリンクを配送する |
 | `ft_clear_input` | 入力欄を空にする |
-| `ft_clear_app_data` | アプリのデータと権限をリセットする(iOS はシミュレータのみ) |
+| `ft_clear_app_data` | アプリのデータと権限をリセットする(iOS 実機は `ft_install` のパスか `packagePath:` で uninstall + install に振り替える) |
 | `ft_dsl_commands` | DSL コマンドの索引(名前と署名)。書く前に存在確認できる |
 | `ft_double_tap` / `ft_pinch` / `ft_drag` | ダブルタップ・ピンチ・任意方向のドラッグ |
 | `ft_screenshot` | 視覚確認用のスクリーンショット画像 |
@@ -75,8 +75,10 @@ cwd(受け手パッケージ)とは別物です。
 
 画面操作系のツールは iPhone / Android の実機でも同じように使えます。シミュレータ/エミュレータ
 専用の操作は自動で振り分けられます —— `ft_install` は iOS 実機では `simctl` の代わりに
-`devicectl` を使い、`ft_clear_app_data` は iOS 実機では使えません(Android は実機でも `pm clear`
-が効きます)。in-app エンジンは実機へ注入できないため実機では選ばれません。
+`devicectl` を使い、`ft_clear_app_data` は iOS 実機では uninstall + install(直前の `ft_install` の
+パス、または `packagePath:`)でデータを消します(Android は実機でも `pm clear` が効きます)。
+システムのアラートを SpringBoard で閉じた後は `ft_launch bundleId: <app> resume: true` で、
+終了せずにアプリへ戻れます(xcuitest エンジン / Android)。in-app エンジンは実機へ注入できないため実機では選ばれません。
 
 ## iOS のエンジン選択
 

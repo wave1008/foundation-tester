@@ -82,7 +82,7 @@ final class StraddleNudgeTests: XCTestCase {
     func testStraddlingElementIsNudgedInsideBeforeTapping() async throws {
         let driver = StraddlingDriver(straddling: true)
 
-        _ = await StepExecutor(driver: driver).execute(tapStep())
+        _ = await StepExecutor(driver: driver, isAndroid: false).execute(tapStep())
 
         XCTAssertGreaterThan(driver.drags, 0,
                              "縁にまたがった要素をそのまま撃っている(寄せが発火していない)")
@@ -92,7 +92,7 @@ final class StraddleNudgeTests: XCTestCase {
     func testFullyVisibleElementIsTappedDirectly() async throws {
         let driver = StraddlingDriver(straddling: false)
 
-        _ = await StepExecutor(driver: driver).execute(tapStep())
+        _ = await StepExecutor(driver: driver, isAndroid: false).execute(tapStep())
 
         XCTAssertEqual(driver.drags, 0, "容器の中に居るのに寄せている")
         XCTAssertEqual(driver.refTaps, 1, "ref でそのままタップしていない")
@@ -106,7 +106,7 @@ final class StraddleNudgeTests: XCTestCase {
     func testPureGhostIsNotHandledByTheNudge() async throws {
         let driver = StraddlingDriver(straddling: true, ghost: true)
 
-        let outcome = await StepExecutor(driver: driver).execute(tapStep())
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(tapStep())
 
         XCTAssertFalse(outcome.driverFallback?.contains("nudged") ?? false,
                        "完全に外の要素を寄せの経路で処理している: \(outcome.driverFallback ?? "-")")
@@ -116,7 +116,7 @@ final class StraddleNudgeTests: XCTestCase {
     func testNudgeIsSkippedWhenContainerInferenceIsOff() async throws {
         let driver = StraddlingDriver(straddling: true)
 
-        _ = await StepExecutor(driver: driver).execute(tapStep(containerInference: false))
+        _ = await StepExecutor(driver: driver, isAndroid: false).execute(tapStep(containerInference: false))
 
         XCTAssertEqual(driver.drags, 0, "補正を切ったのに寄せている")
     }

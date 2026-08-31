@@ -872,7 +872,7 @@ extension StepExecutor {
                 // チェーン(画面外・遮蔽・中身外し等)が言える。**keyboard/disabled はここでは
                 // 足さない**(上ですでに1回付けている。ここで足すと同文が2回付く)
                 adviseTarget(TapTargetGeometry.occlusionAdvisory(
-                    for: element, in: snapshot.elements, screen: snapshot.screen))
+                    for: element, in: snapshot.elements, screen: snapshot.screen, isAndroid: isAndroid))
                 if typeDriverGestures.contains("press") || gestureFallbackLatched, let td = typeDriver,
                    try await pressViaTypeDriver(td, step: step, phase: &phase) {
                     return StepOutcome(status: .passed, healedStep: healedStep,
@@ -921,7 +921,7 @@ extension StepExecutor {
                 // **keyboard/disabled はここでは足さない**(上ですでに1回付けている。
                 // ここで足すと同文が2回付く)
                 adviseTarget(TapTargetGeometry.occlusionAdvisory(
-                    for: element, in: snapshot.elements, screen: snapshot.screen))
+                    for: element, in: snapshot.elements, screen: snapshot.screen, isAndroid: isAndroid))
                 try await actingDriver.tap(ref: element.ref)
             }
             phase.actionMs += Self.ms(clock.now - start)
@@ -1043,7 +1043,8 @@ extension StepExecutor {
                                                   reported: snapshot.keyboardFrame,
                                                   in: snapshot.elements),
                                                overlayWindows: OverlayWindowOcclusion.resolve(
-                                                  reported: snapshot.overlayWindowFrames)),
+                                                  reported: snapshot.overlayWindowFrames),
+                                               isAndroid: isAndroid),
                     duplicateRegionAdvisory(element, in: snapshot))
                 : nil
             let outcome = try await performGesture(action, step: step, target: element.frame,

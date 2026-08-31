@@ -47,8 +47,8 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 | `pressEnter()` | フォーカス中の入力へ Enter/IME アクション(検索・実行・改行)を発火(Shirates(Classic) 準拠) |
 | `hideKeyboard()` | ソフトキーボードを閉じる。**Android のみ**(出ているときだけ戻るキーを撃つので冪等)。**iOS は未対応で失敗する** — iOS で閉じたいときは `pressEnter()` を使う(単一行の欄なら閉じる) |
 | `clearInput()` | フォーカス中の入力欄を空にする |
-| `clearInput(sel, timeout:scroll:maxSwipes:)` | 要素を指定して入力欄を空にする(`type` は追記なので、書き換えるならまず `clearInput`。セレクタ解決を1回で済ませたいだけなら `type(sel, "文字列", replace: true)` で1コマンドに畳める)。**Flutter の iOS は in-app エンジンでは消せず XCUITest 経由になる**(自動フォールバック。1〜2秒かかる) |
-| `swipe(.up / .down / .left / .right)` | 画面全体をスワイプ(**指の動き**) |
+| `clearInput(sel, timeout:scroll:maxSwipes:)` | 要素を指定して入力欄を空にする(`type` は追記なので、書き換えるならまず `clearInput`。セレクタ解決を1回で済ませたいだけなら `type(sel, "文字列", replace: true)` で1コマンドに畳める)。**Flutter の iOS は in-app エンジンでは消せず XCUITest 経由になる**(自動フォールバック。1〜2秒かかる)。**空白だけの内容は a11y の値に載らない**(iOS の Compose で実測)ので、XCUITest ランナーは「空に見える」欄にも短い削除バーストを送り、`type` の読み返しは空白だけの差を検証不能として再送しない(2026-08-31) |
+| `swipe(.up / .down / .left / .right)` | 画面全体をスワイプ(**指の動き**)。iOS の XCUITest では縦向きは `XCUIApplication.swipeUp()` 等、**横向きは点→点のドラッグに合成する**(実機の横向きでは `swipeUp()` 系が1pt も動かないため。2026-08-31 実測) |
 | `tap(x:y:holdSeconds: 0)` | **座標を直接タップ**(Shirates 準拠)。座標は snapshot の `screen` と同じ座標系で、**iOS = pt / Android = px**(dp ではない)。`holdSeconds` を 0 より大きくすると長押し。**セレクタで指せるならそちらを使う** —— 座標はレイアウトが動いた瞬間に別の物を叩く。要るのは「アプリが要素を1つも公開しない画面」で、実測では操作可能要素の 9.3% が書けるセレクタを持たない。**`ft_batch` でも書ける**(`tap x: 120 y: 640`)。ただし**セレクタと併記はできない** —— どちらを撃ったか読み手に分からなくなるため拒否する |
 | `swipePointToPoint(startX:startY:endX:endY:durationSeconds: 1.5)` | 2点間ドラッグ(座標は snapshot の screen と同じ座標系。iOS = pt / Android = px) |
 | `swipeElementToElement(開始sel, 終点sel, durationSeconds: 1.5)` | 要素間のドラッグ(スライダー・並べ替え・部分領域のドラッグ用)。**終点はヒール対象外**(始点だけがヒール・フォールバック連鎖を持つ) |

@@ -166,13 +166,29 @@ final class TypeReadbackTests: XCTestCase {
         XCTAssertEqual(TypeReadback.plan(expected: "abc", actual: ""), .resend("abc"))
     }
 
-    /// 既存値に空白を足す形は「全体が空白」ではないので影響を受けない
-    func testAppendingSpacesToExistingTextIsUnaffected() {
-        XCTAssertEqual(TypeReadback.plan(expected: "abc  ", actual: "abc"), .resend("  "))
+    /// 末尾に空白を足しただけの差分もトリムすれば一致する = 読めない空白でしかありえないので、
+    /// 追送しない(2026-08-31 実測で「全体が空白」限定の判定を一般化した)
+    func testAppendingSpacesToExistingTextIsUnverifiable() {
+        XCTAssertEqual(TypeReadback.plan(expected: "abc  ", actual: "abc"), .unverifiable)
     }
 
     /// 空白が実際に読めたなら普通に一致する(この規則は読めないときだけ効く)
     func testWhitespaceThatIsActuallyReadBackIsDone() {
         XCTAssertEqual(TypeReadback.plan(expected: "   ", actual: "   "), .done)
+    }
+
+    // MARK: - 空白の有無だけの差分は読めない(2026-08-31 実測。上の規則の一般化)
+
+    /// トリムして一致するなら追送・削除のどちらも打たない。先頭・末尾どちらの空白でも同じ
+    func testTrimmedEqualDiffsAreUnverifiable() {
+        XCTAssertEqual(TypeReadback.plan(expected: "   ", actual: ""), .unverifiable)
+        XCTAssertEqual(TypeReadback.plan(expected: "abc ", actual: "abc"), .unverifiable)
+    }
+
+    /// トリムしても一致しない差分は従来どおり追送・削除で埋める(空白の一般化が
+    /// 可視文字の取りこぼし判定を弱めていないことの対照)
+    func testNonWhitespaceDiffsStillResendAsBefore() {
+        XCTAssertEqual(TypeReadback.plan(expected: "abc", actual: "ab"), .resend("c"))
+        XCTAssertEqual(TypeReadback.plan(expected: "abc", actual: ""), .resend("abc"))
     }
 }

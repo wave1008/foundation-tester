@@ -71,6 +71,10 @@ final class MCPServer {
     /// 以後の snapshot が `com.ftester.e2e.flutter` の木になった)。
     /// **ホスト側で「起動したアプリ」を覚えて突き合わせる**のが唯一の検知経路。
     var launchedBundleIDs: [String: String] = [:]
+    /// drivers と同じキーで**最後に ft_install した packagePath**を覚える(engineKey ごと)。
+    /// **実機の ft_clear_app_data が使う** —— devicectl には clearAppData の同等手段が無く
+    /// (BridgeClient.clearAppData の 501)、代わりに uninstall+install で再現するのに要る
+    var installedPackagePaths: [String: String] = [:]
     /// **launch 系ツール(ft_launch/ft_open_url/ft_clear_app_data/ft_install)の直後**、次の
     /// ft_snapshot で一度だけ `GET /systemalert` を確かめるための予約(engineKey ごと)。
     /// DSL 側の `StepExecutor.systemAlertProbePending`(FTRuntime.swift の `noteAppLaunched`)と
@@ -118,6 +122,20 @@ final class MCPServer {
     /// snapshotAfter の settle-lite が挟む待ち(秒)。**テストは 0 にする**
     /// (snapshotAfterBody 参照。既定 0.4 は実測に基づく調整値ではなく、1回だけの短い猶予)
     var settleWaitSeconds: Double = 0.4
+
+    /// ft_rotate の整定ポーリングの締め切り(秒)。**テストは 0 にする** —— cap
+    /// (rotationSettleDeadlineSeconds ÷ pollInterval)が0本になり、
+    /// 一度も整定しないフェイクドライバでもすぐに「未整定」の注記へ落ちる。
+    /// 既定は `FTCore.RotationSettle.deadlineSeconds`(ブリッジ側 POST /rotate の整定予算と同じ)——
+    /// 従来は変化待ちの `changeSettleRereads`(3)×`settleWaitSeconds`(0.4s)=1.2秒を
+    /// 流用していたが、実機 iPhone ではレイアウトが収まる前に予算が尽きていた
+    var rotationSettleDeadlineSeconds: Double = RotationSettle.deadlineSeconds
+
+    /// ref を撃つ直前の覆い探針(`/systemalert` 等・`screenNotRepresentedWarning`)を
+    /// 木の指紋ごとに覚える(engineKey ごと)。**健全性の上限**: 木がバイト同一のまま
+    /// 覆う面が出た/消えた画面(静止画面へ出た Control Center 等)は、次に木が変わるまで
+    /// 再確認しない —— 見逃しはそこまでに限られる(verifiedRef 参照)
+    var lastScreenProbe: [String: (fingerprint: Int, warning: String)] = [:]
 
     init(write: @escaping (Data) -> Void = { FileHandle.standardOutput.write($0) },
          makeDriver: ((_ args: [String: Any]) async throws -> AppDriver)? = nil,

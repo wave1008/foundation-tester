@@ -119,15 +119,30 @@ extension StepExecutor {
         return tight
     }
 
-    /// 「同じ深さの子を2つ持つ直近の祖先」= Compose iOS 向けの近似(申告の無い木ではこれが唯一の手)
+    /// 「同じ深さの子を2つ持つ直近の祖先」= Compose iOS 向けの近似(申告の無い木ではこれが唯一の手)。
+    /// preorder 祖先の連鎖(ancestors(of:in:) と同じ復元)を辿り、**同じ depth の行を1件も含まない
+    /// 候補は飛ばす**(実機 iPhone 13・2026-08-31: 見出し `staticText "アカウント"` d11 95x22 が
+    /// `#btn_logout` d12 の直前に来て「直前の depth の小さい要素=親」の旧仮定を崩し、容器を丸ごと
+    /// 見失っていた。見出しは行を1件も含まないので葉と分かる)。
+    /// **要素自身との交差を gate にしてはいけない**: ghost(容器の完全に外へ報告された行)は容器と
+    /// 交差しないが、その容器こそ `isOutsideContainer` が要る答え。行を1件でも含む候補は旧規則の
+    /// まま(2件未満なら nil で確定、上へは辿らない = 2026-08-23 以前の「直近の祖先1つ」の規律)
     private static func siblingRuleContainer(of element: ElementInfo, at index: Int,
                                              in elements: [ElementInfo]) -> FTRect? {
-        guard let ancestor = elements[..<index].last(where: { $0.depth < element.depth }),
-              ancestor.frame.width > 0, ancestor.frame.height > 0
-        else { return nil }
-        let siblings = descendants(of: ancestor, in: elements).filter { $0.depth == element.depth }
-        let inside = siblings.filter { ScrollGeometry.intersection($0.frame, ancestor.frame) != nil }
-        return inside.count >= 2 ? ancestor.frame : nil
+        var depth = element.depth
+        var cursor = index
+        while cursor > 0 {
+            cursor -= 1
+            let candidate = elements[cursor]
+            guard candidate.depth < depth else { continue }
+            depth = candidate.depth
+            guard candidate.frame.width > 0, candidate.frame.height > 0 else { continue }
+            let siblings = descendants(of: candidate, in: elements).filter { $0.depth == element.depth }
+            let inside = siblings.filter { ScrollGeometry.intersection($0.frame, candidate.frame) != nil }
+            if inside.isEmpty { continue }
+            return inside.count >= 2 ? candidate.frame : nil
+        }
+        return nil
     }
 
     /// `outer` が `inner` を**収められる大きさ**か(位置は見ない。上の doc)。

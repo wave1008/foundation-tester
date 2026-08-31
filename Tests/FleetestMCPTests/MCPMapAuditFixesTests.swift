@@ -29,7 +29,7 @@ final class MCPMapAuditFixesTests: XCTestCase {
         let nested = try XCTUnwrap(
             RefGuard.nestedActionCoveringCentre(cell, in: snap.elements))
         XCTAssertEqual(nested.identifier, "FeaturedInMultipleGuidesContextLineItem")
-        let warning = RefGuard.overlapWarning(found: cell, in: snap.elements, screen: snap.screen)
+        let warning = RefGuard.overlapWarning(found: cell, in: snap.elements, screen: snap.screen, isAndroid: false)
         XCTAssertTrue(warning.contains("#FeaturedInMultipleGuidesContextLineItem"), warning)
         XCTAssertTrue(warning.contains("#Maps.PlaceTableViewCell"), warning)
     }

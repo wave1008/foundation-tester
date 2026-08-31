@@ -58,7 +58,7 @@ final class ScrollSearchTruncationTests: XCTestCase {
     /// **最終木が上限内でも**、途中で打ち切られていたなら注記が付く
     func testTruncationSeenOnlyMidSearchIsReported() async {
         let driver = TruncatingMidSearchDriver(truncatedUntil: 2)
-        let result = await StepExecutor(driver: driver).execute(scrollTo("missing"))
+        let result = await StepExecutor(driver: driver, isAndroid: false).execute(scrollTo("missing"))
         XCTAssertTrue(result.notes.contains(.truncatedDuringSearch),
                       "途中の打ち切りが注記に出ていない: \(result.notes)")
     }
@@ -66,7 +66,7 @@ final class ScrollSearchTruncationTests: XCTestCase {
     /// 一度も打ち切られていない探索には付けない(付けると毎回出る注記になる)
     func testACleanSearchCarriesNoTruncationNote() async {
         let driver = TruncatingMidSearchDriver(truncatedUntil: 0)
-        let result = await StepExecutor(driver: driver).execute(scrollTo("missing"))
+        let result = await StepExecutor(driver: driver, isAndroid: false).execute(scrollTo("missing"))
         XCTAssertFalse(result.notes.contains(.truncatedDuringSearch),
                        "打ち切っていないのに注記が出ている: \(result.notes)")
     }

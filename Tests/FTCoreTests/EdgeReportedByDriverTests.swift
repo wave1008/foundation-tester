@@ -64,7 +64,7 @@ final class EdgeReportedByDriverTests: XCTestCase {
     /// 申告があれば**確認の読み1回**で終わる。従来は「不変が2回」まで振り続けていた
     func testStopsAsSoonAsTheDriverReportsTheEdge() async throws {
         let driver = EdgeReportingDriver(edgeAfter: 2)
-        let outcome = await StepExecutor(driver: driver).execute(edgeStep())
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(edgeStep())
 
         guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
         XCTAssertNil(outcome.driverFallback,
@@ -77,7 +77,7 @@ final class EdgeReportedByDriverTests: XCTestCase {
     /// ここが無いと「端に着いた」と言われた時点で終わり、続きを見ない
     func testKeepsGoingWhenTheTreeChangedAfterTheReportedEdge() async throws {
         let driver = EdgeReportingDriver(edgeAfter: 2, growsAfterEdge: true)
-        let outcome = await StepExecutor(driver: driver).execute(edgeStep())
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(edgeStep())
 
         guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
         XCTAssertGreaterThan(driver.snapshotCount, 4,

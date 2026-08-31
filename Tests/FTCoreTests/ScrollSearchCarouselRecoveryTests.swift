@@ -101,7 +101,7 @@ final class ScrollSearchCarouselRecoveryTests: XCTestCase {
     func testRecoveryDragFallsBackToTheTypeDriverWhenThePrimaryCannotDrag() async {
         let carousel = CarouselDriver()
         let primary = NoDragPrimary(inner: carousel)
-        let executor = StepExecutor(driver: primary, typeDriver: carousel)
+        let executor = StepExecutor(driver: primary, typeDriver: carousel, isAndroid: false)
         let step = FlowStep(assert: "exists", locator: FlowLocator(label: "スタンプラリー"),
                             direction: "right", timeout: 1, maxSwipes: 3)
 
@@ -119,7 +119,7 @@ final class ScrollSearchCarouselRecoveryTests: XCTestCase {
     /// 送って通る(以前はカードを容器と取り違えて送れず not-found)
     func testExistWithScrollRecoversAClippedCarouselItemByDraggingItsContainer() async {
         let driver = CarouselDriver()
-        let executor = StepExecutor(driver: driver)
+        let executor = StepExecutor(driver: driver, isAndroid: false)
         let step = FlowStep(assert: "exists", locator: FlowLocator(label: "スタンプラリー"),
                             direction: "right", timeout: 1, maxSwipes: 3)
 

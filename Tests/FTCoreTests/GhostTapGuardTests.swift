@@ -71,7 +71,7 @@ final class GhostTapGuardTests: XCTestCase {
         // 分岐に入り、掴み直し(送り直し)の経路を通らない
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"))
 
-        _ = await StepExecutor(driver: driver).execute(step)
+        _ = await StepExecutor(driver: driver, isAndroid: false).execute(step)
 
         XCTAssertGreaterThan(driver.swipes, 0,
                              "容器の外に報告された要素をそのままタップしている(掴み直しが発火していない)")
@@ -84,7 +84,7 @@ final class GhostTapGuardTests: XCTestCase {
         // 分岐に入り、掴み直し(送り直し)の経路を通らない
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"))
 
-        _ = await StepExecutor(driver: driver).execute(step)
+        _ = await StepExecutor(driver: driver, isAndroid: false).execute(step)
 
         XCTAssertEqual(driver.swipes, 0, "容器の中に居るのに掴み直している")
         XCTAssertGreaterThan(driver.taps, 0, "タップされていない")
@@ -96,7 +96,7 @@ final class GhostTapGuardTests: XCTestCase {
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"),
                             containerInference: false)
 
-        _ = await StepExecutor(driver: driver).execute(step)
+        _ = await StepExecutor(driver: driver, isAndroid: false).execute(step)
 
         XCTAssertEqual(driver.swipes, 0, "補正を切ったのに掴み直している")
     }

@@ -105,8 +105,8 @@ final class ScrollToEdgeHintTests: XCTestCase {
         let plain = EdgeDriver(elements: Self.visible, offscreen: nil)
         let step = FlowStep(action: "scrollToEdge", direction: "down")
 
-        guard case .passed = await StepExecutor(driver: hinted).execute(step).status,
-              case .passed = await StepExecutor(driver: plain).execute(step).status else {
+        guard case .passed = await StepExecutor(driver: hinted, isAndroid: false).execute(step).status,
+              case .passed = await StepExecutor(driver: plain, isAndroid: false).execute(step).status else {
             XCTFail("端に着いていれば scrollToEdge は成功する"); return
         }
         XCTAssertEqual(plain.swipeCount, 2, "供給が無い画面は従来どおり(不変2回)")
@@ -119,7 +119,7 @@ final class ScrollToEdgeHintTests: XCTestCase {
         let driver = EdgeDriver(elements: Self.visible, offscreen: Self.hintsAbove())
         let step = FlowStep(action: "scrollToEdge", direction: "down")
 
-        guard case .passed = await StepExecutor(driver: driver).execute(step).status else {
+        guard case .passed = await StepExecutor(driver: driver, isAndroid: false).execute(step).status else {
             XCTFail("上限で抜けても scrollToEdge は成功扱い(注記だけ付く)"); return
         }
         XCTAssertEqual(driver.swipeCount, 2, "まだ先があるなら不変2回を待つ")

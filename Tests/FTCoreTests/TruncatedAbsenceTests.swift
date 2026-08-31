@@ -130,7 +130,7 @@ final class TruncatedAbsenceTests: XCTestCase {
     func testNotExistDoesNotPassWhenTheTargetWasTruncatedAway() async {
         let full = [node(1, id: "filler_a"), node(2, id: "filler_b"), node(3, id: "dialog")]
         let driver = TruncatingDriver(frames: [full], defaultLimit: 2, raisedLimit: 3)
-        let outcome = await StepExecutor(driver: driver).execute(notExist("dialog"))
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(notExist("dialog"))
         XCTAssertNotNil(failureReason(outcome.status),
                         "間引かれただけの要素を不在と通した(誤った成功): \(outcome.status)")
         XCTAssertEqual(driver.requestedLimits.count, 1, "上限を上げた撮り直しが撃たれていない")
@@ -141,7 +141,7 @@ final class TruncatedAbsenceTests: XCTestCase {
     func testNotExistDoesNotPassWhileTheTreeIsStillTruncated() async {
         let full = [node(1, id: "filler_a"), node(2, id: "filler_b"), node(3, id: "filler_c")]
         let driver = TruncatingDriver(frames: [full], defaultLimit: 2, raisedLimit: 2)
-        let outcome = await StepExecutor(driver: driver).execute(notExist("dialog"))
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(notExist("dialog"))
         let reason = failureReason(outcome.status)
         XCTAssertNotNil(reason, "切り詰められた木で不在を結論した: \(outcome.status)")
         XCTAssertTrue(reason?.contains("cannot decide absence") == true,
@@ -152,7 +152,7 @@ final class TruncatedAbsenceTests: XCTestCase {
     func testNotExistStillPassesOnACompleteTree() async {
         let full = [node(1, id: "filler_a"), node(2, id: "filler_b")]
         let driver = TruncatingDriver(frames: [full], defaultLimit: 5, raisedLimit: 5)
-        let outcome = await StepExecutor(driver: driver).execute(notExist("dialog"))
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(notExist("dialog"))
         XCTAssertTrue(isPassed(outcome.status), "不在なのに落ちた: \(outcome.status)")
         XCTAssertEqual(driver.snapshotCount, 1)
         XCTAssertTrue(driver.requestedLimits.isEmpty,
@@ -164,7 +164,7 @@ final class TruncatedAbsenceTests: XCTestCase {
     func testTheRetakeAsksForTheCeiling() async {
         let full = [node(1, id: "filler_a"), node(2, id: "dialog")]
         let driver = TruncatingDriver(frames: [full], defaultLimit: 1, raisedLimit: 2)
-        _ = await StepExecutor(driver: driver).execute(notExist("dialog"))
+        _ = await StepExecutor(driver: driver, isAndroid: false).execute(notExist("dialog"))
         XCTAssertEqual(driver.requestedLimits, [BridgeAPI.maxSnapshotElementsCeiling])
     }
 
@@ -177,7 +177,7 @@ final class TruncatedAbsenceTests: XCTestCase {
         // 3枚目 = latch 後の周(1枚目=既定の上限・2枚目=撮り直し)
         let driver = TruncatingDriver(frames: [present, present, gone],
                                       defaultLimit: 2, raisedLimit: 3)
-        let outcome = await StepExecutor(driver: driver)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false)
             .execute(notExist("dialog", timeout: 0.4))
         XCTAssertEqual(driver.snapshotCount, 3,
                        "撮り直しの2枚目を毎周払っている: \(driver.snapshotCount) 枚")
@@ -193,7 +193,7 @@ final class TruncatedAbsenceTests: XCTestCase {
     func testLatchedPollsStillRefuseATruncatedAbsence() async {
         let present = [node(1, id: "filler_a"), node(2, id: "dialog"), node(3, id: "filler_c")]
         let driver = TruncatingDriver(frames: [present], defaultLimit: 1, raisedLimit: 2)
-        let outcome = await StepExecutor(driver: driver).execute(notExist("filler_c"))
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(notExist("filler_c"))
         let reason = failureReason(outcome.status)
         XCTAssertNotNil(reason, "天井でも足りない木で不在を結論した: \(outcome.status)")
         XCTAssertTrue(reason?.contains("cannot decide absence") == true, reason ?? "-")
@@ -206,7 +206,7 @@ final class TruncatedAbsenceTests: XCTestCase {
         let driver = TruncatingSearchDriver(truncatedUntil: 2)
         let step = FlowStep(assert: "notExists", locator: FlowLocator(id: "missing"),
                             direction: "up", timeout: 0, maxSwipes: 3, occlusionGuard: false)
-        let outcome = await StepExecutor(driver: driver).execute(step)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(step)
         let reason = failureReason(outcome.status)
         XCTAssertNotNil(reason, "探索中に切り詰められた木で不在を結論した: \(outcome.status)")
         XCTAssertTrue(reason?.contains("cannot decide absence") == true,
@@ -218,7 +218,7 @@ final class TruncatedAbsenceTests: XCTestCase {
         let driver = TruncatingSearchDriver(truncatedUntil: 0)
         let step = FlowStep(assert: "notExists", locator: FlowLocator(id: "missing"),
                             direction: "up", timeout: 0, maxSwipes: 3, occlusionGuard: false)
-        let outcome = await StepExecutor(driver: driver).execute(step)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(step)
         XCTAssertTrue(isPassed(outcome.status), "不在なのに落ちた: \(outcome.status)")
     }
 
@@ -231,7 +231,7 @@ final class TruncatedAbsenceTests: XCTestCase {
                                         screen: FTRect(x: 0, y: 0, width: 400, height: 800),
                                         elements: [node(1, id: "a")], truncatedCount: 0)
         var phase = StepExecutor.PhaseAccumulator()
-        let same = try await StepExecutor(driver: driver)
+        let same = try await StepExecutor(driver: driver, isAndroid: false)
             .retakenAtElementLimitCeiling(complete, phase: &phase)
         XCTAssertEqual(driver.snapshotCount, 0, "切り詰められていない木を撮り直した")
         XCTAssertTrue(driver.requestedLimits.isEmpty)
@@ -251,7 +251,7 @@ final class TruncatedAbsenceTests: XCTestCase {
         let full = [node(1, id: "cell_a", type: "clickable"), node(2, id: "cell_b", type: "clickable"),
                     node(3, id: "cell_c", type: "clickable")]
         let driver = TruncatingDriver(frames: [full], defaultLimit: 2, raisedLimit: 3)
-        let outcome = await StepExecutor(driver: driver).execute(count("clickable", 2))
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(count("clickable", 2))
         XCTAssertNotNil(failureReason(outcome.status),
                         "間引かれた木で数えた一致を通した(誤った成功): \(outcome.status)")
         XCTAssertEqual(driver.requestedLimits.count, 1, "上限を上げた数え直しが撃たれていない")
@@ -262,7 +262,7 @@ final class TruncatedAbsenceTests: XCTestCase {
         let full = [node(1, id: "cell_a", type: "clickable"), node(2, id: "cell_b", type: "clickable"),
                     node(3, id: "cell_c", type: "clickable")]
         let driver = TruncatingDriver(frames: [full], defaultLimit: 2, raisedLimit: 2)
-        let outcome = await StepExecutor(driver: driver).execute(count("clickable", 2))
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(count("clickable", 2))
         let reason = failureReason(outcome.status)
         XCTAssertNotNil(reason, "切り詰められた木で件数を結論した: \(outcome.status)")
         XCTAssertTrue(reason?.contains("cannot decide the count") == true,
@@ -273,7 +273,7 @@ final class TruncatedAbsenceTests: XCTestCase {
     func testCountStillPassesOnACompleteTree() async {
         let full = [node(1, id: "cell_a", type: "clickable"), node(2, id: "cell_b", type: "clickable")]
         let driver = TruncatingDriver(frames: [full], defaultLimit: 5, raisedLimit: 5)
-        let outcome = await StepExecutor(driver: driver).execute(count("clickable", 2))
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(count("clickable", 2))
         XCTAssertTrue(isPassed(outcome.status), "件数が合っているのに落ちた: \(outcome.status)")
         XCTAssertEqual(driver.snapshotCount, 1)
         XCTAssertTrue(driver.requestedLimits.isEmpty)
@@ -290,7 +290,7 @@ final class TruncatedAbsenceTests: XCTestCase {
                                       defaultLimit: 2, raisedLimit: 5)
         let step = FlowStep(assert: "count", locator: FlowLocator(type: "clickable"),
                             timeout: 0.5, expectedCount: 3)
-        let outcome = await StepExecutor(driver: driver).execute(step)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(step)
         XCTAssertTrue(isPassed(outcome.status),
                       "埋まった木を天井で数えられていない: \(outcome.status)")
     }
@@ -301,7 +301,7 @@ final class TruncatedAbsenceTests: XCTestCase {
         let full = [node(1, id: "cell_a", type: "clickable"), node(2, id: "cell_b", type: "clickable"),
                     node(3, id: "cell_c", type: "clickable")]
         let driver = TruncatingDriver(frames: [full], defaultLimit: 2, raisedLimit: 2)
-        let outcome = await StepExecutor(driver: driver).execute(count("clickable", 5))
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(count("clickable", 5))
         let reason = failureReason(outcome.status)
         XCTAssertNotNil(reason)
         XCTAssertTrue(reason?.contains("truncated") == true,

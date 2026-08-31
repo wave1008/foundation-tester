@@ -14,7 +14,7 @@ extension StepExecutorTests {
     func testNotExistWithScrollPassesWhenNeverFoundDuringSearch() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[], [], []])
-        let executor = StepExecutor(driver: primary)
+        let executor = StepExecutor(driver: primary, isAndroid: false)
         let step = FlowStep(assert: "notExists", locator: FlowLocator(id: "row_99"),
                             direction: "up", timeout: 0, maxSwipes: 2)
 
@@ -29,7 +29,7 @@ extension StepExecutorTests {
         let log = CallLog()
         let row = framed(ref: 1, id: "row_99", x: 16, y: 300, width: 370, height: 56)
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[], [row]])
-        let executor = StepExecutor(driver: primary, releasesScrollTouch: true)
+        let executor = StepExecutor(driver: primary, releasesScrollTouch: true, isAndroid: false)
         let step = FlowStep(assert: "notExists", locator: FlowLocator(id: "row_99"),
                             direction: "up", timeout: 0, maxSwipes: 2)
 
@@ -45,7 +45,7 @@ extension StepExecutorTests {
     func testNotExistWithScrollFailsWhenScrollFrameDoesNotResolve() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
-        let executor = StepExecutor(driver: primary)
+        let executor = StepExecutor(driver: primary, isAndroid: false)
         var step = FlowStep(assert: "notExists", locator: FlowLocator(id: "row_99"),
                             direction: "up", timeout: 0, maxSwipes: 2)
         step.scrollFrame = FlowLocator(id: "no_such_container")
@@ -148,7 +148,7 @@ extension StepExecutorTests {
                 [container, filler],
                 [container, filler, target],
             ])
-            let executor = StepExecutor(driver: primary, releasesScrollTouch: true)
+            let executor = StepExecutor(driver: primary, releasesScrollTouch: true, isAndroid: false)
             _ = await executor.execute(FlowStep(action: "tap",
                                                 locator: FlowLocator(id: "cell_40"),
                                                 direction: "up", maxSwipes: 6))
@@ -184,7 +184,7 @@ extension StepExecutorTests {
             [container, inside1, inside2, ghost],
             [container, inside1, inside2, settled],
         ])
-        let executor = StepExecutor(driver: primary, releasesScrollTouch: true)
+        let executor = StepExecutor(driver: primary, releasesScrollTouch: true, isAndroid: false)
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "row_30"),
                             direction: "up", maxSwipes: 2)
 
@@ -481,7 +481,7 @@ extension StepExecutorTests {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,
                                     snapshotElements: partialSheetStallScript())
-        let executor = StepExecutor(driver: primary, defersPartialSheetRecovery: true)
+        let executor = StepExecutor(driver: primary, isAndroid: false, defersPartialSheetRecovery: true)
         let step = FlowStep(action: "scrollTo", locator: FlowLocator(id: "row_target"),
                             maxSwipes: 6)
 
@@ -500,7 +500,7 @@ extension StepExecutorTests {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,
                                     snapshotElements: partialSheetStallScript())
-        let executor = StepExecutor(driver: primary)
+        let executor = StepExecutor(driver: primary, isAndroid: false)
         let step = FlowStep(action: "scrollTo", locator: FlowLocator(id: "row_target"),
                             maxSwipes: 6)
 
@@ -513,7 +513,7 @@ extension StepExecutorTests {
 
     /// 探索の打ち切りは文言が別(「after the search」)でも同じコードで数えること
     func testScrollSearchNoteRecordsTheSameCode() {
-        let executor = StepExecutor(driver: FakeAppDriver(name: "primary", log: CallLog()))
+        let executor = StepExecutor(driver: FakeAppDriver(name: "primary", log: CallLog()), isAndroid: false)
         var capped = StepExecutor.ScrollSearchResult(found: true, fallback: nil,
                                                      viaXCUITest: false, hintJumps: 0)
         capped.settleCapped = true
@@ -530,7 +530,7 @@ extension StepExecutorTests {
     /// half-open bottom sheet)と**同じ条件**であること —— 片方だけ変わると、
     /// 案内は出るのに自動展開が黙って効かなくなる
     func testSheetCollapsedCodeFollowsTheSameConditionAsTheHint() {
-        let executor = StepExecutor(driver: FakeAppDriver(name: "primary", log: CallLog()))
+        let executor = StepExecutor(driver: FakeAppDriver(name: "primary", log: CallLog()), isAndroid: false)
         var stopped = StepExecutor.ScrollSearchResult(found: false, fallback: nil,
                                                       viaXCUITest: false, hintJumps: 0)
         stopped.stoppedUnmoving = true
@@ -543,7 +543,7 @@ extension StepExecutorTests {
 
     /// 全画面リストの末尾到達では立てない(毎回シートを広げにいかせない)
     func testSheetCollapsedCodeIsNotSetForAFullHeightContainer() {
-        let executor = StepExecutor(driver: FakeAppDriver(name: "primary", log: CallLog()))
+        let executor = StepExecutor(driver: FakeAppDriver(name: "primary", log: CallLog()), isAndroid: false)
         var stopped = StepExecutor.ScrollSearchResult(found: false, fallback: nil,
                                                       viaXCUITest: false, hintJumps: 0)
         stopped.stoppedUnmoving = true
@@ -556,7 +556,7 @@ extension StepExecutorTests {
 
     /// 打ち切っていないときは何も立てないこと(上の検証を「常に立てる」実装で通さないための対)
     func testScrollSearchNoteRecordsNothingWhenSettled() {
-        let executor = StepExecutor(driver: FakeAppDriver(name: "primary", log: CallLog()))
+        let executor = StepExecutor(driver: FakeAppDriver(name: "primary", log: CallLog()), isAndroid: false)
         let settled = StepExecutor.ScrollSearchResult(found: true, fallback: nil,
                                                       viaXCUITest: false, hintJumps: 0)
 
@@ -570,7 +570,7 @@ extension StepExecutorTests {
         let log = CallLog()
         let moving = (0..<200).map { movingRow(y: Double($0) * 10) }
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: moving)
-        let executor = StepExecutor(driver: primary)
+        let executor = StepExecutor(driver: primary, isAndroid: false)
 
         let outcome = await executor.execute(
             FlowStep(action: "scrollToEdge", direction: "up", maxSwipes: 3))
@@ -585,7 +585,7 @@ extension StepExecutorTests {
         let log = CallLog()
         let moving = (0..<200).map { movingRow(y: Double($0) * 10) }
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: moving)
-        let executor = StepExecutor(driver: primary)
+        let executor = StepExecutor(driver: primary, isAndroid: false)
         let capped = await executor.execute(
             FlowStep(action: "scrollToEdge", direction: "up", maxSwipes: 3))
         XCTAssertEqual(capped.notes, [.settleCapped], "前提: 1本目は打ち切られていること")
@@ -605,7 +605,7 @@ extension StepExecutorTests {
     /// 探索が1度もスワイプしていない場合まで毎回撮り直し、計測済みの所要が静かに増える
     func testBypassPolicyTruthTable() {
         let driver = FakeAppDriver(name: "primary", log: CallLog())
-        let executor = StepExecutor(driver: driver)
+        let executor = StepExecutor(driver: driver, isAndroid: false)
 
         driver.bypassSupported = true
         XCTAssertTrue(executor.bypassesCache(.afterOwnMove))
@@ -623,7 +623,7 @@ extension StepExecutorTests {
     func testFreshSnapshotForwardsTheDecisionToTheDriver() async throws {
         let driver = FakeAppDriver(name: "primary", log: CallLog())
         driver.bypassSupported = true
-        let executor = StepExecutor(driver: driver)
+        let executor = StepExecutor(driver: driver, isAndroid: false)
 
         _ = try await executor.freshSnapshot(.afterSearch(swiped: false))
         XCTAssertEqual(driver.bypassedSnapshotCount, 0)
@@ -645,7 +645,7 @@ extension StepExecutorTests {
     func testUnresolvableLocatorIsMarkedNotFound() async throws {
         let primary = FakeAppDriver(name: "primary", log: CallLog(),
                                     snapshotElements: [[element(ref: 1, id: "other")]])
-        let executor = StepExecutor(driver: primary)
+        let executor = StepExecutor(driver: primary, isAndroid: false)
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "missing"), timeout: 1)
 
         let outcome = await executor.execute(step)
@@ -657,7 +657,7 @@ extension StepExecutorTests {
     func testValueMismatchIsMarkedAssertion() async throws {
         let primary = FakeAppDriver(name: "primary", log: CallLog(),
                                     snapshotElements: [[textElement(id: "msg", label: "こんにちは")]])
-        let executor = StepExecutor(driver: primary)
+        let executor = StepExecutor(driver: primary, isAndroid: false)
         var step = FlowStep(assert: "textEquals", locator: FlowLocator(id: "msg"), timeout: 1)
         step.expected = "さようなら"
 
@@ -669,7 +669,7 @@ extension StepExecutorTests {
     /// 同じ assert でも**要素が居ない**なら not-found(assertion で塗り潰さない)
     func testMissingElementInAnAssertIsStillNotFound() async throws {
         let primary = FakeAppDriver(name: "primary", log: CallLog(), snapshotElements: [[]])
-        let executor = StepExecutor(driver: primary)
+        let executor = StepExecutor(driver: primary, isAndroid: false)
         var step = FlowStep(assert: "textEquals", locator: FlowLocator(id: "msg"), timeout: 1)
         step.expected = "なんでも"
 
@@ -683,7 +683,7 @@ extension StepExecutorTests {
         let primary = FakeAppDriver(name: "primary", log: CallLog(),
                                     snapshotElements: [[element(ref: 1, id: "btn")]])
         primary.swipeError = DriverError.bridgeUnreachable("connection reset")
-        let executor = StepExecutor(driver: primary)
+        let executor = StepExecutor(driver: primary, isAndroid: false)
         let step = FlowStep(action: "swipe", direction: "up")
 
         let outcome = await executor.execute(step)
@@ -695,7 +695,7 @@ extension StepExecutorTests {
     func testSuccessfulStepsCarryNoFailureKind() async throws {
         let primary = FakeAppDriver(name: "primary", log: CallLog(),
                                     snapshotElements: [[element(ref: 1, id: "btn")]])
-        let executor = StepExecutor(driver: primary)
+        let executor = StepExecutor(driver: primary, isAndroid: false)
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "btn"), timeout: 1)
 
         let outcome = await executor.execute(step)

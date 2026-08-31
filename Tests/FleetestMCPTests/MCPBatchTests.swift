@@ -182,6 +182,24 @@ final class MCPBatchTests: XCTestCase {
         XCTAssertEqual(driver.calls, [])
     }
 
+    // MARK: - type … replace: true(D)。実行は StepExecutor 委譲なので、ここでは配線だけ見る
+    // (clearInput→type の呼び出し順・失敗時の扱いは Tests/FTCoreTests/StepExecutorTests+TextEntry.swift
+    // が既に固めている)
+
+    func testTypeReplaceClearsBeforeTypingInABatch() async throws {
+        let text = body(try await server.call(
+            tool: "ft_batch", args: steps("type '#login_btn' 'abc' replace: true")))
+        XCTAssertTrue(text.contains("(replace)"), text)
+        let clearIndex = driver.calls.firstIndex { $0.hasPrefix("clearInput(ref:") }
+        let typeIndex = driver.calls.firstIndex { $0.hasPrefix("type(ref:") }
+        XCTAssertNotNil(clearIndex, "replace は type の前に clearInput を呼ぶこと: \(driver.calls)")
+        XCTAssertNotNil(typeIndex, "\(driver.calls)")
+        if let clearIndex, let typeIndex {
+            XCTAssertLessThan(clearIndex, typeIndex,
+                              "clearInput は type より前であること: \(driver.calls)")
+        }
+    }
+
     // MARK: - (e) 実行した各手が InteractionLog に1手ずつ入り、下書きは正形で出る
 
     func testExecutedStepsAreRecordedForTheDraft() async throws {

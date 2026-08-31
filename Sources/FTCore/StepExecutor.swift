@@ -366,6 +366,11 @@ public final class StepExecutor {
     /// 行が選択される = 二重実行。2026-07-27 実測)。プラットフォームで分ける唯一の理由
     let releasesScrollTouch: Bool
 
+    /// タップの遮蔽・切り詰め注記の文言分岐にだけ使う。`TapTargetGeometry.advisory` /
+    /// `advisoryKind` の判定そのものは変えない —— 判定は1箇所、文言だけが OS で違う。
+    /// **既定値を置かない**(呼び忘れをコンパイルで止める。overlayWindows: と同じ規律)
+    let isAndroid: Bool
+
     /// in-app ブリッジの自己申告(/status の uiFramework)、または engine=xcuitest では
     /// `AppBundleInspector` がバンドルのマーカーから判定した値。"compose" / "flutter" / "uikit" / nil(不明)。
     /// **空打ちの発火条件だけに使う**(shouldEmptyDrag)。他の判定には持ち込まない
@@ -423,10 +428,12 @@ public final class StepExecutor {
                 occlusionGuard: Bool = false, occlusionInkThreshold: Double = 12,
                 occlusionGuardEnabled: Bool = true, screenLooksLikeEnabled: Bool = true,
                 releasesScrollTouch: Bool = false,
+                isAndroid: Bool,
                 uiFramework: String? = nil,
                 containerInference: Bool = true,
                 defersPartialSheetRecovery: Bool = false) {
         self.releasesScrollTouch = releasesScrollTouch
+        self.isAndroid = isAndroid
         self.uiFramework = uiFramework
         self.containerInference = containerInference
         self.defersPartialSheetRecovery = defersPartialSheetRecovery

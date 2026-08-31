@@ -62,7 +62,7 @@ final class TypeAfterTapFocusTests: XCTestCase {
     func testTypesIntoTheFieldWhenTheTapDidNotFocusIt() async throws {
         let driver = RecordingDriver(elements: [container(ref: 8, id: "txtMailAddress"),
                                                 field(ref: 9)])
-        let executor = StepExecutor(driver: driver)
+        let executor = StepExecutor(driver: driver, isAndroid: false)
         _ = await executor.execute(FlowStep(action: "tap",
                                             locator: FlowLocator(id: "txtMailAddress"), timeout: 1))
 
@@ -79,7 +79,7 @@ final class TypeAfterTapFocusTests: XCTestCase {
     func testKeepsTheFastPathWhenSomethingHasFocus() async throws {
         let driver = RecordingDriver(elements: [container(ref: 8, id: "txtMailAddress"),
                                                 field(ref: 9, focused: true)])
-        let executor = StepExecutor(driver: driver)
+        let executor = StepExecutor(driver: driver, isAndroid: false)
         _ = await executor.execute(FlowStep(action: "tap",
                                             locator: FlowLocator(id: "txtMailAddress"), timeout: 1))
         let snapshotsAfterTap = driver.snapshotCount
@@ -98,7 +98,7 @@ final class TypeAfterTapFocusTests: XCTestCase {
         wide.frame = FTRect(x: 0, y: 0, width: 1080, height: 2400)
         let driver = RecordingDriver(elements: [wide, field(ref: 9, y: 417),
                                                 field(ref: 10, id: "second", y: 700)])
-        let executor = StepExecutor(driver: driver)
+        let executor = StepExecutor(driver: driver, isAndroid: false)
         _ = await executor.execute(FlowStep(action: "tap",
                                             locator: FlowLocator(id: "form"), timeout: 1))
 
@@ -112,7 +112,7 @@ final class TypeAfterTapFocusTests: XCTestCase {
     func testForgetsTheTapAfterAnotherAction() async throws {
         let driver = RecordingDriver(elements: [container(ref: 8, id: "txtMailAddress"),
                                                 field(ref: 9)])
-        let executor = StepExecutor(driver: driver)
+        let executor = StepExecutor(driver: driver, isAndroid: false)
         _ = await executor.execute(FlowStep(action: "tap",
                                             locator: FlowLocator(id: "txtMailAddress"), timeout: 1))
         _ = await executor.execute(FlowStep(action: "swipe", direction: "up"))

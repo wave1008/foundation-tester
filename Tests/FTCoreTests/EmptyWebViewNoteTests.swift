@@ -52,7 +52,7 @@ final class EmptyWebViewNoteTests: XCTestCase {
     /// **通った不在**にこそ注記が要る(空の木では必ず通るため)
     func testAPassingAbsenceOnAnUnrenderedWebViewCarriesTheNote() async {
         let driver = EmptyWebViewDriver(path: WebViewPath.delegatedEmpty)
-        let outcome = await StepExecutor(driver: driver).execute(notExist("submit"))
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(notExist("submit"))
         XCTAssertTrue(outcome.notes.contains(.webViewNotRendered),
                       "空の WebView で成立した不在が黙って通った: \(outcome.notes) / \(outcome.status)")
     }
@@ -60,14 +60,14 @@ final class EmptyWebViewNoteTests: XCTestCase {
     /// 逆方向: 中身が出ている委譲画面には付けない(毎回出る注記にしない)
     func testARenderedDelegatedWebViewCarriesNoNote() async {
         let driver = EmptyWebViewDriver(path: WebViewPath.delegated)
-        let outcome = await StepExecutor(driver: driver).execute(notExist("submit"))
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(notExist("submit"))
         XCTAssertFalse(outcome.notes.contains(.webViewNotRendered), "\(outcome.notes)")
     }
 
     /// WebView と無関係な画面にも付けない
     func testANonWebViewScreenCarriesNoNote() async {
         let driver = EmptyWebViewDriver(path: nil)
-        let outcome = await StepExecutor(driver: driver).execute(notExist("submit"))
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(notExist("submit"))
         XCTAssertFalse(outcome.notes.contains(.webViewNotRendered), "\(outcome.notes)")
     }
 
@@ -77,7 +77,7 @@ final class EmptyWebViewNoteTests: XCTestCase {
         let driver = EmptyWebViewDriver(path: WebViewPath.delegatedEmpty)
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "submit"),
                             timeout: 0, occlusionGuard: false)
-        let outcome = await StepExecutor(driver: driver).execute(step)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(step)
         guard case .failed(let reason) = outcome.status else {
             return XCTFail("見つからないので失敗するはず: \(outcome.status)")
         }
@@ -87,12 +87,12 @@ final class EmptyWebViewNoteTests: XCTestCase {
 
     /// 否定テキスト比較・count も同じ木で判定するので同じ注記が要る
     func testTheNoteAlsoReachesCountAndNegativeTextAsserts() async {
-        let count = await StepExecutor(driver: EmptyWebViewDriver(path: WebViewPath.delegatedEmpty))
+        let count = await StepExecutor(driver: EmptyWebViewDriver(path: WebViewPath.delegatedEmpty), isAndroid: false)
             .execute(FlowStep(assert: "count", locator: FlowLocator(type: "clickable"),
                               timeout: 0, expectedCount: 0))
         XCTAssertTrue(count.notes.contains(.webViewNotRendered), "count: \(count.notes)")
 
-        let negative = await StepExecutor(driver: EmptyWebViewDriver(path: WebViewPath.delegatedEmpty))
+        let negative = await StepExecutor(driver: EmptyWebViewDriver(path: WebViewPath.delegatedEmpty), isAndroid: false)
             .execute(FlowStep(assert: "textNotEquals", locator: FlowLocator(id: "submit"),
                               expected: "送信", timeout: 0, occlusionGuard: false))
         XCTAssertTrue(negative.notes.contains(.webViewNotRendered), "negative text: \(negative.notes)")
@@ -109,7 +109,7 @@ final class EmptyWebViewNoteTests: XCTestCase {
     /// 否定側: 空の木で成立した不在に注記が付く
     func testAPassingAbsenceOnAnUnreadWebViewCarriesTheNote() async {
         let driver = EmptyWebViewDriver(path: WebViewPath.domUnread)
-        let outcome = await StepExecutor(driver: driver).execute(notExist("submit"))
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(notExist("submit"))
         XCTAssertTrue(outcome.notes.contains(.webViewUnread),
                       "読めなかった WebView で成立した不在が黙って通った: \(outcome.notes)")
     }
@@ -117,7 +117,7 @@ final class EmptyWebViewNoteTests: XCTestCase {
     /// 逆方向: 読めている経路には付けない(毎回出る注記にしない)
     func testAReadWebViewCarriesNoUnreadNote() async {
         for path in [WebViewPath.dom, WebViewPath.domInterop, WebViewPath.delegated] {
-            let outcome = await StepExecutor(driver: EmptyWebViewDriver(path: path))
+            let outcome = await StepExecutor(driver: EmptyWebViewDriver(path: path), isAndroid: false)
                 .execute(notExist("submit"))
             XCTAssertFalse(outcome.notes.contains(.webViewUnread), "\(path): \(outcome.notes)")
         }
@@ -129,7 +129,7 @@ final class EmptyWebViewNoteTests: XCTestCase {
         let driver = EmptyWebViewDriver(path: WebViewPath.domUnread)
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "wv_input"),
                             timeout: 0, occlusionGuard: false)
-        let outcome = await StepExecutor(driver: driver).execute(step)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(step)
         guard case .failed(let reason) = outcome.status else {
             return XCTFail("見つからないので失敗するはず: \(outcome.status)")
         }

@@ -31,9 +31,9 @@ final class TapAdvisoryKindSharedTests: XCTestCase {
         guard case .zeroFrame = TapTargetGeometry.advisoryKind(for: e, in: [e], screen: screen) else {
             return XCTFail("zeroFrame が発火していない")
         }
-        let dsl = TapTargetGeometry.occlusionAdvisory(for: e, in: [e], screen: screen)
+        let dsl = TapTargetGeometry.occlusionAdvisory(for: e, in: [e], screen: screen, isAndroid: false)
         XCTAssertTrue(dsl?.contains("zero width/height") == true, dsl ?? "-")
-        let mcp = RefGuard.overlapWarning(found: e, in: [e], screen: screen)
+        let mcp = RefGuard.overlapWarning(found: e, in: [e], screen: screen, isAndroid: false)
         XCTAssertTrue(mcp.contains("zero width/height"), mcp)
         XCTAssertTrue(mcp.contains("#z"), "MCP 側は要素を名指しすること: \(mcp)")
     }
@@ -44,9 +44,9 @@ final class TapAdvisoryKindSharedTests: XCTestCase {
         let e = element(1, "slot_07", "button", 0, -46, 402, 56)
         guard case .offscreen = TapTargetGeometry.advisoryKind(for: e, in: [e], screen: smallScreen)
         else { return XCTFail("offscreen が発火していない") }
-        let dsl = TapTargetGeometry.occlusionAdvisory(for: e, in: [e], screen: smallScreen)
+        let dsl = TapTargetGeometry.occlusionAdvisory(for: e, in: [e], screen: smallScreen, isAndroid: false)
         XCTAssertTrue(dsl?.contains("outside the visible screen") == true, dsl ?? "-")
-        let mcp = RefGuard.overlapWarning(found: e, in: [e], screen: smallScreen)
+        let mcp = RefGuard.overlapWarning(found: e, in: [e], screen: smallScreen, isAndroid: false)
         XCTAssertTrue(mcp.contains("outside the visible screen"), mcp)
         XCTAssertTrue(mcp.contains("ft_scroll_to"), "MCP 側は逃げ道を書くこと: \(mcp)")
     }
@@ -64,9 +64,9 @@ final class TapAdvisoryKindSharedTests: XCTestCase {
             return XCTFail("scrolledOut が発火していない")
         }
         XCTAssertEqual(hit.ref, scroller.ref)
-        let dsl = TapTargetGeometry.occlusionAdvisory(for: target, in: elements, screen: smallScreen)
+        let dsl = TapTargetGeometry.occlusionAdvisory(for: target, in: elements, screen: smallScreen, isAndroid: false)
         XCTAssertTrue(dsl?.contains("leftover from scrolling") == true, dsl ?? "-")
-        let mcp = RefGuard.overlapWarning(found: target, in: elements, screen: smallScreen)
+        let mcp = RefGuard.overlapWarning(found: target, in: elements, screen: smallScreen, isAndroid: false)
         XCTAssertTrue(mcp.contains("leftover from scrolling"), mcp)
         XCTAssertTrue(mcp.contains("#scroller"), "MCP 側は容器を名指しすること: \(mcp)")
     }
@@ -81,10 +81,10 @@ final class TapAdvisoryKindSharedTests: XCTestCase {
             return XCTFail("overlayCovering が発火していない")
         }
         XCTAssertEqual(hit.ref, overlay.ref)
-        let dsl = TapTargetGeometry.occlusionAdvisory(for: target, in: elements, screen: screen)
+        let dsl = TapTargetGeometry.occlusionAdvisory(for: target, in: elements, screen: screen, isAndroid: false)
         XCTAssertTrue(dsl?.contains("#tab_controls") == true, dsl ?? "-")
         XCTAssertTrue(dsl?.contains("instead") == true, dsl ?? "-")
-        let mcp = RefGuard.overlapWarning(found: target, in: elements, screen: screen)
+        let mcp = RefGuard.overlapWarning(found: target, in: elements, screen: screen, isAndroid: false)
         XCTAssertTrue(mcp.contains("#tab_controls"), mcp)
         XCTAssertTrue(mcp.contains("ft_screenshot"), "MCP 側は逃げ道を書くこと: \(mcp)")
     }
@@ -100,10 +100,10 @@ final class TapAdvisoryKindSharedTests: XCTestCase {
             return XCTFail("missedContent が発火していない")
         }
         XCTAssertEqual(hit.ref, inner.ref)
-        let dsl = TapTargetGeometry.occlusionAdvisory(for: wrap, in: elements, screen: screen)
+        let dsl = TapTargetGeometry.occlusionAdvisory(for: wrap, in: elements, screen: screen, isAndroid: false)
         XCTAssertTrue(dsl?.contains("#layers_fab") == true, dsl ?? "-")
         XCTAssertTrue(dsl?.contains("behind it") == true, dsl ?? "-")
-        let mcp = RefGuard.overlapWarning(found: wrap, in: elements, screen: screen)
+        let mcp = RefGuard.overlapWarning(found: wrap, in: elements, screen: screen, isAndroid: false)
         XCTAssertTrue(mcp.contains("#layers_fab"), mcp)
         XCTAssertTrue(mcp.contains("behind it"), mcp)
     }
@@ -118,10 +118,10 @@ final class TapAdvisoryKindSharedTests: XCTestCase {
             return XCTFail("nestedAction が発火していない")
         }
         XCTAssertEqual(hit.ref, chip.ref)
-        let dsl = TapTargetGeometry.occlusionAdvisory(for: parent, in: elements, screen: screen)
+        let dsl = TapTargetGeometry.occlusionAdvisory(for: parent, in: elements, screen: screen, isAndroid: false)
         XCTAssertTrue(dsl?.contains("#chip") == true, dsl ?? "-")
         XCTAssertTrue(dsl?.contains("instead") == true, dsl ?? "-")
-        let mcp = RefGuard.overlapWarning(found: parent, in: elements, screen: screen)
+        let mcp = RefGuard.overlapWarning(found: parent, in: elements, screen: screen, isAndroid: false)
         XCTAssertTrue(mcp.contains("#chip"), mcp)
         XCTAssertTrue(mcp.contains("ft_screenshot"), "MCP 側は逃げ道を書くこと: \(mcp)")
     }
@@ -136,9 +136,9 @@ final class TapAdvisoryKindSharedTests: XCTestCase {
             for: elements[0], in: elements, screen: screen) else {
             return XCTFail("stacked が発火していない")
         }
-        let dsl = TapTargetGeometry.occlusionAdvisory(for: elements[0], in: elements, screen: screen)
+        let dsl = TapTargetGeometry.occlusionAdvisory(for: elements[0], in: elements, screen: screen, isAndroid: false)
         XCTAssertTrue(dsl?.contains("clamped leftovers") == true, dsl ?? "-")
-        let mcp = RefGuard.overlapWarning(found: elements[0], in: elements, screen: screen)
+        let mcp = RefGuard.overlapWarning(found: elements[0], in: elements, screen: screen, isAndroid: false)
         XCTAssertTrue(mcp.contains("clamped leftovers"), mcp)
         XCTAssertTrue(mcp.contains("ft_scroll_to"), "MCP 側は逃げ道を書くこと: \(mcp)")
     }
@@ -151,16 +151,18 @@ final class TapAdvisoryKindSharedTests: XCTestCase {
         guard case .sliver = TapTargetGeometry.advisoryKind(for: e, in: [e], screen: screen) else {
             return XCTFail("sliver が発火していない")
         }
-        let dsl = TapTargetGeometry.occlusionAdvisory(for: e, in: [e], screen: screen)
+        let dsl = TapTargetGeometry.occlusionAdvisory(for: e, in: [e], screen: screen, isAndroid: false)
         XCTAssertTrue(dsl?.contains("sliver") == true, dsl ?? "-")
-        let mcp = RefGuard.overlapWarning(found: e, in: [e], screen: screen)
+        let mcp = RefGuard.overlapWarning(found: e, in: [e], screen: screen, isAndroid: false)
         XCTAssertTrue(mcp.contains("sliver"), mcp)
         XCTAssertTrue(mcp.contains("#tab_sunrise_seto"), "MCP 側は要素を名指しすること: \(mcp)")
         XCTAssertTrue(mcp.contains("ft_screenshot"), "MCP 側は逃げ道を書くこと: \(mcp)")
     }
 
     /// clippedByContainer: 縁が容器の縁と一致し、同depth・同型の兄弟が明らかに高い
-    /// (shortfall witness ⒜。実測は TapTargetGeometry.clippedAtContainerEdge の doc)
+    /// (shortfall witness ⒜。実測は TapTargetGeometry.clippedAtContainerEdge の doc)。
+    /// **判定(kind)は OS で1つ**だが、**文言は iOS/Android で違う**(Android は「見えている
+    /// 部分は撃てる」と言う。TapTargetGeometry.advisoryKind の doc・E)。両OSとも容器を名指しすること
     func testClippedByContainerKindDrivesBothWordings() {
         let container = element(1, "screen_account", "other", 0, 47, 390, 683, depth: 0)
         let tall1 = element(2, nil, "button", 16, 100, 358, 56, depth: 1)
@@ -172,11 +174,30 @@ final class TapAdvisoryKindSharedTests: XCTestCase {
             return XCTFail("clippedByContainer が発火していない")
         }
         XCTAssertEqual(hit.ref, container.ref)
-        let dsl = TapTargetGeometry.occlusionAdvisory(for: logout, in: elements, screen: screen)
-        XCTAssertTrue(dsl?.contains("cut off") == true, dsl ?? "-")
-        let mcp = RefGuard.overlapWarning(found: logout, in: elements, screen: screen)
-        XCTAssertTrue(mcp.contains("cut off"), mcp)
-        XCTAssertTrue(mcp.contains("#btn_logout"), "MCP 側は要素を名指しすること: \(mcp)")
-        XCTAssertTrue(mcp.contains("ft_scroll_to"), "MCP 側は逃げ道を書くこと: \(mcp)")
+
+        let dslIOS = TapTargetGeometry.occlusionAdvisory(for: logout, in: elements, screen: screen,
+                                                          isAndroid: false)
+        XCTAssertTrue(dslIOS?.contains("cut off") == true, dslIOS ?? "-")
+        XCTAssertTrue(dslIOS?.contains("#screen_account") == true,
+                      "iOS 側は容器を名指しすること: \(dslIOS ?? "-")")
+        let mcpIOS = RefGuard.overlapWarning(found: logout, in: elements, screen: screen,
+                                             isAndroid: false)
+        XCTAssertTrue(mcpIOS.contains("cut off"), mcpIOS)
+        XCTAssertTrue(mcpIOS.contains("#btn_logout"), "MCP 側は要素を名指しすること: \(mcpIOS)")
+        XCTAssertTrue(mcpIOS.contains("ft_scroll_to"), "MCP 側は逃げ道を書くこと: \(mcpIOS)")
+
+        let dslAndroid = TapTargetGeometry.occlusionAdvisory(for: logout, in: elements, screen: screen,
+                                                             isAndroid: true)
+        XCTAssertTrue(dslAndroid?.contains("cut off") == true, dslAndroid ?? "-")
+        XCTAssertTrue(dslAndroid?.contains("#screen_account") == true,
+                      "Android 側も容器を名指しすること: \(dslAndroid ?? "-")")
+        XCTAssertNotEqual(dslIOS, dslAndroid, "OS で文言が同じでは意味がない(判定は共有、文言は別)")
+        XCTAssertTrue(dslAndroid?.contains("most likely hit") == true,
+                      "Android は見えている部分を撃てると言うこと: \(dslAndroid ?? "-")")
+        let mcpAndroid = RefGuard.overlapWarning(found: logout, in: elements, screen: screen,
+                                                 isAndroid: true)
+        XCTAssertTrue(mcpAndroid.contains("cut off"), mcpAndroid)
+        XCTAssertTrue(mcpAndroid.contains("#btn_logout"), "MCP 側は要素を名指しすること: \(mcpAndroid)")
+        XCTAssertNotEqual(mcpIOS, mcpAndroid, "MCP も OS で文言が同じでは意味がない")
     }
 }

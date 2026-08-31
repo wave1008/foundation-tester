@@ -215,12 +215,24 @@ extension StepExecutor {
         // screen がそのまま返るので、無キーボード時は1バイトも変わらない
         let keyboard = KeyboardOcclusion.resolve(reported: snapshot.keyboardFrame,
                                                  in: snapshot.elements).frame
+        let screen = snapshot.screen
+        let viewport = ScrollGeometry.viewport(screen, excludingKeyboard: keyboard)
+        // **キーボードで実際に削られたときだけ**キーボード側のマージンを詰める(iPhone 13
+        // 実測: .search マージンのまま 509pt に縮んだ viewport を刻むと 13 スワイプ/21秒かかった。
+        // クリップ前は screen と一致するので、この比較で「削られたか」だけを見分ける)
+        var margins = scaled
+        if let keyboard, viewport.height < screen.height {
+            let keyboardBelow = keyboard.y > screen.y + screen.height / 2
+            margins = ScrollGeometry.marginsForKeyboardClippedViewport(
+                start: scaled.start, end: scaled.end, direction: direction,
+                keyboardBelow: keyboardBelow)
+        }
         let path = ScrollGeometry.path(
             container: container,
-            viewport: ScrollGeometry.viewport(snapshot.screen, excludingKeyboard: keyboard),
+            viewport: viewport,
             direction: direction,
-            startMarginRatio: scaled.start,
-            endMarginRatio: scaled.end)
+            startMarginRatio: margins.start,
+            endMarginRatio: margins.end)
         // **容器は解決したのに動かせる幅が無い**(margin で潰れた・画面と交差しない等)。
         // fail-fast はここを通らない(容器自体は見つかっている)ので、黙って全画面へ落ちる前に
         // 理由を残す(2026-08-08。1ステップにつき1回 = pendingScrollFrameNote の空きで判定)

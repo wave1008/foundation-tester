@@ -468,32 +468,58 @@ extension MCPServer {
             guard let packagePath = args["packagePath"] as? String else {
                 throw MCPError("packagePath is required")
             }
+            let installKey = Self.engineKey(args)
             try await driver(args).install(packagePath: packagePath)
+            // ft_clear_app_data が実機で uninstall+install に化けるときの再インストール元
+            // (installedPackagePaths 参照)
+            installedPackagePaths[installKey] = packagePath
             // インストール直後の初回起動で権限アラートが出ることがある(systemAlertProbePending 参照)
-            systemAlertProbePending.insert(Self.engineKey(args))
+            systemAlertProbePending.insert(installKey)
             return text("Installed: \(packagePath)")
 
         case "ft_launch":
             guard let bundleID = args["bundleId"] as? String else { throw MCPError("bundleId is required") }
+            let launchKey = Self.engineKey(args)
             let launchDriver = try await driver(args)
+            let resumes = args["resume"] as? Bool == true
+            // **in-app/hybrid は activate に override が無く launch へ落ちる**(AppDriver の既定
+            // 実装。InAppDriver は独自の activate を持たない)ので、resume: true を撃っても
+            // 実際には毎回終了→起動が走る —— 嘘の「resumed」を返さず、対応するエンジンを案内する
+            if resumes, let engine = engines[launchKey], engine == "inapp" || engine == "hybrid" {
+                throw MCPError("resume needs the xcuitest engine (or Android) — the \(engine)"
+                    + " engine has no activate-without-relaunch and falls through to a normal"
+                    + " launch. Drop resume: true, or attach with the xcuitest engine.")
+            }
             // **撃つ前に弾く**(ランナー死の予防。installedState のコメント参照)
             if await installedState(bundleID: bundleID, driver: launchDriver) == false {
                 throw MCPError(Self.notInstalledMessage(bundleID: bundleID))
             }
-            try await launchDriver.launch(bundleID: bundleID)
+            if resumes {
+                try await launchDriver.activate(bundleID: bundleID)
+            } else {
+                try await launchDriver.launch(bundleID: bundleID)
+            }
             // 以後の snapshot は「これの木か」を突き合わせられる(switchedAppNote)
-            launchedBundleIDs[Self.engineKey(args)] = bundleID
+            launchedBundleIDs[launchKey] = bundleID
             // 次の ft_snapshot で一度だけ system alert を確かめる(systemAlertProbePending 参照)。
             // **springboard 自身への attach では立てない** —— そちらはアラートを読みに行く
             // 正規の経路そのものなので、覆いとして扱ってはいけない
             if bundleID != "com.apple.springboard" {
-                systemAlertProbePending.insert(Self.engineKey(args))
+                systemAlertProbePending.insert(launchKey)
             }
-            // 下書きの起点(F-3 の既定範囲は「直近の ft_launch 以降」)。@TestClass(app:) にも使う
+            // 前面が入れ替わったので、古い木を起点にした覆い探針の記憶は使い回さない(F 節)
+            lastScreenProbe[launchKey] = nil
+            // 下書きの起点(F-3 の既定範囲は「直近の ft_launch 以降」)。@TestClass(app:) にも使う。
+            // **resume は isLaunch を立てない** —— 立てると draft の既定スコープがここから始まり、
+            // ScenarioCodeGen は scene 0 の condition に無条件で launchApp() を出すので、
+            // 実際には状態を保ったまま activate しただけの手順が「新規起動」に化けて嘘になる
             interactions.record(InteractionLog.Entry(
-                step: nil, unresolved: nil, isLaunch: true, bundleID: bundleID,
-                platform: Self.platformName(args), summary: "launch \(bundleID)"))
-            return text("Launched: \(bundleID)")
+                step: nil, unresolved: nil, isLaunch: !resumes, bundleID: bundleID,
+                platform: Self.platformName(args),
+                summary: resumes ? "activate \(bundleID) (resumed, not relaunched)"
+                                  : "launch \(bundleID)"))
+            return text(resumes ? "Activated: \(bundleID) (resumed without relaunching)"
+                                 : "Launched: \(bundleID)")
 
         case "ft_open_url":
             guard let url = args["url"] as? String else { throw MCPError("url is required") }
@@ -802,7 +828,7 @@ extension MCPServer {
                 }
                 let step = FlowStep(action: "swipe", direction: direction.rawValue)
                 let (isAndroid, uiFrameworkHint) = await resolveExecutorHints(swipeDriver, args: args)
-                let executor = StepExecutor(driver: swipeDriver, releasesScrollTouch: !isAndroid,
+                let executor = StepExecutor(driver: swipeDriver, releasesScrollTouch: !isAndroid, isAndroid: isAndroid,
                                             uiFramework: uiFrameworkHint)
                 let outcome = await executor.execute(step)
                 guard StepExecutor.isSuccess(outcome.status) else {
@@ -840,7 +866,7 @@ extension MCPServer {
                 : "note: the scrollFrame ref was re-checked against the current tree\(scrollFrameArg.note).\n"
             let step = Self.swipeScrollFrameStep(direction: direction, scrollFrameArg: scrollFrameArg)
             let (isAndroid, uiFrameworkHint) = await resolveExecutorHints(swipeDriver, args: args)
-            let executor = StepExecutor(driver: swipeDriver, releasesScrollTouch: !isAndroid,
+            let executor = StepExecutor(driver: swipeDriver, releasesScrollTouch: !isAndroid, isAndroid: isAndroid,
                                         uiFramework: uiFrameworkHint)
             let outcome = await executor.execute(step)
             guard StepExecutor.isSuccess(outcome.status) else {
@@ -906,12 +932,19 @@ extension MCPServer {
             // ことがある**(実機 iPhone 13 の witness: `RotationSettle.framesFitScreen` の doc)。
             // DSL の rotateTo()(StepExecutor+Actions.swift)と同じ規律で、木が2回続けて指紋一致
             // するまで撮り直す(BackEffect.treesAreIdentical = StaleFrameDetector.treeFingerprint の
-            // 等号。2つ目の指紋実装を作らない)。予算は変化待ちの既存の設定を流用する
-            // (changeSettleRereads 回・settleWaitSeconds 秒間隔)
+            // 等号。2つ目の指紋実装を作らない)。
+            // **予算は変化待ちの `changeSettleRereads`(3)×`settleWaitSeconds`(0.4s)=1.2秒を
+            // 流用していたが、実機 iPhone では足りなかった**(レイアウトが収まる前に打ち切っていた)。
+            // ブリッジ側 POST /rotate の整定ポーリングと同じ締め切り
+            // (`FTCore.RotationSettle.deadlineSeconds`)まで、同じ間隔で回す。**cap
+            // (`rotationSettleMaxRereads`)が無いと、一度も整定しないドライバでループが止まらない**
             var rotated = try await freshSnapshot(rotateDriver, args: args)
             var settledFrames = false
-            for _ in 0..<Self.changeSettleRereads {
-                try await Task.sleep(nanoseconds: UInt64(max(0, settleWaitSeconds) * 1_000_000_000))
+            let rotationSettlePollInterval = max(RotationSettle.pollIntervalSeconds, settleWaitSeconds)
+            let rotationSettleMaxRereads = Int(rotationSettleDeadlineSeconds / rotationSettlePollInterval)
+            for _ in 0..<rotationSettleMaxRereads {
+                try await Task.sleep(
+                    nanoseconds: UInt64(max(0, rotationSettlePollInterval) * 1_000_000_000))
                 let reread = try await freshSnapshot(rotateDriver, args: args)
                 let fits = RotationSettle.framesFitScreen(reread)
                 let unchanged = BackEffect.treesAreIdentical(before: rotated.elements,
@@ -1003,9 +1036,32 @@ extension MCPServer {
 
         case "ft_clear_app_data":
             guard let bundleID = args["bundleId"] as? String else { throw MCPError("bundleId is required") }
-            try await driver(args).clearAppData(bundleID: bundleID)
+            let clearAppDataDriver = try await driver(args)
+            let clearAppDataKey = Self.engineKey(args)
+            do {
+                try await clearAppDataDriver.clearAppData(bundleID: bundleID)
+            } catch DriverError.badResponse(let status, let body)
+                where status == 501 && body.contains("simulator-only") {
+                // **実機に devicectl の同等手段が無い**(BridgeClient.clearAppData の 501)。
+                // 代わりに uninstall→install で再現する —— 権限も含めて全部消える点は同じ
+                guard let path = args["packagePath"] as? String
+                    ?? installedPackagePaths[clearAppDataKey] else {
+                    throw MCPError("On a physical device there is no clearAppData equivalent —"
+                        + " data is wiped by reinstalling the app instead. Pass packagePath:"
+                        + " <path to the .app/.ipa>, or run ft_install first so this can reuse"
+                        + " that path.")
+                }
+                try await clearAppDataDriver.uninstall(bundleID: bundleID)
+                try await clearAppDataDriver.install(packagePath: path)
+                // 意図した再インストールなので、以後の別アプリの木は「すり替わり」ではない
+                // (ft_terminate と同じ扱い)
+                launchedBundleIDs[clearAppDataKey] = nil
+                systemAlertProbePending.insert(clearAppDataKey)
+                return text("Reinstalled \(bundleID) from \(path) (physical device: app data"
+                    + " wiped by uninstall + install; permission grants are reset too)")
+            }
             // 次の ft_launch が初回起動と同じ扱いになる(systemAlertProbePending 参照)
-            systemAlertProbePending.insert(Self.engineKey(args))
+            systemAlertProbePending.insert(clearAppDataKey)
             return text("Cleared the data of \(bundleID). The app is stopped — ft_launch to continue")
 
         case "ft_clear_input":
@@ -1070,7 +1126,8 @@ extension MCPServer {
                         reported: doubleTapSnapshot?.overlayWindowFrames))
                     + RefGuard.overlapWarning(found: element, in: doubleTapSnapshot?
                         .elements ?? [], screen: doubleTapSnapshot?.screen
-                        ?? FTRect(x: 0, y: 0, width: 0, height: 0)) + labelNote
+                        ?? FTRect(x: 0, y: 0, width: 0, height: 0),
+                        isAndroid: Self.platformName(args) == "android") + labelNote
                 doubleTapSelector = reproductionNote(resolvedRef: element.ref, args: args)
             } else if let x = args["x"] as? Double, let y = args["y"] as? Double {
                 doubleTapPoint = (x, y)
@@ -1286,6 +1343,8 @@ extension MCPServer {
             // 意図して落としたので、以後の別アプリの木は「すり替わり」ではない
             launchedBundleIDs[Self.engineKey(args)] = nil
             systemAlertProbePending.remove(Self.engineKey(args))
+            // 前面が消えたので、覆い探針の記憶(F 節)は使い回さない
+            lastScreenProbe[Self.engineKey(args)] = nil
             return text("Terminated the app")
 
         case "ft_list_scenarios":

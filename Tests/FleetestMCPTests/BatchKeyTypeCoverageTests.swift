@@ -1,4 +1,4 @@
-// ft_batch の引数キーは3つの型表(stringKeys / intKeys / doubleKeys)で解釈される。
+// ft_batch の引数キーは4つの型表(stringKeys / intKeys / doubleKeys / boolKeys)で解釈される。
 // **表は手書きで、ビルダにキーを足したときに載せ忘れても何もエラーにならない** ——
 // 気づけるのは、その引数を書いた行が実行時に "does not accept" で弾かれたときだけ
 // (2026-08-10 に rotateTo の orientation で実際に踏んだ)。ここで漏れと重複を機械的に落とす。
@@ -11,7 +11,8 @@ final class BatchKeyTypeCoverageTests: XCTestCase {
     private var typeTables: [String: Set<String>] {
         ["string": BatchStepResolver.stringKeys,
          "int": BatchStepResolver.intKeys,
-         "double": BatchStepResolver.doubleKeys]
+         "double": BatchStepResolver.doubleKeys,
+         "bool": BatchStepResolver.boolKeys]
     }
 
     /// ビルダが読むと宣言したキーは、必ずどれか1つの表に載っていること

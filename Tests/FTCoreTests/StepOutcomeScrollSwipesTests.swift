@@ -58,7 +58,7 @@ final class StepOutcomeScrollSwipesTests: XCTestCase {
         let driver = ScriptedSwipeDriver(scripted: [[row(ref: 1, id: "target")]])
         let step = FlowStep(action: "scrollTo", locator: FlowLocator(id: "target"), maxSwipes: 8)
 
-        let outcome = await StepExecutor(driver: driver).execute(step)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(step)
 
         guard case .passed = outcome.status else {
             return XCTFail("初回照会で見つかるはずなので pass: \(outcome.status)")
@@ -75,7 +75,7 @@ final class StepOutcomeScrollSwipesTests: XCTestCase {
         let driver = ScriptedSwipeDriver(scripted: [[], [], [row(ref: 1, id: "target")]])
         let step = FlowStep(action: "scrollTo", locator: FlowLocator(id: "target"), maxSwipes: 8)
 
-        let outcome = await StepExecutor(driver: driver, releasesScrollTouch: true).execute(step)
+        let outcome = await StepExecutor(driver: driver, releasesScrollTouch: true, isAndroid: false).execute(step)
 
         guard case .passed = outcome.status else {
             return XCTFail("スワイプ後に見つかるはずなので pass: \(outcome.status)")
@@ -94,7 +94,7 @@ final class StepOutcomeScrollSwipesTests: XCTestCase {
         step.direction = "up"
         step.maxSwipes = 8
 
-        let outcome = await StepExecutor(driver: driver, releasesScrollTouch: true).execute(step)
+        let outcome = await StepExecutor(driver: driver, releasesScrollTouch: true, isAndroid: false).execute(step)
 
         guard case .passed = outcome.status else {
             return XCTFail("スワイプ後に見つかるはずなので pass: \(outcome.status)")
@@ -109,7 +109,7 @@ final class StepOutcomeScrollSwipesTests: XCTestCase {
         let driver = ScriptedSwipeDriver(scripted: [[row(ref: 1, id: "target")]])
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"))
 
-        let outcome = await StepExecutor(driver: driver).execute(step)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(step)
 
         guard case .passed = outcome.status else {
             return XCTFail("tap は見つかるはずなので pass: \(outcome.status)")
@@ -123,7 +123,7 @@ final class StepOutcomeScrollSwipesTests: XCTestCase {
     /// (execute(_:cached:) 冒頭の `scrollSwipesThisStep = nil` の契約)
     func testScrollSwipesResetsBetweenStepsOnTheSameExecutor() async throws {
         let driver = ScriptedSwipeDriver(scripted: [[], [], [row(ref: 1, id: "target")]])
-        let executor = StepExecutor(driver: driver, releasesScrollTouch: true)
+        let executor = StepExecutor(driver: driver, releasesScrollTouch: true, isAndroid: false)
 
         let first = await executor.execute(
             FlowStep(action: "scrollTo", locator: FlowLocator(id: "target"), maxSwipes: 8))

@@ -204,8 +204,13 @@ extension MCPServer {
             + "itself may restore its previous UI state on launch — system apps such as Maps often "
             + "do — so do not assume the first screen: check with ft_snapshot. "
             + "iOS: com.apple.springboard attaches to the home screen instead, without launching "
-            + "anything — that is how you read the home screen or a system dialog", [
+            + "anything — that is how you read the home screen or a system dialog. "
+            + "resume: true brings it back to front WITHOUT terminating it first — its state is "
+            + "kept (xcuitest engine or Android only; on inapp/hybrid this is refused, since those "
+            + "engines have no activate-without-relaunch and would silently do a normal launch)", [
             "bundleId": ["type": "string", "description": "bundle ID (iOS) / package name (Android)"],
+            "resume": ["type": "boolean", "description": "Bring the app to front without "
+                + "terminating it — its state is kept. xcuitest engine or Android only"],
         ], required: ["bundleId"]),
         tool("ft_open_url", "Deliver a URL (deep link) to the app WITHOUT restarting it — unlike "
             + "ft_launch, the app keeps running and whatever it navigates to is pushed on top of the "
@@ -283,12 +288,15 @@ extension MCPServer {
                                 + "the thing you want to move has no selector to search for with "
                                 + "ft_scroll_to (e.g. a horizontally-scrolling table), or the screen has "
                                 + "more than one scrollable area. Same syntax as the DSL: #id, a label, "
-                                + ".type, a||b (quotes wrapped around the whole value are stripped). Only "
-                                + "a container that appears in the tree works (a line ft_snapshot marks "
-                                + "scroll) — if the area you want is not one (e.g. a web page's inner "
-                                + "overflow scroller, where only the whole page is a container), the "
-                                + "finger passes outside it and nothing moves; use ft_drag with "
-                                + "coordinates instead"],
+                                + ".type, a||b (quotes wrapped around the whole value are stripped). A "
+                                + "selector must match a container the tree marks scroll; a ref does "
+                                + "NOT have to be one — any element with a non-zero frame works (e.g. a "
+                                + "Compose chip row or carousel that interactiveOnly hides — take the "
+                                + "ref from a full snapshot), and the reply names the frame it used when "
+                                + "the element is not marked scroll. If the area you want is not in the "
+                                + "tree at all (e.g. a web page's inner overflow scroller, where only "
+                                + "the whole page is a container), the finger passes outside it and "
+                                + "nothing moves; use ft_drag with coordinates instead"],
             "snapshotAfter": snapshotAfterProperty,
             "waitForChange": snapshotAfterWaitForChangeProperty,
             "waitFor": snapshotAfterWaitForProperty,
@@ -308,8 +316,13 @@ extension MCPServer {
                                 + "or its ft_snapshot ref (an integer) when the container has no unique id — "
                                 + "a duplicated or missing id makes a selector unusable. Pass it when the screen "
                                 + "has more than one scrollable area — ft_snapshot marks those lines scroll and "
-                                + "says so at the top. When passing a selector: same syntax as the DSL: #id, "
-                                + "a label, .type, a||b (quotes wrapped around the whole value are stripped)"],
+                                + "says so at the top. A selector must match one of those marked-scroll lines; "
+                                + "a ref does NOT have to be one — any element with a non-zero frame works "
+                                + "(e.g. a Compose chip row or carousel that interactiveOnly hides — take the "
+                                + "ref from a full snapshot), and the reply names the frame it used when the "
+                                + "element is not marked scroll. When passing a selector: same syntax as the "
+                                + "DSL: #id, a label, .type, a||b (quotes wrapped around the whole value are "
+                                + "stripped)"],
             "maxSwipes": ["type": "integer", "description": "Swipe limit (default 8, same as the DSL)"],
             "expandBulk": expandBulkProperty,
             "interactiveOnly": interactiveOnlyProperty,
@@ -365,9 +378,13 @@ extension MCPServer {
             "expandBulk": expandBulkProperty,
             "interactiveOnly": interactiveOnlyProperty,
         ], required: ["target"]),
-        tool("ft_clear_app_data", "Wipe the app's data and permissions, keeping it installed (iOS: simulator only). "
-            + "Stops the app, so ft_launch after it. Scenarios start from clearAppData(), so explore from that same state", [
+        tool("ft_clear_app_data", "Wipe the app's data and permissions. "
+            + "Stops the app, so ft_launch after it. Scenarios start from clearAppData(), so explore from that same state. "
+            + "iOS simulator: wipes in place. iOS physical device: devicectl has no equivalent, so this "
+            + "reinstalls the app instead — pass packagePath, or run ft_install first so it can reuse that path", [
             "bundleId": ["type": "string", "description": "bundle ID (iOS) / package name (Android)"],
+            "packagePath": ["type": "string", "description": "iOS physical device only: package to "
+                + "reinstall from (.app/.ipa). Defaults to the path of the last ft_install"],
         ], required: ["bundleId"]),
         tool("ft_clear_input", "Empty an input field (ft_type appends, so clear first to replace)", [
             "ref": ["type": "integer", "description": "Reference number of the field (default: the focused one)"],

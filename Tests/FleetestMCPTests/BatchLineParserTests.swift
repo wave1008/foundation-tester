@@ -210,6 +210,33 @@ final class BatchLineParserTests: XCTestCase {
         }
     }
 
+    // MARK: - type … replace: (D)
+
+    func testTypeReplaceTrueSetsReplaceOnTheStep() throws {
+        let raw = try resolve(command: "type", line: "type '#field' 'x' replace: true")
+        let builder = MCPServer.batchStepBuilders["type"]!
+        let (step, summary) = try builder.build(raw)
+        XCTAssertEqual(step.replace, true)
+        XCTAssertTrue(summary.contains("(replace)"), summary)
+    }
+
+    /// `replace: false` は `type`(素の追記)と区別が付かなくてよいので `nil` に畳む
+    /// (FTDSL の `type(_:_:replace:)` と同じ畳み方。`Flow.swift` 参照)
+    func testTypeReplaceFalseLeavesReplaceNil() throws {
+        let raw = try resolve(command: "type", line: "type '#field' 'x' replace: false")
+        let builder = MCPServer.batchStepBuilders["type"]!
+        let (step, _) = try builder.build(raw)
+        XCTAssertNil(step.replace)
+    }
+
+    func testTypeReplaceRejectsANonBoolValue() {
+        XCTAssertThrowsError(try resolve(command: "type", line: "type '#field' 'x' replace: 'yes'")) { error in
+            let message = (error as? BatchStepResolver.ResolveError)?.message ?? "\(error)"
+            XCTAssertTrue(message.contains("\"replace\""), message)
+            XCTAssertTrue(message.contains("does not accept"), message)
+        }
+    }
+
     // MARK: - 未知のラベル(シグネチャにも無い)は別の文言で弾く
 
     func testUnknownLabelIsRejectedWithADifferentMessage() {
@@ -294,6 +321,8 @@ final class BatchLineParserTests: XCTestCase {
             FlowStep(action: "select", locator: selA.primary, fallbacks: fallbacks(selA)),
             FlowStep(action: "type", locator: selA.primary, fallbacks: fallbacks(selA), text: "hello"),
             FlowStep(action: "type", locator: nil, text: "hello"),  // フォーカス中の要素へ(セレクタ省略)
+            FlowStep(action: "type", locator: selA.primary, fallbacks: fallbacks(selA), text: "hello",
+                    replace: true),
             FlowStep(action: "pressEnter"),
             FlowStep(action: "hideKeyboard"),
             FlowStep(action: "clearInput", locator: selA.primary, fallbacks: fallbacks(selA)),

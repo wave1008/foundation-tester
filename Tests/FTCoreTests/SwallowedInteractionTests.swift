@@ -104,7 +104,7 @@ final class SwallowedInteractionTests: XCTestCase {
         let unchanged = [text(1, "row_30", "行 30", y: 300, type: "clickable"),
                          text(2, "txt_row_selected", "selected=-")]
         let driver = ScriptedDriver(frames: [unchanged])
-        let executor = StepExecutor(driver: driver)
+        let executor = StepExecutor(driver: driver, isAndroid: false)
 
         guard case .passed = await executor.execute(
             FlowStep(action: "tap", locator: FlowLocator(id: "row_30"))).status else {
@@ -130,7 +130,7 @@ final class SwallowedInteractionTests: XCTestCase {
         let after = [text(1, "row_30", "行 30", y: 300, type: "clickable"),
                      text(2, "txt_row_selected", "selected=row_29")]
         let driver = ScriptedDriver(frames: [before, after])
-        let executor = StepExecutor(driver: driver)
+        let executor = StepExecutor(driver: driver, isAndroid: false)
 
         _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "row_30")))
         let outcome = await executor.execute(
@@ -151,7 +151,7 @@ final class SwallowedInteractionTests: XCTestCase {
         let unchanged = [text(1, "row_30", "行 30", y: 300, type: "clickable"),
                          text(2, "txt_row_selected", "selected=-")]
         let driver = ScriptedDriver(frames: [unchanged])
-        let executor = StepExecutor(driver: driver)
+        let executor = StepExecutor(driver: driver, isAndroid: false)
 
         _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "row_30")))
         _ = await executor.execute(FlowStep(action: "select",
@@ -174,7 +174,7 @@ final class SwallowedInteractionTests: XCTestCase {
         let unchanged = [text(1, "row_30", "行 30", y: 300, type: "clickable"),
                          text(2, "txt_row_selected", "selected=-")]
         let driver = ScriptedDriver(frames: [unchanged])
-        let executor = StepExecutor(driver: driver)
+        let executor = StepExecutor(driver: driver, isAndroid: false)
 
         _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "row_30")))
         _ = await executor.execute(FlowStep(action: "swipe", direction: "up"))
@@ -202,7 +202,7 @@ final class SwallowedInteractionTests: XCTestCase {
                                 frame: FTRect(x: 16, y: 280, width: 370, height: 56), depth: 1)
         let unchanged = [row30, row29, text(3, "txt_row_selected", "selected=-", y: 500)]
         let driver = ScriptedDriver(frames: [unchanged])
-        let executor = StepExecutor(driver: driver)
+        let executor = StepExecutor(driver: driver, isAndroid: false)
 
         _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "row_30")))
         let outcome = await executor.execute(
@@ -228,7 +228,7 @@ final class SwallowedInteractionTests: XCTestCase {
         let after = [text(1, "row_30", "行 30", y: 200, type: "clickable"),
                      text(2, "txt_row_selected", "selected=-", y: 500)]
         let driver = ScriptedDriver(frames: [before, after])
-        let executor = StepExecutor(driver: driver)
+        let executor = StepExecutor(driver: driver, isAndroid: false)
 
         _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "row_30")))
         let outcome = await executor.execute(
@@ -251,7 +251,7 @@ final class SwallowedInteractionTests: XCTestCase {
         let after = [text(1, "row_30", "行 30", y: 303, type: "clickable"),
                      text(2, "txt_row_selected", "selected=-", y: 500)]
         let driver = ScriptedDriver(frames: [before, after])
-        let executor = StepExecutor(driver: driver)
+        let executor = StepExecutor(driver: driver, isAndroid: false)
 
         _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "row_30")))
         let outcome = await executor.execute(
@@ -268,7 +268,7 @@ final class SwallowedInteractionTests: XCTestCase {
                       text(2, "txt_row_selected", "selected=-", y: 500)]
         let after = [text(2, "txt_row_selected", "selected=-", y: 500)]
         let driver = ScriptedDriver(frames: [before, after])
-        let executor = StepExecutor(driver: driver)
+        let executor = StepExecutor(driver: driver, isAndroid: false)
 
         _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "row_30")))
         let outcome = await executor.execute(
@@ -318,7 +318,7 @@ final class SwallowedInteractionTests: XCTestCase {
                                    frame: FTRect(x: 16, y: 300, width: 370, height: 56), depth: 12)
         let tree = [container, straddling, sibling1, sibling2]
         let driver = ScriptedDriver(frames: [tree])
-        let executor = StepExecutor(driver: driver)
+        let executor = StepExecutor(driver: driver, isAndroid: false)
 
         _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "row_30")))
 
@@ -340,7 +340,7 @@ final class SwallowedInteractionTests: XCTestCase {
         }
         let tree = [container, row(2, "row_30", 300), row(3, "row_31", 356), row(4, "row_32", 412)]
         let driver = ScriptedDriver(frames: [tree])
-        let executor = StepExecutor(driver: driver)
+        let executor = StepExecutor(driver: driver, isAndroid: false)
 
         _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "row_30")))
 
@@ -376,7 +376,7 @@ final class SwallowedInteractionTests: XCTestCase {
     func testPlainTapDoesNotPayForAnExtraSnapshot() async throws {
         let frame = [text(1, "row_30", "行 30", y: 300, type: "clickable")]
         let driver = ScriptedDriver(frames: [frame])
-        let executor = StepExecutor(driver: driver)
+        let executor = StepExecutor(driver: driver, isAndroid: false)
 
         _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "row_30")))
 

@@ -115,7 +115,7 @@ final class CeilingRetakeSweepTests: XCTestCase {
         let driver = CeilingRetakeStubDriver(target: textElement(label: "Hello"))
         let step = FlowStep(assert: "textEquals", locator: FlowLocator(id: "msg"),
                             expected: "Hello", timeout: 0, occlusionGuard: false)
-        let outcome = await StepExecutor(driver: driver).execute(step)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(step)
         XCTAssertTrue(StepExecutor.isSuccess(outcome.status),
                       "切り詰めで落ちていた実在要素を「見つからない」と報告した: \(outcome.status)")
         XCTAssertGreaterThanOrEqual(driver.reads, 2, "天井で撮り直していない")
@@ -126,7 +126,7 @@ final class CeilingRetakeSweepTests: XCTestCase {
         let driver = CeilingRetakeStubDriver(target: textElement(label: "Hello"))
         let step = FlowStep(assert: "textNotEquals", locator: FlowLocator(id: "msg"),
                             expected: "World", timeout: 0, occlusionGuard: false)
-        let outcome = await StepExecutor(driver: driver).execute(step)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(step)
         XCTAssertTrue(StepExecutor.isSuccess(outcome.status),
                       "負の比較でも切り詰めで落ちていた実在要素を掴めなかった: \(outcome.status)")
         XCTAssertGreaterThanOrEqual(driver.reads, 2, "天井で撮り直していない")
@@ -140,7 +140,7 @@ final class CeilingRetakeSweepTests: XCTestCase {
         let driver = CeilingRetakeStubDriver(target: target)
         let step = FlowStep(assert: "enabled", locator: FlowLocator(id: "submit"),
                             timeout: 0, occlusionGuard: false)
-        let outcome = await StepExecutor(driver: driver).execute(step)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(step)
         XCTAssertTrue(StepExecutor.isSuccess(outcome.status),
                       "enabled が切り詰めで落ちていた実在要素を「見つからない」と報告した: \(outcome.status)")
         XCTAssertGreaterThanOrEqual(driver.reads, 2, "天井で撮り直していない")
@@ -155,7 +155,7 @@ final class CeilingRetakeSweepTests: XCTestCase {
         let driver = CeilingRetakeStubDriver(target: target)
         let step = FlowStep(assert: "checked", locator: FlowLocator(id: "agree"),
                             timeout: 0, occlusionGuard: false)
-        let outcome = await StepExecutor(driver: driver).execute(step)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(step)
         XCTAssertTrue(StepExecutor.isSuccess(outcome.status),
                       "checked が切り詰めで落ちていた実在要素を「見つからない」と報告した: \(outcome.status)")
         XCTAssertGreaterThanOrEqual(driver.reads, 2, "天井で撮り直していない")
@@ -166,7 +166,7 @@ final class CeilingRetakeSweepTests: XCTestCase {
         let driver = CeilingRetakeStubDriver(target: nil)
         let step = FlowStep(assert: "textEquals", locator: FlowLocator(id: "msg"),
                             expected: "Hello", timeout: 0, occlusionGuard: false)
-        let outcome = await StepExecutor(driver: driver).execute(step)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(step)
         guard case .failed(let message) = outcome.status else {
             XCTFail("expected a failure, got \(outcome.status)")
             return
@@ -181,7 +181,7 @@ final class CeilingRetakeSweepTests: XCTestCase {
         let driver = AlreadyAtCeilingStubDriver()
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "missing"),
                             timeout: 0, occlusionGuard: false)
-        _ = await StepExecutor(driver: driver).execute(step)
+        _ = await StepExecutor(driver: driver, isAndroid: false).execute(step)
         XCTAssertEqual(driver.reads, 1,
                        "天井の木への撮り直しが走った(同じ木が返るだけのデバイス I/O)")
     }

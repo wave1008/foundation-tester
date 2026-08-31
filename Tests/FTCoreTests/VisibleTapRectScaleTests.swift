@@ -110,13 +110,13 @@ final class VisibleTapRectScaleTests: XCTestCase {
     /// 従来どおり **ref で**撃つ
     func testTheExecutorFeedsTheDriverScaleIntoTheFloor() async {
         let pointTree = TapRecordingDriver(elements: straddling(), pointScale: 1)
-        _ = await StepExecutor(driver: pointTree)
+        _ = await StepExecutor(driver: pointTree, isAndroid: false)
             .execute(FlowStep(action: "tap", locator: FlowLocator(id: "row")))
         XCTAssertEqual(pointTree.coordinateTaps.count, 1,
                        "pt の木で見えている部分へ寄せていない: \(pointTree.refTaps) / \(pointTree.coordinateTaps)")
 
         let pixelTree = TapRecordingDriver(elements: straddling(), pointScale: 3)
-        _ = await StepExecutor(driver: pixelTree)
+        _ = await StepExecutor(driver: pixelTree, isAndroid: false)
             .execute(FlowStep(action: "tap", locator: FlowLocator(id: "row")))
         XCTAssertTrue(pixelTree.coordinateTaps.isEmpty,
                       "3倍密度で 5dp しか見えていない帯を座標で撃った: \(pixelTree.coordinateTaps)")

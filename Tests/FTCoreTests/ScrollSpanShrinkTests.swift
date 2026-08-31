@@ -89,7 +89,7 @@ final class ScrollSpanShrinkTests: XCTestCase {
                             direction: "up", maxSwipes: 2,
                             scrollFrame: FlowLocator(id: "list_rows"))
 
-        _ = await StepExecutor(driver: driver).execute(step)
+        _ = await StepExecutor(driver: driver, isAndroid: false).execute(step)
 
         let swipes = driver.paths.compactMap { $0 }
         XCTAssertGreaterThanOrEqual(swipes.count, 2, "刻みの比較には2回ぶんの path が要る: \(driver.paths)")
@@ -109,7 +109,7 @@ final class ScrollSpanShrinkTests: XCTestCase {
                             direction: "up", maxSwipes: 2,
                             scrollFrame: FlowLocator(id: "list_rows"))
 
-        _ = await StepExecutor(driver: driver).execute(step)
+        _ = await StepExecutor(driver: driver, isAndroid: false).execute(step)
 
         let swipes = driver.paths.compactMap { $0 }
         XCTAssertGreaterThanOrEqual(swipes.count, 2)
@@ -125,7 +125,7 @@ final class ScrollSpanShrinkTests: XCTestCase {
         let step = FlowStep(action: "scrollTo", locator: FlowLocator(id: "missing"),
                             direction: "up", maxSwipes: 2)
 
-        _ = await StepExecutor(driver: driver).execute(step)
+        _ = await StepExecutor(driver: driver, isAndroid: false).execute(step)
 
         XCTAssertFalse(driver.paths.isEmpty, "スワイプ自体は撃たれるはず")
         XCTAssertTrue(driver.paths.allSatisfy { $0 == nil },
@@ -146,7 +146,7 @@ final class ScrollSpanShrinkTests: XCTestCase {
         let driver = PathRecordingDriver(elements: [Self.frame(anchorY: 400)], keyboardFrame: keyboard)
         let step = FlowStep(action: "scroll", direction: "up", maxSwipes: 1)
 
-        _ = await StepExecutor(driver: driver).execute(step)
+        _ = await StepExecutor(driver: driver, isAndroid: false).execute(step)
 
         XCTAssertEqual(driver.paths.count, 1, "\(driver.paths)")
         let path = try XCTUnwrap(driver.paths[0], "キーボード表示中は座標つきスワイプを送るはず")
@@ -159,7 +159,7 @@ final class ScrollSpanShrinkTests: XCTestCase {
         let driver = PathRecordingDriver(elements: [Self.frame(anchorY: 400)])
         let step = FlowStep(action: "scroll", direction: "up", maxSwipes: 1)
 
-        _ = await StepExecutor(driver: driver).execute(step)
+        _ = await StepExecutor(driver: driver, isAndroid: false).execute(step)
 
         XCTAssertEqual(driver.paths.count, 1, "\(driver.paths)")
         XCTAssertNil(driver.paths[0],
@@ -177,7 +177,7 @@ final class ScrollSpanShrinkTests: XCTestCase {
         let driver = PathRecordingDriver(elements: [Self.frame(anchorY: 400)], keyboardFrame: keyboard)
         let step = FlowStep(action: "swipe", direction: "up")
 
-        _ = await StepExecutor(driver: driver).execute(step)
+        _ = await StepExecutor(driver: driver, isAndroid: false).execute(step)
 
         XCTAssertEqual(driver.paths.count, 1, "\(driver.paths)")
         let path = try XCTUnwrap(driver.paths[0], "キーボード表示中は座標つきスワイプを送るはず")
@@ -190,7 +190,7 @@ final class ScrollSpanShrinkTests: XCTestCase {
         let driver = PathRecordingDriver(elements: [Self.frame(anchorY: 400)])
         let step = FlowStep(action: "swipe", direction: "up")
 
-        _ = await StepExecutor(driver: driver).execute(step)
+        _ = await StepExecutor(driver: driver, isAndroid: false).execute(step)
 
         XCTAssertEqual(driver.paths.count, 1, "\(driver.paths)")
         XCTAssertNil(driver.paths[0],

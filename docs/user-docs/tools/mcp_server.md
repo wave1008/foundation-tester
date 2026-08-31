@@ -56,13 +56,13 @@ these; naming a second device requires future calls to be explicit again.
 | `ft_install` | Install the app from a package file (`.app` on iOS, `.apk` on Android) |
 | `ft_snapshot` | Element list snapshot (compressed, set-of-mark style); `waitFor` waits for a selector to appear |
 | `ft_tap` / `ft_type` / `ft_swipe` / `ft_long_press` | Screen operations — tap, type (`pressEnter: true` sends Enter/IME after typing), swipe, long press |
-| `ft_scroll_to` | Scroll a container until a selector appears, then return the refreshed element list |
+| `ft_scroll_to` | Scroll a container until a selector appears, then return the refreshed element list. `scrollFrame:` takes the selector of a container marked `scroll`, or the **ref of any element** (its frame becomes the swipe area — for Compose chip rows and carousels) |
 | `ft_batch` | Run several operation/scroll steps in one call under a single approval |
 | `ft_rotate` | Rotate the device and return the element list in the new orientation |
 | `ft_navigate` | Back / Home / app switcher |
 | `ft_open_url` | Deliver a deep link without restarting the app |
 | `ft_clear_input` | Clear a text field |
-| `ft_clear_app_data` | Reset app data and permissions (iOS: simulator only) |
+| `ft_clear_app_data` | Reset app data and permissions (on a physical iOS device it falls back to uninstall + install, using the path from `ft_install` or `packagePath:`) |
 | `ft_dsl_commands` | DSL command index (names and signatures), for checking a command exists before writing it |
 | `ft_double_tap` / `ft_pinch` / `ft_drag` | Double tap, pinch, and arbitrary-direction drag |
 | `ft_screenshot` | Screenshot image, for visual inspection |
@@ -76,8 +76,11 @@ these; naming a second device requires future calls to be explicit again.
 
 Screen-operation tools work the same way on a physical iPhone or Android device. Simulator/
 emulator-only operations are routed automatically: `ft_install` uses `devicectl` instead of
-`simctl` on a physical iOS device, and `ft_clear_app_data` is unavailable on a physical iOS
-device (Android's `pm clear` still works on a physical device). The in-app iOS engine cannot be
+`simctl` on a physical iOS device, and `ft_clear_app_data` wipes the data by uninstall + install
+(using the path from the last `ft_install`, or `packagePath:`) on a physical iOS device (Android's
+`pm clear` still works on a physical device). After dismissing a system alert on SpringBoard,
+`ft_launch bundleId: <app> resume: true` returns to the app without terminating it (xcuitest
+engine / Android). The in-app iOS engine cannot be
 injected into a physical device, so it is never selected there.
 
 ## iOS Engine Selection

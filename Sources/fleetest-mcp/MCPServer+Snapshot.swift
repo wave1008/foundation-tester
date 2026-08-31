@@ -717,6 +717,28 @@ extension MCPServer {
         return await treeDoesNotMatchScreenWarning(found, driver: driver)
     }
 
+    /// **`screenNotRepresentedWarning` を毎タップ聞き直さない**(2026-08-31)。
+    /// 撃つ前の照合(`verifiedRef`)は ref のたびに最大3往復(`/systemalert` →
+    /// `/systemui/covering` → `/hittable`)を払っており、同じ画面へ連打するだけの探索でも
+    /// 木の数だけ払っていた。**撮り直した fresh 木の指紋が前回と同じなら答えを使い回す**——
+    /// この探針が答える3つはどれも「今の画面が何か」を言うもので、木がバイト同一のままなら
+    /// 答えも変わらない。
+    ///
+    /// **健全性の限界(意図した上限)**: 木をバイト同一に保ったまま覆う面が出入りする形
+    /// (静止画面の上に Control Center が出た/消えた、等)は、次に木そのものが変わるまで
+    /// 再確認しない。見逃しの範囲はそこまでに限られる —— 木が動けば必ず撮り直す
+    func memoizedScreenProbe(_ found: ElementInfo, fresh: SnapshotResponse,
+                             driver: AppDriver, args: [String: Any]) async -> String {
+        let key = Self.engineKey(args)
+        let fingerprint = Self.treeFingerprint(fresh)
+        if let memo = lastScreenProbe[key], memo.fingerprint == fingerprint {
+            return memo.warning
+        }
+        let warning = await Self.screenNotRepresentedWarning(found, driver: driver)
+        lastScreenProbe[key] = (fingerprint, warning)
+        return warning
+    }
+
     /// **SpringBoard のアラートが前面に出ていることを名指しする**(iOS xcuitest だけ)。
     ///
     /// DSL 側は `SystemUIGate` + `StepExecutor.unregisteredSystemAlert` で同じ判定をしている
@@ -883,13 +905,14 @@ extension MCPServer {
             let overlap = originNote
                 + RefGuard.preTapWarnings(found, keyboardOcclusion: keyboardOcclusion,
                                         overlayWindows: overlayWindows)
-                + RefGuard.overlapWarning(found: found, in: fresh.elements, screen: fresh.screen)
+                + RefGuard.overlapWarning(found: found, in: fresh.elements, screen: fresh.screen,
+                                        isAndroid: Self.platformName(args) == "android")
                 + (await Self.hiddenUnderChromeWarning(found, in: fresh, driver: driver))
                 // SpringBoard に attach している間は「面がアプリを覆っている」系の注記を出さない
                 // —— その面(許可アラート等)のボタンを撃っている最中に「SpringBoard へ attach して
                 // 読め」と言うことになる(実機 iPhone 13 で実際に出た)
                 + (launchedBundleIDs[Self.engineKey(args)] == "com.apple.springboard" ? ""
-                    : await Self.screenNotRepresentedWarning(found, driver: driver))
+                    : await memoizedScreenProbe(found, fresh: fresh, driver: driver, args: args))
             guard moved >= RefGuard.movedThreshold else { return (found.ref, overlap + labelNote) }
             // **原因までは断定できない**が、「他も同じだけ動いたか」は手元の2枚から言える。
             // 揃って動いていればスクロール等の画面全体の移動、その要素だけならレイアウト変化。
@@ -944,7 +967,20 @@ extension MCPServer {
                 throw MCPError(RefGuard.goneMessage(ref: ref, target: target,
                                                     truncatedCount: fresh.truncatedCount))
             case .ghost(let found), .found(let found, _):
-                let note = RefGuard.labelChangeNote(old: target.label, new: found.label) ?? ""
+                // **rect にできない容器を黙って渡さない**: 幅か高さが0だと、これを起点にした
+                // ジェスチャは1px も動かせる場所を持たない
+                guard found.frame.width > 0, found.frame.height > 0 else {
+                    throw MCPError("scrollFrame ref [\(ref)] \(RefGuard.describe(found)) has a"
+                        + " zero-size frame, so there is nothing to swipe inside")
+                }
+                var note = RefGuard.labelChangeNote(old: target.label, new: found.label) ?? ""
+                // **ref はどんな要素の frame も掴める**(scrollable 申告を確かめない —— それが
+                // この逃げ道の存在意義: id の重複・欠落で選べない容器も frame さえ分かれば渡せる)。
+                // ただし黙って撃つと「マークされた容器の中を振った」という誤った印象を残すので、
+                // 申告が無い(true でない)ときは出所を名乗る
+                if found.scrollable != true {
+                    note += Self.scrollFrameNotDeclaredScrollableNote(found)
+                }
                 return ScrollFrameArg(rect: found.frame, original: target, note: note)
             }
         }
@@ -952,6 +988,17 @@ extension MCPServer {
             return ScrollFrameArg(locator: FTSelector.parse(text).primary)
         }
         return ScrollFrameArg()
+    }
+
+    /// scrollFrame に ref で渡された要素が `scrollable` を申告していないときの但し書き。
+    /// **セレクタ依存の本文であって木だけから決まる注記ではないので NoteCatalog には登録しない**
+    /// (multiMatchHint と同じ扱い)
+    static func scrollFrameNotDeclaredScrollableNote(_ found: ElementInfo) -> String {
+        " (the swipe area was taken from [\(found.ref)] \(RefGuard.describe(found))'s frame"
+            + " (\(Int(found.frame.x)),\(Int(found.frame.y))"
+            + " \(Int(found.frame.width))x\(Int(found.frame.height)));"
+            + " it does not declare itself scrollable, so the gesture is a plain drag inside"
+            + " that rectangle)"
     }
 
     /// シート展開救済の高さ計測(sheetExpansionGrew / sheetShrunkAfterRetry の入力)。
@@ -1062,7 +1109,7 @@ extension MCPServer {
         // sheetCollapsed なら下でシートを展開して再試行し、その再試行が全画面高で同じ救済を
         // 持つので、畳まれた視界での逆走査(実測 7.8s)は丸損になる
         let executor = StepExecutor(driver: scrollDriver,
-                                    releasesScrollTouch: !isAndroid,
+                                    releasesScrollTouch: !isAndroid, isAndroid: isAndroid,
                                     uiFramework: uiFrameworkHint,
                                     defersPartialSheetRecovery: true)
         // **所要時間の内訳の起点**: (a) 1回目の探索 + (b) シート展開救済だけを測る
@@ -1156,7 +1203,7 @@ extension MCPServer {
                 // **再試行は逆走査つき**(defers... を外した別 executor)。展開後も稀に部分高の
                 // ままのことがあり、そこで再び後回しにすると救済がどこにも無くなる
                 let retryExecutor = StepExecutor(driver: scrollDriver,
-                                                 releasesScrollTouch: !isAndroid,
+                                                 releasesScrollTouch: !isAndroid, isAndroid: isAndroid,
                                                  uiFramework: uiFrameworkHint)
                 outcome = await retryExecutor.execute(step)
                 after = try await freshSnapshot(scrollDriver, args: args)

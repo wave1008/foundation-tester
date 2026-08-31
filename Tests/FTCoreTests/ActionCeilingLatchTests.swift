@@ -18,7 +18,7 @@ final class ActionCeilingLatchTests: XCTestCase {
 
     func testFreshSnapshotArmsTheCeilingEveryTimeWhileLatched() async throws {
         let driver = RecordingDriver(screen: screen)
-        let executor = StepExecutor(driver: driver)
+        let executor = StepExecutor(driver: driver, isAndroid: false)
         executor.elementLimitCeilingLatchedThisStep = true
 
         _ = try await executor.freshSnapshot(.afterOwnMove)
@@ -31,7 +31,7 @@ final class ActionCeilingLatchTests: XCTestCase {
 
     func testFreshSnapshotDoesNotArmWhenNotLatched() async throws {
         let driver = RecordingDriver(screen: screen)
-        let executor = StepExecutor(driver: driver)
+        let executor = StepExecutor(driver: driver, isAndroid: false)
 
         _ = try await executor.freshSnapshot(.afterOwnMove)
 
@@ -46,7 +46,7 @@ final class ActionCeilingLatchTests: XCTestCase {
         let driver = SwipeEndCeilingDriver(screen: screen)
         let step = FlowStep(action: "swipeElementToElement", locator: FlowLocator(id: "start"),
                             endLocator: FlowLocator(id: "end"), timeout: 0, occlusionGuard: false)
-        let outcome = await StepExecutor(driver: driver).execute(step)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(step)
 
         XCTAssertTrue(StepExecutor.isSuccess(outcome.status),
                       "上限で間引かれた終点を解決できないと報告した: \(outcome.status)")
@@ -60,7 +60,7 @@ final class ActionCeilingLatchTests: XCTestCase {
 
     func testLatchDoesNotCarryOverToTheNextStep() async throws {
         let driver = TwoStepLatchDriver(screen: screen)
-        let executor = StepExecutor(driver: driver)
+        let executor = StepExecutor(driver: driver, isAndroid: false)
 
         // ステップ1: target1 は既定上限で切り詰められている → ラッチが立って天井で救済される
         let step1 = FlowStep(action: "tap", locator: FlowLocator(id: "target1"),
@@ -94,7 +94,7 @@ final class ActionCeilingLatchTests: XCTestCase {
     func testTapRetakesAtCeilingOnFirstMissInsteadOfBurningRetryBudget() async throws {
         let driver = TruncatedUntilCeilingDriver(screen: screen)
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"), occlusionGuard: false)
-        let outcome = await StepExecutor(driver: driver).execute(step)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(step)
 
         XCTAssertTrue(StepExecutor.isSuccess(outcome.status),
                       "天井でしか出ない対象を解決できないと報告した: \(outcome.status)")
@@ -109,7 +109,7 @@ final class ActionCeilingLatchTests: XCTestCase {
         let driver = UntruncatedTapDriver(screen: screen)
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"),
                             timeout: 0, occlusionGuard: false)
-        let outcome = await StepExecutor(driver: driver).execute(step)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(step)
 
         XCTAssertTrue(StepExecutor.isSuccess(outcome.status), "\(outcome.status)")
         XCTAssertTrue(driver.armCalls.isEmpty, "切り詰めが無いのに天井を要求した: \(driver.armCalls)")

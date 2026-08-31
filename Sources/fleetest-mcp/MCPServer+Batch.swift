@@ -83,16 +83,19 @@ extension MCPServer {
                                 fallbacks: batchFallbacks(selector), timeout: raw["timeout"] as? Double)
             return (step, "select \"\(selector.text)\"")
         },
-        "type": BatchStepBuilder(keys: ["selector", "text", "timeout"]) { raw in
+        "type": BatchStepBuilder(keys: ["selector", "text", "timeout", "replace"]) { raw in
             guard let text = raw["text"] as? String, !text.isEmpty else {
                 throw MCPError("type requires text")
             }
             let selector = optionalBatchSelector(raw)
-            let step = FlowStep(action: "type", locator: selector?.primary,
+            let replace = raw["replace"] as? Bool == true
+            var step = FlowStep(action: "type", locator: selector?.primary,
                                 fallbacks: selector.flatMap(batchFallbacks), text: text,
                                 timeout: raw["timeout"] as? Double)
+            step.replace = replace ? true : nil
             let target = selector.map { " \"\($0.text)\"" } ?? ""
-            return (step, "type\(target) \"\(text)\"")
+            let suffix = replace ? " (replace)" : ""
+            return (step, "type\(target) \"\(text)\"\(suffix)")
         },
         "pressEnter": BatchStepBuilder(keys: []) { _ in (FlowStep(action: "pressEnter"), "pressEnter") },
         "rotateTo": BatchStepBuilder(keys: ["orientation"]) { raw in
@@ -485,7 +488,7 @@ extension MCPServer {
         let beforeBatch = lastSnapshots[Self.engineKey(args)]
         let (isAndroid, uiFrameworkHint) = await resolveExecutorHints(batchDriver, args: args)
         let executor = StepExecutor(driver: batchDriver, releasesScrollTouch: !isAndroid,
-                                    uiFramework: uiFrameworkHint)
+                                    isAndroid: isAndroid, uiFramework: uiFrameworkHint)
         let clock = ContinuousClock()
 
         // **1手目の ref はここで初めて解決する**(driver が要る: RefGuard の再照合と

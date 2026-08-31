@@ -221,4 +221,91 @@ final class MCPSwipeScrollFrameDispatchTests: XCTestCase {
         XCTAssertTrue(path.fromY > 100 && path.fromY < 700, "fromY=\(path.fromY)")
         XCTAssertTrue(path.toY > 100 && path.toY < 700, "toY=\(path.toY)")
     }
+
+    // MARK: - scrollFrame の ref は scrollable 申告を確かめない(2026-08-31 A節)
+
+    /// **id 無し・scrollable 未申告の容器でも ref なら振れる**。`resolveScrollFrameArg` は
+    /// ref を受け取ったときは容器が `scrollable` を申告しているかを確かめない ——
+    /// id の重複・欠落で選べない容器を frame だけで渡せる逃げ道の本来の姿。ただし黙って撃つと
+    /// 「マークされた容器の中を振った」という誤った印象を残すので、**出所を名乗ること**と
+    /// **経路がその矩形に実際に収まること**の両方を見る
+    func testScrollFrameRefOnANonScrollableIDLessContainerConfinesTheSwipe() async throws {
+        driver.snapshotResponse = SnapshotResponse(
+            sessionBundleID: "com.example.app", screen: screen,
+            elements: [ElementInfo(ref: 1, type: "other", identifier: nil, label: nil, value: nil,
+                                   placeholder: nil, enabled: true,
+                                   frame: FTRect(x: 0, y: 100, width: 402, height: 600), depth: 1)],
+            truncatedCount: 0)
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+
+        let text = body(try await server.call(
+            tool: "ft_swipe", args: ["direction": "up", "scrollFrame": 1]))
+
+        let path = try XCTUnwrap(driver.lastSwipePath, "領域指定の経路が渡っていない(全画面へ退化)")
+        XCTAssertTrue(path.fromY > 100 && path.fromY < 700, "fromY=\(path.fromY)")
+        XCTAssertTrue(path.toY > 100 && path.toY < 700, "toY=\(path.toY)")
+        XCTAssertTrue(text.contains("taken from"), text)
+        XCTAssertTrue(text.contains("does not declare itself scrollable"), text)
+    }
+
+    /// **frame が0サイズの ref は撃たずに断る**(振れる場所が無い)
+    func testScrollFrameRefWithAZeroSizeFrameIsRefused() async throws {
+        driver.snapshotResponse = SnapshotResponse(
+            sessionBundleID: "com.example.app", screen: screen,
+            elements: [ElementInfo(ref: 1, type: "other", identifier: "empty", label: nil,
+                                   value: nil, placeholder: nil, enabled: true,
+                                   frame: FTRect(x: 0, y: 100, width: 0, height: 0), depth: 1)],
+            truncatedCount: 0)
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+
+        do {
+            _ = try await server.call(tool: "ft_swipe", args: ["direction": "up", "scrollFrame": 1])
+            XCTFail("0サイズの frame は断るはず")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("zero-size frame"),
+                          error.localizedDescription)
+        }
+        XCTAssertFalse(driver.calls.contains { $0.hasPrefix("swipe(") }, "\(driver.calls)")
+    }
+}
+
+/// **ft_scroll_to にも同じ逃げ道がある**(ft_swipe と `resolveScrollFrameArg` を共有する)。
+/// id 無し・scrollable 未申告の容器でも ref なら渡せ、成功文が出所を名乗ること
+final class MCPScrollToScrollFrameRefProvenanceTests: XCTestCase {
+    private var driver: FakeDriver!
+    private var server: MCPServer!
+
+    override func setUp() {
+        super.setUp()
+        driver = FakeDriver()
+        let fake = driver!
+        server = MCPServer(write: { _ in }, makeDriver: { _ in fake }, recordSnapshot: { _, _, _ in })
+    }
+
+    private func body(_ content: [[String: Any]]) -> String {
+        content.compactMap { $0["text"] as? String }.joined(separator: "\n")
+    }
+
+    private let screen = FTRect(x: 0, y: 0, width: 402, height: 874)
+
+    func testScrollFrameRefOnANonScrollableContainerNamesItsProvenance() async throws {
+        driver.snapshotResponse = SnapshotResponse(
+            sessionBundleID: "com.example.app", screen: screen,
+            elements: [
+                ElementInfo(ref: 1, type: "other", identifier: nil, label: nil, value: nil,
+                           placeholder: nil, enabled: true,
+                           frame: FTRect(x: 0, y: 120, width: 402, height: 600), depth: 1),
+                ElementInfo(ref: 2, type: "staticText", identifier: "row_40", label: "行 40",
+                           value: nil, placeholder: nil, enabled: true,
+                           frame: FTRect(x: 16, y: 200, width: 100, height: 30), depth: 2),
+            ],
+            truncatedCount: 0)
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+
+        let text = body(try await server.call(
+            tool: "ft_scroll_to", args: ["selector": "#row_40", "scrollFrame": 1]))
+
+        XCTAssertTrue(text.contains("taken from"), text)
+        XCTAssertTrue(text.contains("does not declare itself scrollable"), text)
+    }
 }
