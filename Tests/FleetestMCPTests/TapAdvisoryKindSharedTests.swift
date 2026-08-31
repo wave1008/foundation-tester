@@ -158,4 +158,25 @@ final class TapAdvisoryKindSharedTests: XCTestCase {
         XCTAssertTrue(mcp.contains("#tab_sunrise_seto"), "MCP 側は要素を名指しすること: \(mcp)")
         XCTAssertTrue(mcp.contains("ft_screenshot"), "MCP 側は逃げ道を書くこと: \(mcp)")
     }
+
+    /// clippedByContainer: 縁が容器の縁と一致し、同depth・同型の兄弟が明らかに高い
+    /// (shortfall witness ⒜。実測は TapTargetGeometry.clippedAtContainerEdge の doc)
+    func testClippedByContainerKindDrivesBothWordings() {
+        let container = element(1, "screen_account", "other", 0, 47, 390, 683, depth: 0)
+        let tall1 = element(2, nil, "button", 16, 100, 358, 56, depth: 1)
+        let tall2 = element(3, nil, "button", 16, 164, 358, 56, depth: 1)
+        let logout = element(4, "btn_logout", "button", 16, 687, 358, 43, depth: 1)
+        let elements = [container, tall1, tall2, logout]
+        guard case .clippedByContainer(let hit) = TapTargetGeometry.advisoryKind(
+            for: logout, in: elements, screen: screen) else {
+            return XCTFail("clippedByContainer が発火していない")
+        }
+        XCTAssertEqual(hit.ref, container.ref)
+        let dsl = TapTargetGeometry.occlusionAdvisory(for: logout, in: elements, screen: screen)
+        XCTAssertTrue(dsl?.contains("cut off") == true, dsl ?? "-")
+        let mcp = RefGuard.overlapWarning(found: logout, in: elements, screen: screen)
+        XCTAssertTrue(mcp.contains("cut off"), mcp)
+        XCTAssertTrue(mcp.contains("#btn_logout"), "MCP 側は要素を名指しすること: \(mcp)")
+        XCTAssertTrue(mcp.contains("ft_scroll_to"), "MCP 側は逃げ道を書くこと: \(mcp)")
+    }
 }

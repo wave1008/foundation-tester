@@ -310,6 +310,17 @@ extension MCPServer {
         // ghost 注記も scrollFrame 候補も読む意味が無い
         let switchedNote = Self.switchedAppNote(
             launched: launchedBundleIDs[Self.engineKey(args)], snapshot: snapshot)
+        // **launch 系ツールの直後だけ・一度だけ** system alert を確かめる
+        // (systemAlertProbePending 参照。DSL の noteAppLaunched と同じ設計)。
+        // **先に鍵を消してから probe する** —— この呼び出し自体が非同期で待つため、
+        // 消し忘れると再入(snapshotAfter 経由の二重呼び出し等)で二重に払う
+        var alertNote = ""
+        let alertKey = Self.engineKey(args)
+        if systemAlertProbePending.contains(alertKey) {
+            systemAlertProbePending.remove(alertKey)
+            let alert = await Self.systemAlertNote(driver: driver)
+            if !alert.isEmpty { alertNote = alert + "\n" }
+        }
         // **ghostNote と render で畳みの有無を揃える**: 片方だけ expandBulk を無視すると、
         // 注記は「畳んだ」と言うのに木は個別列挙、という食い違いになる
         let collapsingBulk = args["expandBulk"] as? Bool != true
@@ -328,7 +339,7 @@ extension MCPServer {
                        + Self.shorteningAdvice(snapshot, cache: cache) + "\n",
                    short: "")
             : ""
-        return switchedNote + ceilingNote + extraNote + backgroundNote
+        return switchedNote + alertNote + ceilingNote + extraNote + backgroundNote
             + catalogNotes(NoteCatalog.Input(snapshot: snapshot, collapsingBulk: collapsingBulk,
                                              cache: cache), context: .snapshot)
             + SnapshotRenderer.render(snapshot, flagging: cache.ghostFlags(snapshot),
@@ -697,9 +708,39 @@ extension MCPServer {
     /// 面が分かっているならそちらが正確なので、当たったほうだけを言う。
     /// 覆っているときは `hitTest` を聞かずに済むので往復も1つ減る
     static func screenNotRepresentedWarning(_ found: ElementInfo, driver: AppDriver) async -> String {
+        // **名指しできるアラートを最初に聞く**: SpringBoard の許可アラートは覆い判定
+        // (systemUICoveringWarning)より確度が高い名指しができる(題名・ボタンまで読める)
+        let alert = await systemAlertNote(driver: driver)
+        if !alert.isEmpty { return " (\(alert))" }
         let covering = await systemUICoveringWarning(found, driver: driver)
         if !covering.isEmpty { return covering }
         return await treeDoesNotMatchScreenWarning(found, driver: driver)
+    }
+
+    /// **SpringBoard のアラートが前面に出ていることを名指しする**(iOS xcuitest だけ)。
+    ///
+    /// DSL 側は `SystemUIGate` + `StepExecutor.unregisteredSystemAlert` で同じ判定をしている
+    /// (CLAUDE.md「システムアラートの判定は2段」)。MCP には launch 系ツールしか呼ばず、
+    /// この関数自体は判定を持たない(`SystemUIGate.isCovered`/`describeUnregistered` を転送する
+    /// だけ)—— 判定は1箇所、文言はここ。
+    ///
+    /// **NoteCatalog の対象外**: あちらは木だけから決まる注記の唯一の定義元だが、これは
+    /// 木の外(`/systemalert`)からの申告で、`backgroundNote`/`switchedNote` と同じ扱い
+    /// (NoteCoverageTests.testSnapshotBodyEmitsOnlyCatalogNotes がこの形を許容している)。
+    ///
+    /// **呼び出し元が2つ**: `snapshotBody` は `systemAlertProbePending` が立っているときだけ
+    /// (launch 直後の1回)、`screenNotRepresentedWarning` は ft_tap のたびに毎回
+    /// (systemUICoveringWarning と同じく費用は MCP のタップ経路だけで既に許容されている)。
+    /// 答えられない(旧ブリッジ・in-app・Android)/ 出ていないときは黙る
+    static func systemAlertNote(driver: AppDriver) async -> String {
+        guard let probe = try? await driver.systemAlert(), SystemUIGate.isCovered(probe)
+        else { return "" }
+        let described = SystemUIGate.describeUnregistered(probe)
+        let what = described.map { "a system alert (\($0))" } ?? "a system alert"
+        return "note: \(what) is in front of the app — the tree below is the app behind it;"
+            + " nothing in it is reachable and the alert is drawn by SpringBoard so it never"
+            + " appears here. Read it with `ft_launch bundleId: com.apple.springboard`,"
+            + " tap its button by ref, then `ft_launch` your app again."
     }
 
     /// **SpringBoard の面がアプリを覆っている**ことを SpringBoard に聞く(iOS xcuitest だけ)。
@@ -844,7 +885,11 @@ extension MCPServer {
                                         overlayWindows: overlayWindows)
                 + RefGuard.overlapWarning(found: found, in: fresh.elements, screen: fresh.screen)
                 + (await Self.hiddenUnderChromeWarning(found, in: fresh, driver: driver))
-                + (await Self.screenNotRepresentedWarning(found, driver: driver))
+                // SpringBoard に attach している間は「面がアプリを覆っている」系の注記を出さない
+                // —— その面(許可アラート等)のボタンを撃っている最中に「SpringBoard へ attach して
+                // 読め」と言うことになる(実機 iPhone 13 で実際に出た)
+                + (launchedBundleIDs[Self.engineKey(args)] == "com.apple.springboard" ? ""
+                    : await Self.screenNotRepresentedWarning(found, driver: driver))
             guard moved >= RefGuard.movedThreshold else { return (found.ref, overlap + labelNote) }
             // **原因までは断定できない**が、「他も同じだけ動いたか」は手元の2枚から言える。
             // 揃って動いていればスクロール等の画面全体の移動、その要素だけならレイアウト変化。

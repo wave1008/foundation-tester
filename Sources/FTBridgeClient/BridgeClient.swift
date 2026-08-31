@@ -5,6 +5,10 @@ import FTCore
 
 public final class BridgeClient: AppDriver {
     let baseURL: URL
+    /// 接続先ポート。`.fleetest/bridge-<port>.device`(実機の記録)を読むために保持する
+    /// — baseURL の文字列から逆算しない(host:port の往復に依存すると URL 生成規則が
+    /// 変わったときに静かに壊れる)
+    let port: UInt16
     let session: URLSession
     /// per-endpoint の壁時計上限(秒)。既定は Timeout.interaction/session。
     /// テスト seam(下の internal init)経由でのみ短縮注入できる
@@ -72,6 +76,7 @@ public final class BridgeClient: AppDriver {
         physicalUDID: String? = nil,
         simulatorUDID: String? = nil) {
         self.baseURL = URL(string: "http://\(host):\(port)")!
+        self.port = port
         self.physicalUDID = physicalUDID
         self.simulatorUDID = simulatorUDID
         // 高速入力(quiescence スキップ)はプロセス単位の環境変数で有効化する
@@ -163,10 +168,30 @@ public final class BridgeClient: AppDriver {
         return nil
     }
 
-    /// 実行時の既定の引き当て(実機一覧は必要になったときだけ devicectl を叩く)
-    static func resolveTarget(named device: String) -> ResolvedTarget {
-        resolveTarget(named: device, simulators: try? SimulatorCatalog.devices(),
-                      physicalDevices: { try? IOSPhysicalDeviceCatalog.devices() })
+    /// **`/status` からの対象特定**(`knownTarget` が無いときの唯一の入口。BridgeDiscovery.resolveUDID
+    /// と同じ優先順位を simctl/devicectl の対象特定へ適用する)。
+    /// ① `status.udid`(シミュレータの自己申告。常に最新なので記録より必ず優先) →
+    /// ② `recordedPhysicalUDID`(実機専用の補完。実機の `/status` は UDID を申告できないため、
+    ///    `BridgeDeviceRecord` が実機かどうかを見分ける唯一の鍵になる。①を先に見ないと、
+    ///    実機ポートを使い回して別のシミュレータへ繋ぎ直した後も古い記録を実機と誤認する) →
+    /// ③ 名前引き(どちらも無い旧ブリッジ・仮想デバイス)
+    static func resolveTarget(status: StatusResponse, recordedPhysicalUDID: String?,
+                              simulators: [SimDeviceInfo]?,
+                              physicalDevices: () -> [IOSPhysicalDeviceInfo]?) -> ResolvedTarget {
+        if let udid = status.udid { return .simulator(udid: udid) }
+        if let recordedPhysicalUDID { return .physical(udid: recordedPhysicalUDID) }
+        return resolveTarget(named: status.device, simulators: simulators, physicalDevices: physicalDevices)
+    }
+
+    /// `knownTarget` が無いときに `simctlTarget`/`installTarget` が共有する解決(`status()` を1回だけ叩く)。
+    /// 実機の記録ファイルは port ごとなので、この BridgeClient が繋いでいる port の分だけ読む
+    /// (IOSDeviceTransport.establish が書く。仮想デバイス/旧ブリッジは記録が無いので nil のまま)
+    private func resolveTargetFromBridge() async throws -> ResolvedTarget {
+        let current = try await status()
+        let recorded = (try? RepoRoot.find()).flatMap { BridgeDeviceRecord.load(port: port, repoRoot: $0) }
+        return Self.resolveTarget(status: current, recordedPhysicalUDID: recorded,
+                                  simulators: try? SimulatorCatalog.devices(),
+                                  physicalDevices: { try? IOSPhysicalDeviceCatalog.devices() })
     }
 
     /// simctl 系の対象特定。**実機は 501**(devicectl に同等手段が無い)
@@ -176,7 +201,7 @@ public final class BridgeClient: AppDriver {
         if let known = Self.knownTarget(physicalUDID: physicalUDID, simulatorUDID: simulatorUDID) {
             resolved = known
         } else {
-            resolved = Self.resolveTarget(named: try await status().device)
+            resolved = try await resolveTargetFromBridge()
         }
         switch resolved {
         case .simulator(let udid): return udid
@@ -200,13 +225,12 @@ public final class BridgeClient: AppDriver {
 
     /// install / uninstall の対象。**実機は UDID を渡して devicectl** へ回す
     /// (profile 経由なら physicalUDID が来るが、MCP のポート直指定では来ないので
-    /// カタログからも引く。引けなければ simctl の対象として扱う)
+    /// `resolveTargetFromBridge()` が申告→実機記録→カタログ名引きの順に引く)
     func installTarget() async throws -> ResolvedTarget {
         if let known = Self.knownTarget(physicalUDID: physicalUDID, simulatorUDID: simulatorUDID) {
             return known
         }
-        let current = try await status()
-        return Self.resolveTarget(named: current.device)
+        return try await resolveTargetFromBridge()
     }
 
     /// データコンテナの**中身**を消す(コンテナ自体は残す)。対象の特定と終了は呼び出し側の責務

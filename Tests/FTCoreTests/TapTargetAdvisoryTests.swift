@@ -704,6 +704,91 @@ final class TapTargetAdvisoryTests: XCTestCase {
         e.label = "2 時間 26"
         XCTAssertFalse(TapTargetGeometry.isClippedSliver(e, screen: screen))
     }
+
+    // MARK: - clippedAtContainerEdge(容器の縁で切り詰められたタップ対象)
+
+    /// 実測(2026-08-31・実機 iPhone 13, 390x844, XCUITest, Compose): アカウント画面の
+    /// `#screen_account` (0,47 390x683) の下端で `#btn_logout` (16,687 358x43) が
+    /// 43pt しか報告されない(画面の他のボタンは56pt)。中心 (195,708) を撃っても
+    /// タブバーへ抜けて何も起きなかった。shortfall witness ⒜: 同depth・同型の兄弟が
+    /// 2件以上、自分より `containerEdgeShortfallFloor`(4pt)を超えて高い
+    /// **木の形も実機どおり**(平坦化された Compose): 容器 d10 の直後に見出し
+    /// `staticText "アカウント"` d11 (16,114 95x22) が居て、行はすべて d12。preorder で「直前の
+    /// 浅い要素」を親に取る近似だと見出しが親になり発火しない(2026-08-31 に実機で踏んだ)
+    func testClippedAtBottomEdgeWithTallerSiblingsWitness() {
+        let container = element(1, "screen_account", "other", 0, 47, 390, 683, depth: 10)
+        var heading = element(5, "", "staticText", 16, 114, 95, 22, depth: 11)
+        heading.label = "アカウント"
+        let tall1 = element(2, "btn_orders", "button", 16, 270, 358, 56, depth: 12)
+        let tall2 = element(3, "btn_addresses", "button", 16, 382, 358, 56, depth: 12)
+        let logout = element(4, "btn_logout", "button", 16, 687, 358, 43, depth: 12)
+        let elements = [container, heading, tall1, tall2, logout]
+        let hit = TapTargetGeometry.clippedAtContainerEdge(logout, in: elements)
+        XCTAssertEqual(hit?.ref, container.ref)
+    }
+
+    /// 実測(2026-08-31・同上): 住所フォームの `#btn_save` (16,759 358x48) の中の
+    /// staticText "保存" (181,755 28x3) がラベルだけ3ptに潰れて縁へ張り付く。行自体は
+    /// 通常の高さなので witness ⒜(高さ比較)は使えず、witness ⒝(潰れた子ラベルが
+    /// 同じ縁に接している)で拾う
+    func testClippedAtBottomEdgeWithCollapsedChildWitness() {
+        let container = element(1, "form_address", "other", 0, 47, 390, 712, depth: 0)
+        let addressField = element(2, "address_input", "textField", 16, 600, 358, 48, depth: 1)
+        let save = element(3, "btn_save", "button", 16, 711, 358, 48, depth: 1)
+        var label = element(4, "", "staticText", 181, 756, 28, 3, depth: 2)
+        label.label = "保存"
+        let elements = [container, addressField, save, label]
+        let hit = TapTargetGeometry.clippedAtContainerEdge(save, in: elements)
+        XCTAssertEqual(hit?.ref, container.ref)
+    }
+
+    /// 陰性対照: 容器の縁に接していても、兄弟と同じ高さ(56pt)で短くなっていなければ
+    /// 言わない(単に容器の最後の行なだけ)
+    func testFlushWithContainerButNotShortIsNotFlagged() {
+        let container = element(1, "screen_account", "other", 0, 47, 390, 683, depth: 0)
+        let tall1 = element(2, "", "button", 16, 100, 358, 56, depth: 1)
+        let tall2 = element(3, "", "button", 16, 164, 358, 56, depth: 1)
+        let flush = element(4, "btn_flush", "button", 16, 674, 358, 56, depth: 1)
+        let elements = [container, tall1, tall2, flush]
+        XCTAssertNil(TapTargetGeometry.clippedAtContainerEdge(flush, in: elements))
+    }
+
+    /// 陰性対照: 短くても容器の縁に接していなければ(単にデザイン上そういう行)言わない
+    func testShortRowNotAtEdgeIsNotFlagged() {
+        let container = element(1, "screen_account", "other", 0, 47, 390, 683, depth: 0)
+        let tall1 = element(2, "", "button", 16, 100, 358, 56, depth: 1)
+        let tall2 = element(3, "", "button", 16, 164, 358, 56, depth: 1)
+        let short = element(4, "btn_mid", "button", 16, 400, 358, 43, depth: 1)
+        let elements = [container, tall1, tall2, short]
+        XCTAssertNil(TapTargetGeometry.clippedAtContainerEdge(short, in: elements))
+    }
+
+    /// 陰性対照: 縁に接していても、比べる兄弟も潰れた子ラベルも無ければ根拠が無いので
+    /// 言わない(その形がデザイン上そもそも短いだけの可能性を排せない)
+    func testAtEdgeWithNoWitnessIsNotFlagged() {
+        let container = element(1, "screen_account", "other", 0, 47, 390, 683, depth: 0)
+        let other = element(2, "field", "textField", 16, 100, 358, 56, depth: 1)
+        let alone = element(3, "btn_alone", "button", 16, 687, 358, 43, depth: 1)
+        let elements = [container, other, alone]
+        XCTAssertNil(TapTargetGeometry.clippedAtContainerEdge(alone, in: elements))
+    }
+
+    /// 陰性対照(掃討コーパス ios-browser_nationwide で実際に出た偽陽性): 親リンク
+    /// (0,677 402x99) の上端に接する「広告」バッジ link (348,678 22x13) は、同じ depth の
+    /// リンク(幅 41〜176・高さ 39〜99)より低いが、幅が桁違いなので「行の高さ」を借りる
+    /// 相手ではない(`sameRowWidthRatio`)。バッジの自然な高さであって切り詰めではない
+    func testNarrowBadgeAtParentTopEdgeIsNotFlagged() {
+        let card = element(1, "", "link", 0, 677, 402, 99, depth: 15)
+        var badge = element(2, "", "link", 348, 678, 22, 13, depth: 16)
+        badge.label = "広告"
+        var day1 = element(3, "", "link", 54, 655, 49, 39, depth: 16)
+        day1.label = "13 (木)"
+        var day2 = element(4, "", "link", 103, 655, 49, 39, depth: 16)
+        day2.label = "14 (金)"
+        let image = element(5, "", "link", 0, 677, 176, 99, depth: 16)
+        let elements = [card, badge, day1, day2, image]
+        XCTAssertNil(TapTargetGeometry.clippedAtContainerEdge(badge, in: elements))
+    }
 }
 
 /// **配線のテスト**: 判定関数を単体で確かめるだけでは「DSL の tap がそれを通っているか」を

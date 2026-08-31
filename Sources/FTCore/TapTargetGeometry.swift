@@ -233,12 +233,13 @@ public enum TapTargetGeometry {
         case missedContent(ElementInfo)
         case nestedAction(ElementInfo)
         case stacked
+        case clippedByContainer(ElementInfo)
         case sliver
     }
 
     /// **座標に依る警告の優先順チェーン**(強い事実から先に、最初の1件だけ)。
     /// 順序: zeroFrame → offscreen → scrolledOut → overlayCovering → missedContent →
-    /// nested → stacked → sliver。**frame の中心を撃つ経路でしか言えない**
+    /// nested → stacked → clippedByContainer → sliver。**frame の中心を撃つ経路でしか言えない**
     /// (`StepExecutor.visibleTapRect` で寄せた場合は呼ばない —— 撃つ点が変わるので嘘になる)
     public static func advisoryKind(for element: ElementInfo, in elements: [ElementInfo],
                                     screen: FTRect) -> TapAdvisoryKind? {
@@ -257,8 +258,98 @@ public enum TapTargetGeometry {
             return .nestedAction(nested)
         }
         if OcclusionGeometry.stackedRefs(elements).contains(element.ref) { return .stacked }
+        if let container = clippedAtContainerEdge(element, in: elements) {
+            return .clippedByContainer(container)
+        }
         if isClippedSliver(element, screen: screen) { return .sliver }
         return nil
+    }
+
+    /// 縁で切り詰められた高さの実質的な下限差(pt/dp)。**4pt 以下は丸め・padding の差**として
+    /// 広さの根拠にしない(実測: 実機 iPhone 13 の witness で同型ボタン間の丸め差は
+    /// 数pt 未満、48→43 の 5pt が有意)
+    static let containerEdgeShortfallFloor: Double = 4
+
+    /// 「行の高さ」を借りてよい兄弟の幅の比(両方向)。同じ列に並ぶ行は幅が揃う(実測: ログアウト
+    /// 358=358・Android 設定行 1080=1080)が、幅 22 の「広告」バッジは同じ depth の
+    /// リンク(幅 41〜176)と高さを比べる意味が無い(ios-browser_nationwide で偽陽性になった形)
+    static let sameRowWidthRatio: Double = 0.8
+
+    /// **容器の縁で切り詰められたタップ対象**(返すのは容器 = 名指し用)。
+    ///
+    /// 実測(2026-08-31・実機 iPhone 13, 390x844, XCUITest, Compose): アカウント画面の
+    /// `#screen_account` (0,47 390x683) の下端で `button "ログアウト" id=btn_logout` が
+    /// 43pt(スクロール前は 48pt)しか報告されない —— 同じ画面の他のボタンは56/48pt。
+    /// 中心 (195,708)・(195,725) いずれを撃っても何も起きなかった(ブリッジは frame を
+    /// **容器で切ってから**送るので、overflow していた分の座標はどこにも残らず、
+    /// `isClippedByViewport` も `straddleJump` も既存の遮蔽判定も1つも発火しない)。
+    ///
+    /// **「縁が一致 + 高さ不足」でしか判定できない**(overflow を直接見る手が無い)。
+    /// 高さ不足の根拠(shortfall witness)は2通り: ⒜ 同じ depth・同じ型の兄弟が2件以上、
+    /// 容器の中に収まっていて自分より `containerEdgeShortfallFloor` を超えて高い
+    /// (「本来の行の高さ」を他の行から推測する)/ ⒝ 子孫のラベルが同じ縁で
+    /// `StepExecutor.minimumVisibleTapExtent` 未満に潰れている(実測: `#btn_save` (16,759 358x48)
+    /// の中の staticText "保存" (181,755 28x3) — 行自体は普通の高さでも中の文字だけが
+    /// 縁で潰れる形。⒜ が使えない)。
+    ///
+    /// **警告専用**(新しい検知は拒否でなく警告から): 撃つのは止めない
+    static func clippedAtContainerEdge(_ element: ElementInfo,
+                                       in elements: [ElementInfo]) -> ElementInfo? {
+        guard platformShouldResolve(element) else { return nil }
+        // **容器は「要素を幾何的に含む祖先」を近い順に**(`StepExecutor.clippingContainer` は
+        // 使わない): あちらの「直前で depth が浅い要素 = 親」の近似は、平坦化された Compose の木で
+        // 直前の見出しラベル(実測: `staticText "アカウント"` d11・95x22)を親と誤認して nil を返す。
+        // 含んでいない祖先は縁の一致を論じる相手ではない
+        let candidates = ancestors(of: element, in: elements).filter {
+            $0.frame.width > 0 && $0.frame.height > 0 && contains($0.frame, element.frame)
+        }
+        for container in candidates
+        where clippedAtEdge(of: container.frame, element: element, in: elements) {
+            return container
+        }
+        return nil
+    }
+
+    private static func clippedAtEdge(of containerFrame: FTRect, element: ElementInfo,
+                                      in elements: [ElementInfo]) -> Bool {
+        let elementBottom = element.frame.y + element.frame.height
+        let containerBottom = containerFrame.y + containerFrame.height
+        let atBottom = abs(elementBottom - containerBottom) <= 1
+        let atTop = abs(element.frame.y - containerFrame.y) <= 1
+        guard atBottom || atTop else { return false }
+
+        let taller = elements.filter { sibling in
+            sibling.ref != element.ref && sibling.depth == element.depth
+                && sibling.type == element.type && contains(containerFrame, sibling.frame)
+                && sibling.frame.height > element.frame.height + containerEdgeShortfallFloor
+                && sameRowWidth(sibling.frame.width, element.frame.width)
+        }
+        if taller.count >= 2 { return true }
+
+        let tol = 1.0
+        return StepExecutor.descendants(of: element, in: elements).contains { child in
+            guard let label = child.label,
+                  !FlowMatchMode.normalizeInvisibleCharacters(label).isEmpty,
+                  child.frame.height < StepExecutor.minimumVisibleTapExtent,
+                  child.frame.x >= element.frame.x - tol,
+                  child.frame.x + child.frame.width <= element.frame.x + element.frame.width + tol
+            else { return false }
+            let childBottom = child.frame.y + child.frame.height
+            return (atBottom && abs(childBottom - containerBottom) <= 1)
+                || (atTop && abs(child.frame.y - containerFrame.y) <= 1)
+        }
+    }
+
+    static func sameRowWidth(_ a: Double, _ b: Double) -> Bool {
+        guard a > 0, b > 0 else { return false }
+        return min(a, b) / max(a, b) >= sameRowWidthRatio
+    }
+
+    /// `clippedByContainer` の文言専用: 当たった縁が下端か(判定自体は
+    /// `clippedAtContainerEdge` で確定済みなので、ここは表示のための再計算)
+    public static func isClippedAtBottomEdge(_ element: ElementInfo, container: ElementInfo) -> Bool {
+        abs((element.frame.y + element.frame.height)
+            - (container.frame.y + container.frame.height)) <= 1
     }
 
     /// **DSL 用の文言**(ステップ注記なので主語は "the target")。`advisoryKind` の kind ごとに
@@ -290,6 +381,13 @@ public enum TapTargetGeometry {
             // 広げた分について嘘になる(実アプリのフィードは行の高さがまちまち)
             return "the target is stacked on the same spot as other elements, so at most one of"
                 + " them is really drawn there — the rest are clamped leftovers"
+        case .clippedByContainer(let container):
+            let edge = isClippedAtBottomEdge(element, container: container) ? "bottom" : "top"
+            let h = Int(element.frame.height.rounded())
+            return "the target is cut off at the \(edge) edge of \(describe(container)) — only"
+                + " \(h) of its height is drawn (pt on iOS / px on Android), so the tap may land on"
+                + " whatever is drawn there instead"
+                + " of the target. Scroll it fully into view first"
         case .sliver:
             return "the target is clipped to a thin sliver at the edge of its container —"
                 + " it is narrower than it looks and the tap may miss"

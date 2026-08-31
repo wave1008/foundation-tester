@@ -469,6 +469,8 @@ extension MCPServer {
                 throw MCPError("packagePath is required")
             }
             try await driver(args).install(packagePath: packagePath)
+            // インストール直後の初回起動で権限アラートが出ることがある(systemAlertProbePending 参照)
+            systemAlertProbePending.insert(Self.engineKey(args))
             return text("Installed: \(packagePath)")
 
         case "ft_launch":
@@ -481,6 +483,12 @@ extension MCPServer {
             try await launchDriver.launch(bundleID: bundleID)
             // 以後の snapshot は「これの木か」を突き合わせられる(switchedAppNote)
             launchedBundleIDs[Self.engineKey(args)] = bundleID
+            // 次の ft_snapshot で一度だけ system alert を確かめる(systemAlertProbePending 参照)。
+            // **springboard 自身への attach では立てない** —— そちらはアラートを読みに行く
+            // 正規の経路そのものなので、覆いとして扱ってはいけない
+            if bundleID != "com.apple.springboard" {
+                systemAlertProbePending.insert(Self.engineKey(args))
+            }
             // 下書きの起点(F-3 の既定範囲は「直近の ft_launch 以降」)。@TestClass(app:) にも使う
             interactions.record(InteractionLog.Entry(
                 step: nil, unresolved: nil, isLaunch: true, bundleID: bundleID,
@@ -514,6 +522,8 @@ extension MCPServer {
                 openURLArgs["waitForChange"] = true
             }
             try await openURLDriver.openURL(url, bundleID: openURLBundleID)
+            // ディープリンクが未起動のアプリを新規に立ち上げることがある(systemAlertProbePending 参照)
+            systemAlertProbePending.insert(Self.engineKey(args))
             var openStep = FlowStep(action: "openURL")
             openStep.text = url
             interactions.record(InteractionLog.Entry(step: openStep, unresolved: nil,
@@ -851,18 +861,42 @@ extension MCPServer {
                   let orientation = FTOrientation.parse(raw) else {
                 throw MCPError("orientation must be \"portrait\" or \"landscape\"")
             }
-            let settled = try await driver(args).rotate(to: orientation)
+            let rotateDriver = try await driver(args)
+            let settled = try await rotateDriver.rotate(to: orientation)
             var rotateStep = FlowStep(action: "rotateTo")
             rotateStep.direction = settled.rawValue
             interactions.record(InteractionLog.Entry(step: rotateStep, unresolved: nil,
                                                      summary: "rotateTo .\(settled.rawValue)"))
             // **回転はツリーの座標系ごと変える**ので、覚えている木は必ず捨てる
             // (古い ref を残すと、次のタップが回転前の座標で撃たれる)
-            let rotated = try await freshSnapshot(try await driver(args), args: args)
+            //
+            // **driver.rotate が返るのは「向きが一致した」時点で、レイアウトはまだ動いている
+            // ことがある**(実機 iPhone 13 の witness: `RotationSettle.framesFitScreen` の doc)。
+            // DSL の rotateTo()(StepExecutor+Actions.swift)と同じ規律で、木が2回続けて指紋一致
+            // するまで撮り直す(BackEffect.treesAreIdentical = StaleFrameDetector.treeFingerprint の
+            // 等号。2つ目の指紋実装を作らない)。予算は変化待ちの既存の設定を流用する
+            // (changeSettleRereads 回・settleWaitSeconds 秒間隔)
+            var rotated = try await freshSnapshot(rotateDriver, args: args)
+            var settledFrames = false
+            for _ in 0..<Self.changeSettleRereads {
+                try await Task.sleep(nanoseconds: UInt64(max(0, settleWaitSeconds) * 1_000_000_000))
+                let reread = try await freshSnapshot(rotateDriver, args: args)
+                let fits = RotationSettle.framesFitScreen(reread)
+                let unchanged = BackEffect.treesAreIdentical(before: rotated.elements,
+                                                             after: reread.elements)
+                rotated = reread
+                if fits, unchanged { settledFrames = true; break }
+            }
             recordSnapshot(rotated, Self.platformName(args), args)
+            // **未settleを「もう終わった」と嘘をつかない** —— waitForChange の
+            // still-changing 注記と同じ立て付け(MCPServer+Snapshot.swift)
+            let relayoutCaveat = settledFrames ? ""
+                : " note: the tree did not settle within the check budget — it may still be"
+                    + " mid-relayout; take another ft_snapshot before relying on these frames."
             return text("Rotated to \(settled.rawValue). The frames below are in the new"
-                + " coordinate system — refs taken before the rotation are gone.\n\n"
-                + (await snapshotBody(rotated, driver: try await driver(args), args: args)))
+                + " coordinate system — refs taken before the rotation are gone."
+                + relayoutCaveat + "\n\n"
+                + (await snapshotBody(rotated, driver: rotateDriver, args: args)))
 
         case "ft_navigate":
             // **3つを1ツールに束ねる**: back/home/appSwitcher を個別ツールにすると定義が3倍になり、
@@ -938,6 +972,8 @@ extension MCPServer {
         case "ft_clear_app_data":
             guard let bundleID = args["bundleId"] as? String else { throw MCPError("bundleId is required") }
             try await driver(args).clearAppData(bundleID: bundleID)
+            // 次の ft_launch が初回起動と同じ扱いになる(systemAlertProbePending 参照)
+            systemAlertProbePending.insert(Self.engineKey(args))
             return text("Cleared the data of \(bundleID). The app is stopped — ft_launch to continue")
 
         case "ft_clear_input":
@@ -1217,6 +1253,7 @@ extension MCPServer {
             try await driver(args).terminate()
             // 意図して落としたので、以後の別アプリの木は「すり替わり」ではない
             launchedBundleIDs[Self.engineKey(args)] = nil
+            systemAlertProbePending.remove(Self.engineKey(args))
             return text("Terminated the app")
 
         case "ft_list_scenarios":

@@ -6,6 +6,7 @@
 //   - 悪ければ**同名のシミュレータが起動していればそちらを操作する**(消去・インストールの誤爆)
 // になる。install / uninstall / clearAppData の3経路が同じ決め方を共有する。
 
+import FTCore
 import XCTest
 @testable import FTBridgeClient
 
@@ -119,5 +120,50 @@ final class DeviceTargetResolutionTests: XCTestCase {
                                          simulators: [device("iPhone 17 Pro", udid: "SIM-1"),
                                                       device("iPhone 16", udid: "SIM-2")]),
                        .simulator(udid: "SIM-1"))
+    }
+
+    // MARK: - /status からの対象特定(実機の `/status.device` は "iPhone" のような汎用名で、
+    // 名前引きに当たらない。BridgeClient.resolveTarget(status:recordedPhysicalUDID:...) が
+    // 申告→実機記録→名前引きの順で解決する。BridgeClient.resolveTargetFromBridge が呼ぶ形と同じ)
+
+    private func status(device name: String, udid: String? = nil) -> StatusResponse {
+        StatusResponse(ready: true, device: name, osVersion: "18.5", sessionBundleID: nil, udid: udid)
+    }
+
+    /// **シミュレータの自己申告が最優先**: 実機だった port を建て直してシミュレータへ繋ぎ替えた後、
+    /// 古い `.device` 記録が残っていても申告が勝つ(先に見れば記録を読みにも行かない)
+    func testStatusUDIDWinsOverAStaleRecordedPhysicalUDID() {
+        XCTAssertEqual(
+            BridgeClient.resolveTarget(status: status(device: "iPhone 17 Pro", udid: "SIM-1"),
+                                       recordedPhysicalUDID: "PHONE-STALE",
+                                       simulators: [], physicalDevices: { [] }),
+            .simulator(udid: "SIM-1"))
+    }
+
+    /// **実機は申告できないので記録が唯一の鍵**(`/status.device` は汎用名 "iPhone" で名前引きに
+    /// 当たらない)。これが抜けていたバグ: install/uninstall/clearAppData が simctl へ回って
+    /// 「Invalid device: iPhone」になっていた
+    func testNoStatusUDIDFallsBackToTheRecordedPhysicalUDID() {
+        XCTAssertEqual(
+            BridgeClient.resolveTarget(status: status(device: "iPhone"), recordedPhysicalUDID: "PHONE-1",
+                                       simulators: [], physicalDevices: { [] }),
+            .physical(udid: "PHONE-1"))
+    }
+
+    /// 記録も無いときは従来どおり名前引き(シミュレータに当たればそれを使う)
+    func testNoStatusUDIDNoRecordFallsBackToNameResolution() {
+        XCTAssertEqual(
+            BridgeClient.resolveTarget(status: status(device: "iPhone 17 Pro"), recordedPhysicalUDID: nil,
+                                       simulators: [device("iPhone 17 Pro", udid: "SIM-1")],
+                                       physicalDevices: { [] }),
+            .simulator(udid: "SIM-1"))
+    }
+
+    /// 記録も名前引きも当たらないときは `.unknown`(旧ランナー・仮想デバイス以外の未知の相手)
+    func testNoStatusUDIDNoRecordNoNameMatchIsUnknown() {
+        XCTAssertEqual(
+            BridgeClient.resolveTarget(status: status(device: "iPhone"), recordedPhysicalUDID: nil,
+                                       simulators: [], physicalDevices: { [] }),
+            .unknown(name: "iPhone"))
     }
 }

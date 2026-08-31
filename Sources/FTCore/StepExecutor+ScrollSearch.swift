@@ -46,6 +46,11 @@ extension StepExecutor {
         /// **実在する行を探し続ける**。最終木だけで判定していたため、実測の2回のうち
         /// 1回はこの警告が出ないままだった
         var maxTruncatedDuringSearch: Int = 0
+        /// `stoppedUnmoving` 判定時点の実効キーボード矩形(chrome 込み。`KeyboardOcclusion`)。
+        /// nil = キーボード非表示。**`!contentEverMoved` のときだけ** scrollNotFoundMessage が読む ——
+        /// ソフトキーボードの上でスワイプすると始点がキー面に乗って「1度も動かなかった」に
+        /// 見えるため(ScrollGeometry.viewport 参照)、その主因を名指しする
+        var keyboardFrame: FTRect? = nil
     }
 
     /// 探索の注記を組み立てつつ、**機械可読コードを今のステップへ記録する**。
@@ -125,8 +130,18 @@ extension StepExecutor {
             ? " If the list sits inside a half-open bottom sheet, expand the sheet first"
                 + " (drag its grabber upward) and retry."
             : ""
+        // **キーボードが主因の可能性を名指しする**: swipe の始点は画面全体の固定比率で作られるため、
+        // ソフトキーボードの上で振ると始点がキー面に乗って何も動かない(キーボードは常にタッチを
+        // 飲む)。**1度も動かなかった回にだけ出す**(`!contentEverMoved`) —— 末尾に着いた回は
+        // キーボードと無関係
+        var keyboardHint = ""
+        if result?.stoppedUnmoving == true, result?.contentEverMoved == false,
+           let kb = result?.keyboardFrame {
+            keyboardHint = ": the soft keyboard covers (\(Int(kb.x)),\(Int(kb.y))"
+                + " \(Int(kb.width))x\(Int(kb.height))); pass scrollFrame or close the keyboard"
+        }
         return "element not found after \(swipes) scroll(s)\(stopped): \(step.locatorSummary)"
-            + sheetHint
+            + sheetHint + keyboardHint
     }
 
     /// `notExist(scroll:)` の裏返し: スクロール探索中に見つかってしまったら不在検証は失敗
@@ -372,6 +387,10 @@ extension StepExecutor {
                 phase.snapshotMs += Self.ms(clock.now - start)
             }
             try await dismissInterruption(in: &snapshot, phase: &phase)
+            // **キーボードの実効矩形は周回ごとに引き直す**(整定待ち中に閉じることがある)。
+            // hintDrag/slowDrag の viewport クリップと、末尾の keyboardFrame 注記の両方で使う
+            let effectiveKeyboard = KeyboardOcclusion.resolve(reported: snapshot.keyboardFrame,
+                                                              in: snapshot.elements).frame
             // **周回ごとに記録する**(最終木では消えている情報。ScrollSearchResult の宣言参照)
             truncatedDuringSearch = max(truncatedDuringSearch, snapshot.truncatedCount)
             if let previousSnapshot {
@@ -440,7 +459,12 @@ extension StepExecutor {
                        let jump = Self.clipRecoveryJump(for: element, viewport: viewport,
                                                         finger: back),
                        abs(jump) >= 40,
-                       await slowDrag(jump: jump, container: viewport,
+                       // **キーボードを避けて掴む**: slowDrag は渡した container をそのまま
+                       // 自分の viewport にも使う(始点・終点の両方に効く)ので、ここで
+                       // 事前にキーボード帯を切り落としておく(ScrollGeometry.viewport 参照)
+                       await slowDrag(jump: jump,
+                                      container: ScrollGeometry.viewport(viewport,
+                                                                         excludingKeyboard: effectiveKeyboard),
                                       vertical: back == .up || back == .down, phase: &phase) {
                         continue
                     }
@@ -524,13 +548,19 @@ extension StepExecutor {
                             && (scrollContainer(step: step, in: snapshot, vertical: vertical)
                                 .map { $0.height < snapshot.screen.height * 0.8 }
                                 ?? Self.partialHeightSheetExists(in: snapshot))
+                        // 打ち切り確定時点(confirmed)で引き直す —— ループ先頭の effectiveKeyboard は
+                        // この settledSignature 呼び出しより前の木の情報なので使い回さない
+                        let stoppedKeyboard = KeyboardOcclusion.resolve(
+                            reported: confirmed.snapshot.keyboardFrame,
+                            in: confirmed.snapshot.elements).frame
                         var result = ScrollSearchResult(found: false, fallback: nil,
                                                         viaXCUITest: viaXCUITest,
                                                         hintJumps: hintJumps,
                                                         swipes: swipes, stoppedUnmoving: true,
                                                         contentEverMoved: contentEverMoved,
                                                         containerIsPartialHeight: containerIsPartialHeight,
-                                                        maxTruncatedDuringSearch: truncatedDuringSearch)
+                                                        maxTruncatedDuringSearch: truncatedDuringSearch,
+                                                        keyboardFrame: stoppedKeyboard)
                         guard recoverOnMiss, step.containerInference ?? true,
                               // 半開きシートで呼び手が展開・再試行するなら、逆走査はそちらの
                               // 再試行(全画面高)に譲る(defersPartialSheetRecovery の宣言参照)
@@ -567,8 +597,11 @@ extension StepExecutor {
                 // ドラッグ後は静止を待たず次周回のスナップショット(25ms)で測り直す(自己補正)
                 if let jump = Self.offscreenJump(step: step, snapshot: snapshot, finger: direction),
                    let container = Self.webViewContainer(in: snapshot),
+                   // **キーボードを避けて掴む**(ScrollGeometry.viewport 参照。無ければ screen のまま)
                    await hintDrag(jump: jump, container: container,
-                                  viewport: snapshot.screen, phase: &phase) {
+                                  viewport: ScrollGeometry.viewport(snapshot.screen,
+                                                                    excludingKeyboard: effectiveKeyboard),
+                                  phase: &phase) {
                     hintJumps += 1
                     swipes += 1
                     previousSnapshot = snapshot

@@ -48,7 +48,8 @@ public enum ExploreDriverResolver {
         /// (xcuitest のときだけ「Compose のダブルタップは届かない」と言う)
         public let engine: String
         /// 特定できたシミュレータの udid(MCP が xcuitest でもバンドルマーカー判定
-        /// = AppBundleInspector を使えるように運ぶ)。不明なら nil
+        /// = AppBundleInspector を使えるように運ぶ)、実機なら `.device` 記録由来の UDID。
+        /// どちらも特定できなければ nil
         public let udid: String?
     }
 
@@ -63,11 +64,23 @@ public enum ExploreDriverResolver {
                                              host: endpoint.host).status(timeout: 3)
         let udid = (status?.device).flatMap(bootedSimulatorUDID)
         guard status?.engine == "inapp" else {
+            // **実機は `/status.udid` を自己申告できない**(SIMULATOR_UDID が無い)ので、
+            // 名前引きも当たらない実機はここまで `udid == nil` のまま。`.device` ファイルは
+            // 実機の物理トランスポート確立時にしか書かれない(BridgeDeviceRecord 宣言)ので、
+            // 読めれば「この bare port は実機」と分かる。ここで拾って BridgeClient へ渡すと、
+            // install/uninstall/clearAppData の対象特定(BridgeClient.resolveTarget(status:...))が
+            // 申告に頼らず devicectl 経路へ回せる
+            // `status.udid` の自己申告があれば必ずシミュレータ(申告は記録より新しい)。
+            // 名前引きの失敗だけで記録を読むと、実機ポートを使い回したシミュレータが古い記録で
+            // 実機と誤認され、knownTarget で最優先されてしまう
+            let physicalUDID = (status?.udid == nil && udid == nil)
+                ? repoRoot.flatMap { BridgeDeviceRecord.load(port: endpoint.port, repoRoot: $0) }
+                : nil
             // **XCUITest はセッション制**(ランナー再起動で全操作が 409)。実行側と同じ回復を
             // 与えておく = 探索中にランナーが落ちても次の操作から戻れる
             return Resolved(driver: SessionRecoveryDriver(
-                base: BridgeClient(port: endpoint.port, host: endpoint.host)),
-                            engine: status?.engine ?? "xcuitest", udid: udid)
+                base: BridgeClient(port: endpoint.port, host: endpoint.host, physicalUDID: physicalUDID)),
+                            engine: status?.engine ?? "xcuitest", udid: udid ?? physicalUDID)
         }
         // in-app が居る時点で XCUITest 側は必ず要る(合成のフォールバック先 or 振り替え先)
         let resolution = await XCUIBridgeResolver.resolve(preferred: preferred, repoRoot: repoRoot,

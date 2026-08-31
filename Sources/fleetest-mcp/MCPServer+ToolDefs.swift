@@ -344,9 +344,11 @@ extension MCPServer {
             "interactiveOnly": interactiveOnlyProperty,
         ], required: ["steps"]),
         tool("ft_rotate", "Rotate the device and return the screen in the new orientation. "
-            + "It waits for the rotation to settle, so the tree that comes back is already "
-            + "relaid out — every frame is in the new coordinate system and refs taken before "
-            + "the rotation no longer resolve. A scenario written with rotateTo() restores the "
+            + "It waits for the rotation to settle (re-reading until the tree stops changing), "
+            + "so the tree that comes back is normally already relaid out — every frame is in "
+            + "the new coordinate system and refs taken before the rotation no longer resolve. "
+            + "If it could not confirm settling within budget, a note says so and the frames may "
+            + "still be mid-relayout. A scenario written with rotateTo() restores the "
             + "original orientation when it ends; this tool does not, so rotate back yourself "
             + "before leaving the device to the next task. On Android it also turns auto-rotate "
             + "off (otherwise the angle does not stick) and leaves it off — rotating back to "

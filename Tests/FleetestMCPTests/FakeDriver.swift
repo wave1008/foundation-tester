@@ -60,6 +60,14 @@ final class FakeDriver: AppDriver, @unchecked Sendable {
         return systemUICoveringResponse
     }
 
+    /// `GET /systemalert` の答え。既定 nil = 出ていない(同上)
+    var scriptedSystemAlert: SystemAlertProbeResponse?
+
+    func systemAlert() async throws -> SystemAlertProbeResponse? {
+        try record("systemAlert", "systemAlert")
+        return scriptedSystemAlert
+    }
+
     func hitTest(ref: Int) async throws -> HitTestAnswer {
         try record("hitTest(\(ref))", "hitTest")
         return hitTestAnswer

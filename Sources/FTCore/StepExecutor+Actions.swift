@@ -78,11 +78,13 @@ extension StepExecutor {
             var viaXCUITest = false
             var unsettled = false
             var sentSwipes = 0
-            // **rect だけの指定でも撮る**: scrollContainer は rect を先に返すが、scrollPath には
-            // viewport(snapshot.screen)が要るので、木が無いと path ごと nil になり
-            // 黙って全画面スワイプへ退化する(scrollToEdge/flick は rect を見ている。2026-08-12)
-            var latest = (step.scrollFrame == nil && step.scrollFrameRect == nil)
-                ? nil : try await snapshotForScrollFrame(phase: &phase)
+            // **未指定でも撮る**(2026-08-31): scrollPath には viewport(snapshot.screen)が要るので、
+            // 木が無いと path ごと nil になり黙って全画面スワイプへ退化する
+            // (scrollToEdge/flick は rect を見ている。2026-08-12)。
+            // **キーボード表示中はこれが唯一の検知手段でもある** —— ソフトキーボードの上で
+            // スワイプすると始点がキーボード面に乗って何も動かない(scrollContainer 参照)。
+            // 木を1枚読む固定費は scrollDown/scrollUp のたび毎回払う
+            var latest: SnapshotResponse? = try await snapshotForScrollFrame(phase: &phase)
             for _ in 0..<times {
                 // **明示 scrollFrame が解決できないなら、ここで打ち切る(1本も振らない)**。
                 // 黙って全画面スワイプへ退化させない(runScrollSearch の fail-fast と同じ理由。2026-08-08)
@@ -102,7 +104,9 @@ extension StepExecutor {
                 // 直後に tap する書き方をここで支える(index 条件を外した理由)
                 let settled = try await settledSignature(phase: &phase)
                 if !settled.settled { unsettled = true }
-                if step.scrollFrame != nil || step.scrollFrameRect != nil { latest = settled.snapshot }
+                // **常に引き継ぐ**(2026-08-31): settledSignature は毎回木を撮り直しているので
+                // 追加コストは無い。scrollFrame 未指定でもキーボードの開閉は周回ごとに変わりうる
+                latest = settled.snapshot
             }
             var notes: [String] = []
             if viaXCUITest { notes.append("fell back to XCUITest") }

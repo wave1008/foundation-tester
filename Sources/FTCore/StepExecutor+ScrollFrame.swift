@@ -5,9 +5,11 @@ import Foundation
 
 extension StepExecutor {
 
-    /// `scrollFrame` を解決するためだけの snapshot。**scroll/scrollToEdge は指定があるときしか
-    /// 呼ばない**(従来経路に snapshot を1枚増やさないため)。**flick は scrollFrame の有無に
-    /// 関わらず毎回呼ぶ**(未指定でも画面全体を対象に座標を作る必要があるため)
+    /// `scrollFrame` を解決するためだけの snapshot。**scroll/flick は scrollFrame の有無に
+    /// 関わらず毎回呼ぶ**(未指定でも画面全体を対象に座標を作る必要があり、かつ
+    /// キーボード表示中かどうかの唯一の検知手段でもある。2026-08-31 に scroll 側の
+    /// 「指定時だけ」を撤廃した)。scrollToEdge はこの関数を使わない
+    /// (settledSignature が毎周すでに撮っている木をそのまま使い回す)
     func snapshotForScrollFrame(phase: inout PhaseAccumulator) async throws -> SnapshotResponse {
         let clock = ContinuousClock()
         let start = clock.now
@@ -205,9 +207,17 @@ extension StepExecutor {
         let baseEnd = step.endMarginRatio
             ?? FTScrollDefaults.endMarginRatio(intent: intent, vertical: vertical)
         let scaled = Self.scaledMargins(start: base, end: baseEnd, scale: spanScale)
+        // **ソフトキーボードの上でスワイプの始点を作らない**: viewport は常に `snapshot.screen`
+        // だったため、キーボード表示中は始点がキーボード面に乗り(常にタッチを飲む)、
+        // 中身がほぼ動かなかった(iPhone 13 実測: .search マージンで始点 y=633、
+        // キーボード上端 y=509)。**container の式は変えない** —— viewport 側だけを実効
+        // キーボード矩形(chrome 込み)で削る。キーボードが無ければ excludingKeyboard: nil で
+        // screen がそのまま返るので、無キーボード時は1バイトも変わらない
+        let keyboard = KeyboardOcclusion.resolve(reported: snapshot.keyboardFrame,
+                                                 in: snapshot.elements).frame
         let path = ScrollGeometry.path(
             container: container,
-            viewport: snapshot.screen,
+            viewport: ScrollGeometry.viewport(snapshot.screen, excludingKeyboard: keyboard),
             direction: direction,
             startMarginRatio: scaled.start,
             endMarginRatio: scaled.end)
@@ -257,6 +267,15 @@ extension StepExecutor {
         //    E2E-iOS/ios-inapp の `tap("#row_40")` が失敗)。in-app の 0.85 ページ送りは
         //    エンジン既定として維持する、という決定にも反する
         // 領域を絞りたい利用者は `scrollFrame` を書く(そこでは価値が出ている)
+        //
+        // **例外: ソフトキーボードが立っているとき**。エンジン既定(`app.swipeUp()` 等)は
+        // 画面全体の固定比率で始点を作るため、キーボードの上を撃って何も動かない
+        // (キーボードは常にタッチを飲む)。ここで screen を返すだけで、scrollPath 側の
+        // viewport クリップ(ScrollGeometry.viewport)がキーボードを避けた始点を作るようになる。
+        // キーボードが無ければ従来どおり nil のまま(3度目の暗黙座標化にはしない)
+        if snapshot.keyboardFrame != nil || snapshot.keyboardShown == true {
+            return snapshot.screen
+        }
         return nil
     }
 

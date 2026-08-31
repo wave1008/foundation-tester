@@ -76,7 +76,8 @@ final class MCPRefGuardTests: XCTestCase {
             element(ref: 2, id: "row_03", label: "行 03", x: 10, y: 200),
         ])
         let result = try await server.call(tool: "ft_tap", args: ["ref": 2])
-        XCTAssertEqual(actions, ["snapshot", "snapshot", "tap(ref:1)"],
+        // systemAlert は verifiedRef の screenNotRepresentedWarning が毎タップ聞く探針(撃つ前に1回)
+        XCTAssertEqual(actions, ["snapshot", "snapshot", "systemAlert", "tap(ref:1)"],
                        "撮り直して #row_02 の新しい ref(1)へ撃ち直すこと")
         XCTAssertTrue(Self.text(result).contains("had moved"), "動いたことを応答に載せること")
     }

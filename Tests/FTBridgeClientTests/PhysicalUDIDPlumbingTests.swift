@@ -7,8 +7,10 @@
 // 失敗になる(2026-08-09 実測。ScenarioRunnerMain.swift の3箇所で実際に踏んだ)。
 //
 // 対象は「実機かどうかの情報を既に持っている」ファイルだけに絞る(MCP のポート直指定や
-// --port 単体の CLI コマンドは physicalUDID を元々持たず、BridgeClient 内部の名前引き
-// フォールバックに委ねる設計 —— そちらまで対象にすると意図的な設計を誤検知する)。
+// --port 単体の CLI コマンドは physicalUDID を元々持たず、BridgeClient 内部の解決
+// (status.udid の申告 → `.fleetest/bridge-<port>.device` の実機記録 → 名前引き。
+// BridgeClient.resolveTarget(status:recordedPhysicalUDID:...) 参照)に委ねる設計 ——
+// そちらまで対象にすると意図的な設計を誤検知する)。
 final class PhysicalUDIDPlumbingTests: FTBridgeClientSourceScanCase {
 
     /// 実機かどうかの情報(--physical/--udid・device.physical)が既にスコープに来ている

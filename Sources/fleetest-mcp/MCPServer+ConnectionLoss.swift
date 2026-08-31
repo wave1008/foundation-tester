@@ -238,6 +238,7 @@ extension MCPServer {
         lastSnapshots[key] = nil
         refGenerations[key] = nil
         launchedBundleIDs[key] = nil
+        systemAlertProbePending.remove(key)
         uiFrameworkHints[key] = nil
         lastScreenshots[key] = nil
         rememberedSnapshotFilters[key] = nil

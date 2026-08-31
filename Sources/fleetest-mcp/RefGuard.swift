@@ -318,6 +318,17 @@ enum RefGuard {
             return " (warning: \(describe(found)) is stacked on the same spot as other elements,"
                 + " so at most one of them is really drawn there — the rest are clamped"
                 + " leftovers. Bring it into view with ft_scroll_to and re-snapshot)"
+        case .clippedByContainer(let container):
+            // **判定は TapTargetGeometry.clippedAtContainerEdge の1箇所**(実測は同関数の doc)。
+            // ブリッジは frame を容器で切ってから送るので overflow の座標は残らず、
+            // 縁の一致 + 高さ不足の shortfall witness でしか拾えない
+            let edge = TapTargetGeometry.isClippedAtBottomEdge(found, container: container)
+                ? "bottom" : "top"
+            let h = Int(found.frame.height.rounded())
+            return " (warning: \(describe(found)) is cut off at the \(edge) edge of"
+                + " \(describe(container)), only \(h) of its height is drawn, so this may have hit"
+                + " whatever is drawn there instead — scroll it fully into view with"
+                + " ft_scroll_to, and verify with ft_screenshot)"
         case .sliver:
             // **DSL にだけあり MCP のタップ時には出ていなかった形**(2026-08-15 に合流)
             return " (warning: \(describe(found)) is clipped to a thin sliver at the edge of its"

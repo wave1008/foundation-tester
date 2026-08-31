@@ -84,6 +84,43 @@ public enum ScrollGeometry {
         return min(max(ratio, -maxPanRatio), maxPanRatio)
     }
 
+    /// `viewport(_:excludingKeyboard:)` の縮退しきい値(画面高に対する比率)。
+    /// 通常の帯(画面の中心線の片側に収まるキーボード)を削っても残りは必ず画面の半分以上残るので、
+    /// この値そのものが発火するのは中心線をまたぐ全画面 IME だけ ——
+    /// それでも数字として立てておくのは `minUsableDistance`(8pt)と margin クランプ
+    /// (片側 `maxMarginRatio`=0.45)を踏まえると、四分の一未満まで削った viewport では
+    /// 実用的なスワイプ幅が取れないため(根拠の無い定数にしない)
+    public static let minUsableViewportRatio: Double = 0.25
+
+    /// ソフトキーボードなど画面下(まれに上)を覆う帯を除いた viewport。
+    /// **中心線ルールは `TapTargetGeometry.uncoverScrollJump` と同じ**(帯が画面の中心線の
+    /// どちら側にあるかで削る側を決める。中心線をまたぐ帯は削っても意味がないので screen を
+    /// そのまま返す = フルスクリーン IME で縮退した viewport を作らない)。
+    /// - Parameters:
+    ///   - screen: `SnapshotResponse.screen`
+    ///   - keyboard: `KeyboardOcclusion.resolve(...).frame`(chrome で広げた実効矩形)。
+    ///     nil なら screen をそのまま返す
+    public static func viewport(_ screen: FTRect, excludingKeyboard keyboard: FTRect?) -> FTRect {
+        guard let keyboard, screen.height > 0 else { return screen }
+        let centre = screen.y + screen.height / 2
+        let clipped: FTRect
+        if keyboard.y > centre {
+            // 下側の帯(ソフトキーボード等)= 下端を帯の上端まで詰める
+            clipped = FTRect(x: screen.x, y: screen.y, width: screen.width,
+                             height: keyboard.y - screen.y)
+        } else if keyboard.y + keyboard.height < centre {
+            // 上側の帯 = 上端を帯の下端まで上げる
+            let bottom = screen.y + screen.height
+            let top = keyboard.y + keyboard.height
+            clipped = FTRect(x: screen.x, y: top, width: screen.width, height: bottom - top)
+        } else {
+            // 中心線をまたぐ帯(フルスクリーン IME 等)= どちらを削っても意味がない
+            return screen
+        }
+        guard clipped.height >= screen.height * minUsableViewportRatio else { return screen }
+        return clipped
+    }
+
     /// 交差矩形。幅・高さが 0 以下なら nil(接しているだけ = 操作できない)
     static func intersection(_ a: FTRect, _ b: FTRect) -> FTRect? {
         let left = max(a.x, b.x)

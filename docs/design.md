@@ -252,7 +252,10 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
   人為ミスとして起こり続けるので、**launch 系の直後の最初の触る操作**と**ステップの失敗時**に
   限って1回 `GET /systemalert` を聞き、前面にあれば注記 `system-alert-present` と文言(題名・
   ボタン)を残す。止めない・閉じない(新しい検知は警告から。閉じるのはシナリオの責務)。
-  失敗文言に題名が出るので、時間切れの仕分けが「アラートだった」で即決まる
+  失敗文言に題名が出るので、時間切れの仕分けが「アラートだった」で即決まる。**MCP も同じ形**
+  (2026-08-31): `ft_launch` / `ft_open_url` / `ft_install` / `ft_clear_app_data` の直後の**最初の
+  `ft_snapshot` で1回**、`ft_tap` の ref 照合では毎回聞き、前面にあれば題名・ボタンを名指しして
+  SpringBoard へ attach する手順を出す(SpringBoard に attach 中は出さない)。判定は `SystemUIGate` の1箇所
 - **起動元の自己申告と doctor の刈り取り(2026-07-30)**: 3ブリッジとも `/status` で起動元
   (`ownerRepo`。iOS xcuitest はホスト上で停止できる `ownerPid` も)と直前の無通信秒数
   (`idleSeconds`)を申告する(注入経路: xctestrun 環境変数 / `-e owner` / SIMCTL_CHILD)。

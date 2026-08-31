@@ -322,4 +322,48 @@ final class ScrollGeometryTests: XCTestCase {
                                             viewport: FTRect(x: 0, y: 0, width: 400, height: 800),
                                             dxRatio: 0.5, dyRatio: 0.5))
     }
+
+    // MARK: - viewport(_:excludingKeyboard:)
+    //
+    // ソフトキーボードの上でスワイプの始点を作らないための viewport 切り出し(バグ実測:
+    // iPhone 13・390x844、キーボード (0,509 390x335)。旧実装は viewport が常に screen だったため、
+    // .search マージン(0.25)で始点 y=633 = キーボード上端(509)より下 = キー面の上を撃っていた)
+
+    private let keyboardScreen = FTRect(x: 0, y: 0, width: 390, height: 844)
+
+    func testViewportIsUnchangedWithoutAKeyboard() {
+        XCTAssertEqual(ScrollGeometry.viewport(keyboardScreen, excludingKeyboard: nil), keyboardScreen)
+    }
+
+    /// 下側の帯(実測のソフトキーボード)= 下端をキーボード上端まで詰める
+    func testViewportCutsTheBottomForABandBelowCentre() {
+        let keyboard = FTRect(x: 0, y: 509, width: 390, height: 335)
+        let clipped = ScrollGeometry.viewport(keyboardScreen, excludingKeyboard: keyboard)
+        XCTAssertEqual(clipped, FTRect(x: 0, y: 0, width: 390, height: 509))
+    }
+
+    /// 上側の帯 = 上端をキーボード下端まで上げる(中心線ルールは下側の帯と対称)
+    func testViewportRaisesTheTopForABandAboveCentre() {
+        let keyboard = FTRect(x: 0, y: 0, width: 390, height: 335)
+        let clipped = ScrollGeometry.viewport(keyboardScreen, excludingKeyboard: keyboard)
+        XCTAssertEqual(clipped, FTRect(x: 0, y: 335, width: 390, height: 509))
+    }
+
+    /// 中心線をまたぐ帯(フルスクリーン IME 等)は削ると縮退するだけなので screen のまま返す
+    func testViewportIsUnchangedWhenTheKeyboardStraddlesTheCentreLine() {
+        let keyboard = FTRect(x: 0, y: 100, width: 390, height: 700)
+        XCTAssertEqual(ScrollGeometry.viewport(keyboardScreen, excludingKeyboard: keyboard),
+                       keyboardScreen)
+    }
+
+    /// クリップした viewport で path を作ると、始点がキーボードの上端より上に来る。
+    /// 旧実装(viewport 常に screen)では .search マージン(0.25)で y=633 = キーボード上に乗っていた
+    func testPathUsesClippedViewportSoTheStartPointClearsTheKeyboard() {
+        let keyboard = FTRect(x: 0, y: 509, width: 390, height: 335)
+        let clipped = ScrollGeometry.viewport(keyboardScreen, excludingKeyboard: keyboard)
+        let path = ScrollGeometry.path(container: keyboardScreen, viewport: clipped, direction: .down,
+                                       startMarginRatio: 0.25, endMarginRatio: 0.25)
+        XCTAssertEqual(path?.fromY ?? -1, 509 * 0.75, accuracy: 0.001)
+        XCTAssertLessThan(path?.fromY ?? .infinity, 509)
+    }
 }

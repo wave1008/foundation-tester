@@ -71,6 +71,14 @@ final class MCPServer {
     /// 以後の snapshot が `com.ftester.e2e.flutter` の木になった)。
     /// **ホスト側で「起動したアプリ」を覚えて突き合わせる**のが唯一の検知経路。
     var launchedBundleIDs: [String: String] = [:]
+    /// **launch 系ツール(ft_launch/ft_open_url/ft_clear_app_data/ft_install)の直後**、次の
+    /// ft_snapshot で一度だけ `GET /systemalert` を確かめるための予約(engineKey ごと)。
+    /// DSL 側の `StepExecutor.systemAlertProbePending`(FTRuntime.swift の `noteAppLaunched`)と
+    /// 同じ設計 —— launch 直後は SpringBoard の許可アラートが出やすいが、毎 snapshot 払うと
+    /// 高頻度な MCP のポーリングで往復が倍になる。**springboard 自身への ft_launch では立てない**
+    /// (そちらは意図してアラートを読みに行く経路なので、覆いではなく本来の画面)。
+    /// snapshotBody が読んで消費(先に消してから probe)し、forgetDeviceState / ft_terminate で捨てる
+    var systemAlertProbePending: Set<String> = []
     /// ft_screenshot の鮮度判定用(engineKey ごと)。**静止画面の2連続 ft_screenshot は PNG が
     /// バイト単位で同一**(2026-08-10 実測: Android 83,028B×2 / iOS 95,076B×2)—— これが成り立つから
     /// 「木は変わったのに絵が前回と同一 = 古いフレームを返し続けている」と言える(treeFingerprint の

@@ -33,11 +33,14 @@ final class SweepHarnessTests: XCTestCase {
         /// scrolledOut は**申告された**スクロール容器の完全に外に居る要素
         /// (TapTargetGeometry.outsideDeclaredScroller。ghost の推測版では拾えない形)
         var scrolledOut = 0
+        /// clippedByContainer は容器の縁で切り詰められたタップ対象
+        /// (TapTargetGeometry.clippedAtContainerEdge。2026-08-31 追加。実測は同関数の doc)
+        var clippedByContainer = 0
         var description: String {
             "ghost=\(ghost) overlay=\(overlay) stacked=\(stacked) misses=\(misses)"
                 + " disabled=\(disabled) offscreen=\(offscreen) warnedTappable=\(warnedTappable)"
                 + " keyboard=\(keyboard) sliver=\(sliver) nested=\(nested)"
-                + " scrolledOut=\(scrolledOut)"
+                + " scrolledOut=\(scrolledOut) clippedByContainer=\(clippedByContainer)"
         }
     }
 
@@ -75,16 +78,20 @@ final class SweepHarnessTests: XCTestCase {
         "and-overflow": Counts(),
         "and-place": Counts(ghost: 0, overlay: 1, stacked: 0, misses: 1, disabled: 0,
                             warnedTappable: 0),
+        // clippedByContainer 1 は検分済みの真陽性(2026-08-31): #recycler_view 下端(y=2204)で最終行 clickable 「情報の修正を提案」(0,2156 1080x48) が他の行(126px)から 48px に切れている
         "and-place_expanded": Counts(ghost: 0, overlay: 11, stacked: 0, misses: 0, disabled: 0,
-                                     warnedTappable: 3),
+                                     warnedTappable: 3, clippedByContainer: 1),
         "and-results": Counts(ghost: 0, overlay: 18, stacked: 0, misses: 2, disabled: 0,
                               warnedTappable: 2),
         // 2026-08-12 採取。**設定ツリー**(Android)。misses 1 は
         // `#homepage_app_bar_regular_phone_view`(非操作の器)の中心が中の `#search_bar` に乗る形 =
-        // 既存の「見出し容器」と同型の受理済み。警告付きのタップ対象は0
+        // 既存の「見出し容器」と同型の受理済み。警告付きのタップ対象は0。
+        // clippedByContainer 1 は検分済みの真陽性(2026-08-31): `#recycler_view` (0,796 1080x1565)
+        // の下端で最終行 `音とバイブレーション` (0,2221 1080x140) が他の行(231〜270)より低く
+        // 縁に接している = 一覧の最後の行が本当に切れている形
         "and-settings_root": Counts(ghost: 0, overlay: 0, stacked: 0, misses: 1, disabled: 0,
                                     offscreen: 0, warnedTappable: 0, keyboard: 0, sliver: 0,
-                                    nested: 0, scrolledOut: 0),
+                                    nested: 0, scrolledOut: 0, clippedByContainer: 1),
         // nested 1 は検分済みの真陽性: `#PinnedItemSection`(横スクロールする clickable の帯)の
         // 中心は、その中の `#PinnedTile` の上にある。帯を撃つと1枚のタイルが開く
         "ios-home": Counts(ghost: 0, overlay: 1, stacked: 0, misses: 0, disabled: 0,
@@ -320,7 +327,8 @@ final class SweepHarnessTests: XCTestCase {
                                       nested: 0, scrolledOut: 0),
         // 2026-08-12 採取。gridWithoutHeaderNote / addressBarNote の witness 対(作業1〜3)。
         // Android 側は and-browser_weather と同型の浅い a11y 木で、全項目0
-        "and-browser_weektable": Counts(),
+        // clippedByContainer 1 は検分済みの真陽性(2026-08-31): WebView 下端(y=2363)で地域 link 「小笠原村」(0,2302 241x61) が他の行(147px)から 61px に切れている
+        "and-browser_weektable": Counts(clippedByContainer: 1),
         // 同じページを iOS Safari で採取した陰性対照(見出し行がツリーにある)。**全件検分済み**:
         // overlay 6 のうち4件(ref67/68/82/83「30/22」「10%」「29/24」「60%」 ← #MoreMenuButton /
         // #TabBarItemTitle / #CapsuleNavigationBar)は ios-safari_article と**同一の型**
@@ -431,9 +439,10 @@ final class SweepHarnessTests: XCTestCase {
         // した対 —— `chainsHaveHeaderTopRow` を追加した witness そのもの(NoteCoverageTests /
         // GridWithoutHeaderNoteTests の当該コメント参照)。offscreen=1 は右にはみ出す
         // 競技切替タブ「ACL Two」・sliver=2 は下端で高さ6pxに切られたクラブ名行
+        // clippedByContainer 1 は検分済みの真陽性(2026-08-31): WebView 下端(y=2363)で順位表の行 link 「清水エスパルス」(225,2357 213x6) が他の行(42px)から 6px に切れている
         "and-browser_j1_standings": Counts(ghost: 0, overlay: 0, stacked: 0, misses: 0, disabled: 0,
                                            offscreen: 1, warnedTappable: 1, keyboard: 0, sliver: 2,
-                                           nested: 0, scrolledOut: 0),
+                                           nested: 0, scrolledOut: 0, clippedByContainer: 1),
         // 同じページの iOS 側。overlay 5 は「清水エスパルス」行がページ先頭付近にあり、
         // z を持たない iOS の兄弟重なりで Safari の chrome(#BackButton・#MoreMenuButton・
         // #TabOverviewButton)に乗る形(ios-browser_nationwide 等と同型)。
@@ -473,6 +482,13 @@ final class SweepHarnessTests: XCTestCase {
             if nested { c.nested += 1 }
             let scrolledOut = !RefGuard.scrolledOutWarning(e, in: els).isEmpty
             if scrolledOut { c.scrolledOut += 1 }
+            // **production の関数(TapTargetGeometry.advisoryKind)を通す**: 自前で
+            // clippedAtContainerEdge を呼び直すと、その手前で勝つはずの強い判定
+            // (zeroFrame〜stacked)を無視して二重計上する変異を見逃す
+            if case .clippedByContainer = TapTargetGeometry.advisoryKind(
+                for: e, in: els, screen: snap.screen) {
+                c.clippedByContainer += 1
+            }
             if RefGuard.interactiveTypes.contains(e.type),
                ghost || overlay || misses || stacked.contains(e.ref) || disabled || offscreen
                 || nested || scrolledOut {
@@ -582,7 +598,7 @@ final class SweepHarnessTests: XCTestCase {
                 + " stacked: \(c.stacked), misses: \(c.misses), disabled: \(c.disabled),"
                 + " offscreen: \(c.offscreen), warnedTappable: \(c.warnedTappable),"
                 + " keyboard: \(c.keyboard), sliver: \(c.sliver), nested: \(c.nested),"
-                + " scrolledOut: \(c.scrolledOut)),")
+                + " scrolledOut: \(c.scrolledOut), clippedByContainer: \(c.clippedByContainer)),")
             let els = snap.elements
             let keyboardOcclusion = KeyboardOcclusion.resolve(
                 reported: snap.keyboardFrame, in: els)
@@ -615,6 +631,12 @@ final class SweepHarnessTests: XCTestCase {
                 }
                 if let scroller = RefGuard.outsideDeclaredScroller(e, in: els) {
                     emit("   DETAIL \(name) scrolled \(who) outside \(RefGuard.describe(scroller))")
+                }
+                if case .clippedByContainer(let container) = TapTargetGeometry.advisoryKind(
+                    for: e, in: els, screen: snap.screen) {
+                    let f = e.frame
+                    emit("   DETAIL \(name) clipped  \(who) \(Int(f.width))x\(Int(f.height))"
+                        + " in \(RefGuard.describe(container))")
                 }
             }
         }
