@@ -779,14 +779,46 @@ extension MCPServer {
                 throw MCPError("scrollFrame must be a selector string (e.g. \"#list_rows\") or an"
                     + " ft_snapshot ref (an integer)")
             }
-            // **未指定は今までと1バイトも変えない**(全画面固定の既定経路)
+            // **未指定は今までと1バイトも変えない**(全画面固定の既定経路)。
+            // **例外はキーボード表示中**(2026-08-31): 直近の `ft_snapshot` の控えがキーボードを
+            // 申告していれば、素の driver.swipe ではなく DSL の swipe と同じ StepExecutor の
+            // "swipe" ステップへ回す(StepExecutor+Actions.swift 参照。座標の合成・fail-fast を
+            // MCP に2つ目実装しない)。**控えは古びうる方向にだけ倒す** —— 消えていれば
+            // ここを通らず素の swipe へ落ち、StepExecutor 自身の撮り直しがキーボード無しと
+            // 判定するので path は結局 nil(黙って全画面固定に戻るだけで誤動作しない)
             guard args["scrollFrame"] != nil else {
-                try await swipeDriver.swipe(direction)
+                let cached = lastSnapshots[Self.engineKey(args)]
+                let keyboardUp = cached?.keyboardFrame != nil || cached?.keyboardShown == true
+                guard keyboardUp else {
+                    try await swipeDriver.swipe(direction)
+                    recordInteraction(action: "swipe", resolvedRef: nil, args: args,
+                                      direction: direction.rawValue)
+                    // **「動いた」と断言しない**(back と同じ理由。2026-08-06)。スワイプは端に着いて
+                    // いれば1px も動かないし、スクロールできない画面では何も起きない
+                    return text("swipe \(direction.rawValue) sent."
+                        + Self.changedHint(args, otherwise: " If anything moved, the old refs are stale"
+                            + " — take a fresh ft_snapshot before using any ref")
+                        + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
+                }
+                let step = FlowStep(action: "swipe", direction: direction.rawValue)
+                let (isAndroid, uiFrameworkHint) = await resolveExecutorHints(swipeDriver, args: args)
+                let executor = StepExecutor(driver: swipeDriver, releasesScrollTouch: !isAndroid,
+                                            uiFramework: uiFrameworkHint)
+                let outcome = await executor.execute(step)
+                guard StepExecutor.isSuccess(outcome.status) else {
+                    let reason: String
+                    switch outcome.status {
+                    case .failed(let message), .skipped(let message), .inconclusive(let message):
+                        reason = message
+                    case .passed, .passedViaFallback, .healed:
+                        reason = "could not confirm the result"
+                    }
+                    throw MCPError(reason)
+                }
                 recordInteraction(action: "swipe", resolvedRef: nil, args: args,
                                   direction: direction.rawValue)
-                // **「動いた」と断言しない**(back と同じ理由。2026-08-06)。スワイプは端に着いていれば
-                // 1px も動かないし、スクロールできない画面では何も起きない
-                return text("swipe \(direction.rawValue) sent."
+                return text("swipe \(direction.rawValue) sent"
+                    + " (the soft keyboard was up — swiped in the area above it)."
                     + Self.changedHint(args, otherwise: " If anything moved, the old refs are stale"
                         + " — take a fresh ft_snapshot before using any ref")
                     + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))

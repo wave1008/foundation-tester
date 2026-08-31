@@ -185,6 +185,24 @@ final class MCPSwipeScrollFrameDispatchTests: XCTestCase {
         XCTAssertFalse(text.contains("inside"), text)
     }
 
+    /// **キーボード表示中は scrollFrame 未指定でも座標つきで振る**(2026-08-31)。直近の
+    /// `ft_snapshot` の控えがキーボードを申告していれば、素の driver.swipe ではなく
+    /// StepExecutor の "swipe" ステップへ回し、キーボードの上を避けた path を送る
+    /// (StepExecutor+Actions.swift の DSL `swipe(.up)` と同じ判定)
+    func testKeyboardUpRoutesUnspecifiedSwipeThroughAClippedPath() async throws {
+        let keyboard = FTRect(x: 0, y: 509, width: 390, height: 335)
+        driver.snapshotResponse = SnapshotResponse(
+            sessionBundleID: "com.example.app", screen: screen,
+            elements: [], truncatedCount: 0, keyboardFrame: keyboard)
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+
+        let text = body(try await server.call(tool: "ft_swipe", args: ["direction": "up"]))
+
+        XCTAssertTrue(text.contains("soft keyboard was up"), text)
+        let path = try XCTUnwrap(driver.lastSwipePath, "キーボード表示中は座標つきスワイプを送るはず")
+        XCTAssertLessThan(path.fromY, keyboard.y, "始点がキーボードの上に乗っている: \(path)")
+    }
+
     /// **ref 形は rect として効く**(id が重複・欠落する容器のための逃げ道)。
     /// 経路が容器(y 100〜700)の中に収まっていること = 全画面(y 0〜874)へ黙って
     /// 退化していないことを見る。**FTCore 側の穴の回帰テスト**でもある:

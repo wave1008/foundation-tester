@@ -166,6 +166,37 @@ final class ScrollSpanShrinkTests: XCTestCase {
                      "キーボードが無いのに座標化してはいけない(暗黙の座標化は2度撤回済み): \(driver.paths)")
     }
 
+    // MARK: - キーボード表示中の viewport クリップ(素の action "swipe")
+    //
+    // scroll と同じ穴が素の swipe にもあった: `swipe(.up)` の始点はエンジン既定の固定比率で
+    // 作られるため、キーボードの上を撃つと中身がほぼ動かない。executeAction の "swipe" 分岐が
+    // 振る前に1回 snapshot を撮り、キーボードが立っていれば scrollPath で削った座標を送る
+
+    func testSwipeActionUsesKeyboardClippedPathWhenKeyboardIsUp() async throws {
+        let keyboard = FTRect(x: 0, y: 509, width: 390, height: 335)
+        let driver = PathRecordingDriver(elements: [Self.frame(anchorY: 400)], keyboardFrame: keyboard)
+        let step = FlowStep(action: "swipe", direction: "up")
+
+        _ = await StepExecutor(driver: driver).execute(step)
+
+        XCTAssertEqual(driver.paths.count, 1, "\(driver.paths)")
+        let path = try XCTUnwrap(driver.paths[0], "キーボード表示中は座標つきスワイプを送るはず")
+        XCTAssertLessThan(path.fromY, keyboard.y, "始点がキーボードの上に乗っている: \(path)")
+        XCTAssertGreaterThan(path.fromY, path.toY, "上スワイプは始点が終点より下のはず: \(path)")
+    }
+
+    /// キーボードが無ければ従来どおり座標を送らない(エンジン既定に委ねる。1バイトも変わらない)
+    func testSwipeActionSendsNoPathWithoutKeyboard() async throws {
+        let driver = PathRecordingDriver(elements: [Self.frame(anchorY: 400)])
+        let step = FlowStep(action: "swipe", direction: "up")
+
+        _ = await StepExecutor(driver: driver).execute(step)
+
+        XCTAssertEqual(driver.paths.count, 1, "\(driver.paths)")
+        XCTAssertNil(driver.paths[0],
+                     "キーボードが無いのに座標化してはいけない(暗黙の座標化は2度撤回済み): \(driver.paths)")
+    }
+
     /// `scrollNotFoundMessage` はキーボードを**1度も動かなかった回にだけ**名指しする
     /// (末尾に着いた回・キーボード無しでは既存文言を1バイトも変えない。ScrollSearchStopTests の
     /// pinned文言と両立させるための境界)

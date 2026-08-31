@@ -41,7 +41,16 @@ extension StepExecutor {
         // ロケータ不要のアクション
         if action == "swipe" {
             let direction = FTSwipeDirection(rawValue: step.direction ?? "") ?? .up
-            let viaXCUITest = try await swipeWithFallback(direction, phase: &phase)
+            // **未指定でも撮る**(2026-08-31): キーボード表示中かどうかは snapshot でしか
+            // 分からない。キーボードが無ければ path は nil のまま = エンジン既定(1バイトも
+            // 変わらない)。**path を付けるのはキーボードがあるときだけ** —— in-app の
+            // contentOffset 経路はキーボードに塞がれないが、座標つきは Compose/Flutter で
+            // 501 を返すため、swipeWithFallback が XCUITest の実ジェスチャへ回す
+            // (キーボード上はそちらでないと動かないので、これが望ましい)
+            let snapshot = try await snapshotForScrollFrame(phase: &phase)
+            let hasKeyboard = snapshot.keyboardFrame != nil || snapshot.keyboardShown == true
+            let path = hasKeyboard ? scrollPath(step: step, intent: .gesture, in: snapshot) : nil
+            let viaXCUITest = try await swipeWithFallback(direction, path: path, phase: &phase)
             // 慣性が止まるまで待つ。ランナー側は /swipe を整定対象から外している(そこで待っても
             // budget 内に収束しないため)ので、直後に tap する書き方をここで支える
             let settled = try await settledSignature(phase: &phase).settled
