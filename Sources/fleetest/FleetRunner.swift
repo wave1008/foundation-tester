@@ -504,8 +504,7 @@ enum FleetRunner {
     }
 
     /// 子の stdout+stderr を1本のパイプへ合流させ、行単位で `[<host>] ` を前置して中継する。
-    /// 読み取りは RemoteRunDispatcher.runInheritedWithLineRewrite と同じ規律(専用スレッドで
-    /// ブロッキング読み取り、完了は AsyncStream で待つ)
+    /// 読み取りは PipeLinePump(専用スレッドでブロッキング読み取り、完了は AsyncStream で待つ)
     static func runEntry(binary: String, args: [String], hostLabel: String) async -> Int32 {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: binary)
@@ -528,21 +527,12 @@ enum FleetRunner {
         let relay = InterruptRelay.forwarding(to: process, escalateAfter: nil)
         defer { relay.stop() }
 
-        let readHandle = pipe.fileHandleForReading
-        let readDone = DispatchSemaphore(value: 0)
-        let splitter = StreamLineSplitter()
-        DispatchQueue.global(qos: .utility).async {
-            while true {
-                // availableData = 届いた分だけ返す(readData(ofLength:) は EOF まで貯める)
-                let chunk = readHandle.availableData
-                if chunk.isEmpty { break }   // 子の終了による書込端クローズで EOF
-                for line in splitter.feed(chunk) { logLine(host: hostLabel, line: line) }
-            }
-            readDone.signal()
+        let pump = PipeLinePump(handle: pipe.fileHandleForReading) { line in
+            logLine(host: hostLabel, line: line)
         }
+        pump.start()
         for await _ in exitStream {}
-        readDone.wait()
-        if let remaining = splitter.flush() { logLine(host: hostLabel, line: remaining) }
+        if let remaining = await pump.drain() { logLine(host: hostLabel, line: remaining) }
         return process.terminationStatus
     }
 

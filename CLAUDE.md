@@ -219,6 +219,8 @@
   - **ssh 越しに何かを起動する経路を新設したら非対話 PATH の補正
     (`/opt/homebrew:/usr/local/bin`)を必ず写す**(既存は `RemoteShell.remoteRunCommand`)
   - **子プロセスを spawn する経路を足したら中断のリレーも足す**(`InterruptRelay`)。
+    **async 文脈でパイプを行読みするときは `FTRemote.PipeLinePump`**(semaphore の `wait` を
+    async 文脈に書かない = Swift 6 でエラー。同期関数の既存2箇所は据え置き)。
     **SIGKILL へのエスカレートは ssh にだけ**。**シグナルソースは1プロセスに1組**
     → maintainer-notes §3.2。`fleetest remote unlock` は自分の死んだディスパッチのロックだけを外す(`RemoteDispatchUnlock`)
   - **`--machine M`(旧 `--host`)+ 明示 `--device` は M の台に限定**

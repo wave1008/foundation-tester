@@ -97,51 +97,48 @@ enum VideoRecordingFinalizer {
         let queue = DispatchQueue(label: "fleetest.video.extractClip")
         // 区間開始より前の最後のサンプル(pendingBeforeClip)を区間開始時刻に retime して先頭へ、
         // 以降は区間内サンプルをそのまま append する(VFR で区間頭にフレームが無い罠への対処)。
-        var finished = false
-        var enteredClip = false
-        var reachedClipEnd = false
-        var pendingBeforeClip: CMSampleBuffer?
+        let state = ClipExtractionState(writerInput: writerInput, readerOutput: readerOutput)
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             // requestMediaDataWhenReady のブロックは markAsFinished 後も呼ばれうるため、
-            // resume の一回性は finished フラグで守る(ブロックは queue 上で直列)
-            writerInput.requestMediaDataWhenReady(on: queue) {
-                while writerInput.isReadyForMoreMediaData {
-                    guard !finished else { return }
-                    guard let sample = readerOutput.copyNextSampleBuffer() else {
+            // resume の一回性は finished フラグで守る(ブロックは queue 上で直列に走るので lock は要らない)
+            state.writerInput.requestMediaDataWhenReady(on: queue) { [state] in
+                while state.writerInput.isReadyForMoreMediaData {
+                    guard !state.finished else { return }
+                    guard let sample = state.readerOutput.copyNextSampleBuffer() else {
                         // 区間内に 1 サンプルも無い(区間中ずっと画面静止)場合、区間前の最後の
                         // フレームで静止クリップを作る(何も append しないと writer が失敗する)
-                        if !enteredClip, let pending = pendingBeforeClip,
+                        if !state.enteredClip, let pending = state.pendingBeforeClip,
                            let retimed = retimed(pending, to: clipStart) {
-                            writerInput.append(retimed)
+                            state.writerInput.append(retimed)
                         }
-                        finished = true
-                        writerInput.markAsFinished()
+                        state.finished = true
+                        state.writerInput.markAsFinished()
                         continuation.resume()
                         return
                     }
                     let pts = CMSampleBufferGetPresentationTimeStamp(sample)
                     if pts < clipStart {
-                        pendingBeforeClip = sample
+                        state.pendingBeforeClip = sample
                         continue
                     }
-                    if !enteredClip {
-                        enteredClip = true
-                        if let pending = pendingBeforeClip, let retimed = retimed(pending, to: clipStart) {
-                            writerInput.append(retimed)
+                    if !state.enteredClip {
+                        state.enteredClip = true
+                        if let pending = state.pendingBeforeClip, let retimed = retimed(pending, to: clipStart) {
+                            state.writerInput.append(retimed)
                         }
                     }
                     if pts >= clipEnd {
-                        finished = true
-                        reachedClipEnd = true
-                        writerInput.markAsFinished()
+                        state.finished = true
+                        state.reachedClipEnd = true
+                        state.writerInput.markAsFinished()
                         continuation.resume()
                         return
                     }
-                    writerInput.append(sample)
+                    state.writerInput.append(sample)
                 }
             }
         }
-        if reachedClipEnd {
+        if state.reachedClipEnd {
             reader.cancelReading()
         } else if reader.status != .completed {
             // 散発的な切り出し失敗の診断用(status/error が唯一の手掛かり)
@@ -176,5 +173,21 @@ enum VideoRecordingFinalizer {
             allocator: kCFAllocatorDefault, sampleBuffer: sample,
             sampleTimingEntryCount: 1, sampleTimingArray: &timing, sampleBufferOut: &out)
         return status == noErr ? out : nil
+    }
+}
+
+/// requestMediaDataWhenReady のブロックが捕捉する可変状態(finished/enteredClip/reachedClipEnd/
+/// pendingBeforeClip)と AV オブジェクトを1つに束ねる。ブロックは queue 上で直列に走るので lock は要らない。
+private final class ClipExtractionState: @unchecked Sendable {
+    let writerInput: AVAssetWriterInput
+    let readerOutput: AVAssetReaderTrackOutput
+    var finished = false
+    var enteredClip = false
+    var reachedClipEnd = false
+    var pendingBeforeClip: CMSampleBuffer?
+
+    init(writerInput: AVAssetWriterInput, readerOutput: AVAssetReaderTrackOutput) {
+        self.writerInput = writerInput
+        self.readerOutput = readerOutput
     }
 }

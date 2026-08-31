@@ -226,38 +226,18 @@ enum ApiRunMachineFanout {
         }
         registry.register(process)
 
-        let stdoutHandle = stdoutPipe.fileHandleForReading
-        let stderrHandle = stderrPipe.fileHandleForReading
-        let stdoutDone = DispatchSemaphore(value: 0)
-        let stderrDone = DispatchSemaphore(value: 0)
-        let stdoutSplitter = StreamLineSplitter()
-        let stderrSplitter = StreamLineSplitter()
-
-        DispatchQueue.global(qos: .utility).async {
-            while true {
-                // readData(ofLength:) は length か EOF まで返らない(パイプでは子の終了まで
-                // 全量が貯まり、ライブ中継が子の exit 時の一括になる。availableData は
-                // 届いた分だけ返す。2026-08-18 実測)
-                let chunk = stdoutHandle.availableData
-                if chunk.isEmpty { break }
-                for line in stdoutSplitter.feed(chunk) { continuation.yield(.line(index: index, text: line)) }
-            }
-            stdoutDone.signal()
+        let stdoutPump = PipeLinePump(handle: stdoutPipe.fileHandleForReading) { line in
+            continuation.yield(.line(index: index, text: line))
         }
-        DispatchQueue.global(qos: .utility).async {
-            while true {
-                let chunk = stderrHandle.availableData  // 上と同じ理由(readData は EOF まで貯める)
-                if chunk.isEmpty { break }
-                for line in stderrSplitter.feed(chunk) { logStderr("[\(machineLabel)] \(line)") }
-            }
-            stderrDone.signal()
+        let stderrPump = PipeLinePump(handle: stderrPipe.fileHandleForReading) { line in
+            logStderr("[\(machineLabel)] \(line)")
         }
+        stdoutPump.start()
+        stderrPump.start()
 
         for await _ in exitStream {}
-        stdoutDone.wait()
-        stderrDone.wait()
-        if let remaining = stdoutSplitter.flush() { continuation.yield(.line(index: index, text: remaining)) }
-        if let remaining = stderrSplitter.flush() { logStderr("[\(machineLabel)] \(remaining)") }
+        if let remaining = await stdoutPump.drain() { continuation.yield(.line(index: index, text: remaining)) }
+        if let remaining = await stderrPump.drain() { logStderr("[\(machineLabel)] \(remaining)") }
         continuation.yield(.exited(index: index, status: process.terminationStatus))
         return process.terminationStatus
     }

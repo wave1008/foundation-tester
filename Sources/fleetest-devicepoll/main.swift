@@ -52,6 +52,9 @@ func parseOptions() -> Options {
 
 // MARK: - フレーム取得
 
+/// completion ハンドラが書き込む結果の受け皿。不変条件: signal 前に書き、wait 後に読む
+private final class ResultBox: @unchecked Sendable { var data: Data? }
+
 /// iOS: 常駐ブリッジの /screenshot(PNG)。実機は host が iproxy のループバックか LAN IP になる
 func captureIOS(_ o: Options) -> Data? {
     guard let url = URL(string: "http://\(o.host):\(o.port)/screenshot") else { return nil }
@@ -59,15 +62,15 @@ func captureIOS(_ o: Options) -> Data? {
     // fps 間隔より長く待たない(詰まったフレームを溜めるより落とす方がライブ表示として正しい)
     request.timeoutInterval = max(2.0, 2.0 / max(o.fps, 0.1))
     let semaphore = DispatchSemaphore(value: 0)
-    var result: Data?
+    let box = ResultBox()
     URLSession.shared.dataTask(with: request) { data, response, _ in
         if let data, (response as? HTTPURLResponse)?.statusCode == 200, !data.isEmpty {
-            result = data
+            box.data = data
         }
         semaphore.signal()
     }.resume()
     _ = semaphore.wait(timeout: .now() + request.timeoutInterval + 1)
-    return result
+    return box.data
 }
 
 /// Android: adb exec-out screencap -p(PNG)

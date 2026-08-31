@@ -8,7 +8,7 @@ import ObjectiveC
 @_exported import FTCore
 
 /// 1 シナリオ(@Test メソッド)のメタデータ
-public struct FTScenarioDescriptor {
+public struct FTScenarioDescriptor: Sendable {
     /// メソッド名(日本語可)
     public let name: String
     /// @Test の引数タイトル
@@ -21,12 +21,14 @@ public struct FTScenarioDescriptor {
     /// @Test(platform:)。"ios" / "android" / nil(クラスの platform: に従う)。
     /// **実効値はクラス側との合成**なので、読むときは effectivePlatform(classPlatform:) を通す
     public let platform: String?
-    /// テストクラスの新規インスタンスを作ってメソッドを呼ぶクロージャ(マクロ生成)
-    public let run: () -> Void
+    /// テストクラスの新規インスタンスを作ってメソッドを呼ぶクロージャ(マクロ生成)。
+    /// @Sendable だが捕捉するのは常にクロージャ内で新規生成したインスタンスだけ
+    /// (TestClassMacro.swift 参照)なので、テストクラス自体を Sendable にする必要は無い
+    public let run: @Sendable () -> Void
 
     public init(name: String, title: String, deleted: Bool = false, draft: Bool = false,
                 platform: String? = nil,
-                run: @escaping () -> Void) {
+                run: @escaping @Sendable () -> Void) {
         self.name = name
         self.title = title
         self.deleted = deleted

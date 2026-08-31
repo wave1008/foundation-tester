@@ -1,6 +1,7 @@
 import XCTest
 @testable import FTDSL
 import FTCore
+import FTTestSupport
 
 /// DSL コマンドがドライバまで届く値の検証(記録ではなく**実際に発火した引数**を見る)。
 /// tap の holdSeconds はブリッジまで配線されていながらホスト側で 1.0 に潰れていた実績があるため、
@@ -709,14 +710,14 @@ final class CommandDispatchTests: XCTestCase {
         })
         core.installControl = installControl
 
-        let done = DispatchSemaphore(value: 0)
+        let done = expectation(description: "installApp() completed")
         let runner = Thread {
             scenario {
                 scene(1, "s") {
                     action { installApp() }
                 }
             }
-            done.signal()
+            done.fulfill()
         }
         // installApp() は RPC 待ちでブロックするため専用スレッドで走らせる。dslThread は
         // 実際に scenario {} を実行するスレッド(runner)を指す必要がある(このテストスレッドを
@@ -727,10 +728,10 @@ final class CommandDispatchTests: XCTestCase {
         var requestID: Int?
         let deadline = Date().addingTimeInterval(5)
         while requestID == nil, Date() < deadline {
-            eventsLock.lock()
-            requestID = events.first(where: { $0.kind == "installRequest" })?.requestID
-            eventsLock.unlock()
-            if requestID == nil { Thread.sleep(forTimeInterval: 0.01) }
+            eventsLock.withLock {
+                requestID = events.first(where: { $0.kind == "installRequest" })?.requestID
+            }
+            if requestID == nil { try await Task.sleep(for: .milliseconds(10)) }
         }
         guard let requestID else { return XCTFail("installRequest イベントが届かなかった") }
 
@@ -742,7 +743,7 @@ final class CommandDispatchTests: XCTestCase {
         }
         await fulfillment(of: [resolved], timeout: 5)
 
-        guard done.wait(timeout: .now() + 5) == .success else {
+        guard await XCTWaiter().fulfillment(of: [done], timeout: 5) == .completed else {
             return XCTFail("installApp() が RPC 応答後も完了しなかった")
         }
         FTRuntime.tearDown()
@@ -750,12 +751,14 @@ final class CommandDispatchTests: XCTestCase {
         XCTAssertTrue(core.finalRecord.passed)
         XCTAssertTrue(driver.installedPaths.isEmpty,
                       "実行は親側の責務なので子の driver.install は呼ばれない")
-        eventsLock.lock()
-        let request = events.first(where: { $0.kind == "installRequest" })
-        let hasNote = events.contains {
-            $0.kind == "log" && ($0.message?.contains("reinjected") ?? false)
+        var request: ScenarioEvent?
+        var hasNote = false
+        eventsLock.withLock {
+            request = events.first(where: { $0.kind == "installRequest" })
+            hasNote = events.contains {
+                $0.kind == "log" && ($0.message?.contains("reinjected") ?? false)
+            }
         }
-        eventsLock.unlock()
         XCTAssertEqual(request?.scenario, "T.S0010")
         XCTAssertNil(request?.installPath, "引数省略なら installPath は nil のまま親へ渡す")
         XCTAssertTrue(hasNote, "親からの注記(in-app 再注入)がログとして残るはず")
@@ -772,14 +775,14 @@ final class CommandDispatchTests: XCTestCase {
         })
         core.installControl = installControl
 
-        let done = DispatchSemaphore(value: 0)
+        let done = expectation(description: "installApp() completed")
         let runner = Thread {
             scenario {
                 scene(1, "s") {
                     action { installApp("/explicit/App.app") }
                 }
             }
-            done.signal()
+            done.fulfill()
         }
         // dslThread は runner を指す(理由は success 版のコメント参照)
         FTRuntime.bootstrap(core: core, dslThread: runner)
@@ -788,10 +791,10 @@ final class CommandDispatchTests: XCTestCase {
         var requestID: Int?
         let deadline = Date().addingTimeInterval(5)
         while requestID == nil, Date() < deadline {
-            eventsLock.lock()
-            requestID = events.first(where: { $0.kind == "installRequest" })?.requestID
-            eventsLock.unlock()
-            if requestID == nil { Thread.sleep(forTimeInterval: 0.01) }
+            eventsLock.withLock {
+                requestID = events.first(where: { $0.kind == "installRequest" })?.requestID
+            }
+            if requestID == nil { try await Task.sleep(for: .milliseconds(10)) }
         }
         guard let requestID else { return XCTFail("installRequest イベントが届かなかった") }
 
@@ -802,7 +805,7 @@ final class CommandDispatchTests: XCTestCase {
         }
         await fulfillment(of: [resolved], timeout: 5)
 
-        guard done.wait(timeout: .now() + 5) == .success else {
+        guard await XCTWaiter().fulfillment(of: [done], timeout: 5) == .completed else {
             return XCTFail("installApp() が RPC 応答後も完了しなかった")
         }
         FTRuntime.tearDown()
@@ -812,9 +815,10 @@ final class CommandDispatchTests: XCTestCase {
             return XCTFail("failed になっていない")
         }
         XCTAssertEqual(reason, "package not found")
-        eventsLock.lock()
-        let request = events.first(where: { $0.kind == "installRequest" })
-        eventsLock.unlock()
+        var request: ScenarioEvent?
+        eventsLock.withLock {
+            request = events.first(where: { $0.kind == "installRequest" })
+        }
         XCTAssertEqual(request?.installPath, "/explicit/App.app")
     }
 

@@ -5,6 +5,7 @@
 
 import XCTest
 import FTCore
+import FTTestSupport
 @testable import fleetest
 
 final class RemoteMonitorFanoutIDTests: XCTestCase {
@@ -54,17 +55,18 @@ final class RemoteMonitorFanoutIDTests: XCTestCase {
     /// 占有(monitorLock)も**マシン名は親が埋める**。埋め忘れると拡張がどの機械の占有か分からず、
     /// 配信の退避も占有表示も効かない(§18.2 M2)
     func testLockLineGetsTheMachineStamped() {
-        var relayed: [String] = []
+        let relayed = LockedBox<[String]>([])
         let fanout = RemoteMonitorFanout(machines: ["M1Ultra"], project: "P", profile: nil,
                                          interval: 2, maxWidth: 960,
-                                         log: { _ in }, relayLine: { relayed.append($0) })
+                                         log: { _ in }, relayLine: { line in relayed.mutate { $0.append(line) } })
         fanout.ingest(
             line: #"{"kind":"monitorLock","observed":true,"held":true,"issuer":"bob","issuerHost":"h","acquiredAt":"T","mine":false}"#,
             machine: "M1Ultra")
         // **添字で取らない** —— 変異で1行も出なくなったとき、クラッシュはこのプロセスの
         // 後続テストまで巻き添えにする(失敗で止まる形に保つ)
-        guard let line = relayed.first, relayed.count == 1 else {
-            return XCTFail("expected exactly one relayed line: \(relayed)")
+        let lines = relayed.value
+        guard let line = lines.first, lines.count == 1 else {
+            return XCTFail("expected exactly one relayed line: \(lines)")
         }
         XCTAssertTrue(line.contains(#""machine":"M1Ultra""#), line)
         XCTAssertTrue(line.contains(#""issuer":"bob""#), line)
@@ -74,13 +76,14 @@ final class RemoteMonitorFanoutIDTests: XCTestCase {
     /// 子が落ちたら「もう観測できていない」を1行流す。**held:false を空きと読ませないため
     /// observed:false を添える**(拡張は控えを消して「不明」へ戻す)
     func testUnobservedLockLineIsRelayedWhenTheChildDies() {
-        var relayed: [String] = []
+        let relayed = LockedBox<[String]>([])
         let fanout = RemoteMonitorFanout(machines: ["M1Ultra"], project: "P", profile: nil,
                                          interval: 2, maxWidth: 960,
-                                         log: { _ in }, relayLine: { relayed.append($0) })
+                                         log: { _ in }, relayLine: { line in relayed.mutate { $0.append(line) } })
         fanout.relayUnobservedLock("M1Ultra")
-        guard let line = relayed.first, relayed.count == 1 else {
-            return XCTFail("expected exactly one relayed line: \(relayed)")
+        let lines = relayed.value
+        guard let line = lines.first, lines.count == 1 else {
+            return XCTFail("expected exactly one relayed line: \(lines)")
         }
         XCTAssertTrue(line.contains(#""observed":false"#), line)
         XCTAssertTrue(line.contains(#""machine":"M1Ultra""#), line)

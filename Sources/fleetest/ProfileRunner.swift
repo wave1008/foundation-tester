@@ -390,7 +390,8 @@ enum ProfileRunner {
         let dispatch: ScenarioDispatch = broadcast
             ? .broadcast(lanes: resolved.devices.map { BroadcastLane(key: $0.name, platform: $0.platform) })
             : .shared
-        async let summary = orchestrator.run(items: items, defaultPlatform: defaultPlatform,
+        let itemsToRun = items  // async let は var を直接捕捉できない(Sendable 境界)
+        async let summary = orchestrator.run(items: itemsToRun, defaultPlatform: defaultPlatform,
                                              dispatch: dispatch)
 
         // シナリオ毎にバッファして完了時に一括表示(並列時のステップ行の混線防止)。

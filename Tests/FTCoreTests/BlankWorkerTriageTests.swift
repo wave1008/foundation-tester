@@ -9,6 +9,7 @@ import XCTest
 import CoreGraphics
 import ImageIO
 import UniformTypeIdentifiers
+import FTTestSupport
 @testable import FTCore
 
 /// 呼ばれない前提のドライバ(このテストはスクショを引数で差し替えるため)
@@ -247,34 +248,34 @@ final class BlankWorkerRecoveryTests: XCTestCase {
     /// 回復できたら**全レーンで開始**(除外0)
     func testRecoveredDevicesStayInTheLanes() async {
         let frozen = [worker("a", frozen: true), worker("b", frozen: false)]
-        var recoverCalls = 0
+        let recoverCalls = LockedBox(0)
         let result = await BlankWorkerTriage.excludeBlankScreenWorkers(
             frozen,
             recover: { _, _ in
-                recoverCalls += 1
+                recoverCalls.mutate { $0 += 1 }
                 // 回復 = ブリッジを張り直した健全なワーカー一覧を返す
                 return [self.worker("a", frozen: false), self.worker("b", frozen: false)]
             },
             log: { _ in })
-        XCTAssertEqual(recoverCalls, 1)
+        XCTAssertEqual(recoverCalls.value, 1)
         XCTAssertTrue(result.excluded.isEmpty, "回復したのに外している: \(result.excluded)")
         XCTAssertEqual(result.workers.count, 2)
     }
 
     /// **戻らない個体だけ外す**(レーンに凍結機を残さない)。上限まで試すこと
     func testUnrecoverableDeviceIsExcludedAfterTheRetries() async {
-        var recoverCalls = 0
+        let recoverCalls = LockedBox(0)
         let result = await BlankWorkerTriage.excludeBlankScreenWorkers(
             [worker("dead", frozen: true), worker("ok", frozen: false)],
             recover: { _, _ in
-                recoverCalls += 1
+                recoverCalls.mutate { $0 += 1 }
                 return [self.worker("dead", frozen: true), self.worker("ok", frozen: false)]
             },
             log: { _ in })
         // **定数と突き合わせない**: 定数ごと 1 に書き換える変異を素通しする(2026-08-09 に実際に素通しした)。
         // 「1回で諦めない」ことが守りたい性質なので、回数そのもので縛る
-        XCTAssertGreaterThanOrEqual(recoverCalls, 2, "1回で諦めている")
-        XCTAssertEqual(recoverCalls, BlankWorkerTriage.recoveryAttempts,
+        XCTAssertGreaterThanOrEqual(recoverCalls.value, 2, "1回で諦めている")
+        XCTAssertEqual(recoverCalls.value, BlankWorkerTriage.recoveryAttempts,
                        "上限まで試していない")
         XCTAssertEqual(result.excluded, ["dead"])
         XCTAssertEqual(result.workers.map(\.label), ["ok"], "健全機まで巻き込んで外している")
@@ -282,23 +283,23 @@ final class BlankWorkerRecoveryTests: XCTestCase {
 
     /// 回復手段が無い(nil)なら**即座に外す**(無駄な再試行をしない)
     func testNoRecoveryMeansImmediateExclusion() async {
-        var recoverCalls = 0
+        let recoverCalls = LockedBox(0)
         let result = await BlankWorkerTriage.excludeBlankScreenWorkers(
             [worker("dead", frozen: true)],
-            recover: { _, _ in recoverCalls += 1; return nil },
+            recover: { _, _ in recoverCalls.mutate { $0 += 1 }; return nil },
             log: { _ in })
-        XCTAssertEqual(recoverCalls, 1)
+        XCTAssertEqual(recoverCalls.value, 1)
         XCTAssertEqual(result.excluded, ["dead"])
     }
 
     /// 凍結が無ければ回復は呼ばない(正常時に simctl を撃たない)
     func testHealthyFleetNeverCallsRecovery() async {
-        var recoverCalls = 0
+        let recoverCalls = LockedBox(0)
         let result = await BlankWorkerTriage.excludeBlankScreenWorkers(
             [worker("a", frozen: false)],
-            recover: { _, _ in recoverCalls += 1; return nil },
+            recover: { _, _ in recoverCalls.mutate { $0 += 1 }; return nil },
             log: { _ in })
-        XCTAssertEqual(recoverCalls, 0)
+        XCTAssertEqual(recoverCalls.value, 0)
         XCTAssertTrue(result.excluded.isEmpty)
     }
 
@@ -307,19 +308,20 @@ final class BlankWorkerRecoveryTests: XCTestCase {
     /// 捕まえたままだと、2回目の試行で新しい label を引けず udid が取れずに必ず失敗する
     /// (`frozen devices have no iOS simulator udid`)。
     func testRecoveryReceivesTheCurrentWorkers() async {
-        var seen: [[String]] = []
-        var attempt = 0
+        let seen = LockedBox<[[String]]>([])
+        let attempt = LockedBox(0)
         _ = await BlankWorkerTriage.excludeBlankScreenWorkers(
             [worker("dead(ios:8100)", frozen: true)],
             recover: { _, current in
-                seen.append(current.map(\.label))
-                attempt += 1
+                seen.mutate { $0.append(current.map(\.label)) }
+                var next = 0
+                attempt.mutate { $0 += 1; next = $0 }
                 // 1回目の回復でポートが変わる(= label が変わる)。2回目もまだ凍結のまま
-                return [self.worker("dead(ios:82\(attempt)0)", frozen: true)]
+                return [self.worker("dead(ios:82\(next)0)", frozen: true)]
             },
             log: { _ in })
-        XCTAssertEqual(seen.first, ["dead(ios:8100)"], "1回目は元の一覧")
-        XCTAssertEqual(seen.dropFirst().first, ["dead(ios:8210)"],
+        XCTAssertEqual(seen.value.first, ["dead(ios:8100)"], "1回目は元の一覧")
+        XCTAssertEqual(seen.value.dropFirst().first, ["dead(ios:8210)"],
                        "2回目は**張り直し後**の一覧でなければ label を引けない")
     }
 

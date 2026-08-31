@@ -6,6 +6,7 @@
 import XCTest
 @testable import FTAndroid
 import FTCore
+import FTTestSupport
 
 final class AndroidLaneRecoveryTests: XCTestCase {
 
@@ -117,12 +118,12 @@ final class AndroidLaneRecoveryTests: XCTestCase {
 
     /// 空配列は何もしない(ログも起動もしない)
     func testEmptyDevicesDoesNothing() async {
-        var logged = false
+        let logged = LockedBox(false)
         let result = await AndroidLaneRecovery.bootMissingDevices(
-            devices: [], locale: "ja_JP", log: { _ in logged = true },
+            devices: [], locale: "ja_JP", log: { _ in logged.mutate { $0 = true } },
             boot: { _, _ in XCTFail("boot should not be called") })
         XCTAssertTrue(result.booted.isEmpty)
         XCTAssertTrue(result.failed.isEmpty)
-        XCTAssertFalse(logged)
+        XCTAssertFalse(logged.value)
     }
 }

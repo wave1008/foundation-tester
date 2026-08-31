@@ -276,7 +276,7 @@ let package = Package(
         // 実行プロファイルによる絞り込み・表示整形)
         .testTarget(
             name: "FleetestTests",
-            dependencies: ["fleetest", "FTCore", "FTRemote", "FTAndroid", "FTBridgeClient"],
+            dependencies: ["fleetest", "FTCore", "FTRemote", "FTAndroid", "FTBridgeClient", "FTTestSupport"],
             swiftSettings: swift5Mode
         ),
         .testTarget(
@@ -288,6 +288,7 @@ let package = Package(
             // swiftbuild が直ったら削除可
             dependencies: [
                 "FTDSL",
+                "FTTestSupport",
                 .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
                 .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),
             ],

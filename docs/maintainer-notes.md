@@ -450,11 +450,11 @@ dry-run との対比で「実機の前に落とす」等と書いていた 20 �
 | ④ Package.swift がワークスペースを兼ねる → 各テストプロジェクトを外部パッケージへ一本化 | 既に実装済み | 受け手は 2026-07-20 から外部パッケージ構成が既定(design.md §15)。ルートの `fleetest-scenarios-*` は保守者の SUT で、**`swift test` が 5 SUT のシナリオを型検査する砦**なので外へ出さない |
 | ⑤ Swift 6 系のコンパイラ警告 | 機械的な分だけ修正・残りは下の台帳 | 全ファイル再コンパイルで実数 88 件(端末表示は1件が2行に出るので `grep -c warning:` は倍を数える)。修正した 31 件は挙動に触れない型(冗長 `public`・不要 `try`・未使用値・Codable の `let kind`) |
 
-**残す警告の台帳(2026-08-31・57 件)**。全数を出す手順:
+**残す警告の台帳(2026-08-31・20 件。すべて deprecated)**。全数を出す手順:
 `find Sources Tests -name '*.swift' -exec touch {} +` → `swift build --build-tests 2>&1 | sed -E 's/\x1b\[[0-9;]*m//g' | grep -E '^/.*: warning:' | sort -u`
 (増えていないかはこの数で見る。CI は無いので手順ごと残す)
 
 - **FoundationModels `init(sampling:)` の deprecated ×8**: 後継 `init(samplingMode:)` は macOS 27 SDK のみ。platforms は macOS 26 なので置き換えると 26 でビルドが通らなくなる(Package.swift の platforms コメントと同じ理由)。macOS 26 SDK では出ない
 - **SecureTransport `SSL*` の deprecated ×12**(`PhysicalSafariInspector`): 実機 iOS の lockdown TLS は自前ソケット上で証明書を指定して握手する形で、Network.framework に同じ口が無い(design.md §実機だけの罠)
-- **Sendable 捕捉・非同期文脈の `wait`/`lock` ×約 37**(production は FleetRunner / ApiRunMachineFanout / ProfileRunner / VideoRecordingFinalizer / ScenarioRunnerMain / devicepoll の約 16 件、残りはテスト): Swift 6 言語モードでエラーになる本命。production 側は子プロセスの stdout 読み切り(`DispatchSemaphore.wait`)と `readabilityHandler` の捕捉なので、**直すときは run 制御の改修として扱い、中断リレー(`InterruptRelay`)と出力の取りこぼしの陽性対照を付ける**
+- **Sendable 捕捉・非同期文脈の `wait`/`lock`(37 件)は同日に 0 にした**。production 側は子プロセスの stdout 読み切りを `FTRemote.PipeLinePump`(専用スレッドで読み、EOF は AsyncStream で待つ)へ寄せ(FleetRunner / ApiRunMachineFanout)、`FTScenarioDescriptor.run` を `@Sendable` に(マクロ生成のクロージャはクロージャ内で作ったインスタンスしか捕捉しないのでテストクラスの Sendable 化は不要)、AV の切り出し状態は `ClipExtractionState` に束ねた。テスト側は `FTTestSupport.LockedBox`。陽性対照は `PipeLinePumpTests`(変異 2/2 検出)
 - **ゲートの選択肢**: `swiftLanguageMode(.v5)` のまま `.treatWarning(_:as: .error)` で群ごとにエラー化する案は tools-version 6.2 が要る(受け手の最低環境は macOS 26 = Xcode 26 = Swift 6.2 なので可能)が、群の無い診断(冗長 `public`・非同期文脈のロック)は対象外。**`-warnings-as-errors` の `unsafeFlags` は不可**(受け手の外部パッケージが依存として解決できなくなる)
