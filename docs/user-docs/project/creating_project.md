@@ -8,7 +8,7 @@ This page covers the project layout and the commands that manage it.
 ```
 TestProjects/SampleApp/
 ├── profiles/
-│   ├── apps/sampleapp_ios.json    # app profiles
+│   ├── apps/sampleapp.json        # app profile (default: lowercased project name; ios/android sections inside)
 │   ├── machines/M2Ultra.json      # per-machine device definitions (file name = machine name)
 │   └── runs/ios.json              # run profiles (app + device list + run-time settings)
 ├── scenarios/                     # Swift DSL

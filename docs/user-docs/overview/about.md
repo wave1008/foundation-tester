@@ -8,11 +8,13 @@ used together with a coding agent such as Claude Code.
 **fleetest** is `fleet` + `test` — and at the same time the superlative of *fleet* (swift).
 
 - **fleet** — Tests run in parallel across a **fleet of devices**: simulators, emulators, physical
-  devices, and even other Macs over SSH. Scenarios are distributed automatically, so the more
-  devices you add, the shorter the run.
-- **fleetest** — Replay has no LLM in the loop, so it is the **fastest** it can be. What bounds a
-  run is the device, not a model.
-- **free** — Running tests costs **nothing**. No cloud device farm, no per-run API billing.
+  devices, and even other Macs over SSH. Scenarios are distributed across the devices
+  automatically, which shortens the wall-clock time of a run (up to what the host and the
+  devices can sustain).
+- **fleetest** — Ordinary playback has no LLM in the loop, so there is no waiting on model
+  inference. What bounds a run is the device, not a model.
+- **free** — No cloud device farm and no per-run API billing are needed. (The tool is free;
+  the Mac, Xcode and the devices you run on are yours.)
 
 ## AI writes the tests, code replays them deterministically
 
@@ -25,12 +27,13 @@ the same Swift scenario.
 - Let an agent write it — it explores the real screens and captures selectors as it goes
 - Write it by hand — irregular handling and test data setup are plain Swift
 
-**Code replays it.** Scenarios run deterministically, without an LLM. Fast, stable, and
-CI-friendly.
+**Code replays it.** Scenarios run deterministically; ordinary playback uses no LLM. Fast,
+stable, and CI-friendly.
 
-**AI steps in only on failure.** Self-healing of broken selectors, visual verification of
-screenshots, and triage of the cause. All of it runs on Apple's on-device model
-(Foundation Models), so screen data from your app never leaves your Mac.
+**AI is used only for a few specific features.** Self-healing of broken selectors, visual
+verification of the screen with `screenLooksLike`, and triage of the cause when a step fails.
+All of it runs on Apple's on-device model (Foundation Models), so screen data from your app
+never leaves your Mac.
 
 ## Four entry points
 

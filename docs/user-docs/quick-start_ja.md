@@ -15,6 +15,8 @@ fleetest profile setup --platform ios --app-id com.example.myapp --auto-device
 ```
 
 `--auto-device` は、このマシンで利用可能なシミュレータ/エミュレータを自動で選びます。
+このコマンドでは実行プロファイルの名前はプラットフォーム名(ここでは `ios`)になり、完了時に
+次に実行すべき `fleetest run` コマンドが表示されるので、それをコピーしてください。
 プロファイルの詳細は[プロファイル](./project/profiles_ja.md)。
 
 ## 2. シナリオを1本書く
@@ -70,14 +72,14 @@ fleetest run --dry-run --scenario ログインテスト
 
 ```bash
 # クローン構成(foundation-tester のクローン内で作業している場合)
-swift run fleetest run --profile <実行プロファイル名>
+swift run fleetest run --profile ios
 
 # 外部パッケージ構成(TestProjects/ を持つ別の作業フォルダ)
-../foundation-tester/.build/debug/fleetest run --profile <実行プロファイル名>
+../foundation-tester/.build/debug/fleetest run --profile ios
 ```
 
-`--profile` には、ステップ1で用意した実行プロファイルの名前を渡します。アプリ・デバイス・
-実行時設定はそこから解決されます。
+`--profile` には、ステップ1で用意した実行プロファイルの名前を渡します(上のコマンドなら `ios`。
+`--run <名前>` を指定した場合はその名前)。アプリ・デバイス・実行時設定はそこから解決されます。
 
 VSCode からは **Test Explorer** でシナリオを選び、**実行**をクリックします。
 

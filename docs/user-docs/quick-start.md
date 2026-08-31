@@ -14,8 +14,10 @@ agent, or create them directly with a command:
 fleetest profile setup --platform ios --app-id com.example.myapp --auto-device
 ```
 
-`--auto-device` picks an available simulator/emulator on this machine. See
-[Profiles](./project/profiles.md) for the details.
+`--auto-device` picks an available simulator/emulator on this machine. With this command the
+run profile is named after the platform (`ios` here), and on completion the tool prints the
+`fleetest run` command to use next — copy it. See [Profiles](./project/profiles.md) for the
+details.
 
 ## 2. Write one scenario
 
@@ -71,14 +73,15 @@ fleetest run --dry-run --scenario LoginTest
 
 ```bash
 # Clone layout (working inside the foundation-tester clone)
-swift run fleetest run --profile <run-profile-name>
+swift run fleetest run --profile ios
 
 # External package layout (a separate work folder with TestProjects/)
-../foundation-tester/.build/debug/fleetest run --profile <run-profile-name>
+../foundation-tester/.build/debug/fleetest run --profile ios
 ```
 
-`--profile` takes the name of the run profile from step 1. The app, the devices, and the
-run-time settings are all resolved from it.
+`--profile` takes the name of the run profile from step 1 (`ios`, as created by the command
+above; if you passed `--run <name>`, use that name). The app, the devices, and the run-time
+settings are all resolved from it.
 
 From VSCode, open the **Test Explorer**, pick the scenario, and click **Run**.
 

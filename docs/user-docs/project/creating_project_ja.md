@@ -8,7 +8,7 @@
 ```
 TestProjects/SampleApp/
 ├── profiles/
-│   ├── apps/sampleapp_ios.json    # アプリプロファイル
+│   ├── apps/sampleapp.json        # アプリプロファイル(既定名 = プロジェクト名の小文字。中に ios/android の節を持つ)
 │   ├── machines/M2Ultra.json      # マシン別デバイス定義(ファイル名 = マシン名)
 │   └── runs/ios.json              # 実行プロファイル(アプリ+デバイス名リスト+実行時設定)
 ├── scenarios/                     # Swift DSL

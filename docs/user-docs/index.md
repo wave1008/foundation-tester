@@ -2,15 +2,17 @@
 
 [in Japanese(日本語)](index_ja.md)
 
-**fleetest** is `fleet` + `test`, and also the superlative of *fleet* (swift): tests run in
-parallel across a **fleet** of devices, replay is the **fleetest** path because no LLM sits in
-the loop, and running them is **free** — no device farm, no per-run billing. See
-[What is fleetest?](overview/about.md).
+**fleetest** is `fleet` + `test`, and also the superlative of *fleet* (swift): scenarios are
+distributed across a **fleet** of devices to shorten the wall-clock time, replay is **fleet**
+because ordinary playback never waits on LLM inference, and it is **free** of cloud device farms
+and per-run API billing. See [What is fleetest?](overview/about.md).
 
 fleetest is an E2E test tool for iOS / Android apps on macOS. Scenarios are written in a
-Shirates-style Swift DSL and replayed deterministically; Foundation Models (on-device) step
-in only when a step fails. Tests can be authored by an agent (MCP), recorded from the
-VSCode extension, or written by hand — all three produce the same `.swift` scenarios.
+Shirates-style Swift DSL and replayed deterministically — ordinary playback uses no LLM.
+Foundation Models (on-device) are used only for a few specific features: self-healing of broken
+selectors, visual verification with `screenLooksLike`, and triage when a step fails. Tests can
+be authored by an agent (MCP), recorded from the VSCode extension, or written by hand — all
+three produce the same `.swift` scenarios.
 
 ## Repository
 
