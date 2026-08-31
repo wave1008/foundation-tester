@@ -39,7 +39,6 @@ export function renderHeadline(latestGroup) {
   meta.className = 'headline-meta';
   const parts = [
     formatLocalDateTime(groupStartedAt(latestGroup)),
-    'trigger: ' + latestGroup[0].trigger,
     'machine: ' + groupMachinesText(latestGroup),
     'profile: ' + (latestGroup[0].profile || t('wvDashboard.render.none')),
   ];

@@ -130,8 +130,8 @@ export const exploreHealStrings = {
     en: "Test Time",
   },
   "exploreHeal.dashboard.colScenarioTotal": {
-    ja: "シナリオ所要合計",
-    en: "Scenario Total",
+    ja: "全シナリオ合計",
+    en: "All Scenarios Total",
   },
   "exploreHeal.dashboard.colLaneCount": {
     ja: "レーン",

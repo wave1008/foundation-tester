@@ -31,7 +31,7 @@ export const webviewDashboardStrings = {
     ja: "前回計測との比較: {latest} vs {target}",
     en: "Comparison with the previous measurement: {latest} vs {target}",
   },
-  "wvDashboard.perf.scenarioTotalLabel": { ja: "シナリオ所要合計 {value}", en: "Scenario total {value}" },
+  "wvDashboard.perf.scenarioTotalLabel": { ja: "全シナリオ合計 {value}", en: "All scenarios total {value}" },
   "wvDashboard.perf.maxScenarioLabel": { ja: "最長1本 {value}", en: "Longest scenario {value}" },
   "wvDashboard.perf.laneUtilisationLabel": { ja: "稼働率 {value}", en: "Utilisation {value}" },
   "wvDashboard.perf.invalidCountNote": { ja: "計測無効で除外 {count} 件", en: "{count} excluded as invalid measurements" },
